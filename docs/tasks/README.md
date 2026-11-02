@@ -65,6 +65,7 @@ docs/tasks/T03.md をやって。CLAUDE.md と docs/tasks/README.md の決まり
 | T29 | Known / Unknown の文書 | 11/3 の夜 | なし |
 | T30 | 利用者の新規登録とケアマネの割当、事業所の設定 | 11/3 | T01・T02 |
 | T31 | Claude Code の使い方を作品の中に見せる（フック・Skill・記録） | 11/2 夜〜 | なし |
+| T32 | 「Claude の活用」の 3 軸（agents・MCP・記録） | 11/2 夜 | T31 |
 
 ## 担当の割り振り（11/2 夜）
 
