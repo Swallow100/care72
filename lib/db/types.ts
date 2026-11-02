@@ -60,6 +60,7 @@ export const CLOCK_CATEGORIES = [
   "dialysis", // 透析
   "insulin", // インスリン
   "tube_feeding", // 経管栄養
+  "antiplatelet", // 抗血小板薬（11/3 に骨格の段 5 へ足した。docs/DECISIONS.md 11/3 04:0x の 2）
   "anticoagulant", // 抗凝固薬
   "steroid", // ステロイド
   "antiepileptic", // 抗てんかん薬
@@ -87,8 +88,12 @@ export const CLOCK_SOURCES = [
 ] as const;
 export type ClockSource = (typeof CLOCK_SOURCES)[number];
 
-/** 外の物に頼る時計の頼り先: 透析先・冷蔵・配達。頼らない時計は null */
-export const DEPENDS_ON = ["dialysis_center", "refrigeration", "delivery"] as const;
+/**
+ * 外の物に頼る時計の頼り先: 透析先・冷蔵・配達・保管。頼らない時計は null。
+ * ルールの表の入力は透析先・配達だけ（lib/triage の TABLE_DEPENDS）。保管（暑さ・冷蔵）は「確認」の欄の項目で、表には使わない
+ * （docs/DECISIONS.md 11/3 04:0x の 1。冷蔵は 11/3 より前の値で、表の入力から外した）
+ */
+export const DEPENDS_ON = ["dialysis_center", "refrigeration", "delivery", "storage"] as const;
 export type DependsOn = (typeof DEPENDS_ON)[number];
 
 /** 頼り先の確認: 確認済・未確認。人が付ける（ルールの表は未確認なら黄にする。docs/DECISIONS.md 案 1） */
@@ -355,6 +360,11 @@ export type Ledger = {
     hazards: Array<{ kind: HazardKind; depthM?: number }>;
     destination1?: string;
     destination2?: string;
+    /**
+     * 在宅避難の印（T37、docs/DECISIONS.md 11/3 04:0x の 8）。住まいが安全で、計画で家に留まると決めた人だけ true。
+     * 無ければ避難所へ（種は全員）。本人の 1 枚の地震の行を書き分ける
+     */
+    stayHome?: boolean;
     route?: string;
     /** 段差・エレベーター */
     barriers?: string;

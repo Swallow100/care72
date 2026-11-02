@@ -252,6 +252,172 @@ describe("画面の流れ", () => {
   });
 });
 
+// ---------- 無音のまま止まったら聞き直す（T37） ----------
+
+/** 文字起こしの偽物: 回ごとに返す文字（null は無音）。silenceAfter を渡すと、その時間で無音の知らせを出す */
+function transcripts(texts: Array<string | null>, opts: { silenceAfter?: number } = {}) {
+  const log: string[] = [];
+  let n = 0;
+  const start: NonNullable<PhoneDeps["startTranscript"]> = (events) => {
+    const i = n++;
+    log.push(`transcript${i + 1}`);
+    if (opts.silenceAfter !== undefined && texts[i] == null) setTimeout(() => events.onSilence(), opts.silenceAfter);
+    return {
+      stop: async () => {
+        log.push(`stop${i + 1}`);
+        return texts[i] ?? null;
+      },
+    };
+  };
+  return { start, log };
+}
+
+/** 録音の偽物（止める・再開を数える） */
+function pausingRecorder() {
+  const log: string[] = [];
+  const rec = {
+    pause: () => log.push("pause"),
+    resume: () => log.push("resume"),
+    stop: async () => {
+      log.push("stop");
+      return new Blob([new Uint8Array([7])], { type: "audio/webm" });
+    },
+  };
+  return { log, startRecording: async () => rec };
+}
+
+describe("無音のまま止まったら、同じ定型文で 2 回まで聞き直す（T37）", () => {
+  it("30 秒 無音 → 定型文 → 無音 → 定型文 → 無音: 録音を 1 本送って「ろくおんを おくりました」", async () => {
+    const tr = transcripts([null, null, null]);
+    const rec = pausingRecorder();
+    const h = harness({ startTranscript: tr.start, startRecording: rec.startRecording });
+    h.phone.red();
+    vi.advanceTimersByTime(IDLE_MS);
+    await flush();
+    expect(h.phone.state.step).toBe("recording");
+    for (let i = 0; i < 2; i++) {
+      vi.advanceTimersByTime(RECORD_MS);
+      await flush();
+    }
+    expect(h.phone.state.step).toBe("recording");
+    vi.advanceTimersByTime(RECORD_MS);
+    await flush();
+    expect(steps(h)).toEqual(["q0", "prompt", "recording", "prompt", "recording", "prompt", "recording", "sending", "done"]);
+    expect(h.phone.state).toEqual({ step: "done", color: "red", delivery: "sent", silent: true });
+    // 定型文は初めの 1 回と聞き直しの 2 回。録音は 1 本のまま、定型文の間だけ止める
+    expect(h.calls.filter((c) => c === "prompt")).toHaveLength(3);
+    expect(rec.log).toEqual(["pause", "resume", "pause", "resume", "stop"]);
+    expect(tr.log).toEqual(["transcript1", "stop1", "transcript2", "stop2", "transcript3", "stop3"]);
+    expect(h.signals).toHaveLength(1);
+    expect(h.recordings).toHaveLength(1);
+    expect(h.recordings[0].item).toMatchObject({ signalId: h.signals[0].id, transcript: null, durationSec: 90 });
+    expect(h.recordings[0].audio?.size).toBe(1);
+  });
+
+  it("ブラウザが無音で止めた（no-speech）ら 30 秒を待たずに聞き直す", async () => {
+    const tr = transcripts([null, null, null], { silenceAfter: 8_000 });
+    const h = harness({ startTranscript: tr.start });
+    h.phone.red();
+    vi.advanceTimersByTime(IDLE_MS);
+    await flush();
+    vi.advanceTimersByTime(8_000);
+    await flush();
+    expect(tr.log).toEqual(["transcript1", "stop1", "transcript2"]);
+    expect(h.phone.state).toMatchObject({ step: "recording", until: T0 + IDLE_MS + 8_000 + RECORD_MS });
+    vi.advanceTimersByTime(8_000);
+    await flush();
+    vi.advanceTimersByTime(8_000);
+    await flush();
+    expect(h.phone.state).toMatchObject({ step: "done", silent: true });
+    expect(h.recordings[0].item).toMatchObject({ transcript: null, durationSec: 24 });
+  });
+
+  it("2 回目で話せたら、その文字を添えて「とどきました」", async () => {
+    const tr = transcripts([null, "あしが いたい"]);
+    const h = harness({ startTranscript: tr.start });
+    h.phone.red();
+    vi.advanceTimersByTime(IDLE_MS);
+    await flush();
+    vi.advanceTimersByTime(RECORD_MS);
+    await flush();
+    expect(h.phone.state.step).toBe("recording");
+    vi.advanceTimersByTime(RECORD_MS);
+    await flush();
+    expect(h.phone.state).toEqual({ step: "done", color: "red", delivery: "sent" });
+    expect(h.calls.filter((c) => c === "prompt")).toHaveLength(2);
+    expect(h.recordings[0].item).toMatchObject({ transcript: "あしが いたい", durationSec: 60 });
+  });
+
+  it("話せた回は聞き直さない（1 回目で話せば今まで通り 30 秒で送る）", async () => {
+    const tr = transcripts(["たすけて"]);
+    const h = harness({ startTranscript: tr.start });
+    h.phone.red();
+    vi.advanceTimersByTime(IDLE_MS);
+    await flush();
+    vi.advanceTimersByTime(RECORD_MS);
+    await flush();
+    expect(h.phone.state).toEqual({ step: "done", color: "red", delivery: "sent" });
+    expect(h.calls.filter((c) => c === "prompt")).toHaveLength(1);
+    expect(h.recordings[0].item.transcript).toBe("たすけて");
+  });
+
+  it("「送る」を押したら聞き直さない（無音でも録音を送る）", async () => {
+    const tr = transcripts([null]);
+    const h = harness({ startTranscript: tr.start });
+    h.phone.red();
+    vi.advanceTimersByTime(IDLE_MS);
+    await flush();
+    vi.advanceTimersByTime(5_000);
+    h.phone.finish();
+    await flush();
+    expect(h.phone.state).toEqual({ step: "done", color: "red", delivery: "sent", silent: true });
+    expect(h.calls.filter((c) => c === "prompt")).toHaveLength(1);
+    expect(h.recordings[0].item).toMatchObject({ transcript: null, durationSec: 5 });
+  });
+
+  it("文字起こしの無い端末は無音が分からないので聞き直さない（今まで通り 30 秒で送って「とどきました」）", async () => {
+    const h = harness({ startTranscript: () => null });
+    h.phone.red();
+    vi.advanceTimersByTime(IDLE_MS);
+    await flush();
+    vi.advanceTimersByTime(RECORD_MS);
+    await flush();
+    expect(steps(h)).toEqual(["q0", "prompt", "recording", "sending", "done"]);
+    expect(h.phone.state).toEqual({ step: "done", color: "red", delivery: "sent" });
+    expect(h.recordings[0].item).toMatchObject({ transcript: null, durationSec: 30 });
+  });
+
+  it("録音の無い端末で無音のまま: 送る物が無いので「とどきました」（赤はもう届いている）", async () => {
+    const tr = transcripts([null, null, null]);
+    const h = harness({ startTranscript: tr.start, startRecording: async () => null });
+    h.phone.red();
+    vi.advanceTimersByTime(IDLE_MS);
+    await flush();
+    for (let i = 0; i < 3; i++) {
+      vi.advanceTimersByTime(RECORD_MS);
+      await flush();
+    }
+    expect(h.phone.state).toEqual({ step: "done", color: "red", delivery: "sent" });
+    expect(h.recordings).toEqual([]);
+  });
+
+  it("聞き直しの定型文の間に閉じたら、続きを録らない", async () => {
+    const tr = transcripts([null, null, null]);
+    const h = harness({ startTranscript: tr.start, playPrompt: () => new Promise(() => {}) });
+    h.phone.red();
+    vi.advanceTimersByTime(IDLE_MS + 15_000);
+    await flush();
+    vi.advanceTimersByTime(RECORD_MS);
+    await flush();
+    expect(h.phone.state.step).toBe("prompt");
+    h.phone.dispose();
+    vi.advanceTimersByTime(15_000 + RECORD_MS * 3);
+    await flush();
+    expect(tr.log).toEqual(["transcript1", "stop1"]);
+    expect(h.recordings).toEqual([]);
+  });
+});
+
 // ---------- 端末に残して送り直す ----------
 
 class MemoryStorage implements StorageLike {
@@ -602,5 +768,76 @@ describe("録音と文字起こし（偽物）", () => {
     vi.advanceTimersByTime(0);
     expect(await p).toBe("あしが\nいたい");
     expect(startTranscript(null)).toBeNull();
+  });
+
+  it("文字起こし: onSilence を渡すと、1 字も取れずに無音で止まったときは聞き直さずに知らせる（T37）", async () => {
+    const made: SilentRecognition[] = [];
+    class SilentRecognition implements SpeechRecognitionLike {
+      lang = "";
+      continuous = false;
+      interimResults = false;
+      onresult: SpeechRecognitionLike["onresult"] = null;
+      onerror: SpeechRecognitionLike["onerror"] = null;
+      onend: SpeechRecognitionLike["onend"] = null;
+      constructor() {
+        made.push(this);
+      }
+      start() {}
+      stop() {
+        setTimeout(() => this.onend?.(), 0);
+      }
+      abort() {}
+      say(text: string) {
+        const res = Object.assign([{ transcript: text }], { isFinal: true });
+        this.onresult?.({ resultIndex: 0, results: Object.assign([res], {}) });
+      }
+    }
+    let silences = 0;
+    const s = startTranscript(SilentRecognition, { onSilence: () => silences++ })!;
+    made[0].onerror?.({ error: "no-speech" });
+    made[0].onend?.();
+    expect(silences).toBe(1);
+    expect(made).toHaveLength(1);
+    expect(await s.stop()).toBeNull();
+
+    // 何か取れたあとの無音・マイクや通信の失敗は、今まで通り続きから聞き直す
+    const s2 = startTranscript(SilentRecognition, { onSilence: () => silences++ })!;
+    made[1].say("あしが");
+    made[1].onerror?.({ error: "no-speech" });
+    made[1].onend?.();
+    expect(made).toHaveLength(3);
+    made[2].onerror?.({ error: "network" });
+    made[2].onend?.();
+    expect(made).toHaveLength(4);
+    expect(silences).toBe(1);
+    const p = s2.stop();
+    vi.advanceTimersByTime(0);
+    expect(await p).toBe("あしが");
+  });
+
+  it("録音: 聞き直しの定型文の間だけ止めて再開する。止められない端末は何もしない", async () => {
+    const calls: string[] = [];
+    class PausingRecorder extends FakeRecorder {
+      pause() {
+        this.state = "paused";
+        calls.push("pause");
+      }
+      resume() {
+        this.state = "recording";
+        calls.push("resume");
+      }
+    }
+    const stream = { getTracks: () => [{ stop: () => {} }] };
+    const s = await startRecording({ getUserMedia: async () => stream, Recorder: PausingRecorder });
+    s!.pause();
+    s!.pause();
+    s!.resume();
+    s!.resume();
+    expect(calls).toEqual(["pause", "resume"]);
+    const plain = await startRecording({ getUserMedia: async () => stream, Recorder: FakeRecorder });
+    expect(() => {
+      plain!.pause();
+      plain!.resume();
+    }).not.toThrow();
   });
 });

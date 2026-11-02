@@ -20,9 +20,13 @@ export const DEVICE_CLOCKS: Readonly<Record<DeviceKind, MarkClock>> = {
   dialysis: { kind: "supply", category: "dialysis", label: "透析 次の回まで", starts_on: "disaster" },
 };
 
-/** 薬の区分ごとの時計（骨格に入る区分だけ）。名前は薬の名前。インスリンは冷蔵が切れると走る（種と同じ） */
+/**
+ * 薬の区分ごとの時計（骨格に入る区分だけ）。名前は薬の名前。
+ * インスリンは手元の残りの日数で発災から走る（冷蔵が切れると走る、は 11/3 にやめた。種と同じ。docs/DECISIONS.md 11/3 04:0x の 1）
+ */
 export const MEDICATION_CLOCKS: Readonly<Partial<Record<MedicationCategory, Omit<MarkClock, "label">>>> = {
-  insulin: { kind: "supply", category: "insulin", starts_on: "outage" },
+  insulin: { kind: "supply", category: "insulin", starts_on: "disaster" },
+  antiplatelet: { kind: "medication", category: "antiplatelet", starts_on: "disaster" },
   anticoagulant: { kind: "medication", category: "anticoagulant", starts_on: "disaster" },
   steroid: { kind: "medication", category: "steroid", starts_on: "disaster" },
   antiepileptic: { kind: "medication", category: "antiepileptic", starts_on: "disaster" },

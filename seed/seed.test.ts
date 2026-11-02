@@ -57,11 +57,14 @@ describe("種のデータ（架空の 10 人）", () => {
     for (const p of SEED_PEOPLE) expect(seedConsents(p)).toHaveLength(4);
   });
 
-  it("人が付ける欄: 3 田中の透析の時計は頼り先 透析先・未確認、4 佐藤に本人の報告を当てにしない印。ほかは無い", () => {
+  it("人が付ける欄: 3 田中の透析の時計は頼り先 透析先・未確認、8 井上のインスリンは保管 確認済（表の入力にしない）、4 佐藤に本人の報告を当てにしない印。ほかは無い", () => {
     const checks = SEED_PEOPLE.flatMap((p) =>
       p.clocks.filter((k) => k.depends_on !== null || k.depends_check !== null).map((k) => [p.person.id, k.id, k.depends_on, k.depends_check]),
     );
-    expect(checks).toEqual([["p-03", "k-03-1", "dialysis_center", "unconfirmed"]]);
+    expect(checks).toEqual([
+      ["p-03", "k-03-1", "dialysis_center", "unconfirmed"],
+      ["p-08", "k-08-1", "storage", "confirmed"],
+    ]);
     const marked = SEED_PEOPLE.filter((p) => p.person.self_report_unreliable === 1).map((p) => p.person.id);
     expect(marked).toEqual(["p-04"]);
   });

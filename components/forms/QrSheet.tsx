@@ -6,6 +6,7 @@
 import { CONSENT_KIND_LABELS, CONSENT_STATUS_LABELS } from "@/lib/labels";
 import type { ConsentStatus } from "@/lib/db/types";
 import { QR_LABELS } from "@/lib/qr/labels";
+import { paperText } from "@/lib/forms/paper-text";
 import { PaperFoot } from "./PaperFoot";
 import { QrBlock, qrExpiryDate } from "./QrBlock";
 
@@ -38,7 +39,7 @@ export function QrSheet(p: QrSheetProps) {
           <div className="head-row">
             <h1 className="title">{QR_SHEET_TITLE}</h1>
             <div className="top-col">
-              <span className="nowrap">{p.date} 作成</span>
+              <span className="nowrap">{paperText(p.date)} 作成</span>
               {by && <span className="nowrap">{by}</span>}
             </div>
           </div>

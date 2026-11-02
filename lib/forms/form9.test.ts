@@ -168,6 +168,16 @@ describe("平時の優先順位（10 人）", () => {
     expect(row(normal, "p-10").reason).toBe("医療の時計なし");
   });
 
+  it("保管（暑さ・冷蔵）・冷蔵の未確認は優先の理由に足さない（表の入力でない。11/3 確定の 1）", () => {
+    expect(row(normal, "p-08").reason).toBe("インスリン 4 日");
+    for (const dep of ["storage", "refrigeration"] as const) {
+      const unchecked = people.map((p) =>
+        p.person.id === "p-08" ? { ...p, clocks: p.clocks.map((k) => ({ ...k, depends_on: dep, depends_check: "unconfirmed" as const })) } : p,
+      );
+      expect(row(buildForm9(unchecked, { today: TODAY }), "p-08").reason, dep).toBe("インスリン 4 日");
+    }
+  });
+
   it("全員の行に全部の列の文字がある（空でもよいが undefined は無い）", () => {
     for (const r of normal.rows) {
       for (const c of FORM9_COLUMNS) expect(typeof r.cells[c.id], `${r.id} ${c.id}`).toBe("string");
@@ -190,7 +200,7 @@ describe("発災時の優先順位（TriageResult を渡す）", () => {
       "p-09", // 灰 降圧薬 残り 163 時間（骨格 8）
       "p-04", // 灰 本人の緑は参考
       "p-06", // 緑 栄養剤 残り 67 時間
-      "p-08", // 緑 インスリン 残り 92 時間
+      "p-08", // 緑 インスリン 残り 91 時間（発災から）
       "p-10", // 緑
     ]);
   });

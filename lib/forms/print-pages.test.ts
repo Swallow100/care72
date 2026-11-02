@@ -22,7 +22,7 @@ import { buildForm9, type Form9PersonInput } from "./form9.ts";
 import { buildMappedSheet } from "./mapped-sheet.ts";
 import { checkReadResult } from "./mapping.ts";
 import { buildMatsuyamaSheet } from "./matsuyama.ts";
-import { buildMedicalSummary } from "./medical-summary.ts";
+import { buildMedicalSummary, buildOwnSheetMedical } from "./medical-summary.ts";
 import { buildOwnSheet } from "./own-sheet.ts";
 import { FONT_PROBE, PAPER_CSS_FILES, paperCss, paperPage, readRepoFile, seedRows } from "./print-harness.ts";
 import { autoPrint, type PrintWindow } from "./print.ts";
@@ -47,7 +47,7 @@ const ownHtml = (id: string) =>
   html(
     createElement(OwnSheetPaper, {
       sheet: buildOwnSheet(rowsOf(id), OPTS),
-      medical: buildMedicalSummary(rowsOf(id), OPTS),
+      medical: buildOwnSheetMedical(rowsOf(id), OPTS),
       qr: QR,
     }),
   );
@@ -303,6 +303,18 @@ describe.skipIf(!chrome)("印刷（headless Chrome の printToPDF）", () => {
     if (!fontOk) ctx.skip();
     const got: Record<string, number> = {};
     for (const id of IDS) got[id] = await pages(ownHtml(id));
+    expect(got).toEqual(Object.fromEntries(IDS.map((id) => [id, 2])));
+  }, 180_000);
+
+  it("在宅避難の印を付けても 10 人とも表と裏の 2 頁（地震の行の添え。T37）", async (ctx) => {
+    if (!fontOk) ctx.skip();
+    const got: Record<string, number> = {};
+    for (const p of SEED_PEOPLE) {
+      const rows = seedRows({ ...p, ledger: { ...p.ledger, evacuation: { ...p.ledger.evacuation, stayHome: true } } });
+      got[p.person.id] = await pages(
+        html(createElement(OwnSheetPaper, { sheet: buildOwnSheet(rows, OPTS), medical: buildOwnSheetMedical(rows, OPTS), qr: QR })),
+      );
+    }
     expect(got).toEqual(Object.fromEntries(IDS.map((id) => [id, 2])));
   }, 180_000);
 

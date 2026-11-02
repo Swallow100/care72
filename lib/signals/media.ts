@@ -153,6 +153,9 @@ export type RecorderLike = {
   onerror: (() => void) | null;
   start(timeslice?: number): void;
   stop(): void;
+  /** 一時停止・再開（無い端末もある） */
+  pause?(): void;
+  resume?(): void;
 };
 
 export type RecorderCtor = {
@@ -172,6 +175,9 @@ export type RecordingSession = {
   readonly mimeType: string;
   /** 止めて、録れた音声。何も録れていなければ null */
   stop(): Promise<Blob | null>;
+  /** 聞き直しの定型文を流す間だけ止める。できない端末は何もしない（録ったまま） */
+  pause(): void;
+  resume(): void;
 };
 
 /** 録り始める。マイクが使えない・MediaRecorder が無いときは null */
@@ -209,6 +215,20 @@ export async function startRecording(deps: {
   let stopped: Promise<Blob | null> | null = null;
   return {
     mimeType,
+    pause() {
+      try {
+        if (rec.state === "recording") rec.pause?.();
+      } catch {
+        // 止められない端末は録ったまま
+      }
+    },
+    resume() {
+      try {
+        if (rec.state === "paused") rec.resume?.();
+      } catch {
+        // 止めていない
+      }
+    },
     stop() {
       if (!stopped) {
         stopped = wait((done) => {
@@ -258,8 +278,18 @@ export type TranscriptSession = {
 /** 長い無音でブラウザが止めたときに聞き直す回数（録っている間だけ） */
 export const TRANSCRIPT_RESTARTS = 5;
 
-/** Web Speech で文字にし始める。無い端末は null（録音だけ送る） */
-export function startTranscript(Ctor: SpeechRecognitionCtor | null): TranscriptSession | null {
+/** 文字起こしの知らせ（lib/signals/phone.ts の TranscriptEvents と同じ形） */
+export type TranscriptEvents = {
+  /** 1 字も取れないまま、ブラウザが無音で止めた（no-speech か、何も聞かずに終わった）。聞き直しは呼ぶ側が決める */
+  onSilence?: () => void;
+};
+
+/**
+ * Web Speech で文字にし始める。無い端末は null（録音だけ送る）。
+ * 人が止める前にブラウザが終わったら続きから聞き直す（TRANSCRIPT_RESTARTS 回まで）。
+ * ただし onSilence を渡したときは、1 字も取れずに無音で終わったら聞き直さずに知らせる（T37: 定型文で聞き直すため）
+ */
+export function startTranscript(Ctor: SpeechRecognitionCtor | null, events: TranscriptEvents = {}): TranscriptSession | null {
   if (!Ctor) return null;
   let text = "";
   let stopping = false;
@@ -273,7 +303,12 @@ export function startTranscript(Ctor: SpeechRecognitionCtor | null): TranscriptS
       text = t;
     },
     onDone: (t) => finish(t),
-    onEnd: () => {
+    onEnd: (error) => {
+      // 1 字も取れずに無音で終わった: 聞き直しを呼ぶ側に任せる（マイク・通信の失敗は下の聞き直しへ）
+      if (!stopping && events.onSilence && !text.trim() && (error === "no_speech" || error === null)) {
+        events.onSilence();
+        return;
+      }
       // 人が止める前に終わった（無音・通信）。録っている間は続きから聞き直す
       if (!stopping && restarts < TRANSCRIPT_RESTARTS) {
         restarts++;

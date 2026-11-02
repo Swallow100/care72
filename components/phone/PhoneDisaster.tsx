@@ -70,7 +70,7 @@ export function PhoneDisaster({ personId }: { personId: string }) {
       },
       playPrompt: () => player.play(),
       startRecording: () => startRecording({ getUserMedia, Recorder }),
-      startTranscript: () => startTranscript(speechRecognitionOf(window)),
+      startTranscript: (events) => startTranscript(speechRecognitionOf(window), events),
       onChange: setState,
     });
     phone.current = p;

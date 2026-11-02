@@ -136,6 +136,7 @@ export const FIELDS: readonly FieldDef[] = [
   { key: "evacuation.hazards", section: "evacuation", label: "ハザード" },
   { key: "evacuation.destination1", section: "evacuation", label: "避難先1" },
   { key: "evacuation.destination2", section: "evacuation", label: "避難先2" },
+  { key: "evacuation.stayHome", section: "evacuation", label: "在宅避難" },
   { key: "evacuation.transport", section: "evacuation", label: "手段" },
   { key: "evacuation.support", section: "evacuation", label: "支援内容" },
   { key: "evacuation.route", section: "evacuation", label: "経路" },
@@ -674,6 +675,8 @@ function evacuationBlocks(ledger: Ledger): Block[] {
     row("evacuation.hazards", hazards.length > 0 ? { kind: "lines", lines: [[text(hazards.join("・"))]] } : { kind: "none" }),
     row("evacuation.destination1", textField(e.destination1)),
     row("evacuation.destination2", textField(e.destination2)),
+    // 在宅避難の印（T37）。無ければ避難所へ（「なし」）
+    row("evacuation.stayHome", e.stayHome === true ? { kind: "lines", lines: [[text("あり")]] } : { kind: "none" }),
     row("evacuation.transport", textField(e.transport)),
     row("evacuation.support", supportField(e)),
     row("evacuation.route", textField(e.route)),
