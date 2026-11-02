@@ -33,7 +33,7 @@ export default async function MePage() {
 
   if (isDisaster(disaster)) {
     return (
-      <main className="mx-auto max-w-md">
+      <main className="mx-auto max-w-md font-ud">
         {/* 新しい災害モードに入ったら、前の流れを持ち越さない */}
         <PhoneDisaster key={disaster.startedAt ?? "disaster"} personId={rows.person.id} />
       </main>
@@ -45,7 +45,7 @@ export default async function MePage() {
     .first<{ name: string }>();
   const sheet = buildOwnSheet(rows, { today: todayJst(), officeName: office?.name ?? null });
   return (
-    <main className="mx-auto max-w-md px-3 py-4">
+    <main className="mx-auto max-w-md px-3 py-4 font-ud">
       <PhoneSheet sheet={sheet} />
       <AutoRefresh seconds={NORMAL_REFRESH_SEC} />
     </main>

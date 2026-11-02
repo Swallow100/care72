@@ -43,7 +43,7 @@ export default async function FamilyPage() {
 
   if (isDisaster(disaster)) {
     return (
-      <main className="mx-auto max-w-md">
+      <main className="mx-auto max-w-md font-ud">
         {/* 新しい災害モードに入ったら、前の流れを持ち越さない */}
         <FamilyDisaster key={disaster.startedAt ?? "disaster"} screen={buildFamilyScreen(rows, writer, sheet)} />
       </main>
@@ -51,7 +51,7 @@ export default async function FamilyPage() {
   }
 
   return (
-    <main className="mx-auto max-w-md px-3 py-4">
+    <main className="mx-auto max-w-md px-3 py-4 font-ud">
       <PhoneSheet sheet={sheet} only={FAMILY_SHEET_BLOCKS} />
       <AutoRefresh seconds={NORMAL_REFRESH_SEC} />
     </main>
