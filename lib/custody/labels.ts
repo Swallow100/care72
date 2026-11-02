@@ -17,6 +17,8 @@ export const CUSTODY_LABELS = {
   search: "検索",
   shelterList: "避難所",
   register: "新規登録",
+  /** 所属なしの一覧の列: 登録した時刻 */
+  registeredAt: "登録",
   /** 欄 */
   shelter: "避難所",
   nameKana: "氏名・カナ",
@@ -32,6 +34,8 @@ export const CUSTODY_LABELS = {
   phone: "電話",
   state: "状態",
   medical: "医療",
+  /** 上の人数: 医療依存の印・機器・薬のある人 */
+  care: "要配慮",
   remain: "残り",
   office: "所属",
   receivedAt: "受入",
@@ -46,6 +50,8 @@ export const CUSTODY_LABELS = {
   open: "開く",
   filterAll: "全部",
   noHits: "該当なし",
+  /** 検索のヒットが上限（30）を超えた */
+  more: "件数超過",
   none: "なし",
   sending: "送信中",
   /** ケアマネの側（事業所の画面）: 所属なしの人を自分の事業所に */

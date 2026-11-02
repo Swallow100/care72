@@ -16,7 +16,8 @@ export const QR_LABELS = {
   invalid: "無効",
   /** ログインせずに開いた人 */
   anonymous: "未ログイン",
-  receive: "受領",
+  /** 医療班・行政が受け持ちに入れる（T23。受領は物を受け取る言葉なので「受入」） */
+  receive: "受入",
   views: "閲覧記録",
   /** 経過の本文: 出した範囲 */
   scopeSummary: "要約（氏名・住所除く）",
