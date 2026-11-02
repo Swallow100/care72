@@ -1,13 +1,14 @@
-// 本人のスマホの API（app/api/signals・app/api/recordings）の中身。route は同じ所からの POST かを見て、ここの応答を返すだけ。
+// 本人・家族のスマホの API（app/api/signals・app/api/recordings）の中身。route は同じ所からの POST かを見て、ここの応答を返すだけ。
 // D1・R2・Principal を引数で受け取る（テストで node:sqlite と偽の R2 を渡す）。
 //
-// 断り方: ログインしていなければ 401、本人のスマホの役でなければ 403（ケアマネ・医療班も 403）。
-// 形が違う 400、本人が見つからない・信号が自分の物でない 404、平時・id の重なり 409、録音が大きすぎる 413。
+// 断り方: ログインしていなければ 401、本人・家族のスマホの役でなければ 403（ケアマネ・医療班も 403。録音は本人だけで、家族も 403）。
+// 連絡先の行が本人の電話・機関の物 403、形が違う 400、本人・連絡先の行が見つからない・信号が自分の物でない 404、
+// 平時・id の重なり 409、録音が大きすぎる 413。
 // 端末は 400・403・404・409・413 を「送り直しても通らない」として捨て、ほか（通信・5xx・401・429）は残して送り直す。
 
 import type { D1Database } from "@cloudflare/workers-types";
 import type { Principal } from "../auth/principal.ts";
-import { SignalBodySchema, UUID } from "./body.ts";
+import { FamilySignalBodySchema, SignalBodySchema, UUID } from "./body.ts";
 import {
   attachRecording,
   MAX_RECORDING_BYTES,
@@ -52,11 +53,14 @@ function refuse(p: Principal | null): Response {
   return signalError(p === null ? "login_required" : "forbidden");
 }
 
-/** 信号の POST（JSON） */
+/**
+ * 信号の POST（JSON）。本人のスマホは本人の形（緑・赤と答え）、家族のスマホは家族の形（緑・赤・未知）。
+ * どちらの形かはログインの役で決める（送った物の中の欄では決めない）
+ */
 export async function signalPost(db: D1Database, p: Principal | null, json: unknown, now: string): Promise<Response> {
   const scope = signalScope(p, "save");
   if (!scope) return refuse(p);
-  const body = SignalBodySchema.safeParse(json);
+  const body = scope.writer.kind === "self" ? SignalBodySchema.safeParse(json) : FamilySignalBodySchema.safeParse(json);
   if (!body.success) return signalError("invalid");
   const r = await saveSignal(db, scope, body.data, now);
   if (!r.ok) return signalError(r.error);

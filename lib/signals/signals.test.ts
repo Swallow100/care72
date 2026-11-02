@@ -149,12 +149,16 @@ describe("送る形", () => {
 });
 
 describe("役の壁", () => {
-  it("書けるのは本人のスマホの役だけ（ケアマネ・医療班・行政・家族・役未選択は書けない）", () => {
-    expect(signalScope(self())).toEqual({ officeId: "office-demo", personId: "p-01", authorId: "acct-judge" });
-    expect(signalScope(self(), "recording")).toEqual({ officeId: "office-demo", personId: "p-01", authorId: "acct-judge" });
-    for (const role of ["care_manager", "government", "medical", "family", "unselected"] as const) {
+  it("書けるのは本人のスマホの役だけ（ケアマネ・医療班・行政・役未選択は書けない。家族は T11 の family.test.ts）", () => {
+    const scope = { officeId: "office-demo", personId: "p-01", authorId: "acct-judge", writer: { kind: "self" } };
+    expect(signalScope(self())).toEqual(scope);
+    expect(signalScope(self(), "recording")).toEqual(scope);
+    for (const role of ["care_manager", "government", "medical", "unselected"] as const) {
       expect(signalScope(self({ role })), role).toBeNull();
     }
+    // 家族は連絡先の行が無ければ書けない。録音は家族も書けない
+    expect(signalScope(self({ role: "family" }))).toBeNull();
+    expect(signalScope(self({ role: "family", contactId: "c-01-1" }), "recording")).toBeNull();
     expect(signalScope(self({ personId: null }))).toBeNull();
     expect(signalScope(self({ office: null }))).toBeNull();
     expect(signalScope(null)).toBeNull();
@@ -165,7 +169,7 @@ describe("役の壁", () => {
     expect((await signalPost(db, null, red(), at(1))).status).toBe(401);
     expect((await signalPost(db, careManager, red(), at(1))).status).toBe(403);
     expect((await signalPost(db, self({ role: "medical", personId: null }), red(), at(1))).status).toBe(403);
-    expect((await signalPost(db, self({ role: "family", contactId: "c-01-1" }), red(), at(1))).status).toBe(403);
+    expect((await signalPost(db, self({ role: "family", contactId: null }), red(), at(1))).status).toBe(403);
     expect(count("signals")).toBe(0);
     expect(count("timeline_entries")).toBe(0);
   });
