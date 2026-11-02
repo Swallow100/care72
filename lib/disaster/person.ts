@@ -11,6 +11,7 @@ import { loadSituation } from "./db.ts";
 import { loadPersonOverride } from "./override.ts";
 import type { DisasterSituation } from "./state.ts";
 import { loadPersonSignals, triageInDisaster } from "./triage.ts";
+import { loadPersonArrivals } from "../custody/arrivals.ts";
 
 export type PersonDisaster = { mode: PageMode; triage: TriageResult | null; situation: DisasterSituation | null };
 
@@ -25,14 +26,17 @@ export async function personDisaster(
   const situation = await loadSituation(db, rows.person.office_id, now);
   if (!situation) return NORMAL;
   const ledger = parseLedger(rows.person.ledger);
-  const [signals, override] = await Promise.all([
+  const [signals, override, arrivals] = await Promise.all([
     loadPersonSignals(db, rows.person.id, situation),
     loadPersonOverride(db, rows.person.id, situation),
+    // 医療班・行政の受け入れ（T23）。状態は「到着 避難所」
+    loadPersonArrivals(db, rows.person.id, situation),
   ]);
   const triage = triageInDisaster(
     {
       person: toTriagePerson({ person: rows.person, ledger, contacts: rows.contacts, clocks: rows.clocks }),
       signals,
+      arrivals,
       ...(override ? { override } : {}),
       town: ledger.basic.address?.town ?? null,
     },

@@ -133,8 +133,19 @@ export type TriageResult = {
   override?: Override & { expired: boolean };
 };
 
-/** 1 人ぶんの入力。signals は信号の全部（順は問わない） */
-export type TriageEntry = { person: TriagePerson; signals: ReadonlyArray<TriageSignal>; override?: Override };
+/**
+ * 医療班・行政の受け入れ 1 回（T23、lib/custody）。避難所に着いた知らせとして、時刻で信号と並べ、緑の 1 つに数える。
+ * 理由は「到着 避難所の名前」。受け入れより後の赤は赤のまま
+ */
+export type TriageArrival = { at: string; shelter: string };
+
+/** 1 人ぶんの入力。signals は信号の全部、arrivals は受け入れの全部（順は問わない） */
+export type TriageEntry = {
+  person: TriagePerson;
+  signals: ReadonlyArray<TriageSignal>;
+  arrivals?: ReadonlyArray<TriageArrival>;
+  override?: Override;
+};
 
 /** 悪さの順。上書きが切れたかを見るのに使う */
 export const SEVERITY: Record<Color, number> = { green: 0, gray: 1, yellow: 2, red: 3 };
@@ -235,6 +246,10 @@ export const READING: ReadonlyArray<{ text: string; origin: string }> = [
     text: "本人の報告を当てにしない印（人が台帳で付ける）がある人は、本人（訓練の本人役を含む）の緑を使わない。家族・支援者・ケアマネの緑は使う。赤はそのまま赤",
     origin: "案 4",
   },
+  {
+    text: "医療班・行政が避難所で受け入れた知らせは緑の信号と同じに時刻で並べる。いちばん新しければ理由は「到着 避難所の名前」。受け入れより後の赤は赤",
+    origin: "仕様書（画面 6）・T23",
+  },
   { text: "時計は停電か発災から走る。停電していなければ停電で走る時計は止まったまま", origin: "仕様書" },
   { text: "「超えた」「過ぎた」はちょうどを含まない。仕様書の「12 時間までは灰」に合わせた", origin: "決めた所" },
   { text: "機器の時計は種類が機器（A）の時計。機器以外の時計は物（B）・薬（C）。本人の状態（D）は走らない", origin: "決めた所" },
@@ -299,25 +314,33 @@ export function clockRemaining(clock: TriageClock, s: Situation): ClockRemaining
   return { hours: c.hours, running: c.running, elapsed: c.elapsed, remaining: c.remaining, over: isOver(c) };
 }
 
+/**
+ * 表の中で読む信号。電話の画面の信号に、医療班・行政の受け入れ（arrivals）を出どころ staff・避難所の名前つきの緑として足す。
+ * 外へ出す TriageSignal の形は変えない（担当一覧の最終連絡の列などは電話の信号だけを読む）
+ */
+type ReadSignal = Omit<TriageSignal, "source"> & { source: SignalSource | "staff"; shelter?: string };
+
+const arrivalSignal = (a: TriageArrival): ReadSignal => ({ color: "green", source: "staff", at: a.at, shelter: a.shelter });
+
 /** 本人からの信号か（訓練の本人役を含む） */
-const isFromSelf = (sig: TriageSignal) => sig.source === "self" || sig.source === "agent";
+const isFromSelf = (sig: ReadSignal) => sig.source === "self" || sig.source === "agent";
 
 /**
- * 使う信号: 今までの信号のうち時刻のいちばん新しい物（同じ時刻ならあとに入れた物）。
+ * 使う信号: 今までの信号と受け入れのうち時刻のいちばん新しい物（同じ時刻ならあとに入れた物。受け入れは信号のあと）。
  * 本人の報告を当てにしない人の本人の緑は使わない。いちばん新しい信号がその緑なら setAside。
  */
 function readSignals(
   person: TriagePerson,
-  signals: ReadonlyArray<TriageSignal>,
+  signals: ReadonlyArray<ReadSignal>,
   s: Situation,
-): { signal: TriageSignal | null; setAside: boolean } {
+): { signal: ReadSignal | null; setAside: boolean } {
   const now = ms(s.now);
   const past = signals
     .map((sig, i) => ({ sig, i, t: ms(sig.at) }))
     .filter((x) => x.t <= now)
     .sort((a, b) => a.t - b.t || a.i - b.i)
     .map((x) => x.sig);
-  const ignored = (sig: TriageSignal) => person.selfReportUnreliable && sig.color === "green" && isFromSelf(sig);
+  const ignored = (sig: ReadSignal) => person.selfReportUnreliable && sig.color === "green" && isFromSelf(sig);
   const usable = past.filter((sig) => !ignored(sig));
   const latest = past.at(-1);
   return { signal: usable.at(-1) ?? null, setAside: latest !== undefined && ignored(latest) };
@@ -340,19 +363,20 @@ export function formatHours(h: number): string {
   return `${round1(v / 24)} 日`;
 }
 
-/** 信号の出どころの言い方。訓練の本人役（agent）は本人 */
-const WHO: Record<SignalSource, string> = {
+/** 信号の出どころの言い方。訓練の本人役（agent）は本人。staff は医療班・行政の受け入れ（理由は「到着 避難所」で、これは出ない） */
+const WHO: Record<ReadSignal["source"], string> = {
   self: "本人",
   agent: "本人",
   family: "家族",
   supporter: "支援者",
   care_manager: "ケアマネ",
+  staff: "医療班・行政",
 };
 
 /** 表の行と足す言葉が見る物 */
 type RuleInput = {
   person: TriagePerson;
-  signal: TriageSignal | null;
+  signal: ReadSignal | null;
   /** 本人の緑を使わなかった（いちばん新しい信号が当てにしない本人の緑） */
   setAside: boolean;
   states: ClockState[];
@@ -371,7 +395,7 @@ const uncheckedWords = (x: RuleInput) => x.unchecked.map((d) => `${DEPENDS_ON_LA
  * けが・動けないの言葉を出どころで分ける。answered は 4 問の答え（人が押したボタン）、staff はケアマネが直した分類（人）、
  * classified は録音・自由文の分類（Claude）。答えにある言葉は分類から、人の分類にある言葉は Claude の分類から重ねない
  */
-function injuryWords(sig: TriageSignal | null): { answered: string[]; staff: string[]; classified: string[] } {
+function injuryWords(sig: ReadSignal | null): { answered: string[]; staff: string[]; classified: string[] } {
   const answered: string[] = [];
   const staff: string[] = [];
   const classified: string[] = [];
@@ -582,7 +606,8 @@ export const RULES: ReadonlyArray<Rule> = [
     origin: "仕様書",
     why: "本人・家族が無事と答えた → 連絡の順は一番下。時計が進めば上の行に移る",
     sourceIds: ["mhlw-bcp-2020"],
-    match: (x) => `${who(x)}が「無事」`,
+    // 医療班・行政の受け入れ（T23）は「到着 避難所の名前」
+    match: (x) => (x.signal?.shelter ? `到着 ${x.signal.shelter}` : `${who(x)}が「無事」`),
   },
 ];
 
@@ -664,7 +689,7 @@ function uncheckedOf(person: TriagePerson): DependsOn[] {
 export function triage(entry: TriageEntry, situation: Situation): TriageResult {
   const { person } = entry;
   const states = clockStates(person, situation);
-  const { signal, setAside } = readSignals(person, entry.signals, situation);
+  const { signal, setAside } = readSignals(person, [...entry.signals, ...(entry.arrivals ?? []).map(arrivalSignal)], situation);
   const input: RuleInput = {
     person,
     signal,

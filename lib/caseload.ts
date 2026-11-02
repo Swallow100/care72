@@ -26,7 +26,8 @@ import {
 } from "./list/detail.ts";
 import { isGeoPoint } from "./map/geo.ts";
 import type { StateTone } from "./person.ts";
-import { compareResults, SEVERITY, tierOf, type Tier, type TriageResult, type TriageSignal } from "./triage/index.ts";
+import { compareResults, SEVERITY, tierOf, type Tier, type TriageArrival, type TriageResult, type TriageSignal } from "./triage/index.ts";
+import { loadOfficeArrivals } from "./custody/arrivals.ts";
 import { toTriagePerson } from "./triage/from-ledger.ts";
 
 export type CaseloadRow = {
@@ -124,6 +125,8 @@ export type CaseloadDisaster = {
   signals: ReadonlyMap<string, ReadonlyArray<TriageSignal>>;
   /** 本人ごとのケアマネの上書き（発災から今まで、lib/disaster/override.ts） */
   overrides?: ReadonlyMap<string, StoredOverride>;
+  /** 本人ごとの医療班・行政の受け入れ（発災から今まで、lib/custody/arrivals.ts。T23）。状態は「到着 避難所」 */
+  arrivals?: ReadonlyMap<string, ReadonlyArray<TriageArrival>>;
   /** 行の詳細の元。無ければ詳細を作らない */
   detail?: CaseloadDetailSource;
 };
@@ -148,7 +151,8 @@ export function toCaseloadRows(
     const town = ledger.basic.address?.town ?? null;
     const signals = disaster?.signals.get(p.id) ?? [];
     const override = disaster?.overrides?.get(p.id);
-    const triage = s ? triageInDisaster({ person, signals, ...(override ? { override } : {}), town }, s) : null;
+    const arrivals = disaster?.arrivals?.get(p.id) ?? [];
+    const triage = s ? triageInDisaster({ person, signals, arrivals, ...(override ? { override } : {}), town }, s) : null;
     const own = s ? personSituation(s, town) : null;
     const src = disaster?.detail;
     return {
@@ -330,6 +334,7 @@ export async function loadCaseload(
   const situation = toSituation(disaster, now);
   const detail = situation ? await loadDetailSource(db, cm.id, cm.office_id, situation) : null;
   const overrides = situation ? await loadOfficeOverrides(db, cm.office_id, situation) : undefined;
+  const arrivals = situation ? await loadOfficeArrivals(db, cm.office_id, situation) : undefined;
   const signals = new Map<string, TriageSignal[]>();
   for (const s of detail?.signals ?? []) signals.set(s.person_id, [...(signals.get(s.person_id) ?? []), toTriageSignal(s)]);
 
@@ -347,6 +352,7 @@ export async function loadCaseload(
         situation,
         signals,
         ...(overrides ? { overrides } : {}),
+        ...(arrivals ? { arrivals } : {}),
         ...(detail
           ? {
               detail: {
