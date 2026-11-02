@@ -3,6 +3,10 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { StartButtons } from "@/components/drill/StartButtons";
 import { requirePage } from "@/lib/auth/server";
+import { aiContextFor } from "@/lib/claude/cloudflare";
+import { drillGate, type DailyUsage } from "@/lib/claude/gate";
+import { usageToday } from "@/lib/claude/usage";
+import { LIMIT_LABELS } from "@/lib/seed/labels";
 import { shortJst } from "@/lib/disaster/state";
 import { drillScope, listDrills, type DrillListItem } from "@/lib/drill/db";
 import { DRILL_LABELS, progressLabel, SCENARIO_LABELS, STATUS_LABELS } from "@/lib/drill/labels";
@@ -21,9 +25,12 @@ export default async function DrillPage() {
   const principal = await requirePage("drill");
   const scope = drillScope(principal);
   let items: DrillListItem[] = [];
+  let usage: DailyUsage | null = null;
   try {
     const { env } = await getCloudflareContext({ async: true });
     items = scope ? await listDrills(env.DB, scope.officeId) : [];
+    // AI の 1 日の上限（T26）。読めなければ開始のまま
+    usage = scope ? await usageToday(await aiContextFor(scope.officeId)).catch(() => null) : null;
   } catch (e) {
     console.error("訓練記録を読めない", e);
     return (
@@ -33,6 +40,7 @@ export default async function DrillPage() {
     );
   }
   const running = items.find((d) => d.status === "running") ?? null;
+  const gate = drillGate(usage, items);
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-6">
@@ -45,7 +53,24 @@ export default async function DrillPage() {
         <h2 id="drill-start" className="text-sm font-bold text-muted">
           {DRILL_LABELS.start}
         </h2>
-        <StartButtons scenarios={SCENARIO_ORDER} disabled={running !== null} />
+        {gate.kind === "start" ? (
+          <StartButtons scenarios={SCENARIO_ORDER} disabled={running !== null} />
+        ) : (
+          // 上限に達したら開始でなく、終わった訓練の再生（0 時間から刻みごとに）
+          <div className="flex flex-wrap items-center gap-2" data-limit>
+            <span className="text-sm font-bold text-danger">{LIMIT_LABELS.reached}</span>
+            {gate.replay && (
+              <Link href={drillHref(gate.replay, { step: 0 })} className="rounded-md bg-accent px-4 py-2 text-sm font-bold text-on-accent" data-press="overlay">
+                {DRILL_LABELS.replay}
+              </Link>
+            )}
+          </div>
+        )}
+        {gate.limit !== null && (
+          <span className="text-sm text-muted tabular-nums" data-ai-remaining={gate.remaining}>
+            {LIMIT_LABELS.ai} {LIMIT_LABELS.remaining} {gate.remaining} / {gate.limit} {LIMIT_LABELS.unit}
+          </span>
+        )}
         {running && (
           <Link href={drillHref(running.id)} className="ml-auto rounded px-2 py-1 text-sm font-bold text-accent" data-press>
             {DRILL_LABELS.resume} {SCENARIO_LABELS[running.scenario]} {progressLabel(running.sim_hour, lastHour(scenarioOf(running.scenario)))}
