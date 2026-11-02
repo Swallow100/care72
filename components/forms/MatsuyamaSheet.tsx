@@ -12,6 +12,7 @@ import {
   type MatsuyamaKey,
   type MatsuyamaSheet as Sheet,
 } from "@/lib/forms/matsuyama";
+import { paperText } from "@/lib/forms/paper-text";
 import { FormCell } from "./FormCell";
 import { PaperFoot } from "./PaperFoot";
 
@@ -101,7 +102,7 @@ function PageOne({ s }: { s: Sheet }) {
       <div className="top">
         <span>（あて先）松山市長</span>
         <span data-field="head.date" className="nowrap">
-          {cellText(s.cells["head.date"])} 作成
+          {paperText(cellText(s.cells["head.date"]))} 作成
         </span>
       </div>
 

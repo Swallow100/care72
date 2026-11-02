@@ -13,6 +13,7 @@ import {
 } from "@/lib/forms/medical-summary";
 import { formatJst } from "@/lib/person";
 import { CONSENT_KIND_LABELS, CONSENT_STATUS_LABELS, DOCUMENT_LABELS, PENDING_STATUS_LABELS } from "@/lib/labels";
+import { paperText } from "@/lib/forms/paper-text";
 import { FormCell } from "./FormCell";
 import { PaperFoot } from "./PaperFoot";
 
@@ -63,10 +64,10 @@ function patientRow2(s: MedicalSummary): string {
 }
 const span = (n: number): CSSProperties => ({ gridColumn: `span ${n}` });
 
-/** 「2026 年 11 月 2 日」 */
+/** 「2026年11月2日」（紙の書き方。数字と単位を詰める） */
 function dateText(iso: string): string {
   const [y, m, d] = iso.split("-").map(Number);
-  return `${y} 年 ${m} 月 ${d} 日`;
+  return `${y}年${m}月${d}日`;
 }
 
 /** 常用薬の表（薬ごとに 回数・用量・残り・保管・中断注意） */
@@ -91,7 +92,7 @@ function MedicationTable({ s }: { s: MedicalSummary }) {
           {s.medications.map((m, i) => (
             <tr key={i} data-medication={m.name} data-mark={m.mark ? (m.mark.tier ?? "ledger") : undefined}>
               <td className="med-name">
-                <span className="p-strong">{m.name}</span>
+                <span className="p-strong">{paperText(m.name)}</span>
                 {m.categoryLabel && <span className="p-sub"> {m.categoryLabel}</span>}
               </td>
               <td>
@@ -146,7 +147,7 @@ function MedicalIdBoxes({ s }: { s: MedicalSummary }) {
       <div className="mid-text">
         <FormCell cell={s.cells["id.medical"]} />
         <span className="f-l">
-          {MEDICAL_ID_PART_LABELS.birth}（西暦 8 桁）＋{MEDICAL_ID_PART_LABELS.sex}＋{MEDICAL_ID_PART_LABELS.kana}（上から 7 字）
+          {MEDICAL_ID_PART_LABELS.birth}（西暦8桁）＋{MEDICAL_ID_PART_LABELS.sex}＋{MEDICAL_ID_PART_LABELS.kana}（上から7字）
         </span>
       </div>
     </div>
@@ -306,7 +307,7 @@ export function MedicalSummaryPaper({
           )}
 
           <div className="small-note">
-            <p>※欄の順は災害診療記録2018（一般診療版）による。既往症・予防接種は様式の 2 頁</p>
+            <p>※欄の順は災害診療記録2018（一般診療版）による。既往症・予防接種は様式の2頁</p>
           </div>
           <PaperFoot doc={foot.doc} name={s.name} page={foot.page} total={foot.total} />
         </section>

@@ -11,6 +11,7 @@ import type { OwnLine, OwnPhone, OwnSheet } from "@/lib/forms/own-sheet";
 import { CONSENT_KIND_LABELS, CONSENT_STATUS_LABELS, DOCUMENT_LABELS } from "@/lib/labels";
 import { QR_LABELS, QR_STATUS_LABELS } from "@/lib/qr/labels";
 import type { QrStatus } from "@/lib/qr/store";
+import { paperWords } from "@/lib/forms/paper-text";
 import { EasyWords } from "./EasyText";
 import { MedicalSummaryPaper } from "./MedicalSummarySheet";
 import { PaperFoot } from "./PaperFoot";
@@ -71,11 +72,14 @@ function Phone({ phone }: { phone: OwnPhone }) {
   );
 }
 
+/** 紙の書き方（数字と単位を詰める）。本人の言葉の段（words.*）は台帳の文のまま */
+const paperLine = (line: OwnLine) => (line.key.startsWith("words.") ? line.words : paperWords(line.words));
+
 function Line({ line }: { line: OwnLine }) {
   return (
     <li className={line.tone ? `own-ln ${line.tone}` : "own-ln"} data-line={line.key}>
       <span className="own-tx">
-        <EasyWords words={line.words} />
+        <EasyWords words={paperLine(line)} />
       </span>
       {line.phone && <Phone phone={line.phone} />}
     </li>

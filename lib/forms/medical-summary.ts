@@ -53,6 +53,7 @@ import {
   NONE,
   pendingLabel,
   pendingMedicationIndex,
+  raw,
   strong,
   sub,
   t,
@@ -868,7 +869,7 @@ export function buildMedicalSummary(rows: PersonPageRows, opts: MedicalBuildOpti
     "meds.notes":
       ledger.notes.length + leftoverClockLines.length > 0
         ? value(
-            ...ledger.notes.map((n) => [t(n)]),
+            ...ledger.notes.map((n) => [raw(n)]),
             ...leftoverClockLines,
             ...(clocksReason ? [[unconfirmedPiece(clocksReason)]] : []),
           )

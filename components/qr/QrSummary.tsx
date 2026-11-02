@@ -2,6 +2,7 @@
 // 氏名の全部と住所は lib/qr/view.ts で値ごと除いてある（ここには来ない）。
 // 状態を持たない（Server Component のまま、テストで renderToStaticMarkup できる）。
 // 見た目の言葉の部品は components/qr/qr-view.css（読み込むのはページの側。テストでは読まない）。
+// 画面なので欄の値は画面の書き方のまま（FormCell の tight={false}。紙の「84歳」の詰めは紙面だけ、T37）。
 
 import { FormCell } from "@/components/forms/FormCell";
 import { StateTag } from "@/components/person/parts";
@@ -30,7 +31,7 @@ const LARGE: ReadonlySet<QrKey> = new Set<QrKey>(["patient.kana", "patient.birth
 function FieldRow({ f }: { f: QrField }) {
   const value = (
     <dd className={LARGE.has(f.key) ? "text-2xl font-bold" : undefined}>
-      <FormCell cell={f.cell} />
+      <FormCell cell={f.cell} tight={false} />
     </dd>
   );
   if (BARE.has(f.key)) {
@@ -60,19 +61,19 @@ function MedicationItem({ m }: { m: MedicationRow }) {
       <dl className="mt-1 grid grid-cols-[3rem_minmax(0,1fr)] gap-x-2">
         <dt className="text-sm text-muted">回数</dt>
         <dd>
-          <FormCell cell={m.schedule} />
+          <FormCell cell={m.schedule} tight={false} />
         </dd>
         <dt className="text-sm text-muted">用量</dt>
         <dd>
-          <FormCell cell={m.amount} />
+          <FormCell cell={m.amount} tight={false} />
         </dd>
         <dt className="text-sm text-muted">残り</dt>
         <dd>
-          <FormCell cell={m.remaining} />
+          <FormCell cell={m.remaining} tight={false} />
         </dd>
         <dt className="text-sm text-muted">保管</dt>
         <dd>
-          <FormCell cell={m.storage} />
+          <FormCell cell={m.storage} tight={false} />
         </dd>
       </dl>
     </li>
@@ -121,7 +122,7 @@ export function QrSummary({ sheet: s, expiresAt }: { sheet: QrSheet; expiresAt: 
                       {MEDICAL_ID_PART_LABELS.birth}＋{MEDICAL_ID_PART_LABELS.sex}＋{MEDICAL_ID_PART_LABELS.kana}
                     </dt>
                     <dd className="text-2xl font-bold tabular-nums">
-                      <FormCell cell={f.cell} />
+                      <FormCell cell={f.cell} tight={false} />
                     </dd>
                   </div>
                 ) : (

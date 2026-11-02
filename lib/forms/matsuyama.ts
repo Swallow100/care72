@@ -474,13 +474,17 @@ export function matsuyamaField(key: MatsuyamaKey): MatsuyamaFieldDef {
 
 // ---------- 値の形 ----------
 
-/** 1 つの言葉。sub は小さく添える（続柄・出典）、strong は大きく（名前・場所・薬）、unconfirmed は「未確認」（reason は台帳の pending） */
+/**
+ * 1 つの言葉。sub は小さく添える（続柄・出典）、strong は大きく（名前・場所・薬）、unconfirmed は「未確認」（reason は台帳の pending）。
+ * raw は本人の言葉（台帳の特記）で、紙でも書き方を直さない（数字と単位を詰めない。lib/forms/paper-text.ts）
+ */
 export type Piece = {
   text: string;
   sub?: true;
   strong?: true;
   unconfirmed?: true;
   reason?: PendingStatus;
+  raw?: true;
 };
 export type PieceLine = Piece[];
 
@@ -521,6 +525,8 @@ export const BLANK = { unconfirmed: "未確認", none: "なし" } as const;
 export const t = (text: string): Piece => ({ text });
 export const sub = (text: string): Piece => ({ text, sub: true });
 export const strong = (text: string): Piece => ({ text, strong: true });
+/** 本人の言葉（台帳の特記）。紙でも書き方を直さない */
+export const raw = (text: string): Piece => ({ text, raw: true });
 export const unconfirmedPiece = (reason?: PendingStatus): Piece =>
   reason ? { text: BLANK.unconfirmed, unconfirmed: true, reason } : { text: BLANK.unconfirmed, unconfirmed: true };
 const SEP: Piece = sub("／");
@@ -1276,7 +1282,7 @@ export function buildMatsuyamaSheet(rows: PersonPageRows, opts: BuildOptions): M
       supportReason,
     ),
     "notes.medical": medicalShared ? withPending(value(...medicalNoteLines), medicalNoteReason) : medicalWithheld,
-    "notes.words": ledger.notes.length > 0 ? value(...ledger.notes.map((n) => [t(n)])) : NONE,
+    "notes.words": ledger.notes.length > 0 ? value(...ledger.notes.map((n) => [raw(n)])) : NONE,
     "notes.other": otherLines.length > 0 ? value(...otherLines) : NONE,
     "notes.annex": {
       kind: "choice",
