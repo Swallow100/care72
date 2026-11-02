@@ -13,6 +13,8 @@ import { TIERS, tierBasis } from "../triage/index.ts";
 import { cellText } from "./matsuyama.ts";
 import {
   buildMedicalSummary,
+  buildOwnSheetMedical,
+  deviceMark,
   FORM_ORDER_BASIS,
   interruptionMark,
   MEDICAL_FIELDS,
@@ -177,6 +179,23 @@ describe("医療班提供の同意", () => {
     const markup = renderToStaticMarkup(createElement(MedicalWithheld, { kind: r.kind, consent: r.consent }));
     expect(markup).toContain("未確認");
     expect(markup).toContain("未聴取");
+  });
+
+  it("保留（未確認）の人は 10 人のだれでも要約を作らない。医療班の範囲（T24）で開いても、本人の 1 枚の裏でも同じ（11/3 確定の 4）", () => {
+    for (const id of ALL_IDS) {
+      const rows = withMedicalConsent(id, "unconfirmed");
+      const plain = build(rows);
+      const scoped = buildMedicalSummary(rows, {
+        today: TODAY,
+        officeName: "デモ事業所",
+        view: { partialPeople: true, hide: ["patient.address", "patient.phone"] },
+      });
+      const own = buildOwnSheetMedical(rows, { today: TODAY, officeName: "デモ事業所" });
+      for (const r of [plain, scoped, own]) {
+        expect(r.kind, id).toBe("unconfirmed");
+        expect(Object.keys(r).sort(), id).toEqual(["consent", "kind", "name", "personId"]);
+      }
+    }
   });
 
   it("同意の行が無ければ未確認", () => {
@@ -404,17 +423,22 @@ describe("ほかの人", () => {
     expect(s.basis.map((b) => b.tier)).toEqual([5, 7]);
   });
 
-  it("6 高橋 ユキ: 胃ろう 経管栄養と栄養剤 3 日を機器の欄に", () => {
+  it("6 高橋 ユキ: 胃ろう 経管栄養と栄養剤 3 日を機器の欄に。経管栄養（段 4）の行に中断注意（11/3 確定の 3）", () => {
     const d = text(sheetOf("p-06"), "drug.devices");
     expect(d).toContain("胃ろう 経管栄養");
     expect(d).toContain("栄養剤 3 日");
+    expect(d.endsWith("中断注意")).toBe(true);
+    expect(deviceMark("tube_feeding")).toEqual({ label: "中断注意", tier: 4, sourceIds: tierBasis(4).sourceIds });
+    // 電気の機器（段 1・2）と透析（段 3）には付けない
+    for (const k of ["ventilator", "suction", "oxygen", "dialysis"] as const) expect(deviceMark(k), k).toBeNull();
+    expect(text(sheetOf("p-02"), "drug.devices")).not.toContain("中断注意");
   });
 
-  it("8 井上 誠: 糖尿病治療薬・インスリンにチェック、残り 4 日・要冷蔵・中断注意（段 4）", () => {
+  it("8 井上 誠: 糖尿病治療薬・インスリンにチェック、残り 4 日（発災から）・要冷蔵・中断注意（段 4）", () => {
     const s = sheetOf("p-08");
     expect(text(s, "drug.diabetes")).toBe("■糖尿病治療薬 ■インスリン □経口薬 インスリン 朝夕 中断注意");
     const m = s.medications[0];
-    expect(cellText(m.remaining)).toContain("4 日");
+    expect(cellText(m.remaining)).toBe("4 日 発災から・薬局");
     expect(cellText(m.storage)).toBe("冷蔵庫 要冷蔵");
     expect(m.mark?.tier).toBe(4);
   });

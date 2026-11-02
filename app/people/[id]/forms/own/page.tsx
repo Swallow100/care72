@@ -14,7 +14,7 @@ import { PaperBar, wantsPrint } from "@/components/ui/PaperBar";
 import { todayJst } from "@/lib/age";
 import { requirePage } from "@/lib/auth/server";
 import { nowSec, sessionSecret } from "@/lib/auth/session";
-import { buildMedicalSummary } from "@/lib/forms/medical-summary";
+import { buildOwnSheetMedical } from "@/lib/forms/medical-summary";
 import { buildOwnSheet } from "@/lib/forms/own-sheet";
 import { BLANK_LABELS, DOCUMENT_LABELS } from "@/lib/labels";
 import { loadPersonDocument } from "@/lib/consent/documents";
@@ -61,7 +61,8 @@ export default async function OwnFormPage({ params, searchParams }: Props) {
     .first<{ name: string }>();
   const opts = { today: todayJst(), officeName: office?.name ?? null };
   const sheet = buildOwnSheet(rows, opts);
-  const medical = buildMedicalSummary(rows, opts);
+  // 裏の要約は、支援者提供の同意が無ければ表と同じく支援者の名前・電話を出さない（T37 の 5）
+  const medical = buildOwnSheetMedical(rows, opts);
   const qrRow = (await loadQrRow(env.DB, rows.person.id)) ?? { qr_generation: 0, qr_issued_at: null };
   const qrNow = qrState(qrRow, nowSec());
   const token = qrNow.status === "active" ? await currentQrToken(rows.person.id, qrRow, sessionSecret(env)) : null;

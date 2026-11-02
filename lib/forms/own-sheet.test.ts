@@ -10,7 +10,7 @@ import { SEED_AT, SEED_PEOPLE, seedConsents, type SeedPerson } from "../../seed/
 import type { ConsentStatus } from "../db/types.ts";
 import type { PersonPageRows } from "../person.ts";
 import { easy, hiragana, kanjiWithoutRuby, nameWithKana, plainText, yomi, YOMI } from "./easy-words.ts";
-import { buildMedicalSummary } from "./medical-summary.ts";
+import { buildMedicalSummary, buildOwnSheetMedical, PLANNED_SUPPORTER } from "./medical-summary.ts";
 import {
   allWords,
   blockText,
@@ -49,7 +49,7 @@ function withConsent(id: string, kind: "supporters" | "medical", status: Consent
 const front = (s: OwnSheet) => renderToStaticMarkup(createElement(OwnSheetFront, { sheet: s }));
 function paper(rows: PersonPageRows): { html: string; back: string } {
   const html = renderToStaticMarkup(
-    createElement(OwnSheetPaper, { sheet: buildOwnSheet(rows, OPTS), medical: buildMedicalSummary(rows, OPTS) }),
+    createElement(OwnSheetPaper, { sheet: buildOwnSheet(rows, OPTS), medical: buildOwnSheetMedical(rows, OPTS) }),
   );
   const at = html.indexOf('data-page="2"');
   return { html, back: html.slice(html.lastIndexOf("<section", at)) };
@@ -255,13 +255,35 @@ describe("同意の範囲", () => {
     expect(who.lines.every((l) => l.phone === undefined)).toBe(true);
     const whoText = who.lines.map(lineText).join(" ");
     for (const w of ["前田 和夫", "加藤 実", "090-0000-0026", "090-0000-0025"]) expect(whoText).not.toContain(w);
-    // 支援者 1 の民生委員は表のどこにも出ない（裏は医療要約のまま。医療班提供の同意に従う、T07）
+    // 支援者 1 の民生委員は表のどこにも出ない（裏も同じ。下の「裏も表と同じ扱い」）
     const html = front(s);
     expect(html).not.toContain("前田 和夫");
     expect(html).not.toContain("090-0000-0026");
     // 家族の弟は電話の段に（計画書の近親者と同じ。来てくれる人とは書かない）
     expect(blockText(s, "call")).toContain("弟の 加藤 実さん 090-0000-0025");
     expect(html.indexOf("加藤 実")).toBeGreaterThan(html.indexOf('data-block="call"'));
+  });
+
+  it("加藤 正の裏（医療要約）も表と同じ扱い: 支援者の名前と電話を出さず「計画で決めた人」。家族の弟は名前と電話のまま（11/3 確定の 5）", () => {
+    const { back } = paper(rowsOf("p-07"));
+    const backText = stripTags(back);
+    for (const w of ["前田 和夫", "090-0000-0026", "緊急連絡 1実施者"]) expect(backText, w).not.toContain(w);
+    // 弟は家族の緊急連絡先として名前と電話（実施者の番号は外す）
+    expect(backText).toContain("加藤 実弟市内緊急連絡 1TEL090-0000-0025");
+    expect(backText).toContain(`${PLANNED_SUPPORTER}実施者 1`);
+    expect(backText).toContain(`${PLANNED_SUPPORTER}実施者 2`);
+    // 医療班の画面の要約は今まで通り（医療班提供の同意に従い、支援者の名前と電話を載せる）
+    const medical = buildMedicalSummary(rowsOf("p-07"), OPTS);
+    expect(medical.kind).toBe("sheet");
+    if (medical.kind === "sheet") expect(JSON.stringify(medical.sheet.cells["contact.people"])).toContain("前田 和夫");
+  });
+
+  it("支援者提供に同意した人の裏は医療班の画面の要約と同じ。未確認なら加藤と同じく落とす", () => {
+    for (const id of ALL_IDS.filter((x) => x !== "p-07")) {
+      expect(JSON.stringify(buildOwnSheetMedical(rowsOf(id), OPTS)), id).toBe(JSON.stringify(buildMedicalSummary(rowsOf(id), OPTS)));
+    }
+    const { back } = paper(withConsent("p-01", "supporters", "unconfirmed"));
+    expect(stripTags(back)).toContain(PLANNED_SUPPORTER);
   });
 
   it("支援者提供が未確認でも同じ。同意に変えると名前が出る", () => {
@@ -337,7 +359,7 @@ describe("裏の QR（T16 の QrBlock）", () => {
   }
   function paperWith(rows: PersonPageRows, qr: OwnQr | null): { html: string; head: string } {
     const html = renderToStaticMarkup(
-      createElement(OwnSheetPaper, { sheet: buildOwnSheet(rows, OPTS), medical: buildMedicalSummary(rows, OPTS), qr }),
+      createElement(OwnSheetPaper, { sheet: buildOwnSheet(rows, OPTS), medical: buildOwnSheetMedical(rows, OPTS), qr }),
     );
     const back = html.slice(html.lastIndexOf("<section", html.indexOf('data-page="2"')));
     // 題名の段（同意のある人は患者の段の前まで、同意の無い人は同意なしの段の前まで）

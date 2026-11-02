@@ -22,7 +22,7 @@ import { buildForm9, type Form9PersonInput } from "./form9.ts";
 import { buildMappedSheet } from "./mapped-sheet.ts";
 import { checkReadResult } from "./mapping.ts";
 import { buildMatsuyamaSheet } from "./matsuyama.ts";
-import { buildMedicalSummary } from "./medical-summary.ts";
+import { buildMedicalSummary, buildOwnSheetMedical } from "./medical-summary.ts";
 import { buildOwnSheet } from "./own-sheet.ts";
 import { FONT_PROBE, PAPER_CSS_FILES, paperCss, paperPage, readRepoFile, seedRows } from "./print-harness.ts";
 import { autoPrint, type PrintWindow } from "./print.ts";
@@ -47,7 +47,7 @@ const ownHtml = (id: string) =>
   html(
     createElement(OwnSheetPaper, {
       sheet: buildOwnSheet(rowsOf(id), OPTS),
-      medical: buildMedicalSummary(rowsOf(id), OPTS),
+      medical: buildOwnSheetMedical(rowsOf(id), OPTS),
       qr: QR,
     }),
   );
