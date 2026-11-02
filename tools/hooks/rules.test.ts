@@ -170,10 +170,23 @@ describe("履歴: force push・rebase・amend・reset --hard を止める（CLAU
 });
 
 describe("npm run の中身も同じ決まりで見る", () => {
-  it("package.json の scripts は全部通る", () => {
-    for (const name of Object.keys(SCRIPTS)) expect(bash(`npm run ${name}`), name).toEqual({ block: false });
+  // 配信の 3 つは作者が自分の端末で打つ（docs/tasks/T27.md）。エージェントからは止まる
+  const AUTHOR_ONLY = ["db:migrate:remote", "db:seed:remote", "deploy"];
+
+  it("package.json の scripts は、配信の 3 つのほかは全部通る", () => {
+    for (const name of Object.keys(SCRIPTS).filter((n) => !AUTHOR_ONLY.includes(n))) {
+      expect(bash(`npm run ${name}`), name).toEqual({ block: false });
+    }
     expect(bash("npm test")).toEqual({ block: false });
     expect(bash("npm install")).toEqual({ block: false });
+  });
+
+  it("配信の 3 つ（remote の migration・種、deploy）は package.json にあり、止まる", () => {
+    for (const name of AUTHOR_ONLY) {
+      expect(SCRIPTS[name], name).toBeDefined();
+      expect(reason(bash(`npm run ${name}`)), name).toContain(WRANGLER);
+      expect(reason(pwsh(`npm run ${name}`)), name).toContain(WRANGLER);
+    }
   });
 
   it("中身に配信があれば止める（pre・post と、npm run の入れ子も）", () => {
