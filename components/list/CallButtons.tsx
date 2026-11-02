@@ -44,47 +44,50 @@ export function CallButtons({ personId, contacts }: { personId: string; contacts
   if (contacts.length === 0) return <p className="text-sm text-muted">{DETAIL_LABELS.none}</p>;
   return (
     <div>
-      <ul className="space-y-1">
+      <ul className="space-y-1.5">
         {contacts.map((c) => (
-          <li key={c.id} className="flex flex-wrap items-center gap-x-2 gap-y-1" data-contact={c.kind}>
-            <span className="min-w-0 flex-1">
-              <span className="text-xs text-muted">{c.kindLabel}</span>{" "}
-              <span className="font-bold">{c.name}</span>
-              {c.relation && <span className="text-xs text-muted"> {c.relation}</span>}
+          <li key={c.id} data-contact={c.kind}>
+            {/* 1 行目: 誰か（種類・名前・間柄・緊急連絡先の順・最後の電話） */}
+            <div className="flex flex-wrap items-baseline gap-x-1.5">
+              <span className="text-xs text-muted">{c.kindLabel}</span>
+              {c.name && <span className="font-bold">{c.name}</span>}
+              {c.relation && <span className="text-xs text-muted">{c.relation}</span>}
               {c.emergencyOrder !== null && (
-                <span className="text-xs text-muted">
-                  {" "}
+                <span className="whitespace-nowrap text-xs text-muted">
                   {DETAIL_LABELS.emergency} {c.emergencyOrder}
                 </span>
               )}
               {c.lastCall && (
                 <span
-                  className={`ml-1 text-xs tabular-nums ${c.lastCall.result === "no_answer" ? "font-bold text-state-check" : "text-muted"}`}
+                  className={`whitespace-nowrap text-xs tabular-nums ${c.lastCall.result === "no_answer" ? "font-bold text-state-check" : "text-muted"}`}
                   data-last-call={c.lastCall.result ?? ""}
                 >
                   {c.lastCall.when} {c.lastCall.result === "no_answer" ? DETAIL_LABELS.noAnswer : DETAIL_LABELS.calls}
                 </span>
               )}
-            </span>
-            <a
-              href={`tel:${c.tel}`}
-              onClick={() => void log(c.id, "dialed")}
-              className="rounded-md bg-accent px-2 py-1 text-sm font-bold text-on-accent tabular-nums"
-              data-press="overlay"
-              data-tel={c.id}
-            >
-              {DETAIL_LABELS.calls} {c.phone}
-            </a>
-            <button
-              type="button"
-              onClick={() => void log(c.id, "no_answer")}
-              disabled={busy !== null}
-              className="rounded-md bg-panel px-2 py-1 text-sm disabled:text-muted"
-              data-press
-              data-no-answer={c.id}
-            >
-              {DETAIL_LABELS.noAnswer}
-            </button>
+            </div>
+            {/* 2 行目: 電話（tel:）と不通 */}
+            <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
+              <a
+                href={`tel:${c.tel}`}
+                onClick={() => void log(c.id, "dialed")}
+                className="whitespace-nowrap rounded-md bg-accent px-2 py-0.5 text-sm font-bold text-on-accent tabular-nums"
+                data-press="overlay"
+                data-tel={c.id}
+              >
+                {DETAIL_LABELS.calls} {c.phone}
+              </a>
+              <button
+                type="button"
+                onClick={() => void log(c.id, "no_answer")}
+                disabled={busy !== null}
+                className="rounded-md bg-panel px-2 py-0.5 text-sm disabled:text-muted"
+                data-press
+                data-no-answer={c.id}
+              >
+                {DETAIL_LABELS.noAnswer}
+              </button>
+            </div>
           </li>
         ))}
       </ul>

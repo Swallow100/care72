@@ -129,10 +129,13 @@ export default async function CaseloadPage({ searchParams }: Props) {
   // 雨雲・震度のデモは事業所の災害の種類と警戒レベルから
   const side = buildSidePane(rows, { sort: key, disaster: data.situation ? sideDisasterOf(rows, data.disaster) : null });
   const s = data.situation;
+  // 発災時は列が多いので広く使い、右の面は 1280px から（1024〜1279px は表の下、components/list/SidePane）
   return (
     <main
-      className={`mx-auto grid gap-6 px-4 py-6 lg:grid-cols-[minmax(0,1fr)_20rem] xl:grid-cols-[minmax(0,1fr)_22rem] ${
-        disaster ? "max-w-[90rem]" : "max-w-6xl"
+      className={`mx-auto grid gap-6 px-4 py-6 ${
+        disaster
+          ? "max-w-[90rem] xl:grid-cols-[minmax(0,1fr)_22rem]"
+          : "max-w-6xl lg:grid-cols-[minmax(0,1fr)_20rem] xl:grid-cols-[minmax(0,1fr)_22rem]"
       }`}
     >
       <section aria-labelledby="caseload-title" className="min-w-0">

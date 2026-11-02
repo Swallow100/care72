@@ -41,7 +41,7 @@ export function ExpandRow({
           setOpen((v) => !v);
         }}
       >
-        <td className={`${cellClass} text-center`}>
+        <td className={`${cellClass} whitespace-nowrap text-center`}>
           <button
             type="button"
             aria-expanded={open}

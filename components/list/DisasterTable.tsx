@@ -13,7 +13,7 @@ import { ExpandRow } from "./ExpandRow";
 import { RowDetail, type ClassificationSlot } from "./RowDetail";
 import { SortHeader } from "./SortHeader";
 
-const CELL = "bg-panel px-2 py-2 align-top first:rounded-l-md last:rounded-r-md";
+const CELL = "bg-panel px-1.5 py-2 align-top first:rounded-l-md last:rounded-r-md";
 const COLS = 10;
 
 export function DisasterTable({
@@ -27,10 +27,10 @@ export function DisasterTable({
   classification?: ClassificationSlot;
 }) {
   return (
-    <table className="w-full min-w-[52rem] border-separate border-spacing-y-0.5 text-left text-sm" data-table="disaster">
+    <table className="w-full min-w-[50rem] border-separate border-spacing-y-0.5 text-left text-sm" data-table="disaster">
       <thead>
         <tr className="whitespace-nowrap text-muted">
-          <SortHeader k="state" sort={sort} className="w-20 text-center" />
+          <SortHeader k="state" sort={sort} className="w-[5.5rem] text-center" />
           <SortHeader k="tier" sort={sort} className="w-12 text-center" />
           <SortHeader k="kana" sort={sort} />
           <SortHeader k="remain" sort={sort} />
@@ -75,11 +75,11 @@ function Cells({ row: r, sort }: { row: CaseloadRow; sort: SortKey }) {
           {r.rank ?? "—"}
         </span>
       </td>
-      <td className={`${CELL} min-w-[11rem]`}>
+      <td className={`${CELL} min-w-[10rem]`}>
         <Link href={rowLink(sort, null, r.id).href} className="-mx-1 rounded px-1 font-bold" data-press>
           {r.name}
         </Link>
-        <span className="ml-1.5 text-xs text-muted">{r.kana}</span>
+        <span className="ml-1 text-xs text-muted">{r.kana}</span>
         {t && (
           <div className={`mt-0.5 font-bold ${TONE_TEXT[COLOR_TONES[t.color]]}`} data-reason>
             {t.reason}
@@ -92,17 +92,19 @@ function Cells({ row: r, sort }: { row: CaseloadRow; sort: SortKey }) {
           </div>
         )}
       </td>
-      <td className={CELL}>
+      <td className={`${CELL} min-w-[5.5rem]`}>
         {r.remain ? (
           <>
-            <div className={`font-bold tabular-nums ${r.remain.tone ? TONE_TEXT[r.remain.tone] : ""}`}>{r.remain.text}</div>
+            <div className={`whitespace-nowrap font-bold tabular-nums ${r.remain.tone ? TONE_TEXT[r.remain.tone] : ""}`}>
+              {r.remain.text}
+            </div>
             <div className="text-xs text-muted">{r.remain.label}</div>
           </>
         ) : (
           <span className="text-muted">—</span>
         )}
       </td>
-      <td className={CELL}>
+      <td className={`${CELL} whitespace-nowrap`}>
         {r.lastContact ? (
           <>
             <div className="tabular-nums">{r.lastContact.when.split(" ")[1]}</div>
@@ -118,7 +120,7 @@ function Cells({ row: r, sort }: { row: CaseloadRow; sort: SortKey }) {
       <td className={`${CELL} whitespace-nowrap`}>
         <span className="tabular-nums">{r.age ?? "—"}</span>
         <span className="text-muted"> 歳</span>
-        <div>{r.careLevel ? CARE_LEVEL_LABELS[r.careLevel] : "—"}</div>
+        <div className="text-xs">{r.careLevel ? CARE_LEVEL_LABELS[r.careLevel] : "—"}</div>
       </td>
       <td className={CELL}>
         {r.marks.length === 0 ? (
@@ -126,18 +128,28 @@ function Cells({ row: r, sort }: { row: CaseloadRow; sort: SortKey }) {
         ) : (
           <div className="flex flex-wrap gap-1">
             {r.marks.map((m) => (
-              <span key={m} className="rounded bg-panel2 px-1 py-px text-xs">
+              <span key={m} className="whitespace-nowrap rounded bg-panel2 px-1 py-px text-xs">
                 {m}
               </span>
             ))}
           </div>
         )}
       </td>
-      <td className={CELL}>{r.hazards.length === 0 ? <span className="text-muted">なし</span> : r.hazards.join("・")}</td>
       <td className={CELL}>
+        {r.hazards.length === 0 ? (
+          <span className="text-muted">なし</span>
+        ) : (
+          r.hazards.map((h) => (
+            <div key={h} className="whitespace-nowrap">
+              {h}
+            </div>
+          ))
+        )}
+      </td>
+      <td className={`${CELL} whitespace-nowrap`}>
         {r.supporters > 0 ? <span className="tabular-nums">{r.supporters} 人</span> : <span className="text-state-check">なし</span>}
       </td>
-      <td className={CELL}>
+      <td className={`${CELL} whitespace-nowrap`}>
         <StateTag tone={PLAN_TONES[r.plan]}>{PLAN_STATUS_LABELS[r.plan]}</StateTag>
         {r.pending > 0 && <div className="mt-0.5 text-xs font-bold text-state-check tabular-nums">未確認 {r.pending}</div>}
       </td>

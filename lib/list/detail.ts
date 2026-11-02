@@ -276,7 +276,8 @@ function detailContacts(contacts: ReadonlyArray<ContactForDetail>, calls: Readon
         id: c.id,
         kind: c.kind,
         kindLabel: CONTACT_KIND_LABELS[c.kind],
-        name: contactName(c),
+        // 名前が種類と同じ（本人の行）なら名前は出さない（「本人 本人」にしない）
+        name: contactName(c) === CONTACT_KIND_LABELS[c.kind] ? "" : contactName(c),
         relation: c.name && c.relation ? c.relation : null,
         phone: c.phone!,
         tel: telHref(c.phone!),

@@ -47,7 +47,7 @@ export function RowDetail({ detail, classification }: { detail: Detail; classifi
               <ul className="space-y-0.5">
                 {d.calls.map((c, i) => (
                   <li key={`${c.at}-${i}`} className="flex flex-wrap gap-x-2" data-call={c.result ?? ""}>
-                    <span className="text-xs text-muted tabular-nums">{c.when.slice(5)}</span>
+                    <span className="text-xs text-muted tabular-nums">{c.when}</span>
                     <span className={c.result === "no_answer" ? "font-bold text-state-check" : undefined}>{c.body}</span>
                     {c.who && <span className="text-xs text-muted">{c.who}</span>}
                   </li>

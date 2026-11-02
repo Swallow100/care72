@@ -9,7 +9,7 @@ import { roleAllows } from "../auth/roles.ts";
 import { personInScope } from "../auth/scope.ts";
 import type { ContactKind, ContactRow } from "../db/types.ts";
 import { CONTACT_KIND_LABELS } from "../labels.ts";
-import { formatJst } from "../person.ts";
+import { shortJst } from "../disaster/state.ts";
 
 export const CALL_SOURCE = "call";
 
@@ -86,7 +86,7 @@ export async function saveCall(db: D1Database, p: Principal | null, input: CallI
 /** 行の詳細に出す電話の記録 1 行 */
 export type CallLog = {
   at: string;
-  /** 日本の時刻 YYYY-MM-DD HH:MM */
+  /** 日本の短い時刻「11/4 10:42」 */
   when: string;
   body: string;
   result: CallResult | null;
@@ -109,7 +109,7 @@ export function callLogsOf(rows: ReadonlyArray<CallEntryRow>): CallLog[] {
       const p = parseCallPayload(r.payload);
       return {
         at: r.occurred_at,
-        when: formatJst(r.occurred_at),
+        when: shortJst(r.occurred_at),
         body: r.body ?? "",
         result: p?.result ?? null,
         contactId: p?.contactId ?? null,
