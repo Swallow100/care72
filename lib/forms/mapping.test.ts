@@ -1,6 +1,9 @@
 // 様式の対応表（T08）: 台帳の項目の一覧、AI の返事の検査（台帳に無い項目名を弾く）、保存の検査、差し込みの並びと値、同意の範囲。
 // Opus の返事は固定の JSON（lib/forms/cao-form.fixture.ts、内閣府の様式例から手で起こした物）で差し替える。
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
+import { MappedSheet as MappedPaper } from "../../components/forms/MappedSheet.tsx";
 import { SEED_AT, SEED_PEOPLE, seedConsents, type SeedPerson } from "../../seed/people.ts";
 import type { PersonPageRows } from "../person.ts";
 import { CAO_FORM_READ } from "./cao-form.fixture.ts";
@@ -180,12 +183,13 @@ describe("差し込み", () => {
     expect(cellOf(s, "氏名（団体名及び代表者）", "避難支援等実施者情報②")).toBe("木村 ヨシ");
 
     const care = "避難時に配慮しなくてはならない事項";
-    expect(cellOf(s, "介護保険の認定を受けている【要介護状態区分】", care)).toBe("■介護保険の認定を受けている【要介護状態区分】 要介護3");
-    expect(cellOf(s, "手帳所持【障害名・等級】", care)).toBe("□手帳所持【障害名・等級】");
-    expect(cellOf(s, "医療機器の装着等をしている", care)).toMatch(/^■医療機器の装着等をしている 在宅酸素 酸素濃縮器 1 L\/分 .*酸素 内蔵電池 2 時間/);
-    expect(cellOf(s, "立つことや歩行ができない", care)).toBe("■立つことや歩行ができない 一部");
-    expect(cellOf(s, "音が聞こえない（聞き取りにくい）", care)).toBe("□音が聞こえない（聞き取りにくい）");
-    expect(cellOf(s, "その他", care)).toBe("□その他 未確認");
+    // □ 1 つの欄は ■・□ と値だけ（欄の名前は左の列）
+    expect(cellOf(s, "介護保険の認定を受けている【要介護状態区分】", care)).toBe("■ 要介護3");
+    expect(cellOf(s, "手帳所持【障害名・等級】", care)).toBe("□");
+    expect(cellOf(s, "医療機器の装着等をしている", care)).toMatch(/^■ 在宅酸素 酸素濃縮器 1 L\/分 .*酸素 内蔵電池 2 時間/);
+    expect(cellOf(s, "立つことや歩行ができない", care)).toBe("■ 一部");
+    expect(cellOf(s, "音が聞こえない（聞き取りにくい）", care)).toBe("□");
+    expect(cellOf(s, "その他", care)).toBe("□ 未確認");
     expect(cellOf(s, "特記事項")).toBe("薬は 2 階の箪笥");
     expect(cellOf(s, "避難支援時の留意事項")).toContain("歩行 一部");
 
@@ -201,6 +205,20 @@ describe("差し込み", () => {
     ]);
     expect(s.unconfirmed).toEqual(expect.arrayContaining(["ＦＡＸ番号", "緊急時の連絡先① 住所"]));
     expect(s.withheld).toEqual([]);
+  });
+
+  it("紙面: 頁ごとの A4、欄の順に名前と値、段の見出し", () => {
+    const s = buildMappedSheet(seedRows(seed("p-01")), cao(), OPTS);
+    const html = renderToStaticMarkup(createElement(MappedPaper, { sheet: s, meta: { date: "令和 8 年 11 月 2 日", checked: "2026-11-02 山本" } }));
+    expect(html.match(/class="paper mapped"/g)).toHaveLength(2);
+    const ids = [...html.matchAll(/data-field="(f[0-9]+)"/g)].map((x) => x[1]);
+    expect(ids).toEqual(cao().fields.map((f) => f.id));
+    expect(html).toContain("緊急時の連絡先①");
+    expect(html).toContain("山田 ハナ");
+    expect(html).toMatch(/data-field="f29"[^]*?data-on="1">■<\/span><span class="p-strong">要介護3/);
+    expect(html).toContain("確認 2026-11-02 山本");
+    // ケア72 が足す言葉に言い切りの言葉が無い（様式の欄の名前「危険なことを判断できない」は様式の物）
+    for (const w of ["診断", "判定", "重症", "至急"]) expect(html).not.toContain(w);
   });
 
   it("外した欄は出さない。手で書く欄は空ける", () => {

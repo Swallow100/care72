@@ -431,15 +431,19 @@ function pieces(cell: Cell): Piece[] {
   return cell.kind === "value" ? cell.lines.flatMap((l, i) => (i === 0 ? l : [sub("／"), ...l])) : [];
 }
 
+const CHECK_ON = { label: "", on: true } as const;
+const CHECK_OFF = { label: "", on: false } as const;
+
 /** 項目の値を欄の形（□・選ぶ・手書き）に合わせる */
 export function shapeCell(field: MappingField, v: ItemValue): Cell {
   const cell = v.cell;
   if (cell.kind === "withheld" || cell.kind === "handwrite") return cell;
+  // □ 1 つの欄は、欄の名前を左の列に出すので ■・□ と値だけ（名前を繰り返さない）
   if (field.shape === "check") {
-    if (v.flag === true) return { kind: "choice", options: [{ label: field.label, on: true }], after: pieces(cell) };
-    if (v.flag === false) return { kind: "choice", options: [{ label: field.label, on: false }] };
+    if (v.flag === true) return { kind: "choice", options: [CHECK_ON], after: pieces(cell) };
+    if (v.flag === false) return { kind: "choice", options: [CHECK_OFF] };
     const reason = cell.kind === "unconfirmed" ? cell.reason : undefined;
-    return { kind: "choice", options: [{ label: field.label, on: false }], unconfirmed: reason ? { reason } : {} };
+    return { kind: "choice", options: [CHECK_OFF], unconfirmed: reason ? { reason } : {} };
   }
   if (field.shape === "choice" && field.options.length > 0) {
     if (cell.kind === "unconfirmed") {
@@ -478,7 +482,7 @@ export type MappedSheet = {
 /** 欄 1 つの値 */
 export function mappedCell(field: MappingField, ctx: Ctx): Cell {
   if (field.shape === "handwrite") return { kind: "handwrite" };
-  if (field.item === null) return field.shape === "check" ? { kind: "choice", options: [{ label: field.label, on: false }], unconfirmed: {} } : unconfirmed();
+  if (field.item === null) return field.shape === "check" ? { kind: "choice", options: [CHECK_OFF], unconfirmed: {} } : unconfirmed();
   const def = ledgerItem(field.item);
   if (def.consent && ctx.consent[def.consent] !== "granted") return { kind: "withheld", consent: def.consent };
   return shapeCell(field, ITEM_VALUES[field.item](ctx));

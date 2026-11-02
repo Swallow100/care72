@@ -1,0 +1,37 @@
+/*
+  汎用の差し込みの紙面（components/forms/MappedSheet.tsx）。paper.css の部品の上に、欄の名前と値の 2 列の行だけを足す。
+  行は grid の 2 列にまたがる 1 つの箱で、中を subgrid で名前と値に分ける（区切りは隙間から見える灰色の地）。
+*/
+
+.paper.mapped {
+  justify-content: flex-start;
+}
+
+.paper.mapped .grid > .row {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: subgrid;
+  padding: 0;
+  background: #bbb;
+  gap: 1px;
+  break-inside: avoid;
+}
+
+.paper.mapped .row > .lbl,
+.paper.mapped .row > .f-v {
+  background: #fff;
+  padding: 1mm 1.8mm 1.2mm;
+  min-width: 0;
+}
+
+.paper.mapped .row > .lbl {
+  background: #f4f4f4;
+  font-size: 8pt;
+  color: #333;
+  line-height: 1.35;
+}
+
+.paper.mapped .foot-note {
+  margin-top: auto;
+  text-align: right;
+}
