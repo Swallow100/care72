@@ -14,7 +14,7 @@ import { LinkPending } from "@/components/ui/LinkPending";
 import { Page, PageHead, Panel, PanelHead } from "@/components/ui/Panel";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { TABLE, TABLE_BOX, TD, TH } from "@/components/ui/table";
-import { StateText, TONE_TEXT } from "@/components/ui/Tag";
+import { StateTag, StateText, TONE_TEXT } from "@/components/ui/Tag";
 import { todayJst } from "@/lib/age";
 import { requirePage } from "@/lib/auth/server";
 import { PLAN_TONES } from "@/lib/caseload";
@@ -182,7 +182,13 @@ function ModeSection({ state, now, confirm }: { state: DisasterState; now: strin
       )}
       <dl className="mt-3 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1 text-sm">
         <dt className="text-muted">状態</dt>
-        <dd className={disaster ? `font-bold ${TONE_TEXT.check}` : ""}>{DISASTER_KIND_LABELS[state.kind]}</dd>
+        <dd>
+          {disaster ? (
+            <StateTag tone="check">{DISASTER_KIND_LABELS[state.kind]}</StateTag>
+          ) : (
+            DISASTER_KIND_LABELS[state.kind]
+          )}
+        </dd>
         {disaster && state.startedAt && (
           <>
             <dt className="text-muted">{DISASTER_LABELS.startedAt}</dt>

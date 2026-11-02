@@ -61,7 +61,7 @@ export function CallButtons({ personId, contacts }: { personId: string; contacts
               )}
               {c.lastCall && (
                 <span
-                  className={`whitespace-nowrap text-xs tabular-nums ${c.lastCall.result === "no_answer" ? "font-bold text-state-check" : "text-muted"}`}
+                  className={`whitespace-nowrap text-xs tabular-nums ${c.lastCall.result === "no_answer" ? "font-bold tone-check" : "text-muted"}`}
                   data-last-call={c.lastCall.result ?? ""}
                 >
                   {c.lastCall.when} {c.lastCall.result === "no_answer" ? DETAIL_LABELS.noAnswer : DETAIL_LABELS.calls}

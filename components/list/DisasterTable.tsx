@@ -178,7 +178,7 @@ function Cells({ row: r, sort, nameHref }: { row: CaseloadRow; sort: SortKey; na
       <td className={`${CELL} ${MD} whitespace-nowrap`}>
         {/* 避難計画は 2 番目の状態なので色の文字（塗りの印は安否の状態だけ） */}
         <StateText tone={PLAN_TONES[r.plan]}>{PLAN_STATUS_LABELS[r.plan]}</StateText>
-        {r.pending > 0 && <div className="text-xs font-bold text-state-check">未確認 {r.pending}</div>}
+        {r.pending > 0 && <div className="text-xs font-bold tone-check">未確認 {r.pending}</div>}
       </td>
     </>
   );

@@ -17,7 +17,7 @@ const ORDER: ReadonlyArray<Color> = ["red", "yellow", "gray", "green"];
 /** 色の文字の色（状態の 4 色。文字にだけ置く） */
 const TEXT: Record<Color, string> = {
   red: "text-state-urgent",
-  yellow: "text-state-check",
+  yellow: "tone-check",
   gray: "text-state-unknown",
   green: "text-state-ok",
 };
