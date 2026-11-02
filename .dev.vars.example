@@ -2,7 +2,11 @@
 # ここには値を書かない。配信先は Cloudflare の secret に入れる（T27。wrangler secret put は配信のときだけ）。
 ANTHROPIC_API_KEY=
 GEMINI_API_KEY=
+# 審査員のパスワードのハッシュ（npm run -s hash-password の 1 行）。平文は書かない
 JUDGE_PASSWORD_HASH=
+# セッションの署名の鍵（32 字以上のでたらめな文字列）。手元で空なら開発用の値で動く。配信では無いと止まる
 SESSION_SECRET=
+# デモ事業所のケアマネ 山本のパスワードのハッシュ。npm run db:reset が種に入れる（Worker は読まない）
+CAREMANAGER_DEMO_PASSWORD_HASH=
 # デモ事業所の AI の 1 日の上限（回）。Claude と声を合わせて数える。ほかの事業所は 200 のまま
 AI_DAILY_LIMIT=200
