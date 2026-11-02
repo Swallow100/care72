@@ -1,0 +1,294 @@
+// 本人のスマホの音: 定型文を流す（Gemini TTS の声か、ブラウザの speechSynthesis）、周りの音ごと録音する（MediaRecorder）、
+// 同時に文字にする（Web Speech。lib/speech/dictation.ts）。docs/tasks/T10.md。
+// 画面（DOM）に触らない。ブラウザの物は作る物・使う物を渡す（テストは偽物で差し替える）。
+//
+// 携帯のブラウザは、人が押した時（赤を押した時）でないと音を出させない・マイクの許可を聞けないことがある。
+// 赤を押した時に prime で音の要素とマイクの許可を先に通しておき、20 秒あとに流す・録る。
+
+import { createDictation, type SpeechRecognitionCtor } from "../speech/dictation.ts";
+import { VOICE_PROMPT_TEXT } from "./phrases.ts";
+
+// ---------- 定型文 ----------
+
+/** HTMLAudioElement のうち使う所 */
+export type AudioLike = {
+  src: string;
+  muted: boolean;
+  currentTime: number;
+  play(): Promise<void>;
+  pause(): void;
+  onended: (() => void) | null;
+  onerror: (() => void) | null;
+};
+
+/** SpeechSynthesisUtterance のうち使う所 */
+export type UtteranceLike = {
+  lang: string;
+  rate: number;
+  volume: number;
+  onend: (() => void) | null;
+  onerror: (() => void) | null;
+};
+
+export type SynthLike = { speak(u: UtteranceLike): void; cancel(): void };
+
+export type PromptResult = "audio" | "speech" | "none";
+
+export const PROMPT_TIMEOUT_MS = 12_000;
+
+export type PromptPlayer = {
+  /** 人が押した時に呼ぶ（音の要素に声を読み込み、鳴らせる状態にする） */
+  prime(): void;
+  /** 定型文を 1 回流し、終わるのを待つ。Gemini の声が無ければ speechSynthesis、どちらも無ければ none */
+  play(): Promise<PromptResult>;
+};
+
+function wait(start: (done: (ok: boolean) => void) => void, timeoutMs: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (ok: boolean) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(ok);
+    };
+    const timer = setTimeout(() => finish(false), timeoutMs);
+    try {
+      start(finish);
+    } catch {
+      finish(false);
+    }
+  });
+}
+
+export function createPromptPlayer(deps: {
+  audio: AudioLike | null;
+  /** 声の URL（app/api/signals/voice）。鍵が無いときは 404 */
+  voiceUrl: string;
+  synth: SynthLike | null;
+  Utterance: (new (text: string) => UtteranceLike) | null;
+  timeoutMs?: number;
+}): PromptPlayer {
+  const { audio, synth, Utterance } = deps;
+  const timeoutMs = deps.timeoutMs ?? PROMPT_TIMEOUT_MS;
+  /** Gemini の声が使えない（読み込めない・鳴らせない） */
+  let audioFailed = audio === null;
+  let primed: Promise<void> | null = null;
+
+  return {
+    prime() {
+      if (audio && !primed) {
+        audio.onerror = () => {
+          audioFailed = true;
+        };
+        audio.muted = true;
+        audio.src = deps.voiceUrl;
+        primed = audio
+          .play()
+          .then(() => {
+            audio.pause();
+            audio.currentTime = 0;
+          })
+          .catch(() => {
+            audioFailed = true;
+          })
+          .finally(() => {
+            audio.muted = false;
+          });
+      }
+      // speechSynthesis も押した時に 1 回鳴らしておく（音量 0）
+      if (synth && Utterance) {
+        try {
+          const u = new Utterance(" ");
+          u.volume = 0;
+          synth.speak(u);
+        } catch {
+          // 鳴らせない端末
+        }
+      }
+    },
+    async play() {
+      if (primed) await primed;
+      if (audio && !audioFailed) {
+        const ok = await wait((done) => {
+          audio.onended = () => done(true);
+          audio.onerror = () => done(false);
+          audio.muted = false;
+          audio.currentTime = 0;
+          audio.play().catch(() => done(false));
+        }, timeoutMs);
+        if (ok) return "audio";
+        audio.pause();
+      }
+      if (synth && Utterance) {
+        const ok = await wait((done) => {
+          const u = new Utterance(VOICE_PROMPT_TEXT);
+          u.lang = "ja-JP";
+          u.rate = 0.9;
+          u.volume = 1;
+          u.onend = () => done(true);
+          u.onerror = () => done(false);
+          synth.cancel();
+          synth.speak(u);
+        }, timeoutMs);
+        if (ok) return "speech";
+      }
+      return "none";
+    },
+  };
+}
+
+// ---------- 録音 ----------
+
+export type TrackLike = { stop(): void };
+export type StreamLike = { getTracks(): TrackLike[] };
+export type GetUserMedia = (c: { audio: boolean }) => Promise<StreamLike>;
+
+/** MediaRecorder のうち使う所 */
+export type RecorderLike = {
+  readonly state: string;
+  readonly mimeType: string;
+  ondataavailable: ((e: { data: Blob }) => void) | null;
+  onstop: (() => void) | null;
+  onerror: (() => void) | null;
+  start(timeslice?: number): void;
+  stop(): void;
+};
+
+export type RecorderCtor = {
+  new (stream: StreamLike, options?: { mimeType?: string }): RecorderLike;
+  isTypeSupported?(type: string): boolean;
+};
+
+/** 録る形の順（Chrome・Edge は webm、Safari は mp4、Firefox は ogg） */
+export const AUDIO_TYPES = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg;codecs=opus"] as const;
+
+export function pickAudioType(isTypeSupported: ((t: string) => boolean) | undefined): string | null {
+  if (!isTypeSupported) return null;
+  return AUDIO_TYPES.find((t) => isTypeSupported(t)) ?? null;
+}
+
+export type RecordingSession = {
+  readonly mimeType: string;
+  /** 止めて、録れた音声。何も録れていなければ null */
+  stop(): Promise<Blob | null>;
+};
+
+/** 録り始める。マイクが使えない・MediaRecorder が無いときは null */
+export async function startRecording(deps: {
+  getUserMedia: GetUserMedia | null;
+  Recorder: RecorderCtor | null;
+}): Promise<RecordingSession | null> {
+  if (!deps.getUserMedia || !deps.Recorder) return null;
+  let stream: StreamLike;
+  try {
+    stream = await deps.getUserMedia({ audio: true });
+  } catch {
+    return null;
+  }
+  const release = () => stream.getTracks().forEach((t) => t.stop());
+  const type = pickAudioType(deps.Recorder.isTypeSupported?.bind(deps.Recorder));
+  let rec: RecorderLike;
+  try {
+    rec = type ? new deps.Recorder(stream, { mimeType: type }) : new deps.Recorder(stream);
+  } catch {
+    release();
+    return null;
+  }
+  const chunks: Blob[] = [];
+  rec.ondataavailable = (e) => {
+    if (e.data && e.data.size > 0) chunks.push(e.data);
+  };
+  try {
+    rec.start(1000);
+  } catch {
+    release();
+    return null;
+  }
+  const mimeType = rec.mimeType || type || "audio/webm";
+  let stopped: Promise<Blob | null> | null = null;
+  return {
+    mimeType,
+    stop() {
+      if (!stopped) {
+        stopped = wait((done) => {
+          rec.onstop = () => done(true);
+          rec.onerror = () => done(false);
+          if (rec.state === "inactive") done(true);
+          else rec.stop();
+        }, 4000).then(() => {
+          release();
+          return chunks.length > 0 ? new Blob(chunks, { type: mimeType }) : null;
+        });
+      }
+      return stopped;
+    },
+  };
+}
+
+/**
+ * マイクの許可を先に聞いておく（赤を押した時）。もう許可されていれば何もしない。
+ * 聞いたらすぐ止める（録るのは 20 秒操作が無かったときだけ。マイクを開いたままにしない）
+ */
+export async function primeMicrophone(deps: {
+  getUserMedia: GetUserMedia | null;
+  queryPermission?: () => Promise<string>;
+}): Promise<void> {
+  if (!deps.getUserMedia) return;
+  try {
+    if (deps.queryPermission && (await deps.queryPermission()) === "granted") return;
+  } catch {
+    // permissions.query で microphone を聞けない端末（Firefox など）は、そのまま聞く
+  }
+  try {
+    const s = await deps.getUserMedia({ audio: true });
+    s.getTracks().forEach((t) => t.stop());
+  } catch {
+    // 断られた・マイクが無い。録るときにもう一度試し、だめなら録音なしで送る
+  }
+}
+
+// ---------- 文字起こし ----------
+
+export type TranscriptSession = {
+  /** 止めて、文字になった物（言い換えない）。何も取れなければ null */
+  stop(): Promise<string | null>;
+};
+
+/** 長い無音でブラウザが止めたときに聞き直す回数（録っている間だけ） */
+export const TRANSCRIPT_RESTARTS = 5;
+
+/** Web Speech で文字にし始める。無い端末は null（録音だけ送る） */
+export function startTranscript(Ctor: SpeechRecognitionCtor | null): TranscriptSession | null {
+  if (!Ctor) return null;
+  let text = "";
+  let stopping = false;
+  let restarts = 0;
+  let resolveDone: (v: string | null) => void = () => {};
+  const done = new Promise<string | null>((r) => (resolveDone = r));
+  const finish = (t: string) => resolveDone(t.trim() ? t.trim() : null);
+
+  const d = createDictation(Ctor, {
+    onText: (t) => {
+      text = t;
+    },
+    onDone: (t) => finish(t),
+    onEnd: () => {
+      // 人が止める前に終わった（無音・通信）。録っている間は続きから聞き直す
+      if (!stopping && restarts < TRANSCRIPT_RESTARTS) {
+        restarts++;
+        if (d.start(text)) return;
+      }
+      if (stopping || restarts >= TRANSCRIPT_RESTARTS) finish(text);
+    },
+  });
+  if (!d.start("")) return null;
+  return {
+    stop() {
+      stopping = true;
+      if (d.state === "listening") d.stop();
+      else finish(text);
+      return done;
+    },
+  };
+}
