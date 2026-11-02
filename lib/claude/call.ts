@@ -36,6 +36,14 @@ export type ClaudeInput = ForClaude<object> | Readonly<Record<string, ForClaude<
 export type AiMark = { readonly ai: true; readonly model: string; readonly purpose: AiPurpose };
 export type AiResult<T> = AiMark & { readonly value: T };
 
+/**
+ * 入力に添える写真・PDF（base64）。様式の読み取り（T08）の空の様式だけに使う。人の値（台帳・氏名）を入れない。
+ * 入力の JSON には入れず、別の内容の塊として文の前に置く（skill claude-api: 文書は文の前）
+ */
+export type ClaudeAttachment =
+  | { kind: "image"; mediaType: "image/jpeg" | "image/png"; data: string }
+  | { kind: "pdf"; data: string };
+
 export type AskJsonRequest<S extends z.ZodType> = {
   purpose: ClaudePurpose;
   /** 無ければ用途の既定（lib/claude/models.ts） */
@@ -43,6 +51,8 @@ export type AskJsonRequest<S extends z.ZodType> = {
   /** 用途ごとの指示。氏名・住所・電話を書かない（コードの定数で持つ） */
   system: string;
   input: ClaudeInput;
+  /** 写真・PDF（様式の読み取りだけ）。無ければ入力の JSON の文だけを送る */
+  attachments?: ReadonlyArray<ClaudeAttachment>;
   /** 返事の形。いちばん外は z.object にする */
   schema: S;
   /**
@@ -76,6 +86,19 @@ function assertClaudeInput(input: unknown): asserts input is ClaudeInput {
   throw new Error("仮名化の層（lib/pseudonym）を通っていない物は Claude に渡さない");
 }
 
+function attachmentBlock(a: ClaudeAttachment): Anthropic.Beta.Messages.BetaContentBlockParam {
+  return a.kind === "pdf"
+    ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: a.data } }
+    : { type: "image", source: { type: "base64", media_type: a.mediaType, data: a.data } };
+}
+
+/** 利用者の発話。添え物が無ければ入力の JSON の文だけ、あれば写真・PDF を先に並べてから JSON の文 */
+function userContent<S extends z.ZodType>(req: AskJsonRequest<S>): string | Anthropic.Beta.Messages.BetaContentBlockParam[] {
+  const text = JSON.stringify(req.input);
+  if (!req.attachments || req.attachments.length === 0) return text;
+  return [...req.attachments.map(attachmentBlock), { type: "text", text }];
+}
+
 export function buildParams<S extends z.ZodType>(
   req: AskJsonRequest<S>,
   model: ClaudeModel,
@@ -90,7 +113,7 @@ export function buildParams<S extends z.ZodType>(
       { type: "text", text: req.system },
       ...(req.sources ? [{ type: "text" as const, text: sourcesSystem(req.sources) }] : []),
     ],
-    messages: [{ role: "user", content: JSON.stringify(req.input) }],
+    messages: [{ role: "user", content: userContent(req) }],
     output_config: { effort: spec.effort, format: { type: "json_schema", schema: format.schema } },
     // 断られたら、断られた種類に合うモデルにサーバー側で回す。Haiku には送らない
     ...(SERVER_FALLBACK_MODELS.has(model) ? { betas: [SERVER_FALLBACK_BETA], fallbacks: "default" as const } : {}),

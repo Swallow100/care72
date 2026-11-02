@@ -10,6 +10,8 @@ const ITEMS = [
   // 事業所（災害モードの切替・災害情報）と、その下の様式 9。様式 9 を開いているときは様式9 だけを光らせる
   { href: "/office", label: "事業所", match: (path: string) => path === "/office" },
   { href: "/office/form9", label: "様式9", match: (path: string) => path.startsWith("/office/form9") },
+  // 松山市以外の様式の読取と対応表（T08）
+  { href: "/forms/mapping", label: "様式対応", match: (path: string) => path.startsWith("/forms") },
 ];
 
 export function NavLinks() {

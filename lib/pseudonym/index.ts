@@ -541,6 +541,16 @@ export function pseudonymizeText(text: string, key: PseudonymKey): ForClaude<{ t
   return seal(out);
 }
 
+/**
+ * 人の値を含まない項目表（様式の読み取り T08 の台帳の項目の key と名前の一覧）を Claude に渡せる形にする。
+ * 渡してよいのはコードに書いた項目名と説明だけ。台帳の値・氏名・住所・電話は入れない（ここでは電話番号らしい並びがあれば止める）
+ */
+export function sealItemCatalog<T extends object>(catalog: T): ForClaude<T> {
+  const copy = structuredClone(catalog);
+  if (new RegExp(PHONE_LIKE.source).test(JSON.stringify(copy))) throw new PseudonymLeakError(["電話番号らしい並び"]);
+  return seal(copy);
+}
+
 /** Claude の返事の中の仮名（A さん）を氏名に戻す。画面に出す前に、ブラウザかサーバーで使う */
 export function restoreText(text: string, key: PseudonymKey): string {
   const people = [...key.people].sort((a, b) => b.alias.length - a.alias.length);
