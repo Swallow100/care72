@@ -2,8 +2,9 @@
 // 裏は医療要約（T07）の頁をそのまま（MedicalSummaryPaper）と QR（T16）。医療班提供の同意が無い人の裏は「同意なし」だけ。
 // 状態を持たない（Server Component のまま、テストで renderToStaticMarkup できる）。
 // 見た目は paper.css・medical-paper.css・own-paper.css（読み込むのはページの側。テストでは読まない）。
-// QR は題名の段の右に 18mm の四角（T16 の QrBlock の字を外した形）。「この QR は医療班が読みます」と期限は段の右の小さな字の一番上。
-// QR がまだ無い（未作成・期限切れ）ときは同じ 18mm の枠に状態を書く。QR の頁は同意の無い人にも「同意なし」を出す作りなので、裏の両方に置く。
+// QR は題名の段の右に 24mm の四角（T16 の QrBlock の字を外した形。11/3 に 18mm から大きくした、docs/DECISIONS.md 11/3 04:0x の 6）。
+// 「この QR は医療班が読みます」と期限は段の右の小さな字の一番上。
+// QR がまだ無い（未作成・期限切れ）ときは同じ 24mm の枠に状態を書く。QR の頁は同意の無い人にも「同意なし」を出す作りなので、裏の両方に置く。
 
 import type { MedicalSummaryResult } from "@/lib/forms/medical-summary";
 import type { OwnLine, OwnPhone, OwnSheet } from "@/lib/forms/own-sheet";
@@ -16,8 +17,11 @@ import { PaperFoot } from "./PaperFoot";
 import { WITHHELD_LABELS } from "./MedicalWithheld";
 import { QrBlock, qrExpiryDate } from "./QrBlock";
 
-/** 裏の QR の一辺（mm）。これより大きいと山田 ハナの裏が 3 頁になる（own-paper.css の .qr-frame と同じ） */
-export const OWN_QR_MM = 18;
+/**
+ * 裏の QR の一辺（mm。own-paper.css の .qr-frame と同じ）。題名の段の高さがこの分だけ伸び、裏の要約は 10 人とも 1 頁に収まる
+ * （11/3 に測った裏の余りは 山田 ハナの 12mm がいちばん少なく、18 → 24mm の 6mm を足しても 2 頁のまま。頁数はテストで数える）
+ */
+export const OWN_QR_MM = 24;
 
 /** 裏に刷る QR。url は今の版のトークンの /q/ の URL（未作成・期限切れ・元の分からないときは null） */
 export type OwnQr = { status: QrStatus; url: string | null; expiresAt: string | null };
@@ -28,7 +32,7 @@ function printable(qr: OwnQr | null | undefined): PrintableQr | null {
   return qr && qr.status === "active" && qr.url && qr.expiresAt ? { url: qr.url, expiresAt: qr.expiresAt } : null;
 }
 
-/** QR の無いときの枠（一辺 18mm）。状態（未作成・期限切れ）を書く */
+/** QR の無いときの枠（一辺 OWN_QR_MM）。状態（未作成・期限切れ）を書く */
 export function QrFrame({ status }: { status: Exclude<QrStatus, "active"> }) {
   return (
     <div className="qr-frame" data-qr="placeholder" data-qr-status={status}>

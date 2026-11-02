@@ -367,17 +367,17 @@ describe("裏の QR（T16 の QrBlock）", () => {
     return { html, head: back.slice(back.indexOf('class="head-row"'), end) };
   }
 
-  it("10 人とも、有効な QR は題名の段の中に一辺 18mm の四角だけで置き、表と裏の 2 頁のまま", async () => {
-    expect(OWN_QR_MM).toBe(18);
+  it("10 人とも、有効な QR は題名の段の中に一辺 24mm の四角だけで置き、表と裏の 2 頁のまま（11/3 確定の 6）", async () => {
+    expect(OWN_QR_MM).toBe(24);
     for (const id of ALL_IDS) {
       const qr = await activeQr(id);
       const { html, head } = paperWith(rowsOf(id), qr);
       expect(html.match(/<section class="paper/g), id).toHaveLength(2);
       expect([...html.matchAll(/data-page="(\d)"/g)].map((m) => m[1]), id).toEqual(["1", "2"]);
-      // 枠の代わりに QR。四角の外に余白・字を足さない（枠と同じ 18mm の場所だけを取る）
+      // 枠の代わりに QR。四角の外に余白・字を足さない（枠と同じ 24mm の場所だけを取る）
       expect(head, id).not.toContain('data-qr="placeholder"');
-      expect(head, id).toMatch(/<figure style="margin:0;padding:0;flex:none;width:18mm;height:18mm"[^>]*data-qr="code">/);
-      expect(head, id).toMatch(/<svg viewBox="0 0 (\d+) \1" style="display:block;width:18mm;height:18mm"/);
+      expect(head, id).toMatch(/<figure style="margin:0;padding:0;flex:none;width:24mm;height:24mm"[^>]*data-qr="code">/);
+      expect(head, id).toMatch(/<svg viewBox="0 0 (\d+) \1" style="display:block;width:24mm;height:24mm"/);
       expect(head, id).toContain('fill="#000"');
       expect(head, id).not.toContain("<figcaption");
       // 1 行と期限は題名の段の右の小さな字に（JST の日付）
@@ -396,7 +396,7 @@ describe("裏の QR（T16 の QrBlock）", () => {
     for (const w of ["降圧薬", "ワタナベ", "そらみ台"]) expect(html.slice(html.indexOf('data-page="2"')), w).not.toContain(w);
   });
 
-  it("QR が無いときは同じ 18mm の枠に状態（未作成・期限切れ）。1 行と期限は出さない", () => {
+  it("QR が無いときは同じ 24mm の枠に状態（未作成・期限切れ）。1 行と期限は出さない", () => {
     const cases: Array<[OwnQr | null, string]> = [
       [null, "未作成"],
       [{ status: "none", url: null, expiresAt: null }, "未作成"],
@@ -413,7 +413,7 @@ describe("裏の QR（T16 の QrBlock）", () => {
     }
   });
 
-  it("枠の CSS と QR の一辺が同じ 18mm", () => {
+  it("枠の CSS と QR の一辺が同じ 24mm", () => {
     const css = readFileSync(new URL("../../components/forms/own-paper.css", import.meta.url), "utf8");
     const frame = css.slice(css.indexOf(".paper .qr-frame {"), css.indexOf("}", css.indexOf(".paper .qr-frame {")));
     expect(frame).toContain(`width: ${OWN_QR_MM}mm;`);
