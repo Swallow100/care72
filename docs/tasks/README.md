@@ -16,7 +16,7 @@ docs/tasks/T03.md をやって。CLAUDE.md と docs/tasks/README.md の決まり
 - 小さく commit し、branch を push する。終わったら `gh pr create --fill` → `gh pr merge --merge --delete-branch`（merge commit を残す。rebase・squash・force push はしない）。
 - 同じファイルを 2 つの作業で触らない。各ファイルの「触るファイル」を見て重なるなら順番にする。
 - worktree の外を開かない。`C:\Users\choco\dev` の隣のフォルダは別のプロジェクトのコードと本物の鍵で、見るのも持ち込むのも禁止。
-- wrangler でネットに出る命令を打たない: `login`・`whoami`・`deploy`・`d1 create`・`r2 bucket create`・`secret put`。手元は `--local` だけ。この PC の wrangler は別のプロジェクトのアカウントに入っているので、打つと別のアカウントに資源ができる。Cloudflare の MCP ツールも使わない。配信は T27 だけで、作者と一緒にする。
+- wrangler でネットに出る命令を打たない: `login`・`whoami`・`deploy`・`d1 create`・`r2 bucket create`・`secret put`。手元は `--local` だけ。配信は既存のアカウントで作者が手で打つ（T27）。エージェントはネットに出る wrangler を打たない。Cloudflare の MCP ツールも使わない。
 
 ## 全部の作業に共通の終わりの形
 
