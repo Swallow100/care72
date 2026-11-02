@@ -45,7 +45,10 @@ CREATE TABLE people (
   -- 0 はまだ作っていない。作った時刻からトークンの期限（90 日）を数える。トークンそのものは表に持たない（署名で作り直せる）。
   -- 台帳の version・updated_at は変えない（台帳の中身は変わらない）
   qr_generation INTEGER NOT NULL DEFAULT 0 CHECK (qr_generation >= 0),
-  qr_issued_at TEXT
+  qr_issued_at TEXT,
+  -- 一覧から外した時刻（docs/tasks/T30.md）。NULL は一覧にいる。消さずに印だけ付ける（担当一覧・様式 9・停電の人数から外れる）。
+  -- 本人のページは開ける（戻せる）。外した・戻したは本人の経過と事業所の経過に残す
+  unlisted_at TEXT
 );
 CREATE INDEX people_office ON people (office_id);
 CREATE INDEX people_care_manager ON people (care_manager_id);
@@ -258,6 +261,8 @@ CREATE TABLE disaster_state (
 
 -- 事業所の経過。本人の経過（timeline_entries）とは別に、事業所の行を持つ。誰が・いつ・何を。
 -- body は画面に出す 1 行（大雨・停電 事業所全体 など）、payload は変えたあとの状態の写し。人の名前・住所は入れない
+-- 利用者追加・担当変更・一覧除外・一覧復帰・ケアマネ追加（T30）は payload に本人とケアマネの id を持ち、
+-- 利用者の名前は読むときに people から引く（body は職員の名前まで）
 CREATE TABLE office_timeline_entries (
   id TEXT PRIMARY KEY,
   office_id TEXT NOT NULL REFERENCES offices (id) ON DELETE CASCADE,
@@ -265,7 +270,10 @@ CREATE TABLE office_timeline_entries (
   author_role TEXT NOT NULL CHECK (author_role IN (
     'self', 'family', 'supporter', 'care_manager', 'medical', 'government', 'system'
   )),
-  kind TEXT NOT NULL CHECK (kind IN ('disaster_on', 'disaster_off', 'disaster_info')),
+  kind TEXT NOT NULL CHECK (kind IN (
+    'disaster_on', 'disaster_off', 'disaster_info',
+    'person_added', 'person_assigned', 'person_unlisted', 'person_relisted', 'care_manager_added'
+  )),
   body TEXT,
   payload TEXT CHECK (payload IS NULL OR json_valid(payload)),
   occurred_at TEXT NOT NULL,

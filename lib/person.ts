@@ -74,6 +74,7 @@ import { toTriagePerson } from "./triage/from-ledger.ts";
 import { tierOf, type Color, type Tier, type TriageResult } from "./triage/index.ts";
 import type { PersonBrief } from "./auth/scope.ts";
 import { withQrView } from "./qr/timeline.ts";
+import { officeEntryOf, withOfficeEntry } from "./office/timeline.ts";
 
 // ---------- 区分と並び ----------
 
@@ -794,7 +795,8 @@ function timelineTone(t: PersonPageRows["timeline"][number]): StateTone | null {
 
 /**
  * 経過。経過の表の行に、種の表から作れる物を足す:
- * - 本人の行を作った時刻 →「入力」（書き手は担当のケアマネ。医療班がその場で作った人は医療班）
+ * - 本人の行を作った時刻 →「入力」（書き手は担当のケアマネ。医療班がその場で作った人は医療班）。
+ *   利用者追加（T30）で作った人は、経過の表に「利用者追加」の行（書き手は足した人）があるので作らない
  * - 同意を記録した時刻 →「同意」（記録した人ごと・時刻ごとに 1 行）。同じ時刻の「同意」の行が経過の表にあれば作らない
  * 並びは時刻の順（同じ時刻なら作った物が先）
  */
@@ -814,19 +816,21 @@ export function timelineItems(rows: PersonPageRows): TimelineItem[] {
 
   const derived: TimelineItem[] = [];
   const p = rows.person;
-  derived.push({
-    id: `derived-created-${p.id}`,
-    at: p.created_at,
-    when: formatJst(p.created_at),
-    kind: DERIVED_TIMELINE_LABELS.created,
-    tone: null,
-    body: "台帳作成",
-    who:
-      p.origin === "on_site"
-        ? AUTHOR_ROLE_LABELS.medical
-        : who(AUTHOR_ROLE_LABELS.care_manager, rows.careManagerName),
-    derived: true,
-  });
+  if (!rows.timeline.some((t) => officeEntryOf(t)?.action === "added")) {
+    derived.push({
+      id: `derived-created-${p.id}`,
+      at: p.created_at,
+      when: formatJst(p.created_at),
+      kind: DERIVED_TIMELINE_LABELS.created,
+      tone: null,
+      body: "台帳作成",
+      who:
+        p.origin === "on_site"
+          ? AUTHOR_ROLE_LABELS.medical
+          : who(AUTHOR_ROLE_LABELS.care_manager, rows.careManagerName),
+      derived: true,
+    });
+  }
 
   const storedConsentTimes = new Set(rows.timeline.filter((t) => t.kind === "consent").map((t) => t.occurred_at));
   const groups = new Map<string, Array<PersonPageRows["consents"][number]>>();
@@ -851,8 +855,9 @@ export function timelineItems(rows: PersonPageRows): TimelineItem[] {
     });
   }
 
-  // QR の頁の閲覧（kind は note、payload の source が qr_view）は「QR 閲覧」と相手（lib/qr/timeline.ts）
-  return [...derived, ...stored.map((item, i) => withQrView(item, rows.timeline[i]))]
+  // QR の頁の閲覧（kind は note、payload の source が qr_view）は「QR 閲覧」と相手（lib/qr/timeline.ts）。
+  // 利用者追加・担当変更・一覧除外・一覧復帰（source が office）はその種類（lib/office/timeline.ts）
+  return [...derived, ...stored.map((item, i) => withOfficeEntry(withQrView(item, rows.timeline[i]), rows.timeline[i]))]
     .map((item, i) => ({ item, i, t: Date.parse(item.at) }))
     .sort((a, b) => a.t - b.t || Number(b.item.derived) - Number(a.item.derived) || a.i - b.i)
     .map((x) => x.item);

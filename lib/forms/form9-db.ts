@@ -146,12 +146,13 @@ export async function loadForm9(
     .first<{ id: string; name: string }>();
   if (!office) return null;
 
-  const mine = "SELECT id FROM people WHERE office_id = ?1";
+  // 一覧から外した人（people.unlisted_at、T30）は様式 9 にも出さない
+  const mine = "SELECT id FROM people WHERE office_id = ?1 AND unlisted_at IS NULL";
   const statements = [
     db
       .prepare(
         `SELECT id, name, kana, birth_date, self_report_unreliable, ledger, care_manager_id FROM people
-          WHERE office_id = ?1 ORDER BY kana, id`,
+          WHERE office_id = ?1 AND unlisted_at IS NULL ORDER BY kana, id`,
       )
       .bind(office.id),
     db.prepare("SELECT id, display_name FROM accounts WHERE office_id = ?1").bind(office.id),

@@ -410,6 +410,12 @@ export type PersonRow = {
   updated_at: string;
 };
 
+/**
+ * 本人の行の「一覧から外した」印（people.unlisted_at、T30）。NULL は一覧にいる。消さずに印だけ。
+ * PersonRow に入れないのは、種と本人のページの型に波及させないため（QR の列と同じ扱い）
+ */
+export type PersonListMark = { unlisted_at: string | null };
+
 export type ContactRow = {
   id: string;
   person_id: string;
@@ -607,8 +613,20 @@ export type DisasterStateRow = {
   updated_at: string;
 };
 
-/** 事業所の経過の種類: 災害モードに入れた（種類を替えたも）・平時に戻した・災害の情報を変えた */
-export const OFFICE_TIMELINE_KINDS = ["disaster_on", "disaster_off", "disaster_info"] as const;
+/**
+ * 事業所の経過の種類: 災害モードに入れた（種類を替えたも）・平時に戻した・災害の情報を変えた（T09）、
+ * 利用者を足した・担当を変えた・一覧から外した・一覧に戻した・ケアマネを足した（T30）
+ */
+export const OFFICE_TIMELINE_KINDS = [
+  "disaster_on",
+  "disaster_off",
+  "disaster_info",
+  "person_added",
+  "person_assigned",
+  "person_unlisted",
+  "person_relisted",
+  "care_manager_added",
+] as const;
 export type OfficeTimelineKind = (typeof OFFICE_TIMELINE_KINDS)[number];
 
 /** 事業所の経過 1 行。本人の経過（timeline_entries）とは別の表。誰が・いつ・何を */
