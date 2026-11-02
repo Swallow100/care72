@@ -252,22 +252,48 @@ describe("同意のない範囲は落とす", () => {
     expect(text(s, "medical.drugs")).toContain("残り 7 日");
   });
 
-  it("9 渡辺 清: 医療班提供なし → かかりつけ・医薬品情報・特記の医療は省略、別紙なし。紙面に薬の名前が出ない", () => {
+  it("9 渡辺 清: 医療班提供なしでも様式の医療の欄は出る（医療の欄は計画共有に従う。医療班提供は要約と QR だけ）", () => {
     const s = sheetOf("p-09");
-    expect(s.withheld).toEqual(["medical"]);
-    for (const k of ["medical.doctor", "medical.drugs", "notes.medical"] as const) {
-      expect(s.cells[k], k).toEqual({ kind: "withheld", consent: "medical" });
+    expect(s.withheld).toEqual([]);
+    for (const k of ["medical.doctor", "medical.drugs", "notes.medical", "notes.annex"] as const) {
+      expect(s.cells[k].kind, k).not.toBe("withheld");
     }
-    expect(text(s, "notes.annex")).toBe("□あり ■なし");
+    expect(text(s, "medical.drugs")).toContain("降圧薬");
+    expect(text(s, "medical.drugs")).toContain("1 日 1 回");
+    expect(text(s, "medical.doctor")).toBe("未確認");
+    expect(text(s, "notes.annex")).toBe("■あり（医療要約） □なし");
     const markup = html(s);
-    expect(markup).not.toContain("降圧薬");
-    expect(markup).toContain(withheldText("medical"));
+    expect(markup).toContain("降圧薬");
+    expect(markup).not.toContain(withheldText("medical"));
+    expect(markup).not.toContain("p-withheld");
     // 支援者は同意あり
     expect(text(s, "supporter1.name")).toBe("藤田 ミチ");
   });
 
-  it("ほかの 8 人は省略が無い", () => {
-    for (const id of ALL_IDS.filter((x) => x !== "p-07" && x !== "p-09")) {
+  it("計画共有なし → 実施組織と医療の欄（かかりつけ・医薬品情報・特記の医療）は省略、別紙なし。紙面に薬の名前が出ない", () => {
+    const p = seed("p-01");
+    const rows = seedRows(p);
+    const refused = {
+      ...rows,
+      consents: rows.consents.map((c) => (c.kind === "plan_share" ? { ...c, status: "refused" as const } : c)),
+    };
+    const s = buildMatsuyamaSheet(refused, { today: TODAY, officeName: "デモ事業所" });
+    expect(s.withheld).toEqual(["plan_share"]);
+    for (const k of ["medical.doctor", "medical.drugs", "notes.medical", "org.name", "org.phone"] as const) {
+      expect(s.cells[k], k).toEqual({ kind: "withheld", consent: "plan_share" });
+    }
+    expect(text(s, "notes.annex")).toBe("□あり ■なし");
+    expect(text(s, "consent.planShare")).toContain("■同意しない");
+    expect(text(s, "org.consent")).toBe("□同意 ■不同意");
+    const markup = html(s);
+    for (const w of ["ワーファリン", "在宅酸素"]) expect(markup).not.toContain(w);
+    expect(markup).toContain(withheldText("plan_share"));
+    // 実施者（支援者提供）と医療班提供は同意のまま
+    expect(text(s, "supporter1.consent")).toBe("■同意 □不同意");
+  });
+
+  it("ほかの 9 人は省略が無い", () => {
+    for (const id of ALL_IDS.filter((x) => x !== "p-07")) {
       const s = sheetOf(id);
       expect(s.withheld, id).toEqual([]);
       expect(Object.values(s.cells).some((c) => c.kind === "withheld"), id).toBe(false);

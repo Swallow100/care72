@@ -7,8 +7,9 @@
 // - 台帳に項目の無い欄も「未確認」。手で書く欄（番号・自署・代理人・市受付印）だけは空ける
 // - 同意 4 つ: 様式の 2 つの問いは名簿登録・計画共有から。実施者ごとの同意※は支援者提供から、組織の同意※は計画共有から
 //   （docs/DECISIONS.md 7）
-// - 同意のない範囲は落とす（印刷しない）: 支援者提供 → 実施者 1・2 と夜間支援、計画共有 → 実施組織、
-//   医療班提供 → かかりつけ医・薬局、医薬品情報、特記の医療、別紙
+// - 同意のない範囲は落とす（印刷しない）: 支援者提供 → 実施者 1・2 と夜間支援、
+//   計画共有 → 実施組織と医療の欄（かかりつけ医・薬局、医薬品情報、特記の医療、別紙）
+// - 医療班提供は様式に効かない（医療班の要約 T07 と QR の頁 T16 にだけ効く。docs/DECISIONS.md の 11/2 夕方の案 a）
 // - 台帳にある値は余さず差し込む。様式に欄の無い値（機器と時計、緊急連絡先の 2 人目から、持出品など）は特記事項に
 
 import { ageOn } from "../age.ts";
@@ -434,7 +435,7 @@ export const MATSUYAMA_FIELDS = [
     page: 2,
     block: "notes",
     label: "別紙",
-    source: "consents.medical と 薬・機器（別紙は医療要約、T07）",
+    source: "consents.plan_share（計画共有）と 薬・機器（別紙は医療要約、T07）",
     shape: "choice",
     options: ["あり", "なし"],
   },
@@ -847,9 +848,8 @@ export function buildMatsuyamaSheet(rows: PersonPageRows, opts: BuildOptions): M
     for (const c of cs) placedContacts.add(c.id);
     return cs;
   };
-  const withheld = (["registry", "plan_share", "supporters", "medical"] as const).filter(
-    (k) => k !== "registry" && !granted(k),
-  );
+  // 様式で落とす物があるのは計画共有と支援者提供だけ（名簿登録は問いの答えだけ、医療班提供は様式に効かない）
+  const withheld = (["plan_share", "supporters"] as const).filter((k) => !granted(k));
 
   // ---- 対象者 ----
   const self = place(contacts.filter((c) => c.kind === "self"));
@@ -1013,7 +1013,9 @@ export function buildMatsuyamaSheet(rows: PersonPageRows, opts: BuildOptions): M
   const drugsReason = pool.take("medical.drugs", under("medical.medications"));
   const doctorReason = pool.take("medical.doctor", under("medical.doctor"));
   const medicalNoteReason = pool.take("notes.medical", (f) => under("medical")(f) || under("clocks")(f));
-  const medicalWithheld: Cell = { kind: "withheld", consent: "medical" };
+  // 様式の医療の欄は計画共有に従う（市に出す計画の一部）。医療班提供は要約（T07）と QR（T16）だけ
+  const medicalShared = granted("plan_share");
+  const medicalWithheld: Cell = { kind: "withheld", consent: "plan_share" };
 
   // ---- 避難 ----
   const hazards = evacuation.hazards;
@@ -1096,7 +1098,7 @@ export function buildMatsuyamaSheet(rows: PersonPageRows, opts: BuildOptions): M
   const welfareReason = pool.take("local.welfare", under("people.welfare_commissioner"));
   const registryReason = pool.take("consent.registry", under("consent.registry"));
   const planShareReason = pool.take("consent.planShare", under("consent.plan_share"));
-  const medicalConsentReason = pool.take("notes.annex", under("consent.medical"));
+  // 医療班提供の pending は様式の欄に効かないので、欄の無い pending と同じく「その他」に出す
 
   const s1Cells = supporterCells(1, s1);
   const s2Cells = supporterCells(2, s2);
@@ -1170,10 +1172,10 @@ export function buildMatsuyamaSheet(rows: PersonPageRows, opts: BuildOptions): M
     "plan.author": opts.officeName || rows.careManagerName
       ? value([strong(opts.officeName ?? ""), t(rows.careManagerName ?? ""), sub(rows.careManagerName ? "ケアマネ" : "")])
       : unconfirmed(),
-    "medical.doctor": granted("medical")
+    "medical.doctor": medicalShared
       ? withPending(contactsCell(doctors, { kind: true }, unconfirmed()), doctorReason)
       : medicalWithheld,
-    "medical.drugs": granted("medical")
+    "medical.drugs": medicalShared
       ? withPending(medLines.length > 0 ? value(...medLines) : NONE, drugsReason)
       : medicalWithheld,
     "risk.home": withPending(riskHome, riskHomeReason),
@@ -1245,16 +1247,15 @@ export function buildMatsuyamaSheet(rows: PersonPageRows, opts: BuildOptions): M
       ],
       unconfirmed: {},
     },
-    "notes.medical": granted("medical") ? withPending(value(...medicalNoteLines), medicalNoteReason) : medicalWithheld,
+    "notes.medical": medicalShared ? withPending(value(...medicalNoteLines), medicalNoteReason) : medicalWithheld,
     "notes.words": ledger.notes.length > 0 ? value(...ledger.notes.map((n) => [t(n)])) : NONE,
     "notes.other": otherLines.length > 0 ? value(...otherLines) : NONE,
     "notes.annex": {
       kind: "choice",
       options: [
-        { label: "あり", on: granted("medical") && hasMedicalDetail, detail: granted("medical") && hasMedicalDetail ? "医療要約" : undefined },
-        { label: "なし", on: !(granted("medical") && hasMedicalDetail) },
+        { label: "あり", on: medicalShared && hasMedicalDetail, detail: medicalShared && hasMedicalDetail ? "医療要約" : undefined },
+        { label: "なし", on: !(medicalShared && hasMedicalDetail) },
       ],
-      unconfirmed: medicalConsentReason ? { reason: medicalConsentReason } : undefined,
     },
     "route.text": route ? value([t(route)]) : unconfirmed(routeReason),
     "route.map": {
