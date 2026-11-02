@@ -1,4 +1,5 @@
 {
+  "enabledMcpjsonServers": ["care72-local"],
   "hooks": {
     "PreToolUse": [
       {

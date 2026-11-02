@@ -4,13 +4,14 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { TOOL_NAMES } from "./mcp/care72-local/tools.ts";
 
 const root = (p: string) => fileURLToPath(new URL(`../${p}`, import.meta.url));
 const read = (p: string) => readFileSync(root(p), "utf8").replaceAll("\r\n", "\n");
 
 type Hook = { type: string; command: string; timeout?: number };
 type Group = { matcher: string; hooks: Hook[] };
-type Settings = { hooks: Record<string, Group[]> };
+type Settings = { hooks: Record<string, Group[]>; enabledMcpjsonServers?: string[] };
 
 const settings: Settings = JSON.parse(read(".claude/settings.json"));
 
@@ -122,6 +123,32 @@ describe(".claude/skills", () => {
   });
 });
 
+type McpConfig = { mcpServers: Record<string, { type?: string; command: string; args?: string[] }> };
+const mcpConfig: McpConfig = JSON.parse(read(".mcp.json"));
+
+describe(".mcp.json の MCP サーバー", () => {
+  it("手元の care72-local の 1 つだけ（stdio、node でリポジトリの中の script）", () => {
+    expect(Object.keys(mcpConfig.mcpServers)).toEqual(["care72-local"]);
+    const s = mcpConfig.mcpServers["care72-local"];
+    expect(s.type).toBe("stdio");
+    expect(s.command).toBe("node");
+    // プロジェクトの .mcp.json では ${CLAUDE_PROJECT_DIR} は既定の値つきで書く（Claude Code の MCP の文書）
+    const [script] = s.args ?? [];
+    const m = /^\$\{CLAUDE_PROJECT_DIR:-\.\}\/(.+)$/.exec(script ?? "");
+    expect(m, script).not.toBeNull();
+    expect(existsSync(root(m![1])), m![1]).toBe(true);
+  });
+
+  it("鍵・ネットの URL を渡さない（env も url も無い）", () => {
+    const raw = read(".mcp.json");
+    expect(raw).not.toMatch(/"env"|"url"|"headers"|https?:/);
+  });
+
+  it(".claude/settings.json で care72-local を使う許可（ほかのサーバーは許さない）", () => {
+    expect(settings.enabledMcpjsonServers).toEqual(["care72-local"]);
+  });
+});
+
 /** Claude Code の公式の文書（sub-agents）にあるサブエージェントの頭の項目。違う名前は黙って無視されるので、ここで止める */
 const AGENT_FIELDS = [
   "name",
@@ -179,6 +206,18 @@ describe(".claude/agents", () => {
     const tools = fields.tools.split(",").map((t) => t.trim());
     expect(tools.length).toBeGreaterThan(0);
     for (const t of tools) expect(READ_ONLY_TOOLS.includes(t) || t.startsWith("mcp__care72-local__"), t).toBe(true);
+  });
+
+  it.each(agents)("$file: MCP の道具の名前は .mcp.json のサーバーに本当にある", ({ fields }) => {
+    const mcp = fields.tools
+      .split(",")
+      .map((t) => t.trim())
+      .filter((t) => t.startsWith("mcp__"));
+    for (const t of mcp) {
+      const [, server, name] = /^mcp__(.+?)__(.+)$/.exec(t) ?? [];
+      expect(Object.keys(mcpConfig.mcpServers), t).toContain(server);
+      expect(TOOL_NAMES, t).toContain(name);
+    }
   });
 
   it.each(agents)("$file: 返す物の節があり、書いてあるファイルが本当にある", ({ file, body }) => {
