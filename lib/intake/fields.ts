@@ -251,6 +251,8 @@ export function displayValue(field: IntakeField, value: unknown): string {
       return label(String(value));
     case "enumList":
     case "list":
+      // 打っている途中（「、」区切りの文字）はそのまま
+      if (typeof value === "string") return value;
       return Array.isArray(value) ? (value.length > 0 ? value.map((v) => label(String(v))).join("・") : BOOL_TEXT.no) : "";
     case "bool":
       return value === true ? BOOL_TEXT.yes : BOOL_TEXT.no;

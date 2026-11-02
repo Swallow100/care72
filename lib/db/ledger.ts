@@ -46,6 +46,8 @@ export type Applied = {
   fields: string[];
   /** 当てなかった変更（埋まっていた・形が違う）の数 */
   skipped: number;
+  /** 空欄の理由として残した物（分からない・答えない・次回） */
+  pending: Ledger["pending"];
 };
 
 type Medication = Ledger["medical"]["medications"][number];
@@ -211,6 +213,7 @@ export function applyLedgerChanges(ledger: Ledger, changes: ReadonlyArray<Intake
   const exactOnly = new Set(["medical.medications", "medical.devices"]);
   const resolved = (field: string) => fields.some((k) => field === k || (!exactOnly.has(k) && field.startsWith(`${k}.`)));
   const kept = out.pending.filter((p) => !resolved(p.field) && !pendingSet.some((s) => s.field === p.field));
-  out = { ...out, pending: [...kept, ...pendingSet.filter((s) => !resolved(s.field))] };
-  return { ledger: out, fields: [...new Set(fields)], skipped };
+  const added = pendingSet.filter((s) => !resolved(s.field));
+  out = { ...out, pending: [...kept, ...added] };
+  return { ledger: out, fields: [...new Set(fields)], skipped, pending: added };
 }
