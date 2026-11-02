@@ -557,6 +557,66 @@ export type Form9RankEditRow = {
   set_at: string;
 };
 
+// ---------- 災害モード（T09） ----------
+
+/** 事業所の状態: 平時・大雨・地震。平時のほかを「災害モード」と呼ぶ */
+export const DISASTER_KINDS = ["normal", "heavy_rain", "earthquake"] as const;
+export type DisasterKind = (typeof DISASTER_KINDS)[number];
+
+/** 停電の範囲: 無し・事業所全体・地区（町名） */
+export const OUTAGE_SCOPES = ["none", "office", "area"] as const;
+export type OutageScope = (typeof OUTAGE_SCOPES)[number];
+
+/** 警戒レベル（避難の様式の言葉）。人が入れる。ルールの表の入力には今は使わない（docs/DECISIONS.md） */
+export const ALERT_LEVELS = [3, 4, 5] as const;
+export type AlertLevel = (typeof ALERT_LEVELS)[number];
+
+/**
+ * 事業所の災害の状態。事業所ごとに 1 行。行が無ければ平時。
+ * 平時に戻すと発災・停電・レベル・断水・道路は全部 NULL に戻す（次の災害で前の停電の時刻が時計を走らせないように）。
+ * 変えるたびに事業所の経過（office_timeline_entries）に 1 行足す
+ */
+export type DisasterStateRow = {
+  office_id: string;
+  kind: DisasterKind;
+  /** 発災（災害モードに切り替えた時刻）。平時は NULL */
+  started_at: string | null;
+  /** 災害モードに切り替えた人 */
+  started_by: string | null;
+  outage_scope: OutageScope;
+  /** 停電の地区（町名の JSON の配列）。範囲が地区のときだけ */
+  outage_towns: string | null;
+  /** 停電の始まり。停電が無ければ NULL */
+  outage_started_at: string | null;
+  alert_level: AlertLevel | null;
+  /** 断水（文字） */
+  water: string | null;
+  /** 道路（文字） */
+  road: string | null;
+  /** 版。画面で読んだ版のときだけ書く（重なった保存は片方だけ） */
+  version: number;
+  updated_by: string | null;
+  updated_at: string;
+};
+
+/** 事業所の経過の種類: 災害モードに入れた（種類を替えたも）・平時に戻した・災害の情報を変えた */
+export const OFFICE_TIMELINE_KINDS = ["disaster_on", "disaster_off", "disaster_info"] as const;
+export type OfficeTimelineKind = (typeof OFFICE_TIMELINE_KINDS)[number];
+
+/** 事業所の経過 1 行。本人の経過（timeline_entries）とは別の表。誰が・いつ・何を */
+export type OfficeTimelineEntryRow = {
+  id: string;
+  office_id: string;
+  author_id: string | null;
+  author_role: AuthorRole;
+  kind: OfficeTimelineKind;
+  body: string | null;
+  /** 変えたあとの状態の写し（JSON）。人の名前・住所は入れない */
+  payload: string | null;
+  occurred_at: string;
+  created_at: string;
+};
+
 // ---------- 訓練の JSON の形 ----------
 
 /** ペルソナ（Haiku）が 1 刻みで返す決まった形。言葉は毎回違っても形は同じ */
