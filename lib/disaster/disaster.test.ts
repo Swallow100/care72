@@ -345,8 +345,8 @@ describe("災害モードで並びが変わる（担当一覧・本人のペー�
     const lines = sortCaseload(data!.rows, "tier").map((r) => `${r.name.split(" ")[0]} ${CHAR[r.triage!.color]} ${r.triage!.reason}`);
     expect(lines.slice(0, 3)).toEqual([
       "山田 赤 酸素 内蔵電池 2 時間を超過",
-      "小林 黄 人工呼吸器 内蔵電池 残り 0 分、未確認 5 時間",
-      "田中 黄 透析先 未確認、未確認 5 時間",
+      "小林 黄 人工呼吸器 内蔵電池 残り 0 分、連絡なし 5 時間",
+      "田中 黄 透析先 未確認、連絡なし 5 時間",
     ]);
     // 3 時間を過ぎたら小林は赤
     const later = await loadCaseload(db, scope, "2026-11-04", at(3.5));
@@ -382,7 +382,7 @@ describe("災害モードで並びが変わる（担当一覧・本人のペー�
     expect(d.mode).toBe("disaster");
     const view = toPersonView(rows!, { today: "2026-11-04", mode: d.mode, triage: d.triage });
     expect(view.sections[0].id).toBe("timeline");
-    expect(view.head.priority).toMatchObject({ kind: "triage", color: "yellow", label: "要確認", reason: "透析先 未確認、未確認 5 時間" });
+    expect(view.head.priority).toMatchObject({ kind: "triage", color: "yellow", label: "要確認", reason: "透析先 未確認、連絡なし 5 時間" });
   });
 
   it("様式 9 も同じ色と順位（災害モードの表から読む）", async () => {

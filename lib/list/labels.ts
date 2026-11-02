@@ -1,5 +1,5 @@
 // 担当一覧の発災時（T13）の言葉。2〜4 字の漢語（CLAUDE.md「画面の決まり」）。
-// 色の言葉（至急・要確認・未知・無事）は lib/labels.ts の COLOR_LABELS、連絡先の種類は CONTACT_KIND_LABELS。
+// 色の言葉（至急・要確認・不明・無事）は lib/labels.ts の COLOR_LABELS、連絡先の種類は CONTACT_KIND_LABELS。
 
 import type { RecordingClass } from "../db/types.ts";
 

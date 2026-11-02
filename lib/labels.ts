@@ -83,7 +83,7 @@ export const HAZARD_LABELS: Record<HazardKind, string> = {
 export const COLOR_LABELS: Record<Color, string> = {
   red: "至急",
   yellow: "要確認",
-  gray: "未知",
+  gray: "不明",
   green: "無事",
 };
 

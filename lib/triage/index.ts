@@ -31,7 +31,7 @@ export type Basis = {
   sourceIds: ReadonlyArray<SourceId>;
 };
 
-/** 赤 至急・黄 要確認・灰 未知・緑 無事（赤は連絡の順の言葉で、本人の状態を言い切らない） */
+/** 赤 至急・黄 要確認・灰 不明・緑 無事（赤は連絡の順の言葉で、本人の状態を言い切らない） */
 export type Color = "red" | "yellow" | "gray" | "green";
 
 /** 優先の骨格 1〜8（何で時間が決まるか） */
@@ -41,11 +41,11 @@ export type Tier = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
 export type RuleId =
   | "red_injury" // 赤 ＋ けが・動けない → 赤、最上位
   | "red" // 赤だけ → 赤
-  | "unknown_device_over" // 未知 ＋ 停電が機器の時計を超えた → 赤
-  | "unknown_clock_over" // 未知 ＋ 機器以外の時計を超えた → 赤（案 2）
-  | "unknown_half" // 未知 ＋ 時計の半分を過ぎた → 黄
-  | "unknown_unchecked" // 未知 ＋ 外の物に頼る時計が未確認 → 黄（案 1）
-  | "unknown" // 未知（時計の半分まで） → 灰
+  | "unknown_device_over" // 不明 ＋ 停電が機器の時計を超えた → 赤
+  | "unknown_clock_over" // 不明 ＋ 機器以外の時計を超えた → 赤（案 2）
+  | "unknown_half" // 不明 ＋ 時計の半分を過ぎた → 黄
+  | "unknown_unchecked" // 不明 ＋ 外の物に頼る時計が未確認 → 黄（案 1）
+  | "unknown" // 不明（時計の半分まで） → 灰
   | "green_out_after_report" // 緑の報告のあとに機器の時計が切れた → 赤（案 3）
   | "green_out_before_report" // 機器の時計が切れたあとの緑 → 黄（案 3）
   | "green_device_low" // 緑だが機器の時計の半分を過ぎた → 黄
@@ -230,7 +230,7 @@ export function tierBasis(tier: Tier): Basis {
 
 /** 入力の読み方。docs/TRIAGE.md の「読み方」に出る */
 export const READING: ReadonlyArray<{ text: string; origin: string }> = [
-  { text: "信号は時刻のいちばん新しい物を使う。今より後の時刻の信号は使わない。信号が無ければ未知", origin: "決めた所" },
+  { text: "信号は時刻のいちばん新しい物を使う。今より後の時刻の信号は使わない。信号が無ければ不明", origin: "決めた所" },
   {
     text: "本人の報告を当てにしない印（人が台帳で付ける）がある人は、本人（訓練の本人役を含む）の緑を使わない。家族・支援者・ケアマネの緑は使う。赤はそのまま赤",
     origin: "案 4",
@@ -363,7 +363,7 @@ type RuleInput = {
 
 const over = (c: ClockState) => `${c.clock.label} ${formatHours(c.hours)}を超過`;
 const left = (c: ClockState) => (isOver(c) ? over(c) : `${c.clock.label} 残り ${formatHours(c.remaining)}`);
-const unconfirmed = (x: RuleInput) => (x.hoursSinceDisaster > 0 ? `未確認 ${formatHours(x.hoursSinceDisaster)}` : "未確認");
+const unconfirmed = (x: RuleInput) => (x.hoursSinceDisaster > 0 ? `連絡なし ${formatHours(x.hoursSinceDisaster)}` : "連絡なし");
 const who = (x: RuleInput) => (x.signal ? WHO[x.signal.source] : "本人");
 const uncheckedWords = (x: RuleInput) => x.unchecked.map((d) => `${DEPENDS_ON_LABELS[d]} 未確認`).join("、");
 
@@ -418,7 +418,7 @@ function devicesOut(x: RuleInput): { afterReport: ClockState[]; beforeReport: Cl
 
 export type Rule = Basis & {
   id: RuleId;
-  /** どの信号の行か（未知は信号が無いときも） */
+  /** どの信号の行か（不明は信号が無いときも） */
   signal: SignalColor;
   /** 表の「入力」 */
   input: string;
@@ -464,7 +464,7 @@ export const RULES: ReadonlyArray<Rule> = [
   {
     id: "unknown_device_over",
     signal: "unknown",
-    input: "未知 ＋ 停電が機器の時計を超えた",
+    input: "不明 ＋ 停電が機器の時計を超えた",
     color: "red",
     example: "酸素 内蔵電池 2 時間を超過",
     origin: "仕様書",
@@ -475,7 +475,7 @@ export const RULES: ReadonlyArray<Rule> = [
   {
     id: "unknown_clock_over",
     signal: "unknown",
-    input: "未知 ＋ 機器以外の時計（透析・インスリン・栄養剤・薬）を超えた",
+    input: "不明 ＋ 機器以外の時計（透析・インスリン・栄養剤・薬）を超えた",
     color: "red",
     example: "透析 次の回まで 2 日を超過",
     origin: "案 2",
@@ -486,9 +486,9 @@ export const RULES: ReadonlyArray<Rule> = [
   {
     id: "unknown_half",
     signal: "unknown",
-    input: "未知 ＋ 時計の半分を過ぎた",
+    input: "不明 ＋ 時計の半分を過ぎた",
     color: "yellow",
-    example: "透析 次の回まで 残り 18 時間、未確認 30 時間",
+    example: "透析 次の回まで 残り 18 時間、連絡なし 30 時間",
     origin: "仕様書",
     why: "返事がないまま時計の半分を過ぎた → 切れる前に確かめる",
     sourceIds: ["mhlw-bcp-2020", "nanbyo-shishin-2017"],
@@ -497,10 +497,10 @@ export const RULES: ReadonlyArray<Rule> = [
   {
     id: "unknown_unchecked",
     signal: "unknown",
-    input: "未知 ＋ 外の物に頼る時計の確認が未確認",
+    input: "不明 ＋ 外の物に頼る時計の確認が未確認",
     color: "yellow",
-    example: "透析先 未確認、未確認 6 時間",
-    origin: "案 1 を未知に広げた",
+    example: "透析先 未確認、連絡なし 6 時間",
+    origin: "案 1 を不明に広げた",
     why: "透析先・冷蔵・配達は外の事情で止まる → 本人に連絡がつかない間に頼り先を確かめる",
     sourceIds: ["jadp-dialysis-2023", "jadec-insulin-2023"],
     saysUnchecked: true,
@@ -509,9 +509,9 @@ export const RULES: ReadonlyArray<Rule> = [
   {
     id: "unknown",
     signal: "unknown",
-    input: "未知（時計の半分まで。薬だけで時計 24 時間なら 12 時間までは灰）",
+    input: "不明（時計の半分まで。薬だけで時計 24 時間なら 12 時間までは灰）",
     color: "gray",
-    example: "未確認 6 時間",
+    example: "連絡なし 6 時間",
     origin: "仕様書",
     why: "連絡がつかないだけでは様子は分からない → 時計の短い人から順に確かめる",
     sourceIds: ["mhlw-bcp-2020", "cao-shishin-2021"],

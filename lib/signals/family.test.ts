@@ -491,7 +491,7 @@ describe("画面の静的な描画", () => {
     ];
     for (const s of states) {
       const t = text(view(s, screen));
-      for (const w of ["至急", "要確認", "未知", "診断", "判定", "重症", "かわなぎ町", "松山市"]) expect(t, `${s.step} ${w}`).not.toContain(w);
+      for (const w of ["至急", "要確認", "不明", "診断", "判定", "重症", "かわなぎ町", "松山市"]) expect(t, `${s.step} ${w}`).not.toContain(w);
     }
   });
 
