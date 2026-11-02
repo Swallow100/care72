@@ -361,7 +361,7 @@ describe("デモの雨雲と震度", () => {
     expect(html).toContain('data-demo="label"');
     expect(html).toMatch(/data-demo="label"[^>]*><span class="font-bold">デモ<\/span><span[^>]*>大雨 レベル 4<\/span>/);
     expect(html).toContain('data-demo="rain"');
-    expect(html).toContain("筋書きの値");
+    expect(html).toContain("想定の値");
     expect(html).toContain("data-states");
   });
 
