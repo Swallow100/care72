@@ -14,4 +14,7 @@
 | typescript | 型 | Apache-2.0 |
 | @types/node・@types/react・@types/react-dom | 型 | MIT |
 | vitest | テスト | MIT |
+| @anthropic-ai/sdk | Claude を呼ぶ（lib/claude） | Apache-2.0（1.0.0 から。前の版は MIT） |
+| @google/genai | Gemini TTS で声を作る（lib/gemini。fetch だけで動く web の入口を使う） | Apache-2.0 |
+| zod | Claude の返す JSON の形を書き、返った物を検査する | MIT |
 | BIZ UDPGothic（next/font/google で build のときに取り込む） | 書体 | OFL-1.1 |
