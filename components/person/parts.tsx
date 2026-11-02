@@ -41,12 +41,14 @@ export function LineText({ line }: { line: Line }) {
   );
 }
 
-/** 台帳の pending の印。黄の「未確認」と理由（不明・未聴取・無回答） */
+/** 台帳の pending の印。黄の文字の「未確認」と理由（不明・未聴取・無回答）。数が多いので塗りの印にしない */
 export function PendingMark({ pending }: { pending: readonly Pending[] }) {
   const reasons = [...new Set(pending.map((p) => PENDING_STATUS_LABELS[p.status]))];
   return (
     <span className="inline-flex items-baseline gap-2" data-pending={pending.length}>
-      <StateTag tone="check">{BLANK_LABELS.unconfirmed}</StateTag>
+      <span className={`text-xs font-bold ${TONE_TEXT.check}`} data-tone="check">
+        {BLANK_LABELS.unconfirmed}
+      </span>
       <span className="text-xs text-muted">{reasons.join("・")}</span>
     </span>
   );

@@ -4,10 +4,12 @@
 // 区分は面の幅に合わせて 1〜3 段に流す（container query）。区分の順は lib/person.ts の sectionOrder（発災時は経過が一番上）。
 // 入れる欄（T03）はここに置かない。
 
-import Link from "next/link";
+import { ButtonLink } from "@/components/ui/Button";
+import { PaperIcon, PrintIcon } from "@/components/ui/Icon";
+import { StateText } from "@/components/ui/Tag";
 import type { Block, ClockView, DocumentView, PersonView as View, Section } from "@/lib/person";
 import { BLANK_LABELS, CLOCK_PARTS } from "@/lib/labels";
-import { Blank, PendingMark, RowItem, StateTag, TONE_TEXT, type Level } from "./parts";
+import { Blank, PendingMark, RowItem, TONE_TEXT, type Level } from "./parts";
 import { PersonHead } from "./PersonHead";
 import { Timeline } from "./Timeline";
 
@@ -34,13 +36,13 @@ function SectionPanel({ section, level, titleId }: { section: Section; level: Le
       data-section={section.id}
     >
       <div className="flex items-baseline gap-2">
-        <H id={titleId} className="font-bold">
+        <H id={titleId} className="text-[1rem] leading-6 font-bold">
           {section.label}
         </H>
         {section.unconfirmed > 0 && (
-          <StateTag tone="check">
-            {BLANK_LABELS.unconfirmed} <span className="tabular-nums">{section.unconfirmed}</span>
-          </StateTag>
+          <StateText tone="check" className="text-xs">
+            {BLANK_LABELS.unconfirmed} {section.unconfirmed}
+          </StateText>
         )}
       </div>
       <div className="mt-1.5">
@@ -74,16 +76,29 @@ function Blocks({ blocks }: { blocks: readonly Block[] }) {
 
 const LABEL_COL = "grid grid-cols-[4.5rem_minmax(0,1fr)] gap-x-2";
 
-/** 書類の行。紙面ができた書類（href あり）は「表示」のリンク、まだの物は「準備中」 */
+/** 印刷の行き先。紙面の画面を ?print=1 で開くと、開いてすぐ印刷の画面が出る（components/ui/PrintButton の auto） */
+function printHref(href: string): string {
+  return `${href}${href.includes("?") ? "&" : "?"}print=1`;
+}
+
+/**
+ * 書類の行。紙面ができた書類（href あり）は「表示」と「印刷」を並べ、1 押しで印刷の画面まで行ける。
+ * まだの物は「準備中」
+ */
 function DocumentRow({ doc }: { doc: DocumentView }) {
   return (
-    <div className={LABEL_COL} data-field={`documents.${doc.key}`}>
-      <dt className="pt-px text-xs text-muted">{doc.label}</dt>
-      <dd className={doc.href ? "text-xs" : "text-xs text-muted"}>
+    <div className={`${LABEL_COL} items-center`} data-field={`documents.${doc.key}`}>
+      <dt className="text-xs text-muted">{doc.label}</dt>
+      <dd className={doc.href ? "flex flex-wrap gap-1" : "text-xs text-muted"}>
         {doc.href ? (
-          <Link href={doc.href} className="-mx-1 rounded px-1 text-accent underline underline-offset-4" data-press>
-            {doc.status}
-          </Link>
+          <>
+            <ButtonLink href={doc.href} kind="plain" size="sm" icon={PaperIcon}>
+              {doc.status}
+            </ButtonLink>
+            <ButtonLink href={printHref(doc.href)} kind="plain" size="sm" icon={PrintIcon} data-print-link={doc.key}>
+              印刷
+            </ButtonLink>
+          </>
         ) : (
           doc.status
         )}
@@ -108,9 +123,9 @@ function ClocksRow({ label, clocks }: { label: string; clocks: readonly ClockVie
                   <span>{k.label}</span>
                   <ClockValue clock={k} />
                   {k.depends && (
-                    <StateTag tone={k.depends.unchecked ? "check" : "ok"}>
+                    <StateText tone={k.depends.unchecked ? "check" : "ok"} className="text-xs">
                       {k.depends.on} {k.depends.check}
-                    </StateTag>
+                    </StateText>
                   )}
                 </div>
                 <div className="flex flex-wrap gap-x-2 text-xs text-muted">

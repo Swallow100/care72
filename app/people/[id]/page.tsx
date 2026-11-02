@@ -1,7 +1,7 @@
 import { getCloudflareContext } from "@opennextjs/cloudflare";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { PersonWithIntake } from "@/components/person/PersonWithIntake";
+import { BackLink, Page } from "@/components/ui/Panel";
 import { todayJst } from "@/lib/age";
 import { homePath } from "@/lib/auth/roles";
 import { requirePage } from "@/lib/auth/server";
@@ -31,13 +31,12 @@ export default async function PersonPage({ params }: Props) {
   const intake = principal.role === "care_manager" ? intakePropsOf(rows, hasAnthropicKey(env)) : null;
 
   return (
-    <main className="mx-auto max-w-6xl px-4 py-4">
-      <Link href={homePath(principal.role)} className="inline-block rounded px-2 py-1 text-sm text-muted" data-press>
-        戻る
-      </Link>
-      <div className="mt-2">
+    <Page width="full" className="max-w-6xl">
+      {/* 戻るは左上に 1 つ */}
+      <BackLink href={homePath(principal.role)} />
+      <div className="mt-1">
         <PersonWithIntake view={view} level={1} intake={intake} />
       </div>
-    </main>
+    </Page>
   );
 }

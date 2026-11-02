@@ -4,6 +4,7 @@
 
 import type { PersonHead as Head } from "@/lib/person";
 import { BLANK_LABELS, HEAD_LABELS } from "@/lib/labels";
+import { Mark } from "@/components/ui/Tag";
 import { LineText, StateTag, TONE_TEXT, type Level } from "./parts";
 
 function Fact({ label, children }: { label: string; children: React.ReactNode }) {
@@ -27,10 +28,10 @@ function Cell({ label, children }: { label: string; children: React.ReactNode })
 
 /** 発災時の上の細い帯（ルールの表の色）。面全体は塗らない */
 const BAND: Record<string, string> = {
-  urgent: "bg-state-urgent",
-  check: "bg-state-check",
-  unknown: "bg-state-unknown",
-  ok: "bg-state-ok",
+  urgent: "bg-state-urgent-fill",
+  check: "bg-state-check-fill",
+  unknown: "bg-state-unknown-fill",
+  ok: "bg-state-ok-fill",
 };
 
 export function PersonHead({ head, level, titleId }: { head: Head; level: Level; titleId: string }) {
@@ -41,7 +42,7 @@ export function PersonHead({ head, level, titleId }: { head: Head; level: Level;
       {p.kind === "triage" && <div className={`h-1 ${BAND[p.tone]}`} aria-hidden="true" />}
       <div className="p-3">
         <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-          <H id={titleId} className="text-xl font-bold">
+          <H id={titleId} className="text-xl leading-8 font-bold">
             {head.name}
           </H>
           <span className="text-sm text-muted">{head.kana}</span>
@@ -83,17 +84,12 @@ export function PersonHead({ head, level, titleId }: { head: Head; level: Level;
               <span className="text-sm text-muted">{BLANK_LABELS.none}</span>
             ) : (
               <span className="flex flex-wrap gap-1">
-                {head.marks.map((m) =>
-                  m.tone ? (
-                    <StateTag key={m.label} tone={m.tone} size="md">
-                      {m.label}
-                    </StateTag>
-                  ) : (
-                    <span key={m.label} className="rounded bg-panel px-1.5 py-0.5 text-sm">
-                      {m.label}
-                    </span>
-                  ),
-                )}
+                {/* 医療の印は地を塗らず、時計の長さの色は文字に（塗りの印は優先の状態だけ） */}
+                {head.marks.map((m) => (
+                  <Mark key={m.label} inPanel2 size="md" tone={m.tone ?? null}>
+                    {m.label}
+                  </Mark>
+                ))}
               </span>
             )}
           </Cell>
