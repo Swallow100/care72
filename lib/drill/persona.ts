@@ -9,7 +9,8 @@
 // - 想定の表（lib/drill/scenarios.ts）の行がある刻みは、表が骨: 誰から・赤か緑か・4 問・どこに は表のまま、言う事とする事だけ Haiku の言葉
 //   （審査員の回でも形は同じで言葉だけ変わる）。表の行が無い刻みだけ、Haiku が連絡するかを決める
 // - スマホで赤緑を押せるのは、本人なら台帳の連絡手段が「使える」の人、家族・支援者ならスマホのある人だけ（表の行が無い刻み）
-// - 失敗（鍵なし・上限・断られた・形の違い・呼び出しの失敗・伏せきれない）は「連絡なし」（空の配列）。知らない例外は投げ、engine が受け止める
+// - 失敗（鍵なし・上限・断られた・形の違い・呼び出しの失敗・伏せきれない・台帳を読めない）は、想定の表の行があれば表の固定の安否
+//   （ai: false、AI の印なし）、無ければ「連絡なし」（空の配列）
 // - 通話（T20）の相手も同じ本人役で答える。出る・出ない・背景の音だけは先に表の割合で決め、Haiku は言葉だけ（personaCallReply）
 
 import type { D1Database } from "@cloudflare/workers-types";
@@ -444,6 +445,11 @@ function turnOfFixed(f: FixedTurn, hour: number): Omit<DrillTurn, "saying" | "do
   };
 }
 
+/** 想定の表の行をそのまま安否に（Haiku が失敗したときの戻り先。表の言葉で、AI の印なし）。engine の fixedToTurn と同じ形 */
+export function fixedTurns(input: Pick<PersonaInput, "fixed" | "hour">): DrillTurn[] {
+  return input.fixed.map((f) => ({ ...turnOfFixed(f, input.hour), saying: f.saying ?? null, doing: f.doing ?? null, ai: false }));
+}
+
 /**
  * Haiku の返事を安否にする。
  * - 想定の表の行がある: 行ごとに 1 つ。形は表のまま、いちばん遅い行の言う事・する事を Haiku の言葉に（使えなければ表の言葉、ai: false）
@@ -564,22 +570,25 @@ export type PersonaDeps = {
 
 /**
  * engine の PersonaHook を作る（1 要求ごと）。本人 1 人の 1 刻みに Haiku を 1 回。
- * 台帳に無い本人・押せる人も表の行も無い本人は呼ばずに連絡なし。失敗は連絡なし
+ * 押せる人も表の行も無い本人は呼ばずに連絡なし。
+ * 失敗（Haiku の失敗・台帳を読めない・台帳に無い本人）は、想定の表の行があれば表の固定の安否（ai: false、AI の印なし）、
+ * 無ければ連絡なし（docs/progress/t18.md の問い 2 の答え）
  */
 export function createPersonaHook(deps: PersonaDeps): PersonaHook {
   let loaded: Promise<ReadonlyMap<string, PseudonymInput>> | null = null;
   return async (input) => {
-    const source = (await (loaded ??= deps.load())).get(input.person);
-    if (!source) return [];
     try {
+      const source = (await (loaded ??= deps.load())).get(input.person);
+      if (!source) return fixedTurns(input);
       const persona = buildPersona(source, deps.on ? { on: deps.on } : {});
       if (input.fixed.length === 0 && !persona.reporters.some((r) => r.canPress)) return [];
       const tick = pseudonymizeText(tickText(input, persona), persona.key);
       const r = await askJson(buildPersonaRequest(persona.profile, tick), deps.ai);
       return personaTurns(input, persona, r.value);
     } catch (e) {
-      if (isPersonaFailure(e)) return [];
-      throw e;
+      // AI の層の失敗と伏せきれないは想定どおり。それ以外（台帳を読めないなど）は名前だけログに残す（中身は書かない）
+      if (!isPersonaFailure(e)) console.error("本人役の 1 刻みに失敗", e instanceof Error ? e.name : typeof e);
+      return fixedTurns(input);
     }
   };
 }
