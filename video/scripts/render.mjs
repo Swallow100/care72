@@ -14,8 +14,9 @@ if (mode === "still") {
   const out = rest[1] ?? `out/${comp}-${frame}.png`;
   run("npx", ["remotion", "still", "src/index.ts", comp, out, `--frame=${frame}`, "--image-format=png"]);
 } else if (mode === "video") {
+  // 出す場所のあとの引数は Remotion にそのまま渡す（例: --frames=0-89 で頭の 3 秒だけ）
   const out = rest[0] ?? `out/${comp}.mp4`;
-  run("npx", ["remotion", "render", "src/index.ts", comp, out, "--codec=h264", "--audio-codec=aac", "--audio-bitrate=320k"]);
+  run("npx", ["remotion", "render", "src/index.ts", comp, out, "--codec=h264", "--audio-codec=aac", "--audio-bitrate=320k", ...rest.slice(1)]);
   console.log(`次: node scripts/loudnorm.mjs ${out} out/${comp}-final.mp4`);
 } else {
   console.error("使い方: node scripts/render.mjs still [動画の名前] [コマ] [出す場所] / node scripts/render.mjs video [動画の名前] [出す場所]");

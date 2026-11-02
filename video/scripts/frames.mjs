@@ -27,8 +27,9 @@ mkdirSync(outDir, { recursive: true });
 for (const f of readdirSync(outDir)) if (/^\d{5}\.jpg$/.test(f)) rmSync(join(outDir, f));
 
 const ff = ffmpeg();
-// 映像: 30fps の jpg。大きさは録画のまま（編集で寄るので縮めない）
-run(ff.cmd, [...ff.pre, "-hide_banner", "-loglevel", "error", ...range, "-i", src, "-vf", "fps=30", "-q:v", "2", join(outDir, "%05d.jpg")]);
+// 映像: 30fps の jpg。大きさは録画のまま（編集で寄るので縮めない）。
+// Remotion の ffmpeg には fps の filter が無いので、出力の -r と -fps_mode cfr で 30fps にそろえる
+run(ff.cmd, [...ff.pre, "-hide_banner", "-loglevel", "error", ...range, "-i", src, "-r", "30", "-fps_mode", "cfr", "-q:v", "2", join(outDir, "%05d.jpg")]);
 
 // 音: 48kHz の wav。録画に音が無ければ飛ばす
 const audioDir = join(ROOT, "public", "audio", "app");

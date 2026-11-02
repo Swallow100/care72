@@ -1,6 +1,6 @@
 // scripts の共通の道具: video/ の場所、一時フォルダを video/.tmp に向けた環境、命令の流し方、ffmpeg の呼び方。
 import { spawnSync } from "node:child_process";
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -21,7 +21,8 @@ export function tmpEnv() {
 function prepare(cmd, args) {
   const shell = isWin && cmd === "npx";
   if (!shell) return { cmd, args, shell };
-  const quote = (a) => (/[\s"&|<>^()]/.test(a) ? `"${a.replace(/"/g, '""')}"` : a);
+  // npx.cmd は batch なので、= , ; も引数の区切りに読まれる（fps=30 が fps と 30 に割れた）。これらを含む引数も囲む
+  const quote = (a) => (/[\s"&|<>^()=,;]/.test(a) ? `"${a.replace(/"/g, '""')}"` : a);
   return { cmd, args: args.map(quote), shell };
 }
 
@@ -43,12 +44,19 @@ export function capture(cmd, args) {
 }
 
 /**
- * ffmpeg の呼び方。環境変数 FFMPEG か、PATH の ffmpeg。無ければ Remotion に入っている ffmpeg（npx remotion ffmpeg）。
+ * ffmpeg の呼び方。順に: 環境変数 FFMPEG、PATH の ffmpeg、Remotion の部品に入っている ffmpeg（直に呼ぶ）、npx remotion ffmpeg。
  * Remotion の ffmpeg は機能を絞った物なので、loudnorm が無ければ PATH に ffmpeg を入れる（README の「音」）。
  */
 export function ffmpeg() {
   const own = process.env.FFMPEG || "ffmpeg";
-  const r = spawnSync(own, ["-version"], { stdio: "ignore" });
-  if (r.status === 0) return { cmd: own, pre: [] };
+  if (spawnSync(own, ["-version"], { stdio: "ignore" }).status === 0) return { cmd: own, pre: [] };
+  const scope = join(ROOT, "node_modules", "@remotion");
+  if (existsSync(scope)) {
+    for (const dir of readdirSync(scope)) {
+      if (!dir.startsWith("compositor-")) continue;
+      const exe = join(scope, dir, isWin ? "ffmpeg.exe" : "ffmpeg");
+      if (existsSync(exe) && spawnSync(exe, ["-version"], { stdio: "ignore" }).status === 0) return { cmd: exe, pre: [] };
+    }
+  }
   return { cmd: "npx", pre: ["remotion", "ffmpeg"] };
 }

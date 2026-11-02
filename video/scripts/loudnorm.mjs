@@ -20,7 +20,8 @@ const TARGET = "I=-14:TP=-1.5:LRA=11";
 const ff = ffmpeg();
 
 function measure(file) {
-  const r = capture(ff.cmd, [...ff.pre, "-hide_banner", "-i", file, "-af", `loudnorm=${TARGET}:print_format=json`, "-f", "null", "-"]);
+  // 測るのは音だけ（-vn）。Remotion の ffmpeg は映像を null に出す encoder を持たない
+  const r = capture(ff.cmd, [...ff.pre, "-hide_banner", "-i", file, "-vn", "-af", `loudnorm=${TARGET}:print_format=json`, "-f", "null", "-"]);
   const text = `${r.stdout ?? ""}${r.stderr ?? ""}`;
   const json = text.slice(text.lastIndexOf("{"), text.lastIndexOf("}") + 1);
   try {

@@ -14,6 +14,7 @@ Remotion は MIT ではない。Remotion License で、個人・従業員 3 人�
 cd video
 npm install        # Remotion と React。初めての書き出しで Chrome Headless Shell を node_modules に落とす
 npm run check      # 台本の食い違い・時間割・声の速さの目安
+npm run scan       # public/assets.json を作る（素材が無くても作る。無いと読み込みの 404 が出る）
 npm run studio     # Remotion Studio（http://localhost:3000）で通しで見る
 ```
 
@@ -62,12 +63,12 @@ docs/video の見本（`sample-blue.png` は 1260 コマ目、`sample-white.png`
 
 - **OffthreadVideo の "No frame found"**: Windows で mp4 を `<OffthreadVideo>` で読むと、書き出しの途中で "No frame found" で止まることがある。この枠は録画を静止画の連番（`scripts/frames.mjs`）にして `<Img>` で 1 コマずつ読むので起きない。録画を足すときも連番にする
 - **一時フォルダ**: Remotion は書き出しの途中のコマを一時フォルダに書く。Windows の `%TEMP%` は C: にあり、3 分の書き出しで C: が埋まることがある。ストレージ センサーが書き出しの途中で `%TEMP%` を消すこともある。`scripts/` の命令は全部 `TEMP`・`TMP` をこのフォルダの `.tmp/` に向けてから Remotion と ffmpeg を呼ぶ（`scripts/lib.mjs` の tmpEnv）。`npx remotion` を直に打つときも、先に `TEMP` と `TMP` を `.tmp` に向ける
-- **npx は .cmd**: Windows の npx は shell が要るので、`scripts/lib.mjs` は npx のときだけ shell で呼び、空白を含む引数を引用符で囲む（Node が DEP0190 の注意を出すが、引数は自分で囲んでいる）
+- **npx は .cmd**: Windows の npx は batch なので shell が要り、`=`・`,`・`;` も引数の区切りに読まれる（`fps=30` が `fps` と `30` に割れた）。`scripts/lib.mjs` は npx のときだけ shell で呼び、空白とこれらを含む引数を引用符で囲む（Node が DEP0190 の注意を出すが、引数は自分で囲んでいる）。ffmpeg は shell を通さず直に呼ぶ
 - **install script**: npm が esbuild の postinstall を「allowScripts に無い」と止めることがある。手元では止まったままで書き出せた。bundle で esbuild が見つからないと言われたら `npm install-scripts approve esbuild` のあと `npm rebuild esbuild`
 
 ## 音（loudnorm）
 
-`scripts/loudnorm.mjs` は ffmpeg の loudnorm を使う。環境変数 `FFMPEG` か PATH の ffmpeg を先に使い、無ければ Remotion に入っている ffmpeg（`npx remotion ffmpeg`）を使う。Remotion の ffmpeg は機能を絞った物なので、loudnorm が無いと言われたら ffmpeg を別に入れる（例: `winget install Gyan.FFmpeg`。道具で、リポジトリにも依存にも入れない）。
+`scripts/frames.mjs` と `scripts/loudnorm.mjs` は ffmpeg を、環境変数 `FFMPEG` → PATH の ffmpeg → Remotion の部品に入っている ffmpeg（`node_modules/@remotion/compositor-*/ffmpeg`、直に呼ぶ）→ `npx remotion ffmpeg` の順で探す。Remotion の ffmpeg は filter を絞った物（11/3 に数えて 50）で、`fps` の filter が無い（frames は出力の `-r 30 -fps_mode cfr` で 30fps にそろえる）、映像を null に出す encoder も無い（loudnorm は `-vn` で音だけ測る）。loudnorm はある。11/3 に 5 秒の試しの書き出しで -18.85 → -14.05 LUFS を確かめた。別の ffmpeg を使うなら `FFMPEG` に道を入れる（道具で、リポジトリにも依存にも入れない）。
 
 ## ファイル
 
