@@ -59,6 +59,7 @@
 }
 
 @theme inline {
+  /* text-base は使わない（--color-base と重なり、文字が地の色になる）。文字の大きさは text-sm などか、指定しない */
   --color-base: var(--base);
   --color-panel: var(--panel);
   --color-panel2: var(--panel2);

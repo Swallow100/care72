@@ -24,7 +24,7 @@ export default async function PersonPage({ params }: Props) {
   const view = toPersonView(rows, { today: todayJst(), mode: "normal" });
 
   return (
-    <main className="mx-auto max-w-4xl px-4 py-6">
+    <main className="mx-auto max-w-6xl px-4 py-4">
       <Link href={homePath(principal.role)} className="inline-block rounded px-2 py-1 text-sm text-muted" data-press>
         戻る
       </Link>

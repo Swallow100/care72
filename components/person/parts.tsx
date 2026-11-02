@@ -24,9 +24,10 @@ const TONE_TAG: Record<StateTone, string> = {
 };
 
 /** 色の付いた印。文字（至急・未確認・同意など）を必ず持つ */
-export function StateTag({ tone, children }: { tone: StateTone; children: React.ReactNode }) {
+export function StateTag({ tone, size = "sm", children }: { tone: StateTone; size?: "sm" | "md"; children: React.ReactNode }) {
+  const box = size === "md" ? "px-1.5 py-0.5 text-sm" : "px-1 py-px text-xs";
   return (
-    <span className={`rounded px-1.5 py-0.5 text-sm font-bold ${TONE_TAG[tone]}`} data-tone={tone}>
+    <span className={`rounded font-bold ${box} ${TONE_TAG[tone]}`} data-tone={tone}>
       {children}
     </span>
   );
@@ -35,7 +36,7 @@ export function StateTag({ tone, children }: { tone: StateTone; children: React.
 export function SegText({ seg }: { seg: Seg }) {
   if (seg.tel) {
     return (
-      <a href={`tel:${seg.tel}`} className="-mx-1 rounded px-1 text-accent tabular-nums underline underline-offset-4" data-press>
+      <a href={`tel:${seg.tel}`} className="-mx-0.5 rounded px-0.5 text-accent tabular-nums underline underline-offset-2" data-press>
         {seg.text}
       </a>
     );
@@ -54,7 +55,7 @@ export function SegText({ seg }: { seg: Seg }) {
 
 export function LineText({ line }: { line: Line }) {
   return (
-    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+    <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
       {line.map((seg, i) => (
         <SegText key={i} seg={seg} />
       ))}
@@ -68,7 +69,7 @@ export function PendingMark({ pending }: { pending: readonly Pending[] }) {
   return (
     <span className="inline-flex items-baseline gap-2" data-pending={pending.length}>
       <StateTag tone="check">{BLANK_LABELS.unconfirmed}</StateTag>
-      <span className="text-sm text-muted">{reasons.join("・")}</span>
+      <span className="text-xs text-muted">{reasons.join("・")}</span>
     </span>
   );
 }
@@ -83,7 +84,7 @@ export function FieldValue({ field, pending }: { field: Field; pending: readonly
   switch (field.kind) {
     case "lines":
       return (
-        <div className="space-y-1">
+        <div className="space-y-0.5">
           {field.lines.map((line, i) => (
             <LineText key={i} line={line} />
           ))}
@@ -102,12 +103,12 @@ export function FieldValue({ field, pending }: { field: Field; pending: readonly
   }
 }
 
-/** 欄の 1 行（ラベルと値）。dl の中に置く */
+/** 欄の 1 行（ラベルと値）。dl の中に置く。細かい欄（row.small）は小さな字 */
 export function RowItem({ row }: { row: Row }) {
   return (
-    <div className="grid grid-cols-[6.5rem_minmax(0,1fr)] gap-x-4" data-field={row.key}>
-      <dt className="pt-0.5 text-sm text-muted">{row.label}</dt>
-      <dd className="min-w-0">
+    <div className="grid grid-cols-[4.5rem_minmax(0,1fr)] gap-x-2" data-field={row.key}>
+      <dt className="pt-px text-xs text-muted">{row.label}</dt>
+      <dd className={`min-w-0 ${row.small ? "text-xs" : ""}`}>
         <FieldValue field={row.field} pending={row.pending} />
       </dd>
     </div>

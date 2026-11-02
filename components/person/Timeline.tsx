@@ -1,4 +1,5 @@
-// 本人のページの経過（時系列。誰が・いつ・何を）。書き足す欄は T24。
+// 本人のページの経過（時系列。誰が・いつ・何を）。全部出す。書き足す欄は T24。
+// 1 行目に小さく 時刻・種類・誰が、2 行目に何を。区分が細い段に入っても読める形。
 
 import type { TimelineItem } from "@/lib/person";
 import { BLANK_LABELS } from "@/lib/labels";
@@ -9,16 +10,15 @@ export function Timeline({ items }: { items: readonly TimelineItem[] }) {
   return (
     <ol className="space-y-1">
       {items.map((t) => (
-        <li
-          key={t.id}
-          className="grid grid-cols-[9.5rem_5rem_minmax(0,1fr)] items-baseline gap-x-3 gap-y-0.5 rounded-md bg-panel2 px-3 py-2 sm:grid-cols-[9.5rem_5rem_minmax(0,1fr)_auto]"
-        >
-          <time dateTime={t.at} className="whitespace-nowrap text-sm text-muted tabular-nums">
-            {t.when}
-          </time>
-          <span>{t.tone ? <StateTag tone={t.tone}>{t.kind}</StateTag> : <span className="font-bold">{t.kind}</span>}</span>
-          <span className="min-w-0">{t.body}</span>
-          <span className="col-start-3 text-sm text-muted sm:col-start-auto">{t.who}</span>
+        <li key={t.id} className="rounded bg-panel2 px-2 py-1">
+          <div className="flex flex-wrap items-baseline gap-x-2 text-xs">
+            <time dateTime={t.at} className="text-muted tabular-nums">
+              {t.when}
+            </time>
+            {t.tone ? <StateTag tone={t.tone}>{t.kind}</StateTag> : <span className="font-bold">{t.kind}</span>}
+            <span className="ml-auto text-muted">{t.who}</span>
+          </div>
+          {t.body && <div className="mt-0.5">{t.body}</div>}
         </li>
       ))}
     </ol>

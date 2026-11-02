@@ -56,7 +56,7 @@ export default async function CaseloadPage({ searchParams }: Props) {
 
   if (open) {
     return (
-      <main className="mx-auto grid max-w-7xl gap-4 px-4 py-6 lg:grid-cols-[17rem_minmax(0,1fr)]">
+      <main className="mx-auto grid max-w-6xl gap-3 px-4 py-4 lg:grid-cols-[15rem_minmax(0,1fr)]">
         <section
           aria-labelledby="caseload-title"
           className="hidden self-start lg:sticky lg:top-4 lg:block lg:max-h-[calc(100dvh-2rem)] lg:overflow-y-auto"
