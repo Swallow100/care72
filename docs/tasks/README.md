@@ -67,12 +67,11 @@ docs/tasks/T03.md をやって。CLAUDE.md と docs/tasks/README.md の決まり
 | T31 | Claude Code の使い方を作品の中に見せる（フック・Skill・記録） | 11/2 夜〜 | なし |
 | T32 | 「Claude の活用」の 3 軸（agents・MCP・記録） | 11/2 夜 | T31 |
 
-## 担当の割り振り（11/2 夜）
+## 担当の割り振り（11/2 夜 その 3）
 
-- 済み: T00〜T03・T05・T07・T15・T25・T31・T32
-- 進行中: T04（main。設計の側から Opus のサブエージェント）。T09・T06・T14・T16（分岐。worktree と PR）
-- 設計の側（Fable のセッション、main）: 1 つずつ Opus のサブエージェントに出す。T04 のあとは T10 → T11 → T12 → T13 の順（T10 は T09 の merge のあと）
-- 分岐（worktree + PR）: 触るファイルが重ならない物から。main と同時に進む作業は docs/PROGRESS.md でなく docs/progress/tNN.md に書く
+- 済み: T00〜T07・T09・T14〜T16・T25・T31・T32
+- 次（設計の側、Fable のセッション、main）: 1 つずつ Opus のサブエージェントに出す。T10 → T11 → T12 → T13 の順
+- 分岐（worktree + PR）: T30・T08。触るファイルが重ならない物から。main と同時に進む作業は docs/PROGRESS.md でなく docs/progress/tNN.md に書く
 - どちらも、始める前に `git log origin/main -1` で main の先頭を見て、同じ作業を 2 か所で始めない。始めたら docs/PROGRESS.md の先頭に「T05 作業中（別アカ、11/2 20:10〜）」の 1 行を commit する
 
 削るなら docs/SPEC.md の「削る順」のとおり: 出向いた先の出来事 → 自分の避難 → 早送り → 雨雲・震度の面 → 様式の読み取り（内閣府）。
