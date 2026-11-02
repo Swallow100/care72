@@ -11,9 +11,9 @@ export function Timeline({ items }: { items: readonly TimelineItem[] }) {
       {items.map((t) => (
         <li
           key={t.id}
-          className="grid grid-cols-[8.5rem_5rem_minmax(0,1fr)] gap-x-3 gap-y-0.5 rounded-md bg-panel2 px-3 py-2 sm:grid-cols-[8.5rem_5rem_minmax(0,1fr)_auto]"
+          className="grid grid-cols-[9.5rem_5rem_minmax(0,1fr)] items-baseline gap-x-3 gap-y-0.5 rounded-md bg-panel2 px-3 py-2 sm:grid-cols-[9.5rem_5rem_minmax(0,1fr)_auto]"
         >
-          <time dateTime={t.at} className="text-sm text-muted tabular-nums">
+          <time dateTime={t.at} className="whitespace-nowrap text-sm text-muted tabular-nums">
             {t.when}
           </time>
           <span>{t.tone ? <StateTag tone={t.tone}>{t.kind}</StateTag> : <span className="font-bold">{t.kind}</span>}</span>

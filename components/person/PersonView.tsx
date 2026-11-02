@@ -73,7 +73,7 @@ function DocumentRow({ row }: { row: Pick<Row, "key" | "label"> & { status: stri
   );
 }
 
-const TH = "px-3 py-2 font-normal";
+const TH = "px-3 py-2 text-sm font-normal";
 const TD = "px-3 py-2 align-top";
 
 /** 時計（値・単位・出典・頼り先の確認）。値の無い時計は未確認、走らない時計（本人の状態）は値を持たない */
@@ -86,7 +86,7 @@ function ClocksRow({ label, clocks }: { label: string; clocks: readonly ClockVie
           <span>{BLANK_LABELS.none}</span>
         ) : (
           <div className="overflow-x-auto rounded-md bg-panel2">
-            <table className="w-full min-w-[34rem] text-left text-sm">
+            <table className="w-full min-w-[34rem] text-left">
               <thead className="whitespace-nowrap text-muted">
                 <tr>
                   <th className={TH}>項目</th>
@@ -101,8 +101,8 @@ function ClocksRow({ label, clocks }: { label: string; clocks: readonly ClockVie
                 {clocks.map((k) => (
                   <tr key={k.id} data-clock={k.id}>
                     <td className={TD}>
-                      <div className="text-base">{k.label}</div>
-                      {k.note && <div className="text-muted">{k.note}</div>}
+                      <div>{k.label}</div>
+                      {k.note && <div className="text-sm text-muted">{k.note}</div>}
                     </td>
                     <td className={`${TD} whitespace-nowrap`}>{k.kind}</td>
                     <td className={`${TD} whitespace-nowrap tabular-nums`}>
@@ -111,7 +111,7 @@ function ClocksRow({ label, clocks }: { label: string; clocks: readonly ClockVie
                     <td className={`${TD} whitespace-nowrap`}>{k.start}</td>
                     <td className={TD}>
                       {k.source ?? <Blank />}
-                      {k.sourceNote && <div className="text-muted">{k.sourceNote}</div>}
+                      {k.sourceNote && <div className="text-sm text-muted">{k.sourceNote}</div>}
                     </td>
                     <td className={`${TD} whitespace-nowrap`}>
                       {k.depends ? (
@@ -144,7 +144,7 @@ function ClockValue({ clock }: { clock: ClockView }) {
   }
   if (clock.value) {
     return (
-      <span className={`text-base ${clock.tone ? `font-bold ${TONE_TEXT[clock.tone]}` : ""}`} data-tone={clock.tone ?? undefined}>
+      <span className={clock.tone ? `font-bold ${TONE_TEXT[clock.tone]}` : undefined} data-tone={clock.tone ?? undefined}>
         {clock.value}
       </span>
     );
