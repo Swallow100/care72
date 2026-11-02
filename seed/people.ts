@@ -32,7 +32,7 @@ export type SeedPerson = {
   clocks: SeedClock[];
 };
 
-// デモ事業所は審査員・ゲスト・動画の物。協力事業所は協力してくれるケアマネの訓練の物で、審査員とゲストには見せない。
+// デモ事業所は審査員・動画の物。協力事業所は協力してくれるケアマネの訓練の物で、審査員には見せない。
 // 協力事業所には利用者を入れない。ケアマネ 1 人の枠だけ（名前は空。本人が入れる）。
 export const SEED_OFFICES: SeedOffice[] = [
   { id: "office-demo", name: "デモ事業所", kind: "demo", city: CITY },

@@ -32,9 +32,9 @@ function isSortKey(v: unknown): v is SortKey {
   return typeof v === "string" && SORT_KEYS.includes(v as SortKey);
 }
 
-// 担当一覧。ゲスト（ログインなし）はデモ事業所の山本の担当を見るだけ。ケアマネは自分の担当。
+// 担当一覧。ケアマネは自分の担当、審査員（ケアマネの役）はデモ事業所の山本の担当。
 // 行を押すと本人のページが右に開き（?open=<id>）、一覧は左に圧縮される。狭い幅は本人のページだけ。
-// 行政・医療班・本人・家族・役を選ぶ前の審査員は、それぞれの入口へ送る（requirePage）
+// ログインしていなければ /login へ、行政・医療班・本人・家族・役を選ぶ前の審査員は、それぞれの入口へ送る（requirePage）
 export default async function CaseloadPage({ searchParams }: Props) {
   const principal = await requirePage("caseload");
   const q = await searchParams;

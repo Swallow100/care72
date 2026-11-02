@@ -1,5 +1,5 @@
 // 事業所の壁。本人を読むときはここを通す（画面も API も）。
-// ゲスト・ケアマネ・審査員（ケアマネの役）は自分の事業所の中だけ。違う事業所の本人の id を渡されても見つからない（404）。
+// ケアマネ・審査員（ケアマネの役）は自分の事業所の中だけ。違う事業所の本人の id を渡されても見つからない（404）。
 // 本人・家族のスマホは自分の本人だけ。行政・医療班は受け持ちの範囲だけ（T23 で受け持ちを作るまでは空）。
 
 import type { D1Database } from "@cloudflare/workers-types";
@@ -9,7 +9,7 @@ import { canViewPage } from "./roles.ts";
 
 export type CaseloadScope = { officeId: string; careManagerId: string };
 
-/** 担当一覧の範囲。ケアマネは自分の担当、ゲストと審査員はデモ事業所の山本の担当 */
+/** 担当一覧の範囲。ケアマネは自分の担当、審査員（ケアマネの役）はデモ事業所の山本の担当 */
 export function caseloadScope(p: Principal): CaseloadScope | null {
   if (!canViewPage(p.role, "caseload") || !p.office || !p.caseloadOf) return null;
   return { officeId: p.office.id, careManagerId: p.caseloadOf };
@@ -23,7 +23,6 @@ export type PersonScope =
 
 export function personScope(p: Principal): PersonScope {
   switch (p.role) {
-    case "guest":
     case "care_manager":
       return p.office ? { kind: "office", officeId: p.office.id } : { kind: "none" };
     case "self":

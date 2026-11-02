@@ -1,7 +1,7 @@
 // node seed/build-sql.ts で seed/generated/seed.sql を書く（Node の型の取り除きで動く）。
 // 山本（デモ事業所のケアマネ）のパスワードのハッシュは CAREMANAGER_DEMO_PASSWORD_HASH から入れる。
 // 環境変数を先に見て、無ければ手元の .dev.vars から、この 1 つだけを取り出す（ほかの値は使わない・出さない）。
-// 無ければ山本はログインできない（ゲストと審査員では開ける）。ハッシュは npm run hash-password で作る。
+// 無ければ種の山本はハッシュなし（審査員では開ける）。ハッシュは npm run hash-password で作る。
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";

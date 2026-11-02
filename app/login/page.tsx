@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { homePath } from "@/lib/auth/roles";
 import { getPrincipal } from "@/lib/auth/server";
@@ -11,10 +10,11 @@ type Props = { searchParams: Promise<{ e?: string }> };
 const INPUT =
   "mt-1 w-full rounded-md bg-panel2 px-3 py-3 outline-none focus-visible:outline-2 focus-visible:outline-accent";
 
-// ID とパスワード。送り先は /api/auth/login（フォームの POST。JavaScript が無くても動く）
+// ID とパスワード。送り先は /api/auth/login（フォームの POST。JavaScript が無くても動く）。
+// どの画面もログインが要る。ログインしていなければ、どの画面からもここへ来る。審査員の ID とパスワードは提出書類に。
 export default async function LoginPage({ searchParams }: Props) {
   const p = await getPrincipal();
-  if (p.role !== "guest") redirect(homePath(p.role));
+  if (p) redirect(homePath(p.role));
   const { e } = await searchParams;
 
   return (
@@ -61,9 +61,6 @@ export default async function LoginPage({ searchParams }: Props) {
           </button>
         </form>
       </section>
-      <Link href="/" className="mt-4 inline-block rounded px-2 py-1 text-sm text-muted" data-press>
-        戻る
-      </Link>
     </main>
   );
 }

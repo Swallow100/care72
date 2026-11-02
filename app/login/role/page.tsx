@@ -2,7 +2,7 @@ import { getCloudflareContext } from "@opennextjs/cloudflare";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { judgeChoices } from "@/lib/auth/choices";
-import { homePath } from "@/lib/auth/roles";
+import { homePath, LOGIN_PATH } from "@/lib/auth/roles";
 import { getPrincipal } from "@/lib/auth/server";
 
 export const metadata: Metadata = { title: "役選択 | ケア72" };
@@ -10,6 +10,7 @@ export const metadata: Metadata = { title: "役選択 | ケア72" };
 // 審査員がログインのあとに役を選ぶ。選び直しもここ（ヘッダーの「役変更」）。選んだ役は枠で示す
 export default async function RoleSelectPage() {
   const p = await getPrincipal();
+  if (!p) redirect(LOGIN_PATH);
   if (!p.judge) redirect(homePath(p.role));
   const { env } = await getCloudflareContext({ async: true });
   const choices = await judgeChoices(env.DB);

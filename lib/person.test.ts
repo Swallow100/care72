@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { PersonView } from "../components/person/PersonView.tsx";
 import { SEED_AT, SEED_PEOPLE, seedConsents, type SeedPerson } from "../seed/people.ts";
 import { seedStatements } from "../seed/sql.ts";
-import { guestPrincipal, type Principal } from "./auth/principal.ts";
+import type { Principal } from "./auth/principal.ts";
 import { d1FromSqlite, migratedSqlite } from "./db/test-d1.ts";
 import { SECTION_LABELS } from "./labels.ts";
 import {
@@ -407,12 +407,19 @@ describe("D1 から読む（事業所の壁）", () => {
     personId: null,
     contactId: null,
   };
+  /** デモ事業所の山本（ログインした形。ゲストは無い） */
+  const demoCm: Principal = {
+    ...partnerCm,
+    accountId: "acct-yamamoto",
+    displayName: "山本",
+    office: { id: "office-demo", name: "デモ事業所", kind: "demo" },
+    caseloadOf: "acct-yamamoto",
+  };
   const medical: Principal = { ...partnerCm, role: "medical", admin: false, accountId: "acct-med", office: null, caseloadOf: null };
 
   it("デモ事業所の 10 人全員が読め、種の値が区分ごとに出る", async () => {
-    const guest = await guestPrincipal(db);
     for (const id of ALL_IDS) {
-      const rows = await loadPersonPage(db, guest, id);
+      const rows = await loadPersonPage(db, demoCm, id);
       expect(rows, id).not.toBeNull();
       const v = toPersonView(rows!, { today: TODAY });
       const expected = toPersonView(seedRows(seed(id)), { today: TODAY });
@@ -423,9 +430,8 @@ describe("D1 から読む（事業所の壁）", () => {
   });
 
   it("違う事業所の本人・無い id は null（画面は 404）。協力事業所のケアマネはデモの本人を読めない", async () => {
-    const guest = await guestPrincipal(db);
-    expect(await loadPersonPage(db, guest, PARTNER_PERSON)).toBeNull();
-    expect(await loadPersonPage(db, guest, "p-nothing")).toBeNull();
+    expect(await loadPersonPage(db, demoCm, PARTNER_PERSON)).toBeNull();
+    expect(await loadPersonPage(db, demoCm, "p-nothing")).toBeNull();
     for (const id of ALL_IDS) expect(await loadPersonPage(db, partnerCm, id), id).toBeNull();
     expect((await loadPersonPage(db, partnerCm, PARTNER_PERSON))?.person.name).toBe("架空 太郎");
   });
@@ -442,7 +448,7 @@ describe("D1 から読む（事業所の壁）", () => {
          VALUES ('t-1', 'p-01', NULL, 'self', 'signal', '赤ボタン', 's-1', '2026-11-04T01:00:00.000Z'),
                 ('t-2', 'p-01', 'acct-yamamoto', 'care_manager', 'called', '本人に電話', NULL, '2026-11-04T01:05:00.000Z');`,
     );
-    const rows = await loadPersonPage(db, await guestPrincipal(db), "p-01");
+    const rows = await loadPersonPage(db, demoCm, "p-01");
     const items = timelineItems(rows!);
     expect(items.slice(-2).map((t) => [t.kind, t.body, t.who, t.tone])).toEqual([
       ["信号", "赤ボタン", "本人", "urgent"],

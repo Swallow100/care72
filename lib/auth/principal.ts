@@ -1,5 +1,5 @@
 // 誰が・どの事業所の・何の役で開いているか（Principal）。cookie のセッションと D1 から作る。
-// cookie が無い・壊れている・切れているときはゲスト（デモ事業所を見るだけ）。
+// cookie が無い・壊れている・切れているときは null（ログインしていない。画面は /login へ、API は 401）。
 // ここは D1 と env を引数で受け取るだけで、Next と Cloudflare には触らない（テストで node:sqlite を渡す）。
 // Next から使うのは lib/auth/server.ts。
 
@@ -25,7 +25,7 @@ export type Principal = {
   judge: boolean;
   /** 事業所の管理者（ケアマネの印） */
   admin: boolean;
-  /** 書き手（経過の author_id）。ゲストは null、審査員は審査員のアカウント */
+  /** 書き手（経過の author_id）。審査員は審査員のアカウント */
   accountId: string | null;
   /** ヘッダーに出す名前（山本・山田 ハナ・森 恵子） */
   displayName: string | null;
@@ -58,17 +58,12 @@ function judgeHash(env: AuthEnv): string | null {
   return v ? v : null;
 }
 
-/** デモ事業所。kind が demo でなければ無いと同じ（ゲスト・審査員に協力事業所を開かせない） */
+/** デモ事業所。kind が demo でなければ無いと同じ（審査員に協力事業所を開かせない） */
 async function demoOffice(db: D1Database): Promise<OfficeRef | null> {
   return db
     .prepare("SELECT id, name, kind FROM offices WHERE id = ?1 AND kind = 'demo'")
     .bind(DEMO_OFFICE_ID)
     .first<OfficeRef>();
-}
-
-export async function guestPrincipal(db: D1Database): Promise<Principal> {
-  const office = await demoOffice(db);
-  return { ...NOBODY, role: "guest", office, caseloadOf: office ? DEMO_CARE_MANAGER_ID : null };
 }
 
 /** 審査員の役ごとの形。役を選ぶ前は unselected（役選択の画面へ） */
@@ -157,17 +152,16 @@ async function principalOf(db: D1Database, env: AuthEnv, s: SessionPayload): Pro
   return accountPrincipal(a);
 }
 
-/** cookie の文字列から。確かめられなければゲスト。now は秒 */
+/** cookie の文字列から。確かめられなければ null（ログインしていない）。now は秒 */
 export async function resolvePrincipal(
   db: D1Database,
   env: AuthEnv,
   secret: string,
   token: string | null | undefined,
   now: number,
-): Promise<Principal> {
+): Promise<Principal | null> {
   const s = await verifySession(token, secret, now);
-  const p = s ? await principalOf(db, env, s) : null;
-  return p ?? guestPrincipal(db);
+  return s ? principalOf(db, env, s) : null;
 }
 
 export type LoginResult = { ok: true; token: string; principal: Principal; path: string } | { ok: false };

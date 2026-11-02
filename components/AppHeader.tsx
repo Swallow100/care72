@@ -1,14 +1,21 @@
 import Link from "next/link";
 import { unstable_rethrow } from "next/navigation";
 import type { Principal } from "@/lib/auth/principal";
-import { ADMIN_LABEL, canViewPage, homePath, JUDGE_LABEL, ROLE_LABELS, ROLE_SELECT_PATH } from "@/lib/auth/roles";
+import {
+  ADMIN_LABEL,
+  canViewPage,
+  homePath,
+  JUDGE_LABEL,
+  LOGIN_PATH,
+  ROLE_LABELS,
+  ROLE_SELECT_PATH,
+} from "@/lib/auth/roles";
 import { getPrincipal } from "@/lib/auth/server";
 import { SessionSecretMissing } from "@/lib/auth/session";
-import { LoginLink } from "./LoginLink";
 import { NavLinks } from "./NavLinks";
 
-// 全部の画面の上の帯。左に名前と画面の切替、右上に 事業所名・役・ログアウト（ゲストはログイン）。
-// 審査員は役の横に「審査員」と「役変更」。
+// 全部の画面の上の帯。左に名前と画面の切替、右上に 事業所名・役・ログアウト。
+// 審査員は役の横に「審査員」と「役変更」。ログインしていなければ名前だけ（ログインの画面にいる）。
 export async function AppHeader() {
   let p: Principal | null = null;
   try {
@@ -25,7 +32,7 @@ export async function AppHeader() {
     <header className="bg-panel">
       <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-x-6 gap-y-2 px-4 py-3">
         <div className="flex items-center gap-4">
-          <Link href={p ? homePath(p.role) : "/"} className="rounded px-1 font-bold" data-press>
+          <Link href={p ? homePath(p.role) : LOGIN_PATH} className="rounded px-1 font-bold" data-press>
             ケア72
           </Link>
           {desk && <NavLinks />}
@@ -54,15 +61,11 @@ function Who({ p, desk }: { p: Principal; desk: boolean }) {
           役変更
         </Link>
       )}
-      {p.role === "guest" ? (
-        <LoginLink />
-      ) : (
-        <form method="post" action="/api/auth/logout">
-          <button type="submit" className={ACTION} data-press>
-            ログアウト
-          </button>
-        </form>
-      )}
+      <form method="post" action="/api/auth/logout">
+        <button type="submit" className={ACTION} data-press>
+          ログアウト
+        </button>
+      </form>
     </div>
   );
 }

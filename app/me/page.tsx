@@ -1,17 +1,17 @@
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { DEMO_SELF_PERSON_ID } from "@/lib/auth/demo";
 import { personInScope } from "@/lib/auth/scope";
 import { requirePage } from "@/lib/auth/server";
 
 export const metadata: Metadata = { title: "本人 | ケア72" };
 
-// 本人のスマホ（T10 で作る）の入口。審査員の「本人スマホ」は山田 ハナ。ゲストは平時の画面を見るだけ
+// 本人のスマホ（T10 で作る）の入口。審査員の「本人スマホ」は山田 ハナ
 export default async function MePage() {
   const principal = await requirePage("me");
+  if (!principal.personId) notFound();
   const { env } = await getCloudflareContext({ async: true });
-  const person = await personInScope(env.DB, principal, principal.personId ?? DEMO_SELF_PERSON_ID);
+  const person = await personInScope(env.DB, principal, principal.personId);
   if (!person) notFound();
   return (
     <main className="mx-auto max-w-md px-4 py-8">

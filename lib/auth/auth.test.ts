@@ -17,7 +17,7 @@ import {
 } from "./demo.ts";
 import { allows, denied } from "./guard.ts";
 import { hashPassword } from "./password.ts";
-import { chooseJudgeRole, guestPrincipal, login, resolvePrincipal, type AuthEnv, type Principal } from "./principal.ts";
+import { chooseJudgeRole, login, resolvePrincipal, type AuthEnv, type Principal } from "./principal.ts";
 import {
   canViewPage,
   homePath,
@@ -198,21 +198,13 @@ describe("ログイン", () => {
 });
 
 describe("cookie からの役", () => {
-  it("cookie が無い・壊れている・切れているときはゲスト（デモ事業所を見るだけ）", async () => {
+  it("cookie が無い・壊れている・切れているときは null（ログインしていない。ゲストは無い）", async () => {
     const { token } = await loginOk("yamamoto", CM_PW);
-    for (const t of [null, "", "garbage", `${token}x`]) {
-      expect((await resolvePrincipal(db, env(), SECRET, t, NOW)).role).toBe("guest");
+    for (const t of [null, undefined, "", "garbage", `${token}x`]) {
+      expect(await resolvePrincipal(db, env(), SECRET, t, NOW)).toBeNull();
     }
-    expect((await resolvePrincipal(db, env(), SECRET, token, NOW + SESSION_TTL_SEC)).role).toBe("guest");
-    expect((await resolvePrincipal(db, env(), `${SECRET}x`, token, NOW)).role).toBe("guest");
-    const guest = await resolvePrincipal(db, env(), SECRET, null, NOW);
-    expect(guest).toMatchObject({
-      role: "guest",
-      judge: false,
-      accountId: null,
-      office: { id: DEMO_OFFICE_ID, kind: "demo" },
-      caseloadOf: DEMO_CARE_MANAGER_ID,
-    });
+    expect(await resolvePrincipal(db, env(), SECRET, token, NOW + SESSION_TTL_SEC)).toBeNull();
+    expect(await resolvePrincipal(db, env(), `${SECRET}x`, token, NOW)).toBeNull();
   });
 
   it("ログインの cookie で同じ役に戻る", async () => {
@@ -226,18 +218,18 @@ describe("cookie からの役", () => {
   it("パスワードを変える・アカウントを消すと、前の cookie は使えない", async () => {
     const { token } = await loginOk("yamamoto", CM_PW);
     sqlite.prepare("UPDATE accounts SET password_hash = ? WHERE id = ?").run(partnerHash, DEMO_CARE_MANAGER_ID);
-    expect((await resolvePrincipal(db, env(), SECRET, token, NOW)).role).toBe("guest");
+    expect(await resolvePrincipal(db, env(), SECRET, token, NOW)).toBeNull();
 
     const partner = await loginOk("partner1", PARTNER_PW);
     sqlite.prepare("UPDATE accounts SET login_id = NULL, password_hash = NULL WHERE id = 'acct-partner-cm'").run();
-    expect((await resolvePrincipal(db, env(), SECRET, partner.token, NOW)).role).toBe("guest");
+    expect(await resolvePrincipal(db, env(), SECRET, partner.token, NOW)).toBeNull();
   });
 
   it("審査員の cookie は、env の審査員のハッシュが変わる・無くなると使えない", async () => {
     const { token } = await asJudge("care_manager");
-    expect((await resolvePrincipal(db, env(), SECRET, token, NOW)).role).toBe("care_manager");
-    expect((await resolvePrincipal(db, { JUDGE_PASSWORD_HASH: cmHash }, SECRET, token, NOW)).role).toBe("guest");
-    expect((await resolvePrincipal(db, {}, SECRET, token, NOW)).role).toBe("guest");
+    expect((await resolvePrincipal(db, env(), SECRET, token, NOW))?.role).toBe("care_manager");
+    expect(await resolvePrincipal(db, { JUDGE_PASSWORD_HASH: cmHash }, SECRET, token, NOW)).toBeNull();
+    expect(await resolvePrincipal(db, {}, SECRET, token, NOW)).toBeNull();
   });
 
   it("自分で作った中身の cookie（審査員の役を勝手に付ける）は、鍵を知らなければ作れない", async () => {
@@ -245,7 +237,7 @@ describe("cookie からの役", () => {
       { v: 1, k: "judge", r: "care_manager", pv: await passwordVersion(judgeHash), ...sessionTimes(NOW) },
       "someone-else-secret-0123456789-0123456789",
     );
-    expect((await resolvePrincipal(db, env(), SECRET, forged, NOW)).role).toBe("guest");
+    expect(await resolvePrincipal(db, env(), SECRET, forged, NOW)).toBeNull();
   });
 });
 
@@ -281,9 +273,9 @@ describe("審査員の役選択", () => {
     expect(second?.path).toBe("/staff");
     const third = await chooseJudgeRole(db, env(), SECRET, second!.token, "self", NOW + 20);
     expect(third?.path).toBe("/me");
-    expect((await resolvePrincipal(db, env(), SECRET, third!.token, NOW + 30)).role).toBe("self");
+    expect((await resolvePrincipal(db, env(), SECRET, third!.token, NOW + 30))?.role).toBe("self");
     // 選び直すと 7 日はそこから
-    expect((await resolvePrincipal(db, env(), SECRET, third!.token, NOW + SESSION_TTL_SEC + 10)).role).toBe("self");
+    expect((await resolvePrincipal(db, env(), SECRET, third!.token, NOW + SESSION_TTL_SEC + 10))?.role).toBe("self");
   });
 
   it("審査員でなければ役を選べない", async () => {
@@ -306,7 +298,6 @@ describe("審査員の役選択", () => {
 
 describe("役ごとの到達", () => {
   const PAGE_TABLE: Record<Role, Page[]> = {
-    guest: ["caseload", "person", "drill", "me"],
     care_manager: ["caseload", "person", "drill"],
     government: ["person", "staff"],
     medical: ["person", "staff"],
@@ -315,7 +306,6 @@ describe("役ごとの到達", () => {
     unselected: [],
   };
   const NEED_TABLE: Record<Role, Need[]> = {
-    guest: ["read"],
     care_manager: ["read", "save", "ai"],
     government: ["read", "save", "ai"],
     medical: ["read", "save", "ai"],
@@ -339,25 +329,28 @@ describe("役ごとの到達", () => {
     }
   });
 
-  it("できることの表。ゲストは読むだけ", () => {
+  it("ゲストの役は無い", () => {
+    expect(ROLES as readonly string[]).not.toContain("guest");
+  });
+
+  it("できることの表。ログインしていなければ何もできない", () => {
     const fake = (role: Role) => ({ role }) as Principal;
     for (const role of ROLES) {
       expect(NEEDS.filter((n) => allows(fake(role), n)), role).toEqual(NEED_TABLE[role]);
     }
+    expect(NEEDS.filter((n) => allows(null, n))).toEqual([]);
   });
 
-  it("API はゲストの保存・Claude・録音を 401、役を選ぶ前の審査員を 403 で断る", async () => {
-    const guest = await guestPrincipal(db);
-    expect(denied(guest, "read")).toBeNull();
-    for (const need of ["save", "ai", "recording"] as const) {
-      const r = denied(guest, need)!;
+  it("API はログインしていなければ読むのも 401、役を選ぶ前の審査員を 403 で断る", async () => {
+    for (const need of NEEDS) {
+      const r = denied(null, need)!;
       expect(r.status, need).toBe(401);
       expect(await r.json()).toMatchObject({ error: "login_required" });
     }
     const unselected = (await asJudge(null)).principal;
     expect(denied(unselected, "read")?.status).toBe(403);
     expect(denied(unselected, "ai")?.status).toBe(403);
-    // 審査員のログインは Claude を呼ぶ所を開ける鍵（ケアマネの役で）
+    // 審査員は選んだ役で本物の Claude を呼べる（ケアマネの役で）
     const judgeCm = (await asJudge("care_manager")).principal;
     expect(denied(judgeCm, "ai")).toBeNull();
     expect(denied(judgeCm, "save")).toBeNull();
@@ -369,9 +362,8 @@ describe("役ごとの到達", () => {
 });
 
 describe("事業所の壁", () => {
-  it("ゲスト・デモのケアマネ・審査員は、協力事業所の本人を読めない（在っても null = 404）", async () => {
+  it("デモのケアマネ・審査員は、協力事業所の本人を読めない（在っても null = 404）", async () => {
     const who = [
-      await guestPrincipal(db),
       (await loginOk("yamamoto", CM_PW)).principal,
       (await asJudge("care_manager")).principal,
     ];
@@ -405,8 +397,8 @@ describe("事業所の壁", () => {
 
   it("担当一覧も事業所とケアマネで絞る", async () => {
     const today = "2026-11-02";
-    const guest = await guestPrincipal(db);
-    const demo = await loadCaseload(db, caseloadScope(guest)!, today);
+    const judgeCm = (await asJudge("care_manager")).principal;
+    const demo = await loadCaseload(db, caseloadScope(judgeCm)!, today);
     expect(demo?.rows).toHaveLength(10);
     expect(demo?.rows.map((r) => r.id)).not.toContain(PARTNER_PERSON);
 
@@ -428,12 +420,10 @@ describe("事業所の壁", () => {
     });
   });
 
-  it("デモ事業所の kind が demo でなければ、ゲストに何も見せない", async () => {
+  it("デモ事業所の kind が demo でなければ、審査員は入れず、前の審査員の cookie も使えない", async () => {
+    const { token } = await asJudge("care_manager");
     sqlite.prepare("UPDATE offices SET kind = 'regular' WHERE id = ?").run(DEMO_OFFICE_ID);
-    const guest = await guestPrincipal(db);
-    expect(guest.office).toBeNull();
-    expect(caseloadScope(guest)).toBeNull();
-    expect(await personInScope(db, guest, DEMO_SELF_PERSON_ID)).toBeNull();
     expect((await login(db, env(), SECRET, { loginId: JUDGE_LOGIN_ID, password: JUDGE_PW }, NOW)).ok).toBe(false);
+    expect(await resolvePrincipal(db, env(), SECRET, token, NOW)).toBeNull();
   });
 });
