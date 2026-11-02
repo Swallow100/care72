@@ -77,7 +77,15 @@ export type WorldState = {
   staff: number;
   /** 本人ごとの印（台帳の id → 印） */
   marks: Record<string, PersonMarks>;
+  /**
+   * 出向いてもらった人（ケアマネの手「訪問依頼」、T20）。着く時刻（arrive）を過ぎたら本人の印を消し、
+   * 事業所の職員なら戻る時刻（back）を過ぎたら職員の空きを 1 戻す。時刻は発災からの分
+   */
+  dispatched: Dispatched[];
 };
+
+/** 出向いてもらった 1 件。back は事業所の職員のときだけ（訪問看護は事業所の職員でない） */
+export type Dispatched = { person: string; arrive: number; back: number | null; arrived: boolean };
 
 export const EMPTY_WORLD: WorldState = {
   alertLevel: null,
@@ -92,6 +100,7 @@ export const EMPTY_WORLD: WorldState = {
   facilities: [],
   staff: 0,
   marks: {},
+  dispatched: [],
 };
 
 /** 世界の変化 1 つ。出来事（状況）の種類はこの kind */
@@ -569,6 +578,56 @@ export function applyEvent(world: WorldState, e: WorldEvent, hour: number): Worl
     case "line_down":
       return mark(world, person, "lineDown", hour);
   }
+}
+
+// ---------- ケアマネの手が世界を変える所（T20） ----------
+
+/**
+ * 人が着いたら消す本人の印。ケアマネが出向いた・出向いてもらった人が着いた・福祉避難所が受けた、のどれか（lib/drill/actions.ts）。
+ * 栄養剤の持ち出し忘れ（届けた）と家に帰ろうとする（話して留めた・移った）だけ。家の電話の不通・訪問看護が来られないは人が着いても消えない
+ */
+export const CLEARED_ON_ARRIVAL: ReadonlyArray<keyof PersonMarks> = ["supplyLeft", "goingHome"];
+
+/** 本人の印を消す。消した鍵を返す（無かった物は返さない） */
+export function clearMarks(
+  world: WorldState,
+  person: string,
+  keys: ReadonlyArray<keyof PersonMarks>,
+): { world: WorldState; cleared: Array<keyof PersonMarks> } {
+  const own = world.marks[person];
+  if (!own) return { world, cleared: [] };
+  const cleared = keys.filter((k) => own[k] !== undefined);
+  if (cleared.length === 0) return { world, cleared };
+  const rest: PersonMarks = { ...own };
+  for (const k of cleared) delete rest[k];
+  const marks = { ...world.marks };
+  if (Object.keys(rest).length === 0) delete marks[person];
+  else marks[person] = rest;
+  return { world: { ...world, marks }, cleared };
+}
+
+/**
+ * 世界を時刻（発災からの分）まで進める。出向いてもらった人が着いたら印を消し、事業所の職員が戻ったら職員の空きを 1 戻す。
+ * 同じ時刻で何度呼んでも同じ（刻みでも手でも呼ぶ）
+ */
+export function settleWorld(world: WorldState, minute: number): WorldState {
+  const list = world.dispatched ?? [];
+  if (!list.some((d) => (!d.arrived && d.arrive <= minute) || (d.back !== null && d.back <= minute))) return world;
+  let w: WorldState = world;
+  const rest: Dispatched[] = [];
+  for (const d of list) {
+    let x = d;
+    if (!x.arrived && x.arrive <= minute) {
+      w = clearMarks(w, x.person, CLEARED_ON_ARRIVAL).world;
+      x = { ...x, arrived: true };
+    }
+    if (x.back !== null && x.back <= minute) {
+      w = { ...w, staff: w.staff + 1 };
+      x = { ...x, back: null };
+    }
+    if (!x.arrived || x.back !== null) rest.push(x);
+  }
+  return { ...w, dispatched: rest };
 }
 
 /** 本人の家の電話の様子（家の電話が不通の印があれば不通。無ければ世界の電話） */

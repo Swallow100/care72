@@ -59,7 +59,7 @@ import {
   type PseudonymKey,
 } from "../pseudonym/index.ts";
 import type { ActionRecord, DrillIncident, DrillTurn, PersonaHook, PersonaInput, PersonState } from "./engine.ts";
-import { PHONE_LABELS, SHELTER_LABELS, TSUNAMI_LABELS, WATER_LABELS } from "./labels.ts";
+import { clockLabel, PHONE_LABELS, SHELTER_LABELS, TSUNAMI_LABELS, WATER_LABELS } from "./labels.ts";
 import { eventHour, type FixedTurn, type OutageArea, type PhoneState, type WorldState } from "./scenarios.ts";
 
 // ---------- 本人役 ----------
@@ -278,7 +278,9 @@ function stateWords(s: PersonState | null): string {
 function actionWords(a: ActionRecord | null, persona: Persona): string {
   if (!a) return "なし";
   const target = a.target ? persona.roles.get(a.target) : null;
-  return `${a.at} 時間にケアマネが${ACTION_WORDS[a.kind]}${target ? `（相手 ${target}）` : ""}`;
+  // 時刻は発災からの「N 時間 M 分」（手の時刻は分まで。小数の時間を書かない）
+  const when = typeof a.atMinute === "number" ? clockLabel(a.atMinute) : `${a.at} 時間`;
+  return `${when}にケアマネが${ACTION_WORDS[a.kind]}${target ? `（相手 ${target}）` : ""}`;
 }
 
 /** 世界の今の様子のうち、この人に関わる物 */
