@@ -1,0 +1,40 @@
+/*
+  QR の頁（/q/<token>）。医療班がスマホで読む。紙面（components/forms/paper.css）と同じ欄の部品（FormCell）を、
+  画面の色（地・面・文字の色の変数）で大きめに描く。紙面の決まりは .paper の中だけなので、ここで同じ名前を .qr-view の中に置く。
+*/
+
+.qr-view .ln {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 0.45em;
+  row-gap: 0;
+}
+.qr-view .p-sub {
+  font-size: 0.8em;
+  color: var(--muted);
+}
+.qr-view .p-strong {
+  font-weight: 700;
+}
+.qr-view .p-unc {
+  color: var(--muted);
+}
+/* 台帳で分からない・まだ聞いていない欄は太く、理由を添える（紙面と同じ） */
+.qr-view .p-unc-r {
+  font-weight: 700;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 3px;
+}
+.qr-view .p-withheld {
+  color: var(--muted);
+}
+.qr-view .ch {
+  white-space: nowrap;
+  color: var(--muted);
+}
+.qr-view .ch.on {
+  font-weight: 700;
+  color: var(--ink);
+}

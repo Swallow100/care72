@@ -2,14 +2,17 @@
 // 本物の D1（SQLite）と同じ SQL を手元で流して確かめるために使う。配信のコードからは使わない。
 
 import type { D1Database } from "@cloudflare/workers-types";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 
-/** migrations/0001_init.sql を流した空の DB（外部キーを効かせる） */
+/** migrations の *.sql を名前の順に全部流した空の DB（外部キーを効かせる）。wrangler の migrations apply と同じ順 */
 export function migratedSqlite(): DatabaseSync {
   const db = new DatabaseSync(":memory:");
   db.exec("PRAGMA foreign_keys = ON;");
-  db.exec(readFileSync(new URL("../../migrations/0001_init.sql", import.meta.url), "utf8"));
+  const dir = new URL("../../migrations/", import.meta.url);
+  for (const name of readdirSync(dir).filter((n) => n.endsWith(".sql")).sort()) {
+    db.exec(readFileSync(new URL(name, dir), "utf8"));
+  }
   return db;
 }
 

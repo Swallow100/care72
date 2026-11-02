@@ -1,0 +1,25 @@
+/*
+  本人のページの QR の画面の印刷。QR の部品（components/forms/QrBlock）だけを紙に出す。
+  上の帯（AppHeader）と画面だけの操作（.qr-screen-only）は出さない。
+*/
+
+@media print {
+  @page {
+    size: A4;
+    margin: 12mm;
+  }
+  html,
+  body {
+    background: #fff !important;
+  }
+  body > header,
+  .qr-screen-only {
+    display: none !important;
+  }
+  .qr-print {
+    padding: 0 !important;
+    background: #fff !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+}

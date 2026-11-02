@@ -28,6 +28,7 @@
     "@google/genai": "2.32.0",
     "@opennextjs/cloudflare": "1.20.15",
     "next": "16.4.3",
+    "qrcode-generator": "2.0.4",
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "zod": "4.6.7"
