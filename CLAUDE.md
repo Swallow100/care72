@@ -16,11 +16,12 @@ Built with Claude: Japan 2026 の期間中（2026-11-02 12:30 〜 2026-11-08 20:
 - 期間外に作った物、他のプロジェクトのコードを持ち込まない。このリポジトリ（worktree）の外のフォルダを開かない。`C:\Users\choco\dev` の隣のフォルダは別のプロジェクトのコードと本物の鍵で、見るのも持ち込むのも禁止。
 - 返事とコミットは日本語。コミットは小さく、履歴を書き換えない。push はする。配信は頼まれたときだけ。
 - docs/SPEC.md は書き換えない（キックオフ前の文書）。直したい点と決めたことは docs/DECISIONS.md と docs/PROGRESS.md に。
+- 次の物はフック（.claude/settings.json → tools/hooks/guard.mjs）でも止まる: 手元でない wrangler（login・whoami・deploy・d1 create・r2 bucket create・secret put・--remote ほか）と opennextjs-cloudflare deploy、.env・.dev.vars を読む・書く命令と Read・Write・Edit（.example は通す）、git push --force・rebase・pull --rebase・commit --amend・reset --hard、gh pr merge の rebase・squash。止める物を変えるときは、この行と tools/hooks/rules.ts の両方を直す。.ts・.tsx を書いたあとはフックが型の検査を流す。
 
 ## 動かし方
 
 - `npm install`、`npm run db:reset`（手元の D1 に表と 10 人。--local だけ）、`npm run dev`（port 3072）、`npm test`、`npm run typecheck`。
-- wrangler でネットに出る命令（login・whoami・deploy・d1 create・r2 bucket create・secret put）を打たない。手元は --local だけ。
+- wrangler でネットに出る命令（login・whoami・deploy・d1 create・r2 bucket create・secret put）を打たない。手元は dev・types と、--local を付けた d1・r2・kv だけ。
 - commit の末尾の Co-Authored-By は、Opus が書いたら `Claude Opus 5.5 <noreply@anthropic.com>`、Fable なら `Claude Fable 5.1 <noreply@anthropic.com>`。
 - 作業の分け方と、2 つのセッションが同時に動くときの決まり（worktree・branch・PR）は docs/tasks/README.md。この checkout の main は設計をしている側の物で、別のアカウントは worktree で作業する。
 

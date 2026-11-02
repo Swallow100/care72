@@ -157,3 +157,6 @@ vite.config.ts.timestamp-*
 next-env.d.ts
 seed/generated/
 !.dev.vars.example
+
+# Claude Code: 手元だけの設定（.claude/settings.json と .claude/skills は commit する）
+.claude/settings.local.json
