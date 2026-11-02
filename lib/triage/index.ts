@@ -1,22 +1,22 @@
 // ルールの表（docs/SPEC.md「医療の芯」）。安否の色と連絡の順位はこの表で出し、Claude は決めない。
+// 表の行は下の RULES。上から順に当て、最初に当たった行で色と理由の 1 行が決まる。
 // テストは triage.test.ts（先に書いた）。表に行が無い所は決めず、docs/PROGRESS.md の問いにした。
 //
-// | 入力                           | 色           | 理由の例                     |
-// | 赤 ＋ けが・動けない           | 赤、最上位   | 本人が「動けない」           |
-// | 赤だけ                         | 赤           | 本人が「無事じゃない」       |
-// | 未知 ＋ 停電が機器の時計を超えた | 赤         | 酸素 内蔵電池 2 時間を超過   |
-// | 未知 ＋ 時計の半分を過ぎた     | 黄           | 透析 翌日まで、未確認 6 時間 |
-// | 未知 ＋ 薬だけ（時計 24 時間） | 灰           | 12 時間までは灰              |
-// | 緑だが機器の時計が切れる       | 黄           | 無事だが酸素 残り 1 時間     |
-// | 緑                             | 緑、一番下   | 本人が「無事」               |
-//
-// 同じ色の中は時計の残りが短い順、同じなら緊急度の骨格（1〜8）の順。
+// 入力は時刻で持つ: 今・発災・停電の始まり（台帳の時計はここから走る）と、信号ごとの時刻。
 // 読み方（表から決めた所）:
+// - 信号は時刻の新しい物を使う。今より後の時刻の信号は使わない。信号が無ければ未知。
 // - 時計はきっかけ（停電・発災）から走る。停電していなければ停電で走る時計は止まったまま（残りは全部）。
 // - 「超えた」「過ぎた」はちょうどを含まない（「12 時間までは灰」に合わせた）。
 // - 「機器の時計」は時計の種類が機器（A）の物だけ。物（B）・薬（C）は半分の行だけに効く。
 
-import type { ClockCategory, ClockRow, ClockUnit, RecordingClass } from "../db/types.ts";
+import type {
+  ClockCategory,
+  ClockRow,
+  ClockUnit,
+  RecordingClass,
+  SignalColor,
+  SignalSource,
+} from "../db/types.ts";
 
 /** 赤 危険・黄 要確認・灰 未知・緑 無事 */
 export type Color = "red" | "yellow" | "gray" | "green";
@@ -47,18 +47,27 @@ export type TriagePerson = {
   dementia: boolean;
 };
 
-/** 本人・家族からの信号。赤は 4 問の答えと録音の分類を持てる */
-export type TriageSignal =
-  | { color: "green" }
-  | { color: "red"; injured?: boolean | null; canMove?: boolean | null; classes?: RecordingClass[] }
-  | { color: "unknown" };
+/** 本人・家族・支援者・ケアマネからの信号 1 つ。赤は 4 問の答えと録音の分類を持てる */
+export type TriageSignal = {
+  color: SignalColor;
+  source: SignalSource;
+  /** 信号の時刻（ISO 8601） */
+  at: string;
+  /** 赤の 4 問の「けが」。null は答えていない */
+  injured?: boolean | null;
+  /** 赤の 4 問の「動けるか」。null は答えていない */
+  canMove?: boolean | null;
+  classes?: RecordingClass[];
+};
 
-/** 災害の情報 */
+/** 災害の情報。時刻は ISO 8601 */
 export type Situation = {
-  /** 発災からの時間 */
-  hoursSinceDisaster: number;
-  /** 停電が始まってからの時間。停電していなければ null */
-  hoursSinceOutage: number | null;
+  /** 今 */
+  now: string;
+  /** 発災（災害モードに切り替えた時刻） */
+  disasterAt: string;
+  /** 停電が始まった時刻。停電していなければ null */
+  outageAt: string | null;
 };
 
 /** ケアマネの上書き。理由が要る */
@@ -88,15 +97,17 @@ export type TriageResult = {
   override?: Override & { expired: boolean };
 };
 
-export type TriageEntry = { person: TriagePerson; signal: TriageSignal; override?: Override };
+/** 1 人ぶんの入力。signals は信号の全部（順は問わない） */
+export type TriageEntry = { person: TriagePerson; signals: ReadonlyArray<TriageSignal>; override?: Override };
 
 /** 悪さの順。上書きが切れたかを見るのに使う */
 export const SEVERITY: Record<Color, number> = { green: 0, gray: 1, yellow: 2, red: 3 };
 
 const UNIT_HOURS: Record<ClockUnit, number> = { minute: 1 / 60, hour: 1, day: 24, week: 168 };
+const HOUR_MS = 3_600_000;
 
 /** 時計の長さ（時間）。値が無い時計は未確認で null */
-export function clockHours(clock: TriageClock): number | null {
+export function clockHours(clock: Pick<TriageClock, "value" | "unit">): number | null {
   if (clock.value == null || clock.unit == null) return null;
   return clock.value * UNIT_HOURS[clock.unit];
 }
@@ -125,6 +136,12 @@ export function tierOf(person: TriagePerson): Tier {
   return tier;
 }
 
+function ms(iso: string): number {
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) throw new Error(`時刻の形が違う: ${iso}`);
+  return t;
+}
+
 type ClockState = {
   clock: TriageClock;
   hours: number;
@@ -134,20 +151,35 @@ type ClockState = {
 };
 
 function clockStates(person: TriagePerson, s: Situation): ClockState[] {
+  const now = ms(s.now);
   return person.clocks.flatMap((clock): ClockState[] => {
     if (clock.starts_on === "none") return [];
     const hours = clockHours(clock);
     if (hours === null) return [];
-    const since = clock.starts_on === "disaster" ? s.hoursSinceDisaster : s.hoursSinceOutage;
-    const running = since !== null;
-    const elapsed = running ? Math.max(0, since) : 0;
+    const startIso = clock.starts_on === "disaster" ? s.disasterAt : s.outageAt;
+    const start = startIso === null ? null : ms(startIso);
+    const running = start !== null && now >= start;
+    const elapsed = running ? (now - start) / HOUR_MS : 0;
     return [{ clock, hours, elapsed, remaining: hours - elapsed, running }];
   });
 }
 
+/** 使う信号: 今までの信号のうち、時刻のいちばん新しい物（同じ時刻ならあとに入れた物） */
+function latestSignal(signals: ReadonlyArray<TriageSignal>, s: Situation): TriageSignal | null {
+  const now = ms(s.now);
+  let best: { sig: TriageSignal; t: number } | null = null;
+  for (const sig of signals) {
+    const t = ms(sig.at);
+    if (t > now) continue;
+    if (best === null || t >= best.t) best = { sig, t };
+  }
+  return best?.sig ?? null;
+}
+
+const isDevice = (c: ClockState) => c.clock.kind === "device";
 const isOver = (c: ClockState) => c.running && c.elapsed > c.hours;
 const isPastHalf = (c: ClockState) => c.running && c.elapsed > c.hours / 2;
-const isOutageDevice = (c: ClockState) => c.clock.kind === "device" && c.clock.starts_on === "outage";
+const isOutageDevice = (c: ClockState) => isDevice(c) && c.clock.starts_on === "outage";
 const shortest = (cs: ClockState[]) => cs.reduce((a, b) => (b.remaining < a.remaining ? b : a));
 
 const round1 = (x: number) => Math.round(x * 10) / 10;
@@ -160,47 +192,132 @@ export function formatHours(h: number): string {
   return `${round1(v / 24)} 日`;
 }
 
-function unconfirmed(s: Situation): string {
-  return s.hoursSinceDisaster > 0 ? `未確認 ${formatHours(s.hoursSinceDisaster)}` : "未確認";
+/** 信号の出どころの言い方。訓練の本人役（agent）は本人 */
+const WHO: Record<SignalSource, string> = {
+  self: "本人",
+  agent: "本人",
+  family: "家族",
+  supporter: "支援者",
+  care_manager: "ケアマネ",
+};
+
+/** 表の行が見る物 */
+type RuleInput = {
+  signal: TriageSignal | null;
+  states: ClockState[];
+  hoursSinceDisaster: number;
+};
+
+const over = (c: ClockState) => `${c.clock.label} ${formatHours(c.hours)}を超過`;
+const left = (c: ClockState) => (isOver(c) ? over(c) : `${c.clock.label} 残り ${formatHours(c.remaining)}`);
+const unconfirmed = (x: RuleInput) => (x.hoursSinceDisaster > 0 ? `未確認 ${formatHours(x.hoursSinceDisaster)}` : "未確認");
+const who = (x: RuleInput) => (x.signal ? WHO[x.signal.source] : "本人");
+
+function injuryWords(sig: TriageSignal | null): string[] {
+  if (!sig) return [];
+  const words: string[] = [];
+  if (sig.injured === true || sig.classes?.includes("injury")) words.push("けが");
+  if (sig.canMove === false || sig.classes?.includes("immobile")) words.push("動けない");
+  return words;
 }
 
-function left(c: ClockState): string {
-  return c.remaining > 0 ? `${c.clock.label} 残り ${formatHours(c.remaining)}` : `${c.clock.label} ${formatHours(c.hours)}を超過`;
+export type Rule = {
+  id: RuleId;
+  /** どの信号の行か（未知は信号が無いときも） */
+  signal: SignalColor;
+  /** 表の「入力」 */
+  input: string;
+  color: Color;
+  /** 表の「理由の例」。triage.test.ts で本当の出力と同じかを確かめる */
+  example: string;
+  /** 行の元（仕様書の表か、docs/DECISIONS.md の案の番号） */
+  origin: string;
+  /** 当たれば理由の 1 行を返す。当たらなければ null */
+  match: (x: RuleInput) => string | null;
+};
+
+function firstOf(cs: ClockState[], say: (c: ClockState) => string): string | null {
+  return cs.length > 0 ? say(shortest(cs)) : null;
 }
 
-type Base = { color: Color; rule: RuleId; reason: string };
+/** ルールの表。上から順に当てる。信号ごとの最後の行はいつも当たる */
+export const RULES: ReadonlyArray<Rule> = [
+  {
+    id: "red_injury",
+    signal: "red",
+    input: "赤 ＋ けが・動けない",
+    color: "red",
+    example: "本人が「動けない」",
+    origin: "仕様書",
+    match: (x) => {
+      const words = injuryWords(x.signal);
+      return words.length > 0 ? `${who(x)}が${words.map((w) => `「${w}」`).join("")}` : null;
+    },
+  },
+  {
+    id: "red",
+    signal: "red",
+    input: "赤だけ",
+    color: "red",
+    example: "本人が「無事じゃない」",
+    origin: "仕様書",
+    match: (x) => `${who(x)}が「無事じゃない」`,
+  },
+  {
+    id: "unknown_device_over",
+    signal: "unknown",
+    input: "未知 ＋ 停電が機器の時計を超えた",
+    color: "red",
+    example: "酸素 内蔵電池 2 時間を超過",
+    origin: "仕様書",
+    match: (x) => firstOf(x.states.filter((c) => isOutageDevice(c) && isOver(c)), over),
+  },
+  {
+    id: "unknown_half",
+    signal: "unknown",
+    input: "未知 ＋ 時計の半分を過ぎた",
+    color: "yellow",
+    example: "透析 次の回まで 残り 18 時間、未確認 30 時間",
+    origin: "仕様書",
+    match: (x) => firstOf(x.states.filter(isPastHalf), (c) => `${left(c)}、${unconfirmed(x)}`),
+  },
+  {
+    id: "unknown",
+    signal: "unknown",
+    input: "未知（時計の半分まで。薬だけで時計 24 時間なら 12 時間までは灰）",
+    color: "gray",
+    example: "未確認 6 時間",
+    origin: "仕様書",
+    match: (x) => unconfirmed(x),
+  },
+  {
+    id: "green_device_low",
+    signal: "green",
+    input: "緑だが機器の時計の半分を過ぎた",
+    color: "yellow",
+    example: "無事だが酸素 内蔵電池 残り 30 分",
+    origin: "仕様書",
+    match: (x) => firstOf(x.states.filter((c) => isOutageDevice(c) && isPastHalf(c)), (c) => `無事だが${left(c)}`),
+  },
+  {
+    id: "green",
+    signal: "green",
+    input: "緑",
+    color: "green",
+    example: "本人が「無事」",
+    origin: "仕様書",
+    match: (x) => `${who(x)}が「無事」`,
+  },
+];
 
-function baseRule(signal: TriageSignal, states: ClockState[], s: Situation): Base {
-  if (signal.color === "red") {
-    const words: string[] = [];
-    if (signal.injured === true || signal.classes?.includes("injury")) words.push("けが");
-    if (signal.canMove === false || signal.classes?.includes("immobile")) words.push("動けない");
-    if (words.length > 0) {
-      return { color: "red", rule: "red_injury", reason: `本人が${words.map((w) => `「${w}」`).join("")}` };
-    }
-    return { color: "red", rule: "red", reason: "本人が「無事じゃない」" };
+function baseRule(x: RuleInput): { rule: Rule; reason: string } {
+  const color: SignalColor = x.signal?.color ?? "unknown";
+  for (const rule of RULES) {
+    if (rule.signal !== color) continue;
+    const reason = rule.match(x);
+    if (reason !== null) return { rule, reason };
   }
-
-  const devices = states.filter(isOutageDevice);
-
-  if (signal.color === "unknown") {
-    const over = devices.filter(isOver);
-    if (over.length > 0) {
-      const c = shortest(over);
-      return { color: "red", rule: "unknown_device_over", reason: `${c.clock.label} ${formatHours(c.hours)}を超過` };
-    }
-    const half = states.filter(isPastHalf);
-    if (half.length > 0) {
-      return { color: "yellow", rule: "unknown_half", reason: `${left(shortest(half))}、${unconfirmed(s)}` };
-    }
-    return { color: "gray", rule: "unknown", reason: unconfirmed(s) };
-  }
-
-  const low = devices.filter(isPastHalf);
-  if (low.length > 0) {
-    return { color: "yellow", rule: "green_device_low", reason: `無事だが${left(shortest(low))}` };
-  }
-  return { color: "green", rule: "green", reason: "本人が「無事」" };
+  throw new Error(`ルールの表に当たる行が無い: ${color}`);
 }
 
 function applyOverride(base: Color, o: Override): { color: Color; detail: Override & { expired: boolean } } {
@@ -211,8 +328,8 @@ function applyOverride(base: Color, o: Override): { color: Color; detail: Overri
   return { color, detail: { ...o, expired } };
 }
 
-function groupOf(color: Color, base: Base): TriageResult["group"] {
-  if (color === "red") return base.rule === "red_injury" ? 0 : 1;
+function groupOf(color: Color, rule: RuleId): TriageResult["group"] {
+  if (color === "red") return rule === "red_injury" ? 0 : 1;
   if (color === "yellow") return 2;
   if (color === "gray") return 3;
   return 4;
@@ -220,20 +337,25 @@ function groupOf(color: Color, base: Base): TriageResult["group"] {
 
 /** 1 人の色・理由・並びの鍵 */
 export function triage(entry: TriageEntry, situation: Situation): TriageResult {
-  const { person, signal } = entry;
+  const { person } = entry;
   const states = clockStates(person, situation);
-  const base = baseRule(signal, states, situation);
-  const applied = entry.override ? applyOverride(base.color, entry.override) : undefined;
-  const color = applied ? applied.color : base.color;
+  const input: RuleInput = {
+    signal: latestSignal(entry.signals, situation),
+    states,
+    hoursSinceDisaster: Math.max(0, (ms(situation.now) - ms(situation.disasterAt)) / HOUR_MS),
+  };
+  const { rule, reason } = baseRule(input);
+  const applied = entry.override ? applyOverride(rule.color, entry.override) : undefined;
+  const color = applied ? applied.color : rule.color;
   return {
     personId: person.id,
     color,
-    baseColor: base.color,
-    rule: base.rule,
-    group: groupOf(color, base),
+    baseColor: rule.color,
+    rule: rule.id,
+    group: groupOf(color, rule.id),
     remainingHours: states.length > 0 ? Math.min(...states.map((c) => c.remaining)) : Infinity,
     tier: tierOf(person),
-    reason: base.reason,
+    reason,
     ...(applied ? { override: applied.detail } : {}),
   };
 }
