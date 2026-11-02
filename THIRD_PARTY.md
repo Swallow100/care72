@@ -17,5 +17,6 @@
 | @anthropic-ai/sdk | Claude を呼ぶ（lib/claude） | Apache-2.0（1.0.0 から。前の版は MIT） |
 | @google/genai | Gemini TTS で声を作る（lib/gemini。fetch だけで動く web の入口を使う） | Apache-2.0 |
 | zod | Claude の返す JSON の形を書き、返った物を検査する | MIT |
+| qrcode-generator | QR の頁の QR の点の並び（lib/qr/image.ts）。SVG はこちらで描く。間接の依存なし | MIT |
 | @modelcontextprotocol/sdk | 手元の MCP サーバー（tools/mcp/care72-local）。開発の道具で配信には入らない（devDependencies）。間接の依存の内訳は docs/progress/t32.md | MIT |
 | BIZ UDPGothic（next/font/google で build のときに取り込む） | 書体 | OFL-1.1 |
