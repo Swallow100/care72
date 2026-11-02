@@ -15,7 +15,7 @@ import {
   confidenceText,
 } from "@/lib/classify/labels";
 import type { AiClassView, ClassView } from "@/lib/classify/view";
-import { BTN, BTN_IN } from "@/components/person/intake-ui";
+import { BTN, BTN_IN, BTN_MAIN } from "@/components/person/intake-ui";
 import { AiMark } from "@/components/person/parts";
 
 export type ClassificationProps = {
@@ -109,9 +109,7 @@ export function Classification({ signalId, view: given, editable = false, inset 
                 key={c}
                 type="button"
                 aria-pressed={on}
-                className={`rounded px-2 py-1 text-xs ${inset ? "bg-panel" : "bg-panel2"} ${
-                  on ? "font-bold text-accent ring-1 ring-inset ring-accent" : ""
-                }`}
+                className={`${btn} ${on ? "outline-2 -outline-offset-2 outline-accent" : "font-normal"}`}
                 data-press
                 disabled={save === "saving"}
                 onClick={() => setPicked((p) => toggleClass(p, c))}
@@ -124,8 +122,8 @@ export function Classification({ signalId, view: given, editable = false, inset 
             {save === "failed" && <span className="text-xs font-bold text-danger">{CLASSIFY_LABELS.failed}</span>}
             <button
               type="button"
-              className={`${btn} text-accent`}
-              data-press
+              className={BTN_MAIN}
+              data-press="overlay"
               disabled={picked.length === 0 || save === "saving"}
               onClick={submit}
             >

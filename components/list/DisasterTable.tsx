@@ -5,6 +5,8 @@
 
 import Link from "next/link";
 import { StateTag, TONE_TEXT } from "@/components/person/parts";
+import { Mark, StateText } from "@/components/ui/Tag";
+import { TABLE } from "@/components/ui/table";
 import { PLAN_TONES, rowLink, type CaseloadRow, type SortKey } from "@/lib/caseload";
 import { CARE_LEVEL_LABELS, COLOR_LABELS, PLAN_STATUS_LABELS, TIER_LABELS } from "@/lib/labels";
 import { DETAIL_LABELS } from "@/lib/list/labels";
@@ -13,7 +15,15 @@ import { ExpandRow } from "./ExpandRow";
 import { RowDetail, type ClassificationSlot } from "./RowDetail";
 import { SortHeader } from "./SortHeader";
 
-const CELL = "bg-panel px-1.5 py-2 align-top first:rounded-l-md last:rounded-r-md";
+const CELL = "bg-panel px-1.5 py-1.5 align-top";
+
+/**
+ * 横に送らない。PC の幅（1024px 以上）は全部の列。狭い幅は列を省く: 640px 未満は最終連絡、768px 未満は医療・避難計画、
+ * 1024px 未満は年齢・ハザード・支援者。状態・優先・氏名と理由・残りはいつも出す
+ */
+const SM = "hidden sm:table-cell";
+const MD = "hidden md:table-cell";
+const LG = "hidden lg:table-cell";
 const COLS = 10;
 
 /**
@@ -40,19 +50,19 @@ export function DisasterTable({
 }) {
   const h = (k: SortKey) => slots?.sortHref(k);
   return (
-    <table className="w-full min-w-[50rem] border-separate border-spacing-y-0.5 text-left text-sm" data-table="disaster">
+    <table className={TABLE} data-table="disaster">
       <thead>
-        <tr className="whitespace-nowrap text-muted">
-          <SortHeader k="state" sort={sort} href={h("state")} className="w-[5.5rem] text-center" />
-          <SortHeader k="tier" sort={sort} href={h("tier")} className="w-12 text-center" />
+        <tr>
+          <SortHeader k="state" sort={sort} href={h("state")} className="w-[5.25rem] text-center" />
+          <SortHeader k="tier" sort={sort} href={h("tier")} className="w-10 text-center" />
           <SortHeader k="kana" sort={sort} href={h("kana")} />
           <SortHeader k="remain" sort={sort} href={h("remain")} />
-          <SortHeader k="contact" sort={sort} href={h("contact")} />
-          <SortHeader k="age" sort={sort} href={h("age")} />
-          <SortHeader k="medical" sort={sort} href={h("medical")} />
-          <SortHeader k="hazard" sort={sort} href={h("hazard")} />
-          <SortHeader k="supporter" sort={sort} href={h("supporter")} />
-          <SortHeader k="plan" sort={sort} href={h("plan")} />
+          <SortHeader k="contact" sort={sort} href={h("contact")} className={SM} />
+          <SortHeader k="age" sort={sort} href={h("age")} className={LG} />
+          <SortHeader k="medical" sort={sort} href={h("medical")} className={MD} />
+          <SortHeader k="hazard" sort={sort} href={h("hazard")} className={LG} />
+          <SortHeader k="supporter" sort={sort} href={h("supporter")} className={LG} />
+          <SortHeader k="plan" sort={sort} href={h("plan")} className={MD} />
         </tr>
       </thead>
       <tbody>
@@ -85,11 +95,11 @@ function Cells({ row: r, sort, nameHref }: { row: CaseloadRow; sort: SortKey; na
   return (
     <>
       <td className={`${CELL} text-center`}>
-        <span className="text-lg font-bold tabular-nums" title={TIER_LABELS[r.tier]} data-rank>
+        <span className="text-lg leading-6 font-bold" title={TIER_LABELS[r.tier]} data-rank>
           {r.rank ?? "—"}
         </span>
       </td>
-      <td className={`${CELL} min-w-[10rem]`}>
+      <td className={`${CELL} min-w-[9rem]`}>
         {href === null ? (
           <span className="font-bold">{r.name}</span>
         ) : (
@@ -113,7 +123,7 @@ function Cells({ row: r, sort, nameHref }: { row: CaseloadRow; sort: SortKey; na
       <td className={`${CELL} min-w-[5.5rem]`}>
         {r.remain ? (
           <>
-            <div className={`whitespace-nowrap font-bold tabular-nums ${r.remain.tone ? TONE_TEXT[r.remain.tone] : ""}`}>
+            <div className={`whitespace-nowrap font-bold ${r.remain.tone ? TONE_TEXT[r.remain.tone] : ""}`}>
               {r.remain.text}
             </div>
             <div className="text-xs text-muted">{r.remain.label}</div>
@@ -122,10 +132,10 @@ function Cells({ row: r, sort, nameHref }: { row: CaseloadRow; sort: SortKey; na
           <span className="text-muted">—</span>
         )}
       </td>
-      <td className={`${CELL} whitespace-nowrap`}>
+      <td className={`${CELL} ${SM} whitespace-nowrap`}>
         {r.lastContact ? (
           <>
-            <div className="tabular-nums">{r.lastContact.when.split(" ")[1]}</div>
+            <div>{r.lastContact.when.split(" ")[1]}</div>
             <div className="text-xs text-muted">
               {r.lastContact.source}
               {r.lastContact.ago ? ` ${r.lastContact.ago}${DETAIL_LABELS.ago}` : ""}
@@ -135,25 +145,23 @@ function Cells({ row: r, sort, nameHref }: { row: CaseloadRow; sort: SortKey; na
           <span className="text-muted">{DETAIL_LABELS.noContact}</span>
         )}
       </td>
-      <td className={`${CELL} whitespace-nowrap`}>
-        <span className="tabular-nums">{r.age ?? "—"}</span>
+      <td className={`${CELL} ${LG} whitespace-nowrap`}>
+        <span>{r.age ?? "—"}</span>
         <span className="text-muted"> 歳</span>
         <div className="text-xs">{r.careLevel ? CARE_LEVEL_LABELS[r.careLevel] : "—"}</div>
       </td>
-      <td className={CELL}>
+      <td className={`${CELL} ${MD}`}>
         {r.marks.length === 0 ? (
           <span className="text-muted">—</span>
         ) : (
           <div className="flex flex-wrap gap-1">
             {r.marks.map((m) => (
-              <span key={m} className="whitespace-nowrap rounded bg-panel2 px-1 py-px text-xs">
-                {m}
-              </span>
+              <Mark key={m}>{m}</Mark>
             ))}
           </div>
         )}
       </td>
-      <td className={CELL}>
+      <td className={`${CELL} ${LG}`}>
         {r.hazards.length === 0 ? (
           <span className="text-muted">なし</span>
         ) : (
@@ -164,12 +172,13 @@ function Cells({ row: r, sort, nameHref }: { row: CaseloadRow; sort: SortKey; na
           ))
         )}
       </td>
-      <td className={`${CELL} whitespace-nowrap`}>
-        {r.supporters > 0 ? <span className="tabular-nums">{r.supporters} 人</span> : <span className="text-state-check">なし</span>}
+      <td className={`${CELL} ${LG} whitespace-nowrap`}>
+        {r.supporters > 0 ? <span>{r.supporters} 人</span> : <StateText tone="check">なし</StateText>}
       </td>
-      <td className={`${CELL} whitespace-nowrap`}>
-        <StateTag tone={PLAN_TONES[r.plan]}>{PLAN_STATUS_LABELS[r.plan]}</StateTag>
-        {r.pending > 0 && <div className="mt-0.5 text-xs font-bold text-state-check tabular-nums">未確認 {r.pending}</div>}
+      <td className={`${CELL} ${MD} whitespace-nowrap`}>
+        {/* 避難計画は 2 番目の状態なので色の文字（塗りの印は安否の状態だけ） */}
+        <StateText tone={PLAN_TONES[r.plan]}>{PLAN_STATUS_LABELS[r.plan]}</StateText>
+        {r.pending > 0 && <div className="text-xs font-bold text-state-check">未確認 {r.pending}</div>}
       </td>
     </>
   );

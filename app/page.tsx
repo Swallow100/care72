@@ -11,6 +11,11 @@ import { UnlistedFold } from "@/components/office/UnlistedFold";
 import { UnlistedRows } from "@/components/office/UnlistedRows";
 import { PersonWithIntake } from "@/components/person/PersonWithIntake";
 import { StateTag, TONE_TEXT } from "@/components/person/parts";
+import { ButtonLink } from "@/components/ui/Button";
+import { AddPersonIcon, CloseIcon } from "@/components/ui/Icon";
+import { PageHead, Panel } from "@/components/ui/Panel";
+import { Mark, StateText } from "@/components/ui/Tag";
+import { TABLE, TABLE_BOX, TD } from "@/components/ui/table";
 import { todayJst } from "@/lib/age";
 import type { Principal } from "@/lib/auth/principal";
 import { caseloadScope } from "@/lib/auth/scope";
@@ -47,9 +52,6 @@ export const dynamic = "force-dynamic";
 type Props = {
   searchParams: Promise<{ sort?: string | string[]; open?: string | string[]; people_error?: string | string[] }>;
 };
-
-/** 利用者追加（T30）。操作の色の塗りのボタン。角は rounded-md（ピル型にしない） */
-const ADD_BUTTON = "rounded-md bg-accent px-4 py-2 text-sm font-bold text-on-accent";
 
 /**
  * 行の詳細の「分類と直す口」（T12 の components/list/Classification.tsx）。録音か文字起こしのある信号ごとに描く。
@@ -100,18 +102,16 @@ export default async function CaseloadPage({ searchParams }: Props) {
   if (open) {
     return (
       <main className="mx-auto grid max-w-[90rem] gap-3 px-4 py-4 lg:grid-cols-[15rem_minmax(0,1fr)]">
-        <section
-          aria-labelledby="caseload-title"
-          className="hidden self-start lg:sticky lg:top-4 lg:block lg:max-h-[calc(100dvh-2rem)] lg:overflow-y-auto"
-        >
-          <div className="flex items-baseline gap-3 px-1">
-            <h1 id="caseload-title" className="text-xl font-bold">
+        {/* 内側で送らない（送るのは画面全体の縦 1 本）。10 人前後なら本人のページと並んで収まる */}
+        <section aria-labelledby="caseload-title" className="hidden self-start lg:block">
+          <div className="flex items-center gap-2 px-1">
+            <h1 id="caseload-title" className="text-[1rem] leading-6 font-bold">
               担当一覧
             </h1>
             <span className="text-sm text-muted">{rows.length} 人</span>
-            <Link href={NEW_PERSON_PATH} className="ml-auto rounded px-1 text-sm font-bold text-accent" data-press>
+            <ButtonLink href={NEW_PERSON_PATH} kind="plain" size="sm" icon={AddPersonIcon} className="ml-auto">
               {OFFICE_LABELS.addPerson}
-            </Link>
+            </ButtonLink>
           </div>
           <CompactList rows={rows} sort={key} open={open} />
           {unlisted}
@@ -135,26 +135,27 @@ export default async function CaseloadPage({ searchParams }: Props) {
       }`}
     >
       <section aria-labelledby="caseload-title" className="min-w-0">
-        <div className="flex flex-wrap items-baseline gap-x-4 gap-y-2">
-          <h1 id="caseload-title" className="text-2xl font-bold">
-            担当一覧
-          </h1>
-          <span className="text-muted">{rows.length} 人</span>
-          {/* 利用者追加（T30）は見出しの段の右上 */}
-          <Link href={NEW_PERSON_PATH} className={`${ADD_BUTTON} ml-auto self-center`} data-press="overlay">
-            {OFFICE_LABELS.addPerson}
-          </Link>
-        </div>
+        {/* 利用者追加（T30）は見出しの段の右上。事業所のケアマネ追加と同じ形（主の操作・人＋のアイコン・32px） */}
+        <PageHead
+          id="caseload-title"
+          title="担当一覧"
+          count={`${rows.length} 人`}
+          actions={
+            <ButtonLink href={NEW_PERSON_PATH} kind="main" icon={AddPersonIcon}>
+              {OFFICE_LABELS.addPerson}
+            </ButtonLink>
+          }
+        />
         {/* 災害モードは色ごとの人数（大きく）と発災・停電からの経過（平時の計画の人数は右の面の「計画」） */}
         {s && (
-          <div className="mt-3 rounded-lg bg-panel px-4 py-3">
+          <Panel as="div" className="mt-3 px-4">
             <DisasterSummary
               counts={countColors(rows.flatMap((r) => (r.triage ? [r.triage.color] : [])))}
               disaster={elapsedText(s.disasterAt, s.now)}
               outage={s.outageAt ? { elapsed: elapsedText(s.outageAt, s.now), area: s.outageTowns !== null } : null}
               at={shortJst(now)}
             />
-          </div>
+          </Panel>
         )}
         {peopleError && (
           <p role="alert" className="mt-2 text-sm font-bold text-danger">
@@ -162,9 +163,10 @@ export default async function CaseloadPage({ searchParams }: Props) {
           </p>
         )}
         {rows.length === 0 ? (
-          <p className="mt-4 rounded-lg bg-panel p-6 text-muted">なし</p>
+          <p className="mt-3 rounded-lg bg-panel px-3 py-2 text-muted">なし</p>
         ) : (
-          <div className="mt-3 overflow-x-auto">
+          // 横に送らない。PC の幅（1024px 以上）は全部の列、狭い幅は列を省く（表の部品）
+          <div className={`mt-3 ${TABLE_BOX}`}>
             {disaster ? (
               <DisasterTable rows={rows} sort={key} classification={CLASSIFICATION} />
             ) : (
@@ -198,25 +200,26 @@ async function PersonPanel({ principal, id, sort, now }: { principal: Principal;
   return (
     <div className="min-w-0">
       <div className="mb-2 flex items-center justify-between">
-        <Link href={closeHref(sort)} className="rounded px-2 py-1 text-sm text-muted" data-press>
+        <ButtonLink href={closeHref(sort)} kind="quiet" size="sm" icon={CloseIcon} className="-ml-2">
           閉じる
-        </Link>
+        </ButtonLink>
       </div>
       {view ? (
         <PersonWithIntake view={view} level={2} intake={intake} />
       ) : (
-        <section className="rounded-lg bg-panel p-6">
-          <h2 className="text-xl font-bold">{failed ? "読込失敗" : "該当なし"}</h2>
-        </section>
+        <Panel>
+          <h2 className="text-[1rem] leading-6 font-bold">{failed ? "読込失敗" : "該当なし"}</h2>
+        </Panel>
       )}
     </div>
   );
 }
 
-/** 右に開いている間の一覧。優先・氏名・医療の印だけに圧縮する。選んだ行は枠と太字。発災時は色の印と優先の番号 */
+/** 右に開いている間の一覧。優先・氏名・医療の印だけに圧縮する。選んだ行は枠と太字。発災時は色の印と優先の番号。
+ * 1 つの面にまとめ、行は地の色の 1px のすき間で分ける */
 function CompactList({ rows, sort, open }: { rows: CaseloadRow[]; sort: SortKey; open: string }) {
   return (
-    <ul className="mt-3 space-y-0.5">
+    <ul className="mt-2 grid gap-px overflow-hidden rounded-lg bg-base">
       {rows.map((r) => {
         const link = rowLink(sort, open, r.id);
         return (
@@ -225,29 +228,29 @@ function CompactList({ rows, sort, open }: { rows: CaseloadRow[]; sort: SortKey;
               href={link.href}
               replace={link.replace}
               aria-current={link.current ? "true" : undefined}
-              className={`grid ${r.triage ? "grid-cols-[3rem_minmax(0,1fr)]" : "grid-cols-[2rem_minmax(0,1fr)]"} items-baseline gap-x-2 rounded-md bg-panel px-3 py-2 ${
-                link.current ? "font-bold ring-2 ring-inset ring-accent" : ""
+              className={`grid ${r.triage ? "grid-cols-[3rem_minmax(0,1fr)]" : "grid-cols-[2rem_minmax(0,1fr)]"} items-baseline gap-x-2 bg-panel px-2.5 py-1.5 text-sm ${
+                link.current ? "font-bold outline-2 -outline-offset-2 outline-accent" : ""
               }`}
               data-press="overlay"
             >
               {r.triage ? (
                 <span className="text-center">
                   <TriageTag color={r.triage.color} />
-                  {r.rank !== null && <span className="mt-0.5 block text-xs text-muted tabular-nums">{r.rank}</span>}
+                  {r.rank !== null && <span className="mt-0.5 block text-xs text-muted">{r.rank}</span>}
                 </span>
               ) : (
-                <span className="text-center tabular-nums" title={TIER_LABELS[r.tier]}>
+                <span className="text-center font-bold" title={TIER_LABELS[r.tier]}>
                   {r.tier}
                 </span>
               )}
               <span className="min-w-0">
                 <span className="block truncate">{r.name}</span>
                 {r.triage ? (
-                  <span className={`block truncate text-sm ${TONE_TEXT[COLOR_TONES[r.triage.color]]}`} title={r.triage.reason}>
+                  <span className={`block truncate text-xs font-bold ${TONE_TEXT[COLOR_TONES[r.triage.color]]}`} title={r.triage.reason}>
                     {r.triage.reason}
                   </span>
                 ) : (
-                  r.marks.length > 0 && <span className="block truncate text-sm font-normal text-muted">{r.marks.join("・")}</span>
+                  r.marks.length > 0 && <span className="block truncate text-xs font-normal text-muted">{r.marks.join("・")}</span>
                 )}
               </span>
             </Link>
@@ -258,20 +261,24 @@ function CompactList({ rows, sort, open }: { rows: CaseloadRow[]; sort: SortKey;
   );
 }
 
-const CELL = "bg-panel px-3 py-3 align-top first:rounded-l-md last:rounded-r-md";
+const CELL = TD;
 
-/** 平時の表。列は 優先（骨格の段）・氏名・年齢・医療・ハザード・支援者・計画。どの列でも並べ替えられる */
+/**
+ * 平時の表。列は 優先（骨格の段）・氏名・年齢・医療・ハザード・支援者・計画。どの列でも並べ替えられる。
+ * 横に送らない: 768px 未満は医療・ハザード・支援者を省き、氏名の下に医療の印を出す
+ */
 function CaseloadTable({ rows, sort }: { rows: CaseloadRow[]; sort: SortKey }) {
+  const wide = "hidden md:table-cell";
   return (
-    <table className="w-full min-w-[46rem] border-separate border-spacing-y-0.5 text-left">
+    <table className={TABLE}>
       <thead>
-        <tr className="whitespace-nowrap text-sm text-muted">
-          <SortHeader k="tier" sort={sort} className="w-20 text-center" />
+        <tr>
+          <SortHeader k="tier" sort={sort} className="w-14 text-center" />
           <SortHeader k="kana" sort={sort} />
           <SortHeader k="age" sort={sort} />
-          <SortHeader k="medical" sort={sort} />
-          <SortHeader k="hazard" sort={sort} />
-          <SortHeader k="supporter" sort={sort} />
+          <SortHeader k="medical" sort={sort} className={wide} />
+          <SortHeader k="hazard" sort={sort} className={wide} />
+          <SortHeader k="supporter" sort={sort} className={wide} />
           <SortHeader k="plan" sort={sort} />
         </tr>
       </thead>
@@ -279,49 +286,41 @@ function CaseloadTable({ rows, sort }: { rows: CaseloadRow[]; sort: SortKey }) {
         {rows.map((r) => (
           <tr key={r.id}>
             <td className={`${CELL} text-center`}>
-              <span className="text-lg font-bold tabular-nums" title={TIER_LABELS[r.tier]}>
+              <span className="text-lg leading-6 font-bold" title={TIER_LABELS[r.tier]}>
                 {r.tier}
               </span>
             </td>
             <td className={CELL}>
-              <Link href={rowLink(sort, null, r.id).href} className="-mx-1 block rounded px-1 font-bold" data-press>
+              <Link href={rowLink(sort, null, r.id).href} className="-mx-1 rounded px-1 font-bold" data-press>
                 {r.name}
               </Link>
-              <div className="text-sm text-muted">{r.kana}</div>
+              <span className="ml-1.5 text-xs text-muted">{r.kana}</span>
+              {r.marks.length > 0 && <div className="mt-0.5 text-xs text-muted md:hidden">{r.marks.join("・")}</div>}
             </td>
-            <td className={CELL}>
-              <span className="tabular-nums">{r.age ?? "—"}</span>
+            <td className={`${CELL} whitespace-nowrap`}>
+              {r.age ?? "—"}
               <span className="text-muted"> 歳</span>
-              <div className="text-sm">{r.careLevel ? CARE_LEVEL_LABELS[r.careLevel] : "—"}</div>
+              <div className="text-xs">{r.careLevel ? CARE_LEVEL_LABELS[r.careLevel] : "—"}</div>
             </td>
-            <td className={CELL}>
+            <td className={`${CELL} ${wide}`}>
               {r.marks.length === 0 ? (
                 <span className="text-muted">—</span>
               ) : (
                 <div className="flex flex-wrap gap-1">
                   {r.marks.map((m) => (
-                    <span key={m} className="rounded bg-panel2 px-1.5 py-0.5 text-sm">
-                      {m}
-                    </span>
+                    <Mark key={m}>{m}</Mark>
                   ))}
                 </div>
               )}
             </td>
-            <td className={CELL}>
-              {r.hazards.length === 0 ? <span className="text-muted">なし</span> : r.hazards.join("・")}
+            <td className={`${CELL} ${wide}`}>{r.hazards.length === 0 ? <span className="text-muted">なし</span> : r.hazards.join("・")}</td>
+            <td className={`${CELL} ${wide} whitespace-nowrap`}>
+              {r.supporters > 0 ? `${r.supporters} 人` : <StateText tone="check">なし</StateText>}
             </td>
-            <td className={CELL}>
-              {r.supporters > 0 ? (
-                <span className="tabular-nums">{r.supporters} 人</span>
-              ) : (
-                <span className="text-state-check">なし</span>
-              )}
-            </td>
-            <td className={CELL}>
-              <StateTag tone={PLAN_TONES[r.plan]} size="md">
-                {PLAN_STATUS_LABELS[r.plan]}
-              </StateTag>
-              {r.pending > 0 && <div className="mt-1 text-sm font-bold text-state-check tabular-nums">未確認 {r.pending}</div>}
+            <td className={`${CELL} whitespace-nowrap`}>
+              {/* 避難計画は 2 番目の状態なので色の文字（塗りの印は安否の状態だけ） */}
+              <StateText tone={PLAN_TONES[r.plan]}>{PLAN_STATUS_LABELS[r.plan]}</StateText>
+              {r.pending > 0 && <div className="text-xs font-bold text-state-check">未確認 {r.pending}</div>}
             </td>
           </tr>
         ))}
@@ -330,7 +329,7 @@ function CaseloadTable({ rows, sort }: { rows: CaseloadRow[]; sort: SortKey }) {
   );
 }
 
-/** ルールの表の色の印（至急・要確認・未知・無事）。色だけにせず文字を添える */
+/** ルールの表の色の印（至急・要確認・不明・無事）。色だけにせず文字を添える */
 function TriageTag({ color, size = "sm" }: { color: Color; size?: "sm" | "md" }) {
   return (
     <StateTag tone={COLOR_TONES[color]} size={size}>
@@ -341,10 +340,10 @@ function TriageTag({ color, size = "sm" }: { color: Color; size?: "sm" | "md" })
 
 function Message({ title }: { title: string }) {
   return (
-    <main className="mx-auto max-w-6xl px-4 py-6">
-      <section className="rounded-lg bg-panel p-6">
+    <main className="mx-auto max-w-6xl px-4 py-4">
+      <Panel>
         <h1 className="text-xl font-bold">{title}</h1>
-      </section>
+      </Panel>
     </main>
   );
 }

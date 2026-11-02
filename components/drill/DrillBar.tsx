@@ -93,7 +93,7 @@ function BandRow({ label, bands, last, now, kind }: { label: string; bands: Band
           return (
             <span
               key={`${b.from}`}
-              className="absolute top-0 h-1.5 min-w-1 rounded-sm bg-state-check"
+              className="absolute top-0 h-1.5 min-w-1 rounded-sm bg-state-check-fill"
               style={{ left: pct(b.from, last), width: `calc(${pct(to, last)} - ${pct(b.from, last)})` }}
               data-band-from={b.from}
               data-band-to={b.to ?? ""}

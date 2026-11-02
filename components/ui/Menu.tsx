@@ -59,7 +59,7 @@ export function Menu({
       <div
         id={id}
         hidden={!open}
-        className={`absolute top-full z-30 mt-1 min-w-56 rounded-lg bg-panel p-1 shadow-[0_2px_8px_rgb(0_0_0/0.18)] ${align === "right" ? "right-0" : "left-0"}`}
+        className={`absolute top-full z-30 mt-1 min-w-56 rounded-lg bg-panel p-1 shadow-[0_2px_8px_rgb(0_0_0/0.18)] dark:bg-panel2 dark:shadow-[0_2px_10px_rgb(0_0_0/0.6)] ${align === "right" ? "right-0" : "left-0"}`}
       >
         {children}
       </div>
