@@ -1,5 +1,6 @@
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import Link from "next/link";
+import { ColorCounts, countColors } from "@/components/disaster/ColorCounts";
 import { PersonWithIntake } from "@/components/person/PersonWithIntake";
 import { StateTag, TONE_TEXT } from "@/components/person/parts";
 import { todayJst } from "@/lib/age";
@@ -22,8 +23,10 @@ import {
   type SortKey,
 } from "@/lib/caseload";
 import { PLAN_STATUSES, type PlanStatus } from "@/lib/db/types";
-import { CARE_LEVEL_LABELS, PLAN_STATUS_LABELS, TIER_LABELS } from "@/lib/labels";
-import { loadPersonPage, toPersonView, type PersonView as View } from "@/lib/person";
+import { personDisaster } from "@/lib/disaster/person";
+import { CARE_LEVEL_LABELS, COLOR_LABELS, PLAN_STATUS_LABELS, TIER_LABELS } from "@/lib/labels";
+import { COLOR_TONES, formatJst, loadPersonPage, toPersonView, type PersonView as View } from "@/lib/person";
+import type { Color } from "@/lib/triage/index";
 
 // D1 を毎回読む
 export const dynamic = "force-dynamic";
@@ -39,6 +42,8 @@ function isSortKey(v: unknown): v is SortKey {
 // 担当一覧。ケアマネは自分の担当、審査員（ケアマネの役）はデモ事業所の山本の担当。
 // 行を押すと本人のページが右に開き（?open=<id>）、一覧は左に圧縮される。狭い幅は本人のページだけ。
 // ログインしていなければ /login へ、行政・医療班・本人・家族・役を選ぶ前の審査員は、それぞれの入口へ送る（requirePage）
+// 災害モード（lib/disaster）のときは、優先の列が色の印（至急・要確認・未知・無事）、氏名の下に理由の 1 行、既定の並びがルールの表の順。
+// 今の時刻で当て直すので、ヘッダーの読み直し（1 分ごと）で色と並びが進む。発災時の列の増え方・行の詳細は T13
 export default async function CaseloadPage({ searchParams }: Props) {
   const principal = await requirePage("caseload");
   const q = await searchParams;
@@ -46,10 +51,11 @@ export default async function CaseloadPage({ searchParams }: Props) {
   const open = parseOpen(q.open);
   const scope = caseloadScope(principal);
 
+  const now = new Date().toISOString();
   let data: Caseload | null;
   try {
     const { env } = await getCloudflareContext({ async: true });
-    data = scope ? await loadCaseload(env.DB, scope, todayJst()) : null;
+    data = scope ? await loadCaseload(env.DB, scope, todayJst(), now) : null;
   } catch (e) {
     console.error("担当一覧を読めない", e);
     return <Message title="読込失敗" />;
@@ -57,6 +63,7 @@ export default async function CaseloadPage({ searchParams }: Props) {
   if (!data) return <Message title="担当なし" />;
 
   const rows = sortCaseload(data.rows, key);
+  const disaster = data.situation !== null;
 
   if (open) {
     return (
@@ -73,7 +80,7 @@ export default async function CaseloadPage({ searchParams }: Props) {
           </div>
           <CompactList rows={rows} sort={key} open={open} />
         </section>
-        <PersonPanel principal={principal} id={open} sort={key} />
+        <PersonPanel principal={principal} id={open} sort={key} now={now} />
       </main>
     );
   }
@@ -87,7 +94,14 @@ export default async function CaseloadPage({ searchParams }: Props) {
             担当一覧
           </h1>
           <span className="text-muted">{rows.length} 人</span>
-          <PlanSummary rows={data.rows} />
+          {disaster ? (
+            <>
+              <ColorCounts counts={countColors(rows.flatMap((r) => (r.triage ? [r.triage.color] : [])))} />
+              <span className="text-xs text-muted">{formatJst(now)} 時点</span>
+            </>
+          ) : (
+            <PlanSummary rows={data.rows} />
+          )}
         </div>
         {rows.length === 0 ? (
           <p className="mt-4 rounded-lg bg-panel p-6 text-muted">なし</p>
@@ -127,15 +141,16 @@ export default async function CaseloadPage({ searchParams }: Props) {
   );
 }
 
-/** 右の面。範囲の外（違う事業所・無い id）は面に「該当なし」と出し、一覧は残す */
-async function PersonPanel({ principal, id, sort }: { principal: Principal; id: string; sort: SortKey }) {
+/** 右の面。範囲の外（違う事業所・無い id）は面に「該当なし」と出し、一覧は残す。災害モードなら経過が上、色と理由 */
+async function PersonPanel({ principal, id, sort, now }: { principal: Principal; id: string; sort: SortKey; now: string }) {
   let view: View | null = null;
   let intake: IntakeProps | null = null;
   let failed = false;
   try {
     const { env } = await getCloudflareContext({ async: true });
     const rows = await loadPersonPage(env.DB, principal, id);
-    view = rows ? toPersonView(rows, { today: todayJst(), mode: "normal" }) : null;
+    const d = rows ? await personDisaster(env.DB, rows, now) : null;
+    view = rows && d ? toPersonView(rows, { today: todayJst(), mode: d.mode, triage: d.triage }) : null;
     // 入れる欄（T03）はケアマネの役だけ（担当一覧はケアマネの役しか開けない）
     intake = rows && principal.role === "care_manager" ? intakePropsOf(rows, hasAnthropicKey(env)) : null;
   } catch (e) {
@@ -172,18 +187,28 @@ function CompactList({ rows, sort, open }: { rows: CaseloadRow[]; sort: SortKey;
               href={link.href}
               replace={link.replace}
               aria-current={link.current ? "true" : undefined}
-              className={`grid grid-cols-[2rem_minmax(0,1fr)] items-baseline gap-x-2 rounded-md bg-panel px-3 py-2 ${
+              className={`grid ${r.triage ? "grid-cols-[3rem_minmax(0,1fr)]" : "grid-cols-[2rem_minmax(0,1fr)]"} items-baseline gap-x-2 rounded-md bg-panel px-3 py-2 ${
                 link.current ? "font-bold ring-2 ring-inset ring-accent" : ""
               }`}
               data-press="overlay"
             >
-              <span className="text-center tabular-nums" title={TIER_LABELS[r.tier]}>
-                {r.tier}
-              </span>
+              {r.triage ? (
+                <span className="text-center">
+                  <TriageTag color={r.triage.color} />
+                </span>
+              ) : (
+                <span className="text-center tabular-nums" title={TIER_LABELS[r.tier]}>
+                  {r.tier}
+                </span>
+              )}
               <span className="min-w-0">
                 <span className="block truncate">{r.name}</span>
-                {r.marks.length > 0 && (
-                  <span className="block truncate text-sm font-normal text-muted">{r.marks.join("・")}</span>
+                {r.triage ? (
+                  <span className={`block truncate text-sm ${TONE_TEXT[COLOR_TONES[r.triage.color]]}`} title={r.triage.reason}>
+                    {r.triage.reason}
+                  </span>
+                ) : (
+                  r.marks.length > 0 && <span className="block truncate text-sm font-normal text-muted">{r.marks.join("・")}</span>
                 )}
               </span>
             </Link>
@@ -234,15 +259,28 @@ function CaseloadTable({ rows, sort }: { rows: CaseloadRow[]; sort: SortKey }) {
         {rows.map((r) => (
           <tr key={r.id}>
             <td className={`${CELL} text-center`}>
-              <span className="text-lg font-bold tabular-nums" title={TIER_LABELS[r.tier]}>
-                {r.tier}
-              </span>
+              {r.triage ? (
+                <>
+                  <TriageTag color={r.triage.color} size="md" />
+                  <div className="mt-1 text-xs text-muted tabular-nums" title={TIER_LABELS[r.tier]}>
+                    骨格 {r.tier}
+                  </div>
+                </>
+              ) : (
+                <span className="text-lg font-bold tabular-nums" title={TIER_LABELS[r.tier]}>
+                  {r.tier}
+                </span>
+              )}
             </td>
             <td className={CELL}>
               <Link href={rowLink(sort, null, r.id).href} className="-mx-1 block rounded px-1 font-bold" data-press>
                 {r.name}
               </Link>
               <div className="text-sm text-muted">{r.kana}</div>
+              {/* 災害モード: ルールの表の理由の 1 行（色と同じ意味の色） */}
+              {r.triage && (
+                <div className={`mt-0.5 text-sm font-bold ${TONE_TEXT[COLOR_TONES[r.triage.color]]}`}>{r.triage.reason}</div>
+              )}
             </td>
             <td className={CELL}>
               <span className="tabular-nums">{r.age ?? "—"}</span>
@@ -282,6 +320,15 @@ function CaseloadTable({ rows, sort }: { rows: CaseloadRow[]; sort: SortKey }) {
         ))}
       </tbody>
     </table>
+  );
+}
+
+/** ルールの表の色の印（至急・要確認・未知・無事）。色だけにせず文字を添える */
+function TriageTag({ color, size = "sm" }: { color: Color; size?: "sm" | "md" }) {
+  return (
+    <StateTag tone={COLOR_TONES[color]} size={size}>
+      {COLOR_LABELS[color]}
+    </StateTag>
   );
 }
 
