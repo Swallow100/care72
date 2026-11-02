@@ -99,7 +99,7 @@ export function CaseMap({ pins, layers, demo, unplaced }: CaseMapProps) {
             雨雲
           </LayerButton>
         )}
-        {unplaced > 0 && <span className="ml-auto text-xs text-state-check tabular-nums">位置なし {unplaced} 人</span>}
+        {unplaced > 0 && <span className="ml-auto text-xs tone-check tabular-nums">位置なし {unplaced} 人</span>}
       </div>
 
       {demo && (

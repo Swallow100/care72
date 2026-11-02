@@ -30,7 +30,7 @@ export function RowDetail({ detail, classification }: { detail: Detail; classifi
             <span className="text-xs text-muted tabular-nums">
               {d.override.byName} {d.override.when}
             </span>
-            {d.override.expired && <span className="font-bold text-state-check">{DETAIL_LABELS.expired}</span>}
+            {d.override.expired && <span className="font-bold tone-check">{DETAIL_LABELS.expired}</span>}
           </span>
         )}
       </div>
@@ -48,7 +48,7 @@ export function RowDetail({ detail, classification }: { detail: Detail; classifi
                 {d.calls.map((c, i) => (
                   <li key={`${c.at}-${i}`} className="flex flex-wrap gap-x-2" data-call={c.result ?? ""}>
                     <span className="text-xs text-muted tabular-nums">{c.when}</span>
-                    <span className={c.result === "no_answer" ? "font-bold text-state-check" : undefined}>{c.body}</span>
+                    <span className={c.result === "no_answer" ? "font-bold tone-check" : undefined}>{c.body}</span>
                     {c.who && <span className="text-xs text-muted">{c.who}</span>}
                   </li>
                 ))}
@@ -85,7 +85,7 @@ export function RowDetail({ detail, classification }: { detail: Detail; classifi
                         {DETAIL_LABELS.confirmed} {k.confirmed ?? DETAIL_LABELS.unconfirmed}
                       </span>
                       {k.depends && (
-                        <span className={k.depends.unchecked ? "font-bold text-state-check" : undefined}>
+                        <span className={k.depends.unchecked ? "font-bold tone-check" : undefined}>
                           {k.depends.on} {k.depends.check}
                         </span>
                       )}
@@ -107,7 +107,7 @@ export function RowDetail({ detail, classification }: { detail: Detail; classifi
           </Part>
           <Part title={DETAIL_LABELS.supporters}>
             {d.supporters.length === 0 ? (
-              <p className="font-bold text-state-check">{DETAIL_LABELS.none}</p>
+              <p className="font-bold tone-check">{DETAIL_LABELS.none}</p>
             ) : (
               <ul className="space-y-0.5">
                 {d.supporters.map((s) => (

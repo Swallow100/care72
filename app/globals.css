@@ -16,10 +16,13 @@
 
   意味色は黒を混ぜない（作者の決まり、11/3）。ライトもダークも澄んだ色相のまま。暗く濁った緑・赤・黄・青は使わない。
   黒を混ぜてよいのは灰色と黒だけ。ダークは色の明るさを保ち、地と面を暗くして差を出す。
-    --state-*        文字・数字の色（面の上で読める明るさの、いちばん鮮やかな色）
+    --state-*        文字・数字の色（面の上で読める明るさの、いちばん鮮やかな色）。黄は文字に使わない（下）
     --state-*-fill   印の塗り（澄んだ色。黄は明るい黄）
     --on-state-*     印の塗りの上の文字（白か、ほぼ黒）
   薄い下地（色を面に混ぜた物）は、ダークで黒の混ざった濁った色になるので印に使わない。印は澄んだ色の塗りか、色の文字だけ。
+  黄（要確認）は文字の色に使わない（白の上の対比が 3.2 しか無い。11/3 03:3x の確定 3）。黄は塗りの印（濃い文字）か細い帯だけで、
+  黄の文字だった所は本文色の文字と前に黄の細い帯（tone-check。components/ui/Tag の TONE_TEXT.check・StateText・Mark が使う）。
+  --state-check（琥珀）は入力の欄の注意の枠（outline）にだけ残す。
 */
 :root {
   --base: #eceef1;
@@ -28,7 +31,8 @@
   --ink: #161b21;
   --muted: #59636e;
   --press: rgb(0 0 0 / 0.08);
-  /* oklch(0.60 最大 150) の緑・oklch(0.58 最大 27) の赤・oklch(0.66 最大 62) の琥珀。白の上の対比は 3.7・4.8・3.2 */
+  /* oklch(0.60 最大 150) の緑・oklch(0.58 最大 27) の赤。白の上の対比は 3.7・4.8。
+     --state-check は oklch(0.66 最大 62) の琥珀（対比 3.2）で文字には使わない（注意の枠だけ）。黄の印の塗りの上の文字は対比 9.4 */
   --state-ok: #1a994a;
   --state-urgent: #e11c22;
   --state-check: #cf7b1a;
@@ -131,6 +135,27 @@ body {
 [data-phone],
 [data-sheet="own"] {
   font-family: var(--font-ud);
+}
+
+/*
+  要確認（黄）の文字の所: 文字は本文色、前に黄の細い帯（印の塗りと同じ明るい黄）。文字の大きさに合わせて伸び、
+  帯の幅は字の 0.2 倍（3px より細くしない）。数字の「1」と見間違えないよう字との間を空ける。帯は読み上げない（中身の無い ::before）
+*/
+@utility tone-check {
+  color: var(--ink);
+  &::before {
+    content: "";
+    display: inline-block;
+    width: max(3px, 0.2em);
+    height: 0.8em;
+    margin-right: 0.35em;
+    vertical-align: -0.05em;
+    border-radius: 1px;
+    background-color: var(--state-check-fill);
+    /* 帯は地の色なので、画面をそのままブラウザで印刷したときも落とさない（紙面の部品はこの印を使っていない） */
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
 }
 
 /* 押したときの変化は灰色の地だけ。縮める・薄くする・色を変えるは重ねない。

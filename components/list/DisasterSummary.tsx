@@ -51,7 +51,7 @@ export function DisasterSummary({
               {DETAIL_LABELS.elapsedOutage}
               {outage.area ? "（地区）" : ""}
             </dt>
-            <dd className="text-lg font-bold tabular-nums text-state-check">{outage.elapsed ?? "—"}</dd>
+            <dd className="text-lg font-bold tabular-nums tone-check">{outage.elapsed ?? "—"}</dd>
           </div>
         )}
         <div className="text-xs text-muted tabular-nums">

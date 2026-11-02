@@ -1,10 +1,11 @@
 import Link from "next/link";
-import { StateTag, TONE_TEXT } from "@/components/ui/Tag";
+import { StateTag } from "@/components/ui/Tag";
 import { LinkPending } from "@/components/ui/LinkPending";
 import type { DisasterMark } from "@/lib/disaster/state";
 import { OFFICE_PATH } from "@/lib/disaster/http";
 
-// ヘッダーの事業所の状態。平時は薄い文字「平時」。災害モードは要確認の色の印「大雨」と「レベル 4」「停電 3 時間」。
+// ヘッダーの事業所の状態。平時は薄い文字「平時」。災害モードは要確認の黄の塗りの印「大雨」と、本文色の太字「レベル 4」「停電 3 時間」
+// （黄は文字に使わない。印のすぐ横なので帯も付けない）。
 // 至急の赤は使わず、帯で塗らない（本物の警報と見間違えさせない）。押すと事業所の画面（押せる高さ 32px）
 export function DisasterBadge({ mark, link }: { mark: DisasterMark; link: boolean }) {
   const body =
@@ -16,7 +17,7 @@ export function DisasterBadge({ mark, link }: { mark: DisasterMark; link: boolea
           {mark.label}
         </StateTag>
         {mark.details.map((d) => (
-          <span key={d} className={`font-bold tabular-nums ${TONE_TEXT.check}`}>
+          <span key={d} className="font-bold tabular-nums">
             {d}
           </span>
         ))}

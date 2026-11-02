@@ -48,9 +48,9 @@ export type RuleId =
   | "unknown" // 不明（時計の半分まで） → 灰
   | "green_out_after_report" // 緑の報告のあとに機器の時計が切れた → 赤（案 3）
   | "green_out_before_report" // 機器の時計が切れたあとの緑 → 黄（案 3）
-  | "green_device_low" // 緑だが機器の時計の半分を過ぎた → 黄
-  | "green_clock_half" // 緑だが機器以外の時計の半分を過ぎた → 黄（案 6）
-  | "green_unchecked" // 緑だが外の物に頼る時計が未確認 → 黄（案 1）
+  | "green_device_low" // 緑 ＋ 機器の時計の半分を過ぎた → 黄
+  | "green_clock_half" // 緑 ＋ 機器以外の時計の半分を過ぎた → 黄（案 6）
+  | "green_unchecked" // 緑 ＋ 外の物に頼る時計が未確認 → 黄（案 1）
   | "green"; // 緑 → 緑、一番下
 
 /** 理由に足す言葉 */
@@ -587,36 +587,36 @@ export const RULES: ReadonlyArray<Rule> = [
   {
     id: "green_device_low",
     signal: "green",
-    input: "緑だが機器の時計の半分を過ぎた（切れる前）",
+    input: "緑 ＋ 機器の時計の半分を過ぎた（切れる前）",
     color: "yellow",
-    example: "無事だが酸素 内蔵電池 残り 30 分",
+    example: "無事・酸素 内蔵電池 残り 30 分",
     origin: "仕様書",
     why: "無事でも機器の電池の残りが少ない → 切れる前に予備の電源か電源のある避難先を確かめる",
     sourceIds: ["nanbyo-tsuiho-2022", "jrs-respiratory-2012"],
-    match: (x) => firstOf(x.states.filter((c) => isDevice(c) && isPastHalf(c)), (c) => `無事だが${left(c)}`),
+    match: (x) => firstOf(x.states.filter((c) => isDevice(c) && isPastHalf(c)), (c) => `無事・${left(c)}`),
   },
   {
     id: "green_clock_half",
     signal: "green",
-    input: "緑だが機器以外の時計の半分を過ぎた（超えたときも）",
+    input: "緑 ＋ 機器以外の時計の半分を過ぎた（超えたときも）",
     color: "yellow",
-    example: "無事だがインスリン 残り 24 時間",
+    example: "無事・インスリン 残り 24 時間",
     origin: "案 6",
     why: "無事でも透析・薬・栄養剤の残りが減っている → 次の入手先を確かめる",
     sourceIds: ["jadp-dialysis-2023", "jadec-insulin-2023", "nanbyo-shishin-2017"],
-    match: (x) => firstOf(x.states.filter((c) => !isDevice(c) && isPastHalf(c)), (c) => `無事だが${left(c)}`),
+    match: (x) => firstOf(x.states.filter((c) => !isDevice(c) && isPastHalf(c)), (c) => `無事・${left(c)}`),
   },
   {
     id: "green_unchecked",
     signal: "green",
-    input: "緑だが外の物に頼る時計の確認が未確認",
+    input: "緑 ＋ 外の物に頼る時計の確認が未確認",
     color: "yellow",
-    example: "無事だが透析先 未確認",
+    example: "無事・透析先 未確認",
     origin: "案 1",
     why: "本人が無事でも頼り先（透析先・冷蔵・配達）が止まっていれば数日のうちに続けられない → 頼り先を確かめる",
     sourceIds: ["jadp-dialysis-2023", "jadec-insulin-2023"],
     saysUnchecked: true,
-    match: (x) => (x.unchecked.length > 0 ? `無事だが${uncheckedWords(x)}` : null),
+    match: (x) => (x.unchecked.length > 0 ? `無事・${uncheckedWords(x)}` : null),
   },
   {
     id: "green",
@@ -665,11 +665,11 @@ export const QUALIFIERS: ReadonlyArray<Qualifier> = [
   {
     id: "self_green_set_aside",
     when: "本人の報告を当てにしない印があり、いちばん新しい信号が本人の緑",
-    text: "本人の緑は参考",
+    text: "本人の申告は参考",
     origin: "案 4",
     why: "認知症の人は思うように話せないことがある → 本人の緑より家族・支援者の答えを使う",
     sourceIds: ["mhlw-dementia-2018"],
-    apply: (x) => (x.setAside ? "本人の緑は参考" : null),
+    apply: (x) => (x.setAside ? "本人の申告は参考" : null),
   },
   {
     id: "no_supporter",

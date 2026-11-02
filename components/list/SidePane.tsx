@@ -51,8 +51,8 @@ function FoldSummary({ data }: { data: SidePaneData }) {
   if (data.states) return <StateNumbers counts={data.states} size="sm" />;
   return (
     <span className="text-muted">
-      見直し <b className="text-state-check tabular-nums">{data.review.length}</b>・未確認{" "}
-      <b className="text-state-check tabular-nums">{data.pendingTop.length}</b> 人
+      見直し <b className="tone-check tabular-nums">{data.review.length}</b>・未確認{" "}
+      <b className="tone-check tabular-nums">{data.pendingTop.length}</b> 人
     </span>
   );
 }
@@ -150,7 +150,7 @@ function DestinationList({ rows }: { rows: DestinationCount[] }) {
       <ul className="mt-0.5 space-y-px text-sm" data-destinations>
         {rows.map((d) => (
           <li key={d.label} className="flex items-baseline gap-2">
-            <span className={`min-w-0 truncate ${d.unset ? "font-bold text-state-check" : ""}`} title={d.label}>
+            <span className={`min-w-0 truncate ${d.unset ? "font-bold tone-check" : ""}`} title={d.label}>
               {d.label}
             </span>
             <span className="ml-auto shrink-0 tabular-nums">
@@ -186,7 +186,7 @@ function ReviewSection({ items }: { items: ReviewItem[] }) {
                 <span className="flex items-baseline gap-2">
                   <span className="font-bold">{r.name}</span>
                   <StateText tone={PLAN_TONES[r.plan]}>{PLAN_STATUS_LABELS[r.plan]}</StateText>
-                  <span className="ml-auto text-sm font-bold text-state-check tabular-nums">未確認 {r.pending}</span>
+                  <span className="ml-auto text-sm font-bold tone-check tabular-nums">未確認 {r.pending}</span>
                 </span>
                 <span className="mt-0.5 block truncate text-xs text-muted">{r.labels.join("・")}</span>
               </Link>
@@ -227,7 +227,7 @@ function PendingSection({ items }: { items: ReviewItem[] }) {
                 <span className="h-1 overflow-hidden rounded-xs bg-base" aria-hidden>
                   <span className="block h-full bg-state-check-fill" style={{ width: `${(r.pending / max) * 100}%` }} />
                 </span>
-                <span className="text-right font-bold text-state-check tabular-nums">{r.pending} 件</span>
+                <span className="text-right font-bold tone-check tabular-nums">{r.pending} 件</span>
               </Link>
             </li>
           ))}

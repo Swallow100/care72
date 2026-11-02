@@ -2,12 +2,15 @@
 
 // 対応表を確かめる画面の本体。欄ごとに AI が読んだ物（AI の印・自信・理由）と、ケアマネが選ぶ台帳の項目を並べる。
 // 直す（項目・欄の名前・段・頁・形・選択肢）・外す・欄を足す。確認保存で事業所に保存し、差し込みに使えるようになる。
-// 自信が低い欄と台帳に無い項目名を返した欄は黄（要確認）。人が直した欄は「修正済」。
+// 自信が低い欄と台帳に無い項目名を返した欄は要確認（本文色＋黄の帯・黄の塗りの印）。人が直した欄は「修正済」。
+// 表は欄の中で送らない（画面全体の縦 1 本。見出しの行は画面の上に留める、T38）。
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { AiMark, StateTag } from "@/components/person/parts";
-import { BTN, BTN_MAIN, INPUT } from "@/components/person/intake-ui";
+import { INPUT } from "@/components/person/intake-ui";
+import { Button } from "@/components/ui/Button";
+import { AddIcon, RemoveIcon, RestoreIcon, SaveIcon } from "@/components/ui/Icon";
 import type { FormMappingStatus } from "@/lib/db/types";
 import {
   blankField,
@@ -118,12 +121,12 @@ export function MappingEditor({
           />
         </label>
         <div className="ml-auto flex items-center gap-2">
-          <button type="button" className={BTN} onClick={add} data-press>
+          <Button icon={AddIcon} onClick={add}>
             {L.addField}
-          </button>
-          <button type="button" className={BTN_MAIN} disabled={!canSave} onClick={save} data-press="overlay">
+          </Button>
+          <Button kind="main" icon={SaveIcon} disabled={!canSave} onClick={save} data-pending={saving ? "" : undefined}>
             {saving ? L.saving : L.save}
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -141,18 +144,19 @@ export function MappingEditor({
         )}
       </div>
 
-      <div className="mt-2 max-h-[68vh] overflow-auto rounded bg-panel2">
+      {/* 欄の中で送らない（前は 68vh の箱の中で縦に送っていた）。clip は留めた見出しを効かせたまま角の外を切る */}
+      <div className="mt-2 overflow-clip rounded bg-panel2">
         {/* 行の区切りは線でなく、行の間から見える面の中の灰色 */}
-        <table className="w-full min-w-[60rem] border-separate [border-spacing:0_1px] text-sm">
+        <table className="w-full border-separate [border-spacing:0_1px] text-sm">
           <thead className="sticky top-0 z-10 bg-panel2 text-left text-xs text-muted">
             <tr>
               <th className={`${CELL} w-12`}>頁</th>
-              <th className={`${CELL} w-36`}>段</th>
+              <th className={`${CELL} w-32`}>段</th>
               <th className={CELL}>欄の名前</th>
               <th className={`${CELL} w-24`}>形</th>
-              <th className={`${CELL} w-56`}>台帳の項目</th>
-              <th className={`${CELL} w-64`}>AI</th>
-              <th className={`${CELL} w-14`} />
+              <th className={`${CELL} w-52`}>台帳の項目</th>
+              <th className={`${CELL} w-56`}>AI</th>
+              <th className={`${CELL} w-16`} />
             </tr>
           </thead>
           <tbody>
@@ -163,9 +167,9 @@ export function MappingEditor({
         </table>
         {m.fields.length === 0 && (
           <div className="px-2 py-3 text-sm">
-            <button type="button" className={BTN} onClick={add} data-press>
+            <Button kind="plainIn" icon={AddIcon} onClick={add}>
               {L.addField}
-            </button>
+            </Button>
           </div>
         )}
       </div>
@@ -265,7 +269,7 @@ function FieldRow({ f, pages, empty, onChange }: { f: MappingField; pages: numbe
         {f.ai ? (
           <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-xs">
             <AiMark small title="AI の読取。人が確認" />
-            <span className={low ? "font-bold text-state-check" : "text-muted"}>自信 {CONFIDENCE_LABELS[f.ai.confidence]}</span>
+            <span className={low ? "font-bold tone-check" : "text-muted"}>自信 {CONFIDENCE_LABELS[f.ai.confidence]}</span>
             {f.ai.rejected && (
               <StateTag tone="check">
                 {L.rejected} {f.ai.rejected}
@@ -279,9 +283,10 @@ function FieldRow({ f, pages, empty, onChange }: { f: MappingField; pages: numbe
         )}
       </td>
       <td className={`${CELL} text-right`}>
-        <button type="button" className={BTN} onClick={() => onChange({ removed: !off })} data-press>
+        {/* 外すは戻せる印なので無色（行ごとに赤を並べない。事業所の担当の表と同じ向き、11/3 03:3x の確定 7） */}
+        <Button size="sm" icon={off ? RestoreIcon : RemoveIcon} onClick={() => onChange({ removed: !off })}>
           {off ? L.restore : L.remove}
-        </button>
+        </Button>
       </td>
     </tr>
   );
