@@ -1,0 +1,12 @@
+form9 1024 light: 横送り +0px、内側の送り 2 textarea.mt-2 w-full resize-y rounded-m（横 +0px・縦 +253px） | section.min-w-0 overflow-x-auto（横 +729px・縦 +0px）
+mapping 1024 light: 横送り +0px、内側の送り 1 div.mt-2 max-h-[68vh] overflow-aut（横 +0px・縦 +1519px）
+form9 1280 light: 横送り +0px、内側の送り 2 textarea.mt-2 w-full resize-y rounded-m（横 +0px・縦 +253px） | section.min-w-0 overflow-x-auto（横 +473px・縦 +0px）
+mapping 1280 light: 横送り +0px、内側の送り 1 div.mt-2 max-h-[68vh] overflow-aut（横 +4px・縦 +1519px）
+form9 1440 light: 横送り +0px、内側の送り 2 textarea.mt-2 w-full resize-y rounded-m（横 +0px・縦 +253px） | section.min-w-0 overflow-x-auto（横 +313px・縦 +0px）
+mapping 1440 light: 横送り +0px、内側の送り 1 div.mt-2 max-h-[68vh] overflow-aut（横 +0px・縦 +1519px）
+form9 1024 dark: 横送り +0px、内側の送り 2 textarea.mt-2 w-full resize-y rounded-m（横 +0px・縦 +253px） | section.min-w-0 overflow-x-auto（横 +729px・縦 +0px）
+mapping 1024 dark: 横送り +0px、内側の送り 1 div.mt-2 max-h-[68vh] overflow-aut（横 +0px・縦 +1519px）
+form9 1280 dark: 横送り +0px、内側の送り 2 textarea.mt-2 w-full resize-y rounded-m（横 +0px・縦 +253px） | section.min-w-0 overflow-x-auto（横 +473px・縦 +0px）
+mapping 1280 dark: 横送り +0px、内側の送り 1 div.mt-2 max-h-[68vh] overflow-aut（横 +4px・縦 +1519px）
+form9 1440 dark: 横送り +0px、内側の送り 2 textarea.mt-2 w-full resize-y rounded-m（横 +0px・縦 +253px） | section.min-w-0 overflow-x-auto（横 +313px・縦 +0px）
+mapping 1440 dark: 横送り +0px、内側の送り 1 div.mt-2 max-h-[68vh] overflow-aut（横 +0px・縦 +1519px）
