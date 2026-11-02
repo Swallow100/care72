@@ -2,7 +2,7 @@
 
 // 訓練の開始（大雨の想定・地震の想定・10 分版）。押すと 0 時間まで当てて保存し、訓練の画面へ。
 // 事業所に進行中があれば断られる（実施中あり）。そのときは一覧の進行中から再開か中断。
-// 主の操作の色は最初の 1 つ（大雨の想定）だけ。ほかは無色。押してから画面が移るまで、押したボタンに灰色を残す（data-pending）。
+// 主の操作の色は 10 分版（審査員がまず押す方、11/3 03:3x の確定）だけ。大雨・地震の想定は無色。押してから画面が移るまで、押したボタンに灰色を残す（data-pending）。
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -10,6 +10,9 @@ import type { DrillScenario } from "@/lib/db/types";
 import { Button } from "@/components/ui/Button";
 import { PlayIcon } from "@/components/ui/Icon";
 import { DRILL_LABELS, SCENARIO_LABELS } from "@/lib/drill/labels";
+
+/** 主の操作の色にする想定 */
+const MAIN_SCENARIO: DrillScenario = "short";
 
 export function StartButtons({ scenarios, disabled }: { scenarios: ReadonlyArray<DrillScenario>; disabled: boolean }) {
   const router = useRouter();
@@ -42,10 +45,10 @@ export function StartButtons({ scenarios, disabled }: { scenarios: ReadonlyArray
 
   return (
     <div className="flex flex-wrap items-center gap-2" data-start>
-      {scenarios.map((s, i) => (
+      {scenarios.map((s) => (
         <Button
           key={s}
-          kind={i === 0 ? "main" : "plain"}
+          kind={s === MAIN_SCENARIO ? "main" : "plain"}
           icon={PlayIcon}
           onClick={() => void start(s)}
           disabled={disabled || busy !== null}
