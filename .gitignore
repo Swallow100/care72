@@ -147,3 +147,10 @@ vite.config.ts.timestamp-*
 
 # Turbo Repo
 .turbo
+
+# ケア72: 秘密と生成物
+!.env.example
+.dev.vars
+.dev.vars.*
+.wrangler/
+.open-next/
