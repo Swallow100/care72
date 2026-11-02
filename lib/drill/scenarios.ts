@@ -21,11 +21,15 @@ export const SHORT_HOURS = [0, 3, 12, 72] as const;
 /** 想定の災害の種類（事業所の災害モードと同じ言葉） */
 export type DrillKind = "heavy_rain" | "earthquake";
 
-/** 電話: 通常・つながりにくい・不通 */
+/** 断水: なし・断水中・解消（停電の 停電中・復旧 と同じ並び） */
+export const WATER_STATES = ["none", "out", "restored"] as const;
+export type WaterState = (typeof WATER_STATES)[number];
+
+/** 電話: 通常・不安定・不通 */
 export const PHONE_STATES = ["ok", "busy", "down"] as const;
 export type PhoneState = (typeof PHONE_STATES)[number];
 
-/** 津波: なし・避難の呼びかけ・解除 */
+/** 津波: なし・避難（津波警報）・解除 */
 export const TSUNAMI_STATES = ["none", "evacuate", "lifted"] as const;
 export type TsunamiState = (typeof TSUNAMI_STATES)[number];
 
@@ -57,7 +61,7 @@ export type WorldState = {
   outage: { area: OutageArea; since: number; restoredAt: number | null } | null;
   phone: PhoneState;
   /** 断水 */
-  waterOut: boolean;
+  water: WaterState;
   roads: Road[];
   shelters: Shelter[];
   facilities: Facility[];
@@ -70,7 +74,7 @@ export const EMPTY_WORLD: WorldState = {
   flood: false,
   outage: null,
   phone: "ok",
-  waterOut: false,
+  water: "none",
   roads: [],
   shelters: [],
   facilities: [],
@@ -174,7 +178,7 @@ const HEAVY_RAIN: Scenario = {
       hour: 3,
       events: [
         { change: { kind: "flood" }, text: "川が氾濫 浸水 3 m の地区で浸水" },
-        { change: { kind: "phone", state: "busy" }, text: "電話 つながりにくい" },
+        { change: { kind: "phone", state: "busy" }, text: "電話 不安定" },
         {
           change: { kind: "road", id: "rd-1", label: "川沿いの市道", open: false },
           text: "川沿いの市道 冠水で通行止め",
@@ -277,7 +281,7 @@ const EARTHQUAKE: Scenario = {
       hour: 0,
       events: [
         { change: { kind: "quake", intensity: "6強" }, text: "南海トラフ 震度 6強" },
-        { change: { kind: "tsunami", state: "evacuate" }, text: "津波 沿岸に避難の呼びかけ" },
+        { change: { kind: "tsunami", state: "evacuate" }, text: "津波警報、沿岸に避難指示" },
         { change: { kind: "outage", area: { scope: "office" } }, text: "停電 全域" },
         { change: { kind: "phone", state: "down" }, text: "電話 不通" },
       ],
@@ -288,7 +292,7 @@ const EARTHQUAKE: Scenario = {
       events: [
         {
           change: { kind: "shelter", id: "sh-2", label: "高台の集会所", state: "open" },
-          text: "高台の集会所 受け入れ開始",
+          text: "高台の集会所 受入開始",
           person: "p-08",
         },
       ],
@@ -313,14 +317,14 @@ const EARTHQUAKE: Scenario = {
     },
     {
       hour: 6,
-      events: [{ change: { kind: "tsunami", state: "lifted" }, text: "津波 避難の呼びかけ 解除" }],
+      events: [{ change: { kind: "tsunami", state: "lifted" }, text: "津波警報 解除" }],
       turns: [
         {
           person: "p-02",
           color: "green",
           source: "family",
           whereNow: "home",
-          saying: "呼吸器は外の電池に替えた。残りが心配",
+          saying: "呼吸器は予備のバッテリーに替えた。残りが心配",
         },
       ],
     },
@@ -337,8 +341,8 @@ const EARTHQUAKE: Scenario = {
     },
     {
       hour: 12,
-      events: [{ change: { kind: "phone", state: "busy" }, text: "電話 一部回復 つながりにくい" }],
-      turns: [{ person: "p-01", color: "red", source: "family", saying: "母の家に来た。ボンベが残り少ない" }],
+      events: [{ change: { kind: "phone", state: "busy" }, text: "電話 一部回復 不安定" }],
+      turns: [{ person: "p-01", color: "red", source: "family", saying: "母の家に来た。酸素ボンベが残り少ない" }],
     },
     {
       hour: 18,
@@ -349,7 +353,7 @@ const EARTHQUAKE: Scenario = {
       hour: 24,
       events: [],
       turns: [
-        { person: "p-08", color: "green", source: "agent", whereNow: "shelter", saying: "インスリンは持ってきた。冷やせない" },
+        { person: "p-08", color: "green", source: "agent", whereNow: "shelter", saying: "インスリンは持ってきたけど、冷やせない" },
       ],
     },
     {
@@ -450,7 +454,7 @@ export function applyEvent(world: WorldState, e: WorldEvent, hour: number): Worl
     case "phone":
       return { ...world, phone: c.state };
     case "water":
-      return { ...world, waterOut: c.out };
+      return { ...world, water: c.out ? "out" : world.water === "out" ? "restored" : world.water };
     case "road":
       return { ...world, roads: upsert(world.roads, { id: c.id, label: c.label, open: c.open, person }) };
     case "shelter":
