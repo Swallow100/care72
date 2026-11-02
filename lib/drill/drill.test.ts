@@ -30,6 +30,7 @@ import {
 } from "./db.ts";
 import { DrillEnded, drillSituation, initialState, outageTownsOf, simAt, step, type DrillIncident, type DrillState } from "./engine.ts";
 import { abandonPost, listGet, replayGet, startPost, stepPost } from "./http.ts";
+import { elapsedLabel, progressLabel, WATER_LABELS } from "./labels.ts";
 import { DRILL_HOURS, SCENARIOS, SHORT_HOURS, applyEvents, EMPTY_WORLD, type Scenario } from "./scenarios.ts";
 import { bandsOf, loadDrillScreen } from "./view.ts";
 
@@ -122,6 +123,11 @@ describe("想定の表", () => {
     }
   });
 
+  it("経過の言い方: 上の大きな字は「経過 6 時間」、訓練記録の一覧は「経過 6 / 72 時間」", () => {
+    expect(elapsedLabel(6)).toBe("経過 6 時間");
+    expect(progressLabel(6, 72)).toBe("経過 6 / 72 時間");
+  });
+
   it("大雨: 警戒レベル 3 → 4 → 浸水 3 m の地区、1 山田・2 小林・3 田中の透析先・5 伊藤の道路", () => {
     const s = SCENARIOS.heavy_rain;
     const levels = allEvents(s).flatMap((e) => (e.change.kind === "alert" ? [e.change.level] : []));
@@ -138,6 +144,11 @@ describe("想定の表", () => {
     expect(world.quake).toBe("6強");
     expect(allEvents(s).some((e) => e.change.kind === "tsunami" && e.change.state === "evacuate")).toBe(true);
     expect(world.outage).toEqual({ area: { scope: "office" }, since: 0, restoredAt: 48 });
+    // 断水は なし → 断水中（18 時間）→ 解消（72 時間）
+    const waterAt = (h: number) =>
+      s.ticks.filter((t) => t.hour <= h).reduce((w, t) => applyEvents(w, t.events, t.hour), EMPTY_WORLD).water;
+    expect([waterAt(12), waterAt(18), waterAt(60), waterAt(72)]).toEqual(["none", "out", "out", "restored"]);
+    expect([WATER_LABELS.none, WATER_LABELS.out, WATER_LABELS.restored]).toEqual(["なし", "断水中", "解消"]);
     expect(allTurns(s).filter((t) => t.person === "p-08").length).toBeGreaterThanOrEqual(3);
   });
 });
@@ -202,7 +213,7 @@ describe("刻みの進み", () => {
     expect(r.tick.turns.map((t) => [t.person, t.color, t.ai])).toEqual([["p-01", "red", true]]);
     expect(r.tick.incidents.filter((e) => e.actor === "director")).toHaveLength(2);
     expect(r.state.world.roads.map((x) => x.id)).toContain("rd-x");
-    expect(r.state.world.waterOut).toBe(true);
+    expect(r.state.world.water).toBe("out");
     expect(r.state.world.phone).toBe("ok");
   });
 
