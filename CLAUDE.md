@@ -1,7 +1,7 @@
 # ケア72（Care72）
 
 ケアマネの手元の道具。個別避難計画の作成（台帳 → 松山市の様式）、72 時間の訓練、発災時の安否の整理。
-Built with Claude: Japan 2026 の期間中（2026-11-02 12:00 〜 2026-11-08 20:00 JST）に作る。設計は docs/SPEC.md（キックオフ前に文書で行い、写した）。
+Built with Claude: Japan 2026 の期間中（2026-11-02 12:30 〜 2026-11-08 20:00 JST）に作る。設計は docs/SPEC.md（キックオフ前に文書で行い、写した）。期間中の判断は docs/DECISIONS.md。
 
 ## 守ること
 
@@ -14,6 +14,13 @@ Built with Claude: Japan 2026 の期間中（2026-11-02 12:00 〜 2026-11-08 20:
 - 依存は MIT・Apache-2.0・OFL の物だけ。足したら THIRD_PARTY.md に書く。
 - 期間外に作った物、他のプロジェクトのコードを持ち込まない。
 - 返事とコミットは日本語。コミットは小さく、履歴を書き換えない。push はする。配信は頼まれたときだけ。
+- docs/SPEC.md は書き換えない（キックオフ前の文書）。直したい点と決めたことは docs/DECISIONS.md と docs/PROGRESS.md に。
+
+## 動かし方
+
+- `npm install`、`npm run db:reset`（手元の D1 に表と 10 人。--local だけ）、`npm run dev`（port 3072）、`npm test`、`npm run typecheck`。
+- wrangler でネットに出る命令（login・whoami・deploy・d1 create・r2 bucket create・secret put）を打たない。手元は --local だけ。
+- commit の末尾の Co-Authored-By は、Opus が書いたら `Claude Opus 5.5 <noreply@anthropic.com>`、Fable なら `Claude Fable 5.1 <noreply@anthropic.com>`。
 
 ## 作り
 
