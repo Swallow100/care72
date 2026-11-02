@@ -167,20 +167,23 @@ describe("本人役の説明", () => {
     expect(yamada).toContain("在宅酸素");
     expect(yamada).toContain("- 娘: 家族、市内、車あり、スマホあり");
     expect(yamada).toContain("- 支援者 1: 支援者、隣人、近所、スマホなし、82 歳");
-    expect(yamada).toContain("スマホ 持たない");
-    expect(yamada).toContain("押せる人（スマホで赤・緑を押してケアマネに連絡できる人）: 娘");
+    // 山田は本人がスマホを使える（審査員の本人スマホ。T26 で種を直した）ので、押せる人は本人と娘
+    expect(yamada).toContain("スマホ 使える");
+    expect(yamada).toContain("押せる人（スマホで赤・緑を押してケアマネに連絡できる人）: 本人、娘");
     // 避難先の名前（場所の名前）は渡さない
     expect(yamada).not.toContain("小学校");
     const sato = buildPersona(input("p-04"), { on: "2026-11-05" }).profile.text;
     expect(sato).toContain("認知症あり");
+    expect(sato).toContain("スマホ 持たない");
     expect(sato).toContain("押せる人（スマホで赤・緑を押してケアマネに連絡できる人）: 息子");
   });
 
   it("押せる人: 本人は連絡手段のスマホが「使える」だけ、家族・支援者はスマホのある人だけ。訪問看護などの事業所は連絡しない", () => {
     const pressers = (id: string) => reportersOf(input(id)).filter((r) => r.canPress).map((r) => `${r.role}:${r.source}`);
-    expect(pressers("p-01")).toEqual(["娘:family"]);
+    expect(pressers("p-01")).toEqual(["本人:agent", "娘:family"]);
     expect(pressers("p-02")).toEqual(["夫:family"]);
     expect(pressers("p-04")).toEqual(["息子:family"]);
+    expect(pressers("p-05")).toEqual(["甥:family"]);
     expect(pressers("p-07")).toEqual(["本人:agent", "弟:family"]);
     expect(pressers("p-08")).toEqual(["本人:agent", "息子:family"]);
     expect(reportersOf(input("p-02")).map((r) => r.role)).not.toContain("訪問看護");
@@ -266,7 +269,7 @@ describe("返事を安否に", () => {
     ]);
   });
 
-  it("スマホを持たない本人は赤を押せない（連絡なし）。押せる本人（加藤）は赤と 4 問", () => {
+  it("スマホを持たない本人（佐藤・伊藤）は赤を押せない（連絡なし）。押せる本人（山田・加藤）は赤と 4 問", () => {
     const red = answer({
       contactsCaremanager: true,
       from: "本人",
@@ -276,11 +279,14 @@ describe("返事を安否に", () => {
       speech: "動けん",
     });
     expect(personaTurns(personaInput("p-04"), buildPersona(input("p-04")), red)).toEqual([]);
-    expect(personaTurns(personaInput("p-01"), buildPersona(input("p-01")), red)).toEqual([]);
+    expect(personaTurns(personaInput("p-05"), buildPersona(input("p-05")), red)).toEqual([]);
     // 押せない支援者（民生委員、スマホ未確認）も同じ
     expect(personaTurns(personaInput("p-04"), buildPersona(input("p-04")), { ...red, from: "民生委員" })).toEqual([]);
+    const pressed = { color: "red", source: "agent", whereNow: null, injured: false, atHome: true, canMove: false, hasMedicine: null, ai: true };
+    const [yamada] = personaTurns(personaInput("p-01"), buildPersona(input("p-01")), red);
+    expect(yamada).toMatchObject({ person: "p-01", ...pressed });
     const [kato] = personaTurns(personaInput("p-07"), buildPersona(input("p-07")), red);
-    expect(kato).toMatchObject({ color: "red", source: "agent", whereNow: null, injured: false, atHome: true, canMove: false, hasMedicine: null, ai: true });
+    expect(kato).toMatchObject({ person: "p-07", ...pressed });
   });
 
   it("Haiku の揺れを受ける: 「夫です」「娘さん」は役割名に、いる所の外の値は返事を捨てずに読む。表の行の安否は消えない", () => {
