@@ -101,7 +101,8 @@ describe("askJson", () => {
     // Haiku には fallback を送らない
     expect(params).not.toHaveProperty("fallbacks");
     expect(params).not.toHaveProperty("betas");
-    expect(options).toEqual({ timeout: 60_000, maxRetries: 1 });
+    // 分類は録音の応答のあとに走らせるので短く（T12）
+    expect(options).toEqual({ timeout: 12_000, maxRetries: 1 });
 
     // 渡った物に氏名・電話が無く、仮名がある
     const sent = JSON.stringify(params.messages);
