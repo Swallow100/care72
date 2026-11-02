@@ -41,7 +41,7 @@ describe("開ける人と範囲", () => {
     expect(form9Scope(null)).toBeNull();
   });
 
-  it("災害モード（T09）ができるまでは平時", async () => {
+  it("災害モードの表（disaster_state、T09）に行が無ければ平時。災害モードの行は lib/disaster/disaster.test.ts", async () => {
     expect(await loadSituation(db, "office-demo")).toBeNull();
   });
 });

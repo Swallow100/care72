@@ -1,6 +1,6 @@
 // 様式 9 を D1 から読む・手直しを書く。範囲は事業所（事業所の壁）。管理者とケアマネ（審査員のケアマネの役も）が開く。
 // 発災時（災害の状態があるとき）は信号の表と経過の表を読み、ルールの表（lib/triage）で色と順位を出して並べ、結果の列を埋める。
-// 信号は訓練の物（drill_id がある物）を入れず、発災から今までの物だけ。災害の状態は災害モード（T09）ができるまで無い（平時）。
+// 信号は訓練の物（drill_id がある物）を入れず、発災から今までの物だけ。災害の状態は災害モード（lib/disaster、T09）から読む。
 
 import type { D1Database } from "@cloudflare/workers-types";
 import type { Principal } from "../auth/principal.ts";
@@ -16,8 +16,11 @@ import type {
   SignalRow,
   TimelineEntryRow,
 } from "../db/types.ts";
+import { loadSituation as loadDisasterSituation } from "../disaster/db.ts";
+import type { DisasterSituation } from "../disaster/state.ts";
+import { rankInDisaster } from "../disaster/triage.ts";
 import { toTriagePerson } from "../triage/from-ledger.ts";
-import { rank, type Situation, type TriageSignal } from "../triage/index.ts";
+import type { Situation, TriageSignal } from "../triage/index.ts";
 import {
   buildForm9,
   FORM9_ENTRY_KINDS,
@@ -38,9 +41,16 @@ export function form9Scope(p: Principal | null): Form9Scope | null {
   return { officeId: p.office.id };
 }
 
-/** 事業所の災害の状態。災害モードの表（T09）ができたらそこから読む。今は無い（平時） */
-export async function loadSituation(_db: D1Database, _officeId: string): Promise<Situation | null> {
-  return null;
+/**
+ * 事業所の災害の状態（災害モード、lib/disaster）。平時は null。
+ * 今・発災・停電の始まりと停電の地区。now は要求の時刻（1 分ごとの読み直しで進む）
+ */
+export async function loadSituation(
+  db: D1Database,
+  officeId: string,
+  now: string = new Date().toISOString(),
+): Promise<DisasterSituation | null> {
+  return loadDisasterSituation(db, officeId, now);
 }
 
 export type Form9Data = {
@@ -203,16 +213,16 @@ export async function loadForm9(
   if (s && signalsRes && entriesRes) {
     const signals = byPerson((signalsRes.results as SignalForForm[]).filter((x) => within(x.occurred_at, s)));
     const entries = byPerson((entriesRes.results as EntryForForm[]).filter((x) => within(x.occurred_at, s)));
-    const triage = rank(
-      inputs.map((p) => ({
-        person: toTriagePerson({
-          person: p.person,
-          ledger: parseLedger(p.person.ledger),
-          contacts: p.contacts,
-          clocks: p.clocks,
-        }),
-        signals: (signals.get(p.person.id) ?? []).map(toTriageSignal),
-      })),
+    // 停電の範囲が地区なら、本人の町名で停電の時計を走らせるかを決める（担当一覧・本人のページと同じ、lib/disaster）
+    const triage = rankInDisaster(
+      inputs.map((p) => {
+        const ledger = parseLedger(p.person.ledger);
+        return {
+          person: toTriagePerson({ person: p.person, ledger, contacts: p.contacts, clocks: p.clocks }),
+          signals: (signals.get(p.person.id) ?? []).map(toTriageSignal),
+          town: ledger.basic.address?.town ?? null,
+        };
+      }),
       s,
     );
     const reports = new Map<string, Form9Reports>(

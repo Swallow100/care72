@@ -1,12 +1,17 @@
-// ケアマネの担当一覧（平時）。D1 から読んで、画面の 1 行の形にする。
+// ケアマネの担当一覧。D1 から読んで、画面の 1 行の形にする。
+// 災害モード（lib/disaster）のときは、信号と台帳の時計をルールの表（lib/triage）に当てて、行に色と理由の 1 行を付け、
+// 既定の並び（優先）を表の並びにする。発災時の列の増え方と行の詳細は T13。
 
 import type { D1Database } from "@cloudflare/workers-types";
 import { ageOn } from "./age.ts";
 import { parseLedger } from "./db/ledger.ts";
 import type { CareLevel, ClockRow, ContactRow, Ledger, PersonRow, PlanStatus } from "./db/types.ts";
+import { loadDisasterState } from "./disaster/db.ts";
+import { toSituation, type DisasterSituation, type DisasterState } from "./disaster/state.ts";
+import { loadOfficeSignals, triageInDisaster } from "./disaster/triage.ts";
 import { DEPENDENCE_MARKS, HAZARD_LABELS } from "./labels.ts";
 import type { StateTone } from "./person.ts";
-import { tierOf, type Tier } from "./triage/index.ts";
+import { compareResults, tierOf, type Tier, type TriageResult, type TriageSignal } from "./triage/index.ts";
 import { toTriagePerson } from "./triage/from-ledger.ts";
 
 export type CaseloadRow = {
@@ -26,11 +31,17 @@ export type CaseloadRow = {
   pending: number;
   /** 優先の骨格 1〜8 */
   tier: Tier;
+  /** 災害モードのときのルールの表の結果（色・理由の 1 行・並びの鍵）。平時は null */
+  triage: TriageResult | null;
 };
 
 export type Caseload = {
   office: { id: string; name: string };
   careManager: { id: string; name: string };
+  /** 事業所の災害の状態（平時も） */
+  disaster: DisasterState;
+  /** 災害モードのとき、表に渡した状況。平時は null */
+  situation: DisasterSituation | null;
   rows: CaseloadRow[];
 };
 
@@ -57,17 +68,33 @@ export function hazardsOf(ledger: Pick<Ledger, "evacuation">): string[] {
   );
 }
 
-/** 行の形にする（D1 を使わない所。テストしやすいように分けた） */
+/** 災害モードのときの入力。situation が null（平時）なら色を付けない */
+export type CaseloadDisaster = {
+  situation: DisasterSituation | null;
+  /** 本人ごとの信号（訓練でない物、発災から今まで） */
+  signals: ReadonlyMap<string, ReadonlyArray<TriageSignal>>;
+};
+
+/** 行の形にする（D1 を使わない所。テストしやすいように分けた）。disaster を渡すと災害モードの色と理由を付ける */
 export function toCaseloadRows(
   people: PersonForList[],
   clocks: ClockForList[],
   contacts: ContactForList[],
   today: string,
+  disaster?: CaseloadDisaster,
 ): CaseloadRow[] {
   return people.map((p) => {
     const ledger = parseLedger(p.ledger);
     const myClocks = clocks.filter((k) => k.person_id === p.id);
     const myContacts = contacts.filter((c) => c.person_id === p.id);
+    const person = toTriagePerson({ person: p, ledger, contacts: myContacts, clocks: myClocks });
+    const s = disaster?.situation ?? null;
+    const triage = s
+      ? triageInDisaster(
+          { person, signals: disaster?.signals.get(p.id) ?? [], town: ledger.basic.address?.town ?? null },
+          s,
+        )
+      : null;
     return {
       id: p.id,
       name: p.name,
@@ -79,7 +106,8 @@ export function toCaseloadRows(
       supporters: myContacts.filter((c) => c.supporter_order != null).length,
       plan: p.plan_status,
       pending: ledger.pending.length,
-      tier: tierOf(toTriagePerson({ person: p, ledger, contacts: myContacts, clocks: myClocks })),
+      tier: tierOf(person),
+      triage,
     };
   });
 }
@@ -95,11 +123,14 @@ const PLAN_ORDER: Record<PlanStatus, number> = { none: 0, draft: 1, consented: 2
  */
 export const PLAN_TONES: Record<PlanStatus, StateTone> = { none: "unknown", draft: "check", consented: "ok", trained: "ok" };
 
-/** 並び替え。どの並びでも、同じならカナの順 */
+/**
+ * 並び替え。どの並びでも、同じならカナの順。
+ * 優先（tier）は、平時は骨格の段、災害モード（行に triage がある）ならルールの表の並び（色 → 時計の残り → 支援者なし → 骨格）
+ */
 export function sortCaseload(rows: CaseloadRow[], key: SortKey): CaseloadRow[] {
   const byKana = (a: CaseloadRow, b: CaseloadRow) => a.kana.localeCompare(b.kana, "ja");
   const primary: Record<SortKey, (a: CaseloadRow, b: CaseloadRow) => number> = {
-    tier: (a, b) => a.tier - b.tier,
+    tier: (a, b) => (a.triage && b.triage ? compareResults(a.triage, b.triage) : a.tier - b.tier),
     kana: () => 0,
     age: (a, b) => (b.age ?? -1) - (a.age ?? -1),
     plan: (a, b) => PLAN_ORDER[a.plan] - PLAN_ORDER[b.plan] || b.pending - a.pending,
@@ -147,6 +178,7 @@ export async function loadCaseload(
   db: D1Database,
   scope: { officeId: string; careManagerId: string },
   today: string,
+  now: string = new Date().toISOString(),
 ): Promise<Caseload | null> {
   const cm = await db
     .prepare(
@@ -175,14 +207,22 @@ export async function loadCaseload(
     db.prepare(`SELECT person_id, supporter_order FROM contacts WHERE person_id IN (${mine})`).bind(cm.id, cm.office_id),
   ]);
 
+  // 災害モードなら信号を読み、ルールの表に今・発災・停電の始まりを渡す（1 分ごとの読み直しで今が進む）
+  const disaster = await loadDisasterState(db, cm.office_id);
+  const situation = toSituation(disaster, now);
+  const signals = situation ? await loadOfficeSignals(db, cm.office_id, situation) : new Map<string, TriageSignal[]>();
+
   return {
     office: { id: cm.office_id, name: cm.office_name },
     careManager: { id: cm.id, name: cm.display_name },
+    disaster,
+    situation,
     rows: toCaseloadRows(
       people.results as PersonForList[],
       clocks.results as ClockForList[],
       contacts.results as ContactForList[],
       today,
+      { situation, signals },
     ),
   };
 }
