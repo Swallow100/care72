@@ -1,6 +1,7 @@
 // 本人のページの本体（読む側）。単独のページ（/people/[id]）と、担当一覧の右の面（/?open=<id>）で同じ物を出す。
 // 区分の順は lib/person.ts の sectionOrder（発災時は経過が一番上）。入れる欄（T03）はここに置かない。
 
+import Link from "next/link";
 import type { Block, ClockView, PersonView as View, Row, Section } from "@/lib/person";
 import { BLANK_LABELS } from "@/lib/labels";
 import { Blank, PendingMark, RowItem, StateTag, TONE_TEXT, type Level } from "./parts";
@@ -54,7 +55,7 @@ function Blocks({ blocks }: { blocks: readonly Block[] }) {
             return <ClocksRow key="clocks" label={b.label} clocks={b.clocks} />;
           case "documents":
             return b.documents.map((d) => (
-              <DocumentRow key={d.key} row={{ key: `documents.${d.key}`, label: d.label, status: d.status }} />
+              <DocumentRow key={d.key} row={{ key: `documents.${d.key}`, label: d.label, status: d.status, href: d.href }} />
             ));
           case "timeline":
             return <Timeline key={i} items={b.items} />;
@@ -64,11 +65,19 @@ function Blocks({ blocks }: { blocks: readonly Block[] }) {
   );
 }
 
-function DocumentRow({ row }: { row: Pick<Row, "key" | "label"> & { status: string } }) {
+function DocumentRow({ row }: { row: Pick<Row, "key" | "label"> & { status: string; href?: string } }) {
   return (
     <div className="grid grid-cols-[6.5rem_minmax(0,1fr)] gap-x-4" data-field={row.key}>
       <dt className="pt-0.5 text-sm text-muted">{row.label}</dt>
-      <dd className="text-muted">{row.status}</dd>
+      <dd className={row.href ? undefined : "text-muted"}>
+        {row.href ? (
+          <Link href={row.href} className="-mx-1 rounded px-1 text-accent underline underline-offset-4" data-press>
+            {row.status}
+          </Link>
+        ) : (
+          row.status
+        )}
+      </dd>
     </div>
   );
 }

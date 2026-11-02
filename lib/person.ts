@@ -216,7 +216,13 @@ export type ClockView = {
   pending: Pending[];
 };
 
-export type DocumentView = { key: keyof typeof DOCUMENT_LABELS; label: string; status: string };
+/** 書類の入口。href があれば開ける（紙面ができた書類） */
+export type DocumentView = { key: keyof typeof DOCUMENT_LABELS; label: string; status: string; href?: string };
+
+/** できた書類の紙面の場所（T05 計画書。T06・T07 はここに足す） */
+const DOCUMENT_PATHS: Partial<Record<keyof typeof DOCUMENT_LABELS, (personId: string) => string>> = {
+  matsuyama: (id) => `/people/${encodeURIComponent(id)}/forms/matsuyama`,
+};
 
 export type TimelineItem = {
   id: string;
@@ -625,12 +631,17 @@ function consentBlocks(consents: PersonPageRows["consents"]): Block[] {
   });
 }
 
-function documentBlocks(): Block[] {
+function documentBlocks(personId: string): Block[] {
   const keys = Object.keys(DOCUMENT_LABELS) as Array<keyof typeof DOCUMENT_LABELS>;
   return [
     {
       type: "documents",
-      documents: keys.map((key) => ({ key, label: DOCUMENT_LABELS[key], status: DOCUMENT_STATUS_LABELS.pending })),
+      documents: keys.map((key) => {
+        const path = DOCUMENT_PATHS[key];
+        return path
+          ? { key, label: DOCUMENT_LABELS[key], status: DOCUMENT_STATUS_LABELS.ready, href: path(personId) }
+          : { key, label: DOCUMENT_LABELS[key], status: DOCUMENT_STATUS_LABELS.pending };
+      }),
     },
   ];
 }
@@ -835,7 +846,7 @@ export function toPersonView(rows: PersonPageRows, opts: ViewOptions): PersonVie
     ["people", peopleBlocks(contacts)],
     ["basic", basicBlocks({ ...rows, contacts }, ledger)],
     ["consent", consentBlocks(rows.consents)],
-    ["documents", documentBlocks()],
+    ["documents", documentBlocks(person.id)],
     ["timeline", [{ type: "timeline", items: timelineItems(rows) }]],
   ]);
   const unconfirmed = attachPending(sections, ledger, rows);
