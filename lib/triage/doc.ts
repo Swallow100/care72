@@ -1,8 +1,10 @@
-// docs/TRIAGE.md の中身を、ルールの表のコード（RULES・QUALIFIERS・ORDER・READING）から作る。
-// 書き出しは build-doc.ts（npm run docs:triage）。ファイルとコードの一致は doc.test.ts で確かめる。
+// docs/TRIAGE.md の中身を、ルールの表のコード（RULES・QUALIFIERS・ORDER・READING・TIERS）から作る。
+// 書き出しは build-doc.ts（npm run docs:triage。docs/SOURCES.md も一緒に書く）。ファイルとコードの一致は doc.test.ts で確かめる。
 // 表の行を足したら npm run docs:triage を流す。流し忘れると npm test が止まる。
 
-import { ORDER, QUALIFIERS, READING, RULES, type Color, type Rule } from "./index.ts";
+import { TIER_LABELS } from "../labels.ts";
+import { sourceLinks } from "../sources/doc.ts";
+import { ORDER, QUALIFIERS, READING, RULES, TIERS, type Color, type Rule } from "./index.ts";
 
 const COLOR_WORD: Record<Color, string> = { red: "赤", yellow: "黄", gray: "灰", green: "緑" };
 
@@ -21,19 +23,20 @@ export function triageDoc(): string {
   const out: string[] = [
     "# ルールの表",
     "",
-    "<!-- このファイルは npm run docs:triage が lib/triage/index.ts から作る。手で直さない。コードと違うと npm test が止まる -->",
+    "<!-- このファイルは npm run docs:triage が lib/triage/index.ts と lib/sources/index.ts から作る。手で直さない。コードと違うと npm test が止まる -->",
     "",
     "安否の色と連絡の順位はこの表で出す。Claude は決めない（録音と自由文を 5 つに分けるだけ）。",
     "元が「案」の行は docs/DECISIONS.md の案で、作者の確認待ち。案のままでは本運用に使わない。",
     "10 人に大雨の筋を流した結果は lib/triage/heavy-rain.test.ts。",
+    "「なぜ」はその行がある理由の 1 文で、ケアマネと主治医が見る（本人・家族の 1 枚には出さない）。「出典」は docs/SOURCES.md の登録簿の id で、押すとその出典に飛ぶ。「未確認」は作者がまだ本文を確かめていない出典。",
     "",
     "## 色と理由の 1 行",
     "",
     "上から順に当て、最初に当たった行で色と理由の 1 行が決まる。",
     "",
     ...table(
-      ["入力", "色", "理由の 1 行（例）", "元"],
-      RULES.map((r) => [r.input, colorCell(r), r.example, r.origin]),
+      ["入力", "色", "理由の 1 行（例）", "元", "なぜ", "出典"],
+      RULES.map((r) => [r.input, colorCell(r), r.example, r.origin, r.why, sourceLinks(r.sourceIds)]),
     ),
     "",
     "## 理由に足す言葉",
@@ -41,8 +44,8 @@ export function triageDoc(): string {
     "色は変えない。当たる物を上から順に「、」でつなぐ。",
     "",
     ...table(
-      ["足すとき", "足す言葉（例）", "元"],
-      QUALIFIERS.map((q) => [q.when, q.text, q.origin]),
+      ["足すとき", "足す言葉（例）", "元", "なぜ", "出典"],
+      QUALIFIERS.map((q) => [q.when, q.text, q.origin, q.why, sourceLinks(q.sourceIds)]),
     ),
     "",
     "## 並び",
@@ -52,6 +55,15 @@ export function triageDoc(): string {
     ...table(
       ["比べる物", "元"],
       ORDER.map((k) => [k.label, k.origin]),
+    ),
+    "",
+    "## 優先の骨格の段",
+    "",
+    "何で時間が決まるかの段。いちばん上の段を取る（病名でなく、時計の区分と暮らしの形で決まる）。並びの 4 番目に使う。",
+    "",
+    ...table(
+      ["段", "何で時間が決まるか", "なぜ", "出典"],
+      TIERS.map((t) => [String(t.tier), TIER_LABELS[t.tier], t.why, sourceLinks(t.sourceIds)]),
     ),
     "",
     "## 読み方",
