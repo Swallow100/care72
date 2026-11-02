@@ -7,12 +7,11 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Button } from "@/components/ui/Button";
 import { DRILL_LABELS } from "@/lib/drill/labels";
 
 /** 早送りの 1 刻みの間（画面の色が変わるのを見られるように） */
 const FAST_MS = 2500;
-
-const BUTTON = "rounded-md px-3 py-1.5 text-sm font-bold";
 
 export function DrillControls({ id, step, done }: { id: string; step: number; done: boolean }) {
   const router = useRouter();
@@ -84,43 +83,34 @@ export function DrillControls({ id, step, done }: { id: string; step: number; do
   if (done) return null;
   return (
     <div className="flex flex-wrap items-center gap-2" data-controls>
-      <button
-        type="button"
-        onClick={() => void advance()}
-        disabled={busy || fast}
-        className={`${BUTTON} bg-accent text-on-accent disabled:opacity-60`}
-        data-press="overlay"
-        data-action="advance"
-      >
+      <Button kind="main" onClick={() => void advance()} disabled={busy || fast} data-action="advance" data-pending={busy && !fast ? "" : undefined}>
         {DRILL_LABELS.advance}
-      </button>
-      <label className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm" data-press>
+      </Button>
+      <label className="flex h-8 items-center gap-1.5 rounded px-2 text-sm" data-press>
         <input type="checkbox" checked={fast} onChange={(e) => setFast(e.target.checked)} className="size-4 accent-accent" data-action="fast" />
         {DRILL_LABELS.fastForward}
       </label>
       {confirm ? (
         <span className="flex items-center gap-1">
-          <button type="button" onClick={() => void abandon()} disabled={busy} className={`${BUTTON} text-danger`} data-press data-action="abandon-confirm">
+          <Button kind="dangerFill" onClick={() => void abandon()} disabled={busy} data-action="abandon-confirm">
             {DRILL_LABELS.confirmAbandon}
-          </button>
-          <button type="button" onClick={() => setConfirm(false)} className={`${BUTTON} font-normal text-muted`} data-press>
+          </Button>
+          <Button kind="quiet" onClick={() => setConfirm(false)}>
             {DRILL_LABELS.cancel}
-          </button>
+          </Button>
         </span>
       ) : (
-        <button
-          type="button"
+        <Button
+          kind="danger"
           onClick={() => {
             setFast(false);
             setConfirm(true);
           }}
           disabled={busy}
-          className={`${BUTTON} font-normal text-muted`}
-          data-press
           data-action="abandon"
         >
           {DRILL_LABELS.abandon}
-        </button>
+        </Button>
       )}
       {error && (
         <span role="alert" className="text-sm font-bold text-danger">

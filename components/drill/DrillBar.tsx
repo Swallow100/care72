@@ -35,13 +35,13 @@ export function DrillBar({
       <div className="relative h-7">
         {/* 棒 */}
         <div className="absolute inset-x-0 top-1.5 h-2 rounded-sm bg-panel2" />
-        <div className="absolute left-0 top-1.5 h-2 rounded-sm bg-muted/40" style={{ width: pct(now, last) }} data-bar-past />
+        <div className="absolute left-0 top-1.5 h-2 rounded-sm bg-[color-mix(in_srgb,var(--muted)_45%,var(--panel2))]" style={{ width: pct(now, last) }} data-bar-past />
         {/* 刻みの印 */}
         {hours.map((h, i) => {
           const passed = h <= now;
           const mark = (
             <>
-              <span className={`mx-auto block h-3.5 w-px ${passed ? "bg-ink" : "bg-muted/50"}`} />
+              <span className={`mx-auto block h-3.5 w-px ${passed ? "bg-ink" : "bg-muted"}`} />
               <span className={`block text-[11px] leading-3 tabular-nums ${h === now ? "font-bold text-ink" : passed ? "text-ink" : "text-muted"}`}>
                 {h}
               </span>

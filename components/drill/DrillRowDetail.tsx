@@ -134,7 +134,7 @@ export function DrillRowDetail({
 function Part({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="rounded-md bg-panel2 p-2">
-      <h3 className="mb-1 text-xs font-bold text-muted">{title}</h3>
+      <h3 className="mb-1 text-[0.8125rem] font-bold">{title}</h3>
       {children}
     </section>
   );

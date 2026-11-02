@@ -21,6 +21,9 @@ import { DRILL_PATH, drillHref, parseSort, parseStep, parseView, type DrillView 
 import { scenarioOf } from "@/lib/drill/scenarios";
 import { loadDrillScreen, type DrillScreen } from "@/lib/drill/view";
 import { buildSidePane, sideDisasterOf } from "@/lib/map/side";
+import { ButtonLink } from "@/components/ui/Button";
+import { LinkPending } from "@/components/ui/LinkPending";
+import { BackLink, Panel as UiPanel, PanelHead } from "@/components/ui/Panel";
 
 export const metadata: Metadata = { title: "訓練 | ケア72" };
 
@@ -74,10 +77,8 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
   return (
     <main className="mx-auto max-w-[112rem] space-y-3 px-4 py-4" data-drill={id} data-step={s.shown} data-status={s.drill.status}>
       <header className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        <Link href={DRILL_PATH} className="rounded px-1 text-sm text-muted" data-press>
-          {DRILL_LABELS.records}
-        </Link>
-        <h1 className="text-xl font-bold">
+        <BackLink href={DRILL_PATH} />
+        <h1 className="text-xl leading-8 font-bold">
           {DRILL_LABELS.page} {SCENARIO_LABELS[s.drill.scenario]}
         </h1>
         <span className={`text-sm ${running ? "font-bold" : "text-muted"}`} data-drill-status>
@@ -96,7 +97,7 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
         </div>
       </header>
 
-      <section aria-label={DRILL_LABELS.elapsed} className="grid gap-x-6 gap-y-2 rounded-lg bg-panel px-4 py-3 lg:grid-cols-[11rem_minmax(0,1fr)]">
+      <section aria-label={DRILL_LABELS.elapsed} className="grid gap-x-6 gap-y-2 rounded-lg bg-panel px-3 py-3 lg:grid-cols-[11rem_minmax(0,1fr)]">
         <div>
           <div className="text-2xl font-bold tabular-nums" data-now-hour={s.state.hour}>
             {elapsedLabel(s.state.hour)}
@@ -118,7 +119,7 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
 
       <div className={`grid items-start gap-3 ${grid.outer}`}>
         <section aria-labelledby="drill-table" className="min-w-0 space-y-2">
-          <div className="flex flex-wrap items-center gap-x-3 rounded-lg bg-panel px-4 py-2.5">
+          <div className="flex flex-wrap items-center gap-x-3 rounded-lg bg-panel px-3 py-2.5">
             <h2 id="drill-table" className="sr-only">
               {DRILL_LABELS.page}
             </h2>
@@ -130,7 +131,8 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
             />
             <ViewToggle view={view} hrefOf={(v) => here({ view: v })} />
           </div>
-          <div className="overflow-x-auto" data-drill-table={view}>
+          {/* 表は内側で送らない。収まらない列は圧縮（drill.css）か、展開のときは右の組を下に回して幅を取る */}
+          <div data-drill-table={view}>
             <DisasterTable rows={rows} sort={sort} slots={slots} />
           </div>
         </section>
@@ -162,11 +164,12 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
 
 /**
  * 列の組み方。左は表、右は真ん中（状況・対応）と右（被害状況・地図）の組。
- * 圧縮（4 列の表 26rem）は 1280px で 3 列に並ぶ。全部の列（約 64rem）は右の組を 28rem に重ねる。auto は 1536px 未満で圧縮、以上で全部の列
+ * 圧縮（4 列の表 26rem）は 1280px で 3 列に並ぶ。全部の列（約 64rem）は 1536px から右の組を 28rem に重ね、
+ * それ未満は右の組を表の下に回す（表を横に送らない）。auto は 1536px 未満で圧縮、以上で全部の列
  */
 const GRID: Record<DrillView, { outer: string; inner: string }> = {
   compact: { outer: "xl:grid-cols-[26rem_minmax(0,1fr)]", inner: "lg:grid-cols-[minmax(0,1fr)_20rem]" },
-  full: { outer: "xl:grid-cols-[minmax(0,1fr)_28rem]", inner: "lg:grid-cols-2 xl:grid-cols-1" },
+  full: { outer: "2xl:grid-cols-[minmax(0,1fr)_28rem]", inner: "lg:grid-cols-2 2xl:grid-cols-1" },
   auto: {
     outer: "xl:grid-cols-[26rem_minmax(0,1fr)] 2xl:grid-cols-[minmax(0,1fr)_28rem]",
     inner: "lg:grid-cols-[minmax(0,1fr)_20rem] 2xl:grid-cols-1",
@@ -175,11 +178,12 @@ const GRID: Record<DrillView, { outer: string; inner: string }> = {
 
 /** 圧縮・展開。auto は幅で見えている方の逆を出す（1536px 未満は展開、以上は圧縮） */
 function ViewToggle({ view, hrefOf }: { view: DrillView; hrefOf: (v: DrillView) => string }) {
-  const cls = "ml-auto rounded px-2 py-1 text-sm text-muted";
+  const cls = "relative ml-auto rounded px-2 py-1 text-sm text-muted";
   if (view === "compact") {
     return (
       <Link href={hrefOf("full")} className={cls} data-press data-view-toggle="full">
         {DRILL_LABELS.expand}
+        <LinkPending />
       </Link>
     );
   }
@@ -187,6 +191,7 @@ function ViewToggle({ view, hrefOf }: { view: DrillView; hrefOf: (v: DrillView) 
     return (
       <Link href={hrefOf("compact")} className={cls} data-press data-view-toggle="compact">
         {DRILL_LABELS.compact}
+        <LinkPending />
       </Link>
     );
   }
@@ -194,9 +199,11 @@ function ViewToggle({ view, hrefOf }: { view: DrillView; hrefOf: (v: DrillView) 
     <>
       <Link href={hrefOf("full")} className={`${cls} 2xl:hidden`} data-press data-view-toggle="full">
         {DRILL_LABELS.expand}
+        <LinkPending />
       </Link>
       <Link href={hrefOf("compact")} className={`${cls} hidden 2xl:inline`} data-press data-view-toggle="compact">
         {DRILL_LABELS.compact}
+        <LinkPending />
       </Link>
     </>
   );
@@ -217,33 +224,31 @@ async function load(scope: DrillScope, id: string, want: number | null): Promise
 
 function Panel({ title, id, children }: { title: string; id: string; children: React.ReactNode }) {
   return (
-    <section aria-labelledby={`drill-${id}`} className="rounded-lg bg-panel p-2.5" data-panel={id}>
-      <h2 id={`drill-${id}`} className="mb-1.5 px-0.5 text-sm font-bold">
-        {title}
-      </h2>
+    <UiPanel aria-labelledby={`drill-${id}`} data-panel={id}>
+      <PanelHead id={`drill-${id}`} title={title} className="mb-1.5" />
       {children}
-    </section>
+    </UiPanel>
   );
 }
 
 /** 再生の前・次 */
 function ReplayNav({ shown, reached, hrefOf }: { shown: number; reached: number; hrefOf: (i: number) => string }) {
-  const btn = "rounded-md px-3 py-1.5 text-sm font-bold";
+  const off = "inline-flex h-8 items-center rounded px-3 text-sm font-bold text-muted";
   return (
-    <nav aria-label={DRILL_LABELS.replay} className="flex items-center gap-1" data-replay>
+    <nav aria-label={DRILL_LABELS.replay} className="flex items-center gap-1.5" data-replay>
       {shown > 0 ? (
-        <Link href={hrefOf(shown - 1)} className={`${btn} text-accent`} data-press data-replay-prev>
+        <ButtonLink href={hrefOf(shown - 1)} kind="plain" data-replay-prev>
           {DRILL_LABELS.prev}
-        </Link>
+        </ButtonLink>
       ) : (
-        <span className={`${btn} text-muted`}>{DRILL_LABELS.prev}</span>
+        <span className={off}>{DRILL_LABELS.prev}</span>
       )}
       {shown < reached ? (
-        <Link href={hrefOf(shown + 1)} className={`${btn} text-accent`} data-press data-replay-next>
+        <ButtonLink href={hrefOf(shown + 1)} kind="main" data-replay-next>
           {DRILL_LABELS.next}
-        </Link>
+        </ButtonLink>
       ) : (
-        <span className={`${btn} text-muted`}>{DRILL_LABELS.next}</span>
+        <span className={off}>{DRILL_LABELS.next}</span>
       )}
     </nav>
   );
@@ -251,13 +256,11 @@ function ReplayNav({ shown, reached, hrefOf }: { shown: number; reached: number;
 
 function Message({ title }: { title: string }) {
   return (
-    <main className="mx-auto max-w-6xl px-4 py-6">
-      <section className="rounded-lg bg-panel p-6">
-        <h1 className="text-xl font-bold">{title}</h1>
-        <Link href={DRILL_PATH} className="mt-2 inline-block rounded px-1 text-sm text-accent" data-press>
-          {DRILL_LABELS.records}
-        </Link>
-      </section>
+    <main className="mx-auto max-w-6xl px-4 py-4">
+      <div className="flex flex-wrap items-center gap-x-3">
+        <BackLink href={DRILL_PATH} />
+        <h1 className="text-xl leading-8 font-bold">{title}</h1>
+      </div>
     </main>
   );
 }
