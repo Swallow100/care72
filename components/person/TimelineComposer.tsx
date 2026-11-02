@@ -7,6 +7,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { buttonClass } from "@/components/ui/Button";
 import { COMPOSER_FAILED, COMPOSER_LABELS } from "@/lib/consent/labels";
 import { CUSTODY_LABELS } from "@/lib/custody/labels";
 import type { WritableKind } from "@/lib/consent/scope";
@@ -16,8 +17,9 @@ import { BODY_MAX, TIMELINE_API } from "@/lib/timeline/paths";
 type Preset = Exclude<WritableKind, "note">;
 
 const INPUT =
-  "w-full min-w-0 resize-y rounded-md bg-panel2 px-2 py-1.5 text-sm text-ink outline-none focus-visible:outline-2 focus-visible:outline-accent";
-const PRIMARY = "rounded-md bg-accent px-3 py-1.5 text-sm font-bold text-on-accent disabled:bg-panel2 disabled:text-muted";
+  "w-full min-w-0 resize-y rounded bg-panel2 px-2 py-1.5 text-sm text-ink outline-none focus-visible:outline-2 focus-visible:outline-accent";
+/** 追記・記録は主の操作（共通のボタンの形、components/ui/Button） */
+const PRIMARY = buttonClass("main", "md");
 
 export function TimelineComposer({ personId, kinds }: { personId: string; kinds: readonly WritableKind[] }) {
   const router = useRouter();
@@ -71,7 +73,7 @@ export function TimelineComposer({ personId, kinds }: { personId: string; kinds:
                 type="button"
                 aria-pressed={on}
                 onClick={() => setPreset(on ? null : k)}
-                className={`rounded-md bg-panel2 px-2 py-1 ${on ? "font-bold text-ink underline underline-offset-4" : "text-muted"}`}
+                className={`rounded bg-panel2 px-2 py-1 ${on ? "font-bold text-ink underline underline-offset-4" : "text-muted"}`}
                 data-press
                 data-kind={k}
               >
