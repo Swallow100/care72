@@ -1,6 +1,6 @@
 # remote D1 を作り直して再配信する。作者が端末で打つ。使い方: bash tools/deploy/rebuild-remote.sh <commit>
 set -e
-cd /c/Users/choco/dev/care72-deploy
+DEPLOY_DIR="${DEPLOY_DIR:-/c/Users/choco/dev/care72-deploy}"; [ -d "$DEPLOY_DIR" ] || git -C /c/Users/choco/dev/care72 worktree add --detach "$DEPLOY_DIR" "$1"; cd "$DEPLOY_DIR"
 git checkout -q -- . && git checkout -q --detach "$1"
 echo "== commit: $(git log --format='%h %s' -1)"
 echo "== npm ci"; npm ci --no-audit --no-fund --loglevel=error 2>&1 | tail -1
