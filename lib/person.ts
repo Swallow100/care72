@@ -75,6 +75,7 @@ import { tierOf, type Color, type Tier, type TriageResult } from "./triage/index
 import type { PersonBrief } from "./auth/scope.ts";
 import { withQrView } from "./qr/timeline.ts";
 import { officeEntryOf, withOfficeEntry } from "./office/timeline.ts";
+import { withCustodyEntry } from "./custody/timeline.ts";
 
 // ---------- 区分と並び ----------
 
@@ -856,8 +857,12 @@ export function timelineItems(rows: PersonPageRows): TimelineItem[] {
   }
 
   // QR の頁の閲覧（kind は note、payload の source が qr_view）は「QR 閲覧」と相手（lib/qr/timeline.ts）。
-  // 利用者追加・担当変更・一覧除外・一覧復帰（source が office）はその種類（lib/office/timeline.ts）
-  return [...derived, ...stored.map((item, i) => withOfficeEntry(withQrView(item, rows.timeline[i]), rows.timeline[i]))]
+  // 利用者追加・担当変更・一覧除外・一覧復帰・引受（source が office）はその種類（lib/office/timeline.ts）。
+  // 医療班・行政の受入・搬送・退所（source が custody）は「受入」「搬送」「退所」（lib/custody/timeline.ts）
+  return [
+    ...derived,
+    ...stored.map((item, i) => withCustodyEntry(withOfficeEntry(withQrView(item, rows.timeline[i]), rows.timeline[i]), rows.timeline[i])),
+  ]
     .map((item, i) => ({ item, i, t: Date.parse(item.at) }))
     .sort((a, b) => a.t - b.t || Number(b.item.derived) - Number(a.item.derived) || a.i - b.i)
     .map((x) => x.item);
