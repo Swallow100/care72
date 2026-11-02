@@ -260,6 +260,20 @@ describe("種の 9 人から欄が埋まる", () => {
       expect(side).toContain("screen-only");
     }
   });
+
+  it("出典の確認（作者が 11/7 までに）が済むまで、画面の脇の出典ごとに小さな「未確認」の印を出す。隠さない（11/3 確定の 10）", () => {
+    for (const id of SHEET_IDS) {
+      const side = basisHtml(sheetOf(id));
+      const items = [...side.matchAll(/data-source="([^"]+)"(.*?)<\/li>/g)];
+      expect(items.length, id).toBeGreaterThan(0);
+      for (const m of items) {
+        const checked = sourceById(m[1]).checkedOn !== null;
+        expect(m[2], `${id} ${m[1]}`).toContain(checked ? "確認済" : "未確認");
+      }
+      // 出典の行は text-xs の小さな字の中
+      expect(side).toMatch(/<ul class="[^"]*text-xs[^"]*"><li[^>]*data-source=/);
+    }
+  });
 });
 
 describe("1 山田 ハナ（T07 の終わりの形）", () => {
