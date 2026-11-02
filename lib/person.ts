@@ -68,6 +68,8 @@ import {
 } from "./labels.ts";
 import { toTriagePerson } from "./triage/from-ledger.ts";
 import { tierOf, type Color, type Tier, type TriageResult } from "./triage/index.ts";
+import type { PersonBrief } from "./auth/scope.ts";
+import { withQrView } from "./qr/timeline.ts";
 
 // ---------- 区分と並び ----------
 
@@ -232,6 +234,7 @@ export type DocumentView = { key: keyof typeof DOCUMENT_LABELS; label: string; s
 const DOCUMENT_PATHS: Partial<Record<keyof typeof DOCUMENT_LABELS, (personId: string) => string>> = {
   matsuyama: (id) => `/people/${encodeURIComponent(id)}/forms/matsuyama`,
   medical: (id) => `/people/${encodeURIComponent(id)}/forms/medical`,
+  qr: (id) => `/people/${encodeURIComponent(id)}/forms/qr`,
 };
 
 export type TimelineItem = {
@@ -804,7 +807,8 @@ export function timelineItems(rows: PersonPageRows): TimelineItem[] {
     });
   }
 
-  return [...derived, ...stored]
+  // QR の頁の閲覧（kind は note、payload の source が qr_view）は「QR 閲覧」と相手（lib/qr/timeline.ts）
+  return [...derived, ...stored.map((item, i) => withQrView(item, rows.timeline[i]))]
     .map((item, i) => ({ item, i, t: Date.parse(item.at) }))
     .sort((a, b) => a.t - b.t || Number(b.item.derived) - Number(a.item.derived) || a.i - b.i)
     .map((x) => x.item);
@@ -969,6 +973,14 @@ export function toPersonView(rows: PersonPageRows, opts: ViewOptions): PersonVie
 export async function loadPersonPage(db: D1Database, principal: Principal, personId: string): Promise<PersonPageRows | null> {
   const brief = await personInScope(db, principal, personId);
   if (!brief) return null;
+  return loadPersonRows(db, brief);
+}
+
+/**
+ * 本人の行（壁を通したあと）から、連絡先・同意・時計・経過を読む。壁を通さずに呼ぶのは QR の頁（lib/qr/view.ts）だけで、
+ * そこでは署名と版を確かめたトークンが壁の代わり
+ */
+export async function loadPersonRows(db: D1Database, brief: PersonBrief): Promise<PersonPageRows | null> {
   const [extra, contacts, consents, clocks, timeline] = await db.batch([
     db
       .prepare(
