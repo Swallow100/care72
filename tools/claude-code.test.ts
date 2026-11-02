@@ -1,6 +1,7 @@
 // Claude Code の設定（.claude/settings.json のフックと .claude/skills）が、リポジトリの中の物とそろっているか。
 // フックそのものの決まりは tools/hooks/rules.test.ts。
 
+import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -133,7 +134,24 @@ describe(".claude/skills", () => {
   });
 });
 
-type McpConfig = { mcpServers: Record<string, { type?: string; command: string; args?: string[] }> };
+describe("docs/CLAUDE_CODE.md の裏", () => {
+  it("書いた commit の hash（`1234abc` の形）が、どれもこのリポジトリの履歴に本当にある", () => {
+    const text = read("docs/CLAUDE_CODE.md");
+    const hashes = [...new Set([...text.matchAll(/`([0-9a-f]{7,40})`/g)].map((m) => m[1]))];
+    expect(hashes.length).toBeGreaterThan(10);
+    const missing = hashes.filter((h) => {
+      try {
+        execFileSync("git", ["cat-file", "-e", `${h}^{commit}`], { cwd: root("."), stdio: "ignore" });
+        return false;
+      } catch {
+        return true;
+      }
+    });
+    expect(missing).toEqual([]);
+  });
+});
+
+type McpConfig ={ mcpServers: Record<string, { type?: string; command: string; args?: string[] }> };
 const mcpConfig: McpConfig = JSON.parse(read(".mcp.json"));
 
 describe(".mcp.json の MCP サーバー", () => {
