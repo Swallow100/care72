@@ -16,6 +16,7 @@ import {
   type Form9Reports,
 } from "./form9.ts";
 import { CSV_BOM, csvCell, csvFileNames, form9Csv, mappedCsv } from "./form9-csv.ts";
+import { form9Href, parseEdit, parseError, parseSort, sortRows } from "./form9-href.ts";
 import { form9Report, tally } from "./form9-report.ts";
 
 const TODAY = "2026-11-02";
@@ -429,5 +430,28 @@ describe("市町村への報告の下書き", () => {
     const withMeta = form9Report(disaster, { officeName: "デモ事業所", at: SITUATION.now, disaster: "大雨", contact: "山本" });
     expect(withMeta).toContain("災害：大雨\n");
     expect(withMeta.trimEnd().endsWith("連絡先：山本")).toBe(true);
+  });
+});
+
+describe("画面の URL と並び替え", () => {
+  it("既定の並び（順位）は書かず、手直しの欄と誤りを足す", () => {
+    expect(form9Href({})).toBe("/office/form9");
+    expect(form9Href({ sort: "rank", edit: "p-10" })).toBe("/office/form9?edit=p-10");
+    expect(form9Href({ sort: "kana", edit: "p-10", error: "reason" })).toBe("/office/form9?sort=kana&edit=p-10&error=reason");
+    expect(parseSort("area")).toBe("area");
+    expect(parseSort("drop table")).toBe("rank");
+    expect(parseSort(["kana"])).toBe("rank");
+    expect(parseEdit("p-10")).toBe("p-10");
+    expect(parseEdit("../p")).toBeNull();
+    expect(parseError("rank")).toBe("rank");
+    expect(parseError("toString")).toBeNull();
+  });
+
+  it("氏名・地域・担当で並べ替えても、同じなら順位の順。CSV は順位の順のまま", () => {
+    expect(sortRows(normal.rows, "rank").map((r) => r.id)).toEqual(normal.rows.map((r) => r.id));
+    expect(sortRows(normal.rows, "kana").map((r) => r.kana)[0]).toBe("イトウ フミ");
+    const byArea = sortRows(normal.rows, "area");
+    expect(byArea.filter((r) => r.town === "かわなぎ町").map((r) => r.id)).toEqual(["p-02", "p-01"]);
+    expect(sortRows(normal.rows, "manager").map((r) => r.id)).toEqual(normal.rows.map((r) => r.id));
   });
 });

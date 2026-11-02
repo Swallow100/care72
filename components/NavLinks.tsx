@@ -7,6 +7,7 @@ import { usePathname } from "next/navigation";
 const ITEMS = [
   { href: "/", label: "担当一覧", match: (path: string) => path === "/" || path.startsWith("/people") },
   { href: "/drill", label: "訓練記録", match: (path: string) => path.startsWith("/drill") },
+  { href: "/office/form9", label: "様式9", match: (path: string) => path.startsWith("/office/form9") },
 ];
 
 export function NavLinks() {
