@@ -9,7 +9,7 @@ import type { Principal } from "../auth/principal.ts";
 import { loadCaseload } from "../caseload.ts";
 import { askJson, type AskJsonContext } from "../claude/call.ts";
 import type { ClaudeClient } from "../claude/client.ts";
-import { AiLimitReached, AiNotConfigured } from "../claude/errors.ts";
+import { AiBadOutput, AiCallFailed, AiLimitReached, AiNotConfigured, AiRefused } from "../claude/errors.ts";
 import { SONNET } from "../claude/models.ts";
 import { d1UsageStore } from "../claude/usage.ts";
 import { applyLedgerChanges, parseLedger } from "../db/ledger.ts";
@@ -24,7 +24,8 @@ import { buildDiff, restoreNote, sentencesOf } from "./diff.ts";
 import { buildExtractRequest, EXTRACT_SYSTEM, extractIntake, pseudonymInputOf } from "./extract.ts";
 import { INTAKE_FIELDS, ledgerValue as ledgerValueOf } from "./fields.ts";
 import { manualChanges } from "./manual.ts";
-import { intakeErrorOf } from "./http.ts";
+import { aiFailReasonOf, intakeErrorOf } from "./http.ts";
+import { AI_FAIL_REASON_LABELS } from "../labels.ts";
 import { markPreview, planMarkClocks } from "./marks.ts";
 import { saveIntake, timelineBody, type SaveRequest } from "./save.ts";
 import type { ExtractOutput } from "./schema.ts";
@@ -98,7 +99,7 @@ function aiCtx(env: AskJsonContext["env"], claude?: ClaudeClient) {
     now: () => new Date("2026-11-02T03:00:00.000Z"),
     claude,
   };
-  const calls = () => db.prepare("SELECT purpose, model, status FROM ai_calls").all();
+  const calls = () => db.prepare("SELECT purpose, model, status, error FROM ai_calls").all() as Array<{ purpose: string; model: string; status: string; error: string | null }>;
   return { ctx, calls };
 }
 
@@ -261,7 +262,7 @@ describe("分ける（lib/intake/extract.ts）", () => {
     for (const secret of ["佐藤", "キミ", "清水", "正子", "くぬぎ谷", "1938-03-05", "090-0000-0004"]) expect(sent).not.toContain(secret);
     expect(sent).toContain("民生委員");
     expect(sent).toContain("（町名）");
-    expect(aiCalls()).toEqual([{ purpose: "ledger_input", model: SONNET, status: "ok" }]);
+    expect(aiCalls()).toEqual([{ purpose: "ledger_input", model: SONNET, status: "ok", error: null }]);
     expect(p.ai.model).toBe(SONNET);
     expect(p.items.map((i) => i.label)).toContain("既往");
     // 特記は入力の文に戻る
@@ -307,6 +308,37 @@ describe("分ける（lib/intake/extract.ts）", () => {
     expect(err).toBeInstanceOf(AiLimitReached);
     expect(calls).toHaveLength(0);
     expect(await intakeErrorOf(err)!.json()).toMatchObject({ label: "上限到達" });
+  });
+
+  it("AI 失敗は ai_calls の理由を返す（形が違う・切れた・断られた・時間切れ・API の失敗）。値と場所は返さない", async () => {
+    const cases: Array<[unknown, number, string, string]> = [
+      [new AiBadOutput("schema", ["items.0.value"]), 502, "ai_failed", "schema"],
+      [new AiBadOutput("not_json"), 502, "ai_failed", "schema"],
+      [new AiBadOutput("max_tokens"), 502, "ai_failed", "max_tokens"],
+      [new AiRefused("cyber"), 422, "ai_refused", "refused"],
+      [new AiCallFailed("timeout", new Error("x")), 502, "ai_failed", "timeout"],
+      [new AiCallFailed("api_error", new Error("x")), 502, "ai_failed", "api_error"],
+    ];
+    for (const [err, status, error, reason] of cases) {
+      const res = intakeErrorOf(err)!;
+      expect(res.status).toBe(status);
+      const body = await res.json();
+      expect(body).toMatchObject({ ok: false, error, reason });
+      expect(AI_FAIL_REASON_LABELS[reason as keyof typeof AI_FAIL_REASON_LABELS]).toBeTruthy();
+      expect(JSON.stringify(body)).not.toContain("items.0");
+    }
+    // AI の返事の失敗でない物は理由を持たない
+    expect(await intakeErrorOf(new AiNotConfigured("anthropic"))!.json()).not.toHaveProperty("reason");
+    expect(aiFailReasonOf(new Error("x"))).toBeNull();
+  });
+
+  it("形の違う返事は ai_calls に bad_output で残り、画面には理由「形式相違」", async () => {
+    const { client } = fakeClaude({ items: "形が違う" } as unknown as ExtractOutput);
+    const { ctx, calls } = aiCtx({ ANTHROPIC_API_KEY: "dummy" }, client);
+    const err = await extractIntake(seedRows(seed("p-04")), SATO_TEXT, ctx, { today: TODAY }).catch((e) => e);
+    expect(err).toBeInstanceOf(AiBadOutput);
+    expect(calls().map((c) => c.error)).toEqual(["bad_output"]);
+    expect(await intakeErrorOf(err)!.json()).toMatchObject({ error: "ai_failed", reason: "schema" });
   });
 });
 

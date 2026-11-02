@@ -10,7 +10,8 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { INTAKE_LABELS } from "@/lib/labels";
+import { AI_FAIL_REASON_LABELS, INTAKE_LABELS } from "@/lib/labels";
+import type { AiFailReason } from "@/lib/intake/http";
 import { dictationToSend, type DictationError } from "@/lib/speech/dictation";
 import { useDictation } from "@/lib/speech/use-dictation";
 import type { Question } from "@/lib/intake/ask";
@@ -20,7 +21,7 @@ import type { IntakeProps } from "@/lib/intake/props";
 import { IntakeChanges, rowsOf, type ChangeRow } from "./IntakeChanges";
 import { IntakeManual } from "./IntakeManual";
 import { IntakeQuestion } from "./IntakeQuestion";
-import { BTN_MAIN, BTN_SIDE, INPUT } from "./intake-ui";
+import { BTN_IN, BTN_MAIN, BTN_SIDE, INPUT } from "./intake-ui";
 import { StateTag, type Level } from "./parts";
 
 /** 入力の文の長さの上限（lib/intake/extract.ts の INTAKE_TEXT_MAX と同じ） */
@@ -28,7 +29,9 @@ const TEXT_MAX = 4000;
 
 type Tab = "text" | "manual";
 type Proposal = { model: string; dropped: number; rows: ChangeRow[] };
-type ApiError = { ok: false; error: string; label: string };
+type ApiError = { ok: false; error: string; label: string; reason?: AiFailReason };
+/** 抽出の AI 失敗（再試行できる物）。理由は ai_calls の失敗の分け方。再試行は同じ文・同じ問いで送り直す */
+type Failed = { label: string; reason: AiFailReason | null; source: string; focus: string | null };
 
 async function postJson<T>(url: string, body: unknown): Promise<T | ApiError> {
   try {
@@ -58,6 +61,7 @@ export function Intake(props: IntakeProps & { level: Level }) {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [proposal, setProposal] = useState<Proposal | null>(null);
+  const [failed, setFailed] = useState<Failed | null>(null);
   const [skip, setSkip] = useState<string[]>([]);
   const aiReady = aiBlock === null;
   const H = props.level === 1 ? "h2" : "h3";
@@ -83,6 +87,7 @@ export function Intake(props: IntakeProps & { level: Level }) {
     setBusy(true);
     setError(null);
     setNotice(null);
+    setFailed(null);
     const r = await postJson<{ ok: true; ai: { model: string }; items: DiffItem[]; dropped: number }>("/api/intake/extract", {
       personId: props.personId,
       text: source,
@@ -94,7 +99,9 @@ export function Intake(props: IntakeProps & { level: Level }) {
         setAiBlock(r.label);
         setTab("manual");
       }
-      setError(r.label);
+      // AI の返事の失敗（形が違う・断られた・時間切れ・API）は理由と「再試行」。ほかは上の状態の欄に
+      if (r.error === "ai_failed" || r.error === "ai_refused") setFailed({ label: r.label, reason: r.reason ?? null, source, focus });
+      else setError(r.label);
       return;
     }
     setProposal({ model: r.ai.model, dropped: r.dropped, rows: rowsOf(r.items) });
@@ -104,6 +111,7 @@ export function Intake(props: IntakeProps & { level: Level }) {
     setBusy(true);
     setError(null);
     setNotice(null);
+    setFailed(null);
     const r = await postJson<{ ok: true; changed: number }>("/api/intake/save", {
       personId: props.personId,
       version: props.version,
@@ -183,7 +191,11 @@ export function Intake(props: IntakeProps & { level: Level }) {
             // 聞いている間は認識の結果だけが入る（止めたら直せる）
             readOnly={listening}
             aria-busy={listening}
-            onChange={(e) => setText(e.target.value)}
+            onChange={(e) => {
+              setText(e.target.value);
+              // 文を直したら、再試行でなく抽出で送る
+              if (failed?.focus === null) setFailed(null);
+            }}
           />
           <div className="flex items-center gap-2">
             <button type="submit" className={BTN_MAIN} data-press="overlay" disabled={busy || listening || !aiReady || text.trim() === ""}>
@@ -217,6 +229,22 @@ export function Intake(props: IntakeProps & { level: Level }) {
         </form>
       ) : (
         <IntakeManual key={props.version} ledger={props.ledger} busy={busy} onSave={(changes) => void save(changes, null)} />
+      )}
+
+      {failed && (
+        <div role="alert" className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded bg-panel2 px-2 py-1.5" data-intake="failed" data-reason={failed.reason ?? ""}>
+          <span className="font-bold text-danger">{failed.label}</span>
+          {failed.reason && <span className="text-xs font-bold">{AI_FAIL_REASON_LABELS[failed.reason]}</span>}
+          <button
+            type="button"
+            className={`${BTN_IN} ml-auto`}
+            data-press
+            disabled={busy || listening || !aiReady}
+            onClick={() => void extract(failed.source, failed.focus)}
+          >
+            {INTAKE_LABELS.retry}
+          </button>
+        </div>
       )}
 
       {proposal && (

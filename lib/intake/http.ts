@@ -39,16 +39,33 @@ const STATUS: Record<IntakeErrorCode, number> = {
   conflict: 409,
 };
 
-export function intakeError(code: IntakeErrorCode): Response {
-  return Response.json({ ok: false, error: code, label: LABELS[code] }, { status: STATUS[code], headers: { "Cache-Control": "no-store" } });
+/**
+ * AI 失敗の理由。ai_calls の error（refused・bad_output・timeout・api_error）に合わせ、
+ * bad_output のうち途中で切れた物（max_tokens）だけ分ける。値・本文・形の違う場所は返さない
+ */
+export type AiFailReason = "schema" | "max_tokens" | "refused" | "timeout" | "api_error";
+
+export function intakeError(code: IntakeErrorCode, reason?: AiFailReason): Response {
+  return Response.json(
+    { ok: false, error: code, label: LABELS[code], ...(reason ? { reason } : {}) },
+    { status: STATUS[code], headers: { "Cache-Control": "no-store" } },
+  );
+}
+
+/** AI の失敗の例外から理由を引く。AI の返事の失敗でなければ null */
+export function aiFailReasonOf(e: unknown): AiFailReason | null {
+  if (e instanceof AiRefused) return "refused";
+  if (e instanceof AiBadOutput) return e.reason === "max_tokens" ? "max_tokens" : "schema";
+  if (e instanceof AiCallFailed) return e.code;
+  return null;
 }
 
 /** AI の層・仮名化の層の例外を応答に。知らない例外は null（呼ぶ側が投げ直す） */
 export function intakeErrorOf(e: unknown): Response | null {
   if (e instanceof AiNotConfigured) return intakeError("ai_not_configured");
   if (e instanceof AiLimitReached) return intakeError("ai_limit");
-  if (e instanceof AiRefused) return intakeError("ai_refused");
-  if (e instanceof AiBadOutput || e instanceof AiCallFailed) return intakeError("ai_failed");
+  if (e instanceof AiRefused) return intakeError("ai_refused", "refused");
+  if (e instanceof AiBadOutput || e instanceof AiCallFailed) return intakeError("ai_failed", aiFailReasonOf(e) ?? undefined);
   if (e instanceof PseudonymLeakError) return intakeError("leak");
   return null;
 }
