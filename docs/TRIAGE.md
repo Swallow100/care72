@@ -1,6 +1,6 @@
 # ルールの表
 
-<!-- このファイルは npm run docs:triage が lib/triage/index.ts から作る。手で直さない。コードと違うと npm test が止まる -->
+<!-- このファイルは npm run docs:triage が lib/triage/index.ts と lib/sources/index.ts から作る。手で直さない。コードと違うと npm test が止まる -->
 
 安否の色と連絡の順位はこの表で出す。Claude は決めない（録音と自由文を 5 つに分けるだけ）。
 元が「案」の行は docs/DECISIONS.md の案で、作者の確認待ち。案のままでは本運用に使わない。

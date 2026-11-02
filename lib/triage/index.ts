@@ -1,6 +1,7 @@
 // ルールの表（docs/SPEC.md「医療の芯」と docs/DECISIONS.md の案 1〜6）。安否の色と連絡の順位はこの表で出し、Claude は決めない。
 // 表の行は下の RULES。上から順に当て、最初に当たった行で色と理由の 1 行が決まる。理由には QUALIFIERS の言葉を足し、
-// 並びは ORDER の順に比べる。docs/TRIAGE.md はこの 3 つから作る（npm run docs:triage。一致はテストで確かめる）。
+// 並びは ORDER の順に比べる。行・足す言葉・優先の骨格の段（TIERS）には「なぜ」と出典の登録簿（lib/sources）の id を付ける。
+// docs/TRIAGE.md と docs/SOURCES.md はこれらから作る（npm run docs:triage。一致はテストで確かめる）。
 // 元が「案」の行は作者の確認待ち（docs/DECISIONS.md）。案のままでは本運用に使わない。
 // テストは triage.test.ts と heavy-rain.test.ts（先に書いた）。
 //
