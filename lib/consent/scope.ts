@@ -11,7 +11,7 @@
 //   - その場で登録した人（origin on_site、T23）は受け持つ人が本人から聞いた物なので、同意ありと同じ区分（根拠は生命保護）。
 //     はっきり「同意なし」を記録した人は本人確認だけ
 //   - 経過: 医療が見えるときは全部。本人確認だけのときは医療班・行政の書いた行（受入・搬送・退所・提供の行を含む）だけ
-//   - 書類は医療要約だけ（医療が見えるとき）。計画書・本人の1枚・QR・対応表の書類と録音は開けない
+//   - 書類は医療要約だけ（医療班への提供に同意があるとき。要約は同意で作る書類、T07）。計画書・本人の1枚・QR・対応表の書類と録音は開けない
 // - 家族・支援者: 支援者への提供に同意あり → 避難・人と経過（決まった言葉だけ。lib/signals/family.ts）。なし・未確認 → 何も無し
 
 import type { Role } from "../auth/roles.ts";
@@ -174,7 +174,8 @@ function staffScope(input: ScopeInput): ViewScope {
     viewer: "staff",
     items: ordered(SCOPE_ITEMS, sections),
     timeline: "all",
-    documents: ["medical"],
+    // 医療要約は医療班への提供の同意で作る書類（T07。その場で登録した人は同意の行が無く、要約を作らない）
+    documents: granted ? ["medical"] : [],
     recordings: false,
     writes: [...STAFF_WRITES],
     provision: { basis: granted ? "consent" : "vital", sections },

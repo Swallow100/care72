@@ -110,17 +110,25 @@ describe("医療班・行政の本人のページ（同意あり 1 山田）", (
     expect(v.head.emergency.length).toBeGreaterThan(0);
   });
 
-  it("支援者の名前（ケアマネには出る）が医療班のページのどこにも無い", async () => {
+  it("緊急連絡先でない支援者の名前と電話（ケアマネには出る）が医療班のページのどこにも無い。役割名は出る", async () => {
+    // 種の支援者はみな緊急連絡先なので、隣人（支援者 2）を緊急連絡先から外して確かめる
+    sqlite.prepare("UPDATE contacts SET emergency_order = NULL WHERE id = 'c-01-2'").run();
     await received("p-01");
     const cm = await viewAs(judgeCm(), "p-01");
     const v = await viewAs(medical(), "p-01");
-    const supporterNames = sqlite
-      .prepare("SELECT name FROM contacts WHERE person_id = 'p-01' AND supporter_order IS NOT NULL AND emergency_order IS NULL AND name IS NOT NULL")
-      .all() as Array<{ name: string }>;
-    for (const { name } of supporterNames) {
-      expect(allText(cm)).toContain(name);
-      expect(allText(v)).not.toContain(name);
-    }
+    const c = sqlite.prepare("SELECT name, phone, relation FROM contacts WHERE id = 'c-01-2'").get() as {
+      name: string;
+      phone: string;
+      relation: string;
+    };
+    expect(allText(cm)).toContain(c.name);
+    expect(allText(cm)).toContain(c.phone);
+    expect(allText(v)).not.toContain(c.name);
+    expect(allText(v)).not.toContain(c.phone);
+    const supporter2 = v.sections
+      .find((s) => s.id === "people")!
+      .blocks.flatMap((b) => (b.type === "row" && b.row.key === "people.supporter2" && b.row.field.kind === "lines" ? b.row.field.lines : []));
+    expect(supporter2.map((l) => l.map((s) => s.text).join(" "))).toEqual([c.relation]);
   });
 
   it("住所は医療班への提供の同意の範囲（{\"address\": true}）にあるときだけ、基本の区分に住所の行だけ", async () => {

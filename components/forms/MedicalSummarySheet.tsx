@@ -33,6 +33,8 @@ function F({
   /** 選ぶ欄の □ の名前が欄の名前と同じときは、欄の名前を出さない */
   bare?: boolean;
 }) {
+  // 範囲の外の欄（医療班・行政の住所・本人の電話。T24）は描かない
+  if (s.hidden?.includes(k)) return null;
   return (
     <div className={size} data-field={k} style={style}>
       {!bare && <span className="f-l">{label ?? medicalField(k).label}</span>}

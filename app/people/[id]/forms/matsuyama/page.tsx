@@ -10,7 +10,7 @@ import { todayJst } from "@/lib/age";
 import { requirePage } from "@/lib/auth/server";
 import { buildMatsuyamaSheet } from "@/lib/forms/matsuyama";
 import { BLANK_LABELS } from "@/lib/labels";
-import { loadPersonPage } from "@/lib/person";
+import { loadPersonDocument } from "@/lib/consent/documents";
 
 // D1 を毎回読む
 export const dynamic = "force-dynamic";
@@ -23,12 +23,14 @@ type Props = { params: Promise<{ id: string }> };
 // 松山市の様式の紙面（A4 表裏）。本人のページの「書類」から開く。
 // 差し込みは台帳からサーバーで描く。Claude は呼ばない（氏名・住所・電話が入る）。
 // 事業所の壁は本人のページと同じ（loadPersonPage が personInScope を通す。範囲の外は 404）。
+// 医療班・行政の同意の範囲（lib/consent/scope.ts）に計画書は無いので 404（T24）。
 export default async function MatsuyamaFormPage({ params }: Props) {
   const principal = await requirePage("person");
   const { id } = await params;
   const { env } = await getCloudflareContext({ async: true });
-  const rows = await loadPersonPage(env.DB, principal, id);
-  if (!rows) notFound();
+  const opened = await loadPersonDocument(env.DB, principal, id, "matsuyama");
+  if (!opened) notFound();
+  const { rows } = opened;
   const office = await env.DB.prepare("SELECT name FROM offices WHERE id = ?1")
     .bind(rows.person.office_id)
     .first<{ name: string }>();

@@ -89,7 +89,8 @@ describe("役 × 同意の組で見える区分", () => {
   it("その場で登録した人（同意の行が無い）は同意ありと同じ区分で、根拠は生命保護。同意なしを記録したら本人確認だけ", () => {
     const s = viewScope("medical", input({}, { origin: "on_site" }));
     expect(s.items).toEqual(["identity", "medical", "evacuation", "people_partial"]);
-    expect(s.documents).toEqual(["medical"]);
+    // 医療要約は医療班への提供の同意で作る書類なので、同意の行の無い人には無い
+    expect(s.documents).toEqual([]);
     expect(s.provision).toEqual({ basis: "vital", sections: ["identity", "medical", "evacuation", "people_partial"] });
     expect(viewScope("medical", input({ medical: "refused" }, { origin: "on_site" })).items).toEqual(["identity"]);
   });
