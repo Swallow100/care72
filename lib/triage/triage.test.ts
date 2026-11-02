@@ -459,6 +459,27 @@ describe("理由 1 行", () => {
     expect(r("p-09", UNKNOWN, S.calm)).toBe("未確認");
     expect(r("p-09", UNKNOWN, S.out6)).toBe("未確認 6 時間");
   });
+
+  it("けが・動けないが録音・自由文の分類（Claude）から来たら AI の印、4 問の答え（ボタン）からなら今のまま", () => {
+    const r = (signals: TriageSignal[]) => one(person("p-09"), signals, S.calm);
+    // 分類だけ: 誰がでなく「録音の分類（AI）」
+    expect(r([red({ classes: ["immobile"] })]).reason).toBe("録音の分類（AI）: 動けない");
+    expect(r([red({ classes: ["injury", "immobile"] })]).reason).toBe("録音の分類（AI）: けが・動けない");
+    expect(r([{ ...red({ classes: ["injury"] }), source: "family" }]).reason).toBe("録音の分類（AI）: けが");
+    // 答えと分類が混ざる: 答えは今のまま、分類の分だけ AI の印
+    expect(r([red({ injured: true, classes: ["immobile"] })]).reason).toBe("本人が「けが」、録音の分類（AI）: 動けない");
+    // 答えにある言葉は分類から重ねない
+    expect(r([red({ canMove: false, classes: ["immobile", "water"] })]).reason).toBe("本人が「動けない」");
+    expect(r([red({ injured: true, canMove: false, classes: ["injury", "immobile"] })]).reason).toBe("本人が「けが」「動けない」");
+    // 答えが「けがなし」「動ける」でも、分類が言えば分類の言葉を AI の印で出す（色と組は今のまま）
+    expect(r([red({ injured: false, canMove: true, classes: ["immobile"] })])).toMatchObject({
+      rule: "red_injury",
+      group: 0,
+      reason: "録音の分類（AI）: 動けない",
+    });
+    // 分類が水が来た・機器が止まった・不明だけなら赤だけの行で、AI の言葉は出さない
+    expect(r([red({ classes: ["water", "device_stopped", "unknown"] })]).reason).toBe("本人が「無事じゃない」");
+  });
 });
 
 describe("並び", () => {
