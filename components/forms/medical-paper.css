@@ -1,32 +1,16 @@
 /*
-  医療要約の紙面（A4 縦 1 枚）。paper.css の部品に、常用薬の表とメディカル ID の枠を足す。
+  医療要約の紙面（A4 縦 1 枚、様式の寸法 .paper.form）。paper.css の部品に、□ の並び・常用薬の表・メディカル ID の枠を足す。
   色は使わず、大きさと太さで大事な欄（禁忌事項・常用薬のチェック・中断注意・透析・在宅酸素・ID）を目立たせる。
 */
 
-.paper.med-paper {
-  gap: 1.4mm;
-}
-
-/* 題名と、作成・台帳の時点・同意の記録を 1 段に */
-.paper .head-row {
+/* 様式の □ を 1 つの枠に流す（選んだ ■ は太く、選ばない □ は小さく） */
+.paper .flow {
   display: flex;
-  justify-content: space-between;
-  align-items: flex-end;
-  gap: 4mm;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 5mm;
+  row-gap: 0.3mm;
 }
-.paper .head-row .title {
-  margin: 0;
-  text-align: left;
-}
-.paper .top-col {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  font-size: 7.6pt;
-  line-height: 1.35;
-}
-
-/* 特記事項（常用薬等）のチェック。選んだ ■ は太く、選ばない □ は細く小さく */
 .paper .chk .ch {
   font-size: 0.9em;
 }
@@ -34,42 +18,48 @@
   font-size: 1em;
 }
 
-/* 常用薬の表 */
+/* 常用薬の表。罫線は黒の細線、見出し行は薄い灰色の地 */
 .paper .med-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 10pt;
+  font-size: var(--fs-body);
 }
 .paper .med-table th {
-  background: #ececec;
-  font-size: 7.4pt;
+  background: var(--head-bg);
+  font-size: var(--fs-label);
   font-weight: 700;
   text-align: left;
-  padding: 0.4mm 1.8mm;
-  border-top: 0.5pt solid #bbb;
+  padding: 0.3mm 1.6mm;
+  line-height: 1.35;
 }
 .paper .med-table td {
-  padding: 1mm 1.8mm 1.2mm;
-  border-top: 0.5pt solid #bbb;
+  padding: 0.6mm 1.6mm 0.8mm;
   vertical-align: baseline;
 }
-.paper .med-table td + td,
-.paper .med-table th + th {
-  border-left: 0.5pt solid #bbb;
+.paper .med-table :is(th, td) {
+  border-top: var(--rule);
+}
+.paper .med-table :is(th, td) + :is(th, td) {
+  border-left: var(--rule);
+}
+.paper .med-table tr {
+  break-inside: avoid;
 }
 .paper .med-table .med-name {
-  font-size: 11.5pt;
+  font-size: calc(var(--fs-body) * 1.15);
 }
 .paper .med-table .med-remaining {
-  font-size: 11pt;
+  font-size: calc(var(--fs-body) * 1.1);
 }
 .paper .med-table .med-mark {
   font-weight: 700;
-  font-size: 11pt;
   white-space: nowrap;
 }
 .paper .med-table + .grid {
-  border-top: 0.5pt solid #bbb;
+  border-top: var(--rule);
+}
+.paper .blk-h + [data-field="meds.list"] .med-table tr:first-child > * {
+  border-top: 0;
 }
 
 /* メディカル ID: 様式の枠に 1 字ずつ写せる形 */
@@ -78,7 +68,7 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 1mm 4mm;
-  padding: 1.2mm 1.8mm 1.4mm;
+  padding: 1mm 1.8mm 1.2mm;
 }
 .paper .mid-row {
   display: flex;
@@ -89,15 +79,14 @@
   display: inline-flex;
 }
 .paper .mid-box {
-  box-sizing: border-box;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 6.4mm;
-  height: 7.6mm;
-  border: 0.8pt solid #111;
-  margin-left: -0.8pt;
-  font-size: 13pt;
+  width: 6.2mm;
+  height: 7.4mm;
+  border: 1px solid #000;
+  margin-left: -1px;
+  font-size: 12.5pt;
   font-weight: 700;
   line-height: 1;
 }
@@ -108,20 +97,20 @@
   display: inline-flex;
   flex-direction: column;
   align-items: center;
-  font-size: 9pt;
+  font-size: var(--fs-label);
   line-height: 1.15;
-  color: #555;
+  color: var(--gray);
 }
 .paper .mid-sex .on {
-  color: #111;
+  color: #000;
   font-weight: 700;
-  font-size: 12pt;
-  border: 1.2pt solid #111;
+  font-size: 11pt;
+  border: 1px solid #000;
   border-radius: 50%;
   padding: 0 1.2mm;
 }
 .paper .mid-text {
   display: flex;
   flex-direction: column;
-  font-size: 12pt;
+  font-size: calc(var(--fs-body) * 1.15);
 }

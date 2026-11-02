@@ -13,6 +13,7 @@ import {
   type MatsuyamaSheet as Sheet,
 } from "@/lib/forms/matsuyama";
 import { FormCell } from "./FormCell";
+import { PaperFoot } from "./PaperFoot";
 
 type Size = "sm" | "lg" | "xl";
 
@@ -47,19 +48,18 @@ const span = (n: number): CSSProperties => ({ gridColumn: `span ${n}` });
 
 const SUPPORTER_PARTS = ["kana", "relation", "name", "phone", "mobile", "address"] as const;
 
+/**
+ * 実施者 1 人の欄。左の細い列に縦書きで「実施者１」、右に 2 段（フリガナと氏名・関係・同意※ / 電話・携帯・住所）。
+ * 1 段目のフリガナと氏名は 1 つの枠に重ねる（様式のフリガナ欄と同じ形）
+ */
 function Supporter({ s, n }: { s: Sheet; n: 1 | 2 }) {
   const k = <T extends string>(part: T) => `supporter${n}.${part}` as MatsuyamaKey;
-  const cap = (
-    <div className="cap" style={span(2)}>
-      実施者{n === 1 ? "１" : "２"}
-    </div>
-  );
   // 同意のない範囲は欄ごとに並べず 1 つにまとめる（同意※は出す）
   const withheld = s.cells[k("name")];
   if (withheld.kind === "withheld") {
     return (
-      <div className="grid" style={cols("1fr 1fr")} data-sub={`supporter${n}`}>
-        {cap}
+      <div className="grid" style={cols("6mm 2fr 1fr")} data-sub={`supporter${n}`}>
+        <div className="cap vcap">実施者{n === 1 ? "１" : "２"}</div>
         <div data-fields={SUPPORTER_PARTS.map(k).join(" ")}>
           <span className="f-l">氏名・連絡先</span>
           <span className="f-v">
@@ -71,22 +71,26 @@ function Supporter({ s, n }: { s: Sheet; n: 1 | 2 }) {
     );
   }
   return (
-    <div className="grid" style={cols("1fr 1fr")} data-sub={`supporter${n}`}>
-      {cap}
-      <F s={s} k={k("kana")} size="sm" />
+    <div className="grid" style={cols("6mm minmax(33mm, 1.4fr) 1fr 0.9fr")} data-sub={`supporter${n}`}>
+      <div className="cap vcap" style={{ gridRow: "span 2" }}>
+        実施者{n === 1 ? "１" : "２"}
+      </div>
+      <div className="stack">
+        <F s={s} k={k("kana")} size="sm" />
+        <F s={s} k={k("name")} size="xl" />
+      </div>
       <F s={s} k={k("relation")} />
-      <F s={s} k={k("name")} size="xl" />
       <F s={s} k={k("consent")} size="lg" />
       <F s={s} k={k("phone")} />
       <F s={s} k={k("mobile")} />
-      <F s={s} k={k("address")} style={span(2)} />
+      <F s={s} k={k("address")} />
     </div>
   );
 }
 
 function PageOne({ s }: { s: Sheet }) {
   return (
-    <section className="paper" aria-label="1 ページ" data-page="1">
+    <section className="paper form" aria-label="1 ページ" data-page="1">
       <div className="top">
         <span>（様式【{MATSUYAMA_FORM_VERSION}】）</span>
         <span data-field="head.number">
@@ -109,7 +113,7 @@ function PageOne({ s }: { s: Sheet }) {
           <F s={s} k="target.birth" />
           <F s={s} k="target.district" />
         </div>
-        <div className="grid" style={cols("1.7fr 1.6fr 1fr 1fr")}>
+        <div className="grid" style={cols("1.55fr 1.45fr 1.1fr 1.1fr")}>
           <F s={s} k="target.name" size="xl" />
           <F s={s} k="target.address" size="lg" />
           <F s={s} k="target.phone" />
@@ -130,7 +134,7 @@ function PageOne({ s }: { s: Sheet }) {
         </div>
       </div>
 
-      <div className="blk key" data-block="consent">
+      <div className="blk key grow-last" data-block="consent">
         <div className="blk-h">同意</div>
         <div className="grid" style={cols("1fr 52mm")}>
           <div>
@@ -184,9 +188,10 @@ function PageOne({ s }: { s: Sheet }) {
         </div>
       </div>
 
-      <p className="small-note">
-        ※ 実施者・組織の同意: 本人と避難支援に関わる人が話し合って作り、平常時から避難支援等関係者へ提供することに同意する
-      </p>
+      <div className="small-note">
+        <p>※実施者・組織の同意：本人と避難支援に関わる人が話し合って作り、平常時から避難支援等関係者へ提供することに同意する</p>
+      </div>
+      <PaperFoot doc="個別避難計画" name={s.name} page={1} total={2} />
     </section>
   );
 }
@@ -207,7 +212,7 @@ function ShelterRow({ s, id, label, note }: { s: Sheet; id: "pre" | "near" | "ci
 
 function PageTwo({ s }: { s: Sheet }) {
   return (
-    <section className="paper" aria-label="2 ページ" data-page="2">
+    <section className="paper form" aria-label="2 ページ" data-page="2">
       <div className="blk" data-block="plan">
         <div className="grid" style={cols("1fr 1.4fr")}>
           <F s={s} k="plan.author" />
@@ -283,23 +288,20 @@ function PageTwo({ s }: { s: Sheet }) {
         </div>
       </div>
 
-      <div className="small-note">
-        <p>※ 自宅での訓練、地域の防災訓練への参加、物資の備蓄など、平常時からできる範囲で災害に備える</p>
-        <p>
-          ※ この計画は避難に要る情報をまとめた物で、支援がなされることを保証せず、関係者に法的な責任や義務を負わせない。
-          記載した情報は災害時の生命等の安全のためだけに使い、ほかの用途に使わない
-        </p>
-      </div>
-
       <div className="foot">
-        <div>
-          <div className="cap">松山市長</div>
-          <div className="small-note">欄は松山市 様式【{MATSUYAMA_FORM_VERSION}】による</div>
+        <div className="small-note">
+          <p>※自宅での訓練、地域の防災訓練への参加、物資の備蓄など、平常時からできる範囲で災害に備える</p>
+          <p>
+            ※この計画は避難に要る情報をまとめた物で、支援がなされることを保証せず、関係者に法的な責任や義務を負わせない。記載した情報は災害時の生命等の安全のためだけに使い、ほかの用途に使わない
+          </p>
+          <p>※欄は松山市 様式【{MATSUYAMA_FORM_VERSION}】による</p>
         </div>
+        <div className="cap nowrap">松山市長</div>
         <div className="stamp" data-field="city.stamp">
           市受付印
         </div>
       </div>
+      <PaperFoot doc="個別避難計画" name={s.name} page={2} total={2} />
     </section>
   );
 }
@@ -307,7 +309,7 @@ function PageTwo({ s }: { s: Sheet }) {
 export function MatsuyamaSheet({ sheet }: { sheet: Sheet }) {
   return (
     <div className="paper-scroll">
-      <div className="paper-stack" data-sheet="matsuyama" data-person={sheet.personId}>
+      <div className="paper-stack" data-paper-root data-sheet="matsuyama" data-person={sheet.personId}>
         <PageOne s={sheet} />
         <PageTwo s={sheet} />
       </div>

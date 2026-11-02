@@ -1,25 +1,11 @@
 /*
-  本人のページの QR の画面の印刷。QR の部品（components/forms/QrBlock）だけを紙に出す。
-  上の帯（AppHeader）と画面だけの操作（.qr-screen-only）は出さない。
+  本人のページの QR の画面の印刷。紙は QR の紙（components/forms/QrSheet.tsx、A4 1 枚、見た目は components/forms/paper.css）。
+  画面の操作と閲覧記録（.qr-screen-only）と画面の QR の面は紙に出さない（paper.css の data-paper-print の決まり）。
+  @page はここに書かない（名前の無い @page は、この画面を開いたあとのほかの画面の印刷にも効いてしまう）。
 */
 
 @media print {
-  @page {
-    size: A4;
-    margin: 12mm;
-  }
-  html,
-  body {
-    background: #fff !important;
-  }
-  body > header,
   .qr-screen-only {
     display: none !important;
-  }
-  .qr-print {
-    padding: 0 !important;
-    background: #fff !important;
-    print-color-adjust: exact;
-    -webkit-print-color-adjust: exact;
   }
 }

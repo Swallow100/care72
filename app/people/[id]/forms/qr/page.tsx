@@ -1,17 +1,21 @@
+import "@/components/forms/paper.css";
 import "@/components/qr/qr-print.css";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { QrBlock } from "@/components/forms/QrBlock";
+import { QrSheet } from "@/components/forms/QrSheet";
 import { StateTag } from "@/components/person/parts";
 import { Button, buttonClass } from "@/components/ui/Button";
 import { PaperIcon } from "@/components/ui/Icon";
 import { PaperBar, wantsPrint } from "@/components/ui/PaperBar";
 import { Panel, PanelHead } from "@/components/ui/Panel";
 import { TABLE, TABLE_BOX, TD, TH } from "@/components/ui/table";
+import { todayJst } from "@/lib/age";
 import { requirePage } from "@/lib/auth/server";
 import { nowSec, sessionSecret } from "@/lib/auth/session";
+import { warekiText } from "@/lib/forms/wareki";
 import { BLANK_LABELS, CONSENT_KIND_LABELS, CONSENT_STATUS_LABELS } from "@/lib/labels";
 import { loadPersonDocument } from "@/lib/consent/documents";
 import { formatJst, type StateTone } from "@/lib/person";
@@ -30,7 +34,8 @@ type Props = { params: Promise<{ id: string }>; searchParams: Promise<{ print?: 
 
 const STATUS_TONES: Record<QrStatus, StateTone> = { none: "unknown", active: "ok", expired: "check" };
 
-// 本人のページの書類の「QR」。作る・作り直す（前の版は無効）・印刷用の表示（QR の部品だけを紙に）・閲覧記録。
+// 本人のページの書類の「QR」。作る・作り直す（前の版は無効）・QR の表示・閲覧記録。
+// 印刷は QR の紙（components/forms/QrSheet: だれの QR か・範囲・期限・版と QR、A4 1 枚）。画面の操作・QR の面・閲覧記録は紙に出さない。
 // 壁は本人のページと同じ（loadPersonPage → personInScope、範囲の外は 404）。作る・作り直すはケアマネだけ。
 // QR が開く頁（/q/<token>）に出るのは医療班提供の同意の範囲だけなので、その同意と範囲を上に出す。
 // 医療班・行政の同意の範囲に QR の画面（閲覧記録を含む）は無いので 404（T24、lib/consent/scope.ts）。
@@ -50,6 +55,9 @@ export default async function QrFormPage({ params, searchParams }: Props) {
   const consent = medicalConsentOf(rows);
   const views = qrViewLog(rows);
   const canIssue = principal.role === "care_manager";
+  const office = await env.DB.prepare("SELECT name FROM offices WHERE id = ?1")
+    .bind(rows.person.office_id)
+    .first<{ name: string }>();
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-4">
@@ -111,7 +119,7 @@ export default async function QrFormPage({ params, searchParams }: Props) {
 
       <div className="mt-3 grid items-start gap-3 lg:grid-cols-[auto_minmax(0,1fr)]">
         {url && state.expiresAt && (
-          <section className="qr-print rounded-lg bg-panel p-4">
+          <section className="qr-screen-only rounded-lg bg-panel p-4">
             <QrBlock url={url} expiresAt={state.expiresAt} />
           </section>
         )}
@@ -145,6 +153,20 @@ export default async function QrFormPage({ params, searchParams }: Props) {
           )}
         </Panel>
       </div>
+      {url && state.expiresAt && (
+        <QrSheet
+          personId={rows.person.id}
+          name={rows.person.name}
+          kana={rows.person.kana}
+          url={url}
+          expiresAt={state.expiresAt}
+          generation={state.generation}
+          consent={consent}
+          date={warekiText(todayJst())}
+          office={office?.name ?? null}
+          careManager={rows.careManagerName}
+        />
+      )}
     </main>
   );
 }

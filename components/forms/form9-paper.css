@@ -1,0 +1,122 @@
+/*
+  様式 9 の紙面（components/forms/Form9Paper.tsx）。A4 横で、表が頁をまたいで続く（見出しの行は各頁の上に繰り返す）。
+  ほかの紙面（1 枚ずつの箱 .paper）と違い、余白は @page の余白（名前付きの頁 form9）。頁の下の端の文書名と頁番号は @page の余白の箱。
+  余白の箱は Chrome・Edge（131 から）で出る。Safari・Firefox では頁番号が出ない（表と見出しの繰り返しは出る）。
+  字は表の 8.5pt（18 列を A4 横に収める）。罫線は黒の細線、見出しの行は薄い灰色の地。
+*/
+
+@page form9 {
+  size: A4 landscape;
+  margin: 11mm 8.5mm 13mm;
+  @top-left {
+    content: "";
+  }
+  @top-center {
+    content: "";
+  }
+  @top-right {
+    content: "";
+  }
+  @bottom-center {
+    content: "";
+  }
+  @bottom-left {
+    font-family: "BIZ UDPGothic", "BIZ UDPゴシック", sans-serif;
+    font-size: 8pt;
+    color: #333;
+    vertical-align: top;
+    padding-top: 3mm;
+  }
+  @bottom-right {
+    content: counter(page) " / " counter(pages);
+    font-family: "BIZ UDPGothic", "BIZ UDPゴシック", sans-serif;
+    font-size: 8pt;
+    color: #333;
+    vertical-align: top;
+    padding-top: 3mm;
+  }
+}
+
+.paper.paper-flow {
+  page: form9;
+  position: static;
+  width: auto;
+  min-height: 0;
+  padding: 0;
+  display: block;
+  --fs-body: 8.5pt;
+  --fs-label: 8pt;
+  --fs-note: 8.5pt;
+  --fs-title: 13pt;
+  --lh: 1.35;
+}
+.paper.paper-flow > * + * {
+  margin-top: 2mm;
+}
+
+.paper .form9-table {
+  table-layout: fixed;
+  width: 280mm;
+}
+.paper .form9-table thead {
+  display: table-header-group;
+}
+.paper table.form9-table th {
+  text-align: center;
+  vertical-align: middle;
+  padding: 0.5mm 1mm;
+}
+.paper .form9-table th.added {
+  background: #f6f6f6;
+}
+.paper table.form9-table td {
+  padding: 0.6mm 1.2mm 0.8mm;
+}
+.paper table.form9-table td.num {
+  text-align: right;
+  font-size: 10pt;
+  font-weight: 700;
+}
+.paper .form9-table .who {
+  font-weight: 700;
+  font-size: 9.5pt;
+}
+.paper .form9-table .age {
+  font-size: 8pt;
+}
+.paper .form9-table .kana {
+  display: block;
+  font-size: 8pt;
+  color: var(--gray);
+}
+.paper .form9-table td.color {
+  font-weight: 700;
+}
+.paper .form9-table .line {
+  display: block;
+}
+.paper .form9-table .line + .line {
+  margin-top: 0.4mm;
+}
+
+.paper .report .report-text {
+  padding: 1.2mm 2mm 1.6mm;
+  white-space: pre-wrap;
+  columns: 2;
+  column-gap: 10mm;
+  font-size: 9pt;
+  line-height: 1.5;
+}
+.paper .report .report-text p {
+  break-inside: avoid;
+}
+.paper .report .report-text p + p {
+  margin-top: 1.5mm;
+}
+
+@media print {
+  .paper.paper-flow {
+    min-height: 0;
+    break-after: auto;
+  }
+}
