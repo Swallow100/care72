@@ -2,11 +2,14 @@ import "@/components/qr/qr-print.css";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import type { Metadata } from "next";
 import { headers } from "next/headers";
-import Link from "next/link";
 import { notFound } from "next/navigation";
-import { PrintButton } from "@/components/forms/PrintButton";
 import { QrBlock } from "@/components/forms/QrBlock";
 import { StateTag } from "@/components/person/parts";
+import { Button, buttonClass } from "@/components/ui/Button";
+import { PaperIcon } from "@/components/ui/Icon";
+import { PaperBar, wantsPrint } from "@/components/ui/PaperBar";
+import { Panel, PanelHead } from "@/components/ui/Panel";
+import { TABLE, TABLE_BOX, TD, TH } from "@/components/ui/table";
 import { requirePage } from "@/lib/auth/server";
 import { nowSec, sessionSecret } from "@/lib/auth/session";
 import { BLANK_LABELS, CONSENT_KIND_LABELS, CONSENT_STATUS_LABELS } from "@/lib/labels";
@@ -22,16 +25,17 @@ export const dynamic = "force-dynamic";
 // 印刷の PDF の名前にもなる。氏名は入れない
 export const metadata: Metadata = { title: QR_LABELS.title };
 
-type Props = { params: Promise<{ id: string }> };
+type Props = { params: Promise<{ id: string }>; searchParams: Promise<{ print?: string | string[] }> };
 
 const STATUS_TONES: Record<QrStatus, StateTone> = { none: "unknown", active: "ok", expired: "check" };
 
 // 本人のページの書類の「QR」。作る・作り直す（前の版は無効）・印刷用の表示（QR の部品だけを紙に）・閲覧記録。
 // 壁は本人のページと同じ（loadPersonPage → personInScope、範囲の外は 404）。作る・作り直すはケアマネだけ。
 // QR が開く頁（/q/<token>）に出るのは医療班提供の同意の範囲だけなので、その同意と範囲を上に出す。
-export default async function QrFormPage({ params }: Props) {
+export default async function QrFormPage({ params, searchParams }: Props) {
   const principal = await requirePage("person");
   const { id } = await params;
+  const autoPrint = wantsPrint((await searchParams).print);
   const { env } = await getCloudflareContext({ async: true });
   const rows = await loadPersonPage(env.DB, principal, id);
   if (!rows) notFound();
@@ -46,13 +50,33 @@ export default async function QrFormPage({ params }: Props) {
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-4">
-      <div className="qr-screen-only flex flex-wrap items-center gap-x-4 gap-y-2">
-        <Link href={`/people/${encodeURIComponent(rows.person.id)}`} className="rounded px-2 py-1 text-sm text-muted" data-press>
-          戻る
-        </Link>
-        <div className="font-bold">
-          {QR_LABELS.title} <span className="font-normal text-muted">{rows.person.name}</span>
-        </div>
+      <PaperBar
+        back={`/people/${encodeURIComponent(rows.person.id)}`}
+        title={QR_LABELS.title}
+        name={rows.person.name}
+        hide="qr-screen-only"
+        contained
+        print={url !== null}
+        autoPrint={autoPrint && url !== null}
+        actions={
+          <>
+            {url && (
+              <a href={url} target="_blank" rel="noreferrer" className={buttonClass("plain")} data-press>
+                <PaperIcon aria-hidden className="size-4 shrink-0" />
+                {QR_LABELS.open}
+              </a>
+            )}
+            {canIssue && (
+              <form method="post" action={`/api/people/${encodeURIComponent(rows.person.id)}/qr`}>
+                {/* 作り直すと前に刷った紙の QR は無効になるので、使える QR があるときの再作成は赤 */}
+                <Button type="submit" kind={state.status === "active" ? "danger" : "main"}>
+                  {state.status === "none" ? QR_LABELS.issue : QR_LABELS.reissue}
+                </Button>
+              </form>
+            )}
+          </>
+        }
+      >
         <span className="flex items-baseline gap-2" data-qr-status={state.status}>
           <StateTag tone={STATUS_TONES[state.status]}>{QR_STATUS_LABELS[state.status]}</StateTag>
           {state.expiresAt && (
@@ -80,72 +104,43 @@ export default async function QrFormPage({ params }: Props) {
             {QR_LABELS.scope} {consent === "granted" ? QR_LABELS.scopeSummary : QR_LABELS.scopeNone}
           </span>
         </span>
-        <div className="ml-auto flex flex-wrap items-center gap-2">
-          {url && (
-            <a href={url} target="_blank" rel="noreferrer" className="rounded px-2 py-1 text-sm text-accent underline underline-offset-4" data-press>
-              {QR_LABELS.open}
-            </a>
-          )}
-          {canIssue && (
-            <form method="post" action={`/api/people/${encodeURIComponent(rows.person.id)}/qr`}>
-              {state.status === "none" ? (
-                <button type="submit" className="rounded-md bg-accent px-4 py-1.5 font-bold text-on-accent" data-press>
-                  {QR_LABELS.issue}
-                </button>
-              ) : (
-                <button
-                  type="submit"
-                  className={
-                    state.status === "active"
-                      ? "rounded-md bg-panel2 px-4 py-1.5 font-bold text-danger"
-                      : "rounded-md bg-accent px-4 py-1.5 font-bold text-on-accent"
-                  }
-                  data-press
-                >
-                  {QR_LABELS.reissue}
-                </button>
-              )}
-            </form>
-          )}
-          {url && <PrintButton />}
-        </div>
-      </div>
+      </PaperBar>
 
-      <div className="mt-3 grid items-start gap-4 lg:grid-cols-[auto_minmax(0,1fr)]">
+      <div className="mt-3 grid items-start gap-3 lg:grid-cols-[auto_minmax(0,1fr)]">
         {url && state.expiresAt && (
           <section className="qr-print rounded-lg bg-panel p-4">
             <QrBlock url={url} expiresAt={state.expiresAt} />
           </section>
         )}
-        <section className="qr-screen-only rounded-lg bg-panel px-4 py-3" data-qr-views={views.length}>
-          <h2 className="text-sm font-bold text-muted">
-            {QR_LABELS.views} <span className="tabular-nums">{views.length}</span>
-          </h2>
+        <Panel className="qr-screen-only" data-qr-views={views.length}>
+          <PanelHead title={QR_LABELS.views} count={views.length} />
           {views.length === 0 ? (
             <p className="mt-1 text-sm text-muted">{BLANK_LABELS.none}</p>
           ) : (
-            <table className="mt-1 w-full text-sm">
-              <thead className="text-xs text-muted">
-                <tr className="text-left">
-                  <th className="px-1 py-1 pr-3 font-normal">{QR_LABELS.time}</th>
-                  <th className="px-1 py-1 pr-3 font-normal">{QR_LABELS.recipient}</th>
-                  <th className="px-1 py-1 pr-3 font-normal">{QR_LABELS.scope}</th>
-                  <th className="px-1 py-1 font-normal">{QR_LABELS.generation}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {views.map((v) => (
-                  <tr key={v.id} className="odd:bg-panel2">
-                    <td className="px-1 py-1 pr-3 tabular-nums">{v.when}</td>
-                    <td className="px-1 py-1 pr-3">{v.who}</td>
-                    <td className="px-1 py-1 pr-3">{v.scope}</td>
-                    <td className="px-1 py-1 tabular-nums">{v.generation}</td>
+            <div className={`mt-2 ${TABLE_BOX}`}>
+              <table className={TABLE}>
+                <thead>
+                  <tr>
+                    <th className={TH}>{QR_LABELS.time}</th>
+                    <th className={TH}>{QR_LABELS.recipient}</th>
+                    <th className={TH}>{QR_LABELS.scope}</th>
+                    <th className={TH}>{QR_LABELS.generation}</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {views.map((v) => (
+                    <tr key={v.id}>
+                      <td className={`${TD} tabular-nums`}>{v.when}</td>
+                      <td className={TD}>{v.who}</td>
+                      <td className={TD}>{v.scope}</td>
+                      <td className={`${TD} tabular-nums`}>{v.generation}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
-        </section>
+        </Panel>
       </div>
     </main>
   );

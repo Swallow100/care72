@@ -4,6 +4,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { MappingEditor } from "@/components/forms/mapping/MappingEditor";
 import { AiMark, StateTag } from "@/components/person/parts";
+import { LinkPending } from "@/components/ui/LinkPending";
+import { BackLink, Panel, PanelHead } from "@/components/ui/Panel";
+import { FormsTabs } from "@/components/ui/Tabs";
 import { requirePage } from "@/lib/auth/server";
 import { MAPPING_LABELS as L } from "@/lib/forms/mapping";
 import { formsScope, getMapping, officePeople, type StoredMapping } from "@/lib/forms/mapping-db";
@@ -34,11 +37,10 @@ export default async function FormMappingPage({ params }: Props) {
 
   return (
     <main className="mx-auto max-w-[96rem] px-4 py-4">
-      <div className="flex flex-wrap items-baseline gap-x-4 gap-y-2">
-        <Link href="/forms/mapping" className="rounded px-2 py-1 text-sm text-muted" data-press>
-          {L.back}
-        </Link>
-        <h1 className="text-2xl font-bold">{stored.title}</h1>
+      <FormsTabs current="mapping" />
+      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2">
+        <BackLink href="/forms/mapping" label={L.back} />
+        <h1 className="text-xl leading-8 font-bold">{stored.title}</h1>
         <span className="text-sm text-muted">{SOURCE_LABELS[stored.source_kind]}</span>
         {ai && (
           <span className="flex items-baseline gap-1 text-xs text-muted">
@@ -68,30 +70,33 @@ function Checked({ m }: { m: StoredMapping }) {
   );
 }
 
-/** 差込: 確認済の対応表で、事業所の本人ごとの紙面を開く */
+/** 差込: 確認済の対応表で、事業所の本人ごとの紙面を開く。人の一覧はページの流れに置く（内側で送らない） */
 function FillSection({ m, people }: { m: StoredMapping; people: Array<{ id: string; name: string }> }) {
   return (
-    <section aria-labelledby="fill-title" className="content-start rounded-lg bg-panel p-3">
-      <h2 id="fill-title" className="flex items-baseline gap-2 font-bold">
-        {L.fill}
-        {m.status !== "checked" && <StateTag tone="check">確認待ち</StateTag>}
-      </h2>
+    <Panel aria-labelledby="fill-title" className="content-start">
+      <PanelHead
+        id="fill-title"
+        title={L.fill}
+        sub={m.status !== "checked" ? <StateTag tone="check">確認待ち</StateTag> : undefined}
+        count={m.status === "checked" ? people.length : undefined}
+      />
       {m.status === "checked" && (
-        <ul className="mt-2 grid max-h-[60vh] gap-px overflow-y-auto rounded bg-panel2 text-sm">
+        <ul className="mt-2 grid gap-px overflow-hidden rounded bg-base text-sm">
           {people.map((p) => (
             <li key={p.id} className="bg-panel">
               <Link
                 href={`/people/${encodeURIComponent(p.id)}/forms/mapped/${encodeURIComponent(m.id)}`}
-                className="flex items-baseline justify-between px-2 py-1.5"
+                className="relative flex items-baseline justify-between px-2 py-1.5"
                 data-press
               >
                 {p.name}
                 <span className="text-xs text-muted">{L.fill}</span>
+                <LinkPending />
               </Link>
             </li>
           ))}
         </ul>
       )}
-    </section>
+    </Panel>
   );
 }

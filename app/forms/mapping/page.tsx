@@ -3,6 +3,10 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { FormReadPanel } from "@/components/forms/mapping/FormReadPanel";
 import { StateTag } from "@/components/person/parts";
+import { LinkPending } from "@/components/ui/LinkPending";
+import { Panel, PanelHead } from "@/components/ui/Panel";
+import { FormsTabs } from "@/components/ui/Tabs";
+import { TABLE, TABLE_BOX, TD, TH } from "@/components/ui/table";
 import { requirePage } from "@/lib/auth/server";
 import { hasAnthropicKey } from "@/lib/claude/client";
 import { MAPPING_LABELS as L } from "@/lib/forms/mapping";
@@ -37,8 +41,9 @@ export default async function FormMappingListPage() {
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-4">
-      <div className="flex flex-wrap items-baseline gap-x-4 gap-y-2">
-        <h1 className="text-2xl font-bold">{L.title}</h1>
+      <FormsTabs current="mapping" />
+      <div className="mt-2 flex flex-wrap items-baseline gap-x-4 gap-y-2">
+        <h1 className="text-xl leading-8 font-bold">{L.title}</h1>
         <span className="text-sm">{principal.office.name}</span>
         <span className="text-sm">
           <span className="text-muted">対応表</span> <span className="font-bold tabular-nums">{list.length}</span>
@@ -50,46 +55,49 @@ export default async function FormMappingListPage() {
         <FormReadPanel aiReady={aiReady} />
       </div>
 
-      <section aria-labelledby="list-title" className="mt-3 rounded-lg bg-panel p-3">
-        <h2 id="list-title" className="font-bold">
-          対応表
-        </h2>
+      <Panel aria-labelledby="list-title" className="mt-3">
+        <PanelHead id="list-title" title="対応表" count={list.length} />
         {list.length === 0 ? (
           <p className="mt-1 text-sm text-muted">なし</p>
         ) : (
-          <div className="mt-2 overflow-x-auto">
-            <table className="w-full min-w-[48rem] border-separate [border-spacing:0_1px] text-sm">
-              <thead className="text-left text-xs text-muted">
+          <div className={`mt-2 ${TABLE_BOX}`}>
+            <table className={TABLE}>
+              <thead>
                 <tr>
-                  <th className="px-2 py-1">題名</th>
-                  <th className="px-2 py-1">発行元</th>
-                  <th className="px-2 py-1">状態</th>
-                  <th className="px-2 py-1">元</th>
-                  <th className="px-2 py-1 text-right">欄</th>
-                  <th className="px-2 py-1 text-right">自動対応</th>
-                  <th className="px-2 py-1 text-right">{L.changed}</th>
-                  <th className="px-2 py-1 text-right">{L.added}</th>
-                  <th className="px-2 py-1">確認</th>
+                  <th className={TH}>題名</th>
+                  <th className={TH}>発行元</th>
+                  <th className={TH}>状態</th>
+                  <th className={TH}>元</th>
+                  <th className={`${TH} text-right`}>欄</th>
+                  <th className={`${TH} text-right`}>自動対応</th>
+                  <th className={`${TH} text-right`}>{L.changed}</th>
+                  <th className={`${TH} text-right`}>{L.added}</th>
+                  <th className={TH}>確認</th>
                 </tr>
               </thead>
               <tbody>
                 {list.map((m) => (
-                  <tr key={m.id} className="bg-panel2" data-mapping={m.id}>
-                    <td className="px-2 py-1.5">
-                      <Link href={`/forms/mapping/${encodeURIComponent(m.id)}`} className="font-bold text-accent underline underline-offset-2" data-press>
+                  <tr key={m.id} data-mapping={m.id}>
+                    <td className={TD}>
+                      <Link
+                        href={`/forms/mapping/${encodeURIComponent(m.id)}`}
+                        className="relative -mx-1 rounded px-1 font-bold underline underline-offset-2"
+                        data-press
+                      >
                         {m.title}
+                        <LinkPending />
                       </Link>
                     </td>
-                    <td className="px-2 py-1.5">{m.issuer || <span className="text-muted">—</span>}</td>
-                    <td className="px-2 py-1.5">
+                    <td className={TD}>{m.issuer || <span className="text-muted">—</span>}</td>
+                    <td className={TD}>
                       {m.status === "checked" ? <StateTag tone="ok">{L.checked}</StateTag> : <StateTag tone="check">{L.draft}</StateTag>}
                     </td>
-                    <td className="px-2 py-1.5">{SOURCE_LABELS[m.sourceKind]}</td>
-                    <td className="px-2 py-1.5 text-right tabular-nums">{m.stats.fields}</td>
-                    <td className="px-2 py-1.5 text-right tabular-nums">{m.stats.read > 0 ? `${m.stats.autoMapped}/${m.stats.read}` : "—"}</td>
-                    <td className="px-2 py-1.5 text-right tabular-nums">{m.stats.changed}</td>
-                    <td className="px-2 py-1.5 text-right tabular-nums">{m.stats.added}</td>
-                    <td className="px-2 py-1.5 tabular-nums">
+                    <td className={TD}>{SOURCE_LABELS[m.sourceKind]}</td>
+                    <td className={`${TD} text-right tabular-nums`}>{m.stats.fields}</td>
+                    <td className={`${TD} text-right tabular-nums`}>{m.stats.read > 0 ? `${m.stats.autoMapped}/${m.stats.read}` : "—"}</td>
+                    <td className={`${TD} text-right tabular-nums`}>{m.stats.changed}</td>
+                    <td className={`${TD} text-right tabular-nums`}>{m.stats.added}</td>
+                    <td className={`${TD} tabular-nums`}>
                       {m.checkedAt ? (
                         <>
                           {formatJst(m.checkedAt)} <span className="text-muted">{m.checkedByName ?? ""}</span>
@@ -104,7 +112,7 @@ export default async function FormMappingListPage() {
             </table>
           </div>
         )}
-      </section>
+      </Panel>
     </main>
   );
 }
@@ -112,7 +120,8 @@ export default async function FormMappingListPage() {
 function Message({ title }: { title: string }) {
   return (
     <main className="mx-auto max-w-6xl px-4 py-4">
-      <h1 className="text-2xl font-bold">{L.title}</h1>
+      <FormsTabs current="mapping" />
+      <h1 className="mt-2 text-xl leading-8 font-bold">{L.title}</h1>
       <p className="mt-2 text-sm">{title}</p>
     </main>
   );

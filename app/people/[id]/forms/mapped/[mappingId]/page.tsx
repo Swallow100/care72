@@ -2,11 +2,11 @@ import "@/components/forms/paper.css";
 import "@/components/forms/mapped-paper.css";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import type { Metadata } from "next";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { MappedSheet } from "@/components/forms/MappedSheet";
-import { PrintButton } from "@/components/forms/PrintButton";
 import { StateTag } from "@/components/person/parts";
+import { ButtonLink } from "@/components/ui/Button";
+import { PaperBar, wantsPrint } from "@/components/ui/PaperBar";
 import { todayJst } from "@/lib/age";
 import { canViewPage } from "@/lib/auth/roles";
 import { requirePage } from "@/lib/auth/server";
@@ -23,14 +23,18 @@ export const dynamic = "force-dynamic";
 // 印刷の PDF の名前にもなる。氏名は入れない
 export const metadata: Metadata = { title: "様式差込" };
 
-type Props = { params: Promise<{ id: string; mappingId: string }> };
+type Props = {
+  params: Promise<{ id: string; mappingId: string }>;
+  searchParams: Promise<{ print?: string | string[] }>;
+};
 
 // 汎用の差し込み（docs/tasks/T08.md）。確かめた対応表（確認済だけ）と台帳から、様式の欄の順に値を並べた紙面（A4、表の形）。
 // 差し込みは台帳からサーバーで描く。Claude は呼ばない（氏名・住所・電話が入る）。同意の範囲は松山市の様式と同じ。
 // 本人の壁は本人のページと同じ（loadPersonPage が personInScope を通す）。対応表は本人の事業所の物だけ（ほかの事業所・下書きは 404）
-export default async function MappedFormPage({ params }: Props) {
+export default async function MappedFormPage({ params, searchParams }: Props) {
   const principal = await requirePage("person");
   const { id, mappingId } = await params;
+  const autoPrint = wantsPrint((await searchParams).print);
   if (!/^[A-Za-z0-9_-]{1,64}$/.test(mappingId)) notFound();
   const { env } = await getCloudflareContext({ async: true });
   const rows = await loadPersonPage(env.DB, principal, id);
@@ -48,13 +52,19 @@ export default async function MappedFormPage({ params }: Props) {
 
   return (
     <main className="py-4 print:p-0">
-      <div className="screen-only mx-auto mb-4 flex max-w-[calc(210mm+2rem)] flex-wrap items-center gap-x-4 gap-y-2 px-4">
-        <Link href={`/people/${encodeURIComponent(id)}`} className="rounded px-2 py-1 text-sm text-muted" data-press>
-          {L.back}
-        </Link>
-        <div className="font-bold">
-          {sheet.title} <span className="font-normal text-muted">{sheet.name}</span>
-        </div>
+      <PaperBar
+        back={`/people/${encodeURIComponent(id)}`}
+        title={sheet.title}
+        name={sheet.name}
+        autoPrint={autoPrint}
+        actions={
+          editable && (
+            <ButtonLink href={`/forms/mapping/${encodeURIComponent(stored.id)}`} kind="plain">
+              対応表
+            </ButtonLink>
+          )
+        }
+      >
         {sheet.unconfirmed.length > 0 && (
           <div className="flex flex-wrap items-baseline gap-x-2" data-unconfirmed={sheet.unconfirmed.length}>
             <StateTag tone="check">
@@ -73,15 +83,7 @@ export default async function MappedFormPage({ params }: Props) {
             {L.withheld} {CONSENT_KIND_LABELS[k]}
           </StateTag>
         ))}
-        <div className="ml-auto flex items-center gap-2">
-          {editable && (
-            <Link href={`/forms/mapping/${encodeURIComponent(stored.id)}`} className="rounded px-2 py-1 text-sm text-accent underline underline-offset-2" data-press>
-              対応表
-            </Link>
-          )}
-          <PrintButton />
-        </div>
-      </div>
+      </PaperBar>
       <MappedSheet sheet={sheet} meta={{ date: warekiText(today), checked }} />
     </main>
   );
