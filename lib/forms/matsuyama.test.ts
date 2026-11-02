@@ -338,13 +338,13 @@ describe("同意のない範囲は落とす", () => {
 });
 
 describe("本人のページの書類の入口", () => {
-  it("計画書と医療要約（T07）は紙面へのリンク、ほかは準備中", () => {
+  it("計画書・医療要約（T07）・本人の 1 枚（T06）は紙面へのリンク", () => {
     const v = toPersonView(seedRows(seed("p-01")), { today: TODAY });
     const docs = v.sections.find((x) => x.id === "documents")!.blocks.flatMap((b) => (b.type === "documents" ? b.documents : []));
     expect(docs.map((d) => [d.key, d.status, d.href ?? null])).toEqual([
       ["matsuyama", "表示", "/people/p-01/forms/matsuyama"],
       ["medical", "表示", "/people/p-01/forms/medical"],
-      ["own", "準備中", null],
+      ["own", "表示", "/people/p-01/forms/own"],
     ]);
   });
 });

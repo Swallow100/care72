@@ -237,10 +237,11 @@ export type ClockView = {
 /** 書類の入口。href があれば開ける（紙面ができた書類） */
 export type DocumentView = { key: keyof typeof DOCUMENT_LABELS; label: string; status: string; href?: string };
 
-/** できた書類の紙面の場所（T05 計画書。T06・T07 はここに足す） */
+/** できた書類の紙面の場所（T05 計画書・T07 医療要約・T06 本人の 1 枚） */
 const DOCUMENT_PATHS: Partial<Record<keyof typeof DOCUMENT_LABELS, (personId: string) => string>> = {
   matsuyama: (id) => `/people/${encodeURIComponent(id)}/forms/matsuyama`,
   medical: (id) => `/people/${encodeURIComponent(id)}/forms/medical`,
+  own: (id) => `/people/${encodeURIComponent(id)}/forms/own`,
 };
 
 export type TimelineItem = {
