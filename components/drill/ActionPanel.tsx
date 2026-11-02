@@ -8,12 +8,15 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { Button } from "@/components/ui/Button";
+import { PlayIcon } from "@/components/ui/Icon";
+import { LABEL } from "@/components/ui/Panel";
 import type { DrillAction } from "@/lib/db/types";
 import { DRILL_ACTIONS } from "@/lib/db/types";
 import { ACTION_MINUTES, needsPerson, needsTarget, picksTarget, targetKinds } from "@/lib/drill/action-table";
 import { ACTION_LABELS, ACTION_UI, CALL_STATUS_LABELS, DRILL_LABELS } from "@/lib/drill/labels";
 import type { DrillContact } from "@/lib/drill/view";
-import { ActionIcon, ExecuteIcon } from "./icons";
+import { ACTION_ICONS } from "./icons";
 
 export type PanelPerson = {
   id: string;
@@ -25,8 +28,11 @@ export type PanelPerson = {
 /** 訪問依頼の「事業所の職員」（連絡先の行でない） */
 const STAFF = "__staff__";
 
-const PICK = "rounded-md bg-panel2 px-2 py-1.5 text-left text-sm disabled:text-muted";
-const PICKED = "font-bold ring-2 ring-inset ring-accent";
+/** 選ぶボタン（components/ui の plain を左寄せで欄いっぱいに）。選んでいない物は細字、選んだ物は太字と枠（ring）。下地は変えない */
+const TOGGLE = "w-full min-w-0 justify-start! px-2! font-normal!";
+const PICKED = "font-bold! ring-2 ring-inset ring-accent";
+/** 選ぶボタンの並び（幅に合わせて段を折る。横に送らない） */
+const GRID = "grid grid-cols-[repeat(auto-fill,minmax(8.5rem,1fr))] gap-1";
 
 export function ActionPanel({
   drillId,
@@ -107,101 +113,85 @@ export function ActionPanel({
   return (
     <div className="space-y-2.5" data-action-panel>
       <section aria-labelledby="act-person">
-        <h3 id="act-person" className="mb-1 text-xs font-bold text-muted">
+        <h3 id="act-person" className={`mb-1 ${LABEL}`}>
           {ACTION_UI.person}
         </h3>
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(8.5rem,1fr))] gap-1">
+        <div className={GRID}>
           {people.map((p) => (
-            <button
+            <Button
               key={p.id}
-              type="button"
               aria-pressed={person === p.id}
               onClick={() => choosePerson(p.id)}
-              className={`${PICK} flex items-center gap-1.5 ${person === p.id ? PICKED : ""}`}
-              data-press
+              className={`${TOGGLE} ${person === p.id ? PICKED : ""}`}
               data-act-person={p.id}
             >
               {p.tag}
-              <span className="truncate">{p.name}</span>
-            </button>
+              <span className="min-w-0 truncate">{p.name}</span>
+            </Button>
           ))}
         </div>
       </section>
 
       <section aria-labelledby="act-kind">
-        <h3 id="act-kind" className="mb-1 text-xs font-bold text-muted">
+        <h3 id="act-kind" className={`mb-1 ${LABEL}`}>
           {DRILL_LABELS.actions}
         </h3>
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(8.5rem,1fr))] gap-1">
+        <div className={GRID}>
           {DRILL_ACTIONS.map((k) => (
-            <button
+            <Button
               key={k}
-              type="button"
+              icon={ACTION_ICONS[k]}
               aria-pressed={kind === k}
               disabled={!usable(k) || busy}
               onClick={() => chooseKind(k)}
-              className={`${PICK} flex items-center gap-1.5 ${kind === k ? PICKED : ""}`}
-              data-press
+              className={`${TOGGLE} ${kind === k ? PICKED : ""}`}
               data-act-kind={k}
             >
-              <ActionIcon kind={k} />
-              <span className="min-w-0 flex-1 truncate">{ACTION_LABELS[k]}</span>
-              <span className="text-xs text-muted tabular-nums">
+              <span className="min-w-0 flex-1 truncate text-left">{ACTION_LABELS[k]}</span>
+              <span className="text-xs font-normal text-muted tabular-nums">
                 {ACTION_MINUTES[k]} {ACTION_UI.minutes}
               </span>
-            </button>
+            </Button>
           ))}
         </div>
       </section>
 
       {kind && picksTarget(kind) && person && (
         <section aria-labelledby="act-target">
-          <h3 id="act-target" className="mb-1 text-xs font-bold text-muted">
+          <h3 id="act-target" className={`mb-1 ${LABEL}`}>
             {ACTION_UI.target}
           </h3>
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(8.5rem,1fr))] gap-1">
+          <div className={GRID}>
             {kind === "dispatch" && (
-              <button
-                type="button"
+              <Button
                 aria-pressed={target === STAFF}
                 onClick={() => setTarget(STAFF)}
-                className={`${PICK} ${target === STAFF ? PICKED : ""}`}
-                data-press
+                className={`${TOGGLE} ${target === STAFF ? PICKED : ""}`}
                 data-act-target="staff"
               >
                 {ACTION_UI.staff}
-              </button>
+              </Button>
             )}
             {choices(kind).map((c) => (
-              <button
+              <Button
                 key={c.id}
-                type="button"
                 aria-pressed={target === c.id}
                 onClick={() => setTarget(c.id)}
-                className={`${PICK} flex items-center gap-1.5 ${target === c.id ? PICKED : ""}`}
-                data-press
+                className={`${TOGGLE} ${target === c.id ? PICKED : ""}`}
                 data-act-target={c.id}
               >
-                <span className="min-w-0 flex-1 truncate">{c.label}</span>
-                {!c.hasPhone && <span className="text-xs text-muted">{CALL_STATUS_LABELS.noNumber}</span>}
-              </button>
+                <span className="min-w-0 flex-1 truncate text-left">{c.label}</span>
+                {!c.hasPhone && <span className="text-xs font-normal text-muted">{CALL_STATUS_LABELS.noNumber}</span>}
+              </Button>
             ))}
           </div>
         </section>
       )}
 
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <button
-          type="button"
-          onClick={() => void run()}
-          disabled={!ready || busy}
-          className="flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-sm font-bold text-on-accent disabled:opacity-50"
-          data-press="overlay"
-          data-action="act"
-        >
-          <ExecuteIcon />
+        <Button kind="main" icon={PlayIcon} onClick={() => void run()} disabled={!ready || busy} data-action="act">
           {ACTION_UI.execute}
-        </button>
+        </Button>
         {kind && (
           <span className="text-sm" data-act-summary>
             <span className="font-bold">{ACTION_LABELS[kind]}</span>

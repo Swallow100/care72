@@ -13,7 +13,7 @@ import { Situation } from "@/components/drill/Situation";
 import { DisasterSummary } from "@/components/list/DisasterSummary";
 import { DisasterTable, type TableSlots } from "@/components/list/DisasterTable";
 import { CaseMap } from "@/components/map/CaseMap";
-import { StateTag } from "@/components/person/parts";
+import { StateTag } from "@/components/ui/Tag";
 import { requirePage } from "@/lib/auth/server";
 import { sortCaseload, type SortKey } from "@/lib/caseload";
 import { elapsedText, shortJst } from "@/lib/disaster/state";
