@@ -25,14 +25,15 @@ export const PROVISION_TIMELINE_LABEL = "提供";
 
 /** 経過の書き足しの欄 */
 export const COMPOSER_LABELS = {
-  /** 欄の見出し（aria） */
-  title: "書き足し",
-  /** 自由文の欄の placeholder */
-  placeholder: "自由文",
-  send: "記録",
+  /** 欄の名前（aria） */
+  title: "追記",
+  /** 定型の選び（aria） */
+  preset: "定型",
+  /** 自由文の欄の名前と placeholder */
+  text: "自由文",
+  /** 送る。経過の種類の「記録」（自由文だけの行）と分ける */
+  send: "追記",
   sending: "送信中",
-  /** 定型を選ばずに自由文だけ */
-  note: "記録",
 } as const;
 
 /** 書き足しの断り（API の error と、画面に出す言葉） */
