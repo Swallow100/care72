@@ -1,0 +1,43 @@
+/*
+  本人のスマホ（docs/tasks/T10.md）。本人・家族の画面だけ、赤緑のボタンを面で塗る（CLAUDE.md「画面の決まり」）。
+  塗りの色は状態の色（--state-ok 緑 無事・--state-urgent 赤）と同じ変数で、一覧の行・数字と同じ意味の同じ色にする。
+  ダークでは状態の色が明るくなるので、上の文字を濃い色に替える（ライトは白）。
+*/
+:root {
+  --phone-on-state: #ffffff;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --phone-on-state: #0f1215;
+  }
+}
+
+.phone-fill-ok {
+  background-color: var(--state-ok);
+  color: var(--phone-on-state);
+}
+
+.phone-fill-urgent {
+  background-color: var(--state-urgent);
+  color: var(--phone-on-state);
+}
+
+/* ふりがなは本文の半分より少し小さく。大きな字でも行が詰まらないように行の高さを取る */
+.phone-text {
+  line-height: 1.9;
+}
+
+.phone-text rt {
+  font-size: 0.45em;
+  font-weight: 400;
+}
+
+/* AI の印（本人の画面では大きく。components/person/parts.tsx の AiMark と同じ形） */
+.phone-ai {
+  display: inline-block;
+  border-radius: 0.25rem;
+  background-color: var(--base);
+  padding: 0 0.4em;
+  font-weight: 700;
+}
