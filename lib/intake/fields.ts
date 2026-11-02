@@ -75,6 +75,13 @@ export const INTAKE_FIELDS: readonly IntakeField[] = [
   // 避難（ハザードは diff.ts）
   { key: "evacuation.destination1", section: "evacuation", label: "避難先1", shape: { type: "text" }, hint: "市の指定避難所など" },
   { key: "evacuation.destination2", section: "evacuation", label: "避難先2", shape: { type: "text" }, hint: "事前に行く所（親族の家など）" },
+  {
+    key: "evacuation.stayHome",
+    section: "evacuation",
+    label: "在宅避難",
+    shape: { type: "bool" },
+    hint: "住まいが安全で、計画で家に留まると決めたと入力にはっきり書かれているときだけ true。決めていなければ入れない",
+  },
   { key: "evacuation.transport", section: "evacuation", label: "手段", shape: { type: "text" }, hint: "徒歩・車いす・家族の車など" },
   {
     key: "evacuation.support",

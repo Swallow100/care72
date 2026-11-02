@@ -360,6 +360,11 @@ export type Ledger = {
     hazards: Array<{ kind: HazardKind; depthM?: number }>;
     destination1?: string;
     destination2?: string;
+    /**
+     * 在宅避難の印（T37、docs/DECISIONS.md 11/3 04:0x の 8）。住まいが安全で、計画で家に留まると決めた人だけ true。
+     * 無ければ避難所へ（種は全員）。本人の 1 枚の地震の行を書き分ける
+     */
+    stayHome?: boolean;
     route?: string;
     /** 段差・エレベーター */
     barriers?: string;

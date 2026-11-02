@@ -156,6 +156,43 @@ describe("10 人分の文", () => {
     expect(sheetOf("p-08").blocks.find((b) => b.id === "when")!.lines[1].key).toBe("when.quake");
   });
 
+  it("種は全員「避難所へ」（在宅避難の印なし）", () => {
+    for (const id of ALL_IDS) expect(seed(id).ledger.evacuation.stayHome, id).toBeUndefined();
+  });
+
+  it("在宅避難の印のある人の地震の行: 家の なかの 安全な ところで、添えに「あぶないときは 避難先 へ。ケアマネから 電話が きます」（11/3 確定の 8）", () => {
+    const stay = (id: string, patch: Partial<SeedPerson["ledger"]["evacuation"]> = {}) => {
+      const p = seed(id);
+      return buildOwnSheet(seedRows({ ...p, ledger: { ...p.ledger, evacuation: { ...p.ledger.evacuation, stayHome: true, ...patch } } }), OPTS);
+    };
+    const s = stay("p-10");
+    const when = s.blocks.find((b) => b.id === "when")!.lines;
+    expect(when.map((l) => [l.key, l.tone])).toEqual([
+      ["when.rain", undefined],
+      ["when.quake", undefined],
+      ["when.quake.stay", "sub"],
+    ]);
+    expect(when.slice(1).map(lineText)).toEqual([
+      "地震の とき ゆれが おさまったら、家の なかの 安全な ところで",
+      "あぶないときは そらみ台小学校 へ。ケアマネから 電話が きます",
+    ]);
+    // ふりがな（家・安全・電話）が付き、否定形を使わない
+    expect(sheetKanjiWithoutRuby(s)).toEqual([]);
+    expect(when.flatMap((l) => l.words).filter((w) => w.ruby).map((w) => w.text)).toEqual(
+      expect.arrayContaining(["家", "安全", "電話"]),
+    );
+    // 避難先が無ければ「逃げる ところへ」（上の段の決めた所を指す）
+    const noPlace = stay("p-10", { destination1: undefined });
+    expect(lineText(noPlace.blocks.find((b) => b.id === "when")!.lines[2])).toBe("あぶないときは 逃げる ところへ。ケアマネから 電話が きます");
+    // 津波のある人は在宅避難の印があっても「揺れたら すぐ」（津波が先）
+    expect(stay("p-08").blocks.find((b) => b.id === "when")!.lines.map(lineText)).toEqual([
+      "大雨の とき 警戒レベル 3 が 出たら 逃げます",
+      "地震の とき 揺れたら すぐ 逃げます",
+    ]);
+    // 印が false なら今の文
+    expect(blockText(stay("p-10", { stayHome: false }), "when")).toContain("揺れが おさまったら 逃げます");
+  });
+
   it("空いた所は「ケアマネジャーと 決めます」で、画面の上の未確認に数える（伊藤 フミ）", () => {
     const s = sheetOf("p-05");
     expect(blockText(s, "where")).toBe("ケアマネジャーと 決めます");

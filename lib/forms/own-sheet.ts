@@ -9,7 +9,8 @@
 //   本人の言葉（台帳の特記のまま）、いのちの危険があるときは 119
 // - 載せない物: 医学の説明、「なぜこの行があるか」、薬の用量・回数、時計の値（ケアマネと主治医だけが見る物）
 // - 逃げるときの大雨は、ハザードのある人だけ「警戒レベル 3」（計画書 lib/forms/matsuyama.ts の risk.timing と同じ決まり）。
-//   地震は、津波のある人は「揺れたら すぐ」、ほかは「揺れが おさまったら」
+//   地震は、津波のある人は「揺れたら すぐ」、在宅避難の印（evacuation.stayHome）のある人は「ゆれが おさまったら、家の なかの
+//   安全な ところで」「あぶないときは [避難先1] へ」「ケアマネから 電話が きます」の 3 行（津波が先。T37）、ほかは「揺れが おさまったら」
 // - 支援者提供の同意が無い人（不同意・未確認）は、来てくれる人の名前・電話を出さず「計画で 決めた 人」
 // - 空いた所は「ケアマネジャーと 決めます」（否定形にしない）。台帳に無い電話（ケアマネ・かかりつけ）は手で書く線。
 //   どちらも画面の上の「未確認」に数える（open）
@@ -50,6 +51,12 @@ export const OWN_PHRASES = {
   quakeHead: "{地震|じしん}の とき",
   quakeTsunami: "{揺|ゆ}れたら すぐ {逃|に}げます",
   quakeAfter: "{揺|ゆ}れが おさまったら {逃|に}げます",
+  // 在宅避難の人（台帳の evacuation.stayHome。docs/DECISIONS.md 11/3 04:0x の 8）。1 行に 1 つの文で 3 行
+  quakeStay: "ゆれが おさまったら、{家|いえ}の なかの {安全|あんぜん}な ところで",
+  quakeStayDangerLead: "あぶないときは ",
+  quakeStayDangerTail: " へ",
+  quakeStayDangerNoPlace: "あぶないときは {逃|に}げる ところへ",
+  quakeStayCall: "ケアマネから {電話|でんわ}が きます",
   comesByCar: "{車|くるま}で {迎|むか}えに {来|き}ます",
   comes: "{迎|むか}えに {来|き}ます",
   night: "{夜|よる}も {来|き}ます",
@@ -182,6 +189,9 @@ export function buildOwnSheet(rows: PersonPageRows, opts: OwnBuildOptions): OwnS
   // ---- 逃げるとき（大雨と地震の両方） ----
   const hazards = evacuation.hazards;
   if (hazards.length === 0) open.push({ key: "when.rain", label: "逃げるとき（大雨）", kind: "decide" });
+  const tsunami = hazards.some((h) => h.kind === "tsunami");
+  // 地震: 津波のある人は「揺れたら すぐ」（在宅避難の印があっても津波が先）。在宅避難の人は家の中で待ち、危ないときに避難先へ
+  const stayHome = !tsunami && evacuation.stayHome === true;
   const when: OwnLine[] = [
     {
       key: "when.rain",
@@ -189,13 +199,23 @@ export function buildOwnSheet(rows: PersonPageRows, opts: OwnBuildOptions): OwnS
     },
     {
       key: "when.quake",
-      words: [
-        ...p("quakeHead", true),
-        sp,
-        ...(hazards.some((h) => h.kind === "tsunami") ? p("quakeTsunami") : p("quakeAfter")),
-      ],
+      words: [...p("quakeHead", true), sp, ...(tsunami ? p("quakeTsunami") : stayHome ? p("quakeStay") : p("quakeAfter"))],
     },
   ];
+  if (stayHome) {
+    // 地震の行に添える 1 行は小さく（「または」「夜も 来ます」と同じ添え）。2 つの文を「。」でつなぐ。
+    // 2 行に分けると、物の多い人（山田 ハナ・田中 茂の台帳に印を付けて測った）の表が 1 頁に収まらない
+    const place = evacuation.destination1?.trim();
+    when.push({
+      key: "when.quake.stay",
+      words: [
+        ...(place ? [...p("quakeStayDangerLead"), ...v(place), ...p("quakeStayDangerTail")] : p("quakeStayDangerNoPlace")),
+        { text: "。" },
+        ...p("quakeStayCall"),
+      ],
+      tone: "sub",
+    });
+  }
 
   // ---- 来てくれる人（支援者 1・2） ----
   const supporters = contacts.filter((c) => c.supporter_order != null).sort(byOrder("supporter_order"));

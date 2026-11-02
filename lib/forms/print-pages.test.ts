@@ -306,6 +306,18 @@ describe.skipIf(!chrome)("印刷（headless Chrome の printToPDF）", () => {
     expect(got).toEqual(Object.fromEntries(IDS.map((id) => [id, 2])));
   }, 180_000);
 
+  it("在宅避難の印を付けても 10 人とも表と裏の 2 頁（地震の行の添え。T37）", async (ctx) => {
+    if (!fontOk) ctx.skip();
+    const got: Record<string, number> = {};
+    for (const p of SEED_PEOPLE) {
+      const rows = seedRows({ ...p, ledger: { ...p.ledger, evacuation: { ...p.ledger.evacuation, stayHome: true } } });
+      got[p.person.id] = await pages(
+        html(createElement(OwnSheetPaper, { sheet: buildOwnSheet(rows, OPTS), medical: buildOwnSheetMedical(rows, OPTS), qr: QR })),
+      );
+    }
+    expect(got).toEqual(Object.fromEntries(IDS.map((id) => [id, 2])));
+  }, 180_000);
+
   it("差し込み（内閣府の様式例の対応表）は 10 人とも表・裏の 2 頁", async (ctx) => {
     if (!fontOk) ctx.skip();
     const got: Record<string, number> = {};
