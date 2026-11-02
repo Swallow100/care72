@@ -110,6 +110,7 @@ export function IncomingCall({ drillId, calls }: { drillId: string; calls: Reado
   const [voiceOk, setVoiceOk] = useState(true);
   const voiceRef = useRef<Voice>({ state: "none" });
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const boxRef = useRef<HTMLDivElement | null>(null);
   const urlsRef = useRef<string[]>([]);
   const current = queue[0] ?? null;
   // 画面を読み直すたびに配列は新しくなるので、着信の id の並びが変わったときだけ並べ直す（通話中に読み直しても切らない）
@@ -125,10 +126,13 @@ export function IncomingCall({ drillId, calls }: { drillId: string; calls: Reado
     setPhase("ringing");
   }, [drillId, ids]);
 
-  // 鳴っている間は早送りを止める
+  // 鳴っている間は早送りを止める。読み上げとキーボードは着信の画面へ（ボタンに枠を出さないよう面に置く）
   useEffect(() => {
     window.dispatchEvent(new CustomEvent(RINGING_EVENT, { detail: current !== null }));
   }, [current]);
+  useEffect(() => {
+    boxRef.current?.focus();
+  }, [current, phase]);
 
   // 着信音（鳴っている間だけ）
   useEffect(() => {
@@ -222,7 +226,7 @@ export function IncomingCall({ drillId, calls }: { drillId: string; calls: Reado
       data-incoming={current.signal}
       data-phase={phase}
     >
-      <div className="w-full max-w-md rounded-lg bg-panel p-5 shadow-[0_2px_8px_rgb(0_0_0/0.18)] dark:shadow-[0_2px_10px_rgb(0_0_0/0.6)]">
+      <div ref={boxRef} tabIndex={-1} className="w-full max-w-md rounded-lg bg-panel p-5 outline-none shadow-[0_2px_8px_rgb(0_0_0/0.18)] dark:shadow-[0_2px_10px_rgb(0_0_0/0.6)]">
         <div className="flex items-center gap-2 text-sm">
           <CallInIcon aria-hidden className="size-4 shrink-0" />
           <span className="font-bold">{phase === "ringing" ? CALL_UI.incoming : CALL_UI.talking}</span>
@@ -265,7 +269,7 @@ export function IncomingCall({ drillId, calls }: { drillId: string; calls: Reado
               <Button kind="danger" size="lg" icon={PhoneXMarkIcon} onClick={done} data-incoming-action="decline">
                 {CALL_UI.decline}
               </Button>
-              <Button kind="main" size="lg" icon={PhoneIcon} onClick={answer} className="flex-1" autoFocus data-incoming-action="answer">
+              <Button kind="main" size="lg" icon={PhoneIcon} onClick={answer} className="flex-1" data-incoming-action="answer">
                 {CALL_UI.answer}
               </Button>
             </>
@@ -276,7 +280,7 @@ export function IncomingCall({ drillId, calls }: { drillId: string; calls: Reado
                   {CALL_UI.play}
                 </Button>
               )}
-              <Button kind="danger" size="lg" icon={PhoneXMarkIcon} onClick={done} className="flex-1" autoFocus data-incoming-action="hangup">
+              <Button kind="danger" size="lg" icon={PhoneXMarkIcon} onClick={done} className="flex-1" data-incoming-action="hangup">
                 {CALL_UI.hangUp}
               </Button>
             </>
