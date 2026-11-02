@@ -276,7 +276,7 @@ export const RULE_ROWS: { input: string; state: "urgent" | "check" | "unknown" |
   { input: "不明 ＋ 停電が機器の時計を超えた", state: "urgent", reason: "酸素 内蔵電池 2 時間を超過" },
   { input: "不明 ＋ 時計の半分を過ぎた", state: "check", reason: "透析 次の回まで 残り 18 時間" },
   { input: "不明（時計の半分まで）", state: "unknown", reason: "連絡なし 6 時間" },
-  { input: "緑だが機器の時計の半分を過ぎた", state: "check", reason: "無事だが酸素 内蔵電池 残り 30 分" },
+  { input: "緑 ＋ 機器の時計の半分を過ぎた", state: "check", reason: "無事・酸素 内蔵電池 残り 30 分" },
   { input: "緑", state: "ok", reason: "本人が「無事」（一番下）" },
 ];
 

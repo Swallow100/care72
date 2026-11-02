@@ -206,7 +206,7 @@ describe("案 1: 外の物に頼る時計の確認", () => {
     expect(one(tanaka, [green(0, "family")], S.calm)).toMatchObject({
       color: "yellow",
       rule: "green_unchecked",
-      reason: "無事だが透析先 未確認",
+      reason: "無事・透析先 未確認",
     });
     expect(one(checked(tanaka), [green(0, "family")], S.calm)).toMatchObject({ color: "green", reason: "家族が「無事」" });
   });
@@ -222,7 +222,7 @@ describe("案 1: 外の物に頼る時計の確認", () => {
 
   it("ほかの行で色が決まったときも、理由に「透析先 未確認」を足す", () => {
     expect(one(tanaka, UNKNOWN, S.dry30).reason).toBe("透析 次の回まで 残り 18 時間、連絡なし 30 時間、透析先 未確認");
-    expect(one(tanaka, [green(0, "family")], S.out30).reason).toBe("無事だが透析 次の回まで 残り 18 時間、透析先 未確認");
+    expect(one(tanaka, [green(0, "family")], S.out30).reason).toBe("無事・透析 次の回まで 残り 18 時間、透析先 未確認");
     expect(one(tanaka, RED, S.calm)).toMatchObject({ color: "red", reason: "本人が「無事じゃない」、透析先 未確認" });
   });
 
@@ -232,7 +232,7 @@ describe("案 1: 外の物に頼る時計の確認", () => {
       ...inoue,
       clocks: inoue.clocks.map((k) => ({ ...k, depends_on: "refrigeration" as const, depends_check: "unconfirmed" as const })),
     };
-    expect(one(fridge, GREEN, S.dry30)).toMatchObject({ color: "yellow", reason: "無事だが冷蔵 未確認" });
+    expect(one(fridge, GREEN, S.dry30)).toMatchObject({ color: "yellow", reason: "無事・冷蔵 未確認" });
     expect(one(checked(fridge), GREEN, S.dry30).color).toBe("green");
   });
 });
@@ -268,7 +268,7 @@ describe("案 2: 未知のまま機器以外の時計を超えたら赤", () => 
     expect(one(person("p-03"), [green(0, "family")], S.out72)).toMatchObject({
       color: "yellow",
       rule: "green_clock_half",
-      reason: "無事だが透析 次の回まで 2 日を超過、透析先 未確認",
+      reason: "無事・透析 次の回まで 2 日を超過、透析先 未確認",
     });
   });
 
@@ -305,7 +305,7 @@ describe("案 3: 緑のまま機器の時計を超えた", () => {
   it("電池が切れる前は今のまま（半分を過ぎたら黄）", () => {
     const kobayashi = person("p-02");
     expect(one(kobayashi, [green(0)], S.out2_5)).toMatchObject({ color: "yellow", rule: "green_device_low" });
-    expect(one(kobayashi, [green(0)], sit(3)).reason).toBe("無事だが人工呼吸器 内蔵電池 残り 0 分");
+    expect(one(kobayashi, [green(0)], sit(3)).reason).toBe("無事・人工呼吸器 内蔵電池 残り 0 分");
     expect(one(kobayashi, [green(0)], S.out6).color).toBe("red");
   });
 });
@@ -313,11 +313,11 @@ describe("案 3: 緑のまま機器の時計を超えた", () => {
 describe("案 4: 本人の報告を当てにしない印", () => {
   const sato = person("p-04");
 
-  it("本人の緑は未知として扱い、理由に「本人の緑は参考」。訓練の本人役も同じ", () => {
+  it("本人の緑は未知として扱い、理由に「本人の申告は参考」。訓練の本人役も同じ", () => {
     expect(one(sato, [green(1)], S.out6)).toMatchObject({
       color: "gray",
       rule: "unknown",
-      reason: "連絡なし 6 時間、本人の緑は参考",
+      reason: "連絡なし 6 時間、本人の申告は参考",
       qualifiers: ["self_green_set_aside"],
     });
     expect(one(sato, [green(1, "agent")], S.out6).color).toBe("gray");
@@ -333,7 +333,7 @@ describe("案 4: 本人の報告を当てにしない印", () => {
     expect(one(sato, [green(1), green(3, "supporter")], S.out6)).toMatchObject({ color: "green", reason: "支援者が「無事」" });
     expect(one(sato, [green(1, "supporter"), green(3)], S.out6)).toMatchObject({
       color: "green",
-      reason: "支援者が「無事」、本人の緑は参考",
+      reason: "支援者が「無事」、本人の申告は参考",
     });
   });
 
@@ -387,7 +387,7 @@ describe("案 6: 緑でも機器以外の時計の半分を過ぎたら黄", () 
     expect(one(inoue, GREEN, S.out72)).toMatchObject({
       color: "yellow",
       rule: "green_clock_half",
-      reason: "無事だがインスリン 残り 24 時間",
+      reason: "無事・インスリン 残り 24 時間",
     });
   });
 });
@@ -451,7 +451,7 @@ describe("理由 1 行", () => {
   it("表の例と同じ言い方", () => {
     const r = (id: string, signals: TriageSignal[], s: Situation) => one(person(id), signals, s).reason;
     expect(r("p-01", UNKNOWN, S.out2_5)).toBe("酸素 内蔵電池 2 時間を超過");
-    expect(r("p-01", GREEN, sit(1.5))).toBe("無事だが酸素 内蔵電池 残り 30 分");
+    expect(r("p-01", GREEN, sit(1.5))).toBe("無事・酸素 内蔵電池 残り 30 分");
     expect(r("p-09", RED, S.calm)).toBe("本人が「無事じゃない」");
     expect(r("p-09", [red({ canMove: false })], S.calm)).toBe("本人が「動けない」");
     expect(r("p-09", [red({ injured: true, canMove: false })], S.calm)).toBe("本人が「けが」「動けない」");

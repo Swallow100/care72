@@ -50,7 +50,7 @@ export function DrillRowDetail({
           </Part>
           <Part title={DETAIL_LABELS.supporters}>
             {d.supporters.length === 0 ? (
-              <p className="font-bold text-state-check">{DETAIL_LABELS.none}</p>
+              <p className="font-bold tone-check">{DETAIL_LABELS.none}</p>
             ) : (
               <ul className="space-y-0.5">
                 {d.supporters.map((s) => (
@@ -82,7 +82,7 @@ export function DrillRowDetail({
                       {k.kindLabel} {k.length ?? DETAIL_LABELS.unconfirmed} {k.start}
                     </span>
                     {k.depends && (
-                      <span className={`text-xs ${k.depends.unchecked ? "font-bold text-state-check" : "text-muted"}`}>
+                      <span className={`text-xs ${k.depends.unchecked ? "font-bold tone-check" : "text-muted"}`}>
                         {k.depends.on} {k.depends.check}
                       </span>
                     )}

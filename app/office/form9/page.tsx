@@ -99,7 +99,8 @@ export default async function Form9Page({ searchParams }: Props) {
 
       <div className="mt-3 grid gap-3">
         {report && <Form9Report text={report} tally={tally(sheet.rows)} />}
-        <section aria-label="様式9 の表" className="min-w-0 overflow-x-auto">
+        {/* 横に送らない（表は字を小さく列を詰めて幅に収める。狭い幅は列を省く。Form9Table の頭の注） */}
+        <section aria-label="様式9 の表" className="min-w-0">
           {rows.length === 0 ? (
             <p className="rounded-lg bg-panel px-3 py-2 text-sm text-muted">なし</p>
           ) : (

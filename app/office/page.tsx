@@ -4,6 +4,7 @@ import { ColorCounts } from "@/components/disaster/ColorCounts";
 import { DisasterBadge } from "@/components/disaster/DisasterBadge";
 import { AddCareManager } from "@/components/office/AddCareManager";
 import { AssignForm } from "@/components/office/AssignForm";
+import { AssignRow } from "@/components/office/AssignRow";
 import { MoreFold } from "@/components/office/MoreFold";
 import { UnlistedFold } from "@/components/office/UnlistedFold";
 import { UnlistedRows } from "@/components/office/UnlistedRows";
@@ -13,7 +14,7 @@ import { LinkPending } from "@/components/ui/LinkPending";
 import { Page, PageHead, Panel, PanelHead } from "@/components/ui/Panel";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { TABLE, TABLE_BOX, TD, TH } from "@/components/ui/table";
-import { StateText, TONE_TEXT } from "@/components/ui/Tag";
+import { StateTag, StateText, TONE_TEXT } from "@/components/ui/Tag";
 import { todayJst } from "@/lib/age";
 import { requirePage } from "@/lib/auth/server";
 import { PLAN_TONES } from "@/lib/caseload";
@@ -172,7 +173,7 @@ function ModeSection({ state, now, confirm }: { state: DisasterState; now: strin
           <input type="hidden" name="kind" value="normal" />
           <input type="hidden" name="confirm" value="1" />
           <input type="hidden" name="version" value={state.version} />
-          <span className="text-sm">停電・警戒レベル・断水・道路は消去</span>
+          <span className="text-sm">{DISASTER_LABELS.clearOnNormal}</span>
           <SubmitButton kind="dangerFill">{DISASTER_LABELS.backToNormal}</SubmitButton>
           <ButtonLink href={OFFICE_PATH} kind="quiet" icon={CloseIcon}>
             {DISASTER_LABELS.cancel}
@@ -181,7 +182,13 @@ function ModeSection({ state, now, confirm }: { state: DisasterState; now: strin
       )}
       <dl className="mt-3 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1 text-sm">
         <dt className="text-muted">状態</dt>
-        <dd className={disaster ? `font-bold ${TONE_TEXT.check}` : ""}>{DISASTER_KIND_LABELS[state.kind]}</dd>
+        <dd>
+          {disaster ? (
+            <StateTag tone="check">{DISASTER_KIND_LABELS[state.kind]}</StateTag>
+          ) : (
+            DISASTER_KIND_LABELS[state.kind]
+          )}
+        </dd>
         {disaster && state.startedAt && (
           <>
             <dt className="text-muted">{DISASTER_LABELS.startedAt}</dt>
@@ -373,7 +380,8 @@ const LOG_TONE: Record<OfficeLogItem["kind"], string> = {
 };
 
 /**
- * 担当の割当（T30）。事業所の利用者を全部（カナの順）、行ごとに担当を選んで「変更」、「外す」で一覧から外す（消さない）。
+ * 担当の割当（T30）。事業所の利用者を全部（カナの順）、行ごとに担当を選んで「変更」。行の右端の「詳細」で開いた行の中に
+ * 登録・更新の時刻と「外す」（一覧から外す。消さない。一覧に赤を並べない、11/3 03:3x の確定 7）。
  * 外した人は表の下の畳み「外した人 N」から戻す。表は 1 つの面の中で、ページの流れのまま（区分の中で送らない）
  */
 function AssignSection({
@@ -417,38 +425,60 @@ function AssignSection({
                 <th className={TH}>{OFFICE_LABELS.plan}</th>
                 <th className={TH}>{OFFICE_LABELS.careManager}</th>
                 <th className={TH}>
-                  <span className="sr-only">{OFFICE_LABELS.unlist}</span>
+                  <span className="sr-only">{OFFICE_LABELS.detail}</span>
                 </th>
               </tr>
             </thead>
             <tbody>
               {listed.map((p) => (
-                <tr key={p.id}>
-                  <td className={`${TD} align-middle`}>
-                    <Link href={`/people/${encodeURIComponent(p.id)}`} className="relative -mx-1 rounded px-1 font-bold" data-press>
-                      {p.name}
-                      <LinkPending />
-                    </Link>
-                    <span className="ml-1.5 text-xs text-muted">{p.kana}</span>
-                  </td>
-                  <td className={`${TD} align-middle whitespace-nowrap`}>{p.age ?? "—"}</td>
-                  <td className={`${TD} align-middle whitespace-nowrap`}>
-                    <StateText tone={PLAN_TONES[p.plan]}>{PLAN_STATUS_LABELS[p.plan]}</StateText>
-                  </td>
-                  <td className={`${TD} align-middle`}>
-                    <AssignForm personId={p.id} personName={p.name} careManagerId={p.careManagerId} careManagers={cms} />
-                  </td>
-                  <td className={`${TD} align-middle text-right`}>
-                    <form method="post" action={OFFICE_PEOPLE_PATH}>
-                      <input type="hidden" name="action" value="unlist" />
-                      <input type="hidden" name="person" value={p.id} />
-                      <input type="hidden" name="back" value="office" />
-                      <SubmitButton kind="danger" size="sm" icon="UnlistIcon">
-                        {OFFICE_LABELS.unlist}
-                      </SubmitButton>
-                    </form>
-                  </td>
-                </tr>
+                <AssignRow
+                  key={p.id}
+                  id={p.id}
+                  cols={5}
+                  label={p.name}
+                  cellClass={`${TD} align-middle`}
+                  cells={
+                    <>
+                      <td className={`${TD} align-middle`}>
+                        <Link href={`/people/${encodeURIComponent(p.id)}`} className="relative -mx-1 rounded px-1 font-bold" data-press>
+                          {p.name}
+                          <LinkPending />
+                        </Link>
+                        <span className="ml-1.5 text-xs text-muted">{p.kana}</span>
+                      </td>
+                      <td className={`${TD} align-middle whitespace-nowrap`}>{p.age ?? "—"}</td>
+                      <td className={`${TD} align-middle whitespace-nowrap`}>
+                        <StateText tone={PLAN_TONES[p.plan]}>{PLAN_STATUS_LABELS[p.plan]}</StateText>
+                      </td>
+                      <td className={`${TD} align-middle`}>
+                        <AssignForm personId={p.id} personName={p.name} careManagerId={p.careManagerId} careManagers={cms} />
+                      </td>
+                    </>
+                  }
+                  detail={
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 pl-1 text-sm">
+                      <dl className="flex flex-wrap items-baseline gap-x-4 gap-y-0.5">
+                        <div className="flex items-baseline gap-1.5">
+                          <dt className="text-xs text-muted">{OFFICE_LABELS.createdAt}</dt>
+                          <dd>{shortJst(p.createdAt)}</dd>
+                        </div>
+                        <div className="flex items-baseline gap-1.5">
+                          <dt className="text-xs text-muted">{OFFICE_LABELS.updatedAt}</dt>
+                          <dd>{shortJst(p.updatedAt)}</dd>
+                        </div>
+                      </dl>
+                      {/* 一覧から外す（消さない）。外した人は表の下の「外した人」から戻す */}
+                      <form method="post" action={OFFICE_PEOPLE_PATH} className="ml-auto">
+                        <input type="hidden" name="action" value="unlist" />
+                        <input type="hidden" name="person" value={p.id} />
+                        <input type="hidden" name="back" value="office" />
+                        <SubmitButton kind="danger" size="sm" icon="UnlistIcon">
+                          {OFFICE_LABELS.unlist}
+                        </SubmitButton>
+                      </form>
+                    </div>
+                  }
+                />
               ))}
             </tbody>
           </table>

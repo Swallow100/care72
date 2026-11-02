@@ -276,7 +276,7 @@ describe("保存のあとの担当一覧（色はルールの表のまま）", (
     await signalPost(db, sato, selfBody("green", at(1)), at(1));
     const bySelf = await rowOf("p-04", at(1.1));
     expect(bySelf.color).not.toBe("green");
-    expect(bySelf.reason).toContain("本人の緑は参考");
+    expect(bySelf.reason).toContain("本人の申告は参考");
 
     await signalPost(db, family({ personId: "p-04", contactId: "c-04-2" }), answer("green", at(2)), at(2));
     expect(await rowOf("p-04", at(2.1))).toMatchObject({ color: "green", rule: "green", reason: "家族が「無事」" });

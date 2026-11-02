@@ -275,7 +275,7 @@ function Hits({
           </tbody>
         </table>
       </div>
-      {!shelter.trim() && <p className="mt-1 text-xs font-bold text-state-check">{CUSTODY_ERROR_LABELS.shelter}</p>}
+      {!shelter.trim() && <p className="mt-1 text-xs font-bold tone-check">{CUSTODY_ERROR_LABELS.shelter}</p>}
       {more && <p className="mt-1 text-xs text-muted">{CUSTODY_LABELS.more}</p>}
     </div>
   );
@@ -402,7 +402,7 @@ function RegisterPanel({ shelter }: { shelter: string }) {
         <Button type="submit" kind="main" icon={AddPersonIcon} disabled={busy || !shelter.trim()} data-pending={busy ? "" : undefined}>
           {busy ? CUSTODY_LABELS.sending : CUSTODY_LABELS.register}
         </Button>
-        {!shelter.trim() && <span className="text-xs font-bold text-state-check">{CUSTODY_ERROR_LABELS.shelter}</span>}
+        {!shelter.trim() && <span className="text-xs font-bold tone-check">{CUSTODY_ERROR_LABELS.shelter}</span>}
         {error && (
           <span role="alert" className="font-bold text-danger">
             {error}

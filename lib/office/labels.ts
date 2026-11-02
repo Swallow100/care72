@@ -7,6 +7,10 @@ export const OFFICE_LABELS = {
   assignments: "担当",
   assign: "変更",
   unlist: "外す",
+  /** 担当の表の行を開く・畳む（外すは開いた行の中） */
+  detail: "詳細",
+  createdAt: "登録",
+  updatedAt: "更新",
   relist: "戻す",
   unlisted: "外した人",
   unlistedAt: "除外",
