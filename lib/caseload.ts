@@ -3,7 +3,7 @@
 import type { D1Database } from "@cloudflare/workers-types";
 import { ageOn } from "./age.ts";
 import { parseLedger } from "./db/ledger.ts";
-import type { CareLevel, ClockRow, ContactRow, PersonRow, PlanStatus } from "./db/types.ts";
+import type { CareLevel, ClockRow, ContactRow, Ledger, PersonRow, PlanStatus } from "./db/types.ts";
 import { DEPENDENCE_MARKS, HAZARD_LABELS } from "./labels.ts";
 import { tierOf, type Tier } from "./triage/index.ts";
 import { toTriagePerson } from "./triage/from-ledger.ts";
@@ -43,6 +43,19 @@ type ClockForList = Pick<
 >;
 type ContactForList = Pick<ContactRow, "person_id" | "supporter_order">;
 
+/** 医療依存の短い印（酸素・透析など）。並びは優先の骨格の順。担当一覧の行と本人のページの上で同じ物を出す */
+export function marksOf(clocks: ReadonlyArray<Pick<ClockRow, "category">>): string[] {
+  const categories = new Set(clocks.map((k) => k.category));
+  return DEPENDENCE_MARKS.filter(([c]) => categories.has(c)).map(([, label]) => label);
+}
+
+/** ハザード（浸水 3 m・土砂・津波） */
+export function hazardsOf(ledger: Pick<Ledger, "evacuation">): string[] {
+  return ledger.evacuation.hazards.map((h) =>
+    h.depthM != null ? `${HAZARD_LABELS[h.kind]} ${h.depthM} m` : HAZARD_LABELS[h.kind],
+  );
+}
+
 /** 行の形にする（D1 を使わない所。テストしやすいように分けた） */
 export function toCaseloadRows(
   people: PersonForList[],
@@ -54,17 +67,14 @@ export function toCaseloadRows(
     const ledger = parseLedger(p.ledger);
     const myClocks = clocks.filter((k) => k.person_id === p.id);
     const myContacts = contacts.filter((c) => c.person_id === p.id);
-    const categories = new Set(myClocks.map((k) => k.category));
     return {
       id: p.id,
       name: p.name,
       kana: p.kana,
       age: p.birth_date ? ageOn(p.birth_date, today) : null,
       careLevel: ledger.care.careLevel ?? null,
-      marks: DEPENDENCE_MARKS.filter(([c]) => categories.has(c)).map(([, label]) => label),
-      hazards: ledger.evacuation.hazards.map((h) =>
-        h.depthM != null ? `${HAZARD_LABELS[h.kind]} ${h.depthM} m` : HAZARD_LABELS[h.kind],
-      ),
+      marks: marksOf(myClocks),
+      hazards: hazardsOf(ledger),
       supporters: myContacts.filter((c) => c.supporter_order != null).length,
       plan: p.plan_status,
       pending: ledger.pending.length,
@@ -88,6 +98,38 @@ export function sortCaseload(rows: CaseloadRow[], key: SortKey): CaseloadRow[] {
     plan: (a, b) => PLAN_ORDER[a.plan] - PLAN_ORDER[b.plan] || b.pending - a.pending,
   };
   return [...rows].sort((a, b) => primary[key](a, b) || byKana(a, b));
+}
+
+// ---------- 右に開く本人のページ（?open=<id>、docs/tasks/T02.md） ----------
+// URL だけで開け閉めする。同じ「/」の query が変わるだけなので別ページに飛ばない。
+// 開くときは履歴に足し、開いている間に別の行を押すと履歴を置き換える。だからブラウザの戻るで閉じる。
+
+/** 担当一覧の URL。sort は並び（既定の優先は書かない）、open は右に開く本人 */
+export function caseloadHref(q: { sort?: SortKey; open?: string | null }): string {
+  const params = new URLSearchParams();
+  if (q.sort && q.sort !== "tier") params.set("sort", q.sort);
+  if (q.open) params.set("open", q.open);
+  const s = params.toString();
+  return s ? `/?${s}` : "/";
+}
+
+const OPEN_ID = /^[A-Za-z0-9_-]{1,64}$/;
+
+/** URL の open を読む。1 つの id の形のときだけ。読むときは personInScope を通す（形が合っても範囲の外は出さない） */
+export function parseOpen(v: string | string[] | undefined): string | null {
+  return typeof v === "string" && OPEN_ID.test(v) ? v : null;
+}
+
+export type RowLink = { href: string; replace: boolean; current: boolean };
+
+/** 一覧の行のリンク。閉じているときは開く（履歴に足す）、開いているときは切り替える（置き換える） */
+export function rowLink(sort: SortKey, open: string | null, id: string): RowLink {
+  return { href: caseloadHref({ sort, open: id }), replace: open !== null, current: open === id };
+}
+
+/** 右の面を閉じる */
+export function closeHref(sort: SortKey): string {
+  return caseloadHref({ sort });
 }
 
 /**

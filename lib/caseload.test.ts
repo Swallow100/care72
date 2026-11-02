@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { SEED_PEOPLE } from "../seed/people.ts";
-import { sortCaseload, toCaseloadRows } from "./caseload.ts";
+import { caseloadHref, closeHref, parseOpen, rowLink, sortCaseload, toCaseloadRows } from "./caseload.ts";
 
 const people = SEED_PEOPLE.map((p) => ({ ...p.person, ledger: JSON.stringify(p.ledger) }));
 const clocks = SEED_PEOPLE.flatMap((p) => p.clocks.map((k) => ({ ...k, person_id: p.person.id })));
@@ -47,5 +47,32 @@ describe("担当一覧の行", () => {
     const ids = sortCaseload(rows, "plan").map((r) => r.id);
     expect(ids.slice(0, 3).sort()).toEqual(["p-04", "p-05", "p-09"]);
     expect(ids.slice(3, 5)).toEqual(["p-01", "p-07"]);
+  });
+});
+
+describe("右に開く本人のページ（?open=）", () => {
+  it("URL: 既定の並びは書かず、open を足す・外す", () => {
+    expect(caseloadHref({})).toBe("/");
+    expect(caseloadHref({ sort: "tier" })).toBe("/");
+    expect(caseloadHref({ sort: "kana" })).toBe("/?sort=kana");
+    expect(caseloadHref({ open: "p-01" })).toBe("/?open=p-01");
+    expect(caseloadHref({ sort: "plan", open: "p-03" })).toBe("/?sort=plan&open=p-03");
+    expect(closeHref("age")).toBe("/?sort=age");
+    expect(closeHref("tier")).toBe("/");
+  });
+
+  it("閉じているとき行を押すと開く（履歴に足す）、開いているときは切り替える（置き換えるので戻るで閉じる）", () => {
+    expect(rowLink("tier", null, "p-01")).toEqual({ href: "/?open=p-01", replace: false, current: false });
+    expect(rowLink("tier", "p-01", "p-02")).toEqual({ href: "/?open=p-02", replace: true, current: false });
+    expect(rowLink("kana", "p-02", "p-02")).toEqual({ href: "/?sort=kana&open=p-02", replace: true, current: true });
+  });
+
+  it("open は 1 つの id の形のときだけ読む", () => {
+    expect(parseOpen("p-01")).toBe("p-01");
+    expect(parseOpen(undefined)).toBeNull();
+    expect(parseOpen("")).toBeNull();
+    expect(parseOpen(["p-01", "p-02"])).toBeNull();
+    expect(parseOpen("p-01/../x")).toBeNull();
+    expect(parseOpen("a".repeat(65))).toBeNull();
   });
 });
