@@ -7,7 +7,7 @@
 import Link from "next/link";
 import { CaseMap } from "@/components/map/CaseMap";
 import { TONE_TEXT } from "@/components/person/parts";
-import { StateText } from "@/components/ui/Tag";
+import { CountLabel, countClass, StateText } from "@/components/ui/Tag";
 import type { HazardKind } from "@/lib/db/types";
 import type { DestinationCount, HazardCount, PlanCount, ReviewItem, SidePaneData, StateCount } from "@/lib/map/side";
 import { PLAN_STATUS_LABELS } from "@/lib/labels";
@@ -75,15 +75,19 @@ function Count({ n, tone }: { n: number; tone?: StateTone }) {
   );
 }
 
-/** 至急・要確認・不明・無事の人数。数字に状態の色（0 は色なし） */
+/** 至急・要確認・不明・無事の人数。数字に状態の色（0 は色なし）。要確認は言葉を黄の塗りの印に、数は本文色 */
 function StateNumbers({ counts, size }: { counts: StateCount[]; size: "sm" | "lg" }) {
   return (
     <dl className={`flex flex-wrap items-baseline ${size === "lg" ? "gap-x-4 gap-y-1" : "gap-x-2.5"}`} data-states>
       {counts.map((s) => (
         <div key={s.color} className="flex items-baseline gap-1" data-color={s.color}>
-          <dt className={size === "lg" ? "text-sm text-muted" : "text-xs text-muted"}>{s.label}</dt>
+          <dt className={size === "lg" ? "text-sm text-muted" : "text-xs text-muted"}>
+            <CountLabel tone={s.tone} count={s.count}>
+              {s.label}
+            </CountLabel>
+          </dt>
           <dd
-            className={`font-bold tabular-nums ${size === "lg" ? "text-2xl" : ""} ${s.count > 0 ? TONE_TEXT[s.tone] : "text-muted"}`}
+            className={`font-bold tabular-nums ${size === "lg" ? "text-2xl" : ""} ${countClass(s.tone, s.count)}`}
             data-tone={s.count > 0 ? s.tone : undefined}
           >
             {s.count}
@@ -258,9 +262,13 @@ function PlanSection({ counts }: { counts: PlanCount[] }) {
       <dl className="mt-1.5 grid grid-cols-4 gap-1 text-sm" data-plan>
         {counts.map((c) => (
           <div key={c.status} className="flex flex-col items-start" data-status={c.status}>
-            <dt className="text-xs text-muted">{c.label}</dt>
+            <dt className="text-xs text-muted">
+              <CountLabel tone={c.tone} count={c.count}>
+                {c.label}
+              </CountLabel>
+            </dt>
             <dd
-              className={`text-lg font-bold tabular-nums ${c.count > 0 ? TONE_TEXT[c.tone] : "text-muted"}`}
+              className={`text-lg font-bold tabular-nums ${countClass(c.tone, c.count)}`}
               data-tone={c.count > 0 ? c.tone : undefined}
             >
               {c.count}

@@ -68,3 +68,35 @@ export function Mark({
     </span>
   );
 }
+
+/**
+ * 状態の人数の組（「至急 2」「要確認 1」）の言葉。要確認で人数があるときだけ言葉を黄の塗りの印にし、数は本文色にする
+ * （大きな数に黄の帯を付けない。11/3 08:0x の確定 4）。ほかの状態は言葉はそのまま（呼ぶ側の薄い本文色）、数に状態の色（countClass）
+ */
+export function CountLabel({
+  tone,
+  count,
+  size = "sm",
+  children,
+}: {
+  tone: Tone | null;
+  count: number;
+  size?: "sm" | "md";
+  children: React.ReactNode;
+}) {
+  if (tone === "check" && count > 0) {
+    return (
+      <StateTag tone="check" size={size}>
+        {children}
+      </StateTag>
+    );
+  }
+  return <>{children}</>;
+}
+
+/** 状態の人数の数の文字の色（CountLabel と組で使う）。0 は薄い本文色、要確認は本文色（言葉が黄の印）、ほかは状態の色 */
+export function countClass(tone: Tone | null, count: number): string {
+  if (count <= 0) return "text-muted";
+  if (!tone || tone === "check") return "";
+  return TONE_TEXT[tone];
+}
