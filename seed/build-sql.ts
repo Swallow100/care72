@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 import { parseEnv } from "node:util";
 import { DEMO_CARE_MANAGER_ID } from "../lib/auth/demo.ts";
 import { isPasswordHash } from "../lib/auth/password.ts";
-import { seedSql } from "./sql.ts";
+import { fullSeedStatements, seedRecordingFile } from "./full.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, "..");
@@ -31,10 +31,20 @@ if (demoHash && !isPasswordHash(demoHash)) {
   process.exit(1);
 }
 
+// デモ事業所の災害モード・山田の赤・終わった訓練（lib/seed）。時刻は今から数える（発災 4 時間前・停電 3 時間前・赤 1 時間前）。
+// 種の録音（seed/recordings/p-01.webm か p-01.m4a）があれば信号に結ぶ。R2 に上げるのは seed/put-recording.ts
+const now = new Date().toISOString();
+const audio = seedRecordingFile(here);
 const outDir = join(here, "generated");
 mkdirSync(outDir, { recursive: true });
 const outFile = join(outDir, "seed.sql");
 const passwordHashes: Record<string, string> = demoHash ? { [DEMO_CARE_MANAGER_ID]: demoHash } : {};
-writeFileSync(outFile, seedSql({ passwordHashes }), "utf8");
+const statements = await fullSeedStatements({ passwordHashes, now, recording: audio ? { key: audio.key, durationSec: null } : null });
+writeFileSync(
+  outFile,
+  `-- npm run db:seed が seed/people.ts と lib/seed から作る。手で直さない。git に入れない（ハッシュが入ることがある）。\n${statements.join("\n")}\n`,
+  "utf8",
+);
 console.log(`書いた: ${outFile}`);
 console.log(`山本のパスワード: ${demoHash ? "設定済" : "未設定（ログイン不可）"}`);
+console.log(`種の録音: ${audio ? audio.key : "なし（文字起こしと分類だけ）"}`);

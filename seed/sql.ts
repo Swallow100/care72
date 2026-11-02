@@ -10,9 +10,9 @@ import {
   type SeedPerson,
 } from "./people.ts";
 
-type SqlValue = string | number | boolean | null | undefined;
+export type SqlValue = string | number | boolean | null | undefined;
 
-function lit(v: SqlValue): string {
+export function lit(v: SqlValue): string {
   if (v === null || v === undefined) return "NULL";
   if (typeof v === "boolean") return v ? "1" : "0";
   if (typeof v === "number") {
@@ -22,7 +22,7 @@ function lit(v: SqlValue): string {
   return `'${v.replaceAll("'", "''")}'`;
 }
 
-function insert(table: string, row: Record<string, SqlValue>): string {
+export function insert(table: string, row: Record<string, SqlValue>): string {
   const cols = Object.keys(row);
   const vals = cols.map((c) => lit(row[c]));
   return `INSERT INTO ${table} (${cols.join(", ")}) VALUES (${vals.join(", ")});`;
@@ -54,7 +54,7 @@ export const CLEAR_ORDER = [
   "offices",
 ] as const;
 
-function personStatements(p: SeedPerson): string[] {
+export function personStatements(p: SeedPerson): string[] {
   const out: string[] = [];
   out.push(
     insert("people", {

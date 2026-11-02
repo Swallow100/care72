@@ -5,7 +5,8 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "care72",
   "routes": [{ "pattern": "care72.app", "custom_domain": true }],
-  "main": ".open-next/worker.js",
+  // 入口は worker.ts（.open-next/worker.js の fetch に、毎日 4 時にデモ事業所を種に戻す scheduled を足した物。docs/tasks/T26.md）
+  "main": "worker.ts",
   "compatibility_date": "2026-10-01",
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
   "assets": {
@@ -20,6 +21,8 @@
       "migrations_dir": "migrations"
     }
   ],
+  // 毎日 19:00 UTC（4:00 JST）にデモ事業所を種に戻す（lib/seed/cron.ts の DAILY_RESET_CRON と同じ文字）
+  "triggers": { "crons": ["0 19 * * *"] },
   "r2_buckets": [
     {
       "binding": "RECORDINGS",
