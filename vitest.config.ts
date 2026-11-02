@@ -8,6 +8,6 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["**/*.test.ts"],
-    exclude: ["node_modules/**", ".next/**", ".open-next/**", ".wrangler/**"],
+    exclude: ["node_modules/**", ".next/**", ".open-next/**", ".wrangler/**", "video/**"],
   },
 });

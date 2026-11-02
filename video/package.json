@@ -1,0 +1,27 @@
+{
+  "name": "care72-video",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ケア72 の 3 分動画の編集の枠（Remotion）。アプリの依存にも配信にも入らない",
+  "type": "module",
+  "scripts": {
+    "studio": "remotion studio src/index.ts",
+    "still": "node scripts/render.mjs still",
+    "render": "node scripts/render.mjs video",
+    "frames": "node scripts/frames.mjs",
+    "scan": "node scripts/scan.mjs",
+    "loudnorm": "node scripts/loudnorm.mjs",
+    "check": "node scripts/check.mjs",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.539",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "remotion": "4.0.539"
+  },
+  "devDependencies": {
+    "@types/react": "19.3.0",
+    "typescript": "5.9.3"
+  }
+}
