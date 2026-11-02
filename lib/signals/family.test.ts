@@ -475,6 +475,9 @@ describe("画面の静的な描画", () => {
     const html = view({ step: "done", color: "red", delivery: "sent" }, await screenOf(kato));
     expect(html).not.toContain('data-block="history"');
     expect(text(html)).not.toContain("これまでの こと");
+    // ケアマネジャーの名前と事業所は本人の 1 枚（支援者にも渡る紙）と同じく出す。来てくれる人（支援者）の名前は 1 枚の側で落ちる
+    expect(text(html)).toContain("ケアマネジャー 山本さん（デモ事業所）");
+    expect(text(html)).not.toMatch(/前田|加藤 実/);
   });
 
   it("どの画面にも判定・助言の言葉と住所を出さない", async () => {
