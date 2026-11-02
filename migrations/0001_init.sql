@@ -205,3 +205,22 @@ CREATE TABLE ai_calls (
   CHECK ((status = 'failed') = (error IS NOT NULL))
 );
 CREATE INDEX ai_calls_office_day ON ai_calls (office_id, day);
+
+-- 様式 9（災害時利用者一覧表）の優先順位の手直し。直すたびに 1 行足し、消さない（理由を残す）。
+-- 今の順位は本人ごと・平時と発災時ごとにいちばん新しい行。rank が NULL の行は「自動に戻す」。
+-- 自動の順位は平時は優先の骨格、発災時はルールの表（lib/triage）。手直しは並べ替えるだけで、色は変えない。
+-- 本人・事業所を消すと一緒に消える（種を入れ直すと空になる）。
+CREATE TABLE form9_rank_edits (
+  id TEXT PRIMARY KEY,
+  office_id TEXT NOT NULL REFERENCES offices (id) ON DELETE CASCADE,
+  person_id TEXT NOT NULL REFERENCES people (id) ON DELETE CASCADE,
+  mode TEXT NOT NULL CHECK (mode IN ('normal', 'disaster')),
+  rank INTEGER CHECK (rank IS NULL OR rank >= 1),
+  -- 直したときの自動の順位（後で見て、どこから動かしたか分かるように）
+  auto_rank INTEGER NOT NULL CHECK (auto_rank >= 1),
+  reason TEXT NOT NULL,
+  set_by TEXT REFERENCES accounts (id) ON DELETE SET NULL,
+  set_at TEXT NOT NULL,
+  CHECK (rank IS NULL OR length(trim(reason)) > 0)
+);
+CREATE INDEX form9_rank_edits_person ON form9_rank_edits (office_id, mode, person_id, set_at);

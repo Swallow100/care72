@@ -537,6 +537,26 @@ export type AiCallRow = {
   finished_at: string | null;
 };
 
+/** 様式 9 の並び: 平時（優先の骨格）・発災時（ルールの表） */
+export const FORM9_MODES = ["normal", "disaster"] as const;
+export type Form9Mode = (typeof FORM9_MODES)[number];
+
+/** 様式 9 の優先順位の手直し 1 回。足すだけで消さない。今の順位は本人・並びごとのいちばん新しい行 */
+export type Form9RankEditRow = {
+  id: string;
+  office_id: string;
+  person_id: string;
+  mode: Form9Mode;
+  /** 手で決めた順位。NULL は「自動に戻す」 */
+  rank: number | null;
+  /** 直したときの自動の順位 */
+  auto_rank: number;
+  /** 直した理由（戻すときは空でもよい） */
+  reason: string;
+  set_by: string | null;
+  set_at: string;
+};
+
 // ---------- 訓練の JSON の形 ----------
 
 /** ペルソナ（Haiku）が 1 刻みで返す決まった形。言葉は毎回違っても形は同じ */
