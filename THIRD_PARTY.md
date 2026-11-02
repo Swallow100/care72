@@ -19,7 +19,8 @@
 | zod | Claude の返す JSON の形を書き、返った物を検査する | MIT |
 | qrcode-generator | QR の頁の QR の点の並び（lib/qr/image.ts）。SVG はこちらで描く。間接の依存なし | MIT |
 | @modelcontextprotocol/sdk | 手元の MCP サーバー（tools/mcp/care72-local）。開発の道具で配信には入らない（devDependencies）。間接の依存の内訳は docs/progress/t32.md | MIT |
-| BIZ UDPGothic（next/font/google で build のときに取り込む） | 書体 | OFL-1.1 |
+| IBM Plex Sans JP（next/font/google で build のときに取り込む） | 画面の書体 | OFL-1.1 |
+| BIZ UDPGothic（同上） | 本人・家族のスマホと本人の 1 枚の書体 | OFL-1.1 |
 
 ## 画面で読み込む外の配信（リポジトリにも build にも入れない）
 

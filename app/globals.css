@@ -77,7 +77,8 @@
   --color-danger: var(--danger);
   --color-accent: var(--accent);
   --color-on-accent: var(--on-accent);
-  --font-sans: var(--font-biz-ud), system-ui, sans-serif;
+  --font-sans: var(--font-plex), system-ui, sans-serif;
+  --font-ud: var(--font-biz-ud), system-ui, sans-serif;
 }
 
 html,
@@ -89,6 +90,13 @@ body {
 body {
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+}
+
+/* 本人・家族のスマホ（phone-text・data-phone）と本人の 1 枚（data-sheet="own"）だけ UD の書体。ほかの画面は Plex */
+.phone-text,
+[data-phone],
+[data-sheet="own"] {
+  font-family: var(--font-ud);
 }
 
 /* 押したときの変化は灰色の地だけ。縮める・薄くする・色を変えるは重ねない。 */
