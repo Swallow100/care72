@@ -10,12 +10,11 @@ import { Buffer } from "node:buffer";
 import * as z from "zod";
 import { askJson, type AiMark, type AskJsonContext, type AskJsonRequest, type ClaudeAttachment } from "../claude/call.ts";
 import { sealItemCatalog } from "../pseudonym/index.ts";
-import { CONFIDENCES, FIELD_SHAPES, checkReadResult, itemCatalog, type CheckedRead } from "./mapping.ts";
+import { CONFIDENCES, FIELD_SHAPES, FORM_FILE_MAX_BYTES, checkReadResult, itemCatalog, type CheckedRead } from "./mapping.ts";
+
+export { FORM_FILE_MAX_BYTES };
 
 // ---------- 受け取る写真・PDF ----------
-
-/** 1 つの上限。写真は API の上限（5 MB）、PDF も同じにそろえる（様式は数頁なので足りる） */
-export const FORM_FILE_MAX_BYTES = 5 * 1024 * 1024;
 
 export type FormFileKind = "image" | "pdf";
 export type FormFile = { kind: FormFileKind; attachment: ClaudeAttachment; bytes: number };

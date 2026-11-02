@@ -235,7 +235,51 @@ export type FormMapping = {
   fields: MappingField[];
 };
 
+// ---------- 画面の言葉（2〜4 字の漢語） ----------
+
+export const MAPPING_LABELS = {
+  title: "様式対応",
+  read: "読取",
+  reading: "読取中",
+  manual: "手作成",
+  save: "確認保存",
+  saving: "保存中",
+  saved: "保存済",
+  draft: "下書き",
+  checked: "確認済",
+  addField: "欄追加",
+  remove: "外す",
+  restore: "戻す",
+  removed: "除外",
+  noItem: "対応なし",
+  changed: "修正済",
+  added: "手追加",
+  rejected: "項目不明",
+  reused: "読取済",
+  fill: "差込",
+  print: "印刷",
+  back: "戻る",
+  aiNotConfigured: "AI 未設定",
+  aiLimit: "上限到達",
+  aiFailed: "AI 失敗",
+  aiRefused: "AI 不可",
+  conflict: "競合",
+  invalid: "入力不備",
+  unknownItem: "項目不明",
+  fileType: "形式外",
+  fileLarge: "容量超過",
+  fileEmpty: "空ファイル",
+  notFound: "該当なし",
+  forbidden: "権限なし",
+  unconfirmed: "未確認",
+  unmapped: "対応なし",
+  withheld: "省略",
+} as const;
+
 // ---------- 長さの上限（画面・保存・AI の返事で同じ） ----------
+
+/** 読む写真・PDF 1 つの上限。写真は API の上限（5 MB）、PDF も同じにそろえる（様式は数頁なので足りる） */
+export const FORM_FILE_MAX_BYTES = 5 * 1024 * 1024;
 
 export const LIMITS = { title: 80, issuer: 40, section: 40, label: 80, position: 60, reason: 120, option: 30, options: 16, fields: 200, pages: 20 } as const;
 
