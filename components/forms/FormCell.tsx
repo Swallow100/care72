@@ -5,6 +5,28 @@ import type { Cell, Choice, Piece } from "@/lib/forms/matsuyama";
 import { BLANK, withheldText } from "@/lib/forms/matsuyama";
 import { PENDING_STATUS_LABELS } from "@/lib/labels";
 
+/** 電話番号・日付・時刻・小数（090-0000-0011、2026-11-02、12:00、0.5）。紙ではこの途中で行を割らない */
+const NUMBER_RUN = /(\d+(?:[-‐:/.]\d+)+)/;
+
+/** 文の中の番号の並びを 1 つの塊（.nowrap）にする。ほかの所は禁則の決まりのまま折り返す */
+export function KeepNumbers({ text }: { text: string }) {
+  const parts = text.split(NUMBER_RUN);
+  if (parts.length === 1) return <>{text}</>;
+  return (
+    <>
+      {parts.map((t, i) =>
+        i % 2 === 1 ? (
+          <span key={i} className="nowrap">
+            {t}
+          </span>
+        ) : (
+          t
+        ),
+      )}
+    </>
+  );
+}
+
 function PieceText({ p }: { p: Piece }) {
   if (p.unconfirmed) {
     return p.reason ? (
@@ -16,15 +38,53 @@ function PieceText({ p }: { p: Piece }) {
     );
   }
   const cls = [p.sub ? "p-sub" : "", p.strong ? "p-strong" : ""].filter(Boolean).join(" ");
-  return cls ? <span className={cls}>{p.text}</span> : <span>{p.text}</span>;
+  return (
+    <span className={cls || undefined}>
+      <KeepNumbers text={p.text} />
+    </span>
+  );
+}
+
+const isSeparator = (p: Piece) => p.sub === true && p.text === "／";
+
+/**
+ * 1 行の値。「／」で区切った塊（薬 1 つの回数・用量、機器の電池・予備など）は塊の途中で行を割らず、塊の切れ目で折り返す。
+ * 区切りの「／」は前の塊の終わりに付ける（行頭に「／」を出さない）
+ */
+function Pieces({ pieces }: { pieces: readonly Piece[] }) {
+  if (!pieces.some(isSeparator)) {
+    return (
+      <>
+        {pieces.map((p, i) => (
+          <PieceText key={i} p={p} />
+        ))}
+      </>
+    );
+  }
+  const groups: Piece[][] = [[]];
+  for (const p of pieces) {
+    groups[groups.length - 1].push(p);
+    if (isSeparator(p)) groups.push([]);
+  }
+  return (
+    <>
+      {groups
+        .filter((g) => g.length > 0)
+        .map((g, i) => (
+          <span key={i} className="grp">
+            {g.map((p, j) => (
+              <PieceText key={j} p={p} />
+            ))}
+          </span>
+        ))}
+    </>
+  );
 }
 
 function Line({ pieces }: { pieces: readonly Piece[] }) {
   return (
     <span className="ln">
-      {pieces.map((p, i) => (
-        <PieceText key={i} p={p} />
-      ))}
+      <Pieces pieces={pieces} />
     </span>
   );
 }
@@ -67,9 +127,7 @@ export function FormCell({ cell }: { cell: Cell }) {
           {cell.options.map((c) => (
             <ChoiceText key={c.label} c={c} />
           ))}
-          {cell.after?.map((p, i) => (
-            <PieceText key={`a${i}`} p={p} />
-          ))}
+          {cell.after && <Pieces pieces={cell.after} />}
           {cell.unconfirmed && <PieceText p={{ text: BLANK.unconfirmed, unconfirmed: true, reason: cell.unconfirmed.reason }} />}
         </span>
       );

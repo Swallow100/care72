@@ -12,6 +12,7 @@ import { QR_LABELS, QR_STATUS_LABELS } from "@/lib/qr/labels";
 import type { QrStatus } from "@/lib/qr/store";
 import { EasyWords } from "./EasyText";
 import { MedicalSummaryPaper } from "./MedicalSummarySheet";
+import { PaperFoot } from "./PaperFoot";
 import { WITHHELD_LABELS } from "./MedicalWithheld";
 import { QrBlock, qrExpiryDate } from "./QrBlock";
 
@@ -77,6 +78,9 @@ function Line({ line }: { line: OwnLine }) {
   );
 }
 
+/** 裏の頁の下の端の文書名 */
+const OWN_BACK_DOC = `${DOCUMENT_LABELS.own} 裏（${DOCUMENT_LABELS.medical}）`;
+
 /** 表（本人・家族・支援者が読む面） */
 export function OwnSheetFront({ sheet: s }: { sheet: OwnSheet }) {
   return (
@@ -102,12 +106,13 @@ export function OwnSheetFront({ sheet: s }: { sheet: OwnSheet }) {
       <div className="own-foot">
         <EasyWords words={s.made} />
       </div>
+      <PaperFoot page={1} total={2} />
     </section>
   );
 }
 
 /** 医療班提供の同意が無い人の裏。要約の中身は作らない */
-function OwnBackWithheld({ kind, qr }: { kind: "refused" | "unconfirmed"; qr: OwnQr | null | undefined }) {
+function OwnBackWithheld({ kind, qr, name }: { kind: "refused" | "unconfirmed"; qr: OwnQr | null | undefined; name: string }) {
   return (
     <section className="paper own-back" aria-label={DOCUMENT_LABELS.medical} data-page="2" data-withheld={kind}>
       <div className="head-row">
@@ -123,6 +128,7 @@ function OwnBackWithheld({ kind, qr }: { kind: "refused" | "unconfirmed"; qr: Ow
           {CONSENT_KIND_LABELS.medical} {CONSENT_STATUS_LABELS[kind]}
         </div>
       </div>
+      <PaperFoot doc={OWN_BACK_DOC} name={name} page={2} total={2} />
     </section>
   );
 }
@@ -131,12 +137,18 @@ function OwnBackWithheld({ kind, qr }: { kind: "refused" | "unconfirmed"; qr: Ow
 export function OwnSheetPaper({ sheet, medical, qr }: { sheet: OwnSheet; medical: MedicalSummaryResult; qr?: OwnQr | null }) {
   return (
     <div className="paper-scroll">
-      <div className="paper-stack" data-sheet="own" data-person={sheet.personId}>
+      <div className="paper-stack" data-paper-root data-sheet="own" data-person={sheet.personId}>
         <OwnSheetFront sheet={sheet} />
         {medical.kind === "sheet" ? (
-          <MedicalSummaryPaper sheet={medical.sheet} page={2} aside={<QrSpot qr={qr} />} note={<QrNote qr={qr} />} />
+          <MedicalSummaryPaper
+            sheet={medical.sheet}
+            page={2}
+            aside={<QrSpot qr={qr} />}
+            note={<QrNote qr={qr} />}
+            foot={{ doc: OWN_BACK_DOC, page: 2, total: 2 }}
+          />
         ) : (
-          <OwnBackWithheld kind={medical.kind} qr={qr} />
+          <OwnBackWithheld kind={medical.kind} qr={qr} name={sheet.name} />
         )}
       </div>
     </div>

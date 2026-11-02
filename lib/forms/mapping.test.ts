@@ -210,7 +210,7 @@ describe("差し込み", () => {
   it("紙面: 頁ごとの A4、欄の順に名前と値、段の見出し", () => {
     const s = buildMappedSheet(seedRows(seed("p-01")), cao(), OPTS);
     const html = renderToStaticMarkup(createElement(MappedPaper, { sheet: s, meta: { date: "令和 8 年 11 月 2 日", checked: "2026-11-02 山本" } }));
-    expect(html.match(/class="paper mapped"/g)).toHaveLength(2);
+    expect(html.match(/class="paper form mapped"/g)).toHaveLength(2);
     const ids = [...html.matchAll(/data-field="(f[0-9]+)"/g)].map((x) => x[1]);
     expect(ids).toEqual(cao().fields.map((f) => f.id));
     expect(html).toContain("緊急時の連絡先①");

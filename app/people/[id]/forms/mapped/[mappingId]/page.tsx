@@ -87,7 +87,7 @@ export default async function MappedFormPage({ params, searchParams }: Props) {
           </StateTag>
         ))}
       </PaperBar>
-      <MappedSheet sheet={sheet} meta={{ date: warekiText(today), checked }} />
+      <MappedSheet sheet={sheet} meta={{ date: warekiText(today), checked, office: office?.name ?? null, author: rows.careManagerName }} />
     </main>
   );
 }
