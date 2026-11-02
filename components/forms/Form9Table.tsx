@@ -1,9 +1,16 @@
-// 様式 9 の表（画面）。列はひな形の列とケア72 の列を全部出す。小さな字で密に並べ、横は区分の中でスクロール。
+// 様式 9 の表（画面）。列はひな形の列とケア72 の列を全部出す。小さな字（11px）で密に並べ、横に送らない（T38）:
+// 1280px 以上は 19 列を全部、文は欄の中で折り返して縦に伸ばす。1024〜1279px は細かい列（環境・地域・住所・医療機関・特記・連絡先2・
+// 確認方法・手直し）を省き、768px 未満は順位・優先・氏名・理由・結果だけ（省いた列は CSV と紙に全部ある）。
+// 表は 1 つの面にまとめ、行は地の色の 1px のすき間（components/ui/table と同じ見た目）。
 // 画面では氏名と色を順位の横に寄せる（CSV はひな形の列の順のまま）。順位を押すとその行の下に手直しの欄が開く。
-// 色は意味にだけ: 優先の印と結果は状態の 4 色、「支援者なし」は黄。手直しは色を付けず「自動 N」と理由。状態を持たない。
+// 色は意味にだけ: 優先の印と結果は状態の 4 色、「支援者なし」は要確認（本文色＋黄の帯）。手直しは色を付けず「自動 N」と理由。状態を持たない。
 
 import Link from "next/link";
 import { StateTag, TONE_TEXT } from "@/components/person/parts";
+import { ButtonLink } from "@/components/ui/Button";
+import { CloseIcon } from "@/components/ui/Icon";
+import { SubmitButton } from "@/components/ui/SubmitButton";
+import { TABLE_BOX } from "@/components/ui/table";
 import {
   FORM9_COLUMNS,
   RANK_FORM_ERROR_LABELS,
@@ -45,14 +52,57 @@ const COLUMN = new Map(FORM9_COLUMNS.map((c) => [c.id, c]));
 /** 並び替えのできる列 */
 const SORT_OF: Partial<Record<Form9ColumnId, Form9Sort>> = { no: "rank", nameAge: "kana", area: "area", careManager: "manager" };
 
-const CELL = "bg-panel px-1.5 py-1.5 align-top first:rounded-l-md last:rounded-r-md";
+/** 本文のセル（詰めた余白。文は折り返す） */
+const CELL = "bg-panel px-1 py-1 align-top break-words";
+/** 見出しのセル（面の中の灰色。2 行まで折り返す） */
+const HEAD = "bg-panel2 px-1 py-1 align-bottom text-[0.65rem] leading-tight font-bold text-muted";
 const Dash = () => <span className="text-muted">—</span>;
 
-/** 横に送っても残す左の 3 列（順位・優先・氏名）。幅を決めて左からの位置をそろえる */
-const STICKY: Partial<Record<Form9ColumnId, string>> = {
-  no: "sticky left-0 z-10 w-12 min-w-12",
-  color: "sticky left-12 z-10 w-14 min-w-14",
-  nameAge: "sticky left-26 z-10",
+/**
+ * 幅の狭い画面で省く列（横に送らないため）。1024〜1279px は細かい列（地域・住所・医療機関・特記・連絡先2・手直し）を、
+ * 768〜1023px はさらに環境・確認方法を、768px 未満は医療・避難・避難所・担当・連絡先1・確認日時も省く。省いた列は CSV と紙（Form9Paper）に全部ある
+ */
+const HIDE: Partial<Record<Form9ColumnId, string>> = {
+  area: "hidden xl:table-cell",
+  address: "hidden xl:table-cell",
+  facility: "hidden xl:table-cell",
+  notes: "hidden xl:table-cell",
+  emergency2: "hidden xl:table-cell",
+  manual: "hidden xl:table-cell",
+  environment: "hidden lg:table-cell",
+  means: "hidden lg:table-cell",
+  medicalCare: "hidden md:table-cell",
+  evacuation: "hidden md:table-cell",
+  shelter: "hidden md:table-cell",
+  careManager: "hidden md:table-cell",
+  emergency1: "hidden md:table-cell",
+  checkedAt: "hidden md:table-cell",
+};
+
+/**
+ * 列の幅（表は table-fixed。理由の列だけ幅を決めず、残りを全部使う）。1280px で 19 列が 1248px に収まる値。
+ * 電話の番号（連絡先）は折り返さない幅
+ */
+const WIDTH: Record<Form9ColumnId, string> = {
+  no: "w-[34px]",
+  color: "w-[46px]",
+  nameAge: "w-[82px]",
+  medicalCare: "w-[80px]",
+  environment: "w-[64px]",
+  evacuation: "w-[68px]",
+  area: "w-[54px]",
+  address: "w-[52px]",
+  shelter: "w-[60px]",
+  facility: "w-[52px]",
+  notes: "w-[52px]",
+  careManager: "w-[32px]",
+  reason: "",
+  emergency1: "w-[96px]",
+  emergency2: "w-[96px]",
+  means: "w-[66px]",
+  result: "w-[62px]",
+  checkedAt: "w-[52px]",
+  manual: "w-[44px]",
 };
 
 type Props = {
@@ -67,9 +117,10 @@ type Props = {
 
 export function Form9Table({ rows, sort, edit, error, disaster }: Props) {
   return (
-    <table className="w-full min-w-[90rem] border-separate border-spacing-y-0.5 text-left text-xs">
+    <div className={TABLE_BOX}>
+    <table className="w-full table-fixed border-separate border-spacing-x-0 border-spacing-y-px text-left text-[0.6875rem] leading-snug">
       <thead>
-        <tr className="text-muted">
+        <tr>
           {SCREEN_ORDER.map((id) => (
             <HeaderCell key={id} id={id} sort={sort} />
           ))}
@@ -81,6 +132,7 @@ export function Form9Table({ rows, sort, edit, error, disaster }: Props) {
         ))}
       </tbody>
     </table>
+    </div>
   );
 }
 
@@ -90,15 +142,15 @@ function HeaderCell({ id, sort }: { id: Form9ColumnId; sort: Form9Sort }) {
   const active = key === sort;
   return (
     <th
-      className={`whitespace-nowrap bg-base px-1.5 py-1.5 align-bottom font-normal ${id === "no" ? "text-center" : ""} ${STICKY[id] ?? ""}`}
+      className={`${HEAD} ${id === "no" ? "text-center" : ""} ${WIDTH[id]} ${HIDE[id] ?? ""}`}
       title={c.csv}
       aria-sort={active ? "ascending" : undefined}
     >
-      {c.group && <span className="block text-[0.65rem] leading-tight">{c.group}</span>}
+      {c.group && <span className="block font-normal">{c.group}</span>}
       {key ? (
         <Link
           href={form9Href({ sort: key })}
-          className={`-mx-1 rounded px-1 py-0.5 ${active ? "text-ink underline underline-offset-4" : ""}`}
+          className={`-mx-0.5 rounded px-0.5 py-0.5 whitespace-nowrap ${active ? "text-ink underline underline-offset-4" : ""}`}
           data-press
         >
           {key === "rank" ? c.label : FORM9_SORT_LABELS[key]}
@@ -129,17 +181,15 @@ function RowGroup({
     <>
       <tr id={`row-${r.id}`} aria-selected={editing || undefined}>
         {SCREEN_ORDER.map((id) => (
-          <td key={id} className={`${CELL} ${STICKY[id] ?? ""} ${editing ? "first:shadow-[inset_3px_0_0_var(--accent)]" : ""}`}>
+          <td key={id} className={`${CELL} ${HIDE[id] ?? ""} ${editing ? "first:shadow-[inset_3px_0_0_var(--accent)]" : ""}`}>
             <Cell id={id} row={r} sort={sort} editing={editing} disaster={disaster} />
           </td>
         ))}
       </tr>
       {editing && (
         <tr>
-          <td colSpan={SCREEN_ORDER.length} className="rounded-md bg-panel2 px-3 py-2">
-            <div className="sticky left-3 w-fit max-w-[calc(100vw-4rem)]">
-              <RankForm row={r} sort={sort} error={error} size={size} />
-            </div>
+          <td colSpan={SCREEN_ORDER.length} className="bg-panel2 px-3 py-2">
+            <RankForm row={r} sort={sort} error={error} size={size} />
           </td>
         </tr>
       )}
@@ -158,7 +208,7 @@ function Cell({ id, row: r, sort, editing, disaster }: { id: Form9ColumnId; row:
           aria-label={`${r.name} 順位変更`}
           data-press
         >
-          <span className="block text-lg font-bold leading-tight tabular-nums">{r.rank}</span>
+          <span className="block text-lg font-bold leading-tight whitespace-nowrap tabular-nums">{r.rank}</span>
           {r.manual ? (
             <span className="block whitespace-nowrap text-[0.65rem] text-muted tabular-nums">自動 {r.autoRank}</span>
           ) : (
@@ -169,7 +219,7 @@ function Cell({ id, row: r, sort, editing, disaster }: { id: Form9ColumnId; row:
     case "color":
       return r.color ? (
         <span className="whitespace-nowrap">
-          <StateTag tone={COLOR_TONES[r.color]} size="md">
+          <StateTag tone={COLOR_TONES[r.color]}>
             {COLOR_LABELS[r.color]}
           </StateTag>
         </span>
@@ -178,17 +228,17 @@ function Cell({ id, row: r, sort, editing, disaster }: { id: Form9ColumnId; row:
       );
     case "nameAge":
       return (
-        <div className="min-w-[6rem]">
-          <Link href={`/people/${r.id}`} className="-mx-1 rounded px-1 text-sm font-bold" data-press>
+        <div>
+          <Link href={`/people/${r.id}`} className="-mx-0.5 rounded px-0.5 text-[0.8125rem] font-bold whitespace-nowrap" data-press>
             {r.name}
           </Link>
-          {r.age !== null && <span className="tabular-nums text-muted"> {r.age}歳</span>}
+          {r.age !== null && <span className="whitespace-nowrap text-muted"> {r.age}歳</span>}
           <div className="text-muted">{r.kana}</div>
         </div>
       );
     case "medicalCare":
       return (
-        <div className="min-w-[7rem]">
+        <div>
           <span className="font-bold tabular-nums">{r.tier}</span> <span>{TIER_LABELS[r.tier]}</span>
           {r.marks.length > 0 && (
             <div className="mt-0.5 flex flex-wrap gap-0.5">
@@ -202,18 +252,18 @@ function Cell({ id, row: r, sort, editing, disaster }: { id: Form9ColumnId; row:
         </div>
       );
     case "evacuation":
-      return <Words text={text} warn="支援者なし" min="min-w-[6rem]" />;
+      return <Words text={text} warn="支援者なし" />;
     case "means":
-      return <Words text={text} min="min-w-[5rem]" />;
+      return <Words text={text} />;
     case "reason":
-      return <div className={`min-w-[8rem] ${disaster && r.color ? `font-bold ${TONE_TEXT[COLOR_TONES[r.color]]}` : ""}`}>{text}</div>;
+      return <div className={`${disaster && r.color ? `font-bold ${TONE_TEXT[COLOR_TONES[r.color]]}` : ""}`}>{text}</div>;
     case "emergency1":
     case "emergency2":
       return <ContactCell c={r.emergency[id === "emergency1" ? 0 : 1]} />;
     case "result":
       if (!r.result) return <Dash />;
       return (
-        <div className="min-w-[5rem]">
+        <div>
           <span className={`font-bold ${r.result.tone ? TONE_TEXT[r.result.tone] : r.result.at ? "" : TONE_TEXT.unknown}`}>
             {r.result.label}
           </span>
@@ -224,16 +274,19 @@ function Cell({ id, row: r, sort, editing, disaster }: { id: Form9ColumnId; row:
     case "checkedAt": {
       if (!text) return <Dash />;
       const [date, time] = text.split(" ");
+      // 画面は月日だけ（「11/3」。列を細くして横に送らないため）。年まで要るときは CSV と紙
+      const [, month, day] = (date ?? "").split("-");
+      const short = month && day ? `${Number(month)}/${Number(day)}` : date;
       return (
-        <div className="whitespace-nowrap tabular-nums">
+        <div className="whitespace-nowrap tabular-nums" title={text}>
           <div className="font-bold">{time}</div>
-          <div className="text-muted">{date}</div>
+          <div className="text-muted">{short}</div>
         </div>
       );
     }
     case "manual":
       return r.manual ? (
-        <div className="min-w-[7rem]">
+        <div>
           <div>{r.manual.reason}</div>
           <div className="text-muted">
             {[r.manual.by, formatJst(r.manual.at)].filter((x) => x).join(" ")}
@@ -243,24 +296,15 @@ function Cell({ id, row: r, sort, editing, disaster }: { id: Form9ColumnId; row:
         <Dash />
       );
     default:
-      return text ? <div className={MIN_WIDTH[id] ?? ""}>{text}</div> : <Dash />;
+      return text ? <div>{text}</div> : <Dash />;
   }
 }
 
-const MIN_WIDTH: Partial<Record<Form9ColumnId, string>> = {
-  environment: "min-w-[6rem]",
-  area: "min-w-[4.5rem]",
-  address: "min-w-[5rem]",
-  shelter: "min-w-[5rem]",
-  facility: "min-w-[4.5rem]",
-  notes: "min-w-[4.5rem]",
-};
-
-/** 「・」で区切った言葉を 1 行ずつ。注意の言葉（支援者なし）だけ黄 */
-function Words({ text, warn, min }: { text: string; warn?: string; min: string }) {
+/** 「・」で区切った言葉を 1 行ずつ。注意の言葉（支援者なし）だけ要確認（本文色＋黄の帯） */
+function Words({ text, warn }: { text: string; warn?: string }) {
   if (!text) return <Dash />;
   return (
-    <ul className={min}>
+    <ul>
       {text.split("・").map((p, i) => (
         <li key={i} className={p === warn ? `font-bold ${TONE_TEXT.check}` : undefined}>
           {p}
@@ -273,7 +317,7 @@ function Words({ text, warn, min }: { text: string; warn?: string; min: string }
 function ContactCell({ c }: { c: Form9Contact | undefined }) {
   if (!c) return <Dash />;
   return (
-    <div className="min-w-[6.5rem]">
+    <div>
       <div>
         <span className="text-muted">{c.who}</span> {c.name}
       </div>
@@ -323,17 +367,17 @@ function RankForm({ row: r, sort, error, size }: { row: Form9Row; sort: Form9Sor
           autoFocus
         />
       </label>
-      <button type="submit" className="rounded bg-accent px-3 py-1.5 text-sm font-bold text-on-accent" data-press="overlay">
+      <SubmitButton kind="main" icon="SaveIcon">
         保存
-      </button>
+      </SubmitButton>
       {r.manual && (
-        <button type="submit" name="clear" value="1" formNoValidate className="rounded px-3 py-1.5 text-sm" data-press>
+        <SubmitButton kind="plainIn" name="clear" value="1" formNoValidate>
           手直し解除
-        </button>
+        </SubmitButton>
       )}
-      <Link href={form9Href({ sort })} className="rounded px-3 py-1.5 text-sm text-muted" data-press>
+      <ButtonLink href={form9Href({ sort })} kind="quiet" icon={CloseIcon}>
         閉じる
-      </Link>
+      </ButtonLink>
       {error && (
         <span role="alert" className="self-center text-sm font-bold text-danger">
           {RANK_FORM_ERROR_LABELS[error]}
