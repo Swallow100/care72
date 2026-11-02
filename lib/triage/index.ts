@@ -159,14 +159,14 @@ export function tierOf(person: TriagePerson): Tier {
 
 /** 入力の読み方。docs/TRIAGE.md の「読み方」に出る */
 export const READING: ReadonlyArray<{ text: string; origin: string }> = [
-  { text: "信号は時刻のいちばん新しい物を使う。今より後の時刻の信号は使わない。信号が無ければ未知", origin: "仕様書" },
+  { text: "信号は時刻のいちばん新しい物を使う。今より後の時刻の信号は使わない。信号が無ければ未知", origin: "決めた所" },
   {
     text: "本人の報告を当てにしない印（人が台帳で付ける）がある人は、本人（訓練の本人役を含む）の緑を使わない。家族・支援者・ケアマネの緑は使う。赤はそのまま赤",
     origin: "案 4",
   },
   { text: "時計は停電か発災から走る。停電していなければ停電で走る時計は止まったまま", origin: "仕様書" },
-  { text: "「超えた」「過ぎた」はちょうどを含まない（12 時間までは灰）", origin: "仕様書" },
-  { text: "機器の時計は種類が機器（A）の時計。機器以外の時計は物（B）・薬（C）。本人の状態（D）は走らない", origin: "仕様書" },
+  { text: "「超えた」「過ぎた」はちょうどを含まない。仕様書の「12 時間までは灰」に合わせた", origin: "決めた所" },
+  { text: "機器の時計は種類が機器（A）の時計。機器以外の時計は物（B）・薬（C）。本人の状態（D）は走らない", origin: "決めた所" },
   {
     text: "外の物に頼る時計は頼り先（透析先・冷蔵・配達）のある時計。確認（確認済・未確認）は人が台帳で付け、Claude は付けない",
     origin: "案 1",
@@ -368,7 +368,7 @@ export const RULES: ReadonlyArray<Rule> = [
     input: "未知 ＋ 外の物に頼る時計の確認が未確認",
     color: "yellow",
     example: "透析先 未確認、未確認 6 時間",
-    origin: "案 1",
+    origin: "案 1 を未知に広げた",
     saysUnchecked: true,
     match: (x) => (x.unchecked.length > 0 ? `${uncheckedWords(x)}、${unconfirmed(x)}` : null),
   },
@@ -396,7 +396,7 @@ export const RULES: ReadonlyArray<Rule> = [
     input: "緑 ＋ 機器の時計が切れたあとの緑の報告",
     color: "yellow",
     example: "電池が切れたあとに緑の報告、酸素 内蔵電池 2 時間を超過",
-    origin: "案 3",
+    origin: "案 3（言い方を時計の事実に）",
     match: (x) => firstOf(devicesOut(x).beforeReport, (c) => `電池が切れたあとに緑の報告、${over(c)}`),
   },
   {
@@ -555,14 +555,14 @@ export type OrderKey = {
 
 /** 並びの鍵。上から順に比べ、同じなら次へ */
 export const ORDER: ReadonlyArray<OrderKey> = [
-  { label: "色（赤 けが・動けない → 赤 → 黄 → 灰 → 緑）", origin: "仕様書", compare: (a, b) => cmp(a.group, b.group) },
+  { label: "色: 赤 けが・動けない → 赤 → 黄 → 灰 → 緑", origin: "仕様書", compare: (a, b) => cmp(a.group, b.group) },
   { label: "時計の残りが短い順", origin: "仕様書", compare: (a, b) => cmp(a.remainingHours, b.remainingHours) },
   {
     label: "支援者なしが先",
     origin: "案 5",
     compare: (a, b) => cmp(a.hasSupporter ? 1 : 0, b.hasSupporter ? 1 : 0),
   },
-  { label: "緊急度の骨格の段（1〜8）", origin: "仕様書", compare: (a, b) => cmp(a.tier, b.tier) },
+  { label: "緊急度の骨格の段 1〜8", origin: "仕様書", compare: (a, b) => cmp(a.tier, b.tier) },
   {
     label: "id",
     origin: "決めた所",
