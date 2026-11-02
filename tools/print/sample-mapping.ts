@@ -13,7 +13,7 @@ if (!out) {
   process.exit(1);
 }
 
-export const SAMPLE_MAPPING_ID = "map-sample-cao";
+const SAMPLE_MAPPING_ID = "map-sample-cao";
 
 const at = new Date().toISOString();
 const sql = insert("form_mappings", {
