@@ -9,6 +9,7 @@
 // - 平時: 本人の 1 枚（T06）のうち 逃げるところ・来てくれる人・持っていく物・電話。住所は 1 枚にもともと無い
 // - 診断・助言の言葉は無い（決まった言葉は lib/signals/phrases.ts）
 
+import { scopeOfRows } from "../consent/scope.ts";
 import { parseLedger } from "../db/ledger.ts";
 import type { AuthorRole, TimelineKind } from "../db/types.ts";
 import { easy, nameWithKana, yomi, type Word } from "../forms/easy-words.ts";
@@ -62,9 +63,9 @@ export function familyCallName(rows: PersonPageRows, w: FamilyWriter): Word[] {
   return call ? easy(call) : [...nameWords(rows), ...easy(FAMILY_PHRASES.san)];
 }
 
-/** 同意の範囲: 支援者への提供に同意している本人だけ、家族・支援者に経過を見せる */
+/** 同意の範囲: 支援者への提供に同意している本人だけ、家族・支援者に経過を見せる（決め方は lib/consent/scope.ts の 1 か所） */
 export function familyMayReadHistory(rows: PersonPageRows): boolean {
-  return rows.consents.find((c) => c.kind === "supporters")?.status === "granted";
+  return scopeOfRows("family", rows).timeline !== "none";
 }
 
 export type FamilyHistoryItem = { id: string; at: string; when: string; words: Word[] };
