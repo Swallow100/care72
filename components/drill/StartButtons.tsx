@@ -2,7 +2,8 @@
 
 // 訓練の開始（大雨の想定・地震の想定・10 分版）。押すと 0 時間まで当てて保存し、訓練の画面へ。
 // 事業所に進行中があれば断られる（実施中あり）。そのときは一覧の進行中から再開か中断。
-// 主の操作の色は 10 分版（審査員がまず押す方、11/3 03:3x の確定）だけ。大雨・地震の想定は無色。押してから画面が移るまで、押したボタンに灰色を残す（data-pending）。
+// 主の操作の色は 10 分版（審査員がまず押す方、11/3 03:3x の確定）だけで、先頭に並べる（11/3 08:0x の確定 3。並びは lib/drill の
+// SCENARIO_ORDER を変えずにここで前へ出す）。大雨・地震の想定は無色。押してから画面が移るまで、押したボタンに灰色を残す（data-pending）。
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -45,7 +46,7 @@ export function StartButtons({ scenarios, disabled }: { scenarios: ReadonlyArray
 
   return (
     <div className="flex flex-wrap items-center gap-2" data-start>
-      {scenarios.map((s) => (
+      {[...scenarios].sort((a, b) => Number(b === MAIN_SCENARIO) - Number(a === MAIN_SCENARIO)).map((s) => (
         <Button
           key={s}
           kind={s === MAIN_SCENARIO ? "main" : "plain"}
