@@ -1,8 +1,9 @@
 // 訓練の左の表の行の下に開く詳細（担当一覧の行の詳細と同じ中身の並べ方）。中身は lib/list/detail.ts の buildRowDetail が作った物。
 // 訓練では本番の電話の記録・優先の上書き（本人の経過に書く部品）を出さない。電話・出向くなどの手は T20 の「対応」。
 // 連絡先は名前と続柄だけ（訓練の画面から本物の番号にかけない）。安否の時刻は訓練の経過で出す。
+// 本人役（T18、Claude）が作った安否には AI の印（aiSignals は lib/drill/view.ts の DrillScreen から）。
 
-import { StateTag, TONE_TEXT } from "@/components/person/parts";
+import { AiMark, StateTag, TONE_TEXT } from "@/components/person/parts";
 import { DRILL_LABELS } from "@/lib/drill/labels";
 import { COLOR_LABELS } from "@/lib/labels";
 import type { RowDetail } from "@/lib/list/detail";
@@ -10,7 +11,16 @@ import { DETAIL_LABELS } from "@/lib/list/labels";
 
 const HOUR_MS = 3_600_000;
 
-export function DrillRowDetail({ detail: d, startedAt }: { detail: RowDetail; startedAt: string }) {
+export function DrillRowDetail({
+  detail: d,
+  startedAt,
+  aiSignals = [],
+}: {
+  detail: RowDetail;
+  startedAt: string;
+  aiSignals?: ReadonlyArray<string>;
+}) {
+  const ai = new Set(aiSignals);
   const hourOf = (iso: string) => Math.round(((Date.parse(iso) - Date.parse(startedAt)) / HOUR_MS) * 10) / 10;
   return (
     <div className="@container space-y-2 text-sm" data-detail-of={d.personId}>
@@ -104,6 +114,7 @@ export function DrillRowDetail({ detail: d, startedAt }: { detail: RowDetail; st
                       {hourOf(s.at)} {DRILL_LABELS.hours}
                     </span>
                     <span className="text-xs text-muted">{s.source}</span>
+                    {ai.has(s.id) && <AiMark small />}
                     <StateTag tone={s.tone}>
                       {s.color === "red" ? COLOR_LABELS.red : s.color === "green" ? COLOR_LABELS.green : COLOR_LABELS.gray}
                     </StateTag>

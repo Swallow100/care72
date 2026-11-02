@@ -35,6 +35,8 @@ export type DrillScreen = {
   /** 本人の id → 氏名（状況の行に出す） */
   names: Record<string, string>;
   bands: Band[];
+  /** 本人役（T18、Claude）が作った安否の signals の id。行の詳細の安否に AI の印を付ける */
+  aiSignals: string[];
 };
 
 type PersonForDrill = Pick<PersonRow, "id" | "name" | "kana" | "birth_date" | "plan_status" | "self_report_unreliable" | "ledger">;
@@ -89,7 +91,7 @@ export async function loadDrillScreen(
   const ids = JSON.stringify(participants);
 
   const inDrill = "SELECT value FROM json_each(?2)";
-  const [people, clocks, contacts, signals] = await db.batch([
+  const [people, clocks, contacts, signals, aiTurns] = await db.batch([
     db
       .prepare(
         `SELECT id, name, kana, birth_date, plan_status, self_report_unreliable, ledger FROM people
@@ -118,6 +120,13 @@ export async function loadDrillScreen(
           ORDER BY occurred_at, created_at, id`,
       )
       .bind(scope.officeId, ids, id),
+    // 本人役（Claude）の 1 刻みが書いた安否の id（drill_events の payload の signal。ai が true の物）
+    db
+      .prepare(
+        `SELECT json_extract(payload, '$.signal') AS signal FROM drill_events
+          WHERE drill_id = ?1 AND kind = 'persona_turn' AND step <= ?2 AND json_extract(payload, '$.ai') = 1`,
+      )
+      .bind(id, shown),
   ]);
 
   const peopleRows = people.results as PersonForDrill[];
@@ -161,6 +170,9 @@ export async function loadDrillScreen(
     rows,
     names: Object.fromEntries(peopleRows.map((p) => [p.id, p.name])),
     bands: bandsOf(ticks),
+    aiSignals: (aiTurns.results as Array<{ signal: unknown }>)
+      .map((r) => r.signal)
+      .filter((x): x is string => typeof x === "string"),
   };
 }
 

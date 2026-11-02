@@ -62,7 +62,8 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
   const slots: TableSlots = {
     sortHref: (k) => here({ sort: k }),
     nameHref: () => null,
-    detail: (r) => (r.detail ? <DrillRowDetail detail={r.detail} startedAt={s.drill.started_at} /> : null),
+    detail: (r) =>
+      r.detail ? <DrillRowDetail detail={r.detail} startedAt={s.drill.started_at} aiSignals={s.aiSignals} /> : null,
   };
   const side = buildSidePane(s.rows, {
     sort,
