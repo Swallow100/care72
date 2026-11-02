@@ -32,7 +32,8 @@ import {
   type StepHooks,
   type Tick,
 } from "./engine.ts";
-import { EMPTY_WORLD, type WorldState } from "./scenarios.ts";
+import { isSourceId } from "../sources/index.ts";
+import { EMPTY_WORLD, isInjectKind, type WorldState } from "./scenarios.ts";
 
 /** 訓練を開ける範囲。ケアマネの役だけ（審査員のケアマネの役も）。事業所と担当一覧の持ち主 */
 export type DrillScope = { officeId: string; careManagerId: string; accountId: string | null };
@@ -362,7 +363,9 @@ function asIncident(row: Pick<DrillEventRow, "person_id" | "actor" | "sim_hour">
     actor: row.actor,
     at: typeof p.at === "number" ? p.at : row.sim_hour,
     ai: p.ai === true,
+    ...(isInjectKind(p.inject) ? { inject: p.inject } : {}),
     ...(typeof p.reason === "string" ? { reason: p.reason } : {}),
+    ...(typeof p.basis === "string" && isSourceId(p.basis) ? { basis: p.basis } : {}),
   };
 }
 

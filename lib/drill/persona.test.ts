@@ -414,6 +414,7 @@ describe("呼び口（createPersonaHook）", () => {
     expect(drillHooks({ DB: db, ANTHROPIC_API_KEY: "dummy" }, careManager({ role: "medical", caseloadOf: null }))).toBeUndefined();
     expect(drillHooks({ DB: db, ANTHROPIC_API_KEY: "dummy" }, null)).toBeUndefined();
     expect(drillHooks({ DB: db, ANTHROPIC_API_KEY: "dummy" }, careManager())?.persona).toBeTypeOf("function");
+    expect(drillHooks({ DB: db, ANTHROPIC_API_KEY: "dummy" }, careManager())?.director).toBeTypeOf("function");
   });
 
   it("台帳は D1 から 1 回の batch で読み、種の入力と同じ本人役になる", async () => {
@@ -458,7 +459,9 @@ describe("大雨を 3 時間まで（D1・本人役）", () => {
       const r = await advanceDrill(db, scope, "drill-t18", expected, START, hooks);
       expect(r.ok).toBe(true);
     }
-    expect(calls).toHaveLength(30);
+    // 本人役は 10 人 × 3 刻み。監督（T19、Opus）は 1 刻み 1 回で、偽の返事は形が違うので差し込みなし
+    expect(calls.filter((c) => c.model === HAIKU)).toHaveLength(30);
+    expect(calls.filter((c) => c.model !== HAIKU)).toHaveLength(3);
 
     const screen = (await loadDrillScreen(db, scope, "drill-t18", null))!;
     expect(screen.state.hour).toBe(3);
