@@ -156,7 +156,8 @@ export const SEED_PEOPLE: SeedPerson[] = [
         location: SEED_LOCATIONS["p-01"],
         housing: { floor: 1, floors: 2, structure: "wood" },
         household: "alone",
-        contactMeans: { landline: true, smartphone: "none" },
+        // スマホは使える（審査員の「本人スマホ」は山田で、訓練の想定でも本人が 3 時間に赤を押す。T26、設計の側の決定）
+        contactMeans: { landline: true, smartphone: "uses" },
       },
       care: {
         careLevel: "care3",
