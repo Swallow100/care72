@@ -1,9 +1,10 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
 import { ageOn } from "../lib/age.ts";
-import { SEED_PEOPLE, seedConsents } from "./people.ts";
-import { seedStatements } from "./sql.ts";
+import { migratedSqlite } from "../lib/db/test-d1.ts";
+import { SEED_ACCOUNTS, SEED_OFFICES, SEED_PEOPLE, seedConsents } from "./people.ts";
+import { CLEAR_ORDER, seedStatements } from "./sql.ts";
 
 const SEED_DAY = "2026-11-02";
 
@@ -97,6 +98,69 @@ describe("種のデータ（架空の 10 人）", () => {
     // 2 回流しても同じ（最初に空にする）
     for (const s of seedStatements()) db.exec(s);
     expect(count("people")).toBe(10);
+    db.close();
+  });
+});
+
+describe("種の入れ直し（npm run db:reset）", () => {
+  /** migrations の全部の表と、その表が外部キーで指す表 */
+  function migrationTables(): Map<string, Set<string>> {
+    const dir = new URL("../migrations/", import.meta.url);
+    const sql = readdirSync(dir)
+      .filter((n) => n.endsWith(".sql"))
+      .sort()
+      .map((n) => readFileSync(new URL(n, dir), "utf8"))
+      .join("\n");
+    const out = new Map<string, Set<string>>();
+    for (const m of sql.matchAll(/CREATE TABLE (\w+) \(([\s\S]*?)\n\);/g)) {
+      const refs = new Set([...m[2].matchAll(/REFERENCES (\w+)/g)].map((r) => r[1]).filter((t) => t !== m[1]));
+      out.set(m[1], refs);
+    }
+    return out;
+  }
+
+  it("消す順は migrations の表を全部含み、外部キーで指す側（子）が指される側（親）より先", () => {
+    const tables = migrationTables();
+    expect(tables.size).toBeGreaterThanOrEqual(14);
+    expect([...CLEAR_ORDER].sort()).toEqual([...tables.keys()].sort());
+    const at = (t: string) => CLEAR_ORDER.indexOf(t as (typeof CLEAR_ORDER)[number]);
+    for (const [child, parents] of tables) {
+      for (const parent of parents) expect(at(child), `${child} → ${parent}`).toBeLessThan(at(parent));
+    }
+  });
+
+  it("AI を呼んだあと・災害モード・事業所の経過・様式 9 の手直し・信号のあとでも流し直せて、全部種に戻る", () => {
+    const db = migratedSqlite();
+    for (const s of seedStatements()) db.exec(s);
+    const office = SEED_OFFICES[0].id;
+    const account = SEED_ACCOUNTS[0].id;
+    const at = "2026-11-04T01:00:00.000Z";
+    db.prepare(
+      `INSERT INTO ai_calls (id, office_id, purpose, model, day, status, started_at) VALUES ('ai-1', ?, 'ledger_input', 'm', '2026-11-04', 'pending', ?)`,
+    ).run(office, at);
+    db.prepare(
+      `INSERT INTO disaster_state (office_id, kind, started_at, started_by, updated_by, updated_at) VALUES (?, 'heavy_rain', ?, ?, ?, ?)`,
+    ).run(office, at, account, account, at);
+    db.prepare(
+      `INSERT INTO office_timeline_entries (id, office_id, author_id, author_role, kind, occurred_at) VALUES ('ot-1', ?, ?, 'care_manager', 'disaster_on', ?)`,
+    ).run(office, account, at);
+    db.prepare(
+      `INSERT INTO form9_rank_edits (id, office_id, person_id, mode, rank, auto_rank, reason, set_by, set_at) VALUES ('f9-1', ?, 'p-01', 'disaster', 1, 2, '理由', ?, ?)`,
+    ).run(office, account, at);
+    db.prepare(`INSERT INTO signals (id, person_id, color, source, occurred_at) VALUES ('s-1', 'p-01', 'red', 'self', ?)`).run(at);
+    db.prepare(
+      `INSERT INTO timeline_entries (id, person_id, author_id, author_role, kind, signal_id, occurred_at) VALUES ('t-1', 'p-01', ?, 'care_manager', 'signal', 's-1', ?)`,
+    ).run(account, at);
+    db.prepare(`UPDATE people SET qr_generation = 2, qr_issued_at = ? WHERE id = 'p-01'`).run(at);
+
+    for (const s of seedStatements()) db.exec(s);
+    const count = (t: string) => (db.prepare(`SELECT count(*) AS n FROM ${t}`).get() as { n: number }).n;
+    for (const t of ["ai_calls", "disaster_state", "office_timeline_entries", "form9_rank_edits", "signals", "timeline_entries"]) {
+      expect(count(t), t).toBe(0);
+    }
+    expect(count("people")).toBe(10);
+    // QR は未作成に戻る（版 0）
+    expect(db.prepare(`SELECT qr_generation AS g, qr_issued_at AS t FROM people WHERE id = 'p-01'`).get()).toEqual({ g: 0, t: null });
     db.close();
   });
 });
