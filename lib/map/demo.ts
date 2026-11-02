@@ -29,7 +29,7 @@ const RAIN_AXIS: [GeoPoint, GeoPoint] = [
 ];
 
 /** 帯の半分の幅（km）。強い帯ほど細い */
-const RAIN_HALF_WIDTH_KM: Record<RainBand["strength"], number> = { 1: 5.2, 2: 3.0, 3: 1.4 };
+const RAIN_HALF_WIDTH_KM: Record<RainBand["strength"], number> = { 1: 3.4, 2: 1.9, 3: 0.9 };
 
 /** 警戒レベルごとに描く帯（レベル 3 は弱だけ、4 は強まで、5 は猛まで） */
 const RAIN_STRENGTHS: Record<3 | 4 | 5, RainBand["strength"][]> = { 3: [1], 4: [1, 2], 5: [1, 2, 3] };

@@ -6,7 +6,7 @@
 // 雨雲・震度はデモの絵と数字で、枠の左上に「デモ」の印を必ず出す。
 
 import Link from "next/link";
-import { useId, useMemo, useState, type SyntheticEvent } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type SyntheticEvent } from "react";
 import type { HazardKind } from "@/lib/db/types";
 import type { DemoOverlay } from "@/lib/map/demo";
 import { fitView, place, tilesFor, tileUrl, VIEW_H, VIEW_W, type View } from "@/lib/map/geo";
@@ -34,9 +34,20 @@ const PIN_DOT: Record<StateTone, string> = {
 /** 雨雲の斜線（強いほど詰めて濃く）。色は文字の色だけで、気象庁の色の段は使わない */
 const RAIN_HATCH = { 1: { gap: 7, opacity: 0.22 }, 2: { gap: 5, opacity: 0.32 }, 3: { gap: 3.5, opacity: 0.42 } } as const;
 
+/** 区域の無い所のタイルは 404 になる。壊れた画像の印を出さない */
 function hideBroken(e: SyntheticEvent<HTMLImageElement>) {
-  // 区域の無い所のタイルは 404 になる。壊れた画像の印を出さない
   e.currentTarget.style.visibility = "hidden";
+}
+
+/** 画面が動き出す前に 404 になったタイルは onError が届かないので、動き出したあとに見て隠す */
+function useHideBrokenTiles(ref: React.RefObject<HTMLDivElement | null>, deps: React.DependencyList) {
+  useEffect(() => {
+    const box = ref.current;
+    if (!box) return;
+    for (const img of box.querySelectorAll("img")) {
+      if (img.complete && img.naturalWidth === 0) img.style.visibility = "hidden";
+    }
+  }, deps); // 層の切替とタイルの組が変わるたびに見る
 }
 
 export type CaseMapProps = {
@@ -52,6 +63,7 @@ export function CaseMap({ pins, layers, demo, unplaced }: CaseMapProps) {
   const [on, setOn] = useState<ReadonlySet<HazardKind>>(() => new Set(layers));
   const [rainOn, setRainOn] = useState(true);
   const hatchId = useId();
+  const box = useRef<HTMLDivElement>(null);
 
   const view: View = useMemo(
     () =>
@@ -63,6 +75,7 @@ export function CaseMap({ pins, layers, demo, unplaced }: CaseMapProps) {
   );
   const tiles = useMemo(() => tilesFor(view), [view]);
   const shown = HAZARD_LAYERS.filter((l) => on.has(l.id) && view.z >= l.minZ && view.z <= l.maxZ);
+  useHideBrokenTiles(box, [tiles, on]);
 
   const toggle = (id: HazardKind) =>
     setOn((cur) => {
@@ -93,7 +106,25 @@ export function CaseMap({ pins, layers, demo, unplaced }: CaseMapProps) {
         {unplaced > 0 && <span className="ml-auto text-xs text-state-check tabular-nums">位置なし {unplaced} 人</span>}
       </div>
 
+      {demo && (
+        // デモの印は地図の真上の帯に置く（地図の中に置くとピンと重なる）。破線の枠で、本物の情報と見分ける
+        <div
+          className="flex items-baseline gap-1.5 rounded border border-dashed border-ink px-1.5 py-0.5 text-xs leading-5"
+          data-demo="label"
+        >
+          <span className="font-bold">デモ</span>
+          <span>{demo.title}</span>
+          {demo.quake && (
+            <span className="font-bold" data-demo="quake">
+              震度 <span className="text-lg leading-none tabular-nums">{demo.quake.intensity}</span>
+            </span>
+          )}
+          <span className="ml-auto text-muted">筋書きの値</span>
+        </div>
+      )}
+
       <div
+        ref={box}
         className="relative w-full overflow-hidden rounded-md bg-panel2"
         style={{ aspectRatio: `${VIEW_W} / ${VIEW_H}` }}
         data-zoom={view.z}
@@ -108,7 +139,8 @@ export function CaseMap({ pins, layers, demo, unplaced }: CaseMapProps) {
             decoding="async"
             onError={hideBroken}
             className="absolute max-w-none select-none dark:brightness-[.82]"
-            style={{ left: `${t.left}%`, top: `${t.top}%`, width: `${t.width}%`, height: `${t.height}%` }}
+            // 隣のタイルとの間に髪の毛ほどの隙間が出ないよう 1px 重ねる（下の地図だけ。透過の層は重ねると線が濃くなる）
+            style={{ left: `${t.left}%`, top: `${t.top}%`, width: `calc(${t.width}% + 1px)`, height: `calc(${t.height}% + 1px)` }}
             data-layer="base"
           />
         ))}
@@ -199,20 +231,6 @@ export function CaseMap({ pins, layers, demo, unplaced }: CaseMapProps) {
           );
         })}
 
-        {demo && (
-          <div
-            className="pointer-events-none absolute top-1.5 left-1.5 z-50 rounded border border-dashed border-ink bg-panel/90 px-1.5 py-0.5 text-xs leading-5"
-            data-demo="label"
-          >
-            <span className="font-bold">デモ</span>
-            <span className="ml-1.5">{demo.title}</span>
-            {demo.quake && (
-              <span className="ml-1.5 font-bold" data-demo="quake">
-                震度 <span className="text-base tabular-nums">{demo.quake.intensity}</span>
-              </span>
-            )}
-          </div>
-        )}
       </div>
 
       <figcaption className="text-[11px] leading-4 text-muted" data-attribution>
@@ -226,7 +244,6 @@ export function CaseMap({ pins, layers, demo, unplaced }: CaseMapProps) {
           </>
         )}
         <span className="ml-1">位置は架空</span>
-        {demo && <span className="ml-1">雨雲・震度は筋書きの値</span>}
       </figcaption>
     </figure>
   );

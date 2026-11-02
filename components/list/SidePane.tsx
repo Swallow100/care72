@@ -38,7 +38,7 @@ export function SidePane({ data }: { data: SidePaneData }) {
       data-side={data.mode}
     >
       <SideFold title="概況" summary={<FoldSummary data={data} />}>
-        <div className="space-y-2">{sections}</div>
+        <div className="grid items-start gap-2 md:grid-cols-2 lg:grid-cols-1">{sections}</div>
       </SideFold>
     </aside>
   );
