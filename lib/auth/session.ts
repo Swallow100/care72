@@ -28,7 +28,9 @@ export class SessionSecretMissing extends Error {
 /** 手元で SESSION_SECRET が無いときの署名の鍵。配信の build では使わない */
 export const DEV_SESSION_SECRET = "care72-dev-only-session-secret-not-for-production";
 const MIN_SECRET_LENGTH = 32;
-let warnedDevSecret = false;
+// 出したかの印は globalThis に置く（next dev は同じファイルを画面と route の 2 つの束で読むので、変数だと 2 回出る）
+const WARNED = Symbol.for("care72.devSessionSecretWarned");
+const marks = globalThis as unknown as Record<symbol, boolean | undefined>;
 
 /**
  * 署名の鍵。手元（NODE_ENV が production でない）で無ければ開発用の固定の値で動き、console に 1 行出す。
@@ -39,8 +41,8 @@ export function sessionSecret(env: { SESSION_SECRET?: string }, nodeEnv: string 
   if (v && v.length >= MIN_SECRET_LENGTH) return v;
   if (nodeEnv === "production") throw new SessionSecretMissing();
   if (v) return v;
-  if (!warnedDevSecret) {
-    warnedDevSecret = true;
+  if (!marks[WARNED]) {
+    marks[WARNED] = true;
     console.warn("SESSION_SECRET が無いので開発用の値で署名する（手元だけ。配信では止まる）");
   }
   return DEV_SESSION_SECRET;
@@ -48,7 +50,7 @@ export function sessionSecret(env: { SESSION_SECRET?: string }, nodeEnv: string 
 
 /** テストのため: 1 行出したかを戻す */
 export function resetDevSecretWarning(): void {
-  warnedDevSecret = false;
+  marks[WARNED] = false;
 }
 
 async function hmacKey(secret: string): Promise<CryptoKey> {

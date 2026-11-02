@@ -4,6 +4,7 @@ import type { Principal } from "@/lib/auth/principal";
 import { ADMIN_LABEL, canViewPage, homePath, JUDGE_LABEL, ROLE_LABELS, ROLE_SELECT_PATH } from "@/lib/auth/roles";
 import { getPrincipal } from "@/lib/auth/server";
 import { SessionSecretMissing } from "@/lib/auth/session";
+import { LoginLink } from "./LoginLink";
 import { NavLinks } from "./NavLinks";
 
 // 全部の画面の上の帯。左に名前と画面の切替、右上に 事業所名・役・ログアウト（ゲストはログイン）。
@@ -47,18 +48,14 @@ function Who({ p, desk }: { p: Principal; desk: boolean }) {
         <span className="font-bold">{role}</span>
         {p.displayName && <span> {p.displayName}</span>}
       </span>
-      {p.judge && (
-        <>
-          <span className="text-muted">{JUDGE_LABEL}</span>
-          <Link href={ROLE_SELECT_PATH} className={ACTION} data-press>
-            役変更
-          </Link>
-        </>
+      {p.judge && <span className="text-muted">{JUDGE_LABEL}</span>}
+      {p.judge && p.role !== "unselected" && (
+        <Link href={ROLE_SELECT_PATH} className={ACTION} data-press>
+          役変更
+        </Link>
       )}
       {p.role === "guest" ? (
-        <Link href="/login" className="rounded-md bg-accent px-3 py-1.5 font-bold text-on-accent" data-press="overlay">
-          ログイン
-        </Link>
+        <LoginLink />
       ) : (
         <form method="post" action="/api/auth/logout">
           <button type="submit" className={ACTION} data-press>
