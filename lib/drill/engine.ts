@@ -51,6 +51,8 @@ export type DrillTurn = {
   ai: boolean;
   /** 起きた時刻（発災からの時間） */
   at: number;
+  /** 保存した安否の signals の id（保存した刻みから読み直したときだけ。着信の声と録音の再生に使う、T21） */
+  signal?: string;
 };
 
 /**
@@ -72,6 +74,31 @@ export type PersonState = {
   at: number;
   saying: string | null;
   doing: string | null;
+  /**
+   * 赤の 4 問の答え（T21。通話・訪問で聞いた安否に写す）。T20 までに保存した状態には無い（無ければ答えていない）
+   */
+  injured?: boolean | null;
+  atHome?: boolean | null;
+  canMove?: boolean | null;
+  hasMedicine?: boolean | null;
+};
+
+/**
+ * ケアマネが通話・訪問で聞いた安否（T21、11/3 07:0x の確定 2）。本人・家族・支援者が電話に出て答えた・訪問で着いたときだけ。
+ * 色と 4 問は本人役の今の様子（PersonState）から決める（Claude は決めない）。保存の所が signals に出どころ care_manager で足し、
+ * 左の表の色・順位を動かす。AI の分類ではなく人が聞いた結果なので AI の印は付けない（言う事は文字起こしに入れない）
+ */
+export type HeardSignal = {
+  /** 通話（本人電話・連絡先電話）か訪問（着いた。「確認済」） */
+  via: "call" | "visit";
+  color: SignalColor;
+  whereNow: WhereNow | null;
+  injured: boolean | null;
+  atHome: boolean | null;
+  canMove: boolean | null;
+  hasMedicine: boolean | null;
+  /** 聞いた時刻（発災からの時間。手の終わり） */
+  at: number;
 };
 
 /**
@@ -161,6 +188,8 @@ export type ActionResult = {
   crossed: number[];
   /** 返事の時刻（終わる時刻。発災からの分） */
   atMinute: number;
+  /** 通話・訪問で聞いた安否（T21）。保存の所が signals に足す（id は `<訓練>-<手の番号>-h`）。無ければ null */
+  heard?: HeardSignal | null;
 };
 
 export type DrillState = {
@@ -375,7 +404,18 @@ function fixedToTurn(f: FixedTurn, tickHour: number): DrillTurn {
 }
 
 function personStateOf(t: DrillTurn): PersonState {
-  return { color: t.color, source: t.source, whereNow: t.whereNow, at: t.at, saying: t.saying, doing: t.doing };
+  return {
+    color: t.color,
+    source: t.source,
+    whereNow: t.whereNow,
+    at: t.at,
+    saying: t.saying,
+    doing: t.doing,
+    injured: t.injured,
+    atHome: t.atHome,
+    canMove: t.canMove,
+    hasMedicine: t.hasMedicine,
+  };
 }
 
 /** 状況を世界に当て、本人の様子を安否で進める（保存した刻みから状態を作り直すときも同じ所を通す） */

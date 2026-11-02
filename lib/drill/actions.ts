@@ -10,6 +10,10 @@
 // - 本人・家族・支援者が電話に出たら、言う事は本人役（Haiku、T18 の personaCallReply。CallHook）。鍵が無い・失敗は固定の言葉
 // - 返事が決まる時刻は手の終わり（刻みを越えた手は、越えた刻みの表の出来事のあとの世界）
 //
+// 聞いた安否（T21、11/3 07:0x の確定 2）: 本人・家族・支援者が電話に出て答えた・訪問で着いた → ケアマネが聞いた安否（HeardSignal）。
+// 色と 4 問は本人役の今の様子から決め（heardOf）、保存の所が signals に出どころ care_manager で足す。左の表の色・順位が動き、
+// 訪問の緑の理由は「訪問 確認済」。人が聞いた結果なので AI の印なし（本人役の言葉は吹き出しにだけ、AI の印つき）。
+//
 // 世界の変化（表で固定）: 訪問で着いた・受入依頼が受けられた → 本人の印（栄養剤の持ち出し忘れ・帰宅希望）を消す。
 // 訪問依頼が手配できた → 事業所の職員なら空きを 1 減らし、着く時刻に印を消し、戻る時刻に空きを 1 戻す（scenarios.ts の settleWorld）。
 // この画面で正解・不正解を出さない（採点は T22）。手の前の状態（before）を残す。
@@ -26,6 +30,7 @@ import {
   type ActionStatus,
   type DrillIncident,
   type DrillState,
+  type HeardSignal,
   type PersonState,
   type ReplyAsk,
   type ReplyWords,
@@ -94,6 +99,8 @@ export type CallAsk = {
   /** この刻みの状況 */
   incidents: ReadonlyArray<DrillIncident>;
   state: PersonState | null;
+  /** 電話で伝える様子（左の表に入る聞いた安否。T21）。本人役の言葉がこれと食い違わないように渡す */
+  tell?: HeardSignal;
 };
 
 /** 出た人の言う事。pickup が no_answer なら本人役の周りにいない相手（出ない） */
@@ -150,6 +157,26 @@ export function fixedSpeech(state: PersonState | null, callee: ContactKind | nul
   const src = callee ? SOURCE_OF[callee] : undefined;
   if (state?.saying && src && state.source === src) return state.saying;
   return CALL_FIXED_SPEECH;
+}
+
+/**
+ * ケアマネが通話・訪問で聞いた安否（11/3 07:0x の確定 2）。色と 4 問は本人役の今の様子から決める（Claude は決めない）:
+ * 本人役が赤ならその赤と 4 問の答え、それ以外（緑・安否不明・まだ連絡なし）は緑（電話に出て答えた・会えた）といる所。
+ * at は聞いた時刻（発災からの時間。手の終わり）
+ */
+export function heardOf(own: PersonState | null, via: HeardSignal["via"], at: number): HeardSignal {
+  const red = own?.color === "red";
+  const answer = (v: boolean | null | undefined) => (red ? (v ?? null) : null);
+  return {
+    via,
+    color: red ? "red" : "green",
+    whereNow: red ? null : (own?.whereNow ?? null),
+    injured: answer(own?.injured),
+    atHome: answer(own?.atHome),
+    canMove: answer(own?.canMove),
+    hasMedicine: answer(own?.hasMedicine),
+    at,
+  };
 }
 
 // ---------- 手を打つ ----------
@@ -275,11 +302,13 @@ export async function act(
   let ok = d.ok;
   let text = d.text;
   let pickup = d.pickup;
+  let heard: HeardSignal | null = null;
   if (d.status === "connected" && input.person && input.target && PERSON_CALLEES.has(input.target.kind)) {
     const own = s.people[input.person] ?? null;
+    const tell = heardOf(own, "call", endMinute / 60);
     const reply = hooks.call
       ? await hooks
-          .call({ person: input.person, target: input.target, pickup: "answers", hour: endMinute / 60, world: s.world, incidents, state: own })
+          .call({ person: input.person, target: input.target, pickup: "answers", hour: endMinute / 60, world: s.world, incidents, state: own, tell })
           .catch(() => null)
       : null;
     if (reply?.pickup === "no_answer") {
@@ -290,7 +319,13 @@ export async function act(
     } else {
       speech = reply?.speech ?? fixedSpeech(own, input.target.kind);
       speechAi = reply?.speech != null && reply.ai;
+      // 出て答えた → 聞いた安否（左の表の色・順位を動かす）
+      heard = tell;
     }
+  }
+  // 訪問で着いた → 確認済（本人に会えた）
+  if (input.kind === "visit" && status === "arrived" && input.person) {
+    heard = heardOf(s.people[input.person] ?? null, "visit", endMinute / 60);
   }
 
   const reworded = words.find((w) => w.id === record.id)?.text.trim() ?? "";
@@ -308,6 +343,7 @@ export async function act(
     staff: input.kind === "dispatch" && ok && callee !== "visiting_nurse" ? -1 : 0,
     crossed: ticks.map((t) => t.step),
     atMinute: endMinute,
+    heard,
   };
   s = applyResult(s, record.id, result);
   return { state: s, record: s.actions.find((a) => a.id === record.id)!, ticks };

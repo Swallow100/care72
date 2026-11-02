@@ -2,9 +2,11 @@
 // 訓練では本番の電話の記録・優先の上書き（本人の経過に書く部品）を出さない。電話・出向くなどの手は T20 の「対応」。
 // 連絡先は名前と続柄だけ（訓練の画面から本物の番号にかけない）。安否の時刻は訓練の経過で出す。
 // 本人役（T18、Claude）が作った安否には AI の印（aiSignals は lib/drill/view.ts の DrillScreen から）。
+// ケアマネが通話・訪問で聞いた安否（T21）は「通話」「訪問」と添える（人が聞いた結果なので AI の印なし。「確認済」は緑の理由だけ）。
+// 本人役の赤（本人の言う事つき）は、言う事を声にした物を「録音」として置く（発災時の録音と同じ場所。T21、声は AI の音声）。
 
 import { AiMark, StateTag, TONE_TEXT } from "@/components/person/parts";
-import { DRILL_LABELS } from "@/lib/drill/labels";
+import { CALL_UI, DRILL_LABELS } from "@/lib/drill/labels";
 import { COLOR_LABELS } from "@/lib/labels";
 import type { RowDetail } from "@/lib/list/detail";
 import { DETAIL_LABELS } from "@/lib/list/labels";
@@ -15,10 +17,16 @@ export function DrillRowDetail({
   detail: d,
   startedAt,
   aiSignals = [],
+  heard = {},
+  recordings = {},
 }: {
   detail: RowDetail;
   startedAt: string;
   aiSignals?: ReadonlyArray<string>;
+  /** ケアマネが通話・訪問で聞いた安否の id → 通話か訪問か */
+  heard?: Readonly<Record<string, "call" | "visit">>;
+  /** 本人の赤の言う事の声（安否の id → 声の行き先）。声を作れなければ空で文字だけ */
+  recordings?: Readonly<Record<string, string>>;
 }) {
   const ai = new Set(aiSignals);
   const hourOf = (iso: string) => Math.round(((Date.parse(iso) - Date.parse(startedAt)) / HOUR_MS) * 10) / 10;
@@ -114,12 +122,24 @@ export function DrillRowDetail({
                       {hourOf(s.at)} {DRILL_LABELS.hours}
                     </span>
                     <span className="text-xs text-muted">{s.source}</span>
+                    {heard[s.id] && (
+                      <span className="text-xs font-bold" data-heard={heard[s.id]}>
+                        {heard[s.id] === "visit" ? CALL_UI.heardVisit : CALL_UI.heardCall}
+                      </span>
+                    )}
                     {ai.has(s.id) && <AiMark small />}
                     <StateTag tone={s.tone}>
                       {s.color === "red" ? COLOR_LABELS.red : s.color === "green" ? COLOR_LABELS.green : COLOR_LABELS.gray}
                     </StateTag>
                     <span>{s.body}</span>
                   </div>
+                  {recordings[s.id] && (
+                    <div className="mt-1 flex items-center gap-2">
+                      <span className="text-xs text-muted">{CALL_UI.recording}</span>
+                      <AiMark small title="AI の音声（Gemini TTS）" />
+                      <audio controls preload="none" src={recordings[s.id]} className="h-8 min-w-0 flex-1" data-recording={s.id} />
+                    </div>
+                  )}
                   {s.transcript && <p className="mt-0.5">「{s.transcript}」</p>}
                 </li>
               ))}

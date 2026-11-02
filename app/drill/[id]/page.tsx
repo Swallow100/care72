@@ -9,6 +9,7 @@ import { DamagePanel } from "@/components/drill/DamagePanel";
 import { DrillBar } from "@/components/drill/DrillBar";
 import { DrillControls } from "@/components/drill/DrillControls";
 import { DrillRowDetail } from "@/components/drill/DrillRowDetail";
+import { IncomingCall, type IncomingCallItem } from "@/components/drill/IncomingCall";
 import { Situation } from "@/components/drill/Situation";
 import { DisasterSummary } from "@/components/list/DisasterSummary";
 import { DisasterTable, type TableSlots } from "@/components/list/DisasterTable";
@@ -17,6 +18,7 @@ import { StateTag } from "@/components/ui/Tag";
 import { requirePage } from "@/lib/auth/server";
 import { sortCaseload, type SortKey } from "@/lib/caseload";
 import { elapsedText, shortJst } from "@/lib/disaster/state";
+import { callerLabel, callsOf } from "@/lib/drill/calls";
 import { drillScope, type DrillScope } from "@/lib/drill/db";
 import { nowHour, type ActionRecord } from "@/lib/drill/engine";
 import { isDrillId } from "@/lib/drill/http";
@@ -26,6 +28,7 @@ import { COLOR_TONES } from "@/lib/person";
 import { DRILL_PATH, drillHref, parseSort, parseStep, parseView, type DrillView } from "@/lib/drill/paths";
 import { scenarioOf } from "@/lib/drill/scenarios";
 import { loadDrillScreen, type DrillScreen } from "@/lib/drill/view";
+import { voiceEnabled, voiceHref } from "@/lib/drill/voice";
 import { buildSidePane, sideDisasterOf } from "@/lib/map/side";
 import { ButtonLink } from "@/components/ui/Button";
 import { LinkPending } from "@/components/ui/LinkPending";
@@ -47,6 +50,8 @@ type Props = {
 // 右に被害状況と地図（採点 T22 の枠）。1536px は 3 列、1280px は 2 列（真ん中と右を重ねる）。
 // 上の大きな経過はケアマネの時計（手に使った時間も進む。「経過 1 時間 25 分」）。
 // 進行中は「進める」（既定）と早送り（切替）と中断。終わった・中断した訓練は再生（刻みの印か前・次で見る。Claude を呼ばない）。
+// 着信（T21）: 進行中の今の刻みの安否のうち電話の形の物（1 刻みに 2 件まで）を、画面の上に重ねた着信の画面で鳴らす（IncomingCall）。
+// 声は Gemini TTS（GET /api/drill/voice、R2 に訓練ごと）。鍵が無ければ文字だけ。本人の赤の言う事の声は行の詳細の「録音」。
 export default async function DrillScreenPage({ params, searchParams }: Props) {
   const principal = await requirePage("drill");
   const scope = drillScope(principal);
@@ -59,6 +64,7 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
   const s = await load(scope, id, parseStep(q.step));
   if (s === "failed") return <Message title="読込失敗" />;
   if (!s) return <Message title="該当なし" />;
+  const voiceOn = await voiceReady();
 
   const running = s.drill.status === "running";
   const scenario = scenarioOf(s.drill.scenario);
@@ -70,12 +76,16 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
   const rows = sortCaseload(s.rows, sort);
   const sit = s.situation;
   const outage = s.state.world.outage;
+  const recordings = voiceOn ? recordingsOf(s) : {};
   const slots: TableSlots = {
     sortHref: (k) => here({ sort: k }),
     nameHref: () => null,
     detail: (r) =>
-      r.detail ? <DrillRowDetail detail={r.detail} startedAt={s.drill.started_at} aiSignals={s.aiSignals} /> : null,
+      r.detail ? (
+        <DrillRowDetail detail={r.detail} startedAt={s.drill.started_at} aiSignals={s.aiSignals} heard={s.heard} recordings={recordings} />
+      ) : null,
   };
+  const voiceOf = (act: string) => (voiceOn ? voiceHref(id, { act }) : null);
   const side = buildSidePane(s.rows, {
     sort,
     disaster: sideDisasterOf(s.rows, { kind: scenario.kind, alertLevel: s.state.world.alertLevel }),
@@ -165,8 +175,8 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
                 {running && (
                   <ActionPanel drillId={id} step={s.drill.step} actions={actions.length} people={people} contacts={s.contacts} />
                 )}
-                {running && latest && <LatestResult action={latest} names={s.names} ticks={s.ticks} />}
-                <ActionLog actions={actions} hours={s.hours} current={s.shown} names={s.names} />
+                {running && latest && <LatestResult action={latest} names={s.names} ticks={s.ticks} voiceOf={voiceOf} />}
+                <ActionLog actions={actions} hours={s.hours} current={s.shown} names={s.names} voiceOf={voiceOf} />
               </div>
             </Panel>
             <Panel title={DRILL_LABELS.situation} id="situation">
@@ -184,8 +194,50 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
           </div>
         </div>
       </div>
+      {running && <IncomingCall drillId={id} calls={incomingOf(s, voiceOn)} />}
     </main>
   );
+}
+
+/** 進行中の今の刻みの着信（電話の形の安否、鳴らす順。lib/drill/calls.ts）。名前はケアマネの画面なので出す（声の生成には渡さない） */
+function incomingOf(s: DrillScreen, voiceOn: boolean): IncomingCallItem[] {
+  const tick = s.ticks.find((t) => t.step === s.drill.step);
+  if (!tick) return [];
+  return callsOf(tick.turns).flatMap((t) =>
+    t.signal && t.saying
+      ? [
+          {
+            signal: t.signal,
+            name: s.names[t.person] ?? t.person,
+            caller: callerLabel(t.source, s.contacts[t.person] ?? []),
+            color: t.color,
+            saying: t.saying,
+            ai: t.ai,
+            minute: Math.round(t.at * 60),
+            voice: voiceOn ? voiceHref(s.drill.id, { signal: t.signal }) : null,
+          },
+        ]
+      : [],
+  );
+}
+
+/** 本人役の赤（本人の言う事つき）の「録音」（言う事の声。安否の id → 声の行き先） */
+function recordingsOf(s: DrillScreen): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const t of s.ticks.flatMap((x) => x.turns)) {
+    if (t.signal && t.color === "red" && t.source === "agent" && t.saying) out[t.signal] = voiceHref(s.drill.id, { signal: t.signal });
+  }
+  return out;
+}
+
+/** 声を作れるか（Gemini の鍵）。読めなければ文字だけ */
+async function voiceReady(): Promise<boolean> {
+  try {
+    const { env } = await getCloudflareContext({ async: true });
+    return voiceEnabled(env);
+  } catch {
+    return false;
+  }
 }
 
 /**

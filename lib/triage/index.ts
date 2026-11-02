@@ -90,6 +90,8 @@ export type TriageSignal = {
   classes?: RecordingClass[];
   /** ケアマネが直した分類（人の分類。AI の印を付けない。Claude の分類より先に効く） */
   staffClasses?: RecordingClass[];
+  /** ケアマネが訪問で会えた（訓練の「訪問」で着いた、T21）。緑の理由は「訪問 確認済」 */
+  visit?: boolean;
 };
 
 /** 災害の情報。時刻は ISO 8601 */
@@ -389,6 +391,9 @@ const WHO: Record<ReadSignal["source"], string> = {
   staff: "医療班・行政",
 };
 
+/** ケアマネが訪問で会えた緑の理由（訓練の「訪問」、T21。11/3 07:0x の確定 2） */
+export const VISIT_CONFIRMED = "訪問 確認済";
+
 /** 表の行と足す言葉が見る物 */
 type RuleInput = {
   person: TriagePerson;
@@ -622,7 +627,7 @@ export const RULES: ReadonlyArray<Rule> = [
     origin: "仕様書",
     why: "本人・家族が無事と答えた → 連絡の順は一番下。時計が進めば上の行に移る",
     sourceIds: ["mhlw-bcp-2020"],
-    // 医療班・行政の受け入れ（T23）は「到着 避難所の名前」、搬送（T24）は「搬送 行き先」
+    // 医療班・行政の受け入れ（T23）は「到着 避難所の名前」、搬送（T24）は「搬送 行き先」、ケアマネの訪問（訓練 T21）は「訪問 確認済」
     match: (x) =>
       x.signal?.transport
         ? x.signal.transport.to
@@ -630,7 +635,9 @@ export const RULES: ReadonlyArray<Rule> = [
           : "搬送"
         : x.signal?.shelter
           ? `到着 ${x.signal.shelter}`
-          : `${who(x)}が「無事」`,
+          : x.signal?.visit
+            ? VISIT_CONFIRMED
+            : `${who(x)}が「無事」`,
   },
 ];
 

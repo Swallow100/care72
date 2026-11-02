@@ -58,7 +58,7 @@ import {
   type PseudonymInput,
   type PseudonymKey,
 } from "../pseudonym/index.ts";
-import type { ActionRecord, DrillIncident, DrillTurn, PersonaHook, PersonaInput, PersonState } from "./engine.ts";
+import type { ActionRecord, DrillIncident, DrillTurn, HeardSignal, PersonaHook, PersonaInput, PersonState } from "./engine.ts";
 import { clockLabel, PHONE_LABELS, SHELTER_LABELS, TSUNAMI_LABELS, WATER_LABELS } from "./labels.ts";
 import { eventHour, type FixedTurn, type OutageArea, type PhoneState, type WorldState } from "./scenarios.ts";
 
@@ -243,7 +243,7 @@ const ACTION_WORDS: Record<DrillAction, string> = {
   evacuate_self: "自分も避難した",
 };
 
-function answersWords(x: Pick<FixedTurn, "injured" | "atHome" | "canMove" | "hasMedicine">): string {
+function answersWords(x: { injured?: boolean | null; atHome?: boolean | null; canMove?: boolean | null; hasMedicine?: boolean | null }): string {
   const yn = (v: boolean | undefined | null, yes: string, no: string) => (v == null ? null : v ? yes : no);
   const parts = [
     yn(x.injured, "けが あり", "けが なし"),
@@ -629,12 +629,24 @@ export function decideCallPickup(phone: PhoneState, roll: number, reachable = tr
 export type PersonaCall = Pick<PersonaInput, "person" | "hour" | "world" | "incidents" | "state"> & {
   /** 電話に出る人の呼び方（本人・娘・支援者 1 など。本人役の周りの人の役割名） */
   callee: string;
+  /**
+   * 電話で伝える様子（T21）。ケアマネが聞いた安否として左の表に入る物（色と 4 問は本人役の今の様子からコードが決める）。
+   * 言葉がこれと食い違わないように渡す
+   */
+  tell?: Pick<HeardSignal, "color" | "whereNow" | "injured" | "atHome" | "canMove" | "hasMedicine">;
 };
+
+/** 伝える様子の文（Claude に渡す文。画面の言葉ではない） */
+function tellWords(t: NonNullable<PersonaCall["tell"]>): string {
+  if (t.color === "red") return `${COLOR_WORDS.red}。${answersWords(t)}`;
+  return t.whereNow ? `${COLOR_WORDS.green}。いる所 ${WHERE_WORDS[t.whereNow]}` : COLOR_WORDS.green;
+}
 
 export const CALL_SYSTEM = [
   "災害の訓練で、ケアマネからの電話に出た人を演じる。人は全部架空。",
   "入力は JSON。「本人役」は本人と周りの人の説明、「電話」は今の時刻・状況・前の連絡・電話に出た人。",
   "電話に出た人が言う事を speech に 1〜3 文で返す。ケアマネは「大丈夫ですか。今どこにいますか」と聞いている。",
+  "「伝える様子」があれば、その様子と食い違わない事を言う（無事なのにけがをしたと言わない、けがなのに無事と言わない）。",
   "本人（80 代）はやさしい短い話し言葉。松山の言い方でもよい。認知症の本人は話が噛み合わないことがある。家族・支援者はその人の口調。",
   "名前・住所・電話番号を言わない。「A さん」とも言わない。「診断」「判定」「重症」と言わない。病名を言い切らない。薬の量を言わない。",
 ].join("\n");
@@ -648,6 +660,7 @@ export function callText(call: PersonaCall, persona: Persona): string {
     `この刻みの状況: ${ownIncidents(call.incidents, call.person).map((e) => e.text).join("、") || "新しい事はない"}`,
     `前の連絡: ${stateWords(call.state)}`,
     `電話に出た人: ${call.callee}`,
+    ...(call.tell ? [`伝える様子: ${tellWords(call.tell)}`] : []),
   ].join("\n");
 }
 
