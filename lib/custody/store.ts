@@ -9,11 +9,11 @@
 
 import type { D1Database } from "@cloudflare/workers-types";
 import { JUDGE_LABEL } from "../auth/roles.ts";
-import type { ConsentStatus, CustodyVia, DeviceKind, Ledger, ReleaseKind } from "../db/types.ts";
+import type { ConsentStatus, CustodyVia, DeviceKind, Ledger, PersonOrigin, ReleaseKind } from "../db/types.ts";
 import { UNAFFILIATED_OFFICE_ID, type StaffActor } from "./actor.ts";
 import type { CustodyError } from "./labels.ts";
 import { RELEASE_LABELS } from "./labels.ts";
-import { provisionBasis, provisionScope } from "./provision.ts";
+import { provisionOf } from "./provision.ts";
 import { custodyPayload } from "./timeline.ts";
 import type { OnSiteInput } from "./forms.ts";
 
@@ -29,16 +29,23 @@ export async function receive(
 ): Promise<ReceiveResult> {
   const person = await db
     .prepare(
-      `SELECT p.id, (SELECT c.status FROM consents c WHERE c.person_id = p.id AND c.kind = 'medical') AS medical,
+      `SELECT p.id, p.origin,
+              (SELECT c.status FROM consents c WHERE c.person_id = p.id AND c.kind = 'medical') AS medical,
+              (SELECT c.scope FROM consents c WHERE c.person_id = p.id AND c.kind = 'medical') AS medical_scope,
               (SELECT cu.id FROM custody cu WHERE cu.person_id = p.id AND cu.holder_id = ?2 AND cu.released_at IS NULL) AS open_id
          FROM people p WHERE p.id = ?1`,
     )
     .bind(input.personId, actor.accountId)
-    .first<{ id: string; medical: ConsentStatus | null; open_id: string | null }>();
+    .first<{ id: string; origin: PersonOrigin; medical: ConsentStatus | null; medical_scope: string | null; open_id: string | null }>();
   if (!person) return { ok: false, error: "not_found" };
   if (person.open_id) return { ok: false, error: "already" };
 
   const consent: ConsentStatus = person.medical ?? "unconfirmed";
+  // 範囲と根拠は本人のページの出し分けと同じ所（lib/consent/scope.ts）から
+  const provided = provisionOf({
+    consents: [{ kind: "medical", status: consent, scope: person.medical_scope }],
+    origin: person.origin,
+  });
   try {
     await db.batch([
       custodyInsert(db, actor, { id, personId: person.id, shelter: input.shelter, via: input.via }, at),
@@ -57,9 +64,9 @@ export async function receive(
           actor.role,
           actor.name ?? (actor.judge ? JUDGE_LABEL : null),
           actor.judge ? 1 : 0,
-          provisionBasis(consent),
+          provided.basis,
           consent,
-          JSON.stringify(provisionScope(consent)),
+          JSON.stringify(provided.sections),
           input.shelter,
           at,
         ),
