@@ -1,6 +1,7 @@
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import Link from "next/link";
 import { ColorCounts, countColors } from "@/components/disaster/ColorCounts";
+import { SidePane } from "@/components/list/SidePane";
 import { PersonWithIntake } from "@/components/person/PersonWithIntake";
 import { StateTag, TONE_TEXT } from "@/components/person/parts";
 import { todayJst } from "@/lib/age";
@@ -22,9 +23,9 @@ import {
   type CaseloadRow,
   type SortKey,
 } from "@/lib/caseload";
-import { PLAN_STATUSES, type PlanStatus } from "@/lib/db/types";
 import { personDisaster } from "@/lib/disaster/person";
 import { CARE_LEVEL_LABELS, COLOR_LABELS, PLAN_STATUS_LABELS, TIER_LABELS } from "@/lib/labels";
+import { buildSidePane, sideDisasterOf } from "@/lib/map/side";
 import { COLOR_TONES, formatJst, loadPersonPage, toPersonView, type PersonView as View } from "@/lib/person";
 import type { Color } from "@/lib/triage/index";
 
@@ -85,22 +86,23 @@ export default async function CaseloadPage({ searchParams }: Props) {
     );
   }
 
-  const pendingRows = [...data.rows].filter((r) => r.pending > 0).sort((a, b) => b.pending - a.pending);
+  // 右の面（T14）: 平時は計画の内訳・見直し・未確認・地図。災害モード（T09）は地図が上で、ピンは行の lib/triage の色、
+  // 雨雲・震度のデモは事業所の災害の種類と警戒レベルから
+  const side = buildSidePane(rows, { sort: key, disaster: data.situation ? sideDisasterOf(rows, data.disaster) : null });
   return (
-    <main className="mx-auto grid max-w-6xl gap-6 px-4 py-6 lg:grid-cols-[minmax(0,1fr)_16rem]">
-      <section aria-labelledby="caseload-title">
+    <main className="mx-auto grid max-w-6xl gap-6 px-4 py-6 lg:grid-cols-[minmax(0,1fr)_20rem] xl:grid-cols-[minmax(0,1fr)_22rem]">
+      <section aria-labelledby="caseload-title" className="min-w-0">
         <div className="flex flex-wrap items-baseline gap-x-4 gap-y-2">
           <h1 id="caseload-title" className="text-2xl font-bold">
             担当一覧
           </h1>
           <span className="text-muted">{rows.length} 人</span>
-          {disaster ? (
+          {/* 災害モードは色ごとの人数と時点（平時の計画の人数は右の面の「計画」） */}
+          {disaster && (
             <>
               <ColorCounts counts={countColors(rows.flatMap((r) => (r.triage ? [r.triage.color] : [])))} />
               <span className="text-xs text-muted">{formatJst(now)} 時点</span>
             </>
-          ) : (
-            <PlanSummary rows={data.rows} />
           )}
         </div>
         {rows.length === 0 ? (
@@ -111,32 +113,7 @@ export default async function CaseloadPage({ searchParams }: Props) {
           </div>
         )}
       </section>
-      <aside aria-labelledby="pending-title" className="self-start rounded-lg bg-panel p-4">
-        <h2 id="pending-title" className="flex items-baseline gap-2 font-bold">
-          未確認
-          {pendingRows.length > 0 && (
-            <span className="text-sm text-state-check tabular-nums">{pendingRows.length} 人</span>
-          )}
-        </h2>
-        {pendingRows.length === 0 ? (
-          <p className="mt-3 text-muted">なし</p>
-        ) : (
-          <ul className="mt-3 space-y-1">
-            {pendingRows.map((r) => (
-              <li key={r.id}>
-                <Link
-                  href={rowLink(key, null, r.id).href}
-                  className="flex items-baseline justify-between rounded-md bg-panel2 px-3 py-2"
-                  data-press="overlay"
-                >
-                  <span>{r.name}</span>
-                  <span className="text-state-check tabular-nums">{r.pending} 件</span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        )}
-      </aside>
+      <SidePane data={side} />
     </main>
   );
 }
@@ -216,26 +193,6 @@ function CompactList({ rows, sort, open }: { rows: CaseloadRow[]; sort: SortKey;
         );
       })}
     </ul>
-  );
-}
-
-/** 計画の状態ごとの人数。数字に状態の色（0 は色なし） */
-function PlanSummary({ rows }: { rows: CaseloadRow[] }) {
-  const count = (s: PlanStatus) => rows.filter((r) => r.plan === s).length;
-  return (
-    <dl className="flex flex-wrap gap-x-4 text-sm">
-      {PLAN_STATUSES.map((s) => {
-        const n = count(s);
-        return (
-          <div key={s} className="flex items-baseline gap-1">
-            <dt className="text-muted">{PLAN_STATUS_LABELS[s]}</dt>
-            <dd className={`font-bold tabular-nums ${n > 0 ? TONE_TEXT[PLAN_TONES[s]] : "text-muted"}`} data-tone={n > 0 ? PLAN_TONES[s] : undefined}>
-              {n}
-            </dd>
-          </div>
-        );
-      })}
-    </dl>
   );
 }
 

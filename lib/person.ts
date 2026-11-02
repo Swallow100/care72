@@ -183,6 +183,11 @@ export function sectionOfField(field: string): SectionId {
   return matchField(field)?.section ?? PREFIX_SECTIONS[field.split(".")[0]] ?? "basic";
 }
 
+/** pending の field の画面の名前（いちばん長く一致する欄。無ければ「その他」）。担当一覧の右の面の見直しでも使う */
+export function fieldLabelOf(field: string): string {
+  return matchField(field)?.label ?? "その他";
+}
+
 // ---------- 画面の形 ----------
 
 /**
