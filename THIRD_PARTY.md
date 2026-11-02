@@ -30,3 +30,17 @@
 | --- | --- | --- |
 | 地理院タイル（淡色地図） | 下の地図 | 国土地理院コンテンツ利用規約。ウェブでリアルタイムに読み込むときは出典の明示（「地理院タイル」と地理院タイル一覧のページへのリンク）で申請不要 |
 | 重ねるハザードマップ（洪水浸水想定区域〔想定最大規模〕・土砂災害警戒区域・津波浸水想定） | 重ねる層 | ハザードマップポータルサイトのオープンデータ。出典「ハザードマップポータルサイト」と層ごとの作成者。土砂災害警戒区域は国土数値情報の利用規約と都道府県の条件 |
+
+## 動画の編集の道具（video/。アプリの依存にも build にも配信にも入らない）
+
+提出の 3 分動画を組む枠（T33）。`video/package.json` はこのフォルダだけの物で、ルートの依存とは別。**Remotion は MIT ではなく、上の決まり（MIT・Apache-2.0・OFL）の外**。使うかは作者の判断待ち（docs/progress/t33.md の問い 1）。使わないなら MIT の Motion Canvas で組み直せる。
+
+| 名前 | 用途 | ライセンス |
+| --- | --- | --- |
+| remotion・@remotion/cli（4.0.539） | 動画の編集の枠、書き出し | Remotion License（個人・従業員 3 人以下の営利の団体・非営利の団体は無料。MIT ではない）。[LICENSE.md](https://github.com/remotion-dev/remotion/blob/main/LICENSE.md) |
+| react・react-dom | 動画の画面 | MIT |
+| typescript | 型 | Apache-2.0 |
+| @types/react | 型 | MIT |
+| IBM Plex Sans JP・BIZ UDPGothic（書き出しのときに Google Fonts から読む） | 動画の字幕と図の書体 | OFL-1.1 |
+
+間接の依存（`video/package-lock.json`、11/3 に数えた）は MIT 200・ISC 18・BSD 15・Apache-2.0 5・MPL-2.0 4（mediabunny）・Unlicense 2・0BSD・CC-BY-4.0（caniuse-lite）・Python-2.0（argparse）のほか、Remotion の部品（@remotion/bundler・renderer・studio ほか。Remotion License）と、書き出しに使う ffmpeg の入った @remotion/compositor（license の欄なし）。動画の素材（録画・声・音楽・生成画像）の出典とライセンスは docs/video/MATERIALS.md。
