@@ -1,46 +1,13 @@
 // 受け入れのテスト: docs/SPEC.md「利用者と場面」「架空の 10 人」の大雨の筋を、種の 10 人に流す。
 // 警戒レベル 3（発災。災害モードに切り替える）→ レベル 4 → 浸水と停電。停電の始まりから 0・1・3・6・30・72 時間で、
 // 人ごとの色・理由の 1 行・並びを全部確かめる。ルールの表は docs/DECISIONS.md の案 1〜6 を入れた物（確認待ち）。
-//
-// 筋の時刻（停電の始まりを 0 とする）:
-//   -2 時間 レベル 3 高齢者等避難。ここを発災とする（透析・薬・栄養剤の時計はここから走る）
-//   -1 時間 レベル 4 避難指示
-//    0      浸水と停電（酸素・呼吸器の電池とインスリンの冷蔵の時計はここから走る）
-// 信号:
-//   1 山田   0.5 時間 本人が赤。4 問の途中で操作が止まり、録音にうめき声（分類は「不明」）
-//   3 田中  -1 時間   妻が緑。透析先が受け入れられるかは未確認のまま（台帳の時計の確認）
-//   4 佐藤   0.5 時間 本人が緑（本人の報告を当てにしない印がある）→ 4 時間 民生委員が見に行って緑
-//   6 高橋  -1 時間   娘が緑
-//   8 井上   0.5 時間 本人が緑
-//  10 中村  -1.5 時間 妻が緑
-//   2 小林・5 伊藤・7 加藤・9 渡辺 は信号なし（未知のまま）
+// 筋の時刻・信号・期待の一覧は heavy-rain.fixture.ts（担当一覧の並びのテスト lib/list/board.test.ts も同じ物を読む）。
 
 import { describe, expect, it } from "vitest";
 import { SEED_PEOPLE } from "../../seed/people.ts";
 import { toTriagePerson } from "./from-ledger.ts";
-import { rank, type Color, type Situation, type TriageResult, type TriageSignal } from "./index.ts";
-
-/** 浸水と停電の時刻（2026-11-05 18:00 JST）。h 時間あとの時刻は at(h) */
-const FLOOD = Date.parse("2026-11-05T09:00:00.000Z");
-const at = (h: number) => new Date(FLOOD + h * 3_600_000).toISOString();
-
-const LEVEL3 = at(-2);
-
-function situation(h: number): Situation {
-  return { now: at(h), disasterAt: LEVEL3, outageAt: at(0) };
-}
-
-const SIGNALS: Record<string, TriageSignal[]> = {
-  "p-01": [{ color: "red", source: "self", at: at(0.5), injured: null, canMove: null, classes: ["unknown"] }],
-  "p-03": [{ color: "green", source: "family", at: at(-1) }],
-  "p-04": [
-    { color: "green", source: "self", at: at(0.5) },
-    { color: "green", source: "supporter", at: at(4) },
-  ],
-  "p-06": [{ color: "green", source: "family", at: at(-1) }],
-  "p-08": [{ color: "green", source: "self", at: at(0.5) }],
-  "p-10": [{ color: "green", source: "family", at: at(-1.5) }],
-};
+import { EXPECTED, HOURS, SIGNALS, situation } from "./heavy-rain.fixture.ts";
+import { rank, type Color, type TriageResult } from "./index.ts";
 
 const ENTRIES = SEED_PEOPLE.map((p) => ({ person: toTriagePerson(p), signals: SIGNALS[p.person.id] ?? [] }));
 const NAME = Object.fromEntries(SEED_PEOPLE.map((p) => [p.person.id, p.person.name.split(" ")[0]]));
@@ -54,84 +21,8 @@ function board(h: number): TriageResult[] {
 const line = (r: TriageResult) => `${NAME[r.personId]} ${CHAR[r.color]} ${r.reason}`;
 const find = (h: number, id: string) => board(h).find((r) => r.personId === id)!;
 
-/** 停電の始まりから h 時間の一覧（上から連絡する順） */
-const EXPECTED: Record<number, string[]> = {
-  0: [
-    "田中 黄 無事だが透析先 未確認",
-    "山田 灰 未確認 2 時間",
-    "小林 灰 未確認 2 時間",
-    "井上 灰 未確認 2 時間",
-    "伊藤 灰 未確認 2 時間、支援者なし",
-    "加藤 灰 未確認 2 時間",
-    "渡辺 灰 未確認 2 時間",
-    "佐藤 灰 未確認 2 時間",
-    "高橋 緑 家族が「無事」",
-    "中村 緑 家族が「無事」",
-  ],
-  1: [
-    "山田 赤 本人が「無事じゃない」",
-    "田中 黄 無事だが透析先 未確認",
-    "小林 灰 未確認 3 時間",
-    "伊藤 灰 未確認 3 時間、支援者なし",
-    "加藤 灰 未確認 3 時間",
-    "渡辺 灰 未確認 3 時間",
-    "佐藤 灰 未確認 3 時間、本人の緑は参考",
-    "高橋 緑 家族が「無事」",
-    "井上 緑 本人が「無事」",
-    "中村 緑 家族が「無事」",
-  ],
-  3: [
-    "山田 赤 本人が「無事じゃない」",
-    "小林 黄 人工呼吸器 内蔵電池 残り 0 分、未確認 5 時間",
-    "田中 黄 無事だが透析先 未確認",
-    "伊藤 灰 未確認 5 時間、支援者なし",
-    "加藤 灰 未確認 5 時間",
-    "渡辺 灰 未確認 5 時間",
-    "佐藤 灰 未確認 5 時間、本人の緑は参考",
-    "高橋 緑 家族が「無事」",
-    "井上 緑 本人が「無事」",
-    "中村 緑 家族が「無事」",
-  ],
-  6: [
-    "山田 赤 本人が「無事じゃない」",
-    "小林 赤 人工呼吸器 内蔵電池 3 時間を超過",
-    "田中 黄 無事だが透析先 未確認",
-    "伊藤 灰 未確認 8 時間、支援者なし",
-    "加藤 灰 未確認 8 時間",
-    "渡辺 灰 未確認 8 時間",
-    "高橋 緑 家族が「無事」",
-    "井上 緑 本人が「無事」",
-    "佐藤 緑 支援者が「無事」",
-    "中村 緑 家族が「無事」",
-  ],
-  30: [
-    "山田 赤 本人が「無事じゃない」",
-    "小林 赤 人工呼吸器 内蔵電池 3 時間を超過",
-    "田中 黄 無事だが透析 次の回まで 残り 16 時間、透析先 未確認",
-    "伊藤 灰 未確認 32 時間、支援者なし",
-    "加藤 灰 未確認 32 時間",
-    "渡辺 灰 未確認 32 時間",
-    "高橋 緑 家族が「無事」",
-    "井上 緑 本人が「無事」",
-    "佐藤 緑 支援者が「無事」",
-    "中村 緑 家族が「無事」",
-  ],
-  72: [
-    "山田 赤 本人が「無事じゃない」",
-    "小林 赤 人工呼吸器 内蔵電池 3 時間を超過",
-    "田中 黄 無事だが透析 次の回まで 2 日を超過、透析先 未確認",
-    "高橋 黄 無事だが栄養剤 3 日を超過",
-    "井上 黄 無事だがインスリン 残り 24 時間",
-    "伊藤 黄 ステロイド 残り 46 時間、未確認 3.1 日、支援者なし",
-    "加藤 灰 未確認 3.1 日",
-    "渡辺 灰 未確認 3.1 日",
-    "佐藤 緑 支援者が「無事」",
-    "中村 緑 家族が「無事」",
-  ],
-};
-
 describe("大雨の筋（レベル 3 → 4 → 浸水と停電）を 10 人に流す", () => {
-  for (const h of [0, 1, 3, 6, 30, 72]) {
+  for (const h of HOURS) {
     it(`停電から ${h} 時間: 10 人の並び・色・理由`, () => {
       expect(board(h).map(line)).toEqual(EXPECTED[h]);
     });

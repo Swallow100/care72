@@ -261,7 +261,7 @@ type ClockState = {
   running: boolean;
 };
 
-function clockStates(person: TriagePerson, s: Situation): ClockState[] {
+function clockStates(person: Pick<TriagePerson, "clocks">, s: Situation): ClockState[] {
   const now = ms(s.now);
   return person.clocks.flatMap((clock): ClockState[] => {
     if (clock.starts_on === "none") return [];
@@ -273,6 +273,27 @@ function clockStates(person: TriagePerson, s: Situation): ClockState[] {
     const elapsed = running ? (now - start) / HOUR_MS : 0;
     return [{ clock, hours, start: running ? start : null, elapsed, remaining: hours - elapsed, running }];
   });
+}
+
+/** 時計 1 つの今の残り（担当一覧の行の詳細で出す時計の事実）。色と並びは triage が決め、ここは使わない */
+export type ClockRemaining = {
+  /** 時計の長さ（時間） */
+  hours: number;
+  /** 走っているか（停電の時計は停電が始まってから） */
+  running: boolean;
+  /** 走り出してからの時間 */
+  elapsed: number;
+  /** 残り（時間）。超えたら負 */
+  remaining: number;
+  /** 超えた（ちょうどは含まない。表と同じ読み方） */
+  over: boolean;
+};
+
+/** 時計 1 つの残り。走らない時計（本人の状態）・値の無い時計は null。停電の地区は呼ぶ側が Situation に当ててから渡す */
+export function clockRemaining(clock: TriageClock, s: Situation): ClockRemaining | null {
+  const [c] = clockStates({ clocks: [clock] }, s);
+  if (!c) return null;
+  return { hours: c.hours, running: c.running, elapsed: c.elapsed, remaining: c.remaining, over: isOver(c) };
 }
 
 /** 本人からの信号か（訓練の本人役を含む） */

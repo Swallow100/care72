@@ -6,6 +6,7 @@
 import type { D1Database } from "@cloudflare/workers-types";
 import type { RecordingClass, SignalRow } from "../db/types.ts";
 import { compareResults, triage, type Situation, type TriageEntry, type TriageResult, type TriageSignal } from "../triage/index.ts";
+import { foldSignals } from "../triage/from-ledger.ts";
 import { personSituation, type DisasterSituation } from "./state.ts";
 
 /** ルールの表の入力 1 人ぶんと、停電の地区を当てる町名 */
@@ -16,9 +17,13 @@ export function rankInDisaster(entries: ReadonlyArray<DisasterEntry>, s: Disaste
   return entries.map((e) => triageInDisaster(e, s)).sort(compareResults);
 }
 
+/**
+ * 1 人を表に当てる。信号は同じ出来事の赤を重ねて読んでから渡す（foldSignals。けがの赤のあとの答えなしの赤で「けが」を落とさない）。
+ * 担当一覧・本人のページ・様式 9 はみなここを通るので、同じ人が画面ごとに違う理由にならない
+ */
 export function triageInDisaster(e: DisasterEntry, s: DisasterSituation | Situation): TriageResult {
   const { town, ...entry } = e;
-  return triage(entry, personSituation(s, town));
+  return triage({ ...entry, signals: foldSignals(entry.person, entry.signals) }, personSituation(s, town));
 }
 
 /** 発災から今までか（時刻の書き方の違いで文字の比べ方がずれないように、数にして比べる） */
