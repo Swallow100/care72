@@ -55,7 +55,15 @@ export function createCallHook(deps: { load: () => Promise<ReadonlyMap<string, P
       if (!callee) return { pickup: ask.pickup, speech: null, ai: false };
       const r = await personaCallReply(
         persona,
-        { person: ask.person, hour: ask.hour, world: ask.world, incidents: ask.incidents, state: ask.state, callee },
+        {
+          person: ask.person,
+          hour: ask.hour,
+          world: ask.world,
+          incidents: ask.incidents,
+          state: ask.state,
+          callee,
+          ...(ask.tell ? { tell: ask.tell } : {}),
+        },
         ask.pickup,
         deps.ai,
       );
