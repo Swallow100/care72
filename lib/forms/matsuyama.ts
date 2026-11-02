@@ -502,23 +502,23 @@ export type BuildOptions = {
   officeName: string | null;
 };
 
-// ---------- 言葉の道具 ----------
+// ---------- 言葉の道具（医療要約 lib/forms/medical-summary.ts も同じ物を使う。薬・機器・時計の値を書類の間でそろえる） ----------
 
 export const BLANK = { unconfirmed: "未確認", none: "なし" } as const;
 
-const t = (text: string): Piece => ({ text });
-const sub = (text: string): Piece => ({ text, sub: true });
-const strong = (text: string): Piece => ({ text, strong: true });
-const unconfirmedPiece = (reason?: PendingStatus): Piece =>
+export const t = (text: string): Piece => ({ text });
+export const sub = (text: string): Piece => ({ text, sub: true });
+export const strong = (text: string): Piece => ({ text, strong: true });
+export const unconfirmedPiece = (reason?: PendingStatus): Piece =>
   reason ? { text: BLANK.unconfirmed, unconfirmed: true, reason } : { text: BLANK.unconfirmed, unconfirmed: true };
 const SEP: Piece = sub("／");
 
-const value = (...lines: PieceLine[]): Cell => {
+export const value = (...lines: PieceLine[]): Cell => {
   const kept = lines.map((l) => l.filter((p) => p.text !== "")).filter((l) => l.length > 0);
   return kept.length > 0 ? { kind: "value", lines: kept } : { kind: "unconfirmed" };
 };
-const unconfirmed = (reason?: PendingStatus): Cell => (reason ? { kind: "unconfirmed", reason } : { kind: "unconfirmed" });
-const NONE: Cell = { kind: "none" };
+export const unconfirmed = (reason?: PendingStatus): Cell => (reason ? { kind: "unconfirmed", reason } : { kind: "unconfirmed" });
+export const NONE: Cell = { kind: "none" };
 
 /** 文字の値。空なら未確認 */
 function textCell(v: string | null | undefined, emphasize = false): Cell {
@@ -527,7 +527,7 @@ function textCell(v: string | null | undefined, emphasize = false): Cell {
 }
 
 /** 塊を「／」でつなぐ（空の塊は落とす） */
-function joinGroups(groups: Piece[][]): PieceLine {
+export function joinGroups(groups: Piece[][]): PieceLine {
   const kept = groups.filter((g) => g.some((p) => p.text !== ""));
   return kept.flatMap((g, i) => (i === 0 ? g : [SEP, ...g]));
 }
@@ -566,10 +566,10 @@ export function withheldText(consent: ConsentKind): string {
 
 type Pending = Ledger["pending"][number];
 
-const under = (prefix: string) => (field: string) => field === prefix || field.startsWith(`${prefix}.`);
+export const under = (prefix: string) => (field: string) => field === prefix || field.startsWith(`${prefix}.`);
 
 /** 本人のページの欄の名前（いちばん長く一致する物）。欄の無い pending の見出しに使う */
-function pendingLabel(field: string): string {
+export function pendingLabel(field: string): string {
   let best: { key: string; label: string } | null = null;
   for (const f of PAGE_FIELDS) {
     if (under(f.key)(field) && (!best || f.key.length > best.key.length)) best = f;
@@ -623,10 +623,10 @@ function withPending(cell: Cell, reason: PendingStatus | undefined): Cell {
 
 // ---------- 連絡先 ----------
 
-type Contact = PersonPageRows["contacts"][number];
-type Clock = PersonPageRows["clocks"][number];
+export type Contact = PersonPageRows["contacts"][number];
+export type Clock = PersonPageRows["clocks"][number];
 
-function contactName(c: Contact): Piece[] {
+export function contactName(c: Contact): Piece[] {
   const out: Piece[] = [strong(c.name ?? c.relation ?? CONTACT_KIND_LABELS[c.kind])];
   if (c.name && c.relation) out.push(sub(c.relation));
   return out;
@@ -696,12 +696,12 @@ function consentCell(
 
 // ---------- 医療 ----------
 
-function clockValue(k: Clock): string | null {
+export function clockValue(k: Clock): string | null {
   return k.value != null && k.unit != null ? `${k.value} ${CLOCK_UNIT_LABELS[k.unit]}` : null;
 }
 
 /** 時計の出典と起点（「停電から・説明書」） */
-function clockBasis(k: Clock): string {
+export function clockBasis(k: Clock): string {
   const parts: string[] = [];
   if (k.starts_on !== "none") parts.push(`${CLOCK_START_LABELS[k.starts_on]}から`);
   if (k.source) parts.push(CLOCK_SOURCE_LABELS[k.source]);
@@ -710,7 +710,7 @@ function clockBasis(k: Clock): string {
 }
 
 /** 時計の 1 塊: 名前・長さ・出典・頼り先・メモ */
-function clockGroup(k: Clock, label = k.label): Piece[] {
+export function clockGroup(k: Clock, label = k.label): Piece[] {
   const v = clockValue(k);
   const out: Piece[] = [t(label), v ? strong(v) : k.starts_on === "none" ? t("") : unconfirmedPiece()];
   const basis = clockBasis(k);
@@ -727,7 +727,7 @@ function clockGroup(k: Clock, label = k.label): Piece[] {
 const POWERED: ReadonlySet<DeviceKind> = new Set(["oxygen", "ventilator", "suction"]);
 
 /** 薬の区分と時計の区分（名前で当たらないときに使う） */
-const MED_CLOCK_CATEGORY: Partial<Record<MedicationCategory, ClockRow["category"]>> = {
+export const MED_CLOCK_CATEGORY: Partial<Record<MedicationCategory, ClockRow["category"]>> = {
   anticoagulant: "anticoagulant",
   insulin: "insulin",
   steroid: "steroid",
@@ -741,10 +741,10 @@ function sameMedication(clockLabel: string, medicationName: string): boolean {
 
 const MED_REMAINING = /^medical\.medications\.([^.]+)\.remaining$/;
 
-type Medication = Ledger["medical"]["medications"][number];
+export type Medication = Ledger["medical"]["medications"][number];
 
 /** 薬ごとの残りの時計。使った時計は used に入れる */
-function medicationClocks(meds: readonly Medication[], clocks: readonly Clock[], used: Set<string>): Array<Clock | null> {
+export function medicationClocks(meds: readonly Medication[], clocks: readonly Clock[], used: Set<string>): Array<Clock | null> {
   const candidates = clocks.filter((k) => k.kind === "medication" || k.kind === "supply");
   return meds.map((m) => {
     const byName = candidates.find((k) => !used.has(k.id) && sameMedication(k.label, m.name));
@@ -760,7 +760,7 @@ function medicationClocks(meds: readonly Medication[], clocks: readonly Clock[],
  * 薬の残りの pending が当たる薬の番号。番号か名前で探し、無ければ残りの分からない薬が 1 つだけのときにそこへ
  * （種の山田さんの「warfarin」はこれ。本人のページ lib/person.ts と同じ決まり）
  */
-function pendingMedicationIndex(field: string, meds: readonly Medication[], medClocks: ReadonlyArray<Clock | null>): number {
+export function pendingMedicationIndex(field: string, meds: readonly Medication[], medClocks: ReadonlyArray<Clock | null>): number {
   const m = MED_REMAINING.exec(field);
   if (!m) return -1;
   if (/^\d+$/.test(m[1])) return Number(m[1]) < meds.length ? Number(m[1]) : -1;
@@ -798,7 +798,7 @@ function medicationLine(m: Medication, clock: Clock | null, reason: PendingStatu
 }
 
 /** 機器の 1 行: 名前・中身・回数 ／ その区分の時計（電池・予備）。電気の機器で時計が無ければ未確認 */
-function deviceLine(d: Ledger["medical"]["devices"][number], clocks: readonly Clock[], used: Set<string>): PieceLine {
+export function deviceLine(d: Ledger["medical"]["devices"][number], clocks: readonly Clock[], used: Set<string>): PieceLine {
   const mine = clocks.filter((k) => k.category === d.kind && !used.has(k.id));
   for (const k of mine) used.add(k.id);
   const groups: Piece[][] = [[strong(DEVICE_LABELS[d.kind]), t(d.detail ?? ""), t(d.schedule ?? "")]];
@@ -812,7 +812,7 @@ function deviceLine(d: Ledger["medical"]["devices"][number], clocks: readonly Cl
 }
 
 /** 配列の値。無ければ未確認、空ならなし */
-function listPieces(label: string, v: readonly string[] | undefined): Piece[] {
+export function listPieces(label: string, v: readonly string[] | undefined): Piece[] {
   if (v === undefined) return [sub(label), unconfirmedPiece()];
   if (v.length === 0) return [sub(label), t(BLANK.none)];
   return [sub(label), t(v.join("・"))];
