@@ -10,11 +10,12 @@ import { parseLedger } from "../db/ledger.ts";
 import type { ClockRow, ContactRow, DrillRow, PersonRow } from "../db/types.ts";
 import type { DisasterSituation } from "../disaster/state.ts";
 import { toTriageSignal } from "../disaster/triage.ts";
+import { callTargetText } from "../list/calls.ts";
 import type { ClockForDetail, ContactForDetail, SignalForDetail } from "../list/detail.ts";
 import type { TriageSignal } from "../triage/index.ts";
 import { loadDrillRow, loadTicks, participantsOf, replayState, type DrillScope } from "./db.ts";
 import { drillClocks } from "./director.ts";
-import { drillSituation, simAt, type DrillState, type Tick } from "./engine.ts";
+import { drillSituation, nowHour, simAt, type DrillState, type Tick } from "./engine.ts";
 import { lastHour, scenarioOf } from "./scenarios.ts";
 
 /** 72 時間の棒の帯（停電・断水・電話）。始まりと終わりは発災からの時間。終わりが無ければ今まで続いている */
@@ -39,7 +40,14 @@ export type DrillScreen = {
   bands: Band[];
   /** 本人役（T18、Claude）が作った安否の signals の id。行の詳細の安否に AI の印を付ける */
   aiSignals: string[];
+  /**
+   * 本人ごとの連絡先（ケアマネの手の相手を選ぶ。T20）。区分と続柄の言い方と、番号があるかだけ（名前と番号は画面に出さない。
+   * 訓練の画面から本物の番号にかけない、T17 の決め）
+   */
+  contacts: Record<string, DrillContact[]>;
 };
+
+export type DrillContact = { id: string; kind: ContactRow["kind"]; label: string; hasPhone: boolean };
 
 type PersonForDrill = Pick<PersonRow, "id" | "name" | "kana" | "birth_date" | "plan_status" | "self_report_unreliable" | "ledger">;
 
@@ -176,10 +184,20 @@ export async function loadDrillScreen(
     aiSignals: (aiTurns.results as Array<{ signal: unknown }>)
       .map((r) => r.signal)
       .filter((x): x is string => typeof x === "string"),
+    contacts: contactsByPerson(contactRows),
   };
+}
+
+/** 本人ごとの連絡先（台帳の並び）。名前と番号は落とす */
+export function contactsByPerson(rows: ReadonlyArray<Pick<ContactRow, "id" | "person_id" | "kind" | "relation" | "phone">>): Record<string, DrillContact[]> {
+  const out: Record<string, DrillContact[]> = {};
+  for (const c of rows) {
+    (out[c.person_id] ??= []).push({ id: c.id, kind: c.kind, label: callTargetText(c), hasPhone: Boolean(c.phone?.trim()) });
+  }
+  return out;
 }
 
 /** 想定の今の時刻（ISO）。画面の「今の時刻」 */
 export function screenNow(s: Pick<DrillScreen, "drill" | "state">): string {
-  return simAt(s.drill.started_at, s.state.hour);
+  return simAt(s.drill.started_at, nowHour(s.state));
 }

@@ -17,7 +17,7 @@ import * as z from "zod";
 import { askJson, type AskJsonContext, type AskJsonRequest } from "../claude/call.ts";
 import type { CheckStatus, ClockCategory, ContactKind, DependsOn, DrillAction } from "../db/types.ts";
 import { EXTRA_PENDING_LABELS, intakeField } from "../intake/fields.ts";
-import { CARE_LEVEL_LABELS, DEVICE_LABELS, HOUSEHOLD_LABELS, MEDICATION_CATEGORY_LABELS } from "../labels.ts";
+import { CARE_LEVEL_LABELS, CONTACT_KIND_LABELS, DEVICE_LABELS, HOUSEHOLD_LABELS, MEDICATION_CATEGORY_LABELS } from "../labels.ts";
 import {
   pseudonymize,
   pseudonymizeText,
@@ -30,8 +30,17 @@ import {
 import { isSourceId, type SourceId } from "../sources/index.ts";
 import { NO_BASIS } from "../sources/prompt.ts";
 import { clockRemaining, formatHours, type Situation, type TriageClock } from "../triage/index.ts";
-import { DIRECTOR_MAX, type DirectorEvent, type DirectorHook, type DirectorInput, type PersonState } from "./engine.ts";
-import { PHONE_LABELS, SHELTER_LABELS, TSUNAMI_LABELS, WATER_LABELS } from "./labels.ts";
+import {
+  DIRECTOR_MAX,
+  type DirectorEvent,
+  type DirectorHook,
+  type DirectorInput,
+  type DirectorResult,
+  type PersonState,
+  type ReplyAsk,
+  type ReplyWords,
+} from "./engine.ts";
+import { CALL_STATUS_LABELS, PHONE_LABELS, SHELTER_LABELS, TSUNAMI_LABELS, WATER_LABELS } from "./labels.ts";
 import { cleanWords, isPersonaFailure, reportersOf } from "./persona.ts";
 import {
   INJECT_KINDS,
@@ -292,6 +301,12 @@ export const DIRECTOR_SYSTEM = [
   "2. 1 刻みに多くて 2 つ。同じ人に 2 つ差し込まない。この刻みの状況と同じ事を重ねない。",
   "3. 人の生き死にを決める状況（亡くなる・意識がない・火事）を作らない。けがや体の具合は書かない（本人役が演じる）。",
   "4. 色・順位・優先・助言を書かない。診断・病名・薬の量を書かない。",
+  "",
+  "入力に「返事」があるときだけ、replies も返す（無ければ空の配列か省く）。ケアマネの手（電話・訪問・手配・依頼・報告）に世界が返した結果の言い換え:",
+  "- replies: 返事の id ごとに 1 つ。",
+  "  - id: 返事の id（「a3」の形）。",
+  "  - text: 現場で聞こえる言い方の 1 文（30 字まで）。結果と事実を変えない・足さない（着いた・着けない・受けた・断られたを逆にしない）。",
+  "    けが・体の具合・人の様子を足さない。仮名・名前・場所の名前を書かない。",
 ].join("\n");
 
 /**
@@ -308,22 +323,75 @@ export const DirectorSchema = z.object({
       basis: z.string(),
     }),
   ),
+  // 世界の返事の言い換え（T20）。「返事」を渡したときだけ。省いてよい（T19 の形の返事も受ける）
+  replies: z.array(z.object({ id: z.string(), text: z.string() })).optional(),
 });
 
 export type DirectorAnswer = z.output<typeof DirectorSchema>;
 
-/** Claude に渡す要求。入力は伏せた文だけ（型で縛る）。モデルと考える深さは用途 director の既定（Opus） */
+/** Claude に渡す要求。入力は伏せた文だけ（型で縛る）。モデルと考える深さは用途 director の既定（Opus）。返事は言い換えを頼むときだけ */
 export function buildDirectorRequest(
   scene: ForClaude<{ text: string }>,
   weak: ForClaude<{ text: string }>,
+  replies?: ForClaude<{ text: string }>,
 ): AskJsonRequest<typeof DirectorSchema> {
   return {
     purpose: "director",
     system: DIRECTOR_SYSTEM,
-    input: { 想定: scene, 弱点: weak },
+    input: { 想定: scene, 弱点: weak, ...(replies ? { 返事: replies } : {}) },
     schema: DirectorSchema,
     sources: DIRECTOR_SOURCES,
   };
+}
+
+// ---------- 世界の返事の言い換え（T20。監督の 1 回に相乗り） ----------
+
+/** 言い換えの文の長さの上限（字） */
+export const REPLY_TEXT_MAX = 30;
+
+/** 手の言い方（指示の文。画面の言葉ではない） */
+const REPLY_ACTION_WORDS: Readonly<Record<DrillAction, string>> = {
+  call_person: "本人に電話",
+  call_contact: "連絡先に電話",
+  visit: "ケアマネが家に向かった",
+  dispatch: "訪問看護・介護の人に行ってもらうよう頼んだ",
+  request_welfare_shelter: "福祉避難所に受け入れを頼んだ",
+  report_city: "市役所に報告",
+  evacuate_self: "ケアマネが自分も避難",
+};
+
+const statusWords = (s: string): string =>
+  (WORLD_REPLY_LABELS as Readonly<Record<string, string>>)[s] ?? (CALL_STATUS_LABELS as Readonly<Record<string, string>>)[s] ?? s;
+
+/** 言い換える返事の文。本人は仮名（aliasOf）、相手は区分の言い方（訪問看護・透析施設）。名前・番号は無い */
+export function replyText(replies: ReadonlyArray<ReplyAsk>, aliasOf: ReadonlyMap<string, string>): string {
+  return [
+    "ケアマネの手への世界の返事（言い換える物）:",
+    ...replies.map((r) => {
+      const who = r.person && aliasOf.has(r.person) ? `${aliasOf.get(r.person)}` : null;
+      const callee = r.callee ? CONTACT_KIND_LABELS[r.callee] : null;
+      const about = [who, callee].filter(Boolean).join("・");
+      return [
+        `- ${r.id}: ${REPLY_ACTION_WORDS[r.action]}${about ? `（${about}）` : ""} → ${statusWords(r.status)}。`,
+        r.because ? `事実: ${r.because}。` : "",
+        `今の文「${r.text}」`,
+      ].join("");
+    }),
+  ].join("\n");
+}
+
+/** 言い換えの返事を検査する。頼んだ id の物だけ、文は本人役と同じ掃除（仮名は「本人」、使わない言葉・元の情報が残る物は捨てる） */
+export function directorWords(answer: DirectorAnswer, ctx: { key: PseudonymKey; asked: ReadonlyArray<ReplyAsk> }): ReplyWords[] {
+  const asked = new Set(ctx.asked.map((r) => r.id));
+  const out: ReplyWords[] = [];
+  for (const r of answer.replies ?? []) {
+    const id = r.id.trim();
+    if (!asked.has(id) || out.some((x) => x.id === id)) continue;
+    if (DANGER.test(r.text)) continue;
+    const text = cleanWords(r.text, ctx.key, REPLY_TEXT_MAX);
+    if (text) out.push({ id, text });
+  }
+  return out;
 }
 
 // ---------- 返事 → 差し込み ----------
@@ -391,19 +459,22 @@ export type DirectorDeps = {
 
 /**
  * engine の DirectorHook を作る（1 要求ごと）。1 刻みに Opus を 1 回。
- * 参加者を並びの順に A さん・B さん…と伏せ、世界の様子と台帳の弱点の要約だけを渡す。差し込める人がいなければ呼ばない。
- * 失敗は差し込みなし（AI の層の失敗でない物は名前だけログに残す）
+ * 参加者を並びの順に A さん・B さん…と伏せ、世界の様子と台帳の弱点の要約だけを渡す。差し込める人がいなければ呼ばない
+ * （ケアマネの手の返事の言い換え〔T20〕を頼まれていれば、差し込める人がいなくても 1 回呼ぶ）。
+ * 失敗は差し込みなし・言い換えなし（AI の層の失敗でない物は名前だけログに残す）
  */
 export function createDirectorHook(deps: DirectorDeps): DirectorHook {
   let loaded: Promise<ReadonlyMap<string, PseudonymInput>> | null = null;
-  return async (input) => {
+  const none: DirectorResult = { events: [], words: [] };
+  return async (input): Promise<DirectorResult> => {
     try {
       const sources = await (loaded ??= deps.load());
       const members = input.participants.filter((p) => sources.has(p));
-      if (members.length === 0) return [];
+      if (members.length === 0) return none;
       const list = members.map((p) => sources.get(p)!);
       const eligible = new Map(members.map((p) => [p, eligibleKinds(sources.get(p)!, p, input.world, input.people[p] ?? null)]));
-      if (![...eligible.values()].some((k) => k.length > 0)) return [];
+      const asked = input.replies ?? [];
+      if (![...eligible.values()].some((k) => k.length > 0) && asked.length === 0) return none;
 
       const { payload, key } = pseudonymize(list, deps.on ? { on: deps.on } : {});
       const aliasOf = new Map(key.people.map((p) => [p.personId, p.alias]));
@@ -417,11 +488,12 @@ export function createDirectorHook(deps: DirectorDeps): DirectorHook {
       }));
       const scene = pseudonymizeText(sceneText(input, aliasOf, last), key);
       const weak = pseudonymizeText(weaknessText(entries, input.world, input.hour), key);
-      const r = await askJson(buildDirectorRequest(scene, weak), deps.ai);
-      return directorEvents(r.value, { key, eligible });
+      const replies = asked.length > 0 ? pseudonymizeText(replyText(asked, aliasOf), key) : undefined;
+      const r = await askJson(buildDirectorRequest(scene, weak, replies), deps.ai);
+      return { events: directorEvents(r.value, { key, eligible }), words: directorWords(r.value, { key, asked }) };
     } catch (e) {
       if (!isPersonaFailure(e)) console.error("監督の 1 刻みに失敗", e instanceof Error ? e.name : typeof e);
-      return [];
+      return none;
     }
   };
 }

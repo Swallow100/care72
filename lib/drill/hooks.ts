@@ -10,19 +10,22 @@ import type { AskJsonContext } from "../claude/call.ts";
 import { hasAnthropicKey, type AiEnv, type ClaudeClient } from "../claude/client.ts";
 import { d1UsageStore } from "../claude/usage.ts";
 import type { PseudonymInput } from "../pseudonym/index.ts";
+import type { ActionHooks, CallHook } from "./actions.ts";
 import { drillScope } from "./db.ts";
 import { createDirectorHook } from "./director.ts";
-import type { StepHooks } from "./engine.ts";
-import { createPersonaHook, loadPersonaSources } from "./persona.ts";
+import { buildPersona, createPersonaHook, isPersonaFailure, loadPersonaSources, personaCallReply } from "./persona.ts";
 
 export type DrillHookEnv = AiEnv & { DB: D1Database };
 
-/** 鍵があり、ケアマネの役（審査員のケアマネの役も）なら監督と本人役の hooks。無ければ undefined（固定の状況と安否） */
+/**
+ * 鍵があり、ケアマネの役（審査員のケアマネの役も）なら監督と本人役の hooks。無ければ undefined（固定の状況と安否）。
+ * call はケアマネの手（T20）の電話に出た人の言う事（本人役 Haiku × 1 回）。刻みの route は使わない
+ */
 export function drillHooks(
   env: DrillHookEnv,
   p: Principal | null,
   opts: { claude?: ClaudeClient; now?: () => Date } = {},
-): StepHooks | undefined {
+): ActionHooks | undefined {
   if (!hasAnthropicKey(env)) return undefined;
   const scope = drillScope(p);
   if (!scope || !p?.office) return undefined;
@@ -35,5 +38,31 @@ export function drillHooks(
   };
   let sources: Promise<ReadonlyMap<string, PseudonymInput>> | null = null;
   const load = () => (sources ??= loadPersonaSources(env.DB, scope.officeId));
-  return { director: createDirectorHook({ load, ai }), persona: createPersonaHook({ load, ai }) };
+  return { director: createDirectorHook({ load, ai }), persona: createPersonaHook({ load, ai }), call: createCallHook({ load, ai }) };
+}
+
+/**
+ * 電話に出た人の言う事（T18 の personaCallReply）。相手の呼び方は本人役の役割名（本人・娘・支援者 1）。
+ * 台帳に無い本人・読めない台帳・Haiku の失敗は言葉なし（手の所が固定の言葉にする）
+ */
+export function createCallHook(deps: { load: () => Promise<ReadonlyMap<string, PseudonymInput>>; ai: AskJsonContext; on?: string }): CallHook {
+  return async (ask) => {
+    try {
+      const source = (await deps.load()).get(ask.person);
+      if (!source) return { pickup: ask.pickup, speech: null, ai: false };
+      const persona = buildPersona(source, deps.on ? { on: deps.on } : {});
+      const callee = ask.target.kind === "self" ? "本人" : (persona.roles.get(ask.target.id) ?? null);
+      if (!callee) return { pickup: ask.pickup, speech: null, ai: false };
+      const r = await personaCallReply(
+        persona,
+        { person: ask.person, hour: ask.hour, world: ask.world, incidents: ask.incidents, state: ask.state, callee },
+        ask.pickup,
+        deps.ai,
+      );
+      return { pickup: r.pickup, speech: r.speech, ai: r.ai };
+    } catch (e) {
+      if (!isPersonaFailure(e)) console.error("通話の相手に失敗", e instanceof Error ? e.name : typeof e);
+      return { pickup: ask.pickup, speech: null, ai: false };
+    }
+  };
 }

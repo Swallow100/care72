@@ -3,6 +3,8 @@ import { getCloudflareContext } from "@opennextjs/cloudflare";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { countColors } from "@/components/disaster/ColorCounts";
+import { ActionLog, LatestResult } from "@/components/drill/ActionLog";
+import { ActionPanel, type PanelPerson } from "@/components/drill/ActionPanel";
 import { DamagePanel } from "@/components/drill/DamagePanel";
 import { DrillBar } from "@/components/drill/DrillBar";
 import { DrillControls } from "@/components/drill/DrillControls";
@@ -11,12 +13,16 @@ import { Situation } from "@/components/drill/Situation";
 import { DisasterSummary } from "@/components/list/DisasterSummary";
 import { DisasterTable, type TableSlots } from "@/components/list/DisasterTable";
 import { CaseMap } from "@/components/map/CaseMap";
+import { StateTag } from "@/components/ui/Tag";
 import { requirePage } from "@/lib/auth/server";
 import { sortCaseload, type SortKey } from "@/lib/caseload";
 import { elapsedText, shortJst } from "@/lib/disaster/state";
 import { drillScope, type DrillScope } from "@/lib/drill/db";
+import { nowHour, type ActionRecord } from "@/lib/drill/engine";
 import { isDrillId } from "@/lib/drill/http";
-import { DRILL_LABELS, elapsedLabel, SCENARIO_LABELS, STATUS_LABELS } from "@/lib/drill/labels";
+import { ACTION_LABELS, DRILL_LABELS, elapsedClockLabel, SCENARIO_LABELS, STATUS_LABELS } from "@/lib/drill/labels";
+import { COLOR_LABELS } from "@/lib/labels";
+import { COLOR_TONES } from "@/lib/person";
 import { DRILL_PATH, drillHref, parseSort, parseStep, parseView, type DrillView } from "@/lib/drill/paths";
 import { scenarioOf } from "@/lib/drill/scenarios";
 import { loadDrillScreen, type DrillScreen } from "@/lib/drill/view";
@@ -37,7 +43,9 @@ type Props = {
 
 // 訓練の画面（docs/tasks/T17.md、docs/SPEC.md「画面 4 訓練」）。横画面の分割:
 // 上に 72 時間の棒と今の時刻、左に担当一覧と同じ形の表（components/list/DisasterTable。訓練の安否で lib/triage の色が付く。圧縮できる）、
-// 真ん中に状況と対応（T20 の枠）、右に被害状況と地図（採点 T22 の枠）。1536px は 3 列、1280px は 2 列（真ん中と右を重ねる）。
+// 真ん中に対応（T20: 対象・7 つの手・相手を選んで実行、結果の吹き出しと着信、刻みごとの履歴）と状況、
+// 右に被害状況と地図（採点 T22 の枠）。1536px は 3 列、1280px は 2 列（真ん中と右を重ねる）。
+// 上の大きな経過はケアマネの時計（手に使った時間も進む。「経過 1 時間 25 分」）。
 // 進行中は「進める」（既定）と早送り（切替）と中断。終わった・中断した訓練は再生（刻みの印か前・次で見る。Claude を呼ばない）。
 export default async function DrillScreenPage({ params, searchParams }: Props) {
   const principal = await requirePage("drill");
@@ -74,6 +82,18 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
   });
   const pins = side.pins.map((p) => ({ ...p, href: here() }));
 
+  // 対応の欄（T20）: 対象は左の表の優先の順、色の印はルールの表の色。手の途中で進んだ刻みは状況の欄で着信に
+  const actions = s.state.actions;
+  const people: PanelPerson[] = [...s.rows]
+    .sort((a, b) => (a.rank ?? 999) - (b.rank ?? 999) || a.kana.localeCompare(b.kana))
+    .map((r) => ({
+      id: r.id,
+      name: r.name,
+      tag: r.triage ? <StateTag tone={COLOR_TONES[r.triage.color]}>{COLOR_LABELS[r.triage.color]}</StateTag> : null,
+    }));
+  const latest = [...actions].reverse().find((a) => a.result !== null) ?? null;
+  const during = duringOf(actions, s.names);
+
   return (
     <main className="mx-auto max-w-[112rem] space-y-3 px-4 py-4" data-drill={id} data-step={s.shown} data-status={s.drill.status}>
       <header className="flex flex-wrap items-center gap-x-4 gap-y-2">
@@ -99,8 +119,8 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
 
       <section aria-label={DRILL_LABELS.elapsed} className="grid gap-x-6 gap-y-2 rounded-lg bg-panel px-3 py-3 lg:grid-cols-[11rem_minmax(0,1fr)]">
         <div>
-          <div className="text-2xl font-bold tabular-nums" data-now-hour={s.state.hour}>
-            {elapsedLabel(s.state.hour)}
+          <div className="text-2xl font-bold tabular-nums" data-now-hour={s.state.hour} data-now-minute={s.state.minute}>
+            {elapsedClockLabel(s.state.minute)}
           </div>
           <div className="text-sm text-muted tabular-nums">
             {shortJst(sit.now)}
@@ -110,7 +130,7 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
         <DrillBar
           hours={s.hours}
           last={s.last}
-          now={s.state.hour}
+          now={nowHour(s.state)}
           bands={s.bands}
           reached={s.drill.step}
           {...(replay ? { hrefOf: (i: number) => here({ step: i }) } : {})}
@@ -139,12 +159,18 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
 
         <div className={`grid min-w-0 items-start gap-3 ${grid.inner}`}>
           <div className="min-w-0 space-y-3">
-            <Panel title={DRILL_LABELS.situation} id="situation">
-              <Situation ticks={s.ticks} names={s.names} startedAt={s.drill.started_at} />
-            </Panel>
-            {/* ケアマネの手（T20）。この作業では履歴を出すだけ */}
+            {/* ケアマネの手（T20）: 対象・手・相手を選んで実行、結果、刻みごとの履歴 */}
             <Panel title={DRILL_LABELS.actions} id="actions">
-              {s.state.actions.length === 0 ? <p className="text-sm text-muted">{DRILL_LABELS.none}</p> : null}
+              <div className="space-y-2.5">
+                {running && (
+                  <ActionPanel drillId={id} step={s.drill.step} actions={actions.length} people={people} contacts={s.contacts} />
+                )}
+                {running && latest && <LatestResult action={latest} names={s.names} ticks={s.ticks} />}
+                <ActionLog actions={actions} hours={s.hours} current={s.shown} names={s.names} />
+              </div>
+            </Panel>
+            <Panel title={DRILL_LABELS.situation} id="situation">
+              <Situation ticks={s.ticks} names={s.names} startedAt={s.drill.started_at} during={during} />
             </Panel>
           </div>
           <div className="min-w-0 space-y-3">
@@ -207,6 +233,17 @@ function ViewToggle({ view, hrefOf }: { view: DrillView; hrefOf: (v: DrillView) 
       </Link>
     </>
   );
+}
+
+/** 手の途中で進んだ刻み → その手の言い方（「訪問 伊藤 フミ」） */
+function duringOf(actions: ReadonlyArray<ActionRecord>, names: Readonly<Record<string, string>>): Record<number, string> {
+  const out: Record<number, string> = {};
+  for (const a of actions) {
+    for (const st of a.result?.crossed ?? []) {
+      out[st] = [ACTION_LABELS[a.kind], a.person ? names[a.person] : null].filter(Boolean).join(" ");
+    }
+  }
+  return out;
 }
 
 /** 見る刻みの中身。進行中は今の刻みだけ（先も前も見ない。前を見るのは終わってからの再生） */
