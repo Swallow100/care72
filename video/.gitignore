@@ -1,0 +1,9 @@
+# 素材と書き出しはリポジトリに入れない（docs/video/MATERIALS.md の「置き場所」）
+node_modules/
+out/
+raw/
+.tmp/
+public/footage/
+public/audio/
+public/images/
+public/assets.json

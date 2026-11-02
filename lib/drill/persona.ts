@@ -304,6 +304,12 @@ function worldWords(world: WorldState, person: string, persona: Persona): string
   for (const f of world.facilities.filter((x) => !x.person || x.person === person)) {
     out.push(`${f.label} ${f.open ? "稼働" : "休止"}${f.person === person ? "（この人が通う所）" : ""}`);
   }
+  // 監督の差し込み（T19）で付いたこの人の印
+  const m = world.marks?.[person] ?? {};
+  if (m.supplyLeft !== undefined) out.push(`栄養剤を家に置いてきた（${m.supplyLeft} 時間から）`);
+  if (m.nurseAway !== undefined) out.push(`訪問看護が来られない（${m.nurseAway} 時間から）`);
+  if (m.goingHome !== undefined) out.push(`本人が家に帰ろうとしている（${m.goingHome} 時間から）`);
+  if (m.lineDown !== undefined) out.push(`この家の電話が不通（${m.lineDown} 時間から）`);
   return out;
 }
 

@@ -60,7 +60,22 @@ export const EVENT_KIND_LABELS: Record<WorldEventKind, string> = {
   road: "道路",
   shelter: "避難所",
   facility: "施設",
+  supply_left: "持出品",
+  nurse_away: "訪問看護",
+  going_home: "帰宅",
+  line_down: "電話",
 };
+
+/** 本人ごとの印（被害状況の「個別」の欄）。PersonMarks の鍵ごと */
+export const MARK_LABELS = {
+  supplyLeft: "未持出",
+  nurseAway: "訪問不可",
+  goingHome: "帰宅希望",
+  lineDown: "電話不通",
+} as const;
+
+/** 状況の欄で根拠の出典に添える言葉 */
+export const BASIS_LABEL = "出典";
 
 /** 被害状況の欄の名前 */
 export const WORLD_LABELS = {
@@ -84,6 +99,10 @@ export const WORLD_LABELS = {
   closed: "通行止",
   running: "稼働",
   stopped: "休止",
+  staff: "職員",
+  staffFree: "空き",
+  people: "人",
+  marks: "個別",
 } as const;
 
 export const PHONE_LABELS: Record<PhoneState, string> = { ok: "通常", busy: "不安定", down: "不通" };

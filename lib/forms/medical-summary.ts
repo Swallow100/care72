@@ -361,6 +361,8 @@ export type MedicalSummary = {
   medicalId: MedicalId;
   basis: BasisLine[];
   pending: MedicalPending[];
+  /** 範囲の外で出さない欄（医療班・行政の住所・本人の電話。T24）。紙面はその欄を描かない */
+  hidden?: MedicalKey[];
 };
 
 /** 同意が無ければ要約を作らない。refused は「同意なし」、unconfirmed は「未確認」 */
@@ -372,7 +374,16 @@ export type MedicalBuildOptions = {
   /** 作る日・年齢を数える日（JST、YYYY-MM-DD） */
   today: string;
   officeName: string | null;
+  /**
+   * 医療班・行政が開くときの範囲（T24、lib/consent/scope.ts から app/people/[id]/forms/medical が渡す）。
+   * partialPeople: 連絡先の人は緊急連絡先だけ名前と電話、支援者は役割名と実施者の番号だけ。関係先はかかりつけ・薬局だけ。
+   * hide: 出さない欄（住所・本人の電話）。値は作らず（なし）、未確認の一覧からも落とす。紙面はその欄を描かない
+   */
+  view?: { partialPeople?: boolean; hide?: readonly MedicalKey[] };
 };
+
+/** 人の一部で関係先に残す種類（本人のページの医療の区分の「かかりつけ」と同じ） */
+const PARTIAL_OTHER_KINDS: ReadonlySet<Contact["kind"]> = new Set(["home_doctor", "pharmacy"]);
 
 // ---------- 言葉の道具 ----------
 
@@ -481,6 +492,15 @@ function personLine(c: Contact): PieceLine {
   if (c.supporter_order != null) line.push(sub(`実施者 ${c.supporter_order}`));
   line.push(sub("TEL"), c.phone ? strong(c.phone) : unconfirmedPiece());
   if (c.note) line.push(sub(c.note));
+  return line;
+}
+
+/** 支援者の役割名だけの行（人の一部。名前・電話・どこにいるか・備考は出さない） */
+function roleLine(c: Contact): PieceLine {
+  const relation = c.relation?.trim();
+  const line: PieceLine = [strong(relation || CONTACT_KIND_LABELS[c.kind])];
+  if (relation && c.kind !== "family" && c.kind !== "supporter") line.push(sub(CONTACT_KIND_LABELS[c.kind]));
+  if (c.supporter_order != null) line.push(sub(`実施者 ${c.supporter_order}`));
   return line;
 }
 
@@ -603,7 +623,13 @@ export function buildMedicalSummary(rows: PersonPageRows, opts: MedicalBuildOpti
         a.sort - b.sort,
     );
   const peopleIds = new Set(people.map((c) => c.id));
-  const others = contacts.filter((c) => c.kind !== "self" && c.kind !== "dialysis_center" && !peopleIds.has(c.id));
+  const partial = opts.view?.partialPeople === true;
+  const others = contacts.filter(
+    (c) =>
+      c.kind !== "self" && c.kind !== "dialysis_center" && !peopleIds.has(c.id) && (!partial || PARTIAL_OTHER_KINDS.has(c.kind)),
+  );
+  // 人の一部: 緊急連絡先は名前と電話、緊急連絡先でない支援者は役割名だけ
+  const peopleLine = (c: Contact): PieceLine => (partial && c.emergency_order == null ? roleLine(c) : personLine(c));
   const hasDoctor = contacts.some((c) => c.kind === "home_doctor");
   const doctorReason = take("contact.others", under("medical.doctor"), "かかりつけ");
   const peopleReason = take(
@@ -698,7 +724,13 @@ export function buildMedicalSummary(rows: PersonPageRows, opts: MedicalBuildOpti
   // 該当状況（身体的・精神的・社会的）は医療班が書く欄なので印を付けない。事実（実施者の有無）だけ添える
   const protectCell = checks(
     [{ label: "支援者のいない要配慮者等", on: vulnerable && noSupporter }],
-    [sub("実施者"), ...(supporters.length > 0 ? joinGroups(supporters.map((c) => contactName(c))) : [strong(BLANK.none)])],
+    [
+      sub("実施者"),
+      // 人の一部（T24）: 緊急連絡先でない実施者は役割名だけ
+      ...(supporters.length > 0
+        ? joinGroups(supporters.map((c) => (partial && c.emergency_order == null ? roleLine(c).slice(0, 1) : contactName(c))))
+        : [strong(BLANK.none)]),
+    ],
   );
 
   // ---- メディカル ID ----
@@ -744,7 +776,7 @@ export function buildMedicalSummary(rows: PersonPageRows, opts: MedicalBuildOpti
       { label: "その他", on: sorts.has("その他") },
       { label: "連絡先なし", on: people.length === 0 },
     ]),
-    "contact.people": people.length > 0 ? value(...people.map(personLine), ...(peopleReason ? [[unconfirmedPiece(peopleReason)]] : [])) : unconfirmed(peopleReason),
+    "contact.people": people.length > 0 ? value(...people.map(peopleLine), ...(peopleReason ? [[unconfirmedPiece(peopleReason)]] : [])) : unconfirmed(peopleReason),
     "contact.others": otherLines.length > 0 ? value(...otherLines) : NONE,
     "contra.allergy": listCell(medical.allergies, allergyReason, true),
     "contra.food": unconfirmed(),
@@ -837,6 +869,11 @@ export function buildMedicalSummary(rows: PersonPageRows, opts: MedicalBuildOpti
   if (triage.bedridden && noSupporter) tierLine("care.protect", "支援者のいない要配慮者等", 7);
   basis.sort((a, b) => fieldIndex(a.key) - fieldIndex(b.key) || (a.tier ?? 9) - (b.tier ?? 9));
 
+  // 医療班・行政の範囲（T24）: 出さない欄は値を作らず、未確認の一覧は要約の欄に出した物だけ（欄の無い物・出さない欄の物は落とす）
+  const hide = opts.view?.hide ?? [];
+  for (const k of hide) cells[k] = NONE;
+  const shownPending = opts.view ? pending.filter((p) => p.key !== null && !hide.includes(p.key)) : pending;
+
   return {
     kind: "sheet",
     sheet: {
@@ -850,7 +887,8 @@ export function buildMedicalSummary(rows: PersonPageRows, opts: MedicalBuildOpti
       medications,
       medicalId: mid,
       basis,
-      pending,
+      pending: shownPending,
+      ...(hide.length > 0 ? { hidden: [...hide] } : {}),
     },
   };
 }

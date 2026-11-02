@@ -139,14 +139,15 @@ describe("docs/CLAUDE_CODE.md の裏", () => {
     const text = read("docs/CLAUDE_CODE.md");
     const hashes = [...new Set([...text.matchAll(/`([0-9a-f]{7,40})`/g)].map((m) => m[1]))];
     expect(hashes.length).toBeGreaterThan(10);
-    const missing = hashes.filter((h) => {
-      try {
-        execFileSync("git", ["cat-file", "-e", `${h}^{commit}`], { cwd: root("."), stdio: "ignore" });
-        return false;
-      } catch {
-        return true;
-      }
+    // git は 1 回だけ起こしてまとめて聞く（hash ごとに起こすと Windows で 1.5 秒かかり、全部のテストを流す混んだ時に時間切れになる）。
+    // 返事は 1 行ずつ、見つかれば「<hash> commit <大きさ>」、無ければ「<聞いた物> missing」
+    const out = execFileSync("git", ["cat-file", "--batch-check"], {
+      cwd: root("."),
+      input: hashes.map((h) => `${h}^{commit}\n`).join(""),
+      encoding: "utf8",
     });
+    const lines = out.split("\n").map((l) => l.trim());
+    const missing = hashes.filter((_, i) => !/^[0-9a-f]{40,64} commit \d+$/.test(lines[i] ?? ""));
     expect(missing).toEqual([]);
   });
 });

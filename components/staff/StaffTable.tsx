@@ -4,6 +4,7 @@
 // 絞り込みの言葉は URL に載せない（氏名が入るので。画面の中だけで持つ）。既定の並びはルールの表の並び（番号）。
 // 状態の色と理由は lib/triage の結果をそのまま出す（ここで決め直さない）。氏名を押すと本人のページ。
 // 行の「解除」で搬送（行き先）・退所を選んで受け持ちから外す（本人の経過に残る）。
+// 医療の列と理由は同意の範囲の物だけが来る（lib/custody/board.ts）。医療要約を開ける人は氏名の横に「医療要約」（T24）。
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -17,7 +18,7 @@ import { NOTE_MAX } from "@/lib/custody/forms";
 import { CUSTODY_LABELS, CUSTODY_VIA_LABELS, RELEASE_LABELS } from "@/lib/custody/labels";
 import { CUSTODY_RELEASE_API } from "@/lib/custody/paths";
 import { RELEASE_KINDS, type ReleaseKind } from "@/lib/db/types";
-import { COLOR_LABELS } from "@/lib/labels";
+import { COLOR_LABELS, DOCUMENT_LABELS } from "@/lib/labels";
 import { COLOR_TONES } from "@/lib/person";
 import type { Color } from "@/lib/triage/index";
 
@@ -235,9 +236,23 @@ function Row({ row: r, open, onToggle }: { row: StaffRow; open: boolean; onToggl
             <LinkPending />
           </Link>
           <span className="ml-1 text-xs text-muted">{r.kana}</span>
-          <div className={`mt-0.5 text-xs font-bold ${TONE_TEXT[r.tone]}`} data-reason>
-            {r.reason}
-          </div>
+          {/* 医療要約（T07）を開いて印刷。医療班への提供に同意がある人だけ（T24） */}
+          {r.summary && (
+            <Link
+              href={`/people/${encodeURIComponent(r.personId)}/forms/medical`}
+              className="ml-1 rounded px-1 text-xs text-accent underline underline-offset-2"
+              data-press
+              data-summary
+            >
+              {DOCUMENT_LABELS.medical}
+            </Link>
+          )}
+          {/* 理由は医療が範囲の外の人には来ない（時計・薬の名前が入るので） */}
+          {r.reason && (
+            <div className={`mt-0.5 text-xs font-bold ${TONE_TEXT[r.tone]}`} data-reason>
+              {r.reason}
+            </div>
+          )}
         </td>
         <td className={`${CELL} whitespace-nowrap`}>
           <span className="tabular-nums">{r.age ?? "—"}</span>

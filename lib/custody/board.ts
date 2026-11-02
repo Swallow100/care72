@@ -5,12 +5,16 @@
 // 状況は本人の事業所の災害モード。本人の事業所が平時か所属なしなら、その人のいちばん早い受け入れを発災の時刻とみなし、
 // 停電なしで表に当てる（決めた所。docs/progress/t23.md）。上の人数は状態の 4 色（ケアマネの一覧・事業所・様式 9 と同じ形）。
 // 受け持ちの一覧には受け入れたあとの人だけが出るので、漢字の氏名を出してよい（受け入れの前の検索のヒットはカナだけ）。
+// 医療の列（印・薬・機器・残り）と理由は同意の範囲（T24、lib/consent/scope.ts）: 医療班への提供に同意の無い人は空にして渡す
+// （画面は client の部品なので、範囲の外の値は応答に入れない）。色と並びの番号は全部の台帳から出す。
+// 搬送で閉じた受け入れ（ほかのアカウントの物）も表の入力に入れる（lib/custody/arrivals.ts、「搬送 行き先」）。
 
 import type { D1Database } from "@cloudflare/workers-types";
 import { ageOn } from "../age.ts";
 import { marksOf } from "../caseload.ts";
+import { canOpenDocument, scopeHas, viewScope } from "../consent/scope.ts";
 import { parseLedger } from "../db/ledger.ts";
-import type { ClockRow, ContactRow, CustodyVia, OfficeKind, PersonRow } from "../db/types.ts";
+import type { ClockRow, ConsentStatus, ContactRow, CustodyVia, OfficeKind, PersonOrigin, PersonRow } from "../db/types.ts";
 import { DEVICE_LABELS } from "../labels.ts";
 import { loadSituation } from "../disaster/db.ts";
 import { loadOfficeOverrides, type StoredOverride } from "../disaster/override.ts";
@@ -21,6 +25,7 @@ import { COLOR_TONES, type StateTone } from "../person.ts";
 import { toTriagePerson } from "../triage/from-ledger.ts";
 import { compareResults, type Color, type Situation, type TriageResult } from "../triage/index.ts";
 import type { StaffActor } from "./actor.ts";
+import { ARRIVAL_COLUMNS, toTriageArrival, type ArrivalRow } from "./arrivals.ts";
 import { CUSTODY_LABELS } from "./labels.ts";
 
 export type StaffRow = {
@@ -47,9 +52,12 @@ export type StaffRow = {
   unaffiliated: boolean;
   color: Color;
   tone: StateTone;
+  /** 理由の 1 行。医療が範囲の外の人は空（時計・薬の名前が入るので） */
   reason: string;
   /** 表の並び（1 から）。並べ替えても変わらない */
   rank: number;
+  /** 医療要約（T07）を開けるか（医療班への提供に同意がある人。lib/consent/scope.ts） */
+  summary: boolean;
 };
 
 export type StaffBoard = {
@@ -57,7 +65,7 @@ export type StaffBoard = {
   counts: Record<Color, number>;
   /** 自分の開いた受け持ちの避難所（名前の順） */
   shelters: string[];
-  /** 要配慮: 医療依存の印（時計）・機器・薬のどれかが台帳にある人の数 */
+  /** 要配慮: 医療依存の印（時計）・機器・薬のどれかが台帳にある人の数（医療が範囲にある人だけ数える） */
   medical: number;
 };
 
@@ -70,6 +78,10 @@ type CustodyJoin = Pick<PersonRow, "name" | "kana" | "birth_date" | "self_report
   reported_age: number | null;
   office_name: string;
   office_kind: OfficeKind;
+  origin: PersonOrigin;
+  /** 医療班への提供の同意と範囲（行が無ければ null） */
+  medical_status: ConsentStatus | null;
+  medical_scope: string | null;
 };
 
 type ClockForBoard = Pick<
@@ -77,7 +89,6 @@ type ClockForBoard = Pick<
   "person_id" | "kind" | "category" | "label" | "value" | "unit" | "starts_on" | "depends_on" | "depends_check"
 >;
 type ContactForBoard = Pick<ContactRow, "person_id" | "supporter_order">;
-type ArrivalRow = { person_id: string; shelter: string; received_at: string };
 
 const IDS = "SELECT value FROM json_each(?1)";
 
@@ -91,8 +102,10 @@ export async function loadStaffBoard(
   const custody = await db
     .prepare(
       `SELECT c.id AS custody_id, c.person_id, c.shelter, c.via, c.received_at,
-              p.name, p.kana, p.birth_date, p.reported_age, p.self_report_unreliable, p.ledger, p.office_id,
-              o.name AS office_name, o.kind AS office_kind
+              p.name, p.kana, p.birth_date, p.reported_age, p.self_report_unreliable, p.ledger, p.office_id, p.origin,
+              o.name AS office_name, o.kind AS office_kind,
+              (SELECT s.status FROM consents s WHERE s.person_id = p.id AND s.kind = 'medical') AS medical_status,
+              (SELECT s.scope FROM consents s WHERE s.person_id = p.id AND s.kind = 'medical') AS medical_scope
          FROM custody c JOIN people p ON p.id = c.person_id JOIN offices o ON o.id = p.office_id
         WHERE c.holder_id = ?1 AND c.released_at IS NULL
         ORDER BY c.received_at DESC, c.id`,
@@ -118,7 +131,7 @@ export async function loadStaffBoard(
       )
       .bind(ids),
     db
-      .prepare(`SELECT person_id, shelter, received_at FROM custody WHERE person_id IN (${IDS}) ORDER BY received_at, id`)
+      .prepare(`SELECT ${ARRIVAL_COLUMNS} FROM custody WHERE person_id IN (${IDS}) ORDER BY received_at, id`)
       .bind(ids),
   ]);
   const by = <T extends { person_id: string }>(list: T[]) => {
@@ -163,9 +176,7 @@ export async function loadStaffBoard(
           clocks: myClocks,
         }),
         signals: (signalsOf.get(r.person_id) ?? []).filter((x) => withinDisaster(x.occurred_at, situation)).map(toTriageSignal),
-        arrivals: myArrivals
-          .filter((a) => withinDisaster(a.received_at, situation))
-          .map((a) => ({ at: a.received_at, shelter: a.shelter })),
+        arrivals: myArrivals.filter((a) => withinDisaster(a.received_at, situation)).map(toTriageArrival),
         ...(override ? { override } : {}),
         town,
       },
@@ -173,6 +184,12 @@ export async function loadStaffBoard(
     );
     const remain = remainOf(myClocks, personSituation(situation, town));
     const unaffiliated = r.office_kind === "unaffiliated";
+    // 同意の範囲（本人のページと同じ所）。医療が範囲の外なら医療の列と理由を空に
+    const scope = viewScope(actor.role, {
+      consents: [{ kind: "medical", status: r.medical_status ?? "unconfirmed", scope: r.medical_scope }],
+      origin: r.origin,
+    });
+    const medicalShown = scopeHas(scope, "medical");
     return {
       triage,
       row: {
@@ -182,10 +199,10 @@ export async function loadStaffBoard(
         kana: r.kana,
         age: r.birth_date ? ageOn(r.birth_date, today) : r.reported_age,
         ageReported: !r.birth_date && r.reported_age !== null,
-        marks: marksOf(myClocks),
-        medications: ledger.medical.medications.map((m) => m.name),
-        devices: ledger.medical.devices.map((d) => DEVICE_LABELS[d.kind]),
-        remain: remain ? { label: remain.label, text: remain.text, hours: remain.hours, tone: remain.tone } : null,
+        marks: medicalShown ? marksOf(myClocks) : [],
+        medications: medicalShown ? ledger.medical.medications.map((m) => m.name) : [],
+        devices: medicalShown ? ledger.medical.devices.map((d) => DEVICE_LABELS[d.kind]) : [],
+        remain: medicalShown && remain ? { label: remain.label, text: remain.text, hours: remain.hours, tone: remain.tone } : null,
         shelter: r.shelter,
         via: r.via,
         receivedAt: r.received_at,
@@ -194,8 +211,9 @@ export async function loadStaffBoard(
         unaffiliated,
         color: triage.color,
         tone: COLOR_TONES[triage.color],
-        reason: triage.reason,
+        reason: medicalShown ? triage.reason : "",
         rank: 0,
+        summary: canOpenDocument(scope, "medical"),
       },
     };
   });

@@ -17,7 +17,7 @@ import { nowSec, sessionSecret } from "@/lib/auth/session";
 import { buildMedicalSummary } from "@/lib/forms/medical-summary";
 import { buildOwnSheet } from "@/lib/forms/own-sheet";
 import { BLANK_LABELS, DOCUMENT_LABELS } from "@/lib/labels";
-import { loadPersonPage } from "@/lib/person";
+import { loadPersonDocument } from "@/lib/consent/documents";
 import { QR_LABELS, QR_STATUS_LABELS } from "@/lib/qr/labels";
 import { currentQrToken, loadQrRow, qrState } from "@/lib/qr/store";
 import { originFromHeaders, qrUrl } from "@/lib/qr/url";
@@ -45,7 +45,7 @@ function Check({ label, items, data }: { label: string; items: readonly string[]
 
 // 本人の 1 枚の紙面（A4 の表と裏）。本人のページの「書類」から開く。
 // 表は台帳から定型で組んだやさしい日本語（lib/forms/own-sheet.ts）、裏は医療要約（T07）と QR（T16）。Claude は呼ばない。
-// 壁は本人のページと同じ（loadPersonPage が personInScope を通す。範囲の外は 404）。
+// 壁は本人のページと同じ（loadPersonPage が personInScope を通す。範囲の外は 404）。医療班・行政の同意の範囲に本人の 1 枚は無いので 404（T24）。
 // 上の帯（画面だけ）に、紙で「ケアマネジャーと 決めます」と出た所・手で書く電話・ふりがなの付かなかった漢字と、QR の状態を出す。
 // QR はここでは作らない（作る・作り直すは QR の画面でケアマネが押す。作り直すと前に刷った紙の QR は無効）。
 export default async function OwnFormPage({ params, searchParams }: Props) {
@@ -53,8 +53,9 @@ export default async function OwnFormPage({ params, searchParams }: Props) {
   const { id } = await params;
   const autoPrint = wantsPrint((await searchParams).print);
   const { env } = await getCloudflareContext({ async: true });
-  const rows = await loadPersonPage(env.DB, principal, id);
-  if (!rows) notFound();
+  const opened = await loadPersonDocument(env.DB, principal, id, "own");
+  if (!opened) notFound();
+  const { rows } = opened;
   const office = await env.DB.prepare("SELECT name FROM offices WHERE id = ?1")
     .bind(rows.person.office_id)
     .first<{ name: string }>();

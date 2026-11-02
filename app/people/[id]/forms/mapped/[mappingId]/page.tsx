@@ -15,7 +15,8 @@ import { MAPPING_LABELS as L } from "@/lib/forms/mapping";
 import { loadCheckedMapping } from "@/lib/forms/mapping-db";
 import { warekiText } from "@/lib/forms/wareki";
 import { CONSENT_KIND_LABELS } from "@/lib/labels";
-import { formatJst, loadPersonPage } from "@/lib/person";
+import { loadPersonDocument } from "@/lib/consent/documents";
+import { formatJst } from "@/lib/person";
 
 // D1 を毎回読む
 export const dynamic = "force-dynamic";
@@ -31,14 +32,16 @@ type Props = {
 // 汎用の差し込み（docs/tasks/T08.md）。確かめた対応表（確認済だけ）と台帳から、様式の欄の順に値を並べた紙面（A4、表の形）。
 // 差し込みは台帳からサーバーで描く。Claude は呼ばない（氏名・住所・電話が入る）。同意の範囲は松山市の様式と同じ。
 // 本人の壁は本人のページと同じ（loadPersonPage が personInScope を通す）。対応表は本人の事業所の物だけ（ほかの事業所・下書きは 404）
+// 医療班・行政の同意の範囲に差し込みの書類は無いので 404（T24、lib/consent/scope.ts）
 export default async function MappedFormPage({ params, searchParams }: Props) {
   const principal = await requirePage("person");
   const { id, mappingId } = await params;
   const autoPrint = wantsPrint((await searchParams).print);
   if (!/^[A-Za-z0-9_-]{1,64}$/.test(mappingId)) notFound();
   const { env } = await getCloudflareContext({ async: true });
-  const rows = await loadPersonPage(env.DB, principal, id);
-  if (!rows) notFound();
+  const opened = await loadPersonDocument(env.DB, principal, id, "mapped");
+  if (!opened) notFound();
+  const { rows } = opened;
   const [stored, office] = await Promise.all([
     loadCheckedMapping(env.DB, rows.person.office_id, mappingId),
     env.DB.prepare("SELECT name FROM offices WHERE id = ?1").bind(rows.person.office_id).first<{ name: string }>(),

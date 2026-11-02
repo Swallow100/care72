@@ -13,7 +13,8 @@ import { TABLE, TABLE_BOX, TD, TH } from "@/components/ui/table";
 import { requirePage } from "@/lib/auth/server";
 import { nowSec, sessionSecret } from "@/lib/auth/session";
 import { BLANK_LABELS, CONSENT_KIND_LABELS, CONSENT_STATUS_LABELS } from "@/lib/labels";
-import { formatJst, loadPersonPage, type StateTone } from "@/lib/person";
+import { loadPersonDocument } from "@/lib/consent/documents";
+import { formatJst, type StateTone } from "@/lib/person";
 import { QR_LABELS, QR_STATUS_LABELS } from "@/lib/qr/labels";
 import { currentQrToken, loadQrRow, qrState, type QrStatus } from "@/lib/qr/store";
 import { originFromHeaders, qrUrl } from "@/lib/qr/url";
@@ -32,13 +33,15 @@ const STATUS_TONES: Record<QrStatus, StateTone> = { none: "unknown", active: "ok
 // 本人のページの書類の「QR」。作る・作り直す（前の版は無効）・印刷用の表示（QR の部品だけを紙に）・閲覧記録。
 // 壁は本人のページと同じ（loadPersonPage → personInScope、範囲の外は 404）。作る・作り直すはケアマネだけ。
 // QR が開く頁（/q/<token>）に出るのは医療班提供の同意の範囲だけなので、その同意と範囲を上に出す。
+// 医療班・行政の同意の範囲に QR の画面（閲覧記録を含む）は無いので 404（T24、lib/consent/scope.ts）。
 export default async function QrFormPage({ params, searchParams }: Props) {
   const principal = await requirePage("person");
   const { id } = await params;
   const autoPrint = wantsPrint((await searchParams).print);
   const { env } = await getCloudflareContext({ async: true });
-  const rows = await loadPersonPage(env.DB, principal, id);
-  if (!rows) notFound();
+  const opened = await loadPersonDocument(env.DB, principal, id, "qr");
+  if (!opened) notFound();
+  const { rows } = opened;
   const row = (await loadQrRow(env.DB, rows.person.id)) ?? { qr_generation: 0, qr_issued_at: null };
   const state = qrState(row, nowSec());
   const token = state.status === "active" ? await currentQrToken(rows.person.id, row, sessionSecret(env)) : null;

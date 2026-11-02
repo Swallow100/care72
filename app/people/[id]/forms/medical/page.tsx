@@ -10,9 +10,9 @@ import { StateTag } from "@/components/person/parts";
 import { PaperBar, wantsPrint } from "@/components/ui/PaperBar";
 import { todayJst } from "@/lib/age";
 import { requirePage } from "@/lib/auth/server";
+import { loadPersonDocument, medicalSummaryView } from "@/lib/consent/documents";
 import { buildMedicalSummary } from "@/lib/forms/medical-summary";
 import { BLANK_LABELS, DOCUMENT_LABELS } from "@/lib/labels";
-import { loadPersonPage } from "@/lib/person";
 
 // D1 を毎回読む
 export const dynamic = "force-dynamic";
@@ -22,22 +22,28 @@ export const metadata: Metadata = { title: DOCUMENT_LABELS.medical };
 
 type Props = { params: Promise<{ id: string }>; searchParams: Promise<{ print?: string | string[] }> };
 
-// 医療要約の紙面（A4 1 枚、災害診療記録 2018 の順）。本人のページの「書類」から開く。医療班の画面（T24）からも開く予定。
+// 医療要約の紙面（A4 1 枚、災害診療記録 2018 の順）。本人のページの「書類」から開く。医療班・行政も本人のページの書類から開いて印刷する（T24）。
 // 組み立ては台帳からサーバーで。Claude は呼ばない（氏名・電話が入る）。
-// 壁は本人のページと同じ（loadPersonPage が personInScope を通す。範囲の外は 404。医療班の受け持ちは T23 で広がる）。
-// 医療班提供の同意が無い人は中身を作らず「同意なし」「未確認」だけ。
+// 壁は本人のページと同じ（loadPersonPage が personInScope を通す。範囲の外は 404。医療班・行政は受け持ちの間だけ）。
+// 医療班・行政は同意の範囲（lib/consent/scope.ts）: 医療班への提供に同意の無い人は 404、ある人は住所・本人の電話を描かず、
+// 支援者は役割名だけ（lib/consent/documents.ts）。ケアマネには同意の無い人は中身を作らず「同意なし」「未確認」だけ。
 // 「なぜこの行があるか」の脇はケアマネ（審査員のケアマネの役を含む）の画面だけ。紙には出さない。
 export default async function MedicalFormPage({ params, searchParams }: Props) {
   const principal = await requirePage("person");
   const { id } = await params;
   const autoPrint = wantsPrint((await searchParams).print);
   const { env } = await getCloudflareContext({ async: true });
-  const rows = await loadPersonPage(env.DB, principal, id);
-  if (!rows) notFound();
+  const opened = await loadPersonDocument(env.DB, principal, id, "medical");
+  if (!opened) notFound();
+  const { rows, scope } = opened;
   const office = await env.DB.prepare("SELECT name FROM offices WHERE id = ?1")
     .bind(rows.person.office_id)
     .first<{ name: string }>();
-  const result = buildMedicalSummary(rows, { today: todayJst(), officeName: office?.name ?? null });
+  const result = buildMedicalSummary(rows, {
+    today: todayJst(),
+    officeName: office?.name ?? null,
+    view: medicalSummaryView(scope),
+  });
   const sheet = result.kind === "sheet" ? result.sheet : null;
   const showBasis = principal.role === "care_manager";
 

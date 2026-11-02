@@ -3,7 +3,7 @@
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -47,8 +47,10 @@ function expectNoSeedSecrets(text: string) {
 let dir: string;
 let dbFile: string;
 
+/** 表と種を 1 つの書き込み（transaction）で入れる。文ごとにディスクへ書くと Windows で 2 秒近くかかり、全部のテストを流す混んだ時に時間切れになる */
 function seededDb(file: string, withDrill: boolean) {
   const db = new DatabaseSync(file);
+  db.exec("BEGIN");
   db.exec(migration);
   db.exec(seedStatements().join("\n"));
   if (withDrill) {
@@ -90,6 +92,14 @@ function seededDb(file: string, withDrill: boolean) {
     );
     ev.run("e4", 4, 2, 3, "p-01", "care_manager", "action", JSON.stringify({ action: "call_person" }));
   }
+  db.exec("COMMIT");
+  db.close();
+}
+
+/** 表を 1 つだけ持つ小さな .sqlite（置き場の探し方は表があるかだけを見る） */
+function tableOnly(file: string, table: string) {
+  const db = new DatabaseSync(file);
+  db.exec(`CREATE TABLE ${table} (id TEXT PRIMARY KEY)`);
   db.close();
 }
 
@@ -104,14 +114,21 @@ afterAll(() => {
 });
 
 describe("手元の D1 を探す", () => {
-  it("miniflare の置き場から、people の表がある .sqlite を選ぶ（metadata.sqlite は選ばない）", () => {
+  it("miniflare の置き場から、people の表がある .sqlite を選ぶ（metadata.sqlite・people の無い物は選ばない、あれば新しい方）", () => {
+    // 手元の D1 の置き場（リポジトリの .wrangler）は見ず、一時フォルダに置き場の形を作る
     const root = join(dir, "proj");
     const d1 = join(root, ".wrangler", "state", "v3", "d1", "miniflare-D1DatabaseObject");
     mkdirSync(d1, { recursive: true });
-    new DatabaseSync(join(d1, "metadata.sqlite")).close();
+    tableOnly(join(d1, "metadata.sqlite"), "people");
+    tableOnly(join(d1, "zzz999.sqlite"), "_cf_KV");
     writeFileSync(join(d1, "notes.txt"), "x");
-    seededDb(join(d1, "abc123.sqlite"), false);
+    writeFileSync(join(d1, "broken.sqlite"), "SQLite でない");
+    tableOnly(join(d1, "abc123.sqlite"), "people");
     expect(findLocalD1(root)).toBe(join(d1, "abc123.sqlite"));
+    tableOnly(join(d1, "def456.sqlite"), "people");
+    utimesSync(join(d1, "abc123.sqlite"), new Date("2026-11-01T00:00:00Z"), new Date("2026-11-01T00:00:00Z"));
+    utimesSync(join(d1, "def456.sqlite"), new Date("2026-11-02T00:00:00Z"), new Date("2026-11-02T00:00:00Z"));
+    expect(findLocalD1(root)).toBe(join(d1, "def456.sqlite"));
   });
 
   it("無ければ null", () => {
