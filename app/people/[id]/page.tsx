@@ -1,10 +1,12 @@
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { PersonView } from "@/components/person/PersonView";
+import { PersonWithIntake } from "@/components/person/PersonWithIntake";
 import { todayJst } from "@/lib/age";
 import { homePath } from "@/lib/auth/roles";
 import { requirePage } from "@/lib/auth/server";
+import { hasAnthropicKey } from "@/lib/claude/client";
+import { intakePropsOf } from "@/lib/intake/props";
 import { loadPersonPage, toPersonView } from "@/lib/person";
 
 // D1 を毎回読む
@@ -14,7 +16,7 @@ type Props = { params: Promise<{ id: string }> };
 
 // 本人のページ（単独で開く形）。担当一覧の右の面（/?open=<id>）と同じ物を出す。
 // 事業所の壁: 範囲の外の id は、在っても無くても同じ 404（lib/auth/scope.ts の personInScope）。
-// 災害モード（T09）が入るまでは平時の形だけ。
+// 災害モード（T09）が入るまでは平時の形だけ。ケアマネの役には右に入れる欄（T03）。
 export default async function PersonPage({ params }: Props) {
   const principal = await requirePage("person");
   const { id } = await params;
@@ -22,6 +24,8 @@ export default async function PersonPage({ params }: Props) {
   const rows = await loadPersonPage(env.DB, principal, id);
   if (!rows) notFound();
   const view = toPersonView(rows, { today: todayJst(), mode: "normal" });
+  // 入れる欄（T03）はケアマネの役だけ。鍵が無ければ「AI 未設定」と手入力
+  const intake = principal.role === "care_manager" ? intakePropsOf(rows, hasAnthropicKey(env)) : null;
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-4">
@@ -29,7 +33,7 @@ export default async function PersonPage({ params }: Props) {
         戻る
       </Link>
       <div className="mt-2">
-        <PersonView view={view} level={1} />
+        <PersonWithIntake view={view} level={1} intake={intake} />
       </div>
     </main>
   );

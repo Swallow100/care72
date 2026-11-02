@@ -1,11 +1,13 @@
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import Link from "next/link";
-import { PersonView } from "@/components/person/PersonView";
+import { PersonWithIntake } from "@/components/person/PersonWithIntake";
 import { StateTag, TONE_TEXT } from "@/components/person/parts";
 import { todayJst } from "@/lib/age";
 import type { Principal } from "@/lib/auth/principal";
 import { caseloadScope } from "@/lib/auth/scope";
 import { requirePage } from "@/lib/auth/server";
+import { hasAnthropicKey } from "@/lib/claude/client";
+import { intakePropsOf, type IntakeProps } from "@/lib/intake/props";
 import {
   caseloadHref,
   closeHref,
@@ -58,7 +60,7 @@ export default async function CaseloadPage({ searchParams }: Props) {
 
   if (open) {
     return (
-      <main className="mx-auto grid max-w-6xl gap-3 px-4 py-4 lg:grid-cols-[15rem_minmax(0,1fr)]">
+      <main className="mx-auto grid max-w-[90rem] gap-3 px-4 py-4 lg:grid-cols-[15rem_minmax(0,1fr)]">
         <section
           aria-labelledby="caseload-title"
           className="hidden self-start lg:sticky lg:top-4 lg:block lg:max-h-[calc(100dvh-2rem)] lg:overflow-y-auto"
@@ -128,11 +130,14 @@ export default async function CaseloadPage({ searchParams }: Props) {
 /** 右の面。範囲の外（違う事業所・無い id）は面に「該当なし」と出し、一覧は残す */
 async function PersonPanel({ principal, id, sort }: { principal: Principal; id: string; sort: SortKey }) {
   let view: View | null = null;
+  let intake: IntakeProps | null = null;
   let failed = false;
   try {
     const { env } = await getCloudflareContext({ async: true });
     const rows = await loadPersonPage(env.DB, principal, id);
     view = rows ? toPersonView(rows, { today: todayJst(), mode: "normal" }) : null;
+    // 入れる欄（T03）はケアマネの役だけ（担当一覧はケアマネの役しか開けない）
+    intake = rows && principal.role === "care_manager" ? intakePropsOf(rows, hasAnthropicKey(env)) : null;
   } catch (e) {
     console.error("本人のページを読めない", e);
     failed = true;
@@ -145,7 +150,7 @@ async function PersonPanel({ principal, id, sort }: { principal: Principal; id: 
         </Link>
       </div>
       {view ? (
-        <PersonView view={view} level={2} />
+        <PersonWithIntake view={view} level={2} intake={intake} />
       ) : (
         <section className="rounded-lg bg-panel p-6">
           <h2 className="text-xl font-bold">{failed ? "読込失敗" : "該当なし"}</h2>

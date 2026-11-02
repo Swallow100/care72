@@ -16,7 +16,7 @@ export function PersonView({ view, level }: { view: View; level: Level }) {
   return (
     <div className="@container space-y-2" data-mode={view.mode}>
       <PersonHead head={view.head} level={level} titleId={`${base}-title`} />
-      <div className="gap-x-2 @2xl:columns-2 @5xl:columns-3">
+      <div className="gap-x-2 @[40rem]:columns-2 @5xl:columns-3">
         {view.sections.map((s) => (
           <SectionPanel key={s.id} section={s} level={level} titleId={`${base}-${s.id}`} />
         ))}
