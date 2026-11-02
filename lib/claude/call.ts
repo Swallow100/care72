@@ -13,6 +13,8 @@ import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import type * as z from "zod";
 import type { AiPurpose } from "../db/types.ts";
 import { assertForClaude, isForClaude, type ForClaude } from "../pseudonym/index.ts";
+import type { SourceId } from "../sources/index.ts";
+import { sourcesSystem } from "../sources/prompt.ts";
 import { createClaudeClient, MAX_RETRIES, type ClaudeClient } from "./client.ts";
 import { AiBadOutput, AiCallFailed, AiRefused } from "./errors.ts";
 import {
@@ -43,6 +45,11 @@ export type AskJsonRequest<S extends z.ZodType> = {
   input: ClaudeInput;
   /** 返事の形。いちばん外は z.object にする */
   schema: S;
+  /**
+   * 根拠として引いてよい出典（lib/sources の id）。渡すと system に「根拠は次の一覧の id だけ。無ければ「根拠なし」」と一覧を足す。
+   * 返事の根拠の欄は lib/sources/prompt.ts の basisSchema で縛る。無い id は呼ぶ前に投げる（上限も減らさない）
+   */
+  sources?: ReadonlyArray<SourceId>;
 };
 
 /** どの用途にも先に付ける指示 */
@@ -81,6 +88,7 @@ export function buildParams<S extends z.ZodType>(
     system: [
       { type: "text", text: COMMON_SYSTEM },
       { type: "text", text: req.system },
+      ...(req.sources ? [{ type: "text" as const, text: sourcesSystem(req.sources) }] : []),
     ],
     messages: [{ role: "user", content: JSON.stringify(req.input) }],
     output_config: { effort: spec.effort, format: { type: "json_schema", schema: format.schema } },
