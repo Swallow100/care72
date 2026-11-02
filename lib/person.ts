@@ -46,6 +46,7 @@ import {
   CLOCK_SOURCE_LABELS,
   CLOCK_START_LABELS,
   CLOCK_UNIT_LABELS,
+  CLOCK_UNIT_SHORT,
   COLOR_LABELS,
   CONSENT_KIND_LABELS,
   CONSENT_STATUS_LABELS,
@@ -320,8 +321,8 @@ export type PersonHead = {
   kana: string;
   age: number | null;
   careLevel: string | null;
-  /** 医療の印と、その時計の色 */
-  marks: Array<{ label: string; tone: StateTone | null }>;
+  /** 医療の印と、その時計の色・いちばん短い残り */
+  marks: MarkItem[];
   priority: Priority;
   plan: string;
   /** 台帳の pending の数（担当一覧の「未確認 N」と同じ） */
@@ -434,14 +435,24 @@ function hoursOf(k: Pick<ClockRow, "value" | "unit">): number | null {
 
 const TONE_RANK: Record<StateTone, number> = { urgent: 3, check: 2, unknown: 1, ok: 0 };
 
-/** 医療の印（担当一覧と同じ並び）と、その区分の時計でいちばん強い色 */
-export function markItems(clocks: ReadonlyArray<ClockRow>): Array<{ label: string; tone: StateTone | null }> {
+/** 医療の印 1 つ: 項目名・その区分の時計でいちばん強い色・走る時計でいちばん短い残り（「4h」。無ければ null） */
+export type MarkItem = { label: string; tone: StateTone | null; remaining: string | null };
+
+/**
+ * 医療の印（担当一覧と同じ並び）と、その区分の時計でいちばん強い色、いちばん短い残り。
+ * 残りは時計の値そのまま（上の「時計」の欄と同じ数）を短い単位で。走らない時計（本人の状態）・値の無い時計は数えない
+ */
+export function markItems(clocks: ReadonlyArray<ClockRow>): MarkItem[] {
   return DEPENDENCE_MARKS.flatMap(([category, label]) => {
     const mine = clocks.filter((k) => k.category === category);
     if (mine.length === 0) return [];
     const tones = mine.map((k) => clockTone(hoursOf(k), k.starts_on !== "none")).filter((t) => t !== null);
     const tone = tones.sort((a, b) => TONE_RANK[b] - TONE_RANK[a])[0] ?? null;
-    return [{ label, tone }];
+    const shortest = mine
+      .filter((k) => k.starts_on !== "none" && k.value != null && k.unit != null)
+      .sort((a, b) => hoursOf(a)! - hoursOf(b)!)[0];
+    const remaining = shortest ? `${shortest.value}${CLOCK_UNIT_SHORT[shortest.unit!]}` : null;
+    return [{ label, tone, remaining }];
   });
 }
 
