@@ -5,6 +5,7 @@ import { ageOn } from "./age.ts";
 import { parseLedger } from "./db/ledger.ts";
 import type { CareLevel, ClockRow, ContactRow, Ledger, PersonRow, PlanStatus } from "./db/types.ts";
 import { DEPENDENCE_MARKS, HAZARD_LABELS } from "./labels.ts";
+import type { StateTone } from "./person.ts";
 import { tierOf, type Tier } from "./triage/index.ts";
 import { toTriagePerson } from "./triage/from-ledger.ts";
 
@@ -87,6 +88,12 @@ export const SORT_KEYS = ["tier", "kana", "age", "plan"] as const;
 export type SortKey = (typeof SORT_KEYS)[number];
 
 const PLAN_ORDER: Record<PlanStatus, number> = { none: 0, draft: 1, consented: 2, trained: 3 };
+
+/**
+ * 計画の状態の色（意味色。CLAUDE.md「画面の決まり」）。未作成は灰、下書きは黄（要確認）、同意済・訓練済は緑。
+ * 色は印と数字にだけ置き、必ず状態の文字（未作成・下書き・同意済・訓練済）を添える
+ */
+export const PLAN_TONES: Record<PlanStatus, StateTone> = { none: "unknown", draft: "check", consented: "ok", trained: "ok" };
 
 /** 並び替え。どの並びでも、同じならカナの順 */
 export function sortCaseload(rows: CaseloadRow[], key: SortKey): CaseloadRow[] {

@@ -1,6 +1,7 @@
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import Link from "next/link";
 import { PersonView } from "@/components/person/PersonView";
+import { StateTag, TONE_TEXT } from "@/components/person/parts";
 import { todayJst } from "@/lib/age";
 import type { Principal } from "@/lib/auth/principal";
 import { caseloadScope } from "@/lib/auth/scope";
@@ -10,6 +11,7 @@ import {
   closeHref,
   loadCaseload,
   parseOpen,
+  PLAN_TONES,
   rowLink,
   sortCaseload,
   SORT_KEYS,
@@ -94,8 +96,11 @@ export default async function CaseloadPage({ searchParams }: Props) {
         )}
       </section>
       <aside aria-labelledby="pending-title" className="self-start rounded-lg bg-panel p-4">
-        <h2 id="pending-title" className="font-bold">
+        <h2 id="pending-title" className="flex items-baseline gap-2 font-bold">
           未確認
+          {pendingRows.length > 0 && (
+            <span className="text-sm text-state-check tabular-nums">{pendingRows.length} 人</span>
+          )}
         </h2>
         {pendingRows.length === 0 ? (
           <p className="mt-3 text-muted">なし</p>
@@ -184,16 +189,22 @@ function CompactList({ rows, sort, open }: { rows: CaseloadRow[]; sort: SortKey;
   );
 }
 
+/** 計画の状態ごとの人数。数字に状態の色（0 は色なし） */
 function PlanSummary({ rows }: { rows: CaseloadRow[] }) {
   const count = (s: PlanStatus) => rows.filter((r) => r.plan === s).length;
   return (
     <dl className="flex flex-wrap gap-x-4 text-sm">
-      {PLAN_STATUSES.map((s) => (
-        <div key={s} className="flex items-baseline gap-1">
-          <dt className="text-muted">{PLAN_STATUS_LABELS[s]}</dt>
-          <dd className="font-bold tabular-nums">{count(s)}</dd>
-        </div>
-      ))}
+      {PLAN_STATUSES.map((s) => {
+        const n = count(s);
+        return (
+          <div key={s} className="flex items-baseline gap-1">
+            <dt className="text-muted">{PLAN_STATUS_LABELS[s]}</dt>
+            <dd className={`font-bold tabular-nums ${n > 0 ? TONE_TEXT[PLAN_TONES[s]] : "text-muted"}`} data-tone={n > 0 ? PLAN_TONES[s] : undefined}>
+              {n}
+            </dd>
+          </div>
+        );
+      })}
     </dl>
   );
 }
@@ -257,8 +268,10 @@ function CaseloadTable({ rows, sort }: { rows: CaseloadRow[]; sort: SortKey }) {
               )}
             </td>
             <td className={CELL}>
-              <div>{PLAN_STATUS_LABELS[r.plan]}</div>
-              {r.pending > 0 && <div className="text-sm text-state-check tabular-nums">未確認 {r.pending}</div>}
+              <StateTag tone={PLAN_TONES[r.plan]} size="md">
+                {PLAN_STATUS_LABELS[r.plan]}
+              </StateTag>
+              {r.pending > 0 && <div className="mt-1 text-sm font-bold text-state-check tabular-nums">未確認 {r.pending}</div>}
             </td>
           </tr>
         ))}
