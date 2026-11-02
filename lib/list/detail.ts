@@ -51,6 +51,12 @@ export type SignalForDetail = Pick<
   | "transcript"
   | "classes"
   | "classified_by"
+  | "ai_classes"
+  | "ai_confidence"
+  | "ai_quote"
+  | "ai_model"
+  | "ai_error"
+  | "ai_at"
   | "occurred_at"
 >;
 

@@ -1,6 +1,7 @@
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import Link from "next/link";
 import { countColors } from "@/components/disaster/ColorCounts";
+import { Classification } from "@/components/list/Classification";
 import { DisasterSummary } from "@/components/list/DisasterSummary";
 import { DisasterTable } from "@/components/list/DisasterTable";
 import type { ClassificationSlot } from "@/components/list/RowDetail";
@@ -13,6 +14,7 @@ import { StateTag, TONE_TEXT } from "@/components/person/parts";
 import { todayJst } from "@/lib/age";
 import type { Principal } from "@/lib/auth/principal";
 import { caseloadScope } from "@/lib/auth/scope";
+import { classViewOf } from "@/lib/classify/view";
 import { requirePage } from "@/lib/auth/server";
 import { hasAnthropicKey } from "@/lib/claude/client";
 import { intakePropsOf, type IntakeProps } from "@/lib/intake/props";
@@ -50,16 +52,10 @@ type Props = {
 const ADD_BUTTON = "rounded-md bg-accent px-4 py-2 text-sm font-bold text-on-accent";
 
 /**
- * 行の詳細の「分類と直す口」の差し込み口（T12 の components/list/Classification.tsx）。録音か文字起こしのある信号ごとに描く。
- * T12（PR #13）を main に入れたら、ここを次の形にする（信号の行は SELECT * なので ai_* の列も入っている）:
- *   import { Classification } from "@/components/list/Classification";
- *   import { classViewOf, type SignalClassFields } from "@/lib/classify/view";
- *   const CLASSIFICATION: ClassificationSlot = (s) => (
- *     <Classification signalId={s.id} view={classViewOf(s.row as unknown as SignalClassFields)} editable inset />
- *   );
- * それまでは行の詳細が信号の分類を読むだけで出し（Claude の分類に AI の印）、無ければ「分類なし」
+ * 行の詳細の「分類と直す口」（T12 の components/list/Classification.tsx）。録音か文字起こしのある信号ごとに描く。
+ * 信号の行は SELECT * なので ai_* の列も入っている。担当一覧を開けるのはケアマネの役だけなので、直す口はいつも出す（API もケアマネ以外は 403）
  */
-const CLASSIFICATION: ClassificationSlot | undefined = undefined;
+const CLASSIFICATION: ClassificationSlot = (s) => <Classification signalId={s.id} view={classViewOf(s.row)} editable inset />;
 
 function isSortKey(v: unknown): v is SortKey {
   return typeof v === "string" && SORT_KEYS.includes(v as SortKey);
