@@ -3,12 +3,14 @@ import { getCloudflareContext } from "@opennextjs/cloudflare";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { AutoPrint } from "@/components/forms/AutoPrint";
 import { MatsuyamaSheet } from "@/components/forms/MatsuyamaSheet";
 import { PrintButton } from "@/components/forms/PrintButton";
 import { StateTag } from "@/components/person/parts";
 import { todayJst } from "@/lib/age";
 import { requirePage } from "@/lib/auth/server";
 import { buildMatsuyamaSheet } from "@/lib/forms/matsuyama";
+import { wantsPrint } from "@/lib/forms/print";
 import { BLANK_LABELS } from "@/lib/labels";
 import { loadPersonDocument } from "@/lib/consent/documents";
 
@@ -18,13 +20,14 @@ export const dynamic = "force-dynamic";
 // 印刷の PDF の名前にもなる。氏名は入れない
 export const metadata: Metadata = { title: "計画書" };
 
-type Props = { params: Promise<{ id: string }> };
+type Props = { params: Promise<{ id: string }>; searchParams: Promise<{ print?: string | string[] }> };
 
 // 松山市の様式の紙面（A4 表裏）。本人のページの「書類」から開く。
 // 差し込みは台帳からサーバーで描く。Claude は呼ばない（氏名・住所・電話が入る）。
 // 事業所の壁は本人のページと同じ（loadPersonPage が personInScope を通す。範囲の外は 404）。
 // 医療班・行政の同意の範囲（lib/consent/scope.ts）に計画書は無いので 404（T24）。
-export default async function MatsuyamaFormPage({ params }: Props) {
+// ?print=1 で開くと、書体を読み終えてから印刷の窓を出す（AutoPrint、lib/forms/print.ts）。
+export default async function MatsuyamaFormPage({ params, searchParams }: Props) {
   const principal = await requirePage("person");
   const { id } = await params;
   const { env } = await getCloudflareContext({ async: true });
@@ -59,6 +62,7 @@ export default async function MatsuyamaFormPage({ params }: Props) {
         </div>
       </div>
       <MatsuyamaSheet sheet={sheet} />
+      {wantsPrint(await searchParams) && <AutoPrint />}
     </main>
   );
 }

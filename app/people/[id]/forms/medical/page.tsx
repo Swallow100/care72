@@ -4,6 +4,7 @@ import { getCloudflareContext } from "@opennextjs/cloudflare";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { AutoPrint } from "@/components/forms/AutoPrint";
 import { MedicalSummaryBasis } from "@/components/forms/MedicalSummaryBasis";
 import { MedicalSummarySheet } from "@/components/forms/MedicalSummarySheet";
 import { MedicalWithheld } from "@/components/forms/MedicalWithheld";
@@ -13,6 +14,7 @@ import { todayJst } from "@/lib/age";
 import { requirePage } from "@/lib/auth/server";
 import { loadPersonDocument, medicalSummaryView } from "@/lib/consent/documents";
 import { buildMedicalSummary } from "@/lib/forms/medical-summary";
+import { wantsPrint } from "@/lib/forms/print";
 import { BLANK_LABELS, DOCUMENT_LABELS } from "@/lib/labels";
 
 // D1 を毎回読む
@@ -21,7 +23,7 @@ export const dynamic = "force-dynamic";
 // 印刷の PDF の名前にもなる。氏名は入れない
 export const metadata: Metadata = { title: DOCUMENT_LABELS.medical };
 
-type Props = { params: Promise<{ id: string }> };
+type Props = { params: Promise<{ id: string }>; searchParams: Promise<{ print?: string | string[] }> };
 
 // 医療要約の紙面（A4 1 枚、災害診療記録 2018 の順）。本人のページの「書類」から開く。医療班・行政も本人のページの書類から開いて印刷する（T24）。
 // 組み立ては台帳からサーバーで。Claude は呼ばない（氏名・電話が入る）。
@@ -29,7 +31,8 @@ type Props = { params: Promise<{ id: string }> };
 // 医療班・行政は同意の範囲（lib/consent/scope.ts）: 医療班への提供に同意の無い人は 404、ある人は住所・本人の電話を描かず、
 // 支援者は役割名だけ（lib/consent/documents.ts）。ケアマネには同意の無い人は中身を作らず「同意なし」「未確認」だけ。
 // 「なぜこの行があるか」の脇はケアマネ（審査員のケアマネの役を含む）の画面だけ。紙には出さない。
-export default async function MedicalFormPage({ params }: Props) {
+// ?print=1 で開くと、書体を読み終えてから印刷の窓を出す（要約を作った人だけ。AutoPrint、lib/forms/print.ts）。
+export default async function MedicalFormPage({ params, searchParams }: Props) {
   const principal = await requirePage("person");
   const { id } = await params;
   const { env } = await getCloudflareContext({ async: true });
@@ -84,6 +87,7 @@ export default async function MedicalFormPage({ params }: Props) {
           <MedicalWithheld kind={result.kind} consent={result.consent} />
         </div>
       )}
+      {sheet && wantsPrint(await searchParams) && <AutoPrint />}
     </main>
   );
 }

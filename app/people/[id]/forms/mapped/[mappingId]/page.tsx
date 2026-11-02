@@ -4,6 +4,7 @@ import { getCloudflareContext } from "@opennextjs/cloudflare";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { AutoPrint } from "@/components/forms/AutoPrint";
 import { MappedSheet } from "@/components/forms/MappedSheet";
 import { PrintButton } from "@/components/forms/PrintButton";
 import { StateTag } from "@/components/person/parts";
@@ -13,6 +14,7 @@ import { requirePage } from "@/lib/auth/server";
 import { buildMappedSheet } from "@/lib/forms/mapped-sheet";
 import { MAPPING_LABELS as L } from "@/lib/forms/mapping";
 import { loadCheckedMapping } from "@/lib/forms/mapping-db";
+import { wantsPrint } from "@/lib/forms/print";
 import { warekiText } from "@/lib/forms/wareki";
 import { CONSENT_KIND_LABELS } from "@/lib/labels";
 import { loadPersonDocument } from "@/lib/consent/documents";
@@ -24,13 +26,14 @@ export const dynamic = "force-dynamic";
 // 印刷の PDF の名前にもなる。氏名は入れない
 export const metadata: Metadata = { title: "様式差込" };
 
-type Props = { params: Promise<{ id: string; mappingId: string }> };
+type Props = { params: Promise<{ id: string; mappingId: string }>; searchParams: Promise<{ print?: string | string[] }> };
 
 // 汎用の差し込み（docs/tasks/T08.md）。確かめた対応表（確認済だけ）と台帳から、様式の欄の順に値を並べた紙面（A4、表の形）。
 // 差し込みは台帳からサーバーで描く。Claude は呼ばない（氏名・住所・電話が入る）。同意の範囲は松山市の様式と同じ。
 // 本人の壁は本人のページと同じ（loadPersonPage が personInScope を通す）。対応表は本人の事業所の物だけ（ほかの事業所・下書きは 404）
 // 医療班・行政の同意の範囲に差し込みの書類は無いので 404（T24、lib/consent/scope.ts）
-export default async function MappedFormPage({ params }: Props) {
+// ?print=1 で開くと、書体を読み終えてから印刷の窓を出す（AutoPrint、lib/forms/print.ts）。
+export default async function MappedFormPage({ params, searchParams }: Props) {
   const principal = await requirePage("person");
   const { id, mappingId } = await params;
   if (!/^[A-Za-z0-9_-]{1,64}$/.test(mappingId)) notFound();
@@ -85,7 +88,8 @@ export default async function MappedFormPage({ params }: Props) {
           <PrintButton />
         </div>
       </div>
-      <MappedSheet sheet={sheet} meta={{ date: warekiText(today), checked }} />
+      <MappedSheet sheet={sheet} meta={{ date: warekiText(today), checked, office: office?.name ?? null, author: rows.careManagerName }} />
+      {wantsPrint(await searchParams) && <AutoPrint />}
     </main>
   );
 }

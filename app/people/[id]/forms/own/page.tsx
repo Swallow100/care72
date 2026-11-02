@@ -6,6 +6,7 @@ import type { Metadata } from "next";
 import { headers } from "next/headers";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { AutoPrint } from "@/components/forms/AutoPrint";
 import { OwnSheetPaper, type OwnQr } from "@/components/forms/OwnSheet";
 import { PrintButton } from "@/components/forms/PrintButton";
 import { qrExpiryDate } from "@/components/forms/QrBlock";
@@ -15,6 +16,7 @@ import { requirePage } from "@/lib/auth/server";
 import { nowSec, sessionSecret } from "@/lib/auth/session";
 import { buildMedicalSummary } from "@/lib/forms/medical-summary";
 import { buildOwnSheet } from "@/lib/forms/own-sheet";
+import { wantsPrint } from "@/lib/forms/print";
 import { BLANK_LABELS, DOCUMENT_LABELS } from "@/lib/labels";
 import { loadPersonDocument } from "@/lib/consent/documents";
 import { QR_LABELS, QR_STATUS_LABELS } from "@/lib/qr/labels";
@@ -27,7 +29,7 @@ export const dynamic = "force-dynamic";
 // 印刷の PDF の名前にもなる。氏名は入れない
 export const metadata: Metadata = { title: DOCUMENT_LABELS.own };
 
-type Props = { params: Promise<{ id: string }> };
+type Props = { params: Promise<{ id: string }>; searchParams: Promise<{ print?: string | string[] }> };
 
 /** 上の帯の確かめの印（紙には出さない） */
 function Check({ label, items, data }: { label: string; items: readonly string[]; data: string }) {
@@ -47,7 +49,8 @@ function Check({ label, items, data }: { label: string; items: readonly string[]
 // 壁は本人のページと同じ（loadPersonPage が personInScope を通す。範囲の外は 404）。医療班・行政の同意の範囲に本人の 1 枚は無いので 404（T24）。
 // 上の帯（画面だけ）に、紙で「ケアマネジャーと 決めます」と出た所・手で書く電話・ふりがなの付かなかった漢字と、QR の状態を出す。
 // QR はここでは作らない（作る・作り直すは QR の画面でケアマネが押す。作り直すと前に刷った紙の QR は無効）。
-export default async function OwnFormPage({ params }: Props) {
+// ?print=1 で開くと、書体を読み終えてから印刷の窓を出す（AutoPrint、lib/forms/print.ts）。
+export default async function OwnFormPage({ params, searchParams }: Props) {
   const principal = await requirePage("person");
   const { id } = await params;
   const { env } = await getCloudflareContext({ async: true });
@@ -99,6 +102,7 @@ export default async function OwnFormPage({ params }: Props) {
         </div>
       </div>
       <OwnSheetPaper sheet={sheet} medical={medical} qr={qr} />
+      {wantsPrint(await searchParams) && <AutoPrint />}
     </main>
   );
 }
