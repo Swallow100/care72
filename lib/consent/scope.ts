@@ -181,6 +181,14 @@ function staffScope(input: ScopeInput): ViewScope {
   };
 }
 
+/** 本人のページの行（同意の行と出どころを持つ物）から。lib/person.ts の PersonPageRows を渡す */
+export function scopeOfRows(
+  role: Role,
+  rows: { consents: ScopeInput["consents"]; person: { origin: PersonOrigin } },
+): ViewScope {
+  return viewScope(role, { consents: rows.consents, origin: rows.person.origin });
+}
+
 export function scopeHas(scope: Pick<ViewScope, "items">, item: ScopeItem): boolean {
   return scope.items.includes(item);
 }
