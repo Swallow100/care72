@@ -12,7 +12,7 @@
     "cf:preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
     "typecheck": "tsc --noEmit",
     "db:migrate": "wrangler d1 migrations apply DB --local",
-    "db:seed": "node seed/build-sql.ts && wrangler d1 execute DB --local --file=seed/generated/seed.sql",
+    "db:seed": "node seed/build-sql.ts && wrangler d1 execute DB --local --file=seed/generated/seed.sql && node seed/put-recording.ts",
     "db:reset": "npm run db:migrate && npm run db:seed",
     "db:fresh": "node seed/wipe-local.ts && npm run db:reset",
     "db:migrate:remote": "wrangler d1 migrations apply DB --remote",
