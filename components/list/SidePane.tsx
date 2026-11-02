@@ -31,11 +31,11 @@ export function SidePane({ data }: { data: SidePaneData }) {
   const pending = <PendingSection key="pending" items={data.pendingTop} />;
   const plan = <PlanSection key="plan" counts={data.plan} />;
   const sections = disaster ? [map, review, pending, plan] : [plan, review, pending, map];
-  // 発災時は担当一覧の表の列が多い（T13）ので、右に出すのは 1280px（xl）から。1024〜1279px は表の下に 2 列で並べる
+  // 発災時は担当一覧の表に約 64rem 要る（T13）ので、右に出すのは 1536px（2xl）から。それ未満は表の下に 2 列で並べる
   const aside = disaster
-    ? "min-w-0 self-start xl:sticky xl:top-4 xl:max-h-[calc(100dvh-2rem)] xl:overflow-y-auto"
+    ? "min-w-0 self-start 2xl:sticky 2xl:top-4 2xl:max-h-[calc(100dvh-2rem)] 2xl:overflow-y-auto"
     : "min-w-0 self-start lg:sticky lg:top-4 lg:max-h-[calc(100dvh-2rem)] lg:overflow-y-auto";
-  const grid = disaster ? "grid items-start gap-2 md:grid-cols-2 xl:grid-cols-1" : "grid items-start gap-2 md:grid-cols-2 lg:grid-cols-1";
+  const grid = disaster ? "grid items-start gap-2 md:grid-cols-2 2xl:grid-cols-1" : "grid items-start gap-2 md:grid-cols-2 lg:grid-cols-1";
   return (
     <aside aria-label="概況" className={aside} data-side={data.mode}>
       <SideFold title="概況" summary={<FoldSummary data={data} />}>
