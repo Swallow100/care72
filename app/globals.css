@@ -16,6 +16,9 @@
   --danger: #c0292b;
   --caution: #946000;
   --unknown: #66707c;
+  /* 操作の色（ログインなどの主のボタン、選んだ印の枠、入力の欄の印）。状態の 4 色とは別 */
+  --accent: #2a5d8f;
+  --on-accent: #ffffff;
   color-scheme: light;
 }
 
@@ -31,6 +34,8 @@
     --danger: #ff6f69;
     --caution: #e0b13e;
     --unknown: #9aa4af;
+    --accent: #8db8e4;
+    --on-accent: #0f1215;
     color-scheme: dark;
   }
 }
@@ -46,6 +51,8 @@
   --color-danger: var(--danger);
   --color-caution: var(--caution);
   --color-unknown: var(--unknown);
+  --color-accent: var(--accent);
+  --color-on-accent: var(--on-accent);
   --font-sans: var(--font-biz-ud), system-ui, sans-serif;
 }
 
@@ -61,6 +68,11 @@ body {
 }
 
 /* 押したときの変化は灰色の地だけ。縮める・薄くする・色を変えるは重ねない。 */
-[data-press]:active {
+[data-press]:not([data-press="overlay"]):active {
   background-color: var(--press);
+}
+
+/* 塗りのボタン（ログイン）は地の色を残し、上に同じ灰色を重ねる */
+[data-press="overlay"]:active {
+  box-shadow: inset 0 0 0 100vmax var(--press);
 }

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { BIZ_UDPGothic } from "next/font/google";
+import { AppHeader } from "@/components/AppHeader";
 import "./globals.css";
 
 const bizUd = BIZ_UDPGothic({
@@ -19,7 +20,10 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="ja" className={bizUd.variable}>
-      <body className="min-h-dvh bg-base text-ink">{children}</body>
+      <body className="min-h-dvh bg-base text-ink">
+        <AppHeader />
+        {children}
+      </body>
     </html>
   );
 }
