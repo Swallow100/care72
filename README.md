@@ -25,6 +25,8 @@
 
 期間中に足す。使った物だけ書く。
 
+- Claude Code: 設計（Fable）と実装（Opus のサブエージェント）の分担、作業ごとの brief、テスト先行、フックで守りを強制、Skill で手順を固定。数字と commit の hash は [docs/CLAUDE_CODE.md](docs/CLAUDE_CODE.md)
+
 ## 進み
 
 docs/PROGRESS.md。期間中の判断は docs/DECISIONS.md。
