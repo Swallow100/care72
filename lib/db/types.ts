@@ -1,4 +1,4 @@
-// D1 の表の型。列の名前は SQL のまま（snake_case）。値の形は migrations/0001_init.sql の CHECK と同じにする。
+// D1 の表の型。列の名前は SQL のまま（snake_case）。値の形は migrations（0001_init.sql と、表を建て直した 0002 以降）の CHECK と同じにする。
 // 選択肢を足すときは、ここの配列と SQL の CHECK の両方を直す（新しい migration で）。
 //
 // 人が付ける欄（people.self_report_unreliable、clocks.depends_on・depends_check）は台帳の JSON（Ledger）に入れず、
@@ -113,6 +113,8 @@ export const DRILL_EVENT_KINDS = [
   "action", // ケアマネの手
   "result", // 手を打った結果（世界が返す）
   "score",
+  "call_answer", // 着信に応答した（T22、migrations/0002）
+  "call_decline", // 着信を拒否した（T22、migrations/0002。赤の拒否は順番の誤り）
 ] as const;
 export type DrillEventKind = (typeof DRILL_EVENT_KINDS)[number];
 
