@@ -17,6 +17,7 @@ import type {
   TimelineEntryRow,
 } from "../db/types.ts";
 import { loadSituation as loadDisasterSituation } from "../disaster/db.ts";
+import { loadOfficeOverrides } from "../disaster/override.ts";
 import type { DisasterSituation } from "../disaster/state.ts";
 import { rankInDisaster } from "../disaster/triage.ts";
 import { toTriagePerson } from "../triage/from-ledger.ts";
@@ -214,13 +215,17 @@ export async function loadForm9(
   if (s && signalsRes && entriesRes) {
     const signals = byPerson((signalsRes.results as SignalForForm[]).filter((x) => within(x.occurred_at, s)));
     const entries = byPerson((entriesRes.results as EntryForForm[]).filter((x) => within(x.occurred_at, s)));
+    // ケアマネの上書き（T13）も担当一覧・本人のページと同じに当てる
+    const overrides = await loadOfficeOverrides(db, office.id, s);
     // 停電の範囲が地区なら、本人の町名で停電の時計を走らせるかを決める（担当一覧・本人のページと同じ、lib/disaster）
     const triage = rankInDisaster(
       inputs.map((p) => {
         const ledger = parseLedger(p.person.ledger);
+        const override = overrides.get(p.person.id);
         return {
           person: toTriagePerson({ person: p.person, ledger, contacts: p.contacts, clocks: p.clocks }),
           signals: (signals.get(p.person.id) ?? []).map(toTriageSignal),
+          ...(override ? { override } : {}),
           town: ledger.basic.address?.town ?? null,
         };
       }),
