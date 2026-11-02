@@ -30,7 +30,8 @@ export default async function PersonPage({ params }: Props) {
   const d = await personDisaster(env.DB, rows);
   // 見える区分は役と同意で（lib/consent/scope.ts）。医療班・行政は医療・避難・人の一部、同意が無ければ本人確認と医療班・行政の経過だけ
   const scope = scopeOfRows(principal.role, rows);
-  const view = toPersonView(rows, { today: todayJst(), mode: d.mode, triage: d.triage, scope });
+  // 災害モードは上の医療の印と時計の欄を今の残りに（situation を渡す）
+  const view = toPersonView(rows, { today: todayJst(), mode: d.mode, triage: d.triage, situation: d.situation, scope });
   // 入れる欄（T03）はケアマネの役だけ。鍵が無ければ「AI 未設定」と手入力
   const intake = principal.role === "care_manager" ? intakePropsOf(rows, hasAnthropicKey(env)) : null;
 
