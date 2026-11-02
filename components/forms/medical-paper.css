@@ -7,6 +7,25 @@
   gap: 1.4mm;
 }
 
+/* 題名と、作成・台帳の時点・同意の記録を 1 段に */
+.paper .head-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 4mm;
+}
+.paper .head-row .title {
+  margin: 0;
+  text-align: left;
+}
+.paper .top-col {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  font-size: 7.6pt;
+  line-height: 1.35;
+}
+
 /* 特記事項（常用薬等）のチェック。選んだ ■ は太く、選ばない □ は細く小さく */
 .paper .chk .ch {
   font-size: 0.9em;

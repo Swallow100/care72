@@ -640,7 +640,7 @@ export function buildMedicalSummary(rows: PersonPageRows, opts: MedicalBuildOpti
     strong(h.depthM != null ? `${HAZARD_LABELS[h.kind]} ${h.depthM} m` : HAZARD_LABELS[h.kind]),
   );
   const dwelling: Cell = value(
-    housingParts.length > 0 ? [sub("住まい"), t(housingParts.join("・"))] : [sub("住まい"), unconfirmedPiece(housingReason)],
+    housingParts.length > 0 ? [t(housingParts.join("・"))] : [unconfirmedPiece(housingReason)],
     [sub("ハザード"), ...(hazardPieces.length > 0 ? hazardPieces : [t(BLANK.none)])],
   );
 

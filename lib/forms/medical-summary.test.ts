@@ -281,7 +281,7 @@ describe("1 山田 ハナ（T07 の終わりの形）", () => {
     expect(text(s, "patient.birth")).toBe("1942 年 4 月 18 日 昭和 17 年 4 月 18 日 84 歳");
     expect(text(s, "patient.sex")).toBe("□男 ■女");
     expect(text(s, "patient.house")).toBe("□健存 □半壊 □全壊 未確認");
-    expect(text(s, "patient.dwelling")).toBe("住まい 木造・2 階建・1 階に住む ハザード 浸水 3 m");
+    expect(text(s, "patient.dwelling")).toBe("木造・2 階建・1 階に住む ハザード 浸水 3 m");
     expect(text(s, "shelter.first")).toBe("かわなぎ小学校 移動 娘の車");
     expect(text(s, "shelter.second")).toBe("未確認（不明）");
     expect(text(s, "contact.kinds")).toBe("■家族 ■知人 □その他 □連絡先なし");

@@ -23,16 +23,19 @@ function F({
   label,
   size,
   style,
+  bare,
 }: {
   s: MedicalSummary;
   k: MedicalKey;
   label?: string;
   size?: Size;
   style?: CSSProperties;
+  /** 選ぶ欄の □ の名前が欄の名前と同じときは、欄の名前を出さない */
+  bare?: boolean;
 }) {
   return (
     <div className={size} data-field={k} style={style}>
-      <span className="f-l">{label ?? medicalField(k).label}</span>
+      {!bare && <span className="f-l">{label ?? medicalField(k).label}</span>}
       <span className="f-v">
         <FormCell cell={s.cells[k]} />
       </span>
@@ -140,21 +143,22 @@ export function MedicalSummarySheet({ sheet: s }: { sheet: MedicalSummary }) {
     <div className="paper-scroll">
       <div className="paper-stack" data-sheet="medical" data-person={s.personId}>
         <section className="paper med-paper" aria-label={DOCUMENT_LABELS.medical} data-page="1">
-          <div className="top">
-            <span>災害診療記録2018 基本情報の順</span>
-            <span className="nowrap">
-              作成 {dateText(s.today)}
-              {author && ` ${author}`}
-            </span>
-          </div>
-          <h1 className="title">{DOCUMENT_LABELS.medical}</h1>
-          <div className="top">
-            <span className="nowrap">台帳 {formatJst(s.ledgerAt)} 時点</span>
-            <span className="nowrap" data-consent={s.consent.status}>
-              {CONSENT_KIND_LABELS.medical} {CONSENT_STATUS_LABELS[s.consent.status]}
-              {consentAt && ` 記録 ${consentAt}`}
-              {s.consent.recordedBy && ` ${s.consent.recordedBy}`}
-            </span>
+          <div className="head-row">
+            <h1 className="title">{DOCUMENT_LABELS.medical}</h1>
+            <div className="top-col">
+              <span className="nowrap">
+                災害診療記録2018 基本情報の順・台帳 {formatJst(s.ledgerAt)} 時点
+              </span>
+              <span className="nowrap">
+                作成 {dateText(s.today)}
+                {author && ` ${author}`}・
+                <span data-consent={s.consent.status}>
+                  {CONSENT_KIND_LABELS.medical} {CONSENT_STATUS_LABELS[s.consent.status]}
+                  {consentAt && ` 記録 ${consentAt}`}
+                  {s.consent.recordedBy && ` ${s.consent.recordedBy}`}
+                </span>
+              </span>
+            </div>
           </div>
 
           <div className="blk" data-block="patient">
@@ -164,12 +168,10 @@ export function MedicalSummarySheet({ sheet: s }: { sheet: MedicalSummary }) {
               <F s={s} k="patient.birth" size="lg" />
               <F s={s} k="patient.sex" />
             </div>
-            <div className="grid" style={cols("1fr 1fr 1.3fr")}>
+            <div className="grid" style={cols("0.95fr 0.85fr 1.1fr 1.3fr")}>
               <F s={s} k="patient.phone" />
               <F s={s} k="patient.address" />
               <F s={s} k="patient.house" label="状態（家）" />
-            </div>
-            <div className="grid" style={cols("1fr")}>
               <F s={s} k="patient.dwelling" size="sm" />
             </div>
             <div className="grid" style={cols("1fr 1fr")} data-block="shelter">
@@ -179,10 +181,10 @@ export function MedicalSummarySheet({ sheet: s }: { sheet: MedicalSummary }) {
           </div>
 
           <div className="blk" data-block="contact">
-            <div className="grid" style={cols("1fr")}>
+            <div className="grid" style={cols("1fr 1fr")}>
               <F s={s} k="contact.kinds" />
-              <F s={s} k="contact.people" />
               <F s={s} k="contact.others" size="sm" />
+              <F s={s} k="contact.people" style={span(2)} />
             </div>
           </div>
 
@@ -197,14 +199,14 @@ export function MedicalSummarySheet({ sheet: s }: { sheet: MedicalSummary }) {
           <div className="blk key" data-block="special">
             <div className="blk-h">【特記事項（常用薬等）】</div>
             <div className="grid chk" style={cols("1fr 1fr")}>
-              <F s={s} k="drug.antiplatelet" size="lg" />
-              <F s={s} k="drug.anticoagulant" size="lg" />
-              <F s={s} k="drug.diabetes" size="lg" />
-              <F s={s} k="drug.steroid" size="lg" />
-              <F s={s} k="drug.antiepileptic" size="lg" />
-              <F s={s} k="drug.other" size="lg" />
-              <F s={s} k="drug.dialysis" size="lg" style={span(2)} />
-              <F s={s} k="drug.hot" size="lg" style={span(2)} />
+              <F s={s} k="drug.antiplatelet" size="lg" bare />
+              <F s={s} k="drug.anticoagulant" size="lg" bare />
+              <F s={s} k="drug.diabetes" size="lg" bare />
+              <F s={s} k="drug.steroid" size="lg" bare />
+              <F s={s} k="drug.antiepileptic" size="lg" bare />
+              <F s={s} k="drug.other" size="lg" bare />
+              <F s={s} k="drug.dialysis" size="lg" style={span(2)} bare />
+              <F s={s} k="drug.hot" size="lg" style={span(2)} bare />
               <F s={s} k="drug.devices" size="lg" style={span(2)} />
             </div>
           </div>
@@ -220,7 +222,7 @@ export function MedicalSummarySheet({ sheet: s }: { sheet: MedicalSummary }) {
 
           <div className="blk" data-block="care">
             <div className="grid" style={cols("1fr")}>
-              <F s={s} k="care.vulnerable" />
+              <F s={s} k="care.vulnerable" bare />
               <F s={s} k="care.protect" label="【要保護者】" />
             </div>
           </div>
