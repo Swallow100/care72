@@ -98,8 +98,18 @@ describe(".claude/skills", () => {
   const dirs = readdirSync(root(".claude/skills"));
   const scripts = Object.keys(JSON.parse(read("package.json")).scripts);
 
-  it("triage-rule と task の 2 つ", () => {
-    expect(dirs.sort()).toEqual(["task", "triage-rule"]);
+  it("care72-review・task・triage-rule の 3 つ", () => {
+    expect(dirs.sort()).toEqual(["care72-review", "task", "triage-rule"]);
+  });
+
+  it("care72-review が呼ぶ見直し役は .claude/agents に本当にあり、モデルの表が agents の頭の項目と同じ", () => {
+    const text = read(".claude/skills/care72-review/SKILL.md");
+    const rows = [...text.matchAll(/\| ([a-z-]+-(?:reviewer|checker|tester)) \| (opus|sonnet|haiku) \|/g)];
+    expect(rows.map((r) => r[1]).sort()).toEqual(Object.keys(AGENT_MODELS).sort());
+    for (const [, name, model] of rows) {
+      expect(existsSync(root(`.claude/agents/${name}.md`)), name).toBe(true);
+      expect(AGENT_MODELS[name], name).toBe(model);
+    }
   });
 
   it.each(dirs)("%s: 1 行目が ---、名前はフォルダの名前、説明は 1,536 字まで、知らない項目なし", (dir) => {
