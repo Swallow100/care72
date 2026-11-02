@@ -4,11 +4,12 @@
 // - 録音の音声は大きいので端末に書かず、画面を開いている間だけ覚える（閉じると音声は消え、文字起こしだけ送る）
 // - 順は守る: 前の物が送れないうちは後ろを送らない（録音は信号のあと）
 // - 送り直しても通らない応答（平時・形の違い・権限なし）は捨てる。通信の失敗・5xx・429・401 は残す
-// - 持ち主は「役:本人」（self:p-01）。同じ端末で審査員が役を替えても、ほかの人・ほかの役の物は送らない
+// - 持ち主は「役:本人」（self:p-01）、家族のスマホは「役:連絡先」（family:c-01-1。T11）。
+//   同じ端末で審査員が役を替えても、ほかの人・ほかの役の物は送らない
 //   （出どころはサーバーがログインの役から決めるので、本人の残りを家族のログインで送ると家族の信号になる）。その役の画面を開いたときに送る
 // - 画面（DOM）に触らない。保存の場所と送る道は渡す（テストは偽物）
 
-import type { SignalBody } from "./body.ts";
+import type { AnySignalBody } from "./body.ts";
 
 export const OUTBOX_KEY = "care72.phone.outbox.v1";
 
@@ -29,17 +30,17 @@ export type AttachItem = {
 };
 
 export type OutboxItem =
-  | { kind: "signal"; owner: string; body: SignalBody }
+  | { kind: "signal"; owner: string; body: AnySignalBody }
   | ({ kind: "attach"; owner: string } & AttachItem);
 
 /** 送る道。sentAt は送るたびに今 */
 export type Transport = {
-  signal(body: SignalBody): Promise<SendOutcome>;
+  signal(body: AnySignalBody): Promise<SendOutcome>;
   attach(item: AttachItem & { sentAt: string }, audio: Blob | null): Promise<SendOutcome>;
 };
 
 export type Outbox = {
-  sendSignal(body: SignalBody): Promise<Delivery>;
+  sendSignal(body: AnySignalBody): Promise<Delivery>;
   sendRecording(item: AttachItem, audio: Blob | null): Promise<Delivery>;
   /** 残っている自分の物を順に送る。前の物が送れなければそこで止める */
   flush(): Promise<void>;

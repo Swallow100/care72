@@ -1,4 +1,4 @@
-// 本人のスマホが送る信号の形（docs/tasks/T10.md）。端末とサーバーが同じ形を使う。
+// 本人のスマホ（docs/tasks/T10.md）と家族・支援者のスマホ（T11）が送る信号の形。端末とサーバーが同じ形を使う。
 //
 // - 本人の id と出どころ（本人）は送らない。サーバーがログインの役から決める（lib/signals/save.ts）
 // - 信号の id は端末で作る（UUID）。通信が無いときに端末に残して送り直しても、同じ信号を 2 回入れない
@@ -52,6 +52,35 @@ export const SignalBodySchema = z
         : b.whereNow === null,
     "色と答えが合わない",
   );
+
+// ---------- 家族・支援者のスマホ（docs/tasks/T11.md） ----------
+
+/**
+ * 家族・支援者の答え: 無事です（緑）・無事じゃない（赤）・分からない 連絡がつかない（未知）。
+ * 本人の代わりに答えるので、緑の 1 問と赤の 4 問は聞かない（家族はその場にいないことが多い）。
+ * 「分からない」は未知の信号として残す（色は未知のまま。ケアマネが「つながらない」と入れた物と同じ読み方）
+ */
+export type FamilyAnswer = "green" | "red" | "unknown";
+
+export type FamilySignalBody = {
+  id: string;
+  color: FamilyAnswer;
+  /** 押した時刻（端末の時計、ISO 8601） */
+  occurredAt: string;
+  /** 送った時刻（端末の時計、ISO 8601）。送り直すたびに今にする */
+  sentAt: string;
+};
+
+/** 家族の送る形。本人の id・連絡先の id・出どころは送らない（サーバーがログインの連絡先の行から決める） */
+export const FamilySignalBodySchema = z.object({
+  id: z.string().regex(UUID),
+  color: z.enum(["green", "red", "unknown"]),
+  occurredAt: iso,
+  sentAt: iso,
+});
+
+/** 端末が送る信号（本人か家族の形）。端末の残り（lib/signals/outbox.ts）はどちらも同じに扱う */
+export type AnySignalBody = SignalBody | FamilySignalBody;
 
 /** 送るまでの遅れの上限（端末に残ったまま 72 時間を超えた物は、遅れを 72 時間とみなす） */
 export const MAX_DELAY_MS = 72 * 3_600_000;

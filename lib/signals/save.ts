@@ -1,88 +1,132 @@
-// 本人のスマホの信号と録音をサーバーで書く（docs/tasks/T10.md）。D1 と R2 は引数で受け取る（テストで node:sqlite と偽の R2 を渡す）。
+// 本人・家族・支援者のスマホの信号と、本人の録音をサーバーで書く（docs/tasks/T10.md・T11.md）。
+// D1 と R2 は引数で受け取る（テストで node:sqlite と偽の R2 を渡す）。
 //
-// 役の壁: 書けるのは役「本人のスマホ」だけで、本人は自分の信号しか書けない。本人の id と出どころ（self）はログインから決め、
-// 送られた物の中の id は読まない。ケアマネ・行政・医療班は save を持つが、ここでは断る（本人に成り代わらない）。
-// 家族のスマホ（T11）はここに足す。
+// 役の壁: 書けるのは役「本人のスマホ」と「家族のスマホ」だけ。ケアマネ・行政・医療班は save を持つが、ここでは断る（本人に成り代わらない）。
+// - 本人は自分の信号しか書けない。本人の id と出どころ（self）はログインから決め、送られた物の中の id は読まない
+// - 家族は自分の本人の信号しか書けない。本人の id と出どころはログインの連絡先の行から決める（家族→family、
+//   支援者・民生委員→supporter。本人の電話・機関の連絡先は断る）。連絡先の行が本人のものでなければ見つからない
+// - 録音は本人だけ（家族のスマホは録らない。本人の信号に家族が録音を添えないように）
 //
 // 信号は災害モードの間だけ受ける（平時は断る。通信が戻ったあとに平時へ戻っていた信号は端末が捨てる）。
 // 色と順位はここで決めない。信号の表に入れれば、担当一覧・本人のページ・様式 9 がルールの表（lib/triage）で読み直す。
+// 本人の報告を当てにしない印の人（案 4）も、ここでは区別しない。出どころを残せば、ルールの表が本人の緑だけを参考にする。
 // 録音の分類（T12）はあとでサーバーが付けるので、classes・classified_by は空のまま。
 
 import type { D1Database } from "@cloudflare/workers-types";
 import type { Principal } from "../auth/principal.ts";
 import { roleAllows, type Need } from "../auth/roles.ts";
+import type { AuthorRole, ContactKind, SignalSource } from "../db/types.ts";
 import { loadDisasterState } from "../disaster/db.ts";
 import { isDisaster } from "../disaster/state.ts";
-import { bit, occurredAtOnServer, type SignalBody } from "./body.ts";
-import { recordingLogBody, signalLogBody } from "./labels.ts";
+import { bit, NO_ANSWERS, occurredAtOnServer, type AnySignalBody } from "./body.ts";
+import { familyLogBody, isSignalWriterKind, recordingLogBody, signalLogBody, type SignalWriterKind } from "./labels.ts";
 
-/** 書く人。本人の id・事業所・経過の書き手（審査員は審査員のアカウント） */
-export type SignalScope = { officeId: string; personId: string; authorId: string | null };
+/** 書いた人。本人のスマホは本人、家族のスマホはログインの連絡先の行 */
+export type SignalWriter = { kind: "self" } | { kind: "contact"; contactId: string };
 
-/** 本人のスマホの役で、need（信号は save、録音は recording）を持つときだけ */
+/** 書く人。本人の id・事業所・経過の書き手（審査員は審査員のアカウント）・書いた人 */
+export type SignalScope = { officeId: string; personId: string; authorId: string | null; writer: SignalWriter };
+
+/**
+ * 本人のスマホの役（信号は save、録音は recording）か、家族のスマホの役（信号だけ。連絡先の行が要る）のときだけ。
+ * 家族の出どころ（家族・支援者）は連絡先の行を読んで決める（saveSignal）
+ */
 export function signalScope(p: Principal | null, need: Extract<Need, "save" | "recording"> = "save"): SignalScope | null {
-  if (!p || p.role !== "self" || !roleAllows(p.role, need) || !p.office || !p.personId) return null;
-  return { officeId: p.office.id, personId: p.personId, authorId: p.accountId };
+  if (!p || !roleAllows(p.role, need) || !p.office || !p.personId) return null;
+  const base = { officeId: p.office.id, personId: p.personId, authorId: p.accountId };
+  if (p.role === "self") return { ...base, writer: { kind: "self" } };
+  if (p.role === "family" && need === "save" && p.contactId) return { ...base, writer: { kind: "contact", contactId: p.contactId } };
+  return null;
 }
 
 /** 経過の payload の出どころ。信号の行は phone、録音の行は recording */
 export const SIGNAL_LOG_SOURCE = "phone";
 export const RECORDING_LOG_SOURCE = "recording";
 
+/** 信号の経過の payload。家族・支援者の信号は答えた連絡先の id も持つ（家族の画面で「あなた」と出すため。名前は持たない） */
+export type SignalLogPayload = { source: typeof SIGNAL_LOG_SOURCE; contactId?: string };
+
 export type SaveSignalResult =
   | { ok: true; id: string; duplicate: boolean; occurredAt: string }
-  | { ok: false; error: "not_found" | "normal" | "conflict" };
+  | { ok: false; error: "not_found" | "forbidden" | "invalid" | "normal" | "conflict" };
 
-async function ownPerson(db: D1Database, s: SignalScope): Promise<boolean> {
+/** 連絡先の種類から出どころ（信号の表の source と経過の author_role は同じ言葉） */
+export function sourceOfContact(kind: SignalWriterKind): Extract<SignalSource, "family" | "supporter"> {
+  return kind === "family" ? "family" : "supporter";
+}
+
+type ResolvedWriter = {
+  source: Extract<SignalSource, "self" | "family" | "supporter">;
+  authorRole: Extract<AuthorRole, "self" | "family" | "supporter">;
+  /** 家族・支援者の続柄と種類（経過の 1 行の「娘が」）。本人は null */
+  who: { kind: SignalWriterKind; relation: string | null; contactId: string } | null;
+};
+
+/** 書いた人を D1 で確かめる。本人は事業所の本人か、家族は本人の連絡先の行か */
+async function resolveWriter(db: D1Database, s: SignalScope): Promise<ResolvedWriter | "not_found" | "forbidden"> {
+  if (s.writer.kind === "self") {
+    const row = await db
+      .prepare("SELECT id FROM people WHERE id = ?1 AND office_id = ?2")
+      .bind(s.personId, s.officeId)
+      .first<{ id: string }>();
+    return row ? { source: "self", authorRole: "self", who: null } : "not_found";
+  }
+  const contactId = s.writer.contactId;
   const row = await db
-    .prepare("SELECT id FROM people WHERE id = ?1 AND office_id = ?2")
-    .bind(s.personId, s.officeId)
-    .first<{ id: string }>();
-  return row !== null;
+    .prepare(
+      `SELECT c.kind, c.relation FROM contacts c JOIN people p ON p.id = c.person_id
+        WHERE c.id = ?1 AND c.person_id = ?2 AND p.office_id = ?3`,
+    )
+    .bind(contactId, s.personId, s.officeId)
+    .first<{ kind: ContactKind; relation: string | null }>();
+  if (!row) return "not_found";
+  if (!isSignalWriterKind(row.kind)) return "forbidden";
+  const source = sourceOfContact(row.kind);
+  return { source, authorRole: source, who: { kind: row.kind, relation: row.relation, contactId } };
 }
 
 /**
  * 信号を 1 つ書き、経過に 1 行足す（1 つの batch）。同じ id の信号がもうあれば何も足さない（送り直し）。
- * 同じ id が別の人の信号なら競合
+ * 同じ id が別の人の信号なら競合。本人の形（緑・赤と答え）は本人だけ、家族の形（緑・赤・未知）は家族だけ
  */
-export async function saveSignal(db: D1Database, s: SignalScope, body: SignalBody, now: string): Promise<SaveSignalResult> {
-  if (!(await ownPerson(db, s))) return { ok: false, error: "not_found" };
+export async function saveSignal(db: D1Database, s: SignalScope, body: AnySignalBody, now: string): Promise<SaveSignalResult> {
+  const w = await resolveWriter(db, s);
+  if (w === "not_found" || w === "forbidden") return { ok: false, error: w };
+  const selfShape = "answers" in body;
+  if (selfShape !== (w.who === null)) return { ok: false, error: "invalid" };
   if (!isDisaster(await loadDisasterState(db, s.officeId))) return { ok: false, error: "normal" };
 
   const occurredAt = occurredAtOnServer(body, now);
-  const a = body.answers;
+  const a = selfShape ? body.answers : NO_ANSWERS;
+  const whereNow = selfShape ? body.whereNow : null;
+  const logBody = selfShape ? signalLogBody(body) : familyLogBody(w.who!, body.color);
+  const payload: SignalLogPayload = w.who ? { source: SIGNAL_LOG_SOURCE, contactId: w.who.contactId } : { source: SIGNAL_LOG_SOURCE };
   const [inserted, , owner] = await db.batch([
     db
       .prepare(
         `INSERT INTO signals (id, person_id, drill_id, color, source, where_now, injured, at_home, can_move, has_medicine, occurred_at)
-         VALUES (?1, ?2, NULL, ?3, 'self', ?4, ?5, ?6, ?7, ?8, ?9)
+         VALUES (?1, ?2, NULL, ?3, ?10, ?4, ?5, ?6, ?7, ?8, ?9)
          ON CONFLICT (id) DO NOTHING`,
       )
       .bind(
         body.id,
         s.personId,
         body.color,
-        body.whereNow,
+        whereNow,
         bit(a.injured),
         bit(a.atHome),
         bit(a.canMove),
         bit(a.hasMedicine),
         occurredAt,
+        w.source,
       ),
     db
       .prepare(
         `INSERT INTO timeline_entries (id, person_id, author_id, author_role, kind, body, payload, signal_id, occurred_at)
-         SELECT ?1, s.person_id, ?3, 'self', 'signal', ?4, ?5, s.id, s.occurred_at FROM signals s
+         SELECT ?1, s.person_id, ?3, ?7, 'signal', ?4, ?5, s.id, s.occurred_at FROM signals s
           WHERE s.id = ?2 AND s.person_id = ?6 AND NOT EXISTS (SELECT 1 FROM timeline_entries t WHERE t.signal_id = s.id)`,
       )
-      .bind(
-        crypto.randomUUID(),
-        body.id,
-        s.authorId,
-        signalLogBody(body),
-        JSON.stringify({ source: SIGNAL_LOG_SOURCE }),
-        s.personId,
-      ),
+      .bind(crypto.randomUUID(), body.id, s.authorId, logBody, JSON.stringify(payload), s.personId, w.authorRole),
     db.prepare("SELECT person_id, occurred_at FROM signals WHERE id = ?1").bind(body.id),
   ]);
   const row = (owner.results as Array<{ person_id: string; occurred_at: string }>)[0];
@@ -151,6 +195,8 @@ export async function attachRecording(
   input: RecordingInput,
   now: string,
 ): Promise<AttachResult> {
+  // 録音は本人だけ（家族のスマホは録らない）。添えるのも本人が送った信号だけ
+  if (s.writer.kind !== "self") return { ok: false, error: "not_found" };
   const transcript = input.transcript?.trim() || null;
   if (!input.audio && !transcript) return { ok: false, error: "invalid" };
   const type = input.audio ? audioTypeOf(input.audio.type) : null;
@@ -159,7 +205,7 @@ export async function attachRecording(
   const row = await db
     .prepare(
       `SELECT s.id, s.occurred_at, s.recording_key, s.transcript FROM signals s JOIN people p ON p.id = s.person_id
-        WHERE s.id = ?1 AND s.person_id = ?2 AND p.office_id = ?3 AND s.drill_id IS NULL`,
+        WHERE s.id = ?1 AND s.person_id = ?2 AND p.office_id = ?3 AND s.drill_id IS NULL AND s.source = 'self'`,
     )
     .bind(input.signalId, s.personId, s.officeId)
     .first<{ id: string; occurred_at: string; recording_key: string | null; transcript: string | null }>();

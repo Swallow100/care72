@@ -1,6 +1,7 @@
 // 本人のスマホの災害モードの 1 画面（lib/signals/phone.ts の状態を描くだけ）。状態を持たない（テストで静的に描ける）。
 // どの画面も大きな字で、ボタンは 2 つか 3 つ。戻るは無い。説明文は無い。言葉は lib/signals/phrases.ts の定型だけ。
 // 本人の状態の判定（至急など）は出さない。赤の流れの最後に 119 の 1 行（一般の案内）。
+// Fill・Choice・Emergency は家族・支援者のスマホ（FamilyView.tsx、T11）も使う。
 
 import type { ReactNode } from "react";
 import { EasyWords } from "@/components/forms/EasyText";
@@ -28,7 +29,7 @@ export type PhoneActions = {
 const Words = ({ m }: { m: string }) => <EasyWords words={easy(m)} />;
 
 /** 画面の高さ（上の帯を除いた分）を埋める縦の並び */
-function Fill({ children, step }: { children: ReactNode; step: string }) {
+export function Fill({ children, step }: { children: ReactNode; step: string }) {
   return (
     <div className="phone-text flex min-h-[calc(100dvh-7rem)] flex-col gap-3 px-3 py-3" data-phone="disaster" data-step={step}>
       {children}
@@ -36,9 +37,9 @@ function Fill({ children, step }: { children: ReactNode; step: string }) {
   );
 }
 
-const BIG = "flex w-full flex-1 items-center justify-center rounded-xl px-4 py-6 text-center font-bold";
+export const BIG = "flex w-full flex-1 items-center justify-center rounded-xl px-4 py-6 text-center font-bold";
 
-function Choice({ onClick, children, value }: { onClick: () => void; children: ReactNode; value: string }) {
+export function Choice({ onClick, children, value }: { onClick: () => void; children: ReactNode; value: string }) {
   return (
     <button type="button" onClick={onClick} className={`${BIG} bg-panel text-[2.25rem] text-ink`} data-press data-choice={value}>
       <span>{children}</span>
@@ -77,7 +78,7 @@ function Prompt() {
   );
 }
 
-function Emergency() {
+export function Emergency() {
   return (
     <p className="rounded-xl bg-panel px-4 py-4 text-center text-2xl" data-emergency>
       <EasyWords words={emergencyWords()} />
