@@ -238,7 +238,12 @@ describe("質問の文書", () => {
     expect(paper).not.toContain("訓練");
   });
 
-  it("答えの置き場（answers.md）は見出しだけで読める", () => {
-    expect(parseAnswers(read("docs/survey/answers.md"))).toEqual([]);
+  it("答えの置き場（answers.md）の見出しの行が、質問の表の列と合っている（答えの行は見ない。写し間違いで npm test を落とさない）", () => {
+    const headerOnly = read("docs/survey/answers.md")
+      .split(/\r?\n/)
+      .filter((l) => l.trim().startsWith("|"))
+      .slice(0, 2)
+      .join("\n");
+    expect(parseAnswers(headerOnly)).toEqual([]);
   });
 });
