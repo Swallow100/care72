@@ -149,9 +149,20 @@ export function MedicalSummarySheet({ sheet: s }: { sheet: MedicalSummary }) {
 
 /**
  * 医療要約の A4 の 1 頁（束に入れる前の section）。本人の 1 枚（T06）の裏もこれをそのまま使う。
- * page は束の中の何頁目か、aside は題名の段の右に置く物（本人の 1 枚の QR の枠）
+ * page は束の中の何頁目か、aside は題名の段の右に置く物（本人の 1 枚の QR）、
+ * note は題名の段の右の小さな字の一番上に足す 1 行（本人の 1 枚の「この QR は医療班が読みます」と期限）
  */
-export function MedicalSummaryPaper({ sheet: s, page = 1, aside }: { sheet: MedicalSummary; page?: 1 | 2; aside?: ReactNode }) {
+export function MedicalSummaryPaper({
+  sheet: s,
+  page = 1,
+  aside,
+  note,
+}: {
+  sheet: MedicalSummary;
+  page?: 1 | 2;
+  aside?: ReactNode;
+  note?: ReactNode;
+}) {
   const author = [s.author.office, s.author.careManager ? `${s.author.careManager}（ケアマネ）` : ""].filter(Boolean).join(" ");
   const consentAt = s.consent.recordedAt ? formatJst(s.consent.recordedAt).slice(0, 10) : null;
   return (
@@ -159,6 +170,7 @@ export function MedicalSummaryPaper({ sheet: s, page = 1, aside }: { sheet: Medi
           <div className="head-row">
             <h1 className="title">{DOCUMENT_LABELS.medical}</h1>
             <div className="top-col">
+              {note}
               <span className="nowrap">
                 災害診療記録2018 基本情報の順・台帳 {formatJst(s.ledgerAt)} 時点
               </span>

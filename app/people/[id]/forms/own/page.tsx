@@ -3,17 +3,23 @@ import "@/components/forms/medical-paper.css";
 import "@/components/forms/own-paper.css";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { OwnSheetPaper } from "@/components/forms/OwnSheet";
+import { OwnSheetPaper, type OwnQr } from "@/components/forms/OwnSheet";
 import { PrintButton } from "@/components/forms/PrintButton";
+import { qrExpiryDate } from "@/components/forms/QrBlock";
 import { StateTag } from "@/components/person/parts";
 import { todayJst } from "@/lib/age";
 import { requirePage } from "@/lib/auth/server";
+import { nowSec, sessionSecret } from "@/lib/auth/session";
 import { buildMedicalSummary } from "@/lib/forms/medical-summary";
 import { buildOwnSheet } from "@/lib/forms/own-sheet";
 import { BLANK_LABELS, DOCUMENT_LABELS } from "@/lib/labels";
 import { loadPersonPage } from "@/lib/person";
+import { QR_LABELS, QR_STATUS_LABELS } from "@/lib/qr/labels";
+import { currentQrToken, loadQrRow, qrState } from "@/lib/qr/store";
+import { originFromHeaders, qrUrl } from "@/lib/qr/url";
 
 // D1 を毎回読む
 export const dynamic = "force-dynamic";
@@ -37,9 +43,10 @@ function Check({ label, items, data }: { label: string; items: readonly string[]
 }
 
 // 本人の 1 枚の紙面（A4 の表と裏）。本人のページの「書類」から開く。
-// 表は台帳から定型で組んだやさしい日本語（lib/forms/own-sheet.ts）、裏は医療要約（T07）と QR の枠。Claude は呼ばない。
+// 表は台帳から定型で組んだやさしい日本語（lib/forms/own-sheet.ts）、裏は医療要約（T07）と QR（T16）。Claude は呼ばない。
 // 壁は本人のページと同じ（loadPersonPage が personInScope を通す。範囲の外は 404）。
-// 上の帯（画面だけ）に、紙で「ケアマネジャーと 決めます」と出た所・手で書く電話・ふりがなの付かなかった漢字を出す。
+// 上の帯（画面だけ）に、紙で「ケアマネジャーと 決めます」と出た所・手で書く電話・ふりがなの付かなかった漢字と、QR の状態を出す。
+// QR はここでは作らない（作る・作り直すは QR の画面でケアマネが押す。作り直すと前に刷った紙の QR は無効）。
 export default async function OwnFormPage({ params }: Props) {
   const principal = await requirePage("person");
   const { id } = await params;
@@ -52,6 +59,12 @@ export default async function OwnFormPage({ params }: Props) {
   const opts = { today: todayJst(), officeName: office?.name ?? null };
   const sheet = buildOwnSheet(rows, opts);
   const medical = buildMedicalSummary(rows, opts);
+  const qrRow = (await loadQrRow(env.DB, rows.person.id)) ?? { qr_generation: 0, qr_issued_at: null };
+  const qrNow = qrState(qrRow, nowSec());
+  const token = qrNow.status === "active" ? await currentQrToken(rows.person.id, qrRow, sessionSecret(env)) : null;
+  const origin = originFromHeaders(await headers());
+  const qr: OwnQr = { status: qrNow.status, url: token && origin ? qrUrl(origin, token) : null, expiresAt: qrNow.expiresAt };
+  const qrHref = `/people/${encodeURIComponent(rows.person.id)}/forms/qr`;
 
   return (
     <main className="py-4 print:p-0">
@@ -69,11 +82,22 @@ export default async function OwnFormPage({ params }: Props) {
         />
         <Check label="手書き" items={sheet.open.filter((o) => o.kind === "write").map((o) => o.label)} data="write" />
         <Check label="読み未登録" items={sheet.noReading} data="reading" />
+        <Link href={qrHref} className="flex items-baseline gap-2 rounded px-1 text-sm" data-press data-qr-status={qr.status}>
+          {qr.url && qr.expiresAt ? (
+            <span className="text-muted">
+              {QR_LABELS.title} {QR_LABELS.expires} <span className="tabular-nums">{qrExpiryDate(qr.expiresAt)}</span>
+            </span>
+          ) : (
+            <StateTag tone="check">
+              {QR_LABELS.title} {QR_STATUS_LABELS[qr.status === "expired" ? "expired" : "none"]}
+            </StateTag>
+          )}
+        </Link>
         <div className="ml-auto">
           <PrintButton />
         </div>
       </div>
-      <OwnSheetPaper sheet={sheet} medical={medical} />
+      <OwnSheetPaper sheet={sheet} medical={medical} qr={qr} />
     </main>
   );
 }

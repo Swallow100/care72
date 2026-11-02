@@ -118,11 +118,15 @@
   padding-top: 6mm;
 }
 
-/* QR の枠（T16 の部品に差し替えるまで）。印刷して読める大きさで、裏の要約が 1 頁に収まる 18mm まで */
+/*
+  QR の場所は一辺 18mm（印刷して読める大きさで、裏の要約が 1 頁に収まる大きさ。components/forms/OwnSheet.tsx の OWN_QR_MM と同じ）。
+  有効な QR があれば T16 の QrBlock（字を外した四角）、無ければこの枠に「QR 未作成」「QR 期限切れ」
+*/
 .paper .qr-frame {
   box-sizing: border-box;
   flex: none;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   width: 18mm;
@@ -130,6 +134,10 @@
   border: 1pt solid #111;
   font-size: 11pt;
   font-weight: 700;
+  line-height: 1.2;
+}
+.paper .qr-frame-state {
+  font-size: 7.6pt;
 }
 
 .paper.own-back {

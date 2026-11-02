@@ -1,22 +1,57 @@
 // 本人の 1 枚の紙面（A4 縦の表と裏、印刷で 2 頁）。表は lib/forms/own-sheet.ts の文を大きな文字で 1 枚に、
-// 裏は医療要約（T07）の頁をそのまま（MedicalSummaryPaper）と QR の枠。医療班提供の同意が無い人の裏は「同意なし」だけ。
+// 裏は医療要約（T07）の頁をそのまま（MedicalSummaryPaper）と QR（T16）。医療班提供の同意が無い人の裏は「同意なし」だけ。
 // 状態を持たない（Server Component のまま、テストで renderToStaticMarkup できる）。
 // 見た目は paper.css・medical-paper.css・own-paper.css（読み込むのはページの側。テストでは読まない）。
-// QR の枠は T16 の QR の部品が main に入ったら差し替える。いまは「QR」と書いた四角。
+// QR は題名の段の右に 18mm の四角（T16 の QrBlock の字を外した形）。「この QR は医療班が読みます」と期限は段の右の小さな字の一番上。
+// QR がまだ無い（未作成・期限切れ）ときは同じ 18mm の枠に状態を書く。QR の頁は同意の無い人にも「同意なし」を出す作りなので、裏の両方に置く。
 
 import type { MedicalSummaryResult } from "@/lib/forms/medical-summary";
 import type { OwnLine, OwnPhone, OwnSheet } from "@/lib/forms/own-sheet";
 import { CONSENT_KIND_LABELS, CONSENT_STATUS_LABELS, DOCUMENT_LABELS } from "@/lib/labels";
+import { QR_LABELS, QR_STATUS_LABELS } from "@/lib/qr/labels";
+import type { QrStatus } from "@/lib/qr/store";
 import { EasyWords } from "./EasyText";
 import { MedicalSummaryPaper } from "./MedicalSummarySheet";
 import { WITHHELD_LABELS } from "./MedicalWithheld";
+import { QrBlock, qrExpiryDate } from "./QrBlock";
 
-/** QR の枠（T16 の部品に差し替えるまでの四角） */
-export function QrFrame() {
+/** 裏の QR の一辺（mm）。これより大きいと山田 ハナの裏が 3 頁になる（own-paper.css の .qr-frame と同じ） */
+export const OWN_QR_MM = 18;
+
+/** 裏に刷る QR。url は今の版のトークンの /q/ の URL（未作成・期限切れ・元の分からないときは null） */
+export type OwnQr = { status: QrStatus; url: string | null; expiresAt: string | null };
+
+type PrintableQr = { url: string; expiresAt: string };
+
+function printable(qr: OwnQr | null | undefined): PrintableQr | null {
+  return qr && qr.status === "active" && qr.url && qr.expiresAt ? { url: qr.url, expiresAt: qr.expiresAt } : null;
+}
+
+/** QR の無いときの枠（一辺 18mm）。状態（未作成・期限切れ）を書く */
+export function QrFrame({ status }: { status: Exclude<QrStatus, "active"> }) {
   return (
-    <div className="qr-frame" data-qr="placeholder">
-      QR
+    <div className="qr-frame" data-qr="placeholder" data-qr-status={status}>
+      <span>{QR_LABELS.title}</span>
+      <span className="qr-frame-state">{QR_STATUS_LABELS[status]}</span>
     </div>
+  );
+}
+
+/** 題名の段の右の QR（有効なら QR の部品、無ければ枠） */
+function QrSpot({ qr }: { qr: OwnQr | null | undefined }) {
+  const p = printable(qr);
+  if (p) return <QrBlock url={p.url} expiresAt={p.expiresAt} sizeMm={OWN_QR_MM} caption={false} />;
+  return <QrFrame status={qr?.status === "expired" ? "expired" : "none"} />;
+}
+
+/** 題名の段の右の小さな字の一番上: 「この QR は医療班が読みます」と期限。QR が無ければ出さない */
+function QrNote({ qr }: { qr: OwnQr | null | undefined }) {
+  const p = printable(qr);
+  if (!p) return null;
+  return (
+    <span className="nowrap own-qr-note" data-qr-note>
+      <b>{QR_LABELS.blockNote}</b> {QR_LABELS.expires} {qrExpiryDate(p.expiresAt)}
+    </span>
   );
 }
 
@@ -72,12 +107,15 @@ export function OwnSheetFront({ sheet: s }: { sheet: OwnSheet }) {
 }
 
 /** 医療班提供の同意が無い人の裏。要約の中身は作らない */
-function OwnBackWithheld({ kind }: { kind: "refused" | "unconfirmed" }) {
+function OwnBackWithheld({ kind, qr }: { kind: "refused" | "unconfirmed"; qr: OwnQr | null | undefined }) {
   return (
     <section className="paper own-back" aria-label={DOCUMENT_LABELS.medical} data-page="2" data-withheld={kind}>
       <div className="head-row">
         <h1 className="title">{DOCUMENT_LABELS.medical}</h1>
-        <QrFrame />
+        <div className="top-col">
+          <QrNote qr={qr} />
+        </div>
+        <QrSpot qr={qr} />
       </div>
       <div className="blk key own-withheld">
         <div className="own-withheld-tag">{WITHHELD_LABELS[kind]}</div>
@@ -89,16 +127,16 @@ function OwnBackWithheld({ kind }: { kind: "refused" | "unconfirmed" }) {
   );
 }
 
-/** 表と裏の 2 頁 */
-export function OwnSheetPaper({ sheet, medical }: { sheet: OwnSheet; medical: MedicalSummaryResult }) {
+/** 表と裏の 2 頁。qr が無ければ（未作成）裏は枠だけ */
+export function OwnSheetPaper({ sheet, medical, qr }: { sheet: OwnSheet; medical: MedicalSummaryResult; qr?: OwnQr | null }) {
   return (
     <div className="paper-scroll">
       <div className="paper-stack" data-sheet="own" data-person={sheet.personId}>
         <OwnSheetFront sheet={sheet} />
         {medical.kind === "sheet" ? (
-          <MedicalSummaryPaper sheet={medical.sheet} page={2} aside={<QrFrame />} />
+          <MedicalSummaryPaper sheet={medical.sheet} page={2} aside={<QrSpot qr={qr} />} note={<QrNote qr={qr} />} />
         ) : (
-          <OwnBackWithheld kind={medical.kind} />
+          <OwnBackWithheld kind={medical.kind} qr={qr} />
         )}
       </div>
     </div>

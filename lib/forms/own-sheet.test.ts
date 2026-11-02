@@ -1,7 +1,11 @@
+import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { OwnSheetFront, OwnSheetPaper } from "../../components/forms/OwnSheet.tsx";
+import { OWN_QR_MM, OwnSheetFront, OwnSheetPaper, type OwnQr } from "../../components/forms/OwnSheet.tsx";
+import { QR_LABELS } from "../qr/labels.ts";
+import { qrTimes, signQrToken } from "../qr/token.ts";
+import { qrUrl } from "../qr/url.ts";
 import { SEED_AT, SEED_PEOPLE, seedConsents, type SeedPerson } from "../../seed/people.ts";
 import type { ConsentStatus } from "../db/types.ts";
 import type { PersonPageRows } from "../person.ts";
@@ -321,5 +325,76 @@ describe("紙面（表と裏の 2 頁）", () => {
     expect(html).toContain('class="own-lines cols"');
     // 作った日
     expect(stripTags(html)).toContain("作った 日 2026年11月2日 デモ事業所");
+  });
+});
+
+describe("裏の QR（T16 の QrBlock）", () => {
+  const SECRET = "test-secret-for-own-sheet-qr-0123456789";
+  const EXPIRES = "2027-01-30T15:30:00.000Z";
+  async function activeQr(id: string): Promise<OwnQr> {
+    const token = await signQrToken({ v: 1, p: id, g: 3, ...qrTimes(Date.parse("2026-11-02T03:00:00.000Z") / 1000) }, SECRET);
+    return { status: "active", url: qrUrl("https://care72.example.test", token), expiresAt: EXPIRES };
+  }
+  function paperWith(rows: PersonPageRows, qr: OwnQr | null): { html: string; head: string } {
+    const html = renderToStaticMarkup(
+      createElement(OwnSheetPaper, { sheet: buildOwnSheet(rows, OPTS), medical: buildMedicalSummary(rows, OPTS), qr }),
+    );
+    const back = html.slice(html.lastIndexOf("<section", html.indexOf('data-page="2"')));
+    // 題名の段（同意のある人は患者の段の前まで、同意の無い人は同意なしの段の前まで）
+    const end = back.includes('data-block="patient"') ? back.indexOf('data-block="patient"') : back.indexOf("own-withheld");
+    return { html, head: back.slice(back.indexOf('class="head-row"'), end) };
+  }
+
+  it("10 人とも、有効な QR は題名の段の中に一辺 18mm の四角だけで置き、表と裏の 2 頁のまま", async () => {
+    expect(OWN_QR_MM).toBe(18);
+    for (const id of ALL_IDS) {
+      const qr = await activeQr(id);
+      const { html, head } = paperWith(rowsOf(id), qr);
+      expect(html.match(/<section class="paper/g), id).toHaveLength(2);
+      expect([...html.matchAll(/data-page="(\d)"/g)].map((m) => m[1]), id).toEqual(["1", "2"]);
+      // 枠の代わりに QR。四角の外に余白・字を足さない（枠と同じ 18mm の場所だけを取る）
+      expect(head, id).not.toContain('data-qr="placeholder"');
+      expect(head, id).toMatch(/<figure style="margin:0;padding:0;flex:none;width:18mm;height:18mm"[^>]*data-qr="code">/);
+      expect(head, id).toMatch(/<svg viewBox="0 0 (\d+) \1" style="display:block;width:18mm;height:18mm"/);
+      expect(head, id).toContain('fill="#000"');
+      expect(head, id).not.toContain("<figcaption");
+      // 1 行と期限は題名の段の右の小さな字に（JST の日付）
+      expect(stripTags(head), id).toContain(`${QR_LABELS.blockNote} 期限 2027-01-31`);
+      // URL とトークンの文字は紙に出さない
+      expect(html, id).not.toContain("/q/");
+      expect(html, id).not.toContain(qr.url!.split("/q/")[1].slice(0, 12));
+    }
+  });
+
+  it("医療班提供に同意していない渡辺 清の裏にも QR（QR の頁が「同意なし」を出す）。要約の中身は出さない", async () => {
+    const { html, head } = paperWith(rowsOf("p-09"), await activeQr("p-09"));
+    expect(html).toContain('data-withheld="refused"');
+    expect(head).toContain('data-qr="code"');
+    expect(stripTags(head)).toContain(QR_LABELS.blockNote);
+    for (const w of ["降圧薬", "ワタナベ", "そらみ台"]) expect(html.slice(html.indexOf('data-page="2"')), w).not.toContain(w);
+  });
+
+  it("QR が無いときは同じ 18mm の枠に状態（未作成・期限切れ）。1 行と期限は出さない", () => {
+    const cases: Array<[OwnQr | null, string]> = [
+      [null, "未作成"],
+      [{ status: "none", url: null, expiresAt: null }, "未作成"],
+      [{ status: "expired", url: "https://care72.example.test/q/old", expiresAt: "2026-10-01T00:00:00.000Z" }, "期限切れ"],
+      // 元（host）が分からず URL を作れないときも刷らない
+      [{ status: "active", url: null, expiresAt: EXPIRES }, "未作成"],
+    ];
+    for (const [qr, label] of cases) {
+      const { html, head } = paperWith(rowsOf("p-01"), qr);
+      expect(head, label).toContain('data-qr="placeholder"');
+      expect(stripTags(head), label).toContain(`QR${label}`);
+      expect(head, label).not.toContain("data-qr-note");
+      expect(html, label).not.toContain('data-qr="code"');
+    }
+  });
+
+  it("枠の CSS と QR の一辺が同じ 18mm", () => {
+    const css = readFileSync(new URL("../../components/forms/own-paper.css", import.meta.url), "utf8");
+    const frame = css.slice(css.indexOf(".paper .qr-frame {"), css.indexOf("}", css.indexOf(".paper .qr-frame {")));
+    expect(frame).toContain(`width: ${OWN_QR_MM}mm;`);
+    expect(frame).toContain(`height: ${OWN_QR_MM}mm;`);
   });
 });
