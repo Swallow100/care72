@@ -195,7 +195,7 @@ export function fieldLabelOf(field: string): string {
 
 /**
  * 状態の意味の色（app/globals.css の --state-*）。同じ意味は同じ色:
- * ok 緑（無事・同意・確認済・受領）、urgent 赤（至急・赤の信号・残りの短い時計）、
+ * ok 緑（無事・同意・確認済・受入）、urgent 赤（至急・赤の信号・残りの短い時計）、
  * check 黄（要確認・未確認・同意なし・支援者なし・中断注意）、unknown 灰（未知）
  */
 export type StateTone = "ok" | "urgent" | "check" | "unknown";
@@ -262,7 +262,7 @@ export type TimelineItem = {
   /** 日本の時刻 YYYY-MM-DD HH:MM */
   when: string;
   kind: string;
-  /** 種類の印の色。赤の信号は赤、受領は緑など */
+  /** 種類の印の色。赤の信号は赤、受入は緑など */
   tone: StateTone | null;
   body: string | null;
   /** 誰が（役と名前） */

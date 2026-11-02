@@ -126,7 +126,7 @@ export type Form9Signal = {
   at: string;
 };
 
-/** 経過のうち安否に関わる物（安否確認・避難所に着いた・受領・搬送・受持解除） */
+/** 経過のうち安否に関わる物（安否確認・避難所に着いた・受入・搬送・受持解除） */
 export const FORM9_ENTRY_KINDS = ["safety_check", "arrived_shelter", "received", "transported", "released"] as const;
 export type Form9EntryKind = (typeof FORM9_ENTRY_KINDS)[number] & TimelineKind;
 
@@ -164,7 +164,7 @@ export const LOCATION_LABELS: Record<Form9Location, string> = {
 const WHERE_LOCATION: Record<WhereNow, Form9Location> = { home: "home", shelter: "shelter", other: "other" };
 
 export type Form9Result = {
-  /** 結果の言葉（無事・「無事じゃない」・安否確認・到着・受領・搬送・未確認） */
+  /** 結果の言葉（無事・「無事じゃない」・安否確認・到着・受入・搬送・未確認） */
   label: string;
   /** 結果に添える言葉（自宅・避難所の名前・けが・動けない） */
   detail: string | null;
@@ -303,7 +303,7 @@ const fromSelf = (s: Form9Signal) => s.source === "self" || s.source === "agent"
 
 /**
  * 結果: いちばん新しい知らせ（信号か経過）。所在は古い順に追って、分かった所を残す。
- * 緑の信号は「無事」と居場所、赤の信号は「無事じゃない」（けが・動けない）、経過は種類の言葉（安否確認・到着・受領・搬送）。
+ * 緑の信号は「無事」と居場所、赤の信号は「無事じゃない」（けが・動けない）、経過は種類の言葉（安否確認・到着・受入・搬送）。
  * 本人の報告を当てにしない印の人（selfUnreliable）は、本人の緑を「本人・参考」と出し、所在には使わない（ルールの表の案 4 と同じ）。
  */
 export function safetyResult(reports: Form9Reports | undefined, opts: { selfUnreliable?: boolean } = {}): Form9Result {

@@ -288,7 +288,8 @@ export const TIMELINE_KIND_LABELS: Record<TimelineKind, string> = {
   medication_given: "配薬",
   transported: "搬送",
   arrived_shelter: "到着",
-  received: "受領",
+  // 医療班・行政が受け持ちに入れた（T23。受領は物を受け取る言葉なので「受入」。様式 9 の結果の列もこれを読む）
+  received: "受入",
   released: "受持解除",
   override: "優先変更",
   consent: "同意",
