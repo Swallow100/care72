@@ -1,4 +1,4 @@
-// wrangler.jsonc の binding の型。binding を足したらここにも足す。
+// wrangler.jsonc の binding と、secret・変数の型。binding や secret を足したらここにも足す。
 // workers-types は全体に入れず、使う型だけ読む（DOM の Response などとぶつからないように）。
 import type { D1Database, Fetcher, R2Bucket } from "@cloudflare/workers-types";
 
@@ -7,6 +7,14 @@ declare global {
     DB: D1Database;
     RECORDINGS: R2Bucket;
     ASSETS: Fetcher;
+    // secret と変数。配信は Cloudflare の secret（T27）、手元は .dev.vars（.dev.vars.example を写す）。
+    // 入っていないことがあるので全部 undefined を許す。値を画面・ログ・応答に出さない
+    ANTHROPIC_API_KEY?: string;
+    GEMINI_API_KEY?: string;
+    JUDGE_PASSWORD_HASH?: string;
+    SESSION_SECRET?: string;
+    /** デモ事業所の AI の 1 日の上限（回）。無ければ 200 */
+    AI_DAILY_LIMIT?: string;
   }
 }
 

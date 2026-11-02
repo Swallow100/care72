@@ -1,0 +1,8 @@
+# 手元の鍵と設定。このファイルを .dev.vars に写して値を入れる（.dev.vars は git に入らない）。
+# ここには値を書かない。配信先は Cloudflare の secret に入れる（T27。wrangler secret put は配信のときだけ）。
+ANTHROPIC_API_KEY=
+GEMINI_API_KEY=
+JUDGE_PASSWORD_HASH=
+SESSION_SECRET=
+# デモ事業所の AI の 1 日の上限（回）。Claude と声を合わせて数える。ほかの事業所は 200 のまま
+AI_DAILY_LIMIT=200

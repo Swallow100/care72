@@ -68,7 +68,6 @@ web_modules/
 # dotenv environment variable files
 .env
 .env.*
-!.env.example
 
 # parcel-bundler cache (https://parceljs.org/)
 .cache
@@ -149,7 +148,6 @@ vite.config.ts.timestamp-*
 .turbo
 
 # ケア72: 秘密と生成物
-!.env.example
 .dev.vars
 .dev.vars.*
 .wrangler/
