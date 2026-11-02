@@ -185,3 +185,23 @@ CREATE TABLE timeline_entries (
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 CREATE INDEX timeline_person_time ON timeline_entries (person_id, occurred_at);
+
+-- AI の呼び出し（Claude と Gemini TTS）。1 回 1 行。入れた物・返った物（本文）は入れない。
+-- 事業所ごとの 1 日の上限はこの表を day（JST の日付）で数える（lib/claude/usage.ts）。呼ぶ前に 1 行足し、終わったら状態と token を書く
+CREATE TABLE ai_calls (
+  id TEXT PRIMARY KEY,
+  office_id TEXT NOT NULL REFERENCES offices (id),
+  purpose TEXT NOT NULL CHECK (purpose IN (
+    'form_read', 'director', 'scoring', 'ledger_input', 'summary', 'persona', 'classify', 'voice'
+  )),
+  model TEXT NOT NULL,
+  day TEXT NOT NULL CHECK (day GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'),
+  status TEXT NOT NULL CHECK (status IN ('pending', 'ok', 'failed')),
+  error TEXT CHECK (error IS NULL OR error IN ('refused', 'bad_output', 'timeout', 'api_error')),
+  input_tokens INTEGER CHECK (input_tokens IS NULL OR input_tokens >= 0),
+  output_tokens INTEGER CHECK (output_tokens IS NULL OR output_tokens >= 0),
+  started_at TEXT NOT NULL,
+  finished_at TEXT,
+  CHECK ((status = 'failed') = (error IS NOT NULL))
+);
+CREATE INDEX ai_calls_office_day ON ai_calls (office_id, day);

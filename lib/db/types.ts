@@ -176,6 +176,32 @@ export const TIMELINE_KINDS = [
 ] as const;
 export type TimelineKind = (typeof TIMELINE_KINDS)[number];
 
+/** AI を呼ぶ用途。Claude の 7 つ（モデルは lib/claude/models.ts）と、声（Gemini TTS） */
+export const AI_PURPOSES = [
+  "form_read", // 様式の読み取り
+  "director", // 訓練の監督
+  "scoring", // 訓練の採点
+  "ledger_input", // 入れる欄（文字・話した物 → 項目）
+  "summary", // 要約
+  "persona", // 訓練の本人役・家族役
+  "classify", // 録音と自由文の分類
+  "voice", // 声（Gemini TTS）
+] as const;
+export type AiPurpose = (typeof AI_PURPOSES)[number];
+
+/** 呼び出しの状態。pending は呼んでいる途中（落ちたまま残っても上限には数える） */
+export const AI_CALL_STATUSES = ["pending", "ok", "failed"] as const;
+export type AiCallStatus = (typeof AI_CALL_STATUSES)[number];
+
+/** 失敗の分け方。本文や応答は残さない */
+export const AI_CALL_ERRORS = [
+  "refused", // stop_reason が refusal
+  "bad_output", // JSON でない・形が違う・max_tokens で切れた
+  "timeout", // 時間切れ
+  "api_error", // そのほかの API の失敗
+] as const;
+export type AiCallError = (typeof AI_CALL_ERRORS)[number];
+
 // ---------- 台帳（people.ledger の JSON） ----------
 
 export const SEXES = ["female", "male", "other"] as const;
@@ -454,6 +480,23 @@ export type TimelineEntryRow = {
   signal_id: string | null;
   occurred_at: string;
   created_at: string;
+};
+
+/** AI の呼び出し 1 回。入れた物・返った物（本文）は持たない */
+export type AiCallRow = {
+  id: string;
+  office_id: string;
+  purpose: AiPurpose;
+  /** 呼んだモデル。終わったら答えたモデル（fallback で替わることがある） */
+  model: string;
+  /** 数える日（JST、YYYY-MM-DD）。1 日の上限はこの列で数える */
+  day: string;
+  status: AiCallStatus;
+  error: AiCallError | null;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  started_at: string;
+  finished_at: string | null;
 };
 
 // ---------- 訓練の JSON の形 ----------
