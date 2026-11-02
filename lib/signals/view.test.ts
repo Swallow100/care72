@@ -72,7 +72,8 @@ describe("災害モードの画面", () => {
   it("録っている間は「AI が きいています」と定型文と残りの秒、延長と送る", () => {
     const html = view({ step: "recording", startedAt: T, until: T + 30_000 }, T + 5_200);
     expect(html).toContain('data-ai="listening"');
-    expect(text(html)).toBe("AI が きいています大丈夫ですか状況を 説明して くださいあと 25 秒もっと 話す送る");
+    expect(text(html)).toBe("AIが きいています大丈夫ですか状況を 説明して くださいあと 25 秒もっと 話す送る");
+    expect(html).toContain('<span class="phone-ai">AI</span>');
     expect(buttons(html)).toEqual(["more", "send"]);
     // 数え始める前は 30 秒
     expect(text(view({ step: "recording", startedAt: T, until: T + 30_000 }, 0))).toContain("あと 30 秒");

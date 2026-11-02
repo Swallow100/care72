@@ -20,7 +20,7 @@ export const PHONE_PHRASES = {
   queuedSub: "つながったら {送|おく}ります",
   again: "もう {一度|いちど}",
   /** AI の印（「AI」）のあとに続ける。録っている間は「AI が きいています」と出す（docs/DECISIONS.md 運営の返事） */
-  aiListening: " が きいています",
+  aiListening: "が きいています",
   prompt1: "{大丈夫|だいじょうぶ}ですか",
   prompt2: "{状況|じょうきょう}を {説明|せつめい}して ください",
   left: "あと",

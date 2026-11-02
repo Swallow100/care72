@@ -23,9 +23,15 @@
   color: var(--phone-on-state);
 }
 
-/* ふりがなは本文の半分より少し小さく。大きな字でも行が詰まらないように行の高さを取る */
+/*
+  ふりがなは本文の半分より少し小さく。大きな字でも行が詰まらないように行の高さを取る。
+  言葉の途中で折り返さない（「来 / ます」「いま / せん」にしない）。やさしい日本語は言葉の間を空けて書くので、空白で折り返す。
+  1 つの言葉が幅より長いときだけ、どこでも折る
+*/
 .phone-text {
   line-height: 1.9;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
 }
 
 .phone-text rt {
@@ -33,11 +39,12 @@
   font-weight: 400;
 }
 
-/* AI の印（本人の画面では大きく。components/person/parts.tsx の AiMark と同じ形） */
+/* AI の印（本人の画面では大きく。components/person/parts.tsx の AiMark と同じ形。地の上に置くので面の色） */
 .phone-ai {
   display: inline-block;
   border-radius: 0.25rem;
-  background-color: var(--base);
-  padding: 0 0.4em;
+  background-color: var(--panel);
+  padding: 0 0.35em;
+  margin-right: 0.15em;
   font-weight: 700;
 }

@@ -66,7 +66,7 @@ function AiListening() {
 
 function Prompt() {
   return (
-    <div className="rounded-xl bg-panel px-4 py-5 text-center text-[2rem] font-bold" data-prompt>
+    <div className="rounded-xl bg-panel px-4 py-4 text-center text-[1.75rem] font-bold" data-prompt>
       <div>
         <Words m={PHONE_PHRASES.prompt1} />
       </div>
