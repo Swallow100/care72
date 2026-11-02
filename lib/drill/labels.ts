@@ -28,7 +28,6 @@ export const DRILL_LABELS = {
   abandon: "中断",
   resume: "再開",
   replay: "再生",
-  finished: "終了",
   situation: "状況",
   damage: "被害状況",
   actions: "対応",
@@ -42,12 +41,10 @@ export const DRILL_LABELS = {
   compact: "圧縮",
   expand: "展開",
   none: "なし",
-  people: "人",
   map: "地図",
   confirmAbandon: "中断確定",
   cancel: "取消",
   network: "通信失敗",
-  replayOf: "再生中",
 } as const;
 
 /** 状況（世界の出来事）の種類の印 */
@@ -87,7 +84,6 @@ export const WORLD_LABELS = {
   closed: "通行止",
   running: "稼働",
   stopped: "休止",
-  lifted: "解除",
 } as const;
 
 export const PHONE_LABELS: Record<PhoneState, string> = { ok: "通常", busy: "不安定", down: "不通" };
