@@ -127,6 +127,9 @@ type GuardArgs = readonly [string, string, string];
 
 const shortId = () => crypto.randomUUID().replace(/-/g, "").slice(0, 10);
 
+/** 薬を名前で指す場所（medical.medications.ワーファリン.amount）。経過の payload に残さない */
+const MED_NAME_FIELD = /^medical\.medications\.(?!\d+(\.|$))[^.]+\./;
+
 /**
  * 保存する。personInScope を通らない本人は not_found、ケアマネの役でなければ forbidden、版が違えば conflict。
  * 何も変わらなければ書かずに changed 0
@@ -166,7 +169,8 @@ export async function saveIntake(db: D1Database, principal: Principal, req: Save
     source: INTAKE_SOURCE,
     ai: req.ai !== null,
     model: req.ai?.model ?? null,
-    fields: [...new Set([...fields, ...applied.pending.map((p) => p.field)])],
+    // 場所だけ残す。薬の名前の形（medical.medications.<名前>.〜）は名前が値なので、番号の形だけ
+    fields: [...new Set([...fields, ...applied.pending.map((p) => p.field)])].filter((f) => !MED_NAME_FIELD.test(f)),
   };
   // この保存の経過の行（id は毎回でたらめ）を最初に、読んだ版のままのときだけ足す。ほかの文はこの行があるときだけ効く。
   // 同じ版から 2 つの保存が重なっても、あとの batch は版が上がっていて経過の行が入らず、台帳・連絡先・時計も書かない

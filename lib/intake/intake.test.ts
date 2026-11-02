@@ -604,6 +604,15 @@ describe("保存（lib/intake/save.ts）", () => {
     expect(timelineBody(false, [], [{ field: "medical.medications.0.amount", status: "unknown" }])).toBe("手入力: 薬（不明）");
   });
 
+  it("経過の payload は場所だけで、薬の名前を残さない", async () => {
+    const r = await saveIntake(db, cm, req([{ t: "medication", index: 0, value: { name: "抗認知症薬", category: "other", amount: "1 錠" } }]), NOW);
+    expect(r.ok).toBe(true);
+    const tl = sqlite.prepare("SELECT body, payload FROM timeline_entries").get() as { body: string; payload: string };
+    expect(JSON.parse(tl.payload).fields).toEqual(["medical.medications.0.amount"]);
+    expect(tl.payload).not.toContain("抗認知症薬");
+    expect(tl.body).not.toContain("抗認知症薬");
+  });
+
   it("分からない・次回の答えだけでも保存され、経過に理由が出る", async () => {
     const r = await saveIntake(db, cm, req([{ t: "pending", field: "people.night_supporter", status: "not_asked" }], { ai: null }), NOW);
     expect(r).toMatchObject({ ok: true, plan: "draft" });
