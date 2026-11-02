@@ -19,6 +19,7 @@ import { loadSituation as loadDisasterSituation } from "../disaster/db.ts";
 import { loadOfficeOverrides } from "../disaster/override.ts";
 import type { DisasterSituation } from "../disaster/state.ts";
 import { rankInDisaster, toTriageSignal } from "../disaster/triage.ts";
+import { loadOfficeArrivals } from "../custody/arrivals.ts";
 import { toTriagePerson } from "../triage/from-ledger.ts";
 import type { Situation } from "../triage/index.ts";
 import {
@@ -193,8 +194,8 @@ export async function loadForm9(
   if (s && signalsRes && entriesRes) {
     const signals = byPerson((signalsRes.results as SignalForForm[]).filter((x) => within(x.occurred_at, s)));
     const entries = byPerson((entriesRes.results as EntryForForm[]).filter((x) => within(x.occurred_at, s)));
-    // ケアマネの上書き（T13）も担当一覧・本人のページと同じに当てる
-    const overrides = await loadOfficeOverrides(db, office.id, s);
+    // ケアマネの上書き（T13）も担当一覧・本人のページと同じに当てる。医療班・行政の受け入れ（T23）も同じ「到着 避難所」
+    const [overrides, arrivals] = await Promise.all([loadOfficeOverrides(db, office.id, s), loadOfficeArrivals(db, office.id, s)]);
     // 停電の範囲が地区なら、本人の町名で停電の時計を走らせるかを決める（担当一覧・本人のページと同じ、lib/disaster）
     const triage = rankInDisaster(
       inputs.map((p) => {
@@ -203,6 +204,7 @@ export async function loadForm9(
         return {
           person: toTriagePerson({ person: p.person, ledger, contacts: p.contacts, clocks: p.clocks }),
           signals: (signals.get(p.person.id) ?? []).map(toTriageSignal),
+          arrivals: arrivals.get(p.person.id) ?? [],
           ...(override ? { override } : {}),
           town: ledger.basic.address?.town ?? null,
         };

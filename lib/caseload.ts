@@ -6,7 +6,7 @@
 import type { D1Database } from "@cloudflare/workers-types";
 import { ageOn } from "./age.ts";
 import { parseLedger } from "./db/ledger.ts";
-import type { CareLevel, ClockRow, ContactRow, GeoPoint, HazardKind, Ledger, PersonRow, PlanStatus } from "./db/types.ts";
+import type { CareLevel, ClockRow, ContactRow, GeoPoint, HazardKind, Ledger, PersonReportedAge, PersonRow, PlanStatus } from "./db/types.ts";
 import { loadDisasterState } from "./disaster/db.ts";
 import { loadOfficeOverrides, type StoredOverride } from "./disaster/override.ts";
 import { personSituation, toSituation, type DisasterSituation, type DisasterState } from "./disaster/state.ts";
@@ -26,7 +26,8 @@ import {
 } from "./list/detail.ts";
 import { isGeoPoint } from "./map/geo.ts";
 import type { StateTone } from "./person.ts";
-import { compareResults, SEVERITY, tierOf, type Tier, type TriageResult, type TriageSignal } from "./triage/index.ts";
+import { compareResults, SEVERITY, tierOf, type Tier, type TriageArrival, type TriageResult, type TriageSignal } from "./triage/index.ts";
+import { loadOfficeArrivals } from "./custody/arrivals.ts";
 import { toTriagePerson } from "./triage/from-ledger.ts";
 
 export type CaseloadRow = {
@@ -87,7 +88,9 @@ export type Caseload = {
 type PersonForList = Pick<
   PersonRow,
   "id" | "name" | "kana" | "birth_date" | "plan_status" | "self_report_unreliable" | "ledger"
->;
+> &
+  /** 申告の年齢（医療班・行政がその場で登録して引き受けた人、T23）。生年月日が無いときだけ使う */
+  Partial<PersonReportedAge>;
 type ClockForList = Pick<
   ClockRow,
   "person_id" | "kind" | "category" | "label" | "value" | "unit" | "starts_on" | "depends_on" | "depends_check"
@@ -124,6 +127,8 @@ export type CaseloadDisaster = {
   signals: ReadonlyMap<string, ReadonlyArray<TriageSignal>>;
   /** 本人ごとのケアマネの上書き（発災から今まで、lib/disaster/override.ts） */
   overrides?: ReadonlyMap<string, StoredOverride>;
+  /** 本人ごとの医療班・行政の受け入れ（発災から今まで、lib/custody/arrivals.ts。T23）。状態は「到着 避難所」 */
+  arrivals?: ReadonlyMap<string, ReadonlyArray<TriageArrival>>;
   /** 行の詳細の元。無ければ詳細を作らない */
   detail?: CaseloadDetailSource;
 };
@@ -148,14 +153,15 @@ export function toCaseloadRows(
     const town = ledger.basic.address?.town ?? null;
     const signals = disaster?.signals.get(p.id) ?? [];
     const override = disaster?.overrides?.get(p.id);
-    const triage = s ? triageInDisaster({ person, signals, ...(override ? { override } : {}), town }, s) : null;
+    const arrivals = disaster?.arrivals?.get(p.id) ?? [];
+    const triage = s ? triageInDisaster({ person, signals, arrivals, ...(override ? { override } : {}), town }, s) : null;
     const own = s ? personSituation(s, town) : null;
     const src = disaster?.detail;
     return {
       id: p.id,
       name: p.name,
       kana: p.kana,
-      age: p.birth_date ? ageOn(p.birth_date, today) : null,
+      age: p.birth_date ? ageOn(p.birth_date, today) : (p.reported_age ?? null),
       careLevel: ledger.care.careLevel ?? null,
       marks: marksOf(myClocks),
       hazards: hazardsOf(ledger),
@@ -304,7 +310,7 @@ export async function loadCaseload(
   const [people, clocks, contacts, unlisted] = await db.batch([
     db
       .prepare(
-        `SELECT id, name, kana, birth_date, plan_status, self_report_unreliable, ledger FROM people
+        `SELECT id, name, kana, birth_date, plan_status, self_report_unreliable, ledger, reported_age FROM people
           WHERE care_manager_id = ?1 AND office_id = ?2 AND unlisted_at IS NULL ORDER BY kana`,
       )
       .bind(cm.id, cm.office_id),
@@ -330,6 +336,7 @@ export async function loadCaseload(
   const situation = toSituation(disaster, now);
   const detail = situation ? await loadDetailSource(db, cm.id, cm.office_id, situation) : null;
   const overrides = situation ? await loadOfficeOverrides(db, cm.office_id, situation) : undefined;
+  const arrivals = situation ? await loadOfficeArrivals(db, cm.office_id, situation) : undefined;
   const signals = new Map<string, TriageSignal[]>();
   for (const s of detail?.signals ?? []) signals.set(s.person_id, [...(signals.get(s.person_id) ?? []), toTriageSignal(s)]);
 
@@ -347,6 +354,7 @@ export async function loadCaseload(
         situation,
         signals,
         ...(overrides ? { overrides } : {}),
+        ...(arrivals ? { arrivals } : {}),
         ...(detail
           ? {
               detail: {

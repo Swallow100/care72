@@ -38,6 +38,9 @@ import { ASSIGN_ANCHOR, NEW_PERSON_PATH, OFFICE_PEOPLE_PATH } from "@/lib/office
 import { OFFICE_ERROR_LABELS, OFFICE_LABELS, type PeopleActionError } from "@/lib/office/labels";
 import { listCareManagers, listOfficePeople, type CareManagerItem, type OfficePersonItem } from "@/lib/office/people";
 import { officeActor } from "@/lib/office/scope";
+import { CUSTODY_LABELS } from "@/lib/custody/labels";
+import { OFFICE_TAKE_PATH, UNAFFILIATED_ANCHOR } from "@/lib/custody/paths";
+import { listUnaffiliated, type UnaffiliatedItem } from "@/lib/custody/takeover";
 
 // D1 を毎回読む
 export const dynamic = "force-dynamic";
@@ -65,16 +68,18 @@ export default async function OfficePage({ searchParams }: Props) {
   let towns: TownCount[];
   let careManagers: CareManagerItem[];
   let officePeople: OfficePersonItem[];
+  let unaffiliated: UnaffiliatedItem[];
   let counts: ReturnType<typeof colorCounts> | null = null;
   let people = 0;
   try {
     const { env } = await getCloudflareContext({ async: true });
-    [state, log, towns, careManagers, officePeople] = await Promise.all([
+    [state, log, towns, careManagers, officePeople, unaffiliated] = await Promise.all([
       loadDisasterState(env.DB, scope.officeId),
       loadOfficeLog(env.DB, scope.officeId),
       loadOfficeTowns(env.DB, scope.officeId),
       listCareManagers(env.DB, scope.officeId),
       listOfficePeople(env.DB, scope.officeId, today),
+      listUnaffiliated(env.DB, today),
     ]);
     const f9 = form9Scope(principal);
     const situation = toSituation(state, now);
@@ -111,6 +116,8 @@ export default async function OfficePage({ searchParams }: Props) {
         <div className="grid min-w-0 content-start gap-3">
           <ModeSection state={state} now={now} confirm={confirm} />
           {disaster && <InfoSection state={state} towns={towns} />}
+          {/* 所属なし（T23）は引き受ける人がいるときだけ。担当の長い表の前に置く */}
+          <UnaffiliatedSection people={unaffiliated} />
           <AssignSection people={officePeople} careManagers={careManagers} error={peopleError} />
         </div>
         <div className="grid min-w-0 content-start gap-3">
@@ -361,6 +368,7 @@ const LOG_TONE: Record<OfficeLogItem["kind"], string> = {
   person_unlisted: "font-bold",
   person_relisted: "font-bold",
   care_manager_added: "font-bold",
+  person_taken: "font-bold",
 };
 
 const CELL = "bg-panel2 px-2 py-1.5 align-middle first:rounded-l last:rounded-r";
@@ -548,6 +556,60 @@ function LogSection({ log }: { log: OfficeLogItem[] }) {
           ))}
         </ol>
       )}
+    </section>
+  );
+}
+
+/**
+ * 所属なし（T23）。医療班・行政がその場で登録した人（台帳に無かった人）。カナ・年齢・避難所・登録の時刻だけを出し、
+ * 「引受」で自分の事業所・自分の担当に移す（引き受ける前は本人のページを開けない）。0 人なら区分を出さない
+ */
+function UnaffiliatedSection({ people }: { people: UnaffiliatedItem[] }) {
+  if (people.length === 0) return null;
+  return (
+    <section id={UNAFFILIATED_ANCHOR} aria-labelledby="unaffiliated-title" className={`${SECTION} scroll-mt-4`}>
+      <div className="flex flex-wrap items-baseline gap-x-3">
+        <h2 id="unaffiliated-title" className="font-bold">
+          {CUSTODY_LABELS.unaffiliated}
+        </h2>
+        <span className="text-sm">
+          <span className="font-bold tabular-nums">{people.length}</span> {OFFICE_LABELS.people}
+        </span>
+      </div>
+      <div className="mt-2 max-h-[40dvh] overflow-y-auto">
+        <table className="w-full border-separate border-spacing-y-0.5 text-sm" data-table="unaffiliated">
+          <thead>
+            <tr className="text-left text-xs text-muted">
+              <th className="px-2 font-normal">{CUSTODY_LABELS.kana}</th>
+              <th className="px-2 font-normal">{CUSTODY_LABELS.age}</th>
+              <th className="px-2 font-normal">{CUSTODY_LABELS.shelter}</th>
+              <th className="px-2 font-normal">{CUSTODY_LABELS.registeredAt}</th>
+              <th className="px-2" />
+            </tr>
+          </thead>
+          <tbody>
+            {people.map((p) => (
+              <tr key={p.id} data-unaffiliated={p.id}>
+                <td className={`${CELL} font-bold`}>{p.kana}</td>
+                <td className={`${CELL} whitespace-nowrap tabular-nums`}>
+                  {p.age ?? "—"}
+                  {p.ageReported && <span className="ml-1 text-xs text-muted">{CUSTODY_LABELS.reportedAge}</span>}
+                </td>
+                <td className={CELL}>{p.shelters.join("・") || "—"}</td>
+                <td className={`${CELL} whitespace-nowrap tabular-nums`}>{p.createdWhen}</td>
+                <td className={`${CELL} text-right`}>
+                  <form method="post" action={OFFICE_TAKE_PATH}>
+                    <input type="hidden" name="person" value={p.id} />
+                    <button type="submit" className="rounded-md bg-accent px-3 py-1 text-sm font-bold text-on-accent" data-press="overlay">
+                      {CUSTODY_LABELS.take}
+                    </button>
+                  </form>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </section>
   );
 }

@@ -153,11 +153,17 @@ describe("出す範囲（医療要約から氏名の全部と住所を除く）"
     expect(html.replace(/<[^>]+>/g, "")).toBe(QR_LABELS.invalid);
   });
 
-  it("受領の入口は押せない形で準備中", () => {
-    const html = renderToStaticMarkup(createElement(QrReceive));
-    expect(html).toContain("受領");
-    expect(html).toContain("disabled");
-    expect(html).toContain("準備中");
+  it("受入の入口（T23）はトークンと避難所を /staff/receive へ送るフォーム。本人の id は載せない", () => {
+    const html = renderToStaticMarkup(createElement(QrReceive, { token: "tok.sig", shelter: "みどり小学校" }));
+    expect(html).toContain(QR_LABELS.receive);
+    expect(QR_LABELS.receive).toBe("受入");
+    expect(html).toContain('action="/staff/receive"');
+    expect(html).toContain('method="post"');
+    expect(html).toContain('name="token" value="tok.sig"');
+    expect(html).toContain('name="shelter"');
+    expect(html).toContain('value="みどり小学校"');
+    expect(html).not.toContain("disabled");
+    expect(html).not.toContain("p-01");
   });
 });
 

@@ -28,6 +28,7 @@ import {
   type Ledger,
   type PendingStatus,
   type PersonRow,
+  type PersonReportedAge,
   type SignalColor,
   type TimelineEntryRow,
   type TimelineKind,
@@ -75,6 +76,7 @@ import { tierOf, type Color, type Tier, type TriageResult } from "./triage/index
 import type { PersonBrief } from "./auth/scope.ts";
 import { withQrView } from "./qr/timeline.ts";
 import { officeEntryOf, withOfficeEntry } from "./office/timeline.ts";
+import { withCustodyEntry } from "./custody/timeline.ts";
 
 // ---------- 区分と並び ----------
 
@@ -341,7 +343,9 @@ export type PersonPageRows = {
     | "updated_at"
   > &
     /** 台帳の版（入れる欄の保存で、ほかの人の保存と重ならないように確かめる）。D1 から読んだときだけ */
-    Partial<Pick<PersonRow, "version">>;
+    Partial<Pick<PersonRow, "version">> &
+    /** 申告の年齢（医療班・行政がその場で登録した人で、生年月日が無いとき。T23）。D1 から読んだときだけ */
+    Partial<PersonReportedAge>;
   /** 担当のケアマネの名前 */
   careManagerName: string | null;
   contacts: ReadonlyArray<Omit<ContactRow, "created_at">>;
@@ -856,8 +860,12 @@ export function timelineItems(rows: PersonPageRows): TimelineItem[] {
   }
 
   // QR の頁の閲覧（kind は note、payload の source が qr_view）は「QR 閲覧」と相手（lib/qr/timeline.ts）。
-  // 利用者追加・担当変更・一覧除外・一覧復帰（source が office）はその種類（lib/office/timeline.ts）
-  return [...derived, ...stored.map((item, i) => withOfficeEntry(withQrView(item, rows.timeline[i]), rows.timeline[i]))]
+  // 利用者追加・担当変更・一覧除外・一覧復帰・引受（source が office）はその種類（lib/office/timeline.ts）。
+  // 医療班・行政の受入・搬送・退所（source が custody）は「受入」「搬送」「退所」（lib/custody/timeline.ts）
+  return [
+    ...derived,
+    ...stored.map((item, i) => withCustodyEntry(withOfficeEntry(withQrView(item, rows.timeline[i]), rows.timeline[i]), rows.timeline[i])),
+  ]
     .map((item, i) => ({ item, i, t: Date.parse(item.at) }))
     .sort((a, b) => a.t - b.t || Number(b.item.derived) - Number(a.item.derived) || a.i - b.i)
     .map((x) => x.item);
@@ -1000,7 +1008,8 @@ export function toPersonView(rows: PersonPageRows, opts: ViewOptions): PersonVie
     id: person.id,
     name: person.name,
     kana: person.kana,
-    age: person.birth_date ? ageOn(person.birth_date, opts.today) : null,
+    // 生年月日が無ければ申告の年齢（その場で登録した人、T23）
+    age: person.birth_date ? ageOn(person.birth_date, opts.today) : (person.reported_age ?? null),
     careLevel: ledger.care.careLevel ? CARE_LEVEL_LABELS[ledger.care.careLevel] : null,
     marks,
     priority: priorityOf(tier, opts.triage, strongest ?? null),
@@ -1043,7 +1052,8 @@ export async function loadPersonRows(db: D1Database, brief: PersonBrief): Promis
   const [extra, contacts, consents, clocks, timeline] = await db.batch([
     db
       .prepare(
-        `SELECT p.origin, p.self_report_unreliable, p.created_at, p.updated_at, p.version, a.display_name AS care_manager_name
+        `SELECT p.origin, p.self_report_unreliable, p.created_at, p.updated_at, p.version, p.reported_age,
+                a.display_name AS care_manager_name
            FROM people p LEFT JOIN accounts a ON a.id = p.care_manager_id
           WHERE p.id = ?1 AND p.office_id = ?2`,
       )
@@ -1076,9 +1086,10 @@ export async function loadPersonRows(db: D1Database, brief: PersonBrief): Promis
       .bind(brief.id),
   ]);
   const e = extra.results[0] as
-    | Pick<PersonRow, "origin" | "self_report_unreliable" | "created_at" | "updated_at" | "version"> & {
-        care_manager_name: string | null;
-      }
+    | Pick<PersonRow, "origin" | "self_report_unreliable" | "created_at" | "updated_at" | "version"> &
+        PersonReportedAge & {
+          care_manager_name: string | null;
+        }
     | undefined;
   if (!e) return null;
   return {
@@ -1096,6 +1107,8 @@ export async function loadPersonRows(db: D1Database, brief: PersonBrief): Promis
       created_at: e.created_at,
       updated_at: e.updated_at,
       version: e.version,
+      // 申告の年齢はあるときだけ（T23。台帳から作った人には無い）
+      ...(e.reported_age != null ? { reported_age: e.reported_age } : {}),
     },
     careManagerName: e.care_manager_name,
     contacts: contacts.results as unknown as PersonPageRows["contacts"],

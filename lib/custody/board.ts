@@ -1,0 +1,218 @@
+// 受け持ちの一覧（/staff、docs/tasks/T23.md）。自分のアカウントの開いた受け持ちを、1 人 1 行で読む。事業所をまたぐ。
+//
+// 状態の色と理由はケアマネの一覧と同じルールの表（lib/triage、lib/disaster/triage.ts の triageInDisaster）で出す。
+// 入力も同じ: 台帳の時計・信号（訓練でない物）・ケアマネの上書き・受け入れ（「到着 避難所」）。
+// 状況は本人の事業所の災害モード。本人の事業所が平時か所属なしなら、その人のいちばん早い受け入れを発災の時刻とみなし、
+// 停電なしで表に当てる（決めた所。docs/progress/t23.md）。上の人数は状態の 4 色（ケアマネの一覧・事業所・様式 9 と同じ形）。
+// 受け持ちの一覧には受け入れたあとの人だけが出るので、漢字の氏名を出してよい（受け入れの前の検索のヒットはカナだけ）。
+
+import type { D1Database } from "@cloudflare/workers-types";
+import { ageOn } from "../age.ts";
+import { marksOf } from "../caseload.ts";
+import { parseLedger } from "../db/ledger.ts";
+import type { ClockRow, ContactRow, CustodyVia, OfficeKind, PersonRow } from "../db/types.ts";
+import { DEVICE_LABELS } from "../labels.ts";
+import { loadSituation } from "../disaster/db.ts";
+import { loadOfficeOverrides, type StoredOverride } from "../disaster/override.ts";
+import { personSituation, shortJst, type DisasterSituation } from "../disaster/state.ts";
+import { toTriageSignal, triageInDisaster, withinDisaster, type SignalForTriage } from "../disaster/triage.ts";
+import { remainOf, type Remain } from "../list/detail.ts";
+import { COLOR_TONES, type StateTone } from "../person.ts";
+import { toTriagePerson } from "../triage/from-ledger.ts";
+import { compareResults, type Color, type Situation, type TriageResult } from "../triage/index.ts";
+import type { StaffActor } from "./actor.ts";
+import { CUSTODY_LABELS } from "./labels.ts";
+
+export type StaffRow = {
+  custodyId: string;
+  personId: string;
+  name: string;
+  kana: string;
+  age: number | null;
+  ageReported: boolean;
+  /** 医療依存の短い印（酸素・透析など。担当一覧と同じ） */
+  marks: string[];
+  /** 薬の名前（その場で登録した人は時計が無いので、台帳の薬を短く） */
+  medications: string[];
+  /** 台帳の機器（酸素・透析など）の言葉 */
+  devices: string[];
+  remain: Pick<Remain, "label" | "text" | "hours" | "tone"> | null;
+  shelter: string;
+  via: CustodyVia;
+  /** 受け入れた時刻（ISO）と画面の言い方 */
+  receivedAt: string;
+  receivedWhen: string;
+  /** 事業所の名前。所属なしは「所属なし」 */
+  office: string;
+  unaffiliated: boolean;
+  color: Color;
+  tone: StateTone;
+  reason: string;
+  /** 表の並び（1 から）。並べ替えても変わらない */
+  rank: number;
+};
+
+export type StaffBoard = {
+  rows: StaffRow[];
+  counts: Record<Color, number>;
+  /** 自分の開いた受け持ちの避難所（名前の順） */
+  shelters: string[];
+  /** 要配慮: 医療依存の印（時計）・機器・薬のどれかが台帳にある人の数 */
+  medical: number;
+};
+
+type CustodyJoin = Pick<PersonRow, "name" | "kana" | "birth_date" | "self_report_unreliable" | "ledger" | "office_id"> & {
+  custody_id: string;
+  person_id: string;
+  shelter: string;
+  via: CustodyVia;
+  received_at: string;
+  reported_age: number | null;
+  office_name: string;
+  office_kind: OfficeKind;
+};
+
+type ClockForBoard = Pick<
+  ClockRow,
+  "person_id" | "kind" | "category" | "label" | "value" | "unit" | "starts_on" | "depends_on" | "depends_check"
+>;
+type ContactForBoard = Pick<ContactRow, "person_id" | "supporter_order">;
+type ArrivalRow = { person_id: string; shelter: string; received_at: string };
+
+const IDS = "SELECT value FROM json_each(?1)";
+
+/** 自分の受け持ちを読む。now は ISO、today は JST の日付 */
+export async function loadStaffBoard(
+  db: D1Database,
+  actor: StaffActor,
+  today: string,
+  now: string = new Date().toISOString(),
+): Promise<StaffBoard> {
+  const custody = await db
+    .prepare(
+      `SELECT c.id AS custody_id, c.person_id, c.shelter, c.via, c.received_at,
+              p.name, p.kana, p.birth_date, p.reported_age, p.self_report_unreliable, p.ledger, p.office_id,
+              o.name AS office_name, o.kind AS office_kind
+         FROM custody c JOIN people p ON p.id = c.person_id JOIN offices o ON o.id = p.office_id
+        WHERE c.holder_id = ?1 AND c.released_at IS NULL
+        ORDER BY c.received_at DESC, c.id`,
+    )
+    .bind(actor.accountId)
+    .all<CustodyJoin>();
+  const rows = custody.results;
+  if (rows.length === 0) return { rows: [], counts: { red: 0, yellow: 0, gray: 0, green: 0 }, shelters: [], medical: 0 };
+
+  const ids = JSON.stringify([...new Set(rows.map((r) => r.person_id))]);
+  const [clocks, contacts, signals, arrivals] = await db.batch([
+    db
+      .prepare(
+        `SELECT person_id, kind, category, label, value, unit, starts_on, depends_on, depends_check FROM clocks
+          WHERE person_id IN (${IDS}) ORDER BY person_id, sort, id`,
+      )
+      .bind(ids),
+    db.prepare(`SELECT person_id, supporter_order FROM contacts WHERE person_id IN (${IDS})`).bind(ids),
+    db
+      .prepare(
+        `SELECT person_id, color, source, injured, can_move, classes, classified_by, occurred_at FROM signals
+          WHERE drill_id IS NULL AND person_id IN (${IDS}) ORDER BY occurred_at, created_at, id`,
+      )
+      .bind(ids),
+    db
+      .prepare(`SELECT person_id, shelter, received_at FROM custody WHERE person_id IN (${IDS}) ORDER BY received_at, id`)
+      .bind(ids),
+  ]);
+  const by = <T extends { person_id: string }>(list: T[]) => {
+    const m = new Map<string, T[]>();
+    for (const r of list) m.set(r.person_id, [...(m.get(r.person_id) ?? []), r]);
+    return m;
+  };
+  const clocksOf = by(clocks.results as ClockForBoard[]);
+  const contactsOf = by(contacts.results as ContactForBoard[]);
+  const signalsOf = by(signals.results as SignalForTriage[]);
+  const arrivalsOf = by(arrivals.results as ArrivalRow[]);
+
+  // 事業所ごとの災害の状況と上書き（所属なしは読まない）
+  const offices = [...new Set(rows.filter((r) => r.office_kind !== "unaffiliated").map((r) => r.office_id))];
+  const situations = new Map<string, DisasterSituation | null>();
+  const overrides = new Map<string, Map<string, StoredOverride>>();
+  for (const officeId of offices) {
+    const s = await loadSituation(db, officeId, now);
+    situations.set(officeId, s);
+    if (s) overrides.set(officeId, await loadOfficeOverrides(db, officeId, s));
+  }
+
+  const results: Array<{ row: StaffRow; triage: TriageResult }> = rows.map((r) => {
+    const ledger = parseLedger(r.ledger);
+    const myClocks = clocksOf.get(r.person_id) ?? [];
+    const myArrivals = arrivalsOf.get(r.person_id) ?? [];
+    const officeSituation = situations.get(r.office_id) ?? null;
+    // 平時・所属なし: いちばん早い受け入れを発災とみなし、停電なし
+    const situation: DisasterSituation | Situation = officeSituation ?? {
+      now,
+      disasterAt: myArrivals[0]?.received_at ?? r.received_at,
+      outageAt: null,
+    };
+    const town = ledger.basic.address?.town ?? null;
+    const override = overrides.get(r.office_id)?.get(r.person_id);
+    const triage = triageInDisaster(
+      {
+        person: toTriagePerson({
+          person: { id: r.person_id, self_report_unreliable: r.self_report_unreliable },
+          ledger,
+          contacts: contactsOf.get(r.person_id) ?? [],
+          clocks: myClocks,
+        }),
+        signals: (signalsOf.get(r.person_id) ?? []).filter((x) => withinDisaster(x.occurred_at, situation)).map(toTriageSignal),
+        arrivals: myArrivals
+          .filter((a) => withinDisaster(a.received_at, situation))
+          .map((a) => ({ at: a.received_at, shelter: a.shelter })),
+        ...(override ? { override } : {}),
+        town,
+      },
+      situation,
+    );
+    const remain = remainOf(myClocks, personSituation(situation, town));
+    const unaffiliated = r.office_kind === "unaffiliated";
+    return {
+      triage,
+      row: {
+        custodyId: r.custody_id,
+        personId: r.person_id,
+        name: r.name,
+        kana: r.kana,
+        age: r.birth_date ? ageOn(r.birth_date, today) : r.reported_age,
+        ageReported: !r.birth_date && r.reported_age !== null,
+        marks: marksOf(myClocks),
+        medications: ledger.medical.medications.map((m) => m.name),
+        devices: ledger.medical.devices.map((d) => DEVICE_LABELS[d.kind]),
+        remain: remain ? { label: remain.label, text: remain.text, hours: remain.hours, tone: remain.tone } : null,
+        shelter: r.shelter,
+        via: r.via,
+        receivedAt: r.received_at,
+        receivedWhen: shortJst(r.received_at),
+        office: unaffiliated ? CUSTODY_LABELS.unaffiliated : r.office_name,
+        unaffiliated,
+        color: triage.color,
+        tone: COLOR_TONES[triage.color],
+        reason: triage.reason,
+        rank: 0,
+      },
+    };
+  });
+
+  results
+    .slice()
+    .sort((a, b) => compareResults(a.triage, b.triage))
+    .forEach((x, i) => {
+      x.row.rank = i + 1;
+    });
+
+  const counts: Record<Color, number> = { red: 0, yellow: 0, gray: 0, green: 0 };
+  for (const x of results) counts[x.row.color] += 1;
+  return {
+    rows: results.map((x) => x.row).sort((a, b) => a.rank - b.rank),
+    counts,
+    shelters: [...new Set(rows.map((r) => r.shelter))].sort((a, b) => a.localeCompare(b, "ja")),
+    medical: results.filter((x) => x.row.marks.length + x.row.devices.length + x.row.medications.length > 0).length,
+  };
+}
