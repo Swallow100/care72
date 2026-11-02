@@ -14,14 +14,14 @@
 | ID | 秒 | ナレーション | 英語の字幕（案） |
 | --- | --- | --- | --- |
 | N01 | 0:00.5–0:06.5 | 医学部で学んでいます。家族は、在宅のお年寄りを受け持つケアマネです。 | I'm a medical student. Someone in my family is a care manager for older people who live at home. |
-| N02 | 0:07.3–0:12.6 | ケア72。ケアマネの知っていることを、災害の 72 時間に届けます。 | Care72 carries what a care manager knows into the first 72 hours of a disaster. |
+| N02 | 0:07.1–0:12.7 | ケア72。ケアマネの知っていることを、災害の 72 時間に届けます。 | Care72 carries what a care manager knows into the first 72 hours of a disaster. |
 | N03 | 0:12.8–0:19.6 | 話して埋まる避難計画。AI が利用者を演じる訓練。発災時の、安否と連絡の順。 | A plan you fill in by talking. A drill where AI plays your clients. And in a disaster: who is safe, and who to call first. |
 | N04 | 0:20.3–0:26.3 | 高校の［高校の学習の名前］で、［学んだこと 1 文］。 | In high school, in [name of the program], I learned [one sentence]. |
 | N05 | 0:26.5–0:31.0 | 医学部に進み、家族の仕事を近くで見て、気づきました。 | Then, in medical school, watching my family's work up close, I noticed something. |
 | N06 | 0:31.2–0:39.2 | ケアマネは利用者のことを全部知っている。でも計画に起こす時間がなく、72 時間に届く道もない。 | Care managers know everything about their clients. But there's no time to turn it into a plan, and no way for it to reach anyone in those 72 hours. |
-| N07 | 0:39.6–0:43.6 | 個別避難計画ができているのは、対象の 15.1%。 | Only 15.1% of the people who need an individual evacuation plan have one. |
-| N08 | 0:43.8–0:47.6 | 能登の死者 755 人のうち、527 人は関連死。 | Of the 755 people who died in the Noto earthquake, 527 were disaster-related deaths. |
-| N09 | 0:47.8–0:51.8 | 輪島の避難所では、薬の情報が手書きで、用量が欠けていました。 | At shelters in Wajima, medication notes were handwritten, and the doses were missing. |
+| N07 | 0:39.4–0:44.0 | 個別避難計画ができているのは、対象の 15.1%。 | Only 15.1% of the people who need an individual evacuation plan have one. |
+| N08 | 0:44.2–0:47.4 | 能登では、527 人が関連死でした。 | In the Noto earthquake, 527 deaths were disaster-related. |
+| N09 | 0:47.6–0:51.9 | 輪島の避難所では、薬のメモが手書きで、用量が抜けていた。 | At shelters in Wajima, medication notes were handwritten, and doses were left out. |
 | N10 | 0:52.3–0:57.3 | 主役は架空の利用者、山田ハナさん。84 歳、在宅酸素。 | Meet a fictional client, Hana Yamada. 84, on home oxygen. |
 | N11 | 0:57.5–1:04.3 | ケアマネが話すと、Claude が台帳の欄に分け、空いている所だけ聞き返します。 | The care manager talks. Claude sorts it into her record, and asks back only about what's missing. |
 | N12 | 1:04.5–1:10.5 | 台帳から、市の様式の避難計画、本人の 1 枚、医療班の要約が出ます。 | From that one record: the city's evacuation plan form, a one-page sheet for her, and a summary for the medical team. |
@@ -57,7 +57,7 @@
 ## 読み
 
 - 15.1%: じゅうごてんいちパーセント
-- 755 人・527 人: ななひゃくごじゅうごにん・ごひゃくにじゅうななにん
+- 527 人: ごひゃくにじゅうななにん（755 人は画面の棒だけで、声では言わない）
 - 能登: のと。輪島: わじま
 - 山田ハナ: やまだ はな
 - Claude: クロード。Haiku: ハイク。Opus: オーパス。MCP: エムシーピー
@@ -67,7 +67,7 @@
 | ID | 数字 | 出典 |
 | --- | --- | --- |
 | N07 | 作成率 15.1%（対象 670 万人） | [共同通信 2026-10-04（熊本日日新聞）](https://kumanichi.com/articles/2042908) |
-| N08 | 死者 755 人、関連死 527 人 | [熊本日日新聞 2026-08](https://kumanichi.com/articles/2027266) |
+| N08 | 関連死 527 人（画面の棒で死者 755 人も出す） | [熊本日日新聞 2026-08](https://kumanichi.com/articles/2027266) |
 | N09 | 輪島の避難所の薬の情報が手書きのメモで用法用量が欠けた | [厚生労働省](https://www.mhlw.go.jp/content/001203369.pdf) |
 | N28 | 計画 1 件の時間 | 撮影の日の実測（MATERIALS.md の「数字」） |
 | N29 | アンケートの結果 | T34 |
