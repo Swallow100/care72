@@ -3,24 +3,25 @@ import Link from "next/link";
 import { unstable_rethrow } from "next/navigation";
 import { AutoRefresh } from "@/components/disaster/AutoRefresh";
 import { DisasterBadge } from "@/components/disaster/DisasterBadge";
+import { ButtonLink } from "@/components/ui/Button";
+import { RoleIcon } from "@/components/ui/Icon";
+import { LinkPending } from "@/components/ui/LinkPending";
+import { RoleMenu, type RoleChoice } from "@/components/ui/RoleMenu";
+import { SubmitButton } from "@/components/ui/SubmitButton";
 import { loadDisasterState } from "@/lib/disaster/db";
 import { disasterMark, type DisasterMark } from "@/lib/disaster/state";
 import type { Principal } from "@/lib/auth/principal";
-import {
-  ADMIN_LABEL,
-  canViewPage,
-  homePath,
-  JUDGE_LABEL,
-  LOGIN_PATH,
-  ROLE_LABELS,
-  ROLE_SELECT_PATH,
-} from "@/lib/auth/roles";
+import { judgeChoices } from "@/lib/auth/choices";
+import { ADMIN_LABEL, canViewPage, homePath, JUDGE_LABEL, LOGIN_PATH, ROLE_LABELS, ROLE_SELECT_PATH } from "@/lib/auth/roles";
 import { getPrincipal } from "@/lib/auth/server";
 import { SessionSecretMissing } from "@/lib/auth/session";
 import { NavLinks } from "./NavLinks";
 
-// 全部の画面の上の帯。左に名前と画面の切替、右上に 事業所の状態（平時・大雨 レベル 4 停電 3 時間）・事業所名・役・ログアウト。
-// 審査員は役の横に「審査員」と「役変更」。ログインしていなければ名前だけ（ログインの画面にいる）。
+// 全部の画面の上の帯。
+// 左: 名前と画面の切替（担当一覧・訓練・事業所・様式）、その右に事業所の状態（大雨 レベル 4 停電 3 時間。押すと事業所の画面）。
+// 右: 自分のこと 事業所名 → 今の役（ケアマネ 山本）→ 役変更（審査員だけ。押すとその下に役の一覧）→ ログアウト（赤）。
+// 事業所の状態を左に置くのは、右を「自分は誰か・出る」だけにして、事業所名と災害の状態が並んで読み違えないため。
+// ログインしていなければ名前だけ（ログインの画面にいる）。押せる高さは 32px 以上、押してから移るまで灰色を残す。
 export async function AppHeader() {
   let p: Principal | null = null;
   try {
@@ -34,16 +35,23 @@ export async function AppHeader() {
 
   const desk = p !== null && canViewPage(p.role, "caseload");
   const mark = desk && p?.office ? await officeMark(p.office.id) : null;
+  const choices = p?.judge ? await roleChoices() : null;
   return (
     <header className="bg-panel">
-      <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-x-6 gap-y-2 px-4 py-3">
-        <div className="flex items-center gap-4">
-          <Link href={p ? homePath(p.role) : LOGIN_PATH} className="rounded px-1 font-bold" data-press>
+      <div className="mx-auto flex max-w-[90rem] flex-wrap items-center gap-x-4 gap-y-1 px-4 py-1.5">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1">
+          <Link
+            href={p ? homePath(p.role) : LOGIN_PATH}
+            className="relative -mx-1 inline-flex h-8 items-center rounded px-1 text-[1.0625rem] font-bold whitespace-nowrap"
+            data-press
+          >
             ケア72
+            <LinkPending />
           </Link>
           {desk && <NavLinks />}
+          {mark && <DisasterBadge mark={mark} link />}
         </div>
-        {p && <Who p={p} mark={mark} />}
+        {p && <Who p={p} choices={choices} />}
       </div>
       {/* 災害モードの間は 1 分ごとに読み直す（担当一覧・本人のページ・様式 9 の色と並びが今の時刻で変わる） */}
       {mark?.kind === "disaster" && <AutoRefresh seconds={60} />}
@@ -62,29 +70,42 @@ async function officeMark(officeId: string): Promise<DisasterMark | null> {
   }
 }
 
-const ACTION = "rounded px-2 py-1";
+/** 審査員の役の一覧（役変更の Menu に先に入れておく）。読めなければ役変更の画面へのリンクにする */
+async function roleChoices(): Promise<RoleChoice[] | null> {
+  try {
+    const { env } = await getCloudflareContext({ async: true });
+    return await judgeChoices(env.DB);
+  } catch (e) {
+    console.error("役の一覧を読めない", e);
+    return null;
+  }
+}
 
-function Who({ p, mark }: { p: Principal; mark: DisasterMark | null }) {
+function Who({ p, choices }: { p: Principal; choices: RoleChoice[] | null }) {
   const role = p.admin ? ADMIN_LABEL : ROLE_LABELS[p.role];
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
-      {mark && <DisasterBadge mark={mark} link />}
-      {p.office && <span>{p.office.name}</span>}
-      <span>
+    <div className="ml-auto flex flex-wrap items-center justify-end gap-x-2 gap-y-1 text-sm sm:gap-x-3">
+      {p.office && <span className="hidden whitespace-nowrap text-muted sm:inline">{p.office.name}</span>}
+      <span className="whitespace-nowrap">
         <span className="font-bold">{role}</span>
         {p.displayName && <span> {p.displayName}</span>}
+        {p.judge && <span className="ml-1.5 hidden text-xs text-muted sm:inline">{JUDGE_LABEL}</span>}
       </span>
-      {p.judge && <span className="text-muted">{JUDGE_LABEL}</span>}
-      {p.judge && p.role !== "unselected" && (
-        <Link href={ROLE_SELECT_PATH} className={ACTION} data-press>
-          役変更
-        </Link>
-      )}
-      <form method="post" action="/api/auth/logout">
-        <button type="submit" className={ACTION} data-press>
-          ログアウト
-        </button>
-      </form>
+      <div className="flex items-center gap-1.5">
+        {p.judge && p.role !== "unselected" &&
+          (choices ? (
+            <RoleMenu choices={choices} current={p.role} label="役変更" />
+          ) : (
+            <ButtonLink href={ROLE_SELECT_PATH} icon={RoleIcon}>
+              役変更
+            </ButtonLink>
+          ))}
+        <form method="post" action="/api/auth/logout">
+          <SubmitButton kind="danger" icon="LogoutIcon">
+            ログアウト
+          </SubmitButton>
+        </form>
+      </div>
     </div>
   );
 }
