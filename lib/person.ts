@@ -15,7 +15,7 @@ import type { Principal } from "./auth/principal.ts";
 import { JUDGE_LABEL } from "./auth/roles.ts";
 import { personInScope } from "./auth/scope.ts";
 import { hazardsOf } from "./caseload.ts";
-import { parseLedger } from "./db/ledger.ts";
+import { parseLedger, sameMedication } from "./db/ledger.ts";
 import {
   CONSENT_KINDS,
   INTAKE_SOURCE,
@@ -328,7 +328,9 @@ export type PersonPageRows = {
     | "ledger"
     | "created_at"
     | "updated_at"
-  >;
+  > &
+    /** 台帳の版（入れる欄の保存で、ほかの人の保存と重ならないように確かめる）。D1 から読んだときだけ */
+    Partial<Pick<PersonRow, "version">>;
   /** 担当のケアマネの名前 */
   careManagerName: string | null;
   contacts: ReadonlyArray<Omit<ContactRow, "created_at">>;
@@ -471,11 +473,6 @@ function clockValueSeg(k: ClockRow): Seg {
 }
 
 // ---------- 区分ごとの行 ----------
-
-/** 薬の時計と薬の名前が同じ物か（時計の名前は薬の名前の一部のことがある: DOAC と 抗凝固薬（DOAC）） */
-function sameMedication(clockLabel: string, medicationName: string): boolean {
-  return clockLabel.includes(medicationName) || medicationName.includes(clockLabel);
-}
 
 /** 電源で動く機器。時計（電池）が無ければ「電池 未確認」と出す */
 const POWERED_DEVICES = new Set<DeviceKind>(["oxygen", "ventilator", "suction"]);
@@ -859,14 +856,24 @@ const MED_REMAINING = /^medical\.medications\.([^.]+)\.remaining$/;
  * 見つからなければ、値の無い薬の時計が 1 つだけのときにそこへ（種の山田さんの「ワーファリン」はこれ）
  */
 function clockForPending(field: string, ledger: Ledger, clocks: ClockView[], rows: PersonPageRows): ClockView | null {
+  const id = pendingClockId(field, ledger, rows.clocks);
+  return id ? (clocks.find((k) => k.id === id) ?? null) : null;
+}
+
+/** pending がどの時計に付くか（clocks.<id> か、薬の残り medical.medications.<番号か名前>.remaining）。入れる欄の問いと保存も使う */
+export function pendingClockId(
+  field: string,
+  ledger: Ledger,
+  clocks: ReadonlyArray<Pick<ClockRow, "id" | "kind" | "value" | "label">>,
+): string | null {
   const direct = /^clocks\.([^.]+)/.exec(field);
-  if (direct) return clocks.find((k) => k.id === direct[1]) ?? null;
+  if (direct) return clocks.some((k) => k.id === direct[1]) ? direct[1] : null;
   const m = MED_REMAINING.exec(field);
   if (!m) return null;
-  const empty = rows.clocks.filter((k) => k.kind === "medication" && k.value == null);
+  const empty = clocks.filter((k) => k.kind === "medication" && k.value == null);
   const med = /^\d+$/.test(m[1]) ? ledger.medical.medications[Number(m[1])] : ledger.medical.medications.find((x) => x.name === m[1]);
   const target = med ? empty.find((k) => sameMedication(k.label, med.name)) : empty.length === 1 ? empty[0] : undefined;
-  return target ? (clocks.find((k) => k.id === target.id) ?? null) : null;
+  return target?.id ?? null;
 }
 
 function attachPending(sections: Map<SectionId, Block[]>, ledger: Ledger, rows: PersonPageRows): UnconfirmedItem[] {
@@ -1012,7 +1019,7 @@ export async function loadPersonPage(db: D1Database, principal: Principal, perso
   const [extra, contacts, consents, clocks, timeline] = await db.batch([
     db
       .prepare(
-        `SELECT p.origin, p.self_report_unreliable, p.created_at, p.updated_at, a.display_name AS care_manager_name
+        `SELECT p.origin, p.self_report_unreliable, p.created_at, p.updated_at, p.version, a.display_name AS care_manager_name
            FROM people p LEFT JOIN accounts a ON a.id = p.care_manager_id
           WHERE p.id = ?1 AND p.office_id = ?2`,
       )
@@ -1045,7 +1052,7 @@ export async function loadPersonPage(db: D1Database, principal: Principal, perso
       .bind(brief.id),
   ]);
   const e = extra.results[0] as
-    | Pick<PersonRow, "origin" | "self_report_unreliable" | "created_at" | "updated_at"> & {
+    | Pick<PersonRow, "origin" | "self_report_unreliable" | "created_at" | "updated_at" | "version"> & {
         care_manager_name: string | null;
       }
     | undefined;
@@ -1064,6 +1071,7 @@ export async function loadPersonPage(db: D1Database, principal: Principal, perso
       self_report_unreliable: e.self_report_unreliable,
       created_at: e.created_at,
       updated_at: e.updated_at,
+      version: e.version,
     },
     careManagerName: e.care_manager_name,
     contacts: contacts.results as unknown as PersonPageRows["contacts"],

@@ -14,7 +14,14 @@ export function migratedSqlite(): DatabaseSync {
 }
 
 export function d1FromSqlite(db: DatabaseSync): D1Database {
-  const statement = (sql: string, params: SQLInputValue[]) => ({
+  // batch で使うために、文ごとの SQL と値を覚える
+  const parts = new WeakMap<object, { sql: string; params: SQLInputValue[] }>();
+  const statement = (sql: string, params: SQLInputValue[]) => {
+    const s = make(sql, params);
+    parts.set(s, { sql, params });
+    return s;
+  };
+  const make = (sql: string, params: SQLInputValue[]) => ({
     bind: (...args: unknown[]) => statement(sql, args as SQLInputValue[]),
     first: async (column?: string) => {
       const row = db.prepare(sql).get(...params) as Record<string, unknown> | undefined;
@@ -29,10 +36,26 @@ export function d1FromSqlite(db: DatabaseSync): D1Database {
   });
   return {
     prepare: (sql: string) => statement(sql, []),
-    // D1 の batch は 1 つの取引で順に流す。ここでは順に all を呼ぶだけ（読むだけのテストに使う）
-    batch: async (stmts: Array<ReturnType<typeof statement>>) => {
+    // D1 の batch は 1 つの取引で順に流し、ほかの batch と重ならない。ここも取引にして、途中で待たずに流す。
+    // 読む文は results、書く文は meta.changes を返す
+    batch: async (stmts: Array<ReturnType<typeof make>>) => {
       const out = [];
-      for (const s of stmts) out.push(await s.all());
+      db.exec("BEGIN");
+      try {
+        for (const s of stmts) {
+          const { sql, params } = parts.get(s)!;
+          if (/^\s*(SELECT|WITH)\b/i.test(sql)) {
+            out.push({ success: true, results: db.prepare(sql).all(...params), meta: {} });
+          } else {
+            const r = db.prepare(sql).run(...params);
+            out.push({ success: true, results: [], meta: { changes: Number(r.changes), last_row_id: Number(r.lastInsertRowid) } });
+          }
+        }
+        db.exec("COMMIT");
+      } catch (e) {
+        db.exec("ROLLBACK");
+        throw e;
+      }
       return out;
     },
   } as unknown as D1Database;

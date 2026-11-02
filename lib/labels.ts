@@ -310,6 +310,42 @@ export const AUTHOR_ROLE_LABELS: Record<AuthorRole, string> = {
   system: "自動",
 };
 
+/** 入れる欄（T03）の言葉 */
+export const INTAKE_LABELS = {
+  title: "入力",
+  tabText: "文字",
+  tabManual: "手入力",
+  placeholder: "様子・ケアプランを貼る",
+  extract: "抽出",
+  save: "保存",
+  discard: "取消",
+  edit: "修正",
+  addMedication: "薬追加",
+  addNote: "特記追加",
+  changes: "変更点",
+  question: "質問",
+  marks: "付く印",
+  noQuestion: "空欄なし",
+  dropped: "除外",
+  overwrite: "上書き",
+  busy: "処理中",
+  saved: "保存済",
+  unchanged: "変更なし",
+  aiNotConfigured: "AI 未設定",
+  aiLimit: "上限到達",
+  aiFailed: "AI 失敗",
+  aiRefused: "AI 不可",
+  leak: "送信不可",
+  conflict: "競合",
+  failed: "保存失敗",
+  invalid: "入力不備",
+  masked: "伏せ字",
+  next: "次回",
+} as const;
+
+/** 差分の状態: 追加（空いた所に入る）・一致（今と同じ）・既入力（今と違う。既定では保存しない） */
+export const DIFF_STATE_LABELS = { add: "追加", same: "一致", filled: "既入力" } as const;
+
 /** 書類（T05〜T07 で作る）の入口 */
 export const DOCUMENT_LABELS = { matsuyama: "計画書", medical: "医療要約", own: "本人の1枚" } as const;
 export const DOCUMENT_STATUS_LABELS = { pending: "準備中", ready: "表示" } as const;
