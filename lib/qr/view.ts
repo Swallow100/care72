@@ -22,10 +22,10 @@ import {
   type MedicalPending,
   type MedicationRow,
 } from "../forms/medical-summary.ts";
-import { CONSENT_KIND_LABELS, CONSENT_STATUS_LABELS } from "../labels.ts";
-import { loadPersonRows, type PersonPageRows } from "../person.ts";
+import { AUTHOR_ROLE_LABELS, CONSENT_KIND_LABELS, CONSENT_STATUS_LABELS } from "../labels.ts";
+import { formatJst, loadPersonRows, type PersonPageRows } from "../person.ts";
 import { QR_LABELS } from "./labels.ts";
-import { QR_VIEW_SOURCE, type QrViewPayload, type QrViewScope } from "./timeline.ts";
+import { QR_VIEW_SOURCE, qrViewOf, type QrViewPayload, type QrViewScope } from "./timeline.ts";
 
 /** QR の頁に出さない欄（氏名の全部・住所） */
 export const QR_HIDDEN_KEYS = ["patient.name", "patient.address"] as const satisfies readonly MedicalKey[];
@@ -162,4 +162,37 @@ export async function recordQrView(
 /** 医療班提供の同意（本人の行から）。行が無ければ未確認 */
 export function medicalConsentOf(rows: PersonPageRows): ConsentStatus {
   return rows.consents.find((c) => c.kind === "medical")?.status ?? "unconfirmed";
+}
+
+/** 閲覧記録の 1 行（本人のページの QR の画面に出す。第三者提供の記録: 相手・範囲・時刻） */
+export type QrViewLogItem = {
+  id: string;
+  /** JST の YYYY-MM-DD HH:MM */
+  when: string;
+  /** 相手（役と名前。ログインなしは未ログイン） */
+  who: string;
+  /** 範囲（要約・表示なし） */
+  scope: string;
+  generation: number;
+};
+
+/** 経過から QR の閲覧だけを、新しい順に */
+export function qrViewLog(rows: PersonPageRows): QrViewLogItem[] {
+  const out: Array<QrViewLogItem & { at: string }> = [];
+  for (const t of rows.timeline) {
+    const p = qrViewOf(t);
+    if (!p) continue;
+    const role = t.author_id || p.recipient ? AUTHOR_ROLE_LABELS[t.author_role] : QR_LABELS.anonymous;
+    out.push({
+      id: t.id,
+      at: t.occurred_at,
+      when: formatJst(t.occurred_at),
+      who: [role, t.author_name].filter(Boolean).join(" "),
+      scope: p.scope === "medical_summary" ? QR_LABELS.scopeSummary : QR_LABELS.scopeNone,
+      generation: p.generation,
+    });
+  }
+  return out
+    .sort((a, b) => Date.parse(b.at) - Date.parse(a.at) || (a.id < b.id ? 1 : -1))
+    .map(({ at: _at, ...item }) => item);
 }

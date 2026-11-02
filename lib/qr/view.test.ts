@@ -12,6 +12,7 @@ import { loadPersonPage, timelineItems } from "../person.ts";
 import { QR_LABELS } from "./labels.ts";
 import { currentQrToken, issueQr, resolveQrToken } from "./store.ts";
 import { qrViewOf } from "./timeline.ts";
+import { originFromHeaders, qrUrl } from "./url.ts";
 import {
   buildQrPage,
   loadQrPerson,
@@ -19,6 +20,7 @@ import {
   QR_FIELDS,
   QR_HIDDEN_KEYS,
   qrViewBody,
+  qrViewLog,
   recordQrView,
   shownFields,
   type QrPage,
@@ -226,5 +228,34 @@ describe("閲覧の記録（相手・範囲・時刻）", () => {
     );
     const view = (await loadPersonPage(db, careManager, "p-01"))!;
     expect(timelineItems(view).find((i) => i.id === "tl-x")?.kind).toBe("記録");
+    expect(qrViewLog(view)).toEqual([]);
+  });
+
+  it("本人のページの QR の画面の閲覧記録: 新しい順に 時刻・相手・範囲・版", async () => {
+    const t1 = await tokenOf("p-01", "2026-11-04T01:00:00.000Z");
+    await open(t1, null, "2026-11-04T01:10:00.000Z");
+    const t2 = await tokenOf("p-01", "2026-11-04T02:00:00.000Z");
+    await open(t2, judgeMedical, "2026-11-04T02:20:00.000Z");
+    const view = (await loadPersonPage(db, careManager, "p-01"))!;
+    expect(qrViewLog(view).map(({ id: _id, ...v }) => v)).toEqual([
+      { when: "2026-11-04 11:20", who: "医療班 審査員", scope: QR_LABELS.scopeSummary, generation: 2 },
+      { when: "2026-11-04 10:10", who: QR_LABELS.anonymous, scope: QR_LABELS.scopeSummary, generation: 1 },
+    ]);
+  });
+});
+
+describe("QR に入れる URL", () => {
+  const h = (o: Record<string, string>) => ({ get: (k: string) => o[k.toLowerCase()] ?? null });
+  it("手元は http、配信は https。転送の見出しがあればそれ", () => {
+    expect(originFromHeaders(h({ host: "localhost:3078" }))).toBe("http://localhost:3078");
+    expect(originFromHeaders(h({ host: "care72.example" }))).toBe("https://care72.example");
+    expect(originFromHeaders(h({ host: "x", "x-forwarded-host": "care72.example", "x-forwarded-proto": "https" }))).toBe(
+      "https://care72.example",
+    );
+    expect(qrUrl("https://care72.example", "abc.def")).toBe("https://care72.example/q/abc.def");
+  });
+  it("host が無い・おかしな host は作らない", () => {
+    expect(originFromHeaders(h({}))).toBeNull();
+    expect(originFromHeaders(h({ host: "evil.example/path?x=" }))).toBeNull();
   });
 });
