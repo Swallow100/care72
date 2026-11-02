@@ -1,11 +1,10 @@
 import "@/components/forms/paper.css";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import type { Metadata } from "next";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { MatsuyamaSheet } from "@/components/forms/MatsuyamaSheet";
-import { PrintButton } from "@/components/forms/PrintButton";
 import { StateTag } from "@/components/person/parts";
+import { PaperBar, wantsPrint } from "@/components/ui/PaperBar";
 import { todayJst } from "@/lib/age";
 import { requirePage } from "@/lib/auth/server";
 import { buildMatsuyamaSheet } from "@/lib/forms/matsuyama";
@@ -18,15 +17,16 @@ export const dynamic = "force-dynamic";
 // 印刷の PDF の名前にもなる。氏名は入れない
 export const metadata: Metadata = { title: "計画書" };
 
-type Props = { params: Promise<{ id: string }> };
+type Props = { params: Promise<{ id: string }>; searchParams: Promise<{ print?: string | string[] }> };
 
 // 松山市の様式の紙面（A4 表裏）。本人のページの「書類」から開く。
 // 差し込みは台帳からサーバーで描く。Claude は呼ばない（氏名・住所・電話が入る）。
 // 事業所の壁は本人のページと同じ（loadPersonPage が personInScope を通す。範囲の外は 404）。
 // 医療班・行政の同意の範囲（lib/consent/scope.ts）に計画書は無いので 404（T24）。
-export default async function MatsuyamaFormPage({ params }: Props) {
+export default async function MatsuyamaFormPage({ params, searchParams }: Props) {
   const principal = await requirePage("person");
   const { id } = await params;
+  const autoPrint = wantsPrint((await searchParams).print);
   const { env } = await getCloudflareContext({ async: true });
   const opened = await loadPersonDocument(env.DB, principal, id, "matsuyama");
   if (!opened) notFound();
@@ -39,13 +39,7 @@ export default async function MatsuyamaFormPage({ params }: Props) {
 
   return (
     <main className="py-4 print:p-0">
-      <div className="screen-only mx-auto mb-4 flex max-w-[calc(210mm+2rem)] flex-wrap items-center gap-x-4 gap-y-2 px-4">
-        <Link href={`/people/${id}`} className="rounded px-2 py-1 text-sm text-muted" data-press>
-          戻る
-        </Link>
-        <div className="font-bold">
-          計画書 <span className="font-normal text-muted">{sheet.name}</span>
-        </div>
+      <PaperBar back={`/people/${encodeURIComponent(id)}`} title="計画書" name={sheet.name} autoPrint={autoPrint}>
         {pending.length > 0 && (
           <div className="flex flex-wrap items-baseline gap-x-2" data-pending={pending.length}>
             <StateTag tone="check">
@@ -54,10 +48,7 @@ export default async function MatsuyamaFormPage({ params }: Props) {
             <span className="text-sm text-muted">{pending.join("・")}</span>
           </div>
         )}
-        <div className="ml-auto">
-          <PrintButton />
-        </div>
-      </div>
+      </PaperBar>
       <MatsuyamaSheet sheet={sheet} />
     </main>
   );

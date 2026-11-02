@@ -133,7 +133,7 @@ export function Intake(props: IntakeProps & { level: Level }) {
   return (
     <section aria-labelledby={titleId} className="space-y-3 rounded-lg bg-panel px-3 py-2.5 text-sm" data-intake="panel">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <H id={titleId} className="font-bold">
+        <H id={titleId} className="text-[1rem] leading-6 font-bold">
           {INTAKE_LABELS.title}
         </H>
         <div role="tablist" aria-label={INTAKE_LABELS.title} className="flex gap-1">

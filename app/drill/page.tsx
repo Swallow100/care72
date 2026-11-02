@@ -1,7 +1,10 @@
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import type { Metadata } from "next";
-import Link from "next/link";
 import { StartButtons } from "@/components/drill/StartButtons";
+import { ButtonLink } from "@/components/ui/Button";
+import { PlayIcon } from "@/components/ui/Icon";
+import { Panel, PageHead } from "@/components/ui/Panel";
+import { TABLE, TABLE_BOX, TD, TH } from "@/components/ui/table";
 import { requirePage } from "@/lib/auth/server";
 import { aiContextFor } from "@/lib/claude/cloudflare";
 import { drillGate, type DailyUsage } from "@/lib/claude/gate";
@@ -34,8 +37,9 @@ export default async function DrillPage() {
   } catch (e) {
     console.error("訓練記録を読めない", e);
     return (
-      <main className="mx-auto max-w-6xl px-4 py-6">
-        <p className="rounded-lg bg-panel p-6 font-bold">読込失敗</p>
+      <main className="mx-auto max-w-6xl px-4 py-4">
+        <PageHead title={DRILL_LABELS.records} />
+        <p className="mt-2 text-sm font-bold text-danger">読込失敗</p>
       </main>
     );
   }
@@ -43,14 +47,11 @@ export default async function DrillPage() {
   const gate = drillGate(usage, items);
 
   return (
-    <main className="mx-auto max-w-6xl px-4 py-6">
-      <div className="flex flex-wrap items-baseline gap-x-4 gap-y-2">
-        <h1 className="text-2xl font-bold">{DRILL_LABELS.records}</h1>
-        <span className="text-muted tabular-nums">{items.length} 件</span>
-      </div>
+    <main className="mx-auto max-w-6xl px-4 py-4">
+      <PageHead title={DRILL_LABELS.records} count={`${items.length} 件`} />
 
-      <section aria-labelledby="drill-start" className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg bg-panel px-4 py-3">
-        <h2 id="drill-start" className="text-sm font-bold text-muted">
+      <Panel aria-labelledby="drill-start" className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+        <h2 id="drill-start" className="text-[1rem] font-bold">
           {DRILL_LABELS.start}
         </h2>
         {gate.kind === "start" ? (
@@ -60,9 +61,9 @@ export default async function DrillPage() {
           <div className="flex flex-wrap items-center gap-2" data-limit>
             <span className="text-sm font-bold">{LIMIT_LABELS.reached}</span>
             {gate.replay && (
-              <Link href={drillHref(gate.replay, { step: 0 })} className="rounded-md bg-accent px-4 py-2 text-sm font-bold text-on-accent" data-press="overlay">
+              <ButtonLink href={drillHref(gate.replay, { step: 0 })} kind="main" icon={PlayIcon}>
                 {DRILL_LABELS.replay}
-              </Link>
+              </ButtonLink>
             )}
           </div>
         )}
@@ -72,48 +73,53 @@ export default async function DrillPage() {
           </span>
         )}
         {running && (
-          <Link href={drillHref(running.id)} className="ml-auto rounded px-2 py-1 text-sm font-bold text-accent" data-press>
+          <ButtonLink href={drillHref(running.id)} kind="main" icon={PlayIcon} className="ml-auto">
             {DRILL_LABELS.resume} {SCENARIO_LABELS[running.scenario]} {progressLabel(running.sim_hour, lastHour(scenarioOf(running.scenario)))}
-          </Link>
+          </ButtonLink>
         )}
-      </section>
+      </Panel>
 
-      {items.length === 0 ? (
-        <p className="mt-3 rounded-lg bg-panel p-6 text-muted">{DRILL_LABELS.none}</p>
-      ) : (
-        <div className="mt-3 overflow-x-auto">
-          <table className="w-full min-w-[40rem] border-separate border-spacing-y-0.5 text-left text-sm" data-table="drills">
-            <thead>
-              <tr className="whitespace-nowrap text-muted">
-                <th className="px-3 py-2 font-normal">{DRILL_LABELS.startedAt}</th>
-                <th className="px-3 py-2 font-normal">{DRILL_LABELS.scenario}</th>
-                <th className="px-3 py-2 font-normal">{DRILL_LABELS.elapsed}</th>
-                <th className="px-3 py-2 font-normal">{DRILL_LABELS.status}</th>
-                <th className="px-3 py-2 font-normal">{DRILL_LABELS.startedBy}</th>
-                <th className="px-3 py-2 font-normal" />
+      <div className={`mt-3 ${TABLE_BOX}`}>
+        <table className={TABLE} data-table="drills">
+          <thead>
+            <tr>
+              <th className={TH}>{DRILL_LABELS.startedAt}</th>
+              <th className={TH}>{DRILL_LABELS.scenario}</th>
+              <th className={TH}>{DRILL_LABELS.elapsed}</th>
+              <th className={TH}>{DRILL_LABELS.status}</th>
+              <th className={TH}>{DRILL_LABELS.startedBy}</th>
+              <th className={TH}>
+                <span className="sr-only">{DRILL_LABELS.replay}</span>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.length === 0 && (
+              <tr>
+                <td colSpan={6} className={`${TD} text-muted`}>
+                  {DRILL_LABELS.none}
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {items.map((d) => (
-                <tr key={d.id} data-drill={d.id} data-status={d.status}>
-                  <td className="rounded-l-md bg-panel px-3 py-2 tabular-nums">{shortJst(d.started_at)}</td>
-                  <td className="bg-panel px-3 py-2 font-bold">{SCENARIO_LABELS[d.scenario]}</td>
-                  <td className="bg-panel px-3 py-2 tabular-nums">{progressLabel(d.sim_hour, lastHour(scenarioOf(d.scenario)))}</td>
-                  <td className={`bg-panel px-3 py-2 ${d.status === "running" ? "font-bold" : d.status === "abandoned" ? "text-muted" : ""}`}>
-                    {STATUS_LABELS[d.status]}
-                  </td>
-                  <td className="bg-panel px-3 py-2">{d.started_by_name ?? <span className="text-muted">—</span>}</td>
-                  <td className="rounded-r-md bg-panel px-3 py-2 text-right">
-                    <Link href={drillHref(d.id)} className="rounded px-2 py-1 font-bold text-accent" data-press>
-                      {d.status === "running" ? DRILL_LABELS.resume : DRILL_LABELS.replay}
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+            )}
+            {items.map((d) => (
+              <tr key={d.id} data-drill={d.id} data-status={d.status}>
+                <td className={`${TD} tabular-nums`}>{shortJst(d.started_at)}</td>
+                <td className={`${TD} font-bold`}>{SCENARIO_LABELS[d.scenario]}</td>
+                <td className={`${TD} tabular-nums`}>{progressLabel(d.sim_hour, lastHour(scenarioOf(d.scenario)))}</td>
+                <td className={`${TD} ${d.status === "running" ? "font-bold" : d.status === "abandoned" ? "text-muted" : ""}`}>
+                  {STATUS_LABELS[d.status]}
+                </td>
+                <td className={TD}>{d.started_by_name ?? <span className="text-muted">—</span>}</td>
+                <td className={`${TD} w-px py-1 text-right`}>
+                  <ButtonLink href={drillHref(d.id)} kind="plain" size="sm" icon={PlayIcon}>
+                    {d.status === "running" ? DRILL_LABELS.resume : DRILL_LABELS.replay}
+                  </ButtonLink>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </main>
   );
 }

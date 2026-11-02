@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
+import { Page, Panel } from "@/components/ui/Panel";
+import { SubmitButton } from "@/components/ui/SubmitButton";
 import { homePath } from "@/lib/auth/roles";
 import { getPrincipal } from "@/lib/auth/server";
 
@@ -8,24 +10,25 @@ export const metadata: Metadata = { title: "ログイン | ケア72" };
 type Props = { searchParams: Promise<{ e?: string }> };
 
 const INPUT =
-  "mt-1 w-full rounded-md bg-panel2 px-3 py-3 outline-none focus-visible:outline-2 focus-visible:outline-accent";
+  "mt-1 h-10 w-full rounded bg-panel2 px-3 outline-none focus-visible:outline-2 focus-visible:outline-accent";
 
 // ID とパスワード。送り先は /api/auth/login（フォームの POST。JavaScript が無くても動く）。
 // どの画面もログインが要る。ログインしていなければ、どの画面からもここへ来る。審査員の ID とパスワードは提出書類に。
+// 狭い 1 列（入れる欄が 2 つだけなので、読む画面の列よりさらに狭く）
 export default async function LoginPage({ searchParams }: Props) {
   const p = await getPrincipal();
   if (p) redirect(homePath(p.role));
   const { e } = await searchParams;
 
   return (
-    <main className="mx-auto max-w-sm px-4 py-10">
-      <section aria-labelledby="login-title" className="rounded-lg bg-panel p-6">
-        <h1 id="login-title" className="text-xl font-bold">
+    <Page width="full" className="max-w-sm py-10">
+      <Panel aria-labelledby="login-title" className="p-5">
+        <h1 id="login-title" className="text-xl leading-8 font-bold">
           ログイン
         </h1>
-        <form method="post" action="/api/auth/login" className="mt-5 grid gap-4">
+        <form method="post" action="/api/auth/login" className="mt-4 grid gap-4">
           <label className="block">
-            <span className="text-sm text-muted">ID</span>
+            <span className="text-xs text-muted">ID</span>
             <input
               name="id"
               required
@@ -37,7 +40,7 @@ export default async function LoginPage({ searchParams }: Props) {
             />
           </label>
           <label className="block">
-            <span className="text-sm text-muted">パスワード</span>
+            <span className="text-xs text-muted">パスワード</span>
             <input
               name="password"
               type="password"
@@ -52,15 +55,11 @@ export default async function LoginPage({ searchParams }: Props) {
               認証失敗
             </p>
           )}
-          <button
-            type="submit"
-            className="mt-1 rounded-md bg-accent px-4 py-3 font-bold text-on-accent"
-            data-press="overlay"
-          >
+          <SubmitButton kind="main" size="lg" className="mt-1 w-full">
             ログイン
-          </button>
+          </SubmitButton>
         </form>
-      </section>
-    </main>
+      </Panel>
+    </Page>
   );
 }

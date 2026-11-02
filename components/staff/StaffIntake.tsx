@@ -16,6 +16,11 @@ import { CUSTODY_RECEIVE_API, CUSTODY_REGISTER_API, CUSTODY_SEARCH_API, CUSTODY_
 import { DEVICE_KINDS, type DeviceKind } from "@/lib/db/types";
 import { DEVICE_LABELS } from "@/lib/labels";
 import { KANA_MAX, NAME_MAX } from "@/lib/office/forms";
+import { Button } from "@/components/ui/Button";
+import { AddPersonIcon, SearchIcon } from "@/components/ui/Icon";
+import { LinkPending } from "@/components/ui/LinkPending";
+import { Panel, PanelHead } from "@/components/ui/Panel";
+import { TABLE, TABLE_BOX, TD } from "@/components/ui/table";
 
 const TABS = ["search", "shelter", "register"] as const;
 type Tab = (typeof TABS)[number];
@@ -27,8 +32,9 @@ const TAB_LABELS: Record<Tab, string> = {
 
 const INPUT =
   "w-full min-w-0 rounded-md bg-panel2 px-2 py-1.5 text-sm text-ink outline-none focus-visible:outline-2 focus-visible:outline-accent";
-const BUTTON = "rounded-md px-3 py-1.5 text-sm font-bold";
-const PRIMARY = `${BUTTON} bg-accent text-on-accent`;
+
+/** 検索の結果の表の見出し（右の面は狭いので、見出しを詰める） */
+const HIT_TH = "bg-panel2 px-2 py-1 text-left text-xs font-bold whitespace-nowrap text-muted";
 
 type Json = { ok?: boolean; label?: string; hits?: PersonHit[]; more?: boolean; personId?: string };
 
@@ -45,10 +51,8 @@ export function StaffIntake({ shelters, defaultShelter }: { shelters: Array<{ sh
   const [tab, setTab] = useState<Tab>("search");
   const [shelter, setShelter] = useState(defaultShelter ?? "");
   return (
-    <section aria-labelledby="intake-title" className="rounded-lg bg-panel p-3">
-      <h2 id="intake-title" className="font-bold">
-        {CUSTODY_LABELS.receive}
-      </h2>
+    <Panel aria-labelledby="intake-title">
+      <PanelHead id="intake-title" title={CUSTODY_LABELS.receive} />
       <label className="mt-2 flex flex-col gap-0.5 text-sm">
         <span className="text-muted">{CUSTODY_LABELS.shelter}</span>
         <input
@@ -75,7 +79,7 @@ export function StaffIntake({ shelters, defaultShelter }: { shelters: Array<{ sh
             role="tab"
             aria-selected={tab === t}
             onClick={() => setTab(t)}
-            className={`rounded px-2 py-1 ${tab === t ? "font-bold text-ink underline underline-offset-4" : "text-muted"}`}
+            className={`rounded px-2 py-1 ${tab === t ? "font-bold text-ink underline decoration-2 underline-offset-[6px]" : "text-muted"}`}
             data-press
           >
             {TAB_LABELS[t]}
@@ -87,7 +91,7 @@ export function StaffIntake({ shelters, defaultShelter }: { shelters: Array<{ sh
         {tab === "shelter" && <ShelterPanel shelter={shelter} shelters={shelters} />}
         {tab === "register" && <RegisterPanel shelter={shelter} />}
       </div>
-    </section>
+    </Panel>
   );
 }
 
@@ -123,9 +127,9 @@ function SearchPanel({ shelter }: { shelter: string }) {
           <input type="date" value={birth} onChange={(e) => setBirth(e.target.value)} className={`${INPUT} tabular-nums`} />
         </label>
         <div className="col-span-2 flex items-center gap-3">
-          <button type="submit" disabled={busy} className={PRIMARY} data-press="overlay">
+          <Button type="submit" kind="main" icon={SearchIcon} disabled={busy} data-pending={busy ? "" : undefined}>
             {busy ? CUSTODY_LABELS.sending : CUSTODY_LABELS.search}
-          </button>
+          </Button>
           {error && (
             <span role="alert" className="font-bold text-danger">
               {error}
@@ -226,45 +230,51 @@ function Hits({
           {error}
         </p>
       )}
-      <table className="w-full border-separate border-spacing-y-0.5 text-sm" data-table="hits">
-        <thead>
-          <tr className="text-left text-xs text-muted">
-            <th className="px-1.5 font-normal">{CUSTODY_LABELS.kana}</th>
-            <th className="px-1.5 font-normal">{CUSTODY_LABELS.birth}</th>
-            <th className="px-1.5 font-normal">{CUSTODY_LABELS.age}</th>
-            <th className="px-1.5" />
-          </tr>
-        </thead>
-        <tbody>
-          {hits.map((h) => (
-            <tr key={h.id} data-hit={h.id}>
-              <td className="rounded-l-md bg-panel2 px-1.5 py-1 font-bold">{h.kana}</td>
-              <td className="bg-panel2 px-1.5 py-1 tabular-nums">{h.birthDate ?? "—"}</td>
-              <td className="whitespace-nowrap bg-panel2 px-1.5 py-1 tabular-nums">
-                {h.age ?? "—"}
-                {h.ageReported && <span className="ml-1 text-xs text-muted">{CUSTODY_LABELS.reportedAge}</span>}
-              </td>
-              <td className="rounded-r-md bg-panel2 px-1.5 py-1 text-right">
-                {h.mine ? (
-                  <Link href={`/people/${encodeURIComponent(h.id)}`} className="rounded px-1.5 py-0.5 text-accent underline underline-offset-2" data-press>
-                    {CUSTODY_LABELS.open}
-                  </Link>
-                ) : (
-                  <button
-                    type="button"
-                    disabled={busyId !== null || !shelter.trim()}
-                    onClick={() => receive(h.id)}
-                    className={`${BUTTON} bg-accent py-1 text-on-accent disabled:bg-panel disabled:text-muted`}
-                    data-press="overlay"
-                  >
-                    {busyId === h.id ? CUSTODY_LABELS.sending : CUSTODY_LABELS.receive}
-                  </button>
-                )}
-              </td>
+      <div className={TABLE_BOX}>
+        <table className={TABLE} data-table="hits">
+          <thead>
+            <tr>
+              <th className={HIT_TH}>{CUSTODY_LABELS.kana}</th>
+              <th className={HIT_TH}>{CUSTODY_LABELS.birth}</th>
+              <th className={HIT_TH}>{CUSTODY_LABELS.age}</th>
+              <th className={HIT_TH}>
+                <span className="sr-only">{CUSTODY_LABELS.receive}</span>
+              </th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {hits.map((h) => (
+              <tr key={h.id} data-hit={h.id}>
+                <td className={`${TD} font-bold`}>{h.kana}</td>
+                <td className={`${TD} tabular-nums`}>{h.birthDate ?? "—"}</td>
+                <td className={`${TD} whitespace-nowrap tabular-nums`}>
+                  {h.age ?? "—"}
+                  {h.ageReported && <span className="ml-1 text-xs text-muted">{CUSTODY_LABELS.reportedAge}</span>}
+                </td>
+                <td className={`${TD} w-px py-1 text-right`}>
+                  {h.mine ? (
+                    <Link href={`/people/${encodeURIComponent(h.id)}`} className="relative rounded px-1.5 py-0.5 font-bold underline underline-offset-2" data-press>
+                      {CUSTODY_LABELS.open}
+                      <LinkPending />
+                    </Link>
+                  ) : (
+                    // 行ごとの受入は無色（主の操作の色は検索・新規登録の 1 つ）
+                    <Button
+                      size="sm"
+                      icon={AddPersonIcon}
+                      disabled={busyId !== null || !shelter.trim()}
+                      onClick={() => receive(h.id)}
+                      data-pending={busyId === h.id ? "" : undefined}
+                    >
+                      {busyId === h.id ? CUSTODY_LABELS.sending : CUSTODY_LABELS.receive}
+                    </Button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
       {!shelter.trim() && <p className="mt-1 text-xs font-bold text-state-check">{CUSTODY_ERROR_LABELS.shelter}</p>}
       {more && <p className="mt-1 text-xs text-muted">{CUSTODY_LABELS.more}</p>}
     </div>
@@ -389,9 +399,9 @@ function RegisterPanel({ shelter }: { shelter: string }) {
         />
       </fieldset>
       <div className="col-span-2 flex items-center gap-3">
-        <button type="submit" disabled={busy || !shelter.trim()} className={`${PRIMARY} disabled:bg-panel2 disabled:text-muted`} data-press="overlay">
+        <Button type="submit" kind="main" icon={AddPersonIcon} disabled={busy || !shelter.trim()} data-pending={busy ? "" : undefined}>
           {busy ? CUSTODY_LABELS.sending : CUSTODY_LABELS.register}
-        </button>
+        </Button>
         {!shelter.trim() && <span className="text-xs font-bold text-state-check">{CUSTODY_ERROR_LABELS.shelter}</span>}
         {error && (
           <span role="alert" className="font-bold text-danger">

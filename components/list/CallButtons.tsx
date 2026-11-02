@@ -8,6 +8,8 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { DetailContact } from "@/lib/list/detail";
 import { DETAIL_LABELS } from "@/lib/list/labels";
+import { buttonClass } from "@/components/ui/Button";
+import { PhoneIcon } from "@/components/ui/Icon";
 import { CALL_PATH } from "@/lib/list/paths";
 
 type Result = "dialed" | "no_answer";
@@ -71,17 +73,18 @@ export function CallButtons({ personId, contacts }: { personId: string; contacts
               <a
                 href={`tel:${c.tel}`}
                 onClick={() => void log(c.id, "dialed")}
-                className="whitespace-nowrap rounded-md bg-accent px-2 py-0.5 text-sm font-bold text-on-accent tabular-nums"
+                className={buttonClass("main", "sm")}
                 data-press="overlay"
                 data-tel={c.id}
               >
+                <PhoneIcon aria-hidden className="size-3.5 shrink-0" />
                 {DETAIL_LABELS.calls} {c.phone}
               </a>
               <button
                 type="button"
                 onClick={() => void log(c.id, "no_answer")}
                 disabled={busy !== null}
-                className="rounded-md bg-panel px-2 py-0.5 text-sm disabled:text-muted"
+                className={buttonClass("plainIn", "sm")}
                 data-press
                 data-no-answer={c.id}
               >
