@@ -2,12 +2,14 @@
 // 本人ごとの安否（色の印・誰から・答え・言う事）。監督（Opus、T19）が差し込んだ状況とペルソナ（T18）の物には AI の印。
 // 想定の表の固定の差し込みは AI の印なし。差し込みに根拠の出典があれば添える（監督の判断の理由は訓練記録にだけ残し、画面に出さない）。
 // 色は安否の色だけ（lib/triage の色ではなく、本人・家族が押した色）。氏名は台帳の id から引く（表の文には氏名が無い）。
+// ケアマネの手（T20）の途中で進んだ刻みは、見出しに「対応中 訪問 伊藤 フミ」、その刻みの安否に着信の印（着信の画面と声は T21）。
 
 import { AiMark, StateTag } from "@/components/person/parts";
 import { shortJst } from "@/lib/disaster/state";
 import type { DrillIncident, DrillTurn, Tick } from "@/lib/drill/engine";
 import { simAt } from "@/lib/drill/engine";
-import { BASIS_LABEL, DRILL_LABELS, elapsedLabel, EVENT_KIND_LABELS } from "@/lib/drill/labels";
+import { ACTION_UI, BASIS_LABEL, DRILL_LABELS, elapsedLabel, EVENT_KIND_LABELS } from "@/lib/drill/labels";
+import { CallInMark } from "./ActionLog";
 import { COLOR_LABELS } from "@/lib/labels";
 import { SOURCE_LABELS } from "@/lib/list/detail";
 import type { StateTone } from "@/lib/person";
@@ -30,19 +32,27 @@ export function Situation({
   ticks,
   names,
   startedAt,
+  during = {},
 }: {
   ticks: ReadonlyArray<Tick>;
   names: Readonly<Record<string, string>>;
   startedAt: string;
+  /** ケアマネの手の途中で進んだ刻み → その手の言い方（「訪問 伊藤 フミ」、T20）。その刻みの安否は着信の印 */
+  during?: Readonly<Record<number, string>>;
 }) {
   const order = [...ticks].reverse();
   return (
     <ol className="space-y-2" data-situation>
       {order.map((t) => (
         <li key={t.step} className="rounded-md bg-panel2 px-2.5 py-2" data-situation-step={t.step}>
-          <h3 className="flex items-baseline gap-2 text-sm">
+          <h3 className="flex flex-wrap items-baseline gap-x-2 text-sm">
             <span className="font-bold">{elapsedLabel(t.hour)}</span>
             <span className="text-xs text-muted tabular-nums">{shortJst(simAt(startedAt, t.hour))}</span>
+            {during[t.step] && (
+              <span className="text-xs text-muted" data-during>
+                {ACTION_UI.during} {during[t.step]}
+              </span>
+            )}
           </h3>
           {t.incidents.length === 0 && t.turns.length === 0 ? (
             <p className="mt-1 text-sm text-muted">{DRILL_LABELS.none}</p>
@@ -52,7 +62,7 @@ export function Situation({
                 <IncidentItem key={`e${n}`} e={e} name={e.person ? names[e.person] : undefined} tickHour={t.hour} />
               ))}
               {t.turns.map((x, n) => (
-                <TurnItem key={`t${n}`} t={x} name={names[x.person] ?? x.person} tickHour={t.hour} />
+                <TurnItem key={`t${n}`} t={x} name={names[x.person] ?? x.person} tickHour={t.hour} callIn={Boolean(during[t.step])} />
               ))}
             </ul>
           )}
@@ -98,9 +108,10 @@ function IncidentItem({ e, name, tickHour }: { e: DrillIncident; name: string | 
   );
 }
 
-function TurnItem({ t, name, tickHour }: { t: DrillTurn; name: string; tickHour: number }) {
+function TurnItem({ t, name, tickHour, callIn }: { t: DrillTurn; name: string; tickHour: number; callIn: boolean }) {
   return (
-    <li className="flex flex-wrap items-baseline gap-x-1.5" data-turn={t.person} data-color={t.color}>
+    <li className="flex flex-wrap items-baseline gap-x-1.5" data-turn={t.person} data-color={t.color} data-call-in={callIn ? "" : undefined}>
+      {callIn && <CallInMark />}
       <span className="font-bold">{name}</span>
       <StateTag tone={TURN_TONES[t.color]}>{TURN_LABELS[t.color]}</StateTag>
       <span className="text-xs text-muted">{SOURCE_LABELS[t.source]}</span>

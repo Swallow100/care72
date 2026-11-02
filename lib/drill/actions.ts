@@ -15,6 +15,7 @@
 // この画面で正解・不正解を出さない（採点は T22）。手の前の状態（before）を残す。
 
 import type { ContactKind, DrillAction } from "../db/types.ts";
+import { ACTION_MINUTES } from "./action-table.ts";
 import { decideWorldReply, callLine, WORLD_REPLY_LABELS, WORLD_REPLY_TEXTS, type WorldReplyStatus } from "./director.ts";
 import {
   DrillEnded,
@@ -42,70 +43,25 @@ import {
   type WorldState,
 } from "./scenarios.ts";
 
-// ---------- 表 ----------
+// ---------- 表（lib/drill/action-table.ts。画面と同じ物） ----------
 
-/** 手ごとの所要時間（分）。出向く 40 分（仕様書「画面 4」）。電話は 5 分、手配・報告は電話の分と取り次ぎ */
-export const ACTION_MINUTES: Readonly<Record<DrillAction, number>> = {
-  call_person: 5,
-  call_contact: 5,
-  visit: 40,
-  dispatch: 10,
-  request_welfare_shelter: 15,
-  report_city: 10,
-  evacuate_self: 30,
-};
+export {
+  ACTION_MINUTES,
+  CALL_CONTACT_KINDS,
+  DISPATCH_KINDS,
+  needsPerson,
+  needsTarget,
+  picksTarget,
+  targetKinds,
+} from "./action-table.ts";
 
 /** 出向いてもらった人が着くまで（分、手配が決まってから）。ケアマネが出向くのと同じ 40 分 */
 export const DISPATCH_ARRIVE_MINUTES = 40;
 /** 事業所の職員が戻るまで（分、手配が決まってから）。行って 40 分・いて 40 分・戻って 40 分 */
 export const DISPATCH_BACK_MINUTES = 120;
 
-/** 本人の相手が要る手 */
-const NEEDS_PERSON: ReadonlySet<DrillAction> = new Set(["call_person", "call_contact", "visit", "dispatch", "request_welfare_shelter"]);
-
-export function needsPerson(kind: DrillAction): boolean {
-  return NEEDS_PERSON.has(kind);
-}
-
-/** 電話の相手になる区分（本人電話は本人、連絡先電話は本人のほかの全部） */
-export const CALL_CONTACT_KINDS: ReadonlyArray<ContactKind> = [
-  "family",
-  "supporter",
-  "welfare_commissioner",
-  "visiting_nurse",
-  "care_service",
-  "home_doctor",
-  "pharmacy",
-  "dialysis_center",
-  "city_office",
-];
-
-/** 出向いてもらえる相手の区分（無ければ事業所の職員） */
-export const DISPATCH_KINDS: ReadonlyArray<ContactKind> = ["visiting_nurse", "care_service"];
-
 /** 本人役が出る相手（本人・家族・支援者・民生委員）。ほかの相手（事業所・施設・市役所）は世界が答える */
 const PERSON_CALLEES: ReadonlySet<ContactKind> = new Set(["self", "family", "supporter", "welfare_commissioner"]);
-
-/** 相手の連絡先が選べる手と、その区分。無い手は相手を受けない */
-export function targetKinds(kind: DrillAction): ReadonlyArray<ContactKind> {
-  switch (kind) {
-    case "call_person":
-      return ["self"];
-    case "call_contact":
-      return CALL_CONTACT_KINDS;
-    case "dispatch":
-      return DISPATCH_KINDS;
-    case "report_city":
-      return ["city_office"];
-    default:
-      return [];
-  }
-}
-
-/** 相手の連絡先が無ければ受けない手（連絡先電話）。本人電話は本人の連絡先を自動で選ぶ */
-export function needsTarget(kind: DrillAction): boolean {
-  return kind === "call_contact";
-}
 
 /** 返事の状態の言葉（2〜4 字）。T19 の 13 と電話の 3 つ */
 export const ACTION_STATUS_LABELS: Readonly<Record<ActionStatus, string>> = { ...WORLD_REPLY_LABELS, ...CALL_STATUS_LABELS };
