@@ -46,6 +46,8 @@ export const DRILL_LABELS = {
   map: "地図",
   confirmAbandon: "中断確定",
   cancel: "取消",
+  network: "通信失敗",
+  replayOf: "再生中",
 } as const;
 
 /** 状況（世界の出来事）の種類の印 */
