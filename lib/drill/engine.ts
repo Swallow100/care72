@@ -10,7 +10,7 @@
 // 読まない・変えない（本番の大雨の最中でも、訓練は訓練の状況で動く）。
 // 色と順位はここで決めない（lib/triage だけ）。
 
-import type { DrillAction, DrillScenario, DrillStatus, Ledger, SignalColor, WhereNow } from "../db/types.ts";
+import type { ContactKind, DrillAction, DrillScenario, DrillStatus, Ledger, SignalColor, WhereNow } from "../db/types.ts";
 import type { DisasterSituation } from "../disaster/state.ts";
 import { isSourceId, type SourceId } from "../sources/index.ts";
 import {
@@ -20,9 +20,12 @@ import {
   injectChange,
   isInjectKind,
   scenarioOf,
+  settleWorld,
   type FixedTurn,
   type InjectKind,
   type OutageArea,
+  type PersonMarks,
+  type PhoneState,
   type Scenario,
   type WorldEvent,
   type WorldState,
@@ -71,16 +74,93 @@ export type PersonState = {
   doing: string | null;
 };
 
-/** ケアマネの手 1 つ（T20 が足す。この作業では空） */
+/**
+ * ケアマネの手 1 つ（T20、lib/drill/actions.ts）。誰に・何を・何時と、手の前の状態、世界の返事。
+ * drills.world の actions と drill_events（kind action と result）に残し、採点（T22）が読む
+ */
 export type ActionRecord = {
+  /** 訓練の中の番号（a1・a2…。打った順） */
+  id: string;
   kind: DrillAction;
-  /** 相手の本人（台帳の id） */
+  /** 相手の本人（台帳の id）。全体への報告・自分の避難は null */
   person: string | null;
-  /** 電話の相手（連絡先の id）など */
+  /** 相手の連絡先の id（電話の相手・出向いてもらう人）。事業所の職員・相手の無い手は null */
   target: string | null;
-  /** 打った時刻（発災からの時間） */
+  /** 相手の区分（本人・家族・訪問看護・透析施設…）。事業所の職員・相手の無い手は null */
+  callee: ContactKind | null;
+  /** 相手の言い方（「家族 娘」「訪問看護」）。名前と番号は書かない */
+  calleeLabel: string | null;
+  /** 打った時刻（発災からの時間。小数） */
   at: number;
+  /** 打った時刻と終わる時刻（発災からの分） */
+  atMinute: number;
+  endMinute: number;
+  /** 所要時間（分。表で固定） */
+  minutes: number;
+  /** 打ったときの刻み */
   step: number;
+  /** 手の前の状態（採点 T22 が読む） */
+  before: ActionBefore;
+  /** 世界の返事。手の途中で刻みを越えている間だけ null */
+  result: ActionResult | null;
+};
+
+/** 手の前の状態。本人の今の様子・印、職員の空き、電話の線、家の前の道。左の表の色と順位は保存の所が足す */
+export type ActionBefore = {
+  person: PersonState | null;
+  marks: PersonMarks;
+  staff: number;
+  phone: PhoneState;
+  /** 家の前の道が通行止 */
+  roadClosed: boolean;
+  /** 左の表のこの本人の色・順位・理由（lib/triage。保存の所が画面と同じ道で作って足す） */
+  triage?: { color: string; rank: number | null; reason: string } | null;
+  /** 左の表の優先の並び（台帳の id、1 番から） */
+  ranking?: string[];
+};
+
+/** 世界の返事の状態。T19 の WORLD_REPLY_LABELS の 13 と、電話に出ない・声がない・番号が無い */
+export type ActionStatus =
+  | "ringing"
+  | "connected"
+  | "noLine"
+  | "closed"
+  | "arrived"
+  | "blocked"
+  | "turnedBack"
+  | "dispatched"
+  | "noDispatch"
+  | "accepted"
+  | "refused"
+  | "reported"
+  | "evacuated"
+  | "noAnswer"
+  | "silent"
+  | "noNumber";
+
+export type ActionResult = {
+  ok: boolean;
+  status: ActionStatus;
+  /** そうなった世界の事実（「家の前の道 通行止」）。確率で外れたときは null */
+  because: string | null;
+  /** 画面の 1 文（固定の文か、監督の言い換え） */
+  text: string;
+  /** 文が監督（Opus）の言い換え */
+  ai: boolean;
+  /** 電話に出た人の言う事（吹き出し）。出ない・声がない・本人でも家族でもない相手は null */
+  speech: string | null;
+  /** 言う事が本人役（Haiku）の物 */
+  speechAi: boolean;
+  /** 本人・家族・支援者への電話で、出たか（出る・出ない・背景の音だけ） */
+  pickup: "answers" | "no_answer" | "background_only" | null;
+  /** この手で消えた本人の印（出向いてもらった人の分は着いた時刻に世界が消す） */
+  cleared: Array<keyof PersonMarks>;
+  /** 職員の空きの増減（事業所の職員に出向いてもらうと -1） */
+  staff: number;
+  /** 手の途中で進んだ刻み（その間の安否は着信） */
+  crossed: number[];
+  /** 返事の時刻（終わる時刻。発災からの分） */
+  atMinute: number;
 };
 
 export type DrillState = {
@@ -89,8 +169,13 @@ export type DrillState = {
   startedAt: string;
   /** 今の刻み（想定の hours の添字）。始める前は -1 */
   step: number;
-  /** 今の時刻（発災からの時間） */
+  /** 今の刻みの時刻（発災からの時間） */
   hour: number;
+  /**
+   * ケアマネの時計（発災からの分）。刻みに着くと刻みの時刻、手を打つと所要時間だけ進む（T20）。
+   * 左の表のルールの表の「今」はこの時計（手に時間を使うと時計の残りも減る）
+   */
+  minute: number;
   status: DrillStatus;
   /** 訓練に出る本人（始めたときの担当一覧。台帳の id） */
   participants: string[];
@@ -144,7 +229,28 @@ export type DirectorInput = {
   participants: ReadonlyArray<string>;
   people: Readonly<Record<string, PersonState>>;
   actions: ReadonlyArray<ActionRecord>;
+  /**
+   * 言い換えてほしい世界の返事（T20）。手の途中でこの刻みに着いたとき、その手の返事（固定の文）をこの 1 回の監督に相乗りさせる。
+   * 無ければ差し込みだけ
+   */
+  replies?: ReadonlyArray<ReplyAsk>;
 };
+
+/** 監督に言い換えを頼む世界の返事 1 つ。結果（status・because）は決まっていて、監督は文だけ返す */
+export type ReplyAsk = {
+  /** 手の番号（a1…） */
+  id: string;
+  action: DrillAction;
+  person: string | null;
+  callee: ContactKind | null;
+  status: ActionStatus;
+  because: string | null;
+  /** 固定の文 */
+  text: string;
+};
+
+/** 監督の言い換え 1 つ（手の番号と文） */
+export type ReplyWords = { id: string; text: string };
 
 /**
  * 監督の差し込み 1 つ。種類（表の 6 つ）と相手の本人だけを選び、世界の変化は engine が種類から組む（injectChange）。
@@ -160,8 +266,11 @@ export type DirectorEvent = {
   ai: boolean;
 };
 
-/** 差し込む状況（0〜2 個）。投げたら差し込みなしで進む */
-export type DirectorHook = (input: DirectorInput) => Promise<DirectorEvent[]>;
+/** 監督の返す物。差し込みと、頼まれた世界の返事の言い換え */
+export type DirectorResult = { events: DirectorEvent[]; words?: ReadonlyArray<ReplyWords> };
+
+/** 差し込む状況（0〜2 個）と言い換え。差し込みだけの配列も受ける。投げたら差し込みなし・言い換えなしで進む */
+export type DirectorHook = (input: DirectorInput) => Promise<DirectorEvent[] | DirectorResult>;
 
 /** 監督の差し込みは 1 刻みに 2 つまで */
 export const DIRECTOR_MAX = 2;
@@ -200,6 +309,9 @@ export function directorIncidents(
 
 export type StepHooks = { persona?: PersonaHook; director?: DirectorHook };
 
+/** 1 刻みの呼び方の足し物（T20）。replies は表の出来事を当てたあと・監督の前の世界で、監督に言い換えを頼む返事を決める */
+export type StepOptions = { replies?: (world: WorldState) => ReadonlyArray<ReplyAsk> };
+
 // ---------- 時刻と状況 ----------
 
 /** 想定の h 時間の時刻（ISO 8601） */
@@ -207,6 +319,11 @@ export function simAt(startedAt: string, hour: number): string {
   const t = Date.parse(startedAt);
   if (Number.isNaN(t)) throw new Error(`時刻の形が違う: ${startedAt}`);
   return new Date(t + hour * HOUR_MS).toISOString();
+}
+
+/** 今の時刻（発災からの時間。小数）。ケアマネの時計があればそれ、無ければ刻みの時刻 */
+export function nowHour(s: { hour: number; minute?: number }): number {
+  return typeof s.minute === "number" ? Math.max(s.hour, s.minute / 60) : s.hour;
 }
 
 /** 停電の地区の町名。ハザードの地区なら、そのハザード（浸水の深さ）を持つ本人の町名。全域なら null */
@@ -222,16 +339,16 @@ export function outageTownsOf(area: OutageArea, ledgers: ReadonlyArray<Pick<Ledg
 }
 
 /**
- * ルールの表（lib/triage）に渡す訓練の状況。今は想定の今の時刻、発災は訓練を始めた時刻、停電は世界の停電の始まり。
+ * ルールの表（lib/triage）に渡す訓練の状況。今はケアマネの時計（手に使った時間も進む）、発災は訓練を始めた時刻、停電は世界の停電の始まり。
  * 停電の復旧はルールの表の入力に持たない（Situation に終わりが無い。止まった機器の時計を戻さない）。被害状況と棒には出す
  */
 export function drillSituation(
-  state: Pick<DrillState, "startedAt" | "hour" | "world">,
+  state: Pick<DrillState, "startedAt" | "hour" | "world"> & { minute?: number },
   ledgers: ReadonlyArray<Pick<Ledger, "basic" | "evacuation">>,
 ): DisasterSituation {
   const o = state.world.outage;
   return {
-    now: simAt(state.startedAt, state.hour),
+    now: simAt(state.startedAt, nowHour(state)),
     disasterAt: state.startedAt,
     outageAt: o ? simAt(state.startedAt, o.since) : null,
     outageTowns: o ? outageTownsOf(o.area, ledgers) : null,
@@ -267,13 +384,15 @@ export function foldTick(
   tick: Pick<Tick, "step" | "hour" | "incidents" | "turns">,
   last: number,
 ): DrillState {
-  const world = tick.incidents.reduce((w, e) => applyEvent(w, e, e.at), state.world);
+  // 刻みの時刻まで世界を進め（出向いてもらった人が着く・職員が戻る）、状況を当てる
+  const world = tick.incidents.reduce((w, e) => applyEvent(w, e, e.at), settleWorld(state.world, tick.hour * 60));
   const people = { ...state.people };
   for (const t of [...tick.turns].sort((a, b) => a.at - b.at)) people[t.person] = personStateOf(t);
   return {
     ...state,
     step: tick.step,
     hour: tick.hour,
+    minute: Math.max(state.minute, tick.hour * 60),
     world,
     people,
     status: tick.step >= last ? "finished" : state.status,
@@ -287,6 +406,7 @@ export function initialState(scenario: DrillScenario, participants: ReadonlyArra
     startedAt,
     step: -1,
     hour: 0,
+    minute: 0,
     status: "running",
     participants: [...participants],
     world: { ...EMPTY_WORLD, staff: scenarioOf(scenario).staff },
@@ -312,9 +432,13 @@ async function safely<T>(f: () => Promise<T>, fallback: T): Promise<T> {
 
 /**
  * 1 刻み進める。進行中で、まだ最後の刻みでなければ。始める前の状態（step -1）からは 0 時間の刻みを当てる。
- * 返す state は刻みのあと。tick は保存する物
+ * 返す state は刻みのあと。tick は保存する物。words は opts.replies で頼んだ返事の監督の言い換え（頼んだ手の番号の物だけ）
  */
-export async function step(state: DrillState, hooks: StepHooks = {}): Promise<{ state: DrillState; tick: Tick }> {
+export async function step(
+  state: DrillState,
+  hooks: StepHooks = {},
+  opts: StepOptions = {},
+): Promise<{ state: DrillState; tick: Tick; words: ReplyWords[] }> {
   const scenario: Scenario = scenarioOf(state.scenario);
   const last = scenario.hours.length - 1;
   if (state.status !== "running" || state.step >= last) throw new DrillEnded();
@@ -327,29 +451,34 @@ export async function step(state: DrillState, hooks: StepHooks = {}): Promise<{ 
   const fixed: DrillIncident[] = def.events
     .filter((e) => !e.person || members.has(e.person))
     .map(({ by, ...e }) => ({ ...e, actor: by ?? "world", at: eventHour(e, hour), ai: false }));
-  let world = fixed.reduce((w, e) => applyEvent(w, e, e.at), state.world);
+  let world = fixed.reduce((w, e) => applyEvent(w, e, e.at), settleWorld(state.world, hour * 60));
+
+  // 手の途中でこの刻みに着いたとき、その手の返事をここで決め、監督に言い換えを頼む（T20。監督の呼び出しは増やさない）
+  const replies = opts.replies ? [...opts.replies(world)] : [];
 
   // 監督（Opus、T19）の差し込み。1 刻みに 1 回。無ければ・失敗したら差し込みなし（表の固定の状況だけで進む）
-  const inserted = hooks.director
-    ? directorIncidents(
-        await safely(
-          () =>
-            hooks.director!({
-              scenario: state.scenario,
-              step: index,
-              hour,
-              world,
-              incidents: fixed,
-              participants: state.participants,
-              people: state.people,
-              actions: state.actions,
-            }),
-          [] as DirectorEvent[],
-        ),
-        members,
-        hour,
+  const out: DirectorEvent[] | DirectorResult = hooks.director
+    ? await safely(
+        () =>
+          hooks.director!({
+            scenario: state.scenario,
+            step: index,
+            hour,
+            world,
+            incidents: fixed,
+            participants: state.participants,
+            people: state.people,
+            actions: state.actions,
+            ...(replies.length > 0 ? { replies } : {}),
+          }),
+        [] as DirectorEvent[],
       )
     : [];
+  const inserted = directorIncidents(Array.isArray(out) ? out : (out?.events ?? []), members, hour);
+  const asked = new Set(replies.map((r) => r.id));
+  const words = (Array.isArray(out) ? [] : (out?.words ?? [])).filter(
+    (w): w is ReplyWords => typeof w?.id === "string" && asked.has(w.id) && typeof w.text === "string" && w.text.trim() !== "",
+  );
   world = inserted.reduce((w, e) => applyEvent(w, e, e.at), world);
   const incidents = [...fixed, ...inserted];
 
@@ -381,7 +510,7 @@ export async function step(state: DrillState, hooks: StepHooks = {}): Promise<{ 
   }
 
   const tick: Tick = { step: index, hour, incidents, turns, world, finished: index >= last };
-  return { state: foldTick(state, tick, last), tick };
+  return { state: foldTick(state, tick, last), tick, words };
 }
 
 /** 想定の最後の刻みの添字 */

@@ -420,7 +420,7 @@ describe("監督（Opus、偽の client）", () => {
           ai: aiCtx(fake(() => reply(NONE)).client),
         }),
     ];
-    for (const make of cases) expect(await make()(directorInput())).toEqual([]);
+    for (const make of cases) expect(await make()(directorInput())).toEqual({ events: [], words: [] });
   });
 
   it("差し込める人がいなければ Opus を呼ばない", async () => {
@@ -430,7 +430,7 @@ describe("監督（Opus、偽の client）", () => {
     let world: WorldState = { ...EMPTY_WORLD, phone: "down" };
     world = applyEvent(world, { change: injectChange("road_blocked", "p-05"), text: "", person: "p-05" }, 1);
     expect(eligibleKinds(input("p-05"), "p-05", world, null)).toEqual([]);
-    expect(await hook(directorInput({ participants: ["p-05"], world }))).toEqual([]);
+    expect(await hook(directorInput({ participants: ["p-05"], world }))).toEqual({ events: [], words: [] });
     expect(calls).toHaveLength(0);
   });
 });

@@ -6,9 +6,12 @@
 
 import type { D1Database } from "@cloudflare/workers-types";
 import type { Principal } from "../auth/principal.ts";
+import { DRILL_ACTIONS, type DrillAction } from "../db/types.ts";
 import { COLOR_LABELS } from "../labels.ts";
+import type { ActionHooks } from "./actions.ts";
 import {
   abandonDrill,
+  actDrill,
   advanceDrill,
   drillScope,
   isDrillScenario,
@@ -78,6 +81,49 @@ export async function stepPost(
   return Response.json({ ok: true, step: r.step, hour: r.hour, status: r.status }, { headers: NO_STORE });
 }
 
+const isCount = (v: unknown): v is number => typeof v === "number" && Number.isInteger(v) && v >= 0 && v < 10_000;
+const isRef = (v: unknown): v is string | null => v === null || v === undefined || (typeof v === "string" && ID.test(v));
+
+/**
+ * ケアマネの手の POST（JSON、T20）。{ step: 読んだ今の刻み, actions: 読んだ手の数, kind: 7 つの手, person: 本人の id か null, target: 連絡先の id か null }。
+ * 相手は台帳の連絡先から決める（lib/drill/db.ts）。手の前の左の表は画面と同じ道（loadDrillScreen）で作って手の記録に残す
+ */
+export async function actionPost(
+  db: D1Database,
+  p: Principal | null,
+  id: string,
+  json: unknown,
+  now: string,
+  opts: { hooks?: ActionHooks; roll?: () => number } = {},
+): Promise<Response> {
+  const scope = gate(p);
+  if (scope instanceof Response) return scope;
+  const b = obj(json);
+  if (!isDrillId(id) || !b || !isStep(b.step) || !isCount(b.actions)) return drillError("invalid");
+  if (typeof b.kind !== "string" || !(DRILL_ACTIONS as readonly string[]).includes(b.kind)) return drillError("invalid");
+  if (!isRef(b.person) || !isRef(b.target)) return drillError("invalid");
+  const screen = await loadDrillScreen(db, scope, id, null);
+  if (!screen) return drillError("not_found");
+  const ranked = screen.rows.filter((r) => r.rank !== null).sort((x, y) => x.rank! - y.rank!);
+  const triage = {
+    rows: new Map(
+      screen.rows.map((r) => [r.id, { color: r.triage?.color ?? "gray", rank: r.rank, reason: r.triage?.reason ?? "" }] as const),
+    ),
+    ranking: ranked.map((r) => r.id),
+  };
+  const r = await actDrill(
+    db,
+    scope,
+    id,
+    { step: b.step, actions: b.actions },
+    { kind: b.kind as DrillAction, person: (b.person as string | null | undefined) ?? null, target: (b.target as string | null | undefined) ?? null },
+    now,
+    { ...(opts.hooks ? { hooks: opts.hooks } : {}), ...(opts.roll ? { roll: opts.roll } : {}), triage },
+  );
+  if (!r.ok) return drillError(r.error);
+  return Response.json({ ok: true, id: r.record.id, step: r.step, hour: r.hour, minute: r.minute, status: r.status }, { headers: NO_STORE });
+}
+
 /** 中断の POST */
 export async function abandonPost(db: D1Database, p: Principal | null, id: string, now: string): Promise<Response> {
   const scope = gate(p);
@@ -130,6 +176,8 @@ export async function replayGet(db: D1Database, p: Principal | null, id: string,
       drill: { id: s.drill.id, scenario: s.drill.scenario, status: s.drill.status, step: s.drill.step },
       shown: s.shown,
       hour: s.state.hour,
+      minute: s.state.minute,
+      actions: s.state.actions,
       hours: s.hours,
       world: s.state.world,
       ticks: s.ticks.map((t) => ({ step: t.step, hour: t.hour, incidents: t.incidents, turns: t.turns })),

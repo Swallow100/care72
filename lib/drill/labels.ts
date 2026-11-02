@@ -2,7 +2,7 @@
 // 画面では 筋書き → 「想定」、出来事 → 「状況」、世界の状態 → 「被害状況」、刻み → 出さない（「経過 6 時間」）。
 // 安否の色の言葉（至急・要確認・灰・無事）は lib/labels.ts の COLOR_LABELS を読み、ここに書かない。
 
-import type { DrillScenario, DrillStatus } from "../db/types.ts";
+import type { DrillAction, DrillScenario, DrillStatus } from "../db/types.ts";
 import type { PhoneState, ShelterState, TsunamiState, WaterState, WorldEventKind } from "./scenarios.ts";
 
 export const SCENARIO_LABELS: Record<DrillScenario, string> = {
@@ -138,6 +138,61 @@ export const DRILL_API_LABELS: Record<DrillApiError, string> = {
 /** 「経過 6 時間」 */
 export function elapsedLabel(hour: number): string {
   return `${DRILL_LABELS.elapsed} ${hour} ${DRILL_LABELS.hours}`;
+}
+
+// ---------- ケアマネの手（T20） ----------
+
+/** 7 つの手（ボタン）。form9 の安否確認の方法（本人電話・連絡先電話・訪問）と同じ言い方 */
+export const ACTION_LABELS: Record<DrillAction, string> = {
+  call_person: "本人電話",
+  call_contact: "連絡先電話",
+  visit: "訪問",
+  dispatch: "訪問依頼",
+  request_welfare_shelter: "受入依頼",
+  report_city: "行政報告",
+  evacuate_self: "退避",
+};
+
+/** 対応の欄の言葉 */
+export const ACTION_UI = {
+  person: "対象",
+  target: "相手",
+  execute: "実行",
+  result: "結果",
+  history: "履歴",
+  callIn: "着信",
+  minutes: "分",
+  staff: "事業所職員",
+  shelter: "福祉避難所",
+  city: "市役所",
+  whole: "全体",
+  noTarget: "相手なし",
+  ended: "終了済",
+  count: "件",
+} as const;
+
+/** 電話の返事のうち T19 の表に無い物（本人・家族が出ない・声がない、台帳に番号が無い） */
+export const CALL_STATUS_LABELS = { noAnswer: "応答なし", silent: "無言", noNumber: "番号なし" } as const;
+export const CALL_STATUS_TEXTS: Record<keyof typeof CALL_STATUS_LABELS, string> = {
+  noAnswer: "呼び出したが出ない",
+  silent: "出たが声がない。物音だけ",
+  noNumber: "電話番号が台帳にない",
+};
+
+/** 出たが言葉の無いとき（鍵なし・本人役の失敗）の固定の言葉。安否の言う事が相手の物なら、そちらを使う（lib/drill/actions.ts） */
+export const CALL_FIXED_SPEECH = "はい、もしもし";
+
+/** 「3 時間 40 分」（分が 0 なら「3 時間」）。発災からの分 */
+export function clockLabel(minute: number): string {
+  const m = Math.max(0, Math.round(minute));
+  const h = Math.floor(m / 60);
+  const r = m % 60;
+  return r === 0 ? `${h} ${DRILL_LABELS.hours}` : `${h} ${DRILL_LABELS.hours} ${r} ${ACTION_UI.minutes}`;
+}
+
+/** 「経過 3 時間 40 分」 */
+export function elapsedClockLabel(minute: number): string {
+  return `${DRILL_LABELS.elapsed} ${clockLabel(minute)}`;
 }
 
 /** 訓練記録の一覧の「経過 6 / 72 時間」 */
