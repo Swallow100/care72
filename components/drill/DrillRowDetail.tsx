@@ -2,12 +2,11 @@
 // 訓練では本番の電話の記録・優先の上書き（本人の経過に書く部品）を出さない。電話・出向くなどの手は T20 の「対応」。
 // 連絡先は名前と続柄だけ（訓練の画面から本物の番号にかけない）。安否の時刻は訓練の経過で出す。
 // 本人役（T18、Claude）が作った安否には AI の印（aiSignals は lib/drill/view.ts の DrillScreen から）。
-// ケアマネが通話・訪問で聞いた安否（T21）は「通話」「訪問 確認済」と添える（人が聞いた結果なので AI の印なし）。
+// ケアマネが通話・訪問で聞いた安否（T21）は「通話」「訪問」と添える（人が聞いた結果なので AI の印なし。「確認済」は緑の理由だけ）。
 // 本人役の赤（本人の言う事つき）は、言う事を声にした物を「録音」として置く（発災時の録音と同じ場所。T21、声は AI の音声）。
 
 import { AiMark, StateTag, TONE_TEXT } from "@/components/person/parts";
 import { CALL_UI, DRILL_LABELS } from "@/lib/drill/labels";
-import { VISIT_CONFIRMED } from "@/lib/triage";
 import { COLOR_LABELS } from "@/lib/labels";
 import type { RowDetail } from "@/lib/list/detail";
 import { DETAIL_LABELS } from "@/lib/list/labels";
@@ -125,7 +124,7 @@ export function DrillRowDetail({
                     <span className="text-xs text-muted">{s.source}</span>
                     {heard[s.id] && (
                       <span className="text-xs font-bold" data-heard={heard[s.id]}>
-                        {heard[s.id] === "visit" ? VISIT_CONFIRMED : CALL_UI.heardCall}
+                        {heard[s.id] === "visit" ? CALL_UI.heardVisit : CALL_UI.heardCall}
                       </span>
                     )}
                     {ai.has(s.id) && <AiMark small />}

@@ -21,6 +21,7 @@ import {
   DISPATCH_ARRIVE_MINUTES,
   DISPATCH_BACK_MINUTES,
   type ActTarget,
+  type CallHook,
 } from "./actions.ts";
 import { actDrill, advanceDrill, drillScope, loadDrillRow, loadTicks, participantsOf, replayState, startDrill, stateOfRow } from "./db.ts";
 import { DIRECTOR_SYSTEM } from "./director.ts";
@@ -628,6 +629,17 @@ describe("聞いた安否（通話で答えた・訪問で会えた）", () => {
     await advanceTo(ID, 2);
     expect(await doAct("visit", "p-05", null, { roll: () => 0.99 })).toMatchObject({ record: { result: { heard: null } } });
     expect(heardRows()).toHaveLength(1);
+  });
+
+  it("競合した手の聞いた安否は残らない（手を打った要求と同じ門）", async () => {
+    await start();
+    // 電話に出た人の言葉を待つ間に、ほかの画面が訪問を打った
+    const call: CallHook = async () => {
+      expect(await doAct("visit", "p-04")).toMatchObject({ ok: true });
+      return { pickup: "answers", speech: "はい", ai: false };
+    };
+    expect(await doAct("call_contact", "p-02", "c-02-1", { hooks: { call } })).toEqual({ ok: false, error: "conflict" });
+    expect(heardRows()).toMatchObject([{ id: `${ID}-a1-h`, person_id: "p-04" }]);
   });
 
   it("再生でも同じ（保存した手の返事から聞いた安否の印を作り直す）", async () => {
