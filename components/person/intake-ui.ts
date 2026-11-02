@@ -5,6 +5,9 @@
 export const BTN_MAIN =
   "rounded bg-accent px-3 py-1 text-sm font-bold text-on-accent disabled:bg-panel2 disabled:text-muted";
 
+/** 主のボタンの隣に並ぶボタン（話す・停止）。大きさは主のボタンと同じで、地は面の中の灰色 */
+export const BTN_SIDE = "rounded bg-panel2 px-3 py-1 text-sm font-bold disabled:text-muted";
+
 /** ふつうのボタン（取消・不明・無回答・次回・修正） */
 export const BTN = "rounded bg-panel2 px-2 py-1 text-xs font-bold disabled:text-muted";
 

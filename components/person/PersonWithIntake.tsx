@@ -19,7 +19,8 @@ export function PersonWithIntake({ view, level, intake }: { view: View; level: L
           aria-label="入力"
           className="order-1 min-w-0 self-start @[56rem]:sticky @[56rem]:top-2 @[56rem]:order-2 @[56rem]:max-h-[calc(100dvh-1rem)] @[56rem]:overflow-y-auto"
         >
-          <Intake {...intake} level={level} />
+          {/* 人ごとに作り直す（別の人を開いたら、前の人の文・変更点・話している途中を持ち越さない） */}
+          <Intake key={intake.personId} {...intake} level={level} />
         </aside>
       </div>
     </div>

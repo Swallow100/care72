@@ -4,11 +4,15 @@
 // - 文字: Claude（Sonnet）が台帳の欄に分け（/api/intake/extract）、今の値と並べた変更点を出す。人が外す・直す・選んで保存
 // - 手入力: 区分ごとに欄を直接埋める。AI 未設定・上限到達のときはこちらが開く
 // - 質問: 空欄から 1 問ずつ。答えはそのまま保存（手の入力）
+// - 話す（T04）: ブラウザの Web Speech で文字の欄に流し、人が止めたら抽出に送る。欄の文は残り、直して抽出し直せる。
+//   対応していないブラウザ（Firefox など）はボタンを出さない
 // 保存は全部 /api/intake/save（版を確かめ、埋まった欄は上書きしない）。保存のあとはページを読み直す。
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { INTAKE_LABELS } from "@/lib/labels";
+import { dictationToSend, type DictationError } from "@/lib/speech/dictation";
+import { useDictation } from "@/lib/speech/use-dictation";
 import type { Question } from "@/lib/intake/ask";
 import type { IntakeChange } from "@/lib/intake/changes";
 import type { DiffItem } from "@/lib/intake/diff";
@@ -16,7 +20,7 @@ import type { IntakeProps } from "@/lib/intake/props";
 import { IntakeChanges, rowsOf, type ChangeRow } from "./IntakeChanges";
 import { IntakeManual } from "./IntakeManual";
 import { IntakeQuestion } from "./IntakeQuestion";
-import { BTN_MAIN, INPUT } from "./intake-ui";
+import { BTN_MAIN, BTN_SIDE, INPUT } from "./intake-ui";
 import { StateTag, type Level } from "./parts";
 
 /** 入力の文の長さの上限（lib/intake/extract.ts の INTAKE_TEXT_MAX と同じ） */
@@ -39,6 +43,12 @@ async function postJson<T>(url: string, body: unknown): Promise<T | ApiError> {
 
 const isError = (x: unknown): x is ApiError => typeof x === "object" && x !== null && (x as { ok?: unknown }).ok === false;
 
+const SPEECH_ERROR_LABELS: Record<DictationError, string> = {
+  mic: INTAKE_LABELS.micDenied,
+  no_speech: INTAKE_LABELS.noSpeech,
+  failed: INTAKE_LABELS.speechFailed,
+};
+
 export function Intake(props: IntakeProps & { level: Level }) {
   const router = useRouter();
   const [aiBlock, setAiBlock] = useState<string | null>(props.aiReady ? null : INTAKE_LABELS.aiNotConfigured);
@@ -56,6 +66,18 @@ export function Intake(props: IntakeProps & { level: Level }) {
   // 次の 1 問（lib/intake/ask.ts の nextQuestion と同じ。ブラウザに台帳の読み方を持ち込まないため、ここで引く）
   const question = props.queue.find((q) => !skip.includes(q.key)) ?? null;
   const left = props.queue.filter((q) => !skip.includes(q.key)).length;
+
+  // 話す: 認識の結果は欄に流れ、人が止めたら欄の文のまま抽出に送る（話して足したときだけ）
+  const speech = useDictation({
+    maxLength: TEXT_MAX,
+    onText: setText,
+    onDone: (spoken, added) => {
+      setText(spoken);
+      const send = dictationToSend({ text: spoken, spoken: added });
+      if (send && aiReady && !busy) void extract(send, null);
+    },
+  });
+  const listening = speech.state !== "idle";
 
   async function extract(source: string, focus: string | null) {
     setBusy(true);
@@ -115,7 +137,10 @@ export function Intake(props: IntakeProps & { level: Level }) {
               aria-selected={tab === t}
               className={`rounded px-1.5 py-0.5 text-xs ${tab === t ? "font-bold text-ink underline decoration-2 underline-offset-4" : "text-muted"}`}
               data-press
-              onClick={() => setTab(t)}
+              onClick={() => {
+                if (listening) speech.abort();
+                setTab(t);
+              }}
             >
               {t === "text" ? INTAKE_LABELS.tabText : INTAKE_LABELS.tabManual}
             </button>
@@ -123,7 +148,19 @@ export function Intake(props: IntakeProps & { level: Level }) {
         </div>
         {aiBlock && <StateTag tone="check">{aiBlock}</StateTag>}
         <span role="status" className="ml-auto text-xs">
-          {busy ? <span className="text-muted">{INTAKE_LABELS.busy}</span> : error ? <span className="font-bold text-danger">{error}</span> : notice ? <span className="font-bold text-state-ok">{notice}</span> : null}
+          {busy ? (
+            <span className="text-muted">{INTAKE_LABELS.busy}</span>
+          ) : listening ? (
+            <span className="font-bold" data-intake="listening">
+              {INTAKE_LABELS.listening}
+            </span>
+          ) : error ? (
+            <span className="font-bold text-danger">{error}</span>
+          ) : speech.error ? (
+            <span className="font-bold text-danger">{SPEECH_ERROR_LABELS[speech.error]}</span>
+          ) : notice ? (
+            <span className="font-bold text-state-ok">{notice}</span>
+          ) : null}
         </span>
       </div>
 
@@ -143,12 +180,36 @@ export function Intake(props: IntakeProps & { level: Level }) {
             placeholder={INTAKE_LABELS.placeholder}
             aria-label={INTAKE_LABELS.tabText}
             value={text}
+            // 聞いている間は認識の結果だけが入る（止めたら直せる）
+            readOnly={listening}
+            aria-busy={listening}
             onChange={(e) => setText(e.target.value)}
           />
           <div className="flex items-center gap-2">
-            <button type="submit" className={BTN_MAIN} data-press="overlay" disabled={busy || !aiReady || text.trim() === ""}>
+            <button type="submit" className={BTN_MAIN} data-press="overlay" disabled={busy || listening || !aiReady || text.trim() === ""}>
               {INTAKE_LABELS.extract}
             </button>
+            {speech.supported && (
+              <button
+                type="button"
+                className={BTN_SIDE}
+                data-press
+                data-intake="speak"
+                aria-pressed={listening}
+                disabled={speech.state === "stopping" || (!listening && (busy || !aiReady))}
+                onClick={() => {
+                  if (listening) {
+                    speech.stop();
+                    return;
+                  }
+                  setError(null);
+                  setNotice(null);
+                  speech.start(text);
+                }}
+              >
+                {listening ? INTAKE_LABELS.speakStop : INTAKE_LABELS.speak}
+              </button>
+            )}
             <span className="text-xs text-muted tabular-nums">
               {text.length}/{TEXT_MAX}
             </span>
