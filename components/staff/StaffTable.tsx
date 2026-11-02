@@ -9,6 +9,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { StateTag, TONE_TEXT } from "@/components/person/parts";
+import { Button } from "@/components/ui/Button";
+import { LinkPending } from "@/components/ui/LinkPending";
+import { TABLE, TABLE_BOX, TH } from "@/components/ui/table";
 import type { StaffRow } from "@/lib/custody/board";
 import { NOTE_MAX } from "@/lib/custody/forms";
 import { CUSTODY_LABELS, CUSTODY_VIA_LABELS, RELEASE_LABELS } from "@/lib/custody/labels";
@@ -35,9 +38,10 @@ const SORT_LABELS: Record<Sort, string> = {
 const DESCENDING: ReadonlySet<Sort> = new Set<Sort>(["age", "received"]);
 const COLORS: ReadonlyArray<Color> = ["red", "yellow", "gray", "green"];
 
-const CELL = "bg-panel px-1.5 py-1.5 align-top first:rounded-l-md last:rounded-r-md";
+/** セルは詰める（1280px で横に送らない） */
+const CELL = "bg-panel px-1.5 py-1.5 align-top";
 const INPUT =
-  "min-w-0 rounded-md bg-panel px-2 py-1 text-sm text-ink outline-none focus-visible:outline-2 focus-visible:outline-accent";
+  "min-w-0 rounded-md bg-panel2 px-2 py-1 text-sm text-ink outline-none focus-visible:outline-2 focus-visible:outline-accent";
 const COLS = 10;
 
 function compare(a: StaffRow, b: StaffRow, sort: Sort): number {
@@ -92,7 +96,7 @@ export function StaffTable({ rows, shelters }: { rows: StaffRow[]; shelters: str
 
   return (
     <div className="min-w-0">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg bg-panel2 px-2 py-1.5 text-sm">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg bg-panel px-2 py-1.5 text-sm">
         <label className="flex items-center gap-1.5">
           <span className="text-muted">{CUSTODY_LABELS.shelter}</span>
           <select value={shelter} onChange={(e) => setShelter(e.target.value)} className={INPUT} data-filter="shelter">
@@ -134,20 +138,20 @@ export function StaffTable({ rows, shelters }: { rows: StaffRow[]; shelters: str
         </span>
       </div>
 
-      <div className="mt-1 overflow-x-auto">
-        <table className="w-full min-w-[46rem] border-separate border-spacing-y-0.5 text-left text-sm" data-table="staff">
+      <div className={`mt-1 ${TABLE_BOX}`}>
+        <table className={TABLE} data-table="staff">
           <thead>
-            <tr className="whitespace-nowrap text-muted">
-              <th className="w-[4.5rem] px-1.5 py-1.5 text-center font-normal">{CUSTODY_LABELS.state}</th>
+            <tr>
+              <th className={`${TH} w-[4.5rem] text-center`}>{CUSTODY_LABELS.state}</th>
               <Header k="rank" sort={sort} onSort={setSort} className="w-10 text-center" />
               <Header k="kana" sort={sort} onSort={setSort} />
               <Header k="age" sort={sort} onSort={setSort} />
-              <th className="px-1.5 py-1.5 font-normal">{CUSTODY_LABELS.medical}</th>
+              <th className={TH}>{CUSTODY_LABELS.medical}</th>
               <Header k="remain" sort={sort} onSort={setSort} />
               <Header k="shelter" sort={sort} onSort={setSort} />
               <Header k="received" sort={sort} onSort={setSort} />
               <Header k="office" sort={sort} onSort={setSort} />
-              <th className="w-px px-1.5 py-1.5 font-normal">
+              <th className={`${TH} w-px`}>
                 <span className="sr-only">{CUSTODY_LABELS.release}</span>
               </th>
             </tr>
@@ -198,11 +202,11 @@ function FilterButton({
 function Header({ k, sort, onSort, className = "" }: { k: Sort; sort: Sort; onSort: (s: Sort) => void; className?: string }) {
   const active = k === sort;
   return (
-    <th className={`px-1.5 py-1.5 font-normal ${className}`} aria-sort={active ? (DESCENDING.has(k) ? "descending" : "ascending") : undefined}>
+    <th className={`${TH} px-1 ${className}`} aria-sort={active ? (DESCENDING.has(k) ? "descending" : "ascending") : undefined}>
       <button
         type="button"
         onClick={() => onSort(k)}
-        className={`rounded px-1 py-0.5 ${active ? "text-ink underline underline-offset-4" : "text-muted"}`}
+        className={`rounded px-1 py-0.5 ${active ? "text-ink underline decoration-2 underline-offset-4" : ""}`}
         data-press
       >
         {SORT_LABELS[k]}
@@ -225,9 +229,10 @@ function Row({ row: r, open, onToggle }: { row: StaffRow; open: boolean; onToggl
         <td className={`${CELL} text-center`}>
           <span className="font-bold tabular-nums">{r.rank}</span>
         </td>
-        <td className={`${CELL} min-w-[11rem]`}>
-          <Link href={`/people/${encodeURIComponent(r.personId)}`} className="-mx-1 rounded px-1 font-bold" data-press>
+        <td className={`${CELL} min-w-[9rem]`}>
+          <Link href={`/people/${encodeURIComponent(r.personId)}`} className="relative -mx-1 rounded px-1 font-bold" data-press>
             {r.name}
+            <LinkPending />
           </Link>
           <span className="ml-1 text-xs text-muted">{r.kana}</span>
           <div className={`mt-0.5 text-xs font-bold ${TONE_TEXT[r.tone]}`} data-reason>
@@ -239,7 +244,7 @@ function Row({ row: r, open, onToggle }: { row: StaffRow; open: boolean; onToggl
           <span className="text-muted"> 歳</span>
           {r.ageReported && <div className="text-xs text-muted">{CUSTODY_LABELS.reportedAge}</div>}
         </td>
-        <td className={`${CELL} min-w-[6rem]`}>
+        <td className={`${CELL} min-w-[5rem]`}>
           {medical.length === 0 && r.medications.length === 0 ? (
             <span className="text-muted">—</span>
           ) : (
@@ -280,9 +285,9 @@ function Row({ row: r, open, onToggle }: { row: StaffRow; open: boolean; onToggl
           <span className={r.unaffiliated ? "font-bold" : ""}>{r.office}</span>
         </td>
         <td className={`${CELL} w-px whitespace-nowrap text-right`}>
-          <button type="button" onClick={onToggle} aria-expanded={open} className="rounded px-1.5 py-0.5 text-xs" data-press>
+          <Button size="sm" kind={open ? "quiet" : "plain"} onClick={onToggle} aria-expanded={open}>
             {open ? CUSTODY_LABELS.cancel : CUSTODY_LABELS.release}
-          </button>
+          </Button>
         </td>
       </tr>
       {open && (
@@ -333,7 +338,7 @@ function ReleaseForm({ custodyId, onDone }: { custodyId: string; onDone: () => v
       <fieldset className="flex items-center gap-1.5">
         <legend className="sr-only">{CUSTODY_LABELS.release}</legend>
         {RELEASE_KINDS.map((k) => (
-          <label key={k} className="flex items-center gap-1.5 rounded-md bg-panel px-2 py-1">
+          <label key={k} className="flex h-8 items-center gap-1.5 rounded-md bg-panel px-2">
             <input type="radio" name={`kind-${custodyId}`} value={k} checked={kind === k} onChange={() => setKind(k)} className="accent-accent" />
             {RELEASE_LABELS[k]}
           </label>
@@ -345,9 +350,10 @@ function ReleaseForm({ custodyId, onDone }: { custodyId: string; onDone: () => v
           <input type="text" value={note} onChange={(e) => setNote(e.target.value)} maxLength={NOTE_MAX} className={`${INPUT} w-48`} />
         </label>
       )}
-      <button type="submit" disabled={busy} className="rounded-md bg-danger px-3 py-1 text-sm font-bold text-on-accent" data-press="overlay">
+      {/* 受け持ちから外す確定なので赤の塗り */}
+      <Button type="submit" kind="dangerFill" disabled={busy} data-pending={busy ? "" : undefined}>
         {busy ? CUSTODY_LABELS.sending : CUSTODY_LABELS.confirm}
-      </button>
+      </Button>
       {error && (
         <span role="alert" className="text-sm font-bold text-danger">
           {error}
