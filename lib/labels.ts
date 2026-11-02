@@ -244,7 +244,7 @@ export const CARE_FLAG_LABELS = { bedridden: "寝たきり", dementia: "認知�
 export const HEAD_LABELS = {
   age: "年齢",
   careLevel: "介護度",
-  plan: "計画",
+  plan: "避難計画",
   unconfirmed: "未確認",
   priority: "優先",
   marks: "医療",

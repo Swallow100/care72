@@ -242,7 +242,7 @@ function PlanSection({ counts }: { counts: PlanCount[] }) {
   return (
     <Section
       id="plan"
-      title="計画"
+      title="避難計画"
       aside={<span className="text-xs font-normal text-muted tabular-nums">{total} 人</span>}
     >
       {total > 0 && (

@@ -14,7 +14,7 @@ export const COLUMN_LABELS = {
   medical: "医療",
   hazard: "ハザード",
   supporter: "支援者",
-  plan: "計画",
+  plan: "避難計画",
 } as const;
 
 /** 行の詳細の見出しと小さな言葉 */

@@ -18,7 +18,7 @@ export const OFFICE_LABELS = {
   birth: "生年月日",
   sex: "性別",
   age: "年齢",
-  plan: "計画",
+  plan: "避難計画",
   careManager: "担当",
   /** 利用者追加の担当の既定（自分） */
   defaultCm: "既定",
