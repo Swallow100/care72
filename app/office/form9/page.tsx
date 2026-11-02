@@ -1,5 +1,9 @@
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { TONE_TEXT } from "@/components/person/parts";
+import { buttonClass } from "@/components/ui/Button";
+import { DownloadIcon } from "@/components/ui/Icon";
+import { PrintButton } from "@/components/ui/PrintButton";
+import { FormsTabs } from "@/components/ui/Tabs";
 import { Form9Report } from "@/components/forms/Form9Report";
 import { Form9Table } from "@/components/forms/Form9Table";
 import { todayJst } from "@/lib/age";
@@ -46,8 +50,9 @@ export default async function Form9Page({ searchParams }: Props) {
 
   return (
     <main className="mx-auto max-w-[120rem] px-4 py-4">
-      <div className="flex flex-wrap items-baseline gap-x-4 gap-y-2">
-        <h1 className="text-2xl font-bold">様式9</h1>
+      <FormsTabs current="form9" />
+      <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2">
+        <h1 className="text-xl leading-8 font-bold">様式9</h1>
         <span className="text-sm text-muted">{FORM9_TITLE.replace(/^様式9：/, "")}</span>
         <span className="text-sm">{data.office.name}</span>
         <span className="text-sm">
@@ -68,14 +73,13 @@ export default async function Form9Page({ searchParams }: Props) {
         <span className="text-sm">
           <span className="text-muted">手直し</span> <span className="font-bold tabular-nums">{manualCount}</span>
         </span>
-        <a
-          href={FORM9_CSV_PATH}
-          download
-          className="ml-auto rounded-md bg-accent px-3 py-1.5 text-sm font-bold text-on-accent"
-          data-press="overlay"
-        >
-          CSV出力
-        </a>
+        <div className="ml-auto flex items-center gap-2">
+          <a href={FORM9_CSV_PATH} download className={buttonClass("plain")} data-press>
+            <DownloadIcon aria-hidden className="size-4 shrink-0" />
+            CSV出力
+          </a>
+          <PrintButton />
+        </div>
       </div>
       <p className="mt-1 text-xs text-muted">
         並び {disaster && situation ? `色 → 時計の残り → 支援者なし → 骨格（${formatJst(situation.now)} 時点）` : NORMAL_ORDER_LABELS.join(" → ")}
@@ -85,7 +89,7 @@ export default async function Form9Page({ searchParams }: Props) {
         {report && <Form9Report text={report} tally={tally(sheet.rows)} />}
         <section aria-label="様式9 の表" className="min-w-0 overflow-x-auto">
           {rows.length === 0 ? (
-            <p className="rounded-lg bg-panel p-6 text-muted">なし</p>
+            <p className="rounded-lg bg-panel px-3 py-2 text-sm text-muted">なし</p>
           ) : (
             <Form9Table rows={rows} sort={sort} edit={editing} error={editing ? parseError(q.error) : null} disaster={disaster} />
           )}

@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 /*
-  色は 3 段の地で区切る。地（base 薄い灰色）・面（panel 白）・面の中（panel2）。
+  色は 3 段の地で区切る。地（base 薄い灰色）・面（panel 白）・面の中（panel2）。面は透けない。
   枠線は選択・注意・危険のときだけ。押したときは灰色（press）だけ。
 
   色は意味にだけ使い、飾りには使わない。面全体は塗らず、印・文字・数字・細い帯に置く。
@@ -9,53 +9,80 @@
     --state-ok      緑 無事（同意あり・確認済・受領も）
     --state-urgent  赤 至急（赤の信号、残りの短い時計）
     --state-check   黄 要確認（未確認・同意なし・支援者なし・中断注意も）
-    --state-unknown 灰 未知
-  状態は色だけで示さず、2 字ほどの文字を必ず添える。薄い下地（-soft）は面の色との color-mix で作る。
-  操作の色は --accent の 1 色。危険な操作と誤りは --danger（赤）。
+    --state-unknown 灰 不明
+  状態は色だけで示さず、2 字ほどの文字を必ず添える。
+  文字の色はボタン以外では本文（ink）と薄い本文（muted）の 2 つ。ほかの色は状態の色だけで、テーマ色の文字を飾りに使わない。
+  操作の色は --accent の 1 色。出る・消す・外す操作と誤りは --danger（赤）。
+
+  意味色は黒を混ぜない（作者の決まり、11/3）。ライトもダークも澄んだ色相のまま。暗く濁った緑・赤・黄・青は使わない。
+  黒を混ぜてよいのは灰色と黒だけ。ダークは色の明るさを保ち、地と面を暗くして差を出す。
+    --state-*        文字・数字の色（面の上で読める明るさの、いちばん鮮やかな色）
+    --state-*-fill   印の塗り（澄んだ色。黄は明るい黄）
+    --on-state-*     印の塗りの上の文字（白か、ほぼ黒）
+  薄い下地（色を面に混ぜた物）は、ダークで黒の混ざった濁った色になるので印に使わない。印は澄んだ色の塗りか、色の文字だけ。
 */
 :root {
   --base: #eceef1;
   --panel: #ffffff;
-  --panel2: #f4f5f7;
-  --ink: #1c2229;
-  --muted: #5a6470;
-  --press: rgb(0 0 0 / 0.07);
-  --state-ok: #1d7a45;
-  --state-urgent: #c0292b;
-  --state-check: #8a5a00;
-  --state-unknown: #66707c;
-  --danger: #c0292b;
-  /* 操作の色（ログインなどの主のボタン、選んだ印の枠、入力の欄の印、電話のリンク）。状態の 4 色とは別 */
-  --accent: #2a5d8f;
+  --panel2: #f3f4f6;
+  --ink: #161b21;
+  --muted: #59636e;
+  --press: rgb(0 0 0 / 0.08);
+  /* oklch(0.60 最大 150) の緑・oklch(0.58 最大 27) の赤・oklch(0.66 最大 62) の琥珀。白の上の対比は 3.7・4.8・3.2 */
+  --state-ok: #1a994a;
+  --state-urgent: #e11c22;
+  --state-check: #cf7b1a;
+  --state-unknown: #66717d;
+  --state-ok-fill: #1a994a;
+  --state-urgent-fill: #e11c22;
+  --state-check-fill: #f2b125;
+  --state-unknown-fill: #6b7682;
+  --on-state-ok: #ffffff;
+  --on-state-urgent: #ffffff;
+  --on-state-check: #161b21;
+  --on-state-unknown: #ffffff;
+  --danger: #e11c22;
+  /* 操作の色（主のボタン、選んだ印の枠、入力の欄の印、電話のリンク）。状態の 4 色とは別。oklch(0.55 最大 258) */
+  --accent: #116bdf;
   --on-accent: #ffffff;
   color-scheme: light;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --base: #0f1215;
-    --panel: #191d22;
-    --panel2: #22272d;
-    --ink: #e6e9ed;
-    --muted: #9aa4af;
-    --press: rgb(255 255 255 / 0.08);
-    --state-ok: #52c285;
-    --state-urgent: #ff6f69;
-    --state-check: #e0b13e;
+    --base: #0b0d10;
+    --panel: #15181c;
+    --panel2: #1e2228;
+    --ink: #e8ebef;
+    --muted: #9ba5b0;
+    --press: rgb(255 255 255 / 0.09);
+    /* 明るさを保った澄んだ色。暗い面の上の対比は 8.8・6.6・9.3 */
+    --state-ok: #27d268;
+    --state-urgent: #fb7474;
+    --state-check: #f2b125;
     --state-unknown: #a3adb8;
-    --danger: #ff6f69;
-    --accent: #8db8e4;
-    --on-accent: #0f1215;
+    --state-ok-fill: #27d268;
+    --state-urgent-fill: #fb7474;
+    --state-check-fill: #f2b125;
+    --state-unknown-fill: #a3adb8;
+    --on-state-ok: #0b0d10;
+    --on-state-urgent: #0b0d10;
+    --on-state-check: #0b0d10;
+    --on-state-unknown: #0b0d10;
+    --danger: #fb7474;
+    --accent: #76b5fb;
+    --on-accent: #0b0d10;
     color-scheme: dark;
   }
 }
 
-/* 状態の薄い下地。印の地だけに使う（面全体には敷かない）。面の色に混ぜるのでライトとダークで自然に変わる */
-:root {
-  --state-ok-soft: color-mix(in srgb, var(--state-ok) 14%, var(--panel));
-  --state-urgent-soft: color-mix(in srgb, var(--state-urgent) 12%, var(--panel));
-  --state-check-soft: color-mix(in srgb, var(--state-check) 16%, var(--panel));
-  --state-unknown-soft: color-mix(in srgb, var(--state-unknown) 14%, var(--panel));
+@theme {
+  /* 角は小さく（面 4px・欄とボタン 3px・印 2px）。本人・家族の大きなボタン（rounded-xl）だけは今のまま */
+  --radius: 3px;
+  --radius-xs: 1px;
+  --radius-sm: 2px;
+  --radius-md: 3px;
+  --radius-lg: 4px;
 }
 
 @theme inline {
@@ -70,14 +97,19 @@
   --color-state-urgent: var(--state-urgent);
   --color-state-check: var(--state-check);
   --color-state-unknown: var(--state-unknown);
-  --color-state-ok-soft: var(--state-ok-soft);
-  --color-state-urgent-soft: var(--state-urgent-soft);
-  --color-state-check-soft: var(--state-check-soft);
-  --color-state-unknown-soft: var(--state-unknown-soft);
+  --color-state-ok-fill: var(--state-ok-fill);
+  --color-state-urgent-fill: var(--state-urgent-fill);
+  --color-state-check-fill: var(--state-check-fill);
+  --color-state-unknown-fill: var(--state-unknown-fill);
+  --color-on-state-ok: var(--on-state-ok);
+  --color-on-state-urgent: var(--on-state-urgent);
+  --color-on-state-check: var(--on-state-check);
+  --color-on-state-unknown: var(--on-state-unknown);
   --color-danger: var(--danger);
   --color-accent: var(--accent);
   --color-on-accent: var(--on-accent);
-  --font-sans: var(--font-plex), system-ui, sans-serif;
+  /* 画面の書体は M PLUS 2（数字がもともと等幅。docs/progress/t35.md の比較） */
+  --font-sans: var(--font-mplus2), system-ui, sans-serif;
   --font-ud: var(--font-biz-ud), system-ui, sans-serif;
 }
 
@@ -89,22 +121,27 @@ body {
 
 body {
   font-family: var(--font-sans);
+  /* 数字は等幅（表の時刻・残り・人数の縦を揃える） */
+  font-variant-numeric: tabular-nums;
   -webkit-font-smoothing: antialiased;
 }
 
-/* 本人・家族のスマホ（phone-text・data-phone）と本人の 1 枚（data-sheet="own"）だけ UD の書体。ほかの画面は Plex */
+/* 本人・家族のスマホ（phone-text・data-phone）と本人の 1 枚（data-sheet="own"）だけ UD の書体。ほかの画面は M PLUS 2 */
 .phone-text,
 [data-phone],
 [data-sheet="own"] {
   font-family: var(--font-ud);
 }
 
-/* 押したときの変化は灰色の地だけ。縮める・薄くする・色を変えるは重ねない。 */
-[data-press]:not([data-press="overlay"]):active {
+/* 押したときの変化は灰色の地だけ。縮める・薄くする・色を変えるは重ねない。
+   画面を移る途中（data-pending）も同じ灰色を残し、押したことが分かるようにする */
+[data-press]:not([data-press="overlay"]):active,
+[data-press]:not([data-press="overlay"])[data-pending] {
   background-color: var(--press);
 }
 
-/* 塗りのボタン（ログイン）は地の色を残し、上に同じ灰色を重ねる */
-[data-press="overlay"]:active {
+/* 塗りのボタンは地の色を残し、上に同じ灰色を重ねる */
+[data-press="overlay"]:active,
+[data-press="overlay"][data-pending] {
   box-shadow: inset 0 0 0 100vmax var(--press);
 }

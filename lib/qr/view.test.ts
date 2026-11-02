@@ -162,7 +162,9 @@ describe("出す範囲（医療要約から氏名の全部と住所を除く）"
     expect(html).toContain('name="token" value="tok.sig"');
     expect(html).toContain('name="shelter"');
     expect(html).toContain('value="みどり小学校"');
-    expect(html).not.toContain("disabled");
+    // 押せる（disabled の属性が無い）。class の disabled: は押せないときの見た目なので数えない
+    expect(html).not.toMatch(/<(button|input)[^>]*\sdisabled(=|\s|>)/);
+    expect(html).toMatch(/<button[^>]*type="submit"/);
     expect(html).not.toContain("p-01");
   });
 });

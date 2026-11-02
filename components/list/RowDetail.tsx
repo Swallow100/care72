@@ -202,7 +202,7 @@ function ClassesReadOnly({ signal: s }: { signal: DetailSignal }) {
 function Part({ title, aside, children }: { title: string; aside?: React.ReactNode; children: React.ReactNode }) {
   return (
     <section className="rounded-md bg-panel2 p-2">
-      <h3 className="mb-1 flex flex-wrap items-baseline gap-x-2 text-xs font-bold text-muted">
+      <h3 className="mb-1 flex flex-wrap items-baseline gap-x-2 text-sm font-bold">
         {title}
         {aside}
       </h3>

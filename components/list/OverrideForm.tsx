@@ -6,6 +6,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { buttonClass } from "@/components/ui/Button";
 import { COLOR_LABELS } from "@/lib/labels";
 import { DETAIL_LABELS } from "@/lib/list/labels";
 import { OVERRIDE_PATH } from "@/lib/list/paths";
@@ -69,7 +70,7 @@ export function OverrideForm({ personId, color, overridden }: { personId: string
             role="radio"
             aria-checked={to === c}
             onClick={() => setTo(to === c ? null : c)}
-            className={`rounded-md bg-panel px-2 py-1 text-sm font-bold ${TEXT[c]} ${to === c ? "ring-2 ring-inset ring-accent" : ""}`}
+            className={`inline-flex h-8 items-center rounded bg-panel px-3 text-sm font-bold ${TEXT[c]} ${to === c ? "outline-2 -outline-offset-2 outline-accent" : ""}`}
             data-press
             data-override-to={c}
           >
@@ -84,13 +85,13 @@ export function OverrideForm({ personId, color, overridden }: { personId: string
           maxLength={200}
           placeholder={DETAIL_LABELS.reasonInput}
           aria-label={DETAIL_LABELS.reasonInput}
-          className="min-w-0 flex-1 rounded-md bg-panel px-2 py-1 text-sm outline-accent"
+          className="h-8 min-w-0 flex-1 rounded bg-panel px-2 text-sm outline-accent"
           data-override-reason
         />
         <button
           type="submit"
           disabled={!canSave}
-          className="rounded-md bg-accent px-3 py-1 text-sm font-bold text-on-accent disabled:bg-panel disabled:text-muted"
+          className={buttonClass("main", "md")}
           data-press="overlay"
         >
           {DETAIL_LABELS.save}
@@ -100,7 +101,7 @@ export function OverrideForm({ personId, color, overridden }: { personId: string
             type="button"
             disabled={busy}
             onClick={() => void send(null)}
-            className="rounded-md bg-panel px-2 py-1 text-sm"
+            className={buttonClass("plainIn", "md")}
             data-press
             data-override-clear
           >

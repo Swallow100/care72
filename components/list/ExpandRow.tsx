@@ -6,6 +6,7 @@
 // 行のどこを押しても開け閉めする（名前のリンク・電話・ボタンの上は除く）。
 
 import { useState } from "react";
+import { OpenIcon } from "@/components/ui/Icon";
 
 export function ExpandRow({
   id,
@@ -35,7 +36,6 @@ export function ExpandRow({
       <tr
         data-row={id}
         data-open={open ? "" : undefined}
-        className={open ? "[&>td]:rounded-b-none!" : undefined}
         onClick={(e) => {
           if ((e.target as HTMLElement).closest("a,button,input,textarea,audio,label")) return;
           setOpen((v) => !v);
@@ -59,7 +59,7 @@ export function ExpandRow({
       </tr>
       {open && (
         <tr id={detailId} data-detail={id}>
-          <td colSpan={cols} className="rounded-b-md bg-panel px-3 pb-3 pt-1">
+          <td colSpan={cols} className="bg-panel px-3 pt-1 pb-3">
             {detail}
           </td>
         </tr>
@@ -68,18 +68,7 @@ export function ExpandRow({
   );
 }
 
-/** 細い不等号の印（開くと上向き）。既定の▼は使わない */
+/** 開け閉めの印（開くと上向き）。既定の▼は使わず、共通のアイコン（components/ui/Icon の OpenIcon） */
 function Chevron({ open }: { open: boolean }) {
-  return (
-    <svg
-      aria-hidden
-      viewBox="0 0 12 12"
-      className={`size-3 text-muted transition-transform ${open ? "rotate-180" : ""}`}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-    >
-      <path d="M2.5 4.5 6 8l3.5-3.5" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
+  return <OpenIcon aria-hidden className={`size-4 text-muted ${open ? "rotate-180" : ""}`} />;
 }

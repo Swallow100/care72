@@ -13,6 +13,7 @@ import type { DiffItem } from "@/lib/intake/diff";
 import { INTAKE_SECTIONS, intakeField, type IntakeField } from "@/lib/intake/fields";
 import { markPreview, planMarkClocks } from "@/lib/intake/marks";
 import { MEDICATION_CATEGORIES } from "@/lib/db/types";
+import { buttonClass } from "@/components/ui/Button";
 import { BTN, BTN_MAIN, CHECK, INPUT_IN } from "./intake-ui";
 import { AiMark, StateTag } from "./parts";
 
@@ -57,7 +58,7 @@ export function IntakeChanges({ rows, dropped, ledger, clocks, busy, onChange, o
         if (mine.length === 0) return null;
         return (
           <section key={section} className="rounded bg-panel2 px-2 py-1.5" data-section={section}>
-            <h4 className="text-xs font-bold text-muted">{SECTION_LABELS[section]}</h4>
+            <h4 className="text-sm font-bold">{SECTION_LABELS[section]}</h4>
             <ul className="mt-0.5 space-y-1">
               {mine.map((r) => (
                 <ChangeItem key={r.id} row={r} onPatch={(p) => update(r.id, p)} />
@@ -130,7 +131,7 @@ function ChangeItem({ row, onPatch }: { row: ChangeRow; onPatch: (p: Partial<Cha
             )}
             {row.masked && <StateTag tone="check">{INTAKE_LABELS.masked}</StateTag>}
             {editable && (
-              <button type="button" className="ml-auto rounded px-1 text-xs text-accent" data-press onClick={() => onPatch({ editing: !row.editing })}>
+              <button type="button" className={buttonClass("quiet", "sm", "ml-auto")} data-press onClick={() => onPatch({ editing: !row.editing })}>
                 {INTAKE_LABELS.edit}
               </button>
             )}

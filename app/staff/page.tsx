@@ -48,11 +48,12 @@ export default async function StaffPage({ searchParams }: Props) {
   }
 
   return (
-    <main className="mx-auto grid max-w-[90rem] gap-3 px-4 py-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
+    // 受入の入口は 1280px から右に。それ未満は表の下（表を横に送らない）。右の面は留めず、ページの流れに置く
+    <main className="mx-auto grid max-w-[90rem] gap-3 px-4 py-4 xl:grid-cols-[minmax(0,1fr)_21rem]">
       <AutoRefresh seconds={60} />
       <div className="min-w-0">
         <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-          <h1 className="text-2xl font-bold">{CUSTODY_LABELS.page}</h1>
+          <h1 className="text-xl leading-8 font-bold">{CUSTODY_LABELS.page}</h1>
           <span className="text-sm">
             <span className="text-lg font-bold tabular-nums">{board.rows.length}</span> {CUSTODY_LABELS.people}
           </span>
@@ -74,7 +75,7 @@ export default async function StaffPage({ searchParams }: Props) {
           <StaffTable rows={board.rows} shelters={board.shelters} />
         </div>
       </div>
-      <aside className="min-w-0 self-start lg:sticky lg:top-2">
+      <aside className="min-w-0 self-start">
         <StaffIntake shelters={shelters} defaultShelter={last} />
       </aside>
     </main>
