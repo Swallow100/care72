@@ -30,7 +30,7 @@ export default async function DrillPage() {
     const { env } = await getCloudflareContext({ async: true });
     items = scope ? await listDrills(env.DB, scope.officeId) : [];
     // AI の 1 日の上限（T26）。読めなければ開始のまま
-    usage = scope ? await usageToday(await aiContextFor(scope.officeId)).catch(() => null) : null;
+    usage = scope ? await aiContextFor(scope.officeId).then(usageToday).catch(() => null) : null;
   } catch (e) {
     console.error("訓練記録を読めない", e);
     return (
