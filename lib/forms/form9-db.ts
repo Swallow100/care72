@@ -12,16 +12,15 @@ import type {
   ContactRow,
   Form9Mode,
   PersonRow,
-  RecordingClass,
   SignalRow,
   TimelineEntryRow,
 } from "../db/types.ts";
 import { loadSituation as loadDisasterSituation } from "../disaster/db.ts";
 import { loadOfficeOverrides } from "../disaster/override.ts";
 import type { DisasterSituation } from "../disaster/state.ts";
-import { rankInDisaster } from "../disaster/triage.ts";
+import { rankInDisaster, toTriageSignal } from "../disaster/triage.ts";
 import { toTriagePerson } from "../triage/from-ledger.ts";
-import type { Situation, TriageSignal } from "../triage/index.ts";
+import type { Situation } from "../triage/index.ts";
 import {
   buildForm9,
   FORM9_ENTRY_KINDS,
@@ -68,7 +67,7 @@ type ContactForForm = Form9PersonInput["contacts"][number] & Pick<ContactRow, "p
 type ClockForForm = Form9PersonInput["clocks"][number] & Pick<ClockRow, "person_id">;
 type SignalForForm = Pick<
   SignalRow,
-  "person_id" | "color" | "source" | "where_now" | "injured" | "can_move" | "classes" | "occurred_at"
+  "person_id" | "color" | "source" | "where_now" | "injured" | "can_move" | "classes" | "classified_by" | "occurred_at"
 >;
 type EntryForForm = Pick<TimelineEntryRow, "person_id" | "kind" | "author_role" | "body" | "payload" | "occurred_at">;
 
@@ -83,16 +82,6 @@ function within(iso: string, s: Situation): boolean {
 }
 
 const bool = (v: 0 | 1 | null): boolean | null => (v === null ? null : v === 1);
-
-function parseClasses(text: string | null): RecordingClass[] | undefined {
-  if (!text) return undefined;
-  try {
-    const v = JSON.parse(text) as unknown;
-    return Array.isArray(v) ? (v.filter((x) => typeof x === "string") as RecordingClass[]) : undefined;
-  } catch {
-    return undefined;
-  }
-}
 
 /** 経過の行から避難所の名前: payload の shelter（文字）があればそれ、無ければ本文（到着・受領のときだけ） */
 export function entryPlace(e: Pick<TimelineEntryRow, "kind" | "body" | "payload">): string | null {
@@ -116,17 +105,6 @@ function toSignal(s: SignalForForm): Form9Signal {
     injured: bool(s.injured),
     canMove: bool(s.can_move),
     at: s.occurred_at,
-  };
-}
-
-function toTriageSignal(s: SignalForForm): TriageSignal {
-  return {
-    color: s.color,
-    source: s.source,
-    at: s.occurred_at,
-    injured: bool(s.injured),
-    canMove: bool(s.can_move),
-    classes: parseClasses(s.classes),
   };
 }
 
@@ -182,7 +160,7 @@ export async function loadForm9(
     statements.push(
       db
         .prepare(
-          `SELECT person_id, color, source, where_now, injured, can_move, classes, occurred_at FROM signals
+          `SELECT person_id, color, source, where_now, injured, can_move, classes, classified_by, occurred_at FROM signals
             WHERE drill_id IS NULL AND person_id IN (${mine}) ORDER BY occurred_at, created_at, id`,
         )
         .bind(office.id),

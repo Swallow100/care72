@@ -38,14 +38,23 @@ export function toTriagePerson(src: LedgerForTriage): TriagePerson {
 /** 本人からの信号か（訓練の本人役を含む）。lib/triage の読み方と同じ */
 const fromSelf = (source: SignalSource) => source === "self" || source === "agent";
 
-type Carry = { injured: boolean | null; canMove: boolean | null; classes: RecordingClass[] };
+type Carry = {
+  injured: boolean | null;
+  canMove: boolean | null;
+  /** Claude の分類 */
+  classes: RecordingClass[];
+  /** ケアマネが直した分類（人）。null は直していない */
+  staffClasses: RecordingClass[] | null;
+};
 
 /**
  * 同じ出来事の赤を重ねて読む（T10 の問い、docs/PROGRESS.md の T13 の案）。ルールの表（lib/triage）は信号の
  * いちばん新しい物を読むので、けがの赤のあとに答えなしの赤（20 秒で音声に替わった回など）が来ると「けが」が落ちる。
  * ここでは表に渡す前に、赤の信号の答えていない問いと録音の分類を、同じ出どころの前の赤から引き継ぐ:
  * - けが・動けるかは、答えていない（null）ときだけ前の赤の答え（いちばん新しい答え）を使う。答えがあればその答え
- * - 録音の分類は前の赤の分類と合わせる（重ねない）
+ * - 録音の分類（Claude）は前の赤の分類と合わせる（重ねない）
+ * - ケアマネが直した分類（人、classified_by がケアマネ）は最新として勝つ: その赤までの Claude の分類は捨て、人の分類だけを
+ *   あとの赤に引き継ぐ（ケアマネが外した分類を前の赤から戻さない。T12）。そのあとの赤の Claude の分類は新しい録音の物として足す
  * - 緑が来たら出来事は終わり（引き継がない）。本人の報告を当てにしない印の人の本人の緑は、表が使わないので終わりにしない
  * - 引き継ぐのは同じ出どころ（本人・家族…）の赤からだけ（理由の「本人が」「家族が」を取り違えない）
  * - 未知の信号（家族の「分からない」など）は新しい情報なしとして表に渡さない。前の赤・緑はそのまま効き、
@@ -73,10 +82,20 @@ export function foldSignals(
     const prev = carry.get(sig.source);
     const injured = sig.injured ?? prev?.injured ?? null;
     const canMove = sig.canMove ?? prev?.canMove ?? null;
-    const classes = [...new Set([...(prev?.classes ?? []), ...(sig.classes ?? [])])];
-    carry.set(sig.source, { injured, canMove, classes });
+    const human = sig.staffClasses !== undefined;
+    // 人が直した赤は、その分類が今の分類（前の Claude の分類は戻さない）
+    const classes = human ? [] : [...new Set([...(prev?.classes ?? []), ...(sig.classes ?? [])])];
+    const staffClasses = human ? [...(sig.staffClasses ?? [])] : (prev?.staffClasses ?? null);
+    carry.set(sig.source, { injured, canMove, classes, staffClasses });
     if (!prev) continue;
-    out[i] = { ...sig, injured, canMove, ...(classes.length > 0 ? { classes } : {}) };
+    const { classes: _ai, staffClasses: _staff, ...rest } = sig;
+    out[i] = {
+      ...rest,
+      injured,
+      canMove,
+      ...(classes.length > 0 ? { classes } : {}),
+      ...(staffClasses !== null ? { staffClasses } : {}),
+    };
   }
   return out.filter((s): s is TriageSignal => s !== null);
 }

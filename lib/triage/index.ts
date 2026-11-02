@@ -86,7 +86,10 @@ export type TriageSignal = {
   injured?: boolean | null;
   /** 赤の 4 問の「動けるか」。null は答えていない */
   canMove?: boolean | null;
+  /** 録音・自由文の Claude の分類（AI の印を付けて出す） */
   classes?: RecordingClass[];
+  /** ケアマネが直した分類（人の分類。AI の印を付けない。Claude の分類より先に効く） */
+  staffClasses?: RecordingClass[];
 };
 
 /** 災害の情報。時刻は ISO 8601 */
@@ -240,8 +243,8 @@ export const READING: ReadonlyArray<{ text: string; origin: string }> = [
     origin: "案 1",
   },
   {
-    text: "けが・動けないが 4 問の答え（ボタン）から来たら理由は「本人が「動けない」」、録音・自由文の分類（Claude）から来たら「録音の分類（AI）: 動けない」と AI の印を付ける。答えにある言葉は分類から重ねない。両方あれば「、」でつなぐ",
-    origin: "案（11/2 夕方 b）",
+    text: "けが・動けないが 4 問の答え（ボタン）から来たら理由は「本人が「動けない」」、録音・自由文の分類（Claude）から来たら「録音の分類（AI）: 動けない」と AI の印を付け、ケアマネが直した分類から来たら「分類（ケアマネ）: 動けない」（AI の印なし）。分類が Claude か人かは信号の classified_by で見る。答えにある言葉は分類から、人の分類にある言葉は Claude の分類から重ねない。いくつかあれば「、」でつなぐ",
+    origin: "案（11/2 夕方 b）・T12",
   },
 ];
 
@@ -365,28 +368,38 @@ const who = (x: RuleInput) => (x.signal ? WHO[x.signal.source] : "本人");
 const uncheckedWords = (x: RuleInput) => x.unchecked.map((d) => `${DEPENDS_ON_LABELS[d]} 未確認`).join("、");
 
 /**
- * けが・動けないの言葉を出どころで分ける。answered は 4 問の答え（人が押したボタン）、classified は録音・自由文の分類（Claude）。
- * 答えにある言葉は分類からは重ねない（人の答えを先に出す）
+ * けが・動けないの言葉を出どころで分ける。answered は 4 問の答え（人が押したボタン）、staff はケアマネが直した分類（人）、
+ * classified は録音・自由文の分類（Claude）。答えにある言葉は分類から、人の分類にある言葉は Claude の分類から重ねない
  */
-function injuryWords(sig: TriageSignal | null): { answered: string[]; classified: string[] } {
+function injuryWords(sig: TriageSignal | null): { answered: string[]; staff: string[]; classified: string[] } {
   const answered: string[] = [];
+  const staff: string[] = [];
   const classified: string[] = [];
-  if (!sig) return { answered, classified };
-  if (sig.injured === true) answered.push("けが");
-  else if (sig.classes?.includes("injury")) classified.push("けが");
-  if (sig.canMove === false) answered.push("動けない");
-  else if (sig.classes?.includes("immobile")) classified.push("動けない");
-  return { answered, classified };
+  if (!sig) return { answered, staff, classified };
+  const pick = (word: string, byButton: boolean, cls: RecordingClass) => {
+    if (byButton) answered.push(word);
+    else if (sig.staffClasses?.includes(cls)) staff.push(word);
+    else if (sig.classes?.includes(cls)) classified.push(word);
+  };
+  pick("けが", sig.injured === true, "injury");
+  pick("動けない", sig.canMove === false, "immobile");
+  return { answered, staff, classified };
 }
 
 /** Claude の分類から来た言葉の印。画面でも文書でもこの形で AI の出力と分かるようにする */
 const AI_CLASSIFIED_PREFIX = "録音の分類（AI）: ";
+/** ケアマネが直した分類から来た言葉（人の判断なので AI の印を付けない） */
+const STAFF_CLASSIFIED_PREFIX = "分類（ケアマネ）: ";
 
-/** 赤 ＋ けが・動けないの理由。答えは「本人が「動けない」」、分類は「録音の分類（AI）: 動けない」。両方あれば「、」でつなぐ */
+/**
+ * 赤 ＋ けが・動けないの理由。答えは「本人が「動けない」」、人の分類は「分類（ケアマネ）: 動けない」、
+ * Claude の分類は「録音の分類（AI）: 動けない」。いくつかあれば「、」でつなぐ
+ */
 function injuryReason(x: RuleInput): string | null {
-  const { answered, classified } = injuryWords(x.signal);
+  const { answered, staff, classified } = injuryWords(x.signal);
   const parts: string[] = [];
   if (answered.length > 0) parts.push(`${who(x)}が${answered.map((w) => `「${w}」`).join("")}`);
+  if (staff.length > 0) parts.push(`${STAFF_CLASSIFIED_PREFIX}${staff.join("・")}`);
   if (classified.length > 0) parts.push(`${AI_CLASSIFIED_PREFIX}${classified.join("・")}`);
   return parts.length > 0 ? parts.join("、") : null;
 }

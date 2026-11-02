@@ -376,11 +376,10 @@ async function loadDetailSource(
 ): Promise<Pick<CaseloadDetailSource, "signals" | "calls">> {
   const mine = "SELECT id FROM people WHERE care_manager_id = ?1 AND office_id = ?2 AND unlisted_at IS NULL";
   const [signals, calls] = await db.batch([
+    // 列は全部（分類の部品 T12 が読む ai_* の列も、表に足されればそのまま行の詳細に渡る）
     db
       .prepare(
-        `SELECT id, person_id, color, source, where_now, injured, at_home, can_move, has_medicine,
-                recording_key, transcript, classes, classified_by, occurred_at
-           FROM signals WHERE drill_id IS NULL AND person_id IN (${mine}) ORDER BY occurred_at, created_at, id`,
+        `SELECT * FROM signals WHERE drill_id IS NULL AND person_id IN (${mine}) ORDER BY occurred_at, created_at, id`,
       )
       .bind(careManagerId, officeId),
     db

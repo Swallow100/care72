@@ -32,7 +32,10 @@ export function withinDisaster(iso: string, s: Pick<Situation, "disasterAt" | "n
   return !Number.isNaN(t) && t >= Date.parse(s.disasterAt) && t <= Date.parse(s.now);
 }
 
-export type SignalForTriage = Pick<SignalRow, "person_id" | "color" | "source" | "injured" | "can_move" | "classes" | "occurred_at">;
+export type SignalForTriage = Pick<
+  SignalRow,
+  "person_id" | "color" | "source" | "injured" | "can_move" | "classes" | "classified_by" | "occurred_at"
+>;
 
 const bool = (v: 0 | 1 | null): boolean | null => (v === null ? null : v === 1);
 
@@ -46,14 +49,19 @@ function parseClasses(text: string | null): RecordingClass[] | undefined {
   }
 }
 
+/**
+ * 信号の行をルールの表の入力に。分類は classified_by で分ける: Claude の分類は classes（理由に AI の印）、
+ * ケアマネが直した分類は staffClasses（理由は「分類（ケアマネ）」、AI の印なし。T12）
+ */
 export function toTriageSignal(s: SignalForTriage): TriageSignal {
+  const classes = parseClasses(s.classes);
   return {
     color: s.color,
     source: s.source,
     at: s.occurred_at,
     injured: bool(s.injured),
     canMove: bool(s.can_move),
-    classes: parseClasses(s.classes),
+    ...(s.classified_by === "care_manager" ? { staffClasses: classes ?? [] } : { classes }),
   };
 }
 
@@ -66,7 +74,7 @@ function group(rows: ReadonlyArray<SignalForTriage>, s: Situation): Map<string, 
   return out;
 }
 
-const SIGNAL_COLUMNS = "person_id, color, source, injured, can_move, classes, occurred_at";
+const SIGNAL_COLUMNS = "person_id, color, source, injured, can_move, classes, classified_by, occurred_at";
 
 /** 事業所の本人の信号（訓練でない物、発災から今まで）を本人ごとに */
 export async function loadOfficeSignals(db: D1Database, officeId: string, s: Situation): Promise<Map<string, TriageSignal[]>> {

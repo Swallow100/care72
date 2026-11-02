@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 import { SEED_PEOPLE } from "../../seed/people.ts";
-import { triageInDisaster } from "../disaster/triage.ts";
+import { toTriageSignal, triageInDisaster, type SignalForTriage } from "../disaster/triage.ts";
 import { foldSignals, toTriagePerson } from "./from-ledger.ts";
 import type { Situation, TriageSignal } from "./index.ts";
 
@@ -69,6 +69,47 @@ describe("foldSignals", () => {
     const out = foldSignals(yamada, [red(0.6), red(0.5, { canMove: false })]);
     expect(out[0].canMove).toBe(false);
     expect(out[1].canMove).toBe(false);
+  });
+});
+
+describe("分類が Claude か人か（classified_by、T12）", () => {
+  const row = (classes: string[] | null, by: "claude" | "care_manager" | null, h: number, x: Partial<SignalForTriage> = {}) =>
+    toTriageSignal({
+      person_id: "p-01",
+      color: "red",
+      source: "self",
+      injured: null,
+      can_move: null,
+      classes: classes ? JSON.stringify(classes) : null,
+      classified_by: by,
+      occurred_at: at(h),
+      ...x,
+    });
+  const reason = (signals: TriageSignal[]) => triageInDisaster({ person: yamada, signals, town: null }, S).reason;
+
+  it("Claude の分類は「録音の分類（AI）」、ケアマネが直した分類は「分類（ケアマネ）」（AI の印なし）", () => {
+    expect(row(["immobile"], "care_manager", 0.5)).toMatchObject({ staffClasses: ["immobile"] });
+    expect(row(["immobile"], "care_manager", 0.5).classes).toBeUndefined();
+    expect(reason([row(["immobile"], "claude", 0.5)])).toBe("録音の分類（AI）: 動けない");
+    expect(reason([row(["immobile"], "care_manager", 0.5)])).toBe("分類（ケアマネ）: 動けない");
+    expect(reason([row(["immobile"], "care_manager", 0.5)])).not.toContain("AI");
+  });
+
+  it("ボタンの答えは分類より先。答えにある言葉は分類から重ねない", () => {
+    expect(reason([row(["immobile", "injury"], "care_manager", 0.5, { can_move: 0 })])).toBe("本人が「動けない」、分類（ケアマネ）: けが");
+  });
+
+  it("重ねて読むとき、ケアマネが外した分類を前の赤から戻さない（人の直しが最新として勝つ）", () => {
+    // 前の赤は Claude が「動けない」、次の赤をケアマネが「不明」に直した → あとの答えなしの赤でも「動けない」は戻らない
+    const signals = [row(["immobile"], "claude", 0.5), row(["unknown"], "care_manager", 0.6), row(null, null, 0.7)];
+    const r = triageInDisaster({ person: yamada, signals, town: null }, S);
+    expect(r).toMatchObject({ rule: "red", reason: "本人が「無事じゃない」" });
+    // ケアマネが「けが」に直した: 前の Claude の「動けない」は捨て、人の「けが」だけ
+    expect(reason([row(["immobile"], "claude", 0.5), row(["injury"], "care_manager", 0.6)])).toBe("分類（ケアマネ）: けが");
+    // 直したあとの新しい録音の Claude の分類は足す
+    expect(reason([row(["injury"], "care_manager", 0.5), row(["immobile"], "claude", 0.6)])).toBe(
+      "分類（ケアマネ）: けが、録音の分類（AI）: 動けない",
+    );
   });
 });
 

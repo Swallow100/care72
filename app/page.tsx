@@ -50,8 +50,14 @@ type Props = {
 const ADD_BUTTON = "rounded-md bg-accent px-4 py-2 text-sm font-bold text-on-accent";
 
 /**
- * 行の詳細の「分類と直す口」（T12 の部品）。信号ごとに描く。T12 の部品ができたらここで渡す
- * （例: (signal) => <Classify signal={signal} />）。無ければ行の詳細が信号の分類を読むだけで出し、無ければ「分類なし」
+ * 行の詳細の「分類と直す口」の差し込み口（T12 の components/list/Classification.tsx）。録音か文字起こしのある信号ごとに描く。
+ * T12（PR #13）を main に入れたら、ここを次の形にする（信号の行は SELECT * なので ai_* の列も入っている）:
+ *   import { Classification } from "@/components/list/Classification";
+ *   import { classViewOf, type SignalClassFields } from "@/lib/classify/view";
+ *   const CLASSIFICATION: ClassificationSlot = (s) => (
+ *     <Classification signalId={s.id} view={classViewOf(s.row as unknown as SignalClassFields)} editable inset />
+ *   );
+ * それまでは行の詳細が信号の分類を読むだけで出し（Claude の分類に AI の印）、無ければ「分類なし」
  */
 const CLASSIFICATION: ClassificationSlot | undefined = undefined;
 

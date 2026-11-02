@@ -127,6 +127,11 @@ export type DetailSignal = {
   transcript: string | null;
   classes: RecordingClass[];
   classifiedBy: Classifier | null;
+  /**
+   * 信号の行そのもの（サーバーの中だけで使う）。分類の部品（T12 の components/list/Classification.tsx）は
+   * lib/classify/view.ts の classViewOf にこの行（ai_* の列を含む）を渡して形を作る
+   */
+  row: SignalForDetail;
 };
 
 export type DetailOverride = {
@@ -245,6 +250,7 @@ function detailSignal(s: SignalForDetail): DetailSignal {
     transcript: s.transcript?.trim() || null,
     classes: parseClasses(s.classes),
     classifiedBy: s.classified_by,
+    row: s,
   };
 }
 
