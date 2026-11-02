@@ -30,6 +30,7 @@ import {
   type PersonRow,
   type PersonReportedAge,
   type SignalColor,
+  type ThirdPartyProvisionRow,
   type TimelineEntryRow,
   type TimelineKind,
 } from "./db/types.ts";
@@ -77,6 +78,17 @@ import type { PersonBrief } from "./auth/scope.ts";
 import { withQrView } from "./qr/timeline.ts";
 import { officeEntryOf, withOfficeEntry } from "./office/timeline.ts";
 import { withCustodyEntry } from "./custody/timeline.ts";
+import { PROVISION_BASIS_LABELS, PROVISION_SECTION_LABELS, PROVISION_TIMELINE_LABEL } from "./consent/labels.ts";
+import {
+  PROVISION_SECTIONS,
+  peopleMode,
+  scopeHas,
+  viewScope,
+  type ProvisionSection,
+  type ScopeDocument,
+  type ViewScope,
+  type WritableKind,
+} from "./consent/scope.ts";
 
 // ---------- 区分と並び ----------
 
@@ -271,6 +283,13 @@ export type TimelineItem = {
   derived: boolean;
   /** Claude の出力を人が確かめて入れた行（入れる欄の保存）。画面に「AI」の印 */
   ai?: true;
+  /**
+   * 医療班・行政の書いた行（書き足し・受入・搬送・退所・その場の登録）と提供の行。
+   * 医療班への提供に同意の無い人の経過を医療班・行政が開くと、この行だけ出す（lib/consent/scope.ts の timeline "staff"）
+   */
+  staff?: true;
+  /** 同意を記録・変えた行。同意の区分が範囲の外の人（医療班・行政）には出さない */
+  consent?: true;
 };
 
 export type Block =
@@ -311,6 +330,11 @@ export type PersonHead = {
   clocks: Array<{ id: string; label: string; value: string | null; tone: StateTone | null }>;
   /** 緊急連絡先（順番つき、電話のリンク）。上に大きく出す */
   emergency: Line[];
+  /**
+   * 範囲（lib/consent/scope.ts）で出す物。false の物は値を空にしてあり、画面は欄ごと出さない（「非表示」とも書かない）。
+   * medical: 介護度・医療の印・時計・優先の理由と骨格の段、people: 緊急連絡先、plan: 避難計画と未確認の数
+   */
+  show: { medical: boolean; people: boolean; plan: boolean };
 };
 
 export type UnconfirmedItem = { section: SectionId; field: string; status: PendingStatus; label: string };
@@ -320,8 +344,10 @@ export type PersonView = {
   mode: PageMode;
   /** sectionOrder の順 */
   sections: Section[];
-  /** 台帳の pending と、画面のどの区分・欄に出たか（T03 の問いの元） */
+  /** 台帳の pending と、画面のどの区分・欄に出たか（T03 の問いの元）。範囲の外の区分の物は入れない */
   unconfirmed: UnconfirmedItem[];
+  /** 経過に書き足せる種類（lib/consent/scope.ts）。空なら書き足しの欄を出さない。範囲を渡さないとき（担当一覧の右の面）は空 */
+  writes: WritableKind[];
 };
 
 // ---------- 入力（D1 の行） ----------
@@ -353,7 +379,15 @@ export type PersonPageRows = {
   clocks: ReadonlyArray<ClockRow>;
   /** 経過の行。signal_color は信号の行の色（信号の表から） */
   timeline: ReadonlyArray<TimelineEntryRow & { author_name: string | null; signal_color: SignalColor | null }>;
+  /** 第三者提供の記録（T23）。経過に「提供 医療班 医療・避難・人の一部」の 1 行で出す。D1 から読んだときだけ */
+  provisions?: ReadonlyArray<ProvisionForTimeline>;
 };
+
+/** 経過に出す第三者提供の記録の列 */
+export type ProvisionForTimeline = Pick<
+  ThirdPartyProvisionRow,
+  "id" | "recipient_role" | "recipient_name" | "recipient_judge" | "basis" | "scope" | "provided_at"
+>;
 
 // ---------- 小さな道具 ----------
 
@@ -622,6 +656,33 @@ function supportField(e: Ledger["evacuation"]): Field {
 /** 人の区分で出す連絡先の種類（ほかの区分に出す物: 本人の電話は基本、かかりつけ・薬局・透析施設は医療） */
 const SHOWN_ELSEWHERE = new Set<Contact["kind"]>(["self", "home_doctor", "pharmacy", "dialysis_center"]);
 
+/** 人の一部（医療班・行政。lib/consent/scope.ts の people_partial）で残す欄: 緊急連絡先と支援者 1・2（役割名だけ） */
+const PARTIAL_PEOPLE_KEYS = ["people.emergency", "people.supporter1", "people.supporter2"] as const;
+
+/** 支援者の役割名（間柄か種類）。名前・電話・どこにいるか・備考は出さない */
+function supporterRoleLine(c: Contact): Line {
+  const relation = c.relation?.trim();
+  const segs: Seg[] = [text(relation || CONTACT_KIND_LABELS[c.kind])];
+  if (relation && c.kind !== "family" && c.kind !== "supporter") segs.push(muted(CONTACT_KIND_LABELS[c.kind]));
+  return segs;
+}
+
+/**
+ * 人の区分を「人の一部」に: 緊急連絡先（名前・電話つき）と、支援者 1・2 を役割名だけ。ほかの欄（家族・民生委員・みまもり員・
+ * 夜間支援・関係先と、欄の無い場所の未確認）は出さない。欄に付いた未確認はそのまま
+ */
+function partialPeopleBlocks(blocks: Block[], contacts: Contact[]): Block[] {
+  const supporters = contacts.filter((c) => c.supporter_order != null);
+  return blocks.flatMap((b): Block[] => {
+    if (b.type !== "row" || !(PARTIAL_PEOPLE_KEYS as readonly string[]).includes(b.row.key)) return [];
+    if (b.row.key === "people.emergency") return [b];
+    const n = b.row.key === "people.supporter1" ? 1 : 2;
+    const c = supporters.find((s) => s.supporter_order === n);
+    if (!c) return [b];
+    return [{ type: "row", row: { ...b.row, field: { kind: "lines", lines: [supporterRoleLine(c)] } } }];
+  });
+}
+
 function peopleBlocks(contacts: Contact[], ledger: Ledger): Block[] {
   const byOrder = (key: "emergency_order" | "supporter_order") =>
     contacts.filter((c) => c[key] != null).sort((a, b) => (a[key] ?? 0) - (b[key] ?? 0));
@@ -735,8 +796,9 @@ function consentBlocks(consents: PersonPageRows["consents"]): Block[] {
   });
 }
 
-function documentBlocks(personId: string): Block[] {
-  const keys = Object.keys(DOCUMENT_LABELS) as Array<keyof typeof DOCUMENT_LABELS>;
+/** 書類の区分。範囲（lib/consent/scope.ts の documents）にある書類だけ */
+function documentBlocks(personId: string, allowed: readonly ScopeDocument[]): Block[] {
+  const keys = (Object.keys(DOCUMENT_LABELS) as Array<keyof typeof DOCUMENT_LABELS>).filter((k) => allowed.includes(k));
   return [
     {
       type: "documents",
@@ -797,11 +859,45 @@ function timelineTone(t: PersonPageRows["timeline"][number]): StateTone | null {
   return TIMELINE_TONES[t.kind] ?? null;
 }
 
+/** 医療班・行政の書いた行（lib/consent/scope.ts の timeline "staff" で出す行） */
+const STAFF_AUTHORS = new Set<TimelineEntryRow["author_role"]>(["medical", "government"]);
+
+/** 記録の区分の JSON を、言葉の順（本人確認・医療・避難・人の一部・住所）に。知らない値は落とす */
+function provisionSections(scope: string): ProvisionSection[] {
+  try {
+    const v = JSON.parse(scope) as unknown;
+    if (!Array.isArray(v)) return [];
+    return PROVISION_SECTIONS.filter((s) => v.includes(s));
+  } catch {
+    return [];
+  }
+}
+
+/** 提供の 1 行: 種類「提供」、本文は渡した区分と根拠（医療・避難・人の一部 同意）、誰がは相手の役と名前 */
+function provisionItem(pr: ProvisionForTimeline): TimelineItem {
+  // 本人確認はほかの区分があれば言わない（「医療・避難・人の一部」）。本人確認だけなら「本人確認」
+  const all = provisionSections(pr.scope);
+  const rest = all.filter((s) => s !== "identity");
+  const sections = (rest.length > 0 ? rest : all).map((s) => PROVISION_SECTION_LABELS[s]);
+  return {
+    id: `derived-provision-${pr.id}`,
+    at: pr.provided_at,
+    when: formatJst(pr.provided_at),
+    kind: PROVISION_TIMELINE_LABEL,
+    tone: null,
+    body: [sections.join("・"), PROVISION_BASIS_LABELS[pr.basis]].filter((s) => s).join(" "),
+    who: who(AUTHOR_ROLE_LABELS[pr.recipient_role], pr.recipient_name ?? (pr.recipient_judge === 1 ? JUDGE_LABEL : null)),
+    derived: true,
+    staff: true,
+  };
+}
+
 /**
  * 経過。経過の表の行に、種の表から作れる物を足す:
  * - 本人の行を作った時刻 →「入力」（書き手は担当のケアマネ。医療班がその場で作った人は医療班）。
  *   利用者追加（T30）で作った人は、経過の表に「利用者追加」の行（書き手は足した人）があるので作らない
  * - 同意を記録した時刻 →「同意」（記録した人ごと・時刻ごとに 1 行）。同じ時刻の「同意」の行が経過の表にあれば作らない
+ * - 第三者提供の記録 →「提供」（相手の役と名前、渡した区分と根拠）
  * 並びは時刻の順（同じ時刻なら作った物が先）
  */
 export function timelineItems(rows: PersonPageRows): TimelineItem[] {
@@ -816,6 +912,8 @@ export function timelineItems(rows: PersonPageRows): TimelineItem[] {
     who: who(AUTHOR_ROLE_LABELS[t.author_role], t.author_name),
     derived: false,
     ...(intakePayloadOf(t)?.ai ? { ai: true as const } : {}),
+    ...(STAFF_AUTHORS.has(t.author_role) ? { staff: true as const } : {}),
+    ...(t.kind === "consent" ? { consent: true as const } : {}),
   }));
 
   const derived: TimelineItem[] = [];
@@ -833,8 +931,13 @@ export function timelineItems(rows: PersonPageRows): TimelineItem[] {
           ? AUTHOR_ROLE_LABELS.medical
           : who(AUTHOR_ROLE_LABELS.care_manager, rows.careManagerName),
       derived: true,
+      // その場で登録した人は医療班・行政が作った（T23）
+      ...(p.origin === "on_site" ? { staff: true as const } : {}),
     });
   }
+
+  // 第三者提供の記録（T23）は「提供 医療班 医療・避難・人の一部」の 1 行（書類の面には出さない）。同じ時刻の受入のあと
+  const provided = (rows.provisions ?? []).map(provisionItem);
 
   const storedConsentTimes = new Set(rows.timeline.filter((t) => t.kind === "consent").map((t) => t.occurred_at));
   const groups = new Map<string, Array<PersonPageRows["consents"][number]>>();
@@ -856,18 +959,25 @@ export function timelineItems(rows: PersonPageRows): TimelineItem[] {
       body: ordered.map((c) => `${CONSENT_KIND_LABELS[c.kind]} ${CONSENT_STATUS_LABELS[c.status]}`).join("・"),
       who: who(accountRoleLabel(first.recorded_by_role), first.recorded_by_name),
       derived: true,
+      consent: true,
     });
   }
 
   // QR の頁の閲覧（kind は note、payload の source が qr_view）は「QR 閲覧」と相手（lib/qr/timeline.ts）。
   // 利用者追加・担当変更・一覧除外・一覧復帰・引受（source が office）はその種類（lib/office/timeline.ts）。
   // 医療班・行政の受入・搬送・退所（source が custody）は「受入」「搬送」「退所」（lib/custody/timeline.ts）
-  return [
-    ...derived,
-    ...stored.map((item, i) => withCustodyEntry(withOfficeEntry(withQrView(item, rows.timeline[i]), rows.timeline[i]), rows.timeline[i])),
-  ]
-    .map((item, i) => ({ item, i, t: Date.parse(item.at) }))
-    .sort((a, b) => a.t - b.t || Number(b.item.derived) - Number(a.item.derived) || a.i - b.i)
+  // 同じ時刻の並び: 作った物（入力・同意）→ 経過の表の行 → 提供
+  const grouped = [
+    ...derived.map((item) => ({ item, g: 0 })),
+    ...stored.map((item, i) => ({
+      item: withCustodyEntry(withOfficeEntry(withQrView(item, rows.timeline[i]), rows.timeline[i]), rows.timeline[i]),
+      g: 1,
+    })),
+    ...provided.map((item) => ({ item, g: 2 })),
+  ];
+  return grouped
+    .map((x, i) => ({ ...x, i, t: Date.parse(x.item.at) }))
+    .sort((a, b) => a.t - b.t || a.g - b.g || a.i - b.i)
     .map((x) => x.item);
 }
 
@@ -981,11 +1091,58 @@ export type ViewOptions = {
   mode?: PageMode;
   /** 発災時のルールの表の結果（T09・T13 が渡す） */
   triage?: TriageResult | null;
+  /**
+   * 見る人の範囲（lib/consent/scope.ts）。無ければケアマネの範囲（全部）。
+   * 範囲の外の区分・欄は作らない（「非表示」とも書かない）。医療班・行政は app/people/[id] が scopeOfRows で渡す
+   */
+  scope?: ViewScope;
 };
+
+/** 区分の中の未確認の数（欄と時計に付いた pending） */
+function pendingCount(blocks: readonly Block[]): number {
+  return blocks.reduce(
+    (n, b) =>
+      n + (b.type === "row" ? b.row.pending.length : b.type === "clocks" ? b.clocks.reduce((m, k) => m + k.pending.length, 0) : 0),
+    0,
+  );
+}
+
+/** 範囲で見える区分 */
+function sectionVisible(id: SectionId, scope: ViewScope): boolean {
+  switch (id) {
+    case "medical":
+    case "evacuation":
+    case "consent":
+      return scopeHas(scope, id);
+    case "people":
+      return peopleMode(scope) !== null;
+    case "basic":
+      return scopeHas(scope, "basic") || scopeHas(scope, "address");
+    case "documents":
+      return (Object.keys(DOCUMENT_LABELS) as ScopeDocument[]).some((k) => scope.documents.includes(k));
+    case "timeline":
+      return scope.timeline !== "none";
+  }
+}
+
+/** 範囲で区分の中を絞る（人の一部・住所だけの基本・医療班の書いた行だけの経過） */
+function scopedBlocks(id: SectionId, blocks: Block[], scope: ViewScope, contacts: Contact[]): Block[] {
+  if (id === "people" && peopleMode(scope) === "partial") return partialPeopleBlocks(blocks, contacts);
+  if (id === "basic" && !scopeHas(scope, "basic")) {
+    return blocks.filter((b) => b.type === "row" && b.row.key === "basic.address");
+  }
+  if (id === "timeline") {
+    // 本人確認だけなら医療班・行政の書いた行と提供の行だけ。同意の区分が範囲の外なら同意の行も出さない
+    const keep = (t: TimelineItem) => (scope.timeline !== "staff" || t.staff === true) && (scopeHas(scope, "consent") || !t.consent);
+    return blocks.map((b) => (b.type === "timeline" ? { ...b, items: b.items.filter(keep) } : b));
+  }
+  return blocks;
+}
 
 export function toPersonView(rows: PersonPageRows, opts: ViewOptions): PersonView {
   const mode = opts.mode ?? "normal";
   const { person } = rows;
+  const scope = opts.scope ?? viewScope("care_manager", { consents: rows.consents, origin: person.origin });
   const ledger = parseLedger(person.ledger);
   const contacts = [...rows.contacts].sort((a, b) => a.sort - b.sort || (a.id < b.id ? -1 : 1));
   const clocks = [...rows.clocks].sort((a, b) => a.sort - b.sort || (a.id < b.id ? -1 : 1));
@@ -996,39 +1153,59 @@ export function toPersonView(rows: PersonPageRows, opts: ViewOptions): PersonVie
     ["people", peopleBlocks(contacts, ledger)],
     ["basic", basicBlocks({ ...rows, contacts }, ledger)],
     ["consent", consentBlocks(rows.consents)],
-    ["documents", documentBlocks(person.id)],
+    ["documents", documentBlocks(person.id, scope.documents)],
     ["timeline", [{ type: "timeline", items: timelineItems(rows) }]],
   ]);
   const unconfirmed = attachPending(sections, ledger, rows);
 
+  const show = {
+    medical: scopeHas(scope, "medical"),
+    people: peopleMode(scope) !== null,
+    plan: scopeHas(scope, "plan"),
+  };
   const tier = tierOf(toTriagePerson({ person, ledger, contacts, clocks }));
   const marks = markItems(clocks);
   const strongest = marks.map((m) => m.tone).filter((t) => t !== null).sort((a, b) => TONE_RANK[b] - TONE_RANK[a])[0];
+  const priority = priorityOf(tier, opts.triage, strongest ?? null);
   const head: PersonHead = {
     id: person.id,
     name: person.name,
     kana: person.kana,
     // 生年月日が無ければ申告の年齢（その場で登録した人、T23）
     age: person.birth_date ? ageOn(person.birth_date, opts.today) : (person.reported_age ?? null),
-    careLevel: ledger.care.careLevel ? CARE_LEVEL_LABELS[ledger.care.careLevel] : null,
-    marks,
-    priority: priorityOf(tier, opts.triage, strongest ?? null),
+    careLevel: show.medical && ledger.care.careLevel ? CARE_LEVEL_LABELS[ledger.care.careLevel] : null,
+    marks: show.medical ? marks : [],
+    // 医療が範囲の外なら、状態の色と言葉だけ（理由は時計・薬の名前が入るので空にする。骨格の段は画面に出さない）
+    priority: show.medical || priority.kind === "tier" ? priority : { ...priority, reason: "" },
     plan: PLAN_STATUS_LABELS[person.plan_status],
-    unconfirmed: ledger.pending.length,
-    clocks: headClocks(clocks),
-    emergency: headEmergency(contacts),
+    unconfirmed: show.plan ? ledger.pending.length : 0,
+    clocks: show.medical ? headClocks(clocks) : [],
+    emergency: show.people ? headEmergency(contacts) : [],
+    show,
   };
+
+  const shown = sectionOrder(mode)
+    .filter((id) => sectionVisible(id, scope))
+    .map((id): Section => {
+      const blocks = scopedBlocks(id, sections.get(id)!, scope, contacts);
+      return { id, label: SECTION_LABELS[id], blocks, unconfirmed: pendingCount(blocks) };
+    });
+  // T03 の問いの元も見える欄の物だけ（医療班・行政に範囲の外の欄の名前を渡さない）
+  const kept = new Set(
+    shown.flatMap((s) =>
+      s.blocks.flatMap((b) =>
+        (b.type === "row" ? b.row.pending : b.type === "clocks" ? b.clocks.flatMap((k) => k.pending) : []).map((p) => p.field),
+      ),
+    ),
+  );
 
   return {
     head,
     mode,
-    sections: sectionOrder(mode).map((id) => ({
-      id,
-      label: SECTION_LABELS[id],
-      blocks: sections.get(id)!,
-      unconfirmed: unconfirmed.filter((u) => u.section === id).length,
-    })),
-    unconfirmed,
+    sections: shown,
+    unconfirmed: unconfirmed.filter((u) => kept.has(u.field)),
+    // 書き足しの欄は範囲を渡した画面（単独の本人のページ）だけ。担当一覧の右の面は電話・優先変更の欄があるので出さない
+    writes: opts.scope ? [...opts.scope.writes] : [],
   };
 }
 
@@ -1049,7 +1226,7 @@ export async function loadPersonPage(db: D1Database, principal: Principal, perso
  * そこでは署名と版を確かめたトークンが壁の代わり
  */
 export async function loadPersonRows(db: D1Database, brief: PersonBrief): Promise<PersonPageRows | null> {
-  const [extra, contacts, consents, clocks, timeline] = await db.batch([
+  const [extra, contacts, consents, clocks, timeline, provisions] = await db.batch([
     db
       .prepare(
         `SELECT p.origin, p.self_report_unreliable, p.created_at, p.updated_at, p.version, p.reported_age,
@@ -1084,6 +1261,12 @@ export async function loadPersonRows(db: D1Database, brief: PersonBrief): Promis
           WHERE t.person_id = ?1 ORDER BY t.occurred_at, t.created_at, t.id`,
       )
       .bind(brief.id),
+    db
+      .prepare(
+        `SELECT id, recipient_role, recipient_name, recipient_judge, basis, scope, provided_at
+           FROM third_party_provisions WHERE person_id = ?1 ORDER BY provided_at, id`,
+      )
+      .bind(brief.id),
   ]);
   const e = extra.results[0] as
     | Pick<PersonRow, "origin" | "self_report_unreliable" | "created_at" | "updated_at" | "version"> &
@@ -1115,5 +1298,6 @@ export async function loadPersonRows(db: D1Database, brief: PersonBrief): Promis
     consents: consents.results as unknown as PersonPageRows["consents"],
     clocks: clocks.results as unknown as PersonPageRows["clocks"],
     timeline: timeline.results as unknown as PersonPageRows["timeline"],
+    provisions: provisions.results as unknown as ProvisionForTimeline[],
   };
 }

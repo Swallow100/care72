@@ -135,9 +135,10 @@ export type TriageResult = {
 
 /**
  * 医療班・行政の受け入れ 1 回（T23、lib/custody）。避難所に着いた知らせとして、時刻で信号と並べ、緑の 1 つに数える。
- * 理由は「到着 避難所の名前」。受け入れより後の赤は赤のまま
+ * 理由は「到着 避難所の名前」。受け入れより後の赤は赤のまま。
+ * 搬送で閉じた受け入れ（T24）は、搬送の時刻にもう 1 つの緑として並べ、理由は「搬送 行き先」（行き先が無ければ「搬送」）
  */
-export type TriageArrival = { at: string; shelter: string };
+export type TriageArrival = { at: string; shelter: string; transported?: { at: string; to: string | null } };
 
 /** 1 人ぶんの入力。signals は信号の全部、arrivals は受け入れの全部（順は問わない） */
 export type TriageEntry = {
@@ -250,6 +251,10 @@ export const READING: ReadonlyArray<{ text: string; origin: string }> = [
     text: "医療班・行政が避難所で受け入れた知らせは緑の信号と同じに時刻で並べる。いちばん新しければ理由は「到着 避難所の名前」。受け入れより後の赤は赤",
     origin: "仕様書（画面 6）・T23",
   },
+  {
+    text: "受け持ちを搬送で閉じた知らせも緑の信号と同じに搬送の時刻で並べる。いちばん新しければ理由は「搬送 行き先」（行き先が無ければ「搬送」）。退所は「到着」のまま。搬送より後の赤は赤",
+    origin: "T24",
+  },
   { text: "時計は停電か発災から走る。停電していなければ停電で走る時計は止まったまま", origin: "仕様書" },
   { text: "「超えた」「過ぎた」はちょうどを含まない。仕様書の「12 時間までは灰」に合わせた", origin: "決めた所" },
   { text: "機器の時計は種類が機器（A）の時計。機器以外の時計は物（B）・薬（C）。本人の状態（D）は走らない", origin: "決めた所" },
@@ -318,9 +323,20 @@ export function clockRemaining(clock: TriageClock, s: Situation): ClockRemaining
  * 表の中で読む信号。電話の画面の信号に、医療班・行政の受け入れ（arrivals）を出どころ staff・避難所の名前つきの緑として足す。
  * 外へ出す TriageSignal の形は変えない（担当一覧の最終連絡の列などは電話の信号だけを読む）
  */
-type ReadSignal = Omit<TriageSignal, "source"> & { source: SignalSource | "staff"; shelter?: string };
+type ReadSignal = Omit<TriageSignal, "source"> & {
+  source: SignalSource | "staff";
+  shelter?: string;
+  /** 搬送（T24）。to は行き先（無ければ null） */
+  transport?: { to: string | null };
+};
 
-const arrivalSignal = (a: TriageArrival): ReadSignal => ({ color: "green", source: "staff", at: a.at, shelter: a.shelter });
+/** 受け入れ 1 回を読む信号に: 到着と、搬送で閉じていれば搬送（どちらも緑、出どころ staff） */
+const arrivalSignals = (a: TriageArrival): ReadSignal[] => [
+  { color: "green", source: "staff", at: a.at, shelter: a.shelter },
+  ...(a.transported
+    ? [{ color: "green" as const, source: "staff" as const, at: a.transported.at, transport: { to: a.transported.to } }]
+    : []),
+];
 
 /** 本人からの信号か（訓練の本人役を含む） */
 const isFromSelf = (sig: ReadSignal) => sig.source === "self" || sig.source === "agent";
@@ -606,8 +622,15 @@ export const RULES: ReadonlyArray<Rule> = [
     origin: "仕様書",
     why: "本人・家族が無事と答えた → 連絡の順は一番下。時計が進めば上の行に移る",
     sourceIds: ["mhlw-bcp-2020"],
-    // 医療班・行政の受け入れ（T23）は「到着 避難所の名前」
-    match: (x) => (x.signal?.shelter ? `到着 ${x.signal.shelter}` : `${who(x)}が「無事」`),
+    // 医療班・行政の受け入れ（T23）は「到着 避難所の名前」、搬送（T24）は「搬送 行き先」
+    match: (x) =>
+      x.signal?.transport
+        ? x.signal.transport.to
+          ? `搬送 ${x.signal.transport.to}`
+          : "搬送"
+        : x.signal?.shelter
+          ? `到着 ${x.signal.shelter}`
+          : `${who(x)}が「無事」`,
   },
 ];
 
@@ -689,7 +712,7 @@ function uncheckedOf(person: TriagePerson): DependsOn[] {
 export function triage(entry: TriageEntry, situation: Situation): TriageResult {
   const { person } = entry;
   const states = clockStates(person, situation);
-  const { signal, setAside } = readSignals(person, [...entry.signals, ...(entry.arrivals ?? []).map(arrivalSignal)], situation);
+  const { signal, setAside } = readSignals(person, [...entry.signals, ...(entry.arrivals ?? []).flatMap(arrivalSignals)], situation);
   const input: RuleInput = {
     person,
     signal,

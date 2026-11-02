@@ -2,7 +2,8 @@
 // 簡素にしない。台帳の項目は区分ごとに全部出し、小さな字と密度で PC の 1 画面に収める。
 // 大事な物（優先と理由・医療の印・時計の残り・緊急連絡先）は上に大きく、細かい物は小さく。
 // 区分は面の幅に合わせて 1〜3 段に流す（container query）。区分の順は lib/person.ts の sectionOrder（発災時は経過が一番上）。
-// 入れる欄（T03）はここに置かない。
+// 入れる欄（T03）はここに置かない。経過の書き足し（T24）は経過の区分の上（書ける種類があるときだけ）。
+// 見える区分と欄は lib/person.ts の toPersonView が見る人の範囲（lib/consent/scope.ts）で決める。ここは来た物を描くだけ。
 
 import Link from "next/link";
 import type { Block, ClockView, DocumentView, PersonView as View, Section } from "@/lib/person";
@@ -10,6 +11,7 @@ import { BLANK_LABELS, CLOCK_PARTS } from "@/lib/labels";
 import { Blank, PendingMark, RowItem, StateTag, TONE_TEXT, type Level } from "./parts";
 import { PersonHead } from "./PersonHead";
 import { Timeline } from "./Timeline";
+import { TimelineComposer } from "./TimelineComposer";
 
 export function PersonView({ view, level }: { view: View; level: Level }) {
   const base = `person-${view.head.id}`;
@@ -18,14 +20,27 @@ export function PersonView({ view, level }: { view: View; level: Level }) {
       <PersonHead head={view.head} level={level} titleId={`${base}-title`} />
       <div className="gap-x-2 @[40rem]:columns-2 @5xl:columns-3">
         {view.sections.map((s) => (
-          <SectionPanel key={s.id} section={s} level={level} titleId={`${base}-${s.id}`} />
+          <SectionPanel key={s.id} section={s} level={level} titleId={`${base}-${s.id}`}>
+            {/* 経過の書き足し（T24）。書ける種類（役と同意。lib/consent/scope.ts）があるときだけ、経過の上に */}
+            {s.id === "timeline" && view.writes.length > 0 && <TimelineComposer personId={view.head.id} kinds={view.writes} />}
+          </SectionPanel>
         ))}
       </div>
     </div>
   );
 }
 
-function SectionPanel({ section, level, titleId }: { section: Section; level: Level; titleId: string }) {
+function SectionPanel({
+  section,
+  level,
+  titleId,
+  children,
+}: {
+  section: Section;
+  level: Level;
+  titleId: string;
+  children?: React.ReactNode;
+}) {
   const H = level === 1 ? "h2" : "h3";
   return (
     <section
@@ -44,6 +59,7 @@ function SectionPanel({ section, level, titleId }: { section: Section; level: Le
         )}
       </div>
       <div className="mt-1.5">
+        {children}
         <Blocks blocks={section.blocks} />
       </div>
     </section>

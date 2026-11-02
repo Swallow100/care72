@@ -33,6 +33,8 @@ function F({
   /** 選ぶ欄の □ の名前が欄の名前と同じときは、欄の名前を出さない */
   bare?: boolean;
 }) {
+  // 範囲の外の欄（医療班・行政の住所・本人の電話。T24）は描かない
+  if (s.hidden?.includes(k)) return null;
   return (
     <div className={size} data-field={k} style={style}>
       {!bare && <span className="f-l">{label ?? medicalField(k).label}</span>}
@@ -44,6 +46,20 @@ function F({
 }
 
 const cols = (template: string): CSSProperties => ({ gridTemplateColumns: template });
+
+/** 患者の 2 行目（電話・住所・家・住まい）の列。描かない欄（T24）の列は詰める */
+function patientRow2(s: MedicalSummary): string {
+  const widths: Array<[MedicalKey, string]> = [
+    ["patient.phone", "0.95fr"],
+    ["patient.address", "0.85fr"],
+    ["patient.house", "1.1fr"],
+    ["patient.dwelling", "1.3fr"],
+  ];
+  return widths
+    .filter(([k]) => !s.hidden?.includes(k))
+    .map(([, w]) => w)
+    .join(" ");
+}
 const span = (n: number): CSSProperties => ({ gridColumn: `span ${n}` });
 
 /** 「2026 年 11 月 2 日」 */
@@ -194,7 +210,7 @@ export function MedicalSummaryPaper({
               <F s={s} k="patient.birth" size="lg" />
               <F s={s} k="patient.sex" />
             </div>
-            <div className="grid" style={cols("0.95fr 0.85fr 1.1fr 1.3fr")}>
+            <div className="grid" style={cols(patientRow2(s))}>
               <F s={s} k="patient.phone" />
               <F s={s} k="patient.address" />
               <F s={s} k="patient.house" label="状態（家）" />
