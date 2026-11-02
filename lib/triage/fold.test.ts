@@ -55,6 +55,16 @@ describe("foldSignals", () => {
     expect(out[2].injured).toBe(true);
   });
 
+  it("未知の信号（家族の「分からない」）は新しい情報なしとして外す。前の赤の引き継ぎも切らない", () => {
+    const unknown = (h: number): TriageSignal => ({ color: "unknown", source: "family", at: at(h) });
+    expect(foldSignals(yamada, [red(0.5), unknown(0.6)]).map((s) => s.color)).toEqual(["red"]);
+    expect(foldSignals(yamada, [green(0.5), unknown(0.6)]).map((s) => s.color)).toEqual(["green"]);
+    expect(foldSignals(yamada, [unknown(0.6)])).toEqual([]);
+    const out = foldSignals(yamada, [red(0.5, { injured: true }), unknown(0.6), red(0.7)]);
+    expect(out).toHaveLength(2);
+    expect(out[1].injured).toBe(true);
+  });
+
   it("時刻の順に読む（入れた順が逆でも）", () => {
     const out = foldSignals(yamada, [red(0.6), red(0.5, { canMove: false })]);
     expect(out[0].canMove).toBe(false);
@@ -77,6 +87,26 @@ describe("triageInDisaster は重ねて読んだ信号を表に渡す", () => {
       S,
     );
     expect(r).toMatchObject({ rule: "red_injury", reason: "録音の分類（AI）: 動けない" });
+  });
+
+  it("本人の赤のあとに家族が「分からない」（未知）: 赤のまま下がらない。そのあと緑が来たら赤が解ける", () => {
+    const unknown: TriageSignal = { color: "unknown", source: "family", at: at(0.6) };
+    const stays = triageInDisaster({ person: yamada, signals: [red(0.5, { canMove: false }), unknown], town: null }, S);
+    expect(stays).toMatchObject({ color: "red", rule: "red_injury", reason: "本人が「動けない」" });
+    const plain = triageInDisaster({ person: yamada, signals: [red(0.5), unknown], town: null }, S);
+    expect(plain).toMatchObject({ color: "red", rule: "red", reason: "本人が「無事じゃない」" });
+    const solved = triageInDisaster(
+      { person: yamada, signals: [red(0.5), unknown, green(0.7, { source: "family" })], town: null },
+      S,
+    );
+    expect(solved).toMatchObject({ color: "green", reason: "家族が「無事」" });
+  });
+
+  it("緑のあとの「分からない」で緑から下がらない（認知症の人の本人の緑は参考のまま）", () => {
+    const unknown: TriageSignal = { color: "unknown", source: "family", at: at(0.6) };
+    expect(triageInDisaster({ person: yamada, signals: [green(0.5), unknown], town: null }, S).color).toBe("green");
+    const r = triageInDisaster({ person: sato, signals: [green(0.5), unknown], town: null }, S);
+    expect(r.qualifiers).toContain("self_green_set_aside");
   });
 
   it("赤のあとの緑は緑（重ねて読むのは赤の中だけ）", () => {

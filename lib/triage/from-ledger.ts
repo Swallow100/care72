@@ -48,7 +48,9 @@ type Carry = { injured: boolean | null; canMove: boolean | null; classes: Record
  * - 録音の分類は前の赤の分類と合わせる（重ねない）
  * - 緑が来たら出来事は終わり（引き継がない）。本人の報告を当てにしない印の人の本人の緑は、表が使わないので終わりにしない
  * - 引き継ぐのは同じ出どころ（本人・家族…）の赤からだけ（理由の「本人が」「家族が」を取り違えない）
- * 色・並び・理由の言葉は表のまま。信号の数と順は変えず、赤の中身を埋めるだけ（緑・未知はそのまま）
+ * - 未知の信号（家族の「分からない」など）は新しい情報なしとして表に渡さない。前の赤・緑はそのまま効き、
+ *   赤から未知に下がらない（T11 の問い）。赤を解くのは緑だけ。ケアマネの電話の「不通」は信号でなく経過の行なので、もともと表に入らない
+ * 色・並び・理由の言葉は表のまま。赤の中身を埋め、未知を外すだけ（緑・赤の数と順は変えない）
  */
 export function foldSignals(
   person: Pick<TriagePerson, "selfReportUnreliable">,
@@ -57,14 +59,17 @@ export function foldSignals(
   const order = signals
     .map((sig, i) => ({ sig, i, t: Date.parse(sig.at) }))
     .sort((a, b) => (Number.isNaN(a.t) || Number.isNaN(b.t) ? 0 : a.t - b.t) || a.i - b.i);
-  const out: TriageSignal[] = [...signals];
+  const out: Array<TriageSignal | null> = [...signals];
   let carry = new Map<SignalSource, Carry>();
   for (const { sig, i } of order) {
     if (sig.color === "green") {
       if (!(person.selfReportUnreliable && fromSelf(sig.source))) carry = new Map();
       continue;
     }
-    if (sig.color !== "red") continue;
+    if (sig.color !== "red") {
+      out[i] = null;
+      continue;
+    }
     const prev = carry.get(sig.source);
     const injured = sig.injured ?? prev?.injured ?? null;
     const canMove = sig.canMove ?? prev?.canMove ?? null;
@@ -73,5 +78,5 @@ export function foldSignals(
     if (!prev) continue;
     out[i] = { ...sig, injured, canMove, ...(classes.length > 0 ? { classes } : {}) };
   }
-  return out;
+  return out.filter((s): s is TriageSignal => s !== null);
 }
