@@ -1,5 +1,5 @@
 // 市町村への安否報告の下書き。様式 9 の表を数え、決まった形の文にする（Claude は呼ばない）。
-// 安否は色ごとの人数（至急・要確認・未知・無事）、所在は結果の列の所在（自宅・避難所〔名前ごと〕・その他・搬送・不明）。
+// 安否は色ごとの人数（至急・要確認・不明・無事）、所在は結果の列の所在（自宅・避難所〔名前ごと〕・その他・搬送・不明）。
 // 名前は出さず人数だけ（市への集計は人数で足りる。docs/SPEC.md「画面 6」）。言葉は状態の 4 つの言葉だけを使う。
 
 import { COLOR_LABELS } from "../labels.ts";
@@ -86,7 +86,7 @@ export function form9Report(sheet: Form9Sheet, meta: ReportMeta): string {
   const following = t.colors.red + t.colors.yellow;
   if (following > 0) lines.push(`至急・要確認の ${n(following)}は事業所で連絡を続けています。`);
   const unknown = t.colors.gray;
-  if (unknown > 0) lines.push(`未知の ${n(unknown)}は安否を確かめています。`);
+  if (unknown > 0) lines.push(`不明の ${n(unknown)}は安否を確かめています。`);
   if (meta.contact) lines.push(`連絡先：${meta.contact}`);
   return lines.join("\n").trimEnd() + "\n";
 }

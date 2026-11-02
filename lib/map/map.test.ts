@@ -233,7 +233,7 @@ describe("ピン", () => {
     for (const r of results) {
       expect(pins.get(r.personId), r.personId).toBe(COLOR_TONES[r.color]);
       const pin = data.pins.find((p) => p.id === r.personId)!;
-      expect(pin.state).toBe({ red: "至急", yellow: "要確認", gray: "未知", green: "無事" }[r.color]);
+      expect(pin.state).toBe({ red: "至急", yellow: "要確認", gray: "不明", green: "無事" }[r.color]);
       expect(pin.title).toContain(r.reason);
     }
     // 筋のとおり色が分かれている（赤・黄・灰・緑がそろう）

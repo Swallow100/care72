@@ -101,7 +101,7 @@ describe("災害モードの画面", () => {
       const html = view(s);
       expect(buttons(html).length, s.step).toBeLessThanOrEqual(3);
       const t = text(html);
-      for (const w of ["戻る", "至急", "要確認", "未知", "診断", "判定", "重症"]) expect(t, `${s.step} ${w}`).not.toContain(w);
+      for (const w of ["戻る", "至急", "要確認", "不明", "診断", "判定", "重症"]) expect(t, `${s.step} ${w}`).not.toContain(w);
       // ふりがなを落とす前の漢字の数と、ruby の中の漢字の数が同じ
       const bare = html.replace(/<ruby>[\s\S]*?<\/ruby>/g, "").replace(/<[^>]+>/g, "");
       expect(bare.match(/[一-鿿々]/g), s.step).toBeNull();

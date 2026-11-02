@@ -199,7 +199,7 @@ describe("発災時の優先順位（TriageResult を渡す）", () => {
     expect(row(disaster, "p-01")).toMatchObject({ color: "red", reason: "家族が「動けない」" });
     expect(row(disaster, "p-01").cells.color).toBe("至急");
     expect(row(disaster, "p-03").cells.color).toBe("要確認");
-    expect(row(disaster, "p-04").cells.color).toBe("未知");
+    expect(row(disaster, "p-04").cells.color).toBe("不明");
     expect(row(disaster, "p-10").cells.color).toBe("無事");
     expect(colorCounts(disaster.rows)).toEqual({ red: 2, yellow: 1, gray: 4, green: 3 });
   });
@@ -402,7 +402,7 @@ describe("市町村への報告の下書き", () => {
         "対象：利用者 10 人（様式9 災害時利用者一覧表）",
         "",
         "【安否】",
-        "至急 2 人、要確認 1 人、未知 4 人、無事 3 人",
+        "至急 2 人、要確認 1 人、不明 4 人、無事 3 人",
         "",
         "【所在】",
         "自宅 2 人",
@@ -414,7 +414,7 @@ describe("市町村への報告の下書き", () => {
         "1 人",
         "",
         "至急・要確認の 3 人は事業所で連絡を続けています。",
-        "未知の 4 人は安否を確かめています。",
+        "不明の 4 人は安否を確かめています。",
         "",
       ].join("\n"),
     );

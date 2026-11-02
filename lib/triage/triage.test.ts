@@ -215,13 +215,13 @@ describe("案 1: 外の物に頼る時計の確認", () => {
     expect(one(tanaka, UNKNOWN, S.out6)).toMatchObject({
       color: "yellow",
       rule: "unknown_unchecked",
-      reason: "透析先 未確認、未確認 6 時間",
+      reason: "透析先 未確認、連絡なし 6 時間",
     });
-    expect(one(checked(tanaka), UNKNOWN, S.out6)).toMatchObject({ color: "gray", reason: "未確認 6 時間" });
+    expect(one(checked(tanaka), UNKNOWN, S.out6)).toMatchObject({ color: "gray", reason: "連絡なし 6 時間" });
   });
 
   it("ほかの行で色が決まったときも、理由に「透析先 未確認」を足す", () => {
-    expect(one(tanaka, UNKNOWN, S.dry30).reason).toBe("透析 次の回まで 残り 18 時間、未確認 30 時間、透析先 未確認");
+    expect(one(tanaka, UNKNOWN, S.dry30).reason).toBe("透析 次の回まで 残り 18 時間、連絡なし 30 時間、透析先 未確認");
     expect(one(tanaka, [green(0, "family")], S.out30).reason).toBe("無事だが透析 次の回まで 残り 18 時間、透析先 未確認");
     expect(one(tanaka, RED, S.calm)).toMatchObject({ color: "red", reason: "本人が「無事じゃない」、透析先 未確認" });
   });
@@ -317,7 +317,7 @@ describe("案 4: 本人の報告を当てにしない印", () => {
     expect(one(sato, [green(1)], S.out6)).toMatchObject({
       color: "gray",
       rule: "unknown",
-      reason: "未確認 6 時間、本人の緑は参考",
+      reason: "連絡なし 6 時間、本人の緑は参考",
       qualifiers: ["self_green_set_aside"],
     });
     expect(one(sato, [green(1, "agent")], S.out6).color).toBe("gray");
@@ -358,7 +358,7 @@ describe("案 5: 支援者なし", () => {
     expect(one(person("p-05"), UNKNOWN, S.out6)).toMatchObject({
       color: "gray",
       hasSupporter: false,
-      reason: "未確認 6 時間、支援者なし",
+      reason: "連絡なし 6 時間、支援者なし",
       qualifiers: ["no_supporter"],
     });
     expect(one(person("p-05"), RED, S.calm).reason).toBe("本人が「無事じゃない」、支援者なし");
@@ -456,8 +456,8 @@ describe("理由 1 行", () => {
     expect(r("p-09", [red({ canMove: false })], S.calm)).toBe("本人が「動けない」");
     expect(r("p-09", [red({ injured: true, canMove: false })], S.calm)).toBe("本人が「けが」「動けない」");
     expect(r("p-09", GREEN, S.calm)).toBe("本人が「無事」");
-    expect(r("p-09", UNKNOWN, S.calm)).toBe("未確認");
-    expect(r("p-09", UNKNOWN, S.out6)).toBe("未確認 6 時間");
+    expect(r("p-09", UNKNOWN, S.calm)).toBe("連絡なし");
+    expect(r("p-09", UNKNOWN, S.out6)).toBe("連絡なし 6 時間");
   });
 
   it("けが・動けないが録音・自由文の分類（Claude）から来たら AI の印、4 問の答え（ボタン）からなら今のまま", () => {

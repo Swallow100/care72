@@ -15,11 +15,11 @@
 | --- | --- | --- | --- | --- | --- |
 | 赤 ＋ けが・動けない | 赤（最上位） | 本人が「動けない」 | 仕様書 | けが・動けないは自分で避難できないという知らせ → 最初に電話し、行ける人を探す | [mhlw-bcp-2020](SOURCES.md#mhlw-bcp-2020) 未確認、[cao-shishin-2021](SOURCES.md#cao-shishin-2021) 未確認 |
 | 赤だけ（録音の水が来た・機器が止まった・不明を含む） | 赤 | 本人が「無事じゃない」 | 仕様書 | 本人・家族が助けを求めた → 中身が分からなくても先に電話 | [mhlw-bcp-2020](SOURCES.md#mhlw-bcp-2020) 未確認 |
-| 未知 ＋ 停電が機器の時計を超えた | 赤 | 酸素 内蔵電池 2 時間を超過 | 仕様書 | 返事がないまま停電が機器の電池の時間を超えた → 機器が止まっているおそれがあり至急 | [nanbyo-shishin-2017](SOURCES.md#nanbyo-shishin-2017) 未確認、[nanbyo-tsuiho-2022](SOURCES.md#nanbyo-tsuiho-2022) 未確認、[jrs-respiratory-2012](SOURCES.md#jrs-respiratory-2012) 未確認 |
-| 未知 ＋ 機器以外の時計（透析・インスリン・栄養剤・薬）を超えた | 赤 | 透析 次の回まで 2 日を超過 | 案 2 | 返事がないまま透析・インスリン・栄養剤・薬の限度を過ぎた → 続けられていないおそれがあり至急 | [jadp-dialysis-2023](SOURCES.md#jadp-dialysis-2023) 未確認、[jadec-insulin-2023](SOURCES.md#jadec-insulin-2023) 未確認、[nanbyo-shishin-2017](SOURCES.md#nanbyo-shishin-2017) 未確認、[jcs-disaster-2014](SOURCES.md#jcs-disaster-2014) 未確認 |
-| 未知 ＋ 時計の半分を過ぎた | 黄 | 透析 次の回まで 残り 18 時間、未確認 30 時間 | 仕様書 | 返事がないまま時計の半分を過ぎた → 切れる前に確かめる | [mhlw-bcp-2020](SOURCES.md#mhlw-bcp-2020) 未確認、[nanbyo-shishin-2017](SOURCES.md#nanbyo-shishin-2017) 未確認 |
-| 未知 ＋ 外の物に頼る時計の確認が未確認 | 黄 | 透析先 未確認、未確認 6 時間 | 案 1 を未知に広げた | 透析先・冷蔵・配達は外の事情で止まる → 本人に連絡がつかない間に頼り先を確かめる | [jadp-dialysis-2023](SOURCES.md#jadp-dialysis-2023) 未確認、[jadec-insulin-2023](SOURCES.md#jadec-insulin-2023) 未確認 |
-| 未知（時計の半分まで。薬だけで時計 24 時間なら 12 時間までは灰） | 灰 | 未確認 6 時間 | 仕様書 | 連絡がつかないだけでは様子は分からない → 時計の短い人から順に確かめる | [mhlw-bcp-2020](SOURCES.md#mhlw-bcp-2020) 未確認、[cao-shishin-2021](SOURCES.md#cao-shishin-2021) 未確認 |
+| 不明 ＋ 停電が機器の時計を超えた | 赤 | 酸素 内蔵電池 2 時間を超過 | 仕様書 | 返事がないまま停電が機器の電池の時間を超えた → 機器が止まっているおそれがあり至急 | [nanbyo-shishin-2017](SOURCES.md#nanbyo-shishin-2017) 未確認、[nanbyo-tsuiho-2022](SOURCES.md#nanbyo-tsuiho-2022) 未確認、[jrs-respiratory-2012](SOURCES.md#jrs-respiratory-2012) 未確認 |
+| 不明 ＋ 機器以外の時計（透析・インスリン・栄養剤・薬）を超えた | 赤 | 透析 次の回まで 2 日を超過 | 案 2 | 返事がないまま透析・インスリン・栄養剤・薬の限度を過ぎた → 続けられていないおそれがあり至急 | [jadp-dialysis-2023](SOURCES.md#jadp-dialysis-2023) 未確認、[jadec-insulin-2023](SOURCES.md#jadec-insulin-2023) 未確認、[nanbyo-shishin-2017](SOURCES.md#nanbyo-shishin-2017) 未確認、[jcs-disaster-2014](SOURCES.md#jcs-disaster-2014) 未確認 |
+| 不明 ＋ 時計の半分を過ぎた | 黄 | 透析 次の回まで 残り 18 時間、連絡なし 30 時間 | 仕様書 | 返事がないまま時計の半分を過ぎた → 切れる前に確かめる | [mhlw-bcp-2020](SOURCES.md#mhlw-bcp-2020) 未確認、[nanbyo-shishin-2017](SOURCES.md#nanbyo-shishin-2017) 未確認 |
+| 不明 ＋ 外の物に頼る時計の確認が未確認 | 黄 | 透析先 未確認、連絡なし 6 時間 | 案 1 を不明に広げた | 透析先・冷蔵・配達は外の事情で止まる → 本人に連絡がつかない間に頼り先を確かめる | [jadp-dialysis-2023](SOURCES.md#jadp-dialysis-2023) 未確認、[jadec-insulin-2023](SOURCES.md#jadec-insulin-2023) 未確認 |
+| 不明（時計の半分まで。薬だけで時計 24 時間なら 12 時間までは灰） | 灰 | 連絡なし 6 時間 | 仕様書 | 連絡がつかないだけでは様子は分からない → 時計の短い人から順に確かめる | [mhlw-bcp-2020](SOURCES.md#mhlw-bcp-2020) 未確認、[cao-shishin-2021](SOURCES.md#cao-shishin-2021) 未確認 |
 | 緑 ＋ 緑の報告のあとに機器の時計が切れた | 赤 | 緑の報告のあとに電池が切れた、酸素 内蔵電池 2 時間を超過 | 案 3 | 緑の報告は電池が切れる前の物 → 今も機器が動いているかは分からない | [nanbyo-tsuiho-2022](SOURCES.md#nanbyo-tsuiho-2022) 未確認、[nanbyo-shishin-2017](SOURCES.md#nanbyo-shishin-2017) 未確認 |
 | 緑 ＋ 機器の時計が切れたあとの緑の報告 | 黄 | 電池が切れたあとに緑の報告、酸素 内蔵電池 2 時間を超過 | 案 3（言い方を時計の事実に） | 電池が切れたあとに緑 → ボンベ・外部電池・発電機で動いている見込み。電源の中身を確かめる | [nanbyo-shishin-2017](SOURCES.md#nanbyo-shishin-2017) 未確認、[jrs-respiratory-2012](SOURCES.md#jrs-respiratory-2012) 未確認 |
 | 緑だが機器の時計の半分を過ぎた（切れる前） | 黄 | 無事だが酸素 内蔵電池 残り 30 分 | 仕様書 | 無事でも機器の電池の残りが少ない → 切れる前に予備の電源か電源のある避難先を確かめる | [nanbyo-tsuiho-2022](SOURCES.md#nanbyo-tsuiho-2022) 未確認、[jrs-respiratory-2012](SOURCES.md#jrs-respiratory-2012) 未確認 |
@@ -68,7 +68,7 @@
 
 | 読み方 | 元 |
 | --- | --- |
-| 信号は時刻のいちばん新しい物を使う。今より後の時刻の信号は使わない。信号が無ければ未知 | 決めた所 |
+| 信号は時刻のいちばん新しい物を使う。今より後の時刻の信号は使わない。信号が無ければ不明 | 決めた所 |
 | 本人の報告を当てにしない印（人が台帳で付ける）がある人は、本人（訓練の本人役を含む）の緑を使わない。家族・支援者・ケアマネの緑は使う。赤はそのまま赤 | 案 4 |
 | 時計は停電か発災から走る。停電していなければ停電で走る時計は止まったまま | 仕様書 |
 | 「超えた」「過ぎた」はちょうどを含まない。仕様書の「12 時間までは灰」に合わせた | 決めた所 |

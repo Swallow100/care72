@@ -102,7 +102,7 @@ async function post(fn: typeof overridePost, p: Principal | null, body: unknown,
 }
 
 describe("ケアマネの上書き", () => {
-  it("上げると担当一覧の色と並びが変わり、経過に「優先修正」。本人のページと様式 9 も同じ色", async () => {
+  it("上げると担当一覧の色と並びが変わり、経過に「優先変更」。本人のページと様式 9 も同じ色", async () => {
     await heavyRain();
     const before = await board(1);
     expect(before.find((r) => r.id === "p-09")!.triage!.color).toBe("gray");
@@ -114,18 +114,18 @@ describe("ケアマネの上書き", () => {
     const p9 = after.find((x) => x.id === "p-09")!;
     expect(p9.triage).toMatchObject({ color: "red", baseColor: "gray", override: { to: "red", reason: "近所で土砂", byName: "山本" } });
     expect(p9.rank).toBeLessThan(before.find((x) => x.id === "p-09")!.rank!);
-    expect(p9.detail!.override).toMatchObject({ toLabel: "至急", baseLabel: "未知", reason: "近所で土砂", byName: "山本", expired: false });
+    expect(p9.detail!.override).toMatchObject({ toLabel: "至急", baseLabel: "不明", reason: "近所で土砂", byName: "山本", expired: false });
 
     // 本人のページ・様式 9 も同じ色
     const page = await loadPersonPage(db, careManager(), "p-09");
     expect((await personDisaster(db, page!, at(1.1))).triage!.color).toBe("red");
     const form9 = await loadForm9(db, { officeId: "office-demo" }, { today: TODAY, situation: (await personDisaster(db, page!, at(1.1))).situation });
     expect(JSON.stringify(form9!.sheet)).toBeTruthy();
-    const item = timelineItems(page!).find((t) => t.kind === "優先修正")!;
-    expect(item).toMatchObject({ body: "未知→至急 近所で土砂", who: "ケアマネ 山本", tone: "check" });
+    const item = timelineItems(page!).find((t) => t.kind === "優先変更")!;
+    expect(item).toMatchObject({ body: "不明→至急 近所で土砂", who: "ケアマネ 山本", tone: "check" });
   });
 
-  it("下げた上書きは、表の色が悪くなったら切れる（小林: 要確認→未知、電池を超えたら至急）", async () => {
+  it("下げた上書きは、表の色が悪くなったら失効（小林: 要確認→不明、電池を超えたら至急）", async () => {
     await heavyRain();
     expect((await board(2.5)).find((r) => r.id === "p-02")!.triage!.color).toBe("yellow");
     const r = await post(overridePost, careManager(), { person: "p-02", to: "gray", reason: "夫が電話に出た" }, 2.5);
@@ -146,8 +146,8 @@ describe("ケアマネの上書き", () => {
     expect(p9.triage!.color).toBe("gray");
     expect(p9.triage!.override).toBeUndefined();
     expect(rows("SELECT body FROM timeline_entries WHERE kind = 'override' ORDER BY occurred_at").map((x) => x.body)).toEqual([
-      "未知→要確認 隣人と連絡つかず",
-      "解除 要確認→未知",
+      "不明→要確認 隣人と連絡つかず",
+      "解除 要確認→不明",
     ]);
   });
 
@@ -200,8 +200,8 @@ describe("ケアマネの上書き", () => {
       s,
     );
     expect(got.get("p-09")).toMatchObject({ to: "red", reason: "土砂", byName: "山本" });
-    expect(overrideLogBody("gray", "red", " 土砂 ", false)).toBe("未知→至急 土砂");
-    expect(overrideLogBody("red", "gray", "", true)).toBe("解除 至急→未知");
+    expect(overrideLogBody("gray", "red", " 土砂 ", false)).toBe("不明→至急 土砂");
+    expect(overrideLogBody("red", "gray", "", true)).toBe("解除 至急→不明");
   });
 });
 
