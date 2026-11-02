@@ -20,6 +20,8 @@ export const OFFICE_LABELS = {
   age: "年齢",
   plan: "計画",
   careManager: "担当",
+  /** 利用者追加の担当の既定（自分） */
+  defaultCm: "既定",
   displayName: "名前",
   loginId: "ID",
   initialPassword: "初期パスワード",

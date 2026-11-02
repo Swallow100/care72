@@ -6,12 +6,13 @@
 import { useState } from "react";
 import { OFFICE_LABELS } from "@/lib/office/labels";
 
-export function UnlistedFold({ count, children }: { count: number; children: React.ReactNode }) {
+/** inPanel: 面（白）の中に置くときは面の中の灰色、地に置くときは面の白 */
+export function UnlistedFold({ count, inPanel = false, children }: { count: number; inPanel?: boolean; children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   if (count === 0) return null;
   return (
     <div id="unlisted" className="mt-2">
-      <div className="flex items-center gap-3 rounded-md bg-panel px-3 py-1.5 text-sm">
+      <div className={`flex items-center gap-3 rounded-md px-3 py-1.5 text-sm ${inPanel ? "bg-panel2" : "bg-panel"}`}>
         <h2 className="text-muted">
           {OFFICE_LABELS.unlisted} <span className="font-bold text-ink tabular-nums">{count}</span>
         </h2>

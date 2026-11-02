@@ -475,8 +475,9 @@ function AssignSection({
           </table>
         </div>
       )}
-      <UnlistedFold count={unlisted.length}>
+      <UnlistedFold count={unlisted.length} inPanel>
         <UnlistedRows
+          inPanel
           rows={unlisted.map((p) => ({
             id: p.id,
             name: p.name,

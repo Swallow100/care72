@@ -9,11 +9,15 @@ import { shortJst } from "@/lib/disaster/state";
 
 export type UnlistedItem = { id: string; name: string; kana: string; unlistedAt: string; href: string };
 
-export function UnlistedRows({ rows, back }: { rows: readonly UnlistedItem[]; back: PeopleBack }) {
+/** inPanel: 面（白）の中に置くときは行を面の中の灰色に、ボタンを白に */
+export function UnlistedRows({ rows, back, inPanel = false }: { rows: readonly UnlistedItem[]; back: PeopleBack; inPanel?: boolean }) {
   return (
     <ul className="space-y-0.5 text-sm">
       {rows.map((r) => (
-        <li key={r.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md bg-panel px-3 py-1.5">
+        <li
+          key={r.id}
+          className={`flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md px-3 py-1.5 ${inPanel ? "bg-panel2" : "bg-panel"}`}
+        >
           <Link href={r.href} className="-mx-1 rounded px-1 font-bold" data-press>
             {r.name}
           </Link>
@@ -25,7 +29,7 @@ export function UnlistedRows({ rows, back }: { rows: readonly UnlistedItem[]; ba
             <input type="hidden" name="action" value="relist" />
             <input type="hidden" name="person" value={r.id} />
             <input type="hidden" name="back" value={back} />
-            <button type="submit" className="rounded-md bg-panel2 px-3 py-1 text-sm font-bold" data-press>
+            <button type="submit" className={`rounded-md px-3 py-1 text-sm font-bold ${inPanel ? "bg-panel" : "bg-panel2"}`} data-press>
               {OFFICE_LABELS.relist}
             </button>
           </form>

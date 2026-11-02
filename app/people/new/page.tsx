@@ -27,8 +27,8 @@ export default async function NewPersonPage() {
   }
 
   return (
-    <main className="mx-auto max-w-3xl px-4 py-4">
-      <section aria-labelledby="new-title" className="rounded-lg bg-panel p-4">
+    <main className="mx-auto grid max-w-5xl gap-3 px-4 py-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
+      <section aria-labelledby="new-title" className="self-start rounded-lg bg-panel p-4">
         <div className="flex flex-wrap items-baseline gap-x-3">
           <h1 id="new-title" className="text-xl font-bold">
             {OFFICE_LABELS.addPerson}
@@ -43,6 +43,25 @@ export default async function NewPersonPage() {
           />
         </div>
       </section>
+      {/* 担当を選ぶときに見る: ケアマネごとの担当の人数（一覧にいる人） */}
+      <aside aria-labelledby="cm-title" className="self-start rounded-lg bg-panel p-3">
+        <h2 id="cm-title" className="flex items-baseline gap-2 font-bold">
+          {OFFICE_LABELS.careManagers}
+          <span className="text-sm font-normal text-muted tabular-nums">{careManagers.length}</span>
+        </h2>
+        <ul className="mt-2 space-y-0.5 text-sm">
+          {careManagers.map((c) => (
+            <li key={c.id} className="flex items-baseline gap-2 rounded bg-panel2 px-2 py-1.5">
+              <span className="font-bold">{c.name}</span>
+              {c.id === actor.defaultCareManagerId && <span className="text-xs text-muted">{OFFICE_LABELS.defaultCm}</span>}
+              <span className="ml-auto tabular-nums">
+                {c.people}
+                <span className="text-xs text-muted"> {OFFICE_LABELS.people}</span>
+              </span>
+            </li>
+          ))}
+        </ul>
+      </aside>
     </main>
   );
 }
