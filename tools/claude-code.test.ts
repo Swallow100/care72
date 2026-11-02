@@ -1,7 +1,7 @@
-// Claude Code の設定（.claude/settings.json のフック）が、リポジトリの中の物とそろっているか。
+// Claude Code の設定（.claude/settings.json のフックと .claude/skills）が、リポジトリの中の物とそろっているか。
 // フックそのものの決まりは tools/hooks/rules.test.ts。
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
@@ -76,5 +76,48 @@ describe(".claude/settings.json のフック", () => {
       expect(claudeLine, word).toContain(word);
       expect(rulesHead, word).toContain(word);
     }
+  });
+});
+
+/** SKILL.md の頭の --- から --- まで（key: value の 1 行ずつ） */
+function frontmatter(text: string): { fields: Record<string, string>; body: string } {
+  const [, head = "", body = ""] = /^---\n([\s\S]*?)\n---\n([\s\S]*)$/.exec(text) ?? [];
+  const fields: Record<string, string> = {};
+  for (const line of head.split("\n")) {
+    const m = /^([a-z-]+):\s*(.*)$/.exec(line);
+    if (m) fields[m[1]] = m[2].replace(/^"(.*)"$/, "$1");
+  }
+  return { fields, body };
+}
+
+/** Claude Code の公式の文書（skills）にある項目の名前。違う名前は黙って無視されるので、ここで止める */
+const SKILL_FIELDS = ["name", "description", "argument-hint", "disable-model-invocation", "user-invocable", "allowed-tools", "model"];
+
+describe(".claude/skills", () => {
+  const dirs = readdirSync(root(".claude/skills"));
+  const scripts = Object.keys(JSON.parse(read("package.json")).scripts);
+
+  it("triage-rule と task の 2 つ", () => {
+    expect(dirs.sort()).toEqual(["task", "triage-rule"]);
+  });
+
+  it.each(dirs)("%s: 1 行目が ---、名前はフォルダの名前、説明は 1,536 字まで、知らない項目なし", (dir) => {
+    const text = read(`.claude/skills/${dir}/SKILL.md`);
+    expect(text.startsWith("---\n")).toBe(true);
+    const { fields, body } = frontmatter(text);
+    expect(fields.name).toBe(dir);
+    expect(fields.description.length).toBeGreaterThan(20);
+    expect(fields.description.length).toBeLessThanOrEqual(1536);
+    for (const key of Object.keys(fields)) expect(SKILL_FIELDS, key).toContain(key);
+    expect(body).toContain("$ARGUMENTS");
+    expect(body).toContain("## 確かめ方");
+  });
+
+  it.each(dirs)("%s: 書いてあるファイルと npm run の名前が本当にある", (dir) => {
+    const text = read(`.claude/skills/${dir}/SKILL.md`);
+    const paths = [...text.matchAll(/\b(?:lib|docs|seed|tools|app)\/[\w./-]*\w/g)].map((m) => m[0]);
+    expect(paths.length).toBeGreaterThan(0);
+    for (const p of paths) expect(existsSync(root(p)), p).toBe(true);
+    for (const [, name] of text.matchAll(/npm run ([\w:-]+)/g)) expect(scripts, name).toContain(name);
   });
 });
