@@ -406,7 +406,7 @@ describe("信号の行に書く（classifySignal）", () => {
     expect(signalRow(a2.signalId)).toMatchObject({ classes: null, ai_error: "limit" });
   });
 
-  it("音声だけ（文字起こしなし）は呼ばずに「文字なし」", async () => {
+  it("音声だけ（文字起こしなし）は呼ばずに「文字なし」、分類は「不明」（AI の印なし。T37）", async () => {
     await earthquake();
     const a = await redWithRecording(null);
     const d = deps(fake(says(["water"])).client);
@@ -414,6 +414,33 @@ describe("信号の行に書く（classifySignal）", () => {
     expect(out).toMatchObject({ result: { ok: false, error: "no_text" }, view: { kind: "none", error: "no_text" } });
     expect(d.made).toBe(0);
     expect(aiRows()).toHaveLength(0);
+    // Claude の答えではないので classified_by・ai_classes は空のまま
+    expect(signalRow(a.signalId)).toMatchObject({
+      classes: '["unknown"]',
+      classified_by: null,
+      ai_classes: null,
+      ai_error: "no_text",
+    });
+    // 不明は赤だけの組のまま（理由に AI の印を出さない）。経過に AI の行を足さない
+    expect((await yamadaRow()).row.triage).toMatchObject({ color: "red", rule: "red", reason: "本人が「無事じゃない」" });
+    const logs = sqlite.prepare("SELECT count(*) AS n FROM timeline_entries WHERE json_extract(payload, '$.source') = 'classify'").get() as {
+      n: number;
+    };
+    expect(logs.n).toBe(0);
+    // 2 回目は何もしない。人が直せば人の分類（直す前は AI の印なしの「不明」）
+    expect(await classifySignal(db, target(a), d)).toEqual({ status: "skipped" });
+  });
+
+  it("空白だけの文字起こしも呼ばずに「不明」。人が先に直していれば上書きしない", async () => {
+    await earthquake();
+    const a = await redWithRecording("   ");
+    await classifySignal(db, target(a), deps(fake(says(["water"])).client));
+    expect(signalRow(a.signalId)).toMatchObject({ classes: '["unknown"]', classified_by: null });
+
+    const b = await redWithRecording(null);
+    sqlite.prepare(`UPDATE signals SET classes = '["injury"]', classified_by = 'care_manager' WHERE id = ?`).run(b.signalId);
+    expect(await classifySignal(db, target(b), deps(fake(says(["water"])).client))).toEqual({ status: "skipped" });
+    expect(signalRow(b.signalId)).toMatchObject({ classes: '["injury"]', classified_by: "care_manager" });
   });
 
   it("伏せきれない文字起こしは送らずに「送信不可」", async () => {

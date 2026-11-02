@@ -2,7 +2,8 @@
 //
 // - Claude の分類（classifySignal）: 録音・文字起こしが信号に添えられたあと、サーバーが 1 回。答えは ai_* に、classes と classified_by
 //   （claude）にも写す。人がもう直していれば classes は上書きしない（ai_* だけ残す）。経過に「録音の分類（AI）: …」の 1 行（書き手は自動）
-// - 分けられなかったとき: classes は空のまま、ai_error に理由（文字なし・AI 未設定・上限・断られた・形の違い・失敗・伏せきれない）
+// - 分けられなかったとき: classes は空のまま、ai_error に理由（文字なし・AI 未設定・上限・断られた・形の違い・失敗・伏せきれない）。
+//   ただし録音があって文字起こしが空（無音のまま。T37）は、Claude を呼ばずに classes を「不明」にする（classified_by は空、AI の印なし）
 // - 人の直し（saveClassEdit）: ケアマネが分類を選び直す。classes と classified_by（care_manager）を書き、経過に「分類修正 …」の 1 行。
 //   以後は人の分類が効く（lib/triage は classes を読む）。直す前の Claude の答えは ai_* に残る
 // - 訓練の信号（drill_id のある物）はここで扱わない（T18 は classify を直接使う）
@@ -22,6 +23,9 @@ import { CLASSIFY_COLUMNS, classViewOf, parseClassList, type ClassView, type Sig
 /** 経過の payload の出どころ。kind は note（入れる欄の intake・QR の qr_view と同じ作り） */
 export const CLASSIFY_LOG_SOURCE = "classify";
 export const CLASS_EDIT_LOG_SOURCE = "class_edit";
+
+/** 録音はあるが文字起こしが空の信号の分類（Claude を呼ばずに決める。T37、docs/DECISIONS.md 11/3 04:0x の 9） */
+export const SILENT_CLASSES: readonly RecordingClass[] = ["unknown"];
 
 /** どの信号を分けるか（本人のスマホの録音のあと。事業所と本人はログインから決めた物） */
 export type ClassifyTarget = {
@@ -146,6 +150,19 @@ export async function classifySignal(db: D1Database, t: ClassifyTarget, deps: Cl
           at,
           CLASSIFY_LOG_SOURCE,
         ),
+    ]);
+  } else if (result.error === "no_text") {
+    // 録音はあるが文字が 1 字も無い（無音のまま聞き直しても話せなかった。T37）: Claude は呼ばずに分類は「不明」。
+    // AI の答えではないので classified_by・ai_classes は空のまま（AI の印を付けない）、ai_error は文字なし。
+    // 人が先に直していれば上書きしない
+    await db.batch([
+      db.prepare(`UPDATE signals SET ai_error = 'no_text', ai_at = ?2 WHERE id = ?1 AND ai_at IS NULL`).bind(sig.id, at),
+      db
+        .prepare(
+          `UPDATE signals SET classes = ?2
+            WHERE id = ?1 AND classified_by IS NULL AND classes IS NULL AND recording_key IS NOT NULL`,
+        )
+        .bind(sig.id, JSON.stringify(SILENT_CLASSES)),
     ]);
   } else {
     await db
