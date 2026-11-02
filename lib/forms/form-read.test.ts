@@ -100,6 +100,13 @@ describe("Claude への頼み", () => {
     expect(JSON.parse(text).items[0]).toEqual({ key: "person.name", group: "本人", label: "氏名" });
     for (const person of SEED_PEOPLE) expect(text).not.toContain(person.person.name);
     expect(text).not.toMatch(/090-0000/);
+    // 指示（system）にも人の値が無い
+    const system = JSON.stringify(p.system);
+    for (const person of SEED_PEOPLE) {
+      expect(system).not.toContain(person.person.name);
+      for (const c of person.contacts) if (c.name) expect(system).not.toContain(c.name);
+    }
+    expect(system).not.toMatch(/0[0-9]{1,4}-[0-9]{1,4}-[0-9]{3,4}/);
   });
 
   it("写真は image の塊", () => {
