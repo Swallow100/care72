@@ -152,6 +152,9 @@ body {
     vertical-align: -0.05em;
     border-radius: 1px;
     background-color: var(--state-check-fill);
+    /* 帯は地の色なので、印刷でも落とさない（様式 9 の注意の行など、紙に出る所がある） */
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
   }
 }
 
