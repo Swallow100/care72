@@ -6,6 +6,7 @@ import { todayJst } from "@/lib/age";
 import { homePath } from "@/lib/auth/roles";
 import { requirePage } from "@/lib/auth/server";
 import { hasAnthropicKey } from "@/lib/claude/client";
+import { personDisaster } from "@/lib/disaster/person";
 import { intakePropsOf } from "@/lib/intake/props";
 import { loadPersonPage, toPersonView } from "@/lib/person";
 
@@ -16,14 +17,16 @@ type Props = { params: Promise<{ id: string }> };
 
 // 本人のページ（単独で開く形）。担当一覧の右の面（/?open=<id>）と同じ物を出す。
 // 事業所の壁: 範囲の外の id は、在っても無くても同じ 404（lib/auth/scope.ts の personInScope）。
-// 災害モード（T09）が入るまでは平時の形だけ。ケアマネの役には右に入れる欄（T03）。
+// 災害モード（T09）のときは経過が一番上、優先の所にルールの表の色と理由。ケアマネの役には右に入れる欄（T03）。
 export default async function PersonPage({ params }: Props) {
   const principal = await requirePage("person");
   const { id } = await params;
   const { env } = await getCloudflareContext({ async: true });
   const rows = await loadPersonPage(env.DB, principal, id);
   if (!rows) notFound();
-  const view = toPersonView(rows, { today: todayJst(), mode: "normal" });
+  // 本人の事業所が災害モードなら経過が一番上、上に色と理由の 1 行（lib/disaster/person.ts）
+  const d = await personDisaster(env.DB, rows);
+  const view = toPersonView(rows, { today: todayJst(), mode: d.mode, triage: d.triage });
   // 入れる欄（T03）はケアマネの役だけ。鍵が無ければ「AI 未設定」と手入力
   const intake = principal.role === "care_manager" ? intakePropsOf(rows, hasAnthropicKey(env)) : null;
 

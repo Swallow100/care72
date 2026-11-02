@@ -224,3 +224,45 @@ CREATE TABLE form9_rank_edits (
   CHECK (rank IS NULL OR length(trim(reason)) > 0)
 );
 CREATE INDEX form9_rank_edits_person ON form9_rank_edits (office_id, mode, person_id, set_at);
+
+-- 事業所の災害の状態（災害モード）。事業所ごとに 1 行。行が無ければ平時。
+-- 人が切り替え、人が入れる（気象庁の情報からの自動の切替は作っていない）。発災と停電の始まりはルールの表（lib/triage）の入力になる。
+-- 平時に戻すと発災・停電・レベル・断水・道路を全部 NULL に戻す。変えるたびに office_timeline_entries に 1 行足す。
+-- 事業所を消すと一緒に消える（種を入れ直すと平時になる）。
+CREATE TABLE disaster_state (
+  office_id TEXT PRIMARY KEY REFERENCES offices (id) ON DELETE CASCADE,
+  kind TEXT NOT NULL CHECK (kind IN ('normal', 'heavy_rain', 'earthquake')),
+  started_at TEXT,
+  started_by TEXT REFERENCES accounts (id) ON DELETE SET NULL,
+  outage_scope TEXT NOT NULL DEFAULT 'none' CHECK (outage_scope IN ('none', 'office', 'area')),
+  -- 停電の地区（町名の JSON の配列）
+  outage_towns TEXT CHECK (outage_towns IS NULL OR (json_valid(outage_towns) AND json_type(outage_towns) = 'array')),
+  outage_started_at TEXT,
+  alert_level INTEGER CHECK (alert_level IS NULL OR alert_level IN (3, 4, 5)),
+  water TEXT,
+  road TEXT,
+  version INTEGER NOT NULL DEFAULT 1 CHECK (version >= 1),
+  updated_by TEXT REFERENCES accounts (id) ON DELETE SET NULL,
+  updated_at TEXT NOT NULL,
+  CHECK ((kind = 'normal') = (started_at IS NULL)),
+  CHECK (kind <> 'normal' OR (outage_scope = 'none' AND alert_level IS NULL AND water IS NULL AND road IS NULL)),
+  CHECK ((outage_scope = 'none') = (outage_started_at IS NULL)),
+  CHECK ((outage_scope = 'area') = (outage_towns IS NOT NULL))
+);
+
+-- 事業所の経過。本人の経過（timeline_entries）とは別に、事業所の行を持つ。誰が・いつ・何を。
+-- body は画面に出す 1 行（大雨・停電 事業所全体 など）、payload は変えたあとの状態の写し。人の名前・住所は入れない
+CREATE TABLE office_timeline_entries (
+  id TEXT PRIMARY KEY,
+  office_id TEXT NOT NULL REFERENCES offices (id) ON DELETE CASCADE,
+  author_id TEXT REFERENCES accounts (id) ON DELETE SET NULL,
+  author_role TEXT NOT NULL CHECK (author_role IN (
+    'self', 'family', 'supporter', 'care_manager', 'medical', 'government', 'system'
+  )),
+  kind TEXT NOT NULL CHECK (kind IN ('disaster_on', 'disaster_off', 'disaster_info')),
+  body TEXT,
+  payload TEXT CHECK (payload IS NULL OR json_valid(payload)),
+  occurred_at TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+CREATE INDEX office_timeline_office_time ON office_timeline_entries (office_id, occurred_at);
