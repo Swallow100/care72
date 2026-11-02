@@ -245,6 +245,7 @@ export type DocumentView = { key: keyof typeof DOCUMENT_LABELS; label: string; s
 /** できた書類の紙面の場所（T05 計画書。T06・T07 はここに足す） */
 const DOCUMENT_PATHS: Partial<Record<keyof typeof DOCUMENT_LABELS, (personId: string) => string>> = {
   matsuyama: (id) => `/people/${encodeURIComponent(id)}/forms/matsuyama`,
+  medical: (id) => `/people/${encodeURIComponent(id)}/forms/medical`,
 };
 
 export type TimelineItem = {

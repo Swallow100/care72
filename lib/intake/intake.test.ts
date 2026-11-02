@@ -22,7 +22,8 @@ import { nextQuestion, questionQueue } from "./ask.ts";
 import type { IntakeChange } from "./changes.ts";
 import { buildDiff, restoreNote, sentencesOf } from "./diff.ts";
 import { buildExtractRequest, EXTRACT_SYSTEM, extractIntake, pseudonymInputOf } from "./extract.ts";
-import { INTAKE_FIELDS } from "./fields.ts";
+import { INTAKE_FIELDS, ledgerValue as ledgerValueOf } from "./fields.ts";
+import { manualChanges } from "./manual.ts";
 import { intakeErrorOf } from "./http.ts";
 import { markPreview, planMarkClocks } from "./marks.ts";
 import { saveIntake, timelineBody, type SaveRequest } from "./save.ts";
@@ -373,6 +374,28 @@ describe("次の問い（lib/intake/ask.ts）", () => {
   });
 });
 
+// ---------- 手入力 ----------
+
+describe("手入力（lib/intake/manual.ts）", () => {
+  const sato = seed("p-04").ledger;
+  const initial = () => Object.fromEntries(INTAKE_FIELDS.map((f) => [f.key, ledgerValueOf(sato, f.key)]));
+
+  it("変えた欄だけを送る。今の値を変えた欄は上書き、空いた欄は追加。形の合わない値は送らない", () => {
+    const values = { ...initial(), "basic.housing.bedroom": "奥の和室", "care.careLevel": "care3", "basic.housing.floor": "二階", "medical.allergies": "卵、そば" };
+    const changes = manualChanges(sato, values, { "0.amount": "1 錠" }, [{ name: "降圧薬", category: "other", schedule: "", amount: "", storage: "" }], ["oxygen"], [], " 夜は眠れないと言う ");
+    expect(changes).toEqual([
+      { t: "field", key: "medical.allergies", value: ["卵", "そば"] },
+      { t: "field", key: "basic.housing.bedroom", value: "奥の和室" },
+      { t: "field", key: "care.careLevel", value: "care3", overwrite: true },
+      { t: "medication", index: 0, value: { name: "抗認知症薬", category: "other", amount: "1 錠" } },
+      { t: "medication", value: { name: "降圧薬", category: "other" } },
+      { t: "device", value: { kind: "oxygen" } },
+      { t: "note", value: "夜は眠れないと言う" },
+    ]);
+    expect(manualChanges(sato, initial(), {}, [], [], [], "")).toEqual([]);
+  });
+});
+
 // ---------- 医療依存の印 ----------
 
 describe("医療依存の印は台帳の区分から機械的に（lib/intake/marks.ts）", () => {
@@ -578,5 +601,24 @@ describe("保存（lib/intake/save.ts）", () => {
       "AI の分け方、人が確認: 世帯・特記・連絡先・時計・薬",
     );
     expect(sectionOfField("local.watcher")).toBe("people");
+    expect(timelineBody(false, [], [{ field: "medical.medications.0.amount", status: "unknown" }])).toBe("手入力: 薬（不明）");
+  });
+
+  it("経過の payload は場所だけで、薬の名前を残さない", async () => {
+    const r = await saveIntake(db, cm, req([{ t: "medication", index: 0, value: { name: "抗認知症薬", category: "other", amount: "1 錠" } }]), NOW);
+    expect(r.ok).toBe(true);
+    const tl = sqlite.prepare("SELECT body, payload FROM timeline_entries").get() as { body: string; payload: string };
+    expect(JSON.parse(tl.payload).fields).toEqual(["medical.medications.0.amount"]);
+    expect(tl.payload).not.toContain("抗認知症薬");
+    expect(tl.body).not.toContain("抗認知症薬");
+  });
+
+  it("分からない・次回の答えだけでも保存され、経過に理由が出る", async () => {
+    const r = await saveIntake(db, cm, req([{ t: "pending", field: "people.night_supporter", status: "not_asked" }], { ai: null }), NOW);
+    expect(r).toMatchObject({ ok: true, plan: "draft" });
+    expect(parseLedger(person().ledger).pending).toEqual([{ field: "people.night_supporter", status: "not_asked" }]);
+    const tl = sqlite.prepare("SELECT body, payload FROM timeline_entries").get() as { body: string; payload: string };
+    expect(tl.body).toBe("手入力: 夜間支援（未聴取）");
+    expect(JSON.parse(tl.payload).fields).toEqual(["people.night_supporter"]);
   });
 });

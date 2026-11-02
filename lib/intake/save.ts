@@ -24,6 +24,7 @@ import {
   type Ledger,
   type PlanStatus,
 } from "../db/types.ts";
+import { PENDING_STATUS_LABELS } from "../labels.ts";
 import { loadPersonPage, pendingClockId, type PersonPageRows } from "../person.ts";
 import type { IntakeChange } from "./changes.ts";
 import { labelOfKey } from "./diff.ts";
@@ -93,9 +94,11 @@ export type SaveResult =
 
 type Statement = ReturnType<D1Database["prepare"]>;
 
-/** 経過の本文: 「AI の分け方、人が確認」か「手入力」と、変えた欄の名前（10 まで） */
-export function timelineBody(ai: boolean, fields: ReadonlyArray<string>): string {
-  const names = [...new Set(fields.map(fieldName))];
+/** 経過の本文: 「AI の分け方、人が確認」か「手入力」と、変えた欄の名前（10 まで）。空欄の理由は「名前（不明）」 */
+export function timelineBody(ai: boolean, fields: ReadonlyArray<string>, pending: Ledger["pending"] = []): string {
+  const names = [
+    ...new Set([...fields.map(fieldName), ...pending.map((p) => `${fieldName(p.field)}（${PENDING_STATUS_LABELS[p.status]}）`)]),
+  ];
   const shown = names.slice(0, 10).join("・");
   const more = names.length > 10 ? ` ほか ${names.length - 10}` : "";
   return `${ai ? "AI の分け方、人が確認" : "手入力"}: ${shown}${more}`;
@@ -123,6 +126,9 @@ type NewClock = MarkClock & { id: string; value: number | null; unit: ClockRow["
 type GuardArgs = readonly [string, string, string];
 
 const shortId = () => crypto.randomUUID().replace(/-/g, "").slice(0, 10);
+
+/** 薬を名前で指す場所（medical.medications.ワーファリン.amount）。経過の payload に残さない */
+const MED_NAME_FIELD = /^medical\.medications\.(?!\d+(\.|$))[^.]+\./;
 
 /**
  * 保存する。personInScope を通らない本人は not_found、ケアマネの役でなければ forbidden、版が違えば conflict。
@@ -163,7 +169,8 @@ export async function saveIntake(db: D1Database, principal: Principal, req: Save
     source: INTAKE_SOURCE,
     ai: req.ai !== null,
     model: req.ai?.model ?? null,
-    fields: [...new Set(fields)],
+    // 場所だけ残す。薬の名前の形（medical.medications.<名前>.〜）は名前が値なので、番号の形だけ
+    fields: [...new Set([...fields, ...applied.pending.map((p) => p.field)])].filter((f) => !MED_NAME_FIELD.test(f)),
   };
   // この保存の経過の行（id は毎回でたらめ）を最初に、読んだ版のままのときだけ足す。ほかの文はこの行があるときだけ効く。
   // 同じ版から 2 つの保存が重なっても、あとの batch は版が上がっていて経過の行が入らず、台帳・連絡先・時計も書かない
@@ -181,7 +188,7 @@ export async function saveIntake(db: D1Database, principal: Principal, req: Save
       .bind(
         ...guardArgs,
         principal.accountId,
-        timelineBody(req.ai !== null, payload.fields),
+        timelineBody(req.ai !== null, fields, applied.pending),
         JSON.stringify(payload),
         rows.person.office_id,
         req.version,

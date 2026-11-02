@@ -341,6 +341,24 @@ export const INTAKE_LABELS = {
   invalid: "入力不備",
   masked: "伏せ字",
   next: "次回",
+  /** 話して入れる（T04、Web Speech）。「話す」は T04 の言葉のまま */
+  speak: "話す",
+  speakStop: "停止",
+  listening: "認識中",
+  micDenied: "マイク不可",
+  noSpeech: "音声なし",
+  speechFailed: "認識失敗",
+  retry: "再試行",
+  edited: "修正済",
+} as const;
+
+/** AI 失敗の理由（ai_calls の error に合わせる。形の違いのうち途中で切れた物だけ分ける） */
+export const AI_FAIL_REASON_LABELS = {
+  schema: "形式相違",
+  max_tokens: "出力超過",
+  refused: "拒否",
+  timeout: "時間切れ",
+  api_error: "呼出失敗",
 } as const;
 
 /** 差分の状態: 追加（空いた所に入る）・一致（今と同じ）・既入力（今と違う。既定では保存しない） */

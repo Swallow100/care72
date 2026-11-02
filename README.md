@@ -23,6 +23,7 @@
 - 鍵は .dev.vars（手元。.dev.vars.example は項目だけ）と Cloudflare の secret だけ。.env・.dev.vars は commit しない
 - AI（Claude と Gemini TTS）の呼び出しは事業所ごとに 1 日の上限（既定 200 回）。超えたらその日は呼ばない
 - 個人の情報は Claude に渡す前に仮名化する（lib/pseudonym）
+- 入れる欄の「話す」は Web Speech で、ブラウザが音声を外部の認識サービスに送る物。本運用で使うかは事業所の判断
 - 本運用の条件: 事業所との委託契約、学習に使わない契約、電気通信事業法の確認
 
 ## 使った資料と方法
