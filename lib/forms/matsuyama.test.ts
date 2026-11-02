@@ -129,8 +129,8 @@ describe("種の 10 人から欄が埋まる", () => {
     expect(text(s, "target.phone")).toBe("090-0000-0001");
     expect(text(s, "target.category")).toContain("■高齢者（■独居 ■要介護（要介護3））");
     expect(text(s, "target.household")).toContain("■ひとり暮らし");
-    expect(text(s, "consent.registry")).toBe("■同意する □同意しない");
-    expect(text(s, "consent.planShare")).toBe("■同意する □同意しない");
+    expect(text(s, "consent.registry")).toBe("■同意する □同意しない 記録 2026-11-02 山本");
+    expect(text(s, "consent.planShare")).toBe("■同意する □同意しない 記録 2026-11-02 山本");
 
     expect(text(s, "kin.name")).toBe("森 恵子");
     expect(text(s, "kin.relation")).toBe("娘");
@@ -143,6 +143,8 @@ describe("種の 10 人から欄が埋まる", () => {
     expect(text(s, "supporter2.name")).toBe("木村 ヨシ");
     expect(text(s, "supporter2.relation")).toContain("隣人");
     expect(text(s, "supporter2.relation")).toContain("82 歳");
+    expect(text(s, "supporter2.relation")).toContain("車なし");
+    expect(text(s, "supporter2.relation")).toContain("スマホなし");
     expect(text(s, "org.consent")).toBe("■同意 □不同意");
 
     expect(text(s, "plan.author")).toContain("デモ事業所");
@@ -241,7 +243,7 @@ describe("同意のない範囲は落とす", () => {
     for (const w of ["前田 和夫", "加藤 実", "090-0000-0026", "090-0000-0025"]) expect(supporters).not.toContain(w);
     expect(supporters.split(withheldText("supporters")).length - 1).toBe(2);
     // 名簿登録・計画共有は同意のまま、組織の同意※は計画共有から
-    expect(text(s, "consent.registry")).toBe("■同意する □同意しない");
+    expect(text(s, "consent.registry")).toContain("■同意する □同意しない");
     expect(text(s, "org.consent")).toBe("■同意 □不同意");
     expect(text(s, "local.welfare")).toContain("前田 和夫");
     expect(text(s, "kin.name")).toBe("加藤 実");

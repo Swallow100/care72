@@ -38,7 +38,7 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* 表は余りを段の間に配り、下に空きを残さない（裏は避難経路の欄が余りを取る） */
+/* 表は余りを段の間に配り、下に空きを残さない（裏は特記事項と避難経路の欄が余りを分ける） */
 .paper[data-page="1"] {
   justify-content: space-between;
 }

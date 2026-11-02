@@ -43,7 +43,7 @@ import {
   SMARTPHONE_LABELS,
   STRUCTURE_LABELS,
 } from "../labels.ts";
-import { FIELDS as PAGE_FIELDS, type PersonPageRows } from "../person.ts";
+import { formatJst, FIELDS as PAGE_FIELDS, type PersonPageRows } from "../person.ts";
 import { ERAS, wareki, warekiDate, warekiText } from "./wareki.ts";
 
 /** 市の PDF（2026.9.10 版）。開いて照らすためのリンクだけ持つ */
@@ -669,17 +669,27 @@ function consentMap(rows: PersonPageRows["consents"]): ConsentMap {
   return { registry: get("registry"), plan_share: get("plan_share"), supporters: get("supporters"), medical: get("medical") };
 }
 
-function consentCell(status: ConsentStatus, options: readonly [string, string], reason?: PendingStatus): Cell {
+function consentCell(
+  status: ConsentStatus,
+  options: readonly [string, string],
+  reason?: PendingStatus,
+  recorded?: PersonPageRows["consents"][number],
+): Cell {
   const [yes, no] = options;
   if (status === "unconfirmed") {
     return { kind: "choice", options: [{ label: yes, on: false }, { label: no, on: false }], unconfirmed: reason ? { reason } : {} };
   }
+  // 記録した日と人（様式の問いの 2 つだけに添える）
+  const after = recorded
+    ? [sub(`記録 ${formatJst(recorded.recorded_at).slice(0, 10)}${recorded.recorded_by_name ? ` ${recorded.recorded_by_name}` : ""}`)]
+    : undefined;
   return {
     kind: "choice",
     options: [
       { label: yes, on: status === "granted" },
       { label: no, on: status === "refused" },
     ],
+    after,
   };
 }
 
@@ -829,6 +839,7 @@ export function buildMatsuyamaSheet(rows: PersonPageRows, opts: BuildOptions): M
   const contacts = [...rows.contacts].sort((a, b) => a.sort - b.sort || (a.id < b.id ? -1 : 1));
   const clocks = [...rows.clocks].sort((a, b) => a.sort - b.sort || (a.id < b.id ? -1 : 1));
   const consent = consentMap(rows.consents);
+  const consentRow = (k: ConsentKind) => rows.consents.find((c) => c.kind === k);
   const granted = (k: ConsentKind) => consent[k] === "granted";
   const pool = new PendingPool(ledger.pending);
   const placedContacts = new Set<string>();
@@ -942,7 +953,11 @@ export function buildMatsuyamaSheet(rows: PersonPageRows, opts: BuildOptions): M
     const flags: PieceLine = [];
     if (c.emergency_order != null) flags.push(sub(`連絡順 ${c.emergency_order}`));
     if (c.has_car === 1) flags.push(sub(`${CONTACT_FLAG_LABELS.hasCar}あり`));
+    if (c.has_car === 0) flags.push(sub(`${CONTACT_FLAG_LABELS.hasCar}なし`));
     if (c.night_ok === 1) flags.push(sub(CONTACT_FLAG_LABELS.nightOk));
+    if (c.night_ok === 0) flags.push(sub("夜間不可"));
+    if (c.has_smartphone === 1) flags.push(sub(`${CONTACT_FLAG_LABELS.hasSmartphone}あり`));
+    if (c.has_smartphone === 0) flags.push(sub(`${CONTACT_FLAG_LABELS.hasSmartphone}なし`));
     if (c.note) flags.push(sub(c.note));
     return {
       kana: unconfirmed(),
@@ -1135,8 +1150,8 @@ export function buildMatsuyamaSheet(rows: PersonPageRows, opts: BuildOptions): M
       ],
       unconfirmed: {},
     },
-    "consent.registry": consentCell(consent.registry, CONSENT_OPTIONS, registryReason),
-    "consent.planShare": consentCell(consent.plan_share, CONSENT_OPTIONS, planShareReason),
+    "consent.registry": consentCell(consent.registry, CONSENT_OPTIONS, registryReason, consentRow("registry")),
+    "consent.planShare": consentCell(consent.plan_share, CONSENT_OPTIONS, planShareReason, consentRow("plan_share")),
     "sign.self": { kind: "handwrite" },
     "sign.proxy": { kind: "handwrite" },
     "kin.kana": kin ? unconfirmed() : NONE,

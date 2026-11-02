@@ -257,7 +257,7 @@ function PageTwo({ s }: { s: Sheet }) {
         </div>
       </div>
 
-      <div className="blk key" data-block="notes">
+      <div className="blk key grow" data-block="notes">
         <div className="blk-h">
           特記事項<span className="note">リスクや課題への対応、支援の方法、医療・福祉サービスの利用など</span>
           <span className="end" data-field="notes.annex">
