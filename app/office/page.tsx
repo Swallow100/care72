@@ -41,12 +41,19 @@ import { officeActor } from "@/lib/office/scope";
 import { CUSTODY_LABELS } from "@/lib/custody/labels";
 import { OFFICE_TAKE_PATH, UNAFFILIATED_ANCHOR } from "@/lib/custody/paths";
 import { listUnaffiliated, type UnaffiliatedItem } from "@/lib/custody/takeover";
+import { canResetDemo, OFFICE_RESET_PATH, officeResetHref, parseResetState, type ResetState } from "@/lib/seed/http";
+import { RESET_LABELS } from "@/lib/seed/labels";
 
 // D1 を毎回読む
 export const dynamic = "force-dynamic";
 
 type Props = {
-  searchParams: Promise<{ confirm?: string | string[]; error?: string | string[]; people_error?: string | string[] }>;
+  searchParams: Promise<{
+    confirm?: string | string[];
+    error?: string | string[];
+    people_error?: string | string[];
+    reset?: string | string[];
+  }>;
 };
 
 // 事業所の設定（docs/SPEC.md「画面 7 事業所の設定」）。1 画面に 災害モード・担当の割当・様式 9 への入口・ケアマネ・事業所の経過。
@@ -123,6 +130,8 @@ export default async function OfficePage({ searchParams }: Props) {
         <div className="grid min-w-0 content-start gap-3">
           <Form9Section people={people} counts={counts} />
           <CareManagerSection careManagers={careManagers} admin={actor.admin} />
+          {/* デモ事業所の「最初に戻す」（T26）。審査員と管理者だけ */}
+          {canResetDemo(principal) && <ResetSection state={parseResetState(q.reset)} />}
           <LogSection log={log} />
         </div>
       </div>
@@ -610,6 +619,51 @@ function UnaffiliatedSection({ people }: { people: UnaffiliatedItem[] }) {
           </tbody>
         </table>
       </div>
+    </section>
+  );
+}
+
+/**
+ * デモ事業所の「最初に戻す」（T26）。審査員（ケアマネの役）と管理者だけに出す。押すと確認の欄（URL の reset=confirm）を開き、
+ * 確認の欄の赤いボタンで種に戻す。毎日 4:00 にも自動で戻る。経過には残さない
+ */
+function ResetSection({ state }: { state: ResetState | null }) {
+  return (
+    <section aria-labelledby="reset-title" className={SECTION} data-reset>
+      <div className="flex flex-wrap items-baseline gap-x-3">
+        <h2 id="reset-title" className="font-bold">
+          {RESET_LABELS.title}
+        </h2>
+        <span className="text-xs text-muted tabular-nums">{RESET_LABELS.daily}</span>
+        {state === "done" && (
+          <span role="status" className="text-sm font-bold">
+            {RESET_LABELS.done}
+          </span>
+        )}
+        {state === "failed" && (
+          <span role="alert" className="text-sm font-bold text-danger">
+            {RESET_LABELS.failed}
+          </span>
+        )}
+      </div>
+      {state === "confirm" ? (
+        <form method="post" action={OFFICE_RESET_PATH} className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-md bg-panel2 px-3 py-2">
+          <input type="hidden" name="confirm" value="1" />
+          <span className="text-sm">{RESET_LABELS.confirm}</span>
+          <button type="submit" className={`${BUTTON} bg-danger text-on-accent`} data-press="overlay">
+            {RESET_LABELS.reset}
+          </button>
+          <Link href={OFFICE_PATH} className="rounded px-3 py-1.5 text-sm" data-press>
+            {RESET_LABELS.cancel}
+          </Link>
+        </form>
+      ) : (
+        <div className="mt-2">
+          <Link href={officeResetHref("confirm")} className={`${BUTTON} inline-block bg-panel2 text-danger`} data-press>
+            {RESET_LABELS.reset}
+          </Link>
+        </div>
+      )}
     </section>
   );
 }
