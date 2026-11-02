@@ -4,7 +4,7 @@
 // 「なぜこの行があるか」と出典は紙に出さない（画面の脇の MedicalSummaryBasis だけ）。
 // 見た目は components/forms/paper.css と medical-paper.css（読み込むのはページの側。テストでは読まない）。
 
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import {
   MEDICAL_ID_PART_LABELS,
   medicalField,
@@ -136,13 +136,26 @@ function MedicalIdBoxes({ s }: { s: MedicalSummary }) {
   );
 }
 
+/** 医療要約の紙面（A4 縦 1 枚の束）。画面 /people/[id]/forms/medical */
 export function MedicalSummarySheet({ sheet: s }: { sheet: MedicalSummary }) {
-  const author = [s.author.office, s.author.careManager ? `${s.author.careManager}（ケアマネ）` : ""].filter(Boolean).join(" ");
-  const consentAt = s.consent.recordedAt ? formatJst(s.consent.recordedAt).slice(0, 10) : null;
   return (
     <div className="paper-scroll">
       <div className="paper-stack" data-sheet="medical" data-person={s.personId}>
-        <section className="paper med-paper" aria-label={DOCUMENT_LABELS.medical} data-page="1">
+        <MedicalSummaryPaper sheet={s} />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * 医療要約の A4 の 1 頁（束に入れる前の section）。本人の 1 枚（T06）の裏もこれをそのまま使う。
+ * page は束の中の何頁目か、aside は題名の段の右に置く物（本人の 1 枚の QR の枠）
+ */
+export function MedicalSummaryPaper({ sheet: s, page = 1, aside }: { sheet: MedicalSummary; page?: 1 | 2; aside?: ReactNode }) {
+  const author = [s.author.office, s.author.careManager ? `${s.author.careManager}（ケアマネ）` : ""].filter(Boolean).join(" ");
+  const consentAt = s.consent.recordedAt ? formatJst(s.consent.recordedAt).slice(0, 10) : null;
+  return (
+        <section className="paper med-paper" aria-label={DOCUMENT_LABELS.medical} data-page={page}>
           <div className="head-row">
             <h1 className="title">{DOCUMENT_LABELS.medical}</h1>
             <div className="top-col">
@@ -159,6 +172,7 @@ export function MedicalSummarySheet({ sheet: s }: { sheet: MedicalSummary }) {
                 </span>
               </span>
             </div>
+            {aside}
           </div>
 
           <div className="blk" data-block="patient">
@@ -260,7 +274,5 @@ export function MedicalSummarySheet({ sheet: s }: { sheet: MedicalSummary }) {
             <span>欄の順は 災害診療記録2018（一般診療版）による。既往症・予防接種は様式の 2 頁</span>
           </div>
         </section>
-      </div>
-    </div>
   );
 }
