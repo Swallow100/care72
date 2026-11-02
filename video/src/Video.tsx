@@ -163,10 +163,19 @@ const ShotView: React.FC<{ shot: Shot; assets: Assets }> = ({ shot, assets }) =>
       {shot.source ? <Source text={shot.source} /> : null}
       {shot.chip ? <Chip text={shot.chip} /> : null}
       {shot.emphasis ? <Emphasis /> : null}
+      {showsApp(shot) ? <Fictional /> : null}
       <AppAudio shot={shot} assets={assets} />
     </AbsoluteFill>
   );
 };
+
+/**
+ * アプリの画面（録画 R01〜R19）が映る絵か。映る間だけ「利用者は架空」を出す。
+ * 数字の画面に出すと、出典のある本物の数字まで架空に見えるため。端末の録画（R20〜）は利用者を映さない
+ */
+function showsApp(shot: Shot): boolean {
+  return [shot.footage, ...(shot.footages ?? [])].some((id) => !!id && /^R(0[1-9]|1\d)$/.test(id));
+}
 
 /** 録画から抜いたアプリの音（着信・問いかけ・録音）。速さを変えた所では鳴らさない */
 const AppAudio: React.FC<{ shot: Shot; assets: Assets }> = ({ shot, assets }) => {
@@ -195,7 +204,6 @@ const SceneView: React.FC<{ scene: Scene; assets: Assets }> = ({ scene, assets }
         </Sequence>
       ))}
       <SceneTopLine scene={scene} />
-      {scene.id !== "S9" ? <Fictional /> : null}
     </AbsoluteFill>
   </GroundProvider>
 );
