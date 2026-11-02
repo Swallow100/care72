@@ -10,14 +10,31 @@
 import type { D1Database } from "@cloudflare/workers-types";
 import type { Principal } from "../auth/principal.ts";
 import {
+  CONTACT_KINDS,
+  DRILL_ACTIONS,
   DRILL_SCENARIOS,
   DRILL_STATUSES,
   SIGNAL_COLORS,
   WHERE_NOW,
+  type ContactRow,
+  type DrillAction,
   type DrillEventRow,
   type DrillRow,
   type DrillScenario,
+  type DrillStatus,
 } from "../db/types.ts";
+import { callTargetText } from "../list/calls.ts";
+import { isSourceId } from "../sources/index.ts";
+import {
+  act,
+  applyResult,
+  needsPerson,
+  needsTarget,
+  pushAction,
+  targetKinds,
+  type ActionHooks,
+  type ActTarget,
+} from "./actions.ts";
 import {
   foldTick,
   initialState,
@@ -25,6 +42,7 @@ import {
   simAt,
   step,
   type ActionRecord,
+  type ActionResult,
   type DrillIncident,
   type DrillState,
   type DrillTurn,
@@ -32,7 +50,6 @@ import {
   type StepHooks,
   type Tick,
 } from "./engine.ts";
-import { isSourceId } from "../sources/index.ts";
 import { EMPTY_WORLD, isInjectKind, type WorldState } from "./scenarios.ts";
 
 /** 訓練を開ける範囲。ケアマネの役だけ（審査員のケアマネの役も）。事業所と担当一覧の持ち主 */
@@ -49,17 +66,19 @@ export function isDrillScenario(v: unknown): v is DrillScenario {
 
 // ---------- drills.world の JSON ----------
 
-/** drills.world に置く今の状態（世界・参加者・本人の様子・手の履歴）。刻みと状態は表の列 */
+/** drills.world に置く今の状態（世界・参加者・本人の様子・手の履歴・ケアマネの時計）。刻みと状態は表の列 */
 type StoredWorld = {
   v: 1;
   participants: string[];
   world: WorldState;
   people: Record<string, PersonState>;
   actions: ActionRecord[];
+  /** ケアマネの時計（発災からの分、T20）。無ければ刻みの時刻 */
+  minute?: number;
 };
 
 function storeWorld(s: DrillState): string {
-  const body: StoredWorld = { v: 1, participants: s.participants, world: s.world, people: s.people, actions: s.actions };
+  const body: StoredWorld = { v: 1, participants: s.participants, world: s.world, people: s.people, actions: s.actions, minute: s.minute };
   return JSON.stringify(body);
 }
 
@@ -71,6 +90,7 @@ function parseStoredWorld(text: string): StoredWorld {
     world: { ...EMPTY_WORLD, ...(raw.world ?? {}) },
     people: raw.people ?? {},
     actions: Array.isArray(raw.actions) ? raw.actions : [],
+    ...(typeof raw.minute === "number" ? { minute: raw.minute } : {}),
   };
 }
 
@@ -82,6 +102,7 @@ export function stateOfRow(row: DrillRow): DrillState {
     startedAt: row.started_at,
     step: row.step,
     hour: row.sim_hour,
+    minute: w.minute ?? row.sim_hour * 60,
     status: row.status,
     participants: w.participants,
     world: w.world,
@@ -100,11 +121,28 @@ const signalId = (drillId: string, stepIndex: number, i: number) => `${drillId}-
 
 const bit = (v: boolean | null) => (v === null ? null : v ? 1 : 0);
 
-/** 刻み 1 つの保存の文（drills の行がその刻みにあるときだけ書く） */
-function tickStatements(db: D1Database, drillId: string, tick: Tick, startedAt: string) {
+/**
+ * 書いてよいかの門。drills の行が保存のあとの刻み（と手の数）にあるときだけ書く（先に書いた要求があれば書かない）。
+ * 手の数は手を打った要求だけ見る（刻みだけの要求は刻みで足りる）
+ */
+type Gate = { step: number; actions?: number };
+
+function gateSql(g: Gate, stepParam: string, actionsParam: string): string {
+  const actions = g.actions === undefined ? "" : ` AND COALESCE(json_array_length(world, '$.actions'), 0) = ${actionsParam}`;
+  return `WHERE EXISTS (SELECT 1 FROM drills WHERE id = ?2 AND step = ${stepParam}${actions})`;
+}
+
+const SEQ = "(SELECT COALESCE(MAX(seq), 0) + 1 FROM drill_events WHERE drill_id = ?2)";
+
+/**
+ * 刻み 1 つの保存の文（drills の行がその刻みにあるときだけ書く）。during は手の途中で進んだ刻みのときの手の番号で、
+ * その刻みの安否を着信（call_in）としても残す（着信の画面と声は T21 が読む）
+ */
+function tickStatements(db: D1Database, drillId: string, tick: Tick, startedAt: string, gate: Gate = { step: tick.step }, during?: string) {
   const out = [];
-  const gate = "WHERE EXISTS (SELECT 1 FROM drills WHERE id = ?2 AND step = ?3)";
-  const seq = "(SELECT COALESCE(MAX(seq), 0) + 1 FROM drill_events WHERE drill_id = ?2)";
+  const where = gateSql(gate, "?8", "?9");
+  // 門の値（使う数だけ渡す。使わない番号を渡すと SQLite は断る）
+  const bindGate: number[] = gate.actions === undefined ? [gate.step] : [gate.step, gate.actions];
   let n = 0;
   for (const e of tick.incidents) {
     const { actor, person, ...rest } = e;
@@ -113,15 +151,16 @@ function tickStatements(db: D1Database, drillId: string, tick: Tick, startedAt: 
       db
         .prepare(
           `INSERT INTO drill_events (id, drill_id, seq, step, sim_hour, person_id, actor, kind, payload)
-           SELECT ?1, ?2, ${seq}, ?3, ?4, ?5, ?6, 'incident', ?7 ${gate}`,
+           SELECT ?1, ?2, ${SEQ}, ?3, ?4, ?5, ?6, 'incident', ?7 ${where}`,
         )
-        .bind(eventId(drillId, tick.step, n++), drillId, tick.step, e.at, person ?? null, actor, JSON.stringify(payload)),
+        .bind(eventId(drillId, tick.step, n++), drillId, tick.step, e.at, person ?? null, actor, JSON.stringify(payload), ...bindGate),
     );
   }
   tick.turns.forEach((t, i) => {
     const sid = signalId(drillId, tick.step, i);
     const { person, ...rest } = t;
     const payload: TurnPayload = { ...rest, signal: sid };
+    const actionsGate = gate.actions === undefined ? "" : " AND COALESCE(json_array_length(d.world, '$.actions'), 0) = ?15";
     out.push(
       db
         .prepare(
@@ -129,7 +168,7 @@ function tickStatements(db: D1Database, drillId: string, tick: Tick, startedAt: 
                                 transcript, occurred_at)
            SELECT ?1, ?4, ?2, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13
             WHERE EXISTS (SELECT 1 FROM drills d JOIN people p ON p.office_id = d.office_id
-                           WHERE d.id = ?2 AND d.step = ?3 AND p.id = ?4)`,
+                           WHERE d.id = ?2 AND d.step = ?14 AND p.id = ?4${actionsGate})`,
         )
         .bind(
           sid,
@@ -145,17 +184,32 @@ function tickStatements(db: D1Database, drillId: string, tick: Tick, startedAt: 
           bit(t.hasMedicine),
           t.saying,
           simAt(startedAt, t.at),
+          ...bindGate,
         ),
       db
         .prepare(
           `INSERT INTO drill_events (id, drill_id, seq, step, sim_hour, person_id, actor, kind, payload)
-           SELECT ?1, ?2, ${seq}, ?3, ?4, ?5, 'persona', 'persona_turn', ?6 ${gate}`,
+           SELECT ?1, ?2, ${SEQ}, ?3, ?4, ?5, 'persona', 'persona_turn', ?6 ${gateSql(gate, "?7", "?8")}`,
         )
-        .bind(eventId(drillId, tick.step, n++), drillId, tick.step, t.at, person, JSON.stringify(payload)),
+        .bind(eventId(drillId, tick.step, n++), drillId, tick.step, t.at, person, JSON.stringify(payload), ...bindGate),
     );
+    if (during) {
+      const call: CallInPayload = { signal: sid, during, source: t.source, color: t.color, saying: t.saying, ai: t.ai };
+      out.push(
+        db
+          .prepare(
+            `INSERT INTO drill_events (id, drill_id, seq, step, sim_hour, person_id, actor, kind, payload)
+             SELECT ?1, ?2, ${SEQ}, ?3, ?4, ?5, 'persona', 'call_in', ?6 ${gateSql(gate, "?7", "?8")}`,
+          )
+          .bind(`${drillId}-${tick.step}-c${i}`, drillId, tick.step, t.at, person, JSON.stringify(call), ...bindGate),
+      );
+    }
   });
   return out;
 }
+
+/** 着信（手の途中に来た安否）。T21 が着信の画面と声に使う。言う事は安否の文字起こしと同じ */
+type CallInPayload = Pick<DrillTurn, "source" | "color" | "saying" | "ai"> & { signal: string; during: string };
 
 // ---------- 開始・進める・中断 ----------
 
@@ -253,11 +307,12 @@ export async function advanceDrill(
   const { state, tick } = await step(stateOfRow(row), hooks);
   let updated;
   try {
+    // 読んだ今の状態（world の写し）のときだけ書く。その間にケアマネの手（T20）が入っていれば競合（手の履歴を消さない）
     [updated] = await db.batch([
       db
         .prepare(
           `UPDATE drills SET step = ?3, sim_hour = ?4, world = ?5, status = ?6, finished_at = ?7
-            WHERE id = ?1 AND office_id = ?2 AND step = ?8 AND status = 'running'`,
+            WHERE id = ?1 AND office_id = ?2 AND step = ?8 AND status = 'running' AND world = ?9`,
         )
         .bind(
           id,
@@ -268,6 +323,7 @@ export async function advanceDrill(
           state.status,
           state.status === "finished" ? now : null,
           expected,
+          row.world,
         ),
       ...tickStatements(db, id, tick, row.started_at),
     ]);
@@ -279,6 +335,146 @@ export async function advanceDrill(
   if ((updated.meta.changes ?? 0) === 0) return { ok: false, error: "conflict" };
   return { ok: true, step: state.step, hour: state.hour, status: state.status };
 }
+
+// ---------- ケアマネの手（T20） ----------
+
+export type ActRequest = { kind: DrillAction; person: string | null; target: string | null };
+
+export type ActDrillResult =
+  | { ok: true; record: ActionRecord; step: number; hour: number; minute: number; status: DrillStatus }
+  | { ok: false; error: "not_found" | "conflict" | "ended" | "invalid" };
+
+/** 手の前の左の表（画面と同じ道で作った色・順位・理由と並び）。採点 T22 のために手の前の状態に残す */
+export type TriageSnapshot = {
+  rows: ReadonlyMap<string, { color: string; rank: number | null; reason: string }>;
+  ranking: string[];
+};
+
+type ContactForAct = Pick<ContactRow, "id" | "kind" | "relation"> & { has_phone: number };
+
+/**
+ * 手の相手を台帳の連絡先から決める（画面から送られた区分・名前は読まない）。
+ * 本人電話は本人の連絡先（無ければ相手なし → 番号なし）、連絡先電話は本人のほかの連絡先（要る）、
+ * 訪問依頼は訪問看護・介護事業所（無ければ事業所の職員）、行政報告は市役所の連絡先（無ければ相手なし）。ほかの手は相手を受けない
+ */
+async function resolveTarget(
+  db: D1Database,
+  officeId: string,
+  req: ActRequest,
+): Promise<{ ok: true; target: ActTarget | null } | { ok: false }> {
+  const kinds = targetKinds(req.kind);
+  if (kinds.length === 0) return req.target === null ? { ok: true, target: null } : { ok: false };
+  if (!req.person) return req.target === null && !needsTarget(req.kind) ? { ok: true, target: null } : { ok: false };
+  const rows = await db
+    .prepare(
+      `SELECT c.id, c.kind, c.relation, CASE WHEN TRIM(COALESCE(c.phone, '')) <> '' THEN 1 ELSE 0 END AS has_phone
+         FROM contacts c JOIN people p ON p.id = c.person_id
+        WHERE c.person_id = ?1 AND p.office_id = ?2 ORDER BY c.sort, c.id`,
+    )
+    .bind(req.person, officeId)
+    .all<ContactForAct>();
+  const asTarget = (c: ContactForAct): ActTarget => ({ id: c.id, kind: c.kind, label: callTargetText(c), hasPhone: c.has_phone === 1 });
+  if (req.kind === "call_person") {
+    const self = rows.results.find((c) => c.kind === "self" && c.has_phone === 1) ?? rows.results.find((c) => c.kind === "self");
+    return { ok: true, target: self ? asTarget(self) : null };
+  }
+  if (req.target === null) return needsTarget(req.kind) ? { ok: false } : { ok: true, target: null };
+  const hit = rows.results.find((c) => c.id === req.target);
+  if (!hit || !kinds.includes(hit.kind)) return { ok: false };
+  return { ok: true, target: asTarget(hit) };
+}
+
+/**
+ * ケアマネの手を 1 つ打つ。expected は画面で読んだ今の刻みと手の数（違えば競合）。
+ * 手の途中で次の刻みの時刻を越えたら、その刻みも同じ取引で保存する（状況・安否・着信）。
+ * 保存は 1 つの batch: drills（刻み・時刻・今の状態）、drill_events の action（誰に・何を・何時・手の前の状態）、
+ * 越えた刻み、result（世界の返事）。読んだ状態（world の写し）のときだけ書く
+ */
+export async function actDrill(
+  db: D1Database,
+  scope: DrillScope,
+  id: string,
+  expected: { step: number; actions: number },
+  req: ActRequest,
+  now: string,
+  opts: { hooks?: ActionHooks; roll?: () => number; triage?: TriageSnapshot } = {},
+): Promise<ActDrillResult> {
+  const row = await loadDrillRow(db, scope.officeId, id);
+  if (!row) return { ok: false, error: "not_found" };
+  if (row.status !== "running" || row.step >= lastStep(row.scenario)) return { ok: false, error: "ended" };
+  const before = stateOfRow(row);
+  if (row.step !== expected.step || before.actions.length !== expected.actions) return { ok: false, error: "conflict" };
+
+  // 相手の本人は参加者だけ。本人が要らない手（行政報告は任意、退避は受けない）
+  const person = req.kind === "evacuate_self" ? null : req.person;
+  if (person !== null && !before.participants.includes(person)) return { ok: false, error: "invalid" };
+  if (person === null && needsPerson(req.kind)) return { ok: false, error: "invalid" };
+  const resolved = await resolveTarget(db, scope.officeId, { ...req, person, target: req.kind === "evacuate_self" ? null : req.target });
+  if (!resolved.ok) return { ok: false, error: "invalid" };
+
+  const t = opts.triage;
+  const extra = t
+    ? { triage: person ? (t.rows.get(person) ?? null) : null, ranking: t.ranking }
+    : {};
+  const { state, record, ticks } = await act(before, { kind: req.kind, person, target: resolved.target }, opts.hooks ?? {}, opts.roll ?? Math.random, extra);
+  const gate: Gate = { step: state.step, actions: state.actions.length };
+  const { result: maybe, ...actionPayload } = record;
+  // act は返事を当ててから返す（null は刻みを越える途中だけ）
+  const result: ActionResult = maybe!;
+  let updated;
+  try {
+    [updated] = await db.batch([
+      db
+        .prepare(
+          `UPDATE drills SET step = ?3, sim_hour = ?4, world = ?5, status = ?6, finished_at = ?7
+            WHERE id = ?1 AND office_id = ?2 AND step = ?8 AND status = 'running' AND world = ?9`,
+        )
+        .bind(
+          id,
+          scope.officeId,
+          state.step,
+          state.hour,
+          storeWorld(state),
+          state.status,
+          state.status === "finished" ? now : null,
+          row.step,
+          row.world,
+        ),
+      db
+        .prepare(
+          `INSERT INTO drill_events (id, drill_id, seq, step, sim_hour, person_id, actor, kind, payload)
+           SELECT ?1, ?2, ${SEQ}, ?3, ?4, ?5, 'care_manager', 'action', ?6 ${gateSql(gate, "?7", "?8")}`,
+        )
+        .bind(`${id}-${record.id}`, id, record.step, record.at, person, JSON.stringify(actionPayload), gate.step, gate.actions!),
+      ...ticks.flatMap((tick) => tickStatements(db, id, tick, row.started_at, gate, record.id)),
+      db
+        .prepare(
+          `INSERT INTO drill_events (id, drill_id, seq, step, sim_hour, person_id, actor, kind, payload)
+           SELECT ?1, ?2, ${SEQ}, ?3, ?4, ?5, ?6, 'result', ?7 ${gateSql(gate, "?8", "?9")}`,
+        )
+        .bind(
+          `${id}-${record.id}-r`,
+          id,
+          state.step,
+          result.atMinute / 60,
+          person,
+          result.speech !== null ? "persona" : "world",
+          JSON.stringify({ id: record.id, ...result } satisfies ResultPayload),
+          gate.step,
+          gate.actions!,
+        ),
+    ]);
+  } catch (e) {
+    // ほかの要求が先に同じ手の番号・同じ刻みを書いた（id が重なった）。取引ごと戻っている
+    if (e instanceof Error && /UNIQUE|PRIMARY KEY|constraint/i.test(e.message)) return { ok: false, error: "conflict" };
+    throw e;
+  }
+  if ((updated.meta.changes ?? 0) === 0) return { ok: false, error: "conflict" };
+  return { ok: true, record, step: state.step, hour: state.hour, minute: state.minute, status: state.status };
+}
+
+type ActionPayload = Omit<ActionRecord, "result">;
+type ResultPayload = ActionResult & { id: string };
 
 /** 中断（進行中だけ）。記録は残り、再生できる */
 export async function abandonDrill(
@@ -369,8 +565,58 @@ function asIncident(row: Pick<DrillEventRow, "person_id" | "actor" | "sim_hour">
   };
 }
 
-/** 保存した刻み（0 から upTo まで）。刻みの時刻は想定の表から */
-export async function loadTicks(db: D1Database, drillId: string, hours: readonly number[], upTo: number): Promise<Tick[]> {
+/** ケアマネの手と返事（drill_events の action と result）。刻みの状況・安否のあとに、保存した順に当てる */
+export type ActEvent = { kind: "action"; record: ActionRecord } | { kind: "result"; id: string; result: ActionResult };
+
+/** 保存した刻みと、その刻みの間のケアマネの手（acts） */
+export type ReplayTick = Tick & { acts: ActEvent[] };
+
+const isNum = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
+const strOrNull = (v: unknown): string | null => (typeof v === "string" ? v : null);
+
+function asAction(person: string | null, p: Partial<ActionPayload>): ActionRecord | null {
+  if (typeof p.id !== "string" || !(DRILL_ACTIONS as readonly string[]).includes(p.kind ?? "")) return null;
+  if (!isNum(p.atMinute) || !isNum(p.endMinute) || !isNum(p.step)) return null;
+  return {
+    id: p.id,
+    kind: p.kind!,
+    person,
+    target: strOrNull(p.target),
+    callee: (CONTACT_KINDS as readonly string[]).includes(p.callee ?? "") ? p.callee! : null,
+    calleeLabel: strOrNull(p.calleeLabel),
+    at: isNum(p.at) ? p.at : p.atMinute / 60,
+    atMinute: p.atMinute,
+    endMinute: p.endMinute,
+    minutes: isNum(p.minutes) ? p.minutes : p.endMinute - p.atMinute,
+    step: p.step,
+    before: p.before ?? { person: null, marks: {}, staff: 0, phone: "ok", roadClosed: false },
+    result: null,
+  };
+}
+
+function asResult(p: Partial<ResultPayload>): { id: string; result: ActionResult } | null {
+  if (typeof p.id !== "string" || typeof p.status !== "string" || typeof p.ok !== "boolean" || !isNum(p.atMinute)) return null;
+  return {
+    id: p.id,
+    result: {
+      ok: p.ok,
+      status: p.status,
+      because: strOrNull(p.because),
+      text: typeof p.text === "string" ? p.text : "",
+      ai: p.ai === true,
+      speech: strOrNull(p.speech),
+      speechAi: p.speechAi === true,
+      pickup: p.pickup ?? null,
+      cleared: Array.isArray(p.cleared) ? p.cleared : [],
+      staff: isNum(p.staff) ? p.staff : 0,
+      crossed: Array.isArray(p.crossed) ? p.crossed.filter(isNum) : [],
+      atMinute: p.atMinute,
+    },
+  };
+}
+
+/** 保存した刻み（0 から upTo まで）と、その間のケアマネの手。刻みの時刻は想定の表から */
+export async function loadTicks(db: D1Database, drillId: string, hours: readonly number[], upTo: number): Promise<ReplayTick[]> {
   const res = await db
     .prepare(
       `SELECT step, sim_hour, person_id, actor, kind, payload FROM drill_events
@@ -378,9 +624,9 @@ export async function loadTicks(db: D1Database, drillId: string, hours: readonly
     )
     .bind(drillId, upTo)
     .all<Pick<DrillEventRow, "step" | "sim_hour" | "person_id" | "actor" | "kind" | "payload">>();
-  const ticks: Tick[] = [];
+  const ticks: ReplayTick[] = [];
   for (let i = 0; i <= upTo && i < hours.length; i++) {
-    ticks.push({ step: i, hour: hours[i], incidents: [], turns: [], world: EMPTY_WORLD, finished: i === hours.length - 1 });
+    ticks.push({ step: i, hour: hours[i], incidents: [], turns: [], world: EMPTY_WORLD, finished: i === hours.length - 1, acts: [] });
   }
   for (const r of res.results) {
     const t = ticks[r.step];
@@ -397,16 +643,25 @@ export async function loadTicks(db: D1Database, drillId: string, hours: readonly
     } else if (r.kind === "persona_turn") {
       const turn = asTurn(r.person_id, payload as Partial<TurnPayload>);
       if (turn) t.turns.push(turn);
+    } else if (r.kind === "action") {
+      const record = asAction(r.person_id, payload as Partial<ActionPayload>);
+      if (record) t.acts.push({ kind: "action", record });
+    } else if (r.kind === "result") {
+      const res = asResult(payload as Partial<ResultPayload>);
+      if (res) t.acts.push({ kind: "result", ...res });
     }
   }
   return ticks;
 }
 
-/** 保存した刻みから upTo の刻みのあとの状態を作り直す（世界は状況を順に当てた物） */
+/**
+ * 保存した刻みから upTo の刻みのあとの状態を作り直す（世界は状況を順に当てた物）。
+ * 刻みごとに状況・安否を当ててから、その刻みの間のケアマネの手と返事を保存した順に当てる（手を打った要求と同じ所を通る）
+ */
 export function replayState(
   row: Pick<DrillRow, "scenario" | "started_at" | "status">,
   participants: ReadonlyArray<string>,
-  ticks: ReadonlyArray<Tick>,
+  ticks: ReadonlyArray<Tick & { acts?: ReadonlyArray<ActEvent> }>,
   upTo: number,
 ): { state: DrillState; ticks: Tick[] } {
   const last = lastStep(row.scenario);
@@ -415,7 +670,10 @@ export function replayState(
   for (const t of ticks) {
     if (t.step > upTo) break;
     state = foldTick(state, t, last);
-    out.push({ ...t, world: state.world });
+    out.push({ step: t.step, hour: t.hour, incidents: t.incidents, turns: t.turns, finished: t.finished, world: state.world });
+    for (const a of t.acts ?? []) {
+      state = a.kind === "action" ? pushAction(state, a.record) : applyResult(state, a.id, a.result);
+    }
   }
   // 中断・終了した訓練の途中を見るときも、状態の言葉は訓練の状態のまま
   return { state: { ...state, status: row.status }, ticks: out };
