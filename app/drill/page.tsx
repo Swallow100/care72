@@ -58,7 +58,7 @@ export default async function DrillPage() {
         ) : (
           // 上限に達したら開始でなく、終わった訓練の再生（0 時間から刻みごとに）
           <div className="flex flex-wrap items-center gap-2" data-limit>
-            <span className="text-sm font-bold text-danger">{LIMIT_LABELS.reached}</span>
+            <span className="text-sm font-bold">{LIMIT_LABELS.reached}</span>
             {gate.replay && (
               <Link href={drillHref(gate.replay, { step: 0 })} className="rounded-md bg-accent px-4 py-2 text-sm font-bold text-on-accent" data-press="overlay">
                 {DRILL_LABELS.replay}
