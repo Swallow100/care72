@@ -450,3 +450,78 @@ describe("D1 から読む（事業所の壁）", () => {
     ]);
   });
 });
+
+describe("情報を多く出す（作者 16:3x）", () => {
+  it("上に大きく: 時計の残り（短い順、値の無い物は後ろ）と緊急連絡先（順番・電話）", () => {
+    const v = viewOf("p-01");
+    expect(v.head.clocks).toEqual([
+      { id: "k-01-1", label: "酸素 内蔵電池", value: "2 時間", tone: "urgent" },
+      { id: "k-01-2", label: "酸素 予備ボンベ", value: "8 時間", tone: "urgent" },
+      { id: "k-01-3", label: "ワーファリン", value: null, tone: "check" },
+    ]);
+    expect(v.head.emergency.map((l) => l.map((s) => s.text).join(" "))).toEqual([
+      "1 森 恵子 娘 090-0000-0011",
+      "2 木村 ヨシ 隣人 090-0000-0012",
+    ]);
+    expect(viewOf("p-04").head.clocks).toEqual([]);
+  });
+
+  it("薬は 名前・回数・用量・残り（薬の時計）・保管、機器は 名前と電池・予備（同じ区分の時計）", () => {
+    const meds = (id: string) => {
+      const f = rowOf(viewOf(id), "medical.medications")!.field;
+      return f.kind === "lines" ? f.lines.map((l) => l.map((s) => s.text).join(" ")) : [];
+    };
+    expect(meds("p-01")).toEqual(["ワーファリン 抗凝固薬 1 日 1 回 用量 未確認 残り 未確認 保管 未確認 中断注意"]);
+    expect(meds("p-05")).toEqual(["ステロイド ステロイド 1 日 1 回 用量 未確認 残り 5 日 保管 未確認 中断注意"]);
+    expect(meds("p-08")).toEqual(["インスリン インスリン 朝夕 用量 未確認 残り 4 日 保管 冷蔵庫 要冷蔵 中断注意"]);
+    expect(meds("p-07")[0]).toContain("残り 7 日");
+
+    const devices = (id: string) => {
+      const f = rowOf(viewOf(id), "medical.devices")!.field;
+      return f.kind === "lines" ? f.lines.map((l) => l.map((s) => s.text).join(" ")) : [];
+    };
+    expect(devices("p-01")).toEqual(["在宅酸素 酸素濃縮器 1 L/分 酸素 内蔵電池 2 時間 酸素 予備ボンベ 8 時間"]);
+    expect(devices("p-02")).toEqual(["人工呼吸器 気管切開 人工呼吸器 内蔵電池 3 時間", "吸引 1 日 6 回 電池 未確認"]);
+  });
+
+  it("時計は 値・単位・起点・出典・確認の日", () => {
+    expect(clocksOf(viewOf("p-01"))[0]).toMatchObject({
+      label: "酸素 内蔵電池",
+      value: "2 時間",
+      start: "停電",
+      source: "説明書",
+      confirmed: "2026-11-02",
+    });
+    expect(clocksOf(viewOf("p-01"))[2]).toMatchObject({ label: "ワーファリン", confirmed: null, source: null });
+  });
+
+  it("連絡先は 役割・名前・電話と来られる時間（夜間）", () => {
+    const people = textOf(viewOf("p-03"), "people");
+    expect(people).toContain("田中 和子 妻 同居 夜間可");
+    expect(people).toContain("田中 浩 長男 市内 車 夜間未確認 スマホ 090-0000-0016");
+    expect(textOf(viewOf("p-01"), "people")).toContain("森 恵子 娘 市内 車 夜間未確認 スマホ 090-0000-0011");
+  });
+
+  it("台帳の項目は空でも行を出す（細かい物は小さく）", () => {
+    for (const id of ALL_IDS) {
+      const v = viewOf(id);
+      for (const key of [
+        "medical.history",
+        "medical.vaccinations",
+        "evacuation.route",
+        "evacuation.barriers",
+        "evacuation.pets",
+        "care",
+        "care.handbook",
+        "care.intractableDisease",
+        "notes",
+      ]) {
+        expect(rowOf(v, key), `${id} ${key}`).toBeDefined();
+      }
+      expect(rowOf(v, "medical.history")?.small).toBe(true);
+      expect(rowOf(v, "basic.housing")?.small).toBeUndefined();
+    }
+    expect(textOf(viewOf("p-01"), "basic")).toContain("寝たきり なし 認知症 なし");
+    expect(textOf(viewOf("p-02"), "basic")).toContain("聴覚 未確認");
+  });
+});

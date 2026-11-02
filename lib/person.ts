@@ -22,6 +22,7 @@ import {
   type ClockRow,
   type ConsentRow,
   type ContactRow,
+  type DeviceKind,
   type Ledger,
   type PendingStatus,
   type PersonRow,
@@ -33,6 +34,8 @@ import {
   ABILITY_ITEM_LABELS,
   ABILITY_LABELS,
   AUTHOR_ROLE_LABELS,
+  BLANK_LABELS,
+  CARE_FLAG_LABELS,
   CARE_LEVEL_LABELS,
   CHECK_STATUS_LABELS,
   CLOCK_KIND_LABELS,
@@ -53,6 +56,7 @@ import {
   DOCUMENT_STATUS_LABELS,
   HOUSEHOLD_LABELS,
   MEDICATION_CATEGORY_LABELS,
+  MED_PARTS,
   MEDICATION_FLAG_LABELS,
   PLAN_STATUS_LABELS,
   SECTION_LABELS,
@@ -129,6 +133,8 @@ export const FIELDS: readonly FieldDef[] = [
   { key: "basic.household", section: "basic", label: "世帯" },
   { key: "basic.selfReport", section: "basic", label: "本人報告" },
   { key: "care", section: "basic", label: "心身" },
+  { key: "care.handbook", section: "basic", label: "手帳" },
+  { key: "care.intractableDisease", section: "basic", label: "難病" },
   { key: "notes", section: "basic", label: "特記" },
   ...CONSENT_KINDS.map((k) => ({ key: `consent.${k}`, section: "consent" as const, label: CONSENT_KIND_LABELS[k] })),
 ];
@@ -168,7 +174,6 @@ export function sectionOfField(field: string): SectionId {
 
 // ---------- 画面の形 ----------
 
-/** 1 つの言葉。tel は電話のリンク（tel: の後ろ、ハイフンなし） */
 /**
  * 状態の意味の色（app/globals.css の --state-*）。同じ意味は同じ色:
  * ok 緑（無事・同意・確認済・受領）、urgent 赤（至急・赤の信号・残りの短い時計）、
@@ -193,6 +198,8 @@ export type Row = {
   field: Field;
   /** この欄に付いた台帳の pending。あれば「未確認」と理由を出して数える */
   pending: Pending[];
+  /** 細かい物（既往・予防接種・手帳など）。小さな字で出す */
+  small?: true;
 };
 
 export type ClockView = {
@@ -210,6 +217,8 @@ export type ClockView = {
   /** 主治医・説明書など。null は未確認 */
   source: string | null;
   sourceNote: string | null;
+  /** 値を確かめた日（JST の YYYY-MM-DD）。null は未確認 */
+  confirmed: string | null;
   /** 外の物に頼る時計の頼り先と確認（人が付ける） */
   depends: { on: string; check: string; unchecked: boolean } | null;
   note: string | null;
@@ -268,6 +277,10 @@ export type PersonHead = {
   plan: string;
   /** 台帳の pending の数（担当一覧の「未確認 N」と同じ） */
   unconfirmed: number;
+  /** 走る時計の残り（平時は全部の長さ）。短い順、値の無い物は後ろ。上に大きく出す */
+  clocks: Array<{ id: string; label: string; value: string | null; tone: StateTone | null }>;
+  /** 緊急連絡先（順番つき、電話のリンク）。上に大きく出す */
+  emergency: Line[];
 };
 
 export type UnconfirmedItem = { section: SectionId; field: string; status: PendingStatus; label: string };
@@ -383,7 +396,10 @@ function listField(v: readonly string[] | undefined): Field {
 
 type Contact = PersonPageRows["contacts"][number];
 
-/** 連絡先の 1 行: 名前・間柄・どこに・車・夜間・電話・備考 */
+/** 来てくれる人の連絡先（夜間に来られるかを出す）。機関（かかりつけ・薬局・透析施設・市役所・介護事業所）は出さない */
+const COMES_KINDS = new Set<Contact["kind"]>(["family", "supporter", "welfare_commissioner", "visiting_nurse"]);
+
+/** 連絡先の 1 行: 名前・間柄（役割）・どこに・車・来られる時間（夜間）・スマホ・電話・備考 */
 function contactLine(c: Contact, opts: { order?: number; kind?: boolean } = {}): Line {
   const segs: Seg[] = [];
   if (opts.order !== undefined) segs.push(muted(String(opts.order)));
@@ -392,7 +408,18 @@ function contactLine(c: Contact, opts: { order?: number; kind?: boolean } = {}):
   if (opts.kind) segs.push(muted(CONTACT_KIND_LABELS[c.kind]));
   if (c.reach) segs.push(muted(CONTACT_REACH_LABELS[c.reach]));
   if (c.has_car === 1) segs.push(muted(CONTACT_FLAG_LABELS.hasCar));
-  if (c.night_ok === 1) segs.push(muted(CONTACT_FLAG_LABELS.nightOk));
+  if (COMES_KINDS.has(c.kind)) {
+    segs.push(
+      muted(
+        c.night_ok === 1
+          ? CONTACT_FLAG_LABELS.nightOk
+          : c.night_ok === 0
+            ? CONTACT_FLAG_LABELS.nightNo
+            : CONTACT_FLAG_LABELS.nightUnknown,
+      ),
+    );
+  }
+  if (c.has_smartphone === 1) segs.push(muted(CONTACT_FLAG_LABELS.hasSmartphone));
   if (c.phone) segs.push({ text: c.phone, tel: telHref(c.phone) });
   if (c.note) segs.push(muted(c.note));
   return segs;
@@ -402,8 +429,27 @@ function contactsField(cs: Contact[], opts: { kind?: boolean } = {}): Field {
   return cs.length > 0 ? { kind: "lines", lines: cs.map((c) => contactLine(c, opts)) } : { kind: "none" };
 }
 
+/** 細かい物。小さな字で出す（既往・予防接種・経路・段差・ペット・手帳・難病） */
+const SMALL_KEYS = new Set([
+  "medical.history",
+  "medical.vaccinations",
+  "evacuation.route",
+  "evacuation.barriers",
+  "evacuation.pets",
+  "care.handbook",
+  "care.intractableDisease",
+]);
+
 function row(key: string, field: Field): Row {
-  return { key, label: fieldDef(key).label, field, pending: [] };
+  return { key, label: fieldDef(key).label, field, pending: [], ...(SMALL_KEYS.has(key) ? { small: true as const } : {}) };
+}
+
+/** 時計の値の言葉（色つき）。値が無ければ灰の「未確認」 */
+function clockValueSeg(k: ClockRow): Seg {
+  const tone = clockTone(hoursOf(k), k.starts_on !== "none");
+  if (k.value == null || k.unit == null) return muted(BLANK_LABELS.unconfirmed);
+  const v = `${k.value} ${CLOCK_UNIT_LABELS[k.unit]}`;
+  return tone ? { text: v, tone } : text(v);
 }
 
 // ---------- 区分ごとの行 ----------
@@ -413,26 +459,47 @@ function sameMedication(clockLabel: string, medicationName: string): boolean {
   return clockLabel.includes(medicationName) || medicationName.includes(clockLabel);
 }
 
+/** 電源で動く機器。時計（電池）が無ければ「電池 未確認」と出す */
+const POWERED_DEVICES = new Set<DeviceKind>(["oxygen", "ventilator", "suction"]);
+
 function medicalBlocks(ledger: Ledger, contacts: Contact[], clocks: PersonPageRows["clocks"]): Block[] {
   const { medical } = ledger;
+  const blank = muted(BLANK_LABELS.unconfirmed);
+  // 薬: 名前・区分・回数・用量・残り（その薬の時計）・保管・印
   const meds: Field =
     medical.medications.length === 0
       ? { kind: "none" }
       : lines(
-          medical.medications.map((m) => [
-            text(m.name),
-            muted(MEDICATION_CATEGORY_LABELS[m.category]),
-            text(m.schedule ?? ""),
-            text(m.amount ?? ""),
-            muted(m.storage ?? ""),
-            ...(m.needsRefrigeration ? [muted(MEDICATION_FLAG_LABELS.needsRefrigeration)] : []),
-            ...(m.interruptionRisk ? [tag(MEDICATION_FLAG_LABELS.interruptionRisk, "check")] : []),
-          ]),
+          medical.medications.map((m) => {
+            // 薬の残りは同じ名前の時計（薬の時計か、インスリンのような物の時計）
+            const clock = clocks.find((k) => k.kind !== "device" && sameMedication(k.label, m.name));
+            return [
+              text(m.name),
+              muted(MEDICATION_CATEGORY_LABELS[m.category]),
+              text(m.schedule ?? ""),
+              muted(MED_PARTS.amount),
+              m.amount ? text(m.amount) : blank,
+              muted(MED_PARTS.remaining),
+              clock ? clockValueSeg(clock) : blank,
+              muted(MED_PARTS.storage),
+              m.storage ? text(m.storage) : blank,
+              ...(m.needsRefrigeration ? [muted(MEDICATION_FLAG_LABELS.needsRefrigeration)] : []),
+              ...(m.interruptionRisk ? [tag(MEDICATION_FLAG_LABELS.interruptionRisk, "check")] : []),
+            ];
+          }),
         );
+  // 機器: 名前・内容・回数と、同じ区分の時計（電池・予備）
   const devices: Field =
     medical.devices.length === 0
       ? { kind: "none" }
-      : lines(medical.devices.map((d) => [text(DEVICE_LABELS[d.kind]), text(d.detail ?? ""), muted(d.schedule ?? "")]));
+      : lines(
+          medical.devices.map((d) => {
+            const mine = clocks.filter((k) => k.category === d.kind && k.kind !== "medication");
+            const clockSegs: Seg[] = mine.flatMap((k) => [muted(k.label), clockValueSeg(k)]);
+            if (mine.length === 0 && POWERED_DEVICES.has(d.kind)) clockSegs.push(muted(MED_PARTS.battery), blank);
+            return [text(DEVICE_LABELS[d.kind]), text(d.detail ?? ""), muted(d.schedule ?? ""), ...clockSegs];
+          }),
+        );
 
   const doctors = contacts.filter((c) => c.kind === "home_doctor" || c.kind === "pharmacy");
   const dialysis = contacts.filter((c) => c.kind === "dialysis_center");
@@ -471,6 +538,7 @@ function clockView(k: ClockRow): ClockView {
     start: CLOCK_START_LABELS[k.starts_on],
     source: k.source ? CLOCK_SOURCE_LABELS[k.source] : null,
     sourceNote: k.source_note,
+    confirmed: k.confirmed_at ? jstDate(k.confirmed_at) : null,
     depends:
       k.depends_on && k.depends_check
         ? {
@@ -577,16 +645,14 @@ function basicBlocks(rows: PersonPageRows, ledger: Ledger): Block[] {
     ...(means.length > 0 ? [[text(means.join("・"))]] : []),
   ]);
 
-  const abilities = (Object.keys(ABILITY_ITEM_LABELS) as Array<keyof typeof ABILITY_ITEM_LABELS>).flatMap((k) => {
+  // 心身: 内閣府様式の裏の 6 項目と、寝たきり・認知症。空の項目も「未確認」で出す
+  const abilities: Line = (Object.keys(ABILITY_ITEM_LABELS) as Array<keyof typeof ABILITY_ITEM_LABELS>).map((k) => {
     const v = care[k];
-    return v ? [`${ABILITY_ITEM_LABELS[k]} ${ABILITY_LABELS[v]}`] : [];
+    return v ? text(`${ABILITY_ITEM_LABELS[k]} ${ABILITY_LABELS[v]}`) : muted(`${ABILITY_ITEM_LABELS[k]} ${BLANK_LABELS.unconfirmed}`);
   });
-  const careLines: Line[] = [];
-  if (abilities.length > 0) careLines.push([text(abilities.join("・"))]);
-  const flags = [care.bedridden ? "寝たきり" : "", care.dementia ? "認知症" : ""].filter(Boolean);
-  if (flags.length > 0) careLines.push([text(flags.join("・"))]);
-  if (care.handbook) careLines.push([muted("手帳"), text(care.handbook)]);
-  if (care.intractableDisease) careLines.push([muted("難病"), text(care.intractableDisease)]);
+  const flag = (label: string, v: boolean | undefined): Seg =>
+    v === true ? text(label) : muted(`${label} ${v === false ? BLANK_LABELS.none : BLANK_LABELS.unconfirmed}`);
+  const careLines: Line[] = [abilities, [flag(CARE_FLAG_LABELS.bedridden, care.bedridden), flag(CARE_FLAG_LABELS.dementia, care.dementia)]];
 
   const out = [
     row("basic.address", basic.address ? textField(`${basic.address.city} ${basic.address.town}`) : { kind: "unconfirmed" }),
@@ -603,7 +669,9 @@ function basicBlocks(rows: PersonPageRows, ledger: Ledger): Block[] {
       lines: [[rows.person.self_report_unreliable === 1 ? tag("参考扱い", "check") : text("通常")]],
     }),
     row("care", lines(careLines)),
-    row("notes", ledger.notes.length > 0 ? { kind: "lines", lines: ledger.notes.map((n) => [text(n)]) } : { kind: "unconfirmed" }),
+    row("care.handbook", textField(care.handbook)),
+    row("care.intractableDisease", textField(care.intractableDisease)),
+    row("notes", ledger.notes.length > 0 ? { kind: "lines", lines: ledger.notes.map((n) => [text(n)]) } : { kind: "none" }),
   ];
   return out.map((r): Block => ({ type: "row", row: r }));
 }
@@ -778,24 +846,34 @@ function attachPending(sections: Map<SectionId, Block[]>, ledger: Ledger, rows: 
   return out;
 }
 
-/** 値も pending も無い、あれば出す欄（既往・予防接種・経路・段差・ペット・心身・特記） */
-const OPTIONAL_KEYS = new Set([
-  "medical.history",
-  "medical.vaccinations",
-  "evacuation.route",
-  "evacuation.barriers",
-  "evacuation.pets",
-  "care",
-  "notes",
-]);
+// ---------- 全体 ----------
 
-function dropEmptyOptional(blocks: Block[]): Block[] {
-  return blocks.filter(
-    (b) => !(b.type === "row" && OPTIONAL_KEYS.has(b.row.key) && b.row.field.kind !== "lines" && b.row.pending.length === 0),
-  );
+/** 上に大きく出す時計の残り。走る時計を短い順に、値の無い物は後ろ */
+function headClocks(clocks: ReadonlyArray<ClockRow>): PersonHead["clocks"] {
+  return clocks
+    .filter((k) => k.starts_on !== "none")
+    .map((k) => ({ k, h: hoursOf(k) }))
+    .sort((a, b) => (a.h ?? Infinity) - (b.h ?? Infinity))
+    .map(({ k, h }) => ({
+      id: k.id,
+      label: k.label,
+      value: k.value != null && k.unit != null ? `${k.value} ${CLOCK_UNIT_LABELS[k.unit]}` : null,
+      tone: clockTone(h),
+    }));
 }
 
-// ---------- 全体 ----------
+/** 上に大きく出す緊急連絡先: 順番・名前・間柄・電話 */
+function headEmergency(contacts: ReadonlyArray<Contact>): Line[] {
+  return contacts
+    .filter((c) => c.emergency_order != null)
+    .sort((a, b) => (a.emergency_order ?? 0) - (b.emergency_order ?? 0))
+    .map((c) => [
+      muted(String(c.emergency_order)),
+      text(c.name ?? c.relation ?? CONTACT_KIND_LABELS[c.kind]),
+      ...(c.name && c.relation ? [muted(c.relation)] : []),
+      ...(c.phone ? [{ text: c.phone, tel: telHref(c.phone) }] : []),
+    ]);
+}
 
 /**
  * 優先: 平時は骨格の段（色は医療の印と同じ、時計の長さの色）。
@@ -853,6 +931,8 @@ export function toPersonView(rows: PersonPageRows, opts: ViewOptions): PersonVie
     priority: priorityOf(tier, opts.triage, strongest ?? null),
     plan: PLAN_STATUS_LABELS[person.plan_status],
     unconfirmed: ledger.pending.length,
+    clocks: headClocks(clocks),
+    emergency: headEmergency(contacts),
   };
 
   return {
@@ -861,7 +941,7 @@ export function toPersonView(rows: PersonPageRows, opts: ViewOptions): PersonVie
     sections: sectionOrder(mode).map((id) => ({
       id,
       label: SECTION_LABELS[id],
-      blocks: dropEmptyOptional(sections.get(id)!),
+      blocks: sections.get(id)!,
       unconfirmed: unconfirmed.filter((u) => u.section === id).length,
     })),
     unconfirmed,

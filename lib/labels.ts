@@ -212,8 +212,35 @@ export const CONTACT_REACH_LABELS: Record<ContactReach, string> = {
   far: "遠方",
 };
 
-/** 連絡先の持ち物・夜間 */
-export const CONTACT_FLAG_LABELS = { hasCar: "車", nightOk: "夜間可", hasSmartphone: "スマホ" } as const;
+/** 連絡先の持ち物・来られる時間（夜間） */
+export const CONTACT_FLAG_LABELS = {
+  hasCar: "車",
+  nightOk: "夜間可",
+  nightNo: "夜間不可",
+  nightUnknown: "夜間未確認",
+  hasSmartphone: "スマホ",
+} as const;
+
+/** 薬・機器の行の中の小さな見出し */
+export const MED_PARTS = { amount: "用量", remaining: "残り", storage: "保管", battery: "電池" } as const;
+
+/** 心身の印 */
+export const CARE_FLAG_LABELS = { bedridden: "寝たきり", dementia: "認知症" } as const;
+
+/** 本人のページの上の段の見出し */
+export const HEAD_LABELS = {
+  age: "年齢",
+  careLevel: "介護度",
+  plan: "計画",
+  unconfirmed: "未確認",
+  priority: "優先",
+  marks: "医療",
+  clocks: "時計",
+  emergency: "緊急連絡先",
+} as const;
+
+/** 時計の行の中の小さな見出し */
+export const CLOCK_PARTS = { confirmed: "確認", source: "出典", start: "起点" } as const;
 
 /** 同意 4 つ */
 export const CONSENT_KIND_LABELS: Record<ConsentKind, string> = {
