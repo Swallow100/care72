@@ -10,7 +10,8 @@
 // - 色と順位はここで決めない。安否を表（lib/triage）に流すだけ
 // - 画面の言葉: 筋書き → 「想定」、出来事 → 「状況」、刻み → 画面に出さない（「経過 6 時間」）。言葉は lib/drill/labels.ts
 
-import type { DrillScenario, HazardKind, SignalColor, SignalSource, WhereNow } from "../db/types.ts";
+import type { DependsOn, DrillScenario, HazardKind, SignalColor, SignalSource, WhereNow } from "../db/types.ts";
+import type { SourceId } from "../sources/index.ts";
 
 /** 12 の刻み（発災からの時間） */
 export const DRILL_HOURS = [0, 1, 3, 6, 9, 12, 18, 24, 36, 48, 60, 72] as const;
@@ -46,7 +47,14 @@ export type OutageArea = { scope: "office" } | { scope: "hazard"; hazard: Hazard
 /** 道路・避難所・施設。label は場所の名前を書かない一般の言い方（川沿いの市道・指定避難所） */
 export type Road = { id: string; label: string; open: boolean; person: string | null };
 export type Shelter = { id: string; label: string; state: ShelterState; person: string | null };
-export type Facility = { id: string; label: string; open: boolean; person: string | null };
+/** depends は台帳の時計の頼り先（透析先など）。休止すると、その人のその頼り先の時計を「未確認」に戻す（lib/drill/director.ts の drillClocks） */
+export type Facility = { id: string; label: string; open: boolean; person: string | null; depends: DependsOn | null };
+
+/**
+ * 本人ごとの印（監督の差し込みで付く）。値は付いた時刻（発災からの時間）。
+ * supplyLeft 栄養剤の持ち出し忘れ・nurseAway 訪問看護が来られない・goingHome 本人が家に帰ろうとする・lineDown 家の電話が不通
+ */
+export type PersonMarks = { supplyLeft?: number; nurseAway?: number; goingHome?: number; lineDown?: number };
 
 /** 世界の状態（被害状況）。監督（T19）が持つ。固定の部分はこの表の出来事を順に当てて作る */
 export type WorldState = {
@@ -65,6 +73,10 @@ export type WorldState = {
   roads: Road[];
   shelters: Shelter[];
   facilities: Facility[];
+  /** 職員の空き（出向ける職員の人数）。始めは想定の表の staff。減らすのはケアマネの手（T20） */
+  staff: number;
+  /** 本人ごとの印（台帳の id → 印） */
+  marks: Record<string, PersonMarks>;
 };
 
 export const EMPTY_WORLD: WorldState = {
@@ -78,6 +90,8 @@ export const EMPTY_WORLD: WorldState = {
   roads: [],
   shelters: [],
   facilities: [],
+  staff: 0,
+  marks: {},
 };
 
 /** 世界の変化 1 つ。出来事（状況）の種類はこの kind */
@@ -92,9 +106,62 @@ export type WorldChange =
   | { kind: "water"; out: boolean }
   | { kind: "road"; id: string; label: string; open: boolean }
   | { kind: "shelter"; id: string; label: string; state: ShelterState }
-  | { kind: "facility"; id: string; label: string; open: boolean };
+  | { kind: "facility"; id: string; label: string; open: boolean; depends?: DependsOn }
+  // 本人ごとの印（監督の差し込み。person が要る）
+  | { kind: "supply_left" }
+  | { kind: "nurse_away" }
+  | { kind: "going_home" }
+  | { kind: "line_down" };
 
 export type WorldEventKind = WorldChange["kind"];
+
+// ---------- 監督の差し込みの種類（T19） ----------
+
+/**
+ * 監督（Opus）が差し込める状況の種類。この 6 つだけ（表の外は捨てる。自由な出来事は採点が揺れる）。
+ * どれも本人 1 人を指し、世界の変化はコード（injectChange）が組む。Opus が選ぶのは種類・相手・文・理由・根拠だけ
+ */
+export const INJECT_KINDS = [
+  "supply_left", // 栄養剤の持ち出し忘れ
+  "dialysis_flooded", // 透析施設の浸水
+  "road_blocked", // 道路が通れない
+  "line_down", // 電話が不通
+  "nurse_away", // 訪問看護が来られない
+  "going_home", // 本人が家に帰ろうとする
+] as const;
+export type InjectKind = (typeof INJECT_KINDS)[number];
+
+export function isInjectKind(v: unknown): v is InjectKind {
+  return typeof v === "string" && (INJECT_KINDS as readonly string[]).includes(v);
+}
+
+/** 種類ごとの固定の文（画面の 1 行。Opus の文が使えないときもこれ）。氏名・町名・施設の名前を書かない */
+export const INJECT_TEXTS: Readonly<Record<InjectKind, string>> = {
+  supply_left: "家族が栄養剤を持ち出し忘れた",
+  dialysis_flooded: "透析施設 浸水で休止",
+  road_blocked: "家の前の道 通行止め",
+  line_down: "家の電話 不通",
+  nurse_away: "訪問看護 来られない",
+  going_home: "本人が家に帰ろうとする",
+};
+
+/** 差し込み 1 つの世界の変化。道路・施設の id は本人ごと（同じ人に 2 度当てても 1 つ） */
+export function injectChange(kind: InjectKind, person: string): WorldChange {
+  switch (kind) {
+    case "supply_left":
+      return { kind: "supply_left" };
+    case "dialysis_flooded":
+      return { kind: "facility", id: `fc-${person}`, label: "透析施設", open: false, depends: "dialysis_center" };
+    case "road_blocked":
+      return { kind: "road", id: `rd-${person}`, label: "家の前の道", open: false };
+    case "line_down":
+      return { kind: "line_down" };
+    case "nurse_away":
+      return { kind: "nurse_away" };
+    case "going_home":
+      return { kind: "going_home" };
+  }
+}
 
 /** 世界の出来事（状況）1 つ。text は画面の 1 行（氏名・町名・施設の名前を書かない） */
 export type WorldEvent = {
@@ -104,7 +171,28 @@ export type WorldEvent = {
   person?: string;
   /** 起きた時刻（発災からの時間）。無ければ刻みの時刻。10 分版で寄せた出来事は元の時刻を持つ */
   at?: number;
+  /** 監督の固定の差し込み（想定の表に書いた状況付与）。無ければ世界の出来事 */
+  by?: "director";
+  /** 差し込みの種類（監督の物だけ） */
+  inject?: InjectKind;
+  /** 監督の判断の理由（採点 T22 が読む。画面に出さない） */
+  reason?: string;
+  /** 根拠の出典（登録簿の id。画面に出す） */
+  basis?: SourceId;
 };
+
+/** 想定の表の固定の差し込み 1 つ（監督の表。Claude を呼ばない） */
+function fixedInject(kind: InjectKind, person: string, reason: string, basis?: SourceId): WorldEvent {
+  return {
+    change: injectChange(kind, person),
+    text: INJECT_TEXTS[kind],
+    person,
+    by: "director",
+    inject: kind,
+    reason,
+    ...(basis ? { basis } : {}),
+  };
+}
 
 /**
  * 本人ごとの固定の 1 刻み（ペルソナ T18 が来るまでの仮）。安否 1 つと、する事・言う事。
@@ -135,6 +223,8 @@ export type Scenario = {
   kind: DrillKind;
   /** 刻みの時刻。ticks と同じ順 */
   hours: readonly number[];
+  /** 職員の空き（始め）。地震は職員も被災するので少ない */
+  staff: number;
   ticks: ScenarioTick[];
 };
 
@@ -142,6 +232,8 @@ export type Scenario = {
 // 警戒レベル 3 → 4 → 浸水 3 m の地区。1 山田・2 小林が主役、3 田中の透析先、5 伊藤の道路。
 // 色の動き（ルールの表で）: 山田は 3 時間で赤（けが）。小林は連絡なしのまま人工呼吸器の電池で 3 時間に黄、6 時間に赤。
 // 田中は家族の緑でも透析先 未確認で黄、48 時間に家族の赤。佐藤（スマホを持たない）は不明のまま → 6 時間に民生委員が見に行って緑。
+// 監督の固定の差し込み（T19）: 6 時間に 6 高橋の家族が栄養剤を持ち出し忘れる（避難所で栄養剤の配達 未確認 → 黄）、
+// 12 時間に 3 田中の透析施設が浸水で休止（透析先 未確認のまま）。
 
 const FLOOD_AREA: OutageArea = { scope: "hazard", hazard: "flood", minDepthM: 3 };
 
@@ -149,6 +241,7 @@ const HEAVY_RAIN: Scenario = {
   id: "heavy_rain",
   kind: "heavy_rain",
   hours: DRILL_HOURS,
+  staff: 3,
   ticks: [
     {
       hour: 0,
@@ -193,6 +286,7 @@ const HEAVY_RAIN: Scenario = {
       hour: 6,
       events: [
         { change: { kind: "shelter", id: "sh-1", label: "指定避難所", state: "crowded" }, text: "指定避難所 混雑" },
+        fixedInject("supply_left", "p-06", "経管栄養で、避難の持ち物に栄養剤。家族と避難所に移ったあと", "nanbyo-shishin-2017"),
       ],
       turns: [
         { person: "p-04", color: "green", source: "supporter", whereNow: "home", saying: "見に行きました。家にいます" },
@@ -213,13 +307,7 @@ const HEAVY_RAIN: Scenario = {
     },
     {
       hour: 12,
-      events: [
-        {
-          change: { kind: "facility", id: "fc-1", label: "透析施設", open: false },
-          text: "透析施設 浸水で休止",
-          person: "p-03",
-        },
-      ],
+      events: [fixedInject("dialysis_flooded", "p-03", "透析の人で、透析先 未確認。次の受け入れ先を探す筋", "jadp-dialysis-2023")],
       turns: [],
     },
     {
@@ -275,6 +363,7 @@ const EARTHQUAKE: Scenario = {
   id: "earthquake",
   kind: "earthquake",
   hours: DRILL_HOURS,
+  staff: 2,
   ticks: [
     {
       hour: 0,
@@ -359,7 +448,7 @@ const EARTHQUAKE: Scenario = {
       hour: 36,
       events: [
         {
-          change: { kind: "facility", id: "fc-1", label: "透析施設", open: false },
+          change: { kind: "facility", id: "fc-1", label: "透析施設", open: false, depends: "dialysis_center" },
           text: "透析施設 断水で休止",
           person: "p-03",
         },
@@ -399,7 +488,7 @@ export function condense(base: Scenario, id: DrillScenario, hours: readonly numb
     ticks[i].events.push(...t.events.map((e) => ({ ...e, at: e.at ?? t.hour })));
     ticks[i].turns.push(...t.turns.map((x) => ({ ...x, at: x.at ?? t.hour })));
   }
-  return { id, kind: base.kind, hours, ticks };
+  return { id, kind: base.kind, hours, staff: base.staff, ticks };
 }
 
 const SHORT = condense(HEAVY_RAIN, "short", SHORT_HOURS);
@@ -433,6 +522,14 @@ function upsert<T extends { id: string }>(list: T[], item: T): T[] {
   return list.some((x) => x.id === item.id) ? list.map((x) => (x.id === item.id ? item : x)) : [...list, item];
 }
 
+/** 本人の印を付ける（最初に付いた時刻を残す）。本人の無い出来事は世界を変えない */
+function mark(world: WorldState, person: string | null, key: keyof PersonMarks, hour: number): WorldState {
+  if (!person) return world;
+  const own = world.marks[person] ?? {};
+  if (own[key] !== undefined) return world;
+  return { ...world, marks: { ...world.marks, [person]: { ...own, [key]: hour } } };
+}
+
 /** 出来事 1 つを世界に当てる（新しい世界を返す。元は変えない） */
 export function applyEvent(world: WorldState, e: WorldEvent, hour: number): WorldState {
   const c = e.change;
@@ -459,8 +556,25 @@ export function applyEvent(world: WorldState, e: WorldEvent, hour: number): Worl
     case "shelter":
       return { ...world, shelters: upsert(world.shelters, { id: c.id, label: c.label, state: c.state, person }) };
     case "facility":
-      return { ...world, facilities: upsert(world.facilities, { id: c.id, label: c.label, open: c.open, person }) };
+      return {
+        ...world,
+        facilities: upsert(world.facilities, { id: c.id, label: c.label, open: c.open, person, depends: c.depends ?? null }),
+      };
+    case "supply_left":
+      return mark(world, person, "supplyLeft", hour);
+    case "nurse_away":
+      return mark(world, person, "nurseAway", hour);
+    case "going_home":
+      return mark(world, person, "goingHome", hour);
+    case "line_down":
+      return mark(world, person, "lineDown", hour);
   }
+}
+
+/** 本人の家の電話の様子（家の電話が不通の印があれば不通。無ければ世界の電話） */
+export function phoneOf(world: WorldState, person: string | null): PhoneState {
+  if (person && world.marks[person]?.lineDown !== undefined) return "down";
+  return world.phone;
 }
 
 /** 出来事を順に当てる */
