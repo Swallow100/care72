@@ -278,11 +278,11 @@ describe("信号の保存", () => {
     ).toBe("無事じゃない けが なし・自宅外・動ける・薬 なし");
   });
 
-  it("本人のページの経過に「信号」（赤の色）と本人の書き手で出る", async () => {
+  it("本人のページの経過に「安否」（赤の色）と本人の書き手で出る", async () => {
     await earthquake();
     await saveSignal(db, signalScope(self())!, red({ canMove: false }), at(1));
     const page = await loadPersonPage(db, careManager, "p-01");
-    const item = timelineItems(page!).find((t) => t.kind === "信号")!;
+    const item = timelineItems(page!).find((t) => t.kind === "安否")!;
     expect(item).toMatchObject({ tone: "urgent", body: "無事じゃない 動けない・未回答 3", who: "本人 審査員" });
   });
 });

@@ -286,11 +286,11 @@ describe("保存のあとの担当一覧（色はルールの表のまま）", (
     expect(await rowOf("p-01", at(1.1))).toMatchObject({ color: "green", reason: "本人が「無事」" });
   });
 
-  it("本人のページの経過に「信号」と家族の書き手で出る", async () => {
+  it("本人のページの経過に「安否」と家族の書き手で出る", async () => {
     await earthquake();
     await signalPost(db, family(), answer("red", at(1)), at(1));
     const page = await loadPersonPage(db, careManager, "p-01");
-    const item = timelineItems(page!).find((t) => t.kind === "信号")!;
+    const item = timelineItems(page!).find((t) => t.kind === "安否")!;
     expect(item).toMatchObject({ tone: "urgent", body: "娘が「無事じゃない」と回答" });
     expect(item.who).toContain("家族");
   });
