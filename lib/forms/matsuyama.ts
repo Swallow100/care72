@@ -740,6 +740,7 @@ const POWERED: ReadonlySet<DeviceKind> = new Set(["oxygen", "ventilator", "sucti
 
 /** 薬の区分と時計の区分（名前で当たらないときに使う） */
 export const MED_CLOCK_CATEGORY: Partial<Record<MedicationCategory, ClockRow["category"]>> = {
+  antiplatelet: "antiplatelet",
   anticoagulant: "anticoagulant",
   insulin: "insulin",
   steroid: "steroid",

@@ -100,7 +100,7 @@ CREATE TABLE clocks (
   kind TEXT NOT NULL CHECK (kind IN ('device', 'supply', 'medication', 'condition')),
   category TEXT NOT NULL CHECK (category IN (
     'ventilator', 'suction', 'oxygen', 'dialysis', 'insulin', 'tube_feeding',
-    'anticoagulant', 'steroid', 'antiepileptic', 'dementia', 'other'
+    'antiplatelet', 'anticoagulant', 'steroid', 'antiepileptic', 'dementia', 'other'
   )),
   label TEXT NOT NULL,
   value REAL CHECK (value IS NULL OR value >= 0),
@@ -111,8 +111,9 @@ CREATE TABLE clocks (
   )),
   source_note TEXT,
   confirmed_at TEXT,
-  -- 外の物に頼る時計の頼り先（透析先・冷蔵・配達）と、その確認（確認済・未確認）。人が付ける。Claude は付けない
-  depends_on TEXT CHECK (depends_on IS NULL OR depends_on IN ('dialysis_center', 'refrigeration', 'delivery')),
+  -- 外の物に頼る時計の頼り先（透析先・冷蔵・配達・保管）と、その確認（確認済・未確認）。人が付ける。Claude は付けない。
+  -- ルールの表の入力は透析先・配達だけ。保管（暑さ・冷蔵）は確認の欄の項目（T37）
+  depends_on TEXT CHECK (depends_on IS NULL OR depends_on IN ('dialysis_center', 'refrigeration', 'delivery', 'storage')),
   depends_check TEXT CHECK (depends_check IS NULL OR depends_check IN ('confirmed', 'unconfirmed')),
   note TEXT,
   sort INTEGER NOT NULL DEFAULT 0,

@@ -8,9 +8,11 @@ import { RECORDING_CLASSES, type SignalSource } from "../db/types.ts";
 import { SEED_PEOPLE } from "../../seed/people.ts";
 import { toTriagePerson } from "./from-ledger.ts";
 import {
+  categoryTier,
   clockHours,
   rank,
   RULES,
+  tierBasis,
   tierOf,
   triage,
   type Color,
@@ -97,6 +99,22 @@ describe("優先の骨格", () => {
     expect(tierOf({ ...base, hasSupporter: true })).toBe(8);
     expect(tierOf({ ...base, bedridden: false, dementia: true })).toBe(8);
     expect(tierOf({ ...base, bedridden: false, dementia: true, livesAlone: true })).toBe(6);
+  });
+
+  it("抗血小板薬は段 5（抗凝固薬・ステロイド・抗てんかん薬と同じ。11/3 確定の 2）。根拠は循環器の指針", () => {
+    expect(categoryTier("antiplatelet")).toBe(5);
+    const p: TriagePerson = {
+      id: "x",
+      clocks: [{ kind: "medication", category: "antiplatelet", label: "抗血小板薬", value: 7, unit: "day", starts_on: "disaster" }],
+      livesAlone: false,
+      bedridden: false,
+      hasSupporter: true,
+      dementia: false,
+      selfReportUnreliable: false,
+    };
+    expect(tierOf(p)).toBe(5);
+    expect(tierBasis(5).sourceIds).toContain("jcs-disaster-2014");
+    expect(tierBasis(5).why).toContain("抗血小板薬");
   });
 
   it("台帳から: 5 は寝たきりで支援者なし、4 は認知症で独居で本人の報告を当てにしない印、3 の透析は透析先 未確認", () => {
@@ -226,14 +244,37 @@ describe("案 1: 外の物に頼る時計の確認", () => {
     expect(one(tanaka, RED, S.calm)).toMatchObject({ color: "red", reason: "本人が「無事じゃない」、透析先 未確認" });
   });
 
-  it("時計が走っていなくても効く（停電なしの冷蔵）。頼り先ごとの言い方", () => {
+  it("停電の無いときも効く（配達）。頼り先ごとの言い方", () => {
     const inoue = person("p-08");
-    const fridge: TriagePerson = {
+    const delivery: TriagePerson = {
       ...inoue,
-      clocks: inoue.clocks.map((k) => ({ ...k, depends_on: "refrigeration" as const, depends_check: "unconfirmed" as const })),
+      clocks: inoue.clocks.map((k) => ({ ...k, depends_on: "delivery" as const, depends_check: "unconfirmed" as const })),
     };
-    expect(one(fridge, GREEN, S.dry30)).toMatchObject({ color: "yellow", reason: "無事だが冷蔵 未確認" });
-    expect(one(checked(fridge), GREEN, S.dry30).color).toBe("green");
+    expect(one(delivery, GREEN, S.dry30)).toMatchObject({ color: "yellow", reason: "無事だが配達 未確認" });
+    expect(one(checked(delivery), GREEN, S.dry30).color).toBe("green");
+  });
+
+  it("保管（暑さ・冷蔵）と冷蔵は確認の欄の項目で、未確認でも表の色と理由に使わない（11/3 確定の 1）", () => {
+    const inoue = person("p-08");
+    expect(inoue.clocks.map((k) => [k.depends_on, k.depends_check])).toEqual([["storage", "confirmed"]]);
+    for (const dep of ["storage", "refrigeration"] as const) {
+      const p: TriagePerson = {
+        ...inoue,
+        clocks: inoue.clocks.map((k) => ({ ...k, depends_on: dep, depends_check: "unconfirmed" as const })),
+      };
+      expect(one(p, GREEN, S.dry30), dep).toMatchObject({ color: "green", reason: "本人が「無事」", qualifiers: [] });
+      expect(one(p, UNKNOWN, S.out6), dep).toMatchObject({ color: "gray", reason: "連絡なし 6 時間", qualifiers: [] });
+    }
+  });
+});
+
+describe("11/3 確定の 1: インスリンの時計は残りの日数だけ", () => {
+  const inoue = person("p-08");
+
+  it("8 井上: 物の時計 4 日で発災から走る。停電の有無で残りが変わらない", () => {
+    expect(inoue.clocks).toMatchObject([{ kind: "supply", category: "insulin", value: 4, unit: "day", starts_on: "disaster" }]);
+    expect(one(inoue, GREEN, sit(72, null))).toMatchObject({ color: "yellow", reason: "無事だがインスリン 残り 24 時間" });
+    expect(one(inoue, GREEN, sit(72, 70)).reason).toBe(one(inoue, GREEN, sit(72, null)).reason);
   });
 });
 
@@ -382,7 +423,7 @@ describe("案 5: 支援者なし", () => {
 describe("案 6: 緑でも機器以外の時計の半分を過ぎたら黄", () => {
   const inoue = person("p-08");
 
-  it("8 井上: 停電で冷蔵が止まって 2 日を過ぎたら、無事でも黄", () => {
+  it("8 井上: 発災からインスリンの残り 4 日の半分（2 日）を過ぎたら、無事でも黄", () => {
     expect(one(inoue, GREEN, S.out30).color).toBe("green");
     expect(one(inoue, GREEN, S.out72)).toMatchObject({
       color: "yellow",

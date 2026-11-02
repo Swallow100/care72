@@ -167,7 +167,8 @@ const CATEGORY_TIER: Partial<Record<ClockCategory, Tier>> = {
   dialysis: 3, // 透析（次の透析日までの日数）
   insulin: 4, // インスリン・経管栄養（日単位、保管と物の有無）
   tube_feeding: 4,
-  anticoagulant: 5, // 抗凝固薬・ステロイド・抗てんかん薬（中断すると数日で危ない）
+  antiplatelet: 5, // 抗血小板薬・抗凝固薬・ステロイド・抗てんかん薬（中断すると数日で危ない。抗血小板薬は 11/3 に足した）
+  anticoagulant: 5,
   steroid: 5,
   antiepileptic: 5,
 };
@@ -213,7 +214,7 @@ export const TIERS: ReadonlyArray<{ tier: Tier } & Basis> = [
   },
   {
     tier: 5,
-    why: "抗凝固薬・ステロイド・抗てんかん薬は急にやめると危ない → 持ち出す量と処方の控え（お薬手帳）",
+    why: "抗血小板薬・抗凝固薬・ステロイド・抗てんかん薬は急にやめると危ない → 持ち出す量と処方の控え（お薬手帳）",
     sourceIds: ["jcs-disaster-2014", "nanbyo-shishin-2017"],
   },
   {
@@ -259,8 +260,12 @@ export const READING: ReadonlyArray<{ text: string; origin: string }> = [
   { text: "「超えた」「過ぎた」はちょうどを含まない。仕様書の「12 時間までは灰」に合わせた", origin: "決めた所" },
   { text: "機器の時計は種類が機器（A）の時計。機器以外の時計は物（B）・薬（C）。本人の状態（D）は走らない", origin: "決めた所" },
   {
-    text: "外の物に頼る時計は頼り先（透析先・冷蔵・配達）のある時計。確認（確認済・未確認）は人が台帳で付け、Claude は付けない",
+    text: "外の物に頼る時計は頼り先（透析先・配達）のある時計。確認（確認済・未確認）は人が台帳で付け、Claude は付けない",
     origin: "案 1",
+  },
+  {
+    text: "保管（暑さ・冷蔵）と冷蔵の頼り先は時計の「確認」の欄の項目で、表の入力に使わない。インスリンの時計は手元の残りの日数（物の時計）で、冷蔵が切れても走らせない（未開封ならしばらく使える）",
+    origin: "11/3 確定の 1",
   },
   {
     text: "けが・動けないが 4 問の答え（ボタン）から来たら理由は「本人が「動けない」」、録音・自由文の分類（Claude）から来たら「録音の分類（AI）: 動けない」と AI の印を付け、ケアマネが直した分類から来たら「分類（ケアマネ）: 動けない」（AI の印なし）。分類が Claude か人かは信号の classified_by で見る。答えにある言葉は分類から、人の分類にある言葉は Claude の分類から重ねない。いくつかあれば「、」でつなぐ",
@@ -397,7 +402,7 @@ type RuleInput = {
   setAside: boolean;
   states: ClockState[];
   hoursSinceDisaster: number;
-  /** 確認が未確認の頼り先（透析先・冷蔵・配達）。重ねない */
+  /** 確認が未確認の頼り先（表の入力の透析先・配達だけ。TABLE_DEPENDS）。重ねない */
   unchecked: DependsOn[];
 };
 
@@ -541,8 +546,8 @@ export const RULES: ReadonlyArray<Rule> = [
     color: "yellow",
     example: "透析先 未確認、連絡なし 6 時間",
     origin: "案 1 を不明に広げた",
-    why: "透析先・冷蔵・配達は外の事情で止まる → 本人に連絡がつかない間に頼り先を確かめる",
-    sourceIds: ["jadp-dialysis-2023", "jadec-insulin-2023"],
+    why: "透析先・配達は外の事情で止まる → 本人に連絡がつかない間に頼り先を確かめる",
+    sourceIds: ["jadp-dialysis-2023"],
     saysUnchecked: true,
     match: (x) => (x.unchecked.length > 0 ? `${uncheckedWords(x)}、${unconfirmed(x)}` : null),
   },
@@ -608,8 +613,8 @@ export const RULES: ReadonlyArray<Rule> = [
     color: "yellow",
     example: "無事だが透析先 未確認",
     origin: "案 1",
-    why: "本人が無事でも頼り先（透析先・冷蔵・配達）が止まっていれば数日のうちに続けられない → 頼り先を確かめる",
-    sourceIds: ["jadp-dialysis-2023", "jadec-insulin-2023"],
+    why: "本人が無事でも頼り先（透析先・配達）が止まっていれば数日のうちに続けられない → 頼り先を確かめる",
+    sourceIds: ["jadp-dialysis-2023"],
     saysUnchecked: true,
     match: (x) => (x.unchecked.length > 0 ? `無事だが${uncheckedWords(x)}` : null),
   },
@@ -651,7 +656,7 @@ export const QUALIFIERS: ReadonlyArray<Qualifier> = [
     when: "外の物に頼る時計の確認が未確認（色を決めた行が言っていなければ）",
     text: "透析先 未確認",
     origin: "案 1",
-    why: "頼り先（透析先・冷蔵・配達）が動いているかは本人の答えでは分からない → 理由に添えて見落とさない",
+    why: "頼り先（透析先・配達）が動いているかは本人の答えでは分からない → 理由に添えて見落とさない",
     sourceIds: ["jadp-dialysis-2023"],
     apply: (x, rule) => (x.unchecked.length > 0 && !rule.saysUnchecked ? uncheckedWords(x) : null),
   },
@@ -700,10 +705,16 @@ function groupOf(color: Color, rule: RuleId): TriageResult["group"] {
   return 4;
 }
 
+/**
+ * 表の入力にする頼り先（透析先・配達）。保管（暑さ・冷蔵）と冷蔵は時計の「確認」の欄の項目で、表の色・理由に使わない
+ * （docs/DECISIONS.md 11/3 04:0x の 1）。様式 9 の平時の優先の理由もこの表で見る
+ */
+export const TABLE_DEPENDS: ReadonlySet<DependsOn> = new Set<DependsOn>(["dialysis_center", "delivery"]);
+
 function uncheckedOf(person: TriagePerson): DependsOn[] {
   const out: DependsOn[] = [];
   for (const k of person.clocks) {
-    if (k.depends_on && k.depends_check === "unconfirmed" && !out.includes(k.depends_on)) out.push(k.depends_on);
+    if (k.depends_on && TABLE_DEPENDS.has(k.depends_on) && k.depends_check === "unconfirmed" && !out.includes(k.depends_on)) out.push(k.depends_on);
   }
   return out;
 }

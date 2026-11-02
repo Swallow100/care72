@@ -313,16 +313,22 @@ describe("1 山田 ハナ（T07 の終わりの形）", () => {
 });
 
 describe("中断注意の印（優先の骨格から機械的に、出典の id を添える）", () => {
-  it("段 4（インスリン）と段 5（抗凝固薬・ステロイド・抗てんかん薬）に付き、段の根拠の出典を持つ", () => {
+  it("段 4（インスリン）と段 5（抗血小板薬・抗凝固薬・ステロイド・抗てんかん薬）に付き、段の根拠の出典を持つ", () => {
     expect(interruptionMark({ category: "insulin" })).toEqual({ label: "中断注意", tier: 4, sourceIds: tierBasis(4).sourceIds });
-    for (const c of ["anticoagulant", "steroid", "antiepileptic"] as const) {
+    for (const c of ["antiplatelet", "anticoagulant", "steroid", "antiepileptic"] as const) {
       expect(interruptionMark({ category: c })?.tier, c).toBe(5);
     }
   });
 
-  it("骨格に段の無い区分（抗血小板薬・経口糖尿病薬・その他）は付かない。台帳の印だけなら出典なしで付く", () => {
-    for (const c of ["antiplatelet", "oral_diabetes", "other"] as const) expect(interruptionMark({ category: c }), c).toBeNull();
-    expect(interruptionMark({ category: "antiplatelet", interruptionRisk: true })).toEqual({
+  it("抗血小板薬（11/3 確定の 2）: 段 5 の印で、出典は循環器の指針（jcs-disaster-2014）を含む", () => {
+    expect(interruptionMark({ category: "antiplatelet" })).toEqual({ label: "中断注意", tier: 5, sourceIds: tierBasis(5).sourceIds });
+    expect(tierBasis(5).sourceIds).toContain("jcs-disaster-2014");
+    expect(tierBasis(5).why).toContain("抗血小板薬");
+  });
+
+  it("骨格に段の無い区分（経口糖尿病薬・その他）は付かない。台帳の印だけなら出典なしで付く", () => {
+    for (const c of ["oral_diabetes", "other"] as const) expect(interruptionMark({ category: c }), c).toBeNull();
+    expect(interruptionMark({ category: "oral_diabetes", interruptionRisk: true })).toEqual({
       label: "中断注意",
       tier: null,
       sourceIds: [],
