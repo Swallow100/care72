@@ -1,0 +1,28 @@
+// ケア72 の Workers の設定。
+// まだ配信しない。database_id は仮の値で、手元の --local でだけ使う。
+// Cloudflare のアカウントを作ったあとで本物に替える（docs/PROGRESS.md）。
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "care72",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "care72",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "RECORDINGS",
+      "bucket_name": "care72-recordings"
+    }
+  ]
+}

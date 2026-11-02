@@ -154,3 +154,7 @@ vite.config.ts.timestamp-*
 .dev.vars.*
 .wrangler/
 .open-next/
+
+# ケア72: 手元の生成物
+next-env.d.ts
+seed/generated/

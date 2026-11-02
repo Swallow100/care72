@@ -1,0 +1,66 @@
+@import "tailwindcss";
+
+/*
+  色は 3 段の地で区切る。地（base 薄い灰色）・面（panel 白）・面の中（panel2）。
+  枠線は選択・注意・危険のときだけ。押したときは灰色（press）だけ。
+  安否の 4 色: 緑 無事（safe）・赤 危険（danger）・黄 要確認（caution）・灰 未知（unknown）。
+*/
+:root {
+  --base: #eceef1;
+  --panel: #ffffff;
+  --panel2: #f4f5f7;
+  --ink: #1c2229;
+  --muted: #5a6470;
+  --press: rgb(0 0 0 / 0.07);
+  --safe: #1d7a45;
+  --danger: #c0292b;
+  --caution: #946000;
+  --unknown: #66707c;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --base: #0f1215;
+    --panel: #191d22;
+    --panel2: #22272d;
+    --ink: #e6e9ed;
+    --muted: #9aa4af;
+    --press: rgb(255 255 255 / 0.08);
+    --safe: #52c285;
+    --danger: #ff6f69;
+    --caution: #e0b13e;
+    --unknown: #9aa4af;
+    color-scheme: dark;
+  }
+}
+
+@theme inline {
+  --color-base: var(--base);
+  --color-panel: var(--panel);
+  --color-panel2: var(--panel2);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-press: var(--press);
+  --color-safe: var(--safe);
+  --color-danger: var(--danger);
+  --color-caution: var(--caution);
+  --color-unknown: var(--unknown);
+  --font-sans: var(--font-biz-ud), system-ui, sans-serif;
+}
+
+html,
+body {
+  background: var(--base);
+  color: var(--ink);
+}
+
+body {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 押したときの変化は灰色の地だけ。縮める・薄くする・色を変えるは重ねない。 */
+[data-press]:active {
+  background-color: var(--press);
+}
