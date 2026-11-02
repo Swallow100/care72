@@ -20,7 +20,7 @@ export const PLAN_STATUS_LABELS: Record<PlanStatus, string> = {
   trained: "訓練済",
 };
 
-/** 医療依存の短い印。並びは緊急度の骨格の順 */
+/** 医療依存の短い印。並びは優先の骨格の順 */
 export const DEPENDENCE_MARKS: ReadonlyArray<[ClockCategory, string]> = [
   ["ventilator", "呼吸器"],
   ["suction", "吸引"],
@@ -54,13 +54,13 @@ export const HAZARD_LABELS: Record<HazardKind, string> = {
 
 /** 安否の 4 色 */
 export const COLOR_LABELS: Record<Color, string> = {
-  red: "危険",
+  red: "至急",
   yellow: "要確認",
   gray: "未知",
   green: "無事",
 };
 
-/** 緊急度の骨格の名前（docs/SPEC.md「医療の芯」） */
+/** 優先の骨格の名前（docs/SPEC.md「医療の芯」） */
 export const TIER_LABELS: Record<Tier, string> = {
   1: "人工呼吸器・吸引",
   2: "在宅酸素",

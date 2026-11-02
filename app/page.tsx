@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 
 type Props = { searchParams: Promise<{ sort?: string }> };
 
-const SORT_LABELS: Record<SortKey, string> = { tier: "緊急度", kana: "氏名", age: "年齢", plan: "計画" };
+const SORT_LABELS: Record<SortKey, string> = { tier: "優先", kana: "氏名", age: "年齢", plan: "計画" };
 
 function isSortKey(v: string | undefined): v is SortKey {
   return SORT_KEYS.includes(v as SortKey);

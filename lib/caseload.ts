@@ -23,7 +23,7 @@ export type CaseloadRow = {
   plan: PlanStatus;
   /** 未確認の項目の数 */
   pending: number;
-  /** 緊急度の骨格 1〜8 */
+  /** 優先の骨格 1〜8 */
   tier: Tier;
 };
 

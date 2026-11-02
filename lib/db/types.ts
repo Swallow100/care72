@@ -51,7 +51,7 @@ export type ConsentStatus = (typeof CONSENT_STATUSES)[number];
 export const CLOCK_KINDS = ["device", "supply", "medication", "condition"] as const;
 export type ClockKind = (typeof CLOCK_KINDS)[number];
 
-/** 何で時間が決まるか。緊急度の骨格（lib/triage）はこの区分で引く */
+/** 何で時間が決まるか。優先の骨格（lib/triage）はこの区分で引く */
 export const CLOCK_CATEGORIES = [
   "ventilator", // 人工呼吸器
   "suction", // 吸引
@@ -168,7 +168,7 @@ export const TIMELINE_KINDS = [
   "arrived_shelter", // 避難所に着いた
   "received", // 受領（医療班・行政が受け持つ）
   "released", // 受け持ちから外す（搬送・退所）
-  "override", // 緊急度の上書き
+  "override", // 色と順位の上書き
   "consent", // 同意を変えた
   "clock_check", // 時計の頼り先の確認を変えた（確認済・未確認）。人が付ける
   "self_report_mark", // 本人の報告を当てにしない印を付けた・外した。人が付ける

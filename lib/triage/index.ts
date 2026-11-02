@@ -19,10 +19,10 @@ import type {
 } from "../db/types.ts";
 import { DEPENDS_ON_LABELS } from "../labels.ts";
 
-/** 赤 危険・黄 要確認・灰 未知・緑 無事 */
+/** 赤 至急・黄 要確認・灰 未知・緑 無事（赤は連絡の順の言葉で、本人の状態を言い切らない） */
 export type Color = "red" | "yellow" | "gray" | "green";
 
-/** 緊急度の骨格 1〜8（何で時間が決まるか） */
+/** 優先の骨格 1〜8（何で時間が決まるか） */
 export type Tier = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
 
 /** 表のどの行で決まったか（表の上から） */
@@ -145,7 +145,7 @@ const CATEGORY_TIER: Partial<Record<ClockCategory, Tier>> = {
   antiepileptic: 5,
 };
 
-/** 緊急度の骨格。いちばん上の段を取る */
+/** 優先の骨格。いちばん上の段を取る */
 export function tierOf(person: TriagePerson): Tier {
   let tier: Tier = 8;
   for (const k of person.clocks) {
@@ -562,7 +562,7 @@ export const ORDER: ReadonlyArray<OrderKey> = [
     origin: "案 5",
     compare: (a, b) => cmp(a.hasSupporter ? 1 : 0, b.hasSupporter ? 1 : 0),
   },
-  { label: "緊急度の骨格の段 1〜8", origin: "仕様書", compare: (a, b) => cmp(a.tier, b.tier) },
+  { label: "優先の骨格の段 1〜8", origin: "仕様書", compare: (a, b) => cmp(a.tier, b.tier) },
   {
     label: "id",
     origin: "決めた所",

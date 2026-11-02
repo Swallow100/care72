@@ -28,7 +28,7 @@ describe("担当一覧の行", () => {
     expect(row("p-09")).toMatchObject({ marks: [], hazards: [], tier: 8 });
   });
 
-  it("緊急度の順に並べると、骨格の順・同じならカナの順", () => {
+  it("優先の順に並べると、骨格の順・同じならカナの順", () => {
     expect(sortCaseload(rows, "tier").map((r) => r.id)).toEqual([
       "p-02", // 1 呼吸器
       "p-01", // 2 酸素
