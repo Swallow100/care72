@@ -183,6 +183,11 @@ export function sectionOfField(field: string): SectionId {
   return matchField(field)?.section ?? PREFIX_SECTIONS[field.split(".")[0]] ?? "basic";
 }
 
+/** pending の field の画面の名前（いちばん長く一致する欄。無ければ「その他」）。担当一覧の右の面の見直しでも使う */
+export function fieldLabelOf(field: string): string {
+  return matchField(field)?.label ?? "その他";
+}
+
 // ---------- 画面の形 ----------
 
 /**
@@ -239,10 +244,11 @@ export type ClockView = {
 /** 書類の入口。href があれば開ける（紙面ができた書類） */
 export type DocumentView = { key: keyof typeof DOCUMENT_LABELS; label: string; status: string; href?: string };
 
-/** できた書類の紙面の場所（T05 計画書。T06・T07 はここに足す） */
+/** できた書類の紙面の場所（T05 計画書・T07 医療要約・T06 本人の 1 枚・T16 QR） */
 const DOCUMENT_PATHS: Partial<Record<keyof typeof DOCUMENT_LABELS, (personId: string) => string>> = {
   matsuyama: (id) => `/people/${encodeURIComponent(id)}/forms/matsuyama`,
   medical: (id) => `/people/${encodeURIComponent(id)}/forms/medical`,
+  own: (id) => `/people/${encodeURIComponent(id)}/forms/own`,
   qr: (id) => `/people/${encodeURIComponent(id)}/forms/qr`,
 };
 

@@ -279,11 +279,19 @@ export type SupportKind = (typeof SUPPORT_KINDS)[number];
 export const PENDING_STATUSES = ["unknown", "not_asked", "declined"] as const;
 export type PendingStatus = (typeof PENDING_STATUSES)[number];
 
+/** 緯度経度（世界測地系、度）。担当一覧の右の面の地図のピンに使う */
+export type GeoPoint = { lat: number; lng: number };
+
 export type Ledger = {
   basic: {
     sex?: Sex;
     /** 番地は持たない。市町村と町名まで */
     address?: { city: string; town: string };
+    /**
+     * 地図のピンの位置（T14）。種の 10 人は架空の位置で、町名からの変換はしない。
+     * 入れる欄（lib/intake/fields.ts）に持たず、仮名化の層（lib/pseudonym）も渡さないので Claude には届かない
+     */
+    location?: GeoPoint;
     housing?: {
       /** 住んでいる階 */
       floor?: number;

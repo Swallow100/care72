@@ -1,0 +1,156 @@
+/*
+  本人の 1 枚の紙面（A4 縦の表と裏）。paper.css の紙（白地に黒、A4、印刷で 1 頁ずつ）に、表の大きな文字と QR の枠を足す。
+  色は使わず、大きさと太さで大事な行（逃げるところ・119）を目立たせる。ふりがなは <ruby> の rt。
+*/
+
+/* ---- 表 ---- */
+
+.paper.own-paper {
+  padding: 10mm 13mm 8mm;
+  gap: 1.8mm;
+  font-size: 17pt;
+  line-height: 1.45;
+}
+.paper.own-paper rt {
+  font-size: 0.48em;
+  font-weight: 400;
+}
+
+.paper .own-title {
+  margin: 0 0 0.5mm;
+  font-size: 23pt;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.paper .own-blk {
+  border: 0.8pt solid #555;
+}
+/* 見出しのふりがなが帯の上の線に付かないよう、上を少し空ける */
+.paper .own-h {
+  margin: 0;
+  padding: 1.2mm 3mm 0.6mm;
+  background: #ececec;
+  font-size: 13pt;
+  font-weight: 700;
+  line-height: 1.6;
+}
+
+.paper .own-lines {
+  list-style: none;
+  margin: 0;
+  padding: 1mm 3mm 1.4mm;
+}
+.paper .own-lines.cols {
+  columns: 2;
+  column-gap: 8mm;
+}
+.paper .own-ln {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4mm;
+  break-inside: avoid;
+  padding: 0.3mm 0;
+}
+.paper .own-ln + .own-ln {
+  border-top: 0.5pt solid #ccc;
+}
+.paper .own-lines.cols .own-ln + .own-ln {
+  border-top: 0;
+}
+.paper .own-tx {
+  min-width: 0;
+}
+.paper .own-ln.lead {
+  font-size: 27pt;
+  line-height: 1.5;
+}
+.paper .own-ln.sub {
+  font-size: 14pt;
+}
+.paper .own-ln.sub,
+.paper .own-lines .own-ln.sub {
+  border-top: 0;
+  padding-left: 6mm;
+}
+.paper .own-tel {
+  flex: none;
+  font-size: 18pt;
+  font-weight: 700;
+  white-space: nowrap;
+}
+/* 台帳に電話の無い行は手で書く線 */
+.paper .own-tel.blank {
+  display: inline-block;
+  width: 52mm;
+  height: 1.1em;
+  border-bottom: 1pt solid #111;
+}
+
+.paper .own-sos {
+  border: 1.6pt solid #111;
+  padding: 1.6mm 3mm;
+  font-size: 19pt;
+  font-weight: 700;
+  line-height: 1.6;
+}
+.paper .own-sos strong {
+  font-size: 34pt;
+  margin-left: 2mm;
+}
+
+.paper .own-foot {
+  font-size: 9pt;
+  color: #333;
+  line-height: 1.8;
+  text-align: right;
+}
+
+/* ---- 裏 ---- */
+
+/*
+  裏の医療要約も、余りを段の間に配る（paper.css の 1 頁目と同じ）。題名の段に QR の枠が入る分、上の余白を 2mm 詰める
+  （山田 ハナの要約は QR の枠で 1.6mm はみ出し、3 頁になった）
+*/
+.paper.med-paper[data-page="2"] {
+  justify-content: space-between;
+  padding-top: 6mm;
+}
+
+/*
+  QR の場所は一辺 18mm（印刷して読める大きさで、裏の要約が 1 頁に収まる大きさ。components/forms/OwnSheet.tsx の OWN_QR_MM と同じ）。
+  有効な QR があれば T16 の QrBlock（字を外した四角）、無ければこの枠に「QR 未作成」「QR 期限切れ」
+*/
+.paper .qr-frame {
+  box-sizing: border-box;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 18mm;
+  height: 18mm;
+  border: 1pt solid #111;
+  font-size: 11pt;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.paper .qr-frame-state {
+  font-size: 7.6pt;
+}
+
+.paper.own-back {
+  gap: 4mm;
+}
+.paper .own-withheld {
+  display: flex;
+  align-items: baseline;
+  gap: 4mm;
+  padding: 3mm 4mm;
+  font-size: 12pt;
+}
+.paper .own-withheld-tag {
+  font-size: 18pt;
+  font-weight: 700;
+}

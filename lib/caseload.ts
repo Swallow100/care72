@@ -5,11 +5,12 @@
 import type { D1Database } from "@cloudflare/workers-types";
 import { ageOn } from "./age.ts";
 import { parseLedger } from "./db/ledger.ts";
-import type { CareLevel, ClockRow, ContactRow, Ledger, PersonRow, PlanStatus } from "./db/types.ts";
+import type { CareLevel, ClockRow, ContactRow, GeoPoint, HazardKind, Ledger, PersonRow, PlanStatus } from "./db/types.ts";
 import { loadDisasterState } from "./disaster/db.ts";
 import { toSituation, type DisasterSituation, type DisasterState } from "./disaster/state.ts";
 import { loadOfficeSignals, triageInDisaster } from "./disaster/triage.ts";
 import { DEPENDENCE_MARKS, HAZARD_LABELS } from "./labels.ts";
+import { isGeoPoint } from "./map/geo.ts";
 import type { StateTone } from "./person.ts";
 import { compareResults, tierOf, type Tier, type TriageResult, type TriageSignal } from "./triage/index.ts";
 import { toTriagePerson } from "./triage/from-ledger.ts";
@@ -33,6 +34,15 @@ export type CaseloadRow = {
   tier: Tier;
   /** 災害モードのときのルールの表の結果（色・理由の 1 行・並びの鍵）。平時は null */
   triage: TriageResult | null;
+  // ---------- 右の面（T14）の地図と内訳に使う ----------
+  /** 未確認の項目の台帳の中の場所（pending の field） */
+  pendingFields: string[];
+  /** ハザードの種類と浸水の深さ（hazards の元。右の面の人数と地図の層） */
+  hazardKinds: Array<{ kind: HazardKind; depthM: number | null }>;
+  /** 避難先 1 */
+  destination: string | null;
+  /** 地図のピンの位置（架空）。無ければ地図に出さない */
+  location: GeoPoint | null;
 };
 
 export type Caseload = {
@@ -108,6 +118,10 @@ export function toCaseloadRows(
       pending: ledger.pending.length,
       tier: tierOf(person),
       triage,
+      pendingFields: ledger.pending.map((x) => x.field),
+      hazardKinds: ledger.evacuation.hazards.map((h) => ({ kind: h.kind, depthM: h.depthM ?? null })),
+      destination: ledger.evacuation.destination1?.trim() || null,
+      location: isGeoPoint(ledger.basic.location) ? ledger.basic.location : null,
     };
   });
 }

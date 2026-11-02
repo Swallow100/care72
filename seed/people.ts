@@ -9,6 +9,7 @@ import type {
   ConsentKind,
   ConsentRow,
   ContactRow,
+  GeoPoint,
   Ledger,
   OfficeRow,
   PersonRow,
@@ -113,6 +114,25 @@ function clock(c: Partial<SeedClock> & Pick<SeedClock, "id" | "kind" | "category
 
 const emptyMedical = (): Ledger["medical"] => ({ devices: [], medications: [] });
 
+/**
+ * 地図のピンの位置（T14）。架空の位置で、町名と同じく実在の人・家と関係ない。
+ * 松山市の市街の中で、台帳のハザードと重ねる層が食い違わない所（浸水 3 m は深い色の区域、浸水 0.5〜1 m は浅い色の区域、
+ * 土砂は警戒区域の山すそ、津波は海沿いの浸水想定、なしはどの層も無い所）を選んだ。
+ * 家に当たらないよう、空中写真で田畑・空き地・運動場・公園などの開けた所を見て置いた。確かめた手順は docs/progress/t14.md
+ */
+export const SEED_LOCATIONS: Record<string, GeoPoint> = {
+  "p-01": { lat: 33.812, lng: 132.7487 }, // かわなぎ町 浸水 3 m
+  "p-02": { lat: 33.8022, lng: 132.7665 }, // かわなぎ町 浸水 3 m
+  "p-03": { lat: 33.8226, lng: 132.7197 }, // みずほし町 浸水 0.5 m
+  "p-04": { lat: 33.8525, lng: 132.7988 }, // くぬぎ谷町 土砂
+  "p-05": { lat: 33.8346, lng: 132.7303 }, // みずほし町 浸水 0.5 m
+  "p-06": { lat: 33.8243, lng: 132.7543 }, // あしなみ町 浸水 1 m
+  "p-07": { lat: 33.8585, lng: 132.7816 }, // くぬぎ谷町 土砂
+  "p-08": { lat: 33.854, lng: 132.7105 }, // うみなり町 津波
+  "p-09": { lat: 33.8655, lng: 132.74 }, // そらみ台 なし
+  "p-10": { lat: 33.8735, lng: 132.7502 }, // そらみ台 なし
+};
+
 export const SEED_PEOPLE: SeedPerson[] = [
   // 1 動画の主役。計画のデモで空欄を埋める。大雨: 赤 → 録音にうめき声。地震: 停電で酸素の時計が走る
   {
@@ -131,6 +151,7 @@ export const SEED_PEOPLE: SeedPerson[] = [
       basic: {
         sex: "female",
         address: { city: CITY, town: "かわなぎ町" },
+        location: SEED_LOCATIONS["p-01"],
         housing: { floor: 1, floors: 2, structure: "wood" },
         household: "alone",
         contactMeans: { landline: true, smartphone: "none" },
@@ -243,6 +264,7 @@ export const SEED_PEOPLE: SeedPerson[] = [
       basic: {
         sex: "female",
         address: { city: CITY, town: "かわなぎ町" },
+        location: SEED_LOCATIONS["p-02"],
         housing: { floor: 1, floors: 2, structure: "wood" },
         household: "with_spouse",
         contactMeans: { landline: true, smartphone: "none" },
@@ -321,6 +343,7 @@ export const SEED_PEOPLE: SeedPerson[] = [
       basic: {
         sex: "male",
         address: { city: CITY, town: "みずほし町" },
+        location: SEED_LOCATIONS["p-03"],
         housing: { floor: 2, floors: 2, structure: "wood" },
         household: "with_spouse",
         contactMeans: { landline: true, smartphone: "none" },
@@ -421,6 +444,7 @@ export const SEED_PEOPLE: SeedPerson[] = [
       basic: {
         sex: "female",
         address: { city: CITY, town: "くぬぎ谷町" },
+        location: SEED_LOCATIONS["p-04"],
         housing: { floor: 1, floors: 1, structure: "wood" },
         household: "alone",
         contactMeans: { landline: true, smartphone: "none" },
@@ -495,6 +519,7 @@ export const SEED_PEOPLE: SeedPerson[] = [
       basic: {
         sex: "female",
         address: { city: CITY, town: "みずほし町" },
+        location: SEED_LOCATIONS["p-05"],
         housing: { floor: 2, floors: 2, structure: "wood" },
         household: "alone",
         contactMeans: { landline: true, smartphone: "none" },
@@ -553,6 +578,7 @@ export const SEED_PEOPLE: SeedPerson[] = [
       basic: {
         sex: "female",
         address: { city: CITY, town: "あしなみ町" },
+        location: SEED_LOCATIONS["p-06"],
         housing: { floor: 1, floors: 2, structure: "wood" },
         household: "with_child",
         contactMeans: { landline: true, smartphone: "none" },
@@ -641,6 +667,7 @@ export const SEED_PEOPLE: SeedPerson[] = [
       basic: {
         sex: "male",
         address: { city: CITY, town: "くぬぎ谷町" },
+        location: SEED_LOCATIONS["p-07"],
         housing: { floor: 1, floors: 1, structure: "wood" },
         household: "alone",
         contactMeans: { mobile: true, smartphone: "uses" },
@@ -712,6 +739,7 @@ export const SEED_PEOPLE: SeedPerson[] = [
       basic: {
         sex: "male",
         address: { city: CITY, town: "うみなり町" },
+        location: SEED_LOCATIONS["p-08"],
         housing: { floor: 2, floors: 2, structure: "wood" },
         household: "with_child",
         contactMeans: { mobile: true, smartphone: "uses" },
@@ -788,6 +816,7 @@ export const SEED_PEOPLE: SeedPerson[] = [
       basic: {
         sex: "male",
         address: { city: CITY, town: "そらみ台" },
+        location: SEED_LOCATIONS["p-09"],
         housing: { floor: 2, floors: 2, structure: "wood" },
         household: "alone",
         contactMeans: { mobile: true, smartphone: "uses" },
@@ -858,6 +887,7 @@ export const SEED_PEOPLE: SeedPerson[] = [
       basic: {
         sex: "male",
         address: { city: CITY, town: "そらみ台" },
+        location: SEED_LOCATIONS["p-10"],
         housing: { floor: 2, floors: 2, structure: "wood" },
         household: "with_spouse",
         contactMeans: { landline: true, smartphone: "none" },

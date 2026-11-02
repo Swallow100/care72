@@ -1,4 +1,4 @@
-// QR の版を D1 で持つ（migrations/0002_qr.sql の people.qr_generation・qr_issued_at）。
+// QR の版を D1 で持つ（migrations/0001_init.sql の people.qr_generation・qr_issued_at）。
 // 作る・作り直すは版を 1 つ上げて時刻を書くだけ。本人の行の version・updated_at は変えない（台帳の中身は変わらない）。
 // トークンは版と時刻から署名で作り直す（lib/qr/token.ts）。表には持たない。
 

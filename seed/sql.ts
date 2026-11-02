@@ -28,9 +28,17 @@ function insert(table: string, row: Record<string, SqlValue>): string {
   return `INSERT INTO ${table} (${cols.join(", ")}) VALUES (${vals.join(", ")});`;
 }
 
-/** 子の表から消す（外部キーの順） */
-const CLEAR_ORDER = [
+/**
+ * 子の表から消す（外部キーの順）。migrations の表を全部並べる（表を足したらここにも。seed.test.ts が全部あるかと順を確かめる）。
+ * ai_calls も消すので、事業所の 1 日の上限の数えも種に戻る（デモ事業所は毎日戻す決まり。docs/tasks/T26.md）。
+ * 災害モード（disaster_state）は平時に、事業所の経過・様式 9 の手直しは空に戻る
+ */
+export const CLEAR_ORDER = [
   "timeline_entries",
+  "office_timeline_entries",
+  "form9_rank_edits",
+  "disaster_state",
+  "ai_calls",
   "signals",
   "drill_events",
   "drills",
@@ -40,7 +48,7 @@ const CLEAR_ORDER = [
   "people",
   "accounts",
   "offices",
-];
+] as const;
 
 function personStatements(p: SeedPerson): string[] {
   const out: string[] = [];
