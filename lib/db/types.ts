@@ -1,0 +1,448 @@
+// D1 の表の型。列の名前は SQL のまま（snake_case）。値の形は migrations/0001_init.sql の CHECK と同じにする。
+// 選択肢を足すときは、ここの配列と SQL の CHECK の両方を直す（新しい migration で）。
+
+// ---------- 選択肢 ----------
+
+export const OFFICE_KINDS = ["demo", "regular"] as const;
+export type OfficeKind = (typeof OFFICE_KINDS)[number];
+
+/** ケアマネ・行政・医療班・審査員 */
+export const ACCOUNT_ROLES = ["care_manager", "government", "medical", "judge"] as const;
+export type AccountRole = (typeof ACCOUNT_ROLES)[number];
+
+/** 計画の状態: 未作成・下書き・同意済・訓練済 */
+export const PLAN_STATUSES = ["none", "draft", "consented", "trained"] as const;
+export type PlanStatus = (typeof PLAN_STATUSES)[number];
+
+/** 台帳を作った所: ケアマネ、または医療班がその場で最小の項目で */
+export const PERSON_ORIGINS = ["care_manager", "on_site"] as const;
+export type PersonOrigin = (typeof PERSON_ORIGINS)[number];
+
+export const CONTACT_KINDS = [
+  "self", // 本人の電話
+  "family", // 家族
+  "supporter", // 支援者（隣人など）
+  "welfare_commissioner", // 民生委員
+  "visiting_nurse", // 訪問看護
+  "care_service", // 介護の事業所
+  "home_doctor", // かかりつけ
+  "pharmacy", // 薬局
+  "dialysis_center", // 透析施設
+  "city_office", // 市役所
+] as const;
+export type ContactKind = (typeof CONTACT_KINDS)[number];
+
+/** どこにいる人か: 同居・近所・市内・県外・遠方 */
+export const CONTACT_REACHES = ["together", "nearby", "in_city", "out_of_pref", "far"] as const;
+export type ContactReach = (typeof CONTACT_REACHES)[number];
+
+/** 同意 4 つ: 名簿登録・計画の共有・支援者への提供・医療班への提供（決め方は docs/PROGRESS.md の問い） */
+export const CONSENT_KINDS = ["registry", "plan_share", "supporters", "medical"] as const;
+export type ConsentKind = (typeof CONSENT_KINDS)[number];
+
+export const CONSENT_STATUSES = ["granted", "refused", "unconfirmed"] as const;
+export type ConsentStatus = (typeof CONSENT_STATUSES)[number];
+
+/** 時計の 4 つ: A 機器・B 物・C 薬・D 本人の状態 */
+export const CLOCK_KINDS = ["device", "supply", "medication", "condition"] as const;
+export type ClockKind = (typeof CLOCK_KINDS)[number];
+
+/** 何で時間が決まるか。緊急度の骨格（lib/triage）はこの区分で引く */
+export const CLOCK_CATEGORIES = [
+  "ventilator", // 人工呼吸器
+  "suction", // 吸引
+  "oxygen", // 在宅酸素
+  "dialysis", // 透析
+  "insulin", // インスリン
+  "tube_feeding", // 経管栄養
+  "anticoagulant", // 抗凝固薬
+  "steroid", // ステロイド
+  "antiepileptic", // 抗てんかん薬
+  "dementia", // 認知症
+  "other",
+] as const;
+export type ClockCategory = (typeof CLOCK_CATEGORIES)[number];
+
+export const CLOCK_UNITS = ["minute", "hour", "day", "week"] as const;
+export type ClockUnit = (typeof CLOCK_UNITS)[number];
+
+/** 時計が走り出すきっかけ: 停電・発災・走らない（本人の状態） */
+export const CLOCK_STARTS = ["outage", "disaster", "none"] as const;
+export type ClockStart = (typeof CLOCK_STARTS)[number];
+
+/** 時計の値の出典: 主治医の指示・機器の説明書・薬局・施設・家族・本人・ケアマネの確認 */
+export const CLOCK_SOURCES = [
+  "doctor",
+  "device_manual",
+  "pharmacy",
+  "facility",
+  "family",
+  "self",
+  "care_manager",
+] as const;
+export type ClockSource = (typeof CLOCK_SOURCES)[number];
+
+export const DRILL_SCENARIOS = ["earthquake", "heavy_rain", "short"] as const;
+export type DrillScenario = (typeof DRILL_SCENARIOS)[number];
+
+export const DRILL_STATUSES = ["running", "finished", "abandoned"] as const;
+export type DrillStatus = (typeof DRILL_STATUSES)[number];
+
+export const DRILL_ACTORS = ["director", "persona", "care_manager", "world"] as const;
+export type DrillActor = (typeof DRILL_ACTORS)[number];
+
+export const DRILL_EVENT_KINDS = [
+  "incident", // 監督の差し込み（停電・断水・道路寸断）
+  "persona_turn", // ペルソナの 1 刻み
+  "call_in", // 着信
+  "red_button",
+  "recording",
+  "action", // ケアマネの手
+  "result", // 手を打った結果（世界が返す）
+  "score",
+] as const;
+export type DrillEventKind = (typeof DRILL_EVENT_KINDS)[number];
+
+/** 訓練のケアマネの手 7 つ（11/2 に確定） */
+export const DRILL_ACTIONS = [
+  "call_person", // 本人に電話
+  "call_contact", // 家族・支援者に電話
+  "visit", // 自分が出向く
+  "dispatch", // 訪問看護・介護の人に出向いてもらう
+  "request_welfare_shelter", // 福祉避難所に依頼
+  "report_city", // 市役所に報告
+  "evacuate_self", // 自分も避難
+] as const;
+export type DrillAction = (typeof DRILL_ACTIONS)[number];
+
+/** 信号の色: 緑・赤・未知 */
+export const SIGNAL_COLORS = ["green", "red", "unknown"] as const;
+export type SignalColor = (typeof SIGNAL_COLORS)[number];
+
+/** 誰の画面から来たか。agent は訓練のペルソナ */
+export const SIGNAL_SOURCES = ["self", "family", "supporter", "care_manager", "agent"] as const;
+export type SignalSource = (typeof SIGNAL_SOURCES)[number];
+
+/** 緑の 1 問: どこにいますか */
+export const WHERE_NOW = ["home", "shelter", "other"] as const;
+export type WhereNow = (typeof WHERE_NOW)[number];
+
+/** 録音と自由文の分類: けが・動けない・水が来た・機器が止まった・不明。Claude はこれに分けるだけ */
+export const RECORDING_CLASSES = ["injury", "immobile", "water", "device_stopped", "unknown"] as const;
+export type RecordingClass = (typeof RECORDING_CLASSES)[number];
+
+export const CLASSIFIERS = ["claude", "care_manager"] as const;
+export type Classifier = (typeof CLASSIFIERS)[number];
+
+export const AUTHOR_ROLES = [
+  "self",
+  "family",
+  "supporter",
+  "care_manager",
+  "medical",
+  "government",
+  "system",
+] as const;
+export type AuthorRole = (typeof AUTHOR_ROLES)[number];
+
+export const TIMELINE_KINDS = [
+  "signal", // 赤ボタン・緑・録音
+  "called", // 電話した
+  "pickup", // 迎え決定
+  "safety_check", // 安否確認した
+  "examined", // 診た
+  "medication_given", // 薬を渡した
+  "transported", // 搬送した
+  "arrived_shelter", // 避難所に着いた
+  "received", // 受領（医療班・行政が受け持つ）
+  "released", // 受け持ちから外す（搬送・退所）
+  "override", // 緊急度の上書き
+  "consent", // 同意を変えた
+  "note", // 自由文
+] as const;
+export type TimelineKind = (typeof TIMELINE_KINDS)[number];
+
+// ---------- 台帳（people.ledger の JSON） ----------
+
+export const SEXES = ["female", "male", "other"] as const;
+export type Sex = (typeof SEXES)[number];
+
+export const CARE_LEVELS = [
+  "support1",
+  "support2",
+  "care1",
+  "care2",
+  "care3",
+  "care4",
+  "care5",
+] as const;
+/** 要支援 1・2、要介護 1〜5 */
+export type CareLevel = (typeof CARE_LEVELS)[number];
+
+/** 世帯: 独居・夫婦・子と・家族と */
+export const HOUSEHOLDS = ["alone", "with_spouse", "with_child", "with_family"] as const;
+export type Household = (typeof HOUSEHOLDS)[number];
+
+/** スマホ: 使える・見るだけ・持たない */
+export const SMARTPHONE_USE = ["uses", "views", "none"] as const;
+export type SmartphoneUse = (typeof SMARTPHONE_USE)[number];
+
+/** 内閣府様式の裏の 6 項目の答え: 問題なし・一部・困難 */
+export const ABILITIES = ["ok", "some", "hard"] as const;
+export type Ability = (typeof ABILITIES)[number];
+
+export const HAZARD_KINDS = ["flood", "landslide", "tsunami"] as const;
+export type HazardKind = (typeof HAZARD_KINDS)[number];
+
+/** 災害診療記録 2018 の【特記事項（常用薬等）】の区分に合わせる */
+export const MEDICATION_CATEGORIES = [
+  "antiplatelet", // 抗血小板薬
+  "anticoagulant", // 抗凝固薬
+  "insulin", // 糖尿病治療薬（インスリン）
+  "oral_diabetes", // 糖尿病治療薬（経口）
+  "steroid",
+  "antiepileptic",
+  "other",
+] as const;
+export type MedicationCategory = (typeof MEDICATION_CATEGORIES)[number];
+
+/** 医療機器・医療: 在宅酸素・人工呼吸器・吸引・経管栄養（胃ろう）・透析 */
+export const DEVICE_KINDS = ["oxygen", "ventilator", "suction", "tube_feeding", "dialysis"] as const;
+export type DeviceKind = (typeof DEVICE_KINDS)[number];
+
+/** 空欄の理由: 分からない・まだ聞いていない・答えない。計画には「未確認」と残り、次の訪問の問いになる */
+export const PENDING_STATUSES = ["unknown", "not_asked", "declined"] as const;
+export type PendingStatus = (typeof PENDING_STATUSES)[number];
+
+export type Ledger = {
+  basic: {
+    sex?: Sex;
+    /** 番地は持たない。市町村と町名まで */
+    address?: { city: string; town: string };
+    housing?: {
+      /** 住んでいる階 */
+      floor?: number;
+      /** 建物の階数（平屋は 1） */
+      floors?: number;
+      structure?: "wood" | "steel" | "concrete" | "other";
+      builtYear?: number;
+    };
+    household?: Household;
+    contactMeans?: {
+      landline?: boolean;
+      mobile?: boolean;
+      email?: boolean;
+      smartphone?: SmartphoneUse;
+    };
+  };
+  care: {
+    careLevel?: CareLevel;
+    /** 障害者手帳 */
+    handbook?: string;
+    /** 難病 */
+    intractableDisease?: string;
+    walking?: Ability;
+    hearing?: Ability;
+    vision?: Ability;
+    understanding?: Ability;
+    judgment?: Ability;
+    orientation?: Ability;
+    bedridden?: boolean;
+    dementia?: boolean;
+  };
+  medical: {
+    devices: Array<{ kind: DeviceKind; detail?: string; schedule?: string }>;
+    medications: Array<{
+      name: string;
+      category: MedicationCategory;
+      /** 何日に 1 回・朝夕など */
+      schedule?: string;
+      amount?: string;
+      storage?: string;
+      needsRefrigeration?: boolean;
+      /** 中断すると危ない薬の印 */
+      interruptionRisk?: boolean;
+    }>;
+    allergies?: string[];
+    /** 既往症 */
+    history?: string[];
+    vaccinations?: string[];
+  };
+  evacuation: {
+    hazards: Array<{ kind: HazardKind; depthM?: number }>;
+    destination1?: string;
+    destination2?: string;
+    route?: string;
+    /** 段差・エレベーター */
+    barriers?: string;
+    transport?: string;
+    pets?: string;
+    carryItems?: string[];
+  };
+  /** 特記。本人の言葉は言い換えずにそのまま */
+  notes: string[];
+  /** 空欄の項目。field は台帳の中の場所（例 "medical.medications.warfarin.remaining"） */
+  pending: Array<{ field: string; status: PendingStatus }>;
+};
+
+// ---------- 表の行 ----------
+
+export type OfficeRow = {
+  id: string;
+  name: string;
+  kind: OfficeKind;
+  city: string;
+  created_at: string;
+};
+
+export type AccountRow = {
+  id: string;
+  office_id: string | null;
+  role: AccountRole;
+  is_office_admin: 0 | 1;
+  display_name: string;
+  login_id: string | null;
+  password_hash: string | null;
+  created_at: string;
+};
+
+export type PersonRow = {
+  id: string;
+  office_id: string;
+  care_manager_id: string | null;
+  name: string;
+  kana: string;
+  birth_date: string | null;
+  plan_status: PlanStatus;
+  origin: PersonOrigin;
+  /** Ledger の JSON の文字列 */
+  ledger: string;
+  version: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ContactRow = {
+  id: string;
+  person_id: string;
+  kind: ContactKind;
+  /** 続柄・間柄（娘・夫・隣人） */
+  relation: string | null;
+  name: string | null;
+  phone: string | null;
+  reach: ContactReach | null;
+  /** 緊急連絡先 ①② の順 */
+  emergency_order: number | null;
+  /** 避難支援等実施者 ①② の順。無ければ実施者でない */
+  supporter_order: number | null;
+  night_ok: 0 | 1 | null;
+  has_car: 0 | 1 | null;
+  has_smartphone: 0 | 1 | null;
+  note: string | null;
+  sort: number;
+  created_at: string;
+};
+
+export type ConsentRow = {
+  person_id: string;
+  kind: ConsentKind;
+  status: ConsentStatus;
+  /** 範囲（区分・相手）の JSON */
+  scope: string | null;
+  recorded_by: string | null;
+  recorded_at: string;
+  expires_at: string | null;
+  note: string | null;
+};
+
+export type ClockRow = {
+  id: string;
+  person_id: string;
+  kind: ClockKind;
+  category: ClockCategory;
+  label: string;
+  /** 時計の長さ。null は未確認 */
+  value: number | null;
+  unit: ClockUnit | null;
+  starts_on: ClockStart;
+  source: ClockSource | null;
+  source_note: string | null;
+  confirmed_at: string | null;
+  note: string | null;
+  sort: number;
+};
+
+export type DrillRow = {
+  id: string;
+  office_id: string;
+  scenario: DrillScenario;
+  status: DrillStatus;
+  step: number;
+  sim_hour: number;
+  /** 監督の世界の状態の JSON */
+  world: string;
+  score: string | null;
+  started_by: string | null;
+  started_at: string;
+  finished_at: string | null;
+};
+
+export type DrillEventRow = {
+  id: string;
+  drill_id: string;
+  seq: number;
+  step: number;
+  sim_hour: number;
+  person_id: string | null;
+  actor: DrillActor;
+  kind: DrillEventKind;
+  payload: string;
+  created_at: string;
+};
+
+export type SignalRow = {
+  id: string;
+  person_id: string;
+  drill_id: string | null;
+  color: SignalColor;
+  source: SignalSource;
+  where_now: WhereNow | null;
+  /** 赤の 4 問: けが・家・動けるか・薬。null は答えていない */
+  injured: 0 | 1 | null;
+  at_home: 0 | 1 | null;
+  can_move: 0 | 1 | null;
+  has_medicine: 0 | 1 | null;
+  /** R2 の鍵 */
+  recording_key: string | null;
+  transcript: string | null;
+  /** RecordingClass[] の JSON */
+  classes: string | null;
+  classified_by: Classifier | null;
+  occurred_at: string;
+  created_at: string;
+};
+
+export type TimelineEntryRow = {
+  id: string;
+  person_id: string;
+  author_id: string | null;
+  author_role: AuthorRole;
+  kind: TimelineKind;
+  body: string | null;
+  payload: string | null;
+  signal_id: string | null;
+  occurred_at: string;
+  created_at: string;
+};
+
+// ---------- 訓練の JSON の形 ----------
+
+/** ペルソナ（Haiku）が 1 刻みで返す決まった形。言葉は毎回違っても形は同じ */
+export type PersonaTurn = {
+  /** する事 */
+  doing: string;
+  /** 言う事 */
+  saying: string;
+  pressRed: boolean;
+  contactCareManager: boolean;
+};

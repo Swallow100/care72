@@ -11,6 +11,7 @@
     "cf:build": "opennextjs-cloudflare build",
     "cf:preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
     "typecheck": "tsc --noEmit",
+    "db:migrate": "wrangler d1 migrations apply DB --local",
     "test": "vitest run",
     "test:watch": "vitest"
   },

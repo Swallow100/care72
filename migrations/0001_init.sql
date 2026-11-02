@@ -1,0 +1,181 @@
+-- ケア72 の最初の表。
+-- 台帳（本人のこと）は people.ledger の JSON に持ち、探す列（氏名・カナ・生年月日・事業所）と担当だけ列にする。
+-- 時刻は UTC の ISO 8601 の文字列。値の形が決まっている列は CHECK で縛る（型は lib/db/types.ts と同じ）。
+
+-- 事業所
+CREATE TABLE offices (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('demo', 'regular')),
+  city TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+-- アカウント。行政・医療班は事業所をまたぐので office_id が無くてもよい
+CREATE TABLE accounts (
+  id TEXT PRIMARY KEY,
+  office_id TEXT REFERENCES offices (id),
+  role TEXT NOT NULL CHECK (role IN ('care_manager', 'government', 'medical', 'judge')),
+  is_office_admin INTEGER NOT NULL DEFAULT 0 CHECK (is_office_admin IN (0, 1)),
+  display_name TEXT NOT NULL,
+  login_id TEXT UNIQUE,
+  password_hash TEXT,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  CHECK (role <> 'care_manager' OR office_id IS NOT NULL)
+);
+
+-- 本人（台帳）
+CREATE TABLE people (
+  id TEXT PRIMARY KEY,
+  office_id TEXT NOT NULL REFERENCES offices (id),
+  care_manager_id TEXT REFERENCES accounts (id),
+  name TEXT NOT NULL,
+  kana TEXT NOT NULL,
+  birth_date TEXT CHECK (birth_date IS NULL OR birth_date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'),
+  plan_status TEXT NOT NULL DEFAULT 'none' CHECK (plan_status IN ('none', 'draft', 'consented', 'trained')),
+  origin TEXT NOT NULL DEFAULT 'care_manager' CHECK (origin IN ('care_manager', 'on_site')),
+  ledger TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(ledger)),
+  version INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+CREATE INDEX people_office ON people (office_id);
+CREATE INDEX people_care_manager ON people (care_manager_id);
+CREATE INDEX people_kana_birth ON people (kana, birth_date);
+CREATE INDEX people_name ON people (name);
+
+-- 連絡先。本人の電話（kind = self）も、家族・支援者・機関もここ
+CREATE TABLE contacts (
+  id TEXT PRIMARY KEY,
+  person_id TEXT NOT NULL REFERENCES people (id) ON DELETE CASCADE,
+  kind TEXT NOT NULL CHECK (kind IN (
+    'self', 'family', 'supporter', 'welfare_commissioner', 'visiting_nurse', 'care_service',
+    'home_doctor', 'pharmacy', 'dialysis_center', 'city_office'
+  )),
+  relation TEXT,
+  name TEXT,
+  phone TEXT,
+  reach TEXT CHECK (reach IS NULL OR reach IN ('together', 'nearby', 'in_city', 'out_of_pref', 'far')),
+  emergency_order INTEGER CHECK (emergency_order IS NULL OR emergency_order >= 1),
+  supporter_order INTEGER CHECK (supporter_order IS NULL OR supporter_order >= 1),
+  night_ok INTEGER CHECK (night_ok IS NULL OR night_ok IN (0, 1)),
+  has_car INTEGER CHECK (has_car IS NULL OR has_car IN (0, 1)),
+  has_smartphone INTEGER CHECK (has_smartphone IS NULL OR has_smartphone IN (0, 1)),
+  note TEXT,
+  sort INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+CREATE INDEX contacts_person ON contacts (person_id, sort);
+
+-- 同意 4 つ（名簿登録・計画の共有・支援者への提供・医療班への提供）。今の状態を 1 行ずつ。変えた記録は経過に残す
+CREATE TABLE consents (
+  person_id TEXT NOT NULL REFERENCES people (id) ON DELETE CASCADE,
+  kind TEXT NOT NULL CHECK (kind IN ('registry', 'plan_share', 'supporters', 'medical')),
+  status TEXT NOT NULL CHECK (status IN ('granted', 'refused', 'unconfirmed')),
+  scope TEXT CHECK (scope IS NULL OR json_valid(scope)),
+  recorded_by TEXT REFERENCES accounts (id),
+  recorded_at TEXT NOT NULL,
+  expires_at TEXT,
+  note TEXT,
+  PRIMARY KEY (person_id, kind)
+);
+
+-- 時計。人が入れる値で、出典の欄を持つ。A 機器・B 物・C 薬・D 本人の状態
+CREATE TABLE clocks (
+  id TEXT PRIMARY KEY,
+  person_id TEXT NOT NULL REFERENCES people (id) ON DELETE CASCADE,
+  kind TEXT NOT NULL CHECK (kind IN ('device', 'supply', 'medication', 'condition')),
+  category TEXT NOT NULL CHECK (category IN (
+    'ventilator', 'suction', 'oxygen', 'dialysis', 'insulin', 'tube_feeding',
+    'anticoagulant', 'steroid', 'antiepileptic', 'dementia', 'other'
+  )),
+  label TEXT NOT NULL,
+  value REAL CHECK (value IS NULL OR value >= 0),
+  unit TEXT CHECK (unit IS NULL OR unit IN ('minute', 'hour', 'day', 'week')),
+  starts_on TEXT NOT NULL CHECK (starts_on IN ('outage', 'disaster', 'none')),
+  source TEXT CHECK (source IS NULL OR source IN (
+    'doctor', 'device_manual', 'pharmacy', 'facility', 'family', 'self', 'care_manager'
+  )),
+  source_note TEXT,
+  confirmed_at TEXT,
+  note TEXT,
+  sort INTEGER NOT NULL DEFAULT 0,
+  CHECK (value IS NULL OR unit IS NOT NULL),
+  CHECK (kind <> 'condition' OR (value IS NULL AND starts_on = 'none'))
+);
+CREATE INDEX clocks_person ON clocks (person_id, sort);
+
+-- 訓練。世界の状態（道路・停電・電話・職員・避難所）は監督が持ち、world の JSON に置く
+CREATE TABLE drills (
+  id TEXT PRIMARY KEY,
+  office_id TEXT NOT NULL REFERENCES offices (id),
+  scenario TEXT NOT NULL CHECK (scenario IN ('earthquake', 'heavy_rain', 'short')),
+  status TEXT NOT NULL CHECK (status IN ('running', 'finished', 'abandoned')),
+  step INTEGER NOT NULL DEFAULT 0 CHECK (step >= 0),
+  sim_hour REAL NOT NULL DEFAULT 0 CHECK (sim_hour >= 0),
+  world TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(world)),
+  score TEXT CHECK (score IS NULL OR json_valid(score)),
+  started_by TEXT REFERENCES accounts (id),
+  started_at TEXT NOT NULL,
+  finished_at TEXT
+);
+CREATE INDEX drills_office ON drills (office_id, started_at);
+
+-- 訓練の出来事。監督の差し込み、ペルソナの 1 刻み、着信、ケアマネの手、その結果
+CREATE TABLE drill_events (
+  id TEXT PRIMARY KEY,
+  drill_id TEXT NOT NULL REFERENCES drills (id) ON DELETE CASCADE,
+  seq INTEGER NOT NULL,
+  step INTEGER NOT NULL CHECK (step >= 0),
+  sim_hour REAL NOT NULL CHECK (sim_hour >= 0),
+  person_id TEXT REFERENCES people (id) ON DELETE CASCADE,
+  actor TEXT NOT NULL CHECK (actor IN ('director', 'persona', 'care_manager', 'world')),
+  kind TEXT NOT NULL CHECK (kind IN (
+    'incident', 'persona_turn', 'call_in', 'red_button', 'recording', 'action', 'result', 'score'
+  )),
+  payload TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(payload)),
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  UNIQUE (drill_id, seq)
+);
+
+-- 信号。本人・家族の赤緑と 4 問、録音とその分類。drill_id があれば訓練の信号
+CREATE TABLE signals (
+  id TEXT PRIMARY KEY,
+  person_id TEXT NOT NULL REFERENCES people (id) ON DELETE CASCADE,
+  drill_id TEXT REFERENCES drills (id) ON DELETE CASCADE,
+  color TEXT NOT NULL CHECK (color IN ('green', 'red', 'unknown')),
+  source TEXT NOT NULL CHECK (source IN ('self', 'family', 'supporter', 'care_manager', 'agent')),
+  where_now TEXT CHECK (where_now IS NULL OR where_now IN ('home', 'shelter', 'other')),
+  injured INTEGER CHECK (injured IS NULL OR injured IN (0, 1)),
+  at_home INTEGER CHECK (at_home IS NULL OR at_home IN (0, 1)),
+  can_move INTEGER CHECK (can_move IS NULL OR can_move IN (0, 1)),
+  has_medicine INTEGER CHECK (has_medicine IS NULL OR has_medicine IN (0, 1)),
+  recording_key TEXT,
+  transcript TEXT,
+  classes TEXT CHECK (classes IS NULL OR json_valid(classes)),
+  classified_by TEXT CHECK (classified_by IS NULL OR classified_by IN ('claude', 'care_manager')),
+  occurred_at TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+CREATE INDEX signals_person_time ON signals (person_id, occurred_at);
+CREATE INDEX signals_drill ON signals (drill_id);
+
+-- 経過。誰が・いつ・何を。医療班・行政も書き足す。訓練の記録はここに入れない
+CREATE TABLE timeline_entries (
+  id TEXT PRIMARY KEY,
+  person_id TEXT NOT NULL REFERENCES people (id) ON DELETE CASCADE,
+  author_id TEXT REFERENCES accounts (id),
+  author_role TEXT NOT NULL CHECK (author_role IN (
+    'self', 'family', 'supporter', 'care_manager', 'medical', 'government', 'system'
+  )),
+  kind TEXT NOT NULL CHECK (kind IN (
+    'signal', 'called', 'pickup', 'safety_check', 'examined', 'medication_given', 'transported',
+    'arrived_shelter', 'received', 'released', 'override', 'consent', 'note'
+  )),
+  body TEXT,
+  payload TEXT CHECK (payload IS NULL OR json_valid(payload)),
+  signal_id TEXT REFERENCES signals (id) ON DELETE SET NULL,
+  occurred_at TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+CREATE INDEX timeline_person_time ON timeline_entries (person_id, occurred_at);
