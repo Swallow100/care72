@@ -141,7 +141,7 @@ export type Scenario = {
 // ---------- 大雨 ----------
 // 警戒レベル 3 → 4 → 浸水 3 m の地区。1 山田・2 小林が主役、3 田中の透析先、5 伊藤の道路。
 // 色の動き（ルールの表で）: 山田は 3 時間で赤（けが）。小林は連絡なしのまま人工呼吸器の電池で 3 時間に黄、6 時間に赤。
-// 田中は家族の緑でも透析先 未確認で黄、48 時間に家族の赤。佐藤は本人の緑（参考）→ 6 時間に民生委員の緑。
+// 田中は家族の緑でも透析先 未確認で黄、48 時間に家族の赤。佐藤（スマホを持たない）は不明のまま → 6 時間に民生委員が見に行って緑。
 
 const FLOOD_AREA: OutageArea = { scope: "hazard", hazard: "flood", minDepthM: 3 };
 
@@ -169,7 +169,6 @@ const HEAVY_RAIN: Scenario = {
         { change: { kind: "outage", area: FLOOD_AREA }, text: "浸水 3 m の地区で停電" },
       ],
       turns: [
-        { person: "p-04", color: "green", source: "agent", whereNow: "home", saying: "だいじょうぶ" },
         { person: "p-07", color: "green", source: "agent", whereNow: "home", saying: "家にいる。まだ大丈夫" },
         { person: "p-08", color: "green", source: "agent", whereNow: "home" },
       ],

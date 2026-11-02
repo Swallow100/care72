@@ -348,17 +348,50 @@ describe("呼び口（createPersonaHook）", () => {
     expect(aiRows().every((r) => r.purpose === "persona" && r.model === HAIKU && r.status === "ok")).toBe(true);
   });
 
-  it("鍵なし・上限・呼び出しの失敗・形の違い・台帳に無い人は連絡なし（止まらない）", async () => {
+  it("鍵なし・上限・呼び出しの失敗・形の違い・台帳を読めない: 表の行があれば表の固定の安否（AI の印なし）、無ければ連絡なし（止まらない）", async () => {
     const yamada = personaInput("p-01", { fixed: [YAMADA_3H] });
-    expect(await hookWith(undefined, {})(yamada)).toEqual([]);
-    expect(await hookWith(fake(() => reply(NONE)).client, { ANTHROPIC_API_KEY: "dummy", AI_DAILY_LIMIT: "0" })(yamada)).toEqual([]);
+    const kobayashi = personaInput("p-02");
+    const table = [
+      {
+        person: "p-01",
+        color: "red",
+        source: "agent",
+        whereNow: null,
+        injured: true,
+        atHome: null,
+        canMove: null,
+        hasMedicine: null,
+        saying: "いたい、うごけない",
+        doing: "4 問の途中で止まった",
+        ai: false,
+        at: 3,
+      },
+    ];
     const boom = fake(() => {
       throw new Anthropic.APIConnectionError({ message: "つながらない" });
     });
-    expect(await hookWith(boom.client)(yamada)).toEqual([]);
-    expect(await hookWith(fake(() => reply({ speech: "いたい" })).client)(yamada)).toEqual([]);
-    expect(await hookWith(fake(() => reply("JSON でない")).client)(yamada)).toEqual([]);
+    const failing = [
+      hookWith(undefined, {}),
+      hookWith(fake(() => reply(NONE)).client, { ANTHROPIC_API_KEY: "dummy", AI_DAILY_LIMIT: "0" }),
+      hookWith(boom.client),
+      hookWith(fake(() => reply({ speech: "いたい" })).client),
+      hookWith(fake(() => reply("JSON でない")).client),
+      createPersonaHook({
+        load: async () => {
+          throw new Error("D1 が読めない");
+        },
+        ai: aiCtx(fake(() => reply(NONE)).client),
+      }),
+    ];
+    for (const hook of failing) {
+      expect(await hook(yamada)).toEqual(table);
+      expect(await hook(kobayashi)).toEqual([]);
+    }
+    // 台帳に無い本人も同じ（表の行があれば表、無ければ連絡なし）
     expect(await hookWith(fake(() => reply(NONE)).client)(personaInput("p-99"))).toEqual([]);
+    expect(await hookWith(fake(() => reply(NONE)).client)(personaInput("p-99", { fixed: [{ ...YAMADA_3H, person: "p-99" }] }))).toEqual([
+      { ...table[0], person: "p-99" },
+    ]);
   });
 
   it("押せる人も表の行も無い人は呼ばない", async () => {
