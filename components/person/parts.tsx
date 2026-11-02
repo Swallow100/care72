@@ -3,35 +3,13 @@
 
 import type { Field, Line, Pending, Row, Seg, StateTone } from "@/lib/person";
 import { BLANK_LABELS, PENDING_STATUS_LABELS } from "@/lib/labels";
+import { StateTag, TONE_TEXT } from "@/components/ui/Tag";
 
 /** 見出しの段。単独のページは 1、担当一覧の右の面は 2 */
 export type Level = 1 | 2;
 
-/** 状態の文字の色 */
-export const TONE_TEXT: Record<StateTone, string> = {
-  ok: "text-state-ok",
-  urgent: "text-state-urgent",
-  check: "text-state-check",
-  unknown: "text-state-unknown",
-};
-
-/** 状態の印（薄い下地と文字の色） */
-const TONE_TAG: Record<StateTone, string> = {
-  ok: "bg-state-ok-soft text-state-ok",
-  urgent: "bg-state-urgent-soft text-state-urgent",
-  check: "bg-state-check-soft text-state-check",
-  unknown: "bg-state-unknown-soft text-state-unknown",
-};
-
-/** 色の付いた印。文字（至急・未確認・同意など）を必ず持つ */
-export function StateTag({ tone, size = "sm", children }: { tone: StateTone; size?: "sm" | "md"; children: React.ReactNode }) {
-  const box = size === "md" ? "px-1.5 py-0.5 text-sm" : "px-1 py-px text-xs";
-  return (
-    <span className={`rounded font-bold ${box} ${TONE_TAG[tone]}`} data-tone={tone}>
-      {children}
-    </span>
-  );
-}
+// 状態の印と色の文字は components/ui/Tag（全画面で同じ部品）。ここからも使えるように出し直す
+export { StateTag, StateText, TONE_TEXT } from "@/components/ui/Tag";
 
 export function SegText({ seg }: { seg: Seg }) {
   if (seg.tel) {
