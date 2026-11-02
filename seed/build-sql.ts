@@ -2,6 +2,8 @@
 // 山本（デモ事業所のケアマネ）のパスワードのハッシュは CAREMANAGER_DEMO_PASSWORD_HASH から入れる。
 // 環境変数を先に見て、無ければ手元の .dev.vars から、この 1 つだけを取り出す（ほかの値は使わない・出さない）。
 // 無ければ種の山本はハッシュなし（審査員では開ける）。ハッシュは npm run hash-password で作る。
+// 種にハッシュが無くても、Worker の env に CAREMANAGER_DEMO_PASSWORD_HASH か CAREMANAGER_DEMO_PASSWORD（平文）があれば
+// 山本は入れる（lib/auth/credential.ts。env が種より先）。平文はここでは読まない（種に入れない）。
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";

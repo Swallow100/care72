@@ -1,12 +1,16 @@
 # 手元の鍵と設定。このファイルを .dev.vars に写して値を入れる（.dev.vars は git に入らない）。
-# ここには値を書かない。配信先は Cloudflare の secret に入れる（T27。wrangler secret put は配信のときだけ）。
+# ここには値を書かない。配信先は Cloudflare のダッシュボードの Secrets に入れる（T27）。
 ANTHROPIC_API_KEY=
 GEMINI_API_KEY=
-# 審査員のパスワードのハッシュ（npm run -s hash-password の 1 行）。平文は書かない
+# 審査員のパスワード。ハッシュ（npm run -s hash-password の 1 行）か平文のどちらか 1 つ。両方あればハッシュを使う
+# 平文はダッシュボードの Secrets に貼るための道（8 字以上にする。前後の空白は落とす）。DB・ログ・画面には出ない
 JUDGE_PASSWORD_HASH=
+JUDGE_PASSWORD=
 # セッションの署名の鍵（32 字以上のでたらめな文字列）。手元で空なら開発用の値で動く。配信では無いと止まる
 SESSION_SECRET=
-# デモ事業所のケアマネ 山本のパスワードのハッシュ。npm run db:reset が種に入れる（Worker は読まない）
+# デモ事業所のケアマネ 山本のパスワード。ハッシュか平文のどちらか 1 つ（ハッシュが先）
+# Worker はハッシュ → 平文 → 種のハッシュの順に見る。ハッシュは npm run db:reset が種にも入れる。平文は種に入らない
 CAREMANAGER_DEMO_PASSWORD_HASH=
+CAREMANAGER_DEMO_PASSWORD=
 # デモ事業所の AI の 1 日の上限（回）。Claude と声を合わせて数える。ほかの事業所は 200 のまま
 AI_DAILY_LIMIT=200

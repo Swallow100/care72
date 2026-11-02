@@ -77,3 +77,22 @@ export async function verifyPassword(password: string, stored: string | null | u
   const got = await derive(password, parsed.salt, parsed.iterations);
   return sameBytes(got, parsed.hash);
 }
+
+async function sha256(text: string): Promise<Uint8Array> {
+  return new Uint8Array(await crypto.subtle.digest("SHA-256", utf8(text)));
+}
+
+/**
+ * 平文の secret と比べる（審査員・山本のパスワードを Cloudflare の secret に平文で置いたとき。lib/auth/credential.ts）。
+ * 平文は secret にだけあり、DB・コード・ログ・画面に出さない。
+ * ハッシュの道と同じだけ PBKDF2 の時間をかけ（総当たりを遅くする・どちらの道かを時間で分からせない）、
+ * 両方を NFC にそろえて SHA-256 の長さにしてから、中身で時間の変わらない比べ方をする。
+ */
+export async function verifyPlainPassword(password: string, expected: string | null | undefined): Promise<boolean> {
+  const tooLong = password.length > MAX_PASSWORD_LENGTH;
+  const empty = password.length === 0;
+  await derive(tooLong || empty ? "-" : password, DUMMY_SALT, PBKDF2_ITERATIONS);
+  if (!expected || tooLong || empty) return false;
+  const [got, want] = await Promise.all([sha256(normalize(password)), sha256(normalize(expected))]);
+  return sameBytes(got, want);
+}

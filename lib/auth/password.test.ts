@@ -7,6 +7,7 @@ import {
   parsePasswordHash,
   PBKDF2_ITERATIONS,
   verifyPassword,
+  verifyPlainPassword,
 } from "./password.ts";
 
 // テストだけの値（本物のパスワードではない）
@@ -104,5 +105,30 @@ describe("パスワードのハッシュ（PBKDF2-SHA256）", () => {
     expect(fromBase64Url("a")).toBeNull();
     expect(fromBase64Url("ab+c")).toBeNull();
     expect(toBase64Url(fromBase64Url("AQID")!)).toBe("AQID");
+  });
+});
+
+describe("平文の secret との比べ方", () => {
+  it("同じ文字だけ通る（長さが違っても例外にしない）", async () => {
+    expect(await verifyPlainPassword(PW, PW)).toBe(true);
+    expect(await verifyPlainPassword(`${PW}x`, PW)).toBe(false);
+    expect(await verifyPlainPassword(PW.slice(0, -1), PW)).toBe(false);
+    expect(await verifyPlainPassword(PW.toUpperCase(), PW)).toBe(false);
+  });
+
+  it("NFC にそろえる（ハッシュの道と同じ）", async () => {
+    const composed = "がっこう-0001";
+    expect(await verifyPlainPassword(composed.normalize("NFD"), composed)).toBe(true);
+    expect(await verifyPlainPassword(composed, composed.normalize("NFD"))).toBe(true);
+  });
+
+  it("空・長すぎる・secret が無いときは通さない", async () => {
+    expect(await verifyPlainPassword("", PW)).toBe(false);
+    expect(await verifyPlainPassword("", "")).toBe(false);
+    expect(await verifyPlainPassword(PW, "")).toBe(false);
+    expect(await verifyPlainPassword(PW, null)).toBe(false);
+    expect(await verifyPlainPassword(PW, undefined)).toBe(false);
+    const long = "x".repeat(1025);
+    expect(await verifyPlainPassword(long, long)).toBe(false);
   });
 });

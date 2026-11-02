@@ -30,7 +30,8 @@ import {
   type Role,
 } from "./roles.ts";
 import { caseloadScope, personInScope } from "./scope.ts";
-import { SESSION_TTL_SEC, signSession, sessionTimes, passwordVersion } from "./session.ts";
+import { SESSION_TTL_SEC, signSession, sessionTimes, passwordVersion, plainPasswordVersion } from "./session.ts";
+import { fromBase64Url } from "./bytes.ts";
 
 // テストだけの値（本物のパスワード・鍵ではない）。回数を少なくして速くする
 const SECRET = "test-secret-0123456789-0123456789-abcdef";
@@ -194,6 +195,98 @@ describe("ログイン", () => {
 
   it("ID の前後の空白は落とす", async () => {
     expect((await login(db, env(), SECRET, { loginId: " yamamoto ", password: CM_PW }, NOW)).ok).toBe(true);
+  });
+});
+
+describe("パスワードの受け口（ハッシュか、secret の平文）", () => {
+  // テストだけの値（本物のパスワードではない）
+  const JUDGE_PLAIN = "test-judge-plain-0001";
+  const CM_PLAIN = "test-cm-plain-0001";
+  const ok = async (e: AuthEnv, loginId: string, password: string) =>
+    (await login(db, e, SECRET, { loginId, password }, NOW)).ok;
+  const pvOf = (token: string): string =>
+    JSON.parse(new TextDecoder().decode(fromBase64Url(token.slice(0, token.indexOf(".")))!)).pv;
+
+  it("審査員: JUDGE_PASSWORD_HASH が無ければ JUDGE_PASSWORD（平文）で入り、次の要求でも同じ役", async () => {
+    const e = { JUDGE_PASSWORD: JUDGE_PLAIN };
+    expect(await ok(e, JUDGE_LOGIN_ID, `${JUDGE_PLAIN}x`)).toBe(false);
+    expect(await ok(e, JUDGE_LOGIN_ID, `${JUDGE_PLAIN} `)).toBe(false);
+    expect(await ok(e, JUDGE_LOGIN_ID, "")).toBe(false);
+    const r = await login(db, e, SECRET, { loginId: JUDGE_LOGIN_ID, password: JUDGE_PLAIN }, NOW);
+    if (!r.ok) throw new Error("平文で入れない");
+    expect(r.path).toBe("/login/role");
+    const c = await chooseJudgeRole(db, e, SECRET, r.token, "care_manager", NOW + 10);
+    expect(c?.principal).toMatchObject({ role: "care_manager", judge: true });
+    expect((await resolvePrincipal(db, e, SECRET, c!.token, NOW + 20))?.role).toBe("care_manager");
+  });
+
+  it("両方あればハッシュを使い、平文は効かない。どちらも無い・空白だけなら入れない", async () => {
+    const both = { JUDGE_PASSWORD_HASH: judgeHash, JUDGE_PASSWORD: JUDGE_PLAIN };
+    expect(await ok(both, JUDGE_LOGIN_ID, JUDGE_PLAIN)).toBe(false);
+    expect(await ok(both, JUDGE_LOGIN_ID, JUDGE_PW)).toBe(true);
+    expect(await ok({}, JUDGE_LOGIN_ID, JUDGE_PLAIN)).toBe(false);
+    expect(await ok({ JUDGE_PASSWORD_HASH: " ", JUDGE_PASSWORD: " \n" }, JUDGE_LOGIN_ID, " ")).toBe(false);
+  });
+
+  it("secret の前後の空白（貼ったときの改行）は落とす。打ったパスワードの空白は落とさない", async () => {
+    const e = { JUDGE_PASSWORD: `  ${JUDGE_PLAIN}\r\n` };
+    expect(await ok(e, JUDGE_LOGIN_ID, JUDGE_PLAIN)).toBe(true);
+    expect(await ok(e, JUDGE_LOGIN_ID, ` ${JUDGE_PLAIN}`)).toBe(false);
+  });
+
+  it("平文を変える・ハッシュに替えると、前の審査員の cookie は使えない", async () => {
+    const { token } = (await login(db, { JUDGE_PASSWORD: JUDGE_PW }, SECRET, { loginId: JUDGE_LOGIN_ID, password: JUDGE_PW }, NOW)) as {
+      token: string;
+    };
+    expect(await resolvePrincipal(db, { JUDGE_PASSWORD: JUDGE_PW }, SECRET, token, NOW)).not.toBeNull();
+    expect(await resolvePrincipal(db, { JUDGE_PASSWORD: JUDGE_PLAIN }, SECRET, token, NOW)).toBeNull();
+    // 同じパスワードのハッシュに替えても切れる（確かめ方が変わった）
+    expect(await resolvePrincipal(db, { JUDGE_PASSWORD_HASH: judgeHash }, SECRET, token, NOW)).toBeNull();
+  });
+
+  it("平文の指紋は SESSION_SECRET の HMAC で、平文の SHA-256 を cookie に入れない", async () => {
+    const r = await login(db, { JUDGE_PASSWORD: JUDGE_PLAIN }, SECRET, { loginId: JUDGE_LOGIN_ID, password: JUDGE_PLAIN }, NOW);
+    if (!r.ok) throw new Error("平文で入れない");
+    const pv = pvOf(r.token);
+    expect(pv).toBe(await plainPasswordVersion(JUDGE_PLAIN, SECRET));
+    expect(pv).not.toBe(await passwordVersion(JUDGE_PLAIN));
+    expect(pv).not.toBe(await plainPasswordVersion(JUDGE_PLAIN, `${SECRET}x`));
+    expect(r.token).not.toContain(JUDGE_PLAIN);
+  });
+
+  it("山本: 種にハッシュが無くても env の平文で入り、次の要求でも切れない", async () => {
+    sqlite.prepare("UPDATE accounts SET password_hash = NULL WHERE id = ?").run(DEMO_CARE_MANAGER_ID);
+    const e = { CAREMANAGER_DEMO_PASSWORD: CM_PLAIN };
+    expect(await ok(e, "yamamoto", `${CM_PLAIN}x`)).toBe(false);
+    expect(await ok({}, "yamamoto", CM_PLAIN)).toBe(false);
+    const r = await login(db, e, SECRET, { loginId: "yamamoto", password: CM_PLAIN }, NOW);
+    if (!r.ok) throw new Error("山本が平文で入れない");
+    expect(r.principal).toMatchObject({ role: "care_manager", accountId: DEMO_CARE_MANAGER_ID, admin: true });
+    expect((await resolvePrincipal(db, e, SECRET, r.token, NOW + 60))?.role).toBe("care_manager");
+    // 平文を消す・変えると切れる
+    expect(await resolvePrincipal(db, {}, SECRET, r.token, NOW + 60)).toBeNull();
+    expect(await resolvePrincipal(db, { CAREMANAGER_DEMO_PASSWORD: `${CM_PLAIN}2` }, SECRET, r.token, NOW + 60)).toBeNull();
+  });
+
+  it("山本: env のハッシュ → env の平文 → 種のハッシュの順（env が先）", async () => {
+    // 種には cmHash（CM_PW）が入っている
+    expect(await ok({ CAREMANAGER_DEMO_PASSWORD_HASH: partnerHash }, "yamamoto", CM_PW)).toBe(false);
+    expect(await ok({ CAREMANAGER_DEMO_PASSWORD_HASH: partnerHash }, "yamamoto", PARTNER_PW)).toBe(true);
+    expect(await ok({ CAREMANAGER_DEMO_PASSWORD_HASH: partnerHash, CAREMANAGER_DEMO_PASSWORD: CM_PLAIN }, "yamamoto", CM_PLAIN)).toBe(
+      false,
+    );
+    expect(await ok({ CAREMANAGER_DEMO_PASSWORD: CM_PLAIN }, "yamamoto", CM_PW)).toBe(false);
+    expect(await ok({ CAREMANAGER_DEMO_PASSWORD: CM_PLAIN }, "yamamoto", CM_PLAIN)).toBe(true);
+    expect(await ok({}, "yamamoto", CM_PW)).toBe(true);
+  });
+
+  it("山本の env は、ほかのアカウントと審査員には効かない", async () => {
+    const e = { CAREMANAGER_DEMO_PASSWORD: CM_PLAIN, JUDGE_PASSWORD_HASH: judgeHash };
+    expect(await ok(e, "partner1", CM_PLAIN)).toBe(false);
+    expect(await ok(e, "partner1", PARTNER_PW)).toBe(true);
+    expect(await ok(e, "med1", CM_PLAIN)).toBe(false);
+    expect(await ok(e, JUDGE_LOGIN_ID, CM_PLAIN)).toBe(false);
+    expect(await ok({ JUDGE_PASSWORD: JUDGE_PLAIN }, "yamamoto", JUDGE_PLAIN)).toBe(false);
   });
 });
 

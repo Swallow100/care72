@@ -99,6 +99,15 @@ export async function passwordVersion(passwordHash: string): Promise<string> {
   return toBase64Url(new Uint8Array(d)).slice(0, 16);
 }
 
+/**
+ * 平文の secret の指紋。平文の素の SHA-256 を cookie に入れると、cookie から総当たりで戻せるので、
+ * SESSION_SECRET の HMAC にする（鍵を知らなければ計算できない）。平文を変えると前のセッションが切れる。
+ */
+export async function plainPasswordVersion(password: string, secret: string): Promise<string> {
+  const sig = await crypto.subtle.sign("HMAC", await hmacKey(secret), utf8(`care72-pv-plain:${password.normalize("NFC")}`));
+  return toBase64Url(new Uint8Array(sig)).slice(0, 16);
+}
+
 export function nowSec(): number {
   return Math.floor(Date.now() / 1000);
 }

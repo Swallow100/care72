@@ -6,6 +6,13 @@
 import type { D1Database } from "@cloudflare/workers-types";
 import type { AccountRole, OfficeKind } from "../db/types.ts";
 import {
+  accountCredential,
+  credentialVersion,
+  judgeCredential,
+  verifyCredential,
+  type CredentialEnv,
+} from "./credential.ts";
+import {
   DEMO_CARE_MANAGER_ID,
   DEMO_FAMILY_CONTACT_ID,
   DEMO_JUDGE_ACCOUNT_ID,
@@ -15,7 +22,7 @@ import {
 } from "./demo.ts";
 import { MAX_PASSWORD_LENGTH, verifyPassword } from "./password.ts";
 import { homePath, type JudgeRole, type Role } from "./roles.ts";
-import { passwordVersion, sessionTimes, signSession, verifySession, type SessionPayload } from "./session.ts";
+import { sessionTimes, signSession, verifySession, type SessionPayload } from "./session.ts";
 
 export type OfficeRef = { id: string; name: string; kind: OfficeKind };
 
@@ -39,8 +46,8 @@ export type Principal = {
   contactId: string | null;
 };
 
-/** ここで読む env。値は画面・ログ・応答に出さない */
-export type AuthEnv = { JUDGE_PASSWORD_HASH?: string };
+/** ここで読む env（審査員と山本のパスワード。lib/auth/credential.ts）。値は画面・ログ・応答に出さない */
+export type AuthEnv = CredentialEnv;
 
 const NOBODY = {
   judge: false,
@@ -52,11 +59,6 @@ const NOBODY = {
   personId: null,
   contactId: null,
 } satisfies Omit<Principal, "role">;
-
-function judgeHash(env: AuthEnv): string | null {
-  const v = env.JUDGE_PASSWORD_HASH?.trim();
-  return v ? v : null;
-}
 
 /** デモ事業所。kind が demo でなければ無いと同じ（審査員に協力事業所を開かせない） */
 async function demoOffice(db: D1Database): Promise<OfficeRef | null> {
@@ -140,15 +142,19 @@ function accountPrincipal(a: AccountJoin): Principal | null {
   return { ...base, role: a.role };
 }
 
-/** セッションの中身から。パスワードが変わった・アカウントが無い・審査員のハッシュが無いときは null */
-async function principalOf(db: D1Database, env: AuthEnv, s: SessionPayload): Promise<Principal | null> {
+/**
+ * セッションの中身から。パスワードが変わった・アカウントが無い・審査員のパスワードが env に無いときは null。
+ * 確かめ方はログインと同じ所（lib/auth/credential.ts）から取る（env の平文で入った山本も次の要求で切れない）。
+ */
+async function principalOf(db: D1Database, env: AuthEnv, secret: string, s: SessionPayload): Promise<Principal | null> {
   if (s.k === "judge") {
-    const h = judgeHash(env);
-    if (!h || (await passwordVersion(h)) !== s.pv) return null;
+    const c = judgeCredential(env);
+    if (!c || (await credentialVersion(c, secret)) !== s.pv) return null;
     return judgePrincipal(db, s.r);
   }
   const a = await accountById(db, s.a);
-  if (!a?.password_hash || (await passwordVersion(a.password_hash)) !== s.pv) return null;
+  const c = a ? accountCredential(env, a) : null;
+  if (!a || !c || (await credentialVersion(c, secret)) !== s.pv) return null;
   return accountPrincipal(a);
 }
 
@@ -161,14 +167,15 @@ export async function resolvePrincipal(
   now: number,
 ): Promise<Principal | null> {
   const s = await verifySession(token, secret, now);
-  return s ? principalOf(db, env, s) : null;
+  return s ? principalOf(db, env, secret, s) : null;
 }
 
 export type LoginResult = { ok: true; token: string; principal: Principal; path: string } | { ok: false };
 const FAIL: LoginResult = { ok: false };
 
 /**
- * ID とパスワードで入る。審査員の ID なら env の JUDGE_PASSWORD_HASH、ほかはアカウントの表の password_hash。
+ * ID とパスワードで入る。審査員の ID なら env の JUDGE_PASSWORD_HASH か JUDGE_PASSWORD、
+ * 山本は env（ハッシュか平文）か種のハッシュ、ほかはアカウントの表の password_hash（lib/auth/credential.ts）。
  * どの失敗も同じ返事で、時間も同じだけかける（ID が有るかを分からせない）。
  */
 export async function login(
@@ -186,23 +193,24 @@ export async function login(
   }
 
   if (loginId === JUDGE_LOGIN_ID) {
-    const h = judgeHash(env);
-    if (!(await verifyPassword(password, h)) || !h) return FAIL;
+    const c = judgeCredential(env);
+    if (!(await verifyCredential(password, c)) || !c) return FAIL;
     const principal = await judgePrincipal(db, null);
     if (!principal) return FAIL;
     const token = await signSession(
-      { v: 1, k: "judge", r: null, pv: await passwordVersion(h), ...sessionTimes(now) },
+      { v: 1, k: "judge", r: null, pv: await credentialVersion(c, secret), ...sessionTimes(now) },
       secret,
     );
     return { ok: true, token, principal, path: homePath(principal.role) };
   }
 
   const a = await accountByLoginId(db, loginId);
-  if (!(await verifyPassword(password, a?.password_hash)) || !a?.password_hash) return FAIL;
+  const c = a ? accountCredential(env, a) : null;
+  if (!(await verifyCredential(password, c)) || !a || !c) return FAIL;
   const principal = accountPrincipal(a);
   if (!principal) return FAIL;
   const token = await signSession(
-    { v: 1, k: "account", a: a.id, pv: await passwordVersion(a.password_hash), ...sessionTimes(now) },
+    { v: 1, k: "account", a: a.id, pv: await credentialVersion(c, secret), ...sessionTimes(now) },
     secret,
   );
   return { ok: true, token, principal, path: homePath(principal.role) };
@@ -219,7 +227,7 @@ export async function chooseJudgeRole(
 ): Promise<{ token: string; principal: Principal; path: string } | null> {
   const s = await verifySession(token, secret, now);
   if (!s || s.k !== "judge") return null;
-  if (!(await principalOf(db, env, s))) return null;
+  if (!(await principalOf(db, env, secret, s))) return null;
   const principal = await judgePrincipal(db, role);
   if (!principal) return null;
   const next = await signSession({ ...s, r: role, ...sessionTimes(now) }, secret);
