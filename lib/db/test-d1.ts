@@ -27,5 +27,13 @@ export function d1FromSqlite(db: DatabaseSync): D1Database {
       return { success: true, results: [], meta: { changes: Number(r.changes), last_row_id: Number(r.lastInsertRowid) } };
     },
   });
-  return { prepare: (sql: string) => statement(sql, []) } as unknown as D1Database;
+  return {
+    prepare: (sql: string) => statement(sql, []),
+    // D1 の batch は 1 つの取引で順に流す。ここでは順に all を呼ぶだけ（読むだけのテストに使う）
+    batch: async (stmts: Array<ReturnType<typeof statement>>) => {
+      const out = [];
+      for (const s of stmts) out.push(await s.all());
+      return out;
+    },
+  } as unknown as D1Database;
 }

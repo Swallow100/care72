@@ -90,38 +90,40 @@ export function sortCaseload(rows: CaseloadRow[], key: SortKey): CaseloadRow[] {
   return [...rows].sort((a, b) => primary[key](a, b) || byKana(a, b));
 }
 
-/** ケアマネ 1 人の担当を読む。ログインを作るまでは、事業所の最初のケアマネ */
-export async function loadCaseload(db: D1Database, today: string): Promise<Caseload | null> {
+/**
+ * ケアマネ 1 人の担当を読む。範囲は lib/auth/scope.ts の caseloadScope（事業所とケアマネ）。
+ * ケアマネがその事業所にいなければ null。本人も事業所で絞る（事業所の壁）
+ */
+export async function loadCaseload(
+  db: D1Database,
+  scope: { officeId: string; careManagerId: string },
+  today: string,
+): Promise<Caseload | null> {
   const cm = await db
     .prepare(
       `SELECT a.id, a.display_name, o.id AS office_id, o.name AS office_name
          FROM accounts a JOIN offices o ON o.id = a.office_id
-        WHERE a.role = 'care_manager'
-        ORDER BY o.id, a.id
-        LIMIT 1`,
+        WHERE a.id = ?1 AND a.office_id = ?2 AND a.role = 'care_manager'`,
     )
+    .bind(scope.careManagerId, scope.officeId)
     .first<{ id: string; display_name: string; office_id: string; office_name: string }>();
   if (!cm) return null;
 
+  const mine = "SELECT id FROM people WHERE care_manager_id = ?1 AND office_id = ?2";
   const [people, clocks, contacts] = await db.batch([
     db
       .prepare(
         `SELECT id, name, kana, birth_date, plan_status, self_report_unreliable, ledger FROM people
-          WHERE care_manager_id = ?1 ORDER BY kana`,
+          WHERE care_manager_id = ?1 AND office_id = ?2 ORDER BY kana`,
       )
-      .bind(cm.id),
+      .bind(cm.id, cm.office_id),
     db
       .prepare(
         `SELECT person_id, kind, category, label, value, unit, starts_on, depends_on, depends_check FROM clocks
-          WHERE person_id IN (SELECT id FROM people WHERE care_manager_id = ?1)`,
+          WHERE person_id IN (${mine})`,
       )
-      .bind(cm.id),
-    db
-      .prepare(
-        `SELECT person_id, supporter_order FROM contacts
-          WHERE person_id IN (SELECT id FROM people WHERE care_manager_id = ?1)`,
-      )
-      .bind(cm.id),
+      .bind(cm.id, cm.office_id),
+    db.prepare(`SELECT person_id, supporter_order FROM contacts WHERE person_id IN (${mine})`).bind(cm.id, cm.office_id),
   ]);
 
   return {

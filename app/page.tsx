@@ -1,6 +1,8 @@
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import Link from "next/link";
 import { todayJst } from "@/lib/age";
+import { caseloadScope } from "@/lib/auth/scope";
+import { requirePage } from "@/lib/auth/server";
 import { loadCaseload, sortCaseload, SORT_KEYS, type Caseload, type CaseloadRow, type SortKey } from "@/lib/caseload";
 import { PLAN_STATUSES, type PlanStatus } from "@/lib/db/types";
 import { CARE_LEVEL_LABELS, PLAN_STATUS_LABELS, TIER_LABELS } from "@/lib/labels";
@@ -16,14 +18,18 @@ function isSortKey(v: string | undefined): v is SortKey {
   return SORT_KEYS.includes(v as SortKey);
 }
 
+// 担当一覧。ゲスト（ログインなし）はデモ事業所の山本の担当を見るだけ。ケアマネは自分の担当。
+// 行政・医療班・本人・家族・役を選ぶ前の審査員は、それぞれの入口へ送る（requirePage）
 export default async function CaseloadPage({ searchParams }: Props) {
+  const principal = await requirePage("caseload");
   const { sort } = await searchParams;
   const key: SortKey = isSortKey(sort) ? sort : "tier";
+  const scope = caseloadScope(principal);
 
   let data: Caseload | null;
   try {
     const { env } = await getCloudflareContext({ async: true });
-    data = await loadCaseload(env.DB, todayJst());
+    data = scope ? await loadCaseload(env.DB, scope, todayJst()) : null;
   } catch (e) {
     console.error("担当一覧を読めない", e);
     return <Message title="読込失敗" />;
@@ -34,8 +40,7 @@ export default async function CaseloadPage({ searchParams }: Props) {
   const pendingRows = [...data.rows].filter((r) => r.pending > 0).sort((a, b) => b.pending - a.pending);
 
   return (
-    <div className="min-h-dvh">
-      <TopBar office={data.office.name} careManager={data.careManager.name} />
+    <div>
       <main className="mx-auto grid max-w-6xl gap-6 px-4 py-6 lg:grid-cols-[minmax(0,1fr)_16rem]">
         <section aria-labelledby="caseload-title">
           <div className="flex flex-wrap items-baseline gap-x-4 gap-y-2">
@@ -45,9 +50,13 @@ export default async function CaseloadPage({ searchParams }: Props) {
             <span className="text-muted">{rows.length} 人</span>
             <PlanSummary rows={data.rows} />
           </div>
-          <div className="mt-4 overflow-x-auto">
-            <CaseloadTable rows={rows} sort={key} />
-          </div>
+          {rows.length === 0 ? (
+            <p className="mt-4 rounded-lg bg-panel p-6 text-muted">なし</p>
+          ) : (
+            <div className="mt-4 overflow-x-auto">
+              <CaseloadTable rows={rows} sort={key} />
+            </div>
+          )}
         </section>
         <aside aria-labelledby="pending-title" className="self-start rounded-lg bg-panel p-4">
           <h2 id="pending-title" className="font-bold">
@@ -68,22 +77,6 @@ export default async function CaseloadPage({ searchParams }: Props) {
         </aside>
       </main>
     </div>
-  );
-}
-
-function TopBar({ office, careManager }: { office: string; careManager: string }) {
-  return (
-    <header className="bg-panel">
-      <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
-        <span className="font-bold">ケア72</span>
-        <div className="flex items-center gap-4 text-sm">
-          <span className="text-muted">平時</span>
-          <span>
-            {office} {careManager}
-          </span>
-        </div>
-      </div>
-    </header>
   );
 }
 
@@ -126,7 +119,9 @@ function CaseloadTable({ rows, sort }: { rows: CaseloadRow[]; sort: SortKey }) {
               </span>
             </td>
             <td className={CELL}>
-              <div className="font-bold">{r.name}</div>
+              <Link href={`/people/${r.id}`} className="-mx-1 block rounded px-1 font-bold" data-press>
+                {r.name}
+              </Link>
               <div className="text-sm text-muted">{r.kana}</div>
             </td>
             <td className={CELL}>
