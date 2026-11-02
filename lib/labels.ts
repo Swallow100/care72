@@ -299,4 +299,4 @@ export const AUTHOR_ROLE_LABELS: Record<AuthorRole, string> = {
 
 /** 書類（T05〜T07 で作る）の入口 */
 export const DOCUMENT_LABELS = { matsuyama: "計画書", medical: "医療要約", own: "本人の1枚" } as const;
-export const DOCUMENT_STATUS_LABELS = { pending: "準備中" } as const;
+export const DOCUMENT_STATUS_LABELS = { pending: "準備中", ready: "表示" } as const;
