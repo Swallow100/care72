@@ -7,6 +7,8 @@ import { usePathname } from "next/navigation";
 const ITEMS = [
   { href: "/", label: "担当一覧", match: (path: string) => path === "/" || path.startsWith("/people") },
   { href: "/drill", label: "訓練記録", match: (path: string) => path.startsWith("/drill") },
+  // 事業所（災害モードの切替・災害情報）と、その下の様式 9。様式 9 を開いているときは様式9 だけを光らせる
+  { href: "/office", label: "事業所", match: (path: string) => path === "/office" },
   { href: "/office/form9", label: "様式9", match: (path: string) => path.startsWith("/office/form9") },
 ];
 
