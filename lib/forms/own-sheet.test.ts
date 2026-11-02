@@ -251,7 +251,7 @@ describe("同意の範囲", () => {
     expect(who.lines.every((l) => l.phone === undefined)).toBe(true);
     const whoText = who.lines.map(lineText).join(" ");
     for (const w of ["前田 和夫", "加藤 実", "090-0000-0026", "090-0000-0025"]) expect(whoText).not.toContain(w);
-    // 支援者 1 の民生委員は 1 枚のどこにも出ない
+    // 支援者 1 の民生委員は表のどこにも出ない（裏は医療要約のまま。医療班提供の同意に従う、T07）
     const html = front(s);
     expect(html).not.toContain("前田 和夫");
     expect(html).not.toContain("090-0000-0026");

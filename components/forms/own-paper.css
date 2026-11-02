@@ -6,8 +6,8 @@
 /* ---- 表 ---- */
 
 .paper.own-paper {
-  padding: 11mm 13mm 9mm;
-  gap: 2.4mm;
+  padding: 10mm 13mm 8mm;
+  gap: 1.8mm;
   font-size: 17pt;
   line-height: 1.45;
 }
@@ -26,9 +26,10 @@
 .paper .own-blk {
   border: 0.8pt solid #555;
 }
+/* 見出しのふりがなが帯の上の線に付かないよう、上を少し空ける */
 .paper .own-h {
   margin: 0;
-  padding: 0.4mm 3mm 0.6mm;
+  padding: 1.2mm 3mm 0.6mm;
   background: #ececec;
   font-size: 13pt;
   font-weight: 700;
@@ -108,20 +109,24 @@
 
 /* ---- 裏 ---- */
 
-/* 裏の医療要約も、余りを段の間に配る（paper.css の 1 頁目と同じ） */
+/*
+  裏の医療要約も、余りを段の間に配る（paper.css の 1 頁目と同じ）。題名の段に QR の枠が入る分、上の余白を 2mm 詰める
+  （山田 ハナの要約は QR の枠で 1.6mm はみ出し、3 頁になった）
+*/
 .paper.med-paper[data-page="2"] {
   justify-content: space-between;
+  padding-top: 6mm;
 }
 
-/* QR の枠（T16 の部品に差し替えるまで）。印刷して読める大きさ */
+/* QR の枠（T16 の部品に差し替えるまで）。印刷して読める大きさで、裏の要約が 1 頁に収まる 18mm まで */
 .paper .qr-frame {
   box-sizing: border-box;
   flex: none;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 20mm;
-  height: 20mm;
+  width: 18mm;
+  height: 18mm;
   border: 1pt solid #111;
   font-size: 11pt;
   font-weight: 700;
