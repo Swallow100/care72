@@ -2,13 +2,15 @@
 // 本人ごとの安否（色の印・誰から・答え・言う事）。監督（Opus、T19）が差し込んだ状況とペルソナ（T18）の物には AI の印。
 // 想定の表の固定の差し込みは AI の印なし。差し込みに根拠の出典があれば添える（監督の判断の理由は訓練記録にだけ残し、画面に出さない）。
 // 色は安否の色だけ（lib/triage の色ではなく、本人・家族が押した色）。氏名は台帳の id から引く（表の文には氏名が無い）。
-// ケアマネの手（T20）の途中で進んだ刻みは、見出しに「対応中 訪問 伊藤 フミ」、その刻みの安否に着信の印（着信の画面と声は T21）。
+// ケアマネの手（T20）の途中で進んだ刻みは、見出しに「対応中 訪問 伊藤 フミ」。安否のうち電話の形の物（lib/drill/calls.ts、
+// 1 刻みに 2 件まで）に着信の印（T21。進めるで来た物も手の途中の物も。着信の画面と声は components/drill/IncomingCall）。
 
 import { AiMark, StateTag } from "@/components/person/parts";
 import { shortJst } from "@/lib/disaster/state";
 import type { DrillIncident, DrillTurn, Tick } from "@/lib/drill/engine";
 import { simAt } from "@/lib/drill/engine";
 import { ACTION_UI, BASIS_LABEL, DRILL_LABELS, elapsedLabel, EVENT_KIND_LABELS } from "@/lib/drill/labels";
+import { callIndexes } from "@/lib/drill/calls";
 import { CallInMark } from "./ActionLog";
 import { COLOR_LABELS } from "@/lib/labels";
 import { SOURCE_LABELS } from "@/lib/list/detail";
@@ -37,37 +39,40 @@ export function Situation({
   ticks: ReadonlyArray<Tick>;
   names: Readonly<Record<string, string>>;
   startedAt: string;
-  /** ケアマネの手の途中で進んだ刻み → その手の言い方（「訪問 伊藤 フミ」、T20）。その刻みの安否は着信の印 */
+  /** ケアマネの手の途中で進んだ刻み → その手の言い方（「訪問 伊藤 フミ」、T20） */
   during?: Readonly<Record<number, string>>;
 }) {
   const order = [...ticks].reverse();
   return (
     <ol className="space-y-2" data-situation>
-      {order.map((t) => (
-        <li key={t.step} className="rounded-md bg-panel2 px-2.5 py-2" data-situation-step={t.step}>
-          <h3 className="flex flex-wrap items-baseline gap-x-2 text-sm">
-            <span className="font-bold">{elapsedLabel(t.hour)}</span>
-            <span className="text-xs text-muted tabular-nums">{shortJst(simAt(startedAt, t.hour))}</span>
-            {during[t.step] && (
-              <span className="text-xs text-muted" data-during>
-                {ACTION_UI.during} {during[t.step]}
-              </span>
+      {order.map((t) => {
+        const calls = callIndexes(t.turns);
+        return (
+          <li key={t.step} className="rounded-md bg-panel2 px-2.5 py-2" data-situation-step={t.step}>
+            <h3 className="flex flex-wrap items-baseline gap-x-2 text-sm">
+              <span className="font-bold">{elapsedLabel(t.hour)}</span>
+              <span className="text-xs text-muted tabular-nums">{shortJst(simAt(startedAt, t.hour))}</span>
+              {during[t.step] && (
+                <span className="text-xs text-muted" data-during>
+                  {ACTION_UI.during} {during[t.step]}
+                </span>
+              )}
+            </h3>
+            {t.incidents.length === 0 && t.turns.length === 0 ? (
+              <p className="mt-1 text-sm text-muted">{DRILL_LABELS.none}</p>
+            ) : (
+              <ul className="mt-1 space-y-1 text-sm">
+                {t.incidents.map((e, n) => (
+                  <IncidentItem key={`e${n}`} e={e} name={e.person ? names[e.person] : undefined} tickHour={t.hour} />
+                ))}
+                {t.turns.map((x, n) => (
+                  <TurnItem key={`t${n}`} t={x} name={names[x.person] ?? x.person} tickHour={t.hour} callIn={calls.includes(n)} />
+                ))}
+              </ul>
             )}
-          </h3>
-          {t.incidents.length === 0 && t.turns.length === 0 ? (
-            <p className="mt-1 text-sm text-muted">{DRILL_LABELS.none}</p>
-          ) : (
-            <ul className="mt-1 space-y-1 text-sm">
-              {t.incidents.map((e, n) => (
-                <IncidentItem key={`e${n}`} e={e} name={e.person ? names[e.person] : undefined} tickHour={t.hour} />
-              ))}
-              {t.turns.map((x, n) => (
-                <TurnItem key={`t${n}`} t={x} name={names[x.person] ?? x.person} tickHour={t.hour} callIn={Boolean(during[t.step])} />
-              ))}
-            </ul>
-          )}
-        </li>
-      ))}
+          </li>
+        );
+      })}
     </ol>
   );
 }

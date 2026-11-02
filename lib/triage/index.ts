@@ -48,9 +48,9 @@ export type RuleId =
   | "unknown" // 不明（時計の半分まで） → 灰
   | "green_out_after_report" // 緑の報告のあとに機器の時計が切れた → 赤（案 3）
   | "green_out_before_report" // 機器の時計が切れたあとの緑 → 黄（案 3）
-  | "green_device_low" // 緑だが機器の時計の半分を過ぎた → 黄
-  | "green_clock_half" // 緑だが機器以外の時計の半分を過ぎた → 黄（案 6）
-  | "green_unchecked" // 緑だが外の物に頼る時計が未確認 → 黄（案 1）
+  | "green_device_low" // 緑 ＋ 機器の時計の半分を過ぎた → 黄
+  | "green_clock_half" // 緑 ＋ 機器以外の時計の半分を過ぎた → 黄（案 6）
+  | "green_unchecked" // 緑 ＋ 外の物に頼る時計が未確認 → 黄（案 1）
   | "green"; // 緑 → 緑、一番下
 
 /** 理由に足す言葉 */
@@ -90,6 +90,8 @@ export type TriageSignal = {
   classes?: RecordingClass[];
   /** ケアマネが直した分類（人の分類。AI の印を付けない。Claude の分類より先に効く） */
   staffClasses?: RecordingClass[];
+  /** ケアマネが訪問で会えた（訓練の「訪問」で着いた、T21）。緑の理由は「訪問 確認済」 */
+  visit?: boolean;
 };
 
 /** 災害の情報。時刻は ISO 8601 */
@@ -394,6 +396,9 @@ const WHO: Record<ReadSignal["source"], string> = {
   staff: "医療班・行政",
 };
 
+/** ケアマネが訪問で会えた緑の理由（訓練の「訪問」、T21。11/3 07:0x の確定 2） */
+export const VISIT_CONFIRMED = "訪問 確認済";
+
 /** 表の行と足す言葉が見る物 */
 type RuleInput = {
   person: TriagePerson;
@@ -587,36 +592,36 @@ export const RULES: ReadonlyArray<Rule> = [
   {
     id: "green_device_low",
     signal: "green",
-    input: "緑だが機器の時計の半分を過ぎた（切れる前）",
+    input: "緑 ＋ 機器の時計の半分を過ぎた（切れる前）",
     color: "yellow",
-    example: "無事だが酸素 内蔵電池 残り 30 分",
+    example: "無事・酸素 内蔵電池 残り 30 分",
     origin: "仕様書",
     why: "無事でも機器の電池の残りが少ない → 切れる前に予備の電源か電源のある避難先を確かめる",
     sourceIds: ["nanbyo-tsuiho-2022", "jrs-respiratory-2012"],
-    match: (x) => firstOf(x.states.filter((c) => isDevice(c) && isPastHalf(c)), (c) => `無事だが${left(c)}`),
+    match: (x) => firstOf(x.states.filter((c) => isDevice(c) && isPastHalf(c)), (c) => `無事・${left(c)}`),
   },
   {
     id: "green_clock_half",
     signal: "green",
-    input: "緑だが機器以外の時計の半分を過ぎた（超えたときも）",
+    input: "緑 ＋ 機器以外の時計の半分を過ぎた（超えたときも）",
     color: "yellow",
-    example: "無事だがインスリン 残り 24 時間",
+    example: "無事・インスリン 残り 24 時間",
     origin: "案 6",
     why: "無事でも透析・薬・栄養剤の残りが減っている → 次の入手先を確かめる",
     sourceIds: ["jadp-dialysis-2023", "jadec-insulin-2023", "nanbyo-shishin-2017"],
-    match: (x) => firstOf(x.states.filter((c) => !isDevice(c) && isPastHalf(c)), (c) => `無事だが${left(c)}`),
+    match: (x) => firstOf(x.states.filter((c) => !isDevice(c) && isPastHalf(c)), (c) => `無事・${left(c)}`),
   },
   {
     id: "green_unchecked",
     signal: "green",
-    input: "緑だが外の物に頼る時計の確認が未確認",
+    input: "緑 ＋ 外の物に頼る時計の確認が未確認",
     color: "yellow",
-    example: "無事だが透析先 未確認",
+    example: "無事・透析先 未確認",
     origin: "案 1",
     why: "本人が無事でも頼り先（透析先・配達）が止まっていれば数日のうちに続けられない → 頼り先を確かめる",
     sourceIds: ["jadp-dialysis-2023"],
     saysUnchecked: true,
-    match: (x) => (x.unchecked.length > 0 ? `無事だが${uncheckedWords(x)}` : null),
+    match: (x) => (x.unchecked.length > 0 ? `無事・${uncheckedWords(x)}` : null),
   },
   {
     id: "green",
@@ -627,7 +632,7 @@ export const RULES: ReadonlyArray<Rule> = [
     origin: "仕様書",
     why: "本人・家族が無事と答えた → 連絡の順は一番下。時計が進めば上の行に移る",
     sourceIds: ["mhlw-bcp-2020"],
-    // 医療班・行政の受け入れ（T23）は「到着 避難所の名前」、搬送（T24）は「搬送 行き先」
+    // 医療班・行政の受け入れ（T23）は「到着 避難所の名前」、搬送（T24）は「搬送 行き先」、ケアマネの訪問（訓練 T21）は「訪問 確認済」
     match: (x) =>
       x.signal?.transport
         ? x.signal.transport.to
@@ -635,7 +640,9 @@ export const RULES: ReadonlyArray<Rule> = [
           : "搬送"
         : x.signal?.shelter
           ? `到着 ${x.signal.shelter}`
-          : `${who(x)}が「無事」`,
+          : x.signal?.visit
+            ? VISIT_CONFIRMED
+            : `${who(x)}が「無事」`,
   },
 ];
 
@@ -663,11 +670,11 @@ export const QUALIFIERS: ReadonlyArray<Qualifier> = [
   {
     id: "self_green_set_aside",
     when: "本人の報告を当てにしない印があり、いちばん新しい信号が本人の緑",
-    text: "本人の緑は参考",
+    text: "本人の申告は参考",
     origin: "案 4",
     why: "認知症の人は思うように話せないことがある → 本人の緑より家族・支援者の答えを使う",
     sourceIds: ["mhlw-dementia-2018"],
-    apply: (x) => (x.setAside ? "本人の緑は参考" : null),
+    apply: (x) => (x.setAside ? "本人の申告は参考" : null),
   },
   {
     id: "no_supporter",

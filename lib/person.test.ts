@@ -246,16 +246,17 @@ describe("意味の色", () => {
     expect(clockTone(null, false)).toBeNull();
   });
 
-  it("医療の印と優先の段は、その時計の色（同じ意味は同じ色）", () => {
+  it("医療の印と優先の段は、その時計の色（同じ意味は同じ色）。印に時計のいちばん短い残り（4h・3日）、走らない時計は項目名だけ", () => {
     expect(viewOf("p-01").head.marks).toEqual([
-      { label: "酸素", tone: "urgent" },
-      { label: "抗凝固", tone: "check" },
+      { label: "酸素", tone: "urgent", remaining: "2h" },
+      // 値の無い時計（未確認）は残りを添えない
+      { label: "抗凝固", tone: "check", remaining: null },
     ]);
     expect(viewOf("p-01").head.priority).toMatchObject({ tier: 2, tone: "urgent" });
-    expect(viewOf("p-02").head.marks).toEqual([{ label: "呼吸器", tone: "urgent" }]);
-    expect(viewOf("p-03").head.marks).toEqual([{ label: "透析", tone: "check" }]);
-    expect(viewOf("p-07").head.marks).toEqual([{ label: "抗凝固", tone: null }]);
-    expect(viewOf("p-04").head.marks).toEqual([{ label: "認知症", tone: null }]);
+    expect(viewOf("p-02").head.marks).toEqual([{ label: "呼吸器", tone: "urgent", remaining: "3h" }]);
+    expect(viewOf("p-03").head.marks).toEqual([{ label: "透析", tone: "check", remaining: "2日" }]);
+    expect(viewOf("p-07").head.marks).toEqual([{ label: "抗凝固", tone: null, remaining: "7日" }]);
+    expect(viewOf("p-04").head.marks).toEqual([{ label: "認知症", tone: null, remaining: null }]);
     expect(viewOf("p-10").head.priority).toMatchObject({ tier: 8, tone: null });
   });
 

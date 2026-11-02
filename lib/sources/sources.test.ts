@@ -120,7 +120,7 @@ describe("ルールの表の根拠", () => {
 
   it("引く行・段は lib/triage から逆に引く", () => {
     expect(citedBy("jadp-dialysis-2023")).toContain("骨格の段 3（透析）");
-    expect(citedBy("mhlw-dementia-2018")).toContain("足す言葉 self_green_set_aside（本人の緑は参考）");
+    expect(citedBy("mhlw-dementia-2018")).toContain("足す言葉 self_green_set_aside（本人の申告は参考）");
     // 車中泊の血栓はまだルールの表に無い
     expect(citedBy("jsth-pe-2020")).toEqual([]);
   });

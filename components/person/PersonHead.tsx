@@ -96,10 +96,11 @@ export function PersonHead({ head, level, titleId }: { head: Head; level: Level;
                   <span className="text-sm text-muted">{BLANK_LABELS.none}</span>
                 ) : (
                   <span className="flex flex-wrap gap-1">
-                    {/* 医療の印は地を塗らず、時計の長さの色は文字に（塗りの印は優先の状態だけ） */}
+                    {/* 医療の印は地を塗らず、時計の長さの色は印に（塗りの印は優先の状態だけ）。項目名に時計のいちばん短い残り（「酸素 4h」）。
+                        残りの無い項目（走らない時計・値の無い時計）は項目名だけ */}
                     {head.marks.map((m) => (
                       <Mark key={m.label} inPanel2 size="md" tone={m.tone ?? null}>
-                        {m.label}
+                        {m.remaining ? `${m.label} ${m.remaining}` : m.label}
                       </Mark>
                     ))}
                   </span>

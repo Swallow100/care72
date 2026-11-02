@@ -1,4 +1,4 @@
-// 市町村への安否報告の下書き（発災時）。表の上の帯。所在の内訳と、決まった形の文（コピーできる）。
+// 市町村への安否報告の下書き（発災時）。表の上の帯。所在の内訳と、決まった形の文（コピーできる。文は欄の中で送らず全部出す、T38）。
 // 色ごとの人数は画面の見出しの行にあるので、ここでは所在だけを数で出す。
 // 文は lib/forms/form9-report.ts が作る（Claude は呼ばない）。
 
@@ -31,14 +31,20 @@ export function Form9Report({ text, tally }: { text: string; tally: Form9Tally }
           <CopyButton text={text} targetId={TEXT_ID} />
         </span>
       </div>
-      <textarea
+      {/* 文は全部を出す（欄の中で送らない。画面全体の縦 1 本だけで読む）。段（空の行で区切った塊）ごとに、広い画面は 2〜3 列に並べて
+          背を低くする（段の途中で列を割らない）。手で写すときはこの箱を選ぶ（コピーできないときは自動で選ぶ） */}
+      <div
         id={TEXT_ID}
-        readOnly
-        value={text}
-        rows={7}
-        className="mt-2 w-full resize-y rounded-md bg-panel2 p-2 text-xs leading-relaxed text-ink outline-none focus-visible:outline-2 focus-visible:outline-accent"
+        role="region"
         aria-label="報告の文"
-      />
+        className="mt-2 gap-x-6 rounded bg-panel2 p-2 text-xs leading-relaxed select-text md:columns-2 xl:columns-3"
+      >
+        {text.split(/\n{2,}/).map((block, i) => (
+          <p key={i} className="break-inside-avoid pb-2 break-words whitespace-pre-wrap last:pb-0">
+            {block}
+          </p>
+        ))}
+      </div>
     </section>
   );
 }

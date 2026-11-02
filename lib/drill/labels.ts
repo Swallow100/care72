@@ -181,6 +181,22 @@ export const CALL_STATUS_TEXTS: Record<keyof typeof CALL_STATUS_LABELS, string> 
   noNumber: "電話番号が台帳にない",
 };
 
+/** 着信の画面と声（T21）の言葉。応答・拒否は電話の画面の言い方 */
+export const CALL_UI = {
+  incoming: "着信",
+  talking: "通話中",
+  answer: "応答",
+  decline: "拒否",
+  hangUp: "終話",
+  play: "再生",
+  playing: "再生中",
+  voice: "音声",
+  recording: "録音",
+  /** ケアマネが通話・訪問で聞いた安否（行の詳細の印） */
+  heardCall: "通話",
+  heardVisit: "訪問",
+} as const;
+
 /** 出たが言葉の無いとき（鍵なし・本人役の失敗）の固定の言葉。安否の言う事が相手の物なら、そちらを使う（lib/drill/actions.ts） */
 export const CALL_FIXED_SPEECH = "はい、もしもし";
 

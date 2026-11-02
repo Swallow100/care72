@@ -13,9 +13,9 @@ import { toTriageSignal } from "../disaster/triage.ts";
 import { callTargetText } from "../list/calls.ts";
 import type { ClockForDetail, ContactForDetail, SignalForDetail } from "../list/detail.ts";
 import type { TriageSignal } from "../triage/index.ts";
-import { loadDrillRow, loadTicks, participantsOf, replayState, type DrillScope } from "./db.ts";
+import { heardSignalId, loadDrillRow, loadTicks, participantsOf, replayState, type DrillScope } from "./db.ts";
 import { drillClocks } from "./director.ts";
-import { drillSituation, nowHour, simAt, type DrillState, type Tick } from "./engine.ts";
+import { drillSituation, nowHour, simAt, type ActionRecord, type DrillState, type HeardSignal, type Tick } from "./engine.ts";
 import { lastHour, scenarioOf } from "./scenarios.ts";
 
 /** 72 時間の棒の帯（停電・断水・電話）。始まりと終わりは発災からの時間。終わりが無ければ今まで続いている */
@@ -40,6 +40,8 @@ export type DrillScreen = {
   bands: Band[];
   /** 本人役（T18、Claude）が作った安否の signals の id。行の詳細の安否に AI の印を付ける */
   aiSignals: string[];
+  /** ケアマネが通話・訪問で聞いた安否の signals の id → 通話か訪問か（T21。行の詳細で「通話」「訪問 確認済」と添える。AI の印なし） */
+  heard: Record<string, HeardSignal["via"]>;
   /**
    * 本人ごとの連絡先（ケアマネの手の相手を選ぶ。T20）。区分と続柄の言い方と、番号があるかだけ（名前と番号は画面に出さない。
    * 訓練の画面から本物の番号にかけない、T17 の決め）
@@ -145,8 +147,13 @@ export async function loadDrillScreen(
   const situation = drillSituation(state, ledgers);
 
   const signalRows = signals.results as SignalForDetail[];
+  // ケアマネが通話・訪問で聞いた安否（T21）。訪問で会えた物は緑の理由が「訪問 確認済」
+  const heard = heardOf(id, state.actions);
   const byPerson = new Map<string, TriageSignal[]>();
-  for (const s of signalRows) byPerson.set(s.person_id, [...(byPerson.get(s.person_id) ?? []), toTriageSignal(s)]);
+  for (const s of signalRows) {
+    const t = toTriageSignal(s);
+    byPerson.set(s.person_id, [...(byPerson.get(s.person_id) ?? []), heard[s.id] === "visit" ? { ...t, visit: true } : t]);
+  }
   // 訓練の世界が時計の頼り先を書き換える（栄養剤の持ち出し忘れ・透析施設の休止 → 未確認）。台帳そのものは変えない
   const clockRows = drillClocks(clocks.results as unknown as Array<ClockRow>, state.world);
   const contactRows = contacts.results as unknown as Array<ContactRow>;
@@ -184,8 +191,18 @@ export async function loadDrillScreen(
     aiSignals: (aiTurns.results as Array<{ signal: unknown }>)
       .map((r) => r.signal)
       .filter((x): x is string => typeof x === "string"),
+    heard,
     contacts: contactsByPerson(contactRows),
   };
+}
+
+/** ケアマネが通話・訪問で聞いた安否の signals の id → 通話か訪問か（手の返事から。lib/drill/db.ts の heardSignalId） */
+export function heardOf(drillId: string, actions: ReadonlyArray<ActionRecord>): Record<string, HeardSignal["via"]> {
+  const out: Record<string, HeardSignal["via"]> = {};
+  for (const a of actions) {
+    if (a.result?.heard) out[heardSignalId(drillId, a.id)] = a.result.heard.via;
+  }
+  return out;
 }
 
 /** 本人ごとの連絡先（台帳の並び）。名前と番号は落とす */

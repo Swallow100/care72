@@ -158,9 +158,9 @@ describe("平時の優先順位（10 人）", () => {
     });
   });
 
-  it("病院の避難先は「介護・医療機関」の欄、印の人は特記に「本人の報告は参考」、支援者なしは理由に", () => {
+  it("病院の避難先は「介護・医療機関」の欄、印の人は特記に「本人の申告は参考」、支援者なしは理由に", () => {
     expect(row(normal, "p-02").cells).toMatchObject({ shelter: "", facility: "かわなぎ総合病院" });
-    expect(row(normal, "p-04").cells.notes).toContain("本人の報告は参考");
+    expect(row(normal, "p-04").cells.notes).toContain("本人の申告は参考");
     expect(row(normal, "p-04").reason).toBe("認知症で独居");
     expect(row(normal, "p-05").reason).toBe("ステロイド 5 日、支援者なし");
     expect(row(normal, "p-05").cells.evacuation).toContain("支援者なし");

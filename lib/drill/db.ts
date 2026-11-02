@@ -46,10 +46,12 @@ import {
   type DrillIncident,
   type DrillState,
   type DrillTurn,
+  type HeardSignal,
   type PersonState,
   type StepHooks,
   type Tick,
 } from "./engine.ts";
+import { callIndexes } from "./calls.ts";
 import { EMPTY_WORLD, isInjectKind, type WorldState } from "./scenarios.ts";
 
 /** 訓練を開ける範囲。ケアマネの役だけ（審査員のケアマネの役も）。事業所と担当一覧の持ち主 */
@@ -135,11 +137,12 @@ function gateSql(g: Gate, stepParam: string, actionsParam: string): string {
 const SEQ = "(SELECT COALESCE(MAX(seq), 0) + 1 FROM drill_events WHERE drill_id = ?2)";
 
 /**
- * 刻み 1 つの保存の文（drills の行がその刻みにあるときだけ書く）。during は手の途中で進んだ刻みのときの手の番号で、
- * その刻みの安否を着信（call_in）としても残す（着信の画面と声は T21 が読む）
+ * 刻み 1 つの保存の文（drills の行がその刻みにあるときだけ書く）。刻みの安否のうち電話の形の物（2 件まで）は着信（call_in）
+ * としても残す（T21）。during は手の途中で進んだ刻みのときの手の番号（割り込み）
  */
 function tickStatements(db: D1Database, drillId: string, tick: Tick, startedAt: string, gate: Gate = { step: tick.step }, during?: string) {
   const out = [];
+  const calls = callIndexes(tick.turns);
   const where = gateSql(gate, "?8", "?9");
   // 門の値（使う数だけ渡す。使わない番号を渡すと SQLite は断る）
   const bindGate: number[] = gate.actions === undefined ? [gate.step] : [gate.step, gate.actions];
@@ -193,8 +196,17 @@ function tickStatements(db: D1Database, drillId: string, tick: Tick, startedAt: 
         )
         .bind(eventId(drillId, tick.step, n++), drillId, tick.step, t.at, person, JSON.stringify(payload), ...bindGate),
     );
-    if (during) {
-      const call: CallInPayload = { signal: sid, during, source: t.source, color: t.color, saying: t.saying, ai: t.ai };
+    const order = calls.indexOf(i);
+    if (order >= 0) {
+      const call: CallInPayload = {
+        signal: sid,
+        order,
+        ...(during ? { during } : {}),
+        source: t.source,
+        color: t.color,
+        saying: t.saying,
+        ai: t.ai,
+      };
       out.push(
         db
           .prepare(
@@ -208,8 +220,11 @@ function tickStatements(db: D1Database, drillId: string, tick: Tick, startedAt: 
   return out;
 }
 
-/** 着信（手の途中に来た安否）。T21 が着信の画面と声に使う。言う事は安否の文字起こしと同じ */
-type CallInPayload = Pick<DrillTurn, "source" | "color" | "saying" | "ai"> & { signal: string; during: string };
+/**
+ * 着信（刻みの安否のうち電話の形の物。lib/drill/calls.ts の callIndexes、1 刻みに 2 件まで）。order は鳴らす順、
+ * during は手の途中に来た着信のときの手の番号（割り込み）。言う事は安否の文字起こしと同じ
+ */
+type CallInPayload = Pick<DrillTurn, "source" | "color" | "saying" | "ai"> & { signal: string; order: number; during?: string };
 
 // ---------- 開始・進める・中断 ----------
 
@@ -463,6 +478,7 @@ export async function actDrill(
           gate.step,
           gate.actions!,
         ),
+      ...heardStatements(db, id, record.id, person, result.heard ?? null, row.started_at, gate),
     ]);
   } catch (e) {
     // ほかの要求が先に同じ手の番号・同じ刻みを書いた（id が重なった）。取引ごと戻っている
@@ -475,6 +491,50 @@ export async function actDrill(
 
 type ActionPayload = Omit<ActionRecord, "result">;
 type ResultPayload = ActionResult & { id: string };
+
+/** 通話・訪問で聞いた安否の signals の id（手 1 つに 1 つ） */
+export const heardSignalId = (drillId: string, actionId: string) => `${drillId}-${actionId}-h`;
+
+/**
+ * 通話・訪問で聞いた安否（T21）を signals に足す文。出どころ care_manager、文字起こしなし（言う事は手の返事の吹き出しに AI の印つきで出す。
+ * 信号は人が聞いた結果なので AI の印を付けない）。手を打った要求と同じ門（刻みと手の数）
+ */
+function heardStatements(
+  db: D1Database,
+  drillId: string,
+  actionId: string,
+  person: string | null,
+  heard: HeardSignal | null,
+  startedAt: string,
+  gate: Gate,
+) {
+  if (!heard || !person) return [];
+  return [
+    db
+      .prepare(
+        `INSERT INTO signals (id, person_id, drill_id, color, source, where_now, injured, at_home, can_move, has_medicine,
+                              transcript, occurred_at)
+         SELECT ?1, ?2, ?3, ?4, 'care_manager', ?5, ?6, ?7, ?8, ?9, NULL, ?10
+          WHERE EXISTS (SELECT 1 FROM drills d JOIN people p ON p.office_id = d.office_id
+                         WHERE d.id = ?3 AND d.step = ?11 AND p.id = ?2
+                           AND COALESCE(json_array_length(d.world, '$.actions'), 0) = ?12)`,
+      )
+      .bind(
+        heardSignalId(drillId, actionId),
+        person,
+        drillId,
+        heard.color,
+        heard.whereNow,
+        bit(heard.injured),
+        bit(heard.atHome),
+        bit(heard.canMove),
+        bit(heard.hasMedicine),
+        simAt(startedAt, heard.at),
+        gate.step,
+        gate.actions!,
+      ),
+  ];
+}
 
 /** 中断（進行中だけ）。記録は残り、再生できる */
 export async function abandonDrill(
@@ -546,6 +606,7 @@ function asTurn(person: string | null, p: Partial<TurnPayload>): DrillTurn | nul
     doing: s(p.doing),
     ai: p.ai === true,
     at: typeof p.at === "number" ? p.at : 0,
+    ...(typeof p.signal === "string" ? { signal: p.signal } : {}),
   };
 }
 
@@ -611,7 +672,26 @@ function asResult(p: Partial<ResultPayload>): { id: string; result: ActionResult
       staff: isNum(p.staff) ? p.staff : 0,
       crossed: Array.isArray(p.crossed) ? p.crossed.filter(isNum) : [],
       atMinute: p.atMinute,
+      heard: asHeard(p.heard),
     },
+  };
+}
+
+/** 通話・訪問で聞いた安否（T21）。形が違えば無し */
+function asHeard(v: unknown): HeardSignal | null {
+  if (!v || typeof v !== "object") return null;
+  const h = v as Partial<HeardSignal>;
+  if ((h.via !== "call" && h.via !== "visit") || !(SIGNAL_COLORS as readonly string[]).includes(h.color ?? "") || !isNum(h.at)) return null;
+  const b = (x: unknown) => (typeof x === "boolean" ? x : null);
+  return {
+    via: h.via,
+    color: h.color!,
+    whereNow: (WHERE_NOW as readonly string[]).includes(h.whereNow ?? "") ? h.whereNow! : null,
+    injured: b(h.injured),
+    atHome: b(h.atHome),
+    canMove: b(h.canMove),
+    hasMedicine: b(h.hasMedicine),
+    at: h.at,
   };
 }
 

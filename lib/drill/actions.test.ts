@@ -21,6 +21,7 @@ import {
   DISPATCH_ARRIVE_MINUTES,
   DISPATCH_BACK_MINUTES,
   type ActTarget,
+  type CallHook,
 } from "./actions.ts";
 import { actDrill, advanceDrill, drillScope, loadDrillRow, loadTicks, participantsOf, replayState, startDrill, stateOfRow } from "./db.ts";
 import { DIRECTOR_SYSTEM } from "./director.ts";
@@ -30,6 +31,7 @@ import { actionPost } from "./http.ts";
 import { ACTION_LABELS, CALL_FIXED_SPEECH, clockLabel } from "./labels.ts";
 import { CALL_SYSTEM, PERSONA_SYSTEM, type PersonaAnswer } from "./persona.ts";
 import { applyEvent, EMPTY_WORLD, injectChange, SCENARIOS } from "./scenarios.ts";
+import { VISIT_CONFIRMED } from "../triage/index.ts";
 import { loadDrillScreen } from "./view.ts";
 
 type Params = Anthropic.Beta.Messages.MessageCreateParamsNonStreaming;
@@ -287,6 +289,8 @@ describe("手の記録（drill_events の action と result、drills.world）", 
       staff: 0,
       crossed: [],
       atMinute: 185,
+      // 娘が出て答えた → 聞いた安否（T21）。色と 4 問は本人役の今の様子（3 時間の赤・けが）から
+      heard: { via: "call", color: "red", whereNow: null, injured: true, atHome: null, canMove: null, hasMedicine: null, at: 185 / 60 },
     });
 
     // drills.world にも同じ手と返事
@@ -317,12 +321,21 @@ describe("時計と割り込み（着信）", () => {
     expect(third).toMatchObject({ ok: true, step: 1, hour: 1, minute: 85, record: { id: "a3", result: { status: "arrived", crossed: [1] } } });
     const row = (await loadDrillRow(db, DEMO.id, ID))!;
     expect(row).toMatchObject({ step: 1, sim_hour: 1 });
-    // 1 時間の刻み（表の出来事と安否）が保存され、安否は着信としても残る（加藤・井上。T21 が読む）
+    // 1 時間の刻み（表の出来事と安否）が保存される。安否のうち電話の形の物（小林の夫）は着信（手 a3 の途中の割り込み）。
+    // 本人（加藤・井上）の緑はボタンなので着信にしない。0 時間の家族の電話（田中・高橋）は進めるで来た着信（手の途中でない）
     expect(events("incident").filter((e) => e.step === 1)).toHaveLength(2);
-    expect(events("call_in").map((e) => [e.step, e.person_id, JSON.parse(e.payload).during]).sort()).toEqual([
-      [1, "p-07", "a3"],
-      [1, "p-08", "a3"],
+    expect(events("call_in").map((e) => [e.step, e.person_id, JSON.parse(e.payload).during ?? null])).toEqual([
+      [0, "p-06", null],
+      [0, "p-03", null],
+      [1, "p-02", "a3"],
     ]);
+    expect(JSON.parse(events("call_in")[2].payload)).toMatchObject({
+      order: 0,
+      source: "family",
+      color: "green",
+      saying: "停電した。呼吸器が電池に切り替わった。3 時間しかもたない",
+      ai: false,
+    });
     // 返事は越えた刻みの世界（警戒レベル 4）で決まる。訪問の返事の時刻は手の終わり
     expect(JSON.parse(events("result")[2].payload)).toMatchObject({ id: "a3", atMinute: 85, crossed: [1] });
     // 左の表の「今」はケアマネの時計
@@ -546,6 +559,107 @@ describe("鍵あり（偽の Claude）", () => {
     const r2 = await act({ ...s, minute: 50 }, { kind: "visit", person: "p-05", target: null }, { director: boom }, () => 0);
     expect(r2.record.result).toMatchObject({ status: "arrived", ai: false });
     expect(r2.state.step).toBe(1);
+  });
+});
+
+// ---------- 聞いた安否（T21、11/3 07:0x の確定 2） ----------
+
+const heardRows = () =>
+  sqlite
+    .prepare(
+      `SELECT id, person_id, color, source, where_now, injured, can_move, transcript, occurred_at FROM signals
+        WHERE drill_id = ? AND source = 'care_manager' ORDER BY occurred_at, id`,
+    )
+    .all(ID) as Array<Record<string, unknown>>;
+
+describe("聞いた安否（通話で答えた・訪問で会えた）", () => {
+  it("通話で家族が出て答えたら、安否（出どころ ケアマネ、文字起こしなし、AI の印なし）を足し、左の表の灰が緑に動く", async () => {
+    await start();
+    expect((await colors())["p-02"]).toBe("gray");
+    const r = await doAct("call_contact", "p-02", "c-02-1"); // 0:00 → 0:05、出る
+    expect(r).toMatchObject({ ok: true, record: { result: { status: "connected", heard: { via: "call", color: "green", at: 5 / 60 } } } });
+    expect(heardRows()).toEqual([
+      {
+        id: `${ID}-a1-h`,
+        person_id: "p-02",
+        color: "green",
+        source: "care_manager",
+        where_now: null,
+        injured: null,
+        can_move: null,
+        transcript: null,
+        occurred_at: simAt(START, 5 / 60),
+      },
+    ]);
+    const screen = (await loadDrillScreen(db, SCOPE, ID, null))!;
+    const row = screen.rows.find((x) => x.id === "p-02")!;
+    expect(row.triage).toMatchObject({ color: "green", rule: "green" });
+    expect(row.triage?.reason).toContain("ケアマネ");
+    expect(screen.heard).toEqual({ [`${ID}-a1-h`]: "call" });
+    expect(screen.aiSignals).not.toContain(`${ID}-a1-h`);
+  });
+
+  it("出ない・無言・番号なし・言葉の無い相手（訪問看護）は聞いた安否にならない", async () => {
+    await start();
+    expect(await doAct("call_contact", "p-02", "c-02-1", { roll: seq(0, 0.99) })).toMatchObject({ record: { result: { status: "noAnswer", heard: null } } });
+    expect(await doAct("call_contact", "p-02", "c-02-1", { roll: seq(0, 0.87) })).toMatchObject({ record: { result: { status: "silent", heard: null } } });
+    expect(await doAct("call_contact", "p-02", "c-02-2")).toMatchObject({ record: { result: { heard: null } } });
+    expect(heardRows()).toEqual([]);
+  });
+
+  it("赤の本人に電話: 本人役の赤と 4 問の答えを写す。山田は最上位の赤（けが）のまま", async () => {
+    await start();
+    await advanceTo(ID, 2); // 3 時間: 山田が赤（けが）
+    await doAct("call_person", "p-01", null);
+    expect(heardRows()).toMatchObject([{ person_id: "p-01", color: "red", injured: 1, can_move: null, where_now: null }]);
+    const screen = (await loadDrillScreen(db, SCOPE, ID, null))!;
+    const yamada = screen.rows.find((x) => x.id === "p-01")!;
+    expect(yamada.triage).toMatchObject({ color: "red", rule: "red_injury" });
+    expect(yamada.rank).toBe(1);
+  });
+
+  it("訪問で着いたら「確認済」（緑の理由）。着けなかった訪問は安否にならない", async () => {
+    await start();
+    expect((await colors())["p-04"]).toBe("gray");
+    expect(await doAct("visit", "p-04")).toMatchObject({ record: { result: { status: "arrived", heard: { via: "visit", color: "green" } } } });
+    const screen = (await loadDrillScreen(db, SCOPE, ID, null))!;
+    expect(screen.rows.find((x) => x.id === "p-04")!.triage).toMatchObject({ color: "green", reason: VISIT_CONFIRMED });
+    expect(screen.heard).toEqual({ [`${ID}-a1-h`]: "visit" });
+    // 3 時間: 伊藤の家の前の市道が通行止め → 着けない
+    await advanceTo(ID, 2);
+    expect(await doAct("visit", "p-05", null, { roll: () => 0.99 })).toMatchObject({ record: { result: { heard: null } } });
+    expect(heardRows()).toHaveLength(1);
+  });
+
+  it("競合した手の聞いた安否は残らない（手を打った要求と同じ門）", async () => {
+    await start();
+    // 電話に出た人の言葉を待つ間に、ほかの画面が訪問を打った
+    const call: CallHook = async () => {
+      expect(await doAct("visit", "p-04")).toMatchObject({ ok: true });
+      return { pickup: "answers", speech: "はい", ai: false };
+    };
+    expect(await doAct("call_contact", "p-02", "c-02-1", { hooks: { call } })).toEqual({ ok: false, error: "conflict" });
+    expect(heardRows()).toMatchObject([{ id: `${ID}-a1-h`, person_id: "p-04" }]);
+  });
+
+  it("再生でも同じ（保存した手の返事から聞いた安否の印を作り直す）", async () => {
+    await start();
+    await doAct("visit", "p-04");
+    await advanceTo(ID, 1);
+    const replay = (await loadDrillScreen(db, SCOPE, ID, 0))!;
+    expect(replay.heard).toEqual({ [`${ID}-a1-h`]: "visit" });
+    expect(replay.rows.find((x) => x.id === "p-04")!.triage?.reason).toBe(VISIT_CONFIRMED);
+  });
+
+  it("鍵あり: 本人役の通話に「伝える様子」（聞いた安否の色）を渡す。言う事は吹き出しだけで、聞いた安否の文字起こしにしない", async () => {
+    const { client, calls } = fake(rain);
+    const hooks = drillHooks({ DB: db, ANTHROPIC_API_KEY: "dummy" }, careManager(), { claude: client, now: () => new Date(START) })!;
+    await start("heavy_rain", hooks);
+    await doAct("call_contact", "p-02", "c-02-1", { hooks });
+    const call = calls.find((c) => systemOf(c).includes(CALL_SYSTEM))!;
+    expect(inputOf(call)["電話"].text).toContain("伝える様子: 緑（無事）");
+    expect((await stored()).actions[0].result).toMatchObject({ speechAi: true, heard: { via: "call", color: "green" } });
+    expect(heardRows()).toMatchObject([{ transcript: null }]);
   });
 });
 

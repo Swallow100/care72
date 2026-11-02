@@ -59,18 +59,21 @@ export type OfficePersonItem = {
   careManagerId: string | null;
   /** 一覧から外した時刻。一覧にいれば null */
   unlistedAt: string | null;
+  /** 登録と最後の更新の時刻（行の詳細に出す） */
+  createdAt: string;
+  updatedAt: string;
 };
 
 /** 事業所の利用者（担当の割当の表）。カナの順。外した人も含む（unlistedAt で分ける） */
 export async function listOfficePeople(db: D1Database, officeId: string, today: string): Promise<OfficePersonItem[]> {
   const res = await db
     .prepare(
-      `SELECT id, name, kana, birth_date, plan_status, care_manager_id, unlisted_at, reported_age FROM people
+      `SELECT id, name, kana, birth_date, plan_status, care_manager_id, unlisted_at, reported_age, created_at, updated_at FROM people
         WHERE office_id = ?1 ORDER BY kana, id`,
     )
     .bind(officeId)
     .all<
-      Pick<PersonRow, "id" | "name" | "kana" | "birth_date" | "plan_status" | "care_manager_id"> & {
+      Pick<PersonRow, "id" | "name" | "kana" | "birth_date" | "plan_status" | "care_manager_id" | "created_at" | "updated_at"> & {
         unlisted_at: string | null;
         reported_age: number | null;
       }
@@ -84,6 +87,8 @@ export async function listOfficePeople(db: D1Database, officeId: string, today: 
     plan: r.plan_status,
     careManagerId: r.care_manager_id,
     unlistedAt: r.unlisted_at,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
   }));
 }
 

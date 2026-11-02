@@ -1,0 +1,12 @@
+form9 1024 light: 横送り +0px、内側の送り 0 
+mapping 1024 light: 横送り +0px、内側の送り 0 
+form9 1280 light: 横送り +0px、内側の送り 0 
+mapping 1280 light: 横送り +0px、内側の送り 0 
+form9 1440 light: 横送り +0px、内側の送り 0 
+mapping 1440 light: 横送り +0px、内側の送り 0 
+form9 1024 dark: 横送り +0px、内側の送り 0 
+mapping 1024 dark: 横送り +0px、内側の送り 0 
+form9 1280 dark: 横送り +0px、内側の送り 0 
+mapping 1280 dark: 横送り +0px、内側の送り 0 
+form9 1440 dark: 横送り +0px、内側の送り 0 
+mapping 1440 dark: 横送り +0px、内側の送り 0 

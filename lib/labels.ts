@@ -192,6 +192,9 @@ export const CLOCK_KIND_LABELS: Record<ClockKind, string> = {
 
 export const CLOCK_UNIT_LABELS: Record<ClockUnit, string> = { minute: "分", hour: "時間", day: "日", week: "週" };
 
+/** 医療の印に添える時計の残りの短い形（「酸素 4h」「透析 2日」。11/3 03:3x の確定 8） */
+export const CLOCK_UNIT_SHORT: Record<ClockUnit, string> = { minute: "分", hour: "h", day: "日", week: "週" };
+
 /** 時計が走り出すきっかけ */
 export const CLOCK_START_LABELS: Record<ClockStart, string> = { outage: "停電", disaster: "発災", none: "なし" };
 

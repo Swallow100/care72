@@ -13,7 +13,7 @@ import {
   WORLD_LABELS,
 } from "@/lib/drill/labels";
 
-const BAD = "font-bold text-state-check";
+const BAD = "font-bold tone-check";
 
 export function DamagePanel({
   kind,

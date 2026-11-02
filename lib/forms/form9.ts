@@ -499,7 +499,7 @@ function buildOne(p: Form9PersonInput, today: string): Built {
       address: join([ledger.basic.address?.city, town], ""),
       shelter: shelter.join("・"),
       facility: facility.join("・"),
-      notes: join([...ledger.notes, p.person.self_report_unreliable === 1 ? "本人の報告は参考" : null]),
+      notes: join([...ledger.notes, p.person.self_report_unreliable === 1 ? "本人の申告は参考" : null]),
       careManager: p.careManager ?? "",
       emergency1: contactText(emergency[0]),
       emergency2: contactText(emergency[1]),

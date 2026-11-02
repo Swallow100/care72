@@ -6,6 +6,7 @@
 
 export {
   ArrowDownTrayIcon as DownloadIcon, // CSV 出力
+  ArrowUturnLeftIcon as RestoreIcon, // 外した物を戻す
   ArrowRightStartOnRectangleIcon as LogoutIcon, // ログアウト（扉から出る矢印）
   ArrowsRightLeftIcon as AssignIcon, // 担当の割当・移す
   CheckIcon as SaveIcon, // 保存
@@ -14,6 +15,7 @@ export {
   ClipboardDocumentIcon as CopyIcon, // コピー
   DocumentTextIcon as PaperIcon, // 紙面の表示
   MagnifyingGlassIcon as SearchIcon, // 検索
+  MinusCircleIcon as RemoveIcon, // 外す（人でない物。対応表の欄など）
   PhoneIcon, // 電話
   PlayIcon, // 再生・開始
   PlusIcon as AddIcon, // 追加（人でない物）
