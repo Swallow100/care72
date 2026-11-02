@@ -18,6 +18,17 @@ import type {
   SignalSource,
 } from "../db/types.ts";
 import { DEPENDS_ON_LABELS } from "../labels.ts";
+import type { SourceId } from "../sources/index.ts";
+
+/**
+ * 行の根拠（docs/tasks/T25.md）。表の行・足す言葉・骨格の段に 1 つずつ。
+ * why は「なぜこの行があるか」の 1 文（事実 → ケアマネが確かめる物）。ケアマネと主治医だけが見る。本人・家族の 1 枚には出さない。
+ * sourceIds は出典の登録簿（lib/sources）の id。登録簿に無い id は型とテストで落ちる。
+ */
+export type Basis = {
+  why: string;
+  sourceIds: ReadonlyArray<SourceId>;
+};
 
 /** 赤 至急・黄 要確認・灰 未知・緑 無事（赤は連絡の順の言葉で、本人の状態を言い切らない） */
 export type Color = "red" | "yellow" | "gray" | "green";
@@ -157,6 +168,62 @@ export function tierOf(person: TriagePerson): Tier {
   return tier;
 }
 
+/** 時計の区分が骨格のどの段か。骨格に入らない区分（認知症・その他）は null。本人のページで時計ごとに「なぜ」を出すときに使う */
+export function categoryTier(category: ClockCategory): Tier | null {
+  return CATEGORY_TIER[category] ?? null;
+}
+
+/** 優先の骨格の段ごとの根拠。段の名前は lib/labels.ts の TIER_LABELS。1〜8 が順に 1 つずつ（テストで確かめる） */
+export const TIERS: ReadonlyArray<{ tier: Tier } & Basis> = [
+  {
+    tier: 1,
+    why: "人工呼吸器・吸引器は停電で内蔵電池に替わり、電池が切れると止まる → 外部電池・手で使う吸引器と電源のある避難先",
+    sourceIds: ["nanbyo-shishin-2017", "nanbyo-tsuiho-2022"],
+  },
+  {
+    tier: 2,
+    why: "酸素濃縮器は停電で止まる → 予備ボンベの本数と電源のある避難先",
+    sourceIds: ["jrs-respiratory-2012", "nanbyo-shishin-2017"],
+  },
+  {
+    tier: 3,
+    why: "透析は断水・停電・施設の被災でできなくなる → 次の透析日と受け入れ先",
+    sourceIds: ["jadp-dialysis-2023"],
+  },
+  {
+    tier: 4,
+    why: "インスリン・栄養剤は手元の分が切れると続けられない → 持ち出す量と次の入手先",
+    sourceIds: ["jadec-insulin-2023", "nanbyo-shishin-2017"],
+  },
+  {
+    tier: 5,
+    why: "抗凝固薬・ステロイド・抗てんかん薬は急にやめると危ない → 持ち出す量と処方の控え（お薬手帳）",
+    sourceIds: ["jcs-disaster-2014", "nanbyo-shishin-2017"],
+  },
+  {
+    tier: 6,
+    why: "認知症の人は急な環境の変化に戸惑い、思うように話せないことがある → 本人の報告だけに頼らず家族・支援者に確かめる",
+    sourceIds: ["mhlw-dementia-2018"],
+  },
+  {
+    tier: 7,
+    why: "寝たきり・歩けない人は自分で避難できず、支援者がいなければ見に行く人もいない → 避難を支える人を計画で決める",
+    sourceIds: ["cao-shishin-2021", "saigai-kiroku-2018"],
+  },
+  {
+    tier: 8,
+    why: "医療の時計が無い人も安否は確かめる → 信号と経過の時間で並べる",
+    sourceIds: ["mhlw-bcp-2020"],
+  },
+];
+
+/** 段の根拠 */
+export function tierBasis(tier: Tier): Basis {
+  const found = TIERS.find((t) => t.tier === tier);
+  if (!found) throw new Error(`骨格の段の根拠が無い: ${tier}`);
+  return found;
+}
+
 /** 入力の読み方。docs/TRIAGE.md の「読み方」に出る */
 export const READING: ReadonlyArray<{ text: string; origin: string }> = [
   { text: "信号は時刻のいちばん新しい物を使う。今より後の時刻の信号は使わない。信号が無ければ未知", origin: "決めた所" },
@@ -291,7 +358,7 @@ function devicesOut(x: RuleInput): { afterReport: ClockState[]; beforeReport: Cl
   };
 }
 
-export type Rule = {
+export type Rule = Basis & {
   id: RuleId;
   /** どの信号の行か（未知は信号が無いときも） */
   signal: SignalColor;
@@ -321,6 +388,8 @@ export const RULES: ReadonlyArray<Rule> = [
     color: "red",
     example: "本人が「動けない」",
     origin: "仕様書",
+    why: "けが・動けないは自分で避難できないという知らせ → 最初に電話し、行ける人を探す",
+    sourceIds: ["mhlw-bcp-2020", "cao-shishin-2021"],
     match: (x) => {
       const words = injuryWords(x.signal);
       return words.length > 0 ? `${who(x)}が${words.map((w) => `「${w}」`).join("")}` : null;
@@ -333,6 +402,8 @@ export const RULES: ReadonlyArray<Rule> = [
     color: "red",
     example: "本人が「無事じゃない」",
     origin: "仕様書",
+    why: "本人・家族が助けを求めた → 中身が分からなくても先に電話",
+    sourceIds: ["mhlw-bcp-2020"],
     match: (x) => `${who(x)}が「無事じゃない」`,
   },
   {
@@ -342,6 +413,8 @@ export const RULES: ReadonlyArray<Rule> = [
     color: "red",
     example: "酸素 内蔵電池 2 時間を超過",
     origin: "仕様書",
+    why: "返事がないまま停電が機器の電池の時間を超えた → 機器が止まっているおそれがあり至急",
+    sourceIds: ["nanbyo-shishin-2017", "nanbyo-tsuiho-2022", "jrs-respiratory-2012"],
     match: (x) => firstOf(x.states.filter((c) => isDevice(c) && isOver(c)), over),
   },
   {
@@ -351,6 +424,8 @@ export const RULES: ReadonlyArray<Rule> = [
     color: "red",
     example: "透析 次の回まで 2 日を超過",
     origin: "案 2",
+    why: "返事がないまま透析・インスリン・栄養剤・薬の限度を過ぎた → 続けられていないおそれがあり至急",
+    sourceIds: ["jadp-dialysis-2023", "jadec-insulin-2023", "nanbyo-shishin-2017", "jcs-disaster-2014"],
     match: (x) => firstOf(x.states.filter((c) => !isDevice(c) && isOver(c)), over),
   },
   {
@@ -360,6 +435,8 @@ export const RULES: ReadonlyArray<Rule> = [
     color: "yellow",
     example: "透析 次の回まで 残り 18 時間、未確認 30 時間",
     origin: "仕様書",
+    why: "返事がないまま時計の半分を過ぎた → 切れる前に確かめる",
+    sourceIds: ["mhlw-bcp-2020", "nanbyo-shishin-2017"],
     match: (x) => firstOf(x.states.filter(isPastHalf), (c) => `${left(c)}、${unconfirmed(x)}`),
   },
   {
@@ -369,6 +446,8 @@ export const RULES: ReadonlyArray<Rule> = [
     color: "yellow",
     example: "透析先 未確認、未確認 6 時間",
     origin: "案 1 を未知に広げた",
+    why: "透析先・冷蔵・配達は外の事情で止まる → 本人に連絡がつかない間に頼り先を確かめる",
+    sourceIds: ["jadp-dialysis-2023", "jadec-insulin-2023"],
     saysUnchecked: true,
     match: (x) => (x.unchecked.length > 0 ? `${uncheckedWords(x)}、${unconfirmed(x)}` : null),
   },
@@ -379,6 +458,8 @@ export const RULES: ReadonlyArray<Rule> = [
     color: "gray",
     example: "未確認 6 時間",
     origin: "仕様書",
+    why: "連絡がつかないだけでは様子は分からない → 時計の短い人から順に確かめる",
+    sourceIds: ["mhlw-bcp-2020", "cao-shishin-2021"],
     match: (x) => unconfirmed(x),
   },
   {
@@ -388,6 +469,8 @@ export const RULES: ReadonlyArray<Rule> = [
     color: "red",
     example: "緑の報告のあとに電池が切れた、酸素 内蔵電池 2 時間を超過",
     origin: "案 3",
+    why: "緑の報告は電池が切れる前の物 → 今も機器が動いているかは分からない",
+    sourceIds: ["nanbyo-tsuiho-2022", "nanbyo-shishin-2017"],
     match: (x) => firstOf(devicesOut(x).afterReport, (c) => `緑の報告のあとに電池が切れた、${over(c)}`),
   },
   {
@@ -397,6 +480,8 @@ export const RULES: ReadonlyArray<Rule> = [
     color: "yellow",
     example: "電池が切れたあとに緑の報告、酸素 内蔵電池 2 時間を超過",
     origin: "案 3（言い方を時計の事実に）",
+    why: "電池が切れたあとに緑 → ボンベ・外部電池・発電機で動いている見込み。電源の中身を確かめる",
+    sourceIds: ["nanbyo-shishin-2017", "jrs-respiratory-2012"],
     match: (x) => firstOf(devicesOut(x).beforeReport, (c) => `電池が切れたあとに緑の報告、${over(c)}`),
   },
   {
@@ -406,6 +491,8 @@ export const RULES: ReadonlyArray<Rule> = [
     color: "yellow",
     example: "無事だが酸素 内蔵電池 残り 30 分",
     origin: "仕様書",
+    why: "無事でも機器の電池の残りが少ない → 切れる前に予備の電源か電源のある避難先を確かめる",
+    sourceIds: ["nanbyo-tsuiho-2022", "jrs-respiratory-2012"],
     match: (x) => firstOf(x.states.filter((c) => isDevice(c) && isPastHalf(c)), (c) => `無事だが${left(c)}`),
   },
   {
@@ -415,6 +502,8 @@ export const RULES: ReadonlyArray<Rule> = [
     color: "yellow",
     example: "無事だがインスリン 残り 24 時間",
     origin: "案 6",
+    why: "無事でも透析・薬・栄養剤の残りが減っている → 次の入手先を確かめる",
+    sourceIds: ["jadp-dialysis-2023", "jadec-insulin-2023", "nanbyo-shishin-2017"],
     match: (x) => firstOf(x.states.filter((c) => !isDevice(c) && isPastHalf(c)), (c) => `無事だが${left(c)}`),
   },
   {
@@ -424,6 +513,8 @@ export const RULES: ReadonlyArray<Rule> = [
     color: "yellow",
     example: "無事だが透析先 未確認",
     origin: "案 1",
+    why: "本人が無事でも頼り先（透析先・冷蔵・配達）が止まっていれば数日のうちに続けられない → 頼り先を確かめる",
+    sourceIds: ["jadp-dialysis-2023", "jadec-insulin-2023"],
     saysUnchecked: true,
     match: (x) => (x.unchecked.length > 0 ? `無事だが${uncheckedWords(x)}` : null),
   },
@@ -434,11 +525,13 @@ export const RULES: ReadonlyArray<Rule> = [
     color: "green",
     example: "本人が「無事」",
     origin: "仕様書",
+    why: "本人・家族が無事と答えた → 連絡の順は一番下。時計が進めば上の行に移る",
+    sourceIds: ["mhlw-bcp-2020"],
     match: (x) => `${who(x)}が「無事」`,
   },
 ];
 
-export type Qualifier = {
+export type Qualifier = Basis & {
   id: QualifierId;
   /** 足すとき */
   when: string;
@@ -455,6 +548,8 @@ export const QUALIFIERS: ReadonlyArray<Qualifier> = [
     when: "外の物に頼る時計の確認が未確認（色を決めた行が言っていなければ）",
     text: "透析先 未確認",
     origin: "案 1",
+    why: "頼り先（透析先・冷蔵・配達）が動いているかは本人の答えでは分からない → 理由に添えて見落とさない",
+    sourceIds: ["jadp-dialysis-2023"],
     apply: (x, rule) => (x.unchecked.length > 0 && !rule.saysUnchecked ? uncheckedWords(x) : null),
   },
   {
@@ -462,6 +557,8 @@ export const QUALIFIERS: ReadonlyArray<Qualifier> = [
     when: "本人の報告を当てにしない印があり、いちばん新しい信号が本人の緑",
     text: "本人の緑は参考",
     origin: "案 4",
+    why: "認知症の人は思うように話せないことがある → 本人の緑より家族・支援者の答えを使う",
+    sourceIds: ["mhlw-dementia-2018"],
     apply: (x) => (x.setAside ? "本人の緑は参考" : null),
   },
   {
@@ -469,6 +566,8 @@ export const QUALIFIERS: ReadonlyArray<Qualifier> = [
     when: "避難支援等実施者がいない（色を問わない）",
     text: "支援者なし",
     origin: "案 5",
+    why: "支援者がいない人は見に行く人がいない → 同じ残りなら先に電話",
+    sourceIds: ["cao-shishin-2021", "saigai-kiroku-2018"],
     apply: (x) => (x.person.hasSupporter ? null : "支援者なし"),
   },
 ];
