@@ -301,7 +301,7 @@ describe("通信が無いとき（端末に残して、戻ったら送る）", (
   it("つながっていれば送って消す", async () => {
     const storage = new MemoryStorage();
     const { t, sent } = transport(() => "ok");
-    const box = createOutbox({ storage, personId: "p-01", transport: t });
+    const box = createOutbox({ storage, owner: "self:p-01", transport: t });
     expect(await box.sendSignal(body(1))).toBe("sent");
     expect(sent.map((s) => s.kind)).toEqual(["signal"]);
     expect(storage.getItem(OUTBOX_KEY)).toBeNull();
@@ -311,9 +311,9 @@ describe("通信が無いとき（端末に残して、戻ったら送る）", (
     const storage = new MemoryStorage();
     let online = false;
     const { t, sent } = transport(() => (online ? "ok" : "throw"));
-    const box = createOutbox({ storage, personId: "p-01", transport: t });
+    const box = createOutbox({ storage, owner: "self:p-01", transport: t });
     expect(await box.sendSignal(body(1))).toBe("queued");
-    expect(readOutbox(storage)).toEqual([{ kind: "signal", personId: "p-01", body: body(1) }]);
+    expect(readOutbox(storage)).toEqual([{ kind: "signal", owner: "self:p-01", body: body(1) }]);
     expect(box.pending()).toBe(1);
 
     vi.setSystemTime(T0 + 600_000);
@@ -329,9 +329,9 @@ describe("通信が無いとき（端末に残して、戻ったら送る）", (
   it("画面を開き直しても、端末に残った物を送る（同じ id なのでサーバーで重ならない）", async () => {
     const storage = new MemoryStorage();
     const off = transport(() => "throw");
-    await createOutbox({ storage, personId: "p-01", transport: off.t }).sendSignal(body(1));
+    await createOutbox({ storage, owner: "self:p-01", transport: off.t }).sendSignal(body(1));
     const on = transport(() => "ok");
-    const box = createOutbox({ storage, personId: "p-01", transport: on.t });
+    const box = createOutbox({ storage, owner: "self:p-01", transport: on.t });
     expect(box.pending()).toBe(1);
     await box.flush();
     expect(on.sent.map((s) => s.id)).toEqual([body(1).id]);
@@ -341,7 +341,7 @@ describe("通信が無いとき（端末に残して、戻ったら送る）", (
     const storage = new MemoryStorage();
     let online = false;
     const { t, sent } = transport(() => (online ? "ok" : "throw"));
-    const box = createOutbox({ storage, personId: "p-01", transport: t });
+    const box = createOutbox({ storage, owner: "self:p-01", transport: t });
     await box.sendSignal(body(1));
     const audio = new Blob([new Uint8Array([1])], { type: "audio/webm" });
     const attach = { signalId: body(1).id, transcript: "たすけて", durationSec: 30, recordedAt: "2026-11-04T01:01:00.000Z" };
@@ -358,13 +358,13 @@ describe("通信が無いとき（端末に残して、戻ったら送る）", (
   it("画面を閉じて開き直すと音声は消え、文字起こしだけ送る。文字起こしも無ければ捨てる", async () => {
     const storage = new MemoryStorage();
     const off = transport(() => "throw");
-    const first = createOutbox({ storage, personId: "p-01", transport: off.t });
+    const first = createOutbox({ storage, owner: "self:p-01", transport: off.t });
     await first.sendSignal(body(1));
     await first.sendRecording({ signalId: body(1).id, transcript: "いたい", durationSec: 30, recordedAt: "x" }, new Blob(["a"]));
     await first.sendSignal(body(2));
     await first.sendRecording({ signalId: body(2).id, transcript: null, durationSec: 30, recordedAt: "x" }, new Blob(["a"]));
     const on = transport(() => "ok");
-    const box = createOutbox({ storage, personId: "p-01", transport: on.t });
+    const box = createOutbox({ storage, owner: "self:p-01", transport: on.t });
     await box.flush();
     expect(on.sent.map((s) => `${s.kind}:${s.id.slice(-1)}:${s.audio ?? ""}:${s.transcript ?? ""}`)).toEqual([
       "signal:1::",
@@ -378,7 +378,7 @@ describe("通信が無いとき（端末に残して、戻ったら送る）", (
     const storage = new MemoryStorage();
     const outcomes: Array<SendOutcome | "throw"> = ["throw", "drop", "ok"];
     const { t, sent } = transport(() => outcomes.shift() ?? "ok");
-    const box = createOutbox({ storage, personId: "p-01", transport: t });
+    const box = createOutbox({ storage, owner: "self:p-01", transport: t });
     expect(await box.sendSignal(body(1))).toBe("queued");
     // 2 つ目を足すと、前の 1 つ目から順に送る（1 つ目は捨て、2 つ目は届く）
     expect(await box.sendSignal(body(2))).toBe("sent");
@@ -392,15 +392,16 @@ describe("通信が無いとき（端末に残して、戻ったら送る）", (
     expect(outcomeOf(200)).toBe("ok");
   });
 
-  it("同じ端末のほかの人の物は送らず、消さない", async () => {
+  it("同じ端末のほかの人の物・同じ本人でもほかの役（家族）の物は送らず、消さない", async () => {
     const storage = new MemoryStorage();
-    await createOutbox({ storage, personId: "p-02", transport: transport(() => "throw").t }).sendSignal(body(9));
+    await createOutbox({ storage, owner: "self:p-02", transport: transport(() => "throw").t }).sendSignal(body(9));
+    await createOutbox({ storage, owner: "family:p-01", transport: transport(() => "throw").t }).sendSignal(body(8));
     const { t, sent } = transport(() => "ok");
-    const box = createOutbox({ storage, personId: "p-01", transport: t });
+    const box = createOutbox({ storage, owner: "self:p-01", transport: t });
     expect(box.pending()).toBe(0);
     await box.sendSignal(body(1));
     expect(sent.map((s) => s.id)).toEqual([body(1).id]);
-    expect(readOutbox(storage).map((x) => x.personId)).toEqual(["p-02"]);
+    expect(readOutbox(storage).map((x) => x.owner)).toEqual(["self:p-02", "family:p-01"]);
   });
 
   it("端末に書けない（プライベートの窓など）ときも、開いている間は覚えて送り直す", async () => {
@@ -415,7 +416,7 @@ describe("通信が無いとき（端末に残して、戻ったら送る）", (
     };
     let online = false;
     const { t, sent } = transport(() => (online ? "ok" : "throw"));
-    const box = createOutbox({ storage: broken, personId: "p-01", transport: t });
+    const box = createOutbox({ storage: broken, owner: "self:p-01", transport: t });
     expect(await box.sendSignal(body(1))).toBe("queued");
     online = true;
     await box.flush();

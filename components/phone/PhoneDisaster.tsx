@@ -43,7 +43,8 @@ export function PhoneDisaster({ personId }: { personId: string }) {
   const phone = useRef<Phone | null>(null);
 
   useEffect(() => {
-    const outbox = createOutbox({ storage: storageOf(), personId, transport: fetchTransport() });
+    // 端末の残りの持ち主は「役:本人」（家族のスマホ T11 は family:）
+    const outbox = createOutbox({ storage: storageOf(), owner: `self:${personId}`, transport: fetchTransport() });
     const audio = typeof Audio === "function" ? (new Audio() as unknown as AudioLike) : null;
     const synth = "speechSynthesis" in window ? (window.speechSynthesis as unknown as SynthLike) : null;
     const Utterance =

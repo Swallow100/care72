@@ -4,7 +4,8 @@
 // - 録音の音声は大きいので端末に書かず、画面を開いている間だけ覚える（閉じると音声は消え、文字起こしだけ送る）
 // - 順は守る: 前の物が送れないうちは後ろを送らない（録音は信号のあと）
 // - 送り直しても通らない応答（平時・形の違い・権限なし）は捨てる。通信の失敗・5xx・429・401 は残す
-// - 同じ端末で審査員が役を替えても、ほかの人の物は送らない（その人の画面を開いたときに送る）
+// - 持ち主は「役:本人」（self:p-01）。同じ端末で審査員が役を替えても、ほかの人・ほかの役の物は送らない
+//   （出どころはサーバーがログインの役から決めるので、本人の残りを家族のログインで送ると家族の信号になる）。その役の画面を開いたときに送る
 // - 画面（DOM）に触らない。保存の場所と送る道は渡す（テストは偽物）
 
 import type { SignalBody } from "./body.ts";
@@ -28,8 +29,8 @@ export type AttachItem = {
 };
 
 export type OutboxItem =
-  | { kind: "signal"; personId: string; body: SignalBody }
-  | ({ kind: "attach"; personId: string } & AttachItem);
+  | { kind: "signal"; owner: string; body: SignalBody }
+  | ({ kind: "attach"; owner: string } & AttachItem);
 
 /** 送る道。sentAt は送るたびに今 */
 export type Transport = {
@@ -49,7 +50,7 @@ export type Outbox = {
 function isItem(v: unknown): v is OutboxItem {
   if (!v || typeof v !== "object") return false;
   const o = v as Record<string, unknown>;
-  if (typeof o.personId !== "string") return false;
+  if (typeof o.owner !== "string") return false;
   if (o.kind === "signal") return !!o.body && typeof (o.body as { id?: unknown }).id === "string";
   return o.kind === "attach" && typeof o.signalId === "string" && typeof o.recordedAt === "string";
 }
@@ -78,11 +79,11 @@ const keyOf = (x: OutboxItem) => (x.kind === "signal" ? `signal:${x.body.id}` : 
 
 export function createOutbox(opts: {
   storage: StorageLike | null;
-  personId: string;
+  owner: string;
   transport: Transport;
   now?: () => Date;
 }): Outbox {
-  const { storage, personId, transport } = opts;
+  const { storage, owner, transport } = opts;
   const now = () => (opts.now?.() ?? new Date()).toISOString();
   /** 開いている間はこれが正。書くたびに端末にも写す（保存できない端末でも、開いている間は送り直せる） */
   let items: OutboxItem[] = readOutbox(storage);
@@ -100,7 +101,7 @@ export function createOutbox(opts: {
     save(items.filter((x) => keyOf(x) !== keyOf(item)));
     if (item.kind === "attach") audios.delete(item.signalId);
   };
-  const own = () => items.filter((x) => x.personId === personId);
+  const own = () => items.filter((x) => x.owner === owner);
 
   async function send(item: OutboxItem): Promise<SendOutcome> {
     try {
@@ -141,10 +142,10 @@ export function createOutbox(opts: {
   }
 
   return {
-    sendSignal: (body) => enqueueAndSend({ kind: "signal", personId, body }),
+    sendSignal: (body) => enqueueAndSend({ kind: "signal", owner, body }),
     sendRecording(attach, audio) {
       if (audio) audios.set(attach.signalId, audio);
-      return enqueueAndSend({ kind: "attach", personId, ...attach });
+      return enqueueAndSend({ kind: "attach", owner, ...attach });
     },
     flush,
     pending: () => own().length,
