@@ -84,7 +84,7 @@ function within(iso: string, s: Situation): boolean {
 
 const bool = (v: 0 | 1 | null): boolean | null => (v === null ? null : v === 1);
 
-/** 経過の行から避難所の名前: payload の shelter（文字）があればそれ、無ければ本文（到着・受領のときだけ） */
+/** 経過の行から避難所の名前: payload の shelter（文字）があればそれ、無ければ本文（到着・受入のときだけ） */
 export function entryPlace(e: Pick<TimelineEntryRow, "kind" | "body" | "payload">): string | null {
   if (e.payload) {
     try {

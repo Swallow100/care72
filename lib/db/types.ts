@@ -174,7 +174,7 @@ export const TIMELINE_KINDS = [
   "medication_given", // 薬を渡した
   "transported", // 搬送した
   "arrived_shelter", // 避難所に着いた
-  "received", // 受領（医療班・行政が受け持つ）
+  "received", // 受入（医療班・行政が受け持つ。T23）
   "released", // 受け持ちから外す（搬送・退所）
   "override", // 色と順位の上書き
   "consent", // 同意を変えた

@@ -361,7 +361,7 @@ describe("経過", () => {
         entry({ id: "t-2", kind: "signal", body: "赤ボタン", signal_color: "red", author_role: "self", author_name: null, occurred_at: "2026-11-04T01:00:00.000Z" }),
         entry({ id: "t-1" }),
         entry({ id: "t-0", kind: "consent", body: "同意 4 つ", occurred_at: SEED_AT }),
-        entry({ id: "t-3", kind: "received", body: "受領", author_role: "medical", author_name: "医療班 1", occurred_at: "2026-11-05T01:00:00.000Z" }),
+        entry({ id: "t-3", kind: "received", body: "みどり小学校", author_role: "medical", author_name: "医療班 1", occurred_at: "2026-11-05T01:00:00.000Z" }),
       ]),
     );
     expect(items.map((t) => [t.kind, t.who, t.tone, t.derived])).toEqual([
@@ -369,7 +369,7 @@ describe("経過", () => {
       ["同意", "ケアマネ 山本", null, false],
       ["記録", "ケアマネ 山本", null, false],
       ["信号", "本人", "urgent", false],
-      ["受領", "医療班 医療班 1", "ok", false],
+      ["受入", "医療班 医療班 1", "ok", false],
     ]);
   });
 
