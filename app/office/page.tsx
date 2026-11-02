@@ -2,9 +2,13 @@ import { getCloudflareContext } from "@opennextjs/cloudflare";
 import Link from "next/link";
 import { ColorCounts } from "@/components/disaster/ColorCounts";
 import { DisasterBadge } from "@/components/disaster/DisasterBadge";
-import { TONE_TEXT } from "@/components/person/parts";
+import { AddCareManager } from "@/components/office/AddCareManager";
+import { UnlistedFold } from "@/components/office/UnlistedFold";
+import { UnlistedRows } from "@/components/office/UnlistedRows";
+import { StateTag, TONE_TEXT } from "@/components/person/parts";
 import { todayJst } from "@/lib/age";
 import { requirePage } from "@/lib/auth/server";
+import { PLAN_TONES } from "@/lib/caseload";
 import { ALERT_LEVELS, DISASTER_KINDS, OUTAGE_SCOPES, type DisasterKind } from "@/lib/db/types";
 import { loadDisasterState, loadOfficeLog, loadOfficeTowns, type OfficeLogItem, type TownCount } from "@/lib/disaster/db";
 import { OFFICE_INFO_PATH, OFFICE_MODE_PATH, OFFICE_PATH, officeHref, parseConfirm, parseFormError } from "@/lib/disaster/http";
@@ -28,38 +32,54 @@ import {
 import { colorCounts, NORMAL_ORDER_LABELS } from "@/lib/forms/form9";
 import { form9Scope, loadForm9 } from "@/lib/forms/form9-db";
 import { FORM9_CSV_PATH, FORM9_PATH } from "@/lib/forms/form9-href";
+import { PLAN_STATUS_LABELS } from "@/lib/labels";
+import { parsePeopleError } from "@/lib/office/http";
+import { ASSIGN_ANCHOR, NEW_PERSON_PATH, OFFICE_PEOPLE_PATH } from "@/lib/office/http-paths";
+import { OFFICE_ERROR_LABELS, OFFICE_LABELS, type PeopleActionError } from "@/lib/office/labels";
+import { listCareManagers, listOfficePeople, type CareManagerItem, type OfficePersonItem } from "@/lib/office/people";
+import { officeActor } from "@/lib/office/scope";
 
 // D1 を毎回読む
 export const dynamic = "force-dynamic";
 
-type Props = { searchParams: Promise<{ confirm?: string | string[]; error?: string | string[] }> };
+type Props = {
+  searchParams: Promise<{ confirm?: string | string[]; error?: string | string[]; people_error?: string | string[] }>;
+};
 
-// 事業所（docs/SPEC.md「画面 7 事業所の設定」の災害モードの所）。災害モードの切替（大雨・地震・平時に戻す）と災害の情報の入力、
-// 事業所の経過、様式 9 への入口。ケアマネの役（管理者でなくても）が開いて押せる。行政・医療班・本人・家族はそれぞれの入口へ送る。
-// 切替と情報は人が入れる（気象庁の情報からの自動の切替は作っていない）。言葉は事業所の状態で、警報の言葉は使わない
+// 事業所の設定（docs/SPEC.md「画面 7 事業所の設定」）。1 画面に 災害モード・担当の割当・様式 9 への入口・ケアマネ・事業所の経過。
+// - 災害モードの切替（大雨・地震・平時に戻す）と災害の情報の入力（T09）。ケアマネの役（管理者でなくても）が押せる。
+//   切替と情報は人が入れる（気象庁の情報からの自動の切替は作っていない）。言葉は事業所の状態で、警報の言葉は使わない
+// - 担当の割当・一覧から外す（T30）。ケアマネの役（管理者でなくても）。ケアマネ追加は管理者だけ（初期パスワードは画面に 1 回だけ）
+// 行政・医療班・本人・家族はそれぞれの入口へ送る
 export default async function OfficePage({ searchParams }: Props) {
   const principal = await requirePage("caseload");
   const scope = disasterScope(principal);
-  if (!scope || !principal.office) return <Message title="事業所なし" />;
+  const actor = officeActor(principal);
+  if (!scope || !actor || !principal.office) return <Message title="事業所なし" />;
   const q = await searchParams;
   const now = new Date().toISOString();
+  const today = todayJst();
 
   let state: DisasterState;
   let log: OfficeLogItem[];
   let towns: TownCount[];
+  let careManagers: CareManagerItem[];
+  let officePeople: OfficePersonItem[];
   let counts: ReturnType<typeof colorCounts> | null = null;
   let people = 0;
   try {
     const { env } = await getCloudflareContext({ async: true });
-    [state, log, towns] = await Promise.all([
+    [state, log, towns, careManagers, officePeople] = await Promise.all([
       loadDisasterState(env.DB, scope.officeId),
       loadOfficeLog(env.DB, scope.officeId),
       loadOfficeTowns(env.DB, scope.officeId),
+      listCareManagers(env.DB, scope.officeId),
+      listOfficePeople(env.DB, scope.officeId, today),
     ]);
     const f9 = form9Scope(principal);
     const situation = toSituation(state, now);
     if (f9) {
-      const form9 = await loadForm9(env.DB, f9, { today: todayJst(), situation });
+      const form9 = await loadForm9(env.DB, f9, { today, situation });
       people = form9?.sheet.rows.length ?? 0;
       counts = situation && form9 ? colorCounts(form9.sheet.rows) : null;
     }
@@ -71,6 +91,7 @@ export default async function OfficePage({ searchParams }: Props) {
   const disaster = isDisaster(state);
   const confirm = disaster && parseConfirm(q.confirm);
   const error = parseFormError(q.error);
+  const peopleError = parsePeopleError(q.people_error);
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-4">
@@ -87,12 +108,14 @@ export default async function OfficePage({ searchParams }: Props) {
       )}
 
       <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_22rem]">
-        <div className="grid content-start gap-3">
+        <div className="grid min-w-0 content-start gap-3">
           <ModeSection state={state} now={now} confirm={confirm} />
           {disaster && <InfoSection state={state} towns={towns} />}
+          <AssignSection people={officePeople} careManagers={careManagers} error={peopleError} />
         </div>
-        <div className="grid content-start gap-3">
+        <div className="grid min-w-0 content-start gap-3">
           <Form9Section people={people} counts={counts} />
+          <CareManagerSection careManagers={careManagers} admin={actor.admin} />
           <LogSection log={log} />
         </div>
       </div>
@@ -333,7 +356,171 @@ const LOG_TONE: Record<OfficeLogItem["kind"], string> = {
   disaster_on: `font-bold ${TONE_TEXT.check}`,
   disaster_off: "font-bold",
   disaster_info: "font-bold",
+  person_added: "font-bold",
+  person_assigned: "font-bold",
+  person_unlisted: "font-bold",
+  person_relisted: "font-bold",
+  care_manager_added: "font-bold",
 };
+
+const CELL = "bg-panel2 px-2 py-1.5 align-middle first:rounded-l last:rounded-r";
+/** 行（面の中の灰色）の上の選ぶ欄。地は白 */
+const SELECT_IN =
+  "min-w-0 rounded-md bg-panel px-2 py-1 text-sm text-ink outline-none focus-visible:outline-2 focus-visible:outline-accent";
+
+/**
+ * 担当の割当（T30）。事業所の利用者を全部（カナの順）、行ごとに担当を選んで「変更」、「外す」で一覧から外す（消さない）。
+ * 外した人は表の下の畳み「外した人 N」から戻す。表は区分の中で送る（max-h）
+ */
+function AssignSection({
+  people,
+  careManagers,
+  error,
+}: {
+  people: OfficePersonItem[];
+  careManagers: CareManagerItem[];
+  error: PeopleActionError | null;
+}) {
+  const listed = people.filter((p) => p.unlistedAt === null);
+  const unlisted = people.filter((p): p is OfficePersonItem & { unlistedAt: string } => p.unlistedAt !== null);
+  const nameOf = new Map(careManagers.map((c) => [c.id, c.name]));
+  return (
+    <section id={ASSIGN_ANCHOR} aria-labelledby="assign-title" className={`${SECTION} scroll-mt-4`}>
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <h2 id="assign-title" className="font-bold">
+          {OFFICE_LABELS.assignments}
+        </h2>
+        <span className="text-sm">
+          <span className="font-bold tabular-nums">{listed.length}</span> {OFFICE_LABELS.people}
+        </span>
+        <Link href={NEW_PERSON_PATH} className={`${BUTTON} ml-auto self-center bg-panel2`} data-press>
+          {OFFICE_LABELS.addPerson}
+        </Link>
+      </div>
+      {error && (
+        <p role="alert" className="mt-1 text-sm font-bold text-danger">
+          {OFFICE_ERROR_LABELS[error]}
+        </p>
+      )}
+      {listed.length === 0 ? (
+        <p className="mt-2 text-sm text-muted">{OFFICE_LABELS.none}</p>
+      ) : (
+        <div className="mt-2 max-h-[55dvh] overflow-auto">
+          <table className="w-full min-w-[36rem] border-separate border-spacing-y-0.5 text-left text-sm">
+            <thead className="sticky top-0 bg-panel">
+              <tr className="whitespace-nowrap text-xs text-muted">
+                <th className="px-2 py-1 font-normal">{OFFICE_LABELS.name}</th>
+                <th className="px-2 py-1 font-normal">{OFFICE_LABELS.age}</th>
+                <th className="px-2 py-1 font-normal">{OFFICE_LABELS.plan}</th>
+                <th className="px-2 py-1 font-normal">{OFFICE_LABELS.careManager}</th>
+                <th className="px-2 py-1 font-normal">
+                  <span className="sr-only">{OFFICE_LABELS.unlist}</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {listed.map((p) => (
+                <tr key={p.id}>
+                  <td className={CELL}>
+                    <Link href={`/people/${encodeURIComponent(p.id)}`} className="-mx-1 rounded px-1 font-bold" data-press>
+                      {p.name}
+                    </Link>
+                    <span className="ml-2 text-xs text-muted">{p.kana}</span>
+                  </td>
+                  <td className={`${CELL} whitespace-nowrap tabular-nums`}>{p.age ?? "—"}</td>
+                  <td className={`${CELL} whitespace-nowrap`}>
+                    <StateTag tone={PLAN_TONES[p.plan]}>{PLAN_STATUS_LABELS[p.plan]}</StateTag>
+                  </td>
+                  <td className={CELL}>
+                    <form method="post" action={OFFICE_PEOPLE_PATH} className="flex items-center gap-1.5">
+                      <input type="hidden" name="action" value="assign" />
+                      <input type="hidden" name="person" value={p.id} />
+                      <input type="hidden" name="from" value={p.careManagerId ?? ""} />
+                      <input type="hidden" name="back" value="office" />
+                      <select
+                        name="to"
+                        defaultValue={p.careManagerId ?? ""}
+                        aria-label={`${p.name} ${OFFICE_LABELS.careManager}`}
+                        className={SELECT_IN}
+                      >
+                        {p.careManagerId === null || !nameOf.has(p.careManagerId) ? (
+                          <option value="" disabled>
+                            {OFFICE_LABELS.unassigned}
+                          </option>
+                        ) : null}
+                        {careManagers.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name}
+                          </option>
+                        ))}
+                      </select>
+                      <button type="submit" className="rounded-md bg-panel px-2.5 py-1 text-sm font-bold" data-press>
+                        {OFFICE_LABELS.assign}
+                      </button>
+                    </form>
+                  </td>
+                  <td className={`${CELL} text-right`}>
+                    <form method="post" action={OFFICE_PEOPLE_PATH}>
+                      <input type="hidden" name="action" value="unlist" />
+                      <input type="hidden" name="person" value={p.id} />
+                      <input type="hidden" name="back" value="office" />
+                      <button type="submit" className="rounded-md px-2.5 py-1 text-sm text-muted" data-press>
+                        {OFFICE_LABELS.unlist}
+                      </button>
+                    </form>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <UnlistedFold count={unlisted.length} inPanel>
+        <UnlistedRows
+          inPanel
+          rows={unlisted.map((p) => ({
+            id: p.id,
+            name: p.name,
+            kana: p.kana,
+            unlistedAt: p.unlistedAt,
+            href: `/people/${encodeURIComponent(p.id)}`,
+          }))}
+          back="office"
+        />
+      </UnlistedFold>
+    </section>
+  );
+}
+
+/** ケアマネ（T30）。足した順に名前・管理者の印・ID・担当の人数。管理者だけ「ケアマネ追加」（初期パスワードは画面に 1 回だけ） */
+function CareManagerSection({ careManagers, admin }: { careManagers: CareManagerItem[]; admin: boolean }) {
+  return (
+    <section aria-labelledby="cm-title" className={SECTION}>
+      <h2 id="cm-title" className="flex items-baseline gap-2 font-bold">
+        {OFFICE_LABELS.careManagers}
+        <span className="text-sm font-normal text-muted tabular-nums">{careManagers.length}</span>
+      </h2>
+      <ul className="mt-2 space-y-0.5 text-sm">
+        {careManagers.map((c) => (
+          <li key={c.id} className="flex flex-wrap items-baseline gap-x-2 rounded bg-panel2 px-2 py-1.5">
+            <span className="font-bold">{c.name}</span>
+            {c.admin && <span className="text-xs text-muted">{OFFICE_LABELS.admin}</span>}
+            {c.loginId && (
+              <span className="text-xs text-muted">
+                {OFFICE_LABELS.loginId} {c.loginId}
+              </span>
+            )}
+            <span className="ml-auto tabular-nums">
+              {c.people}
+              <span className="text-xs text-muted"> {OFFICE_LABELS.people}</span>
+            </span>
+          </li>
+        ))}
+      </ul>
+      {admin && <AddCareManager />}
+    </section>
+  );
+}
 
 /** 事業所の経過。新しい順。誰が・いつ・何を */
 function LogSection({ log }: { log: OfficeLogItem[] }) {
@@ -351,6 +538,7 @@ function LogSection({ log }: { log: OfficeLogItem[] }) {
             <li key={e.id} className="rounded bg-panel2 px-2 py-1.5">
               <div className="flex flex-wrap items-baseline gap-x-2">
                 <span className={LOG_TONE[e.kind]}>{e.label}</span>
+                {e.person && <span>{e.person}</span>}
                 {e.body && <span className="min-w-0 break-words">{e.body}</span>}
               </div>
               <div className="text-xs text-muted tabular-nums">

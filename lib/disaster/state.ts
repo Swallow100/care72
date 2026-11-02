@@ -29,6 +29,12 @@ export const OFFICE_TIMELINE_KIND_LABELS: Record<OfficeTimelineKind, string> = {
   disaster_on: "災害モード",
   disaster_off: "平時",
   disaster_info: "災害情報",
+  // 利用者とケアマネ（T30、lib/office）
+  person_added: "利用者追加",
+  person_assigned: "担当変更",
+  person_unlisted: "一覧除外",
+  person_relisted: "一覧復帰",
+  care_manager_added: "ケアマネ追加",
 };
 
 /** 画面の見出しと欄の名前 */

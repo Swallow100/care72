@@ -184,8 +184,13 @@ export async function saveDisasterInfo(
 export type OfficeLogItem = {
   id: string;
   kind: OfficeTimelineKind;
-  /** 種類の言葉（災害モード・平時・災害情報） */
+  /** 種類の言葉（災害モード・平時・災害情報・利用者追加・担当変更 など） */
   label: string;
+  /**
+   * 本人の名前（利用者追加・担当変更・一覧除外・一覧復帰、T30）。表には id だけを持ち、読むときに people から引く。
+   * 本人が事業所にいなければ null
+   */
+  person: string | null;
   body: string | null;
   /** 誰が（名前。無ければ役） */
   who: string;
@@ -194,25 +199,33 @@ export type OfficeLogItem = {
   at: string;
 };
 
-/** 経過の 1 行の文字「災害モード 大雨 山本 11/4 10:42」 */
-export function logLine(i: Pick<OfficeLogItem, "label" | "body" | "who" | "when">): string {
-  return [i.label, i.body, i.who, i.when].filter((x) => x).join(" ");
+/** 経過の 1 行の文字「災害モード 大雨 山本 11/4 10:42」「利用者追加 架空 一郎 担当 山本 山本 11/3 10:00」 */
+export function logLine(i: Pick<OfficeLogItem, "label" | "body" | "who" | "when"> & { person?: string | null }): string {
+  return [i.label, i.person, i.body, i.who, i.when].filter((x) => x).join(" ");
 }
 
-/** 事業所の経過。新しい順に limit 件 */
+/** 事業所の経過。新しい順に limit 件。本人の名前は payload の personId から引く（同じ事業所の人だけ） */
 export async function loadOfficeLog(db: D1Database, officeId: string, limit = 50): Promise<OfficeLogItem[]> {
   const res = await db
     .prepare(
-      `SELECT t.id, t.kind, t.body, t.author_role, t.occurred_at, a.display_name AS author_name
-         FROM office_timeline_entries t LEFT JOIN accounts a ON a.id = t.author_id
+      `SELECT t.id, t.kind, t.body, t.author_role, t.occurred_at, a.display_name AS author_name, pe.name AS person_name
+         FROM office_timeline_entries t
+         LEFT JOIN accounts a ON a.id = t.author_id
+         LEFT JOIN people pe ON pe.id = json_extract(t.payload, '$.personId') AND pe.office_id = t.office_id
         WHERE t.office_id = ?1 ORDER BY t.occurred_at DESC, t.created_at DESC, t.id DESC LIMIT ?2`,
     )
     .bind(officeId, limit)
-    .all<Pick<OfficeTimelineEntryRow, "id" | "kind" | "body" | "author_role" | "occurred_at"> & { author_name: string | null }>();
+    .all<
+      Pick<OfficeTimelineEntryRow, "id" | "kind" | "body" | "author_role" | "occurred_at"> & {
+        author_name: string | null;
+        person_name: string | null;
+      }
+    >();
   return res.results.map((r) => ({
     id: r.id,
     kind: r.kind,
     label: OFFICE_TIMELINE_KIND_LABELS[r.kind],
+    person: r.person_name,
     body: r.body,
     who: r.author_name || AUTHOR_ROLE_LABELS[r.author_role],
     when: shortJst(r.occurred_at),
@@ -222,9 +235,12 @@ export async function loadOfficeLog(db: D1Database, officeId: string, limit = 50
 
 export type TownCount = { town: string | null; count: number };
 
-/** 事業所の利用者の町名と人数（停電の地区を選ぶ欄）。町名の無い人は town が null。町名の順 */
+/** 事業所の利用者の町名と人数（停電の地区を選ぶ欄）。町名の無い人は town が null。町名の順。一覧から外した人（T30）は数えない */
 export async function loadOfficeTowns(db: D1Database, officeId: string): Promise<TownCount[]> {
-  const res = await db.prepare("SELECT ledger FROM people WHERE office_id = ?1").bind(officeId).all<{ ledger: string }>();
+  const res = await db
+    .prepare("SELECT ledger FROM people WHERE office_id = ?1 AND unlisted_at IS NULL")
+    .bind(officeId)
+    .all<{ ledger: string }>();
   const counts = new Map<string | null, number>();
   for (const r of res.results) {
     const town = townOfLedger(r.ledger);

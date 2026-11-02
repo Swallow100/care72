@@ -45,6 +45,9 @@ export type CaseloadRow = {
   location: GeoPoint | null;
 };
 
+/** 一覧から外した人（T30。担当一覧の下の畳み「外した人 N」）。外した時刻の新しい順 */
+export type UnlistedRow = { id: string; name: string; kana: string; unlistedAt: string };
+
 export type Caseload = {
   office: { id: string; name: string };
   careManager: { id: string; name: string };
@@ -52,7 +55,10 @@ export type Caseload = {
   disaster: DisasterState;
   /** 災害モードのとき、表に渡した状況。平時は null */
   situation: DisasterSituation | null;
+  /** 一覧にいる人（外した人は入れない） */
   rows: CaseloadRow[];
+  /** このケアマネの担当で、一覧から外した人 */
+  unlisted: UnlistedRow[];
 };
 
 type PersonForList = Pick<
@@ -186,7 +192,8 @@ export function closeHref(sort: SortKey): string {
 
 /**
  * ケアマネ 1 人の担当を読む。範囲は lib/auth/scope.ts の caseloadScope（事業所とケアマネ）。
- * ケアマネがその事業所にいなければ null。本人も事業所で絞る（事業所の壁）
+ * ケアマネがその事業所にいなければ null。本人も事業所で絞る（事業所の壁）。
+ * 一覧から外した人（people.unlisted_at、T30）は行に入れず、unlisted に名前だけ
  */
 export async function loadCaseload(
   db: D1Database,
@@ -204,12 +211,12 @@ export async function loadCaseload(
     .first<{ id: string; display_name: string; office_id: string; office_name: string }>();
   if (!cm) return null;
 
-  const mine = "SELECT id FROM people WHERE care_manager_id = ?1 AND office_id = ?2";
-  const [people, clocks, contacts] = await db.batch([
+  const mine = "SELECT id FROM people WHERE care_manager_id = ?1 AND office_id = ?2 AND unlisted_at IS NULL";
+  const [people, clocks, contacts, unlisted] = await db.batch([
     db
       .prepare(
         `SELECT id, name, kana, birth_date, plan_status, self_report_unreliable, ledger FROM people
-          WHERE care_manager_id = ?1 AND office_id = ?2 ORDER BY kana`,
+          WHERE care_manager_id = ?1 AND office_id = ?2 AND unlisted_at IS NULL ORDER BY kana`,
       )
       .bind(cm.id, cm.office_id),
     db
@@ -219,6 +226,12 @@ export async function loadCaseload(
       )
       .bind(cm.id, cm.office_id),
     db.prepare(`SELECT person_id, supporter_order FROM contacts WHERE person_id IN (${mine})`).bind(cm.id, cm.office_id),
+    db
+      .prepare(
+        `SELECT id, name, kana, unlisted_at FROM people
+          WHERE care_manager_id = ?1 AND office_id = ?2 AND unlisted_at IS NOT NULL ORDER BY unlisted_at DESC, kana`,
+      )
+      .bind(cm.id, cm.office_id),
   ]);
 
   // 災害モードなら信号を読み、ルールの表に今・発災・停電の始まりを渡す（1 分ごとの読み直しで今が進む）
@@ -238,5 +251,11 @@ export async function loadCaseload(
       today,
       { situation, signals },
     ),
+    unlisted: (unlisted.results as Array<{ id: string; name: string; kana: string; unlisted_at: string }>).map((r) => ({
+      id: r.id,
+      name: r.name,
+      kana: r.kana,
+      unlistedAt: r.unlisted_at,
+    })),
   };
 }
