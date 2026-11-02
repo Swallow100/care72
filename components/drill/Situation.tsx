@@ -1,16 +1,18 @@
 // 訓練の真ん中の「状況」（docs/tasks/T17.md）。刻みごとに新しい順: 世界の出来事（停電・道路・電話・避難所…）と、
-// 本人ごとの安否（色の印・誰から・答え・言う事）。監督の差し込み（T19）とペルソナ（T18）の物には AI の印。
+// 本人ごとの安否（色の印・誰から・答え・言う事）。監督（Opus、T19）が差し込んだ状況とペルソナ（T18）の物には AI の印。
+// 想定の表の固定の差し込みは AI の印なし。差し込みに根拠の出典があれば添える（監督の判断の理由は訓練記録にだけ残し、画面に出さない）。
 // 色は安否の色だけ（lib/triage の色ではなく、本人・家族が押した色）。氏名は台帳の id から引く（表の文には氏名が無い）。
 
 import { AiMark, StateTag } from "@/components/person/parts";
 import { shortJst } from "@/lib/disaster/state";
 import type { DrillIncident, DrillTurn, Tick } from "@/lib/drill/engine";
 import { simAt } from "@/lib/drill/engine";
-import { DRILL_LABELS, elapsedLabel, EVENT_KIND_LABELS } from "@/lib/drill/labels";
+import { BASIS_LABEL, DRILL_LABELS, elapsedLabel, EVENT_KIND_LABELS } from "@/lib/drill/labels";
 import { COLOR_LABELS } from "@/lib/labels";
 import { SOURCE_LABELS } from "@/lib/list/detail";
 import type { StateTone } from "@/lib/person";
 import { signalLogBody } from "@/lib/signals/labels";
+import { isSourceId, sourceById } from "@/lib/sources";
 
 const TURN_TONES: Record<DrillTurn["color"], StateTone> = { red: "urgent", green: "ok", unknown: "unknown" };
 const TURN_LABELS: Record<DrillTurn["color"], string> = { red: COLOR_LABELS.red, green: COLOR_LABELS.green, unknown: COLOR_LABELS.gray };
@@ -66,13 +68,32 @@ function At({ at, tickHour }: { at: number; tickHour: number }) {
 }
 
 function IncidentItem({ e, name, tickHour }: { e: DrillIncident; name: string | undefined; tickHour: number }) {
+  const basis = e.basis && isSourceId(e.basis) ? sourceById(e.basis) : null;
   return (
-    <li className="flex flex-wrap items-baseline gap-x-1.5" data-incident={e.change.kind} data-actor={e.actor}>
+    <li
+      className="flex flex-wrap items-baseline gap-x-1.5"
+      data-incident={e.change.kind}
+      data-actor={e.actor}
+      {...(e.inject ? { "data-inject": e.inject } : {})}
+    >
       <span className="rounded bg-panel px-1 py-px text-xs text-muted">{EVENT_KIND_LABELS[e.change.kind]}</span>
       {e.ai && <AiMark small />}
       <span>{e.text}</span>
       {name && <span className="text-xs text-muted">{name}</span>}
       <At at={e.at} tickHour={tickHour} />
+      {basis && (
+        <a
+          href={basis.url}
+          target="_blank"
+          rel="noreferrer"
+          title={basis.title}
+          className="-mx-0.5 rounded px-0.5 text-xs text-accent underline underline-offset-2"
+          data-press
+          data-basis={basis.id}
+        >
+          {BASIS_LABEL} {basis.publisher} {basis.year}
+        </a>
+      )}
     </li>
   );
 }
