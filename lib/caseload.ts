@@ -33,8 +33,14 @@ export type Caseload = {
   rows: CaseloadRow[];
 };
 
-type PersonForList = Pick<PersonRow, "id" | "name" | "kana" | "birth_date" | "plan_status" | "ledger">;
-type ClockForList = Pick<ClockRow, "person_id" | "kind" | "category" | "label" | "value" | "unit" | "starts_on">;
+type PersonForList = Pick<
+  PersonRow,
+  "id" | "name" | "kana" | "birth_date" | "plan_status" | "self_report_unreliable" | "ledger"
+>;
+type ClockForList = Pick<
+  ClockRow,
+  "person_id" | "kind" | "category" | "label" | "value" | "unit" | "starts_on" | "depends_on" | "depends_check"
+>;
 type ContactForList = Pick<ContactRow, "person_id" | "supporter_order">;
 
 /** 行の形にする（D1 を使わない所。テストしやすいように分けた） */
@@ -100,13 +106,13 @@ export async function loadCaseload(db: D1Database, today: string): Promise<Casel
   const [people, clocks, contacts] = await db.batch([
     db
       .prepare(
-        `SELECT id, name, kana, birth_date, plan_status, ledger FROM people
+        `SELECT id, name, kana, birth_date, plan_status, self_report_unreliable, ledger FROM people
           WHERE care_manager_id = ?1 ORDER BY kana`,
       )
       .bind(cm.id),
     db
       .prepare(
-        `SELECT person_id, kind, category, label, value, unit, starts_on FROM clocks
+        `SELECT person_id, kind, category, label, value, unit, starts_on, depends_on, depends_check FROM clocks
           WHERE person_id IN (SELECT id FROM people WHERE care_manager_id = ?1)`,
       )
       .bind(cm.id),

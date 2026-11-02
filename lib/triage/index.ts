@@ -1,22 +1,23 @@
-// ルールの表（docs/SPEC.md「医療の芯」）。安否の色と連絡の順位はこの表で出し、Claude は決めない。
-// 表の行は下の RULES。上から順に当て、最初に当たった行で色と理由の 1 行が決まる。
-// テストは triage.test.ts（先に書いた）。表に行が無い所は決めず、docs/PROGRESS.md の問いにした。
+// ルールの表（docs/SPEC.md「医療の芯」と docs/DECISIONS.md の案 1〜6）。安否の色と連絡の順位はこの表で出し、Claude は決めない。
+// 表の行は下の RULES。上から順に当て、最初に当たった行で色と理由の 1 行が決まる。理由には QUALIFIERS の言葉を足し、
+// 並びは ORDER の順に比べる。docs/TRIAGE.md はこの 3 つから作る（npm run docs:triage。一致はテストで確かめる）。
+// 元が「案」の行は作者の確認待ち（docs/DECISIONS.md）。案のままでは本運用に使わない。
+// テストは triage.test.ts と heavy-rain.test.ts（先に書いた）。
 //
-// 入力は時刻で持つ: 今・発災・停電の始まり（台帳の時計はここから走る）と、信号ごとの時刻。
-// 読み方（表から決めた所）:
-// - 信号は時刻の新しい物を使う。今より後の時刻の信号は使わない。信号が無ければ未知。
-// - 時計はきっかけ（停電・発災）から走る。停電していなければ停電で走る時計は止まったまま（残りは全部）。
-// - 「超えた」「過ぎた」はちょうどを含まない（「12 時間までは灰」に合わせた）。
-// - 「機器の時計」は時計の種類が機器（A）の物だけ。物（B）・薬（C）は半分の行だけに効く。
+// 入力は時刻で持つ: 今・発災・停電の始まり（台帳の時計はここから走る）と、信号ごとの時刻と出どころ。
+// 読み方は READING（docs/TRIAGE.md にも出る）。
 
 import type {
+  CheckStatus,
   ClockCategory,
   ClockRow,
   ClockUnit,
+  DependsOn,
   RecordingClass,
   SignalColor,
   SignalSource,
 } from "../db/types.ts";
+import { DEPENDS_ON_LABELS } from "../labels.ts";
 
 /** 赤 危険・黄 要確認・灰 未知・緑 無事 */
 export type Color = "red" | "yellow" | "gray" | "green";
@@ -29,12 +30,26 @@ export type RuleId =
   | "red_injury" // 赤 ＋ けが・動けない → 赤、最上位
   | "red" // 赤だけ → 赤
   | "unknown_device_over" // 未知 ＋ 停電が機器の時計を超えた → 赤
+  | "unknown_clock_over" // 未知 ＋ 機器以外の時計を超えた → 赤（案 2）
   | "unknown_half" // 未知 ＋ 時計の半分を過ぎた → 黄
+  | "unknown_unchecked" // 未知 ＋ 外の物に頼る時計が未確認 → 黄（案 1）
   | "unknown" // 未知（時計の半分まで） → 灰
-  | "green_device_low" // 緑だが機器の時計が切れる → 黄
+  | "green_out_after_report" // 緑の報告のあとに機器の時計が切れた → 赤（案 3）
+  | "green_out_before_report" // 機器の時計が切れたあとの緑 → 黄（案 3）
+  | "green_device_low" // 緑だが機器の時計の半分を過ぎた → 黄
+  | "green_clock_half" // 緑だが機器以外の時計の半分を過ぎた → 黄（案 6）
+  | "green_unchecked" // 緑だが外の物に頼る時計が未確認 → 黄（案 1）
   | "green"; // 緑 → 緑、一番下
 
-export type TriageClock = Pick<ClockRow, "kind" | "category" | "label" | "value" | "unit" | "starts_on">;
+/** 理由に足す言葉 */
+export type QualifierId = "unchecked" | "self_green_set_aside" | "no_supporter";
+
+export type TriageClock = Pick<ClockRow, "kind" | "category" | "label" | "value" | "unit" | "starts_on"> & {
+  /** 外の物に頼る時計の頼り先。無ければ頼らない */
+  depends_on?: DependsOn | null;
+  /** 頼り先の確認（人が付ける） */
+  depends_check?: CheckStatus | null;
+};
 
 export type TriagePerson = {
   id: string;
@@ -45,6 +60,8 @@ export type TriagePerson = {
   /** 避難支援等実施者がいる */
   hasSupporter: boolean;
   dementia: boolean;
+  /** 本人の報告を当てにしない印（人が台帳で付ける。案 4） */
+  selfReportUnreliable: boolean;
 };
 
 /** 本人・家族・支援者・ケアマネからの信号 1 つ。赤は 4 問の答えと録音の分類を持てる */
@@ -91,9 +108,13 @@ export type TriageResult = {
   group: 0 | 1 | 2 | 3 | 4;
   /** 時計の残りの短い物（時間）。時計が無ければ Infinity */
   remainingHours: number;
+  /** 避難支援等実施者がいる（並びで「支援者なし」を先にする） */
+  hasSupporter: boolean;
   tier: Tier;
-  /** 理由 1 行（表の行から） */
+  /** 理由 1 行（表の行の言葉に、足す言葉を「、」でつなぐ） */
   reason: string;
+  /** 理由に足した言葉 */
+  qualifiers: QualifierId[];
   override?: Override & { expired: boolean };
 };
 
@@ -136,6 +157,22 @@ export function tierOf(person: TriagePerson): Tier {
   return tier;
 }
 
+/** 入力の読み方。docs/TRIAGE.md の「読み方」に出る */
+export const READING: ReadonlyArray<{ text: string; origin: string }> = [
+  { text: "信号は時刻のいちばん新しい物を使う。今より後の時刻の信号は使わない。信号が無ければ未知", origin: "仕様書" },
+  {
+    text: "本人の報告を当てにしない印（人が台帳で付ける）がある人は、本人（訓練の本人役を含む）の緑を使わない。家族・支援者・ケアマネの緑は使う。赤はそのまま赤",
+    origin: "案 4",
+  },
+  { text: "時計は停電か発災から走る。停電していなければ停電で走る時計は止まったまま", origin: "仕様書" },
+  { text: "「超えた」「過ぎた」はちょうどを含まない（12 時間までは灰）", origin: "仕様書" },
+  { text: "機器の時計は種類が機器（A）の時計。機器以外の時計は物（B）・薬（C）。本人の状態（D）は走らない", origin: "仕様書" },
+  {
+    text: "外の物に頼る時計は頼り先（透析先・冷蔵・配達）のある時計。確認（確認済・未確認）は人が台帳で付け、Claude は付けない",
+    origin: "案 1",
+  },
+];
+
 function ms(iso: string): number {
   const t = Date.parse(iso);
   if (Number.isNaN(t)) throw new Error(`時刻の形が違う: ${iso}`);
@@ -145,6 +182,8 @@ function ms(iso: string): number {
 type ClockState = {
   clock: TriageClock;
   hours: number;
+  /** 走り出した時刻（ms）。走っていなければ null */
+  start: number | null;
   elapsed: number;
   remaining: number;
   running: boolean;
@@ -160,27 +199,40 @@ function clockStates(person: TriagePerson, s: Situation): ClockState[] {
     const start = startIso === null ? null : ms(startIso);
     const running = start !== null && now >= start;
     const elapsed = running ? (now - start) / HOUR_MS : 0;
-    return [{ clock, hours, elapsed, remaining: hours - elapsed, running }];
+    return [{ clock, hours, start: running ? start : null, elapsed, remaining: hours - elapsed, running }];
   });
 }
 
-/** 使う信号: 今までの信号のうち、時刻のいちばん新しい物（同じ時刻ならあとに入れた物） */
-function latestSignal(signals: ReadonlyArray<TriageSignal>, s: Situation): TriageSignal | null {
+/** 本人からの信号か（訓練の本人役を含む） */
+const isFromSelf = (sig: TriageSignal) => sig.source === "self" || sig.source === "agent";
+
+/**
+ * 使う信号: 今までの信号のうち時刻のいちばん新しい物（同じ時刻ならあとに入れた物）。
+ * 本人の報告を当てにしない人の本人の緑は使わない。いちばん新しい信号がその緑なら setAside。
+ */
+function readSignals(
+  person: TriagePerson,
+  signals: ReadonlyArray<TriageSignal>,
+  s: Situation,
+): { signal: TriageSignal | null; setAside: boolean } {
   const now = ms(s.now);
-  let best: { sig: TriageSignal; t: number } | null = null;
-  for (const sig of signals) {
-    const t = ms(sig.at);
-    if (t > now) continue;
-    if (best === null || t >= best.t) best = { sig, t };
-  }
-  return best?.sig ?? null;
+  const past = signals
+    .map((sig, i) => ({ sig, i, t: ms(sig.at) }))
+    .filter((x) => x.t <= now)
+    .sort((a, b) => a.t - b.t || a.i - b.i)
+    .map((x) => x.sig);
+  const ignored = (sig: TriageSignal) => person.selfReportUnreliable && sig.color === "green" && isFromSelf(sig);
+  const usable = past.filter((sig) => !ignored(sig));
+  const latest = past.at(-1);
+  return { signal: usable.at(-1) ?? null, setAside: latest !== undefined && ignored(latest) };
 }
 
 const isDevice = (c: ClockState) => c.clock.kind === "device";
 const isOver = (c: ClockState) => c.running && c.elapsed > c.hours;
 const isPastHalf = (c: ClockState) => c.running && c.elapsed > c.hours / 2;
-const isOutageDevice = (c: ClockState) => isDevice(c) && c.clock.starts_on === "outage";
 const shortest = (cs: ClockState[]) => cs.reduce((a, b) => (b.remaining < a.remaining ? b : a));
+/** 時計が切れる時刻（ms）。走っている時計だけ */
+const runsOutAt = (c: ClockState) => c.start! + c.hours * HOUR_MS;
 
 const round1 = (x: number) => Math.round(x * 10) / 10;
 
@@ -201,17 +253,23 @@ const WHO: Record<SignalSource, string> = {
   care_manager: "ケアマネ",
 };
 
-/** 表の行が見る物 */
+/** 表の行と足す言葉が見る物 */
 type RuleInput = {
+  person: TriagePerson;
   signal: TriageSignal | null;
+  /** 本人の緑を使わなかった（いちばん新しい信号が当てにしない本人の緑） */
+  setAside: boolean;
   states: ClockState[];
   hoursSinceDisaster: number;
+  /** 確認が未確認の頼り先（透析先・冷蔵・配達）。重ねない */
+  unchecked: DependsOn[];
 };
 
 const over = (c: ClockState) => `${c.clock.label} ${formatHours(c.hours)}を超過`;
 const left = (c: ClockState) => (isOver(c) ? over(c) : `${c.clock.label} 残り ${formatHours(c.remaining)}`);
 const unconfirmed = (x: RuleInput) => (x.hoursSinceDisaster > 0 ? `未確認 ${formatHours(x.hoursSinceDisaster)}` : "未確認");
 const who = (x: RuleInput) => (x.signal ? WHO[x.signal.source] : "本人");
+const uncheckedWords = (x: RuleInput) => x.unchecked.map((d) => `${DEPENDS_ON_LABELS[d]} 未確認`).join("、");
 
 function injuryWords(sig: TriageSignal | null): string[] {
   if (!sig) return [];
@@ -219,6 +277,18 @@ function injuryWords(sig: TriageSignal | null): string[] {
   if (sig.injured === true || sig.classes?.includes("injury")) words.push("けが");
   if (sig.canMove === false || sig.classes?.includes("immobile")) words.push("動けない");
   return words;
+}
+
+/** 緑の信号のときに切れている機器の時計を、緑の報告の前に切れた物とあとに切れた物に分ける */
+function devicesOut(x: RuleInput): { afterReport: ClockState[]; beforeReport: ClockState[] } {
+  const out = x.states.filter((c) => isDevice(c) && isOver(c));
+  if (!x.signal) return { afterReport: [], beforeReport: out };
+  const reported = ms(x.signal.at);
+  // ちょうど切れる時刻の報告はまだ超えていないので「報告のあとに切れた」
+  return {
+    afterReport: out.filter((c) => runsOutAt(c) >= reported),
+    beforeReport: out.filter((c) => runsOutAt(c) < reported),
+  };
 }
 
 export type Rule = {
@@ -232,6 +302,8 @@ export type Rule = {
   example: string;
   /** 行の元（仕様書の表か、docs/DECISIONS.md の案の番号） */
   origin: string;
+  /** 理由の言葉に頼り先の未確認を含む（足す言葉で重ねない） */
+  saysUnchecked?: true;
   /** 当たれば理由の 1 行を返す。当たらなければ null */
   match: (x: RuleInput) => string | null;
 };
@@ -257,7 +329,7 @@ export const RULES: ReadonlyArray<Rule> = [
   {
     id: "red",
     signal: "red",
-    input: "赤だけ",
+    input: "赤だけ（録音の水が来た・機器が止まった・不明を含む）",
     color: "red",
     example: "本人が「無事じゃない」",
     origin: "仕様書",
@@ -270,7 +342,16 @@ export const RULES: ReadonlyArray<Rule> = [
     color: "red",
     example: "酸素 内蔵電池 2 時間を超過",
     origin: "仕様書",
-    match: (x) => firstOf(x.states.filter((c) => isOutageDevice(c) && isOver(c)), over),
+    match: (x) => firstOf(x.states.filter((c) => isDevice(c) && isOver(c)), over),
+  },
+  {
+    id: "unknown_clock_over",
+    signal: "unknown",
+    input: "未知 ＋ 機器以外の時計（透析・インスリン・栄養剤・薬）を超えた",
+    color: "red",
+    example: "透析 次の回まで 2 日を超過",
+    origin: "案 2",
+    match: (x) => firstOf(x.states.filter((c) => !isDevice(c) && isOver(c)), over),
   },
   {
     id: "unknown_half",
@@ -282,6 +363,16 @@ export const RULES: ReadonlyArray<Rule> = [
     match: (x) => firstOf(x.states.filter(isPastHalf), (c) => `${left(c)}、${unconfirmed(x)}`),
   },
   {
+    id: "unknown_unchecked",
+    signal: "unknown",
+    input: "未知 ＋ 外の物に頼る時計の確認が未確認",
+    color: "yellow",
+    example: "透析先 未確認、未確認 6 時間",
+    origin: "案 1",
+    saysUnchecked: true,
+    match: (x) => (x.unchecked.length > 0 ? `${uncheckedWords(x)}、${unconfirmed(x)}` : null),
+  },
+  {
     id: "unknown",
     signal: "unknown",
     input: "未知（時計の半分まで。薬だけで時計 24 時間なら 12 時間までは灰）",
@@ -291,13 +382,50 @@ export const RULES: ReadonlyArray<Rule> = [
     match: (x) => unconfirmed(x),
   },
   {
+    id: "green_out_after_report",
+    signal: "green",
+    input: "緑 ＋ 緑の報告のあとに機器の時計が切れた",
+    color: "red",
+    example: "緑の報告のあとに電池が切れた、酸素 内蔵電池 2 時間を超過",
+    origin: "案 3",
+    match: (x) => firstOf(devicesOut(x).afterReport, (c) => `緑の報告のあとに電池が切れた、${over(c)}`),
+  },
+  {
+    id: "green_out_before_report",
+    signal: "green",
+    input: "緑 ＋ 機器の時計が切れたあとの緑の報告",
+    color: "yellow",
+    example: "電池が切れたあとに緑の報告、酸素 内蔵電池 2 時間を超過",
+    origin: "案 3",
+    match: (x) => firstOf(devicesOut(x).beforeReport, (c) => `電池が切れたあとに緑の報告、${over(c)}`),
+  },
+  {
     id: "green_device_low",
     signal: "green",
-    input: "緑だが機器の時計の半分を過ぎた",
+    input: "緑だが機器の時計の半分を過ぎた（切れる前）",
     color: "yellow",
     example: "無事だが酸素 内蔵電池 残り 30 分",
     origin: "仕様書",
-    match: (x) => firstOf(x.states.filter((c) => isOutageDevice(c) && isPastHalf(c)), (c) => `無事だが${left(c)}`),
+    match: (x) => firstOf(x.states.filter((c) => isDevice(c) && isPastHalf(c)), (c) => `無事だが${left(c)}`),
+  },
+  {
+    id: "green_clock_half",
+    signal: "green",
+    input: "緑だが機器以外の時計の半分を過ぎた（超えたときも）",
+    color: "yellow",
+    example: "無事だがインスリン 残り 24 時間",
+    origin: "案 6",
+    match: (x) => firstOf(x.states.filter((c) => !isDevice(c) && isPastHalf(c)), (c) => `無事だが${left(c)}`),
+  },
+  {
+    id: "green_unchecked",
+    signal: "green",
+    input: "緑だが外の物に頼る時計の確認が未確認",
+    color: "yellow",
+    example: "無事だが透析先 未確認",
+    origin: "案 1",
+    saysUnchecked: true,
+    match: (x) => (x.unchecked.length > 0 ? `無事だが${uncheckedWords(x)}` : null),
   },
   {
     id: "green",
@@ -307,6 +435,41 @@ export const RULES: ReadonlyArray<Rule> = [
     example: "本人が「無事」",
     origin: "仕様書",
     match: (x) => `${who(x)}が「無事」`,
+  },
+];
+
+export type Qualifier = {
+  id: QualifierId;
+  /** 足すとき */
+  when: string;
+  /** 足す言葉の例 */
+  text: string;
+  origin: string;
+  apply: (x: RuleInput, rule: Rule) => string | null;
+};
+
+/** 理由に足す言葉。色は変えない。この順に「、」でつなぐ */
+export const QUALIFIERS: ReadonlyArray<Qualifier> = [
+  {
+    id: "unchecked",
+    when: "外の物に頼る時計の確認が未確認（色を決めた行が言っていなければ）",
+    text: "透析先 未確認",
+    origin: "案 1",
+    apply: (x, rule) => (x.unchecked.length > 0 && !rule.saysUnchecked ? uncheckedWords(x) : null),
+  },
+  {
+    id: "self_green_set_aside",
+    when: "本人の報告を当てにしない印があり、いちばん新しい信号が本人の緑",
+    text: "本人の緑は参考",
+    origin: "案 4",
+    apply: (x) => (x.setAside ? "本人の緑は参考" : null),
+  },
+  {
+    id: "no_supporter",
+    when: "避難支援等実施者がいない（色を問わない）",
+    text: "支援者なし",
+    origin: "案 5",
+    apply: (x) => (x.person.hasSupporter ? null : "支援者なし"),
   },
 ];
 
@@ -335,16 +498,32 @@ function groupOf(color: Color, rule: RuleId): TriageResult["group"] {
   return 4;
 }
 
+function uncheckedOf(person: TriagePerson): DependsOn[] {
+  const out: DependsOn[] = [];
+  for (const k of person.clocks) {
+    if (k.depends_on && k.depends_check === "unconfirmed" && !out.includes(k.depends_on)) out.push(k.depends_on);
+  }
+  return out;
+}
+
 /** 1 人の色・理由・並びの鍵 */
 export function triage(entry: TriageEntry, situation: Situation): TriageResult {
   const { person } = entry;
   const states = clockStates(person, situation);
+  const { signal, setAside } = readSignals(person, entry.signals, situation);
   const input: RuleInput = {
-    signal: latestSignal(entry.signals, situation),
+    person,
+    signal,
+    setAside,
     states,
     hoursSinceDisaster: Math.max(0, (ms(situation.now) - ms(situation.disasterAt)) / HOUR_MS),
+    unchecked: uncheckedOf(person),
   };
   const { rule, reason } = baseRule(input);
+  const added = QUALIFIERS.flatMap((q) => {
+    const text = q.apply(input, rule);
+    return text === null ? [] : [{ id: q.id, text }];
+  });
   const applied = entry.override ? applyOverride(rule.color, entry.override) : undefined;
   const color = applied ? applied.color : rule.color;
   return {
@@ -354,8 +533,10 @@ export function triage(entry: TriageEntry, situation: Situation): TriageResult {
     rule: rule.id,
     group: groupOf(color, rule.id),
     remainingHours: states.length > 0 ? Math.min(...states.map((c) => c.remaining)) : Infinity,
+    hasSupporter: person.hasSupporter,
     tier: tierOf(person),
-    reason,
+    reason: [reason, ...added.map((q) => q.text)].join("、"),
+    qualifiers: added.map((q) => q.id),
     ...(applied ? { override: applied.detail } : {}),
   };
 }
@@ -365,14 +546,36 @@ function cmp(a: number, b: number): number {
   return a < b ? -1 : 1;
 }
 
-/** 並べる: 組（赤 けが・動けない → 赤 → 黄 → 灰 → 緑）、時計の残りが短い順、骨格の順、最後に id */
+export type OrderKey = {
+  /** docs/TRIAGE.md の並びの言い方 */
+  label: string;
+  origin: string;
+  compare: (a: TriageResult, b: TriageResult) => number;
+};
+
+/** 並びの鍵。上から順に比べ、同じなら次へ */
+export const ORDER: ReadonlyArray<OrderKey> = [
+  { label: "色（赤 けが・動けない → 赤 → 黄 → 灰 → 緑）", origin: "仕様書", compare: (a, b) => cmp(a.group, b.group) },
+  { label: "時計の残りが短い順", origin: "仕様書", compare: (a, b) => cmp(a.remainingHours, b.remainingHours) },
+  {
+    label: "支援者なしが先",
+    origin: "案 5",
+    compare: (a, b) => cmp(a.hasSupporter ? 1 : 0, b.hasSupporter ? 1 : 0),
+  },
+  { label: "緊急度の骨格の段（1〜8）", origin: "仕様書", compare: (a, b) => cmp(a.tier, b.tier) },
+  {
+    label: "id",
+    origin: "決めた所",
+    compare: (a, b) => (a.personId < b.personId ? -1 : a.personId > b.personId ? 1 : 0),
+  },
+];
+
 export function compareResults(a: TriageResult, b: TriageResult): number {
-  return (
-    cmp(a.group, b.group) ||
-    cmp(a.remainingHours, b.remainingHours) ||
-    cmp(a.tier, b.tier) ||
-    (a.personId < b.personId ? -1 : a.personId > b.personId ? 1 : 0)
-  );
+  for (const key of ORDER) {
+    const d = key.compare(a, b);
+    if (d !== 0) return d;
+  }
+  return 0;
 }
 
 export function rank(entries: ReadonlyArray<TriageEntry>, situation: Situation): TriageResult[] {
