@@ -1,7 +1,7 @@
 import "@/components/forms/paper.css";
 import "@/components/forms/form9-paper.css";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
-import { TONE_TEXT } from "@/components/person/parts";
+import { CountLabel, countClass } from "@/components/ui/Tag";
 import { Form9Paper } from "@/components/forms/Form9Paper";
 import { buttonClass } from "@/components/ui/Button";
 import { DownloadIcon } from "@/components/ui/Icon";
@@ -74,8 +74,12 @@ export default async function Form9Page({ searchParams }: Props) {
           <dl className="flex flex-wrap gap-x-3 text-sm">
             {REPORT_COLORS.map((c) => (
               <div key={c} className="flex items-baseline gap-1">
-                <dt className="text-muted">{COLOR_LABELS[c]}</dt>
-                <dd className={`font-bold tabular-nums ${counts[c] > 0 ? TONE_TEXT[COLOR_TONES[c]] : "text-muted"}`}>{counts[c]}</dd>
+                <dt className="text-muted">
+                  <CountLabel tone={COLOR_TONES[c]} count={counts[c]}>
+                    {COLOR_LABELS[c]}
+                  </CountLabel>
+                </dt>
+                <dd className={`font-bold tabular-nums ${countClass(COLOR_TONES[c], counts[c])}`}>{counts[c]}</dd>
               </div>
             ))}
           </dl>

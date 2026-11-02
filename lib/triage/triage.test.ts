@@ -282,22 +282,22 @@ describe("案 2: 未知のまま機器以外の時計を超えたら赤", () => 
 describe("案 3: 緑のまま機器の時計を超えた", () => {
   const yamada = person("p-01");
 
-  it("緑の報告が電池の切れる前なら赤「緑の報告のあとに電池が切れた」", () => {
+  it("緑の報告が電池の切れる前なら赤「無事の報告のあとに電池が切れた」", () => {
     expect(one(yamada, [green(0)], S.out2_5)).toMatchObject({
       color: "red",
       rule: "green_out_after_report",
       group: 1,
-      reason: "緑の報告のあとに電池が切れた、酸素 内蔵電池 2 時間を超過",
+      reason: "無事の報告のあとに電池が切れた、酸素 内蔵電池 2 時間を超過",
     });
     // 電池がちょうど切れる時刻の報告も「前」（ちょうどはまだ超えていない）
     expect(one(yamada, [green(2)], S.out2_5).color).toBe("red");
   });
 
-  it("電池が切れたあとの緑なら黄「電池が切れたあとに緑の報告」", () => {
+  it("電池が切れたあとの緑なら黄「電池が切れたあとに無事の報告」", () => {
     expect(one(yamada, [green(2.5, "family")], S.out2_5)).toMatchObject({
       color: "yellow",
       rule: "green_out_before_report",
-      reason: "電池が切れたあとに緑の報告、酸素 内蔵電池 2 時間を超過",
+      reason: "電池が切れたあとに無事の報告、酸素 内蔵電池 2 時間を超過",
     });
     expect(one(yamada, [green(2.1)], S.out6).color).toBe("yellow");
   });

@@ -253,6 +253,10 @@ export const HEAD_LABELS = {
   marks: "医療",
   clocks: "時計",
   emergency: "緊急連絡先",
+  /** 災害モードの時計の今の残り（「残り 1.5 時間」「超過 30 分」「停電で開始」。担当一覧の行の詳細と同じ言い方） */
+  left: "残り",
+  over: "超過",
+  startsOn: "で開始",
 } as const;
 
 /** 時計の行の中の小さな見出し */

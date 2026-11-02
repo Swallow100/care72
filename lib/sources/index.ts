@@ -91,7 +91,7 @@ export const SOURCES = [
     url: "https://www.bousai.go.jp/taisaku/hisaisyagyousei/pdf/r4_sanko03.pdf",
     summary:
       "2017 年の改訂版に、風水害と大規模な停電への備え（電気自動車での充電、医療用の電源の拠点）と、停電したら呼吸器の電池の残りを見積もって早めに避難する考えを足した",
-    scope: "機器の時計（内蔵電池の時間）の行と、緑の報告のあとに電池が切れる行",
+    scope: "機器の時計（内蔵電池の時間）の行と、無事の報告のあとに電池が切れる行",
     quote: { text: "早めに避難することが望ましい", where: "予測できない災害における避難の時期と留意点・停電の場合" },
     checkedOn: null,
   },
