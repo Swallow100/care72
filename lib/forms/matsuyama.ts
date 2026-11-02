@@ -13,14 +13,17 @@
 // - 台帳にある値は余さず差し込む。様式に欄の無い値（機器と時計、緊急連絡先の 2 人目から、持出品など）は特記事項に
 
 import { ageOn } from "../age.ts";
-import type {
-  ClockRow,
-  ConsentKind,
-  ConsentStatus,
-  DeviceKind,
-  Ledger,
-  MedicationCategory,
-  PendingStatus,
+import {
+  MY_TIMELINES,
+  SUPPORT_KINDS,
+  type ClockRow,
+  type ConsentKind,
+  type ConsentStatus,
+  type DeviceKind,
+  type Ledger,
+  type MedicationCategory,
+  type PendingStatus,
+  type SupportKind,
 } from "../db/types.ts";
 import { parseLedger } from "../db/ledger.ts";
 import {
@@ -40,6 +43,7 @@ import {
   HOUSEHOLD_LABELS,
   MEDICATION_CATEGORY_LABELS,
   MEDICATION_FLAG_LABELS,
+  MY_TIMELINE_LABELS,
   PENDING_STATUS_LABELS,
   SMARTPHONE_LABELS,
   STRUCTURE_LABELS,
@@ -52,6 +56,14 @@ export const MATSUYAMA_FORM_URL =
   "https://www.city.matsuyama.ehime.jp/kurashi/fukushi/shogai/hinankodo/kobetsuhinannkeikaku.files/R8.9.10keikaku.pdf";
 
 export const MATSUYAMA_FORM_VERSION = "2026.9.10";
+
+/** 支援の内容の選択肢の様式の言葉（台帳は SUPPORT_KINDS、本人のページは短い SUPPORT_KIND_LABELS） */
+const SUPPORT_SHEET_LABELS: Record<SupportKind, string> = {
+  call: "避難の声掛け",
+  guide: "避難の誘導",
+  assist: "移動介助",
+  other: "その他",
+};
 
 // ---------- 欄の一覧 ----------
 
@@ -218,7 +230,7 @@ export const MATSUYAMA_FIELDS = [
     source: "contacts（民生委員）",
     shape: "lines",
   },
-  { key: "local.watcher", page: 1, block: "local", label: "みまもり員", source: NO_SOURCE, shape: "lines" },
+  { key: "local.watcher", page: 1, block: "local", label: "みまもり員", source: "ledger.local.watcher", shape: "lines" },
   {
     key: "local.office",
     page: 1,
@@ -240,7 +252,7 @@ export const MATSUYAMA_FIELDS = [
     page: 1,
     block: "target",
     label: "マイ・タイムラインの作成",
-    source: NO_SOURCE,
+    source: "ledger.evacuation.myTimeline",
     shape: "choice",
     options: ["あり（アプリ）", "あり（紙）", "なし"],
   },
@@ -403,13 +415,13 @@ export const MATSUYAMA_FIELDS = [
     source: "ledger.basic.housing.floor",
     shape: "text",
   },
-  { key: "housing.bedroom", page: 2, block: "housing", label: "寝室", source: NO_SOURCE, shape: "text" },
+  { key: "housing.bedroom", page: 2, block: "housing", label: "寝室", source: "ledger.basic.housing.bedroom", shape: "text" },
   {
     key: "support.kinds",
     page: 2,
     block: "support",
     label: "支援の内容",
-    source: NO_SOURCE,
+    source: "ledger.evacuation.support・supportNote",
     shape: "choice",
     options: ["避難の声掛け", "避難の誘導", "移動介助", "その他"],
   },
@@ -1069,7 +1081,18 @@ export function buildMatsuyamaSheet(rows: PersonPageRows, opts: BuildOptions): M
   };
 
   const housing = basic.housing;
+  // 寝室は住居の下の場所なので、住居より先に取る
+  const bedroomReason = pool.take("housing.bedroom", under("basic.housing.bedroom"));
   const housingReason = pool.take("housing.room", under("basic.housing"));
+  // 入れる欄（T03）で足した欄: みまもり員・マイ・タイムライン・支援の内容
+  const watcherReason = pool.take("local.watcher", under("local.watcher"));
+  const timelineReason = pool.take("target.timeline", under("evacuation.myTimeline"));
+  const supportReason = pool.take(
+    "support.kinds",
+    (f) => under("evacuation.support")(f) || under("evacuation.supportNote")(f),
+  );
+  const support = evacuation.support;
+  const supportNote = evacuation.supportNote?.trim() || undefined;
   const floors = housing?.floors;
   const structure = housing?.structure;
 
@@ -1140,18 +1163,17 @@ export function buildMatsuyamaSheet(rows: PersonPageRows, opts: BuildOptions): M
     "target.category": category,
     "target.household": household,
     "local.welfare": withPending(contactsCell(welfare), welfareReason),
-    "local.watcher": unconfirmed(),
+    "local.watcher": withPending(textCell(ledger.local?.watcher, true), watcherReason),
     "local.office": contactsCell(offices, { kind: true }, unconfirmed()),
     "local.other": contactsCell(localOther, { kind: true }),
-    "target.timeline": {
-      kind: "choice",
-      options: [
-        { label: "あり（アプリ）", on: false },
-        { label: "あり（紙）", on: false },
-        { label: "なし", on: false },
-      ],
-      unconfirmed: {},
-    },
+    "target.timeline": withPending(
+      {
+        kind: "choice",
+        options: MY_TIMELINES.map((v) => ({ label: MY_TIMELINE_LABELS[v], on: evacuation.myTimeline === v })),
+        ...(evacuation.myTimeline ? {} : { unconfirmed: {} }),
+      },
+      timelineReason,
+    ),
     "consent.registry": consentCell(consent.registry, CONSENT_OPTIONS, registryReason, consentRow("registry")),
     "consent.planShare": consentCell(consent.plan_share, CONSENT_OPTIONS, planShareReason, consentRow("plan_share")),
     "sign.self": { kind: "handwrite" },
@@ -1236,17 +1258,22 @@ export function buildMatsuyamaSheet(rows: PersonPageRows, opts: BuildOptions): M
           }
         : unconfirmed(),
     "housing.room": withPending(housing?.floor != null ? value([strong(`${housing.floor}`), t("階")]) : unconfirmed(), housingReason),
-    "housing.bedroom": unconfirmed(),
-    "support.kinds": {
-      kind: "choice",
-      options: [
-        { label: "避難の声掛け", on: false },
-        { label: "避難の誘導", on: false },
-        { label: "移動介助", on: false },
-        { label: "その他", on: false },
-      ],
-      unconfirmed: {},
-    },
+    "housing.bedroom": withPending(textCell(housing?.bedroom), bedroomReason),
+    "support.kinds": withPending(
+      {
+        kind: "choice",
+        options: SUPPORT_KINDS.map((k) => ({
+          label: SUPPORT_SHEET_LABELS[k],
+          on: support?.includes(k) ?? false,
+          // その他の中身は書き足し（supportNote）
+          detail: k === "other" && support?.includes("other") ? supportNote : undefined,
+        })),
+        // その他を選んでいないときの書き足しは後ろに添える
+        after: supportNote && !support?.includes("other") ? [t(supportNote)] : undefined,
+        ...(support ? {} : { unconfirmed: {} }),
+      },
+      supportReason,
+    ),
     "notes.medical": medicalShared ? withPending(value(...medicalNoteLines), medicalNoteReason) : medicalWithheld,
     "notes.words": ledger.notes.length > 0 ? value(...ledger.notes.map((n) => [t(n)])) : NONE,
     "notes.other": otherLines.length > 0 ? value(...otherLines) : NONE,

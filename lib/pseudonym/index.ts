@@ -26,9 +26,11 @@ import type {
   ContactRow,
   Household,
   Ledger,
+  MyTimeline,
   PersonRow,
   Sex,
   SmartphoneUse,
+  SupportKind,
 } from "../db/types.ts";
 import { ageOn, todayJst } from "../age.ts";
 
@@ -92,7 +94,7 @@ export type ClaudePerson = {
   age: number | null;
   sex: Sex | null;
   household: Household | null;
-  housing: { floor: number | null; floors: number | null; structure: string | null };
+  housing: { floor: number | null; floors: number | null; structure: string | null; bedroom: string | null };
   smartphone: SmartphoneUse | null;
   care: {
     careLevel: CareLevel | null;
@@ -131,7 +133,12 @@ export type ClaudePerson = {
     transport: string | null;
     pets: string | null;
     carryItems: string[];
+    myTimeline: MyTimeline | null;
+    support: SupportKind[];
+    supportNote: string | null;
   };
+  /** みまもり員がいるか（名前は渡さない） */
+  watcher: boolean;
   /** 特記。名前・町名・電話だけを置き換え、言葉は言い換えない */
   notes: string[];
   pending: Array<{ field: string; status: string }>;
@@ -262,9 +269,11 @@ function townStem(town: string): string {
 
 /** 電話番号らしい並び（0 で始まる 10〜11 桁、区切りあり・なし） */
 const PHONE_LIKE = /(?<![0-9０-９])[0０][0-9０-９]{1,4}[-‐－ー ]?[0-9０-９]{1,4}[-‐－ー ]?[0-9０-９]{3,4}(?![0-9０-９])/g;
-const PHONE_MARK = "（電話）";
-const TOWN_MARK = "（町名）";
-const NAME_MARK = "（氏名）";
+export const PHONE_MARK = "（電話）";
+export const TOWN_MARK = "（町名）";
+export const NAME_MARK = "（氏名）";
+/** みまもり員の名前の置き換え先 */
+export const WATCHER_ROLE = "みまもり員";
 
 type Target = { kind: "person" | "contact"; replacement: string };
 
@@ -310,6 +319,21 @@ function buildKey(inputs: ReadonlyArray<PseudonymInput>): {
           rules.push({ pattern: new RegExp(esc(t), "g"), replacement: TOWN_MARK, len: t.length });
           secrets.push({ value: t, what: `${alias}の町名` });
         }
+      }
+    }
+
+    // みまもり員（台帳の地域の支援者）は連絡先の表に無い名前。連絡先と同じく役割名に置き換え、漏れの見張りにも足す
+    const watcher = input.ledger.local?.watcher?.trim();
+    if (watcher) {
+      const replacement = batch ? `${alias}の${WATCHER_ROLE}` : WATCHER_ROLE;
+      const t: Target = { kind: "contact", replacement };
+      const parts = nameParts(watcher);
+      add(exact, parts.join("\u0000"), t);
+      secrets.push({ value: parts.join(" "), what: `${alias}の${WATCHER_ROLE}の名前` });
+      secrets.push({ value: parts.join(""), what: `${alias}の${WATCHER_ROLE}の名前` });
+      if (parts.length > 1) {
+        for (const p of parts) add(partial, p, t);
+        for (const p of parts) if (p.length >= 2) secrets.push({ value: p, what: `${alias}の${WATCHER_ROLE}の名前` });
       }
     }
 
@@ -408,6 +432,7 @@ function toClaudePerson(input: PseudonymInput, alias: string, roles: string[], k
       floor: basic.housing?.floor ?? null,
       floors: basic.housing?.floors ?? null,
       structure: basic.housing?.structure ?? null,
+      bedroom: s(basic.housing?.bedroom),
     },
     smartphone: basic.contactMeans?.smartphone ?? null,
     care: {
@@ -447,7 +472,11 @@ function toClaudePerson(input: PseudonymInput, alias: string, roles: string[], k
       transport: s(evacuation.transport),
       pets: s(evacuation.pets),
       carryItems: ss(evacuation.carryItems),
+      myTimeline: evacuation.myTimeline ?? null,
+      support: [...(evacuation.support ?? [])],
+      supportNote: s(evacuation.supportNote),
     },
+    watcher: (input.ledger.local?.watcher ?? "").trim() !== "",
     notes: ss(input.ledger.notes),
     pending: input.ledger.pending.map((p) => ({ field: p.field, status: p.status })),
     contacts: input.contacts.flatMap((c, j): ClaudeContact[] =>

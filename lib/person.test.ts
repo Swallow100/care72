@@ -531,3 +531,53 @@ describe("情報を多く出す（作者 16:3x）", () => {
     expect(textOf(viewOf("p-02"), "basic")).toContain("聴覚 未確認");
   });
 });
+
+describe("入れる欄（T03）で足した欄と経過", () => {
+  const rowText = (r: Row | undefined) =>
+    r && r.field.kind === "lines" ? r.field.lines.map((l) => l.map((s) => s.text).join(" ")).join(" / ") : r?.field.kind;
+
+  it("寝室・支援内容・タイムラインは避難、みまもり員は人の区分に出る。空なら未確認", () => {
+    const p = seed("p-04");
+    const ledger = {
+      ...p.ledger,
+      basic: { ...p.ledger.basic, housing: { ...p.ledger.basic.housing, bedroom: "1 階 奥の和室" } },
+      evacuation: { ...p.ledger.evacuation, myTimeline: "app" as const, support: ["call" as const, "assist" as const], supportNote: "夜は娘" },
+      local: { watcher: "春日 葉子" },
+    };
+    const v = toPersonView(seedRows({ ...p, ledger }), { today: TODAY });
+    expect(rowText(rowOf(v, "basic.housing.bedroom"))).toBe("1 階 奥の和室");
+    expect(rowText(rowOf(v, "evacuation.support"))).toBe("声掛け・移動介助 夜は娘");
+    expect(rowText(rowOf(v, "evacuation.myTimeline"))).toBe("あり（アプリ）");
+    expect(rowText(rowOf(v, "local.watcher"))).toBe("春日 葉子");
+    expect(sectionOfField("local.watcher")).toBe("people");
+    expect(sectionOfField("basic.housing.bedroom")).toBe("evacuation");
+    const plain = viewOf("p-04");
+    for (const k of ["basic.housing.bedroom", "evacuation.support", "evacuation.myTimeline", "local.watcher"]) {
+      expect(rowOf(plain, k)?.field.kind, k).toBe("unconfirmed");
+    }
+  });
+
+  it("入れる欄の保存（kind は note、payload の source が intake）は経過に「入力」と AI の印", () => {
+    const entry = (ai: boolean) => ({
+      id: `t-${ai}`,
+      person_id: "p-04",
+      author_id: "acct-yamamoto",
+      author_role: "care_manager" as const,
+      kind: "note" as const,
+      body: "世帯・ハザード",
+      payload: JSON.stringify({ source: "intake", ai, model: ai ? "claude-sonnet-5-5" : null, fields: ["basic.household"] }),
+      signal_id: null,
+      occurred_at: "2026-11-03T01:00:00.000Z",
+      created_at: "2026-11-03T01:00:00.000Z",
+      author_name: "山本",
+      signal_color: null,
+    });
+    const items = timelineItems(seedRows(seed("p-04"), [entry(true), entry(false)])).filter((t) => !t.derived);
+    expect(items.map((t) => [t.kind, t.ai ?? false])).toEqual([
+      ["入力", true],
+      ["入力", false],
+    ]);
+    const html = renderToStaticMarkup(createElement(PersonView, { view: toPersonView(seedRows(seed("p-04"), [entry(true)]), { today: TODAY }), level: 1 }));
+    expect(html).toContain("data-ai");
+  });
+});

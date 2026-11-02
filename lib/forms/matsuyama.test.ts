@@ -194,6 +194,42 @@ describe("種の 10 人から欄が埋まる", () => {
     }
   });
 
+  it("入れる欄（T03）で足した欄: みまもり員・マイ・タイムライン・寝室・支援の内容は、値があれば未確認でなく値を出す", () => {
+    const p = seed("p-04");
+    const ledger = {
+      ...p.ledger,
+      basic: { ...p.ledger.basic, housing: { ...p.ledger.basic.housing, bedroom: "1 階 奥の和室" } },
+      evacuation: { ...p.ledger.evacuation, myTimeline: "paper" as const, support: ["call" as const, "other" as const], supportNote: "薬を持ち出す" },
+      local: { watcher: "春日 葉子" },
+    };
+    const s = buildMatsuyamaSheet(seedRows({ ...p, ledger }), { today: TODAY, officeName: "デモ事業所" });
+    expect(text(s, "local.watcher")).toBe("春日 葉子");
+    expect(text(s, "housing.bedroom")).toBe("1 階 奥の和室");
+    const timeline = s.cells["target.timeline"];
+    expect(timeline.kind === "choice" && timeline.options.filter((o) => o.on).map((o) => o.label)).toEqual(["あり（紙）"]);
+    expect(timeline.kind === "choice" && timeline.unconfirmed).toBeFalsy();
+    const support = s.cells["support.kinds"];
+    expect(support.kind === "choice" && support.options.filter((o) => o.on).map((o) => o.label)).toEqual(["避難の声掛け", "その他"]);
+    expect(support.kind === "choice" && support.options.find((o) => o.label === "その他")?.detail).toBe("薬を持ち出す");
+    // 種のままの人は未確認のまま
+    expect(text(sheetOf("p-04"), "housing.bedroom")).toBe("未確認");
+  });
+
+  it("入れる欄で付けた pending（不明・無回答）は、その欄に理由で出る", () => {
+    const p = seed("p-04");
+    const ledger = {
+      ...p.ledger,
+      pending: [
+        { field: "basic.housing.bedroom", status: "unknown" as const },
+        { field: "local.watcher", status: "declined" as const },
+      ],
+    };
+    const s = buildMatsuyamaSheet(seedRows({ ...p, ledger }), { today: TODAY, officeName: "デモ事業所" });
+    expect(s.cells["housing.bedroom"]).toEqual({ kind: "unconfirmed", reason: "unknown" });
+    expect(s.cells["local.watcher"]).toEqual({ kind: "unconfirmed", reason: "declined" });
+    expect(s.pending.map((x) => x.key).sort()).toEqual(["housing.bedroom", "local.watcher"]);
+  });
+
   it("ほかの人も台帳の値が出る（透析の頼り先、インスリンの残り、緊急連絡先の 3 人目）", () => {
     const tanaka = sheetOf("p-03");
     expect(text(tanaka, "notes.medical")).toContain("透析 次の回まで 2 日");

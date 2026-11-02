@@ -18,6 +18,8 @@ import { hazardsOf } from "./caseload.ts";
 import { parseLedger } from "./db/ledger.ts";
 import {
   CONSENT_KINDS,
+  INTAKE_SOURCE,
+  type IntakePayload,
   type AccountRole,
   type ClockRow,
   type ConsentRow,
@@ -58,11 +60,13 @@ import {
   MEDICATION_CATEGORY_LABELS,
   MED_PARTS,
   MEDICATION_FLAG_LABELS,
+  MY_TIMELINE_LABELS,
   PLAN_STATUS_LABELS,
   SECTION_LABELS,
   SEX_LABELS,
   SMARTPHONE_LABELS,
   STRUCTURE_LABELS,
+  SUPPORT_KIND_LABELS,
   TIER_LABELS,
   TIMELINE_KIND_LABELS,
 } from "./labels.ts";
@@ -113,16 +117,20 @@ export const FIELDS: readonly FieldDef[] = [
   { key: "evacuation.destination1", section: "evacuation", label: "避難先1" },
   { key: "evacuation.destination2", section: "evacuation", label: "避難先2" },
   { key: "evacuation.transport", section: "evacuation", label: "手段" },
+  { key: "evacuation.support", section: "evacuation", label: "支援内容" },
   { key: "evacuation.route", section: "evacuation", label: "経路" },
   { key: "evacuation.barriers", section: "evacuation", label: "段差" },
   { key: "basic.housing", section: "evacuation", label: "住居" },
+  { key: "basic.housing.bedroom", section: "evacuation", label: "寝室" },
   { key: "evacuation.carryItems", section: "evacuation", label: "持出品" },
   { key: "evacuation.pets", section: "evacuation", label: "ペット" },
+  { key: "evacuation.myTimeline", section: "evacuation", label: "タイムライン" },
   { key: "people.family", section: "people", label: "家族" },
   { key: "people.emergency", section: "people", label: "緊急連絡先" },
   { key: "people.supporter1", section: "people", label: "支援者1" },
   { key: "people.supporter2", section: "people", label: "支援者2" },
   { key: "people.welfare_commissioner", section: "people", label: "民生委員" },
+  { key: "local.watcher", section: "people", label: "みまもり員" },
   { key: "people.night_supporter", section: "people", label: "夜間支援" },
   { key: "people.others", section: "people", label: "関係先" },
   { key: "basic.address", section: "basic", label: "住所" },
@@ -161,6 +169,7 @@ const PREFIX_SECTIONS: Record<string, SectionId> = {
   clocks: "medical",
   evacuation: "evacuation",
   people: "people",
+  local: "people",
   basic: "basic",
   care: "basic",
   notes: "basic",
@@ -247,6 +256,8 @@ export type TimelineItem = {
   who: string;
   /** 経過の表の行でなく、種の表（本人の行・同意）から作った物 */
   derived: boolean;
+  /** Claude の出力を人が確かめて入れた行（入れる欄の保存）。画面に「AI」の印 */
+  ai?: true;
 };
 
 export type Block =
@@ -442,6 +453,7 @@ const SMALL_KEYS = new Set([
   "evacuation.route",
   "evacuation.barriers",
   "evacuation.pets",
+  "evacuation.myTimeline",
   "care.handbook",
   "care.intractableDisease",
 ]);
@@ -576,18 +588,29 @@ function evacuationBlocks(ledger: Ledger): Block[] {
     row("evacuation.destination1", textField(e.destination1)),
     row("evacuation.destination2", textField(e.destination2)),
     row("evacuation.transport", textField(e.transport)),
+    row("evacuation.support", supportField(e)),
     row("evacuation.route", textField(e.route)),
     row("evacuation.barriers", textField(e.barriers)),
     row("basic.housing", housingField(ledger.basic.housing)),
+    row("basic.housing.bedroom", textField(ledger.basic.housing?.bedroom)),
     row("evacuation.carryItems", listField(e.carryItems)),
     row("evacuation.pets", textField(e.pets)),
+    row("evacuation.myTimeline", textField(e.myTimeline ? MY_TIMELINE_LABELS[e.myTimeline] : null)),
   ].map((r): Block => ({ type: "row", row: r }));
+}
+
+/** 支援の内容: 選んだ物と書き足し。選んだ物が空の配列なら「なし」 */
+function supportField(e: Ledger["evacuation"]): Field {
+  const kinds = e.support?.map((k) => SUPPORT_KIND_LABELS[k]) ?? [];
+  const note = e.supportNote?.trim() ?? "";
+  if (kinds.length === 0 && !note) return e.support ? { kind: "none" } : { kind: "unconfirmed" };
+  return { kind: "lines", lines: [[...(kinds.length > 0 ? [text(kinds.join("・"))] : []), ...(note ? [muted(note)] : [])]] };
 }
 
 /** 人の区分で出す連絡先の種類（ほかの区分に出す物: 本人の電話は基本、かかりつけ・薬局・透析施設は医療） */
 const SHOWN_ELSEWHERE = new Set<Contact["kind"]>(["self", "home_doctor", "pharmacy", "dialysis_center"]);
 
-function peopleBlocks(contacts: Contact[]): Block[] {
+function peopleBlocks(contacts: Contact[], ledger: Ledger): Block[] {
   const byOrder = (key: "emergency_order" | "supporter_order") =>
     contacts.filter((c) => c[key] != null).sort((a, b) => (a[key] ?? 0) - (b[key] ?? 0));
   const family = contacts.filter((c) => c.kind === "family");
@@ -627,6 +650,7 @@ function peopleBlocks(contacts: Contact[]): Block[] {
     row("people.supporter1", supporter(1)),
     row("people.supporter2", supporter(2)),
     row("people.welfare_commissioner", contactsField(welfare)),
+    row("local.watcher", textField(ledger.local?.watcher)),
     row("people.night_supporter", night),
   ];
   if (others.length > 0) rows.push(row("people.others", contactsField(others, { kind: true })));
@@ -731,6 +755,21 @@ const TIMELINE_TONES: Partial<Record<TimelineKind, StateTone>> = {
 
 const SIGNAL_TONES: Record<SignalColor, StateTone> = { red: "urgent", green: "ok", unknown: "unknown" };
 
+/** 入れる欄の保存の行の payload（kind は note、payload の source が intake）。違えば null */
+export function intakePayloadOf(t: Pick<TimelineEntryRow, "kind" | "payload">): IntakePayload | null {
+  if (t.kind !== "note" || !t.payload) return null;
+  try {
+    const p = JSON.parse(t.payload) as Partial<IntakePayload>;
+    return p.source === INTAKE_SOURCE ? (p as IntakePayload) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function isIntakeEntry(t: Pick<TimelineEntryRow, "kind" | "payload">): boolean {
+  return intakePayloadOf(t) !== null;
+}
+
 /** 経過の行の色。信号は信号の色（赤の信号は赤）、時計の確認は付けた側（未確認は黄、確認済は緑） */
 function timelineTone(t: PersonPageRows["timeline"][number]): StateTone | null {
   if (t.kind === "signal") return t.signal_color ? SIGNAL_TONES[t.signal_color] : null;
@@ -757,11 +796,13 @@ export function timelineItems(rows: PersonPageRows): TimelineItem[] {
     id: t.id,
     at: t.occurred_at,
     when: formatJst(t.occurred_at),
-    kind: TIMELINE_KIND_LABELS[t.kind],
+    // 入れる欄の保存（kind は note、payload の source が intake）は「入力」
+    kind: isIntakeEntry(t) ? DERIVED_TIMELINE_LABELS.created : TIMELINE_KIND_LABELS[t.kind],
     tone: timelineTone(t),
     body: t.body,
     who: who(AUTHOR_ROLE_LABELS[t.author_role], t.author_name),
     derived: false,
+    ...(intakePayloadOf(t)?.ai ? { ai: true as const } : {}),
   }));
 
   const derived: TimelineItem[] = [];
@@ -921,7 +962,7 @@ export function toPersonView(rows: PersonPageRows, opts: ViewOptions): PersonVie
   const sections = new Map<SectionId, Block[]>([
     ["medical", medicalBlocks(ledger, contacts, clocks)],
     ["evacuation", evacuationBlocks(ledger)],
-    ["people", peopleBlocks(contacts)],
+    ["people", peopleBlocks(contacts, ledger)],
     ["basic", basicBlocks({ ...rows, contacts }, ledger)],
     ["consent", consentBlocks(rows.consents)],
     ["documents", documentBlocks(person.id)],

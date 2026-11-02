@@ -217,6 +217,39 @@ describe("自由文の置き換え", () => {
   });
 });
 
+describe("入れる欄（T03）で足した欄", () => {
+  const withNew = (): PseudonymInput => {
+    const base = byId("p-04");
+    const ledger: Ledger = {
+      ...base.ledger,
+      basic: { ...base.ledger.basic, housing: { ...base.ledger.basic.housing, bedroom: "1 階 くぬぎ谷町 側の和室" } },
+      evacuation: { ...base.ledger.evacuation, myTimeline: "paper", support: ["call", "assist"], supportNote: "清水さんが声を掛ける" },
+      local: { watcher: "春日 葉子" },
+    };
+    return { ...base, ledger };
+  };
+
+  it("寝室・マイ・タイムライン・支援の内容は渡り、町名と名前は伏せる。みまもり員は有無だけ", () => {
+    const { payload } = pseudonymize([withNew()], { on: ON });
+    const p = payload[0];
+    expect(p.housing.bedroom).toBe("1 階 （町名） 側の和室");
+    expect(p.evacuation.myTimeline).toBe("paper");
+    expect(p.evacuation.support).toEqual(["call", "assist"]);
+    expect(p.evacuation.supportNote).toBe("民生委員が声を掛ける");
+    expect(p.watcher).toBe(true);
+    expect(JSON.stringify(payload)).not.toContain("春日");
+    expect(pseudonymize([byId("p-04")], { on: ON }).payload[0].watcher).toBe(false);
+  });
+
+  it("自由文のみまもり員の名前は役割名に。残っていれば漏れとして止まる", () => {
+    const { key } = pseudonymize([withNew()], { on: ON });
+    expect(pseudonymizeText("春日葉子さんが週 1 回来る。春日さんは近所", key).text).toBe(
+      "みまもり員が週 1 回来る。みまもり員は近所",
+    );
+    expect(findLeaks("春日 葉子", key)).toContain("A さんのみまもり員の名前");
+  });
+});
+
 describe("漏れの見張り", () => {
   it("元の氏名・電話が残っていれば何が残ったかを返す（値は返さない）", () => {
     const { key } = pseudonymize([byId("p-01")], { on: ON });

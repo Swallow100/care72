@@ -74,6 +74,18 @@ export function PendingMark({ pending }: { pending: readonly Pending[] }) {
   );
 }
 
+/**
+ * Claude の出力の印「AI」。人が確かめて直せる所に付ける（CLAUDE.md「守ること」）。
+ * 状態の 4 色は使わず、地の灰色と太字だけ（色は意味にだけ使う）
+ */
+export function AiMark({ title = "AI の出力。人が確認" }: { title?: string }) {
+  return (
+    <span className="rounded bg-base px-1 py-px text-xs font-bold text-ink" data-ai title={title}>
+      AI
+    </span>
+  );
+}
+
 /** 空の欄（pending に無い物）。数えない */
 export function Blank() {
   return <span className="text-muted">{BLANK_LABELS.unconfirmed}</span>;

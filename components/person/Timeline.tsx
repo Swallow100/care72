@@ -3,7 +3,7 @@
 
 import type { TimelineItem } from "@/lib/person";
 import { BLANK_LABELS } from "@/lib/labels";
-import { StateTag } from "./parts";
+import { AiMark, StateTag } from "./parts";
 
 export function Timeline({ items }: { items: readonly TimelineItem[] }) {
   if (items.length === 0) return <p className="text-muted">{BLANK_LABELS.none}</p>;
@@ -16,6 +16,7 @@ export function Timeline({ items }: { items: readonly TimelineItem[] }) {
               {t.when}
             </time>
             {t.tone ? <StateTag tone={t.tone}>{t.kind}</StateTag> : <span className="font-bold">{t.kind}</span>}
+            {t.ai && <AiMark />}
             <span className="ml-auto text-muted">{t.who}</span>
           </div>
           {t.body && <div className="mt-0.5">{t.body}</div>}
