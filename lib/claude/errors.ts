@@ -40,9 +40,17 @@ export class AiRefused extends Error {
   }
 }
 
-export type BadOutputReason = "max_tokens" | "stop_reason" | "no_text" | "not_json" | "schema";
+export type BadOutputReason =
+  | "max_tokens"
+  | "stop_reason"
+  | "no_text"
+  | "not_json"
+  | "schema"
+  // 声（Gemini TTS）
+  | "no_audio"
+  | "format";
 
-/** 返った物が使えない（JSON でない・形が違う・途中で切れた）。issues は形の違う場所だけで、値は持たない */
+/** 返った物が使えない（JSON でない・形が違う・途中で切れた・音声が無い）。issues は形の違う場所だけで、値は持たない */
 export class AiBadOutput extends Error {
   readonly reason: BadOutputReason;
   readonly issues: string[];
