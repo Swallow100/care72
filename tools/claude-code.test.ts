@@ -121,3 +121,71 @@ describe(".claude/skills", () => {
     for (const [, name] of text.matchAll(/npm run ([\w:-]+)/g)) expect(scripts, name).toContain(name);
   });
 });
+
+/** Claude Code の公式の文書（sub-agents）にあるサブエージェントの頭の項目。違う名前は黙って無視されるので、ここで止める */
+const AGENT_FIELDS = [
+  "name",
+  "description",
+  "tools",
+  "disallowedTools",
+  "model",
+  "permissionMode",
+  "maxTurns",
+  "effort",
+  "color",
+  "skills",
+  "mcpServers",
+  "hooks",
+  "memory",
+  "background",
+  "isolation",
+  "initialPrompt",
+  "autoCompactWindow",
+  "omitClaudeMd",
+  "experimental",
+];
+
+/** 目的ごとのモデル（docs/CLAUDE_CODE.md）。医療の文は opus、画面の決まりの照合は sonnet、数の多いペルソナの出力は haiku */
+const AGENT_MODELS: Readonly<Record<string, string>> = {
+  "medical-reviewer": "opus",
+  "screen-checker": "sonnet",
+  "persona-tester": "haiku",
+};
+
+/** 見直し役は読むだけ。書く道具（Write・Edit・Bash など）は渡さない */
+const READ_ONLY_TOOLS = ["Read", "Grep", "Glob"];
+
+describe(".claude/agents", () => {
+  const files = readdirSync(root(".claude/agents")).filter((f) => f.endsWith(".md"));
+  const agents = files.map((f) => ({ file: f, ...frontmatter(read(`.claude/agents/${f}`)) }));
+
+  it("medical-reviewer・persona-tester・screen-checker の 3 つ", () => {
+    expect(files.sort()).toEqual(["medical-reviewer.md", "persona-tester.md", "screen-checker.md"]);
+  });
+
+  it.each(agents)("$file: 名前はファイルの名前、知らない項目なし、モデルは目的のとおり", ({ file, fields }) => {
+    const name = file.replace(/\.md$/, "");
+    expect(fields.name).toBe(name);
+    for (const key of Object.keys(fields)) expect(AGENT_FIELDS, key).toContain(key);
+    expect(fields.model).toBe(AGENT_MODELS[name]);
+  });
+
+  it.each(agents)("$file: 説明は YAML で読める 1 行（「: 」「 #」を含まない）", ({ fields }) => {
+    expect(fields.description.length).toBeGreaterThan(40);
+    expect(fields.description).not.toMatch(/: | #/);
+  });
+
+  it.each(agents)("$file: 道具は読むだけ（Read・Grep・Glob と手元の MCP の名前）", ({ fields }) => {
+    const tools = fields.tools.split(",").map((t) => t.trim());
+    expect(tools.length).toBeGreaterThan(0);
+    for (const t of tools) expect(READ_ONLY_TOOLS.includes(t) || t.startsWith("mcp__care72-local__"), t).toBe(true);
+  });
+
+  it.each(agents)("$file: 返す物の節があり、書いてあるファイルが本当にある", ({ file, body }) => {
+    expect(body).toContain("## 返す物");
+    const text = read(`.claude/agents/${file}`);
+    const paths = [...text.matchAll(/\b(?:lib|docs|seed|tools|app)\/[\w./-]*\w/g)].map((m) => m[0]);
+    expect(paths.length).toBeGreaterThan(0);
+    for (const p of paths) expect(existsSync(root(p)), p).toBe(true);
+  });
+});
