@@ -176,9 +176,17 @@ export function PhoneView({ state, nowMs, on }: { state: PhoneState; nowMs: numb
     case "done":
       return (
         <Fill step="done">
-          <div className="flex flex-1 flex-col items-center justify-center gap-2 text-center" role="status" data-delivery={state.delivery}>
+          <div className="flex flex-1 flex-col items-center justify-center gap-2 text-center" role="status" data-delivery={state.delivery} data-silent={state.silent ? "" : undefined}>
             <p className="text-[2.5rem] font-bold">
-              <Words m={state.delivery === "sent" ? PHONE_PHRASES.sent : PHONE_PHRASES.queued} />
+              <Words
+                m={
+                  state.delivery !== "sent"
+                    ? PHONE_PHRASES.queued
+                    : state.silent
+                      ? PHONE_PHRASES.recordingSent
+                      : PHONE_PHRASES.sent
+                }
+              />
             </p>
             {state.delivery === "queued" && (
               <p className="text-2xl text-muted">
