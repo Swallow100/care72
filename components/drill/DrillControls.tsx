@@ -9,6 +9,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { DRILL_LABELS } from "@/lib/drill/labels";
+import { RINGING_EVENT } from "./IncomingCall";
 
 /** 早送りの 1 刻みの間（画面の色が変わるのを見られるように） */
 const FAST_MS = 2500;
@@ -64,6 +65,15 @@ export function DrillControls({ id, step, done }: { id: string; step: number; do
   useEffect(() => {
     if (done) setFast(false);
   }, [done]);
+
+  // 着信が鳴ったら早送りを止める（components/drill/IncomingCall。応答・拒否してから進める）
+  useEffect(() => {
+    const onRing = (e: Event) => {
+      if ((e as CustomEvent<boolean>).detail) setFast(false);
+    };
+    window.addEventListener(RINGING_EVENT, onRing);
+    return () => window.removeEventListener(RINGING_EVENT, onRing);
+  }, []);
 
   const abandon = async () => {
     setBusy(true);
