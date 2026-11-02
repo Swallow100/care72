@@ -119,7 +119,7 @@ export function CaseMap({ pins, layers, demo, unplaced }: CaseMapProps) {
               震度 <span className="text-lg leading-none tabular-nums">{demo.quake.intensity}</span>
             </span>
           )}
-          <span className="ml-auto text-muted">筋書きの値</span>
+          <span className="ml-auto text-muted">想定の値</span>
         </div>
       )}
 

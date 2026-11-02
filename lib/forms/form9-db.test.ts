@@ -178,7 +178,7 @@ describe("D1 から読む（発災時、信号の表を読む口）", () => {
     expect(byId.get("p-10")?.cells.checkedAt).toBe("2026-11-03 13:10");
   });
 
-  it("経過の避難所の名前: payload の shelter、無ければ到着・受領の本文", () => {
+  it("経過の避難所の名前: payload の shelter、無ければ到着・受入の本文", () => {
     expect(entryPlace({ kind: "arrived_shelter", body: "そらみ台小学校", payload: null })).toBe("そらみ台小学校");
     expect(entryPlace({ kind: "received", body: null, payload: '{"shelter":"みずほし公民館"}' })).toBe("みずほし公民館");
     expect(entryPlace({ kind: "transported", body: "病院へ", payload: null })).toBeNull();

@@ -281,6 +281,8 @@ describe("ケアマネの一覧の状態「到着 避難所」", () => {
     const f9 = await loadForm9(db, { officeId: "office-demo" }, { today: TODAY, situation: { now: NOW, disasterAt: DISASTER_AT, outageAt: null } });
     const row = f9!.sheet.rows.find((r) => r.id === "p-09")!;
     expect(row.color).toBe("green");
+    // 様式 9 の結果の列は「受入」と避難所（lib/labels.ts の TIMELINE_KIND_LABELS）
+    expect(row.result).toMatchObject({ label: "受入", location: "shelter", place: SHELTER });
   });
 
   it("受け入れより後の赤は赤に戻る。発災より前の受け入れは数えない", async () => {

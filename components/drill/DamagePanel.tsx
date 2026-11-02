@@ -8,6 +8,7 @@ import {
   PHONE_LABELS,
   SHELTER_LABELS,
   TSUNAMI_LABELS,
+  WATER_LABELS,
   WORLD_LABELS,
 } from "@/lib/drill/labels";
 
@@ -75,7 +76,7 @@ export function DamagePanel({
         <span className={world.phone === "ok" ? "" : BAD}>{PHONE_LABELS[world.phone]}</span>
       </Item>
       <Item label={WORLD_LABELS.water} k="water">
-        {world.waterOut ? <span className={BAD}>{WORLD_LABELS.water}</span> : <span className="text-muted">{WORLD_LABELS.no}</span>}
+        <span className={world.water === "out" ? BAD : world.water === "none" ? "text-muted" : ""}>{WATER_LABELS[world.water]}</span>
       </Item>
       <Item label={WORLD_LABELS.roads} k="roads">
         <List

@@ -3,7 +3,7 @@
 // 安否の色の言葉（至急・要確認・灰・無事）は lib/labels.ts の COLOR_LABELS を読み、ここに書かない。
 
 import type { DrillScenario, DrillStatus } from "../db/types.ts";
-import type { PhoneState, ShelterState, TsunamiState, WorldEventKind } from "./scenarios.ts";
+import type { PhoneState, ShelterState, TsunamiState, WaterState, WorldEventKind } from "./scenarios.ts";
 
 export const SCENARIO_LABELS: Record<DrillScenario, string> = {
   heavy_rain: "大雨の想定",
@@ -87,6 +87,7 @@ export const WORLD_LABELS = {
 } as const;
 
 export const PHONE_LABELS: Record<PhoneState, string> = { ok: "通常", busy: "不安定", down: "不通" };
+export const WATER_LABELS: Record<WaterState, string> = { none: "なし", out: "断水中", restored: "解消" };
 export const TSUNAMI_LABELS: Record<TsunamiState, string> = { none: "なし", evacuate: "避難", lifted: "解除" };
 export const SHELTER_LABELS: Record<ShelterState, string> = { open: "開設", crowded: "混雑", full: "満員" };
 
@@ -106,12 +107,12 @@ export const DRILL_API_ERRORS = [
 export type DrillApiError = (typeof DRILL_API_ERRORS)[number];
 
 export const DRILL_API_LABELS: Record<DrillApiError, string> = {
-  login_required: "ログイン要",
+  login_required: "未ログイン",
   forbidden: "権限なし",
   invalid: "入力不正",
   not_found: "対象なし",
-  running: "実施中あり",
-  conflict: "競合 再読込",
+  running: "訓練実施中",
+  conflict: "要再読込",
   ended: "終了済",
 };
 
@@ -120,7 +121,7 @@ export function elapsedLabel(hour: number): string {
   return `${DRILL_LABELS.elapsed} ${hour} ${DRILL_LABELS.hours}`;
 }
 
-/** 訓練記録の一覧の「経過 6 時間 / 72」 */
+/** 訓練記録の一覧の「経過 6 / 72 時間」 */
 export function progressLabel(hour: number, last: number): string {
-  return `${elapsedLabel(hour)} / ${last}`;
+  return `${DRILL_LABELS.elapsed} ${hour} / ${last} ${DRILL_LABELS.hours}`;
 }

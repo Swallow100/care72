@@ -3,8 +3,8 @@
 // 経過の kind は既にある received（受け入れ）・transported（搬送）・released（退所）を使い、payload の source を custody にする。
 // body は受け入れなら避難所の名前（lib/forms/form9-db.ts の entryPlace は payload の shelter → body の順で読む）、
 // 搬送なら行き先（無ければ空）。書き手は受け持つアカウントと役（医療班・行政）。
-// 画面の種類の言葉は「受入」「搬送」「退所」（lib/labels.ts の TIMELINE_KIND_LABELS は received を「受領」、released を「受持解除」と
-// 持つが、受け持ちの行はここで上書きする。経過の 1 行は「受入 かわなぎ小学校 医療班」）。
+// 画面の種類の言葉は「受入」「搬送」「退所」（lib/labels.ts の TIMELINE_KIND_LABELS は received を「受入」、released を「受持解除」と
+// 持つ。受け持ちの行の退所はここで「退所」に上書きする。経過の 1 行は「受入 かわなぎ小学校 医療班」）。
 //
 // ここは型と読み方だけ（lib/person.ts の経過からも読む）。書くのは lib/custody/store.ts。
 
