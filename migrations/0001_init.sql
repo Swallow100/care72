@@ -266,3 +266,30 @@ CREATE TABLE office_timeline_entries (
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 CREATE INDEX office_timeline_office_time ON office_timeline_entries (office_id, occurred_at);
+
+-- 様式の対応表（docs/tasks/T08.md）。松山市以外の様式の「どの欄に台帳のどの項目」。事業所ごと。
+-- 写真・PDF を Opus が読んだ物は下書き（draft）で入り、ケアマネが確かめて保存すると checked。差し込みに使うのは checked だけ。
+-- form_hash は読んだ写真・PDF の SHA-256。同じ物は読み直さない（事業所の中で 1 つ）。手で作った物は NULL。
+-- 写真・PDF そのものは持たない。mapping は対応表の JSON（lib/forms/mapping.ts の FormMapping。欄ごとに AI の読んだ物を残す）。
+-- 事業所を消すと一緒に消える（種を入れ直すと空になる）。
+CREATE TABLE form_mappings (
+  id TEXT PRIMARY KEY,
+  office_id TEXT NOT NULL REFERENCES offices (id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  form_hash TEXT CHECK (form_hash IS NULL OR (length(form_hash) = 64 AND form_hash NOT GLOB '*[^0-9a-f]*')),
+  source_kind TEXT NOT NULL CHECK (source_kind IN ('image', 'pdf', 'manual')),
+  mapping TEXT NOT NULL CHECK (json_valid(mapping)),
+  status TEXT NOT NULL CHECK (status IN ('draft', 'checked')),
+  -- 読んだモデル（手で作った物は NULL）
+  ai_model TEXT,
+  created_by TEXT REFERENCES accounts (id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL,
+  checked_by TEXT REFERENCES accounts (id) ON DELETE SET NULL,
+  checked_at TEXT,
+  version INTEGER NOT NULL DEFAULT 1 CHECK (version >= 1),
+  updated_at TEXT NOT NULL,
+  CHECK ((status = 'checked') = (checked_at IS NOT NULL)),
+  CHECK ((source_kind = 'manual') = (form_hash IS NULL)),
+  UNIQUE (office_id, form_hash)
+);
+CREATE INDEX form_mappings_office ON form_mappings (office_id, updated_at);

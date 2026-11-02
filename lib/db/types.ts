@@ -617,6 +617,35 @@ export type OfficeTimelineEntryRow = {
   created_at: string;
 };
 
+// ---------- 様式の対応表（T08） ----------
+
+/** 読んだ物: 写真・PDF・手で作った */
+export const FORM_SOURCE_KINDS = ["image", "pdf", "manual"] as const;
+export type FormSourceKind = (typeof FORM_SOURCE_KINDS)[number];
+
+/** 下書き（AI が読んだまま・作りかけ）・確認済（ケアマネが確かめた。差し込みに使うのはこれだけ） */
+export const FORM_MAPPING_STATUSES = ["draft", "checked"] as const;
+export type FormMappingStatus = (typeof FORM_MAPPING_STATUSES)[number];
+
+/** 様式の対応表 1 つ。mapping は lib/forms/mapping.ts の FormMapping の JSON */
+export type FormMappingRow = {
+  id: string;
+  office_id: string;
+  title: string;
+  /** 読んだ写真・PDF の SHA-256。手で作った物は null */
+  form_hash: string | null;
+  source_kind: FormSourceKind;
+  mapping: string;
+  status: FormMappingStatus;
+  ai_model: string | null;
+  created_by: string | null;
+  created_at: string;
+  checked_by: string | null;
+  checked_at: string | null;
+  version: number;
+  updated_at: string;
+};
+
 // ---------- 訓練の JSON の形 ----------
 
 /** ペルソナ（Haiku）が 1 刻みで返す決まった形。言葉は毎回違っても形は同じ */
