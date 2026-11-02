@@ -33,9 +33,14 @@
   background: #fff;
   color: #111;
   color-scheme: light;
-  font-size: 8.5pt;
+  font-size: 9.5pt;
   line-height: 1.4;
   font-variant-numeric: tabular-nums;
+}
+
+/* 表は余りを段の間に配り、下に空きを残さない（裏は避難経路の欄が余りを取る） */
+.paper[data-page="1"] {
+  justify-content: space-between;
 }
 
 /* ---- 欄の部品 ---- */
@@ -70,12 +75,12 @@
 /* 欄の区切りは隙間から見える灰色の地（行と列を全部埋める） */
 .paper .grid {
   display: grid;
-  gap: 0.5pt;
+  gap: 1px;
   background: #bbb;
 }
 .paper .grid > * {
   background: #fff;
-  padding: 0.7mm 1.6mm 0.9mm;
+  padding: 1mm 1.8mm 1.3mm;
   min-width: 0;
 }
 .paper .grid > .grid {
@@ -92,22 +97,26 @@
 
 .paper .f-l {
   display: block;
-  font-size: 6.8pt;
+  font-size: 7.4pt;
   color: #444;
-  line-height: 1.25;
+  line-height: 1.3;
 }
 .paper .f-v {
   display: block;
 }
-.paper .lg .f-v {
-  font-size: 10.5pt;
+.paper .lg .f-v,
+.paper .lg {
+  font-size: 11.5pt;
+}
+.paper .lg .f-l {
+  font-size: 7.4pt;
 }
 .paper .xl .f-v {
-  font-size: 13pt;
+  font-size: 15pt;
   line-height: 1.3;
 }
 .paper .sm .f-v {
-  font-size: 7.6pt;
+  font-size: 8.4pt;
 }
 
 /* 1 行の中の言葉 */
@@ -147,7 +156,10 @@
 }
 .paper .hand {
   display: block;
-  min-height: 6mm;
+  min-height: 11mm;
+}
+.paper .nowrap {
+  white-space: nowrap;
 }
 
 .paper .title {

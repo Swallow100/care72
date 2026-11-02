@@ -6,6 +6,7 @@
 
 import type { CSSProperties } from "react";
 import {
+  cellText,
   MATSUYAMA_FORM_VERSION,
   matsuyamaField,
   type MatsuyamaKey,
@@ -95,8 +96,8 @@ function PageOne({ s }: { s: Sheet }) {
       <h1 className="title">松山市避難行動要支援者名簿登録申込書 兼 個別避難計画</h1>
       <div className="top">
         <span>（あて先）松山市長</span>
-        <span data-field="head.date">
-          <FormCell cell={s.cells["head.date"]} /> 作成
+        <span data-field="head.date" className="nowrap">
+          {cellText(s.cells["head.date"])} 作成
         </span>
       </div>
 
@@ -149,7 +150,7 @@ function PageOne({ s }: { s: Sheet }) {
         <div className="blk-h">
           近親者及緊急時の連絡先<span className="note">安否確認ができたときの連絡先</span>
         </div>
-        <div className="grid" style={cols("1fr 1.3fr 0.6fr 1fr 1fr 1fr")}>
+        <div className="grid" style={cols("0.9fr 1.3fr 0.5fr 1.3fr 1.1fr 1fr")}>
           <F s={s} k="kin.kana" size="sm" />
           <F s={s} k="kin.name" size="lg" />
           <F s={s} k="kin.relation" />

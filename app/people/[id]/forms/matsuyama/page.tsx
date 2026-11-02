@@ -36,7 +36,7 @@ export default async function MatsuyamaFormPage({ params }: Props) {
   const pending = sheet.pending.map((p) => p.label);
 
   return (
-    <main className="py-4">
+    <main className="py-4 print:p-0">
       <div className="screen-only mx-auto mb-4 flex max-w-[calc(210mm+2rem)] flex-wrap items-center gap-x-4 gap-y-2 px-4">
         <Link href={`/people/${id}`} className="rounded px-2 py-1 text-sm text-muted" data-press>
           戻る
