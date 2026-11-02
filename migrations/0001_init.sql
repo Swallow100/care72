@@ -169,6 +169,16 @@ CREATE TABLE signals (
   transcript TEXT,
   classes TEXT CHECK (classes IS NULL OR json_valid(classes)),
   classified_by TEXT CHECK (classified_by IS NULL OR classified_by IN ('claude', 'care_manager')),
+  -- 録音・自由文の分類（T12、Claude の答え）。classes は今効いている分類（人が直せば人の物）で、ai_* は Claude の答えを直したあとも残す。
+  -- 分類できなかったときは classes を空のまま ai_error に理由。ai_at は Claude の分類を試みた時刻（答え・理由のどちらでも）
+  ai_classes TEXT CHECK (ai_classes IS NULL OR json_valid(ai_classes)),
+  ai_confidence REAL CHECK (ai_confidence IS NULL OR (ai_confidence >= 0 AND ai_confidence <= 1)),
+  ai_quote TEXT,
+  ai_model TEXT,
+  ai_error TEXT CHECK (ai_error IS NULL OR ai_error IN (
+    'no_text', 'not_configured', 'limit', 'refused', 'bad_output', 'failed', 'leak'
+  )),
+  ai_at TEXT,
   occurred_at TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );

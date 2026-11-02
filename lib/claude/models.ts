@@ -43,8 +43,9 @@ export const PURPOSES: Readonly<Record<ClaudePurpose, PurposeSpec>> = {
   summary: { model: SONNET, effort: "low", maxTokens: 8000, timeoutMs: 90_000 },
   // 訓練の本人役・家族役の 1 刻み（T18）
   persona: { model: HAIKU, effort: "low", maxTokens: 4000, timeoutMs: 60_000 },
-  // 録音と自由文を 5 つに分ける（T12）
-  classify: { model: HAIKU, effort: "low", maxTokens: 4000, timeoutMs: 60_000 },
+  // 録音と自由文を 5 つに分ける（T12）。録音の応答のあとに waitUntil で走らせ、Workers が応答のあとに待つ 30 秒に
+  // 再試行（1 回）込みで収める（12 秒 × 2）。短い文 1 つの分類で、これを超えたら分類なし（AI 失敗）にする
+  classify: { model: HAIKU, effort: "low", maxTokens: 4000, timeoutMs: 12_000 },
 };
 
 /**

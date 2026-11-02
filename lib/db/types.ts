@@ -146,6 +146,13 @@ export type RecordingClass = (typeof RECORDING_CLASSES)[number];
 export const CLASSIFIERS = ["claude", "care_manager"] as const;
 export type Classifier = (typeof CLASSIFIERS)[number];
 
+/**
+ * 分類できなかった理由（signals.ai_error）。文字起こしが無い・AI 未設定・上限・断られた・形が違う・呼び出しの失敗・伏せきれない。
+ * どれも classes は空のまま（色は答えだけで決まる）
+ */
+export const CLASSIFY_ERRORS = ["no_text", "not_configured", "limit", "refused", "bad_output", "failed", "leak"] as const;
+export type ClassifyError = (typeof CLASSIFY_ERRORS)[number];
+
 export const AUTHOR_ROLES = [
   "self",
   "family",
@@ -514,9 +521,21 @@ export type SignalRow = {
   /** R2 の鍵 */
   recording_key: string | null;
   transcript: string | null;
-  /** RecordingClass[] の JSON */
+  /** RecordingClass[] の JSON。今効いている分類（人が直せば人の物） */
   classes: string | null;
   classified_by: Classifier | null;
+  /** Claude の分類（RecordingClass[] の JSON）。人が直しても残す */
+  ai_classes: string | null;
+  /** Claude の確信（0〜1） */
+  ai_confidence: number | null;
+  /** 文字起こしからの引用（10 字まで。伏せた所は（氏名）のまま） */
+  ai_quote: string | null;
+  /** 答えたモデル */
+  ai_model: string | null;
+  /** 分類できなかった理由 */
+  ai_error: ClassifyError | null;
+  /** Claude の分類を試みた時刻 */
+  ai_at: string | null;
   occurred_at: string;
   created_at: string;
 };
