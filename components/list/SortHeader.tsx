@@ -33,7 +33,7 @@ export function SortHeader({
       <Link
         href={href ?? caseloadHref({ sort: k })}
         data-press
-        className={`relative -mx-1 rounded px-1 py-0.5 ${active ? "font-bold text-ink underline underline-offset-4" : "font-normal text-muted"}`}
+        className={`relative -mx-1 inline-block rounded px-1 ${active ? "font-bold text-ink underline underline-offset-4" : "font-normal text-muted"}`}
       >
         {label ?? COLUMN_LABELS[k]}
         <LinkPending />

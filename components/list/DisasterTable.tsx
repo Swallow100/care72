@@ -53,8 +53,8 @@ export function DisasterTable({
     <table className={TABLE} data-table="disaster">
       <thead>
         <tr>
-          <SortHeader k="state" sort={sort} href={h("state")} className="w-[5.25rem] text-center" />
-          <SortHeader k="tier" sort={sort} href={h("tier")} className="w-10 text-center" />
+          <SortHeader k="state" sort={sort} href={h("state")} className="w-[4.75rem] text-center" />
+          <SortHeader k="tier" sort={sort} href={h("tier")} className="w-8 text-center sm:w-10" />
           <SortHeader k="kana" sort={sort} href={h("kana")} />
           <SortHeader k="remain" sort={sort} href={h("remain")} />
           <SortHeader k="contact" sort={sort} href={h("contact")} className={SM} />
@@ -99,7 +99,7 @@ function Cells({ row: r, sort, nameHref }: { row: CaseloadRow; sort: SortKey; na
           {r.rank ?? "—"}
         </span>
       </td>
-      <td className={`${CELL} min-w-[9rem]`}>
+      <td className={`${CELL} sm:min-w-[9rem]`}>
         {href === null ? (
           <span className="font-bold">{r.name}</span>
         ) : (
@@ -120,7 +120,7 @@ function Cells({ row: r, sort, nameHref }: { row: CaseloadRow; sort: SortKey; na
           </div>
         )}
       </td>
-      <td className={`${CELL} min-w-[5.5rem]`}>
+      <td className={`${CELL} sm:min-w-[5.5rem]`}>
         {r.remain ? (
           <>
             <div className={`whitespace-nowrap font-bold ${r.remain.tone ? TONE_TEXT[r.remain.tone] : ""}`}>

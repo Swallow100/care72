@@ -9,7 +9,7 @@ export const TABLE_BOX = "overflow-hidden rounded-lg bg-base";
 export const TABLE = "w-full border-separate border-spacing-x-0 border-spacing-y-px text-left text-sm";
 
 /** 見出しのセル */
-export const TH = "bg-panel2 px-2 py-1.5 align-bottom text-xs font-bold whitespace-nowrap text-muted";
+export const TH = "bg-panel2 px-2 py-1.5 align-middle text-xs leading-5 font-bold whitespace-nowrap text-muted";
 
 /** 本文のセル */
 export const TD = "bg-panel px-2 py-1.5 align-top";
