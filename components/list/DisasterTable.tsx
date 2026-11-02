@@ -16,30 +16,43 @@ import { SortHeader } from "./SortHeader";
 const CELL = "bg-panel px-1.5 py-2 align-top first:rounded-l-md last:rounded-r-md";
 const COLS = 10;
 
+/**
+ * 担当一覧の外で同じ表を使うとき（訓練 T17）の口。並べ替えの行き先、氏名の行き先（null なら文字だけ）、行の下の詳細
+ * （訓練は本番の電話・優先修正の部品を出さない）。無ければ担当一覧のまま
+ */
+export type TableSlots = {
+  sortHref: (k: SortKey) => string;
+  nameHref: (id: string) => string | null;
+  detail: (row: CaseloadRow) => React.ReactNode;
+};
+
 export function DisasterTable({
   rows,
   sort,
   classification,
+  slots,
 }: {
   rows: CaseloadRow[];
   sort: SortKey;
   /** 分類と直す口（T12 の部品）。信号ごとに描く。無ければ RowDetail が読むだけで出す */
   classification?: ClassificationSlot;
+  slots?: TableSlots;
 }) {
+  const h = (k: SortKey) => slots?.sortHref(k);
   return (
     <table className="w-full min-w-[50rem] border-separate border-spacing-y-0.5 text-left text-sm" data-table="disaster">
       <thead>
         <tr className="whitespace-nowrap text-muted">
-          <SortHeader k="state" sort={sort} className="w-[5.5rem] text-center" />
-          <SortHeader k="tier" sort={sort} className="w-12 text-center" />
-          <SortHeader k="kana" sort={sort} />
-          <SortHeader k="remain" sort={sort} />
-          <SortHeader k="contact" sort={sort} />
-          <SortHeader k="age" sort={sort} />
-          <SortHeader k="medical" sort={sort} />
-          <SortHeader k="hazard" sort={sort} />
-          <SortHeader k="supporter" sort={sort} />
-          <SortHeader k="plan" sort={sort} />
+          <SortHeader k="state" sort={sort} href={h("state")} className="w-[5.5rem] text-center" />
+          <SortHeader k="tier" sort={sort} href={h("tier")} className="w-12 text-center" />
+          <SortHeader k="kana" sort={sort} href={h("kana")} />
+          <SortHeader k="remain" sort={sort} href={h("remain")} />
+          <SortHeader k="contact" sort={sort} href={h("contact")} />
+          <SortHeader k="age" sort={sort} href={h("age")} />
+          <SortHeader k="medical" sort={sort} href={h("medical")} />
+          <SortHeader k="hazard" sort={sort} href={h("hazard")} />
+          <SortHeader k="supporter" sort={sort} href={h("supporter")} />
+          <SortHeader k="plan" sort={sort} href={h("plan")} />
         </tr>
       </thead>
       <tbody>
@@ -57,8 +70,8 @@ export function DisasterTable({
                 </StateTag>
               ) : null
             }
-            cells={<Cells row={r} sort={sort} />}
-            detail={r.detail ? <RowDetail detail={r.detail} classification={classification} /> : null}
+            cells={<Cells row={r} sort={sort} nameHref={slots ? slots.nameHref(r.id) : undefined} />}
+            detail={slots ? slots.detail(r) : r.detail ? <RowDetail detail={r.detail} classification={classification} /> : null}
           />
         ))}
       </tbody>
@@ -66,8 +79,9 @@ export function DisasterTable({
   );
 }
 
-function Cells({ row: r, sort }: { row: CaseloadRow; sort: SortKey }) {
+function Cells({ row: r, sort, nameHref }: { row: CaseloadRow; sort: SortKey; nameHref?: string | null }) {
   const t = r.triage;
+  const href = nameHref === undefined ? rowLink(sort, null, r.id).href : nameHref;
   return (
     <>
       <td className={`${CELL} text-center`}>
@@ -76,9 +90,13 @@ function Cells({ row: r, sort }: { row: CaseloadRow; sort: SortKey }) {
         </span>
       </td>
       <td className={`${CELL} min-w-[10rem]`}>
-        <Link href={rowLink(sort, null, r.id).href} className="-mx-1 rounded px-1 font-bold" data-press>
-          {r.name}
-        </Link>
+        {href === null ? (
+          <span className="font-bold">{r.name}</span>
+        ) : (
+          <Link href={href} className="-mx-1 rounded px-1 font-bold" data-press>
+            {r.name}
+          </Link>
+        )}
         <span className="ml-1 text-xs text-muted">{r.kana}</span>
         {t && (
           <div className={`mt-0.5 font-bold ${TONE_TEXT[COLOR_TONES[t.color]]}`} data-reason>
