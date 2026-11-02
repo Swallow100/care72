@@ -144,7 +144,10 @@ describe("医療班・行政の本人のページ（同意あり 1 山田）", (
     const rows = (await loadPersonPage(db, judgeCm(), "p-01"))!;
     const a = toPersonView(rows, { today: TODAY });
     const b = toPersonView(rows, { today: TODAY, scope: scopeOfRows("care_manager", rows) });
-    expect(a).toEqual(b);
+    // 書き足しの欄だけ違う（範囲を渡した単独のページだけに出す。担当一覧の右の面は渡さない）
+    expect({ ...a, writes: [] }).toEqual({ ...b, writes: [] });
+    expect(a.writes).toEqual([]);
+    expect(b.writes).toEqual(["safety_check", "transported", "arrived_shelter", "note"]);
     expect(a.sections.map((s) => s.id)).toEqual(["medical", "evacuation", "people", "basic", "consent", "documents", "timeline"]);
     expect(a.head.show).toEqual({ medical: true, people: true, plan: true });
   });

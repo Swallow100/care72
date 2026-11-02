@@ -344,7 +344,7 @@ export type PersonView = {
   sections: Section[];
   /** 台帳の pending と、画面のどの区分・欄に出たか（T03 の問いの元）。範囲の外の区分の物は入れない */
   unconfirmed: UnconfirmedItem[];
-  /** 経過に書き足せる種類（lib/consent/scope.ts）。空なら書き足しの欄を出さない */
+  /** 経過に書き足せる種類（lib/consent/scope.ts）。空なら書き足しの欄を出さない。範囲を渡さないとき（担当一覧の右の面）は空 */
   writes: WritableKind[];
 };
 
@@ -1198,7 +1198,8 @@ export function toPersonView(rows: PersonPageRows, opts: ViewOptions): PersonVie
     mode,
     sections: shown,
     unconfirmed: unconfirmed.filter((u) => kept.has(u.field)),
-    writes: [...scope.writes],
+    // 書き足しの欄は範囲を渡した画面（単独の本人のページ）だけ。担当一覧の右の面は電話・優先変更の欄があるので出さない
+    writes: opts.scope ? [...opts.scope.writes] : [],
   };
 }
 
