@@ -1,7 +1,11 @@
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import Link from "next/link";
-import { ColorCounts, countColors } from "@/components/disaster/ColorCounts";
+import { countColors } from "@/components/disaster/ColorCounts";
+import { DisasterSummary } from "@/components/list/DisasterSummary";
+import { DisasterTable } from "@/components/list/DisasterTable";
+import type { ClassificationSlot } from "@/components/list/RowDetail";
 import { SidePane } from "@/components/list/SidePane";
+import { SortHeader } from "@/components/list/SortHeader";
 import { UnlistedFold } from "@/components/office/UnlistedFold";
 import { UnlistedRows } from "@/components/office/UnlistedRows";
 import { PersonWithIntake } from "@/components/person/PersonWithIntake";
@@ -13,8 +17,8 @@ import { requirePage } from "@/lib/auth/server";
 import { hasAnthropicKey } from "@/lib/claude/client";
 import { intakePropsOf, type IntakeProps } from "@/lib/intake/props";
 import {
-  caseloadHref,
   closeHref,
+  DISASTER_SORT_KEYS,
   loadCaseload,
   parseOpen,
   PLAN_TONES,
@@ -26,12 +30,13 @@ import {
   type SortKey,
 } from "@/lib/caseload";
 import { personDisaster } from "@/lib/disaster/person";
+import { elapsedText, shortJst } from "@/lib/disaster/state";
 import { CARE_LEVEL_LABELS, COLOR_LABELS, PLAN_STATUS_LABELS, TIER_LABELS } from "@/lib/labels";
 import { buildSidePane, sideDisasterOf } from "@/lib/map/side";
 import { parsePeopleError } from "@/lib/office/http";
 import { NEW_PERSON_PATH } from "@/lib/office/http-paths";
 import { OFFICE_ERROR_LABELS, OFFICE_LABELS } from "@/lib/office/labels";
-import { COLOR_TONES, formatJst, loadPersonPage, toPersonView, type PersonView as View } from "@/lib/person";
+import { COLOR_TONES, loadPersonPage, toPersonView, type PersonView as View } from "@/lib/person";
 import type { Color } from "@/lib/triage/index";
 
 // D1 を毎回読む
@@ -44,7 +49,11 @@ type Props = {
 /** 利用者追加（T30）。操作の色の塗りのボタン。角は rounded-md（ピル型にしない） */
 const ADD_BUTTON = "rounded-md bg-accent px-4 py-2 text-sm font-bold text-on-accent";
 
-const SORT_LABELS: Record<SortKey, string> = { tier: "優先", kana: "氏名", age: "年齢", plan: "計画" };
+/**
+ * 行の詳細の「分類と直す口」（T12 の部品）。信号ごとに描く。T12 の部品ができたらここで渡す
+ * （例: (signal) => <Classify signal={signal} />）。無ければ行の詳細が信号の分類を読むだけで出し、無ければ「分類なし」
+ */
+const CLASSIFICATION: ClassificationSlot | undefined = undefined;
 
 function isSortKey(v: unknown): v is SortKey {
   return typeof v === "string" && SORT_KEYS.includes(v as SortKey);
@@ -53,12 +62,13 @@ function isSortKey(v: unknown): v is SortKey {
 // 担当一覧。ケアマネは自分の担当、審査員（ケアマネの役）はデモ事業所の山本の担当。
 // 行を押すと本人のページが右に開き（?open=<id>）、一覧は左に圧縮される。狭い幅は本人のページだけ。
 // ログインしていなければ /login へ、行政・医療班・本人・家族・役を選ぶ前の審査員は、それぞれの入口へ送る（requirePage）
-// 災害モード（lib/disaster）のときは、優先の列が色の印（至急・要確認・未知・無事）、氏名の下に理由の 1 行、既定の並びがルールの表の順。
-// 今の時刻で当て直すので、ヘッダーの読み直し（1 分ごと）で色と並びが進む。発災時の列の増え方・行の詳細は T13
+// 災害モード（lib/disaster）のときは発災時の表（components/list/DisasterTable、T13）: 先頭に状態（至急・要確認・未知・無事）と
+// 優先の番号、残り・最終連絡の列を足し、既定の並びがルールの表の順。行を押すと行の下に詳細（電話・録音・上書き）が開く。
+// 上に色ごとの人数と発災・停電からの経過。今の時刻で当て直すので、ヘッダーの読み直し（1 分ごと）で色と並びが進む
 export default async function CaseloadPage({ searchParams }: Props) {
   const principal = await requirePage("caseload");
   const q = await searchParams;
-  const key: SortKey = isSortKey(q.sort) ? q.sort : "tier";
+  const asked: SortKey = isSortKey(q.sort) ? q.sort : "tier";
   const open = parseOpen(q.open);
   const scope = caseloadScope(principal);
 
@@ -73,8 +83,10 @@ export default async function CaseloadPage({ searchParams }: Props) {
   }
   if (!data) return <Message title="担当なし" />;
 
-  const rows = sortCaseload(data.rows, key);
   const disaster = data.situation !== null;
+  // 発災時だけの列（状態・残り・最終連絡）の並びは、平時は優先に戻す
+  const key: SortKey = !disaster && DISASTER_SORT_KEYS.includes(asked) ? "tier" : asked;
+  const rows = sortCaseload(data.rows, key);
   const peopleError = parsePeopleError(q.people_error);
   // 一覧から外した人（T30）。一覧の下の畳み「外した人 N」
   const unlisted = (
@@ -110,26 +122,35 @@ export default async function CaseloadPage({ searchParams }: Props) {
   // 右の面（T14）: 平時は計画の内訳・見直し・未確認・地図。災害モード（T09）は地図が上で、ピンは行の lib/triage の色、
   // 雨雲・震度のデモは事業所の災害の種類と警戒レベルから
   const side = buildSidePane(rows, { sort: key, disaster: data.situation ? sideDisasterOf(rows, data.disaster) : null });
+  const s = data.situation;
   return (
-    <main className="mx-auto grid max-w-6xl gap-6 px-4 py-6 lg:grid-cols-[minmax(0,1fr)_20rem] xl:grid-cols-[minmax(0,1fr)_22rem]">
+    <main
+      className={`mx-auto grid gap-6 px-4 py-6 lg:grid-cols-[minmax(0,1fr)_20rem] xl:grid-cols-[minmax(0,1fr)_22rem] ${
+        disaster ? "max-w-[90rem]" : "max-w-6xl"
+      }`}
+    >
       <section aria-labelledby="caseload-title" className="min-w-0">
         <div className="flex flex-wrap items-baseline gap-x-4 gap-y-2">
           <h1 id="caseload-title" className="text-2xl font-bold">
             担当一覧
           </h1>
           <span className="text-muted">{rows.length} 人</span>
-          {/* 災害モードは色ごとの人数と時点（平時の計画の人数は右の面の「計画」） */}
-          {disaster && (
-            <>
-              <ColorCounts counts={countColors(rows.flatMap((r) => (r.triage ? [r.triage.color] : [])))} />
-              <span className="text-xs text-muted">{formatJst(now)} 時点</span>
-            </>
-          )}
           {/* 利用者追加（T30）は見出しの段の右上 */}
           <Link href={NEW_PERSON_PATH} className={`${ADD_BUTTON} ml-auto self-center`} data-press="overlay">
             {OFFICE_LABELS.addPerson}
           </Link>
         </div>
+        {/* 災害モードは色ごとの人数（大きく）と発災・停電からの経過（平時の計画の人数は右の面の「計画」） */}
+        {s && (
+          <div className="mt-3 rounded-lg bg-panel px-4 py-3">
+            <DisasterSummary
+              counts={countColors(rows.flatMap((r) => (r.triage ? [r.triage.color] : [])))}
+              disaster={elapsedText(s.disasterAt, s.now)}
+              outage={s.outageAt ? { elapsed: elapsedText(s.outageAt, s.now), area: s.outageTowns !== null } : null}
+              at={shortJst(now)}
+            />
+          </div>
+        )}
         {peopleError && (
           <p role="alert" className="mt-2 text-sm font-bold text-danger">
             {OFFICE_ERROR_LABELS[peopleError]}
@@ -138,8 +159,12 @@ export default async function CaseloadPage({ searchParams }: Props) {
         {rows.length === 0 ? (
           <p className="mt-4 rounded-lg bg-panel p-6 text-muted">なし</p>
         ) : (
-          <div className="mt-4 overflow-x-auto">
-            <CaseloadTable rows={rows} sort={key} />
+          <div className="mt-3 overflow-x-auto">
+            {disaster ? (
+              <DisasterTable rows={rows} sort={key} classification={CLASSIFICATION} />
+            ) : (
+              <CaseloadTable rows={rows} sort={key} />
+            )}
           </div>
         )}
         {unlisted}
@@ -183,7 +208,7 @@ async function PersonPanel({ principal, id, sort, now }: { principal: Principal;
   );
 }
 
-/** 右に開いている間の一覧。優先・氏名・医療の印だけに圧縮する。選んだ行は枠と太字 */
+/** 右に開いている間の一覧。優先・氏名・医療の印だけに圧縮する。選んだ行は枠と太字。発災時は色の印と優先の番号 */
 function CompactList({ rows, sort, open }: { rows: CaseloadRow[]; sort: SortKey; open: string }) {
   return (
     <ul className="mt-3 space-y-0.5">
@@ -203,6 +228,7 @@ function CompactList({ rows, sort, open }: { rows: CaseloadRow[]; sort: SortKey;
               {r.triage ? (
                 <span className="text-center">
                   <TriageTag color={r.triage.color} />
+                  {r.rank !== null && <span className="mt-0.5 block text-xs text-muted tabular-nums">{r.rank}</span>}
                 </span>
               ) : (
                 <span className="text-center tabular-nums" title={TIER_LABELS[r.tier]}>
@@ -229,6 +255,7 @@ function CompactList({ rows, sort, open }: { rows: CaseloadRow[]; sort: SortKey;
 
 const CELL = "bg-panel px-3 py-3 align-top first:rounded-l-md last:rounded-r-md";
 
+/** 平時の表。列は 優先（骨格の段）・氏名・年齢・医療・ハザード・支援者・計画。どの列でも並べ替えられる */
 function CaseloadTable({ rows, sort }: { rows: CaseloadRow[]; sort: SortKey }) {
   return (
     <table className="w-full min-w-[46rem] border-separate border-spacing-y-0.5 text-left">
@@ -236,10 +263,10 @@ function CaseloadTable({ rows, sort }: { rows: CaseloadRow[]; sort: SortKey }) {
         <tr className="whitespace-nowrap text-sm text-muted">
           <SortHeader k="tier" sort={sort} className="w-20 text-center" />
           <SortHeader k="kana" sort={sort} />
-          <SortHeader k="age" sort={sort} label="年齢・介護度" />
-          <th className="px-3 py-2 font-normal">医療</th>
-          <th className="px-3 py-2 font-normal">ハザード</th>
-          <th className="px-3 py-2 font-normal">支援者</th>
+          <SortHeader k="age" sort={sort} />
+          <SortHeader k="medical" sort={sort} />
+          <SortHeader k="hazard" sort={sort} />
+          <SortHeader k="supporter" sort={sort} />
           <SortHeader k="plan" sort={sort} />
         </tr>
       </thead>
@@ -247,28 +274,15 @@ function CaseloadTable({ rows, sort }: { rows: CaseloadRow[]; sort: SortKey }) {
         {rows.map((r) => (
           <tr key={r.id}>
             <td className={`${CELL} text-center`}>
-              {r.triage ? (
-                <>
-                  <TriageTag color={r.triage.color} size="md" />
-                  <div className="mt-1 text-xs text-muted tabular-nums" title={TIER_LABELS[r.tier]}>
-                    骨格 {r.tier}
-                  </div>
-                </>
-              ) : (
-                <span className="text-lg font-bold tabular-nums" title={TIER_LABELS[r.tier]}>
-                  {r.tier}
-                </span>
-              )}
+              <span className="text-lg font-bold tabular-nums" title={TIER_LABELS[r.tier]}>
+                {r.tier}
+              </span>
             </td>
             <td className={CELL}>
               <Link href={rowLink(sort, null, r.id).href} className="-mx-1 block rounded px-1 font-bold" data-press>
                 {r.name}
               </Link>
               <div className="text-sm text-muted">{r.kana}</div>
-              {/* 災害モード: ルールの表の理由の 1 行（色と同じ意味の色） */}
-              {r.triage && (
-                <div className={`mt-0.5 text-sm font-bold ${TONE_TEXT[COLOR_TONES[r.triage.color]]}`}>{r.triage.reason}</div>
-              )}
             </td>
             <td className={CELL}>
               <span className="tabular-nums">{r.age ?? "—"}</span>
@@ -317,24 +331,6 @@ function TriageTag({ color, size = "sm" }: { color: Color; size?: "sm" | "md" })
     <StateTag tone={COLOR_TONES[color]} size={size}>
       {COLOR_LABELS[color]}
     </StateTag>
-  );
-}
-
-function SortHeader({ k, sort, label, className = "" }: { k: SortKey; sort: SortKey; label?: string; className?: string }) {
-  const active = k === sort;
-  return (
-    <th
-      className={`px-3 py-2 font-normal ${className}`}
-      aria-sort={active ? (k === "age" ? "descending" : "ascending") : undefined}
-    >
-      <Link
-        href={caseloadHref({ sort: k })}
-        data-press
-        className={`rounded px-1 py-0.5 ${active ? "text-ink underline underline-offset-4" : "text-muted"}`}
-      >
-        {label ?? SORT_LABELS[k]}
-      </Link>
-    </th>
   );
 }
 
