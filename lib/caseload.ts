@@ -6,7 +6,7 @@
 import type { D1Database } from "@cloudflare/workers-types";
 import { ageOn } from "./age.ts";
 import { parseLedger } from "./db/ledger.ts";
-import type { CareLevel, ClockRow, ContactRow, GeoPoint, HazardKind, Ledger, PersonRow, PlanStatus } from "./db/types.ts";
+import type { CareLevel, ClockRow, ContactRow, GeoPoint, HazardKind, Ledger, PersonReportedAge, PersonRow, PlanStatus } from "./db/types.ts";
 import { loadDisasterState } from "./disaster/db.ts";
 import { loadOfficeOverrides, type StoredOverride } from "./disaster/override.ts";
 import { personSituation, toSituation, type DisasterSituation, type DisasterState } from "./disaster/state.ts";
@@ -88,7 +88,9 @@ export type Caseload = {
 type PersonForList = Pick<
   PersonRow,
   "id" | "name" | "kana" | "birth_date" | "plan_status" | "self_report_unreliable" | "ledger"
->;
+> &
+  /** 申告の年齢（医療班・行政がその場で登録して引き受けた人、T23）。生年月日が無いときだけ使う */
+  Partial<PersonReportedAge>;
 type ClockForList = Pick<
   ClockRow,
   "person_id" | "kind" | "category" | "label" | "value" | "unit" | "starts_on" | "depends_on" | "depends_check"
@@ -159,7 +161,7 @@ export function toCaseloadRows(
       id: p.id,
       name: p.name,
       kana: p.kana,
-      age: p.birth_date ? ageOn(p.birth_date, today) : null,
+      age: p.birth_date ? ageOn(p.birth_date, today) : (p.reported_age ?? null),
       careLevel: ledger.care.careLevel ?? null,
       marks: marksOf(myClocks),
       hazards: hazardsOf(ledger),
@@ -308,7 +310,7 @@ export async function loadCaseload(
   const [people, clocks, contacts, unlisted] = await db.batch([
     db
       .prepare(
-        `SELECT id, name, kana, birth_date, plan_status, self_report_unreliable, ledger FROM people
+        `SELECT id, name, kana, birth_date, plan_status, self_report_unreliable, ledger, reported_age FROM people
           WHERE care_manager_id = ?1 AND office_id = ?2 AND unlisted_at IS NULL ORDER BY kana`,
       )
       .bind(cm.id, cm.office_id),

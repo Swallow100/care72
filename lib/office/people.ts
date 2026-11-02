@@ -65,18 +65,22 @@ export type OfficePersonItem = {
 export async function listOfficePeople(db: D1Database, officeId: string, today: string): Promise<OfficePersonItem[]> {
   const res = await db
     .prepare(
-      `SELECT id, name, kana, birth_date, plan_status, care_manager_id, unlisted_at FROM people
+      `SELECT id, name, kana, birth_date, plan_status, care_manager_id, unlisted_at, reported_age FROM people
         WHERE office_id = ?1 ORDER BY kana, id`,
     )
     .bind(officeId)
     .all<
-      Pick<PersonRow, "id" | "name" | "kana" | "birth_date" | "plan_status" | "care_manager_id"> & { unlisted_at: string | null }
+      Pick<PersonRow, "id" | "name" | "kana" | "birth_date" | "plan_status" | "care_manager_id"> & {
+        unlisted_at: string | null;
+        reported_age: number | null;
+      }
     >();
   return res.results.map((r) => ({
     id: r.id,
     name: r.name,
     kana: r.kana,
-    age: r.birth_date ? ageOn(r.birth_date, today) : null,
+    // 生年月日が無ければ申告の年齢（医療班・行政がその場で登録して引き受けた人、T23）
+    age: r.birth_date ? ageOn(r.birth_date, today) : r.reported_age,
     plan: r.plan_status,
     careManagerId: r.care_manager_id,
     unlistedAt: r.unlisted_at,

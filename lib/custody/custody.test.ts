@@ -14,7 +14,7 @@ import { d1FromSqlite, migratedSqlite } from "../db/test-d1.ts";
 import { loadOfficeLog } from "../disaster/db.ts";
 import { personDisaster } from "../disaster/person.ts";
 import { loadForm9 } from "../forms/form9-db.ts";
-import { loadPersonPage, timelineItems } from "../person.ts";
+import { loadPersonPage, timelineItems, toPersonView } from "../person.ts";
 import { currentQrToken, issueQr } from "../qr/store.ts";
 import { staffActor, UNAFFILIATED_OFFICE_ID, type StaffActor } from "./actor.ts";
 import { loadStaffBoard } from "./board.ts";
@@ -333,6 +333,8 @@ describe("台帳に無い人（その場で登録）と引受", () => {
     const rows = (await loadPersonPage(db, medical(), id))!;
     const kinds = timelineItems(rows).map((t) => t.kind);
     expect(kinds).toContain("受入");
+    // 生年月日が無いので、本人のページの年齢は申告の年齢
+    expect(toPersonView(rows, { today: TODAY }).head.age).toBe(80);
     // 検索で見つかり、年齢は申告の印
     const s = await searchPeople(db, actor(), { text: "マツモト", birth: null }, TODAY);
     expect(s.hits).toEqual([{ id, kana: "マツモト ミツ", birthDate: null, age: 80, ageReported: true, mine: true }]);
@@ -375,7 +377,7 @@ describe("台帳に無い人（その場で登録）と引受", () => {
 
     // ケアマネの担当一覧に出る。医療班の受け持ちは閉じない
     const c = await loadCaseload(db, { officeId: "office-demo", careManagerId: "acct-yamamoto" }, TODAY, NOW);
-    expect(c!.rows.map((x) => x.id)).toContain("p-matsumoto");
+    expect(c!.rows.find((x) => x.id === "p-matsumoto")).toMatchObject({ name: "松本 ミツ", age: 80 });
     expect(await personInScope(db, medical(), "p-matsumoto")).not.toBeNull();
 
     // 2 回目・台帳から作った人は引き受けない
