@@ -1,6 +1,6 @@
 // ケア72 の Workers の設定。
-// まだ配信しない。database_id は仮の値で、手元の --local でだけ使う。
-// Cloudflare のアカウントを作ったあとで本物に替える（docs/PROGRESS.md）。
+// 配信は作者が手で打つ（docs/tasks/T27.md）。D1 care72 と R2 care72-recordings は 11/2 に作った本物。
+// account_id は書かない（作者の wrangler のログインから決まる）。手元の dev と --local はこの設定のまま動く。
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "care72",
@@ -15,7 +15,7 @@
     {
       "binding": "DB",
       "database_name": "care72",
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "90da0202-9eae-42e1-9fd4-065c33224a8d",
       "migrations_dir": "migrations"
     }
   ],
