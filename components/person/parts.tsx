@@ -78,9 +78,15 @@ export function PendingMark({ pending }: { pending: readonly Pending[] }) {
  * Claude の出力の印「AI」。人が確かめて直せる所に付ける（CLAUDE.md「守ること」）。
  * 状態の 4 色は使わず、地の灰色と太字だけ（色は意味にだけ使う）
  */
-export function AiMark({ title = "AI の出力。人が確認" }: { title?: string }) {
+export function AiMark({ title = "AI の出力。人が確認", small = false }: { title?: string; small?: boolean }) {
+  // small は項目の行の印（見出しの印に読み上げを任せ、行ごとには読み上げない）
   return (
-    <span className="rounded bg-base px-1 py-px text-xs font-bold text-ink" data-ai title={title}>
+    <span
+      className={`rounded bg-base font-bold text-ink ${small ? "px-0.5 text-[10px] leading-tight" : "px-1 py-px text-xs"}`}
+      data-ai={small ? "item" : ""}
+      title={title}
+      aria-hidden={small || undefined}
+    >
       AI
     </span>
   );

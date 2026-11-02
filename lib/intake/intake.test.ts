@@ -2,7 +2,10 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { D1Database } from "@cloudflare/workers-types";
 import type { DatabaseSync } from "node:sqlite";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it } from "vitest";
+import { IntakeChanges, rowsOf, type ChangeRow } from "../../components/person/IntakeChanges.tsx";
 import { SEED_AT, SEED_PEOPLE, seedConsents, type SeedPerson } from "../../seed/people.ts";
 import { seedStatements } from "../../seed/sql.ts";
 import type { Principal } from "../auth/principal.ts";
@@ -652,5 +655,36 @@ describe("保存（lib/intake/save.ts）", () => {
     const tl = sqlite.prepare("SELECT body, payload FROM timeline_entries").get() as { body: string; payload: string };
     expect(tl.body).toBe("手入力: 夜間支援（未聴取）");
     expect(JSON.parse(tl.payload).fields).toEqual(["people.night_supporter"]);
+  });
+});
+
+// ---------- 変更点の画面 ----------
+
+describe("変更点の画面（components/person/IntakeChanges.tsx）", () => {
+  const rows = seedRows(seed("p-04"));
+  const input = { ledger: parseLedger(rows.person.ledger), contacts: rows.contacts };
+  const render = (r: ChangeRow[]) =>
+    renderToStaticMarkup(
+      createElement(IntakeChanges, {
+        rows: r,
+        dropped: 1,
+        ledger: input.ledger,
+        clocks: [],
+        busy: false,
+        onChange: () => {},
+        onSave: () => {},
+        onDiscard: () => {},
+      }),
+    );
+
+  it("見出しの AI の印のほか、項目の行ごとに小さな AI の印。人が直した行だけ「修正済」", () => {
+    const r = rowsOf(buildDiff(input, SATO_OUTPUT, restoreIdentity).items);
+    const html = render(r);
+    expect(r.length).toBeGreaterThan(3);
+    expect(html.match(/data-ai="item"/g)).toHaveLength(r.length);
+    expect(html.match(/data-ai=""/g)).toHaveLength(1);
+    expect(html).not.toContain("修正済");
+    const edited = r.map((x) => (x.label === "既往" ? { ...x, edited: true } : x));
+    expect(render(edited).match(/修正済/g)).toHaveLength(1);
   });
 });

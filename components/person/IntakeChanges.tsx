@@ -16,10 +16,11 @@ import { MEDICATION_CATEGORIES } from "@/lib/db/types";
 import { BTN, BTN_MAIN, CHECK, INPUT_IN } from "./intake-ui";
 import { AiMark, StateTag } from "./parts";
 
-export type ChangeRow = DiffItem & { on: boolean; editing: boolean };
+/** 変更点の 1 行。edited は人が「修正」で値を直したか（行の AI の印の横に「修正済」） */
+export type ChangeRow = DiffItem & { on: boolean; editing: boolean; edited: boolean };
 
 export function rowsOf(items: readonly DiffItem[]): ChangeRow[] {
-  return items.map((i) => ({ ...i, on: i.state === "add", editing: false }));
+  return items.map((i) => ({ ...i, on: i.state === "add", editing: false, edited: false }));
 }
 
 type Props = {
@@ -100,7 +101,7 @@ function ChangeItem({ row, onPatch }: { row: ChangeRow; onPatch: (p: Partial<Cha
   const editable = row.change !== null && isEditable(row.change);
   const setChange = (change: IntakeChange) => {
     const next = changeText(change);
-    onPatch({ change, next, masked: hasMask(next) || (change.t === "contact" && hasMask(change.value.note ?? "")) });
+    onPatch({ change, next, edited: true, masked: hasMask(next) || (change.t === "contact" && hasMask(change.value.note ?? "")) });
   };
   return (
     <li className={`text-sm ${selectable ? "" : "text-muted"}`} data-state={row.state}>
@@ -119,6 +120,9 @@ function ChangeItem({ row, onPatch }: { row: ChangeRow; onPatch: (p: Partial<Cha
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-baseline gap-x-1.5">
             <span className="text-xs font-bold">{row.label}</span>
+            {/* 項目ごとの AI の印（Claude の分け方から来た行）。人が直した行は「修正済」を添える */}
+            <AiMark small title={row.edited ? "AI の出力を人が修正" : undefined} />
+            {row.edited && <span className="text-xs text-muted">{INTAKE_LABELS.edited}</span>}
             {row.state === "filled" ? (
               <StateTag tone="check">{DIFF_STATE_LABELS.filled}</StateTag>
             ) : (
