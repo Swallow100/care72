@@ -2,6 +2,8 @@ import { getCloudflareContext } from "@opennextjs/cloudflare";
 import Link from "next/link";
 import { ColorCounts, countColors } from "@/components/disaster/ColorCounts";
 import { SidePane } from "@/components/list/SidePane";
+import { UnlistedFold } from "@/components/office/UnlistedFold";
+import { UnlistedRows } from "@/components/office/UnlistedRows";
 import { PersonWithIntake } from "@/components/person/PersonWithIntake";
 import { StateTag, TONE_TEXT } from "@/components/person/parts";
 import { todayJst } from "@/lib/age";
@@ -26,13 +28,21 @@ import {
 import { personDisaster } from "@/lib/disaster/person";
 import { CARE_LEVEL_LABELS, COLOR_LABELS, PLAN_STATUS_LABELS, TIER_LABELS } from "@/lib/labels";
 import { buildSidePane, sideDisasterOf } from "@/lib/map/side";
+import { parsePeopleError } from "@/lib/office/http";
+import { NEW_PERSON_PATH } from "@/lib/office/http-paths";
+import { OFFICE_ERROR_LABELS, OFFICE_LABELS } from "@/lib/office/labels";
 import { COLOR_TONES, formatJst, loadPersonPage, toPersonView, type PersonView as View } from "@/lib/person";
 import type { Color } from "@/lib/triage/index";
 
 // D1 を毎回読む
 export const dynamic = "force-dynamic";
 
-type Props = { searchParams: Promise<{ sort?: string | string[]; open?: string | string[] }> };
+type Props = {
+  searchParams: Promise<{ sort?: string | string[]; open?: string | string[]; people_error?: string | string[] }>;
+};
+
+/** 利用者追加（T30）。操作の色の塗りのボタン。角は rounded-md（ピル型にしない） */
+const ADD_BUTTON = "rounded-md bg-accent px-4 py-2 text-sm font-bold text-on-accent";
 
 const SORT_LABELS: Record<SortKey, string> = { tier: "優先", kana: "氏名", age: "年齢", plan: "計画" };
 
@@ -65,6 +75,13 @@ export default async function CaseloadPage({ searchParams }: Props) {
 
   const rows = sortCaseload(data.rows, key);
   const disaster = data.situation !== null;
+  const peopleError = parsePeopleError(q.people_error);
+  // 一覧から外した人（T30）。一覧の下の畳み「外した人 N」
+  const unlisted = (
+    <UnlistedFold count={data.unlisted.length}>
+      <UnlistedRows rows={data.unlisted.map((u) => ({ ...u, href: rowLink(key, open, u.id).href }))} back="caseload" />
+    </UnlistedFold>
+  );
 
   if (open) {
     return (
@@ -78,8 +95,12 @@ export default async function CaseloadPage({ searchParams }: Props) {
               担当一覧
             </h1>
             <span className="text-sm text-muted">{rows.length} 人</span>
+            <Link href={NEW_PERSON_PATH} className="ml-auto rounded px-1 text-sm font-bold text-accent" data-press>
+              {OFFICE_LABELS.addPerson}
+            </Link>
           </div>
           <CompactList rows={rows} sort={key} open={open} />
+          {unlisted}
         </section>
         <PersonPanel principal={principal} id={open} sort={key} now={now} />
       </main>
@@ -104,7 +125,16 @@ export default async function CaseloadPage({ searchParams }: Props) {
               <span className="text-xs text-muted">{formatJst(now)} 時点</span>
             </>
           )}
+          {/* 利用者追加（T30）は見出しの段の右上 */}
+          <Link href={NEW_PERSON_PATH} className={`${ADD_BUTTON} ml-auto self-center`} data-press="overlay">
+            {OFFICE_LABELS.addPerson}
+          </Link>
         </div>
+        {peopleError && (
+          <p role="alert" className="mt-2 text-sm font-bold text-danger">
+            {OFFICE_ERROR_LABELS[peopleError]}
+          </p>
+        )}
         {rows.length === 0 ? (
           <p className="mt-4 rounded-lg bg-panel p-6 text-muted">なし</p>
         ) : (
@@ -112,6 +142,7 @@ export default async function CaseloadPage({ searchParams }: Props) {
             <CaseloadTable rows={rows} sort={key} />
           </div>
         )}
+        {unlisted}
       </section>
       <SidePane data={side} />
     </main>
