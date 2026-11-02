@@ -34,6 +34,8 @@ CREATE TABLE people (
   birth_date TEXT CHECK (birth_date IS NULL OR birth_date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'),
   plan_status TEXT NOT NULL DEFAULT 'none' CHECK (plan_status IN ('none', 'draft', 'consented', 'trained')),
   origin TEXT NOT NULL DEFAULT 'care_manager' CHECK (origin IN ('care_manager', 'on_site')),
+  -- 本人の報告を当てにしない印（認知症など）。人が付ける。Claude は付けない。付けた・外したは経過に残す
+  self_report_unreliable INTEGER NOT NULL DEFAULT 0 CHECK (self_report_unreliable IN (0, 1)),
   ledger TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(ledger)),
   version INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
@@ -98,10 +100,14 @@ CREATE TABLE clocks (
   )),
   source_note TEXT,
   confirmed_at TEXT,
+  -- 外の物に頼る時計の頼り先（透析先・冷蔵・配達）と、その確認（確認済・未確認）。人が付ける。Claude は付けない
+  depends_on TEXT CHECK (depends_on IS NULL OR depends_on IN ('dialysis_center', 'refrigeration', 'delivery')),
+  depends_check TEXT CHECK (depends_check IS NULL OR depends_check IN ('confirmed', 'unconfirmed')),
   note TEXT,
   sort INTEGER NOT NULL DEFAULT 0,
   CHECK (value IS NULL OR unit IS NOT NULL),
-  CHECK (kind <> 'condition' OR (value IS NULL AND starts_on = 'none'))
+  CHECK (kind <> 'condition' OR (value IS NULL AND starts_on = 'none')),
+  CHECK ((depends_on IS NULL) = (depends_check IS NULL))
 );
 CREATE INDEX clocks_person ON clocks (person_id, sort);
 
@@ -170,7 +176,7 @@ CREATE TABLE timeline_entries (
   )),
   kind TEXT NOT NULL CHECK (kind IN (
     'signal', 'called', 'pickup', 'safety_check', 'examined', 'medication_given', 'transported',
-    'arrived_shelter', 'received', 'released', 'override', 'consent', 'note'
+    'arrived_shelter', 'received', 'released', 'override', 'consent', 'clock_check', 'self_report_mark', 'note'
   )),
   body TEXT,
   payload TEXT CHECK (payload IS NULL OR json_valid(payload)),

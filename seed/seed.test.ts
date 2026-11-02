@@ -56,6 +56,34 @@ describe("種のデータ（架空の 10 人）", () => {
     for (const p of SEED_PEOPLE) expect(seedConsents(p)).toHaveLength(4);
   });
 
+  it("人が付ける欄: 3 田中の透析の時計は頼り先 透析先・未確認、4 佐藤に本人の報告を当てにしない印。ほかは無い", () => {
+    const checks = SEED_PEOPLE.flatMap((p) =>
+      p.clocks.filter((k) => k.depends_on !== null || k.depends_check !== null).map((k) => [p.person.id, k.id, k.depends_on, k.depends_check]),
+    );
+    expect(checks).toEqual([["p-03", "k-03-1", "dialysis_center", "unconfirmed"]]);
+    const marked = SEED_PEOPLE.filter((p) => p.person.self_report_unreliable === 1).map((p) => p.person.id);
+    expect(marked).toEqual(["p-04"]);
+  });
+
+  it("頼り先と確認は両方あるか、両方無いか（SQL の CHECK）", () => {
+    const db = new DatabaseSync(":memory:");
+    db.exec("PRAGMA foreign_keys = ON;");
+    db.exec(readFileSync(new URL("../migrations/0001_init.sql", import.meta.url), "utf8"));
+    for (const s of seedStatements()) db.exec(s);
+    const put = (id: string, dependsOn: string | null, check: string | null) =>
+      db
+        .prepare(
+          `INSERT INTO clocks (id, person_id, kind, category, label, value, unit, starts_on, depends_on, depends_check)
+           VALUES (?, 'p-08', 'supply', 'insulin', 'x', 4, 'day', 'outage', ?, ?)`,
+        )
+        .run(id, dependsOn, check);
+    expect(() => put("k-x1", "refrigeration", null)).toThrow();
+    expect(() => put("k-x2", null, "unconfirmed")).toThrow();
+    expect(() => put("k-x3", "refrigeration", "maybe")).toThrow();
+    expect(() => put("k-x4", "refrigeration", "confirmed")).not.toThrow();
+    db.close();
+  });
+
   it("migration と種の SQL が SQLite で通る（外部キーと CHECK を含めて）", () => {
     const db = new DatabaseSync(":memory:");
     db.exec("PRAGMA foreign_keys = ON;");

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { SEED_PEOPLE, seedConsents, type SeedPerson } from "../../seed/people.ts";
+import type { Ledger } from "../db/types.ts";
 import {
   aliasFor,
   aliasLetters,
@@ -11,6 +12,8 @@ import {
   pseudonymize,
   pseudonymizeText,
   restoreText,
+  type ClaudeClock,
+  type ClaudePerson,
   type PseudonymInput,
 } from "./index.ts";
 
@@ -22,6 +25,32 @@ function input(p: SeedPerson): PseudonymInput {
 
 const ALL = SEED_PEOPLE.map(input);
 const byId = (id: string) => input(SEED_PEOPLE.find((p) => p.person.id === id)!);
+
+/**
+ * 人が付ける欄の名前（列の名前と、Claude に渡す形にしたときの名前）。
+ * Claude に渡す型と台帳の JSON の型に、この名前の欄を作らない。作ると下の型の検査（npm run typecheck）で止まる。
+ */
+const HUMAN_ONLY_KEYS = [
+  "self_report_unreliable",
+  "selfReportUnreliable",
+  "depends_on",
+  "dependsOn",
+  "depends_check",
+  "dependsCheck",
+] as const;
+type HumanOnlyKey = (typeof HUMAN_ONLY_KEYS)[number];
+type NoHumanOnlyKey<T extends never> = T;
+export type HumanOnlyKeysAbsent = [
+  NoHumanOnlyKey<Extract<keyof ClaudePerson, HumanOnlyKey>>,
+  NoHumanOnlyKey<Extract<keyof ClaudePerson["care"], HumanOnlyKey>>,
+  NoHumanOnlyKey<Extract<keyof ClaudeClock, HumanOnlyKey>>,
+  NoHumanOnlyKey<Extract<keyof PseudonymInput["person"], HumanOnlyKey>>,
+  NoHumanOnlyKey<Extract<keyof PseudonymInput["clocks"][number], HumanOnlyKey>>,
+  NoHumanOnlyKey<Extract<keyof Ledger, HumanOnlyKey>>,
+  NoHumanOnlyKey<Extract<keyof Ledger["basic"], HumanOnlyKey>>,
+  NoHumanOnlyKey<Extract<keyof Ledger["care"], HumanOnlyKey>>,
+  NoHumanOnlyKey<Extract<keyof Ledger["medical"], HumanOnlyKey>>,
+];
 
 /** 種のデータにある、Claude に渡してはいけない文字列（2 字以上） */
 function forbiddenStrings(): string[] {
@@ -117,6 +146,16 @@ describe("pseudonymize", () => {
     expect(payload[0].clocks[0]).toMatchObject({ kind: "device", category: "oxygen", value: 2, unit: "hour", startsOn: "outage" });
     expect(payload[6].consents.supporters).toBe("refused");
     expect(payload[8].consents.medical).toBe("refused");
+  });
+
+  it("人が付ける欄（時計の頼り先の確認・本人の報告を当てにしない印）は渡らない。入れる物に値があっても", () => {
+    expect(byId("p-03").clocks[0]).toMatchObject({ depends_on: "dialysis_center", depends_check: "unconfirmed" });
+    expect(SEED_PEOPLE[3].person.self_report_unreliable).toBe(1);
+    const json = JSON.stringify(payload);
+    for (const k of HUMAN_ONLY_KEYS) expect(json).not.toContain(k);
+    expect(Object.keys(payload[2].clocks[0]).sort()).toEqual(
+      ["category", "kind", "label", "note", "source", "startsOn", "unit", "value"].sort(),
+    );
   });
 
   it("この層が作った物だけに印があり、凍っていて書き換えられない", () => {

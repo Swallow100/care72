@@ -1,5 +1,9 @@
 // D1 の表の型。列の名前は SQL のまま（snake_case）。値の形は migrations/0001_init.sql の CHECK と同じにする。
 // 選択肢を足すときは、ここの配列と SQL の CHECK の両方を直す（新しい migration で）。
+//
+// 人が付ける欄（people.self_report_unreliable、clocks.depends_on・depends_check）は台帳の JSON（Ledger）に入れず、
+// 表の列に持つ。Claude が台帳を埋める道（Ledger）と、仮名化の層が Claude に渡す形（ClaudePerson）には入れない。
+// Claude が自由文から推し量って付けることはしない。付けた・外したは経過（clock_check・self_report_mark）に残す。
 
 // ---------- 選択肢 ----------
 
@@ -82,6 +86,14 @@ export const CLOCK_SOURCES = [
 ] as const;
 export type ClockSource = (typeof CLOCK_SOURCES)[number];
 
+/** 外の物に頼る時計の頼り先: 透析先・冷蔵・配達。頼らない時計は null */
+export const DEPENDS_ON = ["dialysis_center", "refrigeration", "delivery"] as const;
+export type DependsOn = (typeof DEPENDS_ON)[number];
+
+/** 頼り先の確認: 確認済・未確認。人が付ける（ルールの表は未確認なら黄にする。docs/DECISIONS.md 案 1） */
+export const CHECK_STATUSES = ["confirmed", "unconfirmed"] as const;
+export type CheckStatus = (typeof CHECK_STATUSES)[number];
+
 export const DRILL_SCENARIOS = ["earthquake", "heavy_rain", "short"] as const;
 export type DrillScenario = (typeof DRILL_SCENARIOS)[number];
 
@@ -158,6 +170,8 @@ export const TIMELINE_KINDS = [
   "released", // 受け持ちから外す（搬送・退所）
   "override", // 緊急度の上書き
   "consent", // 同意を変えた
+  "clock_check", // 時計の頼り先の確認を変えた（確認済・未確認）。人が付ける
+  "self_report_mark", // 本人の報告を当てにしない印を付けた・外した。人が付ける
   "note", // 自由文
 ] as const;
 export type TimelineKind = (typeof TIMELINE_KINDS)[number];
@@ -315,6 +329,8 @@ export type PersonRow = {
   birth_date: string | null;
   plan_status: PlanStatus;
   origin: PersonOrigin;
+  /** 本人の報告を当てにしない印（認知症など）。人が付ける。1 なら本人の緑を未知として扱う（docs/DECISIONS.md 案 4） */
+  self_report_unreliable: 0 | 1;
   /** Ledger の JSON の文字列 */
   ledger: string;
   version: number;
@@ -367,7 +383,12 @@ export type ClockRow = {
   starts_on: ClockStart;
   source: ClockSource | null;
   source_note: string | null;
+  /** 値を確かめた時刻（頼り先の確認とは別） */
   confirmed_at: string | null;
+  /** 外の物に頼る時計の頼り先。頼らない時計は null。人が付ける */
+  depends_on: DependsOn | null;
+  /** 頼り先の確認。depends_on があるときだけ値を持つ。人が付ける */
+  depends_check: CheckStatus | null;
   note: string | null;
   sort: number;
 };

@@ -1,6 +1,6 @@
 // 画面の言葉。2〜4 字の漢語を基本にする（CLAUDE.md「画面の決まり」）。
 
-import type { CareLevel, ClockCategory, HazardKind, PlanStatus } from "./db/types.ts";
+import type { CareLevel, CheckStatus, ClockCategory, DependsOn, HazardKind, PlanStatus } from "./db/types.ts";
 import type { Color, Tier } from "./triage/index.ts";
 
 export const CARE_LEVEL_LABELS: Record<CareLevel, string> = {
@@ -33,6 +33,18 @@ export const DEPENDENCE_MARKS: ReadonlyArray<[ClockCategory, string]> = [
   ["antiepileptic", "抗てんかん"],
   ["dementia", "認知症"],
 ];
+
+/** 外の物に頼る時計の頼り先。理由の 1 行は「透析先 未確認」の形 */
+export const DEPENDS_ON_LABELS: Record<DependsOn, string> = {
+  dialysis_center: "透析先",
+  refrigeration: "冷蔵",
+  delivery: "配達",
+};
+
+export const CHECK_STATUS_LABELS: Record<CheckStatus, string> = {
+  confirmed: "確認済",
+  unconfirmed: "未確認",
+};
 
 export const HAZARD_LABELS: Record<HazardKind, string> = {
   flood: "浸水",

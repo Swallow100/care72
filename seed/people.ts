@@ -72,7 +72,7 @@ function contact(c: Partial<SeedContact> & Pick<SeedContact, "id" | "kind">): Se
   };
 }
 
-/** 時計の既定。値のある時計は確かめ済みにしておく */
+/** 時計の既定。値のある時計は確かめ済みにしておく。外の物に頼らない（頼り先なし） */
 function clock(c: Partial<SeedClock> & Pick<SeedClock, "id" | "kind" | "category" | "label" | "starts_on">): SeedClock {
   return {
     value: null,
@@ -80,6 +80,8 @@ function clock(c: Partial<SeedClock> & Pick<SeedClock, "id" | "kind" | "category
     source: null,
     source_note: null,
     confirmed_at: c.value == null ? null : SEED_AT,
+    depends_on: null,
+    depends_check: null,
     note: null,
     ...c,
   };
@@ -99,6 +101,7 @@ export const SEED_PEOPLE: SeedPerson[] = [
       birth_date: "1942-04-18",
       plan_status: "draft",
       origin: "care_manager",
+      self_report_unreliable: 0,
     },
     ledger: {
       basic: {
@@ -210,6 +213,7 @@ export const SEED_PEOPLE: SeedPerson[] = [
       birth_date: "1940-02-09",
       plan_status: "trained",
       origin: "care_manager",
+      self_report_unreliable: 0,
     },
     ledger: {
       basic: {
@@ -276,7 +280,7 @@ export const SEED_PEOPLE: SeedPerson[] = [
     ],
   },
 
-  // 3 緑だが透析先が未確認で黄（表とのずれは docs/PROGRESS.md）。訓練: 透析施設が浸水 → 別の施設を探す
+  // 3 緑だが透析先が未確認で黄（時計の頼り先の確認が未確認。docs/DECISIONS.md 案 1）。訓練: 透析施設が浸水 → 別の施設を探す
   {
     person: {
       id: "p-03",
@@ -287,6 +291,7 @@ export const SEED_PEOPLE: SeedPerson[] = [
       birth_date: "1947-06-21",
       plan_status: "consented",
       origin: "care_manager",
+      self_report_unreliable: 0,
     },
     ledger: {
       basic: {
@@ -367,6 +372,9 @@ export const SEED_PEOPLE: SeedPerson[] = [
         unit: "day",
         starts_on: "disaster",
         source: "facility",
+        // 透析先が受け入れられるかはまだ確かめていない（docs/DECISIONS.md 案 1）
+        depends_on: "dialysis_center",
+        depends_check: "unconfirmed",
       }),
     ],
   },
@@ -382,6 +390,8 @@ export const SEED_PEOPLE: SeedPerson[] = [
       birth_date: "1938-03-05",
       plan_status: "none",
       origin: "care_manager",
+      // 本人の報告を当てにしない印。ケアマネが付けた（docs/DECISIONS.md 案 4）
+      self_report_unreliable: 1,
     },
     ledger: {
       basic: {
@@ -455,6 +465,7 @@ export const SEED_PEOPLE: SeedPerson[] = [
       birth_date: "1937-01-27",
       plan_status: "none",
       origin: "care_manager",
+      self_report_unreliable: 0,
     },
     ledger: {
       basic: {
@@ -512,6 +523,7 @@ export const SEED_PEOPLE: SeedPerson[] = [
       birth_date: "1935-07-30",
       plan_status: "consented",
       origin: "care_manager",
+      self_report_unreliable: 0,
     },
     ledger: {
       basic: {
@@ -599,6 +611,7 @@ export const SEED_PEOPLE: SeedPerson[] = [
       birth_date: "1948-09-14",
       plan_status: "draft",
       origin: "care_manager",
+      self_report_unreliable: 0,
     },
     ledger: {
       basic: {
@@ -669,6 +682,7 @@ export const SEED_PEOPLE: SeedPerson[] = [
       birth_date: "1950-05-03",
       plan_status: "trained",
       origin: "care_manager",
+      self_report_unreliable: 0,
     },
     ledger: {
       basic: {
@@ -744,6 +758,7 @@ export const SEED_PEOPLE: SeedPerson[] = [
       birth_date: "1944-08-11",
       plan_status: "none",
       origin: "care_manager",
+      self_report_unreliable: 0,
     },
     ledger: {
       basic: {
@@ -813,6 +828,7 @@ export const SEED_PEOPLE: SeedPerson[] = [
       birth_date: "1946-10-02",
       plan_status: "consented",
       origin: "care_manager",
+      self_report_unreliable: 0,
     },
     ledger: {
       basic: {
