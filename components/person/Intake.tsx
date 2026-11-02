@@ -204,8 +204,9 @@ export function Intake(props: IntakeProps & { level: Level }) {
             {speech.supported && (
               <button
                 type="button"
-                className={BTN_SIDE}
-                data-press
+                // 聞いている間は「停止」が主の操作（抽出は止めるまで押せない）
+                className={listening ? BTN_MAIN : BTN_SIDE}
+                data-press={listening ? "overlay" : ""}
                 data-intake="speak"
                 aria-pressed={listening}
                 disabled={speech.state === "stopping" || (!listening && (busy || !aiReady))}
