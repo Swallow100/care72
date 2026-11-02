@@ -41,10 +41,27 @@ export function StateText({ tone, className = "", children }: { tone: Tone; clas
   );
 }
 
-/** 色の無い印（医療の印・区分の名前）。面の上では面の中の灰色の地 */
-export function Mark({ inPanel2 = false, children }: { inPanel2?: boolean; children: React.ReactNode }) {
+/**
+ * 色の無い地の印（医療の印・区分の名前）。面の上では面の中の灰色の地、面の中の上では白。
+ * tone を付けると文字だけ状態の色の太字（地は塗らない。医療の印の時計の長さの色など）
+ */
+export function Mark({
+  inPanel2 = false,
+  size = "sm",
+  tone,
+  children,
+}: {
+  inPanel2?: boolean;
+  size?: "sm" | "md";
+  tone?: Tone | null;
+  children: React.ReactNode;
+}) {
+  const box = size === "md" ? "px-1.5 text-sm leading-6" : "px-1 text-xs leading-[1.125rem]";
   return (
-    <span className={`inline-block rounded-sm px-1 text-xs leading-[1.125rem] whitespace-nowrap ${inPanel2 ? "bg-panel" : "bg-panel2"}`}>
+    <span
+      className={`inline-block rounded-sm whitespace-nowrap ${box} ${inPanel2 ? "bg-panel" : "bg-panel2"} ${tone ? `font-bold ${TONE_TEXT[tone]}` : ""}`}
+      data-tone={tone ?? undefined}
+    >
       {children}
     </span>
   );
