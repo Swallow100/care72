@@ -32,10 +32,16 @@ export type SeedPerson = {
   clocks: SeedClock[];
 };
 
+// デモ事業所は審査員・ゲスト・動画の物。協力事業所は協力してくれるケアマネの訓練の物で、審査員とゲストには見せない。
+// 協力事業所には利用者を入れない。ケアマネ 1 人の枠だけ（名前は空。本人が入れる）。
 export const SEED_OFFICES: SeedOffice[] = [
   { id: "office-demo", name: "デモ事業所", kind: "demo", city: CITY },
+  { id: "office-partner", name: "協力事業所", kind: "regular", city: CITY },
 ];
 
+// パスワードのハッシュは種に書かない（null）。山本のハッシュは手元の鍵のファイルの
+// CAREMANAGER_DEMO_PASSWORD_HASH から seed/build-sql.ts が入れる（npm run hash-password で作る）。
+// 審査員は表の行でなく env の JUDGE_PASSWORD_HASH で入る。acct-judge は審査員が書いた物の書き手の行で、ログインには使わない。
 export const SEED_ACCOUNTS: SeedAccount[] = [
   {
     id: "acct-yamamoto",
@@ -43,6 +49,24 @@ export const SEED_ACCOUNTS: SeedAccount[] = [
     role: "care_manager",
     is_office_admin: 1,
     display_name: "山本",
+    login_id: "yamamoto",
+    password_hash: null,
+  },
+  {
+    id: "acct-judge",
+    office_id: "office-demo",
+    role: "judge",
+    is_office_admin: 0,
+    display_name: "審査員",
+    login_id: null,
+    password_hash: null,
+  },
+  {
+    id: "acct-partner-cm",
+    office_id: "office-partner",
+    role: "care_manager",
+    is_office_admin: 1,
+    display_name: "",
     login_id: null,
     password_hash: null,
   },

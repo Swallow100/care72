@@ -63,14 +63,25 @@ function personStatements(p: SeedPerson): string[] {
   return out;
 }
 
-export function seedStatements(): string[] {
+export type SeedOptions = {
+  /** アカウントの id → パスワードのハッシュ（lib/auth/password.ts の形）。平文は受けない。無ければ null のまま（ログインできない） */
+  passwordHashes?: Readonly<Record<string, string>>;
+};
+
+export function seedStatements(opts: SeedOptions = {}): string[] {
+  const hashes = opts.passwordHashes ?? {};
+  for (const id of Object.keys(hashes)) {
+    if (!SEED_ACCOUNTS.some((a) => a.id === id)) throw new Error(`種に無いアカウント: ${id}`);
+  }
   const out: string[] = CLEAR_ORDER.map((t) => `DELETE FROM ${t};`);
   for (const o of SEED_OFFICES) out.push(insert("offices", { ...o, created_at: SEED_AT }));
-  for (const a of SEED_ACCOUNTS) out.push(insert("accounts", { ...a, created_at: SEED_AT }));
+  for (const a of SEED_ACCOUNTS) {
+    out.push(insert("accounts", { ...a, password_hash: hashes[a.id] ?? a.password_hash, created_at: SEED_AT }));
+  }
   for (const p of SEED_PEOPLE) out.push(...personStatements(p));
   return out;
 }
 
-export function seedSql(): string {
-  return `-- npm run db:seed が seed/people.ts から作る。手で直さない。\n${seedStatements().join("\n")}\n`;
+export function seedSql(opts: SeedOptions = {}): string {
+  return `-- npm run db:seed が seed/people.ts から作る。手で直さない。git に入れない（ハッシュが入ることがある）。\n${seedStatements(opts).join("\n")}\n`;
 }
