@@ -361,6 +361,7 @@ const LOG_TONE: Record<OfficeLogItem["kind"], string> = {
   person_unlisted: "font-bold",
   person_relisted: "font-bold",
   care_manager_added: "font-bold",
+  person_taken: "font-bold",
 };
 
 const CELL = "bg-panel2 px-2 py-1.5 align-middle first:rounded-l last:rounded-r";

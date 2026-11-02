@@ -2,11 +2,11 @@
 -- 台帳（本人のこと）は people.ledger の JSON に持ち、探す列（氏名・カナ・生年月日・事業所）と担当だけ列にする。
 -- 時刻は UTC の ISO 8601 の文字列。値の形が決まっている列は CHECK で縛る（型は lib/db/types.ts と同じ）。
 
--- 事業所
+-- 事業所。unaffiliated は「所属なし」の 1 行（docs/tasks/T23.md。医療班・行政がその場で作った人の置き場。ケアマネはいない）
 CREATE TABLE offices (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
-  kind TEXT NOT NULL CHECK (kind IN ('demo', 'regular')),
+  kind TEXT NOT NULL CHECK (kind IN ('demo', 'regular', 'unaffiliated')),
   city TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
@@ -48,7 +48,9 @@ CREATE TABLE people (
   qr_issued_at TEXT,
   -- 一覧から外した時刻（docs/tasks/T30.md）。NULL は一覧にいる。消さずに印だけ付ける（担当一覧・様式 9・停電の人数から外れる）。
   -- 本人のページは開ける（戻せる）。外した・戻したは本人の経過と事業所の経過に残す
-  unlisted_at TEXT
+  unlisted_at TEXT,
+  -- 申告の年齢（docs/tasks/T23.md）。医療班・行政がその場で作った人で、生年月日が分からないとき。作った日の年齢
+  reported_age INTEGER CHECK (reported_age IS NULL OR (reported_age >= 0 AND reported_age <= 130))
 );
 CREATE INDEX people_office ON people (office_id);
 CREATE INDEX people_care_manager ON people (care_manager_id);
@@ -282,7 +284,7 @@ CREATE TABLE office_timeline_entries (
   )),
   kind TEXT NOT NULL CHECK (kind IN (
     'disaster_on', 'disaster_off', 'disaster_info',
-    'person_added', 'person_assigned', 'person_unlisted', 'person_relisted', 'care_manager_added'
+    'person_added', 'person_assigned', 'person_unlisted', 'person_relisted', 'care_manager_added', 'person_taken'
   )),
   body TEXT,
   payload TEXT CHECK (payload IS NULL OR json_valid(payload)),
@@ -317,3 +319,48 @@ CREATE TABLE form_mappings (
   UNIQUE (office_id, form_hash)
 );
 CREATE INDEX form_mappings_office ON form_mappings (office_id, updated_at);
+
+-- 受け持ち（docs/tasks/T23.md）。医療班・行政が本人を受け入れた 1 回が 1 行。受け持つのはアカウントごと（審査員は acct-judge）。
+-- 受け持ちの間（released_at が NULL）だけ、その人は本人のページを開ける（lib/auth/scope.ts の personInScope）。
+-- 搬送・退所で閉じる（消さない）。閉じたあとに同じ人をまた受け入れたら新しい行。同じ人の開いた行はアカウントごとに 1 つ。
+-- via は入口: qr（本人の 1 枚の裏の QR）・search（氏名・カナ・生年月日の検索）・shelter（避難所の一覧）・on_site（その場で登録）。
+-- 受け入れの時刻と避難所は、ケアマネの一覧の状態「到着 避難所」の入力（lib/custody/arrivals.ts → lib/triage）
+CREATE TABLE custody (
+  id TEXT PRIMARY KEY,
+  person_id TEXT NOT NULL REFERENCES people (id) ON DELETE CASCADE,
+  holder_id TEXT NOT NULL REFERENCES accounts (id) ON DELETE CASCADE,
+  holder_role TEXT NOT NULL CHECK (holder_role IN ('medical', 'government')),
+  shelter TEXT NOT NULL CHECK (length(trim(shelter)) > 0),
+  via TEXT NOT NULL CHECK (via IN ('qr', 'search', 'shelter', 'on_site')),
+  received_at TEXT NOT NULL,
+  released_at TEXT,
+  release_kind TEXT CHECK (release_kind IS NULL OR release_kind IN ('transported', 'discharged')),
+  -- 搬送の行き先など（文字）。人の名前・電話は入れない
+  release_note TEXT,
+  released_by TEXT REFERENCES accounts (id) ON DELETE SET NULL,
+  CHECK ((released_at IS NULL) = (release_kind IS NULL))
+);
+CREATE UNIQUE INDEX custody_open ON custody (person_id, holder_id) WHERE released_at IS NULL;
+CREATE INDEX custody_holder ON custody (holder_id, released_at);
+CREATE INDEX custody_shelter ON custody (shelter, released_at);
+
+-- 第三者提供の記録（docs/SPEC.md「個人情報」。相手・範囲・時刻）。受け入れ 1 回に 1 行。消さない。
+-- basis: consent は医療班への提供に同意あり、vital は同意が無い・未確認で、生命・身体の保護のための提供（個人情報保護法 27 条 1 項 2 号）。
+-- scope は渡した区分の JSON の配列（lib/custody/provision.ts）。相手の名前は渡したときの写し。
+-- 受け持ちを閉じたら closed_at（期限は付けない。docs/SPEC.md の未決「行政の見せ方」）
+CREATE TABLE third_party_provisions (
+  id TEXT PRIMARY KEY,
+  person_id TEXT NOT NULL REFERENCES people (id) ON DELETE CASCADE,
+  custody_id TEXT REFERENCES custody (id) ON DELETE CASCADE,
+  recipient_id TEXT REFERENCES accounts (id) ON DELETE SET NULL,
+  recipient_role TEXT NOT NULL CHECK (recipient_role IN ('medical', 'government')),
+  recipient_name TEXT,
+  recipient_judge INTEGER NOT NULL DEFAULT 0 CHECK (recipient_judge IN (0, 1)),
+  basis TEXT NOT NULL CHECK (basis IN ('consent', 'vital')),
+  medical_consent TEXT NOT NULL CHECK (medical_consent IN ('granted', 'refused', 'unconfirmed')),
+  scope TEXT NOT NULL CHECK (json_valid(scope) AND json_type(scope) = 'array'),
+  shelter TEXT NOT NULL,
+  provided_at TEXT NOT NULL,
+  closed_at TEXT
+);
+CREATE INDEX third_party_provisions_person ON third_party_provisions (person_id, provided_at);

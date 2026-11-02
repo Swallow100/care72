@@ -7,7 +7,8 @@
 
 // ---------- 選択肢 ----------
 
-export const OFFICE_KINDS = ["demo", "regular"] as const;
+/** デモ・ふつう・所属なし（医療班・行政がその場で作った人の置き場。1 行だけ、ケアマネはいない。T23） */
+export const OFFICE_KINDS = ["demo", "regular", "unaffiliated"] as const;
 export type OfficeKind = (typeof OFFICE_KINDS)[number];
 
 /** ケアマネ・行政・医療班・審査員 */
@@ -423,6 +424,12 @@ export type PersonRow = {
  */
 export type PersonListMark = { unlisted_at: string | null };
 
+/**
+ * 申告の年齢（people.reported_age、T23）。医療班・行政がその場で作った人で、生年月日が分からないとき。作った日の年齢。
+ * PersonRow に入れないのは unlisted_at と同じ理由（種と本人のページの型に波及させない）
+ */
+export type PersonReportedAge = { reported_age: number | null };
+
 export type ContactRow = {
   id: string;
   person_id: string;
@@ -634,7 +641,8 @@ export type DisasterStateRow = {
 
 /**
  * 事業所の経過の種類: 災害モードに入れた（種類を替えたも）・平時に戻した・災害の情報を変えた（T09）、
- * 利用者を足した・担当を変えた・一覧から外した・一覧に戻した・ケアマネを足した（T30）
+ * 利用者を足した・担当を変えた・一覧から外した・一覧に戻した・ケアマネを足した（T30）、
+ * 所属なしの人を引き受けた（T23）
  */
 export const OFFICE_TIMELINE_KINDS = [
   "disaster_on",
@@ -645,6 +653,7 @@ export const OFFICE_TIMELINE_KINDS = [
   "person_unlisted",
   "person_relisted",
   "care_manager_added",
+  "person_taken",
 ] as const;
 export type OfficeTimelineKind = (typeof OFFICE_TIMELINE_KINDS)[number];
 
@@ -689,6 +698,62 @@ export type FormMappingRow = {
   checked_at: string | null;
   version: number;
   updated_at: string;
+};
+
+// ---------- 受け持ち（T23） ----------
+
+/** 受け持つ役（行政と医療班は同じ扱い。docs/SPEC.md「画面 6」） */
+export const STAFF_ROLES = ["medical", "government"] as const;
+export type StaffRole = (typeof STAFF_ROLES)[number];
+
+/** 受け入れの入口: QR・検索・避難所の一覧・その場で登録 */
+export const CUSTODY_VIAS = ["qr", "search", "shelter", "on_site"] as const;
+export type CustodyVia = (typeof CUSTODY_VIAS)[number];
+
+/** 受け持ちを閉じる理由: 搬送・退所 */
+export const RELEASE_KINDS = ["transported", "discharged"] as const;
+export type ReleaseKind = (typeof RELEASE_KINDS)[number];
+
+/** 受け持ち 1 行。開いている（released_at が null）間だけ本人のページを開ける */
+export type CustodyRow = {
+  id: string;
+  person_id: string;
+  /** 受け持つアカウント（審査員は acct-judge） */
+  holder_id: string;
+  holder_role: StaffRole;
+  shelter: string;
+  via: CustodyVia;
+  received_at: string;
+  released_at: string | null;
+  release_kind: ReleaseKind | null;
+  /** 搬送の行き先など。人の名前・電話は入れない */
+  release_note: string | null;
+  released_by: string | null;
+};
+
+/** 第三者提供の根拠: 同意あり・生命・身体の保護（個人情報保護法 27 条 1 項 2 号） */
+export const PROVISION_BASES = ["consent", "vital"] as const;
+export type ProvisionBasis = (typeof PROVISION_BASES)[number];
+
+/** 第三者提供の記録 1 行（相手・範囲・時刻）。受け入れ 1 回に 1 行。消さない */
+export type ThirdPartyProvisionRow = {
+  id: string;
+  person_id: string;
+  custody_id: string | null;
+  recipient_id: string | null;
+  recipient_role: StaffRole;
+  /** 渡したときの相手の名前の写し */
+  recipient_name: string | null;
+  recipient_judge: 0 | 1;
+  basis: ProvisionBasis;
+  /** 渡したときの医療班への提供の同意 */
+  medical_consent: ConsentStatus;
+  /** 渡した区分の JSON の配列（lib/custody/provision.ts の ProvisionSection） */
+  scope: string;
+  shelter: string;
+  provided_at: string;
+  /** 受け持ちを閉じた時刻 */
+  closed_at: string | null;
 };
 
 // ---------- 訓練の JSON の形 ----------

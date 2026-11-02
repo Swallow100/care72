@@ -11,7 +11,8 @@ import type { TimelineItem } from "../person.ts";
 
 export const OFFICE_SOURCE = "office";
 
-export const OFFICE_ACTIONS = ["added", "assigned", "unlisted", "relisted"] as const;
+/** taken は所属なしの人を事業所に引き受けた（T23、書くのは lib/custody/takeover.ts） */
+export const OFFICE_ACTIONS = ["added", "assigned", "unlisted", "relisted", "taken"] as const;
 export type OfficeAction = (typeof OFFICE_ACTIONS)[number];
 
 export const OFFICE_ACTION_LABELS: Record<OfficeAction, string> = {
@@ -19,6 +20,7 @@ export const OFFICE_ACTION_LABELS: Record<OfficeAction, string> = {
   assigned: "担当変更",
   unlisted: "一覧除外",
   relisted: "一覧復帰",
+  taken: "引受",
 };
 
 export type OfficePayload = {

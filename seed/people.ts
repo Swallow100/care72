@@ -38,6 +38,8 @@ export type SeedPerson = {
 export const SEED_OFFICES: SeedOffice[] = [
   { id: "office-demo", name: "デモ事業所", kind: "demo", city: CITY },
   { id: "office-partner", name: "協力事業所", kind: "regular", city: CITY },
+  // 所属なし（T23）。医療班・行政がその場で作った人の置き場。ケアマネはいない。ケアマネが引き受けると自分の事業所へ移る
+  { id: "office-unaffiliated", name: "所属なし", kind: "unaffiliated", city: CITY },
 ];
 
 // パスワードのハッシュは種に書かない（null）。山本のハッシュは手元の鍵のファイルの

@@ -35,6 +35,8 @@ export const OFFICE_TIMELINE_KIND_LABELS: Record<OfficeTimelineKind, string> = {
   person_unlisted: "一覧除外",
   person_relisted: "一覧復帰",
   care_manager_added: "ケアマネ追加",
+  // 所属なしの人を引き受けた（T23、lib/custody）
+  person_taken: "引受",
 };
 
 /** 画面の見出しと欄の名前 */

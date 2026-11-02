@@ -36,6 +36,9 @@ function insert(table: string, row: Record<string, SqlValue>): string {
 export const CLEAR_ORDER = [
   "timeline_entries",
   "office_timeline_entries",
+  // 受け持ちと第三者提供の記録（T23）。記録が受け持ちを指すので記録から
+  "third_party_provisions",
+  "custody",
   "form9_rank_edits",
   "form_mappings",
   "disaster_state",
