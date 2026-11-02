@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "care72-local": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["${CLAUDE_PROJECT_DIR:-.}/tools/mcp/care72-local/server.ts"]
+    }
+  }
+}
