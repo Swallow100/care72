@@ -288,6 +288,8 @@ export type TimelineItem = {
    * 医療班への提供に同意の無い人の経過を医療班・行政が開くと、この行だけ出す（lib/consent/scope.ts の timeline "staff"）
    */
   staff?: true;
+  /** 同意を記録・変えた行。同意の区分が範囲の外の人（医療班・行政）には出さない */
+  consent?: true;
 };
 
 export type Block =
@@ -911,6 +913,7 @@ export function timelineItems(rows: PersonPageRows): TimelineItem[] {
     derived: false,
     ...(intakePayloadOf(t)?.ai ? { ai: true as const } : {}),
     ...(STAFF_AUTHORS.has(t.author_role) ? { staff: true as const } : {}),
+    ...(t.kind === "consent" ? { consent: true as const } : {}),
   }));
 
   const derived: TimelineItem[] = [];
@@ -956,6 +959,7 @@ export function timelineItems(rows: PersonPageRows): TimelineItem[] {
       body: ordered.map((c) => `${CONSENT_KIND_LABELS[c.kind]} ${CONSENT_STATUS_LABELS[c.status]}`).join("・"),
       who: who(accountRoleLabel(first.recorded_by_role), first.recorded_by_name),
       derived: true,
+      consent: true,
     });
   }
 
@@ -1127,8 +1131,10 @@ function scopedBlocks(id: SectionId, blocks: Block[], scope: ViewScope, contacts
   if (id === "basic" && !scopeHas(scope, "basic")) {
     return blocks.filter((b) => b.type === "row" && b.row.key === "basic.address");
   }
-  if (id === "timeline" && scope.timeline === "staff") {
-    return blocks.map((b) => (b.type === "timeline" ? { ...b, items: b.items.filter((t) => t.staff) } : b));
+  if (id === "timeline") {
+    // 本人確認だけなら医療班・行政の書いた行と提供の行だけ。同意の区分が範囲の外なら同意の行も出さない
+    const keep = (t: TimelineItem) => (scope.timeline !== "staff" || t.staff === true) && (scopeHas(scope, "consent") || !t.consent);
+    return blocks.map((b) => (b.type === "timeline" ? { ...b, items: b.items.filter(keep) } : b));
   }
   return blocks;
 }

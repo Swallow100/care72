@@ -200,6 +200,12 @@ describe("医療班への提供に同意の無い 9 渡辺", () => {
     const v = await viewAs(medical(), "p-01");
     const kinds = v.sections.find((s) => s.id === "timeline")!.blocks.flatMap((b) => (b.type === "timeline" ? b.items.map((t) => t.kind) : []));
     expect(kinds).toContain("電話");
+    // 同意の区分は範囲の外なので、同意の行（名簿登録 同意・…）は出さない。ケアマネには出る
+    expect(kinds).not.toContain("同意");
+    const cm = (await viewAs(judgeCm(), "p-01")).sections
+      .find((s) => s.id === "timeline")!
+      .blocks.flatMap((b) => (b.type === "timeline" ? b.items.map((t) => t.kind) : []));
+    expect(cm).toContain("同意");
   });
 });
 
