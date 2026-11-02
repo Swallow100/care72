@@ -176,6 +176,23 @@ export const TIMELINE_KINDS = [
 ] as const;
 export type TimelineKind = (typeof TIMELINE_KINDS)[number];
 
+/**
+ * 入れる欄（T03）の保存は、経過の kind を note にして payload の source をこれにする（画面は「入力」と出す）。
+ * 経過の kind に input を足すと timeline_entries の CHECK を作り直す migration が要り、配信済みの D1 の表を建て直すため。
+ */
+export const INTAKE_SOURCE = "intake";
+
+/** 入れる欄の保存の経過の payload。値は持たず、変えた欄の場所だけ */
+export type IntakePayload = {
+  source: typeof INTAKE_SOURCE;
+  /** Claude の分け方を使ったか（使ったときは画面に AI の印） */
+  ai: boolean;
+  /** 答えたモデル（ai のときだけ） */
+  model: string | null;
+  /** 変えた欄（台帳の場所・連絡先・時計） */
+  fields: string[];
+};
+
 /** AI を呼ぶ用途。Claude の 7 つ（モデルは lib/claude/models.ts）と、声（Gemini TTS） */
 export const AI_PURPOSES = [
   "form_read", // 様式の読み取り
@@ -250,6 +267,14 @@ export type MedicationCategory = (typeof MEDICATION_CATEGORIES)[number];
 export const DEVICE_KINDS = ["oxygen", "ventilator", "suction", "tube_feeding", "dialysis"] as const;
 export type DeviceKind = (typeof DEVICE_KINDS)[number];
 
+/** マイ・タイムラインの作成: あり（アプリ）・あり（紙）・なし（松山市の様式の選択肢） */
+export const MY_TIMELINES = ["app", "paper", "none"] as const;
+export type MyTimeline = (typeof MY_TIMELINES)[number];
+
+/** 支援の内容: 避難の声掛け・避難の誘導・移動介助・その他（松山市の様式の選択肢） */
+export const SUPPORT_KINDS = ["call", "guide", "assist", "other"] as const;
+export type SupportKind = (typeof SUPPORT_KINDS)[number];
+
 /** 空欄の理由: 分からない・まだ聞いていない・答えない。計画には「未確認」と残り、次の訪問の問いになる */
 export const PENDING_STATUSES = ["unknown", "not_asked", "declined"] as const;
 export type PendingStatus = (typeof PENDING_STATUSES)[number];
@@ -266,6 +291,8 @@ export type Ledger = {
       floors?: number;
       structure?: "wood" | "steel" | "concrete" | "other";
       builtYear?: number;
+      /** 寝室の場所（1 階 奥の和室 など） */
+      bedroom?: string;
     };
     household?: Household;
     contactMeans?: {
@@ -318,6 +345,17 @@ export type Ledger = {
     transport?: string;
     pets?: string;
     carryItems?: string[];
+    /** マイ・タイムラインの作成 */
+    myTimeline?: MyTimeline;
+    /** 支援の内容（避難支援等実施者がすること） */
+    support?: SupportKind[];
+    /** 支援の内容の書き足し（その他の中身など） */
+    supportNote?: string;
+  };
+  /** 地域の支援者のうち、連絡先の表に持たない人 */
+  local?: {
+    /** みまもり員（名前と書き足し）。名前なので Claude には有無だけを渡し、自由文では役割名に置き換える */
+    watcher?: string;
   };
   /** 特記。本人の言葉は言い換えずにそのまま */
   notes: string[];

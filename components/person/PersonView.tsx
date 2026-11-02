@@ -4,6 +4,7 @@
 // 区分は面の幅に合わせて 1〜3 段に流す（container query）。区分の順は lib/person.ts の sectionOrder（発災時は経過が一番上）。
 // 入れる欄（T03）はここに置かない。
 
+import Link from "next/link";
 import type { Block, ClockView, DocumentView, PersonView as View, Section } from "@/lib/person";
 import { BLANK_LABELS, CLOCK_PARTS } from "@/lib/labels";
 import { Blank, PendingMark, RowItem, StateTag, TONE_TEXT, type Level } from "./parts";
@@ -73,11 +74,20 @@ function Blocks({ blocks }: { blocks: readonly Block[] }) {
 
 const LABEL_COL = "grid grid-cols-[4.5rem_minmax(0,1fr)] gap-x-2";
 
+/** 書類の行。紙面ができた書類（href あり）は「表示」のリンク、まだの物は「準備中」 */
 function DocumentRow({ doc }: { doc: DocumentView }) {
   return (
     <div className={LABEL_COL} data-field={`documents.${doc.key}`}>
       <dt className="pt-px text-xs text-muted">{doc.label}</dt>
-      <dd className="text-xs text-muted">{doc.status}</dd>
+      <dd className={doc.href ? "text-xs" : "text-xs text-muted"}>
+        {doc.href ? (
+          <Link href={doc.href} className="-mx-1 rounded px-1 text-accent underline underline-offset-4" data-press>
+            {doc.status}
+          </Link>
+        ) : (
+          doc.status
+        )}
+      </dd>
     </div>
   );
 }

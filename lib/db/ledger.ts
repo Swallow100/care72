@@ -8,6 +8,7 @@ export function parseLedger(text: string): Ledger {
     care: raw.care ?? {},
     medical: { devices: [], medications: [], ...raw.medical },
     evacuation: { hazards: [], ...raw.evacuation },
+    ...(raw.local ? { local: raw.local } : {}),
     notes: raw.notes ?? [],
     pending: raw.pending ?? [],
   };

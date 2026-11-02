@@ -20,10 +20,12 @@ import type {
   Household,
   Ledger,
   MedicationCategory,
+  MyTimeline,
   PendingStatus,
   PlanStatus,
   Sex,
   SmartphoneUse,
+  SupportKind,
   TimelineKind,
 } from "./db/types.ts";
 import type { Color, Tier } from "./triage/index.ts";
@@ -136,6 +138,17 @@ export const ABILITY_ITEM_LABELS: Record<
 };
 
 export const ABILITY_LABELS: Record<Ability, string> = { ok: "問題なし", some: "一部", hard: "困難" };
+
+/** マイ・タイムラインの作成（松山市の様式の選択肢） */
+export const MY_TIMELINE_LABELS: Record<MyTimeline, string> = { app: "あり（アプリ）", paper: "あり（紙）", none: "なし" };
+
+/** 支援の内容（松山市の様式の選択肢を短く） */
+export const SUPPORT_KIND_LABELS: Record<SupportKind, string> = {
+  call: "声掛け",
+  guide: "誘導",
+  assist: "移動介助",
+  other: "その他",
+};
 
 type Structure = NonNullable<NonNullable<Ledger["basic"]["housing"]>["structure"]>;
 export const STRUCTURE_LABELS: Record<Structure, string> = {
@@ -299,4 +312,4 @@ export const AUTHOR_ROLE_LABELS: Record<AuthorRole, string> = {
 
 /** 書類（T05〜T07 で作る）の入口 */
 export const DOCUMENT_LABELS = { matsuyama: "計画書", medical: "医療要約", own: "本人の1枚" } as const;
-export const DOCUMENT_STATUS_LABELS = { pending: "準備中" } as const;
+export const DOCUMENT_STATUS_LABELS = { pending: "準備中", ready: "表示" } as const;
