@@ -368,7 +368,7 @@ describe("経過", () => {
       ["入力", "ケアマネ 山本", null, true],
       ["同意", "ケアマネ 山本", null, false],
       ["記録", "ケアマネ 山本", null, false],
-      ["信号", "本人", "urgent", false],
+      ["安否", "本人", "urgent", false],
       ["受入", "医療班 医療班 1", "ok", false],
     ]);
   });
@@ -451,7 +451,7 @@ describe("D1 から読む（事業所の壁）", () => {
     const rows = await loadPersonPage(db, demoCm, "p-01");
     const items = timelineItems(rows!);
     expect(items.slice(-2).map((t) => [t.kind, t.body, t.who, t.tone])).toEqual([
-      ["信号", "赤ボタン", "本人", "urgent"],
+      ["安否", "赤ボタン", "本人", "urgent"],
       ["電話", "本人に電話", "ケアマネ 山本", null],
     ]);
   });

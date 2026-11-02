@@ -83,7 +83,7 @@ export const HAZARD_LABELS: Record<HazardKind, string> = {
 export const COLOR_LABELS: Record<Color, string> = {
   red: "至急",
   yellow: "要確認",
-  gray: "未知",
+  gray: "不明",
   green: "無事",
 };
 
@@ -244,7 +244,7 @@ export const CARE_FLAG_LABELS = { bedridden: "寝たきり", dementia: "認知�
 export const HEAD_LABELS = {
   age: "年齢",
   careLevel: "介護度",
-  plan: "計画",
+  plan: "避難計画",
   unconfirmed: "未確認",
   priority: "優先",
   marks: "医療",
@@ -280,7 +280,7 @@ export const PENDING_STATUS_LABELS: Record<PendingStatus, string> = {
 export const BLANK_LABELS = { unconfirmed: "未確認", none: "なし" } as const;
 
 export const TIMELINE_KIND_LABELS: Record<TimelineKind, string> = {
-  signal: "信号",
+  signal: "安否",
   called: "電話",
   pickup: "迎え決定",
   safety_check: "安否確認",
@@ -291,7 +291,7 @@ export const TIMELINE_KIND_LABELS: Record<TimelineKind, string> = {
   // 医療班・行政が受け持ちに入れた（T23。受領は物を受け取る言葉なので「受入」。様式 9 の結果の列もこれを読む）
   received: "受入",
   released: "受持解除",
-  override: "優先修正",
+  override: "優先変更",
   consent: "同意",
   clock_check: "時計確認",
   self_report_mark: "印変更",

@@ -74,7 +74,7 @@ function Count({ n, tone }: { n: number; tone?: StateTone }) {
   );
 }
 
-/** 至急・要確認・未知・無事の人数。数字に状態の色（0 は色なし） */
+/** 至急・要確認・不明・無事の人数。数字に状態の色（0 は色なし） */
 function StateNumbers({ counts, size }: { counts: StateCount[]; size: "sm" | "lg" }) {
   return (
     <dl className={`flex flex-wrap items-baseline ${size === "lg" ? "gap-x-4 gap-y-1" : "gap-x-2.5"}`} data-states>
@@ -242,7 +242,7 @@ function PlanSection({ counts }: { counts: PlanCount[] }) {
   return (
     <Section
       id="plan"
-      title="計画"
+      title="避難計画"
       aside={<span className="text-xs font-normal text-muted tabular-nums">{total} 人</span>}
     >
       {total > 0 && (
