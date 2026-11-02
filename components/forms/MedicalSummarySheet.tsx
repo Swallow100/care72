@@ -14,6 +14,7 @@ import {
 import { formatJst } from "@/lib/person";
 import { CONSENT_KIND_LABELS, CONSENT_STATUS_LABELS, DOCUMENT_LABELS, PENDING_STATUS_LABELS } from "@/lib/labels";
 import { FormCell } from "./FormCell";
+import { PaperFoot } from "./PaperFoot";
 
 type Size = "sm" | "lg" | "xl";
 
@@ -156,7 +157,7 @@ function MedicalIdBoxes({ s }: { s: MedicalSummary }) {
 export function MedicalSummarySheet({ sheet: s }: { sheet: MedicalSummary }) {
   return (
     <div className="paper-scroll">
-      <div className="paper-stack" data-sheet="medical" data-person={s.personId}>
+      <div className="paper-stack" data-paper-root data-sheet="medical" data-person={s.personId}>
         <MedicalSummaryPaper sheet={s} />
       </div>
     </div>
@@ -166,23 +167,26 @@ export function MedicalSummarySheet({ sheet: s }: { sheet: MedicalSummary }) {
 /**
  * 医療要約の A4 の 1 頁（束に入れる前の section）。本人の 1 枚（T06）の裏もこれをそのまま使う。
  * page は束の中の何頁目か、aside は題名の段の右に置く物（本人の 1 枚の QR）、
- * note は題名の段の右の小さな字の一番上に足す 1 行（本人の 1 枚の「この QR は医療班が読みます」と期限）
+ * note は題名の段の右の小さな字の一番上に足す 1 行（本人の 1 枚の「この QR は医療班が読みます」と期限）、
+ * foot は頁の下の端の文書名と頁番号（既定は医療要約の 1 / 1。本人の 1 枚の裏は 2 / 2）
  */
 export function MedicalSummaryPaper({
   sheet: s,
   page = 1,
   aside,
   note,
+  foot = { doc: DOCUMENT_LABELS.medical, page: 1, total: 1 },
 }: {
   sheet: MedicalSummary;
   page?: 1 | 2;
   aside?: ReactNode;
   note?: ReactNode;
+  foot?: { doc: string; page: number; total: number };
 }) {
   const author = [s.author.office, s.author.careManager ? `${s.author.careManager}（ケアマネ）` : ""].filter(Boolean).join(" ");
   const consentAt = s.consent.recordedAt ? formatJst(s.consent.recordedAt).slice(0, 10) : null;
   return (
-        <section className="paper med-paper" aria-label={DOCUMENT_LABELS.medical} data-page={page}>
+        <section className="paper form med-paper" aria-label={DOCUMENT_LABELS.medical} data-page={page}>
           <div className="head-row">
             <h1 className="title">{DOCUMENT_LABELS.medical}</h1>
             <div className="top-col">
@@ -240,16 +244,19 @@ export function MedicalSummaryPaper({
 
           <div className="blk key" data-block="special">
             <div className="blk-h">【特記事項（常用薬等）】</div>
-            <div className="grid chk" style={cols("1fr 1fr")}>
-              <F s={s} k="drug.antiplatelet" size="lg" bare />
-              <F s={s} k="drug.anticoagulant" size="lg" bare />
-              <F s={s} k="drug.diabetes" size="lg" bare />
-              <F s={s} k="drug.steroid" size="lg" bare />
-              <F s={s} k="drug.antiepileptic" size="lg" bare />
-              <F s={s} k="drug.other" size="lg" bare />
-              <F s={s} k="drug.dialysis" size="lg" style={span(2)} bare />
-              <F s={s} k="drug.hot" size="lg" style={span(2)} bare />
-              <F s={s} k="drug.devices" size="lg" style={span(2)} />
+            {/* 様式の □ の並び（抗血小板薬 → 抗凝固薬 → 糖尿病治療薬 → ステロイド → 抗てんかん薬 → その他 → 透析）を 1 つの枠に流す */}
+            <div className="grid chk" style={cols("1fr")}>
+              <div className="flow">
+                <F s={s} k="drug.antiplatelet" size="lg" bare />
+                <F s={s} k="drug.anticoagulant" size="lg" bare />
+                <F s={s} k="drug.diabetes" size="lg" bare />
+                <F s={s} k="drug.steroid" size="lg" bare />
+                <F s={s} k="drug.antiepileptic" size="lg" bare />
+                <F s={s} k="drug.other" size="lg" bare />
+                <F s={s} k="drug.dialysis" size="lg" bare />
+              </div>
+              <F s={s} k="drug.hot" size="lg" bare />
+              <F s={s} k="drug.devices" size="lg" />
             </div>
           </div>
 
@@ -298,9 +305,10 @@ export function MedicalSummaryPaper({
             </div>
           )}
 
-          <div className="foot small-note">
-            <span>欄の順は 災害診療記録2018（一般診療版）による。既往症・予防接種は様式の 2 頁</span>
+          <div className="small-note">
+            <p>※欄の順は災害診療記録2018（一般診療版）による。既往症・予防接種は様式の 2 頁</p>
           </div>
+          <PaperFoot doc={foot.doc} name={s.name} page={foot.page} total={foot.total} />
         </section>
   );
 }

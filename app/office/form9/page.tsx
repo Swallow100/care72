@@ -1,7 +1,11 @@
+import "@/components/forms/paper.css";
+import "@/components/forms/form9-paper.css";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { TONE_TEXT } from "@/components/person/parts";
+import { Form9Paper } from "@/components/forms/Form9Paper";
 import { buttonClass } from "@/components/ui/Button";
 import { DownloadIcon } from "@/components/ui/Icon";
+import { wantsPrint } from "@/components/ui/PaperBar";
 import { PrintButton } from "@/components/ui/PrintButton";
 import { FormsTabs } from "@/components/ui/Tabs";
 import { Form9Report } from "@/components/forms/Form9Report";
@@ -12,17 +16,21 @@ import { colorCounts, FORM9_TITLE, NORMAL_ORDER_LABELS } from "@/lib/forms/form9
 import { form9Scope, loadForm9, loadSituation, type Form9Data } from "@/lib/forms/form9-db";
 import { FORM9_CSV_PATH, parseEdit, parseError, parseSort, sortRows } from "@/lib/forms/form9-href";
 import { form9Report, REPORT_COLORS, tally } from "@/lib/forms/form9-report";
+import { warekiText } from "@/lib/forms/wareki";
 import { COLOR_LABELS } from "@/lib/labels";
 import { COLOR_TONES, formatJst } from "@/lib/person";
 
 // D1 を毎回読む
 export const dynamic = "force-dynamic";
 
-type Props = { searchParams: Promise<{ sort?: string | string[]; edit?: string | string[]; error?: string | string[] }> };
+type Props = {
+  searchParams: Promise<{ sort?: string | string[]; edit?: string | string[]; error?: string | string[]; print?: string | string[] }>;
+};
 
 // 様式 9（災害時利用者一覧表 安否確認優先順位）。事業所の全員を優先順位で並べ、順位を手で直せる。CSV で落とせる。
 // 開けるのはケアマネの役（管理者・審査員のケアマネの役を含む）。ほかの役はそれぞれの入口へ送る（requirePage）。
 // 発災時（災害モード、T09）は色と順位で並び、結果の列と市町村への報告の下書きが出る
+// 印刷は様式 9 の紙（Form9Paper: A4 横、順位の順、報告の下書きつき）。画面の表と操作は紙に出さない。?print=1 で開くとすぐ印刷の窓。
 export default async function Form9Page({ searchParams }: Props) {
   const principal = await requirePage("caseload");
   const q = await searchParams;
@@ -47,6 +55,10 @@ export default async function Form9Page({ searchParams }: Props) {
   const manualCount = sheet.rows.filter((r) => r.manual).length;
   const counts = colorCounts(sheet.rows);
   const report = disaster && situation ? form9Report(sheet, { officeName: data.office.name, at: situation.now }) : null;
+  const order =
+    disaster && situation
+      ? `発災時 色 → 時計の残り → 支援者なし → 骨格（${formatJst(situation.now)} 時点）`
+      : `平時 ${NORMAL_ORDER_LABELS.join(" → ")}`;
 
   return (
     <main className="mx-auto max-w-[120rem] px-4 py-4">
@@ -78,7 +90,7 @@ export default async function Form9Page({ searchParams }: Props) {
             <DownloadIcon aria-hidden className="size-4 shrink-0" />
             CSV出力
           </a>
-          <PrintButton />
+          <PrintButton auto={wantsPrint(q.print)} />
         </div>
       </div>
       <p className="mt-1 text-xs text-muted">
@@ -95,6 +107,7 @@ export default async function Form9Page({ searchParams }: Props) {
           )}
         </section>
       </div>
+      <Form9Paper sheet={sheet} office={data.office.name} date={warekiText(todayJst())} order={order} report={report} />
     </main>
   );
 }

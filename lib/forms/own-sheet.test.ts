@@ -308,7 +308,7 @@ describe("紙面（表と裏の 2 頁）", () => {
         ["本人の1枚", "1"],
         ["医療要約", "2"],
       ]);
-      expect(back, id).toContain('class="paper med-paper"');
+      expect(back, id).toContain('class="paper form med-paper"');
       expect(back, id).toContain('data-field="id.medical"');
       // QR の枠は題名の段の中
       const head = back.slice(back.indexOf('class="head-row"'), back.indexOf('data-block="patient"'));
