@@ -329,7 +329,7 @@ const EARTHQUAKE: Scenario = {
       events: [
         {
           change: { kind: "shelter", id: "sh-2", label: "高台の集会所", state: "crowded" },
-          text: "高台の集会所 冷蔵庫なし",
+          text: "高台の集会所 混雑 冷蔵庫なし",
           person: "p-08",
         },
       ],
@@ -338,7 +338,7 @@ const EARTHQUAKE: Scenario = {
     {
       hour: 12,
       events: [{ change: { kind: "phone", state: "busy" }, text: "電話 一部回復 つながりにくい" }],
-      turns: [{ person: "p-01", color: "red", source: "family", saying: "母と連絡がとれない。ボンベが心配" }],
+      turns: [{ person: "p-01", color: "red", source: "family", saying: "母の家に来た。ボンベが残り少ない" }],
     },
     {
       hour: 18,
