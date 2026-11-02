@@ -2,7 +2,8 @@
 //
 // 状態: 今の刻み・世界の状態（被害状況）・本人ごとの様子と安否・ケアマネの手の履歴。
 // step() は 1 刻みだけ進める（1 要求で全刻みを回さない。ブラウザから 1 刻みずつ呼ぶ）。
-// 1 刻みの順: 想定の表の出来事を世界に当てる → 監督（T19）の差し込み → 本人ごとの 1 刻み（ペルソナ T18。無ければ表の固定の安否）。
+// 1 刻みの順: 想定の表の出来事（監督の固定の差し込みも）を世界に当てる → 監督（Opus、T19）の差し込み 0〜2 個 →
+// 本人ごとの 1 刻み（ペルソナ T18。無ければ表の固定の安否）。本人役は監督の差し込みを「この刻みの状況」として読む。
 //
 // 時刻: 発災（想定の 0 時間）は訓練を始めた時刻（drills.started_at）。想定の h 時間は started_at + h 時間（simAt）。
 // 安否の時刻もこの時計で持ち、ルールの表（lib/triage）には drillSituation の状況で当てる。事業所の災害モード（disaster_state）は
@@ -11,12 +12,16 @@
 
 import type { DrillAction, DrillScenario, DrillStatus, Ledger, SignalColor, WhereNow } from "../db/types.ts";
 import type { DisasterSituation } from "../disaster/state.ts";
+import { isSourceId, type SourceId } from "../sources/index.ts";
 import {
   applyEvent,
   EMPTY_WORLD,
   eventHour,
+  injectChange,
+  isInjectKind,
   scenarioOf,
   type FixedTurn,
+  type InjectKind,
   type OutageArea,
   type Scenario,
   type WorldEvent,
@@ -45,14 +50,15 @@ export type DrillTurn = {
   at: number;
 };
 
-/** 状況（世界の出来事）1 つ。表の固定の物は world、監督（T19）の差し込みは director */
-export type DrillIncident = WorldEvent & {
+/**
+ * 状況（世界の出来事）1 つ。表の世界の出来事は world、監督（T19）の差し込みは director（想定の表の固定の物と Opus の物）。
+ * 監督の物は inject（種類）・reason（判断の理由。採点 T22 が読む）・basis（根拠の出典）を持てる
+ */
+export type DrillIncident = Omit<WorldEvent, "by"> & {
   actor: "world" | "director";
   at: number;
-  /** Claude（監督）が作った物。画面で AI の印 */
+  /** Claude（監督）が作った物。画面で AI の印。想定の表の固定の差し込みは false */
   ai: boolean;
-  /** 監督の判断の理由（T19。採点 T22 が読む）。表の物は無し */
-  reason?: string;
 };
 
 /** 本人ごとの今の様子（いちばん新しい 1 刻みの安否） */
@@ -127,8 +133,9 @@ export type PersonaInput = {
 /** 本人 1 人の 1 刻み。空の配列は「連絡なし」。投げたら連絡なしとして進む */
 export type PersonaHook = (input: PersonaInput) => Promise<DrillTurn[]>;
 
-/** 監督（T19）に渡す物。表の状況を当てたあとの世界 */
+/** 監督（T19）に渡す物。表の状況（固定の差し込みも）を当てたあとの世界 */
 export type DirectorInput = {
+  scenario: DrillScenario;
   step: number;
   hour: number;
   world: WorldState;
@@ -139,8 +146,57 @@ export type DirectorInput = {
   actions: ReadonlyArray<ActionRecord>;
 };
 
+/**
+ * 監督の差し込み 1 つ。種類（表の 6 つ）と相手の本人だけを選び、世界の変化は engine が種類から組む（injectChange）。
+ * text は画面の 1 行（氏名を書かない。画面が名前を添える）
+ */
+export type DirectorEvent = {
+  inject: InjectKind;
+  person: string;
+  text: string;
+  reason?: string;
+  basis?: SourceId;
+  /** Claude（Opus）が選んだ物 */
+  ai: boolean;
+};
+
 /** 差し込む状況（0〜2 個）。投げたら差し込みなしで進む */
-export type DirectorHook = (input: DirectorInput) => Promise<DrillIncident[]>;
+export type DirectorHook = (input: DirectorInput) => Promise<DirectorEvent[]>;
+
+/** 監督の差し込みは 1 刻みに 2 つまで */
+export const DIRECTOR_MAX = 2;
+
+/**
+ * 監督の返した物を状況にする。表の 6 つの外の種類・参加者でない本人・空の文は捨て、同じ本人に 2 つは当てない。
+ * 世界の変化は種類からコードが組むので、監督が表の外の変化（警戒・断水・全域の停電など）を起こす道は無い
+ */
+export function directorIncidents(
+  events: ReadonlyArray<DirectorEvent>,
+  members: ReadonlySet<string>,
+  hour: number,
+): DrillIncident[] {
+  const out: DrillIncident[] = [];
+  const used = new Set<string>();
+  for (const e of events) {
+    if (out.length >= DIRECTOR_MAX) break;
+    if (!isInjectKind(e.inject) || typeof e.person !== "string" || !members.has(e.person) || used.has(e.person)) continue;
+    const text = typeof e.text === "string" ? e.text.trim() : "";
+    if (!text) continue;
+    used.add(e.person);
+    out.push({
+      change: injectChange(e.inject, e.person),
+      text,
+      person: e.person,
+      inject: e.inject,
+      ...(typeof e.reason === "string" && e.reason.trim() ? { reason: e.reason.trim() } : {}),
+      ...(e.basis && isSourceId(e.basis) ? { basis: e.basis } : {}),
+      actor: "director",
+      at: hour,
+      ai: e.ai === true,
+    });
+  }
+  return out;
+}
 
 export type StepHooks = { persona?: PersonaHook; director?: DirectorHook };
 
@@ -224,7 +280,7 @@ export function foldTick(
   };
 }
 
-/** 始める前の状態（まだどの刻みも当てていない） */
+/** 始める前の状態（まだどの刻みも当てていない）。職員の空きは想定の表から */
 export function initialState(scenario: DrillScenario, participants: ReadonlyArray<string>, startedAt: string): DrillState {
   return {
     scenario,
@@ -233,7 +289,7 @@ export function initialState(scenario: DrillScenario, participants: ReadonlyArra
     hour: 0,
     status: "running",
     participants: [...participants],
-    world: EMPTY_WORLD,
+    world: { ...EMPTY_WORLD, staff: scenarioOf(scenario).staff },
     people: {},
     actions: [],
   };
@@ -267,18 +323,19 @@ export async function step(state: DrillState, hooks: StepHooks = {}): Promise<{ 
   const hour = def.hour;
   const members = new Set(state.participants);
 
-  // 表の状況（出ない本人の物は外す）
+  // 表の状況（出ない本人の物は外す）。監督の固定の差し込み（by: director）は actor が director で、AI の印なし
   const fixed: DrillIncident[] = def.events
     .filter((e) => !e.person || members.has(e.person))
-    .map((e) => ({ ...e, actor: "world", at: eventHour(e, hour), ai: false }));
+    .map(({ by, ...e }) => ({ ...e, actor: by ?? "world", at: eventHour(e, hour), ai: false }));
   let world = fixed.reduce((w, e) => applyEvent(w, e, e.at), state.world);
 
-  // 監督の差し込み（T19）。無ければ・失敗したら差し込みなし
+  // 監督（Opus、T19）の差し込み。1 刻みに 1 回。無ければ・失敗したら差し込みなし（表の固定の状況だけで進む）
   const inserted = hooks.director
-    ? (
+    ? directorIncidents(
         await safely(
           () =>
             hooks.director!({
+              scenario: state.scenario,
               step: index,
               hour,
               world,
@@ -287,12 +344,11 @@ export async function step(state: DrillState, hooks: StepHooks = {}): Promise<{ 
               people: state.people,
               actions: state.actions,
             }),
-          [] as DrillIncident[],
-        )
+          [] as DirectorEvent[],
+        ),
+        members,
+        hour,
       )
-        .slice(0, 2)
-        .filter((e) => !e.person || members.has(e.person))
-        .map((e) => ({ ...e, actor: "director" as const }))
     : [];
   world = inserted.reduce((w, e) => applyEvent(w, e, e.at), world);
   const incidents = [...fixed, ...inserted];

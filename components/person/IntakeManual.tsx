@@ -37,11 +37,11 @@ export function IntakeManual({ ledger, busy, onSave }: { ledger: Ledger; busy: b
         if (changes.length > 0) onSave(changes);
       }}
     >
-      {/* 欄が多いので、送りはこの中で（下の質問を隠さない） */}
-      <div className="max-h-[55vh] space-y-2 overflow-y-auto">
+      {/* 内側で送らない（送るのは画面全体の縦 1 本）。欄はページの流れに置く */}
+      <div className="space-y-2">
         {INTAKE_SECTIONS.map((section) => (
           <section key={section} className="rounded bg-panel2 px-2 py-1.5" data-section={section}>
-            <h4 className="text-xs font-bold text-muted">{SECTION_LABELS[section]}</h4>
+            <h4 className="text-sm font-bold">{SECTION_LABELS[section]}</h4>
             <div className="mt-1 space-y-1">
               {section === "medical" && (
                 <>

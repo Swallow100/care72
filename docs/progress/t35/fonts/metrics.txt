@@ -1,0 +1,4 @@
+IBM Plex Sans JP: loaded=true tnum 0000=80.6 1111=80.6 / prop 0000=80.6 1111=80.6 / 13px 漢字5=65 かな5=65
+M PLUS 2: loaded=true tnum 0000=81 1111=81 / prop 0000=81 1111=81 / 13px 漢字5=65 かな5=65
+Zen Kaku Gothic New: loaded=true tnum 0000=64.5 1111=49 / prop 0000=64.5 1111=49 / 13px 漢字5=65 かな5=65
+LINE Seed JP: loaded=true tnum 0000=92.8 1111=59.7 / prop 0000=92.8 1111=59.7 / 13px 漢字5=65 かな5=64.2

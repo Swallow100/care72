@@ -2,9 +2,9 @@
 
 // 利用者追加の欄（docs/tasks/T30.md）。最小の項目（氏名・カナ・生年月日・性別・担当）で作り、作ったら本人のページ
 // （担当一覧の右の面 /?open=<id>）へ移る。続きは本人のページの入れる欄（T03）で入れる。
-// 送るのは /api/people（JSON）。断られたら入れた値を残したまま理由を出す。
+// 送るのは /api/people（JSON）。断られたら入れた値を残したまま理由を出す。作成は主の操作（操作の色）、取消は来た画面へ戻る。
+// 送信中は「送信中」と押した灰色を残し、二度押しを止める。
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { Sex } from "@/lib/db/types";
@@ -13,22 +13,26 @@ import { SEX_LABELS } from "@/lib/labels";
 import { KANA_MAX, NAME_MAX } from "@/lib/office/forms";
 import { PEOPLE_API_PATH } from "@/lib/office/http-paths";
 import { OFFICE_LABELS } from "@/lib/office/labels";
+import { Button, ButtonLink } from "@/components/ui/Button";
+import { CloseIcon, SaveIcon } from "@/components/ui/Icon";
 
 type CareManager = { id: string; name: string };
 
 const INPUT =
-  "w-full min-w-0 rounded-md bg-panel2 px-2 py-1.5 text-sm text-ink outline-none focus-visible:outline-2 focus-visible:outline-accent";
-const CHOICE = "flex items-center gap-1.5 rounded-md bg-panel2 px-2 py-1.5 text-sm";
-const BUTTON = "rounded-md px-4 py-2 text-sm font-bold";
+  "h-9 w-full min-w-0 rounded bg-panel2 px-2 text-sm text-ink outline-none focus-visible:outline-2 focus-visible:outline-accent";
+const CHOICE = "flex h-9 items-center gap-1.5 rounded bg-panel2 px-2.5 text-sm";
 
 export function NewPersonForm({
   careManagers,
   defaultCareManagerId,
   today,
+  back = "/",
 }: {
   careManagers: CareManager[];
   defaultCareManagerId: string | null;
   today: string;
+  /** 取消の戻り先（来た画面） */
+  back?: string;
 }) {
   const router = useRouter();
   const [name, setName] = useState("");
@@ -70,8 +74,8 @@ export function NewPersonForm({
         </p>
       )}
       <div className="grid gap-x-4 gap-y-3 sm:grid-cols-2">
-        <label className="flex flex-col gap-0.5 text-sm">
-          <span className="text-muted">{OFFICE_LABELS.name}</span>
+        <label className="flex flex-col gap-0.5">
+          <span className="text-xs text-muted">{OFFICE_LABELS.name}</span>
           <input
             type="text"
             name="name"
@@ -83,8 +87,8 @@ export function NewPersonForm({
             className={INPUT}
           />
         </label>
-        <label className="flex flex-col gap-0.5 text-sm">
-          <span className="text-muted">{OFFICE_LABELS.kana}</span>
+        <label className="flex flex-col gap-0.5">
+          <span className="text-xs text-muted">{OFFICE_LABELS.kana}</span>
           <input
             type="text"
             name="kana"
@@ -96,8 +100,8 @@ export function NewPersonForm({
             className={INPUT}
           />
         </label>
-        <label className="flex flex-col gap-0.5 text-sm">
-          <span className="text-muted">{OFFICE_LABELS.birth}</span>
+        <label className="flex flex-col gap-0.5">
+          <span className="text-xs text-muted">{OFFICE_LABELS.birth}</span>
           <input
             type="date"
             name="birthDate"
@@ -106,11 +110,11 @@ export function NewPersonForm({
             max={today}
             value={birthDate}
             onChange={(e) => setBirthDate(e.target.value)}
-            className={`${INPUT} tabular-nums`}
+            className={INPUT}
           />
         </label>
-        <fieldset className="text-sm">
-          <legend className="text-muted">{OFFICE_LABELS.sex}</legend>
+        <fieldset>
+          <legend className="text-xs text-muted">{OFFICE_LABELS.sex}</legend>
           <div className="mt-0.5 flex flex-wrap gap-1.5">
             {SEXES.map((s) => (
               <label key={s} className={CHOICE}>
@@ -128,8 +132,8 @@ export function NewPersonForm({
             ))}
           </div>
         </fieldset>
-        <label className="flex flex-col gap-0.5 text-sm">
-          <span className="text-muted">{OFFICE_LABELS.careManager}</span>
+        <label className="flex flex-col gap-0.5">
+          <span className="text-xs text-muted">{OFFICE_LABELS.careManager}</span>
           <select
             name="careManagerId"
             required
@@ -145,13 +149,13 @@ export function NewPersonForm({
           </select>
         </label>
       </div>
-      <div className="flex items-center gap-2">
-        <button type="submit" disabled={busy} className={`${BUTTON} bg-accent text-on-accent disabled:bg-panel2 disabled:text-muted`} data-press="overlay">
+      <div className="flex items-center gap-1.5">
+        <Button type="submit" kind="main" icon={SaveIcon} disabled={busy} data-pending={busy ? "" : undefined}>
           {busy ? OFFICE_LABELS.sending : OFFICE_LABELS.create}
-        </button>
-        <Link href="/" className={`${BUTTON} bg-panel2`} data-press>
+        </Button>
+        <ButtonLink href={back} kind="quiet" icon={CloseIcon}>
           {OFFICE_LABELS.cancel}
-        </Link>
+        </ButtonLink>
       </div>
     </form>
   );

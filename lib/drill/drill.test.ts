@@ -28,10 +28,10 @@ import {
   startDrill,
   stateOfRow,
 } from "./db.ts";
-import { DrillEnded, drillSituation, initialState, outageTownsOf, simAt, step, type DrillIncident, type DrillState } from "./engine.ts";
+import { DrillEnded, drillSituation, initialState, outageTownsOf, simAt, step, type DirectorEvent, type DrillState } from "./engine.ts";
 import { abandonPost, listGet, replayGet, startPost, stepPost } from "./http.ts";
 import { elapsedLabel, progressLabel, WATER_LABELS } from "./labels.ts";
-import { DRILL_HOURS, SCENARIOS, SHORT_HOURS, applyEvents, EMPTY_WORLD, type Scenario } from "./scenarios.ts";
+import { DRILL_HOURS, SCENARIOS, SHORT_HOURS, applyEvents, EMPTY_WORLD, type InjectKind, type Scenario } from "./scenarios.ts";
 import { bandsOf, loadDrillScreen } from "./view.ts";
 
 const DEMO = { id: "office-demo", name: "デモ事業所", kind: "demo" as const };
@@ -195,25 +195,36 @@ describe("刻みの進み", () => {
     ]);
   });
 
-  it("T18・T19 の呼び口: ペルソナがあれば表の代わりに使い、投げたら連絡なし。監督の差し込みは 2 つまで世界に当てる", async () => {
+  it("T18・T19 の呼び口: ペルソナがあれば表の代わりに使い、投げたら連絡なし。監督の差し込みは表の種類だけ 2 つまで世界に当てる", async () => {
     const seen: string[] = [];
     const r = await step(initialState("heavy_rain", ["p-01", "p-02"], START), {
       persona: async (x) => {
-        seen.push(`${x.person}:${x.fixed.length}:${x.world.alertLevel}`);
+        seen.push(`${x.person}:${x.fixed.length}:${x.world.alertLevel}:${x.world.roads.length}`);
         if (x.person === "p-02") throw new Error("失敗");
         return [{ ...x.fixed[0], person: x.person, color: "red", source: "agent", whereNow: null, injured: null, atHome: null, canMove: false, hasMedicine: null, saying: "うごけない", doing: null, ai: true, at: x.hour }];
       },
-      director: async (x): Promise<DrillIncident[]> => [
-        { change: { kind: "road", id: "rd-x", label: "裏の道", open: false }, text: "裏の道 通行止め", actor: "director", at: x.hour, ai: true, reason: "支援者の道" },
-        { change: { kind: "water", out: true }, text: "断水", actor: "director", at: x.hour, ai: true },
-        { change: { kind: "phone", state: "down" }, text: "電話 不通", actor: "director", at: x.hour, ai: true },
+      director: async (): Promise<DirectorEvent[]> => [
+        // 表の外の種類（断水を起こす）は捨てる
+        { inject: "water_out" as unknown as InjectKind, person: "p-01", text: "断水", ai: true },
+        { inject: "road_blocked", person: "p-01", text: "家の前の道 冠水", reason: "支援者の道", ai: true },
+        // 参加者でない本人は捨てる
+        { inject: "line_down", person: "p-09", text: "家の電話 不通", ai: true },
+        { inject: "nurse_away", person: "p-02", text: "訪問看護 来られない", ai: true },
+        // 3 つ目は当てない
+        { inject: "line_down", person: "p-02", text: "家の電話 不通", ai: true },
       ],
     });
-    expect(seen).toEqual(["p-01:0:3", "p-02:0:3"]);
+    // 本人役は監督の差し込みのあとの世界を読む
+    expect(seen).toEqual(["p-01:0:3:1", "p-02:0:3:1"]);
     expect(r.tick.turns.map((t) => [t.person, t.color, t.ai])).toEqual([["p-01", "red", true]]);
-    expect(r.tick.incidents.filter((e) => e.actor === "director")).toHaveLength(2);
-    expect(r.state.world.roads.map((x) => x.id)).toContain("rd-x");
-    expect(r.state.world.water).toBe("out");
+    const director = r.tick.incidents.filter((e) => e.actor === "director");
+    expect(director.map((e) => [e.inject, e.person, e.change.kind, e.ai])).toEqual([
+      ["road_blocked", "p-01", "road", true],
+      ["nurse_away", "p-02", "nurse_away", true],
+    ]);
+    expect(r.state.world.roads.map((x) => [x.id, x.open, x.person])).toEqual([["rd-p-01", false, "p-01"]]);
+    expect(r.state.world.marks["p-02"]).toEqual({ nurseAway: 0 });
+    expect(r.state.world.water).toBe("none");
     expect(r.state.world.phone).toBe("ok");
   });
 

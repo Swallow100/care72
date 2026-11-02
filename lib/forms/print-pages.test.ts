@@ -13,6 +13,7 @@ import { MatsuyamaSheet } from "../../components/forms/MatsuyamaSheet.tsx";
 import { MedicalSummarySheet } from "../../components/forms/MedicalSummarySheet.tsx";
 import { OwnSheetPaper, type OwnQr } from "../../components/forms/OwnSheet.tsx";
 import { QrSheet } from "../../components/forms/QrSheet.tsx";
+import { wantsPrint } from "../../components/ui/PaperBar.tsx";
 import { SEED_ACCOUNTS, SEED_PEOPLE } from "../../seed/people.ts";
 import { chromePath, pdfPageCount } from "../../tools/print/chrome.ts";
 import { medicalConsentOf } from "../qr/view.ts";
@@ -24,7 +25,7 @@ import { buildMatsuyamaSheet } from "./matsuyama.ts";
 import { buildMedicalSummary } from "./medical-summary.ts";
 import { buildOwnSheet } from "./own-sheet.ts";
 import { FONT_PROBE, PAPER_CSS_FILES, paperCss, paperPage, readRepoFile, seedRows } from "./print-harness.ts";
-import { autoPrint, printHref, wantsPrint, type PrintWindow } from "./print.ts";
+import { autoPrint, type PrintWindow } from "./print.ts";
 import { warekiText } from "./wareki.ts";
 
 const TODAY = "2026-11-03";
@@ -189,15 +190,22 @@ describe("書き方（Chrome なしで読む）", () => {
 });
 
 describe("?print=1（1 押しで印刷）", () => {
-  it("printHref は紙面の URL に print=1 を付ける", () => {
-    expect(printHref("/people/p-01/forms/matsuyama")).toBe("/people/p-01/forms/matsuyama?print=1");
-    expect(printHref("/office/form9?sort=name")).toBe("/office/form9?sort=name&print=1");
-    expect(printHref("/people/p-01/forms/own#back")).toBe("/people/p-01/forms/own?print=1#back");
+  it("ページの wantsPrint（components/ui/PaperBar）は print=1 のときだけ", () => {
+    expect(wantsPrint("1")).toBe(true);
+    for (const v of [undefined, "0", "yes", ["1", "1"]]) expect(wantsPrint(v)).toBe(false);
   });
 
-  it("wantsPrint は print=1 のときだけ", () => {
-    expect(wantsPrint({ print: "1" })).toBe(true);
-    for (const v of [{}, { print: "0" }, { print: "yes" }, { print: ["1", "1"] }, null, undefined]) expect(wantsPrint(v)).toBe(false);
+  it("紙面の 6 つのページが ?print=1 を受けて印刷のボタンの auto に渡す", () => {
+    const pages = [
+      "app/people/[id]/forms/matsuyama/page.tsx",
+      "app/people/[id]/forms/medical/page.tsx",
+      "app/people/[id]/forms/own/page.tsx",
+      "app/people/[id]/forms/mapped/[mappingId]/page.tsx",
+      "app/people/[id]/forms/qr/page.tsx",
+    ];
+    for (const p of pages) expect(readRepoFile(p), p).toMatch(/autoPrint=\{autoPrint/);
+    expect(readRepoFile("app/office/form9/page.tsx")).toContain("<PrintButton auto={wantsPrint(q.print)} />");
+    expect(readRepoFile("components/ui/PrintButton.tsx")).toContain("autoPrint(window)");
   });
 
   function fakeWindow(href: string) {

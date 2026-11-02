@@ -1,18 +1,7 @@
 // 紙面の印刷の道（1 押しで印刷）。紙面の URL に ?print=1 を付けて開くと、書体を読み終えてから 1 回だけ印刷の窓を出す。
-// 本人のページの書類の行の「印刷」は printHref(紙面の URL) を開く（画面の側の部品は T35。docs/progress/t36.md）。
-// 窓を出すのは components/forms/AutoPrint.tsx（client）。ここはブラウザに触らない形で、テストで確かめる。
-
-/** 紙面の URL に印刷の印を付ける（/people/p-01/forms/matsuyama → /people/p-01/forms/matsuyama?print=1） */
-export function printHref(href: string): string {
-  const [path, hash = ""] = href.split("#");
-  const sep = path.includes("?") ? "&" : "?";
-  return `${path}${sep}print=1${hash ? `#${hash}` : ""}`;
-}
-
-/** ページの searchParams に印刷の印があるか（print=1 だけ。print=0・print=yes・複数は印刷しない） */
-export function wantsPrint(searchParams: { print?: string | string[] | undefined } | null | undefined): boolean {
-  return searchParams?.print === "1";
-}
+// 本人のページの書類の行の「印刷」が ?print=1 を開き（components/person/PersonView の printHref）、
+// 紙面の画面の印刷のボタン（components/ui/PrintButton の auto。ページが components/ui/PaperBar の wantsPrint で決める）がこれを呼ぶ。
+// ここはブラウザの物を引数で受ける形にして、テストで確かめる（lib/forms/print-pages.test.ts）。
 
 /** autoPrint が使うブラウザの物（テストでは偽物を渡す） */
 export type PrintWindow = {
@@ -23,7 +12,8 @@ export type PrintWindow = {
 };
 
 /**
- * URL に print=1 があれば、書体を読み終えてから URL の印を外して印刷の窓を 1 回出す。
+ * URL に print=1 があれば、書体を読み終えてから URL の印を外して印刷の窓を 1 回出す
+ * （読み終える前に出すと、紙の字が仮の書体になり頁の割れ方も変わる）。
  * 印は窓を出す直前に読み直す（ほかの部品が先に出して印を外していれば出さない。2 回出さない）。
  * 読み直しで何度も出さないよう、出す前に URL から外す。出したかを返す
  */

@@ -13,22 +13,18 @@ import { fitView, place, tilesFor, tileUrl, VIEW_H, VIEW_W, type View } from "@/
 import { BASE_LAYER, HAZARD_LAYERS, HAZARD_OPACITY, HAZARD_PORTAL, type Attribution } from "@/lib/map/layers";
 import type { MapPin } from "@/lib/map/side";
 import type { StateTone } from "@/lib/person";
+import { TONE_FILL } from "@/components/ui/Tag";
 
 /** ピンが無いときの真ん中（松山市の市街） */
 const FALLBACK = { lat: 33.84, lng: 132.765 };
 
-/** 状態の札（薄い下地と文字の色）と点の色。components/person/parts.tsx の StateTag と同じ組 */
-const PIN_TAG: Record<StateTone, string> = {
-  ok: "bg-state-ok-soft text-state-ok",
-  urgent: "bg-state-urgent-soft text-state-urgent",
-  check: "bg-state-check-soft text-state-check",
-  unknown: "bg-state-unknown-soft text-state-unknown",
-};
+/** ピンの名前の印（澄んだ色の塗りと文字）と点の色。components/ui/Tag の StateTag と同じ組 */
+const PIN_TAG: Record<StateTone, string> = TONE_FILL;
 const PIN_DOT: Record<StateTone, string> = {
-  ok: "bg-state-ok",
-  urgent: "bg-state-urgent",
-  check: "bg-state-check",
-  unknown: "bg-state-unknown",
+  ok: "bg-state-ok-fill",
+  urgent: "bg-state-urgent-fill",
+  check: "bg-state-check-fill",
+  unknown: "bg-state-unknown-fill",
 };
 
 /** 雨雲の斜線（強いほど詰めて濃く）。色は文字の色だけで、気象庁の色の段は使わない */

@@ -1,0 +1,36 @@
+1024 / page+0px 
+1024 /?open=p-01 page+0px 
+1024 /people/p-01 page+0px 
+1024 /office page+0px 
+1024 /office/form9 page+0px section +729px
+1024 /drill page+0px 
+1024 /forms/mapping page+0px 
+1024 /people/new page+0px 
+1024 /people/p-01/forms/matsuyama page+0px 
+1024 /people/p-01/forms/medical page+0px 
+1024 /people/p-01/forms/own page+0px 
+1280 / page+0px 
+1280 /?open=p-01 page+0px 
+1280 /people/p-01 page+0px 
+1280 /office page+0px 
+1280 /office/form9 page+0px section +473px
+1280 /drill page+0px 
+1280 /forms/mapping page+0px 
+1280 /people/new page+0px 
+1280 /people/p-01/forms/matsuyama page+0px 
+1280 /people/p-01/forms/medical page+0px 
+1280 /people/p-01/forms/own page+0px 
+1440 / page+0px 
+1440 /?open=p-01 page+0px 
+1440 /people/p-01 page+0px 
+1440 /office page+0px 
+1440 /office/form9 page+0px section +313px
+1440 /drill page+0px 
+1440 /forms/mapping page+0px 
+1440 /people/new page+0px 
+1440 /people/p-01/forms/matsuyama page+0px 
+1440 /people/p-01/forms/medical page+0px 
+1440 /people/p-01/forms/own page+0px 
+1024 /staff page+0px
+1280 /staff page+0px
+1440 /staff page+0px

@@ -7,6 +7,8 @@
 
 import { WITHHELD_LABELS } from "@/components/forms/MedicalWithheld";
 import { StateTag } from "@/components/person/parts";
+import { Button } from "@/components/ui/Button";
+import { AddPersonIcon } from "@/components/ui/Icon";
 import { SHELTER_MAX } from "@/lib/custody/forms";
 import { CUSTODY_LABELS } from "@/lib/custody/labels";
 import { QR_RECEIVE_PATH } from "@/lib/custody/paths";
@@ -57,12 +59,12 @@ export function QrReceive({ token, shelter }: { token: string; shelter: string |
           required
           maxLength={SHELTER_MAX}
           defaultValue={shelter ?? ""}
-          className="rounded-md bg-panel2 px-2 py-1.5 text-ink outline-none focus-visible:outline-2 focus-visible:outline-accent"
+          className="h-10 rounded-md bg-panel2 px-2 text-ink outline-none focus-visible:outline-2 focus-visible:outline-accent"
         />
       </label>
-      <button type="submit" className="rounded-md bg-accent px-4 py-2 font-bold text-on-accent" data-press="overlay">
+      <Button type="submit" kind="main" size="lg" icon={AddPersonIcon}>
         {QR_LABELS.receive}
-      </button>
+      </Button>
     </form>
   );
 }

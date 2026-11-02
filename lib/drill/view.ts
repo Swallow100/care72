@@ -1,6 +1,7 @@
 // 訓練の画面の中身（docs/tasks/T17.md）。保存した刻みから見る刻みの状態を作り直し、左の表の行（担当一覧と同じ形）を作る。
 // 色と順位は担当一覧と同じ所（lib/caseload.ts の toCaseloadRows → lib/disaster/triage.ts → lib/triage）で出し、ここで決めない。
-// 入力の違いは 2 つだけ: 状況は訓練の時計（lib/drill/engine.ts の drillSituation）、安否は訓練の物（signals の drill_id がこの訓練）。
+// 入力の違いは 3 つだけ: 状況は訓練の時計（lib/drill/engine.ts の drillSituation）、安否は訓練の物（signals の drill_id がこの訓練）、
+// 時計の頼り先は訓練の世界で書き換えた写し（lib/drill/director.ts の drillClocks。栄養剤の持ち出し忘れ・透析施設の休止）。
 // 電話の記録・ケアマネの上書き（本番の経過）は読まない。再生も同じ道（Claude を呼ばない）。
 
 import type { D1Database } from "@cloudflare/workers-types";
@@ -12,6 +13,7 @@ import { toTriageSignal } from "../disaster/triage.ts";
 import type { ClockForDetail, ContactForDetail, SignalForDetail } from "../list/detail.ts";
 import type { TriageSignal } from "../triage/index.ts";
 import { loadDrillRow, loadTicks, participantsOf, replayState, type DrillScope } from "./db.ts";
+import { drillClocks } from "./director.ts";
 import { drillSituation, simAt, type DrillState, type Tick } from "./engine.ts";
 import { lastHour, scenarioOf } from "./scenarios.ts";
 
@@ -137,7 +139,8 @@ export async function loadDrillScreen(
   const signalRows = signals.results as SignalForDetail[];
   const byPerson = new Map<string, TriageSignal[]>();
   for (const s of signalRows) byPerson.set(s.person_id, [...(byPerson.get(s.person_id) ?? []), toTriageSignal(s)]);
-  const clockRows = clocks.results as unknown as Array<ClockRow>;
+  // 訓練の世界が時計の頼り先を書き換える（栄養剤の持ち出し忘れ・透析施設の休止 → 未確認）。台帳そのものは変えない
+  const clockRows = drillClocks(clocks.results as unknown as Array<ClockRow>, state.world);
   const contactRows = contacts.results as unknown as Array<ContactRow>;
 
   const rows = toCaseloadRows(peopleRows, clockRows, contactRows, jstDate(situation.now), {

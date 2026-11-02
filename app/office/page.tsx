@@ -3,9 +3,17 @@ import Link from "next/link";
 import { ColorCounts } from "@/components/disaster/ColorCounts";
 import { DisasterBadge } from "@/components/disaster/DisasterBadge";
 import { AddCareManager } from "@/components/office/AddCareManager";
+import { AssignForm } from "@/components/office/AssignForm";
+import { MoreFold } from "@/components/office/MoreFold";
 import { UnlistedFold } from "@/components/office/UnlistedFold";
 import { UnlistedRows } from "@/components/office/UnlistedRows";
-import { StateTag, TONE_TEXT } from "@/components/person/parts";
+import { ButtonLink, buttonClass } from "@/components/ui/Button";
+import { AddPersonIcon, CloseIcon, DownloadIcon, PaperIcon } from "@/components/ui/Icon";
+import { LinkPending } from "@/components/ui/LinkPending";
+import { Page, PageHead, Panel, PanelHead } from "@/components/ui/Panel";
+import { SubmitButton } from "@/components/ui/SubmitButton";
+import { TABLE, TABLE_BOX, TD, TH } from "@/components/ui/table";
+import { StateText, TONE_TEXT } from "@/components/ui/Tag";
 import { todayJst } from "@/lib/age";
 import { requirePage } from "@/lib/auth/server";
 import { PLAN_TONES } from "@/lib/caseload";
@@ -105,14 +113,19 @@ export default async function OfficePage({ searchParams }: Props) {
   const error = parseFormError(q.error);
   const peopleError = parsePeopleError(q.people_error);
 
+
   return (
-    <main className="mx-auto max-w-6xl px-4 py-4">
-      <div className="flex flex-wrap items-baseline gap-x-4 gap-y-2">
-        <h1 className="text-2xl font-bold">{DISASTER_LABELS.page}</h1>
-        <span className="text-sm">{principal.office.name}</span>
-        <DisasterBadge mark={disasterMark(state, now)} link={false} />
-        <span className="text-xs text-muted">{shortJst(now)} 時点</span>
-      </div>
+    <Page width="full" className="max-w-6xl">
+      <PageHead
+        title={DISASTER_LABELS.page}
+        sub={
+          <>
+            <span className="text-sm text-muted">{principal.office.name}</span>
+            <DisasterBadge mark={disasterMark(state, now)} link={false} />
+            <span className="text-xs text-muted">{shortJst(now)} 時点</span>
+          </>
+        }
+      />
       {error && (
         <p role="alert" className="mt-2 text-sm font-bold text-danger">
           {DISASTER_FORM_ERROR_LABELS[error]}
@@ -129,48 +142,41 @@ export default async function OfficePage({ searchParams }: Props) {
         </div>
         <div className="grid min-w-0 content-start gap-3">
           <Form9Section people={people} counts={counts} />
-          <CareManagerSection careManagers={careManagers} admin={actor.admin} />
+          <Panel aria-labelledby="cm-title">
+            <AddCareManager count={careManagers.length} admin={actor.admin}>
+              <CareManagerList careManagers={careManagers} />
+            </AddCareManager>
+          </Panel>
           {/* デモ事業所の「最初に戻す」（T26）。審査員と管理者だけ */}
           {canResetDemo(principal) && <ResetSection state={parseResetState(q.reset)} />}
           <LogSection log={log} />
         </div>
       </div>
-    </main>
+    </Page>
   );
 }
 
-const SECTION = "rounded-lg bg-panel p-3";
-const BUTTON = "rounded-md px-4 py-2 text-sm font-bold";
-
-/** 災害モードの切替。今の状態は枠と太字（下地は敷かない）。大雨・地震はすぐ切り替え、平時に戻すは確認の欄を通す */
+/** 災害モードの切替。今の状態は枠と太字（下地は敷かない）、ほかは無色。大雨・地震はすぐ切り替え、平時に戻すは確認の欄を通す */
 function ModeSection({ state, now, confirm }: { state: DisasterState; now: string; confirm: boolean }) {
   const disaster = isDisaster(state);
   return (
-    <section aria-labelledby="mode-title" className={SECTION}>
-      <h2 id="mode-title" className="font-bold">
-        {DISASTER_LABELS.mode}
-      </h2>
-      <div className="mt-2 flex flex-wrap items-center gap-2">
+    <Panel aria-labelledby="mode-title">
+      <PanelHead id="mode-title" title={DISASTER_LABELS.mode} />
+      <div className="mt-2 flex flex-wrap items-center gap-1.5">
         {DISASTER_KINDS.map((k) => (
           <ModeButton key={k} kind={k} state={state} />
         ))}
       </div>
       {confirm && (
-        <form
-          method="post"
-          action={OFFICE_MODE_PATH}
-          className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-md bg-panel2 px-3 py-2"
-        >
+        <form method="post" action={OFFICE_MODE_PATH} className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2 rounded bg-panel2 px-3 py-2">
           <input type="hidden" name="kind" value="normal" />
           <input type="hidden" name="confirm" value="1" />
           <input type="hidden" name="version" value={state.version} />
           <span className="text-sm">停電・警戒レベル・断水・道路は消去</span>
-          <button type="submit" className={`${BUTTON} bg-danger text-on-accent`} data-press="overlay">
-            {DISASTER_LABELS.backToNormal}
-          </button>
-          <Link href={OFFICE_PATH} className="rounded px-3 py-1.5 text-sm" data-press>
+          <SubmitButton kind="dangerFill">{DISASTER_LABELS.backToNormal}</SubmitButton>
+          <ButtonLink href={OFFICE_PATH} kind="quiet" icon={CloseIcon}>
             {DISASTER_LABELS.cancel}
-          </Link>
+          </ButtonLink>
         </form>
       )}
       <dl className="mt-3 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1 text-sm">
@@ -179,7 +185,7 @@ function ModeSection({ state, now, confirm }: { state: DisasterState; now: strin
         {disaster && state.startedAt && (
           <>
             <dt className="text-muted">{DISASTER_LABELS.startedAt}</dt>
-            <dd className="tabular-nums">
+            <dd>
               {shortJst(state.startedAt)}
               <span className="text-muted"> 経過 {elapsedText(state.startedAt, now) ?? "—"}</span>
             </dd>
@@ -190,13 +196,13 @@ function ModeSection({ state, now, confirm }: { state: DisasterState; now: strin
         {state.updatedAt && (
           <>
             <dt className="text-muted">更新</dt>
-            <dd className="tabular-nums">
+            <dd>
               {state.updatedByName ?? "—"} {shortJst(state.updatedAt)}
             </dd>
           </>
         )}
       </dl>
-    </section>
+    </Panel>
   );
 }
 
@@ -204,32 +210,26 @@ function ModeButton({ kind, state }: { kind: DisasterKind; state: DisasterState 
   const label = DISASTER_KIND_LABELS[kind];
   if (kind === state.kind) {
     return (
-      <span aria-current="true" className={`${BUTTON} ring-2 ring-inset ring-accent`}>
+      <span aria-current="true" className={buttonClass("quiet", "md", "outline-2 -outline-offset-2 outline-accent")}>
         {label}
       </span>
     );
   }
   // 平時に戻すは確認の欄を開くだけ（URL の confirm）
   if (kind === "normal") {
-    return (
-      <Link href={officeHref({ confirm: true })} className={`${BUTTON} bg-panel2`} data-press>
-        {label}
-      </Link>
-    );
+    return <ButtonLink href={officeHref({ confirm: true })}>{label}</ButtonLink>;
   }
   return (
     <form method="post" action={OFFICE_MODE_PATH}>
       <input type="hidden" name="kind" value={kind} />
       <input type="hidden" name="version" value={state.version} />
-      <button type="submit" className={`${BUTTON} bg-accent text-on-accent`} data-press="overlay">
-        {label}
-      </button>
+      <SubmitButton>{label}</SubmitButton>
     </form>
   );
 }
 
-const INPUT = "rounded-md bg-panel2 px-2 py-1.5 text-sm text-ink outline-none focus-visible:outline-2 focus-visible:outline-accent";
-const CHOICE = "flex items-center gap-1.5 rounded-md bg-panel2 px-2 py-1 text-sm";
+const INPUT = "h-8 rounded bg-panel2 px-2 text-sm text-ink outline-none focus-visible:outline-2 focus-visible:outline-accent";
+const CHOICE = "flex h-8 items-center gap-1.5 rounded bg-panel2 px-2 text-sm";
 
 /** 災害の情報。発災・停電（範囲・開始・地区）・警戒レベル・断水・道路。保存で変わった所が経過に残る */
 function InfoSection({ state, towns }: { state: DisasterState; towns: TownCount[] }) {
@@ -242,129 +242,121 @@ function InfoSection({ state, towns }: { state: DisasterState; towns: TownCount[
       : towns.filter((t) => info.outage.scope === "office" || inOutageArea(info.outage.towns, t.town)).reduce((n, t) => n + t.count, 0);
   const noTown = towns.find((t) => t.town === null);
   return (
-    <form method="post" action={OFFICE_INFO_PATH} aria-labelledby="info-title" className={SECTION}>
-      <input type="hidden" name="version" value={state.version} />
-      <div className="flex flex-wrap items-baseline gap-x-3">
-        <h2 id="info-title" className="font-bold">
-          {DISASTER_LABELS.info}
-        </h2>
-        {info.outage.scope !== "none" && (
-          <span className="text-sm">
-            <span className="text-muted">{DISASTER_LABELS.inOutage}</span>{" "}
-            <span className={`font-bold tabular-nums ${TONE_TEXT.check}`}>{outageCount}</span> 人
-          </span>
-        )}
-      </div>
+    <Panel aria-labelledby="info-title">
+      <form method="post" action={OFFICE_INFO_PATH}>
+        <input type="hidden" name="version" value={state.version} />
+        <PanelHead
+          id="info-title"
+          title={DISASTER_LABELS.info}
+          sub={
+            info.outage.scope !== "none" && (
+              <span className="text-sm">
+                <span className="text-muted">{DISASTER_LABELS.inOutage}</span>{" "}
+                <span className={`font-bold ${TONE_TEXT.check}`}>{outageCount}</span> 人
+              </span>
+            )
+          }
+        />
 
-      <div className="mt-2 grid gap-x-6 gap-y-3 sm:grid-cols-2">
-        <label className="flex flex-col gap-0.5 text-sm">
-          <span className="text-muted">{DISASTER_LABELS.startedAt}</span>
-          <input type="datetime-local" name="started" required defaultValue={toLocalInput(info.startedAt)} className={`${INPUT} tabular-nums`} />
-        </label>
+        <div className="mt-2 grid gap-x-6 gap-y-3 sm:grid-cols-2">
+          <label className="flex flex-col gap-0.5">
+            <span className="text-xs text-muted">{DISASTER_LABELS.startedAt}</span>
+            <input type="datetime-local" name="started" required defaultValue={toLocalInput(info.startedAt)} className={INPUT} />
+          </label>
 
-        <fieldset className="text-sm">
-          <legend className="text-muted">{DISASTER_LABELS.level}</legend>
-          <div className="mt-0.5 flex flex-wrap gap-1.5">
-            <label className={CHOICE}>
-              <input type="radio" name="level" value="" defaultChecked={info.alertLevel === null} className="accent-accent" />
-              {DISASTER_LABELS.levelNone}
-            </label>
-            {ALERT_LEVELS.map((l) => (
-              <label key={l} className={`${CHOICE} tabular-nums`}>
-                <input type="radio" name="level" value={l} defaultChecked={info.alertLevel === l} className="accent-accent" />
-                {l}
+          <fieldset>
+            <legend className="text-xs text-muted">{DISASTER_LABELS.level}</legend>
+            <div className="mt-0.5 flex flex-wrap gap-1">
+              <label className={CHOICE}>
+                <input type="radio" name="level" value="" defaultChecked={info.alertLevel === null} className="accent-accent" />
+                {DISASTER_LABELS.levelNone}
               </label>
-            ))}
-          </div>
-        </fieldset>
-
-        <fieldset className="text-sm sm:col-span-2">
-          <legend className="text-muted">{DISASTER_LABELS.outage}</legend>
-          <div className="mt-0.5 flex flex-wrap items-end gap-x-4 gap-y-2">
-            <div className="flex flex-wrap gap-1.5">
-              {OUTAGE_SCOPES.map((s) => (
-                <label key={s} className={CHOICE}>
-                  <input type="radio" name="outage" value={s} defaultChecked={info.outage.scope === s} className="accent-accent" />
-                  {OUTAGE_SCOPE_LABELS[s]}
+              {ALERT_LEVELS.map((l) => (
+                <label key={l} className={CHOICE}>
+                  <input type="radio" name="level" value={l} defaultChecked={info.alertLevel === l} className="accent-accent" />
+                  {l}
                 </label>
               ))}
             </div>
-            <label className="flex flex-col gap-0.5">
-              <span className="text-muted">{DISASTER_LABELS.outageAt}</span>
-              <input
-                type="datetime-local"
-                name="outage_at"
-                defaultValue={toLocalInput(info.outage.startedAt)}
-                className={`${INPUT} tabular-nums`}
-              />
-            </label>
-          </div>
-          <div className="mt-2">
-            <span className="text-muted">{DISASTER_LABELS.towns}</span>
-            <div className="mt-0.5 flex flex-wrap gap-1.5">
-              {towns
-                .filter((t): t is TownCount & { town: string } => t.town !== null)
-                .map((t) => (
-                  <label key={t.town} className={CHOICE}>
-                    <input type="checkbox" name="town" value={t.town} defaultChecked={inArea(t.town)} className="accent-accent" />
-                    {t.town}
-                    <span className="text-xs text-muted tabular-nums">{t.count}</span>
+          </fieldset>
+
+          <fieldset className="sm:col-span-2">
+            <legend className="text-xs text-muted">{DISASTER_LABELS.outage}</legend>
+            <div className="mt-0.5 flex flex-wrap items-end gap-x-4 gap-y-2">
+              <div className="flex flex-wrap gap-1">
+                {OUTAGE_SCOPES.map((s) => (
+                  <label key={s} className={CHOICE}>
+                    <input type="radio" name="outage" value={s} defaultChecked={info.outage.scope === s} className="accent-accent" />
+                    {OUTAGE_SCOPE_LABELS[s]}
                   </label>
                 ))}
-              {noTown && (
-                <span className="self-center text-xs text-muted">
-                  {DISASTER_LABELS.noTown} {noTown.count}（停電に含む）
-                </span>
-              )}
+              </div>
+              <label className="flex flex-col gap-0.5">
+                <span className="text-xs text-muted">{DISASTER_LABELS.outageAt}</span>
+                <input type="datetime-local" name="outage_at" defaultValue={toLocalInput(info.outage.startedAt)} className={INPUT} />
+              </label>
             </div>
-          </div>
-        </fieldset>
+            <div className="mt-2">
+              <span className="text-xs text-muted">{DISASTER_LABELS.towns}</span>
+              <div className="mt-0.5 flex flex-wrap gap-1">
+                {towns
+                  .filter((t): t is TownCount & { town: string } => t.town !== null)
+                  .map((t) => (
+                    <label key={t.town} className={CHOICE}>
+                      <input type="checkbox" name="town" value={t.town} defaultChecked={inArea(t.town)} className="accent-accent" />
+                      {t.town}
+                      <span className="text-xs text-muted">{t.count}</span>
+                    </label>
+                  ))}
+                {noTown && (
+                  <span className="self-center text-xs text-muted">
+                    {DISASTER_LABELS.noTown} {noTown.count}（停電に含む）
+                  </span>
+                )}
+              </div>
+            </div>
+          </fieldset>
 
-        <label className="flex flex-col gap-0.5 text-sm">
-          <span className="text-muted">{DISASTER_LABELS.water}</span>
-          <input type="text" name="water" maxLength={MAX_TEXT_LENGTH} defaultValue={info.water ?? ""} className={INPUT} />
-        </label>
-        <label className="flex flex-col gap-0.5 text-sm">
-          <span className="text-muted">{DISASTER_LABELS.road}</span>
-          <input type="text" name="road" maxLength={MAX_TEXT_LENGTH} defaultValue={info.road ?? ""} className={INPUT} />
-        </label>
-      </div>
+          <label className="flex flex-col gap-0.5">
+            <span className="text-xs text-muted">{DISASTER_LABELS.water}</span>
+            <input type="text" name="water" maxLength={MAX_TEXT_LENGTH} defaultValue={info.water ?? ""} className={INPUT} />
+          </label>
+          <label className="flex flex-col gap-0.5">
+            <span className="text-xs text-muted">{DISASTER_LABELS.road}</span>
+            <input type="text" name="road" maxLength={MAX_TEXT_LENGTH} defaultValue={info.road ?? ""} className={INPUT} />
+          </label>
+        </div>
 
-      <div className="mt-3 flex items-center gap-3">
-        <button type="submit" className={`${BUTTON} bg-accent text-on-accent`} data-press="overlay">
-          {DISASTER_LABELS.save}
-        </button>
-      </div>
-    </form>
+        <div className="mt-3 flex items-center gap-3">
+          <SubmitButton kind="main" icon="SaveIcon">
+            {DISASTER_LABELS.save}
+          </SubmitButton>
+        </div>
+      </form>
+    </Panel>
   );
 }
 
 /** 様式 9 への入口。災害モードは色ごとの人数（ルールの表）、平時は並びの言い方 */
 function Form9Section({ people, counts }: { people: number; counts: ReturnType<typeof colorCounts> | null }) {
   return (
-    <section aria-labelledby="form9-title" className={SECTION}>
-      <div className="flex flex-wrap items-baseline gap-x-3">
-        <h2 id="form9-title" className="font-bold">
-          様式9
-        </h2>
-        <span className="text-sm">
-          <span className="font-bold tabular-nums">{people}</span> 人
-        </span>
-      </div>
+    <Panel aria-labelledby="form9-title">
+      <PanelHead id="form9-title" title="様式9" count={`${people} 人`} />
       {counts ? (
         <ColorCounts counts={counts} className="mt-1" />
       ) : (
         <p className="mt-1 text-xs text-muted">並び {NORMAL_ORDER_LABELS.join(" → ")}</p>
       )}
-      <div className="mt-2 flex flex-wrap gap-2">
-        <Link href={FORM9_PATH} className={`${BUTTON} bg-panel2`} data-press>
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        <ButtonLink href={FORM9_PATH} icon={PaperIcon}>
           表示
-        </Link>
-        <a href={FORM9_CSV_PATH} download className={`${BUTTON} bg-panel2`} data-press>
+        </ButtonLink>
+        <a href={FORM9_CSV_PATH} download className={buttonClass("plain", "md")} data-press>
+          <DownloadIcon aria-hidden className="size-4 shrink-0" />
           CSV出力
         </a>
       </div>
-    </section>
+    </Panel>
   );
 }
 
@@ -380,14 +372,9 @@ const LOG_TONE: Record<OfficeLogItem["kind"], string> = {
   person_taken: "font-bold",
 };
 
-const CELL = "bg-panel2 px-2 py-1.5 align-middle first:rounded-l last:rounded-r";
-/** 行（面の中の灰色）の上の選ぶ欄。地は白 */
-const SELECT_IN =
-  "min-w-0 rounded-md bg-panel px-2 py-1 text-sm text-ink outline-none focus-visible:outline-2 focus-visible:outline-accent";
-
 /**
  * 担当の割当（T30）。事業所の利用者を全部（カナの順）、行ごとに担当を選んで「変更」、「外す」で一覧から外す（消さない）。
- * 外した人は表の下の畳み「外した人 N」から戻す。表は区分の中で送る（max-h）
+ * 外した人は表の下の畳み「外した人 N」から戻す。表は 1 つの面の中で、ページの流れのまま（区分の中で送らない）
  */
 function AssignSection({
   people,
@@ -400,20 +387,19 @@ function AssignSection({
 }) {
   const listed = people.filter((p) => p.unlistedAt === null);
   const unlisted = people.filter((p): p is OfficePersonItem & { unlistedAt: string } => p.unlistedAt !== null);
-  const nameOf = new Map(careManagers.map((c) => [c.id, c.name]));
+  const cms = careManagers.map((c) => ({ id: c.id, name: c.name }));
   return (
-    <section id={ASSIGN_ANCHOR} aria-labelledby="assign-title" className={`${SECTION} scroll-mt-4`}>
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <h2 id="assign-title" className="font-bold">
-          {OFFICE_LABELS.assignments}
-        </h2>
-        <span className="text-sm">
-          <span className="font-bold tabular-nums">{listed.length}</span> {OFFICE_LABELS.people}
-        </span>
-        <Link href={NEW_PERSON_PATH} className={`${BUTTON} ml-auto self-center bg-panel2`} data-press>
-          {OFFICE_LABELS.addPerson}
-        </Link>
-      </div>
+    <Panel id={ASSIGN_ANCHOR} aria-labelledby="assign-title" className="scroll-mt-4">
+      <PanelHead
+        id="assign-title"
+        title={OFFICE_LABELS.assignments}
+        count={`${listed.length} ${OFFICE_LABELS.people}`}
+        actions={
+          <ButtonLink href={`${NEW_PERSON_PATH}?back=office`} kind="main" icon={AddPersonIcon}>
+            {OFFICE_LABELS.addPerson}
+          </ButtonLink>
+        }
+      />
       {error && (
         <p role="alert" className="mt-1 text-sm font-bold text-danger">
           {OFFICE_ERROR_LABELS[error]}
@@ -422,15 +408,15 @@ function AssignSection({
       {listed.length === 0 ? (
         <p className="mt-2 text-sm text-muted">{OFFICE_LABELS.none}</p>
       ) : (
-        <div className="mt-2 max-h-[55dvh] overflow-auto">
-          <table className="w-full min-w-[36rem] border-separate border-spacing-y-0.5 text-left text-sm">
-            <thead className="sticky top-0 bg-panel">
-              <tr className="whitespace-nowrap text-xs text-muted">
-                <th className="px-2 py-1 font-normal">{OFFICE_LABELS.name}</th>
-                <th className="px-2 py-1 font-normal">{OFFICE_LABELS.age}</th>
-                <th className="px-2 py-1 font-normal">{OFFICE_LABELS.plan}</th>
-                <th className="px-2 py-1 font-normal">{OFFICE_LABELS.careManager}</th>
-                <th className="px-2 py-1 font-normal">
+        <div className={`mt-2 ${TABLE_BOX}`}>
+          <table className={TABLE}>
+            <thead>
+              <tr>
+                <th className={TH}>{OFFICE_LABELS.name}</th>
+                <th className={TH}>{OFFICE_LABELS.age}</th>
+                <th className={TH}>{OFFICE_LABELS.plan}</th>
+                <th className={TH}>{OFFICE_LABELS.careManager}</th>
+                <th className={TH}>
                   <span className="sr-only">{OFFICE_LABELS.unlist}</span>
                 </th>
               </tr>
@@ -438,52 +424,28 @@ function AssignSection({
             <tbody>
               {listed.map((p) => (
                 <tr key={p.id}>
-                  <td className={CELL}>
-                    <Link href={`/people/${encodeURIComponent(p.id)}`} className="-mx-1 rounded px-1 font-bold" data-press>
+                  <td className={`${TD} align-middle`}>
+                    <Link href={`/people/${encodeURIComponent(p.id)}`} className="relative -mx-1 rounded px-1 font-bold" data-press>
                       {p.name}
+                      <LinkPending />
                     </Link>
-                    <span className="ml-2 text-xs text-muted">{p.kana}</span>
+                    <span className="ml-1.5 text-xs text-muted">{p.kana}</span>
                   </td>
-                  <td className={`${CELL} whitespace-nowrap tabular-nums`}>{p.age ?? "—"}</td>
-                  <td className={`${CELL} whitespace-nowrap`}>
-                    <StateTag tone={PLAN_TONES[p.plan]}>{PLAN_STATUS_LABELS[p.plan]}</StateTag>
+                  <td className={`${TD} align-middle whitespace-nowrap`}>{p.age ?? "—"}</td>
+                  <td className={`${TD} align-middle whitespace-nowrap`}>
+                    <StateText tone={PLAN_TONES[p.plan]}>{PLAN_STATUS_LABELS[p.plan]}</StateText>
                   </td>
-                  <td className={CELL}>
-                    <form method="post" action={OFFICE_PEOPLE_PATH} className="flex items-center gap-1.5">
-                      <input type="hidden" name="action" value="assign" />
-                      <input type="hidden" name="person" value={p.id} />
-                      <input type="hidden" name="from" value={p.careManagerId ?? ""} />
-                      <input type="hidden" name="back" value="office" />
-                      <select
-                        name="to"
-                        defaultValue={p.careManagerId ?? ""}
-                        aria-label={`${p.name} ${OFFICE_LABELS.careManager}`}
-                        className={SELECT_IN}
-                      >
-                        {p.careManagerId === null || !nameOf.has(p.careManagerId) ? (
-                          <option value="" disabled>
-                            {OFFICE_LABELS.unassigned}
-                          </option>
-                        ) : null}
-                        {careManagers.map((c) => (
-                          <option key={c.id} value={c.id}>
-                            {c.name}
-                          </option>
-                        ))}
-                      </select>
-                      <button type="submit" className="rounded-md bg-panel px-2.5 py-1 text-sm font-bold" data-press>
-                        {OFFICE_LABELS.assign}
-                      </button>
-                    </form>
+                  <td className={`${TD} align-middle`}>
+                    <AssignForm personId={p.id} personName={p.name} careManagerId={p.careManagerId} careManagers={cms} />
                   </td>
-                  <td className={`${CELL} text-right`}>
+                  <td className={`${TD} align-middle text-right`}>
                     <form method="post" action={OFFICE_PEOPLE_PATH}>
                       <input type="hidden" name="action" value="unlist" />
                       <input type="hidden" name="person" value={p.id} />
                       <input type="hidden" name="back" value="office" />
-                      <button type="submit" className="rounded-md px-2.5 py-1 text-sm text-muted" data-press>
+                      <SubmitButton kind="danger" size="sm" icon="UnlistIcon">
                         {OFFICE_LABELS.unlist}
-                      </button>
+                      </SubmitButton>
                     </form>
                   </td>
                 </tr>
@@ -505,67 +467,59 @@ function AssignSection({
           back="office"
         />
       </UnlistedFold>
-    </section>
+    </Panel>
   );
 }
 
-/** ケアマネ（T30）。足した順に名前・管理者の印・ID・担当の人数。管理者だけ「ケアマネ追加」（初期パスワードは画面に 1 回だけ） */
-function CareManagerSection({ careManagers, admin }: { careManagers: CareManagerItem[]; admin: boolean }) {
+/** ケアマネの一覧（T30）。足した順に名前・管理者の印・ID・担当の人数。見出しと「ケアマネ追加」は AddCareManager */
+function CareManagerList({ careManagers }: { careManagers: CareManagerItem[] }) {
   return (
-    <section aria-labelledby="cm-title" className={SECTION}>
-      <h2 id="cm-title" className="flex items-baseline gap-2 font-bold">
-        {OFFICE_LABELS.careManagers}
-        <span className="text-sm font-normal text-muted tabular-nums">{careManagers.length}</span>
-      </h2>
-      <ul className="mt-2 space-y-0.5 text-sm">
-        {careManagers.map((c) => (
-          <li key={c.id} className="flex flex-wrap items-baseline gap-x-2 rounded bg-panel2 px-2 py-1.5">
-            <span className="font-bold">{c.name}</span>
-            {c.admin && <span className="text-xs text-muted">{OFFICE_LABELS.admin}</span>}
-            {c.loginId && (
-              <span className="text-xs text-muted">
-                {OFFICE_LABELS.loginId} {c.loginId}
-              </span>
-            )}
-            <span className="ml-auto tabular-nums">
-              {c.people}
-              <span className="text-xs text-muted"> {OFFICE_LABELS.people}</span>
+    <ul className="mt-2 grid gap-px text-sm">
+      {careManagers.map((c) => (
+        <li key={c.id} className="flex flex-wrap items-baseline gap-x-2 rounded bg-panel2 px-2 py-1.5">
+          <span className="font-bold">{c.name}</span>
+          {c.admin && <span className="text-xs text-muted">{OFFICE_LABELS.admin}</span>}
+          {c.loginId && (
+            <span className="text-xs text-muted">
+              {OFFICE_LABELS.loginId} {c.loginId}
             </span>
-          </li>
-        ))}
-      </ul>
-      {admin && <AddCareManager />}
-    </section>
+          )}
+          <span className="ml-auto">
+            {c.people}
+            <span className="text-xs text-muted"> {OFFICE_LABELS.people}</span>
+          </span>
+        </li>
+      ))}
+    </ul>
   );
 }
 
-/** 事業所の経過。新しい順。誰が・いつ・何を */
+/** 事業所の経過。新しい順。誰が・いつ・何を。長いときは新しい 8 件を出し、残りは「全 N 件」で開く（区分の中で送らない） */
 function LogSection({ log }: { log: OfficeLogItem[] }) {
   return (
-    <section aria-labelledby="log-title" className={SECTION}>
-      <h2 id="log-title" className="flex items-baseline gap-2 font-bold">
-        {DISASTER_LABELS.log}
-        <span className="text-sm font-normal text-muted tabular-nums">{log.length}</span>
-      </h2>
+    <Panel aria-labelledby="log-title">
+      <PanelHead id="log-title" title={DISASTER_LABELS.log} count={log.length} />
       {log.length === 0 ? (
         <p className="mt-2 text-sm text-muted">{DISASTER_LABELS.none}</p>
       ) : (
-        <ol className="mt-2 max-h-[60dvh] space-y-0.5 overflow-y-auto text-sm">
-          {log.map((e) => (
+        <MoreFold
+          first={8}
+          className="mt-2 grid gap-px text-sm"
+          items={log.map((e) => (
             <li key={e.id} className="rounded bg-panel2 px-2 py-1.5">
               <div className="flex flex-wrap items-baseline gap-x-2">
                 <span className={LOG_TONE[e.kind]}>{e.label}</span>
                 {e.person && <span>{e.person}</span>}
                 {e.body && <span className="min-w-0 break-words">{e.body}</span>}
               </div>
-              <div className="text-xs text-muted tabular-nums">
+              <div className="text-xs text-muted">
                 {e.who} {e.when}
               </div>
             </li>
           ))}
-        </ol>
+        />
       )}
-    </section>
+    </Panel>
   );
 }
 
@@ -576,42 +530,35 @@ function LogSection({ log }: { log: OfficeLogItem[] }) {
 function UnaffiliatedSection({ people }: { people: UnaffiliatedItem[] }) {
   if (people.length === 0) return null;
   return (
-    <section id={UNAFFILIATED_ANCHOR} aria-labelledby="unaffiliated-title" className={`${SECTION} scroll-mt-4`}>
-      <div className="flex flex-wrap items-baseline gap-x-3">
-        <h2 id="unaffiliated-title" className="font-bold">
-          {CUSTODY_LABELS.unaffiliated}
-        </h2>
-        <span className="text-sm">
-          <span className="font-bold tabular-nums">{people.length}</span> {OFFICE_LABELS.people}
-        </span>
-      </div>
-      <div className="mt-2 max-h-[40dvh] overflow-y-auto">
-        <table className="w-full border-separate border-spacing-y-0.5 text-sm" data-table="unaffiliated">
+    <Panel id={UNAFFILIATED_ANCHOR} aria-labelledby="unaffiliated-title" className="scroll-mt-4">
+      <PanelHead id="unaffiliated-title" title={CUSTODY_LABELS.unaffiliated} count={`${people.length} ${OFFICE_LABELS.people}`} />
+      <div className={`mt-2 ${TABLE_BOX}`}>
+        <table className={TABLE} data-table="unaffiliated">
           <thead>
-            <tr className="text-left text-xs text-muted">
-              <th className="px-2 font-normal">{CUSTODY_LABELS.kana}</th>
-              <th className="px-2 font-normal">{CUSTODY_LABELS.age}</th>
-              <th className="px-2 font-normal">{CUSTODY_LABELS.shelter}</th>
-              <th className="px-2 font-normal">{CUSTODY_LABELS.registeredAt}</th>
-              <th className="px-2" />
+            <tr>
+              <th className={TH}>{CUSTODY_LABELS.kana}</th>
+              <th className={TH}>{CUSTODY_LABELS.age}</th>
+              <th className={TH}>{CUSTODY_LABELS.shelter}</th>
+              <th className={TH}>{CUSTODY_LABELS.registeredAt}</th>
+              <th className={TH} />
             </tr>
           </thead>
           <tbody>
             {people.map((p) => (
               <tr key={p.id} data-unaffiliated={p.id}>
-                <td className={`${CELL} font-bold`}>{p.kana}</td>
-                <td className={`${CELL} whitespace-nowrap tabular-nums`}>
+                <td className={`${TD} align-middle font-bold`}>{p.kana}</td>
+                <td className={`${TD} align-middle whitespace-nowrap`}>
                   {p.age ?? "—"}
                   {p.ageReported && <span className="ml-1 text-xs text-muted">{CUSTODY_LABELS.reportedAge}</span>}
                 </td>
-                <td className={CELL}>{p.shelters.join("・") || "—"}</td>
-                <td className={`${CELL} whitespace-nowrap tabular-nums`}>{p.createdWhen}</td>
-                <td className={`${CELL} text-right`}>
+                <td className={`${TD} align-middle`}>{p.shelters.join("・") || "—"}</td>
+                <td className={`${TD} align-middle whitespace-nowrap`}>{p.createdWhen}</td>
+                <td className={`${TD} align-middle text-right`}>
                   <form method="post" action={OFFICE_TAKE_PATH}>
                     <input type="hidden" name="person" value={p.id} />
-                    <button type="submit" className="rounded-md bg-accent px-3 py-1 text-sm font-bold text-on-accent" data-press="overlay">
+                    <SubmitButton kind="main" size="sm">
                       {CUSTODY_LABELS.take}
-                    </button>
+                    </SubmitButton>
                   </form>
                 </td>
               </tr>
@@ -619,61 +566,62 @@ function UnaffiliatedSection({ people }: { people: UnaffiliatedItem[] }) {
           </tbody>
         </table>
       </div>
-    </section>
+    </Panel>
   );
 }
 
 /**
  * デモ事業所の「最初に戻す」（T26）。審査員（ケアマネの役）と管理者だけに出す。押すと確認の欄（URL の reset=confirm）を開き、
- * 確認の欄の赤いボタンで種に戻す。毎日 4:00 にも自動で戻る。経過には残さない
+ * 確認の欄の赤い塗りのボタンで種に戻す。毎日 4:00 にも自動で戻る。経過には残さない
  */
 function ResetSection({ state }: { state: ResetState | null }) {
   return (
-    <section aria-labelledby="reset-title" className={SECTION} data-reset>
-      <div className="flex flex-wrap items-baseline gap-x-3">
-        <h2 id="reset-title" className="font-bold">
-          {RESET_LABELS.title}
-        </h2>
-        <span className="text-xs text-muted tabular-nums">{RESET_LABELS.daily}</span>
-        {state === "done" && (
-          <span role="status" className="text-sm font-bold">
-            {RESET_LABELS.done}
-          </span>
-        )}
-        {state === "failed" && (
-          <span role="alert" className="text-sm font-bold text-danger">
-            {RESET_LABELS.failed}
-          </span>
-        )}
-      </div>
+    <Panel aria-labelledby="reset-title" data-reset>
+      <PanelHead
+        id="reset-title"
+        title={RESET_LABELS.title}
+        sub={
+          <>
+            <span className="text-xs text-muted">{RESET_LABELS.daily}</span>
+            {state === "done" && (
+              <span role="status" className="text-sm">
+                <StateText tone="ok">{RESET_LABELS.done}</StateText>
+              </span>
+            )}
+            {state === "failed" && (
+              <span role="alert" className="text-sm font-bold text-danger">
+                {RESET_LABELS.failed}
+              </span>
+            )}
+          </>
+        }
+      />
       {state === "confirm" ? (
-        <form method="post" action={OFFICE_RESET_PATH} className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-md bg-panel2 px-3 py-2">
+        <form method="post" action={OFFICE_RESET_PATH} className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2 rounded bg-panel2 px-3 py-2">
           <input type="hidden" name="confirm" value="1" />
           <span className="text-sm">{RESET_LABELS.confirm}</span>
-          <button type="submit" className={`${BUTTON} bg-danger text-on-accent`} data-press="overlay">
-            {RESET_LABELS.reset}
-          </button>
-          <Link href={OFFICE_PATH} className="rounded px-3 py-1.5 text-sm" data-press>
+          <SubmitButton kind="dangerFill">{RESET_LABELS.reset}</SubmitButton>
+          <ButtonLink href={OFFICE_PATH} kind="quiet" icon={CloseIcon}>
             {RESET_LABELS.cancel}
-          </Link>
+          </ButtonLink>
         </form>
       ) : (
         <div className="mt-2">
-          <Link href={officeResetHref("confirm")} className={`${BUTTON} inline-block bg-panel2 text-danger`} data-press>
+          <ButtonLink href={officeResetHref("confirm")} kind="danger">
             {RESET_LABELS.reset}
-          </Link>
+          </ButtonLink>
         </div>
       )}
-    </section>
+    </Panel>
   );
 }
 
 function Message({ title }: { title: string }) {
   return (
-    <main className="mx-auto max-w-6xl px-4 py-6">
-      <section className="rounded-lg bg-panel p-6">
+    <Page width="full" className="max-w-6xl">
+      <Panel className="p-6">
         <h1 className="text-xl font-bold">{title}</h1>
-      </section>
-    </main>
+      </Panel>
+    </Page>
   );
 }

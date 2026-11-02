@@ -103,7 +103,7 @@ export function QrSummary({ sheet: s, expiresAt }: { sheet: QrSheet; expiresAt: 
 
       {s.blocks.map((b) => (
         <section key={b.block} className="rounded-lg bg-panel px-4 py-2" data-block={b.block}>
-          <h2 className="pt-1 text-sm font-bold text-muted">{b.label}</h2>
+          <h2 className="pt-1 text-[0.9375rem] font-bold">{b.label}</h2>
           {b.block === "meds" && s.medications.length > 0 && (
             <ul className="mt-1 space-y-1.5" data-field="meds.list">
               {s.medications.map((m, i) => (
@@ -134,7 +134,7 @@ export function QrSummary({ sheet: s, expiresAt }: { sheet: QrSheet; expiresAt: 
 
       {s.pending.length > 0 && (
         <section className="rounded-lg bg-panel px-4 py-2" data-block="pending" data-pending-list={s.pending.length}>
-          <h2 className="pt-1 text-sm font-bold text-muted">
+          <h2 className="pt-1 text-[0.9375rem] font-bold">
             {BLANK_LABELS.unconfirmed} <span className="tabular-nums">{s.pending.length}</span>
           </h2>
           <ul className="flex flex-wrap gap-x-3 py-1.5">

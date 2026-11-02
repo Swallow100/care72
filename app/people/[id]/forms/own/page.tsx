@@ -6,17 +6,16 @@ import type { Metadata } from "next";
 import { headers } from "next/headers";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { AutoPrint } from "@/components/forms/AutoPrint";
 import { OwnSheetPaper, type OwnQr } from "@/components/forms/OwnSheet";
-import { PrintButton } from "@/components/forms/PrintButton";
 import { qrExpiryDate } from "@/components/forms/QrBlock";
 import { StateTag } from "@/components/person/parts";
+import { LinkPending } from "@/components/ui/LinkPending";
+import { PaperBar, wantsPrint } from "@/components/ui/PaperBar";
 import { todayJst } from "@/lib/age";
 import { requirePage } from "@/lib/auth/server";
 import { nowSec, sessionSecret } from "@/lib/auth/session";
 import { buildMedicalSummary } from "@/lib/forms/medical-summary";
 import { buildOwnSheet } from "@/lib/forms/own-sheet";
-import { wantsPrint } from "@/lib/forms/print";
 import { BLANK_LABELS, DOCUMENT_LABELS } from "@/lib/labels";
 import { loadPersonDocument } from "@/lib/consent/documents";
 import { QR_LABELS, QR_STATUS_LABELS } from "@/lib/qr/labels";
@@ -49,10 +48,10 @@ function Check({ label, items, data }: { label: string; items: readonly string[]
 // 壁は本人のページと同じ（loadPersonPage が personInScope を通す。範囲の外は 404）。医療班・行政の同意の範囲に本人の 1 枚は無いので 404（T24）。
 // 上の帯（画面だけ）に、紙で「ケアマネジャーと 決めます」と出た所・手で書く電話・ふりがなの付かなかった漢字と、QR の状態を出す。
 // QR はここでは作らない（作る・作り直すは QR の画面でケアマネが押す。作り直すと前に刷った紙の QR は無効）。
-// ?print=1 で開くと、書体を読み終えてから印刷の窓を出す（AutoPrint、lib/forms/print.ts）。
 export default async function OwnFormPage({ params, searchParams }: Props) {
   const principal = await requirePage("person");
   const { id } = await params;
+  const autoPrint = wantsPrint((await searchParams).print);
   const { env } = await getCloudflareContext({ async: true });
   const opened = await loadPersonDocument(env.DB, principal, id, "own");
   if (!opened) notFound();
@@ -72,13 +71,7 @@ export default async function OwnFormPage({ params, searchParams }: Props) {
 
   return (
     <main className="py-4 print:p-0">
-      <div className="screen-only mx-auto mb-4 flex max-w-[calc(210mm+2rem)] flex-wrap items-center gap-x-4 gap-y-2 px-4">
-        <Link href={`/people/${id}`} className="rounded px-2 py-1 text-sm text-muted" data-press>
-          戻る
-        </Link>
-        <div className="font-bold">
-          {DOCUMENT_LABELS.own} <span className="font-normal text-muted">{sheet.name}</span>
-        </div>
+      <PaperBar back={`/people/${encodeURIComponent(id)}`} title={DOCUMENT_LABELS.own} name={sheet.name} autoPrint={autoPrint}>
         <Check
           label={BLANK_LABELS.unconfirmed}
           items={sheet.open.filter((o) => o.kind === "decide").map((o) => o.label)}
@@ -86,7 +79,7 @@ export default async function OwnFormPage({ params, searchParams }: Props) {
         />
         <Check label="手書き" items={sheet.open.filter((o) => o.kind === "write").map((o) => o.label)} data="write" />
         <Check label="読み未登録" items={sheet.noReading} data="reading" />
-        <Link href={qrHref} className="flex items-baseline gap-2 rounded px-1 text-sm" data-press data-qr-status={qr.status}>
+        <Link href={qrHref} className="relative flex items-baseline gap-2 rounded px-1 text-sm" data-press data-qr-status={qr.status}>
           {qr.url && qr.expiresAt ? (
             <span className="text-muted">
               {QR_LABELS.title} {QR_LABELS.expires} <span className="tabular-nums">{qrExpiryDate(qr.expiresAt)}</span>
@@ -96,13 +89,10 @@ export default async function OwnFormPage({ params, searchParams }: Props) {
               {QR_LABELS.title} {QR_STATUS_LABELS[qr.status === "expired" ? "expired" : "none"]}
             </StateTag>
           )}
+          <LinkPending />
         </Link>
-        <div className="ml-auto">
-          <PrintButton />
-        </div>
-      </div>
+      </PaperBar>
       <OwnSheetPaper sheet={sheet} medical={medical} qr={qr} />
-      {wantsPrint(await searchParams) && <AutoPrint />}
     </main>
   );
 }

@@ -1,10 +1,11 @@
 // 訓練の右の「被害状況」（docs/tasks/T17.md。世界の状態は監督 T19 が持つ）。見ている時刻の世界をそのまま並べる。
-// 大雨は警戒レベル・浸水、地震は震度・津波。どちらも停電・電話・断水・道路・避難所・施設。
+// 大雨は警戒レベル・浸水、地震は震度・津波。どちらも停電・電話・断水・道路・避難所・施設・職員の空き・本人ごとの印（監督の差し込み）。
 // 止まっている物（停電中・不通・断水・通行止・休止・満員）は要確認の色の文字。面は塗らない。
 
-import type { DrillKind, WorldState } from "@/lib/drill/scenarios";
+import type { DrillKind, PersonMarks, WorldState } from "@/lib/drill/scenarios";
 import {
   DRILL_LABELS,
+  MARK_LABELS,
   PHONE_LABELS,
   SHELTER_LABELS,
   TSUNAMI_LABELS,
@@ -109,6 +110,20 @@ export function DamagePanel({
             bad: !f.open,
             who: f.person ? names[f.person] : undefined,
           }))}
+        />
+      </Item>
+      <Item label={WORLD_LABELS.staff} k="staff">
+        <span className={world.staff > 0 ? "tabular-nums" : `${BAD} tabular-nums`}>
+          {WORLD_LABELS.staffFree} {world.staff} {WORLD_LABELS.people}
+        </span>
+      </Item>
+      <Item label={WORLD_LABELS.marks} k="marks">
+        <List
+          items={Object.entries(world.marks ?? {}).flatMap(([person, m]) =>
+            (Object.keys(MARK_LABELS) as Array<keyof PersonMarks>)
+              .filter((k) => m[k] !== undefined)
+              .map((k) => ({ id: `${person}-${k}`, label: names[person] ?? person, state: MARK_LABELS[k], bad: true })),
+          )}
         />
       </Item>
     </dl>
