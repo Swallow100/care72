@@ -77,9 +77,14 @@ function parseIso(v: FormDataEntryValue | null): string | null {
   return s && s.length <= 40 && !Number.isNaN(Date.parse(s)) ? s : null;
 }
 
+/** 録音を信号に添えたあと（初めて添えたときだけ）。分類（T12）をここから走らせる */
+export type AttachedRecording = { officeId: string; personId: string; signalId: string; durationSec: number | null };
+export type RecordingHooks = { afterAttach?: (a: AttachedRecording) => void };
+
 /**
  * 録音の POST（multipart）。欄は signal（信号の id）・audio（音声のファイル、無くてもよい）・transcript（文字起こし）・
- * durationSec・recordedAt・sentAt。音声も文字起こしも無ければ 400
+ * durationSec・recordedAt・sentAt。音声も文字起こしも無ければ 400。
+ * 初めて添えたときだけ hooks.afterAttach を呼ぶ（送り直し・重なりでは呼ばない）。応答は待たせない（呼ぶ側が waitUntil で走らせる）
  */
 export async function recordingPost(
   db: D1Database,
@@ -87,6 +92,7 @@ export async function recordingPost(
   p: Principal | null,
   form: FormLike | null,
   now: string,
+  hooks: RecordingHooks = {},
 ): Promise<Response> {
   const scope = signalScope(p, "recording");
   if (!scope) return refuse(p);
@@ -114,5 +120,8 @@ export async function recordingPost(
 
   const r = await attachRecording(db, bucket, scope, { signalId, audio, transcript, durationSec: duration, recordedAt, sentAt }, now);
   if (!r.ok) return signalError(r.error);
+  if (!r.duplicate) {
+    hooks.afterAttach?.({ officeId: scope.officeId, personId: scope.personId, signalId, durationSec: duration });
+  }
   return Response.json({ ok: true, duplicate: r.duplicate, recorded: r.key !== null }, { headers: NO_STORE });
 }
