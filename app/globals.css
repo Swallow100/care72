@@ -3,7 +3,15 @@
 /*
   色は 3 段の地で区切る。地（base 薄い灰色）・面（panel 白）・面の中（panel2）。
   枠線は選択・注意・危険のときだけ。押したときは灰色（press）だけ。
-  安否の 4 色: 緑 無事（safe）・赤 危険（danger）・黄 要確認（caution）・灰 未知（unknown）。
+
+  色は意味にだけ使い、飾りには使わない。面全体は塗らず、印・文字・数字・細い帯に置く。
+  状態の 4 色（同じ意味は同じ色）:
+    --state-ok      緑 無事（同意あり・確認済・受領も）
+    --state-urgent  赤 至急（赤の信号、残りの短い時計）
+    --state-check   黄 要確認（未確認・同意なし・支援者なし・中断注意も）
+    --state-unknown 灰 未知
+  状態は色だけで示さず、2 字ほどの文字を必ず添える。薄い下地（-soft）は面の色との color-mix で作る。
+  操作の色は --accent の 1 色。危険な操作と誤りは --danger（赤）。
 */
 :root {
   --base: #eceef1;
@@ -12,11 +20,12 @@
   --ink: #1c2229;
   --muted: #5a6470;
   --press: rgb(0 0 0 / 0.07);
-  --safe: #1d7a45;
+  --state-ok: #1d7a45;
+  --state-urgent: #c0292b;
+  --state-check: #8a5a00;
+  --state-unknown: #66707c;
   --danger: #c0292b;
-  --caution: #946000;
-  --unknown: #66707c;
-  /* 操作の色（ログインなどの主のボタン、選んだ印の枠、入力の欄の印）。状態の 4 色とは別 */
+  /* 操作の色（ログインなどの主のボタン、選んだ印の枠、入力の欄の印、電話のリンク）。状態の 4 色とは別 */
   --accent: #2a5d8f;
   --on-accent: #ffffff;
   color-scheme: light;
@@ -30,14 +39,23 @@
     --ink: #e6e9ed;
     --muted: #9aa4af;
     --press: rgb(255 255 255 / 0.08);
-    --safe: #52c285;
+    --state-ok: #52c285;
+    --state-urgent: #ff6f69;
+    --state-check: #e0b13e;
+    --state-unknown: #a3adb8;
     --danger: #ff6f69;
-    --caution: #e0b13e;
-    --unknown: #9aa4af;
     --accent: #8db8e4;
     --on-accent: #0f1215;
     color-scheme: dark;
   }
+}
+
+/* 状態の薄い下地。印の地だけに使う（面全体には敷かない）。面の色に混ぜるのでライトとダークで自然に変わる */
+:root {
+  --state-ok-soft: color-mix(in srgb, var(--state-ok) 14%, var(--panel));
+  --state-urgent-soft: color-mix(in srgb, var(--state-urgent) 12%, var(--panel));
+  --state-check-soft: color-mix(in srgb, var(--state-check) 16%, var(--panel));
+  --state-unknown-soft: color-mix(in srgb, var(--state-unknown) 14%, var(--panel));
 }
 
 @theme inline {
@@ -47,10 +65,15 @@
   --color-ink: var(--ink);
   --color-muted: var(--muted);
   --color-press: var(--press);
-  --color-safe: var(--safe);
+  --color-state-ok: var(--state-ok);
+  --color-state-urgent: var(--state-urgent);
+  --color-state-check: var(--state-check);
+  --color-state-unknown: var(--state-unknown);
+  --color-state-ok-soft: var(--state-ok-soft);
+  --color-state-urgent-soft: var(--state-urgent-soft);
+  --color-state-check-soft: var(--state-check-soft);
+  --color-state-unknown-soft: var(--state-unknown-soft);
   --color-danger: var(--danger);
-  --color-caution: var(--caution);
-  --color-unknown: var(--unknown);
   --color-accent: var(--accent);
   --color-on-accent: var(--on-accent);
   --font-sans: var(--font-biz-ud), system-ui, sans-serif;
