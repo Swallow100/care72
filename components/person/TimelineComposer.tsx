@@ -8,6 +8,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { COMPOSER_FAILED, COMPOSER_LABELS } from "@/lib/consent/labels";
+import { CUSTODY_LABELS } from "@/lib/custody/labels";
 import type { WritableKind } from "@/lib/consent/scope";
 import { TIMELINE_KIND_LABELS } from "@/lib/labels";
 import { BODY_MAX, TIMELINE_API } from "@/lib/timeline/paths";
@@ -28,6 +29,9 @@ export function TimelineComposer({ personId, kinds }: { personId: string; kinds:
 
   // 自由文だけなら「記録」（書ける種類に無ければ送れない）
   const kind: WritableKind | null = preset ?? (kinds.includes("note") && text.trim() !== "" ? "note" : null);
+  // 到着の本文は様式 9 の避難先の列に出る（lib/forms/form9-db.ts の entryPlace）ので欄の名前を「避難所」に。搬送は「行き先」
+  const textLabel =
+    preset === "arrived_shelter" ? CUSTODY_LABELS.shelter : preset === "transported" ? CUSTODY_LABELS.destination : COMPOSER_LABELS.text;
 
   async function send(e: React.FormEvent) {
     e.preventDefault();
@@ -83,8 +87,8 @@ export function TimelineComposer({ personId, kinds }: { personId: string; kinds:
           onChange={(e) => setText(e.target.value)}
           rows={2}
           maxLength={BODY_MAX}
-          placeholder={COMPOSER_LABELS.text}
-          aria-label={COMPOSER_LABELS.text}
+          placeholder={textLabel}
+          aria-label={textLabel}
           className={INPUT}
         />
         <button type="submit" disabled={!kind || busy} className={`${PRIMARY} shrink-0`} data-press="overlay">

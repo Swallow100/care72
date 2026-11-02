@@ -10,6 +10,7 @@ import { scopeOfRows } from "../consent/scope.ts";
 import { staffActor } from "../custody/actor.ts";
 import { receive, release } from "../custody/store.ts";
 import { d1FromSqlite, migratedSqlite } from "../db/test-d1.ts";
+import { entryPlace } from "../forms/form9-db.ts";
 import { loadPersonPage, toPersonView, type TimelineItem } from "../person.ts";
 import { BODY_MAX } from "./paths.ts";
 import { parseWrite, writeTimeline, writeTimelineRequest } from "./write.ts";
@@ -110,6 +111,20 @@ describe("誰が・いつ・どの役", () => {
     );
     const row = sqlite.prepare("SELECT author_id, author_role, occurred_at FROM timeline_entries WHERE id = ?").get(String(out.body.id));
     expect(row).toEqual({ author_id: "acct-judge", author_role: "medical", occurred_at: EXAMINED_AT });
+  });
+
+  it("書き足しの到着の本文は様式 9 の避難先として読まれる（欄の名前は「避難所」）。搬送の本文は場所に使わない", async () => {
+    await received("p-01");
+    const a = await writeTimelineRequest(db, medical(), { personId: "p-01", kind: "arrived_shelter", body: "かわなぎ小学校" }, EXAMINED_AT);
+    const t = await writeTimelineRequest(db, medical(), { personId: "p-01", kind: "transported", body: "中央病院" }, EXAMINED_AT);
+    const row = (id: unknown) =>
+      sqlite.prepare("SELECT kind, body, payload FROM timeline_entries WHERE id = ?").get(String(id)) as {
+        kind: "arrived_shelter" | "transported";
+        body: string | null;
+        payload: string | null;
+      };
+    expect(entryPlace(row(a.body.id))).toBe("かわなぎ小学校");
+    expect(entryPlace(row(t.body.id))).toBeNull();
   });
 
   it("9 渡辺（医療班への提供に同意なし）にも書け、医療班の経過に出る（医療班の行は範囲の中）", async () => {
