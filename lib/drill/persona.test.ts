@@ -23,12 +23,14 @@ import {
   cleanWords,
   createPersonaHook,
   decideCallPickup,
+  fromRole,
   loadPersonaSources,
   PERSONA_SYSTEM,
   personaCallReply,
   personaTurns,
   reportersOf,
   tickText,
+  whereOf,
   type PersonaAnswer,
 } from "./persona.ts";
 import { EMPTY_WORLD, SCENARIOS, type FixedTurn } from "./scenarios.ts";
@@ -279,6 +281,27 @@ describe("返事を安否に", () => {
     expect(personaTurns(personaInput("p-04"), buildPersona(input("p-04")), { ...red, from: "民生委員" })).toEqual([]);
     const [kato] = personaTurns(personaInput("p-07"), buildPersona(input("p-07")), red);
     expect(kato).toMatchObject({ color: "red", source: "agent", whereNow: null, injured: false, atHome: true, canMove: false, hasMedicine: null, ai: true });
+  });
+
+  it("Haiku の揺れを受ける: 「夫です」「娘さん」は役割名に、いる所の外の値は返事を捨てずに読む。表の行の安否は消えない", () => {
+    expect(fromRole("娘さん")).toBe("娘");
+    expect(fromRole("夫です。")).toBe("夫");
+    expect(fromRole("支援者 1")).toBe("支援者 1");
+    expect(whereOf("自宅")).toBe("home");
+    expect(whereOf("Shelter")).toBe("shelter");
+    expect(whereOf("どこか")).toBeNull();
+    const [husband] = personaTurns(
+      personaInput("p-02"),
+      buildPersona(input("p-02")),
+      answer({ contactsCaremanager: true, from: "夫です", location: "自宅", speech: "電池が心配です" }),
+    );
+    expect(husband).toMatchObject({ color: "green", source: "family", whereNow: "home" });
+    const [yamada] = personaTurns(
+      personaInput("p-01", { fixed: [YAMADA_3H] }),
+      buildPersona(input("p-01")),
+      answer({ location: "床の上", speech: "いたい" }),
+    );
+    expect(yamada).toMatchObject({ color: "red", source: "agent", injured: true, saying: "いたい", ai: true });
   });
 
   it("連絡しない・知らない呼び方は連絡なし。いる所が分からない連絡は安否不明", () => {

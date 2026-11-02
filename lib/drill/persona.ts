@@ -335,7 +335,7 @@ export const PERSONA_SYSTEM = [
   "",
   "欄:",
   "- condition: 本人の今の様子。見て分かる事だけを短く（20 字まで）。",
-  "- location: 本人が今いる所。home 家・shelter 避難所・other その他・unknown 連絡する人にも分からない。",
+  "- location: 本人が今いる所。home（家）・shelter（避難所）・other（その他）・unknown（連絡する人にも分からない）のどれか 1 つの英字。",
   "- action: 本人と周りの人がこの刻みでする事（20 字まで）。",
   "- contactsCaremanager: スマホで赤か緑を押してケアマネに連絡するか。",
   "- from: 押す人の呼び方。「押せる人」に書いた呼び方（本人・娘・夫・支援者 1 など）をそのまま。連絡しない時は空文字。",
@@ -353,15 +353,14 @@ export const PERSONA_SYSTEM = [
   "7. 「診断」「判定」「重症」と言わない。病名を言い切らない。薬の量を言わない。助言をしない。",
 ].join("\n");
 
-export const LOCATIONS = [...WHERE_NOW, "unknown"] as const;
-
 /**
  * 返事の形。enum・範囲は SDK が JSON Schema の説明文に回し、文法では縛らない（lib/claude の T00 の記録）。
+ * location を enum にすると外の値（「自宅」など）1 つで返事全部が形の違いになり、表の行の安否まで消えるので文字にし、
  * 値の範囲と押せる人の門はコード（personaTurns）で直す
  */
 export const PersonaSchema = z.object({
   condition: z.string(),
-  location: z.enum(LOCATIONS),
+  location: z.string(),
   action: z.string(),
   contactsCaremanager: z.boolean(),
   from: z.string(),
@@ -414,6 +413,22 @@ function doingOf(answer: PersonaAnswer, key: PseudonymKey): string | null {
   return joined ? Array.from(joined).slice(0, DOING_MAX).join("") : null;
 }
 
+const WHERE_ALIASES: Readonly<Record<string, WhereNow>> = { 家: "home", 自宅: "home", 避難所: "shelter", その他: "other" };
+
+/** いる所の値を揃える（英字の 3 つ。日本語で返ったときの言い方も受ける）。分からなければ null */
+export function whereOf(raw: string): WhereNow | null {
+  const v = raw.trim();
+  return pick(WHERE_NOW, v.toLowerCase()) ?? WHERE_ALIASES[v] ?? null;
+}
+
+/** 押す人の呼び方を役割名に揃える（「娘さん」「夫です」→ 娘・夫） */
+export function fromRole(raw: string): string {
+  return raw
+    .replace(/[\s　。、]+$/u, "")
+    .replace(/(さん|さま|様|です)$/u, "")
+    .trim();
+}
+
 /** 表の行の形（色・出どころ・4 問・いる所）は表のまま。engine の fixedToTurn と同じ読み方 */
 function turnOfFixed(f: FixedTurn, hour: number): Omit<DrillTurn, "saying" | "doing" | "ai"> {
   return {
@@ -455,10 +470,11 @@ export function personaTurns(input: PersonaInput, persona: Persona, answer: Pers
   }
 
   if (!answer.contactsCaremanager) return [];
-  const reporter = persona.reporters.find((r) => r.role === answer.from.trim() && r.canPress);
+  const from = fromRole(answer.from);
+  const reporter = persona.reporters.find((r) => r.role === from && r.canPress);
   if (!reporter) return [];
   const red = answer.pressesRed;
-  const where = pick(WHERE_NOW, answer.location);
+  const where = whereOf(answer.location);
   const color: SignalColor = red ? "red" : where ? "green" : "unknown";
   const a = red ? answer.redAnswers : null;
   return [
