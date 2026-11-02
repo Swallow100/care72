@@ -172,7 +172,7 @@ function ModeSection({ state, now, confirm }: { state: DisasterState; now: strin
           <input type="hidden" name="kind" value="normal" />
           <input type="hidden" name="confirm" value="1" />
           <input type="hidden" name="version" value={state.version} />
-          <span className="text-sm">停電・警戒レベル・断水・道路は消去</span>
+          <span className="text-sm">{DISASTER_LABELS.clearOnNormal}</span>
           <SubmitButton kind="dangerFill">{DISASTER_LABELS.backToNormal}</SubmitButton>
           <ButtonLink href={OFFICE_PATH} kind="quiet" icon={CloseIcon}>
             {DISASTER_LABELS.cancel}

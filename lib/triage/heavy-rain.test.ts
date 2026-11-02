@@ -55,7 +55,7 @@ describe("大雨の筋（レベル 3 → 4 → 浸水と停電）を 10 人に�
     }
   });
 
-  it("4 佐藤: 本人の緑は未知（灰「本人の緑は参考」）、民生委員の緑で緑", () => {
+  it("4 佐藤: 本人の緑は未知（灰「本人の申告は参考」）、民生委員の緑で緑", () => {
     expect(find(0, "p-04")).toMatchObject({ color: "gray", qualifiers: [] });
     expect(find(1, "p-04")).toMatchObject({ color: "gray", rule: "unknown", qualifiers: ["self_green_set_aside"] });
     expect(find(6, "p-04")).toMatchObject({ color: "green", reason: "支援者が「無事」", qualifiers: [] });

@@ -56,6 +56,8 @@ export const DISASTER_LABELS = {
   road: "道路",
   save: "保存",
   backToNormal: "平時復帰",
+  /** 平時に戻す確認の欄の 1 行（戻すと消える欄） */
+  clearOnNormal: "消す項目: 停電・警戒レベル・断水・道路",
   cancel: "取消",
   noTown: "町名なし",
   inOutage: "停電中",

@@ -47,7 +47,7 @@ describe("大雨の筋の 10 人が、担当一覧の既定の並び（優先）
     const rows = screen(3.1);
     expect(rows[0]).toMatchObject({ id: "p-01", rank: 1, triage: { color: "red" } });
     expect(rows[1]).toMatchObject({ id: "p-02", rank: 2, triage: { color: "red", reason: "人工呼吸器 内蔵電池 3 時間を超過" } });
-    expect(rows.find((r) => r.id === "p-03")!.triage).toMatchObject({ color: "yellow", reason: "無事だが透析先 未確認" });
+    expect(rows.find((r) => r.id === "p-03")!.triage).toMatchObject({ color: "yellow", reason: "無事・透析先 未確認" });
     expect(rows.find((r) => r.id === "p-05")!.triage!.reason).toContain("支援者なし");
     // 残り・最終連絡の列
     expect(rows[0].remain).toMatchObject({ label: "酸素 内蔵電池", over: true, tone: "urgent" });
