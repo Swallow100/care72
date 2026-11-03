@@ -3,12 +3,11 @@ import Link from "next/link";
 import { countColors } from "@/components/disaster/ColorCounts";
 import { Classification } from "@/components/list/Classification";
 import { Hearing } from "@/components/list/Hearing";
-import { NarrowMarks } from "@/components/list/NarrowMarks";
+import { CaseloadTable } from "@/components/list/CaseloadTable";
 import { DisasterSummary } from "@/components/list/DisasterSummary";
 import { DisasterTable } from "@/components/list/DisasterTable";
 import type { ClassificationSlot, HearingSlot } from "@/components/list/RowDetail";
 import { SidePane } from "@/components/list/SidePane";
-import { SortHeader } from "@/components/list/SortHeader";
 import { UnlistedFold } from "@/components/office/UnlistedFold";
 import { UnlistedRows } from "@/components/office/UnlistedRows";
 import { PersonWithIntake } from "@/components/person/PersonWithIntake";
@@ -16,8 +15,7 @@ import { StateTag, TONE_TEXT } from "@/components/person/parts";
 import { ButtonLink } from "@/components/ui/Button";
 import { AddPersonIcon, CloseIcon } from "@/components/ui/Icon";
 import { PageHead, Panel } from "@/components/ui/Panel";
-import { Mark, StateText } from "@/components/ui/Tag";
-import { TABLE, TABLE_BOX, TD } from "@/components/ui/table";
+import { TABLE_BOX } from "@/components/ui/table";
 import { todayJst } from "@/lib/age";
 import type { Principal } from "@/lib/auth/principal";
 import { caseloadScope } from "@/lib/auth/scope";
@@ -30,7 +28,6 @@ import {
   DISASTER_SORT_KEYS,
   loadCaseload,
   parseOpen,
-  PLAN_TONES,
   rowLink,
   sortCaseload,
   SORT_KEYS,
@@ -40,7 +37,7 @@ import {
 } from "@/lib/caseload";
 import { personDisaster } from "@/lib/disaster/person";
 import { elapsedText, shortJst } from "@/lib/disaster/state";
-import { CARE_LEVEL_LABELS, COLOR_LABELS, PLAN_STATUS_LABELS, TIER_LABELS } from "@/lib/labels";
+import { COLOR_LABELS, TIER_LABELS } from "@/lib/labels";
 import { buildSidePane, sideDisasterOf } from "@/lib/map/side";
 import { parsePeopleError } from "@/lib/office/http";
 import { NEW_PERSON_PATH } from "@/lib/office/http-paths";
@@ -267,75 +264,6 @@ function CompactList({ rows, sort, open }: { rows: CaseloadRow[]; sort: SortKey;
         );
       })}
     </ul>
-  );
-}
-
-const CELL = TD;
-
-/**
- * 平時の表。列は 優先（骨格の段）・氏名・年齢・医療・ハザード・支援者・計画。どの列でも並べ替えられる。
- * 横に送らない: 768px 未満は医療・ハザード・支援者を省き、氏名の下に医療の印（時計の長さつき）を出す
- */
-function CaseloadTable({ rows, sort }: { rows: CaseloadRow[]; sort: SortKey }) {
-  const wide = "hidden md:table-cell";
-  return (
-    <table className={TABLE}>
-      <thead>
-        <tr>
-          <SortHeader k="tier" sort={sort} className="w-14 text-center" />
-          <SortHeader k="kana" sort={sort} />
-          <SortHeader k="age" sort={sort} />
-          <SortHeader k="medical" sort={sort} className={wide} />
-          <SortHeader k="hazard" sort={sort} className={wide} />
-          <SortHeader k="supporter" sort={sort} className={wide} />
-          <SortHeader k="plan" sort={sort} />
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((r) => (
-          <tr key={r.id}>
-            <td className={`${CELL} text-center`}>
-              <span className="text-lg leading-6 font-bold" title={TIER_LABELS[r.tier]}>
-                {r.tier}
-              </span>
-            </td>
-            <td className={CELL}>
-              <Link href={rowLink(sort, null, r.id).href} className="-mx-1 rounded px-1 font-bold" data-press>
-                {r.name}
-              </Link>
-              <span className="ml-1.5 text-xs text-muted">{r.kana}</span>
-              {/* 768px 未満は医療の列を省くので、医療の印を氏名の下に（発災時の表・受け持ちの表と同じ部品。残りは時計の長さ。T54） */}
-              <NarrowMarks items={r.markItems} />
-            </td>
-            <td className={`${CELL} whitespace-nowrap`}>
-              {r.age ?? "—"}
-              <span className="text-muted"> 歳</span>
-              <div className="text-xs">{r.careLevel ? CARE_LEVEL_LABELS[r.careLevel] : "—"}</div>
-            </td>
-            <td className={`${CELL} ${wide}`}>
-              {r.marks.length === 0 ? (
-                <span className="text-muted">—</span>
-              ) : (
-                <div className="flex flex-wrap gap-1">
-                  {r.marks.map((m) => (
-                    <Mark key={m}>{m}</Mark>
-                  ))}
-                </div>
-              )}
-            </td>
-            <td className={`${CELL} ${wide}`}>{r.hazards.length === 0 ? <span className="text-muted">なし</span> : r.hazards.join("・")}</td>
-            <td className={`${CELL} ${wide} whitespace-nowrap`}>
-              {r.supporters > 0 ? `${r.supporters} 人` : <StateText tone="check">なし</StateText>}
-            </td>
-            <td className={`${CELL} whitespace-nowrap`}>
-              {/* 避難計画は 2 番目の状態なので色の文字（塗りの印は安否の状態だけ） */}
-              <StateText tone={PLAN_TONES[r.plan]}>{PLAN_STATUS_LABELS[r.plan]}</StateText>
-              {r.pending > 0 && <div className="text-xs font-bold tone-check">未確認 {r.pending}</div>}
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
   );
 }
 

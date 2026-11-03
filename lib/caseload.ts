@@ -11,7 +11,7 @@ import { loadDisasterState } from "./disaster/db.ts";
 import { loadOfficeOverrides, type StoredOverride } from "./disaster/override.ts";
 import { personSituation, toSituation, type DisasterSituation, type DisasterState } from "./disaster/state.ts";
 import { toTriageSignal, triageInDisaster, withinDisaster } from "./disaster/triage.ts";
-import { DEPENDENCE_MARKS, HAZARD_LABELS } from "./labels.ts";
+import { DEPENDENCE_MARKS, DEVICE_LABELS, HAZARD_LABELS } from "./labels.ts";
 import type { CallEntryRow } from "./list/calls.ts";
 import {
   buildRowDetail,
@@ -40,6 +40,8 @@ export type CaseloadRow = {
   marks: string[];
   /** 同じ印に時計のいちばん短い残りと色（「酸素 4h」。lib/person の markItems）。狭い幅で医療の列を省くとき氏名の下に出す（T54） */
   markItems: MarkItem[];
+  /** 台帳の機器（在宅酸素など）。時計の無い人（その場で登録した人）の医療の印の代わり（受け持ちの表と同じ。T56） */
+  devices: string[];
   /** ハザード（浸水 3 m・土砂・津波） */
   hazards: string[];
   /** 避難支援等実施者の人数 */
@@ -167,6 +169,7 @@ export function toCaseloadRows(
       careLevel: ledger.care.careLevel ?? null,
       marks: marksOf(myClocks),
       markItems: markItems(myClocks, own),
+      devices: ledger.medical.devices.map((d) => DEVICE_LABELS[d.kind]),
       hazards: hazardsOf(ledger),
       supporters: myContacts.filter((c) => c.supporter_order != null).length,
       plan: p.plan_status,
