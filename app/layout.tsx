@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { BIZ_UDPGothic, M_PLUS_2 } from "next/font/google";
 import { AppHeader } from "@/components/AppHeader";
+import { DialogHost } from "@/components/ui/DialogHost";
+import { INSTALL_SCRIPT, PRESS_SCRIPT } from "@/lib/ui/head-scripts";
 import "./globals.css";
 
 // 画面の書体は M PLUS 2（T35 で IBM Plex Sans JP から替えた。比較は docs/progress/t35.md）。
@@ -32,9 +34,16 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="ja" className={`${mplus2.variable} ${bizUd.variable}`}>
+      <head>
+        {/* 押したときの灰色と、ホーム画面に追加の受け口（T44。lib/ui/head-scripts.ts）。部品が描かれる前に動かす */}
+        <script dangerouslySetInnerHTML={{ __html: PRESS_SCRIPT }} />
+        <script dangerouslySetInnerHTML={{ __html: INSTALL_SCRIPT }} />
+      </head>
       <body className="min-h-dvh bg-base text-ink">
         <AppHeader />
         {children}
+        {/* アプリ内の確認・お知らせの窓（T44。lib/ui/dialog.ts） */}
+        <DialogHost />
       </body>
     </html>
   );
