@@ -3,6 +3,7 @@ import { getCloudflareContext } from "@opennextjs/cloudflare";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { AutoRefresh } from "@/components/disaster/AutoRefresh";
+import { InstallHint } from "@/components/phone/InstallHint";
 import { PhoneDisaster } from "@/components/phone/PhoneDisaster";
 import { PhoneSheet } from "@/components/phone/PhoneSheet";
 import { todayJst } from "@/lib/age";
@@ -46,6 +47,8 @@ export default async function MePage() {
   const sheet = buildOwnSheet(rows, { today: todayJst(), officeName: office?.name ?? null });
   return (
     <main className="mx-auto max-w-md px-3 py-4 font-ud">
+      {/* ホーム画面に追加の案内（T44。平時だけ、入れるまで） */}
+      <InstallHint />
       <PhoneSheet sheet={sheet} />
       <AutoRefresh seconds={NORMAL_REFRESH_SEC} />
     </main>
