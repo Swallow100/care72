@@ -5,7 +5,7 @@ import { notFound } from "next/navigation";
 import { AutoRefresh } from "@/components/disaster/AutoRefresh";
 import { InstallHint } from "@/components/phone/InstallHint";
 import { PhoneDisaster } from "@/components/phone/PhoneDisaster";
-import { PhoneNormalMark } from "@/components/phone/PhoneLinkPanel";
+import { PhoneNormalMark } from "@/components/phone/PhoneMarks";
 import { PhoneSheet } from "@/components/phone/PhoneSheet";
 import { todayJst } from "@/lib/age";
 import { requirePage } from "@/lib/auth/server";

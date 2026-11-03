@@ -1,6 +1,6 @@
 import "@/components/phone/phone.css";
 import type { Metadata } from "next";
-import { PhoneLinkInvalid } from "@/components/phone/PhoneLinkPanel";
+import { PhoneLinkInvalid } from "@/components/phone/PhoneMarks";
 import { PHONE_LINK_LABELS } from "@/lib/qr/phone-labels";
 
 // 検索に載せない。前の頁（トークンを持った /s/<token>）を Referer で漏らさない

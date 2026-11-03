@@ -3,17 +3,15 @@
 // - 発行（版 0）・期限切れの再発行は操作の色。使えるリンクがあるときの再発行は赤で、確認の窓（前のリンクは全部無効）を通す
 // - URL は文字で出す（押して開くリンクにしない。ケアマネの端末で開くと、その端末が本人のセッションに替わるので）
 // - QR は lib/qr/image.ts の点の並びを白地に黒の画像（img）に。長押し・右クリックで保存して紙に貼れる。印刷の画面は作らない
-// 本人・家族が開いて通らなかったときの 1 画面（PhoneLinkInvalid）もここに置く（やさしい日本語、無効とケアマネに連絡だけ）。
+// 本人・家族の画面の印（平時の「ふだん」・無効の 1 画面）は軽く置くため components/phone/PhoneMarks.tsx に分けた。
 
 import { CopyButton } from "@/components/forms/CopyButton";
-import { EasyWords } from "@/components/forms/EasyText";
 import { Panel, PanelHead } from "@/components/ui/Panel";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { Mark, StateTag, type Tone } from "@/components/ui/Tag";
-import { easy, yomi } from "@/lib/forms/easy-words";
 import { formatJst } from "@/lib/person";
 import { qrMatrix, qrSvgPath, QR_QUIET } from "@/lib/qr/image";
-import { PHONE_EASY, PHONE_LINK_CONFIRM, PHONE_LINK_LABELS, PHONE_LINK_STATUS_LABELS } from "@/lib/qr/phone-labels";
+import { PHONE_LINK_CONFIRM, PHONE_LINK_LABELS, PHONE_LINK_STATUS_LABELS } from "@/lib/qr/phone-labels";
 import type { PhoneLinkStatus } from "@/lib/qr/phone-link-store";
 import type { PhoneLinkItem, PhoneLinkView } from "@/lib/qr/phone-link-view";
 
@@ -135,39 +133,5 @@ export function PhoneLinkPanel({ view }: { view: PhoneLinkView }) {
         )}
       </Panel>
     </div>
-  );
-}
-
-/**
- * 本人・家族の平時の頁の上: 事業所名と「ふだん」の印（T69a）。印だけで、「いまは ふだん です」の文にしない。
- * 色は付けない（灰は「不明」の色なので使わない。ヘッダーの「平時」と同じ薄い文字）
- */
-export function PhoneNormalMark({ office }: { office: string | null }) {
-  return (
-    <p className="phone-text mb-2 flex flex-wrap items-baseline gap-x-2 px-1 text-lg" data-mode="normal">
-      {/* 事業所名は読みの表（yomi）でふりがな。本人の 1 枚の電話の段と同じ */}
-      {office && (
-        <span>
-          <EasyWords words={yomi(office).words} />
-        </span>
-      )}
-      <span className="text-muted">
-        <EasyWords words={easy(PHONE_EASY.normal)} />
-      </span>
-    </p>
-  );
-}
-
-/** 通らないリンクを開いたとき（/s/invalid）。どれで落ちたかも誰のリンクかも出さない */
-export function PhoneLinkInvalid() {
-  return (
-    <section className="phone-text rounded-lg bg-panel px-4 py-4" data-phone-link-invalid>
-      <StateTag tone="unknown" size="md">
-        <EasyWords words={easy(PHONE_EASY.invalid)} />
-      </StateTag>
-      <p className="mt-3 text-xl">
-        <EasyWords words={easy(PHONE_EASY.callCareManager)} />
-      </p>
-    </section>
   );
 }
