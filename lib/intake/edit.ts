@@ -20,15 +20,17 @@ import type {
   ContactReach,
   DependsOn,
   DeviceKind,
+  GeoPoint,
   HazardKind,
   Ledger,
   MedicationCategory,
 } from "../db/types.ts";
 import { CLOCK_CATEGORIES, CONSENT_KINDS } from "../db/types.ts";
 import { sameMedication } from "../db/ledger.ts";
-import { CONTACT_KIND_LABELS, DEVICE_LABELS, HAZARD_LABELS } from "../labels.ts";
+import { isGeoPoint } from "../map/geo.ts";
+import { CONTACT_KIND_LABELS, DEVICE_LABELS, HAZARD_LABELS, PLACE_LABELS } from "../labels.ts";
 import { DEVICE_CLOCKS } from "./marks.ts";
-import type { ContactValue, IntakeChange, RemoveTarget } from "./changes.ts";
+import type { AddressValue, ContactValue, IntakeChange, RemoveTarget } from "./changes.ts";
 import { INTAKE_FIELDS, isFilled, ledgerValue, normalizeValue, type IntakeSection } from "./fields.ts";
 
 /** 編集できる面（本人のページの区分のうち、書類と経過を除く） */
@@ -57,6 +59,9 @@ export type EditData = {
     supporter_order: number | null;
     /** どこにいる人か（同居・近所・市内・県外・遠方）。T57 */
     reach: ContactReach | null;
+    /** スマホ・車の有無（T68。無ければ未確認）。古い形の EditData（テスト）には無いので省ける */
+    has_smartphone?: 0 | 1 | null;
+    has_car?: 0 | 1 | null;
   }>;
   clocks: Array<{
     id: string;
@@ -75,10 +80,23 @@ export type EditData = {
     source_note: string | null;
   }>;
   consents: Array<{ kind: ConsentKind; status: ConsentStatus }>;
+  /**
+   * 事業所の地域（T68）。市の欄の既定・町名の候補・地図の真ん中に使う。サーバーで事業所から読む（lib/office/place.ts の loadOfficePlace）。
+   * 読めなかったときは無い（市の既定は空、町名の候補なし、真ん中は lib/map/center.ts の既定）
+   */
+  place?: EditPlace;
 };
+
+/** 事業所の地域: 市・中心・町名の候補（事業所の利用者の台帳にある町名。綴りをそろえる。停電の地区は文字の一致で当たる） */
+export type EditPlace = { city: string; center: GeoPoint | null; towns: string[] };
+
+/** 住所の欄の長さの上限（字）。保存（lib/intake/save.ts の address）も同じ。市は事業所の市（lib/office/place.ts の CITY_MAX）と同じ */
+export const ADDRESS_MAX = { city: 20, town: 40 } as const;
 
 /** 連絡先の夜間の欄（空は未確認） */
 export type NightDraft = "" | "yes" | "no";
+/** 連絡先のスマホ・車の欄（空は未確認。夜間と同じ形。T68） */
+export type FlagDraft = NightDraft;
 
 /** 緊急・支援の順の欄（空は順なし。数字の文字） */
 export type OrderDraft = string;
@@ -88,7 +106,8 @@ export const CONTACT_ORDERS = [1, 2, 3] as const;
 
 export type ContactDraft = {
   id: string | null;
-  kind: Exclude<ContactKind, "self">;
+  /** 本人（self）は本人の電話の行（T68。1 人 1 つ。電話と備考だけを直す） */
+  kind: ContactKind;
   relation: string;
   name: string;
   phone: string;
@@ -99,6 +118,9 @@ export type ContactDraft = {
   supporter: OrderDraft;
   /** 距離（空は未確認） */
   reach: ContactReach | "";
+  /** スマホ・車の有無（T68。空は未確認。省くと未確認） */
+  smartphone?: FlagDraft;
+  car?: FlagDraft;
 };
 /** 走る時計の起点（停電・発災）。走らない状態の時計（condition）は足せず、起点も none のまま */
 export type RunningStart = Exclude<ClockStart, "none">;
@@ -161,6 +183,13 @@ export type EditDraft = {
   consents: Record<ConsentKind, ConsentStatus>;
   /** 足す特記 */
   note: string;
+  /**
+   * 本人の住所（市・町名、T68）。台帳に無ければ市は事業所の市（place.city）を既定に入れ、町名は空。
+   * 台帳に無く町名が空のあいだは、市の欄は既定のままとみなして送らない
+   */
+  address: AddressValue;
+  /** 地図の位置（T68）。null は無し（外す） */
+  location: GeoPoint | null;
   /** 外す印を付けた行（dropKey の形: med:0・device:oxygen・hazard:flood・contact:c-01-2・note:0） */
   drops: string[];
   /** 値を今日確かめた時計の id（値・単位は変えない） */
@@ -204,9 +233,18 @@ export const blankContact = (): ContactDraft => ({
   emergency: "",
   supporter: "",
   reach: "",
+  smartphone: "",
+  car: "",
 });
 
 const orderDraft = (n: number | null): OrderDraft => (n == null ? "" : String(n));
+const flagDraft = (n: 0 | 1 | null | undefined): FlagDraft => (n === 1 ? "yes" : n === 0 ? "no" : "");
+
+/** 台帳の住所の下書き。無ければ市は事業所の市（既定）、町名は空 */
+function addressDraft(l: Ledger, place: EditPlace | undefined): AddressValue {
+  const a = l.basic.address;
+  return a ? { city: a.city ?? "", town: a.town ?? "" } : { city: place?.city ?? "", town: "" };
+}
 const orderOf = (v: OrderDraft): number | null => (v.trim() === "" ? null : Number(v));
 
 /** 今の値から下書きを作る */
@@ -226,23 +264,22 @@ export function editDraft(d: EditData): EditDraft {
     hazards: l.evacuation.hazards.map((h) => ({ kind: h.kind, depth: h.depthM != null ? String(h.depthM) : "", note: s(h.note) })),
     newHazards: [],
     newHazardNote: "",
-    contacts: d.contacts.flatMap((c): ContactDraft[] =>
-      c.kind === "self"
-        ? []
-        : [
-            {
-              id: c.id,
-              kind: c.kind,
-              relation: s(c.relation),
-              name: s(c.name),
-              phone: s(c.phone),
-              night: c.night_ok === 1 ? "yes" : c.night_ok === 0 ? "no" : "",
-              note: s(c.note),
-              emergency: orderDraft(c.emergency_order),
-              supporter: orderDraft(c.supporter_order),
-              reach: c.reach ?? "",
-            },
-          ],
+    // 本人の電話（self）も並べる（T68。電話と備考だけを直す）
+    contacts: d.contacts.map(
+      (c): ContactDraft => ({
+        id: c.id,
+        kind: c.kind,
+        relation: s(c.relation),
+        name: s(c.name),
+        phone: s(c.phone),
+        night: c.night_ok === 1 ? "yes" : c.night_ok === 0 ? "no" : "",
+        note: s(c.note),
+        emergency: orderDraft(c.emergency_order),
+        supporter: orderDraft(c.supporter_order),
+        reach: c.reach ?? "",
+        smartphone: flagDraft(c.has_smartphone),
+        car: flagDraft(c.has_car),
+      }),
     ),
     newContacts: [],
     clocks: d.clocks
@@ -258,6 +295,8 @@ export function editDraft(d: EditData): EditDraft {
     checks: Object.fromEntries(d.clocks.filter((k) => k.depends_on && k.depends_check).map((k) => [k.id, k.depends_check as CheckStatus])),
     consents,
     note: "",
+    address: addressDraft(l, d.place),
+    location: isGeoPoint(l.basic.location) ? { lat: l.basic.location.lat, lng: l.basic.location.lng } : null,
     drops: [],
     seen: [],
   };
@@ -352,11 +391,33 @@ export function orderClash(draft: Pick<EditDraft, "contacts" | "newContacts" | "
 }
 
 /**
+ * 本人の電話（self）が 2 つになるか（T68。1 人 1 つ。種の人は前から 1 つ）。足す行のうち何か書いた物と、今の行を数える。
+ * 保存（lib/intake/save.ts）も同じ物を断る（self_twice）
+ */
+export function selfTwice(draft: Pick<EditDraft, "contacts" | "newContacts" | "drops">): boolean {
+  const live = [
+    ...draft.contacts.filter((c) => !(c.id && draft.drops.includes(dropKey.contact(c.id)))),
+    ...draft.newContacts.filter(newContactFilled),
+  ];
+  return live.filter((c) => c.kind === "self").length > 1;
+}
+
+/** 住所の下書きから送る値。町名・市とも空なら null（外す）。台帳に無く町名が空なら undefined（市は既定のまま。送らない） */
+function addressOf(draft: AddressValue, cur: Ledger["basic"]["address"]): AddressValue | null | undefined {
+  const city = draft.city.trim();
+  const town = draft.town.trim();
+  if (!cur && town === "") return undefined;
+  if (city === "" && town === "") return null;
+  return { city, town };
+}
+
+/**
  * 保存の前に止める空欄（T57）。「その他」の種類だけでは何か分からないので、連絡先のその他は続柄（間柄）、
  * 機器のその他は中身（名前）を書くまで保存しない。保存の batch は丸ごと通るか落ちるかなので、サーバーで断らず画面で止める。
- * 返すのは欄の名前（「その他 続柄」）。外す行と送らない空の行は見ない
+ * 返すのは欄の名前（「その他 続柄」）。外す行と送らない空の行は見ない。
+ * data（開いたときの値）を渡すと、基本の面の住所の片方だけ（T68。「市」「町名」）も見る
  */
-export function editBlockers(section: EditSection, draft: EditDraft): string[] {
+export function editBlockers(section: EditSection, draft: EditDraft, data?: Pick<EditData, "ledger">): string[] {
   const out: string[] = [];
   if (section === "people") {
     const live = [
@@ -364,6 +425,15 @@ export function editBlockers(section: EditSection, draft: EditDraft): string[] {
       ...draft.newContacts.filter(newContactFilled),
     ];
     if (live.some((c) => c.kind === "other" && c.relation.trim() === "")) out.push(`${CONTACT_KIND_LABELS.other} 続柄`);
+  }
+  if (section === "basic" && draft.address) {
+    // 住所は市と町名の両方（T68）。片方だけは保存しない（停電の地区は町名の文字で当たり、様式は「市 町名」で出す）。
+    // 台帳に住所が無く町名が空のあいだは、市の欄は既定（事業所の市）のままなので止めない
+    const a = addressOf(draft.address, data?.ledger.basic.address);
+    if (a) {
+      if (a.city === "") out.push(PLACE_LABELS.city);
+      if (a.town === "") out.push(PLACE_LABELS.town);
+    }
   }
   if (section === "medical") {
     const other = [...draft.devices.filter((x) => !draft.drops.includes(dropKey.device(x.kind))), ...draft.newDevices.map((kind) => ({ kind, detail: "" }))].find(
@@ -380,6 +450,8 @@ export function editBlockers(section: EditSection, draft: EditDraft): string[] {
 }
 
 const nightOf =(n: NightDraft): boolean | null => (n === "yes" ? true : n === "no" ? false : null);
+/** 表の 0・1 を有無に（無ければ未確認） */
+const flagOf = (n: 0 | 1 | null | undefined): boolean | null => (n === 1 ? true : n === 0 ? false : null);
 
 /** 面の下書きから、直した所だけの変更を作る */
 export function editChanges(section: EditSection, d: EditData, draft: EditDraft): IntakeChange[] {
@@ -515,7 +587,19 @@ export function editChanges(section: EditSection, d: EditData, draft: EditDraft)
   if (section === "people") {
     for (const c of draft.contacts) {
       const cur = d.contacts.find((x) => x.id === c.id);
-      if (!cur || cur.kind === "self") continue;
+      if (!cur) continue;
+      // 本人の電話（self）は電話と備考（固定電話・携帯）だけを直す。外さない（T68。種の人は 1 つずつ持つ）
+      if (cur.kind === "self") {
+        const value: ContactValue = { kind: "self" };
+        let changed = false;
+        for (const col of ["phone", "note"] as const) {
+          if (c[col].trim() === s(cur[col])) continue;
+          value[col] = c[col].trim();
+          changed = true;
+        }
+        if (changed) out.push({ t: "contact", id: cur.id, value, overwrite: true });
+        continue;
+      }
       if (dropped(dropKey.contact(cur.id))) {
         remove({ what: "contact", id: cur.id });
         continue;
@@ -548,13 +632,35 @@ export function editChanges(section: EditSection, d: EditData, draft: EditDraft)
         value.reach = reach;
         changed = true;
       }
+      // スマホ・車の有無（T68）
+      const smartphone = nightOf(c.smartphone ?? "");
+      if (smartphone !== flagOf(cur.has_smartphone)) {
+        value.hasSmartphone = smartphone;
+        changed = true;
+      }
+      const car = nightOf(c.car ?? "");
+      if (car !== flagOf(cur.has_car)) {
+        value.hasCar = car;
+        changed = true;
+      }
       if (changed) out.push({ t: "contact", id: cur.id, value, overwrite: true });
     }
     for (const c of draft.newContacts) {
       if (!newContactFilled(c)) continue;
+      // 本人の電話は電話と備考だけ（T68）
+      if (c.kind === "self") {
+        out.push({
+          t: "contact",
+          id: null,
+          value: { kind: "self", ...(c.phone.trim() ? { phone: c.phone.trim() } : {}), ...(c.note.trim() ? { note: c.note.trim() } : {}) },
+        });
+        continue;
+      }
       const night = nightOf(c.night);
       const emergency = orderOf(c.emergency);
       const supporter = orderOf(c.supporter);
+      const smartphone = nightOf(c.smartphone ?? "");
+      const car = nightOf(c.car ?? "");
       out.push({
         t: "contact",
         id: null,
@@ -568,6 +674,8 @@ export function editChanges(section: EditSection, d: EditData, draft: EditDraft)
           ...(emergency !== null ? { emergencyOrder: emergency } : {}),
           ...(supporter !== null ? { supporterOrder: supporter } : {}),
           ...(c.reach !== "" ? { reach: c.reach } : {}),
+          ...(smartphone !== null ? { hasSmartphone: smartphone } : {}),
+          ...(car !== null ? { hasCar: car } : {}),
         },
       });
     }
@@ -578,6 +686,21 @@ export function editChanges(section: EditSection, d: EditData, draft: EditDraft)
       if (dropped(dropKey.note(index))) remove({ what: "note", value });
     });
     if (draft.note.trim()) out.push({ t: "note", value: draft.note.trim() });
+    // 住所（T68）。片方だけは editBlockers が止め、ここでは送らない
+    if (draft.address) {
+      const cur = l.basic.address;
+      const a = addressOf(draft.address, cur);
+      if (a === null && cur) out.push({ t: "address", value: null });
+      if (a && a.city !== "" && a.town !== "" && !(cur && cur.city === a.city && cur.town === a.town)) out.push({ t: "address", value: a });
+    }
+    // 位置（T68）。同じ所なら送らない
+    if (draft.location !== undefined) {
+      const cur = isGeoPoint(l.basic.location) ? l.basic.location : null;
+      const next = draft.location && isGeoPoint(draft.location) ? draft.location : null;
+      if (!(cur === null && next === null) && !(cur && next && cur.lat === next.lat && cur.lng === next.lng)) {
+        out.push({ t: "location", value: next });
+      }
+    }
   }
 
   if (section === "consent") {

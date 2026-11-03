@@ -30,6 +30,15 @@ export type PlanFormChoice = { id: PlanFormId; entry: CatalogEntry; about: strin
 
 const MAPPING_PREFIX = "mapping:";
 
+/**
+ * 新しい事業所の様式の既定（T68）。松山市の事業所は松山市の様式、ほかの市は内閣府の様式例
+ * （松山市の様式の頭は「（あて先）松山市長」なので、ほかの市で出すと宛先が違う）。事業所を作る道具（T73）が使う。
+ * 今の事業所は全部松山市なので、保存の値が読めないときの戻り先（loadPlanForm）は松山市のまま
+ */
+export function defaultPlanForm(city: string): "matsuyama" | "cao" {
+  return city.trim() === "松山市" ? "matsuyama" : "cao";
+}
+
 /** 保存の値を様式の id に。知らない値は null */
 export function parsePlanForm(v: unknown): PlanFormId | null {
   if (v === "matsuyama" || v === "cao") return v;

@@ -1,13 +1,29 @@
 // 入れる欄の変更 1 つの形。Claude の分け方（diff.ts）・問いの答え（ask.ts）・手入力の編集が同じ形を作り、
 // 保存（save.ts）が受け取って、今の台帳に当て直す（埋まっている欄は上書きしない）。ブラウザでも読む。
 
-import type { CheckStatus, ClockCategory, ClockKind, ClockSource, ClockStart, ClockUnit, ConsentKind, ConsentStatus, ContactKind, ContactReach, Ledger, MedicationCategory, PendingStatus } from "../db/types.ts";
+import type {
+  CheckStatus,
+  ClockCategory,
+  ClockKind,
+  ClockSource,
+  ClockStart,
+  ClockUnit,
+  ConsentKind,
+  ConsentStatus,
+  ContactKind,
+  ContactReach,
+  GeoPoint,
+  Ledger,
+  MedicationCategory,
+  PendingStatus,
+} from "../db/types.ts";
 import {
   CHECK_STATUS_LABELS,
   CLOCK_START_LABELS,
   CLOCK_UNIT_LABELS,
   CONSENT_KIND_LABELS,
   CONSENT_STATUS_LABELS,
+  CONTACT_FLAG_LABELS,
   CONTACT_KIND_LABELS,
   CONTACT_REACH_LABELS,
   DEVICE_LABELS,
@@ -15,6 +31,7 @@ import {
   MEDICATION_CATEGORY_LABELS,
   MED_PARTS,
   PENDING_STATUS_LABELS,
+  PLACE_LABELS,
 } from "../labels.ts";
 import { NAME_MARK, PHONE_MARK, TOWN_MARK } from "../pseudonym/index.ts";
 import { displayValue, intakeField } from "./fields.ts";
@@ -31,9 +48,12 @@ export type MedicationValue = {
   storage?: string;
 };
 
-/** 連絡先の追加・書き足し。名前と電話は人が画面で入れる（Claude には渡らない） */
+/**
+ * 連絡先の追加・書き足し。名前と電話は人が画面で入れる（Claude には渡らない）。
+ * 本人の電話（self）は手で直すときだけ（T68。AI の分け方の候補 CONTACT_KINDS_FOR_INTAKE には無く、保存も edit でないと断る）
+ */
 export type ContactValue = {
-  kind: Exclude<ContactKind, "self">;
+  kind: ContactKind;
   relation?: string;
   name?: string;
   phone?: string;
@@ -48,7 +68,16 @@ export type ContactValue = {
   supporterOrder?: number | null;
   /** 距離（同居・近所・市内・県外・遠方）。null は未確認に戻す。人が手で直すときだけ（T57） */
   reach?: ContactReach | null;
+  /**
+   * スマホ・車の有無（T68。contacts.has_smartphone・has_car）。null は未確認に戻す。人が手で直すときだけ。
+   * スマホ ありの家族・支援者は訓練の「押せる人」になる（lib/drill/persona.ts の reportersOf）
+   */
+  hasSmartphone?: boolean | null;
+  hasCar?: boolean | null;
 };
+
+/** 本人の住所（市・町名。番地は持たない）。台帳の basic.address */
+export type AddressValue = { city: string; town: string };
 
 // overwrite（埋まっている所も変える）は人が選んだときだけ: 変更点の「既入力」を選んだとき（欄）と、
 // 本人のページの面の「編集」で手で直したとき（欄・薬・機器・ハザード・連絡先・時計。T45）。Claude の分け方は付けない。
@@ -78,7 +107,14 @@ export type IntakeChange =
   /** 時計を手で足す（T57）。値が null なら未確認。手で直すときだけ */
   | { t: "clockAdd"; value: ClockAddValue }
   /** 時計の起点（停電・発災）を変える（T57）。走らない状態の時計は変えない。手で直すときだけ */
-  | { t: "clockStart"; clockId: string; to: Exclude<ClockStart, "none"> };
+  | { t: "clockStart"; clockId: string; to: Exclude<ClockStart, "none"> }
+  /**
+   * 本人の住所（市・町名）を置く・外す（null）。手で直すときだけ（T68）。AI の分け方には無い:
+   * 入れる欄の文に新しい町名が混ざると、仮名化の門（lib/pseudonym）が知る前に Claude へ届くため
+   */
+  | { t: "address"; value: AddressValue | null }
+  /** 地図の位置（緯度経度）を置く・外す（null）。手で直すときだけ（T68）。Claude には渡さない（lib/pseudonym の ClaudePerson に無い） */
+  | { t: "location"; value: GeoPoint | null };
 
 export type ClockAddValue = {
   label: string;
@@ -124,8 +160,26 @@ export function contactText(c: Partial<ContactValue>): string {
     c.nightOk === true ? "夜間可" : c.nightOk === false ? "夜間不可" : undefined,
     c.emergencyOrder != null ? `緊急 ${c.emergencyOrder}` : undefined,
     c.supporterOrder != null ? `支援 ${c.supporterOrder}` : undefined,
+    flagText(CONTACT_FLAG_LABELS.hasSmartphone, c.hasSmartphone),
+    flagText(CONTACT_FLAG_LABELS.hasCar, c.hasCar),
     c.note,
   ]);
+}
+
+/** スマホ・車の有無の言葉（「スマホ あり」「車 なし」）。未確認に戻すのは「スマホ 未確認」、触れていなければ出さない */
+function flagText(label: string, v: boolean | null | undefined): string | undefined {
+  if (v === undefined) return undefined;
+  return `${label} ${v === true ? PLACE_LABELS.yes : v === false ? PLACE_LABELS.no : PLACE_LABELS.unknown}`;
+}
+
+/** 住所の言葉（「松山市 架空町」）。外すは「外す」 */
+export function addressText(a: AddressValue | null): string {
+  return a ? join([a.city, a.town]) : "外す";
+}
+
+/** 位置の言葉（緯度・経度を 5 桁）。外すは「外す」 */
+export function locationText(p: GeoPoint | null): string {
+  return p ? `${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}` : "外す";
 }
 
 /** 変更の新しい値の言葉（差分の右側） */
@@ -161,6 +215,10 @@ export function changeText(c: IntakeChange): string {
       return join([c.value.label, c.value.value != null && c.value.unit ? `${c.value.value} ${CLOCK_UNIT_LABELS[c.value.unit]}` : "未確認", CLOCK_START_LABELS[c.value.startsOn]]);
     case "clockStart":
       return CLOCK_START_LABELS[c.to];
+    case "address":
+      return addressText(c.value);
+    case "location":
+      return locationText(c.value);
   }
 }
 

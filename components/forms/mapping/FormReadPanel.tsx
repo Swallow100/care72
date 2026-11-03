@@ -9,6 +9,8 @@ import { BTN_MAIN, BTN_SIDE, INPUT } from "@/components/person/intake-ui";
 import { AddIcon, PaperIcon, ReadIcon } from "@/components/ui/Icon";
 import { Loader72 } from "@/components/ui/Loader72";
 import { FORM_FILE_MAX_BYTES, LIMITS, MAPPING_LABELS as L } from "@/lib/forms/mapping";
+import { shrinkImage } from "@/lib/forms/shrink-image";
+import { PLACE_LABELS } from "@/lib/labels";
 
 type Fail = { label: string };
 
@@ -44,14 +46,17 @@ export function FormReadPanel({ aiReady }: { aiReady: boolean }) {
 
   const read = async () => {
     if (!file) return;
-    if (file.size > FORM_FILE_MAX_BYTES) {
-      setFail({ label: L.fileLarge });
-      return;
-    }
+    // 写真は端末で縮めて JPEG に（T68。iPhone の大きな写真も上限に収まる）。PDF はそのまま。JPEG・PNG・PDF のほかは断る
     setBusy("read");
     setFail(null);
+    const shrunk = await shrinkImage(file);
+    if (!shrunk.ok || shrunk.file.size > FORM_FILE_MAX_BYTES) {
+      setFail({ label: !shrunk.ok && shrunk.error === "type" ? PLACE_LABELS.fileKinds : L.fileLarge });
+      setBusy(null);
+      return;
+    }
     const body = new FormData();
-    body.append("file", file);
+    body.append("file", shrunk.file);
     const r = await post("/api/forms/read", body);
     if (r.ok) {
       router.push(`/forms/mapping/${encodeURIComponent(r.id)}`);
@@ -80,7 +85,7 @@ export function FormReadPanel({ aiReady }: { aiReady: boolean }) {
       <section aria-labelledby="read-title" className="rounded-lg bg-panel p-3">
         <h2 id="read-title" className="flex items-baseline gap-2 font-bold">
           {L.read}
-          <span className="text-xs font-normal text-muted">写真 JPEG・PNG／PDF 5MB まで</span>
+          <span className="text-xs font-normal text-muted">写真 JPEG・PNG 縮小／PDF 5MB まで</span>
         </h2>
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <label className={`${BTN_SIDE} cursor-pointer`} data-press>

@@ -93,6 +93,8 @@ describe("連絡先の順（T57 の 1）", () => {
     expect(await saveIntake(db, cm, SaveRequestSchema.parse(edit("p-04", changes)), NOW)).toMatchObject({ ok: true });
     const back = editDraft(await editDataOf("p-04"));
     expect(back.contacts.map((c) => [c.id, c.emergency, c.supporter])).toEqual([
+      // 本人の電話の行（T68 から下書きに出す。順は付けない）
+      ["c-04-0", "", ""],
       ["c-04-1", "", "1"],
       ["c-04-2", "2", "2"],
     ]);

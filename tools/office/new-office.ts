@@ -14,7 +14,8 @@
 // 種の ID（yamamoto）と種の事業所の id は断る（種の事業所の id で作ると、作り直しの守り tools/deploy/guard.ts が種と見て消してしまう）。
 // ID が本番で使われているかは道具では分からない。使われていれば UNIQUE で落ち、取引ごと巻き戻って何も入らない。
 // 初期パスワードは lib/office/staff.ts の generateInitialPassword、ハッシュは lib/auth/password.ts の hashPassword（PBKDF2・100,000 回）。
-// 事業所の中心（T68 の center_lat・center_lng）は入れない（NULL。管理者が /office で置く）。
+// 様式の既定は lib/forms/plan-form.ts の defaultPlanForm（T68）。--plan-form で選べる。
+// 事業所の中心（T68 の center_lat・center_lng、migration 0017）は入れない（NULL。管理者が /office の「地域」で置く）。
 
 import { homedir } from "node:os";
 import { writeFileSync } from "node:fs";
@@ -22,6 +23,7 @@ import { resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { hashPassword } from "../../lib/auth/password.ts";
+import { defaultPlanForm } from "../../lib/forms/plan-form.ts";
 import { parseStaffInput, tidySpaces } from "../../lib/office/forms.ts";
 import { generateInitialPassword } from "../../lib/office/staff.ts";
 import { SEED_ACCOUNTS, SEED_OFFICES } from "../../seed/people.ts";
@@ -34,15 +36,10 @@ export const OFFICE_ID_PATTERN = /^office-[a-z0-9_-]{1,57}$/;
 const CONTROL = /[\u0000-\u001f\u007f]/;
 const ROOT = fileURLToPath(new URL("../../", import.meta.url));
 
-export type PlanFormChoice = "matsuyama" | "cao";
+export type PlanFormChoice = ReturnType<typeof defaultPlanForm>;
 
-/**
- * 様式の既定。松山市なら松山市の様式、ほかは内閣府の様式例。
- * T68 が lib/forms/plan-form.ts に defaultPlanForm(city) を足したら、それを呼ぶ形に差し替える（同じ決まりにする）
- */
-export function defaultPlanForm(city: string): PlanFormChoice {
-  return tidySpaces(city.normalize("NFC")) === "松山市" ? "matsuyama" : "cao";
-}
+/** 様式の既定は T68 の決まり（lib/forms/plan-form.ts の defaultPlanForm: 松山市なら松山市の様式、ほかは内閣府の様式例）をそのまま使う */
+export { defaultPlanForm };
 
 export type NewOfficeInput = {
   officeId: string;

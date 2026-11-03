@@ -127,10 +127,10 @@ describe("事業所と最初の管理者を作る道具: 動かす", () => {
     for (const s of seedStatements()) db.exec(s);
     const before = (db.prepare("SELECT count(*) AS n FROM offices").get() as { n: number }).n;
     db.exec(sql);
-    const offices = db.prepare("SELECT id, name, kind, city, plan_form FROM offices WHERE id NOT IN ('office-demo', 'office-partner', 'office-unaffiliated')").all();
+    const offices = db.prepare("SELECT id, name, kind, city, plan_form, center_lat, center_lng FROM offices WHERE id NOT IN ('office-demo', 'office-partner', 'office-unaffiliated')").all();
     expect(offices).toHaveLength(1);
     expect((db.prepare("SELECT count(*) AS n FROM offices").get() as { n: number }).n).toBe(before + 1);
-    expect(offices[0]).toMatchObject({ name: "架空居宅介護支援", kind: "regular", city: "今治市", plan_form: "cao" });
+    expect(offices[0]).toMatchObject({ name: "架空居宅介護支援", kind: "regular", city: "今治市", plan_form: "cao", center_lat: null, center_lng: null });
     const accounts = db.prepare("SELECT office_id, role, is_office_admin, display_name, login_id, disabled_at FROM accounts WHERE login_id = 'sato'").all();
     expect(accounts).toEqual([
       { office_id: offices[0].id, role: "care_manager", is_office_admin: 1, display_name: "佐藤", login_id: "sato", disabled_at: null },
