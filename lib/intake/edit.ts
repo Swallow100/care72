@@ -49,6 +49,9 @@ export type EditData = {
     phone: string | null;
     night_ok: 0 | 1 | null;
     note: string | null;
+    /** 緊急連絡先の順・避難支援等実施者の順（T57）。人が決める */
+    emergency_order: number | null;
+    supporter_order: number | null;
   }>;
   clocks: Array<{
     id: string;
@@ -68,7 +71,24 @@ export type EditData = {
 /** 連絡先の夜間の欄（空は未確認） */
 export type NightDraft = "" | "yes" | "no";
 
-export type ContactDraft = { id: string | null; kind: Exclude<ContactKind, "self">; relation: string; name: string; phone: string; night: NightDraft; note: string };
+/** 緊急・支援の順の欄（空は順なし。数字の文字） */
+export type OrderDraft = string;
+
+/** 画面で選べる順（今の値がこれより大きければ、その値も選べるように出す） */
+export const CONTACT_ORDERS = [1, 2, 3] as const;
+
+export type ContactDraft = {
+  id: string | null;
+  kind: Exclude<ContactKind, "self">;
+  relation: string;
+  name: string;
+  phone: string;
+  night: NightDraft;
+  note: string;
+  /** 緊急連絡先の順・支援者の順（T57） */
+  emergency: OrderDraft;
+  supporter: OrderDraft;
+};
 export type MedDraft = { name: string; category: MedicationCategory; schedule: string; amount: string; storage: string };
 
 export type EditDraft = {
@@ -124,7 +144,20 @@ function emptyDraft(v: unknown): boolean {
 const s = (v: string | null | undefined) => v ?? "";
 
 export const blankMed = (): MedDraft => ({ name: "", category: "other", schedule: "", amount: "", storage: "" });
-export const blankContact = (): ContactDraft => ({ id: null, kind: "family", relation: "", name: "", phone: "", night: "", note: "" });
+export const blankContact = (): ContactDraft => ({
+  id: null,
+  kind: "family",
+  relation: "",
+  name: "",
+  phone: "",
+  night: "",
+  note: "",
+  emergency: "",
+  supporter: "",
+});
+
+const orderDraft = (n: number | null): OrderDraft => (n == null ? "" : String(n));
+const orderOf = (v: OrderDraft): number | null => (v.trim() === "" ? null : Number(v));
 
 /** 今の値から下書きを作る */
 export function editDraft(d: EditData): EditDraft {
@@ -144,7 +177,19 @@ export function editDraft(d: EditData): EditDraft {
     contacts: d.contacts.flatMap((c): ContactDraft[] =>
       c.kind === "self"
         ? []
-        : [{ id: c.id, kind: c.kind, relation: s(c.relation), name: s(c.name), phone: s(c.phone), night: c.night_ok === 1 ? "yes" : c.night_ok === 0 ? "no" : "", note: s(c.note) }],
+        : [
+            {
+              id: c.id,
+              kind: c.kind,
+              relation: s(c.relation),
+              name: s(c.name),
+              phone: s(c.phone),
+              night: c.night_ok === 1 ? "yes" : c.night_ok === 0 ? "no" : "",
+              note: s(c.note),
+              emergency: orderDraft(c.emergency_order),
+              supporter: orderDraft(c.supporter_order),
+            },
+          ],
     ),
     newContacts: [],
     clocks: d.clocks
@@ -214,6 +259,33 @@ export function removalNames(changes: ReadonlyArray<IntakeChange>, d: EditData):
     }
   }
   return names;
+}
+
+/** 足す連絡先を送るか（何か書いたか） */
+function newContactFilled(c: ContactDraft): boolean {
+  return [c.relation, c.name, c.phone, c.note].some((x) => x.trim() !== "");
+}
+
+/** 順の重なり（同じ緊急・支援の順を 2 人に付けた）。外す行と送らない空の行は数えない。保存（lib/intake/save.ts）も同じ物を断る */
+export type OrderClash = { emergency: number[]; supporter: number[] };
+
+export function orderClash(draft: Pick<EditDraft, "contacts" | "newContacts" | "drops">): OrderClash {
+  const live = [
+    ...draft.contacts.filter((c) => !(c.id && draft.drops.includes(dropKey.contact(c.id)))),
+    ...draft.newContacts.filter(newContactFilled),
+  ];
+  const twice = (pick: (c: ContactDraft) => number | null) => {
+    const seen = new Set<number>();
+    const out = new Set<number>();
+    for (const c of live) {
+      const n = pick(c);
+      if (n === null) continue;
+      if (seen.has(n)) out.add(n);
+      seen.add(n);
+    }
+    return [...out].sort((a, b) => a - b);
+  };
+  return { emergency: twice((c) => orderOf(c.emergency)), supporter: twice((c) => orderOf(c.supporter)) };
 }
 
 const nightOf =(n: NightDraft): boolean | null => (n === "yes" ? true : n === "no" ? false : null);
@@ -326,11 +398,23 @@ export function editChanges(section: EditSection, d: EditData, draft: EditDraft)
         value.nightOk = night;
         changed = true;
       }
+      const emergency = orderOf(c.emergency);
+      if (emergency !== cur.emergency_order) {
+        value.emergencyOrder = emergency;
+        changed = true;
+      }
+      const supporter = orderOf(c.supporter);
+      if (supporter !== cur.supporter_order) {
+        value.supporterOrder = supporter;
+        changed = true;
+      }
       if (changed) out.push({ t: "contact", id: cur.id, value, overwrite: true });
     }
     for (const c of draft.newContacts) {
-      if (![c.relation, c.name, c.phone, c.note].some((x) => x.trim())) continue;
+      if (!newContactFilled(c)) continue;
       const night = nightOf(c.night);
+      const emergency = orderOf(c.emergency);
+      const supporter = orderOf(c.supporter);
       out.push({
         t: "contact",
         id: null,
@@ -341,6 +425,8 @@ export function editChanges(section: EditSection, d: EditData, draft: EditDraft)
           ...(c.phone.trim() ? { phone: c.phone.trim() } : {}),
           ...(night !== null ? { nightOk: night } : {}),
           ...(c.note.trim() ? { note: c.note.trim() } : {}),
+          ...(emergency !== null ? { emergencyOrder: emergency } : {}),
+          ...(supporter !== null ? { supporterOrder: supporter } : {}),
         },
       });
     }

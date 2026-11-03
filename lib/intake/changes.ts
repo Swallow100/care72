@@ -38,6 +38,12 @@ export type ContactValue = {
   /** 夜間に来られるか。null は「未確認」に戻す（手で直すときだけ） */
   nightOk?: boolean | null;
   note?: string;
+  /**
+   * 緊急連絡先の順・避難支援等実施者の順（T57）。null は順を外す。人が手で直すときだけ（AI の分け方・問いの答えは付けない。
+   * ルールの表は支援者の順のある連絡先を「支援者」と数える）
+   */
+  emergencyOrder?: number | null;
+  supporterOrder?: number | null;
 };
 
 // overwrite（埋まっている所も変える）は人が選んだときだけ: 変更点の「既入力」を選んだとき（欄）と、
@@ -94,6 +100,8 @@ export function contactText(c: Partial<ContactValue>): string {
     c.kind && CONTACT_KIND_LABELS[c.kind],
     c.phone,
     c.nightOk === true ? "夜間可" : c.nightOk === false ? "夜間不可" : undefined,
+    c.emergencyOrder != null ? `緊急 ${c.emergencyOrder}` : undefined,
+    c.supporterOrder != null ? `支援 ${c.supporterOrder}` : undefined,
     c.note,
   ]);
 }

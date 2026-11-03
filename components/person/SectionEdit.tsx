@@ -51,6 +51,10 @@ import {
   type EditSection,
   type MedDraft,
   type NightDraft,
+  type OrderClash,
+  type OrderDraft,
+  CONTACT_ORDERS,
+  orderClash,
 } from "@/lib/intake/edit";
 import { INTAKE_FIELDS } from "@/lib/intake/fields";
 import { FieldInput } from "./IntakeChanges";
@@ -79,10 +83,15 @@ export function SectionEdit({ section, data, head, children }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const changes = open ? editChanges(section, open.base, open.draft) : [];
+  // 同じ緊急・支援の順を 2 人に付けたら保存しない（サーバーも断る）
+  const clashed = open !== null && section === "people" && (() => {
+    const c = orderClash(open.draft);
+    return c.emergency.length > 0 || c.supporter.length > 0;
+  })();
   const set = (patch: Partial<EditDraft>) => setOpen((o) => (o ? { ...o, draft: { ...o.draft, ...patch } } : o));
 
   async function save() {
-    if (!open || changes.length === 0) return;
+    if (!open || changes.length === 0 || clashed) return;
     // 外す物があれば、保存の前に 1 回だけ確かめる（取消なら面は開いたまま）
     const drops = removalNames(changes, open.base);
     if (drops.length > 0) {
@@ -146,7 +155,7 @@ export function SectionEdit({ section, data, head, children }: Props) {
         >
           <SectionForm section={section} data={open.base} draft={open.draft} set={set} />
           <div className="flex flex-wrap items-center gap-2 pt-0.5">
-            <Button type="submit" kind="main" size="sm" icon={SaveIcon} disabled={busy || changes.length === 0} data-edit-save={section}>
+            <Button type="submit" kind="main" size="sm" icon={SaveIcon} disabled={busy || changes.length === 0 || clashed} data-edit-save={section}>
               {INTAKE_LABELS.save}
             </Button>
             <Button kind="quiet" size="sm" icon={CloseIcon} disabled={busy} onClick={() => setOpen(null)}>
@@ -174,6 +183,7 @@ type FormProps = { section: EditSection; data: EditData; draft: EditDraft; set: 
 
 /** 面の入力欄。並びは読む側の行の並び */
 export function SectionForm({ section, data, draft, set }: FormProps) {
+  const clash = orderClash(draft);
   const fields = INTAKE_FIELDS.filter((f) => f.section === section);
   const fieldRows = fields.map((f) => (
     <label key={f.key} className={ROW} data-field={f.key}>
@@ -359,6 +369,15 @@ export function SectionForm({ section, data, draft, set }: FormProps) {
     case "people":
       return (
         <div className="space-y-2">
+          {(clash.emergency.length > 0 || clash.supporter.length > 0) && (
+            <p role="alert" className="text-xs font-bold text-danger" data-order-clash>
+              {INTAKE_LABELS.orderClash}{" "}
+              {[
+                ...clash.emergency.map((n) => `${INTAKE_LABELS.emergency} ${n}`),
+                ...clash.supporter.map((n) => `${INTAKE_LABELS.supporter} ${n}`),
+              ].join("・")}
+            </p>
+          )}
           {draft.contacts.map((c, i) => {
             const key = c.id ? dropKey.contact(c.id) : null;
             const cur = data.contacts.find((x) => x.id === c.id);
@@ -372,13 +391,14 @@ export function SectionForm({ section, data, draft, set }: FormProps) {
               <ContactRow
                 key={c.id ?? i}
                 c={c}
+                clash={clash}
                 onChange={(next) => set({ contacts: draft.contacts.map((x, j) => (j === i ? next : x)) })}
                 onDrop={key ? () => set({ drops: toggled(draft.drops, key) }) : undefined}
               />
             );
           })}
           {draft.newContacts.map((c, i) => (
-            <ContactRow key={`new-${i}`} c={c} isNew onChange={(next) => set({ newContacts: draft.newContacts.map((x, j) => (j === i ? next : x)) })} />
+            <ContactRow key={`new-${i}`} c={c} isNew clash={clash} onChange={(next) => set({ newContacts: draft.newContacts.map((x, j) => (j === i ? next : x)) })} />
           ))}
           <Button size="sm" icon={AddIcon} onClick={() => set({ newContacts: [...draft.newContacts, blankContact()] })}>
             {INTAKE_LABELS.addContact}
@@ -539,11 +559,14 @@ const NIGHT: ReadonlyArray<{ value: NightDraft; label: string }> = [
 function ContactRow({
   c,
   isNew = false,
+  clash,
   onChange,
   onDrop,
 }: {
   c: ContactDraft;
   isNew?: boolean;
+  /** 重なった順（赤の太字） */
+  clash: OrderClash;
   onChange: (c: ContactDraft) => void;
   onDrop?: () => void;
 }) {
@@ -583,6 +606,45 @@ function ContactRow({
         <input className={`${INPUT_IN} min-w-0 flex-1`} placeholder="備考" aria-label={`${who} 備考`} value={c.note} onChange={(e) => p({ note: e.target.value })} />
         {onDrop && <DropButton onClick={onDrop} name={who} />}
       </div>
+      {/* 緊急連絡先の順・支援者の順（人が決める。ルールの表は支援の順のある人を「支援者」と数える） */}
+      <OrderSelect label={INTAKE_LABELS.emergency} who={who} value={c.emergency} clash={clash.emergency} onChange={(v) => p({ emergency: v })} />
+      <OrderSelect label={INTAKE_LABELS.supporter} who={who} value={c.supporter} clash={clash.supporter} onChange={(v) => p({ supporter: v })} />
     </div>
+  );
+}
+
+/** 順の選択（— / 1 / 2 / 3）。今の値が 3 より大きければその値も出す。重なった順は赤の太字 */
+function OrderSelect({
+  label,
+  who,
+  value,
+  clash,
+  onChange,
+}: {
+  label: string;
+  who: string;
+  value: OrderDraft;
+  clash: readonly number[];
+  onChange: (v: OrderDraft) => void;
+}) {
+  const orders: number[] = [...CONTACT_ORDERS];
+  if (value !== "" && !orders.includes(Number(value))) orders.push(Number(value));
+  const bad = value !== "" && clash.includes(Number(value));
+  return (
+    <Select
+      className={`${INPUT_IN}${bad ? " font-bold text-danger" : ""}`}
+      aria-label={`${who} ${label}`}
+      aria-invalid={bad || undefined}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      data-order={label}
+    >
+      <option value="">{label} —</option>
+      {orders.map((n) => (
+        <option key={n} value={String(n)}>
+          {label} {n}
+        </option>
+      ))}
+    </Select>
   );
 }

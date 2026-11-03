@@ -397,6 +397,11 @@ export const INTAKE_LABELS = {
   seenToday: "本日確認",
   /** 黒塗りの画面を通っていない写真・PDF（サーバーが断る。T52） */
   notRedacted: "未加工",
+  // ---- T57: 連絡先の順・距離、その他、時計の手入力 ----
+  /** 連絡先の緊急連絡先の順・支援者の順の欄と、同じ順を 2 人に付けたとき */
+  emergency: "緊急",
+  supporter: "支援",
+  orderClash: "順番重複",
 } as const;
 
 /**

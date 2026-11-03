@@ -81,6 +81,8 @@ const ChangeSchema = z.discriminatedUnion("t", [
       phone: z.string().trim().regex(/^[0-9+\-() ]{0,20}$/).optional(),
       nightOk: z.boolean().nullable().optional(),
       note: text(200).optional(),
+      emergencyOrder: z.number().int().min(1).max(9).nullable().optional(),
+      supporterOrder: z.number().int().min(1).max(9).nullable().optional(),
     }),
     overwrite: z.boolean().optional(),
   }),
@@ -135,7 +137,8 @@ export type SaveRequest = z.output<typeof SaveRequestSchema>;
 
 export type SaveResult =
   | { ok: true; changed: number; version: number; plan: PlanStatus; fields: string[] }
-  | { ok: false; error: "not_found" | "forbidden" | "conflict" };
+  /** order_clash: 同じ緊急・支援の順を 2 人に付けた（T57。画面も保存の前に止める） */
+  | { ok: false; error: "not_found" | "forbidden" | "conflict" | "order_clash" };
 
 type Statement = ReturnType<D1Database["prepare"]>;
 
@@ -184,6 +187,8 @@ export function timelineBody(
 /** 手で直すときだけの変更（上書き・同意・頼り先の確認・外す・値の確認）。AI の分け方・問いの答えの保存には混ぜない */
 function editOnly(c: IntakeChange): boolean {
   if (c.t === "consent" || c.t === "clockCheck" || c.t === "remove" || c.t === "clockSeen") return true;
+  // 緊急・支援の順は人が決める（AI の分け方・問いの答えからは付けない。docs/PROGRESS.md の T03 の決め、T57）
+  if (c.t === "contact" && (c.value.emergencyOrder !== undefined || c.value.supporterOrder !== undefined)) return true;
   return c.t !== "field" && "overwrite" in c && c.overwrite === true;
 }
 
@@ -236,6 +241,8 @@ export async function saveIntake(db: D1Database, principal: Principal, req: Save
   const fields = [...applied.fields];
 
   // ---- 連絡先 ----
+  // 同じ緊急・支援の順を 2 人に付ける保存は断る（ルールの表の「支援者」と様式の ①② が崩れる）。今ある重なりに触れない保存は通す
+  if (contactOrderClash(rows, changes) && !contactOrderClash(rows, [])) return { ok: false, error: "order_clash" };
   const contactOps = planContacts(rows, changes, personId);
   fields.push(...contactOps.fields);
 
@@ -349,6 +356,8 @@ function planContacts(rows: PersonPageRows, changes: ReadonlyArray<IntakeChange>
         const next = v.nightOk === null ? null : v.nightOk ? 1 : 0;
         if (next !== (cur.night_ok ?? null)) set.push(["night_ok", next]);
       }
+      if (v.emergencyOrder !== undefined && v.emergencyOrder !== (cur.emergency_order ?? null)) set.push(["emergency_order", v.emergencyOrder]);
+      if (v.supporterOrder !== undefined && v.supporterOrder !== (cur.supporter_order ?? null)) set.push(["supporter_order", v.supporterOrder]);
       if (set.length === 0) continue;
       updates.push({ id: cur.id, set, overwrite: true });
       fields.push(`contacts.${cur.id}`);
@@ -388,8 +397,8 @@ function planContacts(rows: PersonPageRows, changes: ReadonlyArray<IntakeChange>
         ...inserts.map((n) =>
           db
             .prepare(
-              `INSERT INTO contacts (id, person_id, kind, relation, name, phone, night_ok, note, sort, created_at)
-               SELECT ?4, ?2, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?3 WHERE ${guard}`,
+              `INSERT INTO contacts (id, person_id, kind, relation, name, phone, night_ok, note, sort, emergency_order, supporter_order, created_at)
+               SELECT ?4, ?2, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?3 WHERE ${guard}`,
             )
             .bind(
               ...guardArgs,
@@ -401,11 +410,49 @@ function planContacts(rows: PersonPageRows, changes: ReadonlyArray<IntakeChange>
               n.c.nightOk == null ? null : n.c.nightOk ? 1 : 0,
               n.c.note || null,
               n.sort,
+              n.c.emergencyOrder ?? null,
+              n.c.supporterOrder ?? null,
             ),
         ),
       ];
     },
   };
+}
+
+/**
+ * 保存のあとの連絡先で、同じ緊急・支援の順が 2 人に付くか（T57）。今の行に手の直し（overwrite）と足す行を当て、外す行を除いて数える。
+ * 保存の batch は guard で丸ごと通るか落ちるかなので、書く前に断る。同じ保存で 1 と 2 を入れ替えるのは通る
+ */
+export function contactOrderClash(rows: Pick<PersonPageRows, "contacts">, changes: ReadonlyArray<IntakeChange>): boolean {
+  const state = new Map(rows.contacts.map((c) => [c.id, { e: c.emergency_order ?? null, s: c.supporter_order ?? null }]));
+  let added = 0;
+  for (const ch of changes) {
+    if (ch.t === "remove" && ch.target.what === "contact") {
+      const id = ch.target.id;
+      if (rows.contacts.some((c) => c.id === id && c.kind !== "self")) state.delete(id);
+      continue;
+    }
+    if (ch.t !== "contact") continue;
+    const v = ch.value;
+    if (ch.id && ch.overwrite) {
+      const cur = state.get(ch.id);
+      if (!cur || rows.contacts.find((c) => c.id === ch.id)?.kind === "self") continue;
+      state.set(ch.id, { e: v.emergencyOrder !== undefined ? v.emergencyOrder : cur.e, s: v.supporterOrder !== undefined ? v.supporterOrder : cur.s });
+    } else if (!ch.id) {
+      state.set(`new-${added++}`, { e: v.emergencyOrder ?? null, s: v.supporterOrder ?? null });
+    }
+  }
+  const twice = (pick: (x: { e: number | null; s: number | null }) => number | null) => {
+    const seen = new Set<number>();
+    for (const x of state.values()) {
+      const n = pick(x);
+      if (n === null) continue;
+      if (seen.has(n)) return true;
+      seen.add(n);
+    }
+    return false;
+  };
+  return twice((x) => x.e) || twice((x) => x.s);
 }
 
 // ---------- 時計 ----------
