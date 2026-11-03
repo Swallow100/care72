@@ -171,17 +171,17 @@ describe("スマホ入口の画面の形", () => {
     return buildPhoneLinkView(rows, (await loadPhoneLinkRow(db, personId))!, { now, origin: ORIGIN, secret: SECRET });
   }
 
-  it("家族用は答えられる連絡先だけ（本人の電話・機関は出さない）。スマホ有を上、そのあと緊急連絡先の順", async () => {
+  it("家族用は答えられる連絡先だけ（本人の電話・機関は出さない）。スマホ 使用可を上、そのあと緊急連絡先の順", async () => {
     const rows = (await loadPersonPage(db, yamamoto(), "p-02"))!;
     const kinds = familyLinkContacts(rows).map((c) => c.kind);
     expect(kinds.every((k) => ["family", "supporter", "welfare_commissioner"].includes(k))).toBe(true);
     expect(rows.contacts.some((c) => c.kind === "oxygen_supplier")).toBe(true);
-    // 1 山田: 娘（スマホ有・緊急 1）→ 隣人（スマホ無・緊急 2）。並びを入れ替えても同じ
+    // 1 山田: 娘（スマホ 使用可・緊急 1）→ 隣人（スマホ なし・緊急 2）。並びを入れ替えても同じ。印は本人と同じ形（T77）
     sqlite.exec("UPDATE contacts SET emergency_order = 1 WHERE id = 'c-01-2'; UPDATE contacts SET emergency_order = 2 WHERE id = 'c-01-1'");
     const v = await view();
     expect(v.family.map((f) => [f.key, f.relation, f.smartphone])).toEqual([
-      ["c-01-1", "娘", PHONE_LINK_LABELS.smartphone],
-      ["c-01-2", "隣人", null],
+      ["c-01-1", "娘", "スマホ 使用可"],
+      ["c-01-2", "隣人", "スマホ なし"],
     ]);
     expect(v.self).toMatchObject({ key: "self", kind: "self", name: "山田 ハナ", relation: null, smartphone: "スマホ 使用可" });
   });

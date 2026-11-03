@@ -567,7 +567,8 @@ describe("画面の静的な描画", () => {
     const page = await pageOf(family());
     const sheet = buildOwnSheet(page, { today: "2026-11-04", officeName: "デモ事業所" });
     const html = renderToStaticMarkup(createElement(PhoneSheet, { sheet, only: FAMILY_SHEET_BLOCKS }));
-    expect([...html.matchAll(/data-block="([^"]+)"/g)].map((m) => m[1])).toEqual(["where", "who", "carry", "call", "emergency"]);
+    // 電話の段は番号のある行だけ（T77）。山田 ハナの電話の段はケアマネ・かかりつけの手書きの行だけなので出さない（家族の番号は 来てくれる 人 に）
+    expect([...html.matchAll(/data-block="([^"]+)"/g)].map((m) => m[1])).toEqual(["where", "who", "carry", "emergency"]);
     const t = text(html);
     expect(t).toContain("かわなぎ小学校");
     expect(t).toContain("お薬手帳");

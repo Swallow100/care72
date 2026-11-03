@@ -3,6 +3,11 @@
 // 録音・定型文・文字起こし・読み上げは偽物、時計は偽の時計。
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { phoneBlocks } from "../../components/phone/PhoneSheet.tsx";
+import type { ContactKind, ContactReach } from "../db/types.ts";
+import type { OwnBlock } from "../forms/own-sheet.ts";
+import { PHONE_LINK_LABELS } from "../qr/phone-labels.ts";
+import { contactSmartphone, isFamilyLinkContact } from "../qr/phone-link-view.ts";
 import type { SignalBody } from "./body.ts";
 import { createFamilyPhone, type FamilyState } from "./family-phone.ts";
 import { createPhone, IDLE_MS, RECORD_MS, type PhoneDeps, type PhoneState, type TranscriptEvents } from "./phone.ts";
@@ -317,5 +322,47 @@ describe("家族のスマホ", () => {
     for (const c of ["no", "no", "car", "yes"]) f.choose(c);
     expect(f.state).toMatchObject({ step: "question", id: "body" });
     expect(states.map((s) => (s.step === "question" ? s.id : s.step))).toEqual(["injured", "atHome", "place", "canMove", "body"]);
+  });
+});
+
+// ---------- 低の 3 つ（スマホ入口の家族用・スマホの印・平時の電話の段） ----------
+
+describe("スマホ入口の家族用は 家族・同居・緊急連絡先だけ", () => {
+  const c = (kind: ContactKind, reach: ContactReach | null, emergency_order: number | null) => ({ kind, reach, emergency_order });
+  it("家族は距離・緊急連絡先によらず出す。支援者・民生委員は同居か緊急連絡先のときだけ。本人の電話・機関は出さない", () => {
+    expect(isFamilyLinkContact(c("family", "far", null))).toBe(true);
+    expect(isFamilyLinkContact(c("supporter", "nearby", null))).toBe(false);
+    expect(isFamilyLinkContact(c("welfare_commissioner", "nearby", null))).toBe(false);
+    expect(isFamilyLinkContact(c("supporter", "together", null))).toBe(true);
+    expect(isFamilyLinkContact(c("supporter", "nearby", 2))).toBe(true);
+    expect(isFamilyLinkContact(c("self", "together", 1))).toBe(false);
+    expect(isFamilyLinkContact(c("hospital", null, 1))).toBe(false);
+    expect(isFamilyLinkContact(c("care_service", "in_city", 1))).toBe(false);
+  });
+
+  it("スマホの印は本人と同じ「スマホ 使用可」の形（前は家族だけ「スマホ有」）。分からなければ出さない", () => {
+    expect(contactSmartphone(1)).toBe("スマホ 使用可");
+    expect(contactSmartphone(0)).toBe("スマホ なし");
+    expect(contactSmartphone(null)).toBeNull();
+    expect(Object.values(PHONE_LINK_LABELS)).not.toContain("スマホ有");
+  });
+});
+
+describe("本人・家族のスマホの平時の電話の段は番号のある行だけ", () => {
+  const w = (text: string) => [{ text }];
+  const block = (id: OwnBlock["id"], lines: OwnBlock["lines"]): OwnBlock => ({ id, heading: w(id), lines });
+  it("番号の無い行（ケアマネ・かかりつけの手書きの線）は出さず、番号のある行は出す。電話でない段の番号なしの行はそのまま", () => {
+    const blocks = [
+      block("who", [{ key: "who.1", words: w("娘"), phone: { number: null } }]),
+      block("call", [
+        { key: "call.cm", words: w("ケアマネジャー"), phone: { number: null } },
+        { key: "call.dialysis.c-1", words: w("透析"), phone: { number: "090-0000-0031" } },
+      ]),
+    ];
+    expect(phoneBlocks(blocks).map((b) => [b.id, b.lines.map((l) => l.key)])).toEqual([
+      ["who", ["who.1"]],
+      ["call", ["call.dialysis.c-1"]],
+    ]);
+    expect(phoneBlocks([block("call", [{ key: "call.cm", words: w("ケアマネジャー"), phone: { number: null } }])])).toEqual([]);
   });
 });
