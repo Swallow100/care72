@@ -10,6 +10,7 @@ import { AUTHOR_ROLE_LABELS } from "../labels.ts";
 import type { DisasterScope } from "./scope.ts";
 import {
   DISASTER_KIND_LABELS,
+  hasAlertLevel,
   fromRow,
   infoChanges,
   infoOf,
@@ -117,7 +118,8 @@ async function write(
 /**
  * 災害モードの切替（大雨・台風・土砂・地震・津波・その他・平時に戻す）。版が違えば競合。同じ状態を押しても何も書かない。
  * - 平時 → 災害の種類: 発災は押した時刻、押した人を残す。停電・レベル・断水・道路は空から
- * - 災害の種類どうし（大雨 ⇄ 台風 ⇄ 地震 など）: 種類だけ替える（発災・停電などはそのまま）
+ * - 災害の種類どうし（大雨 ⇄ 台風 ⇄ 地震 など）: 種類だけ替える（発災・停電などはそのまま）。
+ *   警戒レベルは大雨の場面の種類（大雨・台風・土砂）のあいだだけ持ち越し、地震・津波・その他へ移ると NULL に
  * - → 平時: 全部を空に戻す（経過に履歴は残る）
  */
 export async function switchDisasterMode(
@@ -140,7 +142,9 @@ export async function switchDisasterMode(
       kind: input.kind,
       startedAt: now.startedAt,
       startedBy: now.startedBy,
-      info: info ? { outage: info.outage, alertLevel: info.alertLevel, water: info.water, road: info.road } : null,
+      info: info
+        ? { outage: info.outage, alertLevel: hasAlertLevel(input.kind) ? info.alertLevel : null, water: info.water, road: info.road }
+        : null,
     };
   }
 
@@ -166,17 +170,19 @@ export async function saveDisasterInfo(
   if (now.version !== input.version) return { ok: false, error: "conflict" };
   const before = infoOf(now);
   if (!before) return { ok: false, error: "normal" };
-  const changes = infoChanges(before, input.info);
+  // 警戒レベルは大雨の場面の種類だけ。ほかの種類で送られても NULL で保存する
+  const info: DisasterInfo = hasAlertLevel(now.kind) ? input.info : { ...input.info, alertLevel: null };
+  const changes = infoChanges(before, info);
   if (changes.length === 0) return { ok: true, changed: false };
 
-  const { startedAt, ...rest } = input.info;
+  const { startedAt, ...rest } = info;
   const ok = await write(
     db,
     scope,
     input.version,
     input.at,
     { kind: now.kind, startedAt, startedBy: now.startedBy, info: rest },
-    { kind: "disaster_info", body: changes.join("・"), payload: statePayload({ kind: now.kind, ...input.info }) },
+    { kind: "disaster_info", body: changes.join("・"), payload: statePayload({ kind: now.kind, ...info }) },
   );
   return ok ? { ok: true, changed: true } : { ok: false, error: "conflict" };
 }

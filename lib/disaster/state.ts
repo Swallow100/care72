@@ -23,6 +23,11 @@ export const DISASTER_KIND_LABELS: Record<DisasterKind, string> = {
   other: "その他",
 };
 
+/** 警戒レベルを持つ種類（場面が大雨: 大雨・台風・土砂）。ほかの種類では欄を出さず、切り替えたときと保存で NULL に（11/3 21:5x 確定） */
+export function hasAlertLevel(kind: DisasterKind): boolean {
+  return DISASTER_SCENE[kind] === "heavy_rain";
+}
+
 /** 地図の場面（lib/map/demo.ts の雨雲・震度のデモ）の種類。null は場面なし */
 export type DisasterScene = "heavy_rain" | "earthquake" | null;
 
@@ -279,7 +284,7 @@ export type DisasterMark =
 export function disasterMark(s: DisasterState, now: string): DisasterMark {
   if (!isDisaster(s)) return { kind: "normal", label: DISASTER_KIND_LABELS.normal };
   const details: string[] = [];
-  if (s.alertLevel !== null) details.push(`レベル ${s.alertLevel}`);
+  if (s.alertLevel !== null && hasAlertLevel(s.kind)) details.push(`レベル ${s.alertLevel}`);
   if (s.outage.scope !== "none" && s.outage.startedAt) {
     const e = elapsedText(s.outage.startedAt, now);
     const where = s.outage.scope === "area" ? "（地区）" : "";

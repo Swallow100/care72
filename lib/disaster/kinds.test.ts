@@ -14,7 +14,7 @@ import { d1FromSqlite, migratedSqlite } from "../db/test-d1.ts";
 import { loadForm9 } from "../forms/form9-db.ts";
 import { loadDisasterState, loadOfficeLog, saveDisasterInfo, switchDisasterMode } from "./db.ts";
 import { disasterScope } from "./scope.ts";
-import { DISASTER_KIND_LABELS, DISASTER_SCENE, disasterMark, isDisasterKind, parseModeForm, toSituation } from "./state.ts";
+import { DISASTER_KIND_LABELS, DISASTER_SCENE, disasterMark, hasAlertLevel, isDisasterKind, parseModeForm, toSituation } from "./state.ts";
 
 describe("災害の種類の言葉と並び", () => {
   it("平時 → 大雨 → 台風 → 土砂 → 地震 → 津波 → その他（切替のボタンの並び）", () => {
@@ -228,5 +228,52 @@ describe("ルールの表の結果は災害の種類で変わらない", () => {
     }
     expect(seen).toHaveLength(6);
     expect(new Set(seen).size).toBe(1);
+  });
+});
+
+describe("警戒レベルは大雨の場面の種類だけ（11/3 21:5x 確定）", () => {
+  const info = (alertLevel: 3 | 4 | 5 | null) => ({
+    startedAt: at(-2),
+    outage: { scope: "none" as const, towns: [], startedAt: null },
+    alertLevel,
+    water: null,
+    road: null,
+  });
+  const level = () => (sqlite.prepare("SELECT alert_level AS l FROM disaster_state WHERE office_id = 'office-demo'").get() as { l: number | null }).l;
+
+  it("欄を出す種類は大雨・台風・土砂", () => {
+    expect(DISASTER_KINDS.filter(hasAlertLevel)).toEqual(["heavy_rain", "typhoon", "landslide"]);
+  });
+
+  it("大雨 → 台風 → 土砂は持ち越し、地震へ移ると NULL。大雨の場面に戻っても前の値は戻らない。ヘッダーの印にもレベルを出さない", async () => {
+    expect(await switchDisasterMode(db, SCOPE, { kind: "heavy_rain", version: 0, at: at(-2) })).toEqual({ ok: true, changed: true });
+    expect(await saveDisasterInfo(db, SCOPE, { version: 1, at: at(0), info: info(4) })).toEqual({ ok: true, changed: true });
+    expect(await switchDisasterMode(db, SCOPE, { kind: "typhoon", version: 2, at: at(0.1) })).toEqual({ ok: true, changed: true });
+    expect(level()).toBe(4);
+    expect(await switchDisasterMode(db, SCOPE, { kind: "landslide", version: 3, at: at(0.2) })).toEqual({ ok: true, changed: true });
+    expect(level()).toBe(4);
+    expect(disasterMark(await loadDisasterState(db, "office-demo"), at(1))).toMatchObject({ label: "土砂", details: ["レベル 4"] });
+    for (const [i, kind] of (["earthquake", "tsunami", "other"] as const).entries()) {
+      expect(await switchDisasterMode(db, SCOPE, { kind, version: 4 + i, at: at(0.3 + i * 0.1) })).toEqual({ ok: true, changed: true });
+      expect(level(), kind).toBeNull();
+      expect(disasterMark(await loadDisasterState(db, "office-demo"), at(1))).toMatchObject({ label: DISASTER_KIND_LABELS[kind], details: [] });
+    }
+    expect(await switchDisasterMode(db, SCOPE, { kind: "heavy_rain", version: 7, at: at(0.6) })).toEqual({ ok: true, changed: true });
+    expect(level()).toBeNull();
+  });
+
+  it("地震・津波・その他でレベルを送っても NULL で保存する（変わらなければ書かない）", async () => {
+    let version = 0;
+    for (const kind of ["earthquake", "tsunami", "other"] as const) {
+      expect(await switchDisasterMode(db, SCOPE, { kind, version, at: at(-2) })).toEqual({ ok: true, changed: true });
+      version++;
+      expect(await saveDisasterInfo(db, SCOPE, { version, at: at(0), info: info(5) }), kind).toEqual({ ok: true, changed: false });
+      expect(level()).toBeNull();
+    }
+    // ほかの欄が変われば保存し、レベルは NULL のまま
+    expect(await saveDisasterInfo(db, SCOPE, { version, at: at(0), info: { ...info(5), water: "断水あり" } })).toEqual({ ok: true, changed: true });
+    expect(level()).toBeNull();
+    const log = await loadOfficeLog(db, "office-demo");
+    expect(log[0]).toMatchObject({ label: "災害情報", body: "断水 断水あり" });
   });
 });

@@ -29,6 +29,7 @@ import {
   DISASTER_KIND_LABELS,
   DISASTER_LABELS,
   disasterMark,
+  hasAlertLevel,
   elapsedText,
   inOutageArea,
   infoOf,
@@ -312,6 +313,8 @@ function InfoSection({ state, towns }: { state: DisasterState; towns: TownCount[
             <input type="datetime-local" name="started" required defaultValue={toLocalInput(info.startedAt)} className={INPUT} />
           </label>
 
+          {/* 警戒レベルは大雨の場面の種類（大雨・台風・土砂）だけ。地震・津波・その他では出さない（11/3 21:5x 確定） */}
+          {hasAlertLevel(state.kind) && (
           <fieldset>
             <legend className="text-xs text-muted">{DISASTER_LABELS.level}</legend>
             <div className="mt-0.5 flex flex-wrap gap-1">
@@ -327,6 +330,7 @@ function InfoSection({ state, towns }: { state: DisasterState; towns: TownCount[
               ))}
             </div>
           </fieldset>
+          )}
 
           <fieldset className="sm:col-span-2">
             <legend className="text-xs text-muted">{DISASTER_LABELS.outage}</legend>
