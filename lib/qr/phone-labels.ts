@@ -21,6 +21,10 @@ export const PHONE_LINK_LABELS = {
   /** QR の画像の読み上げ（「本人用 QR」） */
   qr: "QR",
   none: "なし",
+  /** ケアマネ・行政・医療班・審査員のログイン中の端末でリンクを開いたときの 1 枚（設計の答え 11/4） */
+  loggedIn: "ログイン中",
+  switch: "切替",
+  back: "戻る",
 } as const;
 
 export const PHONE_LINK_STATUS_LABELS: Record<PhoneLinkStatus, string> = { none: "未発行", active: "有効", expired: "期限切れ" };
