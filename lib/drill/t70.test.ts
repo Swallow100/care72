@@ -3,6 +3,7 @@
 // - 方言の行を外す
 // - 押せる人なし・上限の見込み（開始の設定）、上限に当たった刻みの停止の印
 // - 進行中をケアマネごと、24 時間で自動中断
+// - 仮想モードの街を台帳から（デモは架空の街のまま、部屋に町名を渡さない）
 
 import Anthropic from "@anthropic-ai/sdk";
 import type { DatabaseSync } from "node:sqlite";
@@ -15,7 +16,10 @@ import { SEED_PEOPLE } from "../../seed/people.ts";
 import { seedStatements } from "../../seed/sql.ts";
 import type { Principal } from "../auth/principal.ts";
 import type { ClaudeClient } from "../claude/client.ts";
+import { OPUS } from "../claude/models.ts";
 import { d1FromSqlite, migratedSqlite } from "../db/test-d1.ts";
+import { findLeaks, pseudonymizeText } from "../pseudonym/index.ts";
+import { AREA_TOWNS, areaOf, DEMO_AREA, geographyText } from "./area.ts";
 import type { DrillScenario, Ledger } from "../db/types.ts";
 import { castScenario, matchesPick, needsCast, type CastFacts } from "./cast.ts";
 import { castFactsMap } from "./cast-facts.ts";
@@ -35,12 +39,15 @@ import {
   startDrill,
   stateOfRow,
 } from "./db.ts";
-import { aiStoppedOf, stopIncidents, stopLog, type PersonaInput } from "./engine.ts";
+import { aiStoppedOf, stopIncidents, stopLog, type PersonaInput, type WorldInput } from "./engine.ts";
 import { estimateDrillCalls, overLimit } from "./estimate.ts";
 import { drillHooks } from "./hooks.ts";
 import { listGet } from "./http.ts";
+import { loadOutcomeSources } from "./outcome.ts";
 import { CALL_SYSTEM, fixedTurns, loadPersonaSources, PERSONA_SYSTEM, PERSONA_VIRTUAL } from "./persona.ts";
-import { SCENARIO_ORDER, SCENARIOS } from "./scenarios.ts";
+import { applyEvent, EMPTY_WORLD, SCENARIO_ORDER, SCENARIOS } from "./scenarios.ts";
+import { worldIncidents, type WorldStep } from "./world-apply.ts";
+import { buildCast, openingText, worldNow } from "./world-oneshot.ts";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: () => {}, push: () => {} }) }));
 
@@ -555,5 +562,156 @@ describe("進行中をケアマネごと・24 時間で自動中断（T70 の 6�
     const body = (await res.json()) as { drills: Array<{ id: string; abandonReason?: string }> };
     expect(body.drills.find((d) => d.id === "a")!.abandonReason).toBe("24h");
     expect(body.drills.find((d) => d.id === "b")!.abandonReason).toBeUndefined();
+  });
+});
+
+// ---------- 4 仮想モードの街を台帳から ----------
+
+/** 偽の Claude: 1 回呼び（Opus）は決まった世界の 1 刻み、本人役（Haiku）は形の違い（連絡なし） */
+function fakeWorld(step: WorldStep) {
+  const calls: Params[] = [];
+  const client: ClaudeClient = {
+    beta: {
+      messages: {
+        create: async (params) => {
+          calls.push(params);
+          const text = params.model === OPUS ? JSON.stringify(step) : "{}";
+          return {
+            id: "msg_test",
+            type: "message",
+            role: "assistant",
+            model: params.model,
+            content: [{ type: "text", text, citations: null }],
+            stop_reason: "end_turn",
+            stop_details: null,
+            stop_sequence: null,
+            usage: { input_tokens: 10, output_tokens: 1, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+          } as unknown as Message;
+        },
+      },
+    },
+  };
+  return { client, calls };
+}
+
+const NEW_TOWNS = ["あおば町", "しらさぎ町", "もみじ台"];
+
+async function newCast() {
+  return buildCast(FIVE_IDS, await loadPersonaSources(db, NEW.id), await loadOutcomeSources(db, NEW.id), "2026-11-05", NEW.id);
+}
+
+describe("仮想モードの街を台帳から（T70 の 4）", () => {
+  it("デモ事業所は架空の 8 町のまま（地理の文も同じ）", () => {
+    expect(areaOf(DEMO.id, [])).toBe(DEMO_AREA);
+    expect(DEMO_AREA.towns).toBe(AREA_TOWNS);
+    expect(geographyText(DEMO_AREA)).toBe(geographyText());
+    expect(geographyText()).toContain("地区（8）。白波川が街を東から海へ流れる:");
+  });
+
+  it("新しい事業所: 台帳の町名ごとに別名・地形・送電、町名なしの町、架空の高台に避難所と頼る人のいる施設", async () => {
+    addNewOffice();
+    const cast = await newCast();
+    const a = cast.area;
+    expect(a.towns.map((t) => [t.town, t.alias, t.terrain, t.grid])).toEqual([
+      ["あおば町", "甲地区", "浸水 3 m の想定の低い土地", "A 系統"],
+      ["しらさぎ町", "乙地区", "浸水 0.5 m の想定の低い土地", "A 系統"],
+      ["もみじ台", "丙地区", "想定なし", "A 系統"],
+      ["町名なし", "丁地区", "想定なし", "B 系統"],
+      ["高台", "戊地区", "高台の住宅地", "B 系統"],
+    ]);
+    expect(a.roads.map((r) => [r.name, r.towns])).toEqual([
+      ["甲地区の道", ["あおば町"]],
+      ["乙地区の道", ["しらさぎ町"]],
+      ["丙地区の道", ["もみじ台"]],
+      ["丁地区の道", ["町名なし"]],
+      ["高台への坂道", ["高台"]],
+    ]);
+    expect(a.shelters.map((s) => [s.name, s.town, s.welfare])).toEqual([
+      ["高台の避難所", "高台", false],
+      ["福祉避難所", "高台", true],
+    ]);
+    // 透析先に頼る人（n-2）がいるので透析施設だけ。冷蔵・配達・訪問看護は頼る人がいないので置かない
+    expect(a.facilities.map((f) => [f.name, f.depends])).toEqual([["透析施設", "dialysis_center"]]);
+    // 本人の町（コードだけが持つ）
+    expect(cast.facts.get("n-1")!.town).toBe("あおば町");
+    expect(cast.facts.get("n-5")!.town).toBe("町名なし");
+  });
+
+  it("部屋への文（地理・本人たち・刻み）に町名・氏名が出ない（別名だけ）", async () => {
+    addNewOffice();
+    const cast = await newCast();
+    const geo = geographyText(cast.area);
+    for (const t of NEW_TOWNS) expect(geo).not.toContain(t);
+    expect(geo).toContain("甲地区: 浸水 3 m の想定の低い土地。洪水 3 m の想定。送電 A 系統");
+    const input: WorldInput = {
+      scenario: "virtual",
+      step: 0,
+      hour: 0,
+      world: EMPTY_WORLD,
+      incidents: [],
+      participants: FIVE_IDS,
+      people: {},
+      actions: [],
+      hints: { reached: [], clocks: [] },
+      session: null,
+      minute: 0,
+    };
+    const opening = pseudonymizeText(openingText(input, cast, 72), cast.key).text;
+    expect(findLeaks(opening, cast.key)).toEqual([]);
+    for (const t of NEW_TOWNS) expect(opening).not.toContain(t);
+    for (const p of FIVE) expect(opening).not.toContain(`架空 ${p.kana}`);
+  });
+
+  it("別名の出来事を台帳の町の人に当てる。画面の文は町名に戻す", async () => {
+    addNewOffice();
+    const cast = await newCast();
+    const ctx = { key: cast.key, facts: cast.facts, ended: new Set<string>(), hour: 6, via: "oneshot" as const, area: cast.area };
+    const out = worldIncidents(
+      {
+        narration: "甲地区で川があふれた",
+        events: [
+          { kind: "flood", town: "甲地区", target: "", name: "", value: "" },
+          { kind: "road", town: "", target: "", name: "乙地区の道", value: "closed" },
+          { kind: "facility", town: "", target: "", name: "透析施設", value: "closed" },
+          { kind: "flood", town: "庚地区", target: "", name: "", value: "1" },
+        ],
+        farewells: [],
+      },
+      ctx,
+    );
+    expect(out[0]).toMatchObject({ change: { kind: "narration", room: "甲地区で川があふれた" }, text: "あおば町で川があふれた" });
+    expect(out[1].change).toEqual({ kind: "town_flood", town: "あおば町", depthM: 3, persons: ["n-1"] });
+    expect(out[2]).toMatchObject({ change: { kind: "town_road", label: "乙地区の道", open: false, persons: ["n-2", "n-3"] }, text: "しらさぎ町の道 通行止" });
+    expect(out[3].change).toMatchObject({ kind: "town_facility", label: "透析施設", open: false, persons: ["n-2"] });
+    // 地理に無い別名は捨てる
+    expect(out).toHaveLength(4);
+    // 今の街の文（部屋へ）は別名の道のまま
+    const w = out.reduce((x, e) => applyEvent(x, e, 6), EMPTY_WORLD);
+    expect(worldNow(w, cast.area)).toContain("乙地区の道 通行止");
+  });
+
+  it("新しい事業所の仮想の訓練: 世界（1 回呼び）に別名の地理が届き、出来事が台帳の町の人に当たる。hooks なしでも最後まで", async () => {
+    addNewOffice();
+    const { client, calls } = fakeWorld({
+      narration: "甲地区で川が増水している",
+      events: [{ kind: "flood", town: "甲地区", target: "", name: "", value: "2" }],
+      farewells: [],
+    });
+    const hooks = drillHooks({ DB: db, ANTHROPIC_API_KEY: "dummy", DRILL_WORLD: "messages" }, careManager(NEW, CM_A), {
+      claude: client,
+      now: () => new Date(START),
+    })!;
+    expect(await startDrill(db, scopeA(), "virtual", START, hooks, () => "vn")).toEqual({ ok: true, id: "vn" });
+    const world = calls.find((c) => c.model === OPUS)!;
+    const sent = JSON.stringify(world.messages);
+    expect(sent).toContain("甲地区");
+    for (const t of NEW_TOWNS) expect(sent).not.toContain(t);
+    const state = stateOfRow((await loadDrillRow(db, NEW.id, "vn"))!);
+    expect(state.world.marks["n-1"]?.flooded).toBe(0);
+    expect(state.world.floods?.["n-1"]).toBe(2);
+    // hooks なし（鍵なし）でも 12 刻みを最後まで
+    expect(await abandonDrill(db, scopeA(), "vn", START)).toEqual({ ok: true });
+    const row = await runAll("virtual", "vq");
+    expect(row.status).toBe("finished");
   });
 });

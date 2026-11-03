@@ -11,7 +11,8 @@
 import { askJson, type AskJsonContext, type AskJsonRequest } from "../claude/call.ts";
 import { CARE_LEVEL_LABELS, CLOCK_START_LABELS, CLOCK_UNIT_LABELS, DEVICE_LABELS, HOUSEHOLD_LABELS } from "../labels.ts";
 import { pseudonymize, pseudonymizeText, type ForClaude, type PseudonymInput, type PseudonymKey } from "../pseudonym/index.ts";
-import { aliasOfTown, AREA_FACILITIES, AREA_ROADS, AREA_SHELTERS, geographyText } from "./area.ts";
+import { aliasOfTown, areaOf, DEMO_AREA, geographyText, townOfLedger, type Area } from "./area.ts";
+import { DEMO_OFFICE_ID } from "../auth/demo.ts";
 import type { ActionRecord, DrillIncident, WorldInput } from "./engine.ts";
 import { PHONE_LABELS, SHELTER_LABELS } from "./labels.ts";
 import { nightLine } from "./night.ts";
@@ -120,28 +121,39 @@ export type WorldCast = {
   facts: Map<string, PersonFacts>;
   /** 本人ごとの台帳の要約（仮名化の前の文。送る前に pseudonymizeText） */
   people: string;
+  /** 事業所の地理（T70、lib/drill/area.ts の areaOf。デモ事業所は架空の街、ほかは参加者の台帳の町名から） */
+  area: Area;
 };
 
-/** 参加者の台帳から仮名・事実・台帳の要約を作る。台帳の無い参加者は外す */
+/**
+ * 参加者の台帳から仮名・事実・台帳の要約・地理を作る。台帳の無い参加者は外す。
+ * officeId はデモ事業所か（デモは架空の街のまま）を見る。無ければデモ事業所
+ */
 export function buildCast(
   participants: ReadonlyArray<string>,
   sources: ReadonlyMap<string, PseudonymInput>,
   outcomeSources: ReadonlyMap<string, OutcomeSource>,
   on?: string,
+  officeId: string = DEMO_OFFICE_ID,
 ): WorldCast {
   const members = participants.filter((p) => sources.has(p));
   const list = members.map((p) => sources.get(p)!);
   const { payload, key } = pseudonymize(list, on ? { on } : {});
+  const dependsOf = (p: string) => (outcomeSources.get(p)?.clocks ?? []).flatMap((k) => (k.depends_on ? [k.depends_on] : []));
+  const nurseOf = (src: PseudonymInput) => src.contacts.some((c) => c.kind === "visiting_nurse");
+  const area = areaOf(
+    officeId,
+    members.map((p, i) => ({ ledger: list[i].ledger, depends: dependsOf(p), nurse: nurseOf(list[i]) })),
+  );
   const facts = new Map<string, PersonFacts>();
   const lines: string[] = [];
   members.forEach((p, i) => {
     const src = list[i];
-    const clocks = outcomeSources.get(p)?.clocks ?? [];
     facts.set(p, {
-      town: aliasOfTown(src.ledger.basic.address?.town) ? (src.ledger.basic.address?.town ?? null) : null,
-      depends: clocks.flatMap((k) => (k.depends_on ? [k.depends_on] : [])),
+      town: townOfLedger(src.ledger, area),
+      depends: dependsOf(p),
       categories: src.clocks.map((k) => k.category),
-      nurse: src.contacts.some((c) => c.kind === "visiting_nurse"),
+      nurse: nurseOf(src),
     });
     const c = payload[i];
     const head = [
@@ -167,7 +179,7 @@ export function buildCast(
       ].join("\n"),
     );
   });
-  return { key, facts, people: ["本人たち（仮名。どこに住むかは書かない）:", ...lines].join("\n") };
+  return { key, facts, people: ["本人たち（仮名。どこに住むかは書かない）:", ...lines].join("\n"), area };
 }
 
 const ACTION_WORDS: Readonly<Record<ActionRecord["kind"], string>> = {
@@ -227,23 +239,23 @@ function hintLines(input: WorldInput, aliasOf: ReadonlyMap<string, string>): str
     });
 }
 
-/** 今の街の様子（地区は別名） */
-export function worldNow(w: WorldState): string[] {
+/** 今の街の様子（地区は別名。道・避難所・施設は地理にある物だけ） */
+export function worldNow(w: WorldState, area: Area = DEMO_AREA): string[] {
   const now: string[] = [];
   if (w.weather) now.push(w.weather === "rain" ? "大雨" : "雨は止んだ");
   if (w.quake) now.push(`地震 震度 ${w.quake}`);
   if (w.outage) {
     const o = w.outage;
-    const area = o.area.scope === "towns" ? o.area.towns.map((t) => aliasOfTown(t) ?? "地区").join("・") : "全域";
-    now.push(o.restoredAt != null ? `停電 復旧（${o.restoredAt} 時間）` : `停電中（${area}）`);
+    const where = o.area.scope === "towns" ? o.area.towns.map((t) => aliasOfTown(t, area) ?? "地区").join("・") : "全域";
+    now.push(o.restoredAt != null ? `停電 復旧（${o.restoredAt} 時間）` : `停電中（${where}）`);
   }
   now.push(`電話 ${PHONE_LABELS[w.phone]}`);
   const roads = new Map<string, boolean>();
-  for (const r of w.roads) if (AREA_ROADS.some((x) => x.name === r.label)) roads.set(r.label, r.open);
+  for (const r of w.roads) if (area.roads.some((x) => x.name === r.label)) roads.set(r.label, r.open);
   for (const [label, open] of roads) now.push(`${label} ${open ? "通行可" : "通行止"}`);
-  for (const s of w.shelters) if (AREA_SHELTERS.some((x) => x.name === s.label)) now.push(`${s.label} ${SHELTER_LABELS[s.state]}`);
+  for (const s of w.shelters) if (area.shelters.some((x) => x.name === s.label)) now.push(`${s.label} ${SHELTER_LABELS[s.state]}`);
   const fac = new Map<string, boolean>();
-  for (const f of w.facilities) if (AREA_FACILITIES.some((x) => x.name === f.label)) fac.set(f.label, f.open);
+  for (const f of w.facilities) if (area.facilities.some((x) => x.name === f.label)) fac.set(f.label, f.open);
   for (const [label, open] of fac) now.push(`${label} ${open ? "稼働" : "休止"}`);
   return now;
 }
@@ -270,7 +282,7 @@ export function tickText(input: WorldInput, cast: Pick<WorldCast, "key">, prevHo
 
 /** 最初の刻みの文（地理・本人たち・刻みの文） */
 export function openingText(input: WorldInput, cast: WorldCast, last: number): string {
-  return [geographyText(), cast.people, tickText(input, cast, 0, last)].join("\n\n");
+  return [geographyText(cast.area), cast.people, tickText(input, cast, 0, last)].join("\n\n");
 }
 
 // ---------- 1 回呼び ----------
@@ -302,9 +314,9 @@ export async function worldOneshot(
 ): Promise<{ step: WorldStep; incidents: DrillIncident[] }> {
   const story = input.world.story ?? [];
   const req = buildWorldRequest({
-    opening: pseudonymizeText([geographyText(), cast.people].join("\n\n"), cast.key),
+    opening: pseudonymizeText([geographyText(cast.area), cast.people].join("\n\n"), cast.key),
     story: pseudonymizeText(story.length > 0 ? story.join("\n") : "まだ無い（最初の刻み）", cast.key),
-    now: pseudonymizeText(worldNow(input.world).join("\n"), cast.key),
+    now: pseudonymizeText(worldNow(input.world, cast.area).join("\n"), cast.key),
     tick: pseudonymizeText(tickText(input, cast, opts.prevHour, opts.last), cast.key),
   });
   const r = await askJson(req, ai);
@@ -313,5 +325,5 @@ export async function worldOneshot(
 
 /** 返事を当てる所に渡す物 */
 export function applyContext(input: WorldInput, cast: WorldCast, via: WorldVia): ApplyContext {
-  return { key: cast.key, facts: cast.facts, ended: new Set(Object.keys(input.world.ended ?? {})), hour: input.hour, via };
+  return { key: cast.key, facts: cast.facts, ended: new Set(Object.keys(input.world.ended ?? {})), hour: input.hour, via, area: cast.area };
 }

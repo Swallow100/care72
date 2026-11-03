@@ -350,7 +350,8 @@ export function createWorldHook(deps: WorldDeps): WorldHook {
     if (deps.mode === "off") return { incidents: fallbackIncidents(input.hour, "off") };
     let cast: WorldCast;
     try {
-      cast = buildCast(input.participants, await deps.load(), await deps.loadOutcome(), deps.on);
+      // 地理はデモ事業所なら架空の街、ほかは参加者の台帳の町名から（T70）
+      cast = buildCast(input.participants, await deps.load(), await deps.loadOutcome(), deps.on, deps.ai.office.id);
     } catch (e) {
       if (!isPersonaFailure(e)) console.error("世界の台帳を読めない", e instanceof Error ? e.name : typeof e);
       return { incidents: fallbackIncidents(input.hour, "down") };
