@@ -8,11 +8,13 @@ import { MedicalSource } from "@/components/forms/MedicalSource";
 import { MedicalSummarySheet } from "@/components/forms/MedicalSummarySheet";
 import { MedicalWithheld } from "@/components/forms/MedicalWithheld";
 import { StateTag } from "@/components/person/parts";
+import { FormAbout } from "@/components/forms/FormAbout";
 import { PaperBar, wantsPrint } from "@/components/ui/PaperBar";
 import { todayJst } from "@/lib/age";
 import { requirePage } from "@/lib/auth/server";
 import { loadPersonDocument, medicalSummaryView } from "@/lib/consent/documents";
 import { personDisaster } from "@/lib/disaster/person";
+import { DOCUMENT_CATALOG } from "@/lib/forms/catalog";
 import { buildMedicalSummary } from "@/lib/forms/medical-summary";
 import { BLANK_LABELS, DOCUMENT_LABELS } from "@/lib/labels";
 import { toPersonView } from "@/lib/person";
@@ -72,6 +74,7 @@ export default async function MedicalFormPage({ params, searchParams }: Props) {
           </div>
         )}
       </PaperBar>
+      <FormAbout entry={DOCUMENT_CATALOG.medical} />
       {result.kind === "sheet" ? (
         <div className="flex flex-col items-center gap-4 xl:flex-row xl:items-start xl:justify-center print:block">
           <MedicalSummarySheet sheet={result.sheet} />

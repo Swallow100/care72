@@ -119,6 +119,12 @@ function DocumentRow({ doc }: { doc: DocumentView }) {
           doc.status
         )}
       </dd>
+      {/* 何の書類か（正式な名前・誰が誰に出す・版。lib/forms/catalog.ts） */}
+      {doc.about && (
+        <dd className="col-start-2 text-xs text-muted" data-document-about={doc.key}>
+          {doc.about}
+        </dd>
+      )}
     </div>
   );
 }

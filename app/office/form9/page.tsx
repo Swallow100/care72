@@ -2,6 +2,7 @@ import "@/components/forms/paper.css";
 import "@/components/forms/form9-paper.css";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { CountLabel, countClass } from "@/components/ui/Tag";
+import { FormAbout } from "@/components/forms/FormAbout";
 import { Form9Paper } from "@/components/forms/Form9Paper";
 import { buttonClass } from "@/components/ui/Button";
 import { DownloadIcon } from "@/components/ui/Icon";
@@ -12,6 +13,7 @@ import { Form9Report } from "@/components/forms/Form9Report";
 import { Form9Table } from "@/components/forms/Form9Table";
 import { todayJst } from "@/lib/age";
 import { requirePage } from "@/lib/auth/server";
+import { DOCUMENT_CATALOG } from "@/lib/forms/catalog";
 import { colorCounts, FORM9_TITLE, NORMAL_ORDER_LABELS } from "@/lib/forms/form9";
 import { form9Scope, loadForm9, loadSituation, type Form9Data } from "@/lib/forms/form9-db";
 import { FORM9_CSV_PATH, parseEdit, parseError, parseSort, sortRows } from "@/lib/forms/form9-href";
@@ -100,6 +102,7 @@ export default async function Form9Page({ searchParams }: Props) {
       <p className="mt-1 text-xs text-muted">
         並び {disaster && situation ? `色 → 時計の残り → 支援者なし → 骨格（${formatJst(situation.now)} 時点）` : NORMAL_ORDER_LABELS.join(" → ")}
       </p>
+      <FormAbout entry={DOCUMENT_CATALOG.form9} className="screen-only" />
 
       <div className="mt-3 grid gap-3">
         {report && <Form9Report text={report} tally={tally(sheet.rows)} />}
