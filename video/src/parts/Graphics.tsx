@@ -305,8 +305,8 @@ export const Flow: React.FC<{ children: React.ReactNode[]; names: string[]; card
               stroke={p.fg}
               strokeWidth={4}
               fill="none"
-              strokeDasharray={600}
-              strokeDashoffset={600 * (1 - grow)}
+              strokeDasharray={1200}
+              strokeDashoffset={1200 * (1 - grow)}
             />
           );
         })}

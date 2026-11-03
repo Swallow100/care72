@@ -254,8 +254,9 @@ const AppAudio: React.FC<{ shot: Shot; assets: Assets }> = ({ shot, assets }) =>
 /** 絵 1 つ。前後の CROSS コマで薄くなる・濃くなる */
 const Faded: React.FC<{ length: number; fadeIn: boolean; fadeOut: boolean; children: React.ReactNode }> = ({ length, fadeIn, fadeOut, children }) => {
   const frame = useCurrentFrame();
-  const a = fadeIn ? progress(frame, 0, CROSS) : 1;
-  const b = fadeOut ? 1 - progress(frame, length - CROSS, CROSS) : 1;
+  // 前の絵は重なりの頭の 6 コマで消え、次の絵は 2 コマ遅れて 8 コマで出る（2 つの絵が半分ずつ重なって二重に見える間を短く）
+  const a = fadeIn ? progress(frame, 2, CROSS - 2) : 1;
+  const b = fadeOut ? 1 - progress(frame, length - CROSS, 6) : 1;
   return <AbsoluteFill style={{ opacity: Math.min(a, b) }}>{children}</AbsoluteFill>;
 };
 
