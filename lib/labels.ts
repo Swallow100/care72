@@ -79,7 +79,20 @@ export const HAZARD_LABELS: Record<HazardKind, string> = {
   flood: "浸水",
   landslide: "土砂",
   tsunami: "津波",
+  other: "その他",
 };
+
+/** ハザードの 1 語（「浸水 3 m」「その他（裏山）」）。書き足し（T57）は括弧で添える。本人のページ・様式・担当一覧で同じ形 */
+export function hazardText(h: { kind: HazardKind; depthM?: number; note?: string }): string {
+  const note = h.note?.trim();
+  return `${HAZARD_LABELS[h.kind]}${h.depthM != null ? ` ${h.depthM} m` : ""}${note ? `（${note}）` : ""}`;
+}
+
+/** 世帯の 1 語（「施設（グループホーム）」）。書き足し（T57）は括弧で添える */
+export function householdText(household: Household, note?: string): string {
+  const n = note?.trim();
+  return `${HOUSEHOLD_LABELS[household]}${n ? `（${n}）` : ""}`;
+}
 
 /** 安否の 4 色 */
 export const COLOR_LABELS: Record<Color, string> = {
@@ -121,6 +134,8 @@ export const HOUSEHOLD_LABELS: Record<Household, string> = {
   with_spouse: "夫婦",
   with_child: "子と同居",
   with_family: "家族と同居",
+  facility: "施設",
+  other: "その他",
 };
 
 /** スマホ: 使える・見るだけ・持たない */
@@ -166,6 +181,7 @@ export const DEVICE_LABELS: Record<DeviceKind, string> = {
   suction: "吸引",
   tube_feeding: "経管栄養",
   dialysis: "透析",
+  other: "その他",
 };
 
 /** 災害診療記録 2018 の【特記事項（常用薬等）】の区分 */
@@ -220,6 +236,10 @@ export const CONTACT_KIND_LABELS: Record<ContactKind, string> = {
   pharmacy: "薬局",
   dialysis_center: "透析施設",
   city_office: "市役所",
+  oxygen_supplier: "酸素業者",
+  power_company: "電力会社",
+  hospital: "病院",
+  other: "その他",
 };
 
 export const CONTACT_REACH_LABELS: Record<ContactReach, string> = {
@@ -402,6 +422,13 @@ export const INTAKE_LABELS = {
   emergency: "緊急",
   supporter: "支援",
   orderClash: "順番重複",
+  /** 「その他」の中身が空で保存できない（「未入力 その他 続柄」） */
+  missing: "未入力",
+  /** 連絡先の距離（同居・近所・市内・県外・遠方） */
+  reach: "距離",
+  /** その他の機器の名前・ハザードの書き足し */
+  deviceName: "名前",
+  hazardNote: "補記",
 } as const;
 
 /**

@@ -38,6 +38,11 @@ export const CONTACT_KINDS = [
   "pharmacy", // 薬局
   "dialysis_center", // 透析施設
   "city_office", // 市役所
+  // T57（migrations/0008）
+  "oxygen_supplier", // 酸素業者
+  "power_company", // 電力会社
+  "hospital", // 病院
+  "other", // その他（間柄の欄に何の連絡先かを書く。空なら編集の画面で止める）
 ] as const;
 export type ContactKind = (typeof CONTACT_KINDS)[number];
 
@@ -263,8 +268,11 @@ export const CARE_LEVELS = [
 /** 要支援 1・2、要介護 1〜5 */
 export type CareLevel = (typeof CARE_LEVELS)[number];
 
-/** 世帯: 独居・夫婦・子と・家族と */
-export const HOUSEHOLDS = ["alone", "with_spouse", "with_child", "with_family"] as const;
+/**
+ * 世帯: 独居・夫婦・子と・家族と・施設・その他（施設・その他は T57。中身は basic.householdNote に書く）。
+ * ルールの表の独居は alone だけ（施設・その他は独居でない）
+ */
+export const HOUSEHOLDS = ["alone", "with_spouse", "with_child", "with_family", "facility", "other"] as const;
 export type Household = (typeof HOUSEHOLDS)[number];
 
 /** スマホ: 使える・見るだけ・持たない */
@@ -275,7 +283,8 @@ export type SmartphoneUse = (typeof SMARTPHONE_USE)[number];
 export const ABILITIES = ["ok", "some", "hard"] as const;
 export type Ability = (typeof ABILITIES)[number];
 
-export const HAZARD_KINDS = ["flood", "landslide", "tsunami"] as const;
+/** 浸水・土砂・津波・その他（その他は T57。中身は hazards の note に書く。地図の層は無い） */
+export const HAZARD_KINDS = ["flood", "landslide", "tsunami", "other"] as const;
 export type HazardKind = (typeof HAZARD_KINDS)[number];
 
 /** 災害診療記録 2018 の【特記事項（常用薬等）】の区分に合わせる */
@@ -290,8 +299,10 @@ export const MEDICATION_CATEGORIES = [
 ] as const;
 export type MedicationCategory = (typeof MEDICATION_CATEGORIES)[number];
 
-/** 医療機器・医療: 在宅酸素・人工呼吸器・吸引・経管栄養（胃ろう）・透析 */
-export const DEVICE_KINDS = ["oxygen", "ventilator", "suction", "tube_feeding", "dialysis"] as const;
+/**
+ * 医療機器・医療: 在宅酸素・人工呼吸器・吸引・経管栄養（胃ろう）・透析・その他（T57。名前は detail に書く。時計は作らない）
+ */
+export const DEVICE_KINDS = ["oxygen", "ventilator", "suction", "tube_feeding", "dialysis", "other"] as const;
 export type DeviceKind = (typeof DEVICE_KINDS)[number];
 
 /** マイ・タイムラインの作成: あり（アプリ）・あり（紙）・なし（松山市の様式の選択肢） */
@@ -330,6 +341,8 @@ export type Ledger = {
       bedroom?: string;
     };
     household?: Household;
+    /** 世帯の書き足し（施設の種類・その他の中身。60 字まで。T57） */
+    householdNote?: string;
     contactMeans?: {
       landline?: boolean;
       mobile?: boolean;
@@ -371,7 +384,8 @@ export type Ledger = {
     vaccinations?: string[];
   };
   evacuation: {
-    hazards: Array<{ kind: HazardKind; depthM?: number }>;
+    /** note はハザードの書き足し（その他の中身・裏山など。60 字まで。T57） */
+    hazards: Array<{ kind: HazardKind; depthM?: number; note?: string }>;
     destination1?: string;
     destination2?: string;
     /**

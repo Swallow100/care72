@@ -11,8 +11,8 @@ import { categoryTier, type Tier } from "../triage/index.ts";
 
 export type MarkClock = Pick<ClockRow, "kind" | "category" | "label" | "starts_on">;
 
-/** 機器ごとの時計。電源で動く物は停電で走る（種の時計と同じ名前） */
-export const DEVICE_CLOCKS: Readonly<Record<DeviceKind, MarkClock>> = {
+/** 機器ごとの時計。電源で動く物は停電で走る（種の時計と同じ名前）。その他の機器（T57）は時計を作らない（要るなら手で足す） */
+export const DEVICE_CLOCKS: Readonly<Partial<Record<DeviceKind, MarkClock>>> = {
   oxygen: { kind: "device", category: "oxygen", label: "酸素 内蔵電池", starts_on: "outage" },
   ventilator: { kind: "device", category: "ventilator", label: "人工呼吸器 内蔵電池", starts_on: "outage" },
   suction: { kind: "device", category: "suction", label: "吸引 内蔵電池", starts_on: "outage" },
@@ -43,7 +43,7 @@ export function planMarkClocks(ledger: Ledger, clocks: ReadonlyArray<ExistingClo
   const has = (pred: (k: ExistingClock) => boolean) => clocks.some(pred) || out.some(pred);
   for (const d of ledger.medical.devices) {
     const spec = DEVICE_CLOCKS[d.kind];
-    if (!has((k) => k.category === spec.category)) out.push(spec);
+    if (spec && !has((k) => k.category === spec.category)) out.push(spec);
   }
   for (const m of ledger.medical.medications) {
     const spec = MEDICATION_CLOCKS[m.category];

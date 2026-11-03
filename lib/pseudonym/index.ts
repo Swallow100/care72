@@ -94,6 +94,8 @@ export type ClaudePerson = {
   age: number | null;
   sex: Sex | null;
   household: Household | null;
+  /** 世帯の書き足し（T57。自由文と同じく置き換え済み） */
+  householdNote: string | null;
   housing: { floor: number | null; floors: number | null; structure: string | null; bedroom: string | null };
   smartphone: SmartphoneUse | null;
   care: {
@@ -125,7 +127,7 @@ export type ClaudePerson = {
     vaccinations: string[];
   };
   evacuation: {
-    hazards: Array<{ kind: string; depthM: number | null }>;
+    hazards: Array<{ kind: string; depthM: number | null; note: string | null }>;
     destination1: string | null;
     destination2: string | null;
     route: string | null;
@@ -224,6 +226,11 @@ const KIND_ROLE: Record<Exclude<ContactKind, "self" | "family" | "supporter">, s
   pharmacy: "薬局",
   dialysis_center: "透析施設",
   city_office: "市役所",
+  // T57。役割名は種類の言葉だけ（名前・間柄を使わない。その他の間柄は自由記入で名前が入りうる）
+  oxygen_supplier: "酸素業者",
+  power_company: "電力会社",
+  hospital: "病院",
+  other: "その他の連絡先",
 };
 
 /** 本人の連絡先（self を除く）に役割名を付ける。本人の中で重ならない */
@@ -428,6 +435,7 @@ function toClaudePerson(input: PseudonymInput, alias: string, roles: string[], k
     age: input.person.birth_date ? ageOn(input.person.birth_date, on) : null,
     sex: basic.sex ?? null,
     household: basic.household ?? null,
+    householdNote: s(basic.householdNote),
     housing: {
       floor: basic.housing?.floor ?? null,
       floors: basic.housing?.floors ?? null,
@@ -464,7 +472,8 @@ function toClaudePerson(input: PseudonymInput, alias: string, roles: string[], k
       vaccinations: ss(medical.vaccinations),
     },
     evacuation: {
-      hazards: evacuation.hazards.map((h) => ({ kind: h.kind, depthM: h.depthM ?? null })),
+      // 書き足し（T57）は自由文と同じく名前・町名・電話を置き換えて渡す
+      hazards: evacuation.hazards.map((h) => ({ kind: h.kind, depthM: h.depthM ?? null, note: s(h.note) })),
       destination1: s(evacuation.destination1),
       destination2: s(evacuation.destination2),
       route: s(evacuation.route),

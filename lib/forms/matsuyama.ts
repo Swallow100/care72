@@ -40,6 +40,8 @@ import {
   DEPENDS_ON_LABELS,
   DEVICE_LABELS,
   HOUSEHOLD_LABELS,
+  hazardText,
+  householdText,
   MEDICATION_CATEGORY_LABELS,
   MEDICATION_FLAG_LABELS,
   PENDING_STATUS_LABELS,
@@ -968,7 +970,7 @@ export function buildMatsuyamaSheet(rows: PersonPageRows, opts: BuildOptions): M
           {
             label: "その他",
             on: basic.household !== "alone",
-            detail: basic.household !== "alone" ? HOUSEHOLD_LABELS[basic.household] : undefined,
+            detail: basic.household !== "alone" ? householdText(basic.household, basic.householdNote) : undefined,
           },
         ],
       }
@@ -1080,7 +1082,8 @@ export function buildMatsuyamaSheet(rows: PersonPageRows, opts: BuildOptions): M
   const hazardOn = (k: string) => hazards.find((h) => h.kind === k);
   const flood = hazardOn("flood");
   const tsunami = hazardOn("tsunami");
-  const depth = (h: { depthM?: number } | undefined) => (h?.depthM != null ? `浸水 ${h.depthM} m` : undefined);
+  const otherHazard = hazardOn("other");
+  const depth =(h: { depthM?: number } | undefined) => (h?.depthM != null ? `浸水 ${h.depthM} m` : undefined);
   const riskHome: Cell = {
     kind: "choice",
     options: [
@@ -1090,7 +1093,8 @@ export function buildMatsuyamaSheet(rows: PersonPageRows, opts: BuildOptions): M
       { label: "津波", on: Boolean(tsunami), detail: depth(tsunami) },
       { label: "地震", on: false },
     ],
-    after: hazards.length === 0 ? [t(BLANK.none)] : undefined,
+    // その他のハザード（T57）は様式の選択肢に無いので、名前つきで後ろに書く
+    after: hazards.length === 0 ? [t(BLANK.none)] : otherHazard ? [t(hazardText(otherHazard))] : undefined,
   };
   const riskHomeReason = pool.take("risk.home", under("evacuation.hazards"));
 

@@ -1,13 +1,14 @@
 // 入れる欄の変更 1 つの形。Claude の分け方（diff.ts）・問いの答え（ask.ts）・手入力の編集が同じ形を作り、
 // 保存（save.ts）が受け取って、今の台帳に当て直す（埋まっている欄は上書きしない）。ブラウザでも読む。
 
-import type { CheckStatus, ClockUnit, ConsentKind, ConsentStatus, ContactKind, Ledger, MedicationCategory, PendingStatus } from "../db/types.ts";
+import type { CheckStatus, ClockUnit, ConsentKind, ConsentStatus, ContactKind, ContactReach, Ledger, MedicationCategory, PendingStatus } from "../db/types.ts";
 import {
   CHECK_STATUS_LABELS,
   CLOCK_UNIT_LABELS,
   CONSENT_KIND_LABELS,
   CONSENT_STATUS_LABELS,
   CONTACT_KIND_LABELS,
+  CONTACT_REACH_LABELS,
   DEVICE_LABELS,
   HAZARD_LABELS,
   MEDICATION_CATEGORY_LABELS,
@@ -44,6 +45,8 @@ export type ContactValue = {
    */
   emergencyOrder?: number | null;
   supporterOrder?: number | null;
+  /** 距離（同居・近所・市内・県外・遠方）。null は未確認に戻す。人が手で直すときだけ（T57） */
+  reach?: ContactReach | null;
 };
 
 // overwrite（埋まっている所も変える）は人が選んだときだけ: 変更点の「既入力」を選んだとき（欄）と、
@@ -98,6 +101,7 @@ export function contactText(c: Partial<ContactValue>): string {
     c.name,
     c.relation,
     c.kind && CONTACT_KIND_LABELS[c.kind],
+    c.reach ? CONTACT_REACH_LABELS[c.reach] : undefined,
     c.phone,
     c.nightOk === true ? "夜間可" : c.nightOk === false ? "夜間不可" : undefined,
     c.emergencyOrder != null ? `緊急 ${c.emergencyOrder}` : undefined,
@@ -118,7 +122,7 @@ export function changeText(c: IntakeChange): string {
     case "device":
       return join([DEVICE_LABELS[c.value.kind], c.value.detail, c.value.schedule]);
     case "hazard":
-      return join([HAZARD_LABELS[c.value.kind], c.value.depthM != null ? `${c.value.depthM} m` : undefined]);
+      return join([HAZARD_LABELS[c.value.kind], c.value.depthM != null ? `${c.value.depthM} m` : undefined, c.value.note]);
     case "note":
       return c.value;
     case "pending":

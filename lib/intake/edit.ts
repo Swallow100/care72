@@ -15,6 +15,7 @@ import type {
   ConsentKind,
   ConsentStatus,
   ContactKind,
+  ContactReach,
   DependsOn,
   DeviceKind,
   HazardKind,
@@ -23,7 +24,7 @@ import type {
 } from "../db/types.ts";
 import { CONSENT_KINDS } from "../db/types.ts";
 import { sameMedication } from "../db/ledger.ts";
-import { DEVICE_LABELS, HAZARD_LABELS } from "../labels.ts";
+import { CONTACT_KIND_LABELS, DEVICE_LABELS, HAZARD_LABELS } from "../labels.ts";
 import { DEVICE_CLOCKS } from "./marks.ts";
 import type { ContactValue, IntakeChange, RemoveTarget } from "./changes.ts";
 import { INTAKE_FIELDS, isFilled, ledgerValue, normalizeValue, type IntakeSection } from "./fields.ts";
@@ -52,6 +53,8 @@ export type EditData = {
     /** 緊急連絡先の順・避難支援等実施者の順（T57）。人が決める */
     emergency_order: number | null;
     supporter_order: number | null;
+    /** どこにいる人か（同居・近所・市内・県外・遠方）。T57 */
+    reach: ContactReach | null;
   }>;
   clocks: Array<{
     id: string;
@@ -88,6 +91,8 @@ export type ContactDraft = {
   /** 緊急連絡先の順・支援者の順（T57） */
   emergency: OrderDraft;
   supporter: OrderDraft;
+  /** 距離（空は未確認） */
+  reach: ContactReach | "";
 };
 export type MedDraft = { name: string; category: MedicationCategory; schedule: string; amount: string; storage: string };
 
@@ -100,9 +105,13 @@ export type EditDraft = {
   /** 今の機器の中身・回数（並びは台帳と同じ）と、足す機器 */
   devices: Array<{ kind: DeviceKind; detail: string; schedule: string }>;
   newDevices: DeviceKind[];
+  /** 足すその他の機器の名前（T57。その他を選んだときだけ使う） */
+  newDeviceDetail: string;
   /** 今のハザードの浸水の深さ（m、文字）と、足すハザード */
-  hazards: Array<{ kind: HazardKind; depth: string }>;
+  hazards: Array<{ kind: HazardKind; depth: string; note: string }>;
   newHazards: HazardKind[];
+  /** 足すその他のハザードの書き足し（T57。その他を選んだときだけ使う） */
+  newHazardNote: string;
   /** 今の連絡先（本人の行を除く）と、足す連絡先 */
   contacts: ContactDraft[];
   newContacts: ContactDraft[];
@@ -154,6 +163,7 @@ export const blankContact = (): ContactDraft => ({
   note: "",
   emergency: "",
   supporter: "",
+  reach: "",
 });
 
 const orderDraft = (n: number | null): OrderDraft => (n == null ? "" : String(n));
@@ -172,8 +182,10 @@ export function editDraft(d: EditData): EditDraft {
     newMeds: [],
     devices: l.medical.devices.map((x) => ({ kind: x.kind, detail: s(x.detail), schedule: s(x.schedule) })),
     newDevices: [],
-    hazards: l.evacuation.hazards.map((h) => ({ kind: h.kind, depth: h.depthM != null ? String(h.depthM) : "" })),
+    newDeviceDetail: "",
+    hazards: l.evacuation.hazards.map((h) => ({ kind: h.kind, depth: h.depthM != null ? String(h.depthM) : "", note: s(h.note) })),
     newHazards: [],
+    newHazardNote: "",
     contacts: d.contacts.flatMap((c): ContactDraft[] =>
       c.kind === "self"
         ? []
@@ -188,6 +200,7 @@ export function editDraft(d: EditData): EditDraft {
               note: s(c.note),
               emergency: orderDraft(c.emergency_order),
               supporter: orderDraft(c.supporter_order),
+              reach: c.reach ?? "",
             },
           ],
     ),
@@ -288,6 +301,30 @@ export function orderClash(draft: Pick<EditDraft, "contacts" | "newContacts" | "
   return { emergency: twice((c) => orderOf(c.emergency)), supporter: twice((c) => orderOf(c.supporter)) };
 }
 
+/**
+ * 保存の前に止める空欄（T57）。「その他」の種類だけでは何か分からないので、連絡先のその他は続柄（間柄）、
+ * 機器のその他は中身（名前）を書くまで保存しない。保存の batch は丸ごと通るか落ちるかなので、サーバーで断らず画面で止める。
+ * 返すのは欄の名前（「その他 続柄」）。外す行と送らない空の行は見ない
+ */
+export function editBlockers(section: EditSection, draft: EditDraft): string[] {
+  const out: string[] = [];
+  if (section === "people") {
+    const live = [
+      ...draft.contacts.filter((c) => !(c.id && draft.drops.includes(dropKey.contact(c.id)))),
+      ...draft.newContacts.filter(newContactFilled),
+    ];
+    if (live.some((c) => c.kind === "other" && c.relation.trim() === "")) out.push(`${CONTACT_KIND_LABELS.other} 続柄`);
+  }
+  if (section === "medical") {
+    const other = [...draft.devices.filter((x) => !draft.drops.includes(dropKey.device(x.kind))), ...draft.newDevices.map((kind) => ({ kind, detail: "" }))].find(
+      (x) => x.kind === "other",
+    );
+    const fresh = draft.newDevices.includes("other") ? draft.newDeviceDetail : other?.detail;
+    if (other && (fresh ?? "").trim() === "") out.push(`${DEVICE_LABELS.other} 名前`);
+  }
+  return out;
+}
+
 const nightOf =(n: NightDraft): boolean | null => (n === "yes" ? true : n === "no" ? false : null);
 
 /** 面の下書きから、直した所だけの変更を作る */
@@ -344,7 +381,16 @@ export function editChanges(section: EditSection, d: EditData, draft: EditDraft)
       if (!cur || (s(cur.detail) === x.detail.trim() && s(cur.schedule) === x.schedule.trim())) return;
       out.push({ t: "device", value: { kind: x.kind, detail: x.detail.trim(), schedule: x.schedule.trim() }, overwrite: true });
     });
-    for (const kind of draft.newDevices) if (!l.medical.devices.some((c) => c.kind === kind)) out.push({ t: "device", value: { kind } });
+    for (const kind of draft.newDevices) {
+      if (l.medical.devices.some((c) => c.kind === kind)) continue;
+      // その他の機器は名前（中身）を付けて足す。名前が空なら editBlockers が保存を止める
+      if (kind === "other") {
+        const detail = draft.newDeviceDetail.trim();
+        if (detail) out.push({ t: "device", value: { kind, detail } });
+        continue;
+      }
+      out.push({ t: "device", value: { kind } });
+    }
     for (const k of draft.clocks) {
       const cur = d.clocks.find((c) => c.id === k.id);
       // 外す薬・機器の時計はサーバーが消すので、その時計の直し・値確認は送らない
@@ -371,10 +417,20 @@ export function editChanges(section: EditSection, d: EditData, draft: EditDraft)
         continue;
       }
       const n =h.depth.trim() === "" ? undefined : (numberOf(h.depth) ?? undefined);
-      if (!cur || cur.depthM === n || (h.depth.trim() !== "" && n === undefined)) continue;
-      out.push({ t: "hazard", value: n === undefined ? { kind: h.kind } : { kind: h.kind, depthM: n }, overwrite: true });
+      const note = h.note.trim();
+      if (!cur || (h.depth.trim() !== "" && n === undefined)) continue;
+      if (cur.depthM === n && s(cur.note) === note) continue;
+      out.push({
+        t: "hazard",
+        value: { kind: h.kind, ...(n !== undefined ? { depthM: n } : {}), ...(note ? { note } : {}) },
+        overwrite: true,
+      });
     }
-    for (const kind of draft.newHazards) if (!l.evacuation.hazards.some((c) => c.kind === kind)) out.push({ t: "hazard", value: { kind } });
+    for (const kind of draft.newHazards) {
+      if (l.evacuation.hazards.some((c) => c.kind === kind)) continue;
+      const note = kind === "other" ? draft.newHazardNote.trim() : "";
+      out.push({ t: "hazard", value: note ? { kind, note } : { kind } });
+    }
   }
 
   if (section === "people") {
@@ -408,6 +464,11 @@ export function editChanges(section: EditSection, d: EditData, draft: EditDraft)
         value.supporterOrder = supporter;
         changed = true;
       }
+      const reach = c.reach === "" ? null : c.reach;
+      if (reach !== cur.reach) {
+        value.reach = reach;
+        changed = true;
+      }
       if (changed) out.push({ t: "contact", id: cur.id, value, overwrite: true });
     }
     for (const c of draft.newContacts) {
@@ -427,6 +488,7 @@ export function editChanges(section: EditSection, d: EditData, draft: EditDraft)
           ...(c.note.trim() ? { note: c.note.trim() } : {}),
           ...(emergency !== null ? { emergencyOrder: emergency } : {}),
           ...(supporter !== null ? { supporterOrder: supporter } : {}),
+          ...(c.reach !== "" ? { reach: c.reach } : {}),
         },
       });
     }

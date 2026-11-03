@@ -29,7 +29,7 @@ import {
   COLOR_LABELS,
   CONTACT_KIND_LABELS,
   DEPENDS_ON_LABELS,
-  HOUSEHOLD_LABELS,
+  householdText,
   TIER_LABELS,
   TIMELINE_KIND_LABELS,
 } from "../labels.ts";
@@ -466,7 +466,7 @@ function buildOne(p: Form9PersonInput, today: string): Built {
   const supporters = p.contacts.filter((c) => c.supporter_order != null).length;
   const { shelter, facility } = splitDestinations(ledger);
   const emergency = emergencyOf(p.contacts);
-  const household = ledger.basic.household ? HOUSEHOLD_LABELS[ledger.basic.household] : null;
+  const household = ledger.basic.household ? householdText(ledger.basic.household, ledger.basic.householdNote) : null;
   const walking = ledger.care.walking ? `歩行 ${ABILITY_LABELS[ledger.care.walking]}` : null;
   const join = (xs: ReadonlyArray<string | null | undefined>, sep = "・") => xs.filter((x) => x).join(sep);
 

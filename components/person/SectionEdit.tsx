@@ -15,6 +15,7 @@ import {
   CONSENT_KINDS,
   CONSENT_STATUSES,
   CONTACT_KINDS,
+  CONTACT_REACHES,
   DEVICE_KINDS,
   HAZARD_KINDS,
   MEDICATION_CATEGORIES,
@@ -29,6 +30,7 @@ import {
   CONSENT_KIND_LABELS,
   CONSENT_STATUS_LABELS,
   CONTACT_KIND_LABELS,
+  CONTACT_REACH_LABELS,
   DEPENDS_ON_LABELS,
   DEVICE_LABELS,
   dropConfirmText,
@@ -54,6 +56,7 @@ import {
   type OrderClash,
   type OrderDraft,
   CONTACT_ORDERS,
+  editBlockers,
   orderClash,
 } from "@/lib/intake/edit";
 import { INTAKE_FIELDS } from "@/lib/intake/fields";
@@ -88,10 +91,13 @@ export function SectionEdit({ section, data, head, children }: Props) {
     const c = orderClash(open.draft);
     return c.emergency.length > 0 || c.supporter.length > 0;
   })();
+  // 「その他」の中身が空（続柄・名前）。種類だけでは何か分からないので保存しない（T57）
+  const blockers = open ? editBlockers(section, open.draft) : [];
+  const stopped = clashed || blockers.length > 0;
   const set = (patch: Partial<EditDraft>) => setOpen((o) => (o ? { ...o, draft: { ...o.draft, ...patch } } : o));
 
   async function save() {
-    if (!open || changes.length === 0 || clashed) return;
+    if (!open || changes.length === 0 || stopped) return;
     // 外す物があれば、保存の前に 1 回だけ確かめる（取消なら面は開いたまま）
     const drops = removalNames(changes, open.base);
     if (drops.length > 0) {
@@ -155,7 +161,7 @@ export function SectionEdit({ section, data, head, children }: Props) {
         >
           <SectionForm section={section} data={open.base} draft={open.draft} set={set} />
           <div className="flex flex-wrap items-center gap-2 pt-0.5">
-            <Button type="submit" kind="main" size="sm" icon={SaveIcon} disabled={busy || changes.length === 0 || clashed} data-edit-save={section}>
+            <Button type="submit" kind="main" size="sm" icon={SaveIcon} disabled={busy || changes.length === 0 || stopped} data-edit-save={section}>
               {INTAKE_LABELS.save}
             </Button>
             <Button kind="quiet" size="sm" icon={CloseIcon} disabled={busy} onClick={() => setOpen(null)}>
@@ -166,6 +172,10 @@ export function SectionEdit({ section, data, head, children }: Props) {
                 <span className="text-muted">{INTAKE_LABELS.busy}</span>
               ) : error ? (
                 <span className="font-bold text-danger">{error}</span>
+              ) : blockers.length > 0 ? (
+                <span className="font-bold text-danger" data-edit-blocked>
+                  {INTAKE_LABELS.missing} {blockers.join("・")}
+                </span>
               ) : (
                 <span className="text-muted">{changes.length} 件</span>
               )}
@@ -226,8 +236,8 @@ export function SectionForm({ section, data, draft, set }: FormProps) {
                   <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-1">
                     <input
                       className={INPUT}
-                      placeholder="中身"
-                      aria-label={`${DEVICE_LABELS[d.kind]} 中身`}
+                      placeholder={d.kind === "other" ? INTAKE_LABELS.deviceName : "中身"}
+                      aria-label={`${DEVICE_LABELS[d.kind]} ${d.kind === "other" ? INTAKE_LABELS.deviceName : "中身"}`}
                       value={d.detail}
                       onChange={(e) => set({ devices: draft.devices.map((x, j) => (j === i ? { ...x, detail: e.target.value } : x)) })}
                     />
@@ -249,6 +259,13 @@ export function SectionForm({ section, data, draft, set }: FormProps) {
               picked={draft.newDevices}
               onChange={(v) => set({ newDevices: v as EditDraft["newDevices"] })}
             />
+            {/* その他の機器は名前を書いてから保存（空なら保存を止める） */}
+            {draft.newDevices.includes("other") && (
+              <label className={ROW} data-new-device-other>
+                <span className={SUB}>{`${DEVICE_LABELS.other} ${INTAKE_LABELS.deviceName}`}</span>
+                <input className={INPUT} maxLength={200} value={draft.newDeviceDetail} onChange={(e) => set({ newDeviceDetail: e.target.value })} />
+              </label>
+            )}
           </Group>
           <Group label="時計">
             {draft.clocks.length === 0 && <span className={SUB}>なし</span>}
@@ -341,9 +358,9 @@ export function SectionForm({ section, data, draft, set }: FormProps) {
               ) : (
                 <div key={h.kind} className={ROW} data-hazard={h.kind}>
                   <span className={SUB}>{HAZARD_LABELS[h.kind]}</span>
-                  <div className="flex items-center gap-1">
+                  <div className="flex flex-wrap items-center gap-1">
                     <input
-                      className={`${INPUT} w-20`}
+                      className={`${INPUT} w-16`}
                       inputMode="decimal"
                       placeholder="深さ"
                       aria-label={`${HAZARD_LABELS[h.kind]} 深さ`}
@@ -351,7 +368,16 @@ export function SectionForm({ section, data, draft, set }: FormProps) {
                       onChange={(e) => set({ hazards: draft.hazards.map((x, j) => (j === i ? { ...x, depth: e.target.value } : x)) })}
                     />
                     <span className="text-xs">m</span>
-                    <DropButton className="ml-auto" onClick={() => set({ drops: toggled(draft.drops, dropKey.hazard(h.kind)) })} name={HAZARD_LABELS[h.kind]} />
+                    {/* 書き足し（その他の中身・裏山など。60 字。T57） */}
+                    <input
+                      className={`${INPUT} w-auto min-w-24 flex-1`}
+                      maxLength={60}
+                      placeholder={INTAKE_LABELS.hazardNote}
+                      aria-label={`${HAZARD_LABELS[h.kind]} ${INTAKE_LABELS.hazardNote}`}
+                      value={h.note}
+                      onChange={(e) => set({ hazards: draft.hazards.map((x, j) => (j === i ? { ...x, note: e.target.value } : x)) })}
+                    />
+                    <DropButton onClick={() => set({ drops: toggled(draft.drops, dropKey.hazard(h.kind)) })} name={HAZARD_LABELS[h.kind]} />
                   </div>
                 </div>
               ),
@@ -362,6 +388,12 @@ export function SectionForm({ section, data, draft, set }: FormProps) {
               picked={draft.newHazards}
               onChange={(v) => set({ newHazards: v as EditDraft["newHazards"] })}
             />
+            {draft.newHazards.includes("other") && (
+              <label className={ROW} data-new-hazard-other>
+                <span className={SUB}>{`${HAZARD_LABELS.other} ${INTAKE_LABELS.hazardNote}`}</span>
+                <input className={INPUT} maxLength={60} value={draft.newHazardNote} onChange={(e) => set({ newHazardNote: e.target.value })} />
+              </label>
+            )}
           </Group>
           <div className="space-y-1">{fieldRows}</div>
         </div>
@@ -585,7 +617,15 @@ function ContactRow({
       ) : (
         <span className="self-center text-xs font-bold">{CONTACT_KIND_LABELS[c.kind]}</span>
       )}
-      <input className={INPUT_IN} placeholder="続柄" aria-label={`${who} 続柄`} value={c.relation} onChange={(e) => p({ relation: e.target.value })} />
+      {/* その他は続柄（何の連絡先か）が空なら保存しない（editBlockers）。空のあいだは赤の太字の欄名 */}
+      <input
+        className={`${INPUT_IN}${c.kind === "other" && c.relation.trim() === "" ? " placeholder:font-bold placeholder:text-danger" : ""}`}
+        placeholder="続柄"
+        aria-label={`${who} 続柄`}
+        aria-required={c.kind === "other" || undefined}
+        value={c.relation}
+        onChange={(e) => p({ relation: e.target.value })}
+      />
       <input className={INPUT_IN} placeholder="名前" aria-label={`${who} 名前`} value={c.name} onChange={(e) => p({ name: e.target.value })} />
       <input
         className={`${INPUT_IN} tabular-nums`}
@@ -602,13 +642,21 @@ function ContactRow({
           </option>
         ))}
       </Select>
-      <div className="flex items-center gap-1">
-        <input className={`${INPUT_IN} min-w-0 flex-1`} placeholder="備考" aria-label={`${who} 備考`} value={c.note} onChange={(e) => p({ note: e.target.value })} />
-        {onDrop && <DropButton onClick={onDrop} name={who} />}
-      </div>
+      <Select className={INPUT_IN} aria-label={`${who} ${INTAKE_LABELS.reach}`} value={c.reach} onChange={(e) => p({ reach: e.target.value as ContactDraft["reach"] })} data-reach>
+        <option value="">{INTAKE_LABELS.reach} —</option>
+        {CONTACT_REACHES.map((r) => (
+          <option key={r} value={r}>
+            {CONTACT_REACH_LABELS[r]}
+          </option>
+        ))}
+      </Select>
       {/* 緊急連絡先の順・支援者の順（人が決める。ルールの表は支援の順のある人を「支援者」と数える） */}
       <OrderSelect label={INTAKE_LABELS.emergency} who={who} value={c.emergency} clash={clash.emergency} onChange={(v) => p({ emergency: v })} />
       <OrderSelect label={INTAKE_LABELS.supporter} who={who} value={c.supporter} clash={clash.supporter} onChange={(v) => p({ supporter: v })} />
+      <div className="col-span-2 flex items-center gap-1">
+        <input className={`${INPUT_IN} min-w-0 flex-1`} placeholder="備考" aria-label={`${who} 備考`} value={c.note} onChange={(e) => p({ note: e.target.value })} />
+        {onDrop && <DropButton onClick={onDrop} name={who} />}
+      </div>
     </div>
   );
 }

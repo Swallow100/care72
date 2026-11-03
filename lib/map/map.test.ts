@@ -190,7 +190,7 @@ describe("層と出典", () => {
   });
 
   it("重ねる層は浸水・土砂・津波で、言葉は HAZARD_LABELS と同じ、タイルはハザードマップポータルの配信", () => {
-    expect(HAZARD_LAYERS.map((l) => l.id)).toEqual([...HAZARD_KINDS]);
+    expect(HAZARD_LAYERS.map((l) => l.id)).toEqual(HAZARD_KINDS.filter((k) => k !== "other")); // その他（T57）は地図の層を持たない
     for (const l of HAZARD_LAYERS) {
       expect(l.label).toBe(HAZARD_LABELS[l.id]);
       for (const u of l.urls) expect(u).toMatch(/^https:\/\/disaportaldata\.gsi\.go\.jp\/raster\/[0-9a-z_]+\/\{z\}\/\{x\}\/\{y\}\.png$/);

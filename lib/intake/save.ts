@@ -18,6 +18,7 @@ import {
   CHECK_STATUSES,
   CLOCK_UNITS,
   CONSENT_KINDS,
+  CONTACT_REACHES,
   CONSENT_STATUSES,
   DEVICE_KINDS,
   HAZARD_KINDS,
@@ -66,7 +67,7 @@ const ChangeSchema = z.discriminatedUnion("t", [
   }),
   z.object({
     t: z.literal("hazard"),
-    value: z.object({ kind: z.enum(HAZARD_KINDS), depthM: z.number().min(0).max(100).optional() }),
+    value: z.object({ kind: z.enum(HAZARD_KINDS), depthM: z.number().min(0).max(100).optional(), note: text(60).optional() }),
     overwrite: z.boolean().optional(),
   }),
   z.object({ t: z.literal("note"), value: text(1000).min(1) }),
@@ -83,6 +84,7 @@ const ChangeSchema = z.discriminatedUnion("t", [
       note: text(200).optional(),
       emergencyOrder: z.number().int().min(1).max(9).nullable().optional(),
       supporterOrder: z.number().int().min(1).max(9).nullable().optional(),
+      reach: z.enum(CONTACT_REACHES).nullable().optional(),
     }),
     overwrite: z.boolean().optional(),
   }),
@@ -188,7 +190,7 @@ export function timelineBody(
 function editOnly(c: IntakeChange): boolean {
   if (c.t === "consent" || c.t === "clockCheck" || c.t === "remove" || c.t === "clockSeen") return true;
   // 緊急・支援の順は人が決める（AI の分け方・問いの答えからは付けない。docs/PROGRESS.md の T03 の決め、T57）
-  if (c.t === "contact" && (c.value.emergencyOrder !== undefined || c.value.supporterOrder !== undefined)) return true;
+  if (c.t === "contact" && (c.value.emergencyOrder !== undefined || c.value.supporterOrder !== undefined || c.value.reach !== undefined)) return true;
   return c.t !== "field" && "overwrite" in c && c.overwrite === true;
 }
 
@@ -358,6 +360,7 @@ function planContacts(rows: PersonPageRows, changes: ReadonlyArray<IntakeChange>
       }
       if (v.emergencyOrder !== undefined && v.emergencyOrder !== (cur.emergency_order ?? null)) set.push(["emergency_order", v.emergencyOrder]);
       if (v.supporterOrder !== undefined && v.supporterOrder !== (cur.supporter_order ?? null)) set.push(["supporter_order", v.supporterOrder]);
+      if (v.reach !== undefined && v.reach !== (cur.reach ?? null)) set.push(["reach", v.reach]);
       if (set.length === 0) continue;
       updates.push({ id: cur.id, set, overwrite: true });
       fields.push(`contacts.${cur.id}`);
@@ -397,8 +400,8 @@ function planContacts(rows: PersonPageRows, changes: ReadonlyArray<IntakeChange>
         ...inserts.map((n) =>
           db
             .prepare(
-              `INSERT INTO contacts (id, person_id, kind, relation, name, phone, night_ok, note, sort, emergency_order, supporter_order, created_at)
-               SELECT ?4, ?2, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?3 WHERE ${guard}`,
+              `INSERT INTO contacts (id, person_id, kind, relation, name, phone, night_ok, note, sort, emergency_order, supporter_order, reach, created_at)
+               SELECT ?4, ?2, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?3 WHERE ${guard}`,
             )
             .bind(
               ...guardArgs,
@@ -412,6 +415,7 @@ function planContacts(rows: PersonPageRows, changes: ReadonlyArray<IntakeChange>
               n.sort,
               n.c.emergencyOrder ?? null,
               n.c.supporterOrder ?? null,
+              n.c.reach ?? null,
             ),
         ),
       ];
@@ -633,7 +637,9 @@ function planRemovals(rows: PersonPageRows, before: Ledger, changes: ReadonlyArr
       for (const k of rows.clocks) if (k.kind !== "device" && k.kind !== "condition" && sameMedication(k.label, med.name)) clockIds.add(k.id);
     } else if (r.what === "device") {
       if (!before.medical.devices.some((d) => d.kind === r.kind)) continue;
-      const category = DEVICE_CLOCKS[r.kind].category;
+      // その他の機器は印の時計を持たない（手で足した時計は時計の「外す」で消す）
+      const category = DEVICE_CLOCKS[r.kind]?.category;
+      if (!category) continue;
       for (const k of rows.clocks) if ((k.kind === "device" || k.kind === "supply") && k.category === category) clockIds.add(k.id);
     }
   }

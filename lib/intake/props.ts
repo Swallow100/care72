@@ -44,6 +44,7 @@ export function intakePropsOf(rows: PersonPageRows, aiReady: boolean): IntakePro
         note: c.note,
         emergency_order: c.emergency_order,
         supporter_order: c.supporter_order,
+        reach: c.reach,
       })),
       clocks: rows.clocks.map((k) => ({
         id: k.id,

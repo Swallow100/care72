@@ -290,7 +290,7 @@ export const GENERATED_QUESTIONS = {
 } as const;
 
 /** その他で問わない欄（書き足しの欄） */
-export const NOT_ASKED = new Set(["evacuation.supportNote"]);
+export const NOT_ASKED = new Set(["evacuation.supportNote", "basic.householdNote"]);
 
 /** その他の問いの区分の順（本人のページの区分の順） */
 const OTHER_ORDER: readonly IntakeSection[] = ["medical", "evacuation", "people", "basic"];

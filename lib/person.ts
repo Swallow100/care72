@@ -61,6 +61,7 @@ import {
   DOCUMENT_STATUS_LABELS,
   HEAD_LABELS,
   HOUSEHOLD_LABELS,
+  householdText,
   MEDICATION_CATEGORY_LABELS,
   MED_PARTS,
   MEDICATION_FLAG_LABELS,
@@ -815,7 +816,7 @@ function basicBlocks(rows: PersonPageRows, ledger: Ledger): Block[] {
       "basic.contactMeans.smartphone",
       textField(basic.contactMeans?.smartphone ? SMARTPHONE_LABELS[basic.contactMeans.smartphone] : null),
     ),
-    row("basic.household", textField(basic.household ? HOUSEHOLD_LABELS[basic.household] : null)),
+    row("basic.household", textField(basic.household ? householdText(basic.household, basic.householdNote) : null)),
     row("basic.selfReport", {
       kind: "lines",
       lines: [[rows.person.self_report_unreliable === 1 ? tag("参考扱い", "check") : text("通常")]],

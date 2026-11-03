@@ -14,6 +14,19 @@ export const CONTACT_KINDS_FOR_INTAKE = CONTACT_KINDS.filter((k) => k !== "self"
   ...Array<Exclude<(typeof CONTACT_KINDS)[number], "self">>,
 ];
 
+/**
+ * 機器・ハザードの「その他」（T57）は AI の分け方で作らない。名前・中身は人が編集の画面で書く
+ * （その他の機器は中身が空なら保存しない決め。AI の分け方は中身の無いその他を作りうるので、選択肢から外す）
+ */
+export const DEVICE_KINDS_FOR_INTAKE = DEVICE_KINDS.filter((k) => k !== "other") as [
+  Exclude<(typeof DEVICE_KINDS)[number], "other">,
+  ...Array<Exclude<(typeof DEVICE_KINDS)[number], "other">>,
+];
+export const HAZARD_KINDS_FOR_INTAKE = HAZARD_KINDS.filter((k) => k !== "other") as [
+  Exclude<(typeof HAZARD_KINDS)[number], "other">,
+  ...Array<Exclude<(typeof HAZARD_KINDS)[number], "other">>,
+];
+
 export const ExtractSchema = z.object({
   /** 欄の表（lib/intake/fields.ts）の欄。配列の欄は 1 つずつ別の行 */
   items: z.array(z.object({ field: z.enum(INTAKE_KEYS), value: z.string() })),
@@ -26,8 +39,8 @@ export const ExtractSchema = z.object({
       storage: z.string(),
     }),
   ),
-  devices: z.array(z.object({ kind: z.enum(DEVICE_KINDS), detail: z.string(), schedule: z.string() })),
-  hazards: z.array(z.object({ kind: z.enum(HAZARD_KINDS), depth_m: z.string() })),
+  devices: z.array(z.object({ kind: z.enum(DEVICE_KINDS_FOR_INTAKE), detail: z.string(), schedule: z.string() })),
+  hazards: z.array(z.object({ kind: z.enum(HAZARD_KINDS_FOR_INTAKE), depth_m: z.string() })),
   contacts: z.array(
     z.object({
       kind: z.enum(CONTACT_KINDS_FOR_INTAKE),

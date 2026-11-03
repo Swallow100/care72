@@ -68,8 +68,8 @@ describe("面の編集の変更（lib/intake/edit.ts）", () => {
     expect(draft.contacts.map((c) => c.id)).toEqual(["c-04-1", "c-04-2"]); // 本人の行は出さない
     draft.contacts[1] = { ...draft.contacts[1], phone: "090-0000-0099", note: "", night: "yes" };
     draft.newContacts = [
-      { id: null, kind: "supporter", relation: "隣人", name: "", phone: "", night: "no", note: "", emergency: "", supporter: "" },
-      { id: null, kind: "family", relation: "", name: "", phone: "", night: "", note: "", emergency: "", supporter: "" }, // 空 → 送らない
+      { id: null, kind: "supporter", relation: "隣人", name: "", phone: "", night: "no", note: "", emergency: "", supporter: "", reach: "" },
+      { id: null, kind: "family", relation: "", name: "", phone: "", night: "", note: "", emergency: "", supporter: "", reach: "" }, // 空 → 送らない
     ];
     expect(editChanges("people", d, draft)).toEqual([
       { t: "contact", id: "c-04-2", value: { kind: "family", phone: "090-0000-0099", nightOk: true }, overwrite: true },
