@@ -10,19 +10,25 @@ import { PaperIcon, PrintIcon } from "@/components/ui/Icon";
 import { StateText } from "@/components/ui/Tag";
 import type { Block, ClockView, DocumentView, PersonView as View, Section } from "@/lib/person";
 import { BLANK_LABELS, CLOCK_PARTS } from "@/lib/labels";
+import { isEditSection, type EditData } from "@/lib/intake/edit";
 import { Blank, PendingMark, RowItem, TONE_TEXT, type Level } from "./parts";
+import { SectionEdit } from "./SectionEdit";
 import { PersonHead } from "./PersonHead";
 import { Timeline } from "./Timeline";
 import { TimelineComposer } from "./TimelineComposer";
 
-export function PersonView({ view, level }: { view: View; level: Level }) {
+/**
+ * edit はケアマネの役で開いたときだけ（入れる欄と同じ）。渡すと面の右上に「編集」（T45、components/person/SectionEdit.tsx）。
+ * 書類と経過の面は編集しない
+ */
+export function PersonView({ view, level, edit = null }: { view: View; level: Level; edit?: EditData | null }) {
   const base = `person-${view.head.id}`;
   return (
     <div className="@container space-y-2" data-mode={view.mode}>
       <PersonHead head={view.head} level={level} titleId={`${base}-title`} />
       <div className="gap-x-2 @[40rem]:columns-2 @5xl:columns-3">
         {view.sections.map((s) => (
-          <SectionPanel key={s.id} section={s} level={level} titleId={`${base}-${s.id}`}>
+          <SectionPanel key={s.id} section={s} level={level} titleId={`${base}-${s.id}`} edit={edit}>
             {/* 経過の書き足し（T24）。書ける種類（役と同意。lib/consent/scope.ts）があるときだけ、経過の上に */}
             {s.id === "timeline" && view.writes.length > 0 && <TimelineComposer personId={view.head.id} kinds={view.writes} />}
           </SectionPanel>
@@ -36,34 +42,51 @@ function SectionPanel({
   section,
   level,
   titleId,
+  edit = null,
   children,
 }: {
   section: Section;
   level: Level;
   titleId: string;
+  edit?: EditData | null;
   children?: React.ReactNode;
 }) {
   const H = level === 1 ? "h2" : "h3";
+  const head = (
+    <>
+      <H id={titleId} className="text-[1rem] leading-6 font-bold">
+        {section.label}
+      </H>
+      {section.unconfirmed > 0 && (
+        <StateText tone="check" className="text-xs">
+          {BLANK_LABELS.unconfirmed} {section.unconfirmed}
+        </StateText>
+      )}
+    </>
+  );
+  const body = (
+    <>
+      {children}
+      <Blocks blocks={section.blocks} />
+    </>
+  );
+  if (edit && isEditSection(section.id)) {
+    return (
+      <section aria-labelledby={titleId} className="mb-2 break-inside-avoid rounded-lg bg-panel px-3 py-2.5 text-sm" data-section={section.id}>
+        <SectionEdit section={section.id} data={edit} head={head}>
+          {body}
+        </SectionEdit>
+      </section>
+    );
+  }
   return (
     <section
       aria-labelledby={titleId}
       className="mb-2 break-inside-avoid rounded-lg bg-panel px-3 py-2.5 text-sm"
       data-section={section.id}
     >
-      <div className="flex items-baseline gap-2">
-        <H id={titleId} className="text-[1rem] leading-6 font-bold">
-          {section.label}
-        </H>
-        {section.unconfirmed > 0 && (
-          <StateText tone="check" className="text-xs">
-            {BLANK_LABELS.unconfirmed} {section.unconfirmed}
-          </StateText>
-        )}
-      </div>
-      <div className="mt-1.5">
-        {children}
-        <Blocks blocks={section.blocks} />
-      </div>
+      <div className="flex items-baseline gap-2">{head}</div>
+      <div className="mt-1.5">{body}</div>
     </section>
   );
 }
