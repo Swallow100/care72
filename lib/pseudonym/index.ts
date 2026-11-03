@@ -588,6 +588,18 @@ export function sealItemCatalog<T extends object>(catalog: T): ForClaude<T> {
   return seal(copy);
 }
 
+/**
+ * Claude の返事（本人役の言葉・講評・世界の 1 文などの作った文）を画面と記録に使える形に（T74 の続き、11/4 設計の答え）。
+ * 作った名前（「隣の佐藤さん」）・住所・郵便番号・メールの形は、文を捨てずに（氏名）（住所）（郵便番号）（メール）に置き換える
+ * （本人役が近所の人の名前を作っただけで黙らないように）。置き換えたあとに台帳の名前・生年月日・電話（key の secrets）か
+ * 電話の形が残れば null（呼ぶ側が捨てる。今までどおり）。仮名（A さん）は戻さない（restoreText は呼ぶ側が後で）。
+ * Claude に渡す前の検査（pseudonymize・pseudonymizeText の findLeaks）はこれを通らず、形が残れば今のまま止める
+ */
+export function maskReply(text: string, key: PseudonymKey): string | null {
+  const masked = maskPlaceAndNameForms(maskContactForms(text).text).text;
+  return findLeaks(masked, key).length > 0 ? null : masked;
+}
+
 /** Claude の返事の中の仮名（A さん）を氏名に戻す。画面に出す前に、ブラウザかサーバーで使う */
 export function restoreText(text: string, key: PseudonymKey): string {
   const people = [...key.people].sort((a, b) => b.alias.length - a.alias.length);

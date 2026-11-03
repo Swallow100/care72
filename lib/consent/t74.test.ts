@@ -32,7 +32,7 @@ vi.mock("../claude/cloudflare.ts", () => ({
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: () => {}, push: () => {} }) }));
 
 import { POST as extractPOST } from "../../app/api/intake/extract/route.ts";
-import { LogBubble, type LogEntry } from "../../components/person/Intake.tsx";
+import { Intake, LogBubble, type LogEntry } from "../../components/person/Intake.tsx";
 import { SEED_PEOPLE, seedConsents } from "../../seed/people.ts";
 import { seedStatements } from "../../seed/sql.ts";
 import type { Principal } from "../auth/principal.ts";
@@ -46,14 +46,17 @@ import { d1FromSqlite, migratedSqlite } from "../db/test-d1.ts";
 import { buildMatsuyamaSheet } from "../forms/matsuyama.ts";
 import { buildMedicalSummary } from "../forms/medical-summary.ts";
 import { buildOwnSheet } from "../forms/own-sheet.ts";
+import { cleanWords, SPEECH_MAX } from "../drill/persona.ts";
+import { reviewWords } from "../drill/review.ts";
+import { cleanFarewell, cleanNarration, cleanReason } from "../drill/world-apply.ts";
 import { pseudonymInputOf } from "../intake/extract.ts";
 import { aiConsentRefusal } from "../intake/http.ts";
-import type { IntakeProps } from "../intake/props.ts";
+import { intakePropsOf, type IntakeProps } from "../intake/props.ts";
 import { CONSENT_KIND_LABELS } from "../labels.ts";
 import { createPerson } from "../office/people.ts";
 import { officeActor } from "../office/scope.ts";
 import { loadPersonPage, toPersonView, type PersonPageRows } from "../person.ts";
-import { pseudonymize } from "../pseudonym/index.ts";
+import { findLeaks, maskReply, pseudonymize, pseudonymizeText } from "../pseudonym/index.ts";
 import { buildQrPage } from "../qr/view.ts";
 import { AI_CONSENT_REFUSED_LABEL } from "./labels.ts";
 import { scopeOfRows } from "./scope.ts";
@@ -403,5 +406,89 @@ describe("入れる欄の「伏せ字 N」", () => {
     expect(html).toMatch(/伏せ字 3/);
     expect(draw(split(0))).not.toContain('data-intake="masked"');
     expect(draw(split())).not.toContain('data-intake="masked"');
+  });
+});
+
+// ---------- T74 の続き（11/4 設計の答え） ----------
+
+describe("不同意の人は本人のページを開いた時点で入れる欄の AI を押せない", () => {
+  const draw = (rows: PersonPageRows, aiReady = true) =>
+    renderToStaticMarkup(createElement(Intake, { ...intakePropsOf(rows, aiReady), level: 1 }));
+
+  it("props: 不同意だけ aiConsentRefused。未確認・同意・行なしは false", async () => {
+    for (const [status, want] of [["refused", true], ["unconfirmed", false], ["granted", false], [null, false]] as const) {
+      setAi("p-01", status);
+      expect(intakePropsOf(await rowsOf("p-01"), true).aiConsentRefused, String(status)).toBe(want);
+    }
+  });
+
+  it("開いた時点で上に「同意 拒否」、分ける・写真と PDF 読取は押せない。文字の欄・問いの選ぶ答え・次回は使える", async () => {
+    setAi("p-01", "refused");
+    const h = draw(await rowsOf("p-01"));
+    expect(h).toContain("同意 拒否");
+    const split = h.match(/<button[^>]*data-intake="split"[^>]*>/)![0];
+    expect(split).toMatch(/disabled=""/);
+    const read = h.match(/<label[^>]*data-intake="read"[^>]*>/)![0];
+    expect(read).toContain('aria-disabled="true"');
+    expect(read).toContain("pointer-events-none");
+    const file = h.match(/<input[^>]*type="file"[^>]*>/)![0];
+    expect(file).toMatch(/disabled=""/);
+    // 文字の欄は書ける（手で書いて残す。分けるのは押せない）
+    const text = h.match(/<textarea[^>]*aria-label="入力"[^>]*>/)![0];
+    expect(text).not.toMatch(/disabled=""/);
+    // 鍵が無くても「同意 拒否」が先（何が止めているかを出す）
+    expect(draw(await rowsOf("p-01"), false)).toContain("同意 拒否");
+  });
+
+  it("同意・未確認の人は今までどおり（鍵があれば押せる、無ければ AI 未設定）", async () => {
+    for (const status of ["granted", "unconfirmed"] as const) {
+      setAi("p-01", status);
+      const h = draw(await rowsOf("p-01"));
+      expect(h, status).not.toContain("同意 拒否");
+      expect(h.match(/<label[^>]*data-intake="read"[^>]*>/)![0], status).not.toContain("aria-disabled");
+      expect(draw(await rowsOf("p-01"), false), status).toContain("AI 未設定");
+    }
+  });
+});
+
+describe("Claude の返事の作った名前は捨てずに伏せ字に（入力側は今のまま厳しい）", () => {
+  const p01 = SEED_PEOPLE.find((p) => p.person.id === "p-01")!;
+  const { key } = pseudonymize([{ person: p01.person, ledger: p01.ledger, contacts: p01.contacts, clocks: p01.clocks, consents: seedConsents(p01) }], {
+    on: TODAY,
+  });
+
+  it("maskReply: 作った名前・住所・郵便番号・メールは伏せ字に置き換えて返す。台帳の名前・電話・電話の形は null", () => {
+    expect(maskReply("隣の佐藤さんが水を持ってきてくれた", key)).toBe("隣の（氏名）が水を持ってきてくれた");
+    expect(maskReply("娘さんと A さんは無事", key)).toBe("娘さんと A さんは無事");
+    expect(maskReply("避難所は愛媛県松山市○○町 1-2-3、〒790-0001、x@y", key)).toBe("避難所は（住所）、（郵便番号）、（メール）");
+    expect(maskReply("山田 ハナが家にいる", key)).toBeNull();
+    expect(maskReply("娘の番号は 090-0000-0011", key)).toBeNull();
+    expect(maskReply("電話は 089-000-0000", key)).toBeNull();
+  });
+
+  it("入力側（Claude に渡す前）は今のまま: 形が残れば findLeaks が見つけ、pseudonymizeText は伏せてから門を通す", () => {
+    expect(findLeaks("隣の佐藤さん", key)).toEqual(["敬称つきの名前"]);
+    expect(pseudonymizeText("隣の佐藤さん", key).text).toBe("隣の（氏名）");
+    // 門の実行時の確かめ: 伏せたあとの物は通り、伏せていない形は通らない（findLeaks の結果は呼ぶ側で止める）
+    expect(findLeaks(pseudonymizeText("隣の佐藤さん", key), key)).toEqual([]);
+  });
+
+  it("本人役の言葉: 近所の人の名前を作っても黙らず（氏名）に。仮名は「本人」に。台帳の名前・電話は今までどおり捨てる", () => {
+    expect(cleanWords("隣の佐藤さんが来てくれた", key, SPEECH_MAX)).toBe("隣の（氏名）が来てくれた");
+    expect(cleanWords("A さんの家に田中さんがいる", key, SPEECH_MAX)).toBe("本人の家に（氏名）がいる");
+    expect(cleanWords("娘さんが来た", key, SPEECH_MAX)).toBe("娘さんが来た");
+    expect(cleanWords("山田 ハナです", key, SPEECH_MAX)).toBeNull();
+    expect(cleanWords("090-0000-0011 に電話して", key, SPEECH_MAX)).toBeNull();
+  });
+
+  it("講評・世界の 1 文・結末と理由も同じ（伏せ字のあとに仮名を氏名に戻す）", () => {
+    expect(reviewWords("A さんの隣の佐藤さんに頼めば早かった", key, 200)).toBe("山田 ハナさんの隣の（氏名）に頼めば早かった");
+    expect(reviewWords("山田 ハナへの電話が遅い", key, 200)).toBeNull();
+    const n = cleanNarration("田中さんの店の前の道が水につかった", key);
+    expect(n).toEqual({ room: "（氏名）の店の前の道が水につかった", text: "（氏名）の店の前の道が水につかった" });
+    expect(cleanNarration("090-0000-0011 から通報", key)).toBeNull();
+    expect(cleanFarewell("A さんのもとに佐藤さんが着く前に時間が過ぎた", key)).toBe("山田 ハナさんのもとに（氏名）が着く前に時間が過ぎた");
+    expect(cleanReason("近所の鈴木さんも道が通れなかった", key)).toBe("近所の（氏名）も道が通れなかった");
+    expect(cleanReason("山田 ハナの家は停電", key)).toBeNull();
   });
 });

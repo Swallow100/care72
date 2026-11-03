@@ -15,7 +15,7 @@ import { AiBadOutput, AiCallFailed, AiLimitReached, AiNotConfigured, AiRefused }
 import type { DrillScenario, DrillStatus } from "../db/types.ts";
 import { COLOR_LABELS } from "../labels.ts";
 import {
-  findLeaks,
+  maskReply,
   pseudonymize,
   pseudonymizeText,
   PseudonymLeakError,
@@ -272,13 +272,17 @@ export function reviewBanned(text: string): boolean {
   return REVIEW_BANNED.test(text.normalize("NFKC"));
 }
 
-/** 文 1 つの検査: 空・使わない言葉・元の情報が残る物は null。仮名は氏名に戻し、長さで切る */
+/**
+ * 文 1 つの検査: 空・使わない言葉・元の情報（台帳の名前・電話）が残る物は null。作った名前・住所の形は伏せ字に（T74 の続き）。
+ * 仮名は氏名に戻し、長さで切る
+ */
 export function reviewWords(raw: string, key: PseudonymKey, max: number): string | null {
   const t = raw.replace(/\s+/g, " ").trim();
   if (!t) return null;
   if (reviewBanned(t)) return null;
-  if (findLeaks(t, key).length > 0) return null;
-  return Array.from(restoreText(t, key)).slice(0, max).join("");
+  const masked = maskReply(t, key);
+  if (masked === null) return null;
+  return Array.from(restoreText(masked, key)).slice(0, max).join("");
 }
 
 const isReviewKind = (v: string): v is ReviewKind => (REVIEW_KINDS as readonly string[]).includes(v);
