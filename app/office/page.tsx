@@ -6,6 +6,7 @@ import { AddCareManager } from "@/components/office/AddCareManager";
 import { AssignForm } from "@/components/office/AssignForm";
 import { AssignMany, PickAll, PickBox } from "@/components/office/AssignMany";
 import { AssignRow } from "@/components/office/AssignRow";
+import { CareManagerRow } from "@/components/office/CareManagerRow";
 import { FormChoice } from "@/components/office/FormChoice";
 import { MoreFold } from "@/components/office/MoreFold";
 import { UnlistedFold } from "@/components/office/UnlistedFold";
@@ -162,7 +163,7 @@ export default async function OfficePage({ searchParams }: Props) {
           <FormChoice officeId={scope.officeId} error={q.form_error === "bad"} />
           <Panel aria-labelledby="cm-title">
             <AddCareManager count={careManagers.length} admin={actor.admin}>
-              <CareManagerList careManagers={careManagers} />
+              <CareManagerList careManagers={careManagers} selfId={principal.judge ? null : principal.accountId} manage={actor.admin} />
             </AddCareManager>
           </Panel>
           {/* デモ事業所の「最初に戻す」（T26）。審査員と管理者だけ */}
@@ -584,24 +585,15 @@ function AssignSection({
   );
 }
 
-/** ケアマネの一覧（T30）。足した順に名前・管理者の印・ID・担当の人数。見出しと「ケアマネ追加」は AddCareManager */
-function CareManagerList({ careManagers }: { careManagers: CareManagerItem[] }) {
+/**
+ * ケアマネの一覧（T30）。足した順に名前・管理者の印・ID・担当の人数。見出しと「ケアマネ追加」は AddCareManager。
+ * 行ごとの改名・管理者・停止・再発行（管理者だけ）と、自分の行のパスワード変更は CareManagerRow（T61）。停止した人も印つきで出す
+ */
+function CareManagerList({ careManagers, selfId, manage }: { careManagers: CareManagerItem[]; selfId: string | null; manage: boolean }) {
   return (
     <ul className="mt-2 grid gap-px text-sm">
       {careManagers.map((c) => (
-        <li key={c.id} className="flex flex-wrap items-baseline gap-x-2 rounded bg-panel2 px-2 py-1.5">
-          <span className="font-bold">{c.name}</span>
-          {c.admin && <span className="text-xs text-muted">{OFFICE_LABELS.admin}</span>}
-          {c.loginId && (
-            <span className="text-xs text-muted">
-              {OFFICE_LABELS.loginId} {c.loginId}
-            </span>
-          )}
-          <span className="ml-auto">
-            {c.people}
-            <span className="text-xs text-muted"> {OFFICE_LABELS.people}</span>
-          </span>
-        </li>
+        <CareManagerRow key={c.id} item={c} self={c.id === selfId} manage={manage} />
       ))}
     </ul>
   );
