@@ -233,7 +233,7 @@ export function SurveyForm({ token, opened, turnstileSiteKey }: { token: string;
         {SURVEY_FEATURES.map((g) => (
           <div key={g.heading}>
             <h3 className="text-lg font-bold">{g.heading}</h3>
-            <ul className="mt-1 list-disc space-y-1.5 pl-5 text-base leading-relaxed">
+            <ul className="mt-1 list-disc space-y-1.5 pl-5 text-[1rem] leading-relaxed">
               {g.items.map((item) => (
                 <li key={item}>
                   <FeatureItem text={item} />
@@ -307,13 +307,13 @@ export function SurveyForm({ token, opened, turnstileSiteKey }: { token: string;
   );
 }
 
-/** 「利用者の台帳: …」の頭（: の前）を太字に */
+/** 「利用者の台帳: …」の頭（: まで）を太字に */
 function FeatureItem({ text }: { text: string }) {
   const at = text.indexOf(": ");
   if (at < 0 || at > 12) return <>{text}</>;
   return (
     <>
-      <strong>{text.slice(0, at)}</strong>
+      <strong>{text.slice(0, at + 1)}</strong>
       {text.slice(at + 1)}
     </>
   );
