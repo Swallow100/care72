@@ -186,7 +186,7 @@ describe("訓練記録の紙面（CSS と印刷の道）", () => {
     expect(page).toContain("autoPrint={autoPrint}");
     expect(page).toContain('import "@/components/forms/paper.css"');
     expect(readRepoFile("app/drill/[id]/page.tsx")).toContain("reportHref(id, { print: true })");
-    expect(readRepoFile("app/drill/page.tsx")).toContain("reportHref(d.id, { print: true })");
+    expect(readRepoFile("components/drill/DrillRecordTable.tsx")).toContain("reportHref(d.id, { print: true })");
   });
 });
 
