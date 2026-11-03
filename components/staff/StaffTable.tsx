@@ -20,7 +20,7 @@ import { Button } from "@/components/ui/Button";
 import { CloseIcon, OpenIcon, SortIcon, UnlistIcon } from "@/components/ui/Icon";
 import { CountLabel, countClass } from "@/components/ui/Tag";
 import { LinkPending } from "@/components/ui/LinkPending";
-import { TABLE, TABLE_BOX, TH } from "@/components/ui/table";
+import { SORT_ICON, TABLE, TABLE_BOX, TH } from "@/components/ui/table";
 import type { StaffRow } from "@/lib/custody/board";
 import { NOTE_MAX } from "@/lib/custody/forms";
 import { CUSTODY_LABELS, CUSTODY_VIA_LABELS, RELEASE_LABELS } from "@/lib/custody/labels";
@@ -232,9 +232,9 @@ function Header({ k, sort, onSort, className = "" }: { k: Sort; sort: Sort; onSo
       >
         {STAFF_SORT_LABELS[k]}
         {active ? (
-          <OpenIcon aria-hidden className={`ml-0.5 inline size-3 align-[-1px] ${desc ? "" : "rotate-180"}`} />
+          <OpenIcon aria-hidden className={`${SORT_ICON} ${desc ? "" : "rotate-180"}`} />
         ) : (
-          <SortIcon aria-hidden className="ml-0.5 inline size-3 align-[-1px]" data-sortable />
+          <SortIcon aria-hidden className={SORT_ICON} data-sortable />
         )}
       </button>
     </th>
@@ -322,7 +322,7 @@ function Row({ row: r, open, onToggle }: { row: StaffRow; open: boolean; onToggl
               {/* 状態の色が付くときは塗りの印（担当一覧の残りと同じ。黄は文字に使わない。T66） */}
               <div className="whitespace-nowrap font-bold tabular-nums" data-remain={r.remain.tone ?? "none"}>
                 {r.remain.tone ? (
-                  <StateTag tone={r.remain.tone} size="md">
+                  <StateTag tone={r.remain.tone} size="fit">
                     {r.remain.text}
                   </StateTag>
                 ) : (

@@ -24,11 +24,18 @@ export const TONE_FILL: Record<Tone, string> = {
   unknown: "bg-state-unknown-fill text-on-state-unknown",
 };
 
-/** 塗りの印の箱（大きさ）。人数の 0 の灰の印（CountLabel）も同じ箱にして、0 と 1 で並びが動かないようにする */
-const TAG_BOX = { sm: "px-1 text-xs leading-[1.125rem]", md: "px-1.5 py-px text-sm leading-5" } as const;
+/**
+ * 塗りの印の箱（大きさ）。人数の 0 の灰の印（CountLabel）も同じ箱にして、0 と 1 で並びが動かないようにする。
+ * fit は 640px 未満で sm、それより広いと md（表の残りの列。375 で表が画面の幅を超えないように。T66）
+ */
+const TAG_BOX = {
+  sm: "px-1 text-xs leading-[1.125rem]",
+  md: "px-1.5 py-px text-sm leading-5",
+  fit: "px-1 text-xs leading-[1.125rem] sm:px-1.5 sm:py-px sm:text-sm sm:leading-5",
+} as const;
 
 /** 色の付いた印（塗り）。文字（至急・未確認・同意など）を必ず持つ */
-export function StateTag({ tone, size = "sm", children }: { tone: Tone; size?: "sm" | "md"; children: React.ReactNode }) {
+export function StateTag({ tone, size = "sm", children }: { tone: Tone; size?: keyof typeof TAG_BOX; children: React.ReactNode }) {
   const box = TAG_BOX[size];
   return (
     <span className={`inline-block rounded-sm font-bold whitespace-nowrap ${box} ${TONE_FILL[tone]}`} data-tone={tone}>

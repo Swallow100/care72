@@ -11,6 +11,12 @@ export const TABLE = "w-full border-separate border-spacing-x-0 border-spacing-y
 /** 見出しのセル */
 export const TH = "bg-panel2 px-2 py-1.5 align-middle text-xs leading-5 font-bold whitespace-nowrap text-muted";
 
+/**
+ * 並べ替えできる見出しの印（押していない列は上下の印、押している列は向きの印。押せない見出しは印なし。T66）。
+ * 640px 未満は言葉の下に置いて列の幅を広げない（375 で表が画面の幅を超えないように）
+ */
+export const SORT_ICON = "mx-auto block size-3 sm:ml-0.5 sm:inline sm:align-[-1px]";
+
 /** 本文のセル */
 export const TD = "bg-panel px-2 py-1.5 align-top";
 

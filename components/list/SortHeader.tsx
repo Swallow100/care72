@@ -3,7 +3,7 @@ import { caseloadHref, defaultDir, type CaseloadFilter, type SortDir, type SortK
 import { COLUMN_LABELS } from "@/lib/list/labels";
 import { OpenIcon, SortIcon } from "@/components/ui/Icon";
 import { LinkPending } from "@/components/ui/LinkPending";
-import { TH } from "@/components/ui/table";
+import { SORT_ICON, TH } from "@/components/ui/table";
 
 /** 列の見出しの行き先。押している列はもう一度押すと向きが反転し、ほかの列はその列の既定の向き（T58）。絞込は持ち越す */
 export function sortHeaderHref(k: SortKey, sort: SortKey, dir: SortDir, filter?: CaseloadFilter): string {
@@ -48,8 +48,8 @@ export function SortHeader({
       >
         {label ?? COLUMN_LABELS[k]}
         {/* 押している列は向きの印（下向きが降順）。訓練の表（href）は今まで通り出さない。押していない列は上下の印（押せる見出しの目印） */}
-        {active && href === undefined && <OpenIcon aria-hidden className={`ml-0.5 inline size-3 align-[-1px] ${now === "asc" ? "rotate-180" : ""}`} />}
-        {!active && <SortIcon aria-hidden className="ml-0.5 inline size-3 align-[-1px]" data-sortable />}
+        {active && href === undefined && <OpenIcon aria-hidden className={`${SORT_ICON} ${now === "asc" ? "rotate-180" : ""}`} />}
+        {!active && <SortIcon aria-hidden className={SORT_ICON} data-sortable />}
         <LinkPending />
       </Link>
     </th>

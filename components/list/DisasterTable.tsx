@@ -159,7 +159,7 @@ function Cells({
           <>
             <div className="whitespace-nowrap font-bold tabular-nums" data-remain={r.remain.tone ?? "none"}>
               {r.remain.tone ? (
-                <StateTag tone={r.remain.tone} size="md">
+                <StateTag tone={r.remain.tone} size="fit">
                   {r.remain.text}
                 </StateTag>
               ) : (
