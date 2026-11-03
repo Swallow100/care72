@@ -123,10 +123,6 @@ function refreshes(page) {
   return refreshCount.get(page) ?? 0;
 }
 
-/** 担当一覧の行の並びと状態（読み直しで変わったかを見る） */
-async function rowOrder(page) {
-  return page.evaluate(() => (document.querySelector("main table")?.textContent ?? "").slice(0, 600));
-}
 
 /** 発災時: 平時 → 大雨。ケアマネ（R10）・家族のスマホ（R11）・本人のスマホ（R12）を同時に、続いて医療班の受入（R13） */
 async function disaster(browser) {

@@ -93,8 +93,8 @@ export const SCENES: Scene[] = [
         end: 20,
         kind: "split",
         footages: ["R03", "R07", "R10"],
-        // R03 は様式の 1 頁目、R10 は山田の行が至急で一番上に上がったあと（R10-1 の 29.2 秒）
-        froms: [3, 0, 31],
+        // R03 は様式の 1 頁目、R10 は山田の行が至急で一番上に上がったあと（R10-1 の 25.8 秒）
+        froms: [3, 0, 27],
         lines: ["計画", "訓練", "発災時"],
         label: "様式が埋まる・72 時間の棒・一覧が並び替わる",
       },
@@ -203,16 +203,16 @@ export const SCENES: Scene[] = [
           { x: 0.02, y: 0.03, w: 0.5 },
         ],
       },
-      { at: 112, end: 116, kind: "split", footages: ["R11", "R10"], froms: [2, 20], label: "娘のスマホ（赤と緑）と担当一覧" },
-      // 1 分ごとの読み直しで山田の行が 2 番目から一番上へ（R10-1 の 29.2 秒）。半分の速さで
-      { at: 116, end: 121, kind: "footage", footage: "R10", from: 27.5, rate: 0.5, emphasis: true, label: "強調: 山田の行が一番上へ（至急）" },
+      { at: 112, end: 116, kind: "split", footages: ["R11", "R10"], froms: [2, 16], label: "娘のスマホ（赤と緑）と担当一覧" },
+      // 1 分ごとの読み直しで山田の行が 2 番目から一番上へ（R10-1 の 25.8 秒）。半分の速さで
+      { at: 116, end: 121, kind: "footage", footage: "R10", from: 24, rate: 0.5, emphasis: true, label: "強調: 山田の行が一番上へ（至急）" },
       { at: 121, end: 126, kind: "footage", footage: "R12", from: 3.5, label: "本人のスマホ: 赤 → けが → 止まる → 声の問いかけ" },
       { at: 126, end: 130, kind: "footage", footage: "R12", from: 40, emphasis: true, label: "強調: 録音と文字起こし。理由に分類（AI）" },
       { at: 130, end: 135, kind: "rules", label: "ルールの表の 1 枚" },
       // 手元の録画の行の詳細には録音の分類が無い（録音は撮っていない）ので、Haiku の名前は録音の分類を撮れてから付ける
-      { at: 135, end: 143, kind: "footage", footage: "R10", from: 43.5, label: "行の詳細: 分類修正・優先変更" },
-      { at: 143, end: 146.5, kind: "footage", footage: "R10", from: 62, label: "電話 → 電話の記録" },
-      { at: 146.5, end: 150, kind: "footage", footage: "R13", from: 8.5, label: "医療班の受入 → 要約" },
+      { at: 135, end: 143, kind: "footage", footage: "R10", from: 39, label: "行の詳細: 分類修正・優先変更" },
+      { at: 143, end: 146.5, kind: "footage", footage: "R10", from: 50, label: "電話 → 電話の記録" },
+      { at: 146.5, end: 150, kind: "footage", footage: "R13", from: 7.5, label: "医療班の受入 → 要約" },
     ],
   },
   {

@@ -1,11 +1,11 @@
-// 書体を読み込む。M PLUS 2（アプリと同じ。T35）と BIZ UDPGothic（どちらも OFL-1.1）を Google Fonts の CSS から。
+// 書体を読み込む。Inter（英数字。アプリと同じ）と BIZ UDPGothic（どちらも OFL-1.1）を Google Fonts の CSS から。日本語は端末の書体（Yu Gothic UI など）で、読み込まない。
 // 日本語の書体は字の範囲ごとに分かれていて、使う字が出てから読まれる。書き出しで字が欠けないよう、
 // 動画で使う字を全部並べて document.fonts.load に渡し、読み終わるまで描くのを待つ（delayRender）。
 import { continueRender, delayRender } from "remotion";
 import { LINES, MODEL_ROWS, RECORDINGS, RULE_ROWS, SCENES } from "./timeline";
 
 const CSS =
-  "https://fonts.googleapis.com/css2?family=M+PLUS+2:wght@400;600&family=BIZ+UDPGothic:wght@400;700&display=block";
+  "https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=BIZ+UDPGothic:wght@400;700&display=block";
 
 // 図や部品の中で使う決まった言葉（timeline に無い物）
 const FIXED =
@@ -38,8 +38,8 @@ export function loadFonts(): void {
   link.onload = () => {
     const text = allText();
     Promise.all([
-      document.fonts.load('400 40px "M PLUS 2"', text),
-      document.fonts.load('600 40px "M PLUS 2"', text),
+      document.fonts.load('400 40px "Inter"', text),
+      document.fonts.load('600 40px "Inter"', text),
       document.fonts.load('400 40px "BIZ UDPGothic"', text),
     ])
       .then(done)
