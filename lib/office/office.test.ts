@@ -242,9 +242,10 @@ describe("担当の割当", () => {
 
     const items = timelineItems((await loadPersonPage(db, yamamoto(), "p-02"))!);
     expect(items.at(-1)).toMatchObject({ kind: "担当変更", body: "担当 山本 → 佐藤", who: "ケアマネ 山本" });
-    const log = await loadOfficeLog(db, "office-demo");
-    expect(log[0]).toMatchObject({ kind: "person_assigned", label: "担当変更", body: "担当 山本 → 佐藤" });
-    expect(log[0].person).toBeTruthy();
+    // 同じ時刻のケアマネ追加の行と並びが入れ替わることがある（created_at が同じ ms なら id の順）ので、種類で引く
+    const assigned = (await loadOfficeLog(db, "office-demo")).find((e) => e.kind === "person_assigned");
+    expect(assigned).toMatchObject({ kind: "person_assigned", label: "担当変更", body: "担当 山本 → 佐藤" });
+    expect(assigned?.person).toBeTruthy();
   });
 
   it("管理者でないケアマネも割り当てられる（ケアマネ追加はできない）", async () => {

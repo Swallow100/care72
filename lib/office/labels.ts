@@ -39,7 +39,35 @@ export const OFFICE_LABELS = {
   open: "開く",
   none: "なし",
   sending: "送信中",
+  // 担当の一括変更（T60）
+  /** 見出しのチェック（表の全員） */
+  selectAll: "全選択",
+  /** 行のチェックの読み上げ（「山田 ハナ 選択」）と帯の「選択 N 人」 */
+  pick: "選択",
+  /** 帯の担当ごとの選択の読み上げ（「山本 担当全員」） */
+  pickCm: "担当全員",
+  moveTo: "移動先",
+  assignMany: "一括変更",
+  /** 確認の窓の決めるボタン */
+  assignManyOk: "変更",
+  assigned: "変更済",
+  skipped: "飛ばし",
 } as const;
+
+/** 確認の窓の名前の箇条書きは 6 行まで。超えたら 5 人と「ほか N 件」（窓の中を送れる箱にしない。DECISIONS 11/3 17:0x の T51-2） */
+export const CONFIRM_DETAIL_ROWS = 6;
+
+export function assignManyDetails(names: readonly string[]): string[] {
+  if (names.length <= CONFIRM_DETAIL_ROWS) return [...names];
+  const shown = names.slice(0, CONFIRM_DETAIL_ROWS - 1);
+  return [...shown, `ほか ${names.length - shown.length} 件`];
+}
+
+/** 一括変更のあとの 1 行（「変更済 3 人」「変更済 2 人・飛ばし 1 人」） */
+export function assignManyText(r: { moved: number; skipped: number }): string {
+  const moved = `${OFFICE_LABELS.assigned} ${r.moved} ${OFFICE_LABELS.people}`;
+  return r.skipped > 0 ? `${moved}・${OFFICE_LABELS.skipped} ${r.skipped} ${OFFICE_LABELS.people}` : moved;
+}
 
 /** 利用者追加の欄の誤り */
 export const PERSON_FORM_ERRORS = ["name", "kana", "birth", "sex", "care_manager"] as const;

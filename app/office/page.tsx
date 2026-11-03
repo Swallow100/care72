@@ -4,6 +4,7 @@ import { ColorCounts } from "@/components/disaster/ColorCounts";
 import { DisasterBadge } from "@/components/disaster/DisasterBadge";
 import { AddCareManager } from "@/components/office/AddCareManager";
 import { AssignForm } from "@/components/office/AssignForm";
+import { AssignMany, PickAll, PickBox } from "@/components/office/AssignMany";
 import { AssignRow } from "@/components/office/AssignRow";
 import { FormChoice } from "@/components/office/FormChoice";
 import { MoreFold } from "@/components/office/MoreFold";
@@ -43,9 +44,9 @@ import { colorCounts, NORMAL_ORDER_LABELS } from "@/lib/forms/form9";
 import { form9Scope, loadForm9 } from "@/lib/forms/form9-db";
 import { FORM9_CSV_PATH, FORM9_PATH } from "@/lib/forms/form9-href";
 import { PLAN_STATUS_LABELS } from "@/lib/labels";
-import { parsePeopleError } from "@/lib/office/http";
+import { parseAssignedMany, parsePeopleError } from "@/lib/office/http";
 import { ASSIGN_ANCHOR, NEW_PERSON_PATH, OFFICE_PEOPLE_PATH } from "@/lib/office/http-paths";
-import { OFFICE_ERROR_LABELS, OFFICE_LABELS, type PeopleActionError } from "@/lib/office/labels";
+import { assignManyText, OFFICE_ERROR_LABELS, OFFICE_LABELS, type PeopleActionError } from "@/lib/office/labels";
 import { listCareManagers, listOfficePeople, type CareManagerItem, type OfficePersonItem } from "@/lib/office/people";
 import { officeActor } from "@/lib/office/scope";
 import { CUSTODY_LABELS } from "@/lib/custody/labels";
@@ -68,11 +69,13 @@ type Props = {
     people_error?: string | string[];
     reset?: string | string[];
     form_error?: string | string[];
+    moved?: string | string[];
+    skipped?: string | string[];
   }>;
 };
 
 // 事業所の設定（docs/SPEC.md「画面 7 事業所の設定」）。1 画面に 災害モード・担当の割当・様式 9 への入口・ケアマネ・事業所の経過。
-// - 災害モードの切替（大雨・地震・平時に戻す）と災害の情報の入力（T09）。ケアマネの役（管理者でなくても）が押せる。
+// - 災害モードの切替（大雨・台風・土砂・地震・津波・その他・平時に戻す。T60）と災害の情報の入力（T09）。ケアマネの役（管理者でなくても）が押せる。
 //   切替と情報は人が入れる（気象庁の情報からの自動の切替は作っていない）。言葉は事業所の状態で、警報の言葉は使わない
 // - 担当の割当・一覧から外す（T30）。ケアマネの役（管理者でなくても）。ケアマネ追加は管理者だけ（初期パスワードは画面に 1 回だけ）
 // 行政・医療班・本人・家族はそれぞれの入口へ送る
@@ -122,6 +125,7 @@ export default async function OfficePage({ searchParams }: Props) {
   const confirm = disaster && parseConfirm(q.confirm);
   const error = parseFormError(q.error);
   const peopleError = parsePeopleError(q.people_error);
+  const moved = parseAssignedMany(q);
 
 
   return (
@@ -148,7 +152,7 @@ export default async function OfficePage({ searchParams }: Props) {
           {disaster && <InfoSection state={state} towns={towns} />}
           {/* 所属なし（T23）は引き受ける人がいるときだけ。担当の長い表の前に置く */}
           <UnaffiliatedSection people={unaffiliated} />
-          <AssignSection people={officePeople} careManagers={careManagers} error={peopleError} />
+          <AssignSection people={officePeople} careManagers={careManagers} error={peopleError} moved={moved} />
           {/* ケアマネ向けアンケートの招待のリンクと答え（T42） */}
           <SurveyPanel overview={survey} origin={await requestOrigin()} />
         </div>
@@ -177,7 +181,7 @@ async function requestOrigin(): Promise<string> {
   return `${proto}://${host}`;
 }
 
-/** 災害モードの切替。今の状態は枠と太字（下地は敷かない）、ほかは無色。大雨・地震はすぐ切り替え、平時に戻すは確認の欄を通す */
+/** 災害モードの切替。今の状態は枠と太字（下地は敷かない）、ほかは無色。災害の種類はすぐ切り替え、平時に戻すは確認の欄を通す */
 function ModeSection({ state, now, confirm }: { state: DisasterState; now: string; confirm: boolean }) {
   const disaster = isDisaster(state);
   return (
@@ -419,16 +423,19 @@ const LOG_TONE: Record<OfficeLogItem["kind"], string> = {
 /**
  * 担当の割当（T30）。事業所の利用者を全部（カナの順）、行ごとに担当を選んで「変更」。行の右端の「詳細」で開いた行の中に
  * 登録・更新の時刻と「外す」（一覧から外す。消さない。一覧に赤を並べない、11/3 03:3x の確定 7）。
- * 外した人は表の下の畳み「外した人 N」から戻す。表は 1 つの面の中で、ページの流れのまま（区分の中で送らない）
+ * 外した人は表の下の畳み「外した人 N」から戻す。表は 1 つの面の中で、ページの流れのまま（区分の中で送らない）。
+ * 一括変更（T60）: 各行の左のチェック・見出しの全選択・表の上の帯（担当ごとの選択・移動先・一括変更）。戻ったら「変更済 N 人・飛ばし M 人」
  */
 function AssignSection({
   people,
   careManagers,
   error,
+  moved,
 }: {
   people: OfficePersonItem[];
   careManagers: CareManagerItem[];
   error: PeopleActionError | null;
+  moved: { moved: number; skipped: number } | null;
 }) {
   const listed = people.filter((p) => p.unlistedAt === null);
   const unlisted = people.filter((p): p is OfficePersonItem & { unlistedAt: string } => p.unlistedAt !== null);
@@ -439,6 +446,13 @@ function AssignSection({
         id="assign-title"
         title={OFFICE_LABELS.assignments}
         count={`${listed.length} ${OFFICE_LABELS.people}`}
+        sub={
+          moved && (
+            <span role="status" className="text-sm" data-assigned-many>
+              <StateText tone="ok">{assignManyText(moved)}</StateText>
+            </span>
+          )
+        }
         actions={
           <ButtonLink href={`${NEW_PERSON_PATH}?back=office`} kind="main" icon={AddPersonIcon}>
             {OFFICE_LABELS.addPerson}
@@ -453,10 +467,14 @@ function AssignSection({
       {listed.length === 0 ? (
         <p className="mt-2 text-sm text-muted">{OFFICE_LABELS.none}</p>
       ) : (
-        <div className={`mt-2 ${TABLE_BOX}`}>
+        <AssignMany rows={listed.map((p) => ({ id: p.id, name: p.name, careManagerId: p.careManagerId }))} careManagers={cms}>
+        <div className={`mt-1 ${TABLE_BOX}`}>
           <table className={TABLE}>
             <thead>
               <tr>
+                <th className={`${TH} w-8 pr-0`}>
+                  <PickAll />
+                </th>
                 <th className={TH}>{OFFICE_LABELS.name}</th>
                 <th className={TH}>{OFFICE_LABELS.age}</th>
                 <th className={TH}>{OFFICE_LABELS.plan}</th>
@@ -471,11 +489,14 @@ function AssignSection({
                 <AssignRow
                   key={p.id}
                   id={p.id}
-                  cols={5}
+                  cols={6}
                   label={p.name}
                   cellClass={`${TD} align-middle`}
                   cells={
                     <>
+                      <td className={`${TD} w-8 pr-0 align-middle`}>
+                        <PickBox id={p.id} label={p.name} />
+                      </td>
                       <td className={`${TD} align-middle`}>
                         <Link href={`/people/${encodeURIComponent(p.id)}`} className="relative -mx-1 rounded px-1 font-bold" data-press>
                           {p.name}
@@ -525,6 +546,7 @@ function AssignSection({
             </tbody>
           </table>
         </div>
+        </AssignMany>
       )}
       <UnlistedFold count={unlisted.length} inPanel>
         <UnlistedRows
