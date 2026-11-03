@@ -89,7 +89,8 @@ https://care72.app（d90de01）で動いている物だけを書いた。
 - 本人・家族のスマホ: 赤緑の 2 ボタン → 1 画面 1 問の聞き取り（押せなければ声で）→ 録音。119 の固定の 1 行
 - 担当一覧: 色（緑 無事・赤 至急・黄 要確認・灰 不明）と連絡順に並び、理由の 1 行が付く。行の詳細に録音・文字起こし・聞き取りの欄（AI が本人の言葉を写した物に AI の印）。電話番号を出し、かけるのはケアマネ
 - 医療班・行政の受入一覧: QR・検索・避難所に来た人の受入、台帳に無い人の最小の記録、経過の書き足し
-- 右の面の地図（国土地理院のタイルとハザード、全画面と拡大）
+- 右の面の地図（国土地理院のタイルとハザード、全画面と拡大）。雨雲・震度のデモの絵はデモ事業所だけ
+- 事業所の画面に気象庁の警報・注意報と地震（防災情報 XML を Workers が 5 分ごとに 1 か所で取って写す。市町村・正式な名前・発表時刻のまま、住所の市が同じ利用者の数。災害モードは自動で切り替えず「切替」を勧めるだけ）。本物の事業所の地図には気象庁の雨雲を加工せず重ねられる（旗 JMA_NOWCAST、既定は off）
 
 ## Claude をどこに使い、どこに使わないか
 
@@ -103,6 +104,7 @@ https://care72.app（d90de01）で動いている物だけを書いた。
 | 仮想モードの世界の部屋 | Opus 5.5（Managed Agents） | 1 訓練 1 session で架空の街の 72 時間を持ち続ける。落ちたらその刻みだけ 1 回呼びに戻る |
 | 着信の声 | Gemini TTS | 着信の本人役の言葉を声にする |
 | 安否の色・連絡順・119 の案内・医療要約・様式 | 使わない | コードの表と定型。同じ入力で同じ物が出て、テストで確かめられる |
+| 気象庁の警報・地震・雨雲 | 使わない | 電文の名前・市町村・時刻のまま並べ、画像は加工しない。色と連絡順の入力にもしない |
 
 Messages API を呼ぶ所は lib/claude/call.ts の askJson の 1 か所で、仮名化した物（型 `ForClaude`）しか渡せない。返事は形を検査し、画面に AI の印を付ける。世界の部屋にも仮名化した文だけを送り、同じ 1 日の上限で数える。
 
@@ -181,6 +183,7 @@ Messages API を呼ぶ所は lib/claude/call.ts の askJson の 1 か所で、�
 - [Effective Context Engineering for AI Agents](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents): 「Sub-agent architectures」→ 見直し役は自分の文脈で読み、表だけを返す。「Structured note-taking」→ docs/tasks の brief と進みの記録（docs/PROGRESS.md・docs/progress）でセッションをまたぐ。「Context retrieval and agentic search」の just in time → MCP は一覧で仮名と id だけを返し、台帳は person で 1 人ずつ読む
 - Managed Agents: 仮想モードの世界の部屋だけに使う（lib/drill/world-room.ts）。道具のループと前の刻みの記憶が要るのは世界だけだから。録音の分類・本人役・固定の想定の監督・講評は、1 回の入力で答えが決まるので Messages API の 1 回呼び（askJson）のまま。部屋が使えないときは、その刻みだけ 1 回呼びに戻る
 - 出典の登録簿: 根拠は lib/sources の一覧だけから引く（[docs/SOURCES.md](docs/SOURCES.md)。コードから作り、テストで一致を守る）
+- 気象庁の情報（利用条件は [docs/progress/jma-terms-20261104.md](docs/progress/jma-terms-20261104.md)）: 出典：気象庁ホームページ（https://www.jma.go.jp/bosai/warning/）、気象庁防災情報XML。雨雲：気象庁ホームページ（https://www.jma.go.jp/bosai/nowc/）／背景：地理院タイル。気象庁の情報をもとにケア72が編集して表示しています（事業所と利用者の市町村の物だけを選んで並べる）。編集の責任はケア72にあります。最新の情報は気象庁ホームページで確認してください
 
 ## 書類
 

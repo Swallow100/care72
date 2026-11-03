@@ -9,6 +9,7 @@ import { AssignRow } from "@/components/office/AssignRow";
 import { CareManagerRow } from "@/components/office/CareManagerRow";
 import { FormChoice } from "@/components/office/FormChoice";
 import { MoreFold } from "@/components/office/MoreFold";
+import { JmaAlerts } from "@/components/office/JmaAlerts";
 import { OfficePlace } from "@/components/office/OfficePlace";
 import { UnlistedFold } from "@/components/office/UnlistedFold";
 import { UnlistedRows } from "@/components/office/UnlistedRows";
@@ -151,7 +152,7 @@ export default async function OfficePage({ searchParams }: Props) {
 
       <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="grid min-w-0 content-start gap-3">
-          <ModeSection state={state} now={now} confirm={confirm} />
+          <ModeSection state={state} now={now} confirm={confirm} officeId={scope.officeId} />
           <OfficePlace officeId={scope.officeId} admin={actor.admin} error={q.form_error === "place"} />
           {disaster && <InfoSection state={state} towns={towns} />}
           {/* 所属なし（T23）は引き受ける人がいるときだけ。担当の長い表の前に置く */}
@@ -185,13 +186,18 @@ async function requestOrigin(): Promise<string> {
   return `${proto}://${host}`;
 }
 
+/** 切替のボタンの段（気象庁の欄の「切替」が送る所） */
+const MODE_BUTTONS_ID = "mode-buttons";
+
 /** 災害モードの切替。今の状態は枠と太字（下地は敷かない）、ほかは無色。災害の種類はすぐ切り替え、平時に戻すは確認の欄を通す */
-function ModeSection({ state, now, confirm }: { state: DisasterState; now: string; confirm: boolean }) {
+function ModeSection({ state, now, confirm, officeId }: { state: DisasterState; now: string; confirm: boolean; officeId: string }) {
   const disaster = isDisaster(state);
   return (
     <Panel aria-labelledby="mode-title">
       <PanelHead id="mode-title" title={DISASTER_LABELS.mode} />
-      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+      {/* 気象庁の警報・注意報と地震（T72）。切替は勧めるだけで、押すのは人 */}
+      <JmaAlerts officeId={officeId} disaster={disaster} now={now} switchHref={`#${MODE_BUTTONS_ID}`} />
+      <div id={MODE_BUTTONS_ID} className="mt-2 flex scroll-mt-20 flex-wrap items-center gap-1.5">
         {DISASTER_KINDS.map((k) => (
           <ModeButton key={k} kind={k} state={state} />
         ))}

@@ -48,6 +48,12 @@ const SEED_ACCOUNT_IDS = FIXED_ACCOUNT_IDS.map((id) => lit(id));
 
 /** 表ごとに消す範囲（WHERE の中身）。null は消さない。CLEAR_ORDER と同じ順に流す */
 export const DEMO_CLEAR: Readonly<Record<Table, string | null>> = {
+  // 気象庁の写し（T72）。事業所ごとでなく、5 分ごとの cron が入れ直す本物の情報なので消さない
+  jma_quake_points: null,
+  jma_quakes: null,
+  jma_warnings: null,
+  jma_entries: null,
+  jma_fetch_state: null,
   survey_responses: `token IN (${JUDGE_SURVEY_SHARES})`,
   survey_shares: `office_id = ${OFFICE} AND created_role = 'judge'`,
   survey_answers: `token IN (${JUDGE_SURVEY_LINKS})`,
