@@ -167,7 +167,7 @@ export type CaseloadDisaster = {
   signals: ReadonlyMap<string, ReadonlyArray<TriageSignal>>;
   /** 本人ごとのケアマネの上書き（発災から今まで、lib/disaster/override.ts） */
   overrides?: ReadonlyMap<string, StoredOverride>;
-  /** 本人ごとの医療班・行政の受け入れ（発災から今まで、lib/custody/arrivals.ts。T23）。状態は「到着 避難所」 */
+  /** 本人ごとの医療班・行政の受け入れ（発災から今までと受入中の物、lib/custody/arrivals.ts。T23・T80）。状態は「到着 避難所」 */
   arrivals?: ReadonlyMap<string, ReadonlyArray<TriageArrival>>;
   /** 行の詳細の元。無ければ詳細を作らない */
   detail?: CaseloadDetailSource;

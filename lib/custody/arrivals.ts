@@ -2,6 +2,7 @@
 // 医療班・行政が避難所で受け入れると、ケアマネの一覧・本人のページ・様式 9 の状態が「到着 避難所の名前」になる（緑）。
 // 受け持ちを閉じた行（搬送・退所）も、受け入れた事実なので入れる。搬送で閉じた行は搬送の時刻と行き先も入れ、
 // 表の中で「搬送 行き先」になる（T24。退所は「到着」のまま）。発災から今までの物だけ（信号と同じ。lib/disaster/triage.ts の withinDisaster）。
+// ただし受入中（解除していない）の行は、今の災害の始まりより前に受け入れた物も渡す（arrivalInScope。T80）。
 // 誰が受け入れても同じ（アカウントをまたいで読む）。担当一覧・本人のページ・様式 9・受け持ちの一覧はみなここを通る。
 
 import type { D1Database } from "@cloudflare/workers-types";
@@ -31,10 +32,23 @@ export function toTriageArrival(r: ArrivalRow): TriageArrival {
   return a;
 }
 
+/**
+ * 表に渡す受け入れか（T80）。受入中（解除していない）の行は、いつ受け入れたかに関わらず渡す（今より後は渡さない）。
+ * 平時や前の災害で受け入れたまま 平時 → 大雨 と切り替えても、今の災害の始まりより前の受け入れを落として「不明」にしないため。
+ * 閉じた行（搬送・退所）は前のまま、受け入れが発災から今までの物だけ。表の決め方は変えない（入力の取りこぼしだけ）
+ */
+export function arrivalInScope(r: Pick<ArrivalRow, "received_at" | "released_at">, s: Pick<Situation, "disasterAt" | "now">): boolean {
+  if (r.released_at === null) {
+    const t = Date.parse(r.received_at);
+    return !Number.isNaN(t) && t <= Date.parse(s.now);
+  }
+  return withinDisaster(r.received_at, s);
+}
+
 function group(rows: ReadonlyArray<ArrivalRow>, s: Situation | null): Map<string, TriageArrival[]> {
   const out = new Map<string, TriageArrival[]>();
   for (const r of rows) {
-    if (s && !withinDisaster(r.received_at, s)) continue;
+    if (s && !arrivalInScope(r, s)) continue;
     out.set(r.person_id, [...(out.get(r.person_id) ?? []), toTriageArrival(r)]);
   }
   return out;

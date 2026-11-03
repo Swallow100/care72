@@ -285,18 +285,24 @@ describe("ケアマネの一覧の状態「到着 避難所」", () => {
     expect(row.result).toMatchObject({ label: "受入", location: "shelter", place: SHELTER });
   });
 
-  it("受け入れより後の赤は赤に戻る。発災より前の受け入れは数えない", async () => {
+  it("受け入れより後の赤は赤に戻る。発災より前に閉じた受け入れは数えない（受入中は数える。T80）", async () => {
     heavyRain();
-    await receive(db, actor(), { personId: "p-09", shelter: SHELTER, via: "search" }, AT);
+    const r = await receive(db, actor(), { personId: "p-09", shelter: SHELTER, via: "search" }, AT);
     sqlite
       .prepare(`INSERT INTO signals (id, person_id, color, source, occurred_at) VALUES ('s-red', 'p-09', 'red', 'self', ?)`)
       .run(LATER);
     const c = await loadCaseload(db, { officeId: "office-demo", careManagerId: "acct-yamamoto" }, TODAY, NOW);
     expect(c!.rows.find((r) => r.id === "p-09")!.triage!.color).toBe("red");
 
-    // 発災を受け入れのあとにずらすと、受け入れは数えない（赤の信号も消して比べる）
+    // 発災を受け入れのあとにずらしても、受入中（解除していない）の受け入れは数える（赤の信号も消して比べる。T80）
     sqlite.exec("DELETE FROM signals WHERE id = 's-red'");
-    sqlite.prepare("UPDATE disaster_state SET started_at = ?").run(LATER);
+    sqlite.prepare("UPDATE disaster_state SET started_at = ?").run(NOW);
+    const open = await loadCaseload(db, { officeId: "office-demo", careManagerId: "acct-yamamoto" }, TODAY, NOW);
+    expect(open!.rows.find((r) => r.id === "p-09")!.triage!.reason).toBe(`到着 ${SHELTER}`);
+
+    // 発災より前に閉じた（退所）受け入れは数えない
+    if (!r.ok) throw new Error(r.error);
+    expect((await release(db, actor(), { custodyId: r.custodyId, kind: "discharged", note: null }, LATER)).ok).toBe(true);
     const c2 = await loadCaseload(db, { officeId: "office-demo", careManagerId: "acct-yamamoto" }, TODAY, NOW);
     expect(c2!.rows.find((r) => r.id === "p-09")!.triage!.reason.includes(SHELTER)).toBe(false);
   });
