@@ -3,6 +3,7 @@ import Link from "next/link";
 import { countColors } from "@/components/disaster/ColorCounts";
 import { Classification } from "@/components/list/Classification";
 import { Hearing } from "@/components/list/Hearing";
+import { NarrowMarks } from "@/components/list/NarrowMarks";
 import { DisasterSummary } from "@/components/list/DisasterSummary";
 import { DisasterTable } from "@/components/list/DisasterTable";
 import type { ClassificationSlot, HearingSlot } from "@/components/list/RowDetail";
@@ -273,7 +274,7 @@ const CELL = TD;
 
 /**
  * 平時の表。列は 優先（骨格の段）・氏名・年齢・医療・ハザード・支援者・計画。どの列でも並べ替えられる。
- * 横に送らない: 768px 未満は医療・ハザード・支援者を省き、氏名の下に医療の印を出す
+ * 横に送らない: 768px 未満は医療・ハザード・支援者を省き、氏名の下に医療の印（時計の長さつき）を出す
  */
 function CaseloadTable({ rows, sort }: { rows: CaseloadRow[]; sort: SortKey }) {
   const wide = "hidden md:table-cell";
@@ -303,7 +304,8 @@ function CaseloadTable({ rows, sort }: { rows: CaseloadRow[]; sort: SortKey }) {
                 {r.name}
               </Link>
               <span className="ml-1.5 text-xs text-muted">{r.kana}</span>
-              {r.marks.length > 0 && <div className="mt-0.5 text-xs text-muted md:hidden">{r.marks.join("・")}</div>}
+              {/* 768px 未満は医療の列を省くので、医療の印を氏名の下に（発災時の表・受け持ちの表と同じ部品。残りは時計の長さ。T54） */}
+              <NarrowMarks items={r.markItems} />
             </td>
             <td className={`${CELL} whitespace-nowrap`}>
               {r.age ?? "—"}

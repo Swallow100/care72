@@ -12,6 +12,7 @@ import { CARE_LEVEL_LABELS, COLOR_LABELS, PLAN_STATUS_LABELS, TIER_LABELS } from
 import { DETAIL_LABELS } from "@/lib/list/labels";
 import { COLOR_TONES } from "@/lib/person";
 import { ExpandRow } from "./ExpandRow";
+import { NarrowMarks } from "./NarrowMarks";
 import { RowDetail, type ClassificationSlot, type HearingSlot } from "./RowDetail";
 import { SortHeader } from "./SortHeader";
 
@@ -19,7 +20,7 @@ const CELL = "bg-panel px-1.5 py-1.5 align-top";
 
 /**
  * 横に送らない。PC の幅（1024px 以上）は全部の列。狭い幅は列を省く: 640px 未満は最終連絡、768px 未満は医療・避難計画、
- * 1024px 未満は年齢・ハザード・支援者。状態・優先・氏名と理由・残りはいつも出す
+ * 1024px 未満は年齢・ハザード・支援者。状態・優先・氏名と理由・残りはいつも出す。768px 未満は医療の印を氏名の下に（T54）
  */
 const SM = "hidden sm:table-cell";
 const MD = "hidden md:table-cell";
@@ -117,6 +118,7 @@ function Cells({ row: r, sort, nameHref, nameMark, note }: { row: CaseloadRow; s
         {nameMark}
         <span className="ml-1 text-xs text-muted">{r.kana}</span>
         {note}
+        <NarrowMarks items={r.markItems} />
         {t && (
           <div className={`mt-0.5 font-bold ${TONE_TEXT[COLOR_TONES[t.color]]}`} data-reason>
             {t.reason}

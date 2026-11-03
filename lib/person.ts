@@ -75,7 +75,7 @@ import {
   TIMELINE_KIND_LABELS,
 } from "./labels.ts";
 import { toTriagePerson } from "./triage/from-ledger.ts";
-import { clockRemaining, formatHours, tierOf, type Color, type Situation, type Tier, type TriageResult } from "./triage/index.ts";
+import { clockRemaining, formatHours, tierOf, type Color, type Situation, type Tier, type TriageClock, type TriageResult } from "./triage/index.ts";
 import { personSituation, type DisasterSituation } from "./disaster/state.ts";
 import type { PersonBrief } from "./auth/scope.ts";
 import { withQrView } from "./qr/timeline.ts";
@@ -446,7 +446,7 @@ const TONE_RANK: Record<StateTone, number> = { urgent: 3, check: 2, unknown: 1, 
 export type MarkItem = { label: string; tone: StateTone | null; remaining: string | null };
 
 /** 時計 1 つの今の残り（時間）。災害モード（s あり）は走った分を引く（まだ走っていない時計は長さのまま）。値の無い時計は null */
-function hoursLeft(k: ClockRow, s: Situation | null): { hours: number; over: boolean; running: boolean } | null {
+function hoursLeft(k: TriageClock, s: Situation | null): { hours: number; over: boolean; running: boolean } | null {
   const r = s ? clockRemaining(k, s) : null;
   if (r) return { hours: r.remaining, over: r.over, running: r.running };
   const h = hoursOf(k);
@@ -466,9 +466,10 @@ function shortHours(h: number): string {
  * 医療の印（担当一覧と同じ並び）と、その区分の時計でいちばん強い色、いちばん短い残り。
  * 平時（s なし）の残りは時計の値そのまま（上の「時計」の欄と同じ数）を短い単位で。
  * 災害モード（s あり、本人の地区を当てた Situation）は今の残り（走っている時計は走った分を引き、超えたら「超過」と赤。
- * まだ走っていない時計は長さのまま）。走らない時計（本人の状態）・値の無い時計は数えない（11/3 08:0x の確定 2）
+ * まだ走っていない時計は長さのまま）。走らない時計（本人の状態）・値の無い時計は数えない（11/3 08:0x の確定 2）。
+ * 担当一覧・受け持ちの表の狭い幅（医療の列を省くとき氏名の下に出す。T54）も同じ物
  */
-export function markItems(clocks: ReadonlyArray<ClockRow>, s: Situation | null = null): MarkItem[] {
+export function markItems(clocks: ReadonlyArray<TriageClock>, s: Situation | null = null): MarkItem[] {
   return DEPENDENCE_MARKS.flatMap(([category, label]) => {
     const mine = clocks.filter((k) => k.category === category);
     if (mine.length === 0) return [];
