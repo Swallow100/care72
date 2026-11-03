@@ -1,9 +1,14 @@
 # remote D1 を作り直して再配信する。作者が端末で打つ。使い方: bash tools/deploy/rebuild-remote.sh <commit>
+# 11/4 から既定の配信は tools/deploy/migrate-remote.sh（表を落とさない）。これは作り直しが要るときだけ。
+# 本物の事業所のデータ（デモ事業所の外の利用者・訓練、種に無いアカウント・事業所）があれば、何もせずに止まる。
+# 消してよいときだけ ALLOW_DATA_LOSS=1 bash tools/deploy/rebuild-remote.sh <commit>（survey_ の表はどちらでも残す）
 set -e
 DEPLOY_DIR="${DEPLOY_DIR:-/c/Users/choco/dev/care72-deploy}"; [ -d "$DEPLOY_DIR" ] || git -C /c/Users/choco/dev/care72 worktree add --detach "$DEPLOY_DIR" "$1"; cd "$DEPLOY_DIR"
 git checkout -q -- . && git checkout -q --detach "$1"
 echo "== commit: $(git log --format='%h %s' -1)"
 echo "== npm ci"; npm ci --no-audit --no-fund --loglevel=error 2>&1 | tail -1
+echo "== 守り（本物の事業所のデータがあれば止める。数が読めないときも止める。前段・drop より前）"
+node tools/deploy/guard-remote.mjs || { echo "作り直し 停止（表には触っていない）"; exit 1; }
 echo "== 前段（migrations/0021 を drop の前に流す。survey_shares・survey_links に offices への外部キーが残っていると、リンクが 1 本でもあれば drop が落ちる。何度流しても同じ）"
 # migrations apply と同じ道（--command。1 つの取引なので、落ちれば巻き戻って行は変わらない）。落ちたら drop に進まず止める。
 # survey_ の 4 表がまだ無い D1（作ったばかり）では飛ばす（0021 は 4 表を建て直すので、無いと落ちる。migrations が 0004・0016 のあとに流す）

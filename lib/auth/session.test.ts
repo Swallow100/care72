@@ -125,6 +125,12 @@ describe("cookie", () => {
     expect(http).toBe(`${SESSION_COOKIE}=tok; Path=/; HttpOnly; SameSite=Lax; Max-Age=604800`);
   });
 
+  it("スマホ入口（T69a）は Max-Age に残りの秒を渡せる。既定は 7 日のまま", () => {
+    expect(sessionCookie("tok", "http://localhost:3072/s/x", 3600.9)).toBe(`${SESSION_COOKIE}=tok; Path=/; HttpOnly; SameSite=Lax; Max-Age=3600`);
+    expect(sessionCookie("tok", "http://localhost:3072/s/x", -5)).toContain("Max-Age=0");
+    expect(sessionCookie("tok", "http://localhost:3072/")).toContain("Max-Age=604800");
+  });
+
   it("消す cookie は Max-Age=0", () => {
     expect(clearSessionCookie("https://care72.example/")).toBe(
       `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0; Secure`,

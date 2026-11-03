@@ -2,12 +2,19 @@
 // 表に持たない（署名だけで確かめる）。ログアウトは cookie を消す。
 // 中身は「誰か」だけで、事業所・役の名前・担当は毎回 D1 から読む（アカウントを消せば次の要求から入れない）。
 // pv はパスワードのハッシュの指紋。パスワードを変えると前のセッションは使えなくなる。
+// 3 つ目の形 link（T69a）: 本人・家族がスマホ入口のリンク（lib/qr/phone-link.ts）で開いたセッション。パスワードは無く pv は固定の "link"。
+// 期限はリンクの期限と同じ（最長 180 日。本人・家族はホーム画面に追加して何か月も開く）。版（g）は毎回 D1 と比べ、作り直すと切れる。
 
 import { z } from "zod";
+import { PHONE_LINK_TTL_SEC } from "../qr/phone-link.ts";
 import { fromBase64Url, toBase64Url, utf8 } from "./bytes.ts";
 import { JUDGE_ROLES } from "./roles.ts";
 
 export const SESSION_TTL_SEC = 7 * 24 * 60 * 60;
+/** スマホ入口のセッションの上限（リンクの期限と同じ 180 日）。account・judge は SESSION_TTL_SEC のまま */
+export const LINK_SESSION_TTL_SEC = PHONE_LINK_TTL_SEC;
+/** スマホ入口のセッションの pv（パスワードの指紋の代わりの固定の字） */
+export const LINK_SESSION_PV = "link";
 /** 長すぎる cookie は読む前に捨てる */
 const MAX_TOKEN_LENGTH = 2048;
 
@@ -15,6 +22,19 @@ const base = { v: z.literal(1), pv: z.string().min(1).max(64), iat: z.number().i
 const payloadSchema = z.discriminatedUnion("k", [
   z.object({ ...base, k: z.literal("account"), a: z.string().min(1).max(128) }).strict(),
   z.object({ ...base, k: z.literal("judge"), r: z.enum(JUDGE_ROLES).nullable() }).strict(),
+  z
+    .object({
+      ...base,
+      pv: z.literal(LINK_SESSION_PV),
+      k: z.literal("link"),
+      /** 本人の id */
+      p: z.string().min(1).max(128),
+      /** 連絡先の id（家族のスマホ）。本人のスマホは null */
+      c: z.string().min(1).max(128).nullable(),
+      /** リンクの版（people.phone_link_generation） */
+      g: z.number().int().min(1),
+    })
+    .strict(),
 ]);
 export type SessionPayload = z.infer<typeof payloadSchema>;
 
@@ -84,7 +104,8 @@ export async function verifySession(token: string | null | undefined, secret: st
   const parsed = payloadSchema.safeParse(json);
   if (!parsed.success) return null;
   const p = parsed.data;
-  if (p.exp <= now || p.iat > now + 60 || p.exp - p.iat > SESSION_TTL_SEC) return null;
+  const maxTtl = p.k === "link" ? LINK_SESSION_TTL_SEC : SESSION_TTL_SEC;
+  if (p.exp <= now || p.iat > now + 60 || p.exp - p.iat > maxTtl) return null;
   return p;
 }
 

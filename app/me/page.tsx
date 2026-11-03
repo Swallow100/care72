@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import { AutoRefresh } from "@/components/disaster/AutoRefresh";
 import { InstallHint } from "@/components/phone/InstallHint";
 import { PhoneDisaster } from "@/components/phone/PhoneDisaster";
+import { PhoneNormalMark } from "@/components/phone/PhoneMarks";
 import { PhoneSheet } from "@/components/phone/PhoneSheet";
 import { todayJst } from "@/lib/age";
 import { requirePage } from "@/lib/auth/server";
@@ -48,6 +49,8 @@ export default async function MePage() {
   const sheet = buildOwnSheet(rows, { today: todayJst(), officeName: office?.name ?? null });
   return (
     <main className="mx-auto max-w-md px-3 py-4 font-ud">
+      {/* 事業所名と平時の印「ふだん」（T69a。災害モードになると 30 秒の読み直しで 2 つのボタンに替わる） */}
+      <PhoneNormalMark office={office?.name ?? null} />
       {/* ホーム画面に追加の案内（T44。平時だけ、入れるまで） */}
       <InstallHint />
       <PhoneSheet sheet={sheet} />

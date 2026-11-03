@@ -9,6 +9,7 @@
 
 import type { D1Database } from "@cloudflare/workers-types";
 import { JUDGE_LABEL } from "../auth/roles.ts";
+import { unconfirmedConsents } from "../consent/unconfirmed.ts";
 import type { ConsentStatus, CustodyVia, Ledger, PersonOrigin, ReleaseKind } from "../db/types.ts";
 import { UNAFFILIATED_OFFICE_ID, type StaffActor } from "./actor.ts";
 import type { CustodyError } from "./labels.ts";
@@ -218,6 +219,8 @@ export async function registerOnSite(
         at,
         input.birthDate ? null : input.age,
       ),
+    // 同意の行を全部「未確認」で（T69a。利用者追加と同じ。記録した人は作った医療班・行政）
+    unconfirmedConsents(db, personId, actor.accountId, at, UNAFFILIATED_OFFICE_ID),
   ];
   if (input.contact) {
     statements.push(

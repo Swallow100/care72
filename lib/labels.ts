@@ -566,7 +566,7 @@ export const AI_FAIL_REASON_LABELS = {
 export const DIFF_STATE_LABELS = { add: "追加", same: "一致", filled: "既入力" } as const;
 
 /** 書類（T05〜T07 で作る）の入口 */
-export const DOCUMENT_LABELS = { matsuyama: "計画書", medical: "医療要約", own: "本人の1枚", qr: "QR" } as const;
+export const DOCUMENT_LABELS = { matsuyama: "計画書", medical: "医療要約", own: "本人の1枚", qr: "QR", phone: "スマホ入口" } as const;
 export const DOCUMENT_STATUS_LABELS = { pending: "準備中", ready: "表示" } as const;
 
 /**
