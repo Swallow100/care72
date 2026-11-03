@@ -299,12 +299,13 @@ export const HEAD_LABELS = {
 /** 時計の行の中の小さな見出し */
 export const CLOCK_PARTS = { confirmed: "確認", source: "出典", start: "起点" } as const;
 
-/** 同意 4 つ */
+/** 同意 5 つ（AI 提供は T74。Claude〔海外の事業者〕に仮名化した台帳を渡すこと） */
 export const CONSENT_KIND_LABELS: Record<ConsentKind, string> = {
   registry: "名簿登録",
   plan_share: "計画共有",
   supporters: "支援者提供",
   medical: "医療班提供",
+  ai_overseas: "AI 提供",
 };
 
 export const CONSENT_STATUS_LABELS: Record<ConsentStatus, string> = {

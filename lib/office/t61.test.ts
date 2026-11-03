@@ -620,8 +620,8 @@ describe("migration 0012（accounts.disabled_at と、事業所の経過の種�
   });
 
   it("今ある事業所の経過の行を全部写す（列・作った時刻もそのまま）。外部キーは効いたまま", () => {
-    // 種は今の事業所の列（0017 の地図の中心、T68）を書くので、0017 は先に当てる（offices に列を足すだけで 0012 の表に触れない）
-    const d = sqliteUpTo((n) => n < MIGRATION_0012 || n.startsWith("0017_"));
+    // 種は今の事業所の列（0017 の地図の中心、T68）と同意の AI 提供（0024、T74）を書くので、0017・0024 は先に当てる（offices に列を足す・consents を建て直すだけで 0012 の表に触れない）
+    const d = sqliteUpTo((n) => n < MIGRATION_0012 || n.startsWith("0017_") || n.startsWith("0024_"));
     for (const s of seedStatements()) d.exec(s);
     d.prepare(
       `INSERT INTO office_timeline_entries (id, office_id, author_id, author_role, kind, occurred_at)
@@ -634,7 +634,7 @@ describe("migration 0012（accounts.disabled_at と、事業所の経過の種�
     const before = d.prepare("SELECT * FROM office_timeline_entries ORDER BY id").all();
     expect(before.length).toBeGreaterThan(1);
     d.exec(readFileSync(new URL(MIGRATION_0012, MIGRATIONS), "utf8"));
-    for (const n of migrationNames().filter((n) => n > MIGRATION_0012 && !n.startsWith("0017_"))) d.exec(readFileSync(new URL(n, MIGRATIONS), "utf8"));
+    for (const n of migrationNames().filter((n) => n > MIGRATION_0012 && !n.startsWith("0017_") && !n.startsWith("0024_"))) d.exec(readFileSync(new URL(n, MIGRATIONS), "utf8"));
     expect(d.prepare("SELECT * FROM office_timeline_entries ORDER BY id").all()).toEqual(before);
     expect(d.prepare("SELECT disabled_at FROM accounts WHERE id = 'acct-yamamoto'").get()).toEqual({ disabled_at: null });
     expect(() =>

@@ -726,7 +726,7 @@ type ConsentMap = Record<ConsentKind, ConsentStatus>;
 
 function consentMap(rows: PersonPageRows["consents"]): ConsentMap {
   const get = (k: ConsentKind) => rows.find((c) => c.kind === k)?.status ?? "unconfirmed";
-  return { registry: get("registry"), plan_share: get("plan_share"), supporters: get("supporters"), medical: get("medical") };
+  return { registry: get("registry"), plan_share: get("plan_share"), supporters: get("supporters"), medical: get("medical"), ai_overseas: get("ai_overseas") };
 }
 
 function consentCell(

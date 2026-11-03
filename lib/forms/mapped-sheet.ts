@@ -502,7 +502,7 @@ export function buildMappedSheet(rows: PersonPageRows, mapping: FormMapping, opt
     ledger,
     sheet: buildMatsuyamaSheet(rows, opts),
     contacts: [...rows.contacts].sort((a, b) => a.sort - b.sort || (a.id < b.id ? -1 : 1)),
-    consent: { registry: get("registry"), plan_share: get("plan_share"), supporters: get("supporters"), medical: get("medical") },
+    consent: { registry: get("registry"), plan_share: get("plan_share"), supporters: get("supporters"), medical: get("medical"), ai_overseas: get("ai_overseas") },
     today: opts.today,
   };
 
