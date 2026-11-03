@@ -1,8 +1,9 @@
 // 受け持ちの CSV（T62）。医療班・行政の受け持ちの表（/staff）と同じ loadStaffBoard の行を、そのまま書く。
 // 理由と医療の列は同意の範囲の濾し（lib/custody/board.ts の medicalShown）が入ったあとの物で、ここで読み直さない
 // （医療班への提供に同意の無い人は理由・医療・薬・機器・残りが空のまま）。色と連絡順はルールの表の結果のまま。Claude は呼ばない。
-// 画面の絞込（避難所・状態・氏名）は氏名を URL に載せない作り（画面の中だけ）なので、CSV は全員を表の順（連絡順）で。
-// 列: 連絡順・状態・理由・氏名・カナ・年齢・医療・薬・機器・残り・避難所・経路・受入時刻・事業所。
+// 行と順は画面と同じ（DECISIONS 11/4 00:0x）: 表の絞込（避難所・状態・氏名）と並びを URL の query で受け、
+// 表と同じ関数（lib/custody/staff-view.ts の staffViewRows）で絞って並べる。連絡順の番号は絞る前のまま。
+// 列: 連絡順・状態・理由・氏名・カナ・年齢・医療・薬・機器・残り・避難所・経路・受入時刻・所属（画面の見出し）。
 // 断り方は様式 9 の CSV と同じ: ログインなし 401、役が違う 403。範囲は自分のアカウントが受け入れた人（lib/custody/actor.ts）。
 
 import type { D1Database } from "@cloudflare/workers-types";
@@ -12,6 +13,7 @@ import { JUDGE_LABEL } from "../auth/roles.ts";
 import { staffActor, type StaffActor } from "../custody/actor.ts";
 import { loadStaffBoard, type StaffBoard, type StaffRow } from "../custody/board.ts";
 import { CUSTODY_LABELS, CUSTODY_VIA_LABELS } from "../custody/labels.ts";
+import { parseStaffView, staffQueryOf, staffViewRows, staffViewWords, type StaffView } from "../custody/staff-view.ts";
 import { COLOR_LABELS } from "../labels.ts";
 import { COLUMN_LABELS, DETAIL_LABELS } from "../list/labels.ts";
 import { csvFileNames, csvText, jstDateLabel } from "./form9-csv.ts";
@@ -43,19 +45,27 @@ export const STAFF_COLUMNS: ReadonlyArray<Column> = [
   { header: CUSTODY_LABELS.office, cell: (r) => r.office },
 ];
 
-/** CSV の文。行は loadStaffBoard の順（連絡順）のまま */
-export function staffCsv(board: Pick<StaffBoard, "rows">, actor: Pick<StaffActor, "name" | "judge">, madeAt: string): string {
+/** CSV の文。行は表と同じ絞込と並び（view が無ければ全員を連絡順で） */
+export function staffCsv(
+  board: Pick<StaffBoard, "rows" | "shelters">,
+  actor: Pick<StaffActor, "name" | "judge">,
+  madeAt: string,
+  view: StaffView = parseStaffView({}),
+): string {
+  const rows = staffViewRows(board.rows, board.shelters, view);
+  const words = staffViewWords(view, board.shelters);
   return csvText([
     [STAFF_CSV_TITLE],
     [
       `${CUSTODY_LABELS.by}：${actor.name ?? (actor.judge ? JUDGE_LABEL : "")}`,
       `作成：${jstDateLabel(madeAt)}`,
-      `並び：${COLUMN_LABELS.tier}`,
-      `${board.rows.length} ${CUSTODY_LABELS.people}`,
+      words.sort,
+      words.filter,
+      `${rows.length} ${CUSTODY_LABELS.people}`,
     ],
     [],
     STAFF_COLUMNS.map((c) => c.header),
-    ...board.rows.map((r) => STAFF_COLUMNS.map((c) => c.cell(r))),
+    ...rows.map((r) => STAFF_COLUMNS.map((c) => c.cell(r))),
   ]);
 }
 
@@ -63,6 +73,7 @@ export function staffCsv(board: Pick<StaffBoard, "rows">, actor: Pick<StaffActor
 export async function staffCsvResponse(
   db: D1Database,
   principal: Principal | null,
+  params: URLSearchParams,
   at: { today: string; now: string },
 ): Promise<Response> {
   const no = denied(principal, "read");
@@ -70,5 +81,5 @@ export async function staffCsvResponse(
   const actor = staffActor(principal);
   if (!actor) return Response.json({ error: "forbidden", label: "権限なし" }, { status: 403 });
   const board = await loadStaffBoard(db, actor, at.today, at.now);
-  return csvResponse(staffCsv(board, actor, at.now), csvFileNames(at.now, STAFF_CSV_NAMES));
+  return csvResponse(staffCsv(board, actor, at.now, parseStaffView(staffQueryOf(params))), csvFileNames(at.now, STAFF_CSV_NAMES));
 }

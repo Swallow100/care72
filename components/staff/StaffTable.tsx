@@ -1,7 +1,9 @@
 "use client";
 
 // 受け持ちの表（/staff、docs/tasks/T23.md）。数百人でも探せるように、避難所・状態・氏名（カナ）で絞り、列の見出しで並べ替える。
-// 絞り込みの言葉は URL に載せない（氏名が入るので。画面の中だけで持つ）。既定の並びはルールの表の並び（番号）。
+// 絞込と並びは URL に載せる（T62、DECISIONS 11/4 00:0x。CSV〔/staff/csv〕が画面と同じ行を書くため。前は画面の中だけ）。
+// 絞り方と並べ方は lib/custody/staff-view.ts（CSV も同じ関数）。URL は history.replaceState で書き換える（読み直しの要求を出さない）。
+// 既定の並びはルールの表の並び（番号）。
 // 状態の色と理由は lib/triage の結果をそのまま出す（ここで決め直さない）。氏名を押すと本人のページ。
 // 行の「解除」で搬送（行き先）・退所を選んで受け持ちから外す（本人の経過に残る）。
 // 医療の列と理由は同意の範囲の物だけが来る（lib/custody/board.ts）。医療要約を開ける人は氏名の横に「医療要約」（T24）。
@@ -11,7 +13,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { MedicalMarkList, NarrowMarks } from "@/components/list/NarrowMarks";
 import { StateTag, TONE_TEXT } from "@/components/person/parts";
 import { Button } from "@/components/ui/Button";
@@ -27,23 +29,19 @@ import { COLOR_LABELS, DOCUMENT_LABELS } from "@/lib/labels";
 import { COLOR_TONES } from "@/lib/person";
 import type { Color } from "@/lib/triage/index";
 import { Select } from "@/components/ui/Select";
+import {
+  NO_STAFF_VIEW,
+  STAFF_COLORS,
+  STAFF_DESCENDING,
+  STAFF_SORT_LABELS,
+  MAX_STAFF_TEXT,
+  staffViewQuery,
+  staffViewRows,
+  type StaffSort,
+  type StaffView,
+} from "@/lib/custody/staff-view";
 
-const SORTS = ["rank", "kana", "age", "remain", "shelter", "received", "office"] as const;
-type Sort = (typeof SORTS)[number];
-
-const SORT_LABELS: Record<Sort, string> = {
-  rank: "連絡順",
-  kana: CUSTODY_LABELS.name,
-  age: CUSTODY_LABELS.age,
-  remain: CUSTODY_LABELS.remain,
-  shelter: CUSTODY_LABELS.shelter,
-  received: CUSTODY_LABELS.receivedAt,
-  office: CUSTODY_LABELS.office,
-};
-
-/** 降順で並べる列（年齢は上の人から、受入は新しい順） */
-const DESCENDING: ReadonlySet<Sort> = new Set<Sort>(["age", "received"]);
-const COLORS: ReadonlyArray<Color> = ["red", "yellow", "gray", "green"];
+type Sort = StaffSort;
 
 /** セルは詰める（1280px で横に送らない） */
 const CELL = "bg-panel px-1.5 py-1.5 align-top";
@@ -57,55 +55,43 @@ const SM = "hidden sm:table-cell";
 const MD = "hidden md:table-cell";
 const LG = "hidden lg:table-cell";
 
-function compare(a: StaffRow, b: StaffRow, sort: Sort): number {
-  const num = (x: number | null) => (x === null ? Infinity : x);
-  switch (sort) {
-    case "rank":
-      return a.rank - b.rank;
-    case "kana":
-      return a.kana.localeCompare(b.kana, "ja") || a.rank - b.rank;
-    case "age":
-      // 上の人から。年齢の無い人は後ろ
-      return (b.age ?? -1) - (a.age ?? -1) || a.rank - b.rank;
-    case "remain":
-      return num(a.remain?.hours ?? null) - num(b.remain?.hours ?? null) || a.rank - b.rank;
-    case "shelter":
-      return a.shelter.localeCompare(b.shelter, "ja") || a.rank - b.rank;
-    case "received":
-      return Date.parse(b.receivedAt) - Date.parse(a.receivedAt) || a.rank - b.rank;
-    case "office":
-      return a.office.localeCompare(b.office, "ja") || a.rank - b.rank;
-  }
+/** URL の query のうち、絞込と並びだけを書き換える（error など、ほかの物は残す） */
+function replaceQuery(query: string) {
+  const url = new URL(window.location.href);
+  for (const k of ["shelter", "color", "q", "sort"]) url.searchParams.delete(k);
+  for (const [k, v] of new URLSearchParams(query)) url.searchParams.set(k, v);
+  const next = url.pathname + url.search + url.hash;
+  if (next !== window.location.pathname + window.location.search + window.location.hash) window.history.replaceState(window.history.state, "", next);
 }
 
-/** 絞り込みの文字: カタカナ・空白なし（漢字の氏名にも当てる） */
-function squash(s: string): string {
-  return [...s.normalize("NFKC")]
-    .map((ch) => {
-      const c = ch.codePointAt(0) ?? 0;
-      return c >= 0x3041 && c <= 0x3096 ? String.fromCodePoint(c + 0x60) : ch;
-    })
-    .join("")
-    .replace(/\s/g, "");
-}
-
-export function StaffTable({ rows, shelters }: { rows: StaffRow[]; shelters: string[] }) {
-  const [picked, setShelter] = useState("");
-  const [color, setColor] = useState<Color | "">("");
-  const [text, setText] = useState("");
-  const [sort, setSort] = useState<Sort>("rank");
+export function StaffTable({
+  rows,
+  shelters,
+  view = NO_STAFF_VIEW,
+}: {
+  rows: StaffRow[];
+  shelters: string[];
+  /** URL の絞込と並び（開いたときの値。lib/custody/staff-view.ts の parseStaffView） */
+  view?: StaffView;
+}) {
+  const [picked, setShelter] = useState(view.shelter);
+  const [color, setColor] = useState<Color | "">(view.color);
+  const [text, setText] = useState(view.q);
+  const [sort, setSort] = useState<Sort>(view.sort);
   const [open, setOpen] = useState<string | null>(null);
   // 選んだ避難所の人が搬送・退所で全員いなくなったら（読み直しで一覧から消えたら）全部に戻す
   const shelter = shelters.includes(picked) ? picked : "";
 
-  const shown = useMemo(() => {
-    const q = squash(text);
-    return rows
-      .filter((r) => (shelter ? r.shelter === shelter : true))
-      .filter((r) => (color ? r.color === color : true))
-      .filter((r) => (q ? squash(r.kana).includes(q) || squash(r.name).includes(q) : true))
-      .sort((a, b) => compare(a, b, sort));
-  }, [rows, shelter, color, text, sort]);
+  const current: StaffView = { shelter, color, q: text.trim().slice(0, MAX_STAFF_TEXT), sort };
+  const shown = useMemo(
+    () => staffViewRows(rows, shelters, { shelter, color, q: text.trim().slice(0, MAX_STAFF_TEXT), sort }),
+    [rows, shelters, shelter, color, text, sort],
+  );
+  // 絞込と並びを URL に（CSV出力のリンク〔StaffCsvLink〕がこれを読む。読み直しても残る）
+  const query = staffViewQuery(current);
+  useEffect(() => {
+    replaceQuery(query);
+  }, [query]);
 
   return (
     <div className="min-w-0">
@@ -129,7 +115,7 @@ export function StaffTable({ rows, shelters }: { rows: StaffRow[]; shelters: str
           <FilterButton active={color === ""} onClick={() => setColor("")}>
             {CUSTODY_LABELS.filterAll}
           </FilterButton>
-          {COLORS.map((c) => (
+          {STAFF_COLORS.map((c) => (
             <FilterButton key={c} active={color === c} onClick={() => setColor(c)} tone={COLOR_TONES[c]}>
               {COLOR_LABELS[c]}
             </FilterButton>
@@ -215,14 +201,14 @@ function FilterButton({
 function Header({ k, sort, onSort, className = "" }: { k: Sort; sort: Sort; onSort: (s: Sort) => void; className?: string }) {
   const active = k === sort;
   return (
-    <th className={`${TH} px-1 ${className}`} aria-sort={active ? (DESCENDING.has(k) ? "descending" : "ascending") : undefined}>
+    <th className={`${TH} px-1 ${className}`} aria-sort={active ? (STAFF_DESCENDING.has(k) ? "descending" : "ascending") : undefined}>
       <button
         type="button"
         onClick={() => onSort(k)}
         className={`rounded px-1 py-0.5 ${active ? "text-ink underline decoration-2 underline-offset-4" : ""}`}
         data-press
       >
-        {SORT_LABELS[k]}
+        {STAFF_SORT_LABELS[k]}
       </button>
     </th>
   );

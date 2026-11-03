@@ -3,8 +3,9 @@
 // 形は様式 9 の CSV と同じ（lib/forms/form9-csv.ts の csvText: UTF-8 の BOM・CRLF・式の守り）。
 // 上の 2 行は題「担当一覧」と、事業所名・担当・作成日・並び・絞込。1 行空けて見出し、その下に行。
 // 列は表と同じ言葉（lib/list/labels.ts の COLUMN_LABELS、本人のページの上の段の HEAD_LABELS）。
-//   平時:   連絡順（骨格の段）・氏名・カナ・年齢・介護度・医療・ハザード・支援者・避難計画・未確認・地区
-//   発災時: 先頭に 順位（表の並びの番号。絞っても元の番号）・状態・理由、末尾に 残り・最終連絡
+//   平時:   連絡順（骨格の段。画面の平時の表の連絡順と同じ）・氏名・カナ・年齢・介護度・医療・ハザード・支援者・避難計画・未確認・地区
+//   発災時: 連絡順（ルールの表の並びの番号。画面の発災時の表の連絡順と同じ値で、絞っても元の番号）・状態・理由・組（骨格の段 1〜8）、
+//           そのあと平時の 氏名〜地区、末尾に 残り・最終連絡（DECISIONS 11/4 00:0x。2 つの番号が同じ名前に見えないよう、段は「組」）
 // 断り方は様式 9 の CSV と同じ: ログインなし 401、役が違う 403、範囲の外 404。書き出したことは経過に残さない（T62 の決め）。
 
 import type { D1Database } from "@cloudflare/workers-types";
@@ -16,7 +17,6 @@ import { BLANK_LABELS, CARE_LEVEL_LABELS, COLOR_LABELS, HEAD_LABELS, PLAN_STATUS
 import { COLUMN_LABELS, DETAIL_LABELS, FILTER_LABELS } from "../list/labels.ts";
 import { filterWords, listQueryOf, listView, sortWords, type ListViewResult } from "../list/view.ts";
 import { CUSTODY_LABELS } from "../custody/labels.ts";
-import { FORM9_SORT_LABELS } from "./form9-href.ts";
 import { csvFileNames, csvText, jstDateLabel } from "./form9-csv.ts";
 import { csvResponse } from "./csv-response.ts";
 
@@ -33,9 +33,14 @@ export function medicalText(r: Pick<CaseloadRow, "markItems" | "devices">): stri
   return r.devices.join("・");
 }
 
-/** 平時の列（発災時もこの順で中に入る） */
-const NORMAL_COLUMNS: ReadonlyArray<Column> = [
-  { header: COLUMN_LABELS.tier, cell: (r) => String(r.tier) },
+/** 発災時の「組」の列の見出し（骨格の段 1〜8。発災時の連絡順と別の値なので別の名前） */
+export const GROUP_HEADER = "組";
+
+/** 平時の連絡順（骨格の段） */
+const NORMAL_ORDER: Column = { header: COLUMN_LABELS.tier, cell: (r) => String(r.tier) };
+
+/** 氏名から地区まで（平時・発災時で同じ） */
+const BODY_COLUMNS: ReadonlyArray<Column> = [
   { header: COLUMN_LABELS.kana, cell: (r) => r.name },
   { header: CUSTODY_LABELS.kana, cell: (r) => r.kana },
   { header: HEAD_LABELS.age, cell: (r) => num(r.age) },
@@ -48,11 +53,12 @@ const NORMAL_COLUMNS: ReadonlyArray<Column> = [
   { header: FILTER_LABELS.area, cell: (r) => r.town ?? "" },
 ];
 
-/** 発災時の先頭（順位・状態・理由） */
+/** 発災時の先頭（連絡順・状態・理由・組） */
 const DISASTER_HEAD: ReadonlyArray<Column> = [
-  { header: FORM9_SORT_LABELS.rank, cell: (r) => num(r.rank) },
+  { header: COLUMN_LABELS.tier, cell: (r) => num(r.rank) },
   { header: COLUMN_LABELS.state, cell: (r) => (r.triage ? COLOR_LABELS[r.triage.color] : "") },
   { header: DETAIL_LABELS.reason, cell: (r) => r.triage?.reason ?? "" },
+  { header: GROUP_HEADER, cell: (r) => String(r.tier) },
 ];
 
 /** 発災時の末尾（残り・最終連絡） */
@@ -66,7 +72,7 @@ const DISASTER_TAIL: ReadonlyArray<Column> = [
 
 /** 平時・発災時の列 */
 export function caseloadColumns(disaster: boolean): ReadonlyArray<Column> {
-  return disaster ? [...DISASTER_HEAD, ...NORMAL_COLUMNS, ...DISASTER_TAIL] : NORMAL_COLUMNS;
+  return disaster ? [...DISASTER_HEAD, ...BODY_COLUMNS, ...DISASTER_TAIL] : [NORMAL_ORDER, ...BODY_COLUMNS];
 }
 
 /** CSV の文。view は画面と同じ listView の結果（rows がその順で書かれる） */

@@ -18,6 +18,7 @@ import type { Principal } from "../auth/principal.ts";
 import { loadCaseload, type Caseload } from "../caseload.ts";
 import { staffActor } from "../custody/actor.ts";
 import { loadStaffBoard } from "../custody/board.ts";
+import { parseStaffView, staffQueryOf, staffViewQuery, staffViewRows } from "../custody/staff-view.ts";
 import { receive } from "../custody/store.ts";
 import { d1FromSqlite, migratedSqlite } from "../db/test-d1.ts";
 import { COLOR_LABELS } from "../labels.ts";
@@ -206,28 +207,34 @@ describe("担当一覧の CSV（/caseload/csv）", () => {
     expect(listQueryOf(params("mark=a&mark=b&q=x"))).toEqual({ mark: ["a", "b"], q: "x" } satisfies ListQuery);
   });
 
-  it("発災時: 先頭に 順位・状態・理由、末尾に 残り・最終連絡。色と理由は表の結果のまま、順位は絞っても元の番号", async () => {
+  it("発災時: 連絡順（画面と同じ番号）・状態・理由・組（骨格の段）、末尾に 残り・最終連絡。連絡順は絞っても元の番号", async () => {
     heavyRain();
     const data = await caseload();
-    expect(caseloadColumns(true).map((c) => c.header)).toEqual(["順位", "状態", "理由", ...NORMAL_HEADERS, "残り", "最終連絡"]);
+    const head = ["連絡順", "状態", "理由", "組", ...NORMAL_HEADERS.slice(1), "残り", "最終連絡"];
+    expect(caseloadColumns(true).map((c) => c.header)).toEqual(head);
+    // 2 つの番号は別の見出し（同じ名前の列が無い）
+    expect(new Set(head).size).toBe(head.length);
     const { rows } = await csvOf(await caseloadCsvResponse(db, yamamoto(), params(""), AT_NOW));
-    expect(rows[3]).toEqual(["順位", "状態", "理由", ...NORMAL_HEADERS, "残り", "最終連絡"]);
+    expect(rows[3]).toEqual(head);
     const screen = listView(data, {});
     const body = rows.slice(4);
-    expect(body.map((r) => r[3 + 1])).toEqual(screen.rows.map((r) => r.name));
+    expect(body.map((r) => r[4])).toEqual(screen.rows.map((r) => r.name));
     body.forEach((r, i) => {
       const s = screen.rows[i];
       expect(r).toHaveLength(16);
+      // 連絡順は発災時の表の「連絡順」の列（DisasterTable の data-rank）と同じ rank
       expect(r[0]).toBe(String(s.rank));
       expect(r[1]).toBe(COLOR_LABELS[s.triage!.color]);
       expect(r[2]).toBe(s.triage!.reason);
+      expect(r[3]).toBe(String(s.tier));
       expect(r[14]).toBe(s.remain ? `${s.remain.text} ${s.remain.label}` : "");
       expect(r[15]).toBe(s.lastContact ? `${s.lastContact.when} ${s.lastContact.source}` : "連絡なし");
     });
-    // 既定の並びはルールの表の順（順位 1, 2, 3…）
+    // 既定の並びはルールの表の順（連絡順 1, 2, 3…）。山田 ハナは画面も CSV も 1
     expect(body.map((r) => Number(r[0]))).toEqual(body.map((_, i) => i + 1));
+    expect(body.find((r) => r[4] === "山田 ハナ")![0]).toBe(String(screen.rows.find((r) => r.id === "p-01")!.rank));
 
-    // 色で絞る: 順位は絞る前の番号のまま。2 行目に絞込の言葉
+    // 色で絞る: 連絡順は絞る前の番号のまま。2 行目に絞込の言葉
     const color = screen.rows[screen.rows.length - 1].triage!.color;
     const filtered = await csvOf(await caseloadCsvResponse(db, yamamoto(), params(`color=${color}`), AT_NOW));
     const want = listView(data, { color });
@@ -271,13 +278,13 @@ describe("受け持ちの CSV（/staff/csv）", () => {
     await receive(db, actor(medical2()), { personId: "p-03", shelter: SHELTER, via: "search" }, AT);
     expect(sqlite.prepare(`UPDATE consents SET status = 'refused' WHERE person_id = 'p-01' AND kind = 'medical'`).run().changes).toBe(1);
 
-    const res = await staffCsvResponse(db, judgeMedical(), AT_NOW);
+    const res = await staffCsvResponse(db, judgeMedical(), params(""), AT_NOW);
     expect(res.status).toBe(200);
     expect(res.headers.get("Cache-Control")).toBe("no-store");
     expect(res.headers.get("Content-Disposition")).toContain('filename="staff-20261103-1100.csv"');
     const { rows } = await csvOf(res);
     expect(rows[0]).toEqual(["受け持ち"]);
-    expect(rows[1]).toEqual(["受入者：審査員", "作成：2026年11月3日", "並び：連絡順", "3 人"]);
+    expect(rows[1]).toEqual(["受入者：審査員", "作成：2026年11月3日", "並び：連絡順", "絞込：なし", "3 人"]);
     const headers = ["連絡順", "状態", "理由", "氏名", "カナ", "年齢", "医療", "薬", "機器", "残り", "避難所", "経路", "受入時刻", "所属"];
     expect(rows[3]).toEqual(headers);
     expect(STAFF_COLUMNS.map((c) => c.header)).toEqual(headers);
@@ -304,15 +311,56 @@ describe("受け持ちの CSV（/staff/csv）", () => {
   });
 
   it("権限: ログインなし 401、医療班・行政でなければ 403。受け持ちが無ければ見出しだけ", async () => {
-    expect((await staffCsvResponse(db, null, AT_NOW)).status).toBe(401);
-    expect((await staffCsvResponse(db, yamamoto(), AT_NOW)).status).toBe(403);
-    expect((await staffCsvResponse(db, family(), AT_NOW)).status).toBe(403);
-    expect((await staffCsvResponse(db, unselected(), AT_NOW)).status).toBe(403);
-    const gov = await staffCsvResponse(db, yamamoto({ role: "government", admin: false, accountId: "acct-med-2", office: null, caseloadOf: null }), AT_NOW);
+    expect((await staffCsvResponse(db, null, params(""), AT_NOW)).status).toBe(401);
+    expect((await staffCsvResponse(db, yamamoto(), params(""), AT_NOW)).status).toBe(403);
+    expect((await staffCsvResponse(db, family(), params(""), AT_NOW)).status).toBe(403);
+    expect((await staffCsvResponse(db, unselected(), params(""), AT_NOW)).status).toBe(403);
+    const gov = await staffCsvResponse(db, yamamoto({ role: "government", admin: false, accountId: "acct-med-2", office: null, caseloadOf: null }), params(""), AT_NOW);
     expect(gov.status).toBe(200);
     const { rows } = await csvOf(gov);
     expect(rows).toHaveLength(4);
-    expect(rows[1][3]).toBe("0 人");
+    expect(rows[1][4]).toBe("0 人");
+  });
+
+  it("表の絞込（避難所・状態・氏名）と並びを URL の query で受け、表と同じ行と順を書く。連絡順は絞る前の番号", async () => {
+    heavyRain();
+    await receive(db, actor(), { personId: "p-01", shelter: SHELTER, via: "search" }, AT);
+    await receive(db, actor(), { personId: "p-02", shelter: SHELTER, via: "qr" }, AT);
+    await receive(db, actor(), { personId: "p-04", shelter: "そらみ台小学校", via: "search" }, AT);
+    await receive(db, actor(), { personId: PARTNER_PERSON, shelter: "そらみ台小学校", via: "shelter" }, AT);
+    const board = await loadStaffBoard(db, actor(), TODAY, NOW);
+    const color = board.rows[0].color;
+    const queries = [
+      "",
+      "shelter=" + encodeURIComponent(SHELTER),
+      "color=" + color,
+      "q=" + encodeURIComponent("かくう"),
+      "sort=age",
+      "sort=kana&shelter=" + encodeURIComponent("そらみ台小学校"),
+      // 無い避難所は全部に戻す（表と同じ）。同じ名前の 2 つの値は効かない
+      "shelter=" + encodeURIComponent("無い学校"),
+      "color=red&color=green",
+    ];
+    for (const q of queries) {
+      const { rows } = await csvOf(await staffCsvResponse(db, judgeMedical(), params(q), AT_NOW));
+      const want = staffViewRows(board.rows, board.shelters, parseStaffView(staffQueryOf(params(q))));
+      expect(rows.slice(4).map((r) => r[3]), q).toEqual(want.map((r) => r.name));
+      expect(rows.slice(4).map((r) => r[0]), q).toEqual(want.map((r) => String(r.rank)));
+      expect(rows[1][4], q).toBe(`${want.length} 人`);
+    }
+    const one = await csvOf(await staffCsvResponse(db, judgeMedical(), params("sort=age&q=" + encodeURIComponent("やまだ")), AT_NOW));
+    expect(one.rows.slice(4).map((r) => r[3])).toEqual(["山田 ハナ"]);
+    expect(one.rows[1].slice(2, 4)).toEqual(["並び：年齢", "絞込：検索 やまだ"]);
+    const shelter = await csvOf(await staffCsvResponse(db, judgeMedical(), params("color=" + color + "&shelter=" + encodeURIComponent(SHELTER)), AT_NOW));
+    expect(shelter.rows[1][3]).toBe(`絞込：${SHELTER}・${COLOR_LABELS[color]}`);
+  });
+
+  it("表の絞込の URL: 既定は書かない、形の違う物は無かったことに、読んで書くと同じ", () => {
+    expect(staffViewQuery(parseStaffView({}))).toBe("");
+    expect(parseStaffView({ color: "blue", sort: "name", shelter: ["a", "b"], q: "  ヤマ  " })).toEqual({ shelter: "", color: "", q: "ヤマ", sort: "rank" });
+    const v = parseStaffView({ shelter: SHELTER, color: "red", q: "やま", sort: "received" });
+    expect(parseStaffView(Object.fromEntries(new URLSearchParams(staffViewQuery(v))))).toEqual(v);
+    expect(parseStaffView({ q: "あ".repeat(60) }).q).toHaveLength(40);
   });
 });
 
@@ -390,7 +438,16 @@ describe("入口と頁の作り（ファイルを読む）", () => {
     expect(list).toContain('listHref(OWN_SHEETS_PATH, view, { print: "1" })');
     expect(list.match(/<ExportButtons view=\{lv\} \/>/g)).toHaveLength(2);
     expect(readRepoFile("components/list/FilterBar.tsx")).toContain("data-filter-actions");
-    expect(readRepoFile("app/staff/page.tsx")).toContain("href={STAFF_CSV_PATH} download");
+    // 受け持ち: 見出しの CSV出力は URL の絞込と並びを持ち越す。表は絞込と並びを URL に書き、CSV と同じ関数で行を決める
+    const staff = readRepoFile("app/staff/page.tsx");
+    expect(staff).toContain('<StaffCsvLink className="ml-auto self-center" />');
+    expect(staff).toContain("view={parseStaffView(q)}");
+    const link = readRepoFile("components/staff/StaffCsvLink.tsx");
+    expect(link).toContain("useSearchParams()");
+    expect(link).toContain("STAFF_CSV_PATH}?");
+    const table = readRepoFile("components/staff/StaffTable.tsx");
+    expect(table).toContain("staffViewRows(rows, shelters,");
+    expect(table).toContain("window.history.replaceState(");
 
     const view = listView(await caseload(), { sort: "age", dir: "asc", mark: "oxygen", q: "山" });
     expect(listHref("/caseload/csv", view)).toBe(`/caseload/csv?sort=age&dir=asc&mark=oxygen&q=${encodeURIComponent("山")}`);
