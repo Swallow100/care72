@@ -92,7 +92,6 @@ export const T70_LABELS = {
   /** AI の呼び出しの見込み（「見込み 約 65 回」） */
   estimate: "見込み",
   about: "約",
-  remaining: "残り",
   times: "回",
   /** 見込みが残りを超える（赤の文字。開始は止めない） */
   short: "上限不足",

@@ -423,10 +423,8 @@ describe("押せる人なしと見込み（T70 の 2・5）", () => {
     expect(html).toContain('data-estimate-scenario="short" data-estimate-calls="17"');
     expect(html).toMatch(/data-estimate-scenario="heavy_rain" data-estimate-calls="49" data-over=""/);
     expect(html).toContain("上限不足");
-    expect(html).toContain('data-estimate-remaining="30"');
     expect(html).not.toMatch(/data-scenario="heavy_rain"[^>]*disabled/);
     const unknown = renderToStaticMarkup(createElement(StartButtons, { scenarios: SCENARIO_ORDER, disabled: false, people, remaining: null }));
-    expect(unknown).not.toContain("data-estimate-remaining");
     expect(unknown).not.toContain("上限不足");
   });
 });

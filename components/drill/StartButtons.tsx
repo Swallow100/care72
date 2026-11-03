@@ -11,7 +11,8 @@
 //
 // T70: 参加者のうち、本人も家族・支援者もスマホで赤緑を押せない人に「押せる人なし」（灰の文字。名前は本人のページへ。スマホを入れるのはそこ）。
 // 押せる人のいない人は本人役（AI）が呼ばれず、表の行が当たったときだけ表の固定の安否が届く。
-// 想定のボタンの下に、選んだ参加者での AI の呼び出しの見込み（lib/drill/estimate.ts）と今日の残り。見込みが残りを超える想定には
+// 想定のボタンの下に、選んだ参加者での AI の呼び出しの見込み（lib/drill/estimate.ts）。今日の残りはすぐ下の行（app/drill/page.tsx の「AI 残り」）
+// にあるので、ここでは比べるだけにして並べない。見込みが残りを超える想定には
 // 「上限不足」（赤の文字）。開始は止めない（途中で当たれば刻みに「停止」の印）
 
 import Link from "next/link";
@@ -54,7 +55,7 @@ export function StartButtons({
   disabled: boolean;
   /** 担当一覧の人（参加者の選択。無ければ設定の参加者を出さない） */
   people?: ReadonlyArray<StartPerson>;
-  /** 今日の AI の残り（lib/claude/gate.ts の drillGate と同じ値。読めなければ null） */
+  /** 今日の AI の残り（lib/claude/gate.ts の drillGate と同じ値。上限不足の判定だけに使う。読めなければ null） */
   remaining?: number | null;
 }) {
   const router = useRouter();
@@ -159,17 +160,11 @@ export function StartButtons({
             const over = overLimit(n, remaining);
             return (
               <span key={s} data-estimate-scenario={s} data-estimate-calls={n} data-over={over ? "" : undefined}>
-                {SCENARIO_LABELS[s]} {T70_LABELS.about} {n}
+                {SCENARIO_LABELS[s]} {T70_LABELS.about} {n} {T70_LABELS.times}
                 {over && <span className="ml-1 font-bold text-danger">{T70_LABELS.short}</span>}
               </span>
             );
           })}
-          <span>{T70_LABELS.times}</span>
-          {remaining !== null && (
-            <span data-estimate-remaining={remaining}>
-              / {T70_LABELS.remaining} {remaining} {T70_LABELS.times}
-            </span>
-          )}
           {noPresser > 0 && (
             <span data-no-presser-count={noPresser}>
               {T70_LABELS.noPresser} {noPresser} {T59_LABELS.people}
@@ -214,10 +209,12 @@ export function StartButtons({
                         aria-label={p.name}
                         data-start-person={p.id}
                       />
-                      <Link href={`/people/${encodeURIComponent(p.id)}`} className={NAME_LINK} data-press>
-                        {p.name}
-                      </Link>
-                      <span className="shrink-0 text-xs text-muted">{T70_LABELS.noPresser}</span>
+                      <span className="flex min-w-0 flex-col leading-tight">
+                        <Link href={`/people/${encodeURIComponent(p.id)}`} className={NAME_LINK} data-press>
+                          {p.name}
+                        </Link>
+                        <span className="text-xs text-muted">{T70_LABELS.noPresser}</span>
+                      </span>
                     </div>
                   ) : (
                     <label key={p.id} className={CHECK_ROW} data-press>
