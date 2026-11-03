@@ -186,7 +186,9 @@ describe("事業所の気象庁の欄（画面）", () => {
   it("平時で警報（注意報でない物）があるときだけ「切替」を赤で。押すと同じ画面の切替のボタンへ送るだけ", async () => {
     const data = await loadJmaAlerts(db(), OFFICE, NOW);
     const calm = render(data, false);
-    expect(calm).toMatch(/<a href="#mode-buttons"[^>]*class="[^"]*text-danger[^"]*"[^>]*data-jma-switch[^>]*>切替<\/a>/);
+    expect(calm).toMatch(/<a href="#mode-buttons"[^>]*class="[^"]*text-danger[^"]*"[^>]*data-jma-switch[^>]*>.*?切替<\/a>/);
+    // 32px の高さのボタンの形（375 で押せる）。アイコン＋文字
+    expect(calm).toMatch(/<a href="#mode-buttons"[^>]*class="[^"]*\bh-8\b[^"]*"[^>]*data-jma-switch[^>]*><svg/);
     // 災害モードでは出さない
     expect(render(data, true)).not.toContain("data-jma-switch");
     // 注意報だけでも出さない

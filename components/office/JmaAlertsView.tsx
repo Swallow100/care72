@@ -5,9 +5,13 @@
 // - 地震は直近 24 時間で、事業所と利用者の市の観測点の震度があるときだけ。観測点の名前を添える（利用者の家の震度と言い切らない）
 // - 取れていなければ「未取得」と最後に取れた時刻。下に出典の 1 行
 
+import { GoToIcon } from "@/components/ui/Icon";
 import { JMA_LABELS, WARNING_SOURCE, intensityLabel, magnitudeLabel } from "@/lib/jma/labels";
 import type { JmaAlertsData } from "@/lib/jma/alerts";
 import { shortJst } from "@/lib/disaster/state";
+
+/** 切替（Button の md と同じ高さ 32px・角・太字。面の中の灰の上なので白の地、文字だけ赤） */
+const SWITCH = "relative ml-auto inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded bg-panel px-3 text-sm font-bold whitespace-nowrap text-danger";
 
 const FOCUS = "outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-accent";
 
@@ -30,7 +34,7 @@ export function JmaAlertsView({
   const suggest = !disaster && data.rows.some((r) => r.warning);
   return (
     <section aria-label={JMA_LABELS.title} className="mt-2 grid gap-1 rounded bg-panel2 px-3 py-2 text-sm" data-jma>
-      <div className="flex flex-wrap items-baseline gap-x-2">
+      <div className="flex min-h-8 flex-wrap items-center gap-x-2">
         <span className="font-bold">{JMA_LABELS.title}</span>
         {data.fetch.ok ? (
           <span className="text-xs text-muted tabular-nums" data-jma-fetch="ok">
@@ -42,7 +46,8 @@ export function JmaAlertsView({
           </span>
         )}
         {suggest && (
-          <a href={switchHref} data-press className={`ml-auto font-bold text-danger underline underline-offset-2 ${FOCUS}`} data-jma-switch>
+          <a href={switchHref} data-press className={`${SWITCH} ${FOCUS}`} data-jma-switch>
+            <GoToIcon aria-hidden className="size-4 shrink-0" />
             {JMA_LABELS.switch}
           </a>
         )}
