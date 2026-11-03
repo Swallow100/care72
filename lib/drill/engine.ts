@@ -19,6 +19,7 @@ import {
   eventHour,
   injectChange,
   isInjectKind,
+  isVirtual,
   scenarioOf,
   settleWorld,
   type FixedTurn,
@@ -30,6 +31,8 @@ import {
   type WorldEvent,
   type WorldState,
 } from "./scenarios.ts";
+import type { OutcomeHook } from "./outcome.ts";
+import { fallbackIncidents, type OutcomeAsk } from "./world-apply.ts";
 
 const HOUR_MS = 3_600_000;
 
@@ -242,6 +245,8 @@ export type PersonaInput = {
   lastAction: ActionRecord | null;
   /** 想定の表のこの本人の行（起きること）。ペルソナはこれを骨にする */
   fixed: ReadonlyArray<FixedTurn>;
+  /** 仮想モード（T50）。本人役は表の行が無く、自分の町の状況から自由に動く */
+  virtual?: boolean;
 };
 
 /** 本人 1 人の 1 刻み。空の配列は「連絡なし」。投げたら連絡なしとして進む */
@@ -336,7 +341,28 @@ export function directorIncidents(
   return out;
 }
 
-export type StepHooks = { persona?: PersonaHook; director?: DirectorHook };
+/**
+ * 仮想モード（T50）の世界の 1 刻みに渡す物。監督の入力に、この刻みにコードが決めた結末（outcomes）と部屋の session を足す。
+ * 世界の口（lib/drill/world-room.ts・world-oneshot.ts）が仮名化してから Claude に渡す
+ */
+export type WorldInput = DirectorInput & {
+  outcomes: ReadonlyArray<OutcomeAsk>;
+  /** 世界の部屋の session の ID。まだ無ければ null（最初の刻みで作る） */
+  session: string | null;
+  /** 今の時刻（発災からの分） */
+  minute: number;
+};
+
+/** 世界の 1 刻みの返事。incidents は当てる状況（結末も入る）、session は作った・使った部屋の ID（変わらなければ省く） */
+export type WorldResult = { incidents: DrillIncident[]; session?: string | null };
+
+/** 仮想モードの世界の口。投げたら世界は動かさず結末だけ固定の文で（fallbackIncidents） */
+export type WorldHook = (input: WorldInput) => Promise<WorldResult>;
+
+/**
+ * world と outcome は仮想モード（T50）だけが使う。固定の筋（大雨・地震・10 分版）は今までどおり director と persona だけ
+ */
+export type StepHooks = { persona?: PersonaHook; director?: DirectorHook; world?: WorldHook; outcome?: OutcomeHook };
 
 /** 1 刻みの呼び方の足し物（T20）。replies は表の出来事を当てたあと・監督の前の世界で、監督に言い換えを頼む返事を決める */
 export type StepOptions = { replies?: (world: WorldState) => ReadonlyArray<ReplyAsk> };
@@ -497,6 +523,19 @@ export async function step(
   // 手の途中でこの刻みに着いたとき、その手の返事をここで決め、監督に言い換えを頼む（T20。監督の呼び出しは増やさない）
   const replies = opts.replies ? [...opts.replies(world)] : [];
 
+  const directorInput: DirectorInput = {
+    scenario: state.scenario,
+    step: index,
+    hour,
+    world,
+    incidents: fixed,
+    participants: state.participants,
+    people: state.people,
+    actions: state.actions,
+    ...(replies.length > 0 ? { replies } : {}),
+  };
+  if (isVirtual(state.scenario)) return virtualStep(state, hooks, { index, hour, last, world, fixed, members, directorInput });
+
   // 監督（Opus、T19）の差し込み。1 刻みに 1 回。無ければ・失敗したら差し込みなし（表の固定の状況だけで進む）
   const out: DirectorEvent[] | DirectorResult = hooks.director
     ? await safely(
@@ -552,6 +591,80 @@ export async function step(
 
   const tick: Tick = { step: index, hour, incidents, turns, world, finished: index >= last };
   return { state: foldTick(state, tick, last), tick, words };
+}
+
+// ---------- 仮想モード（T50）の 1 刻み ----------
+
+/**
+ * 仮想の 1 刻み。順: 結末（コードの計算、lib/drill/outcome.ts）→ 世界（部屋か 1 回呼び。結末の人には 1 文）→ 本人役（結末の人は呼ばない）。
+ * 世界の口が無い（鍵なし・DRILL_WORLD=off）・投げたら、世界は動かさず結末だけ固定の文（「世界 停止」「世界 代替」の印）。
+ * 表の出来事も本人の行も無い（scenarios.ts の VIRTUAL）。言い換え（T20 の replies）は頼まない（返事は固定の文）
+ */
+async function virtualStep(
+  state: DrillState,
+  hooks: StepHooks,
+  t: {
+    index: number;
+    hour: number;
+    last: number;
+    world: WorldState;
+    fixed: DrillIncident[];
+    members: ReadonlySet<string>;
+    directorInput: DirectorInput;
+  },
+): Promise<{ state: DrillState; tick: Tick; words: ReplyWords[] }> {
+  const { index, hour, last, members } = t;
+  let world = t.world;
+  const minute = Math.max(state.minute, hour * 60);
+  const outcomes = hooks.outcome
+    ? (await safely(() => hooks.outcome!({ world, actions: state.actions, participants: state.participants, minute }), [] as OutcomeAsk[])).filter(
+        (o) => members.has(o.person) && !world.ended?.[o.person],
+      )
+    : [];
+  const r: WorldResult | null = hooks.world
+    ? await safely(() => hooks.world!({ ...t.directorInput, world, outcomes, session: world.session ?? null, minute }), null)
+    : null;
+  let inserted = r
+    ? r.incidents.filter((e) => !e.person || members.has(e.person))
+    : fallbackIncidents(hour, outcomes, hooks.world ? "down" : "off");
+  // 世界の口が結末の文を落としても、決まった結末は固定の文で必ず当てる
+  const said = new Set(inserted.filter((e) => e.change.kind === "outcome").map((e) => e.person));
+  const missing = outcomes.filter((o) => !said.has(o.person));
+  if (missing.length > 0) inserted = [...inserted, ...fallbackIncidents(hour, missing, "down").filter((e) => e.change.kind === "outcome")];
+  if (r && r.session !== undefined) world = { ...world, session: r.session };
+  world = inserted.reduce((w, e) => applyEvent(w, e, e.at), world);
+  const incidents = [...t.fixed, ...inserted];
+
+  // 本人役（Haiku）。結末の人は呼ばない（信号を出さない・着信も鳴らない）。本人役が無ければ連絡なし（仮想には表の行が無い）
+  const turns: DrillTurn[] = [];
+  const live = state.participants.filter((p) => !world.ended?.[p]);
+  if (hooks.persona) {
+    const results = await Promise.all(
+      live.map((person) =>
+        safely(
+          () =>
+            hooks.persona!({
+              step: index,
+              hour,
+              person,
+              world,
+              incidents,
+              state: state.people[person] ?? null,
+              lastAction: [...state.actions].reverse().find((a) => a.person === person) ?? null,
+              fixed: [],
+              virtual: true,
+            }),
+          [] as DrillTurn[],
+        ),
+      ),
+    );
+    results.forEach((x, i) => turns.push(...x.filter((u) => u.person === live[i])));
+  }
+
+  const tick: Tick = { step: index, hour, incidents, turns, world, finished: index >= last };
+  // foldTick は前の世界に状況を当て直すので、部屋の ID は前の世界に先に写す
+  const base = r && r.session !== undefined ? { ...state, world: { ...state.world, session: r.session } } : state;
+  return { state: foldTick(base, tick, last), tick, words: [] };
 }
 
 /** 想定の最後の刻みの添字 */

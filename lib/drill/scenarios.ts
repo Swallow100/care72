@@ -46,7 +46,8 @@ export type OutageArea =
   | { scope: "office" }
   | { scope: "hazard"; hazard: HazardKind; minDepthM: number }
   // 仮想モード（T50）: 町名の一覧（世界の部屋が町を選ぶ。lib/drill/area.ts の町）
-  | { scope: "towns"; towns: string[] };
+  // since は町ごとの停電の始まり（発災からの時間。無い町は停電の since）
+  | { scope: "towns"; towns: string[]; since?: Record<string, number> };
 
 /** 道路・避難所・施設。label は場所の名前を書かない一般の言い方（川沿いの市道・指定避難所） */
 export type Road = { id: string; label: string; open: boolean; person: string | null };
@@ -106,7 +107,14 @@ export type WorldState = {
   weather?: Weather | null;
   /** 仮想モード: 結末の人（台帳の id → 結末）。固定の筋には無い */
   ended?: Record<string, Ended>;
+  /** 仮想モード: 世界の 1 文の履歴（部屋の文。地区は別名、人は仮名のまま。STORY_MAX まで） */
+  story?: string[];
+  /** 仮想モード: 世界の部屋（Managed Agents）の session の ID。drills.world_session_id にも写す */
+  session?: string | null;
 };
+
+/** 世界の履歴に残す文の数 */
+export const STORY_MAX = 24;
 
 export const WEATHERS = ["rain", "clear"] as const;
 export type Weather = (typeof WEATHERS)[number];
@@ -630,11 +638,13 @@ export function applyEvent(world: WorldState, e: WorldEvent, hour: number): Worl
     case "flood":
       return { ...world, flood: true };
     case "outage": {
-      // 町の停電が広がる（仮想）: 続いている町の停電に町を足す。始まりは最初の時刻のまま（ルールの表の停電の始まりは 1 つ）
+      // 町の停電が広がる（仮想）: 続いている町の停電に町を足す。停電の始まり（since）は最初の時刻のまま（ルールの表の停電の始まりは 1 つ）、
+      // 町ごとの始まりは area.since に持ち、時計の走り方（score.ts の clockRuns、結末 outcome.ts）は町の始まりから数える
       const o = world.outage;
       if (o && o.restoredAt === null && o.area.scope === "towns" && c.area.scope === "towns") {
         const towns = [...new Set([...o.area.towns, ...c.area.towns])];
-        return { ...world, outage: { ...o, area: { scope: "towns", towns } } };
+        const since = { ...(c.area.since ?? {}), ...(o.area.since ?? {}) };
+        return { ...world, outage: { ...o, area: { scope: "towns", towns, since } } };
       }
       return { ...world, outage: { area: c.area, since: hour, restoredAt: null } };
     }
@@ -694,6 +704,8 @@ export function applyEvent(world: WorldState, e: WorldEvent, hour: number): Worl
     case "weather":
       return { ...world, weather: c.state };
     case "narration":
+      // 部屋の文（別名のまま）を世界の履歴に残す。1 回呼び（world-oneshot.ts）が履歴の要約として送る
+      return { ...world, story: [...(world.story ?? []), `${hour} 時間: ${c.room}`].slice(-STORY_MAX) };
     case "world_note":
       return world;
     case "outcome": {

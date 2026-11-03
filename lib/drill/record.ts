@@ -15,7 +15,7 @@ import { buildForm9, type Form9PersonInput } from "../forms/form9.ts";
 import { isSourceId } from "../sources/index.ts";
 import { isDrillScenario, rowScenario, type DrillScope } from "./db.ts";
 import { drillClocks } from "./director.ts";
-import { outageTownsOf } from "./engine.ts";
+import { outageForRuns } from "./outcome.ts";
 import { REVIEW_KINDS, type ReviewBody, type ReviewContext, type ReviewError, type ReviewFinding, type ReviewIncident } from "./review.ts";
 import { loadCallRecords, type CallRecord } from "./responses.ts";
 import { isVirtual, scenarioOf } from "./scenarios.ts";
@@ -158,8 +158,8 @@ export async function computeScore(
 
   // 時計の走り方（訓練の世界の頼り先の写しを当てた時計。停電の地区は本人の町名）
   const world = screen.state.world;
-  const o = world.outage;
-  const outage = o ? { since: o.since, towns: outageTownsOf(o.area, [...ledgers.values()]) } : null;
+  // 停電の地区と始まり（町ごとの始まりも。仮想モードの結末 lib/drill/outcome.ts と同じ物）
+  const outage = outageForRuns(world, [...ledgers.values()]);
   const towns = new Map([...ledgers].map(([id, l]) => [id, l.basic.address?.town ?? null]));
   const runs = clockRuns(drillClocks(clockRows, world), towns, outage);
 

@@ -84,6 +84,8 @@ export type Persona = {
   roles: ReadonlyMap<string, string>;
   hazards: ReadonlyArray<{ kind: HazardKind; depthM: number | null }>;
   dementia: boolean;
+  /** 台帳の町名（停電の町の一覧を見るだけ。Claude に渡さない） */
+  town?: string | null;
 };
 
 /** 連絡しうる人の区分 → 安否の出どころ。訪問看護・施設などの事業所は連絡しない（監督 T19・対応 T20 の相手） */
@@ -217,6 +219,7 @@ export function buildPersona(source: PseudonymInput, opts: { on?: string } = {})
     roles: new Map(source.contacts.map((c, i) => [c.id, roles[i]])),
     hazards: source.ledger.evacuation.hazards.map((x) => ({ kind: x.kind, depthM: x.depthM ?? null })),
     dementia: source.ledger.care.dementia === true,
+    town: source.ledger.basic.address?.town?.trim() || null,
   };
 }
 
@@ -294,7 +297,7 @@ function worldWords(world: WorldState, person: string, persona: Persona): string
   if (world.outage) {
     const o = world.outage;
     if (o.restoredAt != null) out.push(`停電 復旧（${o.restoredAt} 時間）`);
-    else out.push(inOutageArea(o.area, persona.hazards) ? `この家は停電中（${o.since} 時間から）` : "この家は停電していない");
+    else out.push(inOutageArea(o.area, persona.hazards, persona.town ?? null) ? `この家は停電中（${o.since} 時間から）` : "この家は停電していない");
   }
   out.push(`電話 ${PHONE_LABELS[world.phone]}`);
   if (world.water !== "none") out.push(`断水 ${WATER_LABELS[world.water]}`);
@@ -313,6 +316,13 @@ function worldWords(world: WorldState, person: string, persona: Persona): string
   if (m.nurseAway !== undefined) out.push(`訪問看護が来られない（${m.nurseAway} 時間から）`);
   if (m.goingHome !== undefined) out.push(`本人が家に帰ろうとしている（${m.goingHome} 時間から）`);
   if (m.lineDown !== undefined) out.push(`この家の電話が不通（${m.lineDown} 時間から）`);
+  // 仮想モード（T50）の町の出来事
+  if (m.flooded !== undefined) {
+    const d = world.floods?.[person];
+    out.push(`家の辺りが浸水${d != null ? `（${d} m）` : ""}（${m.flooded} 時間から）`);
+  }
+  if (m.waterOut !== undefined) out.push(`家の辺りが断水（${m.waterOut} 時間から）`);
+  if (world.weather) out.push(world.weather === "rain" ? "大雨が続いている" : "雨は止んだ");
   return out;
 }
 
@@ -364,6 +374,16 @@ export const PERSONA_SYSTEM = [
 ].join("\n");
 
 /**
+ * 仮想モード（T50）だけ足す決まり。想定の表の行が無く、自分の家の辺りの状況と持ちこたえる時間から自由に動く。
+ * 決まり 7（診断・判定・重症・病名・薬の量・助言を言わない）はそのまま
+ */
+export const PERSONA_VIRTUAL = [
+  "仮想モード: 想定の表は無い。家の辺りの状況（浸水・停電・断水・道・余震・天候）と持ちこたえる時間から、この人がしそうな事を自分で決める。",
+  "speech には、いる場所（家のどこ・何階）、閉じ込められている・挟まれている（何に）、体の訴え（本人の言葉で。「胸が少し痛い」「足を打った」）を入れてよい。",
+  "体の訴えは本人や家族が言う言葉にとどめ、病名・重さを言い切らない。",
+].join("\n");
+
+/**
  * 返事の形。enum・範囲は SDK が JSON Schema の説明文に回し、文法では縛らない（lib/claude の T00 の記録）。
  * location を enum にすると外の値（「自宅」など）1 つで返事全部が形の違いになり、表の行の安否まで消えるので文字にし、
  * 値の範囲と押せる人の門はコード（personaTurns）で直す
@@ -392,8 +412,10 @@ export type PersonaAnswer = z.output<typeof PersonaSchema>;
 export function buildPersonaRequest(
   profile: ForClaude<{ text: string }>,
   tick: ForClaude<{ text: string }>,
+  virtual = false,
 ): AskJsonRequest<typeof PersonaSchema> {
-  return { purpose: "persona", system: PERSONA_SYSTEM, input: { 本人役: profile, この刻み: tick }, schema: PersonaSchema };
+  const system = virtual ? `${PERSONA_SYSTEM}\n\n${PERSONA_VIRTUAL}` : PERSONA_SYSTEM;
+  return { purpose: "persona", system, input: { 本人役: profile, この刻み: tick }, schema: PersonaSchema };
 }
 
 // ---------- 返事 → 安否 ----------
@@ -592,7 +614,7 @@ export function createPersonaHook(deps: PersonaDeps): PersonaHook {
       const persona = buildPersona(source, deps.on ? { on: deps.on } : {});
       if (input.fixed.length === 0 && !persona.reporters.some((r) => r.canPress)) return [];
       const tick = pseudonymizeText(tickText(input, persona), persona.key);
-      const r = await askJson(buildPersonaRequest(persona.profile, tick), deps.ai);
+      const r = await askJson(buildPersonaRequest(persona.profile, tick, input.virtual === true), deps.ai);
       return personaTurns(input, persona, r.value);
     } catch (e) {
       // AI の層の失敗と伏せきれないは想定どおり。それ以外（台帳を読めないなど）は名前だけログに残す（中身は書かない）
