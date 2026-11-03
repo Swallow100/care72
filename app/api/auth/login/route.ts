@@ -4,7 +4,7 @@ import { guardedLogin, requestIp, wantsPage } from "@/lib/auth/lockout";
 import { nowSec, sessionSecret } from "@/lib/auth/session";
 
 // ログインのフォームの POST。合えば cookie を付けて役の入口へ、違えば /login?e=1 に戻す（どこが違うかは言わない）。
-// 同じ ID か同じ送信元で 15 分に 10 回失敗したら 15 分止める（lib/auth/lockout.ts）。止めている間はパスワードを確かめず、
+// 同じ送信元で 15 分に 10 回、同じ ID で 50 回（送信元が無ければ 10 回）失敗したら 15 分止める（lib/auth/lockout.ts）。止めている間はパスワードを確かめず、
 // フォームからは /login?e=locked&m=<残りの分> へ 303、ほか（fetch・curl）は 429 と Retry-After。
 // ID・パスワードはログに出さない。
 export async function POST(request: Request) {

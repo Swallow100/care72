@@ -1,5 +1,5 @@
 // ログインの回数の制限（docs/tasks/T41.md）のテスト。種の入った node:sqlite で本物の login を通す。
-// 10 回で止まる・15 分で戻る・成功で消える・別の ID は止まらない・送信元でも止まる・古い行は消える・パスワードを残さない。
+// 送信元 10 回・ID 50 回（送信元が無ければ ID 10 回）で止まる・15 分で戻る・成功で消える・別の ID は止まらない・古い行は消える・パスワードを残さない。
 
 import type { D1Database } from "@cloudflare/workers-types";
 import type { DatabaseSync } from "node:sqlite";
@@ -12,6 +12,7 @@ import {
   guardedLogin,
   KEEP_SEC,
   LOCK_FAILURES,
+  LOCK_ID_FAILURES,
   LOCK_SEC,
   lockRemaining,
   loginLock,
@@ -156,12 +157,27 @@ describe("ID と送信元", () => {
     expect((await attempt("yamamoto", CM_PW, IP_B, NOW + 20)).kind).toBe("ok");
   });
 
-  it("同じ ID は、送信元を変えて 10 回失敗しても止まる", async () => {
-    for (let i = 0; i < LOCK_FAILURES; i++) await attempt(JUDGE_LOGIN_ID, "wrong-pass", `198.51.100.${i}`, NOW + i);
-    expect((await attempt(JUDGE_LOGIN_ID, JUDGE_PW, IP_B, NOW + 20)).kind).toBe("locked");
+  it("審査員の 1 人が 10 回打ち間違えても、止まるのはその送信元だけ（ほかの審査員は同じ ID で入れる）", async () => {
+    const last = await fail(LOCK_FAILURES, JUDGE_LOGIN_ID, IP_A, NOW);
+    expect((await attempt(JUDGE_LOGIN_ID, JUDGE_PW, IP_A, last + 1)).kind).toBe("locked");
+    expect((await attempt(JUDGE_LOGIN_ID, JUDGE_PW, IP_B, last + 1)).kind).toBe("ok");
   });
 
-  it("送信元が分からない（CF-Connecting-IP が無い）ときは送信元で数えない（ID では数える）", async () => {
+  it("同じ ID は、送信元を変えて 49 回失敗しても止まらず、50 回で止まる（分散して当てに来る相手）", async () => {
+    const ip = (i: number) => `198.51.${100 + Math.floor(i / 9)}.${i % 9}`;
+    for (let i = 0; i < LOCK_ID_FAILURES - 1; i++) {
+      expect(await attempt(JUDGE_LOGIN_ID, "wrong-pass", ip(i), NOW + i)).toEqual({ kind: "failed" });
+    }
+    expect(await attempt(JUDGE_LOGIN_ID, "wrong-pass", ip(LOCK_ID_FAILURES - 1), NOW + 60)).toEqual({
+      kind: "locked",
+      retryAfterSec: LOCK_SEC,
+      minutes: 15,
+    });
+    expect((await attempt(JUDGE_LOGIN_ID, JUDGE_PW, IP_B, NOW + 61)).kind).toBe("locked");
+    expect((await attempt("yamamoto", CM_PW, IP_B, NOW + 61)).kind).toBe("ok");
+  });
+
+  it("送信元が分からない（CF-Connecting-IP が無い）ときは送信元で数えず、ID を 10 回で止める", async () => {
     for (let i = 0; i < LOCK_FAILURES; i++) await attempt(`guess-${i}`, "wrong-pass", null, NOW + i);
     expect((await attempt("yamamoto", CM_PW, null, NOW + 20)).kind).toBe("ok");
     expect(rows().every((r) => r.ip === UNKNOWN_IP)).toBe(true);
@@ -170,8 +186,8 @@ describe("ID と送信元", () => {
   });
 
   it("ID は前後の空白を落として数える", async () => {
-    for (let i = 0; i < LOCK_FAILURES; i++) await attempt(i % 2 ? ` ${JUDGE_LOGIN_ID} ` : JUDGE_LOGIN_ID, "x", IP_A, NOW + i);
-    expect((await attempt(JUDGE_LOGIN_ID, JUDGE_PW, IP_B, NOW + 20)).kind).toBe("locked");
+    for (let i = 0; i < LOCK_FAILURES; i++) await attempt(i % 2 ? ` ${JUDGE_LOGIN_ID} ` : JUDGE_LOGIN_ID, "x", null, NOW + i);
+    expect((await attempt(JUDGE_LOGIN_ID, JUDGE_PW, null, NOW + 20)).kind).toBe("locked");
   });
 });
 
@@ -206,6 +222,9 @@ describe("小さな部品", () => {
     expect(lockRemaining(ten(1), 1000 + LOCK_SEC)).toBe(0);
     expect(lockRemaining(ten(100), 1000)).toBe(0);
     expect(lockRemaining(ten(99), 1000)).toBe(LOCK_SEC);
+    const fifty = Array.from({ length: LOCK_ID_FAILURES }, (_, i) => 1000 - i);
+    expect(lockRemaining(fifty.slice(0, LOCK_ID_FAILURES - 1), 1000, LOCK_ID_FAILURES)).toBe(0);
+    expect(lockRemaining(fifty, 1000, LOCK_ID_FAILURES)).toBe(LOCK_SEC);
   });
 
   it("requestIp は CF-Connecting-IP だけ（X-Forwarded-For は見ない）", () => {
