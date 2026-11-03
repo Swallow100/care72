@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="64" height="64">
+  <!-- ケア72 の印: 72 時間の輪（components/login/Mark72.tsx の満ちた形）。操作の色の輪と本文色の 72 -->
+  <circle cx="50" cy="50" r="40" fill="none" stroke="#116bdf" stroke-width="10"/>
+  <g stroke="#ffffff" stroke-width="3.5">
+    <line x1="50" y1="3" x2="50" y2="17"/>
+    <line x1="50" y1="3" x2="50" y2="17" transform="rotate(120 50 50)"/>
+    <line x1="50" y1="3" x2="50" y2="17" transform="rotate(240 50 50)"/>
+  </g>
+  <text x="50" y="51" text-anchor="middle" dominant-baseline="central" font-family="M PLUS 2, Noto Sans JP, system-ui, sans-serif" font-size="36" font-weight="700" fill="#161b21">72</text>
+</svg>

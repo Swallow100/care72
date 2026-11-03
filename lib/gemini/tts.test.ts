@@ -110,6 +110,11 @@ describe("speak", () => {
     expect(typeof createTtsClient({ GEMINI_API_KEY: "dummy" }).interactions.create).toBe("function");
   });
 
+  it("配信の Secret の名前 GEMINI_TTS でも鍵として読む（GEMINI_API_KEY が先）", () => {
+    expect(typeof createTtsClient({ GEMINI_TTS: "dummy" }).interactions.create).toBe("function");
+    expect(() => createTtsClient({ GEMINI_API_KEY: " ", GEMINI_TTS: " " })).toThrow(AiNotConfigured);
+  });
+
   it("Claude と同じ 1 日の上限に数える", async () => {
     const { ctx } = setup({ GEMINI_API_KEY: "dummy", AI_DAILY_LIMIT: "1" });
     const { tts, calls } = fake();

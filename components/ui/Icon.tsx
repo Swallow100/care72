@@ -6,6 +6,7 @@
 
 export {
   ArrowDownTrayIcon as DownloadIcon, // CSV 出力
+  ArrowRightEndOnRectangleIcon as LoginIcon, // ログイン（扉に入る矢印。ログアウトと対）
   ArrowUturnLeftIcon as RestoreIcon, // 外した物を戻す
   ArrowRightStartOnRectangleIcon as LogoutIcon, // ログアウト（扉から出る矢印）
   ArrowsRightLeftIcon as AssignIcon, // 担当の割当・移す
@@ -15,6 +16,9 @@ export {
   ChevronLeftIcon as BackIcon, // 戻る
   ClipboardDocumentIcon as CopyIcon, // コピー
   DocumentTextIcon as PaperIcon, // 紙面の表示
+  EyeIcon as ShowIcon, // パスワードを表示
+  EyeSlashIcon as HideIcon, // パスワードを隠す
+  LockClosedIcon as PasswordIcon, // パスワードの欄の印
   MagnifyingGlassIcon as SearchIcon, // 検索
   MinusCircleIcon as RemoveIcon, // 外す（人でない物。対応表の欄など）
   PencilSquareIcon as EditIcon, // 編集（AI の下書きを直す）
@@ -22,6 +26,7 @@ export {
   PlayIcon, // 再生・開始
   PlusIcon as AddIcon, // 追加（人でない物）
   PrinterIcon as PrintIcon, // 印刷
+  UserIcon as IdIcon, // ID の欄の印
   UserMinusIcon as UnlistIcon, // 一覧から外す
   UserPlusIcon as AddPersonIcon, // 利用者追加・ケアマネ追加
   UsersIcon as RoleIcon, // 役変更（人の切替）
