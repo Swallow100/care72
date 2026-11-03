@@ -440,14 +440,14 @@ async function loadDetailSource(
     // 列は全部（分類の部品 T12 が読む ai_* の列も、表に足されればそのまま行の詳細に渡る）
     db
       .prepare(
-        `SELECT * FROM signals WHERE drill_id IS NULL AND person_id IN (${mine}) ORDER BY occurred_at, created_at, id`,
+        `SELECT * FROM signals WHERE drill_id IS NULL AND retracted_at IS NULL AND person_id IN (${mine}) ORDER BY occurred_at, created_at, id`,
       )
       .bind(careManagerId, officeId),
     db
       .prepare(
         `SELECT t.person_id, t.body, t.payload, t.occurred_at, a.display_name AS author_name
            FROM timeline_entries t LEFT JOIN accounts a ON a.id = t.author_id
-          WHERE t.kind = 'called' AND t.person_id IN (${mine}) ORDER BY t.occurred_at, t.created_at, t.id`,
+          WHERE t.kind = 'called' AND t.retracted_at IS NULL AND t.person_id IN (${mine}) ORDER BY t.occurred_at, t.created_at, t.id`,
       )
       .bind(careManagerId, officeId),
   ]);

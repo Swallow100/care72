@@ -34,7 +34,8 @@ export default async function PersonPage({ params }: Props) {
   // 災害モードは上の医療の印と時計の欄を今の残りに（situation を渡す）
   // 書類の行の計画書は事業所の選んだ様式（T47）
   const planForm = planFormView(await loadPlanForm(env.DB, rows.person.office_id));
-  const view = toPersonView(rows, { today: todayJst(), mode: d.mode, triage: d.triage, situation: d.situation, scope, planForm });
+  // 経過の撤回のボタン（T63）は見ている人が撤回できる行だけ（lib/timeline/retract.ts。押せるかはサーバーがもう一度決める）
+  const view = toPersonView(rows, { today: todayJst(), mode: d.mode, triage: d.triage, situation: d.situation, scope, planForm, viewer: principal });
   // 入れる欄（T03）はケアマネの役だけ。鍵が無ければ「AI 未設定」と手入力
   const intake = principal.role === "care_manager" ? intakePropsOf(rows, hasAnthropicKey(env)) : null;
 

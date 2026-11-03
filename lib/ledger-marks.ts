@@ -12,7 +12,8 @@ export const MARK_AUTHOR_ROLES = ["care_manager", "medical", "government"] as co
 export type MarkAuthorRole = (typeof MARK_AUTHOR_ROLES)[number];
 export type MarkAuthor = { id: string; role: MarkAuthorRole };
 
-export type NewTimelineEntry = Omit<TimelineEntryRow, "created_at">;
+/** 新しい行（撤回の 3 列は撤回のときだけ。lib/timeline/retract.ts） */
+export type NewTimelineEntry = Omit<TimelineEntryRow, "created_at" | "retracted_at" | "retracted_by" | "retracted_note">;
 
 function assertHuman(by: MarkAuthor): void {
   if (!(MARK_AUTHOR_ROLES as readonly string[]).includes(by.role)) {
