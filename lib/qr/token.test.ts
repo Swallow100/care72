@@ -38,8 +38,8 @@ describe("トークンの署名と期限", () => {
     expect(await verifyQrToken(t, SECRET, NOW + 365 * DAY)).toBeNull();
   });
 
-  it("期限なし・90 日より長い物は作らない", async () => {
-    await expect(signQrToken(payload({ exp: NOW + 90 * DAY + 1 }), SECRET)).rejects.toThrow();
+  it("期限なし・上限（180 日。T64）より長い物は作らない", async () => {
+    await expect(signQrToken(payload({ exp: NOW + 180 * DAY + 1 }), SECRET)).rejects.toThrow();
     await expect(signQrToken(payload({ exp: NOW }), SECRET)).rejects.toThrow();
     await expect(signQrToken({ v: 1, p: "p-01", g: 1, iat: NOW } as unknown as QrPayload, SECRET)).rejects.toThrow();
   });
@@ -91,7 +91,7 @@ describe("版（作り直すと前の物は無効）", () => {
 
   it("種の人はまだ作っていない（版 0）。トークンも無い", async () => {
     const row = (await loadQrRow(db, "p-01"))!;
-    expect(row).toEqual({ qr_generation: 0, qr_issued_at: null });
+    expect(row).toEqual({ qr_generation: 0, qr_issued_at: null, qr_ttl_days: 90 });
     expect(qrState(row, NOW).status).toBe("none");
     expect(await currentQrToken("p-01", row, SECRET)).toBeNull();
   });
