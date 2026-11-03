@@ -1,16 +1,20 @@
 "use client";
 
-// 入れる欄の「質問」: 空欄から次の 1 問（問いの文は定型。Claude は作らない）。
+// 入れる欄の「問い」: 空欄から次の 1 問（問いの文は定型。Claude は作らない）。会話の流れ（Intake.tsx）の最後の吹き出しに出す。
+// 1 問で分かるように、何を聞くか（大きく）・なぜ要るか・答えの例（小さく）を並べる（T45）。
 // 答えは選択肢・数字・文字で、そのまま保存する（手の入力）。決まった形の無い問いは文で答えて抽出（AI）。
 // 「不明」「無回答」は空欄の理由として残し、「次回」はこの回は飛ばして未聴取として残す（どれも計画に「未確認」）。
 
 import { useState } from "react";
+import { SaveIcon } from "@/components/ui/Icon";
+import { SplitIcon } from "./icons";
 import type { PendingStatus } from "@/lib/db/types";
 import { CLOCK_UNIT_LABELS, INTAKE_LABELS, PENDING_STATUS_LABELS, SECTION_LABELS } from "@/lib/labels";
 import { answerChanges, type AnswerInput } from "@/lib/intake/answer";
 import type { Question } from "@/lib/intake/ask";
 import type { IntakeChange } from "@/lib/intake/changes";
-import { BTN, BTN_MAIN, CHECK, INPUT } from "./intake-ui";
+// 問いは面の中の灰色の吹き出しに置くので、欄とボタンは白（_IN）
+import { BTN_IN as BTN, BTN_MAIN, CHECK, INPUT_IN as INPUT } from "./intake-ui";
 
 type Props = {
   question: Question | null;
@@ -24,16 +28,21 @@ type Props = {
 };
 
 export function IntakeQuestion({ question, left, busy, aiReady, onAnswer, onSkip, onFree }: Props) {
-  if (!question) {
-    return (
-      <div data-intake="question">
-        <h3 className="font-bold">{INTAKE_LABELS.question}</h3>
-        <p className="text-muted">{INTAKE_LABELS.noQuestion}</p>
-      </div>
-    );
-  }
+  if (!question) return null;
   // 問いが変わったら答えの入力を空にする（key）
   return <QuestionBody key={question.key} q={question} left={left} busy={busy} aiReady={aiReady} onAnswer={onAnswer} onSkip={onSkip} onFree={onFree} />;
+}
+
+/** 問いの文: 何を聞くか（大きく）・なぜ要るか・答えの例。会話の流れの答えた問いにも同じ形で出す */
+export function QuestionText({ q }: { q: Pick<Question, "text" | "why" | "example"> }) {
+  return (
+    <div className="space-y-0.5">
+      {/* text-base は使わない（地の色と重なる。app/globals.css） */}
+      <p className="text-[15px] leading-snug font-bold">{q.text}</p>
+      {q.why && <p className="text-xs leading-snug">{q.why}</p>}
+      {q.example && <p className="text-xs leading-snug text-muted">{q.example}</p>}
+    </div>
+  );
 }
 
 function QuestionBody({ q, left, busy, aiReady, onAnswer, onSkip, onFree }: Omit<Props, "question"> & { q: Question }) {
@@ -55,15 +64,15 @@ function QuestionBody({ q, left, busy, aiReady, onAnswer, onSkip, onFree }: Omit
   return (
     <div className="space-y-1.5" data-intake="question" data-key={q.key}>
       <div className="flex flex-wrap items-baseline gap-x-2">
-        <h3 className="font-bold">{INTAKE_LABELS.question}</h3>
-        <span className="text-xs text-muted">{SECTION_LABELS[q.section]}</span>
-        <span className="ml-auto text-xs text-muted tabular-nums">残り {left}</span>
+        <span className="text-xs font-bold">{INTAKE_LABELS.ask}</span>
+        <span className="text-xs text-muted">
+          {SECTION_LABELS[q.section]} {q.label}
+        </span>
+        <span className="ml-auto text-xs text-muted tabular-nums" data-intake="left">
+          {INTAKE_LABELS.left} {left} {INTAKE_LABELS.leftUnit}
+        </span>
       </div>
-      <div>
-        <div className="text-xs font-bold">{q.label}</div>
-        {/* text-base は使わない（地の色と重なる。app/globals.css） */}
-        <div className="text-[15px] leading-snug">{q.text}</div>
-      </div>
+      <QuestionText q={q} />
 
       {a.kind === "choice" &&
         (a.multi ? (
@@ -82,6 +91,7 @@ function QuestionBody({ q, left, busy, aiReady, onAnswer, onSkip, onFree }: Omit
               ))}
             </div>
             <button type="button" className={BTN_MAIN} data-press="overlay" disabled={busy || picked.length === 0} onClick={() => submit({ kind: "choice", values: picked })}>
+              <SaveIcon aria-hidden className="size-3.5 shrink-0" />
               {INTAKE_LABELS.save}
             </button>
           </div>
@@ -113,7 +123,8 @@ function QuestionBody({ q, left, busy, aiReady, onAnswer, onSkip, onFree }: Omit
           {a.kind === "clock" && <span className="shrink-0 text-sm">{CLOCK_UNIT_LABELS[a.unit]}</span>}
           {a.kind === "int" && a.unit && <span className="shrink-0 text-sm">{a.unit}</span>}
           <button type="submit" className={`${BTN_MAIN} shrink-0`} data-press="overlay" disabled={busy || value.trim() === ""}>
-            {INTAKE_LABELS.save}
+            <SaveIcon aria-hidden className="size-3.5 shrink-0" />
+              {INTAKE_LABELS.save}
           </button>
         </form>
       )}
@@ -137,6 +148,7 @@ function QuestionBody({ q, left, busy, aiReady, onAnswer, onSkip, onFree }: Omit
           )}
           <div className="flex gap-1">
             <button type="button" className={BTN_MAIN} data-press="overlay" disabled={busy || picked.length === 0} onClick={() => submit({ kind: "night", contactIds: picked })}>
+              <SaveIcon aria-hidden className="size-3.5 shrink-0" />
               {INTAKE_LABELS.save}
             </button>
             {a.contacts.length > 0 && (
@@ -158,7 +170,8 @@ function QuestionBody({ q, left, busy, aiReady, onAnswer, onSkip, onFree }: Omit
         >
           <textarea className={INPUT} rows={2} value={value} onChange={(e) => setValue(e.target.value)} aria-label={q.label} disabled={!aiReady} />
           <button type="submit" className={BTN_MAIN} data-press="overlay" disabled={busy || !aiReady || value.trim() === ""}>
-            {INTAKE_LABELS.extract}
+            <SplitIcon aria-hidden className="size-3.5 shrink-0" />
+            {INTAKE_LABELS.split}
           </button>
         </form>
       )}

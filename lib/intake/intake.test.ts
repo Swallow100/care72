@@ -13,7 +13,8 @@ import { loadCaseload } from "../caseload.ts";
 import { askJson, type AskJsonContext } from "../claude/call.ts";
 import type { ClaudeClient } from "../claude/client.ts";
 import { AiBadOutput, AiCallFailed, AiLimitReached, AiNotConfigured, AiRefused } from "../claude/errors.ts";
-import { SONNET } from "../claude/models.ts";
+import { OPUS, SONNET } from "../claude/models.ts";
+import { FORM_FILE_MAX_BYTES, toFormFile } from "../forms/form-read.ts";
 import { d1UsageStore } from "../claude/usage.ts";
 import { applyLedgerChanges, parseLedger } from "../db/ledger.ts";
 import { d1FromSqlite, migratedSqlite } from "../db/test-d1.ts";
@@ -21,12 +22,12 @@ import type { Ledger } from "../db/types.ts";
 import { loadPersonPage, toPersonView, type PersonPageRows } from "../person.ts";
 import { pseudonymize, pseudonymizeText } from "../pseudonym/index.ts";
 import { answerChanges } from "./answer.ts";
-import { nextQuestion, questionQueue } from "./ask.ts";
+import { FIELD_QUESTIONS, GENERATED_QUESTIONS, NOT_ASKED, nextQuestion, questionQueue } from "./ask.ts";
 import type { IntakeChange } from "./changes.ts";
 import { buildDiff, restoreNote, sentencesOf } from "./diff.ts";
-import { buildExtractRequest, EXTRACT_SYSTEM, extractIntake, pseudonymInputOf } from "./extract.ts";
-import { INTAKE_FIELDS, ledgerValue as ledgerValueOf } from "./fields.ts";
-import { manualChanges } from "./manual.ts";
+import { buildExtractRequest, EXTRACT_RULES, EXTRACT_SYSTEM, extractIntake, pseudonymInputOf } from "./extract.ts";
+import { buildReadIntakeRequest, INTAKE_READ_SYSTEM, readIntake } from "./read.ts";
+import { INTAKE_FIELDS } from "./fields.ts";
 import { aiFailReasonOf, intakeErrorOf } from "./http.ts";
 import { AI_FAIL_REASON_LABELS } from "../labels.ts";
 import { markPreview, planMarkClocks } from "./marks.ts";
@@ -272,6 +273,47 @@ describe("分ける（lib/intake/extract.ts）", () => {
     expect(p.items.find((i) => i.label === "特記")?.next).toBe("88 歳、独居、認知症で民生委員の〇〇さんが週 2 回来る。");
   });
 
+  it("写真・PDF を読む（T45）: Opus を 1 回、書類は添え物で、本人は仮名化した台帳だけ。写した氏名・電話は伏せ字に戻して差分に", async () => {
+    // 書類から写してしまった氏名・電話（指示に反した返事）の代わり
+    const out: ExtractOutput = {
+      ...SATO_OUTPUT,
+      contacts: [{ kind: "welfare_commissioner", relation: "", night: "unknown", note: "清水 正子 090-0000-0019 週 2 回" }],
+      notes: [],
+    };
+    const { client, calls } = fakeClaude(out);
+    const { ctx, calls: aiCalls } = aiCtx({ ANTHROPIC_API_KEY: "dummy" }, client);
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
+    const file = toFormFile(png);
+    if (!file.ok) throw new Error("png");
+    const p = await readIntake(seedRows(seed("p-04")), file.file, ctx, { today: TODAY });
+    expect(calls).toHaveLength(1);
+    expect(calls[0].model).toBe(OPUS);
+    const content = calls[0].messages[0].content as Array<{ type: string }>;
+    expect(content.map((b) => b.type)).toEqual(["image", "text"]);
+    const sent = JSON.stringify(content[1]);
+    for (const secret of ["佐藤", "キミ", "清水", "1938-03-05", "090-0000-0004"]) expect(sent).not.toContain(secret);
+    expect(JSON.stringify(calls[0].system)).toContain("氏名・住所・電話番号・生年月日");
+    // 用途は台帳の入力のまま（記録のモデルは答えたモデル。偽の返事は Sonnet の名前）
+    expect(aiCalls()).toMatchObject([{ purpose: "ledger_input", status: "ok", error: null }]);
+    // 返った文の電話は伏せ字（印が付き人が直す）、名前は台帳の役割名から氏名に戻る
+    const c = p.items.find((i) => i.label === "民生委員")!;
+    // 書類から写した部分（備考）は「民生委員 （電話） 週 2 回」。前の部分は今の連絡先の行の言葉
+    expect(c.next).toContain("民生委員 （電話） 週 2 回");
+    expect(c.next).not.toContain("清水 正子 090-0000-0019 週");
+    expect(c.masked).toBe(true);
+    expect(p.items.map((i) => i.label)).toContain("既往");
+    // 決まりは文の分け方と同じ
+    expect(INTAKE_READ_SYSTEM).toContain(EXTRACT_RULES);
+    expect(buildReadIntakeRequest(pseudonymize([pseudonymInputOf(seedRows(seed("p-04")))], { on: TODAY }).payload, file.file).purpose).toBe("ledger_input");
+  });
+
+  it("写真・PDF は中身の頭で形を決め、上限を超える物・空の物・形の違う物は読まない", () => {
+    expect(toFormFile(new Uint8Array([]))).toEqual({ ok: false, error: "empty" });
+    expect(toFormFile(new TextEncoder().encode("hello"))).toEqual({ ok: false, error: "type" });
+    expect(toFormFile(new Uint8Array(FORM_FILE_MAX_BYTES + 1))).toEqual({ ok: false, error: "too_large" });
+    expect(toFormFile(new TextEncoder().encode("%PDF-1.7 x"))).toMatchObject({ ok: true, file: { kind: "pdf" } });
+  });
+
   it("system に決まり（埋まった欄は変えない・言い換えない・選択肢の値・医療依存を決めない）と欄の一覧", () => {
     expect(EXTRACT_SYSTEM).toContain("言い換えない");
     expect(EXTRACT_SYSTEM).toContain("今の台帳の値は変えない");
@@ -358,7 +400,7 @@ describe("次の問い（lib/intake/ask.ts）", () => {
     const firstOther = groups.indexOf("other");
     expect(lastMedical).toBeLessThan(firstNight);
     expect(firstNight).toBeLessThan(firstOther);
-    expect(q[firstNight]).toMatchObject({ key: "people.night_supporter", text: "夜間に来られる人は" });
+    expect(q[firstNight]).toMatchObject({ key: "people.night_supporter", text: GENERATED_QUESTIONS.night.text });
     // 埋まっている欄（世帯・認知症・介護度）は問わない
     expect(q.map((x) => x.key)).not.toContain("basic.household");
     expect(q.map((x) => x.key)).not.toContain("care.dementia");
@@ -391,6 +433,30 @@ describe("次の問い（lib/intake/ask.ts）", () => {
     }
   });
 
+  it("欄の表の欄は、問わない欄のほか全部に問いの文（何を・なぜ・例）がある", () => {
+    const asked = INTAKE_FIELDS.filter((f) => !NOT_ASKED.has(f.key)).map((f) => f.key);
+    expect(asked.filter((k) => !FIELD_QUESTIONS[k])).toEqual([]);
+    // 表に余分な欄（欄の表から消えた欄）を残さない
+    expect(Object.keys(FIELD_QUESTIONS).filter((k) => !asked.includes(k))).toEqual([]);
+  });
+
+  it("全部の空欄の問いが 1 問で分かる文: 何を（。で終わる）・なぜ・例（「例: 」で始まる）。現場の言葉で書く", () => {
+    // 種の 10 人と、台帳が空の人（全部の欄を問う）
+    const empty = { ...seedRows(seed("p-04"), parseLedger("{}")), contacts: [] };
+    const all = [...SEED_PEOPLE.map((p) => questionQueue(seedRows(p))), questionQueue(empty)].flat();
+    expect(questionQueue(empty).length).toBeGreaterThanOrEqual(INTAKE_FIELDS.length - NOT_ASKED.size);
+    for (const x of all) {
+      expect(x.text, x.key).toMatch(/[。）]$/);
+      expect(x.why, x.key).toMatch(/。$/);
+      expect(x.why.length, x.key).toBeGreaterThan(8);
+      expect(x.example, x.key).toMatch(/^例: \S/);
+      for (const w of ["診断", "判定", "重症", "危険", "病気がわかる"]) expect(`${x.text}${x.why}${x.example}`, x.key).not.toContain(w);
+    }
+    // 薬の名前は問いの文に入る（何の薬か分かる）が、Claude に渡す言葉には入らない（下のテスト）
+    const sato = questionQueue(seedRows(seed("p-04")));
+    expect(sato.find((x) => x.label === "抗認知症薬 保管")?.text).toContain("抗認知症薬");
+  });
+
   it("答え → 変更: 選択肢・薬の残り・夜間の連絡先・分からない", () => {
     const q = questionQueue(seedRows(seed("p-04")));
     const remain = q.find((x) => x.label === "抗認知症薬 残り")!;
@@ -410,26 +476,6 @@ describe("次の問い（lib/intake/ask.ts）", () => {
 });
 
 // ---------- 手入力 ----------
-
-describe("手入力（lib/intake/manual.ts）", () => {
-  const sato = seed("p-04").ledger;
-  const initial = () => Object.fromEntries(INTAKE_FIELDS.map((f) => [f.key, ledgerValueOf(sato, f.key)]));
-
-  it("変えた欄だけを送る。今の値を変えた欄は上書き、空いた欄は追加。形の合わない値は送らない", () => {
-    const values = { ...initial(), "basic.housing.bedroom": "奥の和室", "care.careLevel": "care3", "basic.housing.floor": "二階", "medical.allergies": "卵、そば" };
-    const changes = manualChanges(sato, values, { "0.amount": "1 錠" }, [{ name: "降圧薬", category: "other", schedule: "", amount: "", storage: "" }], ["oxygen"], [], " 夜は眠れないと言う ");
-    expect(changes).toEqual([
-      { t: "field", key: "medical.allergies", value: ["卵", "そば"] },
-      { t: "field", key: "basic.housing.bedroom", value: "奥の和室" },
-      { t: "field", key: "care.careLevel", value: "care3", overwrite: true },
-      { t: "medication", index: 0, value: { name: "抗認知症薬", category: "other", amount: "1 錠" } },
-      { t: "medication", value: { name: "降圧薬", category: "other" } },
-      { t: "device", value: { kind: "oxygen" } },
-      { t: "note", value: "夜は眠れないと言う" },
-    ]);
-    expect(manualChanges(sato, initial(), {}, [], [], [], "")).toEqual([]);
-  });
-});
 
 // ---------- 医療依存の印 ----------
 
@@ -659,6 +705,218 @@ describe("保存（lib/intake/save.ts）", () => {
 });
 
 // ---------- 変更点の画面 ----------
+
+describe("本人のページの面の「編集」の保存（lib/intake/save.ts の edit、T45）", () => {
+  let sqlite: DatabaseSync;
+  let db: D1Database;
+  const cm: Principal = {
+    role: "care_manager",
+    judge: false,
+    admin: true,
+    accountId: "acct-yamamoto",
+    displayName: "山本",
+    office: { id: "office-demo", name: "デモ事業所", kind: "demo" },
+    caseloadOf: "acct-yamamoto",
+    personId: null,
+    contactId: null,
+  };
+  const NOW = new Date("2026-11-03T02:00:00.000Z");
+  beforeEach(() => {
+    sqlite = migratedSqlite();
+    for (const s of seedStatements()) sqlite.exec(s);
+    db = d1FromSqlite(sqlite);
+  });
+  const edit = (personId: string, changes: IntakeChange[], over: Partial<SaveRequest> = {}): SaveRequest =>
+    ({ personId, version: 1, ai: null, edit: true, changes, ...over }) as SaveRequest;
+  const ledgerOf = (id: string) =>
+    parseLedger((sqlite.prepare("SELECT ledger FROM people WHERE id = ?").get(id) as { ledger: string }).ledger);
+  const inputRows = async (id: string) => {
+    const rows = await loadPersonPage(db, cm, id);
+    const items = toPersonView(rows!, { today: TODAY }).sections.find((s) => s.id === "timeline")!.blocks.flatMap((b) => (b.type === "timeline" ? b.items : []));
+    return items.filter((t) => !t.derived);
+  };
+
+  it("埋まった欄・薬・機器・連絡先・時計も上書きし、経過に「ケアマネが直した」が 1 行（AI の印なし）", async () => {
+    const r = await saveIntake(
+      db,
+      cm,
+      edit("p-01", [
+        { t: "field", key: "evacuation.destination1", value: "みなと中学校", overwrite: true },
+        { t: "medication", index: 0, value: { name: "ワーファリン", category: "anticoagulant", schedule: "1 日 1 回 朝", amount: "1 錠" }, overwrite: true },
+        { t: "device", value: { kind: "oxygen", detail: "酸素濃縮器 2 L/分" }, overwrite: true },
+        { t: "contact", id: "c-01-1", value: { kind: "family", phone: "090-0000-0099", nightOk: true }, overwrite: true },
+        { t: "clock", clockId: "k-01-1", medIndex: null, label: "酸素 内蔵電池", value: 3, unit: "hour", overwrite: true },
+      ]),
+      NOW,
+    );
+    expect(r).toMatchObject({ ok: true, version: 2 });
+    const l = ledgerOf("p-01");
+    expect(l.evacuation.destination1).toBe("みなと中学校");
+    expect(l.medical.medications[0]).toMatchObject({ schedule: "1 日 1 回 朝", amount: "1 錠", interruptionRisk: true });
+    expect(l.medical.devices[0].detail).toBe("酸素濃縮器 2 L/分");
+    expect(sqlite.prepare("SELECT phone, night_ok FROM contacts WHERE id = 'c-01-1'").get()).toEqual({ phone: "090-0000-0099", night_ok: 1 });
+    expect(sqlite.prepare("SELECT value, source, confirmed_at FROM clocks WHERE id = 'k-01-1'").get()).toEqual({
+      value: 3,
+      source: "care_manager",
+      confirmed_at: NOW.toISOString(),
+    });
+    const lines = await inputRows("p-01");
+    expect(lines).toHaveLength(1);
+    expect(lines[0].body).toMatch(/^ケアマネが直した: /);
+    expect(lines[0].body).toContain("避難先1");
+    expect(lines[0]).not.toHaveProperty("ai");
+  });
+
+  it("AI の分け方・問いの答えの保存では、上書き（欄のほか）・同意・頼り先の確認は送れない", async () => {
+    const over = { t: "clock", clockId: "k-01-1", medIndex: null, label: "酸素 内蔵電池", value: 9, unit: "hour", overwrite: true } as const;
+    expect(await saveIntake(db, cm, edit("p-01", [over], { edit: false }), NOW)).toEqual({ ok: false, error: "forbidden" });
+    expect(await saveIntake(db, cm, edit("p-01", [{ t: "consent", kind: "medical", status: "refused" }], { edit: undefined }), NOW)).toEqual({
+      ok: false,
+      error: "forbidden",
+    });
+    // 編集と AI の印は一緒に送らない
+    expect(await saveIntake(db, cm, edit("p-01", [over], { ai: { model: SONNET } }), NOW)).toEqual({ ok: false, error: "forbidden" });
+    // 編集でない保存の時計は、値の入った時計を変えない（今まで通り）
+    const r = await saveIntake(db, cm, edit("p-01", [{ ...over, overwrite: undefined }], { edit: false }), NOW);
+    expect(r).toMatchObject({ ok: true, changed: 0 });
+    expect(sqlite.prepare("SELECT value FROM clocks WHERE id = 'k-01-1'").get()).toEqual({ value: 2 });
+  });
+
+  it("版が違えば書かない（競合）", async () => {
+    const r = await saveIntake(db, cm, edit("p-01", [{ t: "field", key: "evacuation.pets", value: "猫" }], { version: 7 }), NOW);
+    expect(r).toEqual({ ok: false, error: "conflict" });
+    expect(ledgerOf("p-01").evacuation.pets).toBeUndefined();
+  });
+
+  it("時計の頼り先の確認を変えると、時計と経過（時計確認）に残る。同意は記録した人と時刻ごと", async () => {
+    const r = await saveIntake(
+      db,
+      cm,
+      edit("p-03", [
+        { t: "clockCheck", clockId: "k-03-1", to: "confirmed" },
+        { t: "consent", kind: "supporters", status: "refused" },
+        { t: "consent", kind: "registry", status: "granted" }, // 今と同じ → 変えない
+      ]),
+      NOW,
+    );
+    expect(r).toMatchObject({ ok: true, changed: 2 });
+    expect(sqlite.prepare("SELECT depends_check FROM clocks WHERE id = 'k-03-1'").get()).toEqual({ depends_check: "confirmed" });
+    expect(sqlite.prepare("SELECT status, recorded_by, recorded_at FROM consents WHERE person_id = 'p-03' AND kind = 'supporters'").get()).toEqual({
+      status: "refused",
+      recorded_by: "acct-yamamoto",
+      recorded_at: NOW.toISOString(),
+    });
+    const kinds = (sqlite.prepare("SELECT kind, body FROM timeline_entries WHERE person_id = 'p-03' ORDER BY kind").all() as Array<{ kind: string; body: string }>);
+    expect(kinds.map((k) => k.kind)).toEqual(["clock_check", "note"]);
+    expect(kinds[0].body).toContain("確認済");
+    expect(kinds[1].body).toBe("ケアマネが直した: 時計・同意");
+  });
+
+  it("外す: 欄・薬・機器・ハザード・特記・連絡先の行を外し、薬と機器の時計も消す。本人の行は外さない。経過に「ケアマネが外した」", async () => {
+    const r = await saveIntake(
+      db,
+      cm,
+      edit("p-01", [
+        { t: "remove", target: { what: "field", key: "evacuation.destination1" } },
+        { t: "remove", target: { what: "medication", index: 0, name: "ワーファリン" } },
+        { t: "remove", target: { what: "device", kind: "oxygen" } },
+        { t: "remove", target: { what: "hazard", kind: "flood" } },
+        { t: "remove", target: { what: "note", value: "薬は 2 階の箪笥" } },
+        { t: "remove", target: { what: "contact", id: "c-01-2" } },
+        { t: "remove", target: { what: "contact", id: "c-01-0" } }, // 本人の行 → 外さない
+      ]),
+      NOW,
+    );
+    expect(r).toMatchObject({ ok: true, version: 2 });
+    const l = ledgerOf("p-01");
+    expect(l.evacuation.destination1).toBeUndefined();
+    expect(l.medical.medications).toEqual([]);
+    expect(l.medical.devices).toEqual([]);
+    expect(l.evacuation.hazards).toEqual([]);
+    expect(l.notes).toEqual([]);
+    const contacts = (sqlite.prepare("SELECT id FROM contacts WHERE person_id = 'p-01' ORDER BY id").all() as Array<{ id: string }>).map((c) => c.id);
+    expect(contacts).toEqual(["c-01-0", "c-01-1"]);
+    const clocks = (sqlite.prepare("SELECT id FROM clocks WHERE person_id = 'p-01' ORDER BY id").all() as Array<{ id: string }>).map((c) => c.id);
+    expect(clocks).not.toContain("k-01-1");
+    expect(clocks).not.toContain("k-01-2");
+    expect(clocks).not.toContain("k-01-3");
+    const lines = await inputRows("p-01");
+    expect(lines).toHaveLength(1);
+    expect(lines[0].body).toMatch(/^ケアマネが外した: /);
+    for (const name of ["避難先1", "薬", "機器", "ハザード", "特記", "連絡先", "時計"]) expect(lines[0].body).toContain(name);
+    expect(lines[0]).not.toHaveProperty("ai");
+  });
+
+  it("外す: 名前が合わない薬・無い物は外さない（変更 0）", async () => {
+    const r = await saveIntake(
+      db,
+      cm,
+      edit("p-01", [
+        { t: "remove", target: { what: "medication", index: 0, name: "別の薬" } },
+        { t: "remove", target: { what: "hazard", kind: "landslide" } },
+        { t: "remove", target: { what: "field", key: "evacuation.pets" } },
+      ]),
+      NOW,
+    );
+    expect(r).toMatchObject({ ok: true, changed: 0 });
+    expect(ledgerOf("p-01").medical.medications).toHaveLength(1);
+  });
+
+  it("直すと外すを 1 つの保存で: 経過は「ケアマネが直した: 〜。ケアマネが外した: 〜」", async () => {
+    const r = await saveIntake(
+      db,
+      cm,
+      edit("p-01", [
+        { t: "field", key: "evacuation.pets", value: "猫", overwrite: true },
+        { t: "remove", target: { what: "note", value: "薬は 2 階の箪笥" } },
+      ]),
+      NOW,
+    );
+    expect(r).toMatchObject({ ok: true });
+    const lines = await inputRows("p-01");
+    expect(lines[0].body).toBe("ケアマネが直した: ペット。ケアマネが外した: 特記");
+  });
+
+  it("時計の値を今日確かめた（値は同じ）: 確認の日付だけ今に、経過に「ケアマネが確認した」。値の無い時計は飛ばす", async () => {
+    const r = await saveIntake(
+      db,
+      cm,
+      edit("p-01", [
+        { t: "clockSeen", clockId: "k-01-1" },
+        { t: "clockSeen", clockId: "k-01-3" }, // 値なし → 飛ばす
+      ]),
+      NOW,
+    );
+    expect(r).toMatchObject({ ok: true, changed: 1 });
+    expect(sqlite.prepare("SELECT value, unit, confirmed_at FROM clocks WHERE id = 'k-01-1'").get()).toEqual({
+      value: 2,
+      unit: "hour",
+      confirmed_at: NOW.toISOString(),
+    });
+    expect(sqlite.prepare("SELECT confirmed_at FROM clocks WHERE id = 'k-01-2'").get()).toEqual({ confirmed_at: "2026-11-02T03:00:00.000Z" });
+    const lines = await inputRows("p-01");
+    expect(lines).toHaveLength(1);
+    expect(lines[0].body).toBe("ケアマネが確認した: 時計");
+  });
+
+  it("外す・値の確認は手で直すときだけ（AI の分け方・問いの答えの保存には混ぜない）", async () => {
+    const remove = { t: "remove", target: { what: "note", value: "薬は 2 階の箪笥" } } as const;
+    expect(await saveIntake(db, cm, edit("p-01", [remove], { edit: false }), NOW)).toEqual({ ok: false, error: "forbidden" });
+    expect(await saveIntake(db, cm, edit("p-01", [{ t: "clockSeen", clockId: "k-01-1" }], { edit: undefined }), NOW)).toEqual({
+      ok: false,
+      error: "forbidden",
+    });
+    expect(ledgerOf("p-01").notes).toEqual(["薬は 2 階の箪笥"]);
+  });
+
+  it("薬を手で直すと空にした所は消え、区分を変えると中断注意の印を区分から付け直す", () => {
+    const l = seed("p-01").ledger;
+    const { ledger } = applyLedgerChanges(l, [
+      { t: "medication", index: 0, value: { name: "ワーファリン", category: "other", schedule: "" }, overwrite: true },
+    ]);
+    expect(ledger.medical.medications[0]).toEqual({ name: "ワーファリン", category: "other" });
+  });
+});
 
 describe("変更点の画面（components/person/IntakeChanges.tsx）", () => {
   const rows = seedRows(seed("p-04"));

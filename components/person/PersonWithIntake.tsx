@@ -13,7 +13,8 @@ export function PersonWithIntake({ view, level, intake }: { view: View; level: L
     <div className="@container">
       <div className="grid gap-2 @[56rem]:grid-cols-[minmax(0,1fr)_20rem]">
         <div className="order-2 min-w-0 @[56rem]:order-1">
-          <PersonView view={view} level={level} />
+          {/* 面の右上の「編集」で手で直す（T45）。手入力は右の欄から左の面へ移した */}
+          <PersonView view={view} level={level} edit={intake.edit} />
         </div>
         {/* 内側で送らない（送るのは画面全体の縦 1 本）。右の列はページの流れに置く */}
         <aside aria-label="入力" className="order-1 min-w-0 self-start @[56rem]:order-2">

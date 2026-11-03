@@ -1,19 +1,140 @@
-// app/layout.tsx の先頭に置く小さな script（T44）。部品が描かれる前、読み込みのいちばん早いうちに動かしたい物だけ。
-// 中身は文字のまま <script> に入れるので、ここでは ES5 の書き方で、外の物を import しない。名前は lib/ui/install.ts と揃える。
+// 画面の部品が描かれる前に <head> で動かす小さな script（T51 で書き直した）。app/layout.tsx が文字のまま入れる。
+// ES5 で書き、import しない（Next の束ねに入らず、hydration を待たずに動く）。名前は lib/ui/install.ts から差し込む。
+//
+// PRESS_SCRIPT: 押したときの灰色。iPhone の :active は指を置いた瞬間に出ず、短く叩くと離したあと一瞬しか出ないので補う。
+//   押す物に data-pressing="on"（置いた瞬間）→ "out"（離して、置いてから 120ms 以上たってから）→ 外す（その 360ms 後）。
+//   色は app/globals.css の [data-press][data-pressing] が持つ（ここは印を付けるだけ）。押した回（click）は邪魔しない。
+//   スクロールが始まる・指が 8px 以上動く・pointercancel・窓の blur ですぐ消す（送り始めに灰色を残さない）。
+// INSTALL_SCRIPT: ホーム画面に追加の 1 押しの画面（beforeinstallprompt）を受けて取っておく。入れたら印。LINE の外で開き直したら
+//   アドレスの openExternalBrowser を外す。
 
-/**
- * 押したときの灰色（globals.css の [data-pressing]）。:active だけだと、iPhone では指を置いた瞬間に出ず、
- * 短く叩くと離した後に一瞬しか出ない。ここでは pointerdown で data-pressing="on" を付け、離しても 120ms は残し、
- * "out" にして灰色をふわっと消す（360ms 後に印を外す）。スクロールが始まったら（pointercancel・scroll）すぐ消す。
- * - 押せない物（disabled・aria-disabled）と、data-no-press の中は付けない（連打する面など）
- * - data-press-host="<選択子>" を持つ物は、その祖先（行全体など）に付ける（行の一部だけがボタンのとき）
- * 色を付けるのは CSS の [data-press] の物だけ（data-press の無いボタンに印が付いても見た目は変わらない）。
- */
-export const PRESS_SCRIPT = String.raw`(function(){var P='button,a[href],[role="button"],[role="tab"],[role="option"],summary,label,[data-press]',S=':disabled,[aria-disabled="true"]',c=null,t=0;function clr(e){if(e&&e.dataset&&e.dataset.pressing)delete e.dataset.pressing;}function cancel(){if(c)clr(c);c=null;}var o={capture:true,passive:true};document.addEventListener("pointerdown",function(v){if(v.button!==0||!v.target||!v.target.closest)return;var e;try{e=v.target.closest(P);}catch(x){return;}if(!e||!e.dataset||e.matches(S)||e.closest("[data-no-press]"))return;var hs=e.getAttribute("data-press-host"),h=null;try{h=hs&&e.closest(hs);}catch(x){}if(h)e=h;if(c&&c!==e)clr(c);c=e;t=Date.now();e.dataset.pressing="on";},o);document.addEventListener("pointerup",function(){var e=c;if(!e)return;c=null;setTimeout(function(){if(e.dataset.pressing!=="on")return;e.dataset.pressing="out";setTimeout(function(){if(e.dataset.pressing==="out")clr(e);},360);},Math.max(0,120-(Date.now()-t)));},o);document.addEventListener("pointercancel",cancel,o);document.addEventListener("scroll",cancel,o);window.addEventListener("blur",cancel);})();`;
+import { EXTERNAL_BROWSER_PARAM, INSTALL_PROMPT_KEY, INSTALL_READY_EVENT, INSTALLED_KEY } from "./install";
 
-/**
- * ホーム画面に追加（Android の Chrome などの 1 押しで入る画面）。beforeinstallprompt は読み込みの早いうちに 1 回だけ来るので、
- * 部品が描かれる前にここで受けて window.__care72Install に取っておき、care72-install-ready を投げる（components/phone/InstallHint.tsx が聞く）。
- * 入ったら（appinstalled）__care72Installed を立てる。LINE の外のブラウザで開き直したときは、付けた openExternalBrowser をアドレスから外す。
- */
-export const INSTALL_SCRIPT = String.raw`(function(){var w=window;try{if(!/\bLine\//i.test(navigator.userAgent)){var u=new URL(location.href);if(u.searchParams.has("openExternalBrowser")){u.searchParams.delete("openExternalBrowser");history.replaceState(history.state,"",u.pathname+u.search+u.hash);}}}catch(x){}w.addEventListener("beforeinstallprompt",function(e){e.preventDefault();w.__care72Install=e;w.dispatchEvent(new Event("care72-install-ready"));});w.addEventListener("appinstalled",function(){w.__care72Install=null;w.__care72Installed=1;w.dispatchEvent(new Event("care72-install-ready"));});})();`;
+/** 印を付ける物（data-press を持たない物も、ブラウザの既定の押す物は拾う。色が付くのは data-press の物だけ） */
+export const PRESS_TARGETS = "button,a[href],[role=button],[role=tab],[role=option],summary,label,[data-press]";
+/** 離してから消え始めるまでの、置いてからの最短の時間 */
+export const PRESS_MIN_MS = 120;
+/** "out" にしてから印を外すまで（globals.css の 0.32 秒の戻りより少し長く） */
+export const PRESS_FADE_MS = 360;
+/** 指がこれだけ動いたら押すのでなく送ると見て消す */
+export const PRESS_MOVE_PX = 8;
+
+export const PRESS_SCRIPT = `(function (w, d) {
+  if (!w.addEventListener || !d.documentElement) return;
+  var TARGETS = ${JSON.stringify(PRESS_TARGETS)};
+  var MIN = ${PRESS_MIN_MS}, FADE = ${PRESS_FADE_MS}, MOVE = ${PRESS_MOVE_PX};
+  var held = null, pointer = null, downAt = 0, x0 = 0, y0 = 0, timer = 0;
+
+  function pick(node) {
+    var el = node && node.nodeType === 3 ? node.parentNode : node;
+    if (!el || !el.closest) return null;
+    try {
+      if (el.closest("[data-no-press]")) return null;
+      var hit = el.closest(TARGETS);
+      if (!hit || hit.disabled || hit.getAttribute("aria-disabled") === "true") return null;
+      var host = hit.getAttribute("data-press-host");
+      if (host) {
+        try {
+          var up = hit.closest(host);
+          if (up) hit = up;
+        } catch (e) {}
+      }
+      return hit;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function stopTimer() {
+    if (timer) {
+      w.clearTimeout(timer);
+      timer = 0;
+    }
+  }
+
+  function drop() {
+    stopTimer();
+    if (held) held.removeAttribute("data-pressing");
+    held = null;
+    pointer = null;
+  }
+
+  function letGo() {
+    if (!held) return;
+    var el = held;
+    pointer = null;
+    stopTimer();
+    var wait = MIN - (Date.now() - downAt);
+    timer = w.setTimeout(function () {
+      if (held !== el) return;
+      el.setAttribute("data-pressing", "out");
+      timer = w.setTimeout(function () {
+        timer = 0;
+        if (held !== el) return;
+        el.removeAttribute("data-pressing");
+        held = null;
+      }, FADE);
+    }, wait > 0 ? wait : 0);
+  }
+
+  w.addEventListener("pointerdown", function (e) {
+    drop();
+    if (e.button !== 0 || e.isPrimary === false) return;
+    var el = pick(e.target);
+    if (!el) return;
+    held = el;
+    pointer = e.pointerId;
+    downAt = Date.now();
+    x0 = e.clientX;
+    y0 = e.clientY;
+    el.setAttribute("data-pressing", "on");
+  }, { capture: true, passive: true });
+
+  w.addEventListener("pointermove", function (e) {
+    if (!held || pointer === null || e.pointerId !== pointer) return;
+    var dx = e.clientX - x0, dy = e.clientY - y0;
+    if (dx * dx + dy * dy >= MOVE * MOVE) drop();
+  }, { capture: true, passive: true });
+
+  w.addEventListener("pointerup", function (e) {
+    if (pointer !== null && e.pointerId === pointer) letGo();
+  }, { capture: true, passive: true });
+
+  w.addEventListener("pointercancel", drop, { capture: true, passive: true });
+  w.addEventListener("scroll", drop, { capture: true, passive: true });
+  w.addEventListener("blur", drop);
+})(window, document);`;
+
+export const INSTALL_SCRIPT = `(function (w) {
+  if (!w.addEventListener) return;
+  var KEY = ${JSON.stringify(INSTALL_PROMPT_KEY)}, DONE = ${JSON.stringify(INSTALLED_KEY)}, READY = ${JSON.stringify(INSTALL_READY_EVENT)};
+  var PARAM = ${JSON.stringify(EXTERNAL_BROWSER_PARAM)};
+
+  function tell() {
+    try {
+      w.dispatchEvent(new Event(READY));
+    } catch (e) {}
+  }
+
+  w.addEventListener("beforeinstallprompt", function (e) {
+    e.preventDefault();
+    w[KEY] = e;
+    tell();
+  });
+
+  w.addEventListener("appinstalled", function () {
+    w[KEY] = null;
+    w[DONE] = true;
+    tell();
+  });
+
+  try {
+    if (!/\\bLine\\/\\d/i.test(navigator.userAgent) && w.URL && w.history && w.history.replaceState) {
+      var u = new URL(w.location.href);
+      if (u.searchParams.has(PARAM)) {
+        u.searchParams["delete"](PARAM);
+        w.history.replaceState(w.history.state, "", u.pathname + u.search + u.hash);
+      }
+    }
+  } catch (e) {}
+})(window);`;

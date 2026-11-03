@@ -14,7 +14,7 @@ import { INTAKE_SECTIONS, intakeField, type IntakeField } from "@/lib/intake/fie
 import { markPreview, planMarkClocks } from "@/lib/intake/marks";
 import { MEDICATION_CATEGORIES } from "@/lib/db/types";
 import { buttonClass } from "@/components/ui/Button";
-import { BTN, BTN_MAIN, CHECK, INPUT_IN } from "./intake-ui";
+import { BTN, BTN_MAIN, CHECK, INPUT, INPUT_IN } from "./intake-ui";
 import { AiMark, StateTag } from "./parts";
 import { Select } from "@/components/ui/Select";
 
@@ -242,12 +242,24 @@ function EditChange({ change, onChange }: { change: IntakeChange; onChange: (c: 
 }
 
 /** 欄の形に合わせた入力。値は欄の形のまま（文字の配列・選択肢の値・真偽・数）か、打っている途中の文字 */
-export function FieldInput({ field, value, onChange }: { field: IntakeField; value: unknown; onChange: (v: unknown) => void }) {
+export function FieldInput({
+  field,
+  value,
+  onChange,
+  onPanel = false,
+}: {
+  field: IntakeField;
+  value: unknown;
+  onChange: (v: unknown) => void;
+  /** 面（白）の上に置く（本人のページの面の編集）。欄は面の中の灰色 */
+  onPanel?: boolean;
+}) {
   const s = field.shape;
+  const box = onPanel ? INPUT : `${INPUT_IN} mt-1`;
   switch (s.type) {
     case "enum":
       return (
-        <Select className={`${INPUT_IN} mt-1`} value={typeof value === "string" ? value : ""} onChange={(e) => onChange(e.target.value)} aria-label={field.label}>
+        <Select className={box} value={typeof value === "string" ? value : ""} onChange={(e) => onChange(e.target.value)} aria-label={field.label}>
           <option value="">未確認</option>
           {s.options.map((o) => (
             <option key={o.value} value={o.value}>
@@ -259,7 +271,7 @@ export function FieldInput({ field, value, onChange }: { field: IntakeField; val
     case "bool":
       return (
         <Select
-          className={`${INPUT_IN} mt-1`}
+          className={box}
           value={value === true ? "true" : value === false ? "false" : ""}
           onChange={(e) => onChange(e.target.value === "" ? undefined : e.target.value === "true")}
           aria-label={field.label}
@@ -272,7 +284,7 @@ export function FieldInput({ field, value, onChange }: { field: IntakeField; val
     case "enumList": {
       const list = Array.isArray(value) ? (value as string[]) : [];
       return (
-        <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
+        <div className={`${onPanel ? "" : "mt-1 "}flex flex-wrap gap-x-3 gap-y-1`}>
           {s.options.map((o) => (
             <label key={o.value} className="inline-flex items-center gap-1 text-sm">
               <input
@@ -290,7 +302,7 @@ export function FieldInput({ field, value, onChange }: { field: IntakeField; val
     case "list":
       return (
         <input
-          className={`${INPUT_IN} mt-1`}
+          className={box}
           value={Array.isArray(value) ? value.join("、") : typeof value === "string" ? value : ""}
           onChange={(e) => onChange(e.target.value)}
           aria-label={field.label}
@@ -299,7 +311,7 @@ export function FieldInput({ field, value, onChange }: { field: IntakeField; val
     case "int":
       return (
         <input
-          className={`${INPUT_IN} mt-1`}
+          className={box}
           inputMode="numeric"
           value={value === undefined || value === null ? "" : String(value)}
           onChange={(e) => onChange(e.target.value)}
@@ -308,7 +320,7 @@ export function FieldInput({ field, value, onChange }: { field: IntakeField; val
       );
     case "text":
       return (
-        <input className={`${INPUT_IN} mt-1`} value={typeof value === "string" ? value : ""} onChange={(e) => onChange(e.target.value)} aria-label={field.label} />
+        <input className={box} value={typeof value === "string" ? value : ""} onChange={(e) => onChange(e.target.value)} aria-label={field.label} />
       );
   }
 }
