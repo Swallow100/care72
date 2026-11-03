@@ -4,6 +4,7 @@
 // - 上に文字の欄（書く・貼る）。その下に「写真・PDF 読取」と小さなマイク（「話す」）、主のボタン「分ける」
 // - 分ける: Claude（Sonnet）が文を台帳の欄に分け（/api/intake/extract）、今の値と並べた変更点を出す
 // - 写真・PDF 読取: ケアプラン・お薬手帳などを 1 枚ずつ Opus が読み（/api/intake/read）、同じ変更点を出す
+//   読む前に確認の窓で「写った氏名・住所・電話は伏せられず Claude に渡る」と 1 回だけ出す（lib/labels.ts の FILE_NOTICE）
 // - 話す（T04）: ブラウザの Web Speech で文字の欄に流す。もう一度押して止めると欄に残り、直してから「分ける」。
 //   対応していないブラウザ（Firefox など）はボタンを出さない
 // - 下に会話の流れ（やりとり）: 入れた物 → AI の言った事（「7 項目に分けました（医療 3・避難 2）」と変更点）→ 保存 → 次の問い → 答え …
@@ -13,7 +14,8 @@
 import { useRouter } from "next/navigation";
 import { useRef, useState, type ReactNode } from "react";
 import { Button, buttonClass } from "@/components/ui/Button";
-import { AI_FAIL_REASON_LABELS, INTAKE_LABELS, INTAKE_SAYS, PENDING_STATUS_LABELS, SECTION_LABELS } from "@/lib/labels";
+import { AI_FAIL_REASON_LABELS, FILE_NOTICE, INTAKE_LABELS, INTAKE_SAYS, PENDING_STATUS_LABELS, SECTION_LABELS } from "@/lib/labels";
+import { appConfirm } from "@/lib/ui/dialog";
 import { FORM_FILE_MAX_BYTES } from "@/lib/forms/mapping";
 import type { AiFailReason } from "@/lib/intake/http";
 import type { DictationError } from "@/lib/speech/dictation";
@@ -142,8 +144,11 @@ export function Intake(props: IntakeProps & { level: Level }) {
   }
 
   async function readFiles(files: FileList | null) {
-    if (!files) return;
-    for (const f of [...files].slice(0, FILES_MAX)) await readFile(f);
+    if (!files || files.length === 0) return;
+    const picked = [...files].slice(0, FILES_MAX);
+    // 写真・PDF の文字は伏せられない（写った氏名・住所・電話はそのまま Claude に渡る）。選んだあと読む前に 1 回だけ確かめる
+    const ok = await appConfirm(FILE_NOTICE, { title: INTAKE_LABELS.fileNoticeTitle, ok: INTAKE_LABELS.fileNoticeOk });
+    if (ok) for (const f of picked) await readFile(f);
     if (fileInput.current) fileInput.current.value = "";
   }
 
