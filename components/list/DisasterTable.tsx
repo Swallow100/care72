@@ -7,7 +7,7 @@ import Link from "next/link";
 import { StateTag, TONE_TEXT } from "@/components/person/parts";
 import { StateText } from "@/components/ui/Tag";
 import { TABLE } from "@/components/ui/table";
-import { PLAN_TONES, rowLink, type CaseloadRow, type SortKey } from "@/lib/caseload";
+import { PLAN_TONES, rowLink, type CaseloadFilter, type CaseloadRow, type ListView, type SortDir, type SortKey } from "@/lib/caseload";
 import { CARE_LEVEL_LABELS, COLOR_LABELS, PLAN_STATUS_LABELS, TIER_LABELS } from "@/lib/labels";
 import { DETAIL_LABELS } from "@/lib/list/labels";
 import { COLOR_TONES } from "@/lib/person";
@@ -45,12 +45,18 @@ export type TableSlots = {
 export function DisasterTable({
   rows,
   sort,
+  dir,
+  filter,
   classification,
   hearing,
   slots,
 }: {
   rows: CaseloadRow[];
   sort: SortKey;
+  /** 並びの向き（T58）。無ければ列の既定。訓練（slots）は使わない */
+  dir?: SortDir;
+  /** 今の絞込（見出しと氏名のリンクが持ち越す） */
+  filter?: CaseloadFilter;
   /** 分類と直す口（T12 の部品）。信号ごとに描く。無ければ RowDetail が読むだけで出す */
   classification?: ClassificationSlot;
   /** 聞き取りの欄と直す口（T49） */
@@ -58,20 +64,21 @@ export function DisasterTable({
   slots?: TableSlots;
 }) {
   const h = (k: SortKey) => slots?.sortHref(k);
+  const view: ListView = { ...(dir ? { dir } : {}), ...(filter ? { filter } : {}) };
   return (
     <table className={TABLE} data-table="disaster">
       <thead>
         <tr>
-          <SortHeader k="state" sort={sort} href={h("state")} className="w-[4.75rem] text-center" />
-          <SortHeader k="tier" sort={sort} href={h("tier")} className="w-8 text-center sm:w-10" />
-          <SortHeader k="kana" sort={sort} href={h("kana")} />
-          <SortHeader k="remain" sort={sort} href={h("remain")} />
-          <SortHeader k="contact" sort={sort} href={h("contact")} className={SM} />
-          <SortHeader k="age" sort={sort} href={h("age")} className={LG} />
-          <SortHeader k="medical" sort={sort} href={h("medical")} className={MD} />
-          <SortHeader k="hazard" sort={sort} href={h("hazard")} className={LG} />
-          <SortHeader k="supporter" sort={sort} href={h("supporter")} className={LG} />
-          <SortHeader k="plan" sort={sort} href={h("plan")} className={MD} />
+          <SortHeader k="state" sort={sort} dir={dir} filter={filter} href={h("state")} className="w-[4.75rem] text-center" />
+          <SortHeader k="tier" sort={sort} dir={dir} filter={filter} href={h("tier")} className="w-8 text-center sm:w-10" />
+          <SortHeader k="kana" sort={sort} dir={dir} filter={filter} href={h("kana")} />
+          <SortHeader k="remain" sort={sort} dir={dir} filter={filter} href={h("remain")} />
+          <SortHeader k="contact" sort={sort} dir={dir} filter={filter} href={h("contact")} className={SM} />
+          <SortHeader k="age" sort={sort} dir={dir} filter={filter} href={h("age")} className={LG} />
+          <SortHeader k="medical" sort={sort} dir={dir} filter={filter} href={h("medical")} className={MD} />
+          <SortHeader k="hazard" sort={sort} dir={dir} filter={filter} href={h("hazard")} className={LG} />
+          <SortHeader k="supporter" sort={sort} dir={dir} filter={filter} href={h("supporter")} className={LG} />
+          <SortHeader k="plan" sort={sort} dir={dir} filter={filter} href={h("plan")} className={MD} />
         </tr>
       </thead>
       <tbody>
@@ -89,7 +96,7 @@ export function DisasterTable({
                 </StateTag>
               ) : null
             }
-            cells={<Cells row={r} sort={sort} nameHref={slots ? slots.nameHref(r.id) : undefined} nameMark={slots?.nameMark?.(r)} note={slots?.nameNote?.(r.id)} />}
+            cells={<Cells row={r} sort={sort} view={view} nameHref={slots ? slots.nameHref(r.id) : undefined} nameMark={slots?.nameMark?.(r)} note={slots?.nameNote?.(r.id)} />}
             detail={slots ? slots.detail(r) : r.detail ? <RowDetail detail={r.detail} classification={classification} hearing={hearing} /> : null}
           />
         ))}
@@ -98,9 +105,23 @@ export function DisasterTable({
   );
 }
 
-function Cells({ row: r, sort, nameHref, nameMark, note }: { row: CaseloadRow; sort: SortKey; nameHref?: string | null; nameMark?: React.ReactNode; note?: React.ReactNode }) {
+function Cells({
+  row: r,
+  sort,
+  view,
+  nameHref,
+  nameMark,
+  note,
+}: {
+  row: CaseloadRow;
+  sort: SortKey;
+  view: ListView;
+  nameHref?: string | null;
+  nameMark?: React.ReactNode;
+  note?: React.ReactNode;
+}) {
   const t = r.triage;
-  const href = nameHref === undefined ? rowLink(sort, null, r.id).href : nameHref;
+  const href = nameHref === undefined ? rowLink(sort, null, r.id, view).href : nameHref;
   return (
     <>
       <td className={`${CELL} text-center`}>

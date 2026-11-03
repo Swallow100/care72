@@ -6,7 +6,7 @@
 import type { D1Database } from "@cloudflare/workers-types";
 import { ageOn } from "./age.ts";
 import { parseLedger } from "./db/ledger.ts";
-import type { CareLevel, ClockRow, ContactRow, GeoPoint, HazardKind, Ledger, PersonReportedAge, PersonRow, PlanStatus } from "./db/types.ts";
+import type { CareLevel, ClockCategory, ClockRow, ContactRow, GeoPoint, HazardKind, Ledger, PersonReportedAge, PersonRow, PlanStatus } from "./db/types.ts";
 import { loadDisasterState } from "./disaster/db.ts";
 import { loadOfficeOverrides, type StoredOverride } from "./disaster/override.ts";
 import { personSituation, toSituation, type DisasterSituation, type DisasterState } from "./disaster/state.ts";
@@ -24,9 +24,10 @@ import {
   type RowDetail,
   type SignalForDetail,
 } from "./list/detail.ts";
+import { caseloadHref, defaultDir, type CaseloadFilter, type ListView, type SortDir, type SortKey } from "./list/query.ts";
 import { isGeoPoint } from "./map/geo.ts";
 import { markItems, type MarkItem, type StateTone } from "./person.ts";
-import { compareResults, SEVERITY, tierOf, type Tier, type TriageArrival, type TriageResult, type TriageSignal } from "./triage/index.ts";
+import { compareResults, SEVERITY, tierOf, type Color, type Tier, type TriageArrival, type TriageResult, type TriageSignal } from "./triage/index.ts";
 import { loadOfficeArrivals } from "./custody/arrivals.ts";
 import { toTriagePerson } from "./triage/from-ledger.ts";
 
@@ -38,6 +39,10 @@ export type CaseloadRow = {
   careLevel: CareLevel | null;
   /** 医療依存の短い印（酸素・透析など） */
   marks: string[];
+  /** 医療依存の区分（marks の元。絞込の「医療」、T58） */
+  markKeys: ClockCategory[];
+  /** 台帳の町名（絞込の「地区」、T58）。無ければ null */
+  town: string | null;
   /** 同じ印に時計のいちばん短い残りと色（「酸素 4h」。lib/person の markItems）。狭い幅で医療の列を省くとき氏名の下に出す（T54） */
   markItems: MarkItem[];
   /** 台帳の機器（在宅酸素など）。時計の無い人（その場で登録した人）の医療の印の代わり（受け持ちの表と同じ。T56） */
@@ -107,6 +112,12 @@ export function marksOf(clocks: ReadonlyArray<Pick<ClockRow, "category">>): stri
   return DEPENDENCE_MARKS.filter(([c]) => categories.has(c)).map(([, label]) => label);
 }
 
+/** 医療依存の区分（marksOf と同じ並び） */
+export function markKeysOf(clocks: ReadonlyArray<Pick<ClockRow, "category">>): ClockCategory[] {
+  const categories = new Set(clocks.map((k) => k.category));
+  return DEPENDENCE_MARKS.filter(([c]) => categories.has(c)).map(([c]) => c);
+}
+
 /** ハザード（浸水 3 m・土砂・津波） */
 export function hazardsOf(ledger: Pick<Ledger, "evacuation">): string[] {
   return ledger.evacuation.hazards.map((h) =>
@@ -168,6 +179,8 @@ export function toCaseloadRows(
       age: p.birth_date ? ageOn(p.birth_date, today) : (p.reported_age ?? null),
       careLevel: ledger.care.careLevel ?? null,
       marks: marksOf(myClocks),
+      markKeys: markKeysOf(myClocks),
+      town: town?.trim() || null,
       markItems: markItems(myClocks, own),
       devices: ledger.medical.devices.map((d) => DEVICE_LABELS[d.kind]),
       hazards: hazardsOf(ledger),
@@ -208,9 +221,21 @@ export function toCaseloadRows(
   return rows;
 }
 
-/** 並びの鍵。列の見出しの順（発災時の 状態・優先・氏名・残り・最終連絡・年齢・医療・ハザード・支援者・計画） */
-export const SORT_KEYS = ["state", "tier", "kana", "remain", "contact", "age", "medical", "hazard", "supporter", "plan"] as const;
-export type SortKey = (typeof SORT_KEYS)[number];
+// 並びの鍵・向き・絞込・URL は lib/list/query.ts（ブラウザの絞込の帯も読む）。ここから出し直す
+export {
+  caseloadHref,
+  defaultDir,
+  filterActive,
+  isSortKey,
+  NO_FILTER,
+  parseDir,
+  parseFilter,
+  SORT_KEYS,
+  type CaseloadFilter,
+  type ListView,
+  type SortDir,
+  type SortKey,
+} from "./list/query.ts";
 
 /** 発災時だけの並び（平時の表には列が無い） */
 export const DISASTER_SORT_KEYS: ReadonlyArray<SortKey> = ["state", "remain", "contact"];
@@ -239,14 +264,16 @@ export const PLAN_TONES: Record<PlanStatus, StateTone> = { none: "unknown", draf
  * 並び替え。どの並びでも、同じならカナの順。
  * 優先（tier）は、平時は骨格の段、災害モード（行に triage がある）ならルールの表の並び（色 → 時計の残り → 支援者なし → 骨格）。
  * 状態は色の悪い順（表の色のまま）、残りは短い順、最終連絡は連絡の無い人 → 古い順、医療は骨格の段、
- * ハザードは浸水の深い順、支援者は少ない順。どれも表の結果と台帳の値を並べるだけで、色を決め直さない
+ * ハザードは浸水の深い順、支援者は少ない順。どれも表の結果と台帳の値を並べるだけで、色を決め直さない。
+ * dir が列の既定の向き（defaultDir）と違えば、その列の比べ方だけを反転する（同じならカナの順のまま。T58）
  */
-export function sortCaseload(rows: CaseloadRow[], key: SortKey): CaseloadRow[] {
+export function sortCaseload(rows: CaseloadRow[], key: SortKey, dir: SortDir = defaultDir(key)): CaseloadRow[] {
+  const sign = dir === defaultDir(key) ? 1 : -1;
   const byKana = (a: CaseloadRow, b: CaseloadRow) => a.kana.localeCompare(b.kana, "ja");
   const primary: Record<SortKey, (a: CaseloadRow, b: CaseloadRow) => number> = {
     state: (a, b) => (a.triage && b.triage ? SEVERITY[b.triage.color] - SEVERITY[a.triage.color] : 0),
     tier: (a, b) => (a.triage && b.triage ? compareResults(a.triage, b.triage) : a.tier - b.tier),
-    kana: () => 0,
+    kana: (a, b) => byKana(a, b),
     remain: (a, b) => byNumber(a.remain?.hours ?? null, b.remain?.hours ?? null),
     contact: (a, b) =>
       byNumber(a.lastContact ? Date.parse(a.lastContact.at) : null, b.lastContact ? Date.parse(b.lastContact.at) : null, true),
@@ -256,21 +283,42 @@ export function sortCaseload(rows: CaseloadRow[], key: SortKey): CaseloadRow[] {
     supporter: (a, b) => a.supporters - b.supporters,
     plan: (a, b) => PLAN_ORDER[a.plan] - PLAN_ORDER[b.plan] || b.pending - a.pending,
   };
-  return [...rows].sort((a, b) => primary[key](a, b) || byKana(a, b));
+  return [...rows].sort((a, b) => sign * primary[key](a, b) || byKana(a, b));
+}
+
+// ---------- 絞込と検索（T58） ----------
+// 絞っても優先の番号（rank）は絞る前の番号のまま（表の順位を変えない）。色は発災時だけ
+
+/** 検索の比べ方: 全角・半角をそろえ、空白を除き、ひらがなをカタカナに（カナはカタカナで持つ） */
+function fold(s: string): string {
+  return s
+    .normalize("NFKC")
+    .replace(/\s+/g, "")
+    .replace(/[ぁ-ゖ]/g, (c) => String.fromCharCode(c.charCodeAt(0) + 0x60));
+}
+
+/** 絞る。並び（sortCaseload）のあとに当てても前に当ててもよい（順を変えない） */
+export function filterCaseload(rows: CaseloadRow[], f: CaseloadFilter): CaseloadRow[] {
+  const q = fold(f.q);
+  return rows.filter(
+    (r) =>
+      (f.color === null || r.triage?.color === f.color) &&
+      (f.area === null || r.town === f.area) &&
+      (f.mark === null || r.markKeys.includes(f.mark)) &&
+      (q === "" || fold(r.name).includes(q) || fold(r.kana).includes(q)),
+  );
+}
+
+/** 絞込の帯の選ぶ所の中身（絞る前の行から）。地区は町名のカナ順、医療は骨格の順 */
+export function filterOptions(rows: ReadonlyArray<CaseloadRow>): { areas: string[]; marks: Array<[ClockCategory, string]> } {
+  const areas = [...new Set(rows.flatMap((r) => (r.town ? [r.town] : [])))].sort((a, b) => a.localeCompare(b, "ja"));
+  const present = new Set(rows.flatMap((r) => r.markKeys));
+  return { areas, marks: DEPENDENCE_MARKS.filter(([c]) => present.has(c)).map(([c, l]) => [c, l]) };
 }
 
 // ---------- 右に開く本人のページ（?open=<id>、docs/tasks/T02.md） ----------
 // URL だけで開け閉めする。同じ「/」の query が変わるだけなので別ページに飛ばない。
 // 開くときは履歴に足し、開いている間に別の行を押すと履歴を置き換える。だからブラウザの戻るで閉じる。
-
-/** 担当一覧の URL。sort は並び（既定の優先は書かない）、open は右に開く本人 */
-export function caseloadHref(q: { sort?: SortKey; open?: string | null }): string {
-  const params = new URLSearchParams();
-  if (q.sort && q.sort !== "tier") params.set("sort", q.sort);
-  if (q.open) params.set("open", q.open);
-  const s = params.toString();
-  return s ? `/?${s}` : "/";
-}
 
 const OPEN_ID = /^[A-Za-z0-9_-]{1,64}$/;
 
@@ -282,13 +330,13 @@ export function parseOpen(v: string | string[] | undefined): string | null {
 export type RowLink = { href: string; replace: boolean; current: boolean };
 
 /** 一覧の行のリンク。閉じているときは開く（履歴に足す）、開いているときは切り替える（置き換える） */
-export function rowLink(sort: SortKey, open: string | null, id: string): RowLink {
-  return { href: caseloadHref({ sort, open: id }), replace: open !== null, current: open === id };
+export function rowLink(sort: SortKey, open: string | null, id: string, view: ListView = {}): RowLink {
+  return { href: caseloadHref({ sort, ...view, open: id }), replace: open !== null, current: open === id };
 }
 
-/** 右の面を閉じる */
-export function closeHref(sort: SortKey): string {
-  return caseloadHref({ sort });
+/** 右の面を閉じる（並びの向きと絞込は残す） */
+export function closeHref(sort: SortKey, view: ListView = {}): string {
+  return caseloadHref({ sort, ...view });
 }
 
 /**

@@ -1,0 +1,148 @@
+"use client";
+
+// 担当一覧の絞込の帯（docs/tasks/T58.md）。色（発災時だけ）・地区（台帳の町名）・医療の印・氏名とカナの検索、解除。
+// 並び（sort）と同じく URL の query だけで持つ。form は GET で、sort・dir・open を hidden で持ち越す（無いと絞った瞬間に
+// 右の本人のページが閉じ、並びが既定に戻る）。スクリプトが動けば選んだ瞬間に移り、URL は空の値を書かない形（lib/list/query）。
+// 絞っても優先の番号は絞る前の番号のまま（ここでは何も数え直さない）。
+
+import { useRouter } from "next/navigation";
+import { useState, type FormEvent } from "react";
+import { ButtonLink, Button } from "@/components/ui/Button";
+import { CloseIcon, SearchIcon } from "@/components/ui/Icon";
+import { Select } from "@/components/ui/Select";
+import type { ClockCategory } from "@/lib/db/types";
+import { COLOR_LABELS } from "@/lib/labels";
+import { FILTER_LABELS } from "@/lib/list/labels";
+import {
+  caseloadHref,
+  defaultDir,
+  filterActive,
+  MAX_FILTER_TEXT,
+  parseFilter,
+  type CaseloadFilter,
+  type SortDir,
+  type SortKey,
+} from "@/lib/list/query";
+import type { Color } from "@/lib/triage/index";
+
+const COLOR_ORDER: ReadonlyArray<Color> = ["red", "yellow", "gray", "green"];
+
+const FIELD =
+  "h-8 min-w-0 rounded bg-panel2 px-2 text-sm text-ink outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-accent";
+
+export function FilterBar({
+  filter,
+  areas,
+  marks,
+  disaster,
+  sort,
+  dir,
+  open,
+}: {
+  filter: CaseloadFilter;
+  /** 地区の候補（絞る前の行の町名） */
+  areas: string[];
+  /** 医療の印の候補（絞る前の行にある区分） */
+  marks: Array<[ClockCategory, string]>;
+  /** 発災時か（色で絞れるのは発災時だけ） */
+  disaster: boolean;
+  sort: SortKey;
+  dir: SortDir;
+  /** 右に開いている本人 */
+  open: string | null;
+}) {
+  const router = useRouter();
+  const [q, setQ] = useState(filter.q);
+
+  const go = (next: CaseloadFilter) => router.push(caseloadHref({ sort, dir, filter: next, open }));
+  const onSubmit = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    go(parseFilter({ ...filter, q }));
+  };
+
+  return (
+    <form action="/" method="get" role="search" aria-label={FILTER_LABELS.title} onSubmit={onSubmit} className="flex flex-wrap items-center gap-x-3 gap-y-1.5" data-filter-bar>
+      {sort !== "tier" && <input type="hidden" name="sort" value={sort} />}
+      {dir !== defaultDir(sort) && <input type="hidden" name="dir" value={dir} />}
+      {open && <input type="hidden" name="open" value={open} />}
+      <span className="text-sm font-bold">{FILTER_LABELS.title}</span>
+      {disaster && (
+        <label className="flex items-center gap-1.5">
+          <span className="text-xs text-muted">{FILTER_LABELS.color}</span>
+          <Select
+            name="color"
+            value={filter.color ?? ""}
+            aria-label={FILTER_LABELS.color}
+            className={`${FIELD} w-24`}
+            onChange={(e) => go({ ...filter, q, color: parseFilter({ color: e.target.value }).color })}
+            data-filter="color"
+          >
+            <option value="">{FILTER_LABELS.all}</option>
+            {COLOR_ORDER.map((c) => (
+              <option key={c} value={c}>
+                {COLOR_LABELS[c]}
+              </option>
+            ))}
+          </Select>
+        </label>
+      )}
+      <label className="flex items-center gap-1.5">
+        <span className="text-xs text-muted">{FILTER_LABELS.area}</span>
+        <Select
+          name="area"
+          value={filter.area ?? ""}
+          aria-label={FILTER_LABELS.area}
+          className={`${FIELD} w-32`}
+          onChange={(e) => go({ ...filter, q, area: parseFilter({ area: e.target.value }).area })}
+          data-filter="area"
+        >
+          <option value="">{FILTER_LABELS.all}</option>
+          {areas.map((a) => (
+            <option key={a} value={a}>
+              {a}
+            </option>
+          ))}
+        </Select>
+      </label>
+      <label className="flex items-center gap-1.5">
+        <span className="text-xs text-muted">{FILTER_LABELS.mark}</span>
+        <Select
+          name="mark"
+          value={filter.mark ?? ""}
+          aria-label={FILTER_LABELS.mark}
+          className={`${FIELD} w-28`}
+          onChange={(e) => go({ ...filter, q, mark: parseFilter({ mark: e.target.value }).mark })}
+          data-filter="mark"
+        >
+          <option value="">{FILTER_LABELS.all}</option>
+          {marks.map(([c, label]) => (
+            <option key={c} value={c}>
+              {label}
+            </option>
+          ))}
+        </Select>
+      </label>
+      <div className="flex min-w-0 items-center gap-1.5">
+        <input
+          type="search"
+          name="q"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          maxLength={MAX_FILTER_TEXT}
+          placeholder={FILTER_LABELS.search}
+          aria-label={FILTER_LABELS.search}
+          className={`${FIELD} w-40 max-w-full`}
+          data-filter="q"
+        />
+        <Button type="submit" kind="plain" size="md" icon={SearchIcon} data-filter-search>
+          {FILTER_LABELS.search}
+        </Button>
+      </div>
+      {filterActive(filter) && (
+        <ButtonLink href={caseloadHref({ sort, dir, open })} kind="quiet" size="md" icon={CloseIcon} data-filter-clear>
+          {FILTER_LABELS.clear}
+        </ButtonLink>
+      )}
+    </form>
+  );
+}

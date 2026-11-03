@@ -6,6 +6,7 @@ import { Hearing } from "@/components/list/Hearing";
 import { CaseloadTable } from "@/components/list/CaseloadTable";
 import { DisasterSummary } from "@/components/list/DisasterSummary";
 import { DisasterTable } from "@/components/list/DisasterTable";
+import { FilterBar } from "@/components/list/FilterBar";
 import type { ClassificationSlot, HearingSlot } from "@/components/list/RowDetail";
 import { SidePane } from "@/components/list/SidePane";
 import { UnlistedFold } from "@/components/office/UnlistedFold";
@@ -24,15 +25,23 @@ import { requirePage } from "@/lib/auth/server";
 import { hasAnthropicKey } from "@/lib/claude/client";
 import { intakePropsOf, type IntakeProps } from "@/lib/intake/props";
 import {
+  caseloadHref,
   closeHref,
   DISASTER_SORT_KEYS,
+  filterActive,
+  filterCaseload,
+  filterOptions,
+  isSortKey,
   loadCaseload,
+  parseDir,
+  parseFilter,
   parseOpen,
   rowLink,
   sortCaseload,
-  SORT_KEYS,
   type Caseload,
+  type CaseloadFilter,
   type CaseloadRow,
+  type ListView,
   type SortKey,
 } from "@/lib/caseload";
 import { personDisaster } from "@/lib/disaster/person";
@@ -49,8 +58,18 @@ import type { Color } from "@/lib/triage/index";
 // D1 を毎回読む
 export const dynamic = "force-dynamic";
 
+type Param = string | string[];
 type Props = {
-  searchParams: Promise<{ sort?: string | string[]; open?: string | string[]; people_error?: string | string[] }>;
+  searchParams: Promise<{
+    sort?: Param;
+    dir?: Param;
+    open?: Param;
+    color?: Param;
+    area?: Param;
+    mark?: Param;
+    q?: Param;
+    people_error?: Param;
+  }>;
 };
 
 /**
@@ -63,10 +82,6 @@ const CLASSIFICATION: ClassificationSlot = (s) => <Classification signalId={s.id
 const HEARING: HearingSlot = (s) => (
   <Hearing signalId={s.id} source={{ answers: s.row.answers, ai_memo: s.row.ai_memo, memo: s.row.memo }} editable inset />
 );
-
-function isSortKey(v: unknown): v is SortKey {
-  return typeof v === "string" && SORT_KEYS.includes(v as SortKey);
-}
 
 // 担当一覧。ケアマネは自分の担当、審査員（ケアマネの役）はデモ事業所の山本の担当。
 // 行を押すと本人のページが右に開き（?open=<id>）、一覧は左に圧縮される。狭い幅は本人のページだけ。
@@ -95,12 +110,23 @@ export default async function CaseloadPage({ searchParams }: Props) {
   const disaster = data.situation !== null;
   // 発災時だけの列（状態・残り・最終連絡）の並びは、平時は優先に戻す
   const key: SortKey = !disaster && DISASTER_SORT_KEYS.includes(asked) ? "tier" : asked;
-  const rows = sortCaseload(data.rows, key);
+  const dir = parseDir(q.dir, key);
+  // 絞込（T58）。色は発災時だけ。絞っても優先の番号は絞る前のまま（toCaseloadRows で振った rank）。上の人数は絞る前の数
+  const askedFilter = parseFilter(q);
+  const filter: CaseloadFilter = disaster ? askedFilter : { ...askedFilter, color: null };
+  const view: ListView = { dir, filter };
+  const all = sortCaseload(data.rows, key, dir);
+  const rows = filterCaseload(all, filter);
+  const count = filterActive(filter) ? `${rows.length} / ${all.length} 人` : `${all.length} 人`;
+  const options = filterOptions(data.rows);
+  const filterBar = (
+    <FilterBar filter={filter} areas={options.areas} marks={options.marks} disaster={disaster} sort={key} dir={dir} open={open} />
+  );
   const peopleError = parsePeopleError(q.people_error);
   // 一覧から外した人（T30）。一覧の下の畳み「外した人 N」
   const unlisted = (
     <UnlistedFold count={data.unlisted.length}>
-      <UnlistedRows rows={data.unlisted.map((u) => ({ ...u, href: rowLink(key, open, u.id).href }))} back="caseload" />
+      <UnlistedRows rows={data.unlisted.map((u) => ({ ...u, href: rowLink(key, open, u.id, view).href }))} back="caseload" />
     </UnlistedFold>
   );
 
@@ -113,22 +139,25 @@ export default async function CaseloadPage({ searchParams }: Props) {
             <h1 id="caseload-title" className="text-[1rem] leading-6 font-bold">
               担当一覧
             </h1>
-            <span className="text-sm text-muted">{rows.length} 人</span>
+            <span className="text-sm text-muted tabular-nums">{count}</span>
             <ButtonLink href={NEW_PERSON_PATH} kind="plain" size="sm" icon={AddPersonIcon} className="ml-auto">
               {OFFICE_LABELS.addPerson}
             </ButtonLink>
           </div>
-          <CompactList rows={rows} sort={key} open={open} />
+          <Panel as="div" className="mt-2 px-2.5 py-2">
+            {filterBar}
+          </Panel>
+          <CompactList rows={rows} sort={key} open={open} view={view} />
           {unlisted}
         </section>
-        <PersonPanel principal={principal} id={open} sort={key} now={now} />
+        <PersonPanel principal={principal} id={open} sort={key} list={view} now={now} />
       </main>
     );
   }
 
   // 右の面（T14）: 平時は計画の内訳・見直し・未確認・地図。災害モード（T09）は地図が上で、ピンは行の lib/triage の色、
   // 雨雲・震度のデモは事業所の災害の種類と警戒レベルから
-  const side = buildSidePane(rows, { sort: key, disaster: data.situation ? sideDisasterOf(rows, data.disaster) : null });
+  const side = buildSidePane(all, { sort: key, disaster: data.situation ? sideDisasterOf(all, data.disaster) : null });
   const s = data.situation;
   // 発災時は列が多く表に約 64rem 要るので広く使い、右の面を横に出すのは 1536px（2xl）から（それ未満は表の下、components/list/SidePane）
   return (
@@ -144,7 +173,7 @@ export default async function CaseloadPage({ searchParams }: Props) {
         <PageHead
           id="caseload-title"
           title="担当一覧"
-          count={`${rows.length} 人`}
+          count={count}
           actions={
             <ButtonLink href={NEW_PERSON_PATH} kind="main" icon={AddPersonIcon}>
               {OFFICE_LABELS.addPerson}
@@ -155,27 +184,34 @@ export default async function CaseloadPage({ searchParams }: Props) {
         {s && (
           <Panel as="div" className="mt-3 px-4">
             <DisasterSummary
-              counts={countColors(rows.flatMap((r) => (r.triage ? [r.triage.color] : [])))}
+              counts={countColors(all.flatMap((r) => (r.triage ? [r.triage.color] : [])))}
               disaster={elapsedText(s.disasterAt, s.now)}
               outage={s.outageAt ? { elapsed: elapsedText(s.outageAt, s.now), area: s.outageTowns !== null } : null}
               at={shortJst(now)}
+              current={filter.color}
+              href={(c) => caseloadHref({ sort: key, dir, filter: { ...filter, color: filter.color === c ? null : c } })}
             />
           </Panel>
         )}
+        <Panel as="div" className="mt-3 px-3 py-2">
+          {filterBar}
+        </Panel>
         {peopleError && (
           <p role="alert" className="mt-2 text-sm font-bold text-danger">
             {OFFICE_ERROR_LABELS[peopleError]}
           </p>
         )}
         {rows.length === 0 ? (
-          <p className="mt-3 rounded-lg bg-panel px-3 py-2 text-muted">なし</p>
+          <p className="mt-3 rounded-lg bg-panel px-3 py-2 text-muted" data-empty>
+            なし
+          </p>
         ) : (
           // 横に送らない。PC の幅（1024px 以上）は全部の列、狭い幅は列を省く（表の部品）
           <div className={`mt-3 ${TABLE_BOX}`}>
             {disaster ? (
-              <DisasterTable rows={rows} sort={key} classification={CLASSIFICATION} hearing={HEARING} />
+              <DisasterTable rows={rows} sort={key} dir={dir} filter={filter} classification={CLASSIFICATION} hearing={HEARING} />
             ) : (
-              <CaseloadTable rows={rows} sort={key} />
+              <CaseloadTable rows={rows} sort={key} dir={dir} filter={filter} />
             )}
           </div>
         )}
@@ -187,7 +223,20 @@ export default async function CaseloadPage({ searchParams }: Props) {
 }
 
 /** 右の面。範囲の外（違う事業所・無い id）は面に「該当なし」と出し、一覧は残す。災害モードなら経過が上、色と理由 */
-async function PersonPanel({ principal, id, sort, now }: { principal: Principal; id: string; sort: SortKey; now: string }) {
+async function PersonPanel({
+  principal,
+  id,
+  sort,
+  list,
+  now,
+}: {
+  principal: Principal;
+  id: string;
+  sort: SortKey;
+  /** 一覧の並びの向きと絞込（閉じたときに残す） */
+  list: ListView;
+  now: string;
+}) {
   let view: View | null = null;
   let intake: IntakeProps | null = null;
   let failed = false;
@@ -206,7 +255,7 @@ async function PersonPanel({ principal, id, sort, now }: { principal: Principal;
   return (
     <div className="min-w-0">
       <div className="mb-2 flex items-center justify-between">
-        <ButtonLink href={closeHref(sort)} kind="quiet" size="sm" icon={CloseIcon} className="-ml-2">
+        <ButtonLink href={closeHref(sort, list)} kind="quiet" size="sm" icon={CloseIcon} className="-ml-2">
           閉じる
         </ButtonLink>
       </div>
@@ -223,11 +272,11 @@ async function PersonPanel({ principal, id, sort, now }: { principal: Principal;
 
 /** 右に開いている間の一覧。優先・氏名・医療の印だけに圧縮する。選んだ行は枠と太字。発災時は色の印と優先の番号。
  * 1 つの面にまとめ、行は地の色の 1px のすき間で分ける */
-function CompactList({ rows, sort, open }: { rows: CaseloadRow[]; sort: SortKey; open: string }) {
+function CompactList({ rows, sort, open, view }: { rows: CaseloadRow[]; sort: SortKey; open: string; view: ListView }) {
   return (
     <ul className="mt-2 grid gap-px overflow-hidden rounded-lg bg-base">
       {rows.map((r) => {
-        const link = rowLink(sort, open, r.id);
+        const link = rowLink(sort, open, r.id, view);
         return (
           <li key={r.id}>
             <Link
