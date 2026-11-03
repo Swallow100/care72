@@ -7,6 +7,10 @@
 
 // ---------- 選択肢 ----------
 
+/** アンケートのリンクを作った人（T42）: ケアマネ（山本など）・審査員（試し。毎朝の戻しで消える） */
+export const SURVEY_CREATOR_ROLES = ["care_manager", "judge"] as const;
+export type SurveyCreatorRole = (typeof SURVEY_CREATOR_ROLES)[number];
+
 /** デモ・ふつう・所属なし（医療班・行政がその場で作った人の置き場。1 行だけ、ケアマネはいない。T23） */
 export const OFFICE_KINDS = ["demo", "regular", "unaffiliated"] as const;
 export type OfficeKind = (typeof OFFICE_KINDS)[number];
@@ -401,6 +405,38 @@ export type OfficeRow = {
   created_at: string;
 };
 
+/** アンケートの招待のリンク（migrations/0004_survey.sql、T42） */
+export type SurveyLinkRow = {
+  token: string;
+  office_id: string;
+  /** 宛先の控え（ケアマネ A など。本名でない） */
+  memo: string;
+  created_by: string | null;
+  created_role: SurveyCreatorRole;
+  created_at: string;
+  opened_at: string | null;
+  used_at: string | null;
+  expires_at: string;
+};
+
+/** アンケートの答え。記号は tools/survey/questions.ts（a・b・c…）。問 3 は "bcf" のように並べる。答えなしは null */
+export type SurveyAnswerRow = {
+  token: string;
+  role: string | null;
+  experience: string | null;
+  q1: string | null;
+  q2: string | null;
+  q3: string | null;
+  q4: string | null;
+  q5: string | null;
+  q6: string | null;
+  q7: string | null;
+  q7_reason: string | null;
+  quote: string | null;
+  source_hash: string;
+  submitted_at: string;
+};
+
 export type AccountRow = {
   id: string;
   office_id: string | null;
@@ -587,6 +623,18 @@ export type AiCallRow = {
   output_tokens: number | null;
   started_at: string;
   finished_at: string | null;
+};
+
+/** ログインを試した 1 回（T41。lib/auth/lockout.ts）。パスワードは持たない */
+export type LoginAttemptRow = {
+  id: number;
+  /** 打たれた ID（前後の空白を落とし 128 字まで）。無い ID も入る */
+  login_id: string;
+  /** 送信元（CF-Connecting-IP）。無ければ 'unknown' */
+  ip: string;
+  /** UNIX 秒 */
+  at: number;
+  ok: 0 | 1;
 };
 
 /** 様式 9 の並び: 平時（優先の骨格）・発災時（ルールの表） */
