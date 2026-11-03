@@ -431,7 +431,7 @@ describe("受け持ちの一覧", () => {
   it("医療班への提供を断った人は、氏名の下の医療の印も出さない（医療の列と同じ）", async () => {
     heavyRain();
     await receive(db, actor(), { personId: "p-01", shelter: SHELTER, via: "search" }, AT);
-    sqlite.prepare(`UPDATE consents SET status = 'refused' WHERE person_id = 'p-01' AND kind = 'medical'`).run();
+    expect(sqlite.prepare(`UPDATE consents SET status = 'refused' WHERE person_id = 'p-01' AND kind = 'medical'`).run().changes).toBe(1);
     const yamada = (await loadStaffBoard(db, actor(), TODAY, NOW)).rows.find((r) => r.personId === "p-01")!;
     expect(yamada).toMatchObject({ marks: [], markItems: [], devices: [], remain: null, reason: "" });
   });

@@ -64,6 +64,9 @@ describe("氏名の下の医療の印（狭い幅だけ）", () => {
     expect(html).toContain('data-tone="urgent"');
     // 塗りの印（安否の状態）でなく地の印。横に送らないよう折り返す
     expect(html).toContain("flex-wrap");
+    // 印の中も空白の所で折り返せる（氏名の列を広げない）
+    expect(html).toContain("break-keep");
+    expect(html).not.toContain("whitespace-nowrap");
     expect(html).not.toContain("bg-state-urgent-fill");
   });
 

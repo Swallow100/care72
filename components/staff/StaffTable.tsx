@@ -291,10 +291,11 @@ function Row({ row: r, open, onToggle }: { row: StaffRow; open: boolean; onToggl
             </div>
           )}
         </td>
-        <td className={`${CELL} whitespace-nowrap`}>
+        {/* 残りの数は折り返さず、時計の名前（「人工呼吸器 内蔵電池」）は折り返す（375 で表が幅を超え「解除」が切れていた。担当一覧と同じ。T54） */}
+        <td className={`${CELL} sm:min-w-[5.5rem]`}>
           {r.remain ? (
             <>
-              <div className={`font-bold tabular-nums ${r.remain.tone ? TONE_TEXT[r.remain.tone] : ""}`}>{r.remain.text}</div>
+              <div className={`whitespace-nowrap font-bold tabular-nums ${r.remain.tone ? TONE_TEXT[r.remain.tone] : ""}`}>{r.remain.text}</div>
               <div className="text-xs text-muted">{r.remain.label}</div>
             </>
           ) : (
