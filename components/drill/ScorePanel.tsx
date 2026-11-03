@@ -61,21 +61,22 @@ export function ScorePanel({
           ))}
         </Detail>
         <Detail title={SCORE_LABELS.misses} empty={view.misses.length === 0} k="misses">
-          {view.misses.map((m) => (
-            <li key={m.person} data-person={m.person}>
-              <span className="font-bold">{m.name}</span> {m.why}
-              {m.expected && (
+          {/* 同じ理由の人は 1 行にまとめる（後手は最優先の人が人ごとに違うので 1 人 1 行） */}
+          {groupBy(view.misses, (m) => (m.expected ? `${m.person}` : m.why)).map((g) => (
+            <li key={g.key} data-miss={g.items[0].why}>
+              <span className="font-bold">{g.items[0].why}</span> {g.items.map((m) => m.name).join("・")}
+              {g.items[0].expected && (
                 <span className="ml-1.5 text-xs text-muted">
-                  {SCORE_LABELS.expected} {m.expected}
+                  {SCORE_LABELS.expected} {g.items[0].expected}
                 </span>
               )}
             </li>
           ))}
         </Detail>
         <Detail title={`${SCORE_LABELS.form9} ${SCORE_LABELS.form9Doc}`} empty={view.blanks.length === 0} k="blanks">
-          {view.blanks.map((b) => (
-            <li key={b.person} data-person={b.person}>
-              <span className="font-bold">{b.name}</span> {b.columns}
+          {groupBy(view.blanks, (b) => b.columns).map((g) => (
+            <li key={g.key} data-blank={g.key}>
+              <span className="font-bold">{g.key}</span> {g.items.map((b) => b.name).join("・")}
             </li>
           ))}
         </Detail>
@@ -88,6 +89,13 @@ export function ScorePanel({
       <ReviewBox drillId={drillId} initial={review} canReview={canReview} names={names} />
     </div>
   );
+}
+
+/** 鍵の同じ物をまとめる（最初に出た順） */
+function groupBy<T>(items: ReadonlyArray<T>, keyOf: (x: T) => string): Array<{ key: string; items: T[] }> {
+  const out = new Map<string, T[]>();
+  for (const x of items) out.set(keyOf(x), [...(out.get(keyOf(x)) ?? []), x]);
+  return [...out].map(([key, items]) => ({ key, items }));
 }
 
 function Detail({ title, empty, k, children }: { title: string; empty: boolean; k: string; children: React.ReactNode }) {

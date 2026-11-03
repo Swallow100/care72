@@ -62,12 +62,14 @@ export function DrillPaper({ record, office, today }: { record: DrillPaperRecord
   // 対応履歴: 経過の時間（刻み）ごとに、状況と、その間に打った対応・掛かってきた着信
   const actions = screen.state.actions;
   const groups = screen.ticks
-    .map((tick) => {
+    .map((tick, i) => {
+      // 刻みは前の刻みの時刻からこの刻みの時刻まで（10 分版は 12 → 72 時間のように広い）
+      const from = i > 0 ? screen.ticks[i - 1].hour : null;
       const rows: HistoryRow[] = [
         ...actions.filter((a) => a.step === tick.step).map((a, i) => ({ kind: "action" as const, at: a.atMinute, order: i * 2, a })),
         ...calls.filter((c) => c.step === tick.step).map((c, i) => ({ kind: "call" as const, at: c.minute, order: i * 2 + 1, c })),
       ].sort((x, y) => x.at - y.at || x.order - y.order);
-      return { tick, rows };
+      return { tick, rows, from };
     })
     .filter((g) => g.rows.length > 0 || g.tick.incidents.length > 0);
 
@@ -340,14 +342,14 @@ export function DrillPaper({ record, office, today }: { record: DrillPaperRecord
               <th>{SCORE_LABELS.result}</th>
             </tr>
           </thead>
-          {groups.map(({ tick, rows }) => (
+          {groups.map(({ tick, rows, from }) => (
             <tbody key={tick.step} data-hour={tick.hour}>
               <tr className="hour">
                 <td colSpan={5}>
-                  {t(`${SCORE_LABELS.elapsed} ${tick.hour} ${DRILL_LABELS.hours}`)}
+                  {t(`${SCORE_LABELS.elapsed} ${from !== null && from + 1 < tick.hour ? `${from}〜` : ""}${tick.hour} ${DRILL_LABELS.hours}`)}
                   {tick.incidents.map((e, i) => (
                     <span key={i} className="incident">
-                      {SCORE_LABELS.situation} {t(e.text)}
+                      {SCORE_LABELS.situation} {t(clockLabel(Math.round(e.at * 60)))} {t(e.text)}
                       {e.ai && <span className="drill-ai"> AI</span>}
                     </span>
                   ))}
