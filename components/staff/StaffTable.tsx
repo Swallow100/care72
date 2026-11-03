@@ -21,6 +21,7 @@ import { RELEASE_KINDS, type ReleaseKind } from "@/lib/db/types";
 import { COLOR_LABELS, DOCUMENT_LABELS } from "@/lib/labels";
 import { COLOR_TONES } from "@/lib/person";
 import type { Color } from "@/lib/triage/index";
+import { Select } from "@/components/ui/Select";
 
 const SORTS = ["rank", "kana", "age", "remain", "shelter", "received", "office"] as const;
 type Sort = (typeof SORTS)[number];
@@ -100,14 +101,14 @@ export function StaffTable({ rows, shelters }: { rows: StaffRow[]; shelters: str
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg bg-panel px-2 py-1.5 text-sm">
         <label className="flex items-center gap-1.5">
           <span className="text-muted">{CUSTODY_LABELS.shelter}</span>
-          <select value={shelter} onChange={(e) => setShelter(e.target.value)} className={INPUT} data-filter="shelter">
+          <Select value={shelter} onChange={(e) => setShelter(e.target.value)} className={INPUT} data-filter="shelter">
             <option value="">{CUSTODY_LABELS.filterAll}</option>
             {shelters.map((s) => (
               <option key={s} value={s}>
                 {s}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
         <fieldset className="flex items-center gap-1" data-filter="state">
           <legend className="sr-only">{CUSTODY_LABELS.state}</legend>
