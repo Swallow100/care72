@@ -337,7 +337,7 @@ export function createWorldHook(deps: WorldDeps): WorldHook {
     }
     try {
       const r = await worldOneshot(input, cast, deps.ai, opts);
-      const note: DrillIncident[] = fellBack ? [{ actor: "director", at: input.hour, change: { kind: "world_note", state: "down" }, text: "世界 代替", ai: false }] : [];
+      const note: DrillIncident[] = fellBack ? [{ actor: "director", at: input.hour, change: { kind: "world_note", state: "down" }, text: "代替", ai: false }] : [];
       return { incidents: [...note, ...r.incidents], ...(session !== input.session ? { session } : {}) };
     } catch (e) {
       if (!isPersonaFailure(e) && !(e instanceof AiBadOutput) && !(e instanceof AiCallFailed)) {

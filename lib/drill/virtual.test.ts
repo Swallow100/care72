@@ -3,6 +3,10 @@
 // ai_calls が 1 刻み 1 行、仮想の筋で 10 人が 12 刻み動く。
 
 import Anthropic from "@anthropic-ai/sdk";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { EndedNote } from "../../components/drill/Ended.tsx";
+import { Situation } from "../../components/drill/Situation.tsx";
 import type { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { SEED_PEOPLE } from "../../seed/people.ts";
@@ -436,3 +440,28 @@ describe("仮想の筋（偽の部屋・偽の Haiku）", () => {
   });
 });
 
+
+describe("画面（状況の欄・結末の印）", () => {
+  it("部屋が落ちた刻みは世界の 1 文に「世界 代替」の印、結末は印と 1 文（AI の印は部屋の文だけ）", () => {
+    const tick = {
+      step: 1,
+      hour: 1,
+      world: EMPTY_WORLD,
+      finished: false,
+      turns: [],
+      incidents: [
+        { actor: "director" as const, at: 1, change: { kind: "world_note" as const, state: "down" as const }, text: "代替", ai: false },
+        { actor: "director" as const, at: 1, change: { kind: "narration" as const, room: "甲地区で増水", via: "oneshot" as const }, text: "かわなぎ町で増水", ai: true },
+      ],
+    };
+    const html = renderToStaticMarkup(createElement(Situation, { ticks: [tick], names: {}, startedAt: START }));
+    expect(html).toContain("data-world-fallback");
+    expect(html).toContain("世界 代替");
+    expect(html).toContain("かわなぎ町で増水");
+    expect(html).not.toContain('data-incident="world_note"');
+    const ended = renderToStaticMarkup(createElement(EndedNote, { text: "電池の明かりが消えた", ai: true }));
+    expect(ended).toContain("結末");
+    expect(ended).toContain('data-ai="item"');
+    expect(renderToStaticMarkup(createElement(EndedNote, { text: "固定", ai: false }))).not.toContain("data-ai");
+  });
+});

@@ -326,7 +326,7 @@ export function worldIncidents(answer: WorldStep, ctx: ApplyContext, outcomes: R
 export function fallbackIncidents(hour: number, outcomes: ReadonlyArray<OutcomeAsk>, state: "down" | "off"): DrillIncident[] {
   const base = { actor: "director" as const, at: hour };
   return [
-    { ...base, change: { kind: "world_note", state }, text: state === "off" ? "世界 停止" : "世界 代替", ai: false },
+    { ...base, change: { kind: "world_note", state }, text: state === "off" ? "停止" : "代替", ai: false },
     ...outcomes.map((o): DrillIncident => ({ ...base, change: { kind: "outcome", label: o.label }, text: o.fixed, person: o.person, ai: false })),
   ];
 }
