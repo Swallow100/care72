@@ -17,7 +17,8 @@ import { actionPost } from "./http.ts";
 import { loadDrillRecord, parseStoredScore, shownReview } from "./record.ts";
 import { callPost, reviewPost } from "./record-http.ts";
 import { loadCallRecords, respondCall } from "./responses.ts";
-import { REVIEW_SYSTEM, reviewBody } from "./review.ts";
+import { REVIEW_BANNED, REVIEW_SYSTEM, reviewBody } from "./review.ts";
+import { FORM9_PLAN_LABELS, MISS_LABELS, REVIEW_ERROR_LABELS, REVIEW_KIND_LABELS, REVIEW_UI, SCORE_LABELS } from "./score-labels.ts";
 import { scoreNumbers } from "./score.ts";
 
 type Params = Anthropic.Beta.Messages.MessageCreateParamsNonStreaming;
@@ -369,5 +370,35 @@ describe("講評（Opus 1 回）", () => {
     expect(Array.from(b.findings[0].text)).toHaveLength(120);
     expect(Array.from(b.summary)).toHaveLength(240);
     expect(b.findings[0].person).toBe("p-01");
+  });
+
+  it("講評の system と採点の言葉に「死亡」「関連死」「診断」「判定」「重症」が無い（書かせない言葉の検査にも掛からない）", () => {
+    const words = /死亡|関連死|診断|判定|重症/;
+    expect(REVIEW_SYSTEM).not.toMatch(words);
+    expect(REVIEW_SYSTEM).not.toMatch(REVIEW_BANNED);
+    const labels = [SCORE_LABELS, MISS_LABELS, FORM9_PLAN_LABELS, REVIEW_KIND_LABELS, REVIEW_UI, REVIEW_ERROR_LABELS].flatMap((o) => Object.values(o));
+    for (const l of labels) expect(l).not.toMatch(REVIEW_BANNED);
+    expect(REVIEW_SYSTEM).toContain("条件に達した");
+    expect(REVIEW_SYSTEM).toMatch(/薬の量・処置・医療の助言を書かない/);
+  });
+
+  it("医療の助言・薬の量・生き死にの指摘は捨てる（行動の評価は残す）", () => {
+    const { key } = pseudonymize(SEED_PEOPLE.slice(0, 2).map(seedInput), { on: "2026-11-05" });
+    const f = (text: string) => ({ person: "A さん", kind: "order", text, basis: "根拠なし" });
+    const b = reviewBody(
+      {
+        summary: "受診を急がせる",
+        findings: [
+          f("インスリンを 2 単位増量する"),
+          f("早めに受診を勧める"),
+          f("酸素の流量を上げるよう伝える"),
+          f("このままでは亡くなる"),
+          f("停電の前に本人電話で電池の残りを聞く"),
+        ],
+      },
+      { key, members: new Set(["p-01", "p-02"]) },
+    );
+    expect(b.findings.map((x) => x.text)).toEqual(["停電の前に本人電話で電池の残りを聞く"]);
+    expect(b.summary).toBe("");
   });
 });
