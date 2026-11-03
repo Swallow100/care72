@@ -48,6 +48,16 @@ export const DETAIL_LABELS = {
   open: "詳細",
   close: "閉じる",
   noAnswer: "不通",
+  connected: "通話",
+  heard: "安否",
+  heardGreen: "無事",
+  heardRed: "無事でない",
+  heardNone: "聞けず",
+  injured: "けが",
+  immobile: "動けない",
+  memo: "メモ",
+  reach: "距離",
+  cancel: "取消",
   expired: "失効",
   clear: "解除",
   save: "保存",
@@ -66,3 +76,15 @@ export const CLASS_LABELS: Record<RecordingClass, string> = {
   device_stopped: "機器停止",
   unknown: "不明",
 };
+
+/** 絞込の帯（T58）の言葉 */
+export const FILTER_LABELS = {
+  title: "絞込",
+  color: "状態",
+  area: "地区",
+  mark: "医療",
+  search: "検索",
+  clear: "解除",
+  all: "全部",
+  none: "なし",
+} as const;
