@@ -292,6 +292,8 @@ export const TRANSCRIPT_RESTARTS = 5;
 export type TranscriptEvents = {
   /** 1 字も取れないまま、ブラウザが無音で止めた（no-speech か、何も聞かずに終わった）。聞き直しは呼ぶ側が決める */
   onSilence?: () => void;
+  /** 文字が届いた（途中の文字も）。話している間は録る時間を延ばす（T69b） */
+  onText?: (text: string) => void;
 };
 
 /**
@@ -310,7 +312,9 @@ export function startTranscript(Ctor: SpeechRecognitionCtor | null, events: Tran
 
   const d = createDictation(Ctor, {
     onText: (t) => {
+      const changed = t !== text;
       text = t;
+      if (changed && t.trim()) events.onText?.(t);
     },
     onDone: (t) => finish(t),
     onEnd: (error) => {

@@ -6,11 +6,22 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, expectTypeOf, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, expectTypeOf, it, vi } from "vitest";
 import { FamilyView } from "../../components/phone/FamilyView.tsx";
 import { PhoneView, type PhoneActions } from "../../components/phone/PhoneView.tsx";
 import type { TriageSignal } from "../triage/index.ts";
 import type { FamilyScreen } from "./family.ts";
+import { createFamilyPhone, type FamilyState } from "./family-phone.ts";
+import type { AttachItem } from "./outbox.ts";
+import {
+  createPhone,
+  MAX_RECORD_MS,
+  RECORD_MS,
+  TALKING_MS,
+  type PhoneDeps,
+  type PhoneState,
+  type TranscriptEvents,
+} from "./phone.ts";
 import {
   CHOICE_TONES,
   legacyColumnsOf,
@@ -18,6 +29,7 @@ import {
   QUESTIONS,
   UNKNOWN_CHOICE,
   type Answer,
+  type Answers,
   type QuestionId,
 } from "./questions.ts";
 
@@ -172,5 +184,307 @@ describe("選択肢の枠と色分け（1）", () => {
 
   it("ケアマネの聞き取りの欄には色を付けない（components/list/Hearing.tsx は tone を読まない）", () => {
     expect(readFileSync(join(ROOT, "components/list/Hearing.tsx"), "utf8")).not.toMatch(/\btone\b/);
+  });
+});
+
+// ---------- 3 やばそうなら残りを飛ばして録音 ----------
+
+const T0 = Date.parse("2026-11-04T01:00:00.000Z");
+const flush = async () => {
+  for (let i = 0; i < 10; i++) await Promise.resolve();
+};
+
+type PhoneHarness = {
+  phone: ReturnType<typeof createPhone>;
+  states: PhoneState[];
+  answers: Array<{ signalId: string; answers: Answers }>;
+  recordings: AttachItem[];
+};
+
+function phoneHarness(over: Partial<PhoneDeps> = {}): PhoneHarness {
+  const h = { states: [], answers: [], recordings: [] } as unknown as PhoneHarness;
+  let n = 0;
+  h.phone = createPhone({
+    newId: () => `00000000-0000-4000-8000-${String(++n).padStart(12, "0")}`,
+    sendSignal: async () => "sent",
+    sendRecording: async (item) => {
+      h.recordings.push(item);
+      return "sent";
+    },
+    sendAnswers: async (item) => {
+      h.answers.push(item);
+      return "sent";
+    },
+    playPrompt: async () => {},
+    startRecording: async () => ({ stop: async () => new Blob([new Uint8Array([9])], { type: "audio/webm" }) }),
+    startTranscript: () => ({ stop: async () => "あしが いたい" }),
+    onChange: (s) => h.states.push(s),
+    ...over,
+  });
+  return h;
+}
+
+const qSteps = (states: ReadonlyArray<{ step: string; id?: string }>) =>
+  states.map((s) => (s.step === "question" ? `q:${s.id}` : s.step));
+
+/** 押す順に答える（今の問いを確かめながら） */
+function press(h: PhoneHarness, path: ReadonlyArray<readonly [QuestionId, string]>) {
+  for (const [q, c] of path) {
+    expect(h.phone.state).toMatchObject({ step: "question", id: q });
+    h.phone.answer(c);
+  }
+}
+
+describe("やばそうなら残りを飛ばして録音（3）", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(T0);
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it("飛ばす答えの集合（案）: けが ある・動けない・出られない・妨げ 4 つ・水 3 つ・火やガス・機器の停止", () => {
+    expect([...pairs((_, c) => c.toRecording === true)].sort()).toEqual(
+      [
+        "injured.yes",
+        "canMove.no",
+        "exit.no",
+        "trappedBy.door",
+        "trappedBy.furniture",
+        "trappedBy.fallen",
+        "trappedBy.water",
+        "water.floor",
+        "water.knee",
+        "water.waist",
+        "fireGas.yes",
+        "device.stopped",
+      ].sort(),
+    );
+    // 体の訴え・薬・連絡・そばの人・場所には付けない
+    for (const id of ["body", "hasMedicine", "contact", "nearby", "place"] as QuestionId[]) {
+      expect(QUESTIONS.find((q) => q.id === id)!.choices.some((c) => c.toRecording), id).toBe(false);
+    }
+  });
+
+  it("けが ある → 「動けますか」の 1 問だけ → 定型文と録音。飛ばした問いは answers に入らない", async () => {
+    const h = phoneHarness();
+    h.phone.red();
+    h.phone.answer("yes");
+    expect(h.phone.state).toMatchObject({ step: "question", id: "canMove" });
+    h.phone.answer("yes");
+    await flush();
+    expect(h.phone.state.step).toBe("recording");
+    expect(qSteps(h.states)).toEqual(["q:injured", "q:canMove", "prompt", "recording"]);
+    expect(h.answers.at(-1)!.answers).toEqual({ injured: { choice: "yes", via: "press" }, canMove: { choice: "yes", via: "press" } });
+    // 表が読む 4 つの列: けが あり・動ける（ほかは答えなし）
+    expect(legacyColumnsOf(h.answers.at(-1)!.answers)).toEqual({ injured: true, atHome: null, canMove: true, hasMedicine: null });
+  });
+
+  it("けが ある のあとの 動けますか を とばしても録音へ", async () => {
+    const h = phoneHarness();
+    h.phone.red();
+    h.phone.answer("yes");
+    h.phone.skip();
+    await flush();
+    expect(h.phone.state.step).toBe("recording");
+  });
+
+  it("動けない → すぐ定型文と録音（自分が表の入力なのでそのまま）", async () => {
+    const h = phoneHarness();
+    h.phone.red();
+    press(h, [
+      ["injured", "no"],
+      ["atHome", "yes"],
+      ["floor", "f1"],
+      ["room", "bedroom"],
+      ["canMove", "no"],
+    ]);
+    await flush();
+    expect(h.phone.state.step).toBe("recording");
+    expect(Object.keys(h.answers.at(-1)!.answers)).toEqual(["injured", "atHome", "floor", "room", "canMove"]);
+  });
+
+  it("出られない・水が床まで・火やガス でも録音へ。急がない答え（水なし）はそのまま次の問い", async () => {
+    const head = [
+      ["injured", "no"],
+      ["atHome", "unknown"],
+      ["canMove", "yes"],
+    ] as const;
+    const cases: Array<[ReadonlyArray<readonly [QuestionId, string]>, boolean]> = [
+      [[...head, ["exit", "no"]], true],
+      [[...head, ["exit", "yes"], ["body", "none"], ["water", "floor"]], true],
+      [[...head, ["exit", "yes"], ["body", "none"], ["water", "none"], ["fireGas", "yes"]], true],
+      [[...head, ["exit", "yes"], ["body", "breath"], ["water", "none"]], false],
+    ];
+    for (const [path, rush] of cases) {
+      const h = phoneHarness();
+      h.phone.red();
+      press(h, path);
+      await flush();
+      if (rush) expect(h.phone.state.step, JSON.stringify(path)).toBe("recording");
+      else expect(h.phone.state).toMatchObject({ step: "question", id: "fireGas" });
+    }
+  });
+
+  it("体の訴え（息が くるしい）では飛ばさない（症状の重さを仕組みが決めない）", () => {
+    const h = phoneHarness();
+    h.phone.red();
+    press(h, [
+      ["injured", "no"],
+      ["atHome", "unknown"],
+      ["canMove", "yes"],
+      ["exit", "yes"],
+      ["body", "breath"],
+    ]);
+    expect(h.phone.state).toMatchObject({ step: "question", id: "water" });
+  });
+
+  it("機器が止まった（台帳に機器がある人）→ 録音へ", async () => {
+    const h = phoneHarness({ hasDevice: true });
+    h.phone.red();
+    press(h, [
+      ["injured", "no"],
+      ["atHome", "unknown"],
+      ["canMove", "yes"],
+      ["exit", "yes"],
+      ["body", "none"],
+      ["water", "none"],
+      ["fireGas", "no"],
+      ["device", "stopped"],
+    ]);
+    await flush();
+    expect(h.phone.state.step).toBe("recording");
+  });
+
+  it("家族: けが ある → 動けますか の 1 問 → 送れたか（録音は無い）。動けない → すぐ送れたか", async () => {
+    const sent: Answers[] = [];
+    const make = () => {
+      const states: FamilyState[] = [];
+      const f = createFamilyPhone({
+        sendSignal: async () => "sent",
+        sendAnswers: async (item) => {
+          sent.push(item.answers);
+          return "sent";
+        },
+        onChange: (s) => states.push(s),
+      });
+      return { f, states };
+    };
+    const a = make();
+    a.f.answer("red");
+    a.f.choose("yes");
+    expect(a.f.state).toMatchObject({ step: "question", id: "canMove" });
+    a.f.choose("no");
+    await flush();
+    expect(a.f.state).toEqual({ step: "done", color: "red", delivery: "sent" });
+    expect(sent.at(-1)).toEqual({ injured: { choice: "yes", via: "press" }, canMove: { choice: "no", via: "press" } });
+
+    const b = make();
+    b.f.answer("red");
+    b.f.choose("no");
+    b.f.choose("unknown");
+    expect(b.f.state).toMatchObject({ step: "question", id: "canMove" });
+    b.f.choose("no");
+    await flush();
+    expect(b.f.state).toMatchObject({ step: "done" });
+    expect(qSteps(b.states as Array<{ step: string; id?: string }>)).not.toContain("q:exit");
+  });
+
+  it("飛ばしても表の 4 つの列は同じ答えから同じ値（飛ばした問いは列に関わらない）", () => {
+    const rushed = legacyColumnsOf({ injured: { choice: "yes", via: "press" }, canMove: { choice: "no", via: "press" } });
+    const full = legacyColumnsOf({
+      injured: { choice: "yes", via: "press" },
+      injuryPart: { choice: "leg", via: "press" },
+      bleeding: { choice: "no", via: "press" },
+      canMove: { choice: "no", via: "press" },
+      exit: { choice: "no", via: "press" },
+    });
+    expect(rushed).toEqual(full);
+  });
+});
+
+describe("録音の長さ（3）: 60 秒、話している間は 60 秒ずつ延びる、上限 180 秒", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(T0);
+  });
+  afterEach(() => vi.useRealTimers());
+
+  /** 文字起こしの偽物。talk() で文字の知らせ（onText）を届ける */
+  function talking() {
+    let events: TranscriptEvents | null = null;
+    const start: NonNullable<PhoneDeps["startTranscript"]> = (e) => {
+      events = e;
+      return { stop: async () => "みずが きて うごけない" };
+    };
+    return { start, talk: () => events?.onText?.("みずが") };
+  }
+
+  /** けが ある → 動けない で録音へ（押してすぐ録音が始まる） */
+  async function toRecording(h: PhoneHarness) {
+    h.phone.red();
+    h.phone.answer("yes");
+    h.phone.answer("no");
+    await flush();
+    expect(h.phone.state).toEqual({ step: "recording", startedAt: T0, until: T0 + RECORD_MS });
+  }
+
+  it("定数: 60 秒・180 秒・話している間 15 秒", () => {
+    expect(RECORD_MS).toBe(60_000);
+    expect(MAX_RECORD_MS).toBe(180_000);
+    expect(TALKING_MS).toBe(15_000);
+  });
+
+  it("話していれば 60 秒の時点で 60 秒延び、話し終われば次の時点で送る", async () => {
+    const t = talking();
+    const h = phoneHarness({ startTranscript: t.start });
+    await toRecording(h);
+    vi.advanceTimersByTime(RECORD_MS - 5_000);
+    t.talk();
+    vi.advanceTimersByTime(5_000);
+    await flush();
+    expect(h.phone.state).toEqual({ step: "recording", startedAt: T0, until: T0 + 2 * RECORD_MS });
+    // 次の 60 秒は黙っている → 送る
+    vi.advanceTimersByTime(RECORD_MS);
+    await flush();
+    expect(h.phone.state).toMatchObject({ step: "done", color: "red" });
+    expect(h.recordings[0]).toMatchObject({ transcript: "みずが きて うごけない", durationSec: (2 * RECORD_MS) / 1000 });
+  });
+
+  it("話し続けても 180 秒で止めて送る", async () => {
+    const t = talking();
+    const h = phoneHarness({ startTranscript: t.start });
+    await toRecording(h);
+    for (let i = 0; i < 18; i++) {
+      t.talk();
+      vi.advanceTimersByTime(10_000);
+      await flush();
+    }
+    expect(h.phone.state).toMatchObject({ step: "done" });
+    expect(h.recordings[0].durationSec).toBe(MAX_RECORD_MS / 1000);
+  });
+
+  it("最後に話したのが 15 秒より前なら延ばさない（静かになってから待たせない）", async () => {
+    const t = talking();
+    const h = phoneHarness({ startTranscript: t.start });
+    await toRecording(h);
+    vi.advanceTimersByTime(10_000);
+    t.talk();
+    vi.advanceTimersByTime(RECORD_MS - 10_000);
+    await flush();
+    expect(h.phone.state).toMatchObject({ step: "done" });
+  });
+
+  it("「おくる」はいつでも送る（延ばしている途中でも）", async () => {
+    const t = talking();
+    const h = phoneHarness({ startTranscript: t.start });
+    await toRecording(h);
+    vi.advanceTimersByTime(RECORD_MS - 1_000);
+    t.talk();
+    vi.advanceTimersByTime(2_000);
+    await flush();
+    expect(h.phone.state).toMatchObject({ step: "recording", until: T0 + 2 * RECORD_MS });
+    h.phone.finish();
+    await flush();
+    expect(h.phone.state).toMatchObject({ step: "done" });
   });
 });
