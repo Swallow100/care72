@@ -3,7 +3,7 @@
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -26,7 +26,13 @@ import {
 import { TOOL_NAMES } from "./tools.ts";
 
 const ON = "2026-11-02";
-const migration = readFileSync(fileURLToPath(new URL("../../../migrations/0001_init.sql", import.meta.url)), "utf8");
+// migrations の *.sql を名前の順に全部（wrangler の migrations apply と同じ順。lib/db/test-d1.ts の migratedSqlite と同じ）
+const MIGRATIONS = new URL("../../../migrations/", import.meta.url);
+const migration = readdirSync(MIGRATIONS)
+  .filter((n) => n.endsWith(".sql"))
+  .sort()
+  .map((n) => readFileSync(new URL(n, MIGRATIONS), "utf8"))
+  .join("\n");
 const serverPath = fileURLToPath(new URL("./server.ts", import.meta.url));
 
 const p01 = SEED_PEOPLE[0];

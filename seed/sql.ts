@@ -43,6 +43,8 @@ export const CLEAR_ORDER = [
   "form_mappings",
   "disaster_state",
   "ai_calls",
+  // ログインの回数の制限（T41）。手元の入れ直しでは消す（配信の毎日 4 時・最初に戻すでは消さない。lib/seed/reset.ts）
+  "login_attempts",
   "signals",
   "drill_events",
   "drills",
