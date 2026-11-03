@@ -6,7 +6,7 @@
 import Link from "next/link";
 import { StateText } from "@/components/ui/Tag";
 import { TABLE, TD } from "@/components/ui/table";
-import { PLAN_TONES, rowLink, type CaseloadRow, type SortKey } from "@/lib/caseload";
+import { PLAN_TONES, rowLink, type CaseloadFilter, type CaseloadRow, type SortDir, type SortKey } from "@/lib/caseload";
 import { CARE_LEVEL_LABELS, PLAN_STATUS_LABELS, TIER_LABELS } from "@/lib/labels";
 import { MedicalCell, NarrowMarks } from "./NarrowMarks";
 import { SortHeader } from "./SortHeader";
@@ -14,18 +14,31 @@ import { SortHeader } from "./SortHeader";
 const CELL = TD;
 const WIDE = "hidden md:table-cell";
 
-export function CaseloadTable({ rows, sort }: { rows: CaseloadRow[]; sort: SortKey }) {
+export function CaseloadTable({
+  rows,
+  sort,
+  dir,
+  filter,
+}: {
+  rows: CaseloadRow[];
+  sort: SortKey;
+  /** 並びの向き（T58）。無ければ列の既定 */
+  dir?: SortDir;
+  /** 今の絞込（見出しと氏名のリンクが持ち越す） */
+  filter?: CaseloadFilter;
+}) {
+  const view = { ...(dir ? { dir } : {}), ...(filter ? { filter } : {}) };
   return (
     <table className={TABLE} data-table="caseload">
       <thead>
         <tr>
-          <SortHeader k="tier" sort={sort} className="w-14 text-center" />
-          <SortHeader k="kana" sort={sort} />
-          <SortHeader k="age" sort={sort} />
-          <SortHeader k="medical" sort={sort} className={WIDE} />
-          <SortHeader k="hazard" sort={sort} className={WIDE} />
-          <SortHeader k="supporter" sort={sort} className={WIDE} />
-          <SortHeader k="plan" sort={sort} />
+          <SortHeader k="tier" sort={sort} dir={dir} filter={filter} className="w-14 text-center" />
+          <SortHeader k="kana" sort={sort} dir={dir} filter={filter} />
+          <SortHeader k="age" sort={sort} dir={dir} filter={filter} />
+          <SortHeader k="medical" sort={sort} dir={dir} filter={filter} className={WIDE} />
+          <SortHeader k="hazard" sort={sort} dir={dir} filter={filter} className={WIDE} />
+          <SortHeader k="supporter" sort={sort} dir={dir} filter={filter} className={WIDE} />
+          <SortHeader k="plan" sort={sort} dir={dir} filter={filter} />
         </tr>
       </thead>
       <tbody>
@@ -37,7 +50,7 @@ export function CaseloadTable({ rows, sort }: { rows: CaseloadRow[]; sort: SortK
               </span>
             </td>
             <td className={CELL}>
-              <Link href={rowLink(sort, null, r.id).href} className="-mx-1 rounded px-1 font-bold" data-press>
+              <Link href={rowLink(sort, null, r.id, view).href} className="-mx-1 rounded px-1 font-bold" data-press>
                 {r.name}
               </Link>
               <span className="ml-1.5 text-xs text-muted">{r.kana}</span>

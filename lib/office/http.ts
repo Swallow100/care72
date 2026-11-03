@@ -3,7 +3,7 @@
 //
 // - 利用者追加（JSON）: 作ったら本人のページ（担当一覧の右の面 /?open=<id>）の URL を返す。画面が開いて入れる欄で続きを入れる
 // - ケアマネ追加（JSON）: 管理者だけ。初期パスワードの平文は、この応答で 1 回だけ返す（URL・ログ・表には出さない。応答は no-store）
-// - 担当の割当・外す・戻す（フォームの POST）: 303 で画面へ戻す。誤りは URL の people_error（言葉の種類だけ。名前は載せない）
+// - 担当の割当・一括変更（T60）・外す・戻す（フォームの POST）: 303 で画面へ戻す。一括変更は戻り先に変更と飛ばしの人数（moved・skipped）。誤りは URL の people_error（言葉の種類だけ。名前は載せない）
 // 断り方: ログインしていなければ 401、ケアマネの役でなければ 403（lib/auth/guard.ts の denied と同じ形）。
 
 import type { D1Database } from "@cloudflare/workers-types";
@@ -14,7 +14,7 @@ import type { FormLike } from "../disaster/state.ts";
 import { parsePersonInput, parseStaffInput } from "./forms.ts";
 import { OFFICE_ERROR_LABELS, PEOPLE_ACTION_ERRORS, type OfficeApiError, type PeopleActionError } from "./labels.ts";
 import { ASSIGN_ANCHOR } from "./http-paths.ts";
-import { assignPerson, createPerson, setUnlisted } from "./people.ts";
+import { assignMany, assignPerson, createPerson, MAX_ASSIGN_MANY, setUnlisted, type AssignManyItem } from "./people.ts";
 import { officeActor } from "./scope.ts";
 import { addCareManager } from "./staff.ts";
 
@@ -80,7 +80,7 @@ export async function addCareManagerRequest(
 
 // ---------- 担当の割当・外す・戻す（フォームの POST） ----------
 
-export const PEOPLE_ACTIONS = ["assign", "unlist", "relist"] as const;
+export const PEOPLE_ACTIONS = ["assign", "assign_many", "unlist", "relist"] as const;
 export type PeopleAction = (typeof PEOPLE_ACTIONS)[number];
 
 /** 戻る画面: 事業所（担当の表）か担当一覧（外した人の畳み） */
@@ -99,13 +99,51 @@ export function parsePeopleError(v: unknown): PeopleActionError | null {
 const ID = /^[A-Za-z0-9_-]{1,64}$/;
 const str = (v: FormDataEntryValue | null | undefined): string | null => (typeof v === "string" ? v : null);
 
-/** 担当の割当（action=assign、person・from・to）、外す（unlist）、戻す（relist） */
+/** 一括変更のあとの戻り先（事業所の担当の表）。変更と飛ばしの人数だけを載せる（名前は載せない） */
+export function assignManyHref(moved: number, skipped: number): string {
+  return `${OFFICE_PATH}?moved=${moved}&skipped=${skipped}#${ASSIGN_ANCHOR}`;
+}
+
+/** 戻り先の moved・skipped を読む。形が違えば null（知らせを出さない） */
+export function parseAssignedMany(q: { moved?: unknown; skipped?: unknown }): { moved: number; skipped: number } | null {
+  const n = (v: unknown) => (typeof v === "string" && /^\d{1,4}$/.test(v) ? Number(v) : null);
+  const moved = n(q.moved);
+  const skipped = n(q.skipped ?? "0");
+  return moved === null || skipped === null ? null : { moved, skipped };
+}
+
+/**
+ * 一括変更のフォーム: person（複数）、人ごとの from.<person>（画面で読んだ担当、未割当は空）、to。
+ * 選んでいない・多すぎる・形の違う id は bad、移動先の形が違えば care_manager
+ */
+function parseAssignMany(form: FormLike | null): { ok: true; items: AssignManyItem[]; to: string } | { ok: false; error: "bad" | "care_manager" } {
+  const persons = (form?.getAll("person") ?? []).map((v) => str(v) ?? "");
+  if (persons.length === 0 || persons.length > MAX_ASSIGN_MANY || persons.some((id) => !ID.test(id))) return { ok: false, error: "bad" };
+  const items: AssignManyItem[] = [];
+  for (const personId of persons) {
+    const from = str(form?.get(`from.${personId}`)) ?? "";
+    if (from !== "" && !ID.test(from)) return { ok: false, error: "bad" };
+    items.push({ personId, from: from || null });
+  }
+  const to = str(form?.get("to")) ?? "";
+  if (!ID.test(to)) return { ok: false, error: "care_manager" };
+  return { ok: true, items, to };
+}
+
+/** 担当の割当（action=assign、person・from・to）、一括変更（assign_many、person を複数・from.<person>・to）、外す（unlist）、戻す（relist） */
 export async function peoplePost(db: D1Database, p: Principal | null, form: FormLike | null, at: string): Promise<PostOutcome> {
   if (!p) return { status: 401 };
   const actor = officeActor(p);
   if (!actor) return { status: 403 };
   const back: PeopleBack = str(form?.get("back")) === "caseload" ? "caseload" : "office";
   const action = str(form?.get("action"));
+  if (action === "assign_many") {
+    const parsed = parseAssignMany(form);
+    if (!parsed.ok) return { status: 303, location: peopleBackHref(back, parsed.error) };
+    const r = await assignMany(db, actor, { items: parsed.items, to: parsed.to }, at);
+    if (!r.ok) return { status: 303, location: peopleBackHref(back, r.error) };
+    return { status: 303, location: back === "office" ? assignManyHref(r.changed, r.skipped) : peopleBackHref(back) };
+  }
   const person = str(form?.get("person"));
   if (!person || !ID.test(person) || !(PEOPLE_ACTIONS as readonly string[]).includes(action ?? "")) {
     return { status: 303, location: peopleBackHref(back, "bad") };

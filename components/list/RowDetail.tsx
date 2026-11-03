@@ -57,10 +57,28 @@ export function RowDetail({
             ) : (
               <ul className="space-y-0.5">
                 {d.calls.map((c, i) => (
-                  <li key={`${c.at}-${i}`} className="flex flex-wrap gap-x-2" data-call={c.result ?? ""}>
-                    <span className="text-xs text-muted tabular-nums">{c.when}</span>
-                    <span className={c.result === "no_answer" ? "font-bold tone-check" : undefined}>{c.body}</span>
-                    {c.who && <span className="text-xs text-muted">{c.who}</span>}
+                  <li key={`${c.at}-${i}`} data-call={c.result ?? ""}>
+                    <div className="flex flex-wrap gap-x-2">
+                      <span className="text-xs text-muted tabular-nums">{c.when}</span>
+                      <span
+                        className={
+                          c.result === "no_answer"
+                            ? "font-bold tone-check"
+                            : c.heard
+                              ? `font-bold ${c.heard.color === "green" ? "text-state-ok" : "text-state-urgent"}`
+                              : undefined
+                        }
+                      >
+                        {c.body}
+                      </span>
+                      {c.who && <span className="text-xs text-muted">{c.who}</span>}
+                    </div>
+                    {/* メモは経過の payload から（本文には入れない）。小さく */}
+                    {c.memo && (
+                      <p className="text-xs text-muted" data-call-memo-text>
+                        {DETAIL_LABELS.memo} {c.memo}
+                      </p>
+                    )}
                   </li>
                 ))}
               </ul>
