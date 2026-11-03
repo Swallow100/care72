@@ -4,7 +4,8 @@
 // 空欄の出し方:
 // - 台帳の pending（分からない・まだ聞いていない・答えない）は、その欄に「未確認」と理由を出し、区分の見出しに数える。
 //   数は ledger.pending の数と同じ（担当一覧の「未確認 N」と合わせる）。T03 は unconfirmed（場所つきの一覧）から次の問いを選ぶ。
-// - pending に無い空の欄も「未確認」と出すが、数えない（まだ入れていない欄）。
+// - pending に無い空の欄は「未入力」と出し、数えない（まだ入れていない欄。T79 で「未確認」から分けた。数える物と言葉をそろえる）。
+//   状態としての未確認（同意の未確認・値の無い時計）は「未確認」のまま。
 // - 配列で持つ欄（機器・薬・ハザード）が空なら「なし」。連絡先は表に全部あるので、無い間柄は「なし」。
 //
 // 区分の順は sectionOrder（発災時は経過が一番上）。発災時の色と理由は priorityOf に TriageResult を渡す（T09・T13）。
@@ -591,7 +592,7 @@ const POWERED_DEVICES = new Set<DeviceKind>(["oxygen", "ventilator", "suction"])
 
 function medicalBlocks(ledger: Ledger, contacts: Contact[], clocks: PersonPageRows["clocks"]): Block[] {
   const { medical } = ledger;
-  const blank = muted(BLANK_LABELS.unconfirmed);
+  const blank = muted(BLANK_LABELS.blank);
   // 薬: 名前・区分・回数・用量・残り（その薬の時計）・保管・印
   const meds: Field =
     medical.medications.length === 0
@@ -815,13 +816,13 @@ function basicBlocks(rows: PersonPageRows, ledger: Ledger): Block[] {
     ...(means.length > 0 ? [[text(means.join("・"))]] : []),
   ]);
 
-  // 心身: 内閣府様式の裏の 6 項目と、寝たきり・認知症。空の項目も「未確認」で出す
+  // 心身: 内閣府様式の裏の 6 項目と、寝たきり・認知症。空の項目も「未入力」で出す
   const abilities: Line = (Object.keys(ABILITY_ITEM_LABELS) as Array<keyof typeof ABILITY_ITEM_LABELS>).map((k) => {
     const v = care[k];
-    return v ? text(`${ABILITY_ITEM_LABELS[k]} ${ABILITY_LABELS[v]}`) : muted(`${ABILITY_ITEM_LABELS[k]} ${BLANK_LABELS.unconfirmed}`);
+    return v ? text(`${ABILITY_ITEM_LABELS[k]} ${ABILITY_LABELS[v]}`) : muted(`${ABILITY_ITEM_LABELS[k]} ${BLANK_LABELS.blank}`);
   });
   const flag = (label: string, v: boolean | undefined): Seg =>
-    v === true ? text(label) : muted(`${label} ${v === false ? BLANK_LABELS.none : BLANK_LABELS.unconfirmed}`);
+    v === true ? text(label) : muted(`${label} ${v === false ? BLANK_LABELS.none : BLANK_LABELS.blank}`);
   const careLines: Line[] = [abilities, [flag(CARE_FLAG_LABELS.bedridden, care.bedridden), flag(CARE_FLAG_LABELS.dementia, care.dementia)]];
 
   const out = [

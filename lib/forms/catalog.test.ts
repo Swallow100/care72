@@ -1,7 +1,7 @@
 // 書類の一覧（T47 の 3）: 形、元の様式の版・題との一致、README の「書類」の節が同じ一覧を載せていること。
 import { describe, expect, it } from "vitest";
 import { DOCUMENT_LABELS } from "../labels.ts";
-import { aboutLine, CAO_ENTRY, DOCUMENT_CATALOG, MATSUYAMA_ENTRY, mappingEntry, type CatalogEntry } from "./catalog.ts";
+import { aboutLine, aboutParts, CAO_ENTRY, DOCUMENT_CATALOG, MATSUYAMA_ENTRY, mappingEntry, type CatalogEntry } from "./catalog.ts";
 import { FORM9_TITLE } from "./form9.ts";
 import { MATSUYAMA_FORM_URL, MATSUYAMA_FORM_VERSION, MATSUYAMA_TEXTS } from "./matsuyama.ts";
 import { readRepoFile } from "./print-harness.ts";
@@ -12,7 +12,7 @@ const ASSERTING_WORDS = ["診断", "判定", "重症", "病気がわかる"];
 describe("書類の一覧", () => {
   it("全部の欄が埋まり、断定の言葉が無い", () => {
     for (const e of ALL) {
-      for (const k of ["id", "official", "short", "what", "who", "when", "source"] as const) expect(e[k], `${e.id} ${k}`).toBeTruthy();
+      for (const k of ["id", "official", "short", "what", "who", "route", "when", "source", "version"] as const) expect(e[k], `${e.id} ${k}`).toBeTruthy();
       for (const w of ASSERTING_WORDS) expect(aboutLine(e), `${e.id} ${w}`).not.toContain(w);
     }
   });
@@ -28,13 +28,19 @@ describe("書類の一覧", () => {
     expect(DOCUMENT_CATALOG.form9.official).toBe(FORM9_TITLE);
   });
 
-  it("1 行の説明は 正式な名前 ― 何の書類か。誰が誰に。出典と版", () => {
-    expect(aboutLine(MATSUYAMA_ENTRY)).toBe(
-      "松山市避難行動要支援者名簿登録申込書 兼 個別避難計画 ― 避難支援に要る本人・支援者・避難先・医療の情報をまとめた計画。市の名簿への登録の申込を兼ねる。本人・家族が市へ出す（作るのはケアマネ）。松山市 様式【2026.9.10】",
-    );
+  it("1 行の小さな注は 正式な名前 ／ 誰が誰に ／ 版 だけ（説明の文は出さない。T79）", () => {
+    expect(aboutLine(MATSUYAMA_ENTRY)).toBe("松山市避難行動要支援者名簿登録申込書 兼 個別避難計画 ／ 本人・家族 → 市 ／ 松山市 様式【2026.9.10】");
+    expect(aboutParts(DOCUMENT_CATALOG.form9, { official: false })).toEqual(["事業所 → 市町村", "厚労省 BCP ひな形 様式9"]);
+    for (const e of ALL) {
+      // 文にしない（句点なし）。説明の文（what・when）を含めない
+      expect(aboutLine(e), e.id).not.toContain("。");
+      expect(aboutLine(e), e.id).not.toContain(e.what);
+      expect(e.route, e.id).toContain(" → ");
+    }
     const m = mappingEntry({ id: "m-1", title: "個別避難計画", issuer: "架空市", checkedAt: "2026-11-03T01:00:00.000Z" });
     expect(m.id).toBe("mapping:m-1");
     expect(m.source).toBe("架空市の様式（対応表 確認済 2026-11-03）");
+    expect(aboutLine(m)).toBe("個別避難計画 ／ 本人・家族 → 市町村 ／ 架空市 対応表 確認済 2026-11-03");
   });
 
   it("README の「書類」の節に、一覧の書類の正式な名前と版が全部ある", () => {

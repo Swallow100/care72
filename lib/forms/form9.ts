@@ -233,7 +233,13 @@ export type NormalKey = {
 };
 
 /** 平時の並びの鍵。上から順に比べる（docs/progress/t15.md） */
-export const NORMAL_ORDER_LABELS = ["順番の骨格の段 1〜8", "時計の短い順", "支援者なしが先", "カナ"] as const;
+/**
+ * 平時の並びの言葉（画面・紙）。「骨格」は分かりにくいので「組」（人工呼吸器 1 〜 それ以外 8。lib/labels.ts の TIER_LABELS）と呼ぶ（T79）。
+ * 担当一覧の平時の列・CSV の「組」（T78、11/4 00:0x の確定）と同じ名前。ルールの表の文書（docs/TRIAGE.md）は「順番の骨格の段」のまま
+ */
+export const NORMAL_ORDER_LABELS = ["組 1〜8", "時計の短い順", "支援者なしが先", "カナ"] as const;
+/** 発災時の並びの言葉（画面・紙） */
+export const DISASTER_ORDER_LABELS = ["色", "時計の残り", "支援者なし", "組"] as const;
 
 export function compareNormal(a: NormalKey, b: NormalKey): number {
   return (

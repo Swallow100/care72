@@ -253,6 +253,10 @@ async function used(): Promise<{ db: DatabaseSync; partnerDump: () => Record<str
     `INSERT INTO people (id, office_id, care_manager_id, name, kana, ledger) VALUES ('p-new', 'office-demo', 'acct-cm-2', '架空 次郎', 'カクウ ジロウ', '{}')`,
   );
   db.exec(`INSERT INTO contacts (id, person_id, kind) VALUES ('c-new', 'p-new', 'self')`);
+  // 審査員が種の人を西村と足したケアマネへ移し、西村の行を変えた（T79。西村の改名・停止はサーバーが断るが、表を直に変えても戻る）
+  db.exec(`UPDATE people SET care_manager_id = 'acct-nishimura' WHERE id = 'p-03'`);
+  db.exec(`UPDATE people SET care_manager_id = 'acct-cm-2' WHERE id = 'p-04'`);
+  db.exec(`UPDATE accounts SET display_name = '名前を変えた', is_office_admin = 1, disabled_at = '${at}' WHERE id = 'acct-nishimura'`);
   db.exec(
     `INSERT INTO form9_rank_edits (id, office_id, person_id, mode, rank, auto_rank, reason, set_by, set_at) VALUES ('f9-1', 'office-demo', 'p-02', 'disaster', 1, 2, '理由', 'acct-judge', '${at}')`,
   );
@@ -366,6 +370,15 @@ describe("最初に戻す（デモ事業所だけ）", () => {
     expect(partnerDump()).toEqual(before);
     // AI の呼び出しの記録はデモ事業所の分も残る（1 日の上限の数え）
     expect(count(db, "SELECT count(*) AS n FROM ai_calls WHERE office_id = 'office-demo'")).toBe(1);
+    // 西村は種の形（担当 0 人・管理者でない・停止なし）に戻り、審査員が足したケアマネは消える（T79）
+    expect(db.prepare("SELECT display_name, is_office_admin, disabled_at FROM accounts WHERE id = 'acct-nishimura'").get()).toEqual({
+      display_name: "西村",
+      is_office_admin: 0,
+      disabled_at: null,
+    });
+    expect(count(db, "SELECT count(*) AS n FROM people WHERE care_manager_id = 'acct-nishimura'")).toBe(0);
+    expect(count(db, "SELECT count(*) AS n FROM accounts WHERE id = 'acct-cm-2'")).toBe(0);
+    expect(count(db, "SELECT count(*) AS n FROM people WHERE office_id = 'office-demo' AND care_manager_id = 'acct-yamamoto'")).toBe(10);
     // 山本のパスワードのハッシュは残る（Worker はハッシュを知らない）
     expect(db.prepare("SELECT password_hash AS h FROM accounts WHERE id = 'acct-yamamoto'").get()).toEqual({ h: "hash-of-yamamoto" });
     // 審査員がその場で登録した所属なしの人は消え、別の医療班が登録した人は残る
@@ -592,9 +605,10 @@ describe("上限での再生への切替", () => {
 });
 
 describe("種の決まり", () => {
-  it("種のアカウントはデモ事業所の 2 つ（山本・審査員）と協力事業所の 1 つ", () => {
+  it("種のアカウントはデモ事業所の 3 つ（山本・西村・審査員）と協力事業所の 1 つ", () => {
     expect(SEED_ACCOUNTS.map((a) => [a.id, a.office_id])).toEqual([
       ["acct-yamamoto", "office-demo"],
+      ["acct-nishimura", "office-demo"],
       ["acct-judge", "office-demo"],
       ["acct-partner-cm", "office-partner"],
     ]);

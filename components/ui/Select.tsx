@@ -410,7 +410,7 @@ export function SelectList({
         }}
       >
         {multiple && (
-          <span aria-hidden className={`grid size-4 shrink-0 place-items-center rounded-[3px] ${on ? "bg-accent text-on-accent" : "outline-1 -outline-offset-1 outline-muted"}`}>
+          <span aria-hidden className={`grid size-4 shrink-0 place-items-center rounded-[3px] ${on ? "bg-accent-fill text-on-accent" : "outline-1 -outline-offset-1 outline-muted"}`}>
             {on && <SaveIcon className="size-3" />}
           </span>
         )}

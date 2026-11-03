@@ -198,7 +198,8 @@ describe("利用者追加", () => {
   });
 
   it("審査員のケアマネの役も作れる。書き手は審査員のアカウント、担当の既定は山本", async () => {
-    expect(officeActor(judgeCm())).toMatchObject({ authorId: "acct-judge", admin: false, defaultCareManagerId: "acct-yamamoto" });
+    // 審査員はデモ事業所の管理者としてケアマネを管理できる（T79）が、事業所の地域は書けない
+    expect(officeActor(judgeCm())).toMatchObject({ authorId: "acct-judge", admin: true, placeEdit: false, defaultCareManagerId: "acct-yamamoto" });
     const id = await created(judgeCm());
     const t = sqlite.prepare("SELECT author_id, author_role FROM timeline_entries WHERE person_id = ?").get(id);
     expect(t).toMatchObject({ author_id: "acct-judge", author_role: "care_manager" });
@@ -245,6 +246,7 @@ describe("担当の割当", () => {
     expect(his?.rows.map((x) => x.id)).toEqual(["p-02"]);
     expect((await listCareManagers(db, "office-demo")).map((c) => [c.name, c.people])).toEqual([
       ["山本", 9],
+      ["西村", 0],
       ["佐藤", 1],
     ]);
 
@@ -355,12 +357,11 @@ describe("ケアマネ追加", () => {
     expect(log[0]).toMatchObject({ kind: "care_manager_added", label: "ケアマネ追加", body: "佐藤", who: "山本", person: null });
   });
 
-  it("管理者だけ: 管理者でないケアマネ・審査員のケアマネの役・医療班は 403、ログインなしは 401。何も足さない", async () => {
+  it("管理者だけ: 管理者でないケアマネ・医療班は 403、ログインなしは 401。何も足さない（審査員のケアマネの役は足せる。T79）", async () => {
     const sato = await addSato();
     const before = count("SELECT count(*) AS n FROM accounts");
     const input = { displayName: "鈴木", loginId: "suzuki" };
     expect((await addCareManagerRequest(db, sato.principal, input, AT, FAST)).status).toBe(403);
-    expect((await addCareManagerRequest(db, judgeCm(), input, AT, FAST)).status).toBe(403);
     expect((await addCareManagerRequest(db, medical(), input, AT, FAST)).status).toBe(403);
     expect((await addCareManagerRequest(db, null, input, AT, FAST)).status).toBe(401);
     expect(count("SELECT count(*) AS n FROM accounts")).toBe(before);
@@ -455,7 +456,7 @@ describe("種の入れ直し", () => {
     await setUnlisted(db, officeActor(yamamoto())!, { personId: "p-05", unlisted: true }, AT);
     for (const s of seedStatements()) sqlite.exec(s);
     expect(count("SELECT count(*) AS n FROM people")).toBe(10);
-    expect(count("SELECT count(*) AS n FROM accounts WHERE office_id = 'office-demo'")).toBe(2);
+    expect(count("SELECT count(*) AS n FROM accounts WHERE office_id = 'office-demo'")).toBe(3);
     expect(count("SELECT count(*) AS n FROM office_timeline_entries")).toBe(0);
     expect(count("SELECT count(*) AS n FROM people WHERE unlisted_at IS NOT NULL")).toBe(0);
   });

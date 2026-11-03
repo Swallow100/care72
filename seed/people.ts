@@ -59,6 +59,17 @@ export const SEED_ACCOUNTS: SeedAccount[] = [
     login_id: "yamamoto",
     password_hash: null,
   },
+  // 2 人目のケアマネ（T79。架空、ログインの ID なし。担当 0 人）。審査員が担当の一括変更とケアマネの管理を試すときの相手。
+  // 変えられないアカウント（lib/auth/demo.ts の FIXED_ACCOUNT_IDS）で、改名・管理者・停止・再発行はサーバーが断る
+  {
+    id: "acct-nishimura",
+    office_id: "office-demo",
+    role: "care_manager",
+    is_office_admin: 0,
+    display_name: "西村",
+    login_id: null,
+    password_hash: null,
+  },
   {
     id: "acct-judge",
     office_id: "office-demo",

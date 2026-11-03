@@ -87,6 +87,10 @@ export const DISASTER_LABELS = {
   backToNormal: "平時復帰",
   /** 平時に戻す確認の欄の 1 行（戻すと消える欄） */
   clearOnNormal: "消す項目: 停電・警戒レベル・断水・道路",
+  /** 平時から災害モードへの確認の窓の本文（「災害モード 大雨」） */
+  toDisaster: "災害モード",
+  /** 平時から災害モードへの確認の窓の箇条（切り替えると起きる事） */
+  onStart: ["発災: 押した時刻", "並び: 色と連絡順"],
   cancel: "取消",
   noTown: "町名なし",
   inOutage: "停電中",
@@ -191,6 +195,38 @@ export function isDisaster(s: Pick<DisasterState, "kind" | "startedAt">): boolea
 export function infoOf(s: DisasterState): DisasterInfo | null {
   if (!isDisaster(s) || s.startedAt === null) return null;
   return { startedAt: s.startedAt, outage: s.outage, alertLevel: s.alertLevel, water: s.water, road: s.road };
+}
+
+// ---------- 切替の確認の窓（T79） ----------
+
+/** 切替のボタンが出す確認の窓の中身（components/ui/SubmitButton の confirm と同じ形。題とボタンの言葉は呼ぶ側の CONFIRM_LABELS） */
+export type ModeConfirm = {
+  step: "to_disaster" | "to_normal";
+  message: string;
+  details: string[];
+};
+
+/**
+ * 切替に確認の窓が要るか（11/4 の点検の中 8）。平時 → 災害モード と 災害モード → 平時 は窓で決めてから送る。
+ * 災害の種類どうし（大雨 → 台風 など）は窓なし（発災・停電の範囲と始まり・断水・道路はそのまま。lib/disaster/db.ts の switchDisasterMode）。
+ * 平時に戻すときは、今入っていて消える値を箇条に出す（種の停電・警戒レベル 4 を知らずに消さないように）
+ */
+export function modeConfirm(s: DisasterState, kind: DisasterKind): ModeConfirm | null {
+  if (kind === s.kind) return null;
+  if (kind === "normal") {
+    const info = infoOf(s);
+    const details = info
+      ? [
+          info.outage.scope !== "none" ? `${DISASTER_LABELS.outage} ${outageText(info.outage)}` : null,
+          info.alertLevel !== null ? `${DISASTER_LABELS.level} ${info.alertLevel}` : null,
+          info.water ? `${DISASTER_LABELS.water} ${info.water}` : null,
+          info.road ? `${DISASTER_LABELS.road} ${info.road}` : null,
+        ].filter((d): d is string => d !== null)
+      : [];
+    return { step: "to_normal", message: DISASTER_LABELS.clearOnNormal, details };
+  }
+  if (isDisaster(s)) return null;
+  return { step: "to_disaster", message: `${DISASTER_LABELS.toDisaster} ${DISASTER_KIND_LABELS[kind]}`, details: [...DISASTER_LABELS.onStart] };
 }
 
 // ---------- ルールの表の入力 ----------

@@ -149,8 +149,11 @@ describe("本人のページの書類の行", () => {
     expect(d.map((x) => x.key)).toEqual(["matsuyama", "medical", "own", "qr", "phone"]);
     for (const x of d) expect(x.about, x.key).toBeTruthy();
     expect(d[0].about).toContain("松山市避難行動要支援者名簿登録申込書 兼 個別避難計画");
-    expect(d[0].about).toContain("本人・家族が市へ出す");
+    expect(d[0].about).toContain("本人・家族 → 市");
     expect(d[0].about).toContain("2026.9.10");
+    // 説明の文（何の書類か・いつ使う）は出さない（T79）
+    for (const x of d) expect(x.about!.split(" ／ "), x.key).toHaveLength(3);
+    expect(d.map((x) => x.about).join("")).not.toContain("。");
   });
 
   it("事業所が内閣府の様式を選ぶと、計画書の行はその様式の紙面と説明", async () => {

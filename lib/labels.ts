@@ -332,8 +332,12 @@ export const PENDING_STATUS_LABELS: Record<PendingStatus, string> = {
   declined: "無回答",
 };
 
-/** 空欄の言い方 */
-export const BLANK_LABELS = { unconfirmed: "未確認", none: "なし" } as const;
+/**
+ * 空欄の言い方。unconfirmed「未確認」は台帳の pending（数える。本人のページの上・区分の見出し・担当一覧の「未確認 N」）と、
+ * 状態としての未確認（同意・時計の値）だけ。まだ誰も入れていない欄は blank「未入力」で、数えない（T79、点検の中 11:
+ * 新しく足した人の上が「未確認 0」なのに欄がほぼ全部「未確認」だった）
+ */
+export const BLANK_LABELS = { unconfirmed: "未確認", blank: "未入力", none: "なし" } as const;
 
 export const TIMELINE_KIND_LABELS: Record<TimelineKind, string> = {
   signal: "安否",
