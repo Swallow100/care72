@@ -7,7 +7,7 @@ echo "== npm ci"; npm ci --no-audit --no-fund --loglevel=error 2>&1 | tail -1
 echo "== 前段（migrations/0021 を drop の前に流す。survey_shares・survey_links に offices への外部キーが残っていると、リンクが 1 本でもあれば drop が落ちる。何度流しても同じ）"
 # migrations apply と同じ道（--command。1 つの取引なので、落ちれば巻き戻って行は変わらない）。落ちたら drop に進まず止める。
 # survey_ の 4 表がまだ無い D1（作ったばかり）では飛ばす（0021 は 4 表を建て直すので、無いと落ちる。migrations が 0004・0016 のあとに流す）
-HAS=$(npx wrangler d1 execute care72 --remote --json --command "select count(*) as t from sqlite_master where type='table' and name in ('survey_links','survey_answers','survey_shares','survey_responses')" 2>/dev/null | grep -o '"t": *[0-9]*' | grep -o '[0-9]*')
+HAS=$(npx wrangler d1 execute care72 --remote --json --command "select count(*) as t from sqlite_master where type='table' and name in ('survey_links','survey_answers','survey_shares','survey_responses')" 2>/dev/null | grep -o '"t": *[0-9]*' | grep -o '[0-9]*' || true)
 if [ "$HAS" = "4" ]; then
   # npx は Windows で cmd.exe を通り、複数行の長い --command を「コマンド ラインが長すぎます」で断るので、node で wrangler を直に呼ぶ
   PRE=$(node node_modules/wrangler/bin/wrangler.js d1 execute care72 --remote --json --command="$(cat migrations/0021_survey_no_office_fk.sql)" 2>&1) || { echo "前段が落ちた"; echo "$PRE" | grep -v -i token | head -20; exit 1; }
