@@ -1,4 +1,4 @@
--- 本物のケアマネの答えが入る表なので、配信の作り直し（tools/deploy/rebuild-remote.sh）で落とさず、IF NOT EXISTS で作る（11/3 12:0x）。
+-- 本物のケアマネの答えが入る表なので、配信の作り直し（tools/deploy/rebuild-remote.sh）で落とさず、IF NOT EXISTS で作る（11/3 10:3x）。
 -- ケアマネ向けアンケートの Web 版（docs/tasks/T42.md）。ログインなしの 1 ページ（/survey/<token>）で答えてもらう。
 -- 問いと記号は tools/survey/questions.ts（docs/survey/README.md の写し方と同じ a・b・c…）。
 -- 毎朝 4 時のデモの戻し（lib/seed/reset.ts）では、審査員が作ったリンクと答えだけを消す（本物のケアマネの答えは残す）。
