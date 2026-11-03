@@ -5,10 +5,12 @@
 // 状態の色と理由は lib/triage の結果をそのまま出す（ここで決め直さない）。氏名を押すと本人のページ。
 // 行の「解除」で搬送（行き先）・退所を選んで受け持ちから外す（本人の経過に残る）。
 // 医療の列と理由は同意の範囲の物だけが来る（lib/custody/board.ts）。医療要約を開ける人は氏名の横に「医療要約」（T24）。
+// 768px 未満で医療の列を省くときは、氏名の下に医療の印を時計の残りつきで 1 行（担当一覧と同じ部品。T54）。
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
+import { NarrowMarks } from "@/components/list/NarrowMarks";
 import { StateTag, TONE_TEXT } from "@/components/person/parts";
 import { Button } from "@/components/ui/Button";
 import { CloseIcon, UnlistIcon } from "@/components/ui/Icon";
@@ -253,6 +255,8 @@ function Row({ row: r, open, onToggle }: { row: StaffRow; open: boolean; onToggl
               {DOCUMENT_LABELS.medical}
             </Link>
           )}
+          {/* 768px 未満は医療の列を省くので、医療の印（「酸素 4h」）を氏名の下に。時計の無い人は医療の列と同じく台帳の機器 */}
+          <NarrowMarks items={r.markItems} fallback={r.devices} />
           {/* 理由は医療が範囲の外の人には来ない（時計・薬の名前が入るので） */}
           {r.reason && (
             <div className={`mt-0.5 text-xs font-bold ${TONE_TEXT[r.tone]}`} data-reason>
@@ -287,10 +291,11 @@ function Row({ row: r, open, onToggle }: { row: StaffRow; open: boolean; onToggl
             </div>
           )}
         </td>
-        <td className={`${CELL} whitespace-nowrap`}>
+        {/* 残りの数は折り返さず、時計の名前（「人工呼吸器 内蔵電池」）は折り返す（375 で表が幅を超え「解除」が切れていた。担当一覧と同じ。T54） */}
+        <td className={`${CELL} sm:min-w-[5.5rem]`}>
           {r.remain ? (
             <>
-              <div className={`font-bold tabular-nums ${r.remain.tone ? TONE_TEXT[r.remain.tone] : ""}`}>{r.remain.text}</div>
+              <div className={`whitespace-nowrap font-bold tabular-nums ${r.remain.tone ? TONE_TEXT[r.remain.tone] : ""}`}>{r.remain.text}</div>
               <div className="text-xs text-muted">{r.remain.label}</div>
             </>
           ) : (

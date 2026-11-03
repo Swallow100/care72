@@ -45,23 +45,26 @@ export function StateText({ tone, className = "", children }: { tone: Tone; clas
 
 /**
  * 色の無い地の印（医療の印・区分の名前）。面の上では面の中の灰色の地、面の中の上では白。
- * tone を付けると文字だけ状態の色の太字（地は塗らない。医療の印の時計の長さの色など。要確認は本文色＋黄の細い帯）
+ * tone を付けると文字だけ状態の色の太字（地は塗らない。医療の印の時計の長さの色など。要確認は本文色＋黄の細い帯）。
+ * wrap を付けると空白の所でだけ折り返す（狭い表の氏名の下の「経管栄養 2.9日」が列を広げて表が幅を超えないように。T54）
  */
 export function Mark({
   inPanel2 = false,
   size = "sm",
   tone,
+  wrap = false,
   children,
 }: {
   inPanel2?: boolean;
   size?: "sm" | "md";
   tone?: Tone | null;
+  wrap?: boolean;
   children: React.ReactNode;
 }) {
   const box = size === "md" ? "px-1.5 text-sm leading-6" : "px-1 text-xs leading-[1.125rem]";
   return (
     <span
-      className={`inline-block rounded-sm whitespace-nowrap ${box} ${inPanel2 ? "bg-panel" : "bg-panel2"} ${tone ? `font-bold ${TONE_TEXT[tone]}` : ""}`}
+      className={`inline-block rounded-sm ${wrap ? "break-keep" : "whitespace-nowrap"} ${box} ${inPanel2 ? "bg-panel" : "bg-panel2"} ${tone ? `font-bold ${TONE_TEXT[tone]}` : ""}`}
       data-tone={tone ?? undefined}
     >
       {children}

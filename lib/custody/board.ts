@@ -21,7 +21,7 @@ import { loadOfficeOverrides, type StoredOverride } from "../disaster/override.t
 import { personSituation, shortJst, type DisasterSituation } from "../disaster/state.ts";
 import { toTriageSignal, triageInDisaster, withinDisaster, type SignalForTriage } from "../disaster/triage.ts";
 import { remainOf, type Remain } from "../list/detail.ts";
-import { COLOR_TONES, type StateTone } from "../person.ts";
+import { COLOR_TONES, markItems, type MarkItem, type StateTone } from "../person.ts";
 import { toTriagePerson } from "../triage/from-ledger.ts";
 import { compareResults, type Color, type Situation, type TriageResult } from "../triage/index.ts";
 import type { StaffActor } from "./actor.ts";
@@ -37,6 +37,8 @@ export type StaffRow = {
   ageReported: boolean;
   /** 医療依存の短い印（酸素・透析など。担当一覧と同じ） */
   marks: string[];
+  /** 同じ印に時計のいちばん短い残りと色（「酸素 4h」。担当一覧と同じ）。375 の幅で医療の列を省くとき氏名の下に出す（T54） */
+  markItems: MarkItem[];
   /** 薬の名前（その場で登録した人は時計が無いので、台帳の薬を短く） */
   medications: string[];
   /** 台帳の機器（酸素・透析など）の言葉 */
@@ -182,7 +184,8 @@ export async function loadStaffBoard(
       },
       situation,
     );
-    const remain = remainOf(myClocks, personSituation(situation, town));
+    const own = personSituation(situation, town);
+    const remain = remainOf(myClocks, own);
     const unaffiliated = r.office_kind === "unaffiliated";
     // 同意の範囲（本人のページと同じ所）。医療が範囲の外なら医療の列と理由を空に
     const scope = viewScope(actor.role, {
@@ -200,6 +203,7 @@ export async function loadStaffBoard(
         age: r.birth_date ? ageOn(r.birth_date, today) : r.reported_age,
         ageReported: !r.birth_date && r.reported_age !== null,
         marks: medicalShown ? marksOf(myClocks) : [],
+        markItems: medicalShown ? markItems(myClocks, own) : [],
         medications: medicalShown ? ledger.medical.medications.map((m) => m.name) : [],
         devices: medicalShown ? ledger.medical.devices.map((d) => DEVICE_LABELS[d.kind]) : [],
         remain: medicalShown && remain ? { label: remain.label, text: remain.text, hours: remain.hours, tone: remain.tone } : null,

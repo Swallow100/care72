@@ -25,7 +25,7 @@ import {
   type SignalForDetail,
 } from "./list/detail.ts";
 import { isGeoPoint } from "./map/geo.ts";
-import type { StateTone } from "./person.ts";
+import { markItems, type MarkItem, type StateTone } from "./person.ts";
 import { compareResults, SEVERITY, tierOf, type Tier, type TriageArrival, type TriageResult, type TriageSignal } from "./triage/index.ts";
 import { loadOfficeArrivals } from "./custody/arrivals.ts";
 import { toTriagePerson } from "./triage/from-ledger.ts";
@@ -38,6 +38,8 @@ export type CaseloadRow = {
   careLevel: CareLevel | null;
   /** 医療依存の短い印（酸素・透析など） */
   marks: string[];
+  /** 同じ印に時計のいちばん短い残りと色（「酸素 4h」。lib/person の markItems）。狭い幅で医療の列を省くとき氏名の下に出す（T54） */
+  markItems: MarkItem[];
   /** ハザード（浸水 3 m・土砂・津波） */
   hazards: string[];
   /** 避難支援等実施者の人数 */
@@ -164,6 +166,7 @@ export function toCaseloadRows(
       age: p.birth_date ? ageOn(p.birth_date, today) : (p.reported_age ?? null),
       careLevel: ledger.care.careLevel ?? null,
       marks: marksOf(myClocks),
+      markItems: markItems(myClocks, own),
       hazards: hazardsOf(ledger),
       supporters: myContacts.filter((c) => c.supporter_order != null).length,
       plan: p.plan_status,

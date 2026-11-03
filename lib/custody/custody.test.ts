@@ -410,7 +410,12 @@ describe("受け持ちの一覧", () => {
     const yamada = board.rows.find((r) => r.personId === "p-01")!;
     expect(yamada).toMatchObject({ office: "デモ事業所", unaffiliated: false, shelter: SHELTER, color: "green", age: 84 });
     expect(yamada.marks.length).toBeGreaterThan(0);
+    // 375 の幅で氏名の下に出す医療の印（T54）: 同じ並びに時計のいちばん短い残り
+    expect(yamada.markItems.map((x) => x.label)).toEqual(yamada.marks);
+    expect(yamada.markItems.find((x) => x.label === "酸素")?.remaining).toMatch(/^[\d.]+(h|分|日)$|^超過$/);
     const m = board.rows.find((r) => r.personId === "p-matsumoto")!;
+    // その場で登録した人は時計が無いので印は空（表は台帳の機器を代わりに出す）
+    expect(m.markItems).toEqual([]);
     expect(m).toMatchObject({ office: "所属なし", unaffiliated: true, age: 80, ageReported: true, color: "green" });
     expect(m.reason.startsWith(`到着 ${SHELTER}`)).toBe(true);
     // 並びの番号は 1 から
@@ -421,6 +426,14 @@ describe("受け持ちの一覧", () => {
     // 別の医療班の受け持ちは別
     const other = await loadStaffBoard(db, actor(medical2()), TODAY, NOW);
     expect(other.rows.map((r) => r.personId)).toEqual(["p-02"]);
+  });
+
+  it("医療班への提供を断った人は、氏名の下の医療の印も出さない（医療の列と同じ）", async () => {
+    heavyRain();
+    await receive(db, actor(), { personId: "p-01", shelter: SHELTER, via: "search" }, AT);
+    expect(sqlite.prepare(`UPDATE consents SET status = 'refused' WHERE person_id = 'p-01' AND kind = 'medical'`).run().changes).toBe(1);
+    const yamada = (await loadStaffBoard(db, actor(), TODAY, NOW)).rows.find((r) => r.personId === "p-01")!;
+    expect(yamada).toMatchObject({ marks: [], markItems: [], devices: [], remain: null, reason: "" });
   });
 
   it("搬送で一覧から外れ、経過に「搬送 行き先」、提供の記録を閉じる。閉じた行はもう閉じない", async () => {
