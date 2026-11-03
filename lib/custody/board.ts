@@ -129,7 +129,7 @@ export async function loadStaffBoard(
     db
       .prepare(
         `SELECT person_id, color, source, injured, can_move, classes, classified_by, occurred_at FROM signals
-          WHERE drill_id IS NULL AND person_id IN (${IDS}) ORDER BY occurred_at, created_at, id`,
+          WHERE drill_id IS NULL AND retracted_at IS NULL AND person_id IN (${IDS}) ORDER BY occurred_at, created_at, id`,
       )
       .bind(ids),
     db

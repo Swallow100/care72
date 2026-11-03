@@ -667,6 +667,11 @@ export type SignalRow = {
   memo: string | null;
   occurred_at: string;
   created_at: string;
+  /**
+   * 撤回した時刻（T63）。通話で聞いた安否（source care_manager）の電話の記録を撤回したときだけ入る。
+   * 入った信号はルールの表に渡さない（表を読む所は retracted_at IS NULL で外す）
+   */
+  retracted_at: string | null;
 };
 
 export type TimelineEntryRow = {
@@ -680,6 +685,12 @@ export type TimelineEntryRow = {
   signal_id: string | null;
   occurred_at: string;
   created_at: string;
+  /** 撤回した時刻（T63。行は消さず取り消し線で残す）。撤回できる行と人は lib/timeline/retract.ts */
+  retracted_at: string | null;
+  /** 撤回したアカウント */
+  retracted_by: string | null;
+  /** 撤回の理由（40 字まで、任意）。Claude にも声にも渡さない */
+  retracted_note: string | null;
 };
 
 /** AI の呼び出し 1 回。入れた物・返った物（本文）は持たない */

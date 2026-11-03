@@ -83,6 +83,9 @@ import type { PersonBrief } from "./auth/scope.ts";
 import { withQrView } from "./qr/timeline.ts";
 import { officeEntryOf, withOfficeEntry } from "./office/timeline.ts";
 import { withCustodyEntry } from "./custody/timeline.ts";
+import { shortJst } from "./disaster/state.ts";
+import { RETRACT_LABELS } from "./timeline/labels.ts";
+import { canRetract, type Retracter } from "./timeline/retract.ts";
 import { PROVISION_BASIS_LABELS, PROVISION_SECTION_LABELS, PROVISION_TIMELINE_LABEL } from "./consent/labels.ts";
 import { aboutLine, DOCUMENT_CATALOG } from "./forms/catalog.ts";
 import {
@@ -300,6 +303,13 @@ export type TimelineItem = {
   staff?: true;
   /** 同意を記録・変えた行。同意の区分が範囲の外の人（医療班・行政）には出さない */
   consent?: true;
+  /**
+   * 撤回した行（T63）。行は消さず、画面は種類と本文に取り消し線、2 行目に「撤回 山本 11/3 22:10 理由」。
+   * who は撤回した人の名前、when は日本の短い時刻
+   */
+  retracted?: { who: string; when: string; note: string | null };
+  /** 見ている人が撤回できる行（lib/timeline/retract.ts の canRetract。押せるかはサーバーがもう一度決める） */
+  retractable?: true;
 };
 
 export type Block =
@@ -387,8 +397,10 @@ export type PersonPageRows = {
   contacts: ReadonlyArray<Omit<ContactRow, "created_at">>;
   consents: ReadonlyArray<ConsentRow & { recorded_by_name: string | null; recorded_by_role: AccountRole | null }>;
   clocks: ReadonlyArray<ClockRow>;
-  /** 経過の行。signal_color は信号の行の色（信号の表から） */
-  timeline: ReadonlyArray<TimelineEntryRow & { author_name: string | null; signal_color: SignalColor | null }>;
+  /** 経過の行。signal_color は信号の行の色（信号の表から）。retracted_by_name は撤回した人の名前（D1 から読んだときだけ） */
+  timeline: ReadonlyArray<
+    TimelineEntryRow & { author_name: string | null; signal_color: SignalColor | null; retracted_by_name?: string | null }
+  >;
   /** 第三者提供の記録（T23）。経過に「提供 医療班 医療・避難・人の一部」の 1 行で出す。D1 から読んだときだけ */
   provisions?: ReadonlyArray<ProvisionForTimeline>;
 };
@@ -956,9 +968,10 @@ function provisionItem(pr: ProvisionForTimeline): TimelineItem {
  *   利用者追加（T30）で作った人は、経過の表に「利用者追加」の行（書き手は足した人）があるので作らない
  * - 同意を記録した時刻 →「同意」（記録した人ごと・時刻ごとに 1 行）。同じ時刻の「同意」の行が経過の表にあれば作らない
  * - 第三者提供の記録 →「提供」（相手の役と名前、渡した区分と根拠）
- * 並びは時刻の順（同じ時刻なら作った物が先）
+ * 並びは時刻の順（同じ時刻なら作った物が先）。撤回した行（T63）も元の時刻の所に残す（取り消し線）。
+ * viewer を渡すと、その人が撤回できる行に retractable を付ける（単独の本人のページだけ）
  */
-export function timelineItems(rows: PersonPageRows): TimelineItem[] {
+export function timelineItems(rows: PersonPageRows, viewer: Retracter | null = null): TimelineItem[] {
   const stored: TimelineItem[] = rows.timeline.map((t) => ({
     id: t.id,
     at: t.occurred_at,
@@ -972,6 +985,10 @@ export function timelineItems(rows: PersonPageRows): TimelineItem[] {
     ...(intakePayloadOf(t)?.ai ? { ai: true as const } : {}),
     ...(STAFF_AUTHORS.has(t.author_role) ? { staff: true as const } : {}),
     ...(t.kind === "consent" ? { consent: true as const } : {}),
+    ...(t.retracted_at
+      ? { retracted: { who: t.retracted_by_name || RETRACT_LABELS.unknown, when: shortJst(t.retracted_at), note: t.retracted_note ?? null } }
+      : {}),
+    ...(viewer && canRetract(viewer, t) ? { retractable: true as const } : {}),
   }));
 
   const derived: TimelineItem[] = [];
@@ -1171,6 +1188,11 @@ export type ViewOptions = {
   scope?: ViewScope;
   /** 事業所が計画書に使う様式（T47）。無ければ松山市の様式 */
   planForm?: PlanFormView;
+  /**
+   * 見ている人（T63）。渡すと経過の撤回できる行に撤回のボタン（lib/timeline/retract.ts の canRetract）。
+   * 書き足しの欄（writes）と同じく単独の本人のページだけが渡す（担当一覧の右の面は渡さない）
+   */
+  viewer?: Retracter;
 };
 
 /** 区分の中の未確認の数（欄と時計に付いた pending） */
@@ -1229,7 +1251,7 @@ export function toPersonView(rows: PersonPageRows, opts: ViewOptions): PersonVie
     ["basic", basicBlocks({ ...rows, contacts }, ledger)],
     ["consent", consentBlocks(rows.consents)],
     ["documents", documentBlocks(person.id, scope.documents, opts.planForm)],
-    ["timeline", [{ type: "timeline", items: timelineItems(rows) }]],
+    ["timeline", [{ type: "timeline", items: timelineItems(rows, opts.viewer ?? null) }]],
   ]);
   const unconfirmed = attachPending(sections, ledger, rows);
 
@@ -1331,10 +1353,12 @@ export async function loadPersonRows(db: D1Database, brief: PersonBrief): Promis
     db
       .prepare(
         `SELECT t.id, t.person_id, t.author_id, t.author_role, t.kind, t.body, t.payload, t.signal_id,
-                t.occurred_at, t.created_at, a.display_name AS author_name, s.color AS signal_color
+                t.occurred_at, t.created_at, a.display_name AS author_name, s.color AS signal_color,
+                t.retracted_at, t.retracted_by, t.retracted_note, r.display_name AS retracted_by_name
            FROM timeline_entries t
            LEFT JOIN accounts a ON a.id = t.author_id
            LEFT JOIN signals s ON s.id = t.signal_id
+           LEFT JOIN accounts r ON r.id = t.retracted_by
           WHERE t.person_id = ?1 ORDER BY t.occurred_at, t.created_at, t.id`,
       )
       .bind(brief.id),

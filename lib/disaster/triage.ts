@@ -81,7 +81,7 @@ export async function loadOfficeSignals(db: D1Database, officeId: string, s: Sit
   const res = await db
     .prepare(
       `SELECT ${SIGNAL_COLUMNS} FROM signals
-        WHERE drill_id IS NULL AND person_id IN (SELECT id FROM people WHERE office_id = ?1)
+        WHERE drill_id IS NULL AND retracted_at IS NULL AND person_id IN (SELECT id FROM people WHERE office_id = ?1)
         ORDER BY occurred_at, created_at, id`,
     )
     .bind(officeId)
@@ -92,7 +92,9 @@ export async function loadOfficeSignals(db: D1Database, officeId: string, s: Sit
 /** 1 人の信号（訓練でない物、発災から今まで） */
 export async function loadPersonSignals(db: D1Database, personId: string, s: Situation): Promise<TriageSignal[]> {
   const res = await db
-    .prepare(`SELECT ${SIGNAL_COLUMNS} FROM signals WHERE drill_id IS NULL AND person_id = ?1 ORDER BY occurred_at, created_at, id`)
+    .prepare(
+      `SELECT ${SIGNAL_COLUMNS} FROM signals WHERE drill_id IS NULL AND retracted_at IS NULL AND person_id = ?1 ORDER BY occurred_at, created_at, id`,
+    )
     .bind(personId)
     .all<SignalForTriage>();
   return group(res.results, s).get(personId) ?? [];

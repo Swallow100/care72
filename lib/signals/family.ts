@@ -171,7 +171,8 @@ export function familyHistory(rows: PersonPageRows, w: FamilyWriter, limit = 8):
   if (!familyMayReadHistory(rows)) return null;
   const items: FamilyHistoryItem[] = [];
   for (const t of rows.timeline) {
-    if (!FAMILY_HISTORY_KINDS.includes(t.kind)) continue;
+    // 撤回した行（T63）は家族に出さない（やさしい画面に取り消し線の形は無い）
+    if (!FAMILY_HISTORY_KINDS.includes(t.kind) || t.retracted_at) continue;
     const words = historyWords(rows, w, t);
     if (words) items.push({ id: t.id, at: t.occurred_at, when: familyWhen(t.occurred_at), words });
   }
