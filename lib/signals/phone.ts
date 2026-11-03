@@ -22,10 +22,12 @@
 //   人が「送る」を押したときは聞き直さない
 // - 録音は 1 本のまま（サーバーは 1 つの信号に 1 回だけ添える）。定型文を流す間は録音を止め（pause。できない端末は録ったまま）、
 //   文字起こしは止めてから流す（定型文の声を文字にしない）。うめき声など文字にならない音は、どの回の物も同じ録音に残る
+// - 場所（T69b）: 避難所 → 計画の避難先 1・2 から選ぶ（台帳に避難先がある人だけ。押す画面だけ）。車・ほかの ところ → 本人の画面だけ
+//   「いまの 場所を おくりますか」（はい なら端末の位置を 1 回取って信号に添える。取れない・断られたら何も送らず次へ。声の問いでは聞かない）
 // - 戻るは無い。終わったら「もう 一度」で上へ
 
 import { newSignalId, NO_ANSWERS, type PhoneColor, type SignalBody } from "./body.ts";
-import type { AnswersItem, AttachItem, Delivery } from "./outbox.ts";
+import type { AnswersItem, AttachItem, Delivery, LocationItem, ReportedPosition } from "./outbox.ts";
 import { AI_NOTICE_VOICE } from "./phrases.ts";
 import {
   choiceOf,
@@ -69,6 +71,8 @@ export type PhoneState =
   | { step: "where" }
   /** first は赤の流れの最初の問い（AI の告知を出す）。voice は声の問いの段（押す問いは null） */
   | { step: "question"; id: QuestionId; answers: Answers; first: boolean; voice: VoiceStep | null }
+  /** いまの 場所を おくりますか（T69b。車・ほかの ところ のあと、本人の画面だけ） */
+  | { step: "locate"; answers: Answers }
   | { step: "prompt" }
   | { step: "recording"; startedAt: number; until: number }
   | { step: "sending"; color: PhoneColor }
@@ -92,6 +96,15 @@ export type PhoneDeps = {
   sendAnswers(item: AnswersItem): Promise<Delivery>;
   /** 台帳に機器がある（機器の問いを聞く） */
   hasDevice?: boolean;
+  /** 台帳の避難先の数（T69b。0 なら「どこの 避難所ですか」を聞かない） */
+  shelters?: number;
+  /**
+   * 端末の位置を 1 回取る（T69b。Geolocation、10 秒・高精度なし）。取れない・断られたら null。押した時にすぐ呼ぶ（許可の窓を押した操作から出す）。
+   * 無ければ「いまの 場所を おくりますか」は出さない
+   */
+  locate?(): Promise<ReportedPosition | null>;
+  /** 位置を信号に添えて送る（T69b） */
+  sendLocation?(item: LocationItem): Promise<Delivery>;
   /** 声の問いを読み上げて、終わるのを待つ（端末の読み上げ）。無ければ声の問いは無い */
   speak?(text: string): Promise<unknown>;
   /** 赤を押した時（人が押した時に、音とマイクの許可を通しておく） */
@@ -112,6 +125,8 @@ export type Phone = {
   answer(choice: string): void;
   /** 問いをとばす */
   skip(): void;
+  /** いまの 場所を おくりますか（T69b）: はい（true）・いいえ（false） */
+  locate(send: boolean): void;
   /** 録音の延長 */
   extend(): void;
   /** 録音を止めて送る */
@@ -134,7 +149,7 @@ export function worseDelivery(a: Delivery, b: Delivery): Delivery {
 export function createPhone(deps: PhoneDeps): Phone {
   const now = deps.now ?? (() => Date.now());
   const newId = deps.newId ?? (() => newSignalId());
-  const asker: Asker = { who: "self", hasDevice: deps.hasDevice ?? false };
+  const asker: Asker = { who: "self", hasDevice: deps.hasDevice ?? false, shelters: deps.shelters ?? 0 };
   let state: PhoneState = { step: "top" };
   let timer: ReturnType<typeof setTimeout> | null = null;
   /** 流れの番号。押し直し・閉じたあとに、前の流れの続き（await のあと）を当てない */
@@ -173,6 +188,8 @@ export function createPhone(deps: PhoneDeps): Phone {
   let lastHeardAt: number | null = null;
   /** 残りの問いを飛ばして録音へ急ぐ（T69b） */
   let rushing = false;
+  /** 場所を送るかの画面のあとの問い（T69b） */
+  let afterLocate: QuestionId | null = null;
 
   const set = (s: PhoneState) => {
     state = s;
@@ -259,7 +276,9 @@ export function createPhone(deps: PhoneDeps): Phone {
    */
   function nextAfter(id: QuestionId, choice: string | null): QuestionId | null {
     if (rushesToRecording(id, choice)) rushing = true;
-    return rushing ? rushNext(id, answers, asker) : nextQuestion(id, choice, asker);
+    // 声の問いで進んでいる間は、押す画面だけの問い（避難所の名前）を聞かない
+    const a: Asker = voiceMode ? { ...asker, voice: true } : asker;
+    return rushing ? rushNext(id, answers, a) : nextQuestion(id, choice, a);
   }
 
   /** 声の問いの聞き取りを閉じる（押した・次へ進んだ）。取れた文字は返さない */
@@ -269,6 +288,14 @@ export function createPhone(deps: PhoneDeps): Phone {
     answerTranscript = null;
     if (t) void t.stop().catch(() => null);
     closeListening(now());
+  }
+
+  /** 場所を送るかの画面を出て、その次の問いへ（20 秒押さなければ送らずに次へ） */
+  function leaveLocate() {
+    if (state.step !== "locate") return;
+    const next = afterLocate;
+    afterLocate = null;
+    advance(next);
   }
 
   /** 次の問いへ。null は問いの終わり */
@@ -561,13 +588,36 @@ export function createPhone(deps: PhoneDeps): Phone {
       if (!nextQuestionKnows(id, choice)) return;
       dropAnswerListening();
       record(id, choice, "press");
-      advance(nextAfter(id, choice));
+      const next = nextAfter(id, choice);
+      // 車・ほかの ところ（T69b）: 位置を送るかを聞く（押す画面だけ。位置を取れる端末だけ）
+      if (!voiceMode && choiceOf(id, choice)?.asksLocation && deps.locate && deps.sendLocation && signal) {
+        clear();
+        afterLocate = next;
+        set({ step: "locate", answers });
+        after(IDLE_MS, () => leaveLocate());
+        return;
+      }
+      advance(next);
     },
     skip() {
       if (state.step !== "question") return;
       const id = state.id;
       dropAnswerListening();
       advance(nextAfter(id, null));
+    },
+    locate(send) {
+      if (state.step !== "locate") return;
+      clear();
+      if (send && signal && deps.locate && deps.sendLocation) {
+        const signalId = signal.id;
+        const sendLocation = deps.sendLocation;
+        // 押した操作の中で位置を取り始める（許可の窓）。待たずに次の問いへ。取れない・断られたら何も送らない
+        void deps
+          .locate()
+          .then((pos) => (pos ? sendLocation({ signalId, ...pos }) : null))
+          .catch(() => null);
+      }
+      leaveLocate();
     },
     extend() {
       if (state.step !== "recording" || ending) return;

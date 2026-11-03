@@ -202,7 +202,7 @@ function SignalItem({
         <StateTag tone={s.tone}>{s.color === "red" ? COLOR_LABELS.red : s.color === "green" ? COLOR_LABELS.green : COLOR_LABELS.gray}</StateTag>
         <span>{s.body}</span>
       </div>
-      <div className="mt-1 empty:hidden">{hearing ? hearing(s) : <Hearing signalId={s.id} source={{ answers: s.row.answers, ai_memo: s.row.ai_memo, memo: s.row.memo }} inset />}</div>
+      <div className="mt-1 empty:hidden">{hearing ? hearing(s) : <Hearing signalId={s.id} source={{ answers: s.row.answers, ai_memo: s.row.ai_memo, memo: s.row.memo }} place={s.place} inset />}</div>
       {s.recording && (
         <div className="mt-1 flex items-center gap-2">
           <span className="text-xs text-muted">{DETAIL_LABELS.recording}</span>

@@ -7,6 +7,7 @@
 // - 持ち主は「役:本人」（self:p-01）、家族のスマホは「役:連絡先」（family:c-01-1。T11）。
 //   同じ端末で審査員が役を替えても、ほかの人・ほかの役の物は送らない
 //   （出どころはサーバーがログインの役から決めるので、本人の残りを家族のログインで送ると家族の信号になる）。その役の画面を開いたときに送る
+// - 端末の位置（T69b、kind location）も答えと同じ扱い（端末に残して送り直す。同じ信号の前の位置は置き換える）。位置は本文の JSON で、URL に載せない
 // - 画面（DOM）に触らない。保存の場所と送る道は渡す（テストは偽物）
 
 import type { AnySignalBody } from "./body.ts";
@@ -33,16 +34,24 @@ export type AttachItem = {
 /** 赤のあとの聞き取りの答え（T49）。それまでの答えの全部（後勝ち。端末に残っている古い答えは新しい答えで置き換える） */
 export type AnswersItem = { signalId: string; answers: Answers };
 
+/** 端末の位置（T69b）。本人が「おくる」と許したときだけ。緯度・経度・精度（m）・取った時刻（端末の時計） */
+export type ReportedPosition = { lat: number; lng: number; accuracyM: number | null; at: string };
+/** 赤の信号に添える端末の位置（T69b）。URL に載せず本文の JSON で送る。同じ信号の前の位置が残っていれば置き換える */
+export type LocationItem = { signalId: string } & ReportedPosition;
+
 export type OutboxItem =
   | { kind: "signal"; owner: string; body: AnySignalBody }
   | ({ kind: "attach"; owner: string } & AttachItem)
-  | ({ kind: "answers"; owner: string } & AnswersItem);
+  | ({ kind: "answers"; owner: string } & AnswersItem)
+  | ({ kind: "location"; owner: string } & LocationItem);
 
 /** 送る道。sentAt は送るたびに今 */
 export type Transport = {
   signal(body: AnySignalBody): Promise<SendOutcome>;
   attach(item: AttachItem & { sentAt: string }, audio: Blob | null): Promise<SendOutcome>;
   answers(item: AnswersItem): Promise<SendOutcome>;
+  /** 端末の位置（T69b）。無い道（前からの偽物）は送り直しても通らないので捨てる */
+  location?(item: LocationItem): Promise<SendOutcome>;
 };
 
 export type Outbox = {
@@ -50,6 +59,8 @@ export type Outbox = {
   sendRecording(item: AttachItem, audio: Blob | null): Promise<Delivery>;
   /** 聞き取りの答え（T49）。同じ信号の前の答えが残っていれば置き換える */
   sendAnswers(item: AnswersItem): Promise<Delivery>;
+  /** 端末の位置（T69b）。同じ信号の前の位置が残っていれば置き換える */
+  sendLocation(item: LocationItem): Promise<Delivery>;
   /** 残っている自分の物を順に送る。前の物が送れなければそこで止める */
   flush(): Promise<void>;
   /** 残っている自分の物の数 */
@@ -62,6 +73,9 @@ function isItem(v: unknown): v is OutboxItem {
   if (typeof o.owner !== "string") return false;
   if (o.kind === "signal") return !!o.body && typeof (o.body as { id?: unknown }).id === "string";
   if (o.kind === "answers") return typeof o.signalId === "string" && !!o.answers && typeof o.answers === "object";
+  if (o.kind === "location") {
+    return typeof o.signalId === "string" && typeof o.lat === "number" && typeof o.lng === "number" && typeof o.at === "string";
+  }
   return o.kind === "attach" && typeof o.signalId === "string" && typeof o.recordedAt === "string";
 }
 
@@ -118,6 +132,10 @@ export function createOutbox(opts: {
     try {
       if (item.kind === "signal") return await transport.signal({ ...item.body, sentAt: now() });
       if (item.kind === "answers") return await transport.answers({ signalId: item.signalId, answers: item.answers });
+      if (item.kind === "location") {
+        const { signalId, lat, lng, accuracyM, at } = item;
+        return transport.location ? await transport.location({ signalId, lat, lng, accuracyM, at }) : "drop";
+      }
       const audio = audios.get(item.signalId) ?? null;
       if (!audio && !item.transcript?.trim()) return "drop";
       const { signalId, transcript, durationSec, recordedAt } = item;
@@ -160,6 +178,7 @@ export function createOutbox(opts: {
       return enqueueAndSend({ kind: "attach", owner, ...attach });
     },
     sendAnswers: (item) => enqueueAndSend({ kind: "answers", owner, ...item }),
+    sendLocation: (item) => enqueueAndSend({ kind: "location", owner, ...item }),
     flush,
     pending: () => own().length,
   };
@@ -177,6 +196,8 @@ export const RECORDINGS_PATH = "/api/recordings";
 export const VOICE_PATH = "/api/signals/voice";
 /** 聞き取りの答えの送り先（T49） */
 export const answersPath = (signalId: string) => `/api/signals/${encodeURIComponent(signalId)}/answers`;
+/** 端末の位置の送り先（T69b）。位置は URL に載せず本文の JSON で */
+export const locationPath = (signalId: string) => `/api/signals/${encodeURIComponent(signalId)}/location`;
 
 /** fetch で送る道。通信の失敗は投げる（outbox が retry として受ける） */
 export function fetchTransport(fetchImpl: typeof fetch = (...a) => fetch(...a)): Transport {
@@ -206,6 +227,15 @@ export function fetchTransport(fetchImpl: typeof fetch = (...a) => fetch(...a)):
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ answers: item.answers }),
+        credentials: "same-origin",
+      });
+      return outcomeOf(res.status);
+    },
+    async location(item) {
+      const res = await fetchImpl(locationPath(item.signalId), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lat: item.lat, lng: item.lng, accuracyM: item.accuracyM, at: item.at }),
         credentials: "same-origin",
       });
       return outcomeOf(res.status);

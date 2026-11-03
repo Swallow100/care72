@@ -13,7 +13,7 @@ import { loadDisasterState } from "@/lib/disaster/db";
 import { isDisaster } from "@/lib/disaster/state";
 import { buildOwnSheet } from "@/lib/forms/own-sheet";
 import { loadPersonPage } from "@/lib/person";
-import { personHasDevice } from "@/lib/signals/family";
+import { personHasDevice, shelterOptionsOf } from "@/lib/signals/family";
 
 // 事業所の災害モードと本人の 1 枚を毎回読む
 export const dynamic = "force-dynamic";
@@ -38,7 +38,12 @@ export default async function MePage() {
     return (
       <main className="mx-auto max-w-md font-ud">
         {/* 新しい災害モードに入ったら、前の流れを持ち越さない */}
-        <PhoneDisaster key={disaster.startedAt ?? "disaster"} personId={rows.person.id} hasDevice={personHasDevice(rows)} />
+        <PhoneDisaster
+          key={disaster.startedAt ?? "disaster"}
+          personId={rows.person.id}
+          hasDevice={personHasDevice(rows)}
+          shelters={shelterOptionsOf(rows)}
+        />
       </main>
     );
   }

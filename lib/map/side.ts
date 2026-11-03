@@ -8,6 +8,7 @@ import { PLAN_TONES, rowLink, type CaseloadRow, type SortKey } from "../caseload
 import { PLAN_STATUSES, type GeoPoint, type HazardKind, type PlanStatus } from "../db/types.ts";
 import { DISASTER_SCENE, type DisasterState } from "../disaster/state.ts";
 import { BLANK_LABELS, COLOR_LABELS, HAZARD_LABELS, PLAN_STATUS_LABELS } from "../labels.ts";
+import { PLACE_LABELS } from "../signals/labels.ts";
 import { COLOR_TONES, fieldLabelOf, type StateTone } from "../person.ts";
 import { compareResults, type Color, type TriageResult } from "../triage/index.ts";
 import { demoOverlay, type DemoOverlay, type DemoScene } from "./demo.ts";
@@ -192,7 +193,10 @@ export function destinationCounts(rows: ReadonlyArray<CaseloadRow>): Destination
   return out;
 }
 
-/** 地図のピン。発災時はルールの表の色と状態の言葉、理由を title に */
+/**
+ * 地図のピン。発災時はルールの表の色と状態の言葉、理由を title に。
+ * 本人が送った端末の位置（T69b の reported）があればそこに置き、title に「申告位置」を添える（無ければ台帳の位置）。印の形は同じ
+ */
 export function mapPins(
   rows: ReadonlyArray<CaseloadRow>,
   sort: SortKey,
@@ -201,15 +205,19 @@ export function mapPins(
   const rank = new Map((results ?? []).map((r, i) => [r.personId, { r, i }]));
   const n = rows.length;
   return rows
-    .filter((r): r is CaseloadRow & { location: GeoPoint } => r.location !== null)
-    .map((row, i) => {
+    .flatMap((r) => {
+      const at = r.reported ?? r.location;
+      return at ? [{ row: r, at, reported: r.reported !== null && r.reported !== undefined }] : [];
+    })
+    .map(({ row, at, reported }, i) => {
       const hit = rank.get(row.id);
       const state = hit ? COLOR_LABELS[hit.r.color] : null;
+      const base = hit ? `${row.name} ${state} ${hit.r.reason}` : row.name;
       return {
         id: row.id,
         label: surname(row.name),
-        title: hit ? `${row.name} ${state} ${hit.r.reason}` : row.name,
-        location: row.location,
+        title: reported ? `${base} ${PLACE_LABELS.reported}` : base,
+        location: at,
         href: rowLink(sort, null, row.id).href,
         tone: hit ? COLOR_TONES[hit.r.color] : null,
         state,

@@ -33,6 +33,7 @@ export const QUESTION_IDS = [
   "floor",
   "room",
   "place",
+  "shelterWhich",
   "canMove",
   "exit",
   "trappedBy",
@@ -77,6 +78,11 @@ export type Choice = {
    * 家族の画面には録音が無いので、送れたかの画面へ。色と連絡順は変えない（飛ばした問いは answers に入らないだけ）
    */
   toRecording?: true;
+  /**
+   * 押したら、本人の画面だけ「いまの 場所を おくりますか」の 1 画面（T69b。車・ほかの ところ）。はい なら端末の位置を信号に添える。
+   * 家族の画面と声の問いでは聞かない。位置は Claude に渡さない
+   */
+  asksLocation?: true;
 };
 
 /** 選択肢の見た目の印の 3 つ（T69b。状態の色の変数で描く。表の入力ではない） */
@@ -101,7 +107,17 @@ export type Question = {
   needsDevice?: true;
   /** 本人だけ聞く（家族はその場にいないことが多い・録音は本人だけ） */
   selfOnly?: true;
+  /** 台帳に避難先（1・2）がある人だけ聞く（T69b。選択肢の名前は台帳から画面に渡す） */
+  needsShelter?: true;
+  /** 押す画面だけで聞く（T69b。声の問いでは聞かない。台帳の名前は表の言葉に無く、声の言葉の一致で当てられない） */
+  pressOnly?: true;
 };
+
+/** 避難所の問いの選択肢のうち、台帳の避難先 1・2（T69b）。言葉は台帳の名前を画面で出し、表と答えには id だけ */
+export const SHELTER_CHOICE_IDS = ["d1", "d2"] as const;
+export type ShelterChoiceId = (typeof SHELTER_CHOICE_IDS)[number];
+/** 画面に渡す避難先（台帳の名前。やさしい日本語の変換を通さずそのまま）。サーバーが台帳から作り、Claude には渡さない */
+export type ShelterOption = { id: ShelterChoiceId; easy: string };
 
 const unknown: Choice = {
   id: UNKNOWN_CHOICE,
@@ -213,12 +229,30 @@ export const QUESTIONS: readonly Question[] = [
     label: "場所",
     voice: "いまはどこですか",
     choices: [
-      { id: "shelter", easy: "{避難所|ひなんじょ}", label: "避難所", words: ["ひなんじょ", "避難所", "がっこう", "学校", "こうみんかん", "公民館"] },
-      { id: "car", easy: "{車|くるま}", label: "車", words: ["くるま", "車"] },
-      { id: "other", easy: "ほかの ところ", label: "ほか", words: ["ほか", "他"] },
+      { id: "shelter", easy: "{避難所|ひなんじょ}", label: "避難所", words: ["ひなんじょ", "避難所", "がっこう", "学校", "こうみんかん", "公民館"], next: "shelterWhich" },
+      { id: "car", easy: "{車|くるま}", label: "車", words: ["くるま", "車"], asksLocation: true },
+      { id: "other", easy: "ほかの ところ", label: "ほか", words: ["ほか", "他"], asksLocation: true },
       unknown,
     ],
     next: "canMove",
+  },
+  {
+    // 避難所を押した人に、計画の避難先 1・2 から選んでもらう（T69b）。選択肢の言葉は台帳の名前を画面で出す（ここは名前の無い既定）。
+    // 答えは id だけ（d1・d2）。ケアマネの聞き取りの欄で台帳の名前に引く（lib/signals/hearing.ts）
+    id: "shelterWhich",
+    field: "place",
+    easy: "どこの {避難所|ひなんじょ}ですか",
+    label: "避難所",
+    voice: "どこの避難所ですか",
+    choices: [
+      { id: "d1", easy: "{避難先|ひなんさき} 1", label: "避難先1", words: ["ひなんさきいち", "避難先1"] },
+      { id: "d2", easy: "{避難先|ひなんさき} 2", label: "避難先2", words: ["ひなんさきに", "避難先2"] },
+      { id: "other", easy: "ほかの {避難所|ひなんじょ}", label: "ほか", words: ["ほか", "他"] },
+      unknown,
+    ],
+    next: "canMove",
+    needsShelter: true,
+    pressOnly: true,
   },
   {
     id: "canMove",
@@ -409,14 +443,30 @@ export type Answer = { choice: string; via: AnswerVia };
 /** 答えの全部（押した・声で取れた所だけ。とばした問いは入らない） */
 export type Answers = Partial<Record<QuestionId, Answer>>;
 
-/** 誰の画面か。家族は本人だけの問いを聞かない */
-export type Asker = { who: "self" | "family"; hasDevice: boolean };
+/**
+ * 誰の画面か。家族は本人だけの問いを聞かない。shelters は台帳の避難先の数（T69b。0 なら避難所の問いを聞かない）、
+ * voice は声の問いで進んでいる（押す画面だけの問いを聞かない）
+ */
+export type Asker = { who: "self" | "family"; hasDevice: boolean; shelters?: number; voice?: boolean };
 
 /** この人に聞くか */
 export function asks(q: Question, a: Asker): boolean {
   if (q.needsDevice && !a.hasDevice) return false;
   if (q.selfOnly && a.who !== "self") return false;
+  if (q.needsShelter && !(a.shelters && a.shelters > 0)) return false;
+  if (q.pressOnly && a.voice) return false;
   return true;
+}
+
+/** 画面に出す選択肢（T69b）。避難所の問いは台帳にある避難先だけ（名前は ShelterOption）、ほかは表のまま */
+export function choicesFor(q: Question, shelters: ReadonlyArray<ShelterOption> = []): Array<Choice & { name?: string }> {
+  if (q.id !== "shelterWhich") return [...q.choices];
+  const names = new Map(shelters.map((s) => [s.id, s.easy]));
+  return q.choices.flatMap((c) => {
+    if (!(SHELTER_CHOICE_IDS as readonly string[]).includes(c.id)) return [c];
+    const name = names.get(c.id as ShelterChoiceId);
+    return name ? [{ ...c, name }] : [];
+  });
 }
 
 /** 聞かない問いを飛ばして、聞く問いに着くまで進める */

@@ -3,14 +3,32 @@
 // - 送る答え（answers）に色は入らない。lib/triage のどのファイルも tone を読まない
 
 import { readdirSync, readFileSync } from "node:fs";
+import type { DatabaseSync } from "node:sqlite";
 import { join } from "node:path";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, expectTypeOf, it, vi } from "vitest";
+import { Hearing } from "../../components/list/Hearing.tsx";
 import { FamilyView } from "../../components/phone/FamilyView.tsx";
 import { PhoneView, type PhoneActions } from "../../components/phone/PhoneView.tsx";
+import { SEED_PEOPLE } from "../../seed/people.ts";
+import { seedStatements } from "../../seed/sql.ts";
+import type { Principal } from "../auth/principal.ts";
+import { loadCaseload } from "../caseload.ts";
+import type { SignalRow } from "../db/types.ts";
+import { d1FromSqlite, migratedSqlite } from "../db/test-d1.ts";
+import { switchDisasterMode } from "../disaster/db.ts";
+import { disasterScope } from "../disaster/scope.ts";
+import type { SignalForTriage } from "../disaster/triage.ts";
+import { mapPins } from "../map/side.ts";
 import type { TriageSignal } from "../triage/index.ts";
-import type { FamilyScreen } from "./family.ts";
+import { NO_ANSWERS } from "./body.ts";
+import { hearingViewOf } from "./hearing.ts";
+import { locationPost } from "./http.ts";
+import { coordText, positionText } from "./labels.ts";
+import { createOutbox, fetchTransport, readOutbox, type LocationItem } from "./outbox.ts";
+import { parseLocation, saveSignal, signalScope } from "./save.ts";
+import { shelterOptionsOf, type FamilyScreen } from "./family.ts";
 import { createFamilyPhone, type FamilyState } from "./family-phone.ts";
 import type { AttachItem } from "./outbox.ts";
 import {
@@ -24,12 +42,16 @@ import {
 } from "./phone.ts";
 import {
   CHOICE_TONES,
+  choicesFor,
   legacyColumnsOf,
+  nextQuestion,
   parseAnswers,
+  questionOf,
   QUESTIONS,
   UNKNOWN_CHOICE,
   type Answer,
   type Answers,
+  type Asker,
   type QuestionId,
 } from "./questions.ts";
 
@@ -53,6 +75,7 @@ const noop: PhoneActions = {
   where() {},
   answer() {},
   skip() {},
+  locate() {},
   extend() {},
   finish() {},
   again() {},
@@ -486,5 +509,319 @@ describe("録音の長さ（3）: 60 秒、話している間は 60 秒ずつ延
     h.phone.finish();
     await flush();
     expect(h.phone.state).toMatchObject({ step: "done" });
+  });
+});
+
+// ---------- 2 場所（避難先の選択・端末の位置） ----------
+
+const DEMO = { id: "office-demo", name: "デモ事業所", kind: "demo" as const };
+const selfP: Principal = {
+  role: "self",
+  judge: true,
+  admin: false,
+  accountId: "acct-judge",
+  displayName: "山田 ハナ",
+  office: DEMO,
+  caseloadOf: null,
+  personId: "p-01",
+  contactId: null,
+};
+const familyP: Principal = { ...selfP, role: "family", displayName: "森 恵子", contactId: "c-01-1" };
+const cmP: Principal = {
+  role: "care_manager",
+  judge: false,
+  admin: true,
+  accountId: "acct-yamamoto",
+  displayName: "山本",
+  office: DEMO,
+  caseloadOf: "acct-yamamoto",
+  personId: null,
+  contactId: null,
+};
+const QUAKE = Date.parse("2026-11-04T01:00:00.000Z");
+const atH = (h: number) => new Date(QUAKE + h * 3_600_000).toISOString();
+const sid = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
+/** 本人のスマホの端末の位置（架空。台帳の位置とは別の所） */
+const HERE = { lat: 33.8301, lng: 132.7612, accuracyM: 48, at: atH(1.02) };
+
+describe("場所（2）: 避難先の選択", () => {
+  it("避難所 → 「どこの 避難所ですか」は台帳に避難先がある人だけ。押す画面だけ（声の問いでは聞かない）", () => {
+    const withShelter: Asker = { who: "self", hasDevice: false, shelters: 1 };
+    const none: Asker = { who: "self", hasDevice: false };
+    expect(nextQuestion("place", "shelter", withShelter)).toBe("shelterWhich");
+    expect(nextQuestion("place", "shelter", none)).toBe("canMove");
+    expect(nextQuestion("place", "shelter", { ...withShelter, voice: true })).toBe("canMove");
+    expect(nextQuestion("place", "shelter", { who: "family", hasDevice: false, shelters: 2 })).toBe("shelterWhich");
+    expect(nextQuestion("shelterWhich", "d1", withShelter)).toBe("canMove");
+    expect(questionOf("shelterWhich").field).toBe("place");
+  });
+
+  it("選択肢は台帳の避難先だけ（名前はそのまま）と ほか・わからない。答えは id だけ", () => {
+    const q = questionOf("shelterWhich");
+    expect(choicesFor(q, [{ id: "d1", easy: "かわなぎ小学校" }]).map((c) => [c.id, c.name ?? null])).toEqual([
+      ["d1", "かわなぎ小学校"],
+      ["other", null],
+      [UNKNOWN_CHOICE, null],
+    ]);
+    expect(choicesFor(q, []).map((c) => c.id)).toEqual(["other", UNKNOWN_CHOICE]);
+    const html = renderToStaticMarkup(
+      createElement(PhoneView, {
+        state: { step: "question", id: "shelterWhich", answers: {}, first: false, voice: null },
+        nowMs: 0,
+        on: noop,
+        shelters: [
+          { id: "d1", easy: "かわなぎ小学校" },
+          { id: "d2", easy: "みずほし公民館" },
+        ],
+      }),
+    );
+    expect(html).toContain("かわなぎ小学校");
+    expect(html).toContain("みずほし公民館");
+    expect(html).toContain("data-emergency");
+    // 送る答えは id だけ（名前は入らない）
+    expect(parseAnswers({ shelterWhich: { choice: "d1", via: "press" } })).toEqual({ shelterWhich: { choice: "d1", via: "press" } });
+    expect(parseAnswers({ shelterWhich: { choice: "かわなぎ小学校", via: "press" } })).toBeNull();
+  });
+
+  it("台帳から避難先の選択肢を作る（空の欄は出さない）。家族の画面にも渡す", () => {
+    const yamada = SEED_PEOPLE[0];
+    const rows = { person: { ...yamada.person, ledger: JSON.stringify(yamada.ledger) } } as unknown as Parameters<typeof shelterOptionsOf>[0];
+    expect(shelterOptionsOf(rows)).toEqual([{ id: "d1", easy: "かわなぎ小学校" }]);
+    const none = SEED_PEOPLE.find((p) => !p.ledger.evacuation.destination1)!;
+    expect(shelterOptionsOf({ person: { ...none.person, ledger: JSON.stringify(none.ledger) } } as never)).toEqual([]);
+  });
+
+  it("ケアマネの聞き取りの欄: 場所の行で d1・d2 を台帳の名前に引く。色は付けない", () => {
+    const answers = JSON.stringify({
+      atHome: { choice: "no", via: "press" },
+      place: { choice: "shelter", via: "press" },
+      shelterWhich: { choice: "d1", via: "press" },
+    });
+    const v = hearingViewOf({ answers }, { shelters: { d1: "かわなぎ小学校", d2: null } })!;
+    const row = v.rows.find((r) => r.field === "place")!;
+    expect(row.answers.map((a) => a.choice)).toEqual(["自宅外", "避難所", "かわなぎ小学校"]);
+    // 名前が無ければ「避難先1」
+    const bare = hearingViewOf({ answers })!.rows.find((r) => r.field === "place")!;
+    expect(bare.answers.at(-1)!.choice).toBe("避難先1");
+  });
+});
+
+describe("場所（2）: 端末の位置", () => {
+  let sqlite: DatabaseSync;
+  let db: ReturnType<typeof d1FromSqlite>;
+  beforeEach(() => {
+    sqlite = migratedSqlite();
+    for (const s of seedStatements()) sqlite.exec(s);
+    db = d1FromSqlite(sqlite);
+  });
+  afterEach(() => sqlite.close());
+
+  async function quake() {
+    const r = await switchDisasterMode(db, disasterScope(cmP)!, { kind: "earthquake", version: 0, at: atH(0) });
+    expect(r).toMatchObject({ ok: true });
+  }
+  async function red(n: number, color: "red" | "green" = "red", h = 1) {
+    const r = await saveSignal(
+      db,
+      signalScope(selfP)!,
+      { id: sid(n), color, whereNow: color === "green" ? "home" : null, answers: { ...NO_ANSWERS }, occurredAt: atH(h), sentAt: atH(h) },
+      atH(h),
+    );
+    expect(r.ok).toBe(true);
+  }
+  const row = (id: string) => sqlite.prepare("SELECT * FROM signals WHERE id = ?").get(id) as unknown as SignalRow;
+
+  it("車・ほかの ところ → 本人の画面だけ「いまの 場所を おくりますか」。はい で 1 回だけ位置を取り、待たずに次の問い", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(T0);
+    try {
+      const sent: LocationItem[] = [];
+      let located = 0;
+      const h = phoneHarness({
+        locate: async () => {
+          located++;
+          return { ...HERE };
+        },
+        sendLocation: async (item) => {
+          sent.push(item);
+          return "sent";
+        },
+      });
+      h.phone.red();
+      press(h, [
+        ["injured", "no"],
+        ["atHome", "no"],
+        ["place", "car"],
+      ]);
+      expect(h.phone.state).toEqual({ step: "locate", answers: h.answers.at(-1)!.answers });
+      const html = renderToStaticMarkup(createElement(PhoneView, { state: h.phone.state, nowMs: 0, on: noop }));
+      expect(html).toContain("data-emergency");
+      expect(html).not.toContain("data-tone");
+      h.phone.locate(true);
+      expect(h.phone.state).toMatchObject({ step: "question", id: "canMove" });
+      await flush();
+      expect(located).toBe(1);
+      expect(sent).toEqual([{ signalId: sid(1), ...HERE }]);
+      // 位置は答え（answers）に入らない
+      expect(JSON.stringify(h.answers)).not.toContain("33.83");
+
+      // いいえ・20 秒押さない は何も送らず次へ
+      const n = phoneHarness({ locate: async () => ({ ...HERE }), sendLocation: async () => "sent" });
+      n.phone.red();
+      press(n, [
+        ["injured", "no"],
+        ["atHome", "no"],
+        ["place", "other"],
+      ]);
+      n.phone.locate(false);
+      expect(n.phone.state).toMatchObject({ step: "question", id: "canMove" });
+      const idle = phoneHarness({ locate: async () => ({ ...HERE }), sendLocation: async () => "sent" });
+      idle.phone.red();
+      press(idle, [
+        ["injured", "no"],
+        ["atHome", "no"],
+        ["place", "car"],
+      ]);
+      vi.advanceTimersByTime(20_000);
+      expect(idle.phone.state).toMatchObject({ step: "question", id: "canMove" });
+
+      // 取れない・断られた（null）は何も送らない
+      const denied: LocationItem[] = [];
+      const d = phoneHarness({ locate: async () => null, sendLocation: async (i) => (denied.push(i), "sent") });
+      d.phone.red();
+      press(d, [
+        ["injured", "no"],
+        ["atHome", "no"],
+        ["place", "car"],
+      ]);
+      d.phone.locate(true);
+      await flush();
+      expect(denied).toEqual([]);
+
+      // 位置を取れない端末（locate が無い）・避難所 は聞かない
+      const plain = phoneHarness();
+      plain.phone.red();
+      press(plain, [
+        ["injured", "no"],
+        ["atHome", "no"],
+        ["place", "car"],
+      ]);
+      expect(plain.phone.state).toMatchObject({ step: "question", id: "canMove" });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("保存: 自分の赤の信号だけ。家族・緑・ほかの人・平時・範囲の外は断る。台帳の位置は変えない", async () => {
+    // 平時は 409
+    expect((await locationPost(db, selfP, sid(1), HERE)).status).toBe(409);
+    await quake();
+    await red(1);
+    await red(2, "green", 1.5);
+    const res = await locationPost(db, selfP, sid(1), HERE);
+    expect(res.status).toBe(200);
+    expect(row(sid(1))).toMatchObject({ reported_lat: HERE.lat, reported_lng: HERE.lng, reported_accuracy_m: 48, reported_at: HERE.at });
+    // 2 回目（同じ値）は変わらない
+    expect(await (await locationPost(db, selfP, sid(1), HERE)).json()).toMatchObject({ ok: true, changed: false });
+    // 緑は 400、知らない信号 404、家族は 404、ケアマネは 403、ログインなし 401
+    expect((await locationPost(db, selfP, sid(2), HERE)).status).toBe(400);
+    expect((await locationPost(db, selfP, sid(9), HERE)).status).toBe(404);
+    expect((await locationPost(db, familyP, sid(1), HERE)).status).toBe(404);
+    expect((await locationPost(db, cmP, sid(1), HERE)).status).toBe(403);
+    expect((await locationPost(db, null, sid(1), HERE)).status).toBe(401);
+    // 範囲の外・形の違いは 400
+    for (const bad of [
+      { ...HERE, lat: 91 },
+      { ...HERE, lng: -181 },
+      { ...HERE, accuracyM: -1 },
+      { ...HERE, lat: "33" },
+      { ...HERE, at: "きのう" },
+      null,
+    ]) {
+      expect((await locationPost(db, selfP, sid(1), bad)).status, JSON.stringify(bad)).toBe(400);
+    }
+    expect(parseLocation({ lat: -90, lng: 180, accuracyM: null, at: HERE.at })).toEqual({ lat: -90, lng: 180, accuracyM: null, at: HERE.at });
+    // 台帳の位置は変えない
+    const ledger = JSON.parse((sqlite.prepare("SELECT ledger FROM people WHERE id = 'p-01'").get() as { ledger: string }).ledger);
+    expect(ledger.basic.location).toEqual(SEED_PEOPLE[0].ledger.basic.location);
+  });
+
+  it("送る道: 位置は本文の JSON で、URL に載せない。通信が無ければ端末に残して送り直す", async () => {
+    const seen: Array<{ url: string; body: string }> = [];
+    const t = fetchTransport(async (url, init) => {
+      seen.push({ url: String(url), body: String(init?.body) });
+      return new Response("{}", { status: 200 });
+    });
+    expect(await t.location!({ signalId: sid(1), ...HERE })).toBe("ok");
+    expect(seen[0].url).toBe(`/api/signals/${sid(1)}/location`);
+    expect(seen[0].url).not.toContain("33.83");
+    expect(JSON.parse(seen[0].body)).toEqual({ lat: HERE.lat, lng: HERE.lng, accuracyM: 48, at: HERE.at });
+
+    const store = new Map<string, string>();
+    const storage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v), removeItem: (k: string) => void store.delete(k) };
+    let online = false;
+    const sentItems: LocationItem[] = [];
+    const box = createOutbox({
+      storage,
+      owner: "self:p-01",
+      transport: {
+        signal: async () => "ok",
+        attach: async () => "ok",
+        answers: async () => "ok",
+        location: async (item) => {
+          if (!online) throw new Error("offline");
+          sentItems.push(item);
+          return "ok";
+        },
+      },
+    });
+    expect(await box.sendLocation({ signalId: sid(1), ...HERE })).toBe("queued");
+    expect(readOutbox(storage)).toMatchObject([{ kind: "location", signalId: sid(1), lat: HERE.lat }]);
+    online = true;
+    await box.flush();
+    expect(sentItems).toEqual([{ signalId: sid(1), ...HERE }]);
+    expect(box.pending()).toBe(0);
+  });
+
+  it("ケアマネの画面: 聞き取りの場所の行に「位置 あり（±48 m）」と座標、地図のピンは申告位置（title に「申告位置」）", async () => {
+    await quake();
+    await red(1);
+    expect((await locationPost(db, selfP, sid(1), HERE)).status).toBe(200);
+    const data = (await loadCaseload(db, { officeId: "office-demo", careManagerId: "acct-yamamoto" }, "2026-11-04", atH(1.1)))!;
+    const yamada = data.rows.find((r) => r.id === "p-01")!;
+    expect(yamada.reported).toEqual({ lat: HERE.lat, lng: HERE.lng });
+    expect(yamada.location).toEqual(SEED_PEOPLE[0].ledger.basic.location);
+    const sig = yamada.detail!.signals.find((s) => s.id === sid(1))!;
+    expect(sig.place).toEqual({ shelters: { d1: "かわなぎ小学校", d2: null }, reported: { lat: HERE.lat, lng: HERE.lng, accuracyM: 48 } });
+    const place = hearingViewOf({ answers: sig.row.answers }, sig.place)!.rows.find((r) => r.field === "place")!;
+    expect(place.position).toEqual({ lat: HERE.lat, lng: HERE.lng, accuracyM: 48 });
+    expect(positionText(48)).toBe("位置 あり（±48 m）");
+    expect(coordText(HERE)).toBe("33.83010, 132.76120");
+    const html = renderToStaticMarkup(
+      createElement(Hearing, { signalId: sig.id, source: { answers: sig.row.answers }, place: sig.place }),
+    );
+    expect(html).toContain("位置 あり（±48 m）");
+    expect(html).toContain("33.83010, 132.76120");
+
+    const pins = mapPins(data.rows, "tier", data.rows.flatMap((r) => (r.triage ? [r.triage] : [])));
+    const pin = pins.find((p) => p.id === "p-01")!;
+    expect(pin.location).toEqual({ lat: HERE.lat, lng: HERE.lng });
+    expect(pin.title.endsWith("申告位置")).toBe(true);
+    // 位置を送っていない人は台帳の位置のまま
+    const other = pins.find((p) => p.id === "p-02")!;
+    expect(other.location).toEqual(SEED_PEOPLE[1].ledger.basic.location);
+    expect(other.title).not.toContain("申告位置");
+  });
+
+  it("位置は色と順に使わない（ルールの表の入力の型に無い。位置の有無で色・理由・順が同じ）", async () => {
+    type Leak<T> = Extract<keyof T, "reported_lat" | "reported_lng" | "reported_accuracy_m" | "reported_at" | "reported">;
+    expectTypeOf<Leak<SignalForTriage>>().toEqualTypeOf<never>();
+    expectTypeOf<Leak<TriageSignal>>().toEqualTypeOf<never>();
+    await quake();
+    await red(1);
+    const before = (await loadCaseload(db, { officeId: "office-demo", careManagerId: "acct-yamamoto" }, "2026-11-04", atH(1.1)))!;
+    expect((await locationPost(db, selfP, sid(1), HERE)).status).toBe(200);
+    const after = (await loadCaseload(db, { officeId: "office-demo", careManagerId: "acct-yamamoto" }, "2026-11-04", atH(1.1)))!;
+    expect(after.rows.map((r) => [r.id, r.rank, r.triage])).toEqual(before.rows.map((r) => [r.id, r.rank, r.triage]));
   });
 });

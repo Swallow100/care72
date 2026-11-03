@@ -16,6 +16,7 @@ import { easy, nameWithKana, yomi, type Word } from "../forms/easy-words.ts";
 import type { OwnBlock, OwnBlockId, OwnSheet } from "../forms/own-sheet.ts";
 import type { PersonPageRows } from "../person.ts";
 import { isSignalWriterKind, type SignalWriterKind } from "./labels.ts";
+import type { ShelterOption } from "./questions.ts";
 import {
   FAMILY_ACTOR_PHRASES,
   FAMILY_ANSWER_PHRASES,
@@ -198,11 +199,30 @@ export type FamilyScreen = {
   callName: Word[];
   /** 台帳に機器がある（聞き取りの機器の問いを出す。T49） */
   hasDevice: boolean;
+  /** 台帳の避難先 1・2（T69b。「どこの 避難所ですか」の選択肢） */
+  shelters: ShelterOption[];
 };
 
 /** 台帳に機器がある（本人・家族のスマホの聞き取りで、機器の問いを出すか。T49） */
 export function personHasDevice(rows: Pick<PersonPageRows, "person">): boolean {
   return parseLedger(rows.person.ledger).medical.devices.length > 0;
+}
+
+/**
+ * 台帳の避難先 1・2（T69b）。本人・家族のスマホの「どこの 避難所ですか」の選択肢に、台帳の名前のまま渡す（やさしい日本語の変換を通さない）。
+ * 空の欄は出さない。名前はブラウザとサーバーだけで扱い、Claude には渡さない（答えは d1・d2 の id だけ）
+ */
+export function shelterOptionsOf(rows: Pick<PersonPageRows, "person">): ShelterOption[] {
+  let e: { destination1?: string | null; destination2?: string | null };
+  try {
+    e = parseLedger(rows.person.ledger).evacuation;
+  } catch {
+    return [];
+  }
+  const out: ShelterOption[] = [];
+  if (e.destination1?.trim()) out.push({ id: "d1", easy: e.destination1.trim() });
+  if (e.destination2?.trim()) out.push({ id: "d2", easy: e.destination2.trim() });
+  return out;
 }
 
 export function buildFamilyScreen(rows: PersonPageRows, w: FamilyWriter, sheet: OwnSheet): FamilyScreen {
@@ -216,5 +236,6 @@ export function buildFamilyScreen(rows: PersonPageRows, w: FamilyWriter, sheet: 
     careManager: { words: cm?.words ?? easy("ケアマネジャー"), number: cm?.phone?.number ?? null },
     callName: familyCallName(rows, w),
     hasDevice: personHasDevice(rows),
+    shelters: shelterOptionsOf(rows),
   };
 }

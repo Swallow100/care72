@@ -41,6 +41,8 @@ export type FamilyDeps = {
   sendAnswers(item: AnswersItem): Promise<Delivery>;
   /** 台帳に機器がある（機器の問いを聞く） */
   hasDevice?: boolean;
+  /** 台帳の避難先の数（T69b。0 なら「どこの 避難所ですか」を聞かない） */
+  shelters?: number;
   onChange(state: FamilyState): void;
 };
 
@@ -63,7 +65,7 @@ export function createFamilyPhone(deps: FamilyDeps): FamilyPhone {
   let state: FamilyState = { step: "top" };
   /** 流れの番号。閉じた・最初からのあとに、前の送信の結果を当てない */
   let run = 0;
-  const asker: Asker = { who: "family", hasDevice: deps.hasDevice ?? false };
+  const asker: Asker = { who: "family", hasDevice: deps.hasDevice ?? false, shelters: deps.shelters ?? 0 };
   let signal: { id: string; delivery: Promise<Delivery> } | null = null;
   let answers: Answers = {};
   let lastAnswers: Promise<Delivery> | null = null;

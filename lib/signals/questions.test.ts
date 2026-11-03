@@ -88,7 +88,9 @@ describe("問いの表", () => {
     };
     expect(reach({ who: "self", hasDevice: true }).has("device")).toBe(true);
     expect(reach({ who: "self", hasDevice: false }).has("device")).toBe(false);
-    expect(reach({ who: "self", hasDevice: true }).size).toBe(QUESTIONS.length);
+    // 避難先のある人（T69b）なら全部の問いに着く
+    expect(reach({ who: "self", hasDevice: true, shelters: 2 }).size).toBe(QUESTIONS.length);
+    expect(reach({ who: "self", hasDevice: true }).has("shelterWhich")).toBe(false);
     const fam = reach({ who: "family", hasDevice: true });
     expect(fam.has("contact") || fam.has("request")).toBe(false);
   });

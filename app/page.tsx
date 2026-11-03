@@ -73,9 +73,15 @@ type Props = {
  */
 const CLASSIFICATION: ClassificationSlot = (s) => <Classification signalId={s.id} view={classViewOf(s.row)} editable inset />;
 
-/** 行の詳細の「聞き取り」（T49）。押した答えと Claude の聞き取りメモ（AI の印）。ケアマネが直せる。色と順は動かさない */
+/** 行の詳細の「聞き取り」（T49）。押した答えと Claude の聞き取りメモ（AI の印）。ケアマネが直せる。色と順は動かさない。場所の欄に避難先の名前と申告位置（T69b） */
 const HEARING: HearingSlot = (s) => (
-  <Hearing signalId={s.id} source={{ answers: s.row.answers, ai_memo: s.row.ai_memo, memo: s.row.memo }} editable inset />
+  <Hearing
+    signalId={s.id}
+    source={{ answers: s.row.answers, ai_memo: s.row.ai_memo, memo: s.row.memo }}
+    place={s.place}
+    editable
+    inset
+  />
 );
 
 // 担当一覧。ケアマネは自分の担当、審査員（ケアマネの役）はデモ事業所の山本の担当。
