@@ -13,7 +13,7 @@ import { toTriageSignal } from "../disaster/triage.ts";
 import { callTargetText } from "../list/calls.ts";
 import type { ClockForDetail, ContactForDetail, SignalForDetail } from "../list/detail.ts";
 import type { TriageSignal } from "../triage/index.ts";
-import { heardSignalId, loadDrillRow, loadTicks, participantsOf, replayState, type DrillScope } from "./db.ts";
+import { heardSignalId, loadDrillRow, loadTicks, participantsOf, replayState, undoableAct, type DrillScope } from "./db.ts";
 import { drillClocks } from "./director.ts";
 import { drillSituation, nowHour, simAt, type ActionRecord, type DrillState, type HeardSignal, type Tick } from "./engine.ts";
 import { lastHour, scenarioOf } from "./scenarios.ts";
@@ -47,6 +47,8 @@ export type DrillScreen = {
    * 訓練の画面から本物の番号にかけない、T17 の決め）
    */
   contacts: Record<string, DrillContact[]>;
+  /** 取り消せる最後の手の番号（T59。進行中で、刻みを越えなかった最後の手だけ）。無ければ null */
+  undoable: string | null;
 };
 
 export type DrillContact = { id: string; kind: ContactRow["kind"]; label: string; hasPhone: boolean };
@@ -193,6 +195,7 @@ export async function loadDrillScreen(
       .filter((x): x is string => typeof x === "string"),
     heard,
     contacts: contactsByPerson(contactRows),
+    undoable: undoableAct(row),
   };
 }
 

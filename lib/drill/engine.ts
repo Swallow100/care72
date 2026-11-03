@@ -32,6 +32,9 @@ import {
   type WorldState,
 } from "./scenarios.ts";
 import { NO_HINTS, type OutcomeHints, type OutcomeHook } from "./outcome.ts";
+import { isStaffCount } from "./options.ts";
+
+export { isStaffCount, STAFF_MAX } from "./options.ts";
 import { fallbackIncidents } from "./world-apply.ts";
 
 const HOUR_MS = 3_600_000;
@@ -518,9 +521,6 @@ export function initialState(
   };
 }
 
-/** 職員は 0〜9 の整数 */
-export const STAFF_MAX = 9;
-export const isStaffCount = (v: unknown): v is number => typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= STAFF_MAX;
 
 /** 選んだ物だけ残す（職員は 0〜9 の整数、夜間発災は true のときだけ） */
 export function cleanOptions(o: DrillOptions | null | undefined): DrillOptions {

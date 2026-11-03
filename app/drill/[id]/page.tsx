@@ -180,6 +180,7 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
           now={nowHour(s.state)}
           bands={s.bands}
           reached={s.drill.step}
+          night={s.state.options?.night === true}
           {...(replay ? { hrefOf: (i: number) => here({ step: i }) } : {})}
         />
       </section>
@@ -213,7 +214,14 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
                   <ActionPanel drillId={id} step={s.drill.step} actions={actions.length} people={people} contacts={s.contacts} />
                 )}
                 {running && latest && <LatestResult action={latest} names={s.names} ticks={s.ticks} voiceOf={voiceOf} />}
-                <ActionLog actions={actions} hours={s.hours} current={s.shown} names={s.names} voiceOf={voiceOf} />
+                <ActionLog
+                  actions={actions}
+                  hours={s.hours}
+                  current={s.shown}
+                  names={s.names}
+                  voiceOf={voiceOf}
+                  {...(running ? { undo: { drillId: id, step: s.drill.step, actions: actions.length, act: s.undoable } } : {})}
+                />
               </div>
             </Panel>
             <Panel title={DRILL_LABELS.situation} id="situation">
