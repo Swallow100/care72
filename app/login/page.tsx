@@ -2,12 +2,13 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { Page, Panel } from "@/components/ui/Panel";
 import { SubmitButton } from "@/components/ui/SubmitButton";
+import { waitMinutes } from "@/lib/auth/lockout";
 import { homePath } from "@/lib/auth/roles";
 import { getPrincipal } from "@/lib/auth/server";
 
 export const metadata: Metadata = { title: "ログイン | ケア72" };
 
-type Props = { searchParams: Promise<{ e?: string }> };
+type Props = { searchParams: Promise<{ e?: string; w?: string }> };
 
 const INPUT =
   "mt-1 h-10 w-full rounded bg-panel2 px-3 outline-none focus-visible:outline-2 focus-visible:outline-accent";
@@ -18,7 +19,9 @@ const INPUT =
 export default async function LoginPage({ searchParams }: Props) {
   const p = await getPrincipal();
   if (p) redirect(homePath(p.role));
-  const { e } = await searchParams;
+  const { e, w } = await searchParams;
+  // 回数の制限で止めたとき（/login?w=<残りの分>。lib/auth/lockout.ts）
+  const wait = waitMinutes(w);
 
   return (
     <Page width="full" className="max-w-sm py-10">
@@ -50,10 +53,16 @@ export default async function LoginPage({ searchParams }: Props) {
               className={INPUT}
             />
           </label>
-          {e && (
-            <p role="alert" className="text-sm font-bold text-danger">
-              認証失敗
+          {wait !== null ? (
+            <p role="alert" className="text-sm">
+              <span className="font-bold text-danger">回数超過</span> 待機 {wait} 分
             </p>
+          ) : (
+            e && (
+              <p role="alert" className="text-sm font-bold text-danger">
+                認証失敗
+              </p>
+            )
           )}
           <SubmitButton kind="main" size="lg" className="mt-1 w-full">
             ログイン
