@@ -6,8 +6,8 @@ import { describe, expect, it } from "vitest";
 
 const ROOT = join(__dirname, "..", "..");
 
-/** 同時に動く作業の場所（T40 では触らない。直すのはその作業のあと）。docs/progress/t40.md の表に載せた */
-const LATER = new Set(["components/survey/SurveyForm.tsx", "components/office/SurveyCreate.tsx"]);
+/** 同時に動く作業の場所（T40 では触らない。直すのはその作業のあと）。docs/progress/t40.md の表に載せた。アンケートの 2 つは T65b で直した */
+const LATER = new Set<string>();
 
 function files(dir: string): string[] {
   return readdirSync(dir).flatMap((n) => {
