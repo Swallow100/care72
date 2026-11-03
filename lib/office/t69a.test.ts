@@ -8,9 +8,10 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { seedStatements } from "../../seed/sql.ts";
-import { PhoneLinkIssueForm, PhoneLinkPanel } from "../../components/phone/PhoneLinkPanel.tsx";
+import { PhoneLinkIssueForm, PhoneLinkPanel, PhoneLinkSwitch } from "../../components/phone/PhoneLinkPanel.tsx";
 import { PhoneLinkInvalid, PhoneNormalMark } from "../../components/phone/PhoneMarks.tsx";
 import type { Principal } from "../auth/principal.ts";
+import { showsLogout } from "../auth/roles.ts";
 import { loadPersonDocument } from "../consent/documents.ts";
 import { scopeOfRows } from "../consent/scope.ts";
 import { receive, registerOnSite } from "../custody/store.ts";
@@ -68,15 +69,12 @@ const consentRows = (personId: string) =>
 const INPUT = { name: "架空 一郎", kana: "カクウ イチロウ", birthDate: "1941-04-01", sex: "male" as const, careManagerId: "acct-yamamoto" };
 
 describe("新しい人の同意を「未確認」で作る", () => {
-  it("利用者追加: 同意の種類の全部が未確認の行で入る（記録した人は足した人、時刻は足した時刻、範囲・期限・備考は空）", async () => {
-    for (const [p, by] of [
-      [yamamoto(), "acct-yamamoto"],
-      [judgeCm(), "acct-judge"],
-    ] as const) {
+  it("利用者追加: 同意の種類の全部が未確認の行で入る（時刻は足した時刻、記録した人・範囲・期限・備考は空。設計の答え 11/4）", async () => {
+    for (const p of [yamamoto(), judgeCm()]) {
       const r = await createPerson(db, officeActor(p)!, INPUT, AT);
       if (!r.ok) throw new Error("足せない");
       expect(consentRows(r.id)).toEqual(
-        [...CONSENT_KINDS].sort().map((kind) => ({ kind, status: "unconfirmed", scope: null, recorded_by: by, recorded_at: AT, expires_at: null, note: null })),
+        [...CONSENT_KINDS].sort().map((kind) => ({ kind, status: "unconfirmed", scope: null, recorded_by: null, recorded_at: AT, expires_at: null, note: null })),
       );
     }
   });
@@ -106,13 +104,13 @@ describe("新しい人の同意を「未確認」で作る", () => {
     expect(consentRows("p-fail")).toEqual([]);
   });
 
-  it("その場の登録（医療班・行政）も 4 行。記録した人は作った人。範囲は前と同じ（その場の人は同意ありと同じ区分）", async () => {
+  it("その場の登録（医療班・行政）も 4 行。記録した人は空。範囲は前と同じ（その場の人は同意ありと同じ区分）", async () => {
     const actor = { accountId: "acct-med-1", role: "medical" as const, name: "医療班 1", judge: false };
     const input = { name: "架空 ミツ", kana: "カクウ ミツ", age: 80, birthDate: null, medications: [], devices: [], contact: null, shelter: "そらみ台小学校" };
     const r = await registerOnSite(db, actor, input, AT, { personId: "p-onsite" });
     expect(r.ok).toBe(true);
     expect(consentRows("p-onsite")).toEqual(
-      [...CONSENT_KINDS].sort().map((kind) => ({ kind, status: "unconfirmed", scope: null, recorded_by: "acct-med-1", recorded_at: AT, expires_at: null, note: null })),
+      [...CONSENT_KINDS].sort().map((kind) => ({ kind, status: "unconfirmed", scope: null, recorded_by: null, recorded_at: AT, expires_at: null, note: null })),
     );
     const rows = (await loadPersonPage(db, medical(), "p-onsite"))!;
     expect(scopeOfRows("medical", rows)).toEqual(scopeOfRows("medical", { ...rows, consents: [] }));
@@ -255,10 +253,34 @@ describe("本人・家族の画面（やさしい日本語）", () => {
   it("無効の 1 画面は「無効」と「ケアマネに連絡」だけ。誰のリンクかを出さない", () => {
     const html = renderToStaticMarkup(createElement(PhoneLinkInvalid));
     expect(html).toContain("<ruby>無効<rp>（</rp><rt>むこう</rt><rp>）</rp></ruby>");
+    // 本人のスマホの頁の問いと同じ大きな字（説明は足さない）
+    expect(html).toMatch(/text-\[2rem\][^"]*font-bold[^>]*data-tone="unknown"><ruby>無効/);
     expect(html).toContain("ケアマネに <ruby>連絡");
     for (const w of [PHONE_EASY.invalid, PHONE_EASY.callCareManager]) expect(kanjiWithoutRuby(easy(w))).toEqual([]);
     const page = readFileSync(new URL("../../app/s/invalid/page.tsx", import.meta.url), "utf8");
     expect(page).toContain("index: false");
     expect(page).toContain('referrer: "no-referrer"');
+  });
+});
+
+describe("ログイン中の 1 枚とログアウト（設計の答え 11/4）", () => {
+  it("ログイン中の 1 枚: 「切替」は赤で POST /s/<token>、「戻る」は今の役の入口。誰のリンクかは出さない", () => {
+    const html = renderToStaticMarkup(createElement(PhoneLinkSwitch, { token: "abc.def", who: "管理者 山本", back: "/" }));
+    expect(html).toContain(PHONE_LINK_LABELS.loggedIn);
+    expect(html).toContain("管理者 山本");
+    expect(html).toContain(`action="/s/abc.def"`);
+    expect(html).toContain('method="post"');
+    expect(html).toMatch(/text-danger[^>]*>.*切替/s);
+    expect(html).toContain('href="/"');
+    expect(html).toContain(PHONE_LINK_LABELS.back);
+    expect(html).not.toContain("山田");
+  });
+
+  it("本人・家族の頁にログアウトを置かない（審査員の本人・家族も。役変更で戻る）。ほかの役は今までどおり", () => {
+    expect(showsLogout("self")).toBe(false);
+    expect(showsLogout("family")).toBe(false);
+    for (const r of ["care_manager", "government", "medical", "unselected"] as const) expect(showsLogout(r), r).toBe(true);
+    const header = readFileSync(new URL("../../components/AppHeader.tsx", import.meta.url), "utf8");
+    expect(header).toMatch(/\{showsLogout\(p\.role\) && \(\s*<form method="post" action="\/api\/auth\/logout">/);
   });
 });
