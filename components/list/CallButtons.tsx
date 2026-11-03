@@ -6,20 +6,28 @@
 // 「通話」（T58）は行の中に小さな欄を開く: 聞いた安否（無事・無事でない・聞けず）、無事でないときだけ けが・動けない、メモ（任意）。
 // 聞いた安否はサーバーが信号（出どころ ケアマネ）に足し、色と連絡順はルールの表が当て直す（画面では決めない）。
 // 赤 けが・動けない の人に「無事」か、けが・動けないを付けない「無事でない」を送ると、サーバーが断る（「至急維持」）。
+// 通信が切れて送れない記録は捨てずに端末に貯め（T71。components/CallQueue.tsx・lib/offline/queue.ts）、つながったら送る。
+// 残っている間は連絡先の行に「保留 N」。聞いた安否も届くまで色と順に入らない（端末で表を動かさない）。
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { useCallQueue } from "@/components/CallQueue";
 import type { DetailContact } from "@/lib/list/detail";
 import { DETAIL_LABELS } from "@/lib/list/labels";
 import { Button, buttonClass } from "@/components/ui/Button";
 import { CloseIcon, PhoneIcon, SaveIcon } from "@/components/ui/Icon";
 import { CALL_PATH } from "@/lib/list/paths";
+import { OFFLINE_LABELS } from "@/lib/offline/labels";
+import type { CallDelivery } from "@/lib/offline/queue";
 
 type Result = "dialed" | "no_answer" | "connected";
 type Choice = "green" | "red" | "none";
 type Heard = { color: "green" | "red"; injured?: true; canMove?: false };
 
 const MAX_MEMO = 100;
+
+/** 届いたかが分かるまで待つ長さ。過ぎたら端末に貯めた扱いで欄を閉じ、送り終えたら帯と保留の数が変わる（通信が詰まっているとき） */
+const WAIT_MS = 4_000;
 
 /** 選ぶ所の見た目。選んだ印は枠と太字（下地を敷かない）。押したときは灰色だけ */
 const choiceClass = (on: boolean, tone = "") =>
@@ -46,14 +54,43 @@ function lastCallText(c: NonNullable<DetailContact["lastCall"]>): string {
 
 export function CallButtons({ personId, contacts }: { personId: string; contacts: DetailContact[] }) {
   const router = useRouter();
+  const queue = useCallQueue();
   const [failed, setFailed] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   /** 通話の欄を開いている連絡先 */
   const [talking, setTalking] = useState<string | null>(null);
+  /** 端末に残っている記録の数（この人のこの連絡先） */
+  const waiting = (contactId: string) =>
+    queue?.items.filter((x) => x.body.person === personId && x.body.contact === contactId).length ?? 0;
 
   async function log(contactId: string, result: Result, extra: { heard?: Heard | null; memo?: string } = {}): Promise<boolean> {
     setBusy(`${contactId}:${result}`);
     setFailed(null);
+    if (queue) {
+      // 端末に書いてから送る。届けば Provider が読み直す。送れなければ保留に残る。断られたら応答の言葉
+      const sending = queue.send({ person: personId, contact: contactId, result, ...extra });
+      const shown = (d: CallDelivery) => {
+        if (d.kind === "dropped") setFailed(d.label ?? OFFLINE_LABELS.failed);
+      };
+      try {
+        const d = await Promise.race([
+          sending,
+          new Promise<CallDelivery>((r) => window.setTimeout(() => r({ kind: "queued" }), WAIT_MS)),
+        ]);
+        if (d.kind === "dropped") {
+          shown(d);
+          return false;
+        }
+        // 待ち切れなかった物は、あとで断られたときだけ言葉を出す
+        void sending.then(shown, () => {});
+        return true;
+      } catch {
+        setFailed(OFFLINE_LABELS.failed);
+        return false;
+      } finally {
+        setBusy(null);
+      }
+    }
     try {
       const res = await fetch(CALL_PATH, {
         method: "POST",
@@ -140,6 +177,11 @@ export function CallButtons({ personId, contacts }: { personId: string; contacts
               >
                 {DETAIL_LABELS.connected}
               </button>
+              {waiting(c.id) > 0 && (
+                <span className="whitespace-nowrap text-xs text-muted tabular-nums" data-pending={c.id}>
+                  {OFFLINE_LABELS.pending} {waiting(c.id)}
+                </span>
+              )}
             </div>
             {talking === c.id && (
               <ConnectedForm

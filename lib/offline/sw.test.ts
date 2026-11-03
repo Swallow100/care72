@@ -20,6 +20,7 @@ import {
   freshCopy,
   isAssetRequest,
   isPageRequest,
+  isPhoneLinkOpen,
   KEEP_MESSAGE,
   KEEP_MIN_MS,
   markCopy,
@@ -88,13 +89,24 @@ describe("写しの鍵", () => {
     expect(isAssetRequest("GET", new URL("https://example.com/_next/static/a.js"), ORIGIN)).toBe(false);
   });
 
-  it("消す要求: ログイン・ログアウト・役の切替の POST", () => {
+  it("消す要求: ログイン・ログアウト・役の切替・スマホ入口の切替の POST", () => {
     expect(clearsCopies("POST", u("/api/auth/login"), ORIGIN)).toBe(true);
     expect(clearsCopies("POST", u("/api/auth/logout"), ORIGIN)).toBe(true);
     expect(clearsCopies("POST", u("/api/auth/role"), ORIGIN)).toBe(true);
+    expect(clearsCopies("POST", u("/s/tok_1"), ORIGIN)).toBe(true);
     expect(clearsCopies("GET", u("/api/auth/logout"), ORIGIN)).toBe(false);
     expect(clearsCopies("POST", u("/api/auth/password"), ORIGIN)).toBe(false);
+    expect(clearsCopies("POST", u("/s/invalid"), ORIGIN)).toBe(false);
     expect(clearsCopies("POST", new URL("https://example.com/api/auth/logout"), ORIGIN)).toBe(false);
+  });
+
+  it("スマホ入口のリンクを開く: GET /s/<token> の移りだけ（無効の頁・切替の 1 枚は違う）", () => {
+    expect(isPhoneLinkOpen("GET", "navigate", u("/s/tok_1"), ORIGIN)).toBe(true);
+    expect(isPhoneLinkOpen("GET", "navigate", u("/s/invalid"), ORIGIN)).toBe(false);
+    expect(isPhoneLinkOpen("GET", "navigate", u("/s/tok_1/switch"), ORIGIN)).toBe(false);
+    expect(isPhoneLinkOpen("GET", "cors", u("/s/tok_1"), ORIGIN)).toBe(false);
+    expect(isPhoneLinkOpen("POST", "navigate", u("/s/tok_1"), ORIGIN)).toBe(false);
+    expect(copyKey(u("/s/tok_1"))).toBeNull();
   });
 });
 
@@ -405,6 +417,25 @@ describe("sw.js: 消す", () => {
       expect(sw.caches.map.has(PAGE_CACHE)).toBe(false);
       expect(sw.caches.map.get(ASSET_CACHE)?.entries).toHaveLength(1);
     }
+  });
+
+  it("スマホ入口のリンク: ネットが応えたら写しを消し、応答（ログインへの 303）はそのまま。通信なしなら消さない", async () => {
+    let online = true;
+    const sw = boot(async (input) => {
+      if (!online) throw new TypeError("Failed to fetch");
+      return keyUrl(input).includes("/s/") ? opaqueRedirect() : basic(PAGE("本人"));
+    });
+    await sw.request("/me");
+    online = false;
+    const off = await sw.request("/s/tok_1");
+    expect(off.res!.type).toBe("error");
+    expect(sw.pages()).toEqual([`${ORIGIN}/me`]);
+    online = true;
+    const on = await sw.request("/s/tok_1");
+    expect(on.res!.type).toBe("opaqueredirect");
+    expect(sw.pages()).toEqual([]);
+    expect((await sw.request("/s/tok_1", { method: "POST" })).responded).toBe(false);
+    expect((await sw.request("/s/invalid")).responded).toBe(false);
   });
 
   it("消す前に取りに出た頁は、あとで返ってきても写さない", async () => {

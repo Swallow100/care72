@@ -85,9 +85,22 @@ function isAssetRequest(method, url, origin) {
   return method === "GET" && url.origin === origin && url.pathname.startsWith("/_next/static/");
 }
 
-/** 写しを全部消す要求か */
+/** 本人・家族のスマホ入口のリンク（/s/<token>。T69a）。開くとその人のセッションに替わる。/s/invalid と /s/<token>/switch は違う */
+function isPhoneLinkPath(pathname) {
+  return /^\/s\/[^/]+$/.test(pathname) && pathname !== "/s/invalid";
+}
+
+/** 見た時点で写しを全部消す要求: ログイン・ログアウト・役の切替と、スマホ入口の「切替」（POST /s/<token>） */
 function clearsCopies(method, url, origin) {
-  return method === "POST" && url.origin === origin && CLEAR_PATHS.includes(url.pathname);
+  return method === "POST" && url.origin === origin && (CLEAR_PATHS.includes(url.pathname) || isPhoneLinkPath(url.pathname));
+}
+
+/**
+ * スマホ入口のリンクを開く（GET /s/<token>）。ネットが応えたら写しを全部消す（前の人の写しを次の人に出さない）。
+ * 通信なしで押したときは何も替わらないので消さない（本人のスマホの写しを残す）
+ */
+function isPhoneLinkOpen(method, mode, url, origin) {
+  return method === "GET" && mode === "navigate" && url.origin === origin && isPhoneLinkPath(url.pathname);
 }
 
 /** 写してよい応答: 200 の同じ origin の HTML で、移り（redirect）を経ていない物 */
@@ -208,6 +221,10 @@ self.addEventListener("fetch", (event) => {
     event.waitUntil(clearCopies().catch(() => {}));
     return;
   }
+  if (isPhoneLinkOpen(req.method, req.mode, url, ORIGIN)) {
+    event.respondWith(openPhoneLink(req));
+    return;
+  }
   if (isAssetRequest(req.method, url, ORIGIN)) {
     event.respondWith(asset(event, req));
     return;
@@ -301,6 +318,18 @@ async function keep(href) {
     return;
   }
   if (storable(res)) await store(url, res, g);
+}
+
+/** スマホ入口のリンク: 応答はそのまま返し（写さない）、ネットが応えたときだけ写しを消す。通信なしなら何も消さない */
+async function openPhoneLink(req) {
+  let res;
+  try {
+    res = await fetch(req);
+  } catch {
+    return Response.error();
+  }
+  await clearCopies().catch(() => {});
+  return res;
 }
 
 /** 頁の写しを全部消す（どの版の物も） */
