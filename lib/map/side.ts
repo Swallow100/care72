@@ -6,7 +6,7 @@
 
 import { PLAN_TONES, rowLink, type CaseloadRow, type SortKey } from "../caseload.ts";
 import { PLAN_STATUSES, type GeoPoint, type HazardKind, type PlanStatus } from "../db/types.ts";
-import type { DisasterState } from "../disaster/state.ts";
+import { DISASTER_SCENE, type DisasterState } from "../disaster/state.ts";
 import { BLANK_LABELS, COLOR_LABELS, HAZARD_LABELS, PLAN_STATUS_LABELS } from "../labels.ts";
 import { COLOR_TONES, fieldLabelOf, type StateTone } from "../person.ts";
 import { compareResults, type Color, type TriageResult } from "../triage/index.ts";
@@ -19,14 +19,15 @@ export const COLOR_ORDER: readonly Color[] = ["red", "yellow", "gray", "green"];
 export type SideDisaster = {
   /** ルールの表の結果（lib/triage の rank の順） */
   results: ReadonlyArray<TriageResult>;
-  /** 雨雲・震度のデモの元 */
-  scene: DemoScene;
+  /** 雨雲・震度のデモの元。災害の種類が場面を持たない（その他）ときは null（雨雲・震度を出さない） */
+  scene: DemoScene | null;
 };
 
 /**
  * 災害モードの担当一覧の行（lib/caseload.ts が行ごとに lib/triage の結果を付けた物）と事業所の災害の状態から、右の面の発災時の入力を作る。
  * 結果は表の並び（compareResults）に並べ直す（ピンの重なりは連絡の順。一覧の並びが氏名・年齢でも変わらない）。
- * 場面は災害の種類と警戒レベル（入れていなければ null）。平時か、結果の無い行があるときは null（平時の面）
+ * 場面は災害の種類を DISASTER_SCENE で引いた物と警戒レベル（入れていなければ null）。場面の無い種類（その他）は scene が null。
+ * 平時か、結果の無い行があるときは null（平時の面）
  */
 export function sideDisasterOf(
   rows: ReadonlyArray<Pick<CaseloadRow, "triage">>,
@@ -38,8 +39,9 @@ export function sideDisasterOf(
     if (!r.triage) return null;
     results.push(r.triage);
   }
-  const scene: DemoScene =
-    state.kind === "heavy_rain" ? { kind: "heavy_rain", level: state.alertLevel } : { kind: "earthquake" };
+  const kind = DISASTER_SCENE[state.kind];
+  const scene: DemoScene | null =
+    kind === "heavy_rain" ? { kind: "heavy_rain", level: state.alertLevel } : kind === "earthquake" ? { kind: "earthquake" } : null;
   return { results: results.sort(compareResults), scene };
 }
 
@@ -235,6 +237,6 @@ export function buildSidePane(
     hazards: hazardCounts(rows, colorById ? (id) => colorById.get(id) : undefined),
     destinations: destinationCounts(rows),
     states: disaster ? stateCounts(disaster.results) : null,
-    demo: disaster ? demoOverlay(disaster.scene) : null,
+    demo: disaster?.scene ? demoOverlay(disaster.scene) : null,
   };
 }
