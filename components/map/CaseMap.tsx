@@ -46,7 +46,7 @@ import type { MapPin } from "@/lib/map/side";
 import { COLOR_LABELS } from "@/lib/labels";
 import type { StateTone } from "@/lib/person";
 
-/** ピンが無いときの真ん中（松山市の市街） */
+/** ピンが無いときの真ん中（松山市の市街）。事業所の中心（center、T68）があればそちら（T72） */
 const FALLBACK = { lat: 33.84, lng: 132.765 };
 
 /** ピンの名前の印（澄んだ色の塗りと文字）と点の色。components/ui/Tag の StateTag と同じ組 */
@@ -94,6 +94,8 @@ export type CaseMapProps = {
   demo: DemoOverlay | null;
   /** 位置の無い人の数 */
   unplaced: number;
+  /** ピンが無いときの真ん中（事業所の中心、T68）。無ければ FALLBACK（松山市の市街）。T72 */
+  center?: GeoPoint;
 };
 
 /** 層の切替（小さな地図と全画面で同じ物） */
@@ -104,7 +106,7 @@ type LayerChoice = {
   toggleRain: () => void;
 };
 
-export function CaseMap({ pins, layers, demo, unplaced }: CaseMapProps) {
+export function CaseMap({ pins, layers, demo, unplaced, center }: CaseMapProps) {
   const [on, setOn] = useState<ReadonlySet<HazardKind>>(() => new Set(layers));
   const [rainOn, setRainOn] = useState(true);
   const [full, setFull] = useState(false);
@@ -115,9 +117,9 @@ export function CaseMap({ pins, layers, demo, unplaced }: CaseMapProps) {
     () =>
       fitView(
         pins.map((p) => p.location),
-        { minZ: 11, maxZ: 15, fallback: FALLBACK },
+        { minZ: 11, maxZ: 15, fallback: center ?? FALLBACK },
       ),
-    [pins],
+    [pins, center],
   );
   // 拡大・縮小・移動した表示（T66）。読み直し（災害モードは 1 分ごと）でピンの顔ぶれと位置が同じなら、動かした表示のまま残す
   const pinKey = pins.map((p) => `${p.id}@${p.location.lat},${p.location.lng}`).join("|");
@@ -232,7 +234,7 @@ export function CaseMap({ pins, layers, demo, unplaced }: CaseMapProps) {
       </figure>
       {/* 全画面は押してから作る（閉じている間はタイルを要求しない）。<dialog> の showModal で一番上の層に出るので
           場所を取らない。figcaption を figure の最後に置くため、figure の外に置く */}
-      {full && <FullMap pins={pins} demo={demo} unplaced={unplaced} choice={choice} onClose={() => setFull(false)} />}
+      {full && <FullMap pins={pins} demo={demo} unplaced={unplaced} choice={choice} center={center} onClose={() => setFull(false)} />}
     </>
   );
 }
@@ -402,6 +404,8 @@ type FullMapProps = {
   demo: DemoOverlay | null;
   unplaced: number;
   choice: LayerChoice;
+  /** ピンが無いときの真ん中（小さな地図と同じ。T72） */
+  center?: GeoPoint;
   onClose: () => void;
   /** テスト用: 枠の大きさを測る前に使う大きさ（サーバーの描画では ResizeObserver が動かない） */
   initialSize?: Size;
@@ -410,14 +414,14 @@ type FullMapProps = {
 /** タイルの番号の鍵 */
 const tileKey = (t: Pick<TileSpot, "z" | "x" | "y">) => `${t.z}/${t.x}/${t.y}`;
 
-export function FullMap({ pins, demo, unplaced, choice, onClose, initialSize }: FullMapProps) {
+export function FullMap({ pins, demo, unplaced, choice, center, onClose, initialSize }: FullMapProps) {
   const titleId = useId();
   const dialog = useRef<HTMLDialogElement>(null);
   const box = useRef<HTMLDivElement>(null);
   const points = useMemo(() => pins.map((p) => p.location), [pins]);
   const fit = useCallback(
-    (s: Size) => fitView(points, { minZ: FULL_ZOOM.minZ, maxZ: FULL_FIT_MAX, fallback: FALLBACK, size: s, padding: fullPadding(s) }),
-    [points],
+    (s: Size) => fitView(points, { minZ: FULL_ZOOM.minZ, maxZ: FULL_FIT_MAX, fallback: center ?? FALLBACK, size: s, padding: fullPadding(s) }),
+    [points, center],
   );
   const [size, setSize] = useState<Size | null>(initialSize ?? null);
   const [view, setView] = useState<View | null>(() => (initialSize ? fit(initialSize) : null));
