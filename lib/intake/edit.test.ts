@@ -254,7 +254,8 @@ describe("面の編集の外す・値確認（components/person/SectionEdit.tsx�
 
   it("確認の窓の文: 外す物の名前と数。写真・PDF は読む前の注意の窓をやめ、黒塗りの画面（T52）の言葉に", () => {
     expect(dropConfirmText(["ワーファリン", "隣人"])).toBe("ワーファリン・隣人 の 2 件を外します。経過に「ケアマネが外した」と残ります。");
-    expect(REDACT_LABELS.what).toBe("氏名・住所・電話・町名");
+    // 塗る物に生年月日・保険者番号を足した（DECISIONS 11/3 18:0x の T52-4。T54）
+    expect(REDACT_LABELS.what).toBe("氏名・住所・電話・町名・生年月日・保険者番号");
     expect(REDACT_LABELS.noneOk).toBe("隠す所は無い");
     for (const w of ["診断", "判定"]) expect(JSON.stringify(REDACT_LABELS)).not.toContain(w);
   });
