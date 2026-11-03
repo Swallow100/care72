@@ -28,7 +28,7 @@ beforeEach(() => {
   sqlite = migratedSqlite();
   for (const s of seedStatements()) sqlite.exec(s);
   db = d1FromSqlite(sqlite);
-});
+}, 60_000);
 afterEach(() => sqlite.close());
 
 const DEMO = { id: "office-demo", name: "デモ事業所", kind: "demo" as const };
@@ -196,11 +196,12 @@ describe.skipIf(!chrome)("訓練記録の紙面の印刷（headless Chrome の p
     page = await browser.newPage();
     await page.setContent(paperPage("<p>書体</p>", css));
     fontOk = (await page.evaluate(FONT_PROBE)) === true;
-  }, 60_000);
+  }, 180_000);
 
+  // 全部のテストを並べて走らせると Chrome を閉じるのに 10 秒を超えることがある
   afterAll(async () => {
     await browser?.close();
-  });
+  }, 60_000);
 
   async function pdfOf(body: string): Promise<Uint8Array> {
     await page.emulateMediaType(undefined);
