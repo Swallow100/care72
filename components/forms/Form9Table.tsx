@@ -86,8 +86,8 @@ const HIDE: Partial<Record<Form9ColumnId, string>> = {
  * 理由（1280 で 141px あった）から分けた。医療・介護は段の名前でなく医療の印を並べる（下の cellOf）
  */
 const WIDTH: Record<Form9ColumnId, string> = {
-  no: "w-[32px]",
-  color: "w-[46px]",
+  no: "w-[30px]",
+  color: "w-[48px]",
   nameAge: "w-[90px]",
   medicalCare: "w-[76px]",
   environment: "w-[66px]",

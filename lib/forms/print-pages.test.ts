@@ -88,7 +88,7 @@ const form9Html = (report: string | null) =>
       sheet: buildForm9(FORM9_PEOPLE, { today: TODAY }),
       office: "デモ事業所",
       date: warekiText(TODAY),
-      order: "平時 優先区分 1〜8 → 時計の短い順 → 支援者なしが先 → カナ",
+      order: "平時 組 1〜8 → 時計の短い順 → 支援者なしが先 → カナ",
       report,
     }),
   );

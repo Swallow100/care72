@@ -337,7 +337,7 @@ describe("CSV", () => {
 
   it("上にひな形の題名と事業所名・作成日、1 行空けて見出し、その下に 10 人の行（優先順位の順）", () => {
     expect(lines[0]).toBe(FORM9_TITLE);
-    expect(lines[1]).toBe("事業所名：デモ事業所,作成：2026年11月2日,並び：平時（優先区分）");
+    expect(lines[1]).toBe("事業所名：デモ事業所,作成：2026年11月2日,並び：平時（組）");
     expect(lines[2]).toBe("");
     expect(lines[3]).toBe(FORM9_COLUMNS.map((c) => c.csv).join(","));
     const data = lines.slice(4).filter((l) => l !== "");
