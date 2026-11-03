@@ -21,7 +21,7 @@ import type { Ledger } from "../db/types.ts";
 import { loadPersonPage, toPersonView, type PersonPageRows } from "../person.ts";
 import { pseudonymize, pseudonymizeText } from "../pseudonym/index.ts";
 import { answerChanges } from "./answer.ts";
-import { nextQuestion, questionQueue } from "./ask.ts";
+import { FIELD_QUESTIONS, GENERATED_QUESTIONS, NOT_ASKED, nextQuestion, questionQueue } from "./ask.ts";
 import type { IntakeChange } from "./changes.ts";
 import { buildDiff, restoreNote, sentencesOf } from "./diff.ts";
 import { buildExtractRequest, EXTRACT_SYSTEM, extractIntake, pseudonymInputOf } from "./extract.ts";
@@ -358,7 +358,7 @@ describe("次の問い（lib/intake/ask.ts）", () => {
     const firstOther = groups.indexOf("other");
     expect(lastMedical).toBeLessThan(firstNight);
     expect(firstNight).toBeLessThan(firstOther);
-    expect(q[firstNight]).toMatchObject({ key: "people.night_supporter", text: "夜間に来られる人は" });
+    expect(q[firstNight]).toMatchObject({ key: "people.night_supporter", text: GENERATED_QUESTIONS.night.text });
     // 埋まっている欄（世帯・認知症・介護度）は問わない
     expect(q.map((x) => x.key)).not.toContain("basic.household");
     expect(q.map((x) => x.key)).not.toContain("care.dementia");
@@ -389,6 +389,30 @@ describe("次の問い（lib/intake/ask.ts）", () => {
         for (const k of p.clocks) expect(x.focus).not.toContain(k.label);
       }
     }
+  });
+
+  it("欄の表の欄は、問わない欄のほか全部に問いの文（何を・なぜ・例）がある", () => {
+    const asked = INTAKE_FIELDS.filter((f) => !NOT_ASKED.has(f.key)).map((f) => f.key);
+    expect(asked.filter((k) => !FIELD_QUESTIONS[k])).toEqual([]);
+    // 表に余分な欄（欄の表から消えた欄）を残さない
+    expect(Object.keys(FIELD_QUESTIONS).filter((k) => !asked.includes(k))).toEqual([]);
+  });
+
+  it("全部の空欄の問いが 1 問で分かる文: 何を（。で終わる）・なぜ・例（「例: 」で始まる）。現場の言葉で書く", () => {
+    // 種の 10 人と、台帳が空の人（全部の欄を問う）
+    const empty = { ...seedRows(seed("p-04"), parseLedger("{}")), contacts: [] };
+    const all = [...SEED_PEOPLE.map((p) => questionQueue(seedRows(p))), questionQueue(empty)].flat();
+    expect(questionQueue(empty).length).toBeGreaterThanOrEqual(INTAKE_FIELDS.length - NOT_ASKED.size);
+    for (const x of all) {
+      expect(x.text, x.key).toMatch(/[。）]$/);
+      expect(x.why, x.key).toMatch(/。$/);
+      expect(x.why.length, x.key).toBeGreaterThan(8);
+      expect(x.example, x.key).toMatch(/^例: \S/);
+      for (const w of ["診断", "判定", "重症", "危険", "病気がわかる"]) expect(`${x.text}${x.why}${x.example}`, x.key).not.toContain(w);
+    }
+    // 薬の名前は問いの文に入る（何の薬か分かる）が、Claude に渡す言葉には入らない（下のテスト）
+    const sato = questionQueue(seedRows(seed("p-04")));
+    expect(sato.find((x) => x.label === "抗認知症薬 保管")?.text).toContain("抗認知症薬");
   });
 
   it("答え → 変更: 選択肢・薬の残り・夜間の連絡先・分からない", () => {
