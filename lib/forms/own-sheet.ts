@@ -69,18 +69,20 @@ export const OWN_PHRASES = {
   // 119 の 1 行（11/3 16:0x 確定。アドバイザーの OK 例のまま。「と感じたら」で判断が本人の側）。本人・家族のスマホと本人の 1 枚が同じ文
   emergencyLead: "{命|いのち}が {危|あぶ}ないと {感|かん}じたら、すぐ",
   emergencyNumber: "119",
-  emergencyTail: "{番|ばん}へ",
+  emergencyCounter: "{番|ばん}",
+  emergencyTail: "へ",
 } as const;
 
 /** 119 の 1 行の文（ふりがな・分かち書きを外した形）。画面・紙のどこでもこの文で、AI の出力や話の中身で出し分けない */
 export const EMERGENCY_TEXT = "命が危ないと感じたら、すぐ119番へ";
 
-/** 119 の 1 行の言葉（119 は太く）。本人の 1 枚の紙・本人と家族のスマホが同じこれを使う（一般の案内。本人の状態の判定ではない） */
+/** 119 の 1 行の言葉（「119番」は太く大きく、「へ」は本文の大きさ）。本人の 1 枚の紙・本人と家族のスマホが同じこれを使う（一般の案内。本人の状態の判定ではない） */
 export function emergencyWords(): Word[] {
   return [
     ...easy(OWN_PHRASES.emergencyLead),
     { text: " " },
     { text: OWN_PHRASES.emergencyNumber, strong: true },
+    ...easy(OWN_PHRASES.emergencyCounter, { strong: true }),
     ...easy(OWN_PHRASES.emergencyTail),
   ];
 }
