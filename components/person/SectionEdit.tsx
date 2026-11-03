@@ -744,23 +744,21 @@ function NewClockRow({ clock: k, onChange, onDrop }: { clock: ClockDraft; onChan
           </option>
         ))}
       </Select>
-      <div className="flex items-center gap-1">
-        <input
-          className={`${INPUT_IN} min-w-0 flex-1`}
-          inputMode="decimal"
-          placeholder="未確認"
-          aria-label={`${name} 値`}
-          value={k.value}
-          onChange={(e) => p({ value: e.target.value })}
-        />
-        <Select className={`${INPUT_IN} w-20`} aria-label={`${name} 単位`} value={k.unit} onChange={(e) => p({ unit: e.target.value as ClockDraft["unit"] })}>
-          {UNITS.map((u) => (
-            <option key={u} value={u}>
-              {CLOCK_UNIT_LABELS[u]}
-            </option>
-          ))}
-        </Select>
-      </div>
+      <input
+        className={`${INPUT_IN} tabular-nums`}
+        inputMode="decimal"
+        placeholder="未確認"
+        aria-label={`${name} 値`}
+        value={k.value}
+        onChange={(e) => p({ value: e.target.value })}
+      />
+      <Select className={INPUT_IN} aria-label={`${name} 単位`} value={k.unit} onChange={(e) => p({ unit: e.target.value as ClockDraft["unit"] })}>
+        {UNITS.map((u) => (
+          <option key={u} value={u}>
+            {CLOCK_UNIT_LABELS[u]}
+          </option>
+        ))}
+      </Select>
       <Select className={INPUT_IN} aria-label={`${name} ${INTAKE_LABELS.clockStart}`} value={k.start} onChange={(e) => p({ start: e.target.value as RunningStart })}>
         {(["outage", "disaster"] as const).map((s) => (
           <option key={s} value={s}>
@@ -776,7 +774,7 @@ function NewClockRow({ clock: k, onChange, onDrop }: { clock: ClockDraft; onChan
           </option>
         ))}
       </Select>
-      <div className="flex items-center gap-1">
+      <div className="col-span-2 flex items-center gap-1">
         <input
           className={`${INPUT_IN} min-w-0 flex-1`}
           maxLength={100}
