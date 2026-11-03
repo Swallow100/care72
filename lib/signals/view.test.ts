@@ -11,7 +11,7 @@ import { SEED_AT, SEED_PEOPLE, seedConsents } from "../../seed/people.ts";
 import { buildOwnSheet, lineText } from "../forms/own-sheet.ts";
 import type { PersonPageRows } from "../person.ts";
 import { NO_ANSWERS } from "./body.ts";
-import type { PhoneState } from "./phone.ts";
+import { createPhone, type PhoneState } from "./phone.ts";
 
 const noop: PhoneActions = {
   green() {},
@@ -30,6 +30,8 @@ const text = (html: string) => html.replace(/<rt>[^<]*<\/rt>|<rp>[^<]*<\/rp>/g, 
 const buttons = (html: string) => [...html.matchAll(/<button[^>]*data-choice="([^"]+)"/g)].map((m) => m[1]);
 /** 119 の 1 行の文字 */
 const E = "いのちの 危険が あるときは 119";
+/** AI の告知の文字（T48） */
+const N = "これは AI（人では ない しくみ）が 聞いています。こたえは ケアマネジャーに とどきます";
 
 const STATES: PhoneState[] = [
   { step: "top" },
@@ -65,7 +67,7 @@ describe("災害モードの画面", () => {
   it("赤は 1 画面 1 問: けが・家・動けるか・くすり。答えは 2 つ", () => {
     const qs = [0, 1, 2, 3].map((index) => text(view({ step: "question", index, answers: { ...NO_ANSWERS } })));
     expect(qs).toEqual([
-      "けがは ありますかあるない" + E,
+      N + "けがは ありますかあるない" + E,
       "いまは 家ですかはいいいえ" + E,
       "動けますか動ける動けない" + E,
       "くすりは ありますかあるない" + E,
@@ -82,10 +84,26 @@ describe("災害モードの画面", () => {
     expect(text(view({ step: "recording", startedAt: T, until: T + 30_000 }, 0))).toContain("あと 30 秒");
   });
 
-  it("定型文を流している間は AI の印を出さない（まだ録っていない）", () => {
+  it("定型文を流している間は「AI が きいています」の印を出さない（まだ録っていない）。声と同じ AI の告知は出す", () => {
     const html = view({ step: "prompt" });
     expect(html).not.toContain("data-ai");
+    expect(text(html)).toBe(N + "大丈夫ですか状況を 説明して ください" + E);
     expect(buttons(html)).toEqual([]);
+  });
+
+  it("AI の告知（T48）: 赤の流れの最初（1 問目）と定型文の画面にだけ。2 問目からと録音・緑の画面には出さない", () => {
+    const has = (s: PhoneState) => view(s).includes(`data-notice="ai"`);
+    expect(has({ step: "question", index: 0, answers: { ...NO_ANSWERS } })).toBe(true);
+    expect(has({ step: "prompt" })).toBe(true);
+    for (const s of STATES.filter((x) => !(x.step === "question" && x.index === 0) && x.step !== "prompt")) expect(has(s), JSON.stringify(s)).toBe(false);
+    // 流れ（lib/signals/phone.ts）で赤を押すと、どの押し方でも最初の画面は 1 問目（告知つき）。戻る・飛ばす操作は無い
+    const phone = createPhone({ sendSignal: async () => "sent", sendRecording: async () => "sent", playPrompt: async () => {}, startRecording: async () => null, onChange: () => {} });
+    phone.red();
+    expect(phone.state).toMatchObject({ step: "question", index: 0 });
+    expect(has(phone.state)).toBe(true);
+    phone.dispose();
+    // AI の印は告知の中の「AI」に付く
+    expect(view({ step: "prompt" })).toContain(`<span class="phone-ai">AI</span>`);
   });
 
   it("赤の終わりは「とどきました」と 119 の 1 行。緑の終わりに 119 は無い。通信なしは「まだ とどいて いません」", () => {

@@ -16,7 +16,7 @@ import {
   type UtteranceLike,
 } from "./media.ts";
 import { createOutbox, OUTBOX_KEY, outcomeOf, readOutbox, type AttachItem, type SendOutcome, type StorageLike } from "./outbox.ts";
-import { createPhone, IDLE_MS, MAX_RECORD_MS, RECORD_MS, type PhoneDeps, type PhoneState } from "./phone.ts";
+import { createPhone, IDLE_MS, MAX_RECORD_MS, PROMPT_WAIT_MS, RECORD_MS, type PhoneDeps, type PhoneState } from "./phone.ts";
 import { VOICE_PROMPT_TEXT } from "./phrases.ts";
 
 const T0 = Date.parse("2026-11-04T01:00:00.000Z");
@@ -217,7 +217,7 @@ describe("画面の流れ", () => {
     vi.advanceTimersByTime(IDLE_MS);
     await flush();
     expect(h.phone.state.step).toBe("prompt");
-    vi.advanceTimersByTime(15_000);
+    vi.advanceTimersByTime(PROMPT_WAIT_MS);
     await flush();
     expect(h.phone.state.step).toBe("recording");
   });
@@ -405,13 +405,13 @@ describe("無音のまま止まったら、同じ定型文で 2 回まで聞き�
     const tr = transcripts([null, null, null]);
     const h = harness({ startTranscript: tr.start, playPrompt: () => new Promise(() => {}) });
     h.phone.red();
-    vi.advanceTimersByTime(IDLE_MS + 15_000);
+    vi.advanceTimersByTime(IDLE_MS + PROMPT_WAIT_MS);
     await flush();
     vi.advanceTimersByTime(RECORD_MS);
     await flush();
     expect(h.phone.state.step).toBe("prompt");
     h.phone.dispose();
-    vi.advanceTimersByTime(15_000 + RECORD_MS * 3);
+    vi.advanceTimersByTime(PROMPT_WAIT_MS + RECORD_MS * 3);
     await flush();
     expect(tr.log).toEqual(["transcript1", "stop1"]);
     expect(h.recordings).toEqual([]);

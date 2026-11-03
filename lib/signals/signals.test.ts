@@ -9,12 +9,12 @@ import { loadCaseload } from "../caseload.ts";
 import { d1FromSqlite, migratedSqlite } from "../db/test-d1.ts";
 import { switchDisasterMode } from "../disaster/db.ts";
 import { disasterScope } from "../disaster/scope.ts";
-import { kanjiWithoutRuby, plainText } from "../forms/easy-words.ts";
+import { easy, kanjiWithoutRuby, plainText } from "../forms/easy-words.ts";
 import { loadPersonPage, timelineItems } from "../person.ts";
 import { newSignalId, NO_ANSWERS, occurredAtOnServer, SignalBodySchema, type SignalBody } from "./body.ts";
 import { recordingPost, signalPost } from "./http.ts";
 import { recordingLogBody, signalLogBody } from "./labels.ts";
-import { allPhoneWords, emergencyWords, VOICE_PROMPT_TEXT } from "./phrases.ts";
+import { AI_NOTICE_TEXT, AI_NOTICE_VOICE, allPhoneWords, emergencyWords, VOICE_PROMPT_TEXT } from "./phrases.ts";
 import { attachRecording, audioTypeOf, recordingKey, saveSignal, signalScope } from "./save.ts";
 import { promptVoice, voicePromptKey } from "./voice.ts";
 
@@ -115,8 +115,13 @@ describe("決まった言葉", () => {
     expect(plainText(emergencyWords())).toBe("いのちの 危険が あるときは 119");
   });
 
-  it("定型文の声に名前を入れない（決まった 1 文だけ）", () => {
-    expect(VOICE_PROMPT_TEXT).toBe("大丈夫ですか。状況を説明してください");
+  it("定型文の声に名前を入れない（決まった 1 文だけ）。頭に AI の告知（T48）", () => {
+    expect(VOICE_PROMPT_TEXT).toBe(
+      "これはAI、人ではないしくみが聞いています。こたえはケアマネジャーにとどきます。大丈夫ですか。状況を説明してください",
+    );
+    expect(VOICE_PROMPT_TEXT.startsWith(AI_NOTICE_VOICE)).toBe(true);
+    // 画面の告知と声の告知は同じ 1 か所の文から
+    expect(plainText(easy(AI_NOTICE_TEXT)).replace(/ /g, "")).toBe(AI_NOTICE_VOICE.replace("、", "（").replace("が聞", "）が聞"));
   });
 });
 

@@ -2,7 +2,7 @@
 // やさしい日本語: 短く、1 画面 1 つ。漢字にはふりがな（書き方は lib/forms/easy-words.ts の "{漢字|よみ}"）。
 // 本人の状態の判定（至急・要確認など）は本人の画面に出さない。出すのは問いと、送れたかどうかと、119 の一般の案内だけ。
 
-import { easy, type Word } from "../forms/easy-words.ts";
+import { easy, plainText, type Word } from "../forms/easy-words.ts";
 import { OWN_PHRASES } from "../forms/own-sheet.ts";
 import type { WhereNow } from "../db/types.ts";
 
@@ -51,10 +51,25 @@ export function emergencyWords(): Word[] {
 }
 
 /**
- * 赤を押して 20 秒操作が無いときに流す定型文（docs/SPEC.md「発災時」）。声にするのはこの文だけで、名前を入れない。
- * 画面に出す文（prompt1・prompt2）と同じ言葉
+ * AI の告知（T48、アドバイザーの返事）。一般の人が使う仕組みは AI であることを伝える決まりで、画面を見られない人がいるので声でも出す。
+ * 本人のスマホの赤の流れの最初（1 問目）と定型文の画面に文字で、定型文の声の頭に声で。文はここの 1 か所だけで、AI の印（「AI」）を挟んで前後に分けて持つ
  */
-export const VOICE_PROMPT_TEXT = "大丈夫ですか。状況を説明してください";
+export const AI_NOTICE = {
+  lead: "これは",
+  rest: "（{人|ひと}では ない しくみ）が {聞|き}いています。こたえは ケアマネジャーに とどきます",
+} as const;
+
+/** 告知の文字（書き方。ふりがなつき） */
+export const AI_NOTICE_TEXT = `${AI_NOTICE.lead} AI${AI_NOTICE.rest}`;
+
+/** 告知の声の文（ふりがなと空白を落とし、かっこを読点に）。「これはAI、人ではないしくみが聞いています。こたえはケアマネジャーにとどきます」 */
+export const AI_NOTICE_VOICE = plainText(easy(AI_NOTICE_TEXT)).replace(/ /g, "").replace("（", "、").replace("）", "");
+
+/**
+ * 赤を押して 20 秒操作が無いときに流す定型文（docs/SPEC.md「発災時」）。声にするのはこの文だけで、名前を入れない。
+ * 頭に AI の告知（T48）、続けて画面に出す文（prompt1・prompt2）と同じ言葉
+ */
+export const VOICE_PROMPT_TEXT = `${AI_NOTICE_VOICE}。大丈夫ですか。状況を説明してください`;
 
 // ---------- 家族・支援者のスマホ（docs/tasks/T11.md） ----------
 
@@ -155,6 +170,7 @@ export function allPhoneWords(): Word[] {
     ...Object.values(PHONE_PHRASES),
     ...Object.values(WHERE_PHRASES),
     ...Object.values(RED_QUESTION_PHRASES).flatMap((p) => [p.q, p.yes, p.no]),
+    AI_NOTICE_TEXT,
   ];
   return [...marks.flatMap((m) => easy(m)), ...emergencyWords()];
 }

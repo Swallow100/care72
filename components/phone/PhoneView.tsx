@@ -10,6 +10,7 @@ import { easy } from "@/lib/forms/easy-words";
 import type { WhereNow } from "@/lib/db/types";
 import type { PhoneState } from "@/lib/signals/phone";
 import {
+  AI_NOTICE,
   emergencyWords,
   PHONE_PHRASES,
   RED_QUESTION_PHRASES,
@@ -62,6 +63,16 @@ function AiListening() {
     <p className="text-center text-2xl font-bold" data-ai="listening" role="status">
       <span className="phone-ai">AI</span>
       <Words m={PHONE_PHRASES.aiListening} />
+    </p>
+  );
+}
+
+/** AI の告知（T48）。赤の流れの最初（1 問目）と、定型文（声の頭も同じ告知）を流している間に出す。飛ばす操作は無い */
+function AiNotice() {
+  return (
+    <p className="text-center text-xl font-bold" data-notice="ai">
+      <Words m={AI_NOTICE.lead} /> <span className="phone-ai">AI</span>
+      <Words m={AI_NOTICE.rest} />
     </p>
   );
 }
@@ -131,6 +142,7 @@ export function PhoneView({ state, nowMs, on }: { state: PhoneState; nowMs: numb
       const q = RED_QUESTION_PHRASES[RED_QUESTIONS[state.index]];
       return (
         <Fill step={`question-${state.index}`}>
+          {state.index === 0 && <AiNotice />}
           <Question m={q.q} />
           <Choice onClick={() => on.answer(true)} value="yes">
             <Words m={q.yes} />
@@ -145,6 +157,7 @@ export function PhoneView({ state, nowMs, on }: { state: PhoneState; nowMs: numb
     case "prompt":
       return (
         <Fill step="prompt">
+          <AiNotice />
           <Prompt />
           <Emergency />
         </Fill>
