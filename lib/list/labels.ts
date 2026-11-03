@@ -74,6 +74,7 @@ export const CLASS_LABELS: Record<RecordingClass, string> = {
   immobile: "動けない",
   water: "浸水",
   device_stopped: "機器停止",
+  other: "その他",
   unknown: "不明",
 };
 

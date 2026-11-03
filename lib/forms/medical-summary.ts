@@ -32,7 +32,7 @@ import {
   CARE_LEVEL_LABELS,
   CONTACT_KIND_LABELS,
   CONTACT_REACH_LABELS,
-  DEVICE_LABELS,
+  deviceText,
   HAZARD_LABELS,
   HOUSEHOLD_LABELS,
   hazardText,
@@ -939,7 +939,7 @@ export function buildMedicalSummary(rows: PersonPageRows, opts: MedicalBuildOpti
   };
   if (dialysisOn) tierLine("drug.dialysis", medicalField("drug.dialysis").label, categoryTier("dialysis"));
   if (hotOn) tierLine("drug.hot", medicalField("drug.hot").label, categoryTier("oxygen"));
-  for (const d of otherDevices) tierLine("drug.devices", DEVICE_LABELS[d.kind], categoryTier(d.kind));
+  for (const d of otherDevices) tierLine("drug.devices", deviceText(d), categoryTier(d.kind));
   for (const r of medications) if (r.mark?.tier != null) tierLine("meds.list", r.name, r.mark.tier);
   if (triage.dementia && triage.livesAlone) tierLine("care.vulnerable", "認知症・独居", 6);
   if (triage.bedridden && noSupporter) tierLine("care.protect", "支援者のいない要配慮者等", 7);

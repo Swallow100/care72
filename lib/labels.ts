@@ -190,6 +190,15 @@ export const DEVICE_LABELS: Record<DeviceKind, string> = {
   other: "その他",
 };
 
+/**
+ * 機器の 1 語（「その他（電動ベッド）」。T64）。その他だけ名前（T57 の detail）を括弧で添え、ほかの種類は DEVICE_LABELS のまま
+ * （中身の書き足し「安静時 2 L/分」は添えない）。医療班の受け持ちの表と担当一覧の行で同じ形。hazardText と同じ作り
+ */
+export function deviceText(d: { kind: DeviceKind; detail?: string | null }): string {
+  const name = d.kind === "other" ? d.detail?.trim() : "";
+  return `${DEVICE_LABELS[d.kind]}${name ? `（${name}）` : ""}`;
+}
+
 /** 災害診療記録 2018 の【特記事項（常用薬等）】の区分 */
 export const MEDICATION_CATEGORY_LABELS: Record<MedicationCategory, string> = {
   antiplatelet: "抗血小板薬",

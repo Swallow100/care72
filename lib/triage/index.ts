@@ -502,7 +502,7 @@ export const RULES: ReadonlyArray<Rule> = [
   {
     id: "red",
     signal: "red",
-    input: "赤だけ（録音の分類（AI）の けが・動けない・水が来た・機器が止まった・不明を含む）",
+    input: "赤だけ（録音の分類（AI）の けが・動けない・水が来た・機器が止まった・その他・不明を含む）",
     color: "red",
     example: "本人が「無事じゃない」",
     origin: "仕様書",
