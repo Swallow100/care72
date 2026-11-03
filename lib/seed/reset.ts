@@ -77,7 +77,10 @@ const ADOPT_UNAFFILIATED = `UPDATE people SET office_id = ${OFFICE}
    SELECT c.person_id FROM custody c JOIN accounts a ON a.id = c.holder_id
     WHERE c.via = 'on_site' AND a.office_id = ${OFFICE});`;
 
-/** 事業所とアカウントは消さずに種へ上書き（山本のパスワードのハッシュは Worker が知らないので残す） */
+/**
+ * 事業所とアカウントは消さずに種へ上書き（山本のパスワードのハッシュは Worker が知らないので残す）。
+ * 停止の印は戻す（固定のアカウントはサーバーが停止を断るので二重の守り。T61）
+ */
 function upsertStatements(): string[] {
   const out: string[] = [];
   for (const o of SEED_OFFICES) {
@@ -93,7 +96,7 @@ function upsertStatements(): string[] {
   for (const a of SEED_ACCOUNTS) {
     if (a.office_id !== DEMO_OFFICE_ID) continue;
     out.push(
-      `${insert("accounts", { ...a, created_at: SEED_AT }).replace(/;$/, "")} ON CONFLICT (id) DO UPDATE SET office_id = excluded.office_id, role = excluded.role, is_office_admin = excluded.is_office_admin, display_name = excluded.display_name, login_id = excluded.login_id;`,
+      `${insert("accounts", { ...a, created_at: SEED_AT }).replace(/;$/, "")} ON CONFLICT (id) DO UPDATE SET office_id = excluded.office_id, role = excluded.role, is_office_admin = excluded.is_office_admin, display_name = excluded.display_name, login_id = excluded.login_id, disabled_at = NULL;`,
     );
   }
   return out;

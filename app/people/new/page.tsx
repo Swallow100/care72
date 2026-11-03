@@ -5,7 +5,7 @@ import { todayJst } from "@/lib/age";
 import { requirePage } from "@/lib/auth/server";
 import { ASSIGN_ANCHOR } from "@/lib/office/http-paths";
 import { OFFICE_LABELS } from "@/lib/office/labels";
-import { listCareManagers, type CareManagerItem } from "@/lib/office/people";
+import { activeCareManagers, listCareManagers, type CareManagerItem } from "@/lib/office/people";
 import { officeActor } from "@/lib/office/scope";
 
 // D1 を毎回読む
@@ -30,7 +30,8 @@ export default async function NewPersonPage({ searchParams }: Props) {
   let careManagers: CareManagerItem[];
   try {
     const { env } = await getCloudflareContext({ async: true });
-    careManagers = await listCareManagers(env.DB, actor.officeId);
+    // 停止した人（T61）は担当に選べないので一覧にも出さない
+    careManagers = activeCareManagers(await listCareManagers(env.DB, actor.officeId));
   } catch (e) {
     console.error("ケアマネの一覧を読めない", e);
     return <Message title="読込失敗" back={back} />;

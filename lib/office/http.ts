@@ -11,12 +11,19 @@ import type { Principal } from "../auth/principal.ts";
 import { caseloadHref } from "../caseload.ts";
 import { OFFICE_PATH, type PostOutcome } from "../disaster/http.ts";
 import type { FormLike } from "../disaster/state.ts";
-import { parsePersonInput, parseStaffInput } from "./forms.ts";
+import { parseDisplayName, parsePersonInput, parseStaffInput } from "./forms.ts";
 import { OFFICE_ERROR_LABELS, PEOPLE_ACTION_ERRORS, type OfficeApiError, type PeopleActionError } from "./labels.ts";
 import { ASSIGN_ANCHOR } from "./http-paths.ts";
 import { assignMany, assignPerson, createPerson, MAX_ASSIGN_MANY, setUnlisted, type AssignManyItem } from "./people.ts";
 import { officeActor } from "./scope.ts";
-import { addCareManager } from "./staff.ts";
+import {
+  addCareManager,
+  renameCareManager,
+  resetCareManagerPassword,
+  setCareManagerAdmin,
+  setCareManagerDisabled,
+  type StaffChangeResult,
+} from "./staff.ts";
 
 export type JsonOutcome = { status: number; body: Record<string, unknown> };
 
@@ -32,6 +39,13 @@ const STATUS: Record<OfficeApiError, number> = {
   invalid: 400,
   forbidden: 403,
   login_required: 401,
+  // ケアマネの変更（T61）
+  fixed: 403,
+  self: 400,
+  last_admin: 409,
+  has_people: 409,
+  not_found: 404,
+  conflict: 409,
 };
 
 function fail(error: OfficeApiError): JsonOutcome {
@@ -76,6 +90,69 @@ export async function addCareManagerRequest(
   const r = await addCareManager(db, actor, parsed.value, at, opts);
   if (!r.ok) return fail(r.error);
   return { status: 200, body: { ok: true, account: r.account, password: r.password } };
+}
+
+// ---------- ケアマネの変更（T61、JSON） ----------
+
+/** POST /api/office/care-managers/[id] の action */
+export const CARE_MANAGER_ACTIONS = ["rename", "admin", "disable", "reset_password"] as const;
+export type CareManagerAction = (typeof CARE_MANAGER_ACTIONS)[number];
+
+type ParsedAction =
+  | { action: "rename"; displayName: string }
+  | { action: "admin"; admin: boolean }
+  | { action: "disable"; disabled: boolean }
+  | { action: "reset_password" };
+
+/** 形を読む。名前が違えば display_name、ほかの形の違いは invalid */
+function parseCareManagerAction(raw: unknown): ParsedAction | "invalid" | "display_name" {
+  if (typeof raw !== "object" || raw === null) return "invalid";
+  const o = raw as Record<string, unknown>;
+  switch (o.action) {
+    case "rename": {
+      const displayName = parseDisplayName(o.displayName);
+      return displayName === null ? "display_name" : { action: "rename", displayName };
+    }
+    case "admin":
+      return typeof o.admin === "boolean" ? { action: "admin", admin: o.admin } : "invalid";
+    case "disable":
+      return typeof o.disabled === "boolean" ? { action: "disable", disabled: o.disabled } : "invalid";
+    case "reset_password":
+      return { action: "reset_password" };
+    default:
+      return "invalid";
+  }
+}
+
+/**
+ * ケアマネの改名・管理者の付け外し・停止と再開・パスワードの再発行。ログイン・管理者・形の順に断る（同じ所からかは route）。
+ * 種のデモ事業所のアカウント（山本・審査員）は fixed で 403。再発行の平文はこの応答にだけ入る（no-store）
+ */
+export async function careManagerActionRequest(
+  db: D1Database,
+  p: Principal | null,
+  accountId: string,
+  raw: unknown,
+  at: string,
+  opts: { iterations?: number } = {},
+): Promise<JsonOutcome> {
+  if (!p) return fail("login_required");
+  const actor = officeActor(p);
+  if (!actor || !actor.admin) return fail("forbidden");
+  if (!ID.test(accountId)) return fail("not_found");
+  const parsed = parseCareManagerAction(raw);
+  if (typeof parsed === "string") return fail(parsed);
+  if (parsed.action === "reset_password") {
+    const r = await resetCareManagerPassword(db, actor, accountId, at, opts);
+    if (!r.ok) return fail(r.error);
+    return { status: 200, body: { ok: true, account: r.account, password: r.password } };
+  }
+  let r: StaffChangeResult;
+  if (parsed.action === "rename") r = await renameCareManager(db, actor, accountId, parsed.displayName, at);
+  else if (parsed.action === "admin") r = await setCareManagerAdmin(db, actor, accountId, parsed.admin, at);
+  else r = await setCareManagerDisabled(db, actor, accountId, parsed.disabled, at);
+  if (!r.ok) return fail(r.error);
+  return { status: 200, body: { ok: true, changed: r.changed } };
 }
 
 // ---------- 担当の割当・外す・戻す（フォームの POST） ----------

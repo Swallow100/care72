@@ -110,12 +110,14 @@ type AccountJoin = {
   is_office_admin: 0 | 1;
   display_name: string;
   password_hash: string | null;
+  /** 停止（T61）。あればログインもセッションも通さない */
+  disabled_at: string | null;
   office_id: string | null;
   office_name: string | null;
   office_kind: OfficeKind | null;
 };
 
-const ACCOUNT_SELECT = `SELECT a.id, a.role, a.is_office_admin, a.display_name, a.password_hash,
+const ACCOUNT_SELECT = `SELECT a.id, a.role, a.is_office_admin, a.display_name, a.password_hash, a.disabled_at,
          o.id AS office_id, o.name AS office_name, o.kind AS office_kind
     FROM accounts a LEFT JOIN offices o ON o.id = a.office_id`;
 
@@ -127,9 +129,12 @@ async function accountByLoginId(db: D1Database, loginId: string): Promise<Accoun
   return db.prepare(`${ACCOUNT_SELECT} WHERE a.login_id = ?1`).bind(loginId).first<AccountJoin>();
 }
 
-/** アカウントの行から。審査員の行（書き手のための行）はログインに使わない */
+/**
+ * アカウントの行から。審査員の行（書き手のための行）はログインに使わない。
+ * 停止した人（T61）も null: ログインは同じ失敗、今あるセッションも次の要求で切れる（停止ではパスワードの指紋 pv が変わらないので、ここで止める）
+ */
 function accountPrincipal(a: AccountJoin): Principal | null {
-  if (a.role === "judge") return null;
+  if (a.role === "judge" || a.disabled_at !== null) return null;
   const office: OfficeRef | null =
     a.office_id && a.office_name !== null && a.office_kind !== null
       ? { id: a.office_id, name: a.office_name, kind: a.office_kind }

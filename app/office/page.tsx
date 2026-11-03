@@ -48,7 +48,7 @@ import { PLAN_STATUS_LABELS } from "@/lib/labels";
 import { parseAssignedMany, parsePeopleError } from "@/lib/office/http";
 import { ASSIGN_ANCHOR, NEW_PERSON_PATH, OFFICE_PEOPLE_PATH } from "@/lib/office/http-paths";
 import { assignManyText, OFFICE_ERROR_LABELS, OFFICE_LABELS, type PeopleActionError } from "@/lib/office/labels";
-import { listCareManagers, listOfficePeople, type CareManagerItem, type OfficePersonItem } from "@/lib/office/people";
+import { activeCareManagers, listCareManagers, listOfficePeople, type CareManagerItem, type OfficePersonItem } from "@/lib/office/people";
 import { officeActor } from "@/lib/office/scope";
 import { CUSTODY_LABELS } from "@/lib/custody/labels";
 import { OFFICE_TAKE_PATH, UNAFFILIATED_ANCHOR } from "@/lib/custody/paths";
@@ -422,6 +422,7 @@ const LOG_TONE: Record<OfficeLogItem["kind"], string> = {
   person_relisted: "font-bold",
   care_manager_added: "font-bold",
   person_taken: "font-bold",
+  care_manager_changed: "font-bold",
 };
 
 /**
@@ -443,7 +444,14 @@ function AssignSection({
 }) {
   const listed = people.filter((p) => p.unlistedAt === null);
   const unlisted = people.filter((p): p is OfficePersonItem & { unlistedAt: string } => p.unlistedAt !== null);
-  const cms = careManagers.map((c) => ({ id: c.id, name: c.name }));
+  // 割当の候補は使える人だけ（停止した人は選べない。T61）
+  const cms = activeCareManagers(careManagers).map((c) => ({ id: c.id, name: c.name }));
+  // 停止した人が担当のまま一覧に戻った人（外した人を戻したとき）は、今の担当を選べない印つきで出す（未割当と読ませない）
+  const stopped = new Map(careManagers.filter((c) => c.disabled).map((c) => [c.id, `${c.name} ${OFFICE_LABELS.disabled}`]));
+  const rowCms = (current: string | null) => {
+    const name = current === null ? undefined : stopped.get(current);
+    return current !== null && name !== undefined ? [...cms, { id: current, name, disabled: true }] : cms;
+  };
   return (
     <Panel id={ASSIGN_ANCHOR} aria-labelledby="assign-title" className="scroll-mt-4">
       <PanelHead
@@ -520,7 +528,7 @@ function AssignSection({
                         <StateText tone={PLAN_TONES[p.plan]}>{PLAN_STATUS_LABELS[p.plan]}</StateText>
                       </td>
                       <td className={`${TD} align-middle`}>
-                        <AssignForm personId={p.id} personName={p.name} careManagerId={p.careManagerId} careManagers={cms} />
+                        <AssignForm personId={p.id} personName={p.name} careManagerId={p.careManagerId} careManagers={rowCms(p.careManagerId)} />
                       </td>
                     </>
                   }
