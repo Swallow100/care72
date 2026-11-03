@@ -112,18 +112,24 @@ export function InstallHint() {
             }}
           >
             <PlusIcon aria-hidden className="size-7 shrink-0" />
-            <EasyWords words={easy(P.add)} />
+            <span>
+              <EasyWords words={easy(P.add)} />
+            </span>
           </button>
         )}
         {(mode === "android-line" || mode === "ios-line") && href && (
           <a href={href} className={`${BIG} bg-accent text-on-accent`} data-press="overlay" data-install-action="browser">
             <ArrowTopRightOnSquareIcon aria-hidden className="size-7 shrink-0" />
-            <EasyWords words={easy(P.openBrowser)} />
+            <span>
+              <EasyWords words={easy(P.openBrowser)} />
+            </span>
           </a>
         )}
         <button type="button" className={`${BIG} bg-panel2 text-ink`} data-press data-install-action="close" onClick={close}>
           <CloseIcon aria-hidden className="size-7 shrink-0" />
-          <EasyWords words={easy(P.close)} />
+          <span>
+            <EasyWords words={easy(P.close)} />
+          </span>
         </button>
       </div>
     </section>

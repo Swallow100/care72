@@ -234,7 +234,7 @@ export function Select({
                     data-index={i}
                     tabIndex={-1}
                     onClick={() => choose(it.value)}
-                    className={`flex min-h-8 w-full items-center gap-2 rounded px-2 text-left disabled:text-muted ${active ? "font-bold" : ""}`}
+                    className={`flex min-h-8 w-full items-center gap-2 rounded px-2 text-left outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent disabled:text-muted ${active ? "font-bold" : ""}`}
                     data-press
                   >
                     <span className="min-w-0 flex-1 truncate">{it.label}</span>
