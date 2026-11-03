@@ -127,6 +127,18 @@ export async function retractTimeline(db: D1Database, p: Principal | null, input
           WHERE id = ?1 AND person_id = ?5 AND retracted_at IS NULL`,
       )
       .bind(row.id, at, p.accountId, input.note, person.id),
+    // 通話で聞いた安否（T58）: 電話の記録に結んだ信号（出どころ care_manager、訓練でない）も表から外す。
+    // 上の UPDATE がこの撤回で入ったときだけ（同じ時刻・同じ人の撤回の行がある）。本人・家族・支援者・訓練の信号は外さない。
+    // 行は消さず retracted_at だけ。ルールの表を読む所（lib/disaster/triage.ts・lib/caseload.ts・lib/custody/board.ts・
+    // lib/forms/form9-db.ts）が retracted_at IS NULL で外し、色と連絡順は残りの事実から表が出し直す
+    db
+      .prepare(
+        `UPDATE signals SET retracted_at = ?2
+          WHERE id = (SELECT t.signal_id FROM timeline_entries t
+                       WHERE t.id = ?1 AND t.kind = 'called' AND t.retracted_at = ?2 AND t.retracted_by = ?3)
+            AND person_id = ?4 AND source = 'care_manager' AND drill_id IS NULL AND retracted_at IS NULL`,
+      )
+      .bind(row.id, at, p.accountId, person.id),
   ]);
   if (!updated.meta.changes) return { ok: false, error: "already" };
   return { ok: true, id: row.id, at };

@@ -162,7 +162,7 @@ export async function loadForm9(
       db
         .prepare(
           `SELECT person_id, color, source, where_now, injured, can_move, classes, classified_by, occurred_at FROM signals
-            WHERE drill_id IS NULL AND person_id IN (${mine}) ORDER BY occurred_at, created_at, id`,
+            WHERE drill_id IS NULL AND retracted_at IS NULL AND person_id IN (${mine}) ORDER BY occurred_at, created_at, id`,
         )
         .bind(office.id),
       db

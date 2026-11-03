@@ -440,7 +440,7 @@ async function loadDetailSource(
     // 列は全部（分類の部品 T12 が読む ai_* の列も、表に足されればそのまま行の詳細に渡る）
     db
       .prepare(
-        `SELECT * FROM signals WHERE drill_id IS NULL AND person_id IN (${mine}) ORDER BY occurred_at, created_at, id`,
+        `SELECT * FROM signals WHERE drill_id IS NULL AND retracted_at IS NULL AND person_id IN (${mine}) ORDER BY occurred_at, created_at, id`,
       )
       .bind(careManagerId, officeId),
     db
