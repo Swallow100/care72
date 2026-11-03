@@ -96,8 +96,8 @@ describe("医療班の医療要約", () => {
     expect(staffHtml).not.toContain('data-field="patient.address"');
     expect(staffHtml).not.toContain('data-field="patient.phone"');
     // 描かない欄の列は詰める（空の灰色の枠を残さない）
-    expect(staffHtml).toContain("grid-template-columns:1.1fr 1.3fr");
-    expect(cmHtml).toContain("grid-template-columns:0.95fr 0.85fr 1.1fr 1.3fr");
+    expect(staffHtml).toMatch(/grid-template-columns:1fr"><div data-field="patient.house"/);
+    expect(cmHtml).toContain("grid-template-columns:1fr 1.2fr 1fr");
     // 本人の電話・住所の町名がどこにも無い
     expect(cmHtml).toContain("090-0000-0001");
     expect(staffHtml).not.toContain("090-0000-0001");
