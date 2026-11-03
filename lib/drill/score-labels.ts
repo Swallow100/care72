@@ -15,6 +15,13 @@ export const SCORE_LABELS = {
   /** 空欄の数の出どころ（「空欄 様式 9」と添える） */
   form9Doc: "様式 9",
   reached: "条件到達",
+  /** 条件到達の出どころ（仮想モードで結末と並べるとき「条件到達 時計計算」） */
+  reachedBy: "時計計算",
+  /** 仮想モードの結末（世界が決めた。T53）。「結末 筋書」と AI の印 */
+  ended: "結末",
+  endedBy: "筋書",
+  endedAt: "結末時刻",
+  endedText: "経過",
   unreported: "未報告",
   previous: "前回",
   noPrevious: "前回なし",
@@ -24,8 +31,8 @@ export const SCORE_LABELS = {
   detail: "内訳",
   misses: "順番相違",
   calls: "着信",
-  answered: "応答",
-  declined: "拒否",
+  answered: "出た",
+  declined: "出なかった",
   open: "未応答",
   person: "氏名",
   clock: "時計",

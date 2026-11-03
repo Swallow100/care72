@@ -3,8 +3,10 @@
 //   終わった訓練）の数字を横に並べる。数字に色を付けない（色は状態の 4 色だけ。採点は状態ではない）
 // - 内訳: 条件到達の人（時計と超過時刻）、順番相違の人と理由、様式 9 の空欄、着信の応答・拒否の数
 // - 講評は components/drill/ReviewBox（Opus 1 回、AI の印、直せる）
+// - 仮想モード（T53）は「結末 AI 筋書」（世界が決めた人）を「条件到達 時計計算」と別の数で出し、内訳に結末の 1 文と理由（AI の印）
 // 正解・不正解の印や点数は出さない。「死亡」とは書かず「条件到達」
 
+import { AiMark } from "@/components/person/parts";
 import { LABEL, PanelHead } from "@/components/ui/Panel";
 import { shortJst } from "@/lib/disaster/state";
 import type { StoredReview } from "@/lib/drill/record";
@@ -35,6 +37,11 @@ export function ScorePanel({
               <dt className={LABEL}>
                 {r.label}
                 {r.sub && <span className="ml-1">{r.sub}</span>}
+                {r.key === "ended" && (
+                  <span className="ml-1">
+                    <AiMark small />
+                  </span>
+                )}
               </dt>
               <dd className="text-xl leading-7 font-bold tabular-nums" data-score-now>
                 {r.now}
@@ -50,7 +57,7 @@ export function ScorePanel({
       </section>
 
       <section aria-label={SCORE_LABELS.detail} className="space-y-1.5 text-sm">
-        <Detail title={SCORE_LABELS.reached} empty={view.reached.length === 0} k="reached">
+        <Detail title={view.ended ? `${SCORE_LABELS.reached} ${SCORE_LABELS.reachedBy}` : SCORE_LABELS.reached} empty={view.reached.length === 0} k="reached">
           {view.reached.map((r) => (
             <li key={r.person} data-person={r.person}>
               <span className="font-bold">{r.name}</span> {r.text}
@@ -60,6 +67,19 @@ export function ScorePanel({
             </li>
           ))}
         </Detail>
+        {view.ended && (
+          <Detail title={`${SCORE_LABELS.ended} ${SCORE_LABELS.endedBy}`} empty={view.ended.length === 0} k="ended">
+            {view.ended.map((e) => (
+              <li key={e.person} data-person={e.person}>
+                <span className="font-bold">{e.name}</span> <AiMark small /> {e.text}
+                {e.reason && <span className="ml-1.5 text-xs text-muted">{e.reason}</span>}
+                <span className="ml-1.5 text-xs text-muted tabular-nums">
+                  {SCORE_LABELS.endedAt} {e.at}
+                </span>
+              </li>
+            ))}
+          </Detail>
+        )}
         <Detail title={SCORE_LABELS.misses} empty={view.misses.length === 0} k="misses">
           {/* 同じ理由の人は 1 行にまとめる（後手は最優先の人が人ごとに違うので 1 人 1 行） */}
           {groupBy(view.misses, (m) => (m.expected ? `${m.person}` : m.why)).map((g) => (

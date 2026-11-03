@@ -4,8 +4,10 @@
 // - 知らない種類・地区・仮名・道・避難所・施設は捨てる。出来事は 1 刻みに 4 つまで
 // - 地区の別名（甲地区）→ 台帳の町名 → そこに住む本人、本人の仮名（A さん）→ 本人 → 町、をコードが引く（部屋は町を知らない）
 // - 人の体の状態・生き死には出来事に無い（種類に無い）。世界の 1 文と結末の 1 文に禁じる語があれば捨てる
-// - 結末（farewells）は、この刻みにコードが「条件に達した」と決めた人（lib/drill/outcome.ts）の分だけ受ける。
-//   使えなければ固定の文。部屋が勝手に人の結末を足す道は無い
+// - 結末（farewells）は世界（部屋・1 回呼び）が決める（T53。訓練の仮想モードの架空の人だけ）。コードは守りだけ:
+//   知らない仮名・参加者でない人・もう結末の人・同じ刻みの 2 回目は捨て、1 刻み FAREWELL_PER_TICK_MAX 人まで。
+//   文に禁じる語・漏れがあれば固定の文、理由に禁じる語・医療の語・漏れがあれば理由なし。結末の行はいつも AI の印（決めたのが AI）。
+//   時計の計算（lib/drill/outcome.ts）は世界へのヒントと講評の数で、ここでは結末を決めない
 
 import * as z from "zod";
 import type { ClockCategory, DependsOn } from "../db/types.ts";
@@ -56,7 +58,7 @@ export const WorldStepSchema = z.object({
       value: z.string(),
     }),
   ),
-  farewells: z.array(z.object({ target: z.string(), text: z.string() })),
+  farewells: z.array(z.object({ target: z.string(), text: z.string(), reason: z.string() })),
 });
 export type WorldStep = z.output<typeof WorldStepSchema>;
 
@@ -65,9 +67,20 @@ export const WORLD_EVENTS_MAX = 4;
 /** 世界の 1 文・結末の 1 文の長さ（字） */
 export const NARRATION_MAX = 60;
 export const FAREWELL_MAX = 60;
+/** 結末の理由（世界の事実）の長さ（字） */
+export const FAREWELL_REASON_MAX = 80;
+/** 1 刻みに結末を迎える人の上限 */
+export const FAREWELL_PER_TICK_MAX = 2;
 
 /** 世界の文・結末の文に書かせない語（人の生き死にを言い切る物）。あれば捨てて固定の文に */
 export const FORBIDDEN_WORDS = /死亡|亡くな|死ん|関連死|遺体|息を引き取|心肺停止|診断|判定|重症/;
+
+/**
+ * 結末の理由に書かせない医療の語（病名・状態・薬の量・医療の助言）。理由は街と物の事実だけ（「停電が 6 時間続き、電池が切れた」）。
+ * あれば理由を出さない（結末の 1 文は残す）
+ */
+export const REASON_MEDICAL_WORDS =
+  /病名|症状|容体|容態|急変|悪化|発作|意識|呼吸|低血糖|高血糖|脱水|熱中症|低体温|肺炎|感染|血栓|塞栓|心停止|投与|処方|用量|服用|服薬|増量|減量|mg|ミリグラム|錠|受診|注射|点滴|血糖値|血圧|安静/i;
 
 // ---------- 人の側の事実（コードだけが持つ） ----------
 
@@ -278,7 +291,7 @@ export function cleanNarration(raw: string, key: PseudonymKey): { room: string; 
   return { room, text: restoreTowns(restoreText(room, key)) };
 }
 
-/** 結末の固定の文（部屋の文が使えないとき）。name は氏名（画面の文。サーバーの中だけ） */
+/** 結末の固定の文（世界の 1 文に禁じる語・漏れがあるとき）。name は氏名（画面の文。サーバーの中だけ） */
 export const farewellFixed = (name: string) => `${name}さんには、この時間までに助けが届きませんでした`;
 
 /** 結末の 1 文を検査する。禁じる語・漏れ・空なら null（固定の文にする） */
@@ -288,20 +301,44 @@ export function cleanFarewell(raw: string, key: PseudonymKey): string | null {
   return restoreTowns(restoreText(t, key));
 }
 
-/** この刻みにコードが決めた結末 1 人（lib/drill/outcome.ts） */
-export type OutcomeAsk = {
-  person: string;
-  /** 切れた時計の名前（「酸素の電池 2 時間」） */
-  label: string;
-  /** 固定の文（氏名入り） */
-  fixed: string;
-};
+/** 結末の理由（世界の事実）を検査する。禁じる語・医療の語・漏れ・空なら null（理由なし） */
+export function cleanReason(raw: string, key: PseudonymKey): string | null {
+  const t = Array.from(raw.replace(/\s+/g, " ").trim()).slice(0, FAREWELL_REASON_MAX).join("");
+  if (!t || FORBIDDEN_WORDS.test(t) || REASON_MEDICAL_WORDS.test(t.normalize("NFKC")) || findLeaks(t, key).length > 0) return null;
+  return restoreTowns(restoreText(t, key));
+}
 
 /**
- * 返事を状況にする。世界の 1 文（narration）・出来事（4 つまで）・結末（頼んだ人の分だけ）。
- * 結末の文は部屋の物が使えればそれ（AI の印）、使えなければ固定の文（AI の印なし）
+ * 時計の計算（lib/drill/outcome.ts）で、この刻みまでに条件に達した人（まだ結末でない人）。世界へのヒント（「時計の目安」）で、
+ * 結末は決めない。世界がこの人に結末を決めたときは、結末の行の label（切れた時計の名前）にも使う
  */
-export function worldIncidents(answer: WorldStep, ctx: ApplyContext, outcomes: ReadonlyArray<OutcomeAsk> = []): DrillIncident[] {
+export type OutcomeAsk = {
+  person: string;
+  /** 切れた時計の名前（「酸素の電池 2時間を超過」） */
+  label: string;
+};
+
+/** 世界が決めた結末を状況にする（守りはファイルの頭の注）。hints は時計の計算で条件に達した人（label を引くだけ） */
+export function farewellIncidents(farewells: WorldStep["farewells"], ctx: ApplyContext, hints: ReadonlyArray<OutcomeAsk> = []): DrillIncident[] {
+  const out: DrillIncident[] = [];
+  for (const f of farewells) {
+    if (out.length >= FAREWELL_PER_TICK_MAX) break;
+    const person = personOfAlias(f.target, ctx.key);
+    if (!person || !ctx.facts.has(person) || ctx.ended.has(person) || out.some((e) => e.person === person)) continue;
+    const name = ctx.key.people.find((p) => p.personId === person)?.name ?? "";
+    const text = cleanFarewell(f.text, ctx.key) ?? farewellFixed(name);
+    const reason = cleanReason(f.reason, ctx.key);
+    const label = hints.find((h) => h.person === person)?.label ?? "";
+    out.push({ actor: "director", at: ctx.hour, change: { kind: "outcome", label, reason }, text, person, ai: true });
+  }
+  return out;
+}
+
+/**
+ * 返事を状況にする。世界の 1 文（narration）・出来事（4 つまで）・結末（世界が決めた人。1 刻み 2 人まで、いつも AI の印）。
+ * hints は時計の計算で条件に達した人（結末の label に使うだけ。結末は決めない）
+ */
+export function worldIncidents(answer: WorldStep, ctx: ApplyContext, hints: ReadonlyArray<OutcomeAsk> = []): DrillIncident[] {
   const base = { actor: "director" as const, at: ctx.hour };
   const out: DrillIncident[] = [];
   const n = cleanNarration(answer.narration, ctx.key);
@@ -314,21 +351,15 @@ export function worldIncidents(answer: WorldStep, ctx: ApplyContext, outcomes: R
     used += 1;
     for (const b of built) out.push({ ...base, change: b.change, text: b.text, ...(b.person ? { person: b.person } : {}), ai: true });
   }
-  for (const o of outcomes) {
-    const said = answer.farewells.find((f) => personOfAlias(f.target, ctx.key) === o.person);
-    const text = said ? cleanFarewell(said.text, ctx.key) : null;
-    out.push({ ...base, change: { kind: "outcome", label: o.label }, text: text ?? o.fixed, person: o.person, ai: text !== null });
-  }
-  return out;
+  return [...out, ...farewellIncidents(answer.farewells, ctx, hints)];
 }
 
-/** 部屋も 1 回呼びも使えなかった刻み: 結末は固定の文、世界は動かさない（記録に「世界 代替」の印） */
-export function fallbackIncidents(hour: number, outcomes: ReadonlyArray<OutcomeAsk>, state: "down" | "off"): DrillIncident[] {
-  const base = { actor: "director" as const, at: hour };
-  return [
-    { ...base, change: { kind: "world_note", state }, text: state === "off" ? "停止" : "代替", ai: false },
-    ...outcomes.map((o): DrillIncident => ({ ...base, change: { kind: "outcome", label: o.label }, text: o.fixed, person: o.person, ai: false })),
-  ];
+/**
+ * 部屋も 1 回呼びも使えなかった刻み: 世界は動かさず、結末も出さない（コードで代わりに決めない。T53）。
+ * 記録に「世界 代替」（落ちた）か「世界 停止」（鍵なし・DRILL_WORLD=off）の印
+ */
+export function fallbackIncidents(hour: number, state: "down" | "off"): DrillIncident[] {
+  return [{ actor: "director", at: hour, change: { kind: "world_note", state }, text: state === "off" ? "停止" : "代替", ai: false }];
 }
 
 /** 部屋に見せる道・地区の名前の確かめ用（テストと指示の文） */

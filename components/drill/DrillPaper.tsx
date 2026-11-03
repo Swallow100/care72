@@ -143,6 +143,7 @@ export function DrillPaper({ record, office, today }: { record: DrillPaperRecord
                 <td>
                   {r.label}
                   {r.sub && <span className="p-sub"> {r.sub}</span>}
+                  {r.key === "ended" && <span className="drill-ai"> AI</span>}
                 </td>
                 <td className="num big nowrap">{t(r.now)}</td>
                 <td className="num nowrap">{r.prev === null ? SCORE_LABELS.none : t(r.prev)}</td>
@@ -151,7 +152,10 @@ export function DrillPaper({ record, office, today }: { record: DrillPaperRecord
           </tbody>
         </table>
 
-        <h3 className="drill-sub">{SCORE_LABELS.reached}</h3>
+        <h3 className="drill-sub">
+          {SCORE_LABELS.reached}
+          {view.ended && ` ${SCORE_LABELS.reachedBy}`}
+        </h3>
         <table className="sheet drill-table" data-detail="reached">
           <colgroup>
             <col style={{ width: "18%" }} />
@@ -183,6 +187,46 @@ export function DrillPaper({ record, office, today }: { record: DrillPaperRecord
             ))}
           </tbody>
         </table>
+
+        {/* 仮想モード（T53）: 世界（AI）が決めた結末。上の条件到達（時計の計算）とは別の数 */}
+        {view.ended && (
+          <>
+            <h3 className="drill-sub">
+              {SCORE_LABELS.ended} {SCORE_LABELS.endedBy} <span className="drill-ai">AI</span>
+            </h3>
+            <table className="sheet drill-table" data-detail="ended">
+              <colgroup>
+                <col style={{ width: "18%" }} />
+                <col style={{ width: "36%" }} />
+                <col style={{ width: "32%" }} />
+                <col style={{ width: "14%" }} />
+              </colgroup>
+              <thead>
+                <tr>
+                  <th>{SCORE_LABELS.person}</th>
+                  <th>{SCORE_LABELS.endedText}</th>
+                  <th>{SCORE_LABELS.reason}</th>
+                  <th>{SCORE_LABELS.endedAt}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {view.ended.length === 0 && (
+                  <tr>
+                    <td colSpan={4}>{SCORE_LABELS.none}</td>
+                  </tr>
+                )}
+                {view.ended.map((e) => (
+                  <tr key={e.person} data-person={e.person}>
+                    <td>{e.name}</td>
+                    <td>{t(e.text)}</td>
+                    <td>{e.reason ? t(e.reason) : ""}</td>
+                    <td className="nowrap">{t(e.at)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </>
+        )}
 
         <h3 className="drill-sub">{SCORE_LABELS.misses}</h3>
         <table className="sheet drill-table" data-detail="misses">

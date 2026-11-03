@@ -1,5 +1,5 @@
 // 訓練記録の紙面（T22）: 中身（概要・採点・講評・確認欄・対応履歴）、言葉、紙の CSS、?print=1、頁数（A4 縦）。
-// 訓練は node:sqlite の D1 と種の 10 人で本物の道（開始 → 手 → 着信の応答・拒否 → 最後まで進める）で作る。Claude は呼ばない。
+// 訓練は node:sqlite の D1 と種の 10 人で本物の道（開始 → 手 → 着信に出た・出なかった → 最後まで進める）で作る。Claude は呼ばない。
 // 頁数は headless Chrome の印刷（printToPDF、CSS の @page）。Chrome・Edge か BIZ UDPゴシックが無ければ飛ばす（lib/forms/print-pages.test.ts と同じ）。
 
 import type { DatabaseSync } from "node:sqlite";
@@ -119,7 +119,7 @@ describe("訓練記録の紙面（中身）", () => {
     // 条件到達: 小林（人工呼吸器 内蔵電池）
     expect(m).toMatch(/data-detail="reached"[\s\S]*小林[\s\S]*人工呼吸器 内蔵電池 3時間を超過/);
     // 着信の応答・拒否
-    expect(m).toContain("応答 1・拒否 1");
+    expect(m).toContain("出た 1・出なかった 1");
     // 講評なし（鍵なしで作っていない）
     expect(m).toContain('data-review-none="true">講評なし');
     // 対応履歴: 経過 0 時間に本人電話 2 つと行政報告、着信 2 件
@@ -156,7 +156,7 @@ describe("訓練記録の紙面（中身）", () => {
       ["form9", "3", "3"],
       ["reached", String(rec.score.reached.length), "1"],
     ]);
-    expect(html(rec)).toMatch(/前回[\s\S]*令和8年11月5日 大雨の想定/);
+    expect(html(rec)).toMatch(/前回[\s\S]*令和8年11月5日 大雨想定/);
   });
 
   it("紙と画面の言葉に「死亡」「関連死」「診断」「判定」「重症」が無い", async () => {

@@ -27,8 +27,8 @@ import { lastHour, scenarioOf } from "./scenarios.ts";
 import { fallbackIncidents, WorldStepSchema, worldIncidents, type WorldStep } from "./world-apply.ts";
 import { applyContext, buildCast, openingText, tickText, WORLD_STEP_JSON_SCHEMA, WORLD_SYSTEM, worldOneshot, type WorldCast } from "./world-oneshot.ts";
 
-/** 指示・道具の版。WORLD_SYSTEM か world_step の形を変えたら 1 つ上げる */
-export const WORLD_AGENT_VERSION = 1;
+/** 指示・道具の版。WORLD_SYSTEM か world_step の形を変えたら 1 つ上げる（2: 結末を世界が決める・理由の欄、T53） */
+export const WORLD_AGENT_VERSION = 2;
 export const WORLD_TOOL = "world_step";
 /** session の予算（セント。$3） */
 export const WORLD_BUDGET_CENTS = "300";
@@ -115,7 +115,7 @@ export function agentParams(): Record<string, unknown> {
       {
         type: "custom",
         name: WORLD_TOOL,
-        description: "この刻みの世界（街の様子の 1 文・出来事・結末の 1 文）を返す。毎刻み 1 回だけ呼ぶ",
+        description: "この刻みの世界（街の様子の 1 文・出来事・結末を迎えた人と 1 文・理由）を返す。毎刻み 1 回だけ呼ぶ",
         input_schema: WORLD_STEP_JSON_SCHEMA,
       },
     ],
@@ -288,7 +288,7 @@ export async function roomStep(
       } else if (e.type === "session.status_idle" && e.stop_reason && TERMINAL_IDLE.has(e.stop_reason.type)) {
         if (answer) {
           await ticket.ok({ model: OPUS, inputTokens: null, outputTokens: null });
-          return { session: room, step: answer, incidents: worldIncidents(answer, applyContext(input, cast, "room"), input.outcomes) };
+          return { session: room, step: answer, incidents: worldIncidents(answer, applyContext(input, cast, "room"), input.hints.reached) };
         }
         return fail("bad_output", `world_step なしで止まった（${e.stop_reason.type}）`);
       }
@@ -331,20 +331,20 @@ export type WorldDeps = {
 };
 
 /**
- * engine の WorldHook を作る（1 要求ごと）。部屋が使えなければ、その刻みは 1 回呼びに落ち（「世界 代替」の印）、
- * それも失敗なら世界は動かさず結末だけ固定の文で進む
+ * engine の WorldHook を作る（1 要求ごと）。部屋が使えなければ、その刻みは 1 回呼びに落ち（「世界 代替」の印。1 回呼びも結末を決める）、
+ * それも失敗なら世界は動かさず、結末も出さない（コードで代わりに決めない。T53）
  */
 export function createWorldHook(deps: WorldDeps): WorldHook {
   return async (input): Promise<WorldResult> => {
     const hours = scenarioOf(input.scenario).hours;
     const opts = { prevHour: input.step > 0 ? hours[input.step - 1] : 0, last: lastHour(scenarioOf(input.scenario)) };
-    if (deps.mode === "off") return { incidents: fallbackIncidents(input.hour, input.outcomes, "off") };
+    if (deps.mode === "off") return { incidents: fallbackIncidents(input.hour, "off") };
     let cast: WorldCast;
     try {
       cast = buildCast(input.participants, await deps.load(), await deps.loadOutcome(), deps.on);
     } catch (e) {
       if (!isPersonaFailure(e)) console.error("世界の台帳を読めない", e instanceof Error ? e.name : typeof e);
-      return { incidents: fallbackIncidents(input.hour, input.outcomes, "down") };
+      return { incidents: fallbackIncidents(input.hour, "down") };
     }
     let session = input.session;
     let fellBack = false;
@@ -366,7 +366,7 @@ export function createWorldHook(deps: WorldDeps): WorldHook {
       if (!isPersonaFailure(e) && !(e instanceof AiBadOutput) && !(e instanceof AiCallFailed)) {
         console.error("世界の 1 回呼びに失敗", e instanceof Error ? e.name : typeof e);
       }
-      return { incidents: fallbackIncidents(input.hour, input.outcomes, "down"), ...(session !== input.session ? { session } : {}) };
+      return { incidents: fallbackIncidents(input.hour, "down"), ...(session !== input.session ? { session } : {}) };
     }
   };
 }
