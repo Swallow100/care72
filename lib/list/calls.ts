@@ -72,6 +72,10 @@ export type CallPayload = {
   heard?: Heard;
   /** ケアマネのメモ（100 字まで）。経過の本文に入れない */
   memo?: string;
+  /** サーバーが受けた時刻（T71 の続き）。経過の時刻は端末で押した時刻（callOccurredAt で丸めた物） */
+  receivedAt?: string;
+  /** 端末で作った重ならない id（同じ id の 2 回目は捨てる。経過の行の id は callEntryId） */
+  clientId?: string;
 };
 
 export function parseCallPayload(text: string | null): CallPayload | null {
@@ -89,6 +93,8 @@ export function parseCallPayload(text: string | null): CallPayload | null {
       result: v.result,
       ...(heard ? { heard } : {}),
       ...(memo ? { memo } : {}),
+      ...(typeof v.receivedAt === "string" ? { receivedAt: v.receivedAt } : {}),
+      ...(typeof v.clientId === "string" ? { clientId: v.clientId } : {}),
     };
   } catch {
     return null;
@@ -125,14 +131,43 @@ export type CallInput = {
   heard?: Heard | null;
   /** メモ。通話のときだけ */
   memo?: string | null;
+  /** 端末で作った重ならない id（T71 の続き。通信なしで貯めて送り直す記録。無ければサーバーが作る） */
+  clientId?: string | null;
+  /** 端末で押した時刻（ISO）。経過と信号の時刻にする（callOccurredAt で丸める） */
+  pressedAt?: string | null;
 };
 
 /** normal は平時の安否、injury は 赤 けが・動けない の人への「無事」（画面は「至急維持」） */
 export type CallError = "forbidden" | "not_found" | "invalid" | "normal" | "injury";
 
-export type CallSaveResult = { ok: true } | { ok: false; error: CallError };
+/** duplicate は同じ端末の id の 2 回目（前に届いていたので書かない。端末は届いた扱いで消す） */
+export type CallSaveResult = { ok: true; duplicate?: true } | { ok: false; error: CallError };
 
 const bit = (v: boolean | undefined): 0 | 1 | null => (v === undefined ? null : v ? 1 : 0);
+
+/** 端末で作る id の形（crypto.randomUUID の 36 字が入る。経過の行の id が 64 字に収まる長さ） */
+export const CALL_CLIENT_ID = /^[A-Za-z0-9-]{8,40}$/;
+export const isCallClientId = (v: unknown): v is string => typeof v === "string" && CALL_CLIENT_ID.test(v);
+/** 端末の id から決まる経過の行と信号の id（同じ id の 2 回目は主キーで弾く） */
+export const callEntryId = (clientId: string) => `call-${clientId}`;
+export const callSignalId = (clientId: string) => `call-${clientId}-s`;
+
+/** 押した時刻を経過に使える古さの上限（ミリ秒） */
+export const CALL_PRESSED_MAX_AGE_MS = 24 * 3_600_000;
+
+/**
+ * 経過と信号の時刻: 端末で押した時刻。読めない・未来・発災より前・24 時間より古い物はサーバーの受けた時刻（now）に丸める
+ * （端末の時計のずれや古い貯めで、最終連絡・連絡なしの時間を動かしすぎない。11/4 設計の答え）
+ */
+export function callOccurredAt(pressedAt: string | null | undefined, now: string, disasterStartedAt: string | null): string {
+  const t = Date.parse(pressedAt ?? "");
+  const n = Date.parse(now);
+  if (!Number.isFinite(t) || !Number.isFinite(n)) return now;
+  if (t > n || n - t > CALL_PRESSED_MAX_AGE_MS) return now;
+  const s = disasterStartedAt ? Date.parse(disasterStartedAt) : NaN;
+  if (Number.isFinite(s) && t < s) return now;
+  return new Date(t).toISOString();
+}
 
 /**
  * 電話の記録を書く。ケアマネの役だけ、事業所の中の本人の、番号のある連絡先だけ。
@@ -148,8 +183,18 @@ export async function saveCall(db: D1Database, p: Principal | null, input: CallI
   const memo = input.memo?.trim() || null;
   if (input.result !== "connected" && (heard || memo)) return { ok: false, error: "invalid" };
   if (memo && memo.length > MAX_CALL_MEMO) return { ok: false, error: "invalid" };
+  const clientId = input.clientId ?? null;
+  if (clientId !== null && !isCallClientId(clientId)) return { ok: false, error: "invalid" };
   const person = await personInScope(db, p, input.personId);
   if (!person) return { ok: false, error: "not_found" };
+  // 同じ端末の id の 2 回目（応答が落ちて送り直した物）は、前に届いているので書かない。表の今の状態で断り直さない
+  if (clientId) {
+    const seen = await db
+      .prepare("SELECT 1 AS hit FROM timeline_entries WHERE id = ?1 AND person_id = ?2")
+      .bind(callEntryId(clientId), person.id)
+      .first<{ hit: number }>();
+    if (seen) return { ok: true, duplicate: true };
+  }
   const contact = await db
     .prepare("SELECT id, kind, relation, phone FROM contacts WHERE id = ?1 AND person_id = ?2")
     .bind(input.contactId, person.id)
@@ -166,6 +211,13 @@ export async function saveCall(db: D1Database, p: Principal | null, input: CallI
     if (d.triage.rule === "red_injury" && !keepsInjury) return { ok: false, error: "injury" };
   }
 
+  // 押した時刻（丸めたあと）。発災より前かは事業所の今の災害モードの始まりで見る
+  const disaster = await db
+    .prepare("SELECT started_at FROM disaster_state WHERE office_id = ?1")
+    .bind(person.office_id)
+    .first<{ started_at: string | null }>();
+  const occurredAt = callOccurredAt(input.pressedAt, now, disaster?.started_at ?? null);
+
   const payload: CallPayload = {
     source: CALL_SOURCE,
     contactId: contact.id,
@@ -173,37 +225,41 @@ export async function saveCall(db: D1Database, p: Principal | null, input: CallI
     result: input.result,
     ...(heard ? { heard } : {}),
     ...(memo ? { memo } : {}),
+    receivedAt: now,
+    ...(clientId ? { clientId } : {}),
   };
-  const signalId = heard ? crypto.randomUUID() : null;
+  const signalId = heard ? (clientId ? callSignalId(clientId) : crypto.randomUUID()) : null;
   const statements = [];
   if (heard && signalId) {
     statements.push(
       db
         .prepare(
-          `INSERT INTO signals (id, person_id, drill_id, color, source, injured, can_move, occurred_at)
+          `INSERT OR IGNORE INTO signals (id, person_id, drill_id, color, source, injured, can_move, occurred_at)
            VALUES (?1, ?2, NULL, ?3, 'care_manager', ?4, ?5, ?6)`,
         )
-        .bind(signalId, person.id, heard.color, bit(heard.injured), bit(heard.canMove), now),
+        .bind(signalId, person.id, heard.color, bit(heard.injured), bit(heard.canMove), occurredAt),
     );
   }
   statements.push(
     db
       .prepare(
-        `INSERT INTO timeline_entries (id, person_id, author_id, author_role, kind, body, payload, signal_id, occurred_at)
+        `INSERT OR IGNORE INTO timeline_entries (id, person_id, author_id, author_role, kind, body, payload, signal_id, occurred_at)
          VALUES (?1, ?2, ?3, 'care_manager', 'called', ?4, ?5, ?6, ?7)`,
       )
       .bind(
-        crypto.randomUUID(),
+        clientId ? callEntryId(clientId) : crypto.randomUUID(),
         person.id,
         p.accountId,
         callLogBody(contact, input.result, heard),
         JSON.stringify(payload),
         signalId,
-        now,
+        occurredAt,
       ),
   );
-  await db.batch(statements);
-  return { ok: true };
+  const results = await db.batch(statements);
+  // 同じ id が同時に 2 つ来たときは、先に書いた方だけが残る（主キー）
+  const wrote = (results[results.length - 1] as { meta?: { changes?: number } } | undefined)?.meta?.changes;
+  return clientId && wrote === 0 ? { ok: true, duplicate: true } : { ok: true };
 }
 
 /** 行の詳細に出す電話の記録 1 行 */

@@ -4,11 +4,13 @@
 // 写す物: 一度開いた担当一覧（/ と /?open=<id>）・本人のページ・本人の 1 枚・本人と家族のスマホの頁（/me・/family）の HTML の
 // 最後の 1 つと、その頁の部品（/_next/static/）。写しは端末の Cache API の中だけで、どこにも送らない。
 // - 頁は network-first: ネットから 200 の HTML が返ればそれを返して写す。通信なし・5xx のときだけ写しを返す。
-//   3xx（ログインへ）・401・403・404 はネットの応答のまま返し、写さない（写しも返さない）
+//   3xx（ログインへ）・401・403・404 はネットの応答のまま返し、写さない（写しも返さない）。
+//   NETWORK_WAIT_MS（4 秒）待っても応答が無ければ写しを返し、ネットの応答は裏で待って写す（写しが無ければ待ち続ける）
 // - 写しを返すときは </head> の前に <meta name="care72-cached-at"> を入れる（components/OfflineBand.tsx が「写し HH:MM」）
 // - 部品は cache-first（名前に中身の hash が入る）。手元の next dev（/sw.js?dev=1）だけ network-first
 // - /api/・/q/（QR の頁）・POST・別の origin・?_rsc=（Next の部分の読み込み）には respondWith を呼ばない（ブラウザのまま）
-// - ログイン・ログアウト・役の切替の POST を見たら、頁の写しを全部消す（要求には触らない）。cookie は読まない・写さない
+// - ログイン・ログアウト・役の切替・スマホ入口の切替の POST を見たら頁の写しを全部消す（要求には触らない）。スマホ入口のリンクを
+//   開く GET /s/<token> はネットが応えたときに消す（T69a）。cookie は読まない・写さない
 // - 画面の中の移り（Next の Link）は ?_rsc= の読み込みで HTML が SW を通らないので、画面が「今の頁を写して」と知らせる
 //   （components/SwRegister.tsx）。同じ頁は KEEP_MIN_MS の間 2 回取りに行かない
 //
@@ -36,6 +38,11 @@ const MAX_PAGES = 60;
 const MAX_ASSETS = 400;
 /** 1 つの頁を写して取っておく部品の数の上限 */
 const MAX_KEEP_ASSETS = 150;
+/**
+ * 頁のネットを待つ長さ（ミリ秒）。過ぎても応答が無ければ写しを返し、ネットの応答は裏で待って写す（写しが無ければ待ち続ける）。
+ * 発災の詰まった通信でブラウザの時間切れまで待たせない（11/4 設計の答え 4）
+ */
+const NETWORK_WAIT_MS = 4000;
 /** 画面からの頼みで写し直すのは、前の写しからこの間（ミリ秒）が過ぎてから（同じ頁を 2 回取りに行かない） */
 const KEEP_MIN_MS = 60000;
 /** 写しを全部消す POST（ログイン・ログアウト・審査員の役の切替。lib/auth の route は触らない） */
@@ -237,15 +244,35 @@ self.addEventListener("message", (event) => {
   if (d && d.type === KEEP_MESSAGE && typeof d.url === "string") event.waitUntil(keep(d.url).catch(() => {}));
 });
 
-/** 頁: network-first。写しの所で何かが落ちても、ネットの応答は必ず返す */
+/** 頁: network-first。NETWORK_WAIT_MS で応答が無ければ写し。写しの所で何かが落ちても、ネットの応答は必ず返す */
 async function page(event, req, url) {
   const g = generation;
-  let res = null;
-  try {
-    res = await fetch(req);
-  } catch {
-    res = null;
+  const net = fetch(req).then(
+    (r) => r,
+    () => null,
+  );
+  const SLOW = {};
+  let timer = 0;
+  const first = await Promise.race([net, new Promise((r) => (timer = setTimeout(() => r(SLOW), NETWORK_WAIT_MS)))]);
+  clearTimeout(timer);
+  if (first === SLOW) {
+    let copy = null;
+    try {
+      copy = await fromCopy(url);
+    } catch {
+      copy = null;
+    }
+    if (copy) {
+      // 遅れて来たネットの応答は写すだけ（画面は写しのまま。帯の「読み直す」で新しい物）
+      event.waitUntil(
+        net
+          .then((r) => (r && storable(r) ? store(url, r, g) : undefined))
+          .catch(() => {}),
+      );
+      return copy;
+    }
   }
+  const res = first === SLOW ? await net : first;
   if (!fellThrough(res)) {
     if (storable(res)) event.waitUntil(store(url, res.clone(), g).catch(() => {}));
     return res;

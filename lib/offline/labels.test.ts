@@ -59,6 +59,18 @@ describe("つなぎ方", () => {
     expect(buttons).toContain("data-pending=");
   });
 
+  it("ログアウトは保留があれば送信待ちか破棄かを選ぶ部品（ヘッダーのログアウトの form の中）", () => {
+    const header = read("components/AppHeader.tsx");
+    expect(header).toMatch(/<form method="post" action="\/api\/auth\/logout">[\s\S]*<LogoutButton \/>[\s\S]*<\/form>/);
+    const button = read("components/LogoutButton.tsx");
+    expect(button).toContain("appChoice(");
+    expect(button).toContain("OFFLINE_LABELS.wait");
+    expect(button).toContain("OFFLINE_LABELS.discard");
+    expect(button).toMatch(/queue\.discard\(\);\s*form\.requestSubmit\(button\);/);
+    expect(OFFLINE_LABELS.wait).toBe("送信待ち");
+    expect(OFFLINE_LABELS.discard).toBe("破棄");
+  });
+
   it("災害モードの読み直しは通信が無い間は止める（落ちると頁を開き直して行が閉じる）", () => {
     expect(read("components/disaster/AutoRefresh.tsx").match(/navigator\.onLine/g)).toHaveLength(2);
   });

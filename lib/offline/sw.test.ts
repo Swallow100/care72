@@ -23,6 +23,7 @@ import {
   isPhoneLinkOpen,
   KEEP_MESSAGE,
   KEEP_MIN_MS,
+  NETWORK_WAIT_MS,
   markCopy,
   PAGE_CACHE,
   pickCopy,
@@ -268,9 +269,14 @@ function boot(fetchImpl: FetchFn, href = `${ORIGIN}/sw.js`) {
     skipWaiting: vi.fn(),
     clients: { claim: vi.fn(async () => {}) },
   };
-  vm.runInContext(SW_SRC, vm.createContext({ self, caches, fetch, Response, Request, Headers, URL }));
+  // 時計は外の物を呼ぶ（vi.useFakeTimers が効くように）
+  const timers = {
+    setTimeout: (f: () => void, ms: number) => setTimeout(f, ms),
+    clearTimeout: (t: ReturnType<typeof setTimeout>) => clearTimeout(t),
+  };
+  vm.runInContext(SW_SRC, vm.createContext({ self, caches, fetch, Response, Request, Headers, URL, ...timers }));
 
-  async function request(path: string, init: { method?: string; mode?: string } = {}) {
+  async function request(path: string, init: { method?: string; mode?: string } = {}, opts: { settle?: boolean } = {}) {
     const waits: Promise<unknown>[] = [];
     let responded: Promise<unknown> | null = null;
     const ev = {
@@ -285,8 +291,11 @@ function boot(fetchImpl: FetchFn, href = `${ORIGIN}/sw.js`) {
     for (const f of listeners.fetch ?? []) f(ev);
     const res = responded ? ((await responded) as Response) : null;
     // waitUntil は respondWith の約束が済む前にも足される
-    for (let i = 0; i < waits.length; i++) await waits[i];
-    return { res, responded: responded !== null };
+    const done = async () => {
+      for (let i = 0; i < waits.length; i++) await waits[i];
+    };
+    if (opts.settle !== false) await done();
+    return { res, responded: responded !== null, done };
   }
 
   async function message(data: unknown) {
@@ -345,6 +354,61 @@ describe("sw.js: 頁は network-first", () => {
     const { res } = await sw.request("/");
     expect(res!.status).toBe(200);
     expect(await res!.text()).toContain(CACHED_AT_META);
+  });
+
+  it("ネットが 4 秒応えない: 写しを返し、遅れて来た応答は裏で写す（画面は写しのまま）", async () => {
+    vi.useFakeTimers();
+    try {
+      let release: (r: Response) => void = () => {};
+      let slow = false;
+      const sw = boot((input) =>
+        slow && !keyUrl(input).includes("static")
+          ? new Promise<Response>((resolve) => (release = resolve))
+          : Promise.resolve(basic(PAGE("前の一覧"))),
+      );
+      await sw.request("/");
+      const before = (await (await sw.caches.open(PAGE_CACHE)).match(`${ORIGIN}/`))!.headers.get(AT_HEADER);
+      slow = true;
+      await vi.advanceTimersByTimeAsync(10_000);
+      const pending = sw.request("/", {}, { settle: false });
+      await vi.advanceTimersByTimeAsync(NETWORK_WAIT_MS - 1);
+      let got: Awaited<typeof pending> | null = null;
+      void pending.then((r) => (got = r));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(got).toBeNull();
+      await vi.advanceTimersByTimeAsync(1);
+      const r = await pending;
+      const html = await r.res!.text();
+      expect(html).toContain("前の一覧");
+      expect(html).toContain(CACHED_AT_META);
+      release(basic(PAGE("新しい一覧")));
+      await r.done();
+      const after = (await (await sw.caches.open(PAGE_CACHE)).match(`${ORIGIN}/`))!;
+      expect(await after.text()).toContain("新しい一覧");
+      expect(after.headers.get(AT_HEADER)).not.toBe(before);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("ネットが 4 秒応えず写しも無い: ネットを待ち続ける", async () => {
+    vi.useFakeTimers();
+    try {
+      let release: (r: Response) => void = () => {};
+      const sw = boot(() => new Promise<Response>((resolve) => (release = resolve)));
+      const pending = sw.request("/me", {}, { settle: false });
+      let got = false;
+      void pending.then(() => (got = true));
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(got).toBe(false);
+      release(basic(PAGE("本人")));
+      const r = await pending;
+      expect(await r.res!.text()).toBe(PAGE("本人"));
+      await r.done();
+      expect(sw.pages()).toEqual([`${ORIGIN}/me`]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("通信なしで写しも無い: ブラウザの失敗のまま（Response.error）", async () => {

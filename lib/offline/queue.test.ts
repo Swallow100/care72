@@ -10,6 +10,7 @@ import {
   fetchCallTransport,
   readCallQueue,
   type CallBody,
+  type CallWire,
   type SendResult,
   type StorageLike,
 } from "./queue.ts";
@@ -42,7 +43,10 @@ const heardRed: CallBody = {
 /** 送る道の偽物。next が結果を決める（"throw" は通信の失敗） */
 function transport(next: (b: CallBody) => SendResult["outcome"] | "throw" | SendResult) {
   const sent: CallBody[] = [];
-  const t = vi.fn(async (b: CallBody): Promise<SendResult> => {
+  const wires: CallWire[] = [];
+  const t = vi.fn(async (w: CallWire): Promise<SendResult> => {
+    const { id: _id, at: _at, ...b } = w;
+    wires.push(w);
     const r = next(b);
     if (r === "throw") throw new TypeError("Failed to fetch");
     if (typeof r === "string") {
@@ -51,8 +55,11 @@ function transport(next: (b: CallBody) => SendResult["outcome"] | "throw" | Send
     }
     return r;
   });
-  return { t, sent };
+  return { t, sent, wires };
 }
+
+/** 送る形（端末の id と押した時刻つき） */
+const wire = (b: CallBody): CallWire => ({ ...b, id: "00000000-0000-4000-8000-000000000001", at: T0.toISOString() });
 
 let seq = 0;
 const ids = () => `id-${++seq}`;
@@ -96,7 +103,7 @@ describe("通話の記録を貯める", () => {
     status = "retry";
     expect(await q.send({ person: "p-01", contact: "c-01-1", result: "no_answer" })).toEqual({ kind: "queued" });
     // 前の物が retry のうちは、後ろの物は送りに出さない
-    expect(t.mock.calls.every(([b]) => b.result === "dialed")).toBe(true);
+    expect(t.mock.calls.every(([w]) => w.result === "dialed")).toBe(true);
     status = "ok";
     await q.flush();
     expect(sent.map((b) => b.result)).toEqual(["dialed", "no_answer"]);
@@ -179,6 +186,35 @@ describe("通話の記録を貯める", () => {
     expect(sent).toHaveLength(2);
   });
 
+  it("送るときに端末の id と押した時刻を付ける。送り直しても同じ id と押した時刻", async () => {
+    let online = false;
+    let now = T0;
+    const { t, wires } = transport(() => (online ? "ok" : "throw"));
+    const q = createCallQueue({ storage: new MemoryStorage(), owner: OWNER, transport: t, now: () => now, newId: () => "abcdef12-0000-4000-8000-000000000009" });
+    await q.send(dialed());
+    now = new Date(T0.getTime() + 600_000);
+    online = true;
+    await q.flush();
+    expect(wires).toHaveLength(2);
+    for (const w of wires) expect(w).toEqual({ ...dialed(), id: "abcdef12-0000-4000-8000-000000000009", at: T0.toISOString() });
+  });
+
+  it("破棄: 自分の物だけ送らずに消す", async () => {
+    const storage = new MemoryStorage();
+    const off = transport(() => "throw");
+    await createCallQueue({ storage, owner: callQueueOwner("acct-b"), transport: off.t, newId: ids }).send(dialed());
+    const q = createCallQueue({ storage, owner: OWNER, transport: off.t, newId: ids });
+    await q.send(dialed("c-01-2"));
+    await q.send(heardRed);
+    expect(q.items()).toHaveLength(2);
+    const seen = vi.fn();
+    q.onChange(seen);
+    q.discard();
+    expect(q.items()).toEqual([]);
+    expect(seen).toHaveBeenCalled();
+    expect(readCallQueue(storage).map((x) => x.owner)).toEqual([callQueueOwner("acct-b")]);
+  });
+
   it("変わったら知らせる", async () => {
     const q = createCallQueue({ storage: new MemoryStorage(), owner: OWNER, transport: transport(() => "throw").t, newId: ids });
     const seen = vi.fn();
@@ -214,19 +250,19 @@ describe("応答と送る道", () => {
       calls.push([String(input), init!]);
       return next();
     });
-    expect(await send(dialed())).toEqual({ outcome: "ok" });
+    expect(await send(wire(dialed()))).toEqual({ outcome: "ok" });
     expect(calls[0][0]).toBe(CALL_PATH);
     expect(calls[0][1]).toMatchObject({ method: "POST", keepalive: true, credentials: "same-origin" });
-    expect(JSON.parse(String(calls[0][1].body))).toEqual(dialed());
+    expect(JSON.parse(String(calls[0][1].body))).toEqual(wire(dialed()));
 
     next = async () => Response.json({ ok: false, error: "injury", label: "至急維持" }, { status: 409 });
-    expect(await send(heardRed)).toEqual({ outcome: "drop", label: "至急維持" });
+    expect(await send(wire(heardRed))).toEqual({ outcome: "drop", label: "至急維持" });
     next = async () => new Response("x", { status: 503 });
-    expect(await send(dialed())).toEqual({ outcome: "retry" });
+    expect(await send(wire(dialed()))).toEqual({ outcome: "retry" });
     next = async () => {
       throw new TypeError("Failed to fetch");
     };
-    await expect(send(dialed())).rejects.toThrow();
+    await expect(send(wire(dialed()))).rejects.toThrow();
   });
 
   it("止まった通信は時間で切る（残して送り直す）", async () => {
