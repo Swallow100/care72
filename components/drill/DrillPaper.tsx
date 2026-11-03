@@ -2,13 +2,15 @@
 // 並び: 題と事業所・実施日・実施者 → 概要（想定・開始・状態・経過・参加者・前回）→ 採点（数字 4 つと前回、内訳）→
 // 講評（AI の印、直した物は修正済）→ 確認欄（管理者・確認日・印を手で）→ 対応履歴（経過の時間ごとに、状況・対応・着信）。
 // 数字は機械（lib/drill/score.ts）で、ここで数え直さない。言葉は画面と同じ（lib/drill/score-labels.ts）。紙の書き方（数字と単位を詰める）は
-// lib/forms/paper-text の paperText を描く直前にだけ通す。状態を持たない（Server Component のまま、テストで renderToStaticMarkup できる）。
+// lib/forms/paper-text の paperText を描く直前にだけ通す。
+// T59: 開始の前に選んだ物（職員・夜間発災）と取り消した手の数（「取消 N」）は、あるときだけ概要に。手のメモは対応の行の下に（採点は変えない）。状態を持たない（Server Component のまま、テストで renderToStaticMarkup できる）。
 // 紙の決まりは components/forms/paper.css、流し方は components/drill/drill-paper.css。
 
+import { Fragment } from "react";
 import { ACTION_STATUS_LABELS } from "@/lib/drill/actions";
 import { callerLabel } from "@/lib/drill/calls";
 import type { ActionRecord } from "@/lib/drill/engine";
-import { ACTION_LABELS, ACTION_UI, BASIS_LABEL, calleeText, clockLabel, DRILL_LABELS, FICTION_LABELS, SCENARIO_LABELS, STATUS_LABELS } from "@/lib/drill/labels";
+import { ACTION_LABELS, ACTION_UI, BASIS_LABEL, calleeText, clockLabel, DRILL_LABELS, FICTION_LABELS, SCENARIO_LABELS, STATUS_LABELS, T59_LABELS } from "@/lib/drill/labels";
 import type { DrillRecord, StoredReview } from "@/lib/drill/record";
 import type { ReviewBody } from "@/lib/drill/review";
 import { REVIEW_ERROR_LABELS, REVIEW_KIND_LABELS, REVIEW_UI, SCORE_LABELS } from "@/lib/drill/score-labels";
@@ -61,6 +63,14 @@ export function DrillPaper({ record, office, today }: { record: DrillPaperRecord
 
   // 対応履歴: 経過の時間（刻み）ごとに、状況と、その間に打った対応・掛かってきた着信
   const actions = screen.state.actions;
+  const undone = screen.state.undone ?? 0;
+  const opts = screen.state.options;
+  const settings = [
+    opts?.staff !== undefined ? `${T59_LABELS.staff} ${opts.staff} ${T59_LABELS.people}` : null,
+    opts?.night ? T59_LABELS.night : null,
+  ]
+    .filter(Boolean)
+    .join("・");
   const groups = screen.ticks
     .map((tick, i) => {
       // 刻みは前の刻みの時刻からこの刻みの時刻まで（10 分版は 12 → 72 時間のように広い）
@@ -118,6 +128,22 @@ export function DrillPaper({ record, office, today }: { record: DrillPaperRecord
           <dd className="wide">
             {view.previous && prev ? t(`${warekiText(prev.date)} ${SCENARIO_LABELS[view.previous.scenario]}`) : SCORE_LABELS.noPrevious}
           </dd>
+          {settings && (
+            <>
+              <dt>{T59_LABELS.settings}</dt>
+              <dd className="wide" data-settings>
+                {t(settings)}
+              </dd>
+            </>
+          )}
+          {undone > 0 && (
+            <>
+              <dt>{T59_LABELS.undone}</dt>
+              <dd className="wide" data-undone={undone}>
+                {t(`${undone} ${ACTION_UI.count}`)}
+              </dd>
+            </>
+          )}
         </dl>
       </section>
 
@@ -407,13 +433,23 @@ export function DrillPaper({ record, office, today }: { record: DrillPaperRecord
               )}
               {rows.map((r) =>
                 r.kind === "action" ? (
-                  <tr key={r.a.id} data-action={r.a.kind}>
-                    <td className="nowrap">{t(clockLabel(r.a.atMinute))}</td>
-                    <td>{ACTION_LABELS[r.a.kind]}</td>
-                    <td>{name(r.a.person)}</td>
-                    <td>{calleeText(r.a) ?? ""}</td>
-                    <td>{r.a.result ? ACTION_STATUS_LABELS[r.a.result.status] : ACTION_UI.during}</td>
-                  </tr>
+                  <Fragment key={r.a.id}>
+                    <tr data-action={r.a.kind}>
+                      <td className="nowrap">{t(clockLabel(r.a.atMinute))}</td>
+                      <td>{ACTION_LABELS[r.a.kind]}</td>
+                      <td>{name(r.a.person)}</td>
+                      <td>{calleeText(r.a) ?? ""}</td>
+                      <td>{r.a.result ? ACTION_STATUS_LABELS[r.a.result.status] : ACTION_UI.during}</td>
+                    </tr>
+                    {r.a.memo && (
+                      <tr data-memo={r.a.id}>
+                        <td />
+                        <td colSpan={4}>
+                          {T59_LABELS.memo} {r.a.memo}
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 ) : (
                   <tr key={r.c.signal} data-call={r.c.response ?? "open"}>
                     <td className="nowrap">{t(clockLabel(r.c.minute))}</td>

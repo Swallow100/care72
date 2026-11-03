@@ -62,6 +62,7 @@ import {
 } from "../pseudonym/index.ts";
 import type { ActionRecord, DrillIncident, DrillTurn, HeardSignal, PersonaHook, PersonaInput, PersonState } from "./engine.ts";
 import { clockLabel, PHONE_LABELS, SHELTER_LABELS, TSUNAMI_LABELS, WATER_LABELS } from "./labels.ts";
+import { nightLine } from "./night.ts";
 import { eventHour, type FixedTurn, type OutageArea, type PhoneState, type WorldState } from "./scenarios.ts";
 
 // ---------- 本人役 ----------
@@ -338,6 +339,8 @@ export function tickText(input: PersonaInput, persona: Persona): string {
   const incidents = ownIncidents(input.incidents, input.person);
   return [
     `時刻: 発災から ${input.hour} 時間`,
+    // 夜間発災（T59）だけ。時刻の 1 行
+    ...(input.night ? [nightLine(input.hour)] : []),
     incidents.length > 0 ? ["この刻みの状況:", ...incidents.map((e) => `- ${e.text}`)].join("\n") : "この刻みの状況: 新しい事はない",
     ["今の様子:", ...worldWords(input.world, input.person, persona).map((x) => `- ${x}`)].join("\n"),
     `前の連絡: ${stateWords(input.state)}`,
@@ -651,7 +654,7 @@ export function decideCallPickup(phone: PhoneState, roll: number, reachable = tr
   return "no_answer";
 }
 
-export type PersonaCall = Pick<PersonaInput, "person" | "hour" | "world" | "incidents" | "state"> & {
+export type PersonaCall = Pick<PersonaInput, "person" | "hour" | "world" | "incidents" | "state" | "night"> & {
   /** 電話に出る人の呼び方（本人・娘・支援者 1 など。本人役の周りの人の役割名） */
   callee: string;
   /**
@@ -681,6 +684,7 @@ export const CallSchema = z.object({ speech: z.string() });
 export function callText(call: PersonaCall, persona: Persona): string {
   return [
     `時刻: 発災から ${call.hour} 時間`,
+    ...(call.night ? [nightLine(call.hour)] : []),
     ["今の様子:", ...worldWords(call.world, call.person, persona).map((x) => `- ${x}`)].join("\n"),
     `この刻みの状況: ${ownIncidents(call.incidents, call.person).map((e) => e.text).join("、") || "新しい事はない"}`,
     `前の連絡: ${stateWords(call.state)}`,

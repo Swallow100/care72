@@ -102,6 +102,7 @@ export function createCallHook(deps: { load: () => Promise<ReadonlyMap<string, P
           state: ask.state,
           callee,
           ...(ask.tell ? { tell: ask.tell } : {}),
+          ...(ask.night ? { night: true } : {}),
         },
         ask.pickup,
         deps.ai,

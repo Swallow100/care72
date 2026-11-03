@@ -86,7 +86,8 @@ export type ActTarget = {
   hasPhone: boolean;
 };
 
-export type ActInput = { kind: DrillAction; person: string | null; target: ActTarget | null };
+/** memo はケアマネのメモ（T59、100 字まで）。記録に残すだけで Claude には渡さない */
+export type ActInput = { kind: DrillAction; person: string | null; target: ActTarget | null; memo?: string };
 
 /** 本人役の通話（T18 の personaCallReply）に渡す物。出ると決まったときだけ呼ぶ */
 export type CallAsk = {
@@ -101,6 +102,8 @@ export type CallAsk = {
   state: PersonState | null;
   /** 電話で伝える様子（左の表に入る聞いた安否。T21）。本人役の言葉がこれと食い違わないように渡す */
   tell?: HeardSignal;
+  /** 夜間発災（T59）。本人役に時刻の 1 行を足す */
+  night?: boolean;
 };
 
 /** 出た人の言う事。pickup が no_answer なら本人役の周りにいない相手（出ない） */
@@ -256,7 +259,8 @@ export async function act(
   const endMinute = atMinute + minutes;
   const callee = calleeOf(input);
   const record: ActionRecord = {
-    id: `a${state.actions.length + 1}`,
+    // 取り消した手の番号は使い直さない（T59。声の R2 の鍵 act-<番号> と drill_events の id が前の手と重ならない）
+    id: `a${state.actions.length + 1 + (state.undone ?? 0)}`,
     kind: input.kind,
     person: input.person,
     target: input.target?.id ?? null,
@@ -269,6 +273,7 @@ export async function act(
     step: state.step,
     before: beforeOf(state, input.person, extra),
     result: null,
+    ...(input.memo ? { memo: input.memo } : {}),
   };
 
   // 手の途中で次の刻みの時刻を越えたら、その刻みを進める。返事はその刻みの表の出来事のあとの世界で決め、監督に言い換えを頼む
@@ -308,7 +313,17 @@ export async function act(
     const tell = heardOf(own, "call", endMinute / 60);
     const reply = hooks.call
       ? await hooks
-          .call({ person: input.person, target: input.target, pickup: "answers", hour: endMinute / 60, world: s.world, incidents, state: own, tell })
+          .call({
+            person: input.person,
+            target: input.target,
+            pickup: "answers",
+            hour: endMinute / 60,
+            world: s.world,
+            incidents,
+            state: own,
+            tell,
+            ...(s.options?.night === true ? { night: true } : {}),
+          })
           .catch(() => null)
       : null;
     // 結末の人（仮想モード、T50）は電話に出ない（鍵が無く本人役のいないときも）

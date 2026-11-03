@@ -41,6 +41,7 @@ import {
   type ReplyWords,
 } from "./engine.ts";
 import { CALL_STATUS_LABELS, PHONE_LABELS, SHELTER_LABELS, TSUNAMI_LABELS, WATER_LABELS } from "./labels.ts";
+import { nightLine } from "./night.ts";
 import { cleanWords, isPersonaFailure, reportersOf } from "./persona.ts";
 import {
   INJECT_KINDS,
@@ -169,6 +170,8 @@ export function sceneText(input: DirectorInput, aliasOf: ReadonlyMap<string, str
   return [
     `想定: ${SCENE_WORDS[kind]}`,
     `時刻: 発災から ${input.hour} 時間（${last} 時間まで）`,
+    // 夜間発災（T59）だけ。時刻の 1 行
+    ...(input.night ? [nightLine(input.hour)] : []),
     ["今の様子:", ...now.map((x) => `- ${x}`)].join("\n"),
     input.incidents.length > 0
       ? ["この刻みの状況:", ...input.incidents.map((e) => `- ${e.text}${who(e.person) ? `（${who(e.person)}）` : ""}`)].join("\n")

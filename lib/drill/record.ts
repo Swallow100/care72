@@ -15,6 +15,7 @@ import { buildForm9, type Form9PersonInput } from "../forms/form9.ts";
 import { isSourceId } from "../sources/index.ts";
 import { isDrillScenario, rowScenario, type DrillScope } from "./db.ts";
 import { drillClocks } from "./director.ts";
+import { withoutMemo } from "./engine.ts";
 import { outageForRuns } from "./outcome.ts";
 import { REVIEW_KINDS, type ReviewBody, type ReviewContext, type ReviewError, type ReviewFinding, type ReviewIncident } from "./review.ts";
 import { loadCallRecords, type CallRecord } from "./responses.ts";
@@ -335,7 +336,8 @@ export function reviewContextOf(rec: DrillRecord): ReviewContext {
     scenario: rec.screen.drill.scenario,
     status: rec.screen.drill.status as DrillStatus,
     score: rec.score,
-    actions: rec.screen.state.actions,
+    // ケアマネのメモ（T59）は講評（Opus）に渡さない
+    actions: withoutMemo(rec.screen.state.actions),
     calls: rec.calls,
     incidents,
     previous: rec.previous ? { ...rec.previous.numbers, scenario: rec.previous.scenario } : null,

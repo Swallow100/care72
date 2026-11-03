@@ -1,6 +1,6 @@
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import type { Metadata } from "next";
-import { StartButtons } from "@/components/drill/StartButtons";
+import { StartButtons, type StartPerson } from "@/components/drill/StartButtons";
 import { ButtonLink } from "@/components/ui/Button";
 import { PlayIcon, PrintIcon } from "@/components/ui/Icon";
 import { Panel, PageHead } from "@/components/ui/Panel";
@@ -11,7 +11,7 @@ import { drillGate, type DailyUsage } from "@/lib/claude/gate";
 import { usageToday } from "@/lib/claude/usage";
 import { LIMIT_LABELS } from "@/lib/seed/labels";
 import { shortJst } from "@/lib/disaster/state";
-import { drillScope, listDrills, type DrillListItem } from "@/lib/drill/db";
+import { caseloadForDrill, drillScope, listDrills, type DrillListItem } from "@/lib/drill/db";
 import { DRILL_LABELS, progressLabel, SCENARIO_LABELS, STATUS_LABELS, VIRTUAL_LABELS } from "@/lib/drill/labels";
 import { drillHref, reportHref } from "@/lib/drill/paths";
 import { SCORE_LABELS } from "@/lib/drill/score-labels";
@@ -30,9 +30,12 @@ export default async function DrillPage() {
   const scope = drillScope(principal);
   let items: DrillListItem[] = [];
   let usage: DailyUsage | null = null;
+  // 開始の前の設定の参加者（T59。担当一覧の人）
+  let people: StartPerson[] = [];
   try {
     const { env } = await getCloudflareContext({ async: true });
     items = scope ? await listDrills(env.DB, scope.officeId) : [];
+    people = scope ? await caseloadForDrill(env.DB, scope) : [];
     // AI の 1 日の上限（T26）。読めなければ開始のまま
     usage = scope ? await aiContextFor(scope.officeId).then(usageToday).catch(() => null) : null;
   } catch (e) {
@@ -56,7 +59,7 @@ export default async function DrillPage() {
           {DRILL_LABELS.start}
         </h2>
         {gate.kind === "start" ? (
-          <StartButtons scenarios={SCENARIO_ORDER} disabled={running !== null} />
+          <StartButtons scenarios={SCENARIO_ORDER} disabled={running !== null} people={people} />
         ) : (
           // 上限に達したら開始でなく、終わった訓練の再生（0 時間から刻みごとに）
           <div className="flex flex-wrap items-center gap-2" data-limit>

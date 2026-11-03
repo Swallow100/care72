@@ -4,18 +4,22 @@
 // 早送りは、前の刻みの保存が終わってから次の刻みを呼ぶ（ブラウザから 1 刻みずつ）。最後の刻みか、中断・失敗で止まる。
 // 進めたら画面を読み直す（router.refresh）。保存は刻みごとなので、閉じても次に開けば続きから。
 // 断られたら理由を 1 行（競合 再読込・終了済など）。押したときは灰色だけ（data-press）。
+// 早送りの間（T59）は早送りの横で 1・2.5・5 秒から選ぶ（端末の中だけ。保存しない。既定 2.5 秒）。
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Loader72 } from "@/components/ui/Loader72";
-import { DRILL_LABELS } from "@/lib/drill/labels";
+import { Select } from "@/components/ui/Select";
+import { DRILL_LABELS, T59_LABELS } from "@/lib/drill/labels";
+import { DEFAULT_FAST_MS, FAST_INTERVALS, intervalLabel, parseInterval } from "@/lib/drill/speed";
 import { appConfirm } from "@/lib/ui/dialog";
 import { CONFIRM_LABELS, WAIT_LABELS } from "@/lib/ui/labels";
 import { RINGING_EVENT } from "./IncomingCall";
 
-/** 早送りの 1 刻みの間（画面の色が変わるのを見られるように） */
-const FAST_MS = 2500;
+/** 早送りの間を選ぶ欄 */
+const SELECT =
+  "h-8 min-w-0 rounded bg-panel2 px-2 text-sm text-ink outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-accent";
 
 export function DrillControls({ id, step, done }: { id: string; step: number; done: boolean }) {
   const router = useRouter();
@@ -23,6 +27,8 @@ export function DrillControls({ id, step, done }: { id: string; step: number; do
   /** 1 刻みを進めている間（本人役・家族役が考える。AI の待ちの印を出す） */
   const [stepping, setStepping] = useState(false);
   const [fast, setFast] = useState(false);
+  /** 早送りの 1 刻みの間（画面の色が変わるのを見られるように。T59 で選べる） */
+  const [interval, setInterval_] = useState(DEFAULT_FAST_MS);
   const [error, setError] = useState<string | null>(null);
   const stepRef = useRef(step);
   stepRef.current = step;
@@ -64,9 +70,9 @@ export function DrillControls({ id, step, done }: { id: string; step: number; do
     const t = setTimeout(async () => {
       const more = await advance();
       if (!more) setFast(false);
-    }, FAST_MS);
+    }, interval);
     return () => clearTimeout(t);
-  }, [fast, done, busy, step, advance]);
+  }, [fast, done, busy, step, advance, interval]);
 
   useEffect(() => {
     if (done) setFast(false);
@@ -105,6 +111,19 @@ export function DrillControls({ id, step, done }: { id: string; step: number; do
         <input type="checkbox" checked={fast} onChange={(e) => setFast(e.target.checked)} className="size-4 accent-accent" data-action="fast" />
         {DRILL_LABELS.fastForward}
       </label>
+      <Select
+        value={String(interval)}
+        onChange={(e) => setInterval_(parseInterval(e.target.value))}
+        className={SELECT}
+        aria-label={`${DRILL_LABELS.fastForward} ${T59_LABELS.interval}`}
+        data-action="fast-interval"
+      >
+        {FAST_INTERVALS.map((ms) => (
+          <option key={ms} value={String(ms)}>
+            {intervalLabel(ms, T59_LABELS.seconds)}
+          </option>
+        ))}
+      </Select>
       {/* 中断はアプリ内の確認の窓で決めてから（T44）。最初の焦点は取消 */}
       <Button
         kind="danger"

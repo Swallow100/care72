@@ -14,6 +14,7 @@ import { pseudonymize, pseudonymizeText, type ForClaude, type PseudonymInput, ty
 import { aliasOfTown, AREA_FACILITIES, AREA_ROADS, AREA_SHELTERS, geographyText } from "./area.ts";
 import type { ActionRecord, DrillIncident, WorldInput } from "./engine.ts";
 import { PHONE_LABELS, SHELTER_LABELS } from "./labels.ts";
+import { nightLine } from "./night.ts";
 import type { OutcomeSource } from "./outcome.ts";
 import { reportersOf } from "./persona.ts";
 import type { WorldState, WorldVia } from "./scenarios.ts";
@@ -257,6 +258,8 @@ export function tickText(input: WorldInput, cast: Pick<WorldCast, "key">, prevHo
   const ended = Object.keys(input.world.ended ?? {}).flatMap((p) => (aliasOf.has(p) ? [aliasOf.get(p)!] : []));
   return [
     `時刻: 発災から ${input.hour} 時間（${last} 時間まで）`,
+    // 夜間発災（T59）だけ。時刻の 1 行
+    ...(input.night ? [nightLine(input.hour)] : []),
     acts.length > 0 ? ["前の刻みからケアマネがした事:", ...acts].join("\n") : "前の刻みからケアマネがした事: なし",
     contacts.length > 0 ? ["前の刻みからの本人たちの連絡:", ...contacts].join("\n") : "前の刻みからの本人たちの連絡: なし",
     seen.length > 0 ? ["本人たちの最後の様子:", ...seen].join("\n") : "本人たちの最後の様子: なし",

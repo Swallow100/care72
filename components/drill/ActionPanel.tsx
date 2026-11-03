@@ -5,6 +5,7 @@
 // 終わったら画面を読み直す（router.refresh）。結果と履歴はサーバーが描く（ActionLog）。断られたら理由を 1 行。
 // 選んだ印は枠（ring）と太字。テーマ色の下地は敷かない。押したときは灰色だけ（data-press）。主の操作（実行）だけ操作の色。
 // この画面で正解・不正解を出さない（採点は T22）。
+// メモ（T59）: 100 字まで、任意。手と一緒に送り、履歴と訓練記録に出す（Claude には渡さない）。
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -14,7 +15,7 @@ import { LABEL } from "@/components/ui/Panel";
 import type { DrillAction } from "@/lib/db/types";
 import { DRILL_ACTIONS } from "@/lib/db/types";
 import { ACTION_MINUTES, needsPerson, needsTarget, picksTarget, targetKinds } from "@/lib/drill/action-table";
-import { ACTION_LABELS, ACTION_UI, CALL_STATUS_LABELS, DRILL_LABELS } from "@/lib/drill/labels";
+import { ACTION_LABELS, ACTION_UI, CALL_STATUS_LABELS, DRILL_LABELS, T59_LABELS } from "@/lib/drill/labels";
 import type { DrillContact } from "@/lib/drill/view";
 import { FictionalMark } from "./Fictional";
 import { ACTION_ICONS } from "./icons";
@@ -34,6 +35,11 @@ const TOGGLE = "w-full min-w-0 justify-start! px-2! font-normal!";
 const PICKED = "font-bold! ring-2 ring-inset ring-accent";
 /** 選ぶボタンの並び（幅に合わせて段を折る。横に送らない） */
 const GRID = "grid grid-cols-[repeat(auto-fill,minmax(8.5rem,1fr))] gap-1";
+/** メモの欄（面の中の色、枠線なし。焦点は操作の色の枠） */
+const MEMO_FIELD =
+  "h-8 w-full min-w-0 rounded bg-panel2 px-2 text-sm outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-accent";
+/** メモの長さの上限（lib/drill/db.ts の MEMO_MAX と同じ） */
+const MEMO_MAX = 100;
 
 export function ActionPanel({
   drillId,
@@ -54,6 +60,7 @@ export function ActionPanel({
   const [person, setPerson] = useState<string | null>(null);
   const [kind, setKind] = useState<DrillAction | null>(null);
   const [target, setTarget] = useState<string | null>(null);
+  const [memo, setMemo] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -94,6 +101,7 @@ export function ActionPanel({
           kind,
           person: kind === "evacuate_self" ? null : person,
           target: target === STAFF ? null : target,
+          ...(memo.trim() ? { memo: memo.trim() } : {}),
         }),
       });
       const body = (await res.json().catch(() => null)) as { ok?: boolean; label?: string } | null;
@@ -102,6 +110,7 @@ export function ActionPanel({
       } else {
         setKind(null);
         setTarget(null);
+        setMemo("");
       }
       router.refresh();
     } catch {
@@ -191,6 +200,24 @@ export function ActionPanel({
           </div>
         </section>
       )}
+
+      <label className="block" data-act-memo>
+        <span className={`mb-1 flex items-baseline gap-2 ${LABEL}`}>
+          {T59_LABELS.memo}
+          <span className="tabular-nums">
+            {[...memo].length} / {MEMO_MAX}
+          </span>
+        </span>
+        <input
+          type="text"
+          value={memo}
+          maxLength={MEMO_MAX}
+          onChange={(e) => setMemo(e.target.value)}
+          disabled={busy}
+          className={MEMO_FIELD}
+          data-act-memo-input
+        />
+      </label>
 
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <Button kind="main" icon={PlayIcon} onClick={() => void run()} disabled={!ready || busy} data-action="act">

@@ -5,6 +5,7 @@
 // - 履歴（ActionLog）: 刻みごとに畳める（今の刻みだけ開く）。新しい順。誰に・何を・何時・返事
 // 返事は色の文字（塗りの印は安否だけ）: 通話・到着・手配済・受入・報告済・避難済は緑、つながらない・着けない・断られたは黄（次の手が要る）。
 // 正解・不正解は出さない（採点は T22）。名前は台帳の id から引く（記録には名前が無い）。
+// T59: 手のメモを手の行の下に。進行中は最後の手に「取消」（刻みを越えなかった手だけ。越えた手は「取消不可」の印）。
 
 import { AiMark } from "@/components/person/parts";
 import { OpenIcon } from "@/components/ui/Icon";
@@ -12,13 +13,14 @@ import { LABEL } from "@/components/ui/Panel";
 import { Mark, StateTag, StateText } from "@/components/ui/Tag";
 import { ACTION_STATUS_LABELS } from "@/lib/drill/actions";
 import type { ActionRecord, ActionResult, DrillTurn, Tick } from "@/lib/drill/engine";
-import { ACTION_LABELS, ACTION_UI, calleeText, clockLabel, DRILL_LABELS, elapsedLabel } from "@/lib/drill/labels";
+import { ACTION_LABELS, ACTION_UI, calleeText, clockLabel, DRILL_LABELS, elapsedLabel, T59_LABELS } from "@/lib/drill/labels";
 import { COLOR_LABELS, CONTACT_KIND_LABELS } from "@/lib/labels";
 import { SOURCE_LABELS } from "@/lib/list/detail";
 import type { StateTone } from "@/lib/person";
 import { callsOf } from "@/lib/drill/calls";
 import { FictionalMark } from "./Fictional";
 import { ActionIcon, CallInIcon } from "./icons";
+import { UndoButton } from "./UndoButton";
 import { VoicePlay } from "./VoicePlay";
 
 type Names = Readonly<Record<string, string>>;
@@ -100,11 +102,41 @@ function Bubble({
   );
 }
 
-function ActionItem({ a, names, voiceOf }: { a: ActionRecord; names: Names; voiceOf?: VoiceOf }) {
+/** 手のメモ（T59。ケアマネが書いた物なので AI の印なし） */
+export function MemoLine({ memo }: { memo: string | undefined }) {
+  if (!memo) return null;
+  return (
+    <p className="mt-0.5 flex gap-1.5 text-xs" data-act-memo-text>
+      <span className="shrink-0 text-muted">{T59_LABELS.memo}</span>
+      <span className="min-w-0 break-words">{memo}</span>
+    </p>
+  );
+}
+
+/** 最後の手の取消（T59）。進行中の画面だけ。act は取り消せる手の番号（無ければ取消不可） */
+export type UndoSlot = { drillId: string; step: number; actions: number; act: string | null };
+
+function ActionItem({ a, names, voiceOf, undo }: { a: ActionRecord; names: Names; voiceOf?: VoiceOf; undo?: UndoSlot }) {
   const r = a.result;
   return (
     <li className="rounded-md bg-panel2 px-2 py-1.5 text-sm" data-act={a.id} data-act-kind={a.kind} data-act-status={r?.status ?? "pending"}>
-      <Head a={a} names={names} />
+      {undo ? (
+        <div className="flex flex-wrap items-start gap-x-2">
+          <div className="min-w-0 flex-1">
+            <Head a={a} names={names} />
+          </div>
+          {undo.act === a.id ? (
+            <UndoButton drillId={undo.drillId} step={undo.step} actions={undo.actions} act={a.id} />
+          ) : (
+            <span className="ml-auto text-xs text-muted" data-undo-locked>
+              {T59_LABELS.undoLocked}
+            </span>
+          )}
+        </div>
+      ) : (
+        <Head a={a} names={names} />
+      )}
+      <MemoLine memo={a.memo} />
       {r?.speech && <Bubble speaker={calleeText(a) ?? ""} text={r.speech} ai={r.speechAi} voice={voiceOf?.(a.id) ?? null} />}
     </li>
   );
@@ -129,6 +161,7 @@ export function LatestResult({
     <section aria-label={ACTION_UI.result} className="rounded-md bg-panel2 px-2.5 py-2" data-latest={action.id}>
       <div className="text-sm">
         <Head a={action} names={names} />
+        <MemoLine memo={action.memo} />
       </div>
       {r?.speech && <Bubble speaker={calleeText(action) ?? ""} text={r.speech} ai={r.speechAi} large voice={voiceOf?.(action.id) ?? null} />}
       {calls.length > 0 && (
@@ -179,6 +212,7 @@ export function ActionLog({
   current,
   names,
   voiceOf,
+  undo,
 }: {
   actions: ReadonlyArray<ActionRecord>;
   hours: readonly number[];
@@ -186,7 +220,10 @@ export function ActionLog({
   current: number;
   names: Names;
   voiceOf?: VoiceOf;
+  /** 進行中の最後の手の取消（T59）。再生では渡さない */
+  undo?: UndoSlot;
 }) {
+  const lastId = actions.at(-1)?.id ?? null;
   if (actions.length === 0) return <p className="text-sm text-muted">{DRILL_LABELS.none}</p>;
   const steps = [...new Set(actions.map((a) => a.step))].sort((a, b) => b - a);
   return (
@@ -208,7 +245,7 @@ export function ActionLog({
             </summary>
             <ol className="mt-1 space-y-1">
               {own.map((a) => (
-                <ActionItem key={a.id} a={a} names={names} voiceOf={voiceOf} />
+                <ActionItem key={a.id} a={a} names={names} voiceOf={voiceOf} {...(undo && a.id === lastId ? { undo } : {})} />
               ))}
             </ol>
           </details>
