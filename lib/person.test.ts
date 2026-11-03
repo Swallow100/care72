@@ -260,6 +260,48 @@ describe("意味の色", () => {
     expect(viewOf("p-10").head.priority).toMatchObject({ tier: 8, tone: null });
   });
 
+  it("災害モードは上の医療の印と時計の欄を今の残りに（超過は「超過」を赤、まだ走っていない時計は長さと「停電で開始」）", () => {
+    const now = "2026-11-03T06:00:00.000Z";
+    const hoursAgo = (h: number) => new Date(Date.parse(now) - h * 3_600_000).toISOString();
+    const inDisaster = (id: string, outageAt: string | null) =>
+      toPersonView(seedRows(seed(id)), {
+        today: TODAY,
+        mode: "disaster",
+        situation: { now, disasterAt: hoursAgo(6), outageAt, outageTowns: null },
+      }).head;
+
+    // 停電から 3 時間: 酸素の内蔵電池（2 時間）は 1 時間の超過、予備ボンベ（8 時間）は残り 5 時間
+    const p01 = inDisaster("p-01", hoursAgo(3));
+    expect(p01.marks).toEqual([
+      { label: "酸素", tone: "urgent", remaining: "超過" },
+      { label: "抗凝固", tone: "check", remaining: null },
+    ]);
+    expect(p01.clocks.map((k) => [k.value, k.tone, k.note])).toEqual([
+      ["超過 1 時間", "urgent", null],
+      ["残り 5 時間", "urgent", null],
+      [null, "check", null],
+    ]);
+
+    // 停電なし: 停電で走る時計はまだ走らず、長さのまま
+    const calm = inDisaster("p-01", null);
+    expect(calm.marks[0]).toEqual({ label: "酸素", tone: "urgent", remaining: "2h" });
+    expect(calm.clocks[0]).toMatchObject({ value: "2 時間", note: "停電で開始" });
+
+    // 発災で走る透析（次の回まで 2 日）: 発災から 6 時間で残り 42 時間
+    const p03 = inDisaster("p-03", null);
+    expect(p03.marks).toEqual([{ label: "透析", tone: "check", remaining: "42h" }]);
+    expect(p03.clocks[0]).toMatchObject({ value: "残り 42 時間", tone: "check", note: null });
+
+    // 平時は situation を渡しても時計の長さ（mode が disaster のときだけ今の残り）
+    const normal = toPersonView(seedRows(seed("p-01")), {
+      today: TODAY,
+      mode: "normal",
+      situation: { now, disasterAt: hoursAgo(6), outageAt: hoursAgo(3), outageTowns: null },
+    }).head;
+    expect(normal.marks[0]).toEqual({ label: "酸素", tone: "urgent", remaining: "2h" });
+    expect(normal.clocks[0]).toMatchObject({ value: "2 時間", note: null });
+  });
+
   it("描いた印は色と文字の両方を持つ（色だけの印にしない）", () => {
     for (const id of ALL_IDS) {
       const html = renderToStaticMarkup(createElement(PersonView, { view: viewOf(id), level: 1 }));
@@ -462,9 +504,9 @@ describe("情報を多く出す（作者 16:3x）", () => {
   it("上に大きく: 時計の残り（短い順、値の無い物は後ろ）と緊急連絡先（順番・電話）", () => {
     const v = viewOf("p-01");
     expect(v.head.clocks).toEqual([
-      { id: "k-01-1", label: "酸素 内蔵電池", value: "2 時間", tone: "urgent" },
-      { id: "k-01-2", label: "酸素 予備ボンベ", value: "8 時間", tone: "urgent" },
-      { id: "k-01-3", label: "ワーファリン", value: null, tone: "check" },
+      { id: "k-01-1", label: "酸素 内蔵電池", value: "2 時間", tone: "urgent", note: null },
+      { id: "k-01-2", label: "酸素 予備ボンベ", value: "8 時間", tone: "urgent", note: null },
+      { id: "k-01-3", label: "ワーファリン", value: null, tone: "check", note: null },
     ]);
     expect(v.head.emergency.map((l) => l.map((s) => s.text).join(" "))).toEqual([
       "1 森 恵子 娘 090-0000-0011",

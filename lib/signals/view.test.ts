@@ -37,6 +37,7 @@ const STATES: PhoneState[] = [
   { step: "recording", startedAt: T, until: T + 30_000 },
   { step: "sending", color: "red" },
   { step: "done", color: "red", delivery: "sent" },
+  { step: "done", color: "red", delivery: "sent", silent: true },
   { step: "done", color: "green", delivery: "queued" },
 ];
 
@@ -94,6 +95,17 @@ describe("災害モードの画面", () => {
     const green = view({ step: "done", color: "green", delivery: "queued" });
     expect(text(green)).toBe("まだ とどいて いませんつながったら 送りますもう 一度");
     expect(text(view({ step: "done", color: "red", delivery: "dropped" }))).not.toContain("つながったら");
+  });
+
+  it("聞き直しても無音のまま録音だけ送った終わりは「ろくおんを おくりました」と 119 の 1 行（T37）", () => {
+    const html = view({ step: "done", color: "red", delivery: "sent", silent: true });
+    expect(text(html)).toBe("ろくおんを おくりましたいのちの 危険が あるときは 119もう 一度");
+    expect(html).toContain("data-silent");
+    expect(buttons(html)).toEqual(["again"]);
+    // 赤が端末に残っている間は、今まで通り「まだ とどいて いません」
+    expect(text(view({ step: "done", color: "red", delivery: "queued", silent: true }))).toBe(
+      "まだ とどいて いませんつながったら 送りますいのちの 危険が あるときは 119もう 一度",
+    );
   });
 
   it("どの画面もボタンは 3 つまで、戻るは無い。本人の状態の判定の言葉を出さない。漢字には全部ふりがな", () => {

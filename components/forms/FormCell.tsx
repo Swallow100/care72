@@ -1,8 +1,10 @@
 // 紙面の欄の値（lib/forms の Cell）を描く。状態を持たない（Server Component のまま、テストで renderToStaticMarkup できる）。
 // 選ぶ欄は ■（選んだ）と □。未確認は灰、台帳の pending は太字と理由（次の訪問の問い）。同意のない範囲は「省略」。
+// 字は紙の書き方（数字と単位・年月日を詰める。lib/forms/paper-text.ts）。本人の言葉（Piece の raw）は台帳の文のまま。
 
 import type { Cell, Choice, Piece } from "@/lib/forms/matsuyama";
 import { BLANK, withheldText } from "@/lib/forms/matsuyama";
+import { paperText } from "@/lib/forms/paper-text";
 import { PENDING_STATUS_LABELS } from "@/lib/labels";
 
 /** 電話番号・日付・時刻・小数（090-0000-0011、2026-11-02、12:00、0.5）。紙ではこの途中で行を割らない */
@@ -27,7 +29,7 @@ export function KeepNumbers({ text }: { text: string }) {
   );
 }
 
-function PieceText({ p }: { p: Piece }) {
+function PieceText({ p, tight }: { p: Piece; tight: boolean }) {
   if (p.unconfirmed) {
     return p.reason ? (
       <span className="p-unc-r" data-pending={p.reason}>
@@ -40,7 +42,7 @@ function PieceText({ p }: { p: Piece }) {
   const cls = [p.sub ? "p-sub" : "", p.strong ? "p-strong" : ""].filter(Boolean).join(" ");
   return (
     <span className={cls || undefined}>
-      <KeepNumbers text={p.text} />
+      <KeepNumbers text={tight && !p.raw ? paperText(p.text) : p.text} />
     </span>
   );
 }
@@ -51,12 +53,12 @@ const isSeparator = (p: Piece) => p.sub === true && p.text === "／";
  * 1 行の値。「／」で区切った塊（薬 1 つの回数・用量、機器の電池・予備など）は塊の途中で行を割らず、塊の切れ目で折り返す。
  * 区切りの「／」は前の塊の終わりに付ける（行頭に「／」を出さない）
  */
-function Pieces({ pieces }: { pieces: readonly Piece[] }) {
+function Pieces({ pieces, tight }: { pieces: readonly Piece[]; tight: boolean }) {
   if (!pieces.some(isSeparator)) {
     return (
       <>
         {pieces.map((p, i) => (
-          <PieceText key={i} p={p} />
+          <PieceText key={i} p={p} tight={tight} />
         ))}
       </>
     );
@@ -73,7 +75,7 @@ function Pieces({ pieces }: { pieces: readonly Piece[] }) {
         .map((g, i) => (
           <span key={i} className="grp">
             {g.map((p, j) => (
-              <PieceText key={j} p={p} />
+              <PieceText key={j} p={p} tight={tight} />
             ))}
           </span>
         ))}
@@ -81,27 +83,28 @@ function Pieces({ pieces }: { pieces: readonly Piece[] }) {
   );
 }
 
-function Line({ pieces }: { pieces: readonly Piece[] }) {
+function Line({ pieces, tight }: { pieces: readonly Piece[]; tight: boolean }) {
   return (
     <span className="ln">
-      <Pieces pieces={pieces} />
+      <Pieces pieces={pieces} tight={tight} />
     </span>
   );
 }
 
-function ChoiceText({ c }: { c: Choice }) {
+function ChoiceText({ c, tight }: { c: Choice; tight: boolean }) {
+  const tx = (s: string) => (tight ? paperText(s) : s);
   return (
     <span className={c.on ? "ch on" : "ch"} data-on={c.on ? "1" : "0"}>
       {c.on ? "■" : "□"}
-      {c.label}
-      {c.detail && <>（{c.detail}）</>}
+      {tx(c.label)}
+      {c.detail && <>（{tx(c.detail)}）</>}
       {c.sub && (
         <>
           （
           {c.sub.map((s, i) => (
             <span key={s.label}>
               {i > 0 && " "}
-              <ChoiceText c={s} />
+              <ChoiceText c={s} tight={tight} />
             </span>
           ))}
           ）
@@ -111,13 +114,17 @@ function ChoiceText({ c }: { c: Choice }) {
   );
 }
 
-export function FormCell({ cell }: { cell: Cell }) {
+/**
+ * 欄の値。tight は紙の書き方（数字と単位・年月日を詰める）で、紙面の部品は既定のまま。
+ * 画面で使う所（QR の頁の要約 components/qr/QrSummary）は false で、画面の書き方（「84 歳」）のまま
+ */
+export function FormCell({ cell, tight = true }: { cell: Cell; tight?: boolean }) {
   switch (cell.kind) {
     case "value":
       return (
         <>
           {cell.lines.map((l, i) => (
-            <Line key={i} pieces={l} />
+            <Line key={i} pieces={l} tight={tight} />
           ))}
         </>
       );
@@ -125,14 +132,16 @@ export function FormCell({ cell }: { cell: Cell }) {
       return (
         <span className="ln">
           {cell.options.map((c) => (
-            <ChoiceText key={c.label} c={c} />
+            <ChoiceText key={c.label} c={c} tight={tight} />
           ))}
-          {cell.after && <Pieces pieces={cell.after} />}
-          {cell.unconfirmed && <PieceText p={{ text: BLANK.unconfirmed, unconfirmed: true, reason: cell.unconfirmed.reason }} />}
+          {cell.after && <Pieces pieces={cell.after} tight={tight} />}
+          {cell.unconfirmed && (
+            <PieceText p={{ text: BLANK.unconfirmed, unconfirmed: true, reason: cell.unconfirmed.reason }} tight={tight} />
+          )}
         </span>
       );
     case "unconfirmed":
-      return <PieceText p={{ text: BLANK.unconfirmed, unconfirmed: true, reason: cell.reason }} />;
+      return <PieceText p={{ text: BLANK.unconfirmed, unconfirmed: true, reason: cell.reason }} tight={tight} />;
     case "none":
       return <span>{BLANK.none}</span>;
     case "withheld":

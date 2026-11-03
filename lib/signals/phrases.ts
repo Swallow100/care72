@@ -16,6 +16,8 @@ export const PHONE_PHRASES = {
   where: "どこに いますか",
   sending: "{送|おく}っています",
   sent: "とどきました",
+  /** 聞き直しても無音のまま、録音だけ送ったとき（T37。docs/DECISIONS.md 11/3 04:0x の 9） */
+  recordingSent: "ろくおんを おくりました",
   queued: "まだ とどいて いません",
   queuedSub: "つながったら {送|おく}ります",
   again: "もう {一度|いちど}",

@@ -59,6 +59,7 @@ import {
   DEVICE_LABELS,
   DOCUMENT_LABELS,
   DOCUMENT_STATUS_LABELS,
+  HEAD_LABELS,
   HOUSEHOLD_LABELS,
   MEDICATION_CATEGORY_LABELS,
   MED_PARTS,
@@ -74,7 +75,8 @@ import {
   TIMELINE_KIND_LABELS,
 } from "./labels.ts";
 import { toTriagePerson } from "./triage/from-ledger.ts";
-import { tierOf, type Color, type Tier, type TriageResult } from "./triage/index.ts";
+import { clockRemaining, formatHours, tierOf, type Color, type Situation, type Tier, type TriageResult } from "./triage/index.ts";
+import { personSituation, type DisasterSituation } from "./disaster/state.ts";
 import type { PersonBrief } from "./auth/scope.ts";
 import { withQrView } from "./qr/timeline.ts";
 import { officeEntryOf, withOfficeEntry } from "./office/timeline.ts";
@@ -134,6 +136,7 @@ export const FIELDS: readonly FieldDef[] = [
   { key: "evacuation.hazards", section: "evacuation", label: "ハザード" },
   { key: "evacuation.destination1", section: "evacuation", label: "避難先1" },
   { key: "evacuation.destination2", section: "evacuation", label: "避難先2" },
+  { key: "evacuation.stayHome", section: "evacuation", label: "在宅避難" },
   { key: "evacuation.transport", section: "evacuation", label: "手段" },
   { key: "evacuation.support", section: "evacuation", label: "支援内容" },
   { key: "evacuation.route", section: "evacuation", label: "経路" },
@@ -327,8 +330,8 @@ export type PersonHead = {
   plan: string;
   /** 台帳の pending の数（担当一覧の「未確認 N」と同じ） */
   unconfirmed: number;
-  /** 走る時計の残り（平時は全部の長さ）。短い順、値の無い物は後ろ。上に大きく出す */
-  clocks: Array<{ id: string; label: string; value: string | null; tone: StateTone | null }>;
+  /** 走る時計の残り（平時は全部の長さ、災害モードは今の残り）。短い順、値の無い物は後ろ。上に大きく出す。note は「停電で開始」 */
+  clocks: Array<{ id: string; label: string; value: string | null; tone: StateTone | null; note: string | null }>;
   /** 緊急連絡先（順番つき、電話のリンク）。上に大きく出す */
   emergency: Line[];
   /**
@@ -435,23 +438,51 @@ function hoursOf(k: Pick<ClockRow, "value" | "unit">): number | null {
 
 const TONE_RANK: Record<StateTone, number> = { urgent: 3, check: 2, unknown: 1, ok: 0 };
 
-/** 医療の印 1 つ: 項目名・その区分の時計でいちばん強い色・走る時計でいちばん短い残り（「4h」。無ければ null） */
+/** 医療の印 1 つ: 項目名・その区分の時計でいちばん強い色・いちばん短い残り（「4h」「超過」。無ければ null） */
 export type MarkItem = { label: string; tone: StateTone | null; remaining: string | null };
+
+/** 時計 1 つの今の残り（時間）。災害モード（s あり）は走った分を引く（まだ走っていない時計は長さのまま）。値の無い時計は null */
+function hoursLeft(k: ClockRow, s: Situation | null): { hours: number; over: boolean; running: boolean } | null {
+  const r = s ? clockRemaining(k, s) : null;
+  if (r) return { hours: r.remaining, over: r.over, running: r.running };
+  const h = hoursOf(k);
+  return h === null ? null : { hours: h, over: false, running: false };
+}
+
+const round1 = (v: number) => Math.round(v * 10) / 10;
+
+/** 印に添える短い残り（「30分」「1.5h」「2.8日」）。走っている時計の今の残り */
+function shortHours(h: number): string {
+  if (h < 1) return `${Math.round(h * 60)}${CLOCK_UNIT_SHORT.minute}`;
+  if (h < 48) return `${round1(h)}${CLOCK_UNIT_SHORT.hour}`;
+  return `${round1(h / 24)}${CLOCK_UNIT_SHORT.day}`;
+}
 
 /**
  * 医療の印（担当一覧と同じ並び）と、その区分の時計でいちばん強い色、いちばん短い残り。
- * 残りは時計の値そのまま（上の「時計」の欄と同じ数）を短い単位で。走らない時計（本人の状態）・値の無い時計は数えない
+ * 平時（s なし）の残りは時計の値そのまま（上の「時計」の欄と同じ数）を短い単位で。
+ * 災害モード（s あり、本人の地区を当てた Situation）は今の残り（走っている時計は走った分を引き、超えたら「超過」と赤。
+ * まだ走っていない時計は長さのまま）。走らない時計（本人の状態）・値の無い時計は数えない（11/3 08:0x の確定 2）
  */
-export function markItems(clocks: ReadonlyArray<ClockRow>): MarkItem[] {
+export function markItems(clocks: ReadonlyArray<ClockRow>, s: Situation | null = null): MarkItem[] {
   return DEPENDENCE_MARKS.flatMap(([category, label]) => {
     const mine = clocks.filter((k) => k.category === category);
     if (mine.length === 0) return [];
-    const tones = mine.map((k) => clockTone(hoursOf(k), k.starts_on !== "none")).filter((t) => t !== null);
+    const tones = mine
+      .map((k) => (k.starts_on === "none" ? null : clockTone(hoursLeft(k, s)?.hours ?? null)))
+      .filter((t) => t !== null);
     const tone = tones.sort((a, b) => TONE_RANK[b] - TONE_RANK[a])[0] ?? null;
     const shortest = mine
       .filter((k) => k.starts_on !== "none" && k.value != null && k.unit != null)
-      .sort((a, b) => hoursOf(a)! - hoursOf(b)!)[0];
-    const remaining = shortest ? `${shortest.value}${CLOCK_UNIT_SHORT[shortest.unit!]}` : null;
+      .map((k) => ({ k, left: hoursLeft(k, s)! }))
+      .sort((a, b) => a.left.hours - b.left.hours)[0];
+    const remaining = !shortest
+      ? null
+      : shortest.left.over
+        ? HEAD_LABELS.over
+        : shortest.left.running
+          ? shortHours(shortest.left.hours)
+          : `${shortest.k.value}${CLOCK_UNIT_SHORT[shortest.k.unit!]}`;
     return [{ label, tone, remaining }];
   });
 }
@@ -644,6 +675,8 @@ function evacuationBlocks(ledger: Ledger): Block[] {
     row("evacuation.hazards", hazards.length > 0 ? { kind: "lines", lines: [[text(hazards.join("・"))]] } : { kind: "none" }),
     row("evacuation.destination1", textField(e.destination1)),
     row("evacuation.destination2", textField(e.destination2)),
+    // 在宅避難の印（T37）。無ければ避難所へ（「なし」）
+    row("evacuation.stayHome", e.stayHome === true ? { kind: "lines", lines: [[text("あり")]] } : { kind: "none" }),
     row("evacuation.transport", textField(e.transport)),
     row("evacuation.support", supportField(e)),
     row("evacuation.route", textField(e.route)),
@@ -1052,18 +1085,31 @@ function attachPending(sections: Map<SectionId, Block[]>, ledger: Ledger, rows: 
 
 // ---------- 全体 ----------
 
-/** 上に大きく出す時計の残り。走る時計を短い順に、値の無い物は後ろ */
-function headClocks(clocks: ReadonlyArray<ClockRow>): PersonHead["clocks"] {
+/**
+ * 上に大きく出す時計の残り。走る時計を短い順に、値の無い物は後ろ。
+ * 平時は時計の長さ（「2 時間」）。災害モード（s あり）は今の残り（「残り 1.5 時間」「超過 30 分」、色は残りの長さ）で、
+ * まだ走っていない時計は長さと「停電で開始」（担当一覧の行の詳細と同じ言い方。11/3 08:0x の確定 2）
+ */
+function headClocks(clocks: ReadonlyArray<ClockRow>, s: Situation | null = null): PersonHead["clocks"] {
   return clocks
     .filter((k) => k.starts_on !== "none")
-    .map((k) => ({ k, h: hoursOf(k) }))
-    .sort((a, b) => (a.h ?? Infinity) - (b.h ?? Infinity))
-    .map(({ k, h }) => ({
-      id: k.id,
-      label: k.label,
-      value: k.value != null && k.unit != null ? `${k.value} ${CLOCK_UNIT_LABELS[k.unit]}` : null,
-      tone: clockTone(h),
-    }));
+    .map((k) => ({ k, left: hoursLeft(k, s) }))
+    .sort((a, b) => (a.left?.hours ?? Infinity) - (b.left?.hours ?? Infinity))
+    .map(({ k, left }) => {
+      const length = k.value != null && k.unit != null ? `${k.value} ${CLOCK_UNIT_LABELS[k.unit]}` : null;
+      if (!s || !left) return { id: k.id, label: k.label, value: length, tone: clockTone(left?.hours ?? null), note: null };
+      if (!left.running) {
+        const note = `${CLOCK_START_LABELS[k.starts_on]}${HEAD_LABELS.startsOn}`;
+        return { id: k.id, label: k.label, value: length, tone: clockTone(left.hours), note };
+      }
+      return {
+        id: k.id,
+        label: k.label,
+        value: left.over ? `${HEAD_LABELS.over} ${formatHours(-left.hours)}` : `${HEAD_LABELS.left} ${formatHours(left.hours)}`,
+        tone: clockTone(left.hours),
+        note: null,
+      };
+    });
 }
 
 /** 上に大きく出す緊急連絡先: 順番・名前・間柄・電話 */
@@ -1102,6 +1148,8 @@ export type ViewOptions = {
   mode?: PageMode;
   /** 発災時のルールの表の結果（T09・T13 が渡す） */
   triage?: TriageResult | null;
+  /** 発災時の今・発災・停電（lib/disaster/person の situation）。あれば上の医療の印と時計の欄を今の残りにする（地区は台帳の町名で当てる） */
+  situation?: DisasterSituation | null;
   /**
    * 見る人の範囲（lib/consent/scope.ts）。無ければケアマネの範囲（全部）。
    * 範囲の外の区分・欄は作らない（「非表示」とも書かない）。医療班・行政は app/people/[id] が scopeOfRows で渡す
@@ -1175,7 +1223,9 @@ export function toPersonView(rows: PersonPageRows, opts: ViewOptions): PersonVie
     plan: scopeHas(scope, "plan"),
   };
   const tier = tierOf(toTriagePerson({ person, ledger, contacts, clocks }));
-  const marks = markItems(clocks);
+  // 災害モードは今の残り（本人の町名で停電の地区を当てる）。平時は時計の長さ
+  const own = mode === "disaster" && opts.situation ? personSituation(opts.situation, ledger.basic.address?.town) : null;
+  const marks = markItems(clocks, own);
   const strongest = marks.map((m) => m.tone).filter((t) => t !== null).sort((a, b) => TONE_RANK[b] - TONE_RANK[a])[0];
   const priority = priorityOf(tier, opts.triage, strongest ?? null);
   const head: PersonHead = {
@@ -1190,7 +1240,7 @@ export function toPersonView(rows: PersonPageRows, opts: ViewOptions): PersonVie
     priority: show.medical || priority.kind === "tier" ? priority : { ...priority, reason: "" },
     plan: PLAN_STATUS_LABELS[person.plan_status],
     unconfirmed: show.plan ? ledger.pending.length : 0,
-    clocks: show.medical ? headClocks(clocks) : [],
+    clocks: show.medical ? headClocks(clocks, own) : [],
     emergency: show.people ? headEmergency(contacts) : [],
     show,
   };

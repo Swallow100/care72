@@ -5,6 +5,7 @@
 
 import type { CSSProperties } from "react";
 import type { MappedSheet as Sheet } from "@/lib/forms/mapped-sheet";
+import { paperText } from "@/lib/forms/paper-text";
 import { FormCell } from "./FormCell";
 import { PaperFoot } from "./PaperFoot";
 
@@ -32,7 +33,7 @@ export function MappedSheet({ sheet, meta }: { sheet: Sheet; meta: MappedSheetMe
             <div className="head-row">
               <h1 className="title">{sheet.title}</h1>
               <div className="top-col">
-                <span className="nowrap">{meta.date} 作成</span>
+                <span className="nowrap">{paperText(meta.date)} 作成</span>
                 {by && <span className="nowrap">{by}</span>}
                 <span className="nowrap">様式 {sheet.issuer}</span>
               </div>

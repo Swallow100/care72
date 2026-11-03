@@ -7,8 +7,10 @@
 // - 医療班提供の同意（consents.medical）が「同意」の人だけ要約を作る。不同意は「同意なし」、未確認は「未確認」で、中身は作らない
 //   （計画書の医療の欄は計画共有に従う。医療班提供は要約と QR の頁にだけ効く。docs/DECISIONS.md の 11/2 夕方の案 a）
 // - 薬・機器・時計の値は計画書（lib/forms/matsuyama.ts）と同じ道具で作る（どの書類でも同じ値）
-// - 中断注意の印は優先の骨格（lib/triage の categoryTier）から機械的に付ける。段 4・5 の薬に付け、段の根拠の出典 id を添える。
-//   台帳の印（interruptionRisk）だけの薬にも印を出すが、出典は付けない（骨格から来た物だけが登録簿を指す）
+// - 中断注意の印は優先の骨格（lib/triage の categoryTier）から機械的に付ける。段 4・5 の薬と段 4 の機器（経管栄養）に付け、
+//   段の根拠の出典 id を添える。台帳の印（interruptionRisk）だけの薬にも印を出すが、出典は付けない（骨格から来た物だけが登録簿を指す）
+// - 本人の 1 枚の裏（buildOwnSheetMedical）は、支援者提供の同意が無ければ表と同じく支援者の名前・電話を出さない（T37 の 5）。
+//   医療班の画面の要約は医療班提供の同意だけを見る（今まで通り）
 // - 診断名を推し量らない（降圧薬から高血圧を立てない）。既往症・予防接種は台帳の言葉のまま、様式の選択肢と同じ言葉だけ印を付ける
 // - 発災後に医療班が書く欄（初診日・医師・保険証・職業・傷病名・トリアージ）は出さない。家の状態（健存・半壊・全壊）は未確認
 // - 「なぜこの行があるか」（basis）は骨格の段の根拠（lib/triage の TIERS）と登録簿の出典だけから作る。紙には出さず、
@@ -51,6 +53,7 @@ import {
   NONE,
   pendingLabel,
   pendingMedicationIndex,
+  raw,
   strong,
   sub,
   t,
@@ -293,13 +296,23 @@ export function medicalId(src: { birthDate: string | null; sex: Ledger["basic"][
 
 // ---------- 中断注意の印 ----------
 
-/** 中断注意の印を付ける骨格の段（4 インスリン・経管栄養、5 抗凝固薬・ステロイド・抗てんかん薬） */
+/**
+ * 中断注意の印を付ける骨格の段（4 インスリン・経管栄養、5 抗血小板薬・抗凝固薬・ステロイド・抗てんかん薬）。
+ * 段 4 の経管栄養は機器の行に付ける（deviceMark）。docs/DECISIONS.md 11/3 04:0x の 2・3
+ */
 export const INTERRUPTION_TIERS: ReadonlySet<Tier> = new Set<Tier>([4, 5]);
 
 /** 中断注意の印。tier は骨格の段（台帳の印だけなら null）、sourceIds は段の根拠の出典 */
 export type InterruptionMark = { label: string; tier: Tier | null; sourceIds: ReadonlyArray<SourceId> };
 
-/** 薬の区分から骨格の段を引き、段 4・5 なら印。骨格に段の無い区分（抗血小板薬・経口糖尿病薬・その他）は台帳の印だけ */
+/** 機器の区分から骨格の段を引き、段 4（経管栄養）なら印。電気の機器（段 1・2）と透析（段 3）には付けない */
+export function deviceMark(kind: Ledger["medical"]["devices"][number]["kind"]): InterruptionMark | null {
+  const tier = categoryTier(kind);
+  if (tier === null || !INTERRUPTION_TIERS.has(tier)) return null;
+  return { label: MEDICATION_FLAG_LABELS.interruptionRisk, tier, sourceIds: [...tierBasis(tier).sourceIds] };
+}
+
+/** 薬の区分から骨格の段を引き、段 4・5 なら印。骨格に段の無い区分（経口糖尿病薬・その他）は台帳の印だけ */
 export function interruptionMark(m: Pick<Medication, "category" | "interruptionRisk">): InterruptionMark | null {
   const clockCategory = MED_CLOCK_CATEGORY[m.category];
   const tier = clockCategory ? categoryTier(clockCategory) : null;
@@ -380,7 +393,22 @@ export type MedicalBuildOptions = {
    * hide: 出さない欄（住所・本人の電話）。値は作らず（なし）、未確認の一覧からも落とす。紙面はその欄を描かない
    */
   view?: { partialPeople?: boolean; hide?: readonly MedicalKey[] };
+  /**
+   * 本人の 1 枚の裏（T37 の 5）で、支援者提供の同意が無い人。表（lib/forms/own-sheet.ts）と同じ扱いにする:
+   * 支援者（避難支援等実施者）の名前・電話は出さず「計画で決めた人 実施者 N」。家族は表の「電話」の段にも出るので名前と電話を残し、
+   * 実施者の番号だけ外す。要保護者の実施者も「計画で決めた人」。医療班の画面の要約は渡さない（医療班提供の同意に従う）
+   */
+  supporters?: "planned";
 };
+
+/** 支援者提供の同意が無い人の 1 枚の裏で、支援者の名前の代わりに出す言葉（表の「計画で 決めた 人」と同じ） */
+export const PLANNED_SUPPORTER = "計画で決めた人";
+
+/** 本人の 1 枚の裏の要約。支援者提供の同意（表と同じ: 同意のときだけ）が無ければ supporters: "planned" で作る */
+export function buildOwnSheetMedical(rows: PersonPageRows, opts: Omit<MedicalBuildOptions, "supporters">): MedicalSummaryResult {
+  const shared = rows.consents.find((c) => c.kind === "supporters")?.status === "granted";
+  return buildMedicalSummary(rows, shared ? opts : { ...opts, supporters: "planned" });
+}
 
 /** 人の一部で関係先に残す種類（本人のページの医療の区分の「かかりつけ」と同じ） */
 const PARTIAL_OTHER_KINDS: ReadonlySet<Contact["kind"]> = new Set(["home_doctor", "pharmacy"]);
@@ -551,7 +579,12 @@ export function buildMedicalSummary(rows: PersonPageRows, opts: MedicalBuildOpti
   const hotLines = deviceDetail("oxygen");
   const dialysisLines = deviceDetail("dialysis");
   const otherDevices = medical.devices.filter((d) => d.kind !== "oxygen" && d.kind !== "dialysis");
-  const otherDeviceLines = otherDevices.map((d) => deviceLine(d, clocks, usedClocks));
+  // 経管栄養（段 4）の行には中断注意の印を添える（計画書の機器の行は変えない。医療要約だけ）
+  const otherDeviceLines = otherDevices.map((d) => {
+    const mark = deviceMark(d.kind);
+    const line = deviceLine(d, clocks, usedClocks);
+    return mark ? [...line, strong(mark.label)] : line;
+  });
   // 機器が台帳に無くても、その区分の時計があれば出す（透析の次の回だけ・酸素の時計だけ）
   const looseClockLines = (category: Clock["category"]): PieceLine[] =>
     clocks
@@ -630,6 +663,20 @@ export function buildMedicalSummary(rows: PersonPageRows, opts: MedicalBuildOpti
   );
   // 人の一部: 緊急連絡先は名前と電話、緊急連絡先でない支援者は役割名だけ
   const peopleLine = (c: Contact): PieceLine => (partial && c.emergency_order == null ? roleLine(c) : personLine(c));
+  // 本人の 1 枚の裏で支援者提供の同意が無い（T37 の 5）: 支援者は「計画で決めた人 実施者 N」、家族は名前と電話のまま実施者の番号を外す
+  const planned = opts.supporters === "planned";
+  const plannedLine = (c: Contact): PieceLine => [strong(PLANNED_SUPPORTER), sub(`実施者 ${c.supporter_order}`)];
+  const peopleLines: PieceLine[] = planned
+    ? [
+        ...people
+          .filter((c) => c.supporter_order == null || c.kind === "family")
+          .map((c) => personLine({ ...c, supporter_order: null })),
+        ...people
+          .filter((c) => c.supporter_order != null)
+          .sort((a, b) => order(a.supporter_order) - order(b.supporter_order))
+          .map(plannedLine),
+      ]
+    : people.map(peopleLine);
   const hasDoctor = contacts.some((c) => c.kind === "home_doctor");
   const doctorReason = take("contact.others", under("medical.doctor"), "かかりつけ");
   const peopleReason = take(
@@ -726,10 +773,12 @@ export function buildMedicalSummary(rows: PersonPageRows, opts: MedicalBuildOpti
     [{ label: "支援者のいない要配慮者等", on: vulnerable && noSupporter }],
     [
       sub("実施者"),
-      // 人の一部（T24）: 緊急連絡先でない実施者は役割名だけ
-      ...(supporters.length > 0
-        ? joinGroups(supporters.map((c) => (partial && c.emergency_order == null ? roleLine(c).slice(0, 1) : contactName(c))))
-        : [strong(BLANK.none)]),
+      // 人の一部（T24）: 緊急連絡先でない実施者は役割名だけ。本人の 1 枚の裏で支援者提供の同意が無ければ「計画で決めた人」（T37 の 5）
+      ...(supporters.length === 0
+        ? [strong(BLANK.none)]
+        : planned
+          ? [strong(PLANNED_SUPPORTER)]
+          : joinGroups(supporters.map((c) => (partial && c.emergency_order == null ? roleLine(c).slice(0, 1) : contactName(c))))),
     ],
   );
 
@@ -776,7 +825,7 @@ export function buildMedicalSummary(rows: PersonPageRows, opts: MedicalBuildOpti
       { label: "その他", on: sorts.has("その他") },
       { label: "連絡先なし", on: people.length === 0 },
     ]),
-    "contact.people": people.length > 0 ? value(...people.map(peopleLine), ...(peopleReason ? [[unconfirmedPiece(peopleReason)]] : [])) : unconfirmed(peopleReason),
+    "contact.people": people.length > 0 ? value(...peopleLines, ...(peopleReason ? [[unconfirmedPiece(peopleReason)]] : [])) : unconfirmed(peopleReason),
     "contact.others": otherLines.length > 0 ? value(...otherLines) : NONE,
     "contra.allergy": listCell(medical.allergies, allergyReason, true),
     "contra.food": unconfirmed(),
@@ -820,7 +869,7 @@ export function buildMedicalSummary(rows: PersonPageRows, opts: MedicalBuildOpti
     "meds.notes":
       ledger.notes.length + leftoverClockLines.length > 0
         ? value(
-            ...ledger.notes.map((n) => [t(n)]),
+            ...ledger.notes.map((n) => [raw(n)]),
             ...leftoverClockLines,
             ...(clocksReason ? [[unconfirmedPiece(clocksReason)]] : []),
           )

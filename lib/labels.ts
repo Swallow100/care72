@@ -55,6 +55,7 @@ export const DEPENDENCE_MARKS: ReadonlyArray<[ClockCategory, string]> = [
   ["dialysis", "透析"],
   ["insulin", "インスリン"],
   ["tube_feeding", "経管栄養"],
+  ["antiplatelet", "抗血小板"],
   ["anticoagulant", "抗凝固"],
   ["steroid", "ステロイド"],
   ["antiepileptic", "抗てんかん"],
@@ -66,6 +67,7 @@ export const DEPENDS_ON_LABELS: Record<DependsOn, string> = {
   dialysis_center: "透析先",
   refrigeration: "冷蔵",
   delivery: "配達",
+  storage: "保管",
 };
 
 export const CHECK_STATUS_LABELS: Record<CheckStatus, string> = {
@@ -93,7 +95,7 @@ export const TIER_LABELS: Record<Tier, string> = {
   2: "在宅酸素",
   3: "透析",
   4: "インスリン・経管栄養",
-  5: "抗凝固薬・ステロイド・抗てんかん薬",
+  5: "抗血小板薬・抗凝固薬・ステロイド・抗てんかん薬",
   6: "認知症で独居",
   7: "寝たきりで支援者なし",
   8: "それ以外",
@@ -253,6 +255,10 @@ export const HEAD_LABELS = {
   marks: "医療",
   clocks: "時計",
   emergency: "緊急連絡先",
+  /** 災害モードの時計の今の残り（「残り 1.5 時間」「超過 30 分」「停電で開始」。担当一覧の行の詳細と同じ言い方） */
+  left: "残り",
+  over: "超過",
+  startsOn: "で開始",
 } as const;
 
 /** 時計の行の中の小さな見出し */

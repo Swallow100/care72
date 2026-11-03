@@ -35,7 +35,16 @@ import {
 } from "../labels.ts";
 import { formatJst } from "../person.ts";
 import { toTriagePerson } from "../triage/from-ledger.ts";
-import { clockHours, compareResults, formatHours, tierOf, type Color, type Tier, type TriageResult } from "../triage/index.ts";
+import {
+  clockHours,
+  compareResults,
+  formatHours,
+  TABLE_DEPENDS,
+  tierOf,
+  type Color,
+  type Tier,
+  type TriageResult,
+} from "../triage/index.ts";
 
 // ---------- 列 ----------
 
@@ -414,7 +423,7 @@ function shortestClock(clocks: Form9PersonInput["clocks"]): { label: string; hou
   return best;
 }
 
-/** 平時の優先の理由: いちばん短い時計・骨格の 6 と 7 の言葉・頼り先の未確認・支援者なし */
+/** 平時の優先の理由: いちばん短い時計・骨格の 6 と 7 の言葉・頼り先（表の入力の透析先・配達）の未確認・支援者なし */
 function normalReason(
   tier: Tier,
   clock: { label: string; hours: number } | null,
@@ -424,7 +433,8 @@ function normalReason(
   const parts: string[] = [];
   if (clock) parts.push(`${clock.label} ${formatHours(clock.hours)}`);
   if (tier === 6 || tier === 7) parts.push(TIER_LABELS[tier]);
-  for (const d of new Set(clocks.filter((k) => k.depends_on && k.depends_check === "unconfirmed").map((k) => k.depends_on!))) {
+  const unchecked = clocks.filter((k) => k.depends_on && TABLE_DEPENDS.has(k.depends_on) && k.depends_check === "unconfirmed");
+  for (const d of new Set(unchecked.map((k) => k.depends_on!))) {
     parts.push(`${DEPENDS_ON_LABELS[d]} 未確認`);
   }
   if (!hasSupporter && tier !== 7) parts.push("支援者なし");

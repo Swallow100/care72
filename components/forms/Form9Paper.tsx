@@ -5,6 +5,7 @@
 // 状態を持たない（Server Component のまま、テストで renderToStaticMarkup できる）。
 
 import type { Form9Row, Form9Sheet } from "@/lib/forms/form9";
+import { paperText } from "@/lib/forms/paper-text";
 import { KeepNumbers } from "./FormCell";
 
 /** 題名（ひな形のシートの題名 FORM9_TITLE を、紙の書き方の全角の括弧に） */
@@ -43,8 +44,9 @@ export function shortAt(v: string): string {
   return m ? `${Number(m[1])}/${Number(m[2])} ${m[3]}` : v;
 }
 
-function Text({ v }: { v: string }) {
-  return v ? <KeepNumbers text={v} /> : null;
+/** 欄の文字。紙の書き方（数字と単位を詰める）。raw は本人の言葉の入る欄（特記）で台帳の文のまま */
+function Text({ v, raw = false }: { v: string; raw?: boolean }) {
+  return v ? <KeepNumbers text={raw ? v : paperText(v)} /> : null;
 }
 
 function Row({ r }: { r: Form9Row }) {
@@ -79,7 +81,7 @@ function Row({ r }: { r: Form9Row }) {
         <Text v={c.facility} />
       </td>
       <td>
-        <Text v={c.notes} />
+        <Text v={c.notes} raw />
       </td>
       <td>
         <Text v={c.careManager} />
@@ -136,7 +138,7 @@ export function Form9Paper({ sheet, office, date, order, report }: Form9PaperPro
           <h1 className="title">{title}</h1>
           <div className="top-col">
             <span className="nowrap">事業所名 {office}</span>
-            <span className="nowrap">作成 {date}</span>
+            <span className="nowrap">作成 {paperText(date)}</span>
             <span className="nowrap">{order}</span>
           </div>
         </div>
@@ -188,7 +190,7 @@ export function Form9Paper({ sheet, office, date, order, report }: Form9PaperPro
             {/* 段（空行で区切った塊）ごとに 1 つの段落。2 段組で、段の途中では割らない */}
             <div className="report-text">
               {report.split(/\n{2,}/).map((part, i) => (
-                <p key={i}>{part}</p>
+                <p key={i}>{paperText(part)}</p>
               ))}
             </div>
           </div>

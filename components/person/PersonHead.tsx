@@ -1,4 +1,5 @@
-// 本人のページの上。大事な物を大きく: 優先と理由、医療の印、時計の残り、緊急連絡先。
+// 本人のページの上。大事な物を大きく: 優先と理由、医療の印、時計の残り、緊急連絡先。印と時計の欄は、平時は時計の長さ、
+// 災害モードは今の残り（lib/person の markItems・headClocks に situation を渡したとき。超過は「酸素 超過」を赤）。
 // その上の 1 行に 名前・年齢・介護度・計画・未確認。
 // 優先は平時が骨格の段（色は時計の長さ。医療の印と同じ）、発災時（T09 で災害モードを入れたとき）は色と言葉と理由の 1 行。
 // 見る人の範囲（head.show、lib/consent/scope.ts）の外の物は欄ごと出さない（医療班・行政に同意の無い人は名前・カナ・年齢と状態の色だけ）。
@@ -116,9 +117,13 @@ export function PersonHead({ head, level, titleId }: { head: Head; level: Level;
                     {head.clocks.map((k) => (
                       <li key={k.id} className="flex flex-wrap items-baseline justify-between gap-x-2">
                         <span className="text-sm">{k.label}</span>
+                        {/* 災害モードは今の残り（「残り 1.5 時間」「超過 30 分」）、まだ走っていない時計は長さと小さく「停電で開始」 */}
                         {k.value ? (
-                          <span className={`font-bold tabular-nums ${k.tone ? TONE_TEXT[k.tone] : ""}`} data-tone={k.tone ?? undefined}>
-                            {k.value}
+                          <span className="whitespace-nowrap">
+                            {k.note && <span className="mr-1.5 text-xs text-muted">{k.note}</span>}
+                            <span className={`font-bold tabular-nums ${k.tone ? TONE_TEXT[k.tone] : ""}`} data-tone={k.tone ?? undefined}>
+                              {k.value}
+                            </span>
                           </span>
                         ) : (
                           <span className="text-sm text-muted">{BLANK_LABELS.unconfirmed}</span>

@@ -13,6 +13,8 @@ import { TIERS, tierBasis } from "../triage/index.ts";
 import { cellText } from "./matsuyama.ts";
 import {
   buildMedicalSummary,
+  buildOwnSheetMedical,
+  deviceMark,
   FORM_ORDER_BASIS,
   interruptionMark,
   MEDICAL_FIELDS,
@@ -179,6 +181,23 @@ describe("医療班提供の同意", () => {
     expect(markup).toContain("未聴取");
   });
 
+  it("保留（未確認）の人は 10 人のだれでも要約を作らない。医療班の範囲（T24）で開いても、本人の 1 枚の裏でも同じ（11/3 確定の 4）", () => {
+    for (const id of ALL_IDS) {
+      const rows = withMedicalConsent(id, "unconfirmed");
+      const plain = build(rows);
+      const scoped = buildMedicalSummary(rows, {
+        today: TODAY,
+        officeName: "デモ事業所",
+        view: { partialPeople: true, hide: ["patient.address", "patient.phone"] },
+      });
+      const own = buildOwnSheetMedical(rows, { today: TODAY, officeName: "デモ事業所" });
+      for (const r of [plain, scoped, own]) {
+        expect(r.kind, id).toBe("unconfirmed");
+        expect(Object.keys(r).sort(), id).toEqual(["consent", "kind", "name", "personId"]);
+      }
+    }
+  });
+
   it("同意の行が無ければ未確認", () => {
     const rows = seedRows(seed("p-01"));
     expect(build({ ...rows, consents: rows.consents.filter((c) => c.kind !== "medical") }).kind).toBe("unconfirmed");
@@ -239,6 +258,20 @@ describe("種の 9 人から欄が埋まる", () => {
         }
       }
       expect(side).toContain("screen-only");
+    }
+  });
+
+  it("出典の確認（作者が 11/7 までに）が済むまで、画面の脇の出典ごとに小さな「未確認」の印を出す。隠さない（11/3 確定の 10）", () => {
+    for (const id of SHEET_IDS) {
+      const side = basisHtml(sheetOf(id));
+      const items = [...side.matchAll(/data-source="([^"]+)"(.*?)<\/li>/g)];
+      expect(items.length, id).toBeGreaterThan(0);
+      for (const m of items) {
+        const checked = sourceById(m[1]).checkedOn !== null;
+        expect(m[2], `${id} ${m[1]}`).toContain(checked ? "確認済" : "未確認");
+      }
+      // 出典の行は text-xs の小さな字の中
+      expect(side).toMatch(/<ul class="[^"]*text-xs[^"]*"><li[^>]*data-source=/);
     }
   });
 });
@@ -313,16 +346,22 @@ describe("1 山田 ハナ（T07 の終わりの形）", () => {
 });
 
 describe("中断注意の印（優先の骨格から機械的に、出典の id を添える）", () => {
-  it("段 4（インスリン）と段 5（抗凝固薬・ステロイド・抗てんかん薬）に付き、段の根拠の出典を持つ", () => {
+  it("段 4（インスリン）と段 5（抗血小板薬・抗凝固薬・ステロイド・抗てんかん薬）に付き、段の根拠の出典を持つ", () => {
     expect(interruptionMark({ category: "insulin" })).toEqual({ label: "中断注意", tier: 4, sourceIds: tierBasis(4).sourceIds });
-    for (const c of ["anticoagulant", "steroid", "antiepileptic"] as const) {
+    for (const c of ["antiplatelet", "anticoagulant", "steroid", "antiepileptic"] as const) {
       expect(interruptionMark({ category: c })?.tier, c).toBe(5);
     }
   });
 
-  it("骨格に段の無い区分（抗血小板薬・経口糖尿病薬・その他）は付かない。台帳の印だけなら出典なしで付く", () => {
-    for (const c of ["antiplatelet", "oral_diabetes", "other"] as const) expect(interruptionMark({ category: c }), c).toBeNull();
-    expect(interruptionMark({ category: "antiplatelet", interruptionRisk: true })).toEqual({
+  it("抗血小板薬（11/3 確定の 2）: 段 5 の印で、出典は循環器の指針（jcs-disaster-2014）を含む", () => {
+    expect(interruptionMark({ category: "antiplatelet" })).toEqual({ label: "中断注意", tier: 5, sourceIds: tierBasis(5).sourceIds });
+    expect(tierBasis(5).sourceIds).toContain("jcs-disaster-2014");
+    expect(tierBasis(5).why).toContain("抗血小板薬");
+  });
+
+  it("骨格に段の無い区分（経口糖尿病薬・その他）は付かない。台帳の印だけなら出典なしで付く", () => {
+    for (const c of ["oral_diabetes", "other"] as const) expect(interruptionMark({ category: c }), c).toBeNull();
+    expect(interruptionMark({ category: "oral_diabetes", interruptionRisk: true })).toEqual({
       label: "中断注意",
       tier: null,
       sourceIds: [],
@@ -398,17 +437,22 @@ describe("ほかの人", () => {
     expect(s.basis.map((b) => b.tier)).toEqual([5, 7]);
   });
 
-  it("6 高橋 ユキ: 胃ろう 経管栄養と栄養剤 3 日を機器の欄に", () => {
+  it("6 高橋 ユキ: 胃ろう 経管栄養と栄養剤 3 日を機器の欄に。経管栄養（段 4）の行に中断注意（11/3 確定の 3）", () => {
     const d = text(sheetOf("p-06"), "drug.devices");
     expect(d).toContain("胃ろう 経管栄養");
     expect(d).toContain("栄養剤 3 日");
+    expect(d.endsWith("中断注意")).toBe(true);
+    expect(deviceMark("tube_feeding")).toEqual({ label: "中断注意", tier: 4, sourceIds: tierBasis(4).sourceIds });
+    // 電気の機器（段 1・2）と透析（段 3）には付けない
+    for (const k of ["ventilator", "suction", "oxygen", "dialysis"] as const) expect(deviceMark(k), k).toBeNull();
+    expect(text(sheetOf("p-02"), "drug.devices")).not.toContain("中断注意");
   });
 
-  it("8 井上 誠: 糖尿病治療薬・インスリンにチェック、残り 4 日・要冷蔵・中断注意（段 4）", () => {
+  it("8 井上 誠: 糖尿病治療薬・インスリンにチェック、残り 4 日（発災から）・要冷蔵・中断注意（段 4）", () => {
     const s = sheetOf("p-08");
     expect(text(s, "drug.diabetes")).toBe("■糖尿病治療薬 ■インスリン □経口薬 インスリン 朝夕 中断注意");
     const m = s.medications[0];
-    expect(cellText(m.remaining)).toContain("4 日");
+    expect(cellText(m.remaining)).toBe("4 日 発災から・薬局");
     expect(cellText(m.storage)).toBe("冷蔵庫 要冷蔵");
     expect(m.mark?.tier).toBe(4);
   });

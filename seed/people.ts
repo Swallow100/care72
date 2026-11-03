@@ -725,7 +725,7 @@ export const SEED_PEOPLE: SeedPerson[] = [
     ],
   },
 
-  // 8 地震の主役。津波で高台の集会所へ、冷蔵が切れてインスリンの時計が走る
+  // 8 地震の主役。津波で高台の集会所へ、インスリンの残り 4 日の時計が発災から走る（保管は確認の欄）
   {
     person: {
       id: "p-08",
@@ -795,9 +795,12 @@ export const SEED_PEOPLE: SeedPerson[] = [
         label: "インスリン",
         value: 4,
         unit: "day",
-        starts_on: "outage",
+        // 手元の残りの日数（物の時計 B）で、発災から走る。冷蔵が切れると走る、はやめた（未開封なら冷蔵が切れてもしばらく使える。
+        // jadec-insulin-2023）。暑さ・冷蔵は「確認」の欄の項目（頼り先 保管）で、ルールの表の入力にしない。docs/DECISIONS.md 11/3 04:0x の 1
+        starts_on: "disaster",
         source: "pharmacy",
-        note: "要冷蔵。停電で走る",
+        depends_on: "storage",
+        depends_check: "confirmed",
       }),
     ],
   },

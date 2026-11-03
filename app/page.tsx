@@ -190,7 +190,7 @@ async function PersonPanel({ principal, id, sort, now }: { principal: Principal;
     const { env } = await getCloudflareContext({ async: true });
     const rows = await loadPersonPage(env.DB, principal, id);
     const d = rows ? await personDisaster(env.DB, rows, now) : null;
-    view = rows && d ? toPersonView(rows, { today: todayJst(), mode: d.mode, triage: d.triage }) : null;
+    view = rows && d ? toPersonView(rows, { today: todayJst(), mode: d.mode, triage: d.triage, situation: d.situation }) : null;
     // 入れる欄（T03）はケアマネの役だけ（担当一覧はケアマネの役しか開けない）
     intake = rows && principal.role === "care_manager" ? intakePropsOf(rows, hasAnthropicKey(env)) : null;
   } catch (e) {

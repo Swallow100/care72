@@ -10,7 +10,7 @@ import { SEED_AT, SEED_PEOPLE, seedConsents, type SeedPerson } from "../../seed/
 import type { ConsentStatus } from "../db/types.ts";
 import type { PersonPageRows } from "../person.ts";
 import { easy, hiragana, kanjiWithoutRuby, nameWithKana, plainText, yomi, YOMI } from "./easy-words.ts";
-import { buildMedicalSummary } from "./medical-summary.ts";
+import { buildMedicalSummary, buildOwnSheetMedical, PLANNED_SUPPORTER } from "./medical-summary.ts";
 import {
   allWords,
   blockText,
@@ -49,7 +49,7 @@ function withConsent(id: string, kind: "supporters" | "medical", status: Consent
 const front = (s: OwnSheet) => renderToStaticMarkup(createElement(OwnSheetFront, { sheet: s }));
 function paper(rows: PersonPageRows): { html: string; back: string } {
   const html = renderToStaticMarkup(
-    createElement(OwnSheetPaper, { sheet: buildOwnSheet(rows, OPTS), medical: buildMedicalSummary(rows, OPTS) }),
+    createElement(OwnSheetPaper, { sheet: buildOwnSheet(rows, OPTS), medical: buildOwnSheetMedical(rows, OPTS) }),
   );
   const at = html.indexOf('data-page="2"');
   return { html, back: html.slice(html.lastIndexOf("<section", at)) };
@@ -156,6 +156,43 @@ describe("10 人分の文", () => {
     expect(sheetOf("p-08").blocks.find((b) => b.id === "when")!.lines[1].key).toBe("when.quake");
   });
 
+  it("種は全員「避難所へ」（在宅避難の印なし）", () => {
+    for (const id of ALL_IDS) expect(seed(id).ledger.evacuation.stayHome, id).toBeUndefined();
+  });
+
+  it("在宅避難の印のある人の地震の行: 家の なかの 安全な ところで、添えに「あぶないときは 避難先 へ。ケアマネから 電話が きます」（11/3 確定の 8）", () => {
+    const stay = (id: string, patch: Partial<SeedPerson["ledger"]["evacuation"]> = {}) => {
+      const p = seed(id);
+      return buildOwnSheet(seedRows({ ...p, ledger: { ...p.ledger, evacuation: { ...p.ledger.evacuation, stayHome: true, ...patch } } }), OPTS);
+    };
+    const s = stay("p-10");
+    const when = s.blocks.find((b) => b.id === "when")!.lines;
+    expect(when.map((l) => [l.key, l.tone])).toEqual([
+      ["when.rain", undefined],
+      ["when.quake", undefined],
+      ["when.quake.stay", "sub"],
+    ]);
+    expect(when.slice(1).map(lineText)).toEqual([
+      "地震の とき ゆれが おさまったら、家の なかの 安全な ところで",
+      "あぶないときは そらみ台小学校 へ。ケアマネから 電話が きます",
+    ]);
+    // ふりがな（家・安全・電話）が付き、否定形を使わない
+    expect(sheetKanjiWithoutRuby(s)).toEqual([]);
+    expect(when.flatMap((l) => l.words).filter((w) => w.ruby).map((w) => w.text)).toEqual(
+      expect.arrayContaining(["家", "安全", "電話"]),
+    );
+    // 避難先が無ければ「逃げる ところへ」（上の段の決めた所を指す）
+    const noPlace = stay("p-10", { destination1: undefined });
+    expect(lineText(noPlace.blocks.find((b) => b.id === "when")!.lines[2])).toBe("あぶないときは 逃げる ところへ。ケアマネから 電話が きます");
+    // 津波のある人は在宅避難の印があっても「揺れたら すぐ」（津波が先）
+    expect(stay("p-08").blocks.find((b) => b.id === "when")!.lines.map(lineText)).toEqual([
+      "大雨の とき 警戒レベル 3 が 出たら 逃げます",
+      "地震の とき 揺れたら すぐ 逃げます",
+    ]);
+    // 印が false なら今の文
+    expect(blockText(stay("p-10", { stayHome: false }), "when")).toContain("揺れが おさまったら 逃げます");
+  });
+
   it("空いた所は「ケアマネジャーと 決めます」で、画面の上の未確認に数える（伊藤 フミ）", () => {
     const s = sheetOf("p-05");
     expect(blockText(s, "where")).toBe("ケアマネジャーと 決めます");
@@ -255,13 +292,35 @@ describe("同意の範囲", () => {
     expect(who.lines.every((l) => l.phone === undefined)).toBe(true);
     const whoText = who.lines.map(lineText).join(" ");
     for (const w of ["前田 和夫", "加藤 実", "090-0000-0026", "090-0000-0025"]) expect(whoText).not.toContain(w);
-    // 支援者 1 の民生委員は表のどこにも出ない（裏は医療要約のまま。医療班提供の同意に従う、T07）
+    // 支援者 1 の民生委員は表のどこにも出ない（裏も同じ。下の「裏も表と同じ扱い」）
     const html = front(s);
     expect(html).not.toContain("前田 和夫");
     expect(html).not.toContain("090-0000-0026");
     // 家族の弟は電話の段に（計画書の近親者と同じ。来てくれる人とは書かない）
     expect(blockText(s, "call")).toContain("弟の 加藤 実さん 090-0000-0025");
     expect(html.indexOf("加藤 実")).toBeGreaterThan(html.indexOf('data-block="call"'));
+  });
+
+  it("加藤 正の裏（医療要約）も表と同じ扱い: 支援者の名前と電話を出さず「計画で決めた人」。家族の弟は名前と電話のまま（11/3 確定の 5）", () => {
+    const { back } = paper(rowsOf("p-07"));
+    const backText = stripTags(back);
+    for (const w of ["前田 和夫", "090-0000-0026", "緊急連絡 1実施者"]) expect(backText, w).not.toContain(w);
+    // 弟は家族の緊急連絡先として名前と電話（実施者の番号は外す）
+    expect(backText).toContain("加藤 実弟市内緊急連絡 1TEL090-0000-0025");
+    expect(backText).toContain(`${PLANNED_SUPPORTER}実施者 1`);
+    expect(backText).toContain(`${PLANNED_SUPPORTER}実施者 2`);
+    // 医療班の画面の要約は今まで通り（医療班提供の同意に従い、支援者の名前と電話を載せる）
+    const medical = buildMedicalSummary(rowsOf("p-07"), OPTS);
+    expect(medical.kind).toBe("sheet");
+    if (medical.kind === "sheet") expect(JSON.stringify(medical.sheet.cells["contact.people"])).toContain("前田 和夫");
+  });
+
+  it("支援者提供に同意した人の裏は医療班の画面の要約と同じ。未確認なら加藤と同じく落とす", () => {
+    for (const id of ALL_IDS.filter((x) => x !== "p-07")) {
+      expect(JSON.stringify(buildOwnSheetMedical(rowsOf(id), OPTS)), id).toBe(JSON.stringify(buildMedicalSummary(rowsOf(id), OPTS)));
+    }
+    const { back } = paper(withConsent("p-01", "supporters", "unconfirmed"));
+    expect(stripTags(back)).toContain(PLANNED_SUPPORTER);
   });
 
   it("支援者提供が未確認でも同じ。同意に変えると名前が出る", () => {
@@ -337,7 +396,7 @@ describe("裏の QR（T16 の QrBlock）", () => {
   }
   function paperWith(rows: PersonPageRows, qr: OwnQr | null): { html: string; head: string } {
     const html = renderToStaticMarkup(
-      createElement(OwnSheetPaper, { sheet: buildOwnSheet(rows, OPTS), medical: buildMedicalSummary(rows, OPTS), qr }),
+      createElement(OwnSheetPaper, { sheet: buildOwnSheet(rows, OPTS), medical: buildOwnSheetMedical(rows, OPTS), qr }),
     );
     const back = html.slice(html.lastIndexOf("<section", html.indexOf('data-page="2"')));
     // 題名の段（同意のある人は患者の段の前まで、同意の無い人は同意なしの段の前まで）
@@ -345,17 +404,17 @@ describe("裏の QR（T16 の QrBlock）", () => {
     return { html, head: back.slice(back.indexOf('class="head-row"'), end) };
   }
 
-  it("10 人とも、有効な QR は題名の段の中に一辺 18mm の四角だけで置き、表と裏の 2 頁のまま", async () => {
-    expect(OWN_QR_MM).toBe(18);
+  it("10 人とも、有効な QR は題名の段の中に一辺 24mm の四角だけで置き、表と裏の 2 頁のまま（11/3 確定の 6）", async () => {
+    expect(OWN_QR_MM).toBe(24);
     for (const id of ALL_IDS) {
       const qr = await activeQr(id);
       const { html, head } = paperWith(rowsOf(id), qr);
       expect(html.match(/<section class="paper/g), id).toHaveLength(2);
       expect([...html.matchAll(/data-page="(\d)"/g)].map((m) => m[1]), id).toEqual(["1", "2"]);
-      // 枠の代わりに QR。四角の外に余白・字を足さない（枠と同じ 18mm の場所だけを取る）
+      // 枠の代わりに QR。四角の外に余白・字を足さない（枠と同じ 24mm の場所だけを取る）
       expect(head, id).not.toContain('data-qr="placeholder"');
-      expect(head, id).toMatch(/<figure style="margin:0;padding:0;flex:none;width:18mm;height:18mm"[^>]*data-qr="code">/);
-      expect(head, id).toMatch(/<svg viewBox="0 0 (\d+) \1" style="display:block;width:18mm;height:18mm"/);
+      expect(head, id).toMatch(/<figure style="margin:0;padding:0;flex:none;width:24mm;height:24mm"[^>]*data-qr="code">/);
+      expect(head, id).toMatch(/<svg viewBox="0 0 (\d+) \1" style="display:block;width:24mm;height:24mm"/);
       expect(head, id).toContain('fill="#000"');
       expect(head, id).not.toContain("<figcaption");
       // 1 行と期限は題名の段の右の小さな字に（JST の日付）
@@ -374,7 +433,7 @@ describe("裏の QR（T16 の QrBlock）", () => {
     for (const w of ["降圧薬", "ワタナベ", "そらみ台"]) expect(html.slice(html.indexOf('data-page="2"')), w).not.toContain(w);
   });
 
-  it("QR が無いときは同じ 18mm の枠に状態（未作成・期限切れ）。1 行と期限は出さない", () => {
+  it("QR が無いときは同じ 24mm の枠に状態（未作成・期限切れ）。1 行と期限は出さない", () => {
     const cases: Array<[OwnQr | null, string]> = [
       [null, "未作成"],
       [{ status: "none", url: null, expiresAt: null }, "未作成"],
@@ -391,7 +450,7 @@ describe("裏の QR（T16 の QrBlock）", () => {
     }
   });
 
-  it("枠の CSS と QR の一辺が同じ 18mm", () => {
+  it("枠の CSS と QR の一辺が同じ 24mm", () => {
     const css = readFileSync(new URL("../../components/forms/own-paper.css", import.meta.url), "utf8");
     const frame = css.slice(css.indexOf(".paper .qr-frame {"), css.indexOf("}", css.indexOf(".paper .qr-frame {")));
     expect(frame).toContain(`width: ${OWN_QR_MM}mm;`);
