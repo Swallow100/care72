@@ -10,11 +10,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { PersonHit } from "@/lib/custody/search";
-import { MED_MAX, NOTE_MAX, SHELTER_MAX } from "@/lib/custody/forms";
+import { DEVICE_NAME_MAX, MED_MAX, NOTE_MAX, SHELTER_MAX } from "@/lib/custody/forms";
 import { CUSTODY_ERROR_LABELS, CUSTODY_LABELS } from "@/lib/custody/labels";
 import { CUSTODY_RECEIVE_API, CUSTODY_REGISTER_API, CUSTODY_SEARCH_API, CUSTODY_SHELTER_API } from "@/lib/custody/paths";
 import { DEVICE_KINDS, type DeviceKind } from "@/lib/db/types";
-import { DEVICE_LABELS } from "@/lib/labels";
+import { DEVICE_LABELS, INTAKE_LABELS } from "@/lib/labels";
 import { KANA_MAX, NAME_MAX } from "@/lib/office/forms";
 import { Button } from "@/components/ui/Button";
 import { AddPersonIcon, SearchIcon } from "@/components/ui/Icon";
@@ -281,7 +281,7 @@ function Hits({
   );
 }
 
-/** 台帳に無い人をその場で登録する。氏名・カナ・年齢か生年月日・薬・機器・連絡先 */
+/** 台帳に無い人をその場で登録する。氏名・カナ・年齢か生年月日・薬・機器（その他は名前。T64）・連絡先 */
 function RegisterPanel({ shelter }: { shelter: string }) {
   const router = useRouter();
   const [name, setName] = useState("");
@@ -290,6 +290,7 @@ function RegisterPanel({ shelter }: { shelter: string }) {
   const [birthDate, setBirthDate] = useState("");
   const [medications, setMedications] = useState("");
   const [devices, setDevices] = useState<DeviceKind[]>([]);
+  const [deviceName, setDeviceName] = useState("");
   const [relation, setRelation] = useState("");
   const [contactName, setContactName] = useState("");
   const [phone, setPhone] = useState("");
@@ -306,7 +307,8 @@ function RegisterPanel({ shelter }: { shelter: string }) {
       age,
       birthDate,
       medications,
-      devices,
+      // その他だけ名前を添える（ほかの種類はサーバーも名前を落とす）
+      devices: devices.map((kind) => (kind === "other" ? { kind, detail: deviceName } : { kind })),
       contact: { relation, name: contactName, phone },
       shelter,
     });
@@ -319,6 +321,9 @@ function RegisterPanel({ shelter }: { shelter: string }) {
   }
 
   const toggle = (d: DeviceKind) => setDevices((xs) => (xs.includes(d) ? xs.filter((x) => x !== d) : [...xs, d]));
+  // その他を選んで名前が空なら送らない（名前が無いと何か分からない。サーバーも「機器名 未入力」で断る）
+  const otherOn = devices.includes("other");
+  const deviceNameMissing = otherOn && deviceName.trim() === "";
 
   return (
     <form onSubmit={submit} className="grid grid-cols-2 gap-2 text-sm" data-form="register">
@@ -367,6 +372,20 @@ function RegisterPanel({ shelter }: { shelter: string }) {
             </label>
           ))}
         </div>
+        {otherOn && (
+          <label className="mt-1.5 flex flex-col gap-0.5">
+            <span className="text-muted">{`${DEVICE_LABELS.other} ${INTAKE_LABELS.deviceName}`}</span>
+            <input
+              type="text"
+              value={deviceName}
+              onChange={(e) => setDeviceName(e.target.value)}
+              maxLength={DEVICE_NAME_MAX}
+              required
+              className={INPUT}
+              data-field="device-name"
+            />
+          </label>
+        )}
       </fieldset>
       <fieldset className="col-span-2 grid grid-cols-[5rem_minmax(0,1fr)_minmax(0,1fr)] gap-2">
         <legend className="col-span-3 text-muted">{CUSTODY_LABELS.contact}</legend>
@@ -399,10 +418,17 @@ function RegisterPanel({ shelter }: { shelter: string }) {
         />
       </fieldset>
       <div className="col-span-2 flex items-center gap-3">
-        <Button type="submit" kind="main" icon={AddPersonIcon} disabled={busy || !shelter.trim()} data-pending={busy ? "" : undefined}>
+        <Button
+          type="submit"
+          kind="main"
+          icon={AddPersonIcon}
+          disabled={busy || !shelter.trim() || deviceNameMissing}
+          data-pending={busy ? "" : undefined}
+        >
           {busy ? CUSTODY_LABELS.sending : CUSTODY_LABELS.register}
         </Button>
         {!shelter.trim() && <span className="text-xs font-bold tone-check">{CUSTODY_ERROR_LABELS.shelter}</span>}
+        {deviceNameMissing && <span className="text-xs font-bold tone-check">{CUSTODY_ERROR_LABELS.device}</span>}
         {error && (
           <span role="alert" className="font-bold text-danger">
             {error}

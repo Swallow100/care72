@@ -352,7 +352,7 @@ describe("台帳に無い人（その場で登録）と引受", () => {
     expect(parseOnSite({ ...MATSUMOTO, shelter: "" }, TODAY)).toEqual({ ok: false, error: "shelter" });
     expect(parseOnSite({ ...MATSUMOTO, devices: ["oxygen", "x"] }, TODAY)).toEqual({ ok: false, error: "invalid" });
     const ok = parseOnSite({ ...MATSUMOTO, devices: ["oxygen"], contact: {} }, TODAY);
-    expect(ok.ok && ok.value).toMatchObject({ devices: ["oxygen"], contact: null, age: 80 });
+    expect(ok.ok && ok.value).toMatchObject({ devices: [{ kind: "oxygen" }], contact: null, age: 80 });
   });
 
   it("ケアマネが引き受けると自分の事業所・担当に移り、経過は「引受 山本」、事業所の経過に引受", async () => {
