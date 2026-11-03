@@ -4,11 +4,13 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { DisasterTable } from "../../components/list/DisasterTable.tsx";
-import { NarrowMarks } from "../../components/list/NarrowMarks.tsx";
+import { CaseloadTable } from "../../components/list/CaseloadTable.tsx";
+import { MedicalCell, NarrowMarks } from "../../components/list/NarrowMarks.tsx";
 import { StaffTable } from "../../components/staff/StaffTable.tsx";
 import { SEED_PEOPLE } from "../../seed/people.ts";
 import { toCaseloadRows } from "../caseload.ts";
 import type { StaffRow } from "../custody/board.ts";
+import { DEVICE_LABELS } from "../labels.ts";
 
 const people = SEED_PEOPLE.map((p) => ({ ...p.person, ledger: JSON.stringify(p.ledger) }));
 const clocks = SEED_PEOPLE.flatMap((p) => p.clocks.map((k) => ({ ...k, person_id: p.person.id })));
@@ -114,5 +116,71 @@ describe("氏名の下の医療の印（狭い幅だけ）", () => {
     expect(yamada.markItems.map((m) => m.label)).toEqual(["酸素", "抗凝固"]);
     expect(yamada.markItems[0].remaining).toMatch(/^\d+(h|分|日|週)$/);
     expect(rows.find((r) => r.id === "p-09")!.markItems).toEqual([]);
+  });
+});
+
+/** 広い幅（768px 以上）の医療の列の印の塊（1 人分）の中の文字。塊の無い行（「—」）は数えない */
+function medicalTexts(html: string): string[][] {
+  return [...html.matchAll(/<div class="[^"]*" data-medical-marks="[^"]*">(.*?)<\/div>/g)].map((m) =>
+    [...m[1].matchAll(/<span[^>]*>([^<]*)<\/span>/g)].map((s) => s[1]),
+  );
+}
+
+describe("担当一覧の 768px 以上の医療の列（受け持ちと同じ印。T56）", () => {
+  it("MedicalCell: 残りつき・残りの色は印の文字、時計の無い人は機器、どちらも無ければ「—」", () => {
+    const html = renderToStaticMarkup(
+      createElement(MedicalCell, {
+        items: [
+          { label: "酸素", tone: "urgent", remaining: "27分" },
+          { label: "抗凝固", tone: null, remaining: null },
+        ],
+      }),
+    );
+    expect(medicalTexts(html)).toEqual([["酸素 27分", "抗凝固"]]);
+    expect(html).toContain('data-tone="urgent"');
+    expect(html).toContain("flex-wrap");
+    expect(html).toContain("break-keep");
+    // 列の中なので md:hidden は付けない（列ごと hidden md:table-cell で出し分ける）
+    expect(html).not.toContain("md:hidden");
+    expect(medicalTexts(renderToStaticMarkup(createElement(MedicalCell, { items: [], fallback: ["在宅酸素"] })))).toEqual([["在宅酸素"]]);
+    const empty = renderToStaticMarkup(createElement(MedicalCell, { items: [] }));
+    expect(empty).toContain("—");
+    expect(empty).not.toContain("data-medical-marks");
+  });
+
+  it("発災時の表: 医療の列に今の残り（停電で走った酸素）。氏名の下の印と同じ文字", () => {
+    const rows = toCaseloadRows(people, clocks, contacts, "2026-11-05", {
+      situation: { now: LATER, disasterAt: AT, outageAt: AT, outageTowns: null },
+      signals: new Map(),
+    });
+    const html = renderToStaticMarkup(createElement(DisasterTable, { rows, sort: "state" }));
+    const wide = medicalTexts(html);
+    // 印のある人の数だけ列の塊があり、氏名の下（768 未満）と同じ文字
+    expect(wide).toEqual(narrowTexts(html));
+    const oxygen = rows.find((r) => r.id === "p-01")!.markItems.find((m) => m.label === "酸素")!;
+    expect(wide.flat()).toContain(`酸素 ${oxygen.remaining}`);
+    // 残りの無い「酸素」だけの印はもう無い（前は残りも色も無かった）
+    expect(wide.flat()).not.toContain("酸素");
+  });
+
+  it("平時の表も同じ（残りは時計の長さ）。768px 未満は氏名の下、768px 以上は列", () => {
+    const rows = toCaseloadRows(people, clocks, contacts, "2026-11-02");
+    const html = renderToStaticMarkup(createElement(CaseloadTable, { rows, sort: "tier" }));
+    const wide = medicalTexts(html);
+    expect(wide).toEqual(narrowTexts(html));
+    expect(wide).toHaveLength(rows.filter((r) => r.markItems.length > 0).length);
+    const yamada = rows.find((r) => r.id === "p-01")!;
+    expect(wide.flat()).toContain(`酸素 ${yamada.markItems[0].remaining}`);
+  });
+
+  it("時計の無い人（その場で登録した人）は台帳の機器を印に", () => {
+    const seed = SEED_PEOPLE[0];
+    const ledger = { ...seed.ledger, medical: { ...seed.ledger.medical, devices: [{ kind: "oxygen" as const, detail: "" }] } };
+    const rows = toCaseloadRows([{ ...seed.person, ledger: JSON.stringify(ledger) }], [], [], "2026-11-02");
+    expect(rows[0].markItems).toEqual([]);
+    expect(rows[0].devices).toEqual([DEVICE_LABELS.oxygen]);
+    const html = renderToStaticMarkup(createElement(CaseloadTable, { rows, sort: "tier" }));
+    expect(medicalTexts(html)).toEqual([[DEVICE_LABELS.oxygen]]);
+    expect(narrowTexts(html)).toEqual([[DEVICE_LABELS.oxygen]]);
   });
 });

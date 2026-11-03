@@ -5,14 +5,14 @@
 
 import Link from "next/link";
 import { StateTag, TONE_TEXT } from "@/components/person/parts";
-import { Mark, StateText } from "@/components/ui/Tag";
+import { StateText } from "@/components/ui/Tag";
 import { TABLE } from "@/components/ui/table";
 import { PLAN_TONES, rowLink, type CaseloadRow, type SortKey } from "@/lib/caseload";
 import { CARE_LEVEL_LABELS, COLOR_LABELS, PLAN_STATUS_LABELS, TIER_LABELS } from "@/lib/labels";
 import { DETAIL_LABELS } from "@/lib/list/labels";
 import { COLOR_TONES } from "@/lib/person";
 import { ExpandRow } from "./ExpandRow";
-import { NarrowMarks } from "./NarrowMarks";
+import { MedicalCell, NarrowMarks } from "./NarrowMarks";
 import { RowDetail, type ClassificationSlot, type HearingSlot } from "./RowDetail";
 import { SortHeader } from "./SortHeader";
 
@@ -20,7 +20,8 @@ const CELL = "bg-panel px-1.5 py-1.5 align-top";
 
 /**
  * 横に送らない。PC の幅（1024px 以上）は全部の列。狭い幅は列を省く: 640px 未満は最終連絡、768px 未満は医療・避難計画、
- * 1024px 未満は年齢・ハザード・支援者。状態・優先・氏名と理由・残りはいつも出す。768px 未満は医療の印を氏名の下に（T54）
+ * 1024px 未満は年齢・ハザード・支援者。状態・優先・氏名と理由・残りはいつも出す。768px 未満は医療の印を氏名の下に（T54）。
+ * 医療の印はどの幅でも時計の残りつき（768px 以上は医療の列に。T56）
  */
 const SM = "hidden sm:table-cell";
 const MD = "hidden md:table-cell";
@@ -118,7 +119,7 @@ function Cells({ row: r, sort, nameHref, nameMark, note }: { row: CaseloadRow; s
         {nameMark}
         <span className="ml-1 text-xs text-muted">{r.kana}</span>
         {note}
-        <NarrowMarks items={r.markItems} />
+        <NarrowMarks items={r.markItems} fallback={r.devices} />
         {t && (
           <div className={`mt-0.5 font-bold ${TONE_TEXT[COLOR_TONES[t.color]]}`} data-reason>
             {t.reason}
@@ -162,15 +163,8 @@ function Cells({ row: r, sort, nameHref, nameMark, note }: { row: CaseloadRow; s
         <div className="text-xs">{r.careLevel ? CARE_LEVEL_LABELS[r.careLevel] : "—"}</div>
       </td>
       <td className={`${CELL} ${MD}`}>
-        {r.marks.length === 0 ? (
-          <span className="text-muted">—</span>
-        ) : (
-          <div className="flex flex-wrap gap-1">
-            {r.marks.map((m) => (
-              <Mark key={m}>{m}</Mark>
-            ))}
-          </div>
-        )}
+        {/* 受け持ちの表と同じ印（時計のいちばん短い残りつき、残りの色は印の文字。T56） */}
+        <MedicalCell items={r.markItems} fallback={r.devices} />
       </td>
       <td className={`${CELL} ${LG}`}>
         {r.hazards.length === 0 ? (
