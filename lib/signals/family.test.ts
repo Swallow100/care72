@@ -369,6 +369,7 @@ describe("家族の画面に出す物", () => {
 describe("流れ（画面に触らない）", () => {
   function phone(result: Delivery | "throw" = "sent") {
     const sent: FamilySignalBody[] = [];
+    const answers: unknown[] = [];
     const states: FamilyState[] = [];
     let release: () => void = () => {};
     const gate = new Promise<void>((r) => (release = r));
@@ -381,14 +382,18 @@ describe("流れ（画面に触らない）", () => {
         if (result === "throw") throw new Error("通信");
         return result;
       },
+      sendAnswers: async (item) => {
+        answers.push(item);
+        return "sent";
+      },
       onChange: (s) => states.push(s),
     });
-    return { p, sent, states, release };
+    return { p, sent, answers, states, release };
   }
   const tick = () => new Promise((r) => setTimeout(r, 0));
 
-  it("1 回押せば送る（緑・赤・未知）。送っている間は押しても重ねない。答えたあとは「最初から」で上へ", async () => {
-    for (const c of ["green", "red", "unknown"] as const) {
+  it("1 回押せば送る（緑・未知）。送っている間は押しても重ねない。答えたあとは「最初から」で上へ", async () => {
+    for (const c of ["green", "unknown"] as const) {
       const { p, sent, states, release } = phone();
       p.answer(c);
       p.answer("green");
@@ -403,24 +408,59 @@ describe("流れ（画面に触らない）", () => {
     }
   });
 
+  it("無事じゃない: 押した時に送り、本人と同じ問い（主語は本人）を 1 画面 1 問。押すたびに答えを送る。本人だけの問いは無い（T49）", async () => {
+    const { p, sent, answers, release } = phone();
+    p.answer("red");
+    expect(sent).toHaveLength(1);
+    expect(p.state).toEqual({ step: "question", id: "injured", answers: {} });
+    p.choose("no");
+    p.choose("yes"); // いまは 家ですか
+    expect(p.state).toMatchObject({ step: "question", id: "floor" });
+    expect(answers.at(-1)).toEqual({
+      signalId: "00000000-0000-4000-8000-0000000000f1",
+      answers: { injured: { choice: "no", via: "press" }, atHome: { choice: "yes", via: "press" } },
+    });
+    const seen: string[] = [];
+    for (let i = 0; i < 30 && p.state.step === "question"; i++) {
+      seen.push(p.state.id);
+      p.skip();
+    }
+    expect(seen).not.toContain("contact");
+    expect(seen).not.toContain("request");
+    expect(seen).not.toContain("device"); // 山田さんの台帳の機器はここでは渡していない
+    expect(p.state).toEqual({ step: "sending", color: "red" });
+    release();
+    await tick();
+    expect(p.state).toEqual({ step: "done", color: "red", delivery: "sent" });
+    p.again();
+    expect(p.state).toEqual({ step: "top" });
+  });
+
   it("送れなければ「まだ とどいて いません」（端末に残す）。閉じたあとの結果は当てない", async () => {
     const a = phone("throw");
-    a.p.answer("red");
+    a.p.answer("green");
     a.release();
     await tick();
-    expect(a.p.state).toEqual({ step: "done", color: "red", delivery: "queued" });
+    expect(a.p.state).toEqual({ step: "done", color: "green", delivery: "queued" });
+
+    const r = phone("throw");
+    r.p.answer("red");
+    for (let i = 0; i < 30 && r.p.state.step === "question"; i++) r.p.skip();
+    r.release();
+    await tick();
+    expect(r.p.state).toEqual({ step: "done", color: "red", delivery: "queued" });
 
     const b = phone();
-    b.p.answer("red");
+    b.p.answer("green");
     b.p.dispose();
     b.release();
     await tick();
-    expect(b.p.state).toEqual({ step: "sending", color: "red" });
+    expect(b.p.state).toEqual({ step: "sending", color: "green" });
   });
 });
 
 describe("画面の静的な描画", () => {
-  const noop: FamilyActions = { answer() {}, again() {} };
+  const noop: FamilyActions = { answer() {}, choose() {}, skip() {}, again() {} };
   const text = (html: string) => html.replace(/<rt>[^<]*<\/rt>|<rp>[^<]*<\/rp>/g, "").replace(/<[^>]+>/g, "");
   const buttons = (html: string) => [...html.matchAll(/data-choice="([^"]+)"/g)].map((m) => m[1]);
 
@@ -474,6 +514,19 @@ describe("画面の静的な描画", () => {
       expect(text(html)).toContain("命が 危ないと 感じたら、すぐ 119番へ");
     }
     for (const c of ["green", "unknown"] as const) expect(view({ step: "sending", color: c }, screen)).not.toContain("data-emergency");
+  });
+
+  it("問い（T49）: 主語は続柄の呼び方「お母さんは」。選択肢・とばす・119 の 1 行。答えで 119 を出し分けない", async () => {
+    const screen = await screenOf(family());
+    const html = view({ step: "question", id: "canMove", answers: {} }, screen);
+    expect(text(html)).toBe("お母さんは 動けますか動ける動けないわからないとばす命が 危ないと 感じたら、すぐ 119番へ");
+    expect(buttons(html)).toEqual(["yes", "no", "unknown", "skip"]);
+    expect(text(view({ step: "question", id: "injured", answers: {} }, screen))).toContain("お母さんは けがを して いますか");
+    const after = view({ step: "question", id: "water", answers: { body: { choice: "breath", via: "press" } } }, screen);
+    expect(after.match(/data-emergency/g)).toHaveLength(1);
+    expect(after).not.toContain("phone-fill-");
+    // 山田さんの台帳には機器がある（酸素）
+    expect(screen.hasDevice).toBe(true);
   });
 
   it("ケアマネの電話の番号があれば tel: で押せる", async () => {

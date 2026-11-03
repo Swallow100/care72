@@ -2,7 +2,9 @@
 // どの画面も大きな字で、ボタンは 2 つか 3 つ。戻るは無い。説明文は無い。言葉は lib/signals/phrases.ts の定型だけ。
 // 本人の状態の判定（至急など）は出さない。赤を押したあとのどの画面（問い・定型文・録音・送る・終わり）にも 119 の 1 行（一般の案内）を
 // いちばん下に出す。状態（PhoneState）に録音の中身・分類（AI の出力）は無く、出す・出さないは赤の流れかどうかだけで決まる（T48）。
-// Fill・Choice・Emergency は家族・支援者のスマホ（FamilyView.tsx、T11）も使う。
+// Fill・Choice・Emergency・QuestionBody は家族・支援者のスマホ（FamilyView.tsx、T11）も使う。
+// 赤のあとの問い（T49）は lib/signals/questions.ts の表から 1 画面 1 問。選択肢（わからない を含む）と「とばす」。
+// 選択肢が 5 つ以上の問い（部位・部屋など）は 2 列に並べる。声の問い（20 秒押さないとき）は「AI が きいています」を上に出し、押してもよい。
 
 import type { ReactNode } from "react";
 import { EasyWords } from "@/components/forms/EasyText";
@@ -10,20 +12,15 @@ import { Loader72 } from "@/components/ui/Loader72";
 import { easy } from "@/lib/forms/easy-words";
 import type { WhereNow } from "@/lib/db/types";
 import type { PhoneState } from "@/lib/signals/phone";
-import {
-  AI_NOTICE,
-  emergencyWords,
-  PHONE_PHRASES,
-  RED_QUESTION_PHRASES,
-  RED_QUESTIONS,
-  WHERE_PHRASES,
-} from "@/lib/signals/phrases";
+import { AI_NOTICE, emergencyWords, PHONE_PHRASES, WHERE_PHRASES } from "@/lib/signals/phrases";
+import { questionOf, type QuestionId } from "@/lib/signals/questions";
 
 export type PhoneActions = {
   green(): void;
   red(): void;
   where(w: WhereNow): void;
-  answer(v: boolean): void;
+  answer(choice: string): void;
+  skip(): void;
   extend(): void;
   finish(): void;
   again(): void;
@@ -55,6 +52,66 @@ function Question({ m }: { m: string }) {
     <h1 className="px-1 pt-2 text-center text-[2rem] font-bold" role="status">
       <Words m={m} />
     </h1>
+  );
+}
+
+/** 2 列の選択肢（幅が半分なので横の余白を詰める。「わからない」が 1 行に入るように） */
+const BIG_GRID = BIG.replace("px-4 py-6", "px-1 py-4");
+
+/** 選択肢がこれより多い問いは 2 列に並べる */
+const GRID_OVER = 4;
+
+/**
+ * 赤のあとの 1 問（T49）: 問い・選択肢・とばす。lead は家族の画面の主語（「お母さんは」。本人は無し）。
+ * 問いと選択肢の言葉は lib/signals/questions.ts の表だけ
+ */
+export function QuestionBody({
+  id,
+  lead,
+  family = false,
+  onChoice,
+  onSkip,
+}: {
+  id: QuestionId;
+  lead?: ReactNode;
+  family?: boolean;
+  onChoice: (choice: string) => void;
+  onSkip: () => void;
+}) {
+  const q = questionOf(id);
+  const grid = q.choices.length > GRID_OVER;
+  return (
+    <>
+      <h1 className="px-1 pt-2 text-center text-[2rem] font-bold" role="status" data-question-id={id}>
+        {lead}
+        <Words m={family ? (q.familyEasy ?? q.easy) : q.easy} />
+      </h1>
+      <div className={grid ? "grid flex-1 grid-cols-2 gap-3" : "flex flex-1 flex-col gap-3"}>
+        {q.choices.map((c) => (
+          <button
+            key={c.id}
+            type="button"
+            onClick={() => onChoice(c.id)}
+            className={`${grid ? BIG_GRID : BIG} bg-panel text-ink ${grid ? "text-[1.75rem]" : "text-[2.25rem]"}`}
+            data-press
+            data-choice={c.id}
+          >
+            <span>
+              <Words m={c.easy} />
+            </span>
+          </button>
+        ))}
+      </div>
+      <button
+        type="button"
+        onClick={onSkip}
+        className="w-full rounded-xl bg-panel px-4 py-3 text-center text-2xl text-muted"
+        data-press
+        data-choice="skip"
+      >
+        <Words m={PHONE_PHRASES.skip} />
+      </button>
+    </>
   );
 }
 
@@ -147,22 +204,15 @@ export function PhoneView({ state, nowMs, on }: { state: PhoneState; nowMs: numb
           ))}
         </Fill>
       );
-    case "question": {
-      const q = RED_QUESTION_PHRASES[RED_QUESTIONS[state.index]];
+    case "question":
       return (
-        <Fill step={`question-${state.index}`}>
-          {state.index === 0 && <AiNotice />}
-          <Question m={q.q} />
-          <Choice onClick={() => on.answer(true)} value="yes">
-            <Words m={q.yes} />
-          </Choice>
-          <Choice onClick={() => on.answer(false)} value="no">
-            <Words m={q.no} />
-          </Choice>
+        <Fill step={`question-${state.id}`}>
+          {state.first && <AiNotice />}
+          {state.voice !== null && <AiListening />}
+          <QuestionBody id={state.id} onChoice={on.answer} onSkip={on.skip} />
           <Emergency />
         </Fill>
       );
-    }
     case "prompt":
       return (
         <Fill step="prompt">

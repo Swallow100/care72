@@ -8,9 +8,14 @@
 
 import type { D1Database } from "@cloudflare/workers-types";
 import type { Principal } from "../auth/principal.ts";
+import { roleAllows } from "../auth/roles.ts";
 import { FamilySignalBodySchema, SignalBodySchema, UUID } from "./body.ts";
+import { MEMO_TEXT_MAX } from "./hearing.ts";
+import { HEARING_FIELDS, parseAnswers, type HearingField } from "./questions.ts";
 import {
   attachRecording,
+  saveAnswers,
+  saveMemoEdit,
   MAX_RECORDING_BYTES,
   MAX_RECORDING_SEC,
   MAX_TRANSCRIPT_LENGTH,
@@ -128,4 +133,62 @@ export async function recordingPost(
     hooks.afterAttach?.({ officeId: scope.officeId, personId: scope.personId, signalId, durationSec: duration });
   }
   return Response.json({ ok: true, duplicate: r.duplicate, recorded: r.key !== null }, { headers: NO_STORE });
+}
+
+// ---------- 赤のあとの聞き取り（T49） ----------
+
+/** 答えの欄の数の上限（問いの数より多い物は形の違い） */
+const MAX_ANSWER_KEYS = 32;
+
+/**
+ * 聞き取りの答えの POST（JSON { answers }）。押すたびに、それまでの答えの全部を送る（後勝ち）。本人・家族のスマホの役だけで、
+ * 書けるのは自分が送った赤の信号だけ（ほかの人の信号・緑・家族が本人の信号に、は 404・400）。平時は 409
+ */
+export async function answersPost(
+  db: D1Database,
+  p: Principal | null,
+  signalId: string,
+  json: unknown,
+): Promise<Response> {
+  const scope = signalScope(p, "save");
+  if (!scope) return refuse(p);
+  if (!UUID.test(signalId)) return signalError("not_found");
+  const raw = json && typeof json === "object" ? (json as { answers?: unknown }).answers : undefined;
+  if (!raw || typeof raw !== "object" || Object.keys(raw).length > MAX_ANSWER_KEYS) return signalError("invalid");
+  const answers = parseAnswers(raw);
+  if (!answers) return signalError("invalid");
+  const r = await saveAnswers(db, scope, signalId, answers);
+  if (!r.ok) return signalError(r.error);
+  return Response.json({ ok: true, changed: r.changed }, { headers: NO_STORE });
+}
+
+/**
+ * 聞き取りの欄の直しの POST（JSON { field, text }。text が null か空なら空欄にする）。ケアマネの役だけ（本人・家族・医療班・行政は 403）。
+ * 事業所の外の信号・訓練の信号は 404
+ */
+export async function memoEditPost(
+  db: D1Database,
+  p: Principal | null,
+  signalId: string,
+  json: unknown,
+  now: string,
+): Promise<Response> {
+  if (!p) return signalError("login_required");
+  if (p.role !== "care_manager" || !p.office || !roleAllows(p.role, "save")) return signalError("forbidden");
+  if (!/^[A-Za-z0-9_-]{1,64}$/.test(signalId)) return signalError("not_found");
+  const body = json && typeof json === "object" ? (json as { field?: unknown; text?: unknown }) : null;
+  if (!body || typeof body.field !== "string" || !(HEARING_FIELDS as readonly string[]).includes(body.field)) {
+    return signalError("invalid");
+  }
+  if (body.text !== null && (typeof body.text !== "string" || body.text.length > MEMO_TEXT_MAX * 2)) return signalError("invalid");
+  const r = await saveMemoEdit(
+    db,
+    { officeId: p.office.id, accountId: p.accountId },
+    signalId,
+    body.field as HearingField,
+    body.text,
+    now,
+  );
+  if (!r.ok) return signalError(r.error);
+  return Response.json({ ok: true, changed: r.changed, memo: r.memo }, { headers: NO_STORE });
 }

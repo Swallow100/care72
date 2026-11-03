@@ -10,6 +10,7 @@
 // - 画面（DOM）に触らない。保存の場所と送る道は渡す（テストは偽物）
 
 import type { AnySignalBody } from "./body.ts";
+import type { Answers } from "./questions.ts";
 
 export const OUTBOX_KEY = "care72.phone.outbox.v1";
 
@@ -29,19 +30,26 @@ export type AttachItem = {
   recordedAt: string;
 };
 
+/** 赤のあとの聞き取りの答え（T49）。それまでの答えの全部（後勝ち。端末に残っている古い答えは新しい答えで置き換える） */
+export type AnswersItem = { signalId: string; answers: Answers };
+
 export type OutboxItem =
   | { kind: "signal"; owner: string; body: AnySignalBody }
-  | ({ kind: "attach"; owner: string } & AttachItem);
+  | ({ kind: "attach"; owner: string } & AttachItem)
+  | ({ kind: "answers"; owner: string } & AnswersItem);
 
 /** 送る道。sentAt は送るたびに今 */
 export type Transport = {
   signal(body: AnySignalBody): Promise<SendOutcome>;
   attach(item: AttachItem & { sentAt: string }, audio: Blob | null): Promise<SendOutcome>;
+  answers(item: AnswersItem): Promise<SendOutcome>;
 };
 
 export type Outbox = {
   sendSignal(body: AnySignalBody): Promise<Delivery>;
   sendRecording(item: AttachItem, audio: Blob | null): Promise<Delivery>;
+  /** 聞き取りの答え（T49）。同じ信号の前の答えが残っていれば置き換える */
+  sendAnswers(item: AnswersItem): Promise<Delivery>;
   /** 残っている自分の物を順に送る。前の物が送れなければそこで止める */
   flush(): Promise<void>;
   /** 残っている自分の物の数 */
@@ -53,6 +61,7 @@ function isItem(v: unknown): v is OutboxItem {
   const o = v as Record<string, unknown>;
   if (typeof o.owner !== "string") return false;
   if (o.kind === "signal") return !!o.body && typeof (o.body as { id?: unknown }).id === "string";
+  if (o.kind === "answers") return typeof o.signalId === "string" && !!o.answers && typeof o.answers === "object";
   return o.kind === "attach" && typeof o.signalId === "string" && typeof o.recordedAt === "string";
 }
 
@@ -76,7 +85,7 @@ function writeOutbox(storage: StorageLike | null, items: OutboxItem[]): void {
   }
 }
 
-const keyOf = (x: OutboxItem) => (x.kind === "signal" ? `signal:${x.body.id}` : `attach:${x.signalId}`);
+const keyOf = (x: OutboxItem) => (x.kind === "signal" ? `signal:${x.body.id}` : `${x.kind}:${x.signalId}`);
 
 export function createOutbox(opts: {
   storage: StorageLike | null;
@@ -98,8 +107,9 @@ export function createOutbox(opts: {
     writeOutbox(storage, items);
   };
   const add = (item: OutboxItem) => save([...items.filter((x) => keyOf(x) !== keyOf(item)), item]);
+  // 送った物そのものを消す（送っている間に同じ鍵の新しい答えが足されたら、新しい方は残す）
   const remove = (item: OutboxItem) => {
-    save(items.filter((x) => keyOf(x) !== keyOf(item)));
+    save(items.filter((x) => x !== item));
     if (item.kind === "attach") audios.delete(item.signalId);
   };
   const own = () => items.filter((x) => x.owner === owner);
@@ -107,6 +117,7 @@ export function createOutbox(opts: {
   async function send(item: OutboxItem): Promise<SendOutcome> {
     try {
       if (item.kind === "signal") return await transport.signal({ ...item.body, sentAt: now() });
+      if (item.kind === "answers") return await transport.answers({ signalId: item.signalId, answers: item.answers });
       const audio = audios.get(item.signalId) ?? null;
       if (!audio && !item.transcript?.trim()) return "drop";
       const { signalId, transcript, durationSec, recordedAt } = item;
@@ -148,6 +159,7 @@ export function createOutbox(opts: {
       if (audio) audios.set(attach.signalId, audio);
       return enqueueAndSend({ kind: "attach", owner, ...attach });
     },
+    sendAnswers: (item) => enqueueAndSend({ kind: "answers", owner, ...item }),
     flush,
     pending: () => own().length,
   };
@@ -163,6 +175,8 @@ export function outcomeOf(status: number): SendOutcome {
 export const SIGNALS_PATH = "/api/signals";
 export const RECORDINGS_PATH = "/api/recordings";
 export const VOICE_PATH = "/api/signals/voice";
+/** 聞き取りの答えの送り先（T49） */
+export const answersPath = (signalId: string) => `/api/signals/${encodeURIComponent(signalId)}/answers`;
 
 /** fetch で送る道。通信の失敗は投げる（outbox が retry として受ける） */
 export function fetchTransport(fetchImpl: typeof fetch = (...a) => fetch(...a)): Transport {
@@ -185,6 +199,15 @@ export function fetchTransport(fetchImpl: typeof fetch = (...a) => fetch(...a)):
       if (item.durationSec !== null) form.set("durationSec", String(item.durationSec));
       if (audio) form.set("audio", audio, "recording");
       const res = await fetchImpl(RECORDINGS_PATH, { method: "POST", body: form, credentials: "same-origin" });
+      return outcomeOf(res.status);
+    },
+    async answers(item) {
+      const res = await fetchImpl(answersPath(item.signalId), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ answers: item.answers }),
+        credentials: "same-origin",
+      });
       return outcomeOf(res.status);
     },
   };

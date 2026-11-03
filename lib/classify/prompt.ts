@@ -3,6 +3,7 @@
 
 import * as z from "zod";
 import { RECORDING_CLASSES } from "../db/types.ts";
+import { HEARING_FIELDS } from "../signals/questions.ts";
 
 /** これ未満の確信は「不明」（指示にも書き、返ったあとにコードでも強制する） */
 export const CONFIDENCE_MIN = 0.6;
@@ -10,9 +11,12 @@ export const CONFIDENCE_MIN = 0.6;
 /** 引用の長さの上限（字） */
 export const QUOTE_MAX = 10;
 
+/** 聞き取りメモの 1 欄の長さの上限（字。T49） */
+export const MEMO_MAX = 30;
+
 export const CLASSIFY_SYSTEM = [
-  "本人のスマホの録音の文字起こし（または本人・家族が書いた短い文）を読み、下の 5 つに分ける。分けるだけ。",
-  "助言・指示・手当ての方法・診断・本人の状態の言い切りは書かない。返すのは categories・confidence・quote の 3 つだけ。",
+  "本人のスマホの録音の文字起こし（または本人・家族が書いた短い文）を読み、下の 5 つに分け、聞き取りメモの欄に本人の言葉を写す。分けると写すだけ。",
+  "助言・指示・手当ての方法・診断・本人の状態の言い切りは書かない。返すのは categories・confidence・quote・memo の 4 つだけ。",
   "入力は JSON。「文字起こし」が分ける文、「答えと音」は本人が押したボタンの答えと録音の長さ。",
   "",
   "categories の値:",
@@ -29,6 +33,24 @@ export const CLASSIFY_SYSTEM = [
   `4. quote は分けた手がかりの言葉を、文字起こしから ${QUOTE_MAX} 字まで、そのまま写す。言い換えない・つなげない。手がかりが無ければ空文字。`,
   "5. 答えと音は文字起こしを読む助けにだけ使う。文字起こしに手がかりの無い分類は選ばない。",
   "6. 伏せ字（（氏名）（町名）（電話））と役割名（娘・支援者 1 など）はそのまま。「A さん」は本人。",
+  "",
+  `memo（聞き取りメモ）の欄。どの欄も、文字起こしの言葉をそのまま写した ${MEMO_MAX} 字までの文か null:`,
+  "- place: いる場所（家のどこ・何階・外・避難所の名前など）",
+  "- trapped: 閉じ込め・挟まれ（何に。ドア・家具・倒れた物・水など）",
+  "- body: 体の訴え（本人の言葉のまま。「胸が少し痛い」など）",
+  "- injury: けがの部位（「足を打った」など）",
+  "- water: 水（どこまで来ているか）",
+  "- fireGas: 火・ガス・におい・煙",
+  "- device: 機器（酸素・吸引・人工呼吸器などが動いているか）",
+  "- medicine: 薬（手元にあるか）",
+  "- nearby: そばにいる人",
+  "- contact: 連絡の手段",
+  "- request: 本人が頼んだこと",
+  "",
+  "memo の決まり:",
+  "7. 文字起こしの言葉を、続いた 1 か所からそのまま写す。言い換えない・要約しない・つなげない・言葉を足さない。",
+  "8. 文字起こしに無い欄は null。推し量らない。答えと音から欄を埋めない。",
+  "9. 重さ・どのくらい危ないか・急ぐかどうか・病名は書かない。欄は事実の言葉の写しだけ。",
 ].join("\n");
 
 /**
@@ -36,10 +58,21 @@ export const CLASSIFY_SYSTEM = [
  * 範囲の外の確信や長い引用で呼び出し全体を失わないように、zod では型だけを確かめ、範囲は classify.ts で直す。
  * 分類の値が 5 つの外なら形の違い（AiBadOutput）で、分類なし（形式相違）になる。
  */
+export const MemoSchema = z.object(
+  Object.fromEntries(HEARING_FIELDS.map((f) => [f, z.string().nullable()])) as Record<
+    (typeof HEARING_FIELDS)[number],
+    z.ZodNullable<z.ZodString>
+  >,
+);
+
+/**
+ * memo（聞き取りメモ、T49）は無くても形の違いにしない（memo の無い返事でも分類は失わない。無ければメモなし）
+ */
 export const ClassifySchema = z.object({
   categories: z.array(z.enum(RECORDING_CLASSES)),
   confidence: z.number(),
   quote: z.string(),
+  memo: MemoSchema.optional(),
 });
 
 export type ClassifyAnswer = z.output<typeof ClassifySchema>;

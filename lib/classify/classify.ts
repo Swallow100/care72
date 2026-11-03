@@ -14,7 +14,8 @@ import type { RedAnswers } from "../signals/body.ts";
 import { ANSWER_LABELS } from "../signals/labels.ts";
 import { RED_QUESTIONS } from "../signals/phrases.ts";
 import { QUESTION_NAMES } from "./labels.ts";
-import { CLASSIFY_SYSTEM, ClassifySchema, CONFIDENCE_MIN, QUOTE_MAX, type ClassifyAnswer } from "./prompt.ts";
+import { HEARING_FIELDS, type HearingField } from "../signals/questions.ts";
+import { CLASSIFY_SYSTEM, ClassifySchema, CONFIDENCE_MIN, MEMO_MAX, QUOTE_MAX, type ClassifyAnswer } from "./prompt.ts";
 
 /** 音の特徴（端末の MediaRecorder から取れれば）。無音の割合は 0〜1 */
 export type AudioFeatures = { durationSec: number | null; silenceRatio: number | null };
@@ -43,6 +44,11 @@ export type Classification = {
   confidence: number;
   /** 文字起こし（伏せた文）からの引用。10 字まで、無ければ空文字 */
   quote: string;
+  /**
+   * 聞き取りメモ（T49）。欄ごとに文字起こし（伏せた文）からそのまま写した 30 字まで、無ければ null。
+   * 色と連絡の順に使わない（lib/triage の入力に無い）。押した答えのある欄は画面で人の答えが先（lib/signals/hearing.ts）
+   */
+  memo: Record<HearingField, string | null>;
 };
 
 export type ClassifyResult =
@@ -97,13 +103,29 @@ export function quoteOf(raw: string, text: string): string {
   return Array.from(q).slice(0, QUOTE_MAX).join("");
 }
 
+/**
+ * 聞き取りメモの 1 欄: 伏せた文字起こしに無ければ捨てる（言い換え・作った言葉を出さない）。あれば 30 字に切る。
+ * 確信が低くても写しは本人の言葉なので残す（分類の「不明」とは別）
+ */
+export function memoTextOf(raw: string | null | undefined, text: string): string | null {
+  if (typeof raw !== "string") return null;
+  const q = stripBrackets(raw.trim()).trim();
+  if (!q || !text.includes(q)) return null;
+  return Array.from(q).slice(0, MEMO_MAX).join("");
+}
+
+/** 聞き取りメモを決まりに合わせる。memo の無い返事は全部 null */
+export function normalizeMemo(memo: ClassifyAnswer["memo"], text: string): Record<HearingField, string | null> {
+  return Object.fromEntries(HEARING_FIELDS.map((f) => [f, memoTextOf(memo?.[f], text)])) as Record<HearingField, string | null>;
+}
+
 /** Claude の返事を決まりに合わせる: 確信を 0〜1 に、0.6 未満と空は不明、不明はほかと一緒にしない、並びは 5 つの順 */
 export function normalizeClassification(answer: ClassifyAnswer, text: string): Classification {
   const confidence = Math.min(Math.max(answer.confidence, 0), 1);
   const picked = new Set(answer.categories);
   let categories: RecordingClass[] = RECORDING_CLASSES.filter((c) => c !== "unknown" && picked.has(c));
   if (categories.length === 0 || confidence < CONFIDENCE_MIN) categories = ["unknown"];
-  return { categories, confidence, quote: quoteOf(answer.quote, text) };
+  return { categories, confidence, quote: quoteOf(answer.quote, text), memo: normalizeMemo(answer.memo, text) };
 }
 
 /** AI の層の失敗を分類なしの理由に。知らない失敗（仮名化を通っていない入力など）は null で、呼ぶ側に投げ直させる */

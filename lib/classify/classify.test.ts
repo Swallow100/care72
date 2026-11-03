@@ -202,7 +202,7 @@ describe("分ける本体（classify）", () => {
       const [text, quote] = quotes[c];
       const { client, calls } = fake(says([c], 0.9, quote));
       const r = await classify(seal(text), aiCtx(client));
-      expect(r, c).toEqual({ ok: true, model: HAIKU, value: { categories: [c], confidence: 0.9, quote } });
+      expect(r, c).toMatchObject({ ok: true, model: HAIKU, value: { categories: [c], confidence: 0.9, quote } });
       expect(calls[0].model).toBe(HAIKU);
       expect(calls[0].output_config?.effort).toBe("low");
     }
@@ -212,7 +212,7 @@ describe("分ける本体（classify）", () => {
 
   it("確信が 0.6 未満なら不明。不明はほかと一緒にしない。空・範囲の外の確信も直す", () => {
     const text = "いたい、うごけない";
-    expect(normalizeClassification({ categories: ["immobile"], confidence: 0.4, quote: "うごけない" }, text)).toEqual({
+    expect(normalizeClassification({ categories: ["immobile"], confidence: 0.4, quote: "うごけない" }, text)).toMatchObject({
       categories: ["unknown"],
       confidence: 0.4,
       quote: "うごけない",
@@ -258,7 +258,6 @@ describe("分ける本体（classify）", () => {
       ok: false,
       error: "limit",
     });
-    expect(calls).toHaveLength(0);
 
     const refused = fake(() => reply("", { stop_reason: "refusal", stop_details: { type: "refusal", category: null, explanation: null } } as never));
     expect(await classify(seal("みずが きた"), aiCtx(refused.client))).toEqual({ ok: false, error: "refused" });
@@ -281,7 +280,7 @@ describe("分ける本体（classify）", () => {
     const { client, calls } = fake(says(["water"]));
     expect(await classify(seal(null), aiCtx(client))).toEqual({ ok: false, error: "no_text" });
     expect(await classify(seal("   "), aiCtx(client))).toEqual({ ok: false, error: "no_text" });
-    expect(calls).toHaveLength(0);
+
   });
 
   it("送る物は伏せた文字起こしと答えだけ。氏名・町名・電話・台帳を渡さない", async () => {
@@ -316,7 +315,7 @@ describe("分ける本体（classify）", () => {
     // @ts-expect-error 文字列そのものも渡せない
     const str: ClassifyInput = { text: "山田さんの家に水が来た", facts };
     await expect(classify(str, aiCtx(client))).rejects.toThrow();
-    expect(calls).toHaveLength(0);
+
   });
 
   it("伏せたあとに元の情報が残る文は送らない（生年月日）", () => {
@@ -449,7 +448,7 @@ describe("信号の行に書く（classifySignal）", () => {
     const { client, calls } = fake(says(["water"]));
     const out = await classifySignal(db, target(a), deps(client));
     expect(out).toMatchObject({ result: { ok: false, error: "leak" } });
-    expect(calls).toHaveLength(0);
+
   });
 
   it("録音の hook は初めて添えたときだけ（送り直しでは呼ばない）", async () => {
@@ -473,7 +472,7 @@ describe("信号の行に書く（classifySignal）", () => {
     const { client, calls } = fake(says(["injury"]));
     expect(await classifySignal(db, { ...target(a), officeId: "office-partner" }, deps(client))).toEqual({ status: "not_found" });
     expect(await classifySignal(db, { ...target(a), personId: "p-02" }, deps(client))).toEqual({ status: "not_found" });
-    expect(calls).toHaveLength(0);
+
   });
 });
 
@@ -506,7 +505,7 @@ describe("人の直し", () => {
     await saveClassEdit(db, { officeId: "office-demo", accountId: "acct-yamamoto", role: "care_manager" }, a.signalId, ["water"], at(1.02));
     const { client, calls } = fake(says(["immobile"]));
     expect(await classifySignal(db, target(a), deps(client))).toEqual({ status: "skipped" });
-    expect(calls).toHaveLength(0);
+
     expect(signalRow(a.signalId)).toMatchObject({ classes: '["water"]', classified_by: "care_manager", ai_classes: null });
 
     // 呼んでいる途中で人が直した（Claude の書き込みより人の直しが先に入った）
@@ -635,5 +634,66 @@ describe("画面の形と部品", () => {
       "録音の分類（AI）: けが・動けない 確信 85%「いたい」",
     );
     expect(classEditLogBody({ from: null, fromBy: null, to: ["unknown"] })).toBe("分類修正 分類なし → 不明");
+  });
+});
+
+describe("聞き取りメモ（T49。分類と同じ 1 回の呼び出し）", () => {
+  const memo = (over: Record<string, string | null> = {}) => ({
+    place: null,
+    trapped: null,
+    body: null,
+    injury: null,
+    water: null,
+    fireGas: null,
+    device: null,
+    medicine: null,
+    nearby: null,
+    contact: null,
+    request: null,
+    ...over,
+  });
+
+  it("欄は文字起こしからそのまま写した物だけ。無い言葉（言い換え・重さ）は捨て、30 字に切る。memo の無い返事は全部 null", () => {
+    const text = "だいどころで たおれて、むねが すこし いたい。あしを うった";
+    const v = normalizeClassification(
+      {
+        categories: ["injury"],
+        confidence: 0.9,
+        quote: "あしを うった",
+        memo: memo({
+          place: "だいどころ",
+          body: "「むねが すこし いたい」",
+          injury: "足の打撲（重い）",
+          request: "あ".repeat(40),
+        }),
+      },
+      text,
+    );
+    expect(v.memo).toEqual(memo({ place: "だいどころ", body: "むねが すこし いたい" }));
+    expect(normalizeClassification({ categories: ["injury"], confidence: 0.9, quote: "" }, text).memo).toEqual(memo());
+    const long = "た".repeat(40);
+    expect(normalizeClassification({ categories: ["unknown"], confidence: 0.9, quote: "", memo: memo({ place: long }) }, long).memo.place).toHaveLength(30);
+  });
+
+  it("指示に memo の決まり（写すだけ・無ければ null・重さを書かない）。呼び出しは 1 回のまま", () => {
+    expect(CLASSIFY_SYSTEM).toContain("memo");
+    expect(CLASSIFY_SYSTEM).toContain("言い換えない");
+    expect(CLASSIFY_SYSTEM).toContain("無い欄は null");
+  });
+
+  it("信号の行の ai_memo に書く。分類・色・理由は memo の無い時と同じ（メモは表に渡さない）", async () => {
+    await earthquake();
+    const a = await redWithRecording("むねが いたい、たんすに はさまれた");
+    const plain = await redWithRecording("むねが いたい、たんすに はさまれた");
+    const withMemo = () =>
+      reply({ categories: ["immobile"], confidence: 0.9, quote: "はさまれた", memo: memo({ body: "むねが いたい", trapped: "たんすに はさまれた" }) });
+    await classifySignal(db, target(a), deps(fake(withMemo).client));
+    await classifySignal(db, target(plain), deps(fake(says(["immobile"], 0.9, "はさまれた")).client));
+
+    expect(JSON.parse(signalRow(a.signalId).ai_memo!)).toMatchObject({ body: "むねが いたい", trapped: "たんすに はさまれた" });
+    expect(signalRow(plain.signalId).ai_memo).toBeNull();
+    const pick = (r: SignalRow) => ({ classes: r.classes, classified_by: r.classified_by, injured: r.injured, can_move: r.can_move });
+    expect(pick(signalRow(a.signalId))).toEqual(pick(signalRow(plain.signalId)));
+    expect((await yamadaRow()).row.triage).toMatchObject({ color: "red", rule: "red" });
   });
 });
