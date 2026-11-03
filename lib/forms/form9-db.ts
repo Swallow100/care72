@@ -168,7 +168,7 @@ export async function loadForm9(
       db
         .prepare(
           `SELECT person_id, kind, author_role, body, payload, occurred_at FROM timeline_entries
-            WHERE kind IN (${ENTRY_KINDS_SQL}) AND person_id IN (${mine}) ORDER BY occurred_at, created_at, id`,
+            WHERE kind IN (${ENTRY_KINDS_SQL}) AND retracted_at IS NULL AND person_id IN (${mine}) ORDER BY occurred_at, created_at, id`,
         )
         .bind(office.id),
     );

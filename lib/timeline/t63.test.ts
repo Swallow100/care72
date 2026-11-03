@@ -5,17 +5,29 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { Timeline } from "@/components/person/Timeline";
 import { seedStatements } from "../../seed/sql.ts";
 import type { Principal } from "../auth/principal.ts";
+import { loadCaseload } from "../caseload.ts";
+import { scopeOfRows } from "../consent/scope.ts";
 import { staffActor } from "../custody/actor.ts";
 import { receive, release } from "../custody/store.ts";
 import { d1FromSqlite, migratedSqlite } from "../db/test-d1.ts";
+import { saveDisasterInfo, switchDisasterMode } from "../disaster/db.ts";
+import { disasterScope } from "../disaster/scope.ts";
+import { loadForm9 } from "../forms/form9-db.ts";
 import { CALL_SOURCE } from "../list/calls.ts";
 import { callPost } from "../list/http.ts";
+import { loadPersonPage, toPersonView, type TimelineItem } from "../person.ts";
+import { familyHistory, familyWriterOf } from "../signals/family.ts";
 import { RETRACT_NOTE_MAX } from "./paths.ts";
 import { CALL_PAYLOAD_SOURCE, canRetract, parseRetract, retractableRow, retractTimeline, retractTimelineRequest } from "./retract.ts";
 import { writeTimelineRequest } from "./write.ts";
+
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: () => {}, push: () => {} }) }));
 
 let sqlite: DatabaseSync;
 let db: ReturnType<typeof d1FromSqlite>;
@@ -277,6 +289,137 @@ describe("撤回できる人", () => {
     expect(canRetract(medical(), row)).toBe(true);
     expect(canRetract(yamamoto(), row)).toBe(false);
     expect(canRetract(self(), row)).toBe(false);
+  });
+});
+
+/** 浸水と停電（2026-11-05 18:00 JST）。発災は -2 時間 */
+const FLOOD = Date.parse("2026-11-05T09:00:00.000Z");
+const hour = (h: number) => new Date(FLOOD + h * 3_600_000).toISOString();
+const SCOPE = { officeId: "office-demo", careManagerId: "acct-yamamoto" };
+
+async function heavyRain() {
+  const scope = disasterScope(yamamoto())!;
+  expect(await switchDisasterMode(db, scope, { kind: "heavy_rain", version: 0, at: hour(-2) })).toEqual({ ok: true, changed: true });
+  expect(
+    await saveDisasterInfo(db, scope, {
+      version: 1,
+      at: hour(0),
+      info: { startedAt: hour(-2), outage: { scope: "office", towns: [], startedAt: hour(0) }, alertLevel: 4, water: null, road: null },
+    }),
+  ).toEqual({ ok: true, changed: true });
+}
+
+/** 本人のページの経過（単独のページの形: 範囲と見ている人を渡す） */
+async function timelineOf(p: Principal, personId = "p-01", viewer: Principal | null = p): Promise<TimelineItem[]> {
+  const rows = (await loadPersonPage(db, p, personId))!;
+  const v = toPersonView(rows, { today: "2026-11-03", scope: scopeOfRows(p.role, rows), ...(viewer ? { viewer } : {}) });
+  return v.sections.find((s) => s.id === "timeline")!.blocks.flatMap((b) => (b.type === "timeline" ? b.items : []));
+}
+
+/** 描いた経過から 1 行（data-entry が id の li） */
+function liOf(html: string, id: string): string {
+  const start = html.indexOf(`data-entry="${id}"`);
+  expect(start).toBeGreaterThan(-1);
+  return html.slice(html.lastIndexOf("<li", start), html.indexOf("</li>", start) + 5);
+}
+
+describe("読む側: 見せる所（本人のページ）", () => {
+  it("撤回した行は元の時刻の所に残り、誰が・いつ・理由が付く。撤回できる行にだけ retractable", async () => {
+    const check = await write(yamamoto(), "safety_check");
+    const note = await write(yamamoto(), "note", "避難所 打ち違い");
+    const order = (await timelineOf(yamamoto())).map((t) => t.id);
+    expect((await retract(yamamoto(), { id: note, note: "人違い" })).status).toBe(200);
+    const items = await timelineOf(yamamoto());
+    // 並びは元の時刻のまま（撤回の時刻で動かない）
+    expect(items.map((t) => t.id)).toEqual(order);
+    const n = items.find((t) => t.id === note)!;
+    expect(n).toMatchObject({ kind: "記録", body: "避難所 打ち違い", at: AT, retracted: { who: "山本", when: "11/3 22:10", note: "人違い" } });
+    expect(n.retractable).toBeUndefined();
+    expect(items.find((t) => t.id === check)).toMatchObject({ retractable: true });
+    expect(items.find((t) => t.id === check)!.retracted).toBeUndefined();
+    // 種の表から作った行（入力・同意）は撤回できない
+    expect(items.filter((t) => t.derived).every((t) => !t.retractable)).toBe(true);
+    // 見ている人を渡さない画面（担当一覧の右の面）は撤回のボタンを出さない。撤回した印は出す
+    const panel = await timelineOf(yamamoto(), "p-01", null);
+    expect(panel.some((t) => t.retractable)).toBe(false);
+    expect(panel.find((t) => t.id === note)!.retracted).toBeDefined();
+  });
+
+  it("理由なしの撤回は「撤回 名前 時刻」だけ。審査員の撤回は「審査員」", async () => {
+    const id = await write(yamamoto(), "safety_check");
+    await retract(judgeCm(), { id });
+    expect((await timelineOf(yamamoto())).find((t) => t.id === id)!.retracted).toEqual({ who: "審査員", when: "11/3 22:10", note: null });
+  });
+
+  it("医療班の画面では医療班の自分の行だけ撤回でき、ケアマネの行は撤回できない", async () => {
+    await received("p-01");
+    const exam = await write(medical(), "examined", "呼吸 落ち着いている");
+    const cm = await write(yamamoto(), "safety_check");
+    const items = await timelineOf(medical());
+    expect(items.find((t) => t.id === exam)).toMatchObject({ retractable: true });
+    const cmItem = items.find((t) => t.id === cm);
+    if (cmItem) expect(cmItem.retractable).toBeUndefined();
+    // ケアマネの画面では医療班の行は撤回できない
+    expect((await timelineOf(yamamoto())).find((t) => t.id === exam)!.retractable).toBeUndefined();
+  });
+
+  it("経過の描き方: 撤回した行は種類と本文に取り消し線と薄い字、下に「撤回 山本 11/3 22:10 人違い」。撤回のボタンは撤回できる行だけ", async () => {
+    const check = await write(yamamoto(), "safety_check");
+    const note = await write(yamamoto(), "note", "避難所 打ち違い");
+    await retract(yamamoto(), { id: note, note: "人違い" });
+    const html = renderToStaticMarkup(createElement(Timeline, { items: await timelineOf(yamamoto()) }));
+    expect(liOf(html, note)).toContain("data-retracted");
+    expect(liOf(html, note)).toContain("line-through");
+    expect(liOf(html, note)).toContain("撤回 山本 11/3 22:10 人違い");
+    expect(liOf(html, note)).not.toContain("data-retract-open");
+    expect(liOf(html, check)).toContain(`data-retract-open="${check}"`);
+    expect(liOf(html, check)).not.toContain("line-through");
+    expect(liOf(html, check)).toContain("text-danger");
+  });
+});
+
+describe("読む側: 除く所（担当一覧の電話の記録・様式 9 の避難先・家族の経過）", () => {
+  it("撤回した電話の記録は、担当一覧の行の詳細の電話の記録と連絡先の最後の電話から消える", async () => {
+    await heavyRain();
+    const contact = (sqlite.prepare("SELECT id FROM contacts WHERE person_id = 'p-01' AND kind = 'family' ORDER BY sort LIMIT 1").get() as {
+      id: string;
+    }).id;
+    expect((await callPost(db, yamamoto(), { person: "p-01", contact, result: "connected", memo: "折り返し" }, hour(0.5))).status).toBe(200);
+    const detail = async () => (await loadCaseload(db, SCOPE, "2026-11-05", hour(0.6)))!.rows.find((r) => r.id === "p-01")!.detail!;
+    const before = await detail();
+    expect(before.calls).toHaveLength(1);
+    expect(before.contacts.find((c) => c.id === contact)!.lastCall).toMatchObject({ result: "connected" });
+    const id = (sqlite.prepare("SELECT id FROM timeline_entries WHERE kind = 'called'").get() as { id: string }).id;
+    expect((await retract(yamamoto(), { id }, hour(0.55))).status).toBe(200);
+    const after = await detail();
+    expect(after.calls).toEqual([]);
+    expect(after.contacts.find((c) => c.id === contact)!.lastCall).toBeNull();
+  });
+
+  it("撤回した到着は様式 9 の避難先の列から消える", async () => {
+    await heavyRain();
+    const out = await writeTimelineRequest(db, yamamoto(), { personId: "p-04", kind: "arrived_shelter", body: SHELTER }, hour(0.5));
+    expect(out.status).toBe(200);
+    const situation = { now: hour(0.6), disasterAt: hour(-2), outageAt: hour(0) };
+    const result = async () =>
+      (await loadForm9(db, { officeId: "office-demo" }, { today: "2026-11-05", situation }))!.sheet.rows.find((r) => r.id === "p-04")!.result;
+    expect(await result()).toMatchObject({ label: "到着", location: "shelter", place: SHELTER });
+    expect((await retract(yamamoto(), { id: String(out.body.id) }, hour(0.55))).status).toBe(200);
+    const after = await result();
+    expect(after?.place ?? null).toBeNull();
+    expect(after?.label ?? null).not.toBe("到着");
+  });
+
+  it("撤回した安否確認は家族の経過に出さない", async () => {
+    const id = await write(yamamoto(), "safety_check");
+    const fam = family();
+    const history = async () => {
+      const page = (await loadPersonPage(db, fam, "p-01"))!;
+      return familyHistory(page, familyWriterOf(page, "c-01-1")!)!.map((h) => h.id);
+    };
+    expect(await history()).toContain(id);
+    await retract(yamamoto(), { id });
+    expect(await history()).not.toContain(id);
   });
 });
 

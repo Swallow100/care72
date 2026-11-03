@@ -447,7 +447,7 @@ async function loadDetailSource(
       .prepare(
         `SELECT t.person_id, t.body, t.payload, t.occurred_at, a.display_name AS author_name
            FROM timeline_entries t LEFT JOIN accounts a ON a.id = t.author_id
-          WHERE t.kind = 'called' AND t.person_id IN (${mine}) ORDER BY t.occurred_at, t.created_at, t.id`,
+          WHERE t.kind = 'called' AND t.retracted_at IS NULL AND t.person_id IN (${mine}) ORDER BY t.occurred_at, t.created_at, t.id`,
       )
       .bind(careManagerId, officeId),
   ]);
