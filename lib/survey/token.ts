@@ -1,6 +1,6 @@
 // アンケートの招待の token と、送信元のハッシュ（docs/tasks/T42.md）。Workers と Node の両方で動く crypto だけを使う。
 
-import { toBase64Url, utf8 } from "../auth/bytes.ts";
+import { fromBase64Url, toBase64Url, utf8 } from "../auth/bytes.ts";
 
 /** token の乱数の大きさ（バイト）。base64url で 43 文字 */
 const TOKEN_BYTES = 32;
@@ -17,10 +17,7 @@ export function isSurveyTokenShape(token: unknown): token is string {
   return typeof token === "string" && TOKEN_SHAPE.test(token);
 }
 
-/** リンクの有効の日数 */
-export const SURVEY_TTL_DAYS = 14;
-
-/** 開いてから送れるまでの秒（ボットの守り。人が 7 問を読んで答えるのに 15 秒より短いことは無い） */
+/** 開いてから送れるまでの秒（ボットの守り。人が 9 問を読んで答えるのに 15 秒より短いことは無い） */
 export const MIN_FILL_SEC = 15;
 
 /** 同じ送信元からの送信の上限（1 時間あたり） */
@@ -42,4 +39,34 @@ export async function sourceHash(ip: string, secret: string): Promise<string> {
 /** 送信元の IP。Cloudflare の CF-Connecting-IP。手元の dev には無いので "local" */
 export function clientIp(headers: Headers): string {
   return headers.get("cf-connecting-ip")?.trim() || "local";
+}
+
+// ---------- 頁を開いた時刻の署名（15 秒の守り。T65） ----------
+// 共有のリンクは何人も開くので、リンクの行に開いた時刻を 1 つ持つ形（T42 の opened_at）では守れない。
+// 頁を出すときに「この token の頁をこの時刻に出した」を SESSION_SECRET で署名して埋め、送信でその時刻から 15 秒たったかを見る。
+// token も署名に入れるので、審査員のリンクで取った印を本物のリンクに使い回せない。
+
+async function stampKey(secret: string): Promise<CryptoKey> {
+  return crypto.subtle.importKey("raw", utf8(`survey-stamp:${secret}`), { name: "HMAC", hash: "SHA-256" }, false, ["sign", "verify"]);
+}
+
+const stampMessage = (token: string, ms: number): Uint8Array<ArrayBuffer> => utf8(`${token}:${ms}`);
+
+/** 頁を出した時刻の印（"<ミリ秒>.<署名>"） */
+export async function openStamp(token: string, now: Date, secret: string): Promise<string> {
+  const ms = now.getTime();
+  const mac = new Uint8Array(await crypto.subtle.sign("HMAC", await stampKey(secret), stampMessage(token, ms)));
+  return `${ms}.${toBase64Url(mac)}`;
+}
+
+/** 印を確かめ、頁を出した時刻（ミリ秒）を返す。形が違う・署名が合わない・先の時刻は null */
+export async function stampTime(stamp: unknown, token: string, now: Date, secret: string): Promise<number | null> {
+  if (typeof stamp !== "string" || stamp.length > 128) return null;
+  const m = /^(\d{12,14})\.([A-Za-z0-9_-]{43})$/.exec(stamp);
+  if (!m) return null;
+  const ms = Number(m[1]);
+  const mac = fromBase64Url(m[2]);
+  if (!mac || !Number.isSafeInteger(ms) || ms > now.getTime()) return null;
+  const ok = await crypto.subtle.verify("HMAC", await stampKey(secret), mac, stampMessage(token, ms));
+  return ok ? ms : null;
 }

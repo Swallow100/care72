@@ -398,7 +398,7 @@ describe("最初に戻す（デモ事業所だけ）", () => {
     ]);
   });
 
-  it("アンケート（T42）: 審査員が作ったリンクと答えは消え、山本が作った物（本物のケアマネの答え）と協力事業所の物は残る", async () => {
+  it("アンケート（T42・T65）: 審査員が作ったリンクと答えは消え、山本が作った物（本物のケアマネの答え）と協力事業所の物は残る", async () => {
     const { db } = await used();
     sqlite = db;
     const at = "2026-11-04T03:00:00.000Z";
@@ -416,6 +416,20 @@ describe("最初に戻す（デモ事業所だけ）", () => {
     link(partnerToken, "office-partner", "care_manager");
     for (const t of [judgeToken, realToken, partnerToken]) answer(t);
     db.exec(`INSERT INTO survey_attempts (source_hash, at) VALUES ('h', '${at}')`);
+    // 共有のリンクと答え（T65）も同じ
+    const share = (token: string, office: string, role: string) =>
+      db.exec(
+        `INSERT INTO survey_shares (token, office_id, created_role, created_at, expires_at, max_answers) VALUES ('${token}', '${office}', '${role}', '${at}', '2026-11-05T15:00:00.000Z', 30)`,
+      );
+    const response = (token: string) =>
+      db.exec(`INSERT INTO survey_responses (token, q1, source_hash, submitted_at) VALUES ('${token}', 'b', 'h', '${at}')`);
+    const judgeShare = "J".repeat(43);
+    const realShare = "R".repeat(43);
+    const partnerShare = "P".repeat(43);
+    share(judgeShare, "office-demo", "judge");
+    share(realShare, "office-demo", "care_manager");
+    share(partnerShare, "office-partner", "care_manager");
+    for (const t of [judgeShare, realShare, realShare, partnerShare]) response(t);
 
     const { bucket } = fakeBucket();
     await resetDemoOffice(d1FromSqlite(db), bucket, NOW);
@@ -423,6 +437,8 @@ describe("最初に戻す（デモ事業所だけ）", () => {
     expect(tokens("survey_links")).toEqual([partnerToken, realToken]);
     expect(tokens("survey_answers")).toEqual([partnerToken, realToken]);
     expect(count(db, "SELECT count(*) AS n FROM survey_attempts")).toBe(1);
+    expect(tokens("survey_shares")).toEqual([partnerShare, realShare]);
+    expect(tokens("survey_responses")).toEqual([partnerShare, realShare, realShare]);
   });
 
   it("R2: 審査員の録音を消し、種の録音と協力事業所の物は残す。種の録音があれば山田の信号に結び、再生できる", async () => {
