@@ -1,7 +1,11 @@
 import type { Metadata } from "next";
 import { BIZ_UDPGothic, Inter } from "next/font/google";
 import { AppHeader } from "@/components/AppHeader";
+import { CallQueueProvider } from "@/components/CallQueue";
+import { OfflineBand } from "@/components/OfflineBand";
+import { SwRegister } from "@/components/SwRegister";
 import { DialogHost } from "@/components/ui/DialogHost";
+import { callQueueOwnerOfRequest } from "@/lib/offline/owner";
 import { INSTALL_SCRIPT, PRESS_SCRIPT } from "@/lib/ui/head-scripts";
 import "./globals.css";
 
@@ -29,7 +33,9 @@ export const metadata: Metadata = {
   description: "ケアマネの手元の道具。個別避難計画、72 時間の訓練、発災時の安否の整理",
 };
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  // 通話の記録を端末に貯める持ち主（T71。ケアマネの役だけ。ヘッダーと同じ 1 回の読み）
+  const callOwner = await callQueueOwnerOfRequest();
   return (
     <html lang="ja" className={`${inter.variable} ${bizUd.variable}`}>
       <head>
@@ -38,10 +44,16 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <script dangerouslySetInnerHTML={{ __html: INSTALL_SCRIPT }} />
       </head>
       <body className="min-h-dvh bg-base text-ink">
-        <AppHeader />
-        {children}
+        <CallQueueProvider owner={callOwner}>
+          <AppHeader />
+          {/* 写し・通信なし・保留の帯（T71）。stamp が変われば中身はネットの物 */}
+          <OfflineBand stamp={new Date().toISOString()} />
+          {children}
+        </CallQueueProvider>
         {/* アプリ内の確認・お知らせの窓（T44。lib/ui/dialog.ts） */}
         <DialogHost />
+        {/* 最後の写しの Service Worker（T71。public/sw.js） */}
+        <SwRegister />
       </body>
     </html>
   );
