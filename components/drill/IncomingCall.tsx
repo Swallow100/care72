@@ -6,7 +6,8 @@
 //   着信音は端末で作る短い音で、約 10 秒で止める（鳴りっぱなしにしない）
 // - 応答: 声（Gemini TTS、サーバーが R2 に訓練ごとに置く）と文字。声が無い（鍵が未設定・生成の失敗）ときは文字だけ。
 //   声は鳴っている間に取り寄せておき、応答の押下で流す。終話で次の着信へ
-// - 応答・拒否した着信はこの端末の sessionStorage に覚え、画面を読み直しても鳴り直さない（訓練の記録には残さない）
+// - 応答・拒否はサーバーの訓練の記録に残す（POST /api/drill/<id>/call、T22 の採点が読む。1 つの着信に 1 回、結果は待たない）。
+//   この端末の sessionStorage にも覚え、画面を読み直しても鳴り直さない
 // - 鳴っている間は早送りを止める（window の care72:ringing。components/drill/DrillControls が聞く）
 // 色は安否の印（塗り）だけ。押したときは灰色だけ（Button の data-press）。
 
@@ -97,6 +98,19 @@ function ring(): () => void {
   return () => {
     void ctx?.close().catch(() => {});
   };
+}
+
+/**
+ * 応答・拒否を訓練の記録に残す（lib/drill/responses.ts）。結果は待たない（同じ着信の 2 回目はサーバーが残さない）。
+ * 送れなくても着信の画面は進める（採点で未応答に数えるだけ）
+ */
+function sendResponse(drillId: string, signal: string, response: "answer" | "decline") {
+  void fetch(`/api/drill/${encodeURIComponent(drillId)}/call`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ signal, response }),
+    keepalive: true,
+  }).catch(() => {});
 }
 
 type Voice = { state: "none" } | { state: "loading"; ready: Promise<string | null> } | { state: "ready"; url: string };
@@ -201,6 +215,8 @@ export function IncomingCall({ drillId, calls }: { drillId: string; calls: Reado
 
   const done = useCallback(() => {
     if (!current) return;
+    // 鳴っている間の終わりは拒否（通話中の終話は応答の時に残してある）
+    if (phase === "ringing") sendResponse(drillId, current.signal, "decline");
     audioRef.current?.pause();
     setPlaying(false);
     const seen = readSeen(drillId);
@@ -208,9 +224,10 @@ export function IncomingCall({ drillId, calls }: { drillId: string; calls: Reado
     writeSeen(drillId, seen);
     setQueue((q) => q.slice(1));
     setPhase("ringing");
-  }, [current, drillId]);
+  }, [current, drillId, phase]);
 
   const answer = () => {
+    if (current) sendResponse(drillId, current.signal, "answer");
     setPhase("talking");
     void play();
   };
