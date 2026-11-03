@@ -9,7 +9,7 @@
 //   呼び方は Gemini API の音声生成の案内（Interactions API）のとおり。返る音声は WAV（16 bit・mono・24 kHz）。
 
 import { GoogleGenAI } from "@google/genai/web";
-import { keyOf, type AiEnv } from "../claude/client.ts";
+import { geminiKeyOf, type AiEnv } from "../claude/client.ts";
 import { AiBadOutput, AiCallFailed, AiNotConfigured } from "../claude/errors.ts";
 import { beginCall, type AiContext } from "../claude/usage.ts";
 import {
@@ -44,8 +44,8 @@ export interface TtsClient {
   };
 }
 
-export function createTtsClient(env: Pick<AiEnv, "GEMINI_API_KEY">): TtsClient {
-  const apiKey = keyOf(env.GEMINI_API_KEY);
+export function createTtsClient(env: Pick<AiEnv, "GEMINI_API_KEY" | "GEMINI_TTS">): TtsClient {
+  const apiKey = geminiKeyOf(env);
   if (!apiKey) throw new AiNotConfigured("gemini");
   const ai = new GoogleGenAI({ apiKey });
   return {
