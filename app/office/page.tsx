@@ -272,7 +272,7 @@ function ModeButton({ kind, state }: { kind: DisasterKind; state: DisasterState 
   );
 }
 
-const INPUT = "h-8 rounded bg-panel2 px-2 text-sm text-ink outline-none focus-visible:outline-2 focus-visible:outline-accent";
+const INPUT = "h-8 rounded bg-panel2 px-2 text-sm text-ink outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-accent";
 const CHOICE = "flex h-8 items-center gap-1.5 rounded bg-panel2 px-2 text-sm";
 
 /** 災害の情報。発災・停電（範囲・開始・地区）・警戒レベル・断水・道路。保存で変わった所が経過に残る */

@@ -43,7 +43,7 @@ const COLORS: ReadonlyArray<Color> = ["red", "yellow", "gray", "green"];
 /** セルは詰める（1280px で横に送らない） */
 const CELL = "bg-panel px-1.5 py-1.5 align-top";
 const INPUT =
-  "min-w-0 rounded-md bg-panel2 px-2 py-1 text-sm text-ink outline-none focus-visible:outline-2 focus-visible:outline-accent";
+  "min-w-0 rounded-md bg-panel2 px-2 py-1 text-sm text-ink outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-accent";
 const COLS = 10;
 
 function compare(a: StaffRow, b: StaffRow, sort: Sort): number {

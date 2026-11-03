@@ -14,7 +14,7 @@ import { Select } from "@/components/ui/Select";
 const KEY = "care72.assigned";
 
 const SELECT =
-  "h-8 min-w-0 rounded bg-panel2 px-2 text-sm text-ink outline-none focus-visible:outline-2 focus-visible:outline-accent";
+  "h-8 min-w-0 rounded bg-panel2 px-2 text-sm text-ink outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-accent";
 
 export function AssignForm({
   personId,

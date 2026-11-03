@@ -59,7 +59,7 @@ export function QrReceive({ token, shelter }: { token: string; shelter: string |
           required
           maxLength={SHELTER_MAX}
           defaultValue={shelter ?? ""}
-          className="h-10 rounded-md bg-panel2 px-2 text-ink outline-none focus-visible:outline-2 focus-visible:outline-accent"
+          className="h-10 rounded-md bg-panel2 px-2 text-ink outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-accent"
         />
       </label>
       <Button type="submit" kind="main" size="lg" icon={AddPersonIcon}>

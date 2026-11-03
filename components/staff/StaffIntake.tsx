@@ -31,7 +31,7 @@ const TAB_LABELS: Record<Tab, string> = {
 };
 
 const INPUT =
-  "w-full min-w-0 rounded-md bg-panel2 px-2 py-1.5 text-sm text-ink outline-none focus-visible:outline-2 focus-visible:outline-accent";
+  "w-full min-w-0 rounded-md bg-panel2 px-2 py-1.5 text-sm text-ink outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-accent";
 
 /** 検索の結果の表の見出し（右の面は狭いので、見出しを詰める） */
 const HIT_TH = "bg-panel2 px-2 py-1 text-left text-xs font-bold whitespace-nowrap text-muted";
