@@ -11,6 +11,7 @@ export {
   ArrowRightStartOnRectangleIcon as LogoutIcon, // ログアウト（扉から出る矢印）
   ArrowsRightLeftIcon as AssignIcon, // 担当の割当・移す
   CheckIcon as SaveIcon, // 保存
+  CheckIcon as ChosenIcon, // 一覧で選んでいる項目の印（components/ui/Select）
   ChevronDownIcon as OpenIcon, // 開く・畳む
   ChevronLeftIcon as BackIcon, // 戻る
   ClipboardDocumentIcon as CopyIcon, // コピー

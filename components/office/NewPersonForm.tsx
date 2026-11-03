@@ -15,6 +15,7 @@ import { PEOPLE_API_PATH } from "@/lib/office/http-paths";
 import { OFFICE_LABELS } from "@/lib/office/labels";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { CloseIcon, SaveIcon } from "@/components/ui/Icon";
+import { Select } from "@/components/ui/Select";
 
 type CareManager = { id: string; name: string };
 
@@ -134,7 +135,7 @@ export function NewPersonForm({
         </fieldset>
         <label className="flex flex-col gap-0.5">
           <span className="text-xs text-muted">{OFFICE_LABELS.careManager}</span>
-          <select
+          <Select
             name="careManagerId"
             required
             value={careManagerId}
@@ -146,7 +147,7 @@ export function NewPersonForm({
                 {c.name}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
       </div>
       <div className="flex items-center gap-1.5">
