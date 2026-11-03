@@ -235,7 +235,7 @@ describe("電話の記録", () => {
     const other = rows("SELECT id FROM contacts WHERE person_id = 'p-02' LIMIT 1")[0];
     expect((await post(callPost, self(), { person: "p-01", contact: other.id, result: "dialed" }, 1)).status).toBe(403);
     expect((await post(callPost, careManager(), { person: "p-01", contact: other.id, result: "dialed" }, 1)).status).toBe(404);
-    expect((await post(callPost, careManager(), { person: "p-01", contact: other.id, result: "connected" }, 1)).status).toBe(400);
+    expect((await post(callPost, careManager(), { person: "p-01", contact: other.id, result: "hung_up" }, 1)).status).toBe(400);
     expect((await post(callPost, null, { person: "p-01", contact: other.id, result: "dialed" }, 1)).status).toBe(401);
     expect(rows("SELECT * FROM timeline_entries WHERE kind = 'called'")).toEqual([]);
   });
