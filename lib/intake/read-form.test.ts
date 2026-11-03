@@ -156,3 +156,18 @@ describe("経過の「写真を読んだ（隠した所 N か所）」", () => {
     });
   });
 });
+
+describe("入れる欄（components/person/Intake.tsx）は写真・PDF を黒塗りの画面に通す", () => {
+  it("選んだファイルはそのまま送らず黒塗りの画面へ。送るのは buildReadForm の形（塗った後の画像）だけ。読む前の確認の窓はやめた", () => {
+    const src = readFileSync(new URL("../../components/person/Intake.tsx", import.meta.url), "utf8");
+    expect(src).toContain("setRedacting(");
+    expect(src).toContain("<RedactSheet");
+    expect(src).toContain("buildReadForm(props.personId, page.blob, page.meta)");
+    expect(src).not.toMatch(/form\.set\("file"/);
+    expect(src).not.toContain("FILE_NOTICE");
+    // 黒塗りの画面は元のファイルを呼ぶ側へ返さない（返すのは塗った後の Blob と印）
+    const sheet = readFileSync(new URL("../../components/person/RedactSheet.tsx", import.meta.url), "utf8");
+    expect(sheet).toContain("export type RedactedPage = { name: string; blob: Blob; meta: ReadMeta }");
+    expect(sheet).toContain("encodeRedacted(p, r)");
+  });
+});

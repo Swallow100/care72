@@ -51,6 +51,8 @@ export function RedactSheet({ files, onSend, onCancel }: { files: readonly File[
     const d = dialog.current;
     if (!d) return;
     if (!d.open) d.showModal();
+    // 最初の焦点は画像の枠（取消に枠が付かない。キーの一手戻す・外す・拡大もここで受ける）
+    stage.current?.focus({ preventScroll: true });
     const root = document.documentElement;
     const before = root.style.overflow;
     root.style.overflow = "hidden";
@@ -324,7 +326,7 @@ export function RedactSheet({ files, onSend, onCancel }: { files: readonly File[
           <div role="toolbar" aria-label={L.title} className="flex flex-wrap items-center gap-1">
             {toggle("paint", L.paint, PaintIcon)}
             {toggle("move", L.move, MoveIcon)}
-            <span className="mx-0.5 h-4 w-px bg-panel2" aria-hidden />
+            <span className="mx-0.5 hidden h-4 w-px bg-panel2 sm:inline-block" aria-hidden />
             <Button size="sm" icon={UndoIcon} disabled={busy || state.past.length === 0} onClick={undo} data-redact="undo">
               {L.undo}
             </Button>
@@ -334,7 +336,7 @@ export function RedactSheet({ files, onSend, onCancel }: { files: readonly File[
             <Button kind="danger" size="sm" icon={ClearIcon} disabled={busy || rects.length === 0} onClick={clear} data-redact="clear">
               {L.clear}
             </Button>
-            <span className="mx-0.5 h-4 w-px bg-panel2" aria-hidden />
+            <span className="mx-0.5 hidden h-4 w-px bg-panel2 sm:inline-block" aria-hidden />
             <Button size="sm" icon={ZoomOutIcon} disabled={busy || !view || view.zoom <= 1} onClick={() => zoomBy(1 / ZOOM_STEP)}>
               {L.zoomOut}
             </Button>
@@ -347,20 +349,26 @@ export function RedactSheet({ files, onSend, onCancel }: { files: readonly File[
           </div>
           {pages && pages.length > 0 && page && (
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
-              <Button size="sm" icon={BackIcon} disabled={busy || at === 0} onClick={() => goto(at - 1)} data-redact="prev">
-                {L.prev}
-              </Button>
-              <span className="font-bold tabular-nums" data-redact="page">
-                {at + 1}/{pages.length}
-              </span>
-              <Button size="sm" icon={NextIcon} disabled={busy || at >= pages.length - 1} onClick={() => goto(at + 1)} data-redact="next">
-                {L.next}
-              </Button>
+              {pages.length > 1 && (
+                <>
+                  <Button size="sm" icon={BackIcon} disabled={busy || at === 0} onClick={() => goto(at - 1)} data-redact="prev">
+                    {L.prev}
+                  </Button>
+                  <span className="font-bold tabular-nums" data-redact="page">
+                    {at + 1}/{pages.length}
+                  </span>
+                  <Button size="sm" icon={NextIcon} disabled={busy || at >= pages.length - 1} onClick={() => goto(at + 1)} data-redact="next">
+                    {L.next}
+                  </Button>
+                </>
+              )}
               <span className="min-w-0 truncate">{L.pageName(page.fileName, page.page, page.pages)}</span>
               {page.total > page.pages && <span className="text-muted">{L.pagesOf(page.pages, page.total)}</span>}
-              <span className="tabular-nums text-muted">
-                {L.hidden} {rects.length}
-              </span>
+              {pages.length > 1 && (
+                <span className="tabular-nums text-muted">
+                  {L.onPage} {rects.length}
+                </span>
+              )}
             </div>
           )}
           {failed.length > 0 && (
@@ -372,7 +380,9 @@ export function RedactSheet({ files, onSend, onCancel }: { files: readonly File[
 
         <div
           ref={stage}
-          className={`relative min-h-0 flex-1 touch-none overflow-hidden select-none ${mode === "move" ? "cursor-grab" : "cursor-crosshair"}`}
+          tabIndex={-1}
+          aria-label={page ? L.pageName(page.fileName, page.page, page.pages) : L.preparing}
+          className={`relative min-h-0 flex-1 touch-none overflow-hidden outline-none select-none ${mode === "move" ? "cursor-grab" : "cursor-crosshair"}`}
           data-redact="stage"
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}

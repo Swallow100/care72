@@ -12,6 +12,7 @@
 //   問いは空欄が無くなるまで続き、「次回」で飛ばせる。流れは下へ伸びる（内側で送らない。送るのはページの縦 1 本）
 // 保存は全部 /api/intake/save（版を確かめ、埋まった欄は上書きしない）。保存のあとはページを読み直す（流れはこの画面の間だけ残る）。
 
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { useRef, useState, type ReactNode } from "react";
 import { Button, buttonClass } from "@/components/ui/Button";
@@ -33,7 +34,10 @@ import { IntakeChanges, rowsOf, type ChangeRow } from "./IntakeChanges";
 import { IntakeQuestion, QuestionText } from "./IntakeQuestion";
 import { INPUT } from "./intake-ui";
 import { AiMark, StateTag, type Level } from "./parts";
-import { RedactSheet, type RedactedPage } from "./RedactSheet";
+import type { RedactedPage } from "./RedactSheet";
+
+// 黒塗りの画面は写真・PDF を選んだときだけ読み込む（ブラウザだけ。PDF を画像にする pdf.js をサーバーの束に入れない）
+const RedactSheet = dynamic(() => import("./RedactSheet").then((m) => m.RedactSheet), { ssr: false });
 
 /** 入力の文の長さの上限（lib/intake/extract.ts の INTAKE_TEXT_MAX と同じ） */
 const TEXT_MAX = 4000;
