@@ -28,7 +28,7 @@ import type {
   SupportKind,
   TimelineKind,
 } from "./db/types.ts";
-import type { Color, Tier } from "./triage/index.ts";
+import type { Color, GreenVia, Tier } from "./triage/index.ts";
 
 export const CARE_LEVEL_LABELS: Record<CareLevel, string> = {
   support1: "要支援1",
@@ -107,6 +107,17 @@ export const COLOR_LABELS: Record<Color, string> = {
   gray: "不明",
   green: "無事",
 };
+
+/**
+ * 受入・搬送から来た緑の状態の言葉（T78）。本人がけが・動けないと答えたまま医療班・行政が受け入れても、表は受け入れを緑に数える
+ * （色と順は表のまま）。そのとき人ごとの状態の印で「無事」と言い切らない。色の区分の名前（人数の帯・絞込）は COLOR_LABELS のまま
+ */
+export const GREEN_VIA_LABELS: Record<GreenVia, string> = { arrival: "受入", transport: "搬送" };
+
+/** 人ごとの状態の言葉: 表の色の言葉。表の緑が受入・搬送から来たときだけ「受入」「搬送」（lib/triage の greenVia） */
+export function stateLabel(t: { color: Color; greenVia?: GreenVia | null }): string {
+  return t.color === "green" && t.greenVia ? GREEN_VIA_LABELS[t.greenVia] : COLOR_LABELS[t.color];
+}
 
 /** 優先の骨格の名前（docs/SPEC.md「医療の芯」） */
 export const TIER_LABELS: Record<Tier, string> = {

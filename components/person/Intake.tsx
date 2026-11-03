@@ -15,7 +15,10 @@
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { useRef, useState, type ReactNode } from "react";
+import { AiStatusMark } from "@/components/ui/AiStatus";
 import { Button, buttonClass } from "@/components/ui/Button";
+import { Mark } from "@/components/ui/Tag";
+import { aiStatusText, type AiStatus } from "@/lib/claude/status";
 import { AI_FAIL_REASON_LABELS, INTAKE_LABELS, INTAKE_SAYS, PENDING_STATUS_LABELS, PLACE_LABELS, SECTION_LABELS } from "@/lib/labels";
 import { AI_CONSENT_REFUSED_LABEL } from "@/lib/consent/labels";
 import { shrinkImage } from "@/lib/forms/shrink-image";
@@ -86,6 +89,15 @@ export function splitSay(items: readonly DiffItem[]): string {
   return INTAKE_SAYS.split(live.length, parts.join("・"));
 }
 
+const UNSET: AiStatus = { kind: "unset" };
+
+/** API が断った AI の状態を、開いたときと同じ言葉に（「AI 未設定」「AI 上限到達」。lib/claude/status.ts） */
+function blockLabel(error: string, label: string): string {
+  if (error === "ai_not_configured") return aiStatusText(UNSET);
+  if (error === "ai_limit") return aiStatusText({ kind: "limit", limit: 0 });
+  return label;
+}
+
 const echo = (s: string) => (s.length > ECHO_MAX ? `${s.slice(0, ECHO_MAX)}…` : s);
 
 let seq = 0;
@@ -93,9 +105,10 @@ const nextId = () => `log-${++seq}`;
 
 export function Intake(props: IntakeProps & { level: Level }) {
   const router = useRouter();
-  // AI 提供が不同意の人（T74 の続き）は開いた時点で AI の操作を止める（手で書く欄は使える）。鍵が無ければ「AI 未設定」
+  // AI 提供が不同意の人（T74 の続き）は開いた時点で AI の操作を止める（手で書く欄は使える）。AI が使えなければ「AI 未設定」「AI 上限到達」
+  // （AI の状態の言葉は lib/claude/status.ts の 1 か所。訓練の画面と同じ。T76）
   const [aiBlock, setAiBlock] = useState<string | null>(
-    props.aiConsentRefused ? AI_CONSENT_REFUSED_LABEL : props.aiReady ? null : INTAKE_LABELS.aiNotConfigured,
+    props.aiConsentRefused ? AI_CONSENT_REFUSED_LABEL : props.aiReady ? null : aiStatusText(props.aiStatus ?? UNSET),
   );
   const [text, setText] = useState("");
   const [busy, setBusy] = useState<null | "split" | "read" | "save">(null);
@@ -124,7 +137,7 @@ export function Intake(props: IntakeProps & { level: Level }) {
 
   function failed(r: { error: string; label: string; reason?: AiFailReason }, retry: Retry | null) {
     // AI 提供が不同意の人（T74）は、この人の間は AI の操作を止める（上に「同意 拒否」）
-    if (r.error === "ai_not_configured" || r.error === "ai_limit" || r.error === "consent_refused") setAiBlock(r.label);
+    if (r.error === "ai_not_configured" || r.error === "ai_limit" || r.error === "consent_refused") setAiBlock(blockLabel(r.error, r.label));
     // AI の返事の失敗（形が違う・断られた・時間切れ・API）は理由と「再試行」を流れに。ほかは上の状態の欄に
     if (r.error === "ai_failed" || r.error === "ai_refused") push({ id: nextId(), who: "ai", kind: "failed", label: r.label, reason: r.reason ?? null, retry });
     else push({ id: nextId(), who: "app", text: r.label, tone: "danger" });
@@ -222,7 +235,16 @@ export function Intake(props: IntakeProps & { level: Level }) {
         <H id={titleId} className="text-[1rem] leading-6 font-bold">
           {INTAKE_LABELS.title}
         </H>
-        {aiBlock && <StateTag tone="check">{aiBlock}</StateTag>}
+        {/* AI の状態は中立の地の印（状態の 4 色を使わない。T76）。同意 拒否は同意の状態なので今までの印のまま。使えるときは本日残り */}
+        {aiBlock === AI_CONSENT_REFUSED_LABEL ? (
+          <StateTag tone="check">{aiBlock}</StateTag>
+        ) : aiBlock ? (
+          <span className="font-bold" data-ai-status="blocked">
+            <Mark>{aiBlock}</Mark>
+          </span>
+        ) : (
+          props.aiStatus && <AiStatusMark status={props.aiStatus} />
+        )}
         <span role="status" className="ml-auto text-xs">
           {status}
         </span>

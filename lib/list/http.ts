@@ -1,7 +1,7 @@
 // 担当一覧の行の詳細の API（app/api/caseload/override・app/api/caseload/call）の中身。route は同じ所からの POST かを見て、
 // ここの応答を返すだけ。D1 と Principal を引数で受け取る（テストで node:sqlite を渡す）。
 // 断り方: ログインしていなければ 401、ケアマネの役でなければ 403、形が違う 400、範囲の外の本人・連絡先 404、
-// 平時の上書き 409、今と同じ色への上書き 409、平時の聞いた安否 409、赤 けが・動けない の人への「無事」409（至急維持）。
+// 平時の上書き 409、今と同じ色への上書き 409、平時の聞いた安否 409、赤 けが・動けない の人への「無事」409（「無事 不可（本人が「けが」）」、T78）。
 
 import type { D1Database } from "@cloudflare/workers-types";
 import type { Principal } from "../auth/principal.ts";
@@ -34,8 +34,9 @@ export const LIST_API_LABELS: Record<ListApiError, string> = {
 
 const NO_STORE = { "Cache-Control": "no-store" };
 
-export function listError(error: ListApiError): Response {
-  return Response.json({ ok: false, error, label: LIST_API_LABELS[error] }, { status: STATUS[error], headers: NO_STORE });
+/** 断りの応答。label を渡せばそれ（至急を保つ断りの「無事 不可（本人が「けが」）」、T78）、無ければ error の言葉 */
+export function listError(error: ListApiError, label?: string): Response {
+  return Response.json({ ok: false, error, label: label ?? LIST_API_LABELS[error] }, { status: STATUS[error], headers: NO_STORE });
 }
 
 const ID = /^[A-Za-z0-9_-]{1,64}$/;
@@ -74,6 +75,6 @@ export async function callPost(db: D1Database, p: Principal | null, json: unknow
   const clientId = isCallClientId(b.id) ? b.id : null;
   const pressedAt = typeof b.at === "string" ? b.at : null;
   const r = await saveCall(db, p, { personId: b.person, contactId: b.contact, result: b.result, heard, memo, clientId, pressedAt }, now);
-  if (!r.ok) return listError(r.error);
+  if (!r.ok) return listError(r.error, r.label);
   return Response.json(r.duplicate ? { ok: true, duplicate: true } : { ok: true }, { headers: NO_STORE });
 }

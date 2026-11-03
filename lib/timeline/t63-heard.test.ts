@@ -193,7 +193,7 @@ describe("通話で聞いた安否の撤回で、4 画面の色・順・理由�
     expect(before.caseload).toMatchObject({ rule: "red_injury", reason: "本人が「動けない」" });
     expect(await call("p-01", { heard: { color: "green" } }, 0.5)).toEqual({
       status: 409,
-      json: { ok: false, error: "injury", label: "至急維持" },
+      json: { ok: false, error: "injury", label: "無事 不可（本人が「動けない」）" },
     });
     expect(rows("SELECT * FROM timeline_entries WHERE kind = 'called'")).toEqual([]);
 

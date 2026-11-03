@@ -137,11 +137,23 @@ export type CallInput = {
   pressedAt?: string | null;
 };
 
-/** normal は平時の安否、injury は 赤 けが・動けない の人への「無事」（画面は「至急維持」） */
+/** normal は平時の安否、injury は 赤 けが・動けない の人への「無事」（画面は「無事 不可（本人が「けが」）」。T78） */
 export type CallError = "forbidden" | "not_found" | "invalid" | "normal" | "injury";
 
-/** duplicate は同じ端末の id の 2 回目（前に届いていたので書かない。端末は届いた扱いで消す） */
-export type CallSaveResult = { ok: true; duplicate?: true } | { ok: false; error: CallError };
+/**
+ * duplicate は同じ端末の id の 2 回目（前に届いていたので書かない。端末は届いた扱いで消す）。
+ * label は断った物と理由の短い形（injury だけ。「無事 不可（本人が「けが」）」、T78）。無ければ error の言葉
+ */
+export type CallSaveResult = { ok: true; duplicate?: true } | { ok: false; error: CallError; label?: string };
+
+/**
+ * 至急を保つために断った通話の言葉（T78）: 断った聞いた安否（「無事」「無事でない」）＋「不可」＋表の理由の頭（けが・動けないを言った人の答え。
+ * 「本人が「けが」」「分類（ケアマネ）: 動けない」）。前は「至急維持」だけで、何を断ったか分からなかった。色と順は表のまま
+ */
+export function injuryRefusal(heard: Heard, reason: string): string {
+  const why = reason.split("、")[0];
+  return `${heard.color === "green" ? HEARD_LABELS.green : HEARD_LABELS.red} 不可（${why}）`;
+}
 
 const bit = (v: boolean | undefined): 0 | 1 | null => (v === undefined ? null : v ? 1 : 0);
 
@@ -208,7 +220,7 @@ export async function saveCall(db: D1Database, p: Principal | null, input: CallI
     const d = await personDisaster(db, rows, now);
     if (!d.triage) return { ok: false, error: "normal" };
     const keepsInjury = heard.color === "red" && (heard.injured === true || heard.canMove === false);
-    if (d.triage.rule === "red_injury" && !keepsInjury) return { ok: false, error: "injury" };
+    if (d.triage.rule === "red_injury" && !keepsInjury) return { ok: false, error: "injury", label: injuryRefusal(heard, d.triage.reason) };
   }
 
   // 押した時刻（丸めたあと）。発災より前かは事業所の今の災害モードの始まりで見る

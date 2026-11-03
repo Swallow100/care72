@@ -3,6 +3,7 @@
 // 残りの回数はいつも出す。使った回数が読めない（読込失敗）ときは開始のまま（止めない）。画面に触らない（テストで呼ぶ）。
 
 import type { DrillStatus } from "../db/types.ts";
+import type { AiStatus } from "./status.ts";
 
 export type DailyUsage = { used: number; limit: number };
 
@@ -21,4 +22,15 @@ export function drillGate(
   if (remaining > 0) return { kind: "start", remaining, limit: usage.limit };
   const finished = items.find((d) => d.status === "finished") ?? null;
   return { kind: "limit", remaining: 0, limit: usage.limit, replay: finished?.id ?? null };
+}
+
+/**
+ * AI の今の状態（lib/claude/status.ts）から、drillGate に渡す今日の回数。未設定・読めないは null（開始のまま。鍵が無くても
+ * 固定の筋は想定の表で進むので止めない。T76）。上限到達は使い切った形にする
+ */
+export function gateUsage(s: AiStatus | null): DailyUsage | null {
+  if (!s) return null;
+  if (s.kind === "limit") return { used: s.limit, limit: s.limit };
+  if (s.kind === "ready" && s.remaining !== null && s.limit !== null) return { used: s.limit - s.remaining, limit: s.limit };
+  return null;
 }

@@ -6,7 +6,7 @@
 import { DISASTER_SORT_KEYS, filterCaseload, sortCaseload, type Caseload, type CaseloadRow } from "../caseload.ts";
 import type { ClockCategory } from "../db/types.ts";
 import { COLOR_LABELS, DEPENDENCE_MARKS } from "../labels.ts";
-import { COLUMN_LABELS, FILTER_LABELS } from "./labels.ts";
+import { COLUMN_LABELS, FILTER_LABELS, tierColumnLabel } from "./labels.ts";
 import {
   caseloadHref,
   defaultDir,
@@ -70,10 +70,11 @@ export function listHref(path: string, view: { key: SortKey; dir: SortDir; filte
 
 const MARK_LABELS: ReadonlyMap<ClockCategory, string> = new Map(DEPENDENCE_MARKS.map(([c, l]) => [c, l]));
 
-/** 並びの言葉（「並び：連絡順」「並び：年齢・介護度 昇順」）。向きは列の既定と違うときだけ */
-export function sortWords(view: { key: SortKey; dir: SortDir }): string {
+/** 並びの言葉（「並び：連絡順」「並び：年齢・介護度 昇順」）。向きは列の既定と違うときだけ。平時の段の並びは「並び：組」（T78） */
+export function sortWords(view: { key: SortKey; dir: SortDir }, disaster = true): string {
   const turned = view.dir !== defaultDir(view.key) ? ` ${view.dir === "asc" ? "昇順" : "降順"}` : "";
-  return `並び：${COLUMN_LABELS[view.key]}${turned}`;
+  const name = view.key === "tier" ? tierColumnLabel(disaster) : COLUMN_LABELS[view.key];
+  return `並び：${name}${turned}`;
 }
 
 /** 絞込の言葉（「絞込：至急・ほしぞら町・酸素・検索 ヤマ」）。絞っていなければ「絞込：なし」 */

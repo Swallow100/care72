@@ -17,6 +17,18 @@ export const COLUMN_LABELS = {
   plan: "避難計画",
 } as const;
 
+/**
+ * 骨格の段（1〜8）の列の見出し（T78）。平時の担当一覧の先頭の列と、発災時の CSV の段の列。
+ * 発災時の「連絡順」（ルールの表の並びの番号 1〜N）と同じ名前にしない（DECISIONS 11/4 00:0x「2 つの番号が同じ名前に見えないよう、段は「組」」）。
+ * 平時は信号も時刻も無く表の並びが無いので、1〜N の連絡順は作らない（作ると表の外で順を決めることになる）
+ */
+export const TIER_GROUP_LABEL = "組";
+
+/** 段の列の見出し: 発災時は連絡順（表の並びの番号）、平時は組（骨格の段） */
+export function tierColumnLabel(disaster: boolean): string {
+  return disaster ? COLUMN_LABELS.tier : TIER_GROUP_LABEL;
+}
+
 /** 行の詳細の見出しと小さな言葉 */
 export const DETAIL_LABELS = {
   reason: "理由",
