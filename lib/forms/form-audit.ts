@@ -242,8 +242,8 @@ export const MEDICAL_AUDIT: FormAudit = {
   source: "災害診療記録2018（一般診療版。厚生労働省の通知の別添４、4 頁のうち 1・2 頁）",
   bold: [],
   rows: [
-    { page: 1, original: "＊初診日", keys: [], result: "書かない", note: "医療班が書く欄" },
-    { page: 1, original: "＊初診医師氏名", keys: [], result: "書かない", note: "医療班が書く欄" },
+    { page: 1, original: "＊初診日", keys: ["doctor.firstVisit"], result: "直した", note: "医師が書く欄。前は出していなかった。空欄で出す（11/3 15:0x 確定。T48）" },
+    { page: 1, original: "＊初診医師氏名", keys: ["doctor.physician"], result: "直した", note: "同上" },
     { page: 1, original: "＊患者氏名（カタカナ）", keys: ["patient.kana"], result: "一致" },
     { page: 1, original: "（漢字等）", keys: ["patient.name"], code: "漢字等", result: "表記" },
     { page: 1, original: "性別：", options: ["男", "女"], keys: ["patient.sex"], code: "性別", result: "直した", note: "順: 様式は（漢字等）の右。前は生年月日のあと" },
@@ -298,8 +298,15 @@ export const MEDICAL_AUDIT: FormAudit = {
       result: "一致",
       note: "該当状況（身体的・精神的・社会的・その他）は医療班が書く欄なので印を付けない",
     },
-    { page: 1, original: "＊傷病名・＊開始・診察場所・＊所属・医師サイン", keys: [], result: "書かない", note: "医療班が書く欄" },
-    { page: 1, original: "トリアージタグ", keys: [], result: "書かない", note: "医療班が書く欄" },
+    {
+      page: 1,
+      original: "＊傷病名",
+      keys: ["doctor.disease"],
+      result: "直した",
+      note: "医師が書く欄。空欄で出す（11/3 15:0x 確定。T48）。1 頁に収めるため、紙面では初診日の行に並べた",
+    },
+    { page: 1, original: "＊開始・診察場所・＊所属・医師サイン", keys: [], result: "書かない", note: "医療班が書く欄" },
+    { page: 1, original: "トリアージタグ", keys: ["doctor.triage"], result: "直した", note: "傷病名と同じ" },
     { page: 1, original: "メディカル ID", keys: ["id.medical"], result: "直した", note: "順: 様式は 1 頁の下。前は 2 頁の既往症・予防接種のあと" },
     {
       page: 2,
@@ -336,8 +343,8 @@ export const MEDICAL_AUDIT: FormAudit = {
     { where: "字の太さ", result: "直した", note: "様式に太字は無い（MS 明朝・MS ゴシックだけ）。前は値・薬の名前・中断注意・ID・見出しを太字にしていた" },
     {
       where: "アドバイザー（11/3 14:1x の (3)）: 内容を変えずに並べ替えるだけ",
-      result: "問い",
-      note: "値は台帳の言葉のまま並べる。並べ替えの外は 3 つ: 様式の □ の印（薬の区分・年齢・手帳から機械的に）、メディカル ID の組み立て（様式の決まりどおり）、中断注意の印（優先の骨格の段から。11/3 04:0x 確定。様式の特記事項の欄の中にも出る）。紙の注に「□ と中断注意の印は機械的に付けた」と書いた。中断注意の印を残すか・補足の表だけに移すかは作者への問い",
+      result: "直した",
+      note: "値は台帳の言葉のまま並べる。並べ替えの外は 3 つ: 様式の □ の印（薬の区分・年齢・手帳から機械的に）、メディカル ID の組み立て（様式の決まりどおり）、中断注意の印（優先の骨格の段から。11/3 04:0x 確定）。中断注意の印は様式の特記事項の欄から外し、補足の段（常用薬の表・機器）にだけ出す（11/3 15:00 確定の 3。T48）。紙の注に「□ は薬の区分などから、補足の中断注意の印は薬の区分から機械的に付けた」と書いた",
     },
     {
       where: "アドバイザー（11/3 14:1x の (3)）: 元の記録と並べて見られる",

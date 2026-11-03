@@ -154,6 +154,7 @@ export function OwnSheetPaper({ sheet, medical, qr }: { sheet: OwnSheet; medical
             aside={<QrSpot qr={qr} />}
             note={<QrNote qr={qr} />}
             foot={{ doc: OWN_BACK_DOC, page: 2, total: 2 }}
+            doctorBlanks={false}
           />
         ) : (
           <OwnBackWithheld kind={medical.kind} qr={qr} name={sheet.name} />

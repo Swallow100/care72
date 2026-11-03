@@ -8,11 +8,14 @@
 //   （計画書の医療の欄は計画共有に従う。医療班提供は要約と QR の頁にだけ効く。docs/DECISIONS.md の 11/2 夕方の案 a）
 // - 薬・機器・時計の値は計画書（lib/forms/matsuyama.ts）と同じ道具で作る（どの書類でも同じ値）
 // - 中断注意の印は優先の骨格（lib/triage の categoryTier）から機械的に付ける。段 4・5 の薬と段 4 の機器（経管栄養）に付け、
-//   段の根拠の出典 id を添える。台帳の印（interruptionRisk）だけの薬にも印を出すが、出典は付けない（骨格から来た物だけが登録簿を指す）
+//   段の根拠の出典 id を添える。台帳の印（interruptionRisk）だけの薬にも印を出すが、出典は付けない（骨格から来た物だけが登録簿を指す）。
+//   印は補足の段（様式外。常用薬の表と機器）にだけ出し、様式の欄（特記事項の □ の後ろ）には出さない。様式の欄は台帳の値を
+//   並べ替えるだけ（11/3 15:00 確定の 3、アドバイザーの返事）
 // - 本人の 1 枚の裏（buildOwnSheetMedical）は、支援者提供の同意が無ければ表と同じく支援者の名前・電話を出さない（T37 の 5）。
 //   医療班の画面の要約は医療班提供の同意だけを見る（今まで通り）
 // - 診断名を推し量らない（降圧薬から高血圧を立てない）。既往症・予防接種は台帳の言葉のまま、様式の選択肢と同じ言葉だけ印を付ける
-// - 発災後に医療班が書く欄（初診日・医師・保険証・職業・傷病名・トリアージ）は出さない。家の状態（健存・半壊・全壊）は未確認
+// - 医師が書く判断の欄（初診日・初診医師氏名・傷病名・トリアージタグ）は様式の位置に空欄で出す（手で書く欄。埋めない。11/3 15:0x 確定）。
+//   保険証・職業と、傷病名の段のほかの欄（開始・診察場所・所属・医師サイン）は出さない。家の状態（健存・半壊・全壊）は未確認
 // - 「なぜこの行があるか」（basis）は骨格の段の根拠（lib/triage の TIERS）と登録簿の出典だけから作る。紙には出さず、
 //   ケアマネ・主治医の画面の脇にだけ出す
 
@@ -89,6 +92,8 @@ export const MEDICAL_BLOCKS = {
   care: "要配慮者",
   history: "既往症・予防接種",
   id: "メディカル ID",
+  /** 医師が書く欄（空欄で出す） */
+  doctor: "医師記入",
 } as const;
 export type MedicalBlock = keyof typeof MEDICAL_BLOCKS;
 
@@ -103,12 +108,18 @@ export type MedicalFieldDef = {
   page: 1 | 2;
   /** 様式に無い欄（台帳の値を医療班へ渡すために足した） */
   extra?: true;
+  /** 医師が書く欄。値を入れず空欄で出す */
+  doctor?: true;
 };
 
 const NO_SOURCE = "台帳に無い";
+const DOCTOR_WRITES = "医師が書く（空欄）";
 
 /** 欄の一覧（様式の順）。紙面とテストはここから全部を出す */
 export const MEDICAL_FIELDS = [
+  // 様式のいちばん上（患者氏名の前）。医師が書く欄で、空欄のまま
+  { key: "doctor.firstVisit", block: "doctor", label: "初診日", source: DOCTOR_WRITES, page: 1, doctor: true },
+  { key: "doctor.physician", block: "doctor", label: "初診医師氏名", source: DOCTOR_WRITES, page: 1, doctor: true },
   { key: "patient.kana", block: "patient", label: "患者氏名（カタカナ）", source: "people.kana", page: 1 },
   { key: "patient.name", block: "patient", label: "漢字等", source: "people.name", page: 1 },
   // 様式は（漢字等）の右に性別、その下に生年月日・年齢（T47 の照合で順を直した）
@@ -228,6 +239,9 @@ export const MEDICAL_FIELDS = [
     source: "contacts.supporter_order（避難支援等実施者の有無）",
     page: 1,
   },
+  // 様式の要保護者のあと・メディカル ID の前。医師が書く欄で、空欄のまま
+  { key: "doctor.disease", block: "doctor", label: "傷病名", source: DOCTOR_WRITES, page: 1, doctor: true },
+  { key: "doctor.triage", block: "doctor", label: "トリアージタグ", source: DOCTOR_WRITES, page: 1, doctor: true },
   {
     key: "id.medical",
     block: "id",
@@ -246,6 +260,12 @@ export const MEDICAL_FIELDS = [
 ] as const satisfies readonly MedicalFieldDef[];
 
 export type MedicalKey = (typeof MEDICAL_FIELDS)[number]["key"];
+
+/** 医師が書く欄の値（空欄） */
+const HANDWRITE_CELL: Cell = { kind: "handwrite" };
+
+/** 医師が書く欄の key（様式の順） */
+export const DOCTOR_KEYS = MEDICAL_FIELDS.filter((f) => "doctor" in f && f.doctor).map((f) => f.key);
 
 const FIELD_BY_KEY = new Map<string, MedicalFieldDef>(MEDICAL_FIELDS.map((f) => [f.key, f]));
 
@@ -465,8 +485,9 @@ function seirekiText(iso: string): string {
 const WARFARIN = /ワーファリン|ワルファリン|warfarin/i;
 
 /** 区分ごとの薬の名前と印（特記事項のチェックの後ろに添える） */
-function medicationNames(meds: ReadonlyArray<{ m: Medication; mark: InterruptionMark | null }>): Piece[] {
-  return joinGroups(meds.map(({ m, mark }) => [strong(m.name), ...(m.schedule ? [sub(m.schedule)] : []), ...(mark ? [strong(mark.label)] : [])]));
+/** 特記事項の □ の後ろの薬の名前と回数（台帳の言葉のまま）。中断注意の印は付けない（補足の常用薬の表にだけ。11/3 15:00 確定の 3） */
+function medicationNames(meds: ReadonlyArray<{ m: Medication }>): Piece[] {
+  return joinGroups(meds.map(({ m }) => [strong(m.name), ...(m.schedule ? [sub(m.schedule)] : [])]));
 }
 
 function remainingCell(clock: Clock | null, reason: PendingStatus | undefined): Cell {
@@ -788,6 +809,11 @@ export function buildMedicalSummary(rows: PersonPageRows, opts: MedicalBuildOpti
 
   // ---- 欄の値 ----
   const cells: Record<MedicalKey, Cell> = {
+    // 医師が書く欄は空欄（手で書く）。台帳から何も入れない
+    "doctor.firstVisit": HANDWRITE_CELL,
+    "doctor.physician": HANDWRITE_CELL,
+    "doctor.disease": HANDWRITE_CELL,
+    "doctor.triage": HANDWRITE_CELL,
     "patient.kana": person.kana ? value([strong(person.kana)]) : unconfirmed(),
     "patient.name": person.name ? value([strong(person.name)]) : unconfirmed(),
     "patient.birth": person.birth_date

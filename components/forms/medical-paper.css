@@ -121,3 +121,8 @@
   min-width: 0;
   font-size: calc(var(--fs-body) * 1.15);
 }
+
+/* 医師が書く欄（初診日・初診医師氏名・傷病名・トリアージタグ。空欄）。名前の右に書く余白を 1 行ぶん（1 頁に収める） */
+.paper [data-doctor] .hand {
+  min-height: 6mm;
+}
