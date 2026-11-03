@@ -9,7 +9,7 @@ import { AiMark, StateTag } from "@/components/person/parts";
 import { shortJst } from "@/lib/disaster/state";
 import type { DrillIncident, DrillTurn, Tick } from "@/lib/drill/engine";
 import { simAt } from "@/lib/drill/engine";
-import { ACTION_UI, BASIS_LABEL, DRILL_LABELS, elapsedLabel, EVENT_KIND_LABELS } from "@/lib/drill/labels";
+import { ACTION_UI, BASIS_LABEL, DRILL_LABELS, elapsedLabel, EVENT_KIND_LABELS, VIRTUAL_LABELS } from "@/lib/drill/labels";
 import { callIndexes } from "@/lib/drill/calls";
 import { CallInMark } from "./ActionLog";
 import { COLOR_LABELS } from "@/lib/labels";
@@ -47,6 +47,10 @@ export function Situation({
     <ol className="space-y-2" data-situation>
       {order.map((t) => {
         const calls = callIndexes(t.turns);
+        // 仮想モード（T50）: 部屋が落ちて 1 回呼びに戻った刻みは、世界の 1 文に「世界 代替」の印（代替の行は畳む）
+        const fellBack = t.incidents.some((e) => e.change.kind === "world_note" && e.change.state === "down");
+        const hasNarration = t.incidents.some((e) => e.change.kind === "narration");
+        const shown = hasNarration ? t.incidents.filter((e) => e.change.kind !== "world_note") : t.incidents;
         return (
           <li key={t.step} className="rounded-md bg-panel2 px-2.5 py-2" data-situation-step={t.step}>
             <h3 className="flex flex-wrap items-baseline gap-x-2 text-sm">
@@ -62,8 +66,14 @@ export function Situation({
               <p className="mt-1 text-sm text-muted">{DRILL_LABELS.none}</p>
             ) : (
               <ul className="mt-1 space-y-1 text-sm">
-                {t.incidents.map((e, n) => (
-                  <IncidentItem key={`e${n}`} e={e} name={e.person ? names[e.person] : undefined} tickHour={t.hour} />
+                {shown.map((e, n) => (
+                  <IncidentItem
+                    key={`e${n}`}
+                    e={e}
+                    name={e.person ? names[e.person] : undefined}
+                    tickHour={t.hour}
+                    fallback={fellBack && e.change.kind === "narration"}
+                  />
                 ))}
                 {t.turns.map((x, n) => (
                   <TurnItem key={`t${n}`} t={x} name={names[x.person] ?? x.person} tickHour={t.hour} callIn={calls.includes(n)} />
@@ -82,7 +92,7 @@ function At({ at, tickHour }: { at: number; tickHour: number }) {
   return <span className="text-xs text-muted tabular-nums">{at} {DRILL_LABELS.hours}</span>;
 }
 
-function IncidentItem({ e, name, tickHour }: { e: DrillIncident; name: string | undefined; tickHour: number }) {
+function IncidentItem({ e, name, tickHour, fallback = false }: { e: DrillIncident; name: string | undefined; tickHour: number; fallback?: boolean }) {
   const basis = e.basis && isSourceId(e.basis) ? sourceById(e.basis) : null;
   return (
     <li
@@ -93,6 +103,11 @@ function IncidentItem({ e, name, tickHour }: { e: DrillIncident; name: string | 
     >
       <span className="rounded bg-panel px-1 py-px text-xs text-muted">{EVENT_KIND_LABELS[e.change.kind]}</span>
       {e.ai && <AiMark small />}
+      {fallback && (
+        <span className="rounded bg-panel px-1 py-px text-xs text-muted" data-world-fallback>
+          {VIRTUAL_LABELS.fallback}
+        </span>
+      )}
       <span>{e.text}</span>
       {name && <span className="text-xs text-muted">{name}</span>}
       <At at={e.at} tickHour={tickHour} />

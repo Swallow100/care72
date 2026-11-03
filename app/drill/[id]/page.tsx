@@ -7,6 +7,7 @@ import { ActionLog, LatestResult } from "@/components/drill/ActionLog";
 import { ActionPanel, type PanelPerson } from "@/components/drill/ActionPanel";
 import { DamagePanel } from "@/components/drill/DamagePanel";
 import { DrillBar } from "@/components/drill/DrillBar";
+import { EndedNote } from "@/components/drill/Ended";
 import { DrillControls } from "@/components/drill/DrillControls";
 import { DrillRowDetail } from "@/components/drill/DrillRowDetail";
 import { IncomingCall, type IncomingCallItem } from "@/components/drill/IncomingCall";
@@ -29,11 +30,11 @@ import { scoreView } from "@/lib/drill/score-view";
 import { hasAnthropicKey } from "@/lib/claude/client";
 import { ScorePanel } from "@/components/drill/ScorePanel";
 import { PaperIcon, PrintIcon } from "@/components/ui/Icon";
-import { ACTION_LABELS, DRILL_LABELS, elapsedClockLabel, SCENARIO_LABELS, STATUS_LABELS } from "@/lib/drill/labels";
+import { ACTION_LABELS, DRILL_LABELS, elapsedClockLabel, SCENARIO_LABELS, STATUS_LABELS, VIRTUAL_LABELS } from "@/lib/drill/labels";
 import { COLOR_LABELS } from "@/lib/labels";
 import { COLOR_TONES } from "@/lib/person";
 import { DRILL_PATH, drillHref, reportHref, parseSort, parseStep, parseView, type DrillView } from "@/lib/drill/paths";
-import { scenarioOf } from "@/lib/drill/scenarios";
+import { drillKindOf, isVirtual } from "@/lib/drill/scenarios";
 import { loadDrillScreen, type DrillScreen } from "@/lib/drill/view";
 import { voiceEnabled, voiceHref } from "@/lib/drill/voice";
 import { buildSidePane, sideDisasterOf } from "@/lib/map/side";
@@ -76,7 +77,6 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
   const running = s.drill.status === "running";
   // 採点（T22）: 終わった・中断した訓練だけ。再生で見ている刻みでなく、訓練の全部で数える（loadDrillRecord が最後の刻みを読む）
   const scored = running ? null : await loadScore(scope, id);
-  const scenario = scenarioOf(s.drill.scenario);
   const replay = !running;
   const here = (over: { sort?: SortKey; step?: number | null; view?: DrillView } = {}) =>
     drillHref(id, { sort, step: replay ? s.shown : null, view, ...over });
@@ -93,11 +93,16 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
       r.detail ? (
         <DrillRowDetail detail={r.detail} startedAt={s.drill.started_at} aiSignals={s.aiSignals} heard={s.heard} recordings={recordings} />
       ) : null,
+    // 仮想モード（T50）: 結末の人の行に印と 1 文
+    nameNote: (pid) => {
+      const end = endedOf(s, pid);
+      return end ? <EndedNote text={end.text} ai={end.ai} /> : null;
+    },
   };
   const voiceOf = (act: string) => (voiceOn ? voiceHref(id, { act }) : null);
   const side = buildSidePane(s.rows, {
     sort,
-    disaster: sideDisasterOf(s.rows, { kind: scenario.kind, alertLevel: s.state.world.alertLevel }),
+    disaster: sideDisasterOf(s.rows, { kind: drillKindOf(s.drill.scenario, s.state.world), alertLevel: s.state.world.alertLevel }),
   });
   const pins = side.pins.map((p) => ({ ...p, href: here() }));
 
@@ -123,6 +128,11 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
         <span className={`text-sm ${running ? "font-bold" : "text-muted"}`} data-drill-status>
           {STATUS_LABELS[s.drill.status]}
         </span>
+        {isVirtual(s.drill.scenario) && (
+          <span className="text-sm" data-virtual-note>
+            {VIRTUAL_LABELS.note}
+          </span>
+        )}
         <span className="text-xs text-muted tabular-nums">
           {DRILL_LABELS.startedAt} {shortJst(s.drill.started_at)}
           {s.drill.startedByName ? ` ${s.drill.startedByName}` : ""}
@@ -214,7 +224,7 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
               </UiPanel>
             )}
             <Panel title={DRILL_LABELS.damage} id="damage">
-              <DamagePanel kind={scenario.kind} world={s.state.world} now={s.state.hour} names={s.names} />
+              <DamagePanel kind={drillKindOf(s.drill.scenario, s.state.world)} world={s.state.world} now={s.state.hour} names={s.names} />
             </Panel>
             <Panel title={DRILL_LABELS.map} id="map">
               <CaseMap pins={pins} layers={side.demo?.layers ?? []} demo={side.demo} unplaced={side.unplaced} />
@@ -225,6 +235,13 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
       {running && <IncomingCall drillId={id} calls={incomingOf(s, voiceOn, await respondedOf(id))} />}
     </main>
   );
+}
+
+/** 結末の人（見ている刻みまで）の 1 文。結末の状況（lib/drill/outcome.ts → world-apply.ts）から */
+function endedOf(s: DrillScreen, person: string): { text: string; ai: boolean } | null {
+  if (!s.state.world.ended?.[person]) return null;
+  const e = s.ticks.flatMap((t) => t.incidents).find((x) => x.change.kind === "outcome" && x.person === person);
+  return e ? { text: e.text, ai: e.ai } : null;
 }
 
 /**

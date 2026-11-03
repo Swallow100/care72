@@ -19,6 +19,13 @@ export const STATUS_LABELS: Record<DrillStatus, string> = {
 };
 
 /** 見出し・ボタン・欄の名前 */
+/** 仮想モード（T50）の言葉 */
+export const VIRTUAL_LABELS = {
+  note: "仮想モード 架空の人と街。結末まで出ます",
+  ended: "結末",
+  fallback: "世界 代替",
+} as const;
+
 export const DRILL_LABELS = {
   page: "訓練",
   records: "訓練記録",
