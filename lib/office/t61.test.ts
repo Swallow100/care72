@@ -5,7 +5,7 @@
 import type { D1Database } from "@cloudflare/workers-types";
 import { readdirSync, readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { SEED_ACCOUNTS } from "../../seed/people.ts";
 import { seedStatements } from "../../seed/sql.ts";
 import {
@@ -16,6 +16,7 @@ import {
   isFixedAccount,
   JUDGE_LOGIN_ID,
 } from "../auth/demo.ts";
+import { LOCK_FAILURES, LOCK_SEC } from "../auth/lockout.ts";
 import { hashPassword } from "../auth/password.ts";
 import { changeOwnPassword, passwordChangeRequest } from "../auth/password-change.ts";
 import { chooseJudgeRole, login, resolvePrincipal, type Principal } from "../auth/principal.ts";
@@ -481,6 +482,50 @@ describe("自分のパスワードの変更", () => {
     const http = await passwordChangeRequest(db, env(), SECRET, sato.principal, { current: "wrong-pass", next: NEXT }, NOW, FAST);
     expect(http).toMatchObject({ status: 400, body: { error: "wrong_password", label: "現在 不一致" }, token: null });
     expect(await resolvePrincipal(db, env(), SECRET, sato.token, NOW)).not.toBeNull();
+  });
+
+  it("今のパスワードの打ち間違いはログインと同じ回数の制限にアカウントの ID で数え、10 回で止める。止めている間は正しくても変えない", async () => {
+    expect(LOCK_FAILURES).toBe(10);
+    const sato = await addAndLogin("sato", "佐藤");
+    const before = account(sato.id)?.password_hash;
+    const call = (current: string, at: number) => changeOwnPassword(db, env(), SECRET, sato.principal, { current, next: NEXT }, at, FAST);
+    const failures = () => (sqlite.prepare("SELECT count(*) AS n FROM login_attempts WHERE login_id = 'sato' AND ok = 0").get() as { n: number }).n;
+    for (let i = 1; i < LOCK_FAILURES; i++) expect(await call("wrong-pass", NOW + i)).toEqual({ ok: false, error: "wrong_password" });
+    expect(await call("wrong-pass", NOW + LOCK_FAILURES)).toMatchObject({ ok: false, error: "locked" });
+    // 止めている間は正しい今のパスワードでも確かめずに断り、失敗も数えない
+    expect(await call(sato.password, NOW + LOCK_FAILURES + 1)).toMatchObject({ ok: false, error: "locked" });
+    expect(account(sato.id)?.password_hash).toBe(before);
+    expect(failures()).toBe(LOCK_FAILURES);
+    // route の形: 429 と Retry-After の秒、待つ分
+    const http = await passwordChangeRequest(db, env(), SECRET, sato.principal, { current: sato.password, next: NEXT }, NOW + LOCK_FAILURES + 2, FAST);
+    expect(http).toMatchObject({ status: 429, body: { ok: false, error: "locked", label: "回数超過 しばらく待機", minutes: 15 }, token: null });
+    expect(http.retryAfterSec).toBeGreaterThan(0);
+    // 15 分たてば通り、通ったら ID の失敗を消す
+    expect((await call(sato.password, NOW + LOCK_FAILURES + LOCK_SEC + 1)).ok).toBe(true);
+    expect(failures()).toBe(0);
+  });
+
+  it("ほかの人の打ち間違いは数えない（アカウントごと）", async () => {
+    const sato = await addAndLogin("sato", "佐藤");
+    const tanaka = await addAndLogin("tanaka", "田中");
+    for (let i = 1; i <= LOCK_FAILURES; i++) {
+      await changeOwnPassword(db, env(), SECRET, tanaka.principal, { current: "wrong-pass", next: NEXT }, NOW + i, FAST);
+    }
+    const r = await changeOwnPassword(db, env(), SECRET, sato.principal, { current: sato.password, next: NEXT }, NOW + LOCK_FAILURES + 1, FAST);
+    expect(r.ok).toBe(true);
+  });
+
+  it("1 回の変更で PBKDF2 は 2 回（今の確かめと新しいハッシュ。login() を通さない）", async () => {
+    const sato = await addAndLogin("sato", "佐藤");
+    const spy = vi.spyOn(crypto.subtle, "deriveBits");
+    try {
+      const r = await changeOwnPassword(db, env(), SECRET, sato.principal, { current: sato.password, next: NEXT }, NOW, FAST);
+      expect(r.ok).toBe(true);
+      expect(spy).toHaveBeenCalledTimes(2);
+      if (r.ok) expect((await resolvePrincipal(db, env(), SECRET, r.token, NOW + 1))?.accountId).toBe(sato.id);
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it("同時に 2 つ変えても片方だけ（古いハッシュで比べる）", async () => {

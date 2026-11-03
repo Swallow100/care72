@@ -23,8 +23,14 @@ const item = (p: Partial<CareManagerRowItem> = {}): CareManagerRowItem => ({
 const render = (props: { item: CareManagerRowItem; self: boolean; manage: boolean }) =>
   renderToStaticMarkup(createElement("ul", null, createElement(CareManagerRow, props)));
 
-/** ボタンの文字（アイコンの svg を除いた中身） */
-const buttons = (html: string) => [...html.matchAll(/<(?:button|a)\b[^>]*>(?:<svg[\s\S]*?<\/svg>)?([^<]*)<\/(?:button|a)>/g)].map((m) => m[1]);
+/** ボタン（開きの印と、アイコンの svg・囲みの span を除いた文字） */
+const buttonTags = (html: string) =>
+  [...html.matchAll(/<(button|a)\b([^>]*)>([\s\S]*?)<\/\1>/g)].map((m) => ({
+    attrs: m[2],
+    inner: m[3],
+    text: m[3].replace(/<svg[\s\S]*?<\/svg>/g, "").replace(/<[^>]+>/g, ""),
+  }));
+const buttons = (html: string) => buttonTags(html).map((b) => b.text);
 
 describe("ケアマネの一覧の行", () => {
   it("新しいパスワードの長さはサーバーと同じ", () => {
@@ -43,9 +49,25 @@ describe("ケアマネの一覧の行", () => {
   it("管理者が見るほかの人の行: 改名・管理者・停止・再発行（停止と再発行は赤）", () => {
     const html = render({ item: item(), self: false, manage: true });
     expect(buttons(html)).toEqual([OFFICE_LABELS.rename, OFFICE_LABELS.makeAdmin, OFFICE_LABELS.disable, OFFICE_LABELS.resetPassword]);
-    expect(html).toMatch(/text-danger[^>]*>(?:<svg[\s\S]*?<\/svg>)?停止</);
-    expect(html).toMatch(/text-danger[^>]*>(?:<svg[\s\S]*?<\/svg>)?再発行</);
     expect(html).not.toContain(OFFICE_LABELS.changePassword);
+  });
+
+  it("赤の操作（停止・管理者解除・再発行）も白い地のボタンで、文字と印だけ赤（灰色の行に溶けない）", () => {
+    const tags = [
+      ...buttonTags(render({ item: item(), self: false, manage: true })),
+      ...buttonTags(render({ item: item({ admin: true }), self: false, manage: true })),
+    ];
+    for (const label of [OFFICE_LABELS.disable, OFFICE_LABELS.resetPassword, OFFICE_LABELS.removeAdmin]) {
+      const b = tags.find((t) => t.text === label);
+      expect(b, label).toBeDefined();
+      expect(b!.attrs).toContain("bg-panel ");
+      expect(b!.attrs).not.toContain("bg-panel2");
+      expect(b!.attrs).toContain("data-danger");
+      expect(b!.inner).toMatch(/<svg[^>]*text-danger/);
+      expect(b!.inner).toContain(`<span class="text-danger group-disabled:text-muted">${label}</span>`);
+    }
+    // 白い地のボタンは全部同じ形（plainIn）
+    for (const t of tags) expect(t.attrs).toContain("bg-panel ");
   });
 
   it("管理者の行には「管理者解除」（赤）、停止した行には停止の印と「再開」", () => {

@@ -9,7 +9,7 @@
 // 送ったあとは一覧を読み直す（router.refresh。この部品の状態は残る）。
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, type ComponentProps, type ComponentType, type SVGProps } from "react";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import {
   AddIcon,
@@ -200,9 +200,9 @@ export function CareManagerRow({ item, self, manage }: { item: CareManagerRowIte
           {others && (
             <>
               {item.admin ? (
-                <Button kind="danger" size="sm" icon={RemoveIcon} disabled={busy} onClick={() => void toggleAdmin()}>
+                <DangerIn icon={RemoveIcon} disabled={busy} onClick={() => void toggleAdmin()}>
                   {OFFICE_LABELS.removeAdmin}
-                </Button>
+                </DangerIn>
               ) : (
                 <Button kind="plainIn" size="sm" icon={AddIcon} disabled={busy} onClick={() => void toggleAdmin()}>
                   {OFFICE_LABELS.makeAdmin}
@@ -213,13 +213,13 @@ export function CareManagerRow({ item, self, manage }: { item: CareManagerRowIte
                   {OFFICE_LABELS.enable}
                 </Button>
               ) : (
-                <Button kind="danger" size="sm" icon={UnlistIcon} disabled={busy} onClick={() => void toggleDisabled()}>
+                <DangerIn icon={UnlistIcon} disabled={busy} onClick={() => void toggleDisabled()}>
                   {OFFICE_LABELS.disable}
-                </Button>
+                </DangerIn>
               )}
-              <Button kind="danger" size="sm" icon={RetryIcon} disabled={busy} onClick={() => void reissue()}>
+              <DangerIn icon={RetryIcon} disabled={busy} onClick={() => void reissue()}>
                 {OFFICE_LABELS.resetPassword}
-              </Button>
+              </DangerIn>
             </>
           )}
           {canPassword && (
@@ -309,6 +309,21 @@ export function CareManagerRow({ item, self, manage }: { item: CareManagerRowIte
         </div>
       )}
     </li>
+  );
+}
+
+type IconType = ComponentType<SVGProps<SVGSVGElement>>;
+
+/**
+ * 灰色の行の上の赤の操作（停止・管理者解除・再発行）。Button の danger は地が面の中の灰色で行と同じになり、白い地のボタン
+ * （改名・管理者・再開）と形がそろわないので、白い地（plainIn）に赤の文字と印で描く（components/ui は変えない）。押したときは灰色だけ
+ */
+function DangerIn({ icon: I, children, className = "", ...rest }: { icon: IconType; children: React.ReactNode } & Omit<ComponentProps<"button">, "children">) {
+  return (
+    <Button kind="plainIn" size="sm" className={`group ${className}`.trim()} data-danger="" {...rest}>
+      <I aria-hidden className="size-3.5 shrink-0 text-danger group-disabled:text-muted" />
+      <span className="text-danger group-disabled:text-muted">{children}</span>
+    </Button>
   );
 }
 

@@ -17,5 +17,7 @@ export async function POST(request: Request) {
   const raw = await request.json().catch(() => null);
   const r = await passwordChangeRequest(env.DB, env, secret, principal, raw, now);
   if (r.token) headers.append("Set-Cookie", sessionCookie(r.token, request.url));
+  // 今のパスワードの打ち間違いが多いと止める（ログインと同じ回数の制限。lib/auth/lockout.ts）
+  if (r.retryAfterSec !== undefined) headers.set("Retry-After", String(r.retryAfterSec));
   return Response.json(r.body, { status: r.status, headers });
 }
