@@ -56,6 +56,12 @@ export type RuleId =
 /** 理由に足す言葉 */
 export type QualifierId = "ai_classified" | "unchecked" | "self_green_set_aside" | "no_supporter";
 
+/**
+ * 表の緑（行 green）がどこから来たか（T78）。医療班・行政の受け入れ（arrival）か、受け入れを搬送で閉じた知らせ（transport）。
+ * 状態の言葉（lib/labels.ts の stateLabel）が「無事」の代わりに「受入」「搬送」と言うためだけの印で、色・並び・理由には使わない
+ */
+export type GreenVia = "arrival" | "transport";
+
 export type TriageClock = Pick<ClockRow, "kind" | "category" | "label" | "value" | "unit" | "starts_on"> & {
   /** 外の物に頼る時計の頼り先。無ければ頼らない */
   depends_on?: DependsOn | null;
@@ -132,6 +138,8 @@ export type TriageResult = {
   reason: string;
   /** 理由に足した言葉 */
   qualifiers: QualifierId[];
+  /** 表の行が green で、使った知らせが受け入れか搬送のとき（T78）。状態の言葉だけに使う。本人・家族・ケアマネ・訪問の緑には付けない */
+  greenVia?: GreenVia;
   override?: Override & { expired: boolean };
 };
 
@@ -257,6 +265,10 @@ export const READING: ReadonlyArray<{ text: string; origin: string }> = [
   {
     text: "受入一覧から搬送で外した知らせも緑の信号と同じに搬送の時刻で並べる。いちばん新しければ理由は「搬送 行き先」（行き先が無ければ「搬送」）。退所は「到着」のまま。搬送より後の赤は赤",
     origin: "T24",
+  },
+  {
+    text: "受け入れ・搬送の知らせで緑（行「緑」）になった人の状態の言葉は「無事」でなく「受入」「搬送」。本人がけが・動けないと答えたまま受け入れられることがあるため。色・並び・理由は同じ（言葉だけ）。受け入れの前の本人の答えは経過と受け持ちの行に出す",
+    origin: "案（T78）",
   },
   { text: "時計は停電か発災から走る。停電していなければ停電で走る時計は止まったまま", origin: "仕様書" },
   { text: "「超えた」「過ぎた」はちょうどを含まない。仕様書の「12 時間までは灰」に合わせた", origin: "決めた所" },
@@ -758,6 +770,9 @@ export function triage(entry: TriageEntry, situation: Situation): TriageResult {
   });
   const applied = entry.override ? applyOverride(rule.color, entry.override) : undefined;
   const color = applied ? applied.color : rule.color;
+  // 緑の出どころ（T78）。行と理由は上で決まったまま、言葉のための印を足すだけ
+  const greenVia: GreenVia | null =
+    rule.id !== "green" ? null : signal?.transport ? "transport" : signal?.shelter ? "arrival" : null;
   return {
     personId: person.id,
     color,
@@ -769,6 +784,7 @@ export function triage(entry: TriageEntry, situation: Situation): TriageResult {
     tier: tierOf(person),
     reason: [reason, ...added.map((q) => q.text)].join("、"),
     qualifiers: added.map((q) => q.id),
+    ...(greenVia ? { greenVia } : {}),
     ...(applied ? { override: applied.detail } : {}),
   };
 }

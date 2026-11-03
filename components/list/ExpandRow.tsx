@@ -48,7 +48,8 @@ export function ExpandRow({
             aria-controls={open ? detailId : undefined}
             aria-label={`${label} ${open ? "閉じる" : "詳細"}`}
             onClick={() => setOpen((v) => !v)}
-            className="-mx-1 inline-flex items-center gap-1 rounded px-1 py-0.5"
+            // 640px 未満は開け閉めの印を状態の印の下に（列を詰める。T78）
+            className="-mx-1 inline-flex flex-col items-center gap-0.5 rounded px-1 py-0.5 sm:flex-row sm:gap-1"
             data-press
           >
             {head}

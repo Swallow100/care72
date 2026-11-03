@@ -42,7 +42,7 @@ import { CASELOAD_CSV_PATH, EXPORT_LABELS, OWN_SHEETS_PATH } from "@/lib/forms/e
 import { listHref, listView, type ListViewResult } from "@/lib/list/view";
 import { personDisaster } from "@/lib/disaster/person";
 import { elapsedText, shortJst } from "@/lib/disaster/state";
-import { COLOR_LABELS, TIER_LABELS } from "@/lib/labels";
+import { stateLabel, TIER_LABELS } from "@/lib/labels";
 import { nowcastOn } from "@/lib/jma/nowcast";
 import { buildSidePane, sideDisasterOf } from "@/lib/map/side";
 import { loadOfficePlace } from "@/lib/office/place";
@@ -51,7 +51,7 @@ import { NEW_PERSON_PATH } from "@/lib/office/http-paths";
 import { OFFICE_ERROR_LABELS, OFFICE_LABELS } from "@/lib/office/labels";
 import { loadPlanForm, planFormView } from "@/lib/forms/plan-form";
 import { COLOR_TONES, loadPersonPage, toPersonView, type PersonView as View } from "@/lib/person";
-import type { Color } from "@/lib/triage/index";
+import type { TriageResult } from "@/lib/triage/index";
 
 // D1 を毎回読む
 export const dynamic = "force-dynamic";
@@ -195,18 +195,15 @@ export default async function CaseloadPage({ searchParams }: Props) {
     >
       <section aria-labelledby="caseload-title" className="min-w-0">
         {/* 利用者追加（T30）は見出しの段の右上。事業所のケアマネ追加と同じ形（主の操作・人＋のアイコン・32px）。
-            その左に書き出し（T62）: CSV出力・一括印刷（今の並びと絞込のまま） */}
+            書き出し（T62: CSV出力・一括印刷）は絞込の帯の右端の 1 か所だけ（T78。前は見出しの段にも同じ 2 つがあった） */}
         <PageHead
           id="caseload-title"
           title="担当一覧"
           count={count}
           actions={
-            <>
-              <ExportButtons view={lv} />
-              <ButtonLink href={NEW_PERSON_PATH} kind="main" icon={AddPersonIcon}>
-                {OFFICE_LABELS.addPerson}
-              </ButtonLink>
-            </>
+            <ButtonLink href={NEW_PERSON_PATH} kind="main" icon={AddPersonIcon}>
+              {OFFICE_LABELS.addPerson}
+            </ButtonLink>
           }
         />
         {/* 災害モードは色ごとの人数（大きく）と発災・停電からの経過（平時の計画の人数は右の面の「計画」） */}
@@ -223,7 +220,7 @@ export default async function CaseloadPage({ searchParams }: Props) {
           </Panel>
         )}
         <Panel as="div" className="mt-3 px-3 py-2">
-          {/* 絞ったあとに押す流れ。帯の右端にも同じ 2 つ（T62） */}
+          {/* 書き出しは絞ったあとに押す流れなので、絞込の帯の右端に 1 か所（T62・T78） */}
           {filterBar(<ExportButtons view={lv} />)}
         </Panel>
         {peopleError && (
@@ -320,7 +317,7 @@ function CompactList({ rows, sort, open, view }: { rows: CaseloadRow[]; sort: So
             >
               {r.triage ? (
                 <span className="text-center">
-                  <TriageTag color={r.triage.color} />
+                  <TriageTag triage={r.triage} />
                   {r.rank !== null && <span className="mt-0.5 block text-xs text-muted">{r.rank}</span>}
                 </span>
               ) : (
@@ -365,11 +362,11 @@ function ExportButtons({ view }: { view: ListViewResult }) {
   );
 }
 
-/** ルールの表の色の印（至急・要確認・不明・無事）。色だけにせず文字を添える */
-function TriageTag({ color, size = "sm" }: { color: Color; size?: "sm" | "md" }) {
+/** ルールの表の色の印（至急・要確認・不明・無事。受入・搬送から来た緑は「受入」「搬送」、T78）。色だけにせず文字を添える */
+function TriageTag({ triage, size = "sm" }: { triage: Pick<TriageResult, "color" | "greenVia">; size?: "sm" | "md" }) {
   return (
-    <StateTag tone={COLOR_TONES[color]} size={size}>
-      {COLOR_LABELS[color]}
+    <StateTag tone={COLOR_TONES[triage.color]} size={size}>
+      {stateLabel(triage)}
     </StateTag>
   );
 }

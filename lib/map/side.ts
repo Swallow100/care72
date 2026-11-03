@@ -7,7 +7,7 @@
 import { PLAN_TONES, rowLink, type CaseloadRow, type SortKey } from "../caseload.ts";
 import { PLAN_STATUSES, type GeoPoint, type HazardKind, type OfficeKind, type PlanStatus } from "../db/types.ts";
 import { DISASTER_SCENE, type DisasterState } from "../disaster/state.ts";
-import { BLANK_LABELS, COLOR_LABELS, HAZARD_LABELS, PLAN_STATUS_LABELS } from "../labels.ts";
+import { BLANK_LABELS, COLOR_LABELS, HAZARD_LABELS, PLAN_STATUS_LABELS, stateLabel } from "../labels.ts";
 import { PLACE_LABELS } from "../signals/labels.ts";
 import { COLOR_TONES, fieldLabelOf, type StateTone } from "../person.ts";
 import { compareResults, type Color, type TriageResult } from "../triage/index.ts";
@@ -214,7 +214,7 @@ export function mapPins(
     })
     .map(({ row, at, reported }, i) => {
       const hit = rank.get(row.id);
-      const state = hit ? COLOR_LABELS[hit.r.color] : null;
+      const state = hit ? stateLabel(hit.r) : null;
       const base = hit ? `${row.name} ${state} ${hit.r.reason}` : row.name;
       return {
         id: row.id,
