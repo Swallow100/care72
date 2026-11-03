@@ -1,7 +1,7 @@
 "use client";
 
 // 経過の撤回（docs/tasks/T63.md）。撤回できる行（lib/person.ts の retractable。誰が押せるかはサーバーが決める）の右に小さく「撤回」。
-// 押すと行の下に 理由（40 字、任意）と「撤回」（赤の文字）・「戻る」が開く（確認の窓は理由を受けないので行の中に）。
+// 押すと行の下に 理由（40 字、任意）と「撤回」（赤の文字）・「取消」が開く（確認の窓は理由を受けないので行の中に。取消は窓と同じ言葉、T78）。
 // 送ったら本人のページを読み直す（router.refresh。書き足しの欄 TimelineComposer と同じ）。理由は Claude に渡さない。
 // 経過の行（components/person/Timeline.tsx の li）は折り返す横並び。誰が（who）とボタンを 1 つの塊にして右に寄せ（狭い幅でボタンだけが
 // 左に落ちないように）、開いた欄は li の直の子にして order-last と basis-full で本文の下の 1 段に入れる。
@@ -9,7 +9,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
-import { BackIcon, RemoveIcon } from "@/components/ui/Icon";
+import { CloseIcon, RemoveIcon } from "@/components/ui/Icon";
 import { RETRACT_FAILED, RETRACT_LABELS } from "@/lib/timeline/labels";
 import { RETRACT_API, RETRACT_NOTE_MAX } from "@/lib/timeline/paths";
 import { TIMELINE_INPUT_SHAPE } from "./TimelineComposer";
@@ -25,7 +25,7 @@ export function RetractButton({ id, who }: { id: string; who: string }) {
   const [error, setError] = useState<string | null>(null);
   const input = useRef<HTMLInputElement>(null);
   const opener = useRef<HTMLButtonElement>(null);
-  /** 戻るで閉じたら「撤回」のボタンへ焦点を返す（初めの描画では動かさない） */
+  /** 取消で閉じたら「撤回」のボタンへ焦点を返す（初めの描画では動かさない） */
   const returnFocus = useRef(false);
 
   // 開いたら理由の欄へ（任意なので、そのまま「撤回」も押せる）。閉じたら開いたボタンへ
@@ -116,7 +116,8 @@ export function RetractButton({ id, who }: { id: string; who: string }) {
         <Button type="submit" size="sm" kind="danger" icon={RemoveIcon} disabled={busy}>
           {busy ? RETRACT_LABELS.sending : RETRACT_LABELS.confirm}
         </Button>
-        <Button size="sm" kind="quiet" icon={BackIcon} onClick={close}>
+        {/* 確認の窓の取消と同じ言葉とアイコン（T78） */}
+        <Button size="sm" kind="quiet" icon={CloseIcon} onClick={close}>
           {RETRACT_LABELS.cancel}
         </Button>
         {error && (

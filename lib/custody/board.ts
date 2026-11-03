@@ -20,10 +20,12 @@ import { loadSituation } from "../disaster/db.ts";
 import { loadOfficeOverrides, type StoredOverride } from "../disaster/override.ts";
 import { personSituation, shortJst, type DisasterSituation } from "../disaster/state.ts";
 import { toTriageSignal, triageInDisaster, withinDisaster, type SignalForTriage } from "../disaster/triage.ts";
-import { remainOf, type Remain } from "../list/detail.ts";
+import { remainOf, SOURCE_LABELS, type Remain } from "../list/detail.ts";
+import { DETAIL_LABELS } from "../list/labels.ts";
+import { PRESSED_LABELS } from "../signals/labels.ts";
 import { COLOR_TONES, markItems, type MarkItem, type StateTone } from "../person.ts";
 import { toTriagePerson } from "../triage/from-ledger.ts";
-import { compareResults, type Color, type Situation, type TriageResult } from "../triage/index.ts";
+import { compareResults, type Color, type GreenVia, type Situation, type TriageResult } from "../triage/index.ts";
 import type { StaffActor } from "./actor.ts";
 import { ARRIVAL_COLUMNS, toTriageArrival, type ArrivalRow } from "./arrivals.ts";
 import { CUSTODY_LABELS } from "./labels.ts";
@@ -54,8 +56,15 @@ export type StaffRow = {
   unaffiliated: boolean;
   color: Color;
   tone: StateTone;
+  /** 表の緑が受入・搬送から来たか（T78）。状態の言葉を「受入」「搬送」にする（lib/labels.ts の stateLabel）。色と順は変えない */
+  greenVia?: GreenVia;
   /** 理由の 1 行。医療が範囲の外の人は空（時計・薬の名前が入るので） */
   reason: string;
+  /**
+   * 受入の前の最後の知らせが赤のとき、その答え（T78。「本人「けが」「動けない」 11/4 10:00」）。受入で表が緑になっても、
+   * けが・動けないのまま来たことが行で分かるように。医療が範囲の外の人は出さない（経過の信号の行と同じ。lib/consent/scope.ts）
+   */
+  before?: string | null;
   /** 表の並び（1 から）。並べ替えても変わらない */
   rank: number;
   /** 医療要約（T07）を開けるか（医療班への提供に同意がある人。lib/consent/scope.ts） */
@@ -93,6 +102,27 @@ type ClockForBoard = Pick<
 type ContactForBoard = Pick<ContactRow, "person_id" | "supporter_order">;
 
 const IDS = "SELECT value FROM json_each(?1)";
+
+/**
+ * 受入の前の最後の知らせ（訓練でない・撤回していない信号。発災から受入の時刻まで）が赤なら、その答えの 1 行（T78）。
+ * 誰が・けが・動けない（答えが無ければ「無事じゃない」）・時刻。色と順には使わない（表示だけ）
+ */
+export function beforeReceive(
+  signals: ReadonlyArray<Pick<SignalForTriage, "color" | "source" | "injured" | "can_move" | "occurred_at">>,
+  receivedAt: string,
+  situation: Situation,
+): string | null {
+  const until = Date.parse(receivedAt);
+  const last = signals
+    .filter((s) => withinDisaster(s.occurred_at, situation) && Date.parse(s.occurred_at) <= until)
+    .reduce<(typeof signals)[number] | null>((a, s) => (a && Date.parse(a.occurred_at) > Date.parse(s.occurred_at) ? a : s), null);
+  if (!last || last.color !== "red") return null;
+  const words: string[] = [];
+  if (last.injured === 1) words.push(DETAIL_LABELS.injured);
+  if (last.can_move === 0) words.push(DETAIL_LABELS.immobile);
+  const said = words.length > 0 ? words.map((w) => `「${w}」`).join("") : `「${PRESSED_LABELS.red}」`;
+  return `${SOURCE_LABELS[last.source]}${said} ${shortJst(last.occurred_at)}`;
+}
 
 /** 自分の受け持ちを読む。now は ISO、today は JST の日付 */
 export async function loadStaffBoard(
@@ -215,7 +245,9 @@ export async function loadStaffBoard(
         unaffiliated,
         color: triage.color,
         tone: COLOR_TONES[triage.color],
+        ...(triage.greenVia ? { greenVia: triage.greenVia } : {}),
         reason: medicalShown ? triage.reason : "",
+        before: medicalShown ? beforeReceive(signalsOf.get(r.person_id) ?? [], r.received_at, situation) : null,
         rank: 0,
         summary: canOpenDocument(scope, "medical"),
       },

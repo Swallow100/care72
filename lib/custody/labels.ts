@@ -39,6 +39,10 @@ export const CUSTODY_LABELS = {
   remain: "残り",
   office: "所属",
   receivedAt: "受入",
+  /** 受入の前の最後の知らせが赤のとき、行の理由の下に出す頭（T78） */
+  before: "受入前",
+  /** 避難所の欄が空のまま受入・新規登録を押したとき、欄の名前の横に出す（T78） */
+  missing: "未入力",
   by: "受入者",
   /** 所属なし（offices.kind unaffiliated の名前と同じ） */
   unaffiliated: "所属なし",

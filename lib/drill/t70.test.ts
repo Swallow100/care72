@@ -425,7 +425,7 @@ describe("押せる人なしと見込み（T70 の 2・5）", () => {
       { id: "n-1", name: "架空 一", canPress: true, callable: ["heavy_rain", "earthquake", "short", "virtual"] as DrillScenario[] },
       { id: "n-4", name: "架空 四", canPress: false, callable: ["heavy_rain", "earthquake", "short"] as DrillScenario[] },
     ];
-    const html = renderToStaticMarkup(createElement(StartButtons, { scenarios: SCENARIO_ORDER, disabled: false, people, remaining: 30 }));
+    const html = renderToStaticMarkup(createElement(StartButtons, { scenarios: SCENARIO_ORDER, disabled: false, people, ai: { kind: "ready", remaining: 30, limit: 200 } }));
     expect(html).toContain('data-no-presser-count="1"');
     expect(html).toContain("押せる人なし 1 人");
     // 10 分版: 4 ×（1 + 2）+ 1 + 4 = 17。大雨: 12 × 3 + 1 + 12 = 49 は残り 30 を超える
@@ -433,7 +433,7 @@ describe("押せる人なしと見込み（T70 の 2・5）", () => {
     expect(html).toMatch(/data-estimate-scenario="heavy_rain" data-estimate-calls="49" data-over=""/);
     expect(html).toContain("上限不足");
     expect(html).not.toMatch(/data-scenario="heavy_rain"[^>]*disabled/);
-    const unknown = renderToStaticMarkup(createElement(StartButtons, { scenarios: SCENARIO_ORDER, disabled: false, people, remaining: null }));
+    const unknown = renderToStaticMarkup(createElement(StartButtons, { scenarios: SCENARIO_ORDER, disabled: false, people, ai: null }));
     expect(unknown).not.toContain("上限不足");
   });
 });
@@ -455,10 +455,10 @@ describe("上限に当たった刻みに停止の印（T70 の 5）", () => {
     expect(sqlite.prepare("SELECT color FROM signals WHERE drill_id = 'lim' AND person_id = 'p-01' ORDER BY occurred_at").all()).toEqual([
       { color: "red" },
     ]);
-    // 刻みの見出しに灰の文字の印、状況の行には出さない
+    // 刻みの見出しにも状況の行にも積まない（T76: 画面の上の「AI 停止」の帯 1 本。lib/drill/t76.test.ts）
     const html = renderToStaticMarkup(createElement(Situation, { ticks: ticks.slice(0, 1), names: {}, startedAt: START }));
-    expect(html).toContain('data-ai-stopped="persona"');
-    expect(html).toContain("本人役 停止");
+    expect(html).not.toContain("data-ai-stopped");
+    expect(html).not.toContain("本人役 停止");
     expect(html).not.toContain('data-incident="ai_stop"');
     // 再生（状態の作り直し）は印で世界を変えない
     const replayed = replayState(row, participantsOf(row), ticks, row.step).state;

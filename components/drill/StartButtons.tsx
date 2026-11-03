@@ -11,9 +11,11 @@
 //
 // T70: 参加者のうち、本人も家族・支援者もスマホで赤緑を押せない人に「押せる人なし」（灰の文字。名前は本人のページへ。スマホを入れるのはそこ）。
 // 押せる人のいない人は本人役（AI）が呼ばれず、表の行が当たったときだけ表の固定の安否が届く。
-// 想定のボタンの下に、選んだ参加者での AI の呼び出しの見込み（lib/drill/estimate.ts）。今日の残りはすぐ下の行（app/drill/page.tsx の「AI 残り」）
-// にあるので、ここでは比べるだけにして並べない。見込みが残りを超える想定には
-// 「上限不足」（赤の文字）。開始は止めない（途中で当たれば刻みに「停止」の印）
+// 想定のボタンの下に、選んだ参加者での AI の呼び出しの見込み（lib/drill/estimate.ts）。見込みが残りを超える想定には
+// 「上限不足」（赤の文字）。開始は止めない（途中で当たれば訓練の画面に「AI 停止」の帯）。
+// T76: 見込みの行の頭に AI の今の状態（lib/claude/status.ts。「AI 本日残り 37 / 200 回」）を並べ、足りるかを 1 行で見られるようにする
+// （T70 の案 6 の「重ねない」から変えた）。AI が使えない（未設定）ときは回数でなく想定ごとの進み方（固定の筋は「想定のみ」、仮想は「世界停止」）。
+// 未設定の印は中立の地の印（components/ui/AiStatus。状態の 4 色を使わない）。開始は止めない
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -23,8 +25,11 @@ import { Button } from "@/components/ui/Button";
 import { OpenIcon, PlayIcon } from "@/components/ui/Icon";
 import { LABEL } from "@/components/ui/Panel";
 import { Select } from "@/components/ui/Select";
+import { AiStatusMark } from "@/components/ui/AiStatus";
+import { aiRemaining, aiUsable, type AiStatus } from "@/lib/claude/status";
 import { estimateDrillCalls, overLimit } from "@/lib/drill/estimate";
-import { DRILL_LABELS, SCENARIO_LABELS, T59_LABELS, T70_LABELS } from "@/lib/drill/labels";
+import { AI_STOP_UI, DRILL_LABELS, SCENARIO_LABELS, T59_LABELS, T70_LABELS } from "@/lib/drill/labels";
+import { isVirtual } from "@/lib/drill/scenarios";
 import { STAFF_MAX } from "@/lib/drill/options";
 
 /** 主の操作の色にする想定 */
@@ -49,14 +54,14 @@ export function StartButtons({
   scenarios,
   disabled,
   people = [],
-  remaining = null,
+  ai = null,
 }: {
   scenarios: ReadonlyArray<DrillScenario>;
   disabled: boolean;
   /** 担当一覧の人（参加者の選択。無ければ設定の参加者を出さない） */
   people?: ReadonlyArray<StartPerson>;
-  /** 今日の AI の残り（lib/claude/gate.ts の drillGate と同じ値。上限不足の判定だけに使う。読めなければ null） */
-  remaining?: number | null;
+  /** AI の今の状態（lib/claude/status.ts。app/drill/page.tsx が lib/claude/cloudflare.ts の aiStatusFor で読む）。読めなければ null */
+  ai?: AiStatus | null;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState<DrillScenario | null>(null);
@@ -117,6 +122,10 @@ export function StartButtons({
   };
 
   const changed = options() !== undefined;
+  // 見込みと比べる今日の残り（未設定は 0。読めなければ比べない）と、AI が使えるか
+  const remaining = ai ? aiRemaining(ai) : null;
+  const usable = ai === null || aiUsable(ai);
+  const estimates = people.length > 0 && !none;
 
   return (
     <div className={`flex min-w-0 flex-wrap items-center gap-2 ${open ? "w-full" : ""}`} data-start>
@@ -152,19 +161,38 @@ export function StartButtons({
           {error}
         </span>
       )}
-      {people.length > 0 && !none && (
+      {(estimates || (ai !== null && !(ai.kind === "ready" && ai.remaining === null))) && (
         <p className="flex w-full flex-wrap items-baseline gap-x-3 gap-y-0.5 text-xs text-muted tabular-nums" data-estimate>
-          <span>{T70_LABELS.estimate}</span>
-          {ordered.map((s) => {
-            const n = estimateDrillCalls(s, picked);
-            const over = overLimit(n, remaining);
-            return (
-              <span key={s} data-estimate-scenario={s} data-estimate-calls={n} data-over={over ? "" : undefined}>
-                {SCENARIO_LABELS[s]} {T70_LABELS.about} {n} {T70_LABELS.times}
-                {over && <span className="ml-1 font-bold text-danger">{T70_LABELS.short}</span>}
-              </span>
-            );
-          })}
+          {/* 今日の残り（か未設定）を見込みの頭に並べる（T76） */}
+          {ai && <AiStatusMark status={ai} />}
+          {estimates && usable && <span>{T70_LABELS.estimate}</span>}
+          {estimates &&
+            ordered.map((s) => {
+              const n = estimateDrillCalls(s, picked);
+              const over = overLimit(n, remaining);
+              const effect = isVirtual(s) ? AI_STOP_UI.virtual : AI_STOP_UI.fixed;
+              const effectTitle = isVirtual(s) ? AI_STOP_UI.virtualTitle : AI_STOP_UI.fixedTitle;
+              // AI が使えない: 回数でなく、その想定の進み方（固定の筋は想定のみ、仮想は世界停止）。色は付けない
+              if (!usable)
+                return (
+                  <span key={s} data-estimate-scenario={s} data-ai-effect={isVirtual(s) ? "virtual" : "fixed"}>
+                    {SCENARIO_LABELS[s]}{" "}
+                    <span className="font-bold text-ink" title={effectTitle}>
+                      {effect}
+                    </span>
+                  </span>
+                );
+              return (
+                <span key={s} data-estimate-scenario={s} data-estimate-calls={n} data-over={over ? "" : undefined}>
+                  {SCENARIO_LABELS[s]} {T70_LABELS.about} {n} {T70_LABELS.times}
+                  {over && (
+                    <span className="ml-1 font-bold text-danger" title={`${AI_STOP_UI.title} 途中から ${effect}`}>
+                      {T70_LABELS.short}
+                    </span>
+                  )}
+                </span>
+              );
+            })}
           {noPresser > 0 && (
             <span data-no-presser-count={noPresser}>
               {T70_LABELS.noPresser} {noPresser} {T59_LABELS.people}

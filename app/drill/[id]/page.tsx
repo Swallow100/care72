@@ -6,6 +6,7 @@ import { countColors } from "@/components/disaster/ColorCounts";
 import { ActionLog, LatestResult } from "@/components/drill/ActionLog";
 import { ActionPanel, type PanelPerson } from "@/components/drill/ActionPanel";
 import { DamagePanel } from "@/components/drill/DamagePanel";
+import { AiStopBand } from "@/components/drill/AiStopBand";
 import { DrillBar } from "@/components/drill/DrillBar";
 import { EndedNote } from "@/components/drill/Ended";
 import { DrillControls } from "@/components/drill/DrillControls";
@@ -28,7 +29,9 @@ import { loadDrillRecord, type DrillRecord } from "@/lib/drill/record";
 import { loadCallRecords } from "@/lib/drill/responses";
 import { SCORE_LABELS } from "@/lib/drill/score-labels";
 import { scoreView } from "@/lib/drill/score-view";
-import { hasAnthropicKey } from "@/lib/claude/client";
+import { aiStatusFor } from "@/lib/claude/cloudflare";
+import type { AiStatus } from "@/lib/claude/status";
+import { aiStopBand } from "@/lib/drill/ai-stop";
 import { ScorePanel } from "@/components/drill/ScorePanel";
 import { PaperIcon, PrintIcon } from "@/components/ui/Icon";
 import { ACTION_LABELS, DRILL_LABELS, elapsedClockLabel, SCENARIO_LABELS, STATUS_LABELS, VIRTUAL_LABELS } from "@/lib/drill/labels";
@@ -74,10 +77,14 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
   if (s === "failed") return <Message title="読込失敗" />;
   if (!s) return <Message title="該当なし" />;
   const voiceOn = await voiceReady();
+  // AI の今の状態（T76。未設定・上限到達・本日残り。lib/claude/status.ts）。帯と講評の両方がこれを読む。読めなければ null
+  const ai = await aiStatusFor(scope.officeId).catch(() => null);
 
   const running = s.drill.status === "running";
   // 採点（T22）: 終わった・中断した訓練だけ。再生で見ている刻みでなく、訓練の全部で数える（loadDrillRecord が最後の刻みを読む）
-  const scored = running ? null : await loadScore(scope, id);
+  const scored = running ? null : await loadScore(scope, id, ai);
+  // AI 停止の帯 1 本（T76）。刻みの跡（見ている刻みまで）と、進行中なら今の状態から
+  const stopBand = aiStopBand(s.ticks, { virtual: isVirtual(s.drill.scenario), running, now: running ? ai : null });
   const replay = !running;
   const here = (over: { sort?: SortKey; step?: number | null; view?: DrillView } = {}) =>
     drillHref(id, { sort, step: replay ? s.shown : null, view, ...over });
@@ -170,6 +177,7 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
         </div>
       </header>
       <FictionalNote kind={fiction} />
+      <AiStopBand band={stopBand} />
 
       <section aria-label={DRILL_LABELS.elapsed} className="grid gap-x-6 gap-y-2 rounded-lg bg-panel px-3 py-3 lg:grid-cols-[11rem_minmax(0,1fr)]">
         <div>
@@ -306,15 +314,15 @@ function recordingsOf(s: DrillScreen): Record<string, string> {
 }
 
 /**
- * 採点と講評と前回（T22、lib/drill/record.ts）。採点がまだなら数えて drills.score に残す。canReview は Claude の鍵があるか
- * （無ければ講評を呼ばず「講評なし」）。読めなければ null（採点の欄を出さない）
+ * 採点と講評と前回（T22、lib/drill/record.ts）。採点がまだなら数えて drills.score に残す。canReview は AI が未設定でないか
+ * （未設定なら講評を呼ばず「AI 停止 未設定」で数字だけ。T76）。読めなければ null（採点の欄を出さない）
  */
-async function loadScore(scope: DrillScope, id: string): Promise<{ record: DrillRecord; canReview: boolean } | null> {
+async function loadScore(scope: DrillScope, id: string, ai: AiStatus | null): Promise<{ record: DrillRecord; canReview: boolean } | null> {
   try {
     const { env } = await getCloudflareContext({ async: true });
     const record = await loadDrillRecord(env.DB, scope, id, new Date().toISOString());
     if (!record || record === "running") return null;
-    return { record, canReview: hasAnthropicKey(env) };
+    return { record, canReview: ai !== null && ai.kind !== "unset" };
   } catch (e) {
     console.error("採点を読めない", e);
     return null;

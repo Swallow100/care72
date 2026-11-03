@@ -103,7 +103,26 @@ export const T70_LABELS = {
   day: "24 時間",
 } as const;
 
-/** 上限で止まった AI の役の印（刻みの見出し。灰の文字） */
+/**
+ * AI が止まったときの訓練の帯（T76。lib/drill/ai-stop.ts）。刻みごとに積まず 1 本。理由の言葉は lib/claude/status.ts の AI_STATUS_LABELS。
+ * 固定の筋は想定の表の出来事と安否だけで進む（想定のみ）、仮想は街と本人役が止まる（世界停止）。戻り方は engine の動きのまま
+ */
+export const AI_STOP_UI = {
+  title: "AI 停止",
+  fixed: "想定のみ",
+  fixedTitle: "想定の表の出来事と安否だけで進む。監督と本人役の AI は使わない",
+  virtual: "世界停止",
+  virtualTitle: "街の出来事と本人役の連絡が止まる。対応と時計は進む",
+  /** まだ止まった刻みが無く、次の刻みから止まる（上限に今達した） */
+  next: "次から",
+  /** 次の「進める」で呼び直す（失敗・日が替わった上限） */
+  retry: "自動再試行",
+  /** 上限は日（JST）が替われば戻る */
+  tomorrow: "翌日再開",
+  resumed: "再開済",
+} as const;
+
+/** 上限で止まった AI の役の印（状況 ai_stop の文。画面には出さず、帯 1 本にまとめる。T76） */
 export const AI_STOP_LABELS: Record<AiStop, string> = {
   persona: "本人役 停止",
   director: "監督 停止",

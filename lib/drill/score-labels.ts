@@ -1,6 +1,7 @@
 // 採点と講評（T22）の画面と紙面の言葉。2〜4 字の漢語（CLAUDE.md「画面の決まり」）。D1 も Claude も読まない（ブラウザの束にも入る）。
 // 「死亡」「関連死」と書かない。時計が切れるまで手が届かなかった人は「条件到達」（文では「条件に達した」）。
 
+import { AI_FAILURE_LABELS, AI_STATUS_LABELS } from "../claude/status.ts";
 import { DEPENDS_ON_LABELS } from "../labels.ts";
 import { formatHours } from "../triage/index.ts";
 import { clockLabel } from "./labels.ts";
@@ -113,17 +114,12 @@ export const REVIEW_UI = {
   failed: "作成失敗",
   network: "通信失敗",
   none: "講評なし",
+  /** 講評を AI が作れなかった（未設定・上限到達・接続失敗・出力不良。T76）。「講評」の見出しの下に「AI 停止 上限到達」 */
+  stopped: `${AI_STATUS_LABELS.ai} ${AI_STATUS_LABELS.stop}`,
 } as const;
 
-/** 講評が作れなかった理由（lib/drill/review.ts の ReviewError） */
-export const REVIEW_ERROR_LABELS = {
-  not_configured: "未設定",
-  limit: "上限到達",
-  refused: "出力不良",
-  bad_output: "出力不良",
-  failed: "接続失敗",
-  leak: "出力不良",
-} as const;
+/** 講評が作れなかった理由（lib/drill/review.ts の ReviewError）。AI の状態の言葉（lib/claude/status.ts）と同じ。T76 */
+export const REVIEW_ERROR_LABELS = AI_FAILURE_LABELS;
 
 /** 発災からの分の言い方（「5 時間 10 分」） */
 export const minuteText = clockLabel;

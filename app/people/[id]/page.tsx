@@ -5,7 +5,7 @@ import { BackLink, Page } from "@/components/ui/Panel";
 import { todayJst } from "@/lib/age";
 import { homePath } from "@/lib/auth/roles";
 import { requirePage } from "@/lib/auth/server";
-import { hasAnthropicKey } from "@/lib/claude/client";
+import { aiStatusFor } from "@/lib/claude/cloudflare";
 import { scopeOfRows } from "@/lib/consent/scope";
 import { personDisaster } from "@/lib/disaster/person";
 import { loadPlanForm, planFormView } from "@/lib/forms/plan-form";
@@ -36,8 +36,8 @@ export default async function PersonPage({ params }: Props) {
   const planForm = planFormView(await loadPlanForm(env.DB, rows.person.office_id));
   // 経過の撤回のボタン（T63）は見ている人が撤回できる行だけ（lib/timeline/retract.ts。押せるかはサーバーがもう一度決める）
   const view = toPersonView(rows, { today: todayJst(), mode: d.mode, triage: d.triage, situation: d.situation, scope, planForm, viewer: principal });
-  // 入れる欄（T03）はケアマネの役だけ。鍵が無ければ「AI 未設定」と手入力
-  const intake = principal.role === "care_manager" ? intakePropsOf(rows, hasAnthropicKey(env)) : null;
+  // 入れる欄（T03）はケアマネの役だけ。AI が使えなければ「AI 未設定」「AI 上限到達」と手入力（AI の状態は lib/claude/status.ts の 1 か所。T76）
+  const intake = principal.role === "care_manager" ? intakePropsOf(rows, await aiStatusFor(rows.person.office_id)) : null;
 
   return (
     <Page width="full" className="max-w-6xl">

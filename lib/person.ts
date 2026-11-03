@@ -48,7 +48,6 @@ import {
   CLOCK_START_LABELS,
   CLOCK_UNIT_LABELS,
   CLOCK_UNIT_SHORT,
-  COLOR_LABELS,
   CONSENT_KIND_LABELS,
   CONSENT_STATUS_LABELS,
   CONTACT_FLAG_LABELS,
@@ -72,6 +71,7 @@ import {
   SECTION_LABELS,
   SEX_LABELS,
   SMARTPHONE_LABELS,
+  stateLabel,
   STRUCTURE_LABELS,
   SUPPORT_KIND_LABELS,
   TIER_LABELS,
@@ -1169,7 +1169,8 @@ export function priorityOf(tier: Tier, triage?: TriageResult | null, tone: State
       kind: "triage",
       color: triage.color,
       tone: COLOR_TONES[triage.color],
-      label: COLOR_LABELS[triage.color],
+      // 受入・搬送から来た緑は「受入」「搬送」（T78。色は表のまま）
+      label: stateLabel(triage),
       reason: triage.reason,
     };
   }

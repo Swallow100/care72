@@ -6,10 +6,10 @@ import { PlayIcon, PrintIcon } from "@/components/ui/Icon";
 import { Panel, PageHead } from "@/components/ui/Panel";
 import { TABLE, TABLE_BOX, TD, TH } from "@/components/ui/table";
 import { requirePage } from "@/lib/auth/server";
-import { aiContextFor } from "@/lib/claude/cloudflare";
-import { drillGate, type DailyUsage } from "@/lib/claude/gate";
-import { usageToday } from "@/lib/claude/usage";
-import { LIMIT_LABELS } from "@/lib/seed/labels";
+import { AiStatusMark } from "@/components/ui/AiStatus";
+import { aiStatusFor } from "@/lib/claude/cloudflare";
+import { drillGate, gateUsage } from "@/lib/claude/gate";
+import type { AiStatus } from "@/lib/claude/status";
 import { shortJst } from "@/lib/disaster/state";
 import { caseloadForDrill, drillScope, listDrills, runningDrillId, type DrillListItem } from "@/lib/drill/db";
 import { DRILL_LABELS, progressLabel, SCENARIO_LABELS, STATUS_LABELS, T70_LABELS, VIRTUAL_LABELS } from "@/lib/drill/labels";
@@ -26,11 +26,13 @@ export const dynamic = "force-dynamic";
 // 訓練記録の一覧（事業所ごと。審査員の回も残る）と開始（大雨想定・地震想定・10 分版）。docs/tasks/T17.md。
 // 進行中の訓練はケアマネごとに 1 つ（T70）。自分の進行中があれば開始を押せず、一覧の進行中から再開（途中から続ける）。24 時間たった進行中は読むときに中断。終わった・中断した訓練は再生（Claude を呼ばない）。
 // ケアマネの役だけ（審査員のケアマネの役も）。デモ事業所の終わった訓練の種は T26
+// AI の状態（T76）: 未設定（鍵なし）・上限到達・本日残りを lib/claude/status.ts の 1 か所で読み、開始の欄に見込みと並べる（StartButtons）。
+// 鍵が無くても開始は止めない（固定の筋は想定の表で進み、仮想は世界が止まる。その言葉を想定ごとに出す）。上限到達は今までどおり再生（T26）
 export default async function DrillPage() {
   const principal = await requirePage("drill");
   const scope = drillScope(principal);
   let items: DrillListItem[] = [];
-  let usage: DailyUsage | null = null;
+  let ai: AiStatus | null = null;
   // 開始の前の設定の参加者（T59。担当一覧の人）
   let people: StartPerson[] = [];
   // 自分の進行中（T70。開始者か担当一覧の人で見る。ほかのケアマネの進行中では開始を止めない）
@@ -41,8 +43,8 @@ export default async function DrillPage() {
     items = scope ? await listDrills(env.DB, scope.officeId, 50, new Date().toISOString()) : [];
     people = scope ? await caseloadForDrill(env.DB, scope) : [];
     mine = scope ? await runningDrillId(env.DB, scope.officeId, { scope }) : null;
-    // AI の 1 日の上限（T26）。読めなければ開始のまま
-    usage = scope ? await aiContextFor(scope.officeId).then(usageToday).catch(() => null) : null;
+    // AI の今の状態（T76。1 日の上限は T26）。読めなければ開始のまま
+    ai = scope ? await aiStatusFor(scope.officeId).catch(() => null) : null;
   } catch (e) {
     console.error("訓練記録を読めない", e);
     return (
@@ -54,7 +56,7 @@ export default async function DrillPage() {
   }
   // 進行中はケアマネごとに 1 つ（T70。審査員は同じアカウントなので共有）。ほかのケアマネの進行中は一覧から再開できる
   const running = items.find((d) => d.id === mine) ?? null;
-  const gate = drillGate(usage, items);
+  const gate = drillGate(gateUsage(ai), items);
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-4">
@@ -65,22 +67,17 @@ export default async function DrillPage() {
           {DRILL_LABELS.start}
         </h2>
         {gate.kind === "start" ? (
-          <StartButtons scenarios={SCENARIO_ORDER} disabled={running !== null} people={people} remaining={gate.remaining} />
+          <StartButtons scenarios={SCENARIO_ORDER} disabled={running !== null} people={people} ai={ai} />
         ) : (
           // 上限に達したら開始でなく、終わった訓練の再生（0 時間から刻みごとに）
           <div className="flex flex-wrap items-center gap-2" data-limit>
-            <span className="text-sm font-bold">{LIMIT_LABELS.reached}</span>
+            {ai && <AiStatusMark status={ai} size="md" />}
             {gate.replay && (
               <ButtonLink href={drillHref(gate.replay, { step: 0 })} kind="main" icon={PlayIcon}>
                 {DRILL_LABELS.replay}
               </ButtonLink>
             )}
           </div>
-        )}
-        {gate.limit !== null && (
-          <span className="text-sm text-muted tabular-nums" data-ai-remaining={gate.remaining}>
-            {LIMIT_LABELS.ai} {LIMIT_LABELS.remaining} {gate.remaining} / {gate.limit} {LIMIT_LABELS.unit}
-          </span>
         )}
         {running && (
           <ButtonLink href={drillHref(running.id)} kind="main" icon={PlayIcon} className="ml-auto">
