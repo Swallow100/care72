@@ -1,9 +1,11 @@
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { isSameOrigin, seeOther, sessionCookie } from "@/lib/auth/cookie";
-import { login } from "@/lib/auth/principal";
+import { guardedLogin, requestIp, wantsPage } from "@/lib/auth/lockout";
 import { nowSec, sessionSecret } from "@/lib/auth/session";
 
 // ログインのフォームの POST。合えば cookie を付けて役の入口へ、違えば /login?e=1 に戻す（どこが違うかは言わない）。
+// 同じ送信元で 15 分に 10 回、同じ ID で 50 回（送信元が無ければ 10 回）失敗したら 15 分止める（lib/auth/lockout.ts）。止めている間はパスワードを確かめず、
+// フォームからは /login?e=locked&m=<残りの分> へ 303、ほか（fetch・curl）は 429 と Retry-After。
 // ID・パスワードはログに出さない。
 export async function POST(request: Request) {
   if (!isSameOrigin(request)) return new Response(null, { status: 403 });
@@ -14,7 +16,18 @@ export async function POST(request: Request) {
     const v = form?.get(name);
     return typeof v === "string" ? v : "";
   };
-  const r = await login(env.DB, env, secret, { loginId: field("id"), password: field("password") }, nowSec());
-  if (!r.ok) return seeOther(request, "/login?e=1");
-  return seeOther(request, r.path, sessionCookie(r.token, request.url));
+  const r = await guardedLogin(
+    env.DB,
+    env,
+    secret,
+    { loginId: field("id"), password: field("password"), ip: requestIp(request.headers) },
+    nowSec(),
+  );
+  if (r.kind === "ok") return seeOther(request, r.path, sessionCookie(r.token, request.url));
+  if (r.kind === "failed") return seeOther(request, "/login?e=1");
+  if (wantsPage(request.headers)) return seeOther(request, `/login?e=locked&m=${r.minutes}`);
+  return Response.json(
+    { error: "too_many_attempts" },
+    { status: 429, headers: { "Retry-After": String(r.retryAfterSec), "Cache-Control": "no-store" } },
+  );
 }

@@ -1,65 +1,92 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { Page, Panel } from "@/components/ui/Panel";
+import { FIELD, FIELD_ICON } from "@/components/login/field";
+import { Mark72 } from "@/components/login/Mark72";
+import { PasswordField } from "@/components/login/PasswordField";
+import { IdIcon } from "@/components/ui/Icon";
+import { LABEL, Page, Panel } from "@/components/ui/Panel";
 import { SubmitButton } from "@/components/ui/SubmitButton";
+import { waitMinutes } from "@/lib/auth/lockout";
 import { homePath } from "@/lib/auth/roles";
 import { getPrincipal } from "@/lib/auth/server";
 
 export const metadata: Metadata = { title: "ログイン | ケア72" };
 
-type Props = { searchParams: Promise<{ e?: string }> };
+type Props = { searchParams: Promise<{ e?: string; m?: string }> };
 
-const INPUT =
-  "mt-1 h-10 w-full rounded bg-panel2 px-3 outline-none focus-visible:outline-2 focus-visible:outline-accent";
+/** 断りの文。値は /api/auth/login が付ける（1: ID かパスワードが違う。どちらが違うかは言わない）。知らない値は短い 1 文 */
+const ERRORS: Record<string, string> = { "1": "ID かパスワードが違う", locked: "回数超過 しばらく待機" };
+
+/** 回数の制限で止めたとき（/login?e=locked&m=<残りの分>。lib/auth/lockout.ts）は「回数超過 待機 N 分」 */
+function errorText(e: string, m: string | undefined): string {
+  const minutes = e === "locked" ? waitMinutes(m) : null;
+  if (minutes !== null) return `回数超過 待機 ${minutes} 分`;
+  return ERRORS[e] ?? "ログインできない";
+}
 
 // ID とパスワード。送り先は /api/auth/login（フォームの POST。JavaScript が無くても動く）。
 // どの画面もログインが要る。ログインしていなければ、どの画面からもここへ来る。審査員の ID とパスワードは提出書類に。
-// 狭い 1 列（入れる欄が 2 つだけなので、読む画面の列よりさらに狭く）
+// 上に印（72 時間の輪）と、この道具が何かの 1 行。欄は大きく（48px）、中にアイコン。狭い 1 列。
 export default async function LoginPage({ searchParams }: Props) {
   const p = await getPrincipal();
   if (p) redirect(homePath(p.role));
-  const { e } = await searchParams;
+  const { e, m } = await searchParams;
+  const error = e ? errorText(e, m) : null;
 
   return (
-    <Page width="full" className="max-w-sm py-10">
-      <Panel aria-labelledby="login-title" className="p-5">
-        <h1 id="login-title" className="text-xl leading-8 font-bold">
-          ログイン
-        </h1>
-        <form method="post" action="/api/auth/login" className="mt-4 grid gap-4">
-          <label className="block">
-            <span className="text-xs text-muted">ID</span>
-            <input
-              name="id"
-              required
-              autoComplete="username"
-              autoCapitalize="none"
-              spellCheck={false}
-              maxLength={128}
-              className={INPUT}
-            />
-          </label>
-          <label className="block">
-            <span className="text-xs text-muted">パスワード</span>
-            <input
-              name="password"
-              type="password"
-              required
-              autoComplete="current-password"
-              maxLength={1024}
-              className={INPUT}
-            />
-          </label>
-          {e && (
+    <Page width="full" className="max-w-[26rem] py-8 sm:py-14">
+      <Panel aria-labelledby="login-title" className="p-5 sm:p-6">
+        <div className="flex items-start gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-bold text-muted">計画・訓練・発災時</p>
+            <h1 id="login-title" className="mt-1 text-lg leading-7 font-bold sm:text-xl">
+              ケアマネの知っていることを
+              <br />
+              災害の 72 時間に
+            </h1>
+          </div>
+          <Mark72 size={56} className="shrink-0" />
+        </div>
+        <form method="post" action="/api/auth/login" className="mt-6 grid gap-4">
+          <div>
+            <label htmlFor="login-id" className={`${LABEL} font-bold`}>
+              ID
+            </label>
+            <div className="relative mt-1">
+              <IdIcon aria-hidden className={FIELD_ICON} />
+              <input
+                id="login-id"
+                name="id"
+                required
+                autoFocus
+                autoComplete="username"
+                autoCapitalize="none"
+                spellCheck={false}
+                maxLength={128}
+                className={FIELD}
+              />
+            </div>
+          </div>
+          <div>
+            <label htmlFor="login-password" className={`${LABEL} font-bold`}>
+              パスワード
+            </label>
+            <div className="mt-1">
+              <PasswordField id="login-password" />
+            </div>
+          </div>
+          {error && (
             <p role="alert" className="text-sm font-bold text-danger">
-              認証失敗
+              {error}
             </p>
           )}
-          <SubmitButton kind="main" size="lg" className="mt-1 w-full">
+          <SubmitButton kind="main" size="lg" icon="LoginIcon" className="mt-1 h-12 w-full text-[1rem]">
             ログイン
           </SubmitButton>
         </form>
+        <p className="mt-4 text-xs text-muted">審査員の ID とパスワードは提出書類に</p>
       </Panel>
+      <p className="mt-3 text-center text-xs text-muted">デモの利用者はすべて架空です</p>
     </Page>
   );
 }

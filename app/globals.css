@@ -1,5 +1,9 @@
 @import "tailwindcss";
 
+/* ダークは OS の設定に従わず、<html data-theme="dark"> を付けたときだけ（作者、11/3 10:1x）。既定はライト。
+   Tailwind の dark: もその印で効かせる（既定では OS の設定に従うので、ライトの画面に dark: の影や明るさの調整が混ざる） */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
 /*
   色は 3 段の地で区切る。地（base 薄い灰色）・面（panel 白）・面の中（panel2）。面は透けない。
   枠線は選択・注意・危険のときだけ。押したときは灰色（press）だけ。
@@ -54,32 +58,31 @@
   color-scheme: light;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --base: #0b0d10;
-    --panel: #15181c;
-    --panel2: #1e2228;
-    --ink: #e8ebef;
-    --muted: #9ba5b0;
-    --press: rgb(255 255 255 / 0.09);
-    /* 明るさを保った澄んだ色。暗い面の上の対比は 8.8・6.6・9.3 */
-    --state-ok: #27d268;
-    --state-urgent: #fb7474;
-    --state-check: #f2b125;
-    --state-unknown: #a3adb8;
-    --state-ok-fill: #27d268;
-    --state-urgent-fill: #fb7474;
-    --state-check-fill: #f2b125;
-    --state-unknown-fill: #a3adb8;
-    --on-state-ok: #0b0d10;
-    --on-state-urgent: #0b0d10;
-    --on-state-check: #0b0d10;
-    --on-state-unknown: #0b0d10;
-    --danger: #fb7474;
-    --accent: #76b5fb;
-    --on-accent: #0b0d10;
-    color-scheme: dark;
-  }
+/* ダークの値（<html data-theme="dark"> のときだけ。切り替えの操作はまだ無い） */
+:root[data-theme="dark"] {
+  --base: #0b0d10;
+  --panel: #15181c;
+  --panel2: #1e2228;
+  --ink: #e8ebef;
+  --muted: #9ba5b0;
+  --press: rgb(255 255 255 / 0.09);
+  /* 明るさを保った澄んだ色。暗い面の上の対比は 8.8・6.6・9.3 */
+  --state-ok: #27d268;
+  --state-urgent: #fb7474;
+  --state-check: #f2b125;
+  --state-unknown: #a3adb8;
+  --state-ok-fill: #27d268;
+  --state-urgent-fill: #fb7474;
+  --state-check-fill: #f2b125;
+  --state-unknown-fill: #a3adb8;
+  --on-state-ok: #0b0d10;
+  --on-state-urgent: #0b0d10;
+  --on-state-check: #0b0d10;
+  --on-state-unknown: #0b0d10;
+  --danger: #fb7474;
+  --accent: #76b5fb;
+  --on-accent: #0b0d10;
+  color-scheme: dark;
 }
 
 @theme {
@@ -114,8 +117,8 @@
   --color-danger: var(--danger);
   --color-accent: var(--accent);
   --color-on-accent: var(--on-accent);
-  /* 画面の書体は M PLUS 2（数字がもともと等幅。docs/progress/t35.md の比較） */
-  --font-sans: var(--font-mplus2), system-ui, sans-serif;
+  /* 画面の書体: 英数字は Inter、日本語は端末の書体（Mac は Hiragino Sans、Windows は Yu Gothic UI・Meiryo）。11/3 10:3x の判断（app/layout.tsx の注） */
+  --font-sans: var(--font-inter), "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Yu Gothic", "Meiryo", system-ui, sans-serif;
   --font-ud: var(--font-biz-ud), system-ui, sans-serif;
 }
 
@@ -132,7 +135,7 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* 本人・家族のスマホ（phone-text・data-phone）と本人の 1 枚（data-sheet="own"）だけ UD の書体。ほかの画面は M PLUS 2 */
+/* 本人・家族のスマホ（phone-text・data-phone）と本人の 1 枚（data-sheet="own"）だけ UD の書体。ほかの画面は Inter ＋ 端末の日本語書体 */
 .phone-text,
 [data-phone],
 [data-sheet="own"] {
