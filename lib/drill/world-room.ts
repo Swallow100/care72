@@ -44,6 +44,8 @@ export type RoomEvent = {
   name?: string;
   input?: unknown;
   stop_reason?: { type: string } | null;
+  /** user.custom_tool_result が答えた呼び出し */
+  custom_tool_use_id?: string;
 };
 
 /** world-room が使う所だけの形。テストは偽物を渡す（本物の API を呼ばない） */
@@ -239,11 +241,19 @@ export async function roomStep(
     return fail("bad_output", "伏せきれない");
   }
   const since = new Date(clock() - 5_000).toISOString();
+  const message = [{ type: "user.message", content: [{ type: "text", text }] }];
   let sent: string[];
   try {
-    sent = (await deps.client.sessions.send(room, [{ type: "user.message", content: [{ type: "text", text }] }])).ids;
+    sent = (await deps.client.sessions.send(room, message)).ids;
   } catch {
-    return fail("api_error", "送れない");
+    // 前の刻みが時間切れのあと、部屋が world_step の答えを待ったまま（requires_action）だと user.message は断られる。
+    // 答えていない呼び出しに「前の刻みの分」と返してから 1 回だけ送り直す
+    try {
+      if ((await settlePending(deps.client, room)) === 0) return fail("api_error", "送れない");
+      sent = (await deps.client.sessions.send(room, message)).ids;
+    } catch {
+      return fail("api_error", "送れない");
+    }
   }
   const deadline = clock() + timeout;
   const handled = new Set<string>();
@@ -285,6 +295,19 @@ export async function roomStep(
     }
   }
   return fail("timeout", "60 秒で返らない");
+}
+
+/** 答えていない world_step の呼び出しに結果を返す（前の刻みの時間切れの後始末）。返した数 */
+export async function settlePending(client: RoomClient, room: string): Promise<number> {
+  const events = await client.sessions.list(room, "1970-01-01T00:00:00.000Z");
+  const answered = new Set(events.flatMap((e) => (e.type === "user.custom_tool_result" && e.custom_tool_use_id ? [e.custom_tool_use_id] : [])));
+  const pending = events.filter((e) => e.type === "agent.custom_tool_use" && !answered.has(e.id));
+  for (const e of pending) {
+    await client.sessions.send(room, [
+      { type: "user.custom_tool_result", custom_tool_use_id: e.id, content: [{ type: "text", text: "前の刻みの分。使わない" }] },
+    ]);
+  }
+  return pending.length;
 }
 
 // ---------- 呼び口（部屋 → 1 回呼び → 差し込みなし） ----------

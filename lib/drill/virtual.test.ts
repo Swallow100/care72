@@ -111,12 +111,14 @@ const STEP: WorldStep = {
 
 // ---------- 偽の部屋 ----------
 
-function fakeRoom(answer: (text: string, n: number) => WorldStep | "fail" | "silent" = () => STEP) {
+function fakeRoom(answer: (text: string, n: number) => WorldStep | "fail" | "silent" | "late" = () => STEP) {
   const events: RoomEvent[] = [];
   const texts: string[] = [];
   const made = { agents: 0, environments: 0, sessions: 0, updates: 0 };
   const sessionParams: Array<Record<string, unknown>> = [];
   let n = 0;
+  /** 時間切れのあとに届く呼び出し（次の刻みで出る） */
+  const late: RoomEvent[] = [];
   const client: RoomClient = {
     agents: {
       create: async () => {
@@ -142,16 +144,23 @@ function fakeRoom(answer: (text: string, n: number) => WorldStep | "fail" | "sil
       },
       send: async (_id, evs) => {
         const ids: string[] = [];
+        // 時間切れのあとに届いた呼び出し（次の刻みの送る前に出る）
+        if (late.length > 0) events.push(...late.splice(0));
+        // 答えていない呼び出しがある間は user.message を断る（requires_action）
+        const answered = new Set(events.flatMap((x) => (x.custom_tool_use_id ? [x.custom_tool_use_id] : [])));
+        const waiting = events.some((x) => x.type === "agent.custom_tool_use" && !answered.has(x.id));
+        if (waiting && evs.some((e) => e.type === "user.message")) throw new Error("400 requires_action");
         for (const e of evs) {
           n += 1;
           const id = `ev_${n}`;
           ids.push(id);
-          events.push({ id, type: String(e.type) });
+          events.push({ id, type: String(e.type), ...(typeof e.custom_tool_use_id === "string" ? { custom_tool_use_id: e.custom_tool_use_id } : {}) });
           if (e.type === "user.message") {
             const text = ((e.content as Array<{ text: string }>)[0]).text;
             texts.push(text);
             const a = answer(text, texts.length);
             if (a === "fail") events.push({ id: `ev_${++n}`, type: "session.error" });
+            else if (a === "late") late.push({ id: `ev_late_${texts.length}`, type: "agent.custom_tool_use", name: WORLD_TOOL, input: STEP });
             else if (a !== "silent") events.push({ id: `ev_${++n}`, type: "agent.custom_tool_use", name: WORLD_TOOL, input: a });
           } else if (e.type === "user.custom_tool_result") {
             events.push({ id: `ev_${++n}`, type: "session.status_idle", stop_reason: { type: "end_turn" } });
@@ -419,6 +428,18 @@ describe("仮想の筋（偽の部屋・偽の Haiku）", () => {
     const screen = (await loadDrillScreen(db, drillScope(careManager())!, "drill-b", null))!;
     expect(screen.ticks.flatMap((tk) => tk.incidents).some((e) => e.change.kind === "world_note")).toBe(false);
     expect(screen.ticks[0].incidents.find((e) => e.change.kind === "narration")?.change).toMatchObject({ via: "oneshot" });
+  });
+
+  it("時間切れのあと部屋が答えを待ったまま（requires_action）でも、次の刻みで後始末して部屋に戻る", async () => {
+    const room = fakeRoom((_text, n) => (n === 1 ? "late" : STEP));
+    const { client } = fakeClaude();
+    const hooks = drillHooks({ DB: db, ANTHROPIC_API_KEY: "dummy" }, careManager(), { claude: client, now: () => new Date(START), room: room.client, roomTime: fastClock() })!;
+    await runVirtual(hooks);
+    const rows = aiRows().filter((r) => r.purpose === "director");
+    // 最初の刻みだけ部屋が時間切れ（1 回呼びに落ちる）、以後は部屋
+    expect(rows.filter((r) => r.status === "failed")).toHaveLength(1);
+    expect(room.texts).toHaveLength(12);
+    expect(room.made.sessions).toBe(1);
   });
 
   it("鍵が無くても結末はコードで出る（世界は止まったまま）。固定の筋は鍵なしで今までどおり hooks なし", async () => {
