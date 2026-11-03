@@ -12,7 +12,7 @@ import { COLOR_TONES, fieldLabelOf, type StateTone } from "../person.ts";
 import { compareResults, type Color, type TriageResult } from "../triage/index.ts";
 import { demoOverlay, type DemoOverlay, type DemoScene } from "./demo.ts";
 
-/** 状態の 4 色の並び（至急・要確認・未知・無事） */
+/** 状態の 4 色の並び（至急・要確認・不明・無事） */
 export const COLOR_ORDER: readonly Color[] = ["red", "yellow", "gray", "green"];
 
 /** 発災時に右の面へ渡す物。担当一覧の行の結果と事業所の災害の状態（T09）から sideDisasterOf で作る */
@@ -47,7 +47,7 @@ export type StateCount = { color: Color; label: string; tone: StateTone; count: 
 
 export type MapPin = {
   id: string;
-  /** ピンの札の名前（姓） */
+  /** ピンの名前の印（姓） */
   label: string;
   /** 押したときの読み上げと title（氏名と状態と理由） */
   title: string;
@@ -55,7 +55,7 @@ export type MapPin = {
   href: string;
   /** 発災時だけ。状態の色（lib/triage の色を COLOR_TONES で引いた物） */
   tone: StateTone | null;
-  /** 発災時だけ。状態の言葉（至急・要確認・未知・無事） */
+  /** 発災時だけ。状態の言葉（至急・要確認・不明・無事） */
   state: string | null;
   /** 描く順。後ろほど上に重なる（発災時は連絡の順が先の人を上に） */
   layer: number;
@@ -95,7 +95,7 @@ export type SidePaneData = {
   demo: DemoOverlay | null;
 };
 
-/** 名前の姓（空白の前）。札に出す */
+/** 名前の姓（空白の前）。ピンの名前の印に出す */
 export function surname(name: string): string {
   return name.trim().split(/\s+/)[0] ?? name;
 }

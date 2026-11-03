@@ -25,7 +25,7 @@ export default async function RoleSelectPage() {
         <Mark72 size={44} className="shrink-0" />
         <div className="min-w-0">
           <h1 className="text-xl leading-7 font-bold">役選択</h1>
-          <p className="text-xs text-muted">どの立場で見るか。あとでヘッダーの「役変更」で変えられる</p>
+          <p className="text-xs text-muted">再選択: 右上の「役変更」</p>
         </div>
       </div>
       <form method="post" action="/api/auth/role" className="mt-4 grid gap-1">

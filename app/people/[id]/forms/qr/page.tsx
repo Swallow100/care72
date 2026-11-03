@@ -8,7 +8,7 @@ import { QrBlock } from "@/components/forms/QrBlock";
 import { QrSheet } from "@/components/forms/QrSheet";
 import { StateTag } from "@/components/person/parts";
 import { Button, buttonClass } from "@/components/ui/Button";
-import { PaperIcon } from "@/components/ui/Icon";
+import { PaperIcon, QrIcon } from "@/components/ui/Icon";
 import { FormAbout } from "@/components/forms/FormAbout";
 import { PaperBar, wantsPrint } from "@/components/ui/PaperBar";
 import { Panel, PanelHead } from "@/components/ui/Panel";
@@ -82,7 +82,7 @@ export default async function QrFormPage({ params, searchParams }: Props) {
             {canIssue && (
               <form method="post" action={`/api/people/${encodeURIComponent(rows.person.id)}/qr`}>
                 {/* 作り直すと前に刷った紙の QR は無効になるので、使える QR があるときの再作成は赤 */}
-                <Button type="submit" kind={state.status === "active" ? "danger" : "main"}>
+                <Button type="submit" kind={state.status === "active" ? "danger" : "main"} icon={QrIcon}>
                   {state.status === "none" ? QR_LABELS.issue : QR_LABELS.reissue}
                 </Button>
               </form>

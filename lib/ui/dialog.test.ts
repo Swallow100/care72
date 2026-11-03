@@ -3,8 +3,8 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { DialogPanel } from "@/components/ui/DialogHost";
-import { cancelAnswer, createDialogs, fillRequest, initialFocus, promptReady, type DialogAnswer, type DialogRequest } from "./dialog";
-import { CONFIRM_LABELS, DIALOG_LABELS } from "./labels";
+import { cancelAnswer, clipDetails, createDialogs, DETAILS_MAX, fillRequest, initialFocus, promptReady, type DialogAnswer, type DialogRequest } from "./dialog";
+import { CONFIRM_LABELS, DIALOG_LABELS, detailsMoreLabel } from "./labels";
 
 const draw = (r: DialogRequest) => renderToStaticMarkup(createElement(DialogPanel, { request: r, onSettle: () => {} }));
 /** 2〜4 字（漢字・かなの数） */
@@ -103,6 +103,18 @@ describe("既定の言葉・アイコン・焦点", () => {
     const opts = ["a", "b", "c", "d", "e"].map((v) => ({ value: v, label: v }));
     expect(fillRequest(1, { kind: "choice", message: "x", options: opts }).options).toHaveLength(4);
     expect(fillRequest(1, { kind: "confirm", message: "x", details: ["一", " ", "二"] }).details).toEqual(["一", "二"]);
+  });
+
+  it("箇条書きは 6 行まで。7 行より多ければ 5 行と「ほか N 件」（窓の中を送れる箱にしない。T40）", () => {
+    const lines = (n: number) => Array.from({ length: n }, (_, i) => `項目${i + 1}`);
+    expect(DETAILS_MAX).toBe(6);
+    expect(fillRequest(1, { kind: "confirm", message: "x", details: lines(6) }).details).toEqual(lines(6));
+    expect(fillRequest(1, { kind: "confirm", message: "x", details: lines(7) }).details).toEqual([...lines(5), "ほか 2 件"]);
+    expect(fillRequest(1, { kind: "alert", message: "x", details: lines(20) }).details).toEqual([...lines(5), "ほか 15 件"]);
+    // 空の行は数えない
+    expect(fillRequest(1, { kind: "confirm", message: "x", details: [...lines(6), " ", ""] }).details).toEqual(lines(6));
+    expect(clipDetails([])).toEqual([]);
+    expect(detailsMoreLabel(3)).toBe("ほか 3 件");
   });
 
   it("窓の題と決める方のボタンは 2〜4 字（既定と、今の 4 つの窓）", () => {

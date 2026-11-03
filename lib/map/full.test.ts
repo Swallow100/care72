@@ -14,7 +14,8 @@ import { demoOverlay } from "./demo.ts";
 import { MAP_UI } from "./labels.ts";
 import { mapPins } from "./side.ts";
 import { FULL_ZOOM, JAPAN_BOUNDS, KEY_PAN, keyAction, pinchView, stepZoom, wheelZoom } from "./camera.ts";
-import { COUNT_W, groupPins, labelWidth, overlaps, type PlacedPin } from "./cluster.ts";
+import { COUNT_W, groupPins, labelWidth, memberStates, overlaps, statesWidth, type PlacedPin } from "./cluster.ts";
+import type { StateTone } from "../person.ts";
 import {
   BASE_SIZE,
   clampView,
@@ -269,6 +270,28 @@ describe("ピンのまとめ", () => {
     expect(g[0].ids).toEqual(["a", "c", "b"]);
   });
 
+  it("まとめの中の状態ごとの数（顔の人を除く）は至急・要確認・不明・無事の順で、0 は出さない。平時は空", () => {
+    const m = (tone: StateTone | null) => ({ tone });
+    expect(memberStates([m("urgent"), m("ok"), m("check"), m("ok"), m("unknown")])).toEqual([
+      { tone: "check", count: 1 },
+      { tone: "unknown", count: 1 },
+      { tone: "ok", count: 2 },
+    ]);
+    expect(memberStates([m("urgent"), m("urgent")])).toEqual([{ tone: "urgent", count: 1 }]);
+    expect(memberStates([m(null), m(null)])).toEqual([]);
+  });
+
+  it("状態の数の印の横幅（字と数字と余白）は、まとめの広がりに足す", () => {
+    expect(statesWidth([])).toBe(0);
+    const one = statesWidth([{ tone: "check", count: 1 }], { check: "要確認" });
+    expect(one).toBe(3 * 11 + 1 * 7 + 4 * 2 + 2);
+    // 広がりを渡すと、その分で隣の印もまとめる
+    const gap = (40 + 40) / 2 + 2;
+    const at = gap + COUNT_W / 4 + 60;
+    expect(groupPins([pin("a", 0, 0, 3), pin("b", 5, 0, 1), pin("c", at, 0, 2)])).toHaveLength(2);
+    expect(groupPins([pin("a", 0, 0, 3), pin("b", 5, 0, 1), pin("c", at, 0, 2)], () => COUNT_W + 200)).toHaveLength(1);
+  });
+
   it("種の 10 人は、全画面の最初のズームでは 1 人ずつ（まとめない）、ズーム 10 まで引くとまとまる", () => {
     const pts = Object.entries(SEED_LOCATIONS);
     const v = fitView(
@@ -375,6 +398,21 @@ describe("全画面の画面", () => {
     const states = html.match(/<dl[^>]*data-map-states[\s\S]*?<\/dl>/)?.[0] ?? "";
     for (const label of Object.values(TONE_LABEL)) expect(states).toContain(label);
     expect(full(normalPins, FULL)).not.toContain("data-map-states");
+  });
+
+  it("発災時: まとめたピンに中の人の状態ごとの数（色＋言葉＋数。足すと「他 N 人」の数）。平時は出さない", () => {
+    const html = full(disasterPins, { w: 300, h: 260 });
+    const groups = [...html.matchAll(/<button[^>]*data-pin-group="[^"]+" data-count="(\d+)"[\s\S]*?<\/button>/g)];
+    expect(groups.length).toBeGreaterThan(0);
+    for (const g of groups) {
+      const counts = [...g[0].matchAll(/data-member-tone="([^"]+)"[^>]*>([^<]+) (\d+)<\/span>/g)];
+      expect(counts.length).toBeGreaterThan(0);
+      for (const c of counts) expect(c[2]).toBe(TONE_LABEL[c[1] as StateTone]);
+      expect(counts.reduce((s, c) => s + Number(c[3]), 0)).toBe(Number(g[1]) - 1);
+      // 読み上げにも数を入れる
+      expect(g[0]).toMatch(/aria-label="[^"]*(至急|要確認|不明|無事) \d+/);
+    }
+    expect(full(normalPins, { w: 300, h: 260 })).not.toContain("data-member-tone");
   });
 
   it("デモの印（雨雲・震度）は全画面でも消さない", () => {

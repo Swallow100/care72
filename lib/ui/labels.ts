@@ -11,6 +11,11 @@ export const DIALOG_LABELS = {
   cancel: "取消",
 } as const;
 
+/** 窓の箇条書きが 6 行を超えたときの最後の行（ほか 3 件） */
+export function detailsMoreLabel(n: number): string {
+  return `ほか ${n} 件`;
+}
+
 /** 呼ぶ側の確認の窓（題・決める方のボタン）。本文は各画面の既存の言葉 */
 export const CONFIRM_LABELS = {
   resetTitle: "初期化",

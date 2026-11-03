@@ -20,7 +20,7 @@ import { Select } from "@/components/ui/Select";
 type CareManager = { id: string; name: string };
 
 const INPUT =
-  "h-9 w-full min-w-0 rounded bg-panel2 px-2 text-sm text-ink outline-none focus-visible:outline-2 focus-visible:outline-accent";
+  "h-9 w-full min-w-0 rounded bg-panel2 px-2 text-sm text-ink outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-accent";
 const CHOICE = "flex h-9 items-center gap-1.5 rounded bg-panel2 px-2.5 text-sm";
 
 export function NewPersonForm({

@@ -63,7 +63,7 @@ export function unproject(w: WorldPoint, z: number): GeoPoint {
 /** 表示: ズーム（全画面では小数もある）と枠の中心（そのズームの世界座標） */
 export type View = { z: number; center: WorldPoint };
 
-/** ピンの札が枠の外に出ないための余白（基準の px）。札は点の上に出るので上を広く取る */
+/** ピンの名前の印が枠の外に出ないための余白（基準の px）。印は点の上に出るので上を広く取る */
 export type Padding = { top: number; right: number; bottom: number; left: number };
 export const PIN_PADDING: Padding = { top: 30, right: 36, bottom: 12, left: 36 };
 
@@ -86,7 +86,7 @@ export function fitView(
     const maxY = Math.max(...ws.map((w) => w.y));
     const fits = maxX - minX <= size.w - pad.left - pad.right && maxY - minY <= size.h - pad.top - pad.bottom;
     if (fits || z === opts.minZ) {
-      // 余白の左右・上下の差の分だけ中心をずらす（札が上に出る分、点の塊を下へ）
+      // 余白の左右・上下の差の分だけ中心をずらす（印が上に出る分、点の塊を下へ）
       return {
         z,
         center: {

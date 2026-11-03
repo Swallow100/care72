@@ -16,7 +16,7 @@ import { CloseIcon, FitIcon, FullIcon, ZoomInIcon, ZoomOutIcon } from "@/compone
 import { CountLabel, countClass, TONE_FILL } from "@/components/ui/Tag";
 import type { GeoPoint, HazardKind } from "@/lib/db/types";
 import { DRAG_SLOP, FULL_ZOOM, JAPAN_BOUNDS, keyAction, pinchView, stepZoom, wheelZoom } from "@/lib/map/camera";
-import { groupPins, labelWidth, type PinGroup } from "@/lib/map/cluster";
+import { COUNT_W, groupPins, labelWidth, memberStates, statesWidth, type PinGroup } from "@/lib/map/cluster";
 import type { DemoOverlay } from "@/lib/map/demo";
 import {
   BASE_SIZE,
@@ -359,7 +359,7 @@ export function FullMap({ pins, demo, unplaced, choice, onClose, initialSize }: 
     const gs =
       view.z >= FULL_ZOOM.maxZ - 0.01
         ? placed.map((p) => ({ head: p.id, ids: [p.id], x: p.x, y: p.y, layer: p.layer }))
-        : groupPins(placed);
+        : groupPins(placed, (ids) => COUNT_W + statesWidth(memberStates(ids.map((id) => byId.get(id)!))));
     return gs.map((g) => ({ group: g, pins: g.ids.map((id) => byId.get(id)!) }));
   }, [pins, view, size]);
 
@@ -458,7 +458,7 @@ export function FullMap({ pins, demo, unplaced, choice, onClose, initialSize }: 
                     onClick={close}
                   />
                 ) : (
-                  <PinCluster key={g.head} head={ms[0]} count={ms.length - 1} group={g} onClick={() => zoomInto(g, ms)} />
+                  <PinCluster key={g.head} members={ms} group={g} onClick={() => zoomInto(g, ms)} />
                 ),
               )}
             </>
@@ -552,7 +552,7 @@ function DemoBand({ demo }: { demo: DemoOverlay }) {
           震度 <span className="text-lg leading-none tabular-nums">{demo.quake.intensity}</span>
         </span>
       )}
-      <span className="ml-auto text-muted">想定の値</span>
+      <span className="ml-auto text-muted">想定値</span>
     </div>
   );
 }
@@ -647,7 +647,7 @@ function Rain({ demo, view, size }: { demo: DemoOverlay; view: View; size: Size 
 /** ピンの名前の印（発災時は状態の塗りの印＋姓） */
 function PinLabel({ pin, extra }: { pin: MapPin; extra?: React.ReactNode }) {
   return (
-    <span className="flex items-baseline overflow-hidden rounded text-[11px] leading-4 font-bold whitespace-nowrap ring-1 ring-black/10">
+    <span className="flex items-baseline overflow-hidden rounded text-[11px] leading-4 font-bold whitespace-nowrap ring-1 ring-ink/15">
       {pin.tone && pin.state && <span className={`px-1 ${PIN_TAG[pin.tone]}`}>{pin.state}</span>}
       <span className="bg-panel px-1 text-ink">{pin.label}</span>
       {extra}
@@ -679,9 +679,16 @@ function PinLink({ pin, style, onClick }: { pin: MapPin; style: React.CSSPropert
   );
 }
 
-/** まとめたピン。顔の人の印に「他 N 人」を添える。押すと寄る */
-function PinCluster({ head, count, group, onClick }: { head: MapPin; count: number; group: PinGroup; onClick: () => void }) {
-  const label = `${head.title} ${othersLabel(count)} ${MAP_UI.zoomIn}`;
+/**
+ * まとめたピン。顔の人の印に「他 N 人」を添え、発災時は中の人（顔の人を除く）の状態ごとの数を塗りの印で並べる
+ * （要確認 1・無事 2。色だけにせず言葉と数。T40）。押すと寄る
+ */
+function PinCluster({ members, group, onClick }: { members: MapPin[]; group: PinGroup; onClick: () => void }) {
+  const head = members[0];
+  const count = members.length - 1;
+  const states = memberStates(members);
+  const stateText = states.map((s) => `${TONE_LABEL[s.tone]} ${s.count}`).join(" ");
+  const label = [head.title, othersLabel(count), stateText, MAP_UI.zoomIn].filter(Boolean).join(" ");
   return (
     <button
       type="button"
@@ -694,7 +701,19 @@ function PinCluster({ head, count, group, onClick }: { head: MapPin; count: numb
       data-count={count + 1}
       data-tone={head.tone ?? undefined}
     >
-      <PinLabel pin={head} extra={<span className="bg-panel2 px-1 text-ink tabular-nums">{othersLabel(count)}</span>} />
+      <PinLabel
+        pin={head}
+        extra={
+          <span className="flex items-baseline gap-px bg-panel2 tabular-nums">
+            <span className="px-1 text-ink">{othersLabel(count)}</span>
+            {states.map((s) => (
+              <span key={s.tone} data-member-tone={s.tone} className={`px-1 ${PIN_TAG[s.tone]}`}>
+                {`${TONE_LABEL[s.tone]} ${s.count}`}
+              </span>
+            ))}
+          </span>
+        }
+      />
       <PinDot tone={head.tone} />
     </button>
   );

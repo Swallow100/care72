@@ -497,7 +497,7 @@ export const SEED_PEOPLE: SeedPerson[] = [
         id: "k-04-1",
         kind: "condition",
         category: "dementia",
-        label: "認知症 本人の信号が当てにならない",
+        label: "本人の申告は参考",
         starts_on: "none",
         source: "care_manager",
         confirmed_at: SEED_AT,

@@ -6,6 +6,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { BTN_MAIN, BTN_SIDE, INPUT } from "@/components/person/intake-ui";
+import { AddIcon, PaperIcon, ReadIcon } from "@/components/ui/Icon";
 import { Loader72 } from "@/components/ui/Loader72";
 import { FORM_FILE_MAX_BYTES, LIMITS, MAPPING_LABELS as L } from "@/lib/forms/mapping";
 
@@ -83,6 +84,7 @@ export function FormReadPanel({ aiReady }: { aiReady: boolean }) {
         </h2>
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <label className={`${BTN_SIDE} cursor-pointer`} data-press>
+            <PaperIcon aria-hidden className="size-3.5 shrink-0" />
             選択
             <input
               type="file"
@@ -99,6 +101,7 @@ export function FormReadPanel({ aiReady }: { aiReady: boolean }) {
             {file ? file.name : <span className="text-muted">未選択</span>}
           </span>
           <button type="button" className={BTN_MAIN} disabled={!aiReady || !file || busy !== null} onClick={read} data-press="overlay">
+            <ReadIcon aria-hidden className="size-3.5 shrink-0" />
             {busy === "read" ? L.reading : L.read}
           </button>
         </div>
@@ -130,6 +133,7 @@ export function FormReadPanel({ aiReady }: { aiReady: boolean }) {
             onChange={(e) => setTitle(e.target.value)}
           />
           <button type="button" className={`${BTN_SIDE} shrink-0`} disabled={!title.trim() || busy !== null} onClick={manual} data-press>
+            <AddIcon aria-hidden className="size-3.5 shrink-0" />
             {L.manual}
           </button>
         </div>

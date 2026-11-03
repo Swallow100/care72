@@ -6,7 +6,7 @@
 // 「不明」「無回答」は空欄の理由として残し、「次回」はこの回は飛ばして未聴取として残す（どれも計画に「未確認」）。
 
 import { useState } from "react";
-import { SaveIcon } from "@/components/ui/Icon";
+import { DeclinedIcon, LaterIcon, SaveIcon, UnknownIcon } from "@/components/ui/Icon";
 import { SplitIcon } from "./icons";
 import type { PendingStatus } from "@/lib/db/types";
 import { CLOCK_UNIT_LABELS, INTAKE_LABELS, PENDING_STATUS_LABELS, SECTION_LABELS } from "@/lib/labels";
@@ -180,12 +180,15 @@ function QuestionBody({ q, left, busy, aiReady, onAnswer, onSkip, onFree }: Omit
 
       <div className="flex gap-1 pt-0.5">
         <button type="button" className={BTN} data-press disabled={busy} onClick={() => pending("unknown")}>
+          <UnknownIcon aria-hidden className="size-3.5 shrink-0" />
           {PENDING_STATUS_LABELS.unknown}
         </button>
         <button type="button" className={BTN} data-press disabled={busy} onClick={() => pending("declined")}>
+          <DeclinedIcon aria-hidden className="size-3.5 shrink-0" />
           {PENDING_STATUS_LABELS.declined}
         </button>
         <button type="button" className={BTN} data-press disabled={busy} onClick={() => onSkip(q)}>
+          <LaterIcon aria-hidden className="size-3.5 shrink-0" />
           {INTAKE_LABELS.next}
         </button>
       </div>
