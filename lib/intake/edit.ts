@@ -2,8 +2,10 @@
 // 保存は /api/intake/save の edit（手の入力）: 埋まった欄・薬・機器・ハザード・連絡先・時計も上書きし（overwrite）、
 // 同意と時計の頼り先の確認も変えられる。経過に「ケアマネが直した」。版の確かめは入れる欄の保存と同じ。
 //
-// 消すこと（欄を空にする・薬や連絡先の行を外す）はしない。空にした欄は送らない（今の値のまま）。
+// 外す（設計の側の頼み「消す」）: 埋まった欄を空にする（選ぶ欄は「未確認」に戻す）と欄を外す。薬・機器・ハザード・特記・連絡先の行は
+// 行の「外す」で印を付け、保存の前に確認の窓（components/person/SectionEdit.tsx）。外す行のほかの直しは送らない。
 // 薬の回数・用量・保管・機器の中身・連絡先の文字は空にすると消える（行は残る）。
+// 時計の「値確認」（設計の側の頼み「確かめた」）: 値を変えずに今日確かめたと残す（clockSeen）。値か単位を直したときは直しの方で確認の日付が今になる。
 
 import type {
   CheckStatus,
@@ -20,8 +22,11 @@ import type {
   MedicationCategory,
 } from "../db/types.ts";
 import { CONSENT_KINDS } from "../db/types.ts";
-import type { ContactValue, IntakeChange } from "./changes.ts";
-import { INTAKE_FIELDS, ledgerValue, normalizeValue, type IntakeSection } from "./fields.ts";
+import { sameMedication } from "../db/ledger.ts";
+import { DEVICE_LABELS, HAZARD_LABELS } from "../labels.ts";
+import { DEVICE_CLOCKS } from "./marks.ts";
+import type { ContactValue, IntakeChange, RemoveTarget } from "./changes.ts";
+import { INTAKE_FIELDS, isFilled, ledgerValue, normalizeValue, type IntakeSection } from "./fields.ts";
 
 /** 編集できる面（本人のページの区分のうち、書類と経過を除く） */
 export const EDIT_SECTIONS = ["medical", "evacuation", "people", "basic", "consent"] as const;
@@ -54,6 +59,8 @@ export type EditData = {
     unit: ClockUnit | null;
     depends_on: DependsOn | null;
     depends_check: CheckStatus | null;
+    /** 値を最後に確かめた時刻（ISO）。無ければ null */
+    confirmed_at: string | null;
   }>;
   consents: Array<{ kind: ConsentKind; status: ConsentStatus }>;
 };
@@ -86,7 +93,33 @@ export type EditDraft = {
   consents: Record<ConsentKind, ConsentStatus>;
   /** 足す特記 */
   note: string;
+  /** 外す印を付けた行（dropKey の形: med:0・device:oxygen・hazard:flood・contact:c-01-2・note:0） */
+  drops: string[];
+  /** 値を今日確かめた時計の id（値・単位は変えない） */
+  seen: string[];
 };
+
+/** 外す印の鍵 */
+export const dropKey = {
+  med: (index: number) => `med:${index}`,
+  device: (kind: DeviceKind) => `device:${kind}`,
+  hazard: (kind: HazardKind) => `hazard:${kind}`,
+  contact: (id: string) => `contact:${id}`,
+  note: (index: number) => `note:${index}`,
+} as const;
+
+/** 印を付ける・外す（外す印と値確認の両方） */
+export function toggled(list: readonly string[], key: string): string[] {
+  return list.includes(key) ? list.filter((k) => k !== key) : [...list, key];
+}
+
+/** 空にした（未確認に戻した）か。文字は空白だけ、配列は空 */
+function emptyDraft(v: unknown): boolean {
+  if (v === undefined || v === null) return true;
+  if (typeof v === "string") return v.trim() === "";
+  if (Array.isArray(v)) return v.length === 0;
+  return false;
+}
 
 const s = (v: string | null | undefined) => v ?? "";
 
@@ -120,6 +153,8 @@ export function editDraft(d: EditData): EditDraft {
     checks: Object.fromEntries(d.clocks.filter((k) => k.depends_on && k.depends_check).map((k) => [k.id, k.depends_check as CheckStatus])),
     consents,
     note: "",
+    drops: [],
+    seen: [],
   };
 }
 
@@ -133,20 +168,75 @@ export function numberOf(v: string): number | null {
   return Number.isFinite(n) && n >= 0 ? n : null;
 }
 
-const nightOf = (n: NightDraft): boolean | null => (n === "yes" ? true : n === "no" ? false : null);
+/** 外す薬・機器に付いた時計か（サーバーの lib/intake/save.ts の planRemovals と同じ当て方） */
+function clockGone(k: EditData["clocks"][number], l: Ledger, drops: readonly string[]): boolean {
+  return drops.some((key) => {
+    const [what, rest] = [key.slice(0, key.indexOf(":")), key.slice(key.indexOf(":") + 1)];
+    if (what === "device") {
+      const spec = DEVICE_CLOCKS[rest as DeviceKind];
+      return !!spec && (k.kind === "device" || k.kind === "supply") && k.category === spec.category;
+    }
+    if (what === "med") {
+      const med = l.medical.medications[Number(rest)];
+      return !!med && k.kind !== "device" && k.kind !== "condition" && sameMedication(k.label, med.name);
+    }
+    return false;
+  });
+}
+
+/** 外す物の名前（確認の窓の文）。欄は欄の名前、行は薬・連絡先などの名前 */
+export function removalNames(changes: ReadonlyArray<IntakeChange>, d: EditData): string[] {
+  const names: string[] = [];
+  for (const c of changes) {
+    if (c.t !== "remove") continue;
+    const r = c.target;
+    switch (r.what) {
+      case "field":
+        names.push(INTAKE_FIELDS.find((f) => f.key === r.key)?.label ?? r.key);
+        break;
+      case "medication":
+        names.push(r.name);
+        break;
+      case "device":
+        names.push(DEVICE_LABELS[r.kind]);
+        break;
+      case "hazard":
+        names.push(HAZARD_LABELS[r.kind]);
+        break;
+      case "note":
+        names.push(r.value.length > 12 ? `${r.value.slice(0, 12)}…` : r.value);
+        break;
+      case "contact": {
+        const cur = d.contacts.find((x) => x.id === r.id);
+        names.push(cur?.relation || cur?.name || "連絡先");
+        break;
+      }
+    }
+  }
+  return names;
+}
+
+const nightOf =(n: NightDraft): boolean | null => (n === "yes" ? true : n === "no" ? false : null);
 
 /** 面の下書きから、直した所だけの変更を作る */
 export function editChanges(section: EditSection, d: EditData, draft: EditDraft): IntakeChange[] {
   const out: IntakeChange[] = [];
   const l = d.ledger;
 
-  // 欄の表の欄（この面の物）。空にした欄・形の合わない値は送らない
+  const dropped = (key: string) => draft.drops.includes(key);
+  const remove = (target: RemoveTarget) => out.push({ t: "remove", target });
+
+  // 欄の表の欄（この面の物）。埋まった欄を空にしたら外す。形の合わない値は送らない
   if (section !== "consent") {
     for (const f of INTAKE_FIELDS) {
       if (f.section !== (section as IntakeSection)) continue;
       const cur = ledgerValue(l, f.key);
       const raw = draft.values[f.key];
       if (same(raw, cur)) continue;
+      if (emptyDraft(raw)) {
+        if (isFilled(cur) && !emptyDraft(cur)) remove({ what: "field", key: f.key });
+        continue;
+      }
       const value = normalizeValue(f, raw);
       if (value === null || same(value, cur)) continue;
       out.push({ t: "field", key: f.key, value, overwrite: true });
@@ -157,6 +247,7 @@ export function editChanges(section: EditSection, d: EditData, draft: EditDraft)
     draft.meds.forEach((m, index) => {
       const cur = l.medical.medications[index];
       if (!cur) return;
+      if (dropped(dropKey.med(index))) return remove({ what: "medication", index, name: cur.name });
       const before = { name: cur.name, category: cur.category, schedule: s(cur.schedule), amount: s(cur.amount), storage: s(cur.storage) };
       const next = { ...m, name: m.name.trim() || cur.name, schedule: m.schedule.trim(), amount: m.amount.trim(), storage: m.storage.trim() };
       if (same(next, before)) return;
@@ -177,15 +268,22 @@ export function editChanges(section: EditSection, d: EditData, draft: EditDraft)
     }
     draft.devices.forEach((x) => {
       const cur = l.medical.devices.find((c) => c.kind === x.kind);
+      if (cur && dropped(dropKey.device(x.kind))) return remove({ what: "device", kind: x.kind });
       if (!cur || (s(cur.detail) === x.detail.trim() && s(cur.schedule) === x.schedule.trim())) return;
       out.push({ t: "device", value: { kind: x.kind, detail: x.detail.trim(), schedule: x.schedule.trim() }, overwrite: true });
     });
     for (const kind of draft.newDevices) if (!l.medical.devices.some((c) => c.kind === kind)) out.push({ t: "device", value: { kind } });
     for (const k of draft.clocks) {
       const cur = d.clocks.find((c) => c.id === k.id);
+      // 外す薬・機器の時計はサーバーが消すので、その時計の直し・値確認は送らない
+      if (!cur || clockGone(cur, l, draft.drops)) continue;
       const n = numberOf(k.value);
-      if (!cur || n === null || (cur.value === n && cur.unit === k.unit)) continue;
-      out.push({ t: "clock", clockId: k.id, medIndex: null, label: cur.label, value: n, unit: k.unit, overwrite: true });
+      if (n !== null && !(cur.value === n && cur.unit === k.unit)) {
+        out.push({ t: "clock", clockId: k.id, medIndex: null, label: cur.label, value: n, unit: k.unit, overwrite: true });
+        continue;
+      }
+      // 値を変えずに今日確かめた（値の無い時計は確かめる物が無い）
+      if (draft.seen.includes(k.id) && cur.value != null) out.push({ t: "clockSeen", clockId: k.id });
     }
     for (const [clockId, to] of Object.entries(draft.checks)) {
       const cur = d.clocks.find((c) => c.id === clockId);
@@ -196,7 +294,11 @@ export function editChanges(section: EditSection, d: EditData, draft: EditDraft)
   if (section === "evacuation") {
     for (const h of draft.hazards) {
       const cur = l.evacuation.hazards.find((c) => c.kind === h.kind);
-      const n = h.depth.trim() === "" ? undefined : (numberOf(h.depth) ?? undefined);
+      if (cur && dropped(dropKey.hazard(h.kind))) {
+        remove({ what: "hazard", kind: h.kind });
+        continue;
+      }
+      const n =h.depth.trim() === "" ? undefined : (numberOf(h.depth) ?? undefined);
       if (!cur || cur.depthM === n || (h.depth.trim() !== "" && n === undefined)) continue;
       out.push({ t: "hazard", value: n === undefined ? { kind: h.kind } : { kind: h.kind, depthM: n }, overwrite: true });
     }
@@ -207,6 +309,10 @@ export function editChanges(section: EditSection, d: EditData, draft: EditDraft)
     for (const c of draft.contacts) {
       const cur = d.contacts.find((x) => x.id === c.id);
       if (!cur || cur.kind === "self") continue;
+      if (dropped(dropKey.contact(cur.id))) {
+        remove({ what: "contact", id: cur.id });
+        continue;
+      }
       const value: ContactValue = { kind: c.kind };
       let changed = false;
       for (const col of ["relation", "name", "phone", "note"] as const) {
@@ -240,7 +346,12 @@ export function editChanges(section: EditSection, d: EditData, draft: EditDraft)
     }
   }
 
-  if (section === "basic" && draft.note.trim()) out.push({ t: "note", value: draft.note.trim() });
+  if (section === "basic") {
+    l.notes.forEach((value, index) => {
+      if (dropped(dropKey.note(index))) remove({ what: "note", value });
+    });
+    if (draft.note.trim()) out.push({ t: "note", value: draft.note.trim() });
+  }
 
   if (section === "consent") {
     for (const kind of CONSENT_KINDS) {

@@ -385,7 +385,31 @@ export const INTAKE_LABELS = {
   addContact: "連絡先追加",
   addHazard: "ハザード",
   addDevice: "機器",
+  /** 面の編集で行を外す・外す印を戻す（保存の前に確認の窓） */
+  drop: "外す",
+  undrop: "戻す",
+  dropMark: "外す予定",
+  /** 確認の窓の題と決める方のボタン */
+  dropTitle: "外す確認",
+  /** 時計の値を変えずに今日確かめた（clockSeen） */
+  seen: "値確認",
+  seenOff: "値確認取消",
+  seenToday: "本日確認",
+  /** 写真・PDF を読む前の確認の窓の題と決める方のボタン */
+  fileNoticeTitle: "読取確認",
+  fileNoticeOk: "読取",
 } as const;
+
+/**
+ * 写真・PDF を読む前の確認の窓の文（設計の側の頼み「写真の注意」）。写真・PDF の文字は伏せられないので、
+ * 写っている氏名・住所・電話はそのまま Claude に渡る。常設の説明にせず、読む前に 1 回だけ出す
+ */
+export const FILE_NOTICE =
+  "写真・PDF に写っている氏名・住所・電話番号は伏せられず、そのまま Claude に渡ります。読む前に紙を折る・付箋で隠すなどしてください。写真・PDF は保存しません。";
+
+/** 外す確認の窓の文（「ワーファリン・隣人 の 2 件を外します」） */
+export const dropConfirmText = (names: readonly string[]) =>
+  `${names.slice(0, 6).join("・")}${names.length > 6 ? ` ほか ${names.length - 6}` : ""} の ${names.length} 件を外します。経過に「ケアマネが外した」と残ります。`;
 
 /** 会話の流れの AI と人の言葉（T45）。AI の言葉は Claude の出力の数を数えるだけで、文は定型 */
 export const INTAKE_SAYS = {

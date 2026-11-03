@@ -11,7 +11,8 @@ import { SectionEdit, SectionForm } from "../../components/person/SectionEdit.ts
 import { SEED_AT, SEED_PEOPLE, seedConsents, type SeedPerson } from "../../seed/people.ts";
 import type { PersonPageRows } from "../person.ts";
 import { speechRecognitionOf } from "../speech/dictation.ts";
-import { editChanges, editDraft, isEditSection } from "./edit.ts";
+import { dropConfirmText, FILE_NOTICE } from "../labels.ts";
+import { dropKey, editChanges, editDraft, isEditSection, removalNames, toggled } from "./edit.ts";
 import { intakePropsOf } from "./props.ts";
 import type { DiffItem } from "./diff.ts";
 
@@ -76,14 +77,16 @@ describe("面の編集の変更（lib/intake/edit.ts）", () => {
     ]);
   });
 
-  it("避難・基本・同意: 空にした欄は送らない、ハザードの深さ、特記の書き足し、同意の変更", () => {
+  it("避難・基本・同意: 埋まった欄を空にしたら外す、ハザードの深さ、特記の書き足し、同意の変更", () => {
     const d = editOf("p-01");
     const draft = editDraft(d);
-    draft.values["evacuation.destination1"] = ""; // 空にした → 送らない（消さない）
+    draft.values["evacuation.destination1"] = " "; // 埋まった欄を空にした → 外す
+    draft.values["evacuation.pets"] = ""; // もとから空 → 送らない
     draft.values["evacuation.transport"] = "家族の車";
     draft.hazards[0] = { ...draft.hazards[0], depth: "1.5" };
     draft.newHazards = ["landslide"];
     expect(editChanges("evacuation", d, draft)).toEqual([
+      { t: "remove", target: { what: "field", key: "evacuation.destination1" } },
       { t: "field", key: "evacuation.transport", value: "家族の車", overwrite: true },
       { t: "hazard", value: { kind: "flood", depthM: 1.5 }, overwrite: true },
       { t: "hazard", value: { kind: "landslide" } },
@@ -96,6 +99,41 @@ describe("面の編集の変更（lib/intake/edit.ts）", () => {
     ]);
     draft.consents.medical = "refused";
     expect(editChanges("consent", d, draft)).toEqual([{ t: "consent", kind: "medical", status: "refused" }]);
+  });
+
+  it("外す: 印を付けた行は外す変更だけ（ほかの直しは送らない）。外す薬・機器の時計の直しも送らない。名前は確認の窓の文に", () => {
+    const d = editOf("p-01");
+    const draft = editDraft(d);
+    draft.meds[0] = { ...draft.meds[0], amount: "2 錠" }; // 外す行の直し → 送らない
+    draft.clocks = draft.clocks.map((k) => (k.id === "k-01-1" ? { ...k, value: "5" } : k)); // 外す機器の時計 → 送らない
+    draft.drops = [dropKey.med(0), dropKey.device("oxygen")];
+    const medical = editChanges("medical", d, draft);
+    expect(medical).toEqual([
+      { t: "remove", target: { what: "medication", index: 0, name: "ワーファリン" } },
+      { t: "remove", target: { what: "device", kind: "oxygen" } },
+    ]);
+    expect(removalNames(medical, d)).toEqual(["ワーファリン", "在宅酸素"]);
+
+    draft.drops = [dropKey.hazard("flood"), dropKey.note(0), dropKey.contact("c-01-2")];
+    expect(editChanges("evacuation", d, draft)).toEqual([{ t: "remove", target: { what: "hazard", kind: "flood" } }]);
+    expect(editChanges("basic", d, draft)).toEqual([{ t: "remove", target: { what: "note", value: "薬は 2 階の箪笥" } }]);
+    const people = editChanges("people", d, draft);
+    expect(people).toEqual([{ t: "remove", target: { what: "contact", id: "c-01-2" } }]);
+    expect(removalNames(people, d)).toEqual(["隣人"]);
+    // 印は付け外しできる
+    expect(toggled(toggled([], "note:0"), "note:0")).toEqual([]);
+  });
+
+  it("値確認: 値を変えずに確かめた時計だけ clockSeen。値を直した時計は直しの方、値の無い時計は送らない", () => {
+    const d = editOf("p-01");
+    expect(d.clocks.find((k) => k.id === "k-01-1")?.confirmed_at).toBe("2026-11-02T03:00:00.000Z");
+    const draft = editDraft(d);
+    draft.seen = ["k-01-1", "k-01-2", "k-01-3"];
+    draft.clocks = draft.clocks.map((k) => (k.id === "k-01-2" ? { ...k, value: "6" } : k));
+    expect(editChanges("medical", d, draft)).toEqual([
+      { t: "clockSeen", clockId: "k-01-1" },
+      { t: "clock", clockId: "k-01-2", medIndex: null, label: "酸素 予備ボンベ", value: 6, unit: "hour", overwrite: true },
+    ]);
   });
 
   it("書類と経過の面は編集しない", () => {
@@ -182,5 +220,42 @@ describe("面の編集の画面（components/person/SectionEdit.tsx、T45）", (
     expect(h).toContain("未確認");
     const consent = renderToStaticMarkup(createElement(SectionForm, { section: "consent", data: d, draft: editDraft(d), set: () => {} }));
     expect(consent).toContain('data-consent="medical"');
+  });
+});
+
+describe("面の編集の外す・値確認（components/person/SectionEdit.tsx、T45）", () => {
+  const form = (section: "medical" | "evacuation" | "people" | "basic", id: string, patch: Partial<ReturnType<typeof editDraft>> = {}) => {
+    const d = editOf(id);
+    return renderToStaticMarkup(createElement(SectionForm, { section, data: d, draft: { ...editDraft(d), ...patch }, set: () => {} }));
+  };
+
+  it("薬・機器・ハザード・連絡先・特記の行に「外す」（本人の行は無い）。印を付けた行は「外す予定」と「戻す」", () => {
+    expect(form("medical", "p-01")).toContain('aria-label="ワーファリン 外す"');
+    expect(form("medical", "p-01")).toContain('aria-label="在宅酸素 外す"');
+    expect(form("evacuation", "p-01")).toMatch(/aria-label="[^"]+ 外す"/);
+    const people = form("people", "p-01");
+    expect(people.match(/data-drop="true"/g)).toHaveLength(2); // c-01-1・c-01-2（本人の行 c-01-0 は出さない）
+    expect(form("basic", "p-01")).toContain('aria-label="特記 外す"');
+    const dropped = form("medical", "p-01", { drops: [dropKey.med(0)] });
+    expect(dropped).toContain("data-dropped");
+    expect(dropped).toContain("外す予定");
+    expect(dropped).toContain("戻す");
+    expect(dropped).not.toContain('aria-label="ワーファリン 回数"');
+  });
+
+  it("値の入った時計に確認日と「値確認」。押すと「本日確認」。値の無い時計には出さない", () => {
+    const h = form("medical", "p-01");
+    expect(h).toContain('data-clock-seen="k-01-1"');
+    expect(h).toContain("2026-11-02");
+    expect(h).toContain("値確認");
+    expect(h).not.toContain('data-clock-seen="k-01-3"');
+    expect(form("medical", "p-01", { seen: ["k-01-1"] })).toContain("本日確認");
+  });
+
+  it("確認の窓の文: 外す物の名前と数、写真・PDF の注意（氏名・住所・電話が Claude に渡る、保存しない）", () => {
+    expect(dropConfirmText(["ワーファリン", "隣人"])).toBe("ワーファリン・隣人 の 2 件を外します。経過に「ケアマネが外した」と残ります。");
+    expect(FILE_NOTICE).toContain("Claude に渡ります");
+    expect(FILE_NOTICE).toContain("保存しません");
+    for (const w of ["診断", "判定"]) expect(FILE_NOTICE).not.toContain(w);
   });
 });

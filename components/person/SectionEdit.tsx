@@ -9,7 +9,8 @@ import { useRouter } from "next/navigation";
 import { useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/Button";
 import { Select } from "@/components/ui/Select";
-import { AddIcon, CloseIcon, SaveIcon } from "@/components/ui/Icon";
+import { AddIcon, CloseIcon, RemoveIcon, RestoreIcon, SaveIcon } from "@/components/ui/Icon";
+import { appConfirm } from "@/lib/ui/dialog";
 import {
   CONSENT_KINDS,
   CONSENT_STATUSES,
@@ -30,6 +31,7 @@ import {
   CONTACT_KIND_LABELS,
   DEPENDS_ON_LABELS,
   DEVICE_LABELS,
+  dropConfirmText,
   HAZARD_LABELS,
   INTAKE_LABELS,
   MED_PARTS,
@@ -38,8 +40,11 @@ import {
 import {
   blankContact,
   blankMed,
+  dropKey,
   editChanges,
   editDraft,
+  removalNames,
+  toggled,
   type ContactDraft,
   type EditData,
   type EditDraft,
@@ -78,6 +83,12 @@ export function SectionEdit({ section, data, head, children }: Props) {
 
   async function save() {
     if (!open || changes.length === 0) return;
+    // 外す物があれば、保存の前に 1 回だけ確かめる（取消なら面は開いたまま）
+    const drops = removalNames(changes, open.base);
+    if (drops.length > 0) {
+      const ok = await appConfirm(dropConfirmText(drops), { title: INTAKE_LABELS.dropTitle, ok: INTAKE_LABELS.drop, danger: true });
+      if (!ok) return;
+    }
     setBusy(true);
     setError(null);
     const r = await postJson<{ ok: true; changed: number }>("/api/intake/save", {
@@ -176,9 +187,18 @@ export function SectionForm({ section, data, draft, set }: FormProps) {
       return (
         <div className="space-y-2">
           <Group label="薬">
-            {draft.meds.map((m, i) => (
-              <MedRow key={i} med={m} onChange={(next) => set({ meds: draft.meds.map((x, j) => (j === i ? next : x)) })} />
-            ))}
+            {draft.meds.map((m, i) =>
+              draft.drops.includes(dropKey.med(i)) ? (
+                <DroppedRow key={i} name={data.ledger.medical.medications[i]?.name ?? m.name} onUndo={() => set({ drops: toggled(draft.drops, dropKey.med(i)) })} />
+              ) : (
+                <MedRow
+                  key={i}
+                  med={m}
+                  onChange={(next) => set({ meds: draft.meds.map((x, j) => (j === i ? next : x)) })}
+                  onDrop={() => set({ drops: toggled(draft.drops, dropKey.med(i)) })}
+                />
+              ),
+            )}
             {draft.newMeds.map((m, i) => (
               <MedRow key={`new-${i}`} med={m} isNew onChange={(next) => set({ newMeds: draft.newMeds.map((x, j) => (j === i ? next : x)) })} />
             ))}
@@ -187,27 +207,32 @@ export function SectionForm({ section, data, draft, set }: FormProps) {
             </Button>
           </Group>
           <Group label="機器">
-            {draft.devices.map((d, i) => (
-              <div key={d.kind} className={ROW} data-device={d.kind}>
-                <span className={SUB}>{DEVICE_LABELS[d.kind]}</span>
-                <div className="grid grid-cols-2 gap-1">
-                  <input
-                    className={INPUT}
-                    placeholder="中身"
-                    aria-label={`${DEVICE_LABELS[d.kind]} 中身`}
-                    value={d.detail}
-                    onChange={(e) => set({ devices: draft.devices.map((x, j) => (j === i ? { ...x, detail: e.target.value } : x)) })}
-                  />
-                  <input
-                    className={INPUT}
-                    placeholder="回数"
-                    aria-label={`${DEVICE_LABELS[d.kind]} 回数`}
-                    value={d.schedule}
-                    onChange={(e) => set({ devices: draft.devices.map((x, j) => (j === i ? { ...x, schedule: e.target.value } : x)) })}
-                  />
+            {draft.devices.map((d, i) =>
+              draft.drops.includes(dropKey.device(d.kind)) ? (
+                <DroppedRow key={d.kind} name={DEVICE_LABELS[d.kind]} onUndo={() => set({ drops: toggled(draft.drops, dropKey.device(d.kind)) })} />
+              ) : (
+                <div key={d.kind} className={ROW} data-device={d.kind}>
+                  <span className={SUB}>{DEVICE_LABELS[d.kind]}</span>
+                  <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-1">
+                    <input
+                      className={INPUT}
+                      placeholder="中身"
+                      aria-label={`${DEVICE_LABELS[d.kind]} 中身`}
+                      value={d.detail}
+                      onChange={(e) => set({ devices: draft.devices.map((x, j) => (j === i ? { ...x, detail: e.target.value } : x)) })}
+                    />
+                    <input
+                      className={INPUT}
+                      placeholder="回数"
+                      aria-label={`${DEVICE_LABELS[d.kind]} 回数`}
+                      value={d.schedule}
+                      onChange={(e) => set({ devices: draft.devices.map((x, j) => (j === i ? { ...x, schedule: e.target.value } : x)) })}
+                    />
+                    <DropButton onClick={() => set({ drops: toggled(draft.drops, dropKey.device(d.kind)) })} name={DEVICE_LABELS[d.kind]} />
+                  </div>
                 </div>
-              </div>
-            ))}
+              ),
+            )}
             <Checks
               label="追加"
               options={DEVICE_KINDS.filter((k) => !draft.devices.some((d) => d.kind === k)).map((k) => ({ value: k, label: DEVICE_LABELS[k] }))}
@@ -220,6 +245,9 @@ export function SectionForm({ section, data, draft, set }: FormProps) {
             {draft.clocks.map((k, i) => {
               const cur = data.clocks.find((c) => c.id === k.id);
               const check = draft.checks[k.id];
+              const seen = draft.seen.includes(k.id);
+              // 値を直したら確認の日付は直しの方で今になる。値確認は値が同じで、値の入った時計だけ
+              const valueSame = cur?.value != null && String(cur.value) === k.value.trim() && cur.unit === k.unit;
               return (
                 <div key={k.id} className="space-y-1" data-clock={k.id}>
                   {/* 時計の名前は長い（「酸素 予備ボンベ」）ので、名前の横に値と単位を折り返して並べる */}
@@ -247,6 +275,27 @@ export function SectionForm({ section, data, draft, set }: FormProps) {
                       </Select>
                     </div>
                   </div>
+                  {/* 値を変えずに今日確かめた（確認の日付だけ今に） */}
+                  {cur?.value != null && (
+                    <div className={ROW} data-clock-seen={k.id}>
+                      <span className={SUB}>確認日</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs tabular-nums">
+                          {seen && valueSame ? INTAKE_LABELS.seenToday : cur.confirmed_at ? jstDay(cur.confirmed_at) : "未確認"}
+                        </span>
+                        {valueSame && (
+                          <Button
+                            size="sm"
+                            icon={seen ? CloseIcon : CheckIcon}
+                            aria-pressed={seen}
+                            onClick={() => set({ seen: toggled(draft.seen, k.id) })}
+                          >
+                            {seen ? INTAKE_LABELS.seenOff : INTAKE_LABELS.seen}
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  )}
                   {/* 頼り先の確認（透析先・冷蔵・配達・保管）。人が確かめて付ける */}
                   {cur?.depends_on && check && (
                     <div className={ROW} data-clock-check={k.id}>
@@ -276,22 +325,27 @@ export function SectionForm({ section, data, draft, set }: FormProps) {
       return (
         <div className="space-y-2">
           <Group label="ハザード">
-            {draft.hazards.map((h, i) => (
-              <div key={h.kind} className={ROW} data-hazard={h.kind}>
-                <span className={SUB}>{HAZARD_LABELS[h.kind]}</span>
-                <div className="flex items-center gap-1">
-                  <input
-                    className={`${INPUT} w-20`}
-                    inputMode="decimal"
-                    placeholder="深さ"
-                    aria-label={`${HAZARD_LABELS[h.kind]} 深さ`}
-                    value={h.depth}
-                    onChange={(e) => set({ hazards: draft.hazards.map((x, j) => (j === i ? { ...x, depth: e.target.value } : x)) })}
-                  />
-                  <span className="text-xs">m</span>
+            {draft.hazards.map((h, i) =>
+              draft.drops.includes(dropKey.hazard(h.kind)) ? (
+                <DroppedRow key={h.kind} name={HAZARD_LABELS[h.kind]} onUndo={() => set({ drops: toggled(draft.drops, dropKey.hazard(h.kind)) })} />
+              ) : (
+                <div key={h.kind} className={ROW} data-hazard={h.kind}>
+                  <span className={SUB}>{HAZARD_LABELS[h.kind]}</span>
+                  <div className="flex items-center gap-1">
+                    <input
+                      className={`${INPUT} w-20`}
+                      inputMode="decimal"
+                      placeholder="深さ"
+                      aria-label={`${HAZARD_LABELS[h.kind]} 深さ`}
+                      value={h.depth}
+                      onChange={(e) => set({ hazards: draft.hazards.map((x, j) => (j === i ? { ...x, depth: e.target.value } : x)) })}
+                    />
+                    <span className="text-xs">m</span>
+                    <DropButton className="ml-auto" onClick={() => set({ drops: toggled(draft.drops, dropKey.hazard(h.kind)) })} name={HAZARD_LABELS[h.kind]} />
+                  </div>
                 </div>
-              </div>
-            ))}
+              ),
+            )}
             <Checks
               label="追加"
               options={HAZARD_KINDS.filter((k) => !draft.hazards.some((h) => h.kind === k)).map((k) => ({ value: k, label: HAZARD_LABELS[k] }))}
@@ -305,9 +359,24 @@ export function SectionForm({ section, data, draft, set }: FormProps) {
     case "people":
       return (
         <div className="space-y-2">
-          {draft.contacts.map((c, i) => (
-            <ContactRow key={c.id ?? i} c={c} onChange={(next) => set({ contacts: draft.contacts.map((x, j) => (j === i ? next : x)) })} />
-          ))}
+          {draft.contacts.map((c, i) => {
+            const key = c.id ? dropKey.contact(c.id) : null;
+            const cur = data.contacts.find((x) => x.id === c.id);
+            return key && draft.drops.includes(key) ? (
+              <DroppedRow
+                key={c.id ?? i}
+                name={`${CONTACT_KIND_LABELS[c.kind]} ${cur?.relation || cur?.name || ""}`.trim()}
+                onUndo={() => set({ drops: toggled(draft.drops, key) })}
+              />
+            ) : (
+              <ContactRow
+                key={c.id ?? i}
+                c={c}
+                onChange={(next) => set({ contacts: draft.contacts.map((x, j) => (j === i ? next : x)) })}
+                onDrop={key ? () => set({ drops: toggled(draft.drops, key) }) : undefined}
+              />
+            );
+          })}
           {draft.newContacts.map((c, i) => (
             <ContactRow key={`new-${i}`} c={c} isNew onChange={(next) => set({ newContacts: draft.newContacts.map((x, j) => (j === i ? next : x)) })} />
           ))}
@@ -321,6 +390,22 @@ export function SectionForm({ section, data, draft, set }: FormProps) {
       return (
         <div className="space-y-1">
           {fieldRows}
+          {data.ledger.notes.map((n, i) => {
+            const key = dropKey.note(i);
+            return (
+              <div key={key} className={ROW} data-note={i}>
+                <span className={SUB}>特記</span>
+                {draft.drops.includes(key) ? (
+                  <DroppedRow name={n} onUndo={() => set({ drops: toggled(draft.drops, key) })} />
+                ) : (
+                  <div className="flex items-start gap-2">
+                    <span className="min-w-0 flex-1 text-sm">{n}</span>
+                    <DropButton onClick={() => set({ drops: toggled(draft.drops, key) })} name="特記" />
+                  </div>
+                )}
+              </div>
+            );
+          })}
           <label className={ROW}>
             <span className={SUB}>{INTAKE_LABELS.addNote}</span>
             <textarea className={INPUT} rows={2} value={draft.note} onChange={(e) => set({ note: e.target.value })} />
@@ -349,6 +434,31 @@ export function SectionForm({ section, data, draft, set }: FormProps) {
         </div>
       );
   }
+}
+
+/** 確認の日付（JST の YYYY-MM-DD） */
+const jstDay = (iso: string) => new Date(Date.parse(iso) + 9 * 3600_000).toISOString().slice(0, 10);
+
+/** 行の「外す」。戻せる印なので無色（確かめの窓の最後の 1 押しが赤） */
+function DropButton({ onClick, name, className = "" }: { onClick: () => void; name: string; className?: string }) {
+  return (
+    <Button size="sm" icon={RemoveIcon} className={className} aria-label={`${name} ${INTAKE_LABELS.drop}`} data-drop onClick={onClick}>
+      {INTAKE_LABELS.drop}
+    </Button>
+  );
+}
+
+/** 外す印を付けた行（保存すると外れる。「戻す」で印を外す） */
+function DroppedRow({ name, onUndo }: { name: string; onUndo: () => void }) {
+  return (
+    <div className="flex items-center gap-2" data-dropped>
+      <span className="min-w-0 flex-1 truncate text-sm text-muted line-through">{name}</span>
+      <span className="text-xs font-bold text-danger">{INTAKE_LABELS.dropMark}</span>
+      <Button size="sm" icon={RestoreIcon} aria-label={`${name} ${INTAKE_LABELS.undrop}`} onClick={onUndo}>
+        {INTAKE_LABELS.undrop}
+      </Button>
+    </div>
+  );
 }
 
 function Group({ label, children }: { label: string; children: ReactNode }) {
@@ -392,7 +502,7 @@ function Checks({
   );
 }
 
-function MedRow({ med, isNew = false, onChange }: { med: MedDraft; isNew?: boolean; onChange: (m: MedDraft) => void }) {
+function MedRow({ med, isNew = false, onChange, onDrop }: { med: MedDraft; isNew?: boolean; onChange: (m: MedDraft) => void; onDrop?: () => void }) {
   const p = (patch: Partial<MedDraft>) => onChange({ ...med, ...patch });
   return (
     <div className="grid grid-cols-2 gap-1" data-med={isNew ? "new" : med.name}>
@@ -406,13 +516,16 @@ function MedRow({ med, isNew = false, onChange }: { med: MedDraft; isNew?: boole
       </Select>
       <input className={INPUT} placeholder="回数" aria-label={`${med.name} 回数`} value={med.schedule} onChange={(e) => p({ schedule: e.target.value })} />
       <input className={INPUT} placeholder={MED_PARTS.amount} aria-label={`${med.name} ${MED_PARTS.amount}`} value={med.amount} onChange={(e) => p({ amount: e.target.value })} />
-      <input
-        className={`${INPUT} col-span-2`}
-        placeholder={MED_PARTS.storage}
-        aria-label={`${med.name} ${MED_PARTS.storage}`}
-        value={med.storage}
-        onChange={(e) => p({ storage: e.target.value })}
-      />
+      <div className="col-span-2 flex items-center gap-1">
+        <input
+          className={`${INPUT} min-w-0 flex-1`}
+          placeholder={MED_PARTS.storage}
+          aria-label={`${med.name} ${MED_PARTS.storage}`}
+          value={med.storage}
+          onChange={(e) => p({ storage: e.target.value })}
+        />
+        {onDrop && <DropButton onClick={onDrop} name={med.name} />}
+      </div>
     </div>
   );
 }
@@ -423,7 +536,17 @@ const NIGHT: ReadonlyArray<{ value: NightDraft; label: string }> = [
   { value: "no", label: "夜間不可" },
 ];
 
-function ContactRow({ c, isNew = false, onChange }: { c: ContactDraft; isNew?: boolean; onChange: (c: ContactDraft) => void }) {
+function ContactRow({
+  c,
+  isNew = false,
+  onChange,
+  onDrop,
+}: {
+  c: ContactDraft;
+  isNew?: boolean;
+  onChange: (c: ContactDraft) => void;
+  onDrop?: () => void;
+}) {
   const p = (patch: Partial<ContactDraft>) => onChange({ ...c, ...patch });
   const who = c.name || c.relation || CONTACT_KIND_LABELS[c.kind];
   return (
@@ -456,7 +579,10 @@ function ContactRow({ c, isNew = false, onChange }: { c: ContactDraft; isNew?: b
           </option>
         ))}
       </Select>
-      <input className={INPUT_IN} placeholder="備考" aria-label={`${who} 備考`} value={c.note} onChange={(e) => p({ note: e.target.value })} />
+      <div className="flex items-center gap-1">
+        <input className={`${INPUT_IN} min-w-0 flex-1`} placeholder="備考" aria-label={`${who} 備考`} value={c.note} onChange={(e) => p({ note: e.target.value })} />
+        {onDrop && <DropButton onClick={onDrop} name={who} />}
+      </div>
     </div>
   );
 }

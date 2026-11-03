@@ -52,6 +52,7 @@ export function intakePropsOf(rows: PersonPageRows, aiReady: boolean): IntakePro
         unit: k.unit,
         depends_on: k.depends_on,
         depends_check: k.depends_check,
+        confirmed_at: k.confirmed_at,
       })),
       consents: rows.consents.map((c) => ({ kind: c.kind, status: c.status })),
     },
