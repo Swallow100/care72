@@ -124,7 +124,7 @@ export function LocationPick({ value, onChange, center, label, readOnly = false 
         {pinShown && (
           <span
             aria-hidden
-            className="pointer-events-none absolute size-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-panel bg-accent"
+            className="pointer-events-none absolute size-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-panel bg-accent-fill"
             style={{ left: `${pin.left}%`, top: `${pin.top}%` }}
             data-location-pin
           />

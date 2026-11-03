@@ -20,9 +20,12 @@
 
   意味色は黒を混ぜない（作者の決まり、11/3）。ライトもダークも澄んだ色相のまま。暗く濁った緑・赤・黄・青は使わない。
   黒を混ぜてよいのは灰色と黒だけ。ダークは色の明るさを保ち、地と面を暗くして差を出す。
-    --state-*        文字・数字の色（面の上で読める明るさの、いちばん鮮やかな色）。黄は文字に使わない（下）
-    --state-*-fill   印の塗り（澄んだ色。黄は明るい黄）
-    --on-state-*     印の塗りの上の文字（白か、ほぼ黒）
+    --state-*-text   文字・数字の色（text-state-ok など）。地・面・面の中のどれの上でも対比 4.5 以上（T79、11/4 の点検の中 9）。
+                     その対比に届く明るさの中で、いちばん鮮やかな色（黒は混ぜない。明るさだけ下げた同じ色相）
+    --state-*        帯・本人と家族のスマホの大きなボタンの面（components/phone/phone.css）の色。前の文字の色のまま
+    --state-*-fill   印の塗り（澄んだ色。黄は明るい黄）。T79 でも変えていない
+    --on-state-*     印の塗りの上の文字（白か、ほぼ黒）。緑の塗りの上は白だと 3.68 なので、ライトもほぼ黒（4.70）
+  出る・消す・外す操作の赤も、文字（text-danger、--danger-text）と塗りのボタン（bg-danger-fill、--danger）を分ける。
   薄い下地（色を面に混ぜた物）は、ダークで黒の混ざった濁った色になるので印に使わない。印は澄んだ色の塗りか、色の文字だけ。
   黄（要確認）は文字の色に使わない（白の上の対比が 3.2 しか無い。11/3 03:3x の確定 3）。黄は塗りの印（濃い文字）か細い帯だけで、
   黄の文字だった所は本文色の文字と前に黄の細い帯（tone-check。components/ui/Tag の TONE_TEXT.check・StateText・Mark が使う）。
@@ -36,7 +39,13 @@
   --ink: #161b21;
   --muted: #59636e;
   --press: rgb(0 0 0 / 0.08);
-  /* oklch(0.60 最大 150) の緑・oklch(0.58 最大 27) の赤。白の上の対比は 3.7・4.8。
+  /* 文字の色（T79）。oklch(0.51 最大 150) の緑 #007b36・oklch(0.555 最大 27) の赤 #d4111b・灰 #616c78。
+     対比は 地 4.65・4.64・4.60、面の中 4.91・4.90・4.86、白 5.40・5.39・5.35 */
+  --state-ok-text: #007b36;
+  --state-urgent-text: #d4111b;
+  --state-unknown-text: #616c78;
+  --danger-text: #d4111b;
+  /* oklch(0.60 最大 150) の緑・oklch(0.58 最大 27) の赤。白の上の対比は 3.7・4.8（帯と面の色。文字には上の -text）。
      --state-check は oklch(0.64 最大 70) の琥珀（黒を混ぜない、その明るさでいちばん鮮やかな色）。文字には使わず、帯と注意の枠だけ。
      帯の対比は 白 3.47・面の中 3.15・地 2.99。黄の印の塗り（--state-check-fill）の上の文字は対比 9.4 */
   --state-ok: #1a994a;
@@ -47,13 +56,18 @@
   --state-urgent-fill: #e11c22;
   --state-check-fill: #f2b125;
   --state-unknown-fill: #6b7682;
-  --on-state-ok: #ffffff;
+  /* 緑の塗りの上の白は 3.68 なので、ほぼ黒（4.70）。赤の塗りの白は 4.78、灰の塗りの白は 4.63 */
+  --on-state-ok: #161b21;
   --on-state-urgent: #ffffff;
   --on-state-check: #161b21;
   --on-state-unknown: #ffffff;
+  /* 赤の塗りのボタン（dangerFill）の面。文字の赤は --danger-text */
   --danger: #e11c22;
-  /* 操作の色（主のボタン、選んだ印の枠、入力の欄の印、電話のリンク）。状態の 4 色とは別。oklch(0.55 最大 258) */
+  /* 操作の色（主のボタン、選んだ印の枠、入力の欄の印、電話のリンク）。状態の 4 色とは別。oklch(0.55 最大 258)。
+     主のボタンの塗り（bg-accent-fill）はこの色。文字・枠・チェックの色（text-accent・outline-accent・accent-accent）は
+     地の上でも 4.5 に届く oklch(0.53 最大 258) の --accent-text（地 4.66・面の中 4.93・白 5.42。T79） */
   --accent: #116bdf;
+  --accent-text: #0065da;
   --on-accent: #ffffff;
   color-scheme: light;
 }
@@ -66,7 +80,11 @@
   --ink: #e8ebef;
   --muted: #9ba5b0;
   --press: rgb(255 255 255 / 0.09);
-  /* 明るさを保った澄んだ色。暗い面の上の対比は 8.8・6.6・9.3 */
+  /* 明るさを保った澄んだ色。暗い面の上の対比は 8.8・6.6・9.3。文字も同じ色（暗い面の中の上でも 7.99・5.97・7.02） */
+  --state-ok-text: #27d268;
+  --state-urgent-text: #fb7474;
+  --state-unknown-text: #a3adb8;
+  --danger-text: #fb7474;
   --state-ok: #27d268;
   --state-urgent: #fb7474;
   --state-check: #f2b125;
@@ -81,6 +99,7 @@
   --on-state-unknown: #0b0d10;
   --danger: #fb7474;
   --accent: #76b5fb;
+  --accent-text: #76b5fb;
   --on-accent: #0b0d10;
   color-scheme: dark;
 }
@@ -102,10 +121,11 @@
   --color-ink: var(--ink);
   --color-muted: var(--muted);
   --color-press: var(--press);
-  --color-state-ok: var(--state-ok);
-  --color-state-urgent: var(--state-urgent);
+  /* text-state-* は文字の色（-text）。この 3 つは文字にしか使っていない（塗りは bg-state-*-fill） */
+  --color-state-ok: var(--state-ok-text);
+  --color-state-urgent: var(--state-urgent-text);
   --color-state-check: var(--state-check);
-  --color-state-unknown: var(--state-unknown);
+  --color-state-unknown: var(--state-unknown-text);
   --color-state-ok-fill: var(--state-ok-fill);
   --color-state-urgent-fill: var(--state-urgent-fill);
   --color-state-check-fill: var(--state-check-fill);
@@ -114,8 +134,12 @@
   --color-on-state-urgent: var(--on-state-urgent);
   --color-on-state-check: var(--on-state-check);
   --color-on-state-unknown: var(--on-state-unknown);
-  --color-danger: var(--danger);
-  --color-accent: var(--accent);
+  /* text-danger は文字の赤、bg-danger-fill は赤の塗りのボタン（components/ui/Button の dangerFill） */
+  --color-danger: var(--danger-text);
+  --color-danger-fill: var(--danger);
+  /* text-accent・outline-accent・accent-accent は文字と枠の色、bg-accent-fill は主のボタンの塗り */
+  --color-accent: var(--accent-text);
+  --color-accent-fill: var(--accent);
   --color-on-accent: var(--on-accent);
   /* 画面の書体: 英数字は Inter、日本語は端末の書体（Mac は Hiragino Sans、Windows は Yu Gothic UI・Meiryo）。11/3 10:3x の判断（app/layout.tsx の注） */
   --font-sans: var(--font-inter), "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Yu Gothic", "Meiryo", system-ui, sans-serif;

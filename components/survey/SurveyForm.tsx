@@ -296,7 +296,7 @@ export function SurveyForm({ token, opened, turnstileSiteKey }: { token: string;
         <button
           type="submit"
           disabled={busy || waitingTurnstile}
-          className="relative flex h-14 w-full items-center justify-center gap-2 rounded-lg bg-accent text-xl font-bold text-on-accent disabled:bg-panel disabled:text-muted"
+          className="relative flex h-14 w-full items-center justify-center gap-2 rounded-lg bg-accent-fill text-xl font-bold text-on-accent disabled:bg-panel disabled:text-muted"
           data-press="overlay"
         >
           <SendIcon aria-hidden className="size-6 shrink-0" />
