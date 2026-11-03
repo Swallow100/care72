@@ -237,7 +237,7 @@ describe("renderSummary", () => {
   it("選択の問いを「N 人中 M 人」で出し、合算も出す", () => {
     const md = renderSummary({ respondents: rs, held: [], ai: skipped, now: NOW });
     expect(md).toContain("回答: 3 人（ケアマネ 2 人・保健師・看護師 1 人・社会福祉士 0 人・その他 0 人）");
-    expect(md).toContain("| 2〜4 時間 | 3 人中 2 人 |");
+    expect(md).toContain("| 2〜4時間 | 3 人中 2 人 |");
     expect(md).toContain("合算: 計画 1 件に 1 時間より長くかかる（作ったことがある人のうち）　3 人中 3 人");
     expect(md).toContain("| 書く時間が無い | 3 人中 3 人 |");
     expect(md).toContain("AI の分けは未実施（--no-ai）");
@@ -291,7 +291,7 @@ describe("renderSummary", () => {
   it("失敗したときも数えた所は出す", () => {
     const md = renderSummary({ respondents: rs, held: [], ai: { status: "failed", reason: "AiCallFailed" }, now: NOW });
     expect(md).toContain("AI の分けに失敗した（AiCallFailed）");
-    expect(md).toContain("| 2〜4 時間 | 3 人中 2 人 |");
+    expect(md).toContain("| 2〜4時間 | 3 人中 2 人 |");
   });
 
   it("言葉の決まり: 診断・判定・重症・病気がわかる、を書かない", async () => {
