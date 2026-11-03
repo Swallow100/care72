@@ -11,8 +11,8 @@ import { drillGate, type DailyUsage } from "@/lib/claude/gate";
 import { usageToday } from "@/lib/claude/usage";
 import { LIMIT_LABELS } from "@/lib/seed/labels";
 import { shortJst } from "@/lib/disaster/state";
-import { caseloadForDrill, drillScope, listDrills, type DrillListItem } from "@/lib/drill/db";
-import { DRILL_LABELS, progressLabel, SCENARIO_LABELS, STATUS_LABELS, VIRTUAL_LABELS } from "@/lib/drill/labels";
+import { caseloadForDrill, drillScope, listDrills, runningDrillId, type DrillListItem } from "@/lib/drill/db";
+import { DRILL_LABELS, progressLabel, SCENARIO_LABELS, STATUS_LABELS, T70_LABELS, VIRTUAL_LABELS } from "@/lib/drill/labels";
 import { drillHref, reportHref } from "@/lib/drill/paths";
 import { SCORE_LABELS } from "@/lib/drill/score-labels";
 import { lastHour, SCENARIO_ORDER, scenarioOf } from "@/lib/drill/scenarios";
@@ -23,7 +23,7 @@ export const metadata: Metadata = { title: "訓練記録 | ケア72" };
 export const dynamic = "force-dynamic";
 
 // 訓練記録の一覧（事業所ごと。審査員の回も残る）と開始（大雨想定・地震想定・10 分版）。docs/tasks/T17.md。
-// 進行中の訓練は事業所に 1 つ。あれば開始を押せず、一覧の進行中から再開（途中から続ける）。終わった・中断した訓練は再生（Claude を呼ばない）。
+// 進行中の訓練はケアマネごとに 1 つ（T70）。自分の進行中があれば開始を押せず、一覧の進行中から再開（途中から続ける）。24 時間たった進行中は読むときに中断。終わった・中断した訓練は再生（Claude を呼ばない）。
 // ケアマネの役だけ（審査員のケアマネの役も）。デモ事業所の終わった訓練の種は T26
 export default async function DrillPage() {
   const principal = await requirePage("drill");
@@ -32,10 +32,14 @@ export default async function DrillPage() {
   let usage: DailyUsage | null = null;
   // 開始の前の設定の参加者（T59。担当一覧の人）
   let people: StartPerson[] = [];
+  // 自分の進行中（T70。開始者か担当一覧の人で見る。ほかのケアマネの進行中では開始を止めない）
+  let mine: string | null = null;
   try {
     const { env } = await getCloudflareContext({ async: true });
-    items = scope ? await listDrills(env.DB, scope.officeId) : [];
+    // 24 時間たった進行中は読む前に中断（T70）
+    items = scope ? await listDrills(env.DB, scope.officeId, 50, new Date().toISOString()) : [];
     people = scope ? await caseloadForDrill(env.DB, scope) : [];
+    mine = scope ? await runningDrillId(env.DB, scope.officeId, { scope }) : null;
     // AI の 1 日の上限（T26）。読めなければ開始のまま
     usage = scope ? await aiContextFor(scope.officeId).then(usageToday).catch(() => null) : null;
   } catch (e) {
@@ -47,7 +51,8 @@ export default async function DrillPage() {
       </main>
     );
   }
-  const running = items.find((d) => d.status === "running") ?? null;
+  // 進行中はケアマネごとに 1 つ（T70。審査員は同じアカウントなので共有）。ほかのケアマネの進行中は一覧から再開できる
+  const running = items.find((d) => d.id === mine) ?? null;
   const gate = drillGate(usage, items);
 
   return (
@@ -59,7 +64,7 @@ export default async function DrillPage() {
           {DRILL_LABELS.start}
         </h2>
         {gate.kind === "start" ? (
-          <StartButtons scenarios={SCENARIO_ORDER} disabled={running !== null} people={people} />
+          <StartButtons scenarios={SCENARIO_ORDER} disabled={running !== null} people={people} remaining={gate.remaining} />
         ) : (
           // 上限に達したら開始でなく、終わった訓練の再生（0 時間から刻みごとに）
           <div className="flex flex-wrap items-center gap-2" data-limit>
@@ -118,6 +123,11 @@ export default async function DrillPage() {
                 <td className={`${TD} tabular-nums`}>{progressLabel(d.sim_hour, lastHour(scenarioOf(d.scenario)))}</td>
                 <td className={`${TD} ${d.status === "running" ? "font-bold" : d.status === "abandoned" ? "text-muted" : ""}`}>
                   {STATUS_LABELS[d.status]}
+                  {d.abandon_reason === "24h" && (
+                    <span className="ml-1.5 text-xs text-muted" data-abandon-reason="24h">
+                      {T70_LABELS.day}
+                    </span>
+                  )}
                 </td>
                 <td className={TD}>{d.started_by_name ?? <span className="text-muted">—</span>}</td>
                 <td className={`${TD} w-px py-1 text-right`}>

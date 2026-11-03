@@ -3,7 +3,7 @@
 // 安否の色の言葉（至急・要確認・灰・無事）は lib/labels.ts の COLOR_LABELS を読み、ここに書かない。
 
 import type { DrillAction, DrillScenario, DrillStatus } from "../db/types.ts";
-import type { PhoneState, ShelterState, TsunamiState, WaterState, WorldEventKind } from "./scenarios.ts";
+import type { AiStop, PhoneState, ShelterState, TsunamiState, WaterState, WorldEventKind } from "./scenarios.ts";
 
 export const SCENARIO_LABELS: Record<DrillScenario, string> = {
   heavy_rain: "大雨想定",
@@ -85,6 +85,28 @@ export const T59_LABELS = {
   oclock: "時",
 } as const;
 
+/** 訓練を本物の事業所で（T70）の言葉。開始の前の押せる人なし・見込み、刻みの停止の印、自動中断 */
+export const T70_LABELS = {
+  /** 本人も家族・支援者もスマホで赤緑を押せない人（灰の文字） */
+  noPresser: "押せる人なし",
+  /** AI の呼び出しの見込み（「見込み 約 65 回」） */
+  estimate: "見込み",
+  about: "約",
+  times: "回",
+  /** 見込みが残りを超える（赤の文字。開始は止めない） */
+  short: "上限不足",
+  autoAbandon: "自動中断",
+  /** 自動中断の理由（一覧の行の詳細） */
+  day: "24 時間",
+} as const;
+
+/** 上限で止まった AI の役の印（刻みの見出し。灰の文字） */
+export const AI_STOP_LABELS: Record<AiStop, string> = {
+  persona: "本人役 停止",
+  director: "監督 停止",
+  world: "世界 停止",
+};
+
 /** 訓練の人の印（T48、アドバイザーの返事）。人は全部作った例で、本人役・家族役は AI が演じる */
 export const FICTION_LABELS = {
   mark: "架空",
@@ -119,6 +141,8 @@ export const EVENT_KIND_LABELS: Record<WorldEventKind, string> = {
   narration: "世界",
   world_note: "世界",
   outcome: "結末",
+  ai_stop: "停止",
+  auto_abandon: "中断",
 };
 
 /** 本人ごとの印（被害状況の「個別」の欄）。PersonMarks の鍵ごと */
