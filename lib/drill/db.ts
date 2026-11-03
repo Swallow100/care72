@@ -36,14 +36,17 @@ import {
   type ActTarget,
 } from "./actions.ts";
 import {
+  cleanOptions,
   foldTick,
   initialState,
+  isStaffCount,
   lastStep,
   simAt,
   step,
   type ActionRecord,
   type ActionResult,
   type DrillIncident,
+  type DrillOptions,
   type DrillState,
   type DrillTurn,
   type HeardSignal,
@@ -90,15 +93,40 @@ type StoredWorld = {
   actions: ActionRecord[];
   /** ケアマネの時計（発災からの分、T20）。無ければ刻みの時刻 */
   minute?: number;
+  /** 開始の前に選んだ物（T59。職員・夜間発災）。選ばなかった訓練には無い */
+  options?: DrillOptions;
+  /** 取り消した手の数（T59）。無ければ 0 */
+  undone?: number;
+  /**
+   * 最後の手の前の状態の写し（T59 の取消）。刻みを越えなかった手を打ったときだけ置き、次の手で上書き、進める・刻みを越える手で消える。
+   * act は取り消せる手の番号
+   */
+  undo?: UndoSnapshot;
 };
 
-function storeWorld(s: DrillState): string {
-  const body: StoredWorld = { v: 1, participants: s.participants, world: s.world, people: s.people, actions: s.actions, minute: s.minute };
+/** 手の前の状態の写し（取消で戻す物） */
+export type UndoSnapshot = Pick<DrillState, "minute" | "hour" | "step" | "world" | "people" | "actions"> & { act: string };
+
+function storeWorld(s: DrillState, undo?: UndoSnapshot): string {
+  // 選ばなかった物は書かない（何も選ばなければ前と同じ JSON。world = ?9 の門の文字も同じ）
+  const body: StoredWorld = {
+    v: 1,
+    participants: s.participants,
+    world: s.world,
+    people: s.people,
+    actions: s.actions,
+    minute: s.minute,
+    ...(s.options && Object.keys(s.options).length > 0 ? { options: s.options } : {}),
+    ...(s.undone ? { undone: s.undone } : {}),
+    ...(undo ? { undo } : {}),
+  };
   return JSON.stringify(body);
 }
 
 function parseStoredWorld(text: string): StoredWorld {
   const raw = JSON.parse(text) as Partial<StoredWorld>;
+  const options = cleanOptions(raw.options);
+  const u = raw.undo;
   return {
     v: 1,
     participants: Array.isArray(raw.participants) ? raw.participants.filter((x): x is string => typeof x === "string") : [],
@@ -106,7 +134,17 @@ function parseStoredWorld(text: string): StoredWorld {
     people: raw.people ?? {},
     actions: Array.isArray(raw.actions) ? raw.actions : [],
     ...(typeof raw.minute === "number" ? { minute: raw.minute } : {}),
+    ...(Object.keys(options).length > 0 ? { options } : {}),
+    ...(isNum(raw.undone) && raw.undone > 0 ? { undone: raw.undone } : {}),
+    ...(u && typeof u === "object" && typeof u.act === "string" && Array.isArray(u.actions) && isNum(u.minute) && isNum(u.step) && isNum(u.hour)
+      ? { undo: { ...u, world: { ...EMPTY_WORLD, ...(u.world ?? {}) }, people: u.people ?? {} } }
+      : {}),
   };
+}
+
+/** 選んだ物と取消の数（状態に足す。無ければ鍵ごと無い） */
+function extrasOf(w: Pick<StoredWorld, "options" | "undone">): Pick<DrillState, "options" | "undone"> {
+  return { ...(w.options ? { options: w.options } : {}), ...(w.undone ? { undone: w.undone } : {}) };
 }
 
 /** 表の行から今の状態（drills.world の写しから。再開に使う） */
@@ -123,7 +161,20 @@ export function stateOfRow(row: DrillRow): DrillState {
     world: w.world,
     people: w.people,
     actions: w.actions,
+    ...extrasOf(w),
   };
+}
+
+/**
+ * 取り消せる手の番号（T59）。進行中で、最後の手が刻みを越えず、その手の前の写しがあるときだけ。無ければ null（取消不可）
+ */
+export function undoableAct(row: Pick<DrillRow, "world" | "status">): string | null {
+  if (row.status !== "running") return null;
+  const w = parseStoredWorld(row.world);
+  const last = w.actions.at(-1);
+  if (!last || !w.undo || w.undo.act !== last.id) return null;
+  if (!last.result || last.result.crossed.length > 0) return null;
+  return last.id;
 }
 
 // ---------- drill_events の形 ----------
@@ -241,18 +292,40 @@ type CallInPayload = Pick<DrillTurn, "source" | "color" | "saying" | "ai"> & { s
 
 // ---------- 開始・進める・中断 ----------
 
-export type StartResult = { ok: true; id: string } | { ok: false; error: "running" | "empty" };
+/** invalid は選んだ物が違う（担当一覧の外の人・0 人・職員が 0〜9 でない。T59） */
+export type StartResult = { ok: true; id: string } | { ok: false; error: "running" | "empty" | "invalid" };
 
-/** 担当一覧の人（一覧から外した人は出ない） */
-async function caseloadPeople(db: D1Database, scope: DrillScope): Promise<string[]> {
+/**
+ * 開始の前に選ぶ物（T59）。どれも任意で、選ばなければ今と同じ（担当一覧の全員・想定の表の職員・昼の発災）。
+ * participants は担当一覧の人の id（外の id・0 人は断る）
+ */
+export type StartOptions = DrillOptions & { participants?: ReadonlyArray<string> };
+
+/** 担当一覧の人（一覧から外した人は出ない）。開始の前の参加者の選択にも名前つきで使う */
+export async function caseloadForDrill(db: D1Database, scope: DrillScope): Promise<Array<{ id: string; name: string }>> {
   const res = await db
-    .prepare("SELECT id FROM people WHERE care_manager_id = ?1 AND office_id = ?2 AND unlisted_at IS NULL ORDER BY kana, id")
+    .prepare("SELECT id, name FROM people WHERE care_manager_id = ?1 AND office_id = ?2 AND unlisted_at IS NULL ORDER BY kana, id")
     .bind(scope.careManagerId, scope.officeId)
-    .all<{ id: string }>();
-  return res.results.map((r) => r.id);
+    .all<{ id: string; name: string }>();
+  return res.results;
 }
 
-/** 訓練を始める。0 時間の刻みまで当てて保存する。事業所に進行中があれば断る */
+async function caseloadPeople(db: D1Database, scope: DrillScope): Promise<string[]> {
+  return (await caseloadForDrill(db, scope)).map((r) => r.id);
+}
+
+/**
+ * 選んだ参加者を担当一覧で確かめる。選ばなければ担当一覧の全員。並びは担当一覧の順（よみ）。
+ * 外の id・重なり・0 人は null（断る）
+ */
+export function pickParticipants(caseload: ReadonlyArray<string>, chosen: ReadonlyArray<string> | undefined): string[] | null {
+  if (chosen === undefined) return [...caseload];
+  const want = new Set(chosen);
+  if (want.size === 0 || want.size !== chosen.length || [...want].some((p) => !caseload.includes(p))) return null;
+  return caseload.filter((p) => want.has(p));
+}
+
+/** 訓練を始める。0 時間の刻みまで当てて保存する。事業所に進行中があれば断る。options は開始の前に選んだ物（T59、任意） */
 export async function startDrill(
   db: D1Database,
   scope: DrillScope,
@@ -260,9 +333,13 @@ export async function startDrill(
   now: string,
   hooks: StepHooks = {},
   newId: () => string = () => crypto.randomUUID(),
+  options: StartOptions = {},
 ): Promise<StartResult> {
-  const participants = await caseloadPeople(db, scope);
-  if (participants.length === 0) return { ok: false, error: "empty" };
+  const caseload = await caseloadPeople(db, scope);
+  if (caseload.length === 0) return { ok: false, error: "empty" };
+  const participants = pickParticipants(caseload, options.participants);
+  if (!participants) return { ok: false, error: "invalid" };
+  if (options.staff !== undefined && !isStaffCount(options.staff)) return { ok: false, error: "invalid" };
   const running = await db
     .prepare("SELECT 1 AS x FROM drills WHERE office_id = ?1 AND status = 'running'")
     .bind(scope.officeId)
@@ -270,7 +347,7 @@ export async function startDrill(
   if (running) return { ok: false, error: "running" };
 
   const id = newId();
-  const { state, tick } = await step(initialState(scenario, participants, now), hooks);
+  const { state, tick } = await step(initialState(scenario, participants, now, { staff: options.staff, night: options.night }), hooks);
   const [inserted] = await db.batch([
     db
       .prepare(
@@ -370,7 +447,11 @@ export async function advanceDrill(
 
 // ---------- ケアマネの手（T20） ----------
 
-export type ActRequest = { kind: DrillAction; person: string | null; target: string | null };
+/** memo はケアマネのメモ（T59、100 字まで。空は無し） */
+export type ActRequest = { kind: DrillAction; person: string | null; target: string | null; memo?: string };
+
+/** 手のメモの長さの上限（字） */
+export const MEMO_MAX = 100;
 
 export type ActDrillResult =
   | { ok: true; record: ActionRecord; step: number; hour: number; minute: number; status: DrillStatus }
@@ -448,11 +529,24 @@ export async function actDrill(
   const extra = t
     ? { triage: person ? (t.rows.get(person) ?? null) : null, ranking: t.ranking }
     : {};
-  const { state, record, ticks } = await act(before, { kind: req.kind, person, target: resolved.target }, opts.hooks ?? {}, opts.roll ?? Math.random, extra);
+  const memo = req.memo?.trim() ?? "";
+  if ([...memo].length > MEMO_MAX) return { ok: false, error: "invalid" };
+  const { state, record, ticks } = await act(
+    before,
+    { kind: req.kind, person, target: resolved.target, ...(memo ? { memo } : {}) },
+    opts.hooks ?? {},
+    opts.roll ?? Math.random,
+    extra,
+  );
   const gate: Gate = { step: state.step, actions: state.actions.length };
   const { result: maybe, ...actionPayload } = record;
   // act は返事を当ててから返す（null は刻みを越える途中だけ）
   const result: ActionResult = maybe!;
+  // 刻みを越えなかった手だけ、手の前の写しを置く（T59 の取消。越えた手は本人役・監督の呼びが済んでいて戻せない）
+  const undo: UndoSnapshot | undefined =
+    result.crossed.length === 0
+      ? { act: record.id, minute: before.minute, hour: before.hour, step: before.step, world: before.world, people: before.people, actions: before.actions }
+      : undefined;
   let updated;
   try {
     [updated] = await db.batch([
@@ -467,7 +561,7 @@ export async function actDrill(
           scope.officeId,
           state.step,
           state.hour,
-          storeWorld(state),
+          storeWorld(state, undo),
           state.status,
           state.status === "finished" ? now : null,
           row.step,
@@ -552,6 +646,69 @@ function heardStatements(
         gate.actions!,
       ),
   ];
+}
+
+// ---------- 手の取消（T59） ----------
+
+/**
+ * locked は取り消せない手（刻みを越えた手・写しの無い手。「取消不可」）、invalid は取り消す手が無い
+ */
+export type UndoResult =
+  | { ok: true; id: string; step: number; hour: number; minute: number }
+  | { ok: false; error: "not_found" | "conflict" | "ended" | "locked" | "invalid" };
+
+/**
+ * 最後の手を 1 つ取り消す。expected は画面で読んだ今の刻みと手の数（違えば競合。actDrill と同じ門）。
+ * 刻みを越えなかった手だけ（越えた手は本人役・監督の呼びが済んでいるので戻せない）。1 つの batch で:
+ * その手の drill_events（`<訓練>-<手>` と `-r`）と聞いた安否の signals（heardSignalId）を消し、drills.world を手の前の写しに戻す。
+ * 消す文も読んだ状態（world の写し）のときだけ効く（競合なら何も消さない）。ai_calls は消さない（1 日の上限の数）。
+ * world_session_id は今のまま（写しの session は手の前の物なので、actDrill の COALESCE と同じく空のときだけ使う）。
+ * 取り消した数は state.undone に数える（訓練記録の「取消 N」。採点は変えない）
+ */
+export async function undoDrill(
+  db: D1Database,
+  scope: DrillScope,
+  id: string,
+  expected: { step: number; actions: number },
+): Promise<UndoResult> {
+  const row = await loadDrillRow(db, scope.officeId, id);
+  if (!row) return { ok: false, error: "not_found" };
+  if (row.status !== "running") return { ok: false, error: "ended" };
+  const now = stateOfRow(row);
+  if (row.step !== expected.step || now.actions.length !== expected.actions) return { ok: false, error: "conflict" };
+  const last = now.actions.at(-1);
+  if (!last) return { ok: false, error: "invalid" };
+  const snap = parseStoredWorld(row.world).undo;
+  if (!snap || undoableAct(row) !== last.id) return { ok: false, error: "locked" };
+
+  const back: DrillState = {
+    ...now,
+    minute: snap.minute,
+    hour: snap.hour,
+    step: snap.step,
+    world: { ...snap.world, ...(now.world.session !== undefined ? { session: now.world.session } : {}) },
+    people: snap.people,
+    actions: snap.actions,
+    undone: (now.undone ?? 0) + 1,
+  };
+  const gate = "EXISTS (SELECT 1 FROM drills WHERE id = ?1 AND office_id = ?2 AND step = ?3 AND status = 'running' AND world = ?4)";
+  const [, , updated] = await db.batch([
+    db
+      .prepare(`DELETE FROM drill_events WHERE drill_id = ?1 AND id IN (?5, ?6) AND ${gate}`)
+      .bind(id, scope.officeId, row.step, row.world, `${id}-${last.id}`, `${id}-${last.id}-r`),
+    db
+      .prepare(`DELETE FROM signals WHERE drill_id = ?1 AND id = ?5 AND ${gate}`)
+      .bind(id, scope.officeId, row.step, row.world, heardSignalId(id, last.id)),
+    db
+      .prepare(
+        `UPDATE drills SET step = ?5, sim_hour = ?6, world = ?7,
+                world_session_id = COALESCE(world_session_id, json_extract(?7, '$.world.session'))
+          WHERE id = ?1 AND office_id = ?2 AND step = ?3 AND status = 'running' AND world = ?4`,
+      )
+      .bind(id, scope.officeId, row.step, row.world, back.step, back.hour, storeWorld(back)),
+  ]);
+  if ((updated.meta.changes ?? 0) === 0) return { ok: false, error: "conflict" };
+  return { ok: true, id: last.id, step: back.step, hour: back.hour, minute: back.minute };
 }
 
 /** 中断（進行中だけ）。記録は残り、再生できる */
@@ -670,6 +827,7 @@ function asAction(person: string | null, p: Partial<ActionPayload>): ActionRecor
     step: p.step,
     before: p.before ?? { person: null, marks: {}, staff: 0, phone: "ok", roadClosed: false },
     result: null,
+    ...(typeof p.memo === "string" && p.memo.trim() ? { memo: p.memo } : {}),
   };
 }
 
@@ -757,13 +915,15 @@ export async function loadTicks(db: D1Database, drillId: string, hours: readonly
  * 刻みごとに状況・安否を当ててから、その刻みの間のケアマネの手と返事を保存した順に当てる（手を打った要求と同じ所を通る）
  */
 export function replayState(
-  row: Pick<DrillRow, "scenario" | "started_at" | "status">,
+  row: Pick<DrillRow, "scenario" | "started_at" | "status"> & { world?: string },
   participants: ReadonlyArray<string>,
   ticks: ReadonlyArray<Tick & { acts?: ReadonlyArray<ActEvent> }>,
   upTo: number,
 ): { state: DrillState; ticks: Tick[] } {
   const last = lastStep(row.scenario);
-  let state = initialState(row.scenario, participants, row.started_at);
+  // 開始の前に選んだ物（職員・夜間発災）と取消の数は drills.world の写しから（T59。無ければ今までと同じ）
+  const extras = row.world !== undefined ? extrasOf(parseStoredWorld(row.world)) : {};
+  let state = initialState(row.scenario, participants, row.started_at, extras.options);
   const out: Tick[] = [];
   for (const t of ticks) {
     if (t.step > upTo) break;
@@ -774,7 +934,7 @@ export function replayState(
     }
   }
   // 中断・終了した訓練の途中を見るときも、状態の言葉は訓練の状態のまま
-  return { state: { ...state, status: row.status }, ticks: out };
+  return { state: { ...state, status: row.status, ...(extras.undone ? { undone: extras.undone } : {}) }, ticks: out };
 }
 
 /** 訓練の参加者（drills.world の写しから） */

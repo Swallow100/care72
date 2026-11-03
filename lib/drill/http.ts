@@ -16,9 +16,13 @@ import {
   drillScope,
   isDrillScenario,
   listDrills,
+  MEMO_MAX,
   startDrill,
+  undoDrill,
   type DrillScope,
+  type StartOptions,
 } from "./db.ts";
+import { isStaffCount } from "./engine.ts";
 import type { StepHooks } from "./engine.ts";
 import { DRILL_API_LABELS, type DrillApiError } from "./labels.ts";
 import { lastHour, scenarioOf } from "./scenarios.ts";
@@ -32,6 +36,7 @@ const STATUS: Record<DrillApiError, number> = {
   running: 409,
   conflict: 409,
   ended: 409,
+  locked: 409,
 };
 
 const NO_STORE = { "Cache-Control": "no-store" };
@@ -52,14 +57,47 @@ function gate(p: Principal | null): DrillScope | Response {
   return scope ?? drillError("forbidden");
 }
 
-/** 開始の POST（JSON）。{ scenario: heavy_rain・earthquake・short } */
+/** 参加者の id の数の上限（担当一覧の人数より十分多く） */
+const PARTICIPANTS_MAX = 200;
+
+/**
+ * 開始の前に選んだ物（T59）の形を見る。無ければ {}（今と同じ）。形が違えば null。
+ * { participants?: 本人の id の配列（1 人以上）, staff?: 0〜9, night?: 真偽 }。担当一覧の中かは startDrill が見る
+ */
+export function parseStartOptions(v: unknown): StartOptions | null {
+  if (v === undefined || v === null) return {};
+  const o = obj(v);
+  if (!o) return null;
+  const out: { participants?: string[]; staff?: number; night?: boolean } = {};
+  if (o.participants !== undefined) {
+    const ps = o.participants;
+    if (!Array.isArray(ps) || ps.length === 0 || ps.length > PARTICIPANTS_MAX || !ps.every(isDrillId)) return null;
+    out.participants = ps;
+  }
+  if (o.staff !== undefined) {
+    if (!isStaffCount(o.staff)) return null;
+    out.staff = o.staff;
+  }
+  if (o.night !== undefined) {
+    if (typeof o.night !== "boolean") return null;
+    if (o.night) out.night = true;
+  }
+  return out;
+}
+
+/**
+ * 開始の POST（JSON）。{ scenario: heavy_rain・earthquake・short・virtual, options?: { participants?, staff?, night? } }（options は T59。
+ * 無ければ担当一覧の全員・想定の表の職員・昼の発災で今と同じ）
+ */
 export async function startPost(db: D1Database, p: Principal | null, json: unknown, now: string, hooks?: StepHooks): Promise<Response> {
   const scope = gate(p);
   if (scope instanceof Response) return scope;
   const b = obj(json);
   if (!b || !isDrillScenario(b.scenario)) return drillError("invalid");
-  const r = await startDrill(db, scope, b.scenario, now, hooks);
-  if (!r.ok) return drillError(r.error === "running" ? "running" : "not_found");
+  const options = parseStartOptions(b.options);
+  if (!options) return drillError("invalid");
+  const r = await startDrill(db, scope, b.scenario, now, hooks, undefined, options);
+  if (!r.ok) return drillError(r.error === "running" ? "running" : r.error === "invalid" ? "invalid" : "not_found");
   return Response.json({ ok: true, id: r.id }, { headers: NO_STORE });
 }
 
@@ -102,6 +140,9 @@ export async function actionPost(
   if (!isDrillId(id) || !b || !isStep(b.step) || !isCount(b.actions)) return drillError("invalid");
   if (typeof b.kind !== "string" || !(DRILL_ACTIONS as readonly string[]).includes(b.kind)) return drillError("invalid");
   if (!isRef(b.person) || !isRef(b.target)) return drillError("invalid");
+  // 手のメモ（T59、任意、100 字まで）。記録に残すだけで Claude には渡さない
+  if (b.memo !== undefined && b.memo !== null && (typeof b.memo !== "string" || [...b.memo.trim()].length > MEMO_MAX)) return drillError("invalid");
+  const memo = typeof b.memo === "string" ? b.memo.trim() : "";
   const screen = await loadDrillScreen(db, scope, id, null);
   if (!screen) return drillError("not_found");
   const ranked = screen.rows.filter((r) => r.rank !== null).sort((x, y) => x.rank! - y.rank!);
@@ -116,12 +157,31 @@ export async function actionPost(
     scope,
     id,
     { step: b.step, actions: b.actions },
-    { kind: b.kind as DrillAction, person: (b.person as string | null | undefined) ?? null, target: (b.target as string | null | undefined) ?? null },
+    {
+      kind: b.kind as DrillAction,
+      person: (b.person as string | null | undefined) ?? null,
+      target: (b.target as string | null | undefined) ?? null,
+      ...(memo ? { memo } : {}),
+    },
     now,
     { ...(opts.hooks ? { hooks: opts.hooks } : {}), ...(opts.roll ? { roll: opts.roll } : {}), triage },
   );
   if (!r.ok) return drillError(r.error);
   return Response.json({ ok: true, id: r.record.id, step: r.step, hour: r.hour, minute: r.minute, status: r.status }, { headers: NO_STORE });
+}
+
+/**
+ * 手の取消の POST（JSON、T59）。{ step: 読んだ今の刻み, actions: 読んだ手の数 }。最後の手 1 つだけ、刻みを越えなかった手だけ。
+ * 断り方は stepPost と同じ（読んだ刻み・手の数と違えば 409、終わった訓練は 409）。刻みを越えた手は 409（取消不可）、手が無ければ 400
+ */
+export async function undoPost(db: D1Database, p: Principal | null, id: string, json: unknown): Promise<Response> {
+  const scope = gate(p);
+  if (scope instanceof Response) return scope;
+  const b = obj(json);
+  if (!isDrillId(id) || !b || !isStep(b.step) || !isCount(b.actions)) return drillError("invalid");
+  const r = await undoDrill(db, scope, id, { step: b.step, actions: b.actions });
+  if (!r.ok) return drillError(r.error);
+  return Response.json({ ok: true, id: r.id, step: r.step, hour: r.hour, minute: r.minute }, { headers: NO_STORE });
 }
 
 /** 中断の POST */

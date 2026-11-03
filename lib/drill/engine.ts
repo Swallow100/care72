@@ -32,6 +32,9 @@ import {
   type WorldState,
 } from "./scenarios.ts";
 import { NO_HINTS, type OutcomeHints, type OutcomeHook } from "./outcome.ts";
+import { isStaffCount } from "./options.ts";
+
+export { isStaffCount, STAFF_MAX } from "./options.ts";
 import { fallbackIncidents } from "./world-apply.ts";
 
 const HOUR_MS = 3_600_000;
@@ -133,6 +136,11 @@ export type ActionRecord = {
   before: ActionBefore;
   /** 世界の返事。手の途中で刻みを越えている間だけ null */
   result: ActionResult | null;
+  /**
+   * ケアマネのメモ（T59、100 字まで、任意）。なぜその手を打ったか。訓練記録と履歴に出すだけで、
+   * 講評・監督・世界・本人役（Claude）の入力には渡さない（withoutMemo で落とす）
+   */
+  memo?: string;
 };
 
 /** 手の前の状態。本人の今の様子・印、職員の空き、電話の線、家の前の道。左の表の色と順位は保存の所が足す */
@@ -195,6 +203,17 @@ export type ActionResult = {
   heard?: HeardSignal | null;
 };
 
+/**
+ * 開始の前に選んだ物（T59）。選ばなかった物は持たない（何も選ばなければ options ごと無い＝今までと同じ）。
+ * 参加者は DrillState.participants に入る（ここには持たない）
+ */
+export type DrillOptions = {
+  /** 職員の空き（0〜9）。想定の表の値の上書き */
+  staff?: number;
+  /** 夜間発災（発災は深夜 2 時ごろ。lib/drill/night.ts） */
+  night?: boolean;
+};
+
 export type DrillState = {
   scenario: DrillScenario;
   /** 発災（想定の 0 時間）。訓練を始めた時刻 */
@@ -214,6 +233,10 @@ export type DrillState = {
   world: WorldState;
   people: Record<string, PersonState>;
   actions: ActionRecord[];
+  /** 開始の前に選んだ物（T59）。選ばなかった訓練には無い */
+  options?: DrillOptions;
+  /** 取り消した手の数（T59）。無ければ 0。訓練記録に「取消 N」と出す（採点は変えない） */
+  undone?: number;
 };
 
 /** 1 刻みで起きた事。保存（lib/drill/db.ts）はこれを drill_events と signals に書く */
@@ -247,6 +270,8 @@ export type PersonaInput = {
   fixed: ReadonlyArray<FixedTurn>;
   /** 仮想モード（T50）。本人役は表の行が無く、自分の町の状況から自由に動く */
   virtual?: boolean;
+  /** 夜間発災（T59）。本人役に「発災は深夜 2 時ごろ。今は N 時ごろ」の 1 行を足す */
+  night?: boolean;
 };
 
 /** 本人 1 人の 1 刻み。空の配列は「連絡なし」。投げたら連絡なしとして進む */
@@ -268,6 +293,8 @@ export type DirectorInput = {
    * 無ければ差し込みだけ
    */
   replies?: ReadonlyArray<ReplyAsk>;
+  /** 夜間発災（T59）。監督・世界に「発災は深夜 2 時ごろ。今は N 時ごろ」の 1 行を足す */
+  night?: boolean;
 };
 
 /** 監督に言い換えを頼む世界の返事 1 つ。結果（status・because）は決まっていて、監督は文だけ返す */
@@ -468,8 +495,17 @@ export function foldTick(
   };
 }
 
-/** 始める前の状態（まだどの刻みも当てていない）。職員の空きは想定の表から */
-export function initialState(scenario: DrillScenario, participants: ReadonlyArray<string>, startedAt: string): DrillState {
+/**
+ * 始める前の状態（まだどの刻みも当てていない）。職員の空きは想定の表から（T59: options.staff があれば上書き）。
+ * options は選んだ物だけ持つ（何も選ばなければ options の鍵ごと無い＝今までと同じ状態）
+ */
+export function initialState(
+  scenario: DrillScenario,
+  participants: ReadonlyArray<string>,
+  startedAt: string,
+  options: DrillOptions = {},
+): DrillState {
+  const opts = cleanOptions(options);
   return {
     scenario,
     startedAt,
@@ -478,11 +514,41 @@ export function initialState(scenario: DrillScenario, participants: ReadonlyArra
     minute: 0,
     status: "running",
     participants: [...participants],
-    world: { ...EMPTY_WORLD, staff: scenarioOf(scenario).staff },
+    world: { ...EMPTY_WORLD, staff: opts.staff ?? scenarioOf(scenario).staff },
     people: {},
     actions: [],
+    ...(Object.keys(opts).length > 0 ? { options: opts } : {}),
   };
 }
+
+
+/** 選んだ物だけ残す（職員は 0〜9 の整数、夜間発災は true のときだけ） */
+export function cleanOptions(o: DrillOptions | null | undefined): DrillOptions {
+  return {
+    ...(isStaffCount(o?.staff) ? { staff: o!.staff } : {}),
+    ...(o?.night === true ? { night: true } : {}),
+  };
+}
+
+/**
+ * 手の記録からケアマネのメモを落とす（T59）。講評・監督・世界・本人役（Claude）の入力に渡す前に必ず通す。
+ * メモを Claude に渡したくなったら、仮名化の門（lib/pseudonym → askJson）を通す別の作業にする
+ */
+export function withoutMemo<T extends ActionRecord>(actions: ReadonlyArray<T>): T[] {
+  return actions.map((a) => {
+    if (a.memo === undefined) return a;
+    const { memo: _memo, ...rest } = a;
+    return rest as T;
+  });
+}
+
+/** 1 つの手のメモを落とす（本人役の「ケアマネがした事」） */
+export function actionWithoutMemo(a: ActionRecord | null): ActionRecord | null {
+  return a ? withoutMemo([a])[0] : null;
+}
+
+/** 夜間発災の訓練か */
+export const isNight = (s: Pick<DrillState, "options">): boolean => s.options?.night === true;
 
 export class DrillEnded extends Error {
   constructor() {
@@ -524,6 +590,9 @@ export async function step(
 
   // 手の途中でこの刻みに着いたとき、その手の返事をここで決め、監督に言い換えを頼む（T20。監督の呼び出しは増やさない）
   const replies = opts.replies ? [...opts.replies(world)] : [];
+  // Claude に渡す手の記録はメモを落とす（T59）。夜間発災は選んだ訓練だけ 1 行を足す
+  const actions = withoutMemo(state.actions);
+  const night = isNight(state) ? { night: true } : {};
 
   const directorInput: DirectorInput = {
     scenario: state.scenario,
@@ -533,8 +602,9 @@ export async function step(
     incidents: fixed,
     participants: state.participants,
     people: state.people,
-    actions: state.actions,
+    actions,
     ...(replies.length > 0 ? { replies } : {}),
+    ...night,
   };
   if (isVirtual(state.scenario)) return virtualStep(state, hooks, { index, hour, last, world, fixed, members, directorInput });
 
@@ -550,8 +620,9 @@ export async function step(
             incidents: fixed,
             participants: state.participants,
             people: state.people,
-            actions: state.actions,
+            actions,
             ...(replies.length > 0 ? { replies } : {}),
+            ...night,
           }),
         [] as DirectorEvent[],
       )
@@ -579,8 +650,9 @@ export async function step(
               world,
               incidents,
               state: state.people[person] ?? null,
-              lastAction: [...state.actions].reverse().find((a) => a.person === person) ?? null,
+              lastAction: actionWithoutMemo([...state.actions].reverse().find((a) => a.person === person) ?? null),
               fixed: own,
+              ...night,
             }),
           [] as DrillTurn[],
         ),
@@ -650,9 +722,10 @@ async function virtualStep(
               world,
               incidents,
               state: state.people[person] ?? null,
-              lastAction: [...state.actions].reverse().find((a) => a.person === person) ?? null,
+              lastAction: actionWithoutMemo([...state.actions].reverse().find((a) => a.person === person) ?? null),
               fixed: [],
               virtual: true,
+              ...(isNight(state) ? { night: true } : {}),
             }),
           [] as DrillTurn[],
         ),

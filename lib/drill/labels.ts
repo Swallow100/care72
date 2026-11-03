@@ -57,6 +57,34 @@ export const DRILL_LABELS = {
   network: "通信失敗",
 } as const;
 
+/** 訓練の幅（T59）の言葉。開始の前の設定・早送りの間・手の取消とメモ */
+export const T59_LABELS = {
+  settings: "設定",
+  participants: "参加者",
+  staff: "職員",
+  /** 職員の既定（想定の表の値） */
+  staffDefault: "既定",
+  people: "人",
+  night: "夜間発災",
+  all: "全員",
+  noParticipants: "参加者なし",
+  interval: "間隔",
+  seconds: "秒",
+  undo: "取消",
+  undoLocked: "取消不可",
+  undone: "取消",
+  memo: "メモ",
+  /** 取消の確認の窓 */
+  undoTitle: "対応取消",
+  /** 決める方（窓の「取消」と並ぶので同じ言葉にしない） */
+  undoOk: "取消確定",
+  undoBody: "直前の対応 1 件を取消",
+  clock: "時刻",
+  quake: "発災",
+  now: "今",
+  oclock: "時",
+} as const;
+
 /** 訓練の人の印（T48、アドバイザーの返事）。人は全部作った例で、本人役・家族役は AI が演じる */
 export const FICTION_LABELS = {
   mark: "架空",
@@ -151,6 +179,7 @@ export const DRILL_API_ERRORS = [
   "running",
   "conflict",
   "ended",
+  "locked",
 ] as const;
 export type DrillApiError = (typeof DRILL_API_ERRORS)[number];
 
@@ -162,6 +191,8 @@ export const DRILL_API_LABELS: Record<DrillApiError, string> = {
   running: "訓練実施中",
   conflict: "要再読込",
   ended: "終了済",
+  /** 刻みを越えた手・最後でない手は取り消せない（T59） */
+  locked: "取消不可",
 };
 
 /** 「経過 6 時間」 */

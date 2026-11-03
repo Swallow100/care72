@@ -2,9 +2,11 @@
 // 過ぎた所の地、停電・断水・電話の帯（見ている時刻まで。先の出来事は出さない）。
 // 再生では刻みの印を押すとその時刻を見る。進行中は印を押せない（進めるのは「進める」だけ）。
 // 色: 帯は要確認の色（担当一覧の上の停電の経過と同じ）。今の印は文字の色。面を塗らない。
+// 夜間発災（T59）の訓練は、下に時刻の行（発災 2 時・今 何時）。開始の時刻（started_at）はずらさないので、上の日時とは別の訓練の中の時刻。
 
 import Link from "next/link";
-import { BAND_LABELS, DRILL_LABELS } from "@/lib/drill/labels";
+import { BAND_LABELS, DRILL_LABELS, T59_LABELS } from "@/lib/drill/labels";
+import { NIGHT_START_HOUR, nightClock } from "@/lib/drill/night";
 import type { Band } from "@/lib/drill/view";
 
 const pct = (h: number, last: number) => `${(Math.min(Math.max(h, 0), last) / last) * 100}%`;
@@ -16,6 +18,7 @@ export function DrillBar({
   bands,
   hrefOf,
   reached,
+  night = false,
 }: {
   hours: readonly number[];
   /** 棒の右端（72） */
@@ -27,6 +30,8 @@ export function DrillBar({
   hrefOf?: (i: number) => string;
   /** 保存してある最後の刻み（再生で押せるのはここまで） */
   reached: number;
+  /** 夜間発災（T59）。時刻の行を足す */
+  night?: boolean;
 }) {
   const kinds = (["outage", "water", "phone"] as const).filter((k) => bands.some((b) => b.kind === k));
   return (
@@ -78,6 +83,21 @@ export function DrillBar({
       {kinds.map((k) => (
         <BandRow key={k} label={BAND_LABELS[k]} bands={bands.filter((b) => b.kind === k)} last={last} now={now} kind={k} />
       ))}
+      {night && (
+        <>
+          <span className="text-xs text-muted">{T59_LABELS.clock}</span>
+          <span className="flex flex-wrap gap-x-3 text-xs tabular-nums" data-night-clock={nightClock(now)}>
+            <span>
+              <span className="text-muted">{T59_LABELS.night}</span> {NIGHT_START_HOUR}
+              {T59_LABELS.oclock}
+            </span>
+            <span className="font-bold">
+              <span className="font-normal text-muted">{T59_LABELS.now}</span> {nightClock(now)}
+              {T59_LABELS.oclock}
+            </span>
+          </span>
+        </>
+      )}
     </div>
   );
 }
