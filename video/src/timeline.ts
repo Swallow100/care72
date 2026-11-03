@@ -10,6 +10,15 @@ export const TOTAL_SECONDS = 180;
 /** 寄りの枠。録画の幅と高さに対する割合（0〜1）。w は幅の割合で、高さは同じ割合（縦横の比は録画のまま） */
 export type Rect = { x: number; y: number; w: number };
 
+/** 囲みの枠。録画の幅と高さに対する割合（0〜1）。寄りの前の録画の上の位置で書く */
+export type Box = { x: number; y: number; w: number; h: number };
+
+/**
+ * 録画の上の囲み（細い線）と、その脇の短い名前（2〜4 字の漢語）。at・end は絵の頭からの秒（無ければ絵の間ずっと）。
+ * place は名前を置く向き。above・below は囲みに付けた小さな面、left・right は録画の外（スマホの横）に線を引いて置く
+ */
+export type Callout = { box: Box; label: string; at?: number; end?: number; tone?: "urgent"; place?: "above" | "below" | "left" | "right" };
+
 export type Shot = {
   /** 動画の頭からの秒 */
   at: number;
@@ -41,7 +50,11 @@ export type Shot = {
   rate?: number;
   /** 寄り。始まりの枠から終わりの枠へ動く */
   zoom?: [Rect, Rect];
-  /** 右上に小さく出すモデルの名前 */
+  /** 録画の上の囲み */
+  callouts?: Callout[];
+  /** 奥に敷く背景の生成動画（docs/video/BACKGROUND.md の B01…）。無ければ地の色だけ */
+  bg?: string;
+  /** 窓の上の帯の右に出すモデルの名前（スマホの録画では横に出す） */
   chip?: string;
   /** 下に小さく出す出典 */
   source?: string;
@@ -49,6 +62,8 @@ export type Shot = {
   emphasis?: boolean;
   /** 文字の画面・数字の画面の中身 */
   lines?: string[];
+  /** 文字だけの画面で lines と sub を出す秒（絵の頭から。声に合わせる）。無ければ 0.9 秒ずつ */
+  beats?: number[];
   value?: string;
   sub?: string;
 };
@@ -76,6 +91,8 @@ export const SCENES: Scene[] = [
         label: "担当一覧の平時をぼかして奥に。作者の紹介の文字",
         lines: ["作者 医学部の学生"],
         sub: "ケアマネ × 在宅の要介護高齢者 × 災害の最初の 72 時間",
+        // N01 の「医学部で」で 1 行目、「家族は、在宅のお年寄りを受け持つケアマネです」で下の帯
+        beats: [0.4, 2.9],
       },
     ],
   },
@@ -87,7 +104,8 @@ export const SCENES: Scene[] = [
     end: 20,
     shots: [
       // 題名を 72 時間の輪（G1）の中に置く。輪の目盛りが N02 の間に埋まる
-      { at: 7, end: 13, kind: "ring", label: "題名と 72 時間の輪", lines: ["ケア72"], sub: "ケアマネが知っていることを 災害の最初の 72 時間に" },
+      // 副題は字幕（N02）と同じ言葉になるので出さない
+      { at: 7, end: 13, kind: "ring", label: "題名と 72 時間の輪", lines: ["ケア72"] },
       {
         at: 13,
         end: 20,
@@ -107,7 +125,7 @@ export const SCENES: Scene[] = [
     at: 20,
     end: 46,
     shots: [
-      { at: 20, end: 25, kind: "text", label: "医学部 → 家族はケアマネ", lines: ["医学部", "家族はケアマネ"] },
+      { at: 20, end: 25, kind: "text", label: "医学部 → 家族はケアマネ", lines: ["医学部", "家族はケアマネ"], beats: [0.4, 1.9] },
       {
         at: 25,
         end: 33,
@@ -205,12 +223,39 @@ export const SCENES: Scene[] = [
       },
       { at: 112, end: 116, kind: "split", footages: ["R11", "R10"], froms: [2, 16], label: "娘のスマホ（赤と緑）と担当一覧" },
       // 1 分ごとの読み直しで山田の行が 2 番目から一番上へ（R10-1 の 25.8 秒）。半分の速さで
-      { at: 116, end: 121, kind: "footage", footage: "R10", from: 24, rate: 0.5, emphasis: true, label: "強調: 山田の行が一番上へ（至急）" },
+      {
+        at: 116,
+        end: 121,
+        kind: "footage",
+        footage: "R10",
+        from: 24,
+        rate: 0.5,
+        emphasis: true,
+        label: "強調: 山田の行が一番上へ（至急）",
+        // 録画の 25.8 秒（絵の 3.6 秒）で山田の行が 1 番目に上がる。囲みは上がった行に
+        callouts: [{ at: 3.8, box: { x: 0.012, y: 0.297, w: 0.976, h: 0.075 }, label: "至急 連絡順 1", tone: "urgent", place: "below" }],
+      },
       { at: 121, end: 126, kind: "footage", footage: "R12", from: 3.5, label: "本人のスマホ: 赤 → けが → 止まる → 声の問いかけ" },
       { at: 126, end: 130, kind: "footage", footage: "R12", from: 40, emphasis: true, label: "強調: 録音と文字起こし。理由に分類（AI）" },
       { at: 130, end: 135, kind: "rules", label: "ルールの表の 1 枚" },
       // 手元の録画の行の詳細には録音の分類が無い（録音は撮っていない）ので、Haiku の名前は録音の分類を撮れてから付ける
-      { at: 135, end: 143, kind: "footage", footage: "R10", from: 39, label: "行の詳細: 分類修正・優先変更" },
+      {
+        at: 135,
+        end: 143,
+        kind: "footage",
+        footage: "R10",
+        // 行の詳細が開いたあと（録画の 39.7 秒）、41.5〜43.6 秒は画面が止まっている。その間を 0.45 倍で長く見せ、囲みを 1 つずつ出す
+        from: 40.2,
+        rate: 0.45,
+        label: "行の詳細: 分類修正・優先変更",
+        // 囲みの位置は R10-1 の 43 秒のコマで測った。43.6 秒から下へ送るので、囲みはその前に消す。撮り直したら測り直す
+        callouts: [
+          { at: 2.9, end: 7.4, box: { x: 0.017, y: 0.383, w: 0.21, h: 0.031 }, label: "理由", place: "below" },
+          { at: 4.2, end: 7.4, box: { x: 0.664, y: 0.426, w: 0.314, h: 0.143 }, label: "安否の経過" },
+          { at: 5.5, end: 7.4, box: { x: 0.664, y: 0.585, w: 0.314, h: 0.149 }, label: "人の判断", place: "below" },
+        ],
+      },
+
       { at: 143, end: 146.5, kind: "footage", footage: "R10", from: 50, label: "電話 → 電話の記録" },
       { at: 146.5, end: 150, kind: "footage", footage: "R13", from: 7.5, label: "医療班の受入 → 要約" },
     ],

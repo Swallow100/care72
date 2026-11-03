@@ -137,9 +137,15 @@ export async function clickText(page, text, { exact = false, within = "body" } =
   const el = handle.asElement();
   if (!el) throw new Error(`押す所が無い: ${text}`);
   await el.scrollIntoView();
+  // 撮っている録画があれば、押した所（要素の真ん中）を覚える。編集で押した所に輪を出す（src/parts/Frame.tsx）
+  const box = await el.boundingBox();
+  if (box && current?.active) current.tap(box.x + box.width / 2, box.y + box.height / 2);
   await el.click();
   return el;
 }
+
+/** いま撮っている録画（clickText が押した所を渡す先） */
+let current = null;
 
 /** 録画 1 本。start → （mark・pause・resume）→ stop(連番のフォルダ) */
 export class Recorder {
@@ -149,7 +155,14 @@ export class Recorder {
     this.frames = []; // { t: 秒（壁の時刻）, data: Buffer }
     this.segments = []; // { from, to } 撮っている間（壁の時刻）
     this.marks = [];
+    this.taps = []; // { at: 連番の中の秒, x, y: 窓の幅・高さに対する割合 }
     this.active = false;
+  }
+
+  /** 押した所を覚える（px は窓の中の位置） */
+  tap(x, y) {
+    const vp = this.page.viewport();
+    this.taps.push({ at: Math.round(this.elapsed() * 100) / 100, x: Math.round((x / vp.width) * 1000) / 1000, y: Math.round((y / vp.height) * 1000) / 1000 });
   }
 
   now() {
@@ -157,6 +170,7 @@ export class Recorder {
   }
 
   async start() {
+    current = this;
     this.cdp = await this.page.createCDPSession();
     this.cdp.on("Page.screencastFrame", async (f) => {
       if (this.active) this.frames.push({ t: f.metadata.timestamp ?? this.now(), data: Buffer.from(f.data, "base64") });
@@ -204,6 +218,7 @@ export class Recorder {
   /** 止めて連番に書く。dir の中の前の連番は消す */
   async stop(dir) {
     if (this.active) this.pause();
+    if (current === this) current = null;
     await this.cdp.send("Page.stopScreencast").catch(() => undefined);
     mkdirSync(dir, { recursive: true });
     for (const f of readdirSync(dir)) if (/^\d{5}\.jpg$/.test(f) || f === "markers.json") rmSync(join(dir, f));
@@ -231,7 +246,7 @@ export class Recorder {
         }
       }
     }
-    writeFileSync(join(dir, "markers.json"), JSON.stringify({ name: this.name, seconds: n / 30, marks: this.marks }, null, 2) + "\n");
+    writeFileSync(join(dir, "markers.json"), JSON.stringify({ name: this.name, seconds: n / 30, marks: this.marks, taps: this.taps }, null, 2) + "\n");
     console.log(`${this.name}: ${n} 枚（${(n / 30).toFixed(1)} 秒、違うコマ ${written.size}）→ ${dir}`);
     return n;
   }

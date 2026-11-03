@@ -10,7 +10,7 @@
 //   public/footage/R10/00001.jpg … 録画（同じドライブなら hard link で、場所を食わない）
 //   public/audio/narration/N01.wav …
 // 録画の古い回を使うときは、新しい回のフォルダの名前を変えるか消す。
-import { copyFileSync, existsSync, linkSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, linkSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { ROOT } from "./lib.mjs";
 import { LINES, SCENES } from "../src/timeline.ts";
@@ -27,8 +27,9 @@ function place(src, dst) {
   }
 }
 
-// 録画: assets/rec/<番号>-<回> → public/footage/<番号>
+// 録画: assets/rec/<番号>-<回> → public/footage/<番号>。markers.json の押した所（taps）は assets.json の marks へ
 const synced = {};
+const marks = {};
 const recDir = join(store, "rec");
 if (existsSync(recDir)) {
   const takes = {};
@@ -46,6 +47,11 @@ if (existsSync(recDir)) {
     mkdirSync(out, { recursive: true });
     for (const f of frames) place(join(t.dir, f), join(out, f));
     synced[id] = t.name;
+    const mj = join(t.dir, "markers.json");
+    if (existsSync(mj)) {
+      const taps = JSON.parse(readFileSync(mj, "utf8")).taps;
+      if (Array.isArray(taps) && taps.length) marks[id] = { taps };
+    }
   }
 }
 
@@ -91,7 +97,19 @@ function walk(dir) {
 walk(join(pub, "audio"));
 
 mkdirSync(pub, { recursive: true });
-writeFileSync(join(pub, "assets.json"), JSON.stringify({ footage, audio }, null, 2) + "\n");
+// 背景の生成動画の連番（scripts/bg.mjs が public/bg/<番号>/ に作る）
+const bg = {};
+const bgDir = join(pub, "bg");
+if (existsSync(bgDir)) {
+  for (const id of readdirSync(bgDir)) {
+    const dir = join(bgDir, id);
+    if (!statSync(dir).isDirectory()) continue;
+    const n = readdirSync(dir).filter((f) => FRAME.test(f)).length;
+    if (n > 0) bg[id] = n;
+  }
+}
+
+writeFileSync(join(pub, "assets.json"), JSON.stringify({ footage, audio, marks, bg }, null, 2) + "\n");
 
 // 足りない録画と声を出す
 const wanted = new Set();
@@ -100,6 +118,7 @@ const missing = [...wanted].filter((id) => !footage[id]).sort();
 const used = Object.entries(synced).map(([id, name]) => `${id}←${name}`);
 console.log(`録画 ${Object.keys(footage).length} 本（${Object.entries(footage).map(([id, n]) => `${id} ${(n / 30).toFixed(1)} 秒`).join("、") || "なし"}）`);
 if (used.length) console.log(`assets/rec から写した回: ${used.join(" ")}`);
+if (Object.keys(bg).length) console.log(`背景 ${Object.keys(bg).sort().join(" ")}`);
 console.log(missing.length ? `撮影待ちの録画: ${missing.join(" ")}` : "録画は全部ある");
 const own = Object.values(voiceFrom).filter((k) => k === "作者").length;
 const tts = Object.values(voiceFrom).filter((k) => k === "仮").length;
