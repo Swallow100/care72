@@ -31,6 +31,7 @@ import {
   type WorldEvent,
   type WorldState,
 } from "./scenarios.ts";
+import { castEvent, castTurn, eventKey, turnKey, type Cast } from "./cast.ts";
 import { NO_HINTS, type OutcomeHints, type OutcomeHook } from "./outcome.ts";
 import { isStaffCount } from "./options.ts";
 
@@ -237,6 +238,11 @@ export type DrillState = {
   options?: DrillOptions;
   /** 取り消した手の数（T59）。無ければ 0。訓練記録に「取消 N」と出す（採点は変えない） */
   undone?: number;
+  /**
+   * 想定の表の配役（T70、lib/drill/cast.ts）。行の鍵 → 代わりの人。事業所にいない人（デモの 10 人）の行を参加者に当てた物だけで、
+   * 全部 person のまま（デモ事業所）なら無い
+   */
+  cast?: Cast;
 };
 
 /** 1 刻みで起きた事。保存（lib/drill/db.ts）はこれを drill_events と signals に書く */
@@ -504,6 +510,7 @@ export function initialState(
   participants: ReadonlyArray<string>,
   startedAt: string,
   options: DrillOptions = {},
+  cast: Cast = {},
 ): DrillState {
   const opts = cleanOptions(options);
   return {
@@ -518,6 +525,7 @@ export function initialState(
     people: {},
     actions: [],
     ...(Object.keys(opts).length > 0 ? { options: opts } : {}),
+    ...(Object.keys(cast).length > 0 ? { cast: { ...cast } } : {}),
   };
 }
 
@@ -581,11 +589,15 @@ export async function step(
   const def = scenario.ticks[index];
   const hour = def.hour;
   const members = new Set(state.participants);
+  // 想定の表の配役（T70）。事業所にいない人の行は、開始のときに決めた代わりの人に当てる（無ければ表の person のまま）
+  const cast = state.cast ?? {};
 
-  // 表の状況（出ない本人の物は外す）。監督の固定の差し込み（by: director）は actor が director で、AI の印なし
+  // 表の状況（出ない本人の物は外す）。監督の固定の差し込み（by: director）は actor が director で、AI の印なし。
+  // 代わりの人の選び方（who）は表の物で、状況に残さない
   const fixed: DrillIncident[] = def.events
+    .map((e, i) => castEvent(e, cast[eventKey(hour, i)]))
     .filter((e) => !e.person || members.has(e.person))
-    .map(({ by, ...e }) => ({ ...e, actor: by ?? "world", at: eventHour(e, hour), ai: false }));
+    .map(({ by, who: _who, ...e }) => ({ ...e, actor: by ?? "world", at: eventHour(e, hour), ai: false }));
   let world = fixed.reduce((w, e) => applyEvent(w, e, e.at), settleWorld(state.world, hour * 60));
 
   // 手の途中でこの刻みに着いたとき、その手の返事をここで決め、監督に言い換えを頼む（T20。監督の呼び出しは増やさない）
@@ -637,7 +649,8 @@ export async function step(
 
   // 本人ごとの 1 刻み。ペルソナ（T18）が無ければ表の固定の安否。ペルソナが投げたら連絡なし
   const turns: DrillTurn[] = [];
-  const rows = state.participants.map((person) => ({ person, rows: def.turns.filter((t) => t.person === person) }));
+  const dealt = def.turns.map((t, i) => castTurn(t, cast[turnKey(hour, i)]));
+  const rows = state.participants.map((person) => ({ person, rows: dealt.filter((t) => t.person === person) }));
   if (hooks.persona) {
     const results = await Promise.all(
       rows.map(({ person, rows: own }) =>

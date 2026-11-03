@@ -55,7 +55,10 @@ import {
   type Tick,
 } from "./engine.ts";
 import { callIndexes } from "./calls.ts";
-import { EMPTY_WORLD, isInjectKind, type WorldState } from "./scenarios.ts";
+import { EMPTY_WORLD, isInjectKind, scenarioOf, type WorldState } from "./scenarios.ts";
+import { castScenario, needsCast, type Cast } from "./cast.ts";
+import { castFactsMap } from "./cast-facts.ts";
+import { loadPersonaSources } from "./persona.ts";
 
 /** 訓練を開ける範囲。ケアマネの役だけ（審査員のケアマネの役も）。事業所と担当一覧の持ち主 */
 export type DrillScope = { officeId: string; careManagerId: string; accountId: string | null };
@@ -102,6 +105,8 @@ type StoredWorld = {
    * act は取り消せる手の番号
    */
   undo?: UndoSnapshot;
+  /** 想定の表の配役（T70、lib/drill/cast.ts）。代わりの人に当てた行だけ。無ければ鍵ごと無い（デモ事業所は前と同じ JSON） */
+  cast?: Cast;
 };
 
 /** 手の前の状態の写し（取消で戻す物） */
@@ -119,6 +124,7 @@ function storeWorld(s: DrillState, undo?: UndoSnapshot): string {
     ...(s.options && Object.keys(s.options).length > 0 ? { options: s.options } : {}),
     ...(s.undone ? { undone: s.undone } : {}),
     ...(undo ? { undo } : {}),
+    ...(s.cast && Object.keys(s.cast).length > 0 ? { cast: s.cast } : {}),
   };
   return JSON.stringify(body);
 }
@@ -127,6 +133,7 @@ function parseStoredWorld(text: string): StoredWorld {
   const raw = JSON.parse(text) as Partial<StoredWorld>;
   const options = cleanOptions(raw.options);
   const u = raw.undo;
+  const cast = castOf(raw.cast);
   return {
     v: 1,
     participants: Array.isArray(raw.participants) ? raw.participants.filter((x): x is string => typeof x === "string") : [],
@@ -139,12 +146,21 @@ function parseStoredWorld(text: string): StoredWorld {
     ...(u && typeof u === "object" && typeof u.act === "string" && Array.isArray(u.actions) && isNum(u.minute) && isNum(u.step) && isNum(u.hour)
       ? { undo: { ...u, world: { ...EMPTY_WORLD, ...(u.world ?? {}) }, people: u.people ?? {} } }
       : {}),
+    ...(cast ? { cast } : {}),
   };
 }
 
-/** 選んだ物と取消の数（状態に足す。無ければ鍵ごと無い） */
-function extrasOf(w: Pick<StoredWorld, "options" | "undone">): Pick<DrillState, "options" | "undone"> {
-  return { ...(w.options ? { options: w.options } : {}), ...(w.undone ? { undone: w.undone } : {}) };
+/** 配役の JSON（行の鍵 → 人の id の文字）。形が違う・空なら無し */
+function castOf(v: unknown): Cast | null {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return null;
+  const out: Cast = {};
+  for (const [k, p] of Object.entries(v)) if (typeof p === "string" && p) out[k] = p;
+  return Object.keys(out).length > 0 ? out : null;
+}
+
+/** 選んだ物と取消の数と配役（状態に足す。無ければ鍵ごと無い） */
+function extrasOf(w: Pick<StoredWorld, "options" | "undone" | "cast">): Pick<DrillState, "options" | "undone" | "cast"> {
+  return { ...(w.options ? { options: w.options } : {}), ...(w.undone ? { undone: w.undone } : {}), ...(w.cast ? { cast: w.cast } : {}) };
 }
 
 /** 表の行から今の状態（drills.world の写しから。再開に使う） */
@@ -346,8 +362,15 @@ export async function startDrill(
     .first<{ x: number }>();
   if (running) return { ok: false, error: "running" };
 
+  // 想定の表の配役（T70）。事業所にいない人（デモの 10 人）の行があるときだけ台帳を読み、参加者の中の代わりの人を決める
+  const def = scenarioOf(scenario);
+  const cast = needsCast(def, participants) ? castScenario(def, participants, castFactsMap(await loadPersonaSources(db, scope.officeId))) : {};
+
   const id = newId();
-  const { state, tick } = await step(initialState(scenario, participants, now, { staff: options.staff, night: options.night }), hooks);
+  const { state, tick } = await step(
+    initialState(scenario, participants, now, { staff: options.staff, night: options.night }, cast),
+    hooks,
+  );
   const [inserted] = await db.batch([
     db
       .prepare(
@@ -923,7 +946,7 @@ export function replayState(
   const last = lastStep(row.scenario);
   // 開始の前に選んだ物（職員・夜間発災）と取消の数は drills.world の写しから（T59。無ければ今までと同じ）
   const extras = row.world !== undefined ? extrasOf(parseStoredWorld(row.world)) : {};
-  let state = initialState(row.scenario, participants, row.started_at, extras.options);
+  let state = initialState(row.scenario, participants, row.started_at, extras.options, extras.cast);
   const out: Tick[] = [];
   for (const t of ticks) {
     if (t.step > upTo) break;

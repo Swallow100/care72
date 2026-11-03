@@ -12,6 +12,7 @@
 
 import type { DependsOn, DrillScenario, HazardKind, SignalColor, SignalSource, WhereNow } from "../db/types.ts";
 import type { SourceId } from "../sources/index.ts";
+import type { CastPick } from "./cast.ts";
 
 /** 12 の刻み（発災からの時間） */
 export const DRILL_HOURS = [0, 1, 3, 6, 9, 12, 18, 24, 36, 48, 60, 72] as const;
@@ -231,6 +232,11 @@ export type WorldEvent = {
   text: string;
   /** 関わる本人（台帳の id）。道路・施設がその人の所の物など */
   person?: string;
+  /**
+   * person が事業所にいないときに代わりに当てる人の選び方（T70、lib/drill/cast.ts）。デモ事業所の 10 人の行は person のまま、
+   * 新しい事業所では台帳の中身で選んだ参加者に当たる。状況の保存には入れない（engine が外す）
+   */
+  who?: CastPick;
   /** 起きた時刻（発災からの時間）。無ければ刻みの時刻。10 分版で寄せた出来事は元の時刻を持つ */
   at?: number;
   /** 監督の固定の差し込み（想定の表に書いた状況付与）。無ければ世界の出来事 */
@@ -244,11 +250,12 @@ export type WorldEvent = {
 };
 
 /** 想定の表の固定の差し込み 1 つ（監督の表。Claude を呼ばない） */
-function fixedInject(kind: InjectKind, person: string, reason: string, basis?: SourceId): WorldEvent {
+function fixedInject(kind: InjectKind, person: string, reason: string, basis: SourceId | undefined, who: CastPick): WorldEvent {
   return {
     change: injectChange(kind, person),
     text: INJECT_TEXTS[kind],
     person,
+    who,
     by: "director",
     inject: kind,
     reason,
@@ -276,6 +283,8 @@ export type FixedTurn = {
   /** する事 */
   doing?: string;
   at?: number;
+  /** person が事業所にいないときの代わりの人の選び方（T70、WorldEvent の who と同じ） */
+  who?: CastPick;
 };
 
 export type ScenarioTick = { hour: number; events: WorldEvent[]; turns: FixedTurn[] };
@@ -300,6 +309,25 @@ export type Scenario = {
 
 const FLOOD_AREA: OutageArea = { scope: "hazard", hazard: "flood", minDepthM: 3 };
 
+/**
+ * 10 人の行の「どんな人の行か」（T70。新しい事業所で代わりの人を選ぶ。lib/drill/cast.ts）。行の言う事が言い切る物で選ぶ:
+ * 1 山田 大雨は独居・けが、地震は酸素。2 小林 人工呼吸器。3 田中 透析。4 佐藤 本人も周りもスマホで押せない。5 伊藤 浸水の想定（川沿いの道）。
+ * 6 高橋 経管栄養。7 加藤 大雨は土砂の想定（山すその道）、地震は誰でも。8 井上 インスリン。9 渡辺・10 中村 誰でも。
+ * 同じ人の行は想定の中で同じ who（cast.ts が 1 人にまとめて配る）
+ */
+const WHO = {
+  alone: { household: "alone" },
+  oxygen: { device: "oxygen" },
+  ventilator: { device: "ventilator" },
+  dialysis: { clock: "dialysis" },
+  noPress: { smartphone: "none" },
+  flood: { hazard: "flood" },
+  tubeFeeding: { device: "tube_feeding" },
+  landslide: { hazard: "landslide" },
+  insulin: { clock: "insulin" },
+  any: { any: true },
+} as const satisfies Record<string, CastPick>;
+
 const HEAVY_RAIN: Scenario = {
   id: "heavy_rain",
   kind: "heavy_rain",
@@ -313,9 +341,9 @@ const HEAVY_RAIN: Scenario = {
         { change: { kind: "shelter", id: "sh-1", label: "指定避難所", state: "open" }, text: "指定避難所 開設" },
       ],
       turns: [
-        { person: "p-03", color: "green", source: "family", whereNow: "home", saying: "2 階にいます" },
-        { person: "p-06", color: "green", source: "family", whereNow: "home", saying: "家にいます。様子を見ます" },
-        { person: "p-10", color: "green", source: "family", whereNow: "home" },
+        { person: "p-03", who: WHO.dialysis, color: "green", source: "family", whereNow: "home", saying: "2 階にいます" },
+        { person: "p-06", who: WHO.tubeFeeding, color: "green", source: "family", whereNow: "home", saying: "家にいます。様子を見ます" },
+        { person: "p-10", who: WHO.any, color: "green", source: "family", whereNow: "home" },
       ],
     },
     {
@@ -327,14 +355,14 @@ const HEAVY_RAIN: Scenario = {
       turns: [
         // 小林の夫の電話（動画で必ず出すため表で固定。11/3 07:0x の確定 3）。停電と同時に呼吸器が内蔵電池（3 時間）に替わる
         {
-          person: "p-02",
+          person: "p-02", who: WHO.ventilator,
           color: "green",
           source: "family",
           whereNow: "home",
           saying: "停電した。呼吸器が電池に切り替わった。3 時間しかもたない",
         },
-        { person: "p-07", color: "green", source: "agent", whereNow: "home", saying: "家にいる。まだ大丈夫" },
-        { person: "p-08", color: "green", source: "agent", whereNow: "home" },
+        { person: "p-07", who: WHO.landslide, color: "green", source: "agent", whereNow: "home", saying: "家にいる。まだ大丈夫" },
+        { person: "p-08", who: WHO.insulin, color: "green", source: "agent", whereNow: "home" },
       ],
     },
     {
@@ -345,22 +373,22 @@ const HEAVY_RAIN: Scenario = {
         {
           change: { kind: "road", id: "rd-1", label: "川沿いの市道", open: false },
           text: "川沿いの市道 冠水で通行止め",
-          person: "p-05",
+          person: "p-05", who: WHO.flood,
         },
       ],
       turns: [
-        { person: "p-01", color: "red", source: "agent", injured: true, saying: "いたい、うごけない", doing: "4 問の途中で止まった" },
-        { person: "p-06", color: "green", source: "family", whereNow: "shelter", saying: "避難所に着きました" },
+        { person: "p-01", who: WHO.alone, color: "red", source: "agent", injured: true, saying: "いたい、うごけない", doing: "4 問の途中で止まった" },
+        { person: "p-06", who: WHO.tubeFeeding, color: "green", source: "family", whereNow: "shelter", saying: "避難所に着きました" },
       ],
     },
     {
       hour: 6,
       events: [
         { change: { kind: "shelter", id: "sh-1", label: "指定避難所", state: "crowded" }, text: "指定避難所 混雑" },
-        fixedInject("supply_left", "p-06", "経管栄養で、避難の持ち物に栄養剤。家族と避難所に移ったあと", "nanbyo-shishin-2017"),
+        fixedInject("supply_left", "p-06", "経管栄養で、避難の持ち物に栄養剤。家族と避難所に移ったあと", "nanbyo-shishin-2017", WHO.tubeFeeding),
       ],
       turns: [
-        { person: "p-04", color: "green", source: "supporter", whereNow: "home", saying: "見に行きました。家にいます" },
+        { person: "p-04", who: WHO.noPress, color: "green", source: "supporter", whereNow: "home", saying: "見に行きました。家にいます" },
       ],
     },
     {
@@ -369,23 +397,23 @@ const HEAVY_RAIN: Scenario = {
         {
           change: { kind: "road", id: "rd-2", label: "山すその道", open: false },
           text: "山すその道 土砂で通行止め",
-          person: "p-07",
+          person: "p-07", who: WHO.landslide,
         },
       ],
       turns: [
-        { person: "p-07", color: "green", source: "agent", whereNow: "home", saying: "避難所には行かん", doing: "避難を渋る" },
+        { person: "p-07", who: WHO.landslide, color: "green", source: "agent", whereNow: "home", saying: "避難所には行かん", doing: "避難を渋る" },
       ],
     },
     {
       hour: 12,
-      events: [fixedInject("dialysis_flooded", "p-03", "透析の人で、透析先 未確認。次の受け入れ先を探す筋", "jadp-dialysis-2023")],
+      events: [fixedInject("dialysis_flooded", "p-03", "透析の人で、透析先 未確認。次の受け入れ先を探す筋", "jadp-dialysis-2023", WHO.dialysis)],
       turns: [],
     },
     {
       hour: 18,
       events: [{ change: { kind: "water", out: true }, text: "断水" }],
       turns: [
-        { person: "p-03", color: "green", source: "family", whereNow: "home", saying: "透析の病院に電話がつながらない" },
+        { person: "p-03", who: WHO.dialysis, color: "green", source: "family", whereNow: "home", saying: "透析の病院に電話がつながらない" },
       ],
     },
     {
@@ -394,7 +422,7 @@ const HEAVY_RAIN: Scenario = {
         { change: { kind: "alert", level: 3 }, text: "警戒レベル 3 に引き下げ" },
         { change: { kind: "phone", state: "ok" }, text: "電話 回復" },
       ],
-      turns: [{ person: "p-08", color: "green", source: "agent", whereNow: "home" }],
+      turns: [{ person: "p-08", who: WHO.insulin, color: "green", source: "agent", whereNow: "home" }],
     },
     {
       hour: 36,
@@ -402,20 +430,20 @@ const HEAVY_RAIN: Scenario = {
         {
           change: { kind: "road", id: "rd-1", label: "川沿いの市道", open: true },
           text: "川沿いの市道 通行再開",
-          person: "p-05",
+          person: "p-05", who: WHO.flood,
         },
       ],
-      turns: [{ person: "p-06", color: "green", source: "family", whereNow: "shelter" }],
+      turns: [{ person: "p-06", who: WHO.tubeFeeding, color: "green", source: "family", whereNow: "shelter" }],
     },
     {
       hour: 48,
       events: [{ change: { kind: "outage_restored" }, text: "停電 復旧" }],
-      turns: [{ person: "p-03", color: "red", source: "family", saying: "透析に行けていない。次が決まらない" }],
+      turns: [{ person: "p-03", who: WHO.dialysis, color: "red", source: "family", saying: "透析に行けていない。次が決まらない" }],
     },
     {
       hour: 60,
       events: [{ change: { kind: "water", out: false }, text: "断水 解消" }],
-      turns: [{ person: "p-10", color: "green", source: "family", whereNow: "home" }],
+      turns: [{ person: "p-10", who: WHO.any, color: "green", source: "family", whereNow: "home" }],
     },
     {
       hour: 72,
@@ -444,7 +472,7 @@ const EARTHQUAKE: Scenario = {
         { change: { kind: "outage", area: { scope: "office" } }, text: "停電 全域" },
         { change: { kind: "phone", state: "down" }, text: "電話 不通" },
       ],
-      turns: [{ person: "p-07", color: "green", source: "agent", whereNow: "home", saying: "家は大丈夫" }],
+      turns: [{ person: "p-07", who: WHO.any, color: "green", source: "agent", whereNow: "home", saying: "家は大丈夫" }],
     },
     {
       hour: 1,
@@ -452,15 +480,15 @@ const EARTHQUAKE: Scenario = {
         {
           change: { kind: "shelter", id: "sh-2", label: "高台の集会所", state: "open" },
           text: "高台の集会所 受入開始",
-          person: "p-08",
+          person: "p-08", who: WHO.insulin,
         },
       ],
       turns: [
-        { person: "p-08", color: "green", source: "agent", whereNow: "shelter", saying: "高台の集会所に来た" },
-        { person: "p-03", color: "green", source: "family", whereNow: "home" },
-        { person: "p-06", color: "green", source: "family", whereNow: "home" },
-        { person: "p-09", color: "green", source: "agent", whereNow: "home", saying: "大丈夫" },
-        { person: "p-10", color: "green", source: "family", whereNow: "home" },
+        { person: "p-08", who: WHO.insulin, color: "green", source: "agent", whereNow: "shelter", saying: "高台の集会所に来た" },
+        { person: "p-03", who: WHO.dialysis, color: "green", source: "family", whereNow: "home" },
+        { person: "p-06", who: WHO.tubeFeeding, color: "green", source: "family", whereNow: "home" },
+        { person: "p-09", who: WHO.any, color: "green", source: "agent", whereNow: "home", saying: "大丈夫" },
+        { person: "p-10", who: WHO.any, color: "green", source: "family", whereNow: "home" },
       ],
     },
     {
@@ -469,7 +497,7 @@ const EARTHQUAKE: Scenario = {
         {
           change: { kind: "road", id: "rd-3", label: "沿岸の道", open: false },
           text: "沿岸の道 津波で通行止め",
-          person: "p-08",
+          person: "p-08", who: WHO.insulin,
         },
       ],
       turns: [],
@@ -479,7 +507,7 @@ const EARTHQUAKE: Scenario = {
       events: [{ change: { kind: "tsunami", state: "lifted" }, text: "津波警報 解除" }],
       turns: [
         {
-          person: "p-02",
+          person: "p-02", who: WHO.ventilator,
           color: "green",
           source: "family",
           whereNow: "home",
@@ -493,15 +521,15 @@ const EARTHQUAKE: Scenario = {
         {
           change: { kind: "shelter", id: "sh-2", label: "高台の集会所", state: "crowded" },
           text: "高台の集会所 混雑 冷蔵庫なし",
-          person: "p-08",
+          person: "p-08", who: WHO.insulin,
         },
       ],
-      turns: [{ person: "p-04", color: "green", source: "supporter", whereNow: "home", saying: "見に行きました。家にいます" }],
+      turns: [{ person: "p-04", who: WHO.noPress, color: "green", source: "supporter", whereNow: "home", saying: "見に行きました。家にいます" }],
     },
     {
       hour: 12,
       events: [{ change: { kind: "phone", state: "busy" }, text: "電話 一部回復 不安定" }],
-      turns: [{ person: "p-01", color: "red", source: "family", saying: "母の家に来た。酸素ボンベが残り少ない" }],
+      turns: [{ person: "p-01", who: WHO.oxygen, color: "red", source: "family", saying: "母の家に来た。酸素ボンベが残り少ない" }],
     },
     {
       hour: 18,
@@ -512,7 +540,7 @@ const EARTHQUAKE: Scenario = {
       hour: 24,
       events: [],
       turns: [
-        { person: "p-08", color: "green", source: "agent", whereNow: "shelter", saying: "インスリンは持ってきたけど、冷やせない" },
+        { person: "p-08", who: WHO.insulin, color: "green", source: "agent", whereNow: "shelter", saying: "インスリンは持ってきたけど、冷やせない" },
       ],
     },
     {
@@ -521,7 +549,7 @@ const EARTHQUAKE: Scenario = {
         {
           change: { kind: "facility", id: "fc-1", label: "透析施設", open: false, depends: "dialysis_center" },
           text: "透析施設 断水で休止",
-          person: "p-03",
+          person: "p-03", who: WHO.dialysis,
         },
       ],
       turns: [],
@@ -529,7 +557,7 @@ const EARTHQUAKE: Scenario = {
     {
       hour: 48,
       events: [{ change: { kind: "outage_restored" }, text: "停電 復旧" }],
-      turns: [{ person: "p-08", color: "green", source: "agent", whereNow: "shelter" }],
+      turns: [{ person: "p-08", who: WHO.insulin, color: "green", source: "agent", whereNow: "shelter" }],
     },
     {
       hour: 60,
