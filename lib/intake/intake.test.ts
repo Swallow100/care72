@@ -13,7 +13,8 @@ import { loadCaseload } from "../caseload.ts";
 import { askJson, type AskJsonContext } from "../claude/call.ts";
 import type { ClaudeClient } from "../claude/client.ts";
 import { AiBadOutput, AiCallFailed, AiLimitReached, AiNotConfigured, AiRefused } from "../claude/errors.ts";
-import { SONNET } from "../claude/models.ts";
+import { OPUS, SONNET } from "../claude/models.ts";
+import { FORM_FILE_MAX_BYTES, toFormFile } from "../forms/form-read.ts";
 import { d1UsageStore } from "../claude/usage.ts";
 import { applyLedgerChanges, parseLedger } from "../db/ledger.ts";
 import { d1FromSqlite, migratedSqlite } from "../db/test-d1.ts";
@@ -24,7 +25,8 @@ import { answerChanges } from "./answer.ts";
 import { FIELD_QUESTIONS, GENERATED_QUESTIONS, NOT_ASKED, nextQuestion, questionQueue } from "./ask.ts";
 import type { IntakeChange } from "./changes.ts";
 import { buildDiff, restoreNote, sentencesOf } from "./diff.ts";
-import { buildExtractRequest, EXTRACT_SYSTEM, extractIntake, pseudonymInputOf } from "./extract.ts";
+import { buildExtractRequest, EXTRACT_RULES, EXTRACT_SYSTEM, extractIntake, pseudonymInputOf } from "./extract.ts";
+import { buildReadIntakeRequest, INTAKE_READ_SYSTEM, readIntake } from "./read.ts";
 import { INTAKE_FIELDS, ledgerValue as ledgerValueOf } from "./fields.ts";
 import { manualChanges } from "./manual.ts";
 import { aiFailReasonOf, intakeErrorOf } from "./http.ts";
@@ -270,6 +272,47 @@ describe("分ける（lib/intake/extract.ts）", () => {
     expect(p.items.map((i) => i.label)).toContain("既往");
     // 特記は入力の文に戻る
     expect(p.items.find((i) => i.label === "特記")?.next).toBe("88 歳、独居、認知症で民生委員の〇〇さんが週 2 回来る。");
+  });
+
+  it("写真・PDF を読む（T45）: Opus を 1 回、書類は添え物で、本人は仮名化した台帳だけ。写した氏名・電話は伏せ字に戻して差分に", async () => {
+    // 書類から写してしまった氏名・電話（指示に反した返事）の代わり
+    const out: ExtractOutput = {
+      ...SATO_OUTPUT,
+      contacts: [{ kind: "welfare_commissioner", relation: "", night: "unknown", note: "清水 正子 090-0000-0019 週 2 回" }],
+      notes: [],
+    };
+    const { client, calls } = fakeClaude(out);
+    const { ctx, calls: aiCalls } = aiCtx({ ANTHROPIC_API_KEY: "dummy" }, client);
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
+    const file = toFormFile(png);
+    if (!file.ok) throw new Error("png");
+    const p = await readIntake(seedRows(seed("p-04")), file.file, ctx, { today: TODAY });
+    expect(calls).toHaveLength(1);
+    expect(calls[0].model).toBe(OPUS);
+    const content = calls[0].messages[0].content as Array<{ type: string }>;
+    expect(content.map((b) => b.type)).toEqual(["image", "text"]);
+    const sent = JSON.stringify(content[1]);
+    for (const secret of ["佐藤", "キミ", "清水", "1938-03-05", "090-0000-0004"]) expect(sent).not.toContain(secret);
+    expect(JSON.stringify(calls[0].system)).toContain("氏名・住所・電話番号・生年月日");
+    // 用途は台帳の入力のまま（記録のモデルは答えたモデル。偽の返事は Sonnet の名前）
+    expect(aiCalls()).toMatchObject([{ purpose: "ledger_input", status: "ok", error: null }]);
+    // 返った文の電話は伏せ字（印が付き人が直す）、名前は台帳の役割名から氏名に戻る
+    const c = p.items.find((i) => i.label === "民生委員")!;
+    // 書類から写した部分（備考）は「民生委員 （電話） 週 2 回」。前の部分は今の連絡先の行の言葉
+    expect(c.next).toContain("民生委員 （電話） 週 2 回");
+    expect(c.next).not.toContain("清水 正子 090-0000-0019 週");
+    expect(c.masked).toBe(true);
+    expect(p.items.map((i) => i.label)).toContain("既往");
+    // 決まりは文の分け方と同じ
+    expect(INTAKE_READ_SYSTEM).toContain(EXTRACT_RULES);
+    expect(buildReadIntakeRequest(pseudonymize([pseudonymInputOf(seedRows(seed("p-04")))], { on: TODAY }).payload, file.file).purpose).toBe("ledger_input");
+  });
+
+  it("写真・PDF は中身の頭で形を決め、上限を超える物・空の物・形の違う物は読まない", () => {
+    expect(toFormFile(new Uint8Array([]))).toEqual({ ok: false, error: "empty" });
+    expect(toFormFile(new TextEncoder().encode("hello"))).toEqual({ ok: false, error: "type" });
+    expect(toFormFile(new Uint8Array(FORM_FILE_MAX_BYTES + 1))).toEqual({ ok: false, error: "too_large" });
+    expect(toFormFile(new TextEncoder().encode("%PDF-1.7 x"))).toMatchObject({ ok: true, file: { kind: "pdf" } });
   });
 
   it("system に決まり（埋まった欄は変えない・言い換えない・選択肢の値・医療依存を決めない）と欄の一覧", () => {

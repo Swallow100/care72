@@ -360,6 +360,47 @@ export const INTAKE_LABELS = {
   speechFailed: "認識失敗",
   retry: "再試行",
   edited: "修正済",
+  // ---- T45: 入れる欄を AI 専用に（文字・写真と PDF・小さなマイク）と会話の流れ ----
+  /** 分ける（文を Claude が台帳の欄に分ける主のボタン） */
+  split: "分ける",
+  /** 写真・PDF を選んで読ませる */
+  readFile: "写真・PDF 読取",
+  reading: "読取中",
+  fileType: "形式外",
+  fileLarge: "容量超過",
+  fileEmpty: "空ファイル",
+  /** 会話の流れの見出しと吹き出しの書き手 */
+  log: "やりとり",
+  you: "入力",
+  ask: "問い",
+  answer: "答え",
+  /** 残りの問い（「残り 4 問」） */
+  left: "残り",
+  leftUnit: "問",
+  /** 本人のページの面の右上の「編集」と、その下の保存・取消 */
+  sectionEdit: "編集",
+  /** 時計の頼り先の確認（確認済にする・未確認に戻す） */
+  checkOn: "確認",
+  checkOff: "未確認へ",
+  addContact: "連絡先追加",
+  addHazard: "ハザード",
+  addDevice: "機器",
+} as const;
+
+/** 会話の流れの AI と人の言葉（T45）。AI の言葉は Claude の出力の数を数えるだけで、文は定型 */
+export const INTAKE_SAYS = {
+  /** 「7 項目に分けました（医療 3・連絡先 2・避難 2）」 */
+  split: (n: number, parts: string) => `${n} 項目に分けました${parts ? `（${parts}）` : ""}`,
+  /** 分ける物が無かった */
+  none: "台帳の欄に入る事が見つかりませんでした",
+  /** 写真・PDF を読んだ（「お薬手帳.jpg を読みました」） */
+  read: (name: string) => `${name} を読みました`,
+  saved: (n: number) => `${n} 件を保存しました`,
+  unchanged: "変わった所はありませんでした",
+  discarded: "変更点を取り消しました",
+  skipped: "次回に回しました",
+  pending: (status: string) => `「${status}」と記録しました`,
+  done: "空欄はありません",
 } as const;
 
 /** AI 失敗の理由（ai_calls の error に合わせる。形の違いのうち途中で切れた物だけ分ける） */
