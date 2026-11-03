@@ -1,6 +1,6 @@
 // 事業所の災害の状態（docs/tasks/T09.md）。D1 を使わない所: 言葉・ルールの表への入力・ヘッダーの印・経過の 1 行・入力の読み方。
 //
-// 災害モードは人が切り替える（大雨・地震・平時に戻す）。気象庁の情報からの自動の切替は作っていない。
+// 災害モードは人が切り替える（大雨・台風・土砂・地震・津波・その他・平時に戻す）。気象庁の情報からの自動の切替は作っていない。
 // ルールの表（lib/triage）に渡すのは 今・発災・停電の始まり の 3 つだけ（Situation の形は変えない）。
 // 警戒レベル・断水・道路は人が見るための物で、表の入力にしない（docs/DECISIONS.md「警戒レベルは表に使う行ができるまで入力に持たない」）。
 //
@@ -16,7 +16,29 @@ import type { Situation } from "../triage/index.ts";
 export const DISASTER_KIND_LABELS: Record<DisasterKind, string> = {
   normal: "平時",
   heavy_rain: "大雨",
+  typhoon: "台風",
+  landslide: "土砂",
   earthquake: "地震",
+  tsunami: "津波",
+  other: "その他",
+};
+
+/** 地図の場面（lib/map/demo.ts の雨雲・震度のデモ）の種類。null は場面なし */
+export type DisasterScene = "heavy_rain" | "earthquake" | null;
+
+/**
+ * 災害の種類から地図の場面へ写す 1 つの表（T60）。大雨・台風・土砂は大雨の場面（警戒レベルが雨雲に効く）、
+ * 地震・津波は地震の場面（震度の印）、平時とその他は場面なし（雨雲・震度を出さず、ピン・ハザード・避難所は今まで通り）。
+ * 災害の種類で分かれるのはここから引く地図の場面だけで、ルールの表（lib/triage）の入力には種類を渡さない
+ */
+export const DISASTER_SCENE: Record<DisasterKind, DisasterScene> = {
+  normal: null,
+  heavy_rain: "heavy_rain",
+  typhoon: "heavy_rain",
+  landslide: "heavy_rain",
+  earthquake: "earthquake",
+  tsunami: "earthquake",
+  other: null,
 };
 
 export const OUTAGE_SCOPE_LABELS: Record<OutageScope, string> = {
@@ -253,7 +275,7 @@ export type DisasterMark =
   | { kind: "normal"; label: string }
   | { kind: "disaster"; label: string; details: string[] };
 
-/** ヘッダーの印。平時は「平時」、災害モードは「大雨」と「レベル 4」「停電 3 時間」 */
+/** ヘッダーの印。平時は「平時」、災害モードは種類の言葉（「大雨」「台風」）と「レベル 4」「停電 3 時間」 */
 export function disasterMark(s: DisasterState, now: string): DisasterMark {
   if (!isDisaster(s)) return { kind: "normal", label: DISASTER_KIND_LABELS.normal };
   const details: string[] = [];

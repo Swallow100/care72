@@ -677,8 +677,12 @@ export type Form9RankEditRow = {
 
 // ---------- 災害モード（T09） ----------
 
-/** 事業所の状態: 平時・大雨・地震。平時のほかを「災害モード」と呼ぶ */
-export const DISASTER_KINDS = ["normal", "heavy_rain", "earthquake"] as const;
+/**
+ * 事業所の状態: 平時・大雨・台風・土砂・地震・津波・その他（T60 で台風・土砂・津波・その他を足した。migrations/0011）。
+ * 平時のほかを「災害モード」と呼ぶ。並びは切替のボタンの並び。ルールの表（lib/triage）は種類を見ない。
+ * 地図の場面（雨雲・震度のデモ）への写しは lib/disaster/state.ts の DISASTER_SCENE の 1 つの表
+ */
+export const DISASTER_KINDS = ["normal", "heavy_rain", "typhoon", "landslide", "earthquake", "tsunami", "other"] as const;
 export type DisasterKind = (typeof DISASTER_KINDS)[number];
 
 /** 停電の範囲: 無し・事業所全体・地区（町名） */

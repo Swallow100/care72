@@ -47,7 +47,7 @@ function refuse(p: Principal | null): PostOutcome | null {
   return null;
 }
 
-/** 災害モードの切替（大雨・地震・平時に戻す）。平時に戻すは確認の欄を通ったときだけ */
+/** 災害モードの切替（災害の種類・平時に戻す）。平時に戻すは確認の欄を通ったときだけ */
 export async function modePost(db: D1Database, p: Principal | null, form: FormLike | null, at: string): Promise<PostOutcome> {
   const no = refuse(p);
   if (no) return no;
