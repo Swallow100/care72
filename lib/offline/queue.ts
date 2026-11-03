@@ -10,7 +10,9 @@
 // - 同じ端末の 2 つのタブが同時に送らないよう、送る間は錠（ブラウザは navigator.locks）を持つ。毎回端末から読み直す
 // - 画面（DOM）に触らない。保存の場所・送る道・錠は渡す（テストは偽物）
 //
-// 送り直しで届いたときの経過の時刻は、サーバーが受けた時刻（app/api/caseload/call は触らない）。押した時刻は at に持つ。
+// - 送るときに端末の id（重ならない id。同じ id の 2 回目はサーバーが書かない）と押した時刻 at を付ける。
+//   経過の時刻はサーバーが at から決める（未来・発災より前・24 時間より古い物は受けた時刻。lib/list/calls.ts の callOccurredAt）
+// - ログアウトの前に残っていれば、送信待ちか破棄かを選ぶ（components/LogoutButton.tsx の discard）
 
 import { CALL_PATH } from "../list/paths.ts";
 
@@ -36,8 +38,10 @@ export type QueuedCall = {
 /** 送った結果。ok 届いた・retry 残して送り直す・drop 送り直しても通らないので捨てる */
 export type SendOutcome = "ok" | "retry" | "drop";
 export type SendResult = { outcome: SendOutcome; label?: string | null };
+/** 送る形: 送る中身に端末の id と押した時刻を足した物 */
+export type CallWire = CallBody & { id: string; at: string };
 /** 送る道。通信の失敗は投げてよい（retry として受ける） */
-export type CallTransport = (body: CallBody) => Promise<SendResult>;
+export type CallTransport = (call: CallWire) => Promise<SendResult>;
 /** 送る間だけ持つ錠。同じ名前の錠を持つ物は順に動く */
 export type Lock = <T>(fn: () => Promise<T>) => Promise<T>;
 
@@ -52,6 +56,8 @@ export type CallQueue = {
   flush(): Promise<FlushReport>;
   /** 残っている自分の物（古い順） */
   items(): QueuedCall[];
+  /** 残っている自分の物を送らずに消す（ログアウトの「破棄」）。ほかの人の物は残す */
+  discard(): void;
   /** 端末の中身が変わったら呼ぶ（ほかのタブの変化は storage の知らせで画面が読み直す） */
   onChange(fn: () => void): () => void;
 };
@@ -155,7 +161,7 @@ export function createCallQueue(opts: {
       if (!item) break;
       let r: SendResult;
       try {
-        r = await transport(item.body);
+        r = await transport({ ...item.body, id: item.id, at: item.at });
       } catch {
         r = { outcome: "retry" };
       }
@@ -182,6 +188,9 @@ export function createCallQueue(opts: {
     },
     flush,
     items: own,
+    discard() {
+      save(load().filter((x) => x.owner !== owner));
+    },
     onChange(fn) {
       listeners.add(fn);
       return () => listeners.delete(fn);
@@ -191,14 +200,14 @@ export function createCallQueue(opts: {
 
 /** fetch で送る道。電話の画面へ移っても送り切る（keepalive）。止まった通信は timeoutMs で切って残す */
 export function fetchCallTransport(fetchImpl: typeof fetch = (...a) => fetch(...a), timeoutMs = 15_000): CallTransport {
-  return async (body) => {
+  return async (call) => {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), timeoutMs);
     try {
       const res = await fetchImpl(CALL_PATH, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify(call),
         credentials: "same-origin",
         keepalive: true,
         signal: ctrl.signal,

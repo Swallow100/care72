@@ -8,7 +8,6 @@ import { ButtonLink } from "@/components/ui/Button";
 import { RoleIcon } from "@/components/ui/Icon";
 import { LinkPending } from "@/components/ui/LinkPending";
 import { RoleMenu, type RoleChoice } from "@/components/ui/RoleMenu";
-import { SubmitButton } from "@/components/ui/SubmitButton";
 import { loadDisasterState } from "@/lib/disaster/db";
 import { disasterMark, type DisasterMark } from "@/lib/disaster/state";
 import type { Principal } from "@/lib/auth/principal";
@@ -16,6 +15,7 @@ import { judgeChoices } from "@/lib/auth/choices";
 import { ADMIN_LABEL, canViewPage, homePath, JUDGE_LABEL, LOGIN_PATH, ROLE_LABELS, ROLE_SELECT_PATH, showsLogout } from "@/lib/auth/roles";
 import { getPrincipal } from "@/lib/auth/server";
 import { SessionSecretMissing } from "@/lib/auth/session";
+import { LogoutButton } from "./LogoutButton";
 import { NavLinks } from "./NavLinks";
 
 // 全部の画面の上の帯。
@@ -106,9 +106,8 @@ function Who({ p, choices }: { p: Principal; choices: RoleChoice[] | null }) {
         {/* 本人・家族の頁にはログアウトを置かない（T69a。lib/auth/roles.ts の showsLogout） */}
         {showsLogout(p.role) && (
           <form method="post" action="/api/auth/logout">
-            <SubmitButton kind="danger" icon="LogoutIcon">
-              ログアウト
-            </SubmitButton>
+            {/* 送れていない通話の記録があれば送信待ちか破棄かを選ぶ（T71 の続き） */}
+            <LogoutButton />
           </form>
         )}
       </div>

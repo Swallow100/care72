@@ -14,6 +14,9 @@ export const OFFLINE_LABELS = {
   reload: "読み直す",
   pending: "保留",
   failed: "記録失敗",
+  /** ログアウトの前に保留があるとき（components/LogoutButton.tsx） */
+  wait: "送信待ち",
+  discard: "破棄",
 } as const;
 
 const TIME = new Intl.DateTimeFormat("ja-JP", {

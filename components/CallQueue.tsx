@@ -24,6 +24,10 @@ export type CallQueueApi = {
   /** 残っている自分の物（古い順） */
   items: QueuedCall[];
   send(body: CallBody): Promise<CallDelivery>;
+  /** 今すぐ送り直す（ログアウトの「送信待ち」） */
+  flush(): Promise<void>;
+  /** 自分の残りを送らずに消す（ログアウトの「破棄」） */
+  discard(): void;
 };
 
 const Ctx = createContext<CallQueueApi | null>(null);
@@ -110,6 +114,11 @@ export function CallQueueProvider({ owner, children }: { owner: string | null; c
               if (d.kind === "sent") router.refresh();
               return d;
             },
+            async flush() {
+              const r = await queue.flush().catch(() => null);
+              if (r && r.sent.length > 0) router.refresh();
+            },
+            discard: () => queue.discard(),
           }
         : null,
     [queue, items, router],

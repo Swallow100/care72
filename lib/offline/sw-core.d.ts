@@ -12,6 +12,7 @@ export const MAX_PAGES: number;
 export const MAX_ASSETS: number;
 export const MAX_KEEP_ASSETS: number;
 export const KEEP_MIN_MS: number;
+export const NETWORK_WAIT_MS: number;
 export const CLEAR_PATHS: readonly string[];
 
 export type ResponseLike = { status: number; type: string; redirected: boolean; headers: { get(name: string): string | null } };
