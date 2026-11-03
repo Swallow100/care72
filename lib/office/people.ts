@@ -313,3 +313,94 @@ export async function setUnlisted(
   });
   return ok ? { ok: true, changed: true } : { ok: false, error: "conflict" };
 }
+
+// ---------- 担当の一括変更（T60） ----------
+
+/** 一括変更で 1 回に送れる人数（事業所の利用者の上限の目安。多すぎる要求は断る） */
+export const MAX_ASSIGN_MANY = 200;
+
+/** 一括変更の 1 人: 本人と、画面で読んだときの担当（未割当は null） */
+export type AssignManyItem = { personId: string; from: string | null };
+
+export type AssignManyResult = { ok: true; changed: number; skipped: number } | { ok: false; error: "care_manager" };
+
+/**
+ * 担当の一括変更。人ごとに assignPerson と同じ検査（本人が事業所の中・移動先が事業所の中のケアマネ・今の担当が from と同じ）をし、
+ * 通らない人（事業所の外・無い・画面を読んだあとに変わった・もう移動先）は飛ばして数える。移動先が通らなければ何も書かない。
+ * 書くのは 1 つの batch で、文の数は人数で増えない（人ごとの値は JSON の配列で渡し、json_each で 1 行ずつ当てる）:
+ * 事業所の経過（person_assigned を人数ぶん）→ 本人の経過（事業所の経過の行がある人だけ）→ 本人の行（同じ）。
+ * 経過の行の条件で今の担当をもう一度確かめるので、読んだあとに変わった人は batch の中でも飛ばす
+ */
+export async function assignMany(
+  db: D1Database,
+  actor: OfficeActor,
+  input: { items: ReadonlyArray<AssignManyItem>; to: string },
+  at: string,
+): Promise<AssignManyResult> {
+  const to = await careManagerIn(db, actor.officeId, input.to);
+  if (!to) return { ok: false, error: "care_manager" };
+
+  // 同じ人は 1 回だけ（先に来た物）
+  const items = [...new Map(input.items.map((i) => [i.personId, i])).values()];
+  if (items.length === 0) return { ok: true, changed: 0, skipped: 0 };
+
+  // 事業所の中の本人の今の担当（1 回で読む）
+  const found = await db
+    .prepare(
+      `SELECT p.id, p.care_manager_id FROM people p
+        WHERE p.office_id = ?1 AND p.id IN (SELECT value FROM json_each(?2))`,
+    )
+    .bind(actor.officeId, JSON.stringify(items.map((i) => i.personId)))
+    .all<{ id: string; care_manager_id: string | null }>();
+  const now = new Map(found.results.map((r) => [r.id, r.care_manager_id]));
+  const targets = items.filter((i) => now.has(i.personId) && now.get(i.personId) === i.from && i.from !== input.to);
+  if (targets.length === 0) return { ok: true, changed: 0, skipped: items.length };
+
+  // 前の担当の名前（事業所の中のケアマネだけ。ほかは未割当と同じ言い方）
+  const names = new Map<string, string>();
+  for (const from of new Set(targets.map((t) => t.from).filter((f): f is string => f !== null))) {
+    const cm = await careManagerIn(db, actor.officeId, from);
+    if (cm) names.set(from, cm.name);
+  }
+
+  const rows = targets.map((t) => ({
+    logId: crypto.randomUUID(),
+    noteId: crypto.randomUUID(),
+    personId: t.personId,
+    from: t.from,
+    body: `担当 ${(t.from && names.get(t.from)) ?? "未割当"} → ${to.name}`,
+    officePayload: JSON.stringify({ personId: t.personId, from: t.from, to: input.to }),
+    personPayload: officePayload("assigned", { from: t.from, to: input.to }),
+  }));
+  const json = JSON.stringify(rows);
+  const v = (key: keyof (typeof rows)[number]) => `json_extract(j.value, '$.${key}')`;
+
+  const [logged] = await db.batch([
+    db
+      .prepare(
+        `INSERT INTO office_timeline_entries (id, office_id, author_id, author_role, kind, body, payload, occurred_at)
+         SELECT ${v("logId")}, p.office_id, ?2, ?3, 'person_assigned', ${v("body")}, ${v("officePayload")}, ?4
+           FROM json_each(?1) j JOIN people p ON p.id = ${v("personId")}
+          WHERE p.office_id = ?5 AND p.care_manager_id IS ${v("from")}
+            AND EXISTS (SELECT 1 FROM accounts a WHERE a.id = ?6 AND a.office_id = p.office_id AND a.role = 'care_manager')`,
+      )
+      .bind(json, actor.authorId, actor.authorRole, at, actor.officeId, input.to),
+    db
+      .prepare(
+        `INSERT INTO timeline_entries (id, person_id, author_id, author_role, kind, body, payload, occurred_at)
+         SELECT ${v("noteId")}, ${v("personId")}, t.author_id, t.author_role, 'note', t.body, ${v("personPayload")}, t.occurred_at
+           FROM json_each(?1) j JOIN office_timeline_entries t ON t.id = ${v("logId")}`,
+      )
+      .bind(json),
+    db
+      .prepare(
+        `UPDATE people SET care_manager_id = ?3
+          WHERE office_id = ?2 AND id IN (
+            SELECT ${v("personId")} FROM json_each(?1) j
+             WHERE EXISTS (SELECT 1 FROM office_timeline_entries t WHERE t.id = ${v("logId")}))`,
+      )
+      .bind(json, actor.officeId, input.to),
+  ]);
+  const changed = logged.meta.changes ?? 0;
+  return { ok: true, changed, skipped: items.length - changed };
+}
