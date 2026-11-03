@@ -136,6 +136,8 @@ export type ReviewContext = {
 };
 
 const SCENE_WORDS = { heavy_rain: "大雨（警戒レベル 3 → 4 → 浸水）", earthquake: "地震（南海トラフ 震度 6強・津波・停電）" } as const;
+/** 仮想モード（T50）: 街の出来事は世界の部屋が刻みごとに決めた（固定の筋が無い） */
+const VIRTUAL_WORDS = "仮想（架空の街の出来事を刻みごとに AI が決めた。助けが届かなかった人には結末の 1 文が出た）";
 
 /** 状態の色の言葉（左の表の色。lib/triage の色の名前） */
 const triageWord = (c: string | undefined) => (c && c in COLOR_LABELS ? COLOR_LABELS[c as keyof typeof COLOR_LABELS] : null);
@@ -173,7 +175,7 @@ export function reviewText(ctx: ReviewContext, aliasOf: ReadonlyMap<string, stri
   const kind = scenarioOf(ctx.scenario).kind;
   const lines: string[] = [];
   lines.push(
-    `想定: ${SCENE_WORDS[kind]}${ctx.scenario === "short" ? `（${SCENARIO_LABELS.short}）` : ""}。発災から 72 時間。訓練の終わり ${minuteText(s.endMinute)}（${STATUS_LABELS[ctx.status]}）`,
+    `想定: ${ctx.scenario === "virtual" ? VIRTUAL_WORDS : SCENE_WORDS[kind]}${ctx.scenario === "short" ? `（${SCENARIO_LABELS.short}）` : ""}。発災から 72 時間。訓練の終わり ${minuteText(s.endMinute)}（${STATUS_LABELS[ctx.status]}）`,
     `参加者: ${s.participants.map(who).join("・")}（${s.participants.length} 人）`,
     "",
     "機械で数えた結果（数え直さない）:",

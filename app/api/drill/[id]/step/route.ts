@@ -1,6 +1,6 @@
 import { isSameOrigin } from "@/lib/auth/cookie";
 import { principalFromRequest } from "@/lib/auth/server";
-import { drillHooks } from "@/lib/drill/hooks";
+import { drillStepHooks } from "@/lib/drill/hooks";
 import { drillError, stepPost } from "@/lib/drill/http";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -13,5 +13,5 @@ export async function POST(request: Request, { params }: Ctx) {
   const { principal, env } = await principalFromRequest(request);
   const { id } = await params;
   const json = await request.json().catch(() => null);
-  return stepPost(env.DB, principal, id, json, new Date().toISOString(), drillHooks(env, principal));
+  return stepPost(env.DB, principal, id, json, new Date().toISOString(), drillStepHooks(env, principal));
 }

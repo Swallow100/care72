@@ -36,6 +36,8 @@ export type TableSlots = {
   detail: (row: CaseloadRow) => React.ReactNode;
   /** 名前のそばの印（訓練の「架空」。T48）。無ければ出さない */
   nameMark?: (row: CaseloadRow) => React.ReactNode;
+  /** 氏名の下の足し物（訓練の仮想モードの「結末」、T50）。無ければ何も出さない */
+  nameNote?: (id: string) => React.ReactNode;
 };
 
 export function DisasterTable({
@@ -82,7 +84,7 @@ export function DisasterTable({
                 </StateTag>
               ) : null
             }
-            cells={<Cells row={r} sort={sort} nameHref={slots ? slots.nameHref(r.id) : undefined} nameMark={slots?.nameMark?.(r)} />}
+            cells={<Cells row={r} sort={sort} nameHref={slots ? slots.nameHref(r.id) : undefined} nameMark={slots?.nameMark?.(r)} note={slots?.nameNote?.(r.id)} />}
             detail={slots ? slots.detail(r) : r.detail ? <RowDetail detail={r.detail} classification={classification} /> : null}
           />
         ))}
@@ -91,7 +93,7 @@ export function DisasterTable({
   );
 }
 
-function Cells({ row: r, sort, nameHref, nameMark }: { row: CaseloadRow; sort: SortKey; nameHref?: string | null; nameMark?: React.ReactNode }) {
+function Cells({ row: r, sort, nameHref, nameMark, note }: { row: CaseloadRow; sort: SortKey; nameHref?: string | null; nameMark?: React.ReactNode; note?: React.ReactNode }) {
   const t = r.triage;
   const href = nameHref === undefined ? rowLink(sort, null, r.id).href : nameHref;
   return (
@@ -111,6 +113,7 @@ function Cells({ row: r, sort, nameHref, nameMark }: { row: CaseloadRow; sort: S
         )}
         {nameMark}
         <span className="ml-1 text-xs text-muted">{r.kana}</span>
+        {note}
         {t && (
           <div className={`mt-0.5 font-bold ${TONE_TEXT[COLOR_TONES[t.color]]}`} data-reason>
             {t.reason}

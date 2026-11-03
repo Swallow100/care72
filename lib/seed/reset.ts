@@ -56,6 +56,8 @@ export const DEMO_CLEAR: Readonly<Record<Table, string | null>> = {
   form_mappings: `office_id = ${OFFICE}`,
   disaster_state: `office_id = ${OFFICE}`,
   ai_calls: null,
+  // 世界の部屋（T50）の ID。事業所ごとでない
+  ai_agents: null,
   login_attempts: null,
   signals: `person_id IN (${PEOPLE}) OR drill_id IN (${DRILLS})`,
   drill_events: `drill_id IN (${DRILLS}) OR person_id IN (${PEOPLE})`,
