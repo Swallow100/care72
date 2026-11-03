@@ -124,6 +124,8 @@ describe("既定の言葉・アイコン・焦点", () => {
       CONFIRM_LABELS.resetOk,
       CONFIRM_LABELS.normalTitle,
       CONFIRM_LABELS.normalOk,
+      CONFIRM_LABELS.disasterTitle,
+      CONFIRM_LABELS.disasterOk,
       CONFIRM_LABELS.unlistTitle,
       CONFIRM_LABELS.unlistOk,
       CONFIRM_LABELS.abandonTitle,

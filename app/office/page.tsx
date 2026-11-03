@@ -38,6 +38,7 @@ import {
   infoOf,
   isDisaster,
   MAX_TEXT_LENGTH,
+  modeConfirm,
   OUTAGE_SCOPE_LABELS,
   shortJst,
   toLocalInput,
@@ -256,32 +257,28 @@ function ModeButton({ kind, state }: { kind: DisasterKind; state: DisasterState 
       </span>
     );
   }
-  // 平時に戻すはアプリ内の確認の窓で決めてから送る（T44）。窓が出せないときはサーバーが確認の欄（URL の confirm）へ戻す
-  if (kind === "normal") {
-    return (
-      <form method="post" action={OFFICE_MODE_PATH}>
-        <input type="hidden" name="kind" value={kind} />
-        <input type="hidden" name="version" value={state.version} />
-        <SubmitButton
-          confirm={{
-            title: CONFIRM_LABELS.normalTitle,
-            message: DISASTER_LABELS.clearOnNormal,
-            ok: CONFIRM_LABELS.normalOk,
-            icon: "RestoreIcon",
-            danger: true,
-            fields: { confirm: "1" },
-          }}
-        >
-          {label}
-        </SubmitButton>
-      </form>
-    );
-  }
+  // 平時に戻すと、平時から災害モードへは、アプリ内の確認の窓で決めてから送る（T44・T79）。
+  // 平時に戻すは窓が出せないとき（JS が動く前）サーバーが確認の欄（URL の confirm）へ戻す。災害の種類どうしは窓なし
+  const c = modeConfirm(state, kind);
+  const confirm =
+    c?.step === "to_normal"
+      ? {
+          title: CONFIRM_LABELS.normalTitle,
+          message: c.message,
+          details: c.details,
+          ok: CONFIRM_LABELS.normalOk,
+          icon: "RestoreIcon" as const,
+          danger: true,
+          fields: { confirm: "1" },
+        }
+      : c?.step === "to_disaster"
+        ? { title: CONFIRM_LABELS.disasterTitle, message: c.message, details: c.details, ok: CONFIRM_LABELS.disasterOk }
+        : undefined;
   return (
     <form method="post" action={OFFICE_MODE_PATH}>
       <input type="hidden" name="kind" value={kind} />
       <input type="hidden" name="version" value={state.version} />
-      <SubmitButton>{label}</SubmitButton>
+      <SubmitButton confirm={confirm}>{label}</SubmitButton>
     </form>
   );
 }
