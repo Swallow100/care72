@@ -25,7 +25,8 @@ export function AssignForm({
   personId: string;
   personName: string;
   careManagerId: string | null;
-  careManagers: readonly { id: string; name: string }[];
+  /** 割当の候補。disabled は選べない印（停止した今の担当、T61） */
+  careManagers: readonly { id: string; name: string; disabled?: boolean }[];
 }) {
   const [done, setDone] = useState(false);
   useEffect(() => {
@@ -64,7 +65,7 @@ export function AssignForm({
           </option>
         )}
         {careManagers.map((c) => (
-          <option key={c.id} value={c.id}>
+          <option key={c.id} value={c.id} disabled={c.disabled}>
             {c.name}
           </option>
         ))}

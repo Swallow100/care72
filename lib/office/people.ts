@@ -21,13 +21,15 @@ export type CareManagerItem = {
   admin: boolean;
   /** 一覧にいる担当の人数（外した人は数えない） */
   people: number;
+  /** 停止（退職、T61）。停止した人は割当の候補に出さない（一覧には印つきで出す） */
+  disabled: boolean;
 };
 
-/** 事業所のケアマネ（足した順）。担当の人数つき */
+/** 事業所のケアマネ（足した順）。担当の人数つき。停止した人も印つきで全部（割当の候補は activeCareManagers で使える人だけ） */
 export async function listCareManagers(db: D1Database, officeId: string): Promise<CareManagerItem[]> {
   const res = await db
     .prepare(
-      `SELECT a.id, a.display_name, a.login_id, a.is_office_admin,
+      `SELECT a.id, a.display_name, a.login_id, a.is_office_admin, a.disabled_at,
               (SELECT count(*) FROM people p
                 WHERE p.care_manager_id = a.id AND p.office_id = a.office_id AND p.unlisted_at IS NULL) AS people
          FROM accounts a
@@ -35,14 +37,20 @@ export async function listCareManagers(db: D1Database, officeId: string): Promis
         ORDER BY a.created_at, a.id`,
     )
     .bind(officeId)
-    .all<{ id: string; display_name: string; login_id: string | null; is_office_admin: 0 | 1; people: number }>();
+    .all<{ id: string; display_name: string; login_id: string | null; is_office_admin: 0 | 1; disabled_at: string | null; people: number }>();
   return res.results.map((r) => ({
     id: r.id,
     name: careManagerName(r.display_name),
     loginId: r.login_id,
     admin: r.is_office_admin === 1,
     people: Number(r.people),
+    disabled: r.disabled_at !== null,
   }));
+}
+
+/** 割当の候補（担当の割当・一括変更の移動先・利用者追加の担当）。停止した人を除く */
+export function activeCareManagers<T extends Pick<CareManagerItem, "disabled">>(list: readonly T[]): T[] {
+  return list.filter((c) => !c.disabled);
 }
 
 /** ケアマネの名前。空（協力事業所の枠）は役の名前 */
@@ -92,10 +100,20 @@ export async function listOfficePeople(db: D1Database, officeId: string, today: 
   }));
 }
 
-/** 事業所の中のケアマネの名前。違う事業所・ケアマネでない（審査員の行・医療班）なら null */
-async function careManagerIn(db: D1Database, officeId: string, id: string): Promise<{ name: string } | null> {
+/**
+ * 事業所の中のケアマネの名前。違う事業所・ケアマネでない（審査員の行・医療班）なら null。
+ * active は割当の先（停止した人〔T61〕は null）。前の担当の名前（経過の 1 行）は停止した人でも引く
+ */
+async function careManagerIn(
+  db: D1Database,
+  officeId: string,
+  id: string,
+  opts: { active: boolean },
+): Promise<{ name: string } | null> {
   const row = await db
-    .prepare("SELECT display_name FROM accounts WHERE id = ?1 AND office_id = ?2 AND role = 'care_manager'")
+    .prepare(
+      `SELECT display_name FROM accounts WHERE id = ?1 AND office_id = ?2 AND role = 'care_manager'${opts.active ? " AND disabled_at IS NULL" : ""}`,
+    )
     .bind(id, officeId)
     .first<{ display_name: string }>();
   return row ? { name: careManagerName(row.display_name) } : null;
@@ -126,7 +144,7 @@ export async function createPerson(
   at: string,
   id: string = `p-${crypto.randomUUID()}`,
 ): Promise<CreateResult> {
-  const cm = await careManagerIn(db, actor.officeId, input.careManagerId);
+  const cm = await careManagerIn(db, actor.officeId, input.careManagerId, { active: true });
   if (!cm) return { ok: false, error: "care_manager" };
   const body = `担当 ${cm.name}`;
   const [inserted] = await db.batch([
@@ -135,7 +153,7 @@ export async function createPerson(
         `INSERT INTO people (id, office_id, care_manager_id, name, kana, birth_date, plan_status, origin, ledger,
                              version, created_at, updated_at)
          SELECT ?1, a.office_id, a.id, ?3, ?4, ?5, 'none', 'care_manager', ?6, 1, ?7, ?7
-           FROM accounts a WHERE a.id = ?2 AND a.office_id = ?8 AND a.role = 'care_manager'`,
+           FROM accounts a WHERE a.id = ?2 AND a.office_id = ?8 AND a.role = 'care_manager' AND a.disabled_at IS NULL`,
       )
       .bind(id, input.careManagerId, input.name, input.kana, input.birthDate, JSON.stringify(newLedger(input.sex)), at, actor.officeId),
     personEntry(db, actor, id, body, officePayload("added", { to: input.careManagerId }), at),
@@ -266,16 +284,16 @@ export async function assignPerson(
   if (!now) return { ok: false, error: "not_found" };
   if (now.care_manager_id !== input.from) return { ok: false, error: "conflict" };
   if (input.to === input.from) return { ok: true, changed: false };
-  const to = await careManagerIn(db, actor.officeId, input.to);
+  const to = await careManagerIn(db, actor.officeId, input.to, { active: true });
   if (!to) return { ok: false, error: "care_manager" };
-  const from = input.from ? await careManagerIn(db, actor.officeId, input.from) : null;
+  const from = input.from ? await careManagerIn(db, actor.officeId, input.from, { active: false }) : null;
 
   const body = `担当 ${from?.name ?? "未割当"} → ${to.name}`;
   const ok = await guardedWrite(db, actor, {
     personId: input.personId,
     kind: "person_assigned",
     guard: `p.care_manager_id IS ?9 AND EXISTS (SELECT 1 FROM accounts a
-              WHERE a.id = ?10 AND a.office_id = p.office_id AND a.role = 'care_manager')`,
+              WHERE a.id = ?10 AND a.office_id = p.office_id AND a.role = 'care_manager' AND a.disabled_at IS NULL)`,
     guardArgs: [input.from, input.to],
     set: "care_manager_id = ?3",
     setArg: input.to,
@@ -337,7 +355,7 @@ export async function assignMany(
   input: { items: ReadonlyArray<AssignManyItem>; to: string },
   at: string,
 ): Promise<AssignManyResult> {
-  const to = await careManagerIn(db, actor.officeId, input.to);
+  const to = await careManagerIn(db, actor.officeId, input.to, { active: true });
   if (!to) return { ok: false, error: "care_manager" };
 
   // 同じ人は 1 回だけ（先に来た物）
@@ -359,7 +377,7 @@ export async function assignMany(
   // 前の担当の名前（事業所の中のケアマネだけ。ほかは未割当と同じ言い方）
   const names = new Map<string, string>();
   for (const from of new Set(targets.map((t) => t.from).filter((f): f is string => f !== null))) {
-    const cm = await careManagerIn(db, actor.officeId, from);
+    const cm = await careManagerIn(db, actor.officeId, from, { active: false });
     if (cm) names.set(from, cm.name);
   }
 
@@ -382,7 +400,8 @@ export async function assignMany(
          SELECT ${v("logId")}, p.office_id, ?2, ?3, 'person_assigned', ${v("body")}, ${v("officePayload")}, ?4
            FROM json_each(?1) j JOIN people p ON p.id = ${v("personId")}
           WHERE p.office_id = ?5 AND p.care_manager_id IS ${v("from")}
-            AND EXISTS (SELECT 1 FROM accounts a WHERE a.id = ?6 AND a.office_id = p.office_id AND a.role = 'care_manager')`,
+            AND EXISTS (SELECT 1 FROM accounts a WHERE a.id = ?6 AND a.office_id = p.office_id AND a.role = 'care_manager'
+                        AND a.disabled_at IS NULL)`,
       )
       .bind(json, actor.authorId, actor.authorRole, at, actor.officeId, input.to),
     db

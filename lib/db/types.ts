@@ -510,6 +510,8 @@ export type AccountRow = {
   login_id: string | null;
   password_hash: string | null;
   created_at: string;
+  /** 停止（退職）した時刻。NULL は使える。停止した人はログインできず、割当の候補に出ない（T61、migration 0012） */
+  disabled_at: string | null;
 };
 
 export type PersonRow = {
@@ -803,6 +805,8 @@ export const OFFICE_TIMELINE_KINDS = [
   "person_relisted",
   "care_manager_added",
   "person_taken",
+  // 改名・管理者・管理者解除・停止・再開・再発行・パスワード変更（T61、migration 0012）
+  "care_manager_changed",
 ] as const;
 export type OfficeTimelineKind = (typeof OFFICE_TIMELINE_KINDS)[number];
 

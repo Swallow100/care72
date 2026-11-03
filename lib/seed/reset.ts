@@ -20,7 +20,7 @@
 // - 別の事業所の人に付いた行（審査員が医療班の役で協力事業所の人を受け入れた受け持ちも、その人の行として残す）
 
 import type { D1Database } from "@cloudflare/workers-types";
-import { DEMO_OFFICE_ID } from "../auth/demo.ts";
+import { DEMO_OFFICE_ID, FIXED_ACCOUNT_IDS } from "../auth/demo.ts";
 import { UNAFFILIATED_OFFICE_ID } from "../custody/actor.ts";
 import { SEED_ACCOUNTS, SEED_OFFICES, SEED_PEOPLE, SEED_AT } from "../../seed/people.ts";
 import { CLEAR_ORDER, insert, lit, personStatements } from "../../seed/sql.ts";
@@ -43,7 +43,8 @@ const DRILLS = `SELECT id FROM drills WHERE office_id = ${OFFICE}`;
 /** 審査員がデモ事業所で作った共有のリンク（T65） */
 const JUDGE_SURVEY_SHARES = `SELECT token FROM survey_shares WHERE office_id = ${OFFICE} AND created_role = 'judge'`;
 const JUDGE_SURVEY_LINKS = `SELECT token FROM survey_links WHERE office_id = ${OFFICE} AND created_role = 'judge'`;
-const SEED_ACCOUNT_IDS =SEED_ACCOUNTS.filter((a) => a.office_id === DEMO_OFFICE_ID).map((a) => lit(a.id));
+/** 消さないアカウント（種のデモ事業所の物）。変えられないアカウント（T61）と同じ 1 つの元から読む */
+const SEED_ACCOUNT_IDS = FIXED_ACCOUNT_IDS.map((id) => lit(id));
 
 /** 表ごとに消す範囲（WHERE の中身）。null は消さない。CLEAR_ORDER と同じ順に流す */
 export const DEMO_CLEAR: Readonly<Record<Table, string | null>> = {
@@ -80,7 +81,10 @@ const ADOPT_UNAFFILIATED = `UPDATE people SET office_id = ${OFFICE}
    SELECT c.person_id FROM custody c JOIN accounts a ON a.id = c.holder_id
     WHERE c.via = 'on_site' AND a.office_id = ${OFFICE});`;
 
-/** 事業所とアカウントは消さずに種へ上書き（山本のパスワードのハッシュは Worker が知らないので残す） */
+/**
+ * 事業所とアカウントは消さずに種へ上書き（山本のパスワードのハッシュは Worker が知らないので残す）。
+ * 停止の印は戻す（固定のアカウントはサーバーが停止を断るので二重の守り。T61）
+ */
 function upsertStatements(): string[] {
   const out: string[] = [];
   for (const o of SEED_OFFICES) {
@@ -96,7 +100,7 @@ function upsertStatements(): string[] {
   for (const a of SEED_ACCOUNTS) {
     if (a.office_id !== DEMO_OFFICE_ID) continue;
     out.push(
-      `${insert("accounts", { ...a, created_at: SEED_AT }).replace(/;$/, "")} ON CONFLICT (id) DO UPDATE SET office_id = excluded.office_id, role = excluded.role, is_office_admin = excluded.is_office_admin, display_name = excluded.display_name, login_id = excluded.login_id;`,
+      `${insert("accounts", { ...a, created_at: SEED_AT }).replace(/;$/, "")} ON CONFLICT (id) DO UPDATE SET office_id = excluded.office_id, role = excluded.role, is_office_admin = excluded.is_office_admin, display_name = excluded.display_name, login_id = excluded.login_id, disabled_at = NULL;`,
     );
   }
   return out;

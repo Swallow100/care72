@@ -6,6 +6,7 @@ import { AddCareManager } from "@/components/office/AddCareManager";
 import { AssignForm } from "@/components/office/AssignForm";
 import { AssignMany, PickAll, PickBox } from "@/components/office/AssignMany";
 import { AssignRow } from "@/components/office/AssignRow";
+import { CareManagerRow } from "@/components/office/CareManagerRow";
 import { FormChoice } from "@/components/office/FormChoice";
 import { MoreFold } from "@/components/office/MoreFold";
 import { UnlistedFold } from "@/components/office/UnlistedFold";
@@ -48,7 +49,7 @@ import { PLAN_STATUS_LABELS } from "@/lib/labels";
 import { parseAssignedMany, parsePeopleError } from "@/lib/office/http";
 import { ASSIGN_ANCHOR, NEW_PERSON_PATH, OFFICE_PEOPLE_PATH } from "@/lib/office/http-paths";
 import { assignManyText, OFFICE_ERROR_LABELS, OFFICE_LABELS, type PeopleActionError } from "@/lib/office/labels";
-import { listCareManagers, listOfficePeople, type CareManagerItem, type OfficePersonItem } from "@/lib/office/people";
+import { activeCareManagers, listCareManagers, listOfficePeople, type CareManagerItem, type OfficePersonItem } from "@/lib/office/people";
 import { officeActor } from "@/lib/office/scope";
 import { CUSTODY_LABELS } from "@/lib/custody/labels";
 import { OFFICE_TAKE_PATH, UNAFFILIATED_ANCHOR } from "@/lib/custody/paths";
@@ -162,7 +163,7 @@ export default async function OfficePage({ searchParams }: Props) {
           <FormChoice officeId={scope.officeId} error={q.form_error === "bad"} />
           <Panel aria-labelledby="cm-title">
             <AddCareManager count={careManagers.length} admin={actor.admin}>
-              <CareManagerList careManagers={careManagers} />
+              <CareManagerList careManagers={careManagers} selfId={principal.judge ? null : principal.accountId} manage={actor.admin} />
             </AddCareManager>
           </Panel>
           {/* デモ事業所の「最初に戻す」（T26）。審査員と管理者だけ */}
@@ -422,6 +423,7 @@ const LOG_TONE: Record<OfficeLogItem["kind"], string> = {
   person_relisted: "font-bold",
   care_manager_added: "font-bold",
   person_taken: "font-bold",
+  care_manager_changed: "font-bold",
 };
 
 /**
@@ -443,7 +445,14 @@ function AssignSection({
 }) {
   const listed = people.filter((p) => p.unlistedAt === null);
   const unlisted = people.filter((p): p is OfficePersonItem & { unlistedAt: string } => p.unlistedAt !== null);
-  const cms = careManagers.map((c) => ({ id: c.id, name: c.name }));
+  // 割当の候補は使える人だけ（停止した人は選べない。T61）
+  const cms = activeCareManagers(careManagers).map((c) => ({ id: c.id, name: c.name }));
+  // 停止した人が担当のまま一覧に戻った人（外した人を戻したとき）は、今の担当を選べない印つきで出す（未割当と読ませない）
+  const stopped = new Map(careManagers.filter((c) => c.disabled).map((c) => [c.id, `${c.name} ${OFFICE_LABELS.disabled}`]));
+  const rowCms = (current: string | null) => {
+    const name = current === null ? undefined : stopped.get(current);
+    return current !== null && name !== undefined ? [...cms, { id: current, name, disabled: true }] : cms;
+  };
   return (
     <Panel id={ASSIGN_ANCHOR} aria-labelledby="assign-title" className="scroll-mt-4">
       <PanelHead
@@ -520,7 +529,7 @@ function AssignSection({
                         <StateText tone={PLAN_TONES[p.plan]}>{PLAN_STATUS_LABELS[p.plan]}</StateText>
                       </td>
                       <td className={`${TD} align-middle`}>
-                        <AssignForm personId={p.id} personName={p.name} careManagerId={p.careManagerId} careManagers={cms} />
+                        <AssignForm personId={p.id} personName={p.name} careManagerId={p.careManagerId} careManagers={rowCms(p.careManagerId)} />
                       </td>
                     </>
                   }
@@ -576,24 +585,15 @@ function AssignSection({
   );
 }
 
-/** ケアマネの一覧（T30）。足した順に名前・管理者の印・ID・担当の人数。見出しと「ケアマネ追加」は AddCareManager */
-function CareManagerList({ careManagers }: { careManagers: CareManagerItem[] }) {
+/**
+ * ケアマネの一覧（T30）。足した順に名前・管理者の印・ID・担当の人数。見出しと「ケアマネ追加」は AddCareManager。
+ * 行ごとの改名・管理者・停止・再発行（管理者だけ）と、自分の行のパスワード変更は CareManagerRow（T61）。停止した人も印つきで出す
+ */
+function CareManagerList({ careManagers, selfId, manage }: { careManagers: CareManagerItem[]; selfId: string | null; manage: boolean }) {
   return (
     <ul className="mt-2 grid gap-px text-sm">
       {careManagers.map((c) => (
-        <li key={c.id} className="flex flex-wrap items-baseline gap-x-2 rounded bg-panel2 px-2 py-1.5">
-          <span className="font-bold">{c.name}</span>
-          {c.admin && <span className="text-xs text-muted">{OFFICE_LABELS.admin}</span>}
-          {c.loginId && (
-            <span className="text-xs text-muted">
-              {OFFICE_LABELS.loginId} {c.loginId}
-            </span>
-          )}
-          <span className="ml-auto">
-            {c.people}
-            <span className="text-xs text-muted"> {OFFICE_LABELS.people}</span>
-          </span>
-        </li>
+        <CareManagerRow key={c.id} item={c} self={c.id === selfId} manage={manage} />
       ))}
     </ul>
   );

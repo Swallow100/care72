@@ -18,7 +18,8 @@ import { OFFICE_LABELS } from "@/lib/office/labels";
 
 type Added = { displayName: string; loginId: string; password: string };
 
-const INPUT =
+/** 入れる欄の形（ケアマネの行の改名・パスワード変更の欄も同じ。T61） */
+export const INPUT =
   "h-8 w-full min-w-0 rounded bg-panel px-2 text-sm text-ink outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-accent";
 
 export function AddCareManager({ count, admin, children }: { count: number; admin: boolean; children: React.ReactNode }) {

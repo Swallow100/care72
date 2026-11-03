@@ -52,6 +52,43 @@ export const OFFICE_LABELS = {
   assignManyOk: "変更",
   assigned: "変更済",
   skipped: "飛ばし",
+  // アカウントの幅（T61）。行の右のボタンと、停止・固定の印
+  rename: "改名",
+  makeAdmin: "管理者",
+  removeAdmin: "管理者解除",
+  disable: "停止",
+  enable: "再開",
+  /** 停止した人の印（一覧の行・割当の今の担当） */
+  disabled: "停止",
+  resetPassword: "再発行",
+  /** 種のデモ事業所のアカウント（山本）。どの操作も出さない */
+  fixed: "固定",
+  /** 改名の欄の保存 */
+  save: "保存",
+  /** 再発行のあとの見出し */
+  reissued: "再発行済",
+  newPassword: "新パスワード",
+  // 自分のパスワード
+  changePassword: "パスワード変更",
+  currentPassword: "現在",
+  nextPassword: "新規",
+  confirmPassword: "確認",
+  /** 変更の欄の決めるボタン */
+  change: "変更",
+  changed: "変更済",
+  /** 変えたあと、ほかの端末のセッションは切れる */
+  otherDevices: "他端末 再ログイン",
+  confirmMismatch: "確認 不一致",
+} as const;
+
+/** 確認の窓（appConfirm）の題と決めるボタン（T61）。本文はケアマネの名前 */
+export const STAFF_CONFIRM_LABELS = {
+  disableTitle: "停止確認",
+  disableOk: "停止",
+  resetTitle: "再発行確認",
+  resetOk: "再発行",
+  removeAdminTitle: "解除確認",
+  removeAdminOk: "解除",
 } as const;
 
 /** 確認の窓の名前の箇条書きは 6 行まで。超えたら 5 人と「ほか N 件」（窓の中を送れる箱にしない。DECISIONS 11/3 17:0x の T51-2） */
@@ -81,8 +118,12 @@ export type StaffFormError = (typeof STAFF_FORM_ERRORS)[number];
 export const PEOPLE_ACTION_ERRORS = ["bad", "not_found", "care_manager", "conflict"] as const;
 export type PeopleActionError = (typeof PEOPLE_ACTION_ERRORS)[number];
 
+/** ケアマネの変更（T61）の断り。fixed は種のデモ事業所のアカウント、self は自分の停止・管理者解除・再発行 */
+export const STAFF_CHANGE_ERRORS = ["fixed", "self", "last_admin", "has_people", "not_found", "conflict"] as const;
+export type StaffChangeApiError = (typeof STAFF_CHANGE_ERRORS)[number];
+
 /** API の断り（権限・形） */
-export type OfficeApiError = PersonFormError | StaffFormError | "invalid" | "forbidden" | "login_required";
+export type OfficeApiError = PersonFormError | StaffFormError | StaffChangeApiError | "invalid" | "forbidden" | "login_required";
 
 export const OFFICE_ERROR_LABELS: Record<OfficeApiError | PeopleActionError, string> = {
   name: "氏名 不正",
@@ -99,4 +140,8 @@ export const OFFICE_ERROR_LABELS: Record<OfficeApiError | PeopleActionError, str
   bad: "入力不正",
   not_found: "該当なし",
   conflict: "競合 再読込",
+  fixed: "固定",
+  self: "本人不可",
+  last_admin: "唯一管理者",
+  has_people: "担当あり",
 };

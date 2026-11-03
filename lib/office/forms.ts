@@ -81,15 +81,20 @@ export function normalizeLoginId(s: string): string {
   return s.normalize("NFKC").trim().toLowerCase();
 }
 
+/** ケアマネの名前（追加と改名〔T61〕で同じ決まり）: NFC・空白をそろえる・20 字まで・制御文字なし。違えば null */
+export function parseDisplayName(raw: unknown): string | null {
+  const displayName = tidySpaces(str(raw).normalize("NFC"));
+  if (!displayName || displayName.length > DISPLAY_NAME_MAX || CONTROL.test(displayName)) return null;
+  return displayName;
+}
+
 /** ケアマネ追加の入力 */
 export function parseStaffInput(raw: unknown): Parsed<StaffInput, StaffFormError | "invalid"> {
   if (typeof raw !== "object" || raw === null) return { ok: false, error: "invalid" };
   const o = raw as Record<string, unknown>;
 
-  const displayName = tidySpaces(str(o.displayName).normalize("NFC"));
-  if (!displayName || displayName.length > DISPLAY_NAME_MAX || CONTROL.test(displayName)) {
-    return { ok: false, error: "display_name" };
-  }
+  const displayName = parseDisplayName(o.displayName);
+  if (displayName === null) return { ok: false, error: "display_name" };
 
   const loginId = normalizeLoginId(str(o.loginId));
   if (!LOGIN_ID_PATTERN.test(loginId) || isReservedLoginId(loginId)) return { ok: false, error: "login_id" };
