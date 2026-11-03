@@ -46,8 +46,8 @@ export function SortHeader({
         className={`relative -mx-1 inline-block rounded px-1 ${active ? "font-bold text-ink underline underline-offset-4" : "font-normal text-muted"}`}
       >
         {label ?? COLUMN_LABELS[k]}
-        {/* 押している列は向きの印（下向きが降順） */}
-        {active && <OpenIcon aria-hidden className={`ml-0.5 inline size-3 align-[-1px] ${now === "asc" ? "rotate-180" : ""}`} />}
+        {/* 押している列は向きの印（下向きが降順）。訓練の表（href）は今まで通り出さない */}
+        {active && href === undefined && <OpenIcon aria-hidden className={`ml-0.5 inline size-3 align-[-1px] ${now === "asc" ? "rotate-180" : ""}`} />}
         <LinkPending />
       </Link>
     </th>
