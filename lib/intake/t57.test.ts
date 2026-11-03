@@ -26,7 +26,7 @@ import { editBlockers, editChanges, editDraft, orderClash, removalNames } from "
 import { INTAKE_FIELDS, normalizeValue } from "./fields.ts";
 import { markClockIds } from "./marks.ts";
 import { intakePropsOf } from "./props.ts";
-import { CONTACT_KINDS_FOR_INTAKE, DEVICE_KINDS_FOR_INTAKE, HAZARD_KINDS_FOR_INTAKE } from "./schema.ts";
+import { CONTACT_KINDS_FOR_EDIT, CONTACT_KINDS_FOR_INTAKE, DEVICE_KINDS_FOR_INTAKE, HAZARD_KINDS_FOR_INTAKE } from "./schema.ts";
 import { contactOrderClash, saveIntake, SaveRequestSchema, type SaveRequest } from "./save.ts";
 
 const cm: Principal = {
@@ -129,6 +129,14 @@ describe("連絡先の順（T57 の 1）", () => {
     ];
     expect(contactOrderClash(rows, two)).toBe(true);
     expect(contactOrderClash(rows, two.slice(0, 1))).toBe(false);
+  });
+
+  it("もともと重なっている順はほかの直しを止めない。そのうえで別の順を新しく重ねる保存は断る", async () => {
+    sqlite.exec("UPDATE contacts SET supporter_order = 1 WHERE id = 'c-09-1'"); // c-09-2 の支援 1 と重なる（種には無い形）
+    const rows = (await loadPersonPage(db, cm, "p-09"))!;
+    expect(contactOrderClash(rows, [{ t: "contact", id: "c-09-1", value: { kind: "family", note: "鍵あり" }, overwrite: true }])).toBe(false);
+    // 緊急 1（c-09-1）を c-09-2 にも付ける → 新しい重なり
+    expect(contactOrderClash(rows, [{ t: "contact", id: "c-09-2", value: { kind: "supporter", emergencyOrder: 1 }, overwrite: true }])).toBe(true);
   });
 
   it("AI の分け方・問いの答えの保存からは順を付けられない（edit でなければ断る）", async () => {
@@ -313,6 +321,9 @@ describe("機器・ハザード・世帯の「その他」（T57 の 3）", () =
     expect(DEVICE_KINDS_FOR_INTAKE).not.toContain("other");
     expect(HAZARD_KINDS_FOR_INTAKE).not.toContain("other");
     expect(CONTACT_KINDS_FOR_INTAKE).toContain("oxygen_supplier");
+    // 連絡先のその他も AI は作らない（続柄が無いと誰か分からない）。編集の保存は受ける
+    expect(CONTACT_KINDS_FOR_INTAKE).not.toContain("other");
+    expect(CONTACT_KINDS_FOR_EDIT).toContain("other");
   });
 
   it("書き足しは 60 字まで（世帯補記・ハザードの補記）", () => {

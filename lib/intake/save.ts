@@ -43,7 +43,7 @@ import type { IntakeChange } from "./changes.ts";
 import { labelOfKey } from "./diff.ts";
 import { INTAKE_KEYS } from "./fields.ts";
 import { DEVICE_CLOCKS, MEDICATION_CLOCKS, markClockIds, planMarkClocks, type MarkClock } from "./marks.ts";
-import { CONTACT_KINDS_FOR_INTAKE } from "./schema.ts";
+import { CONTACT_KINDS_FOR_EDIT } from "./schema.ts";
 import { PDF_PAGES_MAX, READ_SOURCES, REDACTED_MAX, readTimelineHead, type ReadMeta } from "./read-form.ts";
 
 const text = (max: number) => z.string().trim().max(max);
@@ -79,7 +79,7 @@ const ChangeSchema = z.discriminatedUnion("t", [
     t: z.literal("contact"),
     id: z.string().regex(ID).nullable(),
     value: z.object({
-      kind: z.enum(CONTACT_KINDS_FOR_INTAKE),
+      kind: z.enum(CONTACT_KINDS_FOR_EDIT),
       relation: text(40).optional(),
       name: text(60).optional(),
       phone: z.string().trim().regex(/^[0-9+\-() ]{0,20}$/).optional(),
@@ -266,7 +266,7 @@ export async function saveIntake(db: D1Database, principal: Principal, req: Save
 
   // ---- 連絡先 ----
   // 同じ緊急・支援の順を 2 人に付ける保存は断る（ルールの表の「支援者」と様式の ①② が崩れる）。今ある重なりに触れない保存は通す
-  if (contactOrderClash(rows, changes) && !contactOrderClash(rows, [])) return { ok: false, error: "order_clash" };
+  if (contactOrderClash(rows, changes)) return { ok: false, error: "order_clash" };
   const contactOps = planContacts(rows, changes, personId);
   fields.push(...contactOps.fields);
 
@@ -479,17 +479,26 @@ export function contactOrderClash(rows: Pick<PersonPageRows, "contacts">, change
       state.set(`new-${added++}`, { e: v.emergencyOrder ?? null, s: v.supporterOrder ?? null });
     }
   }
+  const before = orderTwice(new Map(rows.contacts.map((c) => [c.id, { e: c.emergency_order ?? null, s: c.supporter_order ?? null }])));
+  const after = orderTwice(state);
+  // もともと重なっていた順（種には無い）は、ほかの直しの保存を止めない。この保存で新しく重なる順だけ断る
+  return [...after.e].some((n) => !before.e.has(n)) || [...after.s].some((n) => !before.s.has(n));
+}
+
+/** 2 人以上に付いた緊急・支援の順 */
+function orderTwice(state: ReadonlyMap<string, { e: number | null; s: number | null }>): { e: Set<number>; s: Set<number> } {
   const twice = (pick: (x: { e: number | null; s: number | null }) => number | null) => {
     const seen = new Set<number>();
+    const out = new Set<number>();
     for (const x of state.values()) {
       const n = pick(x);
       if (n === null) continue;
-      if (seen.has(n)) return true;
+      if (seen.has(n)) out.add(n);
       seen.add(n);
     }
-    return false;
+    return out;
   };
-  return twice((x) => x.e) || twice((x) => x.s);
+  return { e: twice((x) => x.e), s: twice((x) => x.s) };
 }
 
 // ---------- 時計 ----------
