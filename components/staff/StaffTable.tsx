@@ -49,6 +49,8 @@ const COLORS: ReadonlyArray<Color> = ["red", "yellow", "gray", "green"];
 const CELL = "bg-panel px-1.5 py-1.5 align-top";
 const INPUT =
   "min-w-0 rounded-md bg-panel2 px-2 py-1 text-sm text-ink outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-accent";
+/** 行の詳細（地が panel2）の中の欄は白にする（地と同じ灰色だと箱が見えない。T55 の問い 2） */
+const INPUT_IN = INPUT.replace("bg-panel2", "bg-panel");
 const COLS = 10;
 /** 狭い画面で省く列（担当一覧の表と同じ。PC の画面と同じく横に送らない。T40） */
 const SM = "hidden sm:table-cell";
@@ -378,7 +380,7 @@ function ReleaseForm({ custodyId, onDone }: { custodyId: string; onDone: () => v
       {kind === "transported" && (
         <label className="flex items-center gap-1.5">
           <span className="text-muted">{CUSTODY_LABELS.destination}</span>
-          <input type="text" value={note} onChange={(e) => setNote(e.target.value)} maxLength={NOTE_MAX} className={`${INPUT} w-48`} />
+          <input type="text" value={note} onChange={(e) => setNote(e.target.value)} maxLength={NOTE_MAX} className={`${INPUT_IN} w-48`} />
         </label>
       )}
       {/* 受け持ちから外す確定なので赤の塗り */}
