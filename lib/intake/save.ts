@@ -38,7 +38,7 @@ import { loadPersonPage, pendingClockId, type PersonPageRows } from "../person.t
 import type { IntakeChange } from "./changes.ts";
 import { labelOfKey } from "./diff.ts";
 import { INTAKE_KEYS } from "./fields.ts";
-import { MEDICATION_CLOCKS, planMarkClocks, type MarkClock } from "./marks.ts";
+import { DEVICE_CLOCKS, MEDICATION_CLOCKS, planMarkClocks, type MarkClock } from "./marks.ts";
 import { CONTACT_KINDS_FOR_INTAKE } from "./schema.ts";
 
 const text = (max: number) => z.string().trim().max(max);
@@ -93,6 +93,18 @@ const ChangeSchema = z.discriminatedUnion("t", [
     overwrite: z.boolean().optional(),
   }),
   z.object({ t: z.literal("clockCheck"), clockId: z.string().regex(ID), to: z.enum(CHECK_STATUSES) }),
+  z.object({ t: z.literal("clockSeen"), clockId: z.string().regex(ID) }),
+  z.object({
+    t: z.literal("remove"),
+    target: z.discriminatedUnion("what", [
+      z.object({ what: z.literal("field"), key: z.enum(INTAKE_KEYS) }),
+      z.object({ what: z.literal("medication"), index: z.number().int().min(0).max(200), name: text(100).min(1) }),
+      z.object({ what: z.literal("device"), kind: z.enum(DEVICE_KINDS) }),
+      z.object({ what: z.literal("hazard"), kind: z.enum(HAZARD_KINDS) }),
+      z.object({ what: z.literal("note"), value: text(1000).min(1) }),
+      z.object({ what: z.literal("contact"), id: z.string().regex(ID) }),
+    ]),
+  }),
   z.object({ t: z.literal("consent"), kind: z.enum(CONSENT_KINDS), status: z.enum(CONSENT_STATUSES) }),
 ]);
 
@@ -109,7 +121,7 @@ export const SaveRequestSchema = z
   })
   // 上書き・同意・頼り先の確認は人が手で直すときだけ（AI の分け方の保存に混ぜない）
   .refine((r) => !(r.edit && r.ai !== null), { message: "edit_with_ai" })
-  .refine((r) => r.edit === true || !r.changes.some((c) => c.t === "consent" || c.t === "clockCheck" || (c.t !== "field" && "overwrite" in c && c.overwrite)), {
+  .refine((r) => r.edit === true || !r.changes.some((c) => editOnly(c as IntakeChange)), {
     message: "edit_only",
   });
 
@@ -121,8 +133,26 @@ export type SaveResult =
 
 type Statement = ReturnType<D1Database["prepare"]>;
 
-/** 経過の本文の頭: AI の分け方を人が確かめた・問いへの答え（手入力）・本人のページの面で手で直した */
-export const TIMELINE_SOURCES = { ai: "AI の分け方、人が確認", manual: "手入力", edit: "ケアマネが直した" } as const;
+/**
+ * 経過の本文の頭: AI の分け方を人が確かめた・問いへの答え（手入力）・本人のページの面で手で直した・外した・値を確かめた。
+ * 手で直したときは 1 つの保存で「ケアマネが直した: 〜。ケアマネが外した: 〜」と並べる
+ */
+export const TIMELINE_SOURCES = {
+  ai: "AI の分け方、人が確認",
+  manual: "手入力",
+  edit: "ケアマネが直した",
+  removed: "ケアマネが外した",
+  seen: "ケアマネが確認した",
+} as const;
+
+function namesOf(fields: ReadonlyArray<string>, pending: Ledger["pending"] = []): string {
+  const names = [
+    ...new Set([...fields.map(fieldName), ...pending.map((p) => `${fieldName(p.field)}（${PENDING_STATUS_LABELS[p.status]}）`)]),
+  ];
+  const shown = names.slice(0, 10).join("・");
+  const more = names.length > 10 ? ` ほか ${names.length - 10}` : "";
+  return `${shown}${more}`;
+}
 
 /** 経過の本文: 「AI の分け方、人が確認」「手入力」「ケアマネが直した」と、変えた欄の名前（10 まで）。空欄の理由は「名前（不明）」 */
 export function timelineBody(
@@ -130,18 +160,22 @@ export function timelineBody(
   fields: ReadonlyArray<string>,
   pending: Ledger["pending"] = [],
   edit = false,
+  extra: { removed?: ReadonlyArray<string>; seen?: ReadonlyArray<string> } = {},
 ): string {
-  const names = [
-    ...new Set([...fields.map(fieldName), ...pending.map((p) => `${fieldName(p.field)}（${PENDING_STATUS_LABELS[p.status]}）`)]),
-  ];
-  const shown = names.slice(0, 10).join("・");
-  const more = names.length > 10 ? ` ほか ${names.length - 10}` : "";
-  return `${TIMELINE_SOURCES[ai ? "ai" : edit ? "edit" : "manual"]}: ${shown}${more}`;
+  const removed = extra.removed ?? [];
+  const seen = extra.seen ?? [];
+  const parts: string[] = [];
+  if (fields.length > 0 || pending.length > 0 || (removed.length === 0 && seen.length === 0)) {
+    parts.push(`${TIMELINE_SOURCES[ai ? "ai" : edit ? "edit" : "manual"]}: ${namesOf(fields, pending)}`);
+  }
+  if (removed.length > 0) parts.push(`${TIMELINE_SOURCES.removed}: ${namesOf(removed)}`);
+  if (seen.length > 0) parts.push(`${TIMELINE_SOURCES.seen}: ${namesOf(seen)}`);
+  return parts.join("。");
 }
 
-/** 手で直すときだけの変更（上書き・同意・頼り先の確認）。AI の分け方・問いの答えの保存には混ぜない */
+/** 手で直すときだけの変更（上書き・同意・頼り先の確認・外す・値の確認）。AI の分け方・問いの答えの保存には混ぜない */
 function editOnly(c: IntakeChange): boolean {
-  if (c.t === "consent" || c.t === "clockCheck") return true;
+  if (c.t === "consent" || c.t === "clockCheck" || c.t === "remove" || c.t === "clockSeen") return true;
   return c.t !== "field" && "overwrite" in c && c.overwrite === true;
 }
 
@@ -210,8 +244,14 @@ export async function saveIntake(db: D1Database, principal: Principal, req: Save
   const consentOps = planConsents(rows, changes);
   fields.push(...consentOps.fields);
 
+  // ---- 外す・値の確認（手で直すときだけ。経過に「ケアマネが外した」「ケアマネが確認した」） ----
+  const removeOps = planRemovals(rows, before, changes);
+  const removedFields = [...applied.removed, ...removeOps.removed];
+  const seenOps = planClockSeen(rows, changes);
+
   const ledgerChanged = JSON.stringify(ledger) !== JSON.stringify(before);
-  const changed = (ledgerChanged ? 1 : 0) + contactOps.count + clockOps.count + checkOps.count + consentOps.count;
+  const changed =
+    (ledgerChanged ? 1 : 0) + contactOps.count + clockOps.count + checkOps.count + consentOps.count + removeOps.count + seenOps.count;
   const plan: PlanStatus = rows.person.plan_status === "none" ? "draft" : rows.person.plan_status;
   if (changed === 0) return { ok: true, changed: 0, version: req.version, plan: rows.person.plan_status, fields: [] };
 
@@ -222,7 +262,9 @@ export async function saveIntake(db: D1Database, principal: Principal, req: Save
     model: req.ai?.model ?? null,
     ...(edit ? { edit: true as const } : {}),
     // 場所だけ残す。薬の名前の形（medical.medications.<名前>.〜）は名前が値なので、番号の形だけ
-    fields: [...new Set([...fields, ...applied.pending.map((p) => p.field)])].filter((f) => !MED_NAME_FIELD.test(f)),
+    fields: [...new Set([...fields, ...removedFields, ...seenOps.fields, ...applied.pending.map((p) => p.field)])].filter(
+      (f) => !MED_NAME_FIELD.test(f),
+    ),
   };
   // この保存の経過の行（id は毎回でたらめ）を最初に、読んだ版のままのときだけ足す。ほかの文はこの行があるときだけ効く。
   // 同じ版から 2 つの保存が重なっても、あとの batch は版が上がっていて経過の行が入らず、台帳・連絡先・時計も書かない
@@ -240,7 +282,7 @@ export async function saveIntake(db: D1Database, principal: Principal, req: Save
       .bind(
         ...guardArgs,
         principal.accountId,
-        timelineBody(req.ai !== null, fields, applied.pending, edit),
+        timelineBody(req.ai !== null, fields, applied.pending, edit, { removed: removedFields, seen: seenOps.fields }),
         JSON.stringify(payload),
         rows.person.office_id,
         req.version,
@@ -259,6 +301,8 @@ export async function saveIntake(db: D1Database, principal: Principal, req: Save
     ...clockOps.build(db, GUARD, guardArgs),
     ...checkOps.build(db, GUARD, guardArgs),
     ...consentOps.build(db, GUARD, guardArgs, principal.accountId),
+    ...removeOps.build(db, GUARD, guardArgs),
+    ...seenOps.build(db, GUARD, guardArgs),
   ];
 
   const results = await db.batch(stmts);
@@ -503,6 +547,70 @@ function planConsents(rows: PersonPageRows, changes: ReadonlyArray<IntakeChange>
              ON CONFLICT (person_id, kind) DO UPDATE SET status = excluded.status, recorded_by = excluded.recorded_by, recorded_at = excluded.recorded_at`,
           )
           .bind(...guardArgs, kind, status, accountId),
+      );
+    },
+  };
+}
+
+// ---------- 外す（手で直すときだけ） ----------
+
+/**
+ * 連絡先の行を消し、外した薬・機器の時計を消す（印が残らないように）。本人の行（self）は消さない。
+ * 台帳の中の物（欄・薬・機器・ハザード・特記）は applyLedgerChanges が外す
+ */
+function planRemovals(rows: PersonPageRows, before: Ledger, changes: ReadonlyArray<IntakeChange>) {
+  const contactIds = new Set<string>();
+  const clockIds = new Set<string>();
+  for (const ch of changes) {
+    if (ch.t !== "remove") continue;
+    const r = ch.target;
+    if (r.what === "contact") {
+      const cur = rows.contacts.find((c) => c.id === r.id);
+      if (cur && cur.kind !== "self") contactIds.add(cur.id);
+    } else if (r.what === "medication") {
+      const med = before.medical.medications[r.index];
+      if (!med || med.name !== r.name) continue;
+      for (const k of rows.clocks) if (k.kind !== "device" && k.kind !== "condition" && sameMedication(k.label, med.name)) clockIds.add(k.id);
+    } else if (r.what === "device") {
+      if (!before.medical.devices.some((d) => d.kind === r.kind)) continue;
+      const category = DEVICE_CLOCKS[r.kind].category;
+      for (const k of rows.clocks) if ((k.kind === "device" || k.kind === "supply") && k.category === category) clockIds.add(k.id);
+    }
+  }
+  const removed = [...[...contactIds].map((id) => `contacts.${id}`), ...[...clockIds].map((id) => `clocks.${id}`)];
+  return {
+    removed,
+    count: contactIds.size + clockIds.size,
+    /** guardArgs は ?1 経過の行の id・?2 本人の id・?3 時刻 */
+    build(db: D1Database, guard: string, guardArgs: GuardArgs): Statement[] {
+      return [
+        ...[...contactIds].map((id) =>
+          db.prepare(`DELETE FROM contacts WHERE id = ?4 AND person_id = ?2 AND kind <> 'self' AND ${guard}`).bind(...guardArgs, id),
+        ),
+        ...[...clockIds].map((id) => db.prepare(`DELETE FROM clocks WHERE id = ?4 AND person_id = ?2 AND ${guard}`).bind(...guardArgs, id)),
+      ];
+    },
+  };
+}
+
+// ---------- 時計の値を確かめた（手で直すときだけ） ----------
+
+/** 値の入った時計の確認の日付を今にする（値・単位・出典は変えない） */
+function planClockSeen(rows: PersonPageRows, changes: ReadonlyArray<IntakeChange>) {
+  const ids = new Set<string>();
+  for (const ch of changes) {
+    if (ch.t !== "clockSeen") continue;
+    const cur = rows.clocks.find((k) => k.id === ch.clockId);
+    if (cur && cur.value != null && cur.kind !== "condition") ids.add(cur.id);
+  }
+  return {
+    fields: [...ids].map((id) => `clocks.${id}`),
+    count: ids.size,
+    build(db: D1Database, guard: string, guardArgs: GuardArgs): Statement[] {
+      return [...ids].map((id) =>
+        db
+          .prepare(`UPDATE clocks SET confirmed_at = ?3 WHERE id = ?4 AND person_id = ?2 AND value IS NOT NULL AND ${guard}`)
+          .bind(...guardArgs, id),
       );
     },
   };

@@ -812,6 +812,103 @@ describe("本人のページの面の「編集」の保存（lib/intake/save.ts 
     expect(kinds[1].body).toBe("ケアマネが直した: 時計・同意");
   });
 
+  it("外す: 欄・薬・機器・ハザード・特記・連絡先の行を外し、薬と機器の時計も消す。本人の行は外さない。経過に「ケアマネが外した」", async () => {
+    const r = await saveIntake(
+      db,
+      cm,
+      edit("p-01", [
+        { t: "remove", target: { what: "field", key: "evacuation.destination1" } },
+        { t: "remove", target: { what: "medication", index: 0, name: "ワーファリン" } },
+        { t: "remove", target: { what: "device", kind: "oxygen" } },
+        { t: "remove", target: { what: "hazard", kind: "flood" } },
+        { t: "remove", target: { what: "note", value: "薬は 2 階の箪笥" } },
+        { t: "remove", target: { what: "contact", id: "c-01-2" } },
+        { t: "remove", target: { what: "contact", id: "c-01-0" } }, // 本人の行 → 外さない
+      ]),
+      NOW,
+    );
+    expect(r).toMatchObject({ ok: true, version: 2 });
+    const l = ledgerOf("p-01");
+    expect(l.evacuation.destination1).toBeUndefined();
+    expect(l.medical.medications).toEqual([]);
+    expect(l.medical.devices).toEqual([]);
+    expect(l.evacuation.hazards).toEqual([]);
+    expect(l.notes).toEqual([]);
+    const contacts = (sqlite.prepare("SELECT id FROM contacts WHERE person_id = 'p-01' ORDER BY id").all() as Array<{ id: string }>).map((c) => c.id);
+    expect(contacts).toEqual(["c-01-0", "c-01-1"]);
+    const clocks = (sqlite.prepare("SELECT id FROM clocks WHERE person_id = 'p-01' ORDER BY id").all() as Array<{ id: string }>).map((c) => c.id);
+    expect(clocks).not.toContain("k-01-1");
+    expect(clocks).not.toContain("k-01-2");
+    expect(clocks).not.toContain("k-01-3");
+    const lines = await inputRows("p-01");
+    expect(lines).toHaveLength(1);
+    expect(lines[0].body).toMatch(/^ケアマネが外した: /);
+    for (const name of ["避難先1", "薬", "機器", "ハザード", "特記", "連絡先", "時計"]) expect(lines[0].body).toContain(name);
+    expect(lines[0]).not.toHaveProperty("ai");
+  });
+
+  it("外す: 名前が合わない薬・無い物は外さない（変更 0）", async () => {
+    const r = await saveIntake(
+      db,
+      cm,
+      edit("p-01", [
+        { t: "remove", target: { what: "medication", index: 0, name: "別の薬" } },
+        { t: "remove", target: { what: "hazard", kind: "landslide" } },
+        { t: "remove", target: { what: "field", key: "evacuation.pets" } },
+      ]),
+      NOW,
+    );
+    expect(r).toMatchObject({ ok: true, changed: 0 });
+    expect(ledgerOf("p-01").medical.medications).toHaveLength(1);
+  });
+
+  it("直すと外すを 1 つの保存で: 経過は「ケアマネが直した: 〜。ケアマネが外した: 〜」", async () => {
+    const r = await saveIntake(
+      db,
+      cm,
+      edit("p-01", [
+        { t: "field", key: "evacuation.pets", value: "猫", overwrite: true },
+        { t: "remove", target: { what: "note", value: "薬は 2 階の箪笥" } },
+      ]),
+      NOW,
+    );
+    expect(r).toMatchObject({ ok: true });
+    const lines = await inputRows("p-01");
+    expect(lines[0].body).toBe("ケアマネが直した: ペット。ケアマネが外した: 特記");
+  });
+
+  it("時計の値を今日確かめた（値は同じ）: 確認の日付だけ今に、経過に「ケアマネが確認した」。値の無い時計は飛ばす", async () => {
+    const r = await saveIntake(
+      db,
+      cm,
+      edit("p-01", [
+        { t: "clockSeen", clockId: "k-01-1" },
+        { t: "clockSeen", clockId: "k-01-3" }, // 値なし → 飛ばす
+      ]),
+      NOW,
+    );
+    expect(r).toMatchObject({ ok: true, changed: 1 });
+    expect(sqlite.prepare("SELECT value, unit, confirmed_at FROM clocks WHERE id = 'k-01-1'").get()).toEqual({
+      value: 2,
+      unit: "hour",
+      confirmed_at: NOW.toISOString(),
+    });
+    expect(sqlite.prepare("SELECT confirmed_at FROM clocks WHERE id = 'k-01-2'").get()).toEqual({ confirmed_at: "2026-11-02T03:00:00.000Z" });
+    const lines = await inputRows("p-01");
+    expect(lines).toHaveLength(1);
+    expect(lines[0].body).toBe("ケアマネが確認した: 時計");
+  });
+
+  it("外す・値の確認は手で直すときだけ（AI の分け方・問いの答えの保存には混ぜない）", async () => {
+    const remove = { t: "remove", target: { what: "note", value: "薬は 2 階の箪笥" } } as const;
+    expect(await saveIntake(db, cm, edit("p-01", [remove], { edit: false }), NOW)).toEqual({ ok: false, error: "forbidden" });
+    expect(await saveIntake(db, cm, edit("p-01", [{ t: "clockSeen", clockId: "k-01-1" }], { edit: undefined }), NOW)).toEqual({
+      ok: false,
+      error: "forbidden",
+    });
+    expect(ledgerOf("p-01").notes).toEqual(["薬は 2 階の箪笥"]);
+  });
+
   it("薬を手で直すと空にした所は消え、区分を変えると中断注意の印を区分から付け直す", () => {
     const l = seed("p-01").ledger;
     const { ledger } = applyLedgerChanges(l, [

@@ -60,7 +60,20 @@ export type IntakeChange =
   /** 時計の頼り先の確認（確認済・未確認）。人が付ける（lib/ledger-marks.ts の経過の行） */
   | { t: "clockCheck"; clockId: string; to: CheckStatus }
   /** 同意（得た・断った・未確認）。人が記録する */
-  | { t: "consent"; kind: ConsentKind; status: ConsentStatus };
+  | { t: "consent"; kind: ConsentKind; status: ConsentStatus }
+  /** 外す（欄を空にする・薬・機器・ハザード・特記・連絡先の行を外す）。手で直すときだけ（確認の窓のあと） */
+  | { t: "remove"; target: RemoveTarget }
+  /** 時計の値を今日確かめた（値は同じまま、確認の日付を今日に）。手で直すときだけ */
+  | { t: "clockSeen"; clockId: string };
+
+export type RemoveTarget =
+  | { what: "field"; key: string }
+  /** name は外す薬の名前（番号がずれていたら外さない） */
+  | { what: "medication"; index: number; name: string }
+  | { what: "device"; kind: Device["kind"] }
+  | { what: "hazard"; kind: Hazard["kind"] }
+  | { what: "note"; value: string }
+  | { what: "contact"; id: string };
 
 const join = (parts: Array<string | undefined | false>) => parts.filter((p): p is string => !!p && p.trim() !== "").join(" ");
 
@@ -110,6 +123,10 @@ export function changeText(c: IntakeChange): string {
       return CHECK_STATUS_LABELS[c.to];
     case "consent":
       return `${CONSENT_KIND_LABELS[c.kind]} ${CONSENT_STATUS_LABELS[c.status]}`;
+    case "remove":
+      return "外す";
+    case "clockSeen":
+      return "確認";
   }
 }
 

@@ -8,7 +8,7 @@
 // - 値が入った欄の pending（未確認）は消す。分からない・答えない・次回は pending に残す
 // 連絡先と時計は台帳の外（表の行）なので lib/intake/save.ts が当てる。
 
-import type { IntakeChange, MedicationValue } from "../intake/changes.ts";
+import type { IntakeChange, MedicationValue, RemoveTarget } from "../intake/changes.ts";
 import { intakeField, isFilled, ledgerValue, normalizeValue, withLedgerValue } from "../intake/fields.ts";
 import type { Ledger, MedicationCategory } from "./types.ts";
 
@@ -55,6 +55,8 @@ export type Applied = {
   skipped: number;
   /** 空欄の理由として残した物（分からない・答えない・次回） */
   pending: Ledger["pending"];
+  /** 外した場所（手で直すとき。経過の「ケアマネが外した」） */
+  removed: string[];
 };
 
 type Medication = Ledger["medical"]["medications"][number];
@@ -121,6 +123,7 @@ export function applyLedgerChanges(ledger: Ledger, changes: ReadonlyArray<Intake
   const fields: string[] = [];
   const pendingSet: Array<{ field: string; status: Ledger["pending"][number]["status"] }> = [];
   let skipped = 0;
+  const removes: RemoveTarget[] = [];
 
   for (const c of changes) {
     switch (c.t) {
@@ -274,6 +277,54 @@ export function applyLedgerChanges(ledger: Ledger, changes: ReadonlyArray<Intake
       case "clock":
       case "clockCheck":
       case "consent":
+      case "clockSeen":
+        break;
+      case "remove":
+        removes.push(c.target);
+        break;
+    }
+  }
+
+  // 外す（手で直すとき。lib/intake/save.ts の edit）。足す・直すのあとに、薬は後ろの番号から
+  const removed: string[] = [];
+  for (const r of [...removes].sort((a, b) => (b.what === "medication" ? b.index : -1) - (a.what === "medication" ? a.index : -1))) {
+    switch (r.what) {
+      case "field": {
+        if (!intakeField(r.key) || !isFilled(ledgerValue(out, r.key))) break;
+        out = withLedgerValue(out, r.key, undefined);
+        removed.push(r.key);
+        break;
+      }
+      case "medication": {
+        const meds = out.medical.medications;
+        if (meds[r.index]?.name !== r.name) break;
+        meds.splice(r.index, 1);
+        removed.push("medical.medications");
+        break;
+      }
+      case "device": {
+        const i = out.medical.devices.findIndex((d) => d.kind === r.kind);
+        if (i < 0) break;
+        out.medical.devices.splice(i, 1);
+        removed.push("medical.devices");
+        break;
+      }
+      case "hazard": {
+        const i = out.evacuation.hazards.findIndex((h) => h.kind === r.kind);
+        if (i < 0) break;
+        out.evacuation.hazards.splice(i, 1);
+        removed.push("evacuation.hazards");
+        break;
+      }
+      case "note": {
+        const i = out.notes.indexOf(r.value);
+        if (i < 0) break;
+        out.notes.splice(i, 1);
+        removed.push("notes");
+        break;
+      }
+      case "contact":
+        // 連絡先は表の行（lib/intake/save.ts が消す）
         break;
     }
   }
@@ -285,5 +336,5 @@ export function applyLedgerChanges(ledger: Ledger, changes: ReadonlyArray<Intake
   const kept = out.pending.filter((p) => !resolved(p.field) && !pendingSet.some((s) => s.field === p.field));
   const added = pendingSet.filter((s) => !resolved(s.field));
   out = { ...out, pending: [...kept, ...added] };
-  return { ledger: out, fields: [...new Set(fields)], skipped, pending: added };
+  return { ledger: out, fields: [...new Set(fields)], skipped, pending: added, removed: [...new Set(removed)] };
 }
