@@ -18,6 +18,7 @@
 | @google/genai | Gemini TTS で声を作る（lib/gemini。fetch だけで動く web の入口を使う） | Apache-2.0 |
 | zod | Claude の返す JSON の形を書き、返った物を検査する | MIT |
 | qrcode-generator | QR の頁の QR の点の並び（lib/qr/image.ts）。SVG はこちらで描く。間接の依存なし | MIT |
+| fast-xml-parser（5.11.2） | 気象庁の防災情報 XML（Atom のフィードと電文）を読む（lib/jma/xml.ts。Workers には DOMParser が無いので。T72）。間接の依存は strnum・anynum・is-unsafe（2.0.2 に固定。2.0.3 は入れた日の前日に出た版なので package.json の overrides で 1 つ前に）・xml-naming・fast-xml-builder・@nodable/entities・path-expression-matcher で、全部 MIT | MIT |
 | @heroicons/react | 操作のアイコン（components/ui/Icon.tsx。文字と並べて使う。訓練の 7 つの手は components/drill/icons.tsx） | MIT |
 | pdfjs-dist（6.4.299） | 黒塗りの画面（T52）で、選んだ PDF の頭の 3 頁をブラウザの中で画像にする（lib/redact/browser.ts）。PDF を選んだときだけ読み込む。元の PDF はブラウザの外へ出さない。直接の依存は無く、任意の依存の @napi-rs/canvas（MIT。Node で描くための物で、ブラウザでは使わない）が手元に入る。内訳は docs/progress/t52.md | Apache-2.0 |
 | puppeteer-core | 紙面の印刷の確かめ（手元の Chrome・Edge で印刷して PDF の頁数を数える。lib/forms/print-pages.test.ts、tools/print）。開発の道具で配信には入らない（devDependencies）。Chrome は同梱しない。間接の依存の内訳は docs/progress/t36.md | Apache-2.0 |

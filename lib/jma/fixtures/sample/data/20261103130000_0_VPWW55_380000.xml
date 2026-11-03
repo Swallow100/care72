@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- 作った見本。本物の電文ではない（docs/tasks/T72.md）。2026-05-29 からの体系（VPWW55〜61）の本物の形はこの作業の中で見ていない。
+     形は経過措置の VPWW54 と同じ気象警報・注意報の構造（Body の Warning〔type が市町村等〕→ Item → Kind・Area）と仮に置き、
+     名前は新しい体系の呼び方（「レベル3大雨警報」など）にした。本物は作者が tools/jma/fetch-fixtures.mjs で取って読めるか確かめる。
+     市町村の名前とコードは見本（松山市・東温市・今治市・伊予市） -->
+<Report xmlns="http://xml.kishou.go.jp/jmaxml1/" xmlns:jmx="http://xml.kishou.go.jp/jmaxml1/" xmlns:jmx_add="http://xml.kishou.go.jp/jmaxml1/addition1/">
+  <Control>
+    <Title>気象警報・注意報</Title>
+    <DateTime>2026-11-03T13:00:00Z</DateTime>
+    <Status>通常</Status>
+    <EditorialOffice>松山地方気象台</EditorialOffice>
+    <PublishingOffice>松山地方気象台</PublishingOffice>
+  </Control>
+  <Head xmlns="http://xml.kishou.go.jp/jmaxml1/informationBasis1/">
+    <Title>愛媛県気象警報・注意報</Title>
+    <ReportDateTime>2026-11-03T22:00:00+09:00</ReportDateTime>
+    <TargetDateTime>2026-11-03T22:00:00+09:00</TargetDateTime>
+    <EventID/>
+    <InfoType>発表</InfoType>
+    <Serial/>
+    <InfoKind>気象警報・注意報</InfoKind>
+    <InfoKindVersion>2.0_0</InfoKindVersion>
+    <Headline>
+      <Text>中予では、３日夜遅くまで土砂災害に警戒してください。（作った見本）</Text>
+    </Headline>
+  </Head>
+  <Body xmlns="http://xml.kishou.go.jp/jmaxml1/body/meteorology1/" xmlns:jmx_eb="http://xml.kishou.go.jp/jmaxml1/elementBasis1/">
+    <Warning type="気象警報・注意報（府県予報区等）">
+      <Item>
+        <Kind>
+          <Name>レベル3大雨警報</Name>
+          <Code>33</Code>
+          <Status>発表</Status>
+        </Kind>
+        <Area>
+          <Name>愛媛県</Name>
+          <Code>380000</Code>
+        </Area>
+      </Item>
+    </Warning>
+    <Warning type="気象警報・注意報（市町村等をまとめた地域等）">
+      <Item>
+        <Kind>
+          <Name>レベル3大雨警報</Name>
+          <Code>33</Code>
+          <Status>発表</Status>
+        </Kind>
+        <Area>
+          <Name>松山地域</Name>
+          <Code>380011</Code>
+        </Area>
+      </Item>
+    </Warning>
+    <Warning type="気象警報・注意報（市町村等）">
+      <Item>
+        <Kind>
+          <Name>レベル3大雨警報</Name>
+          <Code>33</Code>
+          <Status>発表</Status>
+        </Kind>
+        <Kind>
+          <Name>雷注意報</Name>
+          <Code>14</Code>
+          <Status>継続</Status>
+        </Kind>
+        <Area>
+          <Name>松山市</Name>
+          <Code>3820100</Code>
+        </Area>
+        <ChangeStatus>警報・注意報種別に変化有</ChangeStatus>
+        <FullStatus>一部</FullStatus>
+        <EditingMark>0</EditingMark>
+      </Item>
+      <Item>
+        <Kind>
+          <Name>大雨注意報</Name>
+          <Code>10</Code>
+          <Status>継続</Status>
+        </Kind>
+        <Area>
+          <Name>東温市</Name>
+          <Code>3821500</Code>
+        </Area>
+        <ChangeStatus>変化無</ChangeStatus>
+        <FullStatus>全体</FullStatus>
+        <EditingMark>0</EditingMark>
+      </Item>
+      <Item>
+        <Kind>
+          <Name>大雨注意報</Name>
+          <Code>10</Code>
+          <Status>解除</Status>
+        </Kind>
+        <Area>
+          <Name>伊予市</Name>
+          <Code>3821000</Code>
+        </Area>
+        <ChangeStatus>警報・注意報種別に変化有</ChangeStatus>
+        <FullStatus>全体</FullStatus>
+        <EditingMark>0</EditingMark>
+      </Item>
+      <Item>
+        <Kind>
+          <Status>発表警報・注意報はなし</Status>
+        </Kind>
+        <Area>
+          <Name>今治市</Name>
+          <Code>3820200</Code>
+        </Area>
+        <ChangeStatus>変化無</ChangeStatus>
+        <FullStatus>全体</FullStatus>
+        <EditingMark>0</EditingMark>
+      </Item>
+    </Warning>
+  </Body>
+</Report>
