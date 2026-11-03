@@ -146,7 +146,7 @@ describe("本人のページの書類の行", () => {
 
   it("書類ごとに何の書類かの 1 行（正式な名前・誰が誰に・版）が付く", () => {
     const d = docs();
-    expect(d.map((x) => x.key)).toEqual(["matsuyama", "medical", "own", "qr"]);
+    expect(d.map((x) => x.key)).toEqual(["matsuyama", "medical", "own", "qr", "phone"]);
     for (const x of d) expect(x.about, x.key).toBeTruthy();
     expect(d[0].about).toContain("松山市避難行動要支援者名簿登録申込書 兼 個別避難計画");
     expect(d[0].about).toContain("本人・家族が市へ出す");

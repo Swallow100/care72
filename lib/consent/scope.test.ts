@@ -38,7 +38,7 @@ describe("役 × 同意の組で見える区分", () => {
       expect(s.items).toEqual(["identity", "medical", "evacuation", "people", "address", "basic", "consent", "plan"]);
       expect(peopleMode(s)).toBe("all");
       expect(s.timeline).toBe("all");
-      expect(s.documents).toEqual(["matsuyama", "medical", "own", "qr", "mapped"]);
+      expect(s.documents).toEqual(["matsuyama", "medical", "own", "qr", "phone", "mapped"]);
       expect(s.recordings).toBe(true);
       expect(s.writes).toEqual(["safety_check", "transported", "arrived_shelter", "note"]);
       expect(s.provision).toBeNull();
