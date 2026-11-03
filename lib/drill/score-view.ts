@@ -18,13 +18,15 @@ export type ScoreView = {
   rows: ScoreRow[];
   /** 条件に達した人（最初に切れた時計） */
   reached: Array<{ person: string; name: string; text: string; outAt: string; tries: number }>;
+  /** 仮想モードの結末（世界が決めた。AI の印）。固定の筋は null */
+  ended: Array<{ person: string; name: string; text: string; reason: string | null; at: string }> | null;
   /** 順番が一致しなかった人と理由 */
   misses: Array<{ person: string; name: string; why: string; expected: string | null }>;
   /** 様式 9 の空欄のある人と欄 */
   blanks: Array<{ person: string; name: string; columns: string }>;
-  /** 着信の数（「応答 3・拒否 1・未応答 0」） */
+  /** 着信の数（「出た 3・出なかった 1・未応答 0」） */
   calls: string;
-  /** 前回の訓練（「11/2 大雨の想定」の元） */
+  /** 前回の訓練（「11/2 大雨想定」の元） */
   previous: { id: string; scenario: DrillScenario; startedAt: string } | null;
 };
 
@@ -41,23 +43,32 @@ export function numberText(key: ScoreKey, n: ScoreNumbers): string {
       return String(n.form9);
     case "reached":
       return String(n.reached);
+    case "ended":
+      return n.ended === undefined ? SCORE_LABELS.none : String(n.ended);
   }
 }
 
-export const SCORE_KEYS: ReadonlyArray<ScoreKey> = ["order", "report", "form9", "reached"];
+export const SCORE_KEYS: ReadonlyArray<ScoreKey> = ["order", "report", "form9", "reached", "ended"];
 
 export function scoreView(score: DrillScore, names: Names, previous: PreviousNumbers | null): ScoreView {
   const now = scoreNumbers(score);
   const name = (p: string) => names[p] ?? p;
+  // 仮想モード（T53）だけ結末（AI 筋書）の行を足し、条件到達に「時計計算」と添えて別の数と分かるように
+  const virtual = score.ended !== undefined;
+  const sub = (key: ScoreKey) =>
+    key === "form9" ? SCORE_LABELS.form9Doc : key === "reached" && virtual ? SCORE_LABELS.reachedBy : key === "ended" ? SCORE_LABELS.endedBy : null;
   return {
-    rows: SCORE_KEYS.map((key) => ({
+    rows: SCORE_KEYS.filter((key) => key !== "ended" || virtual).map((key) => ({
       key,
       label: SCORE_LABELS[key],
-      sub: key === "form9" ? SCORE_LABELS.form9Doc : null,
+      sub: sub(key),
       now: numberText(key, now),
       prev: previous ? numberText(key, previous.numbers) : null,
     })),
     reached: score.reached.map((r) => ({ person: r.person, name: name(r.person), text: reachedText(r), outAt: minuteText(r.outMinute), tries: r.tries })),
+    ended: score.ended
+      ? score.ended.map((e) => ({ person: e.person, name: name(e.person), text: e.text, reason: e.reason, at: minuteText(Math.round(e.at * 60)) }))
+      : null,
     misses: score.order.misses.map((m) => ({
       person: m.person,
       name: name(m.person),
@@ -74,7 +85,7 @@ export function scoreView(score: DrillScore, names: Names, previous: PreviousNum
   };
 }
 
-/** 前回の訓練の言い方（「前回 11/2 大雨の想定」）。日付は呼ぶ側の形（画面は shortJst） */
+/** 前回の訓練の言い方（「前回 11/2 大雨想定」）。日付は呼ぶ側の形（画面は shortJst） */
 export function previousText(p: ScoreView["previous"], date: (iso: string) => string): string {
   return p ? `${SCORE_LABELS.previous} ${date(p.startedAt)} ${SCENARIO_LABELS[p.scenario]}` : SCORE_LABELS.noPrevious;
 }
