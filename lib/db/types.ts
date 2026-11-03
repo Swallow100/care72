@@ -603,6 +603,12 @@ export type SignalRow = {
   ai_error: ClassifyError | null;
   /** Claude の分類を試みた時刻 */
   ai_at: string | null;
+  /** 赤のあとの聞き取りの答え（lib/signals/questions.ts の Answers の JSON。T49）。ルールの表に渡さない */
+  answers: string | null;
+  /** Claude の聞き取りメモ（欄ごとに文字起こしから写した 30 字まで。T49）。ルールの表に渡さない */
+  ai_memo: string | null;
+  /** ケアマネが直した聞き取りの欄（T49）。ルールの表に渡さない */
+  memo: string | null;
   occurred_at: string;
   created_at: string;
 };

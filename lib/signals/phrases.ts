@@ -5,6 +5,7 @@
 import { easy, plainText, type Word } from "../forms/easy-words.ts";
 import { emergencyWords } from "../forms/own-sheet.ts";
 import type { WhereNow } from "../db/types.ts";
+import { allQuestionMarkups } from "./questions.ts";
 
 /** 赤の 4 問（1 画面 1 問の順）。答えは信号の表の injured・at_home・can_move・has_medicine */
 export const RED_QUESTIONS = ["injured", "atHome", "canMove", "hasMedicine"] as const;
@@ -29,6 +30,8 @@ export const PHONE_PHRASES = {
   seconds: "{秒|びょう}",
   more: "もっと {話|はな}す",
   send: "{送|おく}る",
+  /** 聞き取りの問いをとばす（T49。どの問いにも置く） */
+  skip: "とばす",
 } as const;
 
 export const WHERE_PHRASES: Record<WhereNow, string> = {
@@ -84,6 +87,8 @@ export const FAMILY_PHRASES = {
   callCm: "ケアマネジャーに {電話|でんわ}",
   you: "あなた",
   answered: "と こたえました",
+  /** 問いの主語「お母さんは」の「は」（T49） */
+  wa: "は",
 } as const;
 
 /** 家族の答えの言葉（経過の行の「」の中） */
@@ -158,6 +163,8 @@ export function allFamilyWords(): Word[] {
     PHONE_PHRASES.sent,
     PHONE_PHRASES.queued,
     PHONE_PHRASES.queuedSub,
+    PHONE_PHRASES.skip,
+    ...allQuestionMarkups(),
   ];
   return [...marks.flatMap((m) => easy(m)), ...emergencyWords()];
 }
@@ -168,6 +175,7 @@ export function allPhoneWords(): Word[] {
     ...Object.values(PHONE_PHRASES),
     ...Object.values(WHERE_PHRASES),
     ...Object.values(RED_QUESTION_PHRASES).flatMap((p) => [p.q, p.yes, p.no]),
+    ...allQuestionMarkups(),
     AI_NOTICE_TEXT,
   ];
   return [...marks.flatMap((m) => easy(m)), ...emergencyWords()];

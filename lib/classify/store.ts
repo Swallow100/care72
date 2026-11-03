@@ -121,15 +121,17 @@ export async function classifySignal(db: D1Database, t: ClassifyTarget, deps: Cl
   const result = await runClassify(db, t, sig, deps);
   const at = deps.now();
   if (result.ok) {
-    const { categories, confidence, quote } = result.value;
+    const { categories, confidence, quote, memo } = result.value;
     const json = JSON.stringify(categories);
+    // 聞き取りメモ（T49）は ai_memo に。押した答え（answers）は上書きしない（画面で人の答えが先。色と順には使わない）
+    const memoJson = Object.values(memo).some((v) => v !== null) ? JSON.stringify(memo) : null;
     await db.batch([
       db
         .prepare(
-          `UPDATE signals SET ai_classes = ?2, ai_confidence = ?3, ai_quote = ?4, ai_model = ?5, ai_error = NULL, ai_at = ?6
+          `UPDATE signals SET ai_classes = ?2, ai_confidence = ?3, ai_quote = ?4, ai_model = ?5, ai_error = NULL, ai_at = ?6, ai_memo = ?7
             WHERE id = ?1 AND ai_at IS NULL`,
         )
-        .bind(sig.id, json, confidence, quote, result.model, at),
+        .bind(sig.id, json, confidence, quote, result.model, at, memoJson),
       // 人が先に直していれば、効く分類は人の物のまま
       db
         .prepare(`UPDATE signals SET classes = ?2, classified_by = 'claude' WHERE id = ?1 AND classified_by IS NULL`)

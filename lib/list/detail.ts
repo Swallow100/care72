@@ -57,6 +57,9 @@ export type SignalForDetail = Pick<
   | "ai_model"
   | "ai_error"
   | "ai_at"
+  | "answers"
+  | "ai_memo"
+  | "memo"
   | "occurred_at"
 >;
 

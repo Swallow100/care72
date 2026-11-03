@@ -1,6 +1,7 @@
 // 家族・支援者のスマホの災害モードの 1 画面（lib/signals/family-phone.ts の状態を描くだけ）。状態を持たない（テストで静的に描ける）。
 // 上は「お母さん（山田 ハナ）は 無事ですか」と 3 つのボタン。面で塗るのは 無事です（緑）と 無事じゃない（赤）だけで、
-// 分からない は面の色。無事じゃない を押したあとは 送っている間も 119 の 1 行（T48）。答えたあとは 送れたか・（赤なら 119 の 1 行）・これまでの こと（同意の範囲）・持って いく もの・
+// 分からない は面の色。無事じゃない を押したあとは 本人と同じ問いの表を 1 画面 1 問（主語は「お母さんは」。T49）、
+// 問い・送っている間も 119 の 1 行（T48）。答えたあとは 送れたか・（赤なら 119 の 1 行）・これまでの こと（同意の範囲）・持って いく もの・
 // ケアマネジャーの電話・最初から。言葉は lib/signals/phrases.ts の定型と台帳の値だけ。判定・助言の言葉は出さない。
 
 import { EasyWords } from "@/components/forms/EasyText";
@@ -10,10 +11,13 @@ import type { FamilyScreen } from "@/lib/signals/family";
 import type { FamilyState } from "@/lib/signals/family-phone";
 import { FAMILY_PHRASES, PHONE_PHRASES } from "@/lib/signals/phrases";
 import { SheetBlock } from "./PhoneSheet";
-import { BIG, Choice, Emergency, Fill } from "./PhoneView";
+import { BIG, Choice, Emergency, Fill, QuestionBody } from "./PhoneView";
 
 export type FamilyActions = {
   answer(color: FamilyAnswer): void;
+  /** 問いの選択肢（T49） */
+  choose(choice: string): void;
+  skip(): void;
   again(): void;
 };
 
@@ -112,6 +116,24 @@ export function FamilyView({ state, screen, on }: { state: FamilyState; screen: 
               （<Words m={FAMILY_PHRASES.unknownSub} />）
             </span>
           </button>
+        </Fill>
+      );
+    case "question":
+      return (
+        <Fill step={`question-${state.id}`}>
+          <QuestionBody
+            id={state.id}
+            family
+            lead={
+              <>
+                <EasyWords words={screen.callName} />
+                <Words m={FAMILY_PHRASES.wa} />{" "}
+              </>
+            }
+            onChoice={on.choose}
+            onSkip={on.skip}
+          />
+          <Emergency />
         </Fill>
       );
     case "sending":

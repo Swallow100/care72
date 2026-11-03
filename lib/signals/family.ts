@@ -193,7 +193,16 @@ export type FamilyScreen = {
   carry: OwnBlock | null;
   /** ケアマネジャー（名前と事業所）と電話。番号が台帳に無ければ null */
   careManager: { words: Word[]; number: string | null };
+  /** 問いの頭の呼び方（「お母さん」「山田 ハナさん」。T49 の問いの主語） */
+  callName: Word[];
+  /** 台帳に機器がある（聞き取りの機器の問いを出す。T49） */
+  hasDevice: boolean;
 };
+
+/** 台帳に機器がある（本人・家族のスマホの聞き取りで、機器の問いを出すか。T49） */
+export function personHasDevice(rows: Pick<PersonPageRows, "person">): boolean {
+  return parseLedger(rows.person.ledger).medical.devices.length > 0;
+}
 
 export function buildFamilyScreen(rows: PersonPageRows, w: FamilyWriter, sheet: OwnSheet): FamilyScreen {
   const cm = sheet.blocks.find((b) => b.id === "call")?.lines.find((l) => l.key === "call.cm");
@@ -204,5 +213,7 @@ export function buildFamilyScreen(rows: PersonPageRows, w: FamilyWriter, sheet: 
     history: familyHistory(rows, w),
     carry: sheet.blocks.find((b) => b.id === "carry") ?? null,
     careManager: { words: cm?.words ?? easy("ケアマネジャー"), number: cm?.phone?.number ?? null },
+    callName: familyCallName(rows, w),
+    hasDevice: personHasDevice(rows),
   };
 }

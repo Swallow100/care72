@@ -2,7 +2,7 @@
 
 <!-- このファイルは npm run docs:triage が lib/sources/index.ts と lib/triage/index.ts から作る。手で直さない。コードと違うと npm test が止まる -->
 
-ルールの表の行・足す言葉・優先の骨格の段（docs/TRIAGE.md）と、Claude に渡す根拠は、この一覧の id だけを指す。一覧に無い根拠は作らない。
+ルールの表の行・足す言葉・順番の骨格の段（docs/TRIAGE.md）と、Claude に渡す根拠は、この一覧の id だけを指す。一覧に無い根拠は作らない。
 文書はリンクだけで、PDF はリポジトリに入れない。要旨は作者の言葉で、引用は 15 字まで。
 「確認」は作者（医学生）が本文を読んで確かめた日。未確認の出典は画面にも「未確認」と出る。確かめたら lib/sources/index.ts の checkedOn に日付を入れ、npm run docs:triage を流す。
 
