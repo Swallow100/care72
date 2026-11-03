@@ -1,5 +1,6 @@
 // 紙面の欄の値（lib/forms の Cell）を描く。状態を持たない（Server Component のまま、テストで renderToStaticMarkup できる）。
-// 選ぶ欄は ■（選んだ）と □。未確認は灰、台帳の pending は太字と理由（次の訪問の問い）。同意のない範囲は「省略」。
+// 選ぶ欄は ■（選んだ）と □。未確認は小さく灰、台帳の pending は理由を括弧で（次の訪問の問い）。同意のない範囲は「省略」。
+// 紙では値を太くしない（T47。太字は元の様式で太い所だけで、紙面の部品と paper.css が持つ）。
 // 字は紙の書き方（数字と単位・年月日を詰める。lib/forms/paper-text.ts）。本人の言葉（Piece の raw）は台帳の文のまま。
 
 import type { Cell, Choice, Piece } from "@/lib/forms/matsuyama";
@@ -39,7 +40,8 @@ function PieceText({ p, tight }: { p: Piece; tight: boolean }) {
       <span className="p-unc">{BLANK.unconfirmed}</span>
     );
   }
-  const cls = [p.sub ? "p-sub" : "", p.strong ? "p-strong" : ""].filter(Boolean).join(" ");
+  // 強め（strong）は画面の要約（QR の頁）でだけ太くする。紙（tight）では元の様式に無い太字を出さない（T47）
+  const cls = [p.sub ? "p-sub" : "", p.strong && !tight ? "p-strong" : ""].filter(Boolean).join(" ");
   return (
     <span className={cls || undefined}>
       <KeepNumbers text={tight && !p.raw ? paperText(p.text) : p.text} />

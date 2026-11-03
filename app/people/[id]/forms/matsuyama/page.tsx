@@ -4,9 +4,11 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { MatsuyamaSheet } from "@/components/forms/MatsuyamaSheet";
 import { StateTag } from "@/components/person/parts";
+import { FormAbout } from "@/components/forms/FormAbout";
 import { PaperBar, wantsPrint } from "@/components/ui/PaperBar";
 import { todayJst } from "@/lib/age";
 import { requirePage } from "@/lib/auth/server";
+import { DOCUMENT_CATALOG } from "@/lib/forms/catalog";
 import { buildMatsuyamaSheet } from "@/lib/forms/matsuyama";
 import { BLANK_LABELS } from "@/lib/labels";
 import { loadPersonDocument } from "@/lib/consent/documents";
@@ -49,6 +51,7 @@ export default async function MatsuyamaFormPage({ params, searchParams }: Props)
           </div>
         )}
       </PaperBar>
+      <FormAbout entry={DOCUMENT_CATALOG.matsuyama} />
       <MatsuyamaSheet sheet={sheet} />
     </main>
   );

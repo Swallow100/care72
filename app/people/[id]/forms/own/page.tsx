@@ -10,11 +10,13 @@ import { OwnSheetPaper, type OwnQr } from "@/components/forms/OwnSheet";
 import { qrExpiryDate } from "@/components/forms/QrBlock";
 import { StateTag } from "@/components/person/parts";
 import { LinkPending } from "@/components/ui/LinkPending";
+import { FormAbout } from "@/components/forms/FormAbout";
 import { PaperBar, wantsPrint } from "@/components/ui/PaperBar";
 import { todayJst } from "@/lib/age";
 import { requirePage } from "@/lib/auth/server";
 import { nowSec, sessionSecret } from "@/lib/auth/session";
 import { buildOwnSheetMedical } from "@/lib/forms/medical-summary";
+import { DOCUMENT_CATALOG } from "@/lib/forms/catalog";
 import { buildOwnSheet } from "@/lib/forms/own-sheet";
 import { BLANK_LABELS, DOCUMENT_LABELS } from "@/lib/labels";
 import { loadPersonDocument } from "@/lib/consent/documents";
@@ -93,6 +95,7 @@ export default async function OwnFormPage({ params, searchParams }: Props) {
           <LinkPending />
         </Link>
       </PaperBar>
+      <FormAbout entry={DOCUMENT_CATALOG.own} />
       <OwnSheetPaper sheet={sheet} medical={medical} qr={qr} />
     </main>
   );

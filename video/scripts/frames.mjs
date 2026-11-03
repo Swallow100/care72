@@ -1,7 +1,7 @@
 // 録画を静止画の連番（30fps の jpg）と音（wav）に分ける。
 // node scripts/frames.mjs <録画のファイル> <番号> [始まりの秒] [終わりの秒]
 //   例: node scripts/frames.mjs raw/R10-2.mp4 R10 12.5 95
-// 出る物: public/footage/<番号>/00001.jpg …、public/audio/app/<番号>.wav（録画に音があれば）
+// 出る物: assets/rec/<番号>-<回>/00001.jpg …（scan で public/footage/<番号>/ へ写る）、public/audio/app/<番号>.wav（録画に音があれば）
 // 連番にするのは、Windows で OffthreadVideo が "No frame found" で止まることがあるため（README）。
 import { existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -22,7 +22,14 @@ const range = [];
 if (start) range.push("-ss", start);
 if (end) range.push("-to", end);
 
-const outDir = join(ROOT, "public", "footage", id);
+// 置き場は video/assets/rec/<番号>-<回>。回は今ある回の次（scan は一番大きい回を使うので、新しく撮った物が使われる）
+const recRoot = join(ROOT, "assets", "rec");
+mkdirSync(recRoot, { recursive: true });
+const takes = readdirSync(recRoot)
+  .map((n) => new RegExp(`^${id}-(\\d+)$`).exec(n))
+  .filter(Boolean)
+  .map((m) => Number(m[1]));
+const outDir = join(recRoot, `${id}-${(takes.length ? Math.max(...takes) : 0) + 1}`);
 mkdirSync(outDir, { recursive: true });
 for (const f of readdirSync(outDir)) if (/^\d{5}\.jpg$/.test(f)) rmSync(join(outDir, f));
 

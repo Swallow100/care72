@@ -12,6 +12,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AiMark } from "@/components/person/parts";
 import { Button } from "@/components/ui/Button";
 import { CloseIcon, EditIcon, RetryIcon, SaveIcon } from "@/components/ui/Icon";
+import { Loader72 } from "@/components/ui/Loader72";
 import { LABEL, PanelHead } from "@/components/ui/Panel";
 import { Mark, StateText } from "@/components/ui/Tag";
 import { BASIS_LABEL } from "@/lib/drill/labels";
@@ -179,7 +180,8 @@ export function ReviewBox({
           <span className={LABEL}>{view.reason}</span>
         </p>
       )}
-      {view.kind === "creating" && <p className="text-sm text-muted">{REVIEW_UI.creating}</p>}
+      {/* 講評を作っている間は AI の待ちの印（T44） */}
+      {view.kind === "creating" && <Loader72 label={REVIEW_UI.creating} size={16} className="text-sm text-muted" />}
       {view.kind === "failed" && (
         <p className="flex flex-wrap items-baseline gap-x-2 text-sm">
           <span className="font-bold">{REVIEW_UI.failed}</span>

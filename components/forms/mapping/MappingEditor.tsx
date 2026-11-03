@@ -12,6 +12,7 @@ import { INPUT } from "@/components/person/intake-ui";
 import { Button } from "@/components/ui/Button";
 import { AddIcon, RemoveIcon, RestoreIcon, SaveIcon } from "@/components/ui/Icon";
 import type { FormMappingStatus } from "@/lib/db/types";
+import { Select } from "@/components/ui/Select";
 import {
   blankField,
   CONFIDENCE_LABELS,
@@ -237,16 +238,16 @@ function FieldRow({ f, pages, empty, onChange }: { f: MappingField; pages: numbe
         )}
       </td>
       <td className={CELL}>
-        <select aria-label="形" className={IN} value={f.shape} disabled={off} onChange={(e) => onChange({ shape: e.target.value as FieldShape, ...(e.target.value === "handwrite" ? { item: null } : {}) })}>
+        <Select aria-label="形" className={IN} value={f.shape} disabled={off} onChange={(e) => onChange({ shape: e.target.value as FieldShape, ...(e.target.value === "handwrite" ? { item: null } : {}) })}>
           {FIELD_SHAPES.map((s) => (
             <option key={s} value={s}>
               {FIELD_SHAPE_LABELS[s]}
             </option>
           ))}
-        </select>
+        </Select>
       </td>
       <td className={CELL}>
-        <select
+        <Select
           aria-label="台帳の項目"
           className={`${IN} ${f.item === null && f.shape !== "handwrite" && !off ? "text-muted" : ""}`}
           value={f.item ?? ""}
@@ -263,7 +264,7 @@ function FieldRow({ f, pages, empty, onChange }: { f: MappingField; pages: numbe
               ))}
             </optgroup>
           ))}
-        </select>
+        </Select>
       </td>
       <td className={CELL}>
         {f.ai ? (

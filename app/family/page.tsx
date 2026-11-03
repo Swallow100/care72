@@ -4,6 +4,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { AutoRefresh } from "@/components/disaster/AutoRefresh";
 import { FamilyDisaster } from "@/components/phone/FamilyDisaster";
+import { InstallHint } from "@/components/phone/InstallHint";
 import { PhoneSheet } from "@/components/phone/PhoneSheet";
 import { todayJst } from "@/lib/age";
 import { requirePage } from "@/lib/auth/server";
@@ -52,6 +53,8 @@ export default async function FamilyPage() {
 
   return (
     <main className="mx-auto max-w-md px-3 py-4 font-ud">
+      {/* ホーム画面に追加の案内（T44。平時だけ、入れるまで） */}
+      <InstallHint />
       <PhoneSheet sheet={sheet} only={FAMILY_SHEET_BLOCKS} />
       <AutoRefresh seconds={NORMAL_REFRESH_SEC} />
     </main>

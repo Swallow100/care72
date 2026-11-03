@@ -88,11 +88,12 @@ export const TextCard: React.FC<{ lines: string[]; sub?: string }> = ({ lines, s
   );
 };
 
-/** G1 72 時間の輪。目盛りが 1 つずつ埋まる */
-export const Ring72: React.FC<{ label: string; duration: number }> = ({ label, duration }) => {
+/** G1 72 時間の輪。目盛りが 1 つずつ埋まる。S2 では題名（ケア72）を輪の中に置き、副題を下に出す */
+export const Ring72: React.FC<{ label: string; duration: number; sub?: string }> = ({ label, duration, sub }) => {
   const frame = useCurrentFrame();
   const p = usePalette();
   const filled = Math.round(interpolate(frame, [0, duration * 0.8], [0, 72], ease));
+  const opacity = interpolate(frame, [0, 12], [0, 1], ease);
   const r = 300;
   const ticks = Array.from({ length: 72 }, (_, i) => {
     const a = (i / 72) * Math.PI * 2 - Math.PI / 2;
@@ -110,13 +111,14 @@ export const Ring72: React.FC<{ label: string; duration: number }> = ({ label, d
     );
   });
   return (
-    <Center>
+    <Center gap={8}>
       <svg width={700} height={700} viewBox="-350 -350 700 700">
         {ticks}
-        <text x={0} y={30} textAnchor="middle" fontFamily={FONT.main} fontWeight={600} fontSize={110} fill={p.fg}>
+        <text x={0} y={40} textAnchor="middle" fontFamily={FONT.main} fontWeight={600} fontSize={label.length > 4 ? 96 : 120} fill={p.fg} opacity={opacity}>
           {label}
         </text>
       </svg>
+      {sub ? <div style={{ fontSize: 42, color: p.sub, opacity }}>{sub}</div> : null}
     </Center>
   );
 };

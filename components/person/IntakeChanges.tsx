@@ -16,6 +16,7 @@ import { MEDICATION_CATEGORIES } from "@/lib/db/types";
 import { buttonClass } from "@/components/ui/Button";
 import { BTN, BTN_MAIN, CHECK, INPUT, INPUT_IN } from "./intake-ui";
 import { AiMark, StateTag } from "./parts";
+import { Select } from "@/components/ui/Select";
 
 /** 変更点の 1 行。edited は人が「修正」で値を直したか（行の AI の印の横に「修正済」） */
 export type ChangeRow = DiffItem & { on: boolean; editing: boolean; edited: boolean };
@@ -181,7 +182,7 @@ function EditChange({ change, onChange }: { change: IntakeChange; onChange: (c: 
       return (
         <div className="mt-1 grid grid-cols-2 gap-1">
           <input className={INPUT_IN} value={v.name} onChange={(e) => set({ name: e.target.value })} aria-label="薬の名前" disabled={change.index != null} />
-          <select
+          <Select
             className={INPUT_IN}
             value={v.category}
             onChange={(e) => set({ category: e.target.value as typeof v.category })}
@@ -193,7 +194,7 @@ function EditChange({ change, onChange }: { change: IntakeChange; onChange: (c: 
                 {MEDICATION_CATEGORY_LABELS[c]}
               </option>
             ))}
-          </select>
+          </Select>
           <input className={INPUT_IN} value={v.schedule ?? ""} onChange={(e) => set({ schedule: e.target.value })} placeholder="回数" aria-label="回数" />
           <input className={INPUT_IN} value={v.amount ?? ""} onChange={(e) => set({ amount: e.target.value })} placeholder="用量" aria-label="用量" />
           <input className={`${INPUT_IN} col-span-2`} value={v.storage ?? ""} onChange={(e) => set({ storage: e.target.value })} placeholder="保管" aria-label="保管" />
@@ -221,7 +222,7 @@ function EditChange({ change, onChange }: { change: IntakeChange; onChange: (c: 
             placeholder={CONTACT_KIND_LABELS[v.kind]}
             aria-label="続柄"
           />
-          <select
+          <Select
             className={INPUT_IN}
             value={v.nightOk === undefined ? "" : String(v.nightOk)}
             onChange={(e) => set({ nightOk: e.target.value === "" ? undefined : e.target.value === "true" })}
@@ -230,7 +231,7 @@ function EditChange({ change, onChange }: { change: IntakeChange; onChange: (c: 
             <option value="">夜間未確認</option>
             <option value="true">夜間可</option>
             <option value="false">夜間不可</option>
-          </select>
+          </Select>
           <input className={`${INPUT_IN} col-span-2`} value={v.note ?? ""} onChange={(e) => set({ note: e.target.value })} placeholder="備考" aria-label="備考" />
         </div>
       );
@@ -258,18 +259,18 @@ export function FieldInput({
   switch (s.type) {
     case "enum":
       return (
-        <select className={box} value={typeof value === "string" ? value : ""} onChange={(e) => onChange(e.target.value)} aria-label={field.label}>
+        <Select className={box} value={typeof value === "string" ? value : ""} onChange={(e) => onChange(e.target.value)} aria-label={field.label}>
           <option value="">未確認</option>
           {s.options.map((o) => (
             <option key={o.value} value={o.value}>
               {o.label}
             </option>
           ))}
-        </select>
+        </Select>
       );
     case "bool":
       return (
-        <select
+        <Select
           className={box}
           value={value === true ? "true" : value === false ? "false" : ""}
           onChange={(e) => onChange(e.target.value === "" ? undefined : e.target.value === "true")}
@@ -278,7 +279,7 @@ export function FieldInput({
           <option value="">未確認</option>
           <option value="true">あり</option>
           <option value="false">なし</option>
-        </select>
+        </Select>
       );
     case "enumList": {
       const list = Array.isArray(value) ? (value as string[]) : [];

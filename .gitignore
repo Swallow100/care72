@@ -162,3 +162,7 @@ lib/version.ts
 
 # Claude Code: 手元だけの設定（.claude/settings.json と .claude/skills は commit する）
 .claude/settings.local.json
+
+# ケア72: 動画の素材と書き出し（video/assets の録画・声、video/out の mp4。docs/video/MATERIALS.md）
+video/assets/
+video/out/

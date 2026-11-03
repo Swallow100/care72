@@ -23,6 +23,8 @@ import { changeText, type IntakeChange } from "@/lib/intake/changes";
 import type { DiffItem } from "@/lib/intake/diff";
 import { INTAKE_SECTIONS } from "@/lib/intake/fields";
 import type { IntakeProps } from "@/lib/intake/props";
+import { Loader72 } from "@/components/ui/Loader72";
+import { WAIT_LABELS } from "@/lib/ui/labels";
 import { MicIcon, ReadFileIcon, RetryIcon, SplitIcon, StopIcon } from "./icons";
 import { isError, postForm, postJson } from "./intake-api";
 import { IntakeChanges, rowsOf, type ChangeRow } from "./IntakeChanges";
@@ -162,8 +164,12 @@ export function Intake(props: IntakeProps & { level: Level }) {
   }
 
   const working = busy !== null;
-  const status: ReactNode = working ? (
-    <span className="text-muted">{busy === "read" ? INTAKE_LABELS.reading : INTAKE_LABELS.busy}</span>
+  // Claude が分けている・読んでいる間は AI の待ちの印（T44 の Loader72）、保存の待ちは文字だけ
+  const status: ReactNode =
+    busy === "split" || busy === "read" ? (
+      <Loader72 label={busy === "split" ? WAIT_LABELS.split : INTAKE_LABELS.reading} size={16} live={false} className="text-muted" />
+    ) : working ? (
+    <span className="text-muted">{INTAKE_LABELS.busy}</span>
   ) : listening ? (
     <span className="font-bold" data-intake="listening">
       {INTAKE_LABELS.listening}

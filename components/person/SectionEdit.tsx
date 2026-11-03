@@ -8,6 +8,7 @@
 import { useRouter } from "next/navigation";
 import { useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/Button";
+import { Select } from "@/components/ui/Select";
 import { AddIcon, CloseIcon, SaveIcon } from "@/components/ui/Icon";
 import {
   CONSENT_KINDS,
@@ -232,7 +233,7 @@ export function SectionForm({ section, data, draft, set }: FormProps) {
                         value={k.value}
                         onChange={(e) => set({ clocks: draft.clocks.map((x, j) => (j === i ? { ...x, value: e.target.value } : x)) })}
                       />
-                      <select
+                      <Select
                         className={`${INPUT} w-20`}
                         aria-label={`${k.label} 単位`}
                         value={k.unit}
@@ -243,7 +244,7 @@ export function SectionForm({ section, data, draft, set }: FormProps) {
                             {CLOCK_UNIT_LABELS[u]}
                           </option>
                         ))}
-                      </select>
+                      </Select>
                     </div>
                   </div>
                   {/* 頼り先の確認（透析先・冷蔵・配達・保管）。人が確かめて付ける */}
@@ -332,7 +333,7 @@ export function SectionForm({ section, data, draft, set }: FormProps) {
           {CONSENT_KINDS.map((k) => (
             <label key={k} className={ROW} data-consent={k}>
               <span className={SUB}>{CONSENT_KIND_LABELS[k]}</span>
-              <select
+              <Select
                 className={INPUT}
                 value={draft.consents[k]}
                 onChange={(e) => set({ consents: { ...draft.consents, [k]: e.target.value as EditDraft["consents"][typeof k] } })}
@@ -342,7 +343,7 @@ export function SectionForm({ section, data, draft, set }: FormProps) {
                     {CONSENT_STATUS_LABELS[s]}
                   </option>
                 ))}
-              </select>
+              </Select>
             </label>
           ))}
         </div>
@@ -396,13 +397,13 @@ function MedRow({ med, isNew = false, onChange }: { med: MedDraft; isNew?: boole
   return (
     <div className="grid grid-cols-2 gap-1" data-med={isNew ? "new" : med.name}>
       <input className={INPUT} placeholder="薬の名前" aria-label="薬の名前" value={med.name} onChange={(e) => p({ name: e.target.value })} />
-      <select className={INPUT} aria-label="薬の区分" value={med.category} onChange={(e) => p({ category: e.target.value as MedicationCategory })}>
+      <Select className={INPUT} aria-label="薬の区分" value={med.category} onChange={(e) => p({ category: e.target.value as MedicationCategory })}>
         {MEDICATION_CATEGORIES.map((c) => (
           <option key={c} value={c}>
             {MEDICATION_CATEGORY_LABELS[c]}
           </option>
         ))}
-      </select>
+      </Select>
       <input className={INPUT} placeholder="回数" aria-label={`${med.name} 回数`} value={med.schedule} onChange={(e) => p({ schedule: e.target.value })} />
       <input className={INPUT} placeholder={MED_PARTS.amount} aria-label={`${med.name} ${MED_PARTS.amount}`} value={med.amount} onChange={(e) => p({ amount: e.target.value })} />
       <input
@@ -428,13 +429,13 @@ function ContactRow({ c, isNew = false, onChange }: { c: ContactDraft; isNew?: b
   return (
     <div className="grid grid-cols-2 gap-1 rounded bg-panel2 p-1.5" data-contact={c.id ?? "new"}>
       {isNew ? (
-        <select className={INPUT_IN} aria-label="連絡先の種類" value={c.kind} onChange={(e) => p({ kind: e.target.value as ContactDraft["kind"] })}>
+        <Select className={INPUT_IN} aria-label="連絡先の種類" value={c.kind} onChange={(e) => p({ kind: e.target.value as ContactDraft["kind"] })}>
           {CONTACT_KINDS.filter((k): k is Exclude<ContactKind, "self"> => k !== "self").map((k) => (
             <option key={k} value={k}>
               {CONTACT_KIND_LABELS[k]}
             </option>
           ))}
-        </select>
+        </Select>
       ) : (
         <span className="self-center text-xs font-bold">{CONTACT_KIND_LABELS[c.kind]}</span>
       )}
@@ -448,13 +449,13 @@ function ContactRow({ c, isNew = false, onChange }: { c: ContactDraft; isNew?: b
         value={c.phone}
         onChange={(e) => p({ phone: e.target.value })}
       />
-      <select className={INPUT_IN} aria-label={`${who} 夜間`} value={c.night} onChange={(e) => p({ night: e.target.value as NightDraft })}>
+      <Select className={INPUT_IN} aria-label={`${who} 夜間`} value={c.night} onChange={(e) => p({ night: e.target.value as NightDraft })}>
         {NIGHT.map((n) => (
           <option key={n.value} value={n.value}>
             {n.label}
           </option>
         ))}
-      </select>
+      </Select>
       <input className={INPUT_IN} placeholder="備考" aria-label={`${who} 備考`} value={c.note} onChange={(e) => p({ note: e.target.value })} />
     </div>
   );

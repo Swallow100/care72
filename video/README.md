@@ -19,23 +19,36 @@ npm run studio     # Remotion Studio（http://localhost:3000）で通しで見�
 ```
 
 - `npm run check` は、文（N01〜N30）が PLAN.md・SCRIPT.md・`src/timeline.ts` で同じか、場面が 0〜180 秒で隙間なく続くか、を見る。文を直したら 3 か所とも直して流す
-- 書体は IBM Plex Sans JP と BIZ UDPGothic（OFL）を Google Fonts から読む。書き出すときはネットにつながっていること（つながっていないと端末の書体になる）
+- 書体はアプリと同じで、英数字の Inter と BIZ UDPGothic（OFL）を Google Fonts から読み、日本語は端末の書体（Windows では Yu Gothic UI）。書き出すときはネットにつながっていること（つながっていないと英数字も端末の書体になる）
 
 ## 素材の置き方
 
 素材はリポジトリに入れない（`.gitignore`）。置き場所と一覧は docs/video/MATERIALS.md。
 
-```sh
-# 録画を静止画の連番と音に分ける（番号は MATERIALS.md の R01…、秒は使う所だけ）
-node scripts/frames.mjs raw/R10-2.mp4 R10 12.5 95
-# → public/footage/R10/00001.jpg …、public/audio/app/R10.wav、public/assets.json を書き直す
+素材は `assets/`（置き場）に置き、`npm run scan` で `public/`（Remotion の読み場）へ写す。どちらも commit しない。
 
-# ナレーション（文ごと）と音楽は手で置いてから数え直す
-#   public/audio/narration/N01.wav …
-#   public/audio/music/bed.wav（か .mp3）
-npm run scan
+```sh
+# 仮の声（Windows の読み上げ。台本 docs/video/SCRIPT.md の表から 1 文 1 WAV → assets/voice-tts/N01.wav …）
+powershell -ExecutionPolicy Bypass -File scripts/tts-placeholder.ps1
+# 作者の声は assets/voice/N01.wav … に置く（ある文は仮の声より先に使われる）
+
+# 手元の dev の本物の画面を撮る（鍵の要らない所だけ。→ assets/rec/R10-1/00001.jpg … と markers.json）
+#   ルートで: CLOUDFLARE_INCLUDE_PROCESS_ENV=true JUDGE_PASSWORD=<捨てる値> CAREMANAGER_DEMO_PASSWORD=<捨てる値> npx next dev -p 3073
+CARE72_CM_PASSWORD=<同じ値> CARE72_JUDGE_PASSWORD=<同じ値> MSYS_NO_PATHCONV=1 node scripts/record.mjs prep      # 最初に戻す → 平時
+CARE72_CM_PASSWORD=<同じ値> CARE72_JUDGE_PASSWORD=<同じ値> MSYS_NO_PATHCONV=1 node scripts/record.mjs calm      # R01〜R05
+CARE72_CM_PASSWORD=<同じ値> CARE72_JUDGE_PASSWORD=<同じ値> MSYS_NO_PATHCONV=1 node scripts/record.mjs disaster  # R10〜R13
+node scripts/sheet.mjs assets/rec/R10-1 12      # 等間隔に 12 コマ抜いた一覧（out/sheet/）。映ってはいけない物を見る
+
+# OBS などで撮った録画を静止画の連番と音に分ける（→ assets/rec/R10-<次の回>/、public/audio/app/R10.wav）
+node scripts/frames.mjs raw/R10-2.mp4 R10 12.5 95
+
+# 音楽は手で置く: public/audio/music/bed.wav（か .mp3）
+npm run scan      # assets から public へ写し、public/assets.json を書き直す。撮影待ちの録画と声の数を出す
 ```
 
+- 同じ番号の録画が 2 回以上あれば、一番大きい回を使う（古い回を使うなら新しい回のフォルダの名前を変える）
+- 録画が無い所と、撮れた長さより後ろを使う所は、青の面に白で「撮影待ち R07 訓練」と出る（`src/parts/Footage.tsx`）
+- 秒（`from`）は録画ごとに違う。撮り直したら markers.json を見て `src/timeline.ts` の `from`・`froms` を合わせる
 - 録画の中のどこを使うかは `src/timeline.ts` の各絵の `from`（録画の頭からの秒）、速さは `rate`、寄りは `zoom`（録画の幅に対する割合の枠を 2 つ。始まり → 終わり）
 - アプリの音（着信・問いかけ・録音）は、速さを変えていない絵だけで鳴る
 - 音楽は声のある所で 0.12、強調の所で 0.05、ほかで 0.3 の大きさ（`src/Video.tsx` の musicVolume）
@@ -81,7 +94,7 @@ docs/video の見本（`sample-blue.png` は 1260 コマ目、`sample-white.png`
 | `src/parts/Overlay.tsx` | 字幕・モデルの名前・出典・「利用者は架空」・72 時間の線・強調の囲み |
 | `src/parts/Graphics.tsx` | 図（台帳の流れ・ルールの表・使い分け・72 時間の輪・数字・棒・メモ・終わりの画面） |
 | `src/fonts.ts`・`src/assets.ts`・`src/ground.tsx` | 書体の読み込み、素材の有無、場面の地の色 |
-| `scripts/` | check・scan・frames・render・loudnorm |
+| `scripts/` | check・scan・frames・render・loudnorm、tts-placeholder.ps1（仮の声）、record.mjs・record-lib.mjs（手元の dev の画面を撮る。puppeteer-core はルートの物）、sheet.mjs・look.mjs（撮れた物を見る） |
 
 ## 守ること
 
