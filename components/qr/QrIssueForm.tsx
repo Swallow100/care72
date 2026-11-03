@@ -1,6 +1,9 @@
+"use client";
+
 // QR を作る・作り直すフォーム（本人のページの書類の QR の画面、T64）。期限の日数（30・90・180）を選んで「作成」「再作成」。
 // 選ぶ所は components/ui/Select（隠しの欄 ttl で送る。JS が動く前でも既定の値が送られる）。既定は本人の行の今の日数。
 // 作り直すと前に刷った紙の QR は無効になるので、使える QR があるときの再作成は赤。
+// クライアントの部品にする: サーバーの頁から <option> を Select に渡すと、サーバーの描画で選択肢を読めず「未選択」になり食い違う
 
 import { Button } from "@/components/ui/Button";
 import { QrIcon } from "@/components/ui/Icon";
