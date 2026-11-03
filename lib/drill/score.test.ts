@@ -197,8 +197,8 @@ describe("条件に達した人", () => {
     ]);
     expect(of("p-02")).toEqual([["人工呼吸器 内蔵電池", 60, 240]]);
     expect(of("p-03")).toEqual([["透析 次の回まで", 0, 2880]]);
-    // 井上のインスリン（停電の時計）は浸水 3 m の地区の外なので走らない。佐藤（本人の状態）も走らない
-    expect(of("p-08")).toEqual([]);
+    // 井上のインスリンは残りの日数の時計で発災から走る（4 日。T37 の医療の確定 1、保管は確認の欄）。佐藤（本人の状態）は走らない
+    expect(of("p-08")).toEqual([["インスリン", 0, 5760]]);
     expect(of("p-04")).toEqual([]);
     expect(runs.find((r) => r.person === "p-03")!.unchecked).toEqual(["dialysis_center"]);
   });
