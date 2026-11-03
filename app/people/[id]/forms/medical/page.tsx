@@ -4,6 +4,7 @@ import { getCloudflareContext } from "@opennextjs/cloudflare";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { MedicalSummaryBasis } from "@/components/forms/MedicalSummaryBasis";
+import { MedicalSource } from "@/components/forms/MedicalSource";
 import { MedicalSummarySheet } from "@/components/forms/MedicalSummarySheet";
 import { MedicalWithheld } from "@/components/forms/MedicalWithheld";
 import { StateTag } from "@/components/person/parts";
@@ -11,8 +12,10 @@ import { PaperBar, wantsPrint } from "@/components/ui/PaperBar";
 import { todayJst } from "@/lib/age";
 import { requirePage } from "@/lib/auth/server";
 import { loadPersonDocument, medicalSummaryView } from "@/lib/consent/documents";
+import { personDisaster } from "@/lib/disaster/person";
 import { buildMedicalSummary } from "@/lib/forms/medical-summary";
 import { BLANK_LABELS, DOCUMENT_LABELS } from "@/lib/labels";
+import { toPersonView } from "@/lib/person";
 
 // D1 を毎回読む
 export const dynamic = "force-dynamic";
@@ -28,6 +31,7 @@ type Props = { params: Promise<{ id: string }>; searchParams: Promise<{ print?: 
 // 医療班・行政は同意の範囲（lib/consent/scope.ts）: 医療班への提供に同意の無い人は 404、ある人は住所・本人の電話を描かず、
 // 支援者は役割名だけ（lib/consent/documents.ts）。ケアマネには同意の無い人は中身を作らず「同意なし」「未確認」だけ。
 // 「なぜこの行があるか」の脇はケアマネ（審査員のケアマネの役を含む）の画面だけ。紙には出さない。
+// 右に「原本」（本人のページの 基本・医療・避難・人、見る人の範囲のまま）を並べ、要約と見比べられるようにする（11/3 14:1x の (3)）。
 export default async function MedicalFormPage({ params, searchParams }: Props) {
   const principal = await requirePage("person");
   const { id } = await params;
@@ -46,6 +50,8 @@ export default async function MedicalFormPage({ params, searchParams }: Props) {
   });
   const sheet = result.kind === "sheet" ? result.sheet : null;
   const showBasis = principal.role === "care_manager";
+  const d = sheet ? await personDisaster(env.DB, rows) : null;
+  const source = d ? toPersonView(rows, { today: todayJst(), mode: d.mode, triage: d.triage, situation: d.situation, scope }) : null;
 
   return (
     <main className="py-4 print:p-0">
@@ -69,11 +75,10 @@ export default async function MedicalFormPage({ params, searchParams }: Props) {
       {result.kind === "sheet" ? (
         <div className="flex flex-col items-center gap-4 xl:flex-row xl:items-start xl:justify-center print:block">
           <MedicalSummarySheet sheet={result.sheet} />
-          {showBasis && (
-            <div className="screen-only w-full max-w-xl px-4 xl:w-80 xl:shrink-0 xl:px-0 xl:pr-4">
-              <MedicalSummaryBasis sheet={result.sheet} />
-            </div>
-          )}
+          <div className="screen-only grid w-full max-w-xl content-start gap-3 px-4 xl:w-[26rem] xl:shrink-0 xl:px-0 xl:pr-4">
+            {source && <MedicalSource view={source} />}
+            {showBasis && <MedicalSummaryBasis sheet={result.sheet} />}
+          </div>
         </div>
       ) : (
         <div className="px-4">
