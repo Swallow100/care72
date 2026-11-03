@@ -93,7 +93,14 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
     nameMark: () => <FictionalMark />,
     detail: (r) =>
       r.detail ? (
-        <DrillRowDetail detail={r.detail} startedAt={s.drill.started_at} aiSignals={s.aiSignals} heard={s.heard} recordings={recordings} />
+        <DrillRowDetail
+          detail={r.detail}
+          startedAt={s.drill.started_at}
+          aiSignals={s.aiSignals}
+          heard={s.heard}
+          recordings={recordings}
+          ended={endedOf(s, r.id)}
+        />
       ) : null,
     // 仮想モード（T50）: 結末の人の行に印と 1 文
     nameNote: (pid) => {
@@ -240,11 +247,12 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
   );
 }
 
-/** 結末の人（見ている刻みまで）の 1 文。結末の状況（lib/drill/outcome.ts → world-apply.ts）から */
-function endedOf(s: DrillScreen, person: string): { text: string; ai: boolean } | null {
+/** 結末の人（見ている刻みまで）の 1 文と理由。結末の状況（世界が決めた、lib/drill/world-apply.ts の farewellIncidents）から */
+function endedOf(s: DrillScreen, person: string): { text: string; reason: string | null; ai: boolean } | null {
   if (!s.state.world.ended?.[person]) return null;
   const e = s.ticks.flatMap((t) => t.incidents).find((x) => x.change.kind === "outcome" && x.person === person);
-  return e ? { text: e.text, ai: e.ai } : null;
+  if (!e || e.change.kind !== "outcome") return null;
+  return { text: e.text, reason: e.change.reason ?? null, ai: e.ai };
 }
 
 /**

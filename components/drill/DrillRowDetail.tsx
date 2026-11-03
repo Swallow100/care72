@@ -4,9 +4,10 @@
 // 本人役（T18、Claude）が作った安否には AI の印（aiSignals は lib/drill/view.ts の DrillScreen から）。
 // ケアマネが通話・訪問で聞いた安否（T21）は「通話」「訪問」と添える（人が聞いた結果なので AI の印なし。「確認済」は緑の理由だけ）。
 // 本人役の赤（本人の言う事つき）は、言う事を声にした物を「録音」として置く（発災時の録音と同じ場所。T21、声は AI の音声）。
+// 仮想モードの結末の人（T53）は、上に結末の 1 文と、世界が決めた理由（街と物の事実）を AI の印つきで出す。
 
 import { AiMark, StateTag, TONE_TEXT } from "@/components/person/parts";
-import { CALL_UI, DRILL_LABELS } from "@/lib/drill/labels";
+import { CALL_UI, DRILL_LABELS, VIRTUAL_LABELS } from "@/lib/drill/labels";
 import { COLOR_LABELS } from "@/lib/labels";
 import type { RowDetail } from "@/lib/list/detail";
 import { DETAIL_LABELS } from "@/lib/list/labels";
@@ -19,6 +20,7 @@ export function DrillRowDetail({
   aiSignals = [],
   heard = {},
   recordings = {},
+  ended = null,
 }: {
   detail: RowDetail;
   startedAt: string;
@@ -27,11 +29,29 @@ export function DrillRowDetail({
   heard?: Readonly<Record<string, "call" | "visit">>;
   /** 本人の赤の言う事の声（安否の id → 声の行き先）。声を作れなければ空で文字だけ */
   recordings?: Readonly<Record<string, string>>;
+  /** 仮想モードの結末（世界が決めた。T53）。結末でなければ null */
+  ended?: { text: string; reason: string | null; ai: boolean } | null;
 }) {
   const ai = new Set(aiSignals);
   const hourOf = (iso: string) => Math.round(((Date.parse(iso) - Date.parse(startedAt)) / HOUR_MS) * 10) / 10;
   return (
     <div className="@container space-y-2 text-sm" data-detail-of={d.personId}>
+      {ended && (
+        <div className="space-y-0.5 pt-1" data-ended-detail>
+          <div className="flex flex-wrap items-baseline gap-x-1.5">
+            <span className="text-xs text-muted">{VIRTUAL_LABELS.ended}</span>
+            {ended.ai && <AiMark small />}
+            <span className="font-bold">{ended.text}</span>
+          </div>
+          {ended.reason && (
+            <div className="flex flex-wrap items-baseline gap-x-1.5" data-ended-reason>
+              <span className="text-xs text-muted">{VIRTUAL_LABELS.endedReason}</span>
+              <AiMark small />
+              <span>{ended.reason}</span>
+            </div>
+          )}
+        </div>
+      )}
       <div className="flex flex-wrap items-baseline gap-x-3 pt-1">
         <span className="text-xs text-muted">{DETAIL_LABELS.reason}</span>
         <span className={`text-[15px] font-bold ${TONE_TEXT[d.tone]}`} data-reason>

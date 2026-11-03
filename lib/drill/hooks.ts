@@ -54,7 +54,7 @@ export function drillHooks(
     director: createDirectorHook({ load, ai }),
     persona: createPersonaHook({ load, ai }),
     call: createCallHook({ load, ai }),
-    // 仮想モード（T50）だけが使う。世界は部屋（Managed Agents）か 1 回呼び、結末はコードの計算
+    // 仮想モード（T50・T53）だけが使う。世界は部屋（Managed Agents）か 1 回呼びで、結末も世界が決める。outcome は時計の目安
     world: createWorldHook({
       mode,
       load,
@@ -67,7 +67,7 @@ export function drillHooks(
 }
 
 /**
- * 訓練の route が使う hooks。鍵があれば drillHooks、無ければ結末の計算だけ（仮想モードの結末は Claude を使わないので鍵が無くても出す。
+ * 訓練の route が使う hooks。鍵があれば drillHooks、無ければ時計の目安だけ（仮想モードは世界が止まり「世界 停止」の印、結末は出ない。T53。
  * 固定の筋は outcome を使わないので、鍵が無いときの動きは今までどおり）
  */
 export function drillStepHooks(env: DrillHookEnv, p: Principal | null, opts: Parameters<typeof drillHooks>[2] = {}): ActionHooks | undefined {

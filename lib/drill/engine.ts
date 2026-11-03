@@ -31,8 +31,8 @@ import {
   type WorldEvent,
   type WorldState,
 } from "./scenarios.ts";
-import type { OutcomeHook } from "./outcome.ts";
-import { fallbackIncidents, type OutcomeAsk } from "./world-apply.ts";
+import { NO_HINTS, type OutcomeHints, type OutcomeHook } from "./outcome.ts";
+import { fallbackIncidents } from "./world-apply.ts";
 
 const HOUR_MS = 3_600_000;
 
@@ -342,11 +342,13 @@ export function directorIncidents(
 }
 
 /**
- * 仮想モード（T50）の世界の 1 刻みに渡す物。監督の入力に、この刻みにコードが決めた結末（outcomes）と部屋の session を足す。
+ * 仮想モード（T50）の世界の 1 刻みに渡す物。監督の入力に、時計の目安（hints。時計の計算、結末は決めない）と部屋の session を足す。
+ * 結末は世界が決める（T53）。
  * 世界の口（lib/drill/world-room.ts・world-oneshot.ts）が仮名化してから Claude に渡す
  */
 export type WorldInput = DirectorInput & {
-  outcomes: ReadonlyArray<OutcomeAsk>;
+  /** 時計の目安（lib/drill/outcome.ts）。条件に達した人と、走っている時計の残り・超過 */
+  hints: OutcomeHints;
   /** 世界の部屋の session の ID。まだ無ければ null（最初の刻みで作る） */
   session: string | null;
   /** 今の時刻（発災からの分） */
@@ -356,7 +358,7 @@ export type WorldInput = DirectorInput & {
 /** 世界の 1 刻みの返事。incidents は当てる状況（結末も入る）、session は作った・使った部屋の ID（変わらなければ省く） */
 export type WorldResult = { incidents: DrillIncident[]; session?: string | null };
 
-/** 仮想モードの世界の口。投げたら世界は動かさず結末だけ固定の文で（fallbackIncidents） */
+/** 仮想モードの世界の口。投げたら世界は動かさず、結末も出さない（fallbackIncidents） */
 export type WorldHook = (input: WorldInput) => Promise<WorldResult>;
 
 /**
@@ -596,8 +598,9 @@ export async function step(
 // ---------- 仮想モード（T50）の 1 刻み ----------
 
 /**
- * 仮想の 1 刻み。順: 結末（コードの計算、lib/drill/outcome.ts）→ 世界（部屋か 1 回呼び。結末の人には 1 文）→ 本人役（結末の人は呼ばない）。
- * 世界の口が無い（鍵なし・DRILL_WORLD=off）・投げたら、世界は動かさず結末だけ固定の文（「世界 停止」「世界 代替」の印）。
+ * 仮想の 1 刻み。順: 時計の目安（コードの計算、lib/drill/outcome.ts）→ 世界（部屋か 1 回呼び。出来事と、結末を迎えた人とその 1 文・理由）→
+ * 本人役（結末の人は呼ばない）。結末は世界が決める（T53）。コードは代わりに決めない:
+ * 世界の口が無い（鍵なし・DRILL_WORLD=off）・投げたら、世界は動かさず結末も出さない（「世界 停止」「世界 代替」の印）。
  * 表の出来事も本人の行も無い（scenarios.ts の VIRTUAL）。言い換え（T20 の replies）は頼まない（返事は固定の文）
  */
 async function virtualStep(
@@ -616,21 +619,18 @@ async function virtualStep(
   const { index, hour, last, members } = t;
   let world = t.world;
   const minute = Math.max(state.minute, hour * 60);
-  const outcomes = hooks.outcome
-    ? (await safely(() => hooks.outcome!({ world, actions: state.actions, participants: state.participants, minute }), [] as OutcomeAsk[])).filter(
-        (o) => members.has(o.person) && !world.ended?.[o.person],
-      )
-    : [];
+  const raw = hooks.outcome
+    ? await safely(() => hooks.outcome!({ world, actions: state.actions, participants: state.participants, minute }), NO_HINTS)
+    : NO_HINTS;
+  const keep = (p: string) => members.has(p) && !world.ended?.[p];
+  const hints: OutcomeHints = { reached: raw.reached.filter((o) => keep(o.person)), clocks: raw.clocks.filter((c) => keep(c.person)) };
   const r: WorldResult | null = hooks.world
-    ? await safely(() => hooks.world!({ ...t.directorInput, world, outcomes, session: world.session ?? null, minute }), null)
+    ? await safely(() => hooks.world!({ ...t.directorInput, world, hints, session: world.session ?? null, minute }), null)
     : null;
-  let inserted = r
-    ? r.incidents.filter((e) => !e.person || members.has(e.person))
-    : fallbackIncidents(hour, outcomes, hooks.world ? "down" : "off");
-  // 世界の口が結末の文を落としても、決まった結末は固定の文で必ず当てる
-  const said = new Set(inserted.filter((e) => e.change.kind === "outcome").map((e) => e.person));
-  const missing = outcomes.filter((o) => !said.has(o.person));
-  if (missing.length > 0) inserted = [...inserted, ...fallbackIncidents(hour, missing, "down").filter((e) => e.change.kind === "outcome")];
+  // 結末の人がまた結末になる・参加者でない人の状況は当てない（世界の口でも捨てるが、ここでも守る）
+  const inserted = r
+    ? r.incidents.filter((e) => !e.person || (members.has(e.person) && !(e.change.kind === "outcome" && world.ended?.[e.person])))
+    : fallbackIncidents(hour, hooks.world ? "down" : "off");
   if (r && r.session !== undefined) world = { ...world, session: r.session };
   world = inserted.reduce((w, e) => applyEvent(w, e, e.at), world);
   const incidents = [...t.fixed, ...inserted];

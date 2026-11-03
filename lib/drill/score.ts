@@ -272,7 +272,15 @@ export type ScoreInput = {
   form9: ReadonlyArray<Pick<Form9Row, "id" | "cells">>;
   /** 訓練の終わり（ケアマネの時計、発災からの分） */
   endMinute: number;
+  /** 仮想モードの結末（世界が決めた。T53）。固定の筋は渡さない */
+  ended?: ReadonlyArray<EndedScore>;
 };
+
+/**
+ * 仮想モード（T53）の結末 1 人。世界（AI）が決めた筋書きで、時計の計算の「条件に達した人」（reached）とは別に数える。
+ * at は結末の刻みの時刻（発災からの時間）、text は画面の 1 文、reason は世界の事実（AI。無ければ null）
+ */
+export type EndedScore = { person: string; at: number; text: string; reason: string | null };
 
 export type DrillScore = {
   v: 1;
@@ -284,6 +292,8 @@ export type DrillScore = {
   form9: Form9Blanks;
   reached: Reached[];
   calls: CallScore;
+  /** 仮想モードの結末（AI の筋書き）。固定の筋と T53 より前の記録には無い */
+  ended?: EndedScore[];
 };
 
 export function scoreDrill(input: ScoreInput): DrillScore {
@@ -296,6 +306,7 @@ export function scoreDrill(input: ScoreInput): DrillScore {
     form9: scoreForm9(input.form9, input.participants),
     reached: scoreReached(input.runs, input.actions, input.endMinute),
     calls: scoreCalls(input.calls),
+    ...(input.ended ? { ended: [...input.ended] } : {}),
   };
 }
 
@@ -307,14 +318,17 @@ export type ScoreNumbers = {
   report: number | null;
   form9: number;
   reached: number;
+  /** 仮想モードの結末（AI の筋書き）の人数。固定の筋は無い */
+  ended?: number;
 };
 
-export function scoreNumbers(s: Pick<DrillScore, "order" | "report" | "form9" | "reached">): ScoreNumbers {
+export function scoreNumbers(s: Pick<DrillScore, "order" | "report" | "form9" | "reached" | "ended">): ScoreNumbers {
   return {
     order: { matched: s.order.matched, total: s.order.total },
     report: s.report.minute,
     form9: s.form9.blanks,
     reached: s.reached.length,
+    ...(s.ended ? { ended: s.ended.length } : {}),
   };
 }
 

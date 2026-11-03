@@ -137,7 +137,7 @@ export type ReviewContext = {
 
 const SCENE_WORDS = { heavy_rain: "大雨（警戒レベル 3 → 4 → 浸水）", earthquake: "地震（南海トラフ 震度 6強・津波・停電）" } as const;
 /** 仮想モード（T50）: 街の出来事は世界の部屋が刻みごとに決めた（固定の筋が無い） */
-const VIRTUAL_WORDS = "仮想（架空の街の出来事を刻みごとに AI が決めた。助けが届かなかった人には結末の 1 文が出た）";
+const VIRTUAL_WORDS = "仮想（架空の街の出来事と、架空の人の結末を刻みごとに AI が決めた。結末の数は時計の計算の「条件に達した人」とは別）";
 
 /** 状態の色の言葉（左の表の色。lib/triage の色の名前） */
 const triageWord = (c: string | undefined) => (c && c in COLOR_LABELS ? COLOR_LABELS[c as keyof typeof COLOR_LABELS] : null);
@@ -195,10 +195,18 @@ export function reviewText(ctx: ReviewContext, aliasOf: ReadonlyMap<string, stri
   // 様式 9
   lines.push(`- 様式 9 の空欄: ${s.form9.blanks}`);
   for (const r of s.form9.rows) lines.push(`  - ${who(r.person)}: ${r.columns.map((c) => FORM9_PLAN_LABELS[c]).join("・")}`);
-  // 条件
-  lines.push(`- 条件に達した人（時計が切れるまでに、その人へ届いた手が無い）: ${s.reached.length}`);
+  // 条件（時計の計算）と、仮想モードの結末（AI の筋書き）。同じ数に見せない（T53）
+  lines.push(
+    `- 条件に達した人（時計の計算。時計が切れるまでに、その人へ届いた手が無い）: ${s.reached.length}`,
+  );
   for (const r of s.reached) {
     lines.push(`  - ${who(r.person)}: ${reachedText(r)}（切れた時刻 ${minuteText(r.outMinute)}、切れるまでの届かなかった手 ${r.tries}）`);
+  }
+  if (s.ended) {
+    lines.push(`- 結末（AI の筋書き。世界が流れの中で決めた。上の時計の計算とは別の数）: ${s.ended.length}`);
+    for (const e of s.ended) {
+      lines.push(`  - ${who(e.person)}: ${minuteText(Math.round(e.at * 60))}${e.reason ? `（世界の事実: ${e.reason}）` : ""}`);
+    }
   }
   // 着信
   const c = s.calls;
@@ -207,7 +215,7 @@ export function reviewText(ctx: ReviewContext, aliasOf: ReadonlyMap<string, stri
   const p = ctx.previous;
   lines.push(
     p
-      ? `前回（同じ事業所の前の訓練、${SCENARIO_LABELS[p.scenario]}）: 順番 ${p.order.matched}/${p.order.total}・報告 ${p.report === null ? "未報告" : minuteText(p.report)}・空欄 ${p.form9}・条件 ${p.reached}`
+      ? `前回（同じ事業所の前の訓練、${SCENARIO_LABELS[p.scenario]}）: 順番 ${p.order.matched}/${p.order.total}・報告 ${p.report === null ? "未報告" : minuteText(p.report)}・空欄 ${p.form9}・条件 ${p.reached}${p.ended !== undefined ? `・結末（AI） ${p.ended}` : ""}`
       : "前回: なし",
   );
 

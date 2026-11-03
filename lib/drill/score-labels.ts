@@ -15,6 +15,13 @@ export const SCORE_LABELS = {
   /** 空欄の数の出どころ（「空欄 様式 9」と添える） */
   form9Doc: "様式 9",
   reached: "条件到達",
+  /** 条件到達の出どころ（仮想モードで結末と並べるとき「条件到達 時計計算」） */
+  reachedBy: "時計計算",
+  /** 仮想モードの結末（世界が決めた。T53）。「結末 AI 筋書」 */
+  ended: "結末",
+  endedBy: "AI 筋書",
+  endedAt: "結末時刻",
+  endedText: "経過",
   unreported: "未報告",
   previous: "前回",
   noPrevious: "前回なし",

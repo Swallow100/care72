@@ -19,7 +19,7 @@ import { outageForRuns } from "./outcome.ts";
 import { REVIEW_KINDS, type ReviewBody, type ReviewContext, type ReviewError, type ReviewFinding, type ReviewIncident } from "./review.ts";
 import { loadCallRecords, type CallRecord } from "./responses.ts";
 import { isVirtual, scenarioOf } from "./scenarios.ts";
-import { clockRuns, scoreDrill, scoreNumbers, type ClockForRun, type DrillScore, type ScoreNumbers } from "./score.ts";
+import { clockRuns, scoreDrill, scoreNumbers, type ClockForRun, type DrillScore, type EndedScore, type ScoreNumbers } from "./score.ts";
 import { loadDrillScreen, type DrillScreen } from "./view.ts";
 
 // ---------- drills.score の形 ----------
@@ -104,8 +104,22 @@ export function shownReview(r: StoredReview | null): (ReviewBody & { edited: boo
 type PersonForScore = Pick<PersonRow, "id" | "name" | "kana" | "birth_date" | "self_report_unreliable" | "ledger" | "care_manager_id">;
 type ContactForScore = Form9PersonInput["contacts"][number] & Pick<ContactRow, "person_id">;
 
-/** 訓練の終わり（ケアマネの時計、発災からの分） */
-export const endMinuteOf = (screen: Pick<DrillScreen, "state">) => Math.max(screen.state.minute, screen.state.hour * 60);
+/** 採点の終わりの上限（発災から 72 時間。DECISIONS 11/3 17:1x。最後の刻みのあとに 72 時間をまたぐ手を打っても、結末の刻みとそろえる） */
+export const SCORE_END_MINUTE = 72 * 60;
+
+/** 訓練の終わり（ケアマネの時計、発災からの分。72 時間で切る） */
+export const endMinuteOf = (screen: Pick<DrillScreen, "state">) =>
+  Math.min(SCORE_END_MINUTE, Math.max(screen.state.minute, screen.state.hour * 60));
+
+/** 仮想モードの結末（世界が決めた。T53）。結末の状況（world-apply.ts）から、世界の ended の順に */
+export function endedOf(screen: Pick<DrillScreen, "state" | "ticks">): EndedScore[] {
+  const incidents = screen.ticks.flatMap((t) => t.incidents);
+  return Object.entries(screen.state.world.ended ?? {}).map(([person, e]) => {
+    const inc = incidents.find((x) => x.change.kind === "outcome" && x.person === person);
+    const reason = inc && inc.change.kind === "outcome" ? (inc.change.reason ?? null) : (e.reason ?? null);
+    return { person, at: e.at, text: inc?.text ?? "", reason };
+  });
+}
 
 /** 採点に要る台帳（参加者の本人・連絡先・時計・担当の名前）を読み、数える。D1 には書かない */
 export async function computeScore(
@@ -170,6 +184,7 @@ export async function computeScore(
     runs,
     form9: form9.rows,
     endMinute: endMinuteOf(screen),
+    ...(isVirtual(screen.drill.scenario) ? { ended: endedOf(screen) } : {}),
   });
 }
 

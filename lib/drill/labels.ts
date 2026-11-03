@@ -23,6 +23,8 @@ export const STATUS_LABELS: Record<DrillStatus, string> = {
 export const VIRTUAL_LABELS = {
   note: "仮想モード 架空の人と街。結末まで出ます",
   ended: "結末",
+  /** 結末の理由（世界が決めた街と物の事実。T53） */
+  endedReason: "経緯",
   fallback: "世界 代替",
 } as const;
 
