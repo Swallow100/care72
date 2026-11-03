@@ -5,7 +5,9 @@
 
 import type { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { SEED_AT, SEED_PEOPLE, seedConsents } from "../../seed/people.ts";
 import { seedStatements } from "../../seed/sql.ts";
+import { toPersonView, type PersonPageRows } from "../person.ts";
 import type { Principal } from "../auth/principal.ts";
 import { loadCaseload } from "../caseload.ts";
 import { d1FromSqlite, migratedSqlite } from "../db/test-d1.ts";
@@ -175,5 +177,42 @@ describe("現場の登録 → 台帳 → 受け持ちの表（D1）", () => {
     // その他の無い人は前と同じ（種類の名前だけ）
     const yamada = data!.rows.find((r) => r.id === "p-01")!;
     expect(yamada.devices.every((d) => !d.includes("（"))).toBe(true);
+  });
+});
+
+// ---------- 本人のページの機器の行も「その他（名前）」の 1 語（11/4 設計の側の答え 3） ----------
+
+describe("本人のページの機器の行", () => {
+  const TODAY_PAGE = "2026-11-02";
+  function viewOf(id: string) {
+    const p = SEED_PEOPLE.find((x) => x.person.id === id)!;
+    const rows: PersonPageRows = {
+      person: { ...p.person, ledger: JSON.stringify(p.ledger), created_at: SEED_AT, updated_at: SEED_AT },
+      careManagerName: "山本",
+      contacts: p.contacts.map((c, i) => ({ ...c, person_id: p.person.id, sort: i })),
+      consents: seedConsents(p).map((c) => ({ ...c, recorded_by_name: "山本", recorded_by_role: "care_manager" as const })),
+      clocks: p.clocks.map((k, i) => ({ ...k, person_id: p.person.id, sort: i })),
+      timeline: [],
+    };
+    return toPersonView(rows, { today: TODAY_PAGE, mode: "normal" });
+  }
+  const devices = (id: string) => {
+    const v = viewOf(id);
+    const row = v.sections
+      .flatMap((s) => s.blocks)
+      .flatMap((b) => (b.type === "row" ? [b.row] : []))
+      .find((r) => r.key === "medical.devices")!;
+    return row.field.kind === "lines" ? row.field.lines.map((l) => l.map((s) => s.text).filter((t) => t !== "")) : [];
+  };
+
+  it("その他は「その他（名前）」の 1 語で、名前を別の欄に重ねない", () => {
+    const d = devices("p-06");
+    expect(d[1][0]).toBe("その他（電動ベッド（エアマット））");
+    expect(d[1].filter((t) => t.includes("電動ベッド"))).toHaveLength(1);
+  });
+
+  it("ほかの種類は前と同じ（種類と中身を別の欄に）", () => {
+    expect(devices("p-06")[0].slice(0, 2)).toEqual(["経管栄養", "胃ろう 経管栄養"]);
+    expect(devices("p-01")[0].slice(0, 2)).toEqual(["在宅酸素", "酸素濃縮器 1 L/分"]);
   });
 });

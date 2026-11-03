@@ -7,7 +7,9 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { toggleClass } from "../../components/list/Classification.tsx";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { Classification, toggleClass } from "../../components/list/Classification.tsx";
 import { SEED_PEOPLE } from "../../seed/people.ts";
 import { seedStatements } from "../../seed/sql.ts";
 import type { Principal } from "../auth/principal.ts";
@@ -30,9 +32,11 @@ import { EXPECTED, HOURS, SIGNALS, situation } from "../triage/heavy-rain.fixtur
 import { rank, triage, type Situation, type TriageResult, type TriageSignal } from "../triage/index.ts";
 import { classify, normalizeClassification, sealClassifyInput } from "./classify.ts";
 import { ClassEditBody, classEditPost } from "./http.ts";
-import { CLASS_LABELS, classesText } from "./labels.ts";
+import { CLASS_LABELS, CLASSIFY_LABELS, classesText } from "./labels.ts";
 import { CLASSIFY_SYSTEM, ClassifySchema } from "./prompt.ts";
-import { normalizeEdit } from "./store.ts";
+import { loadClassView, normalizeEdit } from "./store.ts";
+import { CLASSIFY_COLUMNS, classViewOf, type SignalClassFields } from "./view.ts";
+import type { HearingSource } from "../signals/hearing.ts";
 
 type Params = Anthropic.Beta.Messages.MessageCreateParamsNonStreaming;
 type Message = Anthropic.Beta.Messages.BetaMessage;
@@ -346,5 +350,73 @@ describe("分ける本体（偽の Claude）", () => {
     // 送った物に指示の その他 の行がある（1 回 1 呼び出し）
     expect(one.calls).toHaveLength(1);
     expect(JSON.stringify(one.calls[0].system)).toContain("other（その他）");
+  });
+});
+
+// ---------- 引用と聞き取りメモが同じ文なら引用を出さない（11/4 設計の側の答え 1） ----------
+
+describe("分類の引用と聞き取りメモの重なり", () => {
+  const row = (over: Partial<SignalClassFields & HearingSource> = {}): SignalClassFields & HearingSource => ({
+    transcript: "たべものが ない",
+    recording_key: "recordings/x.webm",
+    classes: '["other"]',
+    classified_by: "claude",
+    ai_classes: '["other"]',
+    ai_confidence: 0.9,
+    ai_quote: "たべものが ない",
+    ai_model: HAIKU,
+    ai_error: null,
+    ai_at: "2026-11-04T01:30:00.000Z",
+    ...over,
+  });
+
+  it("聞き取りメモに同じ文があれば引用を出さない（1 回だけ）", () => {
+    const v = classViewOf(row({ ai_memo: JSON.stringify({ request: "たべものが ない" }) }));
+    expect(v).toMatchObject({ kind: "ai", classes: ["other"], quote: null });
+  });
+
+  it("違う文なら両方出す。メモが無ければ引用を出す", () => {
+    expect(classViewOf(row({ ai_memo: JSON.stringify({ request: "みずが ほしい" }) }))).toMatchObject({ quote: "たべものが ない" });
+    expect(classViewOf(row())).toMatchObject({ quote: "たべものが ない" });
+    // 一部だけ重なる（引用がメモの中にある）のは同じ文ではないので両方
+    expect(classViewOf(row({ ai_memo: JSON.stringify({ request: "たべものが ない、みずも" }) }))).toMatchObject({ quote: "たべものが ない" });
+  });
+
+  it("出しているメモの文で比べる: ケアマネが直した欄の文、押した答えのある欄で隠れた AI の文は比べない", () => {
+    // ケアマネが直した文が同じ → 出さない
+    expect(classViewOf(row({ memo: JSON.stringify({ request: "たべものが ない" }) }))).toMatchObject({ quote: null });
+    // AI の文と同じでも、ケアマネが別の文に直していれば画面に同じ文は出ないので引用を出す
+    expect(
+      classViewOf(row({ ai_memo: JSON.stringify({ request: "たべものが ない" }), memo: JSON.stringify({ request: "食料 不足" }) })),
+    ).toMatchObject({ quote: "たべものが ない" });
+  });
+
+  it("人が直したあとの「修正前」の AI の分類も同じに", () => {
+    const v = classViewOf(row({ classes: '["unknown"]', classified_by: "care_manager", ai_memo: JSON.stringify({ request: "たべものが ない" }) }));
+    expect(v).toMatchObject({ kind: "human", classes: ["unknown"], ai: { classes: ["other"], quote: null } });
+  });
+
+  it("画面: 同じ文なら「引用」を描かず、聞き取りの欄の文だけ", () => {
+    const same = renderToStaticMarkup(
+      createElement(Classification, { signalId: "s-1", view: classViewOf(row({ ai_memo: JSON.stringify({ request: "たべものが ない" }) })) }),
+    );
+    expect(same).not.toContain(CLASSIFY_LABELS.quote);
+    const diff = renderToStaticMarkup(createElement(Classification, { signalId: "s-1", view: classViewOf(row()) }));
+    expect(diff).toContain(CLASSIFY_LABELS.quote);
+    expect(diff).toContain("「たべものが ない」");
+  });
+
+  it("D1: 分類を読む列に聞き取りの列も入り、直したあとに返す形でも同じ文の引用を出さない", async () => {
+    const id = await redSignal();
+    setAi(id, ["unknown"]);
+    sqlite
+      .prepare("UPDATE signals SET ai_quote = ?, ai_memo = ? WHERE id = ?")
+      .run("たべものが ない", JSON.stringify({ request: "たべものが ない" }), id);
+    expect(CLASSIFY_COLUMNS).toMatch(/\bai_memo\b/);
+    expect(CLASSIFY_COLUMNS).toMatch(/\bmemo\b/);
+    expect(await loadClassView(db, "office-demo", id)).toMatchObject({ kind: "ai", quote: null });
+    const res = await classEditPost(db, careManager, id, { classes: ["other"] }, at(1.2));
+    const body = (await res.json()) as { view: { kind: string; ai: { quote: string | null } } };
+    expect(body.view).toMatchObject({ kind: "human", ai: { quote: null } });
   });
 });

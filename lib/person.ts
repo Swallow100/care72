@@ -57,6 +57,7 @@ import {
   DEPENDS_ON_LABELS,
   DERIVED_TIMELINE_LABELS,
   DEVICE_LABELS,
+  deviceText,
   DOCUMENT_LABELS,
   DOCUMENT_STATUS_LABELS,
   HEAD_LABELS,
@@ -609,7 +610,9 @@ function medicalBlocks(ledger: Ledger, contacts: Contact[], clocks: PersonPageRo
             const mine = clocks.filter((k) => k.category === d.kind && k.kind !== "medication");
             const clockSegs: Seg[] = mine.flatMap((k) => [muted(k.label), clockValueSeg(k)]);
             if (mine.length === 0 && POWERED_DEVICES.has(d.kind)) clockSegs.push(muted(MED_PARTS.battery), blank);
-            return [text(DEVICE_LABELS[d.kind]), text(d.detail ?? ""), muted(d.schedule ?? ""), ...clockSegs];
+            // その他は「その他（電動ベッド）」の 1 語（受け持ちの表・担当一覧と同じ。T64）、ほかの種類は種類と中身を別の欄に
+            const name = d.kind === "other" ? [text(deviceText(d))] : [text(DEVICE_LABELS[d.kind]), text(d.detail ?? "")];
+            return [...name, muted(d.schedule ?? ""), ...clockSegs];
           }),
         );
 

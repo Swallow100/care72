@@ -2,10 +2,14 @@
 // 状態は 5 つ: 録音も文字も無い（出さない）・未分類（まだ分けていない）・分類なし（理由つき）・AI の分類・人の分類（修正済）。
 
 import { CLASSIFY_ERRORS, RECORDING_CLASSES, type ClassifyError, type RecordingClass, type SignalRow } from "../db/types.ts";
+import { hearingViewOf, type HearingSource } from "../signals/hearing.ts";
 
-/** 分類を読むときの信号の列。担当一覧の行の詳細（T13）は SELECT にこれを足す */
+/**
+ * 分類を読むときの信号の列。担当一覧の行の詳細（T13）は SELECT にこれを足す。
+ * 聞き取りの列（answers・ai_memo・memo）は、引用と同じ文が聞き取りの欄にあるかを見るため（T64）
+ */
 export const CLASSIFY_COLUMNS =
-  "transcript, recording_key, classes, classified_by, ai_classes, ai_confidence, ai_quote, ai_model, ai_error, ai_at";
+  "transcript, recording_key, classes, classified_by, ai_classes, ai_confidence, ai_quote, ai_model, ai_error, ai_at, answers, ai_memo, memo";
 
 export type SignalClassFields = Pick<
   SignalRow,
@@ -52,19 +56,31 @@ export function parseClassList(text: string | null): RecordingClass[] | null {
   }
 }
 
-function aiOf(row: SignalClassFields): AiClassView | null {
-  const classes = parseClassList(row.ai_classes);
-  if (!classes || classes.length === 0) return null;
-  return { classes, confidence: row.ai_confidence, quote: row.ai_quote || null, model: row.ai_model };
+/**
+ * 聞き取りの欄（T49）に出している文。分類の引用と同じ文なら引用を出さない（同じ文を 2 回出さない。11/4 設計の側の答え）。
+ * 比べるのは画面に出す文（直した文か Claude の文。lib/signals/hearing.ts の hearingViewOf と同じ選び方）で、違えば両方出す
+ */
+function hearingTexts(row: HearingSource): Set<string> {
+  const view = hearingViewOf(row);
+  return new Set((view?.rows ?? []).flatMap((r) => (r.text?.trim() ? [r.text.trim()] : [])));
 }
 
-export function classViewOf(row: SignalClassFields): ClassView {
+function aiOf(row: SignalClassFields, shown: Set<string>): AiClassView | null {
+  const classes = parseClassList(row.ai_classes);
+  if (!classes || classes.length === 0) return null;
+  const quote = row.ai_quote?.trim() && !shown.has(row.ai_quote.trim()) ? row.ai_quote : null;
+  return { classes, confidence: row.ai_confidence, quote, model: row.ai_model };
+}
+
+/** 信号の行から分類の形を作る。聞き取りの列（answers・ai_memo・memo）があれば、同じ文の引用を外す */
+export function classViewOf(row: SignalClassFields & HearingSource): ClassView {
   const current = parseClassList(row.classes);
+  const shown = hearingTexts(row);
   if (row.classified_by === "care_manager" && current && current.length > 0) {
-    return { kind: "human", classes: current, ai: aiOf(row) };
+    return { kind: "human", classes: current, ai: aiOf(row, shown) };
   }
   if (row.classified_by === "claude" && current && current.length > 0) {
-    const ai = aiOf(row);
+    const ai = aiOf(row, shown);
     return { kind: "ai", ...(ai ?? { confidence: null, quote: null, model: null }), classes: current };
   }
   if (row.ai_error && (CLASSIFY_ERRORS as readonly string[]).includes(row.ai_error)) {
