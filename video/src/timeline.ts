@@ -35,6 +35,8 @@ export type Shot = {
   footages?: string[];
   /** 録画の中の始まりの秒（同じ録画の別の所を使うとき） */
   from?: number;
+  /** split・flow で録画ごとに始まりの秒を変えるとき（footages と同じ順）。無ければ from */
+  froms?: number[];
   /** 録画の進む速さ。0.5 は半分の速さ（強調の所） */
   rate?: number;
   /** 寄り。始まりの枠から終わりの枠へ動く */
@@ -91,6 +93,8 @@ export const SCENES: Scene[] = [
         end: 20,
         kind: "split",
         footages: ["R03", "R07", "R10"],
+        // R03 は様式の 1 頁目、R10 は山田の行が至急で一番上に上がったあと（R10-1 の 29.2 秒）
+        froms: [3, 0, 31],
         lines: ["計画", "訓練", "発災時"],
         label: "様式が埋まる・72 時間の棒・一覧が並び替わる",
       },
@@ -110,6 +114,8 @@ export const SCENES: Scene[] = [
         kind: "split",
         // 録画の番号が空の所は文字の面（sub を「・」で分けて並べる）
         footages: ["", "R03"],
+        // 様式の下の方（未確認の欄）
+        froms: [0, 12],
         lines: ["知っている", "届かない"],
         sub: "薬と残り日数・医療機器と電池・家族と支援者・夜に来られる人",
         label: "左に台帳の区分の名前、右に様式の未確認の欄",
@@ -140,9 +146,10 @@ export const SCENES: Scene[] = [
         kind: "footage",
         footage: "R02",
         label: "本人のページの上の段（山田 ハナ）",
+        // 真ん中の列（優先・医療・時計・緊急連絡先）。右の入れる欄は撮っていない所（手元に鍵が無く「AI 未設定」）なので映さない
         zoom: [
-          { x: 0.3, y: 0, w: 0.7 },
-          { x: 0.38, y: 0.02, w: 0.5 },
+          { x: 0.2, y: 0.06, w: 0.55 },
+          { x: 0.21, y: 0.07, w: 0.45 },
         ],
       },
       { at: 51, end: 58, kind: "footage", footage: "R02", from: 8, label: "入れる欄: 話す → 欄が埋まる → 問い返し", chip: "Claude Sonnet 5.5" },
@@ -152,6 +159,8 @@ export const SCENES: Scene[] = [
         end: 70,
         kind: "footage",
         footage: "R05",
+        // 下へ送っている所（特記事項・常用薬・メディカル ID）
+        from: 6,
         label: "医療班の要約: 特記事項（常用薬等）・中断注意・メディカル ID",
         sub: "災害診療記録 2018 の順",
       },
@@ -180,14 +189,30 @@ export const SCENES: Scene[] = [
     at: 108,
     end: 150,
     shots: [
-      { at: 108, end: 112, kind: "footage", footage: "R10", label: "大雨に切替 → 発災時の表" },
-      { at: 112, end: 116, kind: "split", footages: ["R11", "R10"], label: "娘のスマホ（赤と緑）と担当一覧" },
-      { at: 116, end: 121, kind: "footage", footage: "R10", from: 30, rate: 0.5, emphasis: true, label: "強調: 山田の行が一番上へ（至急）" },
-      { at: 121, end: 126, kind: "footage", footage: "R12", label: "本人のスマホ: 赤 → けが → 止まる → 声の問いかけ" },
+      // 秒は R10-1・R11-1・R12-1・R13-1（手元の dev、11/3）の markers.json から。撮り直したら合わせ直す
+      // 事業所の画面は左の災害モードと災害情報だけに寄る（右の列にケアマネのログインの ID が出るため）
+      {
+        at: 108,
+        end: 112,
+        kind: "footage",
+        footage: "R10",
+        from: 1,
+        label: "大雨に切替 → 発災時の表",
+        zoom: [
+          { x: 0, y: 0, w: 0.6 },
+          { x: 0.02, y: 0.03, w: 0.5 },
+        ],
+      },
+      { at: 112, end: 116, kind: "split", footages: ["R11", "R10"], froms: [2, 20], label: "娘のスマホ（赤と緑）と担当一覧" },
+      // 1 分ごとの読み直しで山田の行が 2 番目から一番上へ（R10-1 の 29.2 秒）。半分の速さで
+      { at: 116, end: 121, kind: "footage", footage: "R10", from: 27.5, rate: 0.5, emphasis: true, label: "強調: 山田の行が一番上へ（至急）" },
+      { at: 121, end: 126, kind: "footage", footage: "R12", from: 3.5, label: "本人のスマホ: 赤 → けが → 止まる → 声の問いかけ" },
       { at: 126, end: 130, kind: "footage", footage: "R12", from: 40, emphasis: true, label: "強調: 録音と文字起こし。理由に分類（AI）" },
       { at: 130, end: 135, kind: "rules", label: "ルールの表の 1 枚" },
-      { at: 135, end: 143, kind: "footage", footage: "R10", from: 70, label: "行の詳細: 分類修正・優先変更", chip: "Claude Haiku 5.5 分類だけ" },
-      { at: 143, end: 150, kind: "split", footages: ["R10", "R13"], label: "電話 → 医療班の受入 → 要約" },
+      // 手元の録画の行の詳細には録音の分類が無い（録音は撮っていない）ので、Haiku の名前は録音の分類を撮れてから付ける
+      { at: 135, end: 143, kind: "footage", footage: "R10", from: 43.5, label: "行の詳細: 分類修正・優先変更" },
+      { at: 143, end: 146.5, kind: "footage", footage: "R10", from: 62, label: "電話 → 電話の記録" },
+      { at: 146.5, end: 150, kind: "footage", footage: "R13", from: 8.5, label: "医療班の受入 → 要約" },
     ],
   },
   {
