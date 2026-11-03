@@ -9,6 +9,8 @@ import { AiNotConfigured } from "./errors.ts";
 export type AiEnv = {
   ANTHROPIC_API_KEY?: string;
   GEMINI_API_KEY?: string;
+  /** 配信の Secret が GEMINI_TTS の名前で入っている（11/3）ので、その名前も読む。正は GEMINI_API_KEY */
+  GEMINI_TTS?: string;
   /** デモ事業所の 1 日の上限（回）。無ければ 200 */
   AI_DAILY_LIMIT?: string;
 };
@@ -23,8 +25,13 @@ export function hasAnthropicKey(env: AiEnv): boolean {
   return keyOf(env.ANTHROPIC_API_KEY) !== null;
 }
 
+/** Gemini の鍵。GEMINI_API_KEY が先、無ければ GEMINI_TTS */
+export function geminiKeyOf(env: Pick<AiEnv, "GEMINI_API_KEY" | "GEMINI_TTS">): string | null {
+  return keyOf(env.GEMINI_API_KEY) ?? keyOf(env.GEMINI_TTS);
+}
+
 export function hasGeminiKey(env: AiEnv): boolean {
-  return keyOf(env.GEMINI_API_KEY) !== null;
+  return geminiKeyOf(env) !== null;
 }
 
 export type ClaudeRequestOptions = { timeout?: number; maxRetries?: number };
