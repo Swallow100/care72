@@ -187,7 +187,9 @@ describe("migration 0015（people.qr_ttl_days）", () => {
     expect(before.length).toBeGreaterThanOrEqual(10);
     for (const n of migrationNames().filter((n) => n >= MIGRATION_0015)) db.exec(readFileSync(new URL(n, MIGRATIONS), "utf8"));
     const after = db.prepare("SELECT * FROM people ORDER BY id").all() as Array<Record<string, unknown>>;
-    expect(after.map(({ qr_ttl_days: _d, ...rest }) => rest)).toEqual(before);
+    // 比べるのは 0015 の前からある列だけ（あとの migration が足す列〔0018 のスマホ入口など〕は数えない）
+    const cols = Object.keys(before[0] as object);
+    expect(after.map((r) => Object.fromEntries(cols.map((k) => [k, r[k]])))).toEqual(before);
     expect(after.every((r) => r.qr_ttl_days === 90)).toBe(true);
     db.close();
   });

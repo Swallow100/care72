@@ -539,6 +539,12 @@ export type PersonRow = {
 export type PersonListMark = { unlisted_at: string | null };
 
 /**
+ * 本人・家族のスマホ入口の版と作った時刻（people.phone_link_generation・phone_link_issued_at、T69a、migration 0018）。
+ * 版 0 はまだ作っていない。PersonRow に入れないのは unlisted_at と同じ理由（種と本人のページの型に波及させない）
+ */
+export type PersonPhoneLink = { phone_link_generation: number; phone_link_issued_at: string | null };
+
+/**
  * 申告の年齢（people.reported_age、T23）。医療班・行政がその場で作った人で、生年月日が分からないとき。作った日の年齢。
  * PersonRow に入れないのは unlisted_at と同じ理由（種と本人のページの型に波及させない）
  */
