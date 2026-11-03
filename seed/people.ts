@@ -313,6 +313,16 @@ export const SEED_PEOPLE: SeedPerson[] = [
         emergency_order: 2,
         supporter_order: 2,
       }),
+      // T57: 新しい種類の見本（酸素業者）。支援の順は付けない（ルールの表の結果を変えない）
+      contact({
+        id: "c-02-3",
+        kind: "oxygen_supplier",
+        name: "かわなぎ医療機器",
+        phone: phone(31),
+        reach: "in_city",
+        night_ok: 1,
+        note: "呼吸器の予備電池を届ける",
+      }),
     ],
     refusedConsents: [],
     clocks: [
@@ -409,6 +419,15 @@ export const SEED_PEOPLE: SeedPerson[] = [
         phone: phone(18),
         reach: "in_city",
         note: "月水金の午前",
+      }),
+      // T57: 新しい種類の見本（病院）。順は付けない
+      contact({
+        id: "c-03-5",
+        kind: "hospital",
+        name: "みずほし総合病院",
+        phone: phone(32),
+        reach: "in_city",
+        note: "シャントの手術をした病院",
       }),
     ],
     refusedConsents: [],
@@ -588,7 +607,8 @@ export const SEED_PEOPLE: SeedPerson[] = [
       },
       care: { careLevel: "care4", walking: "hard", dementia: false },
       medical: {
-        devices: [{ kind: "tube_feeding", detail: "胃ろう 経管栄養" }],
+        // T57: 「その他」の機器の見本（時計は作らない。ルールの表の結果は変わらない）
+        devices: [{ kind: "tube_feeding", detail: "胃ろう 経管栄養" }, { kind: "other", detail: "電動ベッド（エアマット）" }],
         medications: [],
       },
       evacuation: {

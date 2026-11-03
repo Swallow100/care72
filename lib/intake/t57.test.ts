@@ -184,25 +184,25 @@ describe("連絡先の種類と距離・migration 0008（T57 の 2）", () => {
   });
 
   it("新しい種類（酸素業者）を距離つきで足し、今の行の距離も直す。読み戻すと本人のページの連絡先の行に出る", async () => {
-    const d = await editDataOf("p-02");
+    const d = await editDataOf("p-01");
     const draft = editDraft(d);
     draft.newContacts = [
       { id: null, kind: "oxygen_supplier", relation: "", name: "架空酸素", phone: "090-0000-0071", night: "yes", note: "", emergency: "", supporter: "", reach: "in_city" },
     ];
-    draft.contacts = draft.contacts.map((c) => (c.id === "c-02-2" ? { ...c, reach: "nearby" } : c));
+    draft.contacts = draft.contacts.map((c) => (c.id === "c-01-2" ? { ...c, reach: "together" } : c));
     const changes = editChanges("people", d, draft);
     expect(changes).toEqual([
-      { t: "contact", id: "c-02-2", value: { kind: "visiting_nurse", reach: "nearby" }, overwrite: true },
+      { t: "contact", id: "c-01-2", value: { kind: "supporter", reach: "together" }, overwrite: true },
       { t: "contact", id: null, value: { kind: "oxygen_supplier", name: "架空酸素", phone: "090-0000-0071", nightOk: true, reach: "in_city" } },
     ]);
-    expect(await saveIntake(db, cm, SaveRequestSchema.parse(edit("p-02", changes)), NOW)).toMatchObject({ ok: true });
+    expect(await saveIntake(db, cm, SaveRequestSchema.parse(edit("p-01", changes)), NOW)).toMatchObject({ ok: true });
     expect(
-      sqlite.prepare("SELECT kind, reach FROM contacts WHERE person_id = 'p-02' AND kind IN ('oxygen_supplier', 'visiting_nurse') ORDER BY kind").all(),
+      sqlite.prepare("SELECT kind, reach FROM contacts WHERE person_id = 'p-01' AND kind IN ('oxygen_supplier', 'supporter') ORDER BY kind").all(),
     ).toEqual([
       { kind: "oxygen_supplier", reach: "in_city" },
-      { kind: "visiting_nurse", reach: "nearby" },
+      { kind: "supporter", reach: "together" },
     ]);
-    const rows = (await loadPersonPage(db, cm, "p-02"))!;
+    const rows = (await loadPersonPage(db, cm, "p-01"))!;
     const text = JSON.stringify(toPersonView(rows, { today: "2026-11-03" }).sections.find((s) => s.id === "people"));
     expect(text).toContain("酸素業者");
     expect(text).toContain("架空酸素");
