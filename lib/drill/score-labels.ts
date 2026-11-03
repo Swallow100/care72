@@ -22,7 +22,7 @@ export const SCORE_LABELS = {
   paper: "訓練記録",
   print: "印刷",
   detail: "内訳",
-  misses: "順番違い",
+  misses: "順番相違",
   calls: "着信",
   answered: "応答",
   declined: "拒否",
@@ -32,7 +32,7 @@ export const SCORE_LABELS = {
   outAt: "超過時刻",
   /** 時計が切れるまでに打ったが届かなかった手の数 */
   tries: "未達",
-  column: "欄",
+  column: "記入欄",
   none: "なし",
   at: "時刻",
   action: "対応",
@@ -57,6 +57,9 @@ export const SCORE_LABELS = {
   confirm: "確認欄",
   manager: "管理者",
   checkedOn: "確認日",
+  stamp: "押印",
+  made: "作成",
+  kind: "種類",
   noAction: "対応なし",
 } as const;
 
@@ -109,10 +112,10 @@ export const REVIEW_UI = {
 export const REVIEW_ERROR_LABELS = {
   not_configured: "未設定",
   limit: "上限到達",
-  refused: "生成失敗",
-  bad_output: "生成失敗",
-  failed: "生成失敗",
-  leak: "生成失敗",
+  refused: "出力不良",
+  bad_output: "出力不良",
+  failed: "接続失敗",
+  leak: "出力不良",
 } as const;
 
 /** 発災からの分の言い方（「5 時間 10 分」） */
