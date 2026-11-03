@@ -2,9 +2,10 @@ import { getCloudflareContext } from "@opennextjs/cloudflare";
 import Link from "next/link";
 import { countColors } from "@/components/disaster/ColorCounts";
 import { Classification } from "@/components/list/Classification";
+import { Hearing } from "@/components/list/Hearing";
 import { DisasterSummary } from "@/components/list/DisasterSummary";
 import { DisasterTable } from "@/components/list/DisasterTable";
-import type { ClassificationSlot } from "@/components/list/RowDetail";
+import type { ClassificationSlot, HearingSlot } from "@/components/list/RowDetail";
 import { SidePane } from "@/components/list/SidePane";
 import { SortHeader } from "@/components/list/SortHeader";
 import { UnlistedFold } from "@/components/office/UnlistedFold";
@@ -59,6 +60,11 @@ type Props = {
  * 信号の行は SELECT * なので ai_* の列も入っている。担当一覧を開けるのはケアマネの役だけなので、直す口はいつも出す（API もケアマネ以外は 403）
  */
 const CLASSIFICATION: ClassificationSlot = (s) => <Classification signalId={s.id} view={classViewOf(s.row)} editable inset />;
+
+/** 行の詳細の「聞き取り」（T49）。押した答えと Claude の聞き取りメモ（AI の印）。ケアマネが直せる。色と順は動かさない */
+const HEARING: HearingSlot = (s) => (
+  <Hearing signalId={s.id} source={{ answers: s.row.answers, ai_memo: s.row.ai_memo, memo: s.row.memo }} editable inset />
+);
 
 function isSortKey(v: unknown): v is SortKey {
   return typeof v === "string" && SORT_KEYS.includes(v as SortKey);
@@ -169,7 +175,7 @@ export default async function CaseloadPage({ searchParams }: Props) {
           // 横に送らない。PC の幅（1024px 以上）は全部の列、狭い幅は列を省く（表の部品）
           <div className={`mt-3 ${TABLE_BOX}`}>
             {disaster ? (
-              <DisasterTable rows={rows} sort={key} classification={CLASSIFICATION} />
+              <DisasterTable rows={rows} sort={key} classification={CLASSIFICATION} hearing={HEARING} />
             ) : (
               <CaseloadTable rows={rows} sort={key} />
             )}

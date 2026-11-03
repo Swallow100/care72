@@ -37,7 +37,7 @@ export type CsvMeta = {
 };
 
 function modeLabel(sheet: Form9Sheet): string {
-  return sheet.mode === "disaster" ? "並び：発災時（色と順位）" : "並び：平時（優先の骨格）";
+  return sheet.mode === "disaster" ? "並び：発災時（色と順位）" : "並び：平時（順番の骨格）";
 }
 
 /** ひな形の列の順の CSV */

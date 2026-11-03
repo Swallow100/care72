@@ -12,7 +12,7 @@ import { CARE_LEVEL_LABELS, COLOR_LABELS, PLAN_STATUS_LABELS, TIER_LABELS } from
 import { DETAIL_LABELS } from "@/lib/list/labels";
 import { COLOR_TONES } from "@/lib/person";
 import { ExpandRow } from "./ExpandRow";
-import { RowDetail, type ClassificationSlot } from "./RowDetail";
+import { RowDetail, type ClassificationSlot, type HearingSlot } from "./RowDetail";
 import { SortHeader } from "./SortHeader";
 
 const CELL = "bg-panel px-1.5 py-1.5 align-top";
@@ -42,12 +42,15 @@ export function DisasterTable({
   rows,
   sort,
   classification,
+  hearing,
   slots,
 }: {
   rows: CaseloadRow[];
   sort: SortKey;
   /** 分類と直す口（T12 の部品）。信号ごとに描く。無ければ RowDetail が読むだけで出す */
   classification?: ClassificationSlot;
+  /** 聞き取りの欄と直す口（T49） */
+  hearing?: HearingSlot;
   slots?: TableSlots;
 }) {
   const h = (k: SortKey) => slots?.sortHref(k);
@@ -83,7 +86,7 @@ export function DisasterTable({
               ) : null
             }
             cells={<Cells row={r} sort={sort} nameHref={slots ? slots.nameHref(r.id) : undefined} nameMark={slots?.nameMark?.(r)} />}
-            detail={slots ? slots.detail(r) : r.detail ? <RowDetail detail={r.detail} classification={classification} /> : null}
+            detail={slots ? slots.detail(r) : r.detail ? <RowDetail detail={r.detail} classification={classification} hearing={hearing} /> : null}
           />
         ))}
       </tbody>

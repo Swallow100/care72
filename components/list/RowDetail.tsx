@@ -7,11 +7,22 @@ import { COLOR_LABELS } from "@/lib/labels";
 import type { DetailSignal, RowDetail as Detail } from "@/lib/list/detail";
 import { CLASS_LABELS, DETAIL_LABELS } from "@/lib/list/labels";
 import { CallButtons } from "./CallButtons";
+import { Hearing } from "./Hearing";
 import { OverrideForm } from "./OverrideForm";
 
 export type ClassificationSlot = (signal: DetailSignal) => React.ReactNode;
+/** 聞き取りの欄（T49）。無ければ読むだけで出す */
+export type HearingSlot = (signal: DetailSignal) => React.ReactNode;
 
-export function RowDetail({ detail, classification }: { detail: Detail; classification?: ClassificationSlot }) {
+export function RowDetail({
+  detail,
+  classification,
+  hearing,
+}: {
+  detail: Detail;
+  classification?: ClassificationSlot;
+  hearing?: HearingSlot;
+}) {
   const d = detail;
   return (
     <div className="space-y-2 text-sm" data-detail-of={d.personId}>
@@ -141,7 +152,7 @@ export function RowDetail({ detail, classification }: { detail: Detail; classifi
             ) : (
               <ul className="space-y-2">
                 {d.signals.map((s) => (
-                  <SignalItem key={s.id} signal={s} classification={classification} />
+                  <SignalItem key={s.id} signal={s} classification={classification} hearing={hearing} />
                 ))}
               </ul>
             )}
@@ -155,7 +166,15 @@ export function RowDetail({ detail, classification }: { detail: Detail; classifi
   );
 }
 
-function SignalItem({ signal: s, classification }: { signal: DetailSignal; classification?: ClassificationSlot }) {
+function SignalItem({
+  signal: s,
+  classification,
+  hearing,
+}: {
+  signal: DetailSignal;
+  classification?: ClassificationSlot;
+  hearing?: HearingSlot;
+}) {
   const hasVoice = s.recording !== null || s.transcript !== null;
   return (
     <li data-signal={s.id}>
@@ -165,6 +184,7 @@ function SignalItem({ signal: s, classification }: { signal: DetailSignal; class
         <StateTag tone={s.tone}>{s.color === "red" ? COLOR_LABELS.red : s.color === "green" ? COLOR_LABELS.green : COLOR_LABELS.gray}</StateTag>
         <span>{s.body}</span>
       </div>
+      <div className="mt-1 empty:hidden">{hearing ? hearing(s) : <Hearing signalId={s.id} source={{ answers: s.row.answers, ai_memo: s.row.ai_memo, memo: s.row.memo }} inset />}</div>
       {s.recording && (
         <div className="mt-1 flex items-center gap-2">
           <span className="text-xs text-muted">{DETAIL_LABELS.recording}</span>

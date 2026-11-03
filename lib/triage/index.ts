@@ -794,7 +794,7 @@ export const ORDER: ReadonlyArray<OrderKey> = [
     origin: "案 5",
     compare: (a, b) => cmp(a.hasSupporter ? 1 : 0, b.hasSupporter ? 1 : 0),
   },
-  { label: "優先の骨格の段 1〜8", origin: "仕様書", compare: (a, b) => cmp(a.tier, b.tier) },
+  { label: "順番の骨格の段 1〜8", origin: "仕様書", compare: (a, b) => cmp(a.tier, b.tier) },
   {
     label: "id",
     origin: "決めた所",
