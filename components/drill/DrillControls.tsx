@@ -117,7 +117,7 @@ export function DrillControls({ id, step, done }: { id: string; step: number; do
       >
         {DRILL_LABELS.abandon}
       </Button>
-      {stepping && <Loader72 label={WAIT_LABELS.think} size={18} className="text-sm text-muted" />}
+      {stepping && <Loader72 label={WAIT_LABELS.think} size={18} on="base" className="text-sm text-muted" />}
       {error && (
         <span role="alert" className="text-sm font-bold text-danger">
           {error}

@@ -17,7 +17,7 @@ export const CONFIRM_LABELS = {
   resetOk: "戻す",
   normalTitle: "平時復帰",
   normalOk: "戻す",
-  unlistTitle: "一覧から外す",
+  unlistTitle: "一覧除外",
   unlistOk: "外す",
   abandonTitle: "訓練中断",
   abandonOk: "中断",

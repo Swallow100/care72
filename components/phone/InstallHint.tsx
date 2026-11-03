@@ -5,10 +5,9 @@
 // 追加済み・PC・判断できないときは出さない。閉じたらその画面（タブ）の間は出さない。
 // 端末の様子は描いたあと（useEffect）に読む。サーバーの描画と最初の描画では何も出さない（出す・出さないの食い違いを作らない）。
 
-import { ArrowTopRightOnSquareIcon, ArrowUpOnSquareIcon, EllipsisVerticalIcon, PlusIcon } from "@heroicons/react/20/solid";
 import { useEffect, useState, type ComponentType, type SVGProps } from "react";
 import { EasyWords } from "@/components/forms/EasyText";
-import { CloseIcon } from "@/components/ui/Icon";
+import { AddIcon, BrowserMenuIcon, CloseIcon, ExternalIcon, SaveIcon, ShareIcon } from "@/components/ui/Icon";
 import { easy } from "@/lib/forms/easy-words";
 import {
   dismissInstall,
@@ -86,18 +85,19 @@ export function InstallHint() {
       </p>
       {mode === "ios" && (
         <ol className="mt-2 space-y-2">
-          <Step icon={ArrowUpOnSquareIcon} m={P.iosShare} />
-          <Step icon={PlusIcon} m={P.iosAdd} />
-          <Step icon={PlusIcon} m={P.iosDone} />
+          <Step icon={ShareIcon} m={P.iosShare} />
+          <Step icon={AddIcon} m={P.iosAdd} />
+          <Step icon={SaveIcon} m={P.iosDone} />
         </ol>
       )}
       {mode === "android-manual" && (
         <ol className="mt-2 space-y-2">
-          <Step icon={EllipsisVerticalIcon} m={P.androidMenu} />
-          <Step icon={PlusIcon} m={P.androidAdd} />
+          <Step icon={BrowserMenuIcon} m={P.androidMenu} />
+          <Step icon={AddIcon} m={P.androidAdd} />
         </ol>
       )}
-      <div className="mt-3 flex gap-2">
+      {/* ボタンは縦に積む（375px で 2 つ並べると大きな字が語の途中で割れる） */}
+      <div className="mt-3 flex flex-col gap-2">
         {mode === "android" && (
           <button
             type="button"
@@ -111,7 +111,7 @@ export function InstallHint() {
               setMode(readMode());
             }}
           >
-            <PlusIcon aria-hidden className="size-7 shrink-0" />
+            <AddIcon aria-hidden className="size-7 shrink-0" />
             <span>
               <EasyWords words={easy(P.add)} />
             </span>
@@ -119,7 +119,7 @@ export function InstallHint() {
         )}
         {(mode === "android-line" || mode === "ios-line") && href && (
           <a href={href} className={`${BIG} bg-accent text-on-accent`} data-press="overlay" data-install-action="browser">
-            <ArrowTopRightOnSquareIcon aria-hidden className="size-7 shrink-0" />
+            <ExternalIcon aria-hidden className="size-7 shrink-0" />
             <span>
               <EasyWords words={easy(P.openBrowser)} />
             </span>

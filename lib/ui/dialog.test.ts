@@ -80,9 +80,9 @@ describe("アプリ内の確認・お知らせの待ち行列", () => {
     expect(initialFocus(d.current()!)).toBe("ok");
   });
 
-  it("ok の言葉は 2〜4 字の漢語（呼ぶ側の言葉）", async () => {
+  it("窓の題と ok の言葉は 2〜4 字（呼ぶ側の言葉）", async () => {
     const { CONFIRM_LABELS } = await import("./labels.ts");
-    for (const k of ["resetOk", "normalOk", "unlistOk", "abandonOk"] as const) {
+    for (const k of ["resetTitle", "resetOk", "normalTitle", "normalOk", "unlistTitle", "unlistOk", "abandonTitle", "abandonOk"] as const) {
       expect(CONFIRM_LABELS[k].length).toBeGreaterThanOrEqual(2);
       expect(CONFIRM_LABELS[k].length).toBeLessThanOrEqual(4);
     }

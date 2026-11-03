@@ -25,7 +25,20 @@ export function loaderMotion(env: { reducedMotion: boolean; canAnimate: boolean 
 }
 
 /** live は読み上げの欄（role="status"）にするか。呼ぶ側の欄がもう status なら false（入れ子にしない） */
-export function Loader72({ label, size = 20, live = true, className = "" }: { label: ReactNode; size?: number; live?: boolean; className?: string }) {
+/** on は印を置く地（日の切れ目をその色で描く）。面（白）の上なら panel、地（灰色）の上なら base */
+export function Loader72({
+  label,
+  size = 20,
+  live = true,
+  on = "panel",
+  className = "",
+}: {
+  label: ReactNode;
+  size?: number;
+  live?: boolean;
+  on?: "panel" | "panel2" | "base";
+  className?: string;
+}) {
   const arc = useRef<SVGGElement>(null);
   // サーバーの描画と最初の描画は輪を出す（設定は描いたあとに読む）
   const [motion, setMotion] = useState<LoaderMotion>("spin");
@@ -65,9 +78,9 @@ export function Loader72({ label, size = 20, live = true, className = "" }: { la
               transform="rotate(-90 50 50)"
             />
           </g>
-          {/* 日の切れ目（面の色で輪を切る） */}
+          {/* 日の切れ目（置いた地の色で輪を切る） */}
           {DAYS.map((deg) => (
-            <line key={deg} x1="50" y1="2" x2="50" y2="18" stroke="var(--panel)" strokeWidth="4" transform={`rotate(${deg} 50 50)`} />
+            <line key={deg} x1="50" y1="2" x2="50" y2="18" stroke={`var(--${on})`} strokeWidth="4" transform={`rotate(${deg} 50 50)`} />
           ))}
         </svg>
       )}

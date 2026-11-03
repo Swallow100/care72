@@ -144,12 +144,12 @@ export function Select({
     };
   }, [open, close]);
 
-  // 置けたら、選んでいる項目（無ければ最初の選べる項目）に焦点を置く
+  // 置けたら、選んでいる項目（無ければ最初の選べる項目）に焦点を置く。長い一覧では画面全体がその項目まで送られる
   useEffect(() => {
     if (!open || !pos) return;
     const at = items.findIndex((it) => it.value === current && !it.disabled);
     const start = at >= 0 ? at : nextEnabled(items, -1, "ArrowDown");
-    list.current?.querySelector<HTMLButtonElement>(`[data-index="${start}"]`)?.focus({ preventScroll: true });
+    list.current?.querySelector<HTMLButtonElement>(`[data-index="${start}"]`)?.focus();
     // 項目の並びは開いている間は変わらない（開いたときの 1 回だけ）
   }, [open, pos]);
 
@@ -200,7 +200,7 @@ export function Select({
             setOpen(true);
           }
         }}
-        className={`inline-flex min-w-0 items-center justify-between gap-1.5 text-left disabled:text-muted ${open ? "outline-2 -outline-offset-2 outline-accent" : ""} ${className}`}
+        className={`inline-flex min-w-0 items-center justify-between gap-1.5 text-left disabled:text-muted ${open ? "outline-solid! outline-2! -outline-offset-2! outline-accent!" : ""} ${className}`}
         data-press
         {...data}
       >

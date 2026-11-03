@@ -62,6 +62,7 @@ function AiListening() {
     <p className="text-center text-2xl font-bold" data-ai="listening">
       <Loader72
         size={28}
+        on="base"
         label={
           <>
             <span className="phone-ai">AI</span>
