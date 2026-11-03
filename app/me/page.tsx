@@ -1,13 +1,14 @@
 import "@/components/phone/phone.css";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
+import { redirect } from "next/navigation";
 import { AutoRefresh } from "@/components/disaster/AutoRefresh";
 import { InstallHint } from "@/components/phone/InstallHint";
 import { PhoneDisaster } from "@/components/phone/PhoneDisaster";
 import { PhoneNormalMark } from "@/components/phone/PhoneMarks";
 import { PhoneSheet } from "@/components/phone/PhoneSheet";
 import { todayJst } from "@/lib/age";
+import { phoneGoneExit } from "@/lib/auth/phone-gate";
 import { requirePage } from "@/lib/auth/server";
 import { loadDisasterState } from "@/lib/disaster/db";
 import { isDisaster } from "@/lib/disaster/state";
@@ -28,10 +29,11 @@ const NORMAL_REFRESH_SEC = 30;
 // 壁は本人のページと同じ（loadPersonPage が personInScope を通す。本人は自分だけ）。Claude は呼ばない。
 export default async function MePage() {
   const principal = await requirePage("me");
-  if (!principal.personId) notFound();
+  // 本人の行が読めないときは 404 にせず、審査員は役選択・本人は「無効」の頁へ（T77。lib/auth/phone-gate.ts）
+  if (!principal.personId) redirect(phoneGoneExit(principal));
   const { env } = await getCloudflareContext({ async: true });
   const rows = await loadPersonPage(env.DB, principal, principal.personId);
-  if (!rows) notFound();
+  if (!rows) redirect(phoneGoneExit(principal));
   const disaster = await loadDisasterState(env.DB, rows.person.office_id);
 
   if (isDisaster(disaster)) {

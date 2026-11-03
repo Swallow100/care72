@@ -98,6 +98,8 @@ export function PhoneDisaster({
     const queryPermission = navigator.permissions
       ? () => navigator.permissions.query({ name: "microphone" as PermissionName }).then((s) => s.state)
       : undefined;
+    /** 赤を押した時のマイクの許可の結果（T77。無い・断られたら声の問いと録音に入らない） */
+    let mic: Promise<boolean> | null = null;
 
     const p = createPhone({
       sendSignal: (b) => outbox.sendSignal(b),
@@ -112,8 +114,9 @@ export function PhoneDisaster({
       speak: synth && Utterance ? (text) => player.say(text) : undefined,
       prime: () => {
         player.prime();
-        void primeMicrophone({ getUserMedia, queryPermission });
+        mic = primeMicrophone({ getUserMedia, queryPermission });
       },
+      micReady: () => mic ?? Promise.resolve(getUserMedia !== null),
       playPrompt: () => player.play(),
       startRecording: () => startRecording({ getUserMedia, Recorder }),
       startTranscript: (events) => startTranscript(speechRecognitionOf(window), events),

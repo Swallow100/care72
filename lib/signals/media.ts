@@ -258,23 +258,29 @@ export async function startRecording(deps: {
 
 /**
  * マイクの許可を先に聞いておく（赤を押した時）。もう許可されていれば何もしない。
- * 聞いたらすぐ止める（録るのは 20 秒操作が無かったときだけ。マイクを開いたままにしない）
+ * 聞いたらすぐ止める（録るのは 20 秒操作が無かったときだけ。マイクを開いたままにしない）。
+ * 返すのはマイクが使えそうか（T77）: 許可済み・開けたら true、マイクの道が無い・断られた・開けなかったら false。
+ * false なら本人のスマホは声の問いにも録音にも入らない（lib/signals/phone.ts の micReady）
  */
 export async function primeMicrophone(deps: {
   getUserMedia: GetUserMedia | null;
   queryPermission?: () => Promise<string>;
-}): Promise<void> {
-  if (!deps.getUserMedia) return;
+}): Promise<boolean> {
+  if (!deps.getUserMedia) return false;
   try {
-    if (deps.queryPermission && (await deps.queryPermission()) === "granted") return;
+    const state = deps.queryPermission ? await deps.queryPermission() : null;
+    if (state === "granted") return true;
+    if (state === "denied") return false;
   } catch {
     // permissions.query で microphone を聞けない端末（Firefox など）は、そのまま聞く
   }
   try {
     const s = await deps.getUserMedia({ audio: true });
     s.getTracks().forEach((t) => t.stop());
+    return true;
   } catch {
     // 断られた・マイクが無い。録るときにもう一度試し、だめなら録音なしで送る
+    return false;
   }
 }
 

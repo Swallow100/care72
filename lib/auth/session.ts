@@ -85,6 +85,18 @@ export async function signSession(payload: SessionPayload, secret: string): Prom
 
 /** 署名・形・期限を確かめる。どれかが違えば null。now は秒 */
 export async function verifySession(token: string | null | undefined, secret: string, now: number): Promise<SessionPayload | null> {
+  const p = await decodeSession(token, secret);
+  if (!p) return null;
+  const maxTtl = p.k === "link" ? LINK_SESSION_TTL_SEC : SESSION_TTL_SEC;
+  if (p.exp <= now || p.iat > now + 60 || p.exp - p.iat > maxTtl) return null;
+  return p;
+}
+
+/**
+ * 署名と形だけを確かめて中身を読む（期限は見ない）。入れる・入れないの判断には使わない（それは verifySession と principalOf）。
+ * 使うのは、通らなかったセッションが何だったか（本人・家族のリンクか、審査員か）で送り先を選ぶときだけ（lib/auth/phone-gate.ts。T77）
+ */
+export async function decodeSession(token: string | null | undefined, secret: string): Promise<SessionPayload | null> {
   if (!token || token.length > MAX_TOKEN_LENGTH) return null;
   const dot = token.indexOf(".");
   if (dot <= 0 || dot !== token.lastIndexOf(".")) return null;
@@ -102,11 +114,7 @@ export async function verifySession(token: string | null | undefined, secret: st
     return null;
   }
   const parsed = payloadSchema.safeParse(json);
-  if (!parsed.success) return null;
-  const p = parsed.data;
-  const maxTtl = p.k === "link" ? LINK_SESSION_TTL_SEC : SESSION_TTL_SEC;
-  if (p.exp <= now || p.iat > now + 60 || p.exp - p.iat > maxTtl) return null;
-  return p;
+  return parsed.success ? parsed.data : null;
 }
 
 /** 新しいセッションの時刻（今から 7 日） */

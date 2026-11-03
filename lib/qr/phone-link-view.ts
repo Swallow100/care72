@@ -2,8 +2,10 @@
 // 画面（components/phone/PhoneLinkPanel.tsx）はここの形を描くだけ。
 //
 // - 本人用: 1 行。台帳のスマホ（basic.contactMeans.smartphone）が「使用可」でなくても出す（押せるかは本人と家族が決める）
-// - 家族用: 連絡先のうち答えられる種類（家族・支援者・民生委員。lib/signals/labels.ts の SIGNAL_WRITER_KINDS）の行ごと。
-//   本人の電話（self）・機関の連絡先は出さない（開く口も通さない）。スマホ有（has_smartphone 1）を上に、そのあと緊急連絡先の順
+// - 家族用: 連絡先のうち答えられる種類（家族・支援者・民生委員。lib/signals/labels.ts の SIGNAL_WRITER_KINDS）で、
+//   家族・同居・緊急連絡先の行だけ（T77。緊急連絡先でない近所の支援者・民生委員は出さない）。本人の電話（self）・機関の連絡先は出さない
+//   （開く口も通さない）。スマホ 使用可（has_smartphone 1）を上に、そのあと緊急連絡先の順
+// - スマホの印は本人も家族も「スマホ 使用可」の形（T77。本人は台帳の値、家族は has_smartphone の 1・0 を 使用可・なし に）
 // - URL と QR は有効な版があるときだけ（未発行・期限切れ・一覧外は出さない。出しても開けない）
 
 import { parseLedger } from "../db/ledger.ts";
@@ -22,7 +24,7 @@ export type PhoneLinkItem = {
   name: string;
   /** 続柄（娘）か種類（支援者）。本人用は null */
   relation: string | null;
-  /** スマホの印（本人は台帳の値「スマホ 使用可」、家族はスマホ有のときだけ「スマホ有」）。無ければ null */
+  /** スマホの印（本人は台帳の値「スマホ 使用可」、家族は has_smartphone の 1・0 で「スマホ 使用可」「スマホ なし」）。分からなければ null */
   smartphone: string | null;
   /** 開く URL（/s/<token> の絶対 URL）。有効な版が無ければ null */
   url: string | null;
@@ -39,11 +41,20 @@ export type PhoneLinkView = {
 
 type Contact = PersonPageRows["contacts"][number];
 
-/** 家族用に出す連絡先の並び: スマホ有 → 緊急連絡先の順（無い物は後）→ 並びの順 → id */
+/**
+ * 家族用に出す連絡先か（T77、docs/progress/qa-20261104.md の低）。答えられる種類（家族・支援者・民生委員）のうち、
+ * 家族・同居（reach together）・緊急連絡先（emergency_order あり）だけ
+ */
+export function isFamilyLinkContact(c: Pick<Contact, "kind" | "reach" | "emergency_order">): boolean {
+  if (!isSignalWriterKind(c.kind)) return false;
+  return c.kind === "family" || c.reach === "together" || c.emergency_order != null;
+}
+
+/** 家族用に出す連絡先の並び: スマホ 使用可 → 緊急連絡先の順（無い物は後）→ 並びの順 → id */
 export function familyLinkContacts(rows: Pick<PersonPageRows, "person" | "contacts">): Contact[] {
   const order = (c: Contact) => c.emergency_order ?? Number.MAX_SAFE_INTEGER;
   return rows.contacts
-    .filter((c) => c.person_id === rows.person.id && isSignalWriterKind(c.kind))
+    .filter((c) => c.person_id === rows.person.id && isFamilyLinkContact(c))
     .sort(
       (a, b) =>
         Number(b.has_smartphone === 1) - Number(a.has_smartphone === 1) ||
@@ -60,6 +71,12 @@ function ownSmartphone(ledger: string): string | null {
   } catch {
     return null;
   }
+}
+
+/** 家族の連絡先のスマホの印。本人と同じ「スマホ 使用可」の形（T77。前は「スマホ有」で混ざっていた）。分からなければ null */
+export function contactSmartphone(hasSmartphone: 0 | 1 | null): string | null {
+  if (hasSmartphone === null) return null;
+  return `${PHONE_LINK_LABELS.ownPhone} ${SMARTPHONE_LABELS[hasSmartphone === 1 ? "uses" : "none"]}`;
 }
 
 /** 画面の形。origin は要求の元（lib/qr/url.ts の originFromHeaders）。無ければ URL を出さない。now は秒 */
@@ -91,7 +108,7 @@ export async function buildPhoneLinkView(
         kind: "family",
         name: c.name?.trim() || CONTACT_KIND_LABELS[c.kind],
         relation: c.relation?.trim() || CONTACT_KIND_LABELS[c.kind],
-        smartphone: c.has_smartphone === 1 ? PHONE_LINK_LABELS.smartphone : null,
+        smartphone: contactSmartphone(c.has_smartphone),
         url: await url(c.id),
       }),
     ),

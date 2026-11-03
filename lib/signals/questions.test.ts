@@ -88,8 +88,13 @@ describe("問いの表", () => {
     };
     expect(reach({ who: "self", hasDevice: true }).has("device")).toBe(true);
     expect(reach({ who: "self", hasDevice: false }).has("device")).toBe(false);
-    // 避難先のある人（T69b）なら全部の問いに着く
-    expect(reach({ who: "self", hasDevice: true, shelters: 2 }).size).toBe(QUESTIONS.length);
+    // 避難先のある人（T69b）なら、押す画面と声の問いを合わせて全部の問いに着く。連絡手段は声の問いだけ（T77）、避難所の名前は押す画面だけ
+    const press = reach({ who: "self", hasDevice: true, shelters: 2 });
+    const voice = reach({ who: "self", hasDevice: true, shelters: 2, voice: true });
+    expect(new Set([...press, ...voice]).size).toBe(QUESTIONS.length);
+    expect(press.has("contact")).toBe(false);
+    expect(voice.has("contact")).toBe(true);
+    expect(voice.has("shelterWhich")).toBe(false);
     expect(reach({ who: "self", hasDevice: true }).has("shelterWhich")).toBe(false);
     const fam = reach({ who: "family", hasDevice: true });
     expect(fam.has("contact") || fam.has("request")).toBe(false);
