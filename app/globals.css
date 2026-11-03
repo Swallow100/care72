@@ -164,14 +164,34 @@ body {
 }
 
 /* 押したときの変化は灰色の地だけ。縮める・薄くする・色を変えるは重ねない。
-   画面を移る途中（data-pending）も同じ灰色を残し、押したことが分かるようにする */
+   画面を移る途中（data-pending）も同じ灰色を残し、押したことが分かるようにする。
+   data-pressing は先頭の小さな script（lib/ui/head-scripts.ts の PRESS_SCRIPT、T44）が付ける印。指を置いた瞬間に "on"、
+   離しても 120ms は残して "out" にし、灰色を元の地へふわっと戻す。スクロールが始まったら外す */
 [data-press]:not([data-press="overlay"]):active,
+[data-press]:not([data-press="overlay"])[data-pressing="on"],
 [data-press]:not([data-press="overlay"])[data-pending] {
   background-color: var(--press);
 }
 
 /* 塗りのボタンは地の色を残し、上に同じ灰色を重ねる */
 [data-press="overlay"]:active,
+[data-press="overlay"][data-pressing="on"],
 [data-press="overlay"][data-pending] {
   box-shadow: inset 0 0 0 100vmax var(--press);
+}
+
+/* 押す物は二度押しの拡大で押した回が遅れたり落ちたりしないように（ピンチの拡大はそのまま）、タップの青い光も出さない（灰色だけ。11/3 設計の答え） */
+[data-press] {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* 置いた瞬間に出す（部品の transition で遅れて濃くならない）。離したあとは元の地へ 0.32 秒で戻す */
+[data-press][data-pressing="on"] {
+  transition: none;
+}
+[data-press][data-pressing="out"]:not([data-pending]) {
+  transition:
+    background-color 0.32s ease-out,
+    box-shadow 0.32s ease-out;
 }
