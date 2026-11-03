@@ -1,6 +1,8 @@
 // 医療要約の紙面（A4 縦 1 枚）。欄の名前と順は lib/forms/medical-summary.ts の MEDICAL_FIELDS（災害診療記録 2018 の 1 頁の順）。
 // 状態を持たない（Server Component のまま、テストで renderToStaticMarkup できる）。
 // 大事な欄（禁忌事項・特記事項（常用薬等）のチェック・常用薬と中断注意・透析・在宅酸素・メディカル ID）は太い枠と大きい文字。
+// 字は太くしない（災害診療記録 2018 に太字は無い。T47）。様式に無い欄（住まい・連絡先の人・関係先・機器・常用薬の表・持出品・特記）は
+// 様式の欄のあとの「補足」の段にまとめる（様式の欄の中に混ぜない）。
 // 「なぜこの行があるか」と出典は紙に出さない（画面の脇の MedicalSummaryBasis だけ）。
 // 見た目は components/forms/paper.css と medical-paper.css（読み込むのはページの側。テストでは読まない）。
 
@@ -49,13 +51,12 @@ function F({
 
 const cols = (template: string): CSSProperties => ({ gridTemplateColumns: template });
 
-/** 患者の 2 行目（電話・住所・家・住まい）の列。描かない欄（T24）の列は詰める */
+/** 患者の 2 行目（電話・住所・家の状態）の列。描かない欄（T24）の列は詰める */
 function patientRow2(s: MedicalSummary): string {
   const widths: Array<[MedicalKey, string]> = [
-    ["patient.phone", "0.95fr"],
-    ["patient.address", "0.85fr"],
-    ["patient.house", "1.1fr"],
-    ["patient.dwelling", "1.3fr"],
+    ["patient.phone", "1fr"],
+    ["patient.address", "1.2fr"],
+    ["patient.house", "1fr"],
   ];
   return widths
     .filter(([k]) => !s.hidden?.includes(k))
@@ -73,14 +74,18 @@ function dateText(iso: string): string {
 /** 常用薬の表（薬ごとに 回数・用量・残り・保管・中断注意） */
 function MedicationTable({ s }: { s: MedicalSummary }) {
   if (s.medications.length === 0) {
-    return <F s={s} k="meds.list" size="lg" />;
+    return (
+      <div className="grid" style={cols("1fr")}>
+        <F s={s} k="meds.list" size="lg" />
+      </div>
+    );
   }
   return (
     <div data-field="meds.list">
       <table className="med-table">
         <thead>
           <tr>
-            <th>薬</th>
+            <th>常用薬</th>
             <th>回数</th>
             <th>用量</th>
             <th>残り</th>
@@ -92,7 +97,7 @@ function MedicationTable({ s }: { s: MedicalSummary }) {
           {s.medications.map((m, i) => (
             <tr key={i} data-medication={m.name} data-mark={m.mark ? (m.mark.tier ?? "ledger") : undefined}>
               <td className="med-name">
-                <span className="p-strong">{paperText(m.name)}</span>
+                <span>{paperText(m.name)}</span>
                 {m.categoryLabel && <span className="p-sub"> {m.categoryLabel}</span>}
               </td>
               <td>
@@ -124,6 +129,7 @@ function MedicalIdBoxes({ s }: { s: MedicalSummary }) {
   const kanaBoxes = Array.from({ length: 7 }, (_, i) => kana[i] ?? "");
   return (
     <div className="mid" data-field="id.medical" data-medical-id={id.id ?? ""}>
+      <span className="mid-label">{medicalField("id.medical").label}</span>
       <div className="mid-row" aria-hidden="true">
         <span className="mid-group">
           {digits.map((d, i) => (
@@ -209,29 +215,23 @@ export function MedicalSummaryPaper({
           </div>
 
           <div className="blk" data-block="patient">
-            <div className="grid" style={cols("1.5fr 1.2fr 1.7fr 0.6fr")}>
+            <div className="grid" style={cols("1.5fr 1.2fr 0.6fr 1.7fr")}>
               <F s={s} k="patient.kana" size="xl" />
               <F s={s} k="patient.name" size="lg" />
-              <F s={s} k="patient.birth" size="lg" />
               <F s={s} k="patient.sex" />
+              <F s={s} k="patient.birth" size="lg" />
             </div>
             <div className="grid" style={cols(patientRow2(s))}>
               <F s={s} k="patient.phone" />
               <F s={s} k="patient.address" />
-              <F s={s} k="patient.house" label="状態（家）" />
-              <F s={s} k="patient.dwelling" size="sm" />
+              <F s={s} k="patient.house" />
             </div>
             <div className="grid" style={cols("1fr 1fr")} data-block="shelter">
               <F s={s} k="shelter.first" size="lg" />
               <F s={s} k="shelter.second" size="lg" />
             </div>
-          </div>
-
-          <div className="blk" data-block="contact">
-            <div className="grid" style={cols("1fr 1fr")}>
+            <div className="grid" style={cols("1fr")} data-block="contact">
               <F s={s} k="contact.kinds" />
-              <F s={s} k="contact.others" size="sm" />
-              <F s={s} k="contact.people" style={span(2)} />
             </div>
           </div>
 
@@ -257,16 +257,6 @@ export function MedicalSummaryPaper({
                 <F s={s} k="drug.dialysis" size="lg" bare />
               </div>
               <F s={s} k="drug.hot" size="lg" bare />
-              <F s={s} k="drug.devices" size="lg" />
-            </div>
-          </div>
-
-          <div className="blk key" data-block="meds">
-            <div className="blk-h">常用薬</div>
-            <MedicationTable s={s} />
-            <div className="grid" style={cols("1fr 1fr")}>
-              <F s={s} k="meds.carry" />
-              <F s={s} k="meds.notes" />
             </div>
           </div>
 
@@ -277,16 +267,31 @@ export function MedicalSummaryPaper({
             </div>
           </div>
 
-          <div className="blk" data-block="history">
-            <div className="grid" style={cols("1fr 1fr")}>
+          <div className="blk key" data-block="id">
+            <MedicalIdBoxes s={s} />
+            {/* 既往症・予防接種は様式の 2 頁の欄（1 頁のメディカル ID のあと） */}
+            <div className="grid" style={cols("1fr 1fr")} data-block="history">
               <F s={s} k="history.disease" />
               <F s={s} k="history.vaccination" />
             </div>
           </div>
 
-          <div className="blk key" data-block="id">
-            <div className="blk-h">メディカル ID</div>
-            <MedicalIdBoxes s={s} />
+          {/* 様式の外の欄（災害診療記録 2018 に無い。台帳の値を医療班へ渡すために足した） */}
+          <div className="blk key" data-block="extra">
+            <div className="blk-h">
+              補足<span className="note">様式外の欄</span>
+            </div>
+            <div className="grid" style={cols("1fr 1fr")}>
+              <F s={s} k="contact.people" style={span(2)} />
+              <F s={s} k="contact.others" size="sm" />
+              <F s={s} k="drug.devices" size="lg" />
+            </div>
+            <MedicationTable s={s} />
+            <div className="grid" style={cols("1fr 1fr 1fr")}>
+              <F s={s} k="patient.dwelling" size="sm" />
+              <F s={s} k="meds.carry" />
+              <F s={s} k="meds.notes" />
+            </div>
           </div>
 
           {s.pending.length > 0 && (
@@ -307,7 +312,9 @@ export function MedicalSummaryPaper({
           )}
 
           <div className="small-note">
-            <p>※欄の順は災害診療記録2018（一般診療版）による。既往症・予防接種は様式の2頁</p>
+            <p>
+              ※欄の順は災害診療記録2018（一般診療版）による（既往症・予防接種は様式の2頁）。値は台帳の記録を並べ替えた物で、初診日・傷病名・トリアージ・処置など医療班が書く欄は空けている
+            </p>
           </div>
           <PaperFoot doc={foot.doc} name={s.name} page={foot.page} total={foot.total} />
         </section>

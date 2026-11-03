@@ -40,7 +40,7 @@ export function MappedSheet({ sheet, meta }: { sheet: Sheet; meta: MappedSheetMe
             </div>
             <div className="top">
               <span>
-                対象者 <span className="p-strong">{sheet.name}</span>
+                対象者 <span>{sheet.name}</span>
               </span>
             </div>
             {p.sections.map((s, j) => (
