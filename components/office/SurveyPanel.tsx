@@ -1,39 +1,44 @@
-// 事業所の画面の「アンケート」（docs/tasks/T42.md）。リンクを作る・作ったリンクの状態・答えの一覧・写し。
+// 事業所の画面の「アンケート」（docs/tasks/T42.md・T65.md）。共有のリンクを作る・リンクの受付の状態と件数・QR・答えの一覧・写し。
 // 写しは docs/survey/answers.md の表の 1 行（docs/survey/README.md の形。tools/survey/summarize.ts がそのまま読む）。
-// 引用が「よい」でない人の記入欄の文は写しに入れない（一覧では読める）。名前・電話らしい物には「要確認」の印。
+// 引用が「よい」でない人の文（記入欄もその他の記入も）は写しに入れない（一覧では読める）。名前・電話らしい物には「要確認」の印。
 // 審査員の試しの答え（T 番号）は「全員写し」に入れない。審査員が見ると、審査員が作った物だけが出る（lib/survey/store.ts）。
+// T42 の 1 人 1 本のリンクと答え（survey_links・survey_answers）は出さない（作らなくなった。行は残してある）。
 
 import { CopyButton } from "@/components/forms/CopyButton";
 import { Mark, Panel, StateText, type Tone } from "@/components/ui";
 import { shortJst } from "@/lib/disaster/state";
 import { answerLine, answerRisks, choiceText, quoteAllowed } from "@/lib/survey/answer";
 import { surveyUrl } from "@/lib/survey/paths";
-import type { SurveyAnswerItem, SurveyLinkItem, SurveyOverview } from "@/lib/survey/store";
-import { SURVEY_LINK_STATE_LABELS, SURVEY_OFFICE_LABELS as L, type SurveyLinkState } from "@/lib/survey/text";
-import { CHOICE_QUESTIONS, COLUMNS, FREE_QUESTIONS } from "@/tools/survey/questions";
+import { lastMoment, type ShareState } from "@/lib/survey/share";
+import type { SurveyAnswerItem, SurveyOverview, SurveyShareItem } from "@/lib/survey/store";
+import { SURVEY_OFFICE_LABELS as L, SURVEY_SHARE_STATE_LABELS } from "@/lib/survey/text";
+import { CHOICE_QUESTIONS, COLUMNS, TEXT_FIELDS } from "@/tools/survey/questions";
 import { MoreFold } from "./MoreFold";
 import { SurveyCreate } from "./SurveyCreate";
+import { SurveyQrImage, SurveyQrSave } from "./SurveyQr";
 
-const STATE_TONE: Record<SurveyLinkState, Tone> = {
-  unopened: "unknown",
-  opened: "check",
-  answered: "ok",
-  expired: "unknown",
+const STATE_TONE: Record<ShareState, Tone> = {
+  open: "ok",
+  full: "check",
+  closed: "unknown",
 };
 
+/** 一覧の行に出す列（番号・引用は上の印。その他の記入は選んだ言葉に添える） */
+const ROW_COLUMNS = COLUMNS.filter((c) => c !== "番号" && c !== "引用" && !c.endsWith("その他"));
+
 export function SurveyPanel({ overview, origin }: { overview: SurveyOverview; origin: string }) {
-  const { links, answers } = overview;
+  const { shares, answers } = overview;
   const real = answers.filter((a) => !a.judge);
   const allLines = real.map((a) => answerLine(a.id, a.answers)).join("\n");
   return (
     <Panel id="survey" aria-labelledby="survey-title" className="scroll-mt-4">
-      <SurveyCreate count={`${L.answers} ${answers.length}・${L.links} ${links.length}`} />
+      <SurveyCreate count={`${L.answers} ${answers.length}・${L.links} ${shares.length}`} />
 
       <h3 className="mt-3 text-sm font-bold text-muted">{L.links}</h3>
-      {links.length === 0 ? (
+      {shares.length === 0 ? (
         <p className="mt-1 text-sm text-muted">{L.noLinks}</p>
       ) : (
-        <MoreFold first={5} className="mt-1 grid gap-px text-sm" items={links.map((l) => <LinkRow key={l.token} link={l} origin={origin} />)} />
+        <MoreFold first={3} className="mt-1 grid gap-2 text-sm" items={shares.map((s) => <ShareRow key={s.token} share={s} origin={origin} />)} />
       )}
 
       <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -54,21 +59,29 @@ export function SurveyPanel({ overview, origin }: { overview: SurveyOverview; or
   );
 }
 
-function LinkRow({ link, origin }: { link: SurveyLinkItem; origin: string }) {
-  const live = link.state === "unopened" || link.state === "opened";
+function ShareRow({ share, origin }: { share: SurveyShareItem; origin: string }) {
+  const url = surveyUrl(origin, share.token);
+  const urlId = `survey-share-${share.token.slice(0, 8)}`;
   return (
-    <li className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded bg-panel2 px-2 py-1.5" data-survey-link={link.state}>
-      <span className="font-bold">{link.memo || "—"}</span>
-      <StateText tone={STATE_TONE[link.state]}>{SURVEY_LINK_STATE_LABELS[link.state]}</StateText>
-      {link.judge && <Mark inPanel2>{L.judge}</Mark>}
-      <span className="text-xs text-muted">
-        {L.expires} {shortJst(link.expiresAt)}
-      </span>
-      {live && (
-        <span className="ml-auto">
-          <CopyButton text={surveyUrl(origin, link.token)} inPanel2 />
-        </span>
-      )}
+    <li className="flex flex-wrap items-start gap-x-3 gap-y-2 rounded bg-panel2 px-2.5 py-2" data-survey-share={share.state}>
+      <SurveyQrImage url={url} px={88} />
+      <div className="min-w-0 flex-1 basis-56">
+        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+          <span className="font-bold">{share.memo || "—"}</span>
+          <StateText tone={STATE_TONE[share.state]}>{SURVEY_SHARE_STATE_LABELS[share.state]}</StateText>
+          {share.judge && <Mark inPanel2>{L.judge}</Mark>}
+          <span className="text-xs text-muted tabular-nums">
+            {L.answers} {share.answers}/{share.maxAnswers}・{L.expires} {shortJst(lastMoment(share.expiresAt))}
+          </span>
+        </div>
+        <p id={urlId} className="mt-1 text-xs break-all text-muted select-all">
+          {url}
+        </p>
+        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+          <CopyButton text={url} targetId={urlId} inPanel2 />
+          <SurveyQrSave url={url} inPanel2 />
+        </div>
+      </div>
     </li>
   );
 }
@@ -95,15 +108,19 @@ function AnswerRow({ item }: { item: SurveyAnswerItem }) {
         </span>
       </div>
       <dl className="mt-1 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-0.5">
-        {/* 紙の並び（役・経験・問 1〜7・問 7 の理由）。引用は上の印 */}
-        {COLUMNS.filter((c) => c !== "番号" && c !== "引用").map((column) => {
+        {/* 表の並び（役・経験・問 1〜9・問 9 の理由・ご意見）。引用は上の印 */}
+        {ROW_COLUMNS.map((column) => {
           const choice = CHOICE_QUESTIONS.find((q) => q.column === column);
-          const free = FREE_QUESTIONS.find((q) => q.column === column);
-          const text = choice ? choiceText(choice.key, a.choices[choice.key]) : free ? a.free[free.key] : null;
+          const field = TEXT_FIELDS.find((f) => f.column === column);
+          const text = choice
+            ? choiceText(choice.key, a.choices[choice.key], choice.other ? a.free[choice.other.key] : null)
+            : field
+              ? a.free[field.key]
+              : null;
           return (
             <div key={column} className="contents">
               <dt className="text-xs leading-5 text-muted">{column}</dt>
-              <dd className={`leading-5 ${free ? "break-words whitespace-pre-wrap" : ""}`}>{text ?? <span className="text-muted">—</span>}</dd>
+              <dd className={`leading-5 ${field ? "break-words whitespace-pre-wrap" : ""}`}>{text ?? <span className="text-muted">—</span>}</dd>
             </div>
           );
         })}

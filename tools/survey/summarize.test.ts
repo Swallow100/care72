@@ -15,7 +15,7 @@ import {
   systemFor,
   type AiOutcome,
 } from "./summarize.ts";
-import { FREE_QUESTIONS } from "./questions.ts";
+import { AI_QUESTIONS } from "./questions.ts";
 
 type Params = Anthropic.Beta.Messages.MessageCreateParamsNonStreaming;
 type Message = Anthropic.Beta.Messages.BetaMessage;
@@ -30,12 +30,12 @@ function table(rows: Array<Record<string, string>>): string {
   ].join("\n");
 }
 
-const base = { 役: "a", 経験: "b", 問1: "b", 問2: "d", 問3: "b", 問5: "c", 問6: "c", 問7: "a", 引用: "a" };
+const base = { 役: "a", 経験: "b", 問1: "b", 問2: "d", 問3: "b", 問4: "b", 問6: "a", 問7: "c", 問8: "c", 問9: "a", 引用: "a" };
 
 const ROWS = [
-  { ...base, 番号: "001", 問4: "書く時間が取れない", 問7理由: "話すだけなら続けられる" },
-  { ...base, 番号: "002", 問2: "c", 問4: "様式の欄が多すぎる", 問7理由: "任せきりは不安" },
-  { ...base, 番号: "003", 役: "b", 問2: "c", 問4: "本人や家族に聞きにくい", 問7理由: "" },
+  { ...base, 番号: "001", 問5: "書く時間が取れない", 問9理由: "話すだけなら続けられる" },
+  { ...base, 番号: "002", 問2: "e", 問5: "様式の欄が多すぎる", 問9理由: "任せきりは不安" },
+  { ...base, 番号: "003", 役: "b", 問2: "e", 問5: "本人や家族に聞きにくい", 問9理由: "" },
 ];
 
 function reply(items: unknown): Message {
@@ -90,24 +90,24 @@ describe("classifyAll", () => {
     expect(outcome.status).toBe("done");
     if (outcome.status !== "done") return;
     expect(outcome.model).toBe(SONNET);
-    expect(calls).toHaveLength(2); // 問 4 と 問 7 の理由
+    expect(calls).toHaveLength(2); // 問 5 と 問 9 の理由（ご意見は AI に渡さない）
     expect(calls[0].params.model).toBe(SONNET);
 
-    const q4 = outcome.sections.find((s) => s.key === "q4")!;
-    expect(q4.classified.map((c) => [c.respondent, c.category])).toEqual([
+    const q5 = outcome.sections.find((s) => s.key === "q5")!;
+    expect(q5.classified.map((c) => [c.respondent, c.category])).toEqual([
       ["001", "時間"],
       ["002", "様式"],
       ["003", "聞き取り"],
     ]);
-    expect(q4.classified[0].quote).toBe("書く時間が取れない");
-    const q7 = outcome.sections.find((s) => s.key === "q7reason")!;
-    expect(q7.classified.map((c) => c.ref)).toEqual(["問7理由-001", "問7理由-002"]);
+    expect(q5.classified[0].quote).toBe("書く時間が取れない");
+    const q7 = outcome.sections.find((s) => s.key === "q9reason")!;
+    expect(q7.classified.map((c) => c.ref)).toEqual(["問9理由-001", "問9理由-002"]);
   });
 
   it("入力のキーは回答の番号、値は text だけ。問いと型は system に書く", async () => {
     const { client, calls } = fake(categoryByWord);
     await classifyAll(parseAnswers(table(ROWS)), surveyContext(KEY, client));
-    expect(Object.keys(calls[0].input)).toEqual(["問4-001", "問4-002", "問4-003"]);
+    expect(Object.keys(calls[0].input)).toEqual(["問5-001", "問5-002", "問5-003"]);
     expect(Object.values(calls[0].input).every((v) => Object.keys(v).join() === "text")).toBe(true);
     const system = JSON.stringify(calls[0].params.system);
     for (const c of ["時間", "様式", "聞き取り", "支援者", "市町村", "使われない", "その他"]) expect(system).toContain(c);
@@ -119,48 +119,48 @@ describe("classifyAll", () => {
     const rs = parseAnswers(
       table([
         ...ROWS,
-        { ...base, 番号: "004", 引用: "b", 問4: "引用はよくないのに写した文", 問7理由: "" },
-        { ...base, 番号: "005", 問4: "山田さんの家の確認が大変", 問7理由: "090-0000-0001 に電話" },
+        { ...base, 番号: "004", 引用: "b", 問5: "引用はよくないのに写した文", 問9理由: "" },
+        { ...base, 番号: "005", 問5: "山田さんの家の確認が大変", 問9理由: "090-0000-0001 に電話" },
       ]),
     );
     const { outcome, held } = await classifyAll(rs, surveyContext(KEY, client));
-    expect(held.map((h) => h.ref).sort()).toEqual(["問4-004", "問4-005", "問7理由-005"]);
+    expect(held.map((h) => h.ref).sort()).toEqual(["問5-004", "問5-005", "問9理由-005"]);
     const sent = JSON.stringify(calls.map((c) => c.params.messages));
     expect(sent).not.toContain("引用はよくない");
     expect(sent).not.toContain("山田");
     expect(sent).not.toContain("0000");
     if (outcome.status === "done") {
-      expect(outcome.sections.find((s) => s.key === "q4")!.heldCount).toBe(2);
+      expect(outcome.sections.find((s) => s.key === "q5")!.heldCount).toBe(2);
     }
   });
 
   it("原文に無い引用・長すぎる引用・名前が残った引用は捨てる", async () => {
     const { client } = fake((id) => {
-      if (id === "問4-001") return { category: "時間", quote: "書く時間がまったく取れない" }; // 言い換え
-      if (id === "問4-002") return { category: "様式", quote: "様式の欄が〇〇すぎる" }; // 伏せ字は許す
+      if (id === "問5-001") return { category: "時間", quote: "書く時間がまったく取れない" }; // 言い換え
+      if (id === "問5-002") return { category: "様式", quote: "様式の欄が〇〇すぎる" }; // 伏せ字は許す
       return { category: "聞き取り", quote: "本人や家族に聞きにくい山田さん" };
     });
     const { outcome } = await classifyAll(parseAnswers(table(ROWS)), surveyContext(KEY, client));
     if (outcome.status !== "done") throw new Error("done のはず");
-    const q4 = outcome.sections.find((s) => s.key === "q4")!.classified;
-    expect(q4[0].quote).toBeNull();
-    expect(q4[0].quoteNote).toMatch(/原文と合わない/);
-    expect(q4[1].quote).toBe("様式の欄が〇〇すぎる");
-    expect(q4[2].quote).toBeNull();
+    const q5 = outcome.sections.find((s) => s.key === "q5")!.classified;
+    expect(q5[0].quote).toBeNull();
+    expect(q5[0].quoteNote).toMatch(/原文と合わない/);
+    expect(q5[1].quote).toBe("様式の欄が〇〇すぎる");
+    expect(q5[2].quote).toBeNull();
   });
 
   it("返事に無かった答えは未分類のまま残す。知らないキーは無視する", async () => {
-    const { client } = fake((id, text) => (id === "問4-002" ? null : categoryByWord(id, text)));
+    const { client } = fake((id, text) => (id === "問5-002" ? null : categoryByWord(id, text)));
     const rs = parseAnswers(table(ROWS));
     const { outcome } = await classifyAll(rs, surveyContext(KEY, client));
     if (outcome.status !== "done") throw new Error("done のはず");
-    const q4 = outcome.sections.find((s) => s.key === "q4")!.classified;
-    expect(q4.find((c) => c.respondent === "002")!.category).toBeNull();
+    const q5 = outcome.sections.find((s) => s.key === "q5")!.classified;
+    expect(q5.find((c) => c.respondent === "002")!.category).toBeNull();
     expect(renderSummary({ respondents: rs, held: [], ai: outcome, now: NOW })).toContain("未分類（AI の返事に無かった） | 3 人中 1 人");
   });
 
   it("7 つに無い型は未分類にする（呼び出し全体は落とさない）", async () => {
-    const { client } = fake((id, text) => ({ category: id === "問4-001" ? "訓練" : categoryByWord(id, text).category, quote: null }));
+    const { client } = fake((id, text) => ({ category: id === "問5-001" ? "訓練" : categoryByWord(id, text).category, quote: null }));
     const { outcome } = await classifyAll(parseAnswers(table(ROWS)), surveyContext(KEY, client));
     if (outcome.status !== "done") throw new Error("done のはず");
     expect(outcome.sections[0].classified.map((c) => c.category)).toEqual([null, "様式", "聞き取り"]);
@@ -170,8 +170,8 @@ describe("classifyAll", () => {
     const many = Array.from({ length: CHUNK + 5 }, (_, i) => ({
       ...base,
       番号: String(i + 1).padStart(3, "0"),
-      問4: "様式が分かりにくい",
-      問7理由: "",
+      問5: "様式が分かりにくい",
+      問9理由: "",
     }));
     const { client, calls } = fake(categoryByWord);
     const { outcome } = await classifyAll(parseAnswers(table(many)), surveyContext(KEY, client));
@@ -200,7 +200,7 @@ describe("classifyAll", () => {
 
   it("自由記述が無ければ呼ばない", async () => {
     const { client, calls } = fake(categoryByWord);
-    const { outcome } = await classifyAll(parseAnswers(table(ROWS.map((r) => ({ ...r, 問4: "", 問7理由: "" })))), surveyContext(KEY, client));
+    const { outcome } = await classifyAll(parseAnswers(table(ROWS.map((r) => ({ ...r, 問5: "", 問9理由: "" })))), surveyContext(KEY, client));
     expect(calls).toHaveLength(0);
     expect(outcome.status).toBe("skipped");
   });
@@ -225,7 +225,8 @@ describe("checkQuote", () => {
 
 describe("systemFor", () => {
   it("問いごとに問いの文を持つ", () => {
-    for (const q of FREE_QUESTIONS) expect(systemFor(q)).toContain(q.ask);
+    for (const q of AI_QUESTIONS) expect(systemFor(q)).toContain(q.ask);
+    expect(AI_QUESTIONS.map((q) => q.key)).toEqual(["q5", "q9reason"]);
   });
 });
 
@@ -235,8 +236,8 @@ describe("renderSummary", () => {
 
   it("選択の問いを「N 人中 M 人」で出し、合算も出す", () => {
     const md = renderSummary({ respondents: rs, held: [], ai: skipped, now: NOW });
-    expect(md).toContain("回答: 3 人（ケアマネ 2 人・その他の職員 1 人）");
-    expect(md).toContain("| 1 時間〜半日 | 3 人中 2 人 |");
+    expect(md).toContain("回答: 3 人（ケアマネ 2 人・保健師・看護師 1 人・社会福祉士 0 人・その他 0 人）");
+    expect(md).toContain("| 2〜4 時間 | 3 人中 2 人 |");
     expect(md).toContain("合算: 計画 1 件に 1 時間より長くかかる（作ったことがある人のうち）　3 人中 3 人");
     expect(md).toContain("| 書く時間が無い | 3 人中 3 人 |");
     expect(md).toContain("AI の分けは未実施（--no-ai）");
@@ -253,23 +254,44 @@ describe("renderSummary", () => {
 
   it("AI の所に「AI」の印とモデルの名前、型の数、引用の候補、要確認を出す", async () => {
     const { client } = fake(categoryByWord);
-    const withHeld = parseAnswers(table([...ROWS, { ...base, 番号: "004", 問4: "山田さんの件", 問7理由: "" }]));
+    const withHeld = parseAnswers(table([...ROWS, { ...base, 番号: "004", 問5: "山田さんの件", 問9理由: "" }]));
     const { outcome, held } = await classifyAll(withHeld, surveyContext(KEY, client));
     const md = renderSummary({ respondents: withHeld, held, ai: outcome, now: NOW });
     expect(md).toContain("## 自由記述（AI）");
     expect(md).toContain(`AI（${SONNET}）`);
-    expect(md).toContain("### 問 4　いちばん面倒な所（AI）");
+    expect(md).toContain("### 問 5　いちばん面倒な所（AI）");
     expect(md).toContain("| 時間 | 3 人中 1 人 |");
-    expect(md).toContain("- 問4-001（時間）「書く時間が取れない」");
+    expect(md).toContain("- 問5-001（時間）「書く時間が取れない」");
     expect(md).toContain("## 要確認（AI に渡していない答え）");
-    expect(md).toContain("- 問4-004: 人名らしい「〇〇さん・様」");
+    expect(md).toContain("- 問5-004: 人名らしい「〇〇さん・様」");
     expect(md).not.toContain("山田");
+  });
+
+  it("ご意見とその他の記入は AI に渡さず、引用が「よい」の人の原文を並べる", async () => {
+    const { client, calls } = fake(categoryByWord);
+    const rows = parseAnswers(
+      table([
+        { ...ROWS[0], ご意見: "応援しています", 役: "d", 役その他: "相談員", 問4: "b,g", 問4その他: "電話が多い" },
+        { ...ROWS[1], 引用: "b", 問5: "", 問9理由: "", ご意見: "引用はよくない人の意見" },
+      ]),
+    );
+    const { outcome, held } = await classifyAll(rows, surveyContext(KEY, client));
+    const sent = JSON.stringify(calls.map((c) => c.params.messages));
+    expect(sent).not.toContain("応援しています");
+    expect(sent).not.toContain("電話が多い");
+    const md = renderSummary({ respondents: rows, held, ai: outcome, now: NOW });
+    expect(md).toContain("## ご意見");
+    expect(md).toContain("- ご意見-001「応援しています」");
+    expect(md).toContain("- 役その他-001「相談員」");
+    expect(md).toContain("- 問4その他-001「電話が多い」");
+    expect(md).not.toContain("引用はよくない人の意見");
+    expect(held.map((h) => h.ref)).toContain("ご意見-002");
   });
 
   it("失敗したときも数えた所は出す", () => {
     const md = renderSummary({ respondents: rs, held: [], ai: { status: "failed", reason: "AiCallFailed" }, now: NOW });
     expect(md).toContain("AI の分けに失敗した（AiCallFailed）");
-    expect(md).toContain("| 1 時間〜半日 | 3 人中 2 人 |");
+    expect(md).toContain("| 2〜4 時間 | 3 人中 2 人 |");
   });
 
   it("言葉の決まり: 診断・判定・重症・病気がわかる、を書かない", async () => {

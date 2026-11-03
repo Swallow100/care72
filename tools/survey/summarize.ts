@@ -3,7 +3,7 @@
 //   node tools/survey/summarize.ts [--answers 表] [--out 結果] [--no-ai]
 //
 // - 選択の問いは機械で数える（answers.ts）。数は「N 人中 M 人」。
-// - 自由記述（問 4・問 7 の理由）は Claude（lib/claude の askJson、purpose は summary）で 7 つの型に分け、
+// - 記入欄（問 5・問 9 の理由）は Claude（lib/claude の askJson、purpose は summary）で 7 つの型に分け、
 //   動画の字幕に使える 1 文ずつの引用候補を出す。AI で分けた所には「AI」の印を付け、採るのは作者。
 // - 鍵は環境変数 ANTHROPIC_API_KEY（手元の鍵のファイルを --env-file で読ませる）。無ければ AI の所は飛ばし、数えた所だけ書く。
 // - 名前・電話らしい並びのある答えと、引用が「よい」でない人の記入欄は AI に渡さない（answers.ts）。
@@ -33,11 +33,12 @@ import {
   CATEGORIES,
   CHOICE_QUESTIONS,
   COMBINED,
-  FREE_QUESTIONS,
+  AI_QUESTIONS,
   MIN_ANSWERS,
   type Category,
+  type AiQuestion,
+  type ChoiceKey,
   type FreeKey,
-  type FreeQuestion,
 } from "./questions.ts";
 
 // ---------- AI への頼み ----------
@@ -55,7 +56,7 @@ const CATEGORY_GUIDE: Record<Category, string> = {
   その他: "上のどれにも当たらない（機械や AI への不安や期待など）",
 };
 
-export function systemFor(q: FreeQuestion): string {
+export function systemFor(q: AiQuestion): string {
   return [
     "あなたは、ケアマネジャー向けアンケートの自由記述を分ける係です。",
     `問い: ${q.ask}`,
@@ -127,7 +128,7 @@ export type FreeOutcome = {
 
 /** 1 つの問いの答えを AI で分ける。返事に無かった答えは category が null のまま残す */
 export async function classifyFree(
-  q: FreeQuestion,
+  q: AiQuestion,
   items: ReadonlyArray<FreeItem>,
   ctx: AskJsonContext,
 ): Promise<{ classified: Classified[]; model: string }> {
@@ -195,12 +196,15 @@ export async function classifyAll(
   respondents: ReadonlyArray<Respondent>,
   ctx: AskJsonContext,
 ): Promise<{ outcome: AiOutcome; held: HeldItem[] }> {
-  const { items, held } = collectFreeItems(respondents);
+  const collected = collectFreeItems(respondents);
+  const held = collected.held;
+  // AI に渡すのは記入欄（問 5・問 9 の理由）だけ。その他の記入とご意見は summary.md に原文を並べる
+  const items = collected.items.filter((i) => AI_QUESTIONS.some((q) => q.key === i.key));
   if (items.length === 0) return { outcome: { status: "skipped", reason: "AI に渡せる自由記述が無い" }, held };
   try {
     const sections: FreeOutcome[] = [];
     let model = "";
-    for (const q of FREE_QUESTIONS) {
+    for (const q of AI_QUESTIONS) {
       const mine = items.filter((i) => i.key === q.key);
       const heldCount = held.filter((h) => h.ref.startsWith(refOf(q.key, ""))).length;
       if (mine.length === 0) {
@@ -255,6 +259,18 @@ export function renderSummary(input: {
   const experience = tallyChoice(respondents, "experience");
   line(`- 経験年数: ${experience.rows.map((r) => `${r.label} ${r.n} 人`).join("・")}${experience.blank ? `・答えなし ${experience.blank} 人` : ""}`);
   if (n < MIN_ANSWERS) line(`- **回答が ${MIN_ANSWERS} 人に満たない。動画と README には使わない。**`);
+  // 文の欄のうち、引用が「よい」で名前・電話らしい物の無い文（AI に渡さない欄は、ここで原文を並べる）
+  const usable = collectFreeItems(respondents).items;
+  const otherLines = (key: ChoiceKey): void => {
+    const other = CHOICE_QUESTIONS.find((x) => x.key === key)?.other;
+    const texts = other ? usable.filter((i) => i.key === other.key) : [];
+    if (texts.length === 0) return;
+    line();
+    line("その他の記入");
+    line();
+    for (const t of texts) line(`- ${t.ref}「${t.text}」`);
+  };
+  otherLines("role");
 
   for (const q of CHOICE_QUESTIONS) {
     if (q.key === "role" || q.key === "experience" || q.key === "quote") continue;
@@ -276,7 +292,15 @@ export function renderSummary(input: {
       line();
       line(`合算: ${c.label}　${ratio(r.n, r.answered)}`);
     }
+    otherLines(q.key);
   }
+
+  const comments = usable.filter((i) => i.key === "comment");
+  line();
+  line("## ご意見");
+  line();
+  if (comments.length === 0) line("なし（引用が「よい」の人の物だけを並べる）。");
+  for (const c of comments) line(`- ${c.ref}「${c.text}」`);
 
   const quote = tallyChoice(respondents, "quote");
   line();
@@ -293,9 +317,9 @@ export function renderSummary(input: {
     line(`AI の分けに失敗した（${ai.reason}）。数えた所だけ。もう一度流す。`);
   } else {
     line(`AI（${ai.model}）が、答えを 7 つの型（${CATEGORIES.join("・")}）の 1 つに分け、原文から 1 文を抜いた引用の候補を出した。`);
-    line("固有名詞は「〇〇」に伏せさせてある。使う前に、answers.md の原文と見比べる。引用の了承は、紙の「引用」の「よい」で取ってある。");
+    line("固有名詞は「〇〇」に伏せさせてある。使う前に、answers.md の原文と見比べる。引用の了承は、最後の問い「引用」の「よい」で取ってある。");
     for (const section of ai.sections) {
-      const q = FREE_QUESTIONS.find((x) => x.key === section.key)!;
+      const q = AI_QUESTIONS.find((x) => x.key === section.key)!;
       const done = section.classified;
       line();
       line(`### ${q.heading}（AI）`);
