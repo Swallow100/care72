@@ -437,9 +437,10 @@ export function applyPlace(ledger: Ledger, changes: ReadonlyArray<IntakeChange>)
 
 type ContactChange = Extract<IntakeChange, { t: "contact" }>;
 
-/** 保存のあとに本人の電話（self）が 2 つになるか（T68）。今の行と、足す self の行を数える（self の行は外さない） */
+/** 保存のあとに本人の電話（self）が 2 つになるか（T68）。外さない今の行と、足す self の行を数える（外して足し直すのは通る） */
 export function selfContactTwice(rows: Pick<PersonPageRows, "contacts">, changes: ReadonlyArray<IntakeChange>): boolean {
-  const now = rows.contacts.filter((c) => c.kind === "self").length;
+  const removed = new Set(changes.flatMap((c) => (c.t === "remove" && c.target.what === "contact" ? [c.target.id] : [])));
+  const now = rows.contacts.filter((c) => c.kind === "self" && !removed.has(c.id)).length;
   const added = changes.filter((c) => c.t === "contact" && c.id === null && c.value.kind === "self").length;
   return added > 0 && now + added > 1;
 }
@@ -562,7 +563,7 @@ export function contactOrderClash(rows: Pick<PersonPageRows, "contacts">, change
   for (const ch of changes) {
     if (ch.t === "remove" && ch.target.what === "contact") {
       const id = ch.target.id;
-      if (rows.contacts.some((c) => c.id === id && c.kind !== "self")) state.delete(id);
+      if (rows.contacts.some((c) => c.id === id)) state.delete(id);
       continue;
     }
     if (ch.t !== "contact") continue;
@@ -757,7 +758,8 @@ function planConsents(rows: PersonPageRows, changes: ReadonlyArray<IntakeChange>
 // ---------- 外す（手で直すときだけ） ----------
 
 /**
- * 連絡先の行を消し、外した薬・機器の時計を消す（印が残らないように）。本人の行（self）は消さない。
+ * 連絡先の行を消し、外した薬・機器の時計を消す（印が残らないように）。本人の行（self）もほかの連絡先と同じく消せる（T68 の続き。
+ * 消すと訓練の本人電話は番号なしに戻る。contacts を外部キーで指す表は無い）。
  * 台帳の中の物（欄・薬・機器・ハザード・特記）は applyLedgerChanges が外す
  */
 function planRemovals(rows: PersonPageRows, before: Ledger, changes: ReadonlyArray<IntakeChange>, after: Ledger) {
@@ -770,7 +772,7 @@ function planRemovals(rows: PersonPageRows, before: Ledger, changes: ReadonlyArr
     const r = ch.target;
     if (r.what === "contact") {
       const cur = rows.contacts.find((c) => c.id === r.id);
-      if (cur && cur.kind !== "self") contactIds.add(cur.id);
+      if (cur) contactIds.add(cur.id);
     } else if (r.what === "medication") {
       const med = before.medical.medications[r.index];
       if (!med || med.name !== r.name) continue;
@@ -794,7 +796,7 @@ function planRemovals(rows: PersonPageRows, before: Ledger, changes: ReadonlyArr
     build(db: D1Database, guard: string, guardArgs: GuardArgs): Statement[] {
       return [
         ...[...contactIds].map((id) =>
-          db.prepare(`DELETE FROM contacts WHERE id = ?4 AND person_id = ?2 AND kind <> 'self' AND ${guard}`).bind(...guardArgs, id),
+          db.prepare(`DELETE FROM contacts WHERE id = ?4 AND person_id = ?2 AND ${guard}`).bind(...guardArgs, id),
         ),
         ...[...clockIds].map((id) => db.prepare(`DELETE FROM clocks WHERE id = ?4 AND person_id = ?2 AND ${guard}`).bind(...guardArgs, id)),
       ];

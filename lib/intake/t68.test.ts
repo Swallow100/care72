@@ -30,7 +30,7 @@ import { loadPersonPage, toPersonView, type PersonPageRows } from "../person.ts"
 import { pseudonymize, pseudonymizeText, TOWN_MARK } from "../pseudonym/index.ts";
 import type { IntakeChange } from "./changes.ts";
 import { changeText } from "./changes.ts";
-import { editBlockers, editChanges, editDraft, selfTwice, type EditData } from "./edit.ts";
+import { editBlockers, editChanges, editDraft, removalNames, selfTwice, type EditData } from "./edit.ts";
 import { INTAKE_FIELDS, INTAKE_KEYS } from "./fields.ts";
 import { intakePropsOf } from "./props.ts";
 import { CONTACT_KINDS_FOR_EDIT, CONTACT_KINDS_FOR_INTAKE, ExtractSchema } from "./schema.ts";
@@ -272,11 +272,32 @@ describe("本人の電話（T68 の 2）", () => {
     expect(await saveIntake(db, cm, ai as unknown as SaveRequest, NOW)).toEqual({ ok: false, error: "forbidden" });
   });
 
-  it("本人の行は外せない（外す印を付けても下書きは送らない）", async () => {
+  it("本人の行はほかの連絡先と同じく外せる（確認の窓は「本人」）。外すと本人の電話が無くなり、外して足し直すのは本人重複にならない", async () => {
     const d = await editData("p-01");
     const draft = editDraft(d);
     draft.drops = ["contact:c-01-0"];
-    expect(editChanges("people", d, draft)).toEqual([]);
+    const changes = editChanges("people", d, draft);
+    expect(changes).toEqual([{ t: "remove", target: { what: "contact", id: "c-01-0" } }]);
+    expect(removalNames(changes, d)).toEqual(["本人"]);
+    // 外して同じ保存で足し直す（2 つにはならない）
+    draft.newContacts = [{ id: null, kind: "self", relation: "", name: "", phone: "090-0000-0070", night: "", note: "携帯", emergency: "", supporter: "", reach: "" }];
+    expect(selfTwice(draft)).toBe(false);
+    const swap = editChanges("people", d, draft);
+    expect(await saveIntake(db, yamamoto, SaveRequestSchema.parse({ personId: "p-01", version: d.version, ai: null, edit: true, changes: swap }), NOW)).toMatchObject({
+      ok: true,
+    });
+    expect(sqlite.prepare("SELECT phone, note FROM contacts WHERE person_id = 'p-01' AND kind = 'self'").all()).toEqual([{ phone: "090-0000-0070", note: "携帯" }]);
+    // 外すだけ → 本人の電話の行は無くなる（訓練の本人電話は番号なし。lib/drill/db.ts の resolveTarget）
+    const d2 = await editData("p-01");
+    const draft2 = editDraft(d2);
+    const id = draft2.contacts.find((c) => c.kind === "self")!.id!;
+    draft2.drops = [`contact:${id}`];
+    expect(await saveIntake(db, yamamoto, SaveRequestSchema.parse({ personId: "p-01", version: d2.version, ai: null, edit: true, changes: editChanges("people", d2, draft2) }), NOW)).toMatchObject({
+      ok: true,
+    });
+    expect(sqlite.prepare("SELECT count(*) AS n FROM contacts WHERE person_id = 'p-01' AND kind = 'self'").get()).toEqual({ n: 0 });
+    const html = renderToStaticMarkup(createElement(SectionForm, { section: "people", data: d, draft: { ...editDraft(d), drops: ["contact:c-01-0"] }, set: () => {} }));
+    expect(html).toContain("data-dropped");
   });
 });
 

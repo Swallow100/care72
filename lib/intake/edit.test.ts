@@ -229,12 +229,12 @@ describe("面の編集の外す・値確認（components/person/SectionEdit.tsx�
     return renderToStaticMarkup(createElement(SectionForm, { section, data: d, draft: { ...editDraft(d), ...patch }, set: () => {} }));
   };
 
-  it("薬・機器・ハザード・連絡先・特記の行に「外す」（本人の行は無い）。印を付けた行は「外す予定」と「戻す」", () => {
+  it("薬・機器・ハザード・連絡先・特記の行に「外す」（本人の行にも。T68 の続き）。印を付けた行は「外す予定」と「戻す」", () => {
     expect(form("medical", "p-01")).toContain('aria-label="ワーファリン 外す"');
     expect(form("medical", "p-01")).toContain('aria-label="在宅酸素 外す"');
     expect(form("evacuation", "p-01")).toMatch(/aria-label="[^"]+ 外す"/);
     const people = form("people", "p-01");
-    expect(people.match(/data-drop="true"/g)).toHaveLength(2); // c-01-1・c-01-2（本人の行 c-01-0 は出さない）
+    expect(people.match(/data-drop="true"/g)).toHaveLength(3); // c-01-0（本人、T68 の続きから外せる）・c-01-1・c-01-2
     expect(form("basic", "p-01")).toContain('aria-label="特記 外す"');
     const dropped = form("medical", "p-01", { drops: [dropKey.med(0)] });
     expect(dropped).toContain("data-dropped");
