@@ -15,6 +15,7 @@
 //   送信の試みの数え（survey_attempts）も、戻すたびに 0 になると回数の上限が効かないので残す
 // - AI の呼び出しの記録（ai_calls）。1 日の上限の数え。ボタンで戻すたびに数えが 0 に戻ると上限が効かないので残す
 //   （日は JST で数えるので 0 時に変わる。docs/DECISIONS.md の (f) と違う所。docs/progress/t26.md）
+// - ログインの失敗の数え（login_attempts、T41）。戻すたびに数えが消えると回数の制限が効かないので残す（1 日で消える）
 // - 事業所の行（デモ事業所の名前などは種に上書き）。種のアカウントの行（山本のパスワードのハッシュは残し、ほかを種に上書き）
 // - 別の事業所の人に付いた行（審査員が医療班の役で協力事業所の人を受け入れた受け持ちも、その人の行として残す）
 
@@ -55,6 +56,7 @@ export const DEMO_CLEAR: Readonly<Record<Table, string | null>> = {
   form_mappings: `office_id = ${OFFICE}`,
   disaster_state: `office_id = ${OFFICE}`,
   ai_calls: null,
+  login_attempts: null,
   signals: `person_id IN (${PEOPLE}) OR drill_id IN (${DRILLS})`,
   drill_events: `drill_id IN (${DRILLS}) OR person_id IN (${PEOPLE})`,
   drills: `office_id = ${OFFICE}`,

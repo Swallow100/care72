@@ -156,6 +156,8 @@ vite.config.ts.timestamp-*
 # ケア72: 手元の生成物
 next-env.d.ts
 seed/generated/
+# 配信中の commit と build の時刻（tools/deploy/write-version.ts が作る）
+lib/version.ts
 !.dev.vars.example
 
 # Claude Code: 手元だけの設定（.claude/settings.json と .claude/skills は commit する）

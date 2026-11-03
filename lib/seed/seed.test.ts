@@ -387,10 +387,11 @@ describe("最初に戻す（デモ事業所だけ）", () => {
     expect(dump(db)).toEqual(once);
   });
 
-  it("消す範囲は手元の種の入れ直し（CLEAR_ORDER）の表を全部決めている。残すのは AI の記録・事業所の行・アンケートの送信の数えだけ", () => {
+  it("消す範囲は手元の種の入れ直し（CLEAR_ORDER）の表を全部決めている。残すのは AI の記録・ログインの失敗の数え・事業所の行・アンケートの送信の数えだけ", () => {
     expect(Object.keys(DEMO_CLEAR).sort()).toEqual([...CLEAR_ORDER].sort());
     expect(Object.entries(DEMO_CLEAR).filter(([, w]) => w === null).map(([t]) => t).sort()).toEqual([
       "ai_calls",
+      "login_attempts",
       "offices",
       "survey_attempts",
     ]);

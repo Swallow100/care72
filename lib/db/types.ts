@@ -623,6 +623,18 @@ export type AiCallRow = {
   finished_at: string | null;
 };
 
+/** ログインを試した 1 回（T41。lib/auth/lockout.ts）。パスワードは持たない */
+export type LoginAttemptRow = {
+  id: number;
+  /** 打たれた ID（前後の空白を落とし 128 字まで）。無い ID も入る */
+  login_id: string;
+  /** 送信元（CF-Connecting-IP）。無ければ 'unknown' */
+  ip: string;
+  /** UNIX 秒 */
+  at: number;
+  ok: 0 | 1;
+};
+
 /** 様式 9 の並び: 平時（優先の骨格）・発災時（ルールの表） */
 export const FORM9_MODES = ["normal", "disaster"] as const;
 export type Form9Mode = (typeof FORM9_MODES)[number];

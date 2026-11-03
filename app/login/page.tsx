@@ -6,15 +6,23 @@ import { PasswordField } from "@/components/login/PasswordField";
 import { IdIcon } from "@/components/ui/Icon";
 import { LABEL, Page, Panel } from "@/components/ui/Panel";
 import { SubmitButton } from "@/components/ui/SubmitButton";
+import { waitMinutes } from "@/lib/auth/lockout";
 import { homePath } from "@/lib/auth/roles";
 import { getPrincipal } from "@/lib/auth/server";
 
 export const metadata: Metadata = { title: "ログイン | ケア72" };
 
-type Props = { searchParams: Promise<{ e?: string }> };
+type Props = { searchParams: Promise<{ e?: string; m?: string }> };
 
 /** 断りの文。値は /api/auth/login が付ける（1: ID かパスワードが違う。どちらが違うかは言わない）。知らない値は短い 1 文 */
-const ERRORS: Record<string, string> = { "1": "ID かパスワードが違う" };
+const ERRORS: Record<string, string> = { "1": "ID かパスワードが違う", locked: "回数超過 しばらく待機" };
+
+/** 回数の制限で止めたとき（/login?e=locked&m=<残りの分>。lib/auth/lockout.ts）は「回数超過 待機 N 分」 */
+function errorText(e: string, m: string | undefined): string {
+  const minutes = e === "locked" ? waitMinutes(m) : null;
+  if (minutes !== null) return `回数超過 待機 ${minutes} 分`;
+  return ERRORS[e] ?? "ログインできない";
+}
 
 // ID とパスワード。送り先は /api/auth/login（フォームの POST。JavaScript が無くても動く）。
 // どの画面もログインが要る。ログインしていなければ、どの画面からもここへ来る。審査員の ID とパスワードは提出書類に。
@@ -22,8 +30,8 @@ const ERRORS: Record<string, string> = { "1": "ID かパスワードが違う" }
 export default async function LoginPage({ searchParams }: Props) {
   const p = await getPrincipal();
   if (p) redirect(homePath(p.role));
-  const { e } = await searchParams;
-  const error = e ? (ERRORS[e] ?? "ログインできない") : null;
+  const { e, m } = await searchParams;
+  const error = e ? errorText(e, m) : null;
 
   return (
     <Page width="full" className="max-w-[26rem] py-8 sm:py-14">
