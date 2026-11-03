@@ -812,7 +812,7 @@ describe("本人のページの面の「編集」の保存（lib/intake/save.ts 
     expect(kinds[1].body).toBe("ケアマネが直した: 時計・同意");
   });
 
-  it("外す: 欄・薬・機器・ハザード・特記・連絡先の行を外し、薬と機器の時計も消す。本人の行は外さない。経過に「ケアマネが外した」", async () => {
+  it("外す: 欄・薬・機器・ハザード・特記・連絡先の行を外し、薬と機器の時計も消す。本人の行も外す（T68 の続き）。経過に「ケアマネが外した」", async () => {
     const r = await saveIntake(
       db,
       cm,
@@ -823,7 +823,7 @@ describe("本人のページの面の「編集」の保存（lib/intake/save.ts 
         { t: "remove", target: { what: "hazard", kind: "flood" } },
         { t: "remove", target: { what: "note", value: "薬は 2 階の箪笥" } },
         { t: "remove", target: { what: "contact", id: "c-01-2" } },
-        { t: "remove", target: { what: "contact", id: "c-01-0" } }, // 本人の行 → 外さない
+        { t: "remove", target: { what: "contact", id: "c-01-0" } }, // 本人の行（T68 の続きから外せる）
       ]),
       NOW,
     );
@@ -835,7 +835,7 @@ describe("本人のページの面の「編集」の保存（lib/intake/save.ts 
     expect(l.evacuation.hazards).toEqual([]);
     expect(l.notes).toEqual([]);
     const contacts = (sqlite.prepare("SELECT id FROM contacts WHERE person_id = 'p-01' ORDER BY id").all() as Array<{ id: string }>).map((c) => c.id);
-    expect(contacts).toEqual(["c-01-0", "c-01-1"]);
+    expect(contacts).toEqual(["c-01-1"]);
     const clocks = (sqlite.prepare("SELECT id FROM clocks WHERE person_id = 'p-01' ORDER BY id").all() as Array<{ id: string }>).map((c) => c.id);
     expect(clocks).not.toContain("k-01-1");
     expect(clocks).not.toContain("k-01-2");

@@ -467,17 +467,28 @@ export function SectionForm({ section, data, draft, set }: FormProps) {
           {draft.contacts.map((c, i) => {
             const key = c.id ? dropKey.contact(c.id) : null;
             const cur = data.contacts.find((x) => x.id === c.id);
-            // 本人の電話（T68）は電話と備考だけ。外さない
-            if (c.kind === "self") {
-              return <SelfRow key={c.id ?? i} c={c} onChange={(next) => set({ contacts: draft.contacts.map((x, j) => (j === i ? next : x)) })} />;
+            const dropped = key && draft.drops.includes(key) ? key : null;
+            if (dropped) {
+              return (
+                <DroppedRow
+                  key={c.id ?? i}
+                  name={c.kind === "self" ? CONTACT_KIND_LABELS.self : `${CONTACT_KIND_LABELS[c.kind]} ${cur?.relation || cur?.name || ""}`.trim()}
+                  onUndo={() => set({ drops: toggled(draft.drops, dropped) })}
+                />
+              );
             }
-            return key && draft.drops.includes(key) ? (
-              <DroppedRow
-                key={c.id ?? i}
-                name={`${CONTACT_KIND_LABELS[c.kind]} ${cur?.relation || cur?.name || ""}`.trim()}
-                onUndo={() => set({ drops: toggled(draft.drops, key) })}
-              />
-            ) : (
+            // 本人の電話（T68）は電話と備考だけ。外すのはほかの連絡先と同じ
+            if (c.kind === "self") {
+              return (
+                <SelfRow
+                  key={c.id ?? i}
+                  c={c}
+                  onChange={(next) => set({ contacts: draft.contacts.map((x, j) => (j === i ? next : x)) })}
+                  onDrop={key ? () => set({ drops: toggled(draft.drops, key) }) : undefined}
+                />
+              );
+            }
+            return (
               <ContactRow
                 key={c.id ?? i}
                 c={c}
@@ -733,13 +744,13 @@ function ContactRow({
   );
 }
 
-/** 本人の電話の行（T68）。電話と備考（固定電話・携帯）だけ。今の行は外さない */
-function SelfRow({ c, onChange }: { c: ContactDraft; onChange: (c: ContactDraft) => void }) {
+/** 本人の電話の行（T68）。電話と備考（固定電話・携帯）だけ。「外す」はほかの連絡先と同じ（外すと訓練の本人電話は番号なし） */
+function SelfRow({ c, onChange, onDrop }: { c: ContactDraft; onChange: (c: ContactDraft) => void; onDrop?: () => void }) {
   const p = (patch: Partial<ContactDraft>) => onChange({ ...c, ...patch });
   return (
     <div className="grid grid-cols-2 gap-1 rounded bg-panel2 p-1.5" data-contact={c.id ?? "new"} data-contact-self>
       <span className="self-center text-xs font-bold">{CONTACT_KIND_LABELS.self}</span>
-      <SelfFields c={c} p={p} />
+      <SelfFields c={c} p={p} onDrop={onDrop} />
     </div>
   );
 }

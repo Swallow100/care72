@@ -352,7 +352,7 @@ export function removalNames(changes: ReadonlyArray<IntakeChange>, d: EditData):
         break;
       case "contact": {
         const cur = d.contacts.find((x) => x.id === r.id);
-        names.push(cur?.relation || cur?.name || "連絡先");
+        names.push(cur?.kind === "self" ? CONTACT_KIND_LABELS.self : cur?.relation || cur?.name || "連絡先");
         break;
       }
       case "clock":
@@ -391,7 +391,7 @@ export function orderClash(draft: Pick<EditDraft, "contacts" | "newContacts" | "
 }
 
 /**
- * 本人の電話（self）が 2 つになるか（T68。1 人 1 つ。種の人は前から 1 つ）。足す行のうち何か書いた物と、今の行を数える。
+ * 本人の電話（self）が 2 つになるか（T68。1 人 1 つ。種の人は前から 1 つ）。足す行のうち何か書いた物と、外さない今の行を数える。
  * 保存（lib/intake/save.ts）も同じ物を断る（self_twice）
  */
 export function selfTwice(draft: Pick<EditDraft, "contacts" | "newContacts" | "drops">): boolean {
@@ -588,8 +588,13 @@ export function editChanges(section: EditSection, d: EditData, draft: EditDraft)
     for (const c of draft.contacts) {
       const cur = d.contacts.find((x) => x.id === c.id);
       if (!cur) continue;
-      // 本人の電話（self）は電話と備考（固定電話・携帯）だけを直す。外さない（T68。種の人は 1 つずつ持つ）
+      // 本人の電話（self）は電話と備考（固定電話・携帯）だけを直す。外すのはほかの連絡先と同じ（T68 の続き。
+      // 外すと訓練の本人電話は番号なしに戻る。lib/drill/db.ts の resolveTarget）
       if (cur.kind === "self") {
+        if (dropped(dropKey.contact(cur.id))) {
+          remove({ what: "contact", id: cur.id });
+          continue;
+        }
         const value: ContactValue = { kind: "self" };
         let changed = false;
         for (const col of ["phone", "note"] as const) {
