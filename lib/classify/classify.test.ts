@@ -190,12 +190,13 @@ const yamadaRow = async (h = 1.1) => {
 // ---------- テスト ----------
 
 describe("分ける本体（classify）", () => {
-  it("5 つの分類を固定の応答で。確信と引用も返り、Haiku の classify で 1 回", async () => {
+  it("6 つの分類を固定の応答で。確信と引用も返り、Haiku の classify で 1 回", async () => {
     const quotes: Record<RecordingClass, [string, string]> = {
       injury: ["あしから ちが でてる", "ちが でてる"],
       immobile: ["いたい、うごけない", "うごけない"],
       water: ["ゆかまで みずが きた", "みずが きた"],
       device_stopped: ["さんその きかいが とまった", "きかいが とまった"],
+      other: ["たべものが ない", "たべものが ない"],
       unknown: ["うう……", ""],
     };
     for (const c of RECORDING_CLASSES) {
@@ -206,7 +207,7 @@ describe("分ける本体（classify）", () => {
       expect(calls[0].model).toBe(HAIKU);
       expect(calls[0].output_config?.effort).toBe("low");
     }
-    expect(aiRows()).toHaveLength(5);
+    expect(aiRows()).toHaveLength(RECORDING_CLASSES.length);
     expect(aiRows().every((r) => r.purpose === "classify" && r.status === "ok")).toBe(true);
   });
 
@@ -619,7 +620,7 @@ describe("画面の形と部品", () => {
     expect(text(html(classViewOf(aiRow)))).not.toContain("修正");
   });
 
-  it("言葉: 診断・判定・重症と書かない。5 つの名前は CLAUDE.md のまま", () => {
+  it("言葉: 診断・判定・重症と書かない。5 つの名前は CLAUDE.md のまま（T64 の その他 を不明の前に）", () => {
     const words = [
       ...Object.values(CLASS_LABELS),
       aiClassLogBody({ classes: ["injury", "immobile"], confidence: 0.85, quote: "いたい" }),
@@ -629,7 +630,7 @@ describe("画面の形と部品", () => {
       html(classViewOf(aiRow), true),
     ].join("\n");
     expect(words).not.toMatch(/判定|重症|病気がわかる/);
-    expect(Object.values(CLASS_LABELS)).toEqual(["けが", "動けない", "水が来た", "機器が止まった", "不明"]);
+    expect(Object.values(CLASS_LABELS)).toEqual(["けが", "動けない", "水が来た", "機器が止まった", "その他", "不明"]);
     expect(aiClassLogBody({ classes: ["injury", "immobile"], confidence: 0.85, quote: "いたい" })).toBe(
       "録音の分類（AI）: けが・動けない 確信 85%「いたい」",
     );

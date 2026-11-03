@@ -5,12 +5,13 @@
 import type { ClassifyError, RecordingClass } from "../db/types.ts";
 import type { RedQuestion } from "../signals/phrases.ts";
 
-/** 5 つの分類（CLAUDE.md の言葉のまま） */
+/** 6 つの分類（CLAUDE.md の 5 つの言葉と、T64 の その他） */
 export const CLASS_LABELS: Record<RecordingClass, string> = {
   injury: "けが",
   immobile: "動けない",
   water: "水が来た",
   device_stopped: "機器が止まった",
+  other: "その他",
   unknown: "不明",
 };
 

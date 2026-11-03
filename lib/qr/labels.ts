@@ -9,6 +9,8 @@ export const QR_LABELS = {
   /** 本人の 1 枚の裏の 1 行（docs/tasks/T16.md） */
   blockNote: "この QR は医療班が読みます",
   expires: "期限",
+  /** 期限の日数の単位（「90 日」。T64） */
+  days: "日",
   generation: "版",
   issue: "作成",
   reissue: "再作成",

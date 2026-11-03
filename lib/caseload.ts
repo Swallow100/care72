@@ -11,7 +11,7 @@ import { loadDisasterState } from "./disaster/db.ts";
 import { loadOfficeOverrides, type StoredOverride } from "./disaster/override.ts";
 import { personSituation, toSituation, type DisasterSituation, type DisasterState } from "./disaster/state.ts";
 import { toTriageSignal, triageInDisaster, withinDisaster } from "./disaster/triage.ts";
-import { DEPENDENCE_MARKS, DEVICE_LABELS, hazardText } from "./labels.ts";
+import { DEPENDENCE_MARKS, deviceText, hazardText } from "./labels.ts";
 import type { CallEntryRow } from "./list/calls.ts";
 import {
   buildRowDetail,
@@ -181,7 +181,7 @@ export function toCaseloadRows(
       markKeys: markKeysOf(myClocks),
       town: town?.trim() || null,
       markItems: markItems(myClocks, own),
-      devices: ledger.medical.devices.map((d) => DEVICE_LABELS[d.kind]),
+      devices: ledger.medical.devices.map(deviceText),
       hazards: hazardsOf(ledger),
       supporters: myContacts.filter((c) => c.supporter_order != null).length,
       plan: p.plan_status,

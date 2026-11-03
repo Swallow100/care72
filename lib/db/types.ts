@@ -160,8 +160,11 @@ export type SignalSource = (typeof SIGNAL_SOURCES)[number];
 export const WHERE_NOW = ["home", "shelter", "other"] as const;
 export type WhereNow = (typeof WHERE_NOW)[number];
 
-/** 録音と自由文の分類: けが・動けない・水が来た・機器が止まった・不明。Claude はこれに分けるだけ */
-export const RECORDING_CLASSES = ["injury", "immobile", "water", "device_stopped", "unknown"] as const;
+/**
+ * 録音と自由文の分類: けが・動けない・水が来た・機器が止まった・その他・不明。Claude はこれに分けるだけ。
+ * その他（T64）ははっきり言っているが 4 つのどれでもない物、不明は聞き取れない物。色と順に使うのは けが・動けない だけ（lib/triage）
+ */
+export const RECORDING_CLASSES = ["injury", "immobile", "water", "device_stopped", "other", "unknown"] as const;
 export type RecordingClass = (typeof RECORDING_CLASSES)[number];
 
 export const CLASSIFIERS = ["claude", "care_manager"] as const;

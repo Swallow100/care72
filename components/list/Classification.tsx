@@ -31,7 +31,7 @@ export type ClassificationProps = {
   onSaved?: (view: ClassView) => void;
 };
 
-/** 分類の選択（5 つ）。不明はほかと一緒に選ばない */
+/** 分類の選択（6 つ）。不明はほかと一緒に選ばない */
 export function toggleClass(picked: readonly RecordingClass[], c: RecordingClass): RecordingClass[] {
   if (c === "unknown") return picked.includes("unknown") ? [] : ["unknown"];
   const rest: RecordingClass[] = picked.filter((x) => x !== "unknown");
