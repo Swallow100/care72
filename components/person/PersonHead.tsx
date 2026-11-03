@@ -53,10 +53,10 @@ export function PersonHead({ head, level, titleId }: { head: Head; level: Level;
           <span className="text-sm text-muted">{head.kana}</span>
           <dl className="flex flex-wrap items-baseline gap-x-4 gap-y-1 text-sm">
             <Fact label={HEAD_LABELS.age}>
-              {head.age === null ? <span className="text-muted">{BLANK_LABELS.unconfirmed}</span> : <span className="tabular-nums">{head.age} 歳</span>}
+              {head.age === null ? <span className="text-muted">{BLANK_LABELS.blank}</span> : <span className="tabular-nums">{head.age} 歳</span>}
             </Fact>
             {show.medical && (
-              <Fact label={HEAD_LABELS.careLevel}>{head.careLevel ?? <span className="text-muted">{BLANK_LABELS.unconfirmed}</span>}</Fact>
+              <Fact label={HEAD_LABELS.careLevel}>{head.careLevel ?? <span className="text-muted">{BLANK_LABELS.blank}</span>}</Fact>
             )}
             {show.plan && <Fact label={HEAD_LABELS.plan}>{head.plan}</Fact>}
             {show.plan && (

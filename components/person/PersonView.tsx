@@ -213,5 +213,6 @@ function ClockValue({ clock }: { clock: ClockView }) {
     );
   }
   if (!clock.runs) return <span className="text-muted">—</span>;
-  return <Blank />;
+  // 値の無い時計はルールの表でも未確認（lib/triage の hoursOf が null）
+  return <Blank label={BLANK_LABELS.unconfirmed} />;
 }
