@@ -1,6 +1,6 @@
 "use client";
 
-// 選ぶ部品（T51 で書き直した）。OS の <select> の代わりで、書き方は <select> と同じ（value・defaultValue・onChange・name、中は <option>・<optgroup>）。
+// 選ぶ部品（T51 で書き直した）。OS の select の代わりで、書き方は select の要素と同じ（value・defaultValue・onChange・name、中は <option>・<optgroup>）。
 // 押すとボタンの下に一覧が開く（Menu と同じ。下から出る面ではない）。一覧は body の直下に描く（表の overflow-clip で切られない）。
 // 画面の中にスクロールの箱を作らない: 一覧は内側で送らず、長ければ画面全体が伸びる。下に入りきらず上が広ければ上に開く。
 // キー: ↑↓・Home・End で移る（選べない物は飛ばす）、Enter・Space で選ぶ、Escape でボタンへ戻って閉じる、Tab と外を押すと閉じる。
@@ -27,7 +27,7 @@ import {
 } from "@/lib/ui/select";
 import { ChosenIcon, OpenIcon, SaveIcon, SearchIcon } from "./Icon";
 
-/** onChange に渡す物。<select> と同じく e.target.value・e.currentTarget.value で読める。複数のときは values に配列 */
+/** onChange に渡す物。OS の select と同じく e.target.value・e.currentTarget.value で読める。複数のときは values に配列 */
 export type SelectTarget = { value: string; values: string[]; name: string };
 export type SelectChangeEvent = { target: SelectTarget; currentTarget: SelectTarget };
 
@@ -70,7 +70,7 @@ export function Select({
   const [inner, setInner] = useState<string[]>(() => {
     const d = asList(defaultValue);
     if (d) return d;
-    // <select> と同じく、何も決めていなければ 1 つ目の選べる項目（複数のときは空）
+    // OS の select と同じく、何も決めていなければ 1 つ目の選べる項目（複数のときは空）
     if (multiple) return [];
     const first = model.items.find((i) => !i.disabled);
     return first ? [first.value] : [];
@@ -342,7 +342,7 @@ export function Select({
 const PANEL =
   "absolute z-50 max-w-[calc(100vw-1rem)] rounded-lg bg-panel p-1 text-sm text-ink shadow-[0_2px_8px_rgb(0_0_0/0.18)] outline-none dark:bg-panel2 dark:shadow-[0_2px_10px_rgb(0_0_0/0.6)]";
 const ITEM =
-  "flex min-h-8 cursor-default items-center gap-2 rounded px-2.5 py-1 outline-none select-none focus:outline-2 focus:-outline-offset-2 focus:outline-accent";
+  "flex min-h-8 cursor-default items-center gap-2 rounded px-2.5 py-1 outline-none select-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent focus-visible:outline-solid";
 
 /** 開いた一覧（body の直下に描く）。テストは renderToStaticMarkup でこれを描く */
 export function SelectList({
@@ -443,7 +443,8 @@ export function SelectList({
             <SearchIcon aria-hidden className="pointer-events-none absolute top-1/2 left-2 size-4 -translate-y-1/2 text-muted" />
             <input
               ref={searchRef}
-              type="search"
+              type="text"
+              role="searchbox"
               value={search.query}
               onChange={(e) => search.onQuery(e.target.value)}
               onKeyDown={search.onKeyDown}
@@ -451,7 +452,7 @@ export function SelectList({
               aria-controls={id}
               autoComplete="off"
               enterKeyHint="search"
-              className="h-8 w-full rounded bg-panel2 pr-2 pl-8 text-sm outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent dark:bg-panel"
+              className="h-8 w-full rounded bg-panel2 pr-2 pl-8 text-sm outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent focus-visible:outline-solid dark:bg-panel"
               data-select-search=""
             />
           </div>

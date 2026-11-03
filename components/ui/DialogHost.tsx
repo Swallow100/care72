@@ -148,7 +148,7 @@ export function DialogPanel({ request: r, onSettle }: { request: DialogRequest; 
             aria-label={f.label ? undefined : r.title}
             autoComplete="off"
             enterKeyHint="done"
-            className="h-12 w-full rounded bg-panel2 px-3 text-[0.9375rem] outline-none focus-visible:outline-2 focus-visible:outline-accent"
+            className="h-12 w-full rounded bg-panel2 px-3 text-[0.9375rem] outline-none focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-solid"
             data-dialog-focus=""
             data-dialog-field=""
           />

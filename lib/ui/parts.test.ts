@@ -144,7 +144,7 @@ describe("選ぶ部品: 検索・複数", () => {
     const one = draw([1]);
     expect(one).toContain("連絡");
     expect(one).not.toContain("医療");
-    expect(one).toContain('type="search"');
+    expect(one).toContain('role="searchbox"');
     expect(one).toContain(`aria-label="${SELECT_LABELS.search}"`);
     expect(draw([])).toContain(SELECT_LABELS.empty);
   });
@@ -207,7 +207,9 @@ describe("選ぶ部品: 描画と aria", () => {
     expect(html).toMatch(/text-xs text-muted">医療</);
     expect(html).toMatch(/aria-disabled="true"[^>]*text-muted/);
     expect(html).toContain("内蔵電池 2 時間");
-    expect(html).toContain("focus:outline-accent");
+    // outline-none の後でも枠が出るよう、線の形（solid）も当てる
+    expect(html).toContain("focus-visible:outline-accent");
+    expect(html).toContain("focus-visible:outline-solid");
     // 選んだ印にテーマ色の下地を敷かない。内側で送る箱を作らない
     expect(html).not.toMatch(/bg-accent|overflow-(y-)?auto|overflow-(y-)?scroll|max-h-/);
   });
