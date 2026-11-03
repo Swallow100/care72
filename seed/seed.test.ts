@@ -1,5 +1,4 @@
 import { readdirSync, readFileSync } from "node:fs";
-import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
 import { ageOn } from "../lib/age.ts";
 import { migratedSqlite } from "../lib/db/test-d1.ts";
@@ -70,9 +69,8 @@ describe("種のデータ（架空の 10 人）", () => {
   });
 
   it("頼り先と確認は両方あるか、両方無いか（SQL の CHECK）", () => {
-    const db = new DatabaseSync(":memory:");
-    db.exec("PRAGMA foreign_keys = ON;");
-    db.exec(readFileSync(new URL("../migrations/0001_init.sql", import.meta.url), "utf8"));
+    // migrations を全部流す（種の入れ直しは 0002 以降の表も空にするので、0001 だけでは通らない）
+    const db = migratedSqlite();
     for (const s of seedStatements()) db.exec(s);
     const put = (id: string, dependsOn: string | null, check: string | null) =>
       db
@@ -89,9 +87,8 @@ describe("種のデータ（架空の 10 人）", () => {
   });
 
   it("migration と種の SQL が SQLite で通る（外部キーと CHECK を含めて）", () => {
-    const db = new DatabaseSync(":memory:");
-    db.exec("PRAGMA foreign_keys = ON;");
-    db.exec(readFileSync(new URL("../migrations/0001_init.sql", import.meta.url), "utf8"));
+    // migrations を全部流す（種の入れ直しは 0002 以降の表も空にするので、0001 だけでは通らない）
+    const db = migratedSqlite();
     for (const s of seedStatements()) db.exec(s);
     const count = (t: string) => (db.prepare(`SELECT count(*) AS n FROM ${t}`).get() as { n: number }).n;
     expect(count("people")).toBe(10);
@@ -115,7 +112,7 @@ describe("種の入れ直し（npm run db:reset）", () => {
       .map((n) => readFileSync(new URL(n, dir), "utf8"))
       .join("\n");
     const out = new Map<string, Set<string>>();
-    for (const m of sql.matchAll(/CREATE TABLE (\w+) \(([\s\S]*?)\n\);/g)) {
+    for (const m of sql.matchAll(/CREATE TABLE (?:IF NOT EXISTS )?(\w+) \(([\s\S]*?)\n\);/g)) {
       const refs = new Set([...m[2].matchAll(/REFERENCES (\w+)/g)].map((r) => r[1]).filter((t) => t !== m[1]));
       out.set(m[1], refs);
     }
@@ -165,5 +162,15 @@ describe("種の入れ直し（npm run db:reset）", () => {
     // QR は未作成に戻る（版 0）
     expect(db.prepare(`SELECT qr_generation AS g, qr_issued_at AS t FROM people WHERE id = 'p-01'`).get()).toEqual({ g: 0, t: null });
     db.close();
+  });
+
+  it("種はアンケートの表（本物の答え）を消さず、外部キーは取引の終わりまで後回しにする", () => {
+    const sql = seedStatements();
+    expect(sql[0]).toBe("PRAGMA defer_foreign_keys = true;");
+    for (const table of ["survey_answers", "survey_links", "survey_attempts"]) {
+      expect(sql.some((s) => s.startsWith(`DELETE FROM ${table}`))).toBe(false);
+      expect(CLEAR_ORDER).toContain(table);
+    }
+    expect(sql.some((s) => s === "DELETE FROM offices;")).toBe(true);
   });
 });

@@ -208,6 +208,15 @@ export function clockLabel(minute: number): string {
   return r === 0 ? `${h} ${DRILL_LABELS.hours}` : `${h} ${DRILL_LABELS.hours} ${r} ${ACTION_UI.minutes}`;
 }
 
+/** 手の相手の言い方（訪問依頼で相手なしは事業所の職員、行政報告で相手なしは市役所、受入依頼は福祉避難所）。履歴と紙面で同じ */
+export function calleeText(a: { kind: DrillAction; calleeLabel: string | null }): string | null {
+  if (a.calleeLabel) return a.calleeLabel;
+  if (a.kind === "dispatch") return ACTION_UI.staff;
+  if (a.kind === "report_city") return ACTION_UI.city;
+  if (a.kind === "request_welfare_shelter") return ACTION_UI.shelter;
+  return null;
+}
+
 /** 「経過 3 時間 40 分」 */
 export function elapsedClockLabel(minute: number): string {
   return `${DRILL_LABELS.elapsed} ${clockLabel(minute)}`;

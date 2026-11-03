@@ -2,7 +2,7 @@ import { getCloudflareContext } from "@opennextjs/cloudflare";
 import type { Metadata } from "next";
 import { StartButtons } from "@/components/drill/StartButtons";
 import { ButtonLink } from "@/components/ui/Button";
-import { PlayIcon } from "@/components/ui/Icon";
+import { PlayIcon, PrintIcon } from "@/components/ui/Icon";
 import { Panel, PageHead } from "@/components/ui/Panel";
 import { TABLE, TABLE_BOX, TD, TH } from "@/components/ui/table";
 import { requirePage } from "@/lib/auth/server";
@@ -13,7 +13,8 @@ import { LIMIT_LABELS } from "@/lib/seed/labels";
 import { shortJst } from "@/lib/disaster/state";
 import { drillScope, listDrills, type DrillListItem } from "@/lib/drill/db";
 import { DRILL_LABELS, progressLabel, SCENARIO_LABELS, STATUS_LABELS } from "@/lib/drill/labels";
-import { drillHref } from "@/lib/drill/paths";
+import { drillHref, reportHref } from "@/lib/drill/paths";
+import { SCORE_LABELS } from "@/lib/drill/score-labels";
 import { lastHour, SCENARIO_ORDER, scenarioOf } from "@/lib/drill/scenarios";
 
 export const metadata: Metadata = { title: "訓練記録 | ケア72" };
@@ -111,9 +112,17 @@ export default async function DrillPage() {
                 </td>
                 <td className={TD}>{d.started_by_name ?? <span className="text-muted">—</span>}</td>
                 <td className={`${TD} w-px py-1 text-right`}>
-                  <ButtonLink href={drillHref(d.id)} kind="plain" size="sm" icon={PlayIcon}>
-                    {d.status === "running" ? DRILL_LABELS.resume : DRILL_LABELS.replay}
-                  </ButtonLink>
+                  <div className="flex justify-end gap-1.5">
+                    <ButtonLink href={drillHref(d.id)} kind="plain" size="sm" icon={PlayIcon}>
+                      {d.status === "running" ? DRILL_LABELS.resume : DRILL_LABELS.replay}
+                    </ButtonLink>
+                    {/* 訓練記録の紙面（T22）。終わった・中断した訓練だけ。開いてすぐ印刷の画面（?print=1） */}
+                    {d.status !== "running" && (
+                      <ButtonLink href={reportHref(d.id, { print: true })} kind="plain" size="sm" icon={PrintIcon} data-print-link="drill">
+                        {SCORE_LABELS.print}
+                      </ButtonLink>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}

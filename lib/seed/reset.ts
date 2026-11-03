@@ -9,9 +9,13 @@
 // - デモ事業所の人と、その人に付いた行（連絡先・同意・時計・信号・経過・受け持ち・第三者提供・様式 9 の手直し）
 // - 医療班・行政の役の審査員などデモ事業所のアカウントがその場で登録した所属なしの人（T23。先にデモ事業所へ移してから一緒に消す）
 // - デモ事業所の訓練・事業所の経過・災害モード・様式の対応表、種に無いデモ事業所のアカウント（T30 で足したケアマネ）
+// - 審査員が作ったアンケートのリンクと、その答え（T42。試しの答えを本物のケアマネの答えに混ぜない）
 // 消さない物:
+// - 審査員でない人（山本など）が作ったアンケートのリンクと答え（協力してくれるケアマネの本物の答え。毎朝消えては困る）。
+//   送信の試みの数え（survey_attempts）も、戻すたびに 0 になると回数の上限が効かないので残す
 // - AI の呼び出しの記録（ai_calls）。1 日の上限の数え。ボタンで戻すたびに数えが 0 に戻ると上限が効かないので残す
 //   （日は JST で数えるので 0 時に変わる。docs/DECISIONS.md の (f) と違う所。docs/progress/t26.md）
+// - ログインの失敗の数え（login_attempts、T41）。戻すたびに数えが消えると回数の制限が効かないので残す（1 日で消える）
 // - 事業所の行（デモ事業所の名前などは種に上書き）。種のアカウントの行（山本のパスワードのハッシュは残し、ほかを種に上書き）
 // - 別の事業所の人に付いた行（審査員が医療班の役で協力事業所の人を受け入れた受け持ちも、その人の行として残す）
 
@@ -35,10 +39,15 @@ const UNAFFILIATED = lit(UNAFFILIATED_OFFICE_ID);
 /** デモ事業所の人（所属なしの人は先にデモ事業所へ移す） */
 const PEOPLE = `SELECT id FROM people WHERE office_id = ${OFFICE}`;
 const DRILLS = `SELECT id FROM drills WHERE office_id = ${OFFICE}`;
-const SEED_ACCOUNT_IDS = SEED_ACCOUNTS.filter((a) => a.office_id === DEMO_OFFICE_ID).map((a) => lit(a.id));
+/** 審査員がデモ事業所で作ったアンケートのリンク（T42） */
+const JUDGE_SURVEY_LINKS = `SELECT token FROM survey_links WHERE office_id = ${OFFICE} AND created_role = 'judge'`;
+const SEED_ACCOUNT_IDS =SEED_ACCOUNTS.filter((a) => a.office_id === DEMO_OFFICE_ID).map((a) => lit(a.id));
 
 /** 表ごとに消す範囲（WHERE の中身）。null は消さない。CLEAR_ORDER と同じ順に流す */
 export const DEMO_CLEAR: Readonly<Record<Table, string | null>> = {
+  survey_answers: `token IN (${JUDGE_SURVEY_LINKS})`,
+  survey_links: `office_id = ${OFFICE} AND created_role = 'judge'`,
+  survey_attempts: null,
   timeline_entries: `person_id IN (${PEOPLE})`,
   office_timeline_entries: `office_id = ${OFFICE}`,
   third_party_provisions: `person_id IN (${PEOPLE})`,
@@ -47,6 +56,7 @@ export const DEMO_CLEAR: Readonly<Record<Table, string | null>> = {
   form_mappings: `office_id = ${OFFICE}`,
   disaster_state: `office_id = ${OFFICE}`,
   ai_calls: null,
+  login_attempts: null,
   signals: `person_id IN (${PEOPLE}) OR drill_id IN (${DRILLS})`,
   drill_events: `drill_id IN (${DRILLS}) OR person_id IN (${PEOPLE})`,
   drills: `office_id = ${OFFICE}`,

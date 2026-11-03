@@ -34,6 +34,10 @@ export function insert(table: string, row: Record<string, SqlValue>): string {
  * 災害モード（disaster_state）は平時に、事業所の経過・様式 9 の手直し・様式の対応表は空に戻る
  */
 export const CLEAR_ORDER = [
+  // アンケートの Web 版（T42）。答えがリンクを指すので答えから
+  "survey_answers",
+  "survey_links",
+  "survey_attempts",
   "timeline_entries",
   "office_timeline_entries",
   // 受け持ちと第三者提供の記録（T23）。記録が受け持ちを指すので記録から
@@ -43,6 +47,8 @@ export const CLEAR_ORDER = [
   "form_mappings",
   "disaster_state",
   "ai_calls",
+  // ログインの回数の制限（T41）。手元の入れ直しでは消す（配信の毎日 4 時・最初に戻すでは消さない。lib/seed/reset.ts）
+  "login_attempts",
   "signals",
   "drill_events",
   "drills",
@@ -80,12 +86,16 @@ export type SeedOptions = {
   passwordHashes?: Readonly<Record<string, string>>;
 };
 
+/** 種で消さない表: アンケートの Web 版（T42）。本物のケアマネの答えが入るので、配信の作り直し（tools/deploy/rebuild-remote.sh の seed）でも残す。
+ *  事業所の行は消して入れ直すので、答えのリンクが事業所を指す外部キーは取引の終わりまで後回しにする（PRAGMA defer_foreign_keys。事業所の id は種で同じ） */
+export const KEEP_ON_SEED: ReadonlySet<string> = new Set(["survey_answers", "survey_links", "survey_attempts"]);
+
 export function seedStatements(opts: SeedOptions = {}): string[] {
   const hashes = opts.passwordHashes ?? {};
   for (const id of Object.keys(hashes)) {
     if (!SEED_ACCOUNTS.some((a) => a.id === id)) throw new Error(`種に無いアカウント: ${id}`);
   }
-  const out: string[] = CLEAR_ORDER.map((t) => `DELETE FROM ${t};`);
+  const out: string[] = ["PRAGMA defer_foreign_keys = true;", ...CLEAR_ORDER.filter((t) => !KEEP_ON_SEED.has(t)).map((t) => `DELETE FROM ${t};`)];
   for (const o of SEED_OFFICES) out.push(insert("offices", { ...o, created_at: SEED_AT }));
   for (const a of SEED_ACCOUNTS) {
     out.push(insert("accounts", { ...a, password_hash: hashes[a.id] ?? a.password_hash, created_at: SEED_AT }));
