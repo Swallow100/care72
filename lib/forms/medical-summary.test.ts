@@ -15,6 +15,7 @@ import {
   buildMedicalSummary,
   buildOwnSheetMedical,
   deviceMark,
+  DOCTOR_KEYS,
   FORM_ORDER_BASIS,
   interruptionMark,
   MEDICAL_FIELDS,
@@ -279,8 +280,9 @@ describe("種の 9 人から欄が埋まる", () => {
 describe("1 山田 ハナ（T07 の終わりの形）", () => {
   const s = sheetOf("p-01");
 
-  it("抗凝固薬（ワーファリン）にチェック、中断注意", () => {
-    expect(text(s, "drug.anticoagulant")).toBe("■抗凝固薬 ■ワーファリン ワーファリン 1 日 1 回 中断注意");
+  it("抗凝固薬（ワーファリン）にチェック。中断注意の印は様式の欄に出さない（補足の常用薬の表だけ。11/3 15:00 確定の 3）", () => {
+    expect(text(s, "drug.anticoagulant")).toBe("■抗凝固薬 ■ワーファリン ワーファリン 1 日 1 回");
+    expect(s.medications[0].mark?.label).toBe("中断注意");
     expect(text(s, "drug.antiplatelet")).toBe("□抗血小板薬");
     expect(text(s, "drug.diabetes")).toBe("□糖尿病治療薬 □インスリン □経口薬");
     expect(text(s, "drug.dialysis")).toBe("□透析");
@@ -429,9 +431,10 @@ describe("ほかの人", () => {
     expect(s.basis.map((b) => b.tier)).toEqual([6]);
   });
 
-  it("5 伊藤 フミ: ステロイド（残り 5 日、中断注意）、支援者のいない要配慮者等に印", () => {
+  it("5 伊藤 フミ: ステロイド（残り 5 日、中断注意は補足の表）、支援者のいない要配慮者等に印", () => {
     const s = sheetOf("p-05");
-    expect(text(s, "drug.steroid")).toBe("■ステロイド ステロイド 1 日 1 回 中断注意");
+    expect(text(s, "drug.steroid")).toBe("■ステロイド ステロイド 1 日 1 回");
+    expect(s.medications[0].mark?.tier).toBe(5);
     expect(cellText(s.medications[0].remaining)).toBe("5 日 発災から・薬局");
     expect(text(s, "care.protect")).toBe("■支援者のいない要配慮者等 実施者 なし");
     expect(s.basis.map((b) => b.tier)).toEqual([5, 7]);
@@ -448,9 +451,9 @@ describe("ほかの人", () => {
     expect(text(sheetOf("p-02"), "drug.devices")).not.toContain("中断注意");
   });
 
-  it("8 井上 誠: 糖尿病治療薬・インスリンにチェック、残り 4 日（発災から）・要冷蔵・中断注意（段 4）", () => {
+  it("8 井上 誠: 糖尿病治療薬・インスリンにチェック、残り 4 日（発災から）・要冷蔵・中断注意（段 4、補足の表）", () => {
     const s = sheetOf("p-08");
-    expect(text(s, "drug.diabetes")).toBe("■糖尿病治療薬 ■インスリン □経口薬 インスリン 朝夕 中断注意");
+    expect(text(s, "drug.diabetes")).toBe("■糖尿病治療薬 ■インスリン □経口薬 インスリン 朝夕");
     const m = s.medications[0];
     expect(cellText(m.remaining)).toBe("4 日 発災から・薬局");
     expect(cellText(m.storage)).toBe("冷蔵庫 要冷蔵");
@@ -492,5 +495,31 @@ describe("推し量らない", () => {
     expect(text(r.sheet, "history.disease")).toBe("未確認");
     expect(text(r.sheet, "drug.other")).toBe("■その他 降圧薬 1 日 1 回");
     expect(r.sheet.medications[0].mark).toBeNull();
+  });
+});
+
+describe("アドバイザーの返事（T48）: 並べ替えだけ・医師が書く欄は空欄", () => {
+  it("医師が書く欄（初診日・初診医師氏名・傷病名・トリアージタグ）は空欄で、紙面に「医師記入」を添えて出す（11/3 15:0x 確定）", () => {
+    expect(DOCTOR_KEYS).toEqual(["doctor.firstVisit", "doctor.physician", "doctor.disease", "doctor.triage"]);
+    for (const id of SHEET_IDS) {
+      const s = sheetOf(id);
+      for (const k of DOCTOR_KEYS) expect(s.cells[k], `${id} ${k}`).toEqual({ kind: "handwrite" });
+      const markup = html(s);
+      for (const k of DOCTOR_KEYS) expect(markup, `${id} ${k}`).toMatch(new RegExp(`data-field="${k}" data-doctor[^>]*>.*?医師記入.*?class="hand"`));
+    }
+  });
+
+  it("様式の欄（特記事項の □ の後ろ）には中断注意の印を出さず、補足の常用薬の表と機器にだけ出す（11/3 15:00 確定の 3）", () => {
+    let marked = 0;
+    for (const id of SHEET_IDS) {
+      const s = sheetOf(id);
+      for (const f of MEDICAL_FIELDS) {
+        if ("extra" in f && f.extra) continue;
+        expect(text(s, f.key), `${id} ${f.key}`).not.toContain("中断注意");
+      }
+      marked += s.medications.filter((m) => m.mark).length;
+    }
+    // 補足の表には残る（山田 ワーファリン・伊藤 ステロイド・井上 インスリン など）
+    expect(marked).toBeGreaterThanOrEqual(3);
   });
 });

@@ -29,7 +29,7 @@ export const RECORD_MS = 30_000;
 /** 録る長さの上限（延長を足しても） */
 export const MAX_RECORD_MS = 120_000;
 /** 定型文が終わらないときに待つ上限 */
-export const PROMPT_WAIT_MS = 15_000;
+export const PROMPT_WAIT_MS = 25_000; // 声の頭に AI の告知（T48）。端末の声の打ち切り（PROMPT_TIMEOUT_MS）より長く
 /** 無音のまま止まったときに、同じ定型文で聞き直す回数の上限 */
 export const MAX_REASKS = 2;
 

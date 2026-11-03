@@ -6,7 +6,7 @@
 // - やさしい日本語: 短い文、1 行に 1 つ、否定形を使わない。漢字にはふりがな（lib/forms/easy-words.ts）
 // - 載せる物: 逃げるところ（避難先と行き方）、逃げるとき（大雨と地震の両方）、来てくれる人（支援者 1・2）、
 //   持っていく物（薬の名前は台帳の言葉のまま、機器、持出品、この紙）、電話（ケアマネ・家族・かかりつけ）、
-//   本人の言葉（台帳の特記のまま）、いのちの危険があるときは 119
+//   本人の言葉（台帳の特記のまま）、命が危ないと感じたら、すぐ119番へ
 // - 載せない物: 医学の説明、「なぜこの行があるか」、薬の用量・回数、時計の値（ケアマネと主治医だけが見る物）
 // - 逃げるときの大雨は、ハザードのある人だけ「警戒レベル 3」（計画書 lib/forms/matsuyama.ts の risk.timing と同じ決まり）。
 //   地震は、津波のある人は「揺れたら すぐ」、在宅避難の印（evacuation.stayHome）のある人は「ゆれが おさまったら、家の なかの
@@ -66,9 +66,26 @@ export const OWN_PHRASES = {
   careManager: "ケアマネジャー",
   homeDoctor: "かかりつけの {病院|びょういん}",
   dialysis: "{透析|とうせき}の {病院|びょういん}",
-  emergencyLead: "いのちの {危険|きけん}が あるときは",
+  // 119 の 1 行（11/3 16:0x 確定。アドバイザーの OK 例のまま。「と感じたら」で判断が本人の側）。本人・家族のスマホと本人の 1 枚が同じ文
+  emergencyLead: "{命|いのち}が {危|あぶ}ないと {感|かん}じたら、すぐ",
   emergencyNumber: "119",
+  emergencyCounter: "{番|ばん}",
+  emergencyTail: "へ",
 } as const;
+
+/** 119 の 1 行の文（ふりがな・分かち書きを外した形）。画面・紙のどこでもこの文で、AI の出力や話の中身で出し分けない */
+export const EMERGENCY_TEXT = "命が危ないと感じたら、すぐ119番へ";
+
+/** 119 の 1 行の言葉（「119番」は太く大きく、「へ」は本文の大きさ）。本人の 1 枚の紙・本人と家族のスマホが同じこれを使う（一般の案内。本人の状態の判定ではない） */
+export function emergencyWords(): Word[] {
+  return [
+    ...easy(OWN_PHRASES.emergencyLead),
+    { text: " " },
+    { text: OWN_PHRASES.emergencyNumber, strong: true },
+    ...easy(OWN_PHRASES.emergencyCounter, { strong: true }),
+    ...easy(OWN_PHRASES.emergencyTail),
+  ];
+}
 
 /** 機器の持ち物の言葉（透析は持ち物にしない。透析手帳などは持出品に） */
 const DEVICE_CARRY: Partial<Record<DeviceKind, string>> = {
@@ -110,7 +127,7 @@ export type OwnSheet = {
   /** 「山田 ハナさんの 避難の 紙」 */
   title: Word[];
   blocks: OwnBlock[];
-  /** いのちの危険があるときは 119 */
+  /** 命が危ないと感じたら、すぐ119番へ */
   emergency: Word[];
   /** 作った日（JST、YYYY-MM-DD）と事業所 */
   today: string;
@@ -306,7 +323,7 @@ export function buildOwnSheet(rows: PersonPageRows, opts: OwnBuildOptions): OwnS
     name: person.name,
     title: [...nameWithKana(person.name, person.kana), ...p("san"), ...easy(OWN_PHRASES.title)],
     blocks,
-    emergency: [...p("emergencyLead"), sp, { text: OWN_PHRASES.emergencyNumber, strong: true }],
+    emergency: emergencyWords(),
     today: opts.today,
     officeName: opts.officeName,
     made,

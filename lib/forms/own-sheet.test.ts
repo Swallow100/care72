@@ -16,6 +16,8 @@ import {
   blockText,
   buildOwnSheet,
   lineText,
+  emergencyWords,
+  EMERGENCY_TEXT,
   OWN_BLOCK_HEADINGS,
   OWN_PHRASES,
   sheetKanjiWithoutRuby,
@@ -220,18 +222,23 @@ describe("10 人分の文", () => {
     }
   });
 
-  it("否定形を使わない（ない・ません・なし）", () => {
+  it("否定形を使わない（ない・ません・なし）。119 の行の「危ない」は形容詞で否定形ではない", () => {
     for (const id of ALL_IDS) {
-      const text = allWords(sheetOf(id)).map((w) => w.text).join("");
+      const text = allWords(sheetOf(id)).map((w) => w.text).join("").replaceAll("危ない", "");
       for (const w of ["ない", "ません", "なし", "不可"]) expect(text, `${id} ${w}`).not.toContain(w);
     }
   });
 
-  it("いのちの危険があるときは 119 の行がある（119 は太く）", () => {
+  it("119 の行がある（「119番」は太く）。文は「命が危ないと感じたら、すぐ119番へ」で、スマホの 119 の 1 行と同じ（11/3 16:0x 確定）", () => {
     for (const id of ALL_IDS) {
       const s = sheetOf(id);
-      expect(plainText(s.emergency), id).toBe("いのちの 危険が あるときは 119");
-      expect(s.emergency.at(-1), id).toEqual({ text: "119", strong: true });
+      expect(plainText(s.emergency), id).toBe("命が 危ないと 感じたら、すぐ 119番へ");
+      expect(plainText(s.emergency).replaceAll(" ", ""), id).toBe(EMERGENCY_TEXT);
+      expect(s.emergency.filter((w) => w.strong), id).toEqual([
+        { text: "119", strong: true },
+        { text: "番", ruby: "ばん", strong: true },
+      ]);
+      expect(s.emergency, id).toEqual(emergencyWords());
       expect(front(s), id).toMatch(/data-block="emergency"[^>]*>.*<strong>119<\/strong>/);
     }
   });

@@ -102,7 +102,7 @@ async function post(fn: typeof overridePost, p: Principal | null, body: unknown,
 }
 
 describe("ケアマネの上書き", () => {
-  it("上げると担当一覧の色と並びが変わり、経過に「優先変更」。本人のページと様式 9 も同じ色", async () => {
+  it("上げると担当一覧の色と並びが変わり、経過に「順番変更」。本人のページと様式 9 も同じ色", async () => {
     await heavyRain();
     const before = await board(1);
     expect(before.find((r) => r.id === "p-09")!.triage!.color).toBe("gray");
@@ -121,7 +121,7 @@ describe("ケアマネの上書き", () => {
     expect((await personDisaster(db, page!, at(1.1))).triage!.color).toBe("red");
     const form9 = await loadForm9(db, { officeId: "office-demo" }, { today: TODAY, situation: (await personDisaster(db, page!, at(1.1))).situation });
     expect(JSON.stringify(form9!.sheet)).toBeTruthy();
-    const item = timelineItems(page!).find((t) => t.kind === "優先変更")!;
+    const item = timelineItems(page!).find((t) => t.kind === "順番変更")!;
     expect(item).toMatchObject({ body: "不明→至急 近所で土砂", who: "ケアマネ 山本", tone: "check" });
   });
 

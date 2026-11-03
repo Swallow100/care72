@@ -1,6 +1,7 @@
 // 本人のスマホの災害モードの 1 画面（lib/signals/phone.ts の状態を描くだけ）。状態を持たない（テストで静的に描ける）。
 // どの画面も大きな字で、ボタンは 2 つか 3 つ。戻るは無い。説明文は無い。言葉は lib/signals/phrases.ts の定型だけ。
-// 本人の状態の判定（至急など）は出さない。赤の流れの最後に 119 の 1 行（一般の案内）。
+// 本人の状態の判定（至急など）は出さない。赤を押したあとのどの画面（問い・定型文・録音・送る・終わり）にも 119 の 1 行（一般の案内）を
+// いちばん下に出す。状態（PhoneState）に録音の中身・分類（AI の出力）は無く、出す・出さないは赤の流れかどうかだけで決まる（T48）。
 // Fill・Choice・Emergency は家族・支援者のスマホ（FamilyView.tsx、T11）も使う。
 
 import type { ReactNode } from "react";
@@ -10,6 +11,7 @@ import { easy } from "@/lib/forms/easy-words";
 import type { WhereNow } from "@/lib/db/types";
 import type { PhoneState } from "@/lib/signals/phone";
 import {
+  AI_NOTICE,
   emergencyWords,
   PHONE_PHRASES,
   RED_QUESTION_PHRASES,
@@ -70,6 +72,16 @@ function AiListening() {
           </>
         }
       />
+    </p>
+  );
+}
+
+/** AI の告知（T48）。赤の流れの最初（1 問目）と、定型文（声の頭も同じ告知）を流している間に出す。飛ばす操作は無い */
+function AiNotice() {
+  return (
+    <p className="text-center text-xl font-bold" data-notice="ai">
+      <Words m={AI_NOTICE.lead} /> <span className="phone-ai">AI</span>
+      <Words m={AI_NOTICE.rest} />
     </p>
   );
 }
@@ -139,6 +151,7 @@ export function PhoneView({ state, nowMs, on }: { state: PhoneState; nowMs: numb
       const q = RED_QUESTION_PHRASES[RED_QUESTIONS[state.index]];
       return (
         <Fill step={`question-${state.index}`}>
+          {state.index === 0 && <AiNotice />}
           <Question m={q.q} />
           <Choice onClick={() => on.answer(true)} value="yes">
             <Words m={q.yes} />
@@ -146,13 +159,16 @@ export function PhoneView({ state, nowMs, on }: { state: PhoneState; nowMs: numb
           <Choice onClick={() => on.answer(false)} value="no">
             <Words m={q.no} />
           </Choice>
+          <Emergency />
         </Fill>
       );
     }
     case "prompt":
       return (
         <Fill step="prompt">
+          <AiNotice />
           <Prompt />
+          <Emergency />
         </Fill>
       );
     case "recording": {
@@ -171,6 +187,7 @@ export function PhoneView({ state, nowMs, on }: { state: PhoneState; nowMs: numb
           <Choice onClick={on.finish} value="send">
             <Words m={PHONE_PHRASES.send} />
           </Choice>
+          <Emergency />
         </Fill>
       );
     }
@@ -180,6 +197,7 @@ export function PhoneView({ state, nowMs, on }: { state: PhoneState; nowMs: numb
           <p className="flex flex-1 items-center justify-center text-center text-[2.25rem] font-bold" role="status">
             <Words m={PHONE_PHRASES.sending} />
           </p>
+          {state.color === "red" && <Emergency />}
         </Fill>
       );
     case "done":

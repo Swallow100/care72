@@ -17,6 +17,7 @@ import { COLOR_LABELS, CONTACT_KIND_LABELS } from "@/lib/labels";
 import { SOURCE_LABELS } from "@/lib/list/detail";
 import type { StateTone } from "@/lib/person";
 import { callsOf } from "@/lib/drill/calls";
+import { FictionalMark } from "./Fictional";
 import { ActionIcon, CallInIcon } from "./icons";
 import { VoicePlay } from "./VoicePlay";
 
@@ -42,7 +43,12 @@ function Head({ a, names }: { a: ActionRecord; names: Names }) {
         <ActionIcon kind={a.kind} className="size-3.5" />
         {ACTION_LABELS[a.kind]}
       </span>
-      {who && <span>{who}</span>}
+      {who && (
+        <span>
+          {who}
+          {a.person && <FictionalMark />}
+        </span>
+      )}
       {callee && callee !== CONTACT_KIND_LABELS.self && <span className="text-xs text-muted">{callee}</span>}
       {r ? (
         <>
@@ -154,7 +160,10 @@ function CallInItem({ t, name }: { t: DrillTurn; name: string }) {
   return (
     <li className="flex flex-wrap items-baseline gap-x-1.5" data-call-in={t.person}>
       <CallInMark />
-      <span className="font-bold">{name}</span>
+      <span className="font-bold">
+        {name}
+        <FictionalMark />
+      </span>
       <StateTag tone={TURN_TONES[t.color]}>{TURN_LABELS[t.color]}</StateTag>
       <span className="text-xs text-muted">{SOURCE_LABELS[t.source]}</span>
       {t.ai && <AiMark small />}

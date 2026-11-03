@@ -47,6 +47,13 @@ export const DRILL_LABELS = {
   network: "通信失敗",
 } as const;
 
+/** 訓練の人の印（T48、アドバイザーの返事）。人は全部作った例で、本人役・家族役は AI が演じる */
+export const FICTION_LABELS = {
+  mark: "架空",
+  title: "AI が演じる架空の人",
+  note: "訓練の人は AI が演じる架空の人（作った例の記録）",
+} as const;
+
 /** 状況（世界の出来事）の種類の印 */
 export const EVENT_KIND_LABELS: Record<WorldEventKind, string> = {
   alert: "警戒",

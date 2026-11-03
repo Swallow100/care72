@@ -12,7 +12,7 @@ import { DEFAULT_VOICE, speak, TTS_MODEL, type SpeakContext } from "../gemini/tt
 import { VOICE_PROMPT_TEXT } from "./phrases.ts";
 
 /** 文の版。文を変えたら上げる（R2 の古い声を使わない） */
-export const VOICE_PROMPT_VERSION = 1;
+export const VOICE_PROMPT_VERSION = 2;
 
 /** 人の入らない文を仮名化の層に通すための空の鍵 */
 const NO_PEOPLE: PseudonymKey = { people: [], contacts: [], rules: [], secrets: [] };

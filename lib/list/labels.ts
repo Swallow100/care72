@@ -6,7 +6,7 @@ import type { RecordingClass } from "../db/types.ts";
 /** 列の見出し */
 export const COLUMN_LABELS = {
   state: "状態",
-  tier: "優先",
+  tier: "連絡順",
   kana: "氏名",
   remain: "残り",
   contact: "最終連絡",
@@ -32,7 +32,7 @@ export const DETAIL_LABELS = {
   classes: "分類",
   noClasses: "分類なし",
   calls: "電話",
-  override: "優先変更",
+  override: "順番変更",
   none: "なし",
   noContact: "連絡なし",
   noRecording: "録音なし",

@@ -445,7 +445,7 @@ describe("画面の静的な描画", () => {
     const red = view({ step: "done", color: "red", delivery: "sent" }, screen);
     const t = text(red);
     expect(t).toContain("とどきました");
-    expect(t).toContain("いのちの 危険が あるときは 119");
+    expect(t).toContain("命が 危ないと 感じたら、すぐ 119番へ");
     expect(t).toContain("これまでの こと");
     expect(t).toContain("あなたが「無事じゃない」と こたえました");
     expect(t).toContain("持って いく もの");
@@ -459,6 +459,21 @@ describe("画面の静的な描画", () => {
       expect(text(view({ step: "done", color: c, delivery: "queued" }, screen))).not.toContain("119");
     }
     expect(text(view({ step: "done", color: "green", delivery: "queued" }, screen))).toContain("まだ とどいて いません");
+  });
+
+  it("無事じゃない を押したあとは送っている間も 119 の 1 行。答えたあとと同じ固定の文で、届いたか（送り直し）でも消えない（T48）", async () => {
+    const screen = await screenOf(family());
+    for (const st of [
+      { step: "sending", color: "red" },
+      { step: "done", color: "red", delivery: "sent" },
+      { step: "done", color: "red", delivery: "queued" },
+      { step: "done", color: "red", delivery: "dropped" },
+    ] satisfies FamilyState[]) {
+      const html = view(st, screen);
+      expect(html.match(/data-emergency/g), st.step).toHaveLength(1);
+      expect(text(html)).toContain("命が 危ないと 感じたら、すぐ 119番へ");
+    }
+    for (const c of ["green", "unknown"] as const) expect(view({ step: "sending", color: c }, screen)).not.toContain("data-emergency");
   });
 
   it("ケアマネの電話の番号があれば tel: で押せる", async () => {

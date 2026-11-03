@@ -1,6 +1,6 @@
 // 家族・支援者のスマホの災害モードの 1 画面（lib/signals/family-phone.ts の状態を描くだけ）。状態を持たない（テストで静的に描ける）。
 // 上は「お母さん（山田 ハナ）は 無事ですか」と 3 つのボタン。面で塗るのは 無事です（緑）と 無事じゃない（赤）だけで、
-// 分からない は面の色。答えたあとは 送れたか・（赤なら 119 の 1 行）・これまでの こと（同意の範囲）・持って いく もの・
+// 分からない は面の色。無事じゃない を押したあとは 送っている間も 119 の 1 行（T48）。答えたあとは 送れたか・（赤なら 119 の 1 行）・これまでの こと（同意の範囲）・持って いく もの・
 // ケアマネジャーの電話・最初から。言葉は lib/signals/phrases.ts の定型と台帳の値だけ。判定・助言の言葉は出さない。
 
 import { EasyWords } from "@/components/forms/EasyText";
@@ -120,6 +120,7 @@ export function FamilyView({ state, screen, on }: { state: FamilyState; screen: 
           <p className="flex flex-1 items-center justify-center text-center text-[2.25rem] font-bold" role="status">
             <Words m={PHONE_PHRASES.sending} />
           </p>
+          {state.color === "red" && <Emergency />}
         </Fill>
       );
     case "done":
