@@ -4,11 +4,15 @@
 
 ## 渡し方
 
-別のアカウントで Claude Code を開き、このリポジトリで次のように頼む:
+別のアカウントで Claude Code を開き、このリポジトリで次のように頼む。このプロジェクトを知らないエージェントでも、`docs/tasks/CONTEXT.md`（何を作っているか・越えない線とその理由・地図・用語・進め方）を先に読めば、意図まで汲んで作業できる:
 
 ```
-docs/tasks/T03.md をやって。CLAUDE.md と docs/tasks/README.md の決まりを守って。
+docs/tasks/CONTEXT.md → CLAUDE.md → docs/tasks/README.md → docs/tasks/T03.md の順に読んで、T03 をやって。
+worktree は ../care72-t03、branch は task/t03（origin/main から）。進みは docs/progress/t03.md に（docs/PROGRESS.md と docs/HANDOFF.md は触らない）。
+PR は integrate/t11-t12 宛で、merge はしない。本物の API は呼ばない。止まったら push して progress に書く。
 ```
+
+T49 以降の文書は、頭に「意図（なぜこの作業か）」と、末尾に「渡す文」を持つ。
 
 ## 同じリポジトリで 2 つのセッションが動くとき
 
