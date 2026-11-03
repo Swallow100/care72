@@ -8,7 +8,7 @@
 import { ACTION_STATUS_LABELS } from "@/lib/drill/actions";
 import { callerLabel } from "@/lib/drill/calls";
 import type { ActionRecord } from "@/lib/drill/engine";
-import { ACTION_LABELS, ACTION_UI, BASIS_LABEL, calleeText, clockLabel, DRILL_LABELS, SCENARIO_LABELS, STATUS_LABELS } from "@/lib/drill/labels";
+import { ACTION_LABELS, ACTION_UI, BASIS_LABEL, calleeText, clockLabel, DRILL_LABELS, FICTION_LABELS, SCENARIO_LABELS, STATUS_LABELS } from "@/lib/drill/labels";
 import type { DrillRecord, StoredReview } from "@/lib/drill/record";
 import type { ReviewBody } from "@/lib/drill/review";
 import { REVIEW_ERROR_LABELS, REVIEW_KIND_LABELS, REVIEW_UI, SCORE_LABELS } from "@/lib/drill/score-labels";
@@ -112,6 +112,7 @@ export function DrillPaper({ record, office, today }: { record: DrillPaperRecord
           <dt>{SCORE_LABELS.participants}</dt>
           <dd className="wide">
             {t(`${score.participants.length} 人`)}（{score.participants.map((p) => name(p)).join("・")}）
+            <span data-fictional>{t(`、${FICTION_LABELS.title}`)}</span>
           </dd>
           <dt>{SCORE_LABELS.previous}</dt>
           <dd className="wide">

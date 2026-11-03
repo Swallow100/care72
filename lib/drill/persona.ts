@@ -12,6 +12,8 @@
 // - 失敗（鍵なし・上限・断られた・形の違い・呼び出しの失敗・伏せきれない・台帳を読めない）は、想定の表の行があれば表の固定の安否
 //   （ai: false、AI の印なし）、無ければ「連絡なし」（空の配列）
 // - 通話（T20）の相手も同じ本人役で答える。出る・出ない・背景の音だけは先に表の割合で決め、Haiku は言葉だけ（personaCallReply）
+// - 本人役の元の記録（種の 10 人、seed/people.ts の台帳）は作った例で、実在の利用者の記録ではない。画面では人の名前のそばに
+//   「架空」の印（AI が演じる架空の人。components/drill/Fictional.tsx、T48・アドバイザーの返事）
 
 import type { D1Database } from "@cloudflare/workers-types";
 import * as z from "zod";

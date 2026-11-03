@@ -9,6 +9,7 @@ import { DamagePanel } from "@/components/drill/DamagePanel";
 import { DrillBar } from "@/components/drill/DrillBar";
 import { DrillControls } from "@/components/drill/DrillControls";
 import { DrillRowDetail } from "@/components/drill/DrillRowDetail";
+import { FictionalMark, FictionalNote } from "@/components/drill/Fictional";
 import { IncomingCall, type IncomingCallItem } from "@/components/drill/IncomingCall";
 import { Situation } from "@/components/drill/Situation";
 import { DisasterSummary } from "@/components/list/DisasterSummary";
@@ -89,6 +90,7 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
   const slots: TableSlots = {
     sortHref: (k) => here({ sort: k }),
     nameHref: () => null,
+    nameMark: () => <FictionalMark />,
     detail: (r) =>
       r.detail ? (
         <DrillRowDetail detail={r.detail} startedAt={s.drill.started_at} aiSignals={s.aiSignals} heard={s.heard} recordings={recordings} />
@@ -143,6 +145,7 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
           )}
         </div>
       </header>
+      <FictionalNote />
 
       <section aria-label={DRILL_LABELS.elapsed} className="grid gap-x-6 gap-y-2 rounded-lg bg-panel px-3 py-3 lg:grid-cols-[11rem_minmax(0,1fr)]">
         <div>

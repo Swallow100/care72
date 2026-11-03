@@ -19,6 +19,7 @@ import { PhoneIcon } from "@/components/ui/Icon";
 import { StateTag, type Tone } from "@/components/ui/Tag";
 import { CALL_UI, clockLabel } from "@/lib/drill/labels";
 import { COLOR_LABELS } from "@/lib/labels";
+import { FictionalMark } from "./Fictional";
 import { CallInIcon } from "./icons";
 
 export type IncomingCallItem = {
@@ -259,6 +260,7 @@ export function IncomingCall({ drillId, calls }: { drillId: string; calls: Reado
         </h2>
         <p className="text-lg leading-7" data-incoming-name>
           {current.name}
+          <FictionalMark />
         </p>
 
         {phase === "talking" && (

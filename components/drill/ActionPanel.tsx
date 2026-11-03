@@ -16,6 +16,7 @@ import { DRILL_ACTIONS } from "@/lib/db/types";
 import { ACTION_MINUTES, needsPerson, needsTarget, picksTarget, targetKinds } from "@/lib/drill/action-table";
 import { ACTION_LABELS, ACTION_UI, CALL_STATUS_LABELS, DRILL_LABELS } from "@/lib/drill/labels";
 import type { DrillContact } from "@/lib/drill/view";
+import { FictionalMark } from "./Fictional";
 import { ACTION_ICONS } from "./icons";
 
 export type PanelPerson = {
@@ -126,7 +127,10 @@ export function ActionPanel({
               data-act-person={p.id}
             >
               {p.tag}
-              <span className="min-w-0 truncate">{p.name}</span>
+              <span className="min-w-0 truncate">
+                {p.name}
+                <FictionalMark />
+              </span>
             </Button>
           ))}
         </div>

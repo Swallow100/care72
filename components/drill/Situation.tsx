@@ -12,6 +12,7 @@ import { simAt } from "@/lib/drill/engine";
 import { ACTION_UI, BASIS_LABEL, DRILL_LABELS, elapsedLabel, EVENT_KIND_LABELS } from "@/lib/drill/labels";
 import { callIndexes } from "@/lib/drill/calls";
 import { CallInMark } from "./ActionLog";
+import { FictionalMark } from "./Fictional";
 import { COLOR_LABELS } from "@/lib/labels";
 import { SOURCE_LABELS } from "@/lib/list/detail";
 import type { StateTone } from "@/lib/person";
@@ -94,7 +95,12 @@ function IncidentItem({ e, name, tickHour }: { e: DrillIncident; name: string | 
       <span className="rounded bg-panel px-1 py-px text-xs text-muted">{EVENT_KIND_LABELS[e.change.kind]}</span>
       {e.ai && <AiMark small />}
       <span>{e.text}</span>
-      {name && <span className="text-xs text-muted">{name}</span>}
+      {name && (
+        <span className="text-xs text-muted">
+          {name}
+          <FictionalMark />
+        </span>
+      )}
       <At at={e.at} tickHour={tickHour} />
       {basis && (
         <a
@@ -117,7 +123,10 @@ function TurnItem({ t, name, tickHour, callIn }: { t: DrillTurn; name: string; t
   return (
     <li className="flex flex-wrap items-baseline gap-x-1.5" data-turn={t.person} data-color={t.color} data-call-in={callIn ? "" : undefined}>
       {callIn && <CallInMark />}
-      <span className="font-bold">{name}</span>
+      <span className="font-bold">
+        {name}
+        <FictionalMark />
+      </span>
       <StateTag tone={TURN_TONES[t.color]}>{TURN_LABELS[t.color]}</StateTag>
       <span className="text-xs text-muted">{SOURCE_LABELS[t.source]}</span>
       {t.ai && <AiMark small />}
