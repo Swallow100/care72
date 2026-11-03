@@ -45,9 +45,25 @@ const yamamoto = (): Principal => ({
   personId: null,
   contactId: null,
 });
-const medical = (): Principal => ({ ...yamamoto(), role: "medical", judge: true, admin: false, accountId: "acct-judge", caseloadOf: null, displayName: null });
+const medical = (): Principal => ({
+  ...yamamoto(),
+  role: "medical",
+  judge: true,
+  admin: false,
+  accountId: "acct-judge",
+  caseloadOf: null,
+  displayName: null,
+});
 /** 審査員の本人のスマホ（p-01） */
-const self = (): Principal => ({ ...yamamoto(), role: "self", judge: true, admin: false, accountId: "acct-judge", caseloadOf: null, personId: "p-01" });
+const self = (): Principal => ({
+  ...yamamoto(),
+  role: "self",
+  judge: true,
+  admin: false,
+  accountId: "acct-judge",
+  caseloadOf: null,
+  personId: "p-01",
+});
 
 /** 浸水と停電の時刻（2026-11-05 18:00 JST）。発災は -2 時間。停電は事業所全体で 0 時間から */
 const FLOOD = Date.parse("2026-11-05T09:00:00.000Z");
@@ -91,9 +107,11 @@ async function call(person: string, body: Record<string, unknown>, h: number) {
 
 /** いちばん新しい電話の記録の行を撤回する */
 async function retractLastCall(person: string, h: number) {
-  const id = (rows(`SELECT id FROM timeline_entries WHERE kind = 'called' AND person_id = '${person}' ORDER BY occurred_at DESC LIMIT 1`)[0] as {
-    id: string;
-  }).id;
+  const id = (
+    rows(`SELECT id FROM timeline_entries WHERE kind = 'called' AND person_id = '${person}' ORDER BY occurred_at DESC LIMIT 1`)[0] as {
+      id: string;
+    }
+  ).id;
   const out = await retractTimelineRequest(db, yamamoto(), { id, note: "人違い" }, at(h));
   expect(out.status).toBe(200);
   return id;
@@ -173,7 +191,10 @@ describe("通話で聞いた安否の撤回で、4 画面の色・順・理由�
     await saveSignal(db, signalScope(self())!, red({ canMove: false }, at(0.3)), at(0.3));
     const before = await screens("p-01");
     expect(before.caseload).toMatchObject({ rule: "red_injury", reason: "本人が「動けない」" });
-    expect(await call("p-01", { heard: { color: "green" } }, 0.5)).toEqual({ status: 409, json: { ok: false, error: "injury", label: "至急維持" } });
+    expect(await call("p-01", { heard: { color: "green" } }, 0.5)).toEqual({
+      status: 409,
+      json: { ok: false, error: "injury", label: "至急維持" },
+    });
     expect(rows("SELECT * FROM timeline_entries WHERE kind = 'called'")).toEqual([]);
 
     expect((await call("p-01", { memo: "折り返し待ち" }, 0.5)).status).toBe(200);
@@ -230,7 +251,12 @@ describe("表を読む所の濾し", () => {
     }
     expect(missing).toEqual([]);
     // 5 か所（lib/disaster/triage.ts の 2 つ・lib/caseload.ts・lib/custody/board.ts・lib/forms/form9-db.ts）
-    expect([...new Set(checked)].sort()).toEqual(["lib/caseload.ts", "lib/custody/board.ts", "lib/disaster/triage.ts", "lib/forms/form9-db.ts"]);
+    expect([...new Set(checked)].sort()).toEqual([
+      "lib/caseload.ts",
+      "lib/custody/board.ts",
+      "lib/disaster/triage.ts",
+      "lib/forms/form9-db.ts",
+    ]);
     expect(checked).toHaveLength(5);
   });
 });

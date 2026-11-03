@@ -98,7 +98,10 @@ export function parseRetract(raw: unknown): Parsed {
 
 export type RetractResult = { ok: true; id: string; at: string } | { ok: false; error: RetractError };
 
-type StoredRow = Pick<TimelineEntryRow, "id" | "person_id" | "author_id" | "author_role" | "kind" | "payload" | "signal_id" | "retracted_at">;
+type StoredRow = Pick<
+  TimelineEntryRow,
+  "id" | "person_id" | "author_id" | "author_role" | "kind" | "payload" | "signal_id" | "retracted_at"
+>;
 
 /** 1 行を撤回する。at はサーバーの時刻（ISO） */
 export async function retractTimeline(db: D1Database, p: Principal | null, input: RetractInput, at: string): Promise<RetractResult> {

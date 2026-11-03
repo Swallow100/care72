@@ -61,7 +61,14 @@ const base: Principal = {
   contactId: null,
 };
 const medical = (): Principal => base;
-const government = (): Principal => ({ ...base, role: "government", judge: false, accountId: "acct-gov-1", displayName: "市 防災課", office: null });
+const government = (): Principal => ({
+  ...base,
+  role: "government",
+  judge: false,
+  accountId: "acct-gov-1",
+  displayName: "市 防災課",
+  office: null,
+});
 const judgeCm = (): Principal => ({ ...base, role: "care_manager", caseloadOf: "acct-yamamoto", displayName: "山本" });
 const yamamoto = (): Principal => ({ ...judgeCm(), judge: false, admin: true, accountId: "acct-yamamoto" });
 /** 同じ事業所の別のケアマネ */
@@ -93,7 +100,14 @@ const rowOf = (id: string) => sqlite.prepare("SELECT * FROM timeline_entries WHE
 const count = () => Number((sqlite.prepare("SELECT count(*) AS n FROM timeline_entries").get() as { n: number }).n);
 
 /** 経過の表に行を直に 1 行（撤回できない種類・payload の形を通すため） */
-function insertEntry(e: { id: string; kind: string; author_role: string; author_id: string | null; payload?: string | null; body?: string | null }) {
+function insertEntry(e: {
+  id: string;
+  kind: string;
+  author_role: string;
+  author_id: string | null;
+  payload?: string | null;
+  body?: string | null;
+}) {
   sqlite
     .prepare(
       `INSERT INTO timeline_entries (id, person_id, author_id, author_role, kind, body, payload, signal_id, occurred_at)
@@ -122,7 +136,10 @@ describe("撤回の往復", () => {
     const id = await write(yamamoto(), "safety_check");
     expect(parseRetract({ id })).toEqual({ ok: true, value: { id, note: null } });
     expect(parseRetract({ id, note: "   " })).toEqual({ ok: true, value: { id, note: null } });
-    expect(parseRetract({ id, note: "あ".repeat(RETRACT_NOTE_MAX) })).toEqual({ ok: true, value: { id, note: "あ".repeat(RETRACT_NOTE_MAX) } });
+    expect(parseRetract({ id, note: "あ".repeat(RETRACT_NOTE_MAX) })).toEqual({
+      ok: true,
+      value: { id, note: "あ".repeat(RETRACT_NOTE_MAX) },
+    });
     expect(parseRetract({ id, note: "あ".repeat(RETRACT_NOTE_MAX + 1) })).toEqual({ ok: false, error: "too_long" });
     expect(parseRetract({ id, note: "1 行目\n2 行目" })).toEqual({ ok: false, error: "invalid" });
     expect(parseRetract({ id, note: "a\u0007b" })).toEqual({ ok: false, error: "invalid" });
@@ -165,9 +182,11 @@ describe("撤回の往復", () => {
   });
 
   it("電話の記録（called、payload の source が call）は撤回できる", async () => {
-    const contact = (sqlite.prepare("SELECT id FROM contacts WHERE person_id = 'p-01' AND kind = 'family' ORDER BY sort LIMIT 1").get() as {
-      id: string;
-    }).id;
+    const contact = (
+      sqlite.prepare("SELECT id FROM contacts WHERE person_id = 'p-01' AND kind = 'family' ORDER BY sort LIMIT 1").get() as {
+        id: string;
+      }
+    ).id;
     const res = await callPost(db, yamamoto(), { person: "p-01", contact, result: "no_answer" }, AT);
     expect(res.status).toBe(200);
     const id = (sqlite.prepare("SELECT id FROM timeline_entries WHERE kind = 'called'").get() as { id: string }).id;
@@ -333,7 +352,12 @@ describe("読む側: 見せる所（本人のページ）", () => {
     // 並びは元の時刻のまま（撤回の時刻で動かない）
     expect(items.map((t) => t.id)).toEqual(order);
     const n = items.find((t) => t.id === note)!;
-    expect(n).toMatchObject({ kind: "記録", body: "避難所 打ち違い", at: AT, retracted: { who: "山本", when: "11/3 22:10", note: "人違い" } });
+    expect(n).toMatchObject({
+      kind: "記録",
+      body: "避難所 打ち違い",
+      at: AT,
+      retracted: { who: "山本", when: "11/3 22:10", note: "人違い" },
+    });
     expect(n.retractable).toBeUndefined();
     expect(items.find((t) => t.id === check)).toMatchObject({ retractable: true });
     expect(items.find((t) => t.id === check)!.retracted).toBeUndefined();
@@ -381,10 +405,14 @@ describe("読む側: 見せる所（本人のページ）", () => {
 describe("読む側: 除く所（担当一覧の電話の記録・様式 9 の避難先・家族の経過）", () => {
   it("撤回した電話の記録は、担当一覧の行の詳細の電話の記録と連絡先の最後の電話から消える", async () => {
     await heavyRain();
-    const contact = (sqlite.prepare("SELECT id FROM contacts WHERE person_id = 'p-01' AND kind = 'family' ORDER BY sort LIMIT 1").get() as {
-      id: string;
-    }).id;
-    expect((await callPost(db, yamamoto(), { person: "p-01", contact, result: "connected", memo: "折り返し" }, hour(0.5))).status).toBe(200);
+    const contact = (
+      sqlite.prepare("SELECT id FROM contacts WHERE person_id = 'p-01' AND kind = 'family' ORDER BY sort LIMIT 1").get() as {
+        id: string;
+      }
+    ).id;
+    expect((await callPost(db, yamamoto(), { person: "p-01", contact, result: "connected", memo: "折り返し" }, hour(0.5))).status).toBe(
+      200,
+    );
     const detail = async () => (await loadCaseload(db, SCOPE, "2026-11-05", hour(0.6)))!.rows.find((r) => r.id === "p-01")!.detail!;
     const before = await detail();
     expect(before.calls).toHaveLength(1);
@@ -402,7 +430,8 @@ describe("読む側: 除く所（担当一覧の電話の記録・様式 9 の�
     expect(out.status).toBe(200);
     const situation = { now: hour(0.6), disasterAt: hour(-2), outageAt: hour(0) };
     const result = async () =>
-      (await loadForm9(db, { officeId: "office-demo" }, { today: "2026-11-05", situation }))!.sheet.rows.find((r) => r.id === "p-04")!.result;
+      (await loadForm9(db, { officeId: "office-demo" }, { today: "2026-11-05", situation }))!.sheet.rows.find((r) => r.id === "p-04")!
+        .result;
     expect(await result()).toMatchObject({ label: "到着", location: "shelter", place: SHELTER });
     expect((await retract(yamamoto(), { id: String(out.body.id) }, hour(0.55))).status).toBe(200);
     const after = await result();
@@ -437,7 +466,9 @@ describe("Claude の入力", () => {
       return /\baskJson\(/.test(s) && !f.replaceAll("\\", "/").endsWith("lib/claude/call.ts");
     });
     expect(callers.length).toBeGreaterThan(0);
-    const reading = callers.filter((f) => /timeline_entries|retracted_note|retracted|timelineItems|lib\/timeline/.test(readFileSync(f, "utf8")));
+    const reading = callers.filter((f) =>
+      /timeline_entries|retracted_note|retracted|timelineItems|lib\/timeline/.test(readFileSync(f, "utf8")),
+    );
     expect(reading.map((f) => relative(ROOT, f))).toEqual([]);
   });
 });

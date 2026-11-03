@@ -36,8 +36,8 @@ export function Timeline({ items }: { items: readonly TimelineItem[] }) {
             <span className="text-xs font-bold">{t.kind}</span>
           )}
           {t.ai && <AiMark />}
-          <span className="ml-auto text-xs text-muted">{t.who}</span>
-          {t.retractable && <RetractButton id={t.id} />}
+          {/* 撤回できる行は、誰がと撤回のボタンを 1 つの塊で右に（components/person/RetractButton.tsx） */}
+          {t.retractable ? <RetractButton id={t.id} who={t.who} /> : <span className="ml-auto text-xs text-muted">{t.who}</span>}
           {t.body && <div className={`mt-0.5 basis-full ${t.retracted ? STRUCK : ""}`}>{t.body}</div>}
           {t.retracted && (
             <div className="mt-0.5 basis-full text-xs text-muted" data-retracted-line>
