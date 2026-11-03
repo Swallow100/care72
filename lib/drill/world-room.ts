@@ -31,9 +31,10 @@ import { applyContext, buildCast, openingText, tickText, WORLD_STEP_JSON_SCHEMA,
 /**
  * 部屋の Agent の設定（agentParams）の版。WORLD_SYSTEM・world_step の形・モデル・effort のどれかを変えたら 1 つ上げる。
  * 上げないと、本番の ai_agents に残る前の Agent（前の設定）が使われ続ける。
- * 2: 結末を世界が決める・理由の欄（T53）。3: effort を medium → high（11/4 00:5x、T67）
+ * 2: 結末を世界が決める・理由の欄（T53）。3: effort を medium → high（11/4 00:5x、T67）。
+ * 4: WORLD_SYSTEM の人数を決め打たない・入力の「結末」が「決めない」の訓練では結末を決めない（T70 の続き）
  */
-export const WORLD_AGENT_VERSION = 3;
+export const WORLD_AGENT_VERSION = 4;
 export const WORLD_TOOL = "world_step";
 /** session の予算（セント。$3） */
 export const WORLD_BUDGET_CENTS = "300";
@@ -317,6 +318,11 @@ export async function settlePending(client: RoomClient, room: string): Promise<n
   return pending.length;
 }
 
+/** デモ以外の事業所（cast.endings が false）は結末の状況を当てない（world-apply.ts でも捨てる。ここは 2 つ目の守り。T70 の続き） */
+function keepEndings(cast: Pick<WorldCast, "endings">, incidents: DrillIncident[]): DrillIncident[] {
+  return cast.endings ? incidents : incidents.filter((e) => e.change.kind !== "outcome");
+}
+
 // ---------- 呼び口（部屋 → 1 回呼び → 差し込みなし） ----------
 
 export type WorldMode = "session" | "messages" | "off";
@@ -361,7 +367,7 @@ export function createWorldHook(deps: WorldDeps): WorldHook {
     if (deps.mode === "session" && deps.room) {
       try {
         const r = await roomStep(input, cast, deps.room(), opts);
-        return { incidents: r.incidents, session: r.session };
+        return { incidents: keepEndings(cast, r.incidents), session: r.session };
       } catch (e) {
         if (e instanceof RoomFailed) session = e.session;
         else if (!isPersonaFailure(e)) console.error("世界の部屋に失敗", e instanceof Error ? e.name : typeof e);
@@ -371,7 +377,7 @@ export function createWorldHook(deps: WorldDeps): WorldHook {
     try {
       const r = await worldOneshot(input, cast, deps.ai, opts);
       const note: DrillIncident[] = fellBack ? [{ actor: "director", at: input.hour, change: { kind: "world_note", state: "down" }, text: "代替", ai: false }] : [];
-      return { incidents: [...note, ...r.incidents], ...(session !== input.session ? { session } : {}) };
+      return { incidents: [...note, ...keepEndings(cast, r.incidents)], ...(session !== input.session ? { session } : {}) };
     } catch (e) {
       if (e instanceof AiLimitReached) deps.stops?.hit("world");
       if (!isPersonaFailure(e) && !(e instanceof AiBadOutput) && !(e instanceof AiCallFailed)) {

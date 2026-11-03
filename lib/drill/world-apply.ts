@@ -107,6 +107,11 @@ export type ApplyContext = {
   via: WorldVia;
   /** 事業所の地理（T70、lib/drill/area.ts の areaOf）。無ければデモ事業所の架空の街 */
   area?: Area;
+  /**
+   * 結末を当てるか（T70 の続き）。false（デモ以外の事業所）なら、返ってきた結末（farewells）は全部捨てる。
+   * 実在の人の仮名に結末を付けないため。無ければ当てる（デモ事業所）
+   */
+  endings?: boolean;
 };
 
 // ---------- 値を読む ----------
@@ -330,6 +335,7 @@ export type OutcomeAsk = {
 /** 世界が決めた結末を状況にする（守りはファイルの頭の注）。hints は時計の計算で条件に達した人（label を引くだけ） */
 export function farewellIncidents(farewells: WorldStep["farewells"], ctx: ApplyContext, hints: ReadonlyArray<OutcomeAsk> = []): DrillIncident[] {
   const out: DrillIncident[] = [];
+  if (ctx.endings === false) return out;
   for (const f of farewells) {
     if (out.length >= FAREWELL_PER_TICK_MAX) break;
     const person = personOfAlias(f.target, ctx.key);
@@ -360,7 +366,7 @@ export function worldIncidents(answer: WorldStep, ctx: ApplyContext, hints: Read
     used += 1;
     for (const b of built) out.push({ ...base, change: b.change, text: b.text, ...(b.person ? { person: b.person } : {}), ai: true });
   }
-  return [...out, ...farewellIncidents(answer.farewells, ctx, hints)];
+  return ctx.endings === false ? out : [...out, ...farewellIncidents(answer.farewells, ctx, hints)];
 }
 
 /**

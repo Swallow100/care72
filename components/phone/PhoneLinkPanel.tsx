@@ -6,6 +6,9 @@
 // 本人・家族の画面の印（平時の「ふだん」・無効の 1 画面）は軽く置くため components/phone/PhoneMarks.tsx に分けた。
 
 import { CopyButton } from "@/components/forms/CopyButton";
+import { ButtonLink } from "@/components/ui/Button";
+import { BackIcon } from "@/components/ui/Icon";
+import { phoneLinkOpenPath } from "@/lib/qr/phone-open";
 import { Panel, PanelHead } from "@/components/ui/Panel";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { Mark, StateTag, type Tone } from "@/components/ui/Tag";
@@ -106,6 +109,28 @@ export function PhoneLinkRow({ item, status }: { item: PhoneLinkItem; status: Ph
       </div>
       {item.url && <PhoneLinkQr url={item.url} label={`${kindLabel} ${PHONE_LINK_LABELS.qr}`} />}
     </li>
+  );
+}
+
+/**
+ * ケアマネ・行政・医療班・審査員のログイン中の端末でリンクを開いたときの 1 枚（/s/<token>/switch）。黙って替えない。
+ * 「切替」（赤。今のログインを終える操作なので）で本人・家族の頁を開き、「戻る」で今の役の入口へ。誰のリンクかは出さない
+ */
+export function PhoneLinkSwitch({ token, who, back }: { token: string; who: string; back: string }) {
+  return (
+    <Panel className="space-y-3" data-phone-link-switch>
+      <PanelHead as="h2" title={PHONE_LINK_LABELS.loggedIn} sub={<span className="text-sm">{who}</span>} />
+      <div className="flex flex-wrap items-center gap-2">
+        <form method="post" action={phoneLinkOpenPath(token)}>
+          <SubmitButton kind="danger" icon="RoleIcon">
+            {PHONE_LINK_LABELS.switch}
+          </SubmitButton>
+        </form>
+        <ButtonLink href={back} icon={BackIcon}>
+          {PHONE_LINK_LABELS.back}
+        </ButtonLink>
+      </div>
+    </Panel>
   );
 }
 

@@ -16,6 +16,7 @@ import { isSourceId } from "../sources/index.ts";
 import { isDrillScenario, rowScenario, type DrillScope } from "./db.ts";
 import { drillClocks } from "./director.ts";
 import { withoutMemo } from "./engine.ts";
+import { endingsAllowed } from "./fiction.ts";
 import { outageForRuns } from "./outcome.ts";
 import { REVIEW_KINDS, type ReviewBody, type ReviewContext, type ReviewError, type ReviewFinding, type ReviewIncident } from "./review.ts";
 import { loadCallRecords, type CallRecord } from "./responses.ts";
@@ -185,7 +186,8 @@ export async function computeScore(
     runs,
     form9: form9.rows,
     endMinute: endMinuteOf(screen),
-    ...(isVirtual(screen.drill.scenario) ? { ended: endedOf(screen) } : {}),
+    // 結末（AI の筋書き）はデモ事業所の仮想の訓練だけ（T70 の続き。デモ以外は実在の人の仮名に結末を付けない。条件に達した人の数は出す）
+    ...(isVirtual(screen.drill.scenario) && endingsAllowed(scope.officeId) ? { ended: endedOf(screen) } : {}),
   });
 }
 

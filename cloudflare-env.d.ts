@@ -21,6 +21,8 @@ declare global {
     SESSION_SECRET?: string;
     /** デモ事業所の AI の 1 日の上限（回）。無ければ 200 */
     AI_DAILY_LIMIT?: string;
+    /** 気象庁の雨雲（降水ナウキャスト）を本物の事業所の地図に重ねる旗（T72、lib/jma/nowcast.ts）。"on" のときだけ。既定は off */
+    JMA_NOWCAST?: string;
     // アンケートの頁（T42）の Cloudflare Turnstile。両方あるときだけ効く（lib/survey/turnstile.ts）
     TURNSTILE_SITE_KEY?: string;
     TURNSTILE_SECRET_KEY?: string;

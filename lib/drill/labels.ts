@@ -3,6 +3,7 @@
 // 安否の色の言葉（至急・要確認・灰・無事）は lib/labels.ts の COLOR_LABELS を読み、ここに書かない。
 
 import type { DrillAction, DrillScenario, DrillStatus } from "../db/types.ts";
+import type { FictionKind } from "./fiction.ts";
 import type { AiStop, PhoneState, ShelterState, TsunamiState, WaterState, WorldEventKind } from "./scenarios.ts";
 
 export const SCENARIO_LABELS: Record<DrillScenario, string> = {
@@ -22,6 +23,8 @@ export const STATUS_LABELS: Record<DrillStatus, string> = {
 /** 仮想モード（T50）の言葉 */
 export const VIRTUAL_LABELS = {
   note: "仮想モード 架空の人と街。結末まで出ます",
+  /** デモ以外の事業所（T70。結末は出さない） */
+  noteRole: "仮想モード 本人役と街は AI。結末なし",
   ended: "結末",
   /** 結末の理由（世界が決めた街と物の事実。T53） */
   endedReason: "経緯",
@@ -113,6 +116,18 @@ export const FICTION_LABELS = {
   title: "AI が演じる架空の人",
   note: "訓練の人は AI が演じる架空の人（作った例の記録）",
 } as const;
+
+/** デモ以外の事業所の訓練の人の印（T70。本人役は利用者の台帳から作り、AI が演じる。lib/drill/fiction.ts） */
+export const ROLE_LABELS = {
+  mark: "本人役",
+  title: "AI が演じる訓練の本人役",
+  note: "訓練の本人・家族の言葉は AI が演じる本人役",
+} as const;
+
+/** 印の言葉（デモ事業所は架空、ほかは本人役） */
+export function fictionLabels(kind: FictionKind = "fictional"): { mark: string; title: string; note: string } {
+  return kind === "role" ? ROLE_LABELS : FICTION_LABELS;
+}
 
 /** 状況（世界の出来事）の種類の印 */
 export const EVENT_KIND_LABELS: Record<WorldEventKind, string> = {

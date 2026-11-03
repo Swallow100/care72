@@ -17,6 +17,7 @@ import { DRILL_ACTIONS } from "@/lib/db/types";
 import { ACTION_MINUTES, needsPerson, needsTarget, picksTarget, targetKinds } from "@/lib/drill/action-table";
 import { ACTION_LABELS, ACTION_UI, CALL_STATUS_LABELS, DRILL_LABELS, T59_LABELS } from "@/lib/drill/labels";
 import type { DrillContact } from "@/lib/drill/view";
+import type { FictionKind } from "@/lib/drill/fiction";
 import { FictionalMark } from "./Fictional";
 import { ACTION_ICONS } from "./icons";
 
@@ -47,6 +48,7 @@ export function ActionPanel({
   actions,
   people,
   contacts,
+  fiction,
 }: {
   drillId: string;
   step: number;
@@ -55,6 +57,8 @@ export function ActionPanel({
   /** 対象の本人（左の表の優先の順） */
   people: ReadonlyArray<PanelPerson>;
   contacts: Readonly<Record<string, ReadonlyArray<DrillContact>>>;
+  /** 名前のそばの印（T70。デモ以外は本人役） */
+  fiction?: FictionKind;
 }) {
   const router = useRouter();
   const [person, setPerson] = useState<string | null>(null);
@@ -138,7 +142,7 @@ export function ActionPanel({
               {p.tag}
               <span className="min-w-0 truncate">
                 {p.name}
-                <FictionalMark />
+                <FictionalMark kind={fiction} />
               </span>
             </Button>
           ))}

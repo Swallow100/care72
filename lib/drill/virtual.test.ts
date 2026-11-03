@@ -603,7 +603,8 @@ describe("仮想の筋（偽の部屋・偽の Haiku）", () => {
   });
 
   it("前の版の Agent（effort medium の版 2）が残っていれば agents.update で版を上げ、新しい Agent の版を使う。同じ版なら作らず更新もしない", async () => {
-    expect(WORLD_AGENT_VERSION).toBe(3);
+    // 4: WORLD_SYSTEM の人数を決め打たない・結末を決めない訓練（T70 の続き。設計の側の指示で版を上げた）
+    expect(WORLD_AGENT_VERSION).toBe(4);
     sqlite.exec(
       "INSERT INTO ai_agents (purpose, version, agent_id, agent_version, environment_id, updated_at) VALUES ('drill_world', 2, 'agent_old', 4, 'env_old', '2026-11-03T00:00:00.000Z')",
     );

@@ -8,7 +8,7 @@ import { DisasterSummary } from "@/components/list/DisasterSummary";
 import { DisasterTable } from "@/components/list/DisasterTable";
 import { FilterBar } from "@/components/list/FilterBar";
 import type { ClassificationSlot, HearingSlot } from "@/components/list/RowDetail";
-import { SidePane } from "@/components/list/SidePane";
+import { SidePane, type SideMapOptions } from "@/components/list/SidePane";
 import { UnlistedFold } from "@/components/office/UnlistedFold";
 import { UnlistedRows } from "@/components/office/UnlistedRows";
 import { PersonWithIntake } from "@/components/person/PersonWithIntake";
@@ -42,7 +42,9 @@ import { listHref, listView, type ListViewResult } from "@/lib/list/view";
 import { personDisaster } from "@/lib/disaster/person";
 import { elapsedText, shortJst } from "@/lib/disaster/state";
 import { COLOR_LABELS, TIER_LABELS } from "@/lib/labels";
+import { nowcastOn } from "@/lib/jma/nowcast";
 import { buildSidePane, sideDisasterOf } from "@/lib/map/side";
+import { loadOfficePlace } from "@/lib/office/place";
 import { parsePeopleError } from "@/lib/office/http";
 import { NEW_PERSON_PATH } from "@/lib/office/http-paths";
 import { OFFICE_ERROR_LABELS, OFFICE_LABELS } from "@/lib/office/labels";
@@ -92,9 +94,15 @@ export default async function CaseloadPage({ searchParams }: Props) {
 
   const now = new Date().toISOString();
   let data: Caseload | null;
+  // 右の面の地図の真ん中（ピンが無いとき。事業所の中心、T68）と、気象庁の雨雲（デモでない事業所で旗 JMA_NOWCAST が on のとき）。T72
+  let map: SideMapOptions = { center: null, nowcast: false };
   try {
     const { env } = await getCloudflareContext({ async: true });
     data = scope ? await loadCaseload(env.DB, scope, todayJst(), now) : null;
+    if (principal.office) {
+      const place = await loadOfficePlace(env.DB, principal.office.id).catch(() => null);
+      map = { center: place?.center ?? null, nowcast: nowcastOn(env) && principal.office.kind !== "demo" };
+    }
   } catch (e) {
     console.error("担当一覧を読めない", e);
     return <Message title="読込失敗" />;
@@ -160,7 +168,11 @@ export default async function CaseloadPage({ searchParams }: Props) {
 
   // 右の面（T14）: 平時は計画の内訳・見直し・未確認・地図。災害モード（T09）は地図が上で、ピンは行の lib/triage の色、
   // 雨雲・震度のデモは事業所の災害の種類と警戒レベルから
-  const side = buildSidePane(all, { sort: key, disaster: data.situation ? sideDisasterOf(all, data.disaster) : null });
+  // 雨雲・震度のデモの絵はデモ事業所だけ（T72。本物の事業所の地図には出さない）
+  const side = buildSidePane(all, {
+    sort: key,
+    disaster: data.situation ? sideDisasterOf(all, data.disaster, { office: principal.office?.kind ?? "regular" }) : null,
+  });
   const s = data.situation;
   // 発災時は列が多く表に約 64rem 要るので広く使い、右の面を横に出すのは 1536px（2xl）から（それ未満は表の下、components/list/SidePane）
   return (
@@ -225,7 +237,7 @@ export default async function CaseloadPage({ searchParams }: Props) {
         )}
         {unlisted}
       </section>
-      <SidePane data={side} />
+      <SidePane data={side} map={map} />
     </main>
   );
 }

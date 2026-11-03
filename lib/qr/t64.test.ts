@@ -180,8 +180,10 @@ describe("migration 0015（people.qr_ttl_days）", () => {
   it("前からある行は既定の 90 日になり、ほかの列はそのまま", () => {
     const db = new DatabaseSync(":memory:");
     db.exec("PRAGMA foreign_keys = ON;");
-    // 種は今の事業所の列（0017 の地図の中心、T68）と同意の AI 提供（0024、T74）を書くので、0017・0024 は先に当てる（offices に列を足す・consents を建て直すだけで people に触れない）
-    const early = (n: string) => n < MIGRATION_0015 || n.startsWith("0017_") || n.startsWith("0024_");
+    // 種は今の事業所の列（0017 の地図の中心、T68）を書くので、0017 は先に当てる（offices に列を足すだけで people に触れない）。
+    // 種は気象庁の写しの表（0020、T72）も空にするので 0020 も先に（新しい表を作るだけで people に触れない）。
+    // 種は同意の AI 提供（0024、T74）を書くので 0024 も先に（consents を建て直すだけで people に触れない）
+    const early = (n: string) => n < MIGRATION_0015 || n.startsWith("0017_") || n.startsWith("0020_") || n.startsWith("0024_");
     for (const n of migrationNames().filter(early)) db.exec(readFileSync(new URL(n, MIGRATIONS), "utf8"));
     for (const s of seedStatements()) db.exec(s);
     db.exec(`UPDATE people SET qr_generation = 2, qr_issued_at = '${iso(NOW)}' WHERE id = 'p-01'`);

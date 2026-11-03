@@ -34,6 +34,12 @@ export function insert(table: string, row: Record<string, SqlValue>): string {
  * 災害モード（disaster_state）は平時に、事業所の経過・様式 9 の手直し・様式の対応表は空に戻る
  */
 export const CLEAR_ORDER = [
+  // 気象庁の写し（T72）。子（警報・地震・観測点）が電文を指すので子から。事業所ごとでないのでデモの戻しでは消さない（lib/seed/reset.ts）
+  "jma_quake_points",
+  "jma_quakes",
+  "jma_warnings",
+  "jma_entries",
+  "jma_fetch_state",
   // アンケートの共有のリンクと答え（T65）。答えがリンクを指すので答えから
   "survey_responses",
   "survey_shares",
