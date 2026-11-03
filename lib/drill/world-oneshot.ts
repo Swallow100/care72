@@ -275,7 +275,7 @@ export function openingText(input: WorldInput, cast: WorldCast, last: number): s
 
 // ---------- 1 回呼び ----------
 
-/** 1 回呼びの要求。入力は伏せた文だけ。用途は監督（Opus）、system は部屋と同じ */
+/** 1 回呼びの要求。入力は伏せた文だけ。用途は監督（Opus、effort は PURPOSES の director の high で部屋の Agent と同じ）、system は部屋と同じ */
 export function buildWorldRequest(parts: {
   opening: ForClaude<{ text: string }>;
   story: ForClaude<{ text: string }>;

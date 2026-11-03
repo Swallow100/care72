@@ -339,7 +339,7 @@ describe("呼び口（createPersonaHook）", () => {
   const hookWith = (claude: ClaudeClient | undefined, env?: AskJsonContext["env"]) =>
     createPersonaHook({ load: async () => SEED, ai: aiCtx(claude, env), on: "2026-11-05" });
 
-  it("Haiku・考える深さ low・構造化出力で 1 人 1 回。送った物全部に氏名・住所・電話・町名が無い", async () => {
+  it("Haiku・考える深さ high・構造化出力で 1 人 1 回。送った物全部に氏名・住所・電話・町名が無い", async () => {
     const { client, calls } = fake(() => reply(NONE));
     const hook = hookWith(client);
     let s = initialState("heavy_rain", SEED_PEOPLE.map((p) => p.person.id), START);
@@ -347,7 +347,9 @@ describe("呼び口（createPersonaHook）", () => {
     expect(calls).toHaveLength(30);
     for (const p of calls) {
       expect(p.model).toBe(HAIKU);
-      expect(p.output_config?.effort).toBe("low");
+      expect(p.output_config?.effort).toBe("high");
+      // 考える分も出力の上限に入るので high は 8000（T67）
+      expect(p.max_tokens).toBe(8000);
       expect(p.output_config?.format?.type).toBe("json_schema");
       expectNoPersonalData(JSON.stringify(p));
     }
