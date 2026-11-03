@@ -141,23 +141,23 @@ describe("災害モードの画面", () => {
 
   it("赤の終わりは「とどきました」と 119 の 1 行。緑の終わりに 119 は無い。通信なしは「まだ とどいて いません」", () => {
     const red = view({ step: "done", color: "red", delivery: "sent" });
-    expect(text(red)).toBe("とどきました命が 危ないと 感じたら、すぐ 119番へもう 一度");
+    expect(text(red)).toBe("とどきました命が 危ないと 感じたら、すぐ 119番へ最初から");
     expect(buttons(red)).toEqual(["again"]);
     // 119 は押してもかからない（リンクにしない）
     expect(red).not.toContain("tel:");
     const green = view({ step: "done", color: "green", delivery: "queued" });
-    expect(text(green)).toBe("まだ とどいて いませんつながったら 送りますもう 一度");
+    expect(text(green)).toBe("まだ とどいて いませんつながったら 送ります最初から");
     expect(text(view({ step: "done", color: "red", delivery: "dropped" }))).not.toContain("つながったら");
   });
 
   it("聞き直しても無音のまま録音だけ送った終わりは「ろくおんを おくりました」と 119 の 1 行（T37）", () => {
     const html = view({ step: "done", color: "red", delivery: "sent", silent: true });
-    expect(text(html)).toBe("ろくおんを おくりました命が 危ないと 感じたら、すぐ 119番へもう 一度");
+    expect(text(html)).toBe("ろくおんを おくりました命が 危ないと 感じたら、すぐ 119番へ最初から");
     expect(html).toContain("data-silent");
     expect(buttons(html)).toEqual(["again"]);
     // 赤が端末に残っている間は、今まで通り「まだ とどいて いません」
     expect(text(view({ step: "done", color: "red", delivery: "queued", silent: true }))).toBe(
-      "まだ とどいて いませんつながったら 送ります命が 危ないと 感じたら、すぐ 119番へもう 一度",
+      "まだ とどいて いませんつながったら 送ります命が 危ないと 感じたら、すぐ 119番へ最初から",
     );
   });
 
@@ -197,12 +197,12 @@ describe("119 の 1 行（T48、アドバイザーの返事）", () => {
     ]),
   ];
 
-  it("無事じゃない を押したあとの全部の画面に、同じ固定の 1 行をいちばん下（終わりは もう 一度 の上）に出す", () => {
+  it("無事じゃない を押したあとの全部の画面に、同じ固定の 1 行をいちばん下（終わりは 最初から の上）に出す", () => {
     for (const s of RED_FLOW) {
       const html = view(s);
       expect(html.match(/data-emergency/g), JSON.stringify(s)).toHaveLength(1);
       const t = text(html);
-      const tail = s.step === "done" ? t.slice(0, t.lastIndexOf("もう 一度")) : t;
+      const tail = s.step === "done" ? t.slice(0, t.lastIndexOf("最初から")) : t;
       expect(tail.endsWith(E), JSON.stringify(s)).toBe(true);
       // 押してもかからない（リンクにしない）
       expect(html).not.toContain("tel:");

@@ -21,7 +21,8 @@ export const PHONE_PHRASES = {
   recordingSent: "ろくおんを おくりました",
   queued: "まだ とどいて いません",
   queuedSub: "つながったら {送|おく}ります",
-  again: "もう {一度|いちど}",
+  /** 送り終わりのボタン（上へ戻る）。家族の画面も同じ言葉（T80。前は本人「もう 一度」・家族「最初から」） */
+  again: "{最初|さいしょ}から",
   /** AI の印（「AI」）のあとに続ける。録っている間は「AI が きいています」と出す（docs/DECISIONS.md 運営の返事） */
   aiListening: "が きいています",
   prompt1: "{大丈夫|だいじょうぶ}ですか",
@@ -86,7 +87,8 @@ export const FAMILY_PHRASES = {
   notSafe: "{無事|ぶじ}じゃない",
   unknown: "{分|わ}からない",
   unknownSub: "{連絡|れんらく}が つかない",
-  restart: "{最初|さいしょ}から",
+  /** 送り終わりのボタン。本人の画面と同じ定型（T80） */
+  restart: PHONE_PHRASES.again,
   history: "これまでの こと",
   callCm: "ケアマネジャーに {電話|でんわ}",
   you: "あなた",
