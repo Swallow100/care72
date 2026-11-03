@@ -285,7 +285,7 @@ describe("受け持ちの CSV（/staff/csv）", () => {
     expect(res.headers.get("Cache-Control")).toBe("no-store");
     expect(res.headers.get("Content-Disposition")).toContain('filename="staff-20261103-1100.csv"');
     const { rows } = await csvOf(res);
-    expect(rows[0]).toEqual(["受け持ち"]);
+    expect(rows[0]).toEqual(["受入一覧"]);
     expect(rows[1]).toEqual(["受入者：審査員", "作成：2026年11月3日", "並び：連絡順", "絞込：なし", "3 人"]);
     const headers = ["連絡順", "状態", "理由", "氏名", "カナ", "年齢", "医療", "薬", "機器", "残り", "避難所", "経路", "受入時刻", "所属"];
     expect(rows[3]).toEqual(headers);

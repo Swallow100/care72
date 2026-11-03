@@ -530,7 +530,7 @@ function PinStates({ pins }: { pins: ReadonlyArray<MapPin> }) {
                 {TONE_LABEL[tone]}
               </CountLabel>
             </dt>
-            <dd className={`font-bold tabular-nums ${countClass(tone, count)}`}>{count}</dd>
+            <dd className={`font-bold tabular-nums ${countClass(count)}`}>{count}</dd>
           </div>
         );
       })}

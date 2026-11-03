@@ -153,11 +153,18 @@ function Cells({
           </div>
         )}
       </td>
+      {/* 残りは状態の色が付くとき（至急・要確認）は塗りの印に、付かないときは本文色の文字（人数の帯と同じ考え。黄は文字に使わない。T66） */}
       <td className={`${CELL} sm:min-w-[5.5rem]`}>
         {r.remain ? (
           <>
-            <div className={`whitespace-nowrap font-bold ${r.remain.tone ? TONE_TEXT[r.remain.tone] : ""}`}>
-              {r.remain.text}
+            <div className="whitespace-nowrap font-bold tabular-nums" data-remain={r.remain.tone ?? "none"}>
+              {r.remain.tone ? (
+                <StateTag tone={r.remain.tone} size="md">
+                  {r.remain.text}
+                </StateTag>
+              ) : (
+                r.remain.text
+              )}
             </div>
             <div className="text-xs text-muted">{r.remain.label}</div>
           </>

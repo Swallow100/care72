@@ -27,7 +27,7 @@
   黄（要確認）は文字の色に使わない（白の上の対比が 3.2 しか無い。11/3 03:3x の確定 3）。黄は塗りの印（濃い文字）か細い帯だけで、
   黄の文字だった所は本文色の文字と前に黄の細い帯（tone-check。components/ui/Tag の TONE_TEXT.check・StateText・Mark が使う）。
   --state-check は帯と入力の欄の注意の枠（outline）の色。帯は細いので、地の上で 3:1 に届く濃さ（ライトは琥珀、11/3 08:0x の確定 5）。
-  大きな数（担当一覧の上の人数など）には帯を付けず、数は本文色のまま言葉を黄の塗りの印にする（components/ui/Tag の CountLabel、確定 4）。
+  状態の人数（担当一覧の上の人数など）は 4 つとも言葉を塗りの印にし、数は本文色。0 人は印も数も灰（components/ui/Tag の CountLabel、11/4 00:5x）。
 */
 :root {
   --base: #eceef1;
