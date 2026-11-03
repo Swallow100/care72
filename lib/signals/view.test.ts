@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 import { PhoneSheet } from "../../components/phone/PhoneSheet.tsx";
 import { PhoneView, type PhoneActions } from "../../components/phone/PhoneView.tsx";
 import { SEED_AT, SEED_PEOPLE, seedConsents } from "../../seed/people.ts";
-import { buildOwnSheet, lineText } from "../forms/own-sheet.ts";
+import { buildOwnSheet, EMERGENCY_TEXT, lineText } from "../forms/own-sheet.ts";
 import type { PersonPageRows } from "../person.ts";
 import { NO_ANSWERS } from "./body.ts";
 import { createPhone, type PhoneState } from "./phone.ts";
@@ -29,7 +29,7 @@ const view = (state: PhoneState, nowMs = T) => renderToStaticMarkup(createElemen
 const text = (html: string) => html.replace(/<rt>[^<]*<\/rt>|<rp>[^<]*<\/rp>/g, "").replace(/<[^>]+>/g, "");
 const buttons = (html: string) => [...html.matchAll(/<button[^>]*data-choice="([^"]+)"/g)].map((m) => m[1]);
 /** 119 の 1 行の文字 */
-const E = "いのちの 危険が あるときは 119";
+const E = "命が 危ないと 感じたら、すぐ 119番へ";
 /** AI の告知の文字（T48） */
 const N = "これは AI（人では ない しくみ）が 聞いています。こたえは ケアマネジャーに とどきます";
 
@@ -108,7 +108,7 @@ describe("災害モードの画面", () => {
 
   it("赤の終わりは「とどきました」と 119 の 1 行。緑の終わりに 119 は無い。通信なしは「まだ とどいて いません」", () => {
     const red = view({ step: "done", color: "red", delivery: "sent" });
-    expect(text(red)).toBe("とどきましたいのちの 危険が あるときは 119もう 一度");
+    expect(text(red)).toBe("とどきました命が 危ないと 感じたら、すぐ 119番へもう 一度");
     expect(buttons(red)).toEqual(["again"]);
     // 119 は押してもかからない（リンクにしない）
     expect(red).not.toContain("tel:");
@@ -119,12 +119,12 @@ describe("災害モードの画面", () => {
 
   it("聞き直しても無音のまま録音だけ送った終わりは「ろくおんを おくりました」と 119 の 1 行（T37）", () => {
     const html = view({ step: "done", color: "red", delivery: "sent", silent: true });
-    expect(text(html)).toBe("ろくおんを おくりましたいのちの 危険が あるときは 119もう 一度");
+    expect(text(html)).toBe("ろくおんを おくりました命が 危ないと 感じたら、すぐ 119番へもう 一度");
     expect(html).toContain("data-silent");
     expect(buttons(html)).toEqual(["again"]);
     // 赤が端末に残っている間は、今まで通り「まだ とどいて いません」
     expect(text(view({ step: "done", color: "red", delivery: "queued", silent: true }))).toBe(
-      "まだ とどいて いませんつながったら 送りますいのちの 危険が あるときは 119もう 一度",
+      "まだ とどいて いませんつながったら 送ります命が 危ないと 感じたら、すぐ 119番へもう 一度",
     );
   });
 
@@ -167,6 +167,17 @@ describe("119 の 1 行（T48、アドバイザーの返事）", () => {
     }
   });
 
+  it("文は「命が危ないと感じたら、すぐ119番へ」（11/3 16:0x 確定）で、どの画面でも 1 字も変わらない（出し分けない）", () => {
+    expect(E.replaceAll(" ", "")).toBe(EMERGENCY_TEXT);
+    const lines = new Set(
+      RED_FLOW.map((s) => {
+        const m = view(s).match(/<[^>]*data-emergency[^>]*>[\s\S]*?<\/p>/);
+        return m ? text(m[0]) : null;
+      }),
+    );
+    expect([...lines]).toEqual([E]);
+  });
+
   it("上・緑の 1 問・緑の送る・緑の終わりには出さない", () => {
     for (const s of [
       { step: "top" },
@@ -199,7 +210,7 @@ describe("平時の画面", () => {
       const words = lineText({ ...line, phone: undefined });
       expect(t, line.key).toContain(words);
     }
-    expect(t).toContain("いのちの 危険が あるときは 119");
+    expect(t).toContain("命が 危ないと 感じたら、すぐ 119番へ");
     const tels = [...html.matchAll(/href="tel:([^"]+)"/g)].map((m) => m[1]);
     const numbers = sheet.blocks.flatMap((b) => b.lines).flatMap((l) => (l.phone?.number ? [l.phone.number] : []));
     expect(tels).toEqual(numbers);

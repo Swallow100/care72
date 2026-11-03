@@ -112,7 +112,7 @@ const caseloadScope = { officeId: "office-demo", careManagerId: "acct-yamamoto" 
 describe("決まった言葉", () => {
   it("本人の画面の言葉の漢字には全部ふりがな。119 の 1 行は本人の 1 枚と同じ", () => {
     expect(kanjiWithoutRuby(allPhoneWords())).toEqual([]);
-    expect(plainText(emergencyWords())).toBe("いのちの 危険が あるときは 119");
+    expect(plainText(emergencyWords())).toBe("命が 危ないと 感じたら、すぐ 119番へ");
   });
 
   it("定型文の声に名前を入れない（決まった 1 文だけ）。頭に AI の告知（T48）", () => {

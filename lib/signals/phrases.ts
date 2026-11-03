@@ -3,7 +3,7 @@
 // 本人の状態の判定（至急・要確認など）は本人の画面に出さない。出すのは問いと、送れたかどうかと、119 の一般の案内だけ。
 
 import { easy, plainText, type Word } from "../forms/easy-words.ts";
-import { OWN_PHRASES } from "../forms/own-sheet.ts";
+import { emergencyWords } from "../forms/own-sheet.ts";
 import type { WhereNow } from "../db/types.ts";
 
 /** 赤の 4 問（1 画面 1 問の順）。答えは信号の表の injured・at_home・can_move・has_medicine */
@@ -45,10 +45,8 @@ export const RED_QUESTION_PHRASES: Record<RedQuestion, { q: string; yes: string;
   hasMedicine: { q: "くすりは ありますか", yes: "ある", no: "ない" },
 };
 
-/** 赤の流れの最後の 1 行。本人の 1 枚（T06）と同じ言葉（一般の案内。本人の状態の判定ではない） */
-export function emergencyWords(): Word[] {
-  return [...easy(OWN_PHRASES.emergencyLead), { text: " " }, { text: OWN_PHRASES.emergencyNumber, strong: true }];
-}
+/** 赤の流れの 119 の 1 行。本人の 1 枚（T06）と同じ言葉（lib/forms/own-sheet.ts の emergencyWords。一般の案内。本人の状態の判定ではない） */
+export { emergencyWords };
 
 /**
  * AI の告知（T48、アドバイザーの返事）。一般の人が使う仕組みは AI であることを伝える決まりで、画面を見られない人がいるので声でも出す。

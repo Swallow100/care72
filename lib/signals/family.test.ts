@@ -445,7 +445,7 @@ describe("画面の静的な描画", () => {
     const red = view({ step: "done", color: "red", delivery: "sent" }, screen);
     const t = text(red);
     expect(t).toContain("とどきました");
-    expect(t).toContain("いのちの 危険が あるときは 119");
+    expect(t).toContain("命が 危ないと 感じたら、すぐ 119番へ");
     expect(t).toContain("これまでの こと");
     expect(t).toContain("あなたが「無事じゃない」と こたえました");
     expect(t).toContain("持って いく もの");
@@ -471,7 +471,7 @@ describe("画面の静的な描画", () => {
     ] satisfies FamilyState[]) {
       const html = view(st, screen);
       expect(html.match(/data-emergency/g), st.step).toHaveLength(1);
-      expect(text(html)).toContain("いのちの 危険が あるときは 119");
+      expect(text(html)).toContain("命が 危ないと 感じたら、すぐ 119番へ");
     }
     for (const c of ["green", "unknown"] as const) expect(view({ step: "sending", color: c }, screen)).not.toContain("data-emergency");
   });
