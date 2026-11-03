@@ -1,5 +1,5 @@
 // 本人のスマホの画面（docs/tasks/T10.md）を静的に描いて確かめる: どの画面もボタンは 2〜3 つで戻るが無い、
-// 赤緑の 2 つだけを面で塗る、AI が きいています の印、119 の 1 行は赤の終わりだけ、本人の状態の判定の言葉を出さない、
+// 赤緑の 2 つだけを面で塗る、AI が きいています の印、119 の 1 行は赤を押したあとの全部の画面（AI の出力で出し分けない）、本人の状態の判定の言葉を出さない、
 // 平時は本人の 1 枚（T06）と同じ文。
 
 import { createElement } from "react";
@@ -28,6 +28,8 @@ const view = (state: PhoneState, nowMs = T) => renderToStaticMarkup(createElemen
 /** ふりがなと札を落とした文字 */
 const text = (html: string) => html.replace(/<rt>[^<]*<\/rt>|<rp>[^<]*<\/rp>/g, "").replace(/<[^>]+>/g, "");
 const buttons = (html: string) => [...html.matchAll(/<button[^>]*data-choice="([^"]+)"/g)].map((m) => m[1]);
+/** 119 の 1 行の文字 */
+const E = "いのちの 危険が あるときは 119";
 
 const STATES: PhoneState[] = [
   { step: "top" },
@@ -63,17 +65,17 @@ describe("災害モードの画面", () => {
   it("赤は 1 画面 1 問: けが・家・動けるか・くすり。答えは 2 つ", () => {
     const qs = [0, 1, 2, 3].map((index) => text(view({ step: "question", index, answers: { ...NO_ANSWERS } })));
     expect(qs).toEqual([
-      "けがは ありますかあるない",
-      "いまは 家ですかはいいいえ",
-      "動けますか動ける動けない",
-      "くすりは ありますかあるない",
+      "けがは ありますかあるない" + E,
+      "いまは 家ですかはいいいえ" + E,
+      "動けますか動ける動けない" + E,
+      "くすりは ありますかあるない" + E,
     ]);
   });
 
   it("録っている間は「AI が きいています」と定型文と残りの秒、延長と送る", () => {
     const html = view({ step: "recording", startedAt: T, until: T + 30_000 }, T + 5_200);
     expect(html).toContain('data-ai="listening"');
-    expect(text(html)).toBe("AIが きいています大丈夫ですか状況を 説明して くださいあと 25 秒もっと 話す送る");
+    expect(text(html)).toBe("AIが きいています大丈夫ですか状況を 説明して くださいあと 25 秒もっと 話す送る" + E);
     expect(html).toContain('<span class="phone-ai">AI</span>');
     expect(buttons(html)).toEqual(["more", "send"]);
     // 数え始める前は 30 秒
@@ -117,6 +119,45 @@ describe("災害モードの画面", () => {
       // ふりがなを落とす前の漢字の数と、ruby の中の漢字の数が同じ
       const bare = html.replace(/<ruby>[\s\S]*?<\/ruby>/g, "").replace(/<[^>]+>/g, "");
       expect(bare.match(/[一-鿿々]/g), s.step).toBeNull();
+    }
+  });
+});
+
+describe("119 の 1 行（T48、アドバイザーの返事）", () => {
+  // 状態（PhoneState）には録音の中身も分類（AI の出力）も無い。119 を出すかは赤の流れかどうかだけで決まる
+  const RED_FLOW: PhoneState[] = [
+    ...[0, 1, 2, 3].map((index) => ({ step: "question" as const, index, answers: { ...NO_ANSWERS, injured: index > 0 ? true : null } })),
+    { step: "prompt" },
+    { step: "recording", startedAt: T, until: T + 30_000 },
+    { step: "recording", startedAt: T, until: T + 120_000 },
+    { step: "sending", color: "red" },
+    ...(["sent", "queued", "dropped"] as const).flatMap((delivery) => [
+      { step: "done" as const, color: "red" as const, delivery },
+      { step: "done" as const, color: "red" as const, delivery, silent: true as const },
+    ]),
+  ];
+
+  it("無事じゃない を押したあとの全部の画面に、同じ固定の 1 行をいちばん下（終わりは もう 一度 の上）に出す", () => {
+    for (const s of RED_FLOW) {
+      const html = view(s);
+      expect(html.match(/data-emergency/g), JSON.stringify(s)).toHaveLength(1);
+      const t = text(html);
+      const tail = s.step === "done" ? t.slice(0, t.lastIndexOf("もう 一度")) : t;
+      expect(tail.endsWith(E), JSON.stringify(s)).toBe(true);
+      // 押してもかからない（リンクにしない）
+      expect(html).not.toContain("tel:");
+    }
+  });
+
+  it("上・緑の 1 問・緑の送る・緑の終わりには出さない", () => {
+    for (const s of [
+      { step: "top" },
+      { step: "where" },
+      { step: "sending", color: "green" },
+      { step: "done", color: "green", delivery: "sent" },
+      { step: "done", color: "green", delivery: "queued" },
+    ] satisfies PhoneState[]) {
+      expect(view(s), s.step).not.toContain("data-emergency");
     }
   });
 });
