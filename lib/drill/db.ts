@@ -274,8 +274,9 @@ export async function startDrill(
   const [inserted] = await db.batch([
     db
       .prepare(
-        `INSERT INTO drills (id, office_id, scenario, status, step, sim_hour, world, started_by, started_at, finished_at, mode)
-         SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11
+        // world_session_id は世界の部屋の session（仮想、T50。drills.world の world.session の写し）
+        `INSERT INTO drills (id, office_id, scenario, status, step, sim_hour, world, started_by, started_at, finished_at, mode, world_session_id)
+         SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, json_extract(?7, '$.world.session')
           WHERE NOT EXISTS (SELECT 1 FROM drills WHERE office_id = ?2 AND status = 'running')`,
       )
       .bind(
@@ -341,7 +342,8 @@ export async function advanceDrill(
     [updated] = await db.batch([
       db
         .prepare(
-          `UPDATE drills SET step = ?3, sim_hour = ?4, world = ?5, status = ?6, finished_at = ?7
+          `UPDATE drills SET step = ?3, sim_hour = ?4, world = ?5, status = ?6, finished_at = ?7,
+                  world_session_id = COALESCE(json_extract(?5, '$.world.session'), world_session_id)
             WHERE id = ?1 AND office_id = ?2 AND step = ?8 AND status = 'running' AND world = ?9`,
         )
         .bind(
@@ -456,7 +458,8 @@ export async function actDrill(
     [updated] = await db.batch([
       db
         .prepare(
-          `UPDATE drills SET step = ?3, sim_hour = ?4, world = ?5, status = ?6, finished_at = ?7
+          `UPDATE drills SET step = ?3, sim_hour = ?4, world = ?5, status = ?6, finished_at = ?7,
+                  world_session_id = COALESCE(json_extract(?5, '$.world.session'), world_session_id)
             WHERE id = ?1 AND office_id = ?2 AND step = ?8 AND status = 'running' AND world = ?9`,
         )
         .bind(

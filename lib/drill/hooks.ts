@@ -27,7 +27,13 @@ export type DrillHookEnv = AiEnv & { DB: D1Database; DRILL_WORLD?: string };
 export function drillHooks(
   env: DrillHookEnv,
   p: Principal | null,
-  opts: { claude?: ClaudeClient; now?: () => Date; room?: RoomClient } = {},
+  opts: {
+    claude?: ClaudeClient;
+    now?: () => Date;
+    /** 世界の部屋の client と待ち・時計（テストの差し替え口） */
+    room?: RoomClient;
+    roomTime?: { sleep: (ms: number) => Promise<void>; clock: () => number };
+  } = {},
 ): ActionHooks | undefined {
   if (!hasAnthropicKey(env)) return undefined;
   const scope = drillScope(p);
@@ -54,7 +60,7 @@ export function drillHooks(
       load,
       loadOutcome,
       ai,
-      ...(mode === "session" ? { room: () => ({ db: env.DB, client: opts.room ?? roomClientOf(env), ai }) } : {}),
+      ...(mode === "session" ? { room: () => ({ db: env.DB, client: opts.room ?? roomClientOf(env), ai, ...(opts.roomTime ?? {}) }) } : {}),
     }),
     outcome: createOutcomeHook({ load: loadOutcome }),
   };
