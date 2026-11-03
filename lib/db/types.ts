@@ -50,8 +50,12 @@ export type ContactKind = (typeof CONTACT_KINDS)[number];
 export const CONTACT_REACHES = ["together", "nearby", "in_city", "out_of_pref", "far"] as const;
 export type ContactReach = (typeof CONTACT_REACHES)[number];
 
-/** 同意 4 つ: 名簿登録・計画の共有・支援者への提供・医療班への提供（決め方は docs/PROGRESS.md の問い） */
-export const CONSENT_KINDS = ["registry", "plan_share", "supporters", "medical"] as const;
+/**
+ * 同意 5 つ: 名簿登録・計画の共有・支援者への提供・医療班への提供（決め方は docs/PROGRESS.md の問い）と、
+ * AI 提供（ai_overseas。Claude〔海外の事業者〕に仮名化した台帳の内容を渡すこと。T74、migration 0024）。
+ * AI 提供は見え方（lib/consent/scope.ts）に使わず、「不同意」の人の入れる欄の AI だけを断る（lib/intake/http.ts）
+ */
+export const CONSENT_KINDS = ["registry", "plan_share", "supporters", "medical", "ai_overseas"] as const;
 export type ConsentKind = (typeof CONSENT_KINDS)[number];
 
 export const CONSENT_STATUSES = ["granted", "refused", "unconfirmed"] as const;

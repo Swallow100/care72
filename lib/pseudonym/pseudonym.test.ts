@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { SEED_PEOPLE, seedConsents, type SeedPerson } from "../../seed/people.ts";
 import type { Ledger } from "../db/types.ts";
+import { RELATION_CALLS } from "../signals/phrases.ts";
 import {
   aliasFor,
   aliasLetters,
@@ -8,6 +9,9 @@ import {
   contactRoles,
   findLeaks,
   isForClaude,
+  KIND_ROLE,
+  maskedCount,
+  NOT_NAME_WORDS,
   PseudonymLeakError,
   pseudonymize,
   pseudonymizeText,
@@ -263,5 +267,127 @@ describe("漏れの見張り", () => {
     const e = new PseudonymLeakError(["A さんの氏名"]);
     expect(e.message).not.toContain("山田");
     expect(e.findings).toEqual(["A さんの氏名"]);
+  });
+});
+
+// ---------- T74: 台帳に無くても形で伏せる（敬称つきの名前・住所・郵便番号・メール） ----------
+
+describe("台帳に無い名前・住所の形（T74）", () => {
+  const { key } = pseudonymize([byId("p-01")], { on: ON });
+  const t = (s: string) => pseudonymizeText(s, key).text;
+
+  // 自然な文の見本。半分は伏せ、半分は伏せない（続柄・役割・職業・言葉）。名前は架空の例
+  const MASKED: Array<[string, string]> = [
+    ["隣の田中さんが鍵を持っている", "隣の（氏名）が鍵を持っている"],
+    ["○○病院の佐藤先生に薬のことを聞く", "○○病院の（氏名）に薬のことを聞く"],
+    ["民生委員の山口さんが週 2 回来る", "民生委員の（氏名）が週 2 回来る"],
+    ["孫のゆうちゃんと暮らしている", "孫の（氏名）と暮らしている"],
+    ["ヘルパーの佐々木さんが朝に来る", "ヘルパーの（氏名）が朝に来る"],
+    ["向かいの木下トミエさんと仲が良い", "向かいの（氏名）と仲が良い"],
+    ["夜は森 恵美さんが泊まる", "夜は（氏名）が泊まる"],
+    ["田中かず子さんが様子を見に来る", "（氏名）が様子を見に来る"],
+    ["はなちゃんが毎日電話をくれる", "（氏名）が毎日電話をくれる"],
+    ["主治医は中央病院の高橋先生", "主治医は中央病院の（氏名）"],
+    ["連絡はケアマネの鈴木さんまで", "連絡はケアマネの（氏名）まで"],
+  ];
+  const KEPT = [
+    "娘さんが来てくれた",
+    "お母さんは 2 階で寝ている",
+    "お父さんとおばあさんの二人暮らし",
+    "ヘルパーさんが週 3 回来る",
+    "看護師さんに酸素の業者さんの番号を聞く",
+    "先生に聞いてから決める",
+    "かかりつけの先生に相談する",
+    "毎日ちゃんと薬を飲んでいる",
+    "たくさん食べて今の様子は落ち着いている",
+    "お隣さんとご近所さんが声をかける",
+    "民生委員さんとみまもり員さんが見回る",
+    "長男の嫁さんも同様に見ている",
+    "ワーファリンを飲む。在宅酸素と人工呼吸器を使う。糖尿病",
+  ];
+
+  it.each(MASKED)("伏せる: %s", (src, out) => {
+    expect(t(src)).toBe(out);
+  });
+
+  it.each(KEPT)("伏せない: %s", (src) => {
+    expect(t(src)).toBe(src);
+  });
+
+  it("仮名（A さん・AA さん）と役割名に敬称が付いても伏せない", () => {
+    expect(t("A さんの娘さんが来る")).toBe("A さんの娘さんが来る");
+    expect(t("AA さんと支援者 1さん")).toBe("AA さんと支援者 1さん");
+  });
+
+  it("連絡先の役割名・本人の呼び方の続柄は除く語に全部入っていて、敬称が付いても伏せない", () => {
+    const words = [...Object.values(KIND_ROLE), ...Object.keys(RELATION_CALLS), "家族", "支援者", "民生委員", "みまもり員"];
+    for (const w of words) {
+      expect(t(`${w}さんが来る`), w).toBe(`${w}さんが来る`);
+    }
+    for (const w of [...Object.keys(RELATION_CALLS), "民生委員", "みまもり員", "隣人"]) expect(NOT_NAME_WORDS, w).toContain(w);
+  });
+
+  it("職業・役割の語（ヘルパー・看護師・お医者・ケアマネ・業者）と単独の先生は伏せない", () => {
+    for (const s of ["ヘルパーさん", "看護師さん", "お医者さん", "ケアマネさん", "業者さん", "訪問看護さん", "院長先生", "先生"]) expect(t(s), s).toBe(s);
+  });
+
+  it("言葉の中の敬称の字（様子・様式・氏名・さまざま・ちゃんと）は伏せない", () => {
+    for (const s of ["今の様子", "様式 9 の欄", "利用者氏名", "症状はさまざま", "それはちゃんとしている", "おさんぽ"]) expect(t(s), s).toBe(s);
+  });
+
+  it("住所（都道府県・市区町村・町名・番地）・郵便番号・メールは（住所）（郵便番号）（メール）", () => {
+    expect(t("住所は愛媛県松山市○○町 1-2-3")).toBe("住所は（住所）");
+    expect(t("長男は松山市○○町1-2-3に住む")).toBe("長男は（住所）に住む");
+    expect(t("道後町2丁目3番4号の家")).toBe("（住所）の家");
+    expect(t("〒790-0001")).toBe("（郵便番号）");
+    expect(t("〒790-xxxx")).toBe("（郵便番号）");
+    expect(t("郵便番号 790-0001")).toBe("郵便番号 （郵便番号）");
+    expect(t("連絡は taro@example.jp か x@y に")).toBe("連絡は （メール） か （メール） に");
+  });
+
+  it("番地の無い町・回数の 2-3 は住所にしない（市内・県外の分かる言葉は残す）", () => {
+    for (const s of ["娘は松山市内に住む", "1 日 2-3 回", "中村は週 2-3 回来る", "血圧 130-80"]) expect(t(s), s).toBe(s);
+  });
+
+  it("台帳の名前・電話と一緒でも、それぞれ伏せる。伏せた所の数を返す（何を伏せたかは返さない）", () => {
+    const src = "山田さんの隣の田中さん（090-0000-0011）、〒790-0001、x@y";
+    expect(t(src)).toBe("A さんの隣の（氏名）（（電話））、（郵便番号）、（メール）");
+    expect(maskedCount(src, key)).toBe(5);
+    expect(maskedCount("娘さんが来た", key)).toBe(0);
+  });
+
+  it("findLeaks は同じ形を見つけ、何が見つかったかだけを返す（値は返さない）", () => {
+    const leaks = findLeaks({ a: "隣の田中さん", b: "愛媛県松山市○○町 1-2-3", c: "〒790-0001", d: "x@y" }, key);
+    expect(leaks).toEqual(["敬称つきの名前", "住所らしい並び", "郵便番号らしい並び", "メールらしい並び"]);
+    expect(leaks.join("")).not.toContain("田中");
+    expect(findLeaks("娘さんとお母さんと A さん", key)).toEqual([]);
+  });
+
+  it("伏せたあとは門の確かめを通る（伏せた形は漏れと見ない）", () => {
+    for (const [src] of MASKED) expect(findLeaks(pseudonymizeText(src, key), key), src).toEqual([]);
+    for (const src of KEPT) expect(findLeaks(pseudonymizeText(src, key), key), src).toEqual([]);
+  });
+
+  it("伏せた所は restoreText で戻さない（仮名 A さんだけ戻す）", () => {
+    expect(restoreText("A さんの隣の（氏名）、（住所）、（郵便番号）、（メール）", key)).toBe(
+      "山田 ハナさんの隣の（氏名）、（住所）、（郵便番号）、（メール）",
+    );
+  });
+
+  it("台帳の特記に書いた台帳に無い名前・住所も Claude に渡る前に伏せる", () => {
+    const base = byId("p-01");
+    const input: PseudonymInput = {
+      ...base,
+      ledger: { ...base.ledger, notes: ["隣の田中さんが鍵を持っている", "娘の家は愛媛県松山市○○町 1-2-3", "薬は 2 階の箪笥"] },
+    };
+    const { payload, key: k } = pseudonymize([input], { on: ON });
+    expect(payload[0].notes).toEqual(["隣の（氏名）が鍵を持っている", "娘の家は（住所）", "薬は 2 階の箪笥"]);
+    expect(findLeaks(payload, k)).toEqual([]);
+  });
+
+  it("種の 10 人の渡す形は前と同じ（形で伏せる物が無い）", () => {
+    const { payload } = pseudonymize(ALL, { on: ON });
+    const json = JSON.stringify(payload);
+    for (const mark of ["（氏名）", "（住所）", "（郵便番号）", "（メール）"]) expect(json).not.toContain(mark);
   });
 });

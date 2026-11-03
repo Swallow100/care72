@@ -161,6 +161,7 @@ describe("利用者追加", () => {
     // 同意は全部「未確認」の行で入る（T69a。時刻は足した時刻、記録した人は空）
     expect(page?.consents.map((c) => [c.kind, c.status, c.recorded_by, c.recorded_at]).sort()).toEqual(
       [
+        ["ai_overseas", "unconfirmed", null, AT],
         ["medical", "unconfirmed", null, AT],
         ["plan_share", "unconfirmed", null, AT],
         ["registry", "unconfirmed", null, AT],

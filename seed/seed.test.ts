@@ -46,14 +46,14 @@ describe("種のデータ（架空の 10 人）", () => {
     }
   });
 
-  it("同意の違いは 7（支援者への提供）と 9（医療班への提供）だけ", () => {
+  it("同意の違いは 7（支援者への提供）と 9（医療班への提供）だけ。AI 提供（T74）は 10 人とも同意", () => {
     const refused = SEED_PEOPLE.flatMap((p) =>
       seedConsents(p)
         .filter((c) => c.status !== "granted")
         .map((c) => `${p.person.id}:${c.kind}`),
     );
     expect(refused).toEqual(["p-07:supporters", "p-09:medical"]);
-    for (const p of SEED_PEOPLE) expect(seedConsents(p)).toHaveLength(4);
+    for (const p of SEED_PEOPLE) expect(seedConsents(p)).toHaveLength(5);
   });
 
   it("人が付ける欄: 3 田中の透析の時計は頼り先 透析先・未確認、8 井上のインスリンは保管 確認済（表の入力にしない）、4 佐藤に本人の報告を当てにしない印。ほかは無い", () => {
@@ -92,7 +92,7 @@ describe("種のデータ（架空の 10 人）", () => {
     for (const s of seedStatements()) db.exec(s);
     const count = (t: string) => (db.prepare(`SELECT count(*) AS n FROM ${t}`).get() as { n: number }).n;
     expect(count("people")).toBe(10);
-    expect(count("consents")).toBe(40);
+    expect(count("consents")).toBe(50);
     expect(count("contacts")).toBe(SEED_PEOPLE.reduce((n, p) => n + p.contacts.length, 0));
     expect(count("clocks")).toBe(SEED_PEOPLE.reduce((n, p) => n + p.clocks.length, 0));
     // 2 回流しても同じ（最初に空にする）
