@@ -113,7 +113,12 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
   const voiceOf = (act: string) => (voiceOn ? voiceHref(id, { act }) : null);
   const side = buildSidePane(s.rows, {
     sort,
-    disaster: sideDisasterOf(s.rows, { kind: drillKindOf(s.drill.scenario, s.state.world), alertLevel: s.state.world.alertLevel }),
+    // 仮想モードは架空の街なので、本物の地図に雨雲・震度の絵を重ねない（T79）
+    disaster: sideDisasterOf(
+      s.rows,
+      { kind: drillKindOf(s.drill.scenario, s.state.world), alertLevel: s.state.world.alertLevel },
+      { scene: !isVirtual(s.drill.scenario) },
+    ),
   });
   const pins = side.pins.map((p) => ({ ...p, href: here() }));
 
