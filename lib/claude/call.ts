@@ -19,6 +19,7 @@ import { createClaudeClient, MAX_RETRIES, type ClaudeClient } from "./client.ts"
 import { AiBadOutput, AiCallFailed, AiRefused } from "./errors.ts";
 import {
   PURPOSES,
+  type PurposeSpec,
   SERVER_FALLBACK_BETA,
   SERVER_FALLBACK_MODELS,
   type ClaudeModel,
@@ -48,6 +49,11 @@ export type AskJsonRequest<S extends z.ZodType> = {
   purpose: ClaudePurpose;
   /** 無ければ用途の既定（lib/claude/models.ts） */
   model?: ClaudeModel;
+  /**
+   * 待ち・上限・effort・再試行（T69b）。無ければ用途の既定（PURPOSES）。同じ用途で呼び方の違う所（録音のまとめは summary の用途で
+   * Haiku・20 秒。lib/claude/models.ts の RECORDING_SUMMARY）だけ渡す。数え方（ai_calls の purpose）は用途のまま
+   */
+  spec?: PurposeSpec;
   /** 用途ごとの指示。氏名・住所・電話を書かない（コードの定数で持つ） */
   system: string;
   input: ClaudeInput;
@@ -103,7 +109,7 @@ export function buildParams<S extends z.ZodType>(
   req: AskJsonRequest<S>,
   model: ClaudeModel,
 ): Anthropic.Beta.Messages.MessageCreateParamsNonStreaming {
-  const spec = PURPOSES[req.purpose];
+  const spec = req.spec ?? PURPOSES[req.purpose];
   const format = zodOutputFormat(req.schema);
   return {
     model,
@@ -164,7 +170,7 @@ export async function askJson<S extends z.ZodType>(
   ctx: AskJsonContext,
 ): Promise<AiResult<z.output<S>>> {
   assertClaudeInput(req.input);
-  const spec = PURPOSES[req.purpose];
+  const spec = req.spec ?? PURPOSES[req.purpose];
   const model = req.model ?? spec.model;
   // 鍵を先に確かめる（鍵が無いときは上限を減らさない）
   const claude = ctx.claude ?? createClaudeClient(ctx.env);
@@ -173,7 +179,7 @@ export async function askJson<S extends z.ZodType>(
   const ticket = await beginCall(ctx, req.purpose, model);
   let message: Anthropic.Beta.Messages.BetaMessage;
   try {
-    message = await claude.beta.messages.create(params, { timeout: spec.timeoutMs, maxRetries: MAX_RETRIES });
+    message = await claude.beta.messages.create(params, { timeout: spec.timeoutMs, maxRetries: spec.maxRetries ?? MAX_RETRIES });
   } catch (e) {
     const code = e instanceof Anthropic.APIConnectionTimeoutError ? "timeout" : "api_error";
     await ticket.fail(code);

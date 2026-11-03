@@ -28,6 +28,7 @@ import {
   DEPENDS_ON_LABELS,
 } from "../labels.ts";
 import { clockTone, COLOR_TONES, formatJst, telHref, type StateTone } from "../person.ts";
+import { summaryOf, type SignalSummary } from "../classify/view.ts";
 import type { HearingPlace, HearingPosition } from "../signals/hearing.ts";
 import { signalLogBody } from "../signals/labels.ts";
 import { clockRemaining, formatHours, type Color, type Override, type Situation, type TriageResult } from "../triage/index.ts";
@@ -167,23 +168,6 @@ export type DetailSignal = {
    */
   row: SignalForDetail;
 };
-
-/** 録音のまとめの形（T69b）。text は出す文、by は human（ケアマネが直した。AI の印なし）か ai（Claude。AI の印）か null（まだ・失敗） */
-export type SignalSummary = {
-  text: string | null;
-  by: "human" | "ai" | null;
-  /** まとめられなかった理由（Claude を呼んで失敗したとき）。まだなら null */
-  error: SignalRow["ai_summary_error"];
-};
-
-/** 信号の行からまとめの形（T69b）。ケアマネが直した文（summary）があればそれ、無ければ Claude の文（ai_summary） */
-export function summaryOf(s: Partial<Pick<SignalRow, "ai_summary" | "ai_summary_error" | "summary">>): SignalSummary {
-  const human = s.summary?.trim();
-  if (human) return { text: human, by: "human", error: null };
-  const ai = s.ai_summary?.trim();
-  if (ai) return { text: ai, by: "ai", error: null };
-  return { text: null, by: null, error: s.ai_summary_error ?? null };
-}
 
 /** 信号の行の申告位置（T69b）。緯度・経度がそろっていなければ null */
 export function reportedOf(s: Partial<Pick<SignalRow, "reported_lat" | "reported_lng" | "reported_accuracy_m">>): HearingPosition | null {
