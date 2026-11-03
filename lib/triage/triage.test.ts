@@ -475,9 +475,9 @@ describe("案 6: 緑でも機器以外の時計の半分を過ぎたら黄", () 
   });
 });
 
-describe("案 9: 録音の分類は 5 つのまま", () => {
-  it("けが・動けない・水が来た・機器が止まった・不明。うめき声・黙っているは不明に入る", () => {
-    expect([...RECORDING_CLASSES]).toEqual(["injury", "immobile", "water", "device_stopped", "unknown"]);
+describe("案 9: 録音の分類（T64 で その他 を足して 6 つ。色と順には けが・動けない だけ）", () => {
+  it("けが・動けない・水が来た・機器が止まった・その他・不明。うめき声・黙っているは不明に入る", () => {
+    expect([...RECORDING_CLASSES]).toEqual(["injury", "immobile", "water", "device_stopped", "other", "unknown"]);
   });
   it("赤 ＋ 不明は赤（赤だけの組）", () => {
     expect(one(person("p-01"), [red({ classes: ["unknown"] })], S.calm)).toMatchObject({ color: "red", rule: "red", group: 1 });

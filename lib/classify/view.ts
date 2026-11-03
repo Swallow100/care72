@@ -40,7 +40,7 @@ export type ClassView =
   /** ケアマネが直した。以後は人の分類が効く。ai は直す前の Claude の分類（無ければ null） */
   | { kind: "human"; classes: RecordingClass[]; ai: AiClassView | null };
 
-/** classes の JSON を読む。5 つの値でない物は捨てる */
+/** classes の JSON を読む。6 つの値でない物は捨てる */
 export function parseClassList(text: string | null): RecordingClass[] | null {
   if (!text) return null;
   try {
