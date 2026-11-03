@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { FIELD, FIELD_ICON } from "@/components/login/field";
-import { Mark72 } from "@/components/login/Mark72";
+import { BrandMark } from "@/components/brand/BrandMark";
 import { PasswordField } from "@/components/login/PasswordField";
 import { IdIcon } from "@/components/ui/Icon";
 import { LABEL, Page, Panel } from "@/components/ui/Panel";
@@ -25,8 +25,9 @@ function errorText(e: string, m: string | undefined): string {
 }
 
 // ID とパスワード。送り先は /api/auth/login（フォームの POST。JavaScript が無くても動く）。
-// どの画面もログインが要る。ログインしていなければ、どの画面からもここへ来る。審査員の ID とパスワードは提出書類に。
-// 上に印（72 時間の輪）と、この道具が何かの 1 行。欄は大きく（48px）、中にアイコン。狭い 1 列。
+// どの画面もログインが要る。ログインしていなければ、どの画面からもここへ来る。審査員の ID とパスワードは提出書類の欄にだけ書く（画面に案内を出さない）。
+// 上は名前と見出し「ログイン」、右に印（components/brand/BrandMark）。道具の説明の見出しは置かない（T66、作者 11/4）。
+// 新規登録は作らない（DECISIONS 11/4 00:5x）。欄は大きく（48px）、中にアイコン。狭い 1 列。
 export default async function LoginPage({ searchParams }: Props) {
   const p = await getPrincipal();
   if (p) redirect(homePath(p.role));
@@ -38,14 +39,12 @@ export default async function LoginPage({ searchParams }: Props) {
       <Panel aria-labelledby="login-title" className="p-5 sm:p-6">
         <div className="flex items-start gap-3">
           <div className="min-w-0 flex-1">
-            <p className="text-xs font-bold text-muted">計画・訓練・発災時</p>
+            <p className="text-xs font-bold text-muted">ケア72</p>
             <h1 id="login-title" className="mt-1 text-lg leading-7 font-bold sm:text-xl">
-              ケアマネの知っていることを
-              <br />
-              災害の 72 時間に
+              ログイン
             </h1>
           </div>
-          <Mark72 size={56} className="shrink-0" />
+          <BrandMark size={56} className="shrink-0" />
         </div>
         <form method="post" action="/api/auth/login" className="mt-6 grid gap-4">
           <div>
@@ -84,7 +83,6 @@ export default async function LoginPage({ searchParams }: Props) {
             ログイン
           </SubmitButton>
         </form>
-        <p className="mt-4 text-xs text-muted">審査員の ID とパスワードは提出書類に</p>
       </Panel>
       <p className="mt-3 text-center text-xs text-muted">デモの利用者はすべて架空です</p>
     </Page>

@@ -20,7 +20,7 @@ import { csvFileNames, csvText, jstDateLabel } from "./form9-csv.ts";
 import { csvResponse } from "./csv-response.ts";
 
 export const STAFF_CSV_TITLE = CUSTODY_LABELS.page;
-export const STAFF_CSV_NAMES = { ascii: "staff", utf8: "受け持ち" } as const;
+export const STAFF_CSV_NAMES = { ascii: "staff", utf8: CUSTODY_LABELS.page } as const;
 
 type Column = { header: string; cell: (r: StaffRow) => string };
 

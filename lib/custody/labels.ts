@@ -6,8 +6,8 @@
 import type { CustodyVia, ReleaseKind } from "../db/types.ts";
 
 export const CUSTODY_LABELS = {
-  /** 画面の見出し（/staff） */
-  page: "受け持ち",
+  /** 画面の見出し（/staff）。医療班・行政が受け入れた人の一覧。画面と紙の言葉は「受入一覧」（DECISIONS 11/4 01:0x、前は「受け持ち」。コードの名前 custody・staff はそのまま） */
+  page: "受入一覧",
   people: "人",
   at: "時点",
   /** 受け入れる操作と経過の種類 */

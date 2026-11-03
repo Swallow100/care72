@@ -2,6 +2,7 @@
 
 import type { D1Database } from "@cloudflare/workers-types";
 import { DEMO_CARE_MANAGER_ID, DEMO_FAMILY_CONTACT_ID, DEMO_OFFICE_ID, DEMO_SELF_PERSON_ID } from "./demo.ts";
+import { CUSTODY_LABELS } from "../custody/labels.ts";
 import { JUDGE_ROLE_LABELS, JUDGE_ROLES, type JudgeRole } from "./roles.ts";
 
 export type JudgeChoice = { role: JudgeRole; label: string; sub: string | null };
@@ -26,7 +27,7 @@ export async function judgeChoices(db: D1Database): Promise<JudgeChoice[]> {
   ]);
   const subs: Record<JudgeRole, string | null> = {
     care_manager: cm?.display_name || null,
-    medical: "受け持ち",
+    medical: CUSTODY_LABELS.page,
     self: person?.name ?? null,
     family: contact ? [contact.relation, contact.name].filter(Boolean).join(" ") || null : null,
   };

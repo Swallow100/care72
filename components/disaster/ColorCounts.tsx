@@ -5,7 +5,7 @@ import type { Color } from "@/lib/triage/index";
 
 const ORDER: ReadonlyArray<Color> = ["red", "yellow", "gray", "green"];
 
-/** 色ごとの人数（至急・要確認・未知・無事）。数字に状態の色（0 は色なし）。要確認は言葉を黄の塗りの印に、数は本文色。担当一覧・事業所・様式 9 で同じ形 */
+/** 色ごとの人数（至急・要確認・不明・無事）。1 人以上は言葉を状態の塗りの印に、数は本文色。0 人は印も数も灰（components/ui/Tag の CountLabel）。担当一覧・事業所・様式 9 で同じ形 */
 export function ColorCounts({ counts, className = "" }: { counts: Record<Color, number>; className?: string }) {
   return (
     <dl className={`flex flex-wrap gap-x-3 text-sm ${className}`}>
@@ -17,8 +17,7 @@ export function ColorCounts({ counts, className = "" }: { counts: Record<Color, 
             </CountLabel>
           </dt>
           <dd
-            className={`font-bold tabular-nums ${countClass(COLOR_TONES[c], counts[c])}`}
-            data-tone={counts[c] > 0 ? COLOR_TONES[c] : undefined}
+            className={`font-bold tabular-nums ${countClass(counts[c])}`}
           >
             {counts[c]}
           </dd>
