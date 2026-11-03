@@ -422,7 +422,7 @@ describe("案内の文と言葉", () => {
 
   it("頼み・事情・触らなくてよいこと・名前は要らない・使い道・お礼が入っている。10 行まで", () => {
     const text = SURVEY_INVITATION.join("\n");
-    for (const w of ["お時間のあるときに", "5 分", "Built with Claude: Japan 2026", "医学部の学生", "家族にケアマネ", "11 月 8 日", "訓練", "書かないでください", "README", "動画", "引用"]) {
+    for (const w of ["お時間のあるときに", "5 分", "Built with Claude: Japan 2026", "医学部の学生", "家族にケアマネ", "11 月 8 日", "訓練", "書かないでください", "作品の説明", "動画", "引用"]) {
       expect(text, w).toContain(w);
     }
     expect(SURVEY_INVITATION.length).toBeLessThanOrEqual(10);
