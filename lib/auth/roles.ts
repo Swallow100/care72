@@ -84,6 +84,14 @@ export function canViewPage(role: Role, page: Page): boolean {
   return PAGE_ROLES[page].includes(role);
 }
 
+/**
+ * ヘッダーにログアウトを出す役。本人・家族の頁には置かない（押し間違いで出られなくなる。リンクを開き直せば入れる。
+ * 設計の答え 11/4、T69a）。審査員の本人・家族の役は役変更から戻ってログアウトする
+ */
+export function showsLogout(role: Role): boolean {
+  return role !== "self" && role !== "family";
+}
+
 /** 役の入口。ログインのあと・開けない画面を開いたときにここへ送る */
 export function homePath(role: Role): string {
   switch (role) {

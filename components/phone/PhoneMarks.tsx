@@ -3,7 +3,7 @@
 // 言葉はやさしい日本語（lib/qr/phone-labels.ts の PHONE_EASY）。状態を持たない。
 
 import { EasyWords } from "@/components/forms/EasyText";
-import { StateTag } from "@/components/ui/Tag";
+import { TONE_FILL } from "@/components/ui/Tag";
 import { easy, yomi } from "@/lib/forms/easy-words";
 import { PHONE_EASY } from "@/lib/qr/phone-labels";
 
@@ -31,10 +31,11 @@ export function PhoneNormalMark({ office }: { office: string | null }) {
 export function PhoneLinkInvalid() {
   return (
     <section className="phone-text rounded-lg bg-panel px-4 py-4" data-phone-link-invalid>
-      <StateTag tone="unknown" size="md">
+      {/* 本人のスマホの頁の問いと同じ大きな字（2rem）。色は不明の灰の塗り（StateTag と同じ塗り）で、言葉は「無効」だけ */}
+      <span className={`inline-block rounded-sm px-3 py-0.5 text-[2rem] leading-tight font-bold ${TONE_FILL.unknown}`} data-tone="unknown">
         <EasyWords words={easy(PHONE_EASY.invalid)} />
-      </StateTag>
-      <p className="mt-3 text-xl">
+      </span>
+      <p className="mt-3 text-[1.75rem] font-bold">
         <EasyWords words={easy(PHONE_EASY.callCareManager)} />
       </p>
     </section>
