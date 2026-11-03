@@ -34,16 +34,18 @@ const R1: Row = {
   経験: "c",
   問1: "b",
   問2: "d",
-  問3: "b,c,f",
-  問4: "書く時間が取れない",
-  問5: "c",
-  問6: "b",
-  問7: "a",
-  問7理由: "話すだけなら続けられる",
+  問3: "b",
+  問4: "b,c,f",
+  問5: "書く時間が取れない",
+  問6: "a,b",
+  問7: "c",
+  問8: "b",
+  問9: "a",
+  問9理由: "話すだけなら続けられる",
   引用: "a",
 };
-const R2: Row = { 番号: "002", 役: "b", 経験: "a", 問1: "a", 問2: "e", 問3: "", 問4: "", 問5: "b", 問6: "c", 問7: "b", 問7理由: "", 引用: "b" };
-const R3: Row = { 番号: "003", 役: "a", 経験: "b", 問1: "b", 問2: "c", 問3: "a・b", 問4: "様式の欄が多い", 問5: "c", 問6: "c", 問7: "c", 問7理由: "任せきりは不安", 引用: "a" };
+const R2: Row = { 番号: "002", 役: "d", 役その他: "相談員", 経験: "a", 問1: "a", 問2: "g", 問3: "d", 問4: "", 問5: "", 問6: "f", 問7: "b", 問8: "c", 問9: "b", 問9理由: "", 引用: "b" };
+const R3: Row = { 番号: "003", 役: "a", 経験: "b", 問1: "b", 問2: "e", 問3: "c", 問4: "a・b", 問5: "様式の欄が多い", 問6: "e", 問7: "c", 問8: "c", 問9: "c", 問9理由: "任せきりは不安", 引用: "a" };
 
 describe("parseAnswers", () => {
   it("1 行が 1 人。記号と自由記述を読む", () => {
@@ -51,12 +53,14 @@ describe("parseAnswers", () => {
     expect(rs).toHaveLength(2);
     expect(rs[0].id).toBe("001");
     expect(rs[0].choices.role).toEqual(["a"]);
-    expect(rs[0].choices.q3).toEqual(["b", "c", "f"]);
+    expect(rs[0].choices.q4).toEqual(["b", "c", "f"]);
+    expect(rs[0].choices.q6).toEqual(["a", "b"]);
     expect(rs[0].choices.quote).toEqual(["a"]);
-    expect(rs[0].free.q4).toBe("書く時間が取れない");
-    expect(rs[1].choices.q3).toEqual([]);
-    expect(rs[1].free.q4).toBeNull();
-    expect(rs[1].free.q7reason).toBeNull();
+    expect(rs[0].free.q5).toBe("書く時間が取れない");
+    expect(rs[1].choices.q4).toEqual([]);
+    expect(rs[1].free.q5).toBeNull();
+    expect(rs[1].free.q9reason).toBeNull();
+    expect(rs[1].free.roleOther).toBe("相談員");
   });
 
   it("見出しだけなら 0 人", () => {
@@ -64,11 +68,11 @@ describe("parseAnswers", () => {
   });
 
   it("記号は大文字・全角・区切りの違いを許す。ハイフンは答えなし", () => {
-    const [r] = parseAnswers(table({ ...R1, 問1: "Ｂ", 問3: "ａ、ｃ ｇ", 問5: "-", 問6: "なし" }));
+    const [r] = parseAnswers(table({ ...R1, 問1: "Ｂ", 問4: "ａ、ｃ ｇ", 問7: "-", 問8: "なし" }));
     expect(r.choices.q1).toEqual(["b"]);
-    expect(r.choices.q3).toEqual(["a", "c", "g"]);
-    expect(r.choices.q5).toEqual([]);
-    expect(r.choices.q6).toEqual([]);
+    expect(r.choices.q4).toEqual(["a", "c", "g"]);
+    expect(r.choices.q7).toEqual([]);
+    expect(r.choices.q8).toEqual([]);
   });
 
   it("列の並びが違っても名前で読む", () => {
@@ -112,25 +116,27 @@ describe("parseAnswers", () => {
 describe("集計", () => {
   const rs = parseAnswers(table(R1, R2, R3));
 
-  it("問ごとに、答えた人と選んだ人を数える（問 3 は複数）", () => {
-    const q3 = tallyChoice(rs, "q3");
-    expect(q3.answered).toBe(2);
-    expect(q3.blank).toBe(1);
-    expect(q3.rows.find((r) => r.label === "書く時間が無い")?.n).toBe(2);
-    expect(q3.rows.find((r) => r.label === "様式が分かりにくい")?.n).toBe(1);
-    expect(q3.rows.find((r) => r.label === "その他")?.n).toBe(0);
+  it("問ごとに、答えた人と選んだ人を数える（問 4・問 6 は複数）", () => {
+    const q4 = tallyChoice(rs, "q4");
+    expect(q4.answered).toBe(2);
+    expect(q4.blank).toBe(1);
+    expect(q4.rows.find((r) => r.label === "書く時間が無い")?.n).toBe(2);
+    expect(q4.rows.find((r) => r.label === "様式が分かりにくい")?.n).toBe(1);
+    expect(q4.rows.find((r) => r.label === "その他")?.n).toBe(0);
 
-    const q5 = tallyChoice(rs, "q5");
-    expect(q5.answered).toBe(3);
-    expect(q5.rows.map((r) => r.n)).toEqual([0, 1, 2]);
+    const q7 = tallyChoice(rs, "q7");
+    expect(q7.answered).toBe(3);
+    expect(q7.rows.map((r) => r.n)).toEqual([0, 1, 2]);
   });
 
   it("合算は答えた人が母数", () => {
     const q2 = COMBINED.find((c) => c.key === "q2")!;
     // 「作ったことがない」の人（002）は母数に入れない
     expect(combinedCount(rs, q2)).toEqual({ answered: 2, n: 2 });
-    const q7 = COMBINED.find((c) => c.key === "q7")!;
-    expect(combinedCount(rs, q7)).toEqual({ answered: 3, n: 2 });
+    const q9 = COMBINED.find((c) => c.key === "q9")!;
+    expect(combinedCount(rs, q9)).toEqual({ answered: 3, n: 2 });
+    const q1 = COMBINED.find((c) => c.key === "q1")!;
+    expect(combinedCount(rs, q1)).toEqual({ answered: 3, n: 3 });
   });
 
   it("N 人中 M 人の形", () => {
@@ -174,18 +180,20 @@ describe("collectFreeItems", () => {
     const rs = parseAnswers(
       table(
         R1,
-        { ...R3, 問4: "山田さんの家の確認が大変", 問7理由: "090-0000-0001" },
-        { ...R2, 問4: "引用はよくないと書いたのに写してある" },
-        { ...R2, 番号: "004", 引用: "", 問7理由: "引用の答えが空" },
+        { ...R3, 問5: "山田さんの家の確認が大変", 問9理由: "090-0000-0001" },
+        { ...R2, 役その他: "", 問5: "引用はよくないと書いたのに写してある" },
+        { ...R2, 番号: "004", 役その他: "", 引用: "", 問9理由: "引用の答えが空" },
+        { ...R1, 番号: "005", 問5: "", 問9理由: "", 問4: "g", 問4その他: "電話がつながらない" },
       ),
     );
     const { items, held } = collectFreeItems(rs);
-    expect(items.map((i) => i.ref)).toEqual([refOf("q4", "001"), refOf("q7reason", "001")]);
+    expect(refOf("q5", "001")).toBe("問5-001");
+    expect(items.map((i) => i.ref)).toEqual([refOf("q5", "001"), refOf("q9reason", "001"), refOf("q4Other", "005")]);
     expect(held.map((h) => h.ref).sort()).toEqual(
-      [refOf("q4", "003"), refOf("q7reason", "003"), refOf("q4", "002"), refOf("q7reason", "004")].sort(),
+      [refOf("q5", "003"), refOf("q9reason", "003"), refOf("q5", "002"), refOf("q9reason", "004")].sort(),
     );
-    expect(held.find((h) => h.ref === refOf("q4", "002"))?.reasons[0]).toMatch(/引用が「よい」でない/);
-    expect(held.find((h) => h.ref === refOf("q7reason", "003"))?.reasons).toContain("電話番号らしい並び");
+    expect(held.find((h) => h.ref === refOf("q5", "002"))?.reasons[0]).toMatch(/引用が「よい」でない/);
+    expect(held.find((h) => h.ref === refOf("q9reason", "003"))?.reasons).toContain("電話番号らしい並び");
   });
 });
 
@@ -198,8 +206,11 @@ describe("質問の文書", () => {
   const paper = read("docs/survey/paper.html");
   const readme = read("docs/survey/README.md");
 
-  it("選択肢の言葉が QUESTIONS.md と paper.html にある（並びも同じ）", () => {
-    for (const doc of [questions, paper]) {
+  it("問いの文と選択肢の言葉が QUESTIONS.md にある（並びも同じ。paper.html は使わない。Web 版に移した）", () => {
+    expect(paper).toContain("Web 版に移した");
+    for (const q of CHOICE_QUESTIONS) expect(questions, q.column).toContain(q.text);
+    for (const q of FREE_QUESTIONS) expect(questions, q.column).toContain(q.text);
+    for (const doc of [questions]) {
       for (const q of CHOICE_QUESTIONS) {
         // 「問 3　」の見出しから後ろで、選択肢が紙の並びの順に出る
         const n = /^q(\d)$/.exec(q.key)?.[1];
@@ -221,21 +232,19 @@ describe("質問の文書", () => {
     for (const col of COLUMNS) expect(readme).toContain(col);
   });
 
-  it("自由記述の問いの言葉と、先頭の匿名の 2 行がある", () => {
-    for (const doc of [questions, paper]) {
+  it("先頭の匿名の 2 行がある", () => {
+    for (const doc of [questions]) {
       expect(doc).toContain("名前・事業所名・利用者のことは書かないでください");
       expect(doc).toContain("結果は匿名で、作品の説明と動画に");
       expect(doc).toContain("人中");
     }
-    expect(FREE_QUESTIONS.map((q) => q.column)).toEqual(["問4", "問7理由"]);
+    expect(FREE_QUESTIONS.map((q) => q.column)).toEqual(["問5", "問9理由", "ご意見"]);
   });
 
-  it("言葉の決まり: 診断・判定・重症・病気がわかる、を使わない。訓練のことは聞かない", () => {
+  it("言葉の決まり: 診断・判定・重症・病気がわかる、を使わない", () => {
     for (const [name, doc] of [["QUESTIONS.md", questions], ["paper.html", paper], ["README.md", readme]] as const) {
       expect(doc, name).not.toMatch(/診断|判定|重症|病気がわかる/);
     }
-    expect(questions).not.toContain("訓練");
-    expect(paper).not.toContain("訓練");
   });
 
   it("答えの置き場（answers.md）の見出しの行が、質問の表の列と合っている（答えの行は見ない。写し間違いで npm test を落とさない）", () => {

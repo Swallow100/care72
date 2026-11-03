@@ -2,17 +2,19 @@ import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { isSameOrigin } from "@/lib/auth/cookie";
 import { sessionSecret } from "@/lib/auth/session";
 import { BODY_MAX_BYTES } from "@/lib/survey/form";
+import { surveyDoneCookie } from "@/lib/survey/paths";
 import { submitSurvey } from "@/lib/survey/submit";
-import { clientIp } from "@/lib/survey/token";
+import { clientIp, isSurveyTokenShape } from "@/lib/survey/token";
 import { turnstileKeys, verifyTurnstile } from "@/lib/survey/turnstile";
 
 type Ctx = { params: Promise<{ token: string }> };
 
-// アンケートの送信（docs/tasks/T42.md）。ログインなしで呼べる API はこれだけ（壁は token。lib/survey/submit.ts の守り）。
-// ログインの cookie は読まない。応答はキャッシュさせない。
+// アンケートの送信（docs/tasks/T42.md・T65.md）。ログインなしで呼べる API はこれだけ（壁は token。lib/survey/submit.ts の守り）。
+// ログインの cookie は読まない。応答はキャッシュさせない。送れたら、その端末に印の cookie を付ける（同じ端末で開くと「回答済」）。
 export async function POST(request: Request, { params }: Ctx) {
   const { token } = await params;
-  const json = (status: number, body: unknown) => Response.json(body, { status, headers: { "Cache-Control": "no-store" } });
+  const json = (status: number, body: unknown, cookie?: string) =>
+    Response.json(body, { status, headers: { "Cache-Control": "no-store", ...(cookie ? { "Set-Cookie": cookie } : {}) } });
   if (!isSameOrigin(request)) return json(403, { ok: false, error: "forbidden" });
   // 本文を読む前に、大きさの申告で断る（読んだあとにも submitSurvey が確かめる）
   const declared = Number(request.headers.get("content-length") ?? "0");
@@ -29,5 +31,6 @@ export async function POST(request: Request, { params }: Ctx) {
     secret: sessionSecret(env),
     turnstile: keys ? { keys, verify: verifyTurnstile } : null,
   });
-  return json(out.status, out.body);
+  const done = out.status === 200 && isSurveyTokenShape(token);
+  return json(out.status, out.body, done ? surveyDoneCookie(token, new URL(request.url).protocol === "https:") : undefined);
 }
