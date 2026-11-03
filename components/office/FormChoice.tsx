@@ -5,13 +5,14 @@
 
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import Link from "next/link";
+import { CHOICE_INPUT } from "@/components/ui/choice";
 import { Panel, PanelHead } from "@/components/ui/Panel";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { ABOUT_SEPARATOR } from "@/lib/forms/catalog";
 import { listPlanForms, loadPlanForm, OFFICE_FORM_PATH, type PlanFormOption } from "@/lib/forms/plan-form";
 
 // 選んだ印は枠だけ（押した行に付く。下地は敷かない）
-const ROW = "flex items-start gap-2 rounded bg-panel2 px-2 py-1.5 text-sm has-[:checked]:outline-2 has-[:checked]:-outline-offset-2 has-[:checked]:outline-accent";
+const ROW = "flex cursor-pointer items-start gap-2 rounded bg-panel2 px-2 py-2 text-sm has-[:checked]:outline-2 has-[:checked]:-outline-offset-2 has-[:checked]:outline-accent";
 
 export async function FormChoice({ officeId, error }: { officeId: string; error?: boolean }) {
   let options: PlanFormOption[];
@@ -36,7 +37,7 @@ export async function FormChoice({ officeId, error }: { officeId: string; error?
           <legend className="sr-only">計画書の様式</legend>
           {options.map((o) => (
             <label key={o.id} className={ROW} data-plan-form={o.id} data-current={o.id === current ? "1" : undefined}>
-              <input type="radio" name="plan_form" value={o.id} defaultChecked={o.id === current} className="mt-1 accent-accent" />
+              <input type="radio" name="plan_form" value={o.id} defaultChecked={o.id === current} className={`mt-0.5 ${CHOICE_INPUT}`} />
               <span className="min-w-0">
                 <span className="block">{o.entry.short}</span>
                 <span className="block text-xs text-muted">

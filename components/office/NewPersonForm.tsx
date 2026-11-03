@@ -14,6 +14,7 @@ import { KANA_MAX, NAME_MAX } from "@/lib/office/forms";
 import { PEOPLE_API_PATH } from "@/lib/office/http-paths";
 import { OFFICE_LABELS } from "@/lib/office/labels";
 import { Button, ButtonLink } from "@/components/ui/Button";
+import { CHOICE_INPUT, CHOICE_LABEL } from "@/components/ui/choice";
 import { CloseIcon, SaveIcon } from "@/components/ui/Icon";
 import { Select } from "@/components/ui/Select";
 
@@ -21,7 +22,7 @@ type CareManager = { id: string; name: string };
 
 const INPUT =
   "h-9 w-full min-w-0 rounded bg-panel2 px-2 text-sm text-ink outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-accent";
-const CHOICE = "flex h-9 items-center gap-1.5 rounded bg-panel2 px-2.5 text-sm";
+const CHOICE = CHOICE_LABEL;
 
 export function NewPersonForm({
   careManagers,
@@ -126,7 +127,7 @@ export function NewPersonForm({
                   required
                   checked={sex === s}
                   onChange={() => setSex(s)}
-                  className="accent-accent"
+                  className={CHOICE_INPUT}
                 />
                 {SEX_LABELS[s]}
               </label>

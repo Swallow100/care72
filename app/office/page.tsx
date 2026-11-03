@@ -18,6 +18,7 @@ import { AddPersonIcon, CloseIcon, DownloadIcon, PaperIcon } from "@/components/
 import { LinkPending } from "@/components/ui/LinkPending";
 import { Page, PageHead, Panel, PanelHead } from "@/components/ui/Panel";
 import { SubmitButton } from "@/components/ui/SubmitButton";
+import { CHOICE_INPUT, CHOICE_LABEL } from "@/components/ui/choice";
 import { TABLE, TABLE_BOX, TD, TH } from "@/components/ui/table";
 import { StateTag, StateText, TONE_TEXT } from "@/components/ui/Tag";
 import { todayJst } from "@/lib/age";
@@ -131,6 +132,7 @@ export default async function OfficePage({ searchParams }: Props) {
   const error = parseFormError(q.error);
   const peopleError = parsePeopleError(q.people_error);
   const moved = parseAssignedMany(q);
+  const reset = canResetDemo(principal) ? parseResetState(q.reset) : null;
 
 
   return (
@@ -148,6 +150,17 @@ export default async function OfficePage({ searchParams }: Props) {
       {error && (
         <p role="alert" className="mt-2 text-sm font-bold text-danger">
           {DISASTER_FORM_ERROR_LABELS[error]}
+        </p>
+      )}
+      {/* 最初に戻すのあとの知らせ（T79）。戻すと画面の頭に来るので、右下の「初期化」の区分でなくここに出す */}
+      {reset === "done" && (
+        <p role="status" className="mt-2 text-sm" data-reset-notice="done">
+          <StateText tone="ok">{RESET_LABELS.done}</StateText>
+        </p>
+      )}
+      {reset === "failed" && (
+        <p role="alert" className="mt-2 text-sm font-bold text-danger" data-reset-notice="failed">
+          {RESET_LABELS.failed}
         </p>
       )}
 
@@ -171,7 +184,7 @@ export default async function OfficePage({ searchParams }: Props) {
             </AddCareManager>
           </Panel>
           {/* デモ事業所の「最初に戻す」（T26）。審査員と管理者だけ */}
-          {canResetDemo(principal) && <ResetSection state={parseResetState(q.reset)} />}
+          {canResetDemo(principal) && <ResetSection state={reset} />}
           <LogSection log={log} />
         </div>
       </div>
@@ -284,7 +297,7 @@ function ModeButton({ kind, state }: { kind: DisasterKind; state: DisasterState 
 }
 
 const INPUT = "h-8 rounded bg-panel2 px-2 text-sm text-ink outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-accent";
-const CHOICE = "flex h-8 items-center gap-1.5 rounded bg-panel2 px-2 text-sm";
+const CHOICE = CHOICE_LABEL;
 
 /** 災害の情報。発災・停電（範囲・開始・地区）・警戒レベル・断水・道路。保存で変わった所が経過に残る */
 function InfoSection({ state, towns }: { state: DisasterState; towns: TownCount[] }) {
@@ -325,12 +338,12 @@ function InfoSection({ state, towns }: { state: DisasterState; towns: TownCount[
             <legend className="text-xs text-muted">{DISASTER_LABELS.level}</legend>
             <div className="mt-0.5 flex flex-wrap gap-1">
               <label className={CHOICE}>
-                <input type="radio" name="level" value="" defaultChecked={info.alertLevel === null} className="accent-accent" />
+                <input type="radio" name="level" value="" defaultChecked={info.alertLevel === null} className={CHOICE_INPUT} />
                 {DISASTER_LABELS.levelNone}
               </label>
               {ALERT_LEVELS.map((l) => (
                 <label key={l} className={CHOICE}>
-                  <input type="radio" name="level" value={l} defaultChecked={info.alertLevel === l} className="accent-accent" />
+                  <input type="radio" name="level" value={l} defaultChecked={info.alertLevel === l} className={CHOICE_INPUT} />
                   {l}
                 </label>
               ))}
@@ -344,7 +357,7 @@ function InfoSection({ state, towns }: { state: DisasterState; towns: TownCount[
               <div className="flex flex-wrap gap-1">
                 {OUTAGE_SCOPES.map((s) => (
                   <label key={s} className={CHOICE}>
-                    <input type="radio" name="outage" value={s} defaultChecked={info.outage.scope === s} className="accent-accent" />
+                    <input type="radio" name="outage" value={s} defaultChecked={info.outage.scope === s} className={CHOICE_INPUT} />
                     {OUTAGE_SCOPE_LABELS[s]}
                   </label>
                 ))}
@@ -361,7 +374,7 @@ function InfoSection({ state, towns }: { state: DisasterState; towns: TownCount[
                   .filter((t): t is TownCount & { town: string } => t.town !== null)
                   .map((t) => (
                     <label key={t.town} className={CHOICE}>
-                      <input type="checkbox" name="town" value={t.town} defaultChecked={inArea(t.town)} className="accent-accent" />
+                      <input type="checkbox" name="town" value={t.town} defaultChecked={inArea(t.town)} className={CHOICE_INPUT} />
                       {t.town}
                       <span className="text-xs text-muted">{t.count}</span>
                     </label>
@@ -693,16 +706,13 @@ function ResetSection({ state }: { state: ResetState | null }) {
         sub={
           <>
             <span className="text-xs text-muted">{RESET_LABELS.daily}</span>
+            {/* 知らせ（role）は画面の頭の 1 行に出す。ここは区分の中の印だけ */}
             {state === "done" && (
-              <span role="status" className="text-sm">
+              <span className="text-sm">
                 <StateText tone="ok">{RESET_LABELS.done}</StateText>
               </span>
             )}
-            {state === "failed" && (
-              <span role="alert" className="text-sm font-bold text-danger">
-                {RESET_LABELS.failed}
-              </span>
-            )}
+            {state === "failed" && <span className="text-sm font-bold text-danger">{RESET_LABELS.failed}</span>}
           </>
         }
       />
