@@ -91,8 +91,8 @@ describe("仮名", () => {
 
   it("連絡先は役割名。支援者は番号付き、重なる続柄も番号付き", () => {
     expect(contactRoles(byId("p-01").contacts)).toEqual(["本人", "娘", "支援者 1"]);
-    expect(contactRoles(byId("p-03").contacts)).toEqual(["本人", "妻", "長男", "長女", "透析施設"]);
-    expect(contactRoles(byId("p-02").contacts)).toEqual(["本人", "夫", "訪問看護"]);
+    expect(contactRoles(byId("p-03").contacts)).toEqual(["本人", "妻", "長男", "長女", "透析施設", "病院"]); // 病院は T57 で種に足した
+    expect(contactRoles(byId("p-02").contacts)).toEqual(["本人", "夫", "訪問看護", "酸素業者"]); // 酸素業者は T57 で種に足した
     expect(
       contactRoles([
         { kind: "family", relation: "娘" },

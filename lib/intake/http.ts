@@ -18,7 +18,9 @@ export type IntakeErrorCode =
   | "file_large"
   | "file_empty"
   /** 黒塗りの画面を通っていない写真・PDF（生の PDF・PNG・EXIF の付いた JPEG。T52） */
-  | "not_redacted";
+  | "not_redacted"
+  /** 同じ緊急・支援の順を 2 人に付けた（T57） */
+  | "order_clash";
 
 const LABELS: Record<IntakeErrorCode, string> = {
   file_type: INTAKE_LABELS.fileType,
@@ -34,6 +36,7 @@ const LABELS: Record<IntakeErrorCode, string> = {
   not_found: "該当なし",
   forbidden: "権限なし",
   conflict: INTAKE_LABELS.conflict,
+  order_clash: INTAKE_LABELS.orderClash,
 };
 
 const STATUS: Record<IntakeErrorCode, number> = {
@@ -50,6 +53,7 @@ const STATUS: Record<IntakeErrorCode, number> = {
   not_found: 404,
   forbidden: 403,
   conflict: 409,
+  order_clash: 422,
 };
 
 /**

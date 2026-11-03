@@ -12,9 +12,11 @@ import { Select } from "@/components/ui/Select";
 import { AddIcon, CloseIcon, RemoveIcon, RestoreIcon, SaveIcon } from "@/components/ui/Icon";
 import { appConfirm } from "@/lib/ui/dialog";
 import {
+  CLOCK_SOURCES,
   CONSENT_KINDS,
   CONSENT_STATUSES,
   CONTACT_KINDS,
+  CONTACT_REACHES,
   DEVICE_KINDS,
   HAZARD_KINDS,
   MEDICATION_CATEGORIES,
@@ -25,10 +27,15 @@ import {
 } from "@/lib/db/types";
 import {
   CHECK_STATUS_LABELS,
+  CLOCK_CATEGORY_LABELS,
+  CLOCK_KIND_LABELS,
+  CLOCK_SOURCE_LABELS,
+  CLOCK_START_LABELS,
   CLOCK_UNIT_LABELS,
   CONSENT_KIND_LABELS,
   CONSENT_STATUS_LABELS,
   CONTACT_KIND_LABELS,
+  CONTACT_REACH_LABELS,
   DEPENDS_ON_LABELS,
   DEVICE_LABELS,
   dropConfirmText,
@@ -51,8 +58,18 @@ import {
   type EditSection,
   type MedDraft,
   type NightDraft,
+  type OrderClash,
+  type OrderDraft,
+  CONTACT_ORDERS,
+  blankClock,
+  ADDABLE_CLOCK_CATEGORIES,
+  type ClockDraft,
+  type RunningStart,
+  editBlockers,
+  orderClash,
 } from "@/lib/intake/edit";
 import { INTAKE_FIELDS } from "@/lib/intake/fields";
+import { markClockIds } from "@/lib/intake/marks";
 import { FieldInput } from "./IntakeChanges";
 import { CheckIcon, EditIcon } from "./icons";
 import { isError, postJson } from "./intake-api";
@@ -79,10 +96,18 @@ export function SectionEdit({ section, data, head, children }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const changes = open ? editChanges(section, open.base, open.draft) : [];
+  // 同じ緊急・支援の順を 2 人に付けたら保存しない（サーバーも断る）
+  const clashed = open !== null && section === "people" && (() => {
+    const c = orderClash(open.draft);
+    return c.emergency.length > 0 || c.supporter.length > 0;
+  })();
+  // 「その他」の中身が空（続柄・名前）。種類だけでは何か分からないので保存しない（T57）
+  const blockers = open ? editBlockers(section, open.draft) : [];
+  const stopped = clashed || blockers.length > 0;
   const set = (patch: Partial<EditDraft>) => setOpen((o) => (o ? { ...o, draft: { ...o.draft, ...patch } } : o));
 
   async function save() {
-    if (!open || changes.length === 0) return;
+    if (!open || changes.length === 0 || stopped) return;
     // 外す物があれば、保存の前に 1 回だけ確かめる（取消なら面は開いたまま）
     const drops = removalNames(changes, open.base);
     if (drops.length > 0) {
@@ -146,7 +171,7 @@ export function SectionEdit({ section, data, head, children }: Props) {
         >
           <SectionForm section={section} data={open.base} draft={open.draft} set={set} />
           <div className="flex flex-wrap items-center gap-2 pt-0.5">
-            <Button type="submit" kind="main" size="sm" icon={SaveIcon} disabled={busy || changes.length === 0} data-edit-save={section}>
+            <Button type="submit" kind="main" size="sm" icon={SaveIcon} disabled={busy || changes.length === 0 || stopped} data-edit-save={section}>
               {INTAKE_LABELS.save}
             </Button>
             <Button kind="quiet" size="sm" icon={CloseIcon} disabled={busy} onClick={() => setOpen(null)}>
@@ -157,6 +182,10 @@ export function SectionEdit({ section, data, head, children }: Props) {
                 <span className="text-muted">{INTAKE_LABELS.busy}</span>
               ) : error ? (
                 <span className="font-bold text-danger">{error}</span>
+              ) : blockers.length > 0 ? (
+                <span className="font-bold text-danger" data-edit-blocked>
+                  {INTAKE_LABELS.missing} {blockers.join("・")}
+                </span>
               ) : (
                 <span className="text-muted">{changes.length} 件</span>
               )}
@@ -174,6 +203,9 @@ type FormProps = { section: EditSection; data: EditData; draft: EditDraft; set: 
 
 /** 面の入力欄。並びは読む側の行の並び */
 export function SectionForm({ section, data, draft, set }: FormProps) {
+  const clash = orderClash(draft);
+  // 印の時計（機器・薬・認知症から作る物）は時計だけでは外せない（次の保存で作り直される。T57）
+  const marks = markClockIds(data.ledger, data.clocks);
   const fields = INTAKE_FIELDS.filter((f) => f.section === section);
   const fieldRows = fields.map((f) => (
     <label key={f.key} className={ROW} data-field={f.key}>
@@ -216,8 +248,8 @@ export function SectionForm({ section, data, draft, set }: FormProps) {
                   <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-1">
                     <input
                       className={INPUT}
-                      placeholder="中身"
-                      aria-label={`${DEVICE_LABELS[d.kind]} 中身`}
+                      placeholder={d.kind === "other" ? INTAKE_LABELS.deviceName : "中身"}
+                      aria-label={`${DEVICE_LABELS[d.kind]} ${d.kind === "other" ? INTAKE_LABELS.deviceName : "中身"}`}
                       value={d.detail}
                       onChange={(e) => set({ devices: draft.devices.map((x, j) => (j === i ? { ...x, detail: e.target.value } : x)) })}
                     />
@@ -239,6 +271,13 @@ export function SectionForm({ section, data, draft, set }: FormProps) {
               picked={draft.newDevices}
               onChange={(v) => set({ newDevices: v as EditDraft["newDevices"] })}
             />
+            {/* その他の機器は名前を書いてから保存（空なら保存を止める） */}
+            {draft.newDevices.includes("other") && (
+              <label className={ROW} data-new-device-other>
+                <span className={SUB}>{`${DEVICE_LABELS.other} ${INTAKE_LABELS.deviceName}`}</span>
+                <input className={INPUT} maxLength={200} value={draft.newDeviceDetail} onChange={(e) => set({ newDeviceDetail: e.target.value })} />
+              </label>
+            )}
           </Group>
           <Group label="時計">
             {draft.clocks.length === 0 && <span className={SUB}>なし</span>}
@@ -248,6 +287,10 @@ export function SectionForm({ section, data, draft, set }: FormProps) {
               const seen = draft.seen.includes(k.id);
               // 値を直したら確認の日付は直しの方で今になる。値確認は値が同じで、値の入った時計だけ
               const valueSame = cur?.value != null && String(cur.value) === k.value.trim() && cur.unit === k.unit;
+              const dropKeyOf = dropKey.clock(k.id);
+              if (draft.drops.includes(dropKeyOf)) {
+                return <DroppedRow key={k.id} name={k.label} onUndo={() => set({ drops: toggled(draft.drops, dropKeyOf) })} />;
+              }
               return (
                 <div key={k.id} className="space-y-1" data-clock={k.id}>
                   {/* 時計の名前は長い（「酸素 予備ボンベ」）ので、名前の横に値と単位を折り返して並べる */}
@@ -273,6 +316,18 @@ export function SectionForm({ section, data, draft, set }: FormProps) {
                           </option>
                         ))}
                       </Select>
+                    </div>
+                  </div>
+                  {/* 起点（停電・発災）と、印でない時計の「外す」（印の時計は機器・薬を外すと一緒に消える。T57） */}
+                  <div className={ROW} data-clock-start={k.id}>
+                    <span className={SUB}>{INTAKE_LABELS.clockStart}</span>
+                    <div className="flex items-center gap-1">
+                      <StartSelect
+                        label={k.label}
+                        value={k.start}
+                        onChange={(v) => set({ clocks: draft.clocks.map((x, j) => (j === i ? { ...x, start: v } : x)) })}
+                      />
+                      {!marks.has(k.id) && <DropButton onClick={() => set({ drops: toggled(draft.drops, dropKeyOf) })} name={k.label} />}
                     </div>
                   </div>
                   {/* 値を変えずに今日確かめた（確認の日付だけ今に） */}
@@ -317,6 +372,17 @@ export function SectionForm({ section, data, draft, set }: FormProps) {
                 </div>
               );
             })}
+            {draft.newClocks.map((k, i) => (
+              <NewClockRow
+                key={`new-${i}`}
+                clock={k}
+                onChange={(next) => set({ newClocks: draft.newClocks.map((x, j) => (j === i ? next : x)) })}
+                onDrop={() => set({ newClocks: draft.newClocks.filter((_, j) => j !== i) })}
+              />
+            ))}
+            <Button size="sm" icon={AddIcon} onClick={() => set({ newClocks: [...draft.newClocks, blankClock()] })} data-clock-add>
+              {INTAKE_LABELS.addClock}
+            </Button>
           </Group>
           <div className="space-y-1">{fieldRows}</div>
         </div>
@@ -331,9 +397,9 @@ export function SectionForm({ section, data, draft, set }: FormProps) {
               ) : (
                 <div key={h.kind} className={ROW} data-hazard={h.kind}>
                   <span className={SUB}>{HAZARD_LABELS[h.kind]}</span>
-                  <div className="flex items-center gap-1">
+                  <div className="flex flex-wrap items-center gap-1">
                     <input
-                      className={`${INPUT} w-20`}
+                      className={`${INPUT} w-16`}
                       inputMode="decimal"
                       placeholder="深さ"
                       aria-label={`${HAZARD_LABELS[h.kind]} 深さ`}
@@ -341,7 +407,16 @@ export function SectionForm({ section, data, draft, set }: FormProps) {
                       onChange={(e) => set({ hazards: draft.hazards.map((x, j) => (j === i ? { ...x, depth: e.target.value } : x)) })}
                     />
                     <span className="text-xs">m</span>
-                    <DropButton className="ml-auto" onClick={() => set({ drops: toggled(draft.drops, dropKey.hazard(h.kind)) })} name={HAZARD_LABELS[h.kind]} />
+                    {/* 書き足し（その他の中身・裏山など。60 字。T57） */}
+                    <input
+                      className={`${INPUT} w-auto min-w-24 flex-1`}
+                      maxLength={60}
+                      placeholder={INTAKE_LABELS.hazardNote}
+                      aria-label={`${HAZARD_LABELS[h.kind]} ${INTAKE_LABELS.hazardNote}`}
+                      value={h.note}
+                      onChange={(e) => set({ hazards: draft.hazards.map((x, j) => (j === i ? { ...x, note: e.target.value } : x)) })}
+                    />
+                    <DropButton onClick={() => set({ drops: toggled(draft.drops, dropKey.hazard(h.kind)) })} name={HAZARD_LABELS[h.kind]} />
                   </div>
                 </div>
               ),
@@ -352,6 +427,12 @@ export function SectionForm({ section, data, draft, set }: FormProps) {
               picked={draft.newHazards}
               onChange={(v) => set({ newHazards: v as EditDraft["newHazards"] })}
             />
+            {draft.newHazards.includes("other") && (
+              <label className={ROW} data-new-hazard-other>
+                <span className={SUB}>{`${HAZARD_LABELS.other} ${INTAKE_LABELS.hazardNote}`}</span>
+                <input className={INPUT} maxLength={60} value={draft.newHazardNote} onChange={(e) => set({ newHazardNote: e.target.value })} />
+              </label>
+            )}
           </Group>
           <div className="space-y-1">{fieldRows}</div>
         </div>
@@ -359,6 +440,15 @@ export function SectionForm({ section, data, draft, set }: FormProps) {
     case "people":
       return (
         <div className="space-y-2">
+          {(clash.emergency.length > 0 || clash.supporter.length > 0) && (
+            <p role="alert" className="text-xs font-bold text-danger" data-order-clash>
+              {INTAKE_LABELS.orderClash}{" "}
+              {[
+                ...clash.emergency.map((n) => `${INTAKE_LABELS.emergency} ${n}`),
+                ...clash.supporter.map((n) => `${INTAKE_LABELS.supporter} ${n}`),
+              ].join("・")}
+            </p>
+          )}
           {draft.contacts.map((c, i) => {
             const key = c.id ? dropKey.contact(c.id) : null;
             const cur = data.contacts.find((x) => x.id === c.id);
@@ -372,13 +462,14 @@ export function SectionForm({ section, data, draft, set }: FormProps) {
               <ContactRow
                 key={c.id ?? i}
                 c={c}
+                clash={clash}
                 onChange={(next) => set({ contacts: draft.contacts.map((x, j) => (j === i ? next : x)) })}
                 onDrop={key ? () => set({ drops: toggled(draft.drops, key) }) : undefined}
               />
             );
           })}
           {draft.newContacts.map((c, i) => (
-            <ContactRow key={`new-${i}`} c={c} isNew onChange={(next) => set({ newContacts: draft.newContacts.map((x, j) => (j === i ? next : x)) })} />
+            <ContactRow key={`new-${i}`} c={c} isNew clash={clash} onChange={(next) => set({ newContacts: draft.newContacts.map((x, j) => (j === i ? next : x)) })} />
           ))}
           <Button size="sm" icon={AddIcon} onClick={() => set({ newContacts: [...draft.newContacts, blankContact()] })}>
             {INTAKE_LABELS.addContact}
@@ -539,11 +630,14 @@ const NIGHT: ReadonlyArray<{ value: NightDraft; label: string }> = [
 function ContactRow({
   c,
   isNew = false,
+  clash,
   onChange,
   onDrop,
 }: {
   c: ContactDraft;
   isNew?: boolean;
+  /** 重なった順（赤の太字） */
+  clash: OrderClash;
   onChange: (c: ContactDraft) => void;
   onDrop?: () => void;
 }) {
@@ -562,7 +656,15 @@ function ContactRow({
       ) : (
         <span className="self-center text-xs font-bold">{CONTACT_KIND_LABELS[c.kind]}</span>
       )}
-      <input className={INPUT_IN} placeholder="続柄" aria-label={`${who} 続柄`} value={c.relation} onChange={(e) => p({ relation: e.target.value })} />
+      {/* その他は続柄（何の連絡先か）が空なら保存しない（editBlockers）。空のあいだは赤の太字の欄名 */}
+      <input
+        className={`${INPUT_IN}${c.kind === "other" && c.relation.trim() === "" ? " placeholder:font-bold placeholder:text-danger" : ""}`}
+        placeholder="続柄"
+        aria-label={`${who} 続柄`}
+        aria-required={c.kind === "other" || undefined}
+        value={c.relation}
+        onChange={(e) => p({ relation: e.target.value })}
+      />
       <input className={INPUT_IN} placeholder="名前" aria-label={`${who} 名前`} value={c.name} onChange={(e) => p({ name: e.target.value })} />
       <input
         className={`${INPUT_IN} tabular-nums`}
@@ -579,10 +681,146 @@ function ContactRow({
           </option>
         ))}
       </Select>
-      <div className="flex items-center gap-1">
+      <Select className={INPUT_IN} aria-label={`${who} ${INTAKE_LABELS.reach}`} value={c.reach} onChange={(e) => p({ reach: e.target.value as ContactDraft["reach"] })} data-reach>
+        <option value="">{INTAKE_LABELS.reach} —</option>
+        {CONTACT_REACHES.map((r) => (
+          <option key={r} value={r}>
+            {CONTACT_REACH_LABELS[r]}
+          </option>
+        ))}
+      </Select>
+      {/* 緊急連絡先の順・支援者の順（人が決める。ルールの表は支援の順のある人を「支援者」と数える） */}
+      <OrderSelect label={INTAKE_LABELS.emergency} who={who} value={c.emergency} clash={clash.emergency} onChange={(v) => p({ emergency: v })} />
+      <OrderSelect label={INTAKE_LABELS.supporter} who={who} value={c.supporter} clash={clash.supporter} onChange={(v) => p({ supporter: v })} />
+      <div className="col-span-2 flex items-center gap-1">
         <input className={`${INPUT_IN} min-w-0 flex-1`} placeholder="備考" aria-label={`${who} 備考`} value={c.note} onChange={(e) => p({ note: e.target.value })} />
         {onDrop && <DropButton onClick={onDrop} name={who} />}
       </div>
     </div>
+  );
+}
+
+/** 時計の起点（停電・発災）。走らない状態の時計には出さない */
+function StartSelect({ label, value, onChange }: { label: string; value: RunningStart; onChange: (v: RunningStart) => void }) {
+  return (
+    <Select className={`${INPUT} w-24`} aria-label={`${label} ${INTAKE_LABELS.clockStart}`} value={value} onChange={(e) => onChange(e.target.value as RunningStart)}>
+      {(["outage", "disaster"] as const).map((s) => (
+        <option key={s} value={s}>
+          {CLOCK_START_LABELS[s]}
+        </option>
+      ))}
+    </Select>
+  );
+}
+
+const UNITS = ["minute", "hour", "day", "week"] as const;
+const ADDABLE_KINDS = ["device", "supply", "medication"] as const;
+
+/** 手で足す時計の行（T57）: 名前・区分・対象・値と単位（空は未確認）・起点・出典と書き足し。「外す」で下書きから消す */
+function NewClockRow({ clock: k, onChange, onDrop }: { clock: ClockDraft; onChange: (k: ClockDraft) => void; onDrop: () => void }) {
+  const p = (patch: Partial<ClockDraft>) => onChange({ ...k, ...patch });
+  const name = k.label.trim() || INTAKE_LABELS.addClock;
+  return (
+    <div className="grid grid-cols-2 gap-1 rounded bg-panel2 p-1.5" data-clock="new">
+      <input
+        className={`${INPUT_IN} col-span-2`}
+        maxLength={100}
+        placeholder={INTAKE_LABELS.clockName}
+        aria-label={`${INTAKE_LABELS.addClock} ${INTAKE_LABELS.clockName}`}
+        value={k.label}
+        onChange={(e) => p({ label: e.target.value })}
+      />
+      <Select className={INPUT_IN} aria-label={`${name} ${INTAKE_LABELS.clockKind}`} value={k.kind} onChange={(e) => p({ kind: e.target.value as ClockDraft["kind"] })}>
+        {ADDABLE_KINDS.map((x) => (
+          <option key={x} value={x}>
+            {CLOCK_KIND_LABELS[x]}
+          </option>
+        ))}
+      </Select>
+      <Select className={INPUT_IN} aria-label={`${name} ${INTAKE_LABELS.clockCategory}`} value={k.category} onChange={(e) => p({ category: e.target.value as ClockDraft["category"] })}>
+        {ADDABLE_CLOCK_CATEGORIES.map((c) => (
+          <option key={c} value={c}>
+            {CLOCK_CATEGORY_LABELS[c]}
+          </option>
+        ))}
+      </Select>
+      <input
+        className={`${INPUT_IN} tabular-nums`}
+        inputMode="decimal"
+        placeholder="未確認"
+        aria-label={`${name} 値`}
+        value={k.value}
+        onChange={(e) => p({ value: e.target.value })}
+      />
+      <Select className={INPUT_IN} aria-label={`${name} 単位`} value={k.unit} onChange={(e) => p({ unit: e.target.value as ClockDraft["unit"] })}>
+        {UNITS.map((u) => (
+          <option key={u} value={u}>
+            {CLOCK_UNIT_LABELS[u]}
+          </option>
+        ))}
+      </Select>
+      <Select className={INPUT_IN} aria-label={`${name} ${INTAKE_LABELS.clockStart}`} value={k.start} onChange={(e) => p({ start: e.target.value as RunningStart })}>
+        {(["outage", "disaster"] as const).map((s) => (
+          <option key={s} value={s}>
+            {INTAKE_LABELS.clockStart} {CLOCK_START_LABELS[s]}
+          </option>
+        ))}
+      </Select>
+      <Select className={INPUT_IN} aria-label={`${name} ${INTAKE_LABELS.clockSource}`} value={k.source} onChange={(e) => p({ source: e.target.value as ClockDraft["source"] })}>
+        <option value="">{INTAKE_LABELS.clockSource} —</option>
+        {CLOCK_SOURCES.map((s) => (
+          <option key={s} value={s}>
+            {CLOCK_SOURCE_LABELS[s]}
+          </option>
+        ))}
+      </Select>
+      <div className="col-span-2 flex items-center gap-1">
+        <input
+          className={`${INPUT_IN} min-w-0 flex-1`}
+          maxLength={100}
+          placeholder={INTAKE_LABELS.clockSourceNote}
+          aria-label={`${name} ${INTAKE_LABELS.clockSourceNote}`}
+          value={k.sourceNote}
+          onChange={(e) => p({ sourceNote: e.target.value })}
+        />
+        <DropButton onClick={onDrop} name={name} />
+      </div>
+    </div>
+  );
+}
+
+/** 順の選択（— / 1 / 2 / 3）。今の値が 3 より大きければその値も出す。重なった順は赤の太字 */
+function OrderSelect({
+  label,
+  who,
+  value,
+  clash,
+  onChange,
+}: {
+  label: string;
+  who: string;
+  value: OrderDraft;
+  clash: readonly number[];
+  onChange: (v: OrderDraft) => void;
+}) {
+  const orders: number[] = [...CONTACT_ORDERS];
+  if (value !== "" && !orders.includes(Number(value))) orders.push(Number(value));
+  const bad = value !== "" && clash.includes(Number(value));
+  return (
+    <Select
+      className={`${INPUT_IN}${bad ? " font-bold text-danger" : ""}`}
+      aria-label={`${who} ${label}`}
+      aria-invalid={bad || undefined}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      data-order={label}
+    >
+      <option value="">{label} —</option>
+      {orders.map((n) => (
+        <option key={n} value={String(n)}>
+          {label} {n}
+        </option>
+      ))}
+    </Select>
   );
 }

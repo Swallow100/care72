@@ -325,7 +325,7 @@ export const ITEM_VALUES: Record<LedgerItemKey, Resolver> = {
     const reason = pendingOf(c.ledger, "evacuation.hazards");
     if (hz.length === 0) return { cell: withPending(NONE, reason), flag: reason ? null : false, words: ["なし"] };
     return {
-      cell: withPending(value(hz.flatMap((h, i) => [...(i > 0 ? [sub("／")] : []), strong(HAZARD_LABELS[h.kind]), ...(h.depthM != null ? [sub(`${h.depthM} m`)] : [])])), reason),
+      cell: withPending(value(hz.flatMap((h, i) => [...(i > 0 ? [sub("／")] : []), strong(HAZARD_LABELS[h.kind]), ...(h.depthM != null ? [sub(`${h.depthM} m`)] : []), ...(h.note?.trim() ? [sub(h.note.trim())] : [])])), reason),
       flag: true,
       words: hz.map((h) => HAZARD_LABELS[h.kind]),
     };

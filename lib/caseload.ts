@@ -11,7 +11,7 @@ import { loadDisasterState } from "./disaster/db.ts";
 import { loadOfficeOverrides, type StoredOverride } from "./disaster/override.ts";
 import { personSituation, toSituation, type DisasterSituation, type DisasterState } from "./disaster/state.ts";
 import { toTriageSignal, triageInDisaster, withinDisaster } from "./disaster/triage.ts";
-import { DEPENDENCE_MARKS, DEVICE_LABELS, HAZARD_LABELS } from "./labels.ts";
+import { DEPENDENCE_MARKS, DEVICE_LABELS, hazardText } from "./labels.ts";
 import type { CallEntryRow } from "./list/calls.ts";
 import {
   buildRowDetail,
@@ -120,9 +120,8 @@ export function markKeysOf(clocks: ReadonlyArray<Pick<ClockRow, "category">>): C
 
 /** ハザード（浸水 3 m・土砂・津波） */
 export function hazardsOf(ledger: Pick<Ledger, "evacuation">): string[] {
-  return ledger.evacuation.hazards.map((h) =>
-    h.depthM != null ? `${HAZARD_LABELS[h.kind]} ${h.depthM} m` : HAZARD_LABELS[h.kind],
-  );
+  // 書き足し（その他の中身。T57）は括弧で添える（lib/labels.ts の hazardText）
+  return ledger.evacuation.hazards.map(hazardText);
 }
 
 /** 行の詳細の元（D1 の行。本人の id で引く）。発災時だけ */

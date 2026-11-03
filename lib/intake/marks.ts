@@ -11,8 +11,8 @@ import { categoryTier, type Tier } from "../triage/index.ts";
 
 export type MarkClock = Pick<ClockRow, "kind" | "category" | "label" | "starts_on">;
 
-/** 機器ごとの時計。電源で動く物は停電で走る（種の時計と同じ名前） */
-export const DEVICE_CLOCKS: Readonly<Record<DeviceKind, MarkClock>> = {
+/** 機器ごとの時計。電源で動く物は停電で走る（種の時計と同じ名前）。その他の機器（T57）は時計を作らない（要るなら手で足す） */
+export const DEVICE_CLOCKS: Readonly<Partial<Record<DeviceKind, MarkClock>>> = {
   oxygen: { kind: "device", category: "oxygen", label: "酸素 内蔵電池", starts_on: "outage" },
   ventilator: { kind: "device", category: "ventilator", label: "人工呼吸器 内蔵電池", starts_on: "outage" },
   suction: { kind: "device", category: "suction", label: "吸引 内蔵電池", starts_on: "outage" },
@@ -43,7 +43,7 @@ export function planMarkClocks(ledger: Ledger, clocks: ReadonlyArray<ExistingClo
   const has = (pred: (k: ExistingClock) => boolean) => clocks.some(pred) || out.some(pred);
   for (const d of ledger.medical.devices) {
     const spec = DEVICE_CLOCKS[d.kind];
-    if (!has((k) => k.category === spec.category)) out.push(spec);
+    if (spec && !has((k) => k.category === spec.category)) out.push(spec);
   }
   for (const m of ledger.medical.medications) {
     const spec = MEDICATION_CLOCKS[m.category];
@@ -51,6 +51,23 @@ export function planMarkClocks(ledger: Ledger, clocks: ReadonlyArray<ExistingClo
     if (!has((k) => k.category === spec.category && sameMedication(k.label, m.name))) out.push({ ...spec, label: m.name });
   }
   if (ledger.care.dementia === true && !has((k) => k.category === "dementia")) out.push(DEMENTIA_CLOCK);
+  return out;
+}
+
+/**
+ * 印の時計（T57）: 消すと planMarkClocks が次の保存で作り直す時計の id。保存のたびに台帳の機器・薬・認知症から足りない時計を
+ * 作るので、印の時計を時計だけで外しても戻ってくる。だから時計の「外す」は印でない時計（手で足した物など）にだけ出し、
+ * 印の時計は機器・薬を外す道（lib/intake/save.ts の planRemovals）で消す。同じ区分の時計が 2 つあれば、どちらも外せる
+ */
+export function markClockIds(ledger: Ledger, clocks: ReadonlyArray<ExistingClock & { id: string; kind: ClockRow["kind"] }>): Set<string> {
+  const out = new Set<string>();
+  for (const k of clocks) {
+    if (k.kind === "condition") {
+      out.add(k.id);
+      continue;
+    }
+    if (planMarkClocks(ledger, clocks.filter((x) => x.id !== k.id)).length > planMarkClocks(ledger, clocks).length) out.add(k.id);
+  }
   return out;
 }
 

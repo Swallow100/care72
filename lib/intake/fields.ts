@@ -40,7 +40,7 @@ export type FieldShape =
   | { type: "enumList"; options: Options }
   | { type: "bool" }
   | { type: "int"; unit?: string }
-  | { type: "text" }
+  | { type: "text"; max?: number }
   | { type: "list" };
 
 export type IntakeField = {
@@ -117,6 +117,13 @@ export const INTAKE_FIELDS: readonly IntakeField[] = [
   // 基本
   { key: "basic.sex", section: "basic", label: "性別", shape: { type: "enum", options: opts(SEXES, SEX_LABELS) } },
   { key: "basic.household", section: "basic", label: "世帯", shape: { type: "enum", options: opts(HOUSEHOLDS, HOUSEHOLD_LABELS) } },
+  {
+    key: "basic.householdNote",
+    section: "basic",
+    label: "世帯補記",
+    shape: { type: "text", max: 60 },
+    hint: "世帯の書き足し（施設の種類・その他の中身）。60 字まで",
+  },
   { key: "basic.contactMeans.landline", section: "basic", label: "固定電話", shape: { type: "bool" } },
   { key: "basic.contactMeans.mobile", section: "basic", label: "携帯", shape: { type: "bool" } },
   { key: "basic.contactMeans.email", section: "basic", label: "メール", shape: { type: "bool" } },
@@ -231,7 +238,7 @@ export function normalizeValue(field: IntakeField, raw: unknown): unknown {
       return Number.isInteger(n) && n >= 0 && n < 10000 ? n : null;
     }
     case "text":
-      return typeof s === "string" && s !== "" ? s.slice(0, 200) : null;
+      return typeof s === "string" && s !== "" ? s.slice(0, field.shape.max ?? 200) : null;
     case "list": {
       const items = Array.isArray(s) ? s.map((x) => String(x).trim()) : typeof s === "string" ? splitList(s) : [];
       const out = [...new Set(items.filter((x) => x !== "").map((x) => x.slice(0, 100)))];

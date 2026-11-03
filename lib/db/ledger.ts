@@ -63,6 +63,13 @@ type Medication = Ledger["medical"]["medications"][number];
 
 const MED_PARTS = ["schedule", "amount", "storage"] as const;
 
+type Hazard = Ledger["evacuation"]["hazards"][number];
+
+/** ハザードの要素（深さ・書き足しは有るときだけ持つ） */
+function hazardOf(kind: Hazard["kind"], depthM: number | undefined, note: string | undefined): Hazard {
+  return { kind, ...(depthM != null ? { depthM } : {}), ...(note ? { note } : {}) };
+}
+
 /** 空いた所だけを埋めた薬と、埋めた所 */
 function fillMedication(cur: Medication, next: MedicationValue): { med: Medication; filled: string[] } {
   const med = { ...cur };
@@ -230,12 +237,13 @@ export function applyLedgerChanges(ledger: Ledger, changes: ReadonlyArray<Intake
         const i = hazards.findIndex((h) => h.kind === c.value.kind);
         if (i >= 0) {
           if (c.overwrite) {
-            // 手で直す（編集）。深さを渡したとおりに（無ければ消す）
-            if (hazards[i].depthM === c.value.depthM) {
+            // 手で直す（編集）。深さと書き足し（T57）を渡したとおりに（無ければ消す）
+            const note = c.value.note?.trim() || undefined;
+            if (hazards[i].depthM === c.value.depthM && (hazards[i].note ?? undefined) === note) {
               skipped++;
               break;
             }
-            hazards[i] = c.value.depthM != null ? { kind: c.value.kind, depthM: c.value.depthM } : { kind: c.value.kind };
+            hazards[i] = hazardOf(c.value.kind, c.value.depthM, note);
             fields.push("evacuation.hazards");
             break;
           }
@@ -245,7 +253,7 @@ export function applyLedgerChanges(ledger: Ledger, changes: ReadonlyArray<Intake
           }
           hazards[i] = { ...hazards[i], depthM: c.value.depthM };
         } else {
-          hazards.push(c.value.depthM != null ? { kind: c.value.kind, depthM: c.value.depthM } : { kind: c.value.kind });
+          hazards.push(hazardOf(c.value.kind, c.value.depthM, c.value.note?.trim() || undefined));
         }
         fields.push("evacuation.hazards");
         break;

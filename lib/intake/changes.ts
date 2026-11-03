@@ -1,13 +1,15 @@
 // 入れる欄の変更 1 つの形。Claude の分け方（diff.ts）・問いの答え（ask.ts）・手入力の編集が同じ形を作り、
 // 保存（save.ts）が受け取って、今の台帳に当て直す（埋まっている欄は上書きしない）。ブラウザでも読む。
 
-import type { CheckStatus, ClockUnit, ConsentKind, ConsentStatus, ContactKind, Ledger, MedicationCategory, PendingStatus } from "../db/types.ts";
+import type { CheckStatus, ClockCategory, ClockKind, ClockSource, ClockStart, ClockUnit, ConsentKind, ConsentStatus, ContactKind, ContactReach, Ledger, MedicationCategory, PendingStatus } from "../db/types.ts";
 import {
   CHECK_STATUS_LABELS,
+  CLOCK_START_LABELS,
   CLOCK_UNIT_LABELS,
   CONSENT_KIND_LABELS,
   CONSENT_STATUS_LABELS,
   CONTACT_KIND_LABELS,
+  CONTACT_REACH_LABELS,
   DEVICE_LABELS,
   HAZARD_LABELS,
   MEDICATION_CATEGORY_LABELS,
@@ -38,6 +40,14 @@ export type ContactValue = {
   /** 夜間に来られるか。null は「未確認」に戻す（手で直すときだけ） */
   nightOk?: boolean | null;
   note?: string;
+  /**
+   * 緊急連絡先の順・避難支援等実施者の順（T57）。null は順を外す。人が手で直すときだけ（AI の分け方・問いの答えは付けない。
+   * ルールの表は支援者の順のある連絡先を「支援者」と数える）
+   */
+  emergencyOrder?: number | null;
+  supporterOrder?: number | null;
+  /** 距離（同居・近所・市内・県外・遠方）。null は未確認に戻す。人が手で直すときだけ（T57） */
+  reach?: ContactReach | null;
 };
 
 // overwrite（埋まっている所も変える）は人が選んだときだけ: 変更点の「既入力」を選んだとき（欄）と、
@@ -64,7 +74,22 @@ export type IntakeChange =
   /** 外す（欄を空にする・薬・機器・ハザード・特記・連絡先の行を外す）。手で直すときだけ（確認の窓のあと） */
   | { t: "remove"; target: RemoveTarget }
   /** 時計の値を今日確かめた（値は同じまま、確認の日付を今日に）。手で直すときだけ */
-  | { t: "clockSeen"; clockId: string };
+  | { t: "clockSeen"; clockId: string }
+  /** 時計を手で足す（T57）。値が null なら未確認。手で直すときだけ */
+  | { t: "clockAdd"; value: ClockAddValue }
+  /** 時計の起点（停電・発災）を変える（T57）。走らない状態の時計は変えない。手で直すときだけ */
+  | { t: "clockStart"; clockId: string; to: Exclude<ClockStart, "none"> };
+
+export type ClockAddValue = {
+  label: string;
+  kind: Exclude<ClockKind, "condition">;
+  category: Exclude<ClockCategory, "dementia">;
+  value: number | null;
+  unit: ClockUnit | null;
+  startsOn: Exclude<ClockStart, "none">;
+  source: ClockSource | null;
+  sourceNote?: string;
+};
 
 export type RemoveTarget =
   | { what: "field"; key: string }
@@ -73,7 +98,9 @@ export type RemoveTarget =
   | { what: "device"; kind: Device["kind"] }
   | { what: "hazard"; kind: Hazard["kind"] }
   | { what: "note"; value: string }
-  | { what: "contact"; id: string };
+  | { what: "contact"; id: string }
+  /** 時計だけを外す（T57）。印の時計（機器・薬・認知症から作る物）は次の保存で作り直されるので外さない */
+  | { what: "clock"; id: string };
 
 const join = (parts: Array<string | undefined | false>) => parts.filter((p): p is string => !!p && p.trim() !== "").join(" ");
 
@@ -92,8 +119,11 @@ export function contactText(c: Partial<ContactValue>): string {
     c.name,
     c.relation,
     c.kind && CONTACT_KIND_LABELS[c.kind],
+    c.reach ? CONTACT_REACH_LABELS[c.reach] : undefined,
     c.phone,
     c.nightOk === true ? "夜間可" : c.nightOk === false ? "夜間不可" : undefined,
+    c.emergencyOrder != null ? `緊急 ${c.emergencyOrder}` : undefined,
+    c.supporterOrder != null ? `支援 ${c.supporterOrder}` : undefined,
     c.note,
   ]);
 }
@@ -110,7 +140,7 @@ export function changeText(c: IntakeChange): string {
     case "device":
       return join([DEVICE_LABELS[c.value.kind], c.value.detail, c.value.schedule]);
     case "hazard":
-      return join([HAZARD_LABELS[c.value.kind], c.value.depthM != null ? `${c.value.depthM} m` : undefined]);
+      return join([HAZARD_LABELS[c.value.kind], c.value.depthM != null ? `${c.value.depthM} m` : undefined, c.value.note]);
     case "note":
       return c.value;
     case "pending":
@@ -127,6 +157,10 @@ export function changeText(c: IntakeChange): string {
       return "外す";
     case "clockSeen":
       return "確認";
+    case "clockAdd":
+      return join([c.value.label, c.value.value != null && c.value.unit ? `${c.value.value} ${CLOCK_UNIT_LABELS[c.value.unit]}` : "未確認", CLOCK_START_LABELS[c.value.startsOn]]);
+    case "clockStart":
+      return CLOCK_START_LABELS[c.to];
   }
 }
 

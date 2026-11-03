@@ -444,7 +444,8 @@ describe("ほかの人", () => {
     const d = text(sheetOf("p-06"), "drug.devices");
     expect(d).toContain("胃ろう 経管栄養");
     expect(d).toContain("栄養剤 3 日");
-    expect(d.endsWith("中断注意")).toBe(true);
+    // 経管栄養の行の終わりに中断注意。その後ろは「その他」の機器の行（T57 で種に足した）
+    expect(d.endsWith("中断注意 その他 電動ベッド（エアマット）")).toBe(true);
     expect(deviceMark("tube_feeding")).toEqual({ label: "中断注意", tier: 4, sourceIds: tierBasis(4).sourceIds });
     // 電気の機器（段 1・2）と透析（段 3）には付けない
     for (const k of ["ventilator", "suction", "oxygen", "dialysis"] as const) expect(deviceMark(k), k).toBeNull();

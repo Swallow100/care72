@@ -135,7 +135,7 @@ export function stateCounts(results: ReadonlyArray<Pick<TriageResult, "color">>)
   }));
 }
 
-const HAZARD_ORDER: Record<HazardKind, number> = { flood: 0, landslide: 1, tsunami: 2 };
+const HAZARD_ORDER: Record<HazardKind, number> = { flood: 0, landslide: 1, tsunami: 2, other: 3 };
 
 /**
  * ハザードごとの人数（浸水 3 m 2 人・土砂 2 人・津波 1 人・なし 2 人）。台帳のハザードから数え、地図の層からは数えない。

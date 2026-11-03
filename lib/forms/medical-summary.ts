@@ -35,6 +35,8 @@ import {
   DEVICE_LABELS,
   HAZARD_LABELS,
   HOUSEHOLD_LABELS,
+  hazardText,
+  householdText,
   MEDICATION_CATEGORY_LABELS,
   MEDICATION_FLAG_LABELS,
   STRUCTURE_LABELS,
@@ -731,9 +733,7 @@ export function buildMedicalSummary(rows: PersonPageRows, opts: MedicalBuildOpti
   if (housing?.floors != null) housingParts.push(housing.floors === 1 ? "平屋" : `${housing.floors} 階建`);
   if (housing?.floor != null) housingParts.push(`${housing.floor} 階に住む`);
   if (housing?.builtYear != null) housingParts.push(`${housing.builtYear} 年築`);
-  const hazardPieces: Piece[] = evacuation.hazards.map((h) =>
-    strong(h.depthM != null ? `${HAZARD_LABELS[h.kind]} ${h.depthM} m` : HAZARD_LABELS[h.kind]),
-  );
+  const hazardPieces: Piece[] = evacuation.hazards.map((h) => strong(hazardText(h)));
   const dwelling: Cell = value(
     housingParts.length > 0 ? [t(housingParts.join("・"))] : [unconfirmedPiece(housingReason)],
     [sub("ハザード"), ...(hazardPieces.length > 0 ? hazardPieces : [t(BLANK.none)])],
@@ -768,7 +768,7 @@ export function buildMedicalSummary(rows: PersonPageRows, opts: MedicalBuildOpti
   const vulnerable = elderly || handbook !== "" || otherCare || careLevel !== undefined || triage.dementia || triage.bedridden;
   const facts: Piece[] = [];
   if (careLevel) facts.push(strong(CARE_LEVEL_LABELS[careLevel]));
-  if (basic.household) facts.push(basic.household === "alone" ? strong(HOUSEHOLD_LABELS.alone) : t(HOUSEHOLD_LABELS[basic.household]));
+  if (basic.household) facts.push(basic.household === "alone" ? strong(HOUSEHOLD_LABELS.alone) : t(householdText(basic.household, basic.householdNote)));
   if (triage.dementia) facts.push(strong("認知症"));
   if (care.bedridden) facts.push(strong("寝たきり"));
   if (care.walking && care.walking !== "ok") facts.push(sub("歩行"), t(ABILITY_LABELS[care.walking]));
