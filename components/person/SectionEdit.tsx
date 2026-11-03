@@ -43,7 +43,9 @@ import {
   INTAKE_LABELS,
   MED_PARTS,
   MEDICATION_CATEGORY_LABELS,
+  PLACE_LABELS,
 } from "@/lib/labels";
+import { pickCenter } from "@/lib/map/center";
 import {
   blankContact,
   blankMed,
@@ -67,7 +69,11 @@ import {
   type RunningStart,
   editBlockers,
   orderClash,
+  selfTwice,
+  ADDRESS_MAX,
+  type FlagDraft,
 } from "@/lib/intake/edit";
+import { LocationPick } from "./LocationPick";
 import { INTAKE_FIELDS } from "@/lib/intake/fields";
 import { markClockIds } from "@/lib/intake/marks";
 import { FieldInput } from "./IntakeChanges";
@@ -78,6 +84,8 @@ import { StateText } from "./parts";
 
 /** 欄の名前と入力を並べる段（読む側の行と同じ幅） */
 const ROW = "grid grid-cols-[4.5rem_minmax(0,1fr)] items-center gap-x-2";
+/** 同じ段で、右が高い物（位置の地図）。欄の名前は上に揃える */
+const ROW_TOP = "grid grid-cols-[4.5rem_minmax(0,1fr)] items-start gap-x-2";
 const SUB = "text-xs text-muted";
 
 type Props = {
@@ -101,9 +109,11 @@ export function SectionEdit({ section, data, head, children }: Props) {
     const c = orderClash(open.draft);
     return c.emergency.length > 0 || c.supporter.length > 0;
   })();
-  // 「その他」の中身が空（続柄・名前）。種類だけでは何か分からないので保存しない（T57）
-  const blockers = open ? editBlockers(section, open.draft) : [];
-  const stopped = clashed || blockers.length > 0;
+  // 「その他」の中身が空（続柄・名前）。種類だけでは何か分からないので保存しない（T57）。住所の片方だけ（T68）も
+  const blockers = open ? editBlockers(section, open.draft, open.base) : [];
+  // 本人の電話が 2 つ（T68。1 人 1 つ。サーバーも断る）
+  const twice = open !== null && section === "people" && selfTwice(open.draft);
+  const stopped = clashed || twice || blockers.length > 0;
   const set = (patch: Partial<EditDraft>) => setOpen((o) => (o ? { ...o, draft: { ...o.draft, ...patch } } : o));
 
   async function save() {
@@ -449,9 +459,18 @@ export function SectionForm({ section, data, draft, set }: FormProps) {
               ].join("・")}
             </p>
           )}
+          {selfTwice(draft) && (
+            <p role="alert" className="text-xs font-bold text-danger" data-self-twice>
+              {INTAKE_LABELS.selfTwice}
+            </p>
+          )}
           {draft.contacts.map((c, i) => {
             const key = c.id ? dropKey.contact(c.id) : null;
             const cur = data.contacts.find((x) => x.id === c.id);
+            // 本人の電話（T68）は電話と備考だけ。外さない
+            if (c.kind === "self") {
+              return <SelfRow key={c.id ?? i} c={c} onChange={(next) => set({ contacts: draft.contacts.map((x, j) => (j === i ? next : x)) })} />;
+            }
             return key && draft.drops.includes(key) ? (
               <DroppedRow
                 key={c.id ?? i}
@@ -469,7 +488,14 @@ export function SectionForm({ section, data, draft, set }: FormProps) {
             );
           })}
           {draft.newContacts.map((c, i) => (
-            <ContactRow key={`new-${i}`} c={c} isNew clash={clash} onChange={(next) => set({ newContacts: draft.newContacts.map((x, j) => (j === i ? next : x)) })} />
+            <ContactRow
+              key={`new-${i}`}
+              c={c}
+              isNew
+              clash={clash}
+              onChange={(next) => set({ newContacts: draft.newContacts.map((x, j) => (j === i ? next : x)) })}
+              onDrop={() => set({ newContacts: draft.newContacts.filter((_, j) => j !== i) })}
+            />
           ))}
           <Button size="sm" icon={AddIcon} onClick={() => set({ newContacts: [...draft.newContacts, blankContact()] })}>
             {INTAKE_LABELS.addContact}
@@ -477,9 +503,49 @@ export function SectionForm({ section, data, draft, set }: FormProps) {
           <div className="space-y-1">{fieldRows}</div>
         </div>
       );
-    case "basic":
+    case "basic": {
+      // 住所（市・町名）と位置（T68）。手入力だけ（AI の分け方には無い）。町名は事業所の今の町名を候補に出して綴りをそろえる
+      const townsId = `towns-${data.personId}`;
+      const towns = data.place?.towns ?? [];
       return (
         <div className="space-y-1">
+          <label className={ROW} data-field="basic.address.city">
+            <span className={SUB}>{PLACE_LABELS.city}</span>
+            <input
+              className={INPUT}
+              maxLength={ADDRESS_MAX.city}
+              autoComplete="off"
+              value={draft.address.city}
+              onChange={(e) => set({ address: { ...draft.address, city: e.target.value } })}
+            />
+          </label>
+          <label className={ROW} data-field="basic.address.town">
+            <span className={SUB}>{PLACE_LABELS.town}</span>
+            <input
+              className={INPUT}
+              maxLength={ADDRESS_MAX.town}
+              autoComplete="off"
+              list={towns.length > 0 ? townsId : undefined}
+              value={draft.address.town}
+              onChange={(e) => set({ address: { ...draft.address, town: e.target.value } })}
+            />
+          </label>
+          {towns.length > 0 && (
+            <datalist id={townsId}>
+              {towns.map((t) => (
+                <option key={t} value={t} />
+              ))}
+            </datalist>
+          )}
+          <div className={ROW_TOP} data-field="basic.location">
+            <span className={`${SUB} pt-1`}>{PLACE_LABELS.location}</span>
+            <LocationPick
+              value={draft.location}
+              onChange={(v) => set({ location: v })}
+              center={pickCenter(draft.location, data.place?.center)}
+              label={PLACE_LABELS.location}
+            />
+          </div>
           {fieldRows}
           {data.ledger.notes.map((n, i) => {
             const key = dropKey.note(i);
@@ -503,6 +569,7 @@ export function SectionForm({ section, data, draft, set }: FormProps) {
           </label>
         </div>
       );
+    }
     case "consent":
       return (
         <div className="space-y-1">
@@ -646,8 +713,8 @@ function ContactRow({
   return (
     <div className="grid grid-cols-2 gap-1 rounded bg-panel2 p-1.5" data-contact={c.id ?? "new"}>
       {isNew ? (
-        <Select className={INPUT_IN} aria-label="連絡先の種類" value={c.kind} onChange={(e) => p({ kind: e.target.value as ContactDraft["kind"] })}>
-          {CONTACT_KINDS.filter((k): k is Exclude<ContactKind, "self"> => k !== "self").map((k) => (
+        <Select className={INPUT_IN} aria-label="連絡先の種類" value={c.kind} onChange={(e) => p({ kind: e.target.value as ContactKind })}>
+          {CONTACT_KINDS.map((k) => (
             <option key={k} value={k}>
               {CONTACT_KIND_LABELS[k]}
             </option>
@@ -656,6 +723,77 @@ function ContactRow({
       ) : (
         <span className="self-center text-xs font-bold">{CONTACT_KIND_LABELS[c.kind]}</span>
       )}
+      {/* 足す行で「本人」を選んだら、本人の電話の欄（電話と備考）だけ（T68） */}
+      {c.kind === "self" ? (
+        <SelfFields c={c} p={p} onDrop={onDrop} />
+      ) : (
+        <OtherFields c={c} p={p} who={who} clash={clash} onDrop={onDrop} />
+      )}
+    </div>
+  );
+}
+
+/** 本人の電話の行（T68）。電話と備考（固定電話・携帯）だけ。今の行は外さない */
+function SelfRow({ c, onChange }: { c: ContactDraft; onChange: (c: ContactDraft) => void }) {
+  const p = (patch: Partial<ContactDraft>) => onChange({ ...c, ...patch });
+  return (
+    <div className="grid grid-cols-2 gap-1 rounded bg-panel2 p-1.5" data-contact={c.id ?? "new"} data-contact-self>
+      <span className="self-center text-xs font-bold">{CONTACT_KIND_LABELS.self}</span>
+      <SelfFields c={c} p={p} />
+    </div>
+  );
+}
+
+function SelfFields({ c, p, onDrop }: { c: ContactDraft; p: (patch: Partial<ContactDraft>) => void; onDrop?: () => void }) {
+  const who = CONTACT_KIND_LABELS.self;
+  return (
+    <>
+      <input
+        className={`${INPUT_IN} tabular-nums`}
+        placeholder="電話"
+        inputMode="tel"
+        aria-label={`${who} 電話`}
+        value={c.phone}
+        onChange={(e) => p({ phone: e.target.value })}
+      />
+      <div className="col-span-2 flex items-center gap-1">
+        <input className={`${INPUT_IN} min-w-0 flex-1`} placeholder="備考" aria-label={`${who} 備考`} value={c.note} onChange={(e) => p({ note: e.target.value })} />
+        {onDrop && <DropButton onClick={onDrop} name={who} />}
+      </div>
+    </>
+  );
+}
+
+/** 有無の選択（— / あり / なし）。スマホ・車（T68） */
+function FlagSelect({ label, who, value, onChange }: { label: string; who: string; value: FlagDraft; onChange: (v: FlagDraft) => void }) {
+  return (
+    <Select className={INPUT_IN} aria-label={`${who} ${label}`} value={value} onChange={(e) => onChange(e.target.value as FlagDraft)} data-flag={label}>
+      <option value="">{label} —</option>
+      <option value="yes">
+        {label} {PLACE_LABELS.yes}
+      </option>
+      <option value="no">
+        {label} {PLACE_LABELS.no}
+      </option>
+    </Select>
+  );
+}
+
+function OtherFields({
+  c,
+  p,
+  who,
+  clash,
+  onDrop,
+}: {
+  c: ContactDraft;
+  p: (patch: Partial<ContactDraft>) => void;
+  who: string;
+  clash: OrderClash;
+  onDrop?: () => void;
+}) {
+  return (
+    <>
       {/* その他は続柄（何の連絡先か）が空なら保存しない（editBlockers）。空のあいだは赤の太字の欄名 */}
       <input
         className={`${INPUT_IN}${c.kind === "other" && c.relation.trim() === "" ? " placeholder:font-bold placeholder:text-danger" : ""}`}
@@ -692,11 +830,14 @@ function ContactRow({
       {/* 緊急連絡先の順・支援者の順（人が決める。ルールの表は支援の順のある人を「支援者」と数える） */}
       <OrderSelect label={INTAKE_LABELS.emergency} who={who} value={c.emergency} clash={clash.emergency} onChange={(v) => p({ emergency: v })} />
       <OrderSelect label={INTAKE_LABELS.supporter} who={who} value={c.supporter} clash={clash.supporter} onChange={(v) => p({ supporter: v })} />
+      {/* スマホ・車の有無（T68）。スマホ ありの家族・支援者は訓練の押せる人になる */}
+      <FlagSelect label={PLACE_LABELS.smartphone} who={who} value={c.smartphone ?? ""} onChange={(v) => p({ smartphone: v })} />
+      <FlagSelect label={PLACE_LABELS.car} who={who} value={c.car ?? ""} onChange={(v) => p({ car: v })} />
       <div className="col-span-2 flex items-center gap-1">
         <input className={`${INPUT_IN} min-w-0 flex-1`} placeholder="備考" aria-label={`${who} 備考`} value={c.note} onChange={(e) => p({ note: e.target.value })} />
         {onDrop && <DropButton onClick={onDrop} name={who} />}
       </div>
-    </div>
+    </>
   );
 }
 

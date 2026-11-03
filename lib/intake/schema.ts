@@ -8,17 +8,17 @@ import { EXTRA_PENDING_KEYS, INTAKE_KEYS } from "./fields.ts";
 
 export const PENDING_KEYS = [...INTAKE_KEYS, ...EXTRA_PENDING_KEYS] as [string, ...string[]];
 
-/** 本人の電話（self）は入れる欄でも編集でも作らない。保存（lib/intake/save.ts）が受ける連絡先の種類 */
-export const CONTACT_KINDS_FOR_EDIT = CONTACT_KINDS.filter((k) => k !== "self") as [
-  Exclude<(typeof CONTACT_KINDS)[number], "self">,
-  ...Array<Exclude<(typeof CONTACT_KINDS)[number], "self">>,
-];
+/**
+ * 保存（lib/intake/save.ts）が受ける連絡先の種類。本人の電話（self）は本人のページの面の編集でだけ作る・直す（T68）。
+ * AI の分け方・問いの答えの保存に self が混ざると、保存が断る（save.ts の editOnly）
+ */
+export const CONTACT_KINDS_FOR_EDIT = [...CONTACT_KINDS] as [(typeof CONTACT_KINDS)[number], ...Array<(typeof CONTACT_KINDS)[number]>];
 
 /**
- * AI の分け方の連絡先の種類。その他（T57）は続柄が無いと誰か分からないので、機器・ハザードのその他と同じく AI は作らない
- * （人が編集の画面で続柄を書いて足す）
+ * AI の分け方の連絡先の種類。本人の電話（self）は手入力だけ（T68。住所・位置と同じく、AI の分け方に足さない）。
+ * その他（T57）は続柄が無いと誰か分からないので、機器・ハザードのその他と同じく AI は作らない（人が編集の画面で続柄を書いて足す）
  */
-export const CONTACT_KINDS_FOR_INTAKE = CONTACT_KINDS_FOR_EDIT.filter((k) => k !== "other") as [
+export const CONTACT_KINDS_FOR_INTAKE = CONTACT_KINDS.filter((k) => k !== "self" && k !== "other") as [
   Exclude<(typeof CONTACT_KINDS)[number], "self" | "other">,
   ...Array<Exclude<(typeof CONTACT_KINDS)[number], "self" | "other">>,
 ];
