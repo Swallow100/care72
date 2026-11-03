@@ -15,10 +15,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { MedicalMarkList, NarrowMarks } from "@/components/list/NarrowMarks";
+import { StateFilter } from "@/components/list/StateFilter";
 import { StateTag, TONE_TEXT } from "@/components/person/parts";
 import { Button } from "@/components/ui/Button";
 import { CloseIcon, OpenIcon, SortIcon, UnlistIcon } from "@/components/ui/Icon";
-import { CountLabel, countClass } from "@/components/ui/Tag";
 import { LinkPending } from "@/components/ui/LinkPending";
 import { SORT_ICON, TABLE, TABLE_BOX, TH } from "@/components/ui/table";
 import type { StaffRow } from "@/lib/custody/board";
@@ -115,24 +115,8 @@ export function StaffTable({
             ))}
           </Select>
         </label>
-        {/* 見出し「状態」は押せない言葉（地なし）。切替は地のあるボタンで、状態は人数の帯と同じ印と数（1 人以上は塗り、0 は灰。T66） */}
-        <fieldset className="flex flex-wrap items-center gap-1" data-filter="state">
-          <legend className="sr-only">{CUSTODY_LABELS.state}</legend>
-          <span className="mr-0.5 text-muted" aria-hidden>
-            {CUSTODY_LABELS.state}
-          </span>
-          <FilterButton active={color === ""} onClick={() => setColor("")}>
-            {CUSTODY_LABELS.filterAll}
-          </FilterButton>
-          {STAFF_COLORS.map((c) => (
-            <FilterButton key={c} active={color === c} onClick={() => setColor(c)} label={`${COLOR_LABELS[c]} ${stateCounts[c]}`} data-state-filter={c}>
-              <CountLabel tone={COLOR_TONES[c]} count={stateCounts[c]}>
-                {COLOR_LABELS[c]}
-              </CountLabel>
-              <span className={`font-bold tabular-nums ${countClass(stateCounts[c])}`}>{stateCounts[c]}</span>
-            </FilterButton>
-          ))}
-        </fieldset>
+        {/* 見出し「状態」は押せない言葉、切替は押せるボタン（担当一覧の絞込と同じ部品。T66） */}
+        <StateFilter label={CUSTODY_LABELS.state} allLabel={CUSTODY_LABELS.filterAll} current={color || null} counts={stateCounts} onPick={(c) => setColor(c ?? "")} />
         <label className="flex items-center gap-1.5">
           <span className="text-muted">{CUSTODY_LABELS.nameKana}</span>
           <input
@@ -182,39 +166,6 @@ export function StaffTable({
         </table>
       </div>
     </div>
-  );
-}
-
-/**
- * 状態の切替のボタン。押せる物と分かるように面の中の灰の地（見出しの「状態」は地なし）。選んだ印は操作の色の枠（テーマ色の下地は敷かない。
- * 地図の層の切替と同じ形）。高さは 28px
- */
-function FilterButton({
-  active,
-  onClick,
-  label,
-  children,
-  ...rest
-}: {
-  active: boolean;
-  onClick: () => void;
-  /** 読み上げの名前（中が印と数のとき） */
-  label?: string;
-  children: React.ReactNode;
-  "data-state-filter"?: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      aria-label={label}
-      className={`inline-flex h-7 items-center gap-1 rounded bg-panel2 px-2 outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-accent ${active ? "font-bold text-ink ring-2 ring-accent ring-inset" : "text-ink"}`}
-      data-press
-      {...rest}
-    >
-      {children}
-    </button>
   );
 }
 

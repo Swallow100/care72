@@ -110,12 +110,15 @@ export default async function CaseloadPage({ searchParams }: Props) {
   const view: ListView = { dir, filter };
   const count = filterActive(filter) ? `${rows.length} / ${all.length} 人` : `${all.length} 人`;
   const options = filterOptions(data.rows);
+  // 色ごとの人数（絞る前）。上の人数と絞込の帯の状態の切替で同じ数
+  const colorCounts = countColors(all.flatMap((r) => (r.triage ? [r.triage.color] : [])));
   const filterBar = (actions?: React.ReactNode) => (
     <FilterBar
       filter={filter}
       areas={options.areas}
       marks={options.marks}
       disaster={disaster}
+      colorCounts={colorCounts}
       sort={key}
       dir={dir}
       open={open}
@@ -188,7 +191,7 @@ export default async function CaseloadPage({ searchParams }: Props) {
         {s && (
           <Panel as="div" className="mt-3 px-4">
             <DisasterSummary
-              counts={countColors(all.flatMap((r) => (r.triage ? [r.triage.color] : [])))}
+              counts={colorCounts}
               disaster={elapsedText(s.disasterAt, s.now)}
               outage={s.outageAt ? { elapsed: elapsedText(s.outageAt, s.now), area: s.outageTowns !== null } : null}
               at={shortJst(now)}
