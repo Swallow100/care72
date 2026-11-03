@@ -23,7 +23,7 @@ import { receive } from "../custody/store.ts";
 import { d1FromSqlite, migratedSqlite } from "../db/test-d1.ts";
 import { COLOR_LABELS } from "../labels.ts";
 import { listHref, listQueryOf, listView, type ListQuery } from "../list/view.ts";
-import { issueQr } from "../qr/store.ts";
+import { issueQr, loadQrRow, qrState } from "../qr/store.ts";
 import { caseloadColumns, caseloadCsvResponse } from "./caseload-csv.ts";
 import { CSV_BOM, csvFileNames, csvText } from "./form9-csv.ts";
 import { buildOwnSheetMedical } from "./medical-summary.ts";
@@ -470,7 +470,9 @@ describe("一括印刷のまとめ読み（D1 の batch・IN）", () => {
   });
 
   it("まとめ読みの紙は 1 人の頁の道（loadPersonDocument）と同じ（表・裏の要約・QR）", async () => {
-    await issueQr(db, "p-03", NOW);
+    // QR の期限の日数（T64 の qr_ttl_days）もまとめ読みで同じに読む
+    await issueQr(db, "p-03", NOW, 30);
+    await issueQr(db, "p-05", NOW);
     sqlite.prepare(`UPDATE consents SET status = 'refused' WHERE person_id = 'p-02' AND kind = 'supporters'`).run();
     const ids = SEED_PEOPLE.map((p) => p.person.id);
     const batch = await loadOwnSheets(db, yamamoto(), ids, opts);
@@ -481,7 +483,11 @@ describe("一括印刷のまとめ読み（D1 の batch・IN）", () => {
       expect(item.sheet, item.personId).toEqual(buildOwnSheet(one.rows, o));
       expect(item.medical, item.personId).toEqual(buildOwnSheetMedical(one.rows, o));
     }
-    expect(batch.items.find((x) => x.personId === "p-03")!.qr.status).toBe("active");
+    for (const id of ["p-03", "p-05", "p-01"]) {
+      const want = qrState((await loadQrRow(db, id))!, opts.nowSec);
+      expect(batch.items.find((x) => x.personId === id)!.qr, id).toMatchObject({ status: want.status, expiresAt: want.expiresAt });
+    }
+    expect(batch.items.find((x) => x.personId === "p-03")!.qr.expiresAt).toBe(new Date(Date.parse(NOW) + 30 * 86_400_000).toISOString());
   });
 
   it("壁: 別の事業所の本人・無い id は読まない（連絡先・同意・時計も事業所の中だけ）", async () => {

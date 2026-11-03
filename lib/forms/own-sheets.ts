@@ -73,7 +73,7 @@ type PersonJoin = Pick<
   | "version"
 > &
   PersonReportedAge &
-  QrRow & { care_manager_name: string | null };
+  Required<QrRow> & { care_manager_name: string | null };
 
 /**
  * 事業所の本人を何人でもまとめて読む（D1 の batch 1 回）。本人の 1 枚に要る行（本人・担当の名前・連絡先・同意・時計）と QR の行。
@@ -90,7 +90,7 @@ export async function loadOfficeSheetRows(
       .prepare(
         `SELECT p.id, p.office_id, p.care_manager_id, p.name, p.kana, p.birth_date, p.plan_status, p.ledger,
                 p.origin, p.self_report_unreliable, p.created_at, p.updated_at, p.version, p.reported_age,
-                p.qr_generation, p.qr_issued_at, a.display_name AS care_manager_name
+                p.qr_generation, p.qr_issued_at, p.qr_ttl_days, a.display_name AS care_manager_name
            FROM people p LEFT JOIN accounts a ON a.id = p.care_manager_id
           WHERE p.id IN (${IDS}) AND p.office_id = ?2`,
       )
@@ -148,7 +148,8 @@ export async function loadOfficeSheetRows(
         // 本人の 1 枚と裏の要約は経過と提供の記録を読まない（上の注）
         timeline: [],
       },
-      qr: { qr_generation: p.qr_generation, qr_issued_at: p.qr_issued_at },
+      // QR の列は lib/qr/store.ts の loadQrRow と同じ（期限の日数 qr_ttl_days も。T64）
+      qr: { qr_generation: p.qr_generation, qr_issued_at: p.qr_issued_at, qr_ttl_days: p.qr_ttl_days ?? null },
     });
   }
   return out;
