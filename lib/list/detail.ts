@@ -61,7 +61,22 @@ export type SignalForDetail = Pick<
   | "ai_memo"
   | "memo"
   | "occurred_at"
->;
+> &
+  /** 申告位置とまとめ（T69b、migration 0023）。SELECT * で来る。前からの組み立て（テスト・訓練）では無くてもよい */
+  Partial<
+    Pick<
+      SignalRow,
+      | "reported_lat"
+      | "reported_lng"
+      | "reported_accuracy_m"
+      | "reported_at"
+      | "ai_summary"
+      | "ai_summary_model"
+      | "ai_summary_at"
+      | "ai_summary_error"
+      | "summary"
+    >
+  >;
 
 /** 信号の出どころの言い方。訓練の本人役（agent）は本人（ルールの表と同じ） */
 export const SOURCE_LABELS: Record<SignalSource, string> = {
