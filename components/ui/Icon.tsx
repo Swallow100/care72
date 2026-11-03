@@ -10,8 +10,8 @@ export {
   ArrowUturnLeftIcon as RestoreIcon, // 外した物を戻す
   ArrowRightStartOnRectangleIcon as LogoutIcon, // ログアウト（扉から出る矢印）
   ArrowsRightLeftIcon as AssignIcon, // 担当の割当・移す
+  CheckCircleIcon as ChosenIcon, // 選んだ印（アンケートの選択肢、components/ui/Select の一覧）
   CheckIcon as SaveIcon, // 保存
-  CheckIcon as ChosenIcon, // 一覧で選んでいる項目の印（components/ui/Select）
   ChevronDownIcon as OpenIcon, // 開く・畳む
   ChevronLeftIcon as BackIcon, // 戻る
   ClipboardDocumentIcon as CopyIcon, // コピー
@@ -20,7 +20,9 @@ export {
   EyeSlashIcon as HideIcon, // パスワードを隠す
   LockClosedIcon as PasswordIcon, // パスワードの欄の印
   MagnifyingGlassIcon as SearchIcon, // 検索
+  LinkIcon, // リンク作成（アンケートの招待）
   MinusCircleIcon as RemoveIcon, // 外す（人でない物。対応表の欄など）
+  PaperAirplaneIcon as SendIcon, // 送信（アンケートの答え）
   PhoneIcon, // 電話
   PlayIcon, // 再生・開始
   PlusIcon as AddIcon, // 追加（人でない物）

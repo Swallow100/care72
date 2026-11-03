@@ -1,20 +1,18 @@
 import type { Metadata } from "next";
-import { BIZ_UDPGothic, M_PLUS_2 } from "next/font/google";
+import { BIZ_UDPGothic, Inter } from "next/font/google";
 import { AppHeader } from "@/components/AppHeader";
 import { DialogHost } from "@/components/ui/DialogHost";
 import { INSTALL_SCRIPT, PRESS_SCRIPT } from "@/lib/ui/head-scripts";
 import "./globals.css";
 
-// 画面の書体は M PLUS 2（T35 で IBM Plex Sans JP から替えた。比較は docs/progress/t35.md）。
-// 数字がもともと等幅で、tabular-nums を当てなくても表の時刻・残り時間・人数の縦が揃う（「0000」と「1111」が同じ 81px）。
-// 可変の太さで、見出し・本文・小さな字の段を太さでも分けられる。漢字とかなの太さの釣り合いがよく、12〜13px でも潰れない。
-// globals.css の --font-sans。
-const mplus2 = M_PLUS_2({
+// 画面の書体は Inter（英数字。OFL）＋ OS の日本語書体（Hiragino Sans・Yu Gothic UI・Meiryo。globals.css の --font-sans）。
+// 作者の判断（11/3 10:3x）: Web の日本語書体（M PLUS 2 など）は「AI が作った画面」の顔になる。作者の別のアプリと
+// Claude Code の画面と同じく、英数字だけ Inter で、日本語は端末の書体に任せると、端末のアプリと同じ顔になる。
+// Inter は数字を等幅にできる（tabular-nums）ので、表の時刻・残り時間・人数の縦が揃う。日本語の書体は配信に入れない（要求が増えない）。
+const inter = Inter({
   subsets: ["latin"],
-  // 日本語の書体は切れ端が多く、全部を先読みすると 70 以上の要求になる。使う所だけ読ませる。
-  preload: false,
   display: "swap",
-  variable: "--font-mplus2",
+  variable: "--font-inter",
 });
 
 // 本人・家族のスマホと本人の 1 枚だけ BIZ UDPGothic（UD の書体。大きな字とふりがなで読み違えにくい）。globals.css の --font-ud。
@@ -33,7 +31,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="ja" className={`${mplus2.variable} ${bizUd.variable}`}>
+    <html lang="ja" className={`${inter.variable} ${bizUd.variable}`}>
       <head>
         {/* 押したときの灰色と、ホーム画面に追加の受け口（T44。lib/ui/head-scripts.ts）。部品が描かれる前に動かす */}
         <script dangerouslySetInnerHTML={{ __html: PRESS_SCRIPT }} />

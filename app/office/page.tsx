@@ -53,6 +53,9 @@ import { listUnaffiliated, type UnaffiliatedItem } from "@/lib/custody/takeover"
 import { canResetDemo, OFFICE_RESET_PATH, parseResetState, type ResetState } from "@/lib/seed/http";
 import { RESET_LABELS } from "@/lib/seed/labels";
 import { CONFIRM_LABELS } from "@/lib/ui/labels";
+import { SurveyPanel } from "@/components/office/SurveyPanel";
+import { loadSurveyOverview, type SurveyOverview } from "@/lib/survey/store";
+import { headers } from "next/headers";
 
 // D1 を毎回読む
 export const dynamic = "force-dynamic";
@@ -86,17 +89,20 @@ export default async function OfficePage({ searchParams }: Props) {
   let careManagers: CareManagerItem[];
   let officePeople: OfficePersonItem[];
   let unaffiliated: UnaffiliatedItem[];
+  let survey: SurveyOverview;
   let counts: ReturnType<typeof colorCounts> | null = null;
   let people = 0;
   try {
     const { env } = await getCloudflareContext({ async: true });
-    [state, log, towns, careManagers, officePeople, unaffiliated] = await Promise.all([
+    [state, log, towns, careManagers, officePeople, unaffiliated, survey] = await Promise.all([
       loadDisasterState(env.DB, scope.officeId),
       loadOfficeLog(env.DB, scope.officeId),
       loadOfficeTowns(env.DB, scope.officeId),
       listCareManagers(env.DB, scope.officeId),
       listOfficePeople(env.DB, scope.officeId, today),
       listUnaffiliated(env.DB, today),
+      // アンケート（T42）。審査員は審査員が作った物だけ
+      loadSurveyOverview(env.DB, actor.officeId, { judge: principal.judge }, now),
     ]);
     const f9 = form9Scope(principal);
     const situation = toSituation(state, now);
@@ -141,6 +147,8 @@ export default async function OfficePage({ searchParams }: Props) {
           {/* 所属なし（T23）は引き受ける人がいるときだけ。担当の長い表の前に置く */}
           <UnaffiliatedSection people={unaffiliated} />
           <AssignSection people={officePeople} careManagers={careManagers} error={peopleError} />
+          {/* ケアマネ向けアンケートの招待のリンクと答え（T42） */}
+          <SurveyPanel overview={survey} origin={await requestOrigin()} />
         </div>
         <div className="grid min-w-0 content-start gap-3">
           <Form9Section people={people} counts={counts} />
@@ -156,6 +164,14 @@ export default async function OfficePage({ searchParams }: Props) {
       </div>
     </Page>
   );
+}
+
+/** 今の要求の origin（アンケートのリンクの URL を作る。手元の dev と配信で同じに動く） */
+async function requestOrigin(): Promise<string> {
+  const h = await headers();
+  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost";
+  const proto = h.get("x-forwarded-proto") ?? (/^(localhost|127\.0\.0\.1)(:|$)/.test(host) ? "http" : "https");
+  return `${proto}://${host}`;
 }
 
 /** 災害モードの切替。今の状態は枠と太字（下地は敷かない）、ほかは無色。大雨・地震はすぐ切り替え、平時に戻すは確認の欄を通す */
