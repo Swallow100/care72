@@ -7,6 +7,7 @@ import { getCloudflareContext } from "@opennextjs/cloudflare";
 import Link from "next/link";
 import { Panel, PanelHead } from "@/components/ui/Panel";
 import { SubmitButton } from "@/components/ui/SubmitButton";
+import { ABOUT_SEPARATOR } from "@/lib/forms/catalog";
 import { listPlanForms, loadPlanForm, OFFICE_FORM_PATH, type PlanFormOption } from "@/lib/forms/plan-form";
 
 // 選んだ印は枠だけ（押した行に付く。下地は敷かない）
@@ -39,7 +40,7 @@ export async function FormChoice({ officeId, error }: { officeId: string; error?
               <span className="min-w-0">
                 <span className="block">{o.entry.short}</span>
                 <span className="block text-xs text-muted">
-                  {o.entry.official}・{o.entry.source}
+                  {o.entry.official}{ABOUT_SEPARATOR}{o.entry.version}
                 </span>
               </span>
             </label>

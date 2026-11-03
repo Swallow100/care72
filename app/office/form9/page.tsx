@@ -102,7 +102,7 @@ export default async function Form9Page({ searchParams }: Props) {
       <p className="mt-1 text-xs text-muted">
         並び {disaster && situation ? `色 → 時計の残り → 支援者なし → 骨格（${formatJst(situation.now)} 時点）` : NORMAL_ORDER_LABELS.join(" → ")}
       </p>
-      <FormAbout entry={DOCUMENT_CATALOG.form9} className="screen-only" />
+      <FormAbout entry={DOCUMENT_CATALOG.form9} official={false} className="screen-only" />
 
       <div className="mt-3 grid gap-3">
         {report && <Form9Report text={report} tally={tally(sheet.rows)} />}
