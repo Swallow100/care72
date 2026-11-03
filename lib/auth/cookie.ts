@@ -1,5 +1,6 @@
 // セッションの cookie と、フォームの POST の返し方。
-// cookie は HttpOnly・SameSite=Lax・Path=/・7 日。Secure は https のときだけ付ける（手元の http://localhost では外す）。
+// cookie は HttpOnly・SameSite=Lax・Path=/・7 日（スマホ入口のセッションはリンクの残りの期限。T69a）。
+// Secure は https のときだけ付ける（手元の http://localhost では外す）。
 
 import { SESSION_TTL_SEC } from "./session.ts";
 
@@ -15,9 +16,9 @@ function attrs(requestUrl: string, maxAge: number): string {
   return parts.join("; ");
 }
 
-/** Set-Cookie の値 */
-export function sessionCookie(token: string, requestUrl: string): string {
-  return `${SESSION_COOKIE}=${token}; ${attrs(requestUrl, SESSION_TTL_SEC)}`;
+/** Set-Cookie の値。maxAge（秒）の既定はセッションの 7 日。スマホ入口（T69a）はリンクの残りの期限を渡す */
+export function sessionCookie(token: string, requestUrl: string, maxAge: number = SESSION_TTL_SEC): string {
+  return `${SESSION_COOKIE}=${token}; ${attrs(requestUrl, Math.max(0, Math.floor(maxAge)))}`;
 }
 
 export function clearSessionCookie(requestUrl: string): string {

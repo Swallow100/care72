@@ -158,8 +158,15 @@ describe("利用者追加", () => {
     const page = await loadPersonPage(db, yamamoto(), id);
     expect(page?.person).toMatchObject({ office_id: "office-demo", care_manager_id: "acct-yamamoto", origin: "care_manager" });
     expect(JSON.parse(page!.person.ledger)).toMatchObject({ basic: { sex: "male" }, pending: [] });
-    // 同意は記録しない（未確認のまま）
-    expect(page?.consents).toEqual([]);
+    // 同意は全部「未確認」の行で入る（T69a。記録した人は足した人、時刻は足した時刻）
+    expect(page?.consents.map((c) => [c.kind, c.status, c.recorded_by, c.recorded_at]).sort()).toEqual(
+      [
+        ["medical", "unconfirmed", "acct-yamamoto", AT],
+        ["plan_share", "unconfirmed", "acct-yamamoto", AT],
+        ["registry", "unconfirmed", "acct-yamamoto", AT],
+        ["supporters", "unconfirmed", "acct-yamamoto", AT],
+      ],
+    );
   });
 
   it("作った人は同じ事業所に閉じる: 協力事業所のケアマネからは見えない", async () => {
