@@ -8,6 +8,8 @@ import type { EditData } from "./edit.ts";
 
 export type IntakeProps = {
   personId: string;
+  /** 本人の事業所（T68。面の編集の市の既定・町名の候補・地図の真ん中を components/person/PersonWithIntake.tsx が事業所から読む） */
+  officeId: string;
   /** 台帳の版（保存のときに確かめる） */
   version: number;
   /** Claude の鍵があるか（無ければ「AI 未設定」と手入力） */
@@ -25,6 +27,7 @@ export type IntakeProps = {
 export function intakePropsOf(rows: PersonPageRows, aiReady: boolean): IntakeProps {
   return {
     personId: rows.person.id,
+    officeId: rows.person.office_id,
     version: rows.person.version ?? 1,
     aiReady,
     queue: questionQueue(rows),
@@ -45,6 +48,8 @@ export function intakePropsOf(rows: PersonPageRows, aiReady: boolean): IntakePro
         emergency_order: c.emergency_order,
         supporter_order: c.supporter_order,
         reach: c.reach,
+        has_smartphone: c.has_smartphone,
+        has_car: c.has_car,
       })),
       clocks: rows.clocks.map((k) => ({
         id: k.id,

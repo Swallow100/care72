@@ -426,7 +426,13 @@ export type OfficeRow = {
   id: string;
   name: string;
   kind: OfficeKind;
+  /** 市（T68 から事業所の画面の「地域」で管理者が直す。本人の住所の市の欄の既定、様式の既定 lib/forms/plan-form.ts の defaultPlanForm） */
   city: string;
+  /** 計画書に使う様式（migration 0005。matsuyama・cao・mapping:<id>） */
+  plan_form: string;
+  /** 地図の中心（migration 0017、T68）。両方ある か 両方 null（未設定） */
+  center_lat: number | null;
+  center_lng: number | null;
   created_at: string;
 };
 

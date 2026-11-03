@@ -41,6 +41,7 @@ import { clockCheckEntry, type MarkAuthor, type NewTimelineEntry } from "../ledg
 import { loadPersonPage, pendingClockId, type PersonPageRows } from "../person.ts";
 import type { IntakeChange } from "./changes.ts";
 import { labelOfKey } from "./diff.ts";
+import { ADDRESS_MAX } from "./edit.ts";
 import { INTAKE_KEYS } from "./fields.ts";
 import { DEVICE_CLOCKS, MEDICATION_CLOCKS, markClockIds, planMarkClocks, type MarkClock } from "./marks.ts";
 import { CONTACT_KINDS_FOR_EDIT } from "./schema.ts";
@@ -88,8 +89,18 @@ const ChangeSchema = z.discriminatedUnion("t", [
       emergencyOrder: z.number().int().min(1).max(9).nullable().optional(),
       supporterOrder: z.number().int().min(1).max(9).nullable().optional(),
       reach: z.enum(CONTACT_REACHES).nullable().optional(),
+      // スマホ・車の有無（T68）。手で直すときだけ
+      hasSmartphone: z.boolean().nullable().optional(),
+      hasCar: z.boolean().nullable().optional(),
     }),
     overwrite: z.boolean().optional(),
+  }),
+  // 本人の住所（市・町名）と地図の位置（T68）。手で直すときだけ。null は外す。
+  // 緯度はウェブメルカトルの描ける範囲（±85。lib/map/geo.ts の isGeoPoint と同じ）
+  z.object({ t: z.literal("address"), value: z.object({ city: text(ADDRESS_MAX.city).min(1), town: text(ADDRESS_MAX.town).min(1) }).nullable() }),
+  z.object({
+    t: z.literal("location"),
+    value: z.object({ lat: z.number().min(-85).max(85), lng: z.number().min(-180).max(180) }).nullable(),
   }),
   z.object({
     t: z.literal("clock"),
@@ -162,7 +173,7 @@ export type SaveRequest = z.output<typeof SaveRequestSchema>;
 export type SaveResult =
   | { ok: true; changed: number; version: number; plan: PlanStatus; fields: string[] }
   /** order_clash: 同じ緊急・支援の順を 2 人に付けた（T57。画面も保存の前に止める） */
-  | { ok: false; error: "not_found" | "forbidden" | "conflict" | "order_clash" };
+  | { ok: false; error: "not_found" | "forbidden" | "conflict" | "order_clash" | "self_twice" };
 
 type Statement = ReturnType<D1Database["prepare"]>;
 
@@ -211,12 +222,27 @@ export function timelineBody(
 /** 手で直すときだけの変更（上書き・同意・頼り先の確認・外す・値の確認）。AI の分け方・問いの答えの保存には混ぜない */
 function editOnly(c: IntakeChange): boolean {
   if (c.t === "consent" || c.t === "clockCheck" || c.t === "remove" || c.t === "clockSeen" || c.t === "clockAdd" || c.t === "clockStart") return true;
-  // 緊急・支援の順は人が決める（AI の分け方・問いの答えからは付けない。docs/PROGRESS.md の T03 の決め、T57）
-  if (c.t === "contact" && (c.value.emergencyOrder !== undefined || c.value.supporterOrder !== undefined || c.value.reach !== undefined)) return true;
+  // 住所・位置は手入力だけ（T68。AI の分け方に足さない。町名が仮名化の門の前に Claude へ届かないように）
+  if (c.t === "address" || c.t === "location") return true;
+  // 緊急・支援の順は人が決める（AI の分け方・問いの答えからは付けない。docs/PROGRESS.md の T03 の決め、T57）。
+  // スマホ・車の有無と本人の電話（self）も手で直すときだけ（T68）
+  if (
+    c.t === "contact" &&
+    (c.value.emergencyOrder !== undefined ||
+      c.value.supporterOrder !== undefined ||
+      c.value.reach !== undefined ||
+      c.value.hasSmartphone !== undefined ||
+      c.value.hasCar !== undefined ||
+      c.value.kind === "self")
+  ) {
+    return true;
+  }
   return c.t !== "field" && "overwrite" in c && c.overwrite === true;
 }
 
 function fieldName(field: string): string {
+  if (field === "basic.address") return "住所";
+  if (field === "basic.location") return "位置";
   if (field.startsWith("contacts.")) return "連絡先";
   if (field.startsWith("clocks.")) return "時計";
   if (field.startsWith("consent.")) return "同意";
@@ -264,9 +290,16 @@ export async function saveIntake(db: D1Database, principal: Principal, req: Save
   let ledger = applied.ledger;
   const fields = [...applied.fields];
 
+  // ---- 住所・位置（T68。手で直すときだけ。台帳の basic に書き、版を 1 つ上げる今の形） ----
+  const place = applyPlace(ledger, changes);
+  ledger = place.ledger;
+  fields.push(...place.fields);
+
   // ---- 連絡先 ----
   // 同じ緊急・支援の順を 2 人に付ける保存は断る（ルールの表の「支援者」と様式の ①② が崩れる）。今ある重なりに触れない保存は通す
   if (contactOrderClash(rows, changes)) return { ok: false, error: "order_clash" };
+  // 本人の電話（self）は 1 人 1 つ（T68。画面も selfTwice で保存の前に止める）
+  if (selfContactTwice(rows, changes)) return { ok: false, error: "self_twice" };
   const contactOps = planContacts(rows, changes, personId);
   fields.push(...contactOps.fields);
 
@@ -365,9 +398,52 @@ export async function saveIntake(db: D1Database, principal: Principal, req: Save
   return { ok: true, changed, version: next, plan, fields: payload.fields };
 }
 
+// ---------- 住所・位置（T68） ----------
+
+/**
+ * 住所（市・町名）と位置を台帳の basic に当てる。null は外す。同じ値なら変えない。
+ * 新しい町名は保存のあと台帳から読まれるので、次の Claude の呼び出しから仮名化の門（lib/pseudonym の buildKey）が伏せる
+ */
+export function applyPlace(ledger: Ledger, changes: ReadonlyArray<IntakeChange>): { ledger: Ledger; fields: string[] } {
+  let out = ledger;
+  const fields = new Set<string>();
+  for (const c of changes) {
+    if (c.t === "address") {
+      const cur = out.basic.address;
+      const next = c.value ? { city: c.value.city.trim(), town: c.value.town.trim() } : null;
+      if (next && (!next.city || !next.town)) continue;
+      if (next === null ? cur === undefined : cur?.city === next.city && cur?.town === next.town) continue;
+      const basic = { ...out.basic };
+      if (next) basic.address = next;
+      else delete basic.address;
+      out = { ...out, basic };
+      fields.add("basic.address");
+    }
+    if (c.t === "location") {
+      const cur = out.basic.location;
+      const next = c.value ? { lat: c.value.lat, lng: c.value.lng } : null;
+      if (next === null ? cur === undefined : cur?.lat === next.lat && cur?.lng === next.lng) continue;
+      const basic = { ...out.basic };
+      if (next) basic.location = next;
+      else delete basic.location;
+      out = { ...out, basic };
+      fields.add("basic.location");
+    }
+  }
+  return { ledger: out, fields: [...fields] };
+}
+
 // ---------- 連絡先 ----------
 
 type ContactChange = Extract<IntakeChange, { t: "contact" }>;
+
+/** 保存のあとに本人の電話（self）が 2 つになるか（T68）。外さない今の行と、足す self の行を数える（外して足し直すのは通る） */
+export function selfContactTwice(rows: Pick<PersonPageRows, "contacts">, changes: ReadonlyArray<IntakeChange>): boolean {
+  const removed = new Set(changes.flatMap((c) => (c.t === "remove" && c.target.what === "contact" ? [c.target.id] : [])));
+  const now = rows.contacts.filter((c) => c.kind === "self" && !removed.has(c.id)).length;
+  const added = changes.filter((c) => c.t === "contact" && c.id === null && c.value.kind === "self").length;
+  return added > 0 && now + added > 1;
+}
 
 function planContacts(rows: PersonPageRows, changes: ReadonlyArray<IntakeChange>, personId: string) {
   const updates: Array<{ id: string; set: Array<[string, string | number | null]>; overwrite: boolean }> = [];
@@ -378,14 +454,21 @@ function planContacts(rows: PersonPageRows, changes: ReadonlyArray<IntakeChange>
     if (ch.t !== "contact") continue;
     const v = ch.value;
     if (ch.id && ch.overwrite) {
-      // 手で直す（編集）。渡した所を渡したとおりに（空の文字は消す）。本人の行（self）は直さない
+      // 手で直す（編集）。渡した所を渡したとおりに（空の文字は消す）。
+      // 本人の行（self）は電話と備考だけ（T68）。ほかの行を self に変えない・self をほかに変えない
       const cur = rows.contacts.find((c) => c.id === ch.id);
-      if (!cur || cur.kind === "self") continue;
+      if (!cur || (cur.kind === "self") !== (v.kind === "self")) continue;
       const set: Array<[string, string | number | null]> = [];
-      for (const col of ["relation", "name", "phone", "note"] as const) {
+      for (const col of cur.kind === "self" ? (["phone", "note"] as const) : (["relation", "name", "phone", "note"] as const)) {
         if (!(col in v)) continue;
         const next = v[col]?.trim() || null;
         if (next !== (cur[col] ?? null)) set.push([col, next]);
+      }
+      if (cur.kind === "self") {
+        if (set.length === 0) continue;
+        updates.push({ id: cur.id, set, overwrite: true });
+        fields.push(`contacts.${cur.id}`);
+        continue;
       }
       if (v.nightOk !== undefined) {
         const next = v.nightOk === null ? null : v.nightOk ? 1 : 0;
@@ -394,6 +477,15 @@ function planContacts(rows: PersonPageRows, changes: ReadonlyArray<IntakeChange>
       if (v.emergencyOrder !== undefined && v.emergencyOrder !== (cur.emergency_order ?? null)) set.push(["emergency_order", v.emergencyOrder]);
       if (v.supporterOrder !== undefined && v.supporterOrder !== (cur.supporter_order ?? null)) set.push(["supporter_order", v.supporterOrder]);
       if (v.reach !== undefined && v.reach !== (cur.reach ?? null)) set.push(["reach", v.reach]);
+      // スマホ・車の有無（T68。null は未確認に戻す）
+      for (const [key, col] of [
+        ["hasSmartphone", "has_smartphone"],
+        ["hasCar", "has_car"],
+      ] as const) {
+        if (v[key] === undefined) continue;
+        const next = v[key] === null ? null : v[key] ? 1 : 0;
+        if (next !== (cur[col] ?? null)) set.push([col, next]);
+      }
       if (set.length === 0) continue;
       updates.push({ id: cur.id, set, overwrite: true });
       fields.push(`contacts.${cur.id}`);
@@ -413,7 +505,9 @@ function planContacts(rows: PersonPageRows, changes: ReadonlyArray<IntakeChange>
       fields.push(`contacts.${cur.id}`);
     } else {
       const id = `c-${personId}-${shortId()}`;
-      inserts.push({ id, c: v, sort: ++sort });
+      // 本人の電話（self、T68）は電話と備考だけを持つ（順・距離・夜間・スマホ・車は付けない）
+      const c: ContactChange["value"] = v.kind === "self" ? { kind: "self", phone: v.phone, note: v.note } : v;
+      inserts.push({ id, c, sort: ++sort });
       fields.push(`contacts.${id}`);
     }
   }
@@ -433,8 +527,9 @@ function planContacts(rows: PersonPageRows, changes: ReadonlyArray<IntakeChange>
         ...inserts.map((n) =>
           db
             .prepare(
-              `INSERT INTO contacts (id, person_id, kind, relation, name, phone, night_ok, note, sort, emergency_order, supporter_order, reach, created_at)
-               SELECT ?4, ?2, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?3 WHERE ${guard}`,
+              `INSERT INTO contacts (id, person_id, kind, relation, name, phone, night_ok, note, sort, emergency_order, supporter_order, reach,
+                                     has_smartphone, has_car, created_at)
+               SELECT ?4, ?2, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?3 WHERE ${guard}`,
             )
             .bind(
               ...guardArgs,
@@ -449,6 +544,8 @@ function planContacts(rows: PersonPageRows, changes: ReadonlyArray<IntakeChange>
               n.c.emergencyOrder ?? null,
               n.c.supporterOrder ?? null,
               n.c.reach ?? null,
+              n.c.hasSmartphone == null ? null : n.c.hasSmartphone ? 1 : 0,
+              n.c.hasCar == null ? null : n.c.hasCar ? 1 : 0,
             ),
         ),
       ];
@@ -466,7 +563,7 @@ export function contactOrderClash(rows: Pick<PersonPageRows, "contacts">, change
   for (const ch of changes) {
     if (ch.t === "remove" && ch.target.what === "contact") {
       const id = ch.target.id;
-      if (rows.contacts.some((c) => c.id === id && c.kind !== "self")) state.delete(id);
+      if (rows.contacts.some((c) => c.id === id)) state.delete(id);
       continue;
     }
     if (ch.t !== "contact") continue;
@@ -661,7 +758,8 @@ function planConsents(rows: PersonPageRows, changes: ReadonlyArray<IntakeChange>
 // ---------- 外す（手で直すときだけ） ----------
 
 /**
- * 連絡先の行を消し、外した薬・機器の時計を消す（印が残らないように）。本人の行（self）は消さない。
+ * 連絡先の行を消し、外した薬・機器の時計を消す（印が残らないように）。本人の行（self）もほかの連絡先と同じく消せる（T68 の続き。
+ * 消すと訓練の本人電話は番号なしに戻る。contacts を外部キーで指す表は無い）。
  * 台帳の中の物（欄・薬・機器・ハザード・特記）は applyLedgerChanges が外す
  */
 function planRemovals(rows: PersonPageRows, before: Ledger, changes: ReadonlyArray<IntakeChange>, after: Ledger) {
@@ -674,7 +772,7 @@ function planRemovals(rows: PersonPageRows, before: Ledger, changes: ReadonlyArr
     const r = ch.target;
     if (r.what === "contact") {
       const cur = rows.contacts.find((c) => c.id === r.id);
-      if (cur && cur.kind !== "self") contactIds.add(cur.id);
+      if (cur) contactIds.add(cur.id);
     } else if (r.what === "medication") {
       const med = before.medical.medications[r.index];
       if (!med || med.name !== r.name) continue;
@@ -698,7 +796,7 @@ function planRemovals(rows: PersonPageRows, before: Ledger, changes: ReadonlyArr
     build(db: D1Database, guard: string, guardArgs: GuardArgs): Statement[] {
       return [
         ...[...contactIds].map((id) =>
-          db.prepare(`DELETE FROM contacts WHERE id = ?4 AND person_id = ?2 AND kind <> 'self' AND ${guard}`).bind(...guardArgs, id),
+          db.prepare(`DELETE FROM contacts WHERE id = ?4 AND person_id = ?2 AND ${guard}`).bind(...guardArgs, id),
         ),
         ...[...clockIds].map((id) => db.prepare(`DELETE FROM clocks WHERE id = ?4 AND person_id = ?2 AND ${guard}`).bind(...guardArgs, id)),
       ];
