@@ -4,6 +4,8 @@ import { AutoRefresh } from "@/components/disaster/AutoRefresh";
 import { ColorCounts } from "@/components/disaster/ColorCounts";
 import { StaffIntake } from "@/components/staff/StaffIntake";
 import { StaffTable } from "@/components/staff/StaffTable";
+import { buttonClass } from "@/components/ui/Button";
+import { DownloadIcon } from "@/components/ui/Icon";
 import { todayJst } from "@/lib/age";
 import { requirePage } from "@/lib/auth/server";
 import { staffActor } from "@/lib/custody/actor";
@@ -12,6 +14,7 @@ import { CUSTODY_ERROR_LABELS, CUSTODY_ERRORS, CUSTODY_LABELS, type CustodyError
 import { listShelters, type ShelterCount } from "@/lib/custody/search";
 import { lastShelter } from "@/lib/custody/store";
 import { shortJst } from "@/lib/disaster/state";
+import { EXPORT_LABELS, STAFF_CSV_PATH } from "@/lib/forms/export-paths";
 
 export const metadata: Metadata = { title: "受け持ち | ケア72" };
 
@@ -28,6 +31,7 @@ function parseError(v: unknown): CustodyError | null {
 // 上に人数（状態の 4 色と要配慮）、左に表（避難所・状態・氏名で絞り、列で並べ替え）、右に受入の入口（検索・避難所・新規登録）。
 // QR は本人の 1 枚の裏から /q/<token> を開き、その頁の「受入」から（受け入れるとここへ戻る）。
 // 状態はケアマネの一覧と同じルールの表（lib/custody/board.ts）。1 分ごとに読み直す（時計が進む）
+// 見出しの行の右に「CSV出力」（T62、/staff/csv。画面の絞込は氏名を URL に載せないので、CSV は全員を表の順で）
 export default async function StaffPage({ searchParams }: Props) {
   const principal = await requirePage("staff");
   const actor = staffActor(principal);
@@ -65,6 +69,11 @@ export default async function StaffPage({ searchParams }: Props) {
           <span className="text-xs text-muted">
             {shortJst(now)} {CUSTODY_LABELS.at}
           </span>
+          {/* 書き出し（T62）: 受け持ちの全員を表の順で。様式 9 と同じ字・アイコン・download の a */}
+          <a href={STAFF_CSV_PATH} download className={buttonClass("plain", "md", "ml-auto self-center")} data-press data-export="csv">
+            <DownloadIcon aria-hidden className="size-4 shrink-0" />
+            {EXPORT_LABELS.csv}
+          </a>
         </div>
         {error && (
           <p role="alert" className="mt-1 text-sm font-bold text-danger">

@@ -13,8 +13,8 @@ import { UnlistedFold } from "@/components/office/UnlistedFold";
 import { UnlistedRows } from "@/components/office/UnlistedRows";
 import { PersonWithIntake } from "@/components/person/PersonWithIntake";
 import { StateTag, TONE_TEXT } from "@/components/person/parts";
-import { ButtonLink } from "@/components/ui/Button";
-import { AddPersonIcon, CloseIcon } from "@/components/ui/Icon";
+import { ButtonLink, buttonClass } from "@/components/ui/Button";
+import { AddPersonIcon, CloseIcon, DownloadIcon, PrintIcon } from "@/components/ui/Icon";
 import { PageHead, Panel } from "@/components/ui/Panel";
 import { TABLE_BOX } from "@/components/ui/table";
 import { todayJst } from "@/lib/age";
@@ -27,23 +27,18 @@ import { intakePropsOf, type IntakeProps } from "@/lib/intake/props";
 import {
   caseloadHref,
   closeHref,
-  DISASTER_SORT_KEYS,
   filterActive,
-  filterCaseload,
   filterOptions,
-  isSortKey,
   loadCaseload,
-  parseDir,
-  parseFilter,
   parseOpen,
   rowLink,
-  sortCaseload,
   type Caseload,
-  type CaseloadFilter,
   type CaseloadRow,
   type ListView,
   type SortKey,
 } from "@/lib/caseload";
+import { CASELOAD_CSV_PATH, EXPORT_LABELS, OWN_SHEETS_PATH } from "@/lib/forms/export-paths";
+import { listHref, listView, type ListViewResult } from "@/lib/list/view";
 import { personDisaster } from "@/lib/disaster/person";
 import { elapsedText, shortJst } from "@/lib/disaster/state";
 import { COLOR_LABELS, TIER_LABELS } from "@/lib/labels";
@@ -92,7 +87,6 @@ const HEARING: HearingSlot = (s) => (
 export default async function CaseloadPage({ searchParams }: Props) {
   const principal = await requirePage("caseload");
   const q = await searchParams;
-  const asked: SortKey = isSortKey(q.sort) ? q.sort : "tier";
   const open = parseOpen(q.open);
   const scope = caseloadScope(principal);
 
@@ -108,19 +102,25 @@ export default async function CaseloadPage({ searchParams }: Props) {
   if (!data) return <Message title="担当なし" />;
 
   const disaster = data.situation !== null;
-  // 発災時だけの列（状態・残り・最終連絡）の並びは、平時は優先に戻す
-  const key: SortKey = !disaster && DISASTER_SORT_KEYS.includes(asked) ? "tier" : asked;
-  const dir = parseDir(q.dir, key);
-  // 絞込（T58）。色は発災時だけ。絞っても優先の番号は絞る前のまま（toCaseloadRows で振った rank）。上の人数は絞る前の数
-  const askedFilter = parseFilter(q);
-  const filter: CaseloadFilter = disaster ? askedFilter : { ...askedFilter, color: null };
+  // 並び・向き・絞込（T58）は CSV・一括印刷（T62）と同じ listView（lib/list/view.ts）で当てる（3 つの行と順を必ずそろえる）。
+  // 平時は発災時だけの列（状態・残り・最終連絡）の並びを優先に戻し、色で絞らない。
+  // 絞っても優先の番号は絞る前のまま（toCaseloadRows で振った rank）。上の人数は絞る前の数
+  const lv = listView(data, q);
+  const { key, dir, filter, all, rows } = lv;
   const view: ListView = { dir, filter };
-  const all = sortCaseload(data.rows, key, dir);
-  const rows = filterCaseload(all, filter);
   const count = filterActive(filter) ? `${rows.length} / ${all.length} 人` : `${all.length} 人`;
   const options = filterOptions(data.rows);
-  const filterBar = (
-    <FilterBar filter={filter} areas={options.areas} marks={options.marks} disaster={disaster} sort={key} dir={dir} open={open} />
+  const filterBar = (actions?: React.ReactNode) => (
+    <FilterBar
+      filter={filter}
+      areas={options.areas}
+      marks={options.marks}
+      disaster={disaster}
+      sort={key}
+      dir={dir}
+      open={open}
+      actions={actions}
+    />
   );
   const peopleError = parsePeopleError(q.people_error);
   // 一覧から外した人（T30）。一覧の下の畳み「外した人 N」
@@ -145,7 +145,7 @@ export default async function CaseloadPage({ searchParams }: Props) {
             </ButtonLink>
           </div>
           <Panel as="div" className="mt-2 px-2.5 py-2">
-            {filterBar}
+            {filterBar()}
           </Panel>
           <CompactList rows={rows} sort={key} open={open} view={view} />
           {unlisted}
@@ -169,15 +169,19 @@ export default async function CaseloadPage({ searchParams }: Props) {
       }`}
     >
       <section aria-labelledby="caseload-title" className="min-w-0">
-        {/* 利用者追加（T30）は見出しの段の右上。事業所のケアマネ追加と同じ形（主の操作・人＋のアイコン・32px） */}
+        {/* 利用者追加（T30）は見出しの段の右上。事業所のケアマネ追加と同じ形（主の操作・人＋のアイコン・32px）。
+            その左に書き出し（T62）: CSV出力・一括印刷（今の並びと絞込のまま） */}
         <PageHead
           id="caseload-title"
           title="担当一覧"
           count={count}
           actions={
-            <ButtonLink href={NEW_PERSON_PATH} kind="main" icon={AddPersonIcon}>
-              {OFFICE_LABELS.addPerson}
-            </ButtonLink>
+            <>
+              <ExportButtons view={lv} />
+              <ButtonLink href={NEW_PERSON_PATH} kind="main" icon={AddPersonIcon}>
+                {OFFICE_LABELS.addPerson}
+              </ButtonLink>
+            </>
           }
         />
         {/* 災害モードは色ごとの人数（大きく）と発災・停電からの経過（平時の計画の人数は右の面の「計画」） */}
@@ -194,7 +198,8 @@ export default async function CaseloadPage({ searchParams }: Props) {
           </Panel>
         )}
         <Panel as="div" className="mt-3 px-3 py-2">
-          {filterBar}
+          {/* 絞ったあとに押す流れ。帯の右端にも同じ 2 つ（T62） */}
+          {filterBar(<ExportButtons view={lv} />)}
         </Panel>
         {peopleError && (
           <p role="alert" className="mt-2 text-sm font-bold text-danger">
@@ -313,6 +318,25 @@ function CompactList({ rows, sort, open, view }: { rows: CaseloadRow[]; sort: So
         );
       })}
     </ul>
+  );
+}
+
+/**
+ * 書き出しの 2 つ（T62）。今の並びと絞込の query を持ち越す（右に開く本人は持ち越さない）。
+ * CSV出力は様式 9 と同じ字・アイコン・download の a。一括印刷は本人の 1 枚を人数分の頁へ移り、すぐ印刷の窓（?print=1）。
+ * どちらも移る物なので無色（印刷の操作の色は移った先の頁の「印刷」）。一括印刷は先読みしない（人数分の D1 を読むので）
+ */
+function ExportButtons({ view }: { view: ListViewResult }) {
+  return (
+    <>
+      <a href={listHref(CASELOAD_CSV_PATH, view)} download className={buttonClass("plain")} data-press data-export="csv">
+        <DownloadIcon aria-hidden className="size-4 shrink-0" />
+        {EXPORT_LABELS.csv}
+      </a>
+      <ButtonLink href={listHref(OWN_SHEETS_PATH, view, { print: "1" })} kind="plain" icon={PrintIcon} prefetch={false} data-export="print">
+        {EXPORT_LABELS.batchPrint}
+      </ButtonLink>
+    </>
   );
 }
 
