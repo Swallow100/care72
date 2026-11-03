@@ -69,7 +69,7 @@ export function DamagePanel({
             <span className="ml-1.5 tabular-nums">
               {now - o.since} {DRILL_LABELS.hours}
             </span>
-            <span className="ml-1.5 text-xs text-muted">{o.area.scope === "office" ? WORLD_LABELS.office : WORLD_LABELS.area}</span>
+            <span className="ml-1.5 text-xs text-muted">{o.area.scope === "office" ? WORLD_LABELS.office : o.area.scope === "towns" ? o.area.towns.join("・") : WORLD_LABELS.area}</span>
           </span>
         )}
       </Item>

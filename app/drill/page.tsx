@@ -12,7 +12,7 @@ import { usageToday } from "@/lib/claude/usage";
 import { LIMIT_LABELS } from "@/lib/seed/labels";
 import { shortJst } from "@/lib/disaster/state";
 import { drillScope, listDrills, type DrillListItem } from "@/lib/drill/db";
-import { DRILL_LABELS, progressLabel, SCENARIO_LABELS, STATUS_LABELS } from "@/lib/drill/labels";
+import { DRILL_LABELS, progressLabel, SCENARIO_LABELS, STATUS_LABELS, VIRTUAL_LABELS } from "@/lib/drill/labels";
 import { drillHref, reportHref } from "@/lib/drill/paths";
 import { SCORE_LABELS } from "@/lib/drill/score-labels";
 import { lastHour, SCENARIO_ORDER, scenarioOf } from "@/lib/drill/scenarios";
@@ -77,6 +77,12 @@ export default async function DrillPage() {
           <ButtonLink href={drillHref(running.id)} kind="main" icon={PlayIcon} className="ml-auto">
             {DRILL_LABELS.resume} {SCENARIO_LABELS[running.scenario]} {progressLabel(running.sim_hour, lastHour(scenarioOf(running.scenario)))}
           </ButtonLink>
+        )}
+        {gate.kind === "start" && (
+          // 仮想モード（T50）の 1 行
+          <p className="w-full text-sm text-muted" data-virtual-note>
+            {VIRTUAL_LABELS.note}
+          </p>
         )}
       </Panel>
 

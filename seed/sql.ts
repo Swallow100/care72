@@ -47,6 +47,8 @@ export const CLEAR_ORDER = [
   "form_mappings",
   "disaster_state",
   "ai_calls",
+  // 仮想モードの世界の部屋（T50）の Agent・Environment の ID。事業所ごとでなく 1 回だけ作る物なので種では消さない（KEEP_ON_SEED）
+  "ai_agents",
   // ログインの回数の制限（T41）。手元の入れ直しでは消す（配信の毎日 4 時・最初に戻すでは消さない。lib/seed/reset.ts）
   "login_attempts",
   "signals",
@@ -86,9 +88,9 @@ export type SeedOptions = {
   passwordHashes?: Readonly<Record<string, string>>;
 };
 
-/** 種で消さない表: アンケートの Web 版（T42）。本物のケアマネの答えが入るので、配信の作り直し（tools/deploy/rebuild-remote.sh の seed）でも残す。
+/** 種で消さない表: 世界の部屋の ID（T50。消すと次の仮想の訓練で Agent を作り直し、前の Agent が残る）と、アンケートの Web 版（T42）。本物のケアマネの答えが入るので、配信の作り直し（tools/deploy/rebuild-remote.sh の seed）でも残す。
  *  事業所の行は消して入れ直すので、答えのリンクが事業所を指す外部キーは取引の終わりまで後回しにする（PRAGMA defer_foreign_keys。事業所の id は種で同じ） */
-export const KEEP_ON_SEED: ReadonlySet<string> = new Set(["survey_answers", "survey_links", "survey_attempts"]);
+export const KEEP_ON_SEED: ReadonlySet<string> = new Set(["survey_answers", "survey_links", "survey_attempts", "ai_agents"]);
 
 export function seedStatements(opts: SeedOptions = {}): string[] {
   const hashes = opts.passwordHashes ?? {};
