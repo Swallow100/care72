@@ -33,6 +33,7 @@ export const QUESTION_IDS = [
   "floor",
   "room",
   "place",
+  "shelterWhich",
   "canMove",
   "exit",
   "trappedBy",
@@ -64,7 +65,29 @@ export type Choice = {
   no?: true;
   /** この答えのあとの問い。無ければ問いの next */
   next?: QuestionId | null;
+  /**
+   * 見た目の印（T69b）。本人・家族の画面の選択肢の左の帯の色だけで、ルールの表に渡さない（送る答えにも入らない）。
+   * urgent（赤）は表が至急にする答えだけ（けが ある・動けない）、check（黄）はケアマネが見に行く手がかりになる答え、
+   * ok（緑）は同じ問いの「問題なし」の側。本人が押す申告の色で、仕組みの結論ではない。
+   * わからない・とばす・ほか・場所・部位・体の訴え・そばの人・頼みたいことには付けない
+   */
+  tone?: ChoiceTone;
+  /**
+   * 押した・声で一致したら、残りの問いを飛ばして定型文と録音へ（T69b。けが・動けない・出られない・水・火やガス・機器の停止）。
+   * 表が読む 2 問を落とさないため、けが ある のあとに動けるかがまだ無ければ、その 1 問だけ聞いてから（toRecordingNext）。
+   * 家族の画面には録音が無いので、送れたかの画面へ。色と連絡順は変えない（飛ばした問いは answers に入らないだけ）
+   */
+  toRecording?: true;
+  /**
+   * 押したら、本人の画面だけ「いまの 場所を おくりますか」の 1 画面（T69b。車・ほかの ところ）。はい なら端末の位置を信号に添える。
+   * 家族の画面と声の問いでは聞かない。位置は Claude に渡さない
+   */
+  asksLocation?: true;
 };
+
+/** 選択肢の見た目の印の 3 つ（T69b。状態の色の変数で描く。表の入力ではない） */
+export const CHOICE_TONES = ["urgent", "check", "ok"] as const;
+export type ChoiceTone = (typeof CHOICE_TONES)[number];
 
 export type Question = {
   id: QuestionId;
@@ -84,7 +107,17 @@ export type Question = {
   needsDevice?: true;
   /** 本人だけ聞く（家族はその場にいないことが多い・録音は本人だけ） */
   selfOnly?: true;
+  /** 台帳に避難先（1・2）がある人だけ聞く（T69b。選択肢の名前は台帳から画面に渡す） */
+  needsShelter?: true;
+  /** 押す画面だけで聞く（T69b。声の問いでは聞かない。台帳の名前は表の言葉に無く、声の言葉の一致で当てられない） */
+  pressOnly?: true;
 };
+
+/** 避難所の問いの選択肢のうち、台帳の避難先 1・2（T69b）。言葉は台帳の名前を画面で出し、表と答えには id だけ */
+export const SHELTER_CHOICE_IDS = ["d1", "d2"] as const;
+export type ShelterChoiceId = (typeof SHELTER_CHOICE_IDS)[number];
+/** 画面に渡す避難先（台帳の名前。やさしい日本語の変換を通さずそのまま）。サーバーが台帳から作り、Claude には渡さない */
+export type ShelterOption = { id: ShelterChoiceId; easy: string };
 
 const unknown: Choice = {
   id: UNKNOWN_CHOICE,
@@ -103,8 +136,8 @@ export const QUESTIONS: readonly Question[] = [
     label: "けが",
     voice: "けがはありますか",
     choices: [
-      { id: "yes", easy: "ある", label: "あり", words: ["ある", "あります", "けがした", "怪我した"], yes: true, next: "injuryPart" },
-      { id: "no", easy: "ない", label: "なし", words: ["ない", "ありません", "してない"], no: true },
+      { id: "yes", easy: "ある", label: "あり", words: ["ある", "あります", "けがした", "怪我した"], yes: true, next: "injuryPart", tone: "urgent", toRecording: true },
+      { id: "no", easy: "ない", label: "なし", words: ["ない", "ありません", "してない"], no: true, tone: "ok" },
       unknown,
     ],
     next: "atHome",
@@ -135,8 +168,8 @@ export const QUESTIONS: readonly Question[] = [
     label: "出血",
     voice: "血は出ていますか",
     choices: [
-      { id: "yes", easy: "{出|で}て いる", label: "あり", words: ["でている", "出ている", "でてる", "出てる"], yes: true },
-      { id: "no", easy: "{出|で}て いない", label: "なし", words: ["でていない", "出ていない", "でてない", "出てない"], no: true },
+      { id: "yes", easy: "{出|で}て いる", label: "あり", words: ["でている", "出ている", "でてる", "出てる"], yes: true, tone: "check" },
+      { id: "no", easy: "{出|で}て いない", label: "なし", words: ["でていない", "出ていない", "でてない", "出てない"], no: true, tone: "ok" },
       unknown,
     ],
     next: "atHome",
@@ -196,12 +229,30 @@ export const QUESTIONS: readonly Question[] = [
     label: "場所",
     voice: "いまはどこですか",
     choices: [
-      { id: "shelter", easy: "{避難所|ひなんじょ}", label: "避難所", words: ["ひなんじょ", "避難所", "がっこう", "学校", "こうみんかん", "公民館"] },
-      { id: "car", easy: "{車|くるま}", label: "車", words: ["くるま", "車"] },
-      { id: "other", easy: "ほかの ところ", label: "ほか", words: ["ほか", "他"] },
+      { id: "shelter", easy: "{避難所|ひなんじょ}", label: "避難所", words: ["ひなんじょ", "避難所", "がっこう", "学校", "こうみんかん", "公民館"], next: "shelterWhich" },
+      { id: "car", easy: "{車|くるま}", label: "車", words: ["くるま", "車"], asksLocation: true },
+      { id: "other", easy: "ほかの ところ", label: "ほか", words: ["ほか", "他"], asksLocation: true },
       unknown,
     ],
     next: "canMove",
+  },
+  {
+    // 避難所を押した人に、計画の避難先 1・2 から選んでもらう（T69b）。選択肢の言葉は台帳の名前を画面で出す（ここは名前の無い既定）。
+    // 答えは id だけ（d1・d2）。ケアマネの聞き取りの欄で台帳の名前に引く（lib/signals/hearing.ts）
+    id: "shelterWhich",
+    field: "place",
+    easy: "どこの {避難所|ひなんじょ}ですか",
+    label: "避難所",
+    voice: "どこの避難所ですか",
+    choices: [
+      { id: "d1", easy: "{避難先|ひなんさき} 1", label: "避難先1", words: ["ひなんさきいち", "避難先1"] },
+      { id: "d2", easy: "{避難先|ひなんさき} 2", label: "避難先2", words: ["ひなんさきに", "避難先2"] },
+      { id: "other", easy: "ほかの {避難所|ひなんじょ}", label: "ほか", words: ["ほか", "他"] },
+      unknown,
+    ],
+    next: "canMove",
+    needsShelter: true,
+    pressOnly: true,
   },
   {
     id: "canMove",
@@ -211,8 +262,8 @@ export const QUESTIONS: readonly Question[] = [
     label: "動けるか",
     voice: "動けますか",
     choices: [
-      { id: "yes", easy: "{動|うご}ける", label: "動ける", words: ["うごける", "動ける", "うごけます", "動けます"], yes: true },
-      { id: "no", easy: "{動|うご}けない", label: "動けない", words: ["うごけない", "動けない", "うごけません", "動けません"], no: true },
+      { id: "yes", easy: "{動|うご}ける", label: "動ける", words: ["うごける", "動ける", "うごけます", "動けます"], yes: true, tone: "ok" },
+      { id: "no", easy: "{動|うご}けない", label: "動けない", words: ["うごけない", "動けない", "うごけません", "動けません"], no: true, tone: "urgent", toRecording: true },
       unknown,
     ],
     next: "exit",
@@ -224,8 +275,8 @@ export const QUESTIONS: readonly Question[] = [
     label: "外へ",
     voice: "外に出られますか",
     choices: [
-      { id: "yes", easy: "{出|で}られる", label: "出られる", words: ["でられる", "出られる", "でれる", "出れる"], yes: true },
-      { id: "no", easy: "{出|で}られない", label: "出られない", words: ["でられない", "出られない", "でれない", "出れない"], no: true, next: "trappedBy" },
+      { id: "yes", easy: "{出|で}られる", label: "出られる", words: ["でられる", "出られる", "でれる", "出れる"], yes: true, tone: "ok" },
+      { id: "no", easy: "{出|で}られない", label: "出られない", words: ["でられない", "出られない", "でれない", "出れない"], no: true, next: "trappedBy", tone: "check", toRecording: true },
       unknown,
     ],
     next: "body",
@@ -237,10 +288,10 @@ export const QUESTIONS: readonly Question[] = [
     label: "妨げ",
     voice: "なにで出られませんか",
     choices: [
-      { id: "door", easy: "ドアが あかない", label: "ドア", words: ["ドア", "とびら", "扉", "あかない", "開かない"] },
-      { id: "furniture", easy: "{家具|かぐ}", label: "家具", words: ["かぐ", "家具", "たんす", "タンス", "はさまれ", "挟まれ"] },
-      { id: "fallen", easy: "たおれた もの", label: "倒れた物", words: ["たおれた", "倒れた", "くずれた", "崩れた"] },
-      { id: "water", easy: "{水|みず}", label: "水", words: ["みず", "水"] },
+      { id: "door", easy: "ドアが あかない", label: "ドア", words: ["ドア", "とびら", "扉", "あかない", "開かない"], tone: "check", toRecording: true },
+      { id: "furniture", easy: "{家具|かぐ}", label: "家具", words: ["かぐ", "家具", "たんす", "タンス", "はさまれ", "挟まれ"], tone: "check", toRecording: true },
+      { id: "fallen", easy: "たおれた もの", label: "倒れた物", words: ["たおれた", "倒れた", "くずれた", "崩れた"], tone: "check", toRecording: true },
+      { id: "water", easy: "{水|みず}", label: "水", words: ["みず", "水"], tone: "check", toRecording: true },
       { id: "other", easy: "ほか", label: "ほか", words: ["ほか", "他"] },
       unknown,
     ],
@@ -273,10 +324,10 @@ export const QUESTIONS: readonly Question[] = [
     label: "水",
     voice: "水はきていますか",
     choices: [
-      { id: "none", easy: "きて いない", label: "なし", words: ["きていない", "来ていない", "きてない", "来てない"], no: true },
-      { id: "floor", easy: "ゆか まで", label: "床まで", words: ["ゆか", "床"] },
-      { id: "knee", easy: "ひざ まで", label: "膝まで", words: ["ひざ", "膝"] },
-      { id: "waist", easy: "こしより うえ", label: "腰より上", words: ["こし", "腰", "むね", "胸"] },
+      { id: "none", easy: "きて いない", label: "なし", words: ["きていない", "来ていない", "きてない", "来てない"], no: true, tone: "ok" },
+      { id: "floor", easy: "ゆか まで", label: "床まで", words: ["ゆか", "床"], tone: "check", toRecording: true },
+      { id: "knee", easy: "ひざ まで", label: "膝まで", words: ["ひざ", "膝"], tone: "check", toRecording: true },
+      { id: "waist", easy: "こしより うえ", label: "腰より上", words: ["こし", "腰", "むね", "胸"], tone: "check", toRecording: true },
       unknown,
     ],
     next: "fireGas",
@@ -289,8 +340,8 @@ export const QUESTIONS: readonly Question[] = [
     label: "火・ガス",
     voice: "火やガスのにおいはしますか",
     choices: [
-      { id: "yes", easy: "する", label: "あり", words: ["する", "します", "におう", "臭う", "匂う", "けむり", "煙"], yes: true },
-      { id: "no", easy: "しない", label: "なし", words: ["しない", "しません"], no: true },
+      { id: "yes", easy: "する", label: "あり", words: ["する", "します", "におう", "臭う", "匂う", "けむり", "煙"], yes: true, tone: "check", toRecording: true },
+      { id: "no", easy: "しない", label: "なし", words: ["しない", "しません"], no: true, tone: "ok" },
       unknown,
     ],
     next: "device",
@@ -303,8 +354,8 @@ export const QUESTIONS: readonly Question[] = [
     label: "機器",
     voice: "機械は動いていますか",
     choices: [
-      { id: "running", easy: "{動|うご}いて いる", label: "動作中", words: ["うごいている", "動いている", "うごいてる", "動いてる"], yes: true },
-      { id: "stopped", easy: "{止|と}まった", label: "停止", words: ["とまった", "止まった", "とまってる", "止まってる", "うごかない", "動かない"], no: true },
+      { id: "running", easy: "{動|うご}いて いる", label: "動作中", words: ["うごいている", "動いている", "うごいてる", "動いてる"], yes: true, tone: "ok" },
+      { id: "stopped", easy: "{止|と}まった", label: "停止", words: ["とまった", "止まった", "とまってる", "止まってる", "うごかない", "動かない"], no: true, tone: "check", toRecording: true },
       unknown,
     ],
     next: "hasMedicine",
@@ -318,8 +369,8 @@ export const QUESTIONS: readonly Question[] = [
     label: "薬",
     voice: "くすりはありますか",
     choices: [
-      { id: "yes", easy: "ある", label: "あり", words: ["ある", "あります"], yes: true },
-      { id: "no", easy: "ない", label: "なし", words: ["ない", "ありません"], no: true },
+      { id: "yes", easy: "ある", label: "あり", words: ["ある", "あります"], yes: true, tone: "ok" },
+      { id: "no", easy: "ない", label: "なし", words: ["ない", "ありません"], no: true, tone: "check" },
       unknown,
     ],
     next: "nearby",
@@ -346,9 +397,9 @@ export const QUESTIONS: readonly Question[] = [
     label: "連絡手段",
     voice: "れんらくはできますか",
     choices: [
-      { id: "phone", easy: "この スマホ", label: "このスマホ", words: ["スマホ", "すまほ", "けいたい", "携帯"] },
-      { id: "tel", easy: "{電話|でんわ}", label: "電話", words: ["でんわ", "電話"] },
-      { id: "none", easy: "できない", label: "なし", words: ["できない", "できません", "ない"], no: true },
+      { id: "phone", easy: "この スマホ", label: "このスマホ", words: ["スマホ", "すまほ", "けいたい", "携帯"], tone: "ok" },
+      { id: "tel", easy: "{電話|でんわ}", label: "電話", words: ["でんわ", "電話"], tone: "ok" },
+      { id: "none", easy: "できない", label: "なし", words: ["できない", "できません", "ない"], no: true, tone: "check" },
       unknown,
     ],
     next: "request",
@@ -392,14 +443,30 @@ export type Answer = { choice: string; via: AnswerVia };
 /** 答えの全部（押した・声で取れた所だけ。とばした問いは入らない） */
 export type Answers = Partial<Record<QuestionId, Answer>>;
 
-/** 誰の画面か。家族は本人だけの問いを聞かない */
-export type Asker = { who: "self" | "family"; hasDevice: boolean };
+/**
+ * 誰の画面か。家族は本人だけの問いを聞かない。shelters は台帳の避難先の数（T69b。0 なら避難所の問いを聞かない）、
+ * voice は声の問いで進んでいる（押す画面だけの問いを聞かない）
+ */
+export type Asker = { who: "self" | "family"; hasDevice: boolean; shelters?: number; voice?: boolean };
 
 /** この人に聞くか */
 export function asks(q: Question, a: Asker): boolean {
   if (q.needsDevice && !a.hasDevice) return false;
   if (q.selfOnly && a.who !== "self") return false;
+  if (q.needsShelter && !(a.shelters && a.shelters > 0)) return false;
+  if (q.pressOnly && a.voice) return false;
   return true;
+}
+
+/** 画面に出す選択肢（T69b）。避難所の問いは台帳にある避難先だけ（名前は ShelterOption）、ほかは表のまま */
+export function choicesFor(q: Question, shelters: ReadonlyArray<ShelterOption> = []): Array<Choice & { name?: string }> {
+  if (q.id !== "shelterWhich") return [...q.choices];
+  const names = new Map(shelters.map((s) => [s.id, s.easy]));
+  return q.choices.flatMap((c) => {
+    if (!(SHELTER_CHOICE_IDS as readonly string[]).includes(c.id)) return [c];
+    const name = names.get(c.id as ShelterChoiceId);
+    return name ? [{ ...c, name }] : [];
+  });
 }
 
 /** 聞かない問いを飛ばして、聞く問いに着くまで進める */
@@ -428,6 +495,20 @@ export function nextQuestion(id: QuestionId, choice: string | null, a: Asker): Q
 
 export function choiceOf(id: QuestionId, choice: string): Choice | undefined {
   return questionOf(id).choices.find((c) => c.id === choice);
+}
+
+/** この答えで残りを飛ばして録音へ（T69b） */
+export function rushesToRecording(id: QuestionId, choice: string | null): boolean {
+  return choice !== null && choiceOf(id, choice)?.toRecording === true;
+}
+
+/**
+ * 録音へ急ぐときの次の問い（T69b）。表が読む 2 問（けが・動けるか）を落とさないため、けが のあとに 動けるか がまだ無く
+ * この人に聞く問いなら「動けますか」の 1 問だけ。ほかは null（問いの終わり。本人は定型文と録音、家族は送れたか）
+ */
+export function rushNext(id: QuestionId, answers: Answers, a: Asker): QuestionId | null {
+  if (id === "injured" && !answers.canMove && asks(questionOf("canMove"), a)) return "canMove";
+  return null;
 }
 
 // ---------- 今の 4 問の列（ルールの表と採点が読む） ----------

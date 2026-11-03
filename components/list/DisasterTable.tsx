@@ -13,7 +13,7 @@ import { DETAIL_LABELS } from "@/lib/list/labels";
 import { COLOR_TONES } from "@/lib/person";
 import { ExpandRow } from "./ExpandRow";
 import { MedicalCell, NarrowMarks } from "./NarrowMarks";
-import { RowDetail, type ClassificationSlot, type HearingSlot } from "./RowDetail";
+import { RowDetail, type ClassificationSlot, type HearingSlot, type SummarySlot } from "./RowDetail";
 import { SortHeader } from "./SortHeader";
 
 const CELL = "bg-panel px-1.5 py-1.5 align-top";
@@ -49,6 +49,7 @@ export function DisasterTable({
   filter,
   classification,
   hearing,
+  summary,
   slots,
 }: {
   rows: CaseloadRow[];
@@ -61,6 +62,8 @@ export function DisasterTable({
   classification?: ClassificationSlot;
   /** 聞き取りの欄と直す口（T49） */
   hearing?: HearingSlot;
+  /** 録音のまとめと直す口（T69b） */
+  summary?: SummarySlot;
   slots?: TableSlots;
 }) {
   const h = (k: SortKey) => slots?.sortHref(k);
@@ -97,7 +100,7 @@ export function DisasterTable({
               ) : null
             }
             cells={<Cells row={r} sort={sort} view={view} nameHref={slots ? slots.nameHref(r.id) : undefined} nameMark={slots?.nameMark?.(r)} note={slots?.nameNote?.(r.id)} />}
-            detail={slots ? slots.detail(r) : r.detail ? <RowDetail detail={r.detail} classification={classification} hearing={hearing} /> : null}
+            detail={slots ? slots.detail(r) : r.detail ? <RowDetail detail={r.detail} classification={classification} hearing={hearing} summary={summary} /> : null}
           />
         ))}
       </tbody>

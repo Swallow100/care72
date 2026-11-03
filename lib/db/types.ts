@@ -683,6 +683,25 @@ export type SignalRow = {
   ai_memo: string | null;
   /** ケアマネが直した聞き取りの欄（T49）。ルールの表に渡さない */
   memo: string | null;
+  /**
+   * 申告位置（T69b）。本人が赤のあとに「おくる」と許したときだけの端末の位置。台帳の位置とは別で、本人が今いる所。
+   * Claude には渡さない。ルールの表にも渡さない（地図のピンと聞き取りの欄だけ）
+   */
+  reported_lat: number | null;
+  reported_lng: number | null;
+  /** 端末が返した精度（m） */
+  reported_accuracy_m: number | null;
+  /** 位置を取った時刻（端末の時計） */
+  reported_at: string | null;
+  /** 録音のまとめ（T69b）。Claude（Haiku）の 80 字までの言い換え。AI の印。ルールの表に渡さない */
+  ai_summary: string | null;
+  ai_summary_model: string | null;
+  /** まとめを試みた時刻 */
+  ai_summary_at: string | null;
+  /** まとめられなかった理由（分類と同じ集合） */
+  ai_summary_error: ClassifyError | null;
+  /** ケアマネが直したまとめ（T69b）。null は直していない。ルールの表に渡さない */
+  summary: string | null;
   occurred_at: string;
   created_at: string;
   /**

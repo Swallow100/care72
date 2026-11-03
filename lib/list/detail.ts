@@ -28,6 +28,8 @@ import {
   DEPENDS_ON_LABELS,
 } from "../labels.ts";
 import { clockTone, COLOR_TONES, formatJst, telHref, type StateTone } from "../person.ts";
+import { summaryOf, type SignalSummary } from "../classify/view.ts";
+import type { HearingPlace, HearingPosition } from "../signals/hearing.ts";
 import { signalLogBody } from "../signals/labels.ts";
 import { clockRemaining, formatHours, type Color, type Override, type Situation, type TriageResult } from "../triage/index.ts";
 import { callLogsOf, type CallEntryRow, type CallLog } from "./calls.ts";
@@ -61,7 +63,22 @@ export type SignalForDetail = Pick<
   | "ai_memo"
   | "memo"
   | "occurred_at"
->;
+> &
+  /** 申告位置とまとめ（T69b、migration 0023）。SELECT * で来る。前からの組み立て（テスト・訓練）では無くてもよい */
+  Partial<
+    Pick<
+      SignalRow,
+      | "reported_lat"
+      | "reported_lng"
+      | "reported_accuracy_m"
+      | "reported_at"
+      | "ai_summary"
+      | "ai_summary_model"
+      | "ai_summary_at"
+      | "ai_summary_error"
+      | "summary"
+    >
+  >;
 
 /** 信号の出どころの言い方。訓練の本人役（agent）は本人（ルールの表と同じ） */
 export const SOURCE_LABELS: Record<SignalSource, string> = {
@@ -139,11 +156,24 @@ export type DetailSignal = {
   classes: RecordingClass[];
   classifiedBy: Classifier | null;
   /**
+   * 聞き取りの場所の欄に重ねる物（T69b）: 台帳の避難先 1・2 の名前と、本人が送った端末の位置。
+   * サーバーで台帳と信号の行から作り、Claude には渡さない。色と順には使わない
+   */
+  place: HearingPlace;
+  /** 録音のまとめ（T69b）。ケアマネが直した文 → Claude の文の順。色と連絡の順には使わない */
+  summary: SignalSummary;
+  /**
    * 信号の行そのもの（サーバーの中だけで使う）。分類の部品（T12 の components/list/Classification.tsx）は
    * lib/classify/view.ts の classViewOf にこの行（ai_* の列を含む）を渡して形を作る
    */
   row: SignalForDetail;
 };
+
+/** 信号の行の申告位置（T69b）。緯度・経度がそろっていなければ null */
+export function reportedOf(s: Partial<Pick<SignalRow, "reported_lat" | "reported_lng" | "reported_accuracy_m">>): HearingPosition | null {
+  if (typeof s.reported_lat !== "number" || typeof s.reported_lng !== "number") return null;
+  return { lat: s.reported_lat, lng: s.reported_lng, accuracyM: s.reported_accuracy_m ?? null };
+}
 
 export type DetailOverride = {
   to: Color;
@@ -248,7 +278,7 @@ function signalBody(s: SignalForDetail): string {
   });
 }
 
-function detailSignal(s: SignalForDetail): DetailSignal {
+function detailSignal(s: SignalForDetail, shelters: HearingPlace["shelters"]): DetailSignal {
   return {
     id: s.id,
     at: s.occurred_at,
@@ -261,6 +291,8 @@ function detailSignal(s: SignalForDetail): DetailSignal {
     transcript: s.transcript?.trim() || null,
     classes: parseClasses(s.classes),
     classifiedBy: s.classified_by,
+    place: { shelters, reported: reportedOf(s) },
+    summary: summaryOf(s),
     row: s,
   };
 }
@@ -404,7 +436,7 @@ export function buildRowDetail(x: DetailInput): RowDetail {
     ),
     signals: ordered
       .filter((s) => Date.parse(s.occurred_at) <= Date.parse(x.situation.now))
-      .map(detailSignal)
+      .map((s) => detailSignal(s, { d1: e.destination1?.trim() || null, d2: e.destination2?.trim() || null }))
       .reverse(),
     calls: calls.slice(0, 5),
     override: detailOverride(x.triage.override),

@@ -4,7 +4,7 @@
 // いちばん下に出す。状態（PhoneState）に録音の中身・分類（AI の出力）は無く、出す・出さないは赤の流れかどうかだけで決まる（T48）。
 // Fill・Choice・Emergency・QuestionBody は家族・支援者のスマホ（FamilyView.tsx、T11）も使う。
 // 赤のあとの問い（T49）は lib/signals/questions.ts の表から 1 画面 1 問。選択肢（わからない を含む）と「とばす」。
-// 選択肢が 5 つ以上の問い（部位・部屋など）は 2 列に並べる。声の問い（20 秒押さないとき）は「AI が きいています」を上に出し、押してもよい。
+// 選択肢が 5 つ以上の問い（部位・部屋など）は 2 列に並べる。選択肢は面を塗らず灰の枠、印のある答えは左の帯（T69b。見た目だけで表に渡さない）。声の問い（20 秒押さないとき）は「AI が きいています」を上に出し、押してもよい。
 
 import type { ReactNode } from "react";
 import { EasyWords } from "@/components/forms/EasyText";
@@ -13,7 +13,7 @@ import { easy } from "@/lib/forms/easy-words";
 import type { WhereNow } from "@/lib/db/types";
 import type { PhoneState } from "@/lib/signals/phone";
 import { AI_NOTICE, emergencyWords, PHONE_PHRASES, WHERE_PHRASES } from "@/lib/signals/phrases";
-import { questionOf, type QuestionId } from "@/lib/signals/questions";
+import { choicesFor, questionOf, type QuestionId, type ShelterOption } from "@/lib/signals/questions";
 
 export type PhoneActions = {
   green(): void;
@@ -21,6 +21,8 @@ export type PhoneActions = {
   where(w: WhereNow): void;
   answer(choice: string): void;
   skip(): void;
+  /** いまの 場所を おくりますか（T69b） */
+  locate(send: boolean): void;
   extend(): void;
   finish(): void;
   again(): void;
@@ -39,9 +41,12 @@ export function Fill({ children, step }: { children: ReactNode; step: string }) 
 
 export const BIG = "flex w-full flex-1 items-center justify-center rounded-xl px-4 py-6 text-center font-bold";
 
+/** 選択肢の面（T69b）: 面は塗らず灰の枠。tone があれば左の帯（phone.css の [data-tone]）。押したときは灰色だけ */
+export const CHOICE = "phone-choice bg-panel text-ink";
+
 export function Choice({ onClick, children, value }: { onClick: () => void; children: ReactNode; value: string }) {
   return (
-    <button type="button" onClick={onClick} className={`${BIG} bg-panel text-[2.25rem] text-ink`} data-press data-choice={value}>
+    <button type="button" onClick={onClick} className={`${BIG} ${CHOICE} text-[2.25rem]`} data-press data-choice={value}>
       <span>{children}</span>
     </button>
   );
@@ -69,17 +74,21 @@ export function QuestionBody({
   id,
   lead,
   family = false,
+  shelters = [],
   onChoice,
   onSkip,
 }: {
   id: QuestionId;
   lead?: ReactNode;
   family?: boolean;
+  /** 台帳の避難先（T69b。「どこの 避難所ですか」の選択肢の名前） */
+  shelters?: ReadonlyArray<ShelterOption>;
   onChoice: (choice: string) => void;
   onSkip: () => void;
 }) {
   const q = questionOf(id);
-  const grid = q.choices.length > GRID_OVER;
+  const choices = choicesFor(q, shelters);
+  const grid = choices.length > GRID_OVER;
   return (
     <>
       <h1 className="px-1 pt-2 text-center text-[2rem] font-bold" role="status" data-question-id={id}>
@@ -87,18 +96,18 @@ export function QuestionBody({
         <Words m={family ? (q.familyEasy ?? q.easy) : q.easy} />
       </h1>
       <div className={grid ? "grid flex-1 grid-cols-2 gap-3" : "flex flex-1 flex-col gap-3"}>
-        {q.choices.map((c) => (
+        {choices.map((c) => (
           <button
             key={c.id}
             type="button"
             onClick={() => onChoice(c.id)}
-            className={`${grid ? BIG_GRID : BIG} bg-panel text-ink ${grid ? "text-[1.75rem]" : "text-[2.25rem]"}`}
+            className={`${grid ? BIG_GRID : BIG} ${CHOICE} ${grid ? "text-[1.75rem]" : "text-[2.25rem]"}`}
             data-press
             data-choice={c.id}
+            data-tone={c.tone}
           >
-            <span>
-              <Words m={c.easy} />
-            </span>
+            {/* 避難先の名前は台帳の文字のまま（やさしい日本語の変換を通さない。T69b） */}
+            <span data-shelter-name={c.name ? "" : undefined}>{c.name ?? <Words m={c.easy} />}</span>
           </button>
         ))}
       </div>
@@ -164,7 +173,18 @@ export function Emergency() {
   );
 }
 
-export function PhoneView({ state, nowMs, on }: { state: PhoneState; nowMs: number; on: PhoneActions }) {
+export function PhoneView({
+  state,
+  nowMs,
+  on,
+  shelters = [],
+}: {
+  state: PhoneState;
+  nowMs: number;
+  on: PhoneActions;
+  /** 台帳の避難先（T69b） */
+  shelters?: ReadonlyArray<ShelterOption>;
+}) {
   switch (state.step) {
     case "top":
       return (
@@ -209,7 +229,23 @@ export function PhoneView({ state, nowMs, on }: { state: PhoneState; nowMs: numb
         <Fill step={`question-${state.id}`}>
           {state.first && <AiNotice />}
           {state.voice !== null && <AiListening />}
-          <QuestionBody id={state.id} onChoice={on.answer} onSkip={on.skip} />
+          <QuestionBody id={state.id} shelters={shelters} onChoice={on.answer} onSkip={on.skip} />
+          <Emergency />
+        </Fill>
+      );
+    case "locate":
+      // いまの 場所を おくりますか（T69b）。はい なら端末の位置を 1 回だけ。色は付けない（場所は本人の申告の事実）
+      return (
+        <Fill step="locate">
+          <Question m={PHONE_PHRASES.sendPlace} />
+          <div className="flex flex-1 flex-col gap-3">
+            <Choice onClick={() => on.locate(true)} value="locate-yes">
+              <Words m={PHONE_PHRASES.yes} />
+            </Choice>
+            <Choice onClick={() => on.locate(false)} value="locate-no">
+              <Words m={PHONE_PHRASES.no} />
+            </Choice>
+          </div>
           <Emergency />
         </Fill>
       );

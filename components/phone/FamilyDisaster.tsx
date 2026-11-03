@@ -30,6 +30,7 @@ export function FamilyDisaster({ screen }: { screen: FamilyScreen }) {
   const [state, setState] = useState<FamilyState>({ step: "top" });
   const phone = useRef<FamilyPhone | null>(null);
   const { contactId, hasDevice } = screen;
+  const shelters = screen.shelters.length;
 
   useEffect(() => {
     const outbox = createOutbox({ storage: storageOf(), owner: `family:${contactId}`, transport: fetchTransport() });
@@ -37,6 +38,7 @@ export function FamilyDisaster({ screen }: { screen: FamilyScreen }) {
       sendSignal: (b) => outbox.sendSignal(b),
       sendAnswers: (item) => outbox.sendAnswers(item),
       hasDevice,
+      shelters,
       onChange: setState,
     });
     phone.current = p;
@@ -51,7 +53,7 @@ export function FamilyDisaster({ screen }: { screen: FamilyScreen }) {
       window.removeEventListener("online", onOnline);
       window.clearInterval(timer);
     };
-  }, [contactId, hasDevice]);
+  }, [contactId, hasDevice, shelters]);
 
   // 答えたら 1 回読み直す
   const done = state.step === "done";
