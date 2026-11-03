@@ -4,12 +4,14 @@ import { AutoRefresh } from "@/components/disaster/AutoRefresh";
 import { ColorCounts } from "@/components/disaster/ColorCounts";
 import { StaffIntake } from "@/components/staff/StaffIntake";
 import { StaffTable } from "@/components/staff/StaffTable";
+import { StaffCsvLink } from "@/components/staff/StaffCsvLink";
 import { todayJst } from "@/lib/age";
 import { requirePage } from "@/lib/auth/server";
 import { staffActor } from "@/lib/custody/actor";
 import { loadStaffBoard, type StaffBoard } from "@/lib/custody/board";
 import { CUSTODY_ERROR_LABELS, CUSTODY_ERRORS, CUSTODY_LABELS, type CustodyError } from "@/lib/custody/labels";
 import { listShelters, type ShelterCount } from "@/lib/custody/search";
+import { parseStaffView } from "@/lib/custody/staff-view";
 import { lastShelter } from "@/lib/custody/store";
 import { shortJst } from "@/lib/disaster/state";
 
@@ -18,7 +20,8 @@ export const metadata: Metadata = { title: "受け持ち | ケア72" };
 // D1 を毎回読む
 export const dynamic = "force-dynamic";
 
-type Props = { searchParams: Promise<{ error?: string | string[] }> };
+type Param = string | string[];
+type Props = { searchParams: Promise<{ error?: Param; shelter?: Param; color?: Param; q?: Param; sort?: Param }> };
 
 function parseError(v: unknown): CustodyError | null {
   return typeof v === "string" && (CUSTODY_ERRORS as readonly string[]).includes(v) ? (v as CustodyError) : null;
@@ -28,6 +31,7 @@ function parseError(v: unknown): CustodyError | null {
 // 上に人数（状態の 4 色と要配慮）、左に表（避難所・状態・氏名で絞り、列で並べ替え）、右に受入の入口（検索・避難所・新規登録）。
 // QR は本人の 1 枚の裏から /q/<token> を開き、その頁の「受入」から（受け入れるとここへ戻る）。
 // 状態はケアマネの一覧と同じルールの表（lib/custody/board.ts）。1 分ごとに読み直す（時計が進む）
+// 見出しの行の右に「CSV出力」（T62、/staff/csv）。表の絞込と並びは URL に載せ（lib/custody/staff-view.ts）、CSV は画面と同じ行を書く
 export default async function StaffPage({ searchParams }: Props) {
   const principal = await requirePage("staff");
   const actor = staffActor(principal);
@@ -65,6 +69,8 @@ export default async function StaffPage({ searchParams }: Props) {
           <span className="text-xs text-muted">
             {shortJst(now)} {CUSTODY_LABELS.at}
           </span>
+          {/* 書き出し（T62）: 表の今の絞込と並びのまま（URL の query を持ち越す） */}
+          <StaffCsvLink className="ml-auto self-center" />
         </div>
         {error && (
           <p role="alert" className="mt-1 text-sm font-bold text-danger">
@@ -72,7 +78,7 @@ export default async function StaffPage({ searchParams }: Props) {
           </p>
         )}
         <div className="mt-2">
-          <StaffTable rows={board.rows} shelters={board.shelters} />
+          <StaffTable rows={board.rows} shelters={board.shelters} view={parseStaffView(q)} />
         </div>
       </div>
       <aside className="min-w-0 self-start">

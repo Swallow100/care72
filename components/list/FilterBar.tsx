@@ -38,6 +38,7 @@ export function FilterBar({
   sort,
   dir,
   open,
+  actions,
 }: {
   filter: CaseloadFilter;
   /** 地区の候補（絞る前の行の町名） */
@@ -50,6 +51,8 @@ export function FilterBar({
   dir: SortDir;
   /** 右に開いている本人 */
   open: string | null;
+  /** 帯の右端の操作（担当一覧の書き出しの 2 つ、T62）。絞ったあとに押す流れ。375 は折り返して次の行の右に */
+  actions?: React.ReactNode;
 }) {
   const router = useRouter();
   const [q, setQ] = useState(filter.q);
@@ -142,6 +145,11 @@ export function FilterBar({
         <ButtonLink href={caseloadHref({ sort, dir, open })} kind="quiet" size="md" icon={CloseIcon} data-filter-clear>
           {FILTER_LABELS.clear}
         </ButtonLink>
+      )}
+      {actions && (
+        <div className="ml-auto flex flex-wrap items-center gap-2" data-filter-actions>
+          {actions}
+        </div>
       )}
     </form>
   );

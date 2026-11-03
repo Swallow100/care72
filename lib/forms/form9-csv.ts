@@ -18,7 +18,8 @@ export function csvLine(cells: ReadonlyArray<string>): string {
   return cells.map(csvCell).join(",");
 }
 
-function csvText(lines: ReadonlyArray<ReadonlyArray<string>>): string {
+/** 行の並びを CSV の文に（BOM・CRLF・式の守り）。担当一覧・受け持ちの CSV（T62）も使う */
+export function csvText(lines: ReadonlyArray<ReadonlyArray<string>>): string {
   return CSV_BOM + lines.map(csvLine).join(EOL) + EOL;
 }
 
@@ -72,10 +73,13 @@ export function mappedCsv(sheet: Form9Sheet, mapping: Form9Mapping, meta: CsvMet
   ]);
 }
 
-/** 落とすファイルの名前（ASCII の名前と、日本語の名前） */
-export function csvFileNames(madeAt: string): { ascii: string; utf8: string } {
+/** 落とすファイルの名前（ASCII の名前と、日本語の名前）。名前の頭は既定で様式 9（担当一覧・受け持ちは T62 で渡す） */
+export function csvFileNames(
+  madeAt: string,
+  names: { ascii: string; utf8: string } = { ascii: "form9", utf8: "様式9" },
+): { ascii: string; utf8: string } {
   const t = Date.parse(madeAt);
   const s = new Date((Number.isNaN(t) ? 0 : t) + 9 * 3_600_000).toISOString();
   const stamp = `${s.slice(0, 10).replaceAll("-", "")}-${s.slice(11, 16).replace(":", "")}`;
-  return { ascii: `form9-${stamp}.csv`, utf8: `様式9_${stamp}.csv` };
+  return { ascii: `${names.ascii}-${stamp}.csv`, utf8: `${names.utf8}_${stamp}.csv` };
 }

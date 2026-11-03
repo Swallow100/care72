@@ -1,0 +1,11 @@
+/*
+  本人の 1 枚の一括印刷（/caseload/own-sheets、T62）。人数分の紙面（components/forms/OwnSheetBatch.tsx）を 1 頁に並べる。
+  1 人は表と裏の 2 枚（.paper）。paper.css の印刷は .paper のあとで頁を割り、最後の .paper（裏）のあとは割らない。
+  人の間でも同じ break-after: page で割り、最後の人の裏のあとだけ割らない（空の頁を作らない）。
+*/
+
+@media print {
+  .own-batch > .paper-scroll:not(:last-child) .paper:last-child {
+    break-after: page;
+  }
+}
