@@ -4,7 +4,8 @@
 // 守ること:
 // - Claude に渡すのは lib/pseudonym を通した文だけ（pseudonymizeText）。本人は仮名（A さん）、地区は別名（甲地区）。
 //   町名・氏名・住所・電話と、人と地区の結び付き（誰がどこに住むか・その人のハザード）を渡さない
-// - 世界が決めるのは街と物の出来事と言葉だけ。人の結末はコード（lib/drill/outcome.ts）が決め、ここでは決まった人の 1 文を頼むだけ
+// - 世界が決めるのは街と物の出来事と言葉と、訓練の架空の人の結末（T53。結末を迎えた人・1 文・理由）。
+//   時計の計算（lib/drill/outcome.ts）は目安として渡すだけで、誰が結末かは世界が決める。体の状態・診断・薬の量は書かせない
 // - 返事の形は部屋の custom tool と同じ WorldStepSchema（lib/drill/world-apply.ts）
 
 import { askJson, type AskJsonContext, type AskJsonRequest } from "../claude/call.ts";
@@ -18,6 +19,8 @@ import { reportersOf } from "./persona.ts";
 import type { WorldState, WorldVia } from "./scenarios.ts";
 import {
   FAREWELL_MAX,
+  FAREWELL_PER_TICK_MAX,
+  FAREWELL_REASON_MAX,
   NARRATION_MAX,
   WORLD_EVENTS_MAX,
   WORLD_KINDS,
@@ -46,7 +49,7 @@ const KIND_WORDS: Readonly<Record<(typeof WORLD_KINDS)[number], string>> = {
 /** 世界の指示（部屋の system と 1 回呼びの system に同じ物を使う） */
 export const WORLD_SYSTEM = [
   "災害の訓練（発災から 72 時間）の「世界」。架空の街と、在宅で介護を受ける架空の高齢者 10 人の訓練で、ケアマネが誰から順に連絡するかを試す。",
-  "あなたは街の出来事だけを進める。刻みごとに、今の時刻と、前の刻みからケアマネがした事・本人たちからの連絡の要約が届く。",
+  "あなたは街の出来事を進め、訓練の架空の人の結末も決める。刻みごとに、今の時刻と、前の刻みからケアマネがした事・本人たちの最後の様子・時計の目安が届く。",
   "最初の刻みに街の地理（地区・道・避難所・施設）と本人ごとの台帳の要約が届く。前の刻みの出来事は覚えておき、矛盾しない流れにする。",
   "最初の刻みで災害の種類（大雨か地震）を決め、narration に書く。以後 72 時間、その災害で起きやすい流れにする（大雨なら増水 → 浸水 → 停電・断水 → 復旧、地震なら停電・断水・道路の寸断・余震）。",
   "固定の筋は無い。街の事情は刻みごとに変わってよいが、ケアマネが動けば確かめられる・防げる大きさの事を多めにする。",
@@ -57,13 +60,16 @@ export const WORLD_SYSTEM = [
   "  kind はこの英字だけ:",
   ...WORLD_KINDS.map((k) => `  - ${k}: ${KIND_WORDS[k]}`),
   "  地区・道・避難所・施設の名前は、地理にある物だけをそのまま書く。target は本人の仮名（「A さん」）で、「その人の住む所」の意味（どこに住むかはあなたは知らない）。",
-  `- farewells: 入力の「結末」に挙がった人がいるときだけ、その人ごとに { target: 仮名, text: 1 文（${FAREWELL_MAX} 字まで）}。挙がっていなければ空の配列。`,
-  "  結末は訓練の中の架空の人の、シナリオの上の事実。言い切らず、やわらかく包んだ言い方にする（「〇〇の時間までに、手が届かなかった」の形）。",
-  "  使わない語: 死亡・亡くなる・死ぬ・関連死・遺体・息を引き取る・心肺停止。体の様子を細かく書かない。",
+  `- farewells: この刻みで結末を迎えた人（0〜${FAREWELL_PER_TICK_MAX} 人）。人ごとに { target: 仮名, text: 1 文（${FAREWELL_MAX} 字まで）, reason: なぜそうなったか（${FAREWELL_REASON_MAX} 字まで）}。いなければ空の配列。`,
+  "  結末を迎えるかは、あなたが世界の流れで決める。入力の「時計の目安」（持ちこたえる時間の残り・超過、届いた手の有無）、ケアマネがした事、本人たちの最後の様子、街の出来事を見て決める。",
+  "  目安で時計を超えた人でも、届いた手・家族・近所・避難所などで持ちこたえていてよい。目安に無い人でも、街の出来事（浸水・土砂・道の寸断）で結末を迎えてよい。ケアマネの手が届いた人は持ちこたえやすくする。",
+  "  結末は訓練の中の架空の人の、シナリオの上の事実。text は言い切らず、やわらかく包んだ言い方にする（「〇〇の時間までに、手が届かなかった」の形）。",
+  "  reason は街と物の事実だけで書く（「停電が 6 時間続き、電池が切れた」「道が通れず、誰も着かなかった」）。体の様子・病名・薬の量・医療の助言を書かない。",
+  "  使わない語: 死亡・亡くなる・死ぬ・関連死・遺体・息を引き取る・心肺停止。体の様子を細かく書かない。一度結末を迎えた人は以後挙げない。",
   "",
   "決まり:",
   "1. 人の体の状態（けが・病状・意識）を events と narration に書かない。書くのは街と物の事実だけ。本人たちの様子は別の役が演じる。",
-  "2. 結末を自分で足さない。結末は入力の「結末」に挙がった人だけ。",
+  "2. 結末は 1 刻みに 2 人まで。本人たち（仮名）の中からだけ選ぶ。急がず、流れに沿って決める。",
   "3. 色・順位・優先・助言を書かない。診断・病名・薬の量を書かない。",
   "4. 地区・道・施設の名前を作らない。地理に無い名前は使わない。",
 ].join("\n");
@@ -90,11 +96,15 @@ export const WORLD_STEP_JSON_SCHEMA = {
     },
     farewells: {
       type: "array",
-      description: "入力の「結末」に挙がった人への 1 文。無ければ空の配列",
+      description: `この刻みで結末を迎えた人（0〜${FAREWELL_PER_TICK_MAX} 人）。いなければ空の配列`,
       items: {
         type: "object",
-        properties: { target: { type: "string" }, text: { type: "string" } },
-        required: ["target", "text"],
+        properties: {
+          target: { type: "string", description: "本人の仮名（A さん）" },
+          text: { type: "string", description: `やわらかく包んだ 1 文（${FAREWELL_MAX} 字まで）` },
+          reason: { type: "string", description: `なぜそうなったかの街と物の事実（${FAREWELL_REASON_MAX} 字まで）` },
+        },
+        required: ["target", "text", "reason"],
       },
     },
   },
@@ -189,6 +199,33 @@ function contactLines(input: WorldInput, from: number, aliasOf: ReadonlyMap<stri
     .map(([p, s]) => `- ${aliasOf.get(p)}: ${s.at} 時間に${COLOR_WORDS[s.color]}`);
 }
 
+const WHERE_WORDS = { home: "家", shelter: "避難所", other: "家の外" } as const;
+
+/** 本人たちの最後の様子（仮名。色と場所だけ。言う事は書かない＝本人役の言葉を世界が拾わない）。まだ連絡の無い人は「連絡なし」 */
+function lastLines(input: WorldInput, aliasOf: ReadonlyMap<string, string>): string[] {
+  const ended = input.world.ended ?? {};
+  return [...aliasOf]
+    .filter(([p]) => !ended[p])
+    .map(([p, alias]) => {
+      const s = input.people[p];
+      if (!s) return `- ${alias}: 連絡なし`;
+      return `- ${alias}: ${s.at} 時間に${COLOR_WORDS[s.color]}${s.whereNow ? `、${WHERE_WORDS[s.whereNow]}` : ""}`;
+    });
+}
+
+/** 時計の目安（時計の計算。結末を決めるのは世界）。走っている時計の残り・超過と、条件に達した人 */
+function hintLines(input: WorldInput, aliasOf: ReadonlyMap<string, string>): string[] {
+  const reached = new Set(input.hints.reached.map((r) => r.person));
+  return input.hints.clocks
+    .filter((c) => aliasOf.has(c.person))
+    .map((c) => {
+      const h = Math.round((Math.abs(c.leftMinutes) / 60) * 10) / 10;
+      const left = c.leftMinutes >= 0 ? `残り ${h} 時間` : `${h} 時間超過`;
+      const note = reached.has(c.person) ? "。切れるまでに届いた手なし" : c.leftMinutes < 0 ? "。切れる前に手が届いた" : "";
+      return `- ${aliasOf.get(c.person)}: ${c.label}、${left}${note}`;
+    });
+}
+
 /** 今の街の様子（地区は別名） */
 export function worldNow(w: WorldState): string[] {
   const now: string[] = [];
@@ -215,14 +252,16 @@ export function tickText(input: WorldInput, cast: Pick<WorldCast, "key">, prevHo
   const aliasOf = new Map(cast.key.people.map((p) => [p.personId, p.alias]));
   const acts = actionLines(input.actions, prevHour, aliasOf);
   const contacts = contactLines(input, prevHour, aliasOf);
-  const outs = input.outcomes.filter((o) => aliasOf.has(o.person));
+  const seen = lastLines(input, aliasOf);
+  const hints = hintLines(input, aliasOf);
+  const ended = Object.keys(input.world.ended ?? {}).flatMap((p) => (aliasOf.has(p) ? [aliasOf.get(p)!] : []));
   return [
     `時刻: 発災から ${input.hour} 時間（${last} 時間まで）`,
     acts.length > 0 ? ["前の刻みからケアマネがした事:", ...acts].join("\n") : "前の刻みからケアマネがした事: なし",
     contacts.length > 0 ? ["前の刻みからの本人たちの連絡:", ...contacts].join("\n") : "前の刻みからの本人たちの連絡: なし",
-    outs.length > 0
-      ? ["結末（条件に達した人。farewells に 1 文）:", ...outs.map((o) => `- ${aliasOf.get(o.person)}は条件に達した（${o.label}）`)].join("\n")
-      : "結末: なし",
+    seen.length > 0 ? ["本人たちの最後の様子:", ...seen].join("\n") : "本人たちの最後の様子: なし",
+    hints.length > 0 ? ["時計の目安（コードの計算。結末を迎えるかはあなたが決める）:", ...hints].join("\n") : "時計の目安: 走っている時計なし",
+    `もう結末を迎えた人（挙げない）: ${ended.length > 0 ? ended.join("・") : "なし"}`,
   ].join("\n");
 }
 
@@ -266,7 +305,7 @@ export async function worldOneshot(
     tick: pseudonymizeText(tickText(input, cast, opts.prevHour, opts.last), cast.key),
   });
   const r = await askJson(req, ai);
-  return { step: r.value, incidents: worldIncidents(r.value, applyContext(input, cast, "oneshot"), input.outcomes) };
+  return { step: r.value, incidents: worldIncidents(r.value, applyContext(input, cast, "oneshot"), input.hints.reached) };
 }
 
 /** 返事を当てる所に渡す物 */

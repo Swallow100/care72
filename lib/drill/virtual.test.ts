@@ -8,7 +8,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { EndedNote } from "../../components/drill/Ended.tsx";
 import { Situation } from "../../components/drill/Situation.tsx";
 import type { DatabaseSync } from "node:sqlite";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, expectTypeOf, it } from "vitest";
 import { SEED_PEOPLE } from "../../seed/people.ts";
 import { seedStatements } from "../../seed/sql.ts";
 import type { Principal } from "../auth/principal.ts";
@@ -22,11 +22,25 @@ import { advanceDrill, drillScope, loadDrillRow, startDrill, stateOfRow } from "
 import { outageTownsOf } from "./engine.ts";
 import { drillHooks, drillStepHooks } from "./hooks.ts";
 import { inOutageArea } from "./persona.ts";
-import { loadDrillRecord } from "./record.ts";
+import { DrillPaper } from "../../components/drill/DrillPaper.tsx";
+import { DrillRowDetail } from "../../components/drill/DrillRowDetail.tsx";
+import type { Situation as TriageSituation, TriageEntry } from "../triage/index.ts";
+import { endMinuteOf, loadDrillRecord, reviewContextOf } from "./record.ts";
+import { reviewText } from "./review.ts";
+import { scoreView } from "./score-view.ts";
 import { applyEvent, EMPTY_WORLD, SCENARIOS, type WorldState } from "./scenarios.ts";
 import { clockRuns } from "./score.ts";
 import { loadDrillScreen } from "./view.ts";
-import { FORBIDDEN_WORDS, WorldStepSchema, worldIncidents, type ApplyContext, type PersonFacts, type WorldStep } from "./world-apply.ts";
+import {
+  cleanReason,
+  FAREWELL_PER_TICK_MAX,
+  FORBIDDEN_WORDS,
+  WorldStepSchema,
+  worldIncidents,
+  type ApplyContext,
+  type PersonFacts,
+  type WorldStep,
+} from "./world-apply.ts";
 import { WORLD_SYSTEM } from "./world-oneshot.ts";
 import { agentParams, WORLD_BUDGET_CENTS, WORLD_TOOL, type RoomClient, type RoomEvent } from "./world-room.ts";
 
@@ -174,6 +188,17 @@ function fakeRoom(answer: (text: string, n: number) => WorldStep | "fail" | "sil
   return { client, texts, made, sessionParams };
 }
 
+/**
+ * 結末を決める偽の世界: 刻みの文の「時計の目安」で、届いた手なしの最初の人を 1 人選ぶ（選んだ仮名を chosen に）。
+ * 毎刻み、甲地区の停電を続ける
+ */
+function decide(text: string, chosen: string[]): WorldStep {
+  const hit = [...text.matchAll(/- ([A-Z]+ さん): [^\n]*届いた手なし/gu)].map((m) => m[1]).find((a) => !chosen.includes(a));
+  const farewells = hit ? [{ target: hit, text: "停電の夜、助けを待ち続けた", reason: "停電が続き、誰も着かなかった" }] : [];
+  for (const f of farewells) chosen.push(f.target);
+  return { ...STEP, farewells };
+}
+
 /** 待たない時計（1 回の待ちで 1.5 秒進む） */
 function fastClock() {
   let t = 0;
@@ -207,6 +232,7 @@ function ctxOf(ids: string[], over: Partial<ApplyContext> = {}): ApplyContext {
 }
 
 const ALL = SEED_PEOPLE.map((p) => p.person.id);
+const cleanReasonOf = (t: string, ctx: ApplyContext) => cleanReason(t, ctx.key);
 const townOf = (id: string) => input(id).ledger.basic.address!.town!;
 
 describe("world_step の形と捨て方", () => {
@@ -249,30 +275,67 @@ describe("world_step の形と捨て方", () => {
     for (const w of ["死亡", "亡くなった", "死んだ", "関連死", "遺体", "息を引き取った"]) expect(FORBIDDEN_WORDS.test(w)).toBe(true);
   });
 
-  it("結末の文は頼んだ人の分だけ。禁じる語・空は固定の文（AI の印なし）、頼んでいない人の文は捨てる", () => {
+  it("結末は世界が決めた人（T53）。時計の目安に無い人も当たる。禁じる語は固定の文（決めたのは AI なので AI の印のまま）", () => {
     const ctx = ctxOf(ALL);
     const [a, b, c] = ctx.key.people;
-    const outcomes = [
-      { person: a.personId, label: "酸素 2時間を超過", fixed: `${a.name}さんには、この時間までに助けが届きませんでした` },
-      { person: b.personId, label: "透析 2日を超過", fixed: `${b.name}さんには、この時間までに助けが届きませんでした` },
-    ];
+    // 目安（時計の計算）は a だけ。世界は b・c を選んだ（a は持ちこたえた）
+    const hints = [{ person: a.personId, label: "酸素 2時間を超過" }];
     const out = worldIncidents(
       {
         ...STEP,
         events: [],
         farewells: [
-          { target: a.alias, text: "停電の夜、電池の明かりが静かに消えた" },
-          { target: b.alias, text: "透析に行けないまま亡くなった" },
-          { target: c.alias, text: "頼んでいない人" },
+          { target: b.alias, text: "透析に行けないまま亡くなった", reason: "道が通れず、透析の送迎が着かなかった" },
+          { target: c.alias, text: "水の引かない家で、助けを待ち続けた", reason: "甲地区の浸水が続き、誰も着かなかった" },
         ],
       },
       ctx,
-      outcomes,
+      hints,
     );
     const ends = out.filter((e) => e.change.kind === "outcome");
-    expect(ends).toHaveLength(2);
-    expect(ends[0]).toMatchObject({ person: a.personId, text: "停電の夜、電池の明かりが静かに消えた", ai: true });
-    expect(ends[1]).toMatchObject({ person: b.personId, text: outcomes[1].fixed, ai: false });
+    expect(ends.map((e) => e.person)).toEqual([b.personId, c.personId]);
+    expect(ends[0]).toMatchObject({ text: `${b.name}さんには、この時間までに助けが届きませんでした`, ai: true });
+    expect(ends[0].change).toEqual({ kind: "outcome", label: "", reason: "道が通れず、透析の送迎が着かなかった" });
+    // 理由の地区の別名は画面で町名に戻す
+    expect(ends[1]).toMatchObject({ text: "水の引かない家で、助けを待ち続けた", ai: true });
+    expect(ends[1].change).toMatchObject({ reason: "かわなぎ町の浸水が続き、誰も着かなかった" });
+    // 目安にいる人を世界が選べば、label に切れた時計
+    const withA = worldIncidents({ ...STEP, events: [], farewells: [{ target: a.alias, text: "電池の明かりが消えた", reason: "停電が 6 時間続いた" }] }, ctx, hints);
+    expect(withA.find((e) => e.change.kind === "outcome")!.change).toMatchObject({ label: "酸素 2時間を超過" });
+  });
+
+  it("結末の守り: 知らない仮名・参加者でない人・もう結末の人・同じ人の 2 回目は捨て、1 刻み 2 人まで。理由の禁じる語・医療の語は理由なし", () => {
+    const some = ALL.slice(0, 5);
+    const full = ctxOf(ALL);
+    const ctx = { ...ctxOf(some), ended: new Set([some[0]]) };
+    const alias = (id: string) => full.key.people.find((p) => p.personId === id)!.alias;
+    const aliasIn = (id: string) => ctx.key.people.find((p) => p.personId === id)!.alias;
+    const outsider = ALL.find((id) => !some.includes(id))!;
+    const out = worldIncidents(
+      {
+        ...STEP,
+        events: [],
+        farewells: [
+          { target: "Z さん", text: "知らない人", reason: "" },
+          { target: aliasIn(some[0]), text: "もう結末", reason: "" },
+          { target: alias(outsider), text: "参加者でない（別の鍵の仮名）", reason: "" },
+          { target: aliasIn(some[1]), text: "1 人目", reason: "低血糖のまま薬が切れた" },
+          { target: aliasIn(some[1]), text: "同じ人の 2 回目", reason: "" },
+          { target: aliasIn(some[2]), text: "2 人目", reason: "停電で亡くなった" },
+          { target: aliasIn(some[3]), text: "3 人目（上限の外）", reason: "道が通れない" },
+        ],
+      },
+      ctx,
+    );
+    const ends = out.filter((e) => e.change.kind === "outcome");
+    expect(ends.map((e) => e.person)).toEqual([some[1], some[2]]);
+    expect(ends.map((e) => e.change)).toEqual([
+      { kind: "outcome", label: "", reason: null },
+      { kind: "outcome", label: "", reason: null },
+    ]);
+    for (const w of ["低血糖", "インスリン 4 単位を投与", "受診する", "５ｍｇ"]) expect(cleanReasonOf(w, ctx)).toBeNull();
+    expect(cleanReasonOf("停電が 6 時間続き、電池が切れた", ctx)).toBe("停電が 6 時間続き、電池が切れた");
+    expect(FAREWELL_PER_TICK_MAX).toBe(2);
   });
 });
 
@@ -345,8 +408,9 @@ async function runVirtual(hooks: ReturnType<typeof drillHooks>, id = "drill-v") 
 }
 
 describe("仮想の筋（偽の部屋・偽の Haiku）", () => {
-  it("10 人が 12 刻み動き、部屋は 1 つ（Agent・Environment は 1 回）、ai_calls は世界が 1 刻み 1 行。結末は採点の「条件に達した人」と一致", async () => {
-    const room = fakeRoom();
+  it("10 人が 12 刻み動き、部屋は 1 つ（Agent・Environment は 1 回）、ai_calls は世界が 1 刻み 1 行。結末は部屋が決めた人（採点の結末 AI と一致、条件到達は別の数）", async () => {
+    const chosen: string[] = [];
+    const room = fakeRoom((text) => decide(text, chosen));
     const { client, calls } = fakeClaude();
         const hooks = drillHooks({ DB: db, ANTHROPIC_API_KEY: "dummy" }, careManager(), { claude: client, now: () => new Date(START), room: room.client, roomTime: fastClock() })!;
     const scope = await runVirtual(hooks);
@@ -375,9 +439,23 @@ describe("仮想の筋（偽の部屋・偽の Haiku）", () => {
     expect(state.status).toBe("finished");
     const ended = Object.keys(state.world.ended ?? {}).sort();
     expect(ended.length).toBeGreaterThan(0);
+    // 結末は部屋が返した人だけ（仮名 → 人）。1 刻み 1 人ずつ選んだ
+    const key = pseudonymize(state.participants.map(input), { on: ON }).key;
+    expect(chosen.map((a) => key.people.find((p) => p.alias === a)!.personId).sort()).toEqual(ended);
     const rec = await loadDrillRecord(db, scope, "drill-v", "2026-11-08T00:00:00.000Z");
     if (!rec || rec === "running") throw new Error("記録が無い");
-    expect(rec.score.reached.map((r) => r.person).sort()).toEqual(ended);
+    // 採点: 結末（AI 筋書）は世界が決めた人、条件到達（時計計算）は別に数える
+    expect(rec.score.ended!.map((e) => e.person).sort()).toEqual(ended);
+    expect(rec.score.ended!.every((e) => e.reason === "停電が続き、誰も着かなかった")).toBe(true);
+    expect(rec.score.reached.length).toBeGreaterThan(0);
+    const view = scoreView(rec.score, rec.screen.names, rec.previous);
+    expect(view.rows.map((r) => [r.key, r.sub])).toEqual([
+      ["order", null],
+      ["report", null],
+      ["form9", "様式 9"],
+      ["reached", "時計計算"],
+      ["ended", "筋書"],
+    ]);
     // 結末の人の行には結末の 1 文。結末の後は本人役を呼ばない（信号が無い）
     const screen = (await loadDrillScreen(db, scope, "drill-v", null))!;
     for (const id of ended) {
@@ -385,8 +463,60 @@ describe("仮想の筋（偽の部屋・偽の Haiku）", () => {
       const after = screen.ticks.filter((tk) => tk.hour > at).flatMap((tk) => tk.turns).filter((u) => u.person === id);
       expect(after).toEqual([]);
       const end = screen.ticks.flatMap((tk) => tk.incidents).find((e) => e.change.kind === "outcome" && e.person === id)!;
-      expect(end.text).toMatch(/助けが届きませんでした$/);
+      expect(end).toMatchObject({ text: "停電の夜、助けを待ち続けた", ai: true });
+      expect(end.change).toMatchObject({ reason: "停電が続き、誰も着かなかった" });
+      expect(state.world.ended![id].reason).toBe("停電が続き、誰も着かなかった");
     }
+    // 講評の入力: 結末（AI の筋書き）と条件に達した人（時計の計算）を別の行で
+    const aliasOf = new Map(key.people.map((p) => [p.personId, p.alias]));
+    const text = reviewText(reviewContextOf(rec), aliasOf);
+    expect(text).toContain(`- 条件に達した人（時計の計算。時計が切れるまでに、その人へ届いた手が無い）: ${rec.score.reached.length}`);
+    expect(text).toContain(`- 結末（AI の筋書き。世界が流れの中で決めた。上の時計の計算とは別の数）: ${ended.length}`);
+    expect(text).toContain("世界の事実: 停電が続き、誰も着かなかった");
+    // 訓練記録の紙面: 結末の表（AI の印）と「条件到達 時計計算」の見出し
+    const paper = renderToStaticMarkup(createElement(DrillPaper, { record: rec, office: "デモ事業所", today: ON }));
+    expect(paper).toContain('data-detail="ended"');
+    expect(paper).toContain("条件到達 時計計算");
+    expect(paper).toContain("結末 筋書 <span class=\"drill-ai\">AI</span>");
+    expect(paper).toContain('data-score-key="ended"');
+    // 行の詳細: 結末の 1 文と経緯（理由）に AI の印
+    const caseRow = screen.rows.find((r) => r.id === ended[0])!;
+    const detail = renderToStaticMarkup(
+      createElement(DrillRowDetail, {
+        detail: caseRow.detail!,
+        startedAt: START,
+        ended: { text: "停電の夜、助けを待ち続けた", reason: "停電が続き、誰も着かなかった", ai: true },
+      }),
+    );
+    expect(detail).toContain("data-ended-reason");
+    expect(detail).toContain("経緯");
+    expect(detail.match(/data-ai="item"/g)?.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("採点の終わりは 72 時間で切る（最後の刻みのあとに 72 時間をまたぐ手を打っても）", () => {
+    const screen = (minute: number, hour: number) => ({ state: { minute, hour } }) as unknown as Parameters<typeof endMinuteOf>[0];
+    expect(endMinuteOf(screen(80 * 60, 72))).toBe(72 * 60);
+    expect(endMinuteOf(screen(13 * 60, 12))).toBe(13 * 60);
+  });
+
+  it("発災時のルールの表（lib/triage）の入力に結末は無い（型で）", () => {
+    type HasEnded<T> = "ended" extends keyof T ? true : false;
+    expectTypeOf<HasEnded<TriageEntry>>().toEqualTypeOf<false>();
+    expectTypeOf<HasEnded<TriageSituation>>().toEqualTypeOf<false>();
+  });
+
+  it("部屋も 1 回呼びも落ちた刻みは、時計が切れた人がいても結末を出さない（コードで代わりに決めない）", async () => {
+    const room = fakeRoom(() => "fail");
+    const { client } = fakeClaude(() => {
+      throw new Error("1 回呼びも落ちた");
+    });
+    const hooks = drillHooks({ DB: db, ANTHROPIC_API_KEY: "dummy", AI_DAILY_LIMIT: "2000" }, careManager(), { claude: client, now: () => new Date(START), room: room.client, roomTime: fastClock() })!;
+    const scope = await runVirtual(hooks);
+    const state = stateOfRow((await loadDrillRow(db, "office-demo", "drill-v"))!);
+    expect(state.world.ended ?? {}).toEqual({});
+    const screen = (await loadDrillScreen(db, scope, "drill-v", null))!;
+    expect(screen.ticks.flatMap((tk) => tk.incidents).filter((e) => e.change.kind === "outcome")).toEqual([]);
+    expect(screen.ticks.every((tk) => tk.incidents.some((e) => e.change.kind === "world_note" && e.change.state === "down"))).toBe(true);
   });
 
   it("部屋が落ちたら（session.error）その刻みは 1 回呼びに落ちる（「世界 代替」）。1 回呼びも落ちたら世界は動かさない", async () => {
@@ -442,14 +572,17 @@ describe("仮想の筋（偽の部屋・偽の Haiku）", () => {
     expect(room.made.sessions).toBe(1);
   });
 
-  it("鍵が無くても結末はコードで出る（世界は止まったまま）。固定の筋は鍵なしで今までどおり hooks なし", async () => {
+  it("鍵が無ければ世界は止まり（「世界 停止」）、結末は出ない（T53）。採点の条件到達（時計計算）は数える。固定の筋は鍵なしで今までどおり hooks なし", async () => {
     const hooks = drillStepHooks({ DB: db }, careManager());
     expect(hooks?.outcome).toBeTypeOf("function");
     expect(hooks?.world).toBeUndefined();
     expect(drillHooks({ DB: db }, careManager())).toBeUndefined();
-    await runVirtual(hooks);
+    const scope = await runVirtual(hooks);
     const state = stateOfRow((await loadDrillRow(db, "office-demo", "drill-v"))!);
-    expect(Object.keys(state.world.ended ?? {}).length).toBeGreaterThan(0);
+    expect(state.world.ended ?? {}).toEqual({});
+    const rec = await loadDrillRecord(db, scope, "drill-v", "2026-11-08T00:00:00.000Z");
+    if (!rec || rec === "running") throw new Error("記録が無い");
+    expect(rec.score.ended).toEqual([]);
     const screen = (await loadDrillScreen(db, drillScope(careManager())!, "drill-v", null))!;
     expect(screen.ticks[0].incidents[0]).toMatchObject({ change: { kind: "world_note", state: "off" }, ai: false });
   });

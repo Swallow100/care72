@@ -70,10 +70,11 @@ export type PersonMarks = {
 };
 
 /**
- * 結末（仮想モード、T50）。走り出した時計が切れて、切れる時刻までに手が届かなかった人（lib/drill/outcome.ts がコードで決める）。
- * at は決まった刻みの時刻（発災からの時間）、label は切れた時計の名前。以後その人の本人役は呼ばない
+ * 結末（仮想モード、T50・T53）。世界（部屋・1 回呼び）が決めた架空の人の結末（lib/drill/world-apply.ts の farewellIncidents）。
+ * at は決まった刻みの時刻（発災からの時間）、label は時計の計算で切れていた時計の名前（無ければ空）、reason は世界の事実（AI。無ければ null）。
+ * 以後その人の本人役は呼ばない
  */
-export type Ended = { at: number; label: string };
+export type Ended = { at: number; label: string; reason?: string | null };
 
 /** 世界の状態（被害状況）。監督（T19）が持つ。固定の部分はこの表の出来事を順に当てて作る */
 export type WorldState = {
@@ -163,8 +164,8 @@ export type WorldChange =
   | { kind: "narration"; room: string; via: WorldVia }
   // 部屋も 1 回呼びも使えなかった刻み（差し込みなしで進んだ印。記録に残す）
   | { kind: "world_note"; state: "down" | "off" }
-  // 結末（person が要る。lib/drill/outcome.ts）
-  | { kind: "outcome"; label: string }
+  // 結末（person が要る。世界が決める、lib/drill/world-apply.ts。T50 の記録には reason が無い）
+  | { kind: "outcome"; label: string; reason?: string | null }
   // 本人ごとの印（監督の差し込み。person が要る）
   | { kind: "supply_left" }
   | { kind: "nurse_away" }
@@ -427,7 +428,7 @@ const HEAVY_RAIN: Scenario = {
 // ---------- 地震 ----------
 // 南海トラフ、震度 6 強、沿岸の津波、停電 2 日。8 井上が主役、1 山田・2 小林の電池。
 // 色の動き: 山田は連絡なしのまま酸素の内蔵電池で 3 時間に赤。小林は 3 時間に黄、6 時間に夫の緑（電池が切れたあと）で黄のまま。
-// 井上は高台の集会所で緑、冷蔵が無くインスリンの時計が走り 60 時間に黄。
+// 井上は高台の集会所で緑、インスリンの残り（手元の日数。発災から走る。冷蔵の時計は無く、保管は確認の欄）で 60 時間に黄。
 
 const EARTHQUAKE: Scenario = {
   id: "earthquake",
@@ -710,7 +711,7 @@ export function applyEvent(world: WorldState, e: WorldEvent, hour: number): Worl
       return world;
     case "outcome": {
       if (!person || world.ended?.[person]) return world;
-      return { ...world, ended: { ...(world.ended ?? {}), [person]: { at: hour, label: c.label } } };
+      return { ...world, ended: { ...(world.ended ?? {}), [person]: { at: hour, label: c.label, reason: c.reason ?? null } } };
     }
   }
 }

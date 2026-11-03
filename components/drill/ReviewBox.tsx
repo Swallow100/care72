@@ -55,7 +55,7 @@ function rowsOf(text: string): number {
 }
 
 const TEXTAREA =
-  "w-full min-w-0 resize-none rounded bg-panel2 px-2 py-1 text-sm leading-6 outline-none [field-sizing:content] focus-visible:outline-2 focus-visible:outline-accent";
+  "w-full min-w-0 resize-none rounded bg-panel2 px-2 py-1 text-sm leading-6 outline-none [field-sizing:content] focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-accent";
 
 export function ReviewBox({
   drillId,

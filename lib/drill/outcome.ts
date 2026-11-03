@@ -1,10 +1,10 @@
-// 仮想モード（docs/tasks/T50.md）の結末。AI が決めない。Claude を呼ばない。
+// 仮想モード（docs/tasks/T50.md・T53.md）の「時計の目安」。結末は決めない（決めるのは世界の部屋・1 回呼び、lib/drill/world-apply.ts）。Claude を呼ばない。
 //
-// 刻みごとに、走り出した時計（ルールの表と同じ時計。停電の時計は本人の町が停電のときだけ）が切れて、
-// 切れる時刻までにその人へ届いた手（通話・到着・手配済・受入）が 1 つも無い人を「条件に達した」とコードが決める。
+// 刻みごとに、走り出した時計（ルールの表と同じ時計。停電の時計は本人の町が停電のときだけ）の残り・超過と、
+// 切れる時刻までにその人へ届いた手（通話・到着・手配済・受入）が 1 つも無い人（条件に達した人）をコードが数える。
 // 計算は採点（lib/drill/score.ts の clockRuns・scoreReached）と同じ関数で、訓練の終わりの講評（T22）の「条件に達した人」と数が合う。
-// 決まった人には、世界の部屋（または 1 回呼び）にオブラートに包んだ 1 文だけを書かせる（lib/drill/world-apply.ts の worldIncidents）。
-// 以後その人の本人役は呼ばず、信号を出さず、着信も鳴らない（lib/drill/engine.ts）。ルールの表の色は変えない（lib/triage は触らない）
+// これは世界への入力（ヒント）で、世界はそれを見て結末を迎えた人を 0〜2 人決める（同じ人とは限らない。T53、DECISIONS 11/3 17:4x）。
+// ルールの表の色は変えない（lib/triage は触らない）
 
 import type { D1Database } from "@cloudflare/workers-types";
 import { parseLedger } from "../db/ledger.ts";
@@ -15,7 +15,7 @@ import type { ActionRecord } from "./engine.ts";
 import { outageTownsOf } from "./engine.ts";
 import type { WorldState } from "./scenarios.ts";
 import { clockRuns, scoreReached, type ClockForRun, type Reached } from "./score.ts";
-import { farewellFixed, type OutcomeAsk } from "./world-apply.ts";
+import type { OutcomeAsk } from "./world-apply.ts";
 
 /** 時計の走り方に渡す停電（町ごとの始まりも）。採点（record.ts）と結末で同じ物を使う */
 export function outageForRuns(
@@ -54,7 +54,7 @@ export function reachedBy(
   return scoreReached(runs, actions, minute);
 }
 
-/** 結末の理由の言い方（「酸素の電池 2時間を超過」）。画面と部屋への伝え方 */
+/** 条件に達した時計の言い方（「酸素の電池 2時間を超過」）。結末の行の label と世界への伝え方 */
 export const outcomeLabel = (r: Pick<Reached, "label" | "hours">) => `${r.label} ${formatHours(r.hours)}を超過`;
 
 export type OutcomeInput = {
@@ -65,16 +65,42 @@ export type OutcomeInput = {
   minute: number;
 };
 
-/** この刻みで新しく条件に達した人（もう結末の人は除く） */
-export function newOutcomes(sources: ReadonlyMap<string, OutcomeSource>, input: OutcomeInput): OutcomeAsk[] {
+/** 本人 1 人の、走っている時計のうちいちばん早く切れる物（世界への目安） */
+export type ClockHint = {
+  person: string;
+  /** 時計の名前と長さ（「酸素の電池 2時間」） */
+  label: string;
+  /** 切れるまでの分。負は超過した分 */
+  leftMinutes: number;
+};
+
+/** 世界への目安。reached は時計の計算で条件に達した人（まだ結末でない人）、clocks は走っている時計の残り・超過 */
+export type OutcomeHints = { reached: OutcomeAsk[]; clocks: ClockHint[] };
+
+export const NO_HINTS: OutcomeHints = { reached: [], clocks: [] };
+
+/** この刻みの目安（もう結末の人は除く） */
+export function outcomeHints(sources: ReadonlyMap<string, OutcomeSource>, input: OutcomeInput): OutcomeHints {
   const ended = input.world.ended ?? {};
-  return reachedBy(sources, input.participants, input.world, input.actions, input.minute)
-    .filter((r) => !ended[r.person])
-    .map((r) => ({ person: r.person, label: outcomeLabel(r), fixed: farewellFixed(sources.get(r.person)!.name) }));
+  const live = input.participants.filter((p) => !ended[p] && sources.has(p));
+  const reached = reachedBy(sources, live, input.world, input.actions, input.minute).map((r) => ({ person: r.person, label: outcomeLabel(r) }));
+  const ledgers = live.map((p) => sources.get(p)!.ledger);
+  const towns = new Map(live.map((p) => [p, sources.get(p)!.ledger.basic.address?.town ?? null] as const));
+  const runs = clockRuns(
+    drillClocks(live.flatMap((p) => [...sources.get(p)!.clocks]), input.world),
+    towns,
+    outageForRuns(input.world, ledgers),
+  ).filter((r) => r.startMinute <= input.minute);
+  const clocks: ClockHint[] = [];
+  for (const p of live) {
+    const first = runs.filter((r) => r.person === p).sort((a, b) => a.outMinute - b.outMinute)[0];
+    if (first) clocks.push({ person: p, label: `${first.label} ${formatHours(first.hours)}`, leftMinutes: first.outMinute - input.minute });
+  }
+  return { reached, clocks };
 }
 
-/** engine に渡す口。仮想の刻みで、世界の前に呼ぶ */
-export type OutcomeHook = (input: OutcomeInput) => Promise<OutcomeAsk[]>;
+/** engine に渡す口。仮想の刻みで、世界の前に呼ぶ（目安を作るだけ。結末は世界が決める） */
+export type OutcomeHook = (input: OutcomeInput) => Promise<OutcomeHints>;
 
 /** 事業所の本人の氏名・台帳・時計（頼り先の欄も）を 1 回の batch で読む */
 export async function loadOutcomeSources(db: D1Database, officeId: string): Promise<Map<string, OutcomeSource>> {
@@ -97,8 +123,8 @@ export async function loadOutcomeSources(db: D1Database, officeId: string): Prom
   return out;
 }
 
-/** 結末の口を作る（1 要求ごと。台帳は最初の呼び出しで 1 回だけ読む） */
+/** 目安の口を作る（1 要求ごと。台帳は最初の呼び出しで 1 回だけ読む） */
 export function createOutcomeHook(deps: { load: () => Promise<ReadonlyMap<string, OutcomeSource>> }): OutcomeHook {
   let loaded: Promise<ReadonlyMap<string, OutcomeSource>> | null = null;
-  return async (input) => newOutcomes(await (loaded ??= deps.load()), input);
+  return async (input) => outcomeHints(await (loaded ??= deps.load()), input);
 }

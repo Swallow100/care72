@@ -22,7 +22,7 @@ export const metadata: Metadata = { title: "訓練記録 | ケア72" };
 // D1 を毎回読む
 export const dynamic = "force-dynamic";
 
-// 訓練記録の一覧（事業所ごと。審査員の回も残る）と開始（大雨の想定・地震の想定・10 分版）。docs/tasks/T17.md。
+// 訓練記録の一覧（事業所ごと。審査員の回も残る）と開始（大雨想定・地震想定・10 分版）。docs/tasks/T17.md。
 // 進行中の訓練は事業所に 1 つ。あれば開始を押せず、一覧の進行中から再開（途中から続ける）。終わった・中断した訓練は再生（Claude を呼ばない）。
 // ケアマネの役だけ（審査員のケアマネの役も）。デモ事業所の終わった訓練の種は T26
 export default async function DrillPage() {
