@@ -607,6 +607,10 @@ describe("画面の形と部品", () => {
 
   it("分類なしは理由、人の分類は修正済と修正前の AI、出さない物は空", () => {
     expect(text(html({ kind: "none", error: "not_configured" }))).toBe("分類分類なしAI 未設定");
+    // 文字の無い録音は「不明」（「文字なし」と出さない。AI の印も無い。T40）
+    const silent = html({ kind: "none", error: "no_text" });
+    expect(text(silent)).toBe("分類不明");
+    expect(silent).not.toContain("data-ai");
     expect(text(html({ kind: "pending" }))).toBe("分類未分類");
     const human = html(classViewOf({ ...aiRow, classes: '["injury"]', classified_by: "care_manager" }));
     expect(text(human)).toContain("けが修正済修正前動けない");
