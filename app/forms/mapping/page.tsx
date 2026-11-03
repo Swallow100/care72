@@ -52,8 +52,8 @@ export default async function FormMappingListPage() {
         <span className="text-sm">
           <span className="text-muted">対応表</span> <span className="font-bold tabular-nums">{list.length}</span>
         </span>
-        {/* AI の状態は中立の地の印（状態の 4 色を使わない。T76）。使えるときは本日残り */}
-        <AiStatusMark status={ai} size="md" />
+        {/* AI の状態は中立の地の印（状態の 4 色を使わない。T76）。地の上なので白の地。使えるときは本日残り */}
+        <AiStatusMark status={ai} size="md" inPanel2 />
       </div>
 
       <div className="mt-3">
