@@ -8,7 +8,10 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
+import { Loader72 } from "@/components/ui/Loader72";
 import { DRILL_LABELS } from "@/lib/drill/labels";
+import { appConfirm } from "@/lib/ui/dialog";
+import { CONFIRM_LABELS, WAIT_LABELS } from "@/lib/ui/labels";
 import { RINGING_EVENT } from "./IncomingCall";
 
 /** 早送りの 1 刻みの間（画面の色が変わるのを見られるように） */
@@ -17,9 +20,10 @@ const FAST_MS = 2500;
 export function DrillControls({ id, step, done }: { id: string; step: number; done: boolean }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
+  /** 1 刻みを進めている間（本人役・家族役が考える。AI の待ちの印を出す） */
+  const [stepping, setStepping] = useState(false);
   const [fast, setFast] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [confirm, setConfirm] = useState(false);
   const stepRef = useRef(step);
   stepRef.current = step;
   /** 最後に送った刻み。画面がその次の刻みを読み直すまで、早送りは次を呼ばない */
@@ -27,6 +31,7 @@ export function DrillControls({ id, step, done }: { id: string; step: number; do
 
   const advance = useCallback(async (): Promise<boolean> => {
     setBusy(true);
+    setStepping(true);
     setError(null);
     sentRef.current = stepRef.current;
     try {
@@ -48,6 +53,7 @@ export function DrillControls({ id, step, done }: { id: string; step: number; do
       return false;
     } finally {
       setBusy(false);
+      setStepping(false);
     }
   }, [id, router]);
 
@@ -83,7 +89,6 @@ export function DrillControls({ id, step, done }: { id: string; step: number; do
       const res = await fetch(`/api/drill/${encodeURIComponent(id)}/abandon`, { method: "POST" });
       const body = (await res.json().catch(() => null)) as { ok?: boolean; label?: string } | null;
       if (!res.ok || !body?.ok) setError(body?.label ?? String(res.status));
-      setConfirm(false);
       router.refresh();
     } finally {
       setBusy(false);
@@ -100,28 +105,19 @@ export function DrillControls({ id, step, done }: { id: string; step: number; do
         <input type="checkbox" checked={fast} onChange={(e) => setFast(e.target.checked)} className="size-4 accent-accent" data-action="fast" />
         {DRILL_LABELS.fastForward}
       </label>
-      {confirm ? (
-        <span className="flex items-center gap-1">
-          <Button kind="dangerFill" onClick={() => void abandon()} disabled={busy} data-action="abandon-confirm">
-            {DRILL_LABELS.confirmAbandon}
-          </Button>
-          <Button kind="quiet" onClick={() => setConfirm(false)}>
-            {DRILL_LABELS.cancel}
-          </Button>
-        </span>
-      ) : (
-        <Button
-          kind="danger"
-          onClick={() => {
-            setFast(false);
-            setConfirm(true);
-          }}
-          disabled={busy}
-          data-action="abandon"
-        >
-          {DRILL_LABELS.abandon}
-        </Button>
-      )}
+      {/* 中断はアプリ内の確認の窓で決めてから（T44）。最初の焦点は取消 */}
+      <Button
+        kind="danger"
+        onClick={async () => {
+          setFast(false);
+          if (await appConfirm(CONFIRM_LABELS.abandonBody, { title: CONFIRM_LABELS.abandonTitle, ok: CONFIRM_LABELS.abandonOk, danger: true })) void abandon();
+        }}
+        disabled={busy}
+        data-action="abandon"
+      >
+        {DRILL_LABELS.abandon}
+      </Button>
+      {stepping && <Loader72 label={WAIT_LABELS.think} size={18} className="text-sm text-muted" />}
       {error && (
         <span role="alert" className="text-sm font-bold text-danger">
           {error}

@@ -18,6 +18,8 @@ import type { Question } from "@/lib/intake/ask";
 import type { IntakeChange } from "@/lib/intake/changes";
 import type { DiffItem } from "@/lib/intake/diff";
 import type { IntakeProps } from "@/lib/intake/props";
+import { Loader72 } from "@/components/ui/Loader72";
+import { WAIT_LABELS } from "@/lib/ui/labels";
 import { IntakeChanges, rowsOf, type ChangeRow } from "./IntakeChanges";
 import { IntakeManual } from "./IntakeManual";
 import { IntakeQuestion } from "./IntakeQuestion";
@@ -58,6 +60,8 @@ export function Intake(props: IntakeProps & { level: Level }) {
   const [tab, setTab] = useState<Tab>(props.aiReady ? "text" : "manual");
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
+  /** Claude が分けている間（保存の待ちとは別に、AI の待ちの印を出す） */
+  const [splitting, setSplitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [proposal, setProposal] = useState<Proposal | null>(null);
@@ -85,6 +89,7 @@ export function Intake(props: IntakeProps & { level: Level }) {
 
   async function extract(source: string, focus: string | null) {
     setBusy(true);
+    setSplitting(true);
     setError(null);
     setNotice(null);
     setFailed(null);
@@ -94,6 +99,7 @@ export function Intake(props: IntakeProps & { level: Level }) {
       focus,
     });
     setBusy(false);
+    setSplitting(false);
     if (isError(r)) {
       if (r.error === "ai_not_configured" || r.error === "ai_limit") {
         setAiBlock(r.label);
@@ -156,7 +162,9 @@ export function Intake(props: IntakeProps & { level: Level }) {
         </div>
         {aiBlock && <StateTag tone="check">{aiBlock}</StateTag>}
         <span role="status" className="ml-auto text-xs">
-          {busy ? (
+          {splitting ? (
+            <Loader72 label={WAIT_LABELS.split} size={16} live={false} className="text-muted" />
+          ) : busy ? (
             <span className="text-muted">{INTAKE_LABELS.busy}</span>
           ) : listening ? (
             <span className="font-bold" data-intake="listening">

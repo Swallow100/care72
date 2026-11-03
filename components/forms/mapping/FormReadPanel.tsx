@@ -6,6 +6,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { BTN_MAIN, BTN_SIDE, INPUT } from "@/components/person/intake-ui";
+import { Loader72 } from "@/components/ui/Loader72";
 import { FORM_FILE_MAX_BYTES, LIMITS, MAPPING_LABELS as L } from "@/lib/forms/mapping";
 
 type Fail = { label: string };
@@ -102,9 +103,15 @@ export function FormReadPanel({ aiReady }: { aiReady: boolean }) {
           </button>
         </div>
         {busy === "read" && (
-          <p className="mt-2 text-sm" role="status">
-            {L.reading} <span className="tabular-nums">{seconds}</span> 秒
-          </p>
+          // AI の待ちの印（T44）。待った秒も添える
+          <Loader72
+            className="mt-2 text-sm"
+            label={
+              <>
+                {L.reading} <span className="tabular-nums">{seconds}</span> 秒
+              </>
+            }
+          />
         )}
       </section>
 
