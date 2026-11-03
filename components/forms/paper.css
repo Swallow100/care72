@@ -10,7 +10,10 @@
   書体: BIZ UDPゴシック（UD の書体。行政の文書に使われ、刷って読み違えにくい）。画面の書体とは分けて固定する。
   禁則: 行頭の句読点・閉じ括弧を避ける（line-break: strict）。語の途中では割らない（word-break: normal。anywhere は使わない）。
   罫線: 表（欄の格子）だけ。黒の細線（1px = 0.75pt。0.5pt は Chrome の印刷で線の太さが揃わない）、外枠と大事な欄は太線。
-        見出し行は薄い灰色の地。色は使わず、大きさと太さで大事な欄を目立たせる。角の丸み・影・色の面は使わない。
+        見出し行は薄い灰色の地。色は使わず、大きさと枠の太さで大事な欄を目立たせる。角の丸み・影・色の面は使わない。
+  太字: 元の様式で太い所だけ（T47）。値（名前・場所・薬・選んだ □）は太くしない。段の名前は既定で太くせず、
+        様式で太い段だけ .blk-h.b。様式の題は .paper.form では太くしない（松山市・災害診療記録は題も細い）。
+        太字を使ってよい選び方の一覧は lib/forms/paper-bold.test.ts が持つ。本人の 1 枚・QR の紙（様式の無い文書）は別。
   空欄: 「未確認」は小さく灰色（.p-unc）。
 */
 
@@ -135,6 +138,10 @@
   line-height: 1.3;
   text-align: center;
 }
+/* 様式の題は元の様式のとおり細い（様式9 の紙は .form でなく、ひな形のとおり太い） */
+.paper.form .title {
+  font-weight: 400;
+}
 .paper .top {
   display: flex;
   justify-content: space-between;
@@ -174,9 +181,13 @@
   padding: 0.5mm 2mm;
   background: var(--head-bg);
   border-bottom: var(--rule);
-  font-weight: 700;
+  font-weight: 400;
   font-size: var(--fs-label);
   line-height: 1.35;
+}
+/* 元の様式で太い段の名前だけ */
+.paper .blk-h.b {
+  font-weight: 700;
 }
 .paper .blk.key > .blk-h {
   font-size: var(--fs-h);
@@ -209,7 +220,6 @@
   border-top: var(--rule);
 }
 .paper .cap {
-  font-weight: 700;
   font-size: var(--fs-label);
 }
 /* 欄のまとまりの名前を左の細い列に縦書きで（様式の「実施者１」など） */
@@ -240,6 +250,26 @@
 .paper .f-v {
   display: block;
 }
+/* 元の様式で太い欄の名前（松山市の「支援の内容（複数選択可）」） */
+.paper .f-l.b {
+  font-weight: 700;
+  color: #000;
+}
+/* 欄の名前を値の左に（名前と値が 1 行の欄） */
+.paper .il {
+  display: grid;
+  grid-template-columns: 20mm minmax(0, 1fr);
+  column-gap: 1.6mm;
+  align-items: baseline;
+}
+/* 欄の名前に添える様式の注 */
+.paper .f-l .f-n {
+  margin-left: 1.6mm;
+}
+/* 元の様式で選択肢の言葉が太い欄（松山市の同意の問い・マイ・タイムライン）。選んだかどうかは ■ と □ で示す */
+.paper .opt-b .ch {
+  font-weight: 700;
+}
 .paper .lg .f-v,
 .paper .lg {
   font-size: calc(var(--fs-body) * 1.15);
@@ -249,7 +279,6 @@
 }
 .paper .xl .f-v {
   font-size: calc(var(--fs-body) * 1.4);
-  font-weight: 700;
   line-height: 1.25;
 }
 .paper .sm .f-v {
@@ -276,6 +305,7 @@
   font-size: 0.85em;
   color: var(--gray);
 }
+/* 強めの言葉。様式の紙面（.form・様式9）では使わない（FormCell は紙では出さない）。QR の紙の範囲・期限だけ */
 .paper .p-strong {
   font-weight: 700;
 }
@@ -292,9 +322,6 @@
 }
 .paper .ch {
   white-space: nowrap;
-}
-.paper .ch.on {
-  font-weight: 700;
 }
 .paper .hand {
   display: block;
@@ -316,6 +343,28 @@
 .paper .small-note p + p {
   margin-top: 0.6mm;
 }
+/* ※の付かない段落（松山市の様式の最後の 1 文）は字下げしない */
+.paper .small-note p.plain {
+  padding-left: 0;
+  text-indent: 0;
+}
+/* 書き込みの欄（松山市の特記事項）の中の段。段の名前は小さく灰色で行の頭に（様式の欄の名前ではない） */
+.paper .parts {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6mm;
+}
+.paper .part {
+  display: grid;
+  grid-template-columns: 17mm minmax(0, 1fr);
+  column-gap: 1.6mm;
+  align-items: baseline;
+}
+.paper .part > .lead {
+  font-size: var(--fs-label);
+  color: var(--gray);
+  line-height: 1.3;
+}
 .paper .grow {
   flex: 1 1 auto;
   display: flex;
@@ -333,6 +382,7 @@
 .paper .blk.grow-last > .grid:last-child {
   flex: 1 1 auto;
   max-height: 32mm;
+  grid-template-rows: minmax(0, 1fr);
 }
 .paper .stamp {
   width: 24mm;
@@ -363,7 +413,7 @@
 .paper table.sheet th {
   background: var(--head-bg);
   font-size: var(--fs-label);
-  font-weight: 700;
+  font-weight: 400;
   line-height: 1.3;
 }
 .paper table.sheet tr {

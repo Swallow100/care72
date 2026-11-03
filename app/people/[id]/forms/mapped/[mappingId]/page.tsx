@@ -6,13 +6,16 @@ import { notFound } from "next/navigation";
 import { MappedSheet } from "@/components/forms/MappedSheet";
 import { StateTag } from "@/components/person/parts";
 import { ButtonLink } from "@/components/ui/Button";
+import { FormAbout } from "@/components/forms/FormAbout";
 import { PaperBar, wantsPrint } from "@/components/ui/PaperBar";
 import { todayJst } from "@/lib/age";
 import { canViewPage } from "@/lib/auth/roles";
 import { requirePage } from "@/lib/auth/server";
 import { buildMappedSheet } from "@/lib/forms/mapped-sheet";
 import { MAPPING_LABELS as L } from "@/lib/forms/mapping";
+import { CAO_ENTRY, mappingEntry } from "@/lib/forms/catalog";
 import { loadCheckedMapping } from "@/lib/forms/mapping-db";
+import { CAO_MAPPING_ID, caoMapping } from "@/lib/forms/plan-form";
 import { warekiText } from "@/lib/forms/wareki";
 import { CONSENT_KIND_LABELS } from "@/lib/labels";
 import { loadPersonDocument } from "@/lib/consent/documents";
@@ -33,6 +36,7 @@ type Props = {
 // 差し込みは台帳からサーバーで描く。Claude は呼ばない（氏名・住所・電話が入る）。同意の範囲は松山市の様式と同じ。
 // 本人の壁は本人のページと同じ（loadPersonPage が personInScope を通す）。対応表は本人の事業所の物だけ（ほかの事業所・下書きは 404）
 // 医療班・行政の同意の範囲に差し込みの書類は無いので 404（T24、lib/consent/scope.ts）
+// mappingId が builtin-cao なら内閣府の様式例（コードに持つ対応表。T08 で手で起こした物で、ケアマネの確認は経ていない。T47）
 export default async function MappedFormPage({ params, searchParams }: Props) {
   const principal = await requirePage("person");
   const { id, mappingId } = await params;
@@ -42,16 +46,23 @@ export default async function MappedFormPage({ params, searchParams }: Props) {
   const opened = await loadPersonDocument(env.DB, principal, id, "mapped");
   if (!opened) notFound();
   const { rows } = opened;
+  const builtin = mappingId === CAO_MAPPING_ID;
   const [stored, office] = await Promise.all([
-    loadCheckedMapping(env.DB, rows.person.office_id, mappingId),
+    builtin ? null : loadCheckedMapping(env.DB, rows.person.office_id, mappingId),
     env.DB.prepare("SELECT name FROM offices WHERE id = ?1").bind(rows.person.office_id).first<{ name: string }>(),
   ]);
-  if (!stored) notFound();
+  if (!builtin && !stored) notFound();
+  const mapping = stored ? stored.mapping : caoMapping();
+  const entry = stored
+    ? mappingEntry({ id: stored.id, title: stored.title, issuer: stored.mapping.issuer, checkedAt: stored.checked_at })
+    : CAO_ENTRY;
 
   const today = todayJst();
-  const sheet = buildMappedSheet(rows, stored.mapping, { today, officeName: office?.name ?? null });
-  const checked = `${stored.checked_at ? formatJst(stored.checked_at).slice(0, 10) : ""} ${stored.checked_by_name ?? ""}`.trim();
-  const editable = canViewPage(principal.role, "caseload");
+  const sheet = buildMappedSheet(rows, mapping, { today, officeName: office?.name ?? null });
+  const checked = stored
+    ? `${stored.checked_at ? formatJst(stored.checked_at).slice(0, 10) : ""} ${stored.checked_by_name ?? ""}`.trim()
+    : "手作成・未確認";
+  const editable = canViewPage(principal.role, "caseload") && stored !== null;
 
   return (
     <main className="py-4 print:p-0">
@@ -62,7 +73,7 @@ export default async function MappedFormPage({ params, searchParams }: Props) {
         autoPrint={autoPrint}
         actions={
           editable && (
-            <ButtonLink href={`/forms/mapping/${encodeURIComponent(stored.id)}`} kind="plain">
+            <ButtonLink href={`/forms/mapping/${encodeURIComponent(stored!.id)}`} kind="plain">
               対応表
             </ButtonLink>
           )
@@ -87,6 +98,7 @@ export default async function MappedFormPage({ params, searchParams }: Props) {
           </StateTag>
         ))}
       </PaperBar>
+      <FormAbout entry={entry} />
       <MappedSheet sheet={sheet} meta={{ date: warekiText(today), checked, office: office?.name ?? null, author: rows.careManagerName }} />
     </main>
   );

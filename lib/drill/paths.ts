@@ -21,6 +21,11 @@ export function drillHref(id: string, q: DrillQuery = {}): string {
   return `${DRILL_PATH}/${encodeURIComponent(id)}${s ? `?${s}` : ""}`;
 }
 
+/** 訓練記録の紙面（T22）。print は開いてすぐ印刷の画面を出す（?print=1、components/ui/PrintButton の auto） */
+export function reportHref(id: string, opts: { print?: boolean } = {}): string {
+  return `${DRILL_PATH}/${encodeURIComponent(id)}/report${opts.print ? "?print=1" : ""}`;
+}
+
 export function parseSort(v: unknown): SortKey {
   return typeof v === "string" && (SORT_KEYS as readonly string[]).includes(v) ? (v as SortKey) : "tier";
 }

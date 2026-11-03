@@ -12,7 +12,7 @@ import { LABEL } from "@/components/ui/Panel";
 import { Mark, StateTag, StateText } from "@/components/ui/Tag";
 import { ACTION_STATUS_LABELS } from "@/lib/drill/actions";
 import type { ActionRecord, ActionResult, DrillTurn, Tick } from "@/lib/drill/engine";
-import { ACTION_LABELS, ACTION_UI, clockLabel, DRILL_LABELS, elapsedLabel } from "@/lib/drill/labels";
+import { ACTION_LABELS, ACTION_UI, calleeText, clockLabel, DRILL_LABELS, elapsedLabel } from "@/lib/drill/labels";
 import { COLOR_LABELS, CONTACT_KIND_LABELS } from "@/lib/labels";
 import { SOURCE_LABELS } from "@/lib/list/detail";
 import type { StateTone } from "@/lib/person";
@@ -29,15 +29,6 @@ function toneOf(r: ActionResult): StateTone {
 
 const TURN_TONES: Record<DrillTurn["color"], StateTone> = { red: "urgent", green: "ok", unknown: "unknown" };
 const TURN_LABELS: Record<DrillTurn["color"], string> = { red: COLOR_LABELS.red, green: COLOR_LABELS.green, unknown: COLOR_LABELS.gray };
-
-/** 手の相手の言い方（訪問依頼で相手なしは事業所の職員、行政報告で相手なしは市役所、受入依頼は福祉避難所） */
-function calleeText(a: ActionRecord): string | null {
-  if (a.calleeLabel) return a.calleeLabel;
-  if (a.kind === "dispatch") return ACTION_UI.staff;
-  if (a.kind === "report_city") return ACTION_UI.city;
-  if (a.kind === "request_welfare_shelter") return ACTION_UI.shelter;
-  return null;
-}
 
 /** 手の 1 行（時刻・手・誰に・相手・返事） */
 function Head({ a, names }: { a: ActionRecord; names: Names }) {

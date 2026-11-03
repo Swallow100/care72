@@ -14,7 +14,6 @@
 
 import { ageOn } from "../age.ts";
 import {
-  MY_TIMELINES,
   SUPPORT_KINDS,
   type ClockRow,
   type ConsentKind,
@@ -43,7 +42,6 @@ import {
   HOUSEHOLD_LABELS,
   MEDICATION_CATEGORY_LABELS,
   MEDICATION_FLAG_LABELS,
-  MY_TIMELINE_LABELS,
   PENDING_STATUS_LABELS,
   SMARTPHONE_LABELS,
   STRUCTURE_LABELS,
@@ -56,6 +54,37 @@ export const MATSUYAMA_FORM_URL =
   "https://www.city.matsuyama.ehime.jp/kurashi/fukushi/shogai/hinankodo/kobetsuhinannkeikaku.files/R8.9.10keikaku.pdf";
 
 export const MATSUYAMA_FORM_VERSION = "2026.9.10";
+
+/**
+ * 様式に刷ってある文（題・あて先・段の注・同意の問い・注意書き）。市の PDF の字のまま（11/3 T47 で照合。前は短く言い換えていた）。
+ * 紙面（components/forms/MatsuyamaSheet.tsx）はここから出し、照合の表（lib/forms/form-audit.ts）も同じ物を指す
+ */
+export const MATSUYAMA_TEXTS = {
+  version: `（様式【${MATSUYAMA_FORM_VERSION}】）`,
+  title: "松山市避難行動要支援者名簿登録申込書 兼 個別避難計画",
+  to: "（あて先）松山市長",
+  consentRegistry:
+    "災害時の救援活動等に役立てるため、市が作成する避難行動要支援者名簿に登録し、上記事項を平常時から避難支援等関係者（消防機関、警察、民生児童委員、市社会福祉協議会、自主防災組織等の避難支援の実施に携わる者）へ提供することに同意しますか？",
+  consentPlanShare:
+    "災害の発生のおそれがある時又は災害が発生した時に円滑な避難を行うための個別避難計画を作成し、避難支援等関係者と事前に共有することに同意しますか？",
+  confirmed: "上記内容を確認し、了承しています。",
+  proxyNote: "（やむを得ない理由により本人が記入できない場合）",
+  kinNote: "（安否確認ができたときの連絡先）",
+  supportersHead: "避難支援等実施者(近隣協力員)",
+  supportersNote: "避難支援等の実施に法的な責任や義務を負うものではありません。",
+  orgNote: "※避難支援等実施者がいない場合、自治会や自主防災組織等の支援組織を記入します。",
+  supporterConsentNote:
+    "※…避難支援等実施者(近隣協力員)の同意：この個別避難計画は、避難行動要支援者と避難支援に関わる関係者との話し合いの上で作成し、上記事項を平常時から避難支援等関係者へ提供することに同意します。",
+  preNote: "（親戚宅や近くの安全な場所等）",
+  notesNote: "（リスクや課題への対応、具体的な支援方法、医療・福祉サービスの利用状況など）",
+  routeNote: "※地図上または箇条書き等で避難経路を記入してください。",
+  footPrepare: "※自宅でできる防災訓練の実施や各地域の防災訓練への参加、物資を備蓄しておくなど、平常時からできる範囲で災害に備えることも重要です。",
+  footNoGuarantee:
+    "※この個別避難計画は、災害が発生し、または発生するおそれが高まったときに、要支援者が避難するために必要な情報をまとめたものです。災害等での避難支援がなされることを保証するものではなく、関係者に法的な責任や義務を負わせるものではありません。",
+  footUse:
+    "この申込書に記載する情報は、災害発生時に地域の支援等により生命等の安全を図るためのものであり、それ以外の用途に使用することを禁止します。",
+  mayor: "松山市長",
+} as const;
 
 /** 支援の内容の選択肢の様式の言葉（台帳は SUPPORT_KINDS、本人のページは短い SUPPORT_KIND_LABELS） */
 const SUPPORT_SHEET_LABELS: Record<SupportKind, string> = {
@@ -77,7 +106,6 @@ export const MATSUYAMA_BLOCKS = {
   kin: "近親者及緊急時の連絡先",
   supporter1: "避難支援等実施者１",
   supporter2: "避難支援等実施者２",
-  night: "夜間支援",
   org: "避難支援等実施組織",
   plan: "計画作成者・医療",
   risk: "自宅のリスク",
@@ -99,14 +127,16 @@ export type MatsuyamaFieldDef = {
   key: string;
   page: 1 | 2;
   block: MatsuyamaBlock;
-  /** 様式の欄の名前 */
+  /** 様式の欄の名前（様式の字のまま。照合は lib/forms/form-audit.ts）。様式に名前の無い欄は、ケア72 が付けた呼び名 */
   label: string;
   /** 台帳のどこから。台帳に項目の無い欄は NO_SOURCE、手で書く欄は HANDWRITE */
   source: string;
   shape: FieldShape;
-  /** 選ぶ欄の選択肢（様式の順） */
+  /** 選ぶ欄の選択肢（様式の字と順） */
   options?: readonly string[];
-  /** 様式に無い欄（台帳の値を余さず載せるために足した） */
+  /** 様式に欄の名前が無い（□ の並びだけ・空の行）。紙面に名前を出さない */
+  unnamed?: true;
+  /** 様式に無い欄（台帳の値を余さず載せるために足した）。紙面では特記事項の書き込みの中に出す */
   extra?: true;
 };
 
@@ -149,16 +179,16 @@ function shelterFields(id: "pre" | "near" | "city", label: string, source: strin
   const block = "shelter" as const;
   return [
     { key: `shelter.${id}.place`, page: 2, block, label, source, shape: "text" },
-    { key: `shelter.${id}.means`, page: 2, block, label: "手段", source: means, shape: "choice", options: ["徒歩", "その他"] },
-    { key: `shelter.${id}.minutes`, page: 2, block, label: "時間（分）", source: NO_SOURCE, shape: "text" },
+    { key: `shelter.${id}.means`, page: 2, block, label: "【手段】", source: means, shape: "choice", options: ["徒歩", "その他"] },
+    { key: `shelter.${id}.minutes`, page: 2, block, label: "【時間】", source: NO_SOURCE, shape: "text" },
   ] as const;
 }
 
 /** 欄の一覧（様式の順）。画面の紙面とテストはここから全部を出す */
 export const MATSUYAMA_FIELDS = [
   // ---- 1 ページ（表） ----
-  { key: "head.number", page: 1, block: "head", label: "番号", source: HANDWRITE, shape: "handwrite" },
-  { key: "head.date", page: 1, block: "head", label: "作成日", source: "印刷する日（JST）", shape: "date" },
+  { key: "head.number", page: 1, block: "head", label: "番号", source: HANDWRITE, shape: "handwrite", unnamed: true },
+  { key: "head.date", page: 1, block: "head", label: "年月日作成", source: "印刷する日（JST）", shape: "date" },
   { key: "target.kana", page: 1, block: "target", label: "フリガナ", source: "people.kana", shape: "text" },
   { key: "target.name", page: 1, block: "target", label: "氏名", source: "people.name", shape: "text" },
   {
@@ -169,6 +199,7 @@ export const MATSUYAMA_FIELDS = [
     source: "ledger.basic.sex",
     shape: "choice",
     options: ["男", "女"],
+    unnamed: true,
   },
   {
     key: "target.birth",
@@ -212,16 +243,9 @@ export const MATSUYAMA_FIELDS = [
     source: "年齢・ledger.basic.household・ledger.care.careLevel・handbook・intractableDisease",
     shape: "choice",
     options: ["高齢者", "障がい者", "難病患者", "小児慢性特定疾病児童", "その他"],
+    unnamed: true,
   },
-  {
-    key: "target.household",
-    page: 1,
-    block: "target",
-    label: "世帯",
-    source: "ledger.basic.household",
-    shape: "choice",
-    options: ["ひとり暮らし", "日中ひとり", "高齢者のみ", "障がい者等のみ", "その他"],
-  },
+  // 地域の支援者の 5 行は区分の右に並ぶ（様式の読む順で区分の次、世帯の前）
   {
     key: "local.welfare",
     page: 1,
@@ -246,6 +270,16 @@ export const MATSUYAMA_FIELDS = [
     label: "その他",
     source: "contacts（市役所・実施者でない支援者）",
     shape: "lines",
+    unnamed: true,
+  },
+  {
+    key: "target.household",
+    page: 1,
+    block: "target",
+    label: "世帯",
+    source: "ledger.basic.household",
+    shape: "choice",
+    options: ["ひとり暮らし", "日中ひとり", "高齢者のみ", "障がい者等のみ", "その他"],
   },
   {
     key: "target.timeline",
@@ -254,7 +288,7 @@ export const MATSUYAMA_FIELDS = [
     label: "マイ・タイムラインの作成",
     source: "ledger.evacuation.myTimeline",
     shape: "choice",
-    options: ["あり（アプリ）", "あり（紙）", "なし"],
+    options: ["あり（アプリ・紙）", "なし"],
   },
   {
     key: "consent.registry",
@@ -264,6 +298,7 @@ export const MATSUYAMA_FIELDS = [
     source: "consents.registry（名簿登録）",
     shape: "consent",
     options: CONSENT_OPTIONS,
+    unnamed: true,
   },
   {
     key: "consent.planShare",
@@ -273,13 +308,14 @@ export const MATSUYAMA_FIELDS = [
     source: "consents.plan_share（計画共有）",
     shape: "consent",
     options: CONSENT_OPTIONS,
+    unnamed: true,
   },
-  { key: "sign.self", page: 1, block: "sign", label: "本人 氏名（自署）", source: HANDWRITE, shape: "handwrite" },
+  { key: "sign.self", page: 1, block: "sign", label: "本人：氏名（自署）", source: HANDWRITE, shape: "handwrite" },
   {
     key: "sign.proxy",
     page: 1,
     block: "sign",
-    label: "代理人 氏名・続柄・連絡先",
+    label: "代理人：氏名（続柄）連絡先：",
     source: HANDWRITE,
     shape: "handwrite",
   },
@@ -305,15 +341,6 @@ export const MATSUYAMA_FIELDS = [
   },
   ...supporterFields(1),
   ...supporterFields(2),
-  {
-    key: "supporter.night",
-    page: 1,
-    block: "night",
-    label: "夜間支援",
-    source: "contacts.night_ok",
-    shape: "lines",
-    extra: true,
-  },
   { key: "org.name", page: 1, block: "org", label: "組織・団体名称", source: NO_SOURCE, shape: "text" },
   { key: "org.phone", page: 1, block: "org", label: "電話番号", source: NO_SOURCE, shape: "phone" },
   {
@@ -355,7 +382,7 @@ export const MATSUYAMA_FIELDS = [
     key: "risk.home",
     page: 2,
     block: "risk",
-    label: "自宅のリスク",
+    label: "自宅のリスク（複数選択可）",
     source: "ledger.evacuation.hazards",
     shape: "choice",
     options: ["土砂災害", "洪水", "高潮", "津波", "地震"],
@@ -384,7 +411,7 @@ export const MATSUYAMA_FIELDS = [
     key: "housing.type",
     page: 2,
     block: "housing",
-    label: "種別",
+    label: "【種別】",
     source: NO_SOURCE,
     shape: "choice",
     options: ["戸建住宅", "共同住宅"],
@@ -397,12 +424,13 @@ export const MATSUYAMA_FIELDS = [
     source: "ledger.basic.housing.structure・builtYear",
     shape: "choice",
     options: ["木造", "その他"],
+    unnamed: true,
   },
   {
     key: "housing.floors",
     page: 2,
     block: "housing",
-    label: "階層",
+    label: "【階層】",
     source: "ledger.basic.housing.floors",
     shape: "choice",
     options: ["平屋", "２階建", "３階建以上"],
@@ -420,11 +448,12 @@ export const MATSUYAMA_FIELDS = [
     key: "support.kinds",
     page: 2,
     block: "support",
-    label: "支援の内容",
+    label: "支援の内容（複数選択可）",
     source: "ledger.evacuation.support・supportNote",
     shape: "choice",
     options: ["避難の声掛け", "避難の誘導", "移動介助", "その他"],
   },
+  // 特記事項は様式では 1 つの書き込みの欄。中を 医療・本人の言葉・夜間支援・その他 の段に分けて書く（段の名前はケア72 の物）
   {
     key: "notes.medical",
     page: 2,
@@ -441,6 +470,16 @@ export const MATSUYAMA_FIELDS = [
     label: "その他",
     source: "carryItems・pets・連絡手段・本人報告・様式に載らない連絡先・欄の無い pending",
     shape: "lines",
+  },
+  // 夜間支援は様式に欄が無い（前は実施者の段の中に行を足していた）。特記事項の書き込みの中に出す
+  {
+    key: "supporter.night",
+    page: 2,
+    block: "notes",
+    label: "夜間支援",
+    source: "contacts.night_ok",
+    shape: "lines",
+    extra: true,
   },
   {
     key: "notes.annex",
@@ -1173,10 +1212,21 @@ export function buildMatsuyamaSheet(rows: PersonPageRows, opts: BuildOptions): M
     "local.watcher": withPending(textCell(ledger.local?.watcher, true), watcherReason),
     "local.office": contactsCell(offices, { kind: true }, unconfirmed()),
     "local.other": contactsCell(localOther, { kind: true }),
+    // 様式は「あり（アプリ・紙）・なし」。あり の中に アプリ・紙 を選ぶ
     "target.timeline": withPending(
       {
         kind: "choice",
-        options: MY_TIMELINES.map((v) => ({ label: MY_TIMELINE_LABELS[v], on: evacuation.myTimeline === v })),
+        options: [
+          {
+            label: "あり",
+            on: evacuation.myTimeline === "app" || evacuation.myTimeline === "paper",
+            sub: [
+              { label: "アプリ", on: evacuation.myTimeline === "app" },
+              { label: "紙", on: evacuation.myTimeline === "paper" },
+            ],
+          },
+          { label: "なし", on: evacuation.myTimeline === "none" },
+        ],
         ...(evacuation.myTimeline ? {} : { unconfirmed: {} }),
       },
       timelineReason,

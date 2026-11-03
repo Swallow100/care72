@@ -11,6 +11,7 @@ export {
   ArrowRightStartOnRectangleIcon as LogoutIcon, // ログアウト（扉から出る矢印）
   ArrowsPointingOutIcon as FullIcon, // 全画面（地図）
   ArrowsRightLeftIcon as AssignIcon, // 担当の割当・移す
+  ArrowPathIcon as RetryIcon, // 再作成・やり直す
   CheckCircleIcon as ChosenIcon, // 選んだ印（アンケートの選択肢）
   CheckIcon as SaveIcon, // 保存
   ChevronDownIcon as OpenIcon, // 開く・畳む
@@ -26,6 +27,7 @@ export {
   LinkIcon, // リンク作成（アンケートの招待）
   MinusCircleIcon as RemoveIcon, // 外す（人でない物。対応表の欄など）
   PaperAirplaneIcon as SendIcon, // 送信（アンケートの答え）
+  PencilSquareIcon as EditIcon, // 編集（AI の下書きを直す）
   PhoneIcon, // 電話
   PlayIcon, // 再生・開始
   PlusIcon as AddIcon, // 追加（人でない物）

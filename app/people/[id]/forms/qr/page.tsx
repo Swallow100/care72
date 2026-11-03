@@ -9,12 +9,14 @@ import { QrSheet } from "@/components/forms/QrSheet";
 import { StateTag } from "@/components/person/parts";
 import { Button, buttonClass } from "@/components/ui/Button";
 import { PaperIcon } from "@/components/ui/Icon";
+import { FormAbout } from "@/components/forms/FormAbout";
 import { PaperBar, wantsPrint } from "@/components/ui/PaperBar";
 import { Panel, PanelHead } from "@/components/ui/Panel";
 import { TABLE, TABLE_BOX, TD, TH } from "@/components/ui/table";
 import { todayJst } from "@/lib/age";
 import { requirePage } from "@/lib/auth/server";
 import { nowSec, sessionSecret } from "@/lib/auth/session";
+import { DOCUMENT_CATALOG } from "@/lib/forms/catalog";
 import { warekiText } from "@/lib/forms/wareki";
 import { BLANK_LABELS, CONSENT_KIND_LABELS, CONSENT_STATUS_LABELS } from "@/lib/labels";
 import { loadPersonDocument } from "@/lib/consent/documents";
@@ -116,6 +118,7 @@ export default async function QrFormPage({ params, searchParams }: Props) {
           </span>
         </span>
       </PaperBar>
+      <FormAbout entry={DOCUMENT_CATALOG.qr} className="qr-screen-only mt-1" />
 
       <div className="mt-3 grid items-start gap-3 lg:grid-cols-[auto_minmax(0,1fr)]">
         {url && state.expiresAt && (

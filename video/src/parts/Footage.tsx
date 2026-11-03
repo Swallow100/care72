@@ -4,8 +4,8 @@ import React from "react";
 import { Easing, Img, interpolate, staticFile, useCurrentFrame, useVideoConfig } from "remotion";
 import type { Assets } from "../assets";
 import { useGround } from "../ground";
-import { COLOR } from "../theme";
-import type { Rect } from "../timeline";
+import { COLOR, FONT } from "../theme";
+import { RECORDINGS, type Rect } from "../timeline";
 
 const pad = (n: number) => String(n).padStart(5, "0");
 
@@ -26,7 +26,8 @@ export const Footage: React.FC<{
   const { fps } = useVideoConfig();
   const durationInFrames = duration;
   const count = assets.footage[id] ?? 0;
-  if (!id || count === 0) return <Placeholder id={id} width={width} height={height} note={note} />;
+  // 録画が無いか、使う所（from 秒から）が撮れた長さより後ろなら仮の面。最後のコマで止めて別の場面に見せない
+  if (!id || count === 0 || from * fps >= count) return <Placeholder id={id} width={width} height={height} note={note} />;
 
   const index = Math.min(count, Math.max(1, Math.round(from * fps + frame * rate) + 1));
   let transform: string | undefined;
@@ -59,7 +60,10 @@ export const Footage: React.FC<{
   );
 };
 
-/** 素材が無い間の仮の面。何を撮って置くかを書く。白地では薄い青の面、青地では白の面に青の字 */
+/**
+ * 録画がまだ無い所の仮の面。「撮影待ち R07 訓練」と、何を撮るか（絵の説明）を出す。
+ * 白地では青の面に白の字、青地では地と溶けないよう白の面に青の字。録画を置いて npm run scan を流すと、この面が録画に替わる
+ */
 export const Placeholder: React.FC<{ id: string; width: number; height: number; note?: string }> = ({
   id,
   width,
@@ -67,27 +71,32 @@ export const Placeholder: React.FC<{ id: string; width: number; height: number; 
   note,
 }) => {
   const ground = useGround();
+  const onBlue = ground === "blue";
+  const name = RECORDINGS[id];
   return (
     <div
       style={{
         width,
         height,
-        background: ground === "blue" ? COLOR.white : COLOR.blueTint,
-        color: COLOR.blue,
+        background: onBlue ? COLOR.white : COLOR.blue,
+        color: onBlue ? COLOR.blue : COLOR.white,
         display: "flex",
         flexDirection: "column",
         justifyContent: "center",
         alignItems: "center",
-        gap: 12,
+        gap: Math.min(18, width / 50),
         textAlign: "center",
         padding: 24,
         boxSizing: "border-box",
         borderRadius: 4,
+        fontFamily: FONT.main,
       }}
     >
-      <div style={{ fontSize: Math.min(64, width / 10), fontWeight: 600 }}>{id || "文字"}</div>
-      {note ? <div style={{ fontSize: Math.min(30, width / 22), maxWidth: width * 0.85 }}>{note}</div> : null}
-      {id ? <div style={{ fontSize: Math.min(22, width / 30), color: COLOR.blueLight }}>素材なし public/footage/{id}/</div> : null}
+      <div style={{ fontSize: Math.min(64, width / 12), fontWeight: 600 }}>撮影待ち {id}</div>
+      {name ? <div style={{ fontSize: Math.min(48, width / 16), fontWeight: 600 }}>{name}</div> : null}
+      {note ? (
+        <div style={{ fontSize: Math.min(28, width / 24), maxWidth: width * 0.85, color: onBlue ? COLOR.blueLight : COLOR.onBlueSub }}>{note}</div>
+      ) : null}
     </div>
   );
 };

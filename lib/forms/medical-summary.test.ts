@@ -64,7 +64,7 @@ const SHEET_IDS = ALL_IDS.filter((id) => id !== "p-09");
 const ASSERTING_WORDS = ["危険", "診断", "判定", "重症", "病気がわかる", "べき"];
 
 describe("欄の一覧", () => {
-  it("名前は重ならず、様式の順（1 頁の欄のあとに 2 頁の既往症・予防接種、最後にメディカル ID）", () => {
+  it("名前は重ならず、様式の順（1 頁の欄の最後にメディカル ID、そのあとに 2 頁の既往症・予防接種）", () => {
     const keys = MEDICAL_FIELDS.map((f) => f.key);
     expect(new Set(keys).size).toBe(keys.length);
     for (const f of MEDICAL_FIELDS) {
@@ -91,9 +91,9 @@ describe("欄の一覧", () => {
       "meds.list",
       "care.vulnerable",
       "care.protect",
+      "id.medical",
       "history.disease",
       "history.vaccination",
-      "id.medical",
     ];
     for (let i = 1; i < order.length; i++) expect(at(order[i - 1]), order[i]).toBeLessThan(at(order[i]));
   });
@@ -341,7 +341,7 @@ describe("1 山田 ハナ（T07 の終わりの形）", () => {
 
   it("紙面は A4 1 枚（data-page は 1 つ）で、大事な欄は太い枠", () => {
     const markup = html(s);
-    for (const b of ["contra", "special", "meds", "id"]) expect(markup).toContain(`class="blk key" data-block="${b}"`);
+    for (const b of ["contra", "special", "id", "extra"]) expect(markup).toContain(`class="blk key" data-block="${b}"`);
   });
 });
 
