@@ -119,7 +119,7 @@ const ShotView: React.FC<{ shot: Shot; assets: Assets }> = ({ shot, assets }) =>
       );
       break;
     case "ring":
-      body = <Ring72 label={shot.lines?.[0] ?? "72 時間"} duration={duration} />;
+      body = <Ring72 label={shot.lines?.[0] ?? "72 時間"} duration={duration} sub={shot.sub} />;
       break;
     case "number":
       body = <BigNumber value={shot.value ?? ""} sub={shot.sub} />;

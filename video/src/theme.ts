@@ -26,9 +26,9 @@ export function palette(ground: Ground) {
 export const STATE_LABEL = { urgent: "至急", check: "要確認", unknown: "不明", ok: "無事" } as const;
 
 export const FONT = {
-  // アプリと同じ書体。本人・家族のスマホの文字を引用するときだけ UD
-  main: '"IBM Plex Sans JP", "Yu Gothic UI", "Meiryo", sans-serif',
-  ud: '"BIZ UDPGothic", "IBM Plex Sans JP", sans-serif',
+  // アプリと同じ書体（T35 で IBM Plex Sans JP から M PLUS 2 に替えた）。本人・家族のスマホの文字を引用するときだけ UD
+  main: '"M PLUS 2", "Yu Gothic UI", "Meiryo", sans-serif',
+  ud: '"BIZ UDPGothic", "M PLUS 2", sans-serif',
 } as const;
 
 // 置き場所（1920×1080 の中の px）

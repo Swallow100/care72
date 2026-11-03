@@ -1,15 +1,15 @@
-// 書体を読み込む。IBM Plex Sans JP と BIZ UDPGothic（どちらも OFL-1.1）を Google Fonts の CSS から。
+// 書体を読み込む。M PLUS 2（アプリと同じ。T35）と BIZ UDPGothic（どちらも OFL-1.1）を Google Fonts の CSS から。
 // 日本語の書体は字の範囲ごとに分かれていて、使う字が出てから読まれる。書き出しで字が欠けないよう、
 // 動画で使う字を全部並べて document.fonts.load に渡し、読み終わるまで描くのを待つ（delayRender）。
 import { continueRender, delayRender } from "remotion";
-import { LINES, MODEL_ROWS, RULE_ROWS, SCENES } from "./timeline";
+import { LINES, MODEL_ROWS, RECORDINGS, RULE_ROWS, SCENES } from "./timeline";
 
 const CSS =
-  "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+JP:wght@400;600&family=BIZ+UDPGothic:wght@400;700&display=block";
+  "https://fonts.googleapis.com/css2?family=M+PLUS+2:wght@400;600&family=BIZ+UDPGothic:wght@400;700&display=block";
 
 // 図や部品の中で使う決まった言葉（timeline に無い物）
 const FIXED =
-  "至急要確認不明無事利用者は架空素材なし秒デモイメージ出典生成画像医療の助言はしない色と順位はルールの表AIは決めないcare72.appgithub.com/Swallow100/care720123456789%→×・、。「」（）［］";
+  "至急要確認不明無事利用者は架空撮影待ち秒デモイメージ出典生成画像医療の助言はしない色と順位はルールの表AIは決めないcare72.appgithub.com/Swallow100/care720123456789%→×・、。「」（）［］";
 
 function allText(): string {
   const parts: string[] = [FIXED];
@@ -20,6 +20,7 @@ function allText(): string {
   }
   for (const r of RULE_ROWS) parts.push(r.input, r.reason);
   for (const m of MODEL_ROWS) parts.push(m.what, m.who);
+  for (const [id, name] of Object.entries(RECORDINGS)) parts.push(id, name);
   // 同じ字は 1 つに
   return Array.from(new Set(parts.join(""))).join("");
 }
@@ -37,8 +38,8 @@ export function loadFonts(): void {
   link.onload = () => {
     const text = allText();
     Promise.all([
-      document.fonts.load('400 40px "IBM Plex Sans JP"', text),
-      document.fonts.load('600 40px "IBM Plex Sans JP"', text),
+      document.fonts.load('400 40px "M PLUS 2"', text),
+      document.fonts.load('600 40px "M PLUS 2"', text),
       document.fonts.load('400 40px "BIZ UDPGothic"', text),
     ])
       .then(done)
