@@ -425,8 +425,9 @@ export const REDACT_LABELS = {
   cancel: "取消",
   /** 写真・PDF を画像にしている間 */
   preparing: "準備中",
-  /** 塗った後の画像にしている間 */
+  /** 塗った後の画像にしている間・できなかった */
   encoding: "変換中",
+  encodeFailed: "変換失敗",
   /** 「隠した所 3」（全部の頁）と「頁内 1」（今の頁。2 頁以上のときだけ） */
   hidden: "隠した所",
   onPage: "頁内",

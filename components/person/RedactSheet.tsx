@@ -43,6 +43,7 @@ export function RedactSheet({ files, onSend, onCancel }: { files: readonly File[
   const [view, setView] = useState<View | null>(null);
   const [draft, setDraft] = useState<Rect | null>(null);
   const [encoding, setEncoding] = useState(false);
+  const [encodeFailed, setEncodeFailed] = useState(false);
   const page = pages?.[at] ?? null;
   const rects = page ? (state.rects[page.id] ?? []) : [];
 
@@ -247,6 +248,7 @@ export function RedactSheet({ files, onSend, onCancel }: { files: readonly File[
       }
     }
     setEncoding(true);
+    setEncodeFailed(false);
     try {
       const out: RedactedPage[] = [];
       for (const p of pages) {
@@ -256,7 +258,7 @@ export function RedactSheet({ files, onSend, onCancel }: { files: readonly File[
       onSend(out);
     } catch {
       setEncoding(false);
-      setFailed((f) => [...f, L.encoding]);
+      setEncodeFailed(true);
     }
   }
 
@@ -374,6 +376,11 @@ export function RedactSheet({ files, onSend, onCancel }: { files: readonly File[
           {failed.length > 0 && (
             <p className="text-xs font-bold text-danger" role="alert">
               {L.unreadable} {failed.join("・")}
+            </p>
+          )}
+          {encodeFailed && (
+            <p className="text-xs font-bold text-danger" role="alert">
+              {L.encodeFailed}
             </p>
           )}
         </header>
