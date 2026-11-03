@@ -4,19 +4,25 @@
 //
 // 名前は操作の意味で付ける。同じ操作は画面のどこでも同じアイコン。
 
+/** 確認の窓の決める方のボタンに渡せるアイコン（lib/ui/dialog.ts） */
+export type DialogIconName = "RemoveIcon" | "UnlistIcon" | "RestoreIcon" | "SaveIcon" | "CloseIcon";
+
 export {
   ArrowDownTrayIcon as DownloadIcon, // CSV 出力
   ArrowRightEndOnRectangleIcon as LoginIcon, // ログイン（扉に入る矢印。ログアウトと対）
   ArrowUturnLeftIcon as RestoreIcon, // 外した物を戻す
   ArrowRightStartOnRectangleIcon as LogoutIcon, // ログアウト（扉から出る矢印）
+  ArrowTopRightOnSquareIcon as ExternalIcon, // 外のブラウザで開く（本人・家族のスマホの追加の案内）
+  ArrowUpOnSquareIcon as ShareIcon, // iPhone の共有（追加の案内の手順）
   ArrowsRightLeftIcon as AssignIcon, // 担当の割当・移す
   ArrowPathIcon as RetryIcon, // 再作成・やり直す
-  CheckCircleIcon as ChosenIcon, // 選んだ印（アンケートの選択肢）
+  CheckCircleIcon as ChosenIcon, // 選んだ印（アンケートの選択肢、components/ui/Select の一覧）
   CheckIcon as SaveIcon, // 保存
   ChevronDownIcon as OpenIcon, // 開く・畳む
   ChevronLeftIcon as BackIcon, // 戻る
   ClipboardDocumentIcon as CopyIcon, // コピー
   DocumentTextIcon as PaperIcon, // 紙面の表示
+  EllipsisVerticalIcon as BrowserMenuIcon, // Android の Chrome の右上のメニュー（追加の案内の手順）
   EyeIcon as ShowIcon, // パスワードを表示
   EyeSlashIcon as HideIcon, // パスワードを隠す
   LockClosedIcon as PasswordIcon, // パスワードの欄の印

@@ -5,6 +5,7 @@
 
 import type { ReactNode } from "react";
 import { EasyWords } from "@/components/forms/EasyText";
+import { Loader72 } from "@/components/ui/Loader72";
 import { easy } from "@/lib/forms/easy-words";
 import type { WhereNow } from "@/lib/db/types";
 import type { PhoneState } from "@/lib/signals/phone";
@@ -55,12 +56,20 @@ function Question({ m }: { m: string }) {
   );
 }
 
-/** AI が きいています（録音を Claude が分けるので、聞いている間は出す） */
+/** AI が きいています（録音を Claude が分けるので、聞いている間は出す）。AI の待ちの印の輪を添える（T44） */
 function AiListening() {
   return (
-    <p className="text-center text-2xl font-bold" data-ai="listening" role="status">
-      <span className="phone-ai">AI</span>
-      <Words m={PHONE_PHRASES.aiListening} />
+    <p className="text-center text-2xl font-bold" data-ai="listening">
+      <Loader72
+        size={28}
+        on="base"
+        label={
+          <>
+            <span className="phone-ai">AI</span>
+            <Words m={PHONE_PHRASES.aiListening} />
+          </>
+        }
+      />
     </p>
   );
 }

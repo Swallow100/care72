@@ -12,6 +12,7 @@ import { INTAKE_FIELDS, INTAKE_SECTIONS, isFilled, ledgerValue } from "@/lib/int
 import { MED_FILL, manualChanges, type NewMed } from "@/lib/intake/manual";
 import { FieldInput } from "./IntakeChanges";
 import { BTN_IN, BTN_MAIN, CHECK, FIELD_ROW, INPUT_IN } from "./intake-ui";
+import { Select } from "@/components/ui/Select";
 
 const blankMed = (): NewMed => ({ name: "", category: "other", schedule: "", amount: "", storage: "" });
 
@@ -74,13 +75,13 @@ export function IntakeManual({ ledger, busy, onSave }: { ledger: Ledger; busy: b
                     return (
                       <div key={`new-${i}`} className="grid grid-cols-2 gap-1">
                         <input className={INPUT_IN} placeholder="薬の名前" aria-label="薬の名前" value={m.name} onChange={(e) => set({ name: e.target.value })} />
-                        <select className={INPUT_IN} aria-label="薬の区分" value={m.category} onChange={(e) => set({ category: e.target.value as MedicationCategory })}>
+                        <Select className={INPUT_IN} aria-label="薬の区分" value={m.category} onChange={(e) => set({ category: e.target.value as MedicationCategory })}>
                           {MEDICATION_CATEGORIES.map((c) => (
                             <option key={c} value={c}>
                               {MEDICATION_CATEGORY_LABELS[c]}
                             </option>
                           ))}
-                        </select>
+                        </Select>
                         <input className={INPUT_IN} placeholder="回数" aria-label="回数" value={m.schedule} onChange={(e) => set({ schedule: e.target.value })} />
                         <input className={INPUT_IN} placeholder={MED_PARTS.amount} aria-label={MED_PARTS.amount} value={m.amount} onChange={(e) => set({ amount: e.target.value })} />
                         <input className={`${INPUT_IN} col-span-2`} placeholder={MED_PARTS.storage} aria-label={MED_PARTS.storage} value={m.storage} onChange={(e) => set({ storage: e.target.value })} />
