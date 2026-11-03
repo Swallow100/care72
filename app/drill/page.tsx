@@ -13,6 +13,7 @@ import { LIMIT_LABELS } from "@/lib/seed/labels";
 import { shortJst } from "@/lib/disaster/state";
 import { caseloadForDrill, drillScope, listDrills, runningDrillId, type DrillListItem } from "@/lib/drill/db";
 import { DRILL_LABELS, progressLabel, SCENARIO_LABELS, STATUS_LABELS, T70_LABELS, VIRTUAL_LABELS } from "@/lib/drill/labels";
+import { endingsAllowed } from "@/lib/drill/fiction";
 import { drillHref, reportHref } from "@/lib/drill/paths";
 import { SCORE_LABELS } from "@/lib/drill/score-labels";
 import { lastHour, SCENARIO_ORDER, scenarioOf } from "@/lib/drill/scenarios";
@@ -89,7 +90,7 @@ export default async function DrillPage() {
         {gate.kind === "start" && (
           // 仮想モード（T50）の 1 行
           <p className="w-full text-sm text-muted" data-virtual-note>
-            {VIRTUAL_LABELS.note}
+            {scope && !endingsAllowed(scope.officeId) ? VIRTUAL_LABELS.noteRole : VIRTUAL_LABELS.note}
           </p>
         )}
       </Panel>

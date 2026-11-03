@@ -4,12 +4,15 @@
 // - 押せる人なし・上限の見込み（開始の設定）、上限に当たった刻みの停止の印
 // - 進行中をケアマネごと、24 時間で自動中断
 // - 仮想モードの街を台帳から（デモは架空の街のまま、部屋に町名を渡さない）
+// - 続き: 世界の指示は人数を決め打たない、デモ以外の事業所は「本人役」の印で仮想モードの結末を出さない
 
 import Anthropic from "@anthropic-ai/sdk";
 import type { DatabaseSync } from "node:sqlite";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { DrillPaper } from "../../components/drill/DrillPaper.tsx";
+import { FictionalMark, FictionalNote } from "../../components/drill/Fictional.tsx";
 import { Situation } from "../../components/drill/Situation.tsx";
 import { StartButtons } from "../../components/drill/StartButtons.tsx";
 import { SEED_PEOPLE } from "../../seed/people.ts";
@@ -41,13 +44,19 @@ import {
 } from "./db.ts";
 import { aiStoppedOf, stopIncidents, stopLog, type PersonaInput, type WorldInput } from "./engine.ts";
 import { estimateDrillCalls, overLimit } from "./estimate.ts";
+import { endingsAllowed, fictionKindOf } from "./fiction.ts";
 import { drillHooks } from "./hooks.ts";
 import { listGet } from "./http.ts";
+import { FICTION_LABELS, fictionLabels } from "./labels.ts";
 import { loadOutcomeSources } from "./outcome.ts";
+import { loadDrillRecord } from "./record.ts";
+import { scoreView } from "./score-view.ts";
+import { loadDrillScreen } from "./view.ts";
 import { CALL_SYSTEM, fixedTurns, loadPersonaSources, PERSONA_SYSTEM, PERSONA_VIRTUAL } from "./persona.ts";
 import { applyEvent, EMPTY_WORLD, SCENARIO_ORDER, SCENARIOS } from "./scenarios.ts";
-import { worldIncidents, type WorldStep } from "./world-apply.ts";
-import { buildCast, openingText, worldNow } from "./world-oneshot.ts";
+import { farewellIncidents, worldIncidents, type WorldStep } from "./world-apply.ts";
+import { buildCast, openingText, tickText, WORLD_SYSTEM, worldNow } from "./world-oneshot.ts";
+import { agentParams, WORLD_AGENT_VERSION } from "./world-room.ts";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: () => {}, push: () => {} }) }));
 
@@ -711,5 +720,115 @@ describe("仮想モードの街を台帳から（T70 の 4）", () => {
     expect(await abandonDrill(db, scopeA(), "vn", START)).toEqual({ ok: true });
     const row = await runAll("virtual", "vq");
     expect(row.status).toBe("finished");
+  });
+});
+
+// ---------- 続き: 人数を決め打たない世界の指示、デモ以外は「本人役」の印で結末なし ----------
+
+describe("デモ以外の事業所: 本人役の印、仮想モードの結末なし（T70 の続き）", () => {
+  it("印の種類と結末: デモ事業所は架空で結末あり、ほかは本人役で結末なし", () => {
+    expect(fictionKindOf(DEMO.id)).toBe("fictional");
+    expect(endingsAllowed(DEMO.id)).toBe(true);
+    expect(fictionKindOf(NEW.id)).toBe("role");
+    expect(endingsAllowed(NEW.id)).toBe(false);
+    expect(fictionLabels("fictional")).toEqual(FICTION_LABELS);
+    expect(fictionLabels("role")).toMatchObject({ mark: "本人役", title: "AI が演じる訓練の本人役" });
+    const role = renderToStaticMarkup(createElement(FictionalMark, { kind: "role" }));
+    expect(role).toContain(">本人役<");
+    expect(role).toContain('title="AI が演じる訓練の本人役"');
+    expect(renderToStaticMarkup(createElement(FictionalMark))).toContain(">架空<");
+    expect(renderToStaticMarkup(createElement(FictionalNote, { kind: "role" }))).toContain("AI が演じる本人役");
+  });
+
+  it("世界の指示は人数を決め打たず、結末を決めない訓練の決まりを持つ。部屋の Agent の版は 4", () => {
+    expect(WORLD_SYSTEM).not.toMatch(/10 人/);
+    expect(WORLD_SYSTEM).toContain("人数は訓練ごとに違う");
+    expect(WORLD_SYSTEM).toContain("入力に「結末: 決めない」とある訓練では、誰の結末も決めない。farewells はいつも空の配列にする");
+    expect(WORLD_AGENT_VERSION).toBe(4);
+    expect(String(agentParams().system)).toContain(WORLD_SYSTEM);
+  });
+
+  it("刻みの文: デモ以外は「結末: 決めない」で結末を求めない。デモ事業所の文は前と同じ", async () => {
+    addNewOffice();
+    const cast = await newCast();
+    expect(cast.endings).toBe(false);
+    const input: WorldInput = {
+      scenario: "virtual",
+      step: 1,
+      hour: 1,
+      world: EMPTY_WORLD,
+      incidents: [],
+      participants: FIVE_IDS,
+      people: {},
+      actions: [],
+      hints: { reached: [{ person: "n-1", label: "人工呼吸器の電池 3時間を超過" }], clocks: [{ person: "n-1", label: "人工呼吸器の電池", leftMinutes: -60 }] },
+      session: "s",
+      minute: 60,
+    } as unknown as WorldInput;
+    const text = tickText(input, cast, 0, 72);
+    expect(text).toContain("結末: 決めない（この訓練では farewells はいつも空の配列）");
+    expect(text).not.toContain("結末を迎えるかはあなたが決める");
+    expect(text).not.toContain("もう結末を迎えた人");
+    // 時計の目安（条件に達した人）は街の流れの参考として渡す
+    expect(text).toContain("時計の目安（コードの計算。街の流れの参考）:");
+    const demo = tickText(input, { key: cast.key }, 0, 72);
+    expect(demo).toContain("時計の目安（コードの計算。結末を迎えるかはあなたが決める）:");
+    expect(demo).toContain("もう結末を迎えた人（挙げない）: なし");
+    expect(demo).not.toContain("結末: 決めない");
+  });
+
+  it("世界が結末を返しても、デモ以外の事業所では捨てる（状況にも世界にも残らない）", async () => {
+    addNewOffice();
+    const cast = await newCast();
+    const a = cast.key.people.find((p) => p.personId === "n-1")!.alias;
+    const answer: WorldStep = { narration: "", events: [], farewells: [{ target: a, text: "手が届かなかった", reason: "停電が続いた" }] };
+    const base = { key: cast.key, facts: cast.facts, ended: new Set<string>(), hour: 6, via: "oneshot" as const, area: cast.area };
+    expect(worldIncidents(answer, { ...base, endings: false }).some((e) => e.change.kind === "outcome")).toBe(false);
+    expect(farewellIncidents(answer.farewells, { ...base, endings: false })).toEqual([]);
+    // デモ事業所（endings を省く・true）は今までどおり当てる
+    expect(worldIncidents(answer, base).filter((e) => e.change.kind === "outcome")).toHaveLength(1);
+  });
+
+  it("新しい事業所の仮想の訓練を最後まで: 結末なし、採点に結末の数なし（条件の数はある）、画面と紙面の印は本人役", async () => {
+    addNewOffice();
+    const cast = await newCast();
+    const a = cast.key.people.find((p) => p.personId === "n-1")!.alias;
+    const { client, calls } = fakeWorld({
+      narration: "甲地区で川が増水している",
+      events: [{ kind: "outage", town: "甲地区", target: "", name: "", value: "start" }],
+      farewells: [{ target: a, text: "この時間までに手が届かなかった", reason: "停電が続き、誰も着かなかった" }],
+    });
+    const hooks = drillHooks({ DB: db, ANTHROPIC_API_KEY: "dummy", DRILL_WORLD: "messages" }, careManager(NEW, CM_A), {
+      claude: client,
+      now: () => new Date(START),
+    })!;
+    expect(await startDrill(db, scopeA(), "virtual", START, hooks, () => "vr")).toEqual({ ok: true, id: "vr" });
+    for (let s = 0; s < SCENARIOS.virtual.hours.length - 1; s++) expect((await advanceDrill(db, scopeA(), "vr", s, START, hooks)).ok).toBe(true);
+    // 世界には毎刻み「結末: 決めない」を渡した
+    const worlds = calls.filter((c) => c.model === OPUS);
+    expect(worlds).toHaveLength(12);
+    for (const c of worlds) expect(JSON.stringify(c.messages)).toContain("結末: 決めない");
+    const row = (await loadDrillRow(db, NEW.id, "vr"))!;
+    const state = stateOfRow(row);
+    expect(state.status).toBe("finished");
+    expect(state.world.ended ?? {}).toEqual({});
+    const ticks = await loadTicks(db, "vr", SCENARIOS.virtual.hours, row.step);
+    expect(ticks.flatMap((t) => t.incidents).some((e) => e.change.kind === "outcome")).toBe(false);
+    // 採点: 結末（AI の筋書き）の数は無く、行も出さない。条件に達した人（時計の計算）は数える
+    const rec = await loadDrillRecord(db, scopeA(), "vr", "2026-11-08T00:00:00.000Z");
+    if (!rec || rec === "running") throw new Error("記録が無い");
+    expect(rec.score.ended).toBeUndefined();
+    expect(rec.score.reached.length).toBeGreaterThan(0);
+    expect(scoreView(rec.score, rec.screen.names, rec.previous).rows.map((r) => r.key)).not.toContain("ended");
+    // 画面の印は本人役
+    expect(rec.screen.fiction).toBe("role");
+    const sit = renderToStaticMarkup(createElement(Situation, { ticks: ticks.slice(0, 2), names: rec.screen.names, startedAt: START, fiction: "role" }));
+    expect(sit).not.toContain(">架空<");
+    const paper = renderToStaticMarkup(createElement(DrillPaper, { record: rec, office: NEW.name, today: "2026-11-08" }));
+    expect(paper).toContain("AI が演じる訓練の本人役");
+    expect(paper).not.toContain("AI が演じる架空の人");
+    // デモ事業所の画面は架空のまま
+    expect(await startDrill(db, drillScope(demoCm())!, "short", START, {}, () => "demo-f")).toEqual({ ok: true, id: "demo-f" });
+    expect((await loadDrillScreen(db, drillScope(demoCm())!, "demo-f", null))?.fiction).toBe("fictional");
   });
 });
