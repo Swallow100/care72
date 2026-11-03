@@ -252,11 +252,11 @@ function Row({ row: r, open, onToggle }: { row: StaffRow; open: boolean; onToggl
             <LinkPending />
           </Link>
           <span className="ml-1 text-xs text-muted">{r.kana}</span>
-          {/* 医療要約（T07）を開いて印刷。医療班への提供に同意がある人だけ（T24） */}
+          {/* 医療要約（T07）を開いて印刷。医療班への提供に同意がある人だけ（T24）。375 で「医療要/約」と割れないよう 1 塊に（T79） */}
           {r.summary && (
             <Link
               href={`/people/${encodeURIComponent(r.personId)}/forms/medical`}
-              className="ml-1 rounded px-1 text-xs text-accent underline underline-offset-2"
+              className="ml-1 inline-block rounded px-1 text-xs whitespace-nowrap text-accent underline underline-offset-2"
               data-press
               data-summary
             >
