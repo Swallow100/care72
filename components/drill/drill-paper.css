@@ -1,0 +1,150 @@
+/*
+  訓練記録の紙面（components/drill/DrillPaper.tsx、T22）。A4 縦で、対応履歴の表が頁をまたいで続く（見出しの行は各頁の上に繰り返す）。
+  紙の決まりは components/forms/paper.css（書体・字・禁則・罫線・空欄）。ここは長さの決まらない文書の流し方だけ。
+  様式 9 の紙（form9-paper.css の .paper-flow）と同じく、紙では余白を @page の余白にし、頁の下の端の文書名と頁番号は
+  @page の余白の箱（Chrome・Edge 131 から。Safari・Firefox は頁番号が出ない）。画面では A4 の幅の白い紙に余白の padding を付けて見せる。
+  余白は文書の決まり（上下 20mm・左右 18mm）、本文 10.5pt。
+*/
+
+@page drill-record {
+  size: A4 portrait;
+  margin: 20mm 18mm;
+  @top-left {
+    content: "";
+  }
+  @top-center {
+    content: "";
+  }
+  @top-right {
+    content: "";
+  }
+  @bottom-center {
+    content: "";
+  }
+  @bottom-left {
+    content: "訓練記録";
+    font-family: "BIZ UDPGothic", "BIZ UDPゴシック", sans-serif;
+    font-size: 8pt;
+    color: #333;
+    vertical-align: top;
+    padding-top: 6mm;
+  }
+  @bottom-right {
+    content: counter(page) " / " counter(pages);
+    font-family: "BIZ UDPGothic", "BIZ UDPゴシック", sans-serif;
+    font-size: 8pt;
+    color: #333;
+    vertical-align: top;
+    padding-top: 6mm;
+  }
+}
+
+.paper.paper-drill {
+  page: drill-record;
+  position: static;
+  min-height: 0;
+  display: block;
+}
+.paper.paper-drill > * + * {
+  margin-top: 4mm;
+}
+
+/* 区分の題（概要・採点・講評・確認欄・対応履歴）。線でなく薄い灰色の帯（ほかの紙の段の見出しと同じ） */
+.paper .drill-h {
+  font-size: var(--fs-h);
+  font-weight: 700;
+  line-height: 1.4;
+  padding: 0.5mm 2mm;
+  background: var(--head-bg);
+  break-after: avoid;
+}
+/* 区分の中の表の題（条件到達・順番相違・空欄） */
+.paper .drill-sub {
+  font-size: var(--fs-label);
+  font-weight: 700;
+  break-after: avoid;
+}
+.paper .drill-sec {
+  break-inside: auto;
+}
+.paper .drill-sec > * + * {
+  margin-top: 1.6mm;
+}
+
+/* 欄の名前と値の 2 列（概要） */
+.paper .drill-facts {
+  display: grid;
+  grid-template-columns: 20mm 1fr 20mm 1fr;
+  column-gap: 3mm;
+  row-gap: 1mm;
+  align-items: baseline;
+}
+.paper .drill-facts dt {
+  font-size: var(--fs-label);
+  color: var(--gray);
+}
+.paper .drill-facts .wide {
+  grid-column: 2 / -1;
+}
+
+/* 表の列の幅と数字の欄 */
+.paper.paper-drill table.sheet thead {
+  display: table-header-group;
+}
+.paper table.drill-table {
+  table-layout: fixed;
+}
+.paper table.drill-table td.num,
+.paper table.drill-table th.num {
+  text-align: right;
+}
+/* 今回の数字は大きさだけで示す（紙で勝手に太字にしない。11/3 11:4x の確定） */
+.paper table.drill-table td.big {
+  font-size: 12pt;
+}
+.paper table.drill-table tr.hour td {
+  background: var(--head-bg);
+  font-weight: 700;
+}
+.paper table.drill-table tr.hour td .incident {
+  display: block;
+  font-weight: 400;
+}
+/* AI の印（講評の題と、監督が作った状況の行）。太字の「AI」1 種類 */
+.paper .drill-ai {
+  font-weight: 700;
+}
+.paper .drill-review p + p {
+  margin-top: 1mm;
+}
+
+/* 確認欄（管理者・確認日・印）。手で書く */
+.paper .drill-confirm {
+  display: grid;
+  grid-template-columns: 1fr 1fr 24mm;
+  border: var(--frame);
+  break-inside: avoid;
+}
+.paper .drill-confirm > div {
+  min-height: 18mm;
+  padding: 0.8mm 1.8mm;
+}
+.paper .drill-confirm > div + div {
+  border-left: var(--rule);
+}
+
+@media screen {
+  .paper.paper-drill {
+    width: 210mm;
+    padding: 20mm 18mm;
+    margin: 0 auto;
+  }
+}
+
+@media print {
+  .paper.paper-drill {
+    width: auto;
+    padding: 0;
+    break-after: auto;
+  }
+}

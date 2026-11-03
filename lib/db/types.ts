@@ -1,4 +1,4 @@
-// D1 の表の型。列の名前は SQL のまま（snake_case）。値の形は migrations/0001_init.sql の CHECK と同じにする。
+// D1 の表の型。列の名前は SQL のまま（snake_case）。値の形は migrations（0001_init.sql と、表を建て直した 0002 以降）の CHECK と同じにする。
 // 選択肢を足すときは、ここの配列と SQL の CHECK の両方を直す（新しい migration で）。
 //
 // 人が付ける欄（people.self_report_unreliable、clocks.depends_on・depends_check）は台帳の JSON（Ledger）に入れず、
@@ -6,6 +6,10 @@
 // Claude が自由文から推し量って付けることはしない。付けた・外したは経過（clock_check・self_report_mark）に残す。
 
 // ---------- 選択肢 ----------
+
+/** アンケートのリンクを作った人（T42）: ケアマネ（山本など）・審査員（試し。毎朝の戻しで消える） */
+export const SURVEY_CREATOR_ROLES = ["care_manager", "judge"] as const;
+export type SurveyCreatorRole = (typeof SURVEY_CREATOR_ROLES)[number];
 
 /** デモ・ふつう・所属なし（医療班・行政がその場で作った人の置き場。1 行だけ、ケアマネはいない。T23） */
 export const OFFICE_KINDS = ["demo", "regular", "unaffiliated"] as const;
@@ -118,6 +122,8 @@ export const DRILL_EVENT_KINDS = [
   "action", // ケアマネの手
   "result", // 手を打った結果（世界が返す）
   "score",
+  "call_answer", // 着信に応答した（T22、migrations/0002）
+  "call_decline", // 着信を拒否した（T22、migrations/0002。赤の拒否は順番の誤り）
 ] as const;
 export type DrillEventKind = (typeof DRILL_EVENT_KINDS)[number];
 
@@ -399,6 +405,38 @@ export type OfficeRow = {
   created_at: string;
 };
 
+/** アンケートの招待のリンク（migrations/0004_survey.sql、T42） */
+export type SurveyLinkRow = {
+  token: string;
+  office_id: string;
+  /** 宛先の控え（ケアマネ A など。本名でない） */
+  memo: string;
+  created_by: string | null;
+  created_role: SurveyCreatorRole;
+  created_at: string;
+  opened_at: string | null;
+  used_at: string | null;
+  expires_at: string;
+};
+
+/** アンケートの答え。記号は tools/survey/questions.ts（a・b・c…）。問 3 は "bcf" のように並べる。答えなしは null */
+export type SurveyAnswerRow = {
+  token: string;
+  role: string | null;
+  experience: string | null;
+  q1: string | null;
+  q2: string | null;
+  q3: string | null;
+  q4: string | null;
+  q5: string | null;
+  q6: string | null;
+  q7: string | null;
+  q7_reason: string | null;
+  quote: string | null;
+  source_hash: string;
+  submitted_at: string;
+};
+
 export type AccountRow = {
   id: string;
   office_id: string | null;
@@ -585,6 +623,18 @@ export type AiCallRow = {
   output_tokens: number | null;
   started_at: string;
   finished_at: string | null;
+};
+
+/** ログインを試した 1 回（T41。lib/auth/lockout.ts）。パスワードは持たない */
+export type LoginAttemptRow = {
+  id: number;
+  /** 打たれた ID（前後の空白を落とし 128 字まで）。無い ID も入る */
+  login_id: string;
+  /** 送信元（CF-Connecting-IP）。無ければ 'unknown' */
+  ip: string;
+  /** UNIX 秒 */
+  at: number;
+  ok: 0 | 1;
 };
 
 /** 様式 9 の並び: 平時（優先の骨格）・発災時（ルールの表） */

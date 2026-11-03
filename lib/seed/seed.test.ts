@@ -387,9 +387,41 @@ describe("最初に戻す（デモ事業所だけ）", () => {
     expect(dump(db)).toEqual(once);
   });
 
-  it("消す範囲は手元の種の入れ直し（CLEAR_ORDER）の表を全部決めている。残すのは AI の記録と事業所の行だけ", () => {
+  it("消す範囲は手元の種の入れ直し（CLEAR_ORDER）の表を全部決めている。残すのは AI の記録・ログインの失敗の数え・事業所の行・アンケートの送信の数えだけ", () => {
     expect(Object.keys(DEMO_CLEAR).sort()).toEqual([...CLEAR_ORDER].sort());
-    expect(Object.entries(DEMO_CLEAR).filter(([, w]) => w === null).map(([t]) => t).sort()).toEqual(["ai_calls", "offices"]);
+    expect(Object.entries(DEMO_CLEAR).filter(([, w]) => w === null).map(([t]) => t).sort()).toEqual([
+      "ai_calls",
+      "login_attempts",
+      "offices",
+      "survey_attempts",
+    ]);
+  });
+
+  it("アンケート（T42）: 審査員が作ったリンクと答えは消え、山本が作った物（本物のケアマネの答え）と協力事業所の物は残る", async () => {
+    const { db } = await used();
+    sqlite = db;
+    const at = "2026-11-04T03:00:00.000Z";
+    const link = (token: string, office: string, role: string) =>
+      db.exec(
+        `INSERT INTO survey_links (token, office_id, created_role, created_at, expires_at) VALUES ('${token}', '${office}', '${role}', '${at}', '2026-11-18T03:00:00.000Z')`,
+      );
+    const answer = (token: string) =>
+      db.exec(`INSERT INTO survey_answers (token, q1, source_hash, submitted_at) VALUES ('${token}', 'b', 'h', '${at}')`);
+    const judgeToken = "j".repeat(43);
+    const realToken = "r".repeat(43);
+    const partnerToken = "p".repeat(43);
+    link(judgeToken, "office-demo", "judge");
+    link(realToken, "office-demo", "care_manager");
+    link(partnerToken, "office-partner", "care_manager");
+    for (const t of [judgeToken, realToken, partnerToken]) answer(t);
+    db.exec(`INSERT INTO survey_attempts (source_hash, at) VALUES ('h', '${at}')`);
+
+    const { bucket } = fakeBucket();
+    await resetDemoOffice(d1FromSqlite(db), bucket, NOW);
+    const tokens = (t: string) => (db.prepare(`SELECT token FROM ${t} ORDER BY token`).all() as Array<{ token: string }>).map((r) => r.token);
+    expect(tokens("survey_links")).toEqual([partnerToken, realToken]);
+    expect(tokens("survey_answers")).toEqual([partnerToken, realToken]);
+    expect(count(db, "SELECT count(*) AS n FROM survey_attempts")).toBe(1);
   });
 
   it("R2: 審査員の録音を消し、種の録音と協力事業所の物は残す。種の録音があれば山田の信号に結び、再生できる", async () => {

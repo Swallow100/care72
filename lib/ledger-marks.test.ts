@@ -1,6 +1,6 @@
-import { readFileSync } from "node:fs";
-import { DatabaseSync } from "node:sqlite";
+import type { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
+import { migratedSqlite } from "./db/test-d1.ts";
 import { SEED_PEOPLE } from "../seed/people.ts";
 import { seedStatements } from "../seed/sql.ts";
 import { clockCheckEntry, selfReportMarkEntry, type MarkAuthor, type NewTimelineEntry } from "./ledger-marks.ts";
@@ -10,9 +10,8 @@ const AT = "2026-11-03T01:00:00.000Z";
 const tanakaDialysis = { ...SEED_PEOPLE[2].clocks[0], person_id: "p-03" };
 
 function seededDb(): DatabaseSync {
-  const db = new DatabaseSync(":memory:");
-  db.exec("PRAGMA foreign_keys = ON;");
-  db.exec(readFileSync(new URL("../migrations/0001_init.sql", import.meta.url), "utf8"));
+  // migrations を全部流す（種の入れ直しは 0002 以降の表も空にするので、0001 だけでは通らない）
+  const db = migratedSqlite();
   for (const s of seedStatements()) db.exec(s);
   return db;
 }
