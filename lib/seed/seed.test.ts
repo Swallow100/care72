@@ -387,11 +387,16 @@ describe("最初に戻す（デモ事業所だけ）", () => {
     expect(dump(db)).toEqual(once);
   });
 
-  it("消す範囲は手元の種の入れ直し（CLEAR_ORDER）の表を全部決めている。残すのは AI の記録・世界の部屋の ID（T50）・ログインの失敗の数え・事業所の行・アンケートの送信の数えだけ", () => {
+  it("消す範囲は手元の種の入れ直し（CLEAR_ORDER）の表を全部決めている。残すのは AI の記録・世界の部屋の ID（T50）・ログインの失敗の数え・事業所の行・アンケートの送信の数え・気象庁の写し（T72）だけ", () => {
     expect(Object.keys(DEMO_CLEAR).sort()).toEqual([...CLEAR_ORDER].sort());
     expect(Object.entries(DEMO_CLEAR).filter(([, w]) => w === null).map(([t]) => t).sort()).toEqual([
       "ai_agents",
       "ai_calls",
+      "jma_entries",
+      "jma_fetch_state",
+      "jma_quake_points",
+      "jma_quakes",
+      "jma_warnings",
       "login_attempts",
       "offices",
       "survey_attempts",
@@ -524,9 +529,10 @@ describe("「最初に戻す」のボタン（/office/reset）", () => {
 });
 
 describe("毎日 4 時（cron）", () => {
-  it("wrangler.jsonc の triggers と入口が合っている（19:00 UTC = 4:00 JST、入口は worker.ts）", () => {
+  it("wrangler.jsonc の triggers と入口が合っている（19:00 UTC = 4:00 JST を含む。気象庁の 5 分ごと〔T72〕と並ぶ。入口は worker.ts）", () => {
     const text = readFileSync(new URL("../../wrangler.jsonc", import.meta.url), "utf8");
-    expect(text).toContain(`"crons": ["${DAILY_RESET_CRON}"]`);
+    const crons = text.match(/"crons":\s*\[([^\]]*)\]/)?.[1] ?? "";
+    expect(crons).toContain(`"${DAILY_RESET_CRON}"`);
     expect(text).toMatch(/"main": "worker\.ts"/);
     expect(DAILY_RESET_CRON).toBe("0 19 * * *");
   });
