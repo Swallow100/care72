@@ -51,7 +51,7 @@ import {
 } from "../labels.ts";
 import {
   contactRoles,
-  findLeaks,
+  maskReply,
   pseudonymize,
   PseudonymLeakError,
   pseudonymizeText,
@@ -433,14 +433,18 @@ export const DOING_MAX = 40;
 const BANNED = /診断|判定|重症|病気がわかる|病気が分かる/;
 const ALIAS = /(?<![A-Za-z])[A-Z]{1,3}[ 　]?さん/g;
 
-/** Haiku の言葉を画面に出せる形に。仮名（A さん）は「本人」に、禁じた言葉・元の情報が残る物は捨てる、長さで切る */
+/**
+ * Haiku の言葉を画面に出せる形に。仮名（A さん）は「本人」に、禁じた言葉・元の情報（台帳の名前・電話）が残る物は捨てる、長さで切る。
+ * 作った名前・住所の形（「隣の佐藤さん」）は捨てずに伏せ字に（T74 の続き。lib/pseudonym の maskReply）
+ */
 export function cleanWords(raw: string, key: PseudonymKey, max: number): string | null {
   let t = raw.replace(/\s+/g, " ").trim();
   if (!t) return null;
   t = t.replace(ALIAS, "本人");
   if (BANNED.test(t)) return null;
-  if (findLeaks(t, key).length > 0) return null;
-  return Array.from(t).slice(0, max).join("");
+  const masked = maskReply(t, key);
+  if (masked === null) return null;
+  return Array.from(masked).slice(0, max).join("");
 }
 
 function doingOf(answer: PersonaAnswer, key: PseudonymKey): string | null {

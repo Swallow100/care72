@@ -17,6 +17,7 @@ import { useRouter } from "next/navigation";
 import { useRef, useState, type ReactNode } from "react";
 import { Button, buttonClass } from "@/components/ui/Button";
 import { AI_FAIL_REASON_LABELS, INTAKE_LABELS, INTAKE_SAYS, PENDING_STATUS_LABELS, PLACE_LABELS, SECTION_LABELS } from "@/lib/labels";
+import { AI_CONSENT_REFUSED_LABEL } from "@/lib/consent/labels";
 import { shrinkImage } from "@/lib/forms/shrink-image";
 import { buildReadForm, READ_FILES_MAX, type ReadMeta } from "@/lib/intake/read-form";
 import type { AiFailReason } from "@/lib/intake/http";
@@ -92,7 +93,10 @@ const nextId = () => `log-${++seq}`;
 
 export function Intake(props: IntakeProps & { level: Level }) {
   const router = useRouter();
-  const [aiBlock, setAiBlock] = useState<string | null>(props.aiReady ? null : INTAKE_LABELS.aiNotConfigured);
+  // AI 提供が不同意の人（T74 の続き）は開いた時点で AI の操作を止める（手で書く欄は使える）。鍵が無ければ「AI 未設定」
+  const [aiBlock, setAiBlock] = useState<string | null>(
+    props.aiConsentRefused ? AI_CONSENT_REFUSED_LABEL : props.aiReady ? null : INTAKE_LABELS.aiNotConfigured,
+  );
   const [text, setText] = useState("");
   const [busy, setBusy] = useState<null | "split" | "read" | "save">(null);
   const [error, setError] = useState<string | null>(null);

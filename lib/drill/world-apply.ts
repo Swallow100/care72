@@ -11,7 +11,7 @@
 
 import * as z from "zod";
 import type { ClockCategory, DependsOn } from "../db/types.ts";
-import { findLeaks, restoreText, type PseudonymKey } from "../pseudonym/index.ts";
+import { maskReply, restoreText, type PseudonymKey } from "../pseudonym/index.ts";
 import { aliasOfTown, AREA_ROADS, DEMO_AREA, facilityOf, roadOf, restoreTowns, shelterOf, townOfAlias, type Area } from "./area.ts";
 import { personOfAlias } from "./director.ts";
 import type { DrillIncident } from "./engine.ts";
@@ -298,28 +298,35 @@ function buildEvent(e: WorldStep["events"][number], ctx: ApplyContext): Built[] 
   }
 }
 
-/** 世界の 1 文を画面の文に。禁じる語・元の情報（氏名・電話）が残る物・空は捨てる */
+/**
+ * 世界の 1 文を画面の文に。禁じる語・元の情報（台帳の氏名・電話）が残る物・空は捨てる。
+ * 作った名前・住所の形は捨てずに伏せ字に（T74 の続き。room も伏せ字のまま部屋の記録に戻す）
+ */
 export function cleanNarration(raw: string, key: PseudonymKey, area: Area = DEMO_AREA): { room: string; text: string } | null {
-  const room = Array.from(raw.replace(/\s+/g, " ").trim()).slice(0, NARRATION_MAX).join("");
-  if (!room || FORBIDDEN_WORDS.test(room) || findLeaks(room, key).length > 0) return null;
+  const cut = Array.from(raw.replace(/\s+/g, " ").trim()).slice(0, NARRATION_MAX).join("");
+  if (!cut || FORBIDDEN_WORDS.test(cut)) return null;
+  const room = maskReply(cut, key);
+  if (!room) return null;
   return { room, text: restoreTowns(restoreText(room, key), area) };
 }
 
 /** 結末の固定の文（世界の 1 文に禁じる語・漏れがあるとき）。name は氏名（画面の文。サーバーの中だけ） */
 export const farewellFixed = (name: string) => `${name}さんには、この時間までに助けが届きませんでした`;
 
-/** 結末の 1 文を検査する。禁じる語・漏れ・空なら null（固定の文にする） */
+/** 結末の 1 文を検査する。禁じる語・漏れ（台帳の氏名・電話）・空なら null（固定の文にする）。作った名前・住所の形は伏せ字に */
 export function cleanFarewell(raw: string, key: PseudonymKey, area: Area = DEMO_AREA): string | null {
   const t = Array.from(raw.replace(/\s+/g, " ").trim()).slice(0, FAREWELL_MAX).join("");
-  if (!t || FORBIDDEN_WORDS.test(t) || findLeaks(t, key).length > 0) return null;
-  return restoreTowns(restoreText(t, key), area);
+  if (!t || FORBIDDEN_WORDS.test(t)) return null;
+  const masked = maskReply(t, key);
+  return masked ? restoreTowns(restoreText(masked, key), area) : null;
 }
 
-/** 結末の理由（世界の事実）を検査する。禁じる語・医療の語・漏れ・空なら null（理由なし） */
+/** 結末の理由（世界の事実）を検査する。禁じる語・医療の語・漏れ（台帳の氏名・電話）・空なら null（理由なし）。作った名前・住所の形は伏せ字に */
 export function cleanReason(raw: string, key: PseudonymKey, area: Area = DEMO_AREA): string | null {
   const t = Array.from(raw.replace(/\s+/g, " ").trim()).slice(0, FAREWELL_REASON_MAX).join("");
-  if (!t || FORBIDDEN_WORDS.test(t) || REASON_MEDICAL_WORDS.test(t.normalize("NFKC")) || findLeaks(t, key).length > 0) return null;
-  return restoreTowns(restoreText(t, key), area);
+  if (!t || FORBIDDEN_WORDS.test(t) || REASON_MEDICAL_WORDS.test(t.normalize("NFKC"))) return null;
+  const masked = maskReply(t, key);
+  return masked ? restoreTowns(restoreText(masked, key), area) : null;
 }
 
 /**

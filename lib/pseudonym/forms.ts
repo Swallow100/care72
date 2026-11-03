@@ -161,6 +161,22 @@ function afterBreak(run: string): { offset: number; token: string } {
   return { offset: 0, token: run };
 }
 
+/**
+ * 漢字・カナで終わる語の前にかなが 3 字以上続けば、そのかなは言葉（「のもとに佐藤」「ところへ田中」）として残し、
+ * 後ろの漢字・カナだけを名前にする。かなの名前の頭（ゆか子・のぶ子・くに子）は 2 字までなので切らない
+ */
+function kanaLead(b: { offset: number; token: string }): { offset: number; token: string } {
+  const cs = [...b.token];
+  let i = cs.length;
+  while (i > 0 && !isHira(cs[i - 1])) i--;
+  if (i === cs.length || i === 0) return b;
+  let j = i;
+  while (j > 0 && isHira(cs[j - 1])) j--;
+  if (i - j < 3) return b;
+  const lead = cs.slice(0, i).join("").length;
+  return { offset: b.offset + lead, token: b.token.slice(lead) };
+}
+
 /** text の [floor, end) で、end の直前の名前の文字の並び */
 function runBefore(text: string, end: number, floor: number): { start: number; run: string } {
   let j = end;
@@ -201,7 +217,10 @@ function nameStart(text: string, at: number, honorific: string, floor: number): 
   // 敬称のすぐ前の「を」、先生・様の前の「の」（かかりつけの先生・近くの先生）は名前の終わりでない
   if (last === "を") return null;
   if (last === "の" && (honorific === "先生" || honorific === "様" || honorific === "さま")) return null;
-  const { offset, token } = afterBreak(run);
+  const broken = afterBreak(run);
+  // 除く語は切る前の語でも見る（「みまもり員」を「員」に切ってから比べない）
+  if (broken.token === "" || isNotName(broken.token, honorific)) return null;
+  const { offset, token } = kanaLead(broken);
   if (token === "") return null;
   // 「それはちゃんと」「朝からちゃんと」: かなを含む語のあとの「ちゃんと」は言葉。漢字・カナの名前（花子ちゃんと）と、
   // 助詞の切れ目のあとの語（孫のゆうちゃんと）は名前として伏せる。「毎日ちゃんと」は除く語
@@ -250,6 +269,8 @@ function addressSpan(m: RegExpMatchArray): Span | null {
   const body = m[1];
   const g = m.groups ?? {};
   if (g.triple !== undefined && !PLACE_IN.test(body)) return null;
+  // 0 で始まる 10 桁以上の並びは電話（住所にしない。Claude の返事の電話は漏れとして捨てる。index.ts の maskReply）
+  if (g.triple !== undefined && /^[0０]/u.test(g.triple) && g.triple.replace(/[^0-9０-９]/gu, "").length >= 10) return null;
   if (g.pair !== undefined && !PLACE_END.test(body)) return null;
   const at = m.index!;
   const cs = [...body];

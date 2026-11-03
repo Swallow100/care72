@@ -105,5 +105,10 @@ export function intakeErrorOf(e: unknown): Response | null {
  * 見え方（lib/consent/scope.ts）には使わない
  */
 export function aiConsentRefusal(consents: ReadonlyArray<{ kind: ConsentKind; status: ConsentStatus }>): Response | null {
-  return consents.some((c) => c.kind === "ai_overseas" && c.status === "refused") ? intakeError("consent_refused") : null;
+  return isAiConsentRefused(consents) ? intakeError("consent_refused") : null;
+}
+
+/** AI 提供が「不同意」か（入口の 403 と、本人のページを開いた時点の入れる欄の「同意 拒否」〔lib/intake/props.ts〕が同じ物を見る） */
+export function isAiConsentRefused(consents: ReadonlyArray<{ kind: ConsentKind; status: ConsentStatus }>): boolean {
+  return consents.some((c) => c.kind === "ai_overseas" && c.status === "refused");
 }
