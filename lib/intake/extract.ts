@@ -41,10 +41,8 @@ export function fieldGuide(): string {
   }).join("\n");
 }
 
-export const EXTRACT_SYSTEM = [
-  "ケアマネが本人について話した・貼った文を、個別避難計画の台帳の欄に分ける。",
-  "入力は JSON。「本人」は今の台帳（仮名化済み）、「入力」はケアマネの文（ケアプランの写しのこともある）。",
-  "",
+/** 分け方の決まりと欄の一覧（文の分け方と、写真・PDF の読み取り lib/intake/read.ts で同じ物） */
+export const EXTRACT_RULES = [
   "決まり:",
   "1. 入力の文に書かれていることだけを出す。推し量らない。書かれていない欄は出さない。",
   "2. 今の台帳の値は変えない前提で、入力に書かれた欄は、今の値と同じでも違っても書かれたとおりに出す（並べて見せ、変えるかは人が決める）。",
@@ -64,6 +62,13 @@ export const EXTRACT_SYSTEM = [
   "薬（medications）: name 名前、category 区分、schedule 回数、amount 用量、storage 保管場所。",
   "機器（devices）: kind 種類（oxygen 在宅酸素・ventilator 人工呼吸器・suction 吸引・tube_feeding 経管栄養・dialysis 透析）、detail 中身、schedule 回数。",
   "ハザード（hazards）: kind 種類（flood 浸水・landslide 土砂・tsunami 津波）、depth_m 浸水の深さ（m の数字。無ければ空文字）。",
+].join("\n");
+
+export const EXTRACT_SYSTEM = [
+  "ケアマネが本人について話した・貼った文を、個別避難計画の台帳の欄に分ける。",
+  "入力は JSON。「本人」は今の台帳（仮名化済み）、「入力」はケアマネの文（ケアプランの写しのこともある）。",
+  "",
+  EXTRACT_RULES,
 ].join("\n");
 
 /** Claude に渡す要求。入力は仮名化の層を通った物だけ（型で止まる） */
