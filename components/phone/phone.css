@@ -1,16 +1,14 @@
 /*
   本人のスマホ（docs/tasks/T10.md）。本人・家族の画面だけ、赤緑のボタンを面で塗る（CLAUDE.md「画面の決まり」）。
   塗りの色は状態の色（--state-ok 緑 無事・--state-urgent 赤）と同じ変数で、一覧の行・数字と同じ意味の同じ色にする。
-  ダークでは状態の色が明るくなるので、上の文字を濃い色に替える（ライトは白）。
+  ダーク（<html data-theme="dark"> のときだけ。既定はライト）では状態の色が明るくなるので、上の文字を濃い色に替える（ライトは白）。
 */
 :root {
   --phone-on-state: #ffffff;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --phone-on-state: #0f1215;
-  }
+:root[data-theme="dark"] {
+  --phone-on-state: #0f1215;
 }
 
 .phone-fill-ok {
