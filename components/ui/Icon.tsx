@@ -19,9 +19,11 @@ export {
   ArrowPathIcon as RetryIcon, // 再作成・やり直す
   CheckCircleIcon as ChosenIcon, // 選んだ印（アンケートの選択肢、components/ui/Select の一覧）
   CheckIcon as SaveIcon, // 保存
+  ClockIcon as LaterIcon, // 次回（入れる欄の問いを後に回す）
   ChevronDownIcon as OpenIcon, // 開く・畳む
   ChevronLeftIcon as BackIcon, // 戻る
   ClipboardDocumentIcon as CopyIcon, // コピー
+  DocumentArrowUpIcon as ReadIcon, // 様式の読取（写真・PDF を AI が読む）
   DocumentTextIcon as PaperIcon, // 紙面の表示
   EllipsisVerticalIcon as BrowserMenuIcon, // Android の Chrome の右上のメニュー（追加の案内の手順）
   EyeIcon as ShowIcon, // パスワードを表示
@@ -31,6 +33,7 @@ export {
   MagnifyingGlassMinusIcon as ZoomOutIcon, // 縮小（地図）
   MagnifyingGlassPlusIcon as ZoomInIcon, // 拡大（地図）
   LinkIcon, // リンク作成（アンケートの招待）
+  NoSymbolIcon as DeclinedIcon, // 無回答（入れる欄の問い）
   MinusCircleIcon as RemoveIcon, // 外す（人でない物。対応表の欄など）
   PaperAirplaneIcon as SendIcon, // 送信（アンケートの答え）
   PencilSquareIcon as EditIcon, // 編集（AI の下書きを直す）
@@ -38,6 +41,8 @@ export {
   PlayIcon, // 再生・開始
   PlusIcon as AddIcon, // 追加（人でない物）
   PrinterIcon as PrintIcon, // 印刷
+  QrCodeIcon as QrIcon, // QR の作成・再作成
+  QuestionMarkCircleIcon as UnknownIcon, // 不明（入れる欄の問い）
   UserIcon as IdIcon, // ID の欄の印
   UserMinusIcon as UnlistIcon, // 一覧から外す
   UserPlusIcon as AddPersonIcon, // 利用者追加・ケアマネ追加

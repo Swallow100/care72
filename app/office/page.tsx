@@ -194,7 +194,7 @@ function ModeSection({ state, now, confirm }: { state: DisasterState; now: strin
           <input type="hidden" name="confirm" value="1" />
           <input type="hidden" name="version" value={state.version} />
           <span className="text-sm">{DISASTER_LABELS.clearOnNormal}</span>
-          <SubmitButton kind="dangerFill">{DISASTER_LABELS.backToNormal}</SubmitButton>
+          <SubmitButton kind="dangerFill" icon="RestoreIcon">{DISASTER_LABELS.backToNormal}</SubmitButton>
           <ButtonLink href={OFFICE_PATH} kind="quiet" icon={CloseIcon}>
             {DISASTER_LABELS.cancel}
           </ButtonLink>
@@ -672,7 +672,7 @@ function ResetSection({ state }: { state: ResetState | null }) {
         <form method="post" action={OFFICE_RESET_PATH} className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2 rounded bg-panel2 px-3 py-2">
           <input type="hidden" name="confirm" value="1" />
           <span className="text-sm">{RESET_LABELS.confirm}</span>
-          <SubmitButton kind="dangerFill">{RESET_LABELS.reset}</SubmitButton>
+          <SubmitButton kind="dangerFill" icon="RetryIcon">{RESET_LABELS.reset}</SubmitButton>
           <ButtonLink href={OFFICE_PATH} kind="quiet" icon={CloseIcon}>
             {RESET_LABELS.cancel}
           </ButtonLink>
@@ -682,6 +682,7 @@ function ResetSection({ state }: { state: ResetState | null }) {
         <form method="post" action={OFFICE_RESET_PATH} className="mt-2">
           <SubmitButton
             kind="danger"
+            icon="RetryIcon"
             confirm={{
               title: CONFIRM_LABELS.resetTitle,
               message: RESET_LABELS.confirm,
