@@ -2,7 +2,7 @@
 // 平時: 計画の内訳 → 見直し（今週。計画が下書きで未確認のある人）→ 未確認の多い人 → 地図・ハザード・避難先
 // 発災時: 地図（ピンは lib/triage の色）・状態の人数・ハザード（状態の内訳）・避難先 → 見直し → 未確認 → 計画
 // 1024px 以上で右に出し、狭い幅は畳む（SideFold）。本人のページ（?open=）が開いているときは、この面の代わりに本人のページ（app/page.tsx）。
-// 司令室の見た目にしない: 右端の 1 列で、地図は動かさない。雨雲・震度はデモの印を付ける（components/map/CaseMap.tsx）。
+// 司令室の見た目にしない: 右端の 1 列で、地図は小さく固定（拡大・縮小・移動は地図の「全画面」で。T46）。雨雲・震度はデモの印を付ける（components/map/CaseMap.tsx）。
 
 import Link from "next/link";
 import { CaseMap } from "@/components/map/CaseMap";

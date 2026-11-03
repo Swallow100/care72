@@ -360,6 +360,71 @@ export const INTAKE_LABELS = {
   speechFailed: "認識失敗",
   retry: "再試行",
   edited: "修正済",
+  // ---- T45: 入れる欄を AI 専用に（文字・写真と PDF・小さなマイク）と会話の流れ ----
+  /** 分ける（文を Claude が台帳の欄に分ける主のボタン） */
+  split: "分ける",
+  /** 写真・PDF を選んで読ませる */
+  readFile: "写真・PDF 読取",
+  reading: "読取中",
+  fileType: "形式外",
+  fileLarge: "容量超過",
+  fileEmpty: "空ファイル",
+  /** 会話の流れの見出しと吹き出しの書き手 */
+  log: "やりとり",
+  you: "入力",
+  ask: "問い",
+  answer: "答え",
+  /** 残りの問い（「残り 4 問」） */
+  left: "残り",
+  leftUnit: "問",
+  /** 本人のページの面の右上の「編集」と、その下の保存・取消 */
+  sectionEdit: "編集",
+  /** 時計の頼り先の確認（確認済にする・未確認に戻す） */
+  checkOn: "確認",
+  checkOff: "確認取消",
+  addContact: "連絡先追加",
+  addHazard: "ハザード",
+  addDevice: "機器",
+  /** 面の編集で行を外す・外す印を戻す（保存の前に確認の窓） */
+  drop: "外す",
+  undrop: "戻す",
+  dropMark: "外す予定",
+  /** 確認の窓の題と決める方のボタン */
+  dropTitle: "外す確認",
+  /** 時計の値を変えずに今日確かめた（clockSeen） */
+  seen: "値確認",
+  seenOff: "値確認取消",
+  seenToday: "本日確認",
+  /** 写真・PDF を読む前の確認の窓の題と決める方のボタン */
+  fileNoticeTitle: "読取確認",
+  fileNoticeOk: "読取",
+} as const;
+
+/**
+ * 写真・PDF を読む前の確認の窓の文（設計の側の頼み「写真の注意」）。写真・PDF の文字は伏せられないので、
+ * 写っている氏名・住所・電話はそのまま Claude に渡る。常設の説明にせず、読む前に 1 回だけ出す
+ */
+export const FILE_NOTICE =
+  "写真・PDF に写っている氏名・住所・電話番号は伏せられず、そのまま Claude に渡ります。読む前に紙を折る・付箋で隠すなどしてください。写真・PDF は保存しません。";
+
+/** 外す確認の窓の文（「ワーファリン・隣人 の 2 件を外します」） */
+export const dropConfirmText = (names: readonly string[]) =>
+  `${names.slice(0, 6).join("・")}${names.length > 6 ? ` ほか ${names.length - 6}` : ""} の ${names.length} 件を外します。経過に「ケアマネが外した」と残ります。`;
+
+/** 会話の流れの AI と人の言葉（T45）。AI の言葉は Claude の出力の数を数えるだけで、文は定型 */
+export const INTAKE_SAYS = {
+  /** 「7 項目に分けました（医療 3・連絡先 2・避難 2）」 */
+  split: (n: number, parts: string) => `${n} 項目に分けました${parts ? `（${parts}）` : ""}`,
+  /** 分ける物が無かった */
+  none: "本人のページに入る事は見つかりませんでした",
+  /** 写真・PDF を読んだ（「お薬手帳.jpg を読みました」） */
+  read: (name: string) => `${name} を読みました`,
+  saved: (n: number) => `${n} 件を保存しました`,
+  unchanged: "変わった所はありませんでした",
+  discarded: "変更点を取り消しました",
+  skipped: "次回に回しました",
+  pending: (status: string) => `「${status}」と記録しました`,
+  done: "空欄はありません",
 } as const;
 
 /** AI 失敗の理由（ai_calls の error に合わせる。形の違いのうち途中で切れた物だけ分ける） */

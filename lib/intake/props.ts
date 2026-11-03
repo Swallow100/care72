@@ -4,6 +4,7 @@ import { parseLedger } from "../db/ledger.ts";
 import type { ClockCategory, Ledger } from "../db/types.ts";
 import type { PersonPageRows } from "../person.ts";
 import { questionQueue, type Question } from "./ask.ts";
+import type { EditData } from "./edit.ts";
 
 export type IntakeProps = {
   personId: string;
@@ -17,6 +18,8 @@ export type IntakeProps = {
   ledger: Ledger;
   /** 今の時計（印を作るかの見せ方。名前と区分だけ） */
   clocks: Array<{ category: ClockCategory; label: string }>;
+  /** 本人のページの面の「編集」に要る今の値（T45） */
+  edit: EditData;
 };
 
 export function intakePropsOf(rows: PersonPageRows, aiReady: boolean): IntakeProps {
@@ -27,5 +30,31 @@ export function intakePropsOf(rows: PersonPageRows, aiReady: boolean): IntakePro
     queue: questionQueue(rows),
     ledger: parseLedger(rows.person.ledger),
     clocks: rows.clocks.map((k) => ({ category: k.category, label: k.label })),
+    edit: {
+      personId: rows.person.id,
+      version: rows.person.version ?? 1,
+      ledger: parseLedger(rows.person.ledger),
+      contacts: rows.contacts.map((c) => ({
+        id: c.id,
+        kind: c.kind,
+        relation: c.relation,
+        name: c.name,
+        phone: c.phone,
+        night_ok: c.night_ok,
+        note: c.note,
+      })),
+      clocks: rows.clocks.map((k) => ({
+        id: k.id,
+        kind: k.kind,
+        category: k.category,
+        label: k.label,
+        value: k.value,
+        unit: k.unit,
+        depends_on: k.depends_on,
+        depends_check: k.depends_check,
+        confirmed_at: k.confirmed_at,
+      })),
+      consents: rows.consents.map((c) => ({ kind: c.kind, status: c.status })),
+    },
   };
 }

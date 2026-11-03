@@ -30,6 +30,8 @@ export type SubmitConfirm = {
   danger?: boolean;
   /** 決める方のボタンのアイコン（消す RemoveIcon・外す UnlistIcon・戻す RestoreIcon、無ければ消す操作は RemoveIcon・ほかは SaveIcon） */
   icon?: DialogIconName;
+  /** 本文の下の小さな箇条書き（消す項目を 1 行ずつなど） */
+  details?: string[];
   /** 決めたときだけ足して送る欄（例 { confirm: "1" }） */
   fields?: Record<string, string>;
 };
@@ -104,7 +106,7 @@ export function SubmitButton({
           if (confirm && form) {
             // 確認の窓で決めてから、足す欄を描いて同じボタンで送る（requestSubmit は click を起こさないので、ここへは戻らない）
             e.preventDefault();
-            void appConfirm(confirm.message, { title: confirm.title, ok: confirm.ok, danger: confirm.danger, icon: confirm.icon }).then((ok) => {
+            void appConfirm(confirm.message, { title: confirm.title, ok: confirm.ok, danger: confirm.danger, icon: confirm.icon, details: confirm.details }).then((ok) => {
               if (!ok || !form.isConnected) return;
               flushSync(() => {
                 setArmed(true);
