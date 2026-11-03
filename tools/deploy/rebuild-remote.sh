@@ -24,3 +24,4 @@ echo "== deploy"; npx wrangler deploy 2>&1 | grep -v -i token | grep -E "Uploade
 echo "== check"
 for h in care72.app care72.kyudo-platform.workers.dev; do curl -s -m 30 "https://$h/api/health"; echo " ($h)"; curl -s -m 30 -o /dev/null -w "  top %{http_code} -> %{redirect_url}\n" "https://$h/"; done
 npx wrangler d1 execute care72 --remote --json --command "select count(*) as n from people" 2>/dev/null | grep -o '"n": *[0-9]*'
+CHECK_COMMIT=$(git rev-parse --short=7 HEAD) CHECK_WORKERS_DEV_HOST="${WORKERS_DEV_HOST:-}" node tools/deploy/check-remote.mjs https://care72.app || echo "check に FAIL がある（出した commit と /api/health の commit を含む）"
