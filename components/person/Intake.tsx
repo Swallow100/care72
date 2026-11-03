@@ -44,7 +44,7 @@ type Retry = { kind: "text"; source: string; focus: string | null } | { kind: "f
 /** 会話の流れの 1 つ */
 export type LogEntry =
   | { id: string; who: "you"; text: string }
-  | { id: string; who: "ai"; kind: "split"; say: string; proposal: Proposal; state: "open" | "saved" | "discarded" }
+  | { id: string; who: "ai"; kind: "split"; say: string; proposal: Proposal; state: "open" | "saved" | "discarded"; fromText?: boolean }
   | { id: string; who: "ai"; kind: "failed"; label: string; reason: AiFailReason | null; retry: Retry | null }
   | { id: string; who: "app"; text: string; tone?: "ok" | "danger" }
   | { id: string; who: "ask"; q: Pick<Question, "key" | "label" | "text" | "why" | "example"> };
@@ -121,8 +121,8 @@ export function Intake(props: IntakeProps & { level: Level }) {
     const r = await postJson<Proposed>("/api/intake/extract", { personId: props.personId, text: source, focus });
     setBusy(null);
     if (isError(r)) return failed(r, { kind: "text", source, focus });
-    if (focus === null) setText("");
-    push(proposalOf(r));
+    // 文の欄は保存できたら空にする（取り消したら直して送り直せるよう残す）
+    push({ ...proposalOf(r), fromText: focus === null } as LogEntry);
   }
 
   async function readFile(file: File, echoed = true) {
@@ -180,7 +180,6 @@ export function Intake(props: IntakeProps & { level: Level }) {
         <H id={titleId} className="text-[1rem] leading-6 font-bold">
           {INTAKE_LABELS.title}
         </H>
-        <AiMark title="AI の入力専用。分けた結果は人が確認して保存" />
         {aiBlock && <StateTag tone="check">{aiBlock}</StateTag>}
         <span role="status" className="ml-auto text-xs">
           {status}
@@ -273,6 +272,7 @@ export function Intake(props: IntakeProps & { level: Level }) {
                 const n = await save(changes, { model: e.proposal.model });
                 if (n === null) return;
                 patch(e.id, { state: "saved" });
+                if (e.fromText) setText("");
                 push({ id: nextId(), who: "app", text: n > 0 ? INTAKE_SAYS.saved(changes.length) : INTAKE_SAYS.unchanged, tone: "ok" });
               }}
               onRetry={(retry) => (retry.kind === "text" ? void split(retry.source, retry.focus, false) : void readFile(retry.file, false))}
