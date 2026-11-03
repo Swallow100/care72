@@ -163,6 +163,8 @@ function ClassBody({ view }: { view: Exclude<ClassView, { kind: "absent" }> }) {
     case "pending":
       return <span className="text-muted">{CLASSIFY_LABELS.pending}</span>;
     case "none":
+      // 文字の無い録音（無音）は「不明」と出す（11/3 09:0x の確定 1。AI は呼んでいないので AI の印は付けない）
+      if (view.error === "no_text") return <span className="font-bold">{CLASS_LABELS.unknown}</span>;
       return (
         <>
           <span className="font-bold">{CLASSIFY_LABELS.none}</span>

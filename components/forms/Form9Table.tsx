@@ -334,7 +334,7 @@ function ContactCell({ c }: { c: Form9Contact | undefined }) {
 
 /** 手直しの欄。順位と理由。手直し済みなら「手直し解除」（自動の順位に戻す） */
 function RankForm({ row: r, sort, error, size }: { row: Form9Row; sort: Form9Sort; error: RankFormError | null; size: number }) {
-  const input = "rounded-md bg-panel px-2 py-1.5 text-sm text-ink outline-none focus-visible:outline-2 focus-visible:outline-accent";
+  const input = "rounded-md bg-panel px-2 py-1.5 text-sm text-ink outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-accent";
   return (
     <form method="post" action={FORM9_RANK_PATH} className="flex flex-wrap items-end gap-x-3 gap-y-2">
       <input type="hidden" name="person" value={r.id} />

@@ -630,7 +630,7 @@ describe("保存（lib/intake/save.ts）", () => {
       .prepare("SELECT kind, category, label, value, unit, starts_on, source FROM clocks WHERE person_id = 'p-04' ORDER BY sort")
       .all();
     expect(clocks).toEqual([
-      { kind: "condition", category: "dementia", label: "認知症 本人の信号が当てにならない", value: null, unit: null, starts_on: "none", source: "care_manager" },
+      { kind: "condition", category: "dementia", label: "本人の申告は参考", value: null, unit: null, starts_on: "none", source: "care_manager" },
       { kind: "device", category: "oxygen", label: "酸素 内蔵電池", value: null, unit: null, starts_on: "outage", source: null },
       { kind: "medication", category: "anticoagulant", label: "ワーファリン", value: 10, unit: "day", starts_on: "disaster", source: "care_manager" },
       { kind: "medication", category: "other", label: "抗認知症薬", value: 14, unit: "day", starts_on: "disaster", source: "care_manager" },

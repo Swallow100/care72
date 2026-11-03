@@ -77,7 +77,10 @@ export default async function MedicalFormPage({ params, searchParams }: Props) {
       <FormAbout entry={DOCUMENT_CATALOG.medical} />
       {result.kind === "sheet" ? (
         <div className="flex flex-col items-center gap-4 xl:flex-row xl:items-start xl:justify-center print:block">
-          <MedicalSummarySheet sheet={result.sheet} />
+          {/* 狭い画面では紙面の箱だけを横に送る（画面全体を横に送らない。印刷プレビューの例外） */}
+          <div className="max-w-full min-w-0 print:max-w-none">
+            <MedicalSummarySheet sheet={result.sheet} />
+          </div>
           <div className="screen-only grid w-full max-w-xl content-start gap-3 px-4 xl:w-[26rem] xl:shrink-0 xl:px-0 xl:pr-4">
             {source && <MedicalSource view={source} />}
             {showBasis && <MedicalSummaryBasis sheet={result.sheet} />}

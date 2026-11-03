@@ -8,6 +8,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { buttonClass } from "@/components/ui/Button";
+import { AddIcon } from "@/components/ui/Icon";
 import { COMPOSER_FAILED, COMPOSER_LABELS } from "@/lib/consent/labels";
 import { CUSTODY_LABELS } from "@/lib/custody/labels";
 import type { WritableKind } from "@/lib/consent/scope";
@@ -17,7 +18,7 @@ import { BODY_MAX, TIMELINE_API } from "@/lib/timeline/paths";
 type Preset = Exclude<WritableKind, "note">;
 
 const INPUT =
-  "w-full min-w-0 resize-y rounded bg-panel2 px-2 py-1.5 text-sm text-ink outline-none focus-visible:outline-2 focus-visible:outline-accent";
+  "w-full min-w-0 resize-y rounded bg-panel2 px-2 py-1.5 text-sm text-ink outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-accent";
 /** 追記・記録は主の操作（共通のボタンの形、components/ui/Button） */
 const PRIMARY = buttonClass("main", "md");
 
@@ -94,6 +95,7 @@ export function TimelineComposer({ personId, kinds }: { personId: string; kinds:
           className={INPUT}
         />
         <button type="submit" disabled={!kind || busy} className={`${PRIMARY} shrink-0`} data-press="overlay">
+          <AddIcon aria-hidden className="size-4 shrink-0" />
           {busy ? COMPOSER_LABELS.sending : COMPOSER_LABELS.send}
         </button>
       </div>

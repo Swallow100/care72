@@ -11,7 +11,7 @@ import { SectionEdit, SectionForm } from "../../components/person/SectionEdit.ts
 import { SEED_AT, SEED_PEOPLE, seedConsents, type SeedPerson } from "../../seed/people.ts";
 import type { PersonPageRows } from "../person.ts";
 import { speechRecognitionOf } from "../speech/dictation.ts";
-import { dropConfirmText, FILE_NOTICE } from "../labels.ts";
+import { dropConfirmText, REDACT_LABELS } from "../labels.ts";
 import { dropKey, editChanges, editDraft, isEditSection, removalNames, toggled } from "./edit.ts";
 import { intakePropsOf } from "./props.ts";
 import type { DiffItem } from "./diff.ts";
@@ -252,10 +252,10 @@ describe("面の編集の外す・値確認（components/person/SectionEdit.tsx�
     expect(form("medical", "p-01", { seen: ["k-01-1"] })).toContain("本日確認");
   });
 
-  it("確認の窓の文: 外す物の名前と数、写真・PDF の注意（氏名・住所・電話が Claude に渡る、保存しない）", () => {
+  it("確認の窓の文: 外す物の名前と数。写真・PDF は読む前の注意の窓をやめ、黒塗りの画面（T52）の言葉に", () => {
     expect(dropConfirmText(["ワーファリン", "隣人"])).toBe("ワーファリン・隣人 の 2 件を外します。経過に「ケアマネが外した」と残ります。");
-    expect(FILE_NOTICE).toContain("Claude に渡ります");
-    expect(FILE_NOTICE).toContain("保存しません");
-    for (const w of ["診断", "判定"]) expect(FILE_NOTICE).not.toContain(w);
+    expect(REDACT_LABELS.what).toBe("氏名・住所・電話・町名");
+    expect(REDACT_LABELS.noneOk).toBe("隠す所は無い");
+    for (const w of ["診断", "判定"]) expect(JSON.stringify(REDACT_LABELS)).not.toContain(w);
   });
 });

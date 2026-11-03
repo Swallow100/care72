@@ -3,20 +3,21 @@
 // 入れる欄（T03・T04・T45）。本人のページの右に常に開いている、AI の入力専用の欄。手で直すのは左の面の「編集」（SectionEdit）。
 // - 上に文字の欄（書く・貼る）。その下に「写真・PDF 読取」と小さなマイク（「話す」）、主のボタン「分ける」
 // - 分ける: Claude（Sonnet）が文を台帳の欄に分け（/api/intake/extract）、今の値と並べた変更点を出す
-// - 写真・PDF 読取: ケアプラン・お薬手帳などを 1 枚ずつ Opus が読み（/api/intake/read）、同じ変更点を出す
-//   読む前に確認の窓で「写った氏名・住所・電話は伏せられず Claude に渡る」と 1 回だけ出す（lib/labels.ts の FILE_NOTICE）
+// - 写真・PDF 読取: ケアプラン・お薬手帳などを選ぶと、必ず黒塗りの画面（RedactSheet、T52）を通る。写った氏名・住所・電話・町名を
+//   人が塗り、塗った後の画像（JPEG、EXIF なし）を 1 頁ずつ Opus が読み（/api/intake/read）、同じ変更点を出す。元の写真・PDF は送らない。
+//   保存すると経過に「写真を読んだ（隠した所 N か所）」（T45 の読む前の確認の窓「読取確認」はこの画面に置き換えた）
 // - 話す（T04）: ブラウザの Web Speech で文字の欄に流す。もう一度押して止めると欄に残り、直してから「分ける」。
 //   対応していないブラウザ（Firefox など）はボタンを出さない
 // - 下に会話の流れ（やりとり）: 入れた物 → AI の言った事（「7 項目に分けました（医療 3・避難 2）」と変更点）→ 保存 → 次の問い → 答え …
 //   問いは空欄が無くなるまで続き、「次回」で飛ばせる。流れは下へ伸びる（内側で送らない。送るのはページの縦 1 本）
 // 保存は全部 /api/intake/save（版を確かめ、埋まった欄は上書きしない）。保存のあとはページを読み直す（流れはこの画面の間だけ残る）。
 
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { useRef, useState, type ReactNode } from "react";
 import { Button, buttonClass } from "@/components/ui/Button";
-import { AI_FAIL_REASON_LABELS, FILE_NOTICE, INTAKE_LABELS, INTAKE_SAYS, PENDING_STATUS_LABELS, SECTION_LABELS } from "@/lib/labels";
-import { appConfirm } from "@/lib/ui/dialog";
-import { FORM_FILE_MAX_BYTES } from "@/lib/forms/mapping";
+import { AI_FAIL_REASON_LABELS, INTAKE_LABELS, INTAKE_SAYS, PENDING_STATUS_LABELS, SECTION_LABELS } from "@/lib/labels";
+import { buildReadForm, READ_FILES_MAX, type ReadMeta } from "@/lib/intake/read-form";
 import type { AiFailReason } from "@/lib/intake/http";
 import type { DictationError } from "@/lib/speech/dictation";
 import { useDictation } from "@/lib/speech/use-dictation";
@@ -33,22 +34,34 @@ import { IntakeChanges, rowsOf, type ChangeRow } from "./IntakeChanges";
 import { IntakeQuestion, QuestionText } from "./IntakeQuestion";
 import { INPUT } from "./intake-ui";
 import { AiMark, StateTag, type Level } from "./parts";
+import type { RedactedPage } from "./RedactSheet";
+
+// 黒塗りの画面は写真・PDF を選んだときだけ読み込む（ブラウザだけ。PDF を画像にする pdf.js をサーバーの束に入れない）
+const RedactSheet = dynamic(() => import("./RedactSheet").then((m) => m.RedactSheet), { ssr: false });
 
 /** 入力の文の長さの上限（lib/intake/extract.ts の INTAKE_TEXT_MAX と同じ） */
 const TEXT_MAX = 4000;
-/** 1 回に選べる写真・PDF の数（1 枚ずつ送る） */
-const FILES_MAX = 5;
 /** 流れに出す入力の文の長さ（貼ったケアプランは頭だけ） */
 const ECHO_MAX = 140;
 
 type Proposal = { model: string; dropped: number; rows: ChangeRow[] };
-/** 再試行できる失敗（AI の返事の失敗）。文は同じ文・同じ問いで、写真・PDF は同じファイルで送り直す */
-type Retry = { kind: "text"; source: string; focus: string | null } | { kind: "file"; file: File };
+/** 再試行できる失敗（AI の返事の失敗）。文は同じ文・同じ問いで、写真・PDF は塗った後の同じ画像で送り直す */
+type Retry = { kind: "text"; source: string; focus: string | null } | { kind: "file"; page: RedactedPage };
 
 /** 会話の流れの 1 つ */
 export type LogEntry =
   | { id: string; who: "you"; text: string }
-  | { id: string; who: "ai"; kind: "split"; say: string; proposal: Proposal; state: "open" | "saved" | "discarded"; fromText?: boolean }
+  | {
+      id: string;
+      who: "ai";
+      kind: "split";
+      say: string;
+      proposal: Proposal;
+      state: "open" | "saved" | "discarded";
+      fromText?: boolean;
+      /** 黒塗りして読んだ写真・PDF の頁（保存すると経過に「写真を読んだ（隠した所 N か所）」） */
+      read?: ReadMeta;
+    }
   | { id: string; who: "ai"; kind: "failed"; label: string; reason: AiFailReason | null; retry: Retry | null }
   | { id: string; who: "app"; text: string; tone?: "ok" | "danger" }
   | { id: string; who: "ask"; q: Pick<Question, "key" | "label" | "text" | "why" | "example"> };
@@ -83,6 +96,8 @@ export function Intake(props: IntakeProps & { level: Level }) {
   const [error, setError] = useState<string | null>(null);
   const [log, setLog] = useState<LogEntry[]>([]);
   const [skip, setSkip] = useState<string[]>([]);
+  /** 黒塗りの画面に渡している写真・PDF（開いている間だけ） */
+  const [redacting, setRedacting] = useState<File[] | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const aiReady = aiBlock === null;
   const H = props.level === 1 ? "h2" : "h3";
@@ -129,33 +144,33 @@ export function Intake(props: IntakeProps & { level: Level }) {
     push({ ...proposalOf(r), fromText: focus === null } as LogEntry);
   }
 
-  async function readFile(file: File, echoed = true) {
-    if (echoed) push({ id: nextId(), who: "you", text: file.name });
-    if (file.size > FORM_FILE_MAX_BYTES) return push({ id: nextId(), who: "app", text: INTAKE_LABELS.fileLarge, tone: "danger" });
+  /** 塗った後の 1 頁を読ませる。送るのは塗った後の画像と黒塗りの画面の印だけ（元の写真・PDF は送らない） */
+  async function readPage(page: RedactedPage, echoed = true) {
+    if (echoed) push({ id: nextId(), who: "you", text: INTAKE_SAYS.sent(page.name, page.meta.redacted) });
     setBusy("read");
     setError(null);
-    const form = new FormData();
-    form.set("personId", props.personId);
-    form.set("file", file);
-    const r = await postForm<Proposed>("/api/intake/read", form);
+    const r = await postForm<Proposed>("/api/intake/read", buildReadForm(props.personId, page.blob, page.meta));
     setBusy(null);
-    if (isError(r)) return failed(r, { kind: "file", file });
-    push({ ...proposalOf(r), say: `${INTAKE_SAYS.read(file.name)}。${splitSay(r.items)}` } as LogEntry);
+    if (isError(r)) return failed(r, { kind: "file", page });
+    push({ ...proposalOf(r), say: `${INTAKE_SAYS.read(page.name)}。${splitSay(r.items)}`, read: page.meta } as LogEntry);
   }
 
-  async function readFiles(files: FileList | null) {
-    if (!files || files.length === 0) return;
-    const picked = [...files].slice(0, FILES_MAX);
-    // 写真・PDF の文字は伏せられない（写った氏名・住所・電話はそのまま Claude に渡る）。選んだあと読む前に 1 回だけ確かめる
-    const ok = await appConfirm(FILE_NOTICE, { title: INTAKE_LABELS.fileNoticeTitle, ok: INTAKE_LABELS.fileNoticeOk });
-    if (ok) for (const f of picked) await readFile(f);
+  /** 写真・PDF を選んだら、必ず黒塗りの画面へ（読む前の確認の窓の代わり。T52） */
+  function readFiles(files: FileList | null) {
+    if (files && files.length > 0) setRedacting([...files].slice(0, READ_FILES_MAX));
     if (fileInput.current) fileInput.current.value = "";
   }
 
-  async function save(changes: IntakeChange[], ai: { model: string } | null): Promise<number | null> {
+  async function save(changes: IntakeChange[], ai: { model: string } | null, read?: ReadMeta): Promise<number | null> {
     setBusy("save");
     setError(null);
-    const r = await postJson<{ ok: true; changed: number }>("/api/intake/save", { personId: props.personId, version: props.version, ai, changes });
+    const r = await postJson<{ ok: true; changed: number }>("/api/intake/save", {
+      personId: props.personId,
+      version: props.version,
+      ai,
+      changes,
+      ...(read && ai ? { read } : {}),
+    });
     setBusy(null);
     if (isError(r)) {
       setError(r.label);
@@ -280,13 +295,13 @@ export function Intake(props: IntakeProps & { level: Level }) {
               }}
               onSave={async (changes) => {
                 if (e.who !== "ai" || e.kind !== "split") return;
-                const n = await save(changes, { model: e.proposal.model });
+                const n = await save(changes, { model: e.proposal.model }, e.read);
                 if (n === null) return;
                 patch(e.id, { state: "saved" });
                 if (e.fromText) setText("");
                 push({ id: nextId(), who: "app", text: n > 0 ? INTAKE_SAYS.saved(changes.length) : INTAKE_SAYS.unchanged, tone: "ok" });
               }}
-              onRetry={(retry) => (retry.kind === "text" ? void split(retry.source, retry.focus, false) : void readFile(retry.file, false))}
+              onRetry={(retry) => (retry.kind === "text" ? void split(retry.source, retry.focus, false) : void readPage(retry.page, false))}
             />
           </li>
         ))}
@@ -330,6 +345,19 @@ export function Intake(props: IntakeProps & { level: Level }) {
           )}
         </li>
       </ol>
+
+      {redacting && (
+        <RedactSheet
+          files={redacting}
+          onCancel={() => setRedacting(null)}
+          onSend={(pages) => {
+            setRedacting(null);
+            void (async () => {
+              for (const p of pages) await readPage(p);
+            })();
+          }}
+        />
+      )}
     </section>
   );
 }

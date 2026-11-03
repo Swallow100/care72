@@ -14,11 +14,11 @@ export const BTN = buttonClass("plain", "sm");
 
 /** 入力の欄（面の上） */
 export const INPUT =
-  "w-full min-w-0 rounded bg-panel2 px-2 py-1 text-sm outline-none focus-visible:outline-2 focus-visible:outline-accent";
+  "w-full min-w-0 rounded bg-panel2 px-2 py-1 text-sm outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-accent";
 
 /** 入力の欄（面の中の区分の上。地が panel2 なので欄は白） */
 export const INPUT_IN =
-  "w-full min-w-0 rounded bg-panel px-2 py-1 text-sm outline-none focus-visible:outline-2 focus-visible:outline-accent";
+  "w-full min-w-0 rounded bg-panel px-2 py-1 text-sm outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-accent";
 
 /** ふつうのボタン（面の中の区分の上） */
 export const BTN_IN = buttonClass("plainIn", "sm");

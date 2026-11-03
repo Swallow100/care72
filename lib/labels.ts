@@ -395,17 +395,54 @@ export const INTAKE_LABELS = {
   seen: "値確認",
   seenOff: "値確認取消",
   seenToday: "本日確認",
-  /** 写真・PDF を読む前の確認の窓の題と決める方のボタン */
-  fileNoticeTitle: "読取確認",
-  fileNoticeOk: "読取",
+  /** 黒塗りの画面を通っていない写真・PDF（サーバーが断る。T52） */
+  notRedacted: "未加工",
 } as const;
 
 /**
- * 写真・PDF を読む前の確認の窓の文（設計の側の頼み「写真の注意」）。写真・PDF の文字は伏せられないので、
- * 写っている氏名・住所・電話はそのまま Claude に渡る。常設の説明にせず、読む前に 1 回だけ出す
+ * 写真・PDF を送る前に塗って隠す画面（T52。T45 の読む前の確認の窓「読取確認」を置き換えた）。
+ * 写った氏名・住所・電話・町名を人が四角で黒く塗り、塗った後の画像だけを送る。元の写真・PDF はブラウザの外へ出さない。
+ * ボタン・見出し・状態は 2〜4 字
  */
-export const FILE_NOTICE =
-  "写真・PDF に写っている氏名・住所・電話番号は伏せられず、そのまま Claude に渡ります。読む前に紙を折る・付箋で隠すなどしてください。写真・PDF は保存しません。";
+export const REDACT_LABELS = {
+  /** 窓の題と、題の横の小さな字（塗る物） */
+  title: "黒塗り",
+  what: "氏名・住所・電話・町名",
+  /** 指・マウスで引くと塗る／画像を送る（拡大中）。2 つのどちらか */
+  paint: "塗る",
+  move: "移動",
+  undo: "一手戻す",
+  /** 押して選んだ四角を外す */
+  remove: "外す",
+  /** この頁の四角を全部外す */
+  clear: "全解除",
+  zoomIn: "拡大",
+  zoomOut: "縮小",
+  fit: "全体",
+  prev: "前頁",
+  next: "次頁",
+  send: "送信",
+  cancel: "取消",
+  /** 写真・PDF を画像にしている間 */
+  preparing: "準備中",
+  /** 塗った後の画像にしている間・できなかった */
+  encoding: "変換中",
+  encodeFailed: "変換失敗",
+  /** 「隠した所 3」（全部の頁）と「頁内 1」（今の頁。2 頁以上のときだけ） */
+  hidden: "隠した所",
+  onPage: "頁内",
+  /** 読めなかった（壊れた PDF・形の違う物） */
+  unreadable: "読込不可",
+  /** 頁の上限を超えた PDF（「12 頁中 3 頁」） */
+  pagesOf: (shown: number, total: number) => `${total} 頁中 ${shown} 頁`,
+  /** 塗らずに送るときの確認の窓 */
+  noneTitle: "隠す所なし",
+  noneText: "塗った所の無い頁があります",
+  noneOk: "隠す所は無い",
+  noneBack: "戻る",
+  /** 頁の呼び名（「お薬手帳.pdf 2 頁」）。1 頁の物はファイル名だけ */
+  pageName: (file: string, page: number, pages: number) => (pages > 1 ? `${file} ${page} 頁` : file),
+} as const;
 
 /** 外す確認の窓の文（「ワーファリン・隣人 の 2 件を外します」） */
 export const dropConfirmText = (names: readonly string[]) =>
@@ -419,6 +456,8 @@ export const INTAKE_SAYS = {
   none: "本人のページに入る事は見つかりませんでした",
   /** 写真・PDF を読んだ（「お薬手帳.jpg を読みました」） */
   read: (name: string) => `${name} を読みました`,
+  /** 黒塗りした画像を送った（入力の吹き出し。「お薬手帳.jpg（隠した所 3）」） */
+  sent: (name: string, hidden: number) => `${name}（隠した所 ${hidden}）`,
   saved: (n: number) => `${n} 件を保存しました`,
   unchanged: "変わった所はありませんでした",
   discarded: "変更点を取り消しました",

@@ -19,6 +19,7 @@
 | zod | Claude の返す JSON の形を書き、返った物を検査する | MIT |
 | qrcode-generator | QR の頁の QR の点の並び（lib/qr/image.ts）。SVG はこちらで描く。間接の依存なし | MIT |
 | @heroicons/react | 操作のアイコン（components/ui/Icon.tsx。文字と並べて使う。訓練の 7 つの手は components/drill/icons.tsx） | MIT |
+| pdfjs-dist（6.4.299） | 黒塗りの画面（T52）で、選んだ PDF の頭の 3 頁をブラウザの中で画像にする（lib/redact/browser.ts）。PDF を選んだときだけ読み込む。元の PDF はブラウザの外へ出さない。直接の依存は無く、任意の依存の @napi-rs/canvas（MIT。Node で描くための物で、ブラウザでは使わない）が手元に入る。内訳は docs/progress/t52.md | Apache-2.0 |
 | puppeteer-core | 紙面の印刷の確かめ（手元の Chrome・Edge で印刷して PDF の頁数を数える。lib/forms/print-pages.test.ts、tools/print）。開発の道具で配信には入らない（devDependencies）。Chrome は同梱しない。間接の依存の内訳は docs/progress/t36.md | Apache-2.0 |
 | @modelcontextprotocol/sdk | 手元の MCP サーバー（tools/mcp/care72-local）。開発の道具で配信には入らない（devDependencies）。間接の依存の内訳は docs/progress/t32.md | MIT |
 | Inter（next/font/google で build のときに取り込む） | 画面の英数字の書体（日本語は端末の書体に任せ、配信に入れない。11/3 10:3x に M PLUS 2 から替えた。前の比較は docs/progress/t35.md） | OFL-1.1 |

@@ -233,7 +233,7 @@ export type NormalKey = {
 };
 
 /** 平時の並びの鍵。上から順に比べる（docs/progress/t15.md） */
-export const NORMAL_ORDER_LABELS = ["優先の骨格の段 1〜8", "時計の短い順", "支援者なしが先", "カナ"] as const;
+export const NORMAL_ORDER_LABELS = ["順番の骨格の段 1〜8", "時計の短い順", "支援者なしが先", "カナ"] as const;
 
 export function compareNormal(a: NormalKey, b: NormalKey): number {
   return (

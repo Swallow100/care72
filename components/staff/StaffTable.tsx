@@ -11,6 +11,7 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { StateTag, TONE_TEXT } from "@/components/person/parts";
 import { Button } from "@/components/ui/Button";
+import { CloseIcon, UnlistIcon } from "@/components/ui/Icon";
 import { LinkPending } from "@/components/ui/LinkPending";
 import { TABLE, TABLE_BOX, TH } from "@/components/ui/table";
 import type { StaffRow } from "@/lib/custody/board";
@@ -43,8 +44,12 @@ const COLORS: ReadonlyArray<Color> = ["red", "yellow", "gray", "green"];
 /** セルは詰める（1280px で横に送らない） */
 const CELL = "bg-panel px-1.5 py-1.5 align-top";
 const INPUT =
-  "min-w-0 rounded-md bg-panel2 px-2 py-1 text-sm text-ink outline-none focus-visible:outline-2 focus-visible:outline-accent";
+  "min-w-0 rounded-md bg-panel2 px-2 py-1 text-sm text-ink outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-accent";
 const COLS = 10;
+/** 狭い画面で省く列（担当一覧の表と同じ。PC の画面と同じく横に送らない。T40） */
+const SM = "hidden sm:table-cell";
+const MD = "hidden md:table-cell";
+const LG = "hidden lg:table-cell";
 
 function compare(a: StaffRow, b: StaffRow, sort: Sort): number {
   const num = (x: number | null) => (x === null ? Infinity : x);
@@ -147,12 +152,12 @@ export function StaffTable({ rows, shelters }: { rows: StaffRow[]; shelters: str
               <th className={`${TH} w-[4.5rem] text-center`}>{CUSTODY_LABELS.state}</th>
               <Header k="rank" sort={sort} onSort={setSort} className="w-10 text-center" />
               <Header k="kana" sort={sort} onSort={setSort} />
-              <Header k="age" sort={sort} onSort={setSort} />
-              <th className={TH}>{CUSTODY_LABELS.medical}</th>
+              <Header k="age" sort={sort} onSort={setSort} className={SM} />
+              <th className={`${TH} ${MD}`}>{CUSTODY_LABELS.medical}</th>
               <Header k="remain" sort={sort} onSort={setSort} />
-              <Header k="shelter" sort={sort} onSort={setSort} />
-              <Header k="received" sort={sort} onSort={setSort} />
-              <Header k="office" sort={sort} onSort={setSort} />
+              <Header k="shelter" sort={sort} onSort={setSort} className={SM} />
+              <Header k="received" sort={sort} onSort={setSort} className={MD} />
+              <Header k="office" sort={sort} onSort={setSort} className={LG} />
               <th className={`${TH} w-px`}>
                 <span className="sr-only">{CUSTODY_LABELS.release}</span>
               </th>
@@ -231,7 +236,7 @@ function Row({ row: r, open, onToggle }: { row: StaffRow; open: boolean; onToggl
         <td className={`${CELL} text-center`}>
           <span className="font-bold tabular-nums">{r.rank}</span>
         </td>
-        <td className={`${CELL} min-w-[9rem]`}>
+        <td className={`${CELL} min-w-[7rem] sm:min-w-[9rem]`}>
           <Link href={`/people/${encodeURIComponent(r.personId)}`} className="relative -mx-1 rounded px-1 font-bold" data-press>
             {r.name}
             <LinkPending />
@@ -255,12 +260,12 @@ function Row({ row: r, open, onToggle }: { row: StaffRow; open: boolean; onToggl
             </div>
           )}
         </td>
-        <td className={`${CELL} whitespace-nowrap`}>
+        <td className={`${CELL} ${SM} whitespace-nowrap`}>
           <span className="tabular-nums">{r.age ?? "—"}</span>
           <span className="text-muted"> 歳</span>
           {r.ageReported && <div className="text-xs text-muted">{CUSTODY_LABELS.reportedAge}</div>}
         </td>
-        <td className={`${CELL} min-w-[5rem]`}>
+        <td className={`${CELL} ${MD} min-w-[5rem]`}>
           {medical.length === 0 && r.medications.length === 0 ? (
             <span className="text-muted">—</span>
           ) : (
@@ -292,16 +297,16 @@ function Row({ row: r, open, onToggle }: { row: StaffRow; open: boolean; onToggl
             <span className="text-muted">—</span>
           )}
         </td>
-        <td className={`${CELL} whitespace-nowrap`}>{r.shelter}</td>
-        <td className={`${CELL} whitespace-nowrap`}>
+        <td className={`${CELL} ${SM} whitespace-nowrap`}>{r.shelter}</td>
+        <td className={`${CELL} ${MD} whitespace-nowrap`}>
           <div className="tabular-nums">{r.receivedWhen}</div>
           <div className="text-xs text-muted">{CUSTODY_VIA_LABELS[r.via]}</div>
         </td>
-        <td className={`${CELL} whitespace-nowrap`}>
+        <td className={`${CELL} ${LG} whitespace-nowrap`}>
           <span className={r.unaffiliated ? "font-bold" : ""}>{r.office}</span>
         </td>
         <td className={`${CELL} w-px whitespace-nowrap text-right`}>
-          <Button size="sm" kind={open ? "quiet" : "plain"} onClick={onToggle} aria-expanded={open}>
+          <Button size="sm" kind={open ? "quiet" : "plain"} icon={open ? CloseIcon : UnlistIcon} onClick={onToggle} aria-expanded={open}>
             {open ? CUSTODY_LABELS.cancel : CUSTODY_LABELS.release}
           </Button>
         </td>
@@ -367,7 +372,7 @@ function ReleaseForm({ custodyId, onDone }: { custodyId: string; onDone: () => v
         </label>
       )}
       {/* 受け持ちから外す確定なので赤の塗り */}
-      <Button type="submit" kind="dangerFill" disabled={busy} data-pending={busy ? "" : undefined}>
+      <Button type="submit" kind="dangerFill" icon={UnlistIcon} disabled={busy} data-pending={busy ? "" : undefined}>
         {busy ? CUSTODY_LABELS.sending : CUSTODY_LABELS.confirm}
       </Button>
       {error && (

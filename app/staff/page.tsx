@@ -49,7 +49,7 @@ export default async function StaffPage({ searchParams }: Props) {
 
   return (
     // 受入の入口は 1280px から右に。それ未満は表の下（表を横に送らない）。右の面は留めず、ページの流れに置く
-    <main className="mx-auto grid max-w-[90rem] gap-3 px-4 py-4 xl:grid-cols-[minmax(0,1fr)_21rem]">
+    <main className="mx-auto grid max-w-[90rem] grid-cols-[minmax(0,1fr)] gap-3 px-4 py-4 xl:grid-cols-[minmax(0,1fr)_21rem]">
       <AutoRefresh seconds={60} />
       <div className="min-w-0">
         <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">

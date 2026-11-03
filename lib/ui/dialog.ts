@@ -5,7 +5,7 @@
 
 import type * as IconSet from "@/components/ui/Icon";
 import type { DialogIconName } from "@/components/ui/Icon";
-import { DIALOG_LABELS } from "./labels";
+import { DIALOG_LABELS, detailsMoreLabel } from "./labels";
 
 /** 窓の種類。confirm は決める／取消、alert は閉じるだけ、choice は 2〜4 つから 1 つ、prompt は 1 行の文字 */
 export type DialogKind = "confirm" | "alert" | "choice" | "prompt";
@@ -92,6 +92,17 @@ type Draft = {
   field?: PromptOptions;
 };
 
+/** 箇条書きの行の上限。窓の中が送れる箱にならないように（T40、T51 の問い 2 の答え） */
+export const DETAILS_MAX = 6;
+
+/** 空の行を落とし、上限を超えたら上限の 1 つ前までと「ほか N 件」の 1 行にする */
+export function clipDetails(lines: ReadonlyArray<string>): string[] {
+  const kept = lines.filter((x) => x.trim() !== "");
+  if (kept.length <= DETAILS_MAX) return kept;
+  const shown = kept.slice(0, DETAILS_MAX - 1);
+  return [...shown, detailsMoreLabel(kept.length - shown.length)];
+}
+
 /** 呼ぶ側の指定に既定を埋める（題・ボタン・アイコン・焦点） */
 export function fillRequest(id: number, d: Draft): DialogRequest {
   const danger = d.kind === "confirm" && d.danger === true;
@@ -108,7 +119,7 @@ export function fillRequest(id: number, d: Draft): DialogRequest {
     okIcon,
     cancel: DIALOG_LABELS.cancel,
     danger,
-    details: (d.details ?? []).filter((x) => x.trim() !== ""),
+    details: clipDetails(d.details ?? []),
     options: d.kind === "choice" ? (d.options ?? []).slice(0, 4) : [],
     field:
       d.kind === "prompt"
