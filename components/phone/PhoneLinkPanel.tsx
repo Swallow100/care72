@@ -10,7 +10,7 @@ import { EasyWords } from "@/components/forms/EasyText";
 import { Panel, PanelHead } from "@/components/ui/Panel";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { Mark, StateTag, type Tone } from "@/components/ui/Tag";
-import { easy } from "@/lib/forms/easy-words";
+import { easy, yomi } from "@/lib/forms/easy-words";
 import { formatJst } from "@/lib/person";
 import { qrMatrix, qrSvgPath, QR_QUIET } from "@/lib/qr/image";
 import { PHONE_EASY, PHONE_LINK_CONFIRM, PHONE_LINK_LABELS, PHONE_LINK_STATUS_LABELS } from "@/lib/qr/phone-labels";
@@ -87,8 +87,8 @@ export function PhoneLinkRow({ item, status }: { item: PhoneLinkItem; status: Ph
   return (
     <li className="flex flex-col gap-2 rounded-md bg-panel2 p-2 sm:flex-row sm:items-start" data-phone-link={item.kind} data-key={item.key}>
       <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+        {/* 本人用・家族用は面の題に出すので、行には名前と続柄だけ */}
         <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-          <span className="text-sm font-bold">{kindLabel}</span>
           {item.relation && <span className="text-sm text-muted">{item.relation}</span>}
           <span className="font-bold">{item.name}</span>
           {item.smartphone && <Mark inPanel2>{item.smartphone}</Mark>}
@@ -145,7 +145,12 @@ export function PhoneLinkPanel({ view }: { view: PhoneLinkView }) {
 export function PhoneNormalMark({ office }: { office: string | null }) {
   return (
     <p className="phone-text mb-2 flex flex-wrap items-baseline gap-x-2 px-1 text-lg" data-mode="normal">
-      {office && <span>{office}</span>}
+      {/* 事業所名は読みの表（yomi）でふりがな。本人の 1 枚の電話の段と同じ */}
+      {office && (
+        <span>
+          <EasyWords words={yomi(office).words} />
+        </span>
+      )}
       <span className="text-muted">
         <EasyWords words={easy(PHONE_EASY.normal)} />
       </span>

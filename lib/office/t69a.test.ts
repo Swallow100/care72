@@ -15,7 +15,7 @@ import { scopeOfRows } from "../consent/scope.ts";
 import { receive, registerOnSite } from "../custody/store.ts";
 import { CONSENT_KINDS } from "../db/types.ts";
 import { d1FromSqlite, migratedSqlite } from "../db/test-d1.ts";
-import { easy, kanjiWithoutRuby } from "../forms/easy-words.ts";
+import { easy, kanjiWithoutRuby, yomi } from "../forms/easy-words.ts";
 import { loadPersonPage, timelineItems, toPersonView } from "../person.ts";
 import { PHONE_EASY, PHONE_LINK_LABELS } from "../qr/phone-labels.ts";
 import { issuePhoneLinkFor } from "../qr/phone-link-http.ts";
@@ -237,7 +237,9 @@ describe("スマホ入口の画面の形", () => {
 describe("本人・家族の画面（やさしい日本語）", () => {
   it("平時の印は事業所名と「ふだん」だけ（文にしない・色を付けない）。漢字には全部ふりがな", () => {
     const html = renderToStaticMarkup(createElement(PhoneNormalMark, { office: "デモ事業所" }));
-    expect(html).toContain("デモ事業所");
+    // 事業所名も読みの表でふりがな（本人の 1 枚の電話の段と同じ）
+    expect(html).toContain("デモ<ruby>事業所<rp>（</rp><rt>じぎょうしょ</rt><rp>）</rp></ruby>");
+    expect(kanjiWithoutRuby(yomi("デモ事業所").words)).toEqual([]);
     expect(html).toContain("<ruby>普段<rp>（</rp><rt>ふだん</rt><rp>）</rp></ruby>");
     expect(html).not.toContain("data-tone");
     expect(kanjiWithoutRuby(easy(PHONE_EASY.normal))).toEqual([]);
