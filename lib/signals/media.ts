@@ -41,6 +41,8 @@ export type PromptPlayer = {
   prime(): void;
   /** 定型文を 1 回流し、終わるのを待つ。Gemini の声が無ければ speechSynthesis、どちらも無ければ none */
   play(): Promise<PromptResult>;
+  /** 声の問い（T49）を端末の読み上げで 1 回読み、終わるのを待つ。読み上げが無ければ none */
+  say(text: string): Promise<PromptResult>;
 };
 
 function wait(start: (done: (ok: boolean) => void) => void, timeoutMs: number): Promise<boolean> {
@@ -120,22 +122,30 @@ export function createPromptPlayer(deps: {
         if (ok) return "audio";
         audio.pause();
       }
-      if (synth && Utterance) {
-        const ok = await wait((done) => {
-          const u = new Utterance(VOICE_PROMPT_TEXT);
-          u.lang = "ja-JP";
-          u.rate = 0.9;
-          u.volume = 1;
-          u.onend = () => done(true);
-          u.onerror = () => done(false);
-          synth.cancel();
-          synth.speak(u);
-        }, timeoutMs);
-        if (ok) return "speech";
-      }
-      return "none";
+      return speakWith(VOICE_PROMPT_TEXT);
+    },
+    say(text) {
+      return speakWith(text);
     },
   };
+
+  /** 端末の読み上げで 1 回読む（前の声は止める） */
+  async function speakWith(text: string): Promise<PromptResult> {
+    if (synth && Utterance) {
+      const ok = await wait((done) => {
+        const u = new Utterance(text);
+        u.lang = "ja-JP";
+        u.rate = 0.9;
+        u.volume = 1;
+        u.onend = () => done(true);
+        u.onerror = () => done(false);
+        synth.cancel();
+        synth.speak(u);
+      }, timeoutMs);
+      if (ok) return "speech";
+    }
+    return "none";
+  }
 }
 
 // ---------- 録音 ----------

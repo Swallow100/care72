@@ -87,6 +87,8 @@ export const FAMILY_PHRASES = {
   callCm: "ケアマネジャーに {電話|でんわ}",
   you: "あなた",
   answered: "と こたえました",
+  /** 問いの主語「お母さんは」の「は」（T49） */
+  wa: "は",
 } as const;
 
 /** 家族の答えの言葉（経過の行の「」の中） */

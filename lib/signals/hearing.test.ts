@@ -200,3 +200,34 @@ describe("ケアマネの直し", () => {
     expect((await memoEditPost(db, careManager, sig.id, { field: "severity", text: "高" }, at(1))).status).toBe(400);
   });
 });
+
+describe("ケアマネの画面の「聞き取り」の欄（components/list/Hearing.tsx）", () => {
+  it("押した答えは印なし（声で取れた物は「声」）、Claude の写しは AI の印、直した欄は「修正済」。色の札（至急など）を付けない", async () => {
+    const { createElement } = await import("react");
+    const { renderToStaticMarkup } = await import("react-dom/server");
+    const { Hearing } = await import("../../components/list/Hearing.tsx");
+    const html = renderToStaticMarkup(
+      createElement(Hearing, {
+        signalId: "s-1",
+        editable: true,
+        source: {
+          answers: JSON.stringify({ injured: { choice: "yes", via: "press" }, canMove: { choice: "no", via: "voice" } }),
+          ai_memo: JSON.stringify({ body: "胸が少し痛い", injury: "足を打った" }),
+          memo: JSON.stringify({ request: "薬を持ってきて" }),
+        },
+      }),
+    );
+    const text = html.replace(/<[^>]+>/g, "");
+    expect(text).toContain("聞き取り");
+    expect(html).toContain('data-hearing-field="body"');
+    expect(text).toContain("「胸が少し痛い」");
+    // けがは押した答えがあるので、Claude の「足を打った」は出さない
+    expect(text).not.toContain("足を打った");
+    expect(html).toContain('data-answer="voice"');
+    expect(text).toContain("（声）");
+    expect(html.match(/data-memo="ai"/g)).toHaveLength(1);
+    expect(text).toContain("修正済");
+    for (const w of ["至急", "要確認", "緊急度", "重症", "判定", "診断"]) expect(text).not.toContain(w);
+    expect(renderToStaticMarkup(createElement(Hearing, { signalId: "s-2", source: {} }))).toBe("");
+  });
+});

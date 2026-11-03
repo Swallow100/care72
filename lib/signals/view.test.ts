@@ -10,14 +10,15 @@ import { PhoneView, type PhoneActions } from "../../components/phone/PhoneView.t
 import { SEED_AT, SEED_PEOPLE, seedConsents } from "../../seed/people.ts";
 import { buildOwnSheet, EMERGENCY_TEXT, lineText } from "../forms/own-sheet.ts";
 import type { PersonPageRows } from "../person.ts";
-import { NO_ANSWERS } from "./body.ts";
 import { createPhone, type PhoneState } from "./phone.ts";
+import { QUESTIONS, type QuestionId } from "./questions.ts";
 
 const noop: PhoneActions = {
   green() {},
   red() {},
   where() {},
   answer() {},
+  skip() {},
   extend() {},
   finish() {},
   again() {},
@@ -33,10 +34,23 @@ const E = "命が 危ないと 感じたら、すぐ 119番へ";
 /** AI の告知の文字（T48） */
 const N = "これは AI（人では ない しくみ）が 聞いています。こたえは ケアマネジャーに とどきます";
 
+/** 問いの画面（T49）。first は赤の流れの最初の問い、voice は声の問いの段 */
+const q = (id: QuestionId, over: Partial<Extract<PhoneState, { step: "question" }>> = {}): PhoneState => ({
+  step: "question",
+  id,
+  answers: {},
+  first: false,
+  voice: null,
+  ...over,
+});
+
 const STATES: PhoneState[] = [
   { step: "top" },
   { step: "where" },
-  ...[0, 1, 2, 3].map((index) => ({ step: "question" as const, index, answers: { ...NO_ANSWERS } })),
+  q("injured", { first: true }),
+  ...QUESTIONS.slice(1).map((x) => q(x.id)),
+  q("canMove", { voice: "speaking" }),
+  q("canMove", { voice: "listening" }),
   { step: "prompt" },
   { step: "recording", startedAt: T, until: T + 30_000 },
   { step: "sending", color: "red" },
@@ -64,14 +78,23 @@ describe("災害モードの画面", () => {
     expect(text(html)).toBe("どこに いますか家避難所ほかの ところ");
   });
 
-  it("赤は 1 画面 1 問: けが・家・動けるか・くすり。答えは 2 つ", () => {
-    const qs = [0, 1, 2, 3].map((index) => text(view({ step: "question", index, answers: { ...NO_ANSWERS } })));
-    expect(qs).toEqual([
-      N + "けがは ありますかあるない" + E,
-      "いまは 家ですかはいいいえ" + E,
-      "動けますか動ける動けない" + E,
-      "くすりは ありますかあるない" + E,
-    ]);
+  it("赤は 1 画面 1 問（T49 の表）: 問い・選択肢（わからない を含む）・とばす・119 の 1 行。最初の問いだけ AI の告知", () => {
+    expect(text(view(q("injured", { first: true })))).toBe(N + "けがは ありますかあるないわからないとばす" + E);
+    expect(text(view(q("canMove")))).toBe("動けますか動ける動けないわからないとばす" + E);
+    expect(buttons(view(q("canMove")))).toEqual(["yes", "no", "unknown", "skip"]);
+    expect(text(view(q("body")))).toBe("からだで つらい ことは ありますか息が くるしい胸が いたいめまいはきけないほかわからないとばす" + E);
+    // 選択肢の多い問いは 2 列
+    expect(view(q("room"))).toContain("grid-cols-2");
+    expect(view(q("canMove"))).not.toContain("grid-cols-2");
+  });
+
+  it("声の問い（20 秒押さないとき）は「AI が きいています」を上に。押すボタンはそのまま", () => {
+    for (const voice of ["speaking", "listening"] as const) {
+      const html = view(q("canMove", { voice }));
+      expect(html).toContain('data-ai="listening"');
+      expect(buttons(html)).toEqual(["yes", "no", "unknown", "skip"]);
+    }
+    expect(view(q("canMove"))).not.toContain("data-ai");
   });
 
   it("録っている間は「AI が きいています」と定型文と残りの秒、延長と送る", () => {
@@ -93,13 +116,20 @@ describe("災害モードの画面", () => {
 
   it("AI の告知（T48）: 赤の流れの最初（1 問目）と定型文の画面にだけ。2 問目からと録音・緑の画面には出さない", () => {
     const has = (s: PhoneState) => view(s).includes(`data-notice="ai"`);
-    expect(has({ step: "question", index: 0, answers: { ...NO_ANSWERS } })).toBe(true);
+    expect(has(q("injured", { first: true }))).toBe(true);
     expect(has({ step: "prompt" })).toBe(true);
-    for (const s of STATES.filter((x) => !(x.step === "question" && x.index === 0) && x.step !== "prompt")) expect(has(s), JSON.stringify(s)).toBe(false);
+    for (const s of STATES.filter((x) => !(x.step === "question" && x.first) && x.step !== "prompt")) expect(has(s), JSON.stringify(s)).toBe(false);
     // 流れ（lib/signals/phone.ts）で赤を押すと、どの押し方でも最初の画面は 1 問目（告知つき）。戻る・飛ばす操作は無い
-    const phone = createPhone({ sendSignal: async () => "sent", sendRecording: async () => "sent", playPrompt: async () => {}, startRecording: async () => null, onChange: () => {} });
+    const phone = createPhone({
+      sendSignal: async () => "sent",
+      sendRecording: async () => "sent",
+      sendAnswers: async () => "sent",
+      playPrompt: async () => {},
+      startRecording: async () => null,
+      onChange: () => {},
+    });
     phone.red();
-    expect(phone.state).toMatchObject({ step: "question", index: 0 });
+    expect(phone.state).toMatchObject({ step: "question", id: "injured", first: true });
     expect(has(phone.state)).toBe(true);
     phone.dispose();
     // AI の印は告知の中の「AI」に付く
@@ -128,10 +158,13 @@ describe("災害モードの画面", () => {
     );
   });
 
-  it("どの画面もボタンは 3 つまで、戻るは無い。本人の状態の判定の言葉を出さない。漢字には全部ふりがな", () => {
+  it("どの画面もボタンは 3 つまで（問いは選択肢とわからない・とばす）、戻るは無い。本人の状態の判定の言葉を出さない。漢字には全部ふりがな", () => {
     for (const s of STATES) {
       const html = view(s);
-      expect(buttons(html).length, s.step).toBeLessThanOrEqual(3);
+      if (s.step === "question") {
+        const choices = QUESTIONS.find((x) => x.id === s.id)!.choices.length;
+        expect(buttons(html).length, s.id).toBe(choices + 1);
+      } else expect(buttons(html).length, s.step).toBeLessThanOrEqual(3);
       const t = text(html);
       for (const w of ["戻る", "至急", "要確認", "不明", "診断", "判定", "重症"]) expect(t, `${s.step} ${w}`).not.toContain(w);
       // ふりがなを落とす前の漢字の数と、ruby の中の漢字の数が同じ
@@ -144,7 +177,11 @@ describe("災害モードの画面", () => {
 describe("119 の 1 行（T48、アドバイザーの返事）", () => {
   // 状態（PhoneState）には録音の中身も分類（AI の出力）も無い。119 を出すかは赤の流れかどうかだけで決まる
   const RED_FLOW: PhoneState[] = [
-    ...[0, 1, 2, 3].map((index) => ({ step: "question" as const, index, answers: { ...NO_ANSWERS, injured: index > 0 ? true : null } })),
+    q("injured", { first: true }),
+    ...QUESTIONS.map((x) => q(x.id, { answers: { injured: { choice: "yes", via: "press" } } })),
+    // 声の問いでも、からだの訴えを押したあとでも同じ 1 行（答えで出し分けない）
+    q("water", { voice: "listening", answers: { body: { choice: "breath", via: "press" } } }),
+    q("fireGas", { voice: "speaking", answers: { body: { choice: "chest", via: "voice" } } }),
     { step: "prompt" },
     { step: "recording", startedAt: T, until: T + 30_000 },
     { step: "recording", startedAt: T, until: T + 120_000 },

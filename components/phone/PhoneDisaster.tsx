@@ -36,7 +36,8 @@ function storageOf(): StorageLike | null {
   }
 }
 
-export function PhoneDisaster({ personId }: { personId: string }) {
+/** hasDevice: 台帳に機器がある（聞き取りの機器の問いを出す。T49） */
+export function PhoneDisaster({ personId, hasDevice = false }: { personId: string; hasDevice?: boolean }) {
   const router = useRouter();
   const [state, setState] = useState<PhoneState>({ step: "top" });
   const [nowMs, setNowMs] = useState(0);
@@ -64,6 +65,10 @@ export function PhoneDisaster({ personId }: { personId: string }) {
     const p = createPhone({
       sendSignal: (b) => outbox.sendSignal(b),
       sendRecording: (item, a) => outbox.sendRecording(item, a),
+      sendAnswers: (item) => outbox.sendAnswers(item),
+      hasDevice,
+      // 声の問い（T49）は端末の読み上げ。読み上げの無い端末は声の問いを出さず、今まで通り定型文へ
+      speak: synth && Utterance ? (text) => player.say(text) : undefined,
       prime: () => {
         player.prime();
         void primeMicrophone({ getUserMedia, queryPermission });
@@ -85,7 +90,7 @@ export function PhoneDisaster({ personId }: { personId: string }) {
       window.removeEventListener("online", onOnline);
       window.clearInterval(timer);
     };
-  }, [personId]);
+  }, [personId, hasDevice]);
 
   // 上と終わりの画面にいる間だけ読み直す
   const idle = state.step === "top" || state.step === "done";
@@ -112,7 +117,8 @@ export function PhoneDisaster({ personId }: { personId: string }) {
       green: () => phone.current?.green(),
       red: () => phone.current?.red(),
       where: (w) => phone.current?.where(w),
-      answer: (v) => phone.current?.answer(v),
+      answer: (c) => phone.current?.answer(c),
+      skip: () => phone.current?.skip(),
       extend: () => phone.current?.extend(),
       finish: () => phone.current?.finish(),
       again: () => phone.current?.again(),

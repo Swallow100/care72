@@ -1,4 +1,5 @@
-// 本人のスマホの流れ（docs/tasks/T10.md）: 緑は 1 問、赤は 4 問、20 秒押さないと音声 → 定型文 → 30 秒録る → 送る、
+// 本人のスマホの流れ（docs/tasks/T10.md）: 緑は 1 問、赤は押した時に送って 1 画面 1 問（T49、押すたびに答えを送る）、
+// 20 秒押さないと声の問い（読み上げのある端末）か定型文 → 30 秒録る → 送る、
 // 延長、送ったあとは数えない。通信が無いときは端末に残して戻ったら送る。録音・定型文・文字起こしは偽物で差し替える。
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -16,7 +17,17 @@ import {
   type UtteranceLike,
 } from "./media.ts";
 import { createOutbox, OUTBOX_KEY, outcomeOf, readOutbox, type AttachItem, type SendOutcome, type StorageLike } from "./outbox.ts";
-import { createPhone, IDLE_MS, MAX_RECORD_MS, PROMPT_WAIT_MS, RECORD_MS, type PhoneDeps, type PhoneState } from "./phone.ts";
+import {
+  createPhone,
+  IDLE_MS,
+  LISTEN_MS,
+  MAX_RECORD_MS,
+  PROMPT_WAIT_MS,
+  RECORD_MS,
+  type PhoneDeps,
+  type PhoneState,
+} from "./phone.ts";
+import type { Answers } from "./questions.ts";
 import { VOICE_PROMPT_TEXT } from "./phrases.ts";
 
 const T0 = Date.parse("2026-11-04T01:00:00.000Z");
@@ -39,11 +50,13 @@ type Harness = {
   states: PhoneState[];
   signals: SignalBody[];
   recordings: Array<{ item: AttachItem; audio: Blob | null }>;
+  /** 送った答え（押すたびに、それまでの全部） */
+  answers: Array<{ signalId: string; answers: Answers }>;
   calls: string[];
 };
 
 function harness(over: Partial<PhoneDeps> = {}): Harness {
-  const h = { states: [], signals: [], recordings: [], calls: [] } as unknown as Harness;
+  const h = { states: [], signals: [], recordings: [], answers: [], calls: [] } as unknown as Harness;
   let n = 0;
   h.phone = createPhone({
     newId: () => `00000000-0000-4000-8000-${String(++n).padStart(12, "0")}`,
@@ -53,6 +66,10 @@ function harness(over: Partial<PhoneDeps> = {}): Harness {
     },
     sendRecording: async (item, audio) => {
       h.recordings.push({ item, audio });
+      return "sent";
+    },
+    sendAnswers: async (item) => {
+      h.answers.push(item);
       return "sent";
     },
     prime: () => h.calls.push("prime"),
@@ -73,7 +90,13 @@ function harness(over: Partial<PhoneDeps> = {}): Harness {
   return h;
 }
 
-const steps = (h: Harness) => h.states.map((s) => (s.step === "question" ? `q${s.index}` : s.step));
+const steps = (h: Harness) =>
+  h.states.map((s) => (s.step === "question" ? `q:${s.id}${s.voice ? `:${s.voice}` : ""}` : s.step));
+
+/** 問いを全部とばして終わりまで */
+const skipAll = (h: Harness) => {
+  for (let i = 0; i < 30 && h.phone.state.step === "question"; i++) h.phone.skip();
+};
 
 describe("画面の流れ", () => {
   it("緑 → どこに いますか（家）→ 送る → とどきました。音声は無い", async () => {
@@ -99,26 +122,82 @@ describe("画面の流れ", () => {
     expect(h.calls).toEqual([]);
   });
 
-  it("赤 → 1 画面 1 問を 4 つ → 送る。答えはそのまま。20 秒以内に答え続ければ音声に替わらない", async () => {
+  it("赤 → 押した時に信号 → 1 画面 1 問を枝で → 押すたびにそれまでの答えを送る → とどきました。20 秒以内に押し続ければ声に替わらない", async () => {
     const h = harness();
     h.phone.red();
     expect(h.calls).toEqual(["prime"]);
-    for (const v of [true, true, false, true]) {
+    // 赤は押した時に送る（答えはまだ無い）
+    expect(h.signals).toHaveLength(1);
+    expect(h.signals[0]).toMatchObject({ color: "red", whereNow: null, answers: { injured: null, atHome: null, canMove: null, hasMedicine: null } });
+    const path = [
+      ["injured", "yes"],
+      ["injuryPart", "leg"],
+      ["bleeding", "no"],
+      ["atHome", "yes"],
+      ["floor", "f1"],
+      ["room", "kitchen"],
+      ["canMove", "no"],
+      ["exit", "no"],
+      ["trappedBy", "furniture"],
+      ["body", "chest"],
+      ["water", "none"],
+      ["fireGas", "no"],
+      ["hasMedicine", "yes"],
+      ["nearby", "alone"],
+      ["contact", "phone"],
+      ["request", "none"],
+    ] as const;
+    for (const [q, c] of path) {
       vi.advanceTimersByTime(IDLE_MS - 1);
-      h.phone.answer(v);
+      expect(h.phone.state).toMatchObject({ step: "question", id: q, voice: null });
+      h.phone.answer(c);
     }
     await flush();
     vi.advanceTimersByTime(IDLE_MS * 2);
     await flush();
-    expect(steps(h)).toEqual(["q0", "q1", "q2", "q3", "sending", "done"]);
+    expect(steps(h)).toEqual([...path.map(([q]) => `q:${q}`), "sending", "done"]);
+    expect(h.phone.state).toEqual({ step: "done", color: "red", delivery: "sent" });
+    // 押すたびに送り、どれも同じ信号へ。最後はそれまでの全部
+    expect(h.answers).toHaveLength(path.length);
+    expect(h.answers.every((a) => a.signalId === h.signals[0].id)).toBe(true);
+    expect(h.answers[0].answers).toEqual({ injured: { choice: "yes", via: "press" } });
+    expect(Object.keys(h.answers.at(-1)!.answers)).toEqual(path.map(([q]) => q));
     expect(h.signals).toHaveLength(1);
-    expect(h.signals[0]).toMatchObject({
-      color: "red",
-      whereNow: null,
-      answers: { injured: true, atHome: true, canMove: false, hasMedicine: true },
-      occurredAt: "2026-11-04T01:00:00.000Z",
-    });
     expect(h.calls).toEqual(["prime"]);
+  });
+
+  it("とばす: 答えを送らずに問いの次へ。どこで止めても答えた所までは届いている。台帳に機器がある人だけ機器の問い", async () => {
+    const h = harness();
+    h.phone.red();
+    h.phone.answer("no");
+    h.phone.skip();
+    expect(h.phone.state).toMatchObject({ step: "question", id: "canMove" });
+    expect(h.answers).toHaveLength(1);
+    skipAll(h);
+    await flush();
+    expect(h.phone.state).toEqual({ step: "done", color: "red", delivery: "sent" });
+    expect(steps(h)).not.toContain("q:device");
+
+    const d = harness({ hasDevice: true });
+    d.phone.red();
+    skipAll(d);
+    expect(steps(d)).toContain("q:device");
+    // 知らない選択肢は受けない
+    const e = harness();
+    e.phone.red();
+    e.phone.answer("severe");
+    expect(e.phone.state).toMatchObject({ step: "question", id: "injured" });
+    expect(e.answers).toEqual([]);
+  });
+
+  it("頼みたい ことを「はなす」: 定型文 → 30 秒録る（声の問いでなくても）", async () => {
+    const h = harness();
+    h.phone.red();
+    for (let i = 0; i < 30 && h.phone.state.step === "question" && (h.phone.state as { id: string }).id !== "request"; i++) h.phone.skip();
+    h.phone.answer("speak");
+    await flush();
+    expect(h.phone.state.step).toBe("recording");
+    expect(h.calls).toEqual(["prime", "prompt", "record", "transcript"]);
   });
 
   it("赤 →「けがは ありますか」で 20 秒押さない → 信号を先に送る → 定型文 → 30 秒録る → 録音を添えて とどきました", async () => {
@@ -138,7 +217,7 @@ describe("画面の流れ", () => {
     expect(h.phone.state.step).toBe("recording");
     vi.advanceTimersByTime(1);
     await flush();
-    expect(steps(h)).toEqual(["q0", "prompt", "recording", "sending", "done"]);
+    expect(steps(h)).toEqual(["q:injured", "prompt", "recording", "sending", "done"]);
     expect(h.phone.state).toEqual({ step: "done", color: "red", delivery: "sent" });
     expect(h.recordings).toHaveLength(1);
     expect(h.recordings[0].item).toEqual({
@@ -151,18 +230,18 @@ describe("画面の流れ", () => {
     expect(h.signals).toHaveLength(1);
   });
 
-  it("2 問答えたあとに 20 秒押さない: 答えた 2 つを持って音声へ（20 秒は最後に答えた時から）", async () => {
+  it("2 問答えたあとに 20 秒押さない: 答えた 2 つはもう届いていて、音声へ（20 秒は最後に答えた時から）", async () => {
     const h = harness();
     h.phone.red();
     vi.advanceTimersByTime(15_000);
-    h.phone.answer(false);
+    h.phone.answer("no");
     vi.advanceTimersByTime(15_000);
-    h.phone.answer(true);
+    h.phone.answer("yes");
     vi.advanceTimersByTime(IDLE_MS - 1);
-    expect(h.phone.state).toMatchObject({ step: "question", index: 2 });
+    expect(h.phone.state).toMatchObject({ step: "question", id: "floor" });
     vi.advanceTimersByTime(1);
     await flush();
-    expect(h.signals[0].answers).toEqual({ injured: false, atHome: true, canMove: null, hasMedicine: null });
+    expect(h.answers.at(-1)!.answers).toEqual({ injured: { choice: "no", via: "press" }, atHome: { choice: "yes", via: "press" } });
     expect(h.phone.state.step).toBe("recording");
   });
 
@@ -187,7 +266,7 @@ describe("画面の流れ", () => {
   it("送ったあとは数えない（もう音声に替わらない）。「もう 一度」で上へ", async () => {
     const h = harness();
     h.phone.red();
-    for (const v of [false, true, true, true]) h.phone.answer(v);
+    skipAll(h);
     await flush();
     vi.advanceTimersByTime(IDLE_MS * 5);
     await flush();
@@ -196,7 +275,7 @@ describe("画面の流れ", () => {
     h.phone.again();
     expect(h.phone.state).toEqual({ step: "top" });
     // 上では押していないボタンの操作を受けない
-    h.phone.answer(true);
+    h.phone.answer("yes");
     h.phone.where("home");
     expect(h.phone.state).toEqual({ step: "top" });
   });
@@ -206,7 +285,7 @@ describe("画面の流れ", () => {
     h.phone.red();
     vi.advanceTimersByTime(IDLE_MS);
     await flush();
-    expect(steps(h)).toEqual(["q0", "prompt", "sending", "done"]);
+    expect(steps(h)).toEqual(["q:injured", "prompt", "sending", "done"]);
     expect(h.signals).toHaveLength(1);
     expect(h.recordings).toEqual([]);
   });
@@ -302,7 +381,7 @@ describe("無音のまま止まったら、同じ定型文で 2 回まで聞き�
     expect(h.phone.state.step).toBe("recording");
     vi.advanceTimersByTime(RECORD_MS);
     await flush();
-    expect(steps(h)).toEqual(["q0", "prompt", "recording", "prompt", "recording", "prompt", "recording", "sending", "done"]);
+    expect(steps(h)).toEqual(["q:injured", "prompt", "recording", "prompt", "recording", "prompt", "recording", "sending", "done"]);
     expect(h.phone.state).toEqual({ step: "done", color: "red", delivery: "sent", silent: true });
     // 定型文は初めの 1 回と聞き直しの 2 回。録音は 1 本のまま、定型文の間だけ止める
     expect(h.calls.filter((c) => c === "prompt")).toHaveLength(3);
@@ -382,7 +461,7 @@ describe("無音のまま止まったら、同じ定型文で 2 回まで聞き�
     await flush();
     vi.advanceTimersByTime(RECORD_MS);
     await flush();
-    expect(steps(h)).toEqual(["q0", "prompt", "recording", "sending", "done"]);
+    expect(steps(h)).toEqual(["q:injured", "prompt", "recording", "sending", "done"]);
     expect(h.phone.state).toEqual({ step: "done", color: "red", delivery: "sent" });
     expect(h.recordings[0].item).toMatchObject({ transcript: null, durationSec: 30 });
   });
@@ -457,6 +536,12 @@ function transport(outcome: () => SendOutcome | "throw") {
         const o = outcome();
         if (o === "throw") throw new TypeError("Failed to fetch");
         if (o === "ok") sent.push({ kind: "attach", id: item.signalId, sentAt: item.sentAt, audio: audio !== null, transcript: item.transcript });
+        return o;
+      },
+      async answers(item: { signalId: string; answers: Answers }) {
+        const o = outcome();
+        if (o === "throw") throw new TypeError("Failed to fetch");
+        if (o === "ok") sent.push({ kind: `answers:${Object.keys(item.answers).join(",")}`, id: item.signalId, sentAt: "" });
         return o;
       },
     },
@@ -839,5 +924,138 @@ describe("録音と文字起こし（偽物）", () => {
       plain!.pause();
       plain!.resume();
     }).not.toThrow();
+  });
+});
+
+// ---------- 聞き取りの答えを端末に残す（T49） ----------
+
+describe("聞き取りの答え（端末に残して、戻ったら送る。T49）", () => {
+  const mem = (): StorageLike & { data: Map<string, string> } => {
+    const data = new Map<string, string>();
+    return { data, getItem: (k) => data.get(k) ?? null, setItem: (k, v) => void data.set(k, v), removeItem: (k) => void data.delete(k) };
+  };
+  const sig = (): SignalBody => ({
+    id: "00000000-0000-4000-8000-000000000001",
+    color: "red",
+    whereNow: null,
+    answers: { injured: null, atHome: null, canMove: null, hasMedicine: null },
+    occurredAt: new Date(T0).toISOString(),
+    sentAt: new Date(T0).toISOString(),
+  });
+
+  it("通信が無い間の答えは、同じ信号の新しい答えで置き換えて 1 つだけ残す。戻ったら信号 → 答えの順に 1 回ずつ", async () => {
+    const storage = mem();
+    let online = false;
+    const { t, sent } = transport(() => (online ? "ok" : "throw"));
+    const box = createOutbox({ storage, owner: "self:p-01", transport: t });
+    const id = sig().id;
+    expect(await box.sendSignal(sig())).toBe("queued");
+    await box.sendAnswers({ signalId: id, answers: { injured: { choice: "no", via: "press" } } });
+    await box.sendAnswers({ signalId: id, answers: { injured: { choice: "no", via: "press" }, atHome: { choice: "yes", via: "press" } } });
+    expect(readOutbox(storage).map((x) => x.kind)).toEqual(["signal", "answers"]);
+    online = true;
+    await box.flush();
+    expect(sent.map((x) => x.kind)).toEqual(["signal", "answers:injured,atHome"]);
+    expect(box.pending()).toBe(0);
+  });
+
+  it("送っている間に足した新しい答えは、古い答えを送り終えても消さずに送る", async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => (release = r));
+    const sent: string[] = [];
+    const box = createOutbox({
+      storage: mem(),
+      owner: "self:p-01",
+      transport: {
+        signal: async () => "ok",
+        attach: async () => "ok",
+        answers: async (item) => {
+          if (Object.keys(item.answers).length === 1) await gate;
+          sent.push(Object.keys(item.answers).join(","));
+          return "ok";
+        },
+      },
+    });
+    const id = sig().id;
+    const first = box.sendAnswers({ signalId: id, answers: { injured: { choice: "no", via: "press" } } });
+    await flush();
+    const second = box.sendAnswers({ signalId: id, answers: { injured: { choice: "no", via: "press" }, atHome: { choice: "no", via: "press" } } });
+    release();
+    expect(await first).toBe("sent");
+    expect(await second).toBe("sent");
+    expect(sent).toEqual(["injured", "injured,atHome"]);
+    expect(box.pending()).toBe(0);
+  });
+});
+
+// ---------- 声の問い（T49） ----------
+
+describe("20 秒押さないと問いを声で（読み上げのある端末。T49）", () => {
+  function voiceHarness(heard: Array<string | null>) {
+    const spoken: string[] = [];
+    const tr = transcripts(heard);
+    const rec = pausingRecorder();
+    const h = harness({
+      speak: async (text) => {
+        spoken.push(text);
+      },
+      startTranscript: tr.start,
+      startRecording: rec.startRecording,
+    });
+    return { h, spoken, tr, rec };
+  }
+
+  it("最初は AI の告知から問いと選択肢を読み、10 秒聞いて言葉の一致で答える（声の印）。答えが無ければ答えなしで次へ。問いが終わったら定型文と録音", async () => {
+    // 答える順: けが「ない」→ 家「はい」→ 階 無言 → 動けるか「うごけない」→ 出られるか 関係ない言葉 → 以下 無言
+    const { h, spoken, rec } = voiceHarness(["ないです", "はい", null, "うごけない", "あー", null, null, null, null, null, null, "あしが いたい"]);
+    h.phone.red();
+    vi.advanceTimersByTime(IDLE_MS);
+    await flush();
+    expect(h.phone.state).toMatchObject({ step: "question", id: "injured", voice: "listening" });
+    expect(spoken[0]).toBe("これはAI、人ではないしくみが聞いています。こたえはケアマネジャーにとどきます。けがはありますか。ある、ない、わからない");
+    for (let i = 0; i < 12 && h.phone.state.step === "question"; i++) {
+      vi.advanceTimersByTime(LISTEN_MS);
+      await flush();
+    }
+    expect(spoken[1]).toBe("いまは家ですか。はい、いいえ、わからない");
+    expect(spoken.slice(1).every((t) => !t.startsWith("これは"))).toBe(true);
+    // 頼みたい ことは声の問いでは聞かない（定型文と録音で聞く）
+    expect(spoken.some((t) => t.startsWith("たのみたい"))).toBe(false);
+    expect(h.phone.state.step).toBe("recording");
+    expect(h.answers.at(-1)!.answers).toEqual({
+      injured: { choice: "no", via: "voice" },
+      atHome: { choice: "yes", via: "voice" },
+      canMove: { choice: "no", via: "voice" },
+    });
+    // 録音は 1 本: 声の問いに入った時に始め、読み上げる間は止める
+    expect(rec.log.filter((x) => x === "stop")).toEqual([]);
+    expect(rec.log[0]).toBe("pause");
+    vi.advanceTimersByTime(RECORD_MS);
+    await flush();
+    expect(h.phone.state).toMatchObject({ step: "done", color: "red" });
+    expect(h.recordings).toHaveLength(1);
+    // 声の問いで聞き取れた文字も文字起こしに（本人の言葉）
+    expect(h.recordings[0].item.transcript).toBe(["ないです", "はい", "うごけない", "あー", "あしが いたい"].join("\n"));
+  });
+
+  it("声の問いでも押せばその答え（押した印）。聞いていた分は捨てて次の問いを読む", async () => {
+    const { h, spoken } = voiceHarness(["いいえ"]);
+    h.phone.red();
+    vi.advanceTimersByTime(IDLE_MS);
+    await flush();
+    h.phone.answer("yes");
+    await flush();
+    expect(h.answers.at(-1)!.answers).toEqual({ injured: { choice: "yes", via: "press" } });
+    expect(h.phone.state).toMatchObject({ step: "question", id: "injuryPart" });
+    expect(spoken.at(-1)).toContain("けがはどこですか");
+  });
+
+  it("読み上げの無い端末は今まで通り 20 秒で定型文へ（声の問いは無い）", async () => {
+    const h = harness();
+    h.phone.red();
+    vi.advanceTimersByTime(IDLE_MS);
+    await flush();
+    expect(h.phone.state.step).toBe("recording");
+    expect(steps(h)).toEqual(["q:injured", "prompt", "recording"]);
   });
 });

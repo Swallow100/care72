@@ -3,12 +3,17 @@
 //
 //   上（無事・無事じゃない）
 //   ├ 無事 → どこに いますか（家・避難所・ほか）→ 送る → とどきました
-//   └ 無事じゃない → 1 問ずつ（けが・家・動けるか・くすり）→ 送る → とどきました（＋119 の 1 行）
-//        └ どの問いでも 20 秒押さない → 信号を送る（それまでの答え）→ 定型文 → 30 秒録る（延長は押せば）→ 録音を添える
+//   └ 無事じゃない → 信号を送る → 1 画面 1 問（lib/signals/questions.ts の枝。押すたびに答えを送る・とばす）→ とどきました（＋119 の 1 行）
+//        ├ 頼みたい ことを「はなす」→ 定型文 → 30 秒録る
+//        └ どの問いでも 20 秒押さない → 声の問い（T49）: 問いと選択肢を読み上げ（最初は AI の告知から）→ 10 秒聞く →
+//             言葉の一致で答える（無ければ答えなしで次へ）→ … → 問いが終わったら定型文 → 30 秒録る（延長は押せば）→ 録音を添える
 //             └ 無音のまま止まった → 同じ定型文で聞き直す（2 回まで）→ それでも無音なら録音を送って「ろくおんを おくりました」
 //
+// - 赤の信号は押した時に送る（一覧にすぐ赤が出る）。答えは押すたびに、それまでの全部を同じ信号に送る（後勝ち）。録音はあとで添える
 // - 20 秒は、赤を押した時か、最後に答えた時から数える。送ったあとは数えない。緑には音声が無い
-// - 赤の信号は 20 秒で音声に替わった時に先に送る（録り終わる 30 秒を待たずに一覧に赤が出る）。録音と文字起こしはあとで添える
+// - 声の問いは、問いを読み上げる道（speak）がある端末だけ。無ければ今まで通り 20 秒で定型文へ。
+//   声の問いに入ったら終わりまで声で進む（押せばその答えも取る）。録音は声の問いに入った時に始め、読み上げる間だけ止める（1 本のまま）
+// - 声の問いで聞き取れた文字は録音の文字起こしにも足す（本人の言葉。聞き取りメモの元）
 // - 無音のまま止まった（T37、docs/DECISIONS.md 11/3 04:0x の 9）: 1 回の聞き取り（定型文のあとの 30 秒）の間に文字が 1 字も
 //   取れずに、ブラウザの文字起こしが無音で終わった（startTranscript の onSilence）か、30 秒が過ぎた。同じ定型文を流して聞き直し、
 //   2 回聞き直しても無音なら録音を送って終える。文字起こしの無い端末は無音が分からないので聞き直さない（今まで通り）。
@@ -17,9 +22,19 @@
 //   文字起こしは止めてから流す（定型文の声を文字にしない）。うめき声など文字にならない音は、どの回の物も同じ録音に残る
 // - 戻るは無い。終わったら「もう 一度」で上へ
 
-import { newSignalId, NO_ANSWERS, type PhoneColor, type RedAnswers, type SignalBody } from "./body.ts";
-import type { AttachItem, Delivery } from "./outbox.ts";
-import { RED_QUESTIONS } from "./phrases.ts";
+import { newSignalId, NO_ANSWERS, type PhoneColor, type SignalBody } from "./body.ts";
+import type { AnswersItem, AttachItem, Delivery } from "./outbox.ts";
+import { AI_NOTICE_VOICE } from "./phrases.ts";
+import {
+  choiceOf,
+  firstQuestion,
+  matchVoiceAnswer,
+  nextQuestion,
+  voiceTextOf,
+  type Answers,
+  type Asker,
+  type QuestionId,
+} from "./questions.ts";
 import type { WhereNow } from "../db/types.ts";
 
 /** 赤を押して（最後に答えて）から音声に替わるまで */
@@ -32,11 +47,19 @@ export const MAX_RECORD_MS = 120_000;
 export const PROMPT_WAIT_MS = 25_000; // 声の頭に AI の告知（T48）。端末の声の打ち切り（PROMPT_TIMEOUT_MS）より長く
 /** 無音のまま止まったときに、同じ定型文で聞き直す回数の上限 */
 export const MAX_REASKS = 2;
+/** 声の問いで答えを聞く長さ（T49） */
+export const LISTEN_MS = 10_000;
+/** 声の問いの読み上げが終わらないときに待つ上限 */
+export const SPEAK_WAIT_MS = 15_000;
+
+/** 声の問いの段: 読み上げている・聞いている（T49） */
+export type VoiceStep = "speaking" | "listening";
 
 export type PhoneState =
   | { step: "top" }
   | { step: "where" }
-  | { step: "question"; index: number; answers: RedAnswers }
+  /** first は赤の流れの最初の問い（AI の告知を出す）。voice は声の問いの段（押す問いは null） */
+  | { step: "question"; id: QuestionId; answers: Answers; first: boolean; voice: VoiceStep | null }
   | { step: "prompt" }
   | { step: "recording"; startedAt: number; until: number }
   | { step: "sending"; color: PhoneColor }
@@ -56,6 +79,12 @@ export type PhoneDeps = {
   newId?: () => string;
   sendSignal(body: SignalBody): Promise<Delivery>;
   sendRecording(item: AttachItem, audio: Blob | null): Promise<Delivery>;
+  /** 聞き取りの答え（T49）。押すたびに、それまでの全部 */
+  sendAnswers(item: AnswersItem): Promise<Delivery>;
+  /** 台帳に機器がある（機器の問いを聞く） */
+  hasDevice?: boolean;
+  /** 声の問いを読み上げて、終わるのを待つ（端末の読み上げ）。無ければ声の問いは無い */
+  speak?(text: string): Promise<unknown>;
   /** 赤を押した時（人が押した時に、音とマイクの許可を通しておく） */
   prime?(): void;
   /** 定型文を流して、終わるのを待つ */
@@ -70,7 +99,10 @@ export type Phone = {
   green(): void;
   red(): void;
   where(where: WhereNow): void;
-  answer(value: boolean): void;
+  /** 問いの選択肢を押した（choice は lib/signals/questions.ts の選択肢の id） */
+  answer(choice: string): void;
+  /** 問いをとばす */
+  skip(): void;
   /** 録音の延長 */
   extend(): void;
   /** 録音を止めて送る */
@@ -83,9 +115,17 @@ export type Phone = {
 
 const iso = (ms: number) => new Date(ms).toISOString();
 
+
+/** 2 つの届き方のうち悪い方（捨てた → 残した → 届いた） */
+export function worseDelivery(a: Delivery, b: Delivery): Delivery {
+  const rank: Record<Delivery, number> = { sent: 0, queued: 1, dropped: 2 };
+  return rank[a] >= rank[b] ? a : b;
+}
+
 export function createPhone(deps: PhoneDeps): Phone {
   const now = deps.now ?? (() => Date.now());
   const newId = deps.newId ?? (() => newSignalId());
+  const asker: Asker = { who: "self", hasDevice: deps.hasDevice ?? false };
   let state: PhoneState = { step: "top" };
   let timer: ReturnType<typeof setTimeout> | null = null;
   /** 流れの番号。押し直し・閉じたあとに、前の流れの続き（await のあと）を当てない */
@@ -94,14 +134,24 @@ export function createPhone(deps: PhoneDeps): Phone {
   let recording: Recording | null = null;
   let transcript: Stoppable<string | null> | null = null;
   let signal: { id: string; delivery: Promise<Delivery> } | null = null;
-  // ---- 音声の回（toVoice から送るまで） ----
+  // ---- 聞き取りの問い（T49） ----
+  let answers: Answers = {};
+  /** 最後に送った答えの届き方。無ければ答えを送っていない */
+  let lastAnswers: Promise<Delivery> | null = null;
+  /** 声の問いに入った（終わりまで声で進む） */
+  let voiceMode = false;
+  /** 声の問いの番号。押した・次へ進んだあとに、前の問いの読み上げ・聞き取りの続きを当てない */
+  let ask = 0;
+  /** 声の問いの聞き取り（10 秒） */
+  let answerTranscript: Stoppable<string | null> | null = null;
+  // ---- 音声の回（定型文から送るまで） ----
   /** 文字起こしが使える（無音が分かる）。使えない端末は聞き直さない */
   let canReask = false;
   /** 聞き直した回数 */
   let asks = 0;
-  /** 取れた文字（聞き取りの回ごと） */
+  /** 取れた文字（声の問いの答えと、聞き取りの回ごと） */
   let heard: string[] = [];
-  /** 聞き取った長さの合計（定型文を流した間は数えない） */
+  /** 聞き取った長さの合計（定型文・問いを読んだ間は数えない） */
   let listenedMs = 0;
   /** 今の聞き取りの始まり。聞き取っていなければ null */
   let listeningAt: number | null = null;
@@ -127,9 +177,9 @@ export function createPhone(deps: PhoneDeps): Phone {
     }, Math.max(0, ms));
   };
 
-  const body = (color: PhoneColor, whereNow: WhereNow | null, answers: RedAnswers): SignalBody => {
+  const body = (color: PhoneColor, whereNow: WhereNow | null, id: string = newId()): SignalBody => {
     const at = iso(pressedAt);
-    return { id: newId(), color, whereNow, answers: { ...answers }, occurredAt: at, sentAt: at };
+    return { id, color, whereNow, answers: { ...NO_ANSWERS }, occurredAt: at, sentAt: at };
   };
 
   async function deliver(b: SignalBody) {
@@ -140,6 +190,15 @@ export function createPhone(deps: PhoneDeps): Phone {
     set({ step: "done", color: b.color, delivery });
   }
 
+  /** 赤の信号と最後の答えの届き方（悪い方） */
+  async function redDelivery(): Promise<Delivery> {
+    const [d1, d2] = await Promise.all([
+      signal?.delivery ?? Promise.resolve<Delivery>("sent"),
+      lastAnswers ?? Promise.resolve<Delivery>("sent"),
+    ]);
+    return worseDelivery(d1, d2);
+  }
+
   /** 定型文を流して終わるのを待つ（終わらなければ PROMPT_WAIT_MS で打ち切る） */
   const playPrompt = () =>
     Promise.race([
@@ -148,6 +207,136 @@ export function createPhone(deps: PhoneDeps): Phone {
         .catch(() => undefined),
       new Promise((r) => setTimeout(r, PROMPT_WAIT_MS)),
     ]);
+
+  const pauseRecording = () => {
+    try {
+      recording?.pause?.();
+    } catch {
+      // 止められない録音は録ったまま
+    }
+  };
+  const resumeRecording = () => {
+    try {
+      recording?.resume?.();
+    } catch {
+      // 止めていない録音
+    }
+  };
+
+  /** 今の聞き取りの長さを足して閉じる */
+  function closeListening(at: number) {
+    if (listeningAt !== null) listenedMs += Math.max(0, at - listeningAt);
+    listeningAt = null;
+  }
+
+  // ---------- 聞き取りの問い（T49） ----------
+
+  /** 答えを記録して、それまでの全部を送る（待たない） */
+  function record(id: QuestionId, choice: string, via: "press" | "voice") {
+    if (!signal) return;
+    answers = { ...answers, [id]: { choice, via } };
+    lastAnswers = deps
+      .sendAnswers({ signalId: signal.id, answers: { ...answers } })
+      .catch((): Delivery => "queued");
+  }
+
+  /** 声の問いの聞き取りを閉じる（押した・次へ進んだ）。取れた文字は返さない */
+  function dropAnswerListening() {
+    ask++;
+    const t = answerTranscript;
+    answerTranscript = null;
+    if (t) void t.stop().catch(() => null);
+    closeListening(now());
+  }
+
+  /** 次の問いへ。null は問いの終わり */
+  function advance(next: QuestionId | null) {
+    clear();
+    if (next !== null && !(voiceMode && next === "request")) {
+      if (voiceMode) void askByVoice(next, false);
+      else {
+        set({ step: "question", id: next, answers, first: false, voice: null });
+        after(IDLE_MS, () => void toVoice());
+      }
+      return;
+    }
+    // 問いの終わり: 声で進んだ・頼みたい ことを「はなす」なら定型文と録音へ、ほかは送れたかを出す
+    if (voiceMode || answers.request?.choice === "speak") void toPrompt();
+    else void finishQuestions();
+  }
+
+  async function finishQuestions() {
+    const mine = run;
+    set({ step: "sending", color: "red" });
+    const delivery = await redDelivery();
+    if (mine !== run) return;
+    set({ step: "done", color: "red", delivery });
+  }
+
+  /** 20 秒押さなかった: 問いを声で読む端末なら声の問いへ、無ければ定型文へ */
+  async function toVoice() {
+    if (state.step !== "question" || state.voice !== null) return;
+    if (!deps.speak) {
+      void toPrompt();
+      return;
+    }
+    voiceMode = true;
+    const mine = run;
+    const id = state.id;
+    // 録音は声の問いに入った時に始める（周りの音も残す）。読み上げる間は止める
+    const rec = await deps.startRecording().catch(() => null);
+    if (mine !== run) {
+      void rec?.stop();
+      return;
+    }
+    recording = rec;
+    void askByVoice(id, true);
+  }
+
+  /** 1 つの問いを声で: 読み上げ（最初は AI の告知から）→ 10 秒聞く → 言葉の一致で答える → 次へ */
+  async function askByVoice(id: QuestionId, notice: boolean) {
+    const mine = run;
+    const my = ++ask;
+    set({ step: "question", id, answers, first: false, voice: "speaking" });
+    pauseRecording();
+    const text = `${notice ? `${AI_NOTICE_VOICE}。` : ""}${voiceTextOf(id)}`;
+    await Promise.race([
+      Promise.resolve()
+        .then(() => deps.speak?.(text))
+        .catch(() => undefined),
+      new Promise((r) => setTimeout(r, SPEAK_WAIT_MS)),
+    ]);
+    if (mine !== run || my !== ask) return;
+    resumeRecording();
+    set({ step: "question", id, answers, first: false, voice: "listening" });
+    listeningAt = now();
+    answerTranscript =
+      deps.startTranscript?.({
+        onSilence: () => {
+          if (mine === run && my === ask) void answerHeard(id, my);
+        },
+      }) ?? null;
+    after(LISTEN_MS, () => void answerHeard(id, my));
+  }
+
+  /** 声の問いの聞き取りが終わった（10 秒・無音）。言葉が一致すれば答え、無ければ答えなしで次へ */
+  async function answerHeard(id: QuestionId, my: number) {
+    if (my !== ask || state.step !== "question") return;
+    clear();
+    const mine = run;
+    ask++;
+    const t = answerTranscript;
+    answerTranscript = null;
+    closeListening(now());
+    const text = (await t?.stop().catch(() => null))?.trim() ?? "";
+    if (mine !== run) return;
+    if (text) heard.push(text);
+    const choice = matchVoiceAnswer(text, id);
+    if (choice) record(id, choice, "voice");
+    advance(nextQuestion(id, choice, asker));
+  }
+
+  // ---------- 定型文と録音 ----------
 
   /** 文字起こしを始める。無音で止まったら、この回の聞き取りを閉じる */
   function openTranscript() {
@@ -168,39 +357,33 @@ export function createPhone(deps: PhoneDeps): Phone {
     after(RECORD_MS, () => void windowEnded());
   }
 
-  /** 今の聞き取りの長さを足して閉じる */
-  function closeListening(at: number) {
-    if (listeningAt !== null) listenedMs += Math.max(0, at - listeningAt);
-    listeningAt = null;
-  }
-
-  /** 20 秒押さなかった: 信号を先に送り、定型文を流して録る */
-  async function toVoice() {
-    if (state.step !== "question") return;
+  /** 問いが終わった（か、問いを声にできない端末で 20 秒押さなかった）: 定型文を流して録る */
+  async function toPrompt() {
+    if (!signal) return;
+    clear();
     const mine = run;
-    const b = body("red", null, state.answers);
-    signal = { id: b.id, delivery: deps.sendSignal(b) };
     set({ step: "prompt" });
+    pauseRecording();
     await playPrompt();
     if (mine !== run) return;
-    const rec = await deps.startRecording().catch(() => null);
-    if (mine !== run) {
-      void rec?.stop();
-      return;
+    if (recording) resumeRecording();
+    else {
+      const rec = await deps.startRecording().catch(() => null);
+      if (mine !== run) {
+        void rec?.stop();
+        return;
+      }
+      recording = rec;
     }
-    recording = rec;
     asks = 0;
-    heard = [];
-    listenedMs = 0;
-    listeningAt = null;
     ending = false;
     finishWanted = false;
     openTranscript();
     canReask = transcript !== null;
     if (!recording && !transcript) {
-      // マイクも文字起こしも使えない: 録らずに信号だけ（もう送ってある）
+      // マイクも文字起こしも使えない: 録らずに信号と答えだけ（もう送ってある）
       set({ step: "sending", color: "red" });
-      const delivery = await signal.delivery;
+      const delivery = await redDelivery();
       if (mine !== run) return;
       set({ step: "done", color: "red", delivery });
       return;
@@ -225,11 +408,7 @@ export function createPhone(deps: PhoneDeps): Phone {
     transcript = null;
     attempt++;
     closeListening(now());
-    try {
-      recording?.pause?.();
-    } catch {
-      // 止められない録音は録ったまま（定型文も入る）
-    }
+    pauseRecording();
     const text = (await t.stop().catch(() => null))?.trim() ?? "";
     ending = false;
     if (mine !== run) return;
@@ -243,16 +422,12 @@ export function createPhone(deps: PhoneDeps): Phone {
     set({ step: "prompt" });
     await playPrompt();
     if (mine !== run) return;
-    try {
-      recording?.resume?.();
-    } catch {
-      // 止めていない録音
-    }
+    resumeRecording();
     openTranscript();
     listen();
   }
 
-  /** 録音と文字起こしを止めて添える（聞き直しで取れた文字も合わせる） */
+  /** 録音と文字起こしを止めて添える（声の問いと聞き直しで取れた文字も合わせる） */
   async function stopRecording() {
     if (state.step !== "recording" || !signal) return;
     if (ending) {
@@ -275,7 +450,7 @@ export function createPhone(deps: PhoneDeps): Phone {
     recording = null;
     if (text?.trim()) heard.push(text.trim());
     const words = heard.length > 0 ? heard.join("\n") : null;
-    const delivery = await sig.delivery;
+    const delivery = await redDelivery();
     if (audio || words) {
       await deps
         .sendRecording(
@@ -304,29 +479,45 @@ export function createPhone(deps: PhoneDeps): Phone {
       if (state.step !== "top") return;
       run++;
       pressedAt = now();
-      signal = null;
+      answers = {};
+      lastAnswers = null;
+      voiceMode = false;
+      heard = [];
+      listenedMs = 0;
+      listeningAt = null;
       try {
         deps.prime?.();
       } catch {
         // 音・マイクを先に通せなくても進める
       }
-      set({ step: "question", index: 0, answers: { ...NO_ANSWERS } });
+      // 赤は押した時に送る（一覧にすぐ赤が出る）。答えはこの信号に足していく
+      const b = body("red", null);
+      signal = { id: b.id, delivery: deps.sendSignal(b).catch((): Delivery => "queued") };
+      const first = firstQuestion(asker);
+      if (first === null) {
+        void finishQuestions();
+        return;
+      }
+      set({ step: "question", id: first, answers, first: true, voice: null });
       after(IDLE_MS, () => void toVoice());
     },
     where(where) {
       if (state.step !== "where") return;
-      void deliver(body("green", where, NO_ANSWERS));
+      void deliver(body("green", where));
     },
-    answer(value) {
+    answer(choice) {
       if (state.step !== "question") return;
-      const answers = { ...state.answers, [RED_QUESTIONS[state.index]]: value };
-      if (state.index + 1 < RED_QUESTIONS.length) {
-        set({ step: "question", index: state.index + 1, answers });
-        after(IDLE_MS, () => void toVoice());
-        return;
-      }
-      clear();
-      void deliver(body("red", null, answers));
+      const id = state.id;
+      if (!nextQuestionKnows(id, choice)) return;
+      dropAnswerListening();
+      record(id, choice, "press");
+      advance(nextQuestion(id, choice, asker));
+    },
+    skip() {
+      if (state.step !== "question") return;
+      const id = state.id;
+      dropAnswerListening();
+      advance(nextQuestion(id, null, asker));
     },
     extend() {
       if (state.step !== "recording" || ending) return;
@@ -345,13 +536,21 @@ export function createPhone(deps: PhoneDeps): Phone {
     },
     dispose() {
       run++;
+      ask++;
       clear();
       void recording?.stop().catch(() => null);
       void transcript?.stop().catch(() => null);
+      void answerTranscript?.stop().catch(() => null);
       recording = null;
       transcript = null;
+      answerTranscript = null;
       attempt++;
       ending = false;
     },
   };
+}
+
+/** 問いにある選択肢か */
+function nextQuestionKnows(id: QuestionId, choice: string): boolean {
+  return choiceOf(id, choice) !== undefined;
 }
