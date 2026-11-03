@@ -15,6 +15,7 @@ import { switchDisasterMode } from "../disaster/db.ts";
 import { disasterScope } from "../disaster/scope.ts";
 import { NO_ANSWERS, type FamilySignalBody, type SignalBody } from "../signals/body.ts";
 import { answersPost, recordingPost, signalPost } from "../signals/http.ts";
+import { setUnlisted } from "../office/people.ts";
 import { resetDemoOffice, type SeedBucket } from "../seed/reset.ts";
 import { retractableRow } from "../timeline/retract.ts";
 import { issueQr } from "./store.ts";
@@ -38,7 +39,14 @@ import {
   phoneLinkState,
   resolvePhoneLink,
 } from "./phone-link-store.ts";
-import { openPhoneLink, PHONE_OPEN_HEADERS } from "./phone-open.ts";
+import {
+  linkReplacesLogin,
+  openPhoneLink,
+  PHONE_OPEN_HEADERS,
+  phoneLinkOpenPath,
+  phoneLinkSwitchPath,
+  switchPhoneLink,
+} from "./phone-open.ts";
 
 const SECRET = "test-secret-for-phone-link-0123456789abcdef";
 const DAY = 24 * 60 * 60;
@@ -237,13 +245,13 @@ describe("リンクを確かめる（resolvePhoneLink）", () => {
     }
   });
 
-  it("期限切れ・再発行した前の版・一覧から外した本人は通らない（戻せばまた通る）", async () => {
+  it("期限切れ・再発行した前の版・一覧から外した本人は通らない", async () => {
     const t = await issued();
     expect(await resolvePhoneLink(db, SECRET, t, ISSUED + PHONE_LINK_TTL_SEC)).toBeNull();
+    // 表の印だけ（版はそのまま）でも通らない。外す操作（setUnlisted）は版も上げる（下の「一覧から外す」）
     sqlite.exec(`UPDATE people SET unlisted_at = '${at(-1)}' WHERE id = 'p-01'`);
     expect(await resolvePhoneLink(db, SECRET, t, NOW)).toBeNull();
     sqlite.exec("UPDATE people SET unlisted_at = NULL WHERE id = 'p-01'");
-    expect(await resolvePhoneLink(db, SECRET, t, NOW)).not.toBeNull();
     const t2 = await issued("p-01", null, at(-23));
     expect(await resolvePhoneLink(db, SECRET, t, NOW)).toBeNull();
     expect(await resolvePhoneLink(db, SECRET, t2, NOW)).not.toBeNull();
@@ -433,5 +441,110 @@ describe("毎朝 4 時の戻し（lib/seed/reset.ts は触らない）", () => {
     expect(one("SELECT phone_link_generation AS g, phone_link_issued_at AS t FROM people WHERE id = 'p-01'")).toEqual({ g: 0, t: null });
     expect(await resolvePhoneLink(db, SECRET, t, NOW)).toBeNull();
     expect(await resolvePrincipal(db, {}, SECRET, cookie, NOW)).toBeNull();
+  });
+});
+
+describe("ログイン中の端末で開いたとき（設計の答え 11/4）", () => {
+  const DEMO = { id: "office-demo", name: "デモ事業所", kind: "demo" as const };
+  const login = (p: Partial<Principal>): Principal => ({
+    role: "care_manager",
+    judge: false,
+    admin: false,
+    accountId: "acct-yamamoto",
+    displayName: "山本",
+    office: DEMO,
+    caseloadOf: "acct-yamamoto",
+    personId: null,
+    contactId: null,
+    ...p,
+  });
+  const linkSelf = login({ role: "self", accountId: null, caseloadOf: null, personId: "p-01" });
+
+  it("ケアマネ・行政・医療班・審査員（どの役でも）は黙って替えず、ログイン中の 1 枚へ。cookie は付けない", async () => {
+    const t = await issued();
+    const cases: Principal[] = [
+      login({}),
+      login({ admin: true }),
+      login({ role: "government", accountId: "acct-gov", office: null, caseloadOf: null }),
+      login({ role: "medical", accountId: "acct-med", office: null, caseloadOf: null }),
+      ...(["unselected", "care_manager", "medical", "self", "family"] as const).map((role) => login({ role, judge: true, accountId: "acct-judge" })),
+    ];
+    for (const p of cases) {
+      expect(linkReplacesLogin(p), `${p.role} ${p.judge}`).toBe(true);
+      const res = await openPhoneLink(req(), db, SECRET, t, NOW, p);
+      expect(res.status).toBe(303);
+      expect(res.headers.get("location"), p.role).toBe(`http://localhost:3072${phoneLinkSwitchPath(t)}`);
+      expect(res.headers.get("set-cookie")).toBeNull();
+      expect(res.headers.get("cache-control")).toBe("no-store");
+    }
+  });
+
+  it("本人・家族のリンクのログイン中とログインなしは、そのまま開く。通らないリンクはログイン中でも無効の頁へ", async () => {
+    const t = await issued("p-01", "c-01-1");
+    for (const p of [null, linkSelf, login({ role: "family", accountId: null, caseloadOf: null, personId: "p-02", contactId: "c-02-1" })]) {
+      expect(linkReplacesLogin(p)).toBe(false);
+      const res = await openPhoneLink(req(), db, SECRET, t, NOW, p);
+      expect(res.headers.get("location")).toBe("http://localhost:3072/family");
+      expect(res.headers.get("set-cookie")).toContain("care72_session=");
+    }
+    const bad = await openPhoneLink(req(), db, SECRET, "x.y", NOW, login({}));
+    expect(bad.headers.get("location")).toBe(`http://localhost:3072${PHONE_LINK_INVALID_PATH}`);
+  });
+
+  it("「切替」（POST /s/<token>）: 同じ所からのフォームだけ、今のログインを本人・家族のセッションに替える", async () => {
+    const t = await issued();
+    const post = (headers: Record<string, string>) => new Request(`http://localhost:3072${phoneLinkOpenPath(t)}`, { method: "POST", headers });
+    const ok = await switchPhoneLink(post({ "sec-fetch-site": "same-origin" }), db, SECRET, t, NOW);
+    expect(ok.status).toBe(303);
+    expect(ok.headers.get("location")).toBe("http://localhost:3072/me");
+    const cookie = readCookie(ok.headers.get("set-cookie"), SESSION_COOKIE);
+    expect((await resolvePrincipal(db, {}, SECRET, cookie, NOW))?.role).toBe("self");
+    const cross = await switchPhoneLink(post({ "sec-fetch-site": "cross-site" }), db, SECRET, t, NOW);
+    expect(cross.status).toBe(403);
+    expect(cross.headers.get("set-cookie")).toBeNull();
+    const invalid = await switchPhoneLink(post({ "sec-fetch-site": "same-origin" }), db, SECRET, "x.y", NOW);
+    expect(invalid.headers.get("location")).toBe(`http://localhost:3072${PHONE_LINK_INVALID_PATH}`);
+    expect(invalid.headers.get("set-cookie")).toBeNull();
+  });
+
+  it("route と 1 枚の頁: GET は今のログインを渡す、POST は切替、頁は誰のリンクかを出さず検索に載せない", () => {
+    const route = readFileSync(new URL("../../app/s/[token]/route.ts", import.meta.url), "utf8");
+    expect(route).toContain("openPhoneLink(request, env.DB, sessionSecret(env), token, nowSec(), principal)");
+    expect(route).toContain("export async function POST");
+    expect(route).toContain("switchPhoneLink(");
+    const page = readFileSync(new URL("../../app/s/[token]/switch/page.tsx", import.meta.url), "utf8");
+    expect(page).toContain("linkReplacesLogin(principal)");
+    expect(page).toContain("index: false");
+    expect(page).toContain('referrer: "no-referrer"');
+    expect(page).not.toMatch(/person\.name|personName/);
+  });
+});
+
+describe("一覧から外すとリンクを切る（設計の答え 11/4）", () => {
+  const actor = { officeId: "office-demo", authorId: "acct-yamamoto", authorRole: "care_manager" as const, admin: true, defaultCareManagerId: "acct-yamamoto" };
+
+  it("外すと版が上がって作った時刻が消え、前のリンクとセッションは通らない。戻しても通らず、新しく発行すれば通る", async () => {
+    const t = await issued("p-01", "c-01-1");
+    const { cookie } = await open(t);
+    expect(await setUnlisted(db, actor, { personId: "p-01", unlisted: true }, at(-22))).toEqual({ ok: true, changed: true });
+    expect(one("SELECT phone_link_generation AS g, phone_link_issued_at AS t FROM people WHERE id = 'p-01'")).toEqual({ g: 2, t: null });
+    expect(await resolvePrincipal(db, {}, SECRET, cookie, NOW)).toBeNull();
+    expect(await setUnlisted(db, actor, { personId: "p-01", unlisted: false }, at(-21))).toEqual({ ok: true, changed: true });
+    expect(one("SELECT phone_link_generation AS g, phone_link_issued_at AS t FROM people WHERE id = 'p-01'")).toEqual({ g: 2, t: null });
+    expect(await resolvePhoneLink(db, SECRET, t, NOW)).toBeNull();
+    expect(await resolvePrincipal(db, {}, SECRET, cookie, NOW)).toBeNull();
+    expect(phoneLinkState((await loadPhoneLinkRow(db, "p-01"))!, NOW).status).toBe("none");
+    expect(await currentPhoneLinkToken("p-01", null, (await loadPhoneLinkRow(db, "p-01"))!, SECRET)).toBeNull();
+    const t2 = await issued("p-01", "c-01-1", at(-20));
+    // 発行の時刻（at(-20)）のあとで確かめる
+    expect(await resolvePhoneLink(db, SECRET, t2, Math.floor(Date.parse(at(-19)) / 1000))).not.toBeNull();
+    expect(one("SELECT phone_link_generation AS g FROM people WHERE id = 'p-01'")).toEqual({ g: 3 });
+  });
+
+  it("まだ発行していない人（版 0）は外しても 0 のまま。台帳の version・QR の版は変えない", async () => {
+    const before = one<Record<string, unknown>>("SELECT version, qr_generation FROM people WHERE id = 'p-02'");
+    await setUnlisted(db, actor, { personId: "p-02", unlisted: true }, at(-22));
+    expect(one("SELECT phone_link_generation AS g, phone_link_issued_at AS t FROM people WHERE id = 'p-02'")).toEqual({ g: 0, t: null });
+    expect(one("SELECT version, qr_generation FROM people WHERE id = 'p-02'")).toEqual(before);
   });
 });
