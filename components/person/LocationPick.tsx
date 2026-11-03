@@ -19,10 +19,10 @@ import { BASE_LAYER, BASE_OPACITY } from "@/lib/map/layers";
 
 /** 枠の基準の大きさ（px）。画面では幅いっぱいに伸び縮みし、縦横の比は保つ */
 const SIZE: Size = { w: 320, h: 200 };
-/** ズームの範囲（地理院タイルの淡色地図の範囲）と、最初のズーム（置いてある・置いていない） */
+/** ズームの範囲（地理院タイルの淡色地図の範囲）と、最初のズーム（置いてある・置いていない）。置いてある時も町名と周りの町が読める 14（前は 16 で道しか見えなかった。T79） */
 const MIN_Z = BASE_LAYER.minZ;
 const MAX_Z = BASE_LAYER.maxZ;
-const PLACED_Z = 16;
+const PLACED_Z = 14;
 const OPEN_Z = 13;
 
 const FOCUS = "outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-accent";
