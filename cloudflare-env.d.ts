@@ -19,6 +19,9 @@ declare global {
     SESSION_SECRET?: string;
     /** デモ事業所の AI の 1 日の上限（回）。無ければ 200 */
     AI_DAILY_LIMIT?: string;
+    // アンケートの頁（T42）の Cloudflare Turnstile。両方あるときだけ効く（lib/survey/turnstile.ts）
+    TURNSTILE_SITE_KEY?: string;
+    TURNSTILE_SECRET_KEY?: string;
   }
 }
 
