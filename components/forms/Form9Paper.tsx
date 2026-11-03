@@ -167,8 +167,8 @@ export function Form9Paper({ sheet, office, date, order, report }: Form9PaperPro
               <th>避難</th>
               <th>避難所</th>
               <th>介護・医療機関</th>
-              <th className="added">優先</th>
-              <th className="added">優先の理由</th>
+              <th className="added">連絡順</th>
+              <th className="added">連絡順の理由</th>
               <th className="added">緊急連絡先</th>
               <th className="added">安否確認の方法</th>
               <th className="added">安否確認の結果</th>
@@ -182,7 +182,7 @@ export function Form9Paper({ sheet, office, date, order, report }: Form9PaperPro
           </tbody>
         </table>
         <div className="small-note">
-          <p>※No から安否確認できた日までは厚生労働省の BCP ひな形（自然災害）様式9 の列。そのあとはケア72 の欄（優先・理由・緊急連絡先・安否確認の方法と結果・順位の手直し）</p>
+          <p>※No から安否確認できた日までは厚生労働省の BCP ひな形（自然災害）様式9 の列。そのあとはケア72 の欄（連絡順・理由・緊急連絡先・安否確認の方法と結果・順位の手直し）</p>
         </div>
         {report && (
           <div className="blk report" data-block="report">

@@ -41,7 +41,7 @@ export const SCORE_LABELS = {
   result: "結果",
   reason: "理由",
   /** その時の左の表で、手のまだ無い人の一番上 */
-  expected: "最優先",
+  expected: "先頭",
   scenario: "想定",
   history: "対応履歴",
   situation: "状況",

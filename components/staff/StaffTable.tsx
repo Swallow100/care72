@@ -27,7 +27,7 @@ const SORTS = ["rank", "kana", "age", "remain", "shelter", "received", "office"]
 type Sort = (typeof SORTS)[number];
 
 const SORT_LABELS: Record<Sort, string> = {
-  rank: "優先",
+  rank: "連絡順",
   kana: CUSTODY_LABELS.name,
   age: CUSTODY_LABELS.age,
   remain: CUSTODY_LABELS.remain,
