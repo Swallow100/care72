@@ -10,8 +10,8 @@ import { type Box, type Callout, RECORDINGS, type Rect } from "../timeline";
 import { Footage, footageSeconds, zoomAt } from "./Footage";
 import { progress, rise } from "./motion";
 
-/** スマホの縦長の録画（375×812） */
-export const PHONES = new Set(["R08", "R11", "R12"]);
+/** スマホの縦長の録画（375×812）。R08 の着信はケアマネの訓練の画面なので窓 */
+export const PHONES = new Set(["R11", "R12"]);
 const PHONE_RATIO = 375 / 812;
 const BEZEL = 14;
 
