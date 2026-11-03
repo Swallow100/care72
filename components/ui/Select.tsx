@@ -342,7 +342,7 @@ export function Select({
 const PANEL =
   "absolute z-50 max-w-[calc(100vw-1rem)] rounded-lg bg-panel p-1 text-sm text-ink shadow-[0_2px_8px_rgb(0_0_0/0.18)] outline-none dark:bg-panel2 dark:shadow-[0_2px_10px_rgb(0_0_0/0.6)]";
 const ITEM =
-  "flex min-h-8 cursor-default items-center gap-2 rounded px-2.5 py-1 outline-none select-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent focus-visible:outline-solid";
+  "flex min-h-8 cursor-default items-center gap-2 rounded px-2 py-1 outline-none select-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent focus-visible:outline-solid";
 
 /** 開いた一覧（body の直下に描く）。テストは renderToStaticMarkup でこれを描く */
 export function SelectList({
@@ -459,7 +459,7 @@ export function SelectList({
         </div>
       )}
       {shown.length === 0 && (
-        <div role="status" className="px-2.5 py-1.5 text-muted">
+        <div role="status" className="px-2 py-1.5 text-muted">
           {SELECT_LABELS.empty}
         </div>
       )}
@@ -468,7 +468,7 @@ export function SelectList({
           r.at.map(option)
         ) : (
           <div key={`g-${r.group}-${k}`} role="group" aria-labelledby={`${id}-g${r.group}-${k}`}>
-            <div id={`${id}-g${r.group}-${k}`} role="presentation" className="px-2.5 pt-2 pb-0.5 text-xs text-muted">
+            <div id={`${id}-g${r.group}-${k}`} role="presentation" className="px-2 pt-2 pb-0.5 text-xs text-muted">
               {model.groups[r.group].label}
             </div>
             {r.at.map(option)}
