@@ -5,6 +5,7 @@ import { DisasterBadge } from "@/components/disaster/DisasterBadge";
 import { AddCareManager } from "@/components/office/AddCareManager";
 import { AssignForm } from "@/components/office/AssignForm";
 import { AssignRow } from "@/components/office/AssignRow";
+import { FormChoice } from "@/components/office/FormChoice";
 import { MoreFold } from "@/components/office/MoreFold";
 import { UnlistedFold } from "@/components/office/UnlistedFold";
 import { UnlistedRows } from "@/components/office/UnlistedRows";
@@ -65,6 +66,7 @@ type Props = {
     error?: string | string[];
     people_error?: string | string[];
     reset?: string | string[];
+    form_error?: string | string[];
   }>;
 };
 
@@ -151,6 +153,7 @@ export default async function OfficePage({ searchParams }: Props) {
         </div>
         <div className="grid min-w-0 content-start gap-3">
           <Form9Section people={people} counts={counts} />
+          <FormChoice officeId={scope.officeId} error={q.form_error === "bad"} />
           <Panel aria-labelledby="cm-title">
             <AddCareManager count={careManagers.length} admin={actor.admin}>
               <CareManagerList careManagers={careManagers} />

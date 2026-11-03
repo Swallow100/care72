@@ -111,9 +111,11 @@ const NO_SOURCE = "台帳に無い";
 export const MEDICAL_FIELDS = [
   { key: "patient.kana", block: "patient", label: "患者氏名（カタカナ）", source: "people.kana", page: 1 },
   { key: "patient.name", block: "patient", label: "漢字等", source: "people.name", page: 1 },
-  { key: "patient.birth", block: "patient", label: "生年月日・年齢", source: "people.birth_date（西暦と和暦）", page: 1 },
+  // 様式は（漢字等）の右に性別、その下に生年月日・年齢（T47 の照合で順を直した）
   { key: "patient.sex", block: "patient", label: "性別", source: "ledger.basic.sex", page: 1 },
-  { key: "patient.phone", block: "patient", label: "電話番号", source: "contacts（本人）", page: 1 },
+  { key: "patient.birth", block: "patient", label: "生年月日・年齢", source: "people.birth_date（西暦と和暦）", page: 1 },
+  { key: "patient.phone", block: "patient", label: "[携帯]電話番号", source: "contacts（本人）", page: 1 },
+  { key: "patient.address", block: "patient", label: "住所", source: "ledger.basic.address（市・町名）", page: 1 },
   { key: "patient.house", block: "patient", label: "状態", source: `${NO_SOURCE}（発災後の家の被害）`, page: 1 },
   {
     key: "patient.dwelling",
@@ -123,7 +125,6 @@ export const MEDICAL_FIELDS = [
     page: 1,
     extra: true,
   },
-  { key: "patient.address", block: "patient", label: "住所", source: "ledger.basic.address（市・町名）", page: 1 },
   {
     key: "shelter.first",
     block: "shelter",
@@ -227,6 +228,13 @@ export const MEDICAL_FIELDS = [
     source: "contacts.supporter_order（避難支援等実施者の有無）",
     page: 1,
   },
+  {
+    key: "id.medical",
+    block: "id",
+    label: "メディカル ID",
+    source: "people.birth_date・ledger.basic.sex・people.kana（機械的に）",
+    page: 1,
+  },
   { key: "history.disease", block: "history", label: "既往症", source: "ledger.medical.history（そのまま）", page: 2 },
   {
     key: "history.vaccination",
@@ -234,13 +242,6 @@ export const MEDICAL_FIELDS = [
     label: "予防接種",
     source: "ledger.medical.vaccinations（そのまま）",
     page: 2,
-  },
-  {
-    key: "id.medical",
-    block: "id",
-    label: "メディカル ID",
-    source: "people.birth_date・ledger.basic.sex・people.kana（機械的に）",
-    page: 1,
   },
 ] as const satisfies readonly MedicalFieldDef[];
 

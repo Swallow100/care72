@@ -82,6 +82,7 @@ import { withQrView } from "./qr/timeline.ts";
 import { officeEntryOf, withOfficeEntry } from "./office/timeline.ts";
 import { withCustodyEntry } from "./custody/timeline.ts";
 import { PROVISION_BASIS_LABELS, PROVISION_SECTION_LABELS, PROVISION_TIMELINE_LABEL } from "./consent/labels.ts";
+import { aboutLine, DOCUMENT_CATALOG } from "./forms/catalog.ts";
 import {
   PROVISION_SECTIONS,
   peopleMode,
@@ -260,8 +261,11 @@ export type ClockView = {
   pending: Pending[];
 };
 
-/** 書類の入口。href があれば開ける（紙面ができた書類） */
-export type DocumentView = { key: keyof typeof DOCUMENT_LABELS; label: string; status: string; href?: string };
+/** 書類の入口。href があれば開ける（紙面ができた書類）。about は何の書類かの 1 行（lib/forms/catalog.ts） */
+export type DocumentView = { key: keyof typeof DOCUMENT_LABELS; label: string; status: string; href?: string; about?: string };
+
+/** 計画書に使う様式（事業所の選択。lib/forms/plan-form.ts の loadPlanForm）。無ければ松山市の様式 */
+export type PlanFormView = { label: string; about: string; href: (personId: string) => string };
 
 /** できた書類の紙面の場所（T05 計画書・T07 医療要約・T06 本人の 1 枚・T16 QR） */
 const DOCUMENT_PATHS: Partial<Record<keyof typeof DOCUMENT_LABELS, (personId: string) => string>> = {
@@ -841,16 +845,21 @@ function consentBlocks(consents: PersonPageRows["consents"]): Block[] {
 }
 
 /** 書類の区分。範囲（lib/consent/scope.ts の documents）にある書類だけ */
-function documentBlocks(personId: string, allowed: readonly ScopeDocument[]): Block[] {
+function documentBlocks(personId: string, allowed: readonly ScopeDocument[], plan: PlanFormView | undefined): Block[] {
   const keys = (Object.keys(DOCUMENT_LABELS) as Array<keyof typeof DOCUMENT_LABELS>).filter((k) => allowed.includes(k));
   return [
     {
       type: "documents",
-      documents: keys.map((key) => {
+      documents: keys.map((key): DocumentView => {
+        // 計画書は事業所の選んだ様式（T47）。名前と説明もその様式の物
+        if (key === "matsuyama" && plan) {
+          return { key, label: plan.label, status: DOCUMENT_STATUS_LABELS.ready, href: plan.href(personId), about: plan.about };
+        }
         const path = DOCUMENT_PATHS[key];
+        const about = aboutLine(DOCUMENT_CATALOG[key]);
         return path
-          ? { key, label: DOCUMENT_LABELS[key], status: DOCUMENT_STATUS_LABELS.ready, href: path(personId) }
-          : { key, label: DOCUMENT_LABELS[key], status: DOCUMENT_STATUS_LABELS.pending };
+          ? { key, label: DOCUMENT_LABELS[key], status: DOCUMENT_STATUS_LABELS.ready, href: path(personId), about }
+          : { key, label: DOCUMENT_LABELS[key], status: DOCUMENT_STATUS_LABELS.pending, about };
       }),
     },
   ];
@@ -1155,6 +1164,8 @@ export type ViewOptions = {
    * 範囲の外の区分・欄は作らない（「非表示」とも書かない）。医療班・行政は app/people/[id] が scopeOfRows で渡す
    */
   scope?: ViewScope;
+  /** 事業所が計画書に使う様式（T47）。無ければ松山市の様式 */
+  planForm?: PlanFormView;
 };
 
 /** 区分の中の未確認の数（欄と時計に付いた pending） */
@@ -1212,7 +1223,7 @@ export function toPersonView(rows: PersonPageRows, opts: ViewOptions): PersonVie
     ["people", peopleBlocks(contacts, ledger)],
     ["basic", basicBlocks({ ...rows, contacts }, ledger)],
     ["consent", consentBlocks(rows.consents)],
-    ["documents", documentBlocks(person.id, scope.documents)],
+    ["documents", documentBlocks(person.id, scope.documents, opts.planForm)],
     ["timeline", [{ type: "timeline", items: timelineItems(rows) }]],
   ]);
   const unconfirmed = attachPending(sections, ledger, rows);

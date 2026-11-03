@@ -206,7 +206,8 @@ describe("種の 10 人から欄が埋まる", () => {
     expect(text(s, "local.watcher")).toBe("春日 葉子");
     expect(text(s, "housing.bedroom")).toBe("1 階 奥の和室");
     const timeline = s.cells["target.timeline"];
-    expect(timeline.kind === "choice" && timeline.options.filter((o) => o.on).map((o) => o.label)).toEqual(["あり（紙）"]);
+    // 様式は「あり（アプリ・紙）・なし」
+    expect(text(s, "target.timeline")).toBe("■あり（□アプリ ■紙） □なし");
     expect(timeline.kind === "choice" && timeline.unconfirmed).toBeFalsy();
     const support = s.cells["support.kinds"];
     expect(support.kind === "choice" && support.options.filter((o) => o.on).map((o) => o.label)).toEqual(["避難の声掛け", "その他"]);

@@ -43,6 +43,7 @@ import { buildSidePane, sideDisasterOf } from "@/lib/map/side";
 import { parsePeopleError } from "@/lib/office/http";
 import { NEW_PERSON_PATH } from "@/lib/office/http-paths";
 import { OFFICE_ERROR_LABELS, OFFICE_LABELS } from "@/lib/office/labels";
+import { loadPlanForm, planFormView } from "@/lib/forms/plan-form";
 import { COLOR_TONES, loadPersonPage, toPersonView, type PersonView as View } from "@/lib/person";
 import type { Color } from "@/lib/triage/index";
 
@@ -190,7 +191,8 @@ async function PersonPanel({ principal, id, sort, now }: { principal: Principal;
     const { env } = await getCloudflareContext({ async: true });
     const rows = await loadPersonPage(env.DB, principal, id);
     const d = rows ? await personDisaster(env.DB, rows, now) : null;
-    view = rows && d ? toPersonView(rows, { today: todayJst(), mode: d.mode, triage: d.triage, situation: d.situation }) : null;
+    const planForm = rows ? planFormView(await loadPlanForm(env.DB, rows.person.office_id)) : undefined;
+    view = rows && d ? toPersonView(rows, { today: todayJst(), mode: d.mode, triage: d.triage, situation: d.situation, planForm }) : null;
     // 入れる欄（T03）はケアマネの役だけ（担当一覧はケアマネの役しか開けない）
     intake = rows && principal.role === "care_manager" ? intakePropsOf(rows, hasAnthropicKey(env)) : null;
   } catch (e) {
