@@ -26,7 +26,10 @@ export type CareManagerItem = {
   disabled: boolean;
 };
 
-/** 事業所のケアマネ（足した順）。担当の人数つき。停止した人も印つきで全部（割当の候補は activeCareManagers で使える人だけ） */
+/**
+ * 事業所のケアマネ（管理者が先、あとは足した順）。担当の人数つき。停止した人も印つきで全部（割当の候補は activeCareManagers で使える人だけ）。
+ * 管理者を先にするのは、種の 2 人（山本・西村。同じ時刻に入る）で山本を上にするため（T79）
+ */
 export async function listCareManagers(db: D1Database, officeId: string): Promise<CareManagerItem[]> {
   const res = await db
     .prepare(
@@ -35,7 +38,7 @@ export async function listCareManagers(db: D1Database, officeId: string): Promis
                 WHERE p.care_manager_id = a.id AND p.office_id = a.office_id AND p.unlisted_at IS NULL) AS people
          FROM accounts a
         WHERE a.office_id = ?1 AND a.role = 'care_manager'
-        ORDER BY a.created_at, a.id`,
+        ORDER BY a.is_office_admin DESC, a.created_at, a.id`,
     )
     .bind(officeId)
     .all<{ id: string; display_name: string; login_id: string | null; is_office_admin: 0 | 1; disabled_at: string | null; people: number }>();

@@ -3,7 +3,7 @@
 // - 中心: 本人のページの位置を置く地図（components/person/LocationPick.tsx）が、本人の位置が無いときに開く所
 // 市を変えても、今の利用者の市（台帳の値）は変えない。事業所の経過には残さない（office_timeline_entries の kind の CHECK を広げるには
 // 表の建て直しが要る〔0012 と同じ〕ので、この作業では足さない。docs/progress/t68.md）。
-// 書けるのは事業所の管理者だけ（lib/office/scope.ts の officeActor.admin）。審査員のケアマネの役は管理者でないので見るだけ。
+// 書けるのは事業所の管理者だけ（lib/office/scope.ts の officeActor.placeEdit）。審査員のケアマネの役はケアマネの管理はできるが（T79）、地域は見るだけ。
 // ここは D1 と Principal を引数で受け取る（テストで node:sqlite を渡す）。
 
 import type { D1Database } from "@cloudflare/workers-types";
@@ -77,7 +77,7 @@ export type SavePlaceResult = { ok: true } | { ok: false; error: "forbidden" | "
 /** 事業所の市と中心を書く。管理者だけ（審査員は管理者でない） */
 export async function savePlace(db: D1Database, p: Principal | null, value: PlaceForm | null): Promise<SavePlaceResult> {
   const actor = officeActor(p);
-  if (!actor?.admin) return { ok: false, error: "forbidden" };
+  if (!actor?.placeEdit) return { ok: false, error: "forbidden" };
   if (!value) return { ok: false, error: "bad" };
   await db
     .prepare("UPDATE offices SET city = ?1, center_lat = ?2, center_lng = ?3 WHERE id = ?4")
@@ -91,7 +91,7 @@ export type PlacePostOutcome = { status: 401 } | { status: 403 } | { status: 303
 /** 「地域」の保存（フォームの POST）。ログイン → 管理者 → 形 の順に断る。戻り先は事業所の画面の区分 */
 export async function placePost(db: D1Database, p: Principal | null, form: FormLike): Promise<PlacePostOutcome> {
   if (!p) return { status: 401 };
-  if (!officeActor(p)?.admin) return { status: 403 };
+  if (!officeActor(p)?.placeEdit) return { status: 403 };
   const r = await savePlace(db, p, parsePlaceForm(form));
   if (!r.ok && r.error === "forbidden") return { status: 403 };
   return { status: 303, location: r.ok ? `/office#${OFFICE_PLACE_ANCHOR}` : `/office?form_error=${PLACE_FORM_ERROR}#${OFFICE_PLACE_ANCHOR}` };

@@ -154,7 +154,7 @@ export default async function OfficePage({ searchParams }: Props) {
       <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="grid min-w-0 content-start gap-3">
           <ModeSection state={state} now={now} confirm={confirm} officeId={scope.officeId} />
-          <OfficePlace officeId={scope.officeId} admin={actor.admin} error={q.form_error === "place"} />
+          <OfficePlace officeId={scope.officeId} admin={actor.placeEdit} error={q.form_error === "place"} />
           {disaster && <InfoSection state={state} towns={towns} />}
           {/* 所属なし（T23）は引き受ける人がいるときだけ。担当の長い表の前に置く */}
           <UnaffiliatedSection people={unaffiliated} />

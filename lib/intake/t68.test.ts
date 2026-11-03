@@ -53,7 +53,7 @@ const cm: Principal = {
   personId: null,
   contactId: null,
 };
-const actor: OfficeActor = { officeId: OFFICE, authorId: CM, authorRole: "care_manager", admin: true, defaultCareManagerId: CM };
+const actor: OfficeActor = { officeId: OFFICE, authorId: CM, authorRole: "care_manager", admin: true, placeEdit: true, defaultCareManagerId: CM };
 
 let sqlite: DatabaseSync;
 let db: D1Database;

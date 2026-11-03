@@ -521,7 +521,7 @@ describe("ログイン中の端末で開いたとき（設計の答え 11/4）",
 });
 
 describe("一覧から外すとリンクを切る（設計の答え 11/4）", () => {
-  const actor = { officeId: "office-demo", authorId: "acct-yamamoto", authorRole: "care_manager" as const, admin: true, defaultCareManagerId: "acct-yamamoto" };
+  const actor = { officeId: "office-demo", authorId: "acct-yamamoto", authorRole: "care_manager" as const, admin: true, placeEdit: true, defaultCareManagerId: "acct-yamamoto" };
 
   it("外すと版が上がって作った時刻が消え、前のリンクとセッションは通らない。戻しても通らず、新しく発行すれば通る", async () => {
     const t = await issued("p-01", "c-01-1");
