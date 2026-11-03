@@ -8,7 +8,9 @@ import { Panel, PanelHead } from "@/components/ui/Panel";
 import { FormsTabs } from "@/components/ui/Tabs";
 import { TABLE, TABLE_BOX, TD, TH } from "@/components/ui/table";
 import { requirePage } from "@/lib/auth/server";
-import { hasAnthropicKey } from "@/lib/claude/client";
+import { AiStatusMark } from "@/components/ui/AiStatus";
+import { aiStatusFor } from "@/lib/claude/cloudflare";
+import { aiUsable, type AiStatus } from "@/lib/claude/status";
 import { MAPPING_LABELS as L } from "@/lib/forms/mapping";
 import { formsScope, listMappings, type MappingSummary } from "@/lib/forms/mapping-db";
 import { formatJst } from "@/lib/person";
@@ -22,22 +24,24 @@ const SOURCE_LABELS = { image: "写真", pdf: "PDF", manual: "手作成" } as co
 
 // 様式対応（docs/tasks/T08.md）。松山市以外の様式を写真・PDF から読み（Opus）、対応表を確かめてから差し込みに使う。
 // 開けるのはケアマネの役（管理者・審査員のケアマネの役を含む）。範囲は事業所の対応表。
-// AI 未設定のときは読取を押せず、手作成（欄を手で足す）の道だけ残す
+// AI が使えない（未設定・上限到達）ときは読取を押せず、手作成（欄を手で足す）の道だけ残す。AI の状態は lib/claude/status.ts の 1 か所（T76）
 export default async function FormMappingListPage() {
   const principal = await requirePage("caseload");
   const scope = formsScope(principal);
   if (!scope || !principal.office) return <Message title="事業所なし" />;
 
   let list: MappingSummary[];
-  let aiReady: boolean;
+  let ai: AiStatus;
   try {
     const { env } = await getCloudflareContext({ async: true });
-    aiReady = hasAnthropicKey(env);
+    ai = await aiStatusFor(scope.officeId);
     list = await listMappings(env.DB, scope.officeId);
   } catch (e) {
     console.error("様式対応を読めない", e);
     return <Message title="読込失敗" />;
   }
+
+  const aiReady = aiUsable(ai);
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-4">
@@ -48,7 +52,8 @@ export default async function FormMappingListPage() {
         <span className="text-sm">
           <span className="text-muted">対応表</span> <span className="font-bold tabular-nums">{list.length}</span>
         </span>
-        {!aiReady && <StateTag tone="check">{L.aiNotConfigured}</StateTag>}
+        {/* AI の状態は中立の地の印（状態の 4 色を使わない。T76）。地の上なので白の地。使えるときは本日残り */}
+        <AiStatusMark status={ai} size="md" inPanel2 />
       </div>
 
       <div className="mt-3">

@@ -1,5 +1,6 @@
 // 入れる欄（components/person/Intake.tsx）に渡す物を、本人のページの行から作る。サーバーで使う。
 
+import { aiUsable, type AiStatus } from "../claude/status.ts";
 import { parseLedger } from "../db/ledger.ts";
 import type { ClockCategory, Ledger } from "../db/types.ts";
 import type { PersonPageRows } from "../person.ts";
@@ -13,8 +14,10 @@ export type IntakeProps = {
   officeId: string;
   /** 台帳の版（保存のときに確かめる） */
   version: number;
-  /** Claude の鍵があるか（無ければ「AI 未設定」と手入力） */
+  /** AI を呼べるか（未設定・上限到達なら「AI 未設定」「AI 上限到達」と手入力） */
   aiReady: boolean;
+  /** AI の今の状態（lib/claude/status.ts。T76）。上の印と本日残りに使う。無ければ aiReady だけで「AI 未設定」 */
+  aiStatus?: AiStatus;
   /**
    * AI 提供（ai_overseas）が不同意か（T74 の続き）。true なら開いた時点で入れる欄の AI の操作（分ける・写真と PDF 読取・
    * 問いの自由文・再試行）を押せない形にし、上に「同意 拒否」。手で書く欄（面の「編集」・問いの選ぶ答え・次回）は使える。
@@ -31,12 +34,14 @@ export type IntakeProps = {
   edit: EditData;
 };
 
-export function intakePropsOf(rows: PersonPageRows, aiReady: boolean): IntakeProps {
+/** ai は AI の今の状態（lib/claude/cloudflare.ts の aiStatusFor）か、鍵の有無だけ（テスト・前の呼び方） */
+export function intakePropsOf(rows: PersonPageRows, ai: boolean | AiStatus): IntakeProps {
   return {
     personId: rows.person.id,
     officeId: rows.person.office_id,
     version: rows.person.version ?? 1,
-    aiReady,
+    aiReady: typeof ai === "boolean" ? ai : aiUsable(ai),
+    ...(typeof ai === "boolean" ? {} : { aiStatus: ai }),
     aiConsentRefused: isAiConsentRefused(rows.consents),
     queue: questionQueue(rows),
     ledger: parseLedger(rows.person.ledger),

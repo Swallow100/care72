@@ -169,6 +169,22 @@ describe("入れる欄の画面（components/person/Intake.tsx、T45）", () => 
     expect(html()).not.toContain('data-intake="speak"');
   });
 
+  it("AI の状態（T76）: 未設定・上限到達は中立の地の印（要確認の黄の塗りでない）、使えるときは本日残り。言葉は訓練の画面と同じ", () => {
+    const draw = (ai: Parameters<typeof intakePropsOf>[1]) => renderToStaticMarkup(createElement(Intake, { ...intakePropsOf(seedRows(seed("p-04")), ai), level: 1 }));
+    const unset = draw({ kind: "unset" });
+    expect(unset).toContain("AI 未設定");
+    expect(unset).not.toMatch(/data-tone="check"[^<]*>AI 未設定/);
+    expect(unset).toMatch(/<button[^>]*type="submit"[^>]*disabled=""[^>]*data-intake="split"/);
+    const limit = draw({ kind: "limit", limit: 200 });
+    expect(limit).toContain("AI 上限到達");
+    expect(limit).toMatch(/<button[^>]*type="submit"[^>]*disabled=""[^>]*data-intake="split"/);
+    expect(limit).toMatch(/<label(?=[^>]*data-intake="read")(?=[^>]*aria-disabled="true")[^>]*>/);
+    // 使える: 写真と PDF を押せる（分けるは文字が無いので押せないまま）
+    const ready = draw({ kind: "ready", remaining: 37, limit: 200 });
+    expect(ready).toContain("AI 本日残り 37 / 200 回");
+    expect(ready).not.toMatch(/<label(?=[^>]*data-intake="read")(?=[^>]*aria-disabled="true")[^>]*>/);
+  });
+
   it("AI 未設定: 分ける・写真と PDF は押せず、問いには答えられる", () => {
     const h = html("p-04", false);
     expect(h).toContain("AI 未設定");
