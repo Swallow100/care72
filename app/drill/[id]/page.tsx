@@ -22,6 +22,7 @@ import { callerLabel, callsOf } from "@/lib/drill/calls";
 import { drillScope, type DrillScope } from "@/lib/drill/db";
 import { nowHour, type ActionRecord } from "@/lib/drill/engine";
 import { isDrillId } from "@/lib/drill/http";
+import { loadCallRecords } from "@/lib/drill/responses";
 import { ACTION_LABELS, DRILL_LABELS, elapsedClockLabel, SCENARIO_LABELS, STATUS_LABELS } from "@/lib/drill/labels";
 import { COLOR_LABELS } from "@/lib/labels";
 import { COLOR_TONES } from "@/lib/person";
@@ -194,17 +195,20 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
           </div>
         </div>
       </div>
-      {running && <IncomingCall drillId={id} calls={incomingOf(s, voiceOn)} />}
+      {running && <IncomingCall drillId={id} calls={incomingOf(s, voiceOn, await respondedOf(id))} />}
     </main>
   );
 }
 
-/** 進行中の今の刻みの着信（電話の形の安否、鳴らす順。lib/drill/calls.ts）。名前はケアマネの画面なので出す（声の生成には渡さない） */
-function incomingOf(s: DrillScreen, voiceOn: boolean): IncomingCallItem[] {
+/**
+ * 進行中の今の刻みの着信（電話の形の安否、鳴らす順。lib/drill/calls.ts）。名前はケアマネの画面なので出す（声の生成には渡さない）。
+ * 応答・拒否が訓練の記録にある着信は鳴らさない（別の端末で押した物も）
+ */
+function incomingOf(s: DrillScreen, voiceOn: boolean, responded: ReadonlySet<string>): IncomingCallItem[] {
   const tick = s.ticks.find((t) => t.step === s.drill.step);
   if (!tick) return [];
   return callsOf(tick.turns).flatMap((t) =>
-    t.signal && t.saying
+    t.signal && t.saying && !responded.has(t.signal)
       ? [
           {
             signal: t.signal,
@@ -228,6 +232,16 @@ function recordingsOf(s: DrillScreen): Record<string, string> {
     if (t.signal && t.color === "red" && t.source === "agent" && t.saying) out[t.signal] = voiceHref(s.drill.id, { signal: t.signal });
   }
   return out;
+}
+
+/** 応答・拒否を残した着信の安否の id（T22）。読めなければ空（端末の sessionStorage だけで鳴らし分ける） */
+async function respondedOf(id: string): Promise<Set<string>> {
+  try {
+    const { env } = await getCloudflareContext({ async: true });
+    return new Set((await loadCallRecords(env.DB, id)).flatMap((c) => (c.response ? [c.signal] : [])));
+  } catch {
+    return new Set();
+  }
 }
 
 /** 声を作れるか（Gemini の鍵）。読めなければ文字だけ */
