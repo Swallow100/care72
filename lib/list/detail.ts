@@ -99,8 +99,10 @@ export type DetailContact = {
   tel: string;
   emergencyOrder: number | null;
   supporterOrder: number | null;
-  /** この相手への最後の電話の記録（発信・不通と時刻） */
-  lastCall: { when: string; result: CallLog["result"] } | null;
+  /** 距離（同居・近所・市内…。contacts.reach）。無ければ null */
+  reach: string | null;
+  /** この相手への最後の電話の記録（発信・不通・通話と時刻、通話で聞いた安否） */
+  lastCall: { when: string; result: CallLog["result"]; heard: CallLog["heard"] } | null;
 };
 
 export type DetailClock = {
@@ -292,7 +294,8 @@ function detailContacts(contacts: ReadonlyArray<ContactForDetail>, calls: Readon
         tel: telHref(c.phone!),
         emergencyOrder: c.emergency_order,
         supporterOrder: c.supporter_order,
-        lastCall: last ? { when: shortJst(last.at), result: last.result } : null,
+        reach: c.reach ? CONTACT_REACH_LABELS[c.reach] : null,
+        lastCall: last ? { when: shortJst(last.at), result: last.result, heard: last.heard } : null,
       };
     });
 }
