@@ -381,7 +381,7 @@ export const INTAKE_LABELS = {
   sectionEdit: "編集",
   /** 時計の頼り先の確認（確認済にする・未確認に戻す） */
   checkOn: "確認",
-  checkOff: "未確認へ",
+  checkOff: "確認取消",
   addContact: "連絡先追加",
   addHazard: "ハザード",
   addDevice: "機器",
@@ -392,7 +392,7 @@ export const INTAKE_SAYS = {
   /** 「7 項目に分けました（医療 3・連絡先 2・避難 2）」 */
   split: (n: number, parts: string) => `${n} 項目に分けました${parts ? `（${parts}）` : ""}`,
   /** 分ける物が無かった */
-  none: "台帳の欄に入る事が見つかりませんでした",
+  none: "本人のページに入る事は見つかりませんでした",
   /** 写真・PDF を読んだ（「お薬手帳.jpg を読みました」） */
   read: (name: string) => `${name} を読みました`,
   saved: (n: number) => `${n} 件を保存しました`,

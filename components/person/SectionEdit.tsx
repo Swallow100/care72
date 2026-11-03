@@ -48,7 +48,7 @@ import {
 } from "@/lib/intake/edit";
 import { INTAKE_FIELDS } from "@/lib/intake/fields";
 import { FieldInput } from "./IntakeChanges";
-import { EditIcon } from "./icons";
+import { CheckIcon, EditIcon } from "./icons";
 import { isError, postJson } from "./intake-api";
 import { CHECK, INPUT, INPUT_IN } from "./intake-ui";
 import { StateText } from "./parts";
@@ -208,7 +208,7 @@ export function SectionForm({ section, data, draft, set }: FormProps) {
               </div>
             ))}
             <Checks
-              label={INTAKE_LABELS.addDevice}
+              label="追加"
               options={DEVICE_KINDS.filter((k) => !draft.devices.some((d) => d.kind === k)).map((k) => ({ value: k, label: DEVICE_LABELS[k] }))}
               picked={draft.newDevices}
               onChange={(v) => set({ newDevices: v as EditDraft["newDevices"] })}
@@ -256,6 +256,7 @@ export function SectionForm({ section, data, draft, set }: FormProps) {
                         </StateText>
                         <Button
                           size="sm"
+                          icon={check === "confirmed" ? CloseIcon : CheckIcon}
                           onClick={() => set({ checks: { ...draft.checks, [k.id]: (check === "confirmed" ? "unconfirmed" : "confirmed") as CheckStatus } })}
                         >
                           {check === "confirmed" ? INTAKE_LABELS.checkOff : INTAKE_LABELS.checkOn}
@@ -291,7 +292,7 @@ export function SectionForm({ section, data, draft, set }: FormProps) {
               </div>
             ))}
             <Checks
-              label={INTAKE_LABELS.addHazard}
+              label="追加"
               options={HAZARD_KINDS.filter((k) => !draft.hazards.some((h) => h.kind === k)).map((k) => ({ value: k, label: HAZARD_LABELS[k] }))}
               picked={draft.newHazards}
               onChange={(v) => set({ newHazards: v as EditDraft["newHazards"] })}
@@ -372,7 +373,7 @@ function Checks({
   if (options.length === 0) return null;
   return (
     <div className={ROW}>
-      <span className={SUB}>{label}追加</span>
+      <span className={SUB}>{label}</span>
       <div className="flex flex-wrap gap-x-3 gap-y-1">
         {options.map((o) => (
           <label key={o.value} className="inline-flex items-center gap-1 text-sm">

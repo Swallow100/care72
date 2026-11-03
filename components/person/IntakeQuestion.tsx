@@ -6,6 +6,8 @@
 // 「不明」「無回答」は空欄の理由として残し、「次回」はこの回は飛ばして未聴取として残す（どれも計画に「未確認」）。
 
 import { useState } from "react";
+import { SaveIcon } from "@/components/ui/Icon";
+import { SplitIcon } from "./icons";
 import type { PendingStatus } from "@/lib/db/types";
 import { CLOCK_UNIT_LABELS, INTAKE_LABELS, PENDING_STATUS_LABELS, SECTION_LABELS } from "@/lib/labels";
 import { answerChanges, type AnswerInput } from "@/lib/intake/answer";
@@ -89,6 +91,7 @@ function QuestionBody({ q, left, busy, aiReady, onAnswer, onSkip, onFree }: Omit
               ))}
             </div>
             <button type="button" className={BTN_MAIN} data-press="overlay" disabled={busy || picked.length === 0} onClick={() => submit({ kind: "choice", values: picked })}>
+              <SaveIcon aria-hidden className="size-3.5 shrink-0" />
               {INTAKE_LABELS.save}
             </button>
           </div>
@@ -120,7 +123,8 @@ function QuestionBody({ q, left, busy, aiReady, onAnswer, onSkip, onFree }: Omit
           {a.kind === "clock" && <span className="shrink-0 text-sm">{CLOCK_UNIT_LABELS[a.unit]}</span>}
           {a.kind === "int" && a.unit && <span className="shrink-0 text-sm">{a.unit}</span>}
           <button type="submit" className={`${BTN_MAIN} shrink-0`} data-press="overlay" disabled={busy || value.trim() === ""}>
-            {INTAKE_LABELS.save}
+            <SaveIcon aria-hidden className="size-3.5 shrink-0" />
+              {INTAKE_LABELS.save}
           </button>
         </form>
       )}
@@ -144,6 +148,7 @@ function QuestionBody({ q, left, busy, aiReady, onAnswer, onSkip, onFree }: Omit
           )}
           <div className="flex gap-1">
             <button type="button" className={BTN_MAIN} data-press="overlay" disabled={busy || picked.length === 0} onClick={() => submit({ kind: "night", contactIds: picked })}>
+              <SaveIcon aria-hidden className="size-3.5 shrink-0" />
               {INTAKE_LABELS.save}
             </button>
             {a.contacts.length > 0 && (
@@ -165,6 +170,7 @@ function QuestionBody({ q, left, busy, aiReady, onAnswer, onSkip, onFree }: Omit
         >
           <textarea className={INPUT} rows={2} value={value} onChange={(e) => setValue(e.target.value)} aria-label={q.label} disabled={!aiReady} />
           <button type="submit" className={BTN_MAIN} data-press="overlay" disabled={busy || !aiReady || value.trim() === ""}>
+            <SplitIcon aria-hidden className="size-3.5 shrink-0" />
             {INTAKE_LABELS.split}
           </button>
         </form>

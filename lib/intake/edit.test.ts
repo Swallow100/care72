@@ -146,7 +146,7 @@ describe("入れる欄の画面（components/person/Intake.tsx、T45）", () => 
       { section: "basic", change: null },
     ] as unknown as DiffItem[];
     expect(splitSay(items)).toBe("3 項目に分けました（医療 2・避難 1）");
-    expect(splitSay([])).toBe("台帳の欄に入る事が見つかりませんでした");
+    expect(splitSay([])).toBe("本人のページに入る事は見つかりませんでした");
     const props = intakePropsOf(seedRows(seed("p-04")), true);
     const render = (entry: LogEntry) =>
       renderToStaticMarkup(

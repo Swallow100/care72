@@ -23,11 +23,11 @@ import { changeText, type IntakeChange } from "@/lib/intake/changes";
 import type { DiffItem } from "@/lib/intake/diff";
 import { INTAKE_SECTIONS } from "@/lib/intake/fields";
 import type { IntakeProps } from "@/lib/intake/props";
-import { MicIcon, ReadFileIcon, StopIcon } from "./icons";
+import { MicIcon, ReadFileIcon, RetryIcon, SplitIcon, StopIcon } from "./icons";
 import { isError, postForm, postJson } from "./intake-api";
 import { IntakeChanges, rowsOf, type ChangeRow } from "./IntakeChanges";
 import { IntakeQuestion, QuestionText } from "./IntakeQuestion";
-import { BTN_IN, INPUT } from "./intake-ui";
+import { INPUT } from "./intake-ui";
 import { AiMark, StateTag, type Level } from "./parts";
 
 /** 入力の文の長さの上限（lib/intake/extract.ts の INTAKE_TEXT_MAX と同じ） */
@@ -248,7 +248,7 @@ export function Intake(props: IntakeProps & { level: Level }) {
           <span className="text-xs text-muted tabular-nums">
             {text.length}/{TEXT_MAX}
           </span>
-          <Button type="submit" kind="main" size="sm" className="ml-auto" disabled={working || listening || !aiReady || text.trim() === ""} data-intake="split">
+          <Button type="submit" kind="main" size="sm" icon={SplitIcon} className="ml-auto" disabled={working || listening || !aiReady || text.trim() === ""} data-intake="split">
             {INTAKE_LABELS.split}
           </Button>
         </div>
@@ -361,7 +361,7 @@ export function LogBubble({ entry: e, props, busy, aiReady, onRows, onSave, onDi
     case "app":
       return (
         <Bubble who="app">
-          <span className={e.tone === "danger" ? "font-bold text-danger" : e.tone === "ok" ? "font-bold text-state-ok" : "text-muted"}>{e.text}</span>
+          <span className={e.tone === "danger" ? "font-bold text-danger" : e.tone === "ok" ? "font-bold" : "text-muted"}>{e.text}</span>
         </Bubble>
       );
     case "ask":
@@ -379,9 +379,9 @@ export function LogBubble({ entry: e, props, busy, aiReady, onRows, onSave, onDi
               <span className="font-bold text-danger">{e.label}</span>
               {e.reason && <span className="text-xs font-bold">{AI_FAIL_REASON_LABELS[e.reason]}</span>}
               {e.retry && (
-                <button type="button" className={`${BTN_IN} ml-auto`} data-press disabled={busy || !aiReady} onClick={() => onRetry(e.retry!)}>
+                <Button kind="plainIn" size="sm" icon={RetryIcon} className="ml-auto" disabled={busy || !aiReady} onClick={() => onRetry(e.retry!)}>
                   {INTAKE_LABELS.retry}
-                </button>
+                </Button>
               )}
             </div>
           </Bubble>
