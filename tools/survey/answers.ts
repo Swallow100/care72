@@ -1,23 +1,23 @@
-// docs/survey/answers.md（紙の答えを写した表）を読み、選択の問いを数え、自由記述に個人の情報が混ざっていないかを調べる。
+// docs/survey/answers.md（Web の答えの写しの表）を読み、選択の問いを数え、自由記述に個人の情報が混ざっていないかを調べる。
 // ここは機械の仕事だけ（Claude を呼ばない）。呼ぶのは summarize.ts。表の形は docs/survey/README.md。
 
 import {
   CHOICE_QUESTIONS,
   COLUMNS,
-  FREE_QUESTIONS,
+  TEXT_FIELDS,
   choiceQuestion,
   type ChoiceKey,
   type Combined,
-  type FreeKey,
+  type TextKey,
 } from "./questions.ts";
 
 export type Respondent = {
-  /** 紙に振った通し番号（名前ではない） */
+  /** 通し番号（Web は W001…。名前ではない） */
   id: string;
-  /** 選んだ記号。答えなしは空、問 3 だけ複数 */
+  /** 選んだ記号。答えなしは空、問 4・問 6 だけ複数 */
   choices: Record<ChoiceKey, string[]>;
-  /** 自由記述の文。答えなしは null */
-  free: Record<FreeKey, string | null>;
+  /** 文の欄（記入欄とその他の記入）。答えなしは null */
+  free: Record<TextKey, string | null>;
 };
 
 export class AnswersError extends Error {
@@ -121,10 +121,10 @@ export function parseAnswers(markdown: string): Respondent[] {
       choices[q.key] = codes;
     }
 
-    const free = {} as Record<FreeKey, string | null>;
-    for (const q of FREE_QUESTIONS) {
-      const text = cell(q.column);
-      free[q.key] = BLANKS.has(text) ? null : text;
+    const free = {} as Record<TextKey, string | null>;
+    for (const f of TEXT_FIELDS) {
+      const text = cell(f.column);
+      free[f.key] = BLANKS.has(text) ? null : text;
     }
     respondents.push({ id, choices, free });
   });
@@ -161,7 +161,7 @@ export function tallyChoice(respondents: ReadonlyArray<Respondent>, key: ChoiceK
   };
 }
 
-/** 合算（例: 問 2 で「1 時間〜半日」か「半日より長い」を選んだ人）。母数は答えた人（except の記号を選んだ人は除く） */
+/** 合算（例: 問 2 で 1 時間より長いを選んだ人）。母数は答えた人（except の記号を選んだ人は除く） */
 export function combinedCount(
   respondents: ReadonlyArray<Respondent>,
   combined: Combined,
@@ -233,23 +233,26 @@ export function findRisks(text: string): string[] {
   return found;
 }
 
-// ---------- 自由記述 ----------
+// ---------- 文の欄（記入欄とその他の記入） ----------
 
 export type FreeItem = {
-  /** 例 問4-003。AI に渡すキーにもなる */
+  /** 例 問5-W003。AI に渡すキーにもなる */
   ref: string;
   respondent: string;
-  key: FreeKey;
+  key: TextKey;
   text: string;
 };
 
 export type HeldItem = { ref: string; reasons: string[] };
 
-export const refOf = (key: FreeKey, respondentId: string): string => `${key === "q4" ? "問4" : "問7理由"}-${respondentId}`;
+export const refOf = (key: TextKey, respondentId: string): string => {
+  const f = TEXT_FIELDS.find((x) => x.key === key);
+  return `${f ? f.column : key}-${respondentId}`;
+};
 
 /**
- * 自由記述を、AI に渡してよい物と、手で確かめる物に分ける。
- * - 引用が「よい」でない人の記入欄は、写さない決まり（紙で「よくない」なら使わない）。写してあれば止める。
+ * 文の欄を、使ってよい物（AI に渡す・summary.md に並べる）と、手で確かめる物に分ける。
+ * - 引用が「よい」でない人の文（その他の記入も）は、写さない決まり。写してあれば止める。
  * - 名前・電話などの疑いがある物は止める。直して（answers.md）もう一度流す。
  */
 export function collectFreeItems(respondents: ReadonlyArray<Respondent>): { items: FreeItem[]; held: HeldItem[] } {
@@ -257,15 +260,15 @@ export function collectFreeItems(respondents: ReadonlyArray<Respondent>): { item
   const held: HeldItem[] = [];
   for (const r of respondents) {
     const quoteOk = r.choices.quote.includes("a");
-    for (const q of FREE_QUESTIONS) {
-      const text = r.free[q.key];
+    for (const f of TEXT_FIELDS) {
+      const text = r.free[f.key];
       if (text === null) continue;
-      const ref = refOf(q.key, r.id);
+      const ref = refOf(f.key, r.id);
       const reasons: string[] = [];
       if (!quoteOk) reasons.push("引用が「よい」でないのに記入欄の文が写されている（写さない決まり）");
       reasons.push(...findRisks(text));
       if (reasons.length > 0) held.push({ ref, reasons });
-      else items.push({ ref, respondent: r.id, key: q.key, text });
+      else items.push({ ref, respondent: r.id, key: f.key, text });
     }
   }
   return { items, held };

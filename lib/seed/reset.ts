@@ -9,7 +9,7 @@
 // - デモ事業所の人と、その人に付いた行（連絡先・同意・時計・信号・経過・受け持ち・第三者提供・様式 9 の手直し）
 // - 医療班・行政の役の審査員などデモ事業所のアカウントがその場で登録した所属なしの人（T23。先にデモ事業所へ移してから一緒に消す）
 // - デモ事業所の訓練・事業所の経過・災害モード・様式の対応表、種に無いデモ事業所のアカウント（T30 で足したケアマネ）
-// - 審査員が作ったアンケートのリンクと、その答え（T42。試しの答えを本物のケアマネの答えに混ぜない）
+// - 審査員が作ったアンケートのリンクと、その答え（T42・T65。試しの答えを本物の答えに混ぜない）
 // 消さない物:
 // - 審査員でない人（山本など）が作ったアンケートのリンクと答え（協力してくれるケアマネの本物の答え。毎朝消えては困る）。
 //   送信の試みの数え（survey_attempts）も、戻すたびに 0 になると回数の上限が効かないので残す
@@ -40,12 +40,16 @@ const UNAFFILIATED = lit(UNAFFILIATED_OFFICE_ID);
 const PEOPLE = `SELECT id FROM people WHERE office_id = ${OFFICE}`;
 const DRILLS = `SELECT id FROM drills WHERE office_id = ${OFFICE}`;
 /** 審査員がデモ事業所で作ったアンケートのリンク（T42） */
+/** 審査員がデモ事業所で作った共有のリンク（T65） */
+const JUDGE_SURVEY_SHARES = `SELECT token FROM survey_shares WHERE office_id = ${OFFICE} AND created_role = 'judge'`;
 const JUDGE_SURVEY_LINKS = `SELECT token FROM survey_links WHERE office_id = ${OFFICE} AND created_role = 'judge'`;
 /** 消さないアカウント（種のデモ事業所の物）。変えられないアカウント（T61）と同じ 1 つの元から読む */
 const SEED_ACCOUNT_IDS = FIXED_ACCOUNT_IDS.map((id) => lit(id));
 
 /** 表ごとに消す範囲（WHERE の中身）。null は消さない。CLEAR_ORDER と同じ順に流す */
 export const DEMO_CLEAR: Readonly<Record<Table, string | null>> = {
+  survey_responses: `token IN (${JUDGE_SURVEY_SHARES})`,
+  survey_shares: `office_id = ${OFFICE} AND created_role = 'judge'`,
   survey_answers: `token IN (${JUDGE_SURVEY_LINKS})`,
   survey_links: `office_id = ${OFFICE} AND created_role = 'judge'`,
   survey_attempts: null,

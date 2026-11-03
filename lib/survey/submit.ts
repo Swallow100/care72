@@ -1,28 +1,29 @@
-// アンケートの送信の受け口（docs/tasks/T42.md）。ログインなしで呼べる API はこれだけ。
+// アンケートの送信の受け口（docs/tasks/T42.md、T65 で共有のリンクに）。ログインなしで呼べる API はこれだけ。
 // route は要求から値を取り出して渡し、ここの結果を応答にするだけ（D1 と時刻を引数で受ける。テストは node:sqlite）。
 //
 // ボットの守り（上から順に見る）:
 // 1. 同じ送信元（CF-Connecting-IP の鍵付きハッシュ）は 1 時間に 20 回まで。断った送信も数える → 429
 // 2. Content-Type が application/json でなければ 415、本文が 8 KB を超えれば 413、JSON でなければ 400
-// 3. token が無い・使用済み・期限切れ → 404
+// 3. token が無い → 404。受付終了（期限を過ぎた・30 件に届いた・T42 の 1 人 1 本のリンク）→ 410
 // 4. 見えない欄（honeypot。人には見えず、ボットが埋める）に何か入っていれば、200 を返して何も残さない
-// 5. 頁を開いてから 15 秒未満の送信は断る（頁を開かずに送った物も）→ 400
+// 5. 頁を開いてから 15 秒未満の送信は断る。開いた時刻は頁に埋めた署名つきの印（opened）で見る（印の無い・合わない物も）→ 400
 // 6. Turnstile の鍵があるときだけ、その確かめ → 400
 // 7. 答えの形（知らない記号・長すぎる文・何も答えていない）→ 400
-// 保存は 1 つの取引で、答えを入れてから token を使用済みにする（同じ token の 2 度目は入らない）。
+// 保存は 1 文で、受付中（期限の前・件数が上限の下）のときだけ入れる（同時に送られても 31 件目は入らない）。
+// IP ごとの件数の上限は付けない（同じ職場の Wi-Fi で何人も答える。DECISIONS 11/3 23:1x）。同じ端末の 2 回目は頁の側の印（cookie と localStorage）で止める。
 
 import type { D1Database } from "@cloudflare/workers-types";
 import { utf8 } from "../auth/bytes.ts";
-import { answerColumns, parseSurveyAnswers } from "./answer.ts";
+import { answerColumns, parseSurveyAnswers, RESPONSE_COLUMNS } from "./answer.ts";
 import { BODY_MAX_BYTES, HONEYPOT_FIELD } from "./form.ts";
-import { liveSurveyLink } from "./store.ts";
+import { lookupSurveyShare } from "./store.ts";
 import { SURVEY_LABELS } from "./text.ts";
-import { MIN_FILL_SEC, RATE_LIMIT_PER_HOUR, sourceHash } from "./token.ts";
+import { MIN_FILL_SEC, RATE_LIMIT_PER_HOUR, sourceHash, stampTime } from "./token.ts";
 import type { TurnstileKeys, TurnstileVerify } from "./turnstile.ts";
 
 export { HONEYPOT_FIELD };
 
-export type SubmitError = "limited" | "content_type" | "too_large" | "invalid" | "gone" | "too_fast" | "turnstile" | "empty";
+export type SubmitError = "limited" | "content_type" | "too_large" | "invalid" | "gone" | "closed" | "too_fast" | "turnstile" | "empty";
 
 const STATUS: Record<SubmitError, number> = {
   limited: 429,
@@ -30,6 +31,7 @@ const STATUS: Record<SubmitError, number> = {
   too_large: 413,
   invalid: 400,
   gone: 404,
+  closed: 410,
   too_fast: 400,
   turnstile: 400,
   empty: 400,
@@ -41,6 +43,7 @@ const LABEL: Record<SubmitError, string> = {
   too_large: SURVEY_LABELS.failed,
   invalid: SURVEY_LABELS.failed,
   gone: SURVEY_LABELS.gone,
+  closed: SURVEY_LABELS.closed,
   too_fast: SURVEY_LABELS.tooFast,
   turnstile: SURVEY_LABELS.turnstile,
   empty: SURVEY_LABELS.empty,
@@ -98,14 +101,17 @@ export async function submitSurvey(db: D1Database, input: SubmitInput): Promise<
   const body = raw as Record<string, unknown>;
 
   const nowIso = input.now.toISOString();
-  const link = await liveSurveyLink(db, input.token, nowIso);
-  if (!link) return fail("gone");
+  const found = await lookupSurveyShare(db, input.token, nowIso);
+  if (found.kind === "missing") return fail("gone");
+  if (found.kind === "closed") return fail("closed");
+  const token = found.share.token;
 
-  // 見えない欄に何か入っていれば、ボット。断ったと気づかせないよう 200 を返し、答えも token の状態も残さない
+  // 見えない欄に何か入っていれば、ボット。断ったと気づかせないよう 200 を返し、答えを残さない
   const trap = body[HONEYPOT_FIELD];
   if (trap !== undefined && trap !== null && trap !== "") return OK;
 
-  if (link.opened_at === null || input.now.getTime() - Date.parse(link.opened_at) < MIN_FILL_SEC * 1000) return fail("too_fast");
+  const openedAt = await stampTime(body.opened, token, input.now, input.secret);
+  if (openedAt === null || input.now.getTime() - openedAt < MIN_FILL_SEC * 1000) return fail("too_fast");
 
   if (input.turnstile) {
     const response = body.turnstile;
@@ -117,28 +123,29 @@ export async function submitSurvey(db: D1Database, input: SubmitInput): Promise<
   if (!parsed.ok) return fail(parsed.error);
   const c = answerColumns(parsed.value);
 
-  // 答えを入れるのは、token がまだ使えるときだけ。入れたら使用済みに（1 つの取引。2 度目は答えの token の重なりでも止まる）
+  // 受付中のときだけ入れる（期限の前で、件数が上限の下）。1 文なので、同時に送られても上限を超えない
+  const cols = ["token", ...RESPONSE_COLUMNS, "source_hash", "submitted_at"];
+  const values = [token, ...RESPONSE_COLUMNS.map((k) => c[k]), hash, nowIso];
+  const marks = values.map((_, i) => `?${i + 1}`);
+  const tokenMark = "?1";
+  const nowMark = `?${values.length}`;
   try {
-    const [inserted] = await db.batch([
-      db
-        .prepare(
-          `INSERT INTO survey_answers (token, role, experience, q1, q2, q3, q4, q5, q6, q7, q7_reason, quote, source_hash, submitted_at)
-           SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14
-            WHERE EXISTS (SELECT 1 FROM survey_links WHERE token = ?1 AND used_at IS NULL AND expires_at > ?14)`,
-        )
-        .bind(link.token, c.role, c.experience, c.q1, c.q2, c.q3, c.q4, c.q5, c.q6, c.q7, c.q7_reason, c.quote, hash, nowIso),
-      db
-        .prepare(
-          `UPDATE survey_links SET used_at = ?2
-            WHERE token = ?1 AND used_at IS NULL AND EXISTS (SELECT 1 FROM survey_answers WHERE token = ?1)`,
-        )
-        .bind(link.token, nowIso),
-    ]);
-    if ((inserted?.meta?.changes ?? 0) !== 1) return fail("gone");
+    const result = await db
+      .prepare(
+        `INSERT INTO survey_responses (${cols.join(", ")})
+         SELECT ${marks.join(", ")}
+          WHERE EXISTS (
+            SELECT 1 FROM survey_shares s
+             WHERE s.token = ${tokenMark} AND s.expires_at > ${nowMark}
+               AND (SELECT count(*) FROM survey_responses r WHERE r.token = s.token) < s.max_answers)`,
+      )
+      .bind(...values)
+      .run();
+    if ((result.meta?.changes ?? 0) !== 1) return fail("closed");
   } catch (e) {
-    // 同じ token の答えが先に入った（重なり）か、D1 の失敗。答えの中身はログに出さない
+    // D1 の失敗。答えの中身はログに出さない
     console.error("アンケートの答えを保存できない", e instanceof Error ? e.name : "unknown");
-    return fail("gone");
+    return fail("invalid");
   }
   return OK;
 }
