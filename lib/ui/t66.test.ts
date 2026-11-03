@@ -30,6 +30,7 @@ const { ColorCounts } = await import("../../components/disaster/ColorCounts.tsx"
 const { DisasterSummary } = await import("../../components/list/DisasterSummary.tsx");
 const { DisasterTable } = await import("../../components/list/DisasterTable.tsx");
 const { SortHeader } = await import("../../components/list/SortHeader.tsx");
+const { FilterBar } = await import("../../components/list/FilterBar.tsx");
 const { StaffTable } = await import("../../components/staff/StaffTable.tsx");
 const { BrandMark } = await import("../../components/brand/BrandMark.tsx");
 const { default: LoginPage } = await import("../../app/login/page.tsx");
@@ -200,6 +201,52 @@ describe("残りの列（状態の色が付くときは塗りの印）", () => {
   });
 });
 
+describe("担当一覧の絞込の帯（見出しと押せる物を分ける）", () => {
+  const props = {
+    areas: ["かわなぎ町"],
+    marks: [["oxygen", "酸素"]] as Array<["oxygen", string]>,
+    sort: "tier" as const,
+    dir: "asc" as const,
+    open: null,
+    filter: { color: "yellow" as const, area: null, mark: null, q: "" },
+  };
+
+  it("状態は受入一覧と同じ切替（地のあるボタン・人数の印・0 は灰・選んだ印は枠）。見出し「状態・地区・医療」は地なしの言葉", () => {
+    const m = html(createElement(FilterBar, { ...props, disaster: true, colorCounts: { red: 2, yellow: 1, gray: 0, green: 0 } }));
+    const fs = m.match(/<fieldset[^>]*data-filter="color"[\s\S]*?<\/fieldset>/)?.[0] ?? "";
+    expect(fs).toMatch(/<span class="mr-0.5 text-muted text-xs" aria-hidden="true">状態<\/span>/);
+    const buttons = [...fs.matchAll(/<button [^>]*>[\s\S]*?<\/button>/g)].map((b) => b[0]);
+    expect(buttons.length).toBe(5);
+    for (const b of buttons) {
+      // スクリプトが動かなくても GET の form で絞れる（送信のボタンに name=color）
+      expect(b).toMatch(/^<button type="submit" value="(|red|yellow|gray|green)"/);
+      expect(b).toMatch(/ name="color"[ >]/);
+      expect(b).toContain("bg-panel2");
+      expect(b).toContain("focus-visible:outline-solid");
+    }
+    const by = Object.fromEntries(buttons.map((b) => [b.match(/data-state-filter="([a-z]+)"/)![1], b]));
+    expect(by.yellow).toMatch(/aria-pressed="true"/);
+    expect(by.yellow).toContain("ring-accent");
+    expect(by.all).toMatch(/aria-pressed="false"/);
+    expect(by.red).toMatch(/bg-state-urgent-fill[^>]*>至急<\/span><span class="font-bold tabular-nums ">2<\/span>/);
+    expect(by.gray).toMatch(/data-zero[^>]*>不明<\/span><span class="font-bold tabular-nums text-muted">0<\/span>/);
+    // 見出しの言葉は押せる形にしない（地なしの span）。押せる物は選ぶ欄の箱
+    for (const word of ["地区", "医療"]) expect(m).toMatch(new RegExp(`<span class="text-xs text-muted">${word}</span>`));
+    expect(m).not.toMatch(/<select|<option/);
+    // 平時は状態で絞らない
+    expect(html(createElement(FilterBar, { ...props, filter: { ...props.filter, color: null }, disaster: false }))).not.toContain('data-filter="color"');
+  });
+});
+
+describe("ルールの表の説明の言葉", () => {
+  it("「受け持ち」は「受入一覧」に（説明の言葉だけ。行の数と出典は同じ）、docs/TRIAGE.md も同じ言葉", () => {
+    const root = join(import.meta.dirname, "..", "..");
+    const doc = readFileSync(join(root, "docs", "TRIAGE.md"), "utf8");
+    expect(doc).not.toContain("受け持ち");
+    expect(doc).toContain("受入一覧から搬送で外した知らせ");
+  });
+});
+
 describe("並べ替えの見出し（担当一覧・訓練）", () => {
   it("押していない列は上下の印、押している列は下線と向きの印。640px 未満は印を言葉の下に", () => {
     const off = html(createElement("table", null, createElement("thead", null, createElement("tr", null, createElement(SortHeader, { k: "kana", sort: "tier" })))));
@@ -216,14 +263,15 @@ describe("並べ替えの見出し（担当一覧・訓練）", () => {
 // ---------- ログイン・印・言葉 ----------
 
 describe("ログインと印", () => {
-  it("ログインの上の説明の見出しと、審査員の 1 行を外す。名前「ケア72」・見出し「ログイン」・印は残す", async () => {
+  it("ログインの上の説明の見出しと、審査員の 1 行を外す。見出しは「ログイン」だけで、印と名前はヘッダーの 1 か所（頁の中に重ねない）", async () => {
     const m = html(await LoginPage({ searchParams: Promise.resolve({}) }));
     expect(m).not.toContain("ケアマネの知っていること");
     expect(m).not.toContain("計画・訓練・発災時");
     expect(m).not.toContain("審査員");
-    expect(m).toContain("ケア72");
+    expect(m).not.toContain("ケア72");
     expect(m).toMatch(/<h1 id="login-title"[^>]*>\s*ログイン\s*<\/h1>/);
-    expect(m).toContain("<svg");
+    // 印（72 時間の輪）も頁の中には出さない（ヘッダーの左上にある）
+    expect(m).not.toContain(">72</text>");
     // 新規登録は作らない（DECISIONS 11/4 00:5x）
     expect(m).not.toContain("新規登録");
   });

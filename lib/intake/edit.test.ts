@@ -65,8 +65,8 @@ describe("面の編集の変更（lib/intake/edit.ts）", () => {
   it("人: 連絡先は直した所だけ（空にすると消す・夜間は未確認に戻せる）、足す連絡先は書いた所だけ", () => {
     const d = editOf("p-04");
     const draft = editDraft(d);
-    expect(draft.contacts.map((c) => c.id)).toEqual(["c-04-1", "c-04-2"]); // 本人の行は出さない
-    draft.contacts[1] = { ...draft.contacts[1], phone: "090-0000-0099", note: "", night: "yes" };
+    expect(draft.contacts.map((c) => c.id)).toEqual(["c-04-0", "c-04-1", "c-04-2"]); // 本人の電話の行も出す（T68。電話と備考だけを直す）
+    draft.contacts[2] = { ...draft.contacts[2], phone: "090-0000-0099", note: "", night: "yes" };
     draft.newContacts = [
       { id: null, kind: "supporter", relation: "隣人", name: "", phone: "", night: "no", note: "", emergency: "", supporter: "", reach: "" },
       { id: null, kind: "family", relation: "", name: "", phone: "", night: "", note: "", emergency: "", supporter: "", reach: "" }, // 空 → 送らない

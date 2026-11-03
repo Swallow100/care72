@@ -452,6 +452,38 @@ export const INTAKE_LABELS = {
   clockCategory: "対象",
   clockSource: "出典",
   clockSourceNote: "出典補記",
+  /** 本人の電話（連絡先の kind self、T68）が 2 つ（1 人 1 つ） */
+  selfTwice: "本人重複",
+} as const;
+
+/**
+ * 地域と住所（T68）: 本人のページの基本の面の 市・町名・位置、連絡先のスマホ・車、事業所の地域（市・中心）。
+ * ボタン・見出し・状態は 2〜4 字
+ */
+export const PLACE_LABELS = {
+  city: "市",
+  town: "町名",
+  location: "位置",
+  /** 事業所の画面の区分と、その中の欄 */
+  region: "地域",
+  center: "中心",
+  save: "保存",
+  /** 位置を外す・地図の拡大と縮小 */
+  unset: "外す",
+  zoomIn: "拡大",
+  zoomOut: "縮小",
+  /** 位置・中心がまだ無い */
+  none: "未設定",
+  /** スマホ・車の有無の選択（— / あり / なし） */
+  smartphone: "スマホ",
+  car: "車",
+  yes: "あり",
+  no: "なし",
+  unknown: "未確認",
+  /** 事業所の地域の保存を断った（市が空・緯度経度の外・片方だけ） */
+  bad: "保存不可",
+  /** 写真の縮小で読めない形（HEIC など）。受ける形を 1 行で */
+  fileKinds: "JPEG・PNG・PDF",
 } as const;
 
 /**

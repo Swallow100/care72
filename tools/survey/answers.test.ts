@@ -212,9 +212,9 @@ describe("質問の文書", () => {
     for (const q of FREE_QUESTIONS) expect(questions, q.column).toContain(q.text);
     for (const doc of [questions]) {
       for (const q of CHOICE_QUESTIONS) {
-        // 「問 3　」の見出しから後ろで、選択肢が紙の並びの順に出る
+        // 「問3　」の見出しから後ろで、選択肢が紙の並びの順に出る
         const n = /^q(\d)$/.exec(q.key)?.[1];
-        let from = n ? doc.indexOf(`問 ${n}　`) : 0;
+        let from = n ? doc.indexOf(`問${n}　`) : 0;
         expect(from, `${q.column} の見出し`).toBeGreaterThanOrEqual(0);
         for (const c of q.choices) {
           const at = doc.indexOf(c.label, from);
