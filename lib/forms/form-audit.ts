@@ -20,7 +20,9 @@ export type AuditResult =
   /** 様式にあって、ケア72 が書かない欄（理由は note） */
   | "書かない"
   /** 様式から何の欄か読み取れなかった */
-  | "未照合";
+  | "未照合"
+  /** 違いがあり、直すかは作者の判断待ち（docs/progress/t47.md の問い） */
+  | "問い";
 
 export type AuditRow = {
   /** 様式の何頁 */
@@ -316,7 +318,7 @@ export const MEDICAL_AUDIT: FormAudit = {
     },
     {
       page: 2,
-      original: "2 頁のほかの欄（J-SPEED・バイタルサイン・主訴・現病歴・診断・処置・処方など）",
+      original: "2 頁のほかの欄（J-SPEED・バイタルサイン・主訴・現病歴・処置・処方など）",
       keys: [],
       result: "書かない",
       note: "医療班が書く欄",
@@ -334,8 +336,8 @@ export const MEDICAL_AUDIT: FormAudit = {
     { where: "字の太さ", result: "直した", note: "様式に太字は無い（MS 明朝・MS ゴシックだけ）。前は値・薬の名前・中断注意・ID・見出しを太字にしていた" },
     {
       where: "アドバイザー（11/3 14:1x の (3)）: 内容を変えずに並べ替えるだけ",
-      result: "表記",
-      note: "値は台帳の言葉のまま並べ替える。並べ替えの外は 3 つ: 様式の □ の印（薬の区分・年齢・手帳から機械的に）、メディカル ID の組み立て（様式の決まりどおり）、中断注意の印（優先の骨格の段から。11/3 04:0x 確定）。中断注意の印を残すかは作者への問い",
+      result: "問い",
+      note: "値は台帳の言葉のまま並べる。並べ替えの外は 3 つ: 様式の □ の印（薬の区分・年齢・手帳から機械的に）、メディカル ID の組み立て（様式の決まりどおり）、中断注意の印（優先の骨格の段から。11/3 04:0x 確定。様式の特記事項の欄の中にも出る）。紙の注に「□ と中断注意の印は機械的に付けた」と書いた。中断注意の印を残すか・補足の表だけに移すかは作者への問い",
     },
     {
       where: "アドバイザー（11/3 14:1x の (3)）: 元の記録と並べて見られる",
@@ -345,7 +347,7 @@ export const MEDICAL_AUDIT: FormAudit = {
     {
       where: "アドバイザー（11/3 14:1x の (3)）: 医師が書く判断の欄は空けたまま",
       result: "一致",
-      note: "初診日・初診医師・傷病名・トリアージ・診断・処置などは前から書かない。紙の注に「医療班が書く欄で、ここには書かない」の 1 行を足した",
+      note: "初診日・初診医師・傷病名・トリアージ・処置などは前から載せない（紙に枠も刷らない。医療班は災害診療記録の本紙に書く）。紙の注に「医療班が書く欄は載せていない」を足した",
     },
   ],
 };
@@ -397,7 +399,7 @@ export function normalizeLabel(s: string): string {
 
 /** 結果ごとの数 */
 export function auditCounts(a: FormAudit): Record<AuditResult, number> {
-  const out: Record<AuditResult, number> = { 一致: 0, 直した: 0, 表記: 0, 名付け: 0, 様式外: 0, 書かない: 0, 未照合: 0 };
+  const out: Record<AuditResult, number> = { 一致: 0, 直した: 0, 表記: 0, 名付け: 0, 様式外: 0, 書かない: 0, 未照合: 0, 問い: 0 };
   for (const r of a.rows) out[r.result] += 1;
   for (const t of a.texts ?? []) out[t.result] += 1;
   return out;

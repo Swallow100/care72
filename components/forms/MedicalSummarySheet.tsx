@@ -313,7 +313,7 @@ export function MedicalSummaryPaper({
 
           <div className="small-note">
             <p>
-              ※欄の順は災害診療記録2018（一般診療版）による（既往症・予防接種は様式の2頁）。値は台帳の記録を並べ替えた物で、初診日・傷病名・トリアージ・処置など医療班が書く欄は空けている
+              ※欄の順は災害診療記録2018（一般診療版）による（既往症・予防接種は様式の2頁）。値は台帳の記録を並べた物で、□ と中断注意の印は薬の区分などから機械的に付けた。初診日・傷病名・トリアージ・処置など医療班が書く欄は載せていない
             </p>
           </div>
           <PaperFoot doc={foot.doc} name={s.name} page={foot.page} total={foot.total} />
