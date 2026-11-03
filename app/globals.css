@@ -180,6 +180,12 @@ body {
   box-shadow: inset 0 0 0 100vmax var(--press);
 }
 
+/* 押す物は二度押しの拡大で押した回が遅れたり落ちたりしないように（ピンチの拡大はそのまま）、タップの青い光も出さない（灰色だけ。11/3 設計の答え） */
+[data-press] {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
 /* 置いた瞬間に出す（部品の transition で遅れて濃くならない）。離したあとは元の地へ 0.32 秒で戻す */
 [data-press][data-pressing="on"] {
   transition: none;

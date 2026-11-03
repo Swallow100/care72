@@ -110,7 +110,7 @@ export function DrillControls({ id, step, done }: { id: string; step: number; do
         kind="danger"
         onClick={async () => {
           setFast(false);
-          if (await appConfirm(CONFIRM_LABELS.abandonBody, { title: CONFIRM_LABELS.abandonTitle, ok: CONFIRM_LABELS.abandonOk, danger: true })) void abandon();
+          if (await appConfirm(CONFIRM_LABELS.abandonBody, { title: CONFIRM_LABELS.abandonTitle, ok: CONFIRM_LABELS.abandonOk, danger: true, icon: "RemoveIcon" })) void abandon();
         }}
         disabled={busy}
         data-action="abandon"

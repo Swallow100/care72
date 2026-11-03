@@ -250,6 +250,7 @@ function ModeButton({ kind, state }: { kind: DisasterKind; state: DisasterState 
             title: CONFIRM_LABELS.normalTitle,
             message: DISASTER_LABELS.clearOnNormal,
             ok: CONFIRM_LABELS.normalOk,
+            icon: "RestoreIcon",
             danger: true,
             fields: { confirm: "1" },
           }}
@@ -509,7 +510,7 @@ function AssignSection({
                           kind="danger"
                           size="sm"
                           icon="UnlistIcon"
-                          confirm={{ title: CONFIRM_LABELS.unlistTitle, message: p.name, ok: CONFIRM_LABELS.unlistOk, danger: true }}
+                          confirm={{ title: CONFIRM_LABELS.unlistTitle, message: p.name, ok: CONFIRM_LABELS.unlistOk, danger: true, icon: "UnlistIcon" }}
                         >
                           {OFFICE_LABELS.unlist}
                         </SubmitButton>
@@ -682,6 +683,7 @@ function ResetSection({ state }: { state: ResetState | null }) {
               title: CONFIRM_LABELS.resetTitle,
               message: RESET_LABELS.confirm,
               ok: CONFIRM_LABELS.resetOk,
+              icon: "RestoreIcon",
               danger: true,
               fields: { confirm: "1" },
             }}

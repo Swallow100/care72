@@ -4,6 +4,9 @@
 //
 // 名前は操作の意味で付ける。同じ操作は画面のどこでも同じアイコン。
 
+/** 確認の窓の決める方のボタンに渡せるアイコン（lib/ui/dialog.ts） */
+export type DialogIconName = "RemoveIcon" | "UnlistIcon" | "RestoreIcon" | "SaveIcon" | "CloseIcon";
+
 export {
   ArrowDownTrayIcon as DownloadIcon, // CSV 出力
   ArrowRightEndOnRectangleIcon as LoginIcon, // ログイン（扉に入る矢印。ログアウトと対）

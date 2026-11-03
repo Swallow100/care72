@@ -1,7 +1,7 @@
 "use client";
 
 // アプリ内の確認・お知らせの窓（lib/ui/dialog.ts の appConfirm・appAlert）。app/layout.tsx に 1 つ置く。
-// 見た目は面（Panel）に題 16px と本文、ボタンは Button（消す操作は赤の塗り、取消は文字だけ）。
+// 見た目は面（Panel）に題 16px と本文、ボタンは Button（消す操作は赤の塗り、取消は文字だけ）。どちらもアイコン＋文字。
 // 消す操作は最初の焦点を取消に置く（Enter だけで消えないように）。Escape と外側を押すと取消。
 // <dialog> の showModal で開く（後ろは押せず、読み上げも窓の中だけ）。開いている間は後ろの画面を送らない。
 
@@ -9,6 +9,7 @@ import { useEffect, useRef, useSyncExternalStore } from "react";
 import { currentDialog, initialFocus, settleDialog, subscribeDialogs, type DialogItem } from "@/lib/ui/dialog";
 import { DIALOG_LABELS } from "@/lib/ui/labels";
 import { Button } from "./Button";
+import * as Icons from "./Icon";
 import { CloseIcon } from "./Icon";
 
 export function DialogHost() {
@@ -73,6 +74,7 @@ function AppDialog({ item }: { item: DialogItem }) {
           )}
           <Button
             ref={okRef}
+            icon={Icons[item.icon]}
             kind={item.danger ? "dangerFill" : confirm ? "main" : "plain"}
             onClick={() => settleDialog(item.id, true)}
             data-dialog-action="ok"

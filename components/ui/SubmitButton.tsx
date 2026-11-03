@@ -13,6 +13,7 @@ import { flushSync, useFormStatus } from "react-dom";
 import { appConfirm } from "@/lib/ui/dialog";
 import { buttonClass, type ButtonKind, type ButtonSize } from "./Button";
 import * as Icons from "./Icon";
+import type { DialogIconName } from "./Icon";
 
 /** サーバーの画面からはアイコンを名前で渡す（関数はクライアントの部品に渡せない）。例 icon="LogoutIcon" */
 export type IconName = keyof typeof Icons;
@@ -27,6 +28,8 @@ export type SubmitConfirm = {
   ok?: string;
   /** 消す・外す・戻す操作（赤の塗り、最初の焦点は取消） */
   danger?: boolean;
+  /** 決める方のボタンのアイコン（消す RemoveIcon・外す UnlistIcon・戻す RestoreIcon、無ければ消す操作は RemoveIcon・ほかは SaveIcon） */
+  icon?: DialogIconName;
   /** 決めたときだけ足して送る欄（例 { confirm: "1" }） */
   fields?: Record<string, string>;
 };
@@ -101,7 +104,7 @@ export function SubmitButton({
           if (confirm && form) {
             // 確認の窓で決めてから、足す欄を描いて同じボタンで送る（requestSubmit は click を起こさないので、ここへは戻らない）
             e.preventDefault();
-            void appConfirm(confirm.message, { title: confirm.title, ok: confirm.ok, danger: confirm.danger }).then((ok) => {
+            void appConfirm(confirm.message, { title: confirm.title, ok: confirm.ok, danger: confirm.danger, icon: confirm.icon }).then((ok) => {
               if (!ok || !form.isConnected) return;
               flushSync(() => {
                 setArmed(true);

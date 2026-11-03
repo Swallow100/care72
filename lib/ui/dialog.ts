@@ -3,6 +3,7 @@
 // 呼ぶ側は待てる: `if (await appConfirm(…)) …`。ok の言葉は 2〜4 字の漢語（削除・戻す・終了）。消す操作は danger。
 // 画面を持たない作り（待ち行列と settle）だけをここに置き、テストは node で回す（lib/ui/dialog.test.ts）。
 
+import type { DialogIconName } from "../../components/ui/Icon.tsx";
 import { DIALOG_LABELS } from "./labels.ts";
 
 export type DialogKind = "confirm" | "alert";
@@ -14,6 +15,8 @@ export type DialogOptions = {
   ok?: string;
   /** 消す・外す・戻す操作。ボタンは赤の塗りで、最初の焦点は取消（Enter だけで消えない） */
   danger?: boolean;
+  /** 決める方のボタンのアイコン（components/ui/Icon の名前）。無ければ 消す操作は RemoveIcon、ほかは SaveIcon、お知らせは CloseIcon */
+  icon?: DialogIconName;
 };
 
 export type DialogItem = {
@@ -22,6 +25,7 @@ export type DialogItem = {
   title: string;
   message: string;
   ok: string;
+  icon: DialogIconName;
   danger: boolean;
   resolve: (ok: boolean) => void;
 };
@@ -51,6 +55,7 @@ export function createDialogs() {
           title: options.title ?? (kind === "alert" ? DIALOG_LABELS.alert : DIALOG_LABELS.confirm),
           ok: options.ok ?? (kind === "alert" ? DIALOG_LABELS.close : DIALOG_LABELS.ok),
           danger: kind === "confirm" && (options.danger ?? false),
+          icon: options.icon ?? (kind === "alert" ? "CloseIcon" : options.danger ? "RemoveIcon" : "SaveIcon"),
           resolve,
         },
       ];

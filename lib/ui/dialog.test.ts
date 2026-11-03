@@ -70,6 +70,20 @@ describe("アプリ内の確認・お知らせの待ち行列", () => {
     expect(d.current()).toMatchObject({ title: DIALOG_LABELS.alert, ok: DIALOG_LABELS.close, danger: false });
   });
 
+  it("決める方のボタンもアイコン＋文字（既定は 消す RemoveIcon・ほか SaveIcon・お知らせ CloseIcon、渡せば渡した物）", () => {
+    const d = createDialogs();
+    void d.confirm("a", { danger: true });
+    void d.confirm("b");
+    void d.confirm("c", { danger: true, icon: "RestoreIcon" });
+    void d.alert("d");
+    const icons: string[] = [];
+    while (d.current()) {
+      icons.push(d.current()!.icon);
+      d.settle(d.current()!.id, false);
+    }
+    expect(icons).toEqual(["RemoveIcon", "SaveIcon", "RestoreIcon", "CloseIcon"]);
+  });
+
   it("消す確認は最初の焦点を取消に、ほかは決める方に（Enter だけで消えない）", () => {
     expect(initialFocus({ kind: "confirm", danger: true })).toBe("cancel");
     expect(initialFocus({ kind: "confirm", danger: false })).toBe("ok");

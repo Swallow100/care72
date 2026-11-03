@@ -3,6 +3,7 @@
 // ホーム画面に追加の案内（T44。本人・家族のスマホの平時の画面の上）。判定は lib/ui/install.ts、言葉は lib/ui/labels.ts の INSTALL_PHRASES。
 // Android の Chrome は「追加」1 押しで入る。iPhone は Safari の共有 → ホーム画面に追加 → 追加 の手順を 3 行。LINE の中は外のブラウザへ。
 // 追加済み・PC・判断できないときは出さない。閉じたらその画面（タブ）の間は出さない。
+// ボタンは無色（面の中の灰色）。本人・家族の画面で面を塗るのは赤緑のボタンだけ（11/3 設計の答え）。
 // 端末の様子は描いたあと（useEffect）に読む。サーバーの描画と最初の描画では何も出さない（出す・出さないの食い違いを作らない）。
 
 import { useEffect, useState, type ComponentType, type SVGProps } from "react";
@@ -101,8 +102,8 @@ export function InstallHint() {
         {mode === "android" && (
           <button
             type="button"
-            className={`${BIG} bg-accent text-on-accent`}
-            data-press="overlay"
+            className={`${BIG} bg-panel2 text-ink`}
+            data-press
             data-install-action="add"
             onClick={async () => {
               const w = window as InstallWindow;
@@ -118,7 +119,7 @@ export function InstallHint() {
           </button>
         )}
         {(mode === "android-line" || mode === "ios-line") && href && (
-          <a href={href} className={`${BIG} bg-accent text-on-accent`} data-press="overlay" data-install-action="browser">
+          <a href={href} className={`${BIG} bg-panel2 text-ink`} data-press data-install-action="browser">
             <ExternalIcon aria-hidden className="size-7 shrink-0" />
             <span>
               <EasyWords words={easy(P.openBrowser)} />
