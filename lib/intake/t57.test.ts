@@ -3,7 +3,13 @@
 import type { D1Database } from "@cloudflare/workers-types";
 import { readFileSync } from "node:fs";
 import type { DatabaseSync } from "node:sqlite";
-import { beforeEach, describe, expect, it } from "vitest";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: () => {}, push: () => {} }) }));
+
+import { SectionForm } from "../../components/person/SectionEdit.tsx";
 import { seedStatements } from "../../seed/sql.ts";
 import type { Principal } from "../auth/principal.ts";
 import { parseLedger } from "../db/ledger.ts";
@@ -16,8 +22,9 @@ import { isSignalWriterKind } from "../signals/labels.ts";
 import { toTriagePerson } from "../triage/from-ledger.ts";
 import { SEED_PEOPLE } from "../../seed/people.ts";
 import type { IntakeChange } from "./changes.ts";
-import { editBlockers, editChanges, editDraft, orderClash } from "./edit.ts";
+import { editBlockers, editChanges, editDraft, orderClash, removalNames } from "./edit.ts";
 import { INTAKE_FIELDS, normalizeValue } from "./fields.ts";
+import { markClockIds } from "./marks.ts";
 import { intakePropsOf } from "./props.ts";
 import { CONTACT_KINDS_FOR_INTAKE, DEVICE_KINDS_FOR_INTAKE, HAZARD_KINDS_FOR_INTAKE } from "./schema.ts";
 import { contactOrderClash, saveIntake, SaveRequestSchema, type SaveRequest } from "./save.ts";
@@ -312,5 +319,154 @@ describe("機器・ハザード・世帯の「その他」（T57 の 3）", () =
     const f = INTAKE_FIELDS.find((x) => x.key === "basic.householdNote")!;
     expect(normalizeValue(f, "あ".repeat(80))).toBe("あ".repeat(60));
     expect(SaveRequestSchema.safeParse(edit("p-01", [{ t: "hazard", value: { kind: "other", note: "あ".repeat(61) } }])).success).toBe(false);
+  });
+});
+
+describe("時計の手入力（T57 の 4）", () => {
+  it("時計を足す: 値あり（出典・書き足し・停電から）と値なし（未確認）。経過の場所に残る", async () => {
+    const d = await editDataOf("p-10");
+    const draft = editDraft(d);
+    draft.newClocks = [
+      { label: "電動ベッド 予備電池", kind: "device", category: "other", value: "６", unit: "hour", start: "outage", source: "device_manual", sourceNote: "取扱説明書 p.12" },
+      { label: "飲み水", kind: "supply", category: "other", value: "", unit: "day", start: "disaster", source: "", sourceNote: "" },
+      { label: "", kind: "supply", category: "other", value: "", unit: "day", start: "disaster", source: "", sourceNote: "" }, // 空 → 送らない
+    ];
+    expect(editBlockers("medical", draft)).toEqual([]);
+    const changes = editChanges("medical", d, draft);
+    expect(changes).toEqual([
+      {
+        t: "clockAdd",
+        value: { label: "電動ベッド 予備電池", kind: "device", category: "other", value: 6, unit: "hour", startsOn: "outage", source: "device_manual", sourceNote: "取扱説明書 p.12" },
+      },
+      { t: "clockAdd", value: { label: "飲み水", kind: "supply", category: "other", value: null, unit: null, startsOn: "disaster", source: null } },
+    ]);
+    const r = await saveIntake(db, cm, SaveRequestSchema.parse(edit("p-10", changes)), NOW);
+    expect(r).toMatchObject({ ok: true, changed: 2 });
+    const rows = sqlite
+      .prepare("SELECT label, kind, category, value, unit, starts_on, source, source_note, confirmed_at FROM clocks WHERE person_id = 'p-10' ORDER BY sort")
+      .all();
+    expect(rows).toEqual([
+      { label: "電動ベッド 予備電池", kind: "device", category: "other", value: 6, unit: "hour", starts_on: "outage", source: "device_manual", source_note: "取扱説明書 p.12", confirmed_at: NOW.toISOString() },
+      { label: "飲み水", kind: "supply", category: "other", value: null, unit: null, starts_on: "disaster", source: null, source_note: null, confirmed_at: null },
+    ]);
+    if (!r.ok) throw new Error("not ok");
+    expect(r.fields.filter((f) => f.startsWith("clocks."))).toHaveLength(2);
+    // 読み戻した編集の下書きに出て、次の保存で消えない（印の時計でないので作り直しもしない）
+    const back = editDraft(await editDataOf("p-10"));
+    expect(back.clocks.map((k) => [k.label, k.value, k.start])).toEqual([
+      ["電動ベッド 予備電池", "6", "outage"],
+      ["飲み水", "", "disaster"],
+    ]);
+  });
+
+  it("名前の無い時計に値を書いたら・値が数でなければ画面で止める", async () => {
+    const draft = editDraft(await editDataOf("p-10"));
+    draft.newClocks = [{ label: "", kind: "supply", category: "other", value: "3", unit: "day", start: "disaster", source: "", sourceNote: "" }];
+    expect(editBlockers("medical", draft)).toEqual(["時計 名前"]);
+    draft.newClocks[0] = { ...draft.newClocks[0], label: "飲み水", value: "三日" };
+    expect(editBlockers("medical", draft)).toEqual(["時計 値"]);
+  });
+
+  it("起点を変える（停電 → 発災）。経過の場所に残る", async () => {
+    const d = await editDataOf("p-01");
+    const draft = editDraft(d);
+    draft.clocks = draft.clocks.map((k) => (k.id === "k-01-2" ? { ...k, start: "disaster" } : k));
+    const changes = editChanges("medical", d, draft);
+    expect(changes).toEqual([{ t: "clockStart", clockId: "k-01-2", to: "disaster" }]);
+    const r = await saveIntake(db, cm, SaveRequestSchema.parse(edit("p-01", changes)), NOW);
+    expect(r).toMatchObject({ ok: true, changed: 1, fields: ["clocks.k-01-2"] });
+    expect(sqlite.prepare("SELECT starts_on FROM clocks WHERE id = 'k-01-2'").get()).toEqual({ starts_on: "disaster" });
+    // 走らない状態の時計（認知症）は起点を変えない
+    expect(await saveIntake(db, cm, SaveRequestSchema.parse(edit("p-04", [{ t: "clockStart", clockId: "k-04-1", to: "outage" }])), NOW)).toMatchObject({
+      ok: true,
+      changed: 0,
+    });
+    expect(sqlite.prepare("SELECT starts_on FROM clocks WHERE id = 'k-04-1'").get()).toEqual({ starts_on: "none" });
+  });
+
+  it("外す: 印でない時計は消える。印の時計（機器・薬から作る物）は時計だけでは外さない（次の保存で作り直されるため）", async () => {
+    // 降圧薬（薬の区分 その他）の時計は印でない
+    const d9 = await editDataOf("p-09");
+    expect(markClockIds(d9.ledger, d9.clocks).has("k-09-1")).toBe(false);
+    const draft9 = editDraft(d9);
+    draft9.drops = ["clock:k-09-1"];
+    draft9.clocks = draft9.clocks.map((k) => ({ ...k, value: "2" })); // 外す時計の直しは送らない
+    const changes = editChanges("medical", d9, draft9);
+    expect(changes).toEqual([{ t: "remove", target: { what: "clock", id: "k-09-1" } }]);
+    expect(removalNames(changes, d9)).toEqual(["降圧薬"]);
+    expect(await saveIntake(db, cm, SaveRequestSchema.parse(edit("p-09", changes)), NOW)).toMatchObject({ ok: true, changed: 1 });
+    expect(sqlite.prepare("SELECT COUNT(*) AS n FROM clocks WHERE id = 'k-09-1'").get()).toEqual({ n: 0 });
+    // 次の保存でも作り直さない
+    expect(await saveIntake(db, cm, SaveRequestSchema.parse(edit("p-09", [{ t: "note", value: "確認" }], 2)), NOW)).toMatchObject({ ok: true });
+    expect(sqlite.prepare("SELECT COUNT(*) AS n FROM clocks WHERE person_id = 'p-09'").get()).toEqual({ n: 0 });
+
+    // 透析の時計は透析の機器の印。時計だけを外す要求はサーバーが無視する
+    const d3 = await editDataOf("p-03");
+    expect(markClockIds(d3.ledger, d3.clocks).has("k-03-1")).toBe(true);
+    expect(await saveIntake(db, cm, SaveRequestSchema.parse(edit("p-03", [{ t: "remove", target: { what: "clock", id: "k-03-1" } }])), NOW)).toMatchObject({
+      ok: true,
+      changed: 0,
+    });
+    expect(sqlite.prepare("SELECT COUNT(*) AS n FROM clocks WHERE id = 'k-03-1'").get()).toEqual({ n: 1 });
+    // 酸素の時計は 2 つ（内蔵電池・予備ボンベ）。片方なら外しても印は残るので外せる。認知症の時計は外せない
+    const d1 = await editDataOf("p-01");
+    const m1 = markClockIds(d1.ledger, d1.clocks);
+    expect([m1.has("k-01-1"), m1.has("k-01-2"), m1.has("k-01-3")]).toEqual([false, false, true]);
+    const d4 = await editDataOf("p-04");
+    expect(markClockIds(d4.ledger, d4.clocks).has("k-04-1")).toBe(true);
+  });
+
+  it("時計の追加・起点・外すは手で直すときだけ（AI の分け方の保存には混ぜない）", () => {
+    const add: IntakeChange = { t: "clockAdd", value: { label: "飲み水", kind: "supply", category: "other", value: null, unit: null, startsOn: "disaster", source: null } };
+    expect(SaveRequestSchema.safeParse({ personId: "p-10", version: 1, ai: { model: "claude-sonnet-5-5" }, changes: [add] }).success).toBe(false);
+    expect(SaveRequestSchema.safeParse({ personId: "p-10", version: 1, ai: null, changes: [{ t: "clockStart", clockId: "k-01-1", to: "disaster" }] }).success).toBe(false);
+    // 状態の時計・認知症は足せない。値があって単位が無いのも断る
+    expect(SaveRequestSchema.safeParse(edit("p-10", [{ t: "clockAdd", value: { ...(add as { value: object }).value, kind: "condition" } } as never])).success).toBe(false);
+    expect(SaveRequestSchema.safeParse(edit("p-10", [{ t: "clockAdd", value: { ...(add as { value: object }).value, category: "dementia" } } as never])).success).toBe(false);
+    expect(SaveRequestSchema.safeParse(edit("p-10", [{ t: "clockAdd", value: { ...(add as { value: object }).value, value: 3, unit: null } } as never])).success).toBe(false);
+  });
+});
+
+describe("編集の画面の欄（components/person/SectionEdit.tsx、T57）", () => {
+  const form = (section: "medical" | "evacuation" | "people", data: Awaited<ReturnType<typeof editDataOf>>, patch: Partial<ReturnType<typeof editDraft>> = {}) =>
+    renderToStaticMarkup(createElement(SectionForm, { section, data, draft: { ...editDraft(data), ...patch }, set: () => {} }));
+
+  it("連絡先の行に距離・緊急・支援の選択。重なった順は 1 行で知らせる", async () => {
+    const d = await editDataOf("p-09");
+    const h = form("people", d);
+    expect(h).toContain("data-reach");
+    expect(h).toContain('data-order="緊急"');
+    expect(h).toContain('data-order="支援"');
+    expect(h).not.toContain("data-order-clash");
+    const clash = form("people", d, { contacts: editDraft(d).contacts.map((c) => ({ ...c, supporter: "1" })) });
+    expect(clash).toContain("data-order-clash");
+    expect(clash).toContain("順番重複");
+  });
+
+  it("時計の行に起点の選択。印でない時計だけ「外す」。「時計追加」で足す行（名前・区分・対象・値・起点・出典）", async () => {
+    const d3 = await editDataOf("p-03");
+    const h3 = form("medical", d3);
+    expect(h3).toContain('data-clock-start="k-03-1"');
+    expect(h3).toContain("data-clock-add");
+    expect(h3).not.toContain('aria-label="透析 次の回まで 外す"');
+    const d9 = await editDataOf("p-09");
+    expect(form("medical", d9)).toContain('aria-label="降圧薬 外す"');
+    const add = form("medical", d9, { newClocks: [{ label: "", kind: "supply", category: "other", value: "", unit: "day", start: "disaster", source: "", sourceNote: "" }] });
+    expect(add).toContain('data-clock="new"');
+    for (const w of ["名前", "区分", "対象", "起点", "出典"]) expect(add).toContain(w);
+  });
+
+  it("機器・ハザードの「その他」を選ぶと名前・補記の欄。ハザードの行に補記の欄", async () => {
+    const d = await editDataOf("p-01");
+    expect(form("medical", d, { newDevices: ["other"] })).toContain("data-new-device-other");
+    const ev = form("evacuation", d, { newHazards: ["other"] });
+    expect(ev).toContain("data-new-hazard-other");
+    expect(ev).toContain('aria-label="浸水 補記"');
+  });
+
+  it("画面の言葉に使わない語が無い", async () => {
+    const d = await editDataOf("p-01");
+    const all = ["medical", "evacuation", "people"].map((s) => form(s as "medical", d)).join("");
+    for (const w of ["診断", "判定", "重症", "緊急度", "札"]) expect(all).not.toContain(w);
   });
 });

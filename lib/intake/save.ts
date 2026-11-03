@@ -16,6 +16,8 @@ import type { Principal } from "../auth/principal.ts";
 import { applyLedgerChanges, parseLedger, sameMedication } from "../db/ledger.ts";
 import {
   CHECK_STATUSES,
+  CLOCK_CATEGORIES,
+  CLOCK_SOURCES,
   CLOCK_UNITS,
   CONSENT_KINDS,
   CONTACT_REACHES,
@@ -26,6 +28,7 @@ import {
   MEDICATION_CATEGORIES,
   PENDING_STATUSES,
   type CheckStatus,
+  type ClockCategory,
   type ClockRow,
   type ConsentKind,
   type ConsentStatus,
@@ -39,7 +42,7 @@ import { loadPersonPage, pendingClockId, type PersonPageRows } from "../person.t
 import type { IntakeChange } from "./changes.ts";
 import { labelOfKey } from "./diff.ts";
 import { INTAKE_KEYS } from "./fields.ts";
-import { DEVICE_CLOCKS, MEDICATION_CLOCKS, planMarkClocks, type MarkClock } from "./marks.ts";
+import { DEVICE_CLOCKS, MEDICATION_CLOCKS, markClockIds, planMarkClocks, type MarkClock } from "./marks.ts";
 import { CONTACT_KINDS_FOR_INTAKE } from "./schema.ts";
 import { PDF_PAGES_MAX, READ_SOURCES, REDACTED_MAX, readTimelineHead, type ReadMeta } from "./read-form.ts";
 
@@ -99,6 +102,24 @@ const ChangeSchema = z.discriminatedUnion("t", [
   }),
   z.object({ t: z.literal("clockCheck"), clockId: z.string().regex(ID), to: z.enum(CHECK_STATUSES) }),
   z.object({ t: z.literal("clockSeen"), clockId: z.string().regex(ID) }),
+  // 時計を手で足す・起点を変える（T57）。状態（condition）と認知症は足せない（台帳の印から作る）
+  z.object({
+    t: z.literal("clockAdd"),
+    value: z
+      .object({
+        label: text(100).min(1),
+        kind: z.enum(["device", "supply", "medication"]),
+        category: z.enum(CLOCK_CATEGORIES.filter((c) => c !== "dementia") as [Exclude<ClockCategory, "dementia">, ...Array<Exclude<ClockCategory, "dementia">>]),
+        value: z.number().min(0).max(10000).nullable(),
+        unit: z.enum(CLOCK_UNITS).nullable(),
+        startsOn: z.enum(["outage", "disaster"]),
+        source: z.enum(CLOCK_SOURCES).nullable(),
+        sourceNote: text(100).optional(),
+      })
+      // 値があれば単位も（clocks の CHECK と同じ）
+      .refine((v) => v.value === null || v.unit !== null, { message: "unit" }),
+  }),
+  z.object({ t: z.literal("clockStart"), clockId: z.string().regex(ID), to: z.enum(["outage", "disaster"]) }),
   z.object({
     t: z.literal("remove"),
     target: z.discriminatedUnion("what", [
@@ -108,6 +129,7 @@ const ChangeSchema = z.discriminatedUnion("t", [
       z.object({ what: z.literal("hazard"), kind: z.enum(HAZARD_KINDS) }),
       z.object({ what: z.literal("note"), value: text(1000).min(1) }),
       z.object({ what: z.literal("contact"), id: z.string().regex(ID) }),
+      z.object({ what: z.literal("clock"), id: z.string().regex(ID) }),
     ]),
   }),
   z.object({ t: z.literal("consent"), kind: z.enum(CONSENT_KINDS), status: z.enum(CONSENT_STATUSES) }),
@@ -188,7 +210,7 @@ export function timelineBody(
 
 /** 手で直すときだけの変更（上書き・同意・頼り先の確認・外す・値の確認）。AI の分け方・問いの答えの保存には混ぜない */
 function editOnly(c: IntakeChange): boolean {
-  if (c.t === "consent" || c.t === "clockCheck" || c.t === "remove" || c.t === "clockSeen") return true;
+  if (c.t === "consent" || c.t === "clockCheck" || c.t === "remove" || c.t === "clockSeen" || c.t === "clockAdd" || c.t === "clockStart") return true;
   // 緊急・支援の順は人が決める（AI の分け方・問いの答えからは付けない。docs/PROGRESS.md の T03 の決め、T57）
   if (c.t === "contact" && (c.value.emergencyOrder !== undefined || c.value.supporterOrder !== undefined || c.value.reach !== undefined)) return true;
   return c.t !== "field" && "overwrite" in c && c.overwrite === true;
@@ -262,13 +284,23 @@ export async function saveIntake(db: D1Database, principal: Principal, req: Save
   fields.push(...consentOps.fields);
 
   // ---- 外す・値の確認（手で直すときだけ。経過に「ケアマネが外した」「ケアマネが確認した」） ----
-  const removeOps = planRemovals(rows, before, changes);
+  const removeOps = planRemovals(rows, before, changes, ledger);
   const removedFields = [...applied.removed, ...removeOps.removed];
   const seenOps = planClockSeen(rows, changes);
+  // ---- 時計を手で足す・起点（T57。手で直すときだけ） ----
+  const manualOps = planManualClocks(rows, changes, personId);
+  fields.push(...manualOps.fields);
 
   const ledgerChanged = JSON.stringify(ledger) !== JSON.stringify(before);
   const changed =
-    (ledgerChanged ? 1 : 0) + contactOps.count + clockOps.count + checkOps.count + consentOps.count + removeOps.count + seenOps.count;
+    (ledgerChanged ? 1 : 0) +
+    contactOps.count +
+    clockOps.count +
+    checkOps.count +
+    consentOps.count +
+    removeOps.count +
+    seenOps.count +
+    manualOps.count;
   const plan: PlanStatus = rows.person.plan_status === "none" ? "draft" : rows.person.plan_status;
   if (changed === 0) return { ok: true, changed: 0, version: req.version, plan: rows.person.plan_status, fields: [] };
 
@@ -325,6 +357,7 @@ export async function saveIntake(db: D1Database, principal: Principal, req: Save
     ...consentOps.build(db, GUARD, guardArgs, principal.accountId),
     ...removeOps.build(db, GUARD, guardArgs),
     ...seenOps.build(db, GUARD, guardArgs),
+    ...manualOps.build(db, GUARD, guardArgs),
   ];
 
   const results = await db.batch(stmts);
@@ -622,9 +655,11 @@ function planConsents(rows: PersonPageRows, changes: ReadonlyArray<IntakeChange>
  * 連絡先の行を消し、外した薬・機器の時計を消す（印が残らないように）。本人の行（self）は消さない。
  * 台帳の中の物（欄・薬・機器・ハザード・特記）は applyLedgerChanges が外す
  */
-function planRemovals(rows: PersonPageRows, before: Ledger, changes: ReadonlyArray<IntakeChange>) {
+function planRemovals(rows: PersonPageRows, before: Ledger, changes: ReadonlyArray<IntakeChange>, after: Ledger) {
   const contactIds = new Set<string>();
   const clockIds = new Set<string>();
+  // 印の時計（次の保存で作り直される物）は時計だけでは外さない（T57。lib/intake/marks.ts の markClockIds）
+  const marks = markClockIds(after, rows.clocks);
   for (const ch of changes) {
     if (ch.t !== "remove") continue;
     const r = ch.target;
@@ -635,6 +670,9 @@ function planRemovals(rows: PersonPageRows, before: Ledger, changes: ReadonlyArr
       const med = before.medical.medications[r.index];
       if (!med || med.name !== r.name) continue;
       for (const k of rows.clocks) if (k.kind !== "device" && k.kind !== "condition" && sameMedication(k.label, med.name)) clockIds.add(k.id);
+    } else if (r.what === "clock") {
+      const cur = rows.clocks.find((k) => k.id === r.id);
+      if (cur && !marks.has(cur.id)) clockIds.add(cur.id);
     } else if (r.what === "device") {
       if (!before.medical.devices.some((d) => d.kind === r.kind)) continue;
       // その他の機器は印の時計を持たない（手で足した時計は時計の「外す」で消す）
@@ -654,6 +692,60 @@ function planRemovals(rows: PersonPageRows, before: Ledger, changes: ReadonlyArr
           db.prepare(`DELETE FROM contacts WHERE id = ?4 AND person_id = ?2 AND kind <> 'self' AND ${guard}`).bind(...guardArgs, id),
         ),
         ...[...clockIds].map((id) => db.prepare(`DELETE FROM clocks WHERE id = ?4 AND person_id = ?2 AND ${guard}`).bind(...guardArgs, id)),
+      ];
+    },
+  };
+}
+
+// ---------- 時計を手で足す・起点（手で直すときだけ。T57） ----------
+
+/**
+ * 時計を足す（名前・区分・何で決まるか・値と単位〔空は未確認〕・起点・出典と書き足し）と、今の時計の起点（停電・発災）を変える。
+ * 値を入れて足したときは確認の日付をこの時刻に。起点は走らない状態の時計（none）には当てない
+ */
+function planManualClocks(rows: PersonPageRows, changes: ReadonlyArray<IntakeChange>, personId: string) {
+  const adds: Array<{ id: string; v: Extract<IntakeChange, { t: "clockAdd" }>["value"] }> = [];
+  const starts = new Map<string, "outage" | "disaster">();
+  for (const ch of changes) {
+    if (ch.t === "clockAdd") adds.push({ id: `k-${personId}-${shortId()}`, v: ch.value });
+    if (ch.t === "clockStart") {
+      const cur = rows.clocks.find((k) => k.id === ch.clockId);
+      if (cur && cur.starts_on !== "none" && cur.starts_on !== ch.to) starts.set(cur.id, ch.to);
+    }
+  }
+  let sort = rows.clocks.reduce((m, k) => Math.max(m, k.sort), -1) + 1000;
+  return {
+    fields: [...adds.map((a) => `clocks.${a.id}`), ...[...starts.keys()].map((id) => `clocks.${id}`)],
+    count: adds.length + starts.size,
+    build(db: D1Database, guard: string, guardArgs: GuardArgs): Statement[] {
+      const stamp = guardArgs[2];
+      return [
+        ...adds.map(({ id, v }) =>
+          db
+            .prepare(
+              `INSERT INTO clocks (id, person_id, kind, category, label, value, unit, starts_on, source, source_note, confirmed_at, sort)
+               SELECT ?4, ?2, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14 WHERE ${guard}`,
+            )
+            .bind(
+              ...guardArgs,
+              id,
+              v.kind,
+              v.category,
+              v.label,
+              v.value,
+              v.value === null ? null : v.unit,
+              v.startsOn,
+              v.source,
+              v.sourceNote?.trim() || null,
+              v.value === null ? null : stamp,
+              ++sort,
+            ),
+        ),
+        ...[...starts].map(([id, to]) =>
+          db
+            .prepare(`UPDATE clocks SET starts_on = ?5 WHERE id = ?4 AND person_id = ?2 AND starts_on <> 'none' AND ${guard}`)
+            .bind(...guardArgs, id, to),
+        ),
       ];
     },
   };

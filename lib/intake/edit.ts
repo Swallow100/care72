@@ -11,6 +11,8 @@ import type {
   CheckStatus,
   ClockCategory,
   ClockKind,
+  ClockSource,
+  ClockStart,
   ClockUnit,
   ConsentKind,
   ConsentStatus,
@@ -22,7 +24,7 @@ import type {
   Ledger,
   MedicationCategory,
 } from "../db/types.ts";
-import { CONSENT_KINDS } from "../db/types.ts";
+import { CLOCK_CATEGORIES, CONSENT_KINDS } from "../db/types.ts";
 import { sameMedication } from "../db/ledger.ts";
 import { CONTACT_KIND_LABELS, DEVICE_LABELS, HAZARD_LABELS } from "../labels.ts";
 import { DEVICE_CLOCKS } from "./marks.ts";
@@ -67,6 +69,10 @@ export type EditData = {
     depends_check: CheckStatus | null;
     /** 値を最後に確かめた時刻（ISO）。無ければ null */
     confirmed_at: string | null;
+    /** 走り出すきっかけ（停電・発災・走らない）。T57 */
+    starts_on: ClockStart;
+    source: ClockSource | null;
+    source_note: string | null;
   }>;
   consents: Array<{ kind: ConsentKind; status: ConsentStatus }>;
 };
@@ -94,6 +100,37 @@ export type ContactDraft = {
   /** 距離（空は未確認） */
   reach: ContactReach | "";
 };
+/** 走る時計の起点（停電・発災）。走らない状態の時計（condition）は足せず、起点も none のまま */
+export type RunningStart = Exclude<ClockStart, "none">;
+/** 手で足す時計の区分（状態 condition は足せない） */
+export type AddableClockKind = Exclude<ClockKind, "condition">;
+/** 手で足す時計の「何で決まるか」（認知症は台帳の印から作るので足せない） */
+export const ADDABLE_CLOCK_CATEGORIES = CLOCK_CATEGORIES.filter((c) => c !== "dementia");
+
+/** 手で足す時計の下書き（T57）。値が空なら未確認（単位も持たない） */
+export type ClockDraft = {
+  label: string;
+  kind: AddableClockKind;
+  category: Exclude<ClockCategory, "dementia">;
+  value: string;
+  unit: ClockUnit;
+  start: RunningStart;
+  /** 出典（空は無し）と書き足し */
+  source: ClockSource | "";
+  sourceNote: string;
+};
+
+export const blankClock = (): ClockDraft => ({
+  label: "",
+  kind: "supply",
+  category: "other",
+  value: "",
+  unit: "day",
+  start: "disaster",
+  source: "",
+  sourceNote: "",
+});
+
 export type MedDraft = { name: string; category: MedicationCategory; schedule: string; amount: string; storage: string };
 
 export type EditDraft = {
@@ -115,8 +152,10 @@ export type EditDraft = {
   /** 今の連絡先（本人の行を除く）と、足す連絡先 */
   contacts: ContactDraft[];
   newContacts: ContactDraft[];
-  /** 時計の値（文字）と単位。走らない状態の時計（condition）は除く */
-  clocks: Array<{ id: string; label: string; value: string; unit: ClockUnit }>;
+  /** 時計の値（文字）と単位と起点。走らない状態の時計（condition）は除く */
+  clocks: Array<{ id: string; label: string; value: string; unit: ClockUnit; start: RunningStart }>;
+  /** 手で足す時計（T57） */
+  newClocks: ClockDraft[];
   /** 時計の頼り先の確認（頼り先のある時計だけ） */
   checks: Record<string, CheckStatus>;
   consents: Record<ConsentKind, ConsentStatus>;
@@ -134,6 +173,7 @@ export const dropKey = {
   device: (kind: DeviceKind) => `device:${kind}`,
   hazard: (kind: HazardKind) => `hazard:${kind}`,
   contact: (id: string) => `contact:${id}`,
+  clock: (id: string) => `clock:${id}`,
   note: (index: number) => `note:${index}`,
 } as const;
 
@@ -207,7 +247,14 @@ export function editDraft(d: EditData): EditDraft {
     newContacts: [],
     clocks: d.clocks
       .filter((k) => k.kind !== "condition")
-      .map((k) => ({ id: k.id, label: k.label, value: k.value != null ? String(k.value) : "", unit: k.unit ?? (k.kind === "device" ? "hour" : "day") })),
+      .map((k) => ({
+        id: k.id,
+        label: k.label,
+        value: k.value != null ? String(k.value) : "",
+        unit: k.unit ?? (k.kind === "device" ? "hour" : "day"),
+        start: k.starts_on === "outage" ? "outage" : "disaster",
+      })),
+    newClocks: [],
     checks: Object.fromEntries(d.clocks.filter((k) => k.depends_on && k.depends_check).map((k) => [k.id, k.depends_check as CheckStatus])),
     consents,
     note: "",
@@ -269,6 +316,9 @@ export function removalNames(changes: ReadonlyArray<IntakeChange>, d: EditData):
         names.push(cur?.relation || cur?.name || "連絡先");
         break;
       }
+      case "clock":
+        names.push(d.clocks.find((x) => x.id === r.id)?.label ?? "時計");
+        break;
     }
   }
   return names;
@@ -321,6 +371,10 @@ export function editBlockers(section: EditSection, draft: EditDraft): string[] {
     );
     const fresh = draft.newDevices.includes("other") ? draft.newDeviceDetail : other?.detail;
     if (other && (fresh ?? "").trim() === "") out.push(`${DEVICE_LABELS.other} 名前`);
+    // 足す時計で値や出典を書いたのに名前が空（名前の無い時計は送らない）
+    if (draft.newClocks.some((k) => !k.label.trim() && (k.value.trim() !== "" || k.sourceNote.trim() !== ""))) out.push("時計 名前");
+    // 足す時計の値が数でない
+    if (draft.newClocks.some((k) => k.label.trim() && k.value.trim() !== "" && numberOf(k.value) === null)) out.push("時計 値");
   }
   return out;
 }
@@ -395,6 +449,13 @@ export function editChanges(section: EditSection, d: EditData, draft: EditDraft)
       const cur = d.clocks.find((c) => c.id === k.id);
       // 外す薬・機器の時計はサーバーが消すので、その時計の直し・値確認は送らない
       if (!cur || clockGone(cur, l, draft.drops)) continue;
+      // 時計だけを外す（手で足した時計など。印の時計は外せない: lib/intake/marks.ts の markClockIds）
+      if (dropped(dropKey.clock(cur.id))) {
+        remove({ what: "clock", id: cur.id });
+        continue;
+      }
+      // 起点（停電・発災）。走らない状態の時計は draft.clocks に無い
+      if (cur.starts_on !== "none" && cur.starts_on !== k.start) out.push({ t: "clockStart", clockId: cur.id, to: k.start });
       const n = numberOf(k.value);
       if (n !== null && !(cur.value === n && cur.unit === k.unit)) {
         out.push({ t: "clock", clockId: k.id, medIndex: null, label: cur.label, value: n, unit: k.unit, overwrite: true });
@@ -402,6 +463,24 @@ export function editChanges(section: EditSection, d: EditData, draft: EditDraft)
       }
       // 値を変えずに今日確かめた（値の無い時計は確かめる物が無い）
       if (draft.seen.includes(k.id) && cur.value != null) out.push({ t: "clockSeen", clockId: k.id });
+    }
+    for (const k of draft.newClocks) {
+      const label = k.label.trim();
+      if (!label) continue;
+      const n = numberOf(k.value);
+      out.push({
+        t: "clockAdd",
+        value: {
+          label,
+          kind: k.kind,
+          category: k.category,
+          value: n,
+          unit: n === null ? null : k.unit,
+          startsOn: k.start,
+          source: k.source === "" ? null : k.source,
+          ...(k.sourceNote.trim() ? { sourceNote: k.sourceNote.trim() } : {}),
+        },
+      });
     }
     for (const [clockId, to] of Object.entries(draft.checks)) {
       const cur = d.clocks.find((c) => c.id === clockId);

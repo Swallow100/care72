@@ -62,6 +62,12 @@ export const DEPENDENCE_MARKS: ReadonlyArray<[ClockCategory, string]> = [
   ["dementia", "認知症"],
 ];
 
+/** 時計の「何で決まるか」（手で足す時計の選択。T57）。医療依存の印の言葉と同じ、ほかは「その他」 */
+export const CLOCK_CATEGORY_LABELS: Record<ClockCategory, string> = {
+  ...(Object.fromEntries(DEPENDENCE_MARKS) as Record<Exclude<ClockCategory, "other">, string>),
+  other: "その他",
+};
+
 /** 外の物に頼る時計の頼り先。理由の 1 行は「透析先 未確認」の形 */
 export const DEPENDS_ON_LABELS: Record<DependsOn, string> = {
   dialysis_center: "透析先",
@@ -429,6 +435,14 @@ export const INTAKE_LABELS = {
   /** その他の機器の名前・ハザードの書き足し */
   deviceName: "名前",
   hazardNote: "補記",
+  /** 時計の手入力（T57）: 起点（停電・発災）・追加・名前・区分・出典 */
+  clockStart: "起点",
+  addClock: "時計追加",
+  clockName: "名前",
+  clockKind: "区分",
+  clockCategory: "対象",
+  clockSource: "出典",
+  clockSourceNote: "出典補記",
 } as const;
 
 /**

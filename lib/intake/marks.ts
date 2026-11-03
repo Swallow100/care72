@@ -54,6 +54,23 @@ export function planMarkClocks(ledger: Ledger, clocks: ReadonlyArray<ExistingClo
   return out;
 }
 
+/**
+ * 印の時計（T57）: 消すと planMarkClocks が次の保存で作り直す時計の id。保存のたびに台帳の機器・薬・認知症から足りない時計を
+ * 作るので、印の時計を時計だけで外しても戻ってくる。だから時計の「外す」は印でない時計（手で足した物など）にだけ出し、
+ * 印の時計は機器・薬を外す道（lib/intake/save.ts の planRemovals）で消す。同じ区分の時計が 2 つあれば、どちらも外せる
+ */
+export function markClockIds(ledger: Ledger, clocks: ReadonlyArray<ExistingClock & { id: string; kind: ClockRow["kind"] }>): Set<string> {
+  const out = new Set<string>();
+  for (const k of clocks) {
+    if (k.kind === "condition") {
+      out.add(k.id);
+      continue;
+    }
+    if (planMarkClocks(ledger, clocks.filter((x) => x.id !== k.id)).length > planMarkClocks(ledger, clocks).length) out.add(k.id);
+  }
+  return out;
+}
+
 export type MarkPreview = { label: string; tier: Tier | null };
 
 /** 作る時計から付く印（担当一覧・本人のページの医療の印と同じ言葉）と骨格の段 */

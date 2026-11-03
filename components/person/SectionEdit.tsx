@@ -12,6 +12,7 @@ import { Select } from "@/components/ui/Select";
 import { AddIcon, CloseIcon, RemoveIcon, RestoreIcon, SaveIcon } from "@/components/ui/Icon";
 import { appConfirm } from "@/lib/ui/dialog";
 import {
+  CLOCK_SOURCES,
   CONSENT_KINDS,
   CONSENT_STATUSES,
   CONTACT_KINDS,
@@ -26,6 +27,10 @@ import {
 } from "@/lib/db/types";
 import {
   CHECK_STATUS_LABELS,
+  CLOCK_CATEGORY_LABELS,
+  CLOCK_KIND_LABELS,
+  CLOCK_SOURCE_LABELS,
+  CLOCK_START_LABELS,
   CLOCK_UNIT_LABELS,
   CONSENT_KIND_LABELS,
   CONSENT_STATUS_LABELS,
@@ -56,10 +61,15 @@ import {
   type OrderClash,
   type OrderDraft,
   CONTACT_ORDERS,
+  blankClock,
+  ADDABLE_CLOCK_CATEGORIES,
+  type ClockDraft,
+  type RunningStart,
   editBlockers,
   orderClash,
 } from "@/lib/intake/edit";
 import { INTAKE_FIELDS } from "@/lib/intake/fields";
+import { markClockIds } from "@/lib/intake/marks";
 import { FieldInput } from "./IntakeChanges";
 import { CheckIcon, EditIcon } from "./icons";
 import { isError, postJson } from "./intake-api";
@@ -194,6 +204,8 @@ type FormProps = { section: EditSection; data: EditData; draft: EditDraft; set: 
 /** 面の入力欄。並びは読む側の行の並び */
 export function SectionForm({ section, data, draft, set }: FormProps) {
   const clash = orderClash(draft);
+  // 印の時計（機器・薬・認知症から作る物）は時計だけでは外せない（次の保存で作り直される。T57）
+  const marks = markClockIds(data.ledger, data.clocks);
   const fields = INTAKE_FIELDS.filter((f) => f.section === section);
   const fieldRows = fields.map((f) => (
     <label key={f.key} className={ROW} data-field={f.key}>
@@ -275,6 +287,10 @@ export function SectionForm({ section, data, draft, set }: FormProps) {
               const seen = draft.seen.includes(k.id);
               // 値を直したら確認の日付は直しの方で今になる。値確認は値が同じで、値の入った時計だけ
               const valueSame = cur?.value != null && String(cur.value) === k.value.trim() && cur.unit === k.unit;
+              const dropKeyOf = dropKey.clock(k.id);
+              if (draft.drops.includes(dropKeyOf)) {
+                return <DroppedRow key={k.id} name={k.label} onUndo={() => set({ drops: toggled(draft.drops, dropKeyOf) })} />;
+              }
               return (
                 <div key={k.id} className="space-y-1" data-clock={k.id}>
                   {/* 時計の名前は長い（「酸素 予備ボンベ」）ので、名前の横に値と単位を折り返して並べる */}
@@ -300,6 +316,18 @@ export function SectionForm({ section, data, draft, set }: FormProps) {
                           </option>
                         ))}
                       </Select>
+                    </div>
+                  </div>
+                  {/* 起点（停電・発災）と、印でない時計の「外す」（印の時計は機器・薬を外すと一緒に消える。T57） */}
+                  <div className={ROW} data-clock-start={k.id}>
+                    <span className={SUB}>{INTAKE_LABELS.clockStart}</span>
+                    <div className="flex items-center gap-1">
+                      <StartSelect
+                        label={k.label}
+                        value={k.start}
+                        onChange={(v) => set({ clocks: draft.clocks.map((x, j) => (j === i ? { ...x, start: v } : x)) })}
+                      />
+                      {!marks.has(k.id) && <DropButton onClick={() => set({ drops: toggled(draft.drops, dropKeyOf) })} name={k.label} />}
                     </div>
                   </div>
                   {/* 値を変えずに今日確かめた（確認の日付だけ今に） */}
@@ -344,6 +372,17 @@ export function SectionForm({ section, data, draft, set }: FormProps) {
                 </div>
               );
             })}
+            {draft.newClocks.map((k, i) => (
+              <NewClockRow
+                key={`new-${i}`}
+                clock={k}
+                onChange={(next) => set({ newClocks: draft.newClocks.map((x, j) => (j === i ? next : x)) })}
+                onDrop={() => set({ newClocks: draft.newClocks.filter((_, j) => j !== i) })}
+              />
+            ))}
+            <Button size="sm" icon={AddIcon} onClick={() => set({ newClocks: [...draft.newClocks, blankClock()] })} data-clock-add>
+              {INTAKE_LABELS.addClock}
+            </Button>
           </Group>
           <div className="space-y-1">{fieldRows}</div>
         </div>
@@ -656,6 +695,97 @@ function ContactRow({
       <div className="col-span-2 flex items-center gap-1">
         <input className={`${INPUT_IN} min-w-0 flex-1`} placeholder="備考" aria-label={`${who} 備考`} value={c.note} onChange={(e) => p({ note: e.target.value })} />
         {onDrop && <DropButton onClick={onDrop} name={who} />}
+      </div>
+    </div>
+  );
+}
+
+/** 時計の起点（停電・発災）。走らない状態の時計には出さない */
+function StartSelect({ label, value, onChange }: { label: string; value: RunningStart; onChange: (v: RunningStart) => void }) {
+  return (
+    <Select className={`${INPUT} w-24`} aria-label={`${label} ${INTAKE_LABELS.clockStart}`} value={value} onChange={(e) => onChange(e.target.value as RunningStart)}>
+      {(["outage", "disaster"] as const).map((s) => (
+        <option key={s} value={s}>
+          {CLOCK_START_LABELS[s]}
+        </option>
+      ))}
+    </Select>
+  );
+}
+
+const UNITS = ["minute", "hour", "day", "week"] as const;
+const ADDABLE_KINDS = ["device", "supply", "medication"] as const;
+
+/** 手で足す時計の行（T57）: 名前・区分・対象・値と単位（空は未確認）・起点・出典と書き足し。「外す」で下書きから消す */
+function NewClockRow({ clock: k, onChange, onDrop }: { clock: ClockDraft; onChange: (k: ClockDraft) => void; onDrop: () => void }) {
+  const p = (patch: Partial<ClockDraft>) => onChange({ ...k, ...patch });
+  const name = k.label.trim() || INTAKE_LABELS.addClock;
+  return (
+    <div className="grid grid-cols-2 gap-1 rounded bg-panel2 p-1.5" data-clock="new">
+      <input
+        className={`${INPUT_IN} col-span-2`}
+        maxLength={100}
+        placeholder={INTAKE_LABELS.clockName}
+        aria-label={`${INTAKE_LABELS.addClock} ${INTAKE_LABELS.clockName}`}
+        value={k.label}
+        onChange={(e) => p({ label: e.target.value })}
+      />
+      <Select className={INPUT_IN} aria-label={`${name} ${INTAKE_LABELS.clockKind}`} value={k.kind} onChange={(e) => p({ kind: e.target.value as ClockDraft["kind"] })}>
+        {ADDABLE_KINDS.map((x) => (
+          <option key={x} value={x}>
+            {CLOCK_KIND_LABELS[x]}
+          </option>
+        ))}
+      </Select>
+      <Select className={INPUT_IN} aria-label={`${name} ${INTAKE_LABELS.clockCategory}`} value={k.category} onChange={(e) => p({ category: e.target.value as ClockDraft["category"] })}>
+        {ADDABLE_CLOCK_CATEGORIES.map((c) => (
+          <option key={c} value={c}>
+            {CLOCK_CATEGORY_LABELS[c]}
+          </option>
+        ))}
+      </Select>
+      <div className="flex items-center gap-1">
+        <input
+          className={`${INPUT_IN} min-w-0 flex-1`}
+          inputMode="decimal"
+          placeholder="未確認"
+          aria-label={`${name} 値`}
+          value={k.value}
+          onChange={(e) => p({ value: e.target.value })}
+        />
+        <Select className={`${INPUT_IN} w-20`} aria-label={`${name} 単位`} value={k.unit} onChange={(e) => p({ unit: e.target.value as ClockDraft["unit"] })}>
+          {UNITS.map((u) => (
+            <option key={u} value={u}>
+              {CLOCK_UNIT_LABELS[u]}
+            </option>
+          ))}
+        </Select>
+      </div>
+      <Select className={INPUT_IN} aria-label={`${name} ${INTAKE_LABELS.clockStart}`} value={k.start} onChange={(e) => p({ start: e.target.value as RunningStart })}>
+        {(["outage", "disaster"] as const).map((s) => (
+          <option key={s} value={s}>
+            {INTAKE_LABELS.clockStart} {CLOCK_START_LABELS[s]}
+          </option>
+        ))}
+      </Select>
+      <Select className={INPUT_IN} aria-label={`${name} ${INTAKE_LABELS.clockSource}`} value={k.source} onChange={(e) => p({ source: e.target.value as ClockDraft["source"] })}>
+        <option value="">{INTAKE_LABELS.clockSource} —</option>
+        {CLOCK_SOURCES.map((s) => (
+          <option key={s} value={s}>
+            {CLOCK_SOURCE_LABELS[s]}
+          </option>
+        ))}
+      </Select>
+      <div className="flex items-center gap-1">
+        <input
+          className={`${INPUT_IN} min-w-0 flex-1`}
+          maxLength={100}
+          placeholder={INTAKE_LABELS.clockSourceNote}
+          aria-label={`${name} ${INTAKE_LABELS.clockSourceNote}`}
+          value={k.sourceNote}
+          onChange={(e) => p({ sourceNote: e.target.value })}
+        />
+        <DropButton onClick={onDrop} name={name} />
       </div>
     </div>
   );
