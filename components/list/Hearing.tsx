@@ -78,7 +78,7 @@ export function Hearing({ signalId, source, editable = false, inset = false }: H
               {editing === r.field ? (
                 <span className="flex flex-wrap items-center gap-1">
                   <input
-                    className={`min-w-0 flex-1 rounded px-2 py-0.5 text-sm outline-none focus-visible:outline-2 focus-visible:outline-accent ${inset ? "bg-panel" : "bg-panel2"}`}
+                    className={`min-w-0 flex-1 rounded px-2 py-0.5 text-sm outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-accent ${inset ? "bg-panel" : "bg-panel2"}`}
                     value={draft}
                     maxLength={MEMO_TEXT_MAX}
                     aria-label={r.label}
