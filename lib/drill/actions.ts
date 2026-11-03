@@ -311,7 +311,8 @@ export async function act(
           .call({ person: input.person, target: input.target, pickup: "answers", hour: endMinute / 60, world: s.world, incidents, state: own, tell })
           .catch(() => null)
       : null;
-    if (reply?.pickup === "no_answer") {
+    // 結末の人（仮想モード、T50）は電話に出ない（鍵が無く本人役のいないときも）
+    if (reply?.pickup === "no_answer" || s.world.ended?.[input.person] !== undefined) {
       status = "noAnswer";
       ok = false;
       text = ACTION_STATUS_TEXTS.noAnswer;
@@ -324,7 +325,7 @@ export async function act(
     }
   }
   // 訪問で着いた → 確認済（本人に会えた）
-  if (input.kind === "visit" && status === "arrived" && input.person) {
+  if (input.kind === "visit" && status === "arrived" && input.person && s.world.ended?.[input.person] === undefined) {
     heard = heardOf(s.people[input.person] ?? null, "visit", endMinute / 60);
   }
 

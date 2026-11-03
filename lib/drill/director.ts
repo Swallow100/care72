@@ -128,6 +128,8 @@ const MARK_WORDS: Readonly<Record<keyof PersonMarks, string>> = {
   nurseAway: "訪問看護が来られない",
   goingHome: "家に帰ろうとしている",
   lineDown: "家の電話が不通",
+  flooded: "家の辺りが浸水",
+  waterOut: "家の辺りが断水",
 };
 
 const SCENE_WORDS = { heavy_rain: "大雨（警戒レベル 3 → 4 → 浸水）", earthquake: "地震（南海トラフ 震度 6強・津波・停電）" } as const;

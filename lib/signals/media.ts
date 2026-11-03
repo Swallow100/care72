@@ -34,7 +34,7 @@ export type SynthLike = { speak(u: UtteranceLike): void; cancel(): void };
 
 export type PromptResult = "audio" | "speech" | "none";
 
-export const PROMPT_TIMEOUT_MS = 12_000;
+export const PROMPT_TIMEOUT_MS = 20_000; // 頭に AI の告知を足して声が 10 秒ほどになった（T48）
 
 export type PromptPlayer = {
   /** 人が押した時に呼ぶ（音の要素に声を読み込み、鳴らせる状態にする） */

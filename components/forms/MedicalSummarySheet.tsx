@@ -3,11 +3,14 @@
 // 大事な欄（禁忌事項・特記事項（常用薬等）のチェック・常用薬と中断注意・透析・在宅酸素・メディカル ID）は太い枠と大きい文字。
 // 字は太くしない（災害診療記録 2018 に太字は無い。T47）。様式に無い欄（住まい・連絡先の人・関係先・機器・常用薬の表・持出品・特記）は
 // 様式の欄のあとの「補足」の段にまとめる（様式の欄の中に混ぜない）。
+// 医師が書く欄（初診日・初診医師氏名・傷病名・トリアージタグ）は空欄で出し、欄の名前に「医師記入」を添える（11/3 15:0x 確定）。
+// 中断注意の印は補足の段（常用薬の表・機器）にだけ。様式の欄は台帳の値の並べ替えだけ（11/3 15:00 確定の 3）。
 // 「なぜこの行があるか」と出典は紙に出さない（画面の脇の MedicalSummaryBasis だけ）。
 // 見た目は components/forms/paper.css と medical-paper.css（読み込むのはページの側。テストでは読まない）。
 
 import type { CSSProperties, ReactNode } from "react";
 import {
+  MEDICAL_BLOCKS,
   MEDICAL_ID_PART_LABELS,
   medicalField,
   type MedicalKey,
@@ -42,6 +45,21 @@ function F({
   return (
     <div className={size} data-field={k} style={style}>
       {!bare && <span className="f-l">{label ?? medicalField(k).label}</span>}
+      <span className="f-v">
+        <FormCell cell={s.cells[k]} />
+      </span>
+    </div>
+  );
+}
+
+/** 医師が書く欄（空欄）。欄の名前に「医師記入」を添え、値は手で書く余白 */
+function DoctorField({ s, k }: { s: MedicalSummary; k: MedicalKey }) {
+  return (
+    <div data-field={k} data-doctor>
+      <span className="f-l">
+        {medicalField(k).label}
+        <span className="p-sub"> {MEDICAL_BLOCKS.doctor}</span>
+      </span>
       <span className="f-v">
         <FormCell cell={s.cells[k]} />
       </span>
@@ -175,7 +193,8 @@ export function MedicalSummarySheet({ sheet: s }: { sheet: MedicalSummary }) {
  * 医療要約の A4 の 1 頁（束に入れる前の section）。本人の 1 枚（T06）の裏もこれをそのまま使う。
  * page は束の中の何頁目か、aside は題名の段の右に置く物（本人の 1 枚の QR）、
  * note は題名の段の右の小さな字の一番上に足す 1 行（本人の 1 枚の「この QR は医療班が読みます」と期限）、
- * foot は頁の下の端の文書名と頁番号（既定は医療要約の 1 / 1。本人の 1 枚の裏は 2 / 2）
+ * foot は頁の下の端の文書名と頁番号（既定は医療要約の 1 / 1。本人の 1 枚の裏は 2 / 2）、
+ * doctorBlanks は医師が書く欄の空欄の行（既定は出す。本人の 1 枚の裏は QR の枠で 1 頁に収まらないので出さない）
  */
 export function MedicalSummaryPaper({
   sheet: s,
@@ -183,12 +202,14 @@ export function MedicalSummaryPaper({
   aside,
   note,
   foot = { doc: DOCUMENT_LABELS.medical, page: 1, total: 1 },
+  doctorBlanks = true,
 }: {
   sheet: MedicalSummary;
   page?: 1 | 2;
   aside?: ReactNode;
   note?: ReactNode;
   foot?: { doc: string; page: number; total: number };
+  doctorBlanks?: boolean;
 }) {
   const author = [s.author.office, s.author.careManager ? `${s.author.careManager}（ケアマネ）` : ""].filter(Boolean).join(" ");
   const consentAt = s.consent.recordedAt ? formatJst(s.consent.recordedAt).slice(0, 10) : null;
@@ -213,6 +234,18 @@ export function MedicalSummaryPaper({
             </div>
             {aside}
           </div>
+
+          {doctorBlanks && (
+            <div className="blk" data-block="doctor">
+              {/* 様式では初診日・初診医師氏名がいちばん上、傷病名・トリアージタグは要保護者の下。1 頁に収めるため、医師が書く 4 つを上の 1 行にまとめた */}
+              <div className="grid" style={cols("1fr 1.2fr 1.6fr 1fr")}>
+                <DoctorField s={s} k="doctor.firstVisit" />
+                <DoctorField s={s} k="doctor.physician" />
+                <DoctorField s={s} k="doctor.disease" />
+                <DoctorField s={s} k="doctor.triage" />
+              </div>
+            </div>
+          )}
 
           <div className="blk" data-block="patient">
             <div className="grid" style={cols("1.5fr 1.2fr 0.6fr 1.7fr")}>
@@ -313,7 +346,7 @@ export function MedicalSummaryPaper({
 
           <div className="small-note">
             <p>
-              ※欄の順は災害診療記録2018（一般診療版）による（既往症・予防接種は様式の2頁）。値は台帳の記録を並べた物で、□ と中断注意の印は薬の区分などから機械的に付けた。初診日・傷病名・トリアージ・処置など医療班が書く欄は載せていない
+              ※欄の順は災害診療記録2018（一般診療版）による（既往症・予防接種は様式の2頁）。値は台帳の記録を並べた物で、□ は薬の区分などから、補足の中断注意の印は薬の区分から機械的に付けた。初診日・初診医師氏名・傷病名・トリアージタグは医師が書く欄で空欄のまま。処置など 2 頁の欄は載せていない
             </p>
           </div>
           <PaperFoot doc={foot.doc} name={s.name} page={foot.page} total={foot.total} />

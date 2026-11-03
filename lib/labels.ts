@@ -251,7 +251,7 @@ export const HEAD_LABELS = {
   careLevel: "介護度",
   plan: "避難計画",
   unconfirmed: "未確認",
-  priority: "優先",
+  priority: "連絡順",
   marks: "医療",
   clocks: "時計",
   emergency: "緊急連絡先",
@@ -300,7 +300,7 @@ export const TIMELINE_KIND_LABELS: Record<TimelineKind, string> = {
   // 医療班・行政が受け持ちに入れた（T23。受領は物を受け取る言葉なので「受入」。様式 9 の結果の列もこれを読む）
   received: "受入",
   released: "受持解除",
-  override: "優先変更",
+  override: "順番変更",
   consent: "同意",
   clock_check: "時計確認",
   self_report_mark: "印変更",

@@ -333,7 +333,7 @@ describe("分ける本体（classify）", () => {
 });
 
 describe("信号の行に書く（classifySignal）", () => {
-  it("山田の「いたい、うごけない」→ 動けない（0.9）→ 赤の最上位「録音の分類（AI）: 動けない」", async () => {
+  it("山田の「いたい、うごけない」→ 動けない（0.9）→ 赤の理由に「録音の分類（AI）: 動けない」を添える（順は動かさない。案 10）", async () => {
     await earthquake();
     const a = await redWithRecording("いたい、うごけない");
     const before = await yamadaRow();
@@ -362,7 +362,7 @@ describe("信号の行に書く（classifySignal）", () => {
     });
 
     const after = await yamadaRow();
-    expect(after.row.triage).toMatchObject({ color: "red", rule: "red_injury", group: 0, reason: "録音の分類（AI）: 動けない" });
+    expect(after.row.triage).toMatchObject({ color: "red", rule: "red", group: 1, reason: "本人が「無事じゃない」、録音の分類（AI）: 動けない" });
     expect(after.top.id).toBe("p-01");
 
     // 経過に AI の 1 行（書き手は自動）

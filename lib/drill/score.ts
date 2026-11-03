@@ -189,7 +189,7 @@ export type ClockForRun = Pick<ClockRow, "person_id" | "kind" | "category" | "la
 export function clockRuns(
   clocks: ReadonlyArray<ClockForRun>,
   towns: ReadonlyMap<string, string | null>,
-  outage: { since: number; towns: ReadonlyArray<string> | null } | null,
+  outage: { since: number; towns: ReadonlyArray<string> | null; townSince?: Readonly<Record<string, number>> } | null,
 ): ClockRun[] {
   const out: ClockRun[] = [];
   for (const k of clocks) {
@@ -198,7 +198,11 @@ export function clockRuns(
     if (hours === null) continue;
     let start: number;
     if (k.starts_on === "disaster") start = 0;
-    else if (outage && inOutageArea(outage.towns, towns.get(k.person_id))) start = outage.since * 60;
+    else if (outage && inOutageArea(outage.towns, towns.get(k.person_id))) {
+      // 町ごとの停電の始まり（仮想モード、T50）があればその時刻から
+      const town = towns.get(k.person_id)?.trim();
+      start = ((town ? outage.townSince?.[town] : undefined) ?? outage.since) * 60;
+    }
     else continue;
     out.push({
       person: k.person_id,

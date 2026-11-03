@@ -204,16 +204,58 @@ describe("10 人 × 赤 × 停電の経過時間", () => {
   it("どの時間でも全員赤（本人の報告を当てにしない 4 も、赤は赤）", () => {
     for (const s of Object.values(S)) expect(colorsFor(RED, s)).toEqual(colors("赤赤赤赤赤赤赤赤赤赤"));
   });
-  it("赤だけは組 1、けが・動けないは組 0（最上位）", () => {
+  it("赤だけは組 1、けが・動けない（答え）は組 0（最上位）。Claude の分類だけなら組 1（案 10）", () => {
     const p = person("p-09");
     const r = (sig: TriageSignal) => one(p, [sig], S.calm);
     expect(r(red())).toMatchObject({ rule: "red", group: 1 });
     expect(r(red({ injured: true }))).toMatchObject({ rule: "red_injury", group: 0 });
     expect(r(red({ canMove: false })).group).toBe(0);
-    expect(r(red({ classes: ["immobile"] })).group).toBe(0);
-    expect(r(red({ classes: ["injury"] })).group).toBe(0);
+    expect(r(red({ classes: ["immobile"] })).group).toBe(1);
+    expect(r(red({ classes: ["injury"] })).group).toBe(1);
     // 水が来た・機器が止まった・不明は「赤だけ」
     expect(r(red({ classes: ["water", "unknown"] })).group).toBe(1);
+  });
+});
+
+describe("案 10: 録音・自由文の分類（Claude）は赤の中の順を動かさない（T48、アドバイザーの返事）", () => {
+  const r = (signals: TriageSignal[]) => one(person("p-09"), signals, S.calm);
+
+  it("Claude の分類の「けが」「動けない」だけなら赤だけの行（組 1）で、理由に AI の印つきで添える", () => {
+    expect(r([red({ classes: ["immobile"] })])).toMatchObject({
+      rule: "red",
+      group: 1,
+      reason: "本人が「無事じゃない」、録音の分類（AI）: 動けない",
+    });
+    expect(r([red({ classes: ["injury", "immobile"] })])).toMatchObject({
+      rule: "red",
+      group: 1,
+      reason: "本人が「無事じゃない」、録音の分類（AI）: けが・動けない",
+    });
+    expect(r([{ ...red({ classes: ["injury"] }), source: "family" }])).toMatchObject({
+      rule: "red",
+      reason: "家族が「無事じゃない」、録音の分類（AI）: けが",
+    });
+    // 答えが「けがなし」「動ける」で分類が「動けない」: 色も組も答えのまま
+    expect(r([red({ injured: false, canMove: true, classes: ["immobile"] })])).toMatchObject({
+      rule: "red",
+      group: 1,
+      reason: "本人が「無事じゃない」、録音の分類（AI）: 動けない",
+    });
+  });
+
+  it("最上位（組 0）は 4 問の答えかケアマネが直した分類だけ。Claude の分類は答えの理由に続ける", () => {
+    expect(r([red({ injured: true, classes: ["immobile"] })])).toMatchObject({
+      rule: "red_injury",
+      group: 0,
+      reason: "本人が「けが」、録音の分類（AI）: 動けない",
+    });
+    expect(r([red({ staffClasses: ["immobile"] })])).toMatchObject({ rule: "red_injury", group: 0, reason: "分類（ケアマネ）: 動けない" });
+  });
+
+  it("並び: Claude の分類だけの赤は、答えの無い赤と同じ組", () => {
+    const a = r([red({ classes: ["immobile"] })]);
+    const b = r([red()]);
+    expect(a.group).toBe(b.group);
   });
 });
 
@@ -503,20 +545,20 @@ describe("理由 1 行", () => {
 
   it("けが・動けないが録音・自由文の分類（Claude）から来たら AI の印、4 問の答え（ボタン）からなら今のまま", () => {
     const r = (signals: TriageSignal[]) => one(person("p-09"), signals, S.calm);
-    // 分類だけ: 誰がでなく「録音の分類（AI）」
-    expect(r([red({ classes: ["immobile"] })]).reason).toBe("録音の分類（AI）: 動けない");
-    expect(r([red({ classes: ["injury", "immobile"] })]).reason).toBe("録音の分類（AI）: けが・動けない");
-    expect(r([{ ...red({ classes: ["injury"] }), source: "family" }]).reason).toBe("録音の分類（AI）: けが");
+    // 分類だけ: 赤だけの行の理由に「録音の分類（AI）」を続ける（案 10）
+    expect(r([red({ classes: ["immobile"] })]).reason).toBe("本人が「無事じゃない」、録音の分類（AI）: 動けない");
+    expect(r([red({ classes: ["injury", "immobile"] })]).reason).toBe("本人が「無事じゃない」、録音の分類（AI）: けが・動けない");
+    expect(r([{ ...red({ classes: ["injury"] }), source: "family" }]).reason).toBe("家族が「無事じゃない」、録音の分類（AI）: けが");
     // 答えと分類が混ざる: 答えは今のまま、分類の分だけ AI の印
     expect(r([red({ injured: true, classes: ["immobile"] })]).reason).toBe("本人が「けが」、録音の分類（AI）: 動けない");
     // 答えにある言葉は分類から重ねない
     expect(r([red({ canMove: false, classes: ["immobile", "water"] })]).reason).toBe("本人が「動けない」");
     expect(r([red({ injured: true, canMove: false, classes: ["injury", "immobile"] })]).reason).toBe("本人が「けが」「動けない」");
-    // 答えが「けがなし」「動ける」でも、分類が言えば分類の言葉を AI の印で出す（色と組は今のまま）
+    // 答えが「けがなし」「動ける」でも、分類が言えば分類の言葉を AI の印で添える（行と組は答えのまま。案 10）
     expect(r([red({ injured: false, canMove: true, classes: ["immobile"] })])).toMatchObject({
-      rule: "red_injury",
-      group: 0,
-      reason: "録音の分類（AI）: 動けない",
+      rule: "red",
+      group: 1,
+      reason: "本人が「無事じゃない」、録音の分類（AI）: 動けない",
     });
     // 分類が水が来た・機器が止まった・不明だけなら赤だけの行で、AI の言葉は出さない
     expect(r([red({ classes: ["water", "device_stopped", "unknown"] })]).reason).toBe("本人が「無事じゃない」");

@@ -4,13 +4,15 @@
 
 このリポジトリは Built with Claude: Japan 2026 の期間中（2026-11-02 12:30 JST 以降）に作った。設計はキックオフ前に文書で行い、docs/SPEC.md に写した。
 
-この道具は診断・用量・医療助言をしない。安否の色と連絡の順位はコードに書いたルールの表（lib/triage）で出し、AI は決めない。利用者は全員架空。
+この道具は診断・用量・医療助言をしない。安否の色と連絡の順番はコードに書いたルールの表（lib/triage）で出し、AI は決めない。利用者は全員架空。
 
 ルールの表を人が読める形にした物: [docs/TRIAGE.md](docs/TRIAGE.md)（コードから作る。`npm run docs:triage`）。
 
 ## 触り方
 
 https://care72.app 。ID とパスワードは提出書類に書いた（ここには書かない）。利用者は架空の 10 人で、「デモ事業所」が開く。
+
+訓練に出る 10 人は AI が演じる架空の人で、元の記録も作った例（実在の利用者の記録は使っていない）。訓練の画面では名前のそばに「架空」の印が付く。
 
 ### 1. ログインと役
 
@@ -74,13 +76,24 @@ https://care72.app 。ID とパスワードは提出書類に書いた（ここ�
 - 入れる欄の「話す」は Web Speech で、ブラウザが音声を外部の認識サービスに送る物。本運用で使うかは事業所の判断
 - 本運用の条件: 事業所との委託契約、学習に使わない契約、電気通信事業法の確認
 
+### 本運用で確かめること
+
+大会のあと実際の人で使うときに確かめる事（アドバイザーの返事。docs/SOURCES.md の末にも同じ一覧）。
+
+- 要配慮個人情報（薬・持病・機器。個人情報保護法 2 条 3 項）の同意の流れ: 平時の計画づくりの段階で、本人と家族に、台帳に入れること・発災時の録音・医療班と支援者への提供の範囲の同意を取る形にする
+- 仮名化と対応表: Claude には仮名（A さん）と役割名で渡すが、対応表を持つ事業所の側では個人情報のまま（同法 2 条 1 項）。発災時の録音は本人が話すので名前や住所が混ざる。対応表の置き場所と消し方を決める
+- 外国にある事業者への提供: Claude（Anthropic）と Gemini（Google）へ送る扱いを、同法 28 条（外国にある第三者への提供）と合わせて確かめる。委託契約・学習に使わない契約の確認も
+- ルールの表（医療依存の段と色の行）の監修: 医師・訪問看護師に見てもらい、監修者と版を画面に出す（11/3 16:0x 確定。進めている所）
+- 医療機器プログラムに当たらないか: 条件を事実にとどめ症状を点数にしない今の作りが、厚生労働省の医療機器プログラムの事例（問診票をそのまま電子化する物 197 など）の線の内か、相談窓口で確かめる（https://www.mhlw.go.jp/stf/seisakunitsuite/bunya/0000179749_00004.html）
+- 相談窓口: 個人情報は個人情報保護委員会、医療機器プログラムは厚生労働省の窓口。大会のあと実際の人で使う前に
+
 ## 使った資料と方法
 
 期間中に足す。使った物だけ書く。
 
 - Claude Code: 設計（Fable）と実装（Opus のサブエージェント）の分担、作業ごとの brief、テスト先行、フックで守りを強制、Skill で手順を固定、読むだけの見直し役（.claude/agents）、手元の D1 を仮名で読む MCP。数字と commit の hash は [docs/CLAUDE_CODE.md](docs/CLAUDE_CODE.md)
 - [Claude Code のベストプラクティス](https://code.claude.com/docs/en/best-practices): 「Deterministic and non-deterministic instructions」「Enforce steps with hooks」→ 必ず守る物（ネットに出る wrangler・鍵のファイル・履歴の書き換え）はフック（tools/hooks）、目安は CLAUDE.md。「Put team procedures in skills」→ .claude/skills。「Give Claude a check to run」→ テストを先に書き、.ts を書いたらフックが型の検査。「Know what subagents cost」→ 見直し役は読むだけの道具で、ペルソナの確かめは haiku。「Connect the tools Claude needs」→ MCP の care72-local。「Run sessions in parallel」→ worktree と branch で 2 つのアカウント
-- [Building Effective Agents](https://www.anthropic.com/engineering/building-effective-agents): 「Workflow: Routing」→ 用途ごとのモデル（分類は Haiku、様式の読み取りは Opus。lib/claude/models.ts）と、Skill の care72-review が変えたファイルで見直し役を選ぶ形。「Workflow: Parallelization」の sectioning → 3 つの見直し役を並べて走らせる。「Agents」の人の確認 → 発災時は Claude を分類だけにし、色と順位はルールの表とケアマネ。「Appendix 2: Prompt engineering your tools」の poka-yoke → 仮名化を通らない物は型で Claude に渡せない（lib/pseudonym の ForClaude）。「Workflow: Orchestrator-workers」→ 訓練の Opus の監督と 10 体の Haiku（作る物）
+- [Building Effective Agents](https://www.anthropic.com/engineering/building-effective-agents): 「Workflow: Routing」→ 用途ごとのモデル（分類は Haiku、様式の読み取りは Opus。lib/claude/models.ts）と、Skill の care72-review が変えたファイルで見直し役を選ぶ形。「Workflow: Parallelization」の sectioning → 3 つの見直し役を並べて走らせる。「Agents」の人の確認 → 発災時は Claude を分類だけにし、色と連絡の順番はルールの表とケアマネ。「Appendix 2: Prompt engineering your tools」の poka-yoke → 仮名化を通らない物は型で Claude に渡せない（lib/pseudonym の ForClaude）。「Workflow: Orchestrator-workers」→ 訓練の Opus の監督と 10 体の Haiku（作る物）
 - [Effective Context Engineering for AI Agents](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents): 「Sub-agent architectures」→ 見直し役は自分の文脈で読み、表だけを返す。「Structured note-taking」→ docs/tasks の brief と進みの記録（docs/PROGRESS.md・docs/progress）でセッションをまたぐ。「Context retrieval and agentic search」の just in time → MCP は一覧で仮名と id だけを返し、台帳は person で 1 人ずつ読む
 - [Claude Cookbooks](https://github.com/anthropics/claude-cookbooks)（まだ使っていない。作るときに読む）: multimodal/using_sub_agents（Haiku を Opus と組む）→ 訓練（docs/tasks/T18.md・T19.md）。multimodal/how_to_transcribe_text（様式から中身を取る）→ 様式の読み取り（docs/tasks/T08.md）。capabilities/classification → 録音と自由文の分類（docs/tasks/T12.md）
 

@@ -34,15 +34,20 @@ export type PhoneState = (typeof PHONE_STATES)[number];
 export const TSUNAMI_STATES = ["none", "evacuate", "lifted"] as const;
 export type TsunamiState = (typeof TSUNAMI_STATES)[number];
 
-/** 避難所: 開設・混雑・満員 */
-export const SHELTER_STATES = ["open", "crowded", "full"] as const;
+/** 避難所: 開設・混雑・満員・閉鎖（閉鎖は仮想モードの世界の部屋だけが出す。T50） */
+export const SHELTER_STATES = ["open", "crowded", "full", "closed"] as const;
 export type ShelterState = (typeof SHELTER_STATES)[number];
 
 /**
  * 停電の範囲。office は事業所の全員、hazard はハザードの地区（浸水 3 m 以上の人の住む町）。
  * 町名は表に持たず、実行のときに参加者の台帳から引く（lib/drill/engine.ts の outageTownsOf）
  */
-export type OutageArea = { scope: "office" } | { scope: "hazard"; hazard: HazardKind; minDepthM: number };
+export type OutageArea =
+  | { scope: "office" }
+  | { scope: "hazard"; hazard: HazardKind; minDepthM: number }
+  // 仮想モード（T50）: 町名の一覧（世界の部屋が町を選ぶ。lib/drill/area.ts の町）
+  // since は町ごとの停電の始まり（発災からの時間。無い町は停電の since）
+  | { scope: "towns"; towns: string[]; since?: Record<string, number> };
 
 /** 道路・避難所・施設。label は場所の名前を書かない一般の言い方（川沿いの市道・指定避難所） */
 export type Road = { id: string; label: string; open: boolean; person: string | null };
@@ -52,9 +57,23 @@ export type Facility = { id: string; label: string; open: boolean; person: strin
 
 /**
  * 本人ごとの印（監督の差し込みで付く）。値は付いた時刻（発災からの時間）。
- * supplyLeft 栄養剤の持ち出し忘れ・nurseAway 訪問看護が来られない・goingHome 本人が家に帰ろうとする・lineDown 家の電話が不通
+ * supplyLeft 栄養剤の持ち出し忘れ・nurseAway 訪問看護が来られない・goingHome 本人が家に帰ろうとする・lineDown 家の電話が不通。
+ * flooded 家の辺りが浸水・waterOut 家の辺りが断水（仮想モードの町の出来事、T50。lib/drill/world-apply.ts が町の人に付ける）
  */
-export type PersonMarks = { supplyLeft?: number; nurseAway?: number; goingHome?: number; lineDown?: number };
+export type PersonMarks = {
+  supplyLeft?: number;
+  nurseAway?: number;
+  goingHome?: number;
+  lineDown?: number;
+  flooded?: number;
+  waterOut?: number;
+};
+
+/**
+ * 結末（仮想モード、T50）。走り出した時計が切れて、切れる時刻までに手が届かなかった人（lib/drill/outcome.ts がコードで決める）。
+ * at は決まった刻みの時刻（発災からの時間）、label は切れた時計の名前。以後その人の本人役は呼ばない
+ */
+export type Ended = { at: number; label: string };
 
 /** 世界の状態（被害状況）。監督（T19）が持つ。固定の部分はこの表の出来事を順に当てて作る */
 export type WorldState = {
@@ -82,7 +101,23 @@ export type WorldState = {
    * 事業所の職員なら戻る時刻（back）を過ぎたら職員の空きを 1 戻す。時刻は発災からの分
    */
   dispatched: Dispatched[];
+  /** 仮想モード（T50）: 浸水の深さ（台帳の id → m。分からなければ null）。本人役の状況に使う */
+  floods?: Record<string, number | null>;
+  /** 仮想モード: 天候（大雨・止む） */
+  weather?: Weather | null;
+  /** 仮想モード: 結末の人（台帳の id → 結末）。固定の筋には無い */
+  ended?: Record<string, Ended>;
+  /** 仮想モード: 世界の 1 文の履歴（部屋の文。地区は別名、人は仮名のまま。STORY_MAX まで） */
+  story?: string[];
+  /** 仮想モード: 世界の部屋（Managed Agents）の session の ID。drills.world_session_id にも写す */
+  session?: string | null;
 };
+
+/** 世界の履歴に残す文の数 */
+export const STORY_MAX = 24;
+
+export const WEATHERS = ["rain", "clear"] as const;
+export type Weather = (typeof WEATHERS)[number];
 
 /** 出向いてもらった 1 件。back は事業所の職員のときだけ（訪問看護は事業所の職員でない） */
 export type Dispatched = { person: string; arrive: number; back: number | null; arrived: boolean };
@@ -116,6 +151,20 @@ export type WorldChange =
   | { kind: "road"; id: string; label: string; open: boolean }
   | { kind: "shelter"; id: string; label: string; state: ShelterState }
   | { kind: "facility"; id: string; label: string; open: boolean; depends?: DependsOn }
+  // 仮想モード（T50）の町の出来事。persons はその町に住む本人（コードが町名から引く。部屋は知らない）
+  | { kind: "town_flood"; town: string; depthM: number | null; persons: string[] }
+  | { kind: "landslide"; town: string; persons: string[] }
+  | { kind: "town_road"; road: string; label: string; open: boolean; persons: string[] }
+  | { kind: "town_water"; towns: string[]; out: boolean; persons: string[] }
+  | { kind: "town_line"; towns: string[]; persons: string[] }
+  | { kind: "town_facility"; facility: string; label: string; open: boolean; depends: DependsOn | null; persons: string[] }
+  | { kind: "weather"; state: Weather }
+  // 世界の部屋の 1 文（room は部屋が書いたままの別名の文。本人役に渡す。text は町名に戻した画面の文）。via は部屋か 1 回呼びか
+  | { kind: "narration"; room: string; via: WorldVia }
+  // 部屋も 1 回呼びも使えなかった刻み（差し込みなしで進んだ印。記録に残す）
+  | { kind: "world_note"; state: "down" | "off" }
+  // 結末（person が要る。lib/drill/outcome.ts）
+  | { kind: "outcome"; label: string }
   // 本人ごとの印（監督の差し込み。person が要る）
   | { kind: "supply_left" }
   | { kind: "nurse_away" }
@@ -123,6 +172,9 @@ export type WorldChange =
   | { kind: "line_down" };
 
 export type WorldEventKind = WorldChange["kind"];
+
+/** 世界の 1 刻みを作った所。room は Managed Agents の部屋、oneshot は Messages API の 1 回呼び（部屋が使えないときの代替） */
+export type WorldVia = "room" | "oneshot";
 
 // ---------- 監督の差し込みの種類（T19） ----------
 
@@ -511,14 +563,38 @@ export function condense(base: Scenario, id: DrillScenario, hours: readonly numb
 
 const SHORT = condense(HEAVY_RAIN, "short", SHORT_HOURS);
 
+// ---------- 仮想（T50） ----------
+// 表の出来事も本人の行も持たない（12 の刻みだけ）。街の出来事は世界の部屋（lib/drill/world-room.ts、落ちたら world-oneshot.ts）が
+// 刻みごとに決め、本人役は毎刻み自分で動く。kind は被害状況の欄・地図の場面の種にだけ使う（大雨の形。余震は本人役への状況）
+
+const VIRTUAL: Scenario = {
+  id: "virtual",
+  kind: "heavy_rain",
+  hours: DRILL_HOURS,
+  staff: 3,
+  ticks: DRILL_HOURS.map((hour) => ({ hour, events: [], turns: [] })),
+};
+
 export const SCENARIOS: Readonly<Record<DrillScenario, Scenario>> = {
   heavy_rain: HEAVY_RAIN,
   earthquake: EARTHQUAKE,
   short: SHORT,
+  virtual: VIRTUAL,
 };
 
-/** 想定の並び（開始のボタンの順） */
-export const SCENARIO_ORDER: ReadonlyArray<DrillScenario> = ["heavy_rain", "earthquake", "short"];
+/** 想定の並び（開始のボタンの順。10 分版は画面が先頭に出す） */
+export const SCENARIO_ORDER: ReadonlyArray<DrillScenario> = ["heavy_rain", "earthquake", "short", "virtual"];
+
+/** 仮想モード（世界の部屋が街を進める）か */
+export function isVirtual(id: DrillScenario): boolean {
+  return id === "virtual";
+}
+
+/** 被害状況の欄・地図の場面の種類。仮想は地震（震度）が起きていれば地震、ほかは大雨の形 */
+export function drillKindOf(id: DrillScenario, world: Pick<WorldState, "quake">): DrillKind {
+  if (isVirtual(id)) return world.quake ? "earthquake" : "heavy_rain";
+  return scenarioOf(id).kind;
+}
 
 export function scenarioOf(id: DrillScenario): Scenario {
   return SCENARIOS[id];
@@ -561,8 +637,17 @@ export function applyEvent(world: WorldState, e: WorldEvent, hour: number): Worl
       return { ...world, tsunami: c.state };
     case "flood":
       return { ...world, flood: true };
-    case "outage":
+    case "outage": {
+      // 町の停電が広がる（仮想）: 続いている町の停電に町を足す。停電の始まり（since）は最初の時刻のまま（ルールの表の停電の始まりは 1 つ）、
+      // 町ごとの始まりは area.since に持ち、時計の走り方（score.ts の clockRuns、結末 outcome.ts）は町の始まりから数える
+      const o = world.outage;
+      if (o && o.restoredAt === null && o.area.scope === "towns" && c.area.scope === "towns") {
+        const towns = [...new Set([...o.area.towns, ...c.area.towns])];
+        const since = { ...(c.area.since ?? {}), ...(o.area.since ?? {}) };
+        return { ...world, outage: { ...o, area: { scope: "towns", towns, since } } };
+      }
       return { ...world, outage: { area: c.area, since: hour, restoredAt: null } };
+    }
     case "outage_restored":
       return world.outage ? { ...world, outage: { ...world.outage, restoredAt: hour } } : world;
     case "phone":
@@ -586,7 +671,53 @@ export function applyEvent(world: WorldState, e: WorldEvent, hour: number): Worl
       return mark(world, person, "goingHome", hour);
     case "line_down":
       return mark(world, person, "lineDown", hour);
+    // ---------- 仮想（T50）の町の出来事。町の人ごとに印・道・施設を当てる ----------
+    case "town_flood": {
+      let w = c.persons.reduce((x, p) => mark(x, p, "flooded", hour), world);
+      const floods = { ...(w.floods ?? {}) };
+      for (const p of c.persons) floods[p] = c.depthM ?? floods[p] ?? null;
+      w = { ...w, floods };
+      return w;
+    }
+    case "landslide":
+      return c.persons.reduce(
+        (w, p) => ({ ...w, roads: upsert(w.roads, { id: `rd-ls-${c.town}-${p}`, label: "土砂の道", open: false, person: p }) }),
+        world,
+      );
+    case "town_road":
+      return c.persons.reduce(
+        (w, p) => ({ ...w, roads: upsert(w.roads, { id: `rd-${c.road}-${p}`, label: c.label, open: c.open, person: p }) }),
+        world,
+      );
+    case "town_water":
+      return c.out ? c.persons.reduce((w, p) => mark(w, p, "waterOut", hour), world) : clearAll(world, c.persons, "waterOut");
+    case "town_line":
+      return c.persons.reduce((w, p) => mark(w, p, "lineDown", hour), world);
+    case "town_facility":
+      return c.persons.reduce(
+        (w, p) => ({
+          ...w,
+          facilities: upsert(w.facilities, { id: `fc-${c.facility}-${p}`, label: c.label, open: c.open, person: p, depends: c.depends }),
+        }),
+        world,
+      );
+    case "weather":
+      return { ...world, weather: c.state };
+    case "narration":
+      // 部屋の文（別名のまま）を世界の履歴に残す。1 回呼び（world-oneshot.ts）が履歴の要約として送る
+      return { ...world, story: [...(world.story ?? []), `${hour} 時間: ${c.room}`].slice(-STORY_MAX) };
+    case "world_note":
+      return world;
+    case "outcome": {
+      if (!person || world.ended?.[person]) return world;
+      return { ...world, ended: { ...(world.ended ?? {}), [person]: { at: hour, label: c.label } } };
+    }
   }
+}
+
+/** 人ごとの印を 1 つ消す（断水の解消など） */
+function clearAll(world: WorldState, persons: ReadonlyArray<string>, key: keyof PersonMarks): WorldState {
+  return persons.reduce((w, p) => clearMarks(w, p, [key]).world, world);
 }
 
 // ---------- ケアマネの手が世界を変える所（T20） ----------
