@@ -67,7 +67,7 @@ export function isDrillScenario(v: unknown): v is DrillScenario {
 }
 
 /**
- * D1 の行の想定。仮想（T50）は scenario の CHECK を建て直さず mode に持つ（migrations/0007）。
+ * D1 の行の想定。仮想（T50）は scenario の CHECK を建て直さず mode に持つ（migrations/0006）。
  * 書くときの scenario の列は種の heavy_rain（dbScenario）、読むときは mode から virtual に戻す
  */
 export function rowScenario<T extends { scenario: string; mode?: string | null }>(row: T): T & { scenario: DrillScenario } {

@@ -106,7 +106,7 @@ export type CheckStatus = (typeof CHECK_STATUSES)[number];
 
 /**
  * 訓練の想定。virtual は仮想モード（T50。世界の部屋が街の出来事を進め、結末まで出す）。
- * D1 の drills.scenario の CHECK は 3 つのままで、仮想は mode = virtual（migrations/0007。読む所 lib/drill/db.ts の rowScenario）
+ * D1 の drills.scenario の CHECK は 3 つのままで、仮想は mode = virtual（migrations/0006。読む所 lib/drill/db.ts の rowScenario）
  */
 export const DRILL_SCENARIOS = ["earthquake", "heavy_rain", "short", "virtual"] as const;
 export type DrillScenario = (typeof DRILL_SCENARIOS)[number];
