@@ -4,7 +4,7 @@
 // いちばん下に出す。状態（PhoneState）に録音の中身・分類（AI の出力）は無く、出す・出さないは赤の流れかどうかだけで決まる（T48）。
 // Fill・Choice・Emergency・QuestionBody は家族・支援者のスマホ（FamilyView.tsx、T11）も使う。
 // 赤のあとの問い（T49）は lib/signals/questions.ts の表から 1 画面 1 問。選択肢（わからない を含む）と「とばす」。
-// 選択肢が 5 つ以上の問い（部位・部屋など）は 2 列に並べる。声の問い（20 秒押さないとき）は「AI が きいています」を上に出し、押してもよい。
+// 選択肢が 5 つ以上の問い（部位・部屋など）は 2 列に並べる。選択肢は面を塗らず灰の枠、印のある答えは左の帯（T69b。見た目だけで表に渡さない）。声の問い（20 秒押さないとき）は「AI が きいています」を上に出し、押してもよい。
 
 import type { ReactNode } from "react";
 import { EasyWords } from "@/components/forms/EasyText";
@@ -39,9 +39,12 @@ export function Fill({ children, step }: { children: ReactNode; step: string }) 
 
 export const BIG = "flex w-full flex-1 items-center justify-center rounded-xl px-4 py-6 text-center font-bold";
 
+/** 選択肢の面（T69b）: 面は塗らず灰の枠。tone があれば左の帯（phone.css の [data-tone]）。押したときは灰色だけ */
+export const CHOICE = "phone-choice bg-panel text-ink";
+
 export function Choice({ onClick, children, value }: { onClick: () => void; children: ReactNode; value: string }) {
   return (
-    <button type="button" onClick={onClick} className={`${BIG} bg-panel text-[2.25rem] text-ink`} data-press data-choice={value}>
+    <button type="button" onClick={onClick} className={`${BIG} ${CHOICE} text-[2.25rem]`} data-press data-choice={value}>
       <span>{children}</span>
     </button>
   );
@@ -92,9 +95,10 @@ export function QuestionBody({
             key={c.id}
             type="button"
             onClick={() => onChoice(c.id)}
-            className={`${grid ? BIG_GRID : BIG} bg-panel text-ink ${grid ? "text-[1.75rem]" : "text-[2.25rem]"}`}
+            className={`${grid ? BIG_GRID : BIG} ${CHOICE} ${grid ? "text-[1.75rem]" : "text-[2.25rem]"}`}
             data-press
             data-choice={c.id}
+            data-tone={c.tone}
           >
             <span>
               <Words m={c.easy} />

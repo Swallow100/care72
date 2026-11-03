@@ -64,7 +64,18 @@ export type Choice = {
   no?: true;
   /** この答えのあとの問い。無ければ問いの next */
   next?: QuestionId | null;
+  /**
+   * 見た目の印（T69b）。本人・家族の画面の選択肢の左の帯の色だけで、ルールの表に渡さない（送る答えにも入らない）。
+   * urgent（赤）は表が至急にする答えだけ（けが ある・動けない）、check（黄）はケアマネが見に行く手がかりになる答え、
+   * ok（緑）は同じ問いの「問題なし」の側。本人が押す申告の色で、仕組みの結論ではない。
+   * わからない・とばす・ほか・場所・部位・体の訴え・そばの人・頼みたいことには付けない
+   */
+  tone?: ChoiceTone;
 };
+
+/** 選択肢の見た目の印の 3 つ（T69b。状態の色の変数で描く。表の入力ではない） */
+export const CHOICE_TONES = ["urgent", "check", "ok"] as const;
+export type ChoiceTone = (typeof CHOICE_TONES)[number];
 
 export type Question = {
   id: QuestionId;
@@ -103,8 +114,8 @@ export const QUESTIONS: readonly Question[] = [
     label: "けが",
     voice: "けがはありますか",
     choices: [
-      { id: "yes", easy: "ある", label: "あり", words: ["ある", "あります", "けがした", "怪我した"], yes: true, next: "injuryPart" },
-      { id: "no", easy: "ない", label: "なし", words: ["ない", "ありません", "してない"], no: true },
+      { id: "yes", easy: "ある", label: "あり", words: ["ある", "あります", "けがした", "怪我した"], yes: true, next: "injuryPart", tone: "urgent" },
+      { id: "no", easy: "ない", label: "なし", words: ["ない", "ありません", "してない"], no: true, tone: "ok" },
       unknown,
     ],
     next: "atHome",
@@ -135,8 +146,8 @@ export const QUESTIONS: readonly Question[] = [
     label: "出血",
     voice: "血は出ていますか",
     choices: [
-      { id: "yes", easy: "{出|で}て いる", label: "あり", words: ["でている", "出ている", "でてる", "出てる"], yes: true },
-      { id: "no", easy: "{出|で}て いない", label: "なし", words: ["でていない", "出ていない", "でてない", "出てない"], no: true },
+      { id: "yes", easy: "{出|で}て いる", label: "あり", words: ["でている", "出ている", "でてる", "出てる"], yes: true, tone: "check" },
+      { id: "no", easy: "{出|で}て いない", label: "なし", words: ["でていない", "出ていない", "でてない", "出てない"], no: true, tone: "ok" },
       unknown,
     ],
     next: "atHome",
@@ -211,8 +222,8 @@ export const QUESTIONS: readonly Question[] = [
     label: "動けるか",
     voice: "動けますか",
     choices: [
-      { id: "yes", easy: "{動|うご}ける", label: "動ける", words: ["うごける", "動ける", "うごけます", "動けます"], yes: true },
-      { id: "no", easy: "{動|うご}けない", label: "動けない", words: ["うごけない", "動けない", "うごけません", "動けません"], no: true },
+      { id: "yes", easy: "{動|うご}ける", label: "動ける", words: ["うごける", "動ける", "うごけます", "動けます"], yes: true, tone: "ok" },
+      { id: "no", easy: "{動|うご}けない", label: "動けない", words: ["うごけない", "動けない", "うごけません", "動けません"], no: true, tone: "urgent" },
       unknown,
     ],
     next: "exit",
@@ -224,8 +235,8 @@ export const QUESTIONS: readonly Question[] = [
     label: "外へ",
     voice: "外に出られますか",
     choices: [
-      { id: "yes", easy: "{出|で}られる", label: "出られる", words: ["でられる", "出られる", "でれる", "出れる"], yes: true },
-      { id: "no", easy: "{出|で}られない", label: "出られない", words: ["でられない", "出られない", "でれない", "出れない"], no: true, next: "trappedBy" },
+      { id: "yes", easy: "{出|で}られる", label: "出られる", words: ["でられる", "出られる", "でれる", "出れる"], yes: true, tone: "ok" },
+      { id: "no", easy: "{出|で}られない", label: "出られない", words: ["でられない", "出られない", "でれない", "出れない"], no: true, next: "trappedBy", tone: "check" },
       unknown,
     ],
     next: "body",
@@ -237,10 +248,10 @@ export const QUESTIONS: readonly Question[] = [
     label: "妨げ",
     voice: "なにで出られませんか",
     choices: [
-      { id: "door", easy: "ドアが あかない", label: "ドア", words: ["ドア", "とびら", "扉", "あかない", "開かない"] },
-      { id: "furniture", easy: "{家具|かぐ}", label: "家具", words: ["かぐ", "家具", "たんす", "タンス", "はさまれ", "挟まれ"] },
-      { id: "fallen", easy: "たおれた もの", label: "倒れた物", words: ["たおれた", "倒れた", "くずれた", "崩れた"] },
-      { id: "water", easy: "{水|みず}", label: "水", words: ["みず", "水"] },
+      { id: "door", easy: "ドアが あかない", label: "ドア", words: ["ドア", "とびら", "扉", "あかない", "開かない"], tone: "check" },
+      { id: "furniture", easy: "{家具|かぐ}", label: "家具", words: ["かぐ", "家具", "たんす", "タンス", "はさまれ", "挟まれ"], tone: "check" },
+      { id: "fallen", easy: "たおれた もの", label: "倒れた物", words: ["たおれた", "倒れた", "くずれた", "崩れた"], tone: "check" },
+      { id: "water", easy: "{水|みず}", label: "水", words: ["みず", "水"], tone: "check" },
       { id: "other", easy: "ほか", label: "ほか", words: ["ほか", "他"] },
       unknown,
     ],
@@ -273,10 +284,10 @@ export const QUESTIONS: readonly Question[] = [
     label: "水",
     voice: "水はきていますか",
     choices: [
-      { id: "none", easy: "きて いない", label: "なし", words: ["きていない", "来ていない", "きてない", "来てない"], no: true },
-      { id: "floor", easy: "ゆか まで", label: "床まで", words: ["ゆか", "床"] },
-      { id: "knee", easy: "ひざ まで", label: "膝まで", words: ["ひざ", "膝"] },
-      { id: "waist", easy: "こしより うえ", label: "腰より上", words: ["こし", "腰", "むね", "胸"] },
+      { id: "none", easy: "きて いない", label: "なし", words: ["きていない", "来ていない", "きてない", "来てない"], no: true, tone: "ok" },
+      { id: "floor", easy: "ゆか まで", label: "床まで", words: ["ゆか", "床"], tone: "check" },
+      { id: "knee", easy: "ひざ まで", label: "膝まで", words: ["ひざ", "膝"], tone: "check" },
+      { id: "waist", easy: "こしより うえ", label: "腰より上", words: ["こし", "腰", "むね", "胸"], tone: "check" },
       unknown,
     ],
     next: "fireGas",
@@ -289,8 +300,8 @@ export const QUESTIONS: readonly Question[] = [
     label: "火・ガス",
     voice: "火やガスのにおいはしますか",
     choices: [
-      { id: "yes", easy: "する", label: "あり", words: ["する", "します", "におう", "臭う", "匂う", "けむり", "煙"], yes: true },
-      { id: "no", easy: "しない", label: "なし", words: ["しない", "しません"], no: true },
+      { id: "yes", easy: "する", label: "あり", words: ["する", "します", "におう", "臭う", "匂う", "けむり", "煙"], yes: true, tone: "check" },
+      { id: "no", easy: "しない", label: "なし", words: ["しない", "しません"], no: true, tone: "ok" },
       unknown,
     ],
     next: "device",
@@ -303,8 +314,8 @@ export const QUESTIONS: readonly Question[] = [
     label: "機器",
     voice: "機械は動いていますか",
     choices: [
-      { id: "running", easy: "{動|うご}いて いる", label: "動作中", words: ["うごいている", "動いている", "うごいてる", "動いてる"], yes: true },
-      { id: "stopped", easy: "{止|と}まった", label: "停止", words: ["とまった", "止まった", "とまってる", "止まってる", "うごかない", "動かない"], no: true },
+      { id: "running", easy: "{動|うご}いて いる", label: "動作中", words: ["うごいている", "動いている", "うごいてる", "動いてる"], yes: true, tone: "ok" },
+      { id: "stopped", easy: "{止|と}まった", label: "停止", words: ["とまった", "止まった", "とまってる", "止まってる", "うごかない", "動かない"], no: true, tone: "check" },
       unknown,
     ],
     next: "hasMedicine",
@@ -318,8 +329,8 @@ export const QUESTIONS: readonly Question[] = [
     label: "薬",
     voice: "くすりはありますか",
     choices: [
-      { id: "yes", easy: "ある", label: "あり", words: ["ある", "あります"], yes: true },
-      { id: "no", easy: "ない", label: "なし", words: ["ない", "ありません"], no: true },
+      { id: "yes", easy: "ある", label: "あり", words: ["ある", "あります"], yes: true, tone: "ok" },
+      { id: "no", easy: "ない", label: "なし", words: ["ない", "ありません"], no: true, tone: "check" },
       unknown,
     ],
     next: "nearby",
@@ -346,9 +357,9 @@ export const QUESTIONS: readonly Question[] = [
     label: "連絡手段",
     voice: "れんらくはできますか",
     choices: [
-      { id: "phone", easy: "この スマホ", label: "このスマホ", words: ["スマホ", "すまほ", "けいたい", "携帯"] },
-      { id: "tel", easy: "{電話|でんわ}", label: "電話", words: ["でんわ", "電話"] },
-      { id: "none", easy: "できない", label: "なし", words: ["できない", "できません", "ない"], no: true },
+      { id: "phone", easy: "この スマホ", label: "このスマホ", words: ["スマホ", "すまほ", "けいたい", "携帯"], tone: "ok" },
+      { id: "tel", easy: "{電話|でんわ}", label: "電話", words: ["でんわ", "電話"], tone: "ok" },
+      { id: "none", easy: "できない", label: "なし", words: ["できない", "できません", "ない"], no: true, tone: "check" },
       unknown,
     ],
     next: "request",

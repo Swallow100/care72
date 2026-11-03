@@ -5,10 +5,40 @@
 */
 :root {
   --phone-on-state: #ffffff;
+  /* 選択肢の灰の枠（T69b）。灰色だけ（黒を混ぜてよいのは灰色）。面（白）の上で 3:1 に近い濃さ */
+  --phone-choice-border: #8c949d;
 }
 
 :root[data-theme="dark"] {
   --phone-on-state: #0f1215;
+  --phone-choice-border: #626b75;
+}
+
+/*
+  選択肢（T69b）。面は塗らず灰の枠（1.5px）。印のある答えだけ、左に状態の色の細い帯（6px）。
+  帯は tone-check と同じく --state-*（黄は地の上で 3:1 に届く琥珀。文字には使わない）。言葉と文字の色は変えない。
+  色は本人が押す答えの見た目の印で、ルールの表の入力ではない（lib/signals/questions.ts の tone）
+*/
+.phone-choice {
+  border: 1.5px solid var(--phone-choice-border);
+}
+
+.phone-choice[data-tone] {
+  box-shadow: inset 6px 0 0 0 var(--phone-tone);
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}
+
+.phone-choice[data-tone="urgent"] {
+  --phone-tone: var(--state-urgent);
+}
+
+.phone-choice[data-tone="check"] {
+  --phone-tone: var(--state-check);
+}
+
+.phone-choice[data-tone="ok"] {
+  --phone-tone: var(--state-ok);
 }
 
 .phone-fill-ok {
