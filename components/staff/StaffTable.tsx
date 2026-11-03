@@ -6,11 +6,13 @@
 // 行の「解除」で搬送（行き先）・退所を選んで受け持ちから外す（本人の経過に残る）。
 // 医療の列と理由は同意の範囲の物だけが来る（lib/custody/board.ts）。医療要約を開ける人は氏名の横に「医療要約」（T24）。
 // 768px 未満で医療の列を省くときは、氏名の下に医療の印を時計の残りつきで 1 行（担当一覧と同じ部品。T54）。
+// 768px 以上の医療の列も同じ印（時計の残りつき。T55）。
+// 640px 未満は「解除」の列を省き、解除のボタンを氏名の下に出す（375 で列が切れて押せなかった。T55）。解除はどの幅も赤の文字。
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
-import { NarrowMarks } from "@/components/list/NarrowMarks";
+import { MedicalMarkList, NarrowMarks } from "@/components/list/NarrowMarks";
 import { StateTag, TONE_TEXT } from "@/components/person/parts";
 import { Button } from "@/components/ui/Button";
 import { CloseIcon, UnlistIcon } from "@/components/ui/Icon";
@@ -160,7 +162,7 @@ export function StaffTable({ rows, shelters }: { rows: StaffRow[]; shelters: str
               <Header k="shelter" sort={sort} onSort={setSort} className={SM} />
               <Header k="received" sort={sort} onSort={setSort} className={MD} />
               <Header k="office" sort={sort} onSort={setSort} className={LG} />
-              <th className={`${TH} w-px`}>
+              <th className={`${TH} ${SM} w-px`}>
                 <span className="sr-only">{CUSTODY_LABELS.release}</span>
               </th>
             </tr>
@@ -226,7 +228,13 @@ function Header({ k, sort, onSort, className = "" }: { k: Sort; sort: Sort; onSo
 
 function Row({ row: r, open, onToggle }: { row: StaffRow; open: boolean; onToggle: () => void }) {
   // 医療の印は時計から（担当一覧と同じ）。時計の無い人（その場で登録した人）は台帳の機器
-  const medical = r.marks.length > 0 ? r.marks : r.devices;
+  const hasMarks = r.markItems.length > 0 || r.devices.length > 0;
+  // 解除（開くと取消）。640px 以上は行の末尾の列、未満は氏名の下に同じ物
+  const release = (
+    <Button size="sm" kind={open ? "quiet" : "danger"} icon={open ? CloseIcon : UnlistIcon} onClick={onToggle} aria-expanded={open}>
+      {open ? CUSTODY_LABELS.cancel : CUSTODY_LABELS.release}
+    </Button>
+  );
   return (
     <>
       <tr data-person={r.personId} data-color={r.color}>
@@ -238,7 +246,7 @@ function Row({ row: r, open, onToggle }: { row: StaffRow; open: boolean; onToggl
         <td className={`${CELL} text-center`}>
           <span className="font-bold tabular-nums">{r.rank}</span>
         </td>
-        <td className={`${CELL} min-w-[7rem] sm:min-w-[9rem]`}>
+        <td className={`${CELL} min-w-[7rem] sm:min-w-[9rem] md:min-w-[7rem] lg:min-w-[9rem]`}>
           <Link href={`/people/${encodeURIComponent(r.personId)}`} className="relative -mx-1 rounded px-1 font-bold" data-press>
             {r.name}
             <LinkPending />
@@ -263,6 +271,10 @@ function Row({ row: r, open, onToggle }: { row: StaffRow; open: boolean; onToggl
               {r.reason}
             </div>
           )}
+          {/* 640px 未満は解除の列を省くので、解除のボタンをここに */}
+          <div className="mt-1 sm:hidden" data-release-inline>
+            {release}
+          </div>
         </td>
         <td className={`${CELL} ${SM} whitespace-nowrap`}>
           <span className="tabular-nums">{r.age ?? "—"}</span>
@@ -270,17 +282,14 @@ function Row({ row: r, open, onToggle }: { row: StaffRow; open: boolean; onToggl
           {r.ageReported && <div className="text-xs text-muted">{CUSTODY_LABELS.reportedAge}</div>}
         </td>
         <td className={`${CELL} ${MD} min-w-[5rem]`}>
-          {medical.length === 0 && r.medications.length === 0 ? (
+          {!hasMarks && r.medications.length === 0 ? (
             <span className="text-muted">—</span>
           ) : (
             <div className="space-y-0.5">
-              {medical.length > 0 && (
-                <div className="flex flex-wrap gap-1">
-                  {medical.map((m) => (
-                    <span key={m} className="whitespace-nowrap rounded bg-panel2 px-1 py-px text-xs">
-                      {m}
-                    </span>
-                  ))}
+              {/* 担当一覧の氏名の下・本人のページの上と同じ印（時計のいちばん短い残りつき、残りの色は印の文字。T55） */}
+              {hasMarks && (
+                <div className="flex flex-wrap gap-1" data-medical-marks>
+                  <MedicalMarkList items={r.markItems} fallback={r.devices} />
                 </div>
               )}
               {r.medications.length > 0 && (
@@ -310,11 +319,7 @@ function Row({ row: r, open, onToggle }: { row: StaffRow; open: boolean; onToggl
         <td className={`${CELL} ${LG} whitespace-nowrap`}>
           <span className={r.unaffiliated ? "font-bold" : ""}>{r.office}</span>
         </td>
-        <td className={`${CELL} w-px whitespace-nowrap text-right`}>
-          <Button size="sm" kind={open ? "quiet" : "plain"} icon={open ? CloseIcon : UnlistIcon} onClick={onToggle} aria-expanded={open}>
-            {open ? CUSTODY_LABELS.cancel : CUSTODY_LABELS.release}
-          </Button>
-        </td>
+        <td className={`${CELL} ${SM} w-px whitespace-nowrap text-right`}>{release}</td>
       </tr>
       {open && (
         <tr>
