@@ -1,8 +1,10 @@
-// 全画面の地図（T46）の動かし方。拡大・縮小（ボタン・ホイール・ピンチ・キー）と移動（ドラッグ・指・キー）を、
-// lib/map/geo.ts の View に対する純粋な計算にしてある（画面は components/map/CaseMap.tsx の FullMap が呼ぶだけ）。
+// 地図の動かし方（全画面 T46、右の面の小さな地図 T66）。拡大・縮小（ボタン・ホイール・ピンチ・キー）と移動（ドラッグ・指・キー）を、
+// lib/map/geo.ts の View に対する純粋な計算にしてある（画面は components/map/CaseMap.tsx の CaseMap と FullMap が呼ぶだけ）。
+// 小さな地図は画面の送りの途中にあるので、ホイールは Ctrl（⌘）を押しているときか、地図を押したあと（その上にいる間）だけ地図に効かせ、
+// それ以外は画面の送りに渡す（sideWheelTakes）。指は 2 本（ピンチ）だけ地図に効かせ、1 本は画面の送り。
 
 import { BASE_LAYER } from "./layers.ts";
-import { panBy, zoomAt, type Bounds, type Pt, type Size, type View, type ZoomRange } from "./geo.ts";
+import { BASE_SIZE, panBy, zoomAt, type Bounds, type Pt, type Size, type View, type ZoomRange } from "./geo.ts";
 
 /**
  * 全画面のズームの範囲。
@@ -76,3 +78,30 @@ export function pinchView(view: View, size: Size, prev: readonly [Pt, Pt], next:
 
 /** ドラッグと押したことを分ける動きの量（px）。これより動けばピンを押しても本人のページへ移らない */
 export const DRAG_SLOP = 4;
+
+/** 地図のズームと中心の制限（全画面と小さな地図で同じ。ズーム 9〜18、中心は日本の周り） */
+export const MAP_LIMITS = { range: FULL_ZOOM, bounds: JAPAN_BOUNDS } as const;
+
+/**
+ * 画面の上の点（clientX・clientY）→ 地図の枠の中の点（枠の大きさ size の座標）。
+ * 小さな地図は基準の大きさ（BASE_SIZE、352×300）で計算し、画面では幅に合わせて伸び縮みするので、測った枠の幅との比で直す。
+ * 全画面は枠の大きさそのもの（比は 1）
+ */
+export function toFrame(client: Pt, rect: { left: number; top: number; width: number; height: number }, size: Size = BASE_SIZE): Pt {
+  const sx = rect.width > 0 ? size.w / rect.width : 1;
+  const sy = rect.height > 0 ? size.h / rect.height : 1;
+  return { x: (client.x - rect.left) * sx, y: (client.y - rect.top) * sy };
+}
+
+/**
+ * 小さな地図のホイールを地図の拡大・縮小に使うか。Ctrl・⌘ を押している（トラックパッドのピンチも ctrlKey で来る）か、
+ * 地図を押したあと（armed。地図の外へ出れば外れる）だけ。ほかは画面の送りに渡す（地図の上で画面が止まらないように）
+ */
+export function sideWheelTakes(e: { ctrlKey: boolean; metaKey: boolean }, armed: boolean): boolean {
+  return armed || e.ctrlKey || e.metaKey;
+}
+
+/** 表示が同じか（「全体」を押せるか。ズームと中心がほぼ同じなら同じ） */
+export function sameView(a: View, b: View): boolean {
+  return Math.abs(a.z - b.z) < 1e-6 && Math.abs(a.center.x - b.center.x) < 0.5 && Math.abs(a.center.y - b.center.y) < 0.5;
+}

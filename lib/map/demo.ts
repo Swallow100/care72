@@ -15,6 +15,23 @@ export type DemoScene = { kind: "heavy_rain"; level: 3 | 4 | 5 | null } | { kind
 /** 雨雲の帯 1 つ。strength は 1 弱・2 強・3 猛（斜線の詰み具合だけで描き分ける） */
 export type RainBand = { ring: GeoPoint[]; strength: 1 | 2 | 3 };
 
+/**
+ * 雨雲の斜線の描き方（components/map/CaseMap.tsx の Rain）。強いほど詰めて濃く太く。気象庁の色の段は使わない。
+ * T66: 淡色地図とハザードの層の上で弱かったので、濃さと太さを上げた（前は 弱 0.22・強 0.32・猛 0.42、太さ 1.3）
+ */
+export const RAIN_HATCH: Record<RainBand["strength"], { gap: number; opacity: number; width: number }> = {
+  1: { gap: 6.5, opacity: 0.42, width: 1.5 },
+  2: { gap: 4.5, opacity: 0.55, width: 1.7 },
+  3: { gap: 3.2, opacity: 0.7, width: 1.8 },
+};
+/** 雨雲の帯の縁（破線）の濃さと太さ */
+export const RAIN_EDGE = { opacity: 0.7, width: 1.4 } as const;
+/**
+ * 雨雲の線の色。下の地図（淡色地図）はダークの画面でも明るいままなので、本文色（ダークでは明るい）でなく、いつも濃い墨（ライトの本文色）。
+ * 黒を混ぜてよい灰色・黒の内（CLAUDE.md「画面の決まり」）
+ */
+export const RAIN_INK = "#161b21";
+
 export type DemoOverlay = {
   /** 場面の名前（大雨 レベル 4・地震 南海トラフ） */
   title: string;

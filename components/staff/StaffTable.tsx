@@ -15,11 +15,12 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { MedicalMarkList, NarrowMarks } from "@/components/list/NarrowMarks";
+import { StateFilter } from "@/components/list/StateFilter";
 import { StateTag, TONE_TEXT } from "@/components/person/parts";
 import { Button } from "@/components/ui/Button";
-import { CloseIcon, UnlistIcon } from "@/components/ui/Icon";
+import { CloseIcon, OpenIcon, SortIcon, UnlistIcon } from "@/components/ui/Icon";
 import { LinkPending } from "@/components/ui/LinkPending";
-import { TABLE, TABLE_BOX, TH } from "@/components/ui/table";
+import { SORT_ICON, TABLE, TABLE_BOX, TH } from "@/components/ui/table";
 import type { StaffRow } from "@/lib/custody/board";
 import { NOTE_MAX } from "@/lib/custody/forms";
 import { CUSTODY_LABELS, CUSTODY_VIA_LABELS, RELEASE_LABELS } from "@/lib/custody/labels";
@@ -89,6 +90,12 @@ export function StaffTable({
     [rows, shelters, shelter, color, text, sort],
   );
   // 絞込と並びを URL に（CSV出力のリンク〔StaffCsvLink〕がこれを読む。読み直しても残る）
+  // 状態の切替の人数は、避難所と氏名の絞込のあとの人（状態の絞込の前）
+  const stateCounts = useMemo(() => {
+    const out: Record<Color, number> = { red: 0, yellow: 0, gray: 0, green: 0 };
+    for (const r of staffViewRows(rows, shelters, { shelter, color: "", q: text.trim().slice(0, MAX_STAFF_TEXT), sort })) out[r.color] += 1;
+    return out;
+  }, [rows, shelters, shelter, text, sort]);
   const query = staffViewQuery(current);
   useEffect(() => {
     replaceQuery(query);
@@ -108,20 +115,8 @@ export function StaffTable({
             ))}
           </Select>
         </label>
-        <fieldset className="flex items-center gap-1" data-filter="state">
-          <legend className="sr-only">{CUSTODY_LABELS.state}</legend>
-          <span className="mr-0.5 text-muted" aria-hidden>
-            {CUSTODY_LABELS.state}
-          </span>
-          <FilterButton active={color === ""} onClick={() => setColor("")}>
-            {CUSTODY_LABELS.filterAll}
-          </FilterButton>
-          {STAFF_COLORS.map((c) => (
-            <FilterButton key={c} active={color === c} onClick={() => setColor(c)} tone={COLOR_TONES[c]}>
-              {COLOR_LABELS[c]}
-            </FilterButton>
-          ))}
-        </fieldset>
+        {/* 見出し「状態」は押せない言葉、切替は押せるボタン（担当一覧の絞込と同じ部品。T66） */}
+        <StateFilter label={CUSTODY_LABELS.state} allLabel={CUSTODY_LABELS.filterAll} current={color || null} counts={stateCounts} onPick={(c) => setColor(c ?? "")} />
         <label className="flex items-center gap-1.5">
           <span className="text-muted">{CUSTODY_LABELS.nameKana}</span>
           <input
@@ -174,42 +169,24 @@ export function StaffTable({
   );
 }
 
-function FilterButton({
-  active,
-  onClick,
-  tone,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  tone?: keyof typeof TONE_TEXT;
-  children: React.ReactNode;
-}) {
-  // 選んだ印は文字の色と下線（下地は敷かない）。状態の色は文字にだけ
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={`rounded px-1.5 py-0.5 ${active ? `font-bold underline underline-offset-4 ${tone ? TONE_TEXT[tone] : "text-ink"}` : tone ? TONE_TEXT[tone] : "text-muted"}`}
-      data-press
-    >
-      {children}
-    </button>
-  );
-}
-
+/** 並べ替えの見出し。押せる見出しには並べ替えの印（押していない列は上下の印、押している列は下線と向きの印）。押せない見出し（状態・医療）は印なし（T66） */
 function Header({ k, sort, onSort, className = "" }: { k: Sort; sort: Sort; onSort: (s: Sort) => void; className?: string }) {
   const active = k === sort;
+  const desc = STAFF_DESCENDING.has(k);
   return (
-    <th className={`${TH} px-1 ${className}`} aria-sort={active ? (STAFF_DESCENDING.has(k) ? "descending" : "ascending") : undefined}>
+    <th className={`${TH} px-1 ${className}`} aria-sort={active ? (desc ? "descending" : "ascending") : undefined}>
       <button
         type="button"
         onClick={() => onSort(k)}
-        className={`rounded px-1 py-0.5 ${active ? "text-ink underline decoration-2 underline-offset-4" : ""}`}
+        className={`rounded px-1 py-0.5 whitespace-nowrap outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-accent ${active ? "text-ink underline decoration-2 underline-offset-4" : "font-normal"}`}
         data-press
       >
         {STAFF_SORT_LABELS[k]}
+        {active ? (
+          <OpenIcon aria-hidden className={`${SORT_ICON} ${desc ? "" : "rotate-180"}`} />
+        ) : (
+          <SortIcon aria-hidden className={SORT_ICON} data-sortable />
+        )}
       </button>
     </th>
   );
@@ -293,7 +270,16 @@ function Row({ row: r, open, onToggle }: { row: StaffRow; open: boolean; onToggl
         <td className={`${CELL} sm:min-w-[5.5rem]`}>
           {r.remain ? (
             <>
-              <div className={`whitespace-nowrap font-bold tabular-nums ${r.remain.tone ? TONE_TEXT[r.remain.tone] : ""}`}>{r.remain.text}</div>
+              {/* 状態の色が付くときは塗りの印（担当一覧の残りと同じ。黄は文字に使わない。T66） */}
+              <div className="whitespace-nowrap font-bold tabular-nums" data-remain={r.remain.tone ?? "none"}>
+                {r.remain.tone ? (
+                  <StateTag tone={r.remain.tone} size="fit">
+                    {r.remain.text}
+                  </StateTag>
+                ) : (
+                  r.remain.text
+                )}
+              </div>
               <div className="text-xs text-muted">{r.remain.label}</div>
             </>
           ) : (

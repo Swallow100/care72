@@ -80,5 +80,11 @@ export function hazardLayer(id: HazardKind): HazardLayer {
   return l;
 }
 
-/** 重ねた層の不透明度（下の地図とピンが読めるように） */
-export const HAZARD_OPACITY = 0.6;
+/** 重ねた層の不透明度（下の地図とピンが読めるように）。T66 で 0.6 → 0.72（下の地図を薄くした分、層を強く） */
+export const HAZARD_OPACITY = 0.72;
+
+/**
+ * 下の地図（淡色地図）の不透明度。ライトだけ少し薄くして、重ねた層と雨雲とピンを浮かせる（T66。地は面の中の灰）。
+ * ダークは明るさを落とした地図のまま（薄くすると暗い地が透けて雨雲の線が沈む）
+ */
+export const BASE_OPACITY = 0.7;
