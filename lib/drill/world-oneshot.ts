@@ -13,6 +13,7 @@ import { CARE_LEVEL_LABELS, CLOCK_START_LABELS, CLOCK_UNIT_LABELS, DEVICE_LABELS
 import { pseudonymize, pseudonymizeText, type ForClaude, type PseudonymInput, type PseudonymKey } from "../pseudonym/index.ts";
 import { aliasOfTown, areaOf, DEMO_AREA, geographyText, townOfLedger, type Area } from "./area.ts";
 import { DEMO_OFFICE_ID } from "../auth/demo.ts";
+import { endingsAllowed } from "./fiction.ts";
 import type { ActionRecord, DrillIncident, WorldInput } from "./engine.ts";
 import { PHONE_LABELS, SHELTER_LABELS } from "./labels.ts";
 import { nightLine } from "./night.ts";
@@ -50,8 +51,8 @@ const KIND_WORDS: Readonly<Record<(typeof WORLD_KINDS)[number], string>> = {
 
 /** 世界の指示（部屋の system と 1 回呼びの system に同じ物を使う） */
 export const WORLD_SYSTEM = [
-  "災害の訓練（発災から 72 時間）の「世界」。架空の街と、在宅で介護を受ける架空の高齢者 10 人の訓練で、ケアマネが誰から順に連絡するかを試す。",
-  "あなたは街の出来事を進め、訓練の架空の人の結末も決める。刻みごとに、今の時刻と、前の刻みからケアマネがした事・本人たちの最後の様子・時計の目安が届く。",
+  "災害の訓練（発災から 72 時間）の「世界」。街と、在宅で介護を受ける高齢者たち（人数は訓練ごとに違う。入力の本人たちに並ぶ人だけ）の訓練で、ケアマネが誰から順に連絡するかを試す。",
+  "あなたは街の出来事を進め、訓練の架空の人の結末も決める（入力に「結末: 決めない」とある訓練では決めない）。刻みごとに、今の時刻と、前の刻みからケアマネがした事・本人たちの最後の様子・時計の目安が届く。",
   "最初の刻みに街の地理（地区・道・避難所・施設）と本人ごとの台帳の要約が届く。前の刻みの出来事は覚えておき、矛盾しない流れにする。",
   "最初の刻みで災害の種類（大雨か地震）を決め、narration に書く。以後 72 時間、その災害で起きやすい流れにする（大雨なら増水 → 浸水 → 停電・断水 → 復旧、地震なら停電・断水・道路の寸断・余震）。",
   "固定の筋は無い。街の事情は刻みごとに変わってよいが、ケアマネが動けば確かめられる・防げる大きさの事を多めにする。",
@@ -68,10 +69,11 @@ export const WORLD_SYSTEM = [
   "  結末は訓練の中の架空の人の、シナリオの上の事実。text は言い切らず、やわらかく包んだ言い方にする（「〇〇の時間までに、手が届かなかった」の形）。",
   "  reason は街と物の事実だけで書く（「停電が 6 時間続き、電池が切れた」「道が通れず、誰も着かなかった」）。体の様子・病名・薬の量・医療の助言を書かない。",
   "  使わない語: 死亡・亡くなる・死ぬ・関連死・遺体・息を引き取る・心肺停止。体の様子を細かく書かない。一度結末を迎えた人は以後挙げない。",
+  "  入力に「結末: 決めない」とある訓練では、誰の結末も決めない。farewells はいつも空の配列にする（時計の目安は街の流れの参考にだけ使う）。",
   "",
   "決まり:",
   "1. 人の体の状態（けが・病状・意識）を events と narration に書かない。書くのは街と物の事実だけ。本人たちの様子は別の役が演じる。",
-  "2. 結末は 1 刻みに 2 人まで。本人たち（仮名）の中からだけ選ぶ。急がず、流れに沿って決める。",
+  "2. 結末を決める訓練でも、結末は 1 刻みに 2 人まで。本人たち（仮名）の中からだけ選ぶ。急がず、流れに沿って決める。",
   "3. 色・順位・優先・助言を書かない。診断・病名・薬の量を書かない。",
   "4. 地区・道・施設の名前を作らない。地理に無い名前は使わない。",
 ].join("\n");
@@ -123,6 +125,11 @@ export type WorldCast = {
   people: string;
   /** 事業所の地理（T70、lib/drill/area.ts の areaOf。デモ事業所は架空の街、ほかは参加者の台帳の町名から） */
   area: Area;
+  /**
+   * 結末を決めさせるか（T70 の続き、lib/drill/fiction.ts の endingsAllowed）。デモ事業所だけ true。
+   * false なら入力に「結末: 決めない」と書き、返ってきた結末は捨てる（world-apply.ts の ApplyContext.endings）
+   */
+  endings: boolean;
 };
 
 /**
@@ -179,7 +186,7 @@ export function buildCast(
       ].join("\n"),
     );
   });
-  return { key, facts, people: ["本人たち（仮名。どこに住むかは書かない）:", ...lines].join("\n"), area };
+  return { key, facts, people: ["本人たち（仮名。どこに住むかは書かない）:", ...lines].join("\n"), area, endings: endingsAllowed(officeId) };
 }
 
 const ACTION_WORDS: Readonly<Record<ActionRecord["kind"], string>> = {
@@ -261,7 +268,8 @@ export function worldNow(w: WorldState, area: Area = DEMO_AREA): string[] {
 }
 
 /** 刻みの文（部屋には毎刻みこれだけ。最初の刻みは地理と本人たちを先に足す） */
-export function tickText(input: WorldInput, cast: Pick<WorldCast, "key">, prevHour: number, last: number): string {
+export function tickText(input: WorldInput, cast: Pick<WorldCast, "key"> & Partial<Pick<WorldCast, "endings">>, prevHour: number, last: number): string {
+  const endings = cast.endings !== false;
   const aliasOf = new Map(cast.key.people.map((p) => [p.personId, p.alias]));
   const acts = actionLines(input.actions, prevHour, aliasOf);
   const contacts = contactLines(input, prevHour, aliasOf);
@@ -275,8 +283,11 @@ export function tickText(input: WorldInput, cast: Pick<WorldCast, "key">, prevHo
     acts.length > 0 ? ["前の刻みからケアマネがした事:", ...acts].join("\n") : "前の刻みからケアマネがした事: なし",
     contacts.length > 0 ? ["前の刻みからの本人たちの連絡:", ...contacts].join("\n") : "前の刻みからの本人たちの連絡: なし",
     seen.length > 0 ? ["本人たちの最後の様子:", ...seen].join("\n") : "本人たちの最後の様子: なし",
-    hints.length > 0 ? ["時計の目安（コードの計算。結末を迎えるかはあなたが決める）:", ...hints].join("\n") : "時計の目安: 走っている時計なし",
-    `もう結末を迎えた人（挙げない）: ${ended.length > 0 ? ended.join("・") : "なし"}`,
+    hints.length > 0
+      ? [endings ? "時計の目安（コードの計算。結末を迎えるかはあなたが決める）:" : "時計の目安（コードの計算。街の流れの参考）:", ...hints].join("\n")
+      : "時計の目安: 走っている時計なし",
+    // デモ以外の事業所（T70 の続き）は結末を求めない。デモ事業所の文は前と同じ
+    endings ? `もう結末を迎えた人（挙げない）: ${ended.length > 0 ? ended.join("・") : "なし"}` : "結末: 決めない（この訓練では farewells はいつも空の配列）",
   ].join("\n");
 }
 
@@ -325,5 +336,13 @@ export async function worldOneshot(
 
 /** 返事を当てる所に渡す物 */
 export function applyContext(input: WorldInput, cast: WorldCast, via: WorldVia): ApplyContext {
-  return { key: cast.key, facts: cast.facts, ended: new Set(Object.keys(input.world.ended ?? {})), hour: input.hour, via, area: cast.area };
+  return {
+    key: cast.key,
+    facts: cast.facts,
+    ended: new Set(Object.keys(input.world.ended ?? {})),
+    hour: input.hour,
+    via,
+    area: cast.area,
+    endings: cast.endings,
+  };
 }

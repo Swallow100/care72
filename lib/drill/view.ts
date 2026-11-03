@@ -16,6 +16,7 @@ import type { TriageSignal } from "../triage/index.ts";
 import { heardSignalId, loadDrillRow, loadTicks, participantsOf, replayState, undoableAct, type DrillScope } from "./db.ts";
 import { drillClocks } from "./director.ts";
 import { drillSituation, nowHour, simAt, type ActionRecord, type DrillState, type HeardSignal, type Tick } from "./engine.ts";
+import { fictionKindOf, type FictionKind } from "./fiction.ts";
 import { nightTimeLabel } from "./night.ts";
 import { lastHour, scenarioOf } from "./scenarios.ts";
 import { shortJst } from "../disaster/state.ts";
@@ -51,6 +52,8 @@ export type DrillScreen = {
   contacts: Record<string, DrillContact[]>;
   /** 取り消せる最後の手の番号（T59。進行中で、刻みを越えなかった最後の手だけ）。無ければ null */
   undoable: string | null;
+  /** 訓練の人の印（T70。デモ事業所は架空、ほかは本人役。lib/drill/fiction.ts）。無ければ架空 */
+  fiction?: FictionKind;
 };
 
 export type DrillContact = { id: string; kind: ContactRow["kind"]; label: string; hasPhone: boolean };
@@ -198,6 +201,7 @@ export async function loadDrillScreen(
     heard,
     contacts: contactsByPerson(contactRows),
     undoable: undoableAct(row),
+    fiction: fictionKindOf(scope.officeId),
   };
 }
 
