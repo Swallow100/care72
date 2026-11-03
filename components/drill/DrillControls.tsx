@@ -9,6 +9,7 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
+import { CHOICE_INPUT } from "@/components/ui/choice";
 import { Loader72 } from "@/components/ui/Loader72";
 import { Select } from "@/components/ui/Select";
 import { DRILL_LABELS, T59_LABELS } from "@/lib/drill/labels";
@@ -108,7 +109,7 @@ export function DrillControls({ id, step, done }: { id: string; step: number; do
         {DRILL_LABELS.advance}
       </Button>
       <label className="flex h-8 items-center gap-1.5 rounded px-2 text-sm" data-press>
-        <input type="checkbox" checked={fast} onChange={(e) => setFast(e.target.checked)} className="size-4 accent-accent" data-action="fast" />
+        <input type="checkbox" checked={fast} onChange={(e) => setFast(e.target.checked)} className={CHOICE_INPUT} data-action="fast" />
         {DRILL_LABELS.fastForward}
       </label>
       <Select

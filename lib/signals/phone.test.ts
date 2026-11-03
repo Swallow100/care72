@@ -264,7 +264,7 @@ describe("画面の流れ", () => {
     expect(h.recordings[0].item.durationSec).toBe(40);
   });
 
-  it("送ったあとは数えない（もう音声に替わらない）。「もう 一度」で上へ", async () => {
+  it("送ったあとは数えない（もう音声に替わらない）。「最初から」で上へ", async () => {
     const h = harness();
     h.phone.red();
     skipAll(h);

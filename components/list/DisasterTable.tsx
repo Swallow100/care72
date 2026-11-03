@@ -13,6 +13,7 @@ import { DETAIL_LABELS } from "@/lib/list/labels";
 import { COLOR_TONES } from "@/lib/person";
 import { ExpandRow } from "./ExpandRow";
 import { MedicalCell, NarrowMarks } from "./NarrowMarks";
+import { ReasonText } from "./ReasonText";
 import { RowDetail, type ClassificationSlot, type HearingSlot, type SummarySlot } from "./RowDetail";
 import { SortHeader } from "./SortHeader";
 
@@ -147,8 +148,9 @@ function Cells({
         {note}
         <NarrowMarks items={r.markItems} fallback={r.devices} />
         {t && (
+          // 句の塊ごとに折る（375 で 1 字だけ次の行に落ちない。T80）
           <div className={`mt-0.5 font-bold ${TONE_TEXT[COLOR_TONES[t.color]]}`} data-reason>
-            {t.reason}
+            <ReasonText text={t.reason} />
           </div>
         )}
         {t?.override && (

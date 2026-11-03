@@ -22,6 +22,7 @@ import { useRouter } from "next/navigation";
 import { useId, useState } from "react";
 import type { DrillScenario } from "@/lib/db/types";
 import { Button } from "@/components/ui/Button";
+import { CHOICE_INPUT } from "@/components/ui/choice";
 import { OpenIcon, PlayIcon } from "@/components/ui/Icon";
 import { LABEL } from "@/components/ui/Panel";
 import { Select } from "@/components/ui/Select";
@@ -45,7 +46,8 @@ const SELECT =
   "h-8 min-w-0 rounded bg-panel px-2 text-sm text-ink outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-accent";
 /** チェックの行。押したときは灰色だけ（data-press）。375px でも押せる高さ */
 const CHECK_ROW = "flex min-h-8 min-w-0 cursor-pointer items-center gap-1.5 rounded px-1.5 text-sm";
-const CHECK = "size-4 shrink-0 accent-accent";
+/** チェックは事業所と同じ 18px（T79 の CHOICE_INPUT。T80） */
+const CHECK = CHOICE_INPUT;
 /** 押せる人なしの人の名前（本人のページへ。下線の文字、押したときは灰色だけ） */
 const NAME_LINK =
   "min-w-0 truncate rounded px-0.5 underline underline-offset-2 outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-accent";

@@ -1,21 +1,19 @@
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import type { Metadata } from "next";
+import { DrillRecordTable } from "@/components/drill/DrillRecordTable";
 import { StartButtons, type StartPerson } from "@/components/drill/StartButtons";
 import { ButtonLink } from "@/components/ui/Button";
-import { PlayIcon, PrintIcon } from "@/components/ui/Icon";
+import { PlayIcon } from "@/components/ui/Icon";
 import { Panel, PageHead } from "@/components/ui/Panel";
-import { TABLE, TABLE_BOX, TD, TH } from "@/components/ui/table";
 import { requirePage } from "@/lib/auth/server";
 import { AiStatusMark } from "@/components/ui/AiStatus";
 import { aiStatusFor } from "@/lib/claude/cloudflare";
 import { drillGate, gateUsage } from "@/lib/claude/gate";
 import type { AiStatus } from "@/lib/claude/status";
-import { shortJst } from "@/lib/disaster/state";
 import { caseloadForDrill, drillScope, listDrills, runningDrillId, type DrillListItem } from "@/lib/drill/db";
-import { DRILL_LABELS, progressLabel, SCENARIO_LABELS, STATUS_LABELS, T70_LABELS, VIRTUAL_LABELS } from "@/lib/drill/labels";
+import { DRILL_LABELS, progressLabel, SCENARIO_LABELS, VIRTUAL_LABELS } from "@/lib/drill/labels";
 import { endingsAllowed } from "@/lib/drill/fiction";
-import { drillHref, reportHref } from "@/lib/drill/paths";
-import { SCORE_LABELS } from "@/lib/drill/score-labels";
+import { drillHref } from "@/lib/drill/paths";
 import { lastHour, SCENARIO_ORDER, scenarioOf } from "@/lib/drill/scenarios";
 
 export const metadata: Metadata = { title: "訓練記録 | ケア72" };
@@ -92,59 +90,8 @@ export default async function DrillPage() {
         )}
       </Panel>
 
-      <div className={`mt-3 ${TABLE_BOX}`}>
-        <table className={TABLE} data-table="drills">
-          <thead>
-            <tr>
-              <th className={TH}>{DRILL_LABELS.startedAt}</th>
-              <th className={TH}>{DRILL_LABELS.scenario}</th>
-              <th className={TH}>{DRILL_LABELS.elapsed}</th>
-              <th className={TH}>{DRILL_LABELS.status}</th>
-              <th className={TH}>{DRILL_LABELS.startedBy}</th>
-              <th className={TH}>
-                <span className="sr-only">{DRILL_LABELS.replay}</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.length === 0 && (
-              <tr>
-                <td colSpan={6} className={`${TD} text-muted`}>
-                  {DRILL_LABELS.none}
-                </td>
-              </tr>
-            )}
-            {items.map((d) => (
-              <tr key={d.id} data-drill={d.id} data-status={d.status}>
-                <td className={`${TD} tabular-nums`}>{shortJst(d.started_at)}</td>
-                <td className={`${TD} font-bold`}>{SCENARIO_LABELS[d.scenario]}</td>
-                <td className={`${TD} tabular-nums`}>{progressLabel(d.sim_hour, lastHour(scenarioOf(d.scenario)))}</td>
-                <td className={`${TD} ${d.status === "running" ? "font-bold" : d.status === "abandoned" ? "text-muted" : ""}`}>
-                  {STATUS_LABELS[d.status]}
-                  {d.abandon_reason === "24h" && (
-                    <span className="ml-1.5 text-xs text-muted" data-abandon-reason="24h">
-                      {T70_LABELS.day}
-                    </span>
-                  )}
-                </td>
-                <td className={TD}>{d.started_by_name ?? <span className="text-muted">—</span>}</td>
-                <td className={`${TD} w-px py-1 text-right`}>
-                  <div className="flex justify-end gap-1.5">
-                    <ButtonLink href={drillHref(d.id)} kind="plain" size="sm" icon={PlayIcon}>
-                      {d.status === "running" ? DRILL_LABELS.resume : DRILL_LABELS.replay}
-                    </ButtonLink>
-                    {/* 訓練記録の紙面（T22）。終わった・中断した訓練だけ。開いてすぐ印刷の画面（?print=1） */}
-                    {d.status !== "running" && (
-                      <ButtonLink href={reportHref(d.id, { print: true })} kind="plain" size="sm" icon={PrintIcon} data-print-link="drill">
-                        {SCORE_LABELS.print}
-                      </ButtonLink>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="mt-3">
+        <DrillRecordTable items={items} />
       </div>
     </main>
   );

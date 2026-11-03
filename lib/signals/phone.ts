@@ -28,7 +28,7 @@
 //   替えず（20 秒で声にしない）、録音の無音の聞き直しも挟まない（「おくる」を押せる。60 秒か話し終わるまで録って送る）。
 //   マイクが無い・許されていない（赤を押した時の許可か、録り始めて分かる）ときは、声の問いにも定型文と録音にも入らず、
 //   「たのみたい ことは ありますか」（はなす）も聞かない。押せばそのまま次の問いへ（赤はもう届いている）
-// - 戻るは無い。終わったら「もう 一度」で上へ
+// - 戻るは無い。終わったら「最初から」で上へ（家族の画面と同じ言葉。T80）
 
 import { newSignalId, NO_ANSWERS, type PhoneColor, type SignalBody } from "./body.ts";
 import type { AnswersItem, AttachItem, Delivery, LocationItem, ReportedPosition } from "./outbox.ts";

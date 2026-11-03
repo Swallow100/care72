@@ -31,6 +31,7 @@ import { DOCUMENT_LABELS, stateLabel } from "@/lib/labels";
 import { COLOR_TONES } from "@/lib/person";
 import type { Color } from "@/lib/triage/index";
 import { Select } from "@/components/ui/Select";
+import { ReasonText } from "@/components/list/ReasonText";
 import {
   NO_STAFF_VIEW,
   STAFF_COLORS,
@@ -268,7 +269,7 @@ function Row({ row: r, open, onToggle }: { row: StaffRow; open: boolean; onToggl
           {/* 理由は医療が範囲の外の人には来ない（時計・薬の名前が入るので） */}
           {r.reason && (
             <div className={`mt-0.5 text-xs font-bold ${TONE_TEXT[r.tone]}`} data-reason>
-              {r.reason}
+              <ReasonText text={r.reason} />
             </div>
           )}
           {/* 受入の前の最後の知らせが赤なら、その答え（T78。受入で緑になっても、けが・動けないのまま来たことが分かるように） */}
