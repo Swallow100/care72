@@ -4,9 +4,11 @@
 // - 受け取る物と上限は様式の読み取り（lib/forms/form-read.ts の toFormFile・FORM_FILE_MAX_BYTES）のまま。中身の頭で形を決める
 // - 1 要求 1 枚（長い処理にしない。何枚かはブラウザから 1 枚ずつ送る）。写真・PDF は保存しない
 // - 用途は ledger_input（台帳の入力）のまま、モデルだけ Opus にする（ai_calls の用途を足すと表の作り直しが要るため）
-// - 仮名化: 「本人」（今の台帳）は lib/pseudonym を通す。写真・PDF の中の文字は伏せられないので、
-//   氏名・住所・電話を出力に書かないよう指示し（INTAKE_READ_SYSTEM）、返った文字は名前・電話を伏せ字に戻してから差分にする。
-//   伏せ字が残る所は画面で印が付き、人が直す。写真の中身が Claude に渡ること自体は docs/progress/t45.md の問いに残した
+// - 仮名化: 「本人」（今の台帳）は lib/pseudonym を通す。写真・PDF の中の文字は仮名化の層では伏せられないので、
+//   送る前にブラウザの黒塗りの画面（T52、components/person/RedactSheet.tsx）で人が氏名・住所・電話・町名を塗り、
+//   塗った後の画像（JPEG、EXIF なし）だけをサーバーが受ける（lib/intake/read-form.ts）。PDF は頁ごとに画像にしてから。
+//   塗り残しに備えて、氏名・住所・電話を出力に書かないよう指示し（INTAKE_READ_SYSTEM）、返った文字は名前・電話を伏せ字に戻してから差分にする。
+//   伏せ字が残る所は画面で印が付き、人が直す
 
 import { askJson, type AskJsonContext, type AskJsonRequest } from "../claude/call.ts";
 import { OPUS } from "../claude/models.ts";
@@ -25,7 +27,8 @@ import { EXTRACT_RULES, pseudonymInputOf, type ExtractOptions, type IntakePropos
 import { ExtractSchema, type ExtractOutput } from "./schema.ts";
 
 export const INTAKE_READ_SYSTEM = [
-  "入力の写真・PDF は、在宅の本人についての書類（ケアプラン・お薬手帳・紹介状・個別避難計画の様式など）の写し。これを個別避難計画の台帳の欄に分ける。",
+  "入力の画像は、在宅の本人についての書類（ケアプラン・お薬手帳・紹介状・個別避難計画の様式など）の写真か PDF の 1 頁。これを個別避難計画の台帳の欄に分ける。",
+  "画像の黒く塗りつぶした四角は、ケアマネが隠した所（氏名・住所・電話など）。中身を推し量らない・出さない。",
   "入力の JSON の「本人」は今の台帳（仮名化済み）。書類の本人は「A さん」と書く。",
   "書類の中の氏名・住所・電話番号・生年月日・保険者番号は出力に書かない。人の名前は（氏名）、町名・番地は（町名）、電話番号は（電話）と書く。",
   "手書きで読めない所・かすれた所・切れた所は推し量らずに出さない。書類に無いことを足さない。",
