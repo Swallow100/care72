@@ -222,9 +222,10 @@ export function buildPersona(source: PseudonymInput, opts: { on?: string } = {})
 
 // ---------- 刻みの文 ----------
 
-/** 停電の地区にこの家が入るか */
-export function inOutageArea(area: OutageArea, hazards: Persona["hazards"]): boolean {
+/** 停電の地区にこの家が入るか。町の一覧（仮想、T50）は本人の町名で見る（町名の無い人は外さない。lib/disaster/state.ts と同じ） */
+export function inOutageArea(area: OutageArea, hazards: Persona["hazards"], town: string | null = null): boolean {
   if (area.scope === "office") return true;
+  if (area.scope === "towns") return !town || area.towns.includes(town);
   return hazards.some((h) => h.kind === area.hazard && (h.depthM ?? 0) >= area.minDepthM);
 }
 

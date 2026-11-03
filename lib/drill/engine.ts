@@ -355,9 +355,10 @@ export function nowHour(s: { hour: number; minute?: number }): number {
   return typeof s.minute === "number" ? Math.max(s.hour, s.minute / 60) : s.hour;
 }
 
-/** 停電の地区の町名。ハザードの地区なら、そのハザード（浸水の深さ）を持つ本人の町名。全域なら null */
+/** 停電の地区の町名。ハザードの地区なら、そのハザード（浸水の深さ）を持つ本人の町名。町の一覧（仮想、T50）ならその町。全域なら null */
 export function outageTownsOf(area: OutageArea, ledgers: ReadonlyArray<Pick<Ledger, "basic" | "evacuation">>): string[] | null {
   if (area.scope === "office") return null;
+  if (area.scope === "towns") return [...area.towns];
   const towns = new Set<string>();
   for (const l of ledgers) {
     const hit = l.evacuation.hazards.some((h) => h.kind === area.hazard && (h.depthM ?? 0) >= area.minDepthM);

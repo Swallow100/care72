@@ -104,7 +104,11 @@ export type DependsOn = (typeof DEPENDS_ON)[number];
 export const CHECK_STATUSES = ["confirmed", "unconfirmed"] as const;
 export type CheckStatus = (typeof CHECK_STATUSES)[number];
 
-export const DRILL_SCENARIOS = ["earthquake", "heavy_rain", "short"] as const;
+/**
+ * 訓練の想定。virtual は仮想モード（T50。世界の部屋が街の出来事を進め、結末まで出す）。
+ * D1 の drills.scenario の CHECK は 3 つのままで、仮想は mode = virtual（migrations/0007。読む所 lib/drill/db.ts の rowScenario）
+ */
+export const DRILL_SCENARIOS = ["earthquake", "heavy_rain", "short", "virtual"] as const;
 export type DrillScenario = (typeof DRILL_SCENARIOS)[number];
 
 export const DRILL_STATUSES = ["running", "finished", "abandoned"] as const;
@@ -546,6 +550,10 @@ export type DrillRow = {
   started_by: string | null;
   started_at: string;
   finished_at: string | null;
+  /** 仮想モード（T50）なら virtual。D1 の scenario は種の heavy_rain のまま */
+  mode?: "virtual" | null;
+  /** 世界の部屋（Managed Agents）の session の ID（T50。仮想だけ） */
+  world_session_id?: string | null;
 };
 
 export type DrillEventRow = {

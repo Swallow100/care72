@@ -13,12 +13,12 @@ import { parseLedger } from "../db/ledger.ts";
 import type { ContactRow, DrillScenario, DrillStatus, PersonRow } from "../db/types.ts";
 import { buildForm9, type Form9PersonInput } from "../forms/form9.ts";
 import { isSourceId } from "../sources/index.ts";
-import { isDrillScenario, type DrillScope } from "./db.ts";
+import { isDrillScenario, rowScenario, type DrillScope } from "./db.ts";
 import { drillClocks } from "./director.ts";
 import { outageTownsOf } from "./engine.ts";
 import { REVIEW_KINDS, type ReviewBody, type ReviewContext, type ReviewError, type ReviewFinding, type ReviewIncident } from "./review.ts";
 import { loadCallRecords, type CallRecord } from "./responses.ts";
-import { scenarioOf } from "./scenarios.ts";
+import { isVirtual, scenarioOf } from "./scenarios.ts";
 import { clockRuns, scoreDrill, scoreNumbers, type ClockForRun, type DrillScore, type ScoreNumbers } from "./score.ts";
 import { loadDrillScreen, type DrillScreen } from "./view.ts";
 
@@ -219,12 +219,16 @@ async function previousOf(db: D1Database, scope: Pick<DrillScope, "officeId">, s
   const kind = scenarioOf(screen.drill.scenario).kind;
   const res = await db
     .prepare(
-      `SELECT id, scenario, started_at FROM drills
+      `SELECT id, scenario, mode, started_at FROM drills
         WHERE office_id = ?1 AND id <> ?2 AND status = 'finished' AND started_at < ?3 ORDER BY started_at DESC, id LIMIT 20`,
     )
     .bind(scope.officeId, screen.drill.id, screen.drill.started_at)
-    .all<{ id: string; scenario: DrillScenario; started_at: string }>();
-  const hit = res.results.find((r) => isDrillScenario(r.scenario) && scenarioOf(r.scenario).kind === kind);
+    .all<{ id: string; scenario: DrillScenario; mode: string | null; started_at: string }>();
+  // 仮想（T50）は仮想とだけ比べる（固定の筋とは出来事が違う）
+  const virtual = isVirtual(screen.drill.scenario);
+  const hit = res.results
+    .map(rowScenario)
+    .find((r) => isDrillScenario(r.scenario) && isVirtual(r.scenario) === virtual && scenarioOf(r.scenario).kind === kind);
   if (!hit) return null;
   const prev = await loadDrillScreen(db, scope, hit.id, null);
   if (!prev) return null;

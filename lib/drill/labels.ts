@@ -9,6 +9,7 @@ export const SCENARIO_LABELS: Record<DrillScenario, string> = {
   heavy_rain: "大雨の想定",
   earthquake: "地震の想定",
   short: "10 分版",
+  virtual: "仮想",
 };
 
 export const STATUS_LABELS: Record<DrillStatus, string> = {
@@ -64,6 +65,16 @@ export const EVENT_KIND_LABELS: Record<WorldEventKind, string> = {
   nurse_away: "訪問看護",
   going_home: "帰宅",
   line_down: "電話",
+  town_flood: "浸水",
+  landslide: "土砂",
+  town_road: "道路",
+  town_water: "断水",
+  town_line: "電話",
+  town_facility: "施設",
+  weather: "天候",
+  narration: "世界",
+  world_note: "世界",
+  outcome: "結末",
 };
 
 /** 本人ごとの印（被害状況の「個別」の欄）。PersonMarks の鍵ごと */
@@ -72,6 +83,8 @@ export const MARK_LABELS = {
   nurseAway: "訪問不可",
   goingHome: "帰宅希望",
   lineDown: "電話不通",
+  flooded: "浸水",
+  waterOut: "断水",
 } as const;
 
 /** 状況の欄で根拠の出典に添える言葉 */
@@ -108,7 +121,7 @@ export const WORLD_LABELS = {
 export const PHONE_LABELS: Record<PhoneState, string> = { ok: "通常", busy: "不安定", down: "不通" };
 export const WATER_LABELS: Record<WaterState, string> = { none: "なし", out: "断水中", restored: "解消" };
 export const TSUNAMI_LABELS: Record<TsunamiState, string> = { none: "なし", evacuate: "避難", lifted: "解除" };
-export const SHELTER_LABELS: Record<ShelterState, string> = { open: "開設", crowded: "混雑", full: "満員" };
+export const SHELTER_LABELS: Record<ShelterState, string> = { open: "開設", crowded: "混雑", full: "満員", closed: "閉鎖" };
 
 /** 帯の名前（72 時間の棒） */
 export const BAND_LABELS = { outage: "停電", water: "断水", phone: "電話" } as const;

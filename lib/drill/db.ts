@@ -66,6 +66,19 @@ export function isDrillScenario(v: unknown): v is DrillScenario {
   return typeof v === "string" && (DRILL_SCENARIOS as readonly string[]).includes(v);
 }
 
+/**
+ * D1 の行の想定。仮想（T50）は scenario の CHECK を建て直さず mode に持つ（migrations/0007）。
+ * 書くときの scenario の列は種の heavy_rain（dbScenario）、読むときは mode から virtual に戻す
+ */
+export function rowScenario<T extends { scenario: string; mode?: string | null }>(row: T): T & { scenario: DrillScenario } {
+  return { ...row, scenario: (row.mode === "virtual" ? "virtual" : row.scenario) as DrillScenario };
+}
+
+/** drills.scenario の列に書く値と mode（仮想は heavy_rain と virtual） */
+export function dbScenario(s: DrillScenario): { scenario: Exclude<DrillScenario, "virtual">; mode: "virtual" | null } {
+  return s === "virtual" ? { scenario: "heavy_rain", mode: "virtual" } : { scenario: s, mode: null };
+}
+
 // ---------- drills.world の JSON ----------
 
 /** drills.world に置く今の状態（世界・参加者・本人の様子・手の履歴・ケアマネの時計）。刻みと状態は表の列 */
@@ -261,14 +274,14 @@ export async function startDrill(
   const [inserted] = await db.batch([
     db
       .prepare(
-        `INSERT INTO drills (id, office_id, scenario, status, step, sim_hour, world, started_by, started_at, finished_at)
-         SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10
+        `INSERT INTO drills (id, office_id, scenario, status, step, sim_hour, world, started_by, started_at, finished_at, mode)
+         SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11
           WHERE NOT EXISTS (SELECT 1 FROM drills WHERE office_id = ?2 AND status = 'running')`,
       )
       .bind(
         id,
         scope.officeId,
-        scenario,
+        dbScenario(scenario).scenario,
         state.status,
         state.step,
         state.hour,
@@ -276,6 +289,7 @@ export async function startDrill(
         scope.accountId,
         now,
         state.status === "finished" ? now : null,
+        dbScenario(scenario).mode,
       ),
     ...tickStatements(db, id, tick, now),
   ]);
@@ -293,13 +307,14 @@ export async function loadDrillRow(
   officeId: string,
   id: string,
 ): Promise<(DrillRow & { started_by_name: string | null }) | null> {
-  return db
+  const row = await db
     .prepare(
       `SELECT d.*, a.display_name AS started_by_name FROM drills d LEFT JOIN accounts a ON a.id = d.started_by
         WHERE d.id = ?1 AND d.office_id = ?2`,
     )
     .bind(id, officeId)
     .first<DrillRow & { started_by_name: string | null }>();
+  return row ? rowScenario(row) : null;
 }
 
 /**
@@ -564,13 +579,13 @@ export type DrillListItem = Pick<DrillRow, "id" | "scenario" | "status" | "step"
 export async function listDrills(db: D1Database, officeId: string, limit = 50): Promise<DrillListItem[]> {
   const res = await db
     .prepare(
-      `SELECT d.id, d.scenario, d.status, d.step, d.sim_hour, d.started_at, d.finished_at, a.display_name AS started_by_name
+      `SELECT d.id, d.scenario, d.mode, d.status, d.step, d.sim_hour, d.started_at, d.finished_at, a.display_name AS started_by_name
          FROM drills d LEFT JOIN accounts a ON a.id = d.started_by
         WHERE d.office_id = ?1 ORDER BY d.started_at DESC, d.id LIMIT ?2`,
     )
     .bind(officeId, limit)
-    .all<DrillListItem>();
-  return res.results.filter(
+    .all<DrillListItem & { mode: string | null }>();
+  return res.results.map((r) => { const { mode: _mode, ...rest } = rowScenario(r); return rest; }).filter(
     (r) => (DRILL_SCENARIOS as readonly string[]).includes(r.scenario) && (DRILL_STATUSES as readonly string[]).includes(r.status),
   );
 }
