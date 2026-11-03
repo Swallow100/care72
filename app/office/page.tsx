@@ -476,8 +476,9 @@ function AssignSection({
                   <PickAll />
                 </th>
                 <th className={TH}>{OFFICE_LABELS.name}</th>
-                <th className={TH}>{OFFICE_LABELS.age}</th>
-                <th className={TH}>{OFFICE_LABELS.plan}</th>
+                {/* 640 未満は年齢と避難計画の列を省き、氏名の下の 1 行に出す（チェックの列を足しても 375 で氏名が 1 字ずつ折れないように。T60） */}
+                <th className={`${TH} hidden sm:table-cell`}>{OFFICE_LABELS.age}</th>
+                <th className={`${TH} hidden sm:table-cell`}>{OFFICE_LABELS.plan}</th>
                 <th className={TH}>{OFFICE_LABELS.careManager}</th>
                 <th className={TH}>
                   <span className="sr-only">{OFFICE_LABELS.detail}</span>
@@ -503,9 +504,15 @@ function AssignSection({
                           <LinkPending />
                         </Link>
                         <span className="ml-1.5 text-xs text-muted">{p.kana}</span>
+                        <span className="mt-0.5 flex flex-wrap items-baseline gap-x-2 text-xs sm:hidden" data-narrow-line>
+                          <span className="text-muted tabular-nums">
+                            {OFFICE_LABELS.age} {p.age ?? "—"}
+                          </span>
+                          <StateText tone={PLAN_TONES[p.plan]}>{PLAN_STATUS_LABELS[p.plan]}</StateText>
+                        </span>
                       </td>
-                      <td className={`${TD} align-middle whitespace-nowrap`}>{p.age ?? "—"}</td>
-                      <td className={`${TD} align-middle whitespace-nowrap`}>
+                      <td className={`${TD} hidden align-middle whitespace-nowrap sm:table-cell`}>{p.age ?? "—"}</td>
+                      <td className={`${TD} hidden align-middle whitespace-nowrap sm:table-cell`}>
                         <StateText tone={PLAN_TONES[p.plan]}>{PLAN_STATUS_LABELS[p.plan]}</StateText>
                       </td>
                       <td className={`${TD} align-middle`}>
