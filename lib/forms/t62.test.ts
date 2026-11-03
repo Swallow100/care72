@@ -28,7 +28,9 @@ import { caseloadColumns, caseloadCsvResponse } from "./caseload-csv.ts";
 import { CSV_BOM, csvFileNames, csvText } from "./form9-csv.ts";
 import { buildOwnSheetMedical } from "./medical-summary.ts";
 import { buildOwnSheet } from "./own-sheet.ts";
-import { loadOwnSheets, type OwnSheetItem } from "./own-sheets.ts";
+import { loadOfficeSheetRows, loadOwnSheets, type OwnSheetItem } from "./own-sheets.ts";
+import { loadPersonDocument } from "../consent/documents.ts";
+import type { D1Database } from "@cloudflare/workers-types";
 import { FONT_PROBE, paperCss, paperPage, readRepoFile, seedRows } from "./print-harness.ts";
 import { staffCsvResponse, STAFF_COLUMNS } from "./staff-csv.ts";
 
@@ -414,6 +416,92 @@ describe("本人の 1 枚の一括印刷の読み（/caseload/own-sheets）", ()
   });
 });
 
+/** D1 の往復を数える（batch 1 回・文 1 つずつの first/all/run を 1 回と数える） */
+function counting(inner: D1Database): { db: D1Database; calls: () => number } {
+  let n = 0;
+  // batch には包む前の文を渡す（手元の D1 の代わりは文の物で SQL を覚えている）
+  const orig = new WeakMap<object, object>();
+  const wrap = (stmt: ReturnType<D1Database["prepare"]>): ReturnType<D1Database["prepare"]> => {
+    const proxy = new Proxy(stmt, {
+      get(t, k, r) {
+        const v = Reflect.get(t, k, r);
+        if (k === "bind") return (...args: unknown[]) => wrap((v as (...a: unknown[]) => typeof stmt).apply(t, args));
+        if (k === "first" || k === "all" || k === "run" || k === "raw")
+          return (...args: unknown[]) => {
+            n++;
+            return (v as (...a: unknown[]) => unknown).apply(t, args);
+          };
+        return v;
+      },
+    });
+    orig.set(proxy, stmt);
+    return proxy;
+  };
+  const db = new Proxy(inner, {
+    get(t, k, r) {
+      const v = Reflect.get(t, k, r);
+      if (k === "prepare") return (sql: string) => wrap(t.prepare(sql));
+      if (k === "batch")
+        return (stmts: unknown[]) => {
+          n++;
+          return t.batch(stmts.map((x) => orig.get(x as object) ?? x) as never);
+        };
+      return v;
+    },
+  });
+  return { db, calls: () => n };
+}
+
+describe("一括印刷のまとめ読み（D1 の batch・IN）", () => {
+  const opts = { today: TODAY, officeName: "デモ事業所", secret: SECRET, origin: ORIGIN, nowSec: Math.floor(Date.parse(NOW) / 1000) };
+
+  it("人数に関わらず D1 の往復は 1 回（10 人でも 1 人でも）。前は 1 人 3 回", async () => {
+    const ids = listView(await caseload(), {}).rows.map((r) => r.id);
+    for (const n of [1, 3, 10]) {
+      const c = counting(db);
+      const batch = await loadOwnSheets(c.db, yamamoto(), ids.slice(0, n), opts);
+      expect(batch.items).toHaveLength(n);
+      expect(c.calls(), `${n} 人`).toBe(1);
+    }
+    // 0 人は読まない
+    const none = counting(db);
+    expect(await loadOwnSheets(none.db, yamamoto(), [], opts)).toEqual({ items: [], skipped: 0, unconfirmed: [] });
+    expect(none.calls()).toBe(0);
+  });
+
+  it("まとめ読みの紙は 1 人の頁の道（loadPersonDocument）と同じ（表・裏の要約・QR）", async () => {
+    await issueQr(db, "p-03", NOW);
+    sqlite.prepare(`UPDATE consents SET status = 'refused' WHERE person_id = 'p-02' AND kind = 'supporters'`).run();
+    const ids = SEED_PEOPLE.map((p) => p.person.id);
+    const batch = await loadOwnSheets(db, yamamoto(), ids, opts);
+    expect(batch.items).toHaveLength(10);
+    for (const item of batch.items) {
+      const one = (await loadPersonDocument(db, yamamoto(), item.personId, "own"))!;
+      const o = { today: TODAY, officeName: "デモ事業所" };
+      expect(item.sheet, item.personId).toEqual(buildOwnSheet(one.rows, o));
+      expect(item.medical, item.personId).toEqual(buildOwnSheetMedical(one.rows, o));
+    }
+    expect(batch.items.find((x) => x.personId === "p-03")!.qr.status).toBe("active");
+  });
+
+  it("壁: 別の事業所の本人・無い id は読まない（連絡先・同意・時計も事業所の中だけ）", async () => {
+    const read = await loadOfficeSheetRows(db, "office-demo", ["p-01", PARTNER_PERSON, "p-none"]);
+    expect([...read.keys()]).toEqual(["p-01"]);
+    sqlite
+      .prepare(`INSERT INTO contacts (id, person_id, kind, relation, name, phone) VALUES ('c-pt-9', ?, 'family', '娘', '架空 花子', '090-0000-0099')`)
+      .run(PARTNER_PERSON);
+    const partner = await loadOfficeSheetRows(db, "office-partner", ["p-01", PARTNER_PERSON]);
+    expect([...partner.keys()]).toEqual([PARTNER_PERSON]);
+    expect(partner.get(PARTNER_PERSON)!.rows.contacts.map((c) => c.id)).toEqual(["c-pt-9"]);
+  });
+
+  it("本人の 1 枚と裏の要約は経過と提供の記録を読まない（まとめ読みは読まないので、読むようになったらここで落とす）", () => {
+    for (const f of ["lib/forms/own-sheet.ts", "lib/forms/medical-summary.ts"]) {
+      expect(readRepoFile(f), f).not.toMatch(/timeline|provisions/);
+    }
+  });
+});
+
 describe("入口と頁の作り（ファイルを読む）", () => {
   it("route は lib の関数を呼ぶだけ。頁はケアマネの役、listView、?print=1 で印刷の窓、題に氏名を入れない", () => {
     expect(readRepoFile("app/caseload/csv/route.ts")).toContain("caseloadCsvResponse(env.DB, principal, new URL(request.url).searchParams");
@@ -447,7 +535,8 @@ describe("入口と頁の作り（ファイルを読む）", () => {
     expect(link).toContain("STAFF_CSV_PATH}?");
     const table = readRepoFile("components/staff/StaffTable.tsx");
     expect(table).toContain("staffViewRows(rows, shelters,");
-    expect(table).toContain("window.history.replaceState(");
+    // data は null（Next の状態の物を渡すと useSearchParams が付いてこず、CSV出力の href が古いまま。手元の dev で確かめた）
+    expect(table).toContain("window.history.replaceState(null, ");
 
     const view = listView(await caseload(), { sort: "age", dir: "asc", mark: "oxygen", q: "山" });
     expect(listHref("/caseload/csv", view)).toBe(`/caseload/csv?sort=age&dir=asc&mark=oxygen&q=${encodeURIComponent("山")}`);

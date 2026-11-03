@@ -61,7 +61,8 @@ function replaceQuery(query: string) {
   for (const k of ["shelter", "color", "q", "sort"]) url.searchParams.delete(k);
   for (const [k, v] of new URLSearchParams(query)) url.searchParams.set(k, v);
   const next = url.pathname + url.search + url.hash;
-  if (next !== window.location.pathname + window.location.search + window.location.hash) window.history.replaceState(window.history.state, "", next);
+  // data は null（Next の状態の物を渡すと Next は自分の移りとみなし、useSearchParams に知らせない）
+  if (next !== window.location.pathname + window.location.search + window.location.hash) window.history.replaceState(null, "", next);
 }
 
 export function StaffTable({
