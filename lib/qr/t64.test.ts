@@ -180,12 +180,14 @@ describe("migration 0015（people.qr_ttl_days）", () => {
   it("前からある行は既定の 90 日になり、ほかの列はそのまま", () => {
     const db = new DatabaseSync(":memory:");
     db.exec("PRAGMA foreign_keys = ON;");
-    for (const n of migrationNames().filter((n) => n < MIGRATION_0015)) db.exec(readFileSync(new URL(n, MIGRATIONS), "utf8"));
+    // 種は今の事業所の列（0017 の地図の中心、T68）を書くので、0017 は先に当てる（offices に列を足すだけで people に触れない）
+    const early = (n: string) => n < MIGRATION_0015 || n.startsWith("0017_");
+    for (const n of migrationNames().filter(early)) db.exec(readFileSync(new URL(n, MIGRATIONS), "utf8"));
     for (const s of seedStatements()) db.exec(s);
     db.exec(`UPDATE people SET qr_generation = 2, qr_issued_at = '${iso(NOW)}' WHERE id = 'p-01'`);
     const before = db.prepare("SELECT * FROM people ORDER BY id").all();
     expect(before.length).toBeGreaterThanOrEqual(10);
-    for (const n of migrationNames().filter((n) => n >= MIGRATION_0015)) db.exec(readFileSync(new URL(n, MIGRATIONS), "utf8"));
+    for (const n of migrationNames().filter((n) => !early(n))) db.exec(readFileSync(new URL(n, MIGRATIONS), "utf8"));
     const after = db.prepare("SELECT * FROM people ORDER BY id").all() as Array<Record<string, unknown>>;
     expect(after.map(({ qr_ttl_days: _d, ...rest }) => rest)).toEqual(before);
     expect(after.every((r) => r.qr_ttl_days === 90)).toBe(true);

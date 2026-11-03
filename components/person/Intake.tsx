@@ -16,7 +16,8 @@ import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { useRef, useState, type ReactNode } from "react";
 import { Button, buttonClass } from "@/components/ui/Button";
-import { AI_FAIL_REASON_LABELS, INTAKE_LABELS, INTAKE_SAYS, PENDING_STATUS_LABELS, SECTION_LABELS } from "@/lib/labels";
+import { AI_FAIL_REASON_LABELS, INTAKE_LABELS, INTAKE_SAYS, PENDING_STATUS_LABELS, PLACE_LABELS, SECTION_LABELS } from "@/lib/labels";
+import { shrinkImage } from "@/lib/forms/shrink-image";
 import { buildReadForm, READ_FILES_MAX, type ReadMeta } from "@/lib/intake/read-form";
 import type { AiFailReason } from "@/lib/intake/http";
 import type { DictationError } from "@/lib/speech/dictation";
@@ -155,10 +156,19 @@ export function Intake(props: IntakeProps & { level: Level }) {
     push({ ...proposalOf(r), say: `${INTAKE_SAYS.read(page.name)}。${splitSay(r.items)}`, read: page.meta } as LogEntry);
   }
 
-  /** 写真・PDF を選んだら、必ず黒塗りの画面へ（読む前の確認の窓の代わり。T52） */
-  function readFiles(files: FileList | null) {
-    if (files && files.length > 0) setRedacting([...files].slice(0, READ_FILES_MAX));
+  /**
+   * 写真・PDF を選んだら、必ず黒塗りの画面へ（読む前の確認の窓の代わり。T52）。
+   * 写真は先に端末で縮めて JPEG に（T68。塗るのは縮めた絵の上。順は 縮小 → 塗り → 送る）。JPEG・PNG・PDF のほかは 1 行で断る
+   */
+  async function readFiles(files: FileList | null) {
+    const picked = files ? [...files].slice(0, READ_FILES_MAX) : [];
     if (fileInput.current) fileInput.current.value = "";
+    if (picked.length === 0) return;
+    setError(null);
+    const shrunk = await Promise.all(picked.map((f) => shrinkImage(f, Number.POSITIVE_INFINITY)));
+    const ok = shrunk.flatMap((r) => (r.ok ? [r.file] : []));
+    if (shrunk.some((r) => !r.ok)) setError(PLACE_LABELS.fileKinds);
+    if (ok.length > 0) setRedacting(ok);
   }
 
   async function save(changes: IntakeChange[], ai: { model: string } | null, read?: ReadMeta): Promise<number | null> {

@@ -90,7 +90,8 @@ function upsertStatements(): string[] {
   for (const o of SEED_OFFICES) {
     if (o.id === DEMO_OFFICE_ID) {
       out.push(
-        `${insert("offices", { ...o, created_at: SEED_AT }).replace(/;$/, "")} ON CONFLICT (id) DO UPDATE SET name = excluded.name, kind = excluded.kind, city = excluded.city;`,
+        // 様式と地図の中心（T68）も種に戻す（審査員が様式を変えても毎朝松山市に戻る）
+        `${insert("offices", { ...o, created_at: SEED_AT }).replace(/;$/, "")} ON CONFLICT (id) DO UPDATE SET name = excluded.name, kind = excluded.kind, city = excluded.city, plan_form = excluded.plan_form, center_lat = excluded.center_lat, center_lng = excluded.center_lng;`,
       );
     } else if (o.id === UNAFFILIATED_OFFICE_ID) {
       // 所属なしの事業所は無ければ作る（ほかの事業所の行には触らない）
