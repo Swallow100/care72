@@ -15,3 +15,12 @@ export function nightClock(hour: number): number {
 export function nightLine(hour: number): string {
   return `発災は深夜 ${NIGHT_START_HOUR} 時ごろ。今は ${nightClock(hour)} 時ごろ`;
 }
+
+/**
+ * 訓練の画面の大きな経過の下に出す訓練の中の時刻（夜間発災のとき。「5:30」）。発災からの分 minute から、
+ * 発災を深夜 2 時として出す。時は nightClock と同じ（棒の下の「今 N 時」と食い違わない）。started_at はずらさず表示だけ
+ */
+export function nightTimeLabel(minute: number): string {
+  const m = Math.max(0, Math.floor(minute));
+  return `${nightClock(m / 60)}:${String(m % 60).padStart(2, "0")}`;
+}

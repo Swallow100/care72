@@ -15,10 +15,12 @@ import { seedStatements } from "../../seed/sql.ts";
 import type { Principal } from "../auth/principal.ts";
 import { d1FromSqlite, migratedSqlite } from "../db/test-d1.ts";
 import { actDrill, advanceDrill, drillScope, loadDrillRow, startDrill, stateOfRow, undoDrill } from "./db.ts";
-import { lastStep } from "./engine.ts";
+import { shortJst } from "../disaster/state.ts";
+import { lastStep, nowHour } from "./engine.ts";
+import { nightTimeLabel } from "./night.ts";
 import { loadDrillRecord } from "./record.ts";
 import { SCENARIO_ORDER } from "./scenarios.ts";
-import { loadDrillScreen } from "./view.ts";
+import { loadDrillScreen, screenTimeText } from "./view.ts";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: () => {}, push: () => {} }) }));
 
@@ -125,6 +127,27 @@ describe("夜間発災の時刻", () => {
     const base = { hours: [0, 1, 3], last: 72, now: 3, bands: [], reached: 2 };
     expect(renderToStaticMarkup(createElement(DrillBar, { ...base, night: true }))).toContain('data-night-clock="5"');
     expect(renderToStaticMarkup(createElement(DrillBar, base))).not.toContain("data-night-clock");
+  });
+});
+
+describe("経過の下の時刻", () => {
+  it("夜間発災は訓練の中の時刻（深夜 2 時＋経過）で、棒の「今 N 時」と同じ時。started_at はずらさない", async () => {
+    expect(nightTimeLabel(0)).toBe("2:00");
+    expect(nightTimeLabel(85)).toBe("3:25");
+    expect(nightTimeLabel(22 * 60 + 5)).toBe("0:05");
+    expect(await startDrill(db, SCOPE, "heavy_rain", START, {}, () => ID, { night: true })).toEqual({ ok: true, id: ID });
+    await doAct("visit", "p-04"); // 40 分
+    const s = (await loadDrillScreen(db, SCOPE, ID, null))!;
+    expect(s.drill.started_at).toBe(START);
+    expect(screenTimeText(s)).toBe("2:40");
+    const bar = renderToStaticMarkup(createElement(DrillBar, { hours: s.hours, last: s.last, now: nowHour(s.state), bands: s.bands, reached: s.drill.step, night: true }));
+    expect(bar).toContain(`data-night-clock="${screenTimeText(s).split(":")[0]}"`);
+  });
+
+  it("選ばなければ今まで通り開始からの実の日時", async () => {
+    expect(await startDrill(db, SCOPE, "heavy_rain", START, {}, () => ID)).toEqual({ ok: true, id: ID });
+    const s = (await loadDrillScreen(db, SCOPE, ID, null))!;
+    expect(screenTimeText(s)).toBe(shortJst(s.situation.now));
   });
 });
 

@@ -16,7 +16,9 @@ import type { TriageSignal } from "../triage/index.ts";
 import { heardSignalId, loadDrillRow, loadTicks, participantsOf, replayState, undoableAct, type DrillScope } from "./db.ts";
 import { drillClocks } from "./director.ts";
 import { drillSituation, nowHour, simAt, type ActionRecord, type DrillState, type HeardSignal, type Tick } from "./engine.ts";
+import { nightTimeLabel } from "./night.ts";
 import { lastHour, scenarioOf } from "./scenarios.ts";
+import { shortJst } from "../disaster/state.ts";
 
 /** 72 時間の棒の帯（停電・断水・電話）。始まりと終わりは発災からの時間。終わりが無ければ今まで続いている */
 export type Band = { kind: "outage" | "water" | "phone"; from: number; to: number | null };
@@ -215,6 +217,15 @@ export function contactsByPerson(rows: ReadonlyArray<Pick<ContactRow, "id" | "pe
     (out[c.person_id] ??= []).push({ id: c.id, kind: c.kind, label: callTargetText(c), hasPhone: Boolean(c.phone?.trim()) });
   }
   return out;
+}
+
+/**
+ * 大きな経過の下の時刻の文（T59）。夜間発災の訓練は訓練の中の時刻（深夜 2 時＋経過。「5:30」、棒の下の「今 N 時」と同じ時）、
+ * ほかは今まで通り開始からの実の日時（「11/3 21:59」）。started_at はずらさず表示だけ
+ */
+export function screenTimeText(s: Pick<DrillScreen, "state" | "situation">): string {
+  if (s.state.options?.night === true) return nightTimeLabel(Math.round(nowHour(s.state) * 60));
+  return shortJst(s.situation.now);
 }
 
 /** 想定の今の時刻（ISO）。画面の「今の時刻」 */

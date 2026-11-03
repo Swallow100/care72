@@ -36,7 +36,7 @@ import { COLOR_LABELS } from "@/lib/labels";
 import { COLOR_TONES } from "@/lib/person";
 import { DRILL_PATH, drillHref, reportHref, parseSort, parseStep, parseView, type DrillView } from "@/lib/drill/paths";
 import { drillKindOf, isVirtual } from "@/lib/drill/scenarios";
-import { loadDrillScreen, type DrillScreen } from "@/lib/drill/view";
+import { loadDrillScreen, screenTimeText, type DrillScreen } from "@/lib/drill/view";
 import { voiceEnabled, voiceHref } from "@/lib/drill/voice";
 import { buildSidePane, sideDisasterOf } from "@/lib/map/side";
 import { ButtonLink } from "@/components/ui/Button";
@@ -169,8 +169,8 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
           <div className="text-2xl font-bold tabular-nums" data-now-hour={s.state.hour} data-now-minute={s.state.minute}>
             {elapsedClockLabel(s.state.minute)}
           </div>
-          <div className="text-sm text-muted tabular-nums">
-            {shortJst(sit.now)}
+          <div className="text-sm text-muted tabular-nums" data-now-time={s.state.options?.night === true ? "night" : "real"}>
+            {screenTimeText(s)}
             {replay && <span className="ml-2">{DRILL_LABELS.replay}</span>}
           </div>
         </div>
