@@ -60,7 +60,7 @@ const Split: React.FC<{ shot: Shot; assets: Assets; duration: number }> = ({ sho
             </div>
           ) : null}
           {id ? (
-            <Footage id={id} assets={assets} width={width} height={height} from={shot.from} duration={duration} note={shot.label} />
+            <Footage id={id} assets={assets} width={width} height={height} from={shot.froms?.[i] ?? shot.from} duration={duration} note={shot.label} />
           ) : (
             <WordsPanel width={width} height={height} text={shot.sub ?? ""} />
           )}
@@ -119,7 +119,7 @@ const ShotView: React.FC<{ shot: Shot; assets: Assets }> = ({ shot, assets }) =>
       );
       break;
     case "ring":
-      body = <Ring72 label={shot.lines?.[0] ?? "72 時間"} duration={duration} />;
+      body = <Ring72 label={shot.lines?.[0] ?? "72 時間"} duration={duration} sub={shot.sub} />;
       break;
     case "number":
       body = <BigNumber value={shot.value ?? ""} sub={shot.sub} />;
@@ -133,8 +133,8 @@ const ShotView: React.FC<{ shot: Shot; assets: Assets }> = ({ shot, assets }) =>
     case "flow":
       body = (
         <Flow names={FLOW_NAMES}>
-          {(shot.footages ?? []).map((id) => (
-            <Footage key={id} id={id} assets={assets} width={540} height={304} duration={duration} note={shot.label} />
+          {(shot.footages ?? []).map((id, i) => (
+            <Footage key={id} id={id} assets={assets} width={540} height={304} from={shot.froms?.[i] ?? shot.from} duration={duration} note={shot.label} />
           ))}
         </Flow>
       );
