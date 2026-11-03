@@ -17,7 +17,7 @@ export function UndoButton({ drillId, step, actions, act }: { drillId: string; s
   const [error, setError] = useState<string | null>(null);
 
   const run = async () => {
-    if (!(await appConfirm(T59_LABELS.undoBody, { title: T59_LABELS.undoTitle, ok: T59_LABELS.undo, danger: true, icon: "RestoreIcon" }))) return;
+    if (!(await appConfirm(T59_LABELS.undoBody, { title: T59_LABELS.undoTitle, ok: T59_LABELS.undoOk, danger: true, icon: "RestoreIcon" }))) return;
     setBusy(true);
     setError(null);
     try {

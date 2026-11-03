@@ -76,6 +76,8 @@ export const T59_LABELS = {
   memo: "メモ",
   /** 取消の確認の窓 */
   undoTitle: "対応取消",
+  /** 決める方（窓の「取消」と並ぶので同じ言葉にしない） */
+  undoOk: "取消確定",
   undoBody: "直前の対応 1 件を取消",
   clock: "時刻",
   quake: "発災",
