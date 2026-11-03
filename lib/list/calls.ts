@@ -138,7 +138,8 @@ const bit = (v: boolean | undefined): 0 | 1 | null => (v === undefined ? null : 
  * 電話の記録を書く。ケアマネの役だけ、事業所の中の本人の、番号のある連絡先だけ。
  * 通話で聞いた安否があれば、災害モードの間だけ信号（出どころ care_manager）を足す（平時は normal で断る。平時の通話だけは残せる）。
  * 保存のときにサーバーで本人を表に当て直し（lib/list/override.ts の saveOverride と同じ personDisaster）、今の表の行が
- * red_injury（けが・動けない）なら「無事」は書かずに断る（injury。下げるなら理由つきの順番変更）。
+ * red_injury（けが・動けない）なら、「無事」と、けが・動けないのどちらも付けない「無事でない」は書かずに断る（injury。
+ * どちらも連絡順の組を下げるため。けが か 動けない を付けた「無事でない」は通す。下げるなら理由つきの順番変更。11/3 設計の答え）。
  * 期限を過ぎた機器の時計・頼り先の未確認・時計の半分は、ケアマネの緑のあとも表がそのまま赤・黄にする（ここでは見ない）
  */
 export async function saveCall(db: D1Database, p: Principal | null, input: CallInput, now: string): Promise<CallSaveResult> {
@@ -161,7 +162,8 @@ export async function saveCall(db: D1Database, p: Principal | null, input: CallI
     if (!rows) return { ok: false, error: "not_found" };
     const d = await personDisaster(db, rows, now);
     if (!d.triage) return { ok: false, error: "normal" };
-    if (heard.color === "green" && d.triage.rule === "red_injury") return { ok: false, error: "injury" };
+    const keepsInjury = heard.color === "red" && (heard.injured === true || heard.canMove === false);
+    if (d.triage.rule === "red_injury" && !keepsInjury) return { ok: false, error: "injury" };
   }
 
   const payload: CallPayload = {
