@@ -12,7 +12,7 @@ import { castScenario, matchesPick, needsCast, type CastFacts } from "./cast.ts"
 import { castFactsMap } from "./cast-facts.ts";
 import { advanceDrill, drillScope, loadDrillRow, loadTicks, participantsOf, replayState, startDrill, stateOfRow } from "./db.ts";
 import type { PersonaInput } from "./engine.ts";
-import { fixedTurns, loadPersonaSources } from "./persona.ts";
+import { CALL_SYSTEM, fixedTurns, loadPersonaSources, PERSONA_SYSTEM, PERSONA_VIRTUAL } from "./persona.ts";
 import { SCENARIOS } from "./scenarios.ts";
 
 let sqlite: DatabaseSync;
@@ -291,5 +291,19 @@ describe("想定の表の配役（T70 の 1）", () => {
     const replayed = replayState(row, participantsOf(row), await loadTicks(db, "r", SCENARIOS.heavy_rain.hours, row.step), row.step).state;
     expect(replayed.cast).toEqual(first.cast);
     expect(replayed.people).toEqual(stateOfRow(row).people);
+  });
+});
+
+// ---------- 3 方言の行を外す ----------
+
+describe("本人役の指示に方言を書かない（T70 の 3）", () => {
+  it("PERSONA_SYSTEM・CALL_SYSTEM・PERSONA_VIRTUAL に地域の言い方が無く、決まり 6・7 は残る", () => {
+    for (const text of [PERSONA_SYSTEM, CALL_SYSTEM, PERSONA_VIRTUAL]) {
+      expect(text).not.toMatch(/松山|方言|行かん|けん」|じゃ」/);
+    }
+    expect(PERSONA_SYSTEM).toContain("4. 本人の言葉はやさしい短い話し言葉で 1〜2 文。認知症の本人は話が噛み合わないことがある。");
+    expect(PERSONA_SYSTEM).toContain("6. 名前・住所・電話番号を言わない。");
+    expect(PERSONA_SYSTEM).toContain("7. 「診断」「判定」「重症」と言わない。病名を言い切らない。薬の量を言わない。助言をしない。");
+    expect(CALL_SYSTEM).toContain("名前・住所・電話番号を言わない。");
   });
 });
