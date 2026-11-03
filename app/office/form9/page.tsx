@@ -81,7 +81,7 @@ export default async function Form9Page({ searchParams }: Props) {
                     {COLOR_LABELS[c]}
                   </CountLabel>
                 </dt>
-                <dd className={`font-bold tabular-nums ${countClass(COLOR_TONES[c], counts[c])}`}>{counts[c]}</dd>
+                <dd className={`font-bold tabular-nums ${countClass(counts[c])}`}>{counts[c]}</dd>
               </div>
             ))}
           </dl>
