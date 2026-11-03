@@ -158,7 +158,7 @@ export const CHOICE_QUESTIONS: ReadonlyArray<ChoiceQuestion> = [
   {
     key: "q9",
     column: "問9",
-    heading: "問 9　AI が様式の下書きを作り直すのは自分、なら計画を作る気になるか",
+    heading: "問 9　AI が様式の下書きを作り、直すのは自分、なら計画を作る気になるか",
     text: "問 9　利用者のことを、話す・箇条書きで打つ・手元の書類（アセスメントなど）を写真やファイルで読み込ませる、のどれかをするだけで、AI が様式の下書きを作り、直すのは自分、としたら、個別避難計画を作る気になりますか",
     multi: false,
     choices: [c("a", "なる"), c("b", "少しなる"), c("c", "ならない")],
