@@ -142,7 +142,7 @@ describe("画面の流れ", () => {
       ["fireGas", "no"],
       ["hasMedicine", "yes"],
       ["nearby", "alone"],
-      ["contact", "phone"],
+      // 連絡手段は押す画面では聞かない（T77。このスマホで押せている事が答え）
       ["request", "none"],
     ] as const;
     for (const [q, c] of path) {
@@ -228,19 +228,22 @@ describe("画面の流れ", () => {
     expect(h.signals).toHaveLength(1);
   });
 
-  it("2 問答えたあとに 20 秒押さない: 答えた 2 つはもう届いていて、音声へ（20 秒は最後に答えた時から）", async () => {
-    const h = harness();
+  it("2 問押したあとに止まっても音声へ替えない（押せる人。T77）。答えた 2 つはもう届いていて、押せば続きから", async () => {
+    const spoken: string[] = [];
+    const h = harness({ speak: async (t) => void spoken.push(t) });
     h.phone.red();
     vi.advanceTimersByTime(15_000);
     h.phone.answer("no");
     vi.advanceTimersByTime(15_000);
     h.phone.answer("yes");
-    vi.advanceTimersByTime(IDLE_MS - 1);
-    expect(h.phone.state).toMatchObject({ step: "question", id: "floor" });
-    vi.advanceTimersByTime(1);
+    vi.advanceTimersByTime(IDLE_MS * 5);
     await flush();
     expect(h.answers.at(-1)!.answers).toEqual({ injured: { choice: "no", via: "press" }, atHome: { choice: "yes", via: "press" } });
-    expect(h.phone.state.step).toBe("recording");
+    expect(h.phone.state).toMatchObject({ step: "question", id: "floor", voice: null });
+    expect(spoken).toEqual([]);
+    expect(h.calls).toEqual(["prime"]);
+    h.phone.answer("f1");
+    expect(h.phone.state).toMatchObject({ step: "question", id: "room", voice: null });
   });
 
   it("延長は押すたびに 60 秒、上限 180 秒。「送る」で早く止める", async () => {
@@ -338,7 +341,7 @@ function transcripts(texts: Array<string | null>, opts: { silenceAfter?: number 
   const start: NonNullable<PhoneDeps["startTranscript"]> = (events) => {
     const i = n++;
     log.push(`transcript${i + 1}`);
-    if (opts.silenceAfter !== undefined && texts[i] == null) setTimeout(() => events.onSilence(), opts.silenceAfter);
+    if (opts.silenceAfter !== undefined && texts[i] == null) setTimeout(() => events.onSilence?.(), opts.silenceAfter);
     return {
       stop: async () => {
         log.push(`stop${i + 1}`);
@@ -1066,7 +1069,7 @@ describe("声の問いの途中で押した（T49）", () => {
     let release: (t: string | null) => void = () => {};
     const h = harness({
       speak: async () => {},
-      startRecording: async () => null,
+      startRecording: pausingRecorder().startRecording,
       startTranscript: () => ({ stop: () => new Promise<string | null>((r) => (release = r)) }),
     });
     h.phone.red();

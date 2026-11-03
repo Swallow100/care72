@@ -111,7 +111,23 @@ export type Question = {
   needsShelter?: true;
   /** 押す画面だけで聞く（T69b。声の問いでは聞かない。台帳の名前は表の言葉に無く、声の言葉の一致で当てられない） */
   pressOnly?: true;
+  /**
+   * 声の問いだけで聞く（T77）。押して答えている人には聞かない: 押せている事が答え（連絡手段の「この スマホ」）。
+   * 前の答えを読むため（parseAnswers）表からは消さない
+   */
+  voiceOnly?: true;
+  /** マイクが使える人だけ聞く（T77。「はなす」で録音へ進む問い。マイクが無い・許されていない端末では聞かない） */
+  needsMic?: true;
+  /**
+   * それまでの答えで決まっているときは聞かない（T77）。家の外・避難所・車にいると答えた人に「外に 出られますか」を聞かない
+   */
+  settledBy?: (answers: Answers) => boolean;
 };
+
+/** 家の外にいると答えた（いまは家ですか いいえ・家の どこ 外）。外に出られるかは聞かなくても決まっている（T77） */
+export function answeredOutside(answers: Answers): boolean {
+  return answers.atHome?.choice === "no" || answers.floor?.choice === "outside";
+}
 
 /** 避難所の問いの選択肢のうち、台帳の避難先 1・2（T69b）。言葉は台帳の名前を画面で出し、表と答えには id だけ */
 export const SHELTER_CHOICE_IDS = ["d1", "d2"] as const;
@@ -280,6 +296,8 @@ export const QUESTIONS: readonly Question[] = [
       unknown,
     ],
     next: "body",
+    // 家の外・避難所・車にいると答えた人には聞かない（T77。答えから決まる）
+    settledBy: answeredOutside,
   },
   {
     id: "trappedBy",
@@ -404,9 +422,11 @@ export const QUESTIONS: readonly Question[] = [
     ],
     next: "request",
     selfOnly: true,
+    // 押して答えている人には聞かない（T77。このスマホで押せている事が答え）。声の問いの人だけ
+    voiceOnly: true,
   },
   {
-    // 頼みたいことは声で（録音へ）。「はなす」で定型文と録音に進む
+    // 頼みたいことは声で（録音へ）。「はなす」で定型文と録音に進む。マイクが無い・許されていない端末では聞かない（T77）
     id: "request",
     field: "request",
     easy: "たのみたい ことは ありますか",
@@ -419,6 +439,7 @@ export const QUESTIONS: readonly Question[] = [
     ],
     next: null,
     selfOnly: true,
+    needsMic: true,
   },
 ];
 
@@ -445,16 +466,20 @@ export type Answers = Partial<Record<QuestionId, Answer>>;
 
 /**
  * 誰の画面か。家族は本人だけの問いを聞かない。shelters は台帳の避難先の数（T69b。0 なら避難所の問いを聞かない）、
- * voice は声の問いで進んでいる（押す画面だけの問いを聞かない）
+ * voice は声の問いで進んでいる（押す画面だけの問いを聞かない・声だけの問いを聞く）、
+ * mic が false はマイクが無い・許されていないと分かった（T77。録音へ進む問いを聞かない。分からない間は undefined）
  */
-export type Asker = { who: "self" | "family"; hasDevice: boolean; shelters?: number; voice?: boolean };
+export type Asker = { who: "self" | "family"; hasDevice: boolean; shelters?: number; voice?: boolean; mic?: boolean };
 
-/** この人に聞くか */
-export function asks(q: Question, a: Asker): boolean {
+/** この人に聞くか。answers はそれまでの答え（答えで決まっている問いを飛ばす。T77） */
+export function asks(q: Question, a: Asker, answers: Answers = {}): boolean {
   if (q.needsDevice && !a.hasDevice) return false;
   if (q.selfOnly && a.who !== "self") return false;
   if (q.needsShelter && !(a.shelters && a.shelters > 0)) return false;
   if (q.pressOnly && a.voice) return false;
+  if (q.voiceOnly && !a.voice) return false;
+  if (q.needsMic && a.mic === false) return false;
+  if (q.settledBy?.(answers)) return false;
   return true;
 }
 
@@ -470,11 +495,11 @@ export function choicesFor(q: Question, shelters: ReadonlyArray<ShelterOption> =
 }
 
 /** 聞かない問いを飛ばして、聞く問いに着くまで進める */
-function settle(id: QuestionId | null, a: Asker): QuestionId | null {
+function settle(id: QuestionId | null, a: Asker, answers: Answers): QuestionId | null {
   let cur = id;
   for (let i = 0; cur !== null && i <= QUESTIONS.length; i++) {
     const q = questionOf(cur);
-    if (asks(q, a)) return cur;
+    if (asks(q, a, answers)) return cur;
     cur = q.next;
   }
   return null;
@@ -482,15 +507,18 @@ function settle(id: QuestionId | null, a: Asker): QuestionId | null {
 
 /** 最初に聞く問い */
 export function firstQuestion(a: Asker): QuestionId | null {
-  return settle(FIRST_QUESTION, a);
+  return settle(FIRST_QUESTION, a, {});
 }
 
-/** 次の問い。choice が null ならとばした（問いの next）。null は終わり */
-export function nextQuestion(id: QuestionId, choice: string | null, a: Asker): QuestionId | null {
+/**
+ * 次の問い。choice が null ならとばした（問いの next）。null は終わり。
+ * answers はこの答えまで入れた全部（答えで決まっている問いを飛ばす。T77。渡さなければ答えで飛ばさない）
+ */
+export function nextQuestion(id: QuestionId, choice: string | null, a: Asker, answers: Answers = {}): QuestionId | null {
   const q = questionOf(id);
   const c = choice === null ? undefined : q.choices.find((x) => x.id === choice);
   const to = c && c.next !== undefined ? c.next : q.next;
-  return settle(to, a);
+  return settle(to, a, answers);
 }
 
 export function choiceOf(id: QuestionId, choice: string): Choice | undefined {

@@ -75,7 +75,8 @@ export function createFamilyPhone(deps: FamilyDeps): FamilyPhone {
   /** 答えた（choice が null ならとばした）あとの次の問い */
   const nextAfter = (id: QuestionId, choice: string | null): QuestionId | null => {
     if (rushesToRecording(id, choice)) rushing = true;
-    return rushing ? rushNext(id, answers, asker) : nextQuestion(id, choice, asker);
+    // 答えで決まっている問い（外にいると答えた人の 外に出られるか）は聞かない（T77）
+    return rushing ? rushNext(id, answers, asker) : nextQuestion(id, choice, asker, answers);
   };
 
   const set = (s: FamilyState) => {
