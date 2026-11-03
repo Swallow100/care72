@@ -17,7 +17,7 @@ import { actionPost } from "./http.ts";
 import { loadDrillRecord, parseStoredScore, shownReview } from "./record.ts";
 import { callPost, reviewPost } from "./record-http.ts";
 import { loadCallRecords, respondCall } from "./responses.ts";
-import { REVIEW_BANNED, REVIEW_SYSTEM, reviewBody } from "./review.ts";
+import { REVIEW_BANNED, REVIEW_SOURCES, REVIEW_SYSTEM, reviewBody } from "./review.ts";
 import { FORM9_PLAN_LABELS, MISS_LABELS, REVIEW_ERROR_LABELS, REVIEW_KIND_LABELS, REVIEW_UI, SCORE_LABELS } from "./score-labels.ts";
 import { scoreNumbers } from "./score.ts";
 
@@ -393,12 +393,30 @@ describe("講評（Opus 1 回）", () => {
           f("早めに受診を勧める"),
           f("酸素の流量を上げるよう伝える"),
           f("このままでは亡くなる"),
+          f("低血糖の疑いがある"),
+          f("水分をとって脚を動かすよう伝える"),
+          f("人工呼吸器が止まった"),
+          f("電池が切れたので危険"),
+          f("ＭＧで量を伝える"),
           f("停電の前に本人電話で電池の残りを聞く"),
+          f("電池が切れる前に訪問依頼を出す"),
         ],
       },
       { key, members: new Set(["p-01", "p-02"]) },
     );
-    expect(b.findings.map((x) => x.text)).toEqual(["停電の前に本人電話で電池の残りを聞く"]);
+    expect(b.findings.map((x) => x.text)).toEqual(["停電の前に本人電話で電池の残りを聞く", "電池が切れる前に訪問依頼を出す"]);
     expect(b.summary).toBe("");
+  });
+
+  it("講評が引ける出典は行動の文書だけ（健康の助言を要旨に持つ出典は渡さない）", () => {
+    expect([...REVIEW_SOURCES].sort()).toEqual(
+      ["cao-shishin-2021", "jadp-dialysis-2023", "mhlw-bcp-2020", "nanbyo-shishin-2017", "nanbyo-tsuiho-2022", "saigai-kiroku-2018"].sort(),
+    );
+    const { key } = pseudonymize(SEED_PEOPLE.slice(0, 2).map(seedInput), { on: "2026-11-05" });
+    const b = reviewBody(
+      { summary: "", findings: [{ person: "A さん", kind: "order", text: "早めに本人電話を", basis: "jsth-pe-2020" }] },
+      { key, members: new Set(["p-01", "p-02"]) },
+    );
+    expect(b.findings).toEqual([]);
   });
 });

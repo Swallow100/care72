@@ -24,7 +24,7 @@ import {
   type PseudonymInput,
   type PseudonymKey,
 } from "../pseudonym/index.ts";
-import { isSourceId, SOURCE_IDS, type SourceId } from "../sources/index.ts";
+import { isSourceId, type SourceId } from "../sources/index.ts";
 import { NO_BASIS } from "../sources/prompt.ts";
 import { personOfAlias } from "./director.ts";
 import type { ActionRecord } from "./engine.ts";
@@ -53,8 +53,19 @@ export type ReviewBody = { summary: string; findings: ReviewFinding[] };
 /** 講評の失敗（lib/claude の失敗の名前。画面と記録に残す） */
 export type ReviewError = "not_configured" | "limit" | "refused" | "bad_output" | "failed" | "leak";
 
-/** 講評が引ける出典（登録簿の全部） */
-export const REVIEW_SOURCES: ReadonlyArray<SourceId> = SOURCE_IDS;
+/**
+ * 講評が引ける出典。行動（避難の支援・連絡・BCP・記録）の文書だけで、健康の助言を要旨に持つ物（呼吸・インスリン・循環・
+ * 血栓・認知症・救急の文書）は渡さない（要旨が system に入り、その言葉を講評に写しうるため。medical-reviewer の指摘、
+ * docs/progress/t22.md の「決めた所」）
+ */
+export const REVIEW_SOURCES: ReadonlyArray<SourceId> = [
+  "cao-shishin-2021",
+  "mhlw-bcp-2020",
+  "nanbyo-shishin-2017",
+  "nanbyo-tsuiho-2022",
+  "jadp-dialysis-2023",
+  "saigai-kiroku-2018",
+];
 
 /** 指摘の数・文の長さの上限 */
 export const FINDINGS_MAX = 8;
@@ -77,6 +88,7 @@ export const REVIEW_SYSTEM = [
   "1. 数字は機械で数えた物。数え直さない・変えない・新しい数字を作らない。",
   "2. 書くのは行動の評価（手の順番・時刻・様式 9 の空欄・着信への応答）だけ。病気の名前・薬・薬の量・処置・医療の助言を書かない。本人の体の状態を言い切らない。",
   "3. 時計が切れるまでにその人へ手が届かなかったことは「条件に達した」とだけ書く。その先に起きる事を想像して書かない。",
+  "   時計は入力の書き方（「〇〇 N 時間を超過」）のまま写す。時計の名前は入力のまま写してよいが、電池・薬・機器が今どうなったかを言い切らない。",
   "4. 色と順位はルールの表が決めた物。色・順位を付け直す・変えることを書かない。",
   "5. 仮名と役割名のほかの名前、場所の名前を書かない。",
   "6. 責める書き方をしない。次の訓練で試す形で書く。",
@@ -226,15 +238,35 @@ export function reviewText(ctx: ReviewContext, aliasOf: ReadonlyMap<string, stri
 
 // ---------- 返事の検査 ----------
 
-/** 講評に書かせない言葉（診断・状態の言い切り・生き死に・薬の量・医療の助言） */
-export const REVIEW_BANNED =
-  /診断|判定|重症|病気が(?:わか|分か)|死|亡くな|心肺停止|意識が(?:ない|無い)|投与|処方|用量|服用|服薬|増量|減量|mg|ミリグラム|単位を|受診|注射|点滴|流量|血糖値|血圧/;
+/**
+ * 講評に書かせない言葉。検査の前に NFKC（全角の英数字を半角に）を掛け、英字は大文字・小文字を区別しない。
+ * - 言い切り・生き死に: 診断・判定・重症・危険・疑い・死・亡くな・心停止・意識…
+ * - 病名・状態: 低血糖・高血糖・血栓・塞栓・脱水・熱中症・低体温・肺炎・感染・発作・急変・悪化・容体・症状・病名・呼吸が止まる/苦しい
+ * - 機器の状態の言い切り: 電池が切れた・ボンベが空・機器/呼吸器/濃縮器が止まった・尽きた
+ * - 薬の量: 投与・処方・用量・服用・服薬・増量・減量・mg・ミリグラム・単位・錠・mL・L/分・リットル
+ * - 医療の助言: 受診・注射・点滴・流量・血糖値・血圧・水分・飲む/飲ませる・脚を動かす・安静・やめない・薬を続ける・医療者に相談・購入・買う
+ */
+export const REVIEW_BANNED = new RegExp(
+  [
+    "診断|判定|重症|危険|疑い|疑われ|おそれ|恐れ|病気が(?:わか|分か)|死|亡くな|心肺停止|心停止|意識が(?:ない|無い)|意識不明",
+    "低血糖|高血糖|血栓|塞栓|脱水|熱中症|低体温|肺炎|感染|発作|急変|悪化|容[体態]|症状|病名|呼吸が?(?:止|苦)",
+    "電池が切れ(?:た|て)|ボンベが(?:空|切れ)|尽き|(?:機器|呼吸器|濃縮器)が止ま",
+    "投与|処方|用量|服用|服薬|増量|減量|mg|ミリグラム|単位|錠|ml|l/分|リットル",
+    "受診|注射|点滴|流量|血糖値|血圧|水分|飲ん|飲ま|飲む|脚を動か|安静|やめない|薬を続け|医療者に相談|購入|買っ|買う",
+  ].join("|"),
+  "i",
+);
+
+/** 書かせない言葉に掛かるか（NFKC のあと） */
+export function reviewBanned(text: string): boolean {
+  return REVIEW_BANNED.test(text.normalize("NFKC"));
+}
 
 /** 文 1 つの検査: 空・使わない言葉・元の情報が残る物は null。仮名は氏名に戻し、長さで切る */
 export function reviewWords(raw: string, key: PseudonymKey, max: number): string | null {
   const t = raw.replace(/\s+/g, " ").trim();
   if (!t) return null;
-  if (REVIEW_BANNED.test(t)) return null;
+  if (reviewBanned(t)) return null;
   if (findLeaks(t, key).length > 0) return null;
   return Array.from(restoreText(t, key)).slice(0, max).join("");
 }
