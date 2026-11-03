@@ -7,9 +7,10 @@ import { notFound } from "next/navigation";
 import { QrBlock } from "@/components/forms/QrBlock";
 import { QrSheet } from "@/components/forms/QrSheet";
 import { StateTag } from "@/components/person/parts";
-import { Button, buttonClass } from "@/components/ui/Button";
-import { PaperIcon, QrIcon } from "@/components/ui/Icon";
+import { buttonClass } from "@/components/ui/Button";
+import { PaperIcon } from "@/components/ui/Icon";
 import { FormAbout } from "@/components/forms/FormAbout";
+import { QrIssueForm } from "@/components/qr/QrIssueForm";
 import { PaperBar, wantsPrint } from "@/components/ui/PaperBar";
 import { Panel, PanelHead } from "@/components/ui/Panel";
 import { TABLE, TABLE_BOX, TD, TH } from "@/components/ui/table";
@@ -49,7 +50,7 @@ export default async function QrFormPage({ params, searchParams }: Props) {
   const opened = await loadPersonDocument(env.DB, principal, id, "qr");
   if (!opened) notFound();
   const { rows } = opened;
-  const row = (await loadQrRow(env.DB, rows.person.id)) ?? { qr_generation: 0, qr_issued_at: null };
+  const row = (await loadQrRow(env.DB, rows.person.id)) ?? { qr_generation: 0, qr_issued_at: null, qr_ttl_days: null };
   const state = qrState(row, nowSec());
   const token = state.status === "active" ? await currentQrToken(rows.person.id, row, sessionSecret(env)) : null;
   const origin = originFromHeaders(await headers());
@@ -79,14 +80,8 @@ export default async function QrFormPage({ params, searchParams }: Props) {
                 {QR_LABELS.open}
               </a>
             )}
-            {canIssue && (
-              <form method="post" action={`/api/people/${encodeURIComponent(rows.person.id)}/qr`}>
-                {/* 作り直すと前に刷った紙の QR は無効になるので、使える QR があるときの再作成は赤 */}
-                <Button type="submit" kind={state.status === "active" ? "danger" : "main"} icon={QrIcon}>
-                  {state.status === "none" ? QR_LABELS.issue : QR_LABELS.reissue}
-                </Button>
-              </form>
-            )}
+            {/* 期限の日数（30・90・180）を選んで作る・作り直す（T64）。使える QR があるときの再作成は赤 */}
+            {canIssue && <QrIssueForm personId={rows.person.id} status={state.status} ttlDays={state.ttlDays} />}
           </>
         }
       >

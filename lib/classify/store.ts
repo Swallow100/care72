@@ -178,7 +178,7 @@ export async function classifySignal(db: D1Database, t: ClassifyTarget, deps: Cl
 
 // ---------- 人の直し ----------
 
-/** 選んだ分類を決まりに合わせる（5 つの順、重ねない、不明はほかと一緒にしない）。空なら null */
+/** 選んだ分類を決まりに合わせる（6 つの順、重ねない、不明はほかと一緒にしない）。空なら null */
 export function normalizeEdit(classes: readonly RecordingClass[]): RecordingClass[] | null {
   const picked = new Set(classes);
   const known = RECORDING_CLASSES.filter((c) => c !== "unknown" && picked.has(c));

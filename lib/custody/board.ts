@@ -15,7 +15,7 @@ import { marksOf } from "../caseload.ts";
 import { canOpenDocument, scopeHas, viewScope } from "../consent/scope.ts";
 import { parseLedger } from "../db/ledger.ts";
 import type { ClockRow, ConsentStatus, ContactRow, CustodyVia, OfficeKind, PersonOrigin, PersonRow } from "../db/types.ts";
-import { DEVICE_LABELS } from "../labels.ts";
+import { deviceText } from "../labels.ts";
 import { loadSituation } from "../disaster/db.ts";
 import { loadOfficeOverrides, type StoredOverride } from "../disaster/override.ts";
 import { personSituation, shortJst, type DisasterSituation } from "../disaster/state.ts";
@@ -205,7 +205,7 @@ export async function loadStaffBoard(
         marks: medicalShown ? marksOf(myClocks) : [],
         markItems: medicalShown ? markItems(myClocks, own) : [],
         medications: medicalShown ? ledger.medical.medications.map((m) => m.name) : [],
-        devices: medicalShown ? ledger.medical.devices.map((d) => DEVICE_LABELS[d.kind]) : [],
+        devices: medicalShown ? ledger.medical.devices.map(deviceText) : [],
         remain: medicalShown && remain ? { label: remain.label, text: remain.text, hours: remain.hours, tone: remain.tone } : null,
         shelter: r.shelter,
         via: r.via,

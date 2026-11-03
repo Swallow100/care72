@@ -9,7 +9,7 @@
 
 import type { D1Database } from "@cloudflare/workers-types";
 import { JUDGE_LABEL } from "../auth/roles.ts";
-import type { ConsentStatus, CustodyVia, DeviceKind, Ledger, PersonOrigin, ReleaseKind } from "../db/types.ts";
+import type { ConsentStatus, CustodyVia, Ledger, PersonOrigin, ReleaseKind } from "../db/types.ts";
 import { UNAFFILIATED_OFFICE_ID, type StaffActor } from "./actor.ts";
 import type { CustodyError } from "./labels.ts";
 import { RELEASE_LABELS } from "./labels.ts";
@@ -168,13 +168,16 @@ export async function release(
   return { ok: true, personId: row.person_id };
 }
 
-/** その場で登録した人の台帳。薬は名前だけ（区分はその他）、機器は種類だけ。ほかは空（あとでケアマネが入れる） */
+/**
+ * その場で登録した人の台帳。薬は名前だけ（区分はその他）、機器は種類と、その他だけ名前（T64。T57 の detail と同じ所）。
+ * ほかは空（あとでケアマネが入れる）
+ */
 export function onSiteLedger(input: Pick<OnSiteInput, "medications" | "devices">): Ledger {
   return {
     basic: {},
     care: {},
     medical: {
-      devices: input.devices.map((kind: DeviceKind) => ({ kind })),
+      devices: input.devices.map((d) => (d.kind === "other" && d.detail ? { kind: d.kind, detail: d.detail } : { kind: d.kind })),
       medications: input.medications.map((name) => ({ name, category: "other" as const })),
     },
     evacuation: { hazards: [] },

@@ -1,4 +1,4 @@
-// 録音と自由文の分類（T12）。Claude（Haiku）が文字起こしを「けが・動けない・水が来た・機器が止まった・不明」に分けるだけ。
+// 録音と自由文の分類（T12）。Claude（Haiku）が文字起こしを「けが・動けない・水が来た・機器が止まった・その他・不明」に分けるだけ（その他は T64）。
 // 色と順位は決めない（lib/triage が signals.classes を読んで決める）。本番（本人のスマホの録音）と訓練（T18 のペルソナ）が同じ入力の形を使う。
 //
 // - Claude に渡すのは lib/pseudonym を通した文だけ（ClassifyInput の型で縛り、askJson が実行時にも確かめる）。本人の台帳は渡さない
@@ -37,7 +37,7 @@ export type ClassifyInput = {
   facts: ForClaude<{ text: string }>;
 };
 
-/** 分類の結果。categories は 5 つの値で 1 つ以上、不明はほかと一緒にしない */
+/** 分類の結果。categories は 6 つの値で 1 つ以上、不明はほかと一緒にしない */
 export type Classification = {
   categories: RecordingClass[];
   /** 0〜1 */
@@ -119,7 +119,7 @@ export function normalizeMemo(memo: ClassifyAnswer["memo"], text: string): Recor
   return Object.fromEntries(HEARING_FIELDS.map((f) => [f, memoTextOf(memo?.[f], text)])) as Record<HearingField, string | null>;
 }
 
-/** Claude の返事を決まりに合わせる: 確信を 0〜1 に、0.6 未満と空は不明、不明はほかと一緒にしない、並びは 5 つの順 */
+/** Claude の返事を決まりに合わせる: 確信を 0〜1 に、0.6 未満と空は不明、不明はほかと一緒にしない、並びは 6 つの順 */
 export function normalizeClassification(answer: ClassifyAnswer, text: string): Classification {
   const confidence = Math.min(Math.max(answer.confidence, 0), 1);
   const picked = new Set(answer.categories);
