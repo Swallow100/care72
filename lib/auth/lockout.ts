@@ -109,13 +109,13 @@ export async function guardedLogin(
   return { kind: "failed" };
 }
 
-/** 止めたときの返し方。フォームの POST（画面の移動）は /login?w=<残りの分> へ 303、ほか（fetch・curl）は 429 と Retry-After */
+/** 止めたときの返し方。フォームの POST（画面の移動）は /login?e=locked&m=<残りの分> へ 303、ほか（fetch・curl）は 429 と Retry-After */
 export function wantsPage(headers: Headers): boolean {
   if (headers.get("sec-fetch-mode") === "navigate") return true;
   return (headers.get("accept") ?? "").includes("text/html");
 }
 
-/** 画面の残りの分（/login?w=）。1〜15 の整数でなければ null */
+/** 画面の残りの分（/login?e=locked&m=）。1〜15 の整数でなければ null */
 export function waitMinutes(raw: string | undefined): number | null {
   if (!raw || !/^[0-9]{1,2}$/.test(raw)) return null;
   const n = Number(raw);

@@ -8,7 +8,13 @@ import { getPrincipal } from "@/lib/auth/server";
 
 export const metadata: Metadata = { title: "ログイン | ケア72" };
 
-type Props = { searchParams: Promise<{ e?: string; w?: string }> };
+type Props = { searchParams: Promise<{ e?: string; m?: string }> };
+
+/** 回数の制限で止めたとき（/login?e=locked&m=<残りの分>。lib/auth/lockout.ts） */
+function lockedText(m: string | undefined): string {
+  const minutes = waitMinutes(m);
+  return minutes === null ? "回数超過 しばらく待機" : `回数超過 待機 ${minutes} 分`;
+}
 
 const INPUT =
   "mt-1 h-10 w-full rounded bg-panel2 px-3 outline-none focus-visible:outline-2 focus-visible:outline-accent";
@@ -19,9 +25,7 @@ const INPUT =
 export default async function LoginPage({ searchParams }: Props) {
   const p = await getPrincipal();
   if (p) redirect(homePath(p.role));
-  const { e, w } = await searchParams;
-  // 回数の制限で止めたとき（/login?w=<残りの分>。lib/auth/lockout.ts）
-  const wait = waitMinutes(w);
+  const { e, m } = await searchParams;
 
   return (
     <Page width="full" className="max-w-sm py-10">
@@ -53,16 +57,10 @@ export default async function LoginPage({ searchParams }: Props) {
               className={INPUT}
             />
           </label>
-          {wait !== null ? (
-            <p role="alert" className="text-sm">
-              <span className="font-bold text-danger">回数超過</span> 待機 {wait} 分
+          {e && (
+            <p role="alert" className="text-sm font-bold text-danger">
+              {e === "locked" ? lockedText(m) : "認証失敗"}
             </p>
-          ) : (
-            e && (
-              <p role="alert" className="text-sm font-bold text-danger">
-                認証失敗
-              </p>
-            )
           )}
           <SubmitButton kind="main" size="lg" className="mt-1 w-full">
             ログイン

@@ -5,7 +5,7 @@ import { nowSec, sessionSecret } from "@/lib/auth/session";
 
 // ログインのフォームの POST。合えば cookie を付けて役の入口へ、違えば /login?e=1 に戻す（どこが違うかは言わない）。
 // 同じ ID か同じ送信元で 15 分に 10 回失敗したら 15 分止める（lib/auth/lockout.ts）。止めている間はパスワードを確かめず、
-// フォームからは /login?w=<残りの分> へ 303、ほか（fetch・curl）は 429 と Retry-After。
+// フォームからは /login?e=locked&m=<残りの分> へ 303、ほか（fetch・curl）は 429 と Retry-After。
 // ID・パスワードはログに出さない。
 export async function POST(request: Request) {
   if (!isSameOrigin(request)) return new Response(null, { status: 403 });
@@ -25,7 +25,7 @@ export async function POST(request: Request) {
   );
   if (r.kind === "ok") return seeOther(request, r.path, sessionCookie(r.token, request.url));
   if (r.kind === "failed") return seeOther(request, "/login?e=1");
-  if (wantsPage(request.headers)) return seeOther(request, `/login?w=${r.minutes}`);
+  if (wantsPage(request.headers)) return seeOther(request, `/login?e=locked&m=${r.minutes}`);
   return Response.json(
     { error: "too_many_attempts" },
     { status: 429, headers: { "Retry-After": String(r.retryAfterSec), "Cache-Control": "no-store" } },
