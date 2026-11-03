@@ -44,6 +44,8 @@ import { MAP_UI, othersLabel } from "@/lib/map/labels";
 import { BASE_LAYER, BASE_OPACITY, HAZARD_LAYERS, HAZARD_OPACITY, HAZARD_PORTAL, type Attribution, type HazardLayer } from "@/lib/map/layers";
 import type { MapPin } from "@/lib/map/side";
 import { COLOR_LABELS } from "@/lib/labels";
+import type { NowcTime } from "@/lib/jma/nowcast";
+import { NowcastLayer, useNowcastTime } from "./NowcastLayer";
 import type { StateTone } from "@/lib/person";
 
 /** ピンが無いときの真ん中（松山市の市街）。事業所の中心（center、T68）があればそちら（T72） */
@@ -96,6 +98,8 @@ export type CaseMapProps = {
   unplaced: number;
   /** ピンが無いときの真ん中（事業所の中心、T68）。無ければ FALLBACK（松山市の市街）。T72 */
   center?: GeoPoint;
+  /** 気象庁の雨雲を重ねる（事業所がデモでなく旗 JMA_NOWCAST が on のとき。サーバーが決める。T72） */
+  nowcast?: boolean;
 };
 
 /** 層の切替（小さな地図と全画面で同じ物） */
@@ -104,11 +108,15 @@ type LayerChoice = {
   toggle: (id: HazardKind) => void;
   rainOn: boolean;
   toggleRain: () => void;
+  /** 気象庁の雨雲の時刻（重ねないときは無し・null） */
+  nowcast?: NowcTime | null;
 };
 
-export function CaseMap({ pins, layers, demo, unplaced, center }: CaseMapProps) {
+export function CaseMap({ pins, layers, demo, unplaced, center, nowcast = false }: CaseMapProps) {
   const [on, setOn] = useState<ReadonlySet<HazardKind>>(() => new Set(layers));
   const [rainOn, setRainOn] = useState(true);
+  // 気象庁の雨雲の一番新しい実況の時刻（旗が off・デモ事業所では読まない）
+  const nowc = useNowcastTime(nowcast);
   const [full, setFull] = useState(false);
   const box = useRef<HTMLDivElement>(null);
 
@@ -163,6 +171,7 @@ export function CaseMap({ pins, layers, demo, unplaced, center }: CaseMapProps) 
       }),
     rainOn,
     toggleRain: () => setRainOn((v) => !v),
+    nowcast: nowc,
   };
 
   return (
@@ -215,6 +224,7 @@ export function CaseMap({ pins, layers, demo, unplaced, center }: CaseMapProps) 
           <BaseTiles tiles={tiles} onLoad={back.onLoad} />
           <HazardTiles tiles={tiles} shown={shown} />
           {demo && rainOn && <Rain demo={demo} view={view} size={BASE_SIZE} />}
+          {nowc && rainOn && <NowcastLayer time={nowc} view={view} size={BASE_SIZE} />}
           {pins.map((p) => {
             const at = place(view, p.location);
             return <PinLink key={p.id} pin={p} style={{ left: `${at.left}%`, top: `${at.top}%`, zIndex: 10 + p.layer }} />;
@@ -572,6 +582,7 @@ export function FullMap({ pins, demo, unplaced, choice, center, onClose, initial
               <BaseTiles tiles={baseTiles} onLoad={back.onLoad} />
               <HazardTiles tiles={overTiles} shown={shown} />
               {demo && choice.rainOn && <Rain demo={demo} view={view} size={size} />}
+              {choice.nowcast && choice.rainOn && <NowcastLayer time={choice.nowcast} view={view} size={size} />}
               {groups.map(({ group: g, pins: ms }) =>
                 ms.length === 1 ? (
                   <PinLink
@@ -610,7 +621,7 @@ function LayerToggles({ choice, demo, tz }: { choice: LayerChoice; demo: DemoOve
           {l.label}
         </LayerButton>
       ))}
-      {demo && demo.rain.length > 0 && (
+      {((demo && demo.rain.length > 0) || choice.nowcast) && (
         <LayerButton pressed={choice.rainOn} onClick={choice.toggleRain} layer="rain" outOfRange={false}>
           雨雲
         </LayerButton>

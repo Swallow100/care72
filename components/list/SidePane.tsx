@@ -26,8 +26,8 @@ const BAR: Record<StateTone, string> = {
   unknown: "bg-state-unknown-fill",
 };
 
-/** 地図の真ん中（ピンが無いとき。事業所の中心、T68。T72） */
-export type SideMapOptions = { center: GeoPoint | null };
+/** 地図の真ん中（ピンが無いとき。事業所の中心、T68）と、気象庁の雨雲を重ねるか（デモでない事業所で旗が on のとき）。T72 */
+export type SideMapOptions = { center: GeoPoint | null; nowcast: boolean };
 
 export function SidePane({ data, map: mapOptions }: { data: SidePaneData; map?: SideMapOptions }) {
   const disaster = data.mode === "disaster";
@@ -113,6 +113,7 @@ function MapSection({ data, options }: { data: SidePaneData; options?: SideMapOp
         demo={data.demo}
         unplaced={data.unplaced}
         center={options?.center ?? undefined}
+        nowcast={options?.nowcast ?? false}
       />
       {data.states && (
         <div className="mt-2 rounded-md bg-panel2 px-2 py-1.5">

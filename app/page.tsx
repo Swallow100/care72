@@ -42,6 +42,7 @@ import { listHref, listView, type ListViewResult } from "@/lib/list/view";
 import { personDisaster } from "@/lib/disaster/person";
 import { elapsedText, shortJst } from "@/lib/disaster/state";
 import { COLOR_LABELS, TIER_LABELS } from "@/lib/labels";
+import { nowcastOn } from "@/lib/jma/nowcast";
 import { buildSidePane, sideDisasterOf } from "@/lib/map/side";
 import { loadOfficePlace } from "@/lib/office/place";
 import { parsePeopleError } from "@/lib/office/http";
@@ -93,14 +94,14 @@ export default async function CaseloadPage({ searchParams }: Props) {
 
   const now = new Date().toISOString();
   let data: Caseload | null;
-  // 右の面の地図の真ん中（ピンが無いとき。事業所の中心、T68。T72）
-  let map: SideMapOptions = { center: null };
+  // 右の面の地図の真ん中（ピンが無いとき。事業所の中心、T68）と、気象庁の雨雲（デモでない事業所で旗 JMA_NOWCAST が on のとき）。T72
+  let map: SideMapOptions = { center: null, nowcast: false };
   try {
     const { env } = await getCloudflareContext({ async: true });
     data = scope ? await loadCaseload(env.DB, scope, todayJst(), now) : null;
     if (principal.office) {
       const place = await loadOfficePlace(env.DB, principal.office.id).catch(() => null);
-      map = { center: place?.center ?? null };
+      map = { center: place?.center ?? null, nowcast: nowcastOn(env) && principal.office.kind !== "demo" };
     }
   } catch (e) {
     console.error("担当一覧を読めない", e);
