@@ -117,8 +117,8 @@
   --color-danger: var(--danger);
   --color-accent: var(--accent);
   --color-on-accent: var(--on-accent);
-  /* 画面の書体は M PLUS 2（数字がもともと等幅。docs/progress/t35.md の比較） */
-  --font-sans: var(--font-mplus2), system-ui, sans-serif;
+  /* 画面の書体: 英数字は Inter、日本語は端末の書体（Mac は Hiragino Sans、Windows は Yu Gothic UI・Meiryo）。11/3 12:0x の判断（app/layout.tsx の注） */
+  --font-sans: var(--font-inter), "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Yu Gothic", "Meiryo", system-ui, sans-serif;
   --font-ud: var(--font-biz-ud), system-ui, sans-serif;
 }
 
@@ -135,7 +135,7 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* 本人・家族のスマホ（phone-text・data-phone）と本人の 1 枚（data-sheet="own"）だけ UD の書体。ほかの画面は M PLUS 2 */
+/* 本人・家族のスマホ（phone-text・data-phone）と本人の 1 枚（data-sheet="own"）だけ UD の書体。ほかの画面は Inter ＋ 端末の日本語書体 */
 .phone-text,
 [data-phone],
 [data-sheet="own"] {

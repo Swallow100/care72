@@ -112,7 +112,7 @@ describe("種の入れ直し（npm run db:reset）", () => {
       .map((n) => readFileSync(new URL(n, dir), "utf8"))
       .join("\n");
     const out = new Map<string, Set<string>>();
-    for (const m of sql.matchAll(/CREATE TABLE (\w+) \(([\s\S]*?)\n\);/g)) {
+    for (const m of sql.matchAll(/CREATE TABLE (?:IF NOT EXISTS )?(\w+) \(([\s\S]*?)\n\);/g)) {
       const refs = new Set([...m[2].matchAll(/REFERENCES (\w+)/g)].map((r) => r[1]).filter((t) => t !== m[1]));
       out.set(m[1], refs);
     }
@@ -162,5 +162,15 @@ describe("種の入れ直し（npm run db:reset）", () => {
     // QR は未作成に戻る（版 0）
     expect(db.prepare(`SELECT qr_generation AS g, qr_issued_at AS t FROM people WHERE id = 'p-01'`).get()).toEqual({ g: 0, t: null });
     db.close();
+  });
+
+  it("種はアンケートの表（本物の答え）を消さず、外部キーは取引の終わりまで後回しにする", () => {
+    const sql = seedStatements();
+    expect(sql[0]).toBe("PRAGMA defer_foreign_keys = true;");
+    for (const table of ["survey_answers", "survey_links", "survey_attempts"]) {
+      expect(sql.some((s) => s.startsWith(`DELETE FROM ${table}`))).toBe(false);
+      expect(CLEAR_ORDER).toContain(table);
+    }
+    expect(sql.some((s) => s === "DELETE FROM offices;")).toBe(true);
   });
 });
