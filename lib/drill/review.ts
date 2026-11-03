@@ -210,7 +210,7 @@ export function reviewText(ctx: ReviewContext, aliasOf: ReadonlyMap<string, stri
   }
   // 着信
   const c = s.calls;
-  lines.push(`- 着信: ${c.total} 件（応答 ${c.answered}・拒否 ${c.declined}・未応答 ${c.open}。赤の拒否 ${c.redDeclined}）`);
+  lines.push(`- 着信: ${c.total} 件（出た ${c.answered}・出なかった ${c.declined}・未応答 ${c.open}。赤で出なかった ${c.redDeclined}）`);
   // 前回
   const p = ctx.previous;
   lines.push(
@@ -232,7 +232,7 @@ export function reviewText(ctx: ReviewContext, aliasOf: ReadonlyMap<string, stri
     hist.push({ at: a.atMinute, order: i * 2, text: `${minuteText(a.atMinute)} ${ACTION_LABELS[a.kind]} → ${target}${before} → ${result}` });
   });
   ctx.calls.forEach((x, i) => {
-    const res = x.response === "answer" ? "応答" : x.response === "decline" ? "拒否" : "未応答";
+    const res = x.response === "answer" ? "出た" : x.response === "decline" ? "出なかった" : "未応答";
     const color = x.color === "red" ? "赤" : x.color === "green" ? "緑" : "安否不明";
     hist.push({ at: x.minute, order: i * 2 + 1, text: `${minuteText(x.minute)} 着信 ${who(x.person)}（${color}）→ ${res}` });
   });

@@ -24,9 +24,9 @@ export type ScoreView = {
   misses: Array<{ person: string; name: string; why: string; expected: string | null }>;
   /** 様式 9 の空欄のある人と欄 */
   blanks: Array<{ person: string; name: string; columns: string }>;
-  /** 着信の数（「応答 3・拒否 1・未応答 0」） */
+  /** 着信の数（「出た 3・出なかった 1・未応答 0」） */
   calls: string;
-  /** 前回の訓練（「11/2 大雨の想定」の元） */
+  /** 前回の訓練（「11/2 大雨想定」の元） */
   previous: { id: string; scenario: DrillScenario; startedAt: string } | null;
 };
 
@@ -85,7 +85,7 @@ export function scoreView(score: DrillScore, names: Names, previous: PreviousNum
   };
 }
 
-/** 前回の訓練の言い方（「前回 11/2 大雨の想定」）。日付は呼ぶ側の形（画面は shortJst） */
+/** 前回の訓練の言い方（「前回 11/2 大雨想定」）。日付は呼ぶ側の形（画面は shortJst） */
 export function previousText(p: ScoreView["previous"], date: (iso: string) => string): string {
   return p ? `${SCORE_LABELS.previous} ${date(p.startedAt)} ${SCENARIO_LABELS[p.scenario]}` : SCORE_LABELS.noPrevious;
 }

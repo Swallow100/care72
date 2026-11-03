@@ -6,8 +6,8 @@ import type { DrillAction, DrillScenario, DrillStatus } from "../db/types.ts";
 import type { PhoneState, ShelterState, TsunamiState, WaterState, WorldEventKind } from "./scenarios.ts";
 
 export const SCENARIO_LABELS: Record<DrillScenario, string> = {
-  heavy_rain: "大雨の想定",
-  earthquake: "地震の想定",
+  heavy_rain: "大雨想定",
+  earthquake: "地震想定",
   short: "10 分版",
   virtual: "仮想",
 };
@@ -77,7 +77,7 @@ export const EVENT_KIND_LABELS: Record<WorldEventKind, string> = {
   road: "道路",
   shelter: "避難所",
   facility: "施設",
-  supply_left: "持出品",
+  supply_left: "持ち出し",
   nurse_away: "訪問看護",
   going_home: "帰宅",
   line_down: "電話",
@@ -95,7 +95,7 @@ export const EVENT_KIND_LABELS: Record<WorldEventKind, string> = {
 
 /** 本人ごとの印（被害状況の「個別」の欄）。PersonMarks の鍵ごと */
 export const MARK_LABELS = {
-  supplyLeft: "未持出",
+  supplyLeft: "持ち出し忘れ",
   nurseAway: "訪問不可",
   goingHome: "帰宅希望",
   lineDown: "電話不通",
@@ -191,7 +191,7 @@ export const ACTION_UI = {
   history: "履歴",
   callIn: "着信",
   minutes: "分",
-  staff: "事業所職員",
+  staff: "事業所",
   shelter: "福祉避難所",
   city: "市役所",
   whole: "全体",
@@ -210,14 +210,15 @@ export const CALL_STATUS_TEXTS: Record<keyof typeof CALL_STATUS_LABELS, string> 
   noNumber: "電話番号が台帳にない",
 };
 
-/** 着信の画面と声（T21）の言葉。応答・拒否は電話の画面の言い方 */
+/** 着信の画面と声（T21）の言葉。出る・出ない・切るは電話の画面の言い方（DECISIONS 11/3 09:4x 案の採った物、18:0x） */
 export const CALL_UI = {
   incoming: "着信",
   talking: "通話中",
-  answer: "応答",
-  decline: "拒否",
-  hangUp: "終話",
-  play: "再生",
+  answer: "出る",
+  decline: "出ない",
+  hangUp: "切る",
+  /** 録音・声の再生のボタン（状態の「再生中」はそのまま） */
+  play: "聞く",
   playing: "再生中",
   voice: "音声",
   recording: "録音",
