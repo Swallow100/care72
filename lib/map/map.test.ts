@@ -434,4 +434,16 @@ describe("災害モード（T09）の担当一覧の行から右の面の発災�
     expect(quake.demo?.title).toBe("地震 南海トラフ");
     expect(quake.demo?.quake?.intensity).toBe("6強");
   });
+
+  it("訓練の仮想モード（scene: false）は雨雲・震度の絵を出さない。ピンと色はそのまま（T79）", () => {
+    const side = sideDisasterOf(disasterRows, { kind: "heavy_rain", alertLevel: 4 }, { scene: false })!;
+    expect(side.scene).toBeNull();
+    expect(side.results.map((r) => r.personId)).toEqual(results.map((r) => r.personId));
+    const data = buildSidePane(disasterRows, { sort: "tier", disaster: side });
+    expect(data.mode).toBe("disaster");
+    expect(data.demo).toBeNull();
+    expect(data.pins).toHaveLength(disasterRows.filter((r) => r.location !== null).length);
+    const quake = sideDisasterOf(disasterRows, { kind: "earthquake", alertLevel: null }, { scene: false })!;
+    expect(quake.scene).toBeNull();
+  });
 });
