@@ -42,7 +42,16 @@ import {
   type WorldStep,
 } from "./world-apply.ts";
 import { WORLD_SYSTEM } from "./world-oneshot.ts";
-import { agentParams, WORLD_BUDGET_CENTS, WORLD_TOOL, type RoomClient, type RoomEvent } from "./world-room.ts";
+import {
+  agentParams,
+  createWorldSession,
+  ensureWorldAgent,
+  WORLD_AGENT_VERSION,
+  WORLD_BUDGET_CENTS,
+  WORLD_TOOL,
+  type RoomClient,
+  type RoomEvent,
+} from "./world-room.ts";
 
 type Params = Anthropic.Beta.Messages.MessageCreateParamsNonStreaming;
 type Message = Anthropic.Beta.Messages.BetaMessage;
@@ -587,10 +596,68 @@ describe("仮想の筋（偽の部屋・偽の Haiku）", () => {
     expect(screen.ticks[0].incidents[0]).toMatchObject({ change: { kind: "world_note", state: "off" }, ai: false });
   });
 
-  it("部屋の Agent: 道具は world_step だけ（砂場の道具なし）、モデルは Opus", () => {
-    const p = agentParams() as { tools: Array<{ type: string; name: string }>; model: { id: string } };
+  it("部屋の Agent: 道具は world_step だけ（砂場の道具なし）、モデルは Opus・考える深さ high（11/4 00:5x、T67）", () => {
+    const p = agentParams() as { tools: Array<{ type: string; name: string }>; model: { id: string; effort: string } };
     expect(p.tools).toEqual([expect.objectContaining({ type: "custom", name: WORLD_TOOL })]);
-    expect(p.model.id).toBe(OPUS);
+    expect(p.model).toEqual({ id: OPUS, effort: "high" });
+  });
+
+  it("前の版の Agent（effort medium の版 2）が残っていれば agents.update で版を上げ、新しい Agent の版を使う。同じ版なら作らず更新もしない", async () => {
+    expect(WORLD_AGENT_VERSION).toBe(3);
+    sqlite.exec(
+      "INSERT INTO ai_agents (purpose, version, agent_id, agent_version, environment_id, updated_at) VALUES ('drill_world', 2, 'agent_old', 4, 'env_old', '2026-11-03T00:00:00.000Z')",
+    );
+    const updates: Array<{ id: string; params: Record<string, unknown> }> = [];
+    let created = 0;
+    const client: RoomClient = {
+      agents: {
+        create: async () => {
+          created += 1;
+          return { id: "agent_new", version: 1 };
+        },
+        update: async (id, params) => {
+          updates.push({ id, params });
+          return { id, version: 5 };
+        },
+      },
+      environments: {
+        create: async () => {
+          created += 1;
+          return { id: "env_new" };
+        },
+      },
+      sessions: { create: async () => ({ id: "sesn_x" }), send: async () => ({ ids: [] }), list: async () => [] },
+    };
+    const now = "2026-11-04T01:00:00.000Z";
+    expect(await ensureWorldAgent(db, client, now)).toEqual({ agentId: "agent_old", agentVersion: 5, environmentId: "env_old" });
+    expect(created).toBe(0);
+    expect(updates).toHaveLength(1);
+    expect(updates[0]).toMatchObject({ id: "agent_old", params: { model: { id: OPUS, effort: "high" } } });
+    expect(sqlite.prepare("SELECT version, agent_version, updated_at FROM ai_agents").all()).toEqual([
+      { version: WORLD_AGENT_VERSION, agent_version: 5, updated_at: now },
+    ]);
+    // 2 回目は版が同じなので API を呼ばない
+    expect(await ensureWorldAgent(db, client, now)).toEqual({ agentId: "agent_old", agentVersion: 5, environmentId: "env_old" });
+    expect(updates).toHaveLength(1);
+    // 新しい session は上げた版に固定する
+    let pinned: Record<string, unknown> | null = null;
+    await createWorldSession({ ...client, sessions: { ...client.sessions, create: async (p) => ((pinned = p), { id: "sesn_y" }) } }, {
+      agentId: "agent_old",
+      agentVersion: 5,
+      environmentId: "env_old",
+    });
+    expect(pinned).toMatchObject({ agent: { type: "agent", id: "agent_old", version: 5 } });
+  });
+
+  it("1 回呼び（部屋が使えないとき）も用途は監督で、Opus・考える深さ high", async () => {
+    const { client, calls } = fakeClaude();
+    const hooks = drillHooks({ DB: db, ANTHROPIC_API_KEY: "dummy", DRILL_WORLD: "messages" }, careManager(), { claude: client, now: () => new Date(START) })!;
+    const scope = drillScope(careManager())!;
+    expect(await startDrill(db, scope, "virtual", START, hooks, () => "drill-o")).toEqual({ ok: true, id: "drill-o" });
+    expect((await advanceDrill(db, scope, "drill-o", 0, START, hooks)).ok).toBe(true);
+    const world = calls.filter((p) => p.model === OPUS);
+    expect(world.length).toBeGreaterThan(0);
+    for (const p of world) expect(p.output_config?.effort).toBe("high");
   });
 });
 
