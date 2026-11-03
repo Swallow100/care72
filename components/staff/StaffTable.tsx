@@ -236,7 +236,7 @@ function Row({ row: r, open, onToggle }: { row: StaffRow; open: boolean; onToggl
         <td className={`${CELL} text-center`}>
           <span className="font-bold tabular-nums">{r.rank}</span>
         </td>
-        <td className={`${CELL} min-w-[9rem]`}>
+        <td className={`${CELL} min-w-[7rem] sm:min-w-[9rem]`}>
           <Link href={`/people/${encodeURIComponent(r.personId)}`} className="relative -mx-1 rounded px-1 font-bold" data-press>
             {r.name}
             <LinkPending />

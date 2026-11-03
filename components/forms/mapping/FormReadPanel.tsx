@@ -6,7 +6,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { BTN_MAIN, BTN_SIDE, INPUT } from "@/components/person/intake-ui";
-import { AddIcon, ReadIcon } from "@/components/ui/Icon";
+import { AddIcon, PaperIcon, ReadIcon } from "@/components/ui/Icon";
 import { Loader72 } from "@/components/ui/Loader72";
 import { FORM_FILE_MAX_BYTES, LIMITS, MAPPING_LABELS as L } from "@/lib/forms/mapping";
 
@@ -84,6 +84,7 @@ export function FormReadPanel({ aiReady }: { aiReady: boolean }) {
         </h2>
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <label className={`${BTN_SIDE} cursor-pointer`} data-press>
+            <PaperIcon aria-hidden className="size-3.5 shrink-0" />
             選択
             <input
               type="file"
