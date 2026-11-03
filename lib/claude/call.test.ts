@@ -101,7 +101,7 @@ describe("askJson", () => {
     // Haiku には fallback を送らない
     expect(params).not.toHaveProperty("fallbacks");
     expect(params).not.toHaveProperty("betas");
-    // 分類は録音の応答のあとに走らせるので短く（T12）
+    // 分類は録音の応答のあとに走らせるので短く（T12）。ほかが high になっても分類だけは low のまま（11/4 00:5x、T67）
     expect(options).toEqual({ timeout: 12_000, maxRetries: 1 });
 
     // 渡った物に氏名・電話が無く、仮名がある
@@ -127,11 +127,12 @@ describe("askJson", () => {
     expect(calls[0].params).toMatchObject({
       model: OPUS,
       max_tokens: 16000,
-      output_config: { effort: "medium" },
+      output_config: { effort: "high" },
       betas: ["server-side-fallback-2026-07-01"],
       fallbacks: "default",
     });
-    expect(calls[0].options).toEqual({ timeout: 120_000, maxRetries: 1 });
+    // Opus の high は様式の読み取り・講評と同じ 180 秒（T67）
+    expect(calls[0].options).toEqual({ timeout: 180_000, maxRetries: 1 });
 
     const { client: c2 } = fake(() => reply({ model: "claude-opus-5", text: JSON.stringify({ events: ["停電"] }) }));
     const ok = await askJson({ purpose: "scoring", system: "採点", input: payload, schema: Out }, ctx(c2));
@@ -139,7 +140,8 @@ describe("askJson", () => {
 
     const { client: c3, calls: k3 } = fake(() => reply({ model: SONNET, text: JSON.stringify({ events: [] }) }));
     await askJson({ purpose: "ledger_input", system: "入力", input: { 本人: payload, 話した文: text }, schema: Out }, ctx(c3));
-    expect(k3[0].params).toMatchObject({ model: SONNET, fallbacks: "default", output_config: { effort: "medium" } });
+    expect(k3[0].params).toMatchObject({ model: SONNET, max_tokens: 16000, fallbacks: "default", output_config: { effort: "high" } });
+    expect(k3[0].options).toEqual({ timeout: 180_000, maxRetries: 1 });
     expect(JSON.parse(k3[0].params.messages[0].content as string)).toMatchObject({
       本人: [{ alias: "A さん" }],
       話した文: { text: expect.stringContaining("A さん") },

@@ -1,14 +1,15 @@
 // 仮想モード（docs/tasks/T50.md）の世界の部屋。Managed Agents（beta）の 1 つの session が 72 時間の街の流れを持ち続ける。
 //
 // - Agent と Environment は 1 回だけ作り、ID を D1 の ai_agents に持つ（無ければ作る。毎回 create しない）。
-//   指示（WORLD_SYSTEM）や道具を変えたら WORLD_AGENT_VERSION を上げる → 次の訓練で agents.update し、新しい訓練から新しい版
+//   指示（WORLD_SYSTEM）・道具・モデルと effort（agentParams の中身）を変えたら WORLD_AGENT_VERSION を上げる →
+//   次の訓練で agents.update し、新しい訓練から新しい版（session は作ったときの版に固定されるので、進行中の訓練は前の版のまま）
 // - 訓練ごとに session を 1 つ（最初の仮想の刻みで作る。drills.world の session と drills.world_session_id に持つ）。
 //   予算は max_list_cost $3。訓練が終わっても archive・delete しない
 // - 道具は custom tool の world_step だけ（砂場の道具 agent_toolset は付けない）。返事の形は world_step の schema で縛り、
 //   受け取った input をまた zod（WorldStepSchema）で確かめる
 // - 刻みごと: events.send で user.message を 1 つ（仮名化した文だけ。最初の刻みに地理と本人たち、以後は刻みの文だけ）→
-//   events.list を 1.5 秒ごとに読み、world_step の呼び出しに user.custom_tool_result を返し、idle になるまで待つ。60 秒で時間切れ。
-//   Workers の 1 要求の中で済ませる（SSE の stream は使わない。長い接続を持てない）
+//   events.list を 1.5 秒ごとに読み、world_step の呼び出しに user.custom_tool_result を返し、idle になるまで待つ。
+//   ROOM_TIMEOUT_MS（120 秒。effort high で考える分を見て 60 秒から上げた、T67）で時間切れ。Workers の 1 要求の中で済ませる（SSE の stream は使わない。長い接続を持てない）
 // - 1 刻み 1 回を ai_calls に残す（用途 director。上限に達したら呼ばない）
 // - 落ちたら（鍵なし・作れない・時間切れ・形の違い・上限・送れない）投げる。呼ぶ側（createWorldHook）が 1 回呼びに落とす
 
@@ -27,13 +28,18 @@ import { lastHour, scenarioOf } from "./scenarios.ts";
 import { fallbackIncidents, WorldStepSchema, worldIncidents, type WorldStep } from "./world-apply.ts";
 import { applyContext, buildCast, openingText, tickText, WORLD_STEP_JSON_SCHEMA, WORLD_SYSTEM, worldOneshot, type WorldCast } from "./world-oneshot.ts";
 
-/** 指示・道具の版。WORLD_SYSTEM か world_step の形を変えたら 1 つ上げる（2: 結末を世界が決める・理由の欄、T53） */
-export const WORLD_AGENT_VERSION = 2;
+/**
+ * 部屋の Agent の設定（agentParams）の版。WORLD_SYSTEM・world_step の形・モデル・effort のどれかを変えたら 1 つ上げる。
+ * 上げないと、本番の ai_agents に残る前の Agent（前の設定）が使われ続ける。
+ * 2: 結末を世界が決める・理由の欄（T53）。3: effort を medium → high（11/4 00:5x、T67）
+ */
+export const WORLD_AGENT_VERSION = 3;
 export const WORLD_TOOL = "world_step";
 /** session の予算（セント。$3） */
 export const WORLD_BUDGET_CENTS = "300";
 export const POLL_MS = 1500;
-export const ROOM_TIMEOUT_MS = 60_000;
+/** 1 刻みの待ち。effort high の Opus が考えてから world_step を呼ぶまでを見て 120 秒（medium のときは 60 秒。docs/progress/t67.md） */
+export const ROOM_TIMEOUT_MS = 120_000;
 
 // ---------- client（偽物を差し替えられる形） ----------
 
@@ -109,7 +115,8 @@ export function agentParams(): Record<string, unknown> {
   return {
     name: "care72-drill-world",
     description: "ケア72 の仮想モードの訓練の世界（架空の街の 72 時間）",
-    model: { id: OPUS, effort: "medium" },
+    // 1 回呼び（world-oneshot.ts、PURPOSES の director）と同じ high。変えたら WORLD_AGENT_VERSION を上げる
+    model: { id: OPUS, effort: "high" },
     system: [COMMON_SYSTEM, WORLD_SYSTEM, `毎刻み、${WORLD_TOOL} の道具を 1 回だけ呼んで返す。道具の結果を受け取ったら短く終える。`].join("\n\n"),
     tools: [
       {
@@ -294,7 +301,7 @@ export async function roomStep(
       }
     }
   }
-  return fail("timeout", "60 秒で返らない");
+  return fail("timeout", `${Math.round(timeout / 1000)} 秒で返らない`);
 }
 
 /** 答えていない world_step の呼び出しに結果を返す（前の刻みの時間切れの後始末）。返した数 */
