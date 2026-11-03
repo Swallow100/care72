@@ -167,7 +167,7 @@ describe("種の入れ直し（npm run db:reset）", () => {
   it("種はアンケートの表（本物の答え）を消さず、外部キーは取引の終わりまで後回しにする", () => {
     const sql = seedStatements();
     expect(sql[0]).toBe("PRAGMA defer_foreign_keys = true;");
-    for (const table of ["survey_answers", "survey_links", "survey_attempts"]) {
+    for (const table of ["survey_responses", "survey_shares", "survey_answers", "survey_links", "survey_attempts"]) {
       expect(sql.some((s) => s.startsWith(`DELETE FROM ${table}`))).toBe(false);
       expect(CLEAR_ORDER).toContain(table);
     }

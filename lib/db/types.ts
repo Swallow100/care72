@@ -427,7 +427,7 @@ export type OfficeRow = {
   created_at: string;
 };
 
-/** アンケートの招待のリンク（migrations/0004_survey.sql、T42） */
+/** アンケートの招待のリンク（migrations/0004_survey.sql、T42。T65 から作らない。行は残す） */
 export type SurveyLinkRow = {
   token: string;
   office_id: string;
@@ -454,6 +454,45 @@ export type SurveyAnswerRow = {
   q6: string | null;
   q7: string | null;
   q7_reason: string | null;
+  quote: string | null;
+  source_hash: string;
+  submitted_at: string;
+};
+
+/** アンケートの共有のリンク（migrations/0016_survey_share.sql、T65）。1 本で何人でも、期限と件数の上限まで */
+export type SurveyShareRow = {
+  token: string;
+  office_id: string;
+  /** 控え（配った先など。本名でない） */
+  memo: string;
+  created_by: string | null;
+  created_role: SurveyCreatorRole;
+  created_at: string;
+  expires_at: string;
+  max_answers: number;
+};
+
+/** アンケートの答え（T65 の 9 問）。記号は tools/survey/questions.ts。問 4・問 6 は "bcf" のように並べる。答えなしは null */
+export type SurveyResponseRow = {
+  id: number;
+  token: string;
+  role: string | null;
+  role_other: string | null;
+  experience: string | null;
+  q1: string | null;
+  q2: string | null;
+  q3: string | null;
+  q3_other: string | null;
+  q4: string | null;
+  q4_other: string | null;
+  q5: string | null;
+  q6: string | null;
+  q6_other: string | null;
+  q7: string | null;
+  q8: string | null;
+  q9: string | null;
+  q9_reason: string | null;
+  comment: string | null;
   quote: string | null;
   source_hash: string;
   submitted_at: string;

@@ -1,73 +1,71 @@
-// アンケートの表（migrations/0004_survey.sql）を読む・書く。D1 を引数で受ける（テストは node:sqlite）。
+// アンケートの表を読む・書く。D1 を引数で受ける（テストは node:sqlite）。
+// T65 から: 共有のリンク（survey_shares）と答え（survey_responses、migrations/0016_survey_share.sql）。
+// T42 の 1 人 1 本のリンク（survey_links・survey_answers）は作らず、行はそのまま残す（開くと受付終了）。
 // 時刻は UTC の ISO 8601（toISOString の形）。同じ形なので文字のまま比べられる。
 
 import type { D1Database } from "@cloudflare/workers-types";
-import type { SurveyAnswerRow, SurveyCreatorRole, SurveyLinkRow } from "../db/types.ts";
+import type { SurveyCreatorRole, SurveyResponseRow, SurveyShareRow } from "../db/types.ts";
 import { answerId, answersOfRow, type SurveyAnswers } from "./answer.ts";
-import type { SurveyLinkState } from "./text.ts";
-import { isSurveyTokenShape, newSurveyToken, SURVEY_TTL_DAYS } from "./token.ts";
+import { shareExpiresAt, shareState, SURVEY_MAX_ANSWERS, type ShareState } from "./share.ts";
+import { isSurveyTokenShape, newSurveyToken } from "./token.ts";
 
-const DAY_MS = 24 * 60 * 60 * 1000;
-
-export type NewLink = {
+export type NewShare = {
   officeId: string;
   memo: string;
   createdBy: string | null;
   createdRole: SurveyCreatorRole;
 };
 
-/** リンクを 1 つ作る。期限は作ってから 14 日 */
-export async function createSurveyLink(
+/** 共有のリンクを 1 つ作る。受付は締切まで（審査員は lib/survey/share.ts）、答えは 30 件まで */
+export async function createSurveyShare(
   db: D1Database,
-  link: NewLink,
+  share: NewShare,
   now: Date,
   token: string = newSurveyToken(),
-): Promise<{ token: string; expiresAt: string }> {
-  const createdAt = now.toISOString();
-  const expiresAt = new Date(now.getTime() + SURVEY_TTL_DAYS * DAY_MS).toISOString();
+): Promise<{ token: string; expiresAt: string; maxAnswers: number }> {
+  const expiresAt = shareExpiresAt(now, share.createdRole === "judge");
   await db
     .prepare(
-      `INSERT INTO survey_links (token, office_id, memo, created_by, created_role, created_at, expires_at)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)`,
+      `INSERT INTO survey_shares (token, office_id, memo, created_by, created_role, created_at, expires_at, max_answers)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)`,
     )
-    .bind(token, link.officeId, link.memo, link.createdBy, link.createdRole, createdAt, expiresAt)
+    .bind(token, share.officeId, share.memo, share.createdBy, share.createdRole, now.toISOString(), expiresAt, SURVEY_MAX_ANSWERS)
     .run();
-  return { token, expiresAt };
+  return { token, expiresAt, maxAnswers: SURVEY_MAX_ANSWERS };
 }
 
-/** 答えられるリンクか（有る・使っていない・期限の前）。形の違う token は D1 を読まない */
-export async function liveSurveyLink(db: D1Database, token: unknown, nowIso: string): Promise<SurveyLinkRow | null> {
-  if (!isSurveyTokenShape(token)) return null;
-  const row = await db.prepare("SELECT * FROM survey_links WHERE token = ?1").bind(token).first<SurveyLinkRow>();
-  if (!row || row.used_at !== null || row.expires_at <= nowIso) return null;
-  return row;
-}
+export type ShareLookup =
+  | { kind: "open"; share: SurveyShareRow; answers: number }
+  /** 期限を過ぎた・件数が上限に届いた・T42 の 1 人 1 本のリンク（もう受けない） */
+  | { kind: "closed" }
+  /** 無い・形の違う token */
+  | { kind: "missing" };
 
-/**
- * 答えの頁を開いた。答えられるリンクなら、最初に開いた時刻を残して返す（2 度目からは変えない）。
- * 答えられないリンク（無い・使用済み・期限切れ）は null（頁は 404）
- */
-export async function openSurveyLink(db: D1Database, token: unknown, nowIso: string): Promise<SurveyLinkRow | null> {
-  const row = await liveSurveyLink(db, token, nowIso);
-  if (!row) return null;
-  if (row.opened_at === null) {
-    await db.prepare("UPDATE survey_links SET opened_at = ?2 WHERE token = ?1 AND opened_at IS NULL").bind(row.token, nowIso).run();
-    return { ...row, opened_at: nowIso };
+/** token のリンクを探し、受け付けるかを返す。形の違う token は D1 を読まない */
+export async function lookupSurveyShare(db: D1Database, token: unknown, nowIso: string): Promise<ShareLookup> {
+  if (!isSurveyTokenShape(token)) return { kind: "missing" };
+  const share = await db
+    .prepare(
+      `SELECT s.*, (SELECT count(*) FROM survey_responses r WHERE r.token = s.token) AS answers
+         FROM survey_shares s WHERE s.token = ?1`,
+    )
+    .bind(token)
+    .first<SurveyShareRow & { answers: number }>();
+  if (share) {
+    const { answers, ...row } = share;
+    return shareState(row, answers, nowIso) === "open" ? { kind: "open", share: row, answers } : { kind: "closed" };
   }
-  return row;
+  const legacy = await db.prepare("SELECT 1 AS x FROM survey_links WHERE token = ?1").bind(token).first<number>("x");
+  return legacy ? { kind: "closed" } : { kind: "missing" };
 }
 
-export function linkState(row: Pick<SurveyLinkRow, "opened_at" | "used_at" | "expires_at">, nowIso: string): SurveyLinkState {
-  if (row.used_at !== null) return "answered";
-  if (row.expires_at <= nowIso) return "expired";
-  return row.opened_at === null ? "unopened" : "opened";
-}
-
-export type SurveyLinkItem = {
+export type SurveyShareItem = {
   token: string;
   memo: string;
   judge: boolean;
-  state: SurveyLinkState;
+  state: ShareState;
+  answers: number;
+  maxAnswers: number;
   createdAt: string;
   expiresAt: string;
 };
@@ -81,11 +79,11 @@ export type SurveyAnswerItem = {
   answers: SurveyAnswers;
 };
 
-export type SurveyOverview = { links: SurveyLinkItem[]; answers: SurveyAnswerItem[] };
+export type SurveyOverview = { shares: SurveyShareItem[]; answers: SurveyAnswerItem[] };
 
 /**
  * 事業所の画面の「アンケート」。リンクは新しい順、答えは送った順。
- * 審査員（judge）は審査員が作った物だけを見る（協力してくれるケアマネの本物の答えを、審査員の鍵で読めないように）。
+ * 審査員（judge）は審査員が作った物だけを見る（協力してくれる人の本物の答えを、審査員の鍵で読めないように）。
  * 審査員でない人は事業所の全部を見る（審査員の試しには印を付ける）。
  * 番号は本物（W）と試し（T）で別に数える。毎朝の戻しで試しが消えても、本物の番号は変わらない
  */
@@ -95,30 +93,32 @@ export async function loadSurveyOverview(
   viewer: { judge: boolean },
   nowIso: string,
 ): Promise<SurveyOverview> {
-  const only = viewer.judge ? " AND l.created_role = 'judge'" : "";
-  const links = await db
+  const only = viewer.judge ? " AND s.created_role = 'judge'" : "";
+  const shares = await db
     .prepare(
-      `SELECT l.token, l.memo, l.created_role, l.created_at, l.opened_at, l.used_at, l.expires_at
-         FROM survey_links l WHERE l.office_id = ?1${only} ORDER BY l.created_at DESC, l.token`,
+      `SELECT s.*, (SELECT count(*) FROM survey_responses r WHERE r.token = s.token) AS answers
+         FROM survey_shares s WHERE s.office_id = ?1${only} ORDER BY s.created_at DESC, s.token`,
     )
     .bind(officeId)
-    .all<Pick<SurveyLinkRow, "token" | "memo" | "created_role" | "created_at" | "opened_at" | "used_at" | "expires_at">>();
+    .all<SurveyShareRow & { answers: number }>();
   const answers = await db
     .prepare(
-      `SELECT a.*, l.memo AS memo, l.created_role AS created_role
-         FROM survey_answers a JOIN survey_links l ON l.token = a.token
-        WHERE l.office_id = ?1${only} ORDER BY a.submitted_at, a.token`,
+      `SELECT r.*, s.memo AS memo, s.created_role AS created_role
+         FROM survey_responses r JOIN survey_shares s ON s.token = r.token
+        WHERE s.office_id = ?1${only} ORDER BY r.submitted_at, r.id`,
     )
     .bind(officeId)
-    .all<SurveyAnswerRow & { memo: string; created_role: SurveyCreatorRole }>();
+    .all<SurveyResponseRow & { memo: string; created_role: SurveyCreatorRole }>();
 
   const seq = { real: 0, judge: 0 };
   return {
-    links: links.results.map((r) => ({
+    shares: shares.results.map((r) => ({
       token: r.token,
       memo: r.memo,
       judge: r.created_role === "judge",
-      state: linkState(r, nowIso),
+      state: shareState(r, r.answers, nowIso),
+      answers: r.answers,
+      maxAnswers: r.max_answers,
       createdAt: r.created_at,
       expiresAt: r.expires_at,
     })),
