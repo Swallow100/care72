@@ -1,7 +1,7 @@
 // 訓練の API（app/api/drill/）の中身。route は同じ所からの POST かを見て、ここの応答を返すだけ。
 // D1 と Principal を引数で受け取る（テストで node:sqlite を渡す）。
 // 断り方: ログインしていなければ 401、ケアマネの役でなければ 403（行政・医療班・本人・家族・役を選ぶ前の審査員）、
-// 形が違う 400、事業所の外・無い訓練 404、進行中があるのに開始 409、読んだ刻みと違う 409、終わった訓練を進める 409。
+// 形が違う 400、事業所の外・無い訓練 404、同じケアマネの進行中があるのに開始 409（T70。24 時間たった進行中は先に中断）、読んだ刻みと違う 409、終わった訓練を進める 409。
 // 1 要求で進めるのは 1 刻みだけ（早送りもブラウザから 1 刻みずつ呼ぶ）。
 
 import type { D1Database } from "@cloudflare/workers-types";
@@ -194,11 +194,11 @@ export async function abandonPost(db: D1Database, p: Principal | null, id: strin
   return Response.json({ ok: true }, { headers: NO_STORE });
 }
 
-/** 訓練記録の一覧の GET（事業所ごと） */
-export async function listGet(db: D1Database, p: Principal | null): Promise<Response> {
+/** 訓練記録の一覧の GET（事業所ごと）。now を渡すと先に 24 時間たった進行中を中断にする（T70） */
+export async function listGet(db: D1Database, p: Principal | null, now?: string): Promise<Response> {
   const scope = gate(p);
   if (scope instanceof Response) return scope;
-  const items = await listDrills(db, scope.officeId);
+  const items = await listDrills(db, scope.officeId, 50, now);
   return Response.json(
     {
       ok: true,
@@ -212,6 +212,7 @@ export async function listGet(db: D1Database, p: Principal | null): Promise<Resp
         startedAt: d.started_at,
         finishedAt: d.finished_at,
         startedBy: d.started_by_name,
+        ...(d.abandon_reason ? { abandonReason: d.abandon_reason } : {}),
       })),
     },
     { headers: NO_STORE },

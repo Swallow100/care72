@@ -4,7 +4,8 @@
 //   安否を signals に drill_id 付きで足す。途中から再開できる（drills.world に今の状態、drill_events から刻みごとに作り直せる）
 // - 重なった「進める」（早送りと二度押し）は片方だけ通る。読んだ刻みと違えば競合。同じ刻みを 2 回書こうとしても id が重なり取引ごと戻る
 // - 本人の経過（timeline_entries）には何も書かない。本番の読み方（drill_id IS NULL）に混ざらない
-// - 事業所ごとに進行中は 1 つ（審査員は同じデモ事業所を使う。進行中があれば開始を断り、再開か中断へ）
+// - 進行中はケアマネごとに 1 つ（T70。開始者か担当一覧の人で見る。同じ事業所の 2 人が別々に訓練できる。審査員は山本の担当一覧なので 1 つを共有）。
+//   進行中があれば開始を断り、再開か中断へ。進行中のまま 24 時間たった訓練は、開始・一覧を読むときに中断にする（expireStaleDrills）
 // - 範囲はケアマネの役（審査員のケアマネの役を含む）と事業所。参加する本人は始めたときの担当一覧の人
 
 import type { D1Database } from "@cloudflare/workers-types";
@@ -55,7 +56,11 @@ import {
   type Tick,
 } from "./engine.ts";
 import { callIndexes } from "./calls.ts";
-import { EMPTY_WORLD, isInjectKind, type WorldState } from "./scenarios.ts";
+import { T70_LABELS } from "./labels.ts";
+import { EMPTY_WORLD, isInjectKind, SCENARIO_ORDER, scenarioOf, type WorldState } from "./scenarios.ts";
+import { castScenario, mayBeCalled, needsCast, type Cast } from "./cast.ts";
+import { castFactsMap } from "./cast-facts.ts";
+import { loadPersonaSources } from "./persona.ts";
 
 /** 訓練を開ける範囲。ケアマネの役だけ（審査員のケアマネの役も）。事業所と担当一覧の持ち主 */
 export type DrillScope = { officeId: string; careManagerId: string; accountId: string | null };
@@ -102,6 +107,8 @@ type StoredWorld = {
    * act は取り消せる手の番号
    */
   undo?: UndoSnapshot;
+  /** 想定の表の配役（T70、lib/drill/cast.ts）。代わりの人に当てた行だけ。無ければ鍵ごと無い（デモ事業所は前と同じ JSON） */
+  cast?: Cast;
 };
 
 /** 手の前の状態の写し（取消で戻す物） */
@@ -119,6 +126,7 @@ function storeWorld(s: DrillState, undo?: UndoSnapshot): string {
     ...(s.options && Object.keys(s.options).length > 0 ? { options: s.options } : {}),
     ...(s.undone ? { undone: s.undone } : {}),
     ...(undo ? { undo } : {}),
+    ...(s.cast && Object.keys(s.cast).length > 0 ? { cast: s.cast } : {}),
   };
   return JSON.stringify(body);
 }
@@ -127,6 +135,7 @@ function parseStoredWorld(text: string): StoredWorld {
   const raw = JSON.parse(text) as Partial<StoredWorld>;
   const options = cleanOptions(raw.options);
   const u = raw.undo;
+  const cast = castOf(raw.cast);
   return {
     v: 1,
     participants: Array.isArray(raw.participants) ? raw.participants.filter((x): x is string => typeof x === "string") : [],
@@ -139,12 +148,21 @@ function parseStoredWorld(text: string): StoredWorld {
     ...(u && typeof u === "object" && typeof u.act === "string" && Array.isArray(u.actions) && isNum(u.minute) && isNum(u.step) && isNum(u.hour)
       ? { undo: { ...u, world: { ...EMPTY_WORLD, ...(u.world ?? {}) }, people: u.people ?? {} } }
       : {}),
+    ...(cast ? { cast } : {}),
   };
 }
 
-/** 選んだ物と取消の数（状態に足す。無ければ鍵ごと無い） */
-function extrasOf(w: Pick<StoredWorld, "options" | "undone">): Pick<DrillState, "options" | "undone"> {
-  return { ...(w.options ? { options: w.options } : {}), ...(w.undone ? { undone: w.undone } : {}) };
+/** 配役の JSON（行の鍵 → 人の id の文字）。形が違う・空なら無し */
+function castOf(v: unknown): Cast | null {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return null;
+  const out: Cast = {};
+  for (const [k, p] of Object.entries(v)) if (typeof p === "string" && p) out[k] = p;
+  return Object.keys(out).length > 0 ? out : null;
+}
+
+/** 選んだ物と取消の数と配役（状態に足す。無ければ鍵ごと無い） */
+function extrasOf(w: Pick<StoredWorld, "options" | "undone" | "cast">): Pick<DrillState, "options" | "undone" | "cast"> {
+  return { ...(w.options ? { options: w.options } : {}), ...(w.undone ? { undone: w.undone } : {}), ...(w.cast ? { cast: w.cast } : {}) };
 }
 
 /** 表の行から今の状態（drills.world の写しから。再開に使う） */
@@ -301,8 +319,8 @@ export type StartResult = { ok: true; id: string } | { ok: false; error: "runnin
  */
 export type StartOptions = DrillOptions & { participants?: ReadonlyArray<string> };
 
-/** 担当一覧の人（一覧から外した人は出ない）。開始の前の参加者の選択にも名前つきで使う */
-export async function caseloadForDrill(db: D1Database, scope: DrillScope): Promise<Array<{ id: string; name: string }>> {
+/** 担当一覧の人（一覧から外した人は出ない。よみの順） */
+async function caseloadRows(db: D1Database, scope: DrillScope): Promise<Array<{ id: string; name: string }>> {
   const res = await db
     .prepare("SELECT id, name FROM people WHERE care_manager_id = ?1 AND office_id = ?2 AND unlisted_at IS NULL ORDER BY kana, id")
     .bind(scope.careManagerId, scope.officeId)
@@ -310,8 +328,34 @@ export async function caseloadForDrill(db: D1Database, scope: DrillScope): Promi
   return res.results;
 }
 
+/** 開始の前の参加者の 1 人（T59・T70） */
+export type CaseloadPerson = {
+  id: string;
+  name: string;
+  /** 本人のスマホ「使える」か、家族・支援者にスマホのある人がいる（lib/drill/persona.ts の reportersOf）。無ければ「押せる人なし」 */
+  canPress: boolean;
+  /** 本人役を呼びうる想定（開始の前の見込み、lib/drill/estimate.ts） */
+  callable: DrillScenario[];
+};
+
+/**
+ * 担当一覧の人を、開始の前の参加者の選択に（名前・押せる人の有無・本人役を呼びうる想定）。台帳は事業所の分を 1 回の batch で読む。
+ * 押せる人のいない人は本人役が呼ばれず、表の行が当たれば表の固定の安否になる（lib/drill/persona.ts の createPersonaHook）
+ */
+export async function caseloadForDrill(db: D1Database, scope: DrillScope): Promise<CaseloadPerson[]> {
+  const rows = await caseloadRows(db, scope);
+  if (rows.length === 0) return [];
+  const facts = castFactsMap(await loadPersonaSources(db, scope.officeId));
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    canPress: facts.get(r.id)?.canPress ?? false,
+    callable: SCENARIO_ORDER.filter((s) => mayBeCalled(scenarioOf(s), r.id, facts)),
+  }));
+}
+
 async function caseloadPeople(db: D1Database, scope: DrillScope): Promise<string[]> {
-  return (await caseloadForDrill(db, scope)).map((r) => r.id);
+  return (await caseloadRows(db, scope)).map((r) => r.id);
 }
 
 /**
@@ -325,7 +369,10 @@ export function pickParticipants(caseload: ReadonlyArray<string>, chosen: Readon
   return caseload.filter((p) => want.has(p));
 }
 
-/** 訓練を始める。0 時間の刻みまで当てて保存する。事業所に進行中があれば断る。options は開始の前に選んだ物（T59、任意） */
+/**
+ * 訓練を始める。0 時間の刻みまで当てて保存する。同じケアマネ（mineRunningSql）に進行中があれば断る（T70。24 時間たった進行中は先に中断）。
+ * options は開始の前に選んだ物（T59、任意）
+ */
 export async function startDrill(
   db: D1Database,
   scope: DrillScope,
@@ -340,21 +387,25 @@ export async function startDrill(
   const participants = pickParticipants(caseload, options.participants);
   if (!participants) return { ok: false, error: "invalid" };
   if (options.staff !== undefined && !isStaffCount(options.staff)) return { ok: false, error: "invalid" };
-  const running = await db
-    .prepare("SELECT 1 AS x FROM drills WHERE office_id = ?1 AND status = 'running'")
-    .bind(scope.officeId)
-    .first<{ x: number }>();
-  if (running) return { ok: false, error: "running" };
+  await expireStaleDrills(db, scope.officeId, now);
+  if (await runningDrillId(db, scope.officeId, { scope })) return { ok: false, error: "running" };
+
+  // 想定の表の配役（T70）。事業所にいない人（デモの 10 人）の行があるときだけ台帳を読み、参加者の中の代わりの人を決める
+  const def = scenarioOf(scenario);
+  const cast = needsCast(def, participants) ? castScenario(def, participants, castFactsMap(await loadPersonaSources(db, scope.officeId))) : {};
 
   const id = newId();
-  const { state, tick } = await step(initialState(scenario, participants, now, { staff: options.staff, night: options.night }), hooks);
+  const { state, tick } = await step(
+    initialState(scenario, participants, now, { staff: options.staff, night: options.night }, cast),
+    hooks,
+  );
   const [inserted] = await db.batch([
     db
       .prepare(
         // world_session_id は世界の部屋の session（仮想、T50。drills.world の world.session の写し）
         `INSERT INTO drills (id, office_id, scenario, status, step, sim_hour, world, started_by, started_at, finished_at, mode, world_session_id)
          SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, json_extract(?7, '$.world.session')
-          WHERE NOT EXISTS (SELECT 1 FROM drills WHERE office_id = ?2 AND status = 'running')`,
+          WHERE NOT EXISTS (${mineRunningSql("?2", "?8", "?12")})`,
       )
       .bind(
         id,
@@ -368,6 +419,7 @@ export async function startDrill(
         now,
         state.status === "finished" ? now : null,
         dbScenario(scenario).mode,
+        scope.careManagerId,
       ),
     ...tickStatements(db, id, tick, now),
   ]);
@@ -731,32 +783,120 @@ export async function abandonDrill(
 
 // ---------- 訓練記録の一覧 ----------
 
-export type DrillListItem = Pick<DrillRow, "id" | "scenario" | "status" | "step" | "sim_hour" | "started_at" | "finished_at"> & {
+export type DrillListItem = Pick<DrillRow, "id" | "scenario" | "status" | "step" | "sim_hour" | "started_at" | "finished_at" | "started_by"> & {
   started_by_name: string | null;
+  /** 自動中断の理由（T70。24 時間で中断した訓練だけ "24h"） */
+  abandon_reason: AbandonReason | null;
 };
 
-/** 事業所の訓練記録（新しい順） */
-export async function listDrills(db: D1Database, officeId: string, limit = 50): Promise<DrillListItem[]> {
+/**
+ * 事業所の訓練記録（新しい順）。now を渡すと、先に 24 時間たった進行中を中断にする（T70。画面と API の一覧は渡す。
+ * 渡さなければ読むだけ）
+ */
+export async function listDrills(db: D1Database, officeId: string, limit = 50, now?: string): Promise<DrillListItem[]> {
+  if (now) await expireStaleDrills(db, officeId, now);
   const res = await db
     .prepare(
-      `SELECT d.id, d.scenario, d.mode, d.status, d.step, d.sim_hour, d.started_at, d.finished_at, a.display_name AS started_by_name
+      `SELECT d.id, d.scenario, d.mode, d.status, d.step, d.sim_hour, d.started_at, d.finished_at, d.started_by,
+              a.display_name AS started_by_name, json_extract(d.world, '$.abandoned.reason') AS abandon_reason
          FROM drills d LEFT JOIN accounts a ON a.id = d.started_by
         WHERE d.office_id = ?1 ORDER BY d.started_at DESC, d.id LIMIT ?2`,
     )
     .bind(officeId, limit)
     .all<DrillListItem & { mode: string | null }>();
-  return res.results.map((r) => { const { mode: _mode, ...rest } = rowScenario(r); return rest; }).filter(
-    (r) => (DRILL_SCENARIOS as readonly string[]).includes(r.scenario) && (DRILL_STATUSES as readonly string[]).includes(r.status),
-  );
+  return res.results
+    .map((r) => {
+      const { mode: _mode, ...rest } = rowScenario(r);
+      return { ...rest, abandon_reason: rest.abandon_reason === "24h" ? ("24h" as const) : null };
+    })
+    .filter((r) => (DRILL_SCENARIOS as readonly string[]).includes(r.scenario) && (DRILL_STATUSES as readonly string[]).includes(r.status));
 }
 
-/** 事業所の進行中の訓練（無ければ null） */
-export async function runningDrillId(db: D1Database, officeId: string): Promise<string | null> {
-  const r = await db
-    .prepare("SELECT id FROM drills WHERE office_id = ?1 AND status = 'running' ORDER BY started_at DESC LIMIT 1")
-    .bind(officeId)
-    .first<{ id: string }>();
+/**
+ * 同じケアマネの進行中（T70）を引く文。自分（開始者のアカウント）が始めた物か、自分の担当一覧の人が参加している物。
+ * 審査員は同じアカウント（acct-judge）で山本の担当一覧を使うので、審査員どうしも山本とも 1 つを共有する（今までどおり）。
+ * 担当一覧の違うケアマネは別々に持てる。引数は SQL の番号（"?2" など）
+ */
+function mineRunningSql(office: string, account: string, careManager: string): string {
+  return `SELECT d.id FROM drills d WHERE d.office_id = ${office} AND d.status = 'running'
+            AND (d.started_by IS ${account}
+                 OR EXISTS (SELECT 1 FROM json_each(d.world, '$.participants') j JOIN people p ON p.id = j.value
+                             WHERE p.care_manager_id = ${careManager} AND p.office_id = d.office_id))`;
+}
+
+/**
+ * 事業所の進行中の訓練（無ければ null）。scope を渡すとそのケアマネの物だけ（T70。mineRunningSql）、
+ * now を渡すと先に 24 時間たった進行中を中断にする
+ */
+export async function runningDrillId(
+  db: D1Database,
+  officeId: string,
+  opts: { scope?: Pick<DrillScope, "accountId" | "careManagerId">; now?: string } = {},
+): Promise<string | null> {
+  if (opts.now) await expireStaleDrills(db, officeId, opts.now);
+  const r = opts.scope
+    ? await db
+        .prepare(`${mineRunningSql("?1", "?2", "?3")} ORDER BY d.started_at DESC LIMIT 1`)
+        .bind(officeId, opts.scope.accountId, opts.scope.careManagerId)
+        .first<{ id: string }>()
+    : await db
+        .prepare("SELECT id FROM drills WHERE office_id = ?1 AND status = 'running' ORDER BY started_at DESC LIMIT 1")
+        .bind(officeId)
+        .first<{ id: string }>();
   return r?.id ?? null;
+}
+
+// ---------- 24 時間で自動中断（T70） ----------
+
+/** 進行中のまま置いておける時間（時間）。過ぎた訓練は開始・一覧を読むときに中断にする（cron は使わない） */
+export const STALE_HOURS = 24;
+
+/** 中断の理由（drills.world の abandoned.reason）。今は 24 時間の自動中断だけ */
+export type AbandonReason = "24h";
+
+/** 自動中断の経過（drill_events）の id。訓練に 1 つ */
+export const autoAbandonEventId = (drillId: string) => `${drillId}-auto`;
+
+/**
+ * 事業所の進行中で、始めてから 24 時間（STALE_HOURS）を過ぎた訓練を中断にする。1 件ごとに 1 つの batch で:
+ * drills を abandoned（finished_at = now、world の JSON に abandoned { reason "24h", at }）にし、今の刻みに経過の 1 行（状況 auto_abandon
+ * 「自動中断 24 時間」）を足す。ほかの要求が先に変えていれば（進行中でない）何も書かない。中断した数を返す
+ */
+export async function expireStaleDrills(db: D1Database, officeId: string, now: string): Promise<number> {
+  const t = Date.parse(now);
+  if (Number.isNaN(t)) return 0;
+  const cutoff = new Date(t - STALE_HOURS * 3_600_000).toISOString();
+  const stale = await db
+    .prepare("SELECT id, step, sim_hour FROM drills WHERE office_id = ?1 AND status = 'running' AND started_at <= ?2")
+    .bind(officeId, cutoff)
+    .all<{ id: string; step: number; sim_hour: number }>();
+  let n = 0;
+  for (const d of stale.results) {
+    const payload: IncidentPayload = {
+      change: { kind: "auto_abandon", hours: STALE_HOURS },
+      text: `${T70_LABELS.autoAbandon} ${T70_LABELS.day}`,
+      at: d.sim_hour,
+      ai: false,
+    };
+    const [updated] = await db.batch([
+      db
+        .prepare(
+          `UPDATE drills SET status = 'abandoned', finished_at = ?3, world = json_set(world, '$.abandoned', json(?4))
+            WHERE id = ?1 AND office_id = ?2 AND status = 'running' AND started_at <= ?5`,
+        )
+        .bind(d.id, officeId, now, JSON.stringify({ reason: "24h" satisfies AbandonReason, at: now }), cutoff),
+      db
+        .prepare(
+          `INSERT INTO drill_events (id, drill_id, seq, step, sim_hour, person_id, actor, kind, payload)
+           SELECT ?1, ?2, (SELECT COALESCE(MAX(seq), 0) + 1 FROM drill_events WHERE drill_id = ?2), ?3, ?4, NULL, 'world', 'incident', ?5
+            WHERE EXISTS (SELECT 1 FROM drills WHERE id = ?2 AND status = 'abandoned' AND json_extract(world, '$.abandoned.reason') = '24h')
+              AND NOT EXISTS (SELECT 1 FROM drill_events WHERE id = ?1)`,
+        )
+        .bind(autoAbandonEventId(d.id), d.id, d.step, d.sim_hour, JSON.stringify(payload)),
+    ]);
+    if ((updated.meta.changes ?? 0) > 0) n += 1;
+  }
+  return n;
 }
 
 // ---------- 再生（保存した刻みから作り直す。Claude を呼ばない） ----------
@@ -923,7 +1063,7 @@ export function replayState(
   const last = lastStep(row.scenario);
   // 開始の前に選んだ物（職員・夜間発災）と取消の数は drills.world の写しから（T59。無ければ今までと同じ）
   const extras = row.world !== undefined ? extrasOf(parseStoredWorld(row.world)) : {};
-  let state = initialState(row.scenario, participants, row.started_at, extras.options);
+  let state = initialState(row.scenario, participants, row.started_at, extras.options, extras.cast);
   const out: Tick[] = [];
   for (const t of ticks) {
     if (t.step > upTo) break;
