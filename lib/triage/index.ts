@@ -270,6 +270,10 @@ export const READING: ReadonlyArray<{ text: string; origin: string }> = [
     text: "受け入れ・搬送の知らせで緑（行「緑」）になった人の状態の言葉は「無事」でなく「受入」「搬送」。本人がけが・動けないと答えたまま受け入れられることがあるため。色・並び・理由は同じ（言葉だけ）。受け入れの前の本人の答えは経過と受入一覧の行に出す",
     origin: "案（T78）",
   },
+  {
+    text: "受け入れ・搬送の知らせが緑の黄・赤の行（時計・頼り先）に当たったときも、理由で「無事」「無事の報告」と言わず「受入」「搬送」と言う（「受入のあとも 酸素 内蔵電池 2 時間を超過」「受入のあとに電池が切れた、…」「受入・インスリン 残り 24 時間」）。受け入れは本人の報告ではないため。色・行・並びは同じ（言葉だけ）",
+    origin: "案（T80）",
+  },
   { text: "時計は停電か発災から走る。停電していなければ停電で走る時計は止まったまま", origin: "仕様書" },
   { text: "「超えた」「過ぎた」はちょうどを含まない。仕様書の「12 時間までは灰」に合わせた", origin: "決めた所" },
   { text: "機器の時計は種類が機器（A）の時計。機器以外の時計は物（B）・薬（C）。本人の状態（D）は走らない", origin: "決めた所" },
@@ -430,6 +434,14 @@ const who = (x: RuleInput) => (x.signal ? WHO[x.signal.source] : "本人");
 const uncheckedWords = (x: RuleInput) => x.unchecked.map((d) => `${DEPENDS_ON_LABELS[d]} 未確認`).join("、");
 
 /**
+ * 緑の知らせが医療班・行政の受け入れ（搬送）から来たときの言葉（T80）。緑の行の理由で「無事」「無事の報告」の代わりに言う。
+ * 本人・家族・支援者・ケアマネの緑と訪問の緑は null（「無事」のまま）。色・行・並びには使わない
+ */
+const viaWord = (x: RuleInput): "受入" | "搬送" | null => (x.signal?.transport ? "搬送" : x.signal?.shelter ? "受入" : null);
+/** 緑の行の理由の頭（「無事・」「受入・」「搬送・」） */
+const greenHead = (x: RuleInput) => `${viaWord(x) ?? "無事"}・`;
+
+/**
  * けが・動けないの言葉を出どころで分ける。answered は 4 問の答え（人が押したボタン）、staff はケアマネが直した分類（人）、
  * classified は録音・自由文の分類（Claude）。答えにある言葉は分類から、人の分類にある言葉は Claude の分類から重ねない
  */
@@ -587,7 +599,8 @@ export const RULES: ReadonlyArray<Rule> = [
     origin: "案 3",
     why: "緑の報告は電池が切れる前の物 → 今も機器が動いているかは分からない",
     sourceIds: ["nanbyo-tsuiho-2022", "nanbyo-shishin-2017"],
-    match: (x) => firstOf(devicesOut(x).afterReport, (c) => `無事の報告のあとに電池が切れた、${over(c)}`),
+    // 受入・搬送から来た緑は「受入のあとに電池が切れた、…」（T80）
+    match: (x) => firstOf(devicesOut(x).afterReport, (c) => `${viaWord(x) ?? "無事の報告"}のあとに電池が切れた、${over(c)}`),
   },
   {
     id: "green_out_before_report",
@@ -598,7 +611,12 @@ export const RULES: ReadonlyArray<Rule> = [
     origin: "案 3（言い方を時計の事実に）",
     why: "電池が切れたあとに緑 → ボンベ・外部電池・発電機で動いている見込み。電源の中身を確かめる",
     sourceIds: ["nanbyo-shishin-2017", "jrs-respiratory-2012"],
-    match: (x) => firstOf(devicesOut(x).beforeReport, (c) => `電池が切れたあとに無事の報告、${over(c)}`),
+    // 受入・搬送から来た緑は「受入のあとも 酸素 内蔵電池 2 時間を超過」（T80。受入は報告ではないので「無事の報告」と呼ばない）
+    match: (x) =>
+      firstOf(devicesOut(x).beforeReport, (c) => {
+        const via = viaWord(x);
+        return via ? `${via}のあとも ${over(c)}` : `電池が切れたあとに無事の報告、${over(c)}`;
+      }),
   },
   {
     id: "green_device_low",
@@ -609,7 +627,7 @@ export const RULES: ReadonlyArray<Rule> = [
     origin: "仕様書",
     why: "無事でも機器の電池の残りが少ない → 切れる前に予備の電源か電源のある避難先を確かめる",
     sourceIds: ["nanbyo-tsuiho-2022", "jrs-respiratory-2012"],
-    match: (x) => firstOf(x.states.filter((c) => isDevice(c) && isPastHalf(c)), (c) => `無事・${left(c)}`),
+    match: (x) => firstOf(x.states.filter((c) => isDevice(c) && isPastHalf(c)), (c) => `${greenHead(x)}${left(c)}`),
   },
   {
     id: "green_clock_half",
@@ -620,7 +638,7 @@ export const RULES: ReadonlyArray<Rule> = [
     origin: "案 6",
     why: "無事でも透析・薬・栄養剤の残りが減っている → 次の入手先を確かめる",
     sourceIds: ["jadp-dialysis-2023", "jadec-insulin-2023", "nanbyo-shishin-2017"],
-    match: (x) => firstOf(x.states.filter((c) => !isDevice(c) && isPastHalf(c)), (c) => `無事・${left(c)}`),
+    match: (x) => firstOf(x.states.filter((c) => !isDevice(c) && isPastHalf(c)), (c) => `${greenHead(x)}${left(c)}`),
   },
   {
     id: "green_unchecked",
@@ -632,7 +650,7 @@ export const RULES: ReadonlyArray<Rule> = [
     why: "本人が無事でも頼り先（透析先・配達）が止まっていれば数日のうちに続けられない → 頼り先を確かめる",
     sourceIds: ["jadp-dialysis-2023"],
     saysUnchecked: true,
-    match: (x) => (x.unchecked.length > 0 ? `無事・${uncheckedWords(x)}` : null),
+    match: (x) => (x.unchecked.length > 0 ? `${greenHead(x)}${uncheckedWords(x)}` : null),
   },
   {
     id: "green",
