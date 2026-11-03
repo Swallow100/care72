@@ -94,7 +94,7 @@ function tenPeopleRun(): ActionRecord[] {
 }
 
 describe("対応の順番の一致", () => {
-  it("10 人の筋で既知の順: 7/10。後回し 2 人（その時の一番上の人つき）と手なし 1 人", () => {
+  it("10 人の筋で既知の順: 7/10。後手 2 人（その時の一番上の人つき）と手なし 1 人", () => {
     const o = scoreOrder(IDS, tenPeopleRun(), []);
     expect({ matched: o.matched, total: o.total }).toEqual({ matched: 7, total: 10 });
     expect(o.misses).toEqual([

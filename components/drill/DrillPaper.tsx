@@ -174,7 +174,7 @@ export function DrillPaper({ record, office, today }: { record: DrillPaperRecord
             )}
             {view.reached.map((r) => (
               <tr key={r.person} data-person={r.person}>
-                <td className="p-strong">{r.name}</td>
+                <td>{r.name}</td>
                 <td>{t(r.text)}</td>
                 <td className="nowrap">{t(r.outAt)}</td>
                 <td className="num">{r.tries}</td>
@@ -205,7 +205,7 @@ export function DrillPaper({ record, office, today }: { record: DrillPaperRecord
             )}
             {view.misses.map((m) => (
               <tr key={m.person} data-person={m.person}>
-                <td className="p-strong">{m.name}</td>
+                <td>{m.name}</td>
                 <td>{m.why}</td>
                 <td>{m.expected ?? ""}</td>
               </tr>
@@ -235,7 +235,7 @@ export function DrillPaper({ record, office, today }: { record: DrillPaperRecord
             )}
             {view.blanks.map((b) => (
               <tr key={b.person} data-person={b.person}>
-                <td className="p-strong">{b.name}</td>
+                <td>{b.name}</td>
                 <td>{b.columns}</td>
               </tr>
             ))}

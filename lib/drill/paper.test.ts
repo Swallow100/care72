@@ -6,7 +6,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import puppeteer, { type Browser, type Page } from "puppeteer-core";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { DrillPaper } from "../../components/drill/DrillPaper.tsx";
 import { seedStatements } from "../../seed/sql.ts";
 import { chromePath, pdfPageCount } from "../../tools/print/chrome.ts";
@@ -24,12 +24,22 @@ import { scoreView } from "./score-view.ts";
 let sqlite: DatabaseSync;
 let db: ReturnType<typeof d1FromSqlite>;
 
-beforeEach(() => {
+/** 大雨（d1）と、そのあとの 10 分版（d2、前回は d1）。訓練を回すのは重いので、全部のテストで 1 回だけ作って使い回す */
+let rec1: DrillRecord;
+let rec2: DrillRecord;
+
+beforeAll(async () => {
   sqlite = migratedSqlite();
   for (const s of seedStatements()) sqlite.exec(s);
   db = d1FromSqlite(sqlite);
-}, 60_000);
-afterEach(() => sqlite.close());
+  rec1 = await heavyRain("d1");
+  expect(await startDrill(db, SCOPE, "short", "2026-11-06T01:00:00.000Z", {}, () => "d2")).toEqual({ ok: true, id: "d2" });
+  await finish("d2");
+  const r = await loadDrillRecord(db, SCOPE, "d2", "2026-11-06T02:00:00.000Z");
+  if (r === null || r === "running") throw new Error("記録が無い");
+  rec2 = r;
+}, 120_000);
+afterAll(() => sqlite.close());
 
 const DEMO = { id: "office-demo", name: "デモ事業所", kind: "demo" as const };
 const careManager = (): Principal => ({
@@ -96,7 +106,7 @@ const html = (rec: DrillRecord) => renderToStaticMarkup(createElement(DrillPaper
 
 describe("訓練記録の紙面（中身）", () => {
   it("概要・採点（数字 4 つと前回）・内訳・講評・確認欄・対応履歴の順。講評が無ければ「講評なし」", async () => {
-    const rec = await heavyRain();
+    const rec = rec1;
     const m = html(rec);
     const order = ["summary", "score", "review", "confirm", "history"].map((b) => m.indexOf(`data-block="${b}"`));
     expect(order.every((i) => i > 0)).toBe(true);
@@ -123,7 +133,7 @@ describe("訓練記録の紙面（中身）", () => {
   });
 
   it("講評があれば AI の印・指摘・出典（登録簿の発行元と年、確認前は未確認）。直した物は修正済", async () => {
-    const rec = await heavyRain();
+    const rec = rec1;
     const m = html({ ...rec, review: DONE });
     expect(m).toMatch(/講評 <span class="drill-ai">AI<\/span>/);
     expect(m).toContain("行政報告は早かった。");
@@ -136,12 +146,9 @@ describe("訓練記録の紙面（中身）", () => {
     expect(e).not.toContain("行政報告は早かった。");
   });
 
-  it("前回があれば並べる（同じ事業所・同じ災害の前の訓練）", async () => {
-    await heavyRain("d1");
-    expect(await startDrill(db, SCOPE, "short", "2026-11-06T01:00:00.000Z", {}, () => "d2")).toEqual({ ok: true, id: "d2" });
-    await finish("d2");
-    const rec = await loadDrillRecord(db, SCOPE, "d2", "2026-11-06T02:00:00.000Z");
-    if (rec === null || rec === "running") throw new Error("記録が無い");
+  it("前回があれば並べる（同じ事業所・同じ災害の前の訓練）", () => {
+    const rec = rec2;
+    expect(rec1.previous).toBeNull();
     const v = scoreView(rec.score, rec.screen.names, rec.previous);
     expect(v.rows.map((r) => [r.key, r.now, r.prev])).toEqual([
       ["order", "0/10", "2/10"],
@@ -153,7 +160,7 @@ describe("訓練記録の紙面（中身）", () => {
   });
 
   it("紙と画面の言葉に「死亡」「関連死」「診断」「判定」「重症」が無い", async () => {
-    const rec = await heavyRain();
+    const rec = rec1;
     for (const m of [html(rec), html({ ...rec, review: DONE })]) {
       const text = m.replace(/<[^>]+>/g, " ");
       expect(text).not.toMatch(/死亡|関連死|診断|判定|重症/);
@@ -212,7 +219,7 @@ describe.skipIf(!chrome)("訓練記録の紙面の印刷（headless Chrome の p
 
   it("大雨の訓練（講評つき）は A4 縦で 2〜4 頁。上の帯と画面だけの操作は紙に出ない", async (ctx) => {
     if (!fontOk) ctx.skip();
-    const rec = await heavyRain();
+    const rec = rec1;
     const pdf = await pdfOf(html({ ...rec, review: DONE }));
     const n = pdfPageCount(pdf);
     expect(n).toBeGreaterThanOrEqual(2);

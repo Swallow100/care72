@@ -98,9 +98,9 @@
 .paper table.drill-table th.num {
   text-align: right;
 }
+/* 今回の数字は大きさだけで示す（紙で勝手に太字にしない。11/3 11:4x の確定） */
 .paper table.drill-table td.big {
   font-size: 12pt;
-  font-weight: 700;
 }
 .paper table.drill-table tr.hour td {
   background: var(--head-bg);
