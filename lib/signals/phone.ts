@@ -282,6 +282,7 @@ export function createPhone(deps: PhoneDeps): Phone {
     }
     voiceMode = true;
     const mine = run;
+    const my = ask;
     const id = state.id;
     // 録音は声の問いに入った時に始める（周りの音も残す）。読み上げる間は止める
     const rec = await deps.startRecording().catch(() => null);
@@ -290,6 +291,8 @@ export function createPhone(deps: PhoneDeps): Phone {
       return;
     }
     recording = rec;
+    // マイクを待つ間に押した: 押した方の流れ（もう次の問いを声で読んでいる）に任せ、古い問いを読み直さない
+    if (my !== ask) return;
     void askByVoice(id, true);
   }
 
@@ -297,7 +300,9 @@ export function createPhone(deps: PhoneDeps): Phone {
   async function askByVoice(id: QuestionId, notice: boolean) {
     const mine = run;
     const my = ++ask;
-    set({ step: "question", id, answers, first: false, voice: "speaking" });
+    // 赤の流れの最初の問いを声にするときは、読み上げる AI の告知と同じ文字の告知も出したまま（T48）
+    const first = id === firstQuestion(asker);
+    set({ step: "question", id, answers, first, voice: "speaking" });
     pauseRecording();
     const text = `${notice ? `${AI_NOTICE_VOICE}。` : ""}${voiceTextOf(id)}`;
     await Promise.race([
@@ -308,7 +313,7 @@ export function createPhone(deps: PhoneDeps): Phone {
     ]);
     if (mine !== run || my !== ask) return;
     resumeRecording();
-    set({ step: "question", id, answers, first: false, voice: "listening" });
+    set({ step: "question", id, answers, first, voice: "listening" });
     listeningAt = now();
     answerTranscript =
       deps.startTranscript?.({
@@ -324,12 +329,13 @@ export function createPhone(deps: PhoneDeps): Phone {
     if (my !== ask || state.step !== "question") return;
     clear();
     const mine = run;
-    ask++;
+    const token = ++ask;
     const t = answerTranscript;
     answerTranscript = null;
     closeListening(now());
     const text = (await t?.stop().catch(() => null))?.trim() ?? "";
-    if (mine !== run) return;
+    // 文字を待つ間に押した: 押した答えが先（声の答えで上書きしない・2 回進めない）
+    if (mine !== run || token !== ask) return;
     if (text) heard.push(text);
     const choice = matchVoiceAnswer(text, id);
     if (choice) record(id, choice, "voice");

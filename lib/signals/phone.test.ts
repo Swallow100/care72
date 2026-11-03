@@ -1059,3 +1059,47 @@ describe("20 秒押さないと問いを声で（読み上げのある端末。T
     expect(steps(h)).toEqual(["q:injured", "prompt", "recording"]);
   });
 });
+
+describe("声の問いの途中で押した（T49）", () => {
+  it("文字を待つ間に押した: 押した答えが残り（声で上書きしない）、1 回だけ進む", async () => {
+    let release: (t: string | null) => void = () => {};
+    const h = harness({
+      speak: async () => {},
+      startRecording: async () => null,
+      startTranscript: () => ({ stop: () => new Promise<string | null>((r) => (release = r)) }),
+    });
+    h.phone.red();
+    vi.advanceTimersByTime(IDLE_MS);
+    await flush();
+    expect(h.phone.state).toMatchObject({ step: "question", id: "injured", voice: "listening", first: true });
+    vi.advanceTimersByTime(LISTEN_MS); // 10 秒: 文字を待ち始める
+    await flush();
+    h.phone.answer("yes");
+    release("いいえ");
+    await flush();
+    expect(h.answers.at(-1)!.answers).toEqual({ injured: { choice: "yes", via: "press" } });
+    expect(h.phone.state).toMatchObject({ step: "question", id: "injuryPart" });
+    expect(steps(h).filter((s) => s.startsWith("q:atHome"))).toEqual([]);
+  });
+
+  it("マイクを待つ間に押した: 古い問いを読み直さない", async () => {
+    let open: () => void = () => {};
+    const spoken: string[] = [];
+    const h = harness({
+      speak: async (t) => {
+        spoken.push(t);
+      },
+      startRecording: () => new Promise((r) => (open = () => r(null))),
+      startTranscript: () => null,
+    });
+    h.phone.red();
+    vi.advanceTimersByTime(IDLE_MS);
+    await flush();
+    h.phone.answer("no");
+    await flush();
+    open();
+    await flush();
+    expect(spoken.some((t) => t.includes("けがはありますか"))).toBe(false);
+    expect(h.phone.state).toMatchObject({ step: "question", id: "atHome" });
+  });
+});
