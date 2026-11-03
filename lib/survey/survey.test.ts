@@ -611,6 +611,7 @@ describe("ログインなしの壁の例外", () => {
     walk("app");
     const open = pages.filter((p) => !/requirePage|getPrincipal/.test(read(p)));
     expect(pages.length).toBeGreaterThan(10);
-    expect(open).toEqual(["app/survey/[token]/page.tsx"]);
+    // /s/invalid はスマホ入口のリンクが通らなかったときの「無効」の 1 画面（T69a）。誰のリンクかも出さない
+    expect(open).toEqual(["app/s/invalid/page.tsx", "app/survey/[token]/page.tsx"]);
   });
 });

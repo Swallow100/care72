@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import { AutoRefresh } from "@/components/disaster/AutoRefresh";
 import { FamilyDisaster } from "@/components/phone/FamilyDisaster";
 import { InstallHint } from "@/components/phone/InstallHint";
+import { PhoneNormalMark } from "@/components/phone/PhoneLinkPanel";
 import { PhoneSheet } from "@/components/phone/PhoneSheet";
 import { todayJst } from "@/lib/age";
 import { requirePage } from "@/lib/auth/server";
@@ -53,6 +54,8 @@ export default async function FamilyPage() {
 
   return (
     <main className="mx-auto max-w-md px-3 py-4 font-ud">
+      {/* 事業所名と平時の印「ふだん」（T69a。災害モードになると 30 秒の読み直しで 3 つのボタンに替わる） */}
+      <PhoneNormalMark office={office?.name ?? null} />
       {/* ホーム画面に追加の案内（T44。平時だけ、入れるまで） */}
       <InstallHint />
       <PhoneSheet sheet={sheet} only={FAMILY_SHEET_BLOCKS} />

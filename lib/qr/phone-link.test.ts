@@ -15,6 +15,7 @@ import { switchDisasterMode } from "../disaster/db.ts";
 import { disasterScope } from "../disaster/scope.ts";
 import { NO_ANSWERS, type FamilySignalBody, type SignalBody } from "../signals/body.ts";
 import { answersPost, recordingPost, signalPost } from "../signals/http.ts";
+import { resetDemoOffice, type SeedBucket } from "../seed/reset.ts";
 import { retractableRow } from "../timeline/retract.ts";
 import { issueQr } from "./store.ts";
 import { signQrToken, qrTimes } from "./token.ts";
@@ -415,5 +416,22 @@ describe("リンクのセッションで今の API が動く（accountId null）
     const self = await principalOfLink(null);
     const green: SignalBody = { id: id(), color: "green", whereNow: "home", answers: { ...NO_ANSWERS }, occurredAt: at(1), sentAt: at(1) };
     expect((await signalPost(db, self, green, at(1))).status).toBe(409);
+  });
+});
+
+describe("毎朝 4 時の戻し（lib/seed/reset.ts は触らない）", () => {
+  it("デモ事業所の本人の行は入り直るので版は 0 に戻り、前のリンクとそのセッションは通らない", async () => {
+    const t = await issued("p-01", "c-01-1");
+    const { cookie } = await open(t);
+    expect(await resolvePrincipal(db, {}, SECRET, cookie, NOW)).not.toBeNull();
+    const bucket: SeedBucket = {
+      head: async () => null,
+      list: async () => ({ objects: [], truncated: false }),
+      delete: async () => null,
+    };
+    await resetDemoOffice(db, bucket, at(-22));
+    expect(one("SELECT phone_link_generation AS g, phone_link_issued_at AS t FROM people WHERE id = 'p-01'")).toEqual({ g: 0, t: null });
+    expect(await resolvePhoneLink(db, SECRET, t, NOW)).toBeNull();
+    expect(await resolvePrincipal(db, {}, SECRET, cookie, NOW)).toBeNull();
   });
 });

@@ -36,7 +36,7 @@ export const PROVISION_SECTIONS = ["identity", "medical", "evacuation", "people_
 export type ProvisionSection = (typeof PROVISION_SECTIONS)[number];
 
 /** 書類（本人のページの書類の区分の key と、対応表の差し込み） */
-export const SCOPE_DOCUMENTS = ["matsuyama", "medical", "own", "qr", "mapped"] as const;
+export const SCOPE_DOCUMENTS = ["matsuyama", "medical", "own", "qr", "phone", "mapped"] as const;
 export type ScopeDocument = (typeof SCOPE_DOCUMENTS)[number];
 
 /** 経過: all 全部・staff 医療班・行政の書いた行だけ・none 出さない */

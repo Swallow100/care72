@@ -10,6 +10,7 @@ import type { D1Database } from "@cloudflare/workers-types";
 import { ageOn } from "../age.ts";
 import { ROLE_LABELS } from "../auth/roles.ts";
 import type { Ledger, PersonRow, PlanStatus, Sex } from "../db/types.ts";
+import { unconfirmedConsents } from "../consent/unconfirmed.ts";
 import type { PersonInput } from "./forms.ts";
 import type { OfficeActor } from "./scope.ts";
 import { officePayload, type OfficeAction } from "./timeline.ts";
@@ -158,6 +159,8 @@ export async function createPerson(
       .bind(id, input.careManagerId, input.name, input.kana, input.birthDate, JSON.stringify(newLedger(input.sex)), at, actor.officeId),
     personEntry(db, actor, id, body, officePayload("added", { to: input.careManagerId }), at),
     officeEntry(db, actor, "person_added", id, body, JSON.stringify({ personId: id, to: input.careManagerId }), at),
+    // 同意の行を全部「未確認」で（T69a）。本人がその事業所にいるときだけ入る
+    unconfirmedConsents(db, id, actor.authorId, at, actor.officeId),
   ]);
   return (inserted.meta.changes ?? 0) > 0 ? { ok: true, id } : { ok: false, error: "care_manager" };
 }
