@@ -55,6 +55,9 @@ function Question({ m }: { m: string }) {
   );
 }
 
+/** 2 列の選択肢（幅が半分なので横の余白を詰める。「わからない」が 1 行に入るように） */
+const BIG_GRID = BIG.replace("px-4 py-6", "px-1 py-4");
+
 /** 選択肢がこれより多い問いは 2 列に並べる */
 const GRID_OVER = 4;
 
@@ -89,7 +92,7 @@ export function QuestionBody({
             key={c.id}
             type="button"
             onClick={() => onChoice(c.id)}
-            className={`${BIG} bg-panel text-ink ${grid ? "py-4 text-[1.75rem]" : "text-[2.25rem]"}`}
+            className={`${grid ? BIG_GRID : BIG} bg-panel text-ink ${grid ? "text-[1.75rem]" : "text-[2.25rem]"}`}
             data-press
             data-choice={c.id}
           >

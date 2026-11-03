@@ -113,6 +113,7 @@ export const QUESTIONS: readonly Question[] = [
     id: "injuryPart",
     field: "injury",
     easy: "けがは どこですか",
+    familyEasy: "どこを けがして いますか",
     label: "部位",
     voice: "けがはどこですか",
     choices: [
@@ -130,6 +131,7 @@ export const QUESTIONS: readonly Question[] = [
     id: "bleeding",
     field: "injury",
     easy: "{血|ち}は {出|で}て いますか",
+    familyEasy: "{血|ち}が {出|で}て いますか",
     label: "出血",
     voice: "血は出ていますか",
     choices: [
@@ -157,6 +159,7 @@ export const QUESTIONS: readonly Question[] = [
     id: "floor",
     field: "place",
     easy: "{家|いえ}の どこですか",
+    familyEasy: "{家|いえ}の どこに いますか",
     label: "階",
     voice: "家のどこですか",
     choices: [
@@ -171,6 +174,7 @@ export const QUESTIONS: readonly Question[] = [
     id: "room",
     field: "place",
     easy: "どの {部屋|へや}ですか",
+    familyEasy: "どの {部屋|へや}に いますか",
     label: "部屋",
     voice: "どのへやですか",
     choices: [
@@ -247,6 +251,7 @@ export const QUESTIONS: readonly Question[] = [
     id: "body",
     field: "body",
     easy: "からだで つらい ことは ありますか",
+    familyEasy: "からだで つらい ことが ありますか",
     label: "体の訴え",
     voice: "からだでつらいことはありますか",
     choices: [
@@ -264,6 +269,7 @@ export const QUESTIONS: readonly Question[] = [
     id: "water",
     field: "water",
     easy: "{水|みず}は きて いますか",
+    familyEasy: "{水|みず}が きて いますか",
     label: "水",
     voice: "水はきていますか",
     choices: [
@@ -279,6 +285,7 @@ export const QUESTIONS: readonly Question[] = [
     id: "fireGas",
     field: "fireGas",
     easy: "{火|ひ}や ガスの においは しますか",
+    familyEasy: "{火|ひ}や ガスの においが しますか",
     label: "火・ガス",
     voice: "火やガスのにおいはしますか",
     choices: [
@@ -292,6 +299,7 @@ export const QUESTIONS: readonly Question[] = [
     id: "device",
     field: "device",
     easy: "{機械|きかい}は {動|うご}いて いますか",
+    familyEasy: "{機械|きかい}が {動|うご}いて いますか",
     label: "機器",
     voice: "機械は動いていますか",
     choices: [
@@ -306,7 +314,7 @@ export const QUESTIONS: readonly Question[] = [
     id: "hasMedicine",
     field: "medicine",
     easy: "くすりは ありますか",
-    familyEasy: "くすりは ありますか",
+    familyEasy: "くすりが ありますか",
     label: "薬",
     voice: "くすりはありますか",
     choices: [

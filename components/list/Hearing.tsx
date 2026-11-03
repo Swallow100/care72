@@ -106,7 +106,9 @@ export function Hearing({ signalId, source, editable = false, inset = false }: H
                 <span className="flex flex-wrap items-baseline gap-x-2">
                   {r.answers.map((a) => (
                     <span key={`${a.question}-${a.choice}`} data-answer={a.via}>
-                      <span className="text-xs text-muted">{a.question}</span> {a.choice}
+                      {/* 欄の名前・答えと同じ問いの名前は重ねない（「水 床まで」「自宅」） */}
+                      {a.question !== r.label && a.question !== a.choice && <span className="text-xs text-muted">{a.question} </span>}
+                      {a.choice}
                       {a.via === "voice" && <span className="ml-0.5 text-xs text-muted">（{HEARING_LABELS.voice}）</span>}
                     </span>
                   ))}
