@@ -1,8 +1,9 @@
 "use client";
 
-// 「アンケート」の区分の見出しと「リンク作成」（docs/tasks/T42.md）。押すと見出しのすぐ下に宛先の控えの欄が開く。
-// 作ったら欄を閉じ、「作成済」と URL とコピーを出し、一覧を読み直す（router.refresh。この部品の状態は残る）。
-// 宛先の控えは本名でなく「ケアマネA」のような呼び名（答えの一覧と写しの見分けに使うだけ）。
+// 「アンケート」の区分の見出しと「共有リンク作成」（docs/tasks/T42.md・T65.md）。押すと見出しのすぐ下に控えの欄が開く。
+// 作ったら欄を閉じ、「作成済」と URL・コピー・QR・QR保存を出し、一覧を読み直す（router.refresh。この部品の状態は残る）。
+// 1 本の共有のリンクで何人でも答えられる（受付は締切まで、30 件まで。lib/survey/share.ts）。紙に刷る QR はこれ 1 つ。
+// 控えは本名でなく「包括配布」のような呼び名（リンクの見分けに使うだけ）。
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -11,6 +12,9 @@ import { Button } from "@/components/ui/Button";
 import { CloseIcon, LinkIcon } from "@/components/ui/Icon";
 import { PanelHead } from "@/components/ui/Panel";
 import { StateText } from "@/components/ui/Tag";
+import { lastMoment } from "@/lib/survey/share";
+import { shortJst } from "@/lib/disaster/state";
+import { SurveyQrImage, SurveyQrSave } from "./SurveyQr";
 import { MEMO_MAX } from "@/lib/survey/form";
 import { SURVEY_LINKS_API_PATH } from "@/lib/survey/paths";
 import { SURVEY_OFFICE_LABELS as L } from "@/lib/survey/text";
@@ -24,7 +28,7 @@ export function SurveyCreate({ count }: { count: React.ReactNode }) {
   const [memo, setMemo] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [made, setMade] = useState<{ url: string; memo: string } | null>(null);
+  const [made, setMade] = useState<{ url: string; memo: string; expiresAt: string; maxAnswers: number } | null>(null);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -37,9 +41,12 @@ export function SurveyCreate({ count }: { count: React.ReactNode }) {
         body: JSON.stringify({ memo }),
         cache: "no-store",
       });
-      const data = (await res.json().catch(() => null)) as { ok: true; url: string } | { ok: false; label?: string } | null;
+      const data = (await res.json().catch(() => null)) as
+        | { ok: true; url: string; expiresAt: string; maxAnswers: number }
+        | { ok: false; label?: string }
+        | null;
       if (data?.ok) {
-        setMade({ url: data.url, memo: memo.trim() });
+        setMade({ url: data.url, memo: memo.trim(), expiresAt: data.expiresAt, maxAnswers: data.maxAnswers });
         setMemo("");
         setOpen(false);
         router.refresh();
@@ -71,12 +78,19 @@ export function SurveyCreate({ count }: { count: React.ReactNode }) {
           <div className="flex flex-wrap items-baseline gap-x-2">
             <StateText tone="ok">{L.made}</StateText>
             {made.memo && <span className="font-bold">{made.memo}</span>}
+            <span className="text-xs text-muted tabular-nums">
+              {L.expires} {shortJst(lastMoment(made.expiresAt))}・{L.answers} 0/{made.maxAnswers}
+            </span>
           </div>
-          <p id="survey-made-url" className="mt-1 break-all select-all">
-            {made.url}
-          </p>
-          <div className="mt-1 flex flex-wrap items-center gap-1.5">
+          <div className="mt-2 flex flex-wrap items-start gap-3">
+            <SurveyQrImage url={made.url} />
+            <p id="survey-made-url" className="min-w-0 flex-1 basis-48 break-all select-all">
+              {made.url}
+            </p>
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
             <CopyButton text={made.url} targetId="survey-made-url" inPanel2 />
+            <SurveyQrSave url={made.url} inPanel2 />
             <Button kind="quiet" size="sm" icon={CloseIcon} onClick={() => setMade(null)} className="ml-auto">
               {L.close}
             </Button>
