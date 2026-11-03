@@ -45,9 +45,10 @@ export function keyAction(key: string): KeyAction | null {
   }
 }
 
-/** ボタンとキーの拡大・縮小: 今のズームを丸めて 1 段 */
+/** ボタンとキーの拡大・縮小: 次の整数の段へ（13.6 の拡大は 14、縮小は 13。整数のときは 1 段） */
 export function stepZoom(z: number, dz: 1 | -1): number {
-  return Math.round(z) + dz;
+  const eps = 1e-6;
+  return dz > 0 ? Math.floor(z + eps) + 1 : Math.ceil(z - eps) - 1;
 }
 
 /** ホイールのズームの変化。下へ回すと縮小。行・頁の単位は px に直す。トラックパッドのピンチ（ctrlKey）は強めに。1 回で 1 段まで */

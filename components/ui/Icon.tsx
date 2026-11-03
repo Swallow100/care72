@@ -9,6 +9,7 @@ export {
   ArrowRightEndOnRectangleIcon as LoginIcon, // ログイン（扉に入る矢印。ログアウトと対）
   ArrowUturnLeftIcon as RestoreIcon, // 外した物を戻す
   ArrowRightStartOnRectangleIcon as LogoutIcon, // ログアウト（扉から出る矢印）
+  ArrowsPointingOutIcon as FullIcon, // 全画面（地図）
   ArrowsRightLeftIcon as AssignIcon, // 担当の割当・移す
   CheckCircleIcon as ChosenIcon, // 選んだ印（アンケートの選択肢）
   CheckIcon as SaveIcon, // 保存
@@ -20,6 +21,8 @@ export {
   EyeSlashIcon as HideIcon, // パスワードを隠す
   LockClosedIcon as PasswordIcon, // パスワードの欄の印
   MagnifyingGlassIcon as SearchIcon, // 検索
+  MagnifyingGlassMinusIcon as ZoomOutIcon, // 縮小（地図）
+  MagnifyingGlassPlusIcon as ZoomInIcon, // 拡大（地図）
   LinkIcon, // リンク作成（アンケートの招待）
   MinusCircleIcon as RemoveIcon, // 外す（人でない物。対応表の欄など）
   PaperAirplaneIcon as SendIcon, // 送信（アンケートの答え）
@@ -31,5 +34,6 @@ export {
   UserMinusIcon as UnlistIcon, // 一覧から外す
   UserPlusIcon as AddPersonIcon, // 利用者追加・ケアマネ追加
   UsersIcon as RoleIcon, // 役変更（人の切替）
+  ViewfinderCircleIcon as FitIcon, // 全体（地図を全員が入る大きさに戻す）
   XMarkIcon as CloseIcon, // 閉じる・取消
 } from "@heroicons/react/20/solid";

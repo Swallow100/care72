@@ -1,7 +1,18 @@
 // T46 地図の全画面のテスト。ズームと中心の計算（タイルの番号と位置）、拡大・縮小・移動・キー・ピンチ、ピンのまとめ。
 
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { SEED_LOCATIONS } from "../../seed/people.ts";
+import { CaseMap, FullMap, fullPadding, TONE_LABEL } from "../../components/map/CaseMap.tsx";
+import { SEED_LOCATIONS, SEED_PEOPLE } from "../../seed/people.ts";
+import { toCaseloadRows } from "../caseload.ts";
+import { COLOR_LABELS } from "../labels.ts";
+import { COLOR_TONES } from "../person.ts";
+import { toTriagePerson } from "../triage/from-ledger.ts";
+import { rank } from "../triage/index.ts";
+import { demoOverlay } from "./demo.ts";
+import { MAP_UI } from "./labels.ts";
+import { mapPins } from "./side.ts";
 import { FULL_ZOOM, JAPAN_BOUNDS, KEY_PAN, keyAction, pinchView, stepZoom, wheelZoom } from "./camera.ts";
 import { COUNT_W, groupPins, labelWidth, overlaps, type PlacedPin } from "./cluster.ts";
 import {
@@ -271,5 +282,113 @@ describe("ピンのまとめ", () => {
     const g = groupPins(placed(far));
     expect(g.length).toBeLessThan(pts.length);
     expect(g.reduce((s, x) => s + x.ids.length, 0)).toBe(pts.length);
+  });
+});
+
+// ---------- 画面（サーバーの描画で見る。開け閉め・ドラッグ・ピンチの動きは docs/progress/t46.md の headless Chrome で確かめた） ----------
+
+const people = SEED_PEOPLE.map((p) => ({ ...p.person, ledger: JSON.stringify(p.ledger) }));
+const clocks = SEED_PEOPLE.flatMap((p) => p.clocks.map((k) => ({ ...k, person_id: p.person.id })));
+const contacts = SEED_PEOPLE.flatMap((p) => p.contacts.map((c) => ({ ...c, person_id: p.person.id })));
+const rows = toCaseloadRows(people, clocks, contacts, "2026-11-02");
+const T0 = Date.parse("2026-11-05T09:00:00.000Z");
+const results = rank(
+  SEED_PEOPLE.map((p) => ({ person: toTriagePerson(p), signals: [] })),
+  { now: new Date(T0 + 3.5 * 3_600_000).toISOString(), disasterAt: new Date(T0).toISOString(), outageAt: new Date(T0).toISOString() },
+);
+const normalPins = mapPins(rows, "tier");
+const disasterPins = mapPins(rows, "tier", results);
+const choice = { on: new Set(["flood"] as const), toggle: () => {}, rainOn: true, toggleRain: () => {} };
+const full = (pins: typeof normalPins, size: Size, demo = null as ReturnType<typeof demoOverlay> | null) =>
+  renderToStaticMarkup(createElement(FullMap, { pins, demo, unplaced: 0, choice, onClose: () => {}, initialSize: size }));
+
+describe("全画面の画面", () => {
+  it("小さな地図に「全画面」のボタン（アイコンと文字）。閉じている間は <dialog> もタイルの要求も作らない", () => {
+    const html = renderToStaticMarkup(createElement(CaseMap, { pins: normalPins, layers: ["flood"], demo: null, unplaced: 0 }));
+    expect(html).toMatch(/<button[^>]*aria-haspopup="dialog"[^>]*data-map-open[^>]*><svg[^>]*aria-hidden="true"[\s\S]*?全画面<\/button>/);
+    expect(html).not.toContain("<dialog");
+    expect(html).not.toContain("data-map-full");
+  });
+
+  it("全画面は <dialog> で、拡大・縮小・全体・閉じる（アイコンと文字）、層の切替、出典、「位置は架空」を持つ", () => {
+    const html = full(normalPins, FULL);
+    expect(html).toMatch(/^<dialog[^>]*aria-labelledby="[^"]+"[^>]*data-map-full/);
+    for (const [attr, word] of [
+      ['data-map-zoom="in"', MAP_UI.zoomIn],
+      ['data-map-zoom="out"', MAP_UI.zoomOut],
+      ["data-map-fit", MAP_UI.fit],
+      ["data-map-close", MAP_UI.close],
+    ]) {
+      expect(html).toMatch(new RegExp(`<button[^>]*${attr}[^>]*><svg[^>]*aria-hidden="true"[\\s\\S]*?${word}</button>`));
+    }
+    expect(html).toContain('data-toggle="flood"');
+    expect(html).toContain('data-toggle="landslide"');
+    expect(html).toContain('data-toggle="tsunami"');
+    expect(html).toContain("data-attribution");
+    expect(html).toContain(BASE_LAYER.attribution.href);
+    expect(html).toContain("ハザードマップポータルサイト");
+    expect(html).toContain("位置は架空");
+    // 読み上げとキーのために、地図の枠はキーボードで移れる
+    expect(html).toMatch(/<div tabindex="0" aria-label="地図"/);
+  });
+
+  it("タイルは見える分だけ（段は 1 つ、下の地図は周りに 1 枚、層は見える分）で、URL は地理院とポータルの配信", () => {
+    const html = full(normalPins, FULL);
+    const base = [...html.matchAll(/src="(https:\/\/cyberjapandata\.gsi\.go\.jp\/xyz\/pale\/(\d+)\/\d+\/\d+\.png)"[^>]*data-layer="base"/g)];
+    const flood = [...html.matchAll(/data-layer="flood"/g)];
+    const z = new Set(base.map((m) => m[2]));
+    expect(z.size).toBe(1);
+    const tz = Number([...z][0]);
+    const v = fitView(Object.values(SEED_LOCATIONS), { minZ: 9, maxZ: 15, fallback: P1, size: FULL, padding: fullPadding(FULL) });
+    expect(tz).toBe(v.z);
+    expect(base.length).toBe(tilesFor(v, FULL, { margin: 1 }).length);
+    expect(flood.length).toBe(tilesFor(v, FULL).length);
+    expect(html).toContain(`data-tile-zoom="${tz}"`);
+    // 浸水以外の層は選んでいないので要求しない
+    expect(html).not.toContain('data-layer="landslide"');
+  });
+
+  it("全画面の最初は全員が 1 人ずつ（まとめない）。狭い枠ではまとめ、まとめの数と 1 人のピンで全員になる", () => {
+    const big = full(normalPins, FULL);
+    expect([...big.matchAll(/data-pin="/g)].length).toBe(normalPins.length);
+    expect(big).not.toContain("data-pin-group");
+    const small = full(normalPins, { w: 300, h: 260 });
+    const singles = [...small.matchAll(/<a [^>]*data-pin="/g)].length;
+    const grouped = [...small.matchAll(/data-pin-group="[^"]+" data-count="(\d+)"/g)].map((m) => Number(m[1]));
+    expect(grouped.length).toBeGreaterThan(0);
+    expect(singles + grouped.reduce((s, n) => s + n, 0)).toBe(normalPins.length);
+    expect(small).toMatch(/他 \d+ 人/);
+  });
+
+  it("スマホの幅（375）の最初は、小さな地図と同じズーム（12）で全員が入る（左右の余白を詰める）", () => {
+    const html = full(normalPins, { w: 359, h: 560 });
+    expect(html).toContain('data-tile-zoom="12"');
+    expect(fullPadding({ w: 359, h: 560 }).left).toBeLessThan(fullPadding(FULL).left);
+  });
+
+  it("発災時: まとめの顔は連絡の順が先の人で、その人の状態の色と言葉のまま。上に状態ごとの人数（0 も）", () => {
+    const html = full(disasterPins, { w: 300, h: 260 });
+    for (const m of html.matchAll(/data-pin-group="([^"]+)" data-count="\d+" data-tone="([^"]+)"/g)) {
+      const head = disasterPins.find((p) => p.id === m[1])!;
+      expect(m[2]).toBe(head.tone);
+    }
+    const states = html.match(/<dl[^>]*data-map-states[\s\S]*?<\/dl>/)?.[0] ?? "";
+    for (const label of Object.values(TONE_LABEL)) expect(states).toContain(label);
+    expect(full(normalPins, FULL)).not.toContain("data-map-states");
+  });
+
+  it("デモの印（雨雲・震度）は全画面でも消さない", () => {
+    const rain = full(disasterPins, FULL, demoOverlay({ kind: "heavy_rain", level: 4 }));
+    expect(rain).toContain('data-demo="label"');
+    expect(rain).toContain('data-demo="rain"');
+    expect(rain).toContain("大雨 レベル 4");
+    const quake = full(disasterPins, FULL, demoOverlay({ kind: "earthquake" }));
+    expect(quake).toContain('data-demo="quake"');
+  });
+
+  it("状態の言葉は lib/triage の色の言葉と同じ（COLOR_TONES の逆）", () => {
+    for (const c of Object.keys(COLOR_TONES) as (keyof typeof COLOR_TONES)[]) {
+      expect(TONE_LABEL[COLOR_TONES[c]]).toBe(COLOR_LABELS[c]);
+    }
   });
 });
