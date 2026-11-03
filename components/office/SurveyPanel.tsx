@@ -66,7 +66,7 @@ function LinkRow({ link, origin }: { link: SurveyLinkItem; origin: string }) {
       </span>
       {live && (
         <span className="ml-auto">
-          <CopyButton text={surveyUrl(origin, link.token)} />
+          <CopyButton text={surveyUrl(origin, link.token)} inPanel2 />
         </span>
       )}
     </li>
@@ -84,7 +84,7 @@ function AnswerRow({ item }: { item: SurveyAnswerItem }) {
         <span className="font-bold">{item.id}</span>
         {item.memo && <span>{item.memo}</span>}
         {item.judge && <Mark inPanel2>{L.judge}</Mark>}
-        <StateText tone={quoteAllowed(a) ? "ok" : "unknown"}>{quoteAllowed(a) ? L.quoteOk : L.quoteNo}</StateText>
+        <StateText tone={quoteAllowed(a) ? "ok" : "check"}>{quoteAllowed(a) ? L.quoteOk : L.quoteNo}</StateText>
         {risks.length > 0 && (
           <Mark inPanel2 tone="check">
             {L.risk}
@@ -113,7 +113,7 @@ function AnswerRow({ item }: { item: SurveyAnswerItem }) {
         <p id={lineId} className="min-w-0 flex-1 rounded bg-panel px-2 py-1 text-xs break-all">
           {line}
         </p>
-        <CopyButton text={line} targetId={lineId} />
+        <CopyButton text={line} targetId={lineId} inPanel2 />
       </div>
     </li>
   );

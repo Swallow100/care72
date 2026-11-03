@@ -76,7 +76,7 @@ export function SurveyCreate({ count }: { count: React.ReactNode }) {
             {made.url}
           </p>
           <div className="mt-1 flex flex-wrap items-center gap-1.5">
-            <CopyButton text={made.url} targetId="survey-made-url" />
+            <CopyButton text={made.url} targetId="survey-made-url" inPanel2 />
             <Button kind="quiet" size="sm" icon={CloseIcon} onClick={() => setMade(null)} className="ml-auto">
               {L.close}
             </Button>

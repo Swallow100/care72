@@ -172,7 +172,7 @@ export function SurveyForm({ token, turnstileSiteKey }: { token: string; turnsti
       ))}
 
       <h2 className="px-1 pt-2 text-xl font-bold">{SURVEY_LABELS.questions}</h2>
-      <p className="px-1 text-base text-muted">{SURVEY_PLAN_NOTE}</p>
+      <p className="px-1 text-[1rem] text-muted">{SURVEY_PLAN_NOTE}</p>
       {QUESTIONS.map((item) => (
         <Question key={item.key} item={item} choices={choices} free={free} onToggle={toggle} onText={(k, v) => setFree((p) => ({ ...p, [k]: v }))} />
       ))}
@@ -201,7 +201,7 @@ export function SurveyForm({ token, turnstileSiteKey }: { token: string; turnsti
         <button
           type="submit"
           disabled={busy || waitingTurnstile}
-          className="relative flex h-14 w-full items-center justify-center gap-2 rounded-lg bg-accent text-xl font-bold text-on-accent disabled:bg-panel2 disabled:text-muted"
+          className="relative flex h-14 w-full items-center justify-center gap-2 rounded-lg bg-accent text-xl font-bold text-on-accent disabled:bg-panel disabled:text-muted"
           data-press="overlay"
         >
           <SendIcon aria-hidden className="size-6 shrink-0" />
@@ -242,7 +242,7 @@ function Question({
           onChange={(e) => onText(q.key, e.target.value)}
           className="mt-3 block w-full resize-y rounded-lg bg-panel2 px-3 py-2 text-xl leading-relaxed text-ink outline-none focus-visible:outline-2 focus-visible:outline-accent"
         />
-        <p className="mt-1 text-right text-base text-muted">
+        <p className="mt-1 text-right text-[1rem] text-muted">
           {value.length}/{FREE_MAX} {SURVEY_LABELS.chars}
         </p>
       </section>
@@ -257,7 +257,7 @@ function Question({
       <div role={q.multi ? "group" : "radiogroup"} aria-labelledby={titleId}>
         <h3 id={titleId} className="text-xl leading-snug font-bold">
           {q.heading}
-          {q.multi && <span className="ml-2 text-base font-normal text-muted">{SURVEY_LABELS.multi}</span>}
+          {q.multi && <span className="ml-2 text-[1rem] font-normal text-muted">{SURVEY_LABELS.multi}</span>}
         </h3>
         <div className="mt-3 grid gap-2">
           {q.choices.map((c) => {
@@ -270,7 +270,7 @@ function Question({
                 aria-checked={on}
                 onClick={() => onToggle(q.key, c.code, q.multi)}
                 className={`flex min-h-14 w-full items-center gap-3 rounded-lg bg-panel2 px-4 py-2 text-left text-xl ${
-                  on ? "font-bold outline-2 outline-accent" : ""
+                  on ? "font-bold outline-2 -outline-offset-2 outline-accent" : ""
                 }`}
                 data-press
                 data-choice={c.code}
@@ -278,14 +278,14 @@ function Question({
                 {on ? (
                   <ChosenIcon aria-hidden className="size-7 shrink-0 text-accent" />
                 ) : (
-                  <span aria-hidden className={`size-7 shrink-0 border-2 border-muted ${q.multi ? "rounded" : "rounded-full"}`} />
+                  <span aria-hidden className={`size-7 shrink-0 bg-panel ${q.multi ? "rounded" : "rounded-full"}`} />
                 )}
                 <span>{c.label}</span>
               </button>
             );
           })}
         </div>
-        {q.key === "q3" && <p className="mt-2 text-base text-muted">{SURVEY_SUPPORTER_NOTE}</p>}
+        {q.key === "q3" && <p className="mt-2 text-[1rem] text-muted">{SURVEY_SUPPORTER_NOTE}</p>}
       </div>
     </section>
   );

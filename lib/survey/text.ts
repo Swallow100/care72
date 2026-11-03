@@ -26,11 +26,8 @@ export const SURVEY_PLAN_NOTE = "個別避難計画＝災害のときの、一�
 /** 問 3 の下の 1 行（QUESTIONS.md と同じ） */
 export const SURVEY_SUPPORTER_NOTE = "支援者＝避難のとき、迎えに来てくれる人";
 
-/** 送ったあとの文 */
-export const SURVEY_THANKS: ReadonlyArray<string> = [
-  "ご協力ありがとうございました。",
-  "答えは届きました。このページは閉じて構いません。",
-];
+/** 送ったあとの文（見出しは「送信済」） */
+export const SURVEY_THANKS: ReadonlyArray<string> = ["ご協力ありがとうございました。"];
 
 /** 答えの頁の言葉（ボタン・見出し・状態は 2〜4 字） */
 export const SURVEY_LABELS = {
@@ -70,7 +67,7 @@ export const SURVEY_OFFICE_LABELS = {
   copyAll: "全員写し",
   copyRow: "写し",
   expires: "期限",
-  submitted: "回答",
+  submitted: "受付",
   judge: "審査員",
   quoteOk: "引用可",
   quoteNo: "引用不可",
