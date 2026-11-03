@@ -20,7 +20,7 @@
 // - 別の事業所の人に付いた行（審査員が医療班の役で協力事業所の人を受け入れた受け持ちも、その人の行として残す）
 
 import type { D1Database } from "@cloudflare/workers-types";
-import { DEMO_OFFICE_ID } from "../auth/demo.ts";
+import { DEMO_OFFICE_ID, FIXED_ACCOUNT_IDS } from "../auth/demo.ts";
 import { UNAFFILIATED_OFFICE_ID } from "../custody/actor.ts";
 import { SEED_ACCOUNTS, SEED_OFFICES, SEED_PEOPLE, SEED_AT } from "../../seed/people.ts";
 import { CLEAR_ORDER, insert, lit, personStatements } from "../../seed/sql.ts";
@@ -41,7 +41,8 @@ const PEOPLE = `SELECT id FROM people WHERE office_id = ${OFFICE}`;
 const DRILLS = `SELECT id FROM drills WHERE office_id = ${OFFICE}`;
 /** 審査員がデモ事業所で作ったアンケートのリンク（T42） */
 const JUDGE_SURVEY_LINKS = `SELECT token FROM survey_links WHERE office_id = ${OFFICE} AND created_role = 'judge'`;
-const SEED_ACCOUNT_IDS =SEED_ACCOUNTS.filter((a) => a.office_id === DEMO_OFFICE_ID).map((a) => lit(a.id));
+/** 消さないアカウント（種のデモ事業所の物）。変えられないアカウント（T61）と同じ 1 つの元から読む */
+const SEED_ACCOUNT_IDS = FIXED_ACCOUNT_IDS.map((id) => lit(id));
 
 /** 表ごとに消す範囲（WHERE の中身）。null は消さない。CLEAR_ORDER と同じ順に流す */
 export const DEMO_CLEAR: Readonly<Record<Table, string | null>> = {

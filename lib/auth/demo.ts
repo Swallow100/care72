@@ -15,6 +15,18 @@ export const DEMO_SELF_PERSON_ID = "p-01";
 /** 審査員の「家族のスマホ」（山田 ハナの娘の連絡先の行） */
 export const DEMO_FAMILY_CONTACT_ID = "c-01-1";
 
+/**
+ * 変えられないアカウント（T61）。種のデモ事業所のアカウント（seed/people.ts の SEED_ACCOUNTS のうちデモ事業所の物）。
+ * 審査員は皆で 1 つを共有し、ケアマネの役では山本の担当一覧を開く。1 人が名前・管理者・停止・パスワードを変えると次の審査員が詰むので、
+ * どの操作もサーバーが断る（lib/office/staff.ts・lib/auth/password-change.ts）。種の戻し（lib/seed/reset.ts）が残すアカウントもこの集合。
+ * 種と同じかは lib/office/t61.test.ts が確かめる
+ */
+export const FIXED_ACCOUNT_IDS: readonly string[] = [DEMO_CARE_MANAGER_ID, DEMO_JUDGE_ACCOUNT_ID];
+
+export function isFixedAccount(id: string | null | undefined): boolean {
+  return typeof id === "string" && FIXED_ACCOUNT_IDS.includes(id);
+}
+
 export function isReservedLoginId(loginId: string): boolean {
   return loginId.trim().toLowerCase() === JUDGE_LOGIN_ID;
 }
