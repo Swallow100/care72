@@ -9,4 +9,9 @@ export {
   MicrophoneIcon as MicIcon, // 話す
   PencilSquareIcon as EditIcon, // 面の編集
   StopIcon, // 話すのを止める
+  PaintBrushIcon as PaintIcon, // 黒塗り: 引いて塗る（T52）
+  HandRaisedIcon as MoveIcon, // 黒塗り: 拡大中に画像を送る
+  ArrowUturnLeftIcon as UndoIcon, // 黒塗り: 一手戻す
+  XCircleIcon as ClearIcon, // 黒塗り: この頁の四角を全部外す
+  ChevronRightIcon as NextIcon, // 黒塗り: 次頁（前頁は共通の BackIcon）
 } from "@heroicons/react/20/solid";

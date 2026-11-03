@@ -16,12 +16,15 @@ export type IntakeErrorCode =
   | "conflict"
   | "file_type"
   | "file_large"
-  | "file_empty";
+  | "file_empty"
+  /** 黒塗りの画面を通っていない写真・PDF（生の PDF・PNG・EXIF の付いた JPEG。T52） */
+  | "not_redacted";
 
 const LABELS: Record<IntakeErrorCode, string> = {
   file_type: INTAKE_LABELS.fileType,
   file_large: INTAKE_LABELS.fileLarge,
   file_empty: INTAKE_LABELS.fileEmpty,
+  not_redacted: INTAKE_LABELS.notRedacted,
   ai_not_configured: INTAKE_LABELS.aiNotConfigured,
   ai_limit: INTAKE_LABELS.aiLimit,
   ai_refused: INTAKE_LABELS.aiRefused,
@@ -37,6 +40,7 @@ const STATUS: Record<IntakeErrorCode, number> = {
   file_type: 415,
   file_large: 413,
   file_empty: 400,
+  not_redacted: 415,
   ai_not_configured: 503,
   ai_limit: 429,
   ai_refused: 422,

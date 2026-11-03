@@ -40,6 +40,7 @@ import { labelOfKey } from "./diff.ts";
 import { INTAKE_KEYS } from "./fields.ts";
 import { DEVICE_CLOCKS, MEDICATION_CLOCKS, planMarkClocks, type MarkClock } from "./marks.ts";
 import { CONTACT_KINDS_FOR_INTAKE } from "./schema.ts";
+import { PDF_PAGES_MAX, READ_SOURCES, REDACTED_MAX, readTimelineHead, type ReadMeta } from "./read-form.ts";
 
 const text = (max: number) => z.string().trim().max(max);
 const ID = /^[A-Za-z0-9_-]{1,64}$/;
@@ -117,10 +118,15 @@ export const SaveRequestSchema = z
     ai: z.object({ model: z.string().regex(/^claude-[a-z0-9-]{1,48}$/) }).nullable(),
     /** 本人のページの面の「編集」で手で直した（経過に「ケアマネが直した」）。AI の分け方とは一緒に送らない */
     edit: z.boolean().optional(),
+    /** 写真・PDF を黒塗りして読んだ（T52）。経過の頭に「写真を読んだ（隠した所 N か所）」。AI の分け方の保存だけ */
+    read: z
+      .object({ source: z.enum(READ_SOURCES), page: z.number().int().min(1).max(PDF_PAGES_MAX), redacted: z.number().int().min(0).max(REDACTED_MAX) })
+      .optional(),
     changes: z.array(ChangeSchema).min(1).max(200),
   })
   // 上書き・同意・頼り先の確認は人が手で直すときだけ（AI の分け方の保存に混ぜない）
   .refine((r) => !(r.edit && r.ai !== null), { message: "edit_with_ai" })
+  .refine((r) => r.read === undefined || r.ai !== null, { message: "read_without_ai" })
   .refine((r) => r.edit === true || !r.changes.some((c) => editOnly(c as IntakeChange)), {
     message: "edit_only",
   });
@@ -160,7 +166,7 @@ export function timelineBody(
   fields: ReadonlyArray<string>,
   pending: Ledger["pending"] = [],
   edit = false,
-  extra: { removed?: ReadonlyArray<string>; seen?: ReadonlyArray<string> } = {},
+  extra: { removed?: ReadonlyArray<string>; seen?: ReadonlyArray<string>; read?: ReadMeta } = {},
 ): string {
   const removed = extra.removed ?? [];
   const seen = extra.seen ?? [];
@@ -170,6 +176,8 @@ export function timelineBody(
   }
   if (removed.length > 0) parts.push(`${TIMELINE_SOURCES.removed}: ${namesOf(removed)}`);
   if (seen.length > 0) parts.push(`${TIMELINE_SOURCES.seen}: ${namesOf(seen)}`);
+  // 写真・PDF を黒塗りして読んだときは頭に（「写真を読んだ（隠した所 3 か所）。AI の分け方、人が確認: 〜」）
+  if (extra.read) parts.unshift(readTimelineHead(extra.read));
   return parts.join("。");
 }
 
@@ -261,6 +269,7 @@ export async function saveIntake(db: D1Database, principal: Principal, req: Save
     ai: req.ai !== null,
     model: req.ai?.model ?? null,
     ...(edit ? { edit: true as const } : {}),
+    ...(req.read && req.ai !== null ? { read: req.read } : {}),
     // 場所だけ残す。薬の名前の形（medical.medications.<名前>.〜）は名前が値なので、番号の形だけ
     fields: [...new Set([...fields, ...removedFields, ...seenOps.fields, ...applied.pending.map((p) => p.field)])].filter(
       (f) => !MED_NAME_FIELD.test(f),
@@ -282,7 +291,11 @@ export async function saveIntake(db: D1Database, principal: Principal, req: Save
       .bind(
         ...guardArgs,
         principal.accountId,
-        timelineBody(req.ai !== null, fields, applied.pending, edit, { removed: removedFields, seen: seenOps.fields }),
+        timelineBody(req.ai !== null, fields, applied.pending, edit, {
+          removed: removedFields,
+          seen: seenOps.fields,
+          read: req.ai !== null ? req.read : undefined,
+        }),
         JSON.stringify(payload),
         rows.person.office_id,
         req.version,
