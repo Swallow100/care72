@@ -9,6 +9,7 @@ import { SubmitButton } from "@/components/ui/SubmitButton";
 import { StateText } from "@/components/ui/Tag";
 import { OFFICE_PEOPLE_PATH } from "@/lib/office/http-paths";
 import { OFFICE_LABELS } from "@/lib/office/labels";
+import { Select } from "@/components/ui/Select";
 
 const KEY = "care72.assigned";
 
@@ -56,7 +57,7 @@ export function AssignForm({
       <input type="hidden" name="person" value={personId} />
       <input type="hidden" name="from" value={careManagerId ?? ""} />
       <input type="hidden" name="back" value="office" />
-      <select name="to" defaultValue={careManagerId ?? ""} aria-label={`${personName} ${OFFICE_LABELS.careManager}`} className={SELECT} onChange={() => setDone(false)}>
+      <Select name="to" defaultValue={careManagerId ?? ""} aria-label={`${personName} ${OFFICE_LABELS.careManager}`} className={SELECT} onChange={() => setDone(false)}>
         {!known && (
           <option value="" disabled>
             {OFFICE_LABELS.unassigned}
@@ -67,7 +68,7 @@ export function AssignForm({
             {c.name}
           </option>
         ))}
-      </select>
+      </Select>
       <SubmitButton icon="AssignIcon">{OFFICE_LABELS.assign}</SubmitButton>
       {done && (
         <span role="status" className="text-sm">

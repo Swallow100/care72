@@ -215,7 +215,7 @@ describe("差し込み", () => {
     expect(ids).toEqual(cao().fields.map((f) => f.id));
     expect(html).toContain("緊急時の連絡先①");
     expect(html).toContain("山田 ハナ");
-    expect(html).toMatch(/data-field="f29"[^]*?data-on="1">■<\/span><span class="p-strong">要介護3/);
+    expect(html).toMatch(/data-field="f29"[^]*?data-on="1">■<\/span><span>要介護3/);
     expect(html).toContain("確認 2026-11-02 山本");
     // ケア72 が足す言葉に言い切りの言葉が無い（様式の欄の名前「危険なことを判断できない」は様式の物）
     for (const w of ["診断", "判定", "重症", "至急"]) expect(html).not.toContain(w);

@@ -5,6 +5,7 @@ import { DisasterBadge } from "@/components/disaster/DisasterBadge";
 import { AddCareManager } from "@/components/office/AddCareManager";
 import { AssignForm } from "@/components/office/AssignForm";
 import { AssignRow } from "@/components/office/AssignRow";
+import { FormChoice } from "@/components/office/FormChoice";
 import { MoreFold } from "@/components/office/MoreFold";
 import { UnlistedFold } from "@/components/office/UnlistedFold";
 import { UnlistedRows } from "@/components/office/UnlistedRows";
@@ -20,7 +21,7 @@ import { requirePage } from "@/lib/auth/server";
 import { PLAN_TONES } from "@/lib/caseload";
 import { ALERT_LEVELS, DISASTER_KINDS, OUTAGE_SCOPES, type DisasterKind } from "@/lib/db/types";
 import { loadDisasterState, loadOfficeLog, loadOfficeTowns, type OfficeLogItem, type TownCount } from "@/lib/disaster/db";
-import { OFFICE_INFO_PATH, OFFICE_MODE_PATH, OFFICE_PATH, officeHref, parseConfirm, parseFormError } from "@/lib/disaster/http";
+import { OFFICE_INFO_PATH, OFFICE_MODE_PATH, OFFICE_PATH, parseConfirm, parseFormError } from "@/lib/disaster/http";
 import { disasterScope } from "@/lib/disaster/scope";
 import {
   DISASTER_FORM_ERROR_LABELS,
@@ -50,8 +51,9 @@ import { officeActor } from "@/lib/office/scope";
 import { CUSTODY_LABELS } from "@/lib/custody/labels";
 import { OFFICE_TAKE_PATH, UNAFFILIATED_ANCHOR } from "@/lib/custody/paths";
 import { listUnaffiliated, type UnaffiliatedItem } from "@/lib/custody/takeover";
-import { canResetDemo, OFFICE_RESET_PATH, officeResetHref, parseResetState, type ResetState } from "@/lib/seed/http";
+import { canResetDemo, OFFICE_RESET_PATH, parseResetState, type ResetState } from "@/lib/seed/http";
 import { RESET_LABELS } from "@/lib/seed/labels";
+import { CONFIRM_LABELS } from "@/lib/ui/labels";
 import { SurveyPanel } from "@/components/office/SurveyPanel";
 import { loadSurveyOverview, type SurveyOverview } from "@/lib/survey/store";
 import { headers } from "next/headers";
@@ -65,6 +67,7 @@ type Props = {
     error?: string | string[];
     people_error?: string | string[];
     reset?: string | string[];
+    form_error?: string | string[];
   }>;
 };
 
@@ -151,6 +154,7 @@ export default async function OfficePage({ searchParams }: Props) {
         </div>
         <div className="grid min-w-0 content-start gap-3">
           <Form9Section people={people} counts={counts} />
+          <FormChoice officeId={scope.officeId} error={q.form_error === "bad"} />
           <Panel aria-labelledby="cm-title">
             <AddCareManager count={careManagers.length} admin={actor.admin}>
               <CareManagerList careManagers={careManagers} />
@@ -238,9 +242,26 @@ function ModeButton({ kind, state }: { kind: DisasterKind; state: DisasterState 
       </span>
     );
   }
-  // 平時に戻すは確認の欄を開くだけ（URL の confirm）
+  // 平時に戻すはアプリ内の確認の窓で決めてから送る（T44）。窓が出せないときはサーバーが確認の欄（URL の confirm）へ戻す
   if (kind === "normal") {
-    return <ButtonLink href={officeHref({ confirm: true })}>{label}</ButtonLink>;
+    return (
+      <form method="post" action={OFFICE_MODE_PATH}>
+        <input type="hidden" name="kind" value={kind} />
+        <input type="hidden" name="version" value={state.version} />
+        <SubmitButton
+          confirm={{
+            title: CONFIRM_LABELS.normalTitle,
+            message: DISASTER_LABELS.clearOnNormal,
+            ok: CONFIRM_LABELS.normalOk,
+            icon: "RestoreIcon",
+            danger: true,
+            fields: { confirm: "1" },
+          }}
+        >
+          {label}
+        </SubmitButton>
+      </form>
+    );
   }
   return (
     <form method="post" action={OFFICE_MODE_PATH}>
@@ -488,7 +509,12 @@ function AssignSection({
                         <input type="hidden" name="action" value="unlist" />
                         <input type="hidden" name="person" value={p.id} />
                         <input type="hidden" name="back" value="office" />
-                        <SubmitButton kind="danger" size="sm" icon="UnlistIcon">
+                        <SubmitButton
+                          kind="danger"
+                          size="sm"
+                          icon="UnlistIcon"
+                          confirm={{ title: CONFIRM_LABELS.unlistTitle, message: p.name, ok: CONFIRM_LABELS.unlistOk, danger: true, icon: "UnlistIcon" }}
+                        >
                           {OFFICE_LABELS.unlist}
                         </SubmitButton>
                       </form>
@@ -617,8 +643,8 @@ function UnaffiliatedSection({ people }: { people: UnaffiliatedItem[] }) {
 }
 
 /**
- * デモ事業所の「最初に戻す」（T26）。審査員（ケアマネの役）と管理者だけに出す。押すと確認の欄（URL の reset=confirm）を開き、
- * 確認の欄の赤い塗りのボタンで種に戻す。毎日 4:00 にも自動で戻る。経過には残さない
+ * デモ事業所の「最初に戻す」（T26）。審査員（ケアマネの役）と管理者だけに出す。押すとアプリ内の確認の窓（T44）を出し、
+ * 窓の赤い塗りのボタンで種に戻す。JS が動く前に押したときは確認の欄（URL の reset=confirm）を開く。毎日 4:00 にも自動で戻る。経過には残さない
  */
 function ResetSection({ state }: { state: ResetState | null }) {
   return (
@@ -652,11 +678,22 @@ function ResetSection({ state }: { state: ResetState | null }) {
           </ButtonLink>
         </form>
       ) : (
-        <div className="mt-2">
-          <ButtonLink href={officeResetHref("confirm")} kind="danger">
+        // アプリ内の確認の窓で決めてから送る（T44）。窓が出せないときはサーバーが確認の欄（URL の reset=confirm）へ戻す
+        <form method="post" action={OFFICE_RESET_PATH} className="mt-2">
+          <SubmitButton
+            kind="danger"
+            confirm={{
+              title: CONFIRM_LABELS.resetTitle,
+              message: RESET_LABELS.confirm,
+              ok: CONFIRM_LABELS.resetOk,
+              icon: "RestoreIcon",
+              danger: true,
+              fields: { confirm: "1" },
+            }}
+          >
             {RESET_LABELS.reset}
-          </ButtonLink>
-        </div>
+          </SubmitButton>
+        </form>
       )}
     </Panel>
   );
