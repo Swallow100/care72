@@ -8,10 +8,11 @@
 import { AiMark, StateTag } from "@/components/person/parts";
 import { shortJst } from "@/lib/disaster/state";
 import type { DrillIncident, DrillTurn, Tick } from "@/lib/drill/engine";
-import { simAt } from "@/lib/drill/engine";
-import { ACTION_UI, BASIS_LABEL, DRILL_LABELS, elapsedLabel, EVENT_KIND_LABELS, VIRTUAL_LABELS } from "@/lib/drill/labels";
+import { aiStoppedOf, simAt } from "@/lib/drill/engine";
+import { ACTION_UI, AI_STOP_LABELS, BASIS_LABEL, DRILL_LABELS, elapsedLabel, EVENT_KIND_LABELS, VIRTUAL_LABELS } from "@/lib/drill/labels";
 import { callIndexes } from "@/lib/drill/calls";
 import { CallInMark } from "./ActionLog";
+import type { FictionKind } from "@/lib/drill/fiction";
 import { FictionalMark } from "./Fictional";
 import { COLOR_LABELS } from "@/lib/labels";
 import { SOURCE_LABELS } from "@/lib/list/detail";
@@ -36,12 +37,15 @@ export function Situation({
   names,
   startedAt,
   during = {},
+  fiction,
 }: {
   ticks: ReadonlyArray<Tick>;
   names: Readonly<Record<string, string>>;
   startedAt: string;
   /** ケアマネの手の途中で進んだ刻み → その手の言い方（「訪問 伊藤 フミ」、T20） */
   during?: Readonly<Record<number, string>>;
+  /** 名前のそばの印（T70。デモ以外は本人役） */
+  fiction?: FictionKind;
 }) {
   const order = [...ticks].reverse();
   return (
@@ -51,7 +55,9 @@ export function Situation({
         // 仮想モード（T50）: 部屋が落ちて 1 回呼びに戻った刻みは、世界の 1 文に「世界 代替」の印（代替の行は畳む）
         const fellBack = t.incidents.some((e) => e.change.kind === "world_note" && e.change.state === "down");
         const hasNarration = t.incidents.some((e) => e.change.kind === "narration");
-        const shown = hasNarration ? t.incidents.filter((e) => e.change.kind !== "world_note") : t.incidents;
+        // 上限で止まった役（T70）は見出しの印にして、状況の行には出さない
+        const stopped = aiStoppedOf(t);
+        const shown = t.incidents.filter((e) => e.change.kind !== "ai_stop" && !(hasNarration && e.change.kind === "world_note"));
         return (
           <li key={t.step} className="rounded-md bg-panel2 px-2.5 py-2" data-situation-step={t.step}>
             <h3 className="flex flex-wrap items-baseline gap-x-2 text-sm">
@@ -62,8 +68,13 @@ export function Situation({
                   {ACTION_UI.during} {during[t.step]}
                 </span>
               )}
+              {stopped.map((x) => (
+                <span key={x} className="text-xs text-muted" data-ai-stopped={x}>
+                  {AI_STOP_LABELS[x]}
+                </span>
+              ))}
             </h3>
-            {t.incidents.length === 0 && t.turns.length === 0 ? (
+            {shown.length === 0 && t.turns.length === 0 ? (
               <p className="mt-1 text-sm text-muted">{DRILL_LABELS.none}</p>
             ) : (
               <ul className="mt-1 space-y-1 text-sm">
@@ -74,10 +85,11 @@ export function Situation({
                     name={e.person ? names[e.person] : undefined}
                     tickHour={t.hour}
                     fallback={fellBack && e.change.kind === "narration"}
+                    fiction={fiction}
                   />
                 ))}
                 {t.turns.map((x, n) => (
-                  <TurnItem key={`t${n}`} t={x} name={names[x.person] ?? x.person} tickHour={t.hour} callIn={calls.includes(n)} />
+                  <TurnItem key={`t${n}`} t={x} name={names[x.person] ?? x.person} tickHour={t.hour} callIn={calls.includes(n)} fiction={fiction} />
                 ))}
               </ul>
             )}
@@ -93,7 +105,19 @@ function At({ at, tickHour }: { at: number; tickHour: number }) {
   return <span className="text-xs text-muted tabular-nums">{at} {DRILL_LABELS.hours}</span>;
 }
 
-function IncidentItem({ e, name, tickHour, fallback = false }: { e: DrillIncident; name: string | undefined; tickHour: number; fallback?: boolean }) {
+function IncidentItem({
+  e,
+  name,
+  tickHour,
+  fallback = false,
+  fiction,
+}: {
+  e: DrillIncident;
+  name: string | undefined;
+  tickHour: number;
+  fallback?: boolean;
+  fiction?: FictionKind;
+}) {
   const basis = e.basis && isSourceId(e.basis) ? sourceById(e.basis) : null;
   return (
     <li
@@ -113,7 +137,7 @@ function IncidentItem({ e, name, tickHour, fallback = false }: { e: DrillInciden
       {name && (
         <span className="text-xs text-muted">
           {name}
-          <FictionalMark />
+          <FictionalMark kind={fiction} />
         </span>
       )}
       <At at={e.at} tickHour={tickHour} />
@@ -134,13 +158,13 @@ function IncidentItem({ e, name, tickHour, fallback = false }: { e: DrillInciden
   );
 }
 
-function TurnItem({ t, name, tickHour, callIn }: { t: DrillTurn; name: string; tickHour: number; callIn: boolean }) {
+function TurnItem({ t, name, tickHour, callIn, fiction }: { t: DrillTurn; name: string; tickHour: number; callIn: boolean; fiction?: FictionKind }) {
   return (
     <li className="flex flex-wrap items-baseline gap-x-1.5" data-turn={t.person} data-color={t.color} data-call-in={callIn ? "" : undefined}>
       {callIn && <CallInMark />}
       <span className="font-bold">
         {name}
-        <FictionalMark />
+        <FictionalMark kind={fiction} />
       </span>
       <StateTag tone={TURN_TONES[t.color]}>{TURN_LABELS[t.color]}</StateTag>
       <span className="text-xs text-muted">{SOURCE_LABELS[t.source]}</span>

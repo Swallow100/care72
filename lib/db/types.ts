@@ -940,6 +940,72 @@ export type ThirdPartyProvisionRow = {
   closed_at: string | null;
 };
 
+// ---------- 気象庁の写し（T72、migrations/0020_jma.sql） ----------
+
+/** 気象庁の PULL 型のフィード（extra.xml 警報など・eqvol.xml 地震） */
+export const JMA_FEEDS = ["extra", "eqvol"] as const;
+export type JmaFeed = (typeof JMA_FEEDS)[number];
+
+/** 取った電文 1 通 */
+export type JmaEntryRow = {
+  id: string;
+  feed: JmaFeed;
+  type_code: string;
+  title: string;
+  updated_at: string;
+  fetched_at: string;
+  /** 読めなかった・飛ばした理由（読めた物は null） */
+  note: string | null;
+};
+
+/** 警報・注意報の市町村ごと・種類ごとの 1 行。名前・状態・発表時刻・発表官署は電文のまま */
+export type JmaWarningRow = {
+  entry_id: string;
+  type_code: string;
+  area_code: string;
+  area_name: string;
+  /** 種類の名前（「大雨警報」「レベル3大雨警報」など）。発表が無い市町村は '' */
+  kind: string;
+  /** 発表・継続・解除など（電文のまま） */
+  status: string;
+  issued_at: string;
+  office_name: string;
+  sort: number;
+};
+
+/** 地震の情報 1 通 */
+export type JmaQuakeRow = {
+  entry_id: string;
+  type_code: string;
+  event_id: string;
+  info_type: string;
+  report_at: string;
+  origin_at: string | null;
+  hypocenter: string | null;
+  /** 電文のまま（「4.5」。不明は「NaN」） */
+  magnitude: string | null;
+  /** 電文のまま（1〜4・5-・5+・6-・6+・7） */
+  max_intensity: string | null;
+};
+
+/** 観測点ごとの震度 */
+export type JmaQuakePointRow = {
+  entry_id: string;
+  area_name: string;
+  point_name: string;
+  intensity: string;
+};
+
+/** フィードごとの取得の状態 */
+export type JmaFetchStateRow = {
+  feed: JmaFeed;
+  last_modified: string | null;
+  fetched_at: string;
+  ok: 0 | 1;
+  ok_at: string | null;
+  note: string | null;
+};
+
 // ---------- 訓練の JSON の形 ----------
 
 /** ペルソナ（Haiku）が 1 刻みで返す決まった形。言葉は毎回違っても形は同じ */

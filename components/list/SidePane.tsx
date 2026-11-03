@@ -8,7 +8,7 @@ import Link from "next/link";
 import { CaseMap } from "@/components/map/CaseMap";
 import { TONE_TEXT } from "@/components/person/parts";
 import { CountLabel, countClass, StateTag, StateText } from "@/components/ui/Tag";
-import type { HazardKind } from "@/lib/db/types";
+import type { GeoPoint, HazardKind } from "@/lib/db/types";
 import type { DestinationCount, HazardCount, PlanCount, ReviewItem, SidePaneData, StateCount } from "@/lib/map/side";
 import { PLAN_STATUS_LABELS } from "@/lib/labels";
 import { PLAN_TONES } from "@/lib/caseload";
@@ -26,9 +26,12 @@ const BAR: Record<StateTone, string> = {
   unknown: "bg-state-unknown-fill",
 };
 
-export function SidePane({ data }: { data: SidePaneData }) {
+/** 地図の真ん中（ピンが無いとき。事業所の中心、T68）と、気象庁の雨雲を重ねるか（デモでない事業所で旗が on のとき）。T72 */
+export type SideMapOptions = { center: GeoPoint | null; nowcast: boolean };
+
+export function SidePane({ data, map: mapOptions }: { data: SidePaneData; map?: SideMapOptions }) {
   const disaster = data.mode === "disaster";
-  const map = <MapSection key="map" data={data} />;
+  const map = <MapSection key="map" data={data} options={mapOptions} />;
   const review = <ReviewSection key="review" items={data.review} />;
   const pending = <PendingSection key="pending" items={data.pendingTop} />;
   const plan = <PlanSection key="plan" counts={data.plan} />;
@@ -97,14 +100,21 @@ function StateNumbers({ counts, size }: { counts: StateCount[]; size: "sm" | "lg
   );
 }
 
-function MapSection({ data }: { data: SidePaneData }) {
+function MapSection({ data, options }: { data: SidePaneData; options?: SideMapOptions }) {
   return (
     <Section
       id="map"
       title="地図"
       aside={<span className="text-xs font-normal text-muted tabular-nums">{data.pins.length} 人</span>}
     >
-      <CaseMap pins={data.pins} layers={data.demo?.layers ?? NORMAL_LAYERS} demo={data.demo} unplaced={data.unplaced} />
+      <CaseMap
+        pins={data.pins}
+        layers={data.demo?.layers ?? NORMAL_LAYERS}
+        demo={data.demo}
+        unplaced={data.unplaced}
+        center={options?.center ?? undefined}
+        nowcast={options?.nowcast ?? false}
+      />
       {data.states && (
         <div className="mt-2 rounded-md bg-panel2 px-2 py-1.5">
           <StateNumbers counts={data.states} size="lg" />

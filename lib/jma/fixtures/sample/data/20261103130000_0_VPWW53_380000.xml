@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- 作った見本。本物の電文ではない（docs/tasks/T72.md）。形は気象特別警報・警報・注意報（VPWW53、経過措置）の文書の形式から作った。
+     VPWW54・VPWW55 と同じ時刻の同じ県の発表。市町村の名前とコードは見本 -->
+<Report xmlns="http://xml.kishou.go.jp/jmaxml1/" xmlns:jmx="http://xml.kishou.go.jp/jmaxml1/" xmlns:jmx_add="http://xml.kishou.go.jp/jmaxml1/addition1/">
+  <Control>
+    <Title>気象特別警報・警報・注意報</Title>
+    <DateTime>2026-11-03T13:00:00Z</DateTime>
+    <Status>通常</Status>
+    <EditorialOffice>松山地方気象台</EditorialOffice>
+    <PublishingOffice>松山地方気象台</PublishingOffice>
+  </Control>
+  <Head xmlns="http://xml.kishou.go.jp/jmaxml1/informationBasis1/">
+    <Title>愛媛県気象警報・注意報</Title>
+    <ReportDateTime>2026-11-03T22:00:00+09:00</ReportDateTime>
+    <TargetDateTime>2026-11-03T22:00:00+09:00</TargetDateTime>
+    <EventID/>
+    <InfoType>発表</InfoType>
+    <Serial/>
+    <InfoKind>気象警報・注意報</InfoKind>
+    <InfoKindVersion>1.2_0</InfoKindVersion>
+    <Headline>
+      <Text>中予では、３日夜遅くまで土砂災害に警戒してください。（作った見本）</Text>
+    </Headline>
+  </Head>
+  <Body xmlns="http://xml.kishou.go.jp/jmaxml1/body/meteorology1/">
+    <Warning type="気象警報・注意報（府県予報区等）">
+      <Item>
+        <Kind>
+          <Name>大雨警報</Name>
+          <Code>03</Code>
+        </Kind>
+        <Area>
+          <Name>愛媛県</Name>
+          <Code>380000</Code>
+        </Area>
+      </Item>
+    </Warning>
+    <Warning type="気象警報・注意報（市町村等）">
+      <Item>
+        <Kind>
+          <Name>大雨警報</Name>
+          <Code>03</Code>
+          <Status>発表</Status>
+        </Kind>
+        <Kind>
+          <Name>雷注意報</Name>
+          <Code>14</Code>
+          <Status>継続</Status>
+        </Kind>
+        <Area>
+          <Name>松山市</Name>
+          <Code>3820100</Code>
+        </Area>
+        <ChangeStatus>警報・注意報種別に変化有</ChangeStatus>
+        <FullStatus>一部</FullStatus>
+      </Item>
+      <Item>
+        <Kind>
+          <Name>大雨注意報</Name>
+          <Code>10</Code>
+          <Status>継続</Status>
+        </Kind>
+        <Area>
+          <Name>東温市</Name>
+          <Code>3821500</Code>
+        </Area>
+        <ChangeStatus>変化無</ChangeStatus>
+        <FullStatus>全体</FullStatus>
+      </Item>
+    </Warning>
+  </Body>
+</Report>

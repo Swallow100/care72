@@ -18,6 +18,7 @@
 | @google/genai | Gemini TTS で声を作る（lib/gemini。fetch だけで動く web の入口を使う） | Apache-2.0 |
 | zod | Claude の返す JSON の形を書き、返った物を検査する | MIT |
 | qrcode-generator | QR の頁の QR の点の並び（lib/qr/image.ts）。SVG はこちらで描く。間接の依存なし | MIT |
+| fast-xml-parser（5.11.2） | 気象庁の防災情報 XML（Atom のフィードと電文）を読む（lib/jma/xml.ts。Workers には DOMParser が無いので。T72）。間接の依存は strnum・anynum・is-unsafe（2.0.2 に固定。2.0.3 は入れた日の前日に出た版なので package.json の overrides で 1 つ前に）・xml-naming・fast-xml-builder・@nodable/entities・path-expression-matcher で、全部 MIT | MIT |
 | @heroicons/react | 操作のアイコン（components/ui/Icon.tsx。文字と並べて使う。訓練の 7 つの手は components/drill/icons.tsx） | MIT |
 | pdfjs-dist（6.4.299） | 黒塗りの画面（T52）で、選んだ PDF の頭の 3 頁をブラウザの中で画像にする（lib/redact/browser.ts）。PDF を選んだときだけ読み込む。元の PDF はブラウザの外へ出さない。直接の依存は無く、任意の依存の @napi-rs/canvas（MIT。Node で描くための物で、ブラウザでは使わない）が手元に入る。内訳は docs/progress/t52.md | Apache-2.0 |
 | puppeteer-core | 紙面の印刷の確かめ（手元の Chrome・Edge で印刷して PDF の頁数を数える。lib/forms/print-pages.test.ts、tools/print）。開発の道具で配信には入らない（devDependencies）。Chrome は同梱しない。間接の依存の内訳は docs/progress/t36.md | Apache-2.0 |
@@ -33,6 +34,8 @@
 | --- | --- | --- |
 | 地理院タイル（淡色地図） | 下の地図 | 国土地理院コンテンツ利用規約。ウェブでリアルタイムに読み込むときは出典の明示（「地理院タイル」と地理院タイル一覧のページへのリンク）で申請不要 |
 | 重ねるハザードマップ（洪水浸水想定区域〔想定最大規模〕・土砂災害警戒区域・津波浸水想定） | 重ねる層 | ハザードマップポータルサイトのオープンデータ。出典「ハザードマップポータルサイト」と層ごとの作成者。土砂災害警戒区域は国土数値情報の利用規約と都道府県の条件 |
+| 気象庁 防災情報XML（PULL 型のフィード extra.xml・eqvol.xml と電文） | 事業所の画面の警報・注意報と地震（T72）。ブラウザは読まず、Workers の cron が 5 分ごとに 1 か所で取って D1 に写す | 気象庁ホームページのコンテンツ利用規約（公共データ利用規約 第1.0版）。加工せず出典「気象庁ホームページ（https://www.jma.go.jp/bosai/warning/）、気象庁防災情報XML」。条件は docs/progress/jma-terms-20261104.md |
+| 気象庁 降水ナウキャストのタイルと凡例の画像 | 本物の事業所の地図の雨雲（T72）。旗 JMA_NOWCAST が on のときだけ。タイルは Workers の route が取って 5 分写して配り、凡例の画像だけブラウザが読む | 同上。加工せず重ね、凡例も気象庁のまま、出典「雨雲：気象庁ホームページ（https://www.jma.go.jp/bosai/nowc/）／背景：地理院タイル」。bosai/ の仕様は非公開で予告なく変わりうる |
 
 ## 動画の編集の道具（video/。アプリの依存にも build にも配信にも入らない）
 

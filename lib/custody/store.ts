@@ -219,8 +219,8 @@ export async function registerOnSite(
         at,
         input.birthDate ? null : input.age,
       ),
-    // 同意の行を全部「未確認」で（T69a。利用者追加と同じ。記録した人は作った医療班・行政）
-    unconfirmedConsents(db, personId, actor.accountId, at, UNAFFILIATED_OFFICE_ID),
+    // 同意の行を全部「未確認」で（T69a。利用者追加と同じ。記録した人は空）
+    unconfirmedConsents(db, personId, at, UNAFFILIATED_OFFICE_ID),
   ];
   if (input.contact) {
     statements.push(
