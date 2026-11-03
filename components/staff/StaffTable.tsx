@@ -18,7 +18,8 @@ import { MedicalMarkList, NarrowMarks } from "@/components/list/NarrowMarks";
 import { StateFilter } from "@/components/list/StateFilter";
 import { StateTag, TONE_TEXT } from "@/components/person/parts";
 import { Button } from "@/components/ui/Button";
-import { CloseIcon, OpenIcon, SortIcon, UnlistIcon } from "@/components/ui/Icon";
+import { AddPersonIcon, CloseIcon, OpenIcon, SortIcon, UnlistIcon } from "@/components/ui/Icon";
+import { INTAKE_SEARCH_ID } from "./StaffIntake";
 import { LinkPending } from "@/components/ui/LinkPending";
 import { SORT_ICON, TABLE, TABLE_BOX, TH } from "@/components/ui/table";
 import type { StaffRow } from "@/lib/custody/board";
@@ -26,7 +27,7 @@ import { NOTE_MAX } from "@/lib/custody/forms";
 import { CUSTODY_LABELS, CUSTODY_VIA_LABELS, RELEASE_LABELS } from "@/lib/custody/labels";
 import { CUSTODY_RELEASE_API } from "@/lib/custody/paths";
 import { RELEASE_KINDS, type ReleaseKind } from "@/lib/db/types";
-import { COLOR_LABELS, DOCUMENT_LABELS } from "@/lib/labels";
+import { DOCUMENT_LABELS, stateLabel } from "@/lib/labels";
 import { COLOR_TONES } from "@/lib/person";
 import type { Color } from "@/lib/triage/index";
 import { Select } from "@/components/ui/Select";
@@ -137,8 +138,9 @@ export function StaffTable({
         <table className={TABLE} data-table="staff">
           <thead>
             <tr>
-              <th className={`${TH} w-[4.5rem] text-center`}>{CUSTODY_LABELS.state}</th>
-              <Header k="rank" sort={sort} onSort={setSort} className="w-10 text-center" />
+              {/* 640px 未満は状態の印を小さく・連絡順の見出しを 2 字で折り、氏名と理由の列に幅を回す（担当一覧と同じ。T78） */}
+              <th className={`${TH} text-center sm:w-[4.5rem]`}>{CUSTODY_LABELS.state}</th>
+              <Header k="rank" sort={sort} onSort={setSort} className="w-8 text-center sm:w-10" narrowWrap />
               <Header k="kana" sort={sort} onSort={setSort} />
               <Header k="age" sort={sort} onSort={setSort} className={SM} />
               <th className={`${TH} ${MD}`}>{CUSTODY_LABELS.medical}</th>
@@ -155,7 +157,17 @@ export function StaffTable({
             {shown.length === 0 && (
               <tr>
                 <td colSpan={COLS} className={`${CELL} text-muted`}>
-                  {rows.length === 0 ? CUSTODY_LABELS.none : CUSTODY_LABELS.noHits}
+                  {rows.length === 0 ? (
+                    // 受け持ちが 0 人: 受入の面（1280px 未満は表の下）の検索の欄へ送る入口（T78。前は「なし」だけで手がかりが無かった）
+                    <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                      {CUSTODY_LABELS.none}
+                      <Button size="sm" icon={AddPersonIcon} onClick={toIntake} data-intake-entry>
+                        {CUSTODY_LABELS.receive}
+                      </Button>
+                    </span>
+                  ) : (
+                    CUSTODY_LABELS.noHits
+                  )}
                 </td>
               </tr>
             )}
@@ -169,8 +181,30 @@ export function StaffTable({
   );
 }
 
+/** 受入の面の検索の欄へ送って焦点を置く（受入一覧が空のときの入口、T78） */
+function toIntake() {
+  const field = document.getElementById(INTAKE_SEARCH_ID);
+  // 検索のほかの切替（避難所・新規登録）を開いていれば、面の見出しへ送るだけ
+  if (!field) return document.getElementById("intake-title")?.scrollIntoView({ block: "start" });
+  field.scrollIntoView({ block: "center" });
+  field.focus({ preventScroll: true });
+}
+
 /** 並べ替えの見出し。押せる見出しには並べ替えの印（押していない列は上下の印、押している列は下線と向きの印）。押せない見出し（状態・医療）は印なし（T66） */
-function Header({ k, sort, onSort, className = "" }: { k: Sort; sort: Sort; onSort: (s: Sort) => void; className?: string }) {
+function Header({
+  k,
+  sort,
+  onSort,
+  className = "",
+  narrowWrap = false,
+}: {
+  k: Sort;
+  sort: Sort;
+  onSort: (s: Sort) => void;
+  className?: string;
+  /** 640px 未満は見出しを 2 字ずつ折る（「連絡/順」、T78） */
+  narrowWrap?: boolean;
+}) {
   const active = k === sort;
   const desc = STAFF_DESCENDING.has(k);
   return (
@@ -178,7 +212,7 @@ function Header({ k, sort, onSort, className = "" }: { k: Sort; sort: Sort; onSo
       <button
         type="button"
         onClick={() => onSort(k)}
-        className={`rounded px-1 py-0.5 whitespace-nowrap outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-accent ${active ? "text-ink underline decoration-2 underline-offset-4" : "font-normal"}`}
+        className={`rounded px-1 py-0.5 whitespace-nowrap ${narrowWrap ? "max-sm:w-[calc(2em+0.5rem)] max-sm:whitespace-normal " : ""}outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-accent ${active ? "text-ink underline decoration-2 underline-offset-4" : "font-normal"}`}
         data-press
       >
         {STAFF_SORT_LABELS[k]}
@@ -205,8 +239,8 @@ function Row({ row: r, open, onToggle }: { row: StaffRow; open: boolean; onToggl
     <>
       <tr data-person={r.personId} data-color={r.color}>
         <td className={`${CELL} text-center`}>
-          <StateTag tone={r.tone} size="md">
-            {COLOR_LABELS[r.color]}
+          <StateTag tone={r.tone} size="fit">
+            {stateLabel(r)}
           </StateTag>
         </td>
         <td className={`${CELL} text-center`}>
@@ -235,6 +269,12 @@ function Row({ row: r, open, onToggle }: { row: StaffRow; open: boolean; onToggl
           {r.reason && (
             <div className={`mt-0.5 text-xs font-bold ${TONE_TEXT[r.tone]}`} data-reason>
               {r.reason}
+            </div>
+          )}
+          {/* 受入の前の最後の知らせが赤なら、その答え（T78。受入で緑になっても、けが・動けないのまま来たことが分かるように） */}
+          {r.before && (
+            <div className="mt-0.5 text-xs" data-before>
+              <span className="text-muted">{CUSTODY_LABELS.before}</span> <span className={`font-bold ${TONE_TEXT.urgent}`}>{r.before}</span>
             </div>
           )}
           {/* 640px 未満は解除の列を省くので、解除のボタンをここに */}

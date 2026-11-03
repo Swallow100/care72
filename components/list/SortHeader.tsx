@@ -26,6 +26,7 @@ export function SortHeader({
   label,
   className = "",
   href,
+  narrowWrap = false,
 }: {
   k: SortKey;
   sort: SortKey;
@@ -36,6 +37,8 @@ export function SortHeader({
   label?: string;
   className?: string;
   href?: string;
+  /** 640px 未満は見出しの言葉を 2 字ずつ折る（「連絡/順」。375 で番号の列が見出しの幅で広がり、理由が 1〜2 字ずつ折れていた。T78） */
+  narrowWrap?: boolean;
 }) {
   const active = k === sort;
   const now = href === undefined ? (dir ?? defaultDir(sort)) : defaultDir(sort);
@@ -44,7 +47,7 @@ export function SortHeader({
       <Link
         href={href ?? sortHeaderHref(k, sort, now, filter)}
         data-press
-        className={`relative -mx-1 inline-block rounded px-1 whitespace-nowrap outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-accent ${active ? "font-bold text-ink underline underline-offset-4" : "font-normal text-muted"}`}
+        className={`relative -mx-1 inline-block rounded px-1 whitespace-nowrap ${narrowWrap ? "max-sm:w-[calc(2em+0.5rem)] max-sm:whitespace-normal " : ""}outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-accent ${active ? "font-bold text-ink underline underline-offset-4" : "font-normal text-muted"}`}
       >
         {label ?? COLUMN_LABELS[k]}
         {/* 押している列は向きの印（下向きが降順）。訓練の表（href）は今まで通り出さない。押していない列は上下の印（押せる見出しの目印） */}

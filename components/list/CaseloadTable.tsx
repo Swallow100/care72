@@ -1,5 +1,5 @@
 // 担当一覧の平時の表（app/page.tsx から分けた。T56 でテストから描くため）。
-// 列は 優先（骨格の段）・氏名・年齢・医療・ハザード・支援者・計画。どの列でも並べ替えられる。
+// 列は 組（骨格の段。発災時の「連絡順」と分けた見出し、T78）・氏名・年齢・医療・ハザード・支援者・計画。どの列でも並べ替えられる。
 // 横に送らない: 768px 未満は医療・ハザード・支援者を省き、氏名の下に医療の印（時計の長さつき）を出す。
 // 768px 以上の医療の列も同じ印（受け持ちの表・発災時の表と同じ MedicalCell。T56）。
 
@@ -8,6 +8,7 @@ import { StateText } from "@/components/ui/Tag";
 import { TABLE, TD } from "@/components/ui/table";
 import { PLAN_TONES, rowLink, type CaseloadFilter, type CaseloadRow, type SortDir, type SortKey } from "@/lib/caseload";
 import { CARE_LEVEL_LABELS, PLAN_STATUS_LABELS, TIER_LABELS } from "@/lib/labels";
+import { tierColumnLabel } from "@/lib/list/labels";
 import { MedicalCell, NarrowMarks } from "./NarrowMarks";
 import { SortHeader } from "./SortHeader";
 
@@ -32,7 +33,7 @@ export function CaseloadTable({
     <table className={TABLE} data-table="caseload">
       <thead>
         <tr>
-          <SortHeader k="tier" sort={sort} dir={dir} filter={filter} className="w-14 text-center" />
+          <SortHeader k="tier" sort={sort} dir={dir} filter={filter} label={tierColumnLabel(false)} className="w-14 text-center" />
           <SortHeader k="kana" sort={sort} dir={dir} filter={filter} />
           <SortHeader k="age" sort={sort} dir={dir} filter={filter} />
           <SortHeader k="medical" sort={sort} dir={dir} filter={filter} className={WIDE} />
