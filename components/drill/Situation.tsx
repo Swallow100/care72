@@ -8,8 +8,9 @@
 import { AiMark, StateTag } from "@/components/person/parts";
 import { shortJst } from "@/lib/disaster/state";
 import type { DrillIncident, DrillTurn, Tick } from "@/lib/drill/engine";
-import { aiStoppedOf, simAt } from "@/lib/drill/engine";
-import { ACTION_UI, AI_STOP_LABELS, BASIS_LABEL, DRILL_LABELS, elapsedLabel, EVENT_KIND_LABELS, VIRTUAL_LABELS } from "@/lib/drill/labels";
+import { simAt } from "@/lib/drill/engine";
+import { isStopIncident } from "@/lib/drill/ai-stop";
+import { ACTION_UI, BASIS_LABEL, DRILL_LABELS, elapsedLabel, EVENT_KIND_LABELS, VIRTUAL_LABELS } from "@/lib/drill/labels";
 import { callIndexes } from "@/lib/drill/calls";
 import { CallInMark } from "./ActionLog";
 import type { FictionKind } from "@/lib/drill/fiction";
@@ -55,9 +56,9 @@ export function Situation({
         // 仮想モード（T50）: 部屋が落ちて 1 回呼びに戻った刻みは、世界の 1 文に「世界 代替」の印（代替の行は畳む）
         const fellBack = t.incidents.some((e) => e.change.kind === "world_note" && e.change.state === "down");
         const hasNarration = t.incidents.some((e) => e.change.kind === "narration");
-        // 上限で止まった役（T70）は見出しの印にして、状況の行には出さない
-        const stopped = aiStoppedOf(t);
-        const shown = t.incidents.filter((e) => e.change.kind !== "ai_stop" && !(hasNarration && e.change.kind === "world_note"));
+        // AI の止まった印（上限 ai_stop・世界の停止と失敗 world_note）は刻みごとに積まず、画面の上の帯 1 本（T76、components/drill/AiStopBand）。
+        // 世界が 1 回呼びで動いた刻みの「代替」は、世界の 1 文の印にする
+        const shown = t.incidents.filter((e) => !isStopIncident(e, t) && !(hasNarration && e.change.kind === "world_note"));
         return (
           <li key={t.step} className="rounded-md bg-panel2 px-2.5 py-2" data-situation-step={t.step}>
             <h3 className="flex flex-wrap items-baseline gap-x-2 text-sm">
@@ -68,11 +69,6 @@ export function Situation({
                   {ACTION_UI.during} {during[t.step]}
                 </span>
               )}
-              {stopped.map((x) => (
-                <span key={x} className="text-xs text-muted" data-ai-stopped={x}>
-                  {AI_STOP_LABELS[x]}
-                </span>
-              ))}
             </h3>
             {shown.length === 0 && t.turns.length === 0 ? (
               <p className="mt-1 text-sm text-muted">{DRILL_LABELS.none}</p>

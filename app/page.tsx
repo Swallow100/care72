@@ -23,7 +23,7 @@ import type { Principal } from "@/lib/auth/principal";
 import { caseloadScope } from "@/lib/auth/scope";
 import { classViewOf } from "@/lib/classify/view";
 import { requirePage } from "@/lib/auth/server";
-import { hasAnthropicKey } from "@/lib/claude/client";
+import { aiStatusFor } from "@/lib/claude/cloudflare";
 import { intakePropsOf, type IntakeProps } from "@/lib/intake/props";
 import {
   caseloadHref,
@@ -277,7 +277,8 @@ async function PersonPanel({
     const planForm = rows ? planFormView(await loadPlanForm(env.DB, rows.person.office_id)) : undefined;
     view = rows && d ? toPersonView(rows, { today: todayJst(), mode: d.mode, triage: d.triage, situation: d.situation, planForm }) : null;
     // 入れる欄（T03）はケアマネの役だけ（担当一覧はケアマネの役しか開けない）
-    intake = rows && principal.role === "care_manager" ? intakePropsOf(rows, hasAnthropicKey(env)) : null;
+    // AI の状態（未設定・上限到達・本日残り）は lib/claude/status.ts の 1 か所（T76）
+    intake = rows && principal.role === "care_manager" ? intakePropsOf(rows, await aiStatusFor(rows.person.office_id)) : null;
   } catch (e) {
     console.error("本人のページを読めない", e);
     failed = true;

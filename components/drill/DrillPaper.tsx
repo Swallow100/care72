@@ -7,7 +7,9 @@
 // 紙の決まりは components/forms/paper.css、流し方は components/drill/drill-paper.css。
 
 import { Fragment } from "react";
+import { AI_STATUS_LABELS, type AiStatus } from "@/lib/claude/status";
 import { ACTION_STATUS_LABELS } from "@/lib/drill/actions";
+import { aiStopBand, aiStopParts, isStopIncident } from "@/lib/drill/ai-stop";
 import { callerLabel } from "@/lib/drill/calls";
 import type { ActionRecord } from "@/lib/drill/engine";
 import { ACTION_LABELS, ACTION_UI, BASIS_LABEL, calleeText, clockLabel, DRILL_LABELS, fictionLabels, SCENARIO_LABELS, STATUS_LABELS, T59_LABELS } from "@/lib/drill/labels";
@@ -15,7 +17,7 @@ import type { DrillRecord, StoredReview } from "@/lib/drill/record";
 import type { ReviewBody } from "@/lib/drill/review";
 import { REVIEW_ERROR_LABELS, REVIEW_KIND_LABELS, REVIEW_UI, SCORE_LABELS } from "@/lib/drill/score-labels";
 import { scoreView } from "@/lib/drill/score-view";
-import { lastHour, scenarioOf } from "@/lib/drill/scenarios";
+import { isVirtual, lastHour, scenarioOf } from "@/lib/drill/scenarios";
 import { cssString } from "@/components/forms/Form9Paper";
 import { paperText } from "@/lib/forms/paper-text";
 import { warekiText } from "@/lib/forms/wareki";
@@ -39,19 +41,28 @@ function shownOf(r: StoredReview | null): (ReviewBody & { edited: boolean }) | n
   return r.edited ? { ...r.edited, edited: true } : { ...r.ai, edited: false };
 }
 
-/** 講評が無いときの言い方（「講評なし（未設定）」）。紙面は鍵の有無を知らないので、残った状態から */
-function noReviewText(r: StoredReview | null): string {
-  if (!r) return REVIEW_UI.none;
+/**
+ * 講評が無いときの言い方。AI が作れなかったら「AI 停止（上限到達）」（画面の講評と同じ言葉。T76）。
+ * 作っていない講評は、今 AI が未設定なら「AI 停止（未設定）」、ほかは「講評なし」
+ */
+function noReviewText(r: StoredReview | null, ai: AiStatus | null): string {
+  if (!r) return ai?.kind === "unset" ? `${REVIEW_UI.stopped}（${REVIEW_ERROR_LABELS.not_configured}）` : REVIEW_UI.none;
   if (r.state === "pending") return REVIEW_UI.creating;
-  if (r.state === "failed") return `${REVIEW_UI.none}（${REVIEW_ERROR_LABELS[r.error] ?? REVIEW_UI.failed}）`;
+  if (r.state === "failed") return `${REVIEW_UI.stopped}（${REVIEW_ERROR_LABELS[r.error] ?? REVIEW_UI.failed}）`;
   return REVIEW_UI.none;
+}
+
+/** 概要の AI の行（「停止 上限到達 経過 6 時間〜 想定のみ」）。見出しの「AI」と重ねない */
+function stopLine(b: NonNullable<ReturnType<typeof aiStopBand>>): string {
+  const p = aiStopParts(b);
+  return [AI_STATUS_LABELS.stop, p.reason, p.span, p.effect, p.resume].filter(Boolean).join(" ");
 }
 
 type HistoryRow =
   | { kind: "action"; at: number; order: number; a: ActionRecord }
   | { kind: "call"; at: number; order: number; c: DrillPaperRecord["calls"][number] };
 
-export function DrillPaper({ record, office, today }: { record: DrillPaperRecord; office: string; today: string }) {
+export function DrillPaper({ record, office, today, ai = null }: { record: DrillPaperRecord; office: string; today: string; ai?: AiStatus | null }) {
   const { screen, score, review, calls, previous } = record;
   const names = screen.names;
   const name = (p: string | null) => (p ? (names[p] ?? p) : ACTION_UI.whole);
@@ -71,6 +82,8 @@ export function DrillPaper({ record, office, today }: { record: DrillPaperRecord
   ]
     .filter(Boolean)
     .join("・");
+  // AI 停止は刻みごとに積まず、概要の 1 行（画面の帯と同じ。T76）
+  const stop = aiStopBand(screen.ticks, { virtual: isVirtual(scenario), running: false, now: null });
   const groups = screen.ticks
     .map((tick, i) => {
       // 刻みは前の刻みの時刻からこの刻みの時刻まで（10 分版は 12 → 72 時間のように広い）
@@ -79,9 +92,9 @@ export function DrillPaper({ record, office, today }: { record: DrillPaperRecord
         ...actions.filter((a) => a.step === tick.step).map((a, i) => ({ kind: "action" as const, at: a.atMinute, order: i * 2, a })),
         ...calls.filter((c) => c.step === tick.step).map((c, i) => ({ kind: "call" as const, at: c.minute, order: i * 2 + 1, c })),
       ].sort((x, y) => x.at - y.at || x.order - y.order);
-      return { tick, rows, from };
+      return { tick, rows, from, incidents: tick.incidents.filter((e) => !isStopIncident(e, tick)) };
     })
-    .filter((g) => g.rows.length > 0 || g.tick.incidents.length > 0);
+    .filter((g) => g.rows.length > 0 || g.incidents.length > 0);
 
   return (
     <div className="paper paper-drill" data-paper-root data-sheet="drill-record" data-drill={screen.drill.id}>
@@ -133,6 +146,14 @@ export function DrillPaper({ record, office, today }: { record: DrillPaperRecord
               <dt>{T59_LABELS.settings}</dt>
               <dd className="wide" data-settings>
                 {t(settings)}
+              </dd>
+            </>
+          )}
+          {stop && (
+            <>
+              <dt>{AI_STATUS_LABELS.ai}</dt>
+              <dd className="wide" data-ai-stop={stop.reason}>
+                {t(stopLine(stop))}
               </dd>
             </>
           )}
@@ -373,7 +394,7 @@ export function DrillPaper({ record, office, today }: { record: DrillPaperRecord
             )}
           </>
         ) : (
-          <p data-review-none>{noReviewText(review)}</p>
+          <p data-review-none>{noReviewText(review, ai)}</p>
         )}
       </section>
 
@@ -413,12 +434,12 @@ export function DrillPaper({ record, office, today }: { record: DrillPaperRecord
               <th>{SCORE_LABELS.result}</th>
             </tr>
           </thead>
-          {groups.map(({ tick, rows, from }) => (
+          {groups.map(({ tick, rows, from, incidents }) => (
             <tbody key={tick.step} data-hour={tick.hour}>
               <tr className="hour">
                 <td colSpan={5}>
                   {t(`${SCORE_LABELS.elapsed} ${from !== null && from + 1 < tick.hour ? `${from}〜` : ""}${tick.hour} ${DRILL_LABELS.hours}`)}
-                  {tick.incidents.map((e, i) => (
+                  {incidents.map((e, i) => (
                     <span key={i} className="incident">
                       {SCORE_LABELS.situation} {t(clockLabel(Math.round(e.at * 60)))} {t(e.text)}
                       {e.ai && <span className="drill-ai"> AI</span>}

@@ -2,8 +2,9 @@
 
 // 訓練の講評（docs/tasks/T22.md）。言葉は Opus が 1 訓練に 1 回だけ作る（lib/drill/review.ts）。数字は機械（ScorePanel）。
 // - 鍵がある（canReview）のにまだ無ければ、開いたときに 1 回だけ作る（POST /api/drill/<id>/review）。作った物は drills.score に残り、
-//   2 回目からはそれを出す。鍵が無ければ呼ばずに「講評なし」と理由「未設定」（数字だけ）
-// - 作成中（ほかの画面が作っている）は 10 秒ごとに読み直す。失敗は理由と再作成
+//   2 回目からはそれを出す。鍵が無ければ呼ばずに「AI 停止 未設定」（数字だけ。T76）
+// - 作成中（ほかの画面が作っている）は 10 秒ごとに読み直す。AI が作れなかった（上限到達・接続失敗・出力不良）は「AI 停止」と理由と再作成。
+//   採点の数字（ScorePanel）は機械なので、講評が無くてもそのまま出る。画面とサーバーの間の通信の失敗だけ「作成失敗 通信失敗」
 // - AI の印を付け、ケアマネが直せる（編集 → 保存。AI の元は消さずに別に残す）。直した物には「修正済」
 // - 根拠は出典の登録簿の題名と発行元だけ（lib/sources）。確認前の出典は「未確認」
 // 色は出典の確認の印だけ。押したときは灰色だけ（Button の data-press）。
@@ -26,7 +27,8 @@ type Shown = ReviewBody & { edited: boolean; model: string };
 type View =
   | { kind: "none"; reason: string }
   | { kind: "creating" }
-  | { kind: "failed"; reason: string }
+  /** ai: AI が作れなかった（「AI 停止」）。false は画面とサーバーの間の失敗（「作成失敗」） */
+  | { kind: "failed"; reason: string; ai: boolean }
   | { kind: "done"; shown: Shown };
 
 /** 画面と紙面に出す講評（lib/drill/record.ts の shownReview と同じ。client の束に D1 の道を入れないよう写した） */
@@ -38,7 +40,7 @@ function shownOf(r: StoredReview | null): Shown | null {
 function viewOf(r: StoredReview | null, canReview: boolean): View {
   if (!r) return canReview ? { kind: "creating" } : { kind: "none", reason: REVIEW_ERROR_LABELS.not_configured };
   if (r.state === "pending") return { kind: "creating" };
-  if (r.state === "failed") return { kind: "failed", reason: REVIEW_ERROR_LABELS[r.error] ?? REVIEW_UI.failed };
+  if (r.state === "failed") return { kind: "failed", reason: REVIEW_ERROR_LABELS[r.error] ?? REVIEW_UI.failed, ai: true };
   return { kind: "done", shown: shownOf(r)! };
 }
 
@@ -104,10 +106,11 @@ export function ReviewBox({
     const a = await post({});
     inFlight.current = false;
     if (!alive.current) return;
-    if (!a) return setView({ kind: "failed", reason: REVIEW_UI.network });
+    if (!a) return setView({ kind: "failed", reason: REVIEW_UI.network, ai: false });
     if (!a.ok) {
       if (a.error === "not_configured") return setView({ kind: "none", reason: REVIEW_ERROR_LABELS.not_configured });
-      return setView({ kind: "failed", reason: a.label ?? REVIEW_UI.failed });
+      const ai = a.error !== undefined && Object.hasOwn(REVIEW_ERROR_LABELS, a.error);
+      return setView({ kind: "failed", reason: ai ? REVIEW_ERROR_LABELS[a.error as keyof typeof REVIEW_ERROR_LABELS] : (a.label ?? REVIEW_UI.failed), ai });
     }
     setView(viewOf(a.review, true));
   }, [post]);
@@ -172,17 +175,18 @@ export function ReviewBox({
   return (
     <section aria-labelledby={`review-${drillId}`} className="space-y-1.5" data-review={view.kind}>
       {head}
-      {view.kind === "none" && (
-        <p className="flex flex-wrap items-baseline gap-x-2 text-sm">
+      {/* 作れなかった講評は「AI 停止」と理由（AI の状態の言葉は lib/claude/status.ts。中立の印、色なし）。数字は上の採点のまま */}
+      {(view.kind === "none" || (view.kind === "failed" && view.ai)) && (
+        <p className="flex flex-wrap items-baseline gap-x-2 text-sm" data-review-stop={view.kind}>
           <span className="font-bold" data-review-none>
-            {REVIEW_UI.none}
+            {REVIEW_UI.stopped}
           </span>
-          <span className={LABEL}>{view.reason}</span>
+          <Mark>{view.reason}</Mark>
         </p>
       )}
       {/* 講評を作っている間は AI の待ちの印（T44） */}
       {view.kind === "creating" && <Loader72 label={REVIEW_UI.creating} size={16} className="text-sm text-muted" />}
-      {view.kind === "failed" && (
+      {view.kind === "failed" && !view.ai && (
         <p className="flex flex-wrap items-baseline gap-x-2 text-sm">
           <span className="font-bold">{REVIEW_UI.failed}</span>
           <span className={LABEL}>{view.reason}</span>
