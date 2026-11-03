@@ -167,6 +167,10 @@ export type WorldChange =
   | { kind: "world_note"; state: "down" | "off" }
   // 結末（person が要る。世界が決める、lib/drill/world-apply.ts。T50 の記録には reason が無い）
   | { kind: "outcome"; label: string; reason?: string | null }
+  // AI の 1 日の上限（lib/claude/usage.ts）で本人役・監督・世界が呼べなかった刻みの印（T70。世界を変えない。記録に残す）
+  | { kind: "ai_stop"; stopped: AiStop[] }
+  // 進行中のまま 24 時間たった訓練を読むときに中断した印（T70。最後の刻みに 1 行。世界を変えない）
+  | { kind: "auto_abandon"; hours: number }
   // 本人ごとの印（監督の差し込み。person が要る）
   | { kind: "supply_left" }
   | { kind: "nurse_away" }
@@ -174,6 +178,10 @@ export type WorldChange =
   | { kind: "line_down" };
 
 export type WorldEventKind = WorldChange["kind"];
+
+/** 上限で止まった AI の役（本人役・監督・世界）。印の並びもこの順 */
+export const AI_STOPS = ["persona", "director", "world"] as const;
+export type AiStop = (typeof AI_STOPS)[number];
 
 /** 世界の 1 刻みを作った所。room は Managed Agents の部屋、oneshot は Messages API の 1 回呼び（部屋が使えないときの代替） */
 export type WorldVia = "room" | "oneshot";
@@ -736,6 +744,8 @@ export function applyEvent(world: WorldState, e: WorldEvent, hour: number): Worl
       // 部屋の文（別名のまま）を世界の履歴に残す。1 回呼び（world-oneshot.ts）が履歴の要約として送る
       return { ...world, story: [...(world.story ?? []), `${hour} 時間: ${c.room}`].slice(-STORY_MAX) };
     case "world_note":
+    case "ai_stop":
+    case "auto_abandon":
       return world;
     case "outcome": {
       if (!person || world.ended?.[person]) return world;

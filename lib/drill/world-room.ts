@@ -17,11 +17,11 @@ import type { D1Database } from "@cloudflare/workers-types";
 import Anthropic from "@anthropic-ai/sdk";
 import { COMMON_SYSTEM, type AskJsonContext } from "../claude/call.ts";
 import { keyOf, type AiEnv } from "../claude/client.ts";
-import { AiBadOutput, AiCallFailed, AiNotConfigured } from "../claude/errors.ts";
+import { AiBadOutput, AiCallFailed, AiLimitReached, AiNotConfigured } from "../claude/errors.ts";
 import { OPUS } from "../claude/models.ts";
 import { beginCall } from "../claude/usage.ts";
 import { pseudonymizeText, type PseudonymInput } from "../pseudonym/index.ts";
-import type { DrillIncident, WorldHook, WorldInput, WorldResult } from "./engine.ts";
+import type { DrillIncident, StopLog, WorldHook, WorldInput, WorldResult } from "./engine.ts";
 import type { OutcomeSource } from "./outcome.ts";
 import { isPersonaFailure } from "./persona.ts";
 import { lastHour, scenarioOf } from "./scenarios.ts";
@@ -335,6 +335,8 @@ export type WorldDeps = {
   /** 部屋（mode が session のとき）。無ければ 1 回呼び */
   room?: () => RoomDeps;
   on?: string;
+  /** 上限で 1 回呼びも落ちたときに「世界 停止」を書き留める所（T70）。返す物は変わらない（世界を動かさない） */
+  stops?: StopLog;
 };
 
 /**
@@ -370,6 +372,7 @@ export function createWorldHook(deps: WorldDeps): WorldHook {
       const note: DrillIncident[] = fellBack ? [{ actor: "director", at: input.hour, change: { kind: "world_note", state: "down" }, text: "代替", ai: false }] : [];
       return { incidents: [...note, ...r.incidents], ...(session !== input.session ? { session } : {}) };
     } catch (e) {
+      if (e instanceof AiLimitReached) deps.stops?.hit("world");
       if (!isPersonaFailure(e) && !(e instanceof AiBadOutput) && !(e instanceof AiCallFailed)) {
         console.error("世界の 1 回呼びに失敗", e instanceof Error ? e.name : typeof e);
       }

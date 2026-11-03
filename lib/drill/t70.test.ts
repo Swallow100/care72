@@ -1,19 +1,51 @@
 // 訓練を本物の事業所で（docs/tasks/T70.md）のテスト。本物の API は呼ばない（偽の hooks）。
 // - 想定の表の配役: デモ事業所は前と同じ（配役なし）、新しい事業所の 5 人に行が当たる、本人役の入力に行が渡る、再開・再生でも同じ
+// - 方言の行を外す
+// - 押せる人なし・上限の見込み（開始の設定）、上限に当たった刻みの停止の印
+// - 進行中をケアマネごと、24 時間で自動中断
 
+import Anthropic from "@anthropic-ai/sdk";
 import type { DatabaseSync } from "node:sqlite";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { Situation } from "../../components/drill/Situation.tsx";
+import { StartButtons } from "../../components/drill/StartButtons.tsx";
 import { SEED_PEOPLE } from "../../seed/people.ts";
 import { seedStatements } from "../../seed/sql.ts";
 import type { Principal } from "../auth/principal.ts";
+import type { ClaudeClient } from "../claude/client.ts";
 import { d1FromSqlite, migratedSqlite } from "../db/test-d1.ts";
 import type { DrillScenario, Ledger } from "../db/types.ts";
 import { castScenario, matchesPick, needsCast, type CastFacts } from "./cast.ts";
 import { castFactsMap } from "./cast-facts.ts";
-import { advanceDrill, drillScope, loadDrillRow, loadTicks, participantsOf, replayState, startDrill, stateOfRow } from "./db.ts";
-import type { PersonaInput } from "./engine.ts";
+import {
+  abandonDrill,
+  advanceDrill,
+  autoAbandonEventId,
+  caseloadForDrill,
+  drillScope,
+  expireStaleDrills,
+  listDrills,
+  loadDrillRow,
+  loadTicks,
+  participantsOf,
+  replayState,
+  runningDrillId,
+  startDrill,
+  stateOfRow,
+} from "./db.ts";
+import { aiStoppedOf, stopIncidents, stopLog, type PersonaInput } from "./engine.ts";
+import { estimateDrillCalls, overLimit } from "./estimate.ts";
+import { drillHooks } from "./hooks.ts";
+import { listGet } from "./http.ts";
 import { CALL_SYSTEM, fixedTurns, loadPersonaSources, PERSONA_SYSTEM, PERSONA_VIRTUAL } from "./persona.ts";
-import { SCENARIOS } from "./scenarios.ts";
+import { SCENARIO_ORDER, SCENARIOS } from "./scenarios.ts";
+
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: () => {}, push: () => {} }) }));
+
+type Params = Anthropic.Beta.Messages.MessageCreateParamsNonStreaming;
+type Message = Anthropic.Beta.Messages.BetaMessage;
 
 let sqlite: DatabaseSync;
 let db: ReturnType<typeof d1FromSqlite>;
@@ -305,5 +337,223 @@ describe("本人役の指示に方言を書かない（T70 の 3）", () => {
     expect(PERSONA_SYSTEM).toContain("6. 名前・住所・電話番号を言わない。");
     expect(PERSONA_SYSTEM).toContain("7. 「診断」「判定」「重症」と言わない。病名を言い切らない。薬の量を言わない。助言をしない。");
     expect(CALL_SYSTEM).toContain("名前・住所・電話番号を言わない。");
+  });
+});
+
+// ---------- 2 押せる人なし・5 上限の見込みと停止の印 ----------
+
+function fakeClaude() {
+  const calls: Params[] = [];
+  const client: ClaudeClient = {
+    beta: {
+      messages: {
+        create: async (params) => {
+          calls.push(params);
+          return {
+            id: "msg_test",
+            type: "message",
+            role: "assistant",
+            model: params.model,
+            content: [{ type: "text", text: "{}", citations: null }],
+            stop_reason: "end_turn",
+            stop_details: null,
+            stop_sequence: null,
+            usage: { input_tokens: 10, output_tokens: 1, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+          } as unknown as Message;
+        },
+      },
+    },
+  };
+  return { client, calls };
+}
+
+const demoCm = () => careManager(DEMO, "acct-yamamoto");
+const demoHooks = (limit: string, extra: Record<string, string> = {}) =>
+  drillHooks({ DB: db, ANTHROPIC_API_KEY: "dummy", AI_DAILY_LIMIT: limit, ...extra }, demoCm(), {
+    claude: fakeClaude().client,
+    now: () => new Date(START),
+  })!;
+
+describe("押せる人なしと見込み（T70 の 2・5）", () => {
+  it("担当一覧の人に押せる人の有無と、本人役を呼びうる想定（デモの 10 人は全員押せる人がいる）", async () => {
+    const demo = await caseloadForDrill(db, drillScope(demoCm())!);
+    expect(demo.map((p) => p.id).sort()).toEqual(SEED_PEOPLE.map((p) => p.person.id).sort());
+    expect(demo.every((p) => p.canPress)).toBe(true);
+    addNewOffice();
+    const five = await caseloadForDrill(db, scopeA());
+    expect(five.map((p) => [p.id, p.canPress])).toEqual([
+      ["n-1", true],
+      ["n-2", true],
+      ["n-3", true],
+      ["n-4", false],
+      ["n-5", true],
+    ]);
+    // 押せる人のいない人は、表の行が当たりうる想定だけ（仮想は表が無いので呼ばない）
+    expect(five.find((p) => p.id === "n-4")!.callable).toEqual(["heavy_rain", "earthquake", "short"]);
+    expect(five.find((p) => p.id === "n-1")!.callable).toEqual(["heavy_rain", "earthquake", "short", "virtual"]);
+  });
+
+  it("見込み = 刻み ×（監督 1 + 本人役）+ 講評 1 + 声（本人役 × 刻み の半分）。残りを超えたら上限不足", () => {
+    const ten = SEED_PEOPLE.map((p) => ({ id: p.person.id }));
+    expect(estimateDrillCalls("short", ten)).toBe(4 * 11 + 1 + 20);
+    expect(estimateDrillCalls("heavy_rain", ten)).toBe(12 * 11 + 1 + 60);
+    // 本人役を呼ばない人（押せる人なし・行なし）は監督の分だけ
+    expect(estimateDrillCalls("virtual", [{ id: "x", callable: ["short"] }])).toBe(12 + 1);
+    expect(overLimit(65, 64)).toBe(true);
+    expect(overLimit(65, 65)).toBe(false);
+    expect(overLimit(65, null)).toBe(false);
+  });
+
+  it("開始の設定: 押せる人なしは灰の文字と本人のページへの名前、見込みと残り、超える想定に上限不足（開始は止めない）", () => {
+    const people = [
+      { id: "n-1", name: "架空 一", canPress: true, callable: ["heavy_rain", "earthquake", "short", "virtual"] as DrillScenario[] },
+      { id: "n-4", name: "架空 四", canPress: false, callable: ["heavy_rain", "earthquake", "short"] as DrillScenario[] },
+    ];
+    const html = renderToStaticMarkup(createElement(StartButtons, { scenarios: SCENARIO_ORDER, disabled: false, people, remaining: 30 }));
+    expect(html).toContain('data-no-presser-count="1"');
+    expect(html).toContain("押せる人なし 1 人");
+    // 10 分版: 4 ×（1 + 2）+ 1 + 4 = 17。大雨: 12 × 3 + 1 + 12 = 49 は残り 30 を超える
+    expect(html).toContain('data-estimate-scenario="short" data-estimate-calls="17"');
+    expect(html).toMatch(/data-estimate-scenario="heavy_rain" data-estimate-calls="49" data-over=""/);
+    expect(html).toContain("上限不足");
+    expect(html).toContain('data-estimate-remaining="30"');
+    expect(html).not.toMatch(/data-scenario="heavy_rain"[^>]*disabled/);
+    const unknown = renderToStaticMarkup(createElement(StartButtons, { scenarios: SCENARIO_ORDER, disabled: false, people, remaining: null }));
+    expect(unknown).not.toContain("data-estimate-remaining");
+    expect(unknown).not.toContain("上限不足");
+  });
+});
+
+describe("上限に当たった刻みに停止の印（T70 の 5）", () => {
+  it("上限 0 の日: 本人役・監督が落ちた刻みに「停止」の印。表の安否は届き、訓練は最後まで進む。再生でも同じ", async () => {
+    const hooks = demoHooks("0");
+    const scope = drillScope(demoCm())!;
+    expect(await startDrill(db, scope, "heavy_rain", START, hooks, () => "lim")).toEqual({ ok: true, id: "lim" });
+    for (let s = 0; s < 11; s++) expect((await advanceDrill(db, scope, "lim", s, START, hooks)).ok).toBe(true);
+    const row = (await loadDrillRow(db, DEMO.id, "lim"))!;
+    expect(row.status).toBe("finished");
+    const ticks = await loadTicks(db, "lim", SCENARIOS.heavy_rain.hours, row.step);
+    const stops = ticks.map((t) => aiStoppedOf(t));
+    expect(stops[0]).toContain("persona");
+    expect(stops.some((x) => x.includes("director"))).toBe(true);
+    expect(stops.every((x) => !x.includes("world"))).toBe(true);
+    // 表の行の安否はそのまま届く（3 時間の山田の赤）
+    expect(sqlite.prepare("SELECT color FROM signals WHERE drill_id = 'lim' AND person_id = 'p-01' ORDER BY occurred_at").all()).toEqual([
+      { color: "red" },
+    ]);
+    // 刻みの見出しに灰の文字の印、状況の行には出さない
+    const html = renderToStaticMarkup(createElement(Situation, { ticks: ticks.slice(0, 1), names: {}, startedAt: START }));
+    expect(html).toContain('data-ai-stopped="persona"');
+    expect(html).toContain("本人役 停止");
+    expect(html).not.toContain('data-incident="ai_stop"');
+    // 再生（状態の作り直し）は印で世界を変えない
+    const replayed = replayState(row, participantsOf(row), ticks, row.step).state;
+    expect(replayed.world).toEqual(stateOfRow(row).world);
+  });
+
+  it("上限の内なら印なし（AI の形の違いは停止でない）", async () => {
+    const hooks = demoHooks("2000");
+    const scope = drillScope(demoCm())!;
+    expect(await startDrill(db, scope, "short", START, hooks, () => "ok")).toEqual({ ok: true, id: "ok" });
+    expect((await advanceDrill(db, scope, "ok", 0, START, hooks)).ok).toBe(true);
+    const ticks = await loadTicks(db, "ok", SCENARIOS.short.hours, 1);
+    expect(ticks.flatMap((t) => aiStoppedOf(t))).toEqual([]);
+  });
+
+  it("仮想（1 回呼び）: 上限で世界が止まった刻みに「世界 停止」", async () => {
+    const hooks = demoHooks("0", { DRILL_WORLD: "messages" });
+    const scope = drillScope(demoCm())!;
+    expect(await startDrill(db, scope, "virtual", START, hooks, () => "v")).toEqual({ ok: true, id: "v" });
+    const ticks = await loadTicks(db, "v", SCENARIOS.virtual.hours, 0);
+    expect(aiStoppedOf(ticks[0])).toEqual(["persona", "world"]);
+  });
+
+  it("停止の記録は刻みごと（前の刻みの分を持ち越さない）", () => {
+    const log = stopLog();
+    log.hit("director");
+    log.hit("persona");
+    log.hit("persona");
+    expect(log.take()).toEqual(["persona", "director"]);
+    expect(log.take()).toEqual([]);
+    expect(stopIncidents([], 3)).toEqual([]);
+    expect(stopIncidents(["world"], 3)[0]).toMatchObject({ change: { kind: "ai_stop", stopped: ["world"] }, text: "世界 停止", ai: false });
+  });
+});
+
+// ---------- 6 進行中をケアマネごと・24 時間で自動中断 ----------
+
+const HOUR = 3_600_000;
+const at = (h: number) => new Date(Date.parse(START) + h * HOUR).toISOString();
+
+function addCmB(): void {
+  sqlite.exec(
+    `INSERT INTO people (id, office_id, care_manager_id, name, kana, ledger) VALUES ('n-6', '${NEW.id}', '${CM_B}', '架空 六', 'カクウ ロク', '{}')`,
+  );
+}
+
+describe("進行中をケアマネごと・24 時間で自動中断（T70 の 6）", () => {
+  it("同じ事業所の 2 人のケアマネが同時に進行中を持てる。同じケアマネの 2 つ目は断る", async () => {
+    addNewOffice();
+    addCmB();
+    const scopeB = drillScope(careManager(NEW, CM_B))!;
+    expect(await startDrill(db, scopeA(), "short", START, {}, () => "a1")).toEqual({ ok: true, id: "a1" });
+    expect(await startDrill(db, scopeB, "short", START, {}, () => "b1")).toEqual({ ok: true, id: "b1" });
+    expect(await startDrill(db, scopeA(), "earthquake", START, {}, () => "a2")).toEqual({ ok: false, error: "running" });
+    expect(await runningDrillId(db, NEW.id, { scope: scopeA() })).toBe("a1");
+    expect(await runningDrillId(db, NEW.id, { scope: scopeB })).toBe("b1");
+    const list = await listDrills(db, NEW.id);
+    expect(list.map((d) => [d.id, d.status, d.started_by]).sort()).toEqual([
+      ["a1", "running", CM_A],
+      ["b1", "running", CM_B],
+    ]);
+  });
+
+  it("審査員どうし・審査員と山本は山本の担当一覧で 1 つを共有する（今までどおり）", async () => {
+    const judge = drillScope(careManager(DEMO, "acct-judge", { judge: true, caseloadOf: "acct-yamamoto" }))!;
+    expect(await startDrill(db, judge, "short", START, {}, () => "j1")).toEqual({ ok: true, id: "j1" });
+    expect(await startDrill(db, judge, "short", START, {}, () => "j2")).toEqual({ ok: false, error: "running" });
+    expect(await startDrill(db, drillScope(demoCm())!, "short", START, {}, () => "y1")).toEqual({ ok: false, error: "running" });
+  });
+
+  it("24 時間たった進行中は、開始のときに中断（理由 24 時間・経過に 1 行）になり、新しく始められる。23 時間なら断る", async () => {
+    addNewOffice();
+    expect(await startDrill(db, scopeA(), "heavy_rain", START, {}, () => "old")).toEqual({ ok: true, id: "old" });
+    await advanceDrill(db, scopeA(), "old", 0, START);
+    expect(await startDrill(db, scopeA(), "short", at(23), {}, () => "early")).toEqual({ ok: false, error: "running" });
+    expect(await startDrill(db, scopeA(), "short", at(24), {}, () => "new")).toEqual({ ok: true, id: "new" });
+    const old = (await loadDrillRow(db, NEW.id, "old"))!;
+    expect(old.status).toBe("abandoned");
+    expect(old.finished_at).toBe(at(24));
+    expect(JSON.parse(old.world).abandoned).toEqual({ reason: "24h", at: at(24) });
+    // 経過に 1 行（今の刻みに、状況「自動中断 24 時間」）。再生は世界を変えない
+    const ticks = await loadTicks(db, "old", SCENARIOS.heavy_rain.hours, old.step);
+    const note = ticks[old.step].incidents.find((e) => e.change.kind === "auto_abandon")!;
+    expect(note).toMatchObject({ text: "自動中断 24 時間", actor: "world", ai: false, at: 1 });
+    expect(replayState(old, participantsOf(old), ticks, old.step).state.world).toEqual(stateOfRow(old).world);
+    // 一覧の状態は「中断」のまま、行の詳細に 24 時間
+    const list = await listDrills(db, NEW.id);
+    expect(list.find((d) => d.id === "old")).toMatchObject({ status: "abandoned", abandon_reason: "24h" });
+    expect(list.find((d) => d.id === "new")).toMatchObject({ status: "running", abandon_reason: null });
+    // 2 度読んでも経過は 1 行（48 時間で new も中断）
+    expect(await expireStaleDrills(db, NEW.id, at(48))).toBe(1);
+    expect(sqlite.prepare("SELECT COUNT(*) AS n FROM drill_events WHERE id = ?").get(autoAbandonEventId("old"))).toEqual({ n: 1 });
+  });
+
+  it("一覧は now を渡すと先に自動中断、渡さなければ読むだけ。手で中断した訓練は理由なし", async () => {
+    addNewOffice();
+    addCmB();
+    const scopeB = drillScope(careManager(NEW, CM_B))!;
+    expect(await startDrill(db, scopeA(), "short", START, {}, () => "a")).toEqual({ ok: true, id: "a" });
+    expect(await startDrill(db, scopeB, "short", START, {}, () => "b")).toEqual({ ok: true, id: "b" });
+    expect(await abandonDrill(db, scopeB, "b", at(1))).toEqual({ ok: true });
+    expect((await listDrills(db, NEW.id)).find((d) => d.id === "a")!.status).toBe("running");
+    expect(await runningDrillId(db, NEW.id, { scope: scopeA(), now: at(10) })).toBe("a");
+    const list = await listDrills(db, NEW.id, 50, at(30));
+    expect(list.find((d) => d.id === "a")).toMatchObject({ status: "abandoned", abandon_reason: "24h" });
+    expect(list.find((d) => d.id === "b")).toMatchObject({ status: "abandoned", abandon_reason: null });
+    const res = await listGet(db, careManager(NEW, CM_A), at(30));
+    const body = (await res.json()) as { drills: Array<{ id: string; abandonReason?: string }> };
+    expect(body.drills.find((d) => d.id === "a")!.abandonReason).toBe("24h");
+    expect(body.drills.find((d) => d.id === "b")!.abandonReason).toBeUndefined();
   });
 });

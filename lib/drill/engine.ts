@@ -22,6 +22,8 @@ import {
   isVirtual,
   scenarioOf,
   settleWorld,
+  AI_STOPS,
+  type AiStop,
   type FixedTurn,
   type InjectKind,
   type OutageArea,
@@ -32,6 +34,7 @@ import {
   type WorldState,
 } from "./scenarios.ts";
 import { castEvent, castTurn, eventKey, turnKey, type Cast } from "./cast.ts";
+import { AI_STOP_LABELS } from "./labels.ts";
 import { NO_HINTS, type OutcomeHints, type OutcomeHook } from "./outcome.ts";
 import { isStaffCount } from "./options.ts";
 
@@ -397,7 +400,38 @@ export type WorldHook = (input: WorldInput) => Promise<WorldResult>;
 /**
  * world と outcome は仮想モード（T50）だけが使う。固定の筋（大雨・地震・10 分版）は今までどおり director と persona だけ
  */
-export type StepHooks = { persona?: PersonaHook; director?: DirectorHook; world?: WorldHook; outcome?: OutcomeHook };
+export type StepHooks = { persona?: PersonaHook; director?: DirectorHook; world?: WorldHook; outcome?: OutcomeHook; stops?: StopLog };
+
+/**
+ * 上限で止まった AI の役を書き留める所（T70）。本人役・監督・世界の呼び口は、AI の 1 日の上限（AiLimitReached）で落ちたときに hit を呼ぶ
+ * （返す物は今までと同じ: 本人役は表の固定の安否か連絡なし、監督は差し込みなし、世界は動かさない）。engine は刻みの始めに take で空にし、
+ * 刻みの終わりに take で読んで、その刻みに「停止」の印（状況 ai_stop）を足す。1 要求ごとに作る（lib/drill/hooks.ts）
+ */
+export type StopLog = { hit(who: AiStop): void; take(): AiStop[] };
+
+export function stopLog(): StopLog {
+  const seen = new Set<AiStop>();
+  return {
+    hit: (who) => void seen.add(who),
+    take: () => {
+      const out = AI_STOPS.filter((x) => seen.has(x));
+      seen.clear();
+      return out;
+    },
+  };
+}
+
+/** 停止の印の状況（無ければ空）。世界を変えない */
+export function stopIncidents(stopped: ReadonlyArray<AiStop>, hour: number): DrillIncident[] {
+  if (stopped.length === 0) return [];
+  return [{ actor: "world", at: hour, change: { kind: "ai_stop", stopped: [...stopped] }, text: stopped.map((x) => AI_STOP_LABELS[x]).join("・"), ai: false }];
+}
+
+/** 刻みの停止の印（状況の ai_stop から。無ければ空） */
+export function aiStoppedOf(tick: Pick<Tick, "incidents">): AiStop[] {
+  const set = new Set(tick.incidents.flatMap((e) => (e.change.kind === "ai_stop" ? e.change.stopped : [])));
+  return AI_STOPS.filter((x) => set.has(x));
+}
 
 /** 1 刻みの呼び方の足し物（T20）。replies は表の出来事を当てたあと・監督の前の世界で、監督に言い換えを頼む返事を決める */
 export type StepOptions = { replies?: (world: WorldState) => ReadonlyArray<ReplyAsk> };
@@ -587,6 +621,8 @@ export async function step(
   if (state.status !== "running" || state.step >= last) throw new DrillEnded();
   const index = state.step + 1;
   const def = scenario.ticks[index];
+  // 前の刻み・通話の分の停止の印を捨てる（この刻みの分だけ数える）
+  hooks.stops?.take();
   const hour = def.hour;
   const members = new Set(state.participants);
   // 想定の表の配役（T70）。事業所にいない人の行は、開始のときに決めた代わりの人に当てる（無ければ表の person のまま）
@@ -676,7 +712,7 @@ export async function step(
     for (const { rows: own } of rows) turns.push(...own.map((f) => fixedToTurn(f, hour)));
   }
 
-  const tick: Tick = { step: index, hour, incidents, turns, world, finished: index >= last };
+  const tick: Tick = { step: index, hour, incidents: [...incidents, ...stopIncidents(hooks.stops?.take() ?? [], hour)], turns, world, finished: index >= last };
   return { state: foldTick(state, tick, last), tick, words };
 }
 
@@ -747,7 +783,7 @@ async function virtualStep(
     results.forEach((x, i) => turns.push(...x.filter((u) => u.person === live[i])));
   }
 
-  const tick: Tick = { step: index, hour, incidents, turns, world, finished: index >= last };
+  const tick: Tick = { step: index, hour, incidents: [...incidents, ...stopIncidents(hooks.stops?.take() ?? [], hour)], turns, world, finished: index >= last };
   // foldTick は前の世界に状況を当て直すので、部屋の ID は前の世界に先に写す
   const base = r && r.session !== undefined ? { ...state, world: { ...state.world, session: r.session } } : state;
   return { state: foldTick(base, tick, last), tick, words: [] };

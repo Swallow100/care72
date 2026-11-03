@@ -116,11 +116,14 @@ export function needsCast(scenario: Scenario, participants: ReadonlyArray<string
 
 /**
  * 本人役を呼びうる人か（開始の前の見込み、lib/drill/estimate.ts）。押せる人がいるか、想定に当たりうる行がある
- * （その人の行か、who に合う行。参加者の選び方で配役が変わるので、当たりうる物を全部数える = 上限の側）
+ * （その人の行か、事業所にいない人の行で who に合う物。参加者の選び方で配役が変わるので、当たりうる物を全部数える = 上限の側）。
+ * facts は事業所の人の事実（事業所にいるかもこれで見る）
  */
-export function mayBeCalled(scenario: Scenario, person: string, f: CastFacts): boolean {
+export function mayBeCalled(scenario: Scenario, person: string, facts: ReadonlyMap<string, CastFacts>): boolean {
+  const f = facts.get(person);
+  if (!f) return false;
   if (f.canPress) return true;
-  return rowsOf(scenario).some((r) => r.person === person || (r.who !== undefined && matchesPick(f, r.who)));
+  return rowsOf(scenario).some((r) => r.person === person || (!facts.has(r.person) && r.who !== undefined && matchesPick(f, r.who)));
 }
 
 /** 出来事 1 つを配役で引く。代わりの人がいれば person を替え、差し込みは世界の変化も組み直す（施設・道の id は人ごと） */

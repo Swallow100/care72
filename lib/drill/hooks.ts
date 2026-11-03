@@ -12,6 +12,7 @@ import { d1UsageStore } from "../claude/usage.ts";
 import type { PseudonymInput } from "../pseudonym/index.ts";
 import type { ActionHooks, CallHook } from "./actions.ts";
 import { drillScope } from "./db.ts";
+import { stopLog } from "./engine.ts";
 import { createDirectorHook } from "./director.ts";
 import { createOutcomeHook, loadOutcomeSources, type OutcomeSource } from "./outcome.ts";
 import { buildPersona, createPersonaHook, isPersonaFailure, loadPersonaSources, personaCallReply } from "./persona.ts";
@@ -50,9 +51,12 @@ export function drillHooks(
   let outcomeSources: Promise<ReadonlyMap<string, OutcomeSource>> | null = null;
   const loadOutcome = () => (outcomeSources ??= loadOutcomeSources(env.DB, scope.officeId));
   const mode = worldModeOf(env.DRILL_WORLD);
+  // 上限で止まった役を刻みの印にする（T70）
+  const stops = stopLog();
   return {
-    director: createDirectorHook({ load, ai }),
-    persona: createPersonaHook({ load, ai }),
+    stops,
+    director: createDirectorHook({ load, ai, stops }),
+    persona: createPersonaHook({ load, ai, stops }),
     call: createCallHook({ load, ai }),
     // 仮想モード（T50・T53）だけが使う。世界は部屋（Managed Agents）か 1 回呼びで、結末も世界が決める。outcome は時計の目安
     world: createWorldHook({
@@ -60,6 +64,7 @@ export function drillHooks(
       load,
       loadOutcome,
       ai,
+      stops,
       ...(mode === "session" ? { room: () => ({ db: env.DB, client: opts.room ?? roomClientOf(env), ai, ...(opts.roomTime ?? {}) }) } : {}),
     }),
     outcome: createOutcomeHook({ load: loadOutcome }),

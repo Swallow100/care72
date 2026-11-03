@@ -60,7 +60,7 @@ import {
   type PseudonymInput,
   type PseudonymKey,
 } from "../pseudonym/index.ts";
-import type { ActionRecord, DrillIncident, DrillTurn, HeardSignal, PersonaHook, PersonaInput, PersonState } from "./engine.ts";
+import type { ActionRecord, DrillIncident, DrillTurn, HeardSignal, PersonaHook, PersonaInput, PersonState, StopLog } from "./engine.ts";
 import { clockLabel, PHONE_LABELS, SHELTER_LABELS, TSUNAMI_LABELS, WATER_LABELS } from "./labels.ts";
 import { nightLine } from "./night.ts";
 import { eventHour, type FixedTurn, type OutageArea, type PhoneState, type WorldState } from "./scenarios.ts";
@@ -602,6 +602,8 @@ export type PersonaDeps = {
   ai: AskJsonContext;
   /** 年齢を数える日（JST、YYYY-MM-DD）。無ければ今日 */
   on?: string;
+  /** 上限で落ちたときに「本人役 停止」を書き留める所（T70）。返す物は変わらない（表の固定の安否か連絡なし） */
+  stops?: StopLog;
 };
 
 /**
@@ -622,6 +624,7 @@ export function createPersonaHook(deps: PersonaDeps): PersonaHook {
       const r = await askJson(buildPersonaRequest(persona.profile, tick, input.virtual === true), deps.ai);
       return personaTurns(input, persona, r.value);
     } catch (e) {
+      if (e instanceof AiLimitReached) deps.stops?.hit("persona");
       // AI の層の失敗と伏せきれないは想定どおり。それ以外（台帳を読めないなど）は名前だけログに残す（中身は書かない）
       if (!isPersonaFailure(e)) console.error("本人役の 1 刻みに失敗", e instanceof Error ? e.name : typeof e);
       return fixedTurns(input);

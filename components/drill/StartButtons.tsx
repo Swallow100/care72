@@ -8,7 +8,13 @@
 // 設定（T59）: 想定のボタンの前に畳んだ「設定」。開くと参加者（担当一覧の人のチェック。既定は全員）・職員（既定は想定の表の値）・夜間発災。
 // 閉じたまま・何も変えずに想定を押せば、送る物は前と同じ { scenario } だけ（選んだ物だけ options に入れる）。
 // 開く・閉じるは details を使わずボタン（既定の黒い▼を出さない）。選んだ印はチェックの印だけで、下地を敷かない。
+//
+// T70: 参加者のうち、本人も家族・支援者もスマホで赤緑を押せない人に「押せる人なし」（灰の文字。名前は本人のページへ。スマホを入れるのはそこ）。
+// 押せる人のいない人は本人役（AI）が呼ばれず、表の行が当たったときだけ表の固定の安否が届く。
+// 想定のボタンの下に、選んだ参加者での AI の呼び出しの見込み（lib/drill/estimate.ts）と今日の残り。見込みが残りを超える想定には
+// 「上限不足」（赤の文字）。開始は止めない（途中で当たれば刻みに「停止」の印）
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useId, useState } from "react";
 import type { DrillScenario } from "@/lib/db/types";
@@ -16,30 +22,40 @@ import { Button } from "@/components/ui/Button";
 import { OpenIcon, PlayIcon } from "@/components/ui/Icon";
 import { LABEL } from "@/components/ui/Panel";
 import { Select } from "@/components/ui/Select";
-import { DRILL_LABELS, SCENARIO_LABELS, T59_LABELS } from "@/lib/drill/labels";
+import { estimateDrillCalls, overLimit } from "@/lib/drill/estimate";
+import { DRILL_LABELS, SCENARIO_LABELS, T59_LABELS, T70_LABELS } from "@/lib/drill/labels";
 import { STAFF_MAX } from "@/lib/drill/options";
 
 /** 主の操作の色にする想定 */
 const MAIN_SCENARIO: DrillScenario = "short";
 
-/** 担当一覧の人（参加者の選択） */
-export type StartPerson = { id: string; name: string };
+/**
+ * 担当一覧の人（参加者の選択）。canPress が false の人に「押せる人なし」（無ければ印なし）、callable は本人役を呼びうる想定
+ * （見込みに使う。無ければ全部の想定で数える）
+ */
+export type StartPerson = { id: string; name: string; canPress?: boolean; callable?: ReadonlyArray<DrillScenario> };
 
 const SELECT =
   "h-8 min-w-0 rounded bg-panel px-2 text-sm text-ink outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-accent";
 /** チェックの行。押したときは灰色だけ（data-press）。375px でも押せる高さ */
 const CHECK_ROW = "flex min-h-8 min-w-0 cursor-pointer items-center gap-1.5 rounded px-1.5 text-sm";
 const CHECK = "size-4 shrink-0 accent-accent";
+/** 押せる人なしの人の名前（本人のページへ。下線の文字、押したときは灰色だけ） */
+const NAME_LINK =
+  "min-w-0 truncate rounded px-0.5 underline underline-offset-2 outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-accent";
 
 export function StartButtons({
   scenarios,
   disabled,
   people = [],
+  remaining = null,
 }: {
   scenarios: ReadonlyArray<DrillScenario>;
   disabled: boolean;
   /** 担当一覧の人（参加者の選択。無ければ設定の参加者を出さない） */
   people?: ReadonlyArray<StartPerson>;
+  /** 今日の AI の残り（lib/claude/gate.ts の drillGate と同じ値。読めなければ null） */
+  remaining?: number | null;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState<DrillScenario | null>(null);
@@ -52,6 +68,10 @@ export function StartButtons({
 
   const all = chosen.size === people.length;
   const none = people.length > 0 && chosen.size === 0;
+  const picked = people.filter((p) => chosen.has(p.id));
+  // 押せる人なし（選んだ参加者のうち）
+  const noPresser = picked.filter((p) => p.canPress === false).length;
+  const ordered = [...scenarios].sort((a, b) => Number(b === MAIN_SCENARIO) - Number(a === MAIN_SCENARIO));
 
   /** 選んだ物だけ（何も変えなければ undefined。送る物は前と同じ） */
   const options = () => {
@@ -113,7 +133,7 @@ export function StartButtons({
         {T59_LABELS.settings}
         {changed && !open && <span className="text-xs font-normal text-muted">{settingsSummary(people.length, chosen.size, staff, night)}</span>}
       </Button>
-      {[...scenarios].sort((a, b) => Number(b === MAIN_SCENARIO) - Number(a === MAIN_SCENARIO)).map((s) => (
+      {ordered.map((s) => (
         <Button
           key={s}
           kind={s === MAIN_SCENARIO ? "main" : "plain"}
@@ -131,6 +151,32 @@ export function StartButtons({
           {error}
         </span>
       )}
+      {people.length > 0 && !none && (
+        <p className="flex w-full flex-wrap items-baseline gap-x-3 gap-y-0.5 text-xs text-muted tabular-nums" data-estimate>
+          <span>{T70_LABELS.estimate}</span>
+          {ordered.map((s) => {
+            const n = estimateDrillCalls(s, picked);
+            const over = overLimit(n, remaining);
+            return (
+              <span key={s} data-estimate-scenario={s} data-estimate-calls={n} data-over={over ? "" : undefined}>
+                {SCENARIO_LABELS[s]} {T70_LABELS.about} {n}
+                {over && <span className="ml-1 font-bold text-danger">{T70_LABELS.short}</span>}
+              </span>
+            );
+          })}
+          <span>{T70_LABELS.times}</span>
+          {remaining !== null && (
+            <span data-estimate-remaining={remaining}>
+              / {T70_LABELS.remaining} {remaining} {T70_LABELS.times}
+            </span>
+          )}
+          {noPresser > 0 && (
+            <span data-no-presser-count={noPresser}>
+              {T70_LABELS.noPresser} {noPresser} {T59_LABELS.people}
+            </span>
+          )}
+        </p>
+      )}
       {open && (
         <div id={boxId} className="basis-full space-y-2 rounded-md bg-panel2 px-2.5 py-2" data-start-options>
           {people.length > 0 && (
@@ -140,6 +186,11 @@ export function StartButtons({
                 <span className="tabular-nums">
                   {chosen.size} / {people.length} {T59_LABELS.people}
                 </span>
+                {noPresser > 0 && (
+                  <span className="font-normal tabular-nums">
+                    {T70_LABELS.noPresser} {noPresser} {T59_LABELS.people}
+                  </span>
+                )}
                 {none && <span className="font-bold text-danger">{T59_LABELS.noParticipants}</span>}
                 <Button
                   kind="plainIn"
@@ -151,12 +202,30 @@ export function StartButtons({
                 </Button>
               </legend>
               <div className="grid grid-cols-[repeat(auto-fill,minmax(8rem,1fr))] gap-x-2 gap-y-0.5">
-                {people.map((p) => (
-                  <label key={p.id} className={CHECK_ROW} data-press>
-                    <input type="checkbox" className={CHECK} checked={chosen.has(p.id)} onChange={() => toggle(p.id)} data-start-person={p.id} />
-                    <span className="min-w-0 truncate">{p.name}</span>
-                  </label>
-                ))}
+                {people.map((p) =>
+                  p.canPress === false ? (
+                    // 押せる人なし: 名前は本人のページへ（スマホを入れる所）。チェックは名前でなく四角だけで切り替える
+                    <div key={p.id} className={`${CHECK_ROW} cursor-auto`} data-no-presser={p.id}>
+                      <input
+                        type="checkbox"
+                        className={`${CHECK} cursor-pointer`}
+                        checked={chosen.has(p.id)}
+                        onChange={() => toggle(p.id)}
+                        aria-label={p.name}
+                        data-start-person={p.id}
+                      />
+                      <Link href={`/people/${encodeURIComponent(p.id)}`} className={NAME_LINK} data-press>
+                        {p.name}
+                      </Link>
+                      <span className="shrink-0 text-xs text-muted">{T70_LABELS.noPresser}</span>
+                    </div>
+                  ) : (
+                    <label key={p.id} className={CHECK_ROW} data-press>
+                      <input type="checkbox" className={CHECK} checked={chosen.has(p.id)} onChange={() => toggle(p.id)} data-start-person={p.id} />
+                      <span className="min-w-0 truncate">{p.name}</span>
+                    </label>
+                  ),
+                )}
               </div>
             </fieldset>
           )}
