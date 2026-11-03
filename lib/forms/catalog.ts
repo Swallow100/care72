@@ -87,6 +87,15 @@ export const DOCUMENT_CATALOG = {
     when: "発災後。医療班が読む",
     source: "ケア72 の様式（元の様式なし）",
   },
+  phone: {
+    id: "phone",
+    official: "本人・家族のスマホ入口",
+    short: "スマホ入口",
+    what: "本人・家族が自分のスマホで安否のボタンを開くリンクと QR（期限 180 日、再発行で前の物は無効）",
+    who: "ケアマネが本人・家族・支援者へ渡す（紙・LINE などの渡し方は事業所が決める）",
+    when: "平時に渡し、発災時に本人・家族が開く",
+    source: "ケア72 の様式（元の様式なし）",
+  },
   form9: {
     id: "form9",
     official: FORM9_TITLE,

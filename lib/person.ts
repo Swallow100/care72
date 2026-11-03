@@ -278,6 +278,8 @@ const DOCUMENT_PATHS: Partial<Record<keyof typeof DOCUMENT_LABELS, (personId: st
   medical: (id) => `/people/${encodeURIComponent(id)}/forms/medical`,
   own: (id) => `/people/${encodeURIComponent(id)}/forms/own`,
   qr: (id) => `/people/${encodeURIComponent(id)}/forms/qr`,
+  // 本人・家族のスマホ入口（T69a）。ケアマネだけ（医療班・行政の範囲に無い）
+  phone: (id) => `/people/${encodeURIComponent(id)}/phone`,
 };
 
 export type TimelineItem = {

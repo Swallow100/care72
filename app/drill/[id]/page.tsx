@@ -87,10 +87,12 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
   const sit = s.situation;
   const outage = s.state.world.outage;
   const recordings = voiceOn ? recordingsOf(s) : {};
+  // 訓練の人の印（T70。デモ事業所は架空、ほかは本人役）
+  const fiction = s.fiction ?? "fictional";
   const slots: TableSlots = {
     sortHref: (k) => here({ sort: k }),
     nameHref: () => null,
-    nameMark: () => <FictionalMark />,
+    nameMark: () => <FictionalMark kind={fiction} />,
     detail: (r) =>
       r.detail ? (
         <DrillRowDetail
@@ -162,7 +164,7 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
           )}
         </div>
       </header>
-      <FictionalNote />
+      <FictionalNote kind={fiction} />
 
       <section aria-label={DRILL_LABELS.elapsed} className="grid gap-x-6 gap-y-2 rounded-lg bg-panel px-3 py-3 lg:grid-cols-[11rem_minmax(0,1fr)]">
         <div>
@@ -211,21 +213,22 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
             <Panel title={DRILL_LABELS.actions} id="actions">
               <div className="space-y-2.5">
                 {running && (
-                  <ActionPanel drillId={id} step={s.drill.step} actions={actions.length} people={people} contacts={s.contacts} />
+                  <ActionPanel drillId={id} step={s.drill.step} actions={actions.length} people={people} contacts={s.contacts} fiction={fiction} />
                 )}
-                {running && latest && <LatestResult action={latest} names={s.names} ticks={s.ticks} voiceOf={voiceOf} />}
+                {running && latest && <LatestResult action={latest} names={s.names} ticks={s.ticks} voiceOf={voiceOf} fiction={fiction} />}
                 <ActionLog
                   actions={actions}
                   hours={s.hours}
                   current={s.shown}
                   names={s.names}
                   voiceOf={voiceOf}
+                  fiction={fiction}
                   {...(running ? { undo: { drillId: id, step: s.drill.step, actions: actions.length, act: s.undoable } } : {})}
                 />
               </div>
             </Panel>
             <Panel title={DRILL_LABELS.situation} id="situation">
-              <Situation ticks={s.ticks} names={s.names} startedAt={s.drill.started_at} during={during} />
+              <Situation ticks={s.ticks} names={s.names} startedAt={s.drill.started_at} during={during} fiction={fiction} />
             </Panel>
           </div>
           <div className="min-w-0 space-y-3">
@@ -250,7 +253,7 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
           </div>
         </div>
       </div>
-      {running && <IncomingCall drillId={id} calls={incomingOf(s, voiceOn, await respondedOf(id))} />}
+      {running && <IncomingCall drillId={id} calls={incomingOf(s, voiceOn, await respondedOf(id))} fiction={fiction} />}
     </main>
   );
 }

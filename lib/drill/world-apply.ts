@@ -12,7 +12,7 @@
 import * as z from "zod";
 import type { ClockCategory, DependsOn } from "../db/types.ts";
 import { findLeaks, restoreText, type PseudonymKey } from "../pseudonym/index.ts";
-import { aliasOfTown, AREA_ROADS, AREA_TOWNS, facilityOf, roadOf, restoreTowns, shelterOf, townOfAlias } from "./area.ts";
+import { aliasOfTown, AREA_ROADS, DEMO_AREA, facilityOf, roadOf, restoreTowns, shelterOf, townOfAlias, type Area } from "./area.ts";
 import { personOfAlias } from "./director.ts";
 import type { DrillIncident } from "./engine.ts";
 import { PHONE_LABELS, SHELTER_LABELS } from "./labels.ts";
@@ -105,6 +105,13 @@ export type ApplyContext = {
   ended: ReadonlySet<string>;
   hour: number;
   via: WorldVia;
+  /** 事業所の地理（T70、lib/drill/area.ts の areaOf）。無ければデモ事業所の架空の街 */
+  area?: Area;
+  /**
+   * 結末を当てるか（T70 の続き）。false（デモ以外の事業所）なら、返ってきた結末（farewells）は全部捨てる。
+   * 実在の人の仮名に結末を付けないため。無ければ当てる（デモ事業所）
+   */
+  endings?: boolean;
 };
 
 // ---------- 値を読む ----------
@@ -116,10 +123,10 @@ function kindOf(raw: string): WorldKind | null {
 }
 
 /** 地区の欄（「甲地区・乙地区」「甲、乙」）→ 町名の一覧。知らない別名は捨てる */
-function townsOf(raw: string): string[] {
+function townsOf(raw: string, area: Area): string[] {
   const out = new Set<string>();
   for (const part of raw.split(/[・、,，\s/]+/u)) {
-    const t = townOfAlias(part);
+    const t = townOfAlias(part, area);
     if (t) out.add(t);
   }
   return [...out];
@@ -184,7 +191,7 @@ function townOfTarget(raw: string, ctx: ApplyContext): string | null {
 
 /** 地区の欄と仮名の欄から町の一覧 */
 function placeOf(e: WorldStep["events"][number], ctx: ApplyContext): string[] {
-  const towns = townsOf(e.town);
+  const towns = townsOf(e.town, ctx.area ?? DEMO_AREA);
   const t = townOfTarget(e.target, ctx);
   if (t && !towns.includes(t)) towns.push(t);
   return towns;
@@ -201,6 +208,7 @@ function dependents(ctx: ApplyContext, depends: DependsOn | null): string[] {
 }
 
 function buildEvent(e: WorldStep["events"][number], ctx: ApplyContext): Built[] {
+  const area = ctx.area ?? DEMO_AREA;
   const kind = kindOf(e.kind);
   if (!kind) return [];
   switch (kind) {
@@ -211,22 +219,28 @@ function buildEvent(e: WorldStep["events"][number], ctx: ApplyContext): Built[] 
       return towns.map((town): Built => {
         const persons = residents(ctx, [town]);
         if (kind === "landslide") return { change: { kind: "landslide", town, persons }, text: `${town} 土砂崩れ` };
-        const depthM = depthOf(e.value) ?? AREA_TOWNS.find((t) => t.town === town)?.floodM ?? null;
+        const depthM = depthOf(e.value) ?? area.towns.find((t) => t.town === town)?.floodM ?? null;
         return { change: { kind: "town_flood", town, depthM, persons }, text: `${town} 浸水${depthM != null ? ` ${depthM} m` : ""}` };
       });
     }
     case "road": {
       const open = openOf(e.value) ?? false;
-      const road = roadOf(e.name);
+      const road = roadOf(e.name, area);
       if (road) {
         const persons = residents(ctx, road.towns);
-        return [{ change: { kind: "town_road", road: road.id, label: road.name, open, persons }, text: `${road.name} ${open ? "通行可" : "通行止"}` }];
+        // 道の名前は部屋に見せる別名のまま世界に持ち（今の街の文に使う）、画面の文だけ町名に戻す（台帳から作った地理の「甲地区の道」）
+        return [
+          {
+            change: { kind: "town_road", road: road.id, label: road.name, open, persons },
+            text: restoreTowns(`${road.name} ${open ? "通行可" : "通行止"}`, area),
+          },
+        ];
       }
       const towns = placeOf(e, ctx);
       return towns.map((town): Built => {
         const persons = residents(ctx, [town]);
         const label = `${town}の道`;
-        return { change: { kind: "town_road", road: `town-${aliasOfTown(town) ?? town}`, label, open, persons }, text: `${label} ${open ? "通行可" : "通行止"}` };
+        return { change: { kind: "town_road", road: `town-${aliasOfTown(town, area) ?? town}`, label, open, persons }, text: `${label} ${open ? "通行可" : "通行止"}` };
       });
     }
     case "outage": {
@@ -252,13 +266,13 @@ function buildEvent(e: WorldStep["events"][number], ctx: ApplyContext): Built[] 
       return [{ change: { kind: "phone", state }, text: `電話 ${PHONE_LABELS[state]}` }];
     }
     case "shelter": {
-      const s = shelterOf(e.name);
+      const s = shelterOf(e.name, area);
       const state = shelterStateOf(e.value);
       if (!s || !state) return [];
       return [{ change: { kind: "shelter", id: `sh-${s.id}`, label: s.name, state }, text: `${s.name} ${SHELTER_LABELS[state]}` }];
     }
     case "facility": {
-      const f = facilityOf(e.name);
+      const f = facilityOf(e.name, area);
       const open = openOf(e.value);
       if (!f || open === null) return [];
       const out: Built[] = [
@@ -285,27 +299,27 @@ function buildEvent(e: WorldStep["events"][number], ctx: ApplyContext): Built[] 
 }
 
 /** 世界の 1 文を画面の文に。禁じる語・元の情報（氏名・電話）が残る物・空は捨てる */
-export function cleanNarration(raw: string, key: PseudonymKey): { room: string; text: string } | null {
+export function cleanNarration(raw: string, key: PseudonymKey, area: Area = DEMO_AREA): { room: string; text: string } | null {
   const room = Array.from(raw.replace(/\s+/g, " ").trim()).slice(0, NARRATION_MAX).join("");
   if (!room || FORBIDDEN_WORDS.test(room) || findLeaks(room, key).length > 0) return null;
-  return { room, text: restoreTowns(restoreText(room, key)) };
+  return { room, text: restoreTowns(restoreText(room, key), area) };
 }
 
 /** 結末の固定の文（世界の 1 文に禁じる語・漏れがあるとき）。name は氏名（画面の文。サーバーの中だけ） */
 export const farewellFixed = (name: string) => `${name}さんには、この時間までに助けが届きませんでした`;
 
 /** 結末の 1 文を検査する。禁じる語・漏れ・空なら null（固定の文にする） */
-export function cleanFarewell(raw: string, key: PseudonymKey): string | null {
+export function cleanFarewell(raw: string, key: PseudonymKey, area: Area = DEMO_AREA): string | null {
   const t = Array.from(raw.replace(/\s+/g, " ").trim()).slice(0, FAREWELL_MAX).join("");
   if (!t || FORBIDDEN_WORDS.test(t) || findLeaks(t, key).length > 0) return null;
-  return restoreTowns(restoreText(t, key));
+  return restoreTowns(restoreText(t, key), area);
 }
 
 /** 結末の理由（世界の事実）を検査する。禁じる語・医療の語・漏れ・空なら null（理由なし） */
-export function cleanReason(raw: string, key: PseudonymKey): string | null {
+export function cleanReason(raw: string, key: PseudonymKey, area: Area = DEMO_AREA): string | null {
   const t = Array.from(raw.replace(/\s+/g, " ").trim()).slice(0, FAREWELL_REASON_MAX).join("");
   if (!t || FORBIDDEN_WORDS.test(t) || REASON_MEDICAL_WORDS.test(t.normalize("NFKC")) || findLeaks(t, key).length > 0) return null;
-  return restoreTowns(restoreText(t, key));
+  return restoreTowns(restoreText(t, key), area);
 }
 
 /**
@@ -321,13 +335,14 @@ export type OutcomeAsk = {
 /** 世界が決めた結末を状況にする（守りはファイルの頭の注）。hints は時計の計算で条件に達した人（label を引くだけ） */
 export function farewellIncidents(farewells: WorldStep["farewells"], ctx: ApplyContext, hints: ReadonlyArray<OutcomeAsk> = []): DrillIncident[] {
   const out: DrillIncident[] = [];
+  if (ctx.endings === false) return out;
   for (const f of farewells) {
     if (out.length >= FAREWELL_PER_TICK_MAX) break;
     const person = personOfAlias(f.target, ctx.key);
     if (!person || !ctx.facts.has(person) || ctx.ended.has(person) || out.some((e) => e.person === person)) continue;
     const name = ctx.key.people.find((p) => p.personId === person)?.name ?? "";
-    const text = cleanFarewell(f.text, ctx.key) ?? farewellFixed(name);
-    const reason = cleanReason(f.reason, ctx.key);
+    const text = cleanFarewell(f.text, ctx.key, ctx.area) ?? farewellFixed(name);
+    const reason = cleanReason(f.reason, ctx.key, ctx.area);
     const label = hints.find((h) => h.person === person)?.label ?? "";
     out.push({ actor: "director", at: ctx.hour, change: { kind: "outcome", label, reason }, text, person, ai: true });
   }
@@ -341,7 +356,7 @@ export function farewellIncidents(farewells: WorldStep["farewells"], ctx: ApplyC
 export function worldIncidents(answer: WorldStep, ctx: ApplyContext, hints: ReadonlyArray<OutcomeAsk> = []): DrillIncident[] {
   const base = { actor: "director" as const, at: ctx.hour };
   const out: DrillIncident[] = [];
-  const n = cleanNarration(answer.narration, ctx.key);
+  const n = cleanNarration(answer.narration, ctx.key, ctx.area);
   if (n) out.push({ ...base, change: { kind: "narration", room: n.room, via: ctx.via }, text: n.text, ai: true });
   let used = 0;
   for (const e of answer.events) {
@@ -351,7 +366,7 @@ export function worldIncidents(answer: WorldStep, ctx: ApplyContext, hints: Read
     used += 1;
     for (const b of built) out.push({ ...base, change: b.change, text: b.text, ...(b.person ? { person: b.person } : {}), ai: true });
   }
-  return [...out, ...farewellIncidents(answer.farewells, ctx, hints)];
+  return ctx.endings === false ? out : [...out, ...farewellIncidents(answer.farewells, ctx, hints)];
 }
 
 /**

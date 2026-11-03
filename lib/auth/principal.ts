@@ -20,6 +20,7 @@ import {
   DEMO_SELF_PERSON_ID,
   JUDGE_LOGIN_ID,
 } from "./demo.ts";
+import { linkTarget } from "../qr/phone-link-store.ts";
 import { MAX_PASSWORD_LENGTH, verifyPassword } from "./password.ts";
 import { homePath, type JudgeRole, type Role } from "./roles.ts";
 import { sessionTimes, signSession, verifySession, type SessionPayload } from "./session.ts";
@@ -148,6 +149,19 @@ function accountPrincipal(a: AccountJoin): Principal | null {
 }
 
 /**
+ * スマホ入口のリンクで開いたセッション（T69a）。本人用は役 self、家族用は役 family。アカウントは無い（accountId null。
+ * 経過の author_id は NULL になる）。版が違う（作り直した）・本人を一覧から外した・事業所が無い・連絡先が答えられる種類でないときは null。
+ * 確かめ方はリンクを開くとき（lib/qr/phone-link-store.ts の resolvePhoneLink）と同じ linkTarget
+ */
+async function linkPrincipal(db: D1Database, s: Extract<SessionPayload, { k: "link" }>): Promise<Principal | null> {
+  const t = await linkTarget(db, { personId: s.p, contactId: s.c, generation: s.g });
+  if (!t) return null;
+  const base = { ...NOBODY, office: t.office, personId: t.personId };
+  if (t.contact === null) return { ...base, role: "self", displayName: t.personName };
+  return { ...base, role: "family", contactId: t.contact.id, displayName: t.contact.name };
+}
+
+/**
  * セッションの中身から。パスワードが変わった・アカウントが無い・審査員のパスワードが env に無いときは null。
  * 確かめ方はログインと同じ所（lib/auth/credential.ts）から取る（env の平文で入った山本も次の要求で切れない）。
  */
@@ -157,6 +171,7 @@ async function principalOf(db: D1Database, env: AuthEnv, secret: string, s: Sess
     if (!c || (await credentialVersion(c, secret)) !== s.pv) return null;
     return judgePrincipal(db, s.r);
   }
+  if (s.k === "link") return linkPrincipal(db, s);
   const a = await accountById(db, s.a);
   const c = a ? accountCredential(env, a) : null;
   if (!a || !c || (await credentialVersion(c, secret)) !== s.pv) return null;
