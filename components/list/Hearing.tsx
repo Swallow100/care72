@@ -4,12 +4,14 @@
 // 欄ごとに、本人・家族が押した答え（印なし。声の言葉の一致で取れた物は「声」）と、Claude の聞き取りメモ（文字起こしから写しただけ。AI の印）を
 // 同じ表に出す。ケアマネは「修正」で欄の文を直せる（直した欄は人の値になり AI の印が外れる。経過に残る）。
 // 色は付けない。聞き取りは色と連絡の順に使わない（lib/triage の入力に無い）。形は lib/signals/hearing.ts の hearingViewOf。
+// 場所の欄（T69b）は、避難先の名前（台帳）と、本人が送った端末の位置「位置 あり（±50 m）」と座標の文字。
 
 import { useState } from "react";
 import { AiMark } from "@/components/person/parts";
 import { BTN, BTN_IN, BTN_MAIN } from "@/components/person/intake-ui";
 import { HEARING_LABELS } from "@/lib/labels";
-import { hearingViewOf, MEMO_TEXT_MAX, type HearingRow, type HearingSource } from "@/lib/signals/hearing";
+import { hearingViewOf, MEMO_TEXT_MAX, type HearingPlace, type HearingRow, type HearingSource } from "@/lib/signals/hearing";
+import { coordText, positionText } from "@/lib/signals/labels";
 import type { HearingField } from "@/lib/signals/questions";
 
 export type HearingProps = {
@@ -20,11 +22,13 @@ export type HearingProps = {
   editable?: boolean;
   /** 面の中の区分（地が panel2）に置くときは true */
   inset?: boolean;
+  /** 場所の欄に重ねる物（T69b。台帳の避難先の名前と、本人が送った端末の位置） */
+  place?: HearingPlace;
 };
 
 type SaveState = "idle" | "saving" | "failed";
 
-export function Hearing({ signalId, source, editable = false, inset = false }: HearingProps) {
+export function Hearing({ signalId, source, editable = false, inset = false, place }: HearingProps) {
   const [memo, setMemo] = useState<string | null | undefined>(source.memo);
   // 一覧が読み直されて新しい行が来たら、それに合わせる
   const [seen, setSeen] = useState(source.memo);
@@ -36,7 +40,7 @@ export function Hearing({ signalId, source, editable = false, inset = false }: H
   const [draft, setDraft] = useState("");
   const [save, setSave] = useState<SaveState>("idle");
 
-  const view = hearingViewOf({ ...source, memo });
+  const view = hearingViewOf({ ...source, memo }, place);
   if (!view) return null;
   const btn = inset ? BTN_IN : BTN;
 
@@ -119,6 +123,12 @@ export function Hearing({ signalId, source, editable = false, inset = false }: H
                     </span>
                   )}
                   {r.textBy === "human" && <span className="text-xs text-muted">{HEARING_LABELS.edited}</span>}
+                  {r.position && (
+                    <span className="flex flex-wrap items-baseline gap-x-1.5" data-position>
+                      <span>{positionText(r.position.accuracyM)}</span>
+                      <span className="text-xs text-muted tabular-nums">{coordText(r.position)}</span>
+                    </span>
+                  )}
                   {editable && (
                     <button type="button" className={`ml-auto ${btn}`} data-press onClick={() => start(r)}>
                       {HEARING_LABELS.edit}

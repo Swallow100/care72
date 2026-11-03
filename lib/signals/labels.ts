@@ -94,3 +94,25 @@ export function recordingLogBody(r: { hasAudio: boolean; durationSec: number | n
 export function memoEditLogBody(field: HearingField, text: string | null): string {
   return `${HEARING_LABELS.title}${HEARING_LABELS.edit} ${HEARING_FIELD_LABELS[field]}${text ? `「${text}」` : ` ${HEARING_LABELS.clear}`}`;
 }
+
+// ---------- 場所（T69b） ----------
+
+/** ケアマネの画面の場所の言葉（聞き取りの欄の位置・地図のピン） */
+export const PLACE_LABELS = {
+  /** 本人が送った端末の位置 */
+  position: "位置",
+  has: "あり",
+  /** 地図のピンの title（台帳の位置でなく本人が送った位置に置いたとき） */
+  reported: "申告位置",
+} as const;
+
+/** 「位置 あり（±50 m）」。精度が無ければ「位置 あり」 */
+export function positionText(accuracyM: number | null): string {
+  const head = `${PLACE_LABELS.position} ${PLACE_LABELS.has}`;
+  return accuracyM === null || !Number.isFinite(accuracyM) ? head : `${head}（±${Math.round(accuracyM)} m）`;
+}
+
+/** 座標の文字（地図の全画面へのリンクが無いので、座標をそのまま出す）。小数 5 桁（約 1 m） */
+export function coordText(p: { lat: number; lng: number }): string {
+  return `${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}`;
+}

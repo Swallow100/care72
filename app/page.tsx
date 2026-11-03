@@ -3,11 +3,12 @@ import Link from "next/link";
 import { countColors } from "@/components/disaster/ColorCounts";
 import { Classification } from "@/components/list/Classification";
 import { Hearing } from "@/components/list/Hearing";
+import { Summary } from "@/components/list/Summary";
 import { CaseloadTable } from "@/components/list/CaseloadTable";
 import { DisasterSummary } from "@/components/list/DisasterSummary";
 import { DisasterTable } from "@/components/list/DisasterTable";
 import { FilterBar } from "@/components/list/FilterBar";
-import type { ClassificationSlot, HearingSlot } from "@/components/list/RowDetail";
+import type { ClassificationSlot, HearingSlot, SummarySlot } from "@/components/list/RowDetail";
 import { SidePane, type SideMapOptions } from "@/components/list/SidePane";
 import { UnlistedFold } from "@/components/office/UnlistedFold";
 import { UnlistedRows } from "@/components/office/UnlistedRows";
@@ -75,10 +76,19 @@ type Props = {
  */
 const CLASSIFICATION: ClassificationSlot = (s) => <Classification signalId={s.id} view={classViewOf(s.row)} editable inset />;
 
-/** 行の詳細の「聞き取り」（T49）。押した答えと Claude の聞き取りメモ（AI の印）。ケアマネが直せる。色と順は動かさない */
+/** 行の詳細の「聞き取り」（T49）。押した答えと Claude の聞き取りメモ（AI の印）。ケアマネが直せる。色と順は動かさない。場所の欄に避難先の名前と申告位置（T69b） */
 const HEARING: HearingSlot = (s) => (
-  <Hearing signalId={s.id} source={{ answers: s.row.answers, ai_memo: s.row.ai_memo, memo: s.row.memo }} editable inset />
+  <Hearing
+    signalId={s.id}
+    source={{ answers: s.row.answers, ai_memo: s.row.ai_memo, memo: s.row.memo }}
+    place={s.place}
+    editable
+    inset
+  />
 );
+
+/** 行の詳細の「まとめ」（T69b）。Claude のまとめ（AI の印）と本人の言葉を並べる。ケアマネが直せる・まとめが無ければ「生成」。色と順は動かさない */
+const SUMMARY: SummarySlot = (s) => <Summary signalId={s.id} summary={s.summary} transcript={s.transcript} editable inset />;
 
 // 担当一覧。ケアマネは自分の担当、審査員（ケアマネの役）はデモ事業所の山本の担当。
 // 行を押すと本人のページが右に開き（?open=<id>）、一覧は左に圧縮される。狭い幅は本人のページだけ。
@@ -229,7 +239,7 @@ export default async function CaseloadPage({ searchParams }: Props) {
           // 横に送らない。PC の幅（1024px 以上）は全部の列、狭い幅は列を省く（表の部品）
           <div className={`mt-3 ${TABLE_BOX}`}>
             {disaster ? (
-              <DisasterTable rows={rows} sort={key} dir={dir} filter={filter} classification={CLASSIFICATION} hearing={HEARING} />
+              <DisasterTable rows={rows} sort={key} dir={dir} filter={filter} classification={CLASSIFICATION} hearing={HEARING} summary={SUMMARY} />
             ) : (
               <CaseloadTable rows={rows} sort={key} dir={dir} filter={filter} />
             )}

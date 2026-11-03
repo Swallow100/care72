@@ -5,6 +5,8 @@
 // - view.ts: 信号の行を画面の形に（ブラウザでも読める）
 // - http.ts: 人の直しの API の中身
 // - labels.ts: 言葉
+// - summary.ts: 録音のまとめ（T69b。伏せた文だけを Haiku に 1 回、分類と並べて。元の言葉と並べて出し、色と順には使わない）
+// - summary-http.ts: 録音のあとに分類とまとめを並べて走らせる所と、まとめの直し・生成の API の中身
 
 export {
   buildClassifyRequest,
@@ -33,3 +35,17 @@ export {
 } from "./store.ts";
 export { CLASSIFY_COLUMNS, classViewOf, parseClassList, type ClassView, type SignalClassFields } from "./view.ts";
 export { CLASS_LABELS, CLASSIFY_ERROR_LABELS, CLASSIFY_LABELS } from "./labels.ts";
+export {
+  buildSummaryRequest,
+  normalizeSummary,
+  summarize,
+  summarizeSignal,
+  SUMMARY_MAX,
+  SUMMARY_SYSTEM,
+  SummarySchema,
+  type SummaryInput,
+  type SummaryResult,
+} from "./summary.ts";
+export { afterRecording, saveSummaryEdit, summaryPost } from "./summary-http.ts";
+export { summaryOf, type SignalSummary } from "./view.ts";
+export { SUMMARY_LABELS } from "./labels.ts";

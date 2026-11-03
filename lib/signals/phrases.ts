@@ -32,6 +32,10 @@ export const PHONE_PHRASES = {
   send: "{送|おく}る",
   /** 聞き取りの問いをとばす（T49。どの問いにも置く） */
   skip: "とばす",
+  /** 車・ほかの ところ を押したあと、本人の画面だけ（T69b）。はい なら端末の位置を 1 回だけ送る */
+  sendPlace: "いまの {場所|ばしょ}を おくりますか",
+  yes: "はい",
+  no: "いいえ",
 } as const;
 
 export const WHERE_PHRASES: Record<WhereNow, string> = {

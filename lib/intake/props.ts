@@ -5,6 +5,7 @@ import type { ClockCategory, Ledger } from "../db/types.ts";
 import type { PersonPageRows } from "../person.ts";
 import { questionQueue, type Question } from "./ask.ts";
 import type { EditData } from "./edit.ts";
+import { isAiConsentRefused } from "./http.ts";
 
 export type IntakeProps = {
   personId: string;
@@ -14,6 +15,12 @@ export type IntakeProps = {
   version: number;
   /** Claude の鍵があるか（無ければ「AI 未設定」と手入力） */
   aiReady: boolean;
+  /**
+   * AI 提供（ai_overseas）が不同意か（T74 の続き）。true なら開いた時点で入れる欄の AI の操作（分ける・写真と PDF 読取・
+   * 問いの自由文・再試行）を押せない形にし、上に「同意 拒否」。手で書く欄（面の「編集」・問いの選ぶ答え・次回）は使える。
+   * サーバーの入口の 403（lib/intake/http.ts の aiConsentRefusal）はそのまま
+   */
+  aiConsentRefused: boolean;
   /** 次の問いの順の列 */
   queue: Question[];
   /** 今の台帳（手入力の初めの値、印の見せ方） */
@@ -30,6 +37,7 @@ export function intakePropsOf(rows: PersonPageRows, aiReady: boolean): IntakePro
     officeId: rows.person.office_id,
     version: rows.person.version ?? 1,
     aiReady,
+    aiConsentRefused: isAiConsentRefused(rows.consents),
     queue: questionQueue(rows),
     ledger: parseLedger(rows.person.ledger),
     clocks: rows.clocks.map((k) => ({ category: k.category, label: k.label })),

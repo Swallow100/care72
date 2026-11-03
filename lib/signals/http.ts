@@ -14,7 +14,9 @@ import { MEMO_TEXT_MAX } from "./hearing.ts";
 import { HEARING_FIELDS, parseAnswers, type HearingField } from "./questions.ts";
 import {
   attachRecording,
+  parseLocation,
   saveAnswers,
+  saveLocation,
   saveMemoEdit,
   MAX_RECORDING_BYTES,
   MAX_RECORDING_SEC,
@@ -191,4 +193,22 @@ export async function memoEditPost(
   );
   if (!r.ok) return signalError(r.error);
   return Response.json({ ok: true, changed: r.changed, memo: r.memo }, { headers: NO_STORE });
+}
+
+// ---------- 申告位置（T69b） ----------
+
+/**
+ * 端末の位置の POST（JSON { lat, lng, accuracyM, at }。URL には載せない）。本人のスマホの役だけで、書けるのは自分が送った赤の信号だけ
+ * （家族・ほかの人の信号は 404、緑は 400、範囲の外は 400）。平時は 409
+ */
+export async function locationPost(db: D1Database, p: Principal | null, signalId: string, json: unknown): Promise<Response> {
+  const scope = signalScope(p, "save");
+  if (!scope) return refuse(p);
+  if (scope.writer.kind !== "self") return signalError("not_found");
+  if (!UUID.test(signalId)) return signalError("not_found");
+  const loc = parseLocation(json);
+  if (!loc) return signalError("invalid");
+  const r = await saveLocation(db, scope, signalId, loc);
+  if (!r.ok) return signalError(r.error);
+  return Response.json({ ok: true, changed: r.changed }, { headers: NO_STORE });
 }

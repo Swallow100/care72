@@ -3,6 +3,8 @@
 // - 押した答え（「わからない」のほか）がある欄は Claude の文を出さない（人が押した物が先。AI は空いている欄を埋めるだけ）
 // - ケアマネが直した欄は直した文だけを出し、AI の印を外す（空にした欄も人の値）
 // - どれも色と連絡の順に使わない（lib/triage の入力に無い）。ここは並べるだけ
+// - 場所の欄（T69b）: 避難所の問いの答え（d1・d2）は台帳の避難先の名前に引き、本人が送った端末の位置があれば「位置 あり（±50 m）」。
+//   名前と位置はサーバーが台帳と信号の行から渡す（Claude には渡らない）
 
 import { HEARING_FIELD_LABELS } from "../labels.ts";
 import {
@@ -42,6 +44,15 @@ export function readMemo(text: string | null | undefined): HearingMemo {
 
 export type HearingAnswer = { question: string; choice: string; via: AnswerVia; unknown: boolean };
 
+/** 本人が送った端末の位置（T69b。信号の reported_* の列） */
+export type HearingPosition = { lat: number; lng: number; accuracyM: number | null };
+
+/** 場所の欄に重ねる物（T69b）。台帳の避難先 1・2 の名前と、本人が送った端末の位置。無ければ空 */
+export type HearingPlace = {
+  shelters?: { d1: string | null; d2: string | null };
+  reported?: HearingPosition | null;
+};
+
 export type HearingRow = {
   field: HearingField;
   label: string;
@@ -51,14 +62,16 @@ export type HearingRow = {
   text: string | null;
   /** 文の出どころ。human はケアマネが直した（AI の印なし）、ai は Claude の写し（AI の印） */
   textBy: "human" | "ai" | null;
+  /** 場所の欄だけ（T69b）。本人が送った端末の位置。無ければ null */
+  position: HearingPosition | null;
 };
 
 export type HearingView = { rows: HearingRow[] };
 
 export type HearingSource = { answers?: string | null; ai_memo?: string | null; memo?: string | null };
 
-/** 欄ごとの押した答え */
-function answersOf(answers: Answers, field: HearingField): HearingAnswer[] {
+/** 欄ごとの押した答え。避難所の問いの d1・d2 は台帳の名前に引く（T69b。名前が無ければ「避難先1」） */
+function answersOf(answers: Answers, field: HearingField, place: HearingPlace = {}): HearingAnswer[] {
   const out: HearingAnswer[] = [];
   for (const q of QUESTIONS) {
     if (q.field !== field) continue;
@@ -66,19 +79,21 @@ function answersOf(answers: Answers, field: HearingField): HearingAnswer[] {
     if (!a) continue;
     const c = q.choices.find((x) => x.id === a.choice);
     if (!c) continue;
-    out.push({ question: q.label, choice: c.label, via: a.via, unknown: c.id === UNKNOWN_CHOICE });
+    const name = q.id === "shelterWhich" && (c.id === "d1" || c.id === "d2") ? place.shelters?.[c.id]?.trim() : undefined;
+    out.push({ question: q.label, choice: name || c.label, via: a.via, unknown: c.id === UNKNOWN_CHOICE });
   }
   return out;
 }
 
-/** 欄の形。答えも文も無ければ null（欄を出さない） */
-export function hearingViewOf(row: HearingSource): HearingView | null {
+/** 欄の形。答えも文も（場所の欄は位置も）無ければ null（欄を出さない） */
+export function hearingViewOf(row: HearingSource, place: HearingPlace = {}): HearingView | null {
   const answers = readAnswers(row.answers);
   const ai = readMemo(row.ai_memo);
   const human = readMemo(row.memo);
   const rows: HearingRow[] = [];
   for (const field of HEARING_FIELDS) {
-    const pressed = answersOf(answers, field);
+    const pressed = answersOf(answers, field, place);
+    const position = field === "place" ? (place.reported ?? null) : null;
     const known = pressed.some((a) => !a.unknown);
     let text: string | null = null;
     let textBy: HearingRow["textBy"] = null;
@@ -89,8 +104,8 @@ export function hearingViewOf(row: HearingSource): HearingView | null {
       text = ai[field] ?? null;
       textBy = "ai";
     }
-    if (pressed.length === 0 && textBy === null) continue;
-    rows.push({ field, label: HEARING_FIELD_LABELS[field], answers: pressed, text, textBy });
+    if (pressed.length === 0 && textBy === null && position === null) continue;
+    rows.push({ field, label: HEARING_FIELD_LABELS[field], answers: pressed, text, textBy, position });
   }
   return rows.length > 0 ? { rows } : null;
 }

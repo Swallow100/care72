@@ -1,6 +1,8 @@
 // 入れる欄の API（app/api/intake）の応答の形。失敗は種類と画面の言葉で返す（本文・鍵・値は返さない）。
 
 import { AiBadOutput, AiCallFailed, AiLimitReached, AiNotConfigured, AiRefused } from "../claude/errors.ts";
+import { AI_CONSENT_REFUSED_LABEL } from "../consent/labels.ts";
+import type { ConsentKind, ConsentStatus } from "../db/types.ts";
 import { INTAKE_LABELS } from "../labels.ts";
 import { PseudonymLeakError } from "../pseudonym/index.ts";
 
@@ -22,7 +24,9 @@ export type IntakeErrorCode =
   /** 同じ緊急・支援の順を 2 人に付けた（T57） */
   | "order_clash"
   /** 本人の電話（self）が 2 つになる（T68） */
-  | "self_twice";
+  | "self_twice"
+  /** AI 提供（ai_overseas）が不同意の人の台帳を入れる欄の AI に渡さない（T74） */
+  | "consent_refused";
 
 const LABELS: Record<IntakeErrorCode, string> = {
   file_type: INTAKE_LABELS.fileType,
@@ -40,6 +44,7 @@ const LABELS: Record<IntakeErrorCode, string> = {
   conflict: INTAKE_LABELS.conflict,
   order_clash: INTAKE_LABELS.orderClash,
   self_twice: INTAKE_LABELS.selfTwice,
+  consent_refused: AI_CONSENT_REFUSED_LABEL,
 };
 
 const STATUS: Record<IntakeErrorCode, number> = {
@@ -58,6 +63,7 @@ const STATUS: Record<IntakeErrorCode, number> = {
   conflict: 409,
   order_clash: 422,
   self_twice: 422,
+  consent_refused: 403,
 };
 
 /**
@@ -89,4 +95,20 @@ export function intakeErrorOf(e: unknown): Response | null {
   if (e instanceof AiBadOutput || e instanceof AiCallFailed) return intakeError("ai_failed", aiFailReasonOf(e) ?? undefined);
   if (e instanceof PseudonymLeakError) return intakeError("leak");
   return null;
+}
+
+/**
+ * 入れる欄の AI の入口（文を分ける /api/intake/extract・写真と PDF を読む /api/intake/read）の同意の確かめ（T74）。
+ * AI 提供（ai_overseas。Claude〔海外の事業者〕に仮名化した台帳を渡すこと）が「不同意」の人は 403「同意 拒否」で断り、Claude を呼ばない。
+ * 未確認・同意・行なしは通す（本運用では使う前に確かめる。README の本運用の条件）。
+ * 録音の分類・まとめ（本人が押して話した物。AI の告知を聞いている）と訓練の本人役（架空の人）はここを通らず、断らない。
+ * 見え方（lib/consent/scope.ts）には使わない
+ */
+export function aiConsentRefusal(consents: ReadonlyArray<{ kind: ConsentKind; status: ConsentStatus }>): Response | null {
+  return isAiConsentRefused(consents) ? intakeError("consent_refused") : null;
+}
+
+/** AI 提供が「不同意」か（入口の 403 と、本人のページを開いた時点の入れる欄の「同意 拒否」〔lib/intake/props.ts〕が同じ物を見る） */
+export function isAiConsentRefused(consents: ReadonlyArray<{ kind: ConsentKind; status: ConsentStatus }>): boolean {
+  return consents.some((c) => c.kind === "ai_overseas" && c.status === "refused");
 }

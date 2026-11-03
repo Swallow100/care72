@@ -11,7 +11,7 @@ import { SEED_AT, SEED_PEOPLE, seedConsents } from "../../seed/people.ts";
 import { buildOwnSheet, EMERGENCY_TEXT, lineText } from "../forms/own-sheet.ts";
 import type { PersonPageRows } from "../person.ts";
 import { createPhone, type PhoneState } from "./phone.ts";
-import { QUESTIONS, type QuestionId } from "./questions.ts";
+import { choicesFor, QUESTIONS, type QuestionId } from "./questions.ts";
 
 const noop: PhoneActions = {
   green() {},
@@ -19,6 +19,7 @@ const noop: PhoneActions = {
   where() {},
   answer() {},
   skip() {},
+  locate() {},
   extend() {},
   finish() {},
   again() {},
@@ -51,6 +52,8 @@ const STATES: PhoneState[] = [
   ...QUESTIONS.slice(1).map((x) => q(x.id)),
   q("canMove", { voice: "speaking" }),
   q("canMove", { voice: "listening" }),
+  // いまの 場所を おくりますか（T69b）
+  { step: "locate", answers: {} },
   { step: "prompt" },
   { step: "recording", startedAt: T, until: T + 30_000 },
   { step: "sending", color: "red" },
@@ -162,7 +165,8 @@ describe("災害モードの画面", () => {
     for (const s of STATES) {
       const html = view(s);
       if (s.step === "question") {
-        const choices = QUESTIONS.find((x) => x.id === s.id)!.choices.length;
+        // 避難所の問い（T69b）は台帳の避難先だけ出す（ここは避難先なし）
+        const choices = choicesFor(QUESTIONS.find((x) => x.id === s.id)!).length;
         expect(buttons(html).length, s.id).toBe(choices + 1);
       } else expect(buttons(html).length, s.step).toBeLessThanOrEqual(3);
       const t = text(html);
@@ -182,6 +186,7 @@ describe("119 の 1 行（T48、アドバイザーの返事）", () => {
     // 声の問いでも、からだの訴えを押したあとでも同じ 1 行（答えで出し分けない）
     q("water", { voice: "listening", answers: { body: { choice: "breath", via: "press" } } }),
     q("fireGas", { voice: "speaking", answers: { body: { choice: "chest", via: "voice" } } }),
+    { step: "locate", answers: { place: { choice: "car", via: "press" } } },
     { step: "prompt" },
     { step: "recording", startedAt: T, until: T + 30_000 },
     { step: "recording", startedAt: T, until: T + 120_000 },

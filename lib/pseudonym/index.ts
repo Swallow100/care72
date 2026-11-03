@@ -33,6 +33,9 @@ import type {
   SupportKind,
 } from "../db/types.ts";
 import { ageOn, todayJst } from "../age.ts";
+import { formLeaks, maskContactForms, maskPlaceAndNameForms, NAME_MARK } from "./forms.ts";
+
+export { ADDRESS_MARK, MAIL_MARK, NAME_MARK, NOT_NAME_WORDS, POSTAL_MARK } from "./forms.ts";
 
 // ---------- 入れる形（DB の行でも種のデータでも通る） ----------
 
@@ -218,7 +221,7 @@ export function aliasFor(index: number): string {
   return `${aliasLetters(index)} さん`;
 }
 
-const KIND_ROLE: Record<Exclude<ContactKind, "self" | "family" | "supporter">, string> = {
+export const KIND_ROLE: Readonly<Record<Exclude<ContactKind, "self" | "family" | "supporter">, string>> = {
   welfare_commissioner: "民生委員",
   visiting_nurse: "訪問看護",
   care_service: "介護の事業所",
@@ -278,7 +281,6 @@ function townStem(town: string): string {
 const PHONE_LIKE = /(?<![0-9０-９])[0０][0-9０-９]{1,4}[-‐－ー ]?[0-9０-９]{1,4}[-‐－ー ]?[0-9０-９]{3,4}(?![0-9０-９])/g;
 export const PHONE_MARK = "（電話）";
 export const TOWN_MARK = "（町名）";
-export const NAME_MARK = "（氏名）";
 /** みまもり員の名前の置き換え先 */
 export const WATCHER_ROLE = "みまもり員";
 
@@ -398,19 +400,44 @@ function buildKey(inputs: ReadonlyArray<PseudonymInput>): {
   return { key, roles };
 }
 
-/** 自由文の中の名前・町名・電話を置き換える */
-function scrub(text: string, key: PseudonymKey): string {
+/**
+ * 自由文の中の名前・町名・電話を置き換え、置き換えた所の数を返す。
+ * 順: 台帳の名前・町名（表）→ メール・郵便番号 → 電話の形 → 住所の形 → 敬称つきの名前の形（T74。./forms.ts）
+ */
+function scrubCounted(text: string, key: PseudonymKey): { text: string; count: number } {
   let out = text;
-  for (const { pattern, replacement } of key.rules) out = out.replace(pattern, replacement);
-  return out.replace(PHONE_LIKE, PHONE_MARK);
+  let count = 0;
+  for (const { pattern, replacement } of key.rules) {
+    out = out.replace(pattern, () => (count++, replacement));
+  }
+  const contact = maskContactForms(out);
+  out = contact.text.replace(PHONE_LIKE, () => (count++, PHONE_MARK));
+  const rest = maskPlaceAndNameForms(out);
+  return { text: rest.text, count: count + contact.count + rest.count };
 }
 
-/** できた物に元の情報が残っていないか。残っていれば何が残ったかを返す（値は返さない） */
+function scrub(text: string, key: PseudonymKey): string {
+  return scrubCounted(text, key).text;
+}
+
+/**
+ * 自由文を Claude に渡すときに伏せる所の数（入れる欄の「伏せ字 N」。T74）。何を伏せたかは返さない。
+ * pseudonymizeText と同じ置き換えを数えるだけで、Claude に渡せる物は作らない
+ */
+export function maskedCount(text: string, key: PseudonymKey): number {
+  return scrubCounted(text, key).count;
+}
+
+/**
+ * できた物に元の情報が残っていないか。残っていれば何が残ったかを返す（値は返さない）。
+ * 台帳の名前・電話・生年月日と、電話・敬称つきの名前・住所・郵便番号・メールの形（T74）を見る
+ */
 export function findLeaks(value: unknown, key: PseudonymKey): string[] {
   const json = typeof value === "string" ? value : JSON.stringify(value);
   const found = new Set<string>();
   for (const s of key.secrets) if (json.includes(s.value)) found.add(s.what);
   if (new RegExp(PHONE_LIKE.source).test(json)) found.add("電話番号らしい並び");
+  for (const what of formLeaks(json)) found.add(what);
   return [...found];
 }
 
@@ -542,7 +569,8 @@ export function pseudonymize(
 
 /**
  * ケアマネが話した・貼った自由文を Claude に渡せる形にする。
- * 置き換えられるのは key にある名前・町名と、電話番号らしい並びだけ。台帳に無い名前は残りうる。
+ * 置き換えるのは key にある名前・町名と、電話・敬称つきの名前・住所・郵便番号・メールの形（T74）。
+ * 敬称の無い台帳に無い名前（「田中が来る」）は残りうる。
  */
 export function pseudonymizeText(text: string, key: PseudonymKey): ForClaude<{ text: string }> {
   const out = { text: scrub(text, key) };
@@ -558,6 +586,18 @@ export function sealItemCatalog<T extends object>(catalog: T): ForClaude<T> {
   const copy = structuredClone(catalog);
   if (new RegExp(PHONE_LIKE.source).test(JSON.stringify(copy))) throw new PseudonymLeakError(["電話番号らしい並び"]);
   return seal(copy);
+}
+
+/**
+ * Claude の返事（本人役の言葉・講評・世界の 1 文などの作った文）を画面と記録に使える形に（T74 の続き、11/4 設計の答え）。
+ * 作った名前（「隣の佐藤さん」）・住所・郵便番号・メールの形は、文を捨てずに（氏名）（住所）（郵便番号）（メール）に置き換える
+ * （本人役が近所の人の名前を作っただけで黙らないように）。置き換えたあとに台帳の名前・生年月日・電話（key の secrets）か
+ * 電話の形が残れば null（呼ぶ側が捨てる。今までどおり）。仮名（A さん）は戻さない（restoreText は呼ぶ側が後で）。
+ * Claude に渡す前の検査（pseudonymize・pseudonymizeText の findLeaks）はこれを通らず、形が残れば今のまま止める
+ */
+export function maskReply(text: string, key: PseudonymKey): string | null {
+  const masked = maskPlaceAndNameForms(maskContactForms(text).text).text;
+  return findLeaks(masked, key).length > 0 ? null : masked;
 }
 
 /** Claude の返事の中の仮名（A さん）を氏名に戻す。画面に出す前に、ブラウザかサーバーで使う */

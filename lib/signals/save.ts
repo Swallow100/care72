@@ -365,3 +365,71 @@ export async function saveMemoEdit(
   ]);
   return { ok: true, changed: true, memo: json };
 }
+
+// ---------- 申告位置（T69b） ----------
+
+/** 端末の位置。範囲は緯度 -90〜90・経度 -180〜180、精度は 0 以上（m） */
+export type ReportedLocation = { lat: number; lng: number; accuracyM: number | null; at: string };
+
+export type SaveLocationResult = { ok: true; changed: boolean } | { ok: false; error: "not_found" | "forbidden" | "invalid" | "normal" };
+
+/** 位置の値の確かめ（数・範囲・時刻）。通らなければ null */
+export function parseLocation(v: unknown): ReportedLocation | null {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return null;
+  const { lat, lng, accuracyM, at } = v as Record<string, unknown>;
+  const num = (x: unknown): x is number => typeof x === "number" && Number.isFinite(x);
+  if (!num(lat) || !num(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
+  if (accuracyM !== null && accuracyM !== undefined && (!num(accuracyM) || accuracyM < 0)) return null;
+  if (typeof at !== "string" || at.length > 40 || Number.isNaN(Date.parse(at))) return null;
+  return { lat, lng, accuracyM: num(accuracyM) ? accuracyM : null, at };
+}
+
+/**
+ * 本人の赤の信号に、本人が許した端末の位置を書く（後勝ち）。書けるのは本人だけ（家族は見つからない）、自分の信号だけ、赤だけ、
+ * 災害モードの間だけ（平時は断る）。台帳の位置（ledger.basic.location）には書かない（本人が今いる所は別の値）。
+ * 経過の行は足さない（位置は聞き取りの欄と地図のピンに出す）。Claude には渡さない。色と順は変わらない（ルールの表に渡さない）
+ */
+export async function saveLocation(
+  db: D1Database,
+  s: SignalScope,
+  signalId: string,
+  loc: ReportedLocation,
+): Promise<SaveLocationResult> {
+  if (s.writer.kind !== "self") return { ok: false, error: "not_found" };
+  const w = await resolveWriter(db, s);
+  if (w === "not_found" || w === "forbidden") return { ok: false, error: w };
+  if (!isDisaster(await loadDisasterState(db, s.officeId))) return { ok: false, error: "normal" };
+  const row = await db
+    .prepare(
+      `SELECT s.id, s.color, s.reported_lat, s.reported_lng, s.reported_accuracy_m, s.reported_at
+         FROM signals s JOIN people p ON p.id = s.person_id
+        WHERE s.id = ?1 AND s.person_id = ?2 AND p.office_id = ?3 AND s.drill_id IS NULL AND s.source = 'self'`,
+    )
+    .bind(signalId, s.personId, s.officeId)
+    .first<{
+      id: string;
+      color: string;
+      reported_lat: number | null;
+      reported_lng: number | null;
+      reported_accuracy_m: number | null;
+      reported_at: string | null;
+    }>();
+  if (!row) return { ok: false, error: "not_found" };
+  if (row.color !== "red") return { ok: false, error: "invalid" };
+  if (
+    row.reported_lat === loc.lat &&
+    row.reported_lng === loc.lng &&
+    row.reported_accuracy_m === loc.accuracyM &&
+    row.reported_at === loc.at
+  ) {
+    return { ok: true, changed: false };
+  }
+  await db
+    .prepare(
+      `UPDATE signals SET reported_lat = ?3, reported_lng = ?4, reported_accuracy_m = ?5, reported_at = ?6
+        WHERE id = ?1 AND person_id = ?2`,
+    )
+    .bind(row.id, s.personId, loc.lat, loc.lng, loc.accuracyM, loc.at)
+    .run();
+  return { ok: true, changed: true };
+}

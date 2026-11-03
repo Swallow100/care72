@@ -1,5 +1,5 @@
 // 本人のスマホの流れ（docs/tasks/T10.md）: 緑は 1 問、赤は押した時に送って 1 画面 1 問（T49、押すたびに答えを送る）、
-// 20 秒押さないと声の問い（読み上げのある端末）か定型文 → 30 秒録る → 送る、
+// 20 秒押さないと声の問い（読み上げのある端末）か定型文 → 60 秒録る（T69b で 30 → 60） → 送る、
 // 延長、送ったあとは数えない。通信が無いときは端末に残して戻ったら送る。録音・定型文・文字起こしは偽物で差し替える。
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -129,16 +129,14 @@ describe("画面の流れ", () => {
     // 赤は押した時に送る（答えはまだ無い）
     expect(h.signals).toHaveLength(1);
     expect(h.signals[0]).toMatchObject({ color: "red", whereNow: null, answers: { injured: null, atHome: null, canMove: null, hasMedicine: null } });
+    // 録音へ急ぐ答え（T69b。けが ある・動けない・出られない など）を押さない道
     const path = [
-      ["injured", "yes"],
-      ["injuryPart", "leg"],
-      ["bleeding", "no"],
+      ["injured", "no"],
       ["atHome", "yes"],
       ["floor", "f1"],
       ["room", "kitchen"],
-      ["canMove", "no"],
-      ["exit", "no"],
-      ["trappedBy", "furniture"],
+      ["canMove", "yes"],
+      ["exit", "yes"],
       ["body", "chest"],
       ["water", "none"],
       ["fireGas", "no"],
@@ -160,7 +158,7 @@ describe("画面の流れ", () => {
     // 押すたびに送り、どれも同じ信号へ。最後はそれまでの全部
     expect(h.answers).toHaveLength(path.length);
     expect(h.answers.every((a) => a.signalId === h.signals[0].id)).toBe(true);
-    expect(h.answers[0].answers).toEqual({ injured: { choice: "yes", via: "press" } });
+    expect(h.answers[0].answers).toEqual({ injured: { choice: "no", via: "press" } });
     expect(Object.keys(h.answers.at(-1)!.answers)).toEqual(path.map(([q]) => q));
     expect(h.signals).toHaveLength(1);
     expect(h.calls).toEqual(["prime"]);
@@ -190,7 +188,7 @@ describe("画面の流れ", () => {
     expect(e.answers).toEqual([]);
   });
 
-  it("頼みたい ことを「はなす」: 定型文 → 30 秒録る（声の問いでなくても）", async () => {
+  it("頼みたい ことを「はなす」: 定型文 → 60 秒録る（声の問いでなくても）", async () => {
     const h = harness();
     h.phone.red();
     for (let i = 0; i < 30 && h.phone.state.step === "question" && (h.phone.state as { id: string }).id !== "request"; i++) h.phone.skip();
@@ -200,7 +198,7 @@ describe("画面の流れ", () => {
     expect(h.calls).toEqual(["prime", "prompt", "record", "transcript"]);
   });
 
-  it("赤 →「けがは ありますか」で 20 秒押さない → 信号を先に送る → 定型文 → 30 秒録る → 録音を添えて とどきました", async () => {
+  it("赤 →「けがは ありますか」で 20 秒押さない → 信号を先に送る → 定型文 → 60 秒録る → 録音を添えて とどきました", async () => {
     const h = harness();
     h.phone.red();
     vi.advanceTimersByTime(IDLE_MS - 1);
@@ -223,7 +221,7 @@ describe("画面の流れ", () => {
     expect(h.recordings[0].item).toEqual({
       signalId: h.signals[0].id,
       transcript: "あしが いたい",
-      durationSec: 30,
+      durationSec: RECORD_MS / 1000,
       recordedAt: new Date(T0 + IDLE_MS + RECORD_MS).toISOString(),
     });
     expect(h.recordings[0].audio?.type).toBe("audio/webm");
@@ -245,7 +243,7 @@ describe("画面の流れ", () => {
     expect(h.phone.state.step).toBe("recording");
   });
 
-  it("延長は押すたびに 30 秒、上限 120 秒。「送る」で早く止める", async () => {
+  it("延長は押すたびに 60 秒、上限 180 秒。「送る」で早く止める", async () => {
     const h = harness();
     h.phone.red();
     vi.advanceTimersByTime(IDLE_MS);
@@ -366,7 +364,7 @@ function pausingRecorder() {
 }
 
 describe("無音のまま止まったら、同じ定型文で 2 回まで聞き直す（T37）", () => {
-  it("30 秒 無音 → 定型文 → 無音 → 定型文 → 無音: 録音を 1 本送って「ろくおんを おくりました」", async () => {
+  it("60 秒 無音 → 定型文 → 無音 → 定型文 → 無音: 録音を 1 本送って「ろくおんを おくりました」", async () => {
     const tr = transcripts([null, null, null]);
     const rec = pausingRecorder();
     const h = harness({ startTranscript: tr.start, startRecording: rec.startRecording });
@@ -389,11 +387,11 @@ describe("無音のまま止まったら、同じ定型文で 2 回まで聞き�
     expect(tr.log).toEqual(["transcript1", "stop1", "transcript2", "stop2", "transcript3", "stop3"]);
     expect(h.signals).toHaveLength(1);
     expect(h.recordings).toHaveLength(1);
-    expect(h.recordings[0].item).toMatchObject({ signalId: h.signals[0].id, transcript: null, durationSec: 90 });
+    expect(h.recordings[0].item).toMatchObject({ signalId: h.signals[0].id, transcript: null, durationSec: (3 * RECORD_MS) / 1000 });
     expect(h.recordings[0].audio?.size).toBe(1);
   });
 
-  it("ブラウザが無音で止めた（no-speech）ら 30 秒を待たずに聞き直す", async () => {
+  it("ブラウザが無音で止めた（no-speech）ら 60 秒を待たずに聞き直す", async () => {
     const tr = transcripts([null, null, null], { silenceAfter: 8_000 });
     const h = harness({ startTranscript: tr.start });
     h.phone.red();
@@ -424,10 +422,10 @@ describe("無音のまま止まったら、同じ定型文で 2 回まで聞き�
     await flush();
     expect(h.phone.state).toEqual({ step: "done", color: "red", delivery: "sent" });
     expect(h.calls.filter((c) => c === "prompt")).toHaveLength(2);
-    expect(h.recordings[0].item).toMatchObject({ transcript: "あしが いたい", durationSec: 60 });
+    expect(h.recordings[0].item).toMatchObject({ transcript: "あしが いたい", durationSec: (2 * RECORD_MS) / 1000 });
   });
 
-  it("話せた回は聞き直さない（1 回目で話せば今まで通り 30 秒で送る）", async () => {
+  it("話せた回は聞き直さない（1 回目で話せば今まで通り 60 秒で送る）", async () => {
     const tr = transcripts(["たすけて"]);
     const h = harness({ startTranscript: tr.start });
     h.phone.red();
@@ -454,7 +452,7 @@ describe("無音のまま止まったら、同じ定型文で 2 回まで聞き�
     expect(h.recordings[0].item).toMatchObject({ transcript: null, durationSec: 5 });
   });
 
-  it("文字起こしの無い端末は無音が分からないので聞き直さない（今まで通り 30 秒で送って「とどきました」）", async () => {
+  it("文字起こしの無い端末は無音が分からないので聞き直さない（今まで通り 60 秒で送って「とどきました」）", async () => {
     const h = harness({ startTranscript: () => null });
     h.phone.red();
     vi.advanceTimersByTime(IDLE_MS);
@@ -463,7 +461,7 @@ describe("無音のまま止まったら、同じ定型文で 2 回まで聞き�
     await flush();
     expect(steps(h)).toEqual(["q:injured", "prompt", "recording", "sending", "done"]);
     expect(h.phone.state).toEqual({ step: "done", color: "red", delivery: "sent" });
-    expect(h.recordings[0].item).toMatchObject({ transcript: null, durationSec: 30 });
+    expect(h.recordings[0].item).toMatchObject({ transcript: null, durationSec: RECORD_MS / 1000 });
   });
 
   it("録音の無い端末で無音のまま: 送る物が無いので「とどきました」（赤はもう届いている）", async () => {
@@ -1005,9 +1003,9 @@ describe("20 秒押さないと問いを声で（読み上げのある端末。T
     return { h, spoken, tr, rec };
   }
 
-  it("最初は AI の告知から問いと選択肢を読み、10 秒聞いて言葉の一致で答える（声の印）。答えが無ければ答えなしで次へ。問いが終わったら定型文と録音", async () => {
-    // 答える順: けが「ない」→ 家「はい」→ 階 無言 → 動けるか「うごけない」→ 出られるか 関係ない言葉 → 以下 無言
-    const { h, spoken, rec } = voiceHarness(["ないです", "はい", null, "うごけない", "あー", null, null, null, null, null, null, "あしが いたい"]);
+  it("最初は AI の告知から問いと選択肢を読み、10 秒聞いて言葉の一致で答える（声の印）。答えが無ければ答えなしで次へ。動けない（T69b）で残りを飛ばして定型文と録音", async () => {
+    // 答える順: けが「ない」→ 家「はい」→ 階 無言 → 動けるか「うごけない」→ 録音へ急ぐ（出られるか以下は聞かない）→ 録音で「あしが いたい」
+    const { h, spoken, rec } = voiceHarness(["ないです", "はい", null, "うごけない", "あしが いたい"]);
     h.phone.red();
     vi.advanceTimersByTime(IDLE_MS);
     await flush();
@@ -1021,6 +1019,8 @@ describe("20 秒押さないと問いを声で（読み上げのある端末。T
     expect(spoken.slice(1).every((t) => !t.startsWith("これは"))).toBe(true);
     // 頼みたい ことは声の問いでは聞かない（定型文と録音で聞く）
     expect(spoken.some((t) => t.startsWith("たのみたい"))).toBe(false);
+    // 動けない のあとの問い（外に出られるか）は読まない
+    expect(spoken.some((t) => t.startsWith("外に出られますか"))).toBe(false);
     expect(h.phone.state.step).toBe("recording");
     expect(h.answers.at(-1)!.answers).toEqual({
       injured: { choice: "no", via: "voice" },
@@ -1035,7 +1035,7 @@ describe("20 秒押さないと問いを声で（読み上げのある端末。T
     expect(h.phone.state).toMatchObject({ step: "done", color: "red" });
     expect(h.recordings).toHaveLength(1);
     // 声の問いで聞き取れた文字も文字起こしに（本人の言葉）
-    expect(h.recordings[0].item.transcript).toBe(["ないです", "はい", "うごけない", "あー", "あしが いたい"].join("\n"));
+    expect(h.recordings[0].item.transcript).toBe(["ないです", "はい", "うごけない", "あしが いたい"].join("\n"));
   });
 
   it("声の問いでも押せばその答え（押した印）。聞いていた分は捨てて次の問いを読む", async () => {
@@ -1046,8 +1046,9 @@ describe("20 秒押さないと問いを声で（読み上げのある端末。T
     h.phone.answer("yes");
     await flush();
     expect(h.answers.at(-1)!.answers).toEqual({ injured: { choice: "yes", via: "press" } });
-    expect(h.phone.state).toMatchObject({ step: "question", id: "injuryPart" });
-    expect(spoken.at(-1)).toContain("けがはどこですか");
+    // けが ある は録音へ急ぐ（T69b）。表が読む 動けるか の 1 問だけ聞く
+    expect(h.phone.state).toMatchObject({ step: "question", id: "canMove" });
+    expect(spoken.at(-1)).toContain("動けますか");
   });
 
   it("読み上げの無い端末は今まで通り 20 秒で定型文へ（声の問いは無い）", async () => {
@@ -1078,7 +1079,7 @@ describe("声の問いの途中で押した（T49）", () => {
     release("いいえ");
     await flush();
     expect(h.answers.at(-1)!.answers).toEqual({ injured: { choice: "yes", via: "press" } });
-    expect(h.phone.state).toMatchObject({ step: "question", id: "injuryPart" });
+    expect(h.phone.state).toMatchObject({ step: "question", id: "canMove" });
     expect(steps(h).filter((s) => s.startsWith("q:atHome"))).toEqual([]);
   });
 

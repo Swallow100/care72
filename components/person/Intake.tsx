@@ -17,6 +17,7 @@ import { useRouter } from "next/navigation";
 import { useRef, useState, type ReactNode } from "react";
 import { Button, buttonClass } from "@/components/ui/Button";
 import { AI_FAIL_REASON_LABELS, INTAKE_LABELS, INTAKE_SAYS, PENDING_STATUS_LABELS, PLACE_LABELS, SECTION_LABELS } from "@/lib/labels";
+import { AI_CONSENT_REFUSED_LABEL } from "@/lib/consent/labels";
 import { shrinkImage } from "@/lib/forms/shrink-image";
 import { buildReadForm, READ_FILES_MAX, type ReadMeta } from "@/lib/intake/read-form";
 import type { AiFailReason } from "@/lib/intake/http";
@@ -45,7 +46,8 @@ const TEXT_MAX = 4000;
 /** 流れに出す入力の文の長さ（貼ったケアプランは頭だけ） */
 const ECHO_MAX = 140;
 
-type Proposal = { model: string; dropped: number; rows: ChangeRow[] };
+/** masked: 送った文のうち伏せた所の数（T74。「伏せ字 N」。何を伏せたかは持たない） */
+type Proposal = { model: string; dropped: number; rows: ChangeRow[]; masked?: number };
 /** 再試行できる失敗（AI の返事の失敗）。文は同じ文・同じ問いで、写真・PDF は塗った後の同じ画像で送り直す */
 type Retry = { kind: "text"; source: string; focus: string | null } | { kind: "file"; page: RedactedPage };
 
@@ -91,7 +93,10 @@ const nextId = () => `log-${++seq}`;
 
 export function Intake(props: IntakeProps & { level: Level }) {
   const router = useRouter();
-  const [aiBlock, setAiBlock] = useState<string | null>(props.aiReady ? null : INTAKE_LABELS.aiNotConfigured);
+  // AI 提供が不同意の人（T74 の続き）は開いた時点で AI の操作を止める（手で書く欄は使える）。鍵が無ければ「AI 未設定」
+  const [aiBlock, setAiBlock] = useState<string | null>(
+    props.aiConsentRefused ? AI_CONSENT_REFUSED_LABEL : props.aiReady ? null : INTAKE_LABELS.aiNotConfigured,
+  );
   const [text, setText] = useState("");
   const [busy, setBusy] = useState<null | "split" | "read" | "save">(null);
   const [error, setError] = useState<string | null>(null);
@@ -118,19 +123,20 @@ export function Intake(props: IntakeProps & { level: Level }) {
   const listening = speech.state !== "idle";
 
   function failed(r: { error: string; label: string; reason?: AiFailReason }, retry: Retry | null) {
-    if (r.error === "ai_not_configured" || r.error === "ai_limit") setAiBlock(r.label);
+    // AI 提供が不同意の人（T74）は、この人の間は AI の操作を止める（上に「同意 拒否」）
+    if (r.error === "ai_not_configured" || r.error === "ai_limit" || r.error === "consent_refused") setAiBlock(r.label);
     // AI の返事の失敗（形が違う・断られた・時間切れ・API）は理由と「再試行」を流れに。ほかは上の状態の欄に
     if (r.error === "ai_failed" || r.error === "ai_refused") push({ id: nextId(), who: "ai", kind: "failed", label: r.label, reason: r.reason ?? null, retry });
     else push({ id: nextId(), who: "app", text: r.label, tone: "danger" });
   }
 
-  type Proposed = { ok: true; ai: { model: string }; items: DiffItem[]; dropped: number };
+  type Proposed = { ok: true; ai: { model: string }; items: DiffItem[]; dropped: number; masked?: number };
   const proposalOf = (r: Proposed): LogEntry => ({
     id: nextId(),
     who: "ai",
     kind: "split",
     say: splitSay(r.items),
-    proposal: { model: r.ai.model, dropped: r.dropped, rows: rowsOf(r.items) },
+    proposal: { model: r.ai.model, dropped: r.dropped, rows: rowsOf(r.items), masked: r.masked },
     state: "open",
   });
 
@@ -443,6 +449,11 @@ export function LogBubble({ entry: e, props, busy, aiReady, onRows, onSave, onDi
             <p className="font-bold" data-intake="say">
               {e.say}
             </p>
+            {(e.proposal.masked ?? 0) > 0 && (
+              <p className="mt-0.5 text-xs text-muted tabular-nums" data-intake="masked">
+                {INTAKE_LABELS.masked} {e.proposal.masked}
+              </p>
+            )}
             {e.state !== "open" && <p className="mt-0.5 text-xs text-muted">{e.state === "saved" ? INTAKE_LABELS.saved : INTAKE_LABELS.discard}</p>}
           </Bubble>
           {e.state === "open" && e.proposal.rows.length > 0 && (

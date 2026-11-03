@@ -15,7 +15,7 @@ import type { AuthorRole, Classifier, RecordingClass, SignalRow } from "../db/ty
 import { RECORDING_CLASSES } from "../db/types.ts";
 import { pseudonymInputOf } from "../intake/extract.ts";
 import { loadPersonRows } from "../person.ts";
-import { pseudonymize } from "../pseudonym/index.ts";
+import { pseudonymize, type PseudonymKey } from "../pseudonym/index.ts";
 import { classify, classifyErrorOf, sealClassifyInput, type AudioFeatures, type ClassifyResult } from "./classify.ts";
 import { aiClassLogBody, classEditLogBody } from "./labels.ts";
 import { CLASSIFY_COLUMNS, classViewOf, parseClassList, type ClassView, type SignalClassFields } from "./view.ts";
@@ -66,15 +66,23 @@ async function personBrief(db: D1Database, officeId: string, personId: string): 
     .first<PersonBrief>();
 }
 
+/**
+ * 本人の鍵（名前・町名・電話を伏せるため）。鍵を作るためだけに台帳を読み、台帳（payload）は Claude に渡さない。
+ * 録音のまとめ（T69b、lib/classify/summary.ts）も同じ鍵で伏せる。本人が見つからなければ null
+ */
+export async function pseudonymKeyFor(db: D1Database, officeId: string, personId: string): Promise<PseudonymKey | null> {
+  const brief = await personBrief(db, officeId, personId);
+  const rows = brief ? await loadPersonRows(db, brief) : null;
+  if (!rows) return null;
+  return pseudonymize([pseudonymInputOf(rows)]).key;
+}
+
 /** 分けるための元を読み、本人の鍵で伏せて Claude に渡す。失敗は理由で返す */
 async function runClassify(db: D1Database, t: ClassifyTarget, sig: SignalForClassify, deps: ClassifyDeps): Promise<ClassifyResult> {
   if (!sig.transcript?.trim()) return { ok: false, error: "no_text" };
   try {
-    const brief = await personBrief(db, t.officeId, t.personId);
-    const rows = brief ? await loadPersonRows(db, brief) : null;
-    if (!rows) return { ok: false, error: "failed" };
-    // 鍵を作るためだけに台帳を読む。台帳（payload）は Claude に渡さない
-    const { key } = pseudonymize([pseudonymInputOf(rows)]);
+    const key = await pseudonymKeyFor(db, t.officeId, t.personId);
+    if (!key) return { ok: false, error: "failed" };
     const input = sealClassifyInput(
       {
         transcript: sig.transcript,

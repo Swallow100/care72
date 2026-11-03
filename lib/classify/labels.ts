@@ -82,3 +82,33 @@ export const QUESTION_NAMES: Record<RedQuestion, string> = {
   canMove: "動けるか",
   hasMedicine: "薬",
 };
+
+// ---------- 録音のまとめ（T69b） ----------
+
+/** まとめの長さの上限（字）。Claude の文はここで切る（lib/classify/summary.ts） */
+export const SUMMARY_MAX = 80;
+/** ケアマネが直す文の長さの上限（字） */
+export const SUMMARY_EDIT_MAX = 160;
+
+/** 画面の言葉（ケアマネの画面の 2〜4 字） */
+export const SUMMARY_LABELS = {
+  title: "まとめ",
+  words: "本人の言葉",
+  none: "なし",
+  edit: "修正",
+  make: "生成",
+  making: "生成中",
+  save: "保存",
+  saving: "保存中",
+  cancel: "取消",
+  edited: "修正済",
+  failed: "失敗",
+} as const;
+
+/** 経過の行の言葉（ケアマネがまとめを直した） */
+export const SUMMARY_LOG_LABELS = { edit: "まとめ修正" } as const;
+
+/** ケアマネがまとめを直した経過の 1 行「まとめ修正「…」」 */
+export function summaryEditLogBody(text: string): string {
+  return `${SUMMARY_LOG_LABELS.edit}「${text}」`;
+}

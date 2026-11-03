@@ -50,8 +50,12 @@ export type ContactKind = (typeof CONTACT_KINDS)[number];
 export const CONTACT_REACHES = ["together", "nearby", "in_city", "out_of_pref", "far"] as const;
 export type ContactReach = (typeof CONTACT_REACHES)[number];
 
-/** 同意 4 つ: 名簿登録・計画の共有・支援者への提供・医療班への提供（決め方は docs/PROGRESS.md の問い） */
-export const CONSENT_KINDS = ["registry", "plan_share", "supporters", "medical"] as const;
+/**
+ * 同意 5 つ: 名簿登録・計画の共有・支援者への提供・医療班への提供（決め方は docs/PROGRESS.md の問い）と、
+ * AI 提供（ai_overseas。Claude〔海外の事業者〕に仮名化した台帳の内容を渡すこと。T74、migration 0024）。
+ * AI 提供は見え方（lib/consent/scope.ts）に使わず、「不同意」の人の入れる欄の AI だけを断る（lib/intake/http.ts）
+ */
+export const CONSENT_KINDS = ["registry", "plan_share", "supporters", "medical", "ai_overseas"] as const;
 export type ConsentKind = (typeof CONSENT_KINDS)[number];
 
 export const CONSENT_STATUSES = ["granted", "refused", "unconfirmed"] as const;
@@ -679,6 +683,25 @@ export type SignalRow = {
   ai_memo: string | null;
   /** ケアマネが直した聞き取りの欄（T49）。ルールの表に渡さない */
   memo: string | null;
+  /**
+   * 申告位置（T69b）。本人が赤のあとに「おくる」と許したときだけの端末の位置。台帳の位置とは別で、本人が今いる所。
+   * Claude には渡さない。ルールの表にも渡さない（地図のピンと聞き取りの欄だけ）
+   */
+  reported_lat: number | null;
+  reported_lng: number | null;
+  /** 端末が返した精度（m） */
+  reported_accuracy_m: number | null;
+  /** 位置を取った時刻（端末の時計） */
+  reported_at: string | null;
+  /** 録音のまとめ（T69b）。Claude（Haiku）の 80 字までの言い換え。AI の印。ルールの表に渡さない */
+  ai_summary: string | null;
+  ai_summary_model: string | null;
+  /** まとめを試みた時刻 */
+  ai_summary_at: string | null;
+  /** まとめられなかった理由（分類と同じ集合） */
+  ai_summary_error: ClassifyError | null;
+  /** ケアマネが直したまとめ（T69b）。null は直していない。ルールの表に渡さない */
+  summary: string | null;
   occurred_at: string;
   created_at: string;
   /**
