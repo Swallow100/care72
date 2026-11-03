@@ -1,83 +1,139 @@
-// ホーム画面に追加の案内（T44。本人・家族のスマホの /me と /family だけ）。判定の筋だけを持ち、画面は components/phone/InstallHint.tsx。
-// - Android の Chrome などは beforeinstallprompt を受けて「追加」1 押しで入る（受けるのは lib/ui/head-scripts.ts の INSTALL_SCRIPT）
-// - iPhone・iPad はページから入れる仕組みが無く、Safari の共有からしか入らないので、手順を 2〜3 行で出す
-// - LINE の中で開いているときは openExternalBrowser=1 を付けたアドレスで外のブラウザへ出す
-// - 追加済み（ホーム画面から開いた・入れた）・PC・判断できないときは出さない
-// - 閉じたらその画面（タブ）の間だけ出さない（sessionStorage）。次に開いたらまた出す（入れるまで）
+// ホーム画面に追加の案内の判定（T51 で書き直した）。本人・家族のスマホの平時の画面の上（components/phone/InstallHint.tsx）。
+// 対応は iPhone（iPad も同じ手順）・Android・LINE の中の 3 つ（11/3 15:4x 作者の確定。増やしも減らしもしない）。
+// 判定は端末の様子を引数で受ける純な関数（installMode）。テストは node で回す。
+// beforeinstallprompt（Android の 1 押しの画面）は読み込みの早いうちに 1 回だけ来るので、先頭の script（lib/ui/head-scripts.ts の
+// INSTALL_SCRIPT）が受けて window に取っておく。受け口の名前はここで決め、script もここから読む。
 
-export type InstallMode = "android" | "android-manual" | "android-line" | "ios" | "ios-line" | "ios-inapp";
+/**
+ * 出す案内の形。
+ * ios: 共有 → ホーム画面に追加 → 追加 の 3 行。ios-line: LINE の中（外のブラウザへ）。ios-inapp: ほかのアプリの中（Safari で開く）。
+ * android: 「追加」1 押し。android-manual: 右上のメニュー → ホーム画面に追加 の 2 行。android-line: LINE の中（外のブラウザへ）
+ */
+export type InstallMode = "ios" | "ios-line" | "ios-inapp" | "android" | "android-manual" | "android-line";
 
-/** 判定に使う端末の様子。画面の部品が描いたあと（useEffect）に window から集めて渡す（サーバーの描画では触らない） */
+/** 端末の様子（描いたあとに読む） */
 export type InstallEnv = {
   userAgent: string;
-  /** ホーム画面から開いている（display-mode: standalone、iPhone は navigator.standalone） */
+  /** ホーム画面から開いている（display-mode: standalone、iPhone の navigator.standalone） */
   standalone: boolean;
   /** この画面で入れた（appinstalled を受けた） */
   installed: boolean;
-  /** 1 押しで入る画面を出せる（beforeinstallprompt を受けて取ってある） */
+  /** 1 押しの画面（beforeinstallprompt）を受けて取ってある */
   deferred: boolean;
-  /** navigator.platform と maxTouchPoints（iPad の Safari は PC の Mac と名乗るので、指で触れるかで見分ける） */
+  /** navigator.platform（iPad の Safari は Mac と名乗るので、触れる点の数と合わせて見分ける） */
   platform?: string;
+  /** navigator.maxTouchPoints */
   maxTouchPoints?: number;
 };
 
-export const INSTALL_READY_EVENT = "care72-install-ready";
-export const DISMISS_KEY = "care72:install-dismissed";
+/** beforeinstallprompt の出来事（標準の型に無いので、使う所だけ） */
+export type InstallPromptEvent = Event & {
+  prompt: () => Promise<unknown>;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform?: string }>;
+};
 
-/** 今の端末・開き方での案内の種類。出さないときは null */
+/** 先頭の script が取っておく所 */
+export const INSTALL_PROMPT_KEY = "__care72Install";
+export const INSTALLED_KEY = "__care72Installed";
+/** 1 押しの画面を受けた・入れたときに window に投げる出来事の名前 */
+export const INSTALL_READY_EVENT = "care72-install-ready";
+/** 閉じた印（sessionStorage。そのタブの間だけ出さない） */
+export const INSTALL_DISMISS_KEY = "care72:install-dismissed";
+/** LINE の中で開いたページを外のブラウザで開き直させる、LINE の決まりのアドレスの印 */
+export const EXTERNAL_BROWSER_PARAM = "openExternalBrowser";
+
+export type InstallWindow = Window & {
+  [INSTALL_PROMPT_KEY]?: InstallPromptEvent | null;
+  [INSTALLED_KEY]?: boolean;
+};
+
+/** LINE の中のブラウザ（UA に「Line/版」） */
+export const LINE_UA = /\bLine\/\d/i;
+/** iPhone のほかのアプリの中（Instagram・Facebook・X・Google アプリ ほか）。Safari への出口が無い */
+const IOS_IN_APP = /Instagram|FBAN|FBAV|FBIOS|Twitter|\bGSA\/|MicroMessenger|KAKAOTALK|Snapchat|Pinterest|TikTok|musical_ly|BytedanceWebview/i;
+
+function isIos(env: InstallEnv): boolean {
+  if (/iPhone|iPad|iPod/.test(env.userAgent)) return true;
+  // iPadOS の Safari は Mac と名乗る。Mac は触れる点を持たないので、点が 2 つ以上なら iPad
+  const macLike = env.platform === "MacIntel" || /Macintosh/.test(env.userAgent);
+  return macLike && (env.maxTouchPoints ?? 0) > 1;
+}
+
+/** 出す案内の形。出さないときは null（入れてある・PC・判断できない端末） */
 export function installMode(env: InstallEnv): InstallMode | null {
   if (env.standalone || env.installed) return null;
-  const ua = env.userAgent;
-  const ios = /iPad|iPhone|iPod/.test(ua) || (env.platform === "MacIntel" && (env.maxTouchPoints ?? 0) > 1);
-  const line = /\bLine\//i.test(ua);
-  if (ios) {
+  const ua = env.userAgent ?? "";
+  if (ua.trim() === "") return null;
+  const line = LINE_UA.test(ua);
+  if (isIos({ ...env, userAgent: ua })) {
     if (line) return "ios-line";
-    // ほかのアプリの中のブラウザ（Facebook・Instagram・X・Google の検索アプリなど）は共有から追加できない
-    if (/FBAN|FBAV|Instagram|Twitter|MicroMessenger|KAKAOTALK|GSA\//.test(ua)) return "ios-inapp";
-    // Safari 以外（Chrome の CriOS・Firefox の FxiOS・Edge の EdgiOS）も共有から入れられるので同じ手順
+    // Safari・Chrome・Edge・Firefox はどれも「Safari/」を名乗る。名乗らない物はアプリの中の画面
+    if (IOS_IN_APP.test(ua) || !/Safari\//.test(ua)) return "ios-inapp";
     return "ios";
   }
-  if (!/Android/i.test(ua)) return null;
-  if (line) return "android-line";
-  return env.deferred ? "android" : "android-manual";
+  if (/Android/i.test(ua)) {
+    if (line) return "android-line";
+    return env.deferred ? "android" : "android-manual";
+  }
+  // PC（Windows・Mac・Linux）とそれ以外は出さない
+  return null;
 }
 
-/** LINE の中のブラウザから外のブラウザで開き直すアドレス（LINE が openExternalBrowser=1 を見て外へ出す） */
+/** LINE の中から外のブラウザで開き直すアドレス（openExternalBrowser=1 を足す） */
 export function externalBrowserUrl(href: string): string {
-  const url = new URL(href);
-  url.searchParams.set("openExternalBrowser", "1");
-  return url.toString();
+  try {
+    const u = new URL(href);
+    u.searchParams.set(EXTERNAL_BROWSER_PARAM, "1");
+    return u.toString();
+  } catch {
+    return href;
+  }
 }
 
-type Store = Pick<Storage, "getItem" | "setItem">;
-
-/** この画面（タブ）で閉じたか。読めない端末では閉じていない扱い（出すだけ） */
-export function installDismissed(storage: Pick<Store, "getItem"> | null): boolean {
+/** 外のブラウザで開き直したあとのアドレス（openExternalBrowser を外す）。変わらなければ null */
+export function withoutExternalBrowser(href: string): string | null {
   try {
-    return storage?.getItem(DISMISS_KEY) === "1";
+    const u = new URL(href);
+    if (!u.searchParams.has(EXTERNAL_BROWSER_PARAM)) return null;
+    u.searchParams.delete(EXTERNAL_BROWSER_PARAM);
+    return u.toString();
+  } catch {
+    return null;
+  }
+}
+
+/** このタブで閉じたか */
+export function installDismissed(store: Pick<Storage, "getItem"> | null): boolean {
+  try {
+    return store?.getItem(INSTALL_DISMISS_KEY) === "1";
   } catch {
     return false;
   }
 }
 
-export function dismissInstall(storage: Pick<Store, "setItem"> | null): void {
+/** 閉じた印を付ける（タブを閉じるまで出さない。次に開いたらまた出す） */
+export function dismissInstall(store: Pick<Storage, "setItem"> | null): void {
   try {
-    storage?.setItem(DISMISS_KEY, "1");
+    store?.setItem(INSTALL_DISMISS_KEY, "1");
   } catch {
-    // 保存できなければ、次に開いたときにまた出るだけ
+    // 保存できない端末（プライベートの画面など）は、その描画の間だけ閉じる
   }
 }
 
-type Deferred = { prompt: () => Promise<void> | void; userChoice: Promise<{ outcome: "accepted" | "dismissed" }> };
-export type InstallWindow = Window & { __care72Install?: Deferred | null; __care72Installed?: number };
-
-/** Android の 1 押しで入る画面を出す。入れたら true。取ってある画面は 1 回しか使えないので、出したら捨てる */
-export async function promptInstall(w: InstallWindow): Promise<boolean> {
-  const deferred = w.__care72Install;
-  if (!deferred) return false;
-  w.__care72Install = null;
-  await deferred.prompt();
-  const choice = await deferred.userChoice.catch(() => ({ outcome: "dismissed" as const }));
-  if (choice.outcome === "accepted") w.__care72Installed = 1;
-  return choice.outcome === "accepted";
+/**
+ * 取ってある 1 押しの画面を出す。1 回しか使えないので、出す前に捨てる。
+ * 入れたら INSTALLED_KEY を立てる。返り値は入れた・断った・取ってある画面が無い（null）
+ */
+export async function promptInstall(w: InstallWindow): Promise<"accepted" | "dismissed" | null> {
+  const ev = w[INSTALL_PROMPT_KEY];
+  if (!ev) return null;
+  w[INSTALL_PROMPT_KEY] = null;
+  try {
+    await ev.prompt();
+    const choice = await ev.userChoice;
+    if (choice.outcome === "accepted") w[INSTALLED_KEY] = true;
+    return choice.outcome;
+  } catch {
+    return "dismissed";
+  }
 }

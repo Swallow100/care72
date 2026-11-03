@@ -30,6 +30,24 @@ export const WAIT_LABELS = {
   split: "分けています",
   /** 訓練の進める・早送り（本人役・家族役が次の 1 刻みを考える間） */
   think: "考えています",
+  /** 本人のスマホの録る間（Haiku が録音を聞く間） */
+  listen: "聞いています",
+  /** 様式の読み取り（Opus が写真・PDF を読む間） */
+  read: "読み取っています",
+  /** 訓練の講評（Opus が講評を書く間） */
+  review: "書いています",
+} as const;
+
+/** 選ぶ部品（components/ui/Select.tsx）の言葉 */
+export const SELECT_LABELS = {
+  /** 何も選んでいないとき（薄い字） */
+  none: "未選択",
+  /** 検索の欄の名前 */
+  search: "検索",
+  /** 検索で 1 つも当たらないとき */
+  empty: "該当なし",
+  /** 複数で 3 つ以上選んだときのボタンの字（N 件） */
+  count: "件",
 } as const;
 
 /** ホーム画面に追加の案内（本人・家族のスマホ。components/phone/InstallHint.tsx） */
