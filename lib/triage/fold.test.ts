@@ -90,7 +90,7 @@ describe("分類が Claude か人か（classified_by、T12）", () => {
   it("Claude の分類は「録音の分類（AI）」、ケアマネが直した分類は「分類（ケアマネ）」（AI の印なし）", () => {
     expect(row(["immobile"], "care_manager", 0.5)).toMatchObject({ staffClasses: ["immobile"] });
     expect(row(["immobile"], "care_manager", 0.5).classes).toBeUndefined();
-    expect(reason([row(["immobile"], "claude", 0.5)])).toBe("録音の分類（AI）: 動けない");
+    expect(reason([row(["immobile"], "claude", 0.5)])).toBe("本人が「無事じゃない」、録音の分類（AI）: 動けない");
     expect(reason([row(["immobile"], "care_manager", 0.5)])).toBe("分類（ケアマネ）: 動けない");
     expect(reason([row(["immobile"], "care_manager", 0.5)])).not.toContain("AI");
   });
@@ -122,12 +122,12 @@ describe("triageInDisaster は重ねて読んだ信号を表に渡す", () => {
     expect(r).toMatchObject({ color: "red", rule: "red_injury", group: 0, reason: "本人が「けが」「動けない」" });
   });
 
-  it("答えなしの赤のあとに録音の分類（AI）で動けない: 印つきの理由のまま", () => {
+  it("答えなしの赤のあとに録音の分類（AI）で動けない: 赤だけの行に印つきで添える（案 10）", () => {
     const r = triageInDisaster(
       { person: yamada, signals: [red(0.5, { classes: ["immobile"] }), red(0.6)], town: null },
       S,
     );
-    expect(r).toMatchObject({ rule: "red_injury", reason: "録音の分類（AI）: 動けない" });
+    expect(r).toMatchObject({ rule: "red", group: 1, reason: "本人が「無事じゃない」、録音の分類（AI）: 動けない" });
   });
 
   it("本人の赤のあとに家族が「分からない」（未知）: 赤のまま下がらない。そのあと緑が来たら赤が解ける", () => {

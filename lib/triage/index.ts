@@ -39,7 +39,7 @@ export type Tier = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
 
 /** 表のどの行で決まったか（表の上から） */
 export type RuleId =
-  | "red_injury" // 赤 ＋ けが・動けない → 赤、最上位
+  | "red_injury" // 赤 ＋ けが・動けない（本人・家族の答えかケアマネの分類） → 赤、最上位
   | "red" // 赤だけ → 赤
   | "unknown_device_over" // 不明 ＋ 停電が機器の時計を超えた → 赤
   | "unknown_clock_over" // 不明 ＋ 機器以外の時計を超えた → 赤（案 2）
@@ -54,7 +54,7 @@ export type RuleId =
   | "green"; // 緑 → 緑、一番下
 
 /** 理由に足す言葉 */
-export type QualifierId = "unchecked" | "self_green_set_aside" | "no_supporter";
+export type QualifierId = "ai_classified" | "unchecked" | "self_green_set_aside" | "no_supporter";
 
 export type TriageClock = Pick<ClockRow, "kind" | "category" | "label" | "value" | "unit" | "starts_on"> & {
   /** 外の物に頼る時計の頼り先。無ければ頼らない */
@@ -270,8 +270,8 @@ export const READING: ReadonlyArray<{ text: string; origin: string }> = [
     origin: "11/3 確定の 1",
   },
   {
-    text: "けが・動けないが 4 問の答え（ボタン）から来たら理由は「本人が「動けない」」、録音・自由文の分類（Claude）から来たら「録音の分類（AI）: 動けない」と AI の印を付け、ケアマネが直した分類から来たら「分類（ケアマネ）: 動けない」（AI の印なし）。分類が Claude か人かは信号の classified_by で見る。答えにある言葉は分類から、人の分類にある言葉は Claude の分類から重ねない。いくつかあれば「、」でつなぐ",
-    origin: "案（11/2 夕方 b）・T12",
+    text: "けが・動けないが 4 問の答え（ボタン）から来たら理由は「本人が「動けない」」、ケアマネが直した分類から来たら「分類（ケアマネ）: 動けない」（AI の印なし）で、この 2 つだけが赤の最上位の行に当たる。録音・自由文の分類（Claude）から来たら色も順も動かさず、赤の行の理由に「録音の分類（AI）: 動けない」と AI の印つきで続ける。分類が Claude か人かは信号の classified_by で見る。答えにある言葉は分類から、人の分類にある言葉は Claude の分類から重ねない。いくつかあれば「、」でつなぐ",
+    origin: "案（11/2 夕方 b）・T12・案 10",
   },
 ];
 
@@ -442,15 +442,14 @@ const AI_CLASSIFIED_PREFIX = "録音の分類（AI）: ";
 const STAFF_CLASSIFIED_PREFIX = "分類（ケアマネ）: ";
 
 /**
- * 赤 ＋ けが・動けないの理由。答えは「本人が「動けない」」、人の分類は「分類（ケアマネ）: 動けない」、
- * Claude の分類は「録音の分類（AI）: 動けない」。いくつかあれば「、」でつなぐ
+ * 赤 ＋ けが・動けないの理由。当たるのは人から来た言葉だけ: 答えは「本人が「動けない」」、人の分類は「分類（ケアマネ）: 動けない」。
+ * いくつかあれば「、」でつなぐ。Claude の分類は行を決めない（案 10）。足す言葉 ai_classified で理由に続ける
  */
 function injuryReason(x: RuleInput): string | null {
-  const { answered, staff, classified } = injuryWords(x.signal);
+  const { answered, staff } = injuryWords(x.signal);
   const parts: string[] = [];
   if (answered.length > 0) parts.push(`${who(x)}が${answered.map((w) => `「${w}」`).join("")}`);
   if (staff.length > 0) parts.push(`${STAFF_CLASSIFIED_PREFIX}${staff.join("・")}`);
-  if (classified.length > 0) parts.push(`${AI_CLASSIFIED_PREFIX}${classified.join("・")}`);
   return parts.length > 0 ? parts.join("、") : null;
 }
 
@@ -492,18 +491,18 @@ export const RULES: ReadonlyArray<Rule> = [
   {
     id: "red_injury",
     signal: "red",
-    input: "赤 ＋ けが・動けない",
+    input: "赤 ＋ けが・動けない（本人・家族の答えかケアマネの分類）",
     color: "red",
     example: "本人が「動けない」",
-    origin: "仕様書",
-    why: "けが・動けないは自分で避難できないという知らせ → 最初に電話し、行ける人を探す",
+    origin: "仕様書・案 10",
+    why: "本人・家族が けが・動けない と答えた（ケアマネが録音を聞いて直した）のは自分で避難できないという知らせ → 最初に電話し、行ける人を探す。Claude の分類だけでは当てない",
     sourceIds: ["mhlw-bcp-2020", "cao-shishin-2021"],
     match: injuryReason,
   },
   {
     id: "red",
     signal: "red",
-    input: "赤だけ（録音の水が来た・機器が止まった・不明を含む）",
+    input: "赤だけ（録音の分類（AI）の けが・動けない・水が来た・機器が止まった・不明を含む）",
     color: "red",
     example: "本人が「無事じゃない」",
     origin: "仕様書",
@@ -659,6 +658,19 @@ export type Qualifier = Basis & {
 /** 理由に足す言葉。色は変えない。この順に「、」でつなぐ */
 export const QUALIFIERS: ReadonlyArray<Qualifier> = [
   {
+    id: "ai_classified",
+    when: "赤で、録音・自由文の分類（Claude）が けが・動けない を言った（答えとケアマネの分類にある言葉は重ねない）",
+    text: "録音の分類（AI）: 動けない",
+    origin: "案 10",
+    why: "Claude の分類は人の答えではない → 色も順も動かさず、ケアマネが録音を聞いて確かめる手がかりとして理由に添える",
+    sourceIds: ["mhlw-bcp-2020"],
+    apply: (x) => {
+      if (x.signal?.color !== "red") return null;
+      const { classified } = injuryWords(x.signal);
+      return classified.length > 0 ? `${AI_CLASSIFIED_PREFIX}${classified.join("・")}` : null;
+    },
+  },
+  {
     id: "unchecked",
     when: "外の物に頼る時計の確認が未確認（色を決めた行が言っていなければ）",
     text: "透析先 未確認",
@@ -775,7 +787,7 @@ export type OrderKey = {
 
 /** 並びの鍵。上から順に比べ、同じなら次へ */
 export const ORDER: ReadonlyArray<OrderKey> = [
-  { label: "色: 赤 けが・動けない → 赤 → 黄 → 灰 → 緑", origin: "仕様書", compare: (a, b) => cmp(a.group, b.group) },
+  { label: "色: 赤 けが・動けない（答え・ケアマネの分類） → 赤 → 黄 → 灰 → 緑", origin: "仕様書", compare: (a, b) => cmp(a.group, b.group) },
   { label: "時計の残りが短い順", origin: "仕様書", compare: (a, b) => cmp(a.remainingHours, b.remainingHours) },
   {
     label: "支援者なしが先",
