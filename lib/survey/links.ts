@@ -5,8 +5,9 @@
 import type { D1Database } from "@cloudflare/workers-types";
 import type { Principal } from "../auth/principal.ts";
 import { officeActor } from "../office/scope.ts";
+import { MEMO_MAX } from "./form.ts";
 import { surveyUrl } from "./paths.ts";
-import { createSurveyLink, MEMO_MAX } from "./store.ts";
+import { createSurveyLink } from "./store.ts";
 import { SURVEY_OFFICE_LABELS } from "./text.ts";
 
 export type LinkOutcome = { status: number; body: Record<string, unknown> };

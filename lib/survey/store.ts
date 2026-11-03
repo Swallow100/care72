@@ -9,9 +9,6 @@ import { isSurveyTokenShape, newSurveyToken, SURVEY_TTL_DAYS } from "./token.ts"
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-/** 宛先の控えの上限（字） */
-export const MEMO_MAX = 40;
-
 export type NewLink = {
   officeId: string;
   memo: string;
