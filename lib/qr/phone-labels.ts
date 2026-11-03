@@ -14,9 +14,10 @@ export const PHONE_LINK_LABELS = {
   invalid: "無効",
   /** 本人の行が一覧から外れている（リンクは通らない。発行もしない） */
   unlisted: "一覧外",
-  /** 連絡先のスマホの有無（contacts.has_smartphone が 1） */
-  smartphone: "スマホ有",
-  /** 台帳の本人のスマホ（basic.contactMeans.smartphone）の欄の名前 */
+  /**
+   * スマホの印の頭。本人は台帳の値（basic.contactMeans.smartphone）、家族は contacts.has_smartphone の 1・0 を
+   * 「スマホ 使用可」「スマホ なし」の同じ形で（T77。前は家族だけ「スマホ有」で混ざっていた）
+   */
   ownPhone: "スマホ",
   /** QR の画像の読み上げ（「本人用 QR」） */
   qr: "QR",

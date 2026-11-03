@@ -1,5 +1,5 @@
 // 本人・家族のスマホの平時の画面: 本人の 1 枚（T06）の文をそのまま大きな字で（家族は段を絞る。T11）。紙の表（components/forms/OwnSheet.tsx）と同じ文で、
-// 描き方だけスマホの幅に。電話は押すとかけられる（番号の無い所は紙では手で書く線なので、ここでは出さない）。
+// 描き方だけスマホの幅に。電話は押すとかけられる（番号の無い行は紙では手で書く線なので、ここでは行ごと出さない。T77）。
 // 119 の 1 行は一般の案内で、押してもかからない（押し間違いで救急にかけないように）。状態を持たない。
 
 import { EasyWords } from "@/components/forms/EasyText";
@@ -42,9 +42,19 @@ export function SheetBlock({ block }: { block: OwnBlock }) {
   );
 }
 
+/**
+ * スマホの電話の段は、番号のある行だけ（T77、docs/progress/qa-20261104.md の低）。紙は番号の無い所に手で書く線を引くが、
+ * スマホでは書けないので、番号の無い行（ケアマネ・かかりつけ。台帳・事業所に電話の欄がまだ無い）は出さない。行が無くなれば段ごと出さない
+ */
+export function phoneBlocks(blocks: readonly OwnBlock[]): OwnBlock[] {
+  return blocks
+    .map((b) => (b.id === "call" ? { ...b, lines: b.lines.filter((l) => Boolean(l.phone?.number)) } : b))
+    .filter((b) => b.lines.length > 0);
+}
+
 /** only を渡すと、その段だけを並べる（家族・支援者のスマホ T11 は 逃げるところ・来てくれる人・持っていく物・電話） */
 export function PhoneSheet({ sheet, only }: { sheet: OwnSheet; only?: readonly OwnBlockId[] }) {
-  const blocks = only ? sheet.blocks.filter((b) => only.includes(b.id)) : sheet.blocks;
+  const blocks = phoneBlocks(only ? sheet.blocks.filter((b) => only.includes(b.id)) : sheet.blocks);
   return (
     <div className="phone-text space-y-3" data-phone="normal" data-person={sheet.personId}>
       <h1 className="px-1 text-2xl font-bold">

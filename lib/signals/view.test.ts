@@ -5,7 +5,7 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { PhoneSheet } from "../../components/phone/PhoneSheet.tsx";
+import { PhoneSheet, phoneBlocks } from "../../components/phone/PhoneSheet.tsx";
 import { PhoneView, type PhoneActions } from "../../components/phone/PhoneView.tsx";
 import { SEED_AT, SEED_PEOPLE, seedConsents } from "../../seed/people.ts";
 import { buildOwnSheet, EMERGENCY_TEXT, lineText } from "../forms/own-sheet.ts";
@@ -245,13 +245,19 @@ describe("平時の画面", () => {
   };
   const sheet = buildOwnSheet(rows, { today: "2026-11-02", officeName: "デモ事業所" });
 
-  it("本人の 1 枚（T06）の文をそのまま。電話は押すとかけられ、119 はリンクにしない", () => {
+  it("本人の 1 枚（T06）の文をそのまま。電話は押すとかけられ、119 はリンクにしない。電話の段は番号のある行だけ（T77）", () => {
     const html = renderToStaticMarkup(createElement(PhoneSheet, { sheet }));
     const t = text(html);
     for (const line of sheet.blocks.flatMap((b) => b.lines)) {
       const words = lineText({ ...line, phone: undefined });
-      expect(t, line.key).toContain(words);
+      // 紙で手で書く線の行（ケアマネ・かかりつけ。番号の欄がまだ無い）はスマホに出さない
+      const handwritten = line.key.startsWith("call.") && !line.phone?.number;
+      if (handwritten) expect(t, line.key).not.toContain(words);
+      else expect(t, line.key).toContain(words);
     }
+    // 山田 ハナは電話の段の行が全部手書きなので、段ごと出さない（家族の番号は 来てくれる 人 の段に）
+    expect(phoneBlocks(sheet.blocks).map((b) => b.id)).not.toContain("call");
+    expect(html).not.toContain("data-block=\"call\"");
     expect(t).toContain("命が 危ないと 感じたら、すぐ 119番へ");
     const tels = [...html.matchAll(/href="tel:([^"]+)"/g)].map((m) => m[1]);
     const numbers = sheet.blocks.flatMap((b) => b.lines).flatMap((l) => (l.phone?.number ? [l.phone.number] : []));
