@@ -17,9 +17,9 @@ export const SCORE_LABELS = {
   reached: "条件到達",
   /** 条件到達の出どころ（仮想モードで結末と並べるとき「条件到達 時計計算」） */
   reachedBy: "時計計算",
-  /** 仮想モードの結末（世界が決めた。T53）。「結末 AI 筋書」 */
+  /** 仮想モードの結末（世界が決めた。T53）。「結末 筋書」と AI の印 */
   ended: "結末",
-  endedBy: "AI 筋書",
+  endedBy: "筋書",
   endedAt: "結末時刻",
   endedText: "経過",
   unreported: "未報告",

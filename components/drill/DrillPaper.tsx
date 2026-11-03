@@ -143,6 +143,7 @@ export function DrillPaper({ record, office, today }: { record: DrillPaperRecord
                 <td>
                   {r.label}
                   {r.sub && <span className="p-sub"> {r.sub}</span>}
+                  {r.key === "ended" && <span className="drill-ai"> AI</span>}
                 </td>
                 <td className="num big nowrap">{t(r.now)}</td>
                 <td className="num nowrap">{r.prev === null ? SCORE_LABELS.none : t(r.prev)}</td>

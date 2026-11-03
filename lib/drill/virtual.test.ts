@@ -454,7 +454,7 @@ describe("仮想の筋（偽の部屋・偽の Haiku）", () => {
       ["report", null],
       ["form9", "様式 9"],
       ["reached", "時計計算"],
-      ["ended", "AI 筋書"],
+      ["ended", "筋書"],
     ]);
     // 結末の人の行には結末の 1 文。結末の後は本人役を呼ばない（信号が無い）
     const screen = (await loadDrillScreen(db, scope, "drill-v", null))!;
@@ -477,7 +477,7 @@ describe("仮想の筋（偽の部屋・偽の Haiku）", () => {
     const paper = renderToStaticMarkup(createElement(DrillPaper, { record: rec, office: "デモ事業所", today: ON }));
     expect(paper).toContain('data-detail="ended"');
     expect(paper).toContain("条件到達 時計計算");
-    expect(paper).toContain("結末 AI 筋書");
+    expect(paper).toContain("結末 筋書 <span class=\"drill-ai\">AI</span>");
     expect(paper).toContain('data-score-key="ended"');
     // 行の詳細: 結末の 1 文と経緯（理由）に AI の印
     const caseRow = screen.rows.find((r) => r.id === ended[0])!;
