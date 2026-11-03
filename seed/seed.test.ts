@@ -1,5 +1,4 @@
 import { readdirSync, readFileSync } from "node:fs";
-import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
 import { ageOn } from "../lib/age.ts";
 import { migratedSqlite } from "../lib/db/test-d1.ts";
@@ -70,9 +69,8 @@ describe("種のデータ（架空の 10 人）", () => {
   });
 
   it("頼り先と確認は両方あるか、両方無いか（SQL の CHECK）", () => {
-    const db = new DatabaseSync(":memory:");
-    db.exec("PRAGMA foreign_keys = ON;");
-    db.exec(readFileSync(new URL("../migrations/0001_init.sql", import.meta.url), "utf8"));
+    // migrations を全部流す（種の入れ直しは 0002 以降の表も空にするので、0001 だけでは通らない）
+    const db = migratedSqlite();
     for (const s of seedStatements()) db.exec(s);
     const put = (id: string, dependsOn: string | null, check: string | null) =>
       db
@@ -89,9 +87,8 @@ describe("種のデータ（架空の 10 人）", () => {
   });
 
   it("migration と種の SQL が SQLite で通る（外部キーと CHECK を含めて）", () => {
-    const db = new DatabaseSync(":memory:");
-    db.exec("PRAGMA foreign_keys = ON;");
-    db.exec(readFileSync(new URL("../migrations/0001_init.sql", import.meta.url), "utf8"));
+    // migrations を全部流す（種の入れ直しは 0002 以降の表も空にするので、0001 だけでは通らない）
+    const db = migratedSqlite();
     for (const s of seedStatements()) db.exec(s);
     const count = (t: string) => (db.prepare(`SELECT count(*) AS n FROM ${t}`).get() as { n: number }).n;
     expect(count("people")).toBe(10);

@@ -34,6 +34,10 @@ export function insert(table: string, row: Record<string, SqlValue>): string {
  * 災害モード（disaster_state）は平時に、事業所の経過・様式 9 の手直し・様式の対応表は空に戻る
  */
 export const CLEAR_ORDER = [
+  // アンケートの Web 版（T42）。答えがリンクを指すので答えから
+  "survey_answers",
+  "survey_links",
+  "survey_attempts",
   "timeline_entries",
   "office_timeline_entries",
   // 受け持ちと第三者提供の記録（T23）。記録が受け持ちを指すので記録から
