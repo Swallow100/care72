@@ -19,7 +19,16 @@ import type { AuthorRole, ContactKind, SignalSource } from "../db/types.ts";
 import { loadDisasterState } from "../disaster/db.ts";
 import { isDisaster } from "../disaster/state.ts";
 import { bit, NO_ANSWERS, occurredAtOnServer, type AnySignalBody } from "./body.ts";
-import { familyLogBody, isSignalWriterKind, recordingLogBody, signalLogBody, type SignalWriterKind } from "./labels.ts";
+import { MEMO_TEXT_MAX, readMemo } from "./hearing.ts";
+import {
+  familyLogBody,
+  isSignalWriterKind,
+  memoEditLogBody,
+  recordingLogBody,
+  signalLogBody,
+  type SignalWriterKind,
+} from "./labels.ts";
+import { legacyColumnsOf, type Answers, type HearingField } from "./questions.ts";
 
 /** 書いた人。本人のスマホは本人、家族のスマホはログインの連絡先の行 */
 export type SignalWriter = { kind: "self" } | { kind: "contact"; contactId: string };
@@ -245,4 +254,114 @@ export async function attachRecording(
       ),
   ]);
   return { ok: true, key, duplicate: (updated.meta.changes ?? 0) === 0 };
+}
+
+// ---------- 赤のあとの聞き取りの答え（T49） ----------
+
+/** 経過の payload の出どころ（ケアマネが聞き取りの欄を直した） */
+export const MEMO_EDIT_LOG_SOURCE = "memo_edit";
+
+export type SaveAnswersResult = { ok: true; changed: boolean } | { ok: false; error: "not_found" | "forbidden" | "invalid" | "normal" };
+
+/**
+ * 赤の信号に聞き取りの答えを書く（押すたびに、それまでの答えの全部を送る。後勝ち）。answers の JSON と、今の 4 問の列に同じ値
+ * （legacyColumnsOf。ルールの表と採点が読むのは 4 つの列だけ）。本人の信号は経過の 1 行（「無事じゃない けが あり・…」）も書き直す。
+ * 書けるのは信号を送った人だけ: 本人は本人の信号、家族・支援者は自分が答えた信号（経過の payload の contactId）
+ */
+export async function saveAnswers(
+  db: D1Database,
+  s: SignalScope,
+  signalId: string,
+  answers: Answers,
+): Promise<SaveAnswersResult> {
+  const w = await resolveWriter(db, s);
+  if (w === "not_found" || w === "forbidden") return { ok: false, error: w };
+  if (!isDisaster(await loadDisasterState(db, s.officeId))) return { ok: false, error: "normal" };
+  const row = await db
+    .prepare(
+      `SELECT s.id, s.color, s.source, s.answers,
+              (SELECT json_extract(t.payload, '$.contactId') FROM timeline_entries t
+                WHERE t.signal_id = s.id AND t.payload IS NOT NULL AND json_extract(t.payload, '$.source') = ?4 LIMIT 1) AS contact_id
+         FROM signals s JOIN people p ON p.id = s.person_id
+        WHERE s.id = ?1 AND s.person_id = ?2 AND p.office_id = ?3 AND s.drill_id IS NULL`,
+    )
+    .bind(signalId, s.personId, s.officeId, SIGNAL_LOG_SOURCE)
+    .first<{ id: string; color: string; source: string; answers: string | null; contact_id: string | null }>();
+  if (!row || row.source !== w.source) return { ok: false, error: "not_found" };
+  if (w.who && row.contact_id !== w.who.contactId) return { ok: false, error: "not_found" };
+  if (row.color !== "red") return { ok: false, error: "invalid" };
+
+  const json = JSON.stringify(answers);
+  if (row.answers === json) return { ok: true, changed: false };
+  const legacy = legacyColumnsOf(answers);
+  const stmts = [
+    db
+      .prepare(
+        `UPDATE signals SET answers = ?3, injured = ?4, at_home = ?5, can_move = ?6, has_medicine = ?7
+          WHERE id = ?1 AND person_id = ?2`,
+      )
+      .bind(row.id, s.personId, json, bit(legacy.injured), bit(legacy.atHome), bit(legacy.canMove), bit(legacy.hasMedicine)),
+  ];
+  if (!w.who) {
+    stmts.push(
+      db
+        .prepare(
+          `UPDATE timeline_entries SET body = ?3
+            WHERE signal_id = ?1 AND person_id = ?2 AND payload IS NOT NULL AND json_extract(payload, '$.source') = ?4`,
+        )
+        .bind(row.id, s.personId, signalLogBody({ color: "red", whereNow: null, answers: legacy }), SIGNAL_LOG_SOURCE),
+    );
+  }
+  await db.batch(stmts);
+  return { ok: true, changed: true };
+}
+
+/** 直す人（ケアマネの役だけ。事業所の壁を通したあと） */
+export type MemoEditor = { officeId: string; accountId: string | null };
+
+export type MemoEditResult = { ok: true; changed: boolean; memo: string } | { ok: false; error: "not_found" | "invalid" };
+
+/**
+ * ケアマネが聞き取りの欄を 1 つ直す（空にするのも直し）。memo に欄を書き、経過に「聞き取り修正 体の訴え「…」」。
+ * Claude の写し（ai_memo）と押した答え（answers）は残す。色と順は変わらない（どれもルールの表に渡さない）
+ */
+export async function saveMemoEdit(
+  db: D1Database,
+  editor: MemoEditor,
+  signalId: string,
+  field: HearingField,
+  text: string | null,
+  now: string,
+): Promise<MemoEditResult> {
+  const value = text === null ? null : Array.from(text.trim()).slice(0, MEMO_TEXT_MAX).join("") || null;
+  const row = await db
+    .prepare(
+      `SELECT s.id, s.person_id, s.memo FROM signals s JOIN people p ON p.id = s.person_id
+        WHERE s.id = ?1 AND p.office_id = ?2 AND s.drill_id IS NULL`,
+    )
+    .bind(signalId, editor.officeId)
+    .first<{ id: string; person_id: string; memo: string | null }>();
+  if (!row) return { ok: false, error: "not_found" };
+  const memo = readMemo(row.memo);
+  if (field in memo && memo[field] === value) return { ok: true, changed: false, memo: JSON.stringify(memo) };
+  const next = { ...memo, [field]: value };
+  const json = JSON.stringify(next);
+  await db.batch([
+    db.prepare(`UPDATE signals SET memo = ?2 WHERE id = ?1`).bind(row.id, json),
+    db
+      .prepare(
+        `INSERT INTO timeline_entries (id, person_id, author_id, author_role, kind, body, payload, signal_id, occurred_at)
+         VALUES (?1, ?2, ?3, 'care_manager', 'note', ?4, ?5, ?6, ?7)`,
+      )
+      .bind(
+        crypto.randomUUID(),
+        row.person_id,
+        editor.accountId,
+        memoEditLogBody(field, value),
+        JSON.stringify({ source: MEMO_EDIT_LOG_SOURCE, field }),
+        row.id,
+        now,
+      ),
+  ]);
+  return { ok: true, changed: true, memo: json };
 }

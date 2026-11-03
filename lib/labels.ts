@@ -442,3 +442,38 @@ export const DIFF_STATE_LABELS = { add: "追加", same: "一致", filled: "既�
 /** 書類（T05〜T07 で作る）の入口 */
 export const DOCUMENT_LABELS = { matsuyama: "計画書", medical: "医療要約", own: "本人の1枚", qr: "QR" } as const;
 export const DOCUMENT_STATUS_LABELS = { pending: "準備中", ready: "表示" } as const;
+
+/**
+ * 赤のあとの聞き取りの欄（T49）。本人・家族が押した答えと、Claude の聞き取りメモ（文字起こしから写しただけ）を同じ欄で出す。
+ * 事実の欄だけで、重さ・点数を持たない。欄の id は lib/signals/questions.ts の HEARING_FIELDS
+ */
+export const HEARING_FIELD_LABELS = {
+  place: "場所",
+  trapped: "閉込め",
+  body: "体の訴え",
+  injury: "けが",
+  water: "水",
+  fireGas: "火・ガス",
+  device: "機器",
+  medicine: "薬",
+  nearby: "そばの人",
+  contact: "連絡手段",
+  request: "頼みごと",
+} as const;
+
+/** 聞き取りの欄の画面の言葉（ケアマネの行の詳細） */
+export const HEARING_LABELS = {
+  title: "聞き取り",
+  field: "欄",
+  value: "内容",
+  pressed: "押下",
+  voice: "声",
+  edited: "修正済",
+  edit: "修正",
+  save: "保存",
+  cancel: "取消",
+  clear: "空欄",
+  saving: "保存中",
+  failed: "保存失敗",
+  none: "未回答",
+} as const;

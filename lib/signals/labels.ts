@@ -2,6 +2,8 @@
 // 本人の状態を言い切らない: 本人が押した答えをそのまま並べる（「本人が「動けない」」と同じ読み方）。
 
 import type { ContactKind, WhereNow } from "../db/types.ts";
+import { HEARING_FIELD_LABELS, HEARING_LABELS } from "../labels.ts";
+import type { HearingField } from "./questions.ts";
 import type { FamilyAnswer, RedAnswers } from "./body.ts";
 import type { RedQuestion } from "./phrases.ts";
 import { RED_QUESTIONS } from "./phrases.ts";
@@ -86,4 +88,9 @@ export function recordingLogBody(r: { hasAudio: boolean; durationSec: number | n
     : SIGNAL_LOG_LABELS.noRecording;
   const t = r.transcript?.trim();
   return t ? `${head} ${SIGNAL_LOG_LABELS.transcript}「${t}」` : head;
+}
+
+/** ケアマネが聞き取りの欄を直した経過の 1 行「聞き取り修正 体の訴え「胸が少し痛い」」。空にしたら「空欄」（T49） */
+export function memoEditLogBody(field: HearingField, text: string | null): string {
+  return `${HEARING_LABELS.title}${HEARING_LABELS.edit} ${HEARING_FIELD_LABELS[field]}${text ? `「${text}」` : ` ${HEARING_LABELS.clear}`}`;
 }
