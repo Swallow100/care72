@@ -1,9 +1,12 @@
 // 入れる欄の変更 1 つの形。Claude の分け方（diff.ts）・問いの答え（ask.ts）・手入力の編集が同じ形を作り、
 // 保存（save.ts）が受け取って、今の台帳に当て直す（埋まっている欄は上書きしない）。ブラウザでも読む。
 
-import type { ClockUnit, ContactKind, Ledger, MedicationCategory, PendingStatus } from "../db/types.ts";
+import type { CheckStatus, ClockUnit, ConsentKind, ConsentStatus, ContactKind, Ledger, MedicationCategory, PendingStatus } from "../db/types.ts";
 import {
+  CHECK_STATUS_LABELS,
   CLOCK_UNIT_LABELS,
+  CONSENT_KIND_LABELS,
+  CONSENT_STATUS_LABELS,
   CONTACT_KIND_LABELS,
   DEVICE_LABELS,
   HAZARD_LABELS,
@@ -32,25 +35,32 @@ export type ContactValue = {
   relation?: string;
   name?: string;
   phone?: string;
-  /** 夜間に来られるか */
-  nightOk?: boolean;
+  /** 夜間に来られるか。null は「未確認」に戻す（手で直すときだけ） */
+  nightOk?: boolean | null;
   note?: string;
 };
 
+// overwrite（埋まっている所も変える）は人が選んだときだけ: 変更点の「既入力」を選んだとき（欄）と、
+// 本人のページの面の「編集」で手で直したとき（欄・薬・機器・ハザード・連絡先・時計。T45）。Claude の分け方は付けない。
 export type IntakeChange =
   /** 台帳の欄（lib/intake/fields.ts）。overwrite は人が「既入力」を選んで上書きするときだけ */
   | { t: "field"; key: string; value: unknown; overwrite?: boolean }
-  | { t: "medication"; index?: number; value: MedicationValue }
-  | { t: "device"; value: Device }
-  | { t: "hazard"; value: Hazard }
+  /** overwrite は index の薬の回数・用量・保管・区分を手で直す（空にした所は消す） */
+  | { t: "medication"; index?: number; value: MedicationValue; overwrite?: boolean }
+  | { t: "device"; value: Device; overwrite?: boolean }
+  | { t: "hazard"; value: Hazard; overwrite?: boolean }
   /** 特記。本人の言葉のまま足す */
   | { t: "note"; value: string }
   /** 分からない・答えない・次回（空欄のまま、理由を残す） */
   | { t: "pending"; field: string; status: PendingStatus }
-  /** 連絡先。id があれば今の行の空いた所だけを埋める */
-  | { t: "contact"; id: string | null; value: ContactValue }
-  /** 時計の値（残り）。人が問いに答えた物だけ。clockId が無ければ薬（medIndex）の時計を作る */
-  | { t: "clock"; clockId: string | null; medIndex: number | null; label: string; value: number; unit: ClockUnit };
+  /** 連絡先。id があれば今の行の空いた所だけを埋める（overwrite なら渡した所を直す。空の文字は消す） */
+  | { t: "contact"; id: string | null; value: ContactValue; overwrite?: boolean }
+  /** 時計の値（残り）。人が入れた物だけ。clockId が無ければ薬（medIndex）の時計を作る。overwrite なら値の入った時計も直す */
+  | { t: "clock"; clockId: string | null; medIndex: number | null; label: string; value: number; unit: ClockUnit; overwrite?: boolean }
+  /** 時計の頼り先の確認（確認済・未確認）。人が付ける（lib/ledger-marks.ts の経過の行） */
+  | { t: "clockCheck"; clockId: string; to: CheckStatus }
+  /** 同意（得た・断った・未確認）。人が記録する */
+  | { t: "consent"; kind: ConsentKind; status: ConsentStatus };
 
 const join = (parts: Array<string | undefined | false>) => parts.filter((p): p is string => !!p && p.trim() !== "").join(" ");
 
@@ -96,6 +106,10 @@ export function changeText(c: IntakeChange): string {
       return contactText(c.value);
     case "clock":
       return `${c.value} ${CLOCK_UNIT_LABELS[c.unit]}`;
+    case "clockCheck":
+      return CHECK_STATUS_LABELS[c.to];
+    case "consent":
+      return `${CONSENT_KIND_LABELS[c.kind]} ${CONSENT_STATUS_LABELS[c.status]}`;
   }
 }
 

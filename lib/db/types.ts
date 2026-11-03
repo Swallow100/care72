@@ -202,6 +202,8 @@ export type IntakePayload = {
   ai: boolean;
   /** 答えたモデル（ai のときだけ） */
   model: string | null;
+  /** 本人のページの面の「編集」で手で直した（T45） */
+  edit?: true;
   /** 変えた欄（台帳の場所・連絡先・時計） */
   fields: string[];
 };
