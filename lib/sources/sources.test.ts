@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { TIER_LABELS } from "../labels.ts";
 import { QUALIFIERS, RULES, TIERS, categoryTier, tierBasis, type Tier } from "../triage/index.ts";
-import { citedBy, sourcesDoc } from "./doc.ts";
+import { citedBy, OPERATION_CHECKS, sourcesDoc } from "./doc.ts";
 import {
   QUOTE_MAX,
   SOURCES,
@@ -158,5 +158,18 @@ describe("docs/TRIAGE.md の出典", () => {
       if (citedBy(s.id).length === 0) continue;
       expect(file).toContain(`[${s.id}](SOURCES.md#${s.id}) 未確認`);
     }
+  });
+});
+
+describe("本運用で確かめること（T48、アドバイザーの返事）", () => {
+  it("README と docs/SOURCES.md に同じ一覧。同意・仮名と対応表・外国の事業者・表の監修を、断定せず「確かめる」の形で", () => {
+    const readme = readFileSync(new URL("../../README.md", import.meta.url), "utf8").replaceAll("\r\n", "\n");
+    const sources = readFileSync(new URL("../../docs/SOURCES.md", import.meta.url), "utf8").replaceAll("\r\n", "\n");
+    for (const c of OPERATION_CHECKS) {
+      expect(readme, c).toContain(`- ${c}`);
+      expect(sources, c).toContain(`- ${c}`);
+    }
+    const all = OPERATION_CHECKS.join("\n");
+    for (const w of ["要配慮個人情報", "2 条 1 項", "28 条", "監修"]) expect(all, w).toContain(w);
   });
 });
