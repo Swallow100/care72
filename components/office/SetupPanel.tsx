@@ -12,6 +12,7 @@ export function SetupPanel({ items, laterCookie, className = "" }: { items: Setu
   if (items.length === 0) return null;
   return (
     <Panel aria-labelledby="setup-title" className={`print:hidden ${className}`.trim()} data-setup>
+      {/* 見出しと行を 1 段に（広い画面で余白だけの面にしない）。狭い幅は行が見出しの下へ折れる */}
       <PanelHead
         id="setup-title"
         title={SETUP_LABELS.title}
@@ -20,20 +21,22 @@ export function SetupPanel({ items, laterCookie, className = "" }: { items: Setu
             {SETUP_LABELS.left} <span className="font-bold text-ink tabular-nums">{items.length}</span>
           </>
         }
+        sub={
+          <ul className="flex flex-wrap gap-1.5">
+            {items.map((item) => (
+              <li key={item.kind} className="flex items-center rounded-md bg-panel2" data-setup-item={item.kind}>
+                <a href={item.href} className="flex min-h-8 items-center gap-1.5 rounded-md px-2 py-1 text-sm" data-press="overlay">
+                  <GoToIcon aria-hidden className="size-4 shrink-0 text-muted" />
+                  <span className="font-bold">{item.label}</span>
+                  {item.status !== null && <span>{item.status}</span>}
+                  {item.count !== null && <span className="font-bold tabular-nums">{item.count}</span>}
+                </a>
+                {item.kind === "care_manager" && <SetupLater cookie={laterCookie}>{SETUP_LABELS.later}</SetupLater>}
+              </li>
+            ))}
+          </ul>
+        }
       />
-      <ul className="mt-2 flex flex-wrap gap-1.5">
-        {items.map((item) => (
-          <li key={item.kind} className="flex items-center rounded-md bg-panel2" data-setup-item={item.kind}>
-            <a href={item.href} className="flex min-h-8 items-center gap-1.5 rounded-md px-2 py-1 text-sm" data-press="overlay">
-              <GoToIcon aria-hidden className="size-4 shrink-0 text-muted" />
-              <span className="font-bold">{item.label}</span>
-              {item.status !== null && <span>{item.status}</span>}
-              {item.count !== null && <span className="font-bold tabular-nums">{item.count}</span>}
-            </a>
-            {item.kind === "care_manager" && <SetupLater cookie={laterCookie}>{SETUP_LABELS.later}</SetupLater>}
-          </li>
-        ))}
-      </ul>
     </Panel>
   );
 }
