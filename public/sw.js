@@ -5,6 +5,9 @@
 // 最後の 1 つと、その頁の部品（/_next/static/）。写しは端末の Cache API の中だけで、どこにも送らない。
 // - 頁は network-first: ネットから 200 の HTML が返ればそれを返して写す。通信なし・5xx のときだけ写しを返す。
 //   3xx（ログインへ）・401・403・404 はネットの応答のまま返し、写さない（写しも返さない）。
+// - ログインの終わり（T83）: 頁の応答が 401・403、または /login・/s/invalid への移りなら、頁の写しを全部消す。画面の移りの 3xx は
+//   opaqueredirect で移り先が読めないので、裏で同じ URL を redirect: "follow" で取り直して移り先を見る。画面からの頼み（keep）も同じ
+// - 写しの期限は写してから 72 時間（COPY_TTL_MS）。過ぎた写しは出さずに消す（写すたびと activate でも消す）
 //   NETWORK_WAIT_MS（4 秒）待っても応答が無ければ写しを返し、ネットの応答は裏で待って写す（写しが無ければ待ち続ける）
 // - 写しを返すときは </head> の前に <meta name="care72-cached-at"> を入れる（components/OfflineBand.tsx が「写し HH:MM」）
 // - 部品は cache-first（名前に中身の hash が入る）。手元の next dev（/sw.js?dev=1）だけ network-first
@@ -20,7 +23,11 @@
 // <core>
 /** 写しの鍵の頭。版を上げると、activate で前の版の写しと部品を消す */
 const CACHE_PREFIX = "care72-";
-const CACHE_VERSION = "1";
+/**
+ * 版。2（T83）: ログインの終わり（/login・/s/invalid への移り、401・403）で写しを消し、写しに 72 時間の期限を付けた。
+ * 前の版の SW が残した写し（期限の切れたログインの物も）を activate で全部消すために上げた
+ */
+const CACHE_VERSION = "2";
 /** 頁（HTML）の写し。人の名前・連絡先が入るので、ログイン・ログアウト・役の切替で全部消す */
 const PAGE_CACHE = CACHE_PREFIX + "pages-v" + CACHE_VERSION;
 /** 部品（/_next/static/）。中身の hash が名前に入っていて人の情報を持たないので、消すのは版を上げたときだけ */
@@ -47,6 +54,18 @@ const NETWORK_WAIT_MS = 4000;
 const KEEP_MIN_MS = 60000;
 /** 写しを全部消す POST（ログイン・ログアウト・審査員の役の切替。lib/auth の route は触らない） */
 const CLEAR_PATHS = ["/api/auth/login", "/api/auth/logout", "/api/auth/role"];
+/**
+ * ログインが終わったことを示す頁（lib/auth の LOGIN_PATH と、スマホ入口の無効の頁 PHONE_LINK_INVALID_PATH）。頁の読み込みが
+ * ここへ移されたら（期限切れ・停止・パスワードの変更・リンクの再発行や一覧から外した）写しを全部消す（見直しの安全 中 4）
+ */
+const SESSION_END_PATHS = ["/login", "/s/invalid"];
+/**
+ * 写しの期限（ミリ秒）。写してから 72 時間を過ぎた写しは出さずに消す（通信が無いままの端末に、古い人の連絡先・状態を残し続けない。
+ * 発災からの 72 時間の間は、最後に開いた物が残る）
+ */
+const COPY_TTL_MS = 72 * 60 * 60 * 1000;
+/** 端末の時計のずれの許し（写した時刻が今より先に見えても、この間までは期限の中。それより先は読めない時刻と同じに消す） */
+const COPY_SKEW_MS = 5 * 60 * 1000;
 
 const COPY_ID = /^[A-Za-z0-9_-]{1,64}$/;
 const isCopyId = (id) => COPY_ID.test(id) && id !== "new";
@@ -187,6 +206,30 @@ function freshCopy(at, nowMs, minMs) {
   const t = Date.parse(at || "");
   return Number.isFinite(t) && t <= nowMs && nowMs - t < minMs;
 }
+
+/** 写しの期限が切れたか: 写してから COPY_TTL_MS が過ぎた・時刻が読めない・COPY_SKEW_MS より先の時刻 */
+function copyExpired(at, nowMs) {
+  const t = Date.parse(at || "");
+  if (!Number.isFinite(t)) return true;
+  return t > nowMs + COPY_SKEW_MS || nowMs - t >= COPY_TTL_MS;
+}
+
+/**
+ * ログインが終わったと分かる応答: 401・403 か、同じ origin の /login・/s/invalid へ移った応答（redirect: "follow" で取った物。
+ * 画面の移り〔navigate〕の応答は opaqueredirect で移り先が読めないので、SW がもう一度 follow で確かめる）
+ */
+function endsSession(res, origin) {
+  if (!res) return false;
+  if (res.status === 401 || res.status === 403) return true;
+  if (!res.redirected || !res.url) return false;
+  let u;
+  try {
+    u = new URL(res.url);
+  } catch {
+    return false;
+  }
+  return u.origin === origin && SESSION_END_PATHS.includes(u.pathname);
+}
 // </core>
 
 const ORIGIN = self.location.origin;
@@ -207,6 +250,7 @@ self.addEventListener("activate", (event) => {
         await Promise.all(
           names.filter((n) => n.startsWith(CACHE_PREFIX) && n !== PAGE_CACHE && n !== ASSET_CACHE).map((n) => caches.delete(n)),
         );
+        if (names.includes(PAGE_CACHE)) await dropExpired(await caches.open(PAGE_CACHE));
       } catch {
         // 写しの場所が使えない端末（プライベートの窓など）。消す物も無い
       }
@@ -263,10 +307,10 @@ async function page(event, req, url) {
       copy = null;
     }
     if (copy) {
-      // 遅れて来たネットの応答は写すだけ（画面は写しのまま。帯の「読み直す」で新しい物）
+      // 遅れて来たネットの応答は写すだけ（画面は写しのまま。帯の「読み直す」で新しい物）。ログインが終わっていれば写しを消す
       event.waitUntil(
         net
-          .then((r) => (r && storable(r) ? store(url, r, g) : undefined))
+          .then((r) => (!r ? undefined : storable(r) ? store(url, r, g) : afterNotStored(url, r)))
           .catch(() => {}),
       );
       return copy;
@@ -275,6 +319,7 @@ async function page(event, req, url) {
   const res = first === SLOW ? await net : first;
   if (!fellThrough(res)) {
     if (storable(res)) event.waitUntil(store(url, res.clone(), g).catch(() => {}));
+    else event.waitUntil(afterNotStored(url, res).catch(() => {}));
     return res;
   }
   try {
@@ -284,6 +329,22 @@ async function page(event, req, url) {
     // 写しが読めない。ネットの応答（5xx）か、通信なしのまま
   }
   return res || Response.error();
+}
+
+/**
+ * 写さない頁の応答のあと: 401・403 なら写しを全部消す。画面の移りの 3xx（opaqueredirect）は移り先が読めないので、同じ URL を
+ * redirect: "follow" で取り直し、/login・/s/invalid に着いたら消す（役の違う頁への移りなどは消さない）
+ */
+async function afterNotStored(url, res) {
+  if (endsSession(res, ORIGIN)) return clearCopies();
+  if (res.type !== "opaqueredirect") return;
+  let followed;
+  try {
+    followed = await fetch(url.href, { credentials: "same-origin", redirect: "follow", headers: { accept: "text/html" } });
+  } catch {
+    return;
+  }
+  if (endsSession(followed, ORIGIN)) await clearCopies();
 }
 
 /** 頁の写しを置く。見出しに写した時刻と URL。cookie などほかの見出しは持たない */
@@ -298,6 +359,7 @@ async function store(url, res, g) {
   const cache = await caches.open(PAGE_CACHE);
   if (g !== generation) return;
   await cache.put(ORIGIN + key, new Response(html, { status: 200, headers }));
+  await dropExpired(cache);
   await trim(cache, MAX_PAGES);
   if (!DEV) await keepAssets(html);
 }
@@ -310,6 +372,11 @@ async function fromCopy(url) {
   for (const key of copyCandidates(url)) {
     const r = await cache.match(ORIGIN + key, { ignoreVary: true });
     if (!r) continue;
+    if (copyExpired(r.headers.get(AT_HEADER), Date.now())) {
+      // 期限の切れた写しは出さずに消し、探す順の次へ
+      await cache.delete(ORIGIN + key);
+      continue;
+    }
     stored[key] = r.headers.get(URL_HEADER) || key;
     hit = r;
     break;
@@ -340,11 +407,13 @@ async function keep(href) {
   }
   let res;
   try {
-    res = await fetch(url.href, { credentials: "same-origin", redirect: "manual", headers: { accept: "text/html" } });
+    // 移りは follow で受け、移り先（res.url）を見る。移った応答（res.redirected）は storable が写さない
+    res = await fetch(url.href, { credentials: "same-origin", redirect: "follow", headers: { accept: "text/html" } });
   } catch {
     return;
   }
-  if (storable(res)) await store(url, res, g);
+  if (endsSession(res, ORIGIN)) await clearCopies();
+  else if (storable(res)) await store(url, res, g);
 }
 
 /** スマホ入口のリンク: 応答はそのまま返し（写さない）、ネットが応えたときだけ写しを消す。通信なしなら何も消さない */
@@ -357,6 +426,15 @@ async function openPhoneLink(req) {
   }
   await clearCopies().catch(() => {});
   return res;
+}
+
+/** 期限の切れた頁の写しを消す */
+async function dropExpired(cache) {
+  const now = Date.now();
+  for (const req of await cache.keys()) {
+    const r = await cache.match(req, { ignoreVary: true });
+    if (r && copyExpired(r.headers.get(AT_HEADER), now)) await cache.delete(req);
+  }
 }
 
 /** 頁の写しを全部消す（どの版の物も） */
