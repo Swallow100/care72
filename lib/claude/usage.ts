@@ -8,6 +8,7 @@ import { todayJst } from "../age.ts";
 import type { AiCallError, AiPurpose, OfficeKind } from "../db/types.ts";
 import type { AiEnv } from "./client.ts";
 import { AiLimitReached } from "./errors.ts";
+import { isSandboxOfficeId, SANDBOX_AI_QUOTA } from "../office/sandbox-id.ts";
 
 /** 1 日の上限（回）の既定。デモ事業所だけ env の AI_DAILY_LIMIT で変えられる */
 export const DEFAULT_DAILY_LIMIT = 200;
@@ -99,6 +100,16 @@ export type UsageTicket = {
   fail(error: AiCallError, used?: UsedTokens): Promise<void>;
 };
 
+/**
+ * 1 日の上限を数える事業所（ai_calls の office_id）。審査員の試用事業所（T115、id の頭 office-sbx-）はデモ事業所と同じ数え
+ * （審査員の呼び出しの合計を前と同じ上限に保つ。試用事業所ごとに数えると作った数だけ上限が増える）。
+ * ctx.office は地理（監督・講評・世界の部屋の町）にも使うので差し替えず、数えだけをここで分ける。AiContext を作る所が
+ * いくつかあるので（aiContextFor・訓練の hooks など）、作る所でなくここで見る
+ */
+export function quotaOffice(office: { id: string; kind: OfficeKind }): { id: string; kind: OfficeKind } {
+  return isSandboxOfficeId(office.id) ? SANDBOX_AI_QUOTA : office;
+}
+
 function nowOf(ctx: AiContext): Date {
   return ctx.now?.() ?? new Date();
 }
@@ -110,13 +121,14 @@ function nowOf(ctx: AiContext): Date {
 export async function beginCall(ctx: AiContext, purpose: AiPurpose, model: string): Promise<UsageTicket> {
   const started = nowOf(ctx);
   const day = todayJst(started);
-  const limit = dailyLimit(ctx.office, ctx.env);
+  const quota = quotaOffice(ctx.office);
+  const limit = dailyLimit(quota, ctx.env);
   const id = `ai-${crypto.randomUUID()}`;
   const reserved = await ctx.usage.reserve(
-    { id, officeId: ctx.office.id, purpose, model, day, startedAt: started.toISOString() },
+    { id, officeId: quota.id, purpose, model, day, startedAt: started.toISOString() },
     limit,
   );
-  if (!reserved) throw new AiLimitReached(ctx.office.id, limit, day);
+  if (!reserved) throw new AiLimitReached(quota.id, limit, day);
 
   const finish = async (done: Omit<AiCallDone, "finishedAt">) => {
     try {
@@ -143,5 +155,6 @@ export async function beginCall(ctx: AiContext, purpose: AiPurpose, model: strin
 /** 今日（JST）に使った回数と上限。画面の「残り N 回」に */
 export async function usageToday(ctx: AiContext): Promise<{ day: string; used: number; limit: number }> {
   const day = todayJst(nowOf(ctx));
-  return { day, used: await ctx.usage.countDay(ctx.office.id, day), limit: dailyLimit(ctx.office, ctx.env) };
+  const quota = quotaOffice(ctx.office);
+  return { day, used: await ctx.usage.countDay(quota.id, day), limit: dailyLimit(quota, ctx.env) };
 }

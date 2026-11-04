@@ -487,6 +487,8 @@ export type OfficeRow = {
   /** 地図の中心（migration 0017、T68）。両方ある か 両方 null（未設定） */
   center_lat: number | null;
   center_lng: number | null;
+  /** 審査員の試用事業所（migration 0027、T115）。1 なら毎朝 4 時に丸ごと消える（lib/seed/sandbox.ts） */
+  judge_sandbox: 0 | 1;
   created_at: string;
 };
 

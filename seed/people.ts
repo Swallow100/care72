@@ -20,7 +20,8 @@ export const SEED_AT = "2026-11-02T03:00:00.000Z";
 
 export const CITY = "松山市";
 
-export type SeedOffice = Omit<OfficeRow, "created_at">;
+/** 試用事業所の印（judge_sandbox、T115）は種に持たない（0） */
+export type SeedOffice = Omit<OfficeRow, "created_at" | "judge_sandbox">;
 /** 停止の印（disabled_at）と審査員が足した印（judge_made、T81）は種に持たない（NULL と 0。種の戻しも戻す） */
 export type SeedAccount = Omit<AccountRow, "created_at" | "disabled_at" | "judge_made">;
 export type SeedContact = Omit<ContactRow, "person_id" | "created_at" | "sort">;
