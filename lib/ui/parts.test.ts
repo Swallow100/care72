@@ -247,7 +247,7 @@ describe("待ちの印・manifest（T44 から残した物）", () => {
   });
 
   it("待ちの言葉は場面ごと（split・think のキーは変えない）", () => {
-    expect(WAIT_LABELS).toMatchObject({ split: "分けています", think: "考えています", listen: "聞いています", read: "読み取っています", review: "書いています" });
+    expect(WAIT_LABELS).toMatchObject({ split: "読み取っています", think: "考えています", listen: "聞いています", read: "読み取っています", review: "書いています" });
   });
 
   it("manifest はケア72、standalone、色はライトの地、印 3 つ", () => {

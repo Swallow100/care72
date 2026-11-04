@@ -94,7 +94,7 @@ describe("出来事の表の形", () => {
       supply_left: "家族が栄養剤を持ち出し忘れた",
       dialysis_flooded: "透析施設 浸水で休止",
       road_blocked: "家の前の道 通行止め",
-      line_down: "家の電話 不通",
+      line_down: "家の電話 通話不可",
       nurse_away: "訪問看護 来られない",
       going_home: "本人が家に帰ろうとする",
     });
@@ -218,7 +218,7 @@ describe("表の行（種の 10 人）", () => {
     expect(ok("mobile_down", "p-01")).toBe(true);
     expect(ok("mobile_down", "p-01", { ...W, phone: "down" })).toBe(false);
     const parts = EVENT_CATALOG.mobile_down.build({ person: null }, 12, 2);
-    expect(parts.map((p) => p.text)).toEqual(["携帯電話も不通", "電話 一部回復見込 2 時間後"]);
+    expect(parts.map((p) => p.text)).toEqual(["携帯電話も通話不可", "電話 一部回復見込 2 時間後"]);
     const w = apply(W, "mobile_down", null, 12, 2);
     expect(w.phone).toBe("down");
     expect(w.scheduled).toEqual([{ at: 840, change: { kind: "phone", state: "busy" }, text: "電話 一部回復", by: "director" }]);
