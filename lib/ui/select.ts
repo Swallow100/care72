@@ -11,6 +11,8 @@ export type SelectItem = {
   disabled: boolean;
   /** 項目の下の小さな薄い字の 1 行（<option data-sub="…">） */
   sub?: string;
+  /** まだ選んでいない印の項目（<option value="" data-placeholder>）。選ばれている間、ボタンの字は灰（入力の欄の下書きと同じ） */
+  placeholder?: boolean;
   /** 入っているグループ（groups の番号）。無ければ null */
   group: number | null;
 };
@@ -26,7 +28,14 @@ export function textOf(node: ReactNode): string {
   return "";
 }
 
-type OptionProps = { value?: string | number; disabled?: boolean; label?: string; children?: ReactNode; "data-sub"?: string };
+type OptionProps = {
+  value?: string | number;
+  disabled?: boolean;
+  label?: string;
+  children?: ReactNode;
+  "data-sub"?: string;
+  "data-placeholder"?: boolean | "";
+};
 type GroupProps = { label?: string; disabled?: boolean; children?: ReactNode };
 
 /** <option>・<optgroup>（Fragment・配列の中も）を項目の並びにする。value の無い option は文字が値 */
@@ -58,6 +67,7 @@ export function readOptions(children: ReactNode): SelectModel {
         label: text,
         disabled: off || p.disabled === true,
         sub: p["data-sub"] || undefined,
+        ...(p["data-placeholder"] != null && p["data-placeholder"] !== false ? { placeholder: true } : {}),
         group,
       });
     }
