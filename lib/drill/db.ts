@@ -1026,7 +1026,8 @@ export async function abandonDrill(
 ): Promise<{ ok: true } | { ok: false; error: "not_found" | "ended" }> {
   const r = await db
     .prepare(
-      `UPDATE drills SET status = 'abandoned', finished_at = ?3
+      // 自由対応の確かめ（T110。打つ前だけの物）は中断した訓練に残さない（無ければ world の文字は前と同じ）
+      `UPDATE drills SET status = 'abandoned', finished_at = ?3, world = CASE WHEN json_extract(world, '$.draft') IS NULL THEN world ELSE json_remove(world, '$.draft') END
         WHERE id = ?1 AND office_id = ?2 AND status = 'running'`,
     )
     .bind(id, scope.officeId, now)
@@ -1137,7 +1138,7 @@ export async function expireStaleDrills(db: D1Database, officeId: string, now: s
     const [updated] = await db.batch([
       db
         .prepare(
-          `UPDATE drills SET status = 'abandoned', finished_at = ?3, world = json_set(world, '$.abandoned', json(?4))
+          `UPDATE drills SET status = 'abandoned', finished_at = ?3, world = json_set(CASE WHEN json_extract(world, '$.draft') IS NULL THEN world ELSE json_remove(world, '$.draft') END, '$.abandoned', json(?4))
             WHERE id = ?1 AND office_id = ?2 AND status = 'running' AND started_at <= ?5`,
         )
         .bind(d.id, officeId, now, JSON.stringify({ reason: "24h" satisfies AbandonReason, at: now }), cutoff),

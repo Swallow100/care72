@@ -34,11 +34,11 @@ import {
 } from "./action-terms.ts";
 import { act, ActionBlocked, decideAction, type ActTarget, type ActionHooks } from "./actions.ts";
 import { busyOf, spanLabel, staffOf } from "./busy.ts";
-import { actDrill, drillScope, loadDrillRow, loadJudgeLog, startDrill, stateOfRow } from "./db.ts";
+import { actDrill, drillScope, loadDrillRow, loadJudgeLog, loadTicks, participantsOf, replayState, startDrill, stateOfRow } from "./db.ts";
 import { advance, aiAtOf, initialState, withoutMemo, type ActionRecord, type DrillState } from "./engine.ts";
 import { NO_CALL } from "./event-catalog.ts";
 import { drillFreeHook, FREE_SYSTEM, planFree, type FreeHook } from "./free-action.ts";
-import { actionPost, freePost, logGet, stepPost } from "./http.ts";
+import { abandonPost, actionPost, freePost, logGet, stepPost } from "./http.ts";
 import { minuteText } from "./time-text.ts";
 import { reviewText, type ReviewContext } from "./review.ts";
 import { EMPTY_WORLD, type WorldState } from "./scenarios.ts";
@@ -387,6 +387,44 @@ describe("手の分（時計は進めず、手に使った時間を AI も動か
     await expect(advance(r.state, r.state.minute, hooks, { policy: "clock", acts: true })).rejects.toBeInstanceOf(RangeError);
     // 手の分でない進めは今までどおり今の時計より後だけ
     await expect(advance(s, s.minute, hooks, { policy: "clock" })).rejects.toBeInstanceOf(RangeError);
+  });
+
+  it("手の途中で表の出来事をまたいだ（同じ分に手の途中の区切りがある）あとの手の分も、作り直した世界が保存と同じ", async () => {
+    await start();
+    // 0〜40 分の訪問、40〜80 分の訪問（1 時間の表の出来事をまたぎ、80 分に手の途中の区切り）
+    await actionPost(db, careManager(), ID, { step: 0, actions: 0, kind: "visit", person: "p-06", target: null }, START, { roll: () => 0 });
+    let st = (await stored()).step;
+    await actionPost(db, careManager(), ID, { step: st, actions: 1, kind: "visit", person: "p-04", target: null }, START, { roll: () => 0 });
+    const mid = await stored();
+    expect(mid.cuts?.at(-1)).toBe(80);
+    expect(mid.minute).toBe(80);
+    expect(aiAtOf(mid)).toBe(0);
+    st = mid.step;
+    expect((await stepPost(db, careManager(), ID, { step: st, acts: true }, START)).status).toBe(200);
+    const after = await stored();
+    expect(after.cuts?.slice(-2)).toEqual([80, 80]);
+    expect(after.aiAt).toBe(80);
+    const row = (await loadDrillRow(db, DEMO.id, ID))!;
+    const ticks = await loadTicks(db, ID, (after.cuts ?? []).map((m) => m / 60), row.step, 72);
+    const replay = replayState(row, participantsOf(row), ticks, row.step);
+    const plain = (w: WorldState) => {
+      const { lastCalled: _a, touched: _b, counts: _c, scheduled: _d, ...rest } = w;
+      return rest;
+    };
+    expect(replay.state.step).toBe(after.step);
+    expect(replay.state.minute).toBe(80);
+    expect(plain(replay.state.world)).toEqual(plain(after.world));
+    expect(replay.state.actions).toEqual(after.actions);
+  });
+
+  it("中断した訓練に打つ前の確かめを残さない", async () => {
+    await start();
+    const { free } = freeHooksOf(() => OWN());
+    await freePost(db, careManager(), ID, { step: 0, actions: 0, person: "p-01", text: "近所に頼む" }, planOf(free));
+    expect((await stored()).draft).toBeDefined();
+    expect((await abandonPost(db, careManager(), ID, START)).status).toBe(200);
+    const raw = (sqlite.prepare("SELECT world FROM drills WHERE id = ?").get(ID) as { world: string }).world;
+    expect(JSON.parse(raw).draft).toBeUndefined();
   });
 
   it("API: 進める POST の acts。使った時間が無い・ほかの進め方と一緒・刻みの道の訓練は 400。保存した aiAt", async () => {
