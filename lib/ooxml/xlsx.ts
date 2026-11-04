@@ -896,8 +896,7 @@ function layoutSheet(sheet: SheetData, styles: Styles, theme: Theme, measure: Me
       const fit = Math.min(1, sx, sy);
       // Excel の合わせた倍率は整数の %（切り捨て）
       scale = Math.max(0.1, Math.floor(fit * 100 + 1e-6) / 100);
-      // Excel は合わせた倍率を scale に書き残す。保存した端末の印刷の範囲（プリンターの余白）で合わせた値なので、計算より小さければそちらを使う
-      if (pg.scale > 0 && pg.scale / 100 < scale) scale = Math.max(0.1, pg.scale / 100);
+      // 保存した倍率（scale）は使わない。保存した端末のプリンターの余白で合わせた値で、双子の PDF とは計算した倍率の方が合った（docs/progress/t119.md）
       useColBreaks = pg.fitW === 0;
       useRowBreaks = pg.fitH === 0;
     }

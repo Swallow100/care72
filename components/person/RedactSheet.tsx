@@ -20,7 +20,7 @@ import { AddIcon, BackIcon, CloseIcon, FitIcon, RemoveIcon, SendIcon, ZoomInIcon
 import { Loader72 } from "@/components/ui/Loader72";
 import { REDACT_LABELS as L } from "@/lib/labels";
 import { PDF_PAGES_MAX, type ReadMeta } from "@/lib/intake/read-form";
-import { defaultExcluded } from "@/lib/office/pick";
+import { defaultExcluded } from "@/lib/ooxml/pick";
 import { encodeRedacted, loadPages, metaOf, releasePages, type RedactPage } from "@/lib/redact/browser";
 import { hitRect, initialRedact, rectFromDrag, redactReducer, totalHidden, unpainted, type Rect } from "@/lib/redact/rects";
 import { fitView, panView, pinchView, refitView, viewToImage, zoomAt, ZOOM_MAX, ZOOM_STEP, type Frame, type Pt, type View } from "@/lib/redact/view";

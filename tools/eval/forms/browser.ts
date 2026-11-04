@@ -4,17 +4,17 @@
 // - PDF は頭から PDF_PAGES_MAX 頁まで（倍率は min(4, 2000 / 長い辺)）
 // - 長い辺を OUTPUT_MAX_SIDE に縮め、伏せる所を paintRects で黒く塗り、JPEG の質を 86→75→60→45 と下げて上限（5 MB）に収め、付け足しを外す
 // 描くのは @napi-rs/canvas（pdfjs-dist の任意の依存、MIT。tools/print/pdf-pages.ts と同じ）。無い端末では no_canvas。
-// Excel・Word（T119）は lib/office で印刷の頁に描き（字の幅は @napi-rs/canvas の measureText）、ブラウザと同じ決まり（lib/office/pick.ts）で
+// Excel・Word（T119）は lib/ooxml で印刷の頁に描き（字の幅は @napi-rs/canvas の measureText）、ブラウザと同じ決まり（lib/ooxml/pick.ts）で
 // 記入例のシートを外した頭の 3 頁を送る。古い形（.xls・.doc）は legacy で断る（画面は「旧形式・PDF 保存で取込」）。
 // 送ったあとに塗った所が本当に黒いかを測る（redactOk）。塗れていない頁は送らない（Claude に人の値の写る絵を渡さない）。
 
 import { FORM_FILE_MAX_BYTES } from "../../../lib/forms/mapping.ts";
 import { PDF_PAGES_MAX, type ReadMeta, type ReadSource } from "../../../lib/intake/read-form.ts";
-import { drawPage, pageSize, type Draw2d } from "../../../lib/office/draw.ts";
-import { cssFont } from "../../../lib/office/fonts.ts";
-import { OFFICE_PAGES_MAX, OfficeReadError, renderOffice } from "../../../lib/office/index.ts";
-import { defaultExcluded } from "../../../lib/office/pick.ts";
-import { isExampleSheet } from "../../../lib/office/xlsx.ts";
+import { drawPage, pageSize, type Draw2d } from "../../../lib/ooxml/draw.ts";
+import { cssFont } from "../../../lib/ooxml/fonts.ts";
+import { OFFICE_PAGES_MAX, OfficeReadError, renderOffice } from "../../../lib/ooxml/index.ts";
+import { defaultExcluded } from "../../../lib/ooxml/pick.ts";
+import { isExampleSheet } from "../../../lib/ooxml/xlsx.ts";
 import { stripJpegMetadata } from "../../../lib/redact/jpeg.ts";
 import { OUTPUT_MAX_SIDE, outputSize, paintRects } from "../../../lib/redact/paint.ts";
 import type { Ratio } from "./render.ts";
@@ -120,7 +120,7 @@ async function redactedDark(mod: CanvasModule, bytes: Uint8Array, w: number, h: 
   return true;
 }
 
-/** Excel・Word の頁（ブラウザの lib/office/browser.ts と同じく、描いて頁の画像にしてから塗る） */
+/** Excel・Word の頁（ブラウザの lib/ooxml/browser.ts と同じく、描いて頁の画像にしてから塗る） */
 async function officeStage(mod: CanvasModule, bytes: Uint8Array, secrets: ReadonlyArray<readonly Ratio[]>, rawBytes: number): Promise<BrowserResult> {
   const mctx = mod.createCanvas(10, 10).getContext("2d") as unknown as { font: string; measureText(t: string): { width: number } };
   const measure = (t: string, f: Parameters<typeof cssFont>[0]) => {

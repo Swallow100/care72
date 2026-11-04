@@ -1,7 +1,7 @@
 // T119: 評価の台のブラウザの段が Excel・Word を通す（架空の小さな xlsx をここで作る。@napi-rs/canvas の無い端末では飛ばす）。
 
 import { describe, expect, it } from "vitest";
-import { makeZip } from "../../../lib/office/test-zip.ts";
+import { makeZip } from "../../../lib/ooxml/test-zip.ts";
 import { browserStage, kindOf, loadCanvas } from "./browser.ts";
 
 const CT = `<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/></Types>`;

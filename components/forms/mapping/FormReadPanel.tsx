@@ -18,7 +18,7 @@ import { LIMITS, MAPPING_LABELS as L } from "@/lib/forms/mapping";
 import { buildFormReadForm, FORM_READ_PAGES_MAX } from "@/lib/forms/read-upload";
 import { shrinkImage } from "@/lib/forms/shrink-image";
 import { PLACE_LABELS, REDACT_LABELS } from "@/lib/labels";
-import { isLegacyOffice, isZip, OFFICE_ACCEPT, OFFICE_FILE_MAX_BYTES } from "@/lib/office/sniff";
+import { isLegacyOffice, isZip, OFFICE_ACCEPT, OFFICE_FILE_MAX_BYTES } from "@/lib/ooxml/sniff";
 
 // 黒塗りの画面は写真・PDF を選んで読取を押したときだけ読み込む（ブラウザだけ。pdf.js をサーバーの束に入れない）
 const RedactSheet = dynamic(() => import("@/components/person/RedactSheet").then((m) => m.RedactSheet), { ssr: false });

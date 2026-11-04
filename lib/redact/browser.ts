@@ -3,8 +3,8 @@
 //
 // - 写真（JPEG・PNG）: そのまま <img> で開く。向き（EXIF の回転）はブラウザが直した大きさで扱う（naturalWidth と drawImage は向きを直す）
 // - PDF: pdf.js（pdfjs-dist、Apache-2.0）で頭から PDF_PAGES_MAX 頁までを画像（PNG）にする。pdf.js は PDF を選んだときだけ読み込む
-// - Excel・Word（T119）: lib/office で印刷の頁に描いて画像（PNG）にする（OFFICE_PAGES_MAX 頁まで。送るのは人が選んだ 3 頁まで）。
-//   古い形（.xls・.doc）は読まずに legacy で返す（画面は「PDF 保存で取込」）。lib/office は選んだときだけ読み込む
+// - Excel・Word（T119）: lib/ooxml で印刷の頁に描いて画像（PNG）にする（OFFICE_PAGES_MAX 頁まで。送るのは人が選んだ 3 頁まで）。
+//   古い形（.xls・.doc）は読まずに legacy で返す（画面は「PDF 保存で取込」）。lib/ooxml は選んだときだけ読み込む
 // - 送る画像: canvas に描いて（長い辺を OUTPUT_MAX_SIDE に）、ピクセルを直に黒く塗り（paintRects）、JPEG にして、付け足しを外す。
 //   canvas を通すので元の EXIF（位置・端末）は付かない。付いていても stripJpegMetadata で外す（サーバーは付いた物を断る）
 
@@ -108,9 +108,9 @@ async function pdfPages(file: File): Promise<RedactPage[]> {
   }
 }
 
-/** Excel・Word を頁の画像に（T119）。lib/office は使うときだけ読み込む */
+/** Excel・Word を頁の画像に（T119）。lib/ooxml は使うときだけ読み込む */
 async function officePages(file: File): Promise<RedactPage[]> {
-  const { officeImages } = await import("../office/browser.ts");
+  const { officeImages } = await import("../ooxml/browser.ts");
   const r = await officeImages(file, OUTPUT_MAX_SIDE);
   return r.pages.map((p, i) => ({
     id: pageId(),
