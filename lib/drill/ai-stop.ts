@@ -13,6 +13,7 @@
 import { AI_STATUS_LABELS, type AiStatus } from "../claude/status.ts";
 import type { DrillIncident, Tick } from "./engine.ts";
 import { AI_STOP_UI, DRILL_LABELS } from "./labels.ts";
+import { hourSpanText, hourText } from "./time-text.ts";
 import { CAP_REASON, CLOCK_LABELS } from "./clock.ts";
 
 /** cap は連続の時計の訓練（T90）の 1 訓練の上限（150 回、lib/drill/clock.ts）。戻らない */
@@ -114,10 +115,10 @@ export function aiStopParts(b: AiStopBand): { title: string; reason: string; spa
       : b.whole
         ? null
         : b.to === null
-          ? `${DRILL_LABELS.elapsed} ${b.from} ${DRILL_LABELS.hours}〜`
+          ? `${DRILL_LABELS.elapsed} ${hourText(b.from)}〜`
           : b.to === b.from
-            ? `${DRILL_LABELS.elapsed} ${b.from} ${DRILL_LABELS.hours}`
-            : `${DRILL_LABELS.elapsed} ${b.from}〜${b.to} ${DRILL_LABELS.hours}`;
+            ? `${DRILL_LABELS.elapsed} ${hourText(b.from)}`
+            : `${DRILL_LABELS.elapsed} ${hourSpanText(b.from, b.to)}`;
   const resume = b.resume === "next" ? AI_STOP_UI.retry : b.resume === "tomorrow" ? AI_STOP_UI.tomorrow : b.resume === "done" ? AI_STOP_UI.resumed : null;
   return {
     title: AI_STOP_UI.title,

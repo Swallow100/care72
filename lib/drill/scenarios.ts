@@ -12,6 +12,7 @@
 
 import type { CheckStatus, DependsOn, DrillScenario, HazardKind, SignalColor, SignalSource, WhereNow } from "../db/types.ts";
 import { INJECT_TEXTS, injectChange, type InjectKind } from "./event-catalog.ts";
+import { hourText } from "./time-text.ts";
 import type { SourceId } from "../sources/index.ts";
 import type { CastPick } from "./cast.ts";
 
@@ -821,7 +822,7 @@ export function applyEvent(world: WorldState, e: WorldEvent, hour: number): Worl
       return { ...world, weather: c.state };
     case "narration":
       // 部屋の文（別名のまま）を世界の履歴に残す。1 回呼び（world-oneshot.ts）が履歴の要約として送る
-      return { ...world, story: [...(world.story ?? []), `${hour} 時間: ${c.room}`].slice(-STORY_MAX) };
+      return { ...world, story: [...(world.story ?? []), `${hourText(hour)}: ${c.room}`].slice(-STORY_MAX) };
     case "world_note":
     case "ai_stop":
     case "auto_abandon":

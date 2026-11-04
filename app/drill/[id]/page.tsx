@@ -40,6 +40,7 @@ import { COLOR_TONES } from "@/lib/person";
 import { DRILL_PATH, drillHref, reportHref, parseSort, parseStep, parseView, type DrillView } from "@/lib/drill/paths";
 import { drillKindOf, isVirtual } from "@/lib/drill/scenarios";
 import { loadDrillScreen, screenTimeText, type DrillScreen } from "@/lib/drill/view";
+import { simTimeText } from "@/lib/drill/time-text";
 import { voiceEnabled, voiceHref } from "@/lib/drill/voice";
 import { buildSidePane, sideDisasterOf } from "@/lib/map/side";
 import { ButtonLink } from "@/components/ui/Button";
@@ -211,7 +212,7 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
               counts={countColors(rows.flatMap((r) => (r.triage ? [r.triage.color] : [])))}
               disaster={elapsedText(sit.disasterAt, sit.now)}
               outage={outage && outage.restoredAt === null && sit.outageAt ? { elapsed: elapsedText(sit.outageAt, sit.now), area: sit.outageTowns !== null } : null}
-              at={shortJst(sit.now)}
+              at={simTimeText(s.drill.started_at, nowHour(s.state) * 60)}
             />
             <ViewToggle view={view} hrefOf={(v) => here({ view: v })} />
           </div>

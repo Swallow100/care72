@@ -7,12 +7,13 @@
 // 仮想モードの結末の人（T53）は、上に結末の 1 文と、世界が決めた理由（街と物の事実）を AI の印つきで出す。
 
 import { AiMark, StateTag, TONE_TEXT } from "@/components/person/parts";
-import { CALL_UI, DRILL_LABELS, VIRTUAL_LABELS } from "@/lib/drill/labels";
+import { CALL_UI, VIRTUAL_LABELS } from "@/lib/drill/labels";
+import { minuteText } from "@/lib/drill/time-text";
 import { COLOR_LABELS } from "@/lib/labels";
 import type { RowDetail } from "@/lib/list/detail";
 import { DETAIL_LABELS } from "@/lib/list/labels";
 
-const HOUR_MS = 3_600_000;
+const MINUTE_MS = 60_000;
 
 export function DrillRowDetail({
   detail: d,
@@ -33,7 +34,8 @@ export function DrillRowDetail({
   ended?: { text: string; reason: string | null; ai: boolean } | null;
 }) {
   const ai = new Set(aiSignals);
-  const hourOf = (iso: string) => Math.round(((Date.parse(iso) - Date.parse(startedAt)) / HOUR_MS) * 10) / 10;
+  // 安否の時刻は発災からの経過（「6 時間 10 分」。lib/drill/time-text.ts）
+  const elapsedOf = (iso: string) => minuteText((Date.parse(iso) - Date.parse(startedAt)) / MINUTE_MS);
   return (
     <div className="@container space-y-2 text-sm" data-detail-of={d.personId}>
       {ended && (
@@ -139,7 +141,7 @@ export function DrillRowDetail({
                 <li key={s.id} data-signal={s.id}>
                   <div className="flex flex-wrap items-baseline gap-x-2">
                     <span className="text-xs text-muted tabular-nums">
-                      {hourOf(s.at)} {DRILL_LABELS.hours}
+                      {elapsedOf(s.at)}
                     </span>
                     <span className="text-xs text-muted">{s.source}</span>
                     {heard[s.id] && (

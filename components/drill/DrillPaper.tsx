@@ -18,6 +18,7 @@ import type { ReviewBody } from "@/lib/drill/review";
 import { REVIEW_ERROR_LABELS, REVIEW_KIND_LABELS, REVIEW_UI, SCORE_LABELS } from "@/lib/drill/score-labels";
 import { scoreView } from "@/lib/drill/score-view";
 import { isVirtual, lastHour, scenarioOf } from "@/lib/drill/scenarios";
+import { hourSpanText, hourText } from "@/lib/drill/time-text";
 import { cssString } from "@/components/forms/Form9Paper";
 import { paperText } from "@/lib/forms/paper-text";
 import { warekiText } from "@/lib/forms/wareki";
@@ -438,7 +439,7 @@ export function DrillPaper({ record, office, today, ai = null }: { record: Drill
             <tbody key={tick.step} data-hour={tick.hour}>
               <tr className="hour">
                 <td colSpan={5}>
-                  {t(`${SCORE_LABELS.elapsed} ${from !== null && from + 1 < tick.hour ? `${from}〜` : ""}${tick.hour} ${DRILL_LABELS.hours}`)}
+                  {t(`${SCORE_LABELS.elapsed} ${from !== null && from + 1 < tick.hour ? hourSpanText(from, tick.hour) : hourText(tick.hour)}`)}
                   {incidents.map((e, i) => (
                     <span key={i} className="incident">
                       {SCORE_LABELS.situation} {t(clockLabel(Math.round(e.at * 60)))} {t(e.text)}

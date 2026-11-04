@@ -24,6 +24,7 @@ import type {
   WorldChange,
   WorldState,
 } from "./scenarios.ts";
+import { hourText, minuteText as minuteWords } from "./time-text.ts";
 
 // ---------- 種類 ----------
 
@@ -661,20 +662,12 @@ export function incidentLabel(e: { change: WorldChange; inject?: InjectKind }): 
 
 // ---------- 本人役への言葉の口（lib/drill/persona.ts の worldWords の末尾。T93 が読む） ----------
 
-/** 「3 時間 40 分」（lib/drill/labels.ts の clockLabel と同じ形。labels.ts を値で読まないので写した） */
-function minuteWords(minute: number): string {
-  const m = Math.max(0, Math.round(minute));
-  const h = Math.floor(m / 60);
-  const r = m % 60;
-  return r === 0 ? `${h} 時間` : `${h} 時間 ${r} 分`;
-}
-
 const EXTRA_MARK_WORDS: Readonly<Record<ExtraMark, (h: number) => string>> = {
-  helperAway: (h) => `介護事業所が休みで、ヘルパーが来られない（${h} 時間から）`,
-  familyAway: (h) => `同居でない家族が帰宅困難で、こちらに来られない（${h} 時間から）`,
-  carSleep: (h) => `避難所に入れず、車の中で過ごしている（${h} 時間から）`,
-  neighborWatch: (h) => `近所の人が様子を見に来た（${h} 時間）`,
-  wandering: (h) => `本人が家の外へ出た。どこにいるか分からない（${h} 時間から）`,
+  helperAway: (h) => `介護事業所が休みで、ヘルパーが来られない（${hourText(h)}から）`,
+  familyAway: (h) => `同居でない家族が帰宅困難で、こちらに来られない（${hourText(h)}から）`,
+  carSleep: (h) => `避難所に入れず、車の中で過ごしている（${hourText(h)}から）`,
+  neighborWatch: (h) => `近所の人が様子を見に来た（${hourText(h)}）`,
+  wandering: (h) => `本人が家の外へ出た。どこにいるか分からない（${hourText(h)}から）`,
 };
 
 const ROLE_WORDS: Readonly<Record<ArrivalRole, string>> = {
