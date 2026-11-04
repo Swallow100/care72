@@ -7,6 +7,7 @@
 // - 同意の範囲は松山市の様式と同じ（計画の共有 → 医療、支援者への提供 → 避難支援者と夜間支援）。同意が無ければ「省略」
 // - 台帳に対応の無い欄（item が null）と、台帳に値の無い欄は「未確認」。台帳の pending（不明・未聴取・無回答）は理由を添える
 // - 手で書く欄（署名・受付印）は空ける。外した欄は出さない
+// - 居ない人の欄は松山市の様式と同じ: 1 人目の氏名だけ「なし」、ほかの欄と 2 人目からの欄は空き枠（刷らない・数えない。T111）
 // - □ が 1 つの欄（check）は項目の「当てはまるか」で ■・□、選ぶ欄（choice）は値の言葉が選択肢に合えば ■
 
 import { ageOn } from "../age.ts";
@@ -32,6 +33,7 @@ import {
   buildMatsuyamaSheet,
   contactName,
   deviceLine,
+  EMPTY,
   NONE,
   strong,
   sub,
@@ -49,6 +51,7 @@ import {
 } from "./matsuyama.ts";
 import { ledgerItem, type FormMapping, type LedgerItemKey, type MappingField } from "./mapping.ts";
 import { warekiText } from "./wareki.ts";
+import { transportText } from "../map/transport.ts";
 
 // ---------- 項目の値 ----------
 
@@ -80,6 +83,7 @@ function withPending(cell: Cell, reason: PendingStatus | undefined): Cell {
   switch (cell.kind) {
     case "unconfirmed":
     case "none":
+    case "empty":
       return { kind: "unconfirmed", reason };
     case "value":
       return { kind: "value", lines: [...cell.lines, [unconfirmedPiece(reason)]] };
@@ -107,17 +111,17 @@ function bool(v: boolean | undefined, reason?: PendingStatus): ItemValue {
 
 const fromSheet = (key: MatsuyamaKey) => (c: Ctx): ItemValue => ({ cell: c.sheet.cells[key] });
 
-/** 電話の欄: 番号と固定・携帯の区別。番号が無ければ未確認 */
+/** 電話の欄: 番号と固定・携帯の区別。番号が無ければ未確認。居ない人の欄は空き枠（T111。松山市の様式と同じ） */
 function phoneCell(contact: Contact | null): Cell {
-  if (!contact) return NONE;
+  if (!contact) return EMPTY;
   if (!contact.phone) return unconfirmed();
   const mobile = (contact.note ?? "").includes("携帯");
   return value([t(contact.phone), sub(mobile ? "携帯" : contact.kind === "self" ? "固定" : "電話")]);
 }
 
-/** 関係の欄: 続柄・種類・連絡順・車・夜間・スマホ・備考 */
+/** 関係の欄: 続柄・種類・連絡順・車・夜間・スマホ・備考。居ない人の欄は空き枠 */
 function relationCell(c: Contact | null): Cell {
-  if (!c) return NONE;
+  if (!c) return EMPTY;
   const head: PieceLine = [strong(c.relation ?? CONTACT_KIND_LABELS[c.kind])];
   if (c.relation && c.kind !== "family" && c.kind !== "supporter") head.push(sub(CONTACT_KIND_LABELS[c.kind]));
   const flags: PieceLine = [];
@@ -132,12 +136,13 @@ function relationCell(c: Contact | null): Cell {
 
 /** 住所の欄: 住所は持たないので未確認。どこにいる人か（同居・近所・市内）を添える（松山市の様式と同じ） */
 function addressCell(c: Contact | null): Cell {
-  if (!c) return NONE;
+  if (!c) return EMPTY;
   return c.reach ? { kind: "value", lines: [[unconfirmedPiece(), sub(CONTACT_REACH_LABELS[c.reach])]] } : unconfirmed();
 }
 
+/** 氏名の欄（緊急連絡先 2）。2 人目の居ない欄は空き枠（T111） */
 function nameCell(c: Contact | null, reason?: PendingStatus): Cell {
-  if (!c) return withPending(NONE, reason);
+  if (!c) return withPending(EMPTY, reason);
   return withPending(value([strong(c.name ?? c.relation ?? CONTACT_KIND_LABELS[c.kind])]), reason);
 }
 
@@ -332,7 +337,7 @@ export const ITEM_VALUES: Record<LedgerItemKey, Resolver> = {
   },
   "evacuation.destination1": fromSheet("shelter.city.place"),
   "evacuation.destination2": fromSheet("shelter.pre.place"),
-  "evacuation.transport": (c) => ({ cell: text(c.ledger.evacuation.transport, pendingOf(c.ledger, "evacuation.transport")) }),
+  "evacuation.transport": (c) => ({ cell: text(transportText(c.ledger.evacuation), pendingOf(c.ledger, "evacuation.transport")) }),
   "evacuation.route": fromSheet("route.text"),
   "evacuation.barriers": (c) => ({ cell: text(c.ledger.evacuation.barriers, pendingOf(c.ledger, "evacuation.barriers")) }),
   "evacuation.support": (c) => {
@@ -437,7 +442,7 @@ const CHECK_OFF = { label: "", on: false } as const;
 /** 項目の値を欄の形（□・選ぶ・手書き）に合わせる */
 export function shapeCell(field: MappingField, v: ItemValue): Cell {
   const cell = v.cell;
-  if (cell.kind === "withheld" || cell.kind === "handwrite") return cell;
+  if (cell.kind === "withheld" || cell.kind === "handwrite" || cell.kind === "empty") return cell;
   // □ 1 つの欄は、欄の名前を左の列に出すので ■・□ と値だけ（名前を繰り返さない）
   if (field.shape === "check") {
     if (v.flag === true) return { kind: "choice", options: [CHECK_ON], after: pieces(cell) };

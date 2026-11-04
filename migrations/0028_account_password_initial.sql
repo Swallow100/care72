@@ -1,4 +1,4 @@
--- 初期パスワードのままの印（docs/tasks/T114.md の問い 1、docs/progress/t114.md）。
+-- 初期パスワードのままの印（docs/tasks/T114.md の問い 1、docs/progress/t114.md）。0027 は T115 の試用事業所（本番に当て済み）なので 0028。
 -- accounts.password_initial: 1 は人が作ったでたらめのパスワード（ケアマネ追加・再発行の初期パスワード、作者の道具 tools/office の
 --   new-office.ts の管理者・new-staff.ts の医療班と行政）を、本人がまだ変えていない。0 は本人が自分で変えた（lib/auth/password-change.ts）。
 --   1 の人にはヘッダーの下に「初期パスワード」の印と変更の入口を出す（変えるまでほかの画面へ行けない、にはしない）。

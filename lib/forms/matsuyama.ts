@@ -11,6 +11,7 @@
 //   計画共有 → 実施組織と医療の欄（かかりつけ医・薬局、医薬品情報、特記の医療、別紙）
 // - 医療班提供は様式に効かない（医療班の要約 T07 と QR の頁 T16 にだけ効く。docs/DECISIONS.md「仮名化・同意・個人情報」）
 // - 台帳にある値は余さず差し込む。様式に欄の無い値（機器と時計、緊急連絡先の 2 人目から、持出品など）は特記事項に
+// - 居ない人の欄は、実施者・近親者の 1 人目の氏名だけ「なし」。ほかの欄と 2 人目からの欄・値の無い特記の段は空き枠（EMPTY。T111）
 
 import { ageOn } from "../age.ts";
 import {
@@ -51,6 +52,7 @@ import {
 import { ROUTE_FRAME, routeSceneOf } from "../map/route-image.ts";
 import { formatJst, FIELDS as PAGE_FIELDS, type PersonPageRows } from "../person.ts";
 import { ERAS, wareki, warekiDate, warekiText } from "./wareki.ts";
+import { transportText } from "../map/transport.ts";
 
 /** 市の PDF（2026.9.10 版）。開いて照らすためのリンクだけ持つ */
 export const MATSUYAMA_FORM_URL =
@@ -533,11 +535,17 @@ export type PieceLine = Piece[];
 /** 選ぶ欄の 1 つ。on は ■、detail は（ ）の中、sub は中の選択肢（高齢者 → 独居・要介護） */
 export type Choice = { label: string; on: boolean; detail?: string; sub?: Choice[] };
 
+/**
+ * 欄の値。none は「なし」（居ない・無いと分かっている）、empty は空き枠（T111。刷らない・未確認に数えない・色付けで塗らない）:
+ * 2 人目からの居ない人の欄（実施者 2・地域の支援者の名前の無い行）、居ない人の氏名のほかの欄（フリガナ・住所・電話・関係・同意※）、
+ * 値の無い特記の段（本人の言葉・その他）。原本の紙に手で書くときと同じく空けておく
+ */
 export type Cell =
   | { kind: "value"; lines: PieceLine[] }
   | { kind: "choice"; options: Choice[]; after?: Piece[]; unconfirmed?: { reason?: PendingStatus } }
   | { kind: "unconfirmed"; reason?: PendingStatus }
   | { kind: "none" }
+  | { kind: "empty" }
   | { kind: "withheld"; consent: ConsentKind }
   | { kind: "handwrite" };
 
@@ -579,6 +587,8 @@ export const value = (...lines: PieceLine[]): Cell => {
 };
 export const unconfirmed = (reason?: PendingStatus): Cell => (reason ? { kind: "unconfirmed", reason } : { kind: "unconfirmed" });
 export const NONE: Cell = { kind: "none" };
+/** 空き枠（T111）。紙に何も刷らない */
+export const EMPTY: Cell = { kind: "empty" };
 
 /** 文字の値。空なら未確認 */
 function textCell(v: string | null | undefined, emphasize = false): Cell {
@@ -612,6 +622,7 @@ export function cellText(cell: Cell): string {
       return BLANK.none;
     case "withheld":
       return withheldText(cell.consent);
+    case "empty":
     case "handwrite":
       return "";
   }
@@ -669,8 +680,8 @@ function withPending(cell: Cell, reason: PendingStatus | undefined): Cell {
   if (!reason) return cell;
   switch (cell.kind) {
     case "unconfirmed":
-      return { kind: "unconfirmed", reason };
     case "none":
+    case "empty":
       return { kind: "unconfirmed", reason };
     case "value":
       return { kind: "value", lines: [...cell.lines, [unconfirmedPiece(reason)]] };
@@ -995,12 +1006,14 @@ export function buildMatsuyamaSheet(rows: PersonPageRows, opts: BuildOptions): M
   );
 
   // ---- 実施者 ----
+  // 居ない人の欄（T111）: 実施者が 1 人も居なければ 1 人目の氏名だけ「なし」、ほかの欄と 2 人目の欄は空き枠（刷らない・数えない）
+  const noSupporter = !s1 && !s2;
   const supporterCells = (n: 1 | 2, c: Contact | null): Record<SupporterPart, Cell> => {
     const consentReason = pool.take(`supporter${n}.consent`, under("consent.supporters"));
     const nameReason = pool.take(`supporter${n}.name`, under(`people.supporter${n}`));
     if (!c) {
-      const name = nameReason ? unconfirmed(nameReason) : NONE;
-      return { kana: NONE, name, address: NONE, phone: NONE, mobile: NONE, relation: NONE, consent: NONE };
+      const name = nameReason ? unconfirmed(nameReason) : n === 1 && noSupporter ? NONE : EMPTY;
+      return { kana: EMPTY, name, address: EMPTY, phone: EMPTY, mobile: EMPTY, relation: EMPTY, consent: EMPTY };
     }
     place([c]);
     const consentC = consentCell(consent.supporters, MARK_OPTIONS, consentReason);
@@ -1216,7 +1229,8 @@ export function buildMatsuyamaSheet(rows: PersonPageRows, opts: BuildOptions): M
     "local.welfare": withPending(contactsCell(welfare), welfareReason),
     "local.watcher": withPending(textCell(ledger.local?.watcher, true), watcherReason),
     "local.office": contactsCell(offices, { kind: true }, unconfirmed()),
-    "local.other": contactsCell(localOther, { kind: true }),
+    // 地域の支援者の名前の無い 2 行は、足すための空き枠（居なければ刷らない。T111）
+    "local.other": contactsCell(localOther, { kind: true }, EMPTY),
     // 様式は「あり（アプリ・紙）・なし」。あり の中に アプリ・紙 を選ぶ
     "target.timeline": withPending(
       {
@@ -1240,12 +1254,13 @@ export function buildMatsuyamaSheet(rows: PersonPageRows, opts: BuildOptions): M
     "consent.planShare": consentCell(consent.plan_share, CONSENT_OPTIONS, planShareReason, consentRow("plan_share")),
     "sign.self": { kind: "handwrite" },
     "sign.proxy": { kind: "handwrite" },
-    "kin.kana": kin ? unconfirmed() : NONE,
+    // 近親者が居なければ氏名だけ「なし」、ほかの欄は空き枠（T111）
+    "kin.kana": kin ? unconfirmed() : EMPTY,
     "kin.name": kin ? value([strong(kin.name ?? kin.relation ?? CONTACT_KIND_LABELS[kin.kind])]) : withPending(NONE, kinReason),
-    "kin.relation": kin ? textCell(kin.relation ?? CONTACT_KIND_LABELS[kin.kind]) : NONE,
-    "kin.phone": kinPhones?.phone ?? NONE,
-    "kin.mobile": kinPhones?.mobile ?? NONE,
-    "kin.address": kin ? contactAddress(kin) : NONE,
+    "kin.relation": kin ? textCell(kin.relation ?? CONTACT_KIND_LABELS[kin.kind]) : EMPTY,
+    "kin.phone": kinPhones?.phone ?? EMPTY,
+    "kin.mobile": kinPhones?.mobile ?? EMPTY,
+    "kin.address": kin ? contactAddress(kin) : EMPTY,
     ...supporterKeys(1, s1Cells),
     ...supporterKeys(2, s2Cells),
     "supporter.night": night,
@@ -1288,7 +1303,7 @@ export function buildMatsuyamaSheet(rows: PersonPageRows, opts: BuildOptions): M
     "shelter.near.means": unconfirmed(),
     "shelter.near.minutes": unconfirmed(),
     "shelter.city.place": withPending(textCell(evacuation.destination1, true), cityReason),
-    "shelter.city.means": evacuation.destination1 ? means(evacuation.transport, transportReason) : unconfirmed(transportReason),
+    "shelter.city.means": evacuation.destination1 ? means(transportText(evacuation), transportReason) : unconfirmed(transportReason),
     "shelter.city.minutes": unconfirmed(),
     "housing.type": {
       kind: "choice",
@@ -1337,8 +1352,9 @@ export function buildMatsuyamaSheet(rows: PersonPageRows, opts: BuildOptions): M
       supportReason,
     ),
     "notes.medical": medicalShared ? withPending(value(...medicalNoteLines), medicalNoteReason) : medicalWithheld,
-    "notes.words": ledger.notes.length > 0 ? value(...ledger.notes.map((n) => [raw(n)])) : NONE,
-    "notes.other": otherLines.length > 0 ? value(...otherLines) : NONE,
+    // 特記の段で値の無い物は段ごと刷らない（本人の言葉をまだ聞いていないだけ。T111）
+    "notes.words": ledger.notes.length > 0 ? value(...ledger.notes.map((n) => [raw(n)])) : EMPTY,
+    "notes.other": otherLines.length > 0 ? value(...otherLines) : EMPTY,
     "notes.annex": {
       kind: "choice",
       options: [

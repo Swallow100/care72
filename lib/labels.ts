@@ -27,6 +27,7 @@ import type {
   SmartphoneUse,
   SupportKind,
   TimelineKind,
+  TransportKind,
 } from "./db/types.ts";
 import type { Color, GreenVia, Tier } from "./triage/index.ts";
 
@@ -181,6 +182,15 @@ export const SUPPORT_KIND_LABELS: Record<SupportKind, string> = {
   call: "声掛け",
   guide: "誘導",
   assist: "移動介助",
+  other: "その他",
+};
+
+/** 避難の手段の選ぶ欄（T112） */
+export const TRANSPORT_KIND_LABELS: Record<TransportKind, string> = {
+  foot: "徒歩",
+  wheelchair: "車いす",
+  family_car: "家族の車",
+  pickup: "送迎",
   other: "その他",
 };
 
@@ -551,6 +561,20 @@ export const ROUTE_LABELS = {
   credit: "出典",
   /** 計画書の紙の避難経路の地図（T106）。前からの紙面は段に「地図 別紙」と書き、地図は別紙の頁に */
   paperMap: "地図",
+  /** 避難先の候補（T112。国土地理院の指定緊急避難場所・指定避難所）: 切替・読込中・無し・読めない */
+  candidates: "候補",
+  candidatesNone: "候補なし",
+  /** 候補の種類: 指定緊急避難場所・指定避難所・福祉避難所 */
+  kindEmergency: "緊急避難",
+  kindShelter: "避難所",
+  kindWelfare: "福祉",
+  /** 徒歩の時間の見込み（T112）と、歩く速さの見出し */
+  estimate: "目安",
+  speed: "歩行",
+  /** 浸水のハザードがあり手段が車のときの 1 語（T112。色と連絡順には使わない） */
+  floodCar: "冠水注意",
+  /** 根拠（出典の登録簿へのリンクの頭） */
+  basis: "根拠",
 } as const;
 
 /**

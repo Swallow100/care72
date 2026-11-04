@@ -1,4 +1,4 @@
-// T66 右の面の地図（docs/tasks/T66.md の 3）。小さな地図のその場の拡大・縮小・移動の計算と画面、雨雲の濃さ（形は T96 で替えた）、
+// T66 右の面の地図（docs/tasks/T66.md の 3）。小さな地図のその場の拡大・縮小・移動の計算と画面、雨雲の濃さ（形は T96、色は T116 で替えた）、
 // 下の地図と重ねる層の濃さ、右の面の人数の帯（塗りの印・本文色の数・0 は灰）。
 // 動き（ボタン・Ctrl＋ホイール・押したあとのホイール・ドラッグ）は手元の dev のブラウザで確かめた（docs/progress/t66.md）。
 
@@ -13,8 +13,9 @@ import { toTriagePerson } from "../triage/from-ledger.ts";
 import { rank } from "../triage/index.ts";
 import { FULL_ZOOM, JAPAN_BOUNDS, MAP_LIMITS, sameView, sideWheelTakes, stepZoom, toFrame, wheelZoom } from "./camera.ts";
 import { HEAVY_RAIN_TRACK } from "../drill/rain.ts";
-import { demoOverlay, RAIN_FILL, RAIN_STREAK, RAIN_STYLE } from "./demo.ts";
+import { demoOverlay } from "./demo.ts";
 import { rainAnchor } from "./drill-rain.ts";
+import { RAIN_OPACITY, RAIN_STEPS } from "./rain-scale.ts";
 import { BASE_SIZE, clampView, fitView, place, tilesFor, tileZoom, VIEW_H, VIEW_W, zoomAt, type View } from "./geo.ts";
 import { BASE_LAYER, BASE_OPACITY, HAZARD_OPACITY } from "./layers.ts";
 import { MAP_UI } from "./labels.ts";
@@ -139,18 +140,15 @@ describe("小さな地図の画面", () => {
 });
 
 describe("地図の見やすさ（雨雲・下の地図・層）", () => {
-  // 雨雲の形（斜線 → 淡い青灰の面と短い筋）は T96 で替えた。ここには T66 の意図（強いほど詰む・ライトとダークで同じ色・デモの印）だけを残す。
-  // 形の細かい所は lib/map/t96-rain.test.ts
-  it("雨雲は強いほど筋を詰めて太く。弱でも筋がある", () => {
-    const s = [RAIN_STYLE[1], RAIN_STYLE[2], RAIN_STYLE[3]];
-    const density = (x: (typeof s)[number]) => x.streaks / (x.tile * x.tile);
-    for (let i = 1; i < s.length; i++) {
-      expect(density(s[i])).toBeGreaterThan(density(s[i - 1]));
-      expect(s[i].width).toBeGreaterThanOrEqual(s[i - 1].width);
-    }
-    expect(RAIN_STYLE[1].streaks).toBeGreaterThan(0);
-    expect(RAIN_FILL).toMatch(/^#[0-9a-f]{6}$/);
-    expect(RAIN_STREAK).toMatch(/^#[0-9a-f]{6}$/);
+  // 雨雲の形（斜線 → 淡い青灰の面と短い筋）は T96、色（降水量の段ごとの色）は T116 で替えた。ここには T66 の意図
+  // （強いほど目立つ・地図が透ける・ライトとダークで同じ色・デモの印）だけを残す。段の細かい所は lib/map/t116.test.ts
+  it("雨雲は強い段ほど目立つ色（弱い段は白に近い薄い青、強い段は黄・橙・赤）。地図が透ける濃さで重ねる", () => {
+    for (const s of RAIN_STEPS) expect(s.color).toMatch(/^#[0-9a-f]{6}$/);
+    const light = (hex: string) => [1, 3, 5].reduce((a, i) => a + parseInt(hex.slice(i, i + 2), 16), 0) / 3;
+    expect(light(RAIN_STEPS[0].color)).toBeGreaterThan(230);
+    expect(light(RAIN_STEPS[3].color)).toBeLessThan(light(RAIN_STEPS[1].color));
+    expect(RAIN_OPACITY).toBeGreaterThan(0.5);
+    expect(RAIN_OPACITY).toBeLessThan(1);
   });
 
   it("雨雲の色はライトとダークで同じ値（下の地図はダークでも明るいので、本文色〔currentColor〕や CSS 変数にしない）", () => {
@@ -167,9 +165,8 @@ describe("地図の見やすさ（雨雲・下の地図・層）", () => {
     expect(rain).not.toBe("");
     expect(rain).not.toContain("currentColor");
     expect(rain).not.toContain("var(");
-    expect(rain).toContain(`stroke="${RAIN_STREAK}"`);
-    expect(rain).toContain(`fill="${RAIN_FILL}"`);
-    expect([...rain.matchAll(/<pattern /g)].length).toBe(3);
+    expect(rain).toMatch(/fill="#[0-9a-f]{6}"/);
+    expect(rain).not.toContain("<pattern");
     // デモの印は消さない
     expect(html).toContain('data-demo="label"');
     expect(html).toContain("想定値");

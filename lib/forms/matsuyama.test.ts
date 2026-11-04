@@ -94,13 +94,14 @@ describe("欄の一覧", () => {
 });
 
 describe("種の 10 人から欄が埋まる", () => {
-  it("10 人全員、全部の欄に値（未確認・なし・省略・手書きを含む）があり、紙面に全部の欄が出る", () => {
+  it("10 人全員、全部の欄に値（未確認・なし・空き枠・省略・手書きを含む）があり、紙面に全部の欄が出る（値の無い特記の段は描かない。T111）", () => {
     for (const id of ALL_IDS) {
       const s = sheetOf(id);
       const markup = html(s);
       for (const f of MATSUYAMA_FIELDS) {
         expect(s.cells[f.key], `${id} ${f.key}`).toBeDefined();
-        expect(shows(markup, f.key), `${id} ${f.key}`).toBe(true);
+        const blankNote = f.block === "notes" && f.key !== "notes.annex" && s.cells[f.key].kind === "empty";
+        expect(shows(markup, f.key), `${id} ${f.key}`).toBe(!blankNote);
       }
       expect(markup).toContain('data-page="1"');
       expect(markup).toContain('data-page="2"');

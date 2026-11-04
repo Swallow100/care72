@@ -394,18 +394,26 @@ describe("デモの雨雲と震度", () => {
     }
   });
 
-  it("雨雲の段はレベルが上がるほど増え、強い段ほど細い", () => {
-    const strengths = (level: 3 | 4 | 5) => [...new Set(demoOverlay(rainScene(level)).rain.map((b) => b.strength))].sort();
-    expect(strengths(3)).toEqual([1]);
-    expect(strengths(4)).toEqual([1, 2]);
-    expect(strengths(5)).toEqual([1, 2, 3]);
+  it("雨雲の段（降水量 mm/h の下の境）はレベルが上がるほど増え（上限まで）、強い段ほど細い", () => {
+    const steps = (level: 3 | 4 | 5) => [...new Set(demoOverlay(rainScene(level)).rain.map((b) => b.min))].sort((a, b) => a - b);
+    expect(steps(3)).toEqual([0, 1, 5, 10]);
+    expect(steps(4)).toEqual([0, 1, 5, 10, 20, 30]);
+    // 3 時間の芯は 30〜50（表の値）なので、レベル 5 でも 50 以上の段は無い
+    expect(steps(5)).toEqual([0, 1, 5, 10, 20, 30]);
     const bands = demoOverlay(rainScene(5)).rain.filter((b) => b.main);
     const span = (k: number) => {
-      const r = bands.find((b) => b.strength === k)!.ring;
+      const r = bands.find((b) => b.min === k)!.ring;
       return Math.max(...r.map((p) => p.lat)) - Math.min(...r.map((p) => p.lat));
     };
-    expect(span(1)).toBeGreaterThan(span(2));
-    expect(span(2)).toBeGreaterThan(span(3));
+    for (const [weak, strong] of [
+      [0, 1],
+      [1, 5],
+      [5, 10],
+      [10, 20],
+      [20, 30],
+    ]) {
+      expect(span(weak)).toBeGreaterThan(span(strong));
+    }
   });
 
   it("警戒レベルを入れていない大雨は「大雨」だけで、雨雲は描かない。ハザードの層は浸水・土砂", () => {

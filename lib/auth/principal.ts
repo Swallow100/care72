@@ -23,7 +23,8 @@ import {
 } from "./demo.ts";
 import { issuedSec, linkTarget } from "../qr/phone-link-store.ts";
 import { MAX_PASSWORD_LENGTH, verifyPassword } from "./password.ts";
-import { homePath, type JudgeRole, type Role } from "./roles.ts";
+import { homePath, type JudgeRole, type JudgeSessionRole, type Role } from "./roles.ts";
+import { createSandbox, loadSandboxAdmin, SANDBOX_START_PATH } from "../office/sandbox.ts";
 import { sessionTimes, signSession, verifySession, type SessionPayload } from "./session.ts";
 import { canChooseRole } from "./wall.ts";
 
@@ -48,6 +49,11 @@ export type Principal = {
    * 自分のパスワードで入ったアカウントだけ。種の固定のアカウント・審査員・審査員が足したアカウント（壁の中）には付けない。無いのは false
    */
   initialPassword?: boolean;
+  /**
+   * 審査員の試用事業所の管理者の役（T115、lib/office/sandbox.ts）。審査員のセッションで役の一覧の「新規事業所」を選んでいる間だけ付く。
+   * judge も付いたまま（壁の中・役変更が出る）。事業所はその試用事業所、書き手と担当一覧の持ち主は試用事業所の管理者のアカウント。無いのは false
+   */
+  sandbox?: boolean;
   /** 事業所の管理者（ケアマネの印） */
   admin: boolean;
   /** 書き手（経過の author_id）。審査員は審査員のアカウント */
@@ -117,14 +123,41 @@ async function demoRolePrincipal(db: D1Database, office: OfficeRef, p: Principal
   }
 }
 
-/** 審査員の役ごとの形。役を選ぶ前は unselected（役選択の画面へ） */
-async function judgePrincipal(db: D1Database, role: JudgeRole | null): Promise<Principal | null> {
+/**
+ * 審査員の試用事業所の管理者の形（T115）。sandboxId はセッションの b。試用事業所が無い（毎朝 4 時に消えた・まだ作っていない）・
+ * 管理者の形でないなら null（呼ぶ側は役選択へ送る）
+ */
+async function sandboxPrincipal(db: D1Database, sandboxId: string | undefined): Promise<Principal | null> {
+  if (!sandboxId) return null;
+  const a = await loadSandboxAdmin(db, sandboxId);
+  if (!a) return null;
+  return {
+    ...NOBODY,
+    role: "care_manager",
+    judge: true,
+    sandbox: true,
+    admin: a.admin,
+    accountId: a.accountId,
+    displayName: a.displayName || null,
+    office: a.office,
+    caseloadOf: a.accountId,
+  };
+}
+
+/**
+ * 審査員の役ごとの形。役を選ぶ前は unselected（役選択の画面へ）。試用事業所（T115）は sandboxId の事業所の管理者で、
+ * 消えていれば役を選ぶ前と同じ unselected（役選択の画面で「新規事業所」を押すと作り直す）
+ */
+async function judgePrincipal(db: D1Database, role: JudgeSessionRole | null, sandboxId?: string): Promise<Principal | null> {
   const office = await demoOffice(db);
   if (!office) return null;
-  const p: Principal = { ...NOBODY, role: role ?? "unselected", judge: true, accountId: DEMO_JUDGE_ACCOUNT_ID, office };
+  const unselected = role === null || role === "sandbox";
+  const p: Principal = { ...NOBODY, role: unselected ? "unselected" : role, judge: true, accountId: DEMO_JUDGE_ACCOUNT_ID, office };
   switch (role) {
     case null:
       return p;
+    case "sandbox":
+      return (await sandboxPrincipal(db, sandboxId)) ?? p;
     case "care_manager": {
       const cm = await db
         .prepare("SELECT display_name FROM accounts WHERE id = ?1 AND office_id = ?2 AND role = 'care_manager'")
@@ -157,7 +190,7 @@ type AccountJoin = {
   disabled_at: string | null;
   /** 審査員が足した・再発行した（T81、migration 0025） */
   judge_made: 0 | 1;
-  /** 初期パスワードのまま（T114、migration 0027） */
+  /** 初期パスワードのまま（T114、migration 0028） */
   password_initial: 0 | 1;
   office_id: string | null;
   office_name: string | null;
@@ -230,7 +263,7 @@ async function principalOf(db: D1Database, env: AuthEnv, secret: string, s: Sess
   if (s.k === "judge") {
     const c = judgeCredential(env);
     if (!c || (await credentialVersion(c, secret)) !== s.pv) return null;
-    return judgePrincipal(db, s.r);
+    return judgePrincipal(db, s.r, s.b);
   }
   if (s.k === "link") return linkPrincipal(db, s);
   const a = await accountById(db, s.a);
@@ -312,10 +345,44 @@ export async function chooseJudgeRole(
   const s = await verifySession(token, secret, now);
   if (!s || s.k !== "judge") return null;
   if (!(await principalOf(db, env, secret, s))) return null;
-  const principal = await judgePrincipal(db, role);
+  // 試用事業所の b（T115）は残す（「新規事業所」を選び直すと同じ事業所へ戻る）
+  const principal = await judgePrincipal(db, role, s.b);
   if (!principal) return null;
   const next = await signSession({ ...s, r: role, ...sessionTimes(now) }, secret);
   return { token: next, principal, path: homePath(role) };
+}
+
+export type SandboxChoice =
+  | { ok: true; token: string; principal: Principal; path: string; created: boolean }
+  | { ok: false; error: "forbidden" | "limit" };
+
+/**
+ * 審査員が役の一覧の「新規事業所」を選ぶ（T115、app/api/auth/role）。セッションの b の試用事業所が生きていれば作らずそこへ、
+ * 無ければ作って b に付ける（lib/office/sandbox.ts の createSandbox。上限なら limit）。審査員のセッションでなければ forbidden
+ * （山本・本人と家族のリンク・ログインなし）。送り先は事業所の画面（初めて入った管理者の準備の欄 T98 が一番上に出る）。at は作る時刻（ISO）
+ */
+export async function chooseSandbox(
+  db: D1Database,
+  env: AuthEnv,
+  secret: string,
+  token: string | null | undefined,
+  now: number,
+  at: string,
+): Promise<SandboxChoice> {
+  const s = await verifySession(token, secret, now);
+  if (!s || s.k !== "judge" || !(await principalOf(db, env, secret, s))) return { ok: false, error: "forbidden" };
+  let sandboxId = s.b;
+  let created = false;
+  if (!sandboxId || !(await loadSandboxAdmin(db, sandboxId))) {
+    const r = await createSandbox(db, at);
+    if (!r.ok) return r;
+    sandboxId = r.accountId;
+    created = true;
+  }
+  const principal = await sandboxPrincipal(db, sandboxId);
+  if (!principal) return { ok: false, error: "forbidden" };
+  const next = await signSession({ ...s, r: "sandbox", b: sandboxId, ...sessionTimes(now) }, secret);
+  return { ok: true, token: next, principal, path: SANDBOX_START_PATH, created };
 }
 
 /**

@@ -1,4 +1,4 @@
-// 初期パスワードのままの印（docs/tasks/T114.md の問い 1 の (b)、migration 0027）。
+// 初期パスワードのままの印（docs/tasks/T114.md の問い 1 の (b)、migration 0028）。
 // 人が作ったパスワード（new-office.ts の管理者・ケアマネ追加・再発行・new-staff.ts の医療班と行政）のまま入った人に、
 // ヘッダーの下の「初期パスワード」と「変更」（自分の変更の欄を開いた形で送る）。本人が変えると消え、再発行で戻る。
 // 種の固定のアカウント（山本）・審査員・役を替えた山本・審査員が足したアカウントには出さない。変えるまでほかの画面へ行けない、にはしない。
@@ -175,18 +175,18 @@ describe("初期パスワードの印（表と Principal）", () => {
   });
 });
 
-describe("migration 0027 の前からある行", () => {
-  /** 0026 までを流した DB（0027 の前の形） */
-  function before0027(): DatabaseSync {
+describe("migration 0028 の前からある行", () => {
+  /** 0027（T115 の試用事業所）までを流した DB（0028 の前の形） */
+  function before0028(): DatabaseSync {
     const d = new DatabaseSync(":memory:");
     d.exec("PRAGMA foreign_keys = ON;");
     const dir = new URL("../../migrations/", import.meta.url);
-    for (const name of readdirSync(dir).filter((n) => n.endsWith(".sql") && n < "0027").sort()) d.exec(readFileSync(new URL(name, dir), "utf8"));
+    for (const name of readdirSync(dir).filter((n) => n.endsWith(".sql") && n < "0028").sort()) d.exec(readFileSync(new URL(name, dir), "utf8"));
     return d;
   }
 
   it("事業所の行は、本人の変更が最後の再発行より後なら 0、無ければ 1。事業所の無い医療班・行政は分からないので 0", () => {
-    const d = before0027();
+    const d = before0028();
     d.exec(`INSERT INTO offices (id, name, kind, city, plan_form) VALUES ('o1', '架空', 'regular', '松山市', 'matsuyama')`);
     const acct = (id: string, office: string | null, role = "care_manager") =>
       d.exec(`INSERT INTO accounts (id, office_id, role, display_name, login_id, password_hash) VALUES ('${id}', ${office ? `'${office}'` : "NULL"}, '${role}', '${id}', '${id}', 'h')`);
@@ -206,7 +206,7 @@ describe("migration 0027 の前からある行", () => {
     log("again", "password", "2026-11-04T12:00:00Z");
     acct("staff", null, "medical");
 
-    d.exec(readFileSync(new URL("../../migrations/0027_account_password_initial.sql", import.meta.url), "utf8"));
+    d.exec(readFileSync(new URL("../../migrations/0028_account_password_initial.sql", import.meta.url), "utf8"));
     const rows = Object.fromEntries(
       (d.prepare("SELECT id, password_initial FROM accounts ORDER BY id").all() as { id: string; password_initial: number }[]).map((r) => [r.id, r.password_initial]),
     );

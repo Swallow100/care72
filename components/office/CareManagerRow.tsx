@@ -46,26 +46,34 @@ export type CareManagerRowItem = {
 
 type Mode = "rename" | "password" | null;
 
+/**
+ * ownPassword は自分の行のパスワード変更を出すか（既定は出す）。審査員の試用事業所（T115）の管理者はパスワードを持たない
+ * （入れるのは審査員のセッションだけで、サーバーも fixed で断る）ので出さない。
+ * openPassword は自分の行の変更の欄を開いて出す（ヘッダーの「初期パスワード」の「変更」から。T114）。変更を出す行だけ効く
+ */
 export function CareManagerRow({
   item,
   self,
   manage,
+  ownPassword = true,
   openPassword = false,
 }: {
   item: CareManagerRowItem;
   self: boolean;
   manage: boolean;
-  /** 自分の行の変更の欄を開いて出す（ヘッダーの「初期パスワード」の「変更」から。T114）。自分で固定でない行だけ効く */
+  ownPassword?: boolean;
   openPassword?: boolean;
 }) {
   const router = useRouter();
   const fixed = isFixedAccount(item.id);
-  const [mode, setMode] = useState<Mode>(openPassword && self && !fixed ? "password" : null);
+  // 変更の欄を開いて出せる行（自分・固定でない・パスワードを持つ）
+  const opensPassword = self && !fixed && ownPassword;
+  const [mode, setMode] = useState<Mode>(openPassword && opensPassword ? "password" : null);
   // 同じ事業所の画面でヘッダーの「変更」を押したとき（部品は残り、印だけが付く）も欄を開く
   const [openedFor, setOpenedFor] = useState(openPassword);
   if (openPassword !== openedFor) {
     setOpenedFor(openPassword);
-    if (openPassword && self && !fixed) setMode("password");
+    if (openPassword && opensPassword) setMode("password");
   }
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<{ label: string; hasPeople: boolean } | null>(null);
@@ -77,7 +85,7 @@ export function CareManagerRow({
   // 管理者の操作は自分の行には出さない（自分の停止・管理者解除・再発行はサーバーも断る）。改名は自分にも
   const canManage = manage && !fixed;
   const others = canManage && !self;
-  const canPassword = self && !fixed;
+  const canPassword = self && !fixed && ownPassword;
 
   function open(next: Mode) {
     setError(null);

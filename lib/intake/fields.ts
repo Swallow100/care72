@@ -12,6 +12,7 @@ import {
   SEXES,
   SMARTPHONE_USE,
   SUPPORT_KINDS,
+  TRANSPORT_KINDS,
   type Ledger,
 } from "../db/types.ts";
 import {
@@ -25,6 +26,7 @@ import {
   SMARTPHONE_LABELS,
   STRUCTURE_LABELS,
   SUPPORT_KIND_LABELS,
+  TRANSPORT_KIND_LABELS,
 } from "../labels.ts";
 
 /** 本人のページの区分（lib/person.ts の SectionId のうち、入れる欄が書く物） */
@@ -82,7 +84,15 @@ export const INTAKE_FIELDS: readonly IntakeField[] = [
     shape: { type: "bool" },
     hint: "住まいが安全で、計画で家に留まると決めたと入力にはっきり書かれているときだけ true。決めていなければ入れない",
   },
-  { key: "evacuation.transport", section: "evacuation", label: "手段", shape: { type: "text" }, hint: "徒歩・車いす・家族の車など" },
+  // 手段は選ぶ欄と補記（T112）。経路地図の徒歩・車は選ぶ欄から決める（lib/map/transport.ts）
+  {
+    key: "evacuation.transportKind",
+    section: "evacuation",
+    label: "手段",
+    shape: { type: "enum", options: opts(TRANSPORT_KINDS, TRANSPORT_KIND_LABELS) },
+    hint: "避難の手段。foot 徒歩・wheelchair 車いす・family_car 家族の車・pickup 送迎（事業所・施設の車）・other その他",
+  },
+  { key: "evacuation.transport", section: "evacuation", label: "手段補記", shape: { type: "text" }, hint: "手段の書き足し（娘の車・杖・その他の中身など）" },
   {
     key: "evacuation.support",
     section: "evacuation",

@@ -12,16 +12,19 @@
 // 層の切替は小さな地図と全画面で同じ物を使う。ピンの色は lib/triage の色（発災時）。色だけにせず、印に状態の言葉と姓を出す。
 // 平時は姓だけ。雨雲・震度はデモの絵と数字で、地図の上の帯に「デモ」の印を必ず出す（全画面でも）。デモの雨雲は訓練だけ（筋書きの雨、T103）で、
 // 帯に参考にした過去の雨の出典を添える。平時の雨雲は気象庁の画像（旗 JMA_NOWCAST が on のときだけ、NowcastLayer）。
+// 訓練の雨も 1 時間の降水量の段ごとの色（気象庁の降水ナウキャストと同じ 8 段と色）で塗り、右下に凡例（本物の雨雲と同じ読み方。T116）。
+// ピンの印は面の色の縁と細い線で囲み、赤や黄の雨の上でも状態の色が雨の色に溶けない（T116）。
 
 import Link from "next/link";
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type SyntheticEvent } from "react";
+import { Fragment, useCallback, useEffect, useId, useMemo, useRef, useState, type SyntheticEvent } from "react";
 import { Button } from "@/components/ui/Button";
 import { CloseIcon, FitIcon, FullIcon, ZoomInIcon, ZoomOutIcon } from "@/components/ui/Icon";
 import { CountLabel, countClass, StateTag, TONE_FILL } from "@/components/ui/Tag";
 import type { GeoPoint, HazardKind } from "@/lib/db/types";
 import { DRAG_SLOP, FULL_ZOOM, keyAction, MAP_LIMITS, pinchView, sameView, sideWheelTakes, stepZoom, toFrame, wheelZoom } from "@/lib/map/camera";
 import { COUNT_W, groupPins, labelWidth, memberStates, statesWidth, type PinGroup } from "@/lib/map/cluster";
-import { demoShown, RAIN_FILL, RAIN_STREAK, RAIN_STYLE, rainStreaks, type DemoOverlay } from "@/lib/map/demo";
+import { demoShown, type DemoOverlay } from "@/lib/map/demo";
+import { RAIN_LEGEND_LABEL, RAIN_OPACITY, RAIN_STEPS, rainColor } from "@/lib/map/rain-scale";
 import {
   BASE_SIZE,
   clampView,
@@ -762,82 +765,87 @@ function HazardTiles({ tiles, shown }: { tiles: TileSpot[]; shown: readonly Haza
 const rainPx = (n: number) => Math.round(n * 10) / 10;
 
 /**
- * 雨雲のデモ（淡い青灰の面と、細く短い雨の筋。lib/map/demo.ts の RAIN_STYLE・rainStreaks）。枠の大きさの座標で描く。
- * 面は縁をぼかして雲の形に、筋は帯の形のまま。帯は入れ子なので、強い所ほど面が濃く筋が詰む。色はライトとダークで同じ
- * （下の地図はダークでも明るい）。くり返しの 1 枚の始まりを強さごとにずらし、3 つの帯の筋が同じ所に並ばないようにする。
- * 輪は訓練の筋書きの雨（lib/map/drill-rain.ts）: 帯の段と、帯のまわりの小さな雨（弱）。筋のくり返しの 1 枚は強さごとに 1 つ。
+ * 訓練の雨（筋書きの雨。lib/map/drill-rain.ts）。輪ごとに降水量の段の色で塗る（lib/map/rain-scale.ts。気象庁の降水ナウキャストの
+ * 凡例と同じ 8 段と色）。輪は弱い段から並ぶので、強い段が上に重なる。輪をまとめた 1 枚を RAIN_OPACITY で透かす（段どうしの色は
+ * 混ぜず、下の地図と層が透ける）。縁はぼかさない（隣の段の色が混ざると凡例と読み合わせられない）。色はライトとダークで同じ
+ * （下の地図はダークでも明るい）。右下に凡例。
  * 点は 0.1px に丸める（サーバーと手元で投影の計算の最後の桁が違い、丸めないと描き直しの食い違いになった。T103）
  */
 function Rain({ demo, view, size }: { demo: DemoOverlay; view: View; size: Size }) {
-  const rainId = useId();
   if (demo.rain.length === 0) return null;
-  const strengths = [...new Set(demo.rain.map((b) => b.strength))].sort();
   const px = (p: GeoPoint) => {
     const at = place(view, p, size);
     return `${rainPx((at.left / 100) * size.w)},${rainPx((at.top / 100) * size.h)}`;
   };
   return (
-    <svg
-      className="pointer-events-none absolute inset-0 h-full w-full"
-      viewBox={`0 0 ${size.w} ${size.h}`}
-      preserveAspectRatio="none"
-      aria-hidden
-      data-demo="rain"
-    >
-      <defs>
-        <filter id={`${rainId}-soft`} x="-10%" y="-10%" width="120%" height="120%">
-          <feGaussianBlur stdDeviation="3" />
-        </filter>
-        {strengths.map((k) => {
-          const st = RAIN_STYLE[k];
-          return (
-            <pattern
-              key={k}
-              id={`${rainId}-${k}`}
-              patternUnits="userSpaceOnUse"
-              width={st.tile}
-              height={st.tile}
-              patternTransform={`translate(${k * 7} ${k * 11})`}
-            >
-              {rainStreaks(k)
-                .flat()
-                .map((s, i) => (
-                  <line
-                    key={i}
-                    x1={s.x1}
-                    y1={s.y1}
-                    x2={s.x2}
-                    y2={s.y2}
-                    stroke={RAIN_STREAK}
-                    strokeWidth={st.width}
-                    strokeLinecap="round"
-                  />
-                ))}
-            </pattern>
-          );
-        })}
-      </defs>
-      {demo.rain.map((b, i) => (
-        <polygon
-          key={`fill-${i}`}
-          points={b.ring.map(px).join(" ")}
-          fill={RAIN_FILL}
-          fillOpacity={RAIN_STYLE[b.strength].fill}
-          filter={`url(#${rainId}-soft)`}
-          data-rain-fill={b.strength}
-        />
-      ))}
-      {demo.rain.map((b, i) => (
-        <polygon key={`streaks-${i}`} points={b.ring.map(px).join(" ")} fill={`url(#${rainId}-${b.strength})`} data-rain-streaks={b.strength} />
-      ))}
-    </svg>
+    <>
+      <svg
+        className="pointer-events-none absolute inset-0 h-full w-full"
+        viewBox={`0 0 ${size.w} ${size.h}`}
+        preserveAspectRatio="none"
+        aria-hidden
+        data-demo="rain"
+      >
+        <g opacity={RAIN_OPACITY}>
+          {demo.rain.map((b, i) => (
+            <polygon key={i} points={b.ring.map(px).join(" ")} fill={rainColor(b.min)} data-rain-step={b.min} />
+          ))}
+        </g>
+      </svg>
+      <RainLegend />
+    </>
   );
 }
+
+/**
+ * 訓練の雨の凡例（地図の右下。本物の雨雲の凡例と同じ所）。1 時間の降水量の 8 段を上ほど強い順に色の見本で並べ、段の境に値
+ * （80・50・30・20・10・5・1）。上に「想定」と単位。見本は透かさない（凡例と同じ値）。いちばん弱い段の見本は白に近いので、
+ * 見本の列を細い線で囲む。発行元の名前は地図に出さない（出典は docs/SOURCES.md。T103）
+ */
+function RainLegend() {
+  const steps = [...RAIN_STEPS].reverse();
+  return (
+    <div
+      role="img"
+      aria-label={RAIN_LEGEND_LABEL}
+      className="pointer-events-none absolute right-1 bottom-1 z-30 rounded bg-panel px-1.5 pt-1 pb-2 text-[10px] leading-3 text-ink"
+      data-rain-legend
+    >
+      <div className="font-bold">想定</div>
+      <div className="text-muted">mm/h</div>
+      <div className="mt-1 grid grid-cols-[10px_auto] gap-x-1">
+        {steps.map((s, i) => (
+          <Fragment key={s.min}>
+            <span
+              className={`block h-2.5 w-2.5 ring-1 ring-ink/25 ${i === 0 ? "rounded-t-sm" : ""} ${i === steps.length - 1 ? "rounded-b-sm" : ""}`}
+              title={s.label}
+              data-rain-legend-step={s.min}
+              style={{ background: s.color }}
+            />
+            <span className="relative h-2.5 tabular-nums">
+              {s.min > 0 && (
+                <span className="absolute top-full left-0 -translate-y-1/2" data-rain-legend-bound={s.min}>
+                  {s.min}
+                </span>
+              )}
+            </span>
+          </Fragment>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * ピンの縁取り: 面の色の縁（2px。ライトは白、ダークは暗い面）と、その外の細い線（本文色の半分）。赤・黄の雨の上でも状態の塗りの
+ * 印が雨の色に溶けず、淡い地図の上でも印の端が分かる（T116。前は本文色 15% の細い線だけ）。光る影にしない（ぼかさない線）
+ */
+const PIN_EDGE = "ring-2 ring-panel outline-1 outline-offset-2 outline-ink/50";
 
 /** ピンの名前の印（発災時は状態の塗りの印＋姓） */
 function PinLabel({ pin, extra }: { pin: MapPin; extra?: React.ReactNode }) {
   return (
-    <span className="flex items-baseline overflow-hidden rounded text-[11px] leading-4 font-bold whitespace-nowrap ring-1 ring-ink/15">
+    <span className={`flex items-baseline overflow-hidden rounded text-[11px] leading-4 font-bold whitespace-nowrap ${PIN_EDGE}`}>
       {pin.tone && pin.state && <span className={`px-1 ${PIN_TAG[pin.tone]}`}>{pin.state}</span>}
       <span className="bg-panel px-1 text-ink">{pin.label}</span>
       {extra}
@@ -846,7 +854,7 @@ function PinLabel({ pin, extra }: { pin: MapPin; extra?: React.ReactNode }) {
 }
 
 function PinDot({ tone }: { tone: StateTone | null }) {
-  return <span className={`mt-0.5 size-2 rounded-full ring-2 ring-panel ${tone ? PIN_DOT[tone] : "bg-ink"}`} aria-hidden />;
+  return <span className={`mt-1 size-2 rounded-full ${PIN_EDGE} ${tone ? PIN_DOT[tone] : "bg-ink"}`} aria-hidden />;
 }
 
 /** ピン 1 人。押すと本人のページ（?open=） */

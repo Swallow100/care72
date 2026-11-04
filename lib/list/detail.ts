@@ -35,6 +35,7 @@ import { clockRemaining, formatHours, type Color, type Override, type Situation,
 import { callLogsOf, type CallEntryRow, type CallLog } from "./calls.ts";
 import { DETAIL_LABELS } from "./labels.ts";
 import { recordingHref } from "./recording.ts";
+import { transportText } from "../map/transport.ts";
 
 export type ContactForDetail = Omit<ContactRow, "created_at">;
 export type ClockForDetail = Omit<ClockRow, "sort"> & { sort?: number };
@@ -427,7 +428,7 @@ export function buildRowDetail(x: DetailInput): RowDetail {
     destinations: {
       first: e.destination1?.trim() || null,
       second: e.destination2?.trim() || null,
-      transport: e.transport?.trim() || null,
+      transport: transportText(e)?.trim() || null,
     },
     supporters: detailSupporters(x.contacts),
     lastContact: lastContactOf(

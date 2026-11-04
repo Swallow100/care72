@@ -201,9 +201,11 @@ export default async function OfficePage({ searchParams }: Props) {
           <FormChoice officeId={scope.officeId} error={q.form_error === "bad"} />
           <Panel id={CARE_MANAGERS_ANCHOR} aria-labelledby="cm-title" className="scroll-mt-4">
             <AddCareManager count={careManagers.length} admin={actor.admin}>
+              {/* 審査員のケアマネの役の書き手（acct-judge）はケアマネの一覧にいない。試用事業所（T115）では管理者の行が自分 */}
               <CareManagerList
                 careManagers={careManagers}
-                selfId={principal.judge ? null : principal.accountId}
+                selfId={principal.judge && !principal.sandbox ? null : principal.accountId}
+                ownPassword={!principal.judge}
                 manage={actor.admin}
                 walled={actor.walled === true}
                 openPassword={wantsOwnPassword(q.password)}
@@ -638,12 +640,15 @@ function AssignSection({
 function CareManagerList({
   careManagers,
   selfId,
+  ownPassword,
   manage,
   walled,
   openPassword = false,
 }: {
   careManagers: CareManagerItem[];
   selfId: string | null;
+  /** 自分の行のパスワード変更（審査員の試用事業所の管理者は持たない。T115） */
+  ownPassword: boolean;
   manage: boolean;
   walled: boolean;
   /** 自分の行の変更の欄を開いて出す（ヘッダーの「初期パスワード」の「変更」から。T114） */
@@ -656,6 +661,7 @@ function CareManagerList({
           key={c.id}
           item={c}
           self={c.id === selfId}
+          ownPassword={ownPassword}
           manage={manage && (!walled || c.judgeMade === true)}
           openPassword={openPassword && c.id === selfId}
         />
