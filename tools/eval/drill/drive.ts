@@ -16,6 +16,7 @@ import { drillFreeHook } from "../../../lib/drill/free-action.ts";
 import { drillStepHooks, drillTalkHook } from "../../../lib/drill/hooks.ts";
 import { actionPost, replayGet, startPost, stepPost } from "../../../lib/drill/http.ts";
 import { reviewPost } from "../../../lib/drill/record-http.ts";
+import { warekiText } from "../../../lib/forms/wareki.ts";
 import { talkPost } from "../../../lib/drill/talk.ts";
 import { loadDrillScreen } from "../../../lib/drill/view.ts";
 import type { RoomClient, WorldMode } from "../../../lib/drill/world-room.ts";
@@ -187,7 +188,7 @@ type Contact = { id: string; person_id: string; kind: string };
 
 type Request = { kind: string; person: string | null; target: string | null; text?: string; probe?: boolean };
 
-function chooseAct(rng: Rng, plan: RunPlan, replay: Replay, contacts: ReadonlyArray<Contact>, names: Record<string, string>): Request | null {
+function chooseAct(rng: Rng, plan: RunPlan, replay: Replay, contacts: ReadonlyArray<Contact>, names: Record<string, string>, births: Record<string, string> = {}): Request | null {
   const ended = new Set(Object.keys(replay.world.ended ?? {}));
   const live = plan.participants.filter((p) => !ended.has(p));
   if (live.length === 0) return null;
@@ -195,7 +196,8 @@ function chooseAct(rng: Rng, plan: RunPlan, replay: Replay, contacts: ReadonlyAr
   const person = ranked.length > 0 && rng.chance(plan.followRank) ? rng.pick(ranked.slice(0, 3)).person : rng.pick(live);
   if (rng.chance(plan.freeRate)) {
     const probe = rng.chance(plan.probeRate) && names[person];
-    const text = probe ? `${names[person]}さんの家に行って様子を見る` : rng.pick(FREE_TEXTS);
+    // 門の試し: 氏名と和暦の生年月日（T107 の書類の台の入力と同じ形「昭和17年4月18日生」。T118）を混ぜる
+    const text = probe ? `${names[person]}さん（${births[person] ? `${births[person]}生` : ""}）の家に行って様子を見る`.replace("（）", "") : rng.pick(FREE_TEXTS);
     return { kind: "free", person, target: null, text, ...(probe ? { probe: true } : {}) };
   }
   const rows = ACTION_CATALOG.filter((r) => r.id !== "free");
@@ -248,6 +250,12 @@ export async function runDrill(plan: RunPlan, deps: DriveDeps): Promise<RunOutco
   const contacts = sqlite.prepare("SELECT id, person_id, kind FROM contacts ORDER BY person_id, sort, id").all() as Contact[];
   const names = Object.fromEntries(
     (sqlite.prepare("SELECT id, name FROM people").all() as Array<{ id: string; name: string }>).filter((r) => plan.participants.includes(r.id)).map((r) => [r.id, r.name]),
+  );
+  // 門の試しの文に混ぜる和暦の生年月日（空きを抜いた warekiText。T107 の入力と同じ形。T118）
+  const births = Object.fromEntries(
+    (sqlite.prepare("SELECT id, birth_date FROM people").all() as Array<{ id: string; birth_date: string | null }>)
+      .filter((r) => plan.participants.includes(r.id) && r.birth_date)
+      .map((r) => [r.id, warekiText(r.birth_date!).replace(/ /g, "")]),
   );
 
   const ops: OpStat[] = [];
@@ -325,7 +333,7 @@ export async function runDrill(plan: RunPlan, deps: DriveDeps): Promise<RunOutco
       if (rng.chance(plan.actRate)) {
         const n = rng.int(1, plan.actMax);
         for (let i = 0; i < n && replay.drill.status === "running"; i++) {
-          const req = chooseAct(rng, plan, replay, contacts, names);
+          const req = chooseAct(rng, plan, replay, contacts, names, births);
           if (!req) break;
           const body = {
             step: replay.drill.step,

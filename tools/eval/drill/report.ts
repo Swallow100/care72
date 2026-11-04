@@ -30,6 +30,8 @@ export type Totals = {
   callsPerRun: number | null;
   capRatioMax: number | null;
   dayRatioMax: number | null;
+  /** 1 訓練の数えに入らない呼び出し（T118） */
+  uncounted: number;
   advanceP50: number | null;
   advanceP95: number | null;
   usdPerRun: number | null;
@@ -83,6 +85,7 @@ export function totalsOf(runs: ReadonlyArray<RunSummary>): Totals {
     callsPerRun: mean(n.map((x) => x.aiCalls.total)),
     capRatioMax: max(n.map((x) => x.budget.capRatio)),
     dayRatioMax: max(n.map((x) => x.budget.dayRatio)),
+    uncounted: sum(n.map((x) => x.budget.uncounted ?? 0)),
     advanceP50: mean(n.map((x) => x.timing.advanceP50)),
     advanceP95: max(n.map((x) => x.timing.advanceP95)),
     usdPerRun: mean(n.map((x) => x.cost.usd)),
@@ -143,6 +146,7 @@ export const METRICS: ReadonlyArray<Metric> = [
   { label: "AI の呼び出し/回（ai_calls）", get: (s) => s.totals.callsPerRun, format: two },
   { label: "1 訓練の上限 150 との比（最大）", get: (s) => s.totals.capRatioMax, format: pct },
   { label: "1 日の上限 200 との比（最大）", get: (s) => s.totals.dayRatioMax, format: pct },
+  { label: "1 訓練の数えに入らない呼び出し", get: (s) => s.totals.uncounted ?? 0, format: int, lowerBetter: true },
   { label: "進める 1 回の時間 p50（ms）", get: (s) => s.totals.advanceP50, format: int, lowerBetter: true },
   { label: "進める 1 回の時間 p95（ms、最大）", get: (s) => s.totals.advanceP95, format: int, lowerBetter: true },
   { label: "出来事の種類（AI）", get: (s) => s.diversity.kinds.distinct, format: int },
