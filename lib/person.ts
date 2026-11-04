@@ -744,7 +744,8 @@ function evacuationBlocks(ledger: Ledger): Block[] {
   const hazards = hazardsOf(ledger);
   return [
     row("evacuation.hazards", hazards.length > 0 ? { kind: "lines", lines: [[text(hazards.join("・"))]] } : { kind: "none" }),
-    row("evacuation.destination1", placeField(e.destination1, transportKindOf(e) ?? undefined, e.destination1Minutes)),
+    // 避難先 1 の手段は下の「手段」の行（重ねない）。時間だけ添える
+    row("evacuation.destination1", placeField(e.destination1, undefined, e.destination1Minutes)),
     row("evacuation.destination2", placeField(e.destination2, e.destination2Means, e.destination2Minutes)),
     // 最寄りの避難場所（T117。計画書の「私の避難場所」）
     row("evacuation.nearest", placeField(e.nearest, e.nearestMeans, e.nearestMinutes)),

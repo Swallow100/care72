@@ -237,6 +237,20 @@ describe("4 つの道のどれで入れても同じ台帳の値", () => {
   });
 });
 
+/** T117 の前（43c3dce5）の種の 10 人の計画書の未確認の欄の数（作業者が前の版のコードで数えた。docs/progress/t117.md） */
+const BEFORE_T117: Record<string, number> = {
+  "p-01": 31,
+  "p-02": 29,
+  "p-03": 30,
+  "p-04": 32,
+  "p-05": 29,
+  "p-06": 30,
+  "p-07": 28,
+  "p-08": 28,
+  "p-09": 33,
+  "p-10": 29,
+};
+
 /** 実施者のいない種の人 */
 function noSupporter(): string {
   const p = SEED_PEOPLE.find((x) => !x.contacts.some((c) => c.supporter_order != null));
@@ -311,9 +325,14 @@ describe("紙の未確認と問いを同じ元から数える", () => {
       if (kin?.phone && !kin.mobile && !(kin.note ?? "").includes("携帯")) expect(sheet.cells["kin.mobile"].kind).toBe("empty");
       expect(sheet.cells["housing.type"].kind, p.person.id).toBe("choice");
       expect(cellText(sheet.cells["housing.type"])).toContain("■戸建住宅");
-      // 帯の未確認は前（T117 の前は台帳に置き場の無い 11〜13 欄がいつも数えられた）より少ない
-      expect(matsuyamaUnconfirmed(sheet).count, p.person.id).toBeLessThanOrEqual(20);
+      // 帯の未確認（手書きを含む全部）は T117 の前（43c3dce5 で数えた。台帳に置き場の無い 11〜13 欄がいつも数えられた）より少ない
+      const s = matsuyamaUnconfirmed(sheet);
+      expect(s.count + (s.hand ?? []).length, p.person.id).toBeLessThan(BEFORE_T117[p.person.id]);
     }
+    // フリガナを入れた人は近親者・実施者のフリガナが未確認でない
+    const p = seed("p-01");
+    const withKana = buildMatsuyamaSheet(seedRows({ ...p, contacts: p.contacts.map((c) => ({ ...c, kana: "テスト" })) }), OPTS);
+    for (const k of ["kin.kana", "supporter1.kana", "supporter2.kana"] as const) expect(cellText(withKana.cells[k]), k).toBe("テスト");
   });
 });
 
@@ -389,7 +408,9 @@ describe("紙に直接書く", () => {
     const s2 = data.targets.find((t) => t.key === "supporter2.kana")!;
     expect(s2.inputs).toEqual([{ kind: "page", label: "関係者（支援者2 なし）", href: "/people/p-01" }]);
     const kin = data.targets.find((t) => t.key === "kin.kana")!;
-    expect(kin.inputs[0]).toMatchObject({ kind: "contact", part: "kana", value: "モリ ケイコ" });
+    expect(kin.inputs[0]).toMatchObject({ kind: "contact", part: "kana", value: "" });
+    const withKana = paperEditData(seedRows({ ...p, contacts: p.contacts.map((c) => (c.emergency_order === 1 ? { ...c, kana: "モリ ケイコ" } : c)) }));
+    expect(withKana.targets.find((t) => t.key === "kin.kana")!.inputs[0]).toMatchObject({ value: "モリ ケイコ" });
   });
 
   it("窓の変更: 空にすれば外す、形の合わない値は送らない、変わらなければ何も送らない", () => {
@@ -401,7 +422,10 @@ describe("紙に直接書く", () => {
       { t: "remove", target: { what: "field", key: "evacuation.destination1" } },
     ]);
     const kin = formContactOf(rows.contacts, "kin")!;
-    expect(paperChanges(t("kin.kana"), { [`contacts.${kin.id}.kana`]: "モリ ケイコ" }).changes).toEqual([]);
+    expect(paperChanges(t("kin.kana"), { [`contacts.${kin.id}.kana`]: "" }).changes).toEqual([]);
+    expect(paperChanges(t("kin.kana"), { [`contacts.${kin.id}.kana`]: "もり けいこ" }).changes).toEqual([
+      { t: "contact", id: kin.id, value: { kind: kin.kind, kana: "モリ ケイコ" }, overwrite: true },
+    ]);
     expect(paperChanges(t("kin.mobile"), { [`contacts.${kin.id}.mobile`]: "abc" }).bad.length).toBe(1);
   });
 

@@ -19,7 +19,7 @@ import { INTAKE_LABELS } from "@/lib/labels";
 import { draftKey, paperChanges, type PaperEditData, type PaperTarget } from "@/lib/forms/paper-edit";
 
 /** 窓の言葉（2〜4 字） */
-export const PAPER_EDIT_LABELS = { write: "記入", page: "本人のページ", nothing: "変更なし" } as const;
+export const PAPER_EDIT_LABELS = { write: "記入", page: "本人のページ" } as const;
 
 export function PaperEdit({ data, children }: { data: PaperEditData; children: ReactNode }) {
   const root = useRef<HTMLDivElement>(null);
@@ -98,8 +98,9 @@ function EditWindow({ data, target, onClose }: { data: PaperEditData; target: Pa
       setError(`${INTAKE_LABELS.invalid} ${bad.join("・")}`);
       return;
     }
+    // 変わっていなければ何も送らずに閉じる
     if (changes.length === 0) {
-      setError(PAPER_EDIT_LABELS.nothing);
+      onClose();
       return;
     }
     setBusy(true);
