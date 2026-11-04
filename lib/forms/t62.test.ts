@@ -538,7 +538,9 @@ describe("入口と頁の作り（ファイルを読む）", () => {
     expect(readRepoFile("components/list/FilterBar.tsx")).toContain("data-filter-actions");
     // 受け持ち: 見出しの CSV出力は URL の絞込と並びを持ち越す。表は絞込と並びを URL に書き、CSV と同じ関数で行を決める
     const staff = readRepoFile("app/staff/page.tsx");
-    expect(staff).toContain('<StaffCsvLink className="ml-auto self-center" />');
+    // 見出しの行の右の 1 か所（T99 から自分のパスワードの変更と並べる囲み StaffPassword の中。右寄せは囲みが持つ）
+    expect(staff.match(/<StaffCsvLink\b/g)).toHaveLength(1);
+    expect(staff).toMatch(/<StaffPassword [^>]*>\s*<StaffCsvLink \/>/);
     expect(staff).toContain("view={parseStaffView(q)}");
     const link = readRepoFile("components/staff/StaffCsvLink.tsx");
     expect(link).toContain("useSearchParams()");
