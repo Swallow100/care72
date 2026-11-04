@@ -217,6 +217,7 @@ const ShotView: React.FC<{ shot: Shot; assets: Assets }> = ({ shot, assets }) =>
             note={shot.label}
             chip={shot.chip}
             callouts={shot.callouts}
+            screen={shot.screen}
           />
         </Stage>
       );

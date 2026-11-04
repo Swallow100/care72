@@ -6,8 +6,9 @@
 // - puppeteer-core はルートの node_modules の物（ルートで npm ci が要る）。ブラウザは手元の Chrome か Edge
 // 画面を描き直さない。ページに物を足さない（押した所の印も足さない）。操作は本物のボタンを押すだけ。
 import { existsSync, linkSync, mkdirSync, readdirSync, rmSync, writeFileSync, copyFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import puppeteer from "puppeteer-core";
+import { ROOT } from "./lib.mjs";
 
 const CANDIDATES = [
   "C:/Program Files/Google/Chrome/Application/chrome.exe",
@@ -49,6 +50,9 @@ export const PHONE = { width: 375, height: 812, deviceScaleFactor: SCALE, isMobi
 export async function newPage(browser, viewport) {
   const ctx = await browser.createBrowserContext();
   const page = await ctx.newPage();
+  // アプリの Service Worker（public/sw.js）は頁の応答が 4 秒来ないと前の写しを返す。手元の next dev は遅いので、
+  // 災害モードに替わったあとも家族のスマホに平時の写しが出ていた。撮るときは SW を通さない（いつもネットの頁）
+  await page.setBypassServiceWorker(true);
   await page.setViewport(viewport);
   await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "light" }]);
   // next dev が左下に出す開発の印（N の丸）を隠す。本番（care72.app）には無い物で、アプリの画面ではない
@@ -139,7 +143,14 @@ export async function clickText(page, text, { exact = false, within = "body" } =
     within,
   );
   const el = handle.asElement();
-  if (!el) throw new Error(`押す所が無い: ${text}`);
+  if (!el) {
+    // 何が出ていたかを残す（画面の写しと、押せる物の文字）。out/look/ は commit しない
+    const shot = join(ROOT, "out", "look", `missing-${Date.now()}.png`);
+    mkdirSync(dirname(shot), { recursive: true });
+    await page.screenshot({ path: shot }).catch(() => undefined);
+    const seen = await page.evaluate(() => Array.from(document.querySelectorAll("button, a, [role=button]")).map((e) => (e.textContent ?? "").replace(/\s+/g, "")).filter(Boolean).slice(0, 30));
+    throw new Error(`押す所が無い: ${text}（${page.url()}、押せる物: ${seen.join("・")}、写し ${shot}）`);
+  }
   await el.scrollIntoView();
   // 撮っている録画があれば、押した所（要素の真ん中）を覚える。編集で押した所に輪を出す（src/parts/Frame.tsx）
   const box = await el.boundingBox();
