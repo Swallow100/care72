@@ -6,7 +6,7 @@
 // - 根拠は出典の登録簿（lib/sources）の id だけ。1 つに決まる種類はコードが付け、監督に選ばせない（basis.by が code）。
 //   健康の助言の要旨を持つ文書（呼吸・インスリン・血栓）は監督の指示に入れず、コードが付けて画面に出典として添えるだけ
 // - 人の体の具合・生き死には出来事にしない（本人役が演じる）。環境の事（冷蔵不可・車中泊・満員）まで
-// - 前からの 6 つ（栄養剤・透析施設・道路・電話・訪問看護・帰宅）は前と同じ並び・同じ変化・同じ文
+// - 前からの 6 つ（栄養剤・透析施設・道路・電話・訪問看護・帰宅）は前と同じ並び・同じ変化・同じ文（電話の文だけ T105 で「不通」を「通話不可」に）
 // - 輪にしない: このファイルは scenarios.ts・labels.ts を型だけ読む（scenarios.ts は HEAVY_RAIN を作るときに injectChange を呼ぶ。
 //   labels.ts は markLabels をここから読む）
 
@@ -26,6 +26,13 @@ import type {
 } from "./scenarios.ts";
 import { hourText, minuteText as minuteWords } from "./time-text.ts";
 
+/**
+ * 電話がかけられない状態の言葉（T105）。前の「不通」より、何ができないかがすぐ分かる。家の電話・携帯電話・世界の電話の状態・
+ * 手の返事・被害状況・監督と世界と本人役への言葉がこれを読む（lib/drill/labels.ts の PHONE_LABELS・world-reply.ts の返事も）。
+ * 世界（AI）の返す「不通」は前のまま読む（world-apply.ts）
+ */
+export const NO_CALL = "通話不可";
+
 // ---------- 種類 ----------
 
 /**
@@ -36,13 +43,13 @@ export const INJECT_KINDS = [
   "supply_left", // 栄養剤の持ち出し忘れ
   "dialysis_flooded", // 透析施設の浸水
   "road_blocked", // 道路が通れない
-  "line_down", // 電話が不通
+  "line_down", // 家の電話で通話不可
   "nurse_away", // 訪問看護が来られない
   "going_home", // 本人が家に帰ろうとする
   // T92
   "outage_eta", // 停電の復旧の見込み
   "outage_spread", // 停電が全域に
-  "mobile_down", // 携帯も不通
+  "mobile_down", // 携帯も通話不可
   "road_reopen", // 家の前の道が通れるように
   "welfare_shelter_open", // 福祉避難所の開設
   "shelter_full", // 避難所が満員
@@ -96,7 +103,7 @@ export type EventTarget = {
   facts?: EventFacts;
 };
 
-/** 出来事 1 つが組む状況 1 行（1 つの出来事が 2 行以上になる種類がある: 携帯不通と回復見込、土砂の警戒と道） */
+/** 出来事 1 つが組む状況 1 行（1 つの出来事が 2 行以上になる種類がある: 携帯の通話不可と回復見込、土砂の警戒と道） */
 export type EventPart = { change: WorldChange; text: string; person?: string };
 
 /** 予定の出来事にできる種類の「何時間後」（監督の after）の範囲と、書かれなかったときの値 */
@@ -232,12 +239,12 @@ const ROWS: ReadonlyArray<EventRow> = [
   },
   {
     kind: "line_down",
-    label: "電話不通",
+    label: NO_CALL,
     scope: "person",
-    words: "家の電話が不通",
+    words: "家の電話で通話できない",
     eligible: (_s, p, w) => lineOf(w, p) !== "down",
-    build: (t) => one({ kind: "line_down" }, "家の電話 不通", t.person),
-    text: () => "家の電話 不通",
+    build: (t) => one({ kind: "line_down" }, `家の電話 ${NO_CALL}`, t.person),
+    text: () => `家の電話 ${NO_CALL}`,
     basis: ANY,
     touches: "person",
   },
@@ -300,21 +307,21 @@ const ROWS: ReadonlyArray<EventRow> = [
   },
   {
     kind: "mobile_down",
-    label: "携帯不通",
+    label: "携帯不可",
     scope: "area",
-    words: "携帯電話も含めて電話が不通になる（電話が通じている間。after に何時間後に一部回復するか）",
+    words: "携帯電話も含めて通話できなくなる（電話が通じている間。after に何時間後に一部回復するか）",
     eligible: (_s, _p, w) => w.phone !== "down",
     build: (_t, hour, after) => {
       const n = after ?? 3;
       return [
-        { change: { kind: "phone", state: "down" }, text: "携帯電話も不通" },
+        { change: { kind: "phone", state: "down" }, text: `携帯電話も${NO_CALL}` },
         {
           change: { kind: "schedule", at: atMinute(hour, n), by: "director", then: { kind: "event", change: { kind: "phone", state: "busy" }, text: "電話 一部回復" } },
           text: `電話 一部回復見込 ${n} 時間後`,
         },
       ];
     },
-    text: () => "携帯電話も不通",
+    text: () => `携帯電話も${NO_CALL}`,
     ownText: true,
     // T104: 停電が長引くと基地局の予備電源が尽きる（北海道の地震・基地局の停電対策）。監督が選ぶ
     basis: { by: "director", ids: ["soumu-iburi-2019", "soumu-tsushin-2026"] },
@@ -734,7 +741,7 @@ export const markLabels = {
   supplyLeft: "持ち出し忘れ",
   nurseAway: "訪問不可",
   goingHome: "帰宅希望",
-  lineDown: "電話不通",
+  lineDown: NO_CALL,
   flooded: "浸水",
   waterOut: "断水",
   helperAway: "介護休止",
@@ -749,7 +756,7 @@ export const markWords: Readonly<Record<keyof PersonMarks, string>> = {
   supplyLeft: "栄養剤の持ち出し忘れ",
   nurseAway: "訪問看護が来られない",
   goingHome: "家に帰ろうとしている",
-  lineDown: "家の電話が不通",
+  lineDown: "家の電話で通話できない",
   flooded: "家の辺りが浸水",
   waterOut: "家の辺りが断水",
   helperAway: "介護事業所が休止",

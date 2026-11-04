@@ -21,7 +21,7 @@ import { nightLine } from "./night.ts";
 import { hourText, minuteText } from "./time-text.ts";
 import type { OutcomeSource } from "./outcome.ts";
 import { scaleWords } from "./scale.ts";
-import { timelineText } from "./timeline.ts";
+import { timelineText } from "./time-odds.ts";
 import { reportersOf } from "./persona.ts";
 import type { WorldState, WorldVia } from "./scenarios.ts";
 import {
@@ -46,7 +46,7 @@ const KIND_WORDS: Readonly<Record<(typeof WORLD_KINDS)[number], string>> = {
   road: "道路。name に主な道の名前（無ければ town に地区）。value は closed（通行止）か open（開通）",
   outage: "停電。town に地区（「甲地区・乙地区」で複数）。value は start（始まり）か restored（全域の復旧）",
   water: "断水。town に地区。value は out か restored",
-  phone: "電話の様子。value は ok・busy・down。town を書くとその地区だけ不通（down のとき）",
+  phone: "電話の様子。value は ok・busy・down。town を書くとその地区だけ通話不可（down のとき）",
   shelter: "避難所。name に避難所の名前。value は open・crowded・full・closed",
   facility: "施設。name に施設の名前。value は closed（休止）か open（再開）",
   aftershock: "余震。value に震度（「4」「5弱」）",
@@ -289,7 +289,7 @@ export function tickText(input: WorldInput, cast: Pick<WorldCast, "key"> & Parti
     ...(input.night ? [nightLine(input.hour)] : []),
     // 規模（T104、lib/drill/scale.ts）。開始の前に決めた災害と規模（おまかせも開始の時に決まる）。規模の無い前からの訓練は書かない
     ...(input.scale ? [scaleWords(input.scale)] : []),
-    // 発災からの時間の帯の目安（T104、lib/drill/timeline.ts。世界には文だけ）
+    // 発災からの時間の帯の目安（T104、lib/drill/time-odds.ts。世界には文だけ）
     timelineText(input.hour, { with: "world" }),
     acts.length > 0 ? ["前の刻みからケアマネがした事:", ...acts].join("\n") : "前の刻みからケアマネがした事: なし",
     contacts.length > 0 ? ["前の刻みからの本人たちの連絡:", ...contacts].join("\n") : "前の刻みからの本人たちの連絡: なし",

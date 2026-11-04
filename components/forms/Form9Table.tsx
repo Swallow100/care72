@@ -6,7 +6,7 @@
 // 色は意味にだけ: 優先の印と結果は状態の 4 色、「支援者なし」は要確認（本文色＋黄の帯）。手直しは色を付けず「自動 N」と理由。状態を持たない。
 
 import Link from "next/link";
-import { StateTag, TONE_TEXT } from "@/components/person/parts";
+import { REASON_TEXT, StateTag, TONE_TEXT } from "@/components/person/parts";
 import { ButtonLink } from "@/components/ui/Button";
 import { CloseIcon } from "@/components/ui/Icon";
 import { SubmitButton } from "@/components/ui/SubmitButton";
@@ -258,7 +258,8 @@ function Cell({ id, row: r, sort, editing, disaster }: { id: Form9ColumnId; row:
     case "means":
       return <Words text={text} />;
     case "reason":
-      return <div className={`${disaster && r.color ? `font-bold ${TONE_TEXT[COLOR_TONES[r.color]]}` : ""}`}>{text}</div>;
+      // 理由の文は要確認でも本文色（黄の塗りは状態の印と短い印だけ。REASON_TEXT）
+      return <div className={`${disaster && r.color ? `font-bold ${REASON_TEXT[COLOR_TONES[r.color]]}` : ""}`}>{text}</div>;
     case "emergency1":
     case "emergency2":
       return <ContactCell c={r.emergency[id === "emergency1" ? 0 : 1]} />;
@@ -302,14 +303,14 @@ function Cell({ id, row: r, sort, editing, disaster }: { id: Form9ColumnId; row:
   }
 }
 
-/** 「・」で区切った言葉を 1 行ずつ。注意の言葉（支援者なし）だけ要確認（本文色＋黄の帯） */
+/** 「・」で区切った言葉を 1 行ずつ。注意の言葉（支援者なし）だけ要確認（黄の塗り。li の幅いっぱいにならないよう中の span に） */
 function Words({ text, warn }: { text: string; warn?: string }) {
   if (!text) return <Dash />;
   return (
     <ul>
       {text.split("・").map((p, i) => (
-        <li key={i} className={p === warn ? `font-bold ${TONE_TEXT.check}` : undefined}>
-          {p}
+        <li key={i} className={p === warn ? "font-bold" : undefined}>
+          {p === warn ? <span className={TONE_TEXT.check}>{p}</span> : p}
         </li>
       ))}
     </ul>

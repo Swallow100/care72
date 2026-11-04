@@ -16,7 +16,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { MedicalMarkList, NarrowMarks } from "@/components/list/NarrowMarks";
 import { StateFilter } from "@/components/list/StateFilter";
-import { StateTag, TONE_TEXT } from "@/components/person/parts";
+import { REASON_TEXT, StateTag, TONE_TEXT } from "@/components/person/parts";
 import { Button } from "@/components/ui/Button";
 import { AddPersonIcon, CloseIcon, OpenIcon, SortIcon, UnlistIcon } from "@/components/ui/Icon";
 import { INTAKE_SEARCH_ID } from "./StaffIntake";
@@ -268,7 +268,7 @@ function Row({ row: r, open, onToggle }: { row: StaffRow; open: boolean; onToggl
           <NarrowMarks items={r.markItems} fallback={r.devices} />
           {/* 理由は医療が範囲の外の人には来ない（時計・薬の名前が入るので） */}
           {r.reason && (
-            <div className={`mt-0.5 text-xs font-bold ${TONE_TEXT[r.tone]}`} data-reason>
+            <div className={`mt-0.5 text-xs font-bold ${REASON_TEXT[r.tone]}`} data-reason>
               <ReasonText text={r.reason} />
             </div>
           )}

@@ -34,8 +34,8 @@ export const CONFIRM_LABELS = {
 
 /** AI の待ちの印（components/ui/Loader72.tsx）の文字 */
 export const WAIT_LABELS = {
-  /** 入れる欄の分ける（Sonnet が台帳の欄に分ける間） */
-  split: "分けています",
+  /** 入れる欄の入力（Sonnet が文を台帳の欄に振り分ける間） */
+  split: "読み取っています",
   /** 訓練の進める・早送り（本人役・家族役が次の 1 刻みを考える間） */
   think: "考えています",
   /** 本人のスマホの録る間（Haiku が録音を聞く間） */

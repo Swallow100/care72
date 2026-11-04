@@ -47,7 +47,7 @@ import { fitToScale, isDrillScale, pickScale, SCALE_CHOICES, scaleIncidents, sca
 import { fireScheduled } from "./schedule.ts";
 import { applyEvents, EMPTY_WORLD, type WorldEvent, type WorldState } from "./scenarios.ts";
 import { homeFacts, homeTowns, homeWords } from "./self.ts";
-import { bandOf, TIME_BANDS, TIMELINE, TIMELINE_SOURCES, timelineText } from "./timeline.ts";
+import { bandOf, TIME_BANDS, TIMELINE, TIMELINE_SOURCES, timelineText } from "./time-odds.ts";
 import { tickText as worldTickText } from "./world-oneshot.ts";
 
 // ---------- 種と偽の Claude ----------
@@ -140,7 +140,7 @@ const BANNED = /死亡|亡くな|死ん|関連死|心肺停止|診断|判定|重
 
 // ---------- 1. 時間の目安 ----------
 
-describe("時間ごとの起きやすさの目安（lib/drill/timeline.ts）", () => {
+describe("時間ごとの起きやすさの目安（lib/drill/time-odds.ts）", () => {
   it("帯は 0〜3・3〜12・12〜24・24〜72 時間で、どの帯にも行があり、どの行にも登録簿の出典が 1 つ以上・種類は出来事の表の物", () => {
     expect(TIME_BANDS.map((b) => [b.from, b.to])).toEqual([
       [0, 3],

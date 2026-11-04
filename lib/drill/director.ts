@@ -1,4 +1,4 @@
-// 訓練の監督（docs/tasks/T19.md）。世界の状態（道路・停電・電話の不通・職員の空き・避難所の様子・本人ごとの印）と、
+// 訓練の監督（docs/tasks/T19.md）。世界の状態（道路・停電・電話の通話不可・職員の空き・避難所の様子・本人ごとの印）と、
 // 刻みごとの差し込み。形は「決まった流れ＋判断点 1 つ」（Building Effective Agents の workflow）:
 // - 決まった流れ: 想定の表（lib/drill/scenarios.ts）の出来事と固定の差し込みを順に当てる（Claude を呼ばない。engine の step）
 // - 判断点 1 つ: この刻みで、この事業所の台帳の弱点（空欄・支援者なし・残り時間の短さ）に合わせて差し込む状況を 0〜差し込める数
@@ -69,7 +69,7 @@ import {
 } from "./event-catalog.ts";
 import { scenarioOf, type AskKind, type PersonMarks, type WorldState } from "./scenarios.ts";
 import { homeFacts, homeWords } from "./self.ts";
-import { timelineText } from "./timeline.ts";
+import { timelineText } from "./time-odds.ts";
 
 // ---------- 世界 → ルールの表の入力 ----------
 // lib/drill/world-clocks.ts へ移した（T90 の準備）。前からの import を壊さないよう、同じ名前をここからも出す
@@ -151,7 +151,7 @@ export function sceneText(input: DirectorInput, aliasOf: ReadonlyMap<string, str
     `差し込める数: ${budgetOf(input)}`,
     // 夜間発災（T59）だけ。時刻の 1 行
     ...(input.night ? [nightLine(input.hour)] : []),
-    // 発災からの時間の帯の目安（T104、lib/drill/timeline.ts）。種類と出典の id を添える
+    // 発災からの時間の帯の目安（T104、lib/drill/time-odds.ts）。種類と出典の id を添える
     timelineText(input.hour, { with: "director" }),
     ["今の様子:", ...now.map((x) => `- ${x}`)].join("\n"),
     input.incidents.length > 0
@@ -314,7 +314,7 @@ export function budgetOf(input: Pick<DirectorInput, "budget">): number {
 
 /**
  * 監督が根拠に引ける出典（登録簿の id）。返事の basis はこの中か「根拠なし」。
- * 前からの 5 つに、発災からの時間の目安（T104、lib/drill/timeline.ts）の文書を足した（停電・通信・水道・避難所。健康の助言の文書は入れない）
+ * 前からの 5 つに、発災からの時間の目安（T104、lib/drill/time-odds.ts）の文書を足した（停電・通信・水道・避難所。健康の助言の文書は入れない）
  */
 export const DIRECTOR_SOURCES = [
   "cao-shishin-2021",

@@ -373,7 +373,8 @@ export const AUTHOR_ROLE_LABELS: Record<AuthorRole, string> = {
 
 /** 入れる欄（T03）の言葉 */
 export const INTAKE_LABELS = {
-  title: "入力",
+  /** 見出し。主のボタンが「入力」なので、見出しは AI で入れる欄だと分かる言葉に（11/4。前は見出しもボタンの書き手も「入力」で、ボタンは「分ける」） */
+  title: "AI 入力",
   tabText: "文字",
   tabManual: "手入力",
   placeholder: "様子・ケアプランを貼る",
@@ -412,8 +413,8 @@ export const INTAKE_LABELS = {
   retry: "再試行",
   edited: "修正済",
   // ---- T45: 入れる欄を AI 専用に（文字・写真と PDF・小さなマイク）と会話の流れ ----
-  /** 分ける（文を Claude が台帳の欄に分ける主のボタン） */
-  split: "分ける",
+  /** 主のボタン（文を Claude が台帳の欄に振り分けて入れる）。前は「分ける」で、何をするのか伝わらなかった（11/4） */
+  split: "入力",
   /** 写真・PDF を選んで読ませる */
   readFile: "写真・PDF 読取",
   reading: "読取中",
@@ -422,7 +423,7 @@ export const INTAKE_LABELS = {
   fileEmpty: "空ファイル",
   /** 会話の流れの見出しと吹き出しの書き手 */
   log: "やりとり",
-  you: "入力",
+  you: "ケアマネ",
   ask: "問い",
   answer: "答え",
   /** 残りの問い（「残り 4 問」） */
@@ -553,9 +554,9 @@ export const dropConfirmText = (names: readonly string[]) =>
 
 /** 会話の流れの AI と人の言葉（T45）。AI の言葉は Claude の出力の数を数えるだけで、文は定型 */
 export const INTAKE_SAYS = {
-  /** 「7 項目に分けました（医療 3・連絡先 2・避難 2）」 */
-  split: (n: number, parts: string) => `${n} 項目に分けました${parts ? `（${parts}）` : ""}`,
-  /** 分ける物が無かった */
+  /** 「7 項目を見つけました（医療 3・連絡先 2・避難 2）」 */
+  split: (n: number, parts: string) => `${n} 項目を見つけました${parts ? `（${parts}）` : ""}`,
+  /** 入れる物が無かった */
   none: "本人のページに入る事は見つかりませんでした",
   /** 写真・PDF を読んだ（「お薬手帳.jpg を読みました」） */
   read: (name: string) => `${name} を読みました`,

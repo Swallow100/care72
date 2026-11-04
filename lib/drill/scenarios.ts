@@ -29,7 +29,7 @@ export type DrillKind = "heavy_rain" | "earthquake";
 export const WATER_STATES = ["none", "out", "restored"] as const;
 export type WaterState = (typeof WATER_STATES)[number];
 
-/** 電話: 通常・不安定・不通 */
+/** 電話: 通常・不安定・通話不可（T105 で「不通」から） */
 export const PHONE_STATES = ["ok", "busy", "down"] as const;
 export type PhoneState = (typeof PHONE_STATES)[number];
 
@@ -563,7 +563,7 @@ const EARTHQUAKE: Scenario = {
         { change: { kind: "quake", intensity: "6強" }, text: "南海トラフ 震度 6強" },
         { change: { kind: "tsunami", state: "evacuate" }, text: "津波警報、沿岸に避難指示" },
         { change: { kind: "outage", area: { scope: "office" } }, text: "停電 全域" },
-        { change: { kind: "phone", state: "down" }, text: "電話 不通" },
+        { change: { kind: "phone", state: "down" }, text: "電話 通話不可" },
       ],
       turns: [{ person: "p-07", who: WHO.any, color: "green", source: "agent", whereNow: "home", saying: "家は大丈夫" }],
     },

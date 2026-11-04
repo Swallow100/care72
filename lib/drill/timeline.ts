@@ -1,155 +1,280 @@
-// 発災からの時間ごとの起きやすさの目安（T104）。監督（lib/drill/director.ts の sceneText）と世界（lib/drill/world-oneshot.ts の tickText）に、
-// 今の時刻の帯の行だけを「目安」として渡す。Claude を呼ばない。
+// 訓練の経過を 3 つのタブに分ける表（docs/tasks/T105.md）。発生（起きたこと）・把握（分かったこと）・対応（した対応）。
 //
-// - 帯は 0〜3・3〜12・12〜24・24〜72 時間。72 時間ちょうどは最後の帯
-// - 行の数字は出典の登録簿（lib/sources）の文書の本文にある物だけ。どの行にも出典の id を 1 つ以上付ける
-// - kinds は出来事の表（lib/drill/event-catalog.ts）の種類で、その帯に起きやすい物の目安。監督に選ばせる種類を絞らない
-//   （差し込める種類は今までどおり台帳と世界で決まる）。時刻は幅を持たせ、決めつけない
-// - 体の具合・生き死に・薬の量を書かない。色・順位に使わない
-// - 輪にしない: event-catalog.ts・sources を型だけ読む
+// - 1 行がどのタブに入るかは、記録の種類（状況 incident・本人のする事 doing・安否 signal・手の返事で届いた事 heard・手 action）から
+//   LOG_ROUTE の表で決める。状況は公表か（ケアマネが訓練の途中で知り得るか）を変化の種類ごとの表 INCIDENT_REACH で見て、
+//   公表の状況は起きた時に把握にも入る
+// - 公表の決めは、採点（lib/drill/score.ts の knownOf）が「手を打った時に分かっていた事実」に数える物とそろえる
+//   （世界の電話・施設の休止・道・家の電話の通話不可・訪問看護が来られない）。そろえないと、見比べで「未把握」の事実への手を
+//   採点が空振りに数えて食い違う
+// - 非公表（本人に起きたこと: 持ち出し忘れ・帰宅希望・介護事業所の休止・家族の帰宅困難・車中泊・近所の声掛・外出・冷蔵不可・
+//   本人の予定・本人のする事）は、訓練の途中は発生に出さず、終わってから出す（問いの答えまで。docs/progress/t105.md）
+// - 把握の時刻: 非公表の物は、起きた時刻より後（同じ分を含む）に、その人の側から言葉が届いた最初の時刻
+//   （安否の言う事・電話に出た人の言う事・通話の往復・訪問で見た様子・通話や訪問で聞いた安否）。届かなければ未把握。
+//   届いた言葉がその出来事に触れたかは見ない（言葉を読んで決めると Claude の判断になる）
+// - 時刻は発災からの分（分に丸める。lib/drill/time-text.ts の言い方）。並びは古い順で返し、画面は新しい順に逆にして描く
+//
+// D1 を読まない。Claude を呼ばない。色と連絡の順（lib/triage）は読まない・変えない。
 
-import type { SourceId } from "../sources/index.ts";
-import type { InjectKind } from "./event-catalog.ts";
+import type { ActionRecord, DrillIncident, DrillTurn, Tick } from "./engine.ts";
+import { isStopIncident } from "./ai-stop.ts";
+import { callIndexes } from "./calls.ts";
+import { LOG_LABELS } from "./labels.ts";
+import type { Arrival, PersonMarks, Scheduled, WorldEventKind } from "./scenarios.ts";
 
-export const TIME_BANDS = [
-  { id: "h0", from: 0, to: 3 },
-  { id: "h3", from: 3, to: 12 },
-  { id: "h12", from: 12, to: 24 },
-  { id: "h24", from: 24, to: 72 },
-] as const;
-export type TimeBand = (typeof TIME_BANDS)[number];
-export type TimeBandId = TimeBand["id"];
+// ---------- タブと表 ----------
 
-/** 目安の 1 行。text は Claude に渡す文（画面の言葉ではない） */
-export type TimeLine = {
-  text: string;
-  /** この帯に起きやすい出来事の表の種類（目安。空なら種類に結び付けない） */
-  kinds: ReadonlyArray<InjectKind>;
-  /** 出典の登録簿の id（1 つ以上） */
-  sources: ReadonlyArray<SourceId>;
-};
+export const LOG_TABS = ["occur", "know", "act"] as const;
+export type LogTab = (typeof LOG_TABS)[number];
 
-/** 帯ごとの目安（数字は出典の本文の物だけ） */
-export const TIMELINE: Readonly<Record<TimeBandId, ReadonlyArray<TimeLine>>> = {
-  h0: [
-    {
-      text: "停電が始まる。広い範囲の停電では、全域で約 11 時間止まった例がある（北海道の地震）",
-      kinds: ["outage_spread"],
-      sources: ["soumu-iburi-2019"],
-    },
-    {
-      text: "停電で在宅酸素の濃縮器・人工呼吸器・吸引器は電池やボンベに切り替わり、その残りの時間が減り始める",
-      kinds: [],
-      sources: ["nanbyo-shishin-2017"],
-    },
-    {
-      text: "避難所は初動（発災当日）。備蓄の毛布を配るほどの段階",
-      kinds: [],
-      sources: ["cao-hinanjo-2016"],
-    },
-    {
-      text: "福祉避難所は、支援者の到着が間に合わないなどで初日に開かないことがある",
-      kinds: [],
-      sources: ["cao-fukushi-2021"],
-    },
-  ],
-  h3: [
-    {
-      text: "停電が長引くと、携帯の基地局の予備電源が尽きて止まる局が増えていく（北海道の地震では発災の日の夜に最大約 6,500 局）",
-      kinds: ["mobile_down", "outage_spread"],
-      sources: ["soumu-iburi-2019"],
-    },
-    {
-      text: "固定電話の回線にも支障が出る（北海道の地震では約 14 万回線）",
-      kinds: ["line_down"],
-      sources: ["soumu-iburi-2019"],
-    },
-    {
-      text: "避難所はまだ発災当日の段階。福祉避難所は初日に開かないことがある",
-      kinds: [],
-      sources: ["cao-hinanjo-2016", "cao-fukushi-2021"],
-    },
-  ],
-  h12: [
-    {
-      text: "携帯の止まる基地局が最も多くなるころ（北海道の地震では発災から約 18 時間の発表で最大）。市町村役場をカバーする基地局の停電対策は少なくとも 24 時間（義務）",
-      kinds: ["mobile_down"],
-      sources: ["soumu-iburi-2019", "soumu-tsushin-2026"],
-    },
-    {
-      text: "断水が続く（熊本の地震では最大約 44.6 万戸）",
-      kinds: ["water_station"],
-      sources: ["mhlw-water-2016"],
-    },
-    {
-      text: "透析は断水・停電・施設の被害でできなくなることがある。次の透析の日が近い人の透析先の様子を確かめる時期",
-      kinds: ["dialysis_flooded", "hospital_closed"],
-      sources: ["jadp-dialysis-2023"],
-    },
-    {
-      text: "福祉避難所は初日に間に合わなければ、そのあとに開く",
-      kinds: ["welfare_shelter_open"],
-      sources: ["cao-fukushi-2021"],
-    },
-  ],
-  h24: [
-    {
-      text: "停電の解消が進む（北海道の地震では約 30 時間後に 5 割、約 64 時間後に電力会社の復旧の宣言）。一部の地域は長く続く",
-      kinds: ["outage_eta"],
-      sources: ["soumu-iburi-2019"],
-    },
-    {
-      text: "断水は 72 時間のうちには戻らないことが多い（過去の主な地震と大雨の最大断水日数はどれも 3 日以上）",
-      kinds: ["water_station"],
-      sources: ["mhlw-water-2016"],
-    },
-    {
-      text: "避難所は応急期（3 日目まで）。床にマットや段ボールを敷く段階で、簡易ベッドは 4 日目以降",
-      kinds: [],
-      sources: ["cao-hinanjo-2016"],
-    },
-    {
-      text: "行政の支援が始まる目安は被災後 3 日目。それまでは事業所と家の備えで持ちこたえる",
-      kinds: [],
-      sources: ["mhlw-bcp-2020"],
-    },
-    {
-      text: "中断できない薬と栄養剤は 1 週間分ほどの備えが勧められている。手元の残りが少ない人の薬の手配が要る時期",
-      kinds: ["pharmacy_closed"],
-      sources: ["nanbyo-shishin-2017"],
-    },
-    {
-      text: "透析の次の回が来る人は、透析先の様子と受け入れ先を確かめる",
-      kinds: ["dialysis_flooded", "hospital_closed"],
-      sources: ["jadp-dialysis-2023"],
-    },
-  ],
-};
+/** 既定のタブ（訓練の途中も終わったあとも、届いた物から見る） */
+export const DEFAULT_LOG_TAB: LogTab = "know";
 
-/** 発災からの時間の帯（負は最初の帯、72 時間以上は最後の帯） */
-export function bandOf(hour: number): TimeBand {
-  const h = Number.isFinite(hour) ? Math.max(0, hour) : 0;
-  return TIME_BANDS.find((b) => h < b.to) ?? TIME_BANDS[TIME_BANDS.length - 1];
+export function parseLogTab(v: unknown): LogTab {
+  return typeof v === "string" && (LOG_TABS as readonly string[]).includes(v) ? (v as LogTab) : DEFAULT_LOG_TAB;
 }
 
-/** 帯の言い方（「発災から 3〜12 時間」） */
-export function bandWords(b: TimeBand): string {
-  return `発災から ${b.from}〜${b.to} 時間`;
-}
-
-/** 目安の行の出典の全部（重ねない。監督の根拠の一覧 DIRECTOR_SOURCES に入れる物） */
-export const TIMELINE_SOURCES: ReadonlyArray<SourceId> = [...new Set(Object.values(TIMELINE).flatMap((ls) => ls.flatMap((l) => l.sources)))];
+/** 記録の種類。incident 状況・doing 本人のする事・signal 安否・heard 手の返事で届いた事・action 手 */
+export const LOG_SOURCES = ["incident", "doing", "signal", "heard", "action"] as const;
+export type LogSource = (typeof LOG_SOURCES)[number];
 
 /**
- * 今の時刻の帯の目安の文。監督は種類と根拠の id を添え（with: "director"）、世界は文だけ（with: "world"。世界の部屋の
- * 種類は出来事の表と違い、根拠の一覧も渡していないため）
+ * 記録の種類 → 入るタブ（1 か所の表）。状況は公表なら把握にも入る（incidentReach）。
+ * 手の返事のうち言葉・様子・事実の届いた物（heard）は把握、手そのもの（action）は対応
  */
-export function timelineText(hour: number, opts: { with: "director" | "world" }): string {
-  const b = bandOf(hour);
-  const lines = TIMELINE[b.id].map((l) => {
-    if (opts.with === "world") return `- ${l.text}`;
-    const kinds = l.kinds.length > 0 ? `種類: ${l.kinds.join("、")}。` : "";
-    return `- ${l.text}（${kinds}出典: ${l.sources.join("、")}）`;
+export const LOG_ROUTE: Readonly<Record<LogSource, ReadonlyArray<LogTab>>> = {
+  incident: ["occur"],
+  doing: ["occur"],
+  signal: ["know"],
+  heard: ["know"],
+  action: ["act"],
+};
+
+/**
+ * 状況の届き方。public 公表（起きた時に把握）・private 本人に起きたこと（途中は出さない）・
+ * byPerson 本人の付いた物は private、付かない物は public・none 経過に出さない（AI 停止の印は上の帯 1 本、T76）
+ */
+export type Reach = "public" | "private" | "byPerson" | "none";
+
+export const INCIDENT_REACH: Readonly<Record<WorldEventKind, Reach>> = {
+  alert: "public",
+  quake: "public",
+  tsunami: "public",
+  flood: "public",
+  outage: "public",
+  outage_restored: "public",
+  phone: "public",
+  water: "public",
+  road: "public",
+  shelter: "public",
+  facility: "public",
+  supply_left: "private",
+  nurse_away: "public",
+  going_home: "private",
+  line_down: "public",
+  town_flood: "public",
+  landslide: "public",
+  town_road: "public",
+  town_water: "public",
+  town_line: "public",
+  town_facility: "public",
+  weather: "public",
+  narration: "byPerson",
+  // 世界の止まりの印は上の帯（T76）。世界の 1 文のある刻みの代替の印は 1 文に添える（行にしない）
+  world_note: "none",
+  // 結末（仮想モード、T53）は左の表の名前の下に途中から出ている（app/drill/[id]/page.tsx の nameNote）ので、隠さない
+  outcome: "public",
+  ai_stop: "none",
+  auto_abandon: "public",
+  note: "public",
+  mark: "private",
+  check: "private",
+  schedule: "byPerson",
+};
+
+/**
+ * 本人ごとの印の届き方（被害状況の「個別」。訓練の途中は公表の物だけ出す）。
+ * 家の電話・訪問看護は採点の knownOf が分かっていた事実に数えるので公表、浸水・断水は町の出来事（仮想モード）から付くので公表
+ */
+export const MARK_REACH: Readonly<Record<keyof PersonMarks, "public" | "private">> = {
+  supplyLeft: "private",
+  nurseAway: "public",
+  goingHome: "private",
+  lineDown: "public",
+  flooded: "public",
+  waterOut: "public",
+  helperAway: "private",
+  familyAway: "private",
+  carSleep: "private",
+  neighborWatch: "private",
+  wandering: "private",
+};
+
+/** 状況の届き方（public・private・none）。表の外の種類は private（隠す側に倒す） */
+export function incidentReach(e: Pick<DrillIncident, "change" | "person">): "public" | "private" | "none" {
+  const r = INCIDENT_REACH[e.change.kind] ?? "private";
+  if (r === "byPerson") return e.person ? "private" : "public";
+  return r;
+}
+
+/** 予定の出来事（被害状況の「予定」）を訓練の途中に出すか。本人の付いた予定（業者の巡回など）は出さない。ケアマネの手の予定は出す */
+export function scheduledPublic(s: Pick<Scheduled, "person" | "by">): boolean {
+  return s.by === "action" || !s.person;
+}
+
+/** 向かっている人（被害状況の「到着」）を訓練の途中に出すか。ケアマネの手で向かった人だけ（監督・世界の巡回は出さない） */
+export function arrivalPublic(a: Pick<Arrival, "from">): boolean {
+  return a.from !== "director" && a.from !== "world";
+}
+
+/** 記録の種類と公表かから、入るタブ */
+export function tabsOf(source: LogSource, reach: "public" | "private" = "private"): LogTab[] {
+  const base = [...LOG_ROUTE[source]];
+  return source === "incident" && reach === "public" ? [...base, "know"] : base;
+}
+
+// ---------- 行 ----------
+
+type RowBase = { key: string; minute: number; person: string | null };
+
+export type LogRow =
+  | (RowBase & { source: "incident"; e: DrillIncident; step: number; reach: "public" | "private"; fallback: boolean })
+  | (RowBase & { source: "doing"; t: DrillTurn; step: number })
+  | (RowBase & { source: "signal"; t: DrillTurn; step: number; callIn: boolean })
+  | (RowBase & { source: "heard"; a: ActionRecord })
+  | (RowBase & { source: "action"; a: ActionRecord });
+
+/** 把握の経路。public 公表・signal 安否の言う事・heard 通話や訪問 */
+export type AwareVia = "public" | "signal" | "heard";
+
+/** 発生の 1 行の把握。at は把握の時刻（分）、lag は起きてからの分。mark は late 遅れ（lag が 0 より大）・never 未把握 */
+export type Awareness = {
+  at: number | null;
+  via: AwareVia | null;
+  /** 把握を運んだ行の鍵（安否・手の返事）。公表と未把握は null */
+  from: string | null;
+  lag: number | null;
+  mark: "late" | "never" | null;
+};
+
+export type DrillLog = {
+  /** 古い順 */
+  occur: LogRow[];
+  know: LogRow[];
+  act: LogRow[];
+  /** 発生の行の鍵 → 把握 */
+  aware: Record<string, Awareness>;
+  /** 訓練の途中で発生に出していない行の数（終わっていれば 0） */
+  hidden: number;
+};
+
+const minuteOf = (hour: number) => Math.max(0, Math.round(hour * 60));
+
+/** 手の返事で、その人の側から言葉か様子が届いたか（通話・往復・訪問・聞いた安否） */
+function contactOf(a: ActionRecord): boolean {
+  const r = a.result;
+  if (!r) return false;
+  return Boolean(r.speech) || (r.talk?.length ?? 0) > 0 || Boolean(r.visit) || Boolean(r.heard);
+}
+
+/** 手の返事に、把握のタブに出す物（言葉・様子・聞いた安否・世界の事実）があるか */
+export function heardOf(a: ActionRecord): boolean {
+  const r = a.result;
+  if (!r) return false;
+  return contactOf(a) || Boolean(r.because);
+}
+
+/** 本人の側から言葉の届いた安否（言う事がある） */
+const saidOf = (t: DrillTurn) => Boolean(t.saying?.trim());
+
+/**
+ * 刻みと手から 3 つのタブの行を作る。finished は終わった・中断した訓練（非公表の行も発生に出す）。
+ * 状況の欄と同じく、AI 停止の印（ai_stop・世界の止まり）は上の帯に任せて外し、世界の 1 文のある刻みの代替の印は 1 文に添える
+ */
+export function buildDrillLog(ticks: ReadonlyArray<Tick>, actions: ReadonlyArray<ActionRecord>, opts: { finished: boolean }): DrillLog {
+  const all: LogRow[] = [];
+  for (const t of ticks) {
+    const fellBack = t.incidents.some((e) => e.change.kind === "world_note" && e.change.state === "down");
+    const hasNarration = t.incidents.some((e) => e.change.kind === "narration");
+    t.incidents.forEach((e, n) => {
+      if (isStopIncident(e, t)) return;
+      if (hasNarration && e.change.kind === "world_note") return;
+      const reach = incidentReach(e);
+      if (reach === "none") return;
+      all.push({
+        source: "incident",
+        key: `i-${t.step}-${n}`,
+        minute: minuteOf(e.at),
+        person: e.person ?? null,
+        e,
+        step: t.step,
+        reach,
+        fallback: fellBack && e.change.kind === "narration",
+      });
+    });
+    const calls = callIndexes(t.turns);
+    t.turns.forEach((x, n) => {
+      all.push({ source: "signal", key: `s-${t.step}-${n}`, minute: minuteOf(x.at), person: x.person, t: x, step: t.step, callIn: calls.includes(n) });
+      if (x.doing?.trim()) all.push({ source: "doing", key: `d-${t.step}-${n}`, minute: minuteOf(x.at), person: x.person, t: x, step: t.step });
+    });
+  }
+  for (const a of actions) {
+    all.push({ source: "action", key: `a-${a.id}`, minute: a.atMinute, person: a.person, a });
+    if (a.result && heardOf(a)) all.push({ source: "heard", key: `h-${a.id}`, minute: a.result.atMinute, person: a.person, a });
+  }
+  // 古い順（同じ分は作った順）
+  const sorted = all.map((r, i) => ({ r, i })).sort((x, y) => x.r.minute - y.r.minute || x.i - y.i).map((x) => x.r);
+
+  const reachOfRow = (r: LogRow): "public" | "private" => (r.source === "incident" ? r.reach : "private");
+  const inTab = (r: LogRow, tab: LogTab) => tabsOf(r.source, reachOfRow(r)).includes(tab);
+  const know = sorted.filter((r) => inTab(r, "know"));
+  const occurAll = sorted.filter((r) => inTab(r, "occur"));
+  const occur = opts.finished ? occurAll : occurAll.filter((r) => reachOfRow(r) === "public");
+  const act = sorted.filter((r) => inTab(r, "act"));
+
+  // 把握: その人の側から言葉か様子が届いた時刻（安否の言う事・手の返事の言葉と様子）
+  const contacts = know.flatMap((r): Array<{ person: string; minute: number; via: AwareVia; key: string }> => {
+    if (r.source === "signal" && saidOf(r.t)) return [{ person: r.t.person, minute: r.minute, via: "signal", key: r.key }];
+    if (r.source === "heard" && r.person && contactOf(r.a)) return [{ person: r.person, minute: r.minute, via: "heard", key: r.key }];
+    return [];
   });
-  return [`この時間帯（${bandWords(b)}）に起きやすい事（公的な資料からの目安。決めつけない。時刻は前後してよい）:`, ...lines].join("\n");
+  const aware: Record<string, Awareness> = {};
+  for (const r of occurAll) {
+    if (reachOfRow(r) === "public") {
+      aware[r.key] = { at: r.minute, via: "public", from: null, lag: 0, mark: null };
+      continue;
+    }
+    const hit = r.person ? contacts.find((c) => c.person === r.person && c.minute >= r.minute) : undefined;
+    if (!hit) {
+      aware[r.key] = { at: null, via: null, from: null, lag: null, mark: "never" };
+      continue;
+    }
+    const lag = hit.minute - r.minute;
+    aware[r.key] = { at: hit.minute, via: hit.via, from: hit.key, lag, mark: lag > 0 ? "late" : null };
+  }
+  return { occur, know, act, aware, hidden: occurAll.length - occur.length };
+}
+
+/** 見比べの数（訓練記録。採点 T94 の内訳と同じ形の 1 行に）。発生の行のうち遅れ・未把握・公表の数 */
+export type AwareCounts = { total: number; publicCount: number; late: number; never: number };
+
+export function awareCounts(log: Pick<DrillLog, "occur" | "aware">): AwareCounts {
+  const out: AwareCounts = { total: log.occur.length, publicCount: 0, late: 0, never: 0 };
+  for (const r of log.occur) {
+    const w = log.aware[r.key];
+    if (!w) continue;
+    if (w.via === "public") out.publicCount += 1;
+    if (w.mark === "late") out.late += 1;
+    if (w.mark === "never") out.never += 1;
+  }
+  return out;
+}
+
+/** 見比べの 1 行（「発生 12・公表 8・遅れ 3・未把握 1」）。採点の内訳（score-view.ts の extraText）と同じ形 */
+export function awareText(c: AwareCounts): string {
+  return [
+    `${LOG_LABELS.occur} ${c.total}`,
+    `${LOG_LABELS.public} ${c.publicCount}`,
+    `${LOG_LABELS.late} ${c.late}`,
+    `${LOG_LABELS.never} ${c.never}`,
+  ].join("・");
 }

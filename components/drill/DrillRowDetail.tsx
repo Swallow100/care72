@@ -7,7 +7,7 @@
 // 仮想モードの結末の人（T53）は、上に結末の 1 文と、世界が決めた理由（街と物の事実）を AI の印つきで出す。
 // 本人・家族の頼み事のうち未対応の物（T93、通話の往復と訪問で聞いた）は、理由の行の下に灰の文字の印で（色の印にしない。済ませるのは手）。
 
-import { AiMark, StateTag, TONE_TEXT } from "@/components/person/parts";
+import { AiMark, REASON_TEXT, StateTag, TONE_TEXT } from "@/components/person/parts";
 import { CALL_UI, VIRTUAL_LABELS } from "@/lib/drill/labels";
 import { minuteText } from "@/lib/drill/time-text";
 import { COLOR_LABELS } from "@/lib/labels";
@@ -64,7 +64,7 @@ export function DrillRowDetail({
       )}
       <div className="flex flex-wrap items-baseline gap-x-3 pt-1">
         <span className="text-xs text-muted">{DETAIL_LABELS.reason}</span>
-        <span className={`text-[15px] font-bold ${TONE_TEXT[d.tone]}`} data-reason>
+        <span className={`text-[15px] font-bold ${REASON_TEXT[d.tone]}`} data-reason>
           {d.reason}
         </span>
       </div>

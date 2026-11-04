@@ -1,14 +1,14 @@
 "use client";
 
 // 入れる欄（T03・T04・T45）。本人のページの右に常に開いている、AI の入力専用の欄。手で直すのは左の面の「編集」（SectionEdit）。
-// - 上に文字の欄（書く・貼る）。その下に「写真・PDF 読取」と小さなマイク（「話す」）、主のボタン「分ける」
-// - 分ける: Claude（Sonnet）が文を台帳の欄に分け（/api/intake/extract）、今の値と並べた変更点を出す
+// - 上に文字の欄（書く・貼る）。その下に「写真・PDF 読取」と小さなマイク（「話す」）、主のボタン「入力」（前は「分ける」。11/4）
+// - 入力: Claude（Sonnet）が文を台帳の欄に振り分け（/api/intake/extract）、今の値と並べた変更点を出す
 // - 写真・PDF 読取: ケアプラン・お薬手帳などを選ぶと、必ず黒塗りの画面（RedactSheet、T52）を通る。写った氏名・住所・電話・町名を
 //   人が塗り、塗った後の画像（JPEG、EXIF なし）を 1 頁ずつ Opus が読み（/api/intake/read）、同じ変更点を出す。元の写真・PDF は送らない。
 //   保存すると経過に「写真を読んだ（隠した所 N か所）」（T45 の読む前の確認の窓「読取確認」はこの画面に置き換えた）
-// - 話す（T04）: ブラウザの Web Speech で文字の欄に流す。もう一度押して止めると欄に残り、直してから「分ける」。
+// - 話す（T04）: ブラウザの Web Speech で文字の欄に流す。もう一度押して止めると欄に残り、直してから「入力」。
 //   対応していないブラウザ（Firefox など）はボタンを出さない
-// - 下に会話の流れ（やりとり）: 入れた物 → AI の言った事（「7 項目に分けました（医療 3・避難 2）」と変更点）→ 保存 → 次の問い → 答え …
+// - 下に会話の流れ（やりとり）: 入れた物 → AI の言った事（「7 項目を見つけました（医療 3・避難 2）」と変更点）→ 保存 → 次の問い → 答え …
 //   問いは空欄が無くなるまで続き、「次回」で飛ばせる。流れは下へ伸びる（内側で送らない。送るのはページの縦 1 本）
 // 保存は全部 /api/intake/save（版を確かめ、埋まった欄は上書きしない）。保存のあとはページを読み直す（流れはこの画面の間だけ残る）。
 
@@ -78,7 +78,7 @@ const SPEECH_ERROR_LABELS: Record<DictationError, string> = {
   failed: INTAKE_LABELS.speechFailed,
 };
 
-/** 「7 項目に分けました（医療 3・避難 2）」の数え方。保存できる物（一致を除く）を本人のページの区分ごとに */
+/** 「7 項目を見つけました（医療 3・避難 2）」の数え方。保存できる物（一致を除く）を本人のページの区分ごとに */
 export function splitSay(items: readonly DiffItem[]): string {
   const live = items.filter((i) => i.change !== null);
   if (live.length === 0) return INTAKE_SAYS.none;
@@ -131,7 +131,7 @@ export function Intake(props: IntakeProps & { level: Level }) {
   const patch = (id: string, p: Partial<Extract<LogEntry, { kind: "split" }>>) =>
     setLog((l) => l.map((e) => (e.id === id && e.who === "ai" && e.kind === "split" ? { ...e, ...p } : e)));
 
-  // 話す: 認識の結果は欄に流れ、もう一度押して止めると欄に残る（直してから「分ける」）
+  // 話す: 認識の結果は欄に流れ、もう一度押して止めると欄に残る（直してから「入力」）
   const speech = useDictation({ maxLength: TEXT_MAX, onText: setText, onDone: (spoken) => setText(spoken) });
   const listening = speech.state !== "idle";
 

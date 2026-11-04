@@ -1,7 +1,9 @@
 // 訓練の右の「被害状況」（docs/tasks/T17.md。世界の状態は監督 T19 が持つ）。見ている時刻の世界をそのまま並べる。
 // 大雨は警戒レベル・浸水、地震は震度・津波。どちらも停電・電話・断水・道路・避難所・施設・職員の空き・本人ごとの印（監督の差し込み）。
-// 止まっている物（停電中・不通・断水・通行止・休止・満員）は要確認の色の文字。面は塗らない。
+// 止まっている物（停電中・通話不可・断水・通行止・休止・満員）は要確認の色の文字。面は塗らない。
 // 予定の出来事・向かっている人・届いた物（T92。監督の見込み・業者の巡回・ケアマネの手配）は灰の文字で、あるときだけ行を出す。
+// T105: 訓練の途中（hidePrivate）は、本人に起きたこと（個別の印のうち非公表の物・本人の付いた予定・監督と世界の巡回）を出さない。
+// 公表かは経過のタブと同じ表（lib/drill/timeline.ts の MARK_REACH・scheduledPublic・arrivalPublic）。終わった訓練は全部出す。
 
 import { ARRIVAL_ROLE_LABELS, DAMAGE_EXTRA_LABELS, SUPPLY_LABELS } from "@/lib/drill/event-catalog";
 import type { DrillKind, PersonMarks, SupplyKind, WorldState } from "@/lib/drill/scenarios";
@@ -15,6 +17,7 @@ import {
   WORLD_LABELS,
 } from "@/lib/drill/labels";
 import { hourSpanText, hourText } from "@/lib/drill/time-text";
+import { arrivalPublic, MARK_REACH, scheduledPublic } from "@/lib/drill/timeline";
 
 const BAD = "font-bold tone-check";
 
@@ -23,16 +26,21 @@ export function DamagePanel({
   world,
   now,
   names,
+  hidePrivate = false,
 }: {
   kind: DrillKind;
   world: WorldState;
   /** 見ている時刻（発災からの時間） */
   now: number;
   names: Readonly<Record<string, string>>;
+  /** 訓練の途中は本人に起きたこと（非公表）を出さない（T105） */
+  hidePrivate?: boolean;
 }) {
   const o = world.outage;
-  const scheduled = [...(world.scheduled ?? [])].sort((a, b) => a.at - b.at);
-  const coming = (world.arrivals ?? []).filter((a) => !a.arrived).sort((a, b) => a.arrive - b.arrive);
+  const scheduled = [...(world.scheduled ?? [])].filter((x) => !hidePrivate || scheduledPublic(x)).sort((a, b) => a.at - b.at);
+  const coming = (world.arrivals ?? [])
+    .filter((a) => !a.arrived && (!hidePrivate || arrivalPublic(a)))
+    .sort((a, b) => a.arrive - b.arrive);
   const supplies = Object.entries(world.supplies ?? {}).flatMap(([person, got]) =>
     (Object.entries(got) as Array<[SupplyKind, number | undefined]>).flatMap(([k, at]) =>
       typeof at === "number" ? [{ id: `${person}-${k}`, label: names[person] ?? person, state: `${SUPPLY_LABELS[k]} ${clockLabel(at)}`, bad: false }] : [],
@@ -131,7 +139,7 @@ export function DamagePanel({
         <List
           items={Object.entries(world.marks ?? {}).flatMap(([person, m]) =>
             (Object.keys(MARK_LABELS) as Array<keyof PersonMarks>)
-              .filter((k) => m[k] !== undefined)
+              .filter((k) => m[k] !== undefined && (!hidePrivate || MARK_REACH[k] === "public"))
               .map((k) => ({ id: `${person}-${k}`, label: names[person] ?? person, state: MARK_LABELS[k], bad: true })),
           )}
         />
