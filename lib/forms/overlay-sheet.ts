@@ -208,6 +208,11 @@ export type OverlayPage = {
   items: OverlayItem[];
   /** 未記入の色付けの版で塗る所（既定の版では描かない） */
   fills: OverlayFill[];
+  /**
+   * 紙に直接書く窓の押す所（T117。原本の枠の紙の欄の矩形。値の無い欄も押せるように）。画面だけで、紙には刷らない。
+   * 原本の枠の紙（lib/forms/frame-sheet.ts）だけが作る
+   */
+  targets?: OverlayFill[];
 };
 
 /** 色付けの塗りを罫線から離す幅（mm。罫線の太さの半分 0.15 と 0.3 の空き） */

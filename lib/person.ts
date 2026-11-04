@@ -27,6 +27,7 @@ import {
   type ContactRow,
   type DeviceKind,
   type Ledger,
+  type TransportKind,
   type PendingStatus,
   type PersonRow,
   type PersonReportedAge,
@@ -63,6 +64,7 @@ import {
   DOCUMENT_STATUS_LABELS,
   HEAD_LABELS,
   HOUSEHOLD_LABELS,
+  HOUSING_TYPE_LABELS,
   householdText,
   MEDICATION_CATEGORY_LABELS,
   MED_PARTS,
@@ -147,6 +149,13 @@ export const FIELDS: readonly FieldDef[] = [
   { key: "evacuation.hazards", section: "evacuation", label: "ハザード" },
   { key: "evacuation.destination1", section: "evacuation", label: "避難先1" },
   { key: "evacuation.destination2", section: "evacuation", label: "避難先2" },
+  // 私の避難場所の手段と時間・最寄りの避難場所（T117）
+  { key: "evacuation.destination1Minutes", section: "evacuation", label: "避難先1時間" },
+  { key: "evacuation.destination2Means", section: "evacuation", label: "避難先2手段" },
+  { key: "evacuation.destination2Minutes", section: "evacuation", label: "避難先2時間" },
+  { key: "evacuation.nearest", section: "evacuation", label: "最寄避難場所" },
+  { key: "evacuation.nearestMeans", section: "evacuation", label: "最寄手段" },
+  { key: "evacuation.nearestMinutes", section: "evacuation", label: "最寄時間" },
   { key: "evacuation.stayHome", section: "evacuation", label: "在宅避難" },
   { key: "evacuation.transport", section: "evacuation", label: "手段" },
   { key: "evacuation.support", section: "evacuation", label: "支援内容" },
@@ -154,6 +163,7 @@ export const FIELDS: readonly FieldDef[] = [
   { key: "evacuation.barriers", section: "evacuation", label: "段差" },
   { key: "basic.housing", section: "evacuation", label: "住居" },
   { key: "basic.housing.bedroom", section: "evacuation", label: "寝室" },
+  { key: "basic.housing.type", section: "evacuation", label: "住居種別" },
   { key: "evacuation.carryItems", section: "evacuation", label: "持出品" },
   { key: "evacuation.pets", section: "evacuation", label: "ペット" },
   { key: "evacuation.myTimeline", section: "evacuation", label: "タイムライン" },
@@ -163,6 +173,10 @@ export const FIELDS: readonly FieldDef[] = [
   { key: "people.supporter2", section: "people", label: "支援者2" },
   { key: "people.welfare_commissioner", section: "people", label: "民生委員" },
   { key: "local.watcher", section: "people", label: "みまもり員" },
+  // 避難支援等実施組織（T117）と、連絡先のフリガナ・住所・携帯の問いの場所（contacts.<id>.<所>）
+  { key: "local.orgName", section: "people", label: "支援組織" },
+  { key: "local.orgPhone", section: "people", label: "組織電話" },
+  { key: "contacts", section: "people", label: "連絡先" },
   { key: "people.night_supporter", section: "people", label: "夜間支援" },
   { key: "people.others", section: "people", label: "関係先" },
   { key: "basic.address", section: "basic", label: "住所" },
@@ -707,9 +721,17 @@ function clockView(k: ClockRow): ClockView {
   };
 }
 
+/** 避難場所の行（T117）: 名前に手段と時間（分）を灰で添える。名前が無ければ未確認 */
+function placeField(name: string | undefined, means: TransportKind | undefined, minutes: number | undefined): Field {
+  if (!name?.trim()) return { kind: "unconfirmed" };
+  const extra = [means ? TRANSPORT_KIND_LABELS[means] : null, minutes != null ? `${minutes} 分` : null].filter((x): x is string => x !== null);
+  return { kind: "lines", lines: [[text(name), ...(extra.length > 0 ? [muted(extra.join("・"))] : [])]] };
+}
+
 function housingField(h: Ledger["basic"]["housing"]): Field {
   if (!h) return { kind: "unconfirmed" };
   const parts: string[] = [];
+  if (h.type) parts.push(HOUSING_TYPE_LABELS[h.type]);
   if (h.floor != null) parts.push(`${h.floor} 階`);
   if (h.floors != null) parts.push(h.floors === 1 ? "平屋" : `${h.floors} 階建`);
   if (h.structure) parts.push(STRUCTURE_LABELS[h.structure]);
@@ -722,8 +744,11 @@ function evacuationBlocks(ledger: Ledger): Block[] {
   const hazards = hazardsOf(ledger);
   return [
     row("evacuation.hazards", hazards.length > 0 ? { kind: "lines", lines: [[text(hazards.join("・"))]] } : { kind: "none" }),
-    row("evacuation.destination1", textField(e.destination1)),
-    row("evacuation.destination2", textField(e.destination2)),
+    // 避難先 1 の手段は下の「手段」の行（重ねない）。時間だけ添える
+    row("evacuation.destination1", placeField(e.destination1, undefined, e.destination1Minutes)),
+    row("evacuation.destination2", placeField(e.destination2, e.destination2Means, e.destination2Minutes)),
+    // 最寄りの避難場所（T117。計画書の「私の避難場所」）
+    row("evacuation.nearest", placeField(e.nearest, e.nearestMeans, e.nearestMinutes)),
     // 在宅避難の印（T37）。無ければ避難所へ（「なし」）
     row("evacuation.stayHome", e.stayHome === true ? { kind: "lines", lines: [[text("あり")]] } : { kind: "none" }),
     row("evacuation.transport", transportField(e)),
@@ -795,6 +820,7 @@ function partialPeopleBlocks(blocks: Block[], contacts: Contact[]): Block[] {
 function contactListLine(c: Contact): Line {
   const label = c.name ?? (c.relation || CONTACT_KIND_LABELS[c.kind]);
   const segs: Seg[] = [text(label)];
+  if (c.name && c.kana) segs.push(muted(c.kana));
   if (c.name && c.relation) segs.push(muted(c.relation));
   // 種類の印（家族・支援者・民生委員・訪問看護など）。名前の代わりに出した言葉と同じなら重ねない。「その他」は何も言わないので付けない
   const kind = CONTACT_KIND_LABELS[c.kind];
@@ -807,6 +833,10 @@ function contactListLine(c: Contact): Line {
   if (c.has_car === 1) segs.push(muted(CONTACT_FLAG_LABELS.hasCar));
   if (c.has_smartphone === 1) segs.push(muted(CONTACT_FLAG_LABELS.hasSmartphone));
   if (c.phone) segs.push({ text: c.phone, tel: telHref(c.phone) });
+  // 携帯（T117、contacts.mobile）。電話と同じく押せば電話をかける
+  if (c.mobile) segs.push({ text: c.mobile, tel: telHref(c.mobile) });
+  // 住所（市町村と町名まで）とフリガナ（T117）。細かい物なので灰
+  if (c.address) segs.push(muted(c.address));
   if (c.note) segs.push(muted(c.note));
   return segs;
 }
@@ -844,6 +874,14 @@ function peopleBlocks(contacts: Contact[], ledger: Ledger): Block[] {
   if (!has((c) => c.supporter_order === 2)) out.push(row("people.supporter2", { kind: "none" }));
   if (!has((c) => c.kind === "welfare_commissioner")) out.push(row("people.welfare_commissioner", { kind: "none" }));
   out.push(row("local.watcher", textField(ledger.local?.watcher)));
+  // 避難支援等実施組織（T117）。入っていれば名前と電話、無ければ実施者がいないときだけ未確認（様式の「※避難支援等実施者がいない場合」の欄）
+  const orgName = ledger.local?.orgName?.trim();
+  const orgPhone = ledger.local?.orgPhone?.trim();
+  if (orgName || orgPhone) {
+    out.push(row("local.orgName", { kind: "lines", lines: [[...(orgName ? [text(orgName)] : []), ...(orgPhone ? [{ text: orgPhone, tel: telHref(orgPhone) }] : [])]] }));
+  } else if (!has((c) => c.supporter_order != null)) {
+    out.push(row("local.orgName", { kind: "unconfirmed" }));
+  }
   if (!has((c) => c.night_ok === 1)) {
     out.push(row("people.night_supporter", has((c) => c.night_ok === 0) ? { kind: "none" } : { kind: "unconfirmed" }));
   }
@@ -1461,7 +1499,7 @@ export async function loadPersonRows(db: D1Database, brief: PersonBrief): Promis
     db
       .prepare(
         `SELECT id, person_id, kind, relation, name, phone, reach, emergency_order, supporter_order,
-                night_ok, has_car, has_smartphone, note, sort
+                night_ok, has_car, has_smartphone, note, kana, address, mobile, sort
            FROM contacts WHERE person_id = ?1 ORDER BY sort, id`,
       )
       .bind(brief.id),

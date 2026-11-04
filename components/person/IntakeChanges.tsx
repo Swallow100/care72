@@ -326,7 +326,13 @@ export function FieldInput({
       );
     case "text":
       return (
-        <input className={box} value={typeof value === "string" ? value : ""} onChange={(e) => onChange(e.target.value)} aria-label={field.label} />
+        <input
+          className={field.tel ? `${box} tabular-nums` : box}
+          inputMode={field.tel ? "tel" : undefined}
+          value={typeof value === "string" ? value : ""}
+          onChange={(e) => onChange(e.target.value)}
+          aria-label={field.label}
+        />
       );
   }
 }

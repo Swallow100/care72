@@ -335,6 +335,10 @@ export type MyTimeline = (typeof MY_TIMELINES)[number];
 export const SUPPORT_KINDS = ["call", "guide", "assist", "other"] as const;
 export type SupportKind = (typeof SUPPORT_KINDS)[number];
 
+/** 住居の種別（T117）: 戸建住宅・共同住宅（松山市の様式の【種別】の選択肢） */
+export const HOUSING_TYPES = ["detached", "apartment"] as const;
+export type HousingType = (typeof HOUSING_TYPES)[number];
+
 /** 空欄の理由: 分からない・まだ聞いていない・答えない。計画には「未確認」と残り、次の訪問の問いになる */
 export const PENDING_STATUSES = ["unknown", "not_asked", "declined"] as const;
 export type PendingStatus = (typeof PENDING_STATUSES)[number];
@@ -398,6 +402,8 @@ export type Ledger = {
       builtYear?: number;
       /** 寝室の場所（1 階 奥の和室 など） */
       bedroom?: string;
+      /** 住居の種別（戸建住宅・共同住宅。T117） */
+      type?: HousingType;
     };
     household?: Household;
     /** 世帯の書き足し（施設の種類・その他の中身。60 字まで。T57） */
@@ -472,11 +478,28 @@ export type Ledger = {
     support?: SupportKind[];
     /** 支援の内容の書き足し（その他の中身など） */
     supportNote?: string;
+    /**
+     * 私の避難場所の【手段】【時間】と最寄りの避難場所（T117。計画書の 2 頁）。時間は分。
+     * 市指定避難所（避難先 1）の手段は transportKind・transport。時間の問いは経路地図（T102）の見込みを例に出し、人が確かめて入れる
+     */
+    destination1Minutes?: number;
+    destination2Means?: TransportKind;
+    destination2Minutes?: number;
+    /** 最寄りの避難場所（指定緊急避難場所など。名称だけ） */
+    nearest?: string;
+    nearestMeans?: TransportKind;
+    nearestMinutes?: number;
   };
   /** 地域の支援者のうち、連絡先の表に持たない人 */
   local?: {
     /** みまもり員（名前と書き足し）。名前なので Claude には有無だけを渡し、自由文では役割名に置き換える */
     watcher?: string;
+    /**
+     * 避難支援等実施組織（自主防災組織・町内会など）の名称と電話（T117、docs/progress/t117.md の問い 2 は人ごとの台帳）。
+     * 電話は氏名・住所と同じく Claude に渡さず、AI の分け方の欄に入れない（lib/intake/fields.ts の ai: false）
+     */
+    orgName?: string;
+    orgPhone?: string;
   };
   /** 特記。本人の言葉は言い換えずにそのまま */
   notes: string[];
@@ -643,6 +666,15 @@ export type ContactRow = {
   has_car: 0 | 1 | null;
   has_smartphone: 0 | 1 | null;
   note: string | null;
+  /**
+   * フリガナ・住所（市町村と町名まで。番地は持たない）・携帯番号（2 つ目の電話）。T117、migration 0029。
+   * 計画書の近親者・避難支援等実施者の欄の元。氏名と同じ扱いで Claude に渡さない（lib/pseudonym の ClaudeContact に無い）。
+   * AI の分け方・写真と PDF の読み取りでは埋めず、問いと面の編集と紙に直接書く道だけで埋める（docs/progress/t117.md の問い 5）。
+   * 省略できるのは種と前からのテストの行（D1 から読んだ行はいつも持つ。NULL は「まだ無い」）
+   */
+  kana?: string | null;
+  address?: string | null;
+  mobile?: string | null;
   sort: number;
   created_at: string;
 };

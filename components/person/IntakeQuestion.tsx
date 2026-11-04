@@ -11,6 +11,7 @@ import { SplitIcon } from "./icons";
 import type { PendingStatus } from "@/lib/db/types";
 import { CLOCK_UNIT_LABELS, INTAKE_LABELS, PENDING_STATUS_LABELS, SECTION_LABELS } from "@/lib/labels";
 import { answerChanges, type AnswerInput } from "@/lib/intake/answer";
+import { intakeField } from "@/lib/intake/fields";
 import type { Question } from "@/lib/intake/ask";
 import type { IntakeChange } from "@/lib/intake/changes";
 // 問いは面の中の灰色の吹き出しに置くので、欄とボタンは白（_IN）
@@ -45,8 +46,12 @@ export function QuestionText({ q }: { q: Pick<Question, "text" | "why" | "exampl
   );
 }
 
+/** 電話の欄（ai: false の組織電話など。T117） */
+const telField = (a: Question["answer"]) => a.kind === "text" && intakeField(a.field)?.tel === true;
+
 function QuestionBody({ q, left, busy, aiReady, onAnswer, onSkip, onFree }: Omit<Props, "question"> & { q: Question }) {
-  const [value, setValue] = useState("");
+  // 初めの値は経路地図の見込みの分（T117。人が確かめて保存する）
+  const [value, setValue] = useState(q.answer.kind === "int" && q.answer.suggest != null ? String(q.answer.suggest) : "");
   const [picked, setPicked] = useState<string[]>([]);
   const [bad, setBad] = useState(false);
   const submit = (input: AnswerInput) => {
@@ -105,7 +110,7 @@ function QuestionBody({ q, left, busy, aiReady, onAnswer, onSkip, onFree }: Omit
           </div>
         ))}
 
-      {(a.kind === "text" || a.kind === "list" || a.kind === "int" || a.kind === "clock" || a.kind === "medtext") && (
+      {(a.kind === "text" || a.kind === "list" || a.kind === "int" || a.kind === "clock" || a.kind === "medtext" || a.kind === "contact") && (
         <form
           className="flex items-center gap-1.5"
           onSubmit={(e) => {
@@ -117,7 +122,7 @@ function QuestionBody({ q, left, busy, aiReady, onAnswer, onSkip, onFree }: Omit
             className={INPUT}
             value={value}
             onChange={(e) => setValue(e.target.value)}
-            inputMode={a.kind === "int" || a.kind === "clock" ? "decimal" : undefined}
+            inputMode={a.kind === "int" || a.kind === "clock" ? "decimal" : (a.kind === "contact" && a.part === "mobile") || telField(a) ? "tel" : undefined}
             aria-label={q.label}
           />
           {a.kind === "clock" && <span className="shrink-0 text-sm">{CLOCK_UNIT_LABELS[a.unit]}</span>}

@@ -19,7 +19,7 @@ import {
   type PseudonymInput,
 } from "../pseudonym/index.ts";
 import { buildDiff, restoreNote, type DiffItem } from "./diff.ts";
-import { INTAKE_FIELDS } from "./fields.ts";
+import { AI_INTAKE_FIELDS } from "./fields.ts";
 import { ExtractSchema, type ExtractOutput } from "./schema.ts";
 
 /** 1 回の呼び出しに渡す文の長さの上限（字）。ケアプラン 1 枚の写しが入る長さ */
@@ -30,9 +30,12 @@ export const INTAKE_CHUNK_MAX = 4000;
  */
 export const INTAKE_TEXT_MAX = INTAKE_CHUNK_MAX * 3;
 
-/** 欄の一覧（system に載せる）。表から作るので、欄を足せば Claude にも伝わる */
+/**
+ * 欄の一覧（system に載せる）。表から作るので、欄を足せば Claude にも伝わる。
+ * AI で埋めない欄（ai: false の電話。T117 の問い 5）は載せない（連絡先のフリガナ・住所・携帯は分け方の形 contacts にも無い）
+ */
 export function fieldGuide(): string {
-  return INTAKE_FIELDS.map((f) => {
+  return AI_INTAKE_FIELDS.map((f) => {
     const values =
       f.shape.type === "enum" || f.shape.type === "enumList"
         ? ` 値: ${f.shape.options.map((o) => `${o.value}（${o.label}）`).join("・")}`

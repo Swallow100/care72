@@ -84,12 +84,19 @@ function Unconfirmed({ row }: { row: PersonDocRow }) {
   );
 }
 
-/** 未確認の内訳（未入力の欄の名前と、対応なしの数）。対応なしの欄は様式で決まり全員同じなので数だけ */
+/** 未確認の内訳（問いと未入力の欄の名前と、手書きの数。T117）。手書きの欄は様式で決まりほぼ全員同じなので数だけ */
 function Breakdown({ row }: { row: PersonDocRow }) {
   const u = row.unconfirmed;
   if (!u || u.count === 0) return null;
+  const ask = u.ask ?? [];
   return (
     <span className="text-xs" data-breakdown>
+      {/* 問いで埋められる欄（T117。本人のページの問いの列から） */}
+      {ask.length > 0 && (
+        <span className="mr-2">
+          <span className="text-muted">{U.ask}</span> <span className="font-bold tabular-nums">{ask.length}</span> {ask.join("・")}
+        </span>
+      )}
       {u.blank.length > 0 && (
         <>
           <span className="text-muted">{U.blank}</span> <span className="font-bold tabular-nums">{u.blank.length}</span> {u.blank.join("・")}
