@@ -322,6 +322,7 @@ function townRules(town: string, replacement: string, what: string, rules: Array
 function buildKey(
   inputs: ReadonlyArray<PseudonymInput>,
   places: ReadonlyArray<Place> = [],
+  towns: ReadonlyArray<string> = [],
 ): {
   key: PseudonymKey;
   roles: string[][];
@@ -350,6 +351,14 @@ function buildKey(
     if (!town || placeTowns.has(town)) continue;
     placeTowns.add(town);
     townRules(town, p.alias, "町名", rules, secrets);
+  }
+  // ほかの町名は（町名）に。本人自身の町名は下の本人ごとの rule が持つ
+  const ownTowns = new Set(inputs.map((x) => x.ledger.basic.address?.town?.trim()).filter((t): t is string => !!t));
+  for (const raw of towns) {
+    const town = raw.trim();
+    if (!town || placeTowns.has(town) || ownTowns.has(town)) continue;
+    placeTowns.add(town);
+    townRules(town, TOWN_MARK, "町名", rules, secrets);
   }
 
   inputs.forEach((input, i) => {
@@ -673,6 +682,10 @@ export type PseudonymizeOptions = {
    * 漏れの見張りにも足す（台帳の本人の町でなくても、事業所の町名が残れば止める）
    */
   places?: ReadonlyArray<Place>;
+  /**
+   * ほかの町名（事業所の本人たちの町名など）も（町名）に伏せ、漏れの見張りに足す（訓練の声。本人役の言葉は画面で町名に戻した文なので。T88）
+   */
+  towns?: ReadonlyArray<string>;
 };
 
 /**
@@ -684,7 +697,7 @@ export function pseudonymize(
   options: PseudonymizeOptions = {},
 ): { payload: ForClaude<ClaudePerson[]>; key: PseudonymKey } {
   const on = options.on ?? todayJst();
-  const { key, roles } = buildKey(inputs, options.places ?? []);
+  const { key, roles } = buildKey(inputs, options.places ?? [], options.towns ?? []);
   const people = inputs.map((input, i) => toClaudePerson(input, aliasFor(i), roles[i], key, on));
   assertNoLeak(people, key);
   return { payload: seal(people), key };
