@@ -98,7 +98,7 @@ describe("雨雲の筋（lib/map/demo.ts の rainStreaks）", () => {
       rainStreaks(k).reduce((a, g) => a + len(g[0]), 0) / (RAIN_STYLE[k].tile * RAIN_STYLE[k].tile);
     expect(ink(2)).toBeGreaterThan(ink(1));
     expect(ink(3)).toBeGreaterThan(ink(2));
-    const core = 1 - STRENGTHS.reduce((a, k) => a * (1 - RAIN_STYLE[k].fill), 1);
+    const core = 1 - STRENGTHS.reduce<number>((a, k) => a * (1 - RAIN_STYLE[k].fill), 1);
     expect(core).toBeGreaterThan(RAIN_STYLE[1].fill * 1.6);
     // 弱だけの所も地図の上で見える濃さ、芯でも下の地図とピンが透ける濃さ
     expect(RAIN_STYLE[1].fill).toBeGreaterThanOrEqual(0.2);
@@ -139,7 +139,7 @@ describe("雨雲の描き（components/map/CaseMap.tsx の Rain）", () => {
     expect(rain).not.toContain("stroke-dasharray");
     expect(rain).not.toContain("rotate(");
     const lines = [...rain.matchAll(/<line x1="([\d.-]+)" y1="([\d.-]+)" x2="([\d.-]+)" y2="([\d.-]+)"[^>]*>/g)];
-    expect(lines.length).toBeGreaterThanOrEqual(STRENGTHS.reduce((a, k) => a + RAIN_STYLE[k].streaks, 0));
+    expect(lines.length).toBeGreaterThanOrEqual(STRENGTHS.reduce<number>((a, k) => a + RAIN_STYLE[k].streaks, 0));
     for (const m of lines) {
       const [x1, y1, x2, y2] = m.slice(1, 5).map(Number);
       expect(Math.hypot(x2 - x1, y2 - y1)).toBeLessThan(10);
