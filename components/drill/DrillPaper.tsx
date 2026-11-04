@@ -3,6 +3,8 @@
 // 講評（AI の印、直した物は修正済）→ 確認欄（管理者・確認日・印を手で）→ 対応履歴（経過の時間ごとに、状況・対応・着信）。
 // 数字は機械（lib/drill/score.ts）で、ここで数え直さない。言葉は画面と同じ（lib/drill/score-labels.ts）。紙の書き方（数字と単位を詰める）は
 // lib/forms/paper-text の paperText を描く直前にだけ通す。
+// T94: 採点に内訳（空振り・重複・頼み事の未対応・通話の往復）と空振り・重複の表、対応履歴に「事実」の列（その手を打った時に分かっていた事）、
+// 自由対応の読み替え、通話の往復の数、訪問の様子と頼み事の 1 行（T93 の欄があるとき）。区切りの見出しは分の時刻（連続の時計）。
 // T59: 開始の前に選んだ物（職員・夜間発災）と取り消した手の数（「取消 N」）は、あるときだけ概要に。手のメモは対応の行の下に（採点は変えない）。状態を持たない（Server Component のまま、テストで renderToStaticMarkup できる）。
 // 紙の決まりは components/forms/paper.css、流し方は components/drill/drill-paper.css。
 
@@ -15,8 +17,9 @@ import type { ActionRecord } from "@/lib/drill/engine";
 import { ACTION_LABELS, ACTION_UI, BASIS_LABEL, calleeText, clockLabel, DRILL_LABELS, fictionLabels, SCENARIO_LABELS, STATUS_LABELS, T59_LABELS } from "@/lib/drill/labels";
 import type { DrillRecord, StoredReview } from "@/lib/drill/record";
 import type { ReviewBody } from "@/lib/drill/review";
-import { REVIEW_ERROR_LABELS, REVIEW_KIND_LABELS, REVIEW_UI, SCORE_LABELS } from "@/lib/drill/score-labels";
-import { scoreView } from "@/lib/drill/score-view";
+import { knownOf, rowOf, talkTurns, visitOf } from "@/lib/drill/score";
+import { askWords, factWords, REVIEW_ERROR_LABELS, REVIEW_KIND_LABELS, REVIEW_UI, SCORE_LABELS } from "@/lib/drill/score-labels";
+import { extraText, scoreView } from "@/lib/drill/score-view";
 import { isVirtual, lastHour, scenarioOf } from "@/lib/drill/scenarios";
 import { hourSpanText, hourText } from "@/lib/drill/time-text";
 import { cssString } from "@/components/forms/Form9Paper";
@@ -59,6 +62,10 @@ function stopLine(b: NonNullable<ReturnType<typeof aiStopBand>>): string {
   return [AI_STATUS_LABELS.stop, p.reason, p.span, p.effect, p.resume].filter(Boolean).join(" ");
 }
 
+/**
+ * 対応履歴の区切りの見出しの時間（「6〜9 時間」）。連続の時計（T90）の区切りは分の時刻なので「3 時間 35 分〜7 時間 25 分」
+ * （小数の時間をそのまま書かない）。整数の時間だけの刻みは前と同じ書き方
+ */
 type HistoryRow =
   | { kind: "action"; at: number; order: number; a: ActionRecord }
   | { kind: "call"; at: number; order: number; c: DrillPaperRecord["calls"][number] };
@@ -68,6 +75,23 @@ export function DrillPaper({ record, office, today, ai = null }: { record: Drill
   const names = screen.names;
   const name = (p: string | null) => (p ? (names[p] ?? p) : ACTION_UI.whole);
   const view = scoreView(score, names, previous);
+  const wastedIds = new Set(view.extra.wasted.map((w) => w.action));
+  const repeatIds = new Set(view.extra.repeat.map((r) => r.action));
+  // 空振りと重複の表は手を打った順に（同じ手が両方なら空振りを先に）
+  const minuteOf = new Map(screen.state.actions.map((a) => [a.id, a.atMinute]));
+  const choiceRows = [
+    ...view.extra.wasted.map((w) => ({ key: `w-${w.action}`, action: w.action, at: w.at, name: w.name, act: w.act, kind: SCORE_LABELS.wasted, why: w.why, order: 0 })),
+    ...view.extra.repeat.map((r) => ({
+      key: `r-${r.action}`,
+      action: r.action,
+      at: r.at,
+      name: r.name,
+      act: r.act,
+      kind: SCORE_LABELS.repeat,
+      why: `${SCORE_LABELS.gap} ${r.gap} 分`,
+      order: 1,
+    })),
+  ].sort((x, y) => (minuteOf.get(x.action) ?? 0) - (minuteOf.get(y.action) ?? 0) || x.order - y.order);
   const started = jst(screen.drill.started_at);
   const shown = shownOf(review);
   const scenario = screen.drill.scenario;
@@ -337,6 +361,64 @@ export function DrillPaper({ record, office, today, ai = null }: { record: Drill
         <p>
           {SCORE_LABELS.calls} {view.calls}
         </p>
+
+        {/* T94: 手の選び方の内訳。数は機械、4 つの数字には入れない。空振り・重複・頼み事の未対応がある時だけ表 */}
+        <p data-detail="extra">{t(extraText(view.extra.counts))}</p>
+        {choiceRows.length > 0 && (
+          <table className="sheet drill-table" data-detail="choice">
+            <colgroup>
+              <col style={{ width: "18%" }} />
+              <col style={{ width: "18%" }} />
+              <col style={{ width: "18%" }} />
+              <col style={{ width: "14%" }} />
+              <col style={{ width: "32%" }} />
+            </colgroup>
+            <thead>
+              <tr>
+                <th>{SCORE_LABELS.at}</th>
+                <th>{SCORE_LABELS.person}</th>
+                <th>{SCORE_LABELS.action}</th>
+                <th>{SCORE_LABELS.kind}</th>
+                <th>{SCORE_LABELS.reason}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {choiceRows.map((c) => (
+                <tr key={c.key} {...(c.order === 0 ? { "data-wasted": c.action } : { "data-repeat": c.action })}>
+                  <td className="nowrap">{t(c.at)}</td>
+                  <td>{c.name}</td>
+                  <td>{c.act}</td>
+                  <td>{c.kind}</td>
+                  <td>{t(c.why)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        {view.extra.asks.length > 0 && (
+          <table className="sheet drill-table" data-detail="asks">
+            <colgroup>
+              <col style={{ width: "18%" }} />
+              <col style={{ width: "82%" }} />
+            </colgroup>
+            <thead>
+              <tr>
+                <th>{SCORE_LABELS.person}</th>
+                <th>
+                  {SCORE_LABELS.asks} {SCORE_LABELS.asksOpen}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {view.extra.asks.map((a) => (
+                <tr key={a.person} data-person={a.person}>
+                  <td>{a.name}</td>
+                  <td>{a.kinds}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </section>
 
       {/* 講評 */}
@@ -420,11 +502,12 @@ export function DrillPaper({ record, office, today, ai = null }: { record: Drill
         <h2 className="drill-h">{SCORE_LABELS.history}</h2>
         <table className="sheet drill-table">
           <colgroup>
-            <col style={{ width: "17%" }} />
-            <col style={{ width: "15%" }} />
-            <col style={{ width: "18%" }} />
-            <col style={{ width: "22%" }} />
-            <col style={{ width: "28%" }} />
+            <col style={{ width: "14%" }} />
+            <col style={{ width: "14%" }} />
+            <col style={{ width: "12%" }} />
+            <col style={{ width: "16%" }} />
+            <col style={{ width: "21%" }} />
+            <col style={{ width: "23%" }} />
           </colgroup>
           <thead>
             <tr>
@@ -432,13 +515,14 @@ export function DrillPaper({ record, office, today, ai = null }: { record: Drill
               <th>{SCORE_LABELS.action}</th>
               <th>{SCORE_LABELS.target}</th>
               <th>{SCORE_LABELS.callee}</th>
+              <th>{SCORE_LABELS.facts}</th>
               <th>{SCORE_LABELS.result}</th>
             </tr>
           </thead>
           {groups.map(({ tick, rows, from, incidents }) => (
             <tbody key={tick.step} data-hour={tick.hour}>
               <tr className="hour">
-                <td colSpan={5}>
+                <td colSpan={6}>
                   {t(`${SCORE_LABELS.elapsed} ${from !== null && from + 1 < tick.hour ? hourSpanText(from, tick.hour) : hourText(tick.hour)}`)}
                   {incidents.map((e, i) => (
                     <span key={i} className="incident">
@@ -450,44 +534,82 @@ export function DrillPaper({ record, office, today, ai = null }: { record: Drill
               </tr>
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={5}>{SCORE_LABELS.noAction}</td>
+                  <td colSpan={6}>{SCORE_LABELS.noAction}</td>
                 </tr>
               )}
-              {rows.map((r) =>
-                r.kind === "action" ? (
-                  <Fragment key={r.a.id}>
-                    <tr data-action={r.a.kind}>
-                      <td className="nowrap">{t(clockLabel(r.a.atMinute))}</td>
-                      <td>{ACTION_LABELS[r.a.kind]}</td>
-                      <td>{name(r.a.person)}</td>
-                      <td>{calleeText(r.a) ?? ""}</td>
+              {rows.map((r) => {
+                if (r.kind === "call") {
+                  return (
+                    <tr key={r.c.signal} data-call={r.c.response ?? "open"}>
+                      <td className="nowrap">{t(clockLabel(r.c.minute))}</td>
+                      <td>{SCORE_LABELS.calls}</td>
+                      <td>{name(r.c.person)}</td>
+                      <td>{callerLabel(r.c.source, screen.contacts[r.c.person] ?? [])}</td>
+                      <td />
                       <td>
-                        {r.a.result ? ACTION_STATUS_LABELS[r.a.result.status] : ACTION_UI.during}
-                        {/* 通話で聞いた安否を表に渡さなかった手（T84、至急維持）。本番の電話と同じ言葉 */}
-                        {screen.refused?.[r.a.id] && <span data-heard-refused> {t(screen.refused[r.a.id])}</span>}
+                        {r.c.response === "answer" ? SCORE_LABELS.answered : r.c.response === "decline" ? SCORE_LABELS.declined : SCORE_LABELS.open}
                       </td>
                     </tr>
-                    {r.a.memo && (
-                      <tr data-memo={r.a.id}>
+                  );
+                }
+                const a = r.a;
+                // その手を打った時に分かっていた事実（T94。手の前の状態と、その時の世界の電話・施設の休止）
+                const facts = factWords(knownOf(a, screen.ticks), rowOf(a)?.id ?? a.kind);
+                const turns = talkTurns(a);
+                const visit = visitOf(a);
+                const marks = [wastedIds.has(a.id) ? SCORE_LABELS.wasted : null, repeatIds.has(a.id) ? SCORE_LABELS.repeat : null].filter(Boolean);
+                return (
+                  <Fragment key={a.id}>
+                    <tr data-action={a.kind}>
+                      <td className="nowrap">{t(clockLabel(a.atMinute))}</td>
+                      <td>
+                        {ACTION_LABELS[a.kind]}
+                        {/* 自由対応は読み替えた手（ケアマネの文は紙に出さない。T91） */}
+                        {a.kind === "free" && a.as && (
+                          <span className="p-sub" data-reading={a.as}>
+                            {" "}
+                            {SCORE_LABELS.reading} {ACTION_LABELS[a.as]}
+                          </span>
+                        )}
+                      </td>
+                      <td>{name(a.person)}</td>
+                      <td>{calleeText(a) ?? ""}</td>
+                      <td data-facts={a.id}>{t(facts.join("・"))}</td>
+                      <td>
+                        {a.result ? ACTION_STATUS_LABELS[a.result.status] : ACTION_UI.during}
+                        {/* 通話の往復（T93）は畳んで数だけ */}
+                        {turns > 0 && <span data-talk={turns}>{t(`・${turns} ${SCORE_LABELS.talks}`)}</span>}
+                        {marks.length > 0 && <span data-mark={marks.join(" ")}>・{marks.join("・")}</span>}
+                        {/* 通話で聞いた安否を表に渡さなかった手（T84、至急維持）。本番の電話と同じ言葉 */}
+                        {screen.refused?.[a.id] && <span data-heard-refused> {t(screen.refused[a.id])}</span>}
+                      </td>
+                    </tr>
+                    {visit && (
+                      <tr data-visit={a.id}>
                         <td />
-                        <td colSpan={4}>
-                          {T59_LABELS.memo} {r.a.memo}
+                        <td colSpan={5}>
+                          {visit.condition && (
+                            <>
+                              {SCORE_LABELS.condition} {t(visit.condition)}
+                              {visit.ai && <span className="drill-ai"> AI</span>}
+                            </>
+                          )}
+                          {visit.condition && visit.asks.length > 0 && "　"}
+                          {visit.asks.length > 0 && `${SCORE_LABELS.asks} ${askWords(visit.asks)}`}
+                        </td>
+                      </tr>
+                    )}
+                    {a.memo && (
+                      <tr data-memo={a.id}>
+                        <td />
+                        <td colSpan={5}>
+                          {T59_LABELS.memo} {a.memo}
                         </td>
                       </tr>
                     )}
                   </Fragment>
-                ) : (
-                  <tr key={r.c.signal} data-call={r.c.response ?? "open"}>
-                    <td className="nowrap">{t(clockLabel(r.c.minute))}</td>
-                    <td>{SCORE_LABELS.calls}</td>
-                    <td>{name(r.c.person)}</td>
-                    <td>{callerLabel(r.c.source, screen.contacts[r.c.person] ?? [])}</td>
-                    <td>
-                      {r.c.response === "answer" ? SCORE_LABELS.answered : r.c.response === "decline" ? SCORE_LABELS.declined : SCORE_LABELS.open}
-                    </td>
-                  </tr>
-                ),
-              )}
+                );
+              })}
             </tbody>
           ))}
         </table>

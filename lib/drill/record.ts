@@ -21,7 +21,17 @@ import { outageForRuns } from "./outcome.ts";
 import { REVIEW_KINDS, type ReviewBody, type ReviewContext, type ReviewError, type ReviewFinding, type ReviewIncident } from "./review.ts";
 import { loadCallRecords, type CallRecord } from "./responses.ts";
 import { isVirtual, scenarioOf } from "./scenarios.ts";
-import { clockRuns, scoreDrill, scoreNumbers, type ClockForRun, type DrillScore, type EndedScore, type ScoreNumbers } from "./score.ts";
+import {
+  clockRuns,
+  scoreDrill,
+  scoreExtras,
+  scoreNumbers,
+  type ClockForRun,
+  type DrillScore,
+  type EndedScore,
+  type ScoreInput,
+  type ScoreNumbers,
+} from "./score.ts";
 import { loadDrillScreen, type DrillScreen } from "./view.ts";
 
 // ---------- drills.score の形 ----------
@@ -123,6 +133,30 @@ export function endedOf(screen: Pick<DrillScreen, "state" | "ticks">): EndedScor
   });
 }
 
+/**
+ * 内訳の数（T94: 空振り・重複・頼み事の未対応・通話の往復）の元。刻みのあとの世界（手を打った時の電話・施設の休止）、
+ * 状況（その人の新しい事）、終わりの世界（向かった人の到着・頼み事）。台帳を読まない
+ */
+export function extrasSourceOf(screen: Pick<DrillScreen, "ticks" | "state">): Pick<ScoreInput, "ticks" | "incidents" | "world"> {
+  return {
+    ticks: screen.ticks.map((t) => ({ step: t.step, world: t.world })),
+    incidents: screen.ticks.flatMap((t) => t.incidents.map((e) => ({ at: e.at, person: e.person ?? null }))),
+    world: screen.state.world,
+  };
+}
+
+/**
+ * T94 より前に残した採点（内訳の数の欄が無い）には、訓練の記録から内訳の数を数えて足す（書き戻さない）。
+ * 内訳の数は様式 9 と台帳を読まないので、あとで台帳を直しても変わらない。4 つの数字は残した物のまま
+ */
+export function withExtras(score: DrillScore, screen: Pick<DrillScreen, "ticks" | "state">, calls: ReadonlyArray<CallRecord>): DrillScore {
+  const whole =
+    Array.isArray(score.wasted?.rows) && Array.isArray(score.repeat?.rows) && Array.isArray(score.asks?.rows) && typeof score.talks?.turns === "number";
+  if (whole) return score;
+  const extras = scoreExtras({ participants: score.participants, actions: screen.state.actions, calls, endMinute: score.endMinute, ...extrasSourceOf(screen) });
+  return { ...score, ...extras };
+}
+
 /** 採点に要る台帳（参加者の本人・連絡先・時計・担当の名前）を読み、数える。D1 には書かない */
 export async function computeScore(
   db: D1Database,
@@ -186,6 +220,7 @@ export async function computeScore(
     runs,
     form9: form9.rows,
     endMinute: endMinuteOf(screen),
+    ...extrasSourceOf(screen),
     // 結末（AI の筋書き）はデモ事業所の仮想の訓練だけ（T70 の続き。デモ以外は実在の人の仮名に結末を付けない。条件に達した人の数は出す）
     ...(isVirtual(screen.drill.scenario) && endingsAllowed(scope.officeId) ? { ended: endedOf(screen) } : {}),
   });
@@ -272,7 +307,7 @@ export async function loadDrillRecord(
   const stored = await scoreOf(db, scope, screen, calls, now);
   if (!stored) return "running";
   const previous = await previousOf(db, scope, screen, now);
-  return { screen, score: stored.score, review: stored.review, calls, previous, scoredAt: stored.at };
+  return { screen, score: withExtras(stored.score, screen, calls), review: stored.review, calls, previous, scoredAt: stored.at };
 }
 
 // ---------- 講評の保存 ----------
@@ -343,5 +378,8 @@ export function reviewContextOf(rec: DrillRecord): ReviewContext {
     calls: rec.calls,
     incidents,
     previous: rec.previous ? { ...rec.previous.numbers, scenario: rec.previous.scenario } : null,
+    // T94: 手を打った時の世界（電話・施設の休止）と、通話の往復で頼まれた事
+    ticks: rec.screen.ticks.map((t) => ({ step: t.step, world: t.world })),
+    ...(rec.screen.state.world.asks ? { asks: rec.screen.state.world.asks } : {}),
   };
 }
