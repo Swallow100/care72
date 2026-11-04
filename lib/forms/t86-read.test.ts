@@ -361,8 +361,15 @@ describe("頁の画像（JPEG の大きさ・保存の形・返す道の壁）",
     objects.set("forms/office-demo/fm-1/2.jpg", { bytes: A4[1] });
     objects.set("forms/office-partner/fm-9/1.jpg", { bytes: A4[0] });
     objects.set("recordings/office-demo/p-01/x.webm", { bytes: A4[0] });
+    objects.set("forms/office-demo/originals/matsuyama/1.png", { bytes: A4[0] });
+    objects.set("forms/office-demo/originals/matsuyama/manifest.json", { bytes: A4[1] });
     expect(await clearDemoFormPages(bucket)).toBe(2);
-    expect([...objects.keys()].sort()).toEqual(["forms/office-partner/fm-9/1.jpg", "recordings/office-demo/p-01/x.webm"]);
+    expect([...objects.keys()].sort()).toEqual([
+      "forms/office-demo/originals/matsuyama/1.png",
+      "forms/office-demo/originals/matsuyama/manifest.json",
+      "forms/office-partner/fm-9/1.jpg",
+      "recordings/office-demo/p-01/x.webm",
+    ]);
   });
 });
 
