@@ -64,9 +64,11 @@ function userText(params: Params): string {
     .join("\n");
 }
 
+/** 失敗の名前（SDK の失敗は name が「Error」のままのことがあるので、型の名前を先に） */
 function errorName(e: unknown): string {
-  if (e instanceof Anthropic.APIError) return `${e.name}${typeof e.status === "number" ? ` ${e.status}` : ""}`;
-  return e instanceof Error ? e.name : typeof e;
+  if (!(e instanceof Error)) return typeof e;
+  const type = e.constructor?.name && e.constructor.name !== "Error" ? e.constructor.name : e.name;
+  return e instanceof Anthropic.APIError && typeof e.status === "number" ? `${type} ${e.status}` : type;
 }
 
 /** SDK が送り直す失敗（つながらない・時間切れ・408・409・429・5xx） */
