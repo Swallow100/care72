@@ -28,6 +28,7 @@ import type {
 import { CLOCK_CATEGORIES, CONSENT_KINDS } from "../db/types.ts";
 import { sameMedication } from "../db/ledger.ts";
 import { isGeoPoint } from "../map/geo.ts";
+import { transportKindOf } from "../map/transport.ts";
 import { CONTACT_KIND_LABELS, DEVICE_LABELS, HAZARD_LABELS, PLACE_LABELS } from "../labels.ts";
 import { DEVICE_CLOCKS } from "./marks.ts";
 import type { AddressValue, ContactValue, IntakeChange, RemoveTarget } from "./changes.ts";
@@ -247,6 +248,15 @@ function addressDraft(l: Ledger, place: EditPlace | undefined): AddressValue {
 }
 const orderOf = (v: OrderDraft): number | null => (v.trim() === "" ? null : Number(v));
 
+/**
+ * 編集の欄の今の値。手段の選ぶ欄（T112）は、選ぶ欄の無い古い台帳なら手段の文字から読み替えた物を選んでおく
+ * （触らなければ変更にしない。台帳には選び直して保存したときに入る）
+ */
+export function editValueOf(l: Ledger, key: string): unknown {
+  if (key === "evacuation.transportKind") return transportKindOf(l.evacuation) ?? undefined;
+  return ledgerValue(l, key);
+}
+
 /** 今の値から下書きを作る */
 export function editDraft(d: EditData): EditDraft {
   const l = d.ledger;
@@ -255,7 +265,7 @@ export function editDraft(d: EditData): EditDraft {
     ConsentStatus
   >;
   return {
-    values: Object.fromEntries(INTAKE_FIELDS.map((f) => [f.key, ledgerValue(l, f.key)])),
+    values: Object.fromEntries(INTAKE_FIELDS.map((f) => [f.key, editValueOf(l, f.key)])),
     meds: l.medical.medications.map((m) => ({ name: m.name, category: m.category, schedule: s(m.schedule), amount: s(m.amount), storage: s(m.storage) })),
     newMeds: [],
     devices: l.medical.devices.map((x) => ({ kind: x.kind, detail: s(x.detail), schedule: s(x.schedule) })),
@@ -465,7 +475,7 @@ export function editChanges(section: EditSection, d: EditData, draft: EditDraft)
   if (section !== "consent") {
     for (const f of INTAKE_FIELDS) {
       if (f.section !== (section as IntakeSection)) continue;
-      const cur = ledgerValue(l, f.key);
+      const cur = editValueOf(l, f.key);
       const raw = draft.values[f.key];
       if (same(raw, cur)) continue;
       if (emptyDraft(raw)) {

@@ -52,6 +52,7 @@ import {
 import { ROUTE_FRAME, routeSceneOf } from "../map/route-image.ts";
 import { formatJst, FIELDS as PAGE_FIELDS, type PersonPageRows } from "../person.ts";
 import { ERAS, wareki, warekiDate, warekiText } from "./wareki.ts";
+import { transportText } from "../map/transport.ts";
 
 /** 市の PDF（2026.9.10 版）。開いて照らすためのリンクだけ持つ */
 export const MATSUYAMA_FORM_URL =
@@ -1302,7 +1303,7 @@ export function buildMatsuyamaSheet(rows: PersonPageRows, opts: BuildOptions): M
     "shelter.near.means": unconfirmed(),
     "shelter.near.minutes": unconfirmed(),
     "shelter.city.place": withPending(textCell(evacuation.destination1, true), cityReason),
-    "shelter.city.means": evacuation.destination1 ? means(evacuation.transport, transportReason) : unconfirmed(transportReason),
+    "shelter.city.means": evacuation.destination1 ? means(transportText(evacuation), transportReason) : unconfirmed(transportReason),
     "shelter.city.minutes": unconfirmed(),
     "housing.type": {
       kind: "choice",

@@ -10,6 +10,7 @@ import type { Ledger, MedicationCategory } from "../db/types.ts";
 import { CONTACT_KIND_LABELS, MED_PARTS } from "../labels.ts";
 import { pendingClockId, type PersonPageRows } from "../person.ts";
 import { categoryTier } from "../triage/index.ts";
+import { transportKindOf } from "../map/transport.ts";
 import { INTAKE_FIELDS, isFilled, ledgerValue, type IntakeField, type IntakeSection } from "./fields.ts";
 
 export type QuestionGroup = "medical" | "night" | "other";
@@ -85,7 +86,7 @@ export const FIELD_QUESTIONS: Record<string, QuestionWords> = {
     why: "家に留まるなら、備えの物と見回りに行く人を計画に書きます。",
     example: "例: あり（浸水の区域の外で、2 階に上がれる）",
   },
-  "evacuation.transport": {
+  "evacuation.transportKind": {
     text: "避難所まで、どうやって移りますか。",
     why: "手伝う人の数と、車や車いすの用意を計画に書きます。",
     example: "例: 家族の車・車いすを押して歩く",
@@ -290,7 +291,13 @@ export const GENERATED_QUESTIONS = {
 } as const;
 
 /** その他で問わない欄（書き足しの欄） */
-export const NOT_ASKED = new Set(["evacuation.supportNote", "basic.householdNote"]);
+export const NOT_ASKED = new Set(["evacuation.supportNote", "basic.householdNote", "evacuation.transport"]);
+
+/**
+ * 問いの「分からない」を残す場所が欄の鍵と違う欄（T112）。手段の選ぶ欄は、前からの手段の場所（evacuation.transport。
+ * 本人のページの「手段」の行・様式の手段の欄が読む）に残す。前の台帳の evacuation.transport の文字も、選ぶ欄の答えに数える
+ */
+const PENDING_AT: Record<string, string> = { "evacuation.transportKind": "evacuation.transport" };
 
 /** その他の問いの区分の順（本人のページの区分の順） */
 const OTHER_ORDER: readonly IntakeSection[] = ["medical", "evacuation", "people", "basic"];
@@ -445,11 +452,12 @@ export function questionQueue(rows: PersonPageRows): Question[] {
   for (const section of OTHER_ORDER) {
     for (const f of INTAKE_FIELDS) {
       if (f.section !== section || NOT_ASKED.has(f.key)) continue;
-      if (isFilled(ledgerValue(ledger, f.key))) continue;
-      const match = (field: string) => field === f.key || field.startsWith(`${f.key}.`);
+      if (f.key === "evacuation.transportKind" ? transportKindOf(ledger.evacuation) !== null : isFilled(ledgerValue(ledger, f.key))) continue;
+      const at = PENDING_AT[f.key] ?? f.key;
+      const match = (field: string) => field === f.key || field.startsWith(`${f.key}.`) || field === at;
       if (answered(ledger, match)) continue;
       out.push({
-        key: f.key,
+        key: at,
         section: f.section,
         group: "other",
         label: f.label,

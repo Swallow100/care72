@@ -51,6 +51,7 @@ import {
 } from "./matsuyama.ts";
 import { ledgerItem, type FormMapping, type LedgerItemKey, type MappingField } from "./mapping.ts";
 import { warekiText } from "./wareki.ts";
+import { transportText } from "../map/transport.ts";
 
 // ---------- 項目の値 ----------
 
@@ -336,7 +337,7 @@ export const ITEM_VALUES: Record<LedgerItemKey, Resolver> = {
   },
   "evacuation.destination1": fromSheet("shelter.city.place"),
   "evacuation.destination2": fromSheet("shelter.pre.place"),
-  "evacuation.transport": (c) => ({ cell: text(c.ledger.evacuation.transport, pendingOf(c.ledger, "evacuation.transport")) }),
+  "evacuation.transport": (c) => ({ cell: text(transportText(c.ledger.evacuation), pendingOf(c.ledger, "evacuation.transport")) }),
   "evacuation.route": fromSheet("route.text"),
   "evacuation.barriers": (c) => ({ cell: text(c.ledger.evacuation.barriers, pendingOf(c.ledger, "evacuation.barriers")) }),
   "evacuation.support": (c) => {

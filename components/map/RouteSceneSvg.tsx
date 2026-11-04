@@ -2,10 +2,11 @@
 // 本人のページの避難の面の小さな絵と、経路地図の窓の地図で使う。担当一覧の地図（CaseMap）の雨と状態の層とは別の部品。
 // - 下の地図は地理院タイル（淡色地図）。ライトは少し薄く、ダークは明るさを落とす（位置を置く小さな地図 LocationPick と同じ）
 // - 線と印は操作の色 1 色（状態の 4 色は使わない）。線の下に面の色の縁。印の名前は「家」「避難先1」だけ（名前・住所の文字は無い）
+// - 家は家の形、避難先は旗の形（T112。lib/map/route-image.ts の markPath を紙と同じく使う）
 // - 出典は枠の中の下（紙と同じ）
 
 import type { RouteScene, ScenePoint } from "@/lib/map/route-image";
-import { dotGap, noteBox, ROUTE_MARKS, ROUTE_STYLE } from "@/lib/map/route-image";
+import { dotGap, markPath, markTop, noteBox, ROUTE_MARKS, ROUTE_STYLE, type MarkShape } from "@/lib/map/route-image";
 import { BASE_OPACITY } from "@/lib/map/layers";
 
 const S = ROUTE_STYLE.px;
@@ -70,27 +71,23 @@ export function RouteSceneSvg({ scene, label, px }: { scene: RouteScene; label: 
       {scene.via.map((v, i) => (
         <circle key={i} cx={v.x} cy={v.y} r={S.via * k} className="fill-panel stroke-accent-fill" strokeWidth={S.halo * k} data-route-via="" />
       ))}
-      {scene.home && <Pin p={scene.home} label={ROUTE_MARKS.home} shape="circle" k={k} />}
-      {scene.dest && <Pin p={scene.dest} label={scene.destLabel} shape="square" k={k} />}
+      {scene.home && <Pin p={scene.home} label={ROUTE_MARKS.home} shape="home" k={k} />}
+      {scene.dest && <Pin p={scene.dest} label={scene.destLabel} shape="dest" k={k} />}
       {scene.note && <Note note={scene.note} k={k} />}
       <Credits scene={scene} k={k} />
     </svg>
   );
 }
 
-function Pin({ p, label, shape, k }: { p: ScenePoint; label: string; shape: "circle" | "square"; k: number }) {
+function Pin({ p, label, shape, k }: { p: ScenePoint; label: string; shape: MarkShape; k: number }) {
   const r = S.pin * k;
   const ring = S.halo * k;
   return (
-    <g data-route-pin={shape === "circle" ? "home" : "dest"}>
-      {shape === "circle" ? (
-        <circle cx={p.x} cy={p.y} r={r} className="fill-accent-fill stroke-panel" strokeWidth={ring} />
-      ) : (
-        <rect x={p.x - r} y={p.y - r} width={r * 2} height={r * 2} className="fill-accent-fill stroke-panel" strokeWidth={ring} />
-      )}
+    <g data-route-pin={shape}>
+      <path d={markPath(shape, p.x, p.y, r)} className="fill-accent-fill stroke-panel" strokeWidth={ring} strokeLinejoin="round" />
       <text
         x={p.x}
-        y={p.y - r - ring * 2}
+        y={p.y - r * markTop(shape) - ring * 2}
         textAnchor="middle"
         fontSize={S.font * k}
         fontWeight={700}
