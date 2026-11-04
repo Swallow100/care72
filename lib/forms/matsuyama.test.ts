@@ -100,7 +100,7 @@ describe("種の 10 人から欄が埋まる", () => {
       const markup = html(s);
       for (const f of MATSUYAMA_FIELDS) {
         expect(s.cells[f.key], `${id} ${f.key}`).toBeDefined();
-        const blankNote = f.block === "notes" && f.key !== "notes.annex" && (s.cells[f.key].kind === "empty" || s.cells[f.key].kind === "none");
+        const blankNote = f.block === "notes" && f.key !== "notes.annex" && s.cells[f.key].kind === "empty";
         expect(shows(markup, f.key), `${id} ${f.key}`).toBe(!blankNote);
       }
       expect(markup).toContain('data-page="1"');

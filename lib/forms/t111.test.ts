@@ -138,25 +138,28 @@ describe("特記事項の値の無い段は刷らない（問い 2 は (a)）", 
     expect(cellText(sheetOf(seed("p-01")).cells["notes.words"])).toBe("薬は 2 階の箪笥");
   });
 
-  it("原本の枠の紙の特記事項に「本人の言葉 なし」「夜間支援 なし」を書かない", () => {
-    const night = { ...fresh(1), contacts: [{ ...SON, night_ok: 0 as const }] };
+  const notesOf = (p: SeedPerson) =>
+    textItems(frameOf(p))
+      .filter((i) => i.fieldId === "notes")
+      .flatMap((i) => i.lines)
+      .join("");
+  // 夜間不可と分かっている人だけ（夜間支援の「なし」は分かっている値。近親者の関係の欄には夜間不可が出ないので、特記に残す）
+  const night = { ...fresh(1), contacts: [{ ...SON, night_ok: 0 as const }] };
+
+  it("原本の枠の紙の特記事項に「本人の言葉 なし」を書かない。夜間支援は分かっていれば「なし」、分からなければ書かない", () => {
     expect(sheetOf(night).cells["supporter.night"]).toEqual(NONE);
-    for (const p of [fresh(0), fresh(1), night]) {
-      const notes = textItems(frameOf(p))
-        .filter((i) => i.fieldId === "notes")
-        .flatMap((i) => i.lines)
-        .join("");
-      expect(notes, p.person.id).not.toContain("本人の言葉");
-      expect(notes, p.person.id).not.toContain("夜間支援");
-    }
+    for (const p of [fresh(0), fresh(1), night]) expect(notesOf(p), p.person.id).not.toContain("本人の言葉");
+    expect(notesOf(fresh(1))).not.toContain("夜間支援");
+    expect(notesOf(night)).toContain("夜間支援 なし");
   });
 
-  it("前からの紙面も同じ: 値の無い段は描かない、値のある段は描く", () => {
+  it("前からの紙面も同じ: 値の無い段は描かない、値のある段・「なし」と分かっている段は描く", () => {
     const html = renderToStaticMarkup(createElement(MatsuyamaSheet, { sheet: sheetOf(fresh(1)) }));
     expect(html).not.toContain('data-field="notes.words"');
     expect(html).toContain('data-field="notes.other"');
     const p01 = renderToStaticMarkup(createElement(MatsuyamaSheet, { sheet: sheetOf(seed("p-01")) }));
     expect(p01).toContain('data-field="notes.words"');
+    expect(renderToStaticMarkup(createElement(MatsuyamaSheet, { sheet: sheetOf(night) }))).toContain('data-field="supporter.night"');
   });
 });
 
