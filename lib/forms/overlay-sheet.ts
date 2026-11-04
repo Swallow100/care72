@@ -18,6 +18,7 @@ import type { FieldBox, MappingField, Typeface } from "./mapping.ts";
 import { BLANK, type Cell, type Choice, type Piece } from "./matsuyama.ts";
 import type { PageImage } from "./page-images.ts";
 import { paperText } from "./paper-text.ts";
+import { isUnconfirmedCell } from "./unconfirmed.ts";
 
 // ---------- 紙の寸法と字 ----------
 
@@ -110,11 +111,15 @@ export type Fitted = { lines: string[]; fontPt: number; top: boolean };
 /**
  * 矩形（mm）に収まる大きさと行。上限から 0.25pt ずつ縮め、全部の行が高さに収まる最初の大きさ。下限でも収まらなければ null
  */
-export function fitText(logical: readonly string[], wMm: number, hMm: number): Fitted | null {
+export function fitText(logical: readonly string[], wMm: number, hMm: number, maxPt: number = FONT_MAX_PT): Fitted | null {
   const innerW = wMm - PAD_X_MM * 2;
   const innerH = hMm - PAD_Y_MM * 2;
   if (innerW <= 0 || innerH <= 0) return null;
-  for (let pt = FONT_MAX_PT; pt >= FONT_MIN_PT - 1e-9; pt -= FONT_STEP_PT) {
+  // 上限から 0.25pt ずつ。上限が 0.25 の倍数でなくても（9.84pt など）最後は下限の 6pt を試す
+  const sizes: number[] = [];
+  for (let pt = maxPt; pt > FONT_MIN_PT + 1e-9; pt -= FONT_STEP_PT) sizes.push(pt);
+  sizes.push(FONT_MIN_PT);
+  for (const pt of sizes) {
     const fontMm = pt * PT_MM;
     if (fontMm * LINE_HEIGHT > innerH + 1e-9) continue;
     const widthEm = innerW / fontMm;
@@ -133,7 +138,7 @@ const pieceText = (p: Piece) => (p.raw ? p.text : paperText(p.text));
  * 1 行の言葉を字に。未確認の言葉は落とす（紙に「未確認」を刷らない）。添えの言葉（sub）だけの行は括弧に入れる（「（同居）」）。
  * 区切りの「／」はそのまま
  */
-function lineText(pieces: readonly Piece[]): string {
+export function lineText(pieces: readonly Piece[]): string {
   const kept = pieces.filter((p) => !p.unconfirmed && p.text.trim() !== "");
   if (kept.length === 0) return "";
   if (kept.every((p) => p.sub && p.text !== "／")) return `（${kept.map(pieceText).join("・")}）`;
@@ -174,7 +179,12 @@ export function cellLines(cell: Cell, phone = false): string[] {
 export type OverlayItem =
   | { kind: "text"; fieldId: string; box: FieldBox; lines: string[]; fontPt: number; top: boolean }
   /** □ の中のレ点（check）か、選択肢を丸で囲む（circle） */
-  | { kind: "mark"; fieldId: string; box: FieldBox; mark: "check" | "circle" };
+  | { kind: "mark"; fieldId: string; box: FieldBox; mark: "check" | "circle" }
+  /** 欄に置く画像（避難経路の地図。T101 の受け口、T102 が渡す） */
+  | { kind: "image"; fieldId: string; box: FieldBox; slot: string; src: string; alt: string };
+
+/** 未記入の色付け（T101）で塗る所。欄の矩形の内側（罫線に掛からないよう縮めた物）と、その欄の id（帯の未確認と同じ欄） */
+export type OverlayFill = { keys: string[]; box: FieldBox };
 
 export type OverlayPage = {
   page: number;
@@ -183,7 +193,20 @@ export type OverlayPage = {
   /** 頁の画像の箱（mm。A4 の中で縦横の比を保って真ん中） */
   image: { x: number; y: number; w: number; h: number };
   items: OverlayItem[];
+  /** 未記入の色付けの版で塗る所（既定の版では描かない） */
+  fills: OverlayFill[];
 };
+
+/** 色付けの塗りを罫線から離す幅（mm。罫線の太さの半分 0.15 と 0.3 の空き） */
+export const FILL_INSET_MM = 0.45;
+
+/** 比の矩形を、頁の画像の大きさ（mm）で内側へ縮める。縮めすぎて無くなれば null */
+export function insetBox(b: FieldBox, image: { w: number; h: number }, mmInset = FILL_INSET_MM): FieldBox | null {
+  const dx = mmInset / image.w;
+  const dy = mmInset / image.h;
+  if (b.w <= dx * 2 || b.h <= dy * 2) return null;
+  return { x: b.x + dx, y: b.y + dy, w: b.w - dx * 2, h: b.h - dy * 2 };
+}
 
 export type AnnexRow = { fieldId: string; label: string; lines: string[]; reason: "overflow" | "unplaced" };
 
@@ -229,13 +252,19 @@ const nameOf = (f: MappingField) => (f.section ? `${f.section} ${f.label}` : f.l
 export function buildOverlaySheet(mapped: MappedSheet, images: readonly PageImage[], typeface: Typeface = "gothic"): OverlaySheet {
   const pages: OverlayPage[] = images.map((img) => {
     const { landscape, ...image } = imageBoxOf(img);
-    return { page: img.page, landscape, image, items: [] };
+    return { page: img.page, landscape, image, items: [], fills: [] };
   });
   const annex: AnnexRow[] = [];
   for (const p of mapped.pages) {
     for (const s of p.sections) {
       for (const { field, cell } of s.rows) {
         if (cell.kind === "handwrite" || cell.kind === "withheld" || field.shape === "handwrite") continue;
+        // 未記入の色付け（T101）: 帯の未確認（lib/forms/unconfirmed.ts の mappedUnconfirmed）と同じ欄の矩形の内側
+        const fillPage = pages.find((x) => x.page === field.page);
+        if (fillPage && field.box && isUnconfirmedCell(cell)) {
+          const inner = insetBox(field.box, fillPage.image);
+          if (inner) fillPage.fills.push({ keys: [field.id], box: inner });
+        }
         const page = pages.find((x) => x.page === field.page);
         const box = field.box ?? null;
         const lines = cellLines(cell, field.shape === "phone");
