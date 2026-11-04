@@ -1,6 +1,6 @@
 // 受け持ちの表（components/staff/StaffTable.tsx）の狭い幅と広い幅（T55）。
 // 640px 未満は「解除」の列を省き、解除のボタンを行の中（氏名の下）に出す（375 で列が切れて押せなかった。T54 の問い 1）。
-// 768px 以上の医療の列は担当一覧の狭い幅（氏名の下）と同じ印（時計のいちばん短い残りつき、残りの色は印の文字）に（T54 の問い 2）。
+// 768px 以上の医療の列は担当一覧の狭い幅（氏名の下）と同じ印（時計のいちばん短い残りつき、残りの色は印の文字、11/4 から至急・要確認は印ごと塗り）に（T54 の問い 2）。
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
@@ -106,16 +106,16 @@ describe("受け持ちの表の解除（640px 未満は行の中）", () => {
 });
 
 describe("受け持ちの表の医療の列（768px 以上）", () => {
-  it("担当一覧の氏名の下と同じ印: 項目名に時計のいちばん短い残り、残りの色は印の文字。薬は今のまま", () => {
+  it("担当一覧の氏名の下と同じ印: 項目名に時計のいちばん短い残り、至急・要確認の残りは印ごと塗り。薬は今のまま", () => {
     const html = render();
     const medical = cells(rowHtml(html, "p-01")).find((c) => c.cls.includes("hidden md:table-cell") && c.body.includes("data-medical-marks"))!;
     expect(medical).toBeDefined();
     const marks = medical.body.match(/<div class="([^"]*)" data-medical-marks="[^"]*">(.*?)<\/div>/)!;
     expect(textOf(marks[2])).toEqual(["酸素 23分", "抗凝固"]);
     expect(marks[2]).toContain('data-tone="urgent"');
-    // 塗りの印（安否の状態）でなく地の印。列を広げないよう空白の所で折り返す
+    // 至急の残りは印ごと赤の塗り（11/4 作者）。列を広げないよう空白の所で折り返す
     expect(marks[2]).toContain("break-keep");
-    expect(marks[2]).not.toContain("bg-state-urgent-fill");
+    expect(marks[2]).toMatch(/bg-state-urgent-fill text-on-state-urgent" data-tone="urgent">酸素 23分</);
     expect(medical.body).toContain("ワルファリン");
   });
 

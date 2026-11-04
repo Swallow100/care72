@@ -53,7 +53,7 @@ const staffRow = (p: Partial<StaffRow>): StaffRow => ({
 });
 
 describe("氏名の下の医療の印（狭い幅だけ）", () => {
-  it("項目名に時計のいちばん短い残り、残りの色は印の文字に。残りの無い項目は名前だけ", () => {
+  it("項目名に時計のいちばん短い残り、至急・要確認の残りは印ごと塗り（11/4）。残りの無い項目は名前だけ", () => {
     const html = renderToStaticMarkup(
       createElement(NarrowMarks, {
         items: [
@@ -64,12 +64,13 @@ describe("氏名の下の医療の印（狭い幅だけ）", () => {
     );
     expect(narrowTexts(html)).toEqual([["酸素 1.5h", "抗凝固"]]);
     expect(html).toContain('data-tone="urgent"');
-    // 塗りの印（安否の状態）でなく地の印。横に送らないよう折り返す
+    // 至急の残りは印ごと赤の塗り（黄の塗りより弱く見えないように。作者が選んだ）、残りの無い項目は地の印。横に送らないよう折り返す
     expect(html).toContain("flex-wrap");
     // 印の中も空白の所で折り返せる（氏名の列を広げない）
     expect(html).toContain("break-keep");
     expect(html).not.toContain("whitespace-nowrap");
-    expect(html).not.toContain("bg-state-urgent-fill");
+    expect(html).toMatch(/bg-state-urgent-fill text-on-state-urgent" data-tone="urgent">酸素 1.5h</);
+    expect(html).toMatch(/bg-panel2 ">抗凝固</);
   });
 
   it("時計の無い人は代わりの印（台帳の機器）。どちらも無ければ何も出さない", () => {
