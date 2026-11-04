@@ -11,6 +11,57 @@ import { EASE_OUT, STAGGER, progress, rise } from "./motion";
 
 const clamp = { extrapolateLeft: "clamp", extrapolateRight: "clamp" } as const;
 
+/**
+ * 図どうしで揃える決まり（11/4 15:4x 作者）。面の角は 10px、塗りの端は 4px、線は 2px、表の行の区切りは 1px の薄い線。
+ * 強調する行は「左の帯 6px ＋ 薄い地 ＋ 太字」（ルールの表と使い分けの表で同じ）。メーターは太い線の上に字の色の塗り
+ */
+const RADIUS = { panel: 10, mark: 4 } as const;
+const LINE = 2;
+const HAIRLINE = `1px solid ${COLOR.blueTint}`;
+
+/**
+ * 72 時間の輪（S2 の題名と終わりの画面）。全体の輪（地の 1 段明るい青）の上に、0 時から時計回りに字の色の弧が伸びる（Share のメーターを輪にした物）。
+ * 目盛りは輪の内側に細い線（時計の文字盤の向き。外へ出すと太陽の印に見える）。12 時間ごとは長く、過ぎた所は字の色。
+ * ticks は目盛りの数（72 なら 1 時間ごと）、labels なら外側に 0・12・24… の数。hours は塗る時間（0〜72）
+ */
+const Dial: React.FC<{ r: number; width: number; hours: number; ticks: number; labels?: boolean }> = ({ r, width, hours, ticks, labels }) => {
+  const p = usePalette();
+  const c = 2 * Math.PI * r;
+  const size = r * 2 + width + (labels ? 160 : 8);
+  const unit = r / 300;
+  return (
+    <svg width={size} height={size} viewBox={`${-size / 2} ${-size / 2} ${size} ${size}`} style={{ display: "block" }}>
+      <circle r={r} fill="none" stroke={p.tint} strokeWidth={width} />
+      <circle r={r} fill="none" stroke={p.fg} strokeWidth={width} strokeDasharray={`${(c * hours) / 72} ${c}`} transform="rotate(-90)" />
+      {Array.from({ length: ticks }, (_, i) => {
+        const h = (i * 72) / ticks;
+        const a = (h / 72) * Math.PI * 2 - Math.PI / 2;
+        const major = h % 12 === 0;
+        const r0 = r - width / 2 - 10 * unit;
+        const r1 = r0 - (major ? 30 : 14) * unit;
+        const passed = hours >= h;
+        return (
+          <g key={i}>
+            <line x1={Math.cos(a) * r0} y1={Math.sin(a) * r0} x2={Math.cos(a) * r1} y2={Math.sin(a) * r1} stroke={passed ? p.fg : p.sub} strokeWidth={LINE} />
+            {labels && major ? (
+              <text
+                x={Math.cos(a) * (r + width / 2 + 40)}
+                y={Math.sin(a) * (r + width / 2 + 40) + 9}
+                textAnchor="middle"
+                fontFamily={FONT.main}
+                fontSize={TYPE.caption}
+                fill={passed ? p.fg : p.sub}
+              >
+                {h}
+              </text>
+            ) : null}
+          </g>
+        );
+      })}
+    </svg>
+  );
+};
+
 /** 舞台。中の物を上下左右の真ん中に置く */
 export const Stage: React.FC<{ children: React.ReactNode; gap?: number; row?: boolean; align?: "center" | "stretch" }> = ({
   children,
@@ -85,7 +136,7 @@ export const TextCard: React.FC<{ lines: string[]; sub?: string; beats?: number[
                   fontSize: 38,
                   fontWeight: 600,
                   padding: "14px 26px",
-                  borderRadius: 8,
+                  borderRadius: RADIUS.panel,
                   whiteSpace: "nowrap",
                   ...rise(frame, subStart + i * 6),
                 }}
@@ -107,58 +158,13 @@ export const TextCard: React.FC<{ lines: string[]; sub?: string; beats?: number[
 export const Ring72: React.FC<{ label: string; duration: number; sub?: string }> = ({ label, duration, sub }) => {
   const frame = useCurrentFrame();
   const p = usePalette();
-  const fill = interpolate(frame, [0, duration * 0.75], [0, 72], { ...clamp, easing: EASE_OUT });
-  const r = 320;
-  const ticks = Array.from({ length: 72 }, (_, i) => {
-    const a = (i / 72) * Math.PI * 2 - Math.PI / 2;
-    const major = i % 12 === 0;
-    const on = Math.max(0, Math.min(1, fill - i));
-    const inner = r - (major ? 46 : 30);
-    return (
-      <g key={i}>
-        <line x1={Math.cos(a) * inner} y1={Math.sin(a) * inner} x2={Math.cos(a) * r} y2={Math.sin(a) * r} stroke={p.tint} strokeWidth={major ? 8 : 4} strokeLinecap="round" />
-        <line
-          x1={Math.cos(a) * inner}
-          y1={Math.sin(a) * inner}
-          x2={Math.cos(a) * (inner + (r - inner) * on)}
-          y2={Math.sin(a) * (inner + (r - inner) * on)}
-          stroke={p.fg}
-          strokeWidth={major ? 8 : 4}
-          strokeLinecap="round"
-        />
-        {major ? (
-          <text
-            x={Math.cos(a) * (r + 40)}
-            y={Math.sin(a) * (r + 40) + 9}
-            textAnchor="middle"
-            fontFamily={FONT.main}
-            fontSize={TYPE.caption}
-            fill={on > 0 ? p.fg : p.sub}
-          >
-            {i}
-          </text>
-        ) : null}
-      </g>
-    );
-  });
+  const hours = interpolate(frame, [0, duration * 0.75], [0, 72], { ...clamp, easing: EASE_OUT });
   const titleIn = progress(frame, Math.round(duration * 0.18), 18);
   return (
     <Stage gap={0}>
-      <div style={{ position: "relative", width: 820, height: 820 }}>
-        <svg width={820} height={820} viewBox="-410 -410 820 820" style={{ position: "absolute", inset: 0 }}>
-          {ticks}
-        </svg>
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            display: "flex",
-            flexDirection: "column",
-            justifyContent: "center",
-            alignItems: "center",
-            gap: 10,
-          }}
-        >
+      <div style={{ position: "relative", display: "flex", justifyContent: "center", alignItems: "center" }}>
+        <Dial r={320} width={14} hours={hours} ticks={72} labels />
+        <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", gap: 10 }}>
           <div style={{ fontSize: TYPE.display, fontWeight: 600, lineHeight: 1, opacity: titleIn, transform: `translateY(${(1 - titleIn) * 26}px)` }}>{label}</div>
           {sub ? <div style={{ fontSize: TYPE.body, color: p.sub, ...rise(frame, Math.round(duration * 0.35)) }}>{sub}</div> : null}
         </div>
@@ -247,8 +253,8 @@ export const Share: React.FC<{ hero: string; share: number; part: string; whole:
           <span style={{ fontSize: 220, fontWeight: 600 }}>{shown}</span>
           {m ? <span style={{ fontSize: 110, fontWeight: 600 }}>{m[2]}</span> : null}
         </div>
-        <div style={{ position: "relative", width: W, height: H, background: p.tint, borderRadius: 4 }}>
-          <div style={{ position: "absolute", left: 0, top: 0, height: H, width: W * share * t, background: p.fg, borderRadius: "0 4px 4px 0" }} />
+        <div style={{ position: "relative", width: W, height: H, background: p.tint, borderRadius: RADIUS.mark }}>
+          <div style={{ position: "absolute", left: 0, top: 0, height: H, width: W * share * t, background: p.fg, borderRadius: `0 ${RADIUS.mark}px ${RADIUS.mark}px 0` }} />
         </div>
         <div style={{ display: "flex", justifyContent: "space-between", fontSize: TYPE.body, marginTop: -16, ...rise(frame, 10) }}>
           <span style={{ fontWeight: 600 }}>{part}</span>
@@ -400,7 +406,7 @@ export const Flow: React.FC<{ children: React.ReactNode[]; names: string[]; card
   const grow = progress(frame, 6, 14);
   return (
     <Stage gap={0}>
-      <div style={{ background: p.strong, color: p.onStrong, borderRadius: 8, padding: "16px 64px", fontSize: TYPE.h2, fontWeight: 600, ...rise(frame, 0) }}>台帳</div>
+      <div style={{ background: p.strong, color: p.onStrong, borderRadius: RADIUS.panel, padding: "16px 64px", fontSize: TYPE.h2, fontWeight: 600, ...rise(frame, 0) }}>台帳</div>
       <svg width={total} height={70} style={{ display: "block" }}>
         {[0, 1, 2].map((i) => {
           const x = cardWidth / 2 + i * (cardWidth + gap);
@@ -409,7 +415,7 @@ export const Flow: React.FC<{ children: React.ReactNode[]; names: string[]; card
               key={i}
               d={`M ${total / 2} 0 L ${total / 2} 26 L ${x} 26 L ${x} 70`}
               stroke={p.fg}
-              strokeWidth={4}
+              strokeWidth={LINE}
               fill="none"
               strokeDasharray={1200}
               strokeDashoffset={1200 * (1 - grow)}
@@ -441,9 +447,9 @@ export const Rules: React.FC = () => {
       <div style={{ width: 1500 }}>
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 18, ...rise(frame, 0) }}>
           <span style={{ fontSize: TYPE.h2, fontWeight: 600 }}>ルールの表</span>
-          <span style={{ background: p.strong, color: p.onStrong, fontSize: 28, fontWeight: 600, padding: "6px 16px", borderRadius: 4 }}>AI を使わない</span>
+          <span style={{ background: p.strong, color: p.onStrong, fontSize: 28, fontWeight: 600, padding: "6px 16px", borderRadius: RADIUS.mark }}>AI を使わない</span>
         </div>
-        <div style={{ background: COLOR.white, borderRadius: 10, overflow: "hidden", padding: "6px 0" }}>
+        <div style={{ background: COLOR.white, borderRadius: RADIUS.panel, overflow: "hidden", padding: "6px 0" }}>
           <div style={{ display: "flex", gap: 24, padding: "10px 32px", fontSize: TYPE.caption, color: COLOR.blueMid, ...rise(frame, 4) }}>
             <div style={{ width: 600 }}>入ってきた事実</div>
             <div style={{ width: 180 }}>色</div>
@@ -465,6 +471,7 @@ export const Rules: React.FC = () => {
                   color: COLOR.blue,
                   fontWeight: strong ? 600 : 400,
                   background: strong ? COLOR.blueTint : COLOR.white,
+                  borderTop: i === 0 ? undefined : HAIRLINE,
                   ...rise(frame, 8 + i * STAGGER, 12),
                 }}
               >
@@ -505,23 +512,28 @@ export const Models: React.FC<{ children: React.ReactNode; counters?: string[] }
     <Stage row gap={48}>
       <div style={{ width: 760 }}>
         <div style={{ fontSize: TYPE.h2, fontWeight: 600, marginBottom: 16, ...rise(frame, 0) }}>道具の中の使い分け</div>
-        <div style={{ background: COLOR.white, borderRadius: 10, overflow: "hidden" }}>
+        <div style={{ background: COLOR.white, borderRadius: RADIUS.panel, overflow: "hidden" }}>
           {MODEL_ROWS.map((m, i) => {
+            // 最後の行（ルールの表、AI を使わない）を強調。強調の形はルールの表と同じ（左の帯・薄い地・太字）
             const last = i === MODEL_ROWS.length - 1;
             return (
               <div
                 key={m.what}
                 style={{
+                  position: "relative",
                   display: "flex",
                   justifyContent: "space-between",
                   gap: 16,
                   padding: "18px 26px",
                   fontSize: 28,
-                  background: last ? p.strong : i % 2 === 0 ? COLOR.white : COLOR.blueTint,
-                  color: last ? p.onStrong : COLOR.blue,
+                  background: last ? COLOR.blueTint : COLOR.white,
+                  color: COLOR.blue,
+                  fontWeight: last ? 600 : 400,
+                  borderTop: i === 0 ? undefined : HAIRLINE,
                   ...rise(frame, 6 + i * STAGGER, 12),
                 }}
               >
+                {last ? <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 6, background: COLOR.blue }} /> : null}
                 <span>{m.what}</span>
                 <span style={{ fontWeight: 600, whiteSpace: "nowrap" }}>{m.who}</span>
               </div>
@@ -536,7 +548,7 @@ export const Models: React.FC<{ children: React.ReactNode; counters?: string[] }
               const name = at > 0 ? c.slice(0, at).trim() : c;
               const count = at > 0 ? c.slice(at).trim() : "";
               return (
-                <div key={c} style={{ background: COLOR.white, color: COLOR.blue, borderRadius: 10, padding: "16px 22px", ...rise(frame, 30 + i * STAGGER) }}>
+                <div key={c} style={{ background: COLOR.white, color: COLOR.blue, borderRadius: RADIUS.panel, padding: "16px 22px", ...rise(frame, 30 + i * STAGGER) }}>
                   <div style={{ fontSize: TYPE.caption, fontWeight: 600, whiteSpace: "nowrap", color: COLOR.blueMid }}>{name}</div>
                   <div style={{ fontSize: TYPE.h2, fontWeight: 600, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>{count}</div>
                 </div>
@@ -567,24 +579,15 @@ export const Quote: React.FC<{ text: string; sub?: string }> = ({ text, sub }) =
 export const EndCard: React.FC = () => {
   const frame = useCurrentFrame();
   const p = usePalette();
-  const ticks = Array.from({ length: 72 }, (_, i) => {
-    const a = (i / 72) * Math.PI * 2 - Math.PI / 2;
-    const major = i % 12 === 0;
-    const r = 84;
-    const inner = r - (major ? 16 : 10);
-    // 目盛りが 0 時から時計回りに 1 つずつ出る（S2 の輪と同じ向き）
-    const on = progress(frame, 4 + (i / 72) * 24, 3);
-    return <line key={i} x1={Math.cos(a) * inner} y1={Math.sin(a) * inner} x2={Math.cos(a) * r} y2={Math.sin(a) * r} stroke={p.fg} strokeWidth={major ? 4 : 2} strokeLinecap="round" opacity={on} />;
-  });
+  // 輪は S2 と同じ部品。0 時から一周を描く
+  const hours = 72 * progress(frame, 4, 26);
   return (
     <Stage gap={26}>
       <div style={{ display: "flex", alignItems: "center", gap: 40, ...rise(frame, 0, 20, 16) }}>
-        <svg width={180} height={180} viewBox="-90 -90 180 180">
-          {ticks}
-        </svg>
+        <Dial r={76} width={8} hours={hours} ticks={12} />
         <div style={{ fontSize: 150, fontWeight: 600, lineHeight: 1 }}>ケア72</div>
       </div>
-      <div style={{ background: p.strong, color: p.onStrong, fontSize: TYPE.h1, fontWeight: 600, padding: "10px 40px", borderRadius: 8, ...rise(frame, 8) }}>
+      <div style={{ background: p.strong, color: p.onStrong, fontSize: TYPE.h1, fontWeight: 600, padding: "10px 40px", borderRadius: RADIUS.panel, ...rise(frame, 8) }}>
         care72.app
       </div>
       <div style={{ fontSize: TYPE.body, color: p.sub, ...rise(frame, 12) }}>github.com/Swallow100/care72</div>
