@@ -50,6 +50,7 @@ import {
 } from "./engine.ts";
 import { CALL_STATUS_LABELS, PHONE_LABELS, SHELTER_LABELS, TSUNAMI_LABELS, WATER_LABELS } from "./labels.ts";
 import { nightLine } from "./night.ts";
+import { hourText, minuteText as minuteWords } from "./time-text.ts";
 import { officePlaces } from "./area.ts";
 import { cleanWords, isPersonaFailure, reportersOf } from "./persona.ts";
 import {
@@ -104,12 +105,6 @@ const ASK_WORDS: Readonly<Record<AskKind, string>> = {
   warmth: "保温",
 };
 
-/** 発災からの分 → 「N 時間 M 分」（指示の文） */
-function minuteWords(minute: number): string {
-  const m = Math.max(0, Math.round(minute));
-  return m % 60 === 0 ? `${m / 60} 時間` : `${Math.floor(m / 60)} 時間 ${m % 60} 分`;
-}
-
 const SCENE_WORDS = { heavy_rain: "大雨（警戒レベル 3 → 4 → 浸水）", earthquake: "地震（南海トラフ 震度 6強・津波・停電）" } as const;
 
 const SOURCE_WORDS = { agent: "本人", family: "家族", supporter: "支援者" } as const;
@@ -128,7 +123,7 @@ export function sceneText(input: DirectorInput, aliasOf: ReadonlyMap<string, str
   if (w.outage) {
     const o = w.outage;
     const area = o.area.scope === "office" ? "全域" : "浸水 3 m の想定の地区";
-    now.push(o.restoredAt != null ? `停電 復旧（${o.restoredAt} 時間）` : `停電中（${o.since} 時間から、${area}）`);
+    now.push(o.restoredAt != null ? `停電 復旧（${hourText(o.restoredAt)}）` : `停電中（${hourText(o.since)}から、${area}）`);
   }
   now.push(`電話 ${PHONE_LABELS[w.phone]}`);
   if (w.water !== "none") now.push(`断水 ${WATER_LABELS[w.water]}`);
@@ -205,7 +200,7 @@ function clocksOf(p: ClaudePerson, world: WorldState, hour: number): string[] {
 function stateWords(s: PersonState | null): string {
   if (!s) return "連絡なし";
   const where = s.whereNow ? `（${WHERE_WORDS[s.whereNow]}）` : "";
-  return `${s.at} 時間に${SOURCE_WORDS[s.source]}が${COLOR_WORDS[s.color]}${where}`;
+  return `${hourText(s.at)}に${SOURCE_WORDS[s.source]}が${COLOR_WORDS[s.color]}${where}`;
 }
 
 export type WeakEntry = {

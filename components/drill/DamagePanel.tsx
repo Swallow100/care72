@@ -7,7 +7,6 @@ import { ARRIVAL_ROLE_LABELS, DAMAGE_EXTRA_LABELS, SUPPLY_LABELS } from "@/lib/d
 import type { DrillKind, PersonMarks, SupplyKind, WorldState } from "@/lib/drill/scenarios";
 import {
   clockLabel,
-  DRILL_LABELS,
   MARK_LABELS,
   PHONE_LABELS,
   SHELTER_LABELS,
@@ -15,6 +14,7 @@ import {
   WATER_LABELS,
   WORLD_LABELS,
 } from "@/lib/drill/labels";
+import { hourSpanText, hourText } from "@/lib/drill/time-text";
 
 const BAD = "font-bold tone-check";
 
@@ -70,14 +70,14 @@ export function DamagePanel({
           <span>
             {WORLD_LABELS.restored}
             <span className="ml-1.5 text-xs text-muted tabular-nums">
-              {o.since}〜{o.restoredAt} {DRILL_LABELS.hours}
+              {hourSpanText(o.since, o.restoredAt)}
             </span>
           </span>
         ) : (
           <span>
             <span className={BAD}>{WORLD_LABELS.outageNow}</span>
             <span className="ml-1.5 tabular-nums">
-              {now - o.since} {DRILL_LABELS.hours}
+              {hourText(now - o.since)}
             </span>
             <span className="ml-1.5 text-xs text-muted">{o.area.scope === "office" ? WORLD_LABELS.office : o.area.scope === "towns" ? o.area.towns.join("・") : WORLD_LABELS.area}</span>
           </span>

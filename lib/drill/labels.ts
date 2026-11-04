@@ -7,6 +7,7 @@ import { CATALOG_LABELS } from "./action-catalog.ts";
 import type { FictionKind } from "./fiction.ts";
 import type { AiStop, PhoneState, ShelterState, TsunamiState, WaterState, WorldEventKind } from "./scenarios.ts";
 import { markLabels } from "./event-catalog.ts";
+import { hourText, minuteText, TIME_WORDS } from "./time-text.ts";
 
 export const SCENARIO_LABELS: Record<DrillScenario, string> = {
   heavy_rain: "大雨想定",
@@ -47,7 +48,7 @@ export const DRILL_LABELS = {
   damage: "被害状況",
   actions: "対応",
   elapsed: "経過",
-  hours: "時間",
+  hours: TIME_WORDS.hours,
   startedAt: "開始",
   startedBy: "開始者",
   status: "状態",
@@ -253,9 +254,9 @@ export const DRILL_API_LABELS: Record<DrillApiError, string> = {
   locked: "取消不可",
 };
 
-/** 「経過 6 時間」 */
+/** 「経過 6 時間」「経過 6 時間 10 分」（発災からの時間。小数の時間は分まで、lib/drill/time-text.ts） */
 export function elapsedLabel(hour: number): string {
-  return `${DRILL_LABELS.elapsed} ${hour} ${DRILL_LABELS.hours}`;
+  return `${DRILL_LABELS.elapsed} ${hourText(hour)}`;
 }
 
 // ---------- ケアマネの手（T20） ----------
@@ -271,7 +272,7 @@ export const ACTION_UI = {
   result: "結果",
   history: "履歴",
   callIn: "着信",
-  minutes: "分",
+  minutes: TIME_WORDS.minutes,
   staff: "事業所",
   shelter: "福祉避難所",
   city: "市役所",
@@ -311,12 +312,9 @@ export const CALL_UI = {
 /** 出たが言葉の無いとき（鍵なし・本人役の失敗）の固定の言葉。安否の言う事が相手の物なら、そちらを使う（lib/drill/actions.ts） */
 export const CALL_FIXED_SPEECH = "はい、もしもし";
 
-/** 「3 時間 40 分」（分が 0 なら「3 時間」）。発災からの分 */
+/** 「3 時間 40 分」（分が 0 なら「3 時間」）。発災からの分。経過の言い方は lib/drill/time-text.ts の 1 か所 */
 export function clockLabel(minute: number): string {
-  const m = Math.max(0, Math.round(minute));
-  const h = Math.floor(m / 60);
-  const r = m % 60;
-  return r === 0 ? `${h} ${DRILL_LABELS.hours}` : `${h} ${DRILL_LABELS.hours} ${r} ${ACTION_UI.minutes}`;
+  return minuteText(minute);
 }
 
 /** 手の相手の言い方（訪問依頼で相手なしは事業所の職員、行政報告で相手なしは市役所、受入依頼は福祉避難所）。履歴と紙面で同じ */
@@ -333,7 +331,9 @@ export function elapsedClockLabel(minute: number): string {
   return `${DRILL_LABELS.elapsed} ${clockLabel(minute)}`;
 }
 
-/** 訓練記録の一覧の「経過 6 / 72 時間」 */
+/** 訓練記録の一覧の「経過 6 / 72 時間」。分のあるときは「経過 6 時間 10 分 / 72 時間」 */
 export function progressLabel(hour: number, last: number): string {
-  return `${DRILL_LABELS.elapsed} ${hour} / ${last} ${DRILL_LABELS.hours}`;
+  const m = Math.max(0, Math.round(hour * 60));
+  if (m % 60 === 0) return `${DRILL_LABELS.elapsed} ${m / 60} / ${last} ${DRILL_LABELS.hours}`;
+  return `${DRILL_LABELS.elapsed} ${hourText(hour)} / ${last} ${DRILL_LABELS.hours}`;
 }

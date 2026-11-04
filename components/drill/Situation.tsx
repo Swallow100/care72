@@ -6,12 +6,11 @@
 // 1 刻みに 2 件まで）に着信の印（T21。進めるで来た物も手の途中の物も。着信の画面と声は components/drill/IncomingCall）。
 
 import { AiMark, StateTag } from "@/components/person/parts";
-import { shortJst } from "@/lib/disaster/state";
 import type { DrillIncident, DrillTurn, Tick } from "@/lib/drill/engine";
-import { simAt } from "@/lib/drill/engine";
 import { isStopIncident } from "@/lib/drill/ai-stop";
 import { incidentLabel } from "@/lib/drill/event-catalog";
 import { ACTION_UI, BASIS_LABEL, DRILL_LABELS, elapsedLabel, EVENT_KIND_LABELS, VIRTUAL_LABELS } from "@/lib/drill/labels";
+import { hourText, simTimeText } from "@/lib/drill/time-text";
 import { callIndexes } from "@/lib/drill/calls";
 import { CallInMark } from "./ActionLog";
 import type { FictionKind } from "@/lib/drill/fiction";
@@ -64,7 +63,7 @@ export function Situation({
           <li key={t.step} className="rounded-md bg-panel2 px-2.5 py-2" data-situation-step={t.step}>
             <h3 className="flex flex-wrap items-baseline gap-x-2 text-sm">
               <span className="font-bold">{elapsedLabel(t.hour)}</span>
-              <span className="text-xs text-muted tabular-nums">{shortJst(simAt(startedAt, t.hour))}</span>
+              <span className="text-xs text-muted tabular-nums">{simTimeText(startedAt, t.hour * 60)}</span>
               {during[t.step] && (
                 <span className="text-xs text-muted" data-during>
                   {ACTION_UI.during} {during[t.step]}
@@ -98,8 +97,9 @@ export function Situation({
 }
 
 function At({ at, tickHour }: { at: number; tickHour: number }) {
-  if (at === tickHour) return null;
-  return <span className="text-xs text-muted tabular-nums">{at} {DRILL_LABELS.hours}</span>;
+  // 刻みの見出しと同じ時刻（分に丸めて比べる。連続の時計の時間は小数）なら出さない
+  if (Math.round(at * 60) === Math.round(tickHour * 60)) return null;
+  return <span className="text-xs text-muted tabular-nums">{hourText(at)}</span>;
 }
 
 function IncidentItem({

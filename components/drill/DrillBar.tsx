@@ -5,7 +5,7 @@
 // 夜間発災（T59）の訓練は、下に時刻の行（発災 2 時・今 何時）。開始の時刻（started_at）はずらさないので、上の日時とは別の訓練の中の時刻。
 
 import Link from "next/link";
-import { BAND_LABELS, clockLabel, DRILL_LABELS, T59_LABELS } from "@/lib/drill/labels";
+import { BAND_LABELS, DRILL_LABELS, elapsedLabel, T59_LABELS } from "@/lib/drill/labels";
 import { NIGHT_START_HOUR, nightClock } from "@/lib/drill/night";
 import type { Band } from "@/lib/drill/view";
 
@@ -66,7 +66,7 @@ export function DrillBar({
               href={hrefOf(i)}
               className={`${cls} rounded px-0.5`}
               style={style}
-              aria-label={`${DRILL_LABELS.elapsed} ${h} ${DRILL_LABELS.hours}`}
+              aria-label={elapsedLabel(h)}
               aria-current={h === now ? "true" : undefined}
               data-press
               data-tick={i}
@@ -161,7 +161,7 @@ function CutMarks({
             href={hrefOf(i)}
             className={`${cls} rounded p-0.5`}
             style={style}
-            aria-label={`${DRILL_LABELS.elapsed} ${clockLabel(h * 60)}`}
+            aria-label={elapsedLabel(h)}
             aria-current={here ? "true" : undefined}
             data-press
             data-tick={i}

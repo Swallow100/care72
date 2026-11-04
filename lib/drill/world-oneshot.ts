@@ -18,6 +18,7 @@ import { endingsAllowed } from "./fiction.ts";
 import type { ActionRecord, DrillIncident, WorldInput } from "./engine.ts";
 import { PHONE_LABELS, SHELTER_LABELS } from "./labels.ts";
 import { nightLine } from "./night.ts";
+import { hourText, minuteText } from "./time-text.ts";
 import type { OutcomeSource } from "./outcome.ts";
 import { reportersOf } from "./persona.ts";
 import type { WorldState, WorldVia } from "./scenarios.ts";
@@ -210,7 +211,7 @@ function actionLines(actions: ReadonlyArray<ActionRecord>, from: number, aliasOf
     .map((a) => {
       const who = a.person ? (aliasOf.get(a.person) ?? null) : null;
       const r = a.result ? (a.result.ok ? "届いた" : "届かなかった") : "途中";
-      return `- ${Math.floor(a.atMinute / 60)} 時間 ${a.atMinute % 60} 分: ${ACTION_WORDS[a.kind]}${who ? `（${who}）` : ""} → ${r}`;
+      return `- ${minuteText(a.atMinute)}: ${ACTION_WORDS[a.kind]}${who ? `（${who}）` : ""} → ${r}`;
     });
 }
 
@@ -218,7 +219,7 @@ function actionLines(actions: ReadonlyArray<ActionRecord>, from: number, aliasOf
 function contactLines(input: WorldInput, from: number, aliasOf: ReadonlyMap<string, string>): string[] {
   return Object.entries(input.people)
     .filter(([p, s]) => s.at >= from && aliasOf.has(p))
-    .map(([p, s]) => `- ${aliasOf.get(p)}: ${s.at} 時間に${COLOR_WORDS[s.color]}`);
+    .map(([p, s]) => `- ${aliasOf.get(p)}: ${hourText(s.at)}に${COLOR_WORDS[s.color]}`);
 }
 
 const WHERE_WORDS = { home: "家", shelter: "避難所", other: "家の外" } as const;
@@ -231,7 +232,7 @@ function lastLines(input: WorldInput, aliasOf: ReadonlyMap<string, string>): str
     .map(([p, alias]) => {
       const s = input.people[p];
       if (!s) return `- ${alias}: 連絡なし`;
-      return `- ${alias}: ${s.at} 時間に${COLOR_WORDS[s.color]}${s.whereNow ? `、${WHERE_WORDS[s.whereNow]}` : ""}`;
+      return `- ${alias}: ${hourText(s.at)}に${COLOR_WORDS[s.color]}${s.whereNow ? `、${WHERE_WORDS[s.whereNow]}` : ""}`;
     });
 }
 
@@ -256,7 +257,7 @@ export function worldNow(w: WorldState, area: Area = DEMO_AREA): string[] {
   if (w.outage) {
     const o = w.outage;
     const where = o.area.scope === "towns" ? o.area.towns.map((t) => aliasOfTown(t, area) ?? "地区").join("・") : "全域";
-    now.push(o.restoredAt != null ? `停電 復旧（${o.restoredAt} 時間）` : `停電中（${where}）`);
+    now.push(o.restoredAt != null ? `停電 復旧（${hourText(o.restoredAt)}）` : `停電中（${where}）`);
   }
   now.push(`電話 ${PHONE_LABELS[w.phone]}`);
   const roads = new Map<string, boolean>();
@@ -281,7 +282,7 @@ export function tickText(input: WorldInput, cast: Pick<WorldCast, "key"> & Parti
   const hints = hintLines(input, aliasOf);
   const ended = Object.keys(input.world.ended ?? {}).flatMap((p) => (aliasOf.has(p) ? [aliasOf.get(p)!] : []));
   return [
-    `時刻: 発災から ${input.hour} 時間（${last} 時間まで）`,
+    `時刻: 発災から ${hourText(input.hour)}（${last} 時間まで）`,
     // 夜間発災（T59）だけ。時刻の 1 行
     ...(input.night ? [nightLine(input.hour)] : []),
     acts.length > 0 ? ["前の刻みからケアマネがした事:", ...acts].join("\n") : "前の刻みからケアマネがした事: なし",
