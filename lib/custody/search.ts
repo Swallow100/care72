@@ -4,9 +4,11 @@
 // （型にも持たない。受け入れて初めて本人のページを開ける。lib/auth/scope.ts）。
 // 年齢は生年月日から。生年月日の無い人（その場で登録した人）は申告の年齢。
 // 全件を返さない: 検索は生年月日か氏名・カナ 2 字以上（lib/custody/forms.ts の parseSearch）、数は SEARCH_LIMIT まで。
+// 審査員（壁の中、lib/auth/wall.ts）は検索・避難所の一覧・避難所の人数とも、デモの人だけ（T81。ほかの事業所の人のカナも出さない）。
 
 import type { D1Database } from "@cloudflare/workers-types";
 import { ageOn } from "../age.ts";
+import { demoPersonSql } from "../auth/wall.ts";
 import type { StaffActor } from "./actor.ts";
 import type { SearchInput } from "./forms.ts";
 
@@ -54,6 +56,11 @@ const MINE = `EXISTS (SELECT 1 FROM custody c WHERE c.person_id = p.id AND c.hol
 // 比べる側も空白（半角・全角）を除く
 const SQUASH = (col: string) => `replace(replace(${col}, ' ', ''), '　', '')`;
 
+/** 壁の中の人はデモの人だけ（alias は people の別名）。外の人は条件なし */
+function wallOf(actor: Pick<StaffActor, "walled">, alias = "p"): string {
+  return actor.walled ? ` AND ${demoPersonSql(alias)}` : "";
+}
+
 export type SearchResult = { hits: PersonHit[]; more: boolean };
 
 /** 氏名・カナ・生年月日で探す。カナは部分一致、生年月日は一致。両方あれば両方に合う人 */
@@ -62,7 +69,7 @@ export async function searchPeople(db: D1Database, actor: StaffActor, q: SearchI
     .prepare(
       `SELECT p.id, p.kana, p.birth_date, p.reported_age, ${MINE} AS mine FROM people p
         WHERE (?2 = '' OR ${SQUASH("p.kana")} LIKE ?3 ESCAPE '\\' OR ${SQUASH("p.name")} LIKE ?3 ESCAPE '\\')
-          AND (?4 IS NULL OR p.birth_date = ?4)
+          AND (?4 IS NULL OR p.birth_date = ?4)${wallOf(actor)}
         ORDER BY p.kana, p.birth_date, p.id
         LIMIT ?5`,
     )
@@ -74,12 +81,12 @@ export async function searchPeople(db: D1Database, actor: StaffActor, q: SearchI
 
 export type ShelterCount = { shelter: string; people: number };
 
-/** 受け持ちの開いている避難所と人数（誰が受け入れたかを問わない）。名前の順 */
-export async function listShelters(db: D1Database): Promise<ShelterCount[]> {
+/** 受け持ちの開いている避難所と人数（誰が受け入れたかを問わない）。名前の順。審査員はデモの人だけ数える（無ければ出ない） */
+export async function listShelters(db: D1Database, actor: Pick<StaffActor, "walled">): Promise<ShelterCount[]> {
   const res = await db
     .prepare(
-      `SELECT shelter, count(DISTINCT person_id) AS people FROM custody
-        WHERE released_at IS NULL GROUP BY shelter ORDER BY shelter`,
+      `SELECT c.shelter AS shelter, count(DISTINCT c.person_id) AS people FROM custody c JOIN people p ON p.id = c.person_id
+        WHERE c.released_at IS NULL${wallOf(actor)} GROUP BY c.shelter ORDER BY c.shelter`,
     )
     .all<{ shelter: string; people: number }>();
   return res.results.map((r) => ({ shelter: r.shelter, people: Number(r.people) }));
@@ -90,7 +97,7 @@ export async function shelterPeople(db: D1Database, actor: StaffActor, shelter: 
   const res = await db
     .prepare(
       `SELECT p.id, p.kana, p.birth_date, p.reported_age, ${MINE} AS mine FROM people p
-        WHERE EXISTS (SELECT 1 FROM custody s WHERE s.person_id = p.id AND s.shelter = ?2 AND s.released_at IS NULL)
+        WHERE EXISTS (SELECT 1 FROM custody s WHERE s.person_id = p.id AND s.shelter = ?2 AND s.released_at IS NULL)${wallOf(actor)}
         ORDER BY p.kana, p.birth_date, p.id`,
     )
     .bind(actor.accountId, shelter)

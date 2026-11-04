@@ -6,7 +6,8 @@
 // 2. Content-Type が application/json でなければ 415、本文が 8 KB を超えれば 413、JSON でなければ 400
 // 3. token が無い → 404。受付終了（期限を過ぎた・30 件に届いた・T42 の 1 人 1 本のリンク）→ 410
 // 4. 見えない欄（honeypot。人には見えず、ボットが埋める）に何か入っていれば、200 を返して何も残さない
-// 5. 頁を開いてから 15 秒未満の送信は断る。開いた時刻は頁に埋めた署名つきの印（opened）で見る（印の無い・合わない物も）→ 400
+// 5. 頁を開いてから 15 秒未満の送信は断る。開いた時刻は頁に埋めた署名つきの印（opened）で見る（印の無い・合わない物も）→ 400。
+//    印は 2 時間で切れる（T81）→ 400 stale（頁を開き直す）
 // 6. Turnstile の鍵があるときだけ、その確かめ → 400
 // 7. 答えの形（知らない記号・長すぎる文・何も答えていない）→ 400
 // 保存は 1 文で、受付中（期限の前・件数が上限の下）のときだけ入れる（同時に送られても 31 件目は入らない）。
@@ -18,12 +19,22 @@ import { answerColumns, parseSurveyAnswers, RESPONSE_COLUMNS } from "./answer.ts
 import { BODY_MAX_BYTES, HONEYPOT_FIELD } from "./form.ts";
 import { lookupSurveyShare } from "./store.ts";
 import { SURVEY_LABELS } from "./text.ts";
-import { MIN_FILL_SEC, RATE_LIMIT_PER_HOUR, sourceHash, stampTime } from "./token.ts";
+import { checkStamp, RATE_LIMIT_PER_HOUR, sourceHash } from "./token.ts";
 import type { TurnstileKeys, TurnstileVerify } from "./turnstile.ts";
 
 export { HONEYPOT_FIELD };
 
-export type SubmitError = "limited" | "content_type" | "too_large" | "invalid" | "gone" | "closed" | "too_fast" | "turnstile" | "empty";
+export type SubmitError =
+  | "limited"
+  | "content_type"
+  | "too_large"
+  | "invalid"
+  | "gone"
+  | "closed"
+  | "too_fast"
+  | "stale"
+  | "turnstile"
+  | "empty";
 
 const STATUS: Record<SubmitError, number> = {
   limited: 429,
@@ -33,6 +44,7 @@ const STATUS: Record<SubmitError, number> = {
   gone: 404,
   closed: 410,
   too_fast: 400,
+  stale: 400,
   turnstile: 400,
   empty: 400,
 };
@@ -45,6 +57,7 @@ const LABEL: Record<SubmitError, string> = {
   gone: SURVEY_LABELS.gone,
   closed: SURVEY_LABELS.closed,
   too_fast: SURVEY_LABELS.tooFast,
+  stale: SURVEY_LABELS.stale,
   turnstile: SURVEY_LABELS.turnstile,
   empty: SURVEY_LABELS.empty,
 };
@@ -110,8 +123,8 @@ export async function submitSurvey(db: D1Database, input: SubmitInput): Promise<
   const trap = body[HONEYPOT_FIELD];
   if (trap !== undefined && trap !== null && trap !== "") return OK;
 
-  const openedAt = await stampTime(body.opened, token, input.now, input.secret);
-  if (openedAt === null || input.now.getTime() - openedAt < MIN_FILL_SEC * 1000) return fail("too_fast");
+  const stamp = await checkStamp(body.opened, token, input.now, input.secret);
+  if (!stamp.ok) return fail(stamp.error);
 
   if (input.turnstile) {
     const response = body.turnstile;

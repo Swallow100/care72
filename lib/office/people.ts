@@ -24,6 +24,8 @@ export type CareManagerItem = {
   people: number;
   /** 停止（退職、T61）。停止した人は割当の候補に出さない（一覧には印つきで出す） */
   disabled: boolean;
+  /** 審査員が足した・再発行したアカウント（T81）。審査員の壁の中の人はこの行だけ変えられる */
+  judgeMade?: boolean;
 };
 
 /**
@@ -33,7 +35,7 @@ export type CareManagerItem = {
 export async function listCareManagers(db: D1Database, officeId: string): Promise<CareManagerItem[]> {
   const res = await db
     .prepare(
-      `SELECT a.id, a.display_name, a.login_id, a.is_office_admin, a.disabled_at,
+      `SELECT a.id, a.display_name, a.login_id, a.is_office_admin, a.disabled_at, a.judge_made,
               (SELECT count(*) FROM people p
                 WHERE p.care_manager_id = a.id AND p.office_id = a.office_id AND p.unlisted_at IS NULL) AS people
          FROM accounts a
@@ -41,7 +43,15 @@ export async function listCareManagers(db: D1Database, officeId: string): Promis
         ORDER BY a.is_office_admin DESC, a.created_at, a.id`,
     )
     .bind(officeId)
-    .all<{ id: string; display_name: string; login_id: string | null; is_office_admin: 0 | 1; disabled_at: string | null; people: number }>();
+    .all<{
+      id: string;
+      display_name: string;
+      login_id: string | null;
+      is_office_admin: 0 | 1;
+      disabled_at: string | null;
+      judge_made: 0 | 1;
+      people: number;
+    }>();
   return res.results.map((r) => ({
     id: r.id,
     name: careManagerName(r.display_name),
@@ -49,6 +59,7 @@ export async function listCareManagers(db: D1Database, officeId: string): Promis
     admin: r.is_office_admin === 1,
     people: Number(r.people),
     disabled: r.disabled_at !== null,
+    judgeMade: Number(r.judge_made) === 1,
   }));
 }
 

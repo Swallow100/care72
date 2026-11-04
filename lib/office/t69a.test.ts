@@ -105,7 +105,7 @@ describe("新しい人の同意を「未確認」で作る", () => {
   });
 
   it("その場の登録（医療班・行政）も 4 行。記録した人は空。範囲は前と同じ（その場の人は同意ありと同じ区分）", async () => {
-    const actor = { accountId: "acct-med-1", role: "medical" as const, name: "医療班 1", judge: false };
+    const actor = { accountId: "acct-med-1", role: "medical" as const, name: "医療班 1", judge: false, walled: false };
     const input = { name: "架空 ミツ", kana: "カクウ ミツ", age: 80, birthDate: null, medications: [], devices: [], contact: null, shelter: "そらみ台小学校" };
     const r = await registerOnSite(db, actor, input, AT, { personId: "p-onsite" });
     expect(r.ok).toBe(true);
@@ -147,7 +147,7 @@ describe("スマホ入口の発行（ケアマネだけ）", () => {
 
   it("書類の範囲: ケアマネは開ける。医療班は受け入れても開けない（範囲に無い）", async () => {
     expect(await loadPersonDocument(db, yamamoto(), "p-01", "phone")).not.toBeNull();
-    await receive(db, { accountId: "acct-med-1", role: "medical", name: "医療班 1", judge: false }, { personId: "p-01", shelter: "そらみ台小学校", via: "search" }, AT);
+    await receive(db, { accountId: "acct-med-1", role: "medical", name: "医療班 1", judge: false, walled: false }, { personId: "p-01", shelter: "そらみ台小学校", via: "search" }, AT);
     expect(await loadPersonDocument(db, medical(), "p-01", "medical")).not.toBeNull();
     expect(await loadPersonDocument(db, medical(), "p-01", "phone")).toBeNull();
   });

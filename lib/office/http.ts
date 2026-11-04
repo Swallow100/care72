@@ -36,6 +36,7 @@ const STATUS: Record<OfficeApiError, number> = {
   display_name: 400,
   login_id: 400,
   login_taken: 409,
+  login_unavailable: 409,
   invalid: 400,
   forbidden: 403,
   login_required: 401,
