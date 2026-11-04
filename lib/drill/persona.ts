@@ -73,6 +73,7 @@ import {
   PseudonymLeakError,
   pseudonymizeText,
   restorePlaces,
+  type ClaudeClock,
   type ClaudePerson,
   type ForClaude,
   type Place,
@@ -85,6 +86,9 @@ import type { ActionRecord, DrillIncident, DrillTurn, HeardSignal, PersonaHook, 
 import { CALL_STATUS_TEXTS, clockLabel, PHONE_LABELS, SHELTER_LABELS, TSUNAMI_LABELS, WATER_LABELS } from "./labels.ts";
 import { nightLine } from "./night.ts";
 import { ASK_KINDS, eventHour, type AskKind, type FixedTurn, type OutageArea, type PhoneState, type WorldState } from "./scenarios.ts";
+import { clockRemaining, formatHours, type Situation, type TriageClock } from "../triage/index.ts";
+import { callsFor, speakerSlip, speakersLine, speakersOf, type Speaker, type Speakers } from "./speaker.ts";
+import { minuteText } from "./time-text.ts";
 
 // ---------- 本人役 ----------
 
@@ -110,6 +114,12 @@ export type Persona = {
   dementia: boolean;
   /** 台帳の町名（停電の町の一覧を見るだけ。Claude に渡さない） */
   town?: string | null;
+  /** 家族・支援者から連絡するときの話し手（T121、lib/drill/speaker.ts）。台帳の連絡先から決め、AI に変えさせない */
+  speakers?: Speakers;
+  /** 持ちこたえる時間（仮名化の層の時計。刻みの文に今の残りを書く、T121） */
+  clocks?: ReadonlyArray<ClaudeClock>;
+  /** 本人の性別（通話の相手の本人の呼び方、T121） */
+  sex?: ClaudePerson["sex"];
 };
 
 /** 連絡しうる人の区分 → 安否の出どころ。訪問看護・施設などの事業所は連絡しない（監督 T19・対応 T20 の相手） */
@@ -147,6 +157,7 @@ export function profileText(
   p: ClaudePerson,
   reporters: ReadonlyArray<Reporter>,
   means: { landline: boolean; mobile: boolean },
+  speakers?: Speakers,
 ): string {
   const h = p.housing;
   const house =
@@ -220,6 +231,8 @@ export function profileText(
     people.length > 0 ? ["周りの人:", ...people].join("\n") : "周りの人: なし",
     line("特記", p.notes),
     `押せる人（スマホで赤・緑を押してケアマネに連絡できる人）: ${pressers.length > 0 ? pressers.join("、") : "いない"}`,
+    // T121: 家族・支援者の話し手と本人の呼び方（台帳の連絡先から）
+    speakers ? speakersLine(speakers) : null,
   ]
     .filter((x): x is string => x !== null)
     .join("\n");
@@ -234,8 +247,9 @@ export function buildPersona(source: PseudonymInput, opts: { on?: string; places
   const p = payload[0];
   const reporters = reportersOf(source);
   const means = source.ledger.basic.contactMeans ?? {};
-  const text = profileText(p, reporters, { landline: means.landline === true, mobile: means.mobile === true });
   const roles = contactRoles(source.contacts);
+  const speakers = speakersOf(source.contacts, roles, p.sex);
+  const text = profileText(p, reporters, { landline: means.landline === true, mobile: means.mobile === true }, speakers);
   return {
     personId: source.person.id,
     key,
@@ -245,6 +259,9 @@ export function buildPersona(source: PseudonymInput, opts: { on?: string; places
     hazards: source.ledger.evacuation.hazards.map((x) => ({ kind: x.kind, depthM: x.depthM ?? null })),
     dementia: source.ledger.care.dementia === true,
     town: source.ledger.basic.address?.town?.trim() || null,
+    speakers,
+    clocks: p.clocks,
+    sex: p.sex,
   };
 }
 
@@ -394,6 +411,49 @@ function advisedWords(world: WorldState, person: string): string[] {
   return at === undefined ? [] : [`ケアマネから 119 への連絡を勧められた（${clockLabel(at)}）`];
 }
 
+/** 状態が変わった時刻（world.stamps、T121）の「（3 時間 10 分から）」。無ければ空 */
+function sinceWords(world: WorldState, key: string): string {
+  const h = world.stamps?.[key];
+  return typeof h === "number" ? `（${minuteText(h * 60)}から）` : "";
+}
+
+/** 時刻の計算だけに使う基準（実際の時刻は渡さない。director.ts の clocksOf と同じ） */
+const CLOCK_BASE = Date.UTC(2026, 0, 1);
+const clockAt = (minute: number) => new Date(CLOCK_BASE + minute * 60_000).toISOString();
+
+/** 届いた物が足す時計の区分（業者の酸素 → 在宅酸素、薬 → 薬） */
+const SUPPLY_CLOCKS: Readonly<Record<string, ReadonlyArray<string>>> = { oxygen: ["oxygen"], medicine: ["medication"] };
+
+/**
+ * 持ちこたえる時間の今（T121。本人役が「電池は 3 時間」と言い続けて食い違わないように、コードが計算した残りを渡す）。
+ * 停電で減る時計は、停電の始まりから、停電の復旧か電源が届いた時刻まで。物が届いた時計はその時刻を添える。色と順には使わない
+ */
+export function clockWords(persona: Pick<Persona, "clocks" | "hazards" | "town">, world: WorldState, person: string, now: number): string[] {
+  const clocks = (persona.clocks ?? []).filter((k) => k.kind !== "condition" && k.startsOn !== "none");
+  if (clocks.length === 0) return [];
+  const o = world.outage;
+  const inArea = o !== null && inOutageArea(o.area, persona.hazards, persona.town ?? null);
+  const power = world.supplies?.[person]?.power;
+  const stops = [o?.restoredAt != null ? Math.round(o.restoredAt * 60) : null, typeof power === "number" ? power : null].filter((x): x is number => x !== null);
+  const stop = stops.length > 0 ? Math.min(...stops) : null;
+  return clocks.map((k) => {
+    if (k.value == null || k.unit == null) return `${k.label}: 残り 未確認`;
+    const end = k.startsOn === "outage" && stop !== null ? Math.min(now, stop) : now;
+    const s: Situation = { now: clockAt(end), disasterAt: clockAt(0), outageAt: inArea ? clockAt(Math.round(o!.since * 60)) : null };
+    const clock: TriageClock = { kind: k.kind, category: k.category, label: k.label, value: k.value, unit: k.unit, starts_on: k.startsOn };
+    const r = clockRemaining(clock, s);
+    if (!r) return `${k.label}: 残り 未確認`;
+    const got = Object.entries(SUPPLY_CLOCKS).flatMap(([supply, cats]) => {
+      const at = world.supplies?.[person]?.[supply as "oxygen" | "medicine"];
+      return typeof at === "number" && at <= now && cats.includes(k.category) ? [`。${minuteText(at)}に届いた`] : [];
+    });
+    const stopped = k.startsOn === "outage" && stop !== null && stop <= now ? `。${minuteText(stop)}から電気で動き減っていない` : "";
+    if (!r.running) return `${k.label}: ${formatHours(r.hours)}（停電で減る。まだ減っていない）${got.join("")}`;
+    if (r.over) return `${k.label}: ${formatHours(r.hours)}の分は切れた（${minuteText(Math.round(r.hours * 60) + (k.startsOn === "outage" && o ? Math.round(o.since * 60) : 0))}ごろ）${stopped}${got.join("")}`;
+    return `${k.label}: 残り ${formatHours(r.remaining)}${stopped}${got.join("")}`;
+  });
+}
+
 /** 世界の今の様子のうち、この人に関わる物 */
 function worldWords(world: WorldState, person: string, persona: Persona): string[] {
   const out: string[] = [];
@@ -406,16 +466,17 @@ function worldWords(world: WorldState, person: string, persona: Persona): string
     if (o.restoredAt != null) out.push(`停電 復旧（${o.restoredAt} 時間）`);
     else out.push(inOutageArea(o.area, persona.hazards, persona.town ?? null) ? `この家は停電中（${o.since} 時間から）` : "この家は停電していない");
   }
-  out.push(`電話 ${PHONE_LABELS[world.phone]}`);
+  // T121: 道・電話・施設はいつからその状態か（world.stamps）。短い間に入れ替わったように言わないため
+  out.push(`電話 ${PHONE_LABELS[world.phone]}${sinceWords(world, "phone")}`);
   if (world.water !== "none") out.push(`断水 ${WATER_LABELS[world.water]}`);
   for (const r of world.roads.filter((x) => !x.person || x.person === person)) {
-    out.push(`${r.label} ${r.open ? "通行可" : "通行止"}${r.person === person ? "（家の近くの道）" : ""}`);
+    out.push(`${r.label} ${r.open ? "通行可" : "通行止"}${r.person === person ? "（家の近くの道）" : ""}${sinceWords(world, `road:${r.id}`)}`);
   }
   for (const s of world.shelters.filter((x) => !x.person || x.person === person)) {
     out.push(`${s.label} ${SHELTER_LABELS[s.state]}`);
   }
   for (const f of world.facilities.filter((x) => !x.person || x.person === person)) {
-    out.push(`${f.label} ${f.open ? "稼働" : "休止"}${f.person === person ? "（この人が通う所）" : ""}`);
+    out.push(`${f.label} ${f.open ? "稼働" : "休止"}${f.person === person ? "（この人が通う所）" : ""}${sinceWords(world, `facility:${f.id}`)}`);
   }
   // 監督の差し込み（T19）で付いたこの人の印
   const m = world.marks?.[person] ?? {};
@@ -432,6 +493,12 @@ function worldWords(world: WorldState, person: string, persona: Persona): string
   if (world.weather) out.push(world.weather === "rain" ? "大雨が続いている" : "雨は止んだ");
   out.push(...extraWorldWords(world, person)); // T92: 出来事の表の印・予定・向かっている人・届いた物・頼み事
   return out;
+}
+
+/** 持ちこたえる時間の今の段（時計が無ければ空） */
+function clockLines(persona: Persona, world: WorldState, person: string, now: number): string[] {
+  const xs = clockWords(persona, world, person, now);
+  return xs.length > 0 ? [["持ちこたえる時間の今（計算した値。言葉はこれと食い違わない）:", ...xs.map((x) => `- ${x}`)].join("\n")] : [];
 }
 
 /** この人に関わる状況（ほかの人の道路・施設は外す） */
@@ -453,6 +520,8 @@ export function tickText(input: PersonaInput, persona: Persona): string {
     ...(reason ? [reason] : []),
     incidents.length > 0 ? ["この刻みの状況:", ...incidents.map((e) => `- ${e.text}`)].join("\n") : "この刻みの状況: 新しい事はない",
     ["今の様子:", ...[...worldWords(input.world, input.person, persona), ...advisedWords(input.world, input.person)].map((x) => `- ${x}`)].join("\n"),
+    // T121: 持ちこたえる時間の今（コードの計算）。言葉はこれと食い違わない
+    ...clockLines(persona, input.world, input.person, now),
     `前の連絡: ${stateWords(input.state)}`,
     acts.length > 0 ? ["ケアマネがした事:", ...acts.map((a) => `- ${actionWords(a, persona)}`)].join("\n") : "ケアマネがした事: なし",
     input.fixed.length > 0
@@ -483,11 +552,12 @@ export const PERSONA_SYSTEM = [
   "2. 想定の表の行が無い時は、状況と前の連絡から自分で決める。連絡するのは、状況が変わってケアマネに伝えたい事がある時だけ。前と同じなら連絡しない。",
   "3. 押せるのは「押せる人」に書いた人だけ。押せる人がいなければ連絡しない。遠くに住む家族は本人の様子が分からなければ押さない。",
   "4. 本人の言葉はやさしい短い話し言葉で 1〜2 文。認知症の本人は話が噛み合わないことがある。",
-  "5. 家族は娘・息子・夫・妻の口調、支援者は近所の人の口調。本人のことは「母」「父」「うちの人」「おばあちゃん」などと言う。",
+  "5. 家族・支援者から連絡するのは「話す人」に書いた人で、途中で替えない。家族はその続柄の口調、支援者は近所の人の口調。本人のことは「話す人」に書いた呼び方で言う。",
   "6. 名前・住所・電話番号を言わない。「A さん」とも言わない。",
   "7. 「診断」「判定」「重症」と言わない。病名を言い切らない。薬の量を言わない。助言をしない。",
   "8. ケアマネの手が届いたあとの最初の連絡は、その手の結果を受けた様子を言う（来た人がいる・物が届いた・移った）。頼んだ事が済んでいなければ、また頼んでよい。",
   "9. 119 を勧められたら、かけるか・かけないかを言葉で言う（かけたかどうかは自分で決める）。救急が来た先の事は言わない。「死亡」と言わない。",
+  "10. 「今の様子」「持ちこたえる時間の今」と食い違う事を言わない（来た人・届いた物・復旧した物を、まだと言わない。切れた分を、まだ残ると言わない。いつからの状態かも合わせる）。",
 ].join("\n");
 
 /**
@@ -590,6 +660,38 @@ export function cleanPersonaWords(raw: string, key: PseudonymKey, max: number, e
   return Array.from(restorePlaces(joined, key)).slice(0, max).join("");
 }
 
+/** 話した人の話し手（家族・支援者の話し手。本人は null） */
+function speakerOf(persona: Pick<Persona, "speakers">, source: FixedTurn["source"]): Speaker | null {
+  if (source === "family") return persona.speakers?.family ?? null;
+  if (source === "supporter") return persona.speakers?.supporter ?? null;
+  return null;
+}
+
+/** 呼び方が役割名のときの話し手（通話の相手。家族・支援者の役割名なら、その人の続柄で） */
+function calleeSpeaker(persona: Pick<Persona, "reporters" | "speakers">, callee: string, sex: ClaudePerson["sex"] | null): Speaker | null {
+  const r = persona.reporters.find((x) => x.role === callee);
+  if (!r || r.source === "agent") return null;
+  const s = r.source === "family" ? persona.speakers?.family : persona.speakers?.supporter;
+  if (s && s.role === callee) return s;
+  return { role: callee, source: r.source, calls: callsFor(callee, r.source, sex) };
+}
+
+/**
+ * 話し手の続柄に合わない文を落とす（lib/drill/speaker.ts の speakerSlip）。落としたことは名前だけログに（言葉の中身は書かない）
+ */
+export function dropSlips(raw: string, speaker: Speaker | null, persona: Pick<Persona, "roles">): string {
+  if (!speaker || !raw.trim()) return raw;
+  const others = [...persona.roles.values()];
+  const kept: string[] = [];
+  let dropped = 0;
+  for (const s of sentencesOf(raw.replace(/\s+/g, " ").trim())) {
+    if (speakerSlip(s, speaker, others)) dropped += 1;
+    else kept.push(s);
+  }
+  if (dropped > 0) console.warn("話し手に合わない文を落とした", dropped);
+  return kept.join("");
+}
+
 function doingOf(answer: PersonaAnswer, key: PseudonymKey): string | null {
   const action = cleanPersonaWords(answer.action, key, DOING_MAX);
   const condition = cleanPersonaWords(answer.condition, key, DOING_MAX, CONDITION_BANNED);
@@ -639,11 +741,13 @@ export function fixedTurns(input: Pick<PersonaInput, "fixed" | "hour">): DrillTu
  * - 表の行が無い: 連絡するときだけ 1 つ。押す人が「押せる人」でなければ連絡なし。赤は 4 問、緑はいる所、いる所が分からなければ安否不明
  */
 export function personaTurns(input: PersonaInput, persona: Persona, answer: PersonaAnswer): DrillTurn[] {
-  const speech = cleanPersonaWords(answer.speech, persona.key, SPEECH_MAX);
   const doing = doingOf(answer, persona.key);
+  // 話し手に合わない文（夫・妻が本人を「母」と呼ぶ、話し手でない続柄で名乗る）を落としてから掃除する（T121）
+  const speechBy = (source: FixedTurn["source"]) => cleanPersonaWords(dropSlips(answer.speech, speakerOf(persona, source), persona), persona.key, SPEECH_MAX);
 
   if (input.fixed.length > 0) {
     const fixed = [...input.fixed].sort((a, b) => eventHour(a, input.hour) - eventHour(b, input.hour));
+    const speech = speechBy(fixed[fixed.length - 1].source);
     return fixed.map((f, i) => {
       const last = i === fixed.length - 1;
       const aiSaying = last ? speech : null;
@@ -666,6 +770,7 @@ export function personaTurns(input: PersonaInput, persona: Persona, answer: Pers
   const where = whereOf(answer.location);
   const color: SignalColor = red ? "red" : where ? "green" : "unknown";
   const a = red ? answer.redAnswers : null;
+  const speech = speechBy(reporter.source);
   return [
     {
       person: input.person,
@@ -847,6 +952,12 @@ export const CALL_SYSTEM = [
  */
 export const CallSchema = z.object({ speech: z.string(), asks: z.array(z.string()).optional() });
 
+/** 電話に出た人の本人の呼び方（「（本人を「母」と呼ぶ）」）。本人・分からない人は空（T121） */
+function calleeCalls(persona: Persona, callee: string): string {
+  const s = calleeSpeaker(persona, callee, persona.sex ?? null);
+  return s && !(s.calls.length === 1 && s.calls[0] === "本人") ? `（本人を「${s.calls.join("」「")}」と呼ぶ）` : "";
+}
+
 export function callText(call: PersonaCall, persona: Persona): string {
   return [
     `時刻: 発災から ${clockLabel(Math.round(call.hour * 60))}`,
@@ -854,7 +965,7 @@ export function callText(call: PersonaCall, persona: Persona): string {
     ["今の様子:", ...[...worldWords(call.world, call.person, persona), ...advisedWords(call.world, call.person)].map((x) => `- ${x}`)].join("\n"),
     `この刻みの状況: ${ownIncidents(call.incidents, call.person).map((e) => e.text).join("、") || "新しい事はない"}`,
     `前の連絡: ${stateWords(call.state)}`,
-    `電話に出た人: ${call.callee}`,
+    `電話に出た人: ${call.callee}${calleeCalls(persona, call.callee)}`,
     ...(call.tell ? [`伝える様子: ${tellWords(call.tell)}`] : []),
   ].join("\n");
 }
@@ -883,7 +994,9 @@ export async function personaCallReply(
   try {
     const text = pseudonymizeText(callText(call, persona), persona.key);
     const r = await askJson(buildPersonaCallRequest(persona.profile, text), ctx);
-    const speech = cleanPersonaWords(r.value.speech, persona.key, SPEECH_MAX);
+    // 電話に出た人の続柄に合わない文を落とす（T121）
+    const said = dropSlips(r.value.speech, calleeSpeaker(persona, call.callee, persona.sex ?? null), persona);
+    const speech = cleanPersonaWords(said, persona.key, SPEECH_MAX);
     return { pickup, speech, ai: speech !== null };
   } catch (e) {
     if (isPersonaFailure(e)) return { pickup, speech: null, ai: false };

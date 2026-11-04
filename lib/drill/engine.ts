@@ -64,6 +64,7 @@ import {
 } from "./clock.ts";
 import { fireScheduled } from "./schedule.ts";
 import { screenIncidents, tableAheadOf } from "./state-rules.ts";
+import { drillSeed } from "./time-odds.ts";
 import { cleanScale, fitToScale, scaleIncidents, type DrillScale } from "./scale.ts";
 import { HOME_TOWN_MAX } from "./self.ts";
 
@@ -801,6 +802,8 @@ export async function advance(
     since: Math.max(0, from),
     budget,
     ...worldExtras(state),
+    // 訓練ごとの起きやすさの種（T121、lib/drill/time-odds.ts）。開始の時刻と想定から（再生で同じ）
+    seed: drillSeed(state),
   };
   let inserted: DrillIncident[] = [];
   let directorAt = state.directorAt;

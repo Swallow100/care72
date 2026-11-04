@@ -314,10 +314,13 @@ describe("監督を呼ぶ区切りと差し込みの数", () => {
 
   it("差し込みは budget（区切り ÷ 3 時間、1〜3。T92 までは 2 で切る）", async () => {
     const d = fakeDirector([INJECT("p-01"), INJECT("p-02"), INJECT("p-03")]);
-    const s0 = await begin("heavy_rain", { director: d.hook });
+    // 0 時間の区切りは監督なしで始める（同じ人の家の電話の不通は一度きり。T121 の変わり方の決まり）
+    const s0 = await begin("heavy_rain");
     const r1 = await go(s0, 60, { director: d.hook });
     expect(r1.tick.incidents.filter((e) => e.actor === "director" && e.ai)).toHaveLength(1);
-    const r2 = await go(r1.state, 60 + 6 * 60, { director: d.hook });
+    // 同じ人の家の電話の不通は一度きり（T121 の変わり方の決まり）なので、2 回目はまだ不通でない人に差し込む
+    const d2 = fakeDirector([INJECT("p-04"), INJECT("p-05"), INJECT("p-06")], d.log);
+    const r2 = await go(r1.state, 60 + 6 * 60, { director: d2.hook });
     expect(d.log.at(-1)?.budget).toBe(2);
     expect(r2.tick.incidents.filter((e) => e.actor === "director" && e.ai)).toHaveLength(2);
     expect(budgetOf(0, 30)).toBe(1);

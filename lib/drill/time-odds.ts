@@ -153,3 +153,125 @@ export function timelineText(hour: number, opts: { with: "director" | "world" })
   });
   return [`この時間帯（${bandWords(b)}）に起きやすい事（公的な資料からの目安。決めつけない。時刻は前後してよい）:`, ...lines].join("\n");
 }
+
+// ---------- 起きやすい物と起きにくい物（T121） ----------
+// 評価の 1 回目で、同じ想定の回どうしの出来事が似て（薬局の休止・回線の不通がほとんどの回に出る）、時間帯の目安の外に出やすかった。
+// 表に行を足して直さず、監督と世界に「この時間帯に起きやすい物・起きにくい物」と「この訓練の傾向」を渡して自由さで直す。
+// 傾向は訓練ごとの種（開始の時刻と想定。再生で同じ）から揺らす。決めつけない（起きにくい物も、筋が通れば使ってよい）。
+
+/** 起きやすさを揺らす種類（訓練する人〔自分〕の種類は外す。主役は担当の人） */
+const LEANING_KINDS: ReadonlyArray<InjectKind> = [
+  "supply_left",
+  "dialysis_flooded",
+  "road_blocked",
+  "line_down",
+  "nurse_away",
+  "going_home",
+  "outage_eta",
+  "outage_spread",
+  "mobile_down",
+  "road_reopen",
+  "welfare_shelter_open",
+  "shelter_full",
+  "water_station",
+  "pharmacy_closed",
+  "helper_closed",
+  "nurse_station_closed",
+  "hospital_closed",
+  "vendor_round",
+  "family_stranded",
+  "car_sleep",
+  "no_fridge",
+  "neighbor_help",
+  "info_confusion",
+  "aftershock",
+  "landslide_warn",
+  "wandering",
+];
+
+/** 種の文字から 32 bit の数（FNV-1a） */
+export function seedNumber(seed: string): number {
+  let h = 0x811c9dc5;
+  for (const ch of seed) {
+    h ^= ch.codePointAt(0) ?? 0;
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h >>> 0;
+}
+
+/** 種から 0 以上 1 未満の数の並び（mulberry32） */
+export function seededRandom(seed: string): () => number {
+  let a = seedNumber(seed);
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/** 種で並びを混ぜる（元は変えない） */
+export function seededShuffle<T>(xs: ReadonlyArray<T>, seed: string): T[] {
+  const r = seededRandom(seed);
+  const out = [...xs];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(r() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
+/** 訓練の種（開始の時刻と想定から。同じ訓練なら同じ、訓練ごとに違う） */
+export function drillSeed(state: { startedAt: string; scenario: string }): string {
+  return `${state.scenario}|${state.startedAt}`;
+}
+
+/** 種類ごとの目安の帯（TIMELINE の kinds から。どの帯にも書いていない種類は無い） */
+const BANDS_OF: ReadonlyMap<InjectKind, ReadonlyArray<TimeBandId>> = (() => {
+  const m = new Map<InjectKind, TimeBandId[]>();
+  for (const [band, lines] of Object.entries(TIMELINE) as Array<[TimeBandId, ReadonlyArray<TimeLine>]>) {
+    for (const l of lines) for (const k of l.kinds) m.set(k, [...new Set([...(m.get(k) ?? []), band])]);
+  }
+  return m;
+})();
+
+/** この訓練で起きやすい種類と起きにくい種類（種から 3 つずつ。帯の目安とは別に、訓練ごとの流れの違い） */
+export function drillLeanings(seed: string): { more: InjectKind[]; less: InjectKind[] } {
+  const xs = seededShuffle(LEANING_KINDS, `${seed}|leaning`);
+  return { more: xs.slice(0, 3), less: xs.slice(3, 6) };
+}
+
+export type OddsLines = {
+  /** この時間帯に起きやすい種類（帯の目安。と、この訓練で起きやすい種類） */
+  likely: InjectKind[];
+  /** この時間帯に起きにくい種類（目安では別の帯の種類。と、この訓練で起きにくい種類） */
+  unlikely: InjectKind[];
+};
+
+/** 今の帯とこの訓練の種から、起きやすい・起きにくい種類（重ねない。起きやすい方が先） */
+export function oddsOf(hour: number, seed: string | null | undefined): OddsLines {
+  const band = bandOf(hour).id;
+  const listed = [...BANDS_OF.entries()];
+  const inBand = listed.filter(([, bs]) => bs.includes(band)).map(([k]) => k);
+  const outBand = listed.filter(([, bs]) => !bs.includes(band)).map(([k]) => k);
+  const lean = seed ? drillLeanings(seed) : { more: [], less: [] };
+  // 訓練の傾向は帯の目安を越えない（帯の外の種類は、この訓練で起きやすくても起きにくい側のまま）
+  const unlikely = [...new Set([...outBand, ...lean.less])];
+  const likely = [...new Set([...inBand, ...lean.more])].filter((k) => !unlikely.includes(k));
+  return { likely, unlikely };
+}
+
+/**
+ * 監督・世界に渡す起きやすさの文。監督は種類の英字、世界は words（種類 → 言葉。出来事の表の印）の言葉で。
+ * 決めつけない（起きにくい物も、筋が通れば使ってよい。使うなら時刻をずらす）
+ */
+export function oddsText(hour: number, seed: string | null | undefined, words?: (k: InjectKind) => string): string {
+  const o = oddsOf(hour, seed);
+  const say = (ks: ReadonlyArray<InjectKind>) => (ks.length > 0 ? ks.map((k) => (words ? words(k) : k)).join("、") : "なし");
+  return [
+    "起きやすさ（目安。この時間帯と、この訓練の傾向。訓練ごとに変わる）:",
+    `- 起きやすい: ${say(o.likely)}`,
+    `- 起きにくい（使うなら筋が通るときだけ、1 回まで）: ${say(o.unlikely)}`,
+  ].join("\n");
+}

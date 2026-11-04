@@ -122,9 +122,10 @@ function situation(rng: Rng, text: string): string {
   return hits.length > 0 ? rng.pick(rng.pick(hits)[1]) : rng.pick(CALM);
 }
 
-function speechOf(rng: Rng, from: string, text: string, red: boolean): string {
+function speechOf(rng: Rng, from: string, text: string, red: boolean, call?: string | null): string {
   const self = from === "本人" || from === "";
-  const subject = self ? "" : rng.pick(SUBJECTS);
+  // 話す人の本人の呼び方（本人役の説明の「話す人」の行、T121）があればそれで。無ければ決まった言い方から
+  const subject = self ? "" : call ? `${call}は` : rng.pick(SUBJECTS);
   const need = red ? rng.pick(RED_NEEDS) : rng.pick(GREEN_NEEDS);
   return `${rng.pick(OPENINGS)}${subject}${situation(rng, text)}。${need}`;
 }
@@ -153,7 +154,9 @@ function personaAnswer(rng: Rng, input: Input, opts: FakeOptions, virtual: boole
   const from = !contacts ? "" : fixed ? (pressers[0] ?? "本人") : rng.pick(pressers);
   const red = contacts && rng.chance(bad ? 0.4 : 0.12);
   const origin = tick.match(/言う事の元「([^」]*)」/)?.[1];
-  const speech = !contacts ? "" : origin && rng.chance(0.5) ? `${rng.pick(OPENINGS)}${origin}` : speechOf(rng, from, tick, red);
+  const speaker = profile.match(/家族から連絡するのは (\S+?)（本人を「([^」]+)」/);
+  const call = speaker && speaker[1] === from ? speaker[2] : null;
+  const speech = !contacts ? "" : origin && rng.chance(0.5) ? `${rng.pick(OPENINGS)}${origin}` : speechOf(rng, from, tick, red, call);
   const location = speech.includes("避難所に着き") ? "shelter" : rng.weighted<string>([["home", 6], ["shelter", 2], ["other", 1], ["unknown", 1]]);
   const yn = () => rng.weighted<boolean | null>([[true, 3], [false, 4], [null, 2]]);
   return {

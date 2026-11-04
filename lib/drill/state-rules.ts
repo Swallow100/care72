@@ -351,17 +351,25 @@ export function stateLines(world: WorldState, now: number, who: (person: string 
   }
   out.push(`電話: ${PHONE_WORDS[world.phone]}${sinceWords(world, "phone")}${holdWords(world, "phone", now, DWELL_MINUTES.phone)}`);
   if (world.water !== "none") out.push(`断水: ${world.water === "out" ? "断水中" : "解消"}${sinceWords(world, "water")}${holdWords(world, "water", now, DWELL_MINUTES.water)}`);
+  // 同じ名前・同じ状態・同じ時刻の道と施設（仮想の町の道は人ごとの id）は 1 行にまとめ、人を並べる
+  const grouped = new Map<string, { head: string; tail: string; who: string[] }>();
+  const add = (head: string, tail: string, person: string | null) => {
+    const k = `${head}|${tail}`;
+    const g = grouped.get(k) ?? { head, tail, who: [] };
+    const by = who(person);
+    if (by && !g.who.includes(by)) g.who.push(by);
+    grouped.set(k, g);
+  };
   for (const r of world.roads) {
     const key = `road:${r.id}`;
     const hold = holdWords(world, key, now, r.open ? DWELL_MINUTES.roadClose : DWELL_MINUTES.roadReopen);
-    const by = who(r.person);
-    out.push(`${r.label}${by ? `（${by}）` : ""}: ${r.open ? "通行可" : "通行止"}${sinceWords(world, key)}${hold}`);
+    add(r.label, `: ${r.open ? "通行可" : "通行止"}${sinceWords(world, key)}${hold}`, r.person);
   }
   for (const f of world.facilities) {
     const key = `facility:${f.id}`;
-    const by = who(f.person);
-    out.push(`${f.label}${by ? `（${by}）` : ""}: ${f.open ? "稼働" : "休止"}${sinceWords(world, key)}${holdWords(world, key, now, DWELL_MINUTES.facility)}`);
+    add(f.label, `: ${f.open ? "稼働" : "休止"}${sinceWords(world, key)}${holdWords(world, key, now, DWELL_MINUTES.facility)}`, f.person);
   }
+  for (const g of grouped.values()) out.push(`${g.head}${g.who.length > 0 ? `（${g.who.join("・")}）` : ""}${g.tail}`);
   for (const a of world.arrivals ?? []) {
     if (!a.arrived) continue;
     const by = who(a.person);

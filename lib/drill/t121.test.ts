@@ -37,10 +37,8 @@ function director(pick: (input: DirectorInput) => DirectorEvent[]) {
 
 const ev = (inject: DirectorEvent["inject"], extra: Partial<DirectorEvent> = {}): DirectorEvent => ({
   inject,
-  person: null,
   text: "監督の文",
   reason: "理由",
-  basis: null,
   ai: true,
   ...extra,
 });
@@ -196,5 +194,202 @@ describe("区切りの中の決まり（advance）", () => {
     s = (await advance(s, 720, { director: d.hook }, { policy: "clock" }))!.state;
     expect(s.world.roads.find((r) => r.id === "rd-p-01")?.open).toBe(true);
     expect(s.world.stamps?.["road:rd-p-01"]).toBe(12);
+  });
+});
+
+// ---------- 1. 話し手の続柄と持ちこたえる時間（本人役） ----------
+
+import { SEED_PEOPLE } from "../../seed/people.ts";
+import { callText, clockWords, buildPersona, personaTurns, PERSONA_SYSTEM, type PersonaAnswer } from "./persona.ts";
+import { callsFor, speakerSlip, speakersOf } from "./speaker.ts";
+import { contactRoles, type PseudonymInput } from "../pseudonym/index.ts";
+import type { PersonaInput } from "./engine.ts";
+
+const sourceOf = (id: string): PseudonymInput => {
+  const p = SEED_PEOPLE.find((x) => x.person.id === id)!;
+  return { person: p.person, ledger: p.ledger, contacts: p.contacts, clocks: p.clocks };
+};
+const speakersFor = (id: string) => {
+  const s = sourceOf(id);
+  return speakersOf(s.contacts, contactRoles(s.contacts), s.ledger.basic.sex);
+};
+
+describe("話し手の続柄（台帳の連絡先から）", () => {
+  it("家族の話し手は押せる人・近く住む人を先に 1 人。本人の呼び方は続柄と本人の性別から", () => {
+    expect(speakersFor("p-02").family).toMatchObject({ role: "夫", calls: ["妻", "家内", "うちの人"] });
+    // 妻（同居）・長男（市内）・長女（県外）→ 妻
+    expect(speakersFor("p-03").family).toMatchObject({ role: "妻", calls: ["主人", "夫", "うちの人"] });
+    // 娘（同居）・息子・孫 → 娘
+    expect(speakersFor("p-06").family).toMatchObject({ role: "娘", calls: ["母"] });
+    expect(speakersFor("p-05").family?.calls).toEqual(["叔母"]);
+    expect(speakersFor("p-07").family?.calls).toEqual(["兄"]);
+    expect(speakersFor("p-01").supporter).toMatchObject({ role: "支援者 1", calls: ["おばあちゃん"] });
+    expect(callsFor("孫 2", "family", "male")).toEqual(["祖父", "おじいちゃん"]);
+    expect(callsFor("いとこ", "family", "female")).toEqual(["本人"]);
+  });
+
+  it("本人役の説明に話す人の 1 行、指示の決まり 5 は話す人を替えない形", () => {
+    const persona = buildPersona(sourceOf("p-03"));
+    expect(persona.profile.text).toContain("話す人: 家族から連絡するのは 妻（本人を「主人」「夫」「うちの人」と呼ぶ）。ほかの人に替えない");
+    expect(PERSONA_SYSTEM).toContain("「話す人」に書いた人で、途中で替えない");
+    expect(PERSONA_SYSTEM).not.toContain("「母」「父」「うちの人」「おばあちゃん」などと言う");
+  });
+
+  it("話し手に合わない文: 夫・妻が本人を母・父と呼ぶ文、話し手でない続柄で名乗る文", () => {
+    const wife = speakersFor("p-03").family;
+    const others = contactRoles(sourceOf("p-03").contacts);
+    expect(speakerSlip("でも母はまだ2階にいます。", wife, others)).toBe(true);
+    expect(speakerSlip("父が水を探しています。", wife, others)).toBe(true);
+    expect(speakerSlip("長男です。", wife, others)).toBe(true);
+    expect(speakerSlip("主人は2階にいます。", wife, others)).toBe(false);
+    expect(speakerSlip("お母さんと呼ばれています。", wife, others)).toBe(false);
+    expect(speakerSlip("祖母の家に行きます。", wife, others)).toBe(false);
+    // 子の話し手が本人を母と呼ぶのはよい
+    expect(speakerSlip("母は避難所にいます。", speakersFor("p-06").family, contactRoles(sourceOf("p-06").contacts))).toBe(false);
+  });
+
+  it("表の家族の行の言葉で、話し手に合わない文だけ落とす（全部落ちれば表の言葉）", () => {
+    const persona = buildPersona(sourceOf("p-02"));
+    const input: PersonaInput = {
+      step: 1,
+      hour: 1,
+      person: "p-02",
+      world: { ...EMPTY_WORLD },
+      incidents: [],
+      state: null,
+      lastAction: null,
+      fixed: [{ person: "p-02", color: "green", source: "family", whereNow: "home", saying: "停電した" }],
+    };
+    const answer = (speech: string): PersonaAnswer => ({
+      condition: "",
+      location: "home",
+      action: "",
+      contactsCaremanager: true,
+      from: "夫",
+      pressesRed: false,
+      redAnswers: null,
+      speech,
+    });
+    expect(personaTurns(input, persona, answer("停電しました。母の機械が電池になりました。"))[0].saying).toBe("停電しました。");
+    expect(personaTurns(input, persona, answer("娘です。母は寝ています。"))[0]).toMatchObject({ saying: "停電した", ai: false });
+    expect(personaTurns(input, persona, answer("停電しました。家内の機械が電池になりました。"))[0].saying).toBe("停電しました。家内の機械が電池になりました。");
+  });
+
+  it("電話に出た人の行に本人の呼び方", () => {
+    const persona = buildPersona(sourceOf("p-06"));
+    const text = callText({ person: "p-06", hour: 3, world: { ...EMPTY_WORLD }, incidents: [], state: null, callee: "息子" }, persona);
+    expect(text).toContain("電話に出た人: 息子（本人を「母」と呼ぶ）");
+  });
+});
+
+describe("持ちこたえる時間の今（本人役に渡す計算した値）", () => {
+  const persona = buildPersona(sourceOf("p-02"));
+  const out: WorldState = applyEvent({ ...EMPTY_WORLD }, inc({ kind: "outage", area: { scope: "office" } }, 1), 1);
+
+  it("停電から減る時計: 残り、切れた時刻", () => {
+    expect(clockWords(persona, out, "p-02", 120)).toEqual([expect.stringMatching(/^.+: 残り 2 時間$/)]);
+    expect(clockWords(persona, out, "p-02", 600)[0]).toMatch(/の分は切れた（4 時間ごろ）$/);
+  });
+
+  it("停電の復旧・電源が届いた時刻からは減らない", () => {
+    const restored = applyEvent(out, inc({ kind: "outage_restored" }, 2), 2);
+    expect(clockWords(persona, restored, "p-02", 600)[0]).toMatch(/残り 2 時間。2 時間から電気で動き減っていない$/);
+    const powered: WorldState = { ...out, supplies: { "p-02": { power: 150 } } };
+    expect(clockWords(persona, powered, "p-02", 600)[0]).toMatch(/残り 1.5 時間。2 時間 30 分から電気で動き減っていない$/);
+  });
+
+  it("本人役の刻みの文に時計の段と、道・電話のいつから", async () => {
+    const { tickText } = await import("./persona.ts");
+    let w = applyEvent(out, inc({ kind: "road", id: "rd-p-02", label: "家の前の道", open: false }, 3, { person: "p-02" }), 3);
+    w = applyEvent(w, inc({ kind: "phone", state: "busy" }, 3), 3);
+    const text = tickText({ step: 2, hour: 4, person: "p-02", world: w, incidents: [], state: null, lastAction: null, fixed: [], toMinute: 240 }, persona);
+    expect(text).toContain("持ちこたえる時間の今（計算した値。言葉はこれと食い違わない）:");
+    expect(text).toContain("- 家の前の道 通行止（家の近くの道）（3 時間から）");
+    expect(text).toContain("- 電話 不安定（3 時間から）");
+  });
+});
+
+// ---------- 2. 起きやすさ（時間帯と訓練の傾向） ----------
+
+import { drillLeanings, drillSeed, oddsOf, oddsText } from "./time-odds.ts";
+import { kindAllowed } from "./director.ts";
+import { tickText as worldTickText } from "./world-oneshot.ts";
+import { pseudonymize } from "../pseudonym/index.ts";
+
+describe("起きやすい物と起きにくい物（time-odds と訓練の種）", () => {
+  it("帯の外の種類は起きにくい側（薬局の休止は 24 時間より前、回線の不通は 3〜12 時間の外）", () => {
+    const early = oddsOf(2, null);
+    expect(early.unlikely).toContain("pharmacy_closed");
+    expect(early.likely).toContain("outage_spread");
+    expect(oddsOf(30, null).likely).toContain("pharmacy_closed");
+    expect(oddsOf(30, null).unlikely).toContain("line_down");
+    expect(oddsOf(5, null).likely).toContain("line_down");
+  });
+
+  it("訓練の種で傾向が変わる（同じ種なら同じ）。帯の外の種類は傾向でも起きやすくならない", () => {
+    const seeds = Array.from({ length: 12 }, (_, i) => drillSeed({ scenario: "heavy_rain", startedAt: `2026-11-05T0${i % 10}:${10 + i}:00.000Z` }));
+    const sets = new Set(seeds.map((s) => drillLeanings(s).more.join(",")));
+    expect(sets.size).toBeGreaterThan(6);
+    expect(drillLeanings(seeds[0])).toEqual(drillLeanings(seeds[0]));
+    for (const s of seeds) {
+      const o = oddsOf(2, s);
+      expect(o.likely).not.toContain("pharmacy_closed");
+      expect(o.likely.filter((k) => o.unlikely.includes(k))).toEqual([]);
+    }
+  });
+
+  it("文は種類の英字（監督）か印の言葉（世界）", () => {
+    expect(oddsText(2, "x")).toContain("- 起きにくい（使うなら筋が通るときだけ、1 回まで）:");
+    expect(oddsText(2, "x", (k) => `〔${k}〕`)).toContain("〔pharmacy_closed〕");
+  });
+
+  it("連続の時計の監督の入力に種、10 分版（刻みの道）には付けない", async () => {
+    const d = director(() => []);
+    const s = await begin("heavy_rain", { director: d.hook });
+    expect(d.log[0].seed).toBe(drillSeed(s));
+    const { step } = await import("./engine.ts");
+    const d2 = director(() => []);
+    await step(initialState("short", TEN, START), { director: d2.hook });
+    expect(d2.log[0].seed).toBeUndefined();
+  });
+
+  it("今使われない種類は差し込める種類から外す（家の電話がもう不通・業者がもう向かっている）", () => {
+    const w: WorldState = {
+      ...EMPTY_WORLD,
+      marks: { "p-02": { lineDown: 3 } },
+      arrivals: [{ person: "p-02", role: "vendor", arrive: 600, back: null, arrived: false, from: "director" }],
+    };
+    expect(kindAllowed("line_down", "p-02", w, 5, 300)).toBe(false);
+    expect(kindAllowed("line_down", "p-03", w, 5, 300)).toBe(true);
+    expect(kindAllowed("vendor_round", "p-02", w, 5, 300)).toBe(false);
+  });
+
+  it("世界の刻みの文に起きやすさと今の状態（仮名と町の別名のまま）", () => {
+    const s0 = initialState("virtual", TEN, START, { clock: true });
+    const w = applyEvent({ ...EMPTY_WORLD }, inc({ kind: "road", id: "rd-x-p-01", label: "川沿いの道", open: false }, 3, { person: "p-01" }), 3);
+    const sources = SEED_PEOPLE.map((p) => ({ person: p.person, ledger: p.ledger, contacts: p.contacts, clocks: p.clocks }));
+    const { key } = pseudonymize(sources);
+    const text = worldTickText(
+      {
+        scenario: "virtual",
+        step: 3,
+        hour: 5,
+        world: w,
+        incidents: [],
+        participants: TEN,
+        people: {},
+        actions: [],
+        since: 240,
+        seed: drillSeed(s0),
+        hints: { reached: [], clocks: [] },
+        session: null,
+        minute: 300,
+      },
+      { key },
+      4,
+      72,
+    );
+    expect(text).toContain("起きやすさ（目安。この時間帯と、この訓練の傾向。訓練ごとに変わる）:");
+    expect(text).toMatch(/- 川沿いの道（[A-Z] さん）: 通行止（3 時間から）。9 時間まで変わらない/);
   });
 });
