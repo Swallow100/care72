@@ -11,6 +11,7 @@ import { requirePage } from "@/lib/auth/server";
 import { AiStatusMark } from "@/components/ui/AiStatus";
 import { aiStatusFor } from "@/lib/claude/cloudflare";
 import { aiUsable, type AiStatus } from "@/lib/claude/status";
+import { FORMS_LIST_LABELS } from "@/lib/forms/document-list";
 import { MAPPING_LABELS as L } from "@/lib/forms/mapping";
 import { formsScope, listMappings, type MappingSummary } from "@/lib/forms/mapping-db";
 import { formatJst } from "@/lib/person";
@@ -18,11 +19,11 @@ import { formatJst } from "@/lib/person";
 // D1 を毎回読む
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = { title: "様式対応" };
+export const metadata: Metadata = { title: FORMS_LIST_LABELS.add };
 
 const SOURCE_LABELS = { image: "写真", pdf: "PDF", manual: "手作成" } as const;
 
-// 様式対応（docs/tasks/T08.md）。松山市以外の様式を写真・PDF から読み（Opus）、対応表を確かめてから差し込みに使う。
+// 様式追加（docs/tasks/T08.md の様式対応。T87 でヘッダーの「書類」の下の名前を「様式追加」に。URL は同じ）。松山市以外の様式を写真・PDF から読み（Opus）、対応表を確かめてから差し込みに使う。
 // 開けるのはケアマネの役（管理者・審査員のケアマネの役を含む）。範囲は事業所の対応表。
 // AI が使えない（未設定・上限到達）ときは読取を押せず、手作成（欄を手で足す）の道だけ残す。AI の状態は lib/claude/status.ts の 1 か所（T76）
 export default async function FormMappingListPage() {
@@ -47,7 +48,7 @@ export default async function FormMappingListPage() {
     <main className="mx-auto max-w-6xl px-4 py-4">
       <FormsTabs current="mapping" />
       <div className="mt-2 flex flex-wrap items-baseline gap-x-4 gap-y-2">
-        <h1 className="text-xl leading-8 font-bold">{L.title}</h1>
+        <h1 className="text-xl leading-8 font-bold">{FORMS_LIST_LABELS.add}</h1>
         <span className="text-sm">{principal.office.name}</span>
         <span className="text-sm">
           <span className="text-muted">対応表</span> <span className="font-bold tabular-nums">{list.length}</span>
@@ -126,7 +127,7 @@ function Message({ title }: { title: string }) {
   return (
     <main className="mx-auto max-w-6xl px-4 py-4">
       <FormsTabs current="mapping" />
-      <h1 className="mt-2 text-xl leading-8 font-bold">{L.title}</h1>
+      <h1 className="mt-2 text-xl leading-8 font-bold">{FORMS_LIST_LABELS.add}</h1>
       <p className="mt-2 text-sm">{title}</p>
     </main>
   );
