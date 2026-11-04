@@ -754,11 +754,15 @@ function HazardTiles({ tiles, shown }: { tiles: TileSpot[]; shown: readonly Haza
   );
 }
 
+/** 雨の輪の点の座標（枠の px）を 0.1px に丸める */
+const rainPx = (n: number) => Math.round(n * 10) / 10;
+
 /**
  * 雨雲のデモ（淡い青灰の面と、細く短い雨の筋。lib/map/demo.ts の RAIN_STYLE・rainStreaks）。枠の大きさの座標で描く。
  * 面は縁をぼかして雲の形に、筋は帯の形のまま。帯は入れ子なので、強い所ほど面が濃く筋が詰む。色はライトとダークで同じ
  * （下の地図はダークでも明るい）。くり返しの 1 枚の始まりを強さごとにずらし、3 つの帯の筋が同じ所に並ばないようにする。
- * 輪は訓練の筋書きの雨（lib/map/drill-rain.ts）: 帯の段と、帯のまわりの小さな雨（弱）。筋のくり返しの 1 枚は強さごとに 1 つ
+ * 輪は訓練の筋書きの雨（lib/map/drill-rain.ts）: 帯の段と、帯のまわりの小さな雨（弱）。筋のくり返しの 1 枚は強さごとに 1 つ。
+ * 点は 0.1px に丸める（サーバーと手元で投影の計算の最後の桁が違い、丸めないと描き直しの食い違いになった。T103）
  */
 function Rain({ demo, view, size }: { demo: DemoOverlay; view: View; size: Size }) {
   const rainId = useId();
@@ -766,7 +770,7 @@ function Rain({ demo, view, size }: { demo: DemoOverlay; view: View; size: Size 
   const strengths = [...new Set(demo.rain.map((b) => b.strength))].sort();
   const px = (p: GeoPoint) => {
     const at = place(view, p, size);
-    return `${(at.left / 100) * size.w},${(at.top / 100) * size.h}`;
+    return `${rainPx((at.left / 100) * size.w)},${rainPx((at.top / 100) * size.h)}`;
   };
   return (
     <svg

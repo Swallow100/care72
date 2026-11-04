@@ -273,6 +273,14 @@ describe("場面と画面", () => {
     expect(html).toContain('data-toggle="rain"');
   });
 
+  it("輪の点は 0.1px に丸める（サーバーと手元の投影の最後の桁の違いで描き直しが食い違わない）", () => {
+    const demo = demoOverlay({ kind: "heavy_rain", level: 4, drill: { track: HEAVY_RAIN_TRACK, hour: 3, anchor: ANCHOR } });
+    const html = renderToStaticMarkup(createElement(CaseMap, { pins: [], layers: [], demo, unplaced: 0 }));
+    const nums = [...html.matchAll(/<polygon points="([^"]+)"/g)].flatMap((m) => m[1].split(/[ ,]/).map(Number));
+    expect(nums.length).toBeGreaterThan(100);
+    for (const n of nums) expect(Math.round(n * 10) / 10).toBe(n);
+  });
+
   it("訓練の仮想モードと地震は筋書きの雨を描かない", () => {
     const virtual = sideDisasterOf(rows, { kind: "heavy_rain", alertLevel: 4 }, { scene: false, rain: { scenario: "virtual", hour: 3 } })!;
     expect(virtual.scene).toBeNull();
