@@ -255,7 +255,7 @@ export function demoExtraRows(now: string, recording: SeedRecording = null): See
  */
 export const DEMO_QR = { generation: 1, issuedAt: SEED_AT, ttlDays: 180 } as const;
 
-const DEMO_QR_SQL = `UPDATE people SET qr_generation = ${DEMO_QR.generation}, qr_issued_at = '${DEMO_QR.issuedAt}', qr_ttl_days = ${DEMO_QR.ttlDays} WHERE office_id = '${DEMO_OFFICE_ID}'`;
+const DEMO_QR_SQL = `UPDATE people SET qr_generation = ${DEMO_QR.generation}, qr_issued_at = '${DEMO_QR.issuedAt}', qr_ttl_days = ${DEMO_QR.ttlDays} WHERE office_id = '${DEMO_OFFICE_ID}';`;
 
 export function demoExtraStatements(now: string, recording: SeedRecording = null): string[] {
   return [...demoExtraRows(now, recording).map((r) => insert(r.table, r.row)), DEMO_QR_SQL];
