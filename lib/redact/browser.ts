@@ -3,6 +3,8 @@
 //
 // - 写真（JPEG・PNG）: そのまま <img> で開く。向き（EXIF の回転）はブラウザが直した大きさで扱う（naturalWidth と drawImage は向きを直す）
 // - PDF: pdf.js（pdfjs-dist、Apache-2.0）で頭から PDF_PAGES_MAX 頁までを画像（PNG）にする。pdf.js は PDF を選んだときだけ読み込む
+// - Excel・Word（T119）: lib/office で印刷の頁に描いて画像（PNG）にする（OFFICE_PAGES_MAX 頁まで。送るのは人が選んだ 3 頁まで）。
+//   古い形（.xls・.doc）は読まずに legacy で返す（画面は「PDF 保存で取込」）。lib/office は選んだときだけ読み込む
 // - 送る画像: canvas に描いて（長い辺を OUTPUT_MAX_SIDE に）、ピクセルを直に黒く塗り（paintRects）、JPEG にして、付け足しを外す。
 //   canvas を通すので元の EXIF（位置・端末）は付かない。付いていても stripJpegMetadata で外す（サーバーは付いた物を断る）
 
@@ -23,19 +25,26 @@ export type RedactPage = {
   pages: number;
   /** PDF の全部の頁の数（写真は 1） */
   total: number;
+  /** Excel のシートの名前（T119。ほかは null） */
+  sheet: string | null;
+  /** 記入例・記載例のシート（T119。既定で送らない候補） */
+  example: boolean;
   url: string;
   w: number;
   h: number;
 };
 
-export type LoadResult = { pages: RedactPage[]; failed: string[] };
+/** legacy は古い形（.xls・.doc）で読まなかったファイルの名前 */
+export type LoadResult = { pages: RedactPage[]; failed: string[]; legacy: string[] };
 
 /** 中身の頭で形を決める（ブラウザの言う形は信じない） */
-async function kindOf(file: File): Promise<"image" | "pdf" | null> {
+async function kindOf(file: File): Promise<"image" | "pdf" | "zip" | "legacy" | null> {
   const b = new Uint8Array(await file.slice(0, 8).arrayBuffer());
   const head = (sig: number[]) => sig.every((x, i) => b[i] === x);
   if (head([0xff, 0xd8, 0xff]) || head([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) return "image";
   if (head([0x25, 0x50, 0x44, 0x46, 0x2d])) return "pdf";
+  if (head([0x50, 0x4b, 0x03, 0x04])) return "zip";
+  if (head([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1])) return "legacy";
   return null;
 }
 
@@ -83,6 +92,8 @@ async function pdfPages(file: File): Promise<RedactPage[]> {
         page: i,
         pages: count,
         total,
+        sheet: null,
+        example: false,
         url: URL.createObjectURL(blob),
         w: canvas.width,
         h: canvas.height,
@@ -97,10 +108,30 @@ async function pdfPages(file: File): Promise<RedactPage[]> {
   }
 }
 
-/** 選んだ写真・PDF を頁にする。読めなかった物はファイル名で返す */
+/** Excel・Word を頁の画像に（T119）。lib/office は使うときだけ読み込む */
+async function officePages(file: File): Promise<RedactPage[]> {
+  const { officeImages } = await import("../office/browser.ts");
+  const r = await officeImages(file, OUTPUT_MAX_SIDE);
+  return r.pages.map((p, i) => ({
+    id: pageId(),
+    fileName: file.name,
+    source: r.kind,
+    page: i + 1,
+    pages: r.pages.length,
+    total: r.pages.length,
+    sheet: p.sheet,
+    example: p.example,
+    url: URL.createObjectURL(p.blob),
+    w: p.w,
+    h: p.h,
+  }));
+}
+
+/** 選んだ写真・PDF・Excel・Word を頁にする。読めなかった物はファイル名で返す */
 export async function loadPages(files: readonly File[]): Promise<LoadResult> {
   const pages: RedactPage[] = [];
   const failed: string[] = [];
+  const legacy: string[] = [];
   for (const file of files) {
     try {
       const kind = file.size > 0 ? await kindOf(file) : null;
@@ -108,13 +139,17 @@ export async function loadPages(files: readonly File[]): Promise<LoadResult> {
         const url = URL.createObjectURL(file);
         try {
           const img = await imageOf(url);
-          pages.push({ id: pageId(), fileName: file.name, source: "photo", page: 1, pages: 1, total: 1, url, w: img.naturalWidth, h: img.naturalHeight });
+          pages.push({ id: pageId(), fileName: file.name, source: "photo", page: 1, pages: 1, total: 1, sheet: null, example: false, url, w: img.naturalWidth, h: img.naturalHeight });
         } catch (e) {
           URL.revokeObjectURL(url);
           throw e;
         }
       } else if (kind === "pdf") {
         pages.push(...(await pdfPages(file)));
+      } else if (kind === "zip") {
+        pages.push(...(await officePages(file)));
+      } else if (kind === "legacy") {
+        legacy.push(file.name);
       } else {
         failed.push(file.name);
       }
@@ -122,7 +157,7 @@ export async function loadPages(files: readonly File[]): Promise<LoadResult> {
       failed.push(file.name);
     }
   }
-  return { pages, failed };
+  return { pages, failed, legacy };
 }
 
 /** 画面に出した画像を片付ける */

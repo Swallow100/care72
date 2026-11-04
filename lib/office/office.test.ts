@@ -1,463 +1,422 @@
-// 利用者の追加・担当の割当・一覧から外す・ケアマネの追加（docs/tasks/T30.md）。
-// 新規の作成が事業所に閉じる、担当の割当、ケアマネの追加が管理者だけ、外す印、本人の経過と事業所の経過の記録。
-// D1 は node:sqlite（lib/db/test-d1.ts）に種の 10 人と、協力事業所の本人 1 人（テストだけ）。
+// T119: Excel・Word を印刷の頁の形にする所のテスト。架空の小さな xlsx・docx をここで作る（原本の様式は使わない）。
 
-import type { DatabaseSync } from "node:sqlite";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { seedStatements } from "../../seed/sql.ts";
-import { verifyPassword } from "../auth/password.ts";
-import { login, type Principal } from "../auth/principal.ts";
-import { personInScope } from "../auth/scope.ts";
-import { loadCaseload } from "../caseload.ts";
-import { d1FromSqlite, migratedSqlite } from "../db/test-d1.ts";
-import { loadOfficeLog, loadOfficeTowns, logLine } from "../disaster/db.ts";
-import { loadForm9 } from "../forms/form9-db.ts";
-import { loadPersonPage, timelineItems } from "../person.ts";
-import { normalizeKana, normalizeLoginId, parsePersonInput, parseStaffInput } from "./forms.ts";
-import { addCareManagerRequest, createPersonRequest, peopleBackHref, peoplePost } from "./http.ts";
-import { assignPerson, createPerson, listCareManagers, listOfficePeople, setUnlisted } from "./people.ts";
-import { officeActor } from "./scope.ts";
-import { addCareManager, generateInitialPassword } from "./staff.ts";
-import { officeEntryOf } from "./timeline.ts";
+import { deflateRawSync } from "node:zlib";
+import { describe, expect, it } from "vitest";
+import { defaultExcluded } from "../../components/person/RedactSheet.tsx";
+import { buildFormReadForm, formReadPagesOf } from "../forms/read-upload.ts";
+import { parseReadMeta, readTimelineHead } from "../intake/read-form.ts";
+import { REDACT_LABELS } from "../labels.ts";
+import { drawPage, pageSize, type Draw2d } from "./draw.ts";
+import { estimateWidth, mdwOf } from "./fonts.ts";
+import { OfficeReadError, renderOffice, sniffOffice } from "./index.ts";
+import type { OfficePage, PageItem } from "./page.ts";
+import { isLegacyOffice, isZip } from "./sniff.ts";
+import { cellRef, rangeRef, wrapLine } from "./xlsx.ts";
+import { readZip, ZipReadError } from "./zip.ts";
 
-let sqlite: DatabaseSync;
-let db: ReturnType<typeof d1FromSqlite>;
+// ---------------------------------------------------------------- 架空の zip を作る
 
-const PARTNER_PERSON = "p-partner-1";
-const TODAY = "2026-11-03";
-const AT = "2026-11-03T01:00:00.000Z";
-/** テストだけのハッシュの回数（速くする） */
-const FAST = { iterations: 1000 };
+type Entry = { name: string; data: string | Uint8Array; deflate?: boolean; flags?: number };
 
-beforeEach(() => {
-  sqlite = migratedSqlite();
-  for (const s of seedStatements()) sqlite.exec(s);
-  sqlite
-    .prepare(
-      `INSERT INTO people (id, office_id, care_manager_id, name, kana, birth_date)
-       VALUES (?, 'office-partner', 'acct-partner-cm', '架空 太郎', 'カクウ タロウ', '1940-01-01')`,
-    )
-    .run(PARTNER_PERSON);
-  db = d1FromSqlite(sqlite);
-});
-afterEach(() => sqlite.close());
-
-const DEMO = { id: "office-demo", name: "デモ事業所", kind: "demo" as const };
-const PARTNER = { id: "office-partner", name: "協力事業所", kind: "regular" as const };
-
-/** デモ事業所の山本（管理者） */
-const yamamoto = (p: Partial<Principal> = {}): Principal => ({
-  role: "care_manager",
-  judge: false,
-  admin: true,
-  accountId: "acct-yamamoto",
-  displayName: "山本",
-  office: DEMO,
-  caseloadOf: "acct-yamamoto",
-  personId: null,
-  contactId: null,
-  ...p,
-});
-
-/** 審査員のケアマネの役（管理者でない。書き手は審査員のアカウント） */
-const judgeCm = (): Principal =>
-  yamamoto({ judge: true, admin: false, accountId: "acct-judge", displayName: "山本" });
-
-/** 協力事業所のケアマネ（管理者） */
-const partnerCm = (): Principal =>
-  yamamoto({ accountId: "acct-partner-cm", displayName: null, office: PARTNER, caseloadOf: "acct-partner-cm" });
-
-const medical = (): Principal => yamamoto({ role: "medical", admin: false, accountId: null, office: null, caseloadOf: null });
-const family = (): Principal =>
-  yamamoto({ role: "family", admin: false, accountId: null, caseloadOf: null, personId: "p-01", contactId: "c-01-1" });
-
-const NEW = { name: "架空 一郎", kana: "かくう いちろう", birthDate: "1941-04-01", sex: "male", careManagerId: "acct-yamamoto" };
-
-const count = (sql: string, ...args: (string | number | null)[]) =>
-  (sqlite.prepare(sql).get(...args) as { n: number }).n;
-
-function form(fields: Record<string, string>): FormData {
-  const f = new FormData();
-  for (const [k, v] of Object.entries(fields)) f.append(k, v);
-  return f;
+function u16(n: number) {
+  return [n & 0xff, (n >> 8) & 0xff];
+}
+function u32(n: number) {
+  return [n & 0xff, (n >> 8) & 0xff, (n >> 16) & 0xff, (n >>> 24) & 0xff];
 }
 
-/** 管理者でないケアマネ（佐藤）を足して、その Principal */
-async function addSato(): Promise<{ id: string; principal: Principal; password: string }> {
-  const r = await addCareManager(db, officeActor(yamamoto())!, { displayName: "佐藤", loginId: "sato" }, AT, FAST);
-  if (!r.ok) throw new Error("足せない");
-  return {
-    id: r.account.id,
-    password: r.password,
-    principal: yamamoto({ admin: false, accountId: r.account.id, displayName: "佐藤", caseloadOf: r.account.id }),
-  };
-}
-
-async function created(p: Principal = yamamoto(), input: Record<string, string> = NEW): Promise<string> {
-  const r = await createPersonRequest(db, p, input, { at: AT, today: TODAY });
-  if (r.status !== 200) throw new Error(`作れない: ${JSON.stringify(r.body)}`);
-  return r.body.id as string;
-}
-
-describe("入力の読み方", () => {
-  it("カナはひらがな・半角カナ・全角の空白をそろえる", () => {
-    expect(normalizeKana("かくう　いちろう")).toBe("カクウ イチロウ");
-    expect(normalizeKana("ｶｸｳ ｲﾁﾛｳ")).toBe("カクウ イチロウ");
-    expect(normalizeKana("  ヤマダ   ハナ ")).toBe("ヤマダ ハナ");
-  });
-
-  it("利用者: 5 つの欄を確かめる", () => {
-    const ok = parsePersonInput(NEW, TODAY);
-    expect(ok).toEqual({
-      ok: true,
-      value: { name: "架空 一郎", kana: "カクウ イチロウ", birthDate: "1941-04-01", sex: "male", careManagerId: "acct-yamamoto" },
-    });
-    expect(parsePersonInput({ ...NEW, name: " " }, TODAY)).toEqual({ ok: false, error: "name" });
-    expect(parsePersonInput({ ...NEW, name: "あ".repeat(41) }, TODAY)).toEqual({ ok: false, error: "name" });
-    expect(parsePersonInput({ ...NEW, kana: "Kakuu" }, TODAY)).toEqual({ ok: false, error: "kana" });
-    expect(parsePersonInput({ ...NEW, birthDate: "1941-02-30" }, TODAY)).toEqual({ ok: false, error: "birth" });
-    expect(parsePersonInput({ ...NEW, birthDate: "2026-11-04" }, TODAY)).toEqual({ ok: false, error: "birth" });
-    expect(parsePersonInput({ ...NEW, birthDate: "1899-12-31" }, TODAY)).toEqual({ ok: false, error: "birth" });
-    expect(parsePersonInput({ ...NEW, sex: "" }, TODAY)).toEqual({ ok: false, error: "sex" });
-    expect(parsePersonInput({ ...NEW, careManagerId: "a b" }, TODAY)).toEqual({ ok: false, error: "care_manager" });
-    expect(parsePersonInput(null, TODAY)).toEqual({ ok: false, error: "invalid" });
-  });
-
-  it("ケアマネ: ID は小文字の半角にそろえ、審査員の ID と形の違う ID は断る", () => {
-    expect(normalizeLoginId(" Ｓａｔｏ ")).toBe("sato");
-    expect(parseStaffInput({ displayName: " 佐藤 ", loginId: "Sato.K" })).toEqual({
-      ok: true,
-      value: { displayName: "佐藤", loginId: "sato.k" },
-    });
-    expect(parseStaffInput({ displayName: "佐藤", loginId: "judge" })).toEqual({ ok: false, error: "login_id" });
-    expect(parseStaffInput({ displayName: "佐藤", loginId: "ab" })).toEqual({ ok: false, error: "login_id" });
-    expect(parseStaffInput({ displayName: "佐藤", loginId: "さとう" })).toEqual({ ok: false, error: "login_id" });
-    expect(parseStaffInput({ displayName: "", loginId: "sato" })).toEqual({ ok: false, error: "display_name" });
-  });
-
-  it("初期パスワードは 12 字＋区切りで、見分けにくい字を使わず、毎回違う", () => {
-    const a = generateInitialPassword();
-    expect(a).toMatch(/^[a-hjkmnp-z2-9]{4}-[a-hjkmnp-z2-9]{4}-[a-hjkmnp-z2-9]{4}$/);
-    expect(a).not.toMatch(/[01ilo]/);
-    expect(new Set(Array.from({ length: 20 }, generateInitialPassword)).size).toBe(20);
-  });
-});
-
-describe("利用者追加", () => {
-  it("ケアマネで作ると、未作成で担当一覧に 11 人目が出て、本人のページが開ける", async () => {
-    const r = await createPersonRequest(db, yamamoto(), NEW, { at: AT, today: TODAY });
-    expect(r.status).toBe(200);
-    const id = r.body.id as string;
-    expect(r.body.href).toBe(`/?open=${id}`);
-
-    const list = await loadCaseload(db, { officeId: "office-demo", careManagerId: "acct-yamamoto" }, TODAY, AT);
-    expect(list?.rows).toHaveLength(11);
-    const row = list?.rows.find((x) => x.id === id);
-    expect(row).toMatchObject({ name: "架空 一郎", kana: "カクウ イチロウ", age: 85, plan: "none", pending: 0 });
-
-    const page = await loadPersonPage(db, yamamoto(), id);
-    expect(page?.person).toMatchObject({ office_id: "office-demo", care_manager_id: "acct-yamamoto", origin: "care_manager" });
-    expect(JSON.parse(page!.person.ledger)).toMatchObject({ basic: { sex: "male" }, pending: [] });
-    // 同意は全部「未確認」の行で入る（T69a。時刻は足した時刻、記録した人は空）
-    expect(page?.consents.map((c) => [c.kind, c.status, c.recorded_by, c.recorded_at]).sort()).toEqual(
-      [
-        ["ai_overseas", "unconfirmed", null, AT],
-        ["medical", "unconfirmed", null, AT],
-        ["plan_share", "unconfirmed", null, AT],
-        ["registry", "unconfirmed", null, AT],
-        ["supporters", "unconfirmed", null, AT],
-      ],
+function makeZip(entries: Entry[]): Uint8Array {
+  const enc = new TextEncoder();
+  const local: number[] = [];
+  const central: number[] = [];
+  for (const e of entries) {
+    const raw = typeof e.data === "string" ? enc.encode(e.data) : e.data;
+    const body = e.deflate === false ? raw : new Uint8Array(deflateRawSync(raw));
+    const method = e.deflate === false ? 0 : 8;
+    const name = enc.encode(e.name);
+    const offset = local.length;
+    const head = [...u32(0x04034b50), ...u16(20), ...u16(e.flags ?? 0), ...u16(method), ...u16(0), ...u16(0), ...u32(0), ...u32(body.length), ...u32(raw.length), ...u16(name.length), ...u16(0)];
+    local.push(...head, ...name, ...body);
+    central.push(
+      ...u32(0x02014b50), ...u16(20), ...u16(20), ...u16(e.flags ?? 0), ...u16(method), ...u16(0), ...u16(0), ...u32(0), ...u32(body.length), ...u32(raw.length),
+      ...u16(name.length), ...u16(0), ...u16(0), ...u16(0), ...u16(0), ...u32(0), ...u32(offset), ...name,
     );
+  }
+  const eocd = [...u32(0x06054b50), ...u16(0), ...u16(0), ...u16(entries.length), ...u16(entries.length), ...u32(central.length), ...u32(local.length), ...u16(0)];
+  return new Uint8Array([...local, ...central, ...eocd]);
+}
+
+const CT_XLSX = `<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/></Types>`;
+const CT_DOCX = `<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>`;
+const NS_S = `xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"`;
+const NS_W = `xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape"`;
+
+type SheetSpec = { name: string; xml: string; state?: string; rels?: string; extra?: Entry[] };
+
+function xlsx(sheets: SheetSpec[], opts: { styles?: string; shared?: string[]; defined?: string } = {}): Uint8Array {
+  const wb = `<workbook ${NS_S}><sheets>${sheets.map((s, i) => `<sheet name="${s.name}" sheetId="${i + 1}" r:id="rId${i + 1}"${s.state ? ` state="${s.state}"` : ""}/>`).join("")}</sheets>${opts.defined ? `<definedNames>${opts.defined}</definedNames>` : ""}</workbook>`;
+  const rels = `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${sheets
+    .map((_, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`)
+    .join("")}<Relationship Id="rS" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/><Relationship Id="rT" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/></Relationships>`;
+  const styles =
+    opts.styles ??
+    `<styleSheet ${NS_S}><fonts><font><sz val="11"/><name val="游ゴシック"/></font></fonts><fills><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFD9D9D9"/></patternFill></fill></fills>` +
+      `<borders><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"><color auto="1"/></left><right style="thin"><color auto="1"/></right><top style="thin"><color auto="1"/></top><bottom style="thin"><color auto="1"/></bottom><diagonal/></border></borders>` +
+      `<cellXfs><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/><xf numFmtId="0" fontId="0" fillId="0" borderId="1"/><xf numFmtId="0" fontId="0" fillId="2" borderId="1"><alignment horizontal="distributed" vertical="center"/></xf></cellXfs></styleSheet>`;
+  const shared = `<sst ${NS_S}>${(opts.shared ?? []).map((s) => `<si>${s}</si>`).join("")}</sst>`;
+  return makeZip([
+    { name: "[Content_Types].xml", data: CT_XLSX },
+    { name: "xl/workbook.xml", data: wb },
+    { name: "xl/_rels/workbook.xml.rels", data: rels },
+    { name: "xl/styles.xml", data: styles },
+    { name: "xl/sharedStrings.xml", data: shared },
+    ...sheets.flatMap((s, i) => [
+      { name: `xl/worksheets/sheet${i + 1}.xml`, data: s.xml },
+      ...(s.rels ? [{ name: `xl/worksheets/_rels/sheet${i + 1}.xml.rels`, data: s.rels }] : []),
+      ...(s.extra ?? []),
+    ]),
+  ]);
+}
+
+function sheetXml(body: { cols?: string; rows: string; merges?: string[]; setup?: string; after?: string; sheetPr?: string; fmt?: string }): string {
+  return (
+    `<worksheet ${NS_S}>${body.sheetPr ?? ""}<sheetFormatPr ${body.fmt ?? 'defaultRowHeight="18.75"'}/>${body.cols ? `<cols>${body.cols}</cols>` : ""}<sheetData>${body.rows}</sheetData>` +
+    `${body.merges ? `<mergeCells count="${body.merges.length}">${body.merges.map((m) => `<mergeCell ref="${m}"/>`).join("")}</mergeCells>` : ""}` +
+    `${body.setup ?? '<pageMargins left="0.5" right="0.5" top="0.5" bottom="0.5" header="0.3" footer="0.3"/><pageSetup paperSize="9" orientation="portrait"/>'}${body.after ?? ""}</worksheet>`
+  );
+}
+
+/** 3 列 × 3 行、全部に細い罫線。列幅 10 字、行 20pt（指定） */
+const GRID_ROWS = [1, 2, 3].map((r) => `<row r="${r}" ht="20" customHeight="1">${["A", "B", "C"].map((c) => `<c r="${c}${r}" s="1"/>`).join("")}</row>`).join("");
+
+const lines = (p: OfficePage) => p.items.filter((i): i is Extract<PageItem, { k: "line" }> => i.k === "line");
+const vx = (p: OfficePage) => [...new Set(lines(p).filter((l) => Math.abs(l.x1 - l.x2) < 1e-6).map((l) => Math.round(l.x1 * 100) / 100))].sort((a, b) => a - b);
+const hy = (p: OfficePage) => [...new Set(lines(p).filter((l) => Math.abs(l.y1 - l.y2) < 1e-6).map((l) => Math.round(l.y1 * 100) / 100))].sort((a, b) => a - b);
+const texts = (p: OfficePage) => p.items.filter((i): i is Extract<PageItem, { k: "text" }> => i.k === "text").map((t) => t.text);
+
+const PT = 25.4 / 72;
+
+// ---------------------------------------------------------------- zip
+
+describe("zip の展開（T119）", () => {
+  it("無圧縮と deflate の部品を読み、無い部品は null", async () => {
+    const zip = readZip(makeZip([{ name: "a.txt", data: "あいう", deflate: false }, { name: "b.xml", data: "<x>漢字</x>".repeat(50) }]));
+    expect(zip.names()).toEqual(["a.txt", "b.xml"]);
+    expect(await zip.text("a.txt")).toBe("あいう");
+    expect(await zip.text("b.xml")).toBe("<x>漢字</x>".repeat(50));
+    expect(await zip.bytes("none")).toBeNull();
   });
 
-  it("作った人は同じ事業所に閉じる: 協力事業所のケアマネからは見えない", async () => {
-    const id = await created();
-    expect(await personInScope(db, partnerCm(), id)).toBeNull();
-    expect(await loadPersonPage(db, partnerCm(), id)).toBeNull();
-    expect(await personInScope(db, yamamoto(), id)).not.toBeNull();
+  it("暗号化の印のある部品・zip でない物を断る", async () => {
+    const zip = readZip(makeZip([{ name: "a.txt", data: "x", flags: 1 }]));
+    await expect(zip.bytes("a.txt")).rejects.toMatchObject({ code: "encrypted" });
+    expect(() => readZip(new Uint8Array([1, 2, 3, 4, 5]))).toThrow(ZipReadError);
   });
 
-  it("担当に別の事業所のケアマネ・ケアマネでない行は選べない（何も書かない）", async () => {
-    const before = count("SELECT count(*) AS n FROM people");
-    const other = await createPersonRequest(db, yamamoto(), { ...NEW, careManagerId: "acct-partner-cm" }, { at: AT, today: TODAY });
-    expect(other).toMatchObject({ status: 400, body: { error: "care_manager", label: "担当 不正" } });
-    const judgeRow = await createPersonRequest(db, yamamoto(), { ...NEW, careManagerId: "acct-judge" }, { at: AT, today: TODAY });
-    expect(judgeRow.status).toBe(400);
-    // 協力事業所のケアマネが山本を担当にして作ることもできない（デモ事業所に入らない）
-    const cross = await createPersonRequest(db, partnerCm(), NEW, { at: AT, today: TODAY });
-    expect(cross.status).toBe(400);
-    expect(count("SELECT count(*) AS n FROM people")).toBe(before);
-    expect(count("SELECT count(*) AS n FROM timeline_entries")).toBe(0);
-    expect(count("SELECT count(*) AS n FROM office_timeline_entries")).toBe(0);
+  it("展開すると上限を超える部品は止める（目録の大きさを偽っても）", async () => {
+    const big = "0".repeat(30 * 1024 * 1024);
+    const zipBytes = makeZip([{ name: "big.xml", data: big }]);
+    // 目録の展開後の大きさを 10 に書き換える（偽りの小さな値）
+    const view = new DataView(zipBytes.buffer);
+    for (let i = zipBytes.length - 22; i >= 0; i--) {
+      if (view.getUint32(i, true) === 0x02014b50) {
+        view.setUint32(i + 24, 10, true);
+        break;
+      }
+    }
+    await expect(readZip(zipBytes).bytes("big.xml")).rejects.toMatchObject({ code: "too_large" });
   });
 
-  it("協力事業所のケアマネは自分の事業所に作れる", async () => {
-    const id = await created(partnerCm(), { ...NEW, careManagerId: "acct-partner-cm" });
-    expect(await personInScope(db, partnerCm(), id)).toMatchObject({ office_id: "office-partner" });
-    expect(await personInScope(db, yamamoto(), id)).toBeNull();
+  it("形の判定: zip・古い形（OLE）", () => {
+    expect(isZip(new Uint8Array([0x50, 0x4b, 3, 4]))).toBe(true);
+    expect(isLegacyOffice(new Uint8Array([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]))).toBe(true);
+    expect(isLegacyOffice(new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0, 0, 0]))).toBe(false);
+  });
+});
+
+describe("Excel・Word の見分け（T119）", () => {
+  it("[Content_Types].xml の本体の形で決め、古い形は legacy、ほかの zip は null", async () => {
+    expect(await sniffOffice(xlsx([{ name: "様式", xml: sheetXml({ rows: GRID_ROWS }) }]))).toEqual({ kind: "excel" });
+    expect(await sniffOffice(makeZip([{ name: "[Content_Types].xml", data: CT_DOCX }]))).toEqual({ kind: "word" });
+    expect(await sniffOffice(new Uint8Array([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1, 0, 0]))).toEqual({ kind: "legacy" });
+    expect(await sniffOffice(makeZip([{ name: "x.txt", data: "x" }]))).toBeNull();
   });
 
-  it("審査員のケアマネの役も作れる。書き手は審査員のアカウント、担当の既定は山本", async () => {
-    // 審査員はデモ事業所の管理者としてケアマネを管理できる（T79）が、事業所の地域は書けない
-    expect(officeActor(judgeCm())).toMatchObject({ authorId: "acct-judge", admin: true, placeEdit: false, defaultCareManagerId: "acct-yamamoto" });
-    const id = await created(judgeCm());
-    const t = sqlite.prepare("SELECT author_id, author_role FROM timeline_entries WHERE person_id = ?").get(id);
-    expect(t).toMatchObject({ author_id: "acct-judge", author_role: "care_manager" });
+  it("古い形・知らない zip は読まずに断る", async () => {
+    await expect(renderOffice(new Uint8Array([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1, 0, 0]))).rejects.toMatchObject({ code: "legacy" });
+    await expect(renderOffice(makeZip([{ name: "x.txt", data: "x" }]))).rejects.toBeInstanceOf(OfficeReadError);
   });
 
-  it("ケアマネの役でなければ断る: 医療班・家族は 403、ログインなしは 401", async () => {
-    expect((await createPersonRequest(db, medical(), NEW, { at: AT, today: TODAY })).status).toBe(403);
-    expect((await createPersonRequest(db, family(), NEW, { at: AT, today: TODAY })).status).toBe(403);
-    expect((await createPersonRequest(db, null, NEW, { at: AT, today: TODAY })).status).toBe(401);
-    expect(count("SELECT count(*) AS n FROM people WHERE office_id = 'office-demo'")).toBe(10);
-  });
-
-  it("本人の経過に「利用者追加 担当 山本」（台帳作成の行は重ねない）、事業所の経過に本人の名前つき", async () => {
-    const id = await created();
-    const page = await loadPersonPage(db, yamamoto(), id);
-    const items = timelineItems(page!);
-    expect(items).toEqual([
-      expect.objectContaining({ kind: "利用者追加", body: "担当 山本", who: "ケアマネ 山本", derived: false }),
+  it("マクロの部品は開かない（vbaProject.bin が壊れていても読める）", async () => {
+    const book = xlsx([{ name: "様式", xml: sheetXml({ rows: GRID_ROWS }) }]);
+    const zip = readZip(book);
+    const names = zip.names();
+    const withMacro = makeZip([
+      ...(await Promise.all(names.map(async (n) => ({ name: n, data: (await zip.bytes(n))! })))),
+      { name: "xl/vbaProject.bin", data: new Uint8Array([1, 2, 3]), deflate: false, flags: 1 },
     ]);
-    // 種の人は今まで通り「入力 台帳作成」
-    const seed = timelineItems((await loadPersonPage(db, yamamoto(), "p-01"))!);
-    expect(seed.some((x) => x.kind === "入力" && x.body === "台帳作成")).toBe(true);
-
-    const log = await loadOfficeLog(db, "office-demo");
-    expect(log).toHaveLength(1);
-    expect(log[0]).toMatchObject({ kind: "person_added", label: "利用者追加", person: "架空 一郎", body: "担当 山本", who: "山本" });
-    expect(logLine(log[0])).toMatch(/^利用者追加 架空 一郎 担当 山本 山本 /);
-    // 事業所の経過の表には本人の名前を書かない（id だけ）
-    const raw = sqlite.prepare("SELECT body, payload FROM office_timeline_entries").get() as { body: string; payload: string };
-    expect(raw.body).not.toContain("架空");
-    expect(JSON.parse(raw.payload)).toEqual({ personId: id, to: "acct-yamamoto" });
+    const r = await renderOffice(withMacro);
+    expect(r.kind).toBe("excel");
+    expect(r.pages).toHaveLength(1);
   });
 });
 
-describe("担当の割当", () => {
-  it("担当を変えると、前の担当の一覧から消え、新しい担当の一覧に出る。両方の経過に残る", async () => {
-    const sato = await addSato();
-    const r = await assignPerson(db, officeActor(yamamoto())!, { personId: "p-02", from: "acct-yamamoto", to: sato.id }, AT);
-    expect(r).toEqual({ ok: true, changed: true });
+// ---------------------------------------------------------------- Excel
 
-    const mine = await loadCaseload(db, { officeId: "office-demo", careManagerId: "acct-yamamoto" }, TODAY, AT);
-    const his = await loadCaseload(db, { officeId: "office-demo", careManagerId: sato.id }, TODAY, AT);
-    expect(mine?.rows.map((x) => x.id)).not.toContain("p-02");
-    expect(his?.rows.map((x) => x.id)).toEqual(["p-02"]);
-    expect((await listCareManagers(db, "office-demo")).map((c) => [c.name, c.people])).toEqual([
-      ["山本", 9],
-      ["西村", 0],
-      ["佐藤", 1],
+describe("Excel の頁（T119）", () => {
+  it("セルの番地と範囲", () => {
+    expect(cellRef("AB12")).toEqual({ col: 28, row: 12 });
+    expect(rangeRef("$A$1:$C$3")).toEqual({ c0: 1, c1: 3, r0: 1, r1: 3 });
+  });
+
+  it("列幅は 字数 × 既定の書体の数字の幅、行は指定の pt。余白と用紙のとおりに罫線を置く", async () => {
+    const book = xlsx([{ name: "様式", xml: sheetXml({ cols: '<col min="1" max="3" width="10" customWidth="1"/>', rows: GRID_ROWS }) }]);
+    const r = await renderOffice(book);
+    const p = r.pages[0];
+    expect(p.w).toBe(210);
+    expect(p.h).toBe(297);
+    const col = 10 * 0.5562 * 11 * PT;
+    const x0 = 0.5 * 25.4;
+    expect(vx(p)).toEqual([x0, x0 + col, x0 + 2 * col, x0 + 3 * col].map((v) => Math.round(v * 100) / 100));
+    const row = 20 * PT;
+    expect(hy(p)).toEqual([x0, x0 + row, x0 + 2 * row, x0 + 3 * row].map((v) => Math.round(v * 100) / 100));
+  });
+
+  it("結合したセルの中の罫線は描かない。字は結合の矩形に、均等割付は字ごとの位置", async () => {
+    const rows = `<row r="1" ht="20" customHeight="1"><c r="A1" s="2" t="s"><v>0</v></c><c r="B1" s="2"/><c r="C1" s="1"/></row>` + GRID_ROWS.slice(GRID_ROWS.indexOf('<row r="2"'));
+    const book = xlsx([{ name: "様式", xml: sheetXml({ cols: '<col min="1" max="3" width="10" customWidth="1"/>', rows, merges: ["A1:B1"] }) }], { shared: ["<t>氏名</t><rPh sb=\"0\" eb=\"2\"><t>シメイ</t></rPh>"] });
+    const p = (await renderOffice(book)).pages[0];
+    const col = 10 * 0.5562 * 11 * PT;
+    const x0 = 0.5 * 25.4;
+    const row1 = lines(p).filter((l) => Math.abs(l.x1 - l.x2) < 1e-6 && Math.abs(l.x1 - (x0 + col)) < 0.01);
+    // A と B の間の縦線は 2 行目から下だけ
+    expect(row1.every((l) => Math.min(l.y1, l.y2) >= x0 + 20 * PT - 0.01)).toBe(true);
+    const t = p.items.find((i) => i.k === "text");
+    expect(t && t.k === "text" && t.text).toBe("氏名");
+    expect(t && t.k === "text" && t.chars?.length).toBe(2);
+    // 塗り（灰）は結合の矩形
+    const fill = p.items.find((i) => i.k === "rect" && i.fill === "#D9D9D9");
+    expect(fill && fill.k === "rect" && Math.round(fill.w * 100)).toBe(Math.round(2 * col * 100));
+  });
+
+  it("隠したシートは描かず、記入例のシートに印。印刷範囲の外は描かない", async () => {
+    const book = xlsx(
+      [
+        { name: "様式", xml: sheetXml({ cols: '<col min="1" max="3" width="10" customWidth="1"/>', rows: GRID_ROWS }) },
+        { name: "隠し", state: "hidden", xml: sheetXml({ rows: GRID_ROWS }) },
+        { name: "記入例", xml: sheetXml({ rows: GRID_ROWS }) },
+      ],
+      { defined: `<definedName name="_xlnm.Print_Area" localSheetId="0">様式!$A$1:$B$2</definedName>` },
+    );
+    const r = await renderOffice(book);
+    expect(r.sheets.map((s) => [s.name, s.pages, s.example])).toEqual([
+      ["様式", 1, false],
+      ["隠し", 0, false],
+      ["記入例", 1, true],
     ]);
-
-    const items = timelineItems((await loadPersonPage(db, yamamoto(), "p-02"))!);
-    expect(items.at(-1)).toMatchObject({ kind: "担当変更", body: "担当 山本 → 佐藤", who: "ケアマネ 山本" });
-    // 同じ時刻のケアマネ追加の行と並びが入れ替わることがある（created_at が同じ ms なら id の順）ので、種類で引く
-    const assigned = (await loadOfficeLog(db, "office-demo")).find((e) => e.kind === "person_assigned");
-    expect(assigned).toMatchObject({ kind: "person_assigned", label: "担当変更", body: "担当 山本 → 佐藤" });
-    expect(assigned?.person).toBeTruthy();
+    // 印刷範囲 A1:B2 の線だけ（縦 3 本・横 3 本）
+    expect(vx(r.pages[0])).toHaveLength(3);
+    expect(hy(r.pages[0])).toHaveLength(3);
   });
 
-  it("管理者でないケアマネも割り当てられる（ケアマネ追加はできない）", async () => {
-    const sato = await addSato();
-    const r = await assignPerson(db, officeActor(sato.principal)!, { personId: "p-03", from: "acct-yamamoto", to: sato.id }, AT);
-    expect(r).toEqual({ ok: true, changed: true });
-    const t = sqlite
-      .prepare("SELECT author_id FROM timeline_entries WHERE person_id = 'p-03' AND kind = 'note'")
-      .get() as { author_id: string };
-    expect(t.author_id).toBe(sato.id);
+  it("手の改ページで頁を分け、頁に収まらない所は自動で分ける", async () => {
+    const many = Array.from({ length: 60 }, (_, i) => `<row r="${i + 1}" ht="20" customHeight="1"><c r="A${i + 1}" s="1"/></row>`).join("");
+    const manual = xlsx([{ name: "様式", xml: sheetXml({ rows: many.split("</row>").slice(0, 10).join("</row>") + "</row>", after: '<rowBreaks count="1" manualBreakCount="1"><brk id="4" max="16383" man="1"/></rowBreaks>' }) }]);
+    const m = await renderOffice(manual);
+    expect(m.pages).toHaveLength(2);
+    // 1 頁目は 1〜4 行（横線 5 本）
+    expect(hy(m.pages[0])).toHaveLength(5);
+    const auto = await renderOffice(xlsx([{ name: "様式", xml: sheetXml({ rows: many }) }]));
+    // 60 行 × 20pt = 1200pt、頁の中は 297mm − 1in ≒ 770pt → 2 頁
+    expect(auto.pages).toHaveLength(2);
   });
 
-  it("画面で読んだ担当と今の担当が違えば競合で、何も書かない", async () => {
-    const sato = await addSato();
-    const a = officeActor(yamamoto())!;
-    expect(await assignPerson(db, a, { personId: "p-02", from: "acct-yamamoto", to: sato.id }, AT)).toEqual({
-      ok: true,
-      changed: true,
-    });
-    const logs = count("SELECT count(*) AS n FROM office_timeline_entries");
-    // もう佐藤になっているのに「山本から」を送る
-    expect(await assignPerson(db, a, { personId: "p-02", from: "acct-yamamoto", to: "acct-yamamoto" }, AT)).toEqual({
-      ok: false,
-      error: "conflict",
-    });
-    expect(count("SELECT count(*) AS n FROM office_timeline_entries")).toBe(logs);
+  it("次のページ数に合わせて印刷: 横 1 頁に縮め、保存した倍率が小さければそちら", async () => {
+    const wide = `<row r="1" ht="20" customHeight="1">${Array.from({ length: 30 }, (_, i) => `<c r="${String.fromCharCode(65 + (i % 26))}${i >= 26 ? "" : ""}1" s="1"/>`).join("")}</row>`;
+    const cols = '<col min="1" max="30" width="10" customWidth="1"/>';
+    const fit = (scale: string) =>
+      xlsx([
+        {
+          name: "様式",
+          xml: sheetXml({ sheetPr: '<sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>', cols, rows: wide, setup: `<pageMargins left="0.5" right="0.5" top="0.5" bottom="0.5" header="0" footer="0"/><pageSetup paperSize="9" ${scale} fitToHeight="0" orientation="portrait"/>` }),
+        },
+      ]);
+    const a = await renderOffice(fit(""));
+    expect(a.pages).toHaveLength(1);
+    const right = Math.max(...vx(a.pages[0]));
+    expect(right).toBeLessThanOrEqual(210 - 12.7 + 0.01);
+    const b = await renderOffice(fit('scale="20"'));
+    expect(Math.max(...vx(b.pages[0]))).toBeLessThan(right);
   });
 
-  it("同じ担当なら何も書かない", async () => {
-    expect(
-      await assignPerson(db, officeActor(yamamoto())!, { personId: "p-02", from: "acct-yamamoto", to: "acct-yamamoto" }, AT),
-    ).toEqual({ ok: true, changed: false });
-    expect(count("SELECT count(*) AS n FROM timeline_entries")).toBe(0);
-  });
-
-  it("事業所の壁: 別の事業所のケアマネを担当にできない、別の事業所の本人は変えられない", async () => {
-    const a = officeActor(yamamoto())!;
-    expect(await assignPerson(db, a, { personId: "p-02", from: "acct-yamamoto", to: "acct-partner-cm" }, AT)).toEqual({
-      ok: false,
-      error: "care_manager",
-    });
-    expect(await assignPerson(db, a, { personId: PARTNER_PERSON, from: "acct-partner-cm", to: "acct-yamamoto" }, AT)).toEqual({
-      ok: false,
-      error: "not_found",
-    });
-    const p = officeActor(partnerCm())!;
-    expect(await assignPerson(db, p, { personId: "p-02", from: "acct-yamamoto", to: "acct-partner-cm" }, AT)).toEqual({
-      ok: false,
-      error: "not_found",
-    });
-    expect(sqlite.prepare("SELECT care_manager_id FROM people WHERE id = 'p-02'").get()).toEqual({ care_manager_id: "acct-yamamoto" });
-    expect(sqlite.prepare("SELECT care_manager_id FROM people WHERE id = ?").get(PARTNER_PERSON)).toEqual({
-      care_manager_id: "acct-partner-cm",
-    });
-  });
-
-  it("フォームの POST: 事業所の担当の表へ 303、誤りは people_error。医療班・家族は 403、ログインなしは 401", async () => {
-    const sato = await addSato();
-    const ok = await peoplePost(db, yamamoto(), form({ action: "assign", person: "p-04", from: "acct-yamamoto", to: sato.id, back: "office" }), AT);
-    expect(ok).toEqual({ status: 303, location: "/office#assign" });
-    const conflict = await peoplePost(db, yamamoto(), form({ action: "assign", person: "p-04", from: "acct-yamamoto", to: "acct-yamamoto" }), AT);
-    expect(conflict).toEqual({ status: 303, location: "/office?people_error=conflict#assign" });
-    const bad = await peoplePost(db, yamamoto(), form({ action: "delete", person: "p-04" }), AT);
-    expect(bad).toEqual({ status: 303, location: peopleBackHref("office", "bad") });
-    expect(await peoplePost(db, medical(), form({ action: "unlist", person: "p-04" }), AT)).toEqual({ status: 403 });
-    expect(await peoplePost(db, family(), form({ action: "unlist", person: "p-04" }), AT)).toEqual({ status: 403 });
-    expect(await peoplePost(db, null, form({ action: "unlist", person: "p-04" }), AT)).toEqual({ status: 401 });
+  it("フォームのチェックボックスは □ と字", async () => {
+    const extra: Entry[] = [
+      { name: "xl/ctrlProps/ctrlProp1.xml", data: '<formControlPr xmlns="http://schemas.microsoft.com/office/spreadsheetml/2009/9/main" objectType="CheckBox" checked="Checked"/>' },
+      {
+        name: "xl/drawings/vmlDrawing1.vml",
+        data: '<xml xmlns:v="urn:schemas-microsoft-com:vml" xmlns:x="urn:schemas-microsoft-com:office:excel"><v:shape id="_x0000_s1025"><v:textbox><div><font face="ＭＳ Ｐゴシック" size="180">配偶者</font></div></v:textbox><x:ClientData ObjectType="Checkbox"><x:Anchor>1, 0, 1, 0, 3, 0, 2, 0</x:Anchor></x:ClientData></v:shape></xml>',
+      },
+    ];
+    const controls = `<legacyDrawing r:id="rV"/><controls><control shapeId="1025" r:id="rC" name="Check Box 1"><controlPr><anchor><from><xdr:col xmlns:xdr="x">1</xdr:col><xdr:colOff xmlns:xdr="x">0</xdr:colOff><xdr:row xmlns:xdr="x">1</xdr:row><xdr:rowOff xmlns:xdr="x">0</xdr:rowOff></from><to><xdr:col xmlns:xdr="x">3</xdr:col><xdr:colOff xmlns:xdr="x">0</xdr:colOff><xdr:row xmlns:xdr="x">2</xdr:row><xdr:rowOff xmlns:xdr="x">0</xdr:rowOff></to></anchor></controlPr></control></controls>`;
+    const rels = `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rV" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/vmlDrawing" Target="../drawings/vmlDrawing1.vml"/><Relationship Id="rC" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/ctrlProp" Target="../ctrlProps/ctrlProp1.xml"/></Relationships>`;
+    const book = xlsx([{ name: "様式", xml: sheetXml({ cols: '<col min="1" max="3" width="10" customWidth="1"/>', rows: GRID_ROWS, after: controls }), rels, extra }]);
+    const p = (await renderOffice(book)).pages[0];
+    const check = p.items.find((i) => i.k === "check");
+    expect(check && check.k === "check" && check.checked).toBe(true);
+    expect(texts(p)).toContain("配偶者");
   });
 });
 
-describe("ケアマネ追加", () => {
-  it("管理者が足すと、ハッシュだけが表に入り、初期パスワードでログインでき、自分の担当一覧（空）が開く", async () => {
-    const r = await addCareManagerRequest(db, yamamoto(), { displayName: "佐藤", loginId: "Sato" }, AT, FAST);
-    expect(r.status).toBe(200);
-    const password = r.body.password as string;
-    const account = r.body.account as { id: string; loginId: string };
-    expect(account.loginId).toBe("sato");
+// ---------------------------------------------------------------- Word
 
-    const row = sqlite.prepare("SELECT * FROM accounts WHERE id = ?").get(account.id) as Record<string, unknown>;
-    expect(row).toMatchObject({ office_id: "office-demo", role: "care_manager", is_office_admin: 0, display_name: "佐藤", login_id: "sato" });
-    expect(row.password_hash).toMatch(/^pbkdf2-sha256:1000:/);
-    expect(await verifyPassword(password, row.password_hash as string)).toBe(true);
-    // 平文は表のどこにも無い（アカウント・経過）
-    const everything = JSON.stringify([
-      sqlite.prepare("SELECT * FROM accounts").all(),
-      sqlite.prepare("SELECT * FROM office_timeline_entries").all(),
-      sqlite.prepare("SELECT * FROM timeline_entries").all(),
-    ]);
-    expect(everything).not.toContain(password);
+function docx(body: string, opts: { settings?: string; styles?: string } = {}): Uint8Array {
+  const rels = `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>`;
+  const docRels = `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rS" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings" Target="settings.xml"/><Relationship Id="rY" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`;
+  const settings = opts.settings ?? `<w:settings ${NS_W}><w:defaultTabStop w:val="840"/><w:compat><w:compatSetting w:name="compatibilityMode" w:uri="http://schemas.microsoft.com/office/word" w:val="15"/></w:compat></w:settings>`;
+  const styles = opts.styles ?? `<w:styles ${NS_W}><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:eastAsia="ＭＳ 明朝"/><w:sz w:val="21"/></w:rPr></w:rPrDefault></w:docDefaults></w:styles>`;
+  return makeZip([
+    { name: "[Content_Types].xml", data: CT_DOCX },
+    { name: "_rels/.rels", data: rels },
+    { name: "word/_rels/document.xml.rels", data: docRels },
+    { name: "word/settings.xml", data: settings },
+    { name: "word/styles.xml", data: styles },
+    {
+      name: "word/document.xml",
+      data: `<w:document ${NS_W}><w:body>${body}<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1134" w:right="1134" w:bottom="1134" w:left="1134" w:header="567" w:footer="567" w:gutter="0"/><w:docGrid w:type="lines" w:linePitch="360"/></w:sectPr></w:body></w:document>`,
+    },
+  ]);
+}
 
-    const l = await login(db, {}, "test-secret-0123456789-0123456789-abcdef", { loginId: "sato", password }, 1_800_000_000);
-    expect(l.ok).toBe(true);
-    if (!l.ok) return;
-    expect(l.principal).toMatchObject({ role: "care_manager", admin: false, caseloadOf: account.id, office: { id: "office-demo" } });
-    const list = await loadCaseload(db, { officeId: "office-demo", careManagerId: account.id }, TODAY, AT);
-    expect(list?.rows).toEqual([]);
+const P_EXACT = (text: string) => `<w:p><w:pPr><w:spacing w:line="360" w:lineRule="exact"/></w:pPr><w:r><w:t>${text}</w:t></w:r></w:p>`;
+const BORDERS = `<w:tblBorders><w:top w:val="single" w:sz="4"/><w:left w:val="single" w:sz="4"/><w:bottom w:val="single" w:sz="4"/><w:right w:val="single" w:sz="4"/><w:insideH w:val="single" w:sz="4"/><w:insideV w:val="single" w:sz="4"/></w:tblBorders>`;
+const cell = (w: number, extra = "", text = "") => `<w:tc><w:tcPr><w:tcW w:w="${w}" w:type="dxa"/>${extra}</w:tcPr>${P_EXACT(text)}</w:tc>`;
+const row = (cells: string, h = 600, rule = "exact") => `<w:tr><w:trPr><w:trHeight w:val="${h}" w:hRule="${rule}"/></w:trPr>${cells}</w:tr>`;
+const table = (rows: string, grid = [2000, 3000, 4000]) => `<w:tbl><w:tblPr><w:tblW w:w="9000" w:type="dxa"/>${BORDERS}</w:tblPr><w:tblGrid>${grid.map((g) => `<w:gridCol w:w="${g}"/>`).join("")}</w:tblGrid>${rows}</w:tbl>`;
 
-    const log = await loadOfficeLog(db, "office-demo");
-    expect(log[0]).toMatchObject({ kind: "care_manager_added", label: "ケアマネ追加", body: "佐藤", who: "山本", person: null });
+const TW = 25.4 / 1440;
+const r2 = (v: number) => Math.round(v * 100) / 100;
+
+describe("Word の頁（T119）", () => {
+  it("表は格子の列幅と行の高さ（固定）のまま、本文の左の端から。前の段落は格子でなく固定の行間", async () => {
+    const body = P_EXACT("見出し") + table(row(cell(2000, "", "氏名") + cell(3000) + cell(4000)) + row(cell(2000) + cell(3000) + cell(4000), 800));
+    const r = await renderOffice(docx(body));
+    expect(r.kind).toBe("word");
+    const p = r.pages[0];
+    const left = 1134 * TW;
+    expect(vx(p)).toEqual([left, left + 2000 * TW, left + 5000 * TW, left + 9000 * TW].map(r2));
+    const top = 1134 * TW + 18 * PT;
+    expect(hy(p)).toEqual([top, top + 600 * TW, top + 1400 * TW].map(r2));
+    expect(texts(p)).toEqual(expect.arrayContaining(["見出し", "氏名"]));
   });
 
-  it("管理者だけ: 管理者でないケアマネ・医療班は 403、ログインなしは 401。何も足さない（審査員のケアマネの役は足せる。T79）", async () => {
-    const sato = await addSato();
-    const before = count("SELECT count(*) AS n FROM accounts");
-    const input = { displayName: "鈴木", loginId: "suzuki" };
-    expect((await addCareManagerRequest(db, sato.principal, input, AT, FAST)).status).toBe(403);
-    expect((await addCareManagerRequest(db, medical(), input, AT, FAST)).status).toBe(403);
-    expect((await addCareManagerRequest(db, null, input, AT, FAST)).status).toBe(401);
-    expect(count("SELECT count(*) AS n FROM accounts")).toBe(before);
-    // lib の入口も管理者でなければ断る
-    expect(await addCareManager(db, officeActor(sato.principal)!, input, AT, FAST)).toEqual({ ok: false, error: "forbidden" });
+  it("Word 2013 より前の互換の文書は、表の左の線をセルの左の余白（5.4pt）だけ外へ", async () => {
+    const settings = `<w:settings ${NS_W}><w:compat/></w:settings>`;
+    const p = (await renderOffice(docx(table(row(cell(2000) + cell(3000) + cell(4000))), { settings }))).pages[0];
+    expect(vx(p)[0]).toBe(r2(1134 * TW - 108 * TW));
   });
 
-  it("使われている ID・審査員の ID は断る", async () => {
-    await addSato();
-    const dup = await addCareManagerRequest(db, yamamoto(), { displayName: "佐藤 二", loginId: "SATO" }, AT, FAST);
-    expect(dup).toMatchObject({ status: 409, body: { error: "login_taken", label: "ID 使用中" } });
-    const seeded = await addCareManagerRequest(db, yamamoto(), { displayName: "山本 二", loginId: "yamamoto" }, AT, FAST);
-    expect(seeded.status).toBe(409);
-    const judge = await addCareManagerRequest(db, yamamoto(), { displayName: "審査", loginId: "judge" }, AT, FAST);
-    expect(judge).toMatchObject({ status: 400, body: { error: "login_id" } });
+  it("縦の結合の中は横線を描かない", async () => {
+    const body = table(row(cell(2000, '<w:vMerge w:val="restart"/>') + cell(3000) + cell(4000)) + row(cell(2000, "<w:vMerge/>") + cell(3000) + cell(4000)));
+    const p = (await renderOffice(docx(body))).pages[0];
+    const left = 1134 * TW;
+    const mid = 1134 * TW + 600 * TW;
+    const inner = lines(p).filter((l) => Math.abs(l.y1 - l.y2) < 1e-6 && Math.abs(l.y1 - mid) < 0.01);
+    // 真ん中の横線は 2 列目から右だけ
+    expect(inner.every((l) => Math.min(l.x1, l.x2) >= left + 2000 * TW - 0.01)).toBe(true);
   });
 
-  it("足したケアマネは事業所の中だけ: 協力事業所の管理者が足した人はデモ事業所の担当にできない", async () => {
-    const r = await addCareManager(db, officeActor(partnerCm())!, { displayName: "協力 二", loginId: "partner2" }, AT, FAST);
-    expect(r.ok).toBe(true);
-    if (!r.ok) return;
-    expect((await listCareManagers(db, "office-partner")).map((c) => c.id)).toContain(r.account.id);
-    expect((await listCareManagers(db, "office-demo")).map((c) => c.id)).not.toContain(r.account.id);
-    expect(
-      await assignPerson(db, officeActor(yamamoto())!, { personId: "p-02", from: "acct-yamamoto", to: r.account.id }, AT),
-    ).toEqual({ ok: false, error: "care_manager" });
+  it("改ページで頁を分け、入らない行は次の頁へ", async () => {
+    const brk = `<w:p><w:r><w:t>一</w:t></w:r><w:r><w:br w:type="page"/></w:r></w:p>${P_EXACT("二")}`;
+    expect((await renderOffice(docx(brk))).pages).toHaveLength(2);
+    const tall = table(Array.from({ length: 12 }, () => row(cell(2000) + cell(3000) + cell(4000), 1400)).join(""));
+    const pages = (await renderOffice(docx(tall))).pages;
+    expect(pages).toHaveLength(2);
+    // 1 頁目の表の下は本文の下（余白の上）を越えない
+    expect(Math.max(...hy(pages[0]))).toBeLessThanOrEqual(297 - 1134 * TW + 0.01);
+  });
+
+  it("頁から位置を決めたテキストボックスは、その位置の枠と字", async () => {
+    const box = `<w:p><w:r><w:drawing><wp:anchor behindDoc="0"><wp:positionH relativeFrom="page"><wp:posOffset>720000</wp:posOffset></wp:positionH><wp:positionV relativeFrom="page"><wp:posOffset>1440000</wp:posOffset></wp:positionV><wp:extent cx="1800000" cy="360000"/><a:graphic><a:graphicData><wps:wsp><wps:spPr><a:prstGeom prst="rect"/><a:ln w="9525"><a:solidFill><a:srgbClr val="000000"/></a:solidFill></a:ln></wps:spPr><wps:txbx><w:txbxContent>${P_EXACT("受付")}</w:txbxContent></wps:txbx><wps:bodyPr/></wps:wsp></a:graphicData></a:graphic></wp:anchor></w:drawing></w:r></w:p>`;
+    const p = (await renderOffice(docx(box))).pages[0];
+    const rect = p.items.find((i) => i.k === "rect" && i.stroke);
+    expect(rect && rect.k === "rect" && [r2(rect.x), r2(rect.y), r2(rect.w), r2(rect.h)]).toEqual([20, 40, 50, 10]);
+    expect(texts(p)).toContain("受付");
+  });
+
+  it("行の終わりの全角の空白では折り返さない（様式の「氏名　　　」で行が増えない）", async () => {
+    const spaces = "　".repeat(40);
+    const body = table(row(cell(2000, "", `氏名${spaces}`) + cell(3000) + cell(4000), 400, "atLeast"));
+    const p = (await renderOffice(docx(body))).pages[0];
+    const ys = hy(p);
+    // 1 行（18pt の格子の行は固定の行間なので 18pt＋余白 0）
+    expect(ys[1] - ys[0]).toBeLessThan(10);
   });
 });
 
-describe("一覧から外す", () => {
-  it("外すと担当一覧・様式 9・停電の人数から外れ、「外した人」に出る。本人のページは開ける。戻すと元に戻る", async () => {
-    const a = officeActor(yamamoto())!;
-    expect(await setUnlisted(db, a, { personId: "p-05", unlisted: true }, AT)).toEqual({ ok: true, changed: true });
+// ---------------------------------------------------------------- 描く・字の幅
 
-    const list = await loadCaseload(db, { officeId: "office-demo", careManagerId: "acct-yamamoto" }, TODAY, AT);
-    expect(list?.rows).toHaveLength(9);
-    expect(list?.rows.map((x) => x.id)).not.toContain("p-05");
-    expect(list?.unlisted).toEqual([expect.objectContaining({ id: "p-05", unlistedAt: AT })]);
-
-    const f9 = await loadForm9(db, { officeId: "office-demo" }, { today: TODAY, situation: null });
-    expect(f9?.sheet.rows.map((r) => r.id)).not.toContain("p-05");
-    expect((await loadOfficeTowns(db, "office-demo")).reduce((n, t) => n + t.count, 0)).toBe(9);
-    expect((await listCareManagers(db, "office-demo"))[0].people).toBe(9);
-    expect((await listOfficePeople(db, "office-demo", TODAY)).find((p) => p.id === "p-05")?.unlistedAt).toBe(AT);
-
-    // 消していない: 本人のページは開ける
-    expect(await loadPersonPage(db, yamamoto(), "p-05")).not.toBeNull();
-    expect(count("SELECT count(*) AS n FROM people WHERE id = 'p-05'")).toBe(1);
-
-    // 同じ印をもう一度は何も書かない
-    expect(await setUnlisted(db, a, { personId: "p-05", unlisted: true }, AT)).toEqual({ ok: true, changed: false });
-
-    const later = "2026-11-03T02:00:00.000Z";
-    expect(await setUnlisted(db, a, { personId: "p-05", unlisted: false }, later)).toEqual({ ok: true, changed: true });
-    const back = await loadCaseload(db, { officeId: "office-demo", careManagerId: "acct-yamamoto" }, TODAY, later);
-    expect(back?.rows).toHaveLength(10);
-    expect(back?.unlisted).toEqual([]);
-
-    const items = timelineItems((await loadPersonPage(db, yamamoto(), "p-05"))!);
-    expect(items.slice(-2).map((x) => x.kind)).toEqual(["一覧除外", "一覧復帰"]);
-    const log = await loadOfficeLog(db, "office-demo");
-    expect(log.map((x) => x.kind)).toEqual(["person_relisted", "person_unlisted"]);
-    expect(log.every((x) => x.person !== null)).toBe(true);
-  });
-
-  it("担当一覧の「外した人」から戻すと担当一覧へ 303。別の事業所の本人は外せない", async () => {
-    const a = officeActor(yamamoto())!;
-    await setUnlisted(db, a, { personId: "p-05", unlisted: true }, AT);
-    expect(await peoplePost(db, yamamoto(), form({ action: "relist", person: "p-05", back: "caseload" }), AT)).toEqual({
-      status: 303,
-      location: "/",
+describe("描く所（T119）", () => {
+  it("頁の大きさの画素と、線を倍率で描く", () => {
+    const page: OfficePage = { w: 210, h: 297, sheet: null, page: 1, items: [{ k: "line", x1: 10, y1: 20, x2: 110, y2: 20, stroke: { color: "#000000", width: 0.2 } }] };
+    const { w, h, k } = pageSize(page, 2000);
+    expect(h).toBe(2000);
+    expect(w).toBe(Math.round(210 * k));
+    const calls: string[] = [];
+    const ctx = new Proxy({} as Record<string, unknown>, {
+      get: (t, name) => (name in t ? t[name as string] : (...a: unknown[]) => calls.push(`${String(name)}(${a.map((x) => (typeof x === "number" ? Math.round(x) : x)).join(",")})`)),
+      set: (t, name, v) => {
+        t[name as string] = v;
+        return true;
+      },
     });
-    expect(await setUnlisted(db, a, { personId: PARTNER_PERSON, unlisted: true }, AT)).toEqual({ ok: false, error: "not_found" });
-    expect(sqlite.prepare("SELECT unlisted_at FROM people WHERE id = ?").get(PARTNER_PERSON)).toEqual({ unlisted_at: null });
+    drawPage(ctx as unknown as Draw2d, page, k);
+    expect(calls).toContain(`moveTo(${Math.round(10 * k)},${Math.round(20 * k)})`);
+    expect(calls).toContain(`lineTo(${Math.round(110 * k)},${Math.round(20 * k)})`);
   });
 
-  it("本人の経過の行は source office で読める（kind は note のまま）", async () => {
-    await setUnlisted(db, officeActor(yamamoto())!, { personId: "p-06", unlisted: true }, AT);
-    const row = sqlite.prepare("SELECT kind, payload FROM timeline_entries WHERE person_id = 'p-06'").get() as {
-      kind: "note";
-      payload: string;
-    };
-    expect(row.kind).toBe("note");
-    expect(officeEntryOf(row)).toEqual({ source: "office", action: "unlisted" });
+  it("字の幅の見積もり・折り返し・数字の幅", () => {
+    const f = { family: "serif", size: 4 };
+    expect(estimateWidth("あいう", f)).toBe(12);
+    expect(wrapLine("あいうえおかきくけこ", 13, (t) => estimateWidth(t, f))).toEqual(["あいう", "えおか", "きくけ", "こ"]);
+    expect(wrapLine("あいう、えお", 12, (t) => estimateWidth(t, f))[1].startsWith("、")).toBe(false);
+    expect(mdwOf("Calibri", 11)).toBe(7);
   });
 });
 
-describe("種の入れ直し", () => {
-  it("足した人・ケアマネ・経過・外した印は種の入れ直しで消える", async () => {
-    await created();
-    await addSato();
-    await setUnlisted(db, officeActor(yamamoto())!, { personId: "p-05", unlisted: true }, AT);
-    for (const s of seedStatements()) sqlite.exec(s);
-    expect(count("SELECT count(*) AS n FROM people")).toBe(10);
-    expect(count("SELECT count(*) AS n FROM accounts WHERE office_id = 'office-demo'")).toBe(3);
-    expect(count("SELECT count(*) AS n FROM office_timeline_entries")).toBe(0);
-    expect(count("SELECT count(*) AS n FROM people WHERE unlisted_at IS NOT NULL")).toBe(0);
+// ---------------------------------------------------------------- 送る形・画面
+
+describe("送る形と頁の選び方（T119）", () => {
+  it("Excel・Word の頁は PDF と同じく 3 頁まで、経過の頭は元の形の名前", () => {
+    expect(parseReadMeta({ source: "excel", page: "3", redacted: "0", bare: "1" })).toEqual({ source: "excel", page: 3, redacted: 0 });
+    expect(parseReadMeta({ source: "word", page: "4", redacted: "1", bare: null })).toBeNull();
+    expect(parseReadMeta({ source: "photo", page: "2", redacted: "1", bare: null })).toBeNull();
+    expect(readTimelineHead({ source: "excel", page: 2, redacted: 1 })).toBe("Excel を読んだ（2 頁目・隠した所 1 か所）");
+    expect(readTimelineHead({ source: "word", page: 1, redacted: 0 })).toBe("Word を読んだ（1 頁目・隠した所 0 か所）");
+  });
+
+  it("様式の読取の受け口は Excel の頁の並びを受ける", () => {
+    const blob = new Blob([new Uint8Array([0xff, 0xd8, 0xff])], { type: "image/jpeg" });
+    const form = buildFormReadForm([1, 2].map((page) => ({ blob, meta: { source: "excel" as const, page, redacted: 0 }, bare: true })));
+    const got = formReadPagesOf(form);
+    expect(got.ok && got.pages.map((p) => p.meta.source)).toEqual(["excel", "excel"]);
+  });
+
+  it("4 頁以上の既定: 記入例のシートを外して頭の 3 頁", () => {
+    const pages = [
+      { id: "a", example: true },
+      { id: "b", example: true },
+      { id: "c", example: false },
+      { id: "d", example: false },
+      { id: "e", example: false },
+      { id: "f", example: false },
+    ];
+    expect([...defaultExcluded(pages)].sort()).toEqual(["a", "b", "f"]);
+    expect([...defaultExcluded(pages.slice(0, 3))]).toEqual([]);
+    expect([...defaultExcluded(pages.map((p) => ({ ...p, example: true })))].sort()).toEqual(["d", "e", "f"]);
+  });
+
+  it("画面の言葉は短い（PDF 保存で正確・旧形式）", () => {
+    expect(REDACT_LABELS.officeHint).toContain("PDF 保存");
+    expect(REDACT_LABELS.legacy).toContain("旧形式");
   });
 });

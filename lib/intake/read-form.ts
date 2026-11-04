@@ -9,11 +9,15 @@
 // ブラウザも読むので、サーバーだけの物（中身の確かめ、node:buffer）は lib/intake/read-check.ts に置く。
 
 
-export const READ_SOURCES = ["photo", "pdf"] as const;
+/** 元の形。excel・word は T119（ブラウザで頁の画像に描いた物。送るのは PDF と同じく頁の画像） */
+export const READ_SOURCES = ["photo", "pdf", "excel", "word"] as const;
 export type ReadSource = (typeof READ_SOURCES)[number];
 
-/** PDF から画像にする頁の上限（1 頁 1 要求 1 回。ai_calls の 1 日の上限を食いすぎない） */
+/** PDF から画像にする頁の上限（1 頁 1 要求 1 回。ai_calls の 1 日の上限を食いすぎない）。Excel・Word の頁も同じ */
 export const PDF_PAGES_MAX = 3;
+
+/** 頁の並ぶ元（PDF・Excel・Word）か。写真は 1 枚 1 頁 */
+export const isPagedSource = (s: ReadSource) => s !== "photo";
 /** 1 回に選べる写真・PDF の数 */
 export const READ_FILES_MAX = 5;
 /** 1 頁に塗れる四角の数の上限（送る印の検査） */
@@ -40,7 +44,7 @@ type MetaValues = { source: FormDataEntryValue | null; page: FormDataEntryValue 
 export function parseReadMeta(v: MetaValues): ReadMeta | null {
   const source = v.source;
   if (typeof source !== "string" || !(READ_SOURCES as readonly string[]).includes(source)) return null;
-  const page = int(v.page, 1, source === "pdf" ? PDF_PAGES_MAX : 1);
+  const page = int(v.page, 1, source === "photo" ? 1 : PDF_PAGES_MAX);
   const redacted = int(v.redacted, 0, REDACTED_MAX);
   if (page === null || redacted === null) return null;
   if (redacted === 0 && v.bare !== BARE_MARK) return null;
@@ -69,8 +73,10 @@ export function buildReadForm(personId: string, image: Blob, meta: ReadMeta, opt
   return form;
 }
 
-/** 経過の本文の頭（「写真を読んだ（隠した所 3 か所）」「PDF を読んだ（2 頁目・隠した所 1 か所）」） */
+const SOURCE_NAMES: Record<ReadSource, string> = { photo: "写真", pdf: "PDF", excel: "Excel", word: "Word" };
+
+/** 経過の本文の頭（「写真を読んだ（隠した所 3 か所）」「PDF を読んだ（2 頁目・隠した所 1 か所）」「Excel を読んだ（1 頁目・…）」） */
 export function readTimelineHead(meta: ReadMeta): string {
-  const what = meta.source === "pdf" ? `PDF を読んだ（${meta.page} 頁目・` : "写真を読んだ（";
+  const what = meta.source === "photo" ? "写真を読んだ（" : `${SOURCE_NAMES[meta.source]} を読んだ（${meta.page} 頁目・`;
   return `${what}隠した所 ${meta.redacted} か所）`;
 }
