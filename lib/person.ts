@@ -74,10 +74,12 @@ import {
   stateLabel,
   STRUCTURE_LABELS,
   SUPPORT_KIND_LABELS,
+  TRANSPORT_KIND_LABELS,
   TIER_LABELS,
   TIMELINE_KIND_LABELS,
 } from "./labels.ts";
 import { toTriagePerson } from "./triage/from-ledger.ts";
+import { transportKindOf } from "./map/transport.ts";
 import { clockRemaining, formatHours, tierOf, type Color, type Situation, type Tier, type TriageClock, type TriageResult } from "./triage/index.ts";
 import { personSituation, type DisasterSituation } from "./disaster/state.ts";
 import type { PersonBrief } from "./auth/scope.ts";
@@ -701,7 +703,7 @@ function evacuationBlocks(ledger: Ledger): Block[] {
     row("evacuation.destination2", textField(e.destination2)),
     // 在宅避難の印（T37）。無ければ避難所へ（「なし」）
     row("evacuation.stayHome", e.stayHome === true ? { kind: "lines", lines: [[text("あり")]] } : { kind: "none" }),
-    row("evacuation.transport", textField(e.transport)),
+    row("evacuation.transport", transportField(e)),
     row("evacuation.support", supportField(e)),
     row("evacuation.route", textField(e.route)),
     row("evacuation.barriers", textField(e.barriers)),
@@ -711,6 +713,18 @@ function evacuationBlocks(ledger: Ledger): Block[] {
     row("evacuation.pets", textField(e.pets)),
     row("evacuation.myTimeline", textField(e.myTimeline ? MY_TIMELINE_LABELS[e.myTimeline] : null)),
   ].map((r): Block => ({ type: "row", row: r }));
+}
+
+/**
+ * 手段（T112）: 選ぶ欄と書き足し（支援の内容と同じ形）。選ぶ欄の無い古い台帳は文字から読み替えた選ぶ欄と、その文字を書き足しに。
+ * 書き足しが選ぶ欄の言葉と同じなら出さない
+ */
+function transportField(e: Ledger["evacuation"]): Field {
+  const kind = transportKindOf(e);
+  const note = e.transport?.trim() ?? "";
+  if (!kind) return note ? { kind: "lines", lines: [[text(note)]] } : { kind: "unconfirmed" };
+  const label = TRANSPORT_KIND_LABELS[kind];
+  return { kind: "lines", lines: [[text(label), ...(note && note !== label ? [muted(note)] : [])]] };
 }
 
 /** 支援の内容: 選んだ物と書き足し。選んだ物が空の配列なら「なし」 */

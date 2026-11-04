@@ -21,6 +21,7 @@ import { parseLedger } from "../db/ledger.ts";
 import { CONTACT_KIND_LABELS } from "../labels.ts";
 import type { PersonPageRows } from "../person.ts";
 import { easy, kanjiWithoutRuby, nameWithKana, plainText, yomi, type Word } from "./easy-words.ts";
+import { transportText } from "../map/transport.ts";
 
 export type { Word } from "./easy-words.ts";
 
@@ -192,7 +193,7 @@ export function buildOwnSheet(rows: PersonPageRows, opts: OwnBuildOptions): OwnS
   const where: OwnLine[] = [];
   if (evacuation.destination1) {
     where.push({ key: "where.place", words: v(evacuation.destination1).map((w) => ({ ...w, strong: true })), tone: "lead" });
-    const transport = evacuation.transport?.trim();
+    const transport = transportText(evacuation)?.trim();
     if (transport) {
       where.push({ key: "where.means", words: transport === "徒歩" ? p("walk") : [...v(transport), ...p("go")] });
     }

@@ -346,6 +346,13 @@ export type GeoPoint = { lat: number; lng: number };
 export const ROUTE_MODES = ["foot", "car"] as const;
 export type RouteMode = (typeof ROUTE_MODES)[number];
 
+/**
+ * 避難の手段の選ぶ欄（T112）: 徒歩・車いす・家族の車・送迎・その他。書き足しは evacuation.transport（補記）。
+ * 経路地図の手段は選んだ物から決める（lib/map/transport.ts の routeModeOf）
+ */
+export const TRANSPORT_KINDS = ["foot", "wheelchair", "family_car", "pickup", "other"] as const;
+export type TransportKind = (typeof TRANSPORT_KINDS)[number];
+
 /** 経路の線の出どころ（T102）: ors は openrouteservice が引いた線、hand は家・経由の点・避難先を直線で結んだ線 */
 export const ROUTE_SOURCES = ["ors", "hand"] as const;
 export type RouteSource = (typeof ROUTE_SOURCES)[number];
@@ -453,6 +460,9 @@ export type Ledger = {
     route?: string;
     /** 段差・エレベーター */
     barriers?: string;
+    /** 手段の選ぶ欄（T112）。無い古い台帳は transport の文字から読み替える（lib/map/transport.ts の transportKindOf） */
+    transportKind?: TransportKind;
+    /** 手段の書き足し（娘の車・杖 など）。T112 の前は手段そのものの文字 */
     transport?: string;
     pets?: string;
     carryItems?: string[];

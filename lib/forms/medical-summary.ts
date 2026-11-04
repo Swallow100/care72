@@ -75,6 +75,7 @@ import {
   type PieceLine,
 } from "./matsuyama.ts";
 import { wareki, warekiDate } from "./wareki.ts";
+import { transportText } from "../map/transport.ts";
 
 /** 災害診療記録 2018 の出典の id（登録簿 lib/sources） */
 export const SAIGAI_KIROKU_SOURCE: SourceId = "saigai-kiroku-2018";
@@ -745,7 +746,7 @@ export function buildMedicalSummary(rows: PersonPageRows, opts: MedicalBuildOpti
   const first: Cell = evacuation.destination1
     ? value([
         strong(evacuation.destination1),
-        ...(evacuation.transport ? [sub("移動"), t(evacuation.transport)] : [sub("移動"), unconfirmedPiece()]),
+        ...(transportText(evacuation) ? [sub("移動"), t(transportText(evacuation)!)] : [sub("移動"), unconfirmedPiece()]),
       ])
     : unconfirmed(firstReason);
   const second: Cell = evacuation.destination2 ? value([strong(evacuation.destination2)]) : unconfirmed(secondReason);
