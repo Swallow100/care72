@@ -265,7 +265,7 @@ export const SCENES: Scene[] = [
         kind: "carousel",
         footages: ["R03", "R07", "R10"],
         // R03 は様式の頭（R03-3 の 0 秒から。4 秒ほどで下へ送る）、R10 は山田の行が至急で一番上に上がったあと（R10-3 の 49.6 秒）
-        froms: [0, 0, 50.9],
+        froms: [0, 7.2, 50.9],
         lines: ["計画", "訓練", "発災時"],
         cues: [
           { text: "計画", line: "N08", say: "計画ができ", slot: "mark" },
@@ -295,7 +295,10 @@ export const SCENES: Scene[] = [
           { x: 0.21, y: 0.07, w: 0.45 },
         ],
       },
-      { at: 51, end: 58, kind: "footage", footage: "R02", from: 8, label: "入れる欄: 話す → 欄が埋まる → 問い返し", chip: "Claude Sonnet 5.5" },
+      // 入れる欄（R02-5、11/5 に手元の dev で撮った）。N11 の 3 つの句に合わせて 3 つの絵に。右の 2 列（本人の台帳と AI 入力）に寄る
+      { at: 51, end: 53.2, kind: "footage", footage: "R02", from: 25.5, label: "入れる欄: 話した文が欄に流れる", zoom: [{ x: 0.38, y: 0.15, w: 0.62 }, { x: 0.4, y: 0.17, w: 0.6 }] },
+      { at: 53.2, end: 55.2, kind: "footage", footage: "R02", from: 37.3, label: "入れる欄: Sonnet が台帳の 3 項目に分ける", chip: "Claude Sonnet 5.5", zoom: [{ x: 0.4, y: 0.17, w: 0.6 }, { x: 0.42, y: 0.18, w: 0.58 }] },
+      { at: 55.2, end: 58, kind: "footage", footage: "R02", from: 66.3, label: "入れる欄: 保存と、空いている所だけの問い返し", chip: "Claude Sonnet 5.5", zoom: [{ x: 0.4, y: 0, w: 0.6 }, { x: 0.42, y: 0.01, w: 0.58 }] },
       { at: 58, end: 64, kind: "flow", footages: ["R03", "R04", "R05"], label: "台帳から 3 つの紙面" },
       {
         at: 64,
@@ -307,7 +310,8 @@ export const SCENES: Scene[] = [
         label: "医療班の要約: 特記事項（常用薬等）・中断注意・メディカル ID",
         sub: "災害診療記録 2018 の順",
       },
-      { at: 70, end: 74, kind: "footage", footage: "R06", label: "様式の読み取り: 写真 → 対応表", chip: "Claude Opus 5.5" },
+      // 様式の読み取り（R06-1）。架空の「こもれび市」の白紙の様式の画像 → Opus の対応表（16.6 秒に出る）
+      { at: 70, end: 74, kind: "footage", footage: "R06", from: 15.6, label: "様式の読み取り: 写真 → 対応表", chip: "Claude Opus 5.5", zoom: [{ x: 0, y: 0, w: 1 }, { x: 0.1, y: 0.05, w: 0.8 }] },
     ],
   },
   {
@@ -317,12 +321,39 @@ export const SCENES: Scene[] = [
     at: 74,
     end: 108,
     shots: [
-      { at: 74, end: 80, kind: "footage", footage: "R07", label: "10 分版を始める。左に 10 人", chip: "Claude Haiku 5.5 × 10" },
-      { at: 80, end: 85, kind: "footage", footage: "R07", from: 20, label: "本人役・家族役の言葉が流れる" },
-      { at: 85, end: 88, kind: "footage", footage: "R07", from: 60, rate: 4, label: "72 時間の棒が早送りで進む" },
-      { at: 88, end: 93, kind: "footage", footage: "R08", emphasis: true, label: "強調: 着信 山田 ハナの娘" },
-      { at: 93, end: 99, kind: "footage", footage: "R07", from: 120, label: "7 つの手: 訪問看護に出向いてもらう" },
-      { at: 99, end: 108, kind: "footage", footage: "R09", label: "採点と講評（出典つき）", chip: "Claude Opus 5.5" },
+      // 秒は R07-2・R08-3・R09-2（11/5 に手元の dev で撮った訓練の 10 分版）の markers.json と calls.json から
+      { at: 74, end: 80, kind: "footage", footage: "R07", from: 7.0, label: "訓練の 10 分版。10 人の表と、家族からの最初の着信", chip: "Claude Haiku 5.5 × 10" },
+      // 本人役・家族役の言葉: 3 時間の刻みの高橋 ユキの家族の電話（R07-2 の 90.1 秒に着信、出ると言葉が AI の印つきで出る）
+      { at: 80, end: 85, kind: "footage", footage: "R07", from: 92.2, label: "本人役・家族役の言葉（高橋 ユキの家族の電話）", zoom: [{ x: 0.265, y: 0.115, w: 0.48 }, { x: 0.275, y: 0.12, w: 0.46 }] },
+      { at: 85, end: 88, kind: "footage", footage: "R07", from: 150.5, rate: 4, label: "72 時間を早送り" },
+      // 強調の着信は小林 トシの夫（呼吸器の電池。訓練の 2 回とも山田の娘の着信は来なかった）。1.6 秒から: 鳴る → 3.06 秒に出る → 声（video/scripts/app-audio.mjs が R08 の音を作る）
+      { at: 88, end: 93, kind: "footage", footage: "R08", from: 1.6, emphasis: true, label: "強調: 着信 小林 トシの夫（呼吸器の電池）", zoom: [{ x: 0.2, y: 0.08, w: 0.6 }, { x: 0.265, y: 0.115, w: 0.48 }] },
+      { at: 93, end: 99, kind: "footage", footage: "R07", from: 49.6, label: "手: 小林 トシに訪問依頼" },
+      // 採点（N19 の「対応の順を採点」「透析先の確認が後回し」）: 右の列の採点と条件到達に寄る。田中の透析先 未確認の行に囲み
+      {
+        at: 99,
+        end: 104.5,
+        kind: "footage",
+        footage: "R09",
+        from: 2.0,
+        label: "採点（順番・報告・空欄・条件到達）",
+        chip: "Claude Opus 5.5",
+        // 囲みの名前が窓の下の端で切れないよう、少し下に寄る（上の「採点」の見出しは切れてよい）
+        zoom: [{ x: 0.6, y: 0.15, w: 0.4 }, { x: 0.6, y: 0.16, w: 0.4 }],
+        callouts: [{ at: 3.0, box: { x: 0.745, y: 0.455, w: 0.24, h: 0.055 }, label: "透析先 未確認", tone: "urgent", place: "below" }],
+      },
+      // 講評と出典（N19 の「出典つきで指摘しました」）: 8.1 秒に講評へ送ったあと。出典の行に囲み
+      {
+        at: 104.5,
+        end: 108,
+        kind: "footage",
+        footage: "R09",
+        from: 9.0,
+        label: "講評と出典",
+        chip: "Claude Opus 5.5",
+        zoom: [{ x: 0.6, y: 0.48, w: 0.4 }, { x: 0.6, y: 0.52, w: 0.4 }],
+        callouts: [{ at: 0.3, box: { x: 0.755, y: 0.584, w: 0.17, h: 0.027 }, label: "出典", place: "below" }],
+      },
     ],
   },
   {
@@ -361,24 +392,26 @@ export const SCENES: Scene[] = [
         // 録画の 49.6 秒（絵の 3.4 秒）で山田の行が 1 番目に上がる。囲みは上がった行に（R10-3 の 50.1 秒のコマで測る）
         callouts: [{ at: 3.8, box: { x: 0.0125, y: 0.394, w: 0.975, h: 0.072 }, label: "至急 連絡順 1", tone: "urgent", place: "below" }],
       },
-      { at: 121, end: 126, kind: "footage", footage: "R12", from: 3.5, label: "本人のスマホ: 赤 → けが → 止まる → 声の問いかけ" },
-      { at: 126, end: 130, kind: "footage", footage: "R12", from: 40, emphasis: true, label: "強調: 録音と文字起こし。理由に分類（AI）" },
+      // 本人のスマホ（R12-4）: 赤 5.0 → けが ある 8.5 → 動けない 11.6 を 2.6 倍で、定型文の声の問いかけ、録音（44.6 秒から）
+      { at: 121, end: 124, kind: "footage", footage: "R12", from: 4.6, rate: 2.6, label: "本人のスマホ: 赤 → けが ある → 動けない" },
+      { at: 124, end: 126, kind: "footage", footage: "R12", from: 12.6, label: "本人のスマホ: 声の問いかけ（大丈夫ですか 状況を説明してください）" },
+      { at: 126, end: 130, kind: "footage", footage: "R12", from: 44.8, emphasis: true, label: "強調: 録音（AI が聞いている）" },
       { at: 130, end: 135, kind: "rules", label: "ルールの表の 1 枚" },
-      // 手元の録画の行の詳細には録音の分類が無い（録音は撮っていない）ので、Haiku の名前は録音の分類を撮れてから付ける
+      // 行の詳細（R14-1: 11/5 に録音から分類まで撮った回）。86.5 秒に下へ送ったあと 95 秒まで止まっている。
+      // 右の列の録音のまとめ（AI）・分類「けが・動けない」（AI、確信 90%）と修正・順番変更に寄る。N24 の 2 つの句に合わせて囲みを 1 つずつ
       {
         at: 135,
         end: 143,
         kind: "footage",
-        footage: "R10",
-        // 行の詳細が開いたあと（R10-3 の 91.3 秒で押し、95.1 秒から下へ送る）、その前の止まっている間を 0.4 倍で長く見せ、囲みを 1 つずつ出す
-        from: 91.95,
-        rate: 0.4,
-        label: "行の詳細: 分類修正・優先変更",
-        // 囲みの位置は R10-3 の 93.5 秒のコマで測る。95.1 秒から下へ送るので、囲みはその前に消す。撮り直したら測り直す
+        footage: "R14",
+        from: 87.0,
+        label: "行の詳細: 録音の分類（AI）と人の判断",
+        chip: "Claude Haiku 5.5",
+        zoom: [{ x: 0.42, y: 0.28, w: 0.58 }, { x: 0.46, y: 0.32, w: 0.54 }],
+        // 囲みの位置は R14-1 の 87 秒のコマで測る。撮り直したら測り直す
         callouts: [
-          { at: 2.9, end: 7.4, box: { x: 0.0188, y: 0.474, w: 0.153, h: 0.037 }, label: "理由", place: "below" },
-          { at: 4.2, end: 7.4, box: { x: 0.664, y: 0.523, w: 0.314, h: 0.231 }, label: "安否の経過" },
-          { at: 5.5, end: 7.4, box: { x: 0.664, y: 0.769, w: 0.314, h: 0.151 }, label: "人の判断", place: "below" },
+          { at: 0.4, box: { x: 0.665, y: 0.57, w: 0.31, h: 0.04 }, label: "AI の分類" },
+          { at: 2.4, box: { x: 0.663, y: 0.635, w: 0.315, h: 0.15 }, label: "人の判断", place: "below" },
         ],
       },
 
@@ -549,6 +582,7 @@ export const RECORDINGS: Record<string, string> = {
   R11: "家族のスマホ",
   R12: "本人のスマホ",
   R13: "医療班の受入",
+  R14: "行の詳細（録音の分類）",
   R20: "worktree と merge の線",
   R21: "見直し役",
   R22: "フックが配信を止める",
