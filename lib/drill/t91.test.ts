@@ -4,7 +4,10 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import type { DatabaseSync } from "node:sqlite";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ActionPanel } from "../../components/drill/ActionPanel.tsx";
 import { SEED_PEOPLE, type SeedPerson } from "../../seed/people.ts";
 import { seedStatements } from "../../seed/sql.ts";
 import type { Principal } from "../auth/principal.ts";
@@ -44,6 +47,8 @@ import {
 import { loadDrillScreen } from "./view.ts";
 import { drillClocks } from "./world-clocks.ts";
 import { decideWorldReply, WORLD_ODDS } from "./world-reply.ts";
+
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: () => {}, push: () => {} }) }));
 
 type Params = Anthropic.Beta.Messages.MessageCreateParamsNonStreaming;
 type Message = Anthropic.Beta.Messages.BetaMessage;
@@ -582,5 +587,27 @@ describe("自由対応", () => {
     expect(JSON.stringify(calls[0].messages)).not.toContain(other);
     expect(r.stored).toContain(other);
     expect(r.reading).toMatchObject({ kind: "visit", text: null });
+  });
+});
+
+// ---------- 6. 画面（対応の欄） ----------
+
+describe("対応の欄", () => {
+  it("18 の手を区分の 5 段（連絡・訪問・手配・報告・記録）で並べる。10 分版も同じ部品。本人を選ぶまで本人の要る手は押せない", () => {
+    const html = renderToStaticMarkup(createElement(ActionPanel, { drillId: ID, step: 0, actions: 0, people: [], contacts: {} }));
+    expect(html.match(/data-act-group="/g)).toHaveLength(5);
+    for (const g of ACTION_GROUPS) expect(html).toContain(`>${ACTION_GROUP_LABELS[g]}</h3>`);
+    const kinds = [...html.matchAll(/data-act-kind="([a-z_0-9]+)"/g)].map((m) => m[1]);
+    expect(kinds).toEqual(ACTION_CATALOG.map((r) => r.id));
+    // 本人なしで押せるのは応援依頼・行政報告・記録・退避・自由対応だけ
+    const enabled = html
+      .split("<button")
+      .map((tag) => tag.slice(0, tag.indexOf(">")))
+      .filter((tag) => tag.includes("data-act-kind=") && !tag.includes(' disabled=""'))
+      .map((tag) => /data-act-kind="([a-z_0-9]+)"/.exec(tag)![1]);
+    expect(enabled.sort()).toEqual(["evacuate_self", "free", "note", "report_city", "request_backup"]);
+    // 自由対応は分を出さない（読み替えた手の分）。文の欄は選ぶまで出さない
+    expect(html).not.toContain("data-act-free-input");
+    expect(html).not.toMatch(/ピル|rounded-full|tracking-/);
   });
 });
