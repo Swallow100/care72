@@ -3,28 +3,20 @@
 // 発災時: 地図（ピンは lib/triage の色）・状態の人数・ハザード（状態の内訳）・避難先 → 見直し → 未確認 → 計画
 // 1024px 以上で右に出し、狭い幅は畳む（SideFold）。本人のページ（?open=）が開いているときは、この面の代わりに本人のページ（app/page.tsx）。
 // 司令室の見た目にしない: 右端の 1 列で、地図は小さく（その場の拡大・縮小は T66、広く見るのは地図の「全画面」で。T46）。雨雲・震度はデモの印を付ける（components/map/CaseMap.tsx）。
+// 数と言葉で伝える（T96）: 色だけの横の帯（計画の割合・未確認の件数）と、数の前の黄の細い帯（tone-check）は置かない。
+// 人数は本文色の数と単位（0 は薄い本文色）。「未確認 N」「未確認」は言葉ごと黄の塗りの印（書類の紙面の帯の未確認と同じ形。T87）
 
 import Link from "next/link";
 import { CaseMap } from "@/components/map/CaseMap";
-import { TONE_TEXT } from "@/components/person/parts";
-import { CountLabel, countClass, StateTag, StateText } from "@/components/ui/Tag";
+import { CountLabel, countClass, StateTag } from "@/components/ui/Tag";
 import type { GeoPoint, HazardKind } from "@/lib/db/types";
 import type { DestinationCount, HazardCount, PlanCount, ReviewItem, SidePaneData, StateCount } from "@/lib/map/side";
 import { PLAN_STATUS_LABELS } from "@/lib/labels";
-import { PLAN_TONES } from "@/lib/caseload";
-import type { StateTone } from "@/lib/person";
+import { PendingRow } from "./PendingRow";
 import { SideFold } from "./SideFold";
 
 /** 平時に既定で重ねる層（発災時はデモの場面の層） */
 const NORMAL_LAYERS: HazardKind[] = ["flood"];
-
-/** 細い帯の色は印の塗りと同じ澄んだ色 */
-const BAR: Record<StateTone, string> = {
-  ok: "bg-state-ok-fill",
-  urgent: "bg-state-urgent-fill",
-  check: "bg-state-check-fill",
-  unknown: "bg-state-unknown-fill",
-};
 
 /** 地図の真ん中（ピンが無いとき。事業所の中心、T68）と、気象庁の雨雲を重ねるか（デモでない事業所で旗が on のとき）。T72 */
 export type SideMapOptions = { center: GeoPoint | null; nowcast: boolean };
@@ -49,13 +41,12 @@ export function SidePane({ data, map: mapOptions }: { data: SidePaneData; map?: 
   );
 }
 
-/** 畳んだときの 1 行 */
+/** 畳んだときの 1 行（見直し 2 人・未確認 2 人） */
 function FoldSummary({ data }: { data: SidePaneData }) {
   if (data.states) return <StateNumbers counts={data.states} size="sm" />;
   return (
-    <span className="text-muted">
-      見直し <b className="tone-check tabular-nums">{data.review.length}</b>・未確認{" "}
-      <b className="tone-check tabular-nums">{data.pendingTop.length}</b> 人
+    <span className="text-muted" data-fold-summary>
+      見直し <Count n={data.review.length} /> 人・未確認 <Count n={data.pendingTop.length} /> 人
     </span>
   );
 }
@@ -72,10 +63,9 @@ function Section({ title, aside, children, id }: { title: string; aside?: React.
   );
 }
 
-function Count({ n, tone }: { n: number; tone?: StateTone }) {
-  return (
-    <span className={`font-bold tabular-nums ${n > 0 && tone ? TONE_TEXT[tone] : n > 0 ? "" : "text-muted"}`}>{n}</span>
-  );
+/** 見出しの横の人数・件数。本文色の太字（0 は薄い本文色）。色や帯は付けない（言葉と単位で読む） */
+function Count({ n }: { n: number }) {
+  return <span className={`font-bold tabular-nums ${n > 0 ? "text-ink" : "text-muted"}`}>{n}</span>;
 }
 
 /** 至急・要確認・不明・無事の人数。1 人以上は言葉を状態の塗りの印に、数は本文色。0 人は印も数も灰（CountLabel）。lg は面の中の箱の上 */
@@ -165,9 +155,13 @@ function DestinationList({ rows }: { rows: DestinationCount[] }) {
       <ul className="mt-0.5 space-y-px text-sm" data-destinations>
         {rows.map((d) => (
           <li key={d.label} className="flex items-baseline gap-2">
-            <span className={`min-w-0 truncate ${d.unset ? "font-bold tone-check" : ""}`} title={d.label}>
-              {d.label}
-            </span>
+            {d.unset ? (
+              <StateTag tone="check">{d.label}</StateTag>
+            ) : (
+              <span className="min-w-0 truncate" title={d.label}>
+                {d.label}
+              </span>
+            )}
             <span className="ml-auto shrink-0 tabular-nums">
               {d.count}
               <span className="text-xs text-muted"> 人</span>
@@ -179,7 +173,7 @@ function DestinationList({ rows }: { rows: DestinationCount[] }) {
   );
 }
 
-/** 今週の見直し: 計画が下書きで未確認のある人。何が未確認かを小さく */
+/** 今週の見直し: 計画が下書きで未確認のある人。何が未確認かを小さく（行を押すと本人のページ） */
 function ReviewSection({ items }: { items: ReviewItem[] }) {
   return (
     <Section
@@ -187,7 +181,7 @@ function ReviewSection({ items }: { items: ReviewItem[] }) {
       title="見直し"
       aside={
         <span className="text-xs font-normal text-muted">
-          今週 <Count n={items.length} tone="check" /> 人
+          今週 <Count n={items.length} /> 人
         </span>
       }
     >
@@ -200,8 +194,15 @@ function ReviewSection({ items }: { items: ReviewItem[] }) {
               <Link href={r.href} className="block rounded-md bg-panel2 px-2 py-1.5" data-press="overlay" data-review={r.id}>
                 <span className="flex items-baseline gap-2">
                   <span className="font-bold">{r.name}</span>
-                  <StateText tone={PLAN_TONES[r.plan]}>{PLAN_STATUS_LABELS[r.plan]}</StateText>
-                  <span className="ml-auto text-sm font-bold tone-check tabular-nums">未確認 {r.pending}</span>
+                  {/* 見直しの行は計画がどれも下書きなので、計画の状態は色を付けない小さな言葉（黄は右の「未確認 N」の 1 つだけ） */}
+                  <span className="text-xs text-muted" data-review-plan={r.plan}>
+                    {PLAN_STATUS_LABELS[r.plan]}
+                  </span>
+                  <span className="ml-auto" data-review-pending={r.pending}>
+                    <StateTag tone="check">
+                      未確認 <span className="tabular-nums">{r.pending}</span>
+                    </StateTag>
+                  </span>
                 </span>
                 <span className="mt-0.5 block truncate text-xs text-muted">{r.labels.join("・")}</span>
               </Link>
@@ -213,16 +214,15 @@ function ReviewSection({ items }: { items: ReviewItem[] }) {
   );
 }
 
-/** 未確認の多い人（多い順）。件数の帯は最多の人を 100% に */
+/** 未確認の多い人（多い順）。氏名で本人のページ、「未確認 N」で何の欄が未確認かを開く（PendingRow） */
 function PendingSection({ items }: { items: ReviewItem[] }) {
-  const max = Math.max(1, ...items.map((r) => r.pending));
   return (
     <Section
       id="pending"
       title="未確認"
       aside={
         <span className="text-xs font-normal text-muted">
-          <Count n={items.length} tone="check" /> 人・計 <Count n={items.reduce((s, r) => s + r.pending, 0)} /> 件
+          <Count n={items.length} /> 人・計 <Count n={items.reduce((s, r) => s + r.pending, 0)} /> 件
         </span>
       }
     >
@@ -231,20 +231,7 @@ function PendingSection({ items }: { items: ReviewItem[] }) {
       ) : (
         <ul className="space-y-0.5">
           {items.map((r) => (
-            <li key={r.id}>
-              <Link
-                href={r.href}
-                className="grid grid-cols-[minmax(0,1fr)_3rem_2.5rem] items-center gap-2 rounded-md bg-panel2 px-2 py-1 text-sm"
-                data-press="overlay"
-                data-pending-row={r.id}
-              >
-                <span className="truncate">{r.name}</span>
-                <span className="h-1 overflow-hidden rounded-xs bg-base" aria-hidden>
-                  <span className="block h-full bg-state-check-fill" style={{ width: `${(r.pending / max) * 100}%` }} />
-                </span>
-                <span className="text-right font-bold tone-check tabular-nums">{r.pending} 件</span>
-              </Link>
-            </li>
+            <PendingRow key={r.id} item={r} />
           ))}
         </ul>
       )}
@@ -252,7 +239,10 @@ function PendingSection({ items }: { items: ReviewItem[] }) {
   );
 }
 
-/** 計画の状態の内訳。細い帯と、言葉の印と数（人数の帯と同じ形。1 人以上は塗りの印、0 は灰） */
+/**
+ * 計画の状態の内訳。言葉の印と数（人数の帯と同じ形。1 人以上は塗りの印、0 は灰）。
+ * 前は上に色の割合の横の帯があったが、色だけで段の名前が読めず意味が伝わらなかったので外した（T96）
+ */
 function PlanSection({ counts }: { counts: PlanCount[] }) {
   const total = counts.reduce((s, c) => s + c.count, 0);
   return (
@@ -261,16 +251,7 @@ function PlanSection({ counts }: { counts: PlanCount[] }) {
       title="避難計画"
       aside={<span className="text-xs font-normal text-muted tabular-nums">{total} 人</span>}
     >
-      {total > 0 && (
-        <div className="flex h-1.5 gap-px overflow-hidden rounded-xs" aria-hidden data-plan-bar>
-          {counts
-            .filter((c) => c.count > 0)
-            .map((c) => (
-              <span key={c.status} className={BAR[c.tone]} style={{ width: `${(c.count / total) * 100}%` }} />
-            ))}
-        </div>
-      )}
-      <dl className="mt-1.5 grid grid-cols-4 gap-1 text-sm" data-plan>
+      <dl className="grid grid-cols-4 gap-1 text-sm" data-plan>
         {counts.map((c) => (
           <div key={c.status} className="flex flex-col items-start" data-status={c.status}>
             <dt className="text-xs text-muted">

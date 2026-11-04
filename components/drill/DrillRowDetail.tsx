@@ -5,14 +5,19 @@
 // ケアマネが通話・訪問で聞いた安否（T21）は「通話」「訪問」と添える（人が聞いた結果なので AI の印なし。「確認済」は緑の理由だけ）。
 // 本人役の赤（本人の言う事つき）は、言う事を声にした物を「録音」として置く（発災時の録音と同じ場所。T21、声は AI の音声）。
 // 仮想モードの結末の人（T53）は、上に結末の 1 文と、世界が決めた理由（街と物の事実）を AI の印つきで出す。
+// 本人・家族の頼み事のうち未対応の物（T93、通話の往復と訪問で聞いた）は、理由の行の下に灰の文字の印で（色の印にしない。済ませるのは手）。
 
 import { AiMark, StateTag, TONE_TEXT } from "@/components/person/parts";
-import { CALL_UI, DRILL_LABELS, VIRTUAL_LABELS } from "@/lib/drill/labels";
+import { CALL_UI, VIRTUAL_LABELS } from "@/lib/drill/labels";
+import { minuteText } from "@/lib/drill/time-text";
 import { COLOR_LABELS } from "@/lib/labels";
 import type { RowDetail } from "@/lib/list/detail";
 import { DETAIL_LABELS } from "@/lib/list/labels";
+import { TALK_UI } from "@/lib/drill/dialogue";
+import type { Ask } from "@/lib/drill/scenarios";
+import { AskMarks } from "./TalkBox";
 
-const HOUR_MS = 3_600_000;
+const MINUTE_MS = 60_000;
 
 export function DrillRowDetail({
   detail: d,
@@ -21,6 +26,7 @@ export function DrillRowDetail({
   heard = {},
   recordings = {},
   ended = null,
+  asks = [],
 }: {
   detail: RowDetail;
   startedAt: string;
@@ -31,9 +37,13 @@ export function DrillRowDetail({
   recordings?: Readonly<Record<string, string>>;
   /** 仮想モードの結末（世界が決めた。T53）。結末でなければ null */
   ended?: { text: string; reason: string | null; ai: boolean } | null;
+  /** 本人・家族の頼み事（T93、world.asks のこの人の物）。未対応だけ出す */
+  asks?: ReadonlyArray<Ask>;
 }) {
+  const open = [...new Set(asks.filter((a) => a.done === null).map((a) => a.kind))];
   const ai = new Set(aiSignals);
-  const hourOf = (iso: string) => Math.round(((Date.parse(iso) - Date.parse(startedAt)) / HOUR_MS) * 10) / 10;
+  // 安否の時刻は発災からの経過（「6 時間 10 分」。lib/drill/time-text.ts）
+  const elapsedOf = (iso: string) => minuteText((Date.parse(iso) - Date.parse(startedAt)) / MINUTE_MS);
   return (
     <div className="@container space-y-2 text-sm" data-detail-of={d.personId}>
       {ended && (
@@ -58,6 +68,12 @@ export function DrillRowDetail({
           {d.reason}
         </span>
       </div>
+      {open.length > 0 && (
+        <div className="flex flex-wrap items-baseline gap-x-1.5" data-open-asks>
+          <span className="text-xs text-muted">{TALK_UI.open}</span>
+          <AskMarks asks={open} />
+        </div>
+      )}
       {/* 表の幅で並べる（圧縮した表は 2 列、広げた表は 3 列） */}
       <div className="grid gap-2 @sm:grid-cols-2 @3xl:grid-cols-3">
         <div className="space-y-2">
@@ -139,7 +155,7 @@ export function DrillRowDetail({
                 <li key={s.id} data-signal={s.id}>
                   <div className="flex flex-wrap items-baseline gap-x-2">
                     <span className="text-xs text-muted tabular-nums">
-                      {hourOf(s.at)} {DRILL_LABELS.hours}
+                      {elapsedOf(s.at)}
                     </span>
                     <span className="text-xs text-muted">{s.source}</span>
                     {heard[s.id] && (

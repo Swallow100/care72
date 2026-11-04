@@ -71,7 +71,7 @@ export type Shot = {
   sub?: string;
 };
 
-/** 地の色。青と白のコントラスト（作者の指示 11/3 03:4x）。話の段（S1〜S3・S8・S9）は青地、道具の段（S4〜S7）は白地 */
+/** 地の色。青と白のコントラスト。話の段（S1〜S3・S8・S9）は青地、道具の段（S4〜S7）は白地 */
 export type Ground = "white" | "blue";
 
 export type Scene = { id: string; title: string; ground: Ground; at: number; end: number; shots: Shot[] };
@@ -366,7 +366,7 @@ export const LINES: Line[] = [
   { id: "N01", at: 0.3, end: 3.9, ja: "突然ですが、『個別避難計画』を知っていますか。", en: "Have you heard of an \"individual evacuation plan\"?" },
   { id: "N02", at: 4.1, end: 12.9, ja: "災害のとき、在宅の高齢者を誰がどう助けるかを決めておく計画です。でも、できているのは対象者の 15.1% だけ。", en: "It sets out who will help an older person living at home in a disaster, and how. But only 15.1% of the people who need one have one." },
   { id: "N03", at: 13.1, end: 21.3, ja: "私の家族はケアマネージャーで、その理由を家で見てきました。利用者のことは知っているのに、書く時間がないんです。", en: "My family member is a care manager, and I've seen why at home. They know their clients well, but there's no time to write it down." },
-  // N04（高校の災害の学習）は作者の指示（11/3 09:2x）で消した。ID は振り直さない（欠番）
+  // N04 は消した。ID は振り直さない（欠番）
   { id: "N05", at: 21.5, end: 25.2, ja: "アンケートでも、［N］人中［N］人が『書く時間が無い』と答えました。", en: "In our survey too, [N] of [N] said they have no time to write plans." },
   { id: "N06", at: 25.4, end: 32.4, ja: "そこで考えました。楽に作れて、実際の災害でも役立つ計画なら、作る意味も大きくなる。", en: "So I thought: if a plan were easy to make and actually useful in a real disaster, making it would mean much more." },
   { id: "N07", at: 32.6, end: 37.9, ja: "それがケア72。72 は、助けが届きにくい災害直後の 72 時間です。", en: "That's Care72. The 72 stands for the first 72 hours after a disaster, when help is slow to arrive." },

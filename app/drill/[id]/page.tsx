@@ -40,6 +40,7 @@ import { COLOR_TONES } from "@/lib/person";
 import { DRILL_PATH, drillHref, reportHref, parseSort, parseStep, parseView, type DrillView } from "@/lib/drill/paths";
 import { drillKindOf, isVirtual } from "@/lib/drill/scenarios";
 import { loadDrillScreen, screenTimeText, type DrillScreen } from "@/lib/drill/view";
+import { simTimeText } from "@/lib/drill/time-text";
 import { voiceEnabled, voiceHref } from "@/lib/drill/voice";
 import { buildSidePane, sideDisasterOf } from "@/lib/map/side";
 import { ButtonLink } from "@/components/ui/Button";
@@ -84,7 +85,7 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
   // 採点（T22）: 終わった・中断した訓練だけ。再生で見ている刻みでなく、訓練の全部で数える（loadDrillRecord が最後の刻みを読む）
   const scored = running ? null : await loadScore(scope, id, ai);
   // AI 停止の帯 1 本（T76）。刻みの跡（見ている刻みまで）と、進行中なら今の状態から
-  const stopBand = aiStopBand(s.ticks, { virtual: isVirtual(s.drill.scenario), running, now: running ? ai : null });
+  const stopBand = aiStopBand(s.ticks, { virtual: isVirtual(s.drill.scenario), running, now: running ? ai : null, clock: s.clock });
   const replay = !running;
   const here = (over: { sort?: SortKey; step?: number | null; view?: DrillView } = {}) =>
     drillHref(id, { sort, step: replay ? s.shown : null, view, ...over });
@@ -109,6 +110,7 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
           heard={s.heard}
           recordings={recordings}
           ended={endedOf(s, r.id)}
+          asks={s.state.world.asks?.[r.id] ?? []}
         />
       ) : null,
     // 仮想モード（T50）: 結末の人の行に印と 1 文
@@ -162,7 +164,7 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
         </span>
         <div className="ml-auto flex flex-wrap items-center gap-2">
           {running ? (
-            <DrillControls id={id} step={s.drill.step} done={false} />
+            <DrillControls id={id} step={s.drill.step} done={false} clock={s.clock} left={s.left} />
           ) : (
             <>
               <ReplayNav shown={s.shown} reached={s.drill.step} hrefOf={(i) => here({ step: i })} />
@@ -196,6 +198,7 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
           bands={s.bands}
           reached={s.drill.step}
           night={s.state.options?.night === true}
+          clock={s.clock}
           {...(replay ? { hrefOf: (i: number) => here({ step: i }) } : {})}
         />
       </section>
@@ -210,7 +213,7 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
               counts={countColors(rows.flatMap((r) => (r.triage ? [r.triage.color] : [])))}
               disaster={elapsedText(sit.disasterAt, sit.now)}
               outage={outage && outage.restoredAt === null && sit.outageAt ? { elapsed: elapsedText(sit.outageAt, sit.now), area: sit.outageTowns !== null } : null}
-              at={shortJst(sit.now)}
+              at={simTimeText(s.drill.started_at, nowHour(s.state) * 60)}
             />
             <ViewToggle view={view} hrefOf={(v) => here({ view: v })} />
           </div>
@@ -229,7 +232,15 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
                   <ActionPanel drillId={id} step={s.drill.step} actions={actions.length} people={people} contacts={s.contacts} fiction={fiction} />
                 )}
                 {running && latest && (
-                  <LatestResult action={latest} names={s.names} ticks={s.ticks} voiceOf={voiceOf} fiction={fiction} refused={s.refused} />
+                  <LatestResult
+                    action={latest}
+                    names={s.names}
+                    ticks={s.ticks}
+                    voiceOf={voiceOf}
+                    fiction={fiction}
+                    refused={s.refused}
+                    talk={{ drillId: id, step: s.drill.step, actions: actions.length }}
+                  />
                 )}
                 <ActionLog
                   actions={actions}

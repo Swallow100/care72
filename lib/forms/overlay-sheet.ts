@@ -1,4 +1,4 @@
-// 元の様式の上に台帳の値を置く紙（T86、DECISIONS 11/4 14:2x 確定の 2 つ目）。
+// 元の様式の上に台帳の値を置く紙（T86、docs/DECISIONS.md「書類」）。
 // 確かめた対応表の欄の場所（頁の画像の上の 0〜1 の矩形、lib/forms/mapping.ts の box）に、汎用の差し込み（lib/forms/mapped-sheet.ts）と
 // 同じ値を置く。元の様式の頁の画像（lib/forms/page-images.ts）を下に敷くのは紙面の部品（components/forms/OverlaySheet.tsx）。
 // サーバーの描画で、Claude は呼ばない（氏名・住所・電話が入る）。純な計算だけ（テストで字の大きさと別紙を確かめる）。

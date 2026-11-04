@@ -1,28 +1,38 @@
-// ケアマネの 7 つの手と世界の返事（docs/tasks/T20.md）。D1 を使わない所。保存は lib/drill/db.ts の actDrill。
+// ケアマネの手と世界の返事（docs/tasks/T20.md・T91.md）。D1 を使わない所。保存は lib/drill/db.ts の actDrill。
 //
-// 手は 7 つで確定（11/2）: 本人電話・連絡先電話・訪問・訪問依頼・受入依頼（福祉避難所）・行政報告（市役所）・退避（自分も避難）。
-// 所要時間は表で固定（ACTION_MINUTES）。手を打つとケアマネの時計がその分進み、次の刻みの時刻を越えたら、
+// 手は手の表（lib/drill/action-catalog.ts）の 18。今までの 7 つ（本人電話・連絡先電話・訪問・訪問依頼・受入依頼・行政報告・退避）は
+// 時間・相手・動きを変えず、T91 で 119勧奨・見守依頼・応援依頼・薬手配・透析調整・病院受入・移送手配・電源手配・業者連絡・記録・自由対応を足した。
+// 所要時間は表で固定。手を打つとケアマネの時計がその分進み、次の刻みの時刻を越えたら、
 // その刻みを手の中で進める（表の出来事 → 監督 → 本人役。engine の step と同じ）。その刻みの安否は「着信」（割り込み。画面と声は T21）。
 //
 // 世界の返事:
-// - 結果は先に表で決める（T19 の decideWorldReply と WORLD_ODDS、本人・家族が出るかは T18 の decideCallPickup）。
+// - 結果は先に表で決める（world-reply.ts の decideWorldReply と WORLD_ODDS、本人・家族が出るかは T18 の decideCallPickup）。
 //   Claude は結果を決めない。手が刻みを越えたときは、その刻みの監督（Opus）の 1 回に相乗りして文だけ言い換える（呼び出しは増やさない）
 // - 本人・家族・支援者が電話に出たら、言う事は本人役（Haiku、T18 の personaCallReply。CallHook）。鍵が無い・失敗は固定の言葉
 // - 返事が決まる時刻は手の終わり（刻みを越えた手は、越えた刻みの表の出来事のあとの世界）
 //
-// 聞いた安否（T21、11/3 07:0x の確定 2）: 本人・家族・支援者が電話に出て答えた・訪問で着いた → ケアマネが聞いた安否（HeardSignal）。
-// 色と 4 問は本人役の今の様子から決め（heardOf）、保存の所が signals に出どころ care_manager で足す。左の表の色・順位が動き、
-// 訪問の緑の理由は「訪問 確認済」。人が聞いた結果なので AI の印なし（本人役の言葉は吹き出しにだけ、AI の印つき）。
+// 聞いた安否（T21）: 本人・家族・支援者が電話に出て答えた・訪問で着いた → ケアマネが聞いた安否（HeardSignal）。
+// 表の効き目に heard のある手（本人電話・連絡先電話・訪問）だけ。色と 4 問は本人役の今の様子から決め（heardOf）、
+// 保存の所が signals に出どころ care_manager で足す。人が聞いた結果なので AI の印なし（本人役の言葉は吹き出しにだけ、AI の印つき）。
 //
-// 世界の変化（表で固定）: 訪問で着いた・受入依頼が受けられた → 本人の印（栄養剤の持ち出し忘れ・帰宅希望）を消す。
-// 訪問依頼が手配できた → 事業所の職員なら空きを 1 減らし、着く時刻に印を消し、戻る時刻に空きを 1 戻す（scenarios.ts の settleWorld）。
-// この画面で正解・不正解を出さない（採点は T22）。手の前の状態（before）を残す。
+// 世界の変化は手の表の効き目（閉じた一覧）だけ。返事が ok のとき applyResult が順に当てる（保存した物からの作り直しも同じ所）:
+// 訪問で着いた・受入依頼が受けられた → 本人の印（栄養剤の持ち出し忘れ・帰宅希望）を消す。訪問依頼 → 今のまま world.dispatched。
+// 見守依頼・薬手配・病院受入・移送手配・電源手配・業者連絡 → world.arrivals（着いたら settleWorld が印・届いた物・職員の空きを進める）。
+// 薬手配・透析調整 → world.checks（時計の頼り先の確認。左の表に届くのはこの道と聞いた安否だけ）。119勧奨 → world.advised（勧めるまで）。
+// 応援依頼 → 90 分後に職員の空き +1。頼み事（world.asks）は向かった人が着いた時刻に済ませる（settleAsks）。
+// 自由対応（free）は Claude（Opus）が表の手に読み替え（lib/drill/free-action.ts）、結果と効き目は読み替えた手の行でコードが決める。
+// この画面で正解・不正解を出さない（採点は T22・T94）。手の前の状態（before）を残す。
 
 import type { ContactKind, DrillAction } from "../db/types.ts";
+import { actionRow, effectiveKind, FIXED_CALLEE_LABELS, type ActionEffect, type ActionRow } from "./action-catalog.ts";
 import { ACTION_MINUTES } from "./action-table.ts";
-import { decideWorldReply, callLine, WORLD_REPLY_LABELS, WORLD_REPLY_TEXTS, type WorldReplyStatus } from "./director.ts";
+import { callLine, decideWorldReply, WORLD_REPLY_LABELS, WORLD_REPLY_TEXTS, type WorldReplyStatus } from "./world-reply.ts";
+import { DRILL_END_MINUTE } from "./clock.ts";
 import {
+  advance,
   DrillEnded,
+  isClock,
+  isNight,
   step,
   type ActionBefore,
   type ActionRecord,
@@ -37,14 +47,17 @@ import {
   type StepHooks,
   type Tick,
 } from "./engine.ts";
+import { countFree, readFree, type FreeHook } from "./free-action.ts";
+import { talkEnd, withResultAsks, type VisitHook } from "./dialogue.ts";
 import { CALL_FIXED_SPEECH, CALL_STATUS_LABELS, CALL_STATUS_TEXTS } from "./labels.ts";
 import { decideCallPickup, type CallPickup } from "./persona.ts";
 import {
-  CLEARED_ON_ARRIVAL,
   clearMarks,
   phoneOf,
   scenarioOf,
   settleWorld,
+  type Arrival,
+  type ArrivalRole,
   type WorldState,
 } from "./scenarios.ts";
 
@@ -65,10 +78,30 @@ export const DISPATCH_ARRIVE_MINUTES = 40;
 /** 事業所の職員が戻るまで（分、手配が決まってから）。行って 40 分・いて 40 分・戻って 40 分 */
 export const DISPATCH_BACK_MINUTES = 120;
 
+/**
+ * 応援（ほかの事業所の職員）が事業所に着いた印の arrivals の person。本人の所へ向かう人ではないので、本人ごとに読む所（本人役・採点・被害状況）は
+ * 拾わない。settleWorld が着いた時刻（back）に職員の空きを 1 戻す動きをそのまま使う（WorldChange に職員の増減が無いため。docs/progress/t91.md）
+ */
+export const BACKUP_PERSON = "";
+
 /** 本人役が出る相手（本人・家族・支援者・民生委員）。ほかの相手（事業所・施設・市役所）は世界が答える */
 const PERSON_CALLEES: ReadonlySet<ContactKind> = new Set(["self", "family", "supporter", "welfare_commissioner"]);
 
-/** 返事の状態の言葉（2〜4 字）。T19 の 13 と電話の 3 つ */
+/** 職員の空きを減らさない相手（訪問看護は事業所の職員でない） */
+const NOT_OUR_STAFF: ReadonlySet<ContactKind> = new Set(["visiting_nurse"]);
+
+/** 今までの 7 つの手（相手の言い方は今のまま。相手なしは calleeText が固定の相手を出す） */
+const LEGACY: ReadonlySet<DrillAction> = new Set([
+  "call_person",
+  "call_contact",
+  "visit",
+  "dispatch",
+  "request_welfare_shelter",
+  "report_city",
+  "evacuate_self",
+]);
+
+/** 返事の状態の言葉（2〜4 字）。T19 の 13 と記録と電話の 3 つ */
 export const ACTION_STATUS_LABELS: Readonly<Record<ActionStatus, string>> = { ...WORLD_REPLY_LABELS, ...CALL_STATUS_LABELS };
 
 /** 返事の固定の文 */
@@ -86,8 +119,18 @@ export type ActTarget = {
   hasPhone: boolean;
 };
 
-/** memo はケアマネのメモ（T59、100 字まで）。記録に残すだけで Claude には渡さない */
-export type ActInput = { kind: DrillAction; person: string | null; target: ActTarget | null; memo?: string };
+/**
+ * memo はケアマネのメモ（T59、100 字まで）。記録に残すだけで Claude には渡さない。
+ * text は自由対応の文（T91、120 字まで）、contacts は自由対応の相手を選ぶ元（その本人の台帳の連絡先。保存の所が作る）
+ */
+export type ActInput = {
+  kind: DrillAction;
+  person: string | null;
+  target: ActTarget | null;
+  memo?: string;
+  text?: string;
+  contacts?: ReadonlyArray<ActTarget>;
+};
 
 /** 本人役の通話（T18 の personaCallReply）に渡す物。出ると決まったときだけ呼ぶ */
 export type CallAsk = {
@@ -109,16 +152,20 @@ export type CallAsk = {
 /** 出た人の言う事。pickup が no_answer なら本人役の周りにいない相手（出ない） */
 export type CallHook = (ask: CallAsk) => Promise<{ pickup: CallPickup; speech: string | null; ai: boolean }>;
 
-export type ActionHooks = StepHooks & { call?: CallHook };
+/** free は自由対応の読み替え（T91、Opus × 1 回。lib/drill/free-action.ts の createFreeHook） */
+export type ActionHooks = StepHooks & { call?: CallHook; free?: FreeHook; visit?: VisitHook };
 
 // ---------- 返事を決める ----------
 
 type Decision = Omit<ActionResult, "ai" | "speech" | "speechAi" | "cleared" | "staff" | "crossed" | "atMinute">;
 
-const isCall = (k: DrillAction) => k === "call_person" || k === "call_contact";
+/** 電話型の手（本人電話・連絡先電話・119勧奨・見守依頼） */
+const isCall = (k: DrillAction) => actionRow(k).decide.type === "call";
 
-/** 手の相手の区分（本人電話は本人。訪問依頼・行政報告は選んだ連絡先、無ければ事業所の職員・相手なし） */
-function calleeOf(input: ActInput): ContactKind | null {
+const hasEffect = (row: ActionRow, kind: ActionEffect["kind"]) => row.effects.some((e) => e.kind === kind);
+
+/** 手の相手の区分（本人電話は本人。ほかは選んだ連絡先、無ければ固定の相手・相手なし） */
+function calleeOf(input: Pick<ActInput, "kind" | "target">): ContactKind | null {
   if (input.kind === "call_person") return "self";
   return input.target?.kind ?? null;
 }
@@ -129,7 +176,8 @@ function fixed(status: ActionStatus, ok: boolean, because: string | null, pickup
 
 /**
  * 世界の返事を決める（文は固定）。電話は台帳に番号が無ければ「番号なし」。本人・家族・支援者への電話は、
- * 線がつながる（呼出）なら出るかを T18 の割合で決める（出る → 通話、出ない → 応答なし、背景の音だけ → 無言。本人が話せない も無言）
+ * 線がつながる（呼出）なら出るかを T18 の割合で決める（出る → 通話、出ない → 応答なし、背景の音だけ → 無言。本人が話せない も無言）。
+ * 自由対応は読み替えた手（kind に読み替えた手を渡す）
  */
 export function decideAction(input: ActInput, world: WorldState, hour: number, roll: () => number): Decision {
   const callee = calleeOf(input);
@@ -163,7 +211,7 @@ export function fixedSpeech(state: PersonState | null, callee: ContactKind | nul
 }
 
 /**
- * ケアマネが通話・訪問で聞いた安否（11/3 07:0x の確定 2）。色と 4 問は本人役の今の様子から決める（Claude は決めない）:
+ * ケアマネが通話・訪問で聞いた安否。色と 4 問は本人役の今の様子から決める（Claude は決めない）:
  * 本人役が赤ならその赤と 4 問の答え、それ以外（緑・安否不明・まだ連絡なし）は緑（電話に出て答えた・会えた）といる所。
  * at は聞いた時刻（発災からの時間。手の終わり）
  */
@@ -180,6 +228,22 @@ export function heardOf(own: PersonState | null, via: HeardSignal["via"], at: nu
     hasMedicine: answer(own?.hasMedicine),
     at,
   };
+}
+
+/**
+ * 向かう人が着く時刻（発災からの分）。効き目 arrival の分（手の終わりから）か、応援の staff の afterMin。
+ * 幅のある物（見守依頼 30〜60 分・業者連絡 120〜240 分）だけ roll を 1 回使う（今までの 7 つの手の roll の数は変えない）
+ */
+function arriveAtOf(row: ActionRow, end: number, roll: () => number): number | undefined {
+  for (const e of row.effects) {
+    if (e.kind === "arrival") {
+      if (typeof e.arriveMin === "number") return end + e.arriveMin;
+      const [lo, hi] = e.arriveMin;
+      return end + Math.min(hi, lo + Math.floor(roll() * (hi - lo + 1)));
+    }
+    if (e.kind === "staff" && e.afterMin !== undefined) return end + e.afterMin;
+  }
+  return undefined;
 }
 
 // ---------- 手を打つ ----------
@@ -203,9 +267,96 @@ export function pushAction(state: DrillState, record: ActionRecord): DrillState 
   return { ...state, actions: [...state.actions, record] };
 }
 
+/** 見守依頼の向かう人の役（相手の区分から。家族は家族、ほかは支援者） */
+const roleOfCallee = (callee: ContactKind | null): ArrivalRole => (callee === "family" ? "family" : "supporter");
+
+/**
+ * 手の表の効き目を当てる（返事が ok のとき）。印を消す（cleared）と聞いた安否（heard）は返事に載せて別の所で当て、
+ * 届いた物（supply）は向かった人の役から settleWorld が、頼み事（ask_done）は settleAsks が着いた時刻に当てる
+ */
+function applyEffects(world: WorldState, rec: ActionRecord, result: ActionResult, row: ActionRow): WorldState {
+  let w = world;
+  const person = rec.person;
+  for (const e of row.effects) {
+    switch (e.kind) {
+      case "staff": {
+        if (e.afterMin === undefined) {
+          w = { ...w, staff: w.staff + result.staff };
+        } else {
+          // 応援が着く時刻に職員の空き +1（arrivals の戻りの動きで。本人の所へ向かう人ではない）
+          const at = result.arriveAt ?? result.atMinute + e.afterMin;
+          const backup: Arrival = { person: BACKUP_PERSON, role: "staff", arrive: at, back: at, arrived: false, from: rec.id };
+          w = { ...w, arrivals: [...(w.arrivals ?? []), backup] };
+        }
+        break;
+      }
+      case "arrival": {
+        if (!person) break;
+        const first = typeof e.arriveMin === "number" ? e.arriveMin : e.arriveMin[0];
+        const arrive = result.arriveAt ?? result.atMinute + first;
+        if (e.legacy) {
+          // 訪問依頼（T20）: 今のまま world.dispatched（着いたら印を消し、事業所の職員は戻る時刻に空きを 1 戻す）
+          w = {
+            ...w,
+            dispatched: [
+              ...(w.dispatched ?? []),
+              {
+                person,
+                arrive,
+                back: result.staff < 0 ? result.atMinute + (e.backMin ?? DISPATCH_BACK_MINUTES) : null,
+                arrived: false,
+              },
+            ],
+          };
+        } else {
+          const role = e.role === "callee" ? roleOfCallee(rec.callee) : e.role;
+          const back = e.backMin !== undefined ? result.atMinute + e.backMin : null;
+          w = { ...w, arrivals: [...(w.arrivals ?? []), { person, role, arrive, back, arrived: false, from: rec.id }] };
+        }
+        break;
+      }
+      case "check": {
+        if (!person) break;
+        w = { ...w, checks: { ...(w.checks ?? {}), [person]: { ...(w.checks?.[person] ?? {}), [e.depends]: e.status } } };
+        break;
+      }
+      case "advise": {
+        if (!person) break;
+        w = { ...w, advised: { ...(w.advised ?? {}), [person]: result.atMinute } };
+        break;
+      }
+      default:
+        break;
+    }
+  }
+  return w;
+}
+
+/**
+ * 頼み事（world.asks）を、向かった人が着いた時刻に済ませる（手の表の効き目 ask_done。薬手配 → 薬、電源手配 → 電源・電池、移送手配 → 移送）。
+ * 着いた時刻より前に頼まれた物だけ。同じ時刻で何度呼んでも同じ（済ませる物が無ければ同じ世界を返す）。
+ * settleWorld（刻みの進め）は頼み事を変えないので、手を打つたびにここで追いつく（済んだ時刻は着いた時刻）
+ */
+export function settleAsks(world: WorldState, actions: ReadonlyArray<ActionRecord>): WorldState {
+  if (!world.asks || !world.arrivals) return world;
+  let asks = world.asks;
+  let changed = false;
+  for (const a of world.arrivals) {
+    if (!a.arrived || !a.person) continue;
+    const rec = actions.find((x) => x.id === a.from);
+    if (!rec) continue;
+    const kinds = actionRow(effectiveKind(rec)).effects.flatMap((e) => (e.kind === "ask_done" ? e.asks : []));
+    const own = asks[a.person];
+    if (kinds.length === 0 || !own?.some((x) => x.done === null && kinds.includes(x.kind) && x.at <= a.arrive)) continue;
+    asks = { ...asks, [a.person]: own.map((x) => (x.done === null && kinds.includes(x.kind) && x.at <= a.arrive ? { ...x, done: a.arrive } : x)) };
+    changed = true;
+  }
+  return changed ? { ...world, asks } : world;
+}
+
 /**
  * 返事を当てる（手を打った要求でも、保存した物からの作り直しでも同じ所を通る）。
- * 消えた印を消し、手配できた訪問依頼は職員の空きを減らして着く・戻る時刻を世界に置き、時計を返事の時刻まで進める
+ * 消えた印を消し、返事が ok なら手の表の効き目を当て、時計を返事の時刻まで進める
  */
 export function applyResult(state: DrillState, id: string, result: ActionResult): DrillState {
   const i = state.actions.findIndex((a) => a.id === id);
@@ -213,25 +364,13 @@ export function applyResult(state: DrillState, id: string, result: ActionResult)
   const rec = state.actions[i];
   let world = state.world;
   if (rec.person && result.cleared.length > 0) world = clearMarks(world, rec.person, result.cleared).world;
-  if (rec.kind === "dispatch" && result.ok && rec.person) {
-    world = {
-      ...world,
-      staff: world.staff + result.staff,
-      dispatched: [
-        ...(world.dispatched ?? []),
-        {
-          person: rec.person,
-          arrive: result.atMinute + DISPATCH_ARRIVE_MINUTES,
-          back: result.staff < 0 ? result.atMinute + DISPATCH_BACK_MINUTES : null,
-          arrived: false,
-        },
-      ],
-    };
-  }
-  const minute = Math.max(state.minute, result.atMinute);
-  world = settleWorld(world, minute);
+  if (result.ok) world = applyEffects(world, rec, result, actionRow(effectiveKind(rec)));
+  // T93: 往復と訪問の頼み事を積み、時計は往復の終わりまで（作り直しでも同じ）
+  world = withResultAsks(world, rec.person, result);
+  const minute = Math.max(state.minute, result.atMinute, talkEnd(result));
   const actions = [...state.actions];
   actions[i] = { ...rec, result };
+  world = settleAsks(settleWorld(world, minute), actions);
   return { ...state, world, minute, actions };
 }
 
@@ -244,53 +383,82 @@ export type ActOutcome = {
 
 /**
  * 手を 1 つ打つ。相手の確かめ（参加者・台帳の連絡先）は保存の所（lib/drill/db.ts）が先にする。
- * roll は 0 以上 1 未満（Math.random など。テストで固定）。extra は手の前の左の表（保存の所が画面と同じ道で作る）
+ * roll は 0 以上 1 未満（Math.random など。テストで固定）。extra は手の前の左の表（保存の所が画面と同じ道で作る）。
+ * 自由対応は先に表の手に読み替え（hooks.free。伏せきれない文は PseudonymLeakError を投げて手を打たない）、読み替えた手として打つ
  */
 export async function act(
   state: DrillState,
-  input: ActInput,
+  raw: ActInput,
   hooks: ActionHooks = {},
   roll: () => number = Math.random,
   extra: Pick<ActionBefore, "triage" | "ranking"> = {},
 ): Promise<ActOutcome> {
   if (state.status !== "running") throw new DrillEnded();
-  const minutes = ACTION_MINUTES[input.kind];
-  const atMinute = state.minute;
+  let start = state;
+  let input = raw;
+  let free: { as: DrillAction; stored: string; words: string | null; reason: string | null } | null = null;
+  if (raw.kind === "free") {
+    const r = await readFree(
+      { world: state.world, participants: state.participants, minute: state.minute },
+      { text: raw.text ?? "", person: raw.person, contacts: raw.contacts ?? [] },
+      hooks.free,
+    );
+    free = { as: r.as, stored: r.stored, words: r.words, reason: r.reason };
+    if (r.called) start = { ...state, world: countFree(state.world) };
+    input = { ...raw, kind: r.as, person: r.as === "evacuate_self" ? null : raw.person, target: r.target };
+  }
+  const kind = input.kind;
+  const row = actionRow(kind);
+  const minutes = ACTION_MINUTES[kind];
+  const atMinute = start.minute;
   const endMinute = atMinute + minutes;
   const callee = calleeOf(input);
+  const fixedLabel = !input.target && !LEGACY.has(kind) && row.fixed ? FIXED_CALLEE_LABELS[row.fixed] : null;
   const record: ActionRecord = {
     // 取り消した手の番号は使い直さない（T59。声の R2 の鍵 act-<番号> と drill_events の id が前の手と重ならない）
-    id: `a${state.actions.length + 1 + (state.undone ?? 0)}`,
-    kind: input.kind,
+    id: `a${start.actions.length + 1 + (start.undone ?? 0)}`,
+    kind: raw.kind,
     person: input.person,
     target: input.target?.id ?? null,
     callee,
-    calleeLabel: input.target?.label ?? null,
+    calleeLabel: input.target?.label ?? fixedLabel,
     at: atMinute / 60,
     atMinute,
     endMinute,
     minutes,
-    step: state.step,
-    before: beforeOf(state, input.person, extra),
+    step: start.step,
+    before: beforeOf(start, input.person, extra),
     result: null,
-    ...(input.memo ? { memo: input.memo } : {}),
+    ...(raw.memo ? { memo: raw.memo } : {}),
+    ...(free ? { as: free.as, text: free.stored, ...(free.reason ? { reason: free.reason } : {}) } : {}),
   };
 
   // 手の途中で次の刻みの時刻を越えたら、その刻みを進める。返事はその刻みの表の出来事のあとの世界で決め、監督に言い換えを頼む
-  let s = pushAction(state, record);
+  let s = pushAction(start, record);
   const hours = scenarioOf(s.scenario).hours;
   const ticks: Tick[] = [];
   const held: { decided: Decision | null } = { decided: null };
   let words: ReplyWords[] = [];
   let incidents: ReadonlyArray<DrillIncident> = [];
-  while (s.status === "running" && s.step < hours.length - 1 && hours[s.step + 1] * 60 <= endMinute) {
+  // 連続の時計の訓練（T90）: 手は区切りを起こさない。手の分の (始め, 終わり] に入る表の出来事と予定の出来事を AI を呼ばずに当て
+  // （当てる物があるときだけ区切りを 1 つ残す）、返事は進めたあとの世界で決める。言い換えは頼まない（監督の呼び出しを手で増やさない）
+  if (isClock(s)) {
+    const r = await advance(s, Math.min(endMinute, DRILL_END_MINUTE), hooks, { policy: "silent" });
+    if (r) {
+      s = r.state;
+      ticks.push(r.tick);
+      incidents = r.tick.incidents;
+    }
+  }
+  while (!isClock(s) && s.status === "running" && s.step < hours.length - 1 && hours[s.step + 1] * 60 <= endMinute) {
     const at = hours[s.step + 1];
     const r = await step(s, hooks, {
       replies: (world): ReplyAsk[] => {
         const x = decideAction(input, world, at, roll);
         held.decided = x;
-        if (!wordable(x)) return [];
-        return [{ id: record.id, action: input.kind, person: input.person, callee, status: x.status, because: x.because, text: x.text }];
+        // 自由対応で Claude の 1 文があれば、監督に言い換えを頼まない
+        if (!wordable(x) || free?.words) return [];
+        return [{ id: record.id, action: kind, person: input.person, callee, status: x.status, because: x.because, text: x.text }];
       },
     });
     s = r.state;
@@ -335,31 +503,40 @@ export async function act(
     } else {
       speech = reply?.speech ?? fixedSpeech(own, input.target.kind);
       speechAi = reply?.speech != null && reply.ai;
-      // 出て答えた → 聞いた安否（左の表の色・順位を動かす）
-      heard = tell;
+      // 出て答えた → 聞いた安否（左の表の色・順位を動かす）。表の効き目に heard のある手（本人電話・連絡先電話）だけ
+      if (hasEffect(row, "heard")) heard = tell;
     }
   }
   // 訪問で着いた → 確認済（本人に会えた）
-  if (input.kind === "visit" && status === "arrived" && input.person && s.world.ended?.[input.person] === undefined) {
+  if (row.decide.type === "visit" && status === "arrived" && input.person && s.world.ended?.[input.person] === undefined) {
     heard = heardOf(s.people[input.person] ?? null, "visit", endMinute / 60);
   }
+  // T93: 着いたら本人役が見て分かる様子と頼み事（Haiku × 1 回）。聞いた安否・色は変えない。頼み事は applyResult が積む
+  const seen = heard?.via === "visit" && hooks.visit ? input.person : null;
+  const visit = seen ? await hooks.visit!({ person: seen, hour: endMinute / 60, world: s.world, incidents, state: s.people[seen] ?? null, ...(isNight(s) ? { night: true } : {}) }).catch(() => null) : null;
 
   const reworded = words.find((w) => w.id === record.id)?.text.trim() ?? "";
-  const arrivedAt = (input.kind === "visit" && status === "arrived") || (input.kind === "request_welfare_shelter" && status === "accepted");
+  const said = free?.words?.trim() ?? "";
+  const clears = ok && hasEffect(row, "clearMarks") && input.person;
+  const keys = row.effects.flatMap((e) => (e.kind === "clearMarks" ? e.keys : []));
+  const arriveAt = ok ? arriveAtOf(row, endMinute, roll) : undefined;
   const result: ActionResult = {
     ok,
     status,
     because: d.because,
-    text: reworded || text,
-    ai: reworded !== "",
+    // 自由対応は Claude の現場の言い方（AI の印）、無ければ監督の言い換えか固定の文
+    text: said || reworded || text,
+    ai: said !== "" || reworded !== "",
     speech,
     speechAi,
     pickup,
-    cleared: arrivedAt && input.person ? clearMarks(s.world, input.person, CLEARED_ON_ARRIVAL).cleared : [],
-    staff: input.kind === "dispatch" && ok && callee !== "visiting_nurse" ? -1 : 0,
+    cleared: clears ? clearMarks(s.world, input.person!, keys).cleared : [],
+    staff: row.staff > 0 && ok && !(callee && NOT_OUR_STAFF.has(callee)) ? -row.staff : 0,
     crossed: ticks.map((t) => t.step),
     atMinute: endMinute,
     heard,
+    ...(arriveAt !== undefined ? { arriveAt } : {}),
+    ...(visit ? { visit } : {}),
   };
   s = applyResult(s, record.id, result);
   return { state: s, record: s.actions.find((a) => a.id === record.id)!, ticks };

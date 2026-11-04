@@ -3,8 +3,11 @@
 // 安否の色の言葉（至急・要確認・灰・無事）は lib/labels.ts の COLOR_LABELS を読み、ここに書かない。
 
 import type { DrillAction, DrillScenario, DrillStatus } from "../db/types.ts";
+import { CATALOG_LABELS } from "./action-catalog.ts";
 import type { FictionKind } from "./fiction.ts";
 import type { AiStop, PhoneState, ShelterState, TsunamiState, WaterState, WorldEventKind } from "./scenarios.ts";
+import { markLabels } from "./event-catalog.ts";
+import { hourText, minuteText, TIME_WORDS } from "./time-text.ts";
 
 export const SCENARIO_LABELS: Record<DrillScenario, string> = {
   heavy_rain: "大雨想定",
@@ -45,7 +48,7 @@ export const DRILL_LABELS = {
   damage: "被害状況",
   actions: "対応",
   elapsed: "経過",
-  hours: "時間",
+  hours: TIME_WORDS.hours,
   startedAt: "開始",
   startedBy: "開始者",
   status: "状態",
@@ -129,7 +132,7 @@ export const AI_STOP_LABELS: Record<AiStop, string> = {
   world: "世界 停止",
 };
 
-/** 訓練の人の印（T48、アドバイザーの返事）。人は全部作った例で、本人役・家族役は AI が演じる */
+/** 訓練の人の印（T48）。人は全部作った例で、本人役・家族役は AI が演じる */
 export const FICTION_LABELS = {
   mark: "架空",
   title: "AI が演じる架空の人",
@@ -177,17 +180,15 @@ export const EVENT_KIND_LABELS: Record<WorldEventKind, string> = {
   outcome: "結末",
   ai_stop: "停止",
   auto_abandon: "中断",
+  // T92 の出来事の表の変化（状況の欄は種類の印 lib/drill/event-catalog.ts の incidentLabel を先に見る）
+  note: "情報",
+  mark: "個別",
+  check: "確認",
+  schedule: "予定",
 };
 
-/** 本人ごとの印（被害状況の「個別」の欄）。PersonMarks の鍵ごと */
-export const MARK_LABELS = {
-  supplyLeft: "持ち出し忘れ",
-  nurseAway: "訪問不可",
-  goingHome: "帰宅希望",
-  lineDown: "電話不通",
-  flooded: "浸水",
-  waterOut: "断水",
-} as const;
+/** 本人ごとの印（被害状況の「個別」の欄）。PersonMarks の鍵ごと（出来事の表 lib/drill/event-catalog.ts の markLabels。T92 で 5 つ足した） */
+export const MARK_LABELS = markLabels;
 
 /** 状況の欄で根拠の出典に添える言葉 */
 export const BASIS_LABEL = "出典";
@@ -253,23 +254,15 @@ export const DRILL_API_LABELS: Record<DrillApiError, string> = {
   locked: "取消不可",
 };
 
-/** 「経過 6 時間」 */
+/** 「経過 6 時間」「経過 6 時間 10 分」（発災からの時間。小数の時間は分まで、lib/drill/time-text.ts） */
 export function elapsedLabel(hour: number): string {
-  return `${DRILL_LABELS.elapsed} ${hour} ${DRILL_LABELS.hours}`;
+  return `${DRILL_LABELS.elapsed} ${hourText(hour)}`;
 }
 
 // ---------- ケアマネの手（T20） ----------
 
-/** 7 つの手（ボタン）。form9 の安否確認の方法（本人電話・連絡先電話・訪問）と同じ言い方 */
-export const ACTION_LABELS: Record<DrillAction, string> = {
-  call_person: "本人電話",
-  call_contact: "連絡先電話",
-  visit: "訪問",
-  dispatch: "訪問依頼",
-  request_welfare_shelter: "受入依頼",
-  report_city: "行政報告",
-  evacuate_self: "退避",
-};
+/** 手（ボタン）。form9 の安否確認の方法（本人電話・連絡先電話・訪問）と同じ言い方。手の表（T91 の lib/drill/action-catalog.ts）の label */
+export const ACTION_LABELS: Record<DrillAction, string> = { ...CATALOG_LABELS };
 
 /** 対応の欄の言葉 */
 export const ACTION_UI = {
@@ -279,7 +272,7 @@ export const ACTION_UI = {
   result: "結果",
   history: "履歴",
   callIn: "着信",
-  minutes: "分",
+  minutes: TIME_WORDS.minutes,
   staff: "事業所",
   shelter: "福祉避難所",
   city: "市役所",
@@ -299,7 +292,7 @@ export const CALL_STATUS_TEXTS: Record<keyof typeof CALL_STATUS_LABELS, string> 
   noNumber: "電話番号が台帳にない",
 };
 
-/** 着信の画面と声（T21）の言葉。出る・出ない・切るは電話の画面の言い方（DECISIONS 11/3 09:4x 案の採った物、18:0x） */
+/** 着信の画面と声（T21）の言葉。出る・出ない・切るは電話の画面の言い方 */
 export const CALL_UI = {
   incoming: "着信",
   talking: "通話中",
@@ -319,12 +312,9 @@ export const CALL_UI = {
 /** 出たが言葉の無いとき（鍵なし・本人役の失敗）の固定の言葉。安否の言う事が相手の物なら、そちらを使う（lib/drill/actions.ts） */
 export const CALL_FIXED_SPEECH = "はい、もしもし";
 
-/** 「3 時間 40 分」（分が 0 なら「3 時間」）。発災からの分 */
+/** 「3 時間 40 分」（分が 0 なら「3 時間」）。発災からの分。経過の言い方は lib/drill/time-text.ts の 1 か所 */
 export function clockLabel(minute: number): string {
-  const m = Math.max(0, Math.round(minute));
-  const h = Math.floor(m / 60);
-  const r = m % 60;
-  return r === 0 ? `${h} ${DRILL_LABELS.hours}` : `${h} ${DRILL_LABELS.hours} ${r} ${ACTION_UI.minutes}`;
+  return minuteText(minute);
 }
 
 /** 手の相手の言い方（訪問依頼で相手なしは事業所の職員、行政報告で相手なしは市役所、受入依頼は福祉避難所）。履歴と紙面で同じ */
@@ -341,7 +331,9 @@ export function elapsedClockLabel(minute: number): string {
   return `${DRILL_LABELS.elapsed} ${clockLabel(minute)}`;
 }
 
-/** 訓練記録の一覧の「経過 6 / 72 時間」 */
+/** 訓練記録の一覧の「経過 6 / 72 時間」。分のあるときは「経過 6 時間 10 分 / 72 時間」 */
 export function progressLabel(hour: number, last: number): string {
-  return `${DRILL_LABELS.elapsed} ${hour} / ${last} ${DRILL_LABELS.hours}`;
+  const m = Math.max(0, Math.round(hour * 60));
+  if (m % 60 === 0) return `${DRILL_LABELS.elapsed} ${m / 60} / ${last} ${DRILL_LABELS.hours}`;
+  return `${DRILL_LABELS.elapsed} ${hourText(hour)} / ${last} ${DRILL_LABELS.hours}`;
 }

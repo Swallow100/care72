@@ -8,7 +8,10 @@ import type { D1Database } from "@cloudflare/workers-types";
 import type { Principal } from "../auth/principal.ts";
 import { DRILL_ACTIONS, type DrillAction } from "../db/types.ts";
 import { COLOR_LABELS } from "../labels.ts";
+import { PseudonymLeakError } from "../pseudonym/index.ts";
+import { FREE_TEXT_MAX } from "./action-catalog.ts";
 import type { ActionHooks } from "./actions.ts";
+import { FREE_LABELS } from "./free-action.ts";
 import {
   abandonDrill,
   actDrill,
@@ -26,6 +29,7 @@ import { isStaffCount } from "./engine.ts";
 import type { StepHooks } from "./engine.ts";
 import { DRILL_API_LABELS, type DrillApiError } from "./labels.ts";
 import { lastHour, scenarioOf } from "./scenarios.ts";
+import { isClockStep, type ClockTo } from "./clock.ts";
 import { loadDrillScreen } from "./view.ts";
 
 const STATUS: Record<DrillApiError, number> = {
@@ -62,13 +66,13 @@ const PARTICIPANTS_MAX = 200;
 
 /**
  * 開始の前に選んだ物（T59）の形を見る。無ければ {}（今と同じ）。形が違えば null。
- * { participants?: 本人の id の配列（1 人以上）, staff?: 0〜9, night?: 真偽 }。担当一覧の中かは startDrill が見る
+ * { participants?: 本人の id の配列（1 人以上）, staff?: 0〜9, night?: 真偽, clock?: 真偽（T90）}。担当一覧の中かは startDrill が見る
  */
 export function parseStartOptions(v: unknown): StartOptions | null {
   if (v === undefined || v === null) return {};
   const o = obj(v);
   if (!o) return null;
-  const out: { participants?: string[]; staff?: number; night?: boolean } = {};
+  const out: { participants?: string[]; staff?: number; night?: boolean; clock?: true } = {};
   if (o.participants !== undefined) {
     const ps = o.participants;
     if (!Array.isArray(ps) || ps.length === 0 || ps.length > PARTICIPANTS_MAX || !ps.every(isDrillId)) return null;
@@ -81,6 +85,11 @@ export function parseStartOptions(v: unknown): StartOptions | null {
   if (o.night !== undefined) {
     if (typeof o.night !== "boolean") return null;
     if (o.night) out.night = true;
+  }
+  // 連続の時計（T90。開始の画面が大雨・地震・仮想に付ける）。10 分版に来たら startDrill が捨てる
+  if (o.clock !== undefined) {
+    if (typeof o.clock !== "boolean") return null;
+    if (o.clock) out.clock = true;
   }
   return out;
 }
@@ -101,7 +110,21 @@ export async function startPost(db: D1Database, p: Principal | null, json: unkno
   return Response.json({ ok: true, id: r.id }, { headers: NO_STORE });
 }
 
-/** 1 刻み進める POST（JSON）。{ step: 画面で読んだ今の刻み } */
+/**
+ * 進め方（T90）の形を見る。{ minutes: 30・60・180 } か { next: true }。どちらも無ければ undefined、形が違えば null（400）。
+ * 両方あれば次の出来事まで
+ */
+export function parseClockTo(b: Record<string, unknown>): ClockTo | undefined | null {
+  if (b.next !== undefined && b.next !== true) return null;
+  if (b.minutes !== undefined && !isClockStep(b.minutes)) return null;
+  if (b.next === true) return { next: true };
+  return isClockStep(b.minutes) ? { minutes: b.minutes } : undefined;
+}
+
+/**
+ * 1 刻み進める POST（JSON）。{ step: 画面で読んだ今の刻み, minutes?: 30・60・180, next?: true }。
+ * 連続の時計の訓練（T90）は minutes か next のどちらかが要る（無ければ 400）。clock の無い訓練は見ない（今までどおり 1 刻み）
+ */
 export async function stepPost(
   db: D1Database,
   p: Principal | null,
@@ -114,16 +137,22 @@ export async function stepPost(
   if (scope instanceof Response) return scope;
   const b = obj(json);
   if (!isDrillId(id) || !b || !isStep(b.step)) return drillError("invalid");
-  const r = await advanceDrill(db, scope, id, b.step, now, hooks);
+  const to = parseClockTo(b);
+  if (to === null) return drillError("invalid");
+  const r = await advanceDrill(db, scope, id, b.step, now, hooks, to);
   if (!r.ok) return drillError(r.error);
-  return Response.json({ ok: true, step: r.step, hour: r.hour, status: r.status }, { headers: NO_STORE });
+  return Response.json(
+    { ok: true, step: r.step, hour: r.hour, status: r.status, ...(r.minute !== undefined ? { minute: r.minute } : {}) },
+    { headers: NO_STORE },
+  );
 }
 
 const isCount = (v: unknown): v is number => typeof v === "number" && Number.isInteger(v) && v >= 0 && v < 10_000;
 const isRef = (v: unknown): v is string | null => v === null || v === undefined || (typeof v === "string" && ID.test(v));
 
 /**
- * ケアマネの手の POST（JSON、T20）。{ step: 読んだ今の刻み, actions: 読んだ手の数, kind: 7 つの手, person: 本人の id か null, target: 連絡先の id か null }。
+ * ケアマネの手の POST（JSON、T20・T91）。{ step: 読んだ今の刻み, actions: 読んだ手の数, kind: 手の表の id, person: 本人の id か null, target: 連絡先の id か null,
+ * text: 自由対応の文（自由対応だけ、120 字まで） }。自由対応の文を伏せきれなければ 400（label「伏字不可」）。
  * 相手は台帳の連絡先から決める（lib/drill/db.ts）。手の前の左の表は画面と同じ道（loadDrillScreen）で作って手の記録に残す
  */
 export async function actionPost(
@@ -143,6 +172,10 @@ export async function actionPost(
   // 手のメモ（T59、任意、100 字まで）。記録に残すだけで Claude には渡さない
   if (b.memo !== undefined && b.memo !== null && (typeof b.memo !== "string" || [...b.memo.trim()].length > MEMO_MAX)) return drillError("invalid");
   const memo = typeof b.memo === "string" ? b.memo.trim() : "";
+  // 自由対応の文（T91、自由対応だけ、120 字まで）。伏せきれない文は 400「伏字不可」（Claude には送らない）
+  if (b.text !== undefined && b.text !== null && (typeof b.text !== "string" || [...b.text.trim()].length > FREE_TEXT_MAX)) return drillError("invalid");
+  const text = typeof b.text === "string" ? b.text.trim() : "";
+  if (b.kind === "free" && text === "") return drillError("invalid");
   const screen = await loadDrillScreen(db, scope, id, null);
   if (!screen) return drillError("not_found");
   const ranked = screen.rows.filter((r) => r.rank !== null).sort((x, y) => x.rank! - y.rank!);
@@ -152,20 +185,29 @@ export async function actionPost(
     ),
     ranking: ranked.map((r) => r.id),
   };
-  const r = await actDrill(
-    db,
-    scope,
-    id,
-    { step: b.step, actions: b.actions },
-    {
-      kind: b.kind as DrillAction,
-      person: (b.person as string | null | undefined) ?? null,
-      target: (b.target as string | null | undefined) ?? null,
-      ...(memo ? { memo } : {}),
-    },
-    now,
-    { ...(opts.hooks ? { hooks: opts.hooks } : {}), ...(opts.roll ? { roll: opts.roll } : {}), triage },
-  );
+  let r: Awaited<ReturnType<typeof actDrill>>;
+  try {
+    r = await actDrill(
+      db,
+      scope,
+      id,
+      { step: b.step, actions: b.actions },
+      {
+        kind: b.kind as DrillAction,
+        person: (b.person as string | null | undefined) ?? null,
+        target: (b.target as string | null | undefined) ?? null,
+        ...(memo ? { memo } : {}),
+        ...(b.kind === "free" ? { text } : {}),
+      },
+      now,
+      { ...(opts.hooks ? { hooks: opts.hooks } : {}), ...(opts.roll ? { roll: opts.roll } : {}), triage },
+    );
+  } catch (e) {
+    if (e instanceof PseudonymLeakError) {
+      return Response.json({ ok: false, error: "invalid", label: FREE_LABELS.refused }, { status: STATUS.invalid, headers: NO_STORE });
+    }
+    throw e;
+  }
   if (!r.ok) return drillError(r.error);
   return Response.json({ ok: true, id: r.record.id, step: r.step, hour: r.hour, minute: r.minute, status: r.status }, { headers: NO_STORE });
 }

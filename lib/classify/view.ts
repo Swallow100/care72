@@ -57,7 +57,7 @@ export function parseClassList(text: string | null): RecordingClass[] | null {
 }
 
 /**
- * 聞き取りの欄（T49）に出している文。分類の引用と同じ文なら引用を出さない（同じ文を 2 回出さない。11/4 設計の側の答え）。
+ * 聞き取りの欄（T49）に出している文。分類の引用と同じ文なら引用を出さない（同じ文を 2 回出さない）。
  * 比べるのは画面に出す文（直した文か Claude の文。lib/signals/hearing.ts の hearingViewOf と同じ選び方）で、違えば両方出す
  */
 function hearingTexts(row: HearingSource): Set<string> {
@@ -100,11 +100,22 @@ export type SignalSummary = {
   error: SignalRow["ai_summary_error"];
 };
 
-/** 信号の行からまとめの形（T69b）。ケアマネが直した文（summary）があればそれ、無ければ Claude の文（ai_summary） */
+/**
+ * まとめの中の本人の仮名（「A さん」）を「本人」に（T88）。まとめは本人 1 人の鍵で伏せた文字起こしから作るので、仮名は本人の A さんだけ。
+ * Claude には仮名で渡したまま（名前を渡さない線は変えない）、画面と保存の文だけ元の呼び方にする
+ */
+export function ownCall(text: string): string {
+  return text.replace(/(?<![A-Za-z])A[ 　]?さん/gu, "本人");
+}
+
+/**
+ * 信号の行からまとめの形（T69b）。ケアマネが直した文（summary）があればそれ、無ければ Claude の文（ai_summary）。
+ * Claude の文の仮名は「本人」に（T88 より前に保存した文も）
+ */
 export function summaryOf(s: Partial<Pick<SignalRow, "ai_summary" | "ai_summary_error" | "summary">>): SignalSummary {
   const human = s.summary?.trim();
   if (human) return { text: human, by: "human", error: null };
   const ai = s.ai_summary?.trim();
-  if (ai) return { text: ai, by: "ai", error: null };
+  if (ai) return { text: ownCall(ai), by: "ai", error: null };
   return { text: null, by: null, error: s.ai_summary_error ?? null };
 }

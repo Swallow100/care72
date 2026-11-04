@@ -26,8 +26,8 @@ function errorText(e: string, m: string | undefined): string {
 // ID とパスワード。送り先は /api/auth/login（フォームの POST。JavaScript が無くても動く）。
 // どの画面もログインが要る。ログインしていなければ、どの画面からもここへ来る。審査員の ID とパスワードは提出書類の欄にだけ書く（画面に案内を出さない）。
 // 上は見出し「ログイン」だけ。印と名前「ケア72」はヘッダーの左上の 1 か所（components/AppHeader、BrandMark）で、ここには重ねない。
-// 道具の説明の見出しは置かない（T66、作者 11/4）。
-// 新規登録は作らない（DECISIONS 11/4 00:5x）。欄は大きく（48px）、中にアイコン。狭い 1 列。
+// 道具の説明の見出しは置かない（T66）。
+// 新規登録は作らない（docs/DECISIONS.md「アカウントと事業所」）。欄は大きく（48px）、中にアイコン。狭い 1 列。
 export default async function LoginPage({ searchParams }: Props) {
   const p = await getPrincipal();
   if (p) redirect(homePath(p.role));

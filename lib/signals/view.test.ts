@@ -178,7 +178,7 @@ describe("災害モードの画面", () => {
   });
 });
 
-describe("119 の 1 行（T48、アドバイザーの返事）", () => {
+describe("119 の 1 行（T48）", () => {
   // 状態（PhoneState）には録音の中身も分類（AI の出力）も無い。119 を出すかは赤の流れかどうかだけで決まる
   const RED_FLOW: PhoneState[] = [
     q("injured", { first: true }),
@@ -209,7 +209,7 @@ describe("119 の 1 行（T48、アドバイザーの返事）", () => {
     }
   });
 
-  it("文は「命が危ないと感じたら、すぐ119番へ」（11/3 16:0x 確定）で、どの画面でも 1 字も変わらない（出し分けない）", () => {
+  it("文は「命が危ないと感じたら、すぐ119番へ」で、どの画面でも 1 字も変わらない（出し分けない）", () => {
     expect(E.replaceAll(" ", "")).toBe(EMERGENCY_TEXT);
     const lines = new Set(
       RED_FLOW.map((s) => {

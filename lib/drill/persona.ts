@@ -13,11 +13,26 @@
 //   （ai: false、AI の印なし）、無ければ「連絡なし」（空の配列）
 // - 通話（T20）の相手も同じ本人役で答える。出る・出ない・背景の音だけは先に表の割合で決め、Haiku は言葉だけ（personaCallReply）
 // - 本人役の元の記録（種の 10 人、seed/people.ts の台帳）は作った例で、実在の利用者の記録ではない。画面では人の名前のそばに
-//   「架空」の印（AI が演じる架空の人。components/drill/Fictional.tsx、T48・アドバイザーの返事）
+//   「架空」の印（AI が演じる架空の人。components/drill/Fictional.tsx、T48）
 
 import type { D1Database } from "@cloudflare/workers-types";
 import * as z from "zod";
 import { askJson, type AskJsonContext, type AskJsonRequest } from "../claude/call.ts";
+import { CATALOG_WORDS, effectiveKind } from "./action-catalog.ts";
+import {
+  ASK_MEANINGS,
+  asksOf,
+  CONDITION_BANNED,
+  SPEECH_DANGER,
+  TALK_ASK_WORDS,
+  TALK_ASKS_MAX,
+  talkRounds,
+  VISIT_ASKS_MAX,
+  VISIT_CONDITION_MAX,
+  type TalkLine,
+  type VisitReport,
+} from "./dialogue.ts";
+import { WORLD_REPLY_TEXTS } from "./world-reply.ts";
 import { AiBadOutput, AiCallFailed, AiLimitReached, AiNotConfigured, AiRefused } from "../claude/errors.ts";
 import { parseLedger } from "../db/ledger.ts";
 import {
@@ -55,15 +70,19 @@ import {
   pseudonymize,
   PseudonymLeakError,
   pseudonymizeText,
+  restorePlaces,
   type ClaudePerson,
   type ForClaude,
+  type Place,
   type PseudonymInput,
   type PseudonymKey,
 } from "../pseudonym/index.ts";
+import { officePlaces } from "./area.ts";
+import { extraWorldWords } from "./event-catalog.ts";
 import type { ActionRecord, DrillIncident, DrillTurn, HeardSignal, PersonaHook, PersonaInput, PersonState, StopLog } from "./engine.ts";
-import { clockLabel, PHONE_LABELS, SHELTER_LABELS, TSUNAMI_LABELS, WATER_LABELS } from "./labels.ts";
+import { CALL_STATUS_TEXTS, clockLabel, PHONE_LABELS, SHELTER_LABELS, TSUNAMI_LABELS, WATER_LABELS } from "./labels.ts";
 import { nightLine } from "./night.ts";
-import { eventHour, type FixedTurn, type OutageArea, type PhoneState, type WorldState } from "./scenarios.ts";
+import { ASK_KINDS, eventHour, type AskKind, type FixedTurn, type OutageArea, type PhoneState, type WorldState } from "./scenarios.ts";
 
 // ---------- 本人役 ----------
 
@@ -205,10 +224,11 @@ export function profileText(
 }
 
 /**
- * 台帳（仮名化の前）から本人役を作る。説明の文は仮名化の層を通し、氏名・町名・電話が残れば PseudonymLeakError（送らない）
+ * 台帳（仮名化の前）から本人役を作る。説明の文は仮名化の層を通し、氏名・町名・電話が残れば PseudonymLeakError（送らない）。
+ * places（事業所の町名 → 地区の別名、lib/drill/area.ts の officePlaces）があれば、説明にも刻みの文にも町名は別名で渡る（T88）
  */
-export function buildPersona(source: PseudonymInput, opts: { on?: string } = {}): Persona {
-  const { payload, key } = pseudonymize([source], opts.on ? { on: opts.on } : {});
+export function buildPersona(source: PseudonymInput, opts: { on?: string; places?: ReadonlyArray<Place> } = {}): Persona {
+  const { payload, key } = pseudonymize([source], { ...(opts.on ? { on: opts.on } : {}), ...(opts.places ? { places: opts.places } : {}) });
   const p = payload[0];
   const reporters = reportersOf(source);
   const means = source.ledger.basic.contactMeans ?? {};
@@ -239,16 +259,8 @@ const SOURCE_WORDS: Record<FixedTurn["source"], string> = { agent: "本人", fam
 const WHERE_WORDS: Record<WhereNow, string> = { home: "家", shelter: "避難所", other: "その他" };
 const COLOR_WORDS: Record<SignalColor, string> = { red: "赤（無事じゃない）", green: "緑（無事）", unknown: "連絡（安否は不明）" };
 
-/** ケアマネの手の言い方（Claude に渡す文。画面の言葉ではない） */
-const ACTION_WORDS: Record<DrillAction, string> = {
-  call_person: "本人に電話した",
-  call_contact: "家族・支援者に電話した",
-  visit: "家に向かった",
-  dispatch: "訪問看護・介護の人に行ってもらうよう頼んだ",
-  request_welfare_shelter: "福祉避難所に受け入れを頼んだ",
-  report_city: "市役所に報告した",
-  evacuate_self: "自分も避難した",
-};
+/** ケアマネの手の言い方（Claude に渡す文。画面の言葉ではない）。手の表（T91 の lib/drill/action-catalog.ts）の words */
+const ACTION_WORDS: Record<DrillAction, string> = CATALOG_WORDS;
 
 function answersWords(x: { injured?: boolean | null; atHome?: boolean | null; canMove?: boolean | null; hasMedicine?: boolean | null }): string {
   const yn = (v: boolean | undefined | null, yes: string, no: string) => (v == null ? null : v ? yes : no);
@@ -282,12 +294,102 @@ function stateWords(s: PersonState | null): string {
     .join("。");
 }
 
+/** 手の返事の言い方（Claude に渡す文。lib/drill/actions.ts の ACTION_STATUS_TEXTS と同じ。actions.ts は persona.ts を読むので写す） */
+const RESULT_WORDS: Readonly<Record<NonNullable<ActionRecord["result"]>["status"], string>> = { ...WORLD_REPLY_TEXTS, ...CALL_STATUS_TEXTS };
+
+/** 手の結果の言葉（「出たが声がない」「向かってもらえる、5 時間ごろ着く」「つながった。2 往復話した」） */
+function resultWords(a: ActionRecord): string {
+  const r = a.result;
+  if (!r) return "返事待ち";
+  const parts = [RESULT_WORDS[r.status]];
+  if (typeof r.arriveAt === "number") parts.push(`${clockLabel(r.arriveAt)}ごろ着く`);
+  const rounds = talkRounds(r);
+  if (rounds > 0) parts.push(`${rounds} 往復話した`);
+  if (r.visit) parts.push("会って様子を見た");
+  return parts.join("、");
+}
+
 function actionWords(a: ActionRecord | null, persona: Persona): string {
   if (!a) return "なし";
   const target = a.target ? persona.roles.get(a.target) : null;
   // 時刻は発災からの「N 時間 M 分」（手の時刻は分まで。小数の時間を書かない）
   const when = typeof a.atMinute === "number" ? clockLabel(a.atMinute) : `${a.at} 時間`;
-  return `${when}にケアマネが${ACTION_WORDS[a.kind]}${target ? `（相手 ${target}）` : ""}`;
+  // 自由に書く手（T91）は読み替えた手の言い方（文は渡さない）。結果の言葉つき（T93）
+  return `${when}にケアマネが${ACTION_WORDS[effectiveKind(a)]}${target ? `（相手 ${target}）` : ""} → ${resultWords(a)}`;
+}
+
+/** 1 回の本人役の文に書く手の数（新しい物から） */
+const ACTIONS_IN_TICK = 6;
+
+/**
+ * 前の呼びから（T93）のケアマネの手。連続の時計（since がある）は返事か打った時刻が since より後の物、
+ * 刻みの道は前の刻みから打った物。手の一覧（actions）が無ければ直前の 1 つ（今までの形）
+ */
+function actionsSince(input: PersonaInput): ActionRecord[] {
+  const all = input.actions;
+  if (!all) return input.lastAction ? [input.lastAction] : [];
+  const since = input.since;
+  const own = all.filter((a) => a.person === input.person);
+  const picked =
+    since === undefined
+      ? own.filter((a) => a.step >= input.step - 1)
+      : own.filter((a) => a.atMinute >= since || (a.result !== null && a.result.atMinute > since));
+  return picked.slice(-ACTIONS_IN_TICK);
+}
+
+/** 本人役の今の時刻（発災からの分）。連続の時計（T90）は区切りの終わり、刻みの道は刻みの時刻 */
+function nowMinuteOf(input: Pick<PersonaInput, "hour" | "toMinute">): number {
+  return input.toMinute ?? Math.round(input.hour * 60);
+}
+
+/** 向かっている人・来た人の言い方（呼ばれた理由の 1 行。lib/drill/event-catalog.ts の言い方と同じ） */
+const ARRIVAL_WORDS: Readonly<Record<string, string>> = {
+  staff: "事業所の職員",
+  nurse: "訪問看護",
+  supporter: "支援者",
+  family: "家族",
+  vendor: "酸素業者",
+  transport: "移送の車",
+  power: "電源を届ける人",
+  medicine: "薬の配達",
+};
+
+/**
+ * 呼ばれた理由（T90 の reasons）の 1 行「この区切りで起きた事: …」。table は書かない。
+ * incident は状況の文、action はケアマネの手の結果と着いた人、clock は持ちこたえる時間、round は前の連絡からの時間
+ */
+function reasonLine(input: PersonaInput, incidents: ReadonlyArray<DrillIncident>, acts: ReadonlyArray<ActionRecord>, now: number): string | null {
+  const reasons = (input.reasons ?? []).filter((r) => r !== "table");
+  if (reasons.length === 0) return null;
+  const since = input.since ?? -1;
+  const out: string[] = [];
+  for (const r of reasons) {
+    if (r === "incident") {
+      const texts = incidents.map((e) => e.text).filter(Boolean).slice(0, 2);
+      out.push(texts.length > 0 ? texts.join("。") : "身の回りの状況が変わった");
+    } else if (r === "action") {
+      const last = acts.at(-1);
+      if (last) out.push(`ケアマネが${ACTION_WORDS[effectiveKind(last)]} → ${resultWords(last)}`);
+      for (const a of input.world.arrivals ?? []) {
+        if (a.person === input.person && a.arrived && a.arrive > since && a.arrive <= now) out.push(`${ARRIVAL_WORDS[a.role] ?? a.role}が来た`);
+      }
+      for (const d of input.world.dispatched ?? []) {
+        if (d.person === input.person && d.arrive > since && d.arrive <= now) out.push("頼んだ人が来た");
+      }
+    } else if (r === "clock") {
+      out.push("持ちこたえる時間が半分を過ぎた（または切れた）");
+    } else if (r === "round") {
+      const from = input.state ? Math.round(input.state.at * 60) : Math.max(0, since);
+      out.push(`前の連絡から ${clockLabel(Math.max(0, now - from))}たった`);
+    }
+  }
+  return out.length > 0 ? `この区切りで起きた事: ${[...new Set(out)].join("。")}` : null;
+}
+
+/** 119 を勧められた（T91 の advised、T93）。勧めるまでで、かけたかは本人役が決める */
+function advisedWords(world: WorldState, person: string): string[] {
+  const at = world.advised?.[person];
+  return at === undefined ? [] : [`ケアマネから 119 への連絡を勧められた（${clockLabel(at)}）`];
 }
 
 /** 世界の今の様子のうち、この人に関わる物 */
@@ -326,6 +428,7 @@ function worldWords(world: WorldState, person: string, persona: Persona): string
   }
   if (m.waterOut !== undefined) out.push(`家の辺りが断水（${m.waterOut} 時間から）`);
   if (world.weather) out.push(world.weather === "rain" ? "大雨が続いている" : "雨は止んだ");
+  out.push(...extraWorldWords(world, person)); // T92: 出来事の表の印・予定・向かっている人・届いた物・頼み事
   return out;
 }
 
@@ -334,17 +437,22 @@ function ownIncidents(incidents: ReadonlyArray<DrillIncident>, person: string): 
   return incidents.filter((e) => !e.person || e.person === person);
 }
 
-/** 刻みの文（時刻・状況・世界・前の様子・ケアマネの手・想定の表の行） */
+/** 刻みの文（時刻・呼ばれた理由・状況・世界・前の様子・ケアマネの手と結果・想定の表の行） */
 export function tickText(input: PersonaInput, persona: Persona): string {
   const incidents = ownIncidents(input.incidents, input.person);
+  const now = nowMinuteOf(input);
+  const acts = actionsSince(input);
+  const reason = reasonLine(input, incidents, acts, now);
   return [
-    `時刻: 発災から ${input.hour} 時間`,
+    // 発災からの「N 時間 M 分」（連続の時計の時刻は小数になるので分まで。T93）
+    `時刻: 発災から ${clockLabel(now)}`,
     // 夜間発災（T59）だけ。時刻の 1 行
     ...(input.night ? [nightLine(input.hour)] : []),
+    ...(reason ? [reason] : []),
     incidents.length > 0 ? ["この刻みの状況:", ...incidents.map((e) => `- ${e.text}`)].join("\n") : "この刻みの状況: 新しい事はない",
-    ["今の様子:", ...worldWords(input.world, input.person, persona).map((x) => `- ${x}`)].join("\n"),
+    ["今の様子:", ...[...worldWords(input.world, input.person, persona), ...advisedWords(input.world, input.person)].map((x) => `- ${x}`)].join("\n"),
     `前の連絡: ${stateWords(input.state)}`,
-    `ケアマネがした事: ${actionWords(input.lastAction, persona)}`,
+    acts.length > 0 ? ["ケアマネがした事:", ...acts.map((a) => `- ${actionWords(a, persona)}`)].join("\n") : "ケアマネがした事: なし",
     input.fixed.length > 0
       ? ["想定の表のこの刻みの行（この通りに連絡する）:", ...input.fixed.map(fixedWords)].join("\n")
       : "想定の表のこの刻みの行: なし（連絡するかは自分で決める）",
@@ -376,6 +484,8 @@ export const PERSONA_SYSTEM = [
   "5. 家族は娘・息子・夫・妻の口調、支援者は近所の人の口調。本人のことは「母」「父」「うちの人」「おばあちゃん」などと言う。",
   "6. 名前・住所・電話番号を言わない。「A さん」とも言わない。",
   "7. 「診断」「判定」「重症」と言わない。病名を言い切らない。薬の量を言わない。助言をしない。",
+  "8. ケアマネの手が届いたあとの最初の連絡は、その手の結果を受けた様子を言う（来た人がいる・物が届いた・移った）。頼んだ事が済んでいなければ、また頼んでよい。",
+  "9. 119 を勧められたら、かけるか・かけないかを言葉で言う（かけたかどうかは自分で決める）。救急が来た先の事は言わない。「死亡」と言わない。",
 ].join("\n");
 
 /**
@@ -444,7 +554,8 @@ export function cleanWords(raw: string, key: PseudonymKey, max: number): string 
   if (BANNED.test(t)) return null;
   const masked = maskReply(t, key);
   if (masked === null) return null;
-  return Array.from(masked).slice(0, max).join("");
+  // 地区の別名（甲地区）は画面では町名に（T88。訓練の入力は町名を別名で渡す）
+  return Array.from(restorePlaces(masked, key)).slice(0, max).join("");
 }
 
 function doingOf(answer: PersonaAnswer, key: PseudonymKey): string | null {
@@ -600,6 +711,17 @@ export async function loadPersonaSources(db: D1Database, officeId: string): Prom
   return out;
 }
 
+/**
+ * 本人役・通話の入力の町名 → 地区の別名（T88）。事業所の本人たち全部の台帳の町名から作る（本人役は参加者の一覧を持たない）。
+ * 入力の町名はこの別名で渡し、言葉の別名は町名に戻すので、世界の別名と番号が違っても本人役の中では食い違わない
+ */
+export function personaPlaces(ai: Pick<AskJsonContext, "office">, sources: ReadonlyMap<string, PseudonymInput>): Place[] {
+  return officePlaces(
+    ai.office.id,
+    [...sources.values()].map((s) => s.ledger),
+  );
+}
+
 export type PersonaDeps = {
   /** 本人の台帳（仮名化の前）。最初の呼び出しで 1 回だけ読む */
   load: () => Promise<ReadonlyMap<string, PseudonymInput>>;
@@ -620,9 +742,10 @@ export function createPersonaHook(deps: PersonaDeps): PersonaHook {
   let loaded: Promise<ReadonlyMap<string, PseudonymInput>> | null = null;
   return async (input) => {
     try {
-      const source = (await (loaded ??= deps.load())).get(input.person);
+      const sources = await (loaded ??= deps.load());
+      const source = sources.get(input.person);
       if (!source) return fixedTurns(input);
-      const persona = buildPersona(source, deps.on ? { on: deps.on } : {});
+      const persona = buildPersona(source, { ...(deps.on ? { on: deps.on } : {}), places: personaPlaces(deps.ai, sources) });
       if (input.fixed.length === 0 && !persona.reporters.some((r) => r.canPress)) return [];
       const tick = pseudonymizeText(tickText(input, persona), persona.key);
       const r = await askJson(buildPersonaRequest(persona.profile, tick, input.virtual === true), deps.ai);
@@ -686,13 +809,17 @@ export const CALL_SYSTEM = [
   "名前・住所・電話番号を言わない。「A さん」とも言わない。「診断」「判定」「重症」と言わない。病名を言い切らない。薬の量を言わない。",
 ].join("\n");
 
-export const CallSchema = z.object({ speech: z.string() });
+/**
+ * 電話に出た人の返事の形（T93 で頼み事を足した）。asks は頼み事の種類の英字（ASK_KINDS の閉じた一覧。外の値はコードが捨てる）。
+ * 最初の言葉（act の通話）は言葉だけを使い、頼み事は往復と訪問から積む。省略可（言葉だけの返事も通す）
+ */
+export const CallSchema = z.object({ speech: z.string(), asks: z.array(z.string()).optional() });
 
 export function callText(call: PersonaCall, persona: Persona): string {
   return [
-    `時刻: 発災から ${call.hour} 時間`,
+    `時刻: 発災から ${clockLabel(Math.round(call.hour * 60))}`,
     ...(call.night ? [nightLine(call.hour)] : []),
-    ["今の様子:", ...worldWords(call.world, call.person, persona).map((x) => `- ${x}`)].join("\n"),
+    ["今の様子:", ...[...worldWords(call.world, call.person, persona), ...advisedWords(call.world, call.person)].map((x) => `- ${x}`)].join("\n"),
     `この刻みの状況: ${ownIncidents(call.incidents, call.person).map((e) => e.text).join("、") || "新しい事はない"}`,
     `前の連絡: ${stateWords(call.state)}`,
     `電話に出た人: ${call.callee}`,
@@ -728,6 +855,134 @@ export async function personaCallReply(
     return { pickup, speech, ai: speech !== null };
   } catch (e) {
     if (isPersonaFailure(e)) return { pickup, speech: null, ai: false };
+    throw e;
+  }
+}
+
+// ---------- 通話の往復（T93。lib/drill/talk.ts が使う口） ----------
+
+const ASK_LIST = ASK_KINDS.map((k) => `${k}（${ASK_MEANINGS[k]}）`).join("・");
+
+/**
+ * 往復の指示。最初の言葉（CALL_SYSTEM）のあと、ケアマネの問い 1 つに電話に出た人として答える。返すのは言葉と頼み事だけ
+ * （色・4 問・聞いた安否はコードが本人役の今の様子から決める）
+ */
+export const TALK_SYSTEM = [
+  "災害の訓練で、ケアマネからの電話に出た人を演じる。人は全部架空。電話の続きで、ケアマネの今の言葉に答える。",
+  "入力は JSON。「本人役」は本人と周りの人の説明、「電話」は今の時刻・状況・前の連絡・電話に出た人・それまでの話・ケアマネの今の言葉。",
+  "返す物:",
+  "- speech: 電話に出た人が言う事。1〜3 文。それまでの話と食い違わない。",
+  `- asks: 頼み事。次の一覧から 0〜${TALK_ASKS_MAX} つの英字。${ASK_LIST}。言葉で頼んだ事と合わせる。無ければ空の配列。`,
+  "「伝える様子」があれば、その様子と食い違わない事を言う（無事なのにけがをしたと言わない、けがなのに無事と言わない）。",
+  "119 に電話するよう勧められたら、かけるか・かけないかを言葉で言う（どちらにするかは自分で決める）。救急が来た先の事は言わない。",
+  "頼んだ事が済んでいなければ、また頼んでよい。ケアマネが後で電話すると言ったら、短く返して終える。",
+  "本人はやさしい短い話し言葉。認知症の本人は話が噛み合わないことがある。家族・支援者はその人の口調。",
+  "名前・住所・電話番号を言わない。「A さん」とも言わない。「診断」「判定」「重症」「死亡」と言わない。病名を言い切らない。薬の量を言わない。助言をしない。",
+].join("\n");
+
+/** 往復の 1 回に渡す物。first は最初の言葉、lines はそれまでの往復、said はケアマネの今の言葉（決まった問いの言葉か、伏せる前の自由の文） */
+export type PersonaTalk = PersonaCall & { first: string | null; lines: ReadonlyArray<TalkLine>; said: string };
+
+/** 往復の文（Claude に渡す前。呼ぶ側が仮名化の門を通す） */
+export function talkText(talk: PersonaTalk, persona: Persona): string {
+  const who = (l: TalkLine) => (l.who === "cm" ? "ケアマネ" : talk.callee);
+  return [
+    callText(talk, persona),
+    `最初に言った事: ${talk.first ? `「${talk.first}」` : "なし"}`,
+    talk.lines.length > 0 ? ["それまでの話:", ...talk.lines.map((l) => `- ${who(l)}: 「${l.text}」`)].join("\n") : "それまでの話: なし",
+    `ケアマネの今の言葉: 「${talk.said}」`,
+  ].join("\n");
+}
+
+export function buildPersonaTalkRequest(
+  profile: ForClaude<{ text: string }>,
+  talk: ForClaude<{ text: string }>,
+): AskJsonRequest<typeof CallSchema> {
+  return { purpose: "persona", system: TALK_SYSTEM, input: { 本人役: profile, 電話: talk }, schema: CallSchema };
+}
+
+/** 往復の返事。言葉が使えなければ null（頼み事も積まない） */
+export type TalkReplyWords = { speech: string | null; asks: AskKind[]; ai: boolean };
+
+/** 往復と訪問の言葉の掃除（本人役と同じ掃除に、人の生き死に・救急の結果の語を足す） */
+function cleanTalkWords(raw: string, key: PseudonymKey, max: number): string | null {
+  if (SPEECH_DANGER.test(raw)) return null;
+  return cleanWords(raw, key, max);
+}
+
+/**
+ * 往復の 1 回（Haiku × 1 回）。talk は伏せた文（呼ぶ側が事業所の全員の鍵で pseudonymizeText を通した物）。key はその鍵
+ * （返事の掃除と町名の戻し）。失敗は言葉なし（呼ぶ側が固定の言葉に）
+ */
+export async function personaTalkReply(
+  persona: Persona,
+  talk: ForClaude<{ text: string }>,
+  key: PseudonymKey,
+  ctx: AskJsonContext,
+): Promise<TalkReplyWords> {
+  try {
+    const r = await askJson(buildPersonaTalkRequest(persona.profile, talk), ctx);
+    const speech = cleanTalkWords(r.value.speech, key, SPEECH_MAX);
+    return speech === null ? { speech: null, asks: [], ai: false } : { speech, asks: asksOf(r.value.asks, TALK_ASKS_MAX), ai: true };
+  } catch (e) {
+    if (isPersonaFailure(e)) return { speech: null, asks: [], ai: false };
+    throw e;
+  }
+}
+
+// ---------- 訪問の様子（T93。lib/drill/hooks.ts の visit の口） ----------
+
+export const VISIT_SYSTEM = [
+  "災害の訓練で、ケアマネが家を訪ねて着いたときの、本人と周りの人の様子を演じる。人は全部架空。",
+  "入力は JSON。「本人役」は本人と周りの人の説明、「訪問」は今の時刻・状況・前の連絡。",
+  "返す物:",
+  `- condition: 着いたケアマネが見て分かる本人の様子（${VISIT_CONDITION_MAX} 字まで）。どこで何をしているか・部屋や周りの様子。体の具合や病名を言い切らない。`,
+  "- location: 本人がいる所。home（家）・shelter（避難所）・other（その他）・unknown のどれか 1 つの英字。",
+  `- asks: 本人か家族の頼み事。次の一覧から 0〜${VISIT_ASKS_MAX} つの英字。${ASK_LIST}。無ければ空の配列。`,
+  "- speech: 本人か家族がケアマネに言う事。1〜2 文。",
+  "本人はやさしい短い話し言葉。認知症の本人は話が噛み合わないことがある。家族・支援者はその人の口調。",
+  "名前・住所・電話番号を言わない。「A さん」とも言わない。「診断」「判定」「重症」「死亡」と言わない。病名を言い切らない。薬の量を言わない。助言をしない。",
+].join("\n");
+
+/** 訪問の返事の形。location は本人役の今の様子と並べて読むだけで、聞いた安否（色・いる所）はコードが決める */
+export const VisitSchema = z.object({ condition: z.string(), location: z.string(), asks: z.array(z.string()), speech: z.string() });
+
+export type PersonaVisit = Pick<PersonaInput, "person" | "hour" | "world" | "incidents" | "state" | "night">;
+
+export function visitText(v: PersonaVisit, persona: Persona): string {
+  return [
+    `時刻: 発災から ${clockLabel(Math.round(v.hour * 60))}`,
+    ...(v.night ? [nightLine(v.hour)] : []),
+    ["今の様子:", ...[...worldWords(v.world, v.person, persona), ...advisedWords(v.world, v.person)].map((x) => `- ${x}`)].join("\n"),
+    `この刻みの状況: ${ownIncidents(v.incidents, v.person).map((e) => e.text).join("、") || "新しい事はない"}`,
+    `前の連絡: ${stateWords(v.state)}`,
+    "ケアマネが家に着いた。",
+  ].join("\n");
+}
+
+export function buildPersonaVisitRequest(
+  profile: ForClaude<{ text: string }>,
+  visit: ForClaude<{ text: string }>,
+): AskJsonRequest<typeof VisitSchema> {
+  return { purpose: "persona", system: VISIT_SYSTEM, input: { 本人役: profile, 訪問: visit }, schema: VisitSchema };
+}
+
+/**
+ * 訪問で着いたときの様子と頼み事（Haiku × 1 回）。様子は見て分かる事だけ（体の具合の言い切り・人の生き死にの語は様子ごと捨てる）、
+ * 頼み事は閉じた一覧の 3 つまで。使える物が何も無ければ・失敗は null（手の返事に様子を載せない）
+ */
+export async function personaVisitReport(persona: Persona, visit: PersonaVisit, ctx: AskJsonContext): Promise<VisitReport | null> {
+  try {
+    const text = pseudonymizeText(visitText(visit, persona), persona.key);
+    const r = await askJson(buildPersonaVisitRequest(persona.profile, text), ctx);
+    const raw = r.value.condition;
+    const condition = CONDITION_BANNED.test(raw) ? null : cleanTalkWords(raw, persona.key, VISIT_CONDITION_MAX);
+    const speech = cleanTalkWords(r.value.speech, persona.key, SPEECH_MAX);
+    const asks = asksOf(r.value.asks, VISIT_ASKS_MAX);
+    if (condition === null && speech === null && asks.length === 0) return null;
+    return { condition, asks, speech, ai: true };
+  } catch (e) {
+    if (isPersonaFailure(e)) return null;
     throw e;
   }
 }

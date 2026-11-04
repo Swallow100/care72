@@ -1,0 +1,11 @@
+/*
+  書類の一括印刷（/forms/batch、T87）。人数分の紙面（components/forms/PaperBatch.tsx）を 1 頁に並べる。
+  1 人は 1 枚以上の紙（.paper）。paper.css の印刷は .paper のあとで頁を割り、各人の最後の .paper のあとは割らない。
+  人の間でも同じ break-after: page で割り、最後の人の最後の紙のあとだけ割らない（空の頁を作らない）。本人の 1 枚の一括（own-batch.css）と同じ。
+*/
+
+@media print {
+  .paper-batch > .paper-scroll:not(:last-child) .paper:last-child {
+    break-after: page;
+  }
+}

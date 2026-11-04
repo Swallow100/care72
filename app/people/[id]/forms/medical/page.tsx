@@ -33,7 +33,7 @@ type Props = { params: Promise<{ id: string }>; searchParams: Promise<{ print?: 
 // 医療班・行政は同意の範囲（lib/consent/scope.ts）: 医療班への提供に同意の無い人は 404、ある人は住所・本人の電話を描かず、
 // 支援者は役割名だけ（lib/consent/documents.ts）。ケアマネには同意の無い人は中身を作らず「同意なし」「未確認」だけ。
 // 「なぜこの行があるか」の脇はケアマネ（審査員のケアマネの役を含む）の画面だけ。紙には出さない。
-// 右に「原本」（本人のページの 基本・医療・避難・人、見る人の範囲のまま）を並べ、要約と見比べられるようにする（11/3 14:1x の (3)）。
+// 右に「原本」（本人のページの 基本・医療・避難・人、見る人の範囲のまま）を並べ、要約と見比べられるようにする（docs/DECISIONS.md「書類」）。
 export default async function MedicalFormPage({ params, searchParams }: Props) {
   const principal = await requirePage("person");
   const { id } = await params;

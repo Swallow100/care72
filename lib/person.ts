@@ -483,7 +483,7 @@ function shortHours(h: number): string {
  * 医療の印（担当一覧と同じ並び）と、その区分の時計でいちばん強い色、いちばん短い残り。
  * 平時（s なし）の残りは時計の値そのまま（上の「時計」の欄と同じ数）を短い単位で。
  * 災害モード（s あり、本人の地区を当てた Situation）は今の残り（走っている時計は走った分を引き、超えたら「超過」と赤。
- * まだ走っていない時計は長さのまま）。走らない時計（本人の状態）・値の無い時計は数えない（11/3 08:0x の確定 2）。
+ * まだ走っていない時計は長さのまま）。走らない時計（本人の状態）・値の無い時計は数えない。
  * 担当一覧・受け持ちの表の狭い幅（医療の列を省くとき氏名の下に出す。T54）も同じ物
  */
 export function markItems(clocks: ReadonlyArray<TriageClock>, s: Situation | null = null): MarkItem[] {
@@ -1122,7 +1122,7 @@ function attachPending(sections: Map<SectionId, Block[]>, ledger: Ledger, rows: 
 /**
  * 上に大きく出す時計の残り。走る時計を短い順に、値の無い物は後ろ。
  * 平時は時計の長さ（「2 時間」）。災害モード（s あり）は今の残り（「残り 1.5 時間」「超過 30 分」、色は残りの長さ）で、
- * まだ走っていない時計は長さと「停電で開始」（担当一覧の行の詳細と同じ言い方。11/3 08:0x の確定 2）
+ * まだ走っていない時計は長さと「停電で開始」（担当一覧の行の詳細と同じ言い方）
  */
 function headClocks(clocks: ReadonlyArray<ClockRow>, s: Situation | null = null): PersonHead["clocks"] {
   return clocks

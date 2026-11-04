@@ -2,29 +2,29 @@
 
 ## 11/3 02:4x 配信（Fable）
 
-- main c456ef4（T18 本人役、T24 同意の範囲と経過、T26 デモの種と「最初に戻す」、テストの直し、docs/JUDGING.md）を https://care72.app に出した（Worker version 2b9e57a1）。remote の D1 は tools/deploy/rebuild-remote.sh で作り直した（DEPLOY_DIR=care72-deploy2。確認用の dev が care72-deploy を使っていたため）
+- main 175d0eb（T18 本人役、T24 同意の範囲と経過、T26 デモの種と「最初に戻す」、テストの直し、docs/JUDGING.md）を https://care72.app に出した（Worker version 2b9e57a1）。remote の D1 は tools/deploy/rebuild-remote.sh で作り直した（DEPLOY_DIR=care72-deploy2。確認用の dev が care72-deploy を使っていたため）
 - 確かめ: /api/health ok（DB・RECORDINGS・anthropic true、gemini false）、/ → /login 307、people 10 人。workers.dev は閉じたまま
 - 未確認: 本番の鍵での入れる欄・分類・本人役（ai_calls は作り直しで 0 件）、T26 の cron と「最初に戻す」を本番で押すこと
 
 ## 11/3 02:20 落ちるテストの直しと T24 の取り込み（Opus）
 
-- 始める前（integrate/t11-t12 の 24cb4d4、T26 #19 を取り込んだ所）: `npm test` 1043 件のうち 4 件が落ちていた（本人役 3 件と MCP 1 件）。全部を流すと、ほかに 1 件が時々 5 秒の時間切れで落ちた
-- 本人役の 3 件（lib/drill/persona.test.ts、e90af3f）: T26 で山田 ハナの連絡手段のスマホを「使える」にした（審査員の本人スマホ。docs/progress/t26.md）のに、T18 のテストが「山田はスマホを持たない」のままだった。lib/drill/persona.ts の決まり（本人は「使える」だけ、家族・支援者はスマホのある人だけ、事業所は連絡しない）は正しいので、期待だけを直した。山田は押せる側（本人、娘。説明に「スマホ 使える」、本人の赤と 4 問）、スマホを持たない本人が赤を押せない確かめは佐藤と伊藤で、説明の「スマホ 持たない」は佐藤で見る
-- MCP の 1 件（tools/mcp/care72-local、84bf267）: 「miniflare の置き場から people の表がある .sqlite を選ぶ」は手元の D1 の置き場には依らない（一時フォルダに置き場の形を作る）。落ちたのは時間切れで、テストの中で表と種を文ごとの自動の確定で file の SQLite に書いていたため（単独で 1.8 秒、50 の worker が同時に動くと vitest の既定の 5 秒を超える。`--testTimeout=1500` で同じ落ち方を出せる）。探し方は people の表があるかだけを見るので、表 1 つの .sqlite で確かめる（0.1 秒）。people の無い物・SQLite でない物は選ばず、2 つあれば新しい方を選ぶことも足した。beforeAll の種も BEGIN〜COMMIT の 1 つの書き込みに
-- 時々落ちる 1 件（tools/claude-code.test.ts、2939e4b）: docs/CLAUDE_CODE.md の commit の hash の確かめが hash ごとに git を起こしていた（単独で 1.5 秒、混んだ時に 5 秒の時間切れ）。`git cat-file --batch-check` で 1 回にまとめた（0.2 秒）
-- T24（#20、task/t24）を merge commit で取り込んだ（b8321c4）。衝突なし。T24 は 0001・lib/db/types.ts・seed を変えていないので、remote の D1 の作り直しは T23・T26 の分のまま（T24 で増えない）。手元は `npm run db:fresh` で作り直した
+- 始める前（integrate/t11-t12 の 1df68e9、T26 #19 を取り込んだ所）: `npm test` 1043 件のうち 4 件が落ちていた（本人役 3 件と MCP 1 件）。全部を流すと、ほかに 1 件が時々 5 秒の時間切れで落ちた
+- 本人役の 3 件（lib/drill/persona.test.ts、5ec514f）: T26 で山田 ハナの連絡手段のスマホを「使える」にした（審査員の本人スマホ。docs/progress/t26.md）のに、T18 のテストが「山田はスマホを持たない」のままだった。lib/drill/persona.ts の決まり（本人は「使える」だけ、家族・支援者はスマホのある人だけ、事業所は連絡しない）は正しいので、期待だけを直した。山田は押せる側（本人、娘。説明に「スマホ 使える」、本人の赤と 4 問）、スマホを持たない本人が赤を押せない確かめは佐藤と伊藤で、説明の「スマホ 持たない」は佐藤で見る
+- MCP の 1 件（tools/mcp/care72-local、888361a）: 「miniflare の置き場から people の表がある .sqlite を選ぶ」は手元の D1 の置き場には依らない（一時フォルダに置き場の形を作る）。落ちたのは時間切れで、テストの中で表と種を文ごとの自動の確定で file の SQLite に書いていたため（単独で 1.8 秒、50 の worker が同時に動くと vitest の既定の 5 秒を超える。`--testTimeout=1500` で同じ落ち方を出せる）。探し方は people の表があるかだけを見るので、表 1 つの .sqlite で確かめる（0.1 秒）。people の無い物・SQLite でない物は選ばず、2 つあれば新しい方を選ぶことも足した。beforeAll の種も BEGIN〜COMMIT の 1 つの書き込みに
+- 時々落ちる 1 件（tools/claude-code.test.ts、a9b38bf）: docs/CLAUDE_CODE.md の commit の hash の確かめが hash ごとに git を起こしていた（単独で 1.5 秒、混んだ時に 5 秒の時間切れ）。`git cat-file --batch-check` で 1 回にまとめた（0.2 秒）
+- T24（#20、task/t24）を merge commit で取り込んだ（02e7e45）。衝突なし。T24 は 0001・lib/db/types.ts・seed を変えていないので、remote の D1 の作り直しは T23・T26 の分のまま（T24 で増えない）。手元は `npm run db:fresh` で作り直した
 - 取り込んだあと: `npm test` 1086 件が通る（3 回流して 3 回とも）、`npm run typecheck` も通る。全部を流したときに 3 秒前後かかるテスト（lib/person.test.ts の 10 人を描く物、lib/forms/matsuyama.test.ts の欄の物）がまだあり、PC が混んでいると時間切れに近づく
 - main を integrate/t11-t12 の先頭まで fast-forward で進めた（`git push origin integrate/t11-t12:main`）。残りの分岐の T19（task/t19）は integrate より先の commit が無い
 
 ## 11/3 01:13 配信（Fable）
 
-- main d6fe5c1 を https://care72.app に出した（Worker version e4a930a9）。訓練（T17）と行政・医療班の受け持ち（T23）が本番に。remote の D1 は作り直し（0001 の表＋種 10 人、278 行）。作者の端末のタブから tools/deploy/rebuild-remote.sh
+- main a8750d0 を https://care72.app に出した（Worker version e4a930a9）。訓練（T17）と行政・医療班の受け持ち（T23）が本番に。remote の D1 は作り直し（0001 の表＋種 10 人、278 行）。作者の端末のタブから tools/deploy/rebuild-remote.sh
 - 確かめ: /api/health ok（DB・RECORDINGS・anthropic true、gemini false）、/ → /login 307。workers.dev は閉じたまま
 - 未確認: 本番での訓練の進め方（D1 の重なりの 409 は node:sqlite でしか見ていない）、/staff の受入の流れ、本番の鍵での分類
 
 ## 11/3 01:1x T17・T23 の取り込み（Fable）
 
-- T17 訓練の骨組み（#15、task/t17。言葉の校正 11 件の直し be36498 も）と T23 行政・医療班の受け持ち（#16・#17、task/t23。経過の種類「受領」→「受入」も）を integrate/t11-t12 に merge commit で取り込み、main を進めた。テスト 1005 件、`npm run typecheck`。T23 が 0001 を直した（custody・第三者提供の記録・所属なしの事業所・申告の年齢）ので、手元の D1 は `npm run db:fresh`、配信は D1 の作り直し
+- T17 訓練の骨組み（#15、task/t17。言葉の校正 11 件の直し a9f9522 も）と T23 行政・医療班の受け持ち（#16・#17、task/t23。経過の種類「受領」→「受入」も）を integrate/t11-t12 に merge commit で取り込み、main を進めた。テスト 1005 件、`npm run typecheck`。T23 が 0001 を直した（custody・第三者提供の記録・所属なしの事業所・申告の年齢）ので、手元の D1 は `npm run db:fresh`、配信は D1 の作り直し
 - 手元で確かめた: ケアマネで /drill → 大雨の想定 → 72 時間の棒・表（担当一覧と同じ色）・状況・対応（枠）・被害状況・地図。「進める」3 回で経過 6 時間、山田が至急「本人が「けが」」、小林が至急「人工呼吸器 内蔵電池 3 時間を超過」、田中が要確認「無事だが透析先 未確認」。受け持ち（/staff）は T23 の記録の確かめ（headless Chrome）に任せ、こちらでは開いていない
 - 地図のデモの印「筋書きの値」→「想定の値」（訓練の言葉に合わせた）
 - 進みの詳しい記録は docs/progress/t17.md・t23.md・wording.md。T23 の問い（搬送のあとの状態・平時の事業所の人の受入・提供記録を画面に）は T24 の依頼で決めた（搬送 行き先 の状態、提供の行を経過に）
@@ -32,7 +32,7 @@
 
 ## 11/3 00:24 配信（Fable）
 
-- main 6a4dec7 を https://care72.app に出した（Worker version 7bd37d8b）。T13 発災時の一覧・T11 家族のスマホ・T12 録音の分類・言葉の直し（#14）・書体 Plex が本番に
+- main d9937f0 を https://care72.app に出した（Worker version 7bd37d8b）。T13 発災時の一覧・T11 家族のスマホ・T12 録音の分類・言葉の直し（#14）・書体 Plex が本番に
 - remote の D1 は tools/deploy/rebuild-remote.sh で作り直した（表を全部消す → 0001 → 種 10 人、276 行）。作者の端末のタブ（Git Bash）から流した
 - 確かめ: /api/health ok（DB・RECORDINGS・anthropic true、gemini false）、/ → /login 307、people 10 人。workers.dev は 1042/404 で閉じたまま（意図どおり）
 - 未確認: 本番の鍵での分類（docs/progress/t12.md の「本番の鍵で最初に確かめること」）と本人のスマホの実機（T10 の記録）。Gemini の鍵は未設定なので、定型文の声は端末の読み上げになる
@@ -52,11 +52,11 @@
 
 | # | 物 | 場所 | commit |
 | --- | --- | --- | --- |
-| 1 | 信号の読み方: 同じ出来事の赤を重ねて読む（けがの赤のあとの答えなしの赤で「けが」を落とさない）。担当一覧・本人のページ・様式 9 が同じ読み方（triageInDisaster）。大雨の筋は heavy-rain.fixture.ts に移し、一覧の並びのテストと共有 | lib/triage/from-ledger.ts（foldSignals）・index.ts、lib/disaster/triage.ts | f033a73 |
-| 2 | 未知の信号（家族の「分からない」）は新しい情報なしとして表に渡さない。赤を解くのは緑だけ（T11 の問い） | lib/triage/from-ledger.ts | a615a9c |
-| 3 | 分類の出どころ: ケアマネが直した分類は「分類（ケアマネ）: 動けない」（AI の印なし）。人の直しが前の赤の Claude の分類に勝ち、外した分類を戻さない（T12 の問い）。docs/TRIAGE.md を作り直した | lib/disaster/triage.ts（toTriageSignal）、lib/triage | 692f222 |
-| 4 | 優先修正（上げる・下げる・理由・解除）は本人の経過の override の行。色はサーバーで当て直し、一覧・本人のページ・様式 9 が同じ上書きを読む。電話の記録は called の行（名前と番号は文に書かない）。録音の再生 `GET /api/recordings/<信号>`（本人のページと同じ壁、範囲の外は 404、Range で 206）。`POST /api/caseload/override`・`/api/caseload/call` はケアマネの役だけ | lib/disaster/override.ts、lib/list/calls.ts・override.ts・recording.ts・http.ts、app/api/caseload/、app/api/recordings/[signal]/ | c3c992e |
-| 5 | 発災時の表: 先頭に状態（色の印と 2 字）と優先（並びの番号）、残り・最終連絡の列。列は減らさず、どの列でも並べ替え（既定は優先）。上に至急・要確認・未知・無事の人数と発災・停電からの経過。行を押すと行の下に詳細（理由、連絡先と電話・不通、時計の残り・出典・確認、避難先、支援者、最終連絡、信号の答え、録音の再生、文字起こし、分類の差し込み口、優先修正） | components/list/DisasterTable.tsx・RowDetail.tsx・CallButtons.tsx・OverrideForm.tsx・ExpandRow.tsx・DisasterSummary.tsx・SortHeader.tsx、lib/list/detail.ts、lib/caseload.ts、app/page.tsx | eae82cf |
+| 1 | 信号の読み方: 同じ出来事の赤を重ねて読む（けがの赤のあとの答えなしの赤で「けが」を落とさない）。担当一覧・本人のページ・様式 9 が同じ読み方（triageInDisaster）。大雨の筋は heavy-rain.fixture.ts に移し、一覧の並びのテストと共有 | lib/triage/from-ledger.ts（foldSignals）・index.ts、lib/disaster/triage.ts | ddfefab |
+| 2 | 未知の信号（家族の「分からない」）は新しい情報なしとして表に渡さない。赤を解くのは緑だけ（T11 の問い） | lib/triage/from-ledger.ts | d556734 |
+| 3 | 分類の出どころ: ケアマネが直した分類は「分類（ケアマネ）: 動けない」（AI の印なし）。人の直しが前の赤の Claude の分類に勝ち、外した分類を戻さない（T12 の問い）。docs/TRIAGE.md を作り直した | lib/disaster/triage.ts（toTriageSignal）、lib/triage | 0538f4b |
+| 4 | 優先修正（上げる・下げる・理由・解除）は本人の経過の override の行。色はサーバーで当て直し、一覧・本人のページ・様式 9 が同じ上書きを読む。電話の記録は called の行（名前と番号は文に書かない）。録音の再生 `GET /api/recordings/<信号>`（本人のページと同じ壁、範囲の外は 404、Range で 206）。`POST /api/caseload/override`・`/api/caseload/call` はケアマネの役だけ | lib/disaster/override.ts、lib/list/calls.ts・override.ts・recording.ts・http.ts、app/api/caseload/、app/api/recordings/[signal]/ | 966685a |
+| 5 | 発災時の表: 先頭に状態（色の印と 2 字）と優先（並びの番号）、残り・最終連絡の列。列は減らさず、どの列でも並べ替え（既定は優先）。上に至急・要確認・未知・無事の人数と発災・停電からの経過。行を押すと行の下に詳細（理由、連絡先と電話・不通、時計の残り・出典・確認、避難先、支援者、最終連絡、信号の答え、録音の再生、文字起こし、分類の差し込み口、優先修正） | components/list/DisasterTable.tsx・RowDetail.tsx・CallButtons.tsx・OverrideForm.tsx・ExpandRow.tsx・DisasterSummary.tsx・SortHeader.tsx、lib/list/detail.ts、lib/caseload.ts、app/page.tsx | 9bed955 |
 | 6 | 幅: 発災時は右の面を 1280px から（1024〜1279px は表の下に 2 列）。セルの余白と最小幅を詰め、時刻・残り・ハザード・支援者・計画は折り返さない。連絡先は 1 行目に誰か、2 行目に電話と不通。本人の連絡先の行は「本人 本人」にしない。電話の記録の時刻は「11/4 10:42」 | app/page.tsx、components/list/、lib/list/calls.ts・detail.ts | この記録の 1 つ前 |
 | 7 | テスト: 大雨の筋の 10 人が画面の並びと一致（lib/list/board.test.ts）、D1 での上書き・電話・録音・詳細（lib/list/list.test.ts）、信号の重ね読み（lib/triage/fold.test.ts） | | 各 commit |
 
@@ -92,13 +92,13 @@
 
 | # | 物 | 場所 | commit |
 | --- | --- | --- | --- |
-| 1 | 信号の保存: 役「本人のスマホ」だけが書ける（ケアマネ・医療班・行政・家族・役未選択は 403、ログインなしは 401）。本人の id と出どころ（self）はログインから決め、送った物の中の id は読まない。色・緑の 1 問（家・避難所・その他）・赤の 4 問（けが・家・動けるか・薬。答えていない問いは null）・時刻を signals に、経過に「信号」の 1 行（「無事じゃない けが あり・自宅・動けない・未回答 1」「無事 自宅」）。災害モードの間だけ受け、平時は 409。id は端末で作る UUID で、送り直しても重ねない（別の人の id なら競合）。分類（classes・classified_by）は空のまま | lib/signals/body.ts・save.ts・http.ts・labels.ts、app/api/signals/route.ts | 50c0fac |
-| 2 | 録音と文字起こし: 先に送った自分の信号に 1 回だけ添える。音声は R2 の `recordings/<事業所>/<本人>/<時刻>.webm`（時刻は信号の時刻。Safari の mp4 は .m4a）、鍵と文字起こしは信号の行に、経過に「録音 30 秒 文字起こし「…」」の行（payload の source は recording）。音声だけ・文字起こしだけでもよい。8 MB・600 秒・2,000 字まで | lib/signals/save.ts・http.ts、app/api/recordings/route.ts | 50c0fac |
-| 3 | 定型文の声: 「大丈夫ですか。状況を説明してください」の 1 文だけ（名前を入れない）。Gemini の鍵があれば 1 回だけ作って R2 の `voice/<モデル>/<声>/prompt-1.wav` に置き、次からはそれを返す（用途 voice で事業所の上限に数える）。鍵が無ければ 404 で、端末は speechSynthesis で同じ文を ja-JP で読む | lib/signals/voice.ts・phrases.ts、app/api/signals/voice/route.ts | 50c0fac |
-| 4 | 流れ（画面に触らない）: 上 → 緑 → 1 問 → 送る、赤 → 1 画面 1 問 × 4 → 送る。20 秒は赤を押した時か最後に答えた時から数え、送ったあとは数えない。20 秒押さないと、それまでの答えで赤の信号を先に送り、定型文を流して（15 秒で打ち切り）、30 秒録る。延長は 30 秒ずつ・上限 120 秒、「送る」で早く止める。マイクも文字起こしも使えなければ録らずに終わる | lib/signals/phone.ts | 122dde3 |
-| 5 | 通信が無いとき: 送る前に端末（localStorage）に書き、届いたら消す。開いたとき・つながったとき・20 秒ごとに順に送る（前が送れないうちは後ろを送らない）。送り直しても通らない応答（400・403・404・409・413）は捨てる。音声は端末に書かず（開いている間だけ覚える）、閉じると文字起こしだけ送る。持ち主は「役:本人」（self:p-01） | lib/signals/outbox.ts | 122dde3・90bac55 |
-| 6 | 音: 赤を押した時に、音の要素を音を出さずに 1 回鳴らして読み込み（携帯が 20 秒あとに鳴らせるように）、マイクの許可を聞いてすぐ閉じる（許可済みなら聞かない）。MediaRecorder は webm → mp4 → ogg の順。文字起こしは T04 の lib/speech/dictation.ts で、長い無音でブラウザが止めたら 5 回まで続きから聞き直す（言い換えない） | lib/signals/media.ts | 122dde3 |
-| 7 | 画面 `/me`: 平時は本人の 1 枚（T06）の文を大きな字で（電話は押すとかけられる、119 はリンクにしない）。30 秒ごとに読み直して災害モードに替わる。災害モードは「無事」緑と「無事じゃない」赤の 2 つだけを面で塗り（状態の色の変数のまま。ダークは上の字を濃く）、1 画面 1 問、ボタンは 2〜3 つ、戻るなし、説明文なし、漢字は全部ふりがな。録っている間は「AI が きいています」・定型文・「あと 25 秒」・もっと 話す・送る。終わりは「とどきました」（通信なしは「まだ とどいて いません」「つながったら 送ります」）と「もう 一度」、赤の終わりに「いのちの 危険が あるときは 119」。上と終わりにいる間だけ 30 秒ごとに読み直す。言葉の途中で折り返さない（keep-all） | app/me/page.tsx、components/phone/PhoneSheet.tsx・PhoneView.tsx・PhoneDisaster.tsx・phone.css | df99451・c0a3213 |
+| 1 | 信号の保存: 役「本人のスマホ」だけが書ける（ケアマネ・医療班・行政・家族・役未選択は 403、ログインなしは 401）。本人の id と出どころ（self）はログインから決め、送った物の中の id は読まない。色・緑の 1 問（家・避難所・その他）・赤の 4 問（けが・家・動けるか・薬。答えていない問いは null）・時刻を signals に、経過に「信号」の 1 行（「無事じゃない けが あり・自宅・動けない・未回答 1」「無事 自宅」）。災害モードの間だけ受け、平時は 409。id は端末で作る UUID で、送り直しても重ねない（別の人の id なら競合）。分類（classes・classified_by）は空のまま | lib/signals/body.ts・save.ts・http.ts・labels.ts、app/api/signals/route.ts | ae0c157 |
+| 2 | 録音と文字起こし: 先に送った自分の信号に 1 回だけ添える。音声は R2 の `recordings/<事業所>/<本人>/<時刻>.webm`（時刻は信号の時刻。Safari の mp4 は .m4a）、鍵と文字起こしは信号の行に、経過に「録音 30 秒 文字起こし「…」」の行（payload の source は recording）。音声だけ・文字起こしだけでもよい。8 MB・600 秒・2,000 字まで | lib/signals/save.ts・http.ts、app/api/recordings/route.ts | ae0c157 |
+| 3 | 定型文の声: 「大丈夫ですか。状況を説明してください」の 1 文だけ（名前を入れない）。Gemini の鍵があれば 1 回だけ作って R2 の `voice/<モデル>/<声>/prompt-1.wav` に置き、次からはそれを返す（用途 voice で事業所の上限に数える）。鍵が無ければ 404 で、端末は speechSynthesis で同じ文を ja-JP で読む | lib/signals/voice.ts・phrases.ts、app/api/signals/voice/route.ts | ae0c157 |
+| 4 | 流れ（画面に触らない）: 上 → 緑 → 1 問 → 送る、赤 → 1 画面 1 問 × 4 → 送る。20 秒は赤を押した時か最後に答えた時から数え、送ったあとは数えない。20 秒押さないと、それまでの答えで赤の信号を先に送り、定型文を流して（15 秒で打ち切り）、30 秒録る。延長は 30 秒ずつ・上限 120 秒、「送る」で早く止める。マイクも文字起こしも使えなければ録らずに終わる | lib/signals/phone.ts | 6eab1f1 |
+| 5 | 通信が無いとき: 送る前に端末（localStorage）に書き、届いたら消す。開いたとき・つながったとき・20 秒ごとに順に送る（前が送れないうちは後ろを送らない）。送り直しても通らない応答（400・403・404・409・413）は捨てる。音声は端末に書かず（開いている間だけ覚える）、閉じると文字起こしだけ送る。持ち主は「役:本人」（self:p-01） | lib/signals/outbox.ts | 6eab1f1・aa4513b |
+| 6 | 音: 赤を押した時に、音の要素を音を出さずに 1 回鳴らして読み込み（携帯が 20 秒あとに鳴らせるように）、マイクの許可を聞いてすぐ閉じる（許可済みなら聞かない）。MediaRecorder は webm → mp4 → ogg の順。文字起こしは T04 の lib/speech/dictation.ts で、長い無音でブラウザが止めたら 5 回まで続きから聞き直す（言い換えない） | lib/signals/media.ts | 6eab1f1 |
+| 7 | 画面 `/me`: 平時は本人の 1 枚（T06）の文を大きな字で（電話は押すとかけられる、119 はリンクにしない）。30 秒ごとに読み直して災害モードに替わる。災害モードは「無事」緑と「無事じゃない」赤の 2 つだけを面で塗り（状態の色の変数のまま。ダークは上の字を濃く）、1 画面 1 問、ボタンは 2〜3 つ、戻るなし、説明文なし、漢字は全部ふりがな。録っている間は「AI が きいています」・定型文・「あと 25 秒」・もっと 話す・送る。終わりは「とどきました」（通信なしは「まだ とどいて いません」「つながったら 送ります」）と「もう 一度」、赤の終わりに「いのちの 危険が あるときは 119」。上と終わりにいる間だけ 30 秒ごとに読み直す。言葉の途中で折り返さない（keep-all） | app/me/page.tsx、components/phone/PhoneSheet.tsx・PhoneView.tsx・PhoneDisaster.tsx・phone.css | 745f7d0・063615e |
 | 8 | テスト 57 件: 送る形と色・答えの組、端末の時計のずれ、役の壁（ケアマネは 403、送った物の中の p-02 は p-01 に入る、録音も自分の信号だけ）、平時 409、保存の形と経過の 1 行、送り直し・競合、保存のあとの担当一覧（赤（けが）で「本人が「けが」」、答えなしの赤で「本人が「無事じゃない」」、緑で無事）、録音の鍵と R2・2 回目は何もしない、声は 1 回だけ作る。流れ（偽の時計）: 緑 1 問、赤 4 問、20 秒で音声 → 定型文 → 30 秒 → 録音を添える、2 問のあとの 20 秒、延長と上限、送ったあとは数えない、定型文が終わらないとき、閉じたとき。端末の残し方（通信の失敗・開き直し・録音は信号のあと・音声が消えたとき・捨てる応答・ほかの人と役・書けない端末）。音・録音・文字起こしの偽物。画面の静的な描画（ボタンの数、面で塗るのは 2 つだけ、判定の言葉なし、ふりがな、119 は赤の終わりだけ、平時は T06 と同じ文） | lib/signals/signals.test.ts・phone.test.ts・view.test.ts | 各 commit |
 
 テストは 811 件（754 から）。`npm run typecheck` と `npm run build` も通る。
@@ -175,11 +175,11 @@
 
 | # | 物 | 場所 | commit |
 | --- | --- | --- | --- |
-| 1 | PR #9（T06 本人の 1 枚）を main に merge。衝突は書類の入口の 3 か所で、T16 の QR と T06 の本人の 1 枚を両方残した（計画書・医療要約・本人の1枚・QR の順） | lib/person.ts、lib/person.test.ts、lib/forms/matsuyama.test.ts | 01ea416 |
-| 2 | PR #7（T14 右の面）を main に merge。担当一覧の行は T09 の triage と T14 の右の面の列を両方持つ。災害モードの右の面をつないだ: 行の lib/triage の結果を表の並びに並べ直してピンに、雨雲・震度のデモは事業所の災害の種類と警戒レベルから（sideDisasterOf）。警戒レベルの無い大雨は「大雨」だけ。一覧の見出しの帯は災害モードの色ごとの人数と時点だけ（平時の計画の人数は右の面） | app/page.tsx、lib/caseload.ts、lib/map/side.ts・demo.ts・map.test.ts | a34b4de |
-| 3 | 本人の 1 枚の裏の QR を T16 の QrBlock に。QrBlock に caption を足し、外すと一辺 18mm の四角だけ。「この QR は医療班が読みます」と期限は題名の段の右の小さな字の一番上（MedicalSummaryPaper の note）。未作成・期限切れは同じ 18mm の枠に状態。画面の上の帯に QR の状態と期限（押すと QR の画面） | components/forms/QrBlock.tsx・OwnSheet.tsx・MedicalSummarySheet.tsx・own-paper.css、app/people/[id]/forms/own/page.tsx、lib/forms/own-sheet.test.ts | 368a7eb |
-| 4 | 種の入れ直しで消す順に migrations の表を全部（timeline_entries・office_timeline_entries・form9_rank_edits・disaster_state・ai_calls・signals …）。AI を呼んだあとの npm run db:reset が外部キーで落ちていた | seed/sql.ts、seed/seed.test.ts | 7bbfafa |
-| 5 | migration を 0001 に畳んだ: QR の列を people の表に入れ、0002_qr.sql を消した | migrations/0001_init.sql、lib/qr/store.ts | b87cde4 |
+| 1 | PR #9（T06 本人の 1 枚）を main に merge。衝突は書類の入口の 3 か所で、T16 の QR と T06 の本人の 1 枚を両方残した（計画書・医療要約・本人の1枚・QR の順） | lib/person.ts、lib/person.test.ts、lib/forms/matsuyama.test.ts | e4bfce2 |
+| 2 | PR #7（T14 右の面）を main に merge。担当一覧の行は T09 の triage と T14 の右の面の列を両方持つ。災害モードの右の面をつないだ: 行の lib/triage の結果を表の並びに並べ直してピンに、雨雲・震度のデモは事業所の災害の種類と警戒レベルから（sideDisasterOf）。警戒レベルの無い大雨は「大雨」だけ。一覧の見出しの帯は災害モードの色ごとの人数と時点だけ（平時の計画の人数は右の面） | app/page.tsx、lib/caseload.ts、lib/map/side.ts・demo.ts・map.test.ts | 5073950 |
+| 3 | 本人の 1 枚の裏の QR を T16 の QrBlock に。QrBlock に caption を足し、外すと一辺 18mm の四角だけ。「この QR は医療班が読みます」と期限は題名の段の右の小さな字の一番上（MedicalSummaryPaper の note）。未作成・期限切れは同じ 18mm の枠に状態。画面の上の帯に QR の状態と期限（押すと QR の画面） | components/forms/QrBlock.tsx・OwnSheet.tsx・MedicalSummarySheet.tsx・own-paper.css、app/people/[id]/forms/own/page.tsx、lib/forms/own-sheet.test.ts | 032c830 |
+| 4 | 種の入れ直しで消す順に migrations の表を全部（timeline_entries・office_timeline_entries・form9_rank_edits・disaster_state・ai_calls・signals …）。AI を呼んだあとの npm run db:reset が外部キーで落ちていた | seed/sql.ts、seed/seed.test.ts | b20dd3d |
+| 5 | migration を 0001 に畳んだ: QR の列を people の表に入れ、0002_qr.sql を消した | migrations/0001_init.sql、lib/qr/store.ts | bc6aaa8 |
 | 6 | DECISIONS に「11/2 夜（2）の案と問い（Fable）」、担当の割り振りを今の形に | docs/DECISIONS.md、docs/tasks/README.md | この commit |
 
 テストは 754 件（main の 692 → T06 の merge で 715 → T14 の merge とつなぎで 748 → QR で 752 → 種で 754）。型の検査も通る。merge した branch（task/t06・task/t14）は GitHub で消した。PR #9・#7 は merged になった。
@@ -212,14 +212,14 @@
 
 | # | 物 | 場所 | commit |
 | --- | --- | --- | --- |
-| 1 | DECISIONS に「11/2 夜の案と問い（Fable）」（配信前の D1 は作り直す、T07 の問い 4 つ、T15・T03 の決めた所）。docs/tasks/README.md の担当の割り振りを今の形に | docs/DECISIONS.md、docs/tasks/README.md | 4123f03 |
-| 2 | 話して入れるの芯: SpeechRecognition（無ければ webkit の名前）を ja-JP・continuous・interimResults で使い、押したときの欄の文に、確定した区切りを改行で足し、認識中の区切りは置き換える。人が止めたら onend のあとに 1 回だけ送る合図（onDone）、ブラウザ側で終わった・失敗したときは送らない（onEnd: マイク不可・音声なし・認識失敗）。止めたあと onend が来なければ 4 秒で打ち切る。4,000 字で切って止める。画面（DOM）に触らず、作る物を渡す | lib/speech/dictation.ts | 92847e7 |
-| 3 | 画面から使う形 useDictation（対応の判定は描いたあと。最初は false でサーバーの描画と合わせる） | lib/speech/use-dictation.ts | 6d5bf85 |
-| 4 | 入れる欄の「話す」: 抽出の隣。聞いている間は「停止」（主の操作の色）・状態に「認識中」・欄は readOnly・抽出は押せない。停止 → 欄の文のまま抽出に送る（話して足したときだけ）。対応していないブラウザ（Firefox など）はボタンを出さない。手入力に切り替えたら聞くのをやめる | components/person/Intake.tsx、intake-ui.ts、lib/labels.ts | 6d5bf85・ba6c7b0 |
-| 5 | 入れる欄を人ごとに作り直す（key）。担当一覧の右の面で別の人を開いても、前の人の文・変更点・話している途中を持ち越さない | components/person/PersonWithIntake.tsx | 6d5bf85 |
-| 6 | README の守りに「Web Speech はブラウザが音声を外部の認識サービスに送る物。本運用で使うかは事業所の判断」 | README.md | 6d5bf85 |
-| 7 | AI 失敗の理由: 抽出の失敗の応答に reason（ai_calls の error の分け方。形式相違・出力超過・拒否・時間切れ・呼出失敗）。欄に「AI 失敗 時間切れ 再試行」の 1 行、再試行は同じ文・同じ問いで送り直す。未設定・上限・伏せきれない入力は今までどおり上の状態の欄 | lib/intake/http.ts、components/person/Intake.tsx、lib/labels.ts | aadcf1b |
-| 8 | 変更点の項目の行ごとに小さな AI の印（見出しの印はそのまま）。人が「修正」で直した行は「修正済」 | components/person/IntakeChanges.tsx、parts.tsx | ee5661d |
+| 1 | DECISIONS に「11/2 夜の案と問い（Fable）」（配信前の D1 は作り直す、T07 の問い 4 つ、T15・T03 の決めた所）。docs/tasks/README.md の担当の割り振りを今の形に | docs/DECISIONS.md、docs/tasks/README.md | b40ace8 |
+| 2 | 話して入れるの芯: SpeechRecognition（無ければ webkit の名前）を ja-JP・continuous・interimResults で使い、押したときの欄の文に、確定した区切りを改行で足し、認識中の区切りは置き換える。人が止めたら onend のあとに 1 回だけ送る合図（onDone）、ブラウザ側で終わった・失敗したときは送らない（onEnd: マイク不可・音声なし・認識失敗）。止めたあと onend が来なければ 4 秒で打ち切る。4,000 字で切って止める。画面（DOM）に触らず、作る物を渡す | lib/speech/dictation.ts | 917620f |
+| 3 | 画面から使う形 useDictation（対応の判定は描いたあと。最初は false でサーバーの描画と合わせる） | lib/speech/use-dictation.ts | 53071ec |
+| 4 | 入れる欄の「話す」: 抽出の隣。聞いている間は「停止」（主の操作の色）・状態に「認識中」・欄は readOnly・抽出は押せない。停止 → 欄の文のまま抽出に送る（話して足したときだけ）。対応していないブラウザ（Firefox など）はボタンを出さない。手入力に切り替えたら聞くのをやめる | components/person/Intake.tsx、intake-ui.ts、lib/labels.ts | 53071ec・0466997 |
+| 5 | 入れる欄を人ごとに作り直す（key）。担当一覧の右の面で別の人を開いても、前の人の文・変更点・話している途中を持ち越さない | components/person/PersonWithIntake.tsx | 53071ec |
+| 6 | README の守りに「Web Speech はブラウザが音声を外部の認識サービスに送る物。本運用で使うかは事業所の判断」 | README.md | 53071ec |
+| 7 | AI 失敗の理由: 抽出の失敗の応答に reason（ai_calls の error の分け方。形式相違・出力超過・拒否・時間切れ・呼出失敗）。欄に「AI 失敗 時間切れ 再試行」の 1 行、再試行は同じ文・同じ問いで送り直す。未設定・上限・伏せきれない入力は今までどおり上の状態の欄 | lib/intake/http.ts、components/person/Intake.tsx、lib/labels.ts | 69693af |
+| 8 | 変更点の項目の行ごとに小さな AI の印（見出しの印はそのまま）。人が「修正」で直した行は「修正済」 | components/person/IntakeChanges.tsx、parts.tsx | 742275d |
 | 9 | テスト 21 件: 偽の SpeechRecognition で、対応の判定、ja-JP・continuous、認識中の置き換えと確定の改行、押したときの欄の文が残る、字を変えない（前後の空白だけ）、改行で文に分かれ特記を元の 1 行に戻せる、停止で 1 回だけ送る（残った認識中も入る）、何も話さずに止めたら送らない、ブラウザ側の終わり・失敗の分け方では送らない、aborted は失敗にしない、onend が来ないときの打ち切り、上限、abort は何も知らせない、始められないとき、止めたあと直してもう一度話すと直した文に続く。AI 失敗の理由の応答（値と場所を返さない）と ai_calls の bad_output。変更点の描画で行ごとの印と修正済 | lib/speech/speech.test.ts、lib/intake/intake.test.ts | 各 commit |
 
 テストは 631 件（610 から）。型の検査も通る。
@@ -282,15 +282,15 @@
 
 | # | 物 | 場所 | commit |
 | --- | --- | --- | --- |
-| 1 | 台帳に 4 つの欄: 寝室（basic.housing.bedroom）・支援の内容（evacuation.support と supportNote）・マイ・タイムライン（evacuation.myTimeline）・みまもり員（local.watcher）。本人のページ（寝室・支援内容・タイムラインは避難、みまもり員は人）、松山市の様式（4 つの欄が値を出す、pending は理由で）、仮名化（みまもり員は有無だけ渡し、自由文の名前は役割名に）。種の値は空のまま | lib/db/types.ts、lib/person.ts、lib/forms/matsuyama.ts、lib/pseudonym/index.ts、lib/labels.ts | 9d253f4 |
-| 2 | 分ける: 今の台帳（仮名化済み）と伏せた文を Sonnet に 1 回（askJson、用途 ledger_input）。返事の形は schema.ts（値は全部文字、union・null・省略なし）。欄の一覧は表（fields.ts）から system に作る | lib/intake/extract.ts・schema.ts・fields.ts | b490533 |
-| 3 | 差分: 返事を今の台帳と並べる（追加・一致・既入力）。選択肢に無い値は捨てて数え、伏せ字（（氏名）（町名）（電話））が残れば印。特記は仮名化の前の同じ文に戻す。連絡先は同じ種類の行に当て、空いた所（夜間・続柄・備考）だけ。無ければ足す（名前・電話は人が画面で入れる） | lib/intake/diff.ts・changes.ts | b490533 |
-| 4 | 差分の当て方: 埋まった欄は上書きしない（人が既入力を選んだときだけ）、配列は無い物だけ足す、薬・機器・ハザードは同じ物の空いた所だけ、値の入った欄の未確認は消え、分からない・答えない・次回は pending に残る | lib/db/ledger.ts の applyLedgerChanges | b490533 |
-| 5 | 医療依存の印: 機器・薬（骨格に入る区分）・認知症を入れて時計が無ければ、値の空いた時計を作る（印と骨格の段は時計の区分から出る）。新しい薬の中断注意も区分から。Claude は決めない | lib/intake/marks.ts、lib/db/ledger.ts | b490533 |
-| 6 | 次の問い: 空欄から 1 問ずつ。医療依存（値の空いた時計・薬の残り・回数・用量・保管）→ 夜間の支援者・避難の支援者 → その他（本人のページの区分の順）。問いの文は定型。不明・無回答と記録した欄は問わず、未聴取（種と「次回」）は問う | lib/intake/ask.ts・answer.ts | b490533 |
-| 7 | 保存: ケアマネの役だけ、版の確かめ。経過の行（でたらめの id）を最初に読んだ版のときだけ入れ、台帳・連絡先・時計の文はその行があるときだけ効く（重なった保存は片方だけ）。未作成は下書きに。経過に「入力」（AI の分け方、人が確認: 欄の名前）。値は残さない | lib/intake/save.ts | b490533・3cb1b45 |
-| 8 | API: POST /api/intake/extract（分ける。書かない）・/api/intake/save。同じ所からだけ、ケアマネの役だけ、personInScope。AI 未設定 503・上限 429・伏せきれない入力 422・競合 409 | app/api/intake/、lib/intake/http.ts | 33b537b |
-| 9 | 画面: 本人のページの右に常に開く入れる欄。文字（抽出）と手入力の切り替え、変更点（AI の印・伏せ字・修正・既入力の上書き・保存で付く印）、質問（選択肢・数字・文字・夜間の連絡先、不明・無回答・次回）。面が 56rem 以上なら右に留め、狭ければ上に。単独のページと担当一覧の右の面の両方 | components/person/Intake*.tsx・PersonWithIntake.tsx・intake-ui.ts、app/page.tsx、app/people/[id]/page.tsx | 3050393 |
+| 1 | 台帳に 4 つの欄: 寝室（basic.housing.bedroom）・支援の内容（evacuation.support と supportNote）・マイ・タイムライン（evacuation.myTimeline）・みまもり員（local.watcher）。本人のページ（寝室・支援内容・タイムラインは避難、みまもり員は人）、松山市の様式（4 つの欄が値を出す、pending は理由で）、仮名化（みまもり員は有無だけ渡し、自由文の名前は役割名に）。種の値は空のまま | lib/db/types.ts、lib/person.ts、lib/forms/matsuyama.ts、lib/pseudonym/index.ts、lib/labels.ts | 2a01bcb |
+| 2 | 分ける: 今の台帳（仮名化済み）と伏せた文を Sonnet に 1 回（askJson、用途 ledger_input）。返事の形は schema.ts（値は全部文字、union・null・省略なし）。欄の一覧は表（fields.ts）から system に作る | lib/intake/extract.ts・schema.ts・fields.ts | acacd93 |
+| 3 | 差分: 返事を今の台帳と並べる（追加・一致・既入力）。選択肢に無い値は捨てて数え、伏せ字（（氏名）（町名）（電話））が残れば印。特記は仮名化の前の同じ文に戻す。連絡先は同じ種類の行に当て、空いた所（夜間・続柄・備考）だけ。無ければ足す（名前・電話は人が画面で入れる） | lib/intake/diff.ts・changes.ts | acacd93 |
+| 4 | 差分の当て方: 埋まった欄は上書きしない（人が既入力を選んだときだけ）、配列は無い物だけ足す、薬・機器・ハザードは同じ物の空いた所だけ、値の入った欄の未確認は消え、分からない・答えない・次回は pending に残る | lib/db/ledger.ts の applyLedgerChanges | acacd93 |
+| 5 | 医療依存の印: 機器・薬（骨格に入る区分）・認知症を入れて時計が無ければ、値の空いた時計を作る（印と骨格の段は時計の区分から出る）。新しい薬の中断注意も区分から。Claude は決めない | lib/intake/marks.ts、lib/db/ledger.ts | acacd93 |
+| 6 | 次の問い: 空欄から 1 問ずつ。医療依存（値の空いた時計・薬の残り・回数・用量・保管）→ 夜間の支援者・避難の支援者 → その他（本人のページの区分の順）。問いの文は定型。不明・無回答と記録した欄は問わず、未聴取（種と「次回」）は問う | lib/intake/ask.ts・answer.ts | acacd93 |
+| 7 | 保存: ケアマネの役だけ、版の確かめ。経過の行（でたらめの id）を最初に読んだ版のときだけ入れ、台帳・連絡先・時計の文はその行があるときだけ効く（重なった保存は片方だけ）。未作成は下書きに。経過に「入力」（AI の分け方、人が確認: 欄の名前）。値は残さない | lib/intake/save.ts | acacd93・d3be244 |
+| 8 | API: POST /api/intake/extract（分ける。書かない）・/api/intake/save。同じ所からだけ、ケアマネの役だけ、personInScope。AI 未設定 503・上限 429・伏せきれない入力 422・競合 409 | app/api/intake/、lib/intake/http.ts | 8d574dd |
+| 9 | 画面: 本人のページの右に常に開く入れる欄。文字（抽出）と手入力の切り替え、変更点（AI の印・伏せ字・修正・既入力の上書き・保存で付く印）、質問（選択肢・数字・文字・夜間の連絡先、不明・無回答・次回）。面が 56rem 以上なら右に留め、狭ければ上に。単独のページと担当一覧の右の面の両方 | components/person/Intake*.tsx・PersonWithIntake.tsx・intake-ui.ts、app/page.tsx、app/people/[id]/page.tsx | 1ce6a2f |
 | 10 | テスト 36 件（lib/intake/intake.test.ts 30 件ほか）: 差分の当て方（埋まった欄を上書きしない）、差分の状態、特記の戻し方、Sonnet を 1 回・送った物に氏名・町名・電話・生年月日が無い、仮名化を通らない入力が型で止まる（@ts-expect-error）と実行時に止まる、AI 未設定と上限で呼ばない、問いの順、答え → 変更、印、保存で未作成 → 下書き、版の競合、重なった保存、夜間・薬の残りの答えで未確認が消える、役と範囲、手入力。Claude の応答は固定の JSON | lib/intake/intake.test.ts、lib/person.test.ts、lib/forms/matsuyama.test.ts、lib/pseudonym/pseudonym.test.ts | 各 commit |
 
 テストは 538 件（502 から）。型の検査と `npm run build` も通る。
@@ -353,17 +353,17 @@
 
 | # | 物 | 場所 | commit |
 | --- | --- | --- | --- |
-| 1 | PR #3（task/t05、T05 松山市の様式の紙面）を main に merge（--no-ff）。衝突は本人のページの書類の行の 1 か所で、main の T02 の最終形（DocumentView を受ける行、小さい字）に t05 の計画書への「表示」のリンク（href があればリンク）を足した。PR #3 は merged になり、origin の task/t05 は消した。T05 の記録は docs/progress/t05.md | components/person/PersonView.tsx ほか t05 の物 | e4141c8 |
-| 2 | 様式の医療の欄（かかりつけ医・薬局、医薬品情報、特記の医療、別紙）は計画共有の同意に従う。医療班提供は様式に効かない（要約 T07 と QR T16 だけ）。9 渡辺の様式に医療の欄が戻った（降圧薬、別紙 あり）。計画共有なしは実施組織と医療の欄を「省略（計画共有 同意なし）」。7 加藤の実施者の省略は今のまま。医療班提供の pending はその他に出す。テスト: 渡辺を直し、計画共有なしの 1 件を足し、「省略が無い」を加藤のほかの 9 人に | lib/forms/matsuyama.ts・matsuyama.test.ts | 5987141 |
-| 3 | 赤 ＋ けが・動けないの理由に AI の印。4 問の答え（ボタン）からなら「本人が「動けない」」のまま、録音・自由文の分類（Claude）からなら「録音の分類（AI）: 動けない」（2 つなら「けが・動けない」）。答えにある言葉は分類から重ねず、両方あれば「、」でつなぐ。色と並びは変えない。読み方に 1 行足し、`npm run docs:triage` で TRIAGE.md を作り直した（SOURCES.md は変わらない） | lib/triage/index.ts・triage.test.ts、docs/TRIAGE.md | 7976f0d |
-| 4 | DECISIONS の末尾に「11/2 夕方の案（Fable）」: (a) 様式の医療の欄と計画共有、(b) 分類の理由の AI の印、(c) 作者への問い 4 つ | docs/DECISIONS.md | c5f7cb8 |
+| 1 | PR #3（task/t05、T05 松山市の様式の紙面）を main に merge（--no-ff）。衝突は本人のページの書類の行の 1 か所で、main の T02 の最終形（DocumentView を受ける行、小さい字）に t05 の計画書への「表示」のリンク（href があればリンク）を足した。PR #3 は merged になり、origin の task/t05 は消した。T05 の記録は docs/progress/t05.md | components/person/PersonView.tsx ほか t05 の物 | 23436c8 |
+| 2 | 様式の医療の欄（かかりつけ医・薬局、医薬品情報、特記の医療、別紙）は計画共有の同意に従う。医療班提供は様式に効かない（要約 T07 と QR T16 だけ）。9 渡辺の様式に医療の欄が戻った（降圧薬、別紙 あり）。計画共有なしは実施組織と医療の欄を「省略（計画共有 同意なし）」。7 加藤の実施者の省略は今のまま。医療班提供の pending はその他に出す。テスト: 渡辺を直し、計画共有なしの 1 件を足し、「省略が無い」を加藤のほかの 9 人に | lib/forms/matsuyama.ts・matsuyama.test.ts | 242b44e |
+| 3 | 赤 ＋ けが・動けないの理由に AI の印。4 問の答え（ボタン）からなら「本人が「動けない」」のまま、録音・自由文の分類（Claude）からなら「録音の分類（AI）: 動けない」（2 つなら「けが・動けない」）。答えにある言葉は分類から重ねず、両方あれば「、」でつなぐ。色と並びは変えない。読み方に 1 行足し、`npm run docs:triage` で TRIAGE.md を作り直した（SOURCES.md は変わらない） | lib/triage/index.ts・triage.test.ts、docs/TRIAGE.md | 4afffa4 |
+| 4 | DECISIONS の末尾に「11/2 夕方の案（Fable）」: (a) 様式の医療の欄と計画共有、(b) 分類の理由の AI の印、(c) 作者への問い 4 つ | docs/DECISIONS.md | 6ed8fbc |
 | 5 | docs/tasks/README.md の wrangler の注を「配信は既存のアカウントで作者が手で打つ（T27）。エージェントはネットに出る wrangler を打たない」に（その 5 で残した 19 行目） | docs/tasks/README.md | この commit |
 
 テストは 502 件（main の 486 → merge で 500 → 様式で 501 → AI の印で 502）。型の検査も通る。
 
 ### 確かめた所
 
-- merge のあと、各 commit の前に `npm test` と `npm run typecheck`。`gh pr view 3` は MERGED（merge commit e4141c8）
+- merge のあと、各 commit の前に `npm test` と `npm run typecheck`。`gh pr view 3` は MERGED（merge commit 23436c8）
 - テストが効くか: 様式の直した・足したテスト 3 件は merge 直後の matsuyama.ts で落ち、AI の印のテストは前の index.ts で落ちた（戻した）
 - 手元の next dev（port 3079、この回だけの使い捨ての審査員のパスワードと SESSION_SECRET をプロセスの環境変数で渡し、ファイルは消した）に curl でログインし、ケアマネの役で: `/people/p-01` の書類の計画書が `/people/p-01/forms/matsuyama` への「表示」のリンク、`/people/p-09/forms/matsuyama` に降圧薬と別紙の医療要約が出て「省略」が無い、`/people/p-07/forms/matsuyama` は「省略（支援者提供 同意なし）」が 4 か所。サーバーは止めた
 
@@ -390,13 +390,13 @@
 
 | # | 物 | 場所 | commit |
 | --- | --- | --- | --- |
-| 1 | ゲストを外した（判断 B）。役の表に guest は無く、cookie が無い・壊れている・切れているときは Principal が null。画面は `/login` へ（`/`・`/people/[id]`・`/drill`・`/me`・`/family`・`/staff`・`/login/role`）、API は `denied(null)` が 401。ヘッダーのログインの印（LoginLink）を消し、ログアウトは `/login` へ。`/me` は本人の役の personId だけ。README の「触り方」はログインが提出書類にあることの 1 行 | lib/auth/、app/、components/AppHeader.tsx、README.md | b26e9dd |
-| 2 | パスワードの受け口を 2 通りに。審査員は `JUDGE_PASSWORD_HASH`、無ければ `JUDGE_PASSWORD`（平文）。山本は env の `CAREMANAGER_DEMO_PASSWORD_HASH` → `CAREMANAGER_DEMO_PASSWORD` → 種のハッシュの順。ログインとセッションの確かめの両方が lib/auth/credential.ts を通る | lib/auth/credential.ts・password.ts・session.ts・principal.ts、cloudflare-env.d.ts、.dev.vars.example、seed/build-sql.ts（注だけ） | 53f538d |
-| 3 | 配信の script: `db:migrate:remote`・`db:seed:remote`・`deploy`（書いただけで打っていない）。フックのテストを「配信の 3 つのほかは通る・3 つは止まる」に | package.json、tools/hooks/rules.test.ts | 630f78d |
-| 4 | wrangler.jsonc: database_id を 11/2 に作った D1 care72 の物に。R2 は care72-recordings のまま、account_id は書かない。冒頭の注を「配信は作者が手で打つ」に | wrangler.jsonc | d8480ad |
-| 5 | CLAUDE.md の「画面の決まり」に 2 つ（意味色、簡素化しない） | CLAUDE.md | 6ac9824 |
-| 6 | DECISIONS の確定の節、見るだけのゲストの案に「取り下げ」、T01・T26・T28 の追記のゲストの行を「取り下げ（16:10）」、T27 を今の形に、一覧に T32 の行 | docs/DECISIONS.md、docs/tasks/ | 47a9bc5 |
-| 7 | 担当一覧に意味色: 計画の状態の印（未作成 灰・下書き 黄・同意済と訓練済 緑。PLAN_TONES）、上の人数の数字も同じ色（0 は色なし）、右の「未確認」の見出しに人数（黄） | app/page.tsx、lib/caseload.ts | 05a389c |
+| 1 | ゲストを外した（判断 B）。役の表に guest は無く、cookie が無い・壊れている・切れているときは Principal が null。画面は `/login` へ（`/`・`/people/[id]`・`/drill`・`/me`・`/family`・`/staff`・`/login/role`）、API は `denied(null)` が 401。ヘッダーのログインの印（LoginLink）を消し、ログアウトは `/login` へ。`/me` は本人の役の personId だけ。README の「触り方」はログインが提出書類にあることの 1 行 | lib/auth/、app/、components/AppHeader.tsx、README.md | d52081b |
+| 2 | パスワードの受け口を 2 通りに。審査員は `JUDGE_PASSWORD_HASH`、無ければ `JUDGE_PASSWORD`（平文）。山本は env の `CAREMANAGER_DEMO_PASSWORD_HASH` → `CAREMANAGER_DEMO_PASSWORD` → 種のハッシュの順。ログインとセッションの確かめの両方が lib/auth/credential.ts を通る | lib/auth/credential.ts・password.ts・session.ts・principal.ts、cloudflare-env.d.ts、.dev.vars.example、seed/build-sql.ts（注だけ） | b93beaf |
+| 3 | 配信の script: `db:migrate:remote`・`db:seed:remote`・`deploy`（書いただけで打っていない）。フックのテストを「配信の 3 つのほかは通る・3 つは止まる」に | package.json、tools/hooks/rules.test.ts | d64df19 |
+| 4 | wrangler.jsonc: database_id を 11/2 に作った D1 care72 の物に。R2 は care72-recordings のまま、account_id は書かない。冒頭の注を「配信は作者が手で打つ」に | wrangler.jsonc | 1febd9c |
+| 5 | CLAUDE.md の「画面の決まり」に 2 つ（意味色、簡素化しない） | CLAUDE.md | 27e2976 |
+| 6 | DECISIONS の確定の節、見るだけのゲストの案に「取り下げ」、T01・T26・T28 の追記のゲストの行を「取り下げ（16:10）」、T27 を今の形に、一覧に T32 の行 | docs/DECISIONS.md、docs/tasks/ | 06c9bbc |
+| 7 | 担当一覧に意味色: 計画の状態の印（未作成 灰・下書き 黄・同意済と訓練済 緑。PLAN_TONES）、上の人数の数字も同じ色（0 は色なし）、右の「未確認」の見出しに人数（黄） | app/page.tsx、lib/caseload.ts | 4bf1f92 |
 
 テストは 428 件（414 から。ゲストの分を消し、受け口 8 件・平文の比べ方 3 件・配信の script 1 件・計画の色 1 件ほかを足した）。型の検査も通る。
 
@@ -410,7 +410,7 @@
 2. 自分の端末で `npm run db:migrate:remote` → `npm run db:seed:remote` → `npm run deploy`
 3. 確かめ: ログインなしの `/` が `/login` へ、審査員ログイン → 役選択 → 担当一覧、`/api/health` の ai が true
 
-- 16:45 に配信した版（手元の care72-deploy の worktree は ac621ab）はこの回より前で、ゲストがまだある。`npm run deploy` をし直すまで公開の URL ではログインなしで担当一覧が見える
+- 16:45 に配信した版（手元の care72-deploy の worktree は 2955103）はこの回より前で、ゲストがまだある。`npm run deploy` をし直すまで公開の URL ではログインなしで担当一覧が見える
 - `db:seed:remote` は全部の表を消して種に戻す（協力事業所の記録も）。`--file` は D1 への取り込みで、流している間は DB が止まることがあるので、人が触っている時間には流さない
 - 山本のハッシュを種に入れたいときは、`db:seed:remote` を打つ端末の環境変数か .dev.vars に `CAREMANAGER_DEMO_PASSWORD_HASH`（今まで通り）。平文は種に入らない
 
@@ -606,7 +606,7 @@ npm run dev
 | 4 | PostToolUse のフック: .ts・.tsx を Write・Edit したら tsc --noEmit を流し、誤りの先頭 30 行を返す | tools/hooks/typecheck.mjs、.claude/settings.json |
 | 5 | テスト: 止める命令・通す命令の一覧（Bash・PowerShell・Read など）、script を node で動かして終わりの番号と理由、settings.json の形、CLAUDE.md のフックの行と rules.ts の一覧の一致、SKILL.md の形と中に書いたファイル・npm run の名前 | tools/hooks/rules.test.ts、shell.test.ts、tools/claude-code.test.ts |
 | 6 | Skill 2 つ: triage-rule（ルールの表に行を足す）、task（docs/tasks の作業の始め方から取り込みまで） | .claude/skills/ |
-| 7 | Claude Code の使い方の記録: 数字（b28fbb7 の時点）、分担、進め方の型、フックと Skill、モデルの使い分け、使っていない物。README から 1 行 | docs/CLAUDE_CODE.md、README.md |
+| 7 | Claude Code の使い方の記録: 数字（b2c92e1 の時点）、分担、進め方の型、フックと Skill、モデルの使い分け、使っていない物。README から 1 行 | docs/CLAUDE_CODE.md、README.md |
 | 8 | CLAUDE.md の「守ること」にフックで止まる物の 1 行、「動かし方」の wrangler の手元の命令。.gitignore に .claude/settings.local.json | CLAUDE.md、.gitignore |
 
 テストは 326 件（T31 で 187 件足した）、型の検査も通る。
@@ -628,8 +628,8 @@ npm run dev
 - フックの command は shell の形（`node "${CLAUDE_PROJECT_DIR}/tools/hooks/guard.mjs"`）。公式の文書にある exec の形（args）と onFailure は、この PC の CLI（2.1.202）で効くか確かめられないので使っていない。args が効かない版では node が入力を JS として読んで 1 で終わり、止まらずに通ってしまうため。
 - フックの中で落ちたとき・入力が読めないときは止める（2）。node が起動できないときは止められない（docs/CLAUDE_CODE.md の「届かない所」）。
 - 配信（T27）でも、Claude Code が打つ wrangler deploy・secret put・d1 create はフックが止める。配信の命令は作者が自分の端末で打つか、T27 の始めにフックの扱いを決める（rules.ts と CLAUDE.md の行を一緒に直す）。
-- Skill triage-rule の「テストを先に」は、落ちるテストを `it.fails` で commit してから中身を書く形にした。npm test が通ってから commit する決まりと、テストが先にあったことを履歴に残すのを両立するため（8d991be は落ちるテストのまま commit していた）。
-- docs/CLAUDE_CODE.md の数字は b28fbb7 の時点。足した行は Co-Authored-By で分け、13:08〜13:30 の 8 件は作業の記録どおり Opus に数えた。effort の xhigh は git に残らないので「作者の設定の記録」と書いた。
+- Skill triage-rule の「テストを先に」は、落ちるテストを `it.fails` で commit してから中身を書く形にした。npm test が通ってから commit する決まりと、テストが先にあったことを履歴に残すのを両立するため（cd0ebcb は落ちるテストのまま commit していた）。
+- docs/CLAUDE_CODE.md の数字は b2c92e1 の時点。足した行は Co-Authored-By で分け、13:08〜13:30 の 8 件は作業の記録どおり Opus に数えた。effort の xhigh は git に残らないので「作者の設定の記録」と書いた。
 
 ### T31 と違えた所
 
@@ -794,7 +794,7 @@ const r = await askJson({ purpose: "classify", system: PROMPT, input: pseudonymi
 | 2 | D1 の表と型: 事業所・アカウント（ケアマネ・行政・医療班・審査員）・本人（台帳は JSON の列、氏名・カナ・生年月日・事業所・担当は列）・連絡先・同意 4 つ・時計・訓練・訓練の出来事・信号・経過 | migrations/0001_init.sql、lib/db/types.ts |
 | 3 | 種のデータ: 架空の 10 人とデモ事業所・ケアマネ 山本 | seed/people.ts、seed/sql.ts |
 | 4 | 仮名化の層: A さん・役割名、渡す項目は書いた物だけ、凍結と印、漏れの見張り | lib/pseudonym/ |
-| 5 | ルールの表: 色・理由 1 行・並び・ケアマネの上書き。テストを先に書いた（commit 8d991be → 6984964） | lib/triage/ |
+| 5 | ルールの表: 色・理由 1 行・並び・ケアマネの上書き。テストを先に書いた（commit cd0ebcb → 01ec4dd） | lib/triage/ |
 | 6 | ケアマネの担当一覧（平時）: 10 人が D1 から並ぶ。緊急度・氏名・年齢・計画で並び替え | app/page.tsx、lib/caseload.ts |
 
 テストは 55 件が通り、表に行が無くて決めていない 5 件を it.todo に置いた（下の問い）。型の検査も通る。

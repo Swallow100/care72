@@ -133,6 +133,27 @@ export function townOfLedger(ledger: Pick<Ledger, "basic">, area: Area = DEMO_AR
   return area.towns.some((x) => x.town === t) ? t : null;
 }
 
+/**
+ * 訓練で Claude に渡す文の町名 → 別名（T88。lib/pseudonym の pseudonymize の places）。本人役・通話・監督・講評・世界のどの入力でも、
+ * 町名は（町名）でなく地区の別名にする（本人自身の町名も）。デモの地理は架空の町を全部、台帳から作った地理は台帳にある町名だけ
+ * （「町名なし」と架空の「高台」は町名でないので入れない。「高台の避難所」を別名にしない）
+ */
+export function placesOf(area: Area, ledgers: ReadonlyArray<Pick<Ledger, "basic">>): Array<{ town: string; alias: string }> {
+  const own = new Set(ledgers.map((l) => l.basic.address?.town?.trim()).filter((t): t is string => !!t));
+  return area.towns.filter((t) => t.town !== NO_TOWN && (area === DEMO_AREA || own.has(t.town))).map((t) => ({ town: t.town, alias: t.alias }));
+}
+
+/** 事業所の本人たちの台帳から、地理（areaOf）と町名 → 別名（placesOf） */
+export function officePlaces(officeId: string, ledgers: ReadonlyArray<Pick<Ledger, "basic" | "evacuation">>): Array<{ town: string; alias: string }> {
+  return placesOf(
+    areaOf(
+      officeId,
+      ledgers.map((ledger) => ({ ledger })),
+    ),
+    ledgers,
+  );
+}
+
 /** 部屋の文の別名（甲地区）を町名に戻す（画面の文。サーバーの中だけ）。長い別名から（甲2地区 を 甲地区 より先に） */
 export function restoreTowns(text: string, area: Area = DEMO_AREA): string {
   let out = text;

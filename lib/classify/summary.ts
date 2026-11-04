@@ -1,5 +1,5 @@
 // 録音のまとめ（T69b）。Claude（Haiku、用途 summary）が本人のスマホの録音の文字起こしを、ケアマネが 5 秒で読める 2 文以内（80 字まで）に
-// 言い換える。作者の判断（11/4 01:1x）で、前の決まり「要約しない」を変えた。線:
+// 言い換える。話せる人には話してもらい、録音とまとめを残す形にしたので、前の決まり「要約しない」を変えた。線:
 // - 本人の元の言葉（文字起こし）と必ず並べて出す（components/list/Summary.tsx）。AI の印。ケアマネが直せる（直すと人の文になり AI の印が外れる）
 // - 色と連絡の順に使わない（lib/triage の入力に無い。ai_summary・summary はどこからも表に渡さない）
 // - 言った事の言い換えだけ。言っていない事・重さ・急ぐかどうか・病名・医療の言葉・助言を足さない（指示で縛り、返ったあとも
@@ -20,7 +20,7 @@ import type { ClassifyError, SignalRow } from "../db/types.ts";
 import { maskReply, pseudonymizeText, type ForClaude, type PseudonymKey } from "../pseudonym/index.ts";
 import { classifyErrorOf } from "./classify.ts";
 import { SUMMARY_EDIT_MAX, SUMMARY_MAX } from "./labels.ts";
-import { summaryOf, type SignalSummary } from "./view.ts";
+import { ownCall, summaryOf, type SignalSummary } from "./view.ts";
 import { pseudonymKeyFor, type ClassifyDeps, type ClassifyTarget } from "./store.ts";
 
 /** 長さの上限（字）は画面も読むので lib/classify/labels.ts に置く */
@@ -84,7 +84,8 @@ export async function summarize(input: SummaryInput, ctx: AskJsonContext): Promi
   try {
     const r = await askJson(buildSummaryRequest({ text: input.text }), ctx);
     const masked = maskReply(r.value.summary, input.key);
-    const summary = masked === null ? null : normalizeSummary(masked, input.text.text);
+    // 本人の仮名（A さん）は保存と画面では「本人」に（T88。Claude には仮名で渡したまま）
+    const summary = masked === null ? null : normalizeSummary(ownCall(masked), input.text.text);
     if (summary === null) return { ok: false, error: "bad_output" };
     return { ok: true, model: r.model, summary };
   } catch (e) {

@@ -8,13 +8,13 @@ argument-hint: "[足したい行の中身]"
 
 足したい物: $ARGUMENTS
 
-ルールの表の中身は人が決める物。Claude が足した行は、作者が docs/DECISIONS.md で「確定」に書き換えるまで「案」で、本運用に使わない（docs/DECISIONS.md の頭）。Claude を表の中に入れない（録音と自由文の分類だけが Claude。色と順位は表で出す）。
+ルールの表の中身は人が決める物。Claude が足した行は、作者が確かめて「確定」にするまで「案」で、本運用に使わない。Claude を表の中に入れない（録音と自由文の分類だけが Claude。色と順位は表で出す）。
 
 ## 先に読む
 
 - CLAUDE.md の「守ること」: 診断・用量・医療助言をしない。赤は「至急」で本人の状態を言い切らない。「診断」「判定」「重症」「危険」を言葉に入れない（lib/labels.test.ts が見る）
 - docs/TRIAGE.md: 今の表（コードから作った物。手で直さない）
-- docs/DECISIONS.md の案 1〜9 と読み方の決まり（「超えた」「過ぎた」はちょうどを含まない）
+- docs/DECISIONS.md の「色と連絡順」と読み方の決まり（「超えた」「過ぎた」はちょうどを含まない）
 - lib/triage/index.ts の `RuleId`・`RULES`・`QUALIFIERS`・`ORDER`
 
 ## 手順
@@ -34,7 +34,7 @@ argument-hint: "[足したい行の中身]"
    - `it.fails` を `it` に戻し、`npx vitest run lib/triage` が通る
 4. 大雨の筋（lib/triage/heavy-rain.test.ts）を流す。10 人の色・並びが変わったら、変わった所を期待に書き、なぜ変わってよいかを commit の文に書く
 5. `npm run docs:triage` で docs/TRIAGE.md を作り直す（作り直さないと doc.test.ts が落ちる）
-6. docs/DECISIONS.md の今日の「案」に、番号・中身・理由（なぜその人が先か）を書く。docs/SPEC.md は書き換えない
+6. docs/DECISIONS.md の「色と連絡順」に「案」として、番号・中身・理由（なぜその人が先か）を書く。docs/SPEC.md は書き換えない
 7. `npm test` と `npm run typecheck` が通ってから commit する（「ルールの表に案 N」）。.ts を書くたびにフックが型の検査を流すので、誤りはその場で直す
 
 ## 確かめ方
@@ -42,4 +42,4 @@ argument-hint: "[足したい行の中身]"
 - `git log --oneline -3` で、テストの commit が中身の commit より先にある
 - `git diff HEAD~2 -- docs/TRIAGE.md` に足した行が 1 行だけ出る
 - `npm test` が通る。足した行をわざと外すとテストが落ちる（外したら戻す）
-- docs/DECISIONS.md の案の番号と、`RULES` の行の `origin` が同じ
+- docs/DECISIONS.md「色と連絡順」の案の番号と、`RULES` の行の `origin` が同じ

@@ -3,14 +3,14 @@ import { getCloudflareContext } from "@opennextjs/cloudflare";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { MatsuyamaSheet } from "@/components/forms/MatsuyamaSheet";
-import { StateTag } from "@/components/person/parts";
+import { UnconfirmedFold } from "@/components/forms/UnconfirmedFold";
 import { FormAbout } from "@/components/forms/FormAbout";
 import { PaperBar, wantsPrint } from "@/components/ui/PaperBar";
 import { todayJst } from "@/lib/age";
 import { requirePage } from "@/lib/auth/server";
 import { DOCUMENT_CATALOG } from "@/lib/forms/catalog";
 import { buildMatsuyamaSheet } from "@/lib/forms/matsuyama";
-import { BLANK_LABELS } from "@/lib/labels";
+import { matsuyamaUnconfirmed, unconfirmedView } from "@/lib/forms/unconfirmed";
 import { loadPersonDocument } from "@/lib/consent/documents";
 
 // D1 を毎回読む
@@ -37,19 +37,13 @@ export default async function MatsuyamaFormPage({ params, searchParams }: Props)
     .bind(rows.person.office_id)
     .first<{ name: string }>();
   const sheet = buildMatsuyamaSheet(rows, { today: todayJst(), officeName: office?.name ?? null });
-  const pending = sheet.pending.map((p) => p.label);
+  // 紙面が「未確認」と刷る欄（台帳の pending の欄も入る。理由を添える）。帯だけで、紙には刷らない（T87）
+  const unconfirmed = unconfirmedView(matsuyamaUnconfirmed(sheet));
 
   return (
     <main className="py-4 print:p-0">
       <PaperBar back={`/people/${encodeURIComponent(id)}`} title="計画書" name={sheet.name} autoPrint={autoPrint}>
-        {pending.length > 0 && (
-          <div className="flex flex-wrap items-baseline gap-x-2" data-pending={pending.length}>
-            <StateTag tone="check">
-              {BLANK_LABELS.unconfirmed} <span className="tabular-nums">{pending.length}</span>
-            </StateTag>
-            <span className="text-sm text-muted">{pending.join("・")}</span>
-          </div>
-        )}
+        <UnconfirmedFold view={unconfirmed} />
       </PaperBar>
       <FormAbout entry={DOCUMENT_CATALOG.matsuyama} />
       <MatsuyamaSheet sheet={sheet} />

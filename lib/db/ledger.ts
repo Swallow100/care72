@@ -14,7 +14,7 @@ import type { Ledger, MedicationCategory } from "./types.ts";
 
 /**
  * 中断注意の印（薬の interruptionRisk）を機械的に付ける区分。骨格の 4 段の薬（インスリン）と 5 段（抗血小板薬・抗凝固薬・ステロイド・抗てんかん薬）。
- * 医療要約の印（lib/forms/medical-summary.ts の interruptionMark）と同じ段（docs/DECISIONS.md 11/3 04:0x の 2・3）。
+ * 医療要約の印（lib/forms/medical-summary.ts の interruptionMark）と同じ段（docs/DECISIONS.md「色と連絡順」）。
  * 入れる欄で足した薬に、区分から付ける（Claude は決めない。lib/intake/marks.ts）
  */
 export const INTERRUPTION_RISK_CATEGORIES: ReadonlySet<MedicationCategory> = new Set([

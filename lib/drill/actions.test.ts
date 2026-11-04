@@ -29,7 +29,7 @@ import { DrillEnded, initialState, simAt, step, type DirectorHook, type DrillSta
 import { drillHooks } from "./hooks.ts";
 import { actionPost } from "./http.ts";
 import { ACTION_LABELS, CALL_FIXED_SPEECH, clockLabel } from "./labels.ts";
-import { CALL_SYSTEM, PERSONA_SYSTEM, type PersonaAnswer } from "./persona.ts";
+import { CALL_SYSTEM, PERSONA_SYSTEM, VISIT_SYSTEM, type PersonaAnswer } from "./persona.ts";
 import { applyEvent, EMPTY_WORLD, injectChange, SCENARIOS } from "./scenarios.ts";
 import { VISIT_CONFIRMED } from "../triage/index.ts";
 import { loadDrillScreen } from "./view.ts";
@@ -172,11 +172,20 @@ const events = (kind: string) =>
 // ---------- 表 ----------
 
 describe("7 つの手の表", () => {
-  it("手は 7 つで、所要時間は表で固定（出向く 40 分）。ボタンの言葉は 2〜5 字", () => {
+  it("今までの 7 つの手の所要時間は表で固定のまま（出向く 40 分）。手の表 v2（T91）で 18 になった。ボタンの言葉は 2〜5 字", () => {
     expect(Object.keys(ACTION_MINUTES).sort()).toEqual([...DRILL_ACTIONS].sort());
     expect(Object.keys(ACTION_LABELS).sort()).toEqual([...DRILL_ACTIONS].sort());
+    expect(DRILL_ACTIONS).toHaveLength(18);
     expect(ACTION_MINUTES.visit).toBe(40);
-    expect(ACTION_MINUTES).toEqual({
+    expect({
+      call_person: ACTION_MINUTES.call_person,
+      call_contact: ACTION_MINUTES.call_contact,
+      visit: ACTION_MINUTES.visit,
+      dispatch: ACTION_MINUTES.dispatch,
+      request_welfare_shelter: ACTION_MINUTES.request_welfare_shelter,
+      report_city: ACTION_MINUTES.report_city,
+      evacuate_self: ACTION_MINUTES.evacuate_self,
+    }).toEqual({
       call_person: 5,
       call_contact: 5,
       visit: 40,
@@ -185,8 +194,9 @@ describe("7 つの手の表", () => {
       report_city: 10,
       evacuate_self: 30,
     });
-    // 刻みの間はいちばん短くて 60 分。手 1 つで刻みを 2 つ越えない
-    for (const m of Object.values(ACTION_MINUTES)) expect(m).toBeGreaterThan(0), expect(m).toBeLessThanOrEqual(60);
+    // 刻みの間はいちばん短くて 60 分。手 1 つで刻みを 2 つ越えない（自由対応は 0 で、読み替えた手の分）
+    expect(ACTION_MINUTES.free).toBe(0);
+    for (const [k, m] of Object.entries(ACTION_MINUTES)) if (k !== "free") expect(m).toBeGreaterThan(0), expect(m).toBeLessThanOrEqual(60);
     for (const l of Object.values(ACTION_LABELS)) expect(Array.from(l).length).toBeGreaterThanOrEqual(2), expect(Array.from(l).length).toBeLessThanOrEqual(5);
     expect(clockLabel(85)).toBe("1 時間 25 分");
     expect(clockLabel(180)).toBe("3 時間");
@@ -478,6 +488,8 @@ function rain(p: Params): Message {
   const system = systemOf(p);
   const input = inputOf(p);
   if (system.includes(CALL_SYSTEM)) return reply({ speech: "いたい、うごけん。足が動かんのよ" }, HAIKU);
+  // 訪問で着いたときの様子（T93）。使える物の無い返事（手の返事に様子を載せない）
+  if (system.includes(VISIT_SYSTEM)) return reply({ condition: "", location: "home", asks: [], speech: "" }, HAIKU);
   if (system.includes(PERSONA_SYSTEM)) {
     const profile = input["本人役"]?.text ?? "";
     const tick = input["この刻み"]?.text ?? "";
@@ -536,11 +548,11 @@ describe("鍵あり（偽の Claude）", () => {
     expect(screen.ticks[1].turns.find((t) => t.person === "p-02")).toMatchObject({ source: "family", ai: true });
     expect(screen.state.actions.map((a) => a.id)).toEqual(["a1", "a2", "a3"]);
 
-    // 呼び出しの数: 本人役 10 人 × 2 刻み + 電話 1、監督 2
+    // 呼び出しの数: 本人役 10 人 × 2 刻み + 電話 1 + 着いた訪問 2 の様子（T93）、監督 2
     const ai = sqlite.prepare("SELECT purpose, count(*) AS n FROM ai_calls GROUP BY purpose ORDER BY purpose").all();
     expect(ai).toEqual([
       { purpose: "director", n: 2 },
-      { purpose: "persona", n: 21 },
+      { purpose: "persona", n: 23 },
     ]);
   });
 
@@ -562,7 +574,7 @@ describe("鍵あり（偽の Claude）", () => {
   });
 });
 
-// ---------- 聞いた安否（T21、11/3 07:0x の確定 2） ----------
+// ---------- 聞いた安否（T21） ----------
 
 const heardRows = () =>
   sqlite

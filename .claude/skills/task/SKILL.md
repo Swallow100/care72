@@ -1,6 +1,6 @@
 ---
 name: task
-description: docs/tasks の作業（T00〜T31 の 1 つ）を始めてから取り込むまでの手順。main の先頭と作業中の行を見て重なりを避け、別のアカウントなら worktree と branch で進め、小さく commit し、終わりの形を確かめ、docs/PROGRESS.md に書き、PR を merge commit で取り込む。「T05 をやって」「docs/tasks/T12.md を進めて」と言われたときに使う。
+description: docs/tasks の作業（T00〜T31 の 1 つ）を始めてから取り込むまでの手順。main の先頭と作業中の行を見て重なりを避け、別のセッションなら worktree と branch で進め、小さく commit し、終わりの形を確かめ、docs/PROGRESS.md に書き、PR を merge commit で取り込む。「T05 をやって」「docs/tasks/T12.md を進めて」と言われたときに使う。
 argument-hint: "[T番号（例 T05）]"
 ---
 
@@ -16,12 +16,12 @@ argument-hint: "[T番号（例 T05）]"
 
 ## 2. 場所
 
-- 設計の側のセッション（`C:\Users\choco\dev\care72` の main）は、そのまま main で進める
-- 別のアカウントは worktree で進める。番号は小文字（T05 → t05）:
+- 設計の側のセッション（元の checkout の main）は、そのまま main で進める
+- 作業者のセッションは worktree で進める。番号は小文字（T05 → t05）:
   - `git worktree add ../care72-t05 -b task/t05 main`
   - その中で `npm install` と `npm run db:reset`（手元の D1 は worktree ごと。--local だけ）
 - docs/PROGRESS.md の頭に「$ARGUMENTS 作業中（だれ、11/3 10:00〜）」の 1 行を commit して push する
-- worktree の外を開かない。`C:\Users\choco\dev` の隣のフォルダは別のプロジェクトのコードと本物の鍵
+- worktree の外を開かない（隣のフォルダはほかのプロジェクトで、持ち込まない）
 
 ## 3. 進め方
 

@@ -244,7 +244,7 @@ export function SectionForm({ section, data, draft, set }: FormProps) {
             {draft.newMeds.map((m, i) => (
               <MedRow key={`new-${i}`} med={m} isNew onChange={(next) => set({ newMeds: draft.newMeds.map((x, j) => (j === i ? next : x)) })} />
             ))}
-            <Button size="sm" icon={AddIcon} onClick={() => set({ newMeds: [...draft.newMeds, blankMed()] })}>
+            <Button kind="add" size="sm" icon={AddIcon} onClick={() => set({ newMeds: [...draft.newMeds, blankMed()] })}>
               {INTAKE_LABELS.addMedication}
             </Button>
           </Group>
@@ -390,7 +390,7 @@ export function SectionForm({ section, data, draft, set }: FormProps) {
                 onDrop={() => set({ newClocks: draft.newClocks.filter((_, j) => j !== i) })}
               />
             ))}
-            <Button size="sm" icon={AddIcon} onClick={() => set({ newClocks: [...draft.newClocks, blankClock()] })} data-clock-add>
+            <Button kind="add" size="sm" icon={AddIcon} onClick={() => set({ newClocks: [...draft.newClocks, blankClock()] })} data-clock-add>
               {INTAKE_LABELS.addClock}
             </Button>
           </Group>
@@ -508,7 +508,7 @@ export function SectionForm({ section, data, draft, set }: FormProps) {
               onDrop={() => set({ newContacts: draft.newContacts.filter((_, j) => j !== i) })}
             />
           ))}
-          <Button size="sm" icon={AddIcon} onClick={() => set({ newContacts: [...draft.newContacts, blankContact()] })}>
+          <Button kind="add" size="sm" icon={AddIcon} onClick={() => set({ newContacts: [...draft.newContacts, blankContact()] })}>
             {INTAKE_LABELS.addContact}
           </Button>
           <div className="space-y-1">{fieldRows}</div>
@@ -779,7 +779,9 @@ function SelfFields({ c, p, onDrop }: { c: ContactDraft; p: (patch: Partial<Cont
 function FlagSelect({ label, who, value, onChange }: { label: string; who: string; value: FlagDraft; onChange: (v: FlagDraft) => void }) {
   return (
     <Select className={INPUT_IN} aria-label={`${who} ${label}`} value={value} onChange={(e) => onChange(e.target.value as FlagDraft)} data-flag={label}>
-      <option value="">{label} —</option>
+      <option value="" data-placeholder>
+        {label} —
+      </option>
       <option value="yes">
         {label} {PLACE_LABELS.yes}
       </option>
@@ -825,13 +827,15 @@ function OtherFields({
       />
       <Select className={INPUT_IN} aria-label={`${who} 夜間`} value={c.night} onChange={(e) => p({ night: e.target.value as NightDraft })}>
         {NIGHT.map((n) => (
-          <option key={n.value} value={n.value}>
+          <option key={n.value} value={n.value} data-placeholder={n.value === "" || undefined}>
             {n.label}
           </option>
         ))}
       </Select>
       <Select className={INPUT_IN} aria-label={`${who} ${INTAKE_LABELS.reach}`} value={c.reach} onChange={(e) => p({ reach: e.target.value as ContactDraft["reach"] })} data-reach>
-        <option value="">{INTAKE_LABELS.reach} —</option>
+        <option value="" data-placeholder>
+          {INTAKE_LABELS.reach} —
+        </option>
         {CONTACT_REACHES.map((r) => (
           <option key={r} value={r}>
             {CONTACT_REACH_LABELS[r]}
@@ -919,7 +923,9 @@ function NewClockRow({ clock: k, onChange, onDrop }: { clock: ClockDraft; onChan
         ))}
       </Select>
       <Select className={INPUT_IN} aria-label={`${name} ${INTAKE_LABELS.clockSource}`} value={k.source} onChange={(e) => p({ source: e.target.value as ClockDraft["source"] })}>
-        <option value="">{INTAKE_LABELS.clockSource} —</option>
+        <option value="" data-placeholder>
+          {INTAKE_LABELS.clockSource} —
+        </option>
         {CLOCK_SOURCES.map((s) => (
           <option key={s} value={s}>
             {CLOCK_SOURCE_LABELS[s]}
@@ -967,7 +973,9 @@ function OrderSelect({
       onChange={(e) => onChange(e.target.value)}
       data-order={label}
     >
-      <option value="">{label} —</option>
+      <option value="" data-placeholder>
+        {label} —
+      </option>
       {orders.map((n) => (
         <option key={n} value={String(n)}>
           {label} {n}

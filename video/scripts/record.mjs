@@ -282,7 +282,7 @@ async function staff(browser) {
   await settle(med);
   r13.mark("受入のあと");
   await sleep(2500);
-  // 受入のすぐあとに医療要約を開く（DECISIONS 11/4 09:2x。N25 の「要約が届きます」の間に書類が映るように）。
+  // 受入のすぐあとに医療要約を開く（docs/DECISIONS.md「動画」。N25 の「要約が届きます」の間に書類が映るように）。
   // 受け持ちの表に入った山田の行の、氏名の横の「医療要約」（StaffTable の data-summary）
   r13.mark("医療要約");
   await Promise.all([med.waitForNavigation({ waitUntil: "networkidle0", timeout: 120_000 }), med.click('tr[data-person="p-01"] a[data-summary]')]);

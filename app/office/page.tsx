@@ -11,6 +11,7 @@ import { FormChoice } from "@/components/office/FormChoice";
 import { MoreFold } from "@/components/office/MoreFold";
 import { JmaAlerts } from "@/components/office/JmaAlerts";
 import { OfficePlace } from "@/components/office/OfficePlace";
+import { SetupPanel } from "@/components/office/SetupPanel";
 import { UnlistedFold } from "@/components/office/UnlistedFold";
 import { UnlistedRows } from "@/components/office/UnlistedRows";
 import { ButtonLink, buttonClass } from "@/components/ui/Button";
@@ -24,7 +25,7 @@ import { StateTag, StateText, TONE_TEXT } from "@/components/ui/Tag";
 import { todayJst } from "@/lib/age";
 import { requirePage } from "@/lib/auth/server";
 import { PLAN_TONES } from "@/lib/caseload";
-import { ALERT_LEVELS, DISASTER_KINDS, OUTAGE_SCOPES, type DisasterKind } from "@/lib/db/types";
+import { ALERT_LEVELS, DISASTER_KINDS, OUTAGE_SCOPES, type DisasterKind, type GeoPoint } from "@/lib/db/types";
 import { loadDisasterState, loadOfficeLog, loadOfficeTowns, type OfficeLogItem, type TownCount } from "@/lib/disaster/db";
 import { OFFICE_INFO_PATH, OFFICE_MODE_PATH, OFFICE_PATH, parseConfirm, parseFormError } from "@/lib/disaster/http";
 import { disasterScope } from "@/lib/disaster/scope";
@@ -51,10 +52,11 @@ import { form9Scope, loadForm9 } from "@/lib/forms/form9-db";
 import { FORM9_CSV_PATH, FORM9_PATH } from "@/lib/forms/form9-href";
 import { PLAN_STATUS_LABELS } from "@/lib/labels";
 import { parseAssignedMany, parsePeopleError } from "@/lib/office/http";
-import { ASSIGN_ANCHOR, NEW_PERSON_PATH, OFFICE_PEOPLE_PATH } from "@/lib/office/http-paths";
+import { ASSIGN_ANCHOR, CARE_MANAGERS_ANCHOR, NEW_PERSON_PATH, OFFICE_PEOPLE_PATH } from "@/lib/office/http-paths";
 import { assignManyText, OFFICE_ERROR_LABELS, OFFICE_LABELS, type PeopleActionError } from "@/lib/office/labels";
 import { activeCareManagers, listCareManagers, listOfficePeople, type CareManagerItem, type OfficePersonItem } from "@/lib/office/people";
 import { officeActor } from "@/lib/office/scope";
+import { canSeeSetup, isSetupLater, loadOfficeCenter, SETUP_LATER_COOKIE, setupItems, setupLaterCookie, type SetupItem } from "@/lib/office/setup";
 import { CUSTODY_LABELS } from "@/lib/custody/labels";
 import { OFFICE_TAKE_PATH, UNAFFILIATED_ANCHOR } from "@/lib/custody/paths";
 import { listUnaffiliated, type UnaffiliatedItem } from "@/lib/custody/takeover";
@@ -63,7 +65,7 @@ import { RESET_LABELS } from "@/lib/seed/labels";
 import { CONFIRM_LABELS } from "@/lib/ui/labels";
 import { SurveyPanel } from "@/components/office/SurveyPanel";
 import { loadSurveyOverview, type SurveyOverview } from "@/lib/survey/store";
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 
 // D1 を毎回読む
 export const dynamic = "force-dynamic";
@@ -103,9 +105,12 @@ export default async function OfficePage({ searchParams }: Props) {
   let survey: SurveyOverview;
   let counts: ReturnType<typeof colorCounts> | null = null;
   let people = 0;
+  // 準備の欄（T98）。管理者だけ（審査員のケアマネの役は管理者でないので出ない）
+  let setup: SetupItem[] = [];
   try {
     const { env } = await getCloudflareContext({ async: true });
-    [state, log, towns, careManagers, officePeople, unaffiliated, survey] = await Promise.all([
+    let center: GeoPoint | null;
+    [state, log, towns, careManagers, officePeople, unaffiliated, survey, center] = await Promise.all([
       loadDisasterState(env.DB, scope.officeId),
       loadOfficeLog(env.DB, scope.officeId),
       loadOfficeTowns(env.DB, scope.officeId),
@@ -115,7 +120,17 @@ export default async function OfficePage({ searchParams }: Props) {
       listUnaffiliated(env.DB, actor, today),
       // アンケート（T42）。審査員（と審査員が足したアカウント）は審査員が作った物だけ、本物は作った本人と壁の外の管理者だけ（T81）
       loadSurveyOverview(env.DB, actor.officeId, { walled: actor.walled === true, admin: principal.admin, accountId: principal.accountId }, now),
+      // 準備の欄の地域（事業所の中心）。管理者のときだけ読む
+      canSeeSetup(principal) ? loadOfficeCenter(env.DB, scope.officeId) : Promise.resolve(null),
     ]);
+    if (canSeeSetup(principal)) {
+      setup = setupItems({
+        center,
+        careManagers,
+        people: officePeople,
+        careManagerLater: isSetupLater((await cookies()).get(SETUP_LATER_COOKIE)?.value, scope.officeId),
+      });
+    }
     const f9 = form9Scope(principal);
     const situation = toSituation(state, now);
     if (f9) {
@@ -164,6 +179,8 @@ export default async function OfficePage({ searchParams }: Props) {
           {RESET_LABELS.failed}
         </p>
       )}
+      {/* 準備の欄（T98）。管理者だけ、残っている物だけ。全部済めば出さない */}
+      <SetupPanel items={setup} laterCookie={setupLaterCookie(scope.officeId)} className="mt-3" />
 
       <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="grid min-w-0 content-start gap-3">
@@ -179,7 +196,7 @@ export default async function OfficePage({ searchParams }: Props) {
         <div className="grid min-w-0 content-start gap-3">
           <Form9Section people={people} counts={counts} />
           <FormChoice officeId={scope.officeId} error={q.form_error === "bad"} />
-          <Panel aria-labelledby="cm-title">
+          <Panel id={CARE_MANAGERS_ANCHOR} aria-labelledby="cm-title" className="scroll-mt-4">
             <AddCareManager count={careManagers.length} admin={actor.admin}>
               <CareManagerList
                 careManagers={careManagers}
@@ -338,7 +355,7 @@ function InfoSection({ state, towns }: { state: DisasterState; towns: TownCount[
             <input type="datetime-local" name="started" required defaultValue={toLocalInput(info.startedAt)} className={INPUT} />
           </label>
 
-          {/* 警戒レベルは大雨の場面の種類（大雨・台風・土砂）だけ。地震・津波・その他では出さない（11/3 21:5x 確定） */}
+          {/* 警戒レベルは大雨の場面の種類（大雨・台風・土砂）だけ。地震・津波・その他では出さない（docs/DECISIONS.md「地図と災害の情報」） */}
           {hasAlertLevel(state.kind) && (
           <fieldset>
             <legend className="text-xs text-muted">{DISASTER_LABELS.level}</legend>
@@ -452,7 +469,7 @@ const LOG_TONE: Record<OfficeLogItem["kind"], string> = {
 
 /**
  * 担当の割当（T30）。事業所の利用者を全部（カナの順）、行ごとに担当を選んで「変更」。行の右端の「詳細」で開いた行の中に
- * 登録・更新の時刻と「外す」（一覧から外す。消さない。一覧に赤を並べない、11/3 03:3x の確定 7）。
+ * 登録・更新の時刻と「外す」（一覧から外す。消さない。一覧に赤を並べない）。
  * 外した人は表の下の畳み「外した人 N」から戻す。表は 1 つの面の中で、ページの流れのまま（区分の中で送らない）。
  * 一括変更（T60）: 各行の左のチェック・見出しの全選択・表の上の帯（担当ごとの選択・移動先・一括変更）。戻ったら「変更済 N 人・飛ばし M 人」
  */

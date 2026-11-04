@@ -2,7 +2,7 @@
 
 // 訓練の開始（大雨想定・地震想定・10 分版）。押すと 0 時間まで当てて保存し、訓練の画面へ。
 // 事業所に進行中があれば断られる（実施中あり）。そのときは一覧の進行中から再開か中断。
-// 主の操作の色は 10 分版（審査員がまず押す方、11/3 03:3x の確定）だけで、先頭に並べる（11/3 08:0x の確定 3。並びは lib/drill の
+// 主の操作の色は 10 分版（審査員がまず押す方）だけで、先頭に並べる（並びは lib/drill の
 // SCENARIO_ORDER を変えずにここで前へ出す）。大雨・地震の想定は無色。押してから画面が移るまで、押したボタンに灰色を残す（data-pending）。
 //
 // 設定（T59）: 想定のボタンの前に畳んだ「設定」。開くと参加者（担当一覧の人のチェック。既定は全員）・職員（既定は想定の表の値）・夜間発災。
@@ -16,6 +16,8 @@
 // T76: 見込みの行の頭に AI の今の状態（lib/claude/status.ts。「AI 本日残り 37 / 200 回」）を並べ、足りるかを 1 行で見られるようにする
 // （T70 の案 6 の「重ねない」から変えた）。AI が使えない（未設定）ときは回数でなく想定ごとの進み方（固定の筋は「想定のみ」、仮想は「世界停止」）。
 // 未設定の印は中立の地の印（components/ui/AiStatus。状態の 4 色を使わない）。開始は止めない
+// T90: 大雨想定・地震想定・仮想は連続の時計（30 分・1 時間・3 時間・次まで）で始める（選ばせない）。送る物の options に clock を足し、
+// 見込みは連続の時計の式（lib/drill/estimate.ts の estimateClockCalls）。10 分版は前のまま（送る物も見込みも）
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -28,13 +30,19 @@ import { LABEL } from "@/components/ui/Panel";
 import { Select } from "@/components/ui/Select";
 import { AiStatusMark } from "@/components/ui/AiStatus";
 import { aiRemaining, aiUsable, type AiStatus } from "@/lib/claude/status";
-import { estimateDrillCalls, overLimit } from "@/lib/drill/estimate";
+import { estimateClockCalls, estimateDrillCalls, overLimit } from "@/lib/drill/estimate";
 import { AI_STOP_UI, DRILL_LABELS, SCENARIO_LABELS, T59_LABELS, T70_LABELS } from "@/lib/drill/labels";
 import { isVirtual } from "@/lib/drill/scenarios";
 import { STAFF_MAX } from "@/lib/drill/options";
 
 /** 主の操作の色にする想定 */
 const MAIN_SCENARIO: DrillScenario = "short";
+
+/** 連続の時計（T90）で始める想定か。10 分版は刻みの道のまま */
+const usesClock = (s: DrillScenario) => s !== "short";
+
+/** 想定 1 回の見込み（連続の時計の想定はその式） */
+const estimateOf = (s: DrillScenario, picked: ReadonlyArray<StartPerson>) => (usesClock(s) ? estimateClockCalls(s, picked) : estimateDrillCalls(s, picked));
 
 /**
  * 担当一覧の人（参加者の選択）。canPress が false の人に「押せる人なし」（無ければ印なし）、callable は本人役を呼びうる想定
@@ -102,7 +110,9 @@ export function StartButtons({
     setBusy(scenario);
     setError(null);
     try {
-      const o = options();
+      // 連続の時計は送るときだけ足す（設定の「変更あり」の印には数えない）
+      const chosen = options();
+      const o = usesClock(scenario) ? { ...(chosen ?? {}), clock: true } : chosen;
       const res = await fetch("/api/drill", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -170,7 +180,7 @@ export function StartButtons({
           {estimates && usable && <span>{T70_LABELS.estimate}</span>}
           {estimates &&
             ordered.map((s) => {
-              const n = estimateDrillCalls(s, picked);
+              const n = estimateOf(s, picked);
               const over = overLimit(n, remaining);
               const effect = isVirtual(s) ? AI_STOP_UI.virtual : AI_STOP_UI.fixed;
               const effectTitle = isVirtual(s) ? AI_STOP_UI.virtualTitle : AI_STOP_UI.fixedTitle;

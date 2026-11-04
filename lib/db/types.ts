@@ -73,7 +73,7 @@ export const CLOCK_CATEGORIES = [
   "dialysis", // 透析
   "insulin", // インスリン
   "tube_feeding", // 経管栄養
-  "antiplatelet", // 抗血小板薬（11/3 に骨格の段 5 へ足した。docs/DECISIONS.md 11/3 04:0x の 2）
+  "antiplatelet", // 抗血小板薬（骨格の段 5 へ足した。docs/DECISIONS.md「色と連絡順」）
   "anticoagulant", // 抗凝固薬
   "steroid", // ステロイド
   "antiepileptic", // 抗てんかん薬
@@ -104,12 +104,12 @@ export type ClockSource = (typeof CLOCK_SOURCES)[number];
 /**
  * 外の物に頼る時計の頼り先: 透析先・冷蔵・配達・保管。頼らない時計は null。
  * ルールの表の入力は透析先・配達だけ（lib/triage の TABLE_DEPENDS）。保管（暑さ・冷蔵）は「確認」の欄の項目で、表には使わない
- * （docs/DECISIONS.md 11/3 04:0x の 1。冷蔵は 11/3 より前の値で、表の入力から外した）
+ * （docs/DECISIONS.md「色と連絡順」。冷蔵は前の値で、表の入力から外した）
  */
 export const DEPENDS_ON = ["dialysis_center", "refrigeration", "delivery", "storage"] as const;
 export type DependsOn = (typeof DEPENDS_ON)[number];
 
-/** 頼り先の確認: 確認済・未確認。人が付ける（ルールの表は未確認なら黄にする。docs/DECISIONS.md 案 1） */
+/** 頼り先の確認: 確認済・未確認。人が付ける（ルールの表は未確認なら黄にする。docs/DECISIONS.md「色と連絡順」の案 1） */
 export const CHECK_STATUSES = ["confirmed", "unconfirmed"] as const;
 export type CheckStatus = (typeof CHECK_STATUSES)[number];
 
@@ -140,7 +140,10 @@ export const DRILL_EVENT_KINDS = [
 ] as const;
 export type DrillEventKind = (typeof DRILL_EVENT_KINDS)[number];
 
-/** 訓練のケアマネの手 7 つ（11/2 に確定） */
+/**
+ * 訓練のケアマネの手。7 つ（11/2 に確定）に T91 で 11 を足した 18。手の表（時間・相手・効き目）は lib/drill/action-catalog.ts。
+ * 手は drill_events の payload の kind なので、足しても migration は要らない
+ */
 export const DRILL_ACTIONS = [
   "call_person", // 本人に電話
   "call_contact", // 家族・支援者に電話
@@ -149,6 +152,18 @@ export const DRILL_ACTIONS = [
   "request_welfare_shelter", // 福祉避難所に依頼
   "report_city", // 市役所に報告
   "evacuate_self", // 自分も避難
+  // T91
+  "advise_119", // 119 への連絡を勧める（自動の 119 はしない）
+  "ask_check", // 家族・支援者・民生委員に見に行ってもらう
+  "request_backup", // ほかの事業所に応援を頼む
+  "arrange_medicine", // 薬局・かかりつけに薬の手配
+  "arrange_dialysis", // 透析の受け入れ先の調整
+  "request_hospital", // 病院に受け入れを頼む
+  "arrange_transport", // 移送の手配
+  "arrange_power", // 電源の手配
+  "call_vendor", // 酸素業者などに連絡
+  "note", // 記録だけ
+  "free", // 自由対応（文で書き、監督が表の手に読み替える）
 ] as const;
 export type DrillAction = (typeof DRILL_ACTIONS)[number];
 
@@ -396,7 +411,7 @@ export type Ledger = {
     destination1?: string;
     destination2?: string;
     /**
-     * 在宅避難の印（T37、docs/DECISIONS.md 11/3 04:0x の 8）。住まいが安全で、計画で家に留まると決めた人だけ true。
+     * 在宅避難の印（T37）。住まいが安全で、計画で家に留まると決めた人だけ true。
      * 無ければ避難所へ（種は全員）。本人の 1 枚の地震の行を書き分ける
      */
     stayHome?: boolean;
@@ -535,7 +550,7 @@ export type PersonRow = {
   birth_date: string | null;
   plan_status: PlanStatus;
   origin: PersonOrigin;
-  /** 本人の報告を当てにしない印（認知症など）。人が付ける。1 なら本人の緑を未知として扱う（docs/DECISIONS.md 案 4） */
+  /** 本人の報告を当てにしない印（認知症など）。人が付ける。1 なら本人の緑を未知として扱う（docs/DECISIONS.md「色と連絡順」の案 4） */
   self_report_unreliable: 0 | 1;
   /** Ledger の JSON の文字列 */
   ledger: string;
@@ -795,7 +810,7 @@ export type DisasterKind = (typeof DISASTER_KINDS)[number];
 export const OUTAGE_SCOPES = ["none", "office", "area"] as const;
 export type OutageScope = (typeof OUTAGE_SCOPES)[number];
 
-/** 警戒レベル（避難の様式の言葉）。人が入れる。ルールの表の入力には今は使わない（docs/DECISIONS.md） */
+/** 警戒レベル（避難の様式の言葉）。人が入れる。ルールの表の入力には今は使わない（docs/DECISIONS.md「地図と災害の情報」） */
 export const ALERT_LEVELS = [3, 4, 5] as const;
 export type AlertLevel = (typeof ALERT_LEVELS)[number];
 

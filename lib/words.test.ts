@@ -1,4 +1,4 @@
-// 画面・紙・文書の言葉の確かめ（T48、アドバイザーの返事と 11/3 16:0x 確定）。
+// 画面・紙・文書の言葉の確かめ（T48。docs/DECISIONS.md「119 の案内と画面の言葉」）。
 // 画面の言葉の定数（lib の *labels.ts・本人と家族のスマホの決まった言葉・本人の 1 枚の言葉）と、README・docs/TRIAGE.md・
 // docs/SOURCES.md・動画の文書（docs/video）に「緊急度」「重症」「判定」「診断」が無いこと。文書は「〜しない」「使わない」と
 // 禁じる行だけ通す。Claude への指示（prompt）の「書かない」の列挙は画面に出ないので見ない。
@@ -52,7 +52,7 @@ describe("言葉（T48）", () => {
     for (const { where, text } of screenWords()) for (const w of BANNED) expect(text, `${where} ${w}`).not.toContain(w);
   });
 
-  it("画面の言葉に「優先」が無い（「連絡順」「順番変更」。11/3 16:0x 確定）", () => {
+  it("画面の言葉に「優先」が無い（「連絡順」「順番変更」）", () => {
     for (const { where, text } of screenWords()) expect(text, where).not.toContain("優先");
   });
 

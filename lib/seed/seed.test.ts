@@ -6,7 +6,7 @@
 import { readFileSync } from "node:fs";
 import type { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { SEED_ACCOUNTS } from "../../seed/people.ts";
+import { SEED_ACCOUNTS, SEED_AT } from "../../seed/people.ts";
 import { fullSeedStatements } from "../../seed/full.ts";
 import { CLEAR_ORDER } from "../../seed/sql.ts";
 import type { Principal } from "../auth/principal.ts";
@@ -22,6 +22,7 @@ import { abandonDrill, drillScope, listDrills, startDrill } from "../drill/db.ts
 import { recordingGet, type RecordingReader } from "../list/recording.ts";
 import { DAILY_RESET_CRON, scheduledReset } from "./cron.ts";
 import {
+  DEMO_QR,
   DEMO_RECORDING_PREFIX,
   demoOutageTowns,
   demoTimes,
@@ -195,6 +196,18 @@ describe("種（npm run db:reset）", () => {
       { author_role: "self", kind: "signal", body: "録音なし 文字起こし「いたい、うごけない」" },
       { author_role: "system", kind: "note", body: "録音の分類（AI）: 動けない 確信 90%「うごけない」" },
     ]);
+  });
+
+  it("デモ事業所の 10 人は QR を作った形（版 1・作った時刻は種の時刻・180 日）。戻しでも同じ時刻に戻る（前の日に刷った紙の QR が開ける）", async () => {
+    sqlite = await seeded();
+    const rows = sqlite.prepare("SELECT qr_generation AS g, qr_issued_at AS t, qr_ttl_days AS d FROM people WHERE office_id = 'office-demo'").all();
+    expect(rows).toHaveLength(10);
+    for (const r of rows) expect(r).toEqual({ g: DEMO_QR.generation, t: DEMO_QR.issuedAt, d: DEMO_QR.ttlDays });
+    expect(DEMO_QR).toEqual({ generation: 1, issuedAt: SEED_AT, ttlDays: 180 });
+    const { db } = await used();
+    await resetDemoOffice(d1FromSqlite(db), fakeBucket().bucket, NOW);
+    expect(db.prepare("SELECT qr_generation AS g, qr_issued_at AS t FROM people WHERE id = 'p-01'").get()).toEqual({ g: 1, t: SEED_AT });
+    db.close();
   });
 
   it("担当一覧は災害モードで、山田が赤の最上位（理由に AI の印）", async () => {

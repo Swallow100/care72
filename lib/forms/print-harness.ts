@@ -63,5 +63,5 @@ const probe = (family: string) => `(() => {
 export const FONT_PROBE = probe("BIZ UDPGothic");
 /** 明朝（T85。松山市の様式の題・同意の問い・注）。Windows の BIZ UDP明朝 Medium（BIZ-UDMinchoM.ttc）か Google Fonts の同じ書体 */
 export const MINCHO_PROBE = probe("BIZ UDPMincho");
-/** 松山市の本文（原本の BIZ UDゴシック。11/4 15:4x 確定）。Windows の BIZ-UDGothicR.ttc か Google Fonts の同じ書体 */
+/** 松山市の本文（原本の BIZ UDゴシック）。Windows の BIZ-UDGothicR.ttc か Google Fonts の同じ書体 */
 export const UD_GOTHIC_PROBE = probe("BIZ UDGothic");

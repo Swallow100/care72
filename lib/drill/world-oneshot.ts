@@ -9,14 +9,16 @@
 // - 返事の形は部屋の custom tool と同じ WorldStepSchema（lib/drill/world-apply.ts）
 
 import { askJson, type AskJsonContext, type AskJsonRequest } from "../claude/call.ts";
+import { CATALOG_WORDS } from "./action-catalog.ts";
 import { CARE_LEVEL_LABELS, CLOCK_START_LABELS, CLOCK_UNIT_LABELS, DEVICE_LABELS, HOUSEHOLD_LABELS } from "../labels.ts";
 import { pseudonymize, pseudonymizeText, type ForClaude, type PseudonymInput, type PseudonymKey } from "../pseudonym/index.ts";
-import { aliasOfTown, areaOf, DEMO_AREA, geographyText, townOfLedger, type Area } from "./area.ts";
+import { aliasOfTown, areaOf, DEMO_AREA, geographyText, placesOf, townOfLedger, type Area } from "./area.ts";
 import { DEMO_OFFICE_ID } from "../auth/demo.ts";
 import { endingsAllowed } from "./fiction.ts";
 import type { ActionRecord, DrillIncident, WorldInput } from "./engine.ts";
 import { PHONE_LABELS, SHELTER_LABELS } from "./labels.ts";
 import { nightLine } from "./night.ts";
+import { hourText, minuteText } from "./time-text.ts";
 import type { OutcomeSource } from "./outcome.ts";
 import { reportersOf } from "./persona.ts";
 import type { WorldState, WorldVia } from "./scenarios.ts";
@@ -47,6 +49,13 @@ const KIND_WORDS: Readonly<Record<(typeof WORLD_KINDS)[number], string>> = {
   facility: "施設。name に施設の名前。value は closed（休止）か open（再開）",
   aftershock: "余震。value に震度（「4」「5弱」）",
   weather: "天候。value は rain（大雨）か clear（止む）",
+  // T92（出来事の表と同じ形。名前は地理にある物だけ）
+  welfare_shelter: "福祉避難所の開設。name に地理の福祉避難所の名前（空文字なら地理の福祉避難所）。value は open（開設）・full・closed",
+  water_station: "給水所の開設（断水の地区。断水は続く）。town に地区",
+  pharmacy: "地理の薬局の休止・再開。value は closed（休止）か open（再開）",
+  helper: "介護事業所の休止（介護事業所を使う人のヘルパーが来られない）。value は closed",
+  vendor: "酸素業者の巡回。target に酸素・呼吸器を使う人の仮名。value に何時間後に着くか（「4」。2〜12）",
+  info: "避難の情報が食い違って広まる。value は空文字",
 };
 
 /** 世界の指示（部屋の system と 1 回呼びの system に同じ物を使う） */
@@ -145,13 +154,14 @@ export function buildCast(
 ): WorldCast {
   const members = participants.filter((p) => sources.has(p));
   const list = members.map((p) => sources.get(p)!);
-  const { payload, key } = pseudonymize(list, on ? { on } : {});
   const dependsOf = (p: string) => (outcomeSources.get(p)?.clocks ?? []).flatMap((k) => (k.depends_on ? [k.depends_on] : []));
   const nurseOf = (src: PseudonymInput) => src.contacts.some((c) => c.kind === "visiting_nurse");
   const area = areaOf(
     officeId,
     members.map((p, i) => ({ ledger: list[i].ledger, depends: dependsOf(p), nurse: nurseOf(list[i]) })),
   );
+  // 町名は地区の別名で渡す（T88。本人たちの欄・これまでの世界・刻みの文に町名が入っても、地理と同じ別名に）
+  const { payload, key } = pseudonymize(list, { ...(on ? { on } : {}), places: placesOf(area, list.map((x) => x.ledger)) });
   const facts = new Map<string, PersonFacts>();
   const lines: string[] = [];
   members.forEach((p, i) => {
@@ -161,6 +171,7 @@ export function buildCast(
       depends: dependsOf(p),
       categories: src.clocks.map((k) => k.category),
       nurse: nurseOf(src),
+      helper: src.contacts.some((c) => c.kind === "care_service"),
     });
     const c = payload[i];
     const head = [
@@ -189,15 +200,7 @@ export function buildCast(
   return { key, facts, people: ["本人たち（仮名。どこに住むかは書かない）:", ...lines].join("\n"), area, endings: endingsAllowed(officeId) };
 }
 
-const ACTION_WORDS: Readonly<Record<ActionRecord["kind"], string>> = {
-  call_person: "本人に電話",
-  call_contact: "家族・支援者に電話",
-  visit: "家に向かった",
-  dispatch: "訪問看護・介護の人に行ってもらうよう頼んだ",
-  request_welfare_shelter: "福祉避難所に受け入れを頼んだ",
-  report_city: "市役所に報告",
-  evacuate_self: "自分も避難",
-};
+const ACTION_WORDS: Readonly<Record<ActionRecord["kind"], string>> = CATALOG_WORDS;
 
 const COLOR_WORDS = { red: "赤（無事じゃない）", green: "緑（無事）", unknown: "連絡（安否は不明）" } as const;
 
@@ -208,7 +211,7 @@ function actionLines(actions: ReadonlyArray<ActionRecord>, from: number, aliasOf
     .map((a) => {
       const who = a.person ? (aliasOf.get(a.person) ?? null) : null;
       const r = a.result ? (a.result.ok ? "届いた" : "届かなかった") : "途中";
-      return `- ${Math.floor(a.atMinute / 60)} 時間 ${a.atMinute % 60} 分: ${ACTION_WORDS[a.kind]}${who ? `（${who}）` : ""} → ${r}`;
+      return `- ${minuteText(a.atMinute)}: ${ACTION_WORDS[a.kind]}${who ? `（${who}）` : ""} → ${r}`;
     });
 }
 
@@ -216,7 +219,7 @@ function actionLines(actions: ReadonlyArray<ActionRecord>, from: number, aliasOf
 function contactLines(input: WorldInput, from: number, aliasOf: ReadonlyMap<string, string>): string[] {
   return Object.entries(input.people)
     .filter(([p, s]) => s.at >= from && aliasOf.has(p))
-    .map(([p, s]) => `- ${aliasOf.get(p)}: ${s.at} 時間に${COLOR_WORDS[s.color]}`);
+    .map(([p, s]) => `- ${aliasOf.get(p)}: ${hourText(s.at)}に${COLOR_WORDS[s.color]}`);
 }
 
 const WHERE_WORDS = { home: "家", shelter: "避難所", other: "家の外" } as const;
@@ -229,7 +232,7 @@ function lastLines(input: WorldInput, aliasOf: ReadonlyMap<string, string>): str
     .map(([p, alias]) => {
       const s = input.people[p];
       if (!s) return `- ${alias}: 連絡なし`;
-      return `- ${alias}: ${s.at} 時間に${COLOR_WORDS[s.color]}${s.whereNow ? `、${WHERE_WORDS[s.whereNow]}` : ""}`;
+      return `- ${alias}: ${hourText(s.at)}に${COLOR_WORDS[s.color]}${s.whereNow ? `、${WHERE_WORDS[s.whereNow]}` : ""}`;
     });
 }
 
@@ -254,7 +257,7 @@ export function worldNow(w: WorldState, area: Area = DEMO_AREA): string[] {
   if (w.outage) {
     const o = w.outage;
     const where = o.area.scope === "towns" ? o.area.towns.map((t) => aliasOfTown(t, area) ?? "地区").join("・") : "全域";
-    now.push(o.restoredAt != null ? `停電 復旧（${o.restoredAt} 時間）` : `停電中（${where}）`);
+    now.push(o.restoredAt != null ? `停電 復旧（${hourText(o.restoredAt)}）` : `停電中（${where}）`);
   }
   now.push(`電話 ${PHONE_LABELS[w.phone]}`);
   const roads = new Map<string, boolean>();
@@ -271,13 +274,15 @@ export function worldNow(w: WorldState, area: Area = DEMO_AREA): string[] {
 export function tickText(input: WorldInput, cast: Pick<WorldCast, "key"> & Partial<Pick<WorldCast, "endings">>, prevHour: number, last: number): string {
   const endings = cast.endings !== false;
   const aliasOf = new Map(cast.key.people.map((p) => [p.personId, p.alias]));
-  const acts = actionLines(input.actions, prevHour, aliasOf);
-  const contacts = contactLines(input, prevHour, aliasOf);
+  // 連続の時計の訓練（T90）は前の区切りの時刻（分）から。刻みの道は前の刻みの時刻
+  const from = input.since !== undefined ? input.since / 60 : prevHour;
+  const acts = actionLines(input.actions, from, aliasOf);
+  const contacts = contactLines(input, from, aliasOf);
   const seen = lastLines(input, aliasOf);
   const hints = hintLines(input, aliasOf);
   const ended = Object.keys(input.world.ended ?? {}).flatMap((p) => (aliasOf.has(p) ? [aliasOf.get(p)!] : []));
   return [
-    `時刻: 発災から ${input.hour} 時間（${last} 時間まで）`,
+    `時刻: 発災から ${hourText(input.hour)}（${last} 時間まで）`,
     // 夜間発災（T59）だけ。時刻の 1 行
     ...(input.night ? [nightLine(input.hour)] : []),
     acts.length > 0 ? ["前の刻みからケアマネがした事:", ...acts].join("\n") : "前の刻みからケアマネがした事: なし",

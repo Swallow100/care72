@@ -33,7 +33,7 @@ export type PurposeSpec = {
 };
 
 /**
- * effort は分類のほかは high（作者 11/4 00:5x。docs/DECISIONS.md）。
+ * effort は分類（low）と本人役（medium）のほかは high（docs/DECISIONS.md「AI の使い所」）。
  * high は考える分が増え、考えた分も maxTokens に入る（超えると AiBadOutput の max_tokens で、再試行しない）。
  * 待ちと上限の決め方は docs/progress/t67.md:
  * - Opus・Sonnet の high は 16000・180 秒にそろえる（前から high だった様式の読み取り・講評と同じ）
@@ -54,11 +54,14 @@ export const PURPOSES: Readonly<Record<ClaudePurpose, PurposeSpec>> = {
   // 要約・記入欄の分け方（T07 など。アンケートの集計 tools/survey/summarize.ts がこの用途で Sonnet を呼ぶ）。
   // 録音のまとめ（T69b）も同じ用途で数えるが、待ちと上限は下の RECORDING_SUMMARY で呼ぶ（要求ごとの spec）
   summary: { model: SONNET, effort: "high", maxTokens: 16000, timeoutMs: 180_000 },
-  // 訓練の本人役・家族役の 1 刻み（T18）と、電話に出た人の言う事（T20）
-  persona: { model: HAIKU, effort: "high", maxTokens: 8000, timeoutMs: 90_000 },
+  // 訓練の本人役・家族役の 1 刻み（T18）と、電話に出た人の言う事（T20）。
+  // effort は medium（T89）。固定の筋の 1 刻みは 監督（Opus）→ 本人役（10 人）の順で、本人役は監督の差し込みを読むので並べられない。
+  // 手元の試験で、本人役を high → medium にすると 10 分版の 1 刻みが平均 27.9 → 22.8 秒になり、本人役の返事の質は保った。
+  // 電話に出た人の言う事（1 回）も同じ medium。待ちと上限（8000・90 秒）は high のときのまま（余裕を見る）
+  persona: { model: HAIKU, effort: "medium", maxTokens: 8000, timeoutMs: 90_000 },
   // 録音と自由文を 5 つに分ける（T12）。録音の応答のあとに waitUntil で走らせ、Workers が応答のあとに待つ 30 秒に
   // 再試行（1 回）込みで収める（12 秒 × 2）。短い文 1 つの分類で、これを超えたら分類なし（AI 失敗）にする。
-  // このため分類だけは high にせず low のまま（11/4 00:5x。high にすると考える分で 12 秒を超えやすい）
+  // このため分類だけは high にせず low のまま（high にすると考える分で 12 秒を超えやすい）
   classify: { model: HAIKU, effort: "low", maxTokens: 4000, timeoutMs: 12_000 },
 };
 

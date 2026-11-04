@@ -52,7 +52,7 @@ export async function FormChoice({ officeId, error }: { officeId: string; error?
             保存
           </SubmitButton>
           <Link href="/forms/mapping" className="-mx-0.5 rounded px-0.5 text-sm text-accent underline underline-offset-2" data-press>
-            様式対応
+            様式追加
           </Link>
         </div>
       </form>

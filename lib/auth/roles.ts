@@ -7,7 +7,7 @@
 export const ROLES = ["care_manager", "government", "medical", "self", "family", "unselected"] as const;
 export type Role = (typeof ROLES)[number];
 
-/** 審査員が選べる役（ケアマネ 山本・医療班・本人のスマホ 山田 ハナ・家族のスマホ 山田の娘） */
+/** 審査員が選べる役（ケアマネ 山本・医療班・本人のスマホ 山田 ハナ・家族のスマホ 山田の娘）。見本のケアマネの山本も同じ（T95） */
 export const JUDGE_ROLES = ["care_manager", "medical", "self", "family"] as const;
 export type JudgeRole = (typeof JUDGE_ROLES)[number];
 

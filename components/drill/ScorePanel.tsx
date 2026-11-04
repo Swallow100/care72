@@ -1,7 +1,8 @@
 // 訓練の採点（docs/tasks/T22.md）。訓練の画面の右の欄の上に、終わった・中断した訓練だけ出す。サーバーで描く（講評だけ client）。
 // - 数字 4 つ（順番一致・報告遅延・空欄 様式 9・条件到達）は機械で数えた物（lib/drill/score.ts）。前回（同じ事業所・同じ災害の前の
 //   終わった訓練）の数字を横に並べる。数字に色を付けない（色は状態の 4 色だけ。採点は状態ではない）
-// - 内訳: 条件到達の人（時計と超過時刻）、順番相違の人と理由、様式 9 の空欄、着信の応答・拒否の数
+// - 内訳: 条件到達の人（時計と超過時刻）、順番相違の人と理由、様式 9 の空欄、着信の応答・拒否の数。
+//   T94: 空振り・重複・頼み事の未対応・通話の往復の数（いつも）と、空振り・重複・頼み事の未対応の人（あるときだけ）
 // - 講評は components/drill/ReviewBox（Opus 1 回、AI の印、直せる）
 // - 仮想モード（T53）は「結末 AI 筋書」（世界が決めた人）を「条件到達 時計計算」と別の数で出し、内訳に結末の 1 文と理由（AI の印）
 // 正解・不正解の印や点数は出さない。「死亡」とは書かず「条件到達」
@@ -104,6 +105,44 @@ export function ScorePanel({
           <span className={LABEL}>{SCORE_LABELS.calls}</span>
           <span className="tabular-nums">{view.calls}</span>
         </div>
+        {/* T94: 手の選び方の内訳（空振り・重複・頼み事の未対応・通話の往復）。数は機械、4 つの大きな数字には入れない */}
+        <dl className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5" data-score-detail="extra">
+          <Count label={SCORE_LABELS.wasted} n={view.extra.counts.wasted} k="wasted" />
+          <Count label={SCORE_LABELS.repeat} n={view.extra.counts.repeat} k="repeat" />
+          <Count label={`${SCORE_LABELS.asks} ${SCORE_LABELS.asksOpen}`} n={view.extra.counts.asksOpen} k="asks" />
+          <Count label={SCORE_LABELS.talk} n={view.extra.counts.talks} unit={SCORE_LABELS.talks} k="talks" />
+        </dl>
+        {view.extra.wasted.length > 0 && (
+          <Detail title={SCORE_LABELS.wasted} empty={false} k="wasted">
+            {view.extra.wasted.map((w) => (
+              <li key={w.action} data-action={w.action}>
+                <span className="font-bold">{w.name}</span> {w.act} {w.why}
+                <span className="ml-1.5 text-xs text-muted tabular-nums">{w.at}</span>
+              </li>
+            ))}
+          </Detail>
+        )}
+        {view.extra.repeat.length > 0 && (
+          <Detail title={SCORE_LABELS.repeat} empty={false} k="repeat">
+            {view.extra.repeat.map((r) => (
+              <li key={r.action} data-action={r.action}>
+                <span className="font-bold">{r.name}</span> {r.act}
+                <span className="ml-1.5 text-xs text-muted tabular-nums">
+                  {SCORE_LABELS.gap} {r.gap} 分・{r.at}
+                </span>
+              </li>
+            ))}
+          </Detail>
+        )}
+        {view.extra.asks.length > 0 && (
+          <Detail title={`${SCORE_LABELS.asks} ${SCORE_LABELS.asksOpen}`} empty={false} k="asks">
+            {view.extra.asks.map((a) => (
+              <li key={a.person} data-person={a.person}>
+                <span className="font-bold">{a.name}</span> {a.kinds}
+              </li>
+            ))}
+          </Detail>
+        )}
       </section>
 
       <ReviewBox drillId={drillId} initial={review} canReview={canReview} names={names} />
@@ -116,6 +155,19 @@ function groupBy<T>(items: ReadonlyArray<T>, keyOf: (x: T) => string): Array<{ k
   const out = new Map<string, T[]>();
   for (const x of items) out.set(keyOf(x), [...(out.get(keyOf(x)) ?? []), x]);
   return [...out].map(([key, items]) => ({ key, items }));
+}
+
+/** 内訳の数 1 つ（「空振り 2」「通話 3 往復」） */
+function Count({ label, n, unit, k }: { label: string; n: number; unit?: string; k: string }) {
+  return (
+    <div className="flex items-baseline gap-x-1" data-extra={k}>
+      <dt className={LABEL}>{label}</dt>
+      <dd className="tabular-nums">
+        {n}
+        {unit && <span className="ml-0.5">{unit}</span>}
+      </dd>
+    </div>
+  );
 }
 
 function Detail({ title, empty, k, children }: { title: string; empty: boolean; k: string; children: React.ReactNode }) {

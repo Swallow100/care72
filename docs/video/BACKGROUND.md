@@ -1,6 +1,6 @@
-# 背景の生成動画（11/4 00:4x の確定）
+# 背景の生成動画
 
-アプリの画面が映らない場面の背景に敷く生成動画の一覧と、生成の指示文。決まりは docs/DECISIONS.md 11/4 00:4x、使った物の記録は [MATERIALS.md](MATERIALS.md) の「生成画像・生成動画」。
+アプリの画面が映らない場面の背景に敷く生成動画の一覧と、生成の指示文。決まりは docs/DECISIONS.md「動画」、使った物の記録は [MATERIALS.md](MATERIALS.md) の「生成画像・生成動画」。
 
 ## 決まり
 
@@ -40,9 +40,9 @@ B06 は被災地の映像に見えやすい。でき上がりが実在の避難�
 ## 作り方（11/4）
 
 - 道具は fal.ai（前払い、月額なし）。鍵は環境変数 `FAL_KEY` で渡すだけで、ファイル・記録に書かない
-- 先に静止画で見た目を決める（11/4 の決定。8 本の光・色・寄り方を揃えるため）: `FAL_KEY=… node video/scripts/gen-frame.mjs [ID …] --n 2` で GPT Image 2 の静止画を各 2 案 → `video/assets/bg/frames/`。作者が案を選ぶ
+- 先に静止画で見た目を決める（8 本の光・色・寄り方を揃えるため）: `FAL_KEY=… node video/scripts/gen-frame.mjs [ID …] --n 2` で GPT Image 2 の静止画を各 2 案 → `video/assets/bg/frames/`。作者が案を選ぶ
 - 動画: `FAL_KEY=… node video/scripts/gen-bg.mjs <ID> [秒] [解像度] --from video/assets/bg/frames/<ID>-<n>.png`（Seedance 2.5 の image-to-video、音なし）→ `video/assets/bg/<ID>.mp4`。前の物は `assets/bg/old/` へ退く
-- 11/4 に作った物: B01-2・B02-2・B03-2・B04-1・B05-1・B07-1・B08-1 の静止画から 7 本（480p、長さは表の「要る長さ」＋1 秒、B07 は 14 秒）。モデルは 2.5（作者の決定、11/4）。B06（避難所）は本物の避難所の写真に見えるので使わず、S3 の最後は手書きのメモの図だけ
+- 11/4 に作った物: B01-2・B02-2・B03-2・B04-1・B05-1・B07-1・B08-1 の静止画から 7 本（480p、長さは表の「要る長さ」＋1 秒、B07 は 14 秒）。モデルは 2.5（2.0 より見た目が良かった）。B06（避難所）は本物の避難所の写真に見えるので使わず、S3 の最後は手書きのメモの図だけ
 - 敷き方: `node video/scripts/bg.mjs` で 160px に縮めてから 1920px に戻してぼかした連番にし、`npm run scan`。編集で色を抜き、地の色を 74% 重ねる（split の文字の面の中は面の色を 80%）。隅に「イメージ（AI 生成）」
 - できた物は MATERIALS.md の「生成画像・生成動画」に書く
 

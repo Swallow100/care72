@@ -161,7 +161,7 @@ export function MappingEditor({
           </label>
         )}
         <div className="ml-auto flex items-center gap-2">
-          <Button icon={AddIcon} onClick={add}>
+          <Button kind="add" icon={AddIcon} onClick={add}>
             {L.addField}
           </Button>
           <Button kind="main" icon={SaveIcon} disabled={!canSave} onClick={save} data-pending={saving ? "" : undefined}>
@@ -243,7 +243,7 @@ export function MappingEditor({
         </table>
         {m.fields.length === 0 && (
           <div className="px-2 py-3 text-sm">
-            <Button kind="plainIn" icon={AddIcon} onClick={add}>
+            <Button kind="addIn" icon={AddIcon} onClick={add}>
               {L.addField}
             </Button>
           </div>
@@ -396,7 +396,7 @@ function FieldRow({
         )}
       </td>
       <td className={`${CELL} text-right`}>
-        {/* 外すは戻せる印なので無色（行ごとに赤を並べない。事業所の担当の表と同じ向き、11/3 03:3x の確定 7） */}
+        {/* 外すは戻せる印なので無色（行ごとに赤を並べない。事業所の担当の表と同じ向き） */}
         <Button size="sm" icon={off ? RestoreIcon : RemoveIcon} onClick={() => onChange({ removed: !off })}>
           {off ? L.restore : L.remove}
         </Button>

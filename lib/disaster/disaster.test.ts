@@ -149,7 +149,7 @@ describe("切替と事業所の経過", () => {
     expect((await loadDisasterState(db, "office-demo")).version).toBe(1);
   });
 
-  it("大雨 → 地震は種類だけ替え、発災・停電はそのまま。警戒レベルは大雨の場面の種類だけなので空に（11/3 21:5x 確定、T60）", async () => {
+  it("大雨 → 地震は種類だけ替え、発災・停電はそのまま。警戒レベルは大雨の場面の種類だけなので空に（T60）", async () => {
     await heavyRain();
     expect(await switchDisasterMode(db, YAMAMOTO, { kind: "earthquake", version: 2, at: at(1) })).toEqual({ ok: true, changed: true });
     const s = await loadDisasterState(db, "office-demo");

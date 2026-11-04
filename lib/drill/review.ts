@@ -26,17 +26,33 @@ import {
 } from "../pseudonym/index.ts";
 import { isSourceId, type SourceId } from "../sources/index.ts";
 import { NO_BASIS } from "../sources/prompt.ts";
+import { ACTION_CATALOG, type ActionRow } from "./action-catalog.ts";
+import { officePlaces } from "./area.ts";
 import { personOfAlias } from "./director.ts";
 import type { ActionRecord } from "./engine.ts";
 import { ACTION_LABELS, SCENARIO_LABELS, STATUS_LABELS } from "./labels.ts";
 import type { CallRecord } from "./responses.ts";
-import { scenarioOf } from "./scenarios.ts";
-import { FORM9_PLAN_LABELS, minuteText, reachedText } from "./score-labels.ts";
-import type { DrillScore, ScoreNumbers } from "./score.ts";
+import { scenarioOf, type Ask } from "./scenarios.ts";
+import { askWords, factWords, FORM9_PLAN_LABELS, minuteText, personWords, reachedText } from "./score-labels.ts";
+import {
+  extrasCount,
+  gapBefore,
+  knownOf,
+  reachedAt,
+  rowOf,
+  talkOf,
+  talkTurns,
+  visitOf,
+  type DrillScore,
+  type ScoreNumbers,
+  type TickWorld,
+  type WasteWhy,
+} from "./score.ts";
 
 // ---------- 形 ----------
 
-export const REVIEW_KINDS = ["order", "report", "blank", "reached", "call", "other"] as const;
+/** 指摘の種類。choice は手の選び方（T94: その時に分かっていた事実と表の手の名前で） */
+export const REVIEW_KINDS = ["order", "report", "blank", "reached", "call", "choice", "other"] as const;
 export type ReviewKind = (typeof REVIEW_KINDS)[number];
 
 export type ReviewFinding = {
@@ -72,26 +88,48 @@ export const FINDINGS_MAX = 8;
 export const FINDING_TEXT_MAX = 120;
 export const SUMMARY_MAX = 240;
 
+/** 講評が名指しする手の言葉（手の表の label、画面の並び。自由対応は読み替えた手の名前で書くので入れない） */
+export const REVIEW_ACTION_LABELS: ReadonlyArray<string> = ACTION_CATALOG.filter((r) => r.id !== "free").map((r) => r.label);
+
+const labelsWhere = (f: (r: ActionRow) => boolean) =>
+  ACTION_CATALOG.filter((r) => r.id !== "free" && f(r))
+    .map((r) => r.label)
+    .join("・");
+
+/** 道が通行止だと届かない手（世界の返事 lib/drill/world-reply.ts: 訪問・訪問依頼と、本人の家へ向かう手配） */
+const ROAD_BOUND = (r: ActionRow) =>
+  r.decide.type === "visit" || r.decide.type === "dispatch" || (r.decide.type === "arrange" && r.effects.some((e) => e.kind === "arrival"));
+
 export const REVIEW_SYSTEM = [
-  "災害の訓練（発災から 72 時間。人は全部架空）の講評を書く。ケアマネが打った手の順番、市役所への報告の時刻、様式 9（災害時利用者一覧表）の空欄、",
-  "着信への応答を、機械で数えた結果と手の履歴から振り返り、次の訓練で直す所を示す。入力は JSON の「記録」。",
+  "災害の訓練（発災から 72 時間。人は全部架空）の講評を書く。ケアマネが打った手の順番と選び方（空振り・重複・頼み事への対応）、市役所への報告の時刻、",
+  "様式 9（災害時利用者一覧表）の空欄、着信への応答を、機械で数えた結果と手の履歴から振り返り、次の訓練で直す所を示す。入力は JSON の「記録」。",
+  "",
+  `手の言葉（表の手の名前。これのほかの手を書かない）: ${REVIEW_ACTION_LABELS.join("・")}`,
+  "",
+  "事実で結果の決まる手（世界の返事の決まり）:",
+  `- 電話 不通: ${labelsWhere((r) => r.decide.type !== "record" && r.decide.type !== "visit")}は届かない（家の電話だけが不通なら、本人電話のほかの電話はかけられる）`,
+  `- 道 通行止: ${labelsWhere(ROAD_BOUND)}は届かない`,
+  "- 職員 0: 事業所の職員への訪問依頼は出せない（訪問看護への訪問依頼は別）",
+  "- 透析先 休止: その透析施設への透析調整・電話は受けられない",
   "",
   "返す JSON:",
   `- summary: 全体の講評（${SUMMARY_MAX - 40} 字まで）。次の訓練で試す事を 1〜2 つ。`,
   `- findings: 指摘の配列。0〜${FINDINGS_MAX} 個。`,
   "  - person: 本人の仮名（「A さん」）。全体のことは「全体」。",
-  "  - kind: order（対応の順番）・report（市役所への報告）・blank（様式 9 の空欄）・reached（時計が切れるまで手が届かなかった）・call（着信への応答）・other のどれか。",
-  `  - text: 行動についての 1〜2 文（${FINDING_TEXT_MAX - 20} 字まで）。いつ・誰に・どの手を打てばよかったかを、手の言葉（本人電話・連絡先電話・訪問・訪問依頼・受入依頼・行政報告）で書く。`,
+  "  - kind: order（対応の順番）・report（市役所への報告）・blank（様式 9 の空欄）・reached（時計が切れるまで手が届かなかった）・call（着信への応答）・choice（手の選び方。空振り・重複・頼み事への対応）・other のどれか。",
+  `  - text: 行動についての 1〜2 文（${FINDING_TEXT_MAX - 20} 字まで）。いつ・誰に・どの手を打てばよかったかを、上の手の言葉で書く。`,
   `  - basis: 根拠の出典の id。当てはまる物が無ければ「${NO_BASIS}」。`,
   "",
   "決まり:",
   "1. 数字は機械で数えた物。数え直さない・変えない・新しい数字を作らない。",
-  "2. 書くのは行動の評価（手の順番・時刻・様式 9 の空欄・着信への応答）だけ。病気の名前・薬・薬の量・処置・医療の助言を書かない。本人の体の状態を言い切らない。",
+  "2. 書くのは行動の評価（手の順番・選び方・時刻・様式 9 の空欄・着信への応答）だけ。病気の名前・薬の名前・薬の量・処置・医療の助言を書かない（手の名前の薬手配と、頼み事の「薬」は書いてよい）。本人の体の状態を言い切らない。",
   "3. 時計が切れるまでにその人へ手が届かなかったことは「条件に達した」とだけ書く。その先に起きる事を想像して書かない。",
   "   時計は入力の書き方（「〇〇 N 時間を超過」）のまま写す。時計の名前は入力のまま写してよいが、電池・薬・機器が今どうなったかを言い切らない。",
   "4. 色と順位はルールの表が決めた物。色・順位を付け直す・変えることを書かない。",
   "5. 仮名と役割名のほかの名前、場所の名前を書かない。",
   "6. 責める書き方をしない。次の訓練で試す形で書く。",
+  "7. 手の選び方は、その時に分かっていた事実（手の履歴の［事実］）と、表にある別の手の名前で書く（例: 道が通行止と分かっていたので、訪問でなく見守依頼か連絡先電話）。無かった手を作らない。",
+  "8. 頼み事に応えなかった事は、その頼み事と、応えられた手の名前で書く（例: 薬の頼み事には薬手配）。",
 ].join("\n");
 
 export const ReviewSchema = z.object({
@@ -133,6 +171,10 @@ export type ReviewContext = {
   incidents: ReadonlyArray<ReviewIncident>;
   /** 同じ事業所の前の訓練の数字。無ければ null */
   previous: (ScoreNumbers & { scenario: DrillScenario }) | null;
+  /** 刻みのあとの世界の写し（手を打った時の電話・施設の休止。T94 の「その時に分かっていた事実」）。無ければ手の前の状態だけ */
+  ticks?: ReadonlyArray<TickWorld>;
+  /** 終わりの世界の頼み事（通話の往復で頼まれた物。T93） */
+  asks?: Readonly<Record<string, ReadonlyArray<Ask>>>;
 };
 
 const SCENE_WORDS = { heavy_rain: "大雨（警戒レベル 3 → 4 → 浸水）", earthquake: "地震（南海トラフ 震度 6強・津波・停電）" } as const;
@@ -149,7 +191,7 @@ const MISS_WORDS = {
   unknown: "並びの記録なし",
 } as const;
 
-const RESULT_WORDS: Readonly<Record<string, string>> = {
+export const RESULT_WORDS: Readonly<Record<string, string>> = {
   ringing: "呼出",
   connected: "通話",
   noLine: "不通",
@@ -163,10 +205,35 @@ const RESULT_WORDS: Readonly<Record<string, string>> = {
   refused: "断られた",
   reported: "報告済",
   evacuated: "避難済",
+  noted: "記録済",
   noAnswer: "応答なし",
   silent: "無言",
   noNumber: "番号なし",
 };
+
+/** 空振りの理由の言い方（講評の入力。手の履歴の事実と同じ言葉） */
+export const WASTE_WORDS: Readonly<Record<WasteWhy, string>> = {
+  phone: "電話 不通",
+  road: "道 通行止",
+  staff: "職員 0",
+  closed: "頼り先の施設 休止",
+  nurse: "訪問看護 来られない",
+};
+
+/** 手の言葉。自由対応は「自由対応（読み替え: 薬手配）」（ケアマネの文は渡さない） */
+function actionName(a: Pick<ActionRecord, "kind" | "as">): string {
+  if (a.kind !== "free") return ACTION_LABELS[a.kind];
+  return a.as ? `${ACTION_LABELS.free}（読み替え: ${ACTION_LABELS[a.as]}）` : ACTION_LABELS.free;
+}
+
+/** 通話の往復の間に頼まれた事（T93。その人の頼み事のうち、手を打った時刻から最後の往復の時刻まで） */
+function talkAsks(a: ActionRecord, asks: ReviewContext["asks"]): string {
+  if (!a.person) return "";
+  const talk = talkOf(a);
+  const until = Math.max(a.result?.atMinute ?? a.atMinute, ...talk.map((x) => x.minute ?? 0));
+  const kinds = [...new Set((asks?.[a.person] ?? []).filter((x) => x.at >= a.atMinute && x.at <= until).map((x) => x.kind))];
+  return kinds.length > 0 ? askWords(kinds) : "";
+}
 
 /** 講評の入力の文（仮名で書く。aliasOf: 台帳の id → 仮名）。数字は score の物だけ */
 export function reviewText(ctx: ReviewContext, aliasOf: ReadonlyMap<string, string>): string {
@@ -211,6 +278,17 @@ export function reviewText(ctx: ReviewContext, aliasOf: ReadonlyMap<string, stri
   // 着信
   const c = s.calls;
   lines.push(`- 着信: ${c.total} 件（出た ${c.answered}・出なかった ${c.declined}・未応答 ${c.open}。赤で出なかった ${c.redDeclined}）`);
+  // 手の選び方（T94。内訳の数。T94 より前の採点は数え直した物が渡る）
+  const n = extrasCount(s);
+  const byId = new Map(ctx.actions.map((a) => [a.id, a]));
+  const actLine = (id: string, m: number, kind: string, p: string | null) => `${minuteText(m)} ${byId.get(id) ? actionName(byId.get(id)!) : kind} → ${p ? who(p) : "全体"}`;
+  lines.push(`- 空振り（打った時に分かっていた事実で、結果の決まっていた手）: ${n.wasted}`);
+  for (const r of s.wasted?.rows ?? []) lines.push(`  - ${actLine(r.action, r.atMinute, ACTION_LABELS[r.kind], r.person)}（${WASTE_WORDS[r.why]}）`);
+  lines.push(`- 重複（同じ人に同じ手を、その人の新しい連絡・状況・到着が無いまま 30 分以内にもう一度）: ${n.repeat}`);
+  for (const r of s.repeat?.rows ?? []) lines.push(`  - ${actLine(r.action, r.atMinute, ACTION_LABELS[r.kind], r.person)}（前の同じ手から ${r.gap} 分）`);
+  lines.push(`- 頼み事の未対応（訓練の終わりまでに済まなかった頼み事）: ${n.asksOpen}`);
+  for (const r of s.asks?.rows ?? []) lines.push(`  - ${who(r.person)}: ${askWords(r.kinds)}`);
+  lines.push(`- 通話の往復: ${n.talks}${s.talks && s.talks.calls > 0 ? `（${s.talks.calls} 件の通話）` : ""}`);
   // 前回
   const p = ctx.previous;
   lines.push(
@@ -220,16 +298,51 @@ export function reviewText(ctx: ReviewContext, aliasOf: ReadonlyMap<string, stri
   );
 
   // 手の履歴と着信（時刻の順）
-  lines.push("", "手の履歴（時刻は発災から。色と順位はその手の前の左の表）:");
+  lines.push(
+    "",
+    "手の履歴（時刻は発災から。色と順位はその手の前の左の表。［事実］はその手を打った時に分かっていた事、→ のあとは結果）:",
+  );
   type Line = { at: number; order: number; text: string };
   const hist: Line[] = [];
+  const wasted = new Set((s.wasted?.rows ?? []).map((r) => r.action));
+  const repeated = new Set((s.repeat?.rows ?? []).map((r) => r.action));
   ctx.actions.forEach((a, i) => {
     const t = a.before.triage;
     const color = triageWord(t?.color);
     const before = a.person ? `（${[color, t?.rank != null ? `${t.rank} 位` : null].filter(Boolean).join(" ") || "色なし"}）` : "";
     const target = [a.person ? who(a.person) : "全体", a.calleeLabel].filter(Boolean).join(" ");
-    const result = a.result ? (RESULT_WORDS[a.result.status] ?? a.result.status) : "返事なし";
-    hist.push({ at: a.atMinute, order: i * 2, text: `${minuteText(a.atMinute)} ${ACTION_LABELS[a.kind]} → ${target}${before} → ${result}` });
+    // その時に分かっていた事実: 世界（電話・道・職員・施設の休止）、本人の最後の連絡、同じ人への前の手からの分
+    const known = knownOf(a, ctx.ticks);
+    const row = rowOf(a);
+    const gap = gapBefore(ctx.actions, a);
+    const facts = [
+      ...factWords(known, row?.id ?? a.kind),
+      ...(a.person ? [personWords(known)] : []),
+      ...(gap !== null ? [`前の手から ${gap} 分`] : []),
+    ];
+    // 結果: 表の status の言葉と、そうなった世界の事実。向かった人の着く時刻
+    let result = "返事なし";
+    if (a.result) {
+      result = RESULT_WORDS[a.result.status] ?? a.result.status;
+      if (a.result.because) result += `（${a.result.because}）`;
+      const arrive = row?.reach?.at === "arrival" ? reachedAt(a) : null;
+      if (arrive !== null) result += `（着く ${minuteText(arrive)}）`;
+    }
+    // 通話の往復（T93）と訪問の頼み事（T93）は数と頼み事の種類だけ（言葉は渡さない）
+    const turns = talkTurns(a);
+    const asked = turns > 0 ? talkAsks(a, ctx.asks) : "";
+    const visit = visitOf(a);
+    const extra = [
+      turns > 0 ? `通話 ${turns} 往復${asked ? `（頼み事: ${asked}）` : ""}` : null,
+      visit && visit.asks.length > 0 ? `訪問の頼み事: ${askWords(visit.asks)}` : null,
+      wasted.has(a.id) ? "空振り" : null,
+      repeated.has(a.id) ? "重複" : null,
+    ].filter(Boolean);
+    hist.push({
+      at: a.atMinute,
+      order: i * 2,
+      text: `${minuteText(a.atMinute)} ${actionName(a)} → ${target}${before}${facts.length > 0 ? `［事実: ${facts.join("・")}］` : ""} → ${result}${extra.length > 0 ? `・${extra.join("・")}` : ""}`,
+    });
   });
   ctx.calls.forEach((x, i) => {
     const res = x.response === "answer" ? "出た" : x.response === "decline" ? "出なかった" : "未応答";
@@ -345,7 +458,9 @@ export async function createReview(deps: ReviewDeps, ctx: ReviewContext): Promis
   try {
     const members = ctx.score.participants.filter((p) => deps.sources.has(p));
     const list = members.map((p) => deps.sources.get(p)!);
-    const { key } = pseudonymize(list, deps.on ? { on: deps.on } : {});
+    // 町名は地区の別名で渡す（T88。記録の文の町名〔世界の出来事・結末の理由〕も、参加者の台帳の町名から作った別名に）
+    const places = officePlaces(deps.ai.office.id, list.map((x) => x.ledger));
+    const { key } = pseudonymize(list, { ...(deps.on ? { on: deps.on } : {}), places });
     const aliasOf = new Map(key.people.map((p) => [p.personId, p.alias]));
     const record = pseudonymizeText(reviewText(ctx, aliasOf), key);
     const r = await askJson(buildReviewRequest(record), deps.ai);

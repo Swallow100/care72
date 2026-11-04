@@ -1,4 +1,4 @@
-// 事業所と最初の管理者を作る SQL（docs/tasks/T73.md の 3）。作者が端末で打つ。新規登録の画面は作らない（DECISIONS 11/4 00:5x）。
+// 事業所と最初の管理者を作る SQL（docs/tasks/T73.md の 3）。作者が端末で打つ。新規登録の画面は作らない（docs/DECISIONS.md「アカウントと事業所」）。
 // 使い方: node tools/office/new-office.ts --name <事業所名> --city <市町村> --login-id <ID> --display-name <管理者の名前>
 //         [--id office-xxx] [--plan-form matsuyama|cao] [--out <ファイル>]
 //
@@ -64,8 +64,8 @@ function text(raw: string | undefined, max: number): string | null {
   return v && v.length <= max ? v : null;
 }
 
-/** パスがリポジトリの中か（Windows は大文字小文字を区別しない） */
-function insideRepo(path: string): boolean {
+/** パスがリポジトリの中か（Windows は大文字小文字を区別しない）。医療班・行政の道具（new-staff.ts）も使う */
+export function insideRepo(path: string): boolean {
   const norm = (p: string) => (process.platform === "win32" ? p.toLowerCase() : p);
   const root = norm(resolve(ROOT));
   const p = norm(resolve(path));
@@ -142,11 +142,15 @@ export function newOfficeSql(
   ].join("\n") + "\n";
 }
 
+/** ファイル名の時刻（20261104-153000）。端末の時計 */
+export function fileStamp(now: Date): string {
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${now.getFullYear()}${p(now.getMonth() + 1)}${p(now.getDate())}-${p(now.getHours())}${p(now.getMinutes())}${p(now.getSeconds())}`;
+}
+
 /** 既定の SQL のファイル（リポジトリの外）。時刻は端末の時計 */
 export function defaultOutPath(now: Date, home: string = homedir()): string {
-  const p = (n: number) => String(n).padStart(2, "0");
-  const stamp = `${now.getFullYear()}${p(now.getMonth() + 1)}${p(now.getDate())}-${p(now.getHours())}${p(now.getMinutes())}${p(now.getSeconds())}`;
-  return resolve(home, `care72-new-office-${stamp}.sql`);
+  return resolve(home, `care72-new-office-${fileStamp(now)}.sql`);
 }
 
 async function main(): Promise<void> {

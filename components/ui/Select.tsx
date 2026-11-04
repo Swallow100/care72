@@ -6,6 +6,7 @@
 // キー: ↑↓・Home・End で移る（選べない物は飛ばす）、Enter・Space で選ぶ、Escape でボタンへ戻って閉じる、Tab と外を押すと閉じる。
 // 文字を打つとその文字で始まる項目へ（1 秒で打ち直し）。項目が 12 を超えるか searchable なら、一覧の上に検索の欄。
 // multiple で複数（押しても閉じない、ボタンの字は「a・b」か「N 件」、隠しの欄は同じ name で複数）。<option data-sub> で説明の行。
+// <option value="" data-placeholder> は「まだ選んでいない」の項目で、選ばれている間はボタンの字を灰（入力の欄の下書きと同じ）。
 // 選んだ印は太字と右のチェック（下地を敷かない）。押したときは灰色だけ（data-press）。
 
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ComponentProps, type KeyboardEvent, type ReactNode } from "react";
@@ -100,7 +101,8 @@ export function Select({
   const selectedLabels = model.items.filter((i) => values.includes(i.value)).map((i) => i.label);
   const chosen = model.items.find((i) => values.includes(i.value));
   const buttonText = multiple ? summaryLabel(selectedLabels) : (chosen?.label ?? null);
-  const muted = disabled || buttonText == null || (!multiple && chosen?.disabled === true);
+  // 未選択の印の項目（data-placeholder）が選ばれている間も灰。「全部」のように value="" が選んだ物の所は印を付けないので黒のまま
+  const muted = disabled || buttonText == null || (!multiple && (chosen?.disabled === true || chosen?.placeholder === true));
 
   const close = (refocus: boolean) => {
     setOpen(false);

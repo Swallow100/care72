@@ -5,7 +5,7 @@
 // 夜間発災（T59）の訓練は、下に時刻の行（発災 2 時・今 何時）。開始の時刻（started_at）はずらさないので、上の日時とは別の訓練の中の時刻。
 
 import Link from "next/link";
-import { BAND_LABELS, DRILL_LABELS, T59_LABELS } from "@/lib/drill/labels";
+import { BAND_LABELS, DRILL_LABELS, elapsedLabel, T59_LABELS } from "@/lib/drill/labels";
 import { NIGHT_START_HOUR, nightClock } from "@/lib/drill/night";
 import type { Band } from "@/lib/drill/view";
 
@@ -19,6 +19,7 @@ export function DrillBar({
   hrefOf,
   reached,
   night = false,
+  clock = false,
 }: {
   hours: readonly number[];
   /** 棒の右端（72） */
@@ -32,6 +33,8 @@ export function DrillBar({
   reached: number;
   /** 夜間発災（T59）。時刻の行を足す */
   night?: boolean;
+  /** 連続の時計の訓練（T90）。hours は保存した区切りの時刻 */
+  clock?: boolean;
 }) {
   const kinds = (["outage", "water", "phone"] as const).filter((k) => bands.some((b) => b.kind === k));
   return (
@@ -41,8 +44,11 @@ export function DrillBar({
         {/* 棒 */}
         <div className="absolute inset-x-0 top-1.5 h-2 rounded-sm bg-panel2" />
         <div className="absolute left-0 top-1.5 h-2 rounded-sm bg-[color-mix(in_srgb,var(--muted)_45%,var(--panel2))]" style={{ width: pct(now, last) }} data-bar-past />
+        {/* 連続の時計（T90）: 目盛りは 3 時間ごとの固定（数字は 12 時間ごと、広い画面は 6 時間ごとも）、区切りは棒の下の小さな印 */}
+        {clock && <ClockScale last={last} now={now} />}
+        {clock && <CutMarks hours={hours} last={last} now={now} reached={reached} {...(hrefOf ? { hrefOf } : {})} />}
         {/* 刻みの印 */}
-        {hours.map((h, i) => {
+        {!clock && hours.map((h, i) => {
           const passed = h <= now;
           const mark = (
             <>
@@ -60,7 +66,7 @@ export function DrillBar({
               href={hrefOf(i)}
               className={`${cls} rounded px-0.5`}
               style={style}
-              aria-label={`${DRILL_LABELS.elapsed} ${h} ${DRILL_LABELS.hours}`}
+              aria-label={elapsedLabel(h)}
               aria-current={h === now ? "true" : undefined}
               data-press
               data-tick={i}
@@ -99,6 +105,76 @@ export function DrillBar({
         </>
       )}
     </div>
+  );
+}
+
+/** 連続の時計の目盛り（3 時間ごと。数字は 12 時間ごと、640px 以上は 6 時間ごとも） */
+function ClockScale({ last, now }: { last: number; now: number }) {
+  const marks = Array.from({ length: Math.floor(last / 3) + 1 }, (_, i) => i * 3);
+  return (
+    <>
+      {marks.map((h) => {
+        const big = h % 12 === 0;
+        const mid = !big && h % 6 === 0;
+        const passed = h <= now;
+        return (
+          <span key={h} className="absolute top-0 -translate-x-1/2 text-center" style={{ left: pct(h, last) }} data-scale={h}>
+            <span className={`mx-auto block w-px ${big ? "h-3.5" : "h-2.5"} ${passed ? "bg-ink" : "bg-muted"}`} />
+            {(big || mid) && (
+              <span
+                className={`${mid ? "hidden sm:block" : "block"} text-[11px] leading-3 tabular-nums ${passed ? "text-ink" : "text-muted"}`}
+              >
+                {h}
+              </span>
+            )}
+          </span>
+        );
+      })}
+    </>
+  );
+}
+
+/** 保存した区切りの印（棒の上の小さな点）。再生では押すとその区切りを見る */
+function CutMarks({
+  hours,
+  last,
+  now,
+  reached,
+  hrefOf,
+}: {
+  hours: readonly number[];
+  last: number;
+  now: number;
+  reached: number;
+  hrefOf?: (i: number) => string;
+}) {
+  return (
+    <>
+      {hours.map((h, i) => {
+        const here = Math.abs(h - now) < 1e-6;
+        const dot = <span className={`block size-1.5 rounded-sm ${here ? "bg-ink" : "bg-muted"}`} />;
+        const style = { left: pct(h, last) };
+        const cls = "absolute top-[0.1875rem] -translate-x-1/2";
+        return hrefOf && i <= reached ? (
+          <Link
+            key={i}
+            href={hrefOf(i)}
+            className={`${cls} rounded p-0.5`}
+            style={style}
+            aria-label={elapsedLabel(h)}
+            aria-current={here ? "true" : undefined}
+            data-press
+            data-tick={i}
+          >
+            {dot}
+          </Link>
+        ) : (
+          <span key={i} className={`${cls} p-0.5`} style={style} data-tick={i} aria-hidden>
+            {dot}
+          </span>
+        );
+      })}
+    </>
   );
 }
 

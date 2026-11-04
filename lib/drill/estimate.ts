@@ -8,6 +8,7 @@
 
 import type { DrillScenario } from "../db/types.ts";
 import { SCENARIOS } from "./scenarios.ts";
+import { DIRECTOR_DRILL_MAX } from "./clock.ts";
 
 /** 見込みに使う人の形。callable は本人役を呼びうる想定 */
 export type EstimatePerson = { id: string; callable?: ReadonlyArray<DrillScenario> };
@@ -28,3 +29,16 @@ export function estimateDrillCalls(scenario: DrillScenario, participants: Readon
 export function overLimit(estimate: number, remaining: number | null): boolean {
   return remaining !== null && estimate > remaining;
 }
+
+/**
+ * 連続の時計の訓練（T90。大雨・地震・仮想の新しい訓練）の見込み（回）。監督 20 + 本人役（呼ばれうる人 × 9）+ 講評 1 + 声（本人役の半分）。
+ * 本人役はその区切りで理由のある人だけを呼ぶので、1 人 9 回ほど（表の行・手の返事・時計・12 時間の巡回）と見る。
+ * 1 訓練の上限（lib/drill/clock.ts の DRILL_CALL_CAP 150）は講評と声を数えないので、10 人で約 160 回でも訓練の呼び出しは 150 に収まる
+ */
+export function estimateClockCalls(scenario: DrillScenario, participants: ReadonlyArray<EstimatePerson>): number {
+  const persona = personaCallers(scenario, participants) * CLOCK_PERSONA_PER_PERSON;
+  return DIRECTOR_DRILL_MAX + persona + 1 + Math.ceil(persona / 2);
+}
+
+/** 連続の時計の訓練で、本人役を 1 人あたり何回呼ぶと見るか */
+export const CLOCK_PERSONA_PER_PERSON = 9;

@@ -14,14 +14,15 @@ import { toTriageSignal } from "../disaster/triage.ts";
 import { callTargetText } from "../list/calls.ts";
 import type { ClockForDetail, ContactForDetail, SignalForDetail } from "../list/detail.ts";
 import type { TriageSignal } from "../triage/index.ts";
-import { heardSignalId, loadDrillRow, loadTicks, participantsOf, replayState, undoableAct, type DrillScope } from "./db.ts";
+import { clockOfRow, heardSignalId, loadDrillRow, loadTicks, participantsOf, replayState, undoableAct, type DrillScope } from "./db.ts";
+import { callsLeft } from "./clock.ts";
 import { drillClocks } from "./director.ts";
 import { drillSituation, nowHour, simAt, type ActionRecord, type DrillState, type HeardSignal, type Tick } from "./engine.ts";
 import { fictionKindOf, type FictionKind } from "./fiction.ts";
 import { passHeard } from "./heard-keep.ts";
 import { nightTimeLabel } from "./night.ts";
 import { lastHour, scenarioOf } from "./scenarios.ts";
-import { shortJst } from "../disaster/state.ts";
+import { simTimeText } from "./time-text.ts";
 
 /** 72 時間の棒の帯（停電・断水・電話）。始まりと終わりは発災からの時間。終わりが無ければ今まで続いている */
 export type Band = { kind: "outage" | "water" | "phone"; from: number; to: number | null };
@@ -34,7 +35,12 @@ export type DrillScreen = {
   state: DrillState;
   /** 0 から見ている刻みまで */
   ticks: Tick[];
+  /** 刻みの時刻（発災からの時間。添字は刻み）。連続の時計の訓練（T90）は保存した区切りの時刻 */
   hours: readonly number[];
+  /** 連続の時計の訓練か（T90。操作は 30 分・1 時間・3 時間・次まで） */
+  clock: boolean;
+  /** 連続の時計の訓練の AI の呼び出しの残り（1 訓練の上限 150 まで。clock.ts）。clock の無い訓練は null */
+  left: number | null;
   /** 想定の最後の時刻（72） */
   last: number;
   situation: DisasterSituation;
@@ -116,6 +122,9 @@ export async function loadDrillScreen(
   if (!row) return null;
   const scenario = scenarioOf(row.scenario);
   const shown = want === null ? row.step : Math.max(0, Math.min(row.step, Math.trunc(want)));
+  // 連続の時計の訓練（T90）は区切りの時刻を drills.world の cuts から（clock の無い訓練は想定の表の hours）
+  const clock = clockOfRow(row);
+  const hours = clock.clock ? clock.hours : scenario.hours;
   const participants = participantsOf(row);
   const ids = JSON.stringify(participants);
 
@@ -160,7 +169,7 @@ export async function loadDrillScreen(
 
   const peopleRows = people.results as PersonForDrill[];
   const ledgers = peopleRows.map((p) => parseLedger(p.ledger));
-  const { state, ticks } = replayState(row, participants, await loadTicks(db, id, scenario.hours, shown), shown);
+  const { state, ticks } = replayState(row, participants, await loadTicks(db, id, hours, shown, clock.clock ? lastHour(scenario) : undefined), shown);
   const situation = drillSituation(state, ledgers);
 
   const signalRows = signals.results as SignalForDetail[];
@@ -213,7 +222,9 @@ export async function loadDrillScreen(
     shown,
     state,
     ticks,
-    hours: scenario.hours,
+    hours,
+    clock: clock.clock,
+    left: clock.clock ? callsLeft(clock.counts) : null,
     last: lastHour(scenario),
     situation,
     rows,
@@ -260,11 +271,11 @@ export function contactsByPerson(rows: ReadonlyArray<Pick<ContactRow, "id" | "pe
 
 /**
  * 大きな経過の下の時刻の文（T59）。夜間発災の訓練は訓練の中の時刻（深夜 2 時＋経過。「5:30」、棒の下の「今 N 時」と同じ時）、
- * ほかは今まで通り開始からの実の日時（「11/3 21:59」）。started_at はずらさず表示だけ
+ * ほかは今まで通り開始からの実の日時（「11/3 21:59」。lib/drill/time-text.ts の simTimeText）。started_at はずらさず表示だけ
  */
-export function screenTimeText(s: Pick<DrillScreen, "state" | "situation">): string {
+export function screenTimeText(s: Pick<DrillScreen, "state">): string {
   if (s.state.options?.night === true) return nightTimeLabel(Math.round(nowHour(s.state) * 60));
-  return shortJst(s.situation.now);
+  return simTimeText(s.state.startedAt, nowHour(s.state) * 60);
 }
 
 /** 想定の今の時刻（ISO）。画面の「今の時刻」 */

@@ -4,7 +4,7 @@
 // 768px 以上の医療の列も同じ印（受け持ちの表・発災時の表と同じ MedicalCell。T56）。
 
 import Link from "next/link";
-import { StateText } from "@/components/ui/Tag";
+import { StateTag, StateText } from "@/components/ui/Tag";
 import { TABLE, TD } from "@/components/ui/table";
 import { PLAN_TONES, rowLink, type CaseloadFilter, type CaseloadRow, type SortDir, type SortKey } from "@/lib/caseload";
 import { CARE_LEVEL_LABELS, PLAN_STATUS_LABELS, TIER_LABELS } from "@/lib/labels";
@@ -44,14 +44,21 @@ export function CaseloadTable({
       </thead>
       <tbody>
         {rows.map((r) => (
-          <tr key={r.id}>
+          // 行のどこを押しても本人のページへ（氏名のリンクの ::after を行いっぱいに広げる。行の中にほかの押せる物は無い）。
+          // 押したときの灰色は行全体（data-press-host で行に。色は app/globals.css の tr[data-press]）
+          <tr key={r.id} className="relative" data-press="">
             <td className={`${CELL} text-center`}>
               <span className="text-lg leading-6 font-bold" title={TIER_LABELS[r.tier]}>
                 {r.tier}
               </span>
             </td>
             <td className={CELL}>
-              <Link href={rowLink(sort, null, r.id, view).href} className="-mx-1 rounded px-1 font-bold" data-press>
+              <Link
+                href={rowLink(sort, null, r.id, view).href}
+                className="-mx-1 rounded px-1 font-bold after:absolute after:inset-0 after:content-['']"
+                data-press
+                data-press-host="tr"
+              >
                 {r.name}
               </Link>
               <span className="ml-1.5 text-xs text-muted">{r.kana}</span>
@@ -73,7 +80,14 @@ export function CaseloadTable({
             <td className={`${CELL} whitespace-nowrap`}>
               {/* 避難計画は 2 番目の状態なので色の文字（塗りの印は安否の状態だけ） */}
               <StateText tone={PLAN_TONES[r.plan]}>{PLAN_STATUS_LABELS[r.plan]}</StateText>
-              {r.pending > 0 && <div className="text-xs font-bold tone-check">未確認 {r.pending}</div>}
+              {/* 未確認の数は言葉ごと黄の塗りの印（右の面・書類の紙面の帯と同じ形。前の黄の細い帯は何の印か伝わらなかった。T96） */}
+              {r.pending > 0 && (
+                <div className="mt-0.5" data-row-pending={r.pending}>
+                  <StateTag tone="check">
+                    未確認 <span className="tabular-nums">{r.pending}</span>
+                  </StateTag>
+                </div>
+              )}
             </td>
           </tr>
         ))}

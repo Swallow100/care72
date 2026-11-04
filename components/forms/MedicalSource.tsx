@@ -1,6 +1,6 @@
 // 医療要約の画面の右に置く「原本」（画面だけ。紙に出さない）。要約は台帳の値を災害診療記録 2018 の順に並べ替えた物なので、
 // 元の台帳（本人のページの 基本・医療・避難・人 の区分）を同じ画面に並べ、医療班・ケアマネが見比べられるようにする
-// （アドバイザーの返事 docs/DECISIONS.md 11/3 14:1x の (3)）。中身は本人のページと同じ物で、見る人の範囲（lib/consent/scope.ts）のまま。
+// （docs/DECISIONS.md「書類」）。中身は本人のページと同じ物で、見る人の範囲（lib/consent/scope.ts）のまま。
 
 import { PersonView } from "@/components/person/PersonView";
 import type { PersonView as View, SectionId } from "@/lib/person";
