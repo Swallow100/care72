@@ -34,13 +34,16 @@ export async function launch() {
     executablePath: findChrome(),
     headless: true,
     // ライトで撮る。保存したパスワード・拡張・履歴の無い新しいプロフィール（puppeteer の既定）
-    args: ["--no-first-run", "--lang=ja-JP", "--force-color-profile=srgb", "--hide-scrollbars"],
+    args: ["--no-first-run", "--lang=ja-JP", "--force-color-profile=srgb", "--hide-scrollbars", `--force-device-scale-factor=${SCALE}`, "--disable-smooth-scrolling"],
   });
 }
 
 /** 撮る窓。PC は 1280×720 を 1.5 倍（コマは 1920×1080）、スマホは 375×812 を 2 倍 */
-export const PC = { width: 1280, height: 720, deviceScaleFactor: 1.5 };
-export const PHONE = { width: 375, height: 812, deviceScaleFactor: 2, isMobile: true, hasTouch: true };
+// 画面の流れ（screencast）は、窓の倍率を起動の --force-device-scale-factor に合わせないと CSS の大きさ（1280×720・375×812）で来る
+// （11/3 の録画は頭の 1 枚だけ 1920×1080 で、残りは 1280×720 だった）。起動の倍率は 1 つなので、PC もスマホも 1.5 にそろえる
+export const SCALE = 1.5;
+export const PC = { width: 1280, height: 720, deviceScaleFactor: SCALE };
+export const PHONE = { width: 375, height: 812, deviceScaleFactor: SCALE, isMobile: true, hasTouch: true };
 
 /** 新しい窓（cookie を分ける）を開き、ライトにする */
 export async function newPage(browser, viewport) {
@@ -73,7 +76,8 @@ export async function login(page, base, id, password, role) {
       body.set("id", uid);
       body.set("password", pw);
       const r = await fetch("/api/auth/login", { method: "POST", body, credentials: "same-origin", redirect: "follow" });
-      return r.url;
+      // 送った先の 500（手元の D1 が空のときなど）は道が /api/auth/login のままなので、状態でも見る
+      return r.ok ? r.url : `${location.origin}/login?status=${r.status}`;
     },
     id,
     password,
@@ -137,9 +141,15 @@ export async function clickText(page, text, { exact = false, within = "body" } =
   const el = handle.asElement();
   if (!el) throw new Error(`押す所が無い: ${text}`);
   await el.scrollIntoView();
+  // 撮っている録画があれば、押した所（要素の真ん中）を覚える。編集で押した所に輪を出す（src/parts/Frame.tsx）
+  const box = await el.boundingBox();
+  if (box && current?.active) current.tap(box.x + box.width / 2, box.y + box.height / 2);
   await el.click();
   return el;
 }
+
+/** いま撮っている録画（clickText が押した所を渡す先） */
+let current = null;
 
 /** 録画 1 本。start → （mark・pause・resume）→ stop(連番のフォルダ) */
 export class Recorder {
@@ -149,7 +159,14 @@ export class Recorder {
     this.frames = []; // { t: 秒（壁の時刻）, data: Buffer }
     this.segments = []; // { from, to } 撮っている間（壁の時刻）
     this.marks = [];
+    this.taps = []; // { at: 連番の中の秒, x, y: 窓の幅・高さに対する割合 }
     this.active = false;
+  }
+
+  /** 押した所を覚える（px は窓の中の位置） */
+  tap(x, y) {
+    const vp = this.page.viewport();
+    this.taps.push({ at: Math.round(this.elapsed() * 100) / 100, x: Math.round((x / vp.width) * 1000) / 1000, y: Math.round((y / vp.height) * 1000) / 1000 });
   }
 
   now() {
@@ -157,6 +174,7 @@ export class Recorder {
   }
 
   async start() {
+    current = this;
     this.cdp = await this.page.createCDPSession();
     this.cdp.on("Page.screencastFrame", async (f) => {
       if (this.active) this.frames.push({ t: f.metadata.timestamp ?? this.now(), data: Buffer.from(f.data, "base64") });
@@ -188,6 +206,35 @@ export class Recorder {
     this.active = false;
   }
 
+  /**
+   * 下へ送る所はコマを自分で撮る。画面の流れ（screencast）は PC が忙しいと毎秒 2 コマまで落ち、送りがかくかくする（11/4 の撮り直しで R01 が 9 秒で 32 コマ）。
+   * 1/30 秒ぶんずつ送って 1 枚ずつ撮り、撮った物に 30fps の時刻を付ける（実際にかかった時間は録画に入らない）。送り方は始めと終わりをゆるめる。
+   * 起動で滑らかな送り（--disable-smooth-scrolling）を止めているので、1 回の送りはすぐ終わる
+   */
+  async scroll(px, seconds) {
+    const page = this.page;
+    const n = Math.max(1, Math.round(seconds * 30));
+    const ease = (t) => (t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2);
+    const vp = page.viewport();
+    await page.mouse.move(vp.width / 2, vp.height / 2);
+    this.pause();
+    const t0 = this.now();
+    this.segments.push({ from: t0, to: t0 + n / 30 });
+    let done = 0;
+    for (let k = 0; k < n; k++) {
+      const target = Math.round(px * ease((k + 1) / n));
+      if (target !== done) await page.mouse.wheel({ deltaY: target - done });
+      done = target;
+      await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+      const shot = await page.screenshot({ type: "jpeg", quality: 88 });
+      this.frames.push({ t: t0 + k / 30, data: Buffer.from(shot) });
+    }
+    // 撮るのが 1/30 秒より速かったときも、次の区切りが自分で撮ったコマの後ろに来るように待つ
+    const left = t0 + n / 30 + 0.05 - this.now();
+    if (left > 0) await sleep(left * 1000);
+    await this.resume();
+  }
+
   /** 連番の中の今の秒を名前つきで覚える */
   mark(label) {
     const s = this.elapsed();
@@ -204,6 +251,7 @@ export class Recorder {
   /** 止めて連番に書く。dir の中の前の連番は消す */
   async stop(dir) {
     if (this.active) this.pause();
+    if (current === this) current = null;
     await this.cdp.send("Page.stopScreencast").catch(() => undefined);
     mkdirSync(dir, { recursive: true });
     for (const f of readdirSync(dir)) if (/^\d{5}\.jpg$/.test(f) || f === "markers.json") rmSync(join(dir, f));
@@ -231,7 +279,7 @@ export class Recorder {
         }
       }
     }
-    writeFileSync(join(dir, "markers.json"), JSON.stringify({ name: this.name, seconds: n / 30, marks: this.marks }, null, 2) + "\n");
+    writeFileSync(join(dir, "markers.json"), JSON.stringify({ name: this.name, seconds: n / 30, marks: this.marks, taps: this.taps }, null, 2) + "\n");
     console.log(`${this.name}: ${n} 枚（${(n / 30).toFixed(1)} 秒、違うコマ ${written.size}）→ ${dir}`);
     return n;
   }
