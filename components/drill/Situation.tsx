@@ -102,18 +102,21 @@ function At({ at, tickHour }: { at: number; tickHour: number }) {
   return <span className="text-xs text-muted tabular-nums">{hourText(at)}</span>;
 }
 
-function IncidentItem({
+export function IncidentItem({
   e,
   name,
   tickHour,
   fallback = false,
   fiction,
+  extra,
 }: {
   e: DrillIncident;
   name: string | undefined;
   tickHour: number;
   fallback?: boolean;
   fiction?: FictionKind;
+  /** 行の終わりに添える物（経過の発生のタブの遅れ・未把握の印、T105） */
+  extra?: React.ReactNode;
 }) {
   const basis = e.basis && isSourceId(e.basis) ? sourceById(e.basis) : null;
   return (
@@ -151,11 +154,27 @@ function IncidentItem({
           {BASIS_LABEL} {basis.publisher} {basis.year}
         </a>
       )}
+      {extra}
     </li>
   );
 }
 
-function TurnItem({ t, name, tickHour, callIn, fiction }: { t: DrillTurn; name: string; tickHour: number; callIn: boolean; fiction?: FictionKind }) {
+/** 安否 1 つ。doing を false にすると本人のする事を出さない（経過の把握のタブ。する事は発生のタブ、T105） */
+export function TurnItem({
+  t,
+  name,
+  tickHour,
+  callIn,
+  fiction,
+  doing = true,
+}: {
+  t: DrillTurn;
+  name: string;
+  tickHour: number;
+  callIn: boolean;
+  fiction?: FictionKind;
+  doing?: boolean;
+}) {
   return (
     <li className="flex flex-wrap items-baseline gap-x-1.5" data-turn={t.person} data-color={t.color} data-call-in={callIn ? "" : undefined}>
       {callIn && <CallInMark />}
@@ -168,7 +187,7 @@ function TurnItem({ t, name, tickHour, callIn, fiction }: { t: DrillTurn; name: 
       {t.ai && <AiMark small />}
       <span>{turnBody(t)}</span>
       {t.saying && <span>「{t.saying}」</span>}
-      {t.doing && <span className="text-xs text-muted">{t.doing}</span>}
+      {doing && t.doing && <span className="text-xs text-muted">{t.doing}</span>}
       <At at={t.at} tickHour={tickHour} />
     </li>
   );

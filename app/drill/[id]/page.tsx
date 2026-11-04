@@ -3,7 +3,7 @@ import { getCloudflareContext } from "@opennextjs/cloudflare";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { countColors } from "@/components/disaster/ColorCounts";
-import { ActionLog, LatestResult } from "@/components/drill/ActionLog";
+import { LatestResult } from "@/components/drill/ActionLog";
 import { ActionPanel, type PanelPerson } from "@/components/drill/ActionPanel";
 import { DamagePanel } from "@/components/drill/DamagePanel";
 import { AiStopBand } from "@/components/drill/AiStopBand";
@@ -13,7 +13,7 @@ import { DrillControls } from "@/components/drill/DrillControls";
 import { DrillRowDetail } from "@/components/drill/DrillRowDetail";
 import { FictionalMark, FictionalNote } from "@/components/drill/Fictional";
 import { IncomingCall, type IncomingCallItem } from "@/components/drill/IncomingCall";
-import { Situation } from "@/components/drill/Situation";
+import { DrillLog } from "@/components/drill/DrillLog";
 import { DisasterSummary } from "@/components/list/DisasterSummary";
 import { DisasterTable, type TableSlots } from "@/components/list/DisasterTable";
 import { CaseMap } from "@/components/map/CaseMap";
@@ -23,7 +23,7 @@ import { sortCaseload, type SortKey } from "@/lib/caseload";
 import { elapsedText, shortJst } from "@/lib/disaster/state";
 import { callerLabel, callsOf } from "@/lib/drill/calls";
 import { drillScope, type DrillScope } from "@/lib/drill/db";
-import { nowHour, type ActionRecord } from "@/lib/drill/engine";
+import { nowHour } from "@/lib/drill/engine";
 import { isDrillId } from "@/lib/drill/http";
 import { loadDrillRecord, type DrillRecord } from "@/lib/drill/record";
 import { loadCallRecords } from "@/lib/drill/responses";
@@ -34,7 +34,8 @@ import type { AiStatus } from "@/lib/claude/status";
 import { aiStopBand } from "@/lib/drill/ai-stop";
 import { ScorePanel } from "@/components/drill/ScorePanel";
 import { PaperIcon, PrintIcon } from "@/components/ui/Icon";
-import { ACTION_LABELS, DRILL_LABELS, elapsedClockLabel, SCENARIO_LABELS, STATUS_LABELS, VIRTUAL_LABELS } from "@/lib/drill/labels";
+import { DRILL_LABELS, elapsedClockLabel, LOG_LABELS, SCENARIO_LABELS, STATUS_LABELS, VIRTUAL_LABELS } from "@/lib/drill/labels";
+import { parseLogTab } from "@/lib/drill/timeline";
 import { COLOR_LABELS } from "@/lib/labels";
 import { COLOR_TONES } from "@/lib/person";
 import { DRILL_PATH, drillHref, reportHref, parseSort, parseStep, parseView, type DrillView } from "@/lib/drill/paths";
@@ -54,12 +55,12 @@ export const dynamic = "force-dynamic";
 
 type Props = {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ sort?: string | string[]; step?: string | string[]; view?: string | string[] }>;
+  searchParams: Promise<{ sort?: string | string[]; step?: string | string[]; view?: string | string[]; log?: string | string[] }>;
 };
 
 // 訓練の画面（docs/tasks/T17.md、docs/SPEC.md「画面 4 訓練」）。横画面の分割:
 // 上に 72 時間の棒と今の時刻、左に担当一覧と同じ形の表（components/list/DisasterTable。訓練の安否で lib/triage の色が付く。圧縮できる）、
-// 真ん中に対応（T20: 対象・7 つの手・相手を選んで実行、結果の吹き出しと着信、刻みごとの履歴）と状況、
+// 真ん中に対応（T20: 対象・7 つの手・相手を選んで実行、結果の吹き出しと着信）と経過（T105: 発生・把握・対応の 3 つのタブ、components/drill/DrillLog）、
 // 右に被害状況と地図。終わった・中断した訓練は右の上に採点（T22: 数字 4 つ・前回・内訳・講評）と、上の帯に訓練記録の紙面と印刷。1536px は 3 列、1280px は 2 列（真ん中と右を重ねる）。
 // 上の大きな経過はケアマネの時計（手に使った時間も進む。「経過 1 時間 25 分」）。
 // 進行中は「進める」（既定）と早送り（切替）と中断。終わった・中断した訓練は再生（刻みの印か前・次で見る。Claude を呼ばない）。
@@ -141,7 +142,6 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
       tag: r.triage ? <StateTag tone={COLOR_TONES[r.triage.color]}>{COLOR_LABELS[r.triage.color]}</StateTag> : null,
     }));
   const latest = [...actions].reverse().find((a) => a.result !== null) ?? null;
-  const during = duringOf(actions, s.names);
 
   return (
     <main className="mx-auto max-w-[112rem] space-y-3 px-4 py-4" data-drill={id} data-step={s.shown} data-status={s.drill.status}>
@@ -242,20 +242,22 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
                     talk={{ drillId: id, step: s.drill.step, actions: actions.length }}
                   />
                 )}
-                <ActionLog
-                  actions={actions}
-                  hours={s.hours}
-                  current={s.shown}
-                  names={s.names}
-                  voiceOf={voiceOf}
-                  fiction={fiction}
-                  refused={s.refused}
-                  {...(running ? { undo: { drillId: id, step: s.drill.step, actions: actions.length, act: s.undoable } } : {})}
-                />
               </div>
             </Panel>
-            <Panel title={DRILL_LABELS.situation} id="situation">
-              <Situation ticks={s.ticks} names={s.names} startedAt={s.drill.started_at} during={during} fiction={fiction} />
+            {/* 経過（T105）: 発生・把握・対応の 3 つのタブ。前の「状況」と対応の履歴をここに。行の分け方は lib/drill/timeline.ts */}
+            <Panel title={LOG_LABELS.panel} id="log">
+              <DrillLog
+                ticks={s.ticks}
+                actions={actions}
+                names={s.names}
+                startedAt={s.drill.started_at}
+                finished={!running}
+                initial={parseLogTab(Array.isArray(q.log) ? q.log[0] : q.log)}
+                fiction={fiction}
+                refused={s.refused}
+                voiceOf={voiceOf}
+                {...(running ? { undo: { drillId: id, step: s.drill.step, actions: actions.length, act: s.undoable } } : {})}
+              />
             </Panel>
           </div>
           <div className="min-w-0 space-y-3">
@@ -272,7 +274,7 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
               </UiPanel>
             )}
             <Panel title={DRILL_LABELS.damage} id="damage">
-              <DamagePanel kind={drillKindOf(s.drill.scenario, s.state.world)} world={s.state.world} now={s.state.hour} names={s.names} />
+              <DamagePanel kind={drillKindOf(s.drill.scenario, s.state.world)} world={s.state.world} now={s.state.hour} names={s.names} hidePrivate={running} />
             </Panel>
             <Panel title={DRILL_LABELS.map} id="map">
               <CaseMap pins={pins} layers={side.demo?.layers ?? []} demo={side.demo} unplaced={side.unplaced} />
@@ -408,17 +410,6 @@ function ViewToggle({ view, hrefOf }: { view: DrillView; hrefOf: (v: DrillView) 
       </Link>
     </>
   );
-}
-
-/** 手の途中で進んだ刻み → その手の言い方（「訪問 伊藤 フミ」） */
-function duringOf(actions: ReadonlyArray<ActionRecord>, names: Readonly<Record<string, string>>): Record<number, string> {
-  const out: Record<number, string> = {};
-  for (const a of actions) {
-    for (const st of a.result?.crossed ?? []) {
-      out[st] = [ACTION_LABELS[a.kind], a.person ? names[a.person] : null].filter(Boolean).join(" ");
-    }
-  }
-  return out;
 }
 
 /** 見る刻みの中身。進行中は今の刻みだけ（先も前も見ない。前を見るのは終わってからの再生） */
