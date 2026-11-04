@@ -61,17 +61,22 @@ const key = (k: string | null): LedgerItemKey | null => {
 // ---------- 架空の様式（並びから正解と白紙） ----------
 
 function layoutGold(layout: readonly KomorebiField[], accept: Record<string, ReadonlyArray<string | null>> = {}): GoldField[] {
-  return layout.map((f) => ({
+  return layout.map((f) => {
+    // 同意の欄は、読み取りの決まり 11（本人の意思の欄は項目なし、ケアマネが選ぶ）で項目なしも別解（T120。松山市の正解の表と同じ考え）。
+    // 紙ではケアマネが選ぶまで空くので、紙の数え方は正解の項目のまま
+    const alt = [...(accept[`${f.section}|${f.label}`] ?? []), ...(f.item?.startsWith("consent.") ? [null] : [])];
+    return {
     page: f.page,
     section: f.section,
     label: f.label,
     shape: f.shape,
     options: [...f.options],
     item: key(f.item),
-    ...(accept[`${f.section}|${f.label}`] ? { accept: accept[`${f.section}|${f.label}`].map(key) } : {}),
+    ...(alt.length > 0 ? { accept: alt.map(key) } : {}),
     box: f.box,
     ...(f.optionBoxes ? { optionBoxes: f.optionBoxes } : {}),
-  }));
+    };
+  });
 }
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");

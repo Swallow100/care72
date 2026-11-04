@@ -146,7 +146,7 @@ export function scoreRead(form: GoldForm, mapping: FormMapping, rejected: number
       j(name, "当たり", g.item ? "項目が同じ" : "どちらも対応なし", itemName(g.item), itemName(a.item));
     } else if (accept.includes(a.item)) {
       score.alt += 1;
-      j(name, "当たり（別解）", "決めきれない欄の別の答え", itemName(g.item), itemName(a.item));
+      j(name, "当たり（別解）", a.item === null && a.ai?.candidate === g.item ? "項目なし（同意の欄。候補が正解の項目で、人が採用する。T120）" : "決めきれない欄の別の答え", itemName(g.item), itemName(a.item));
     } else if (g.item && a.item === null) {
       score.missItem += 1;
       j(name, "取りこぼし", a.ai?.rejected ? `台帳に無い項目名 ${a.ai.rejected}` : "AI が対応なしにした", itemName(g.item), itemName(a.item));
@@ -289,13 +289,17 @@ export function paperText(field: MappingField, cell: Cell): string {
 /** 欄の値を引く物（mapped-sheet の mappedCell と同じ文脈で作った物を渡す） */
 export type CellOf = (f: MappingField) => Cell;
 
-/** 紙に何も書かないのに、帯の未確認に数えていない欄（□ 1 つの欄は「当てはまらない」も答えなので除く） */
+/**
+ * 紙に何も書かないのに、帯の未確認に数えていない欄（□ 1 つの欄は「当てはまらない」も答えなので除く）。
+ * 空き枠（T111 の決め: 居ない人の 2 人目以降の欄・1 人目の氏名のほかの欄・値の無い特記の段。刷らず、未確認に数えない）は除く
+ * （T120。評価の 1 回目の 173 件は全部この空き枠だった。支援者 1 の電話〔支援者の居ない人〕・支援者 2・本人の希望の段）
+ */
 export function uncountedBlanks(mapping: FormMapping, cellOf: CellOf): string[] {
   const out: string[] = [];
   for (const f of mapping.fields) {
     if (f.removed || f.shape === "handwrite" || f.shape === "check") continue;
     const cell = cellOf(f);
-    if (cell.kind === "withheld" || cell.kind === "handwrite") continue;
+    if (cell.kind === "withheld" || cell.kind === "handwrite" || cell.kind === "empty") continue;
     if (paperText(f, cell) === "" && !isUnconfirmedCell(cell)) out.push(f.id);
   }
   return out;
