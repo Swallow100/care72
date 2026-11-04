@@ -37,6 +37,8 @@ export const JudgeSchema = z.object({
 
 export const JUDGE_AXES = ["realism", "difficulty", "variety", "consistency", "learning"] as const;
 export type JudgeAxis = (typeof JUDGE_AXES)[number];
+/** 物差しの言葉（md の見出し） */
+export const JUDGE_LABELS: Readonly<Record<JudgeAxis, string>> = { realism: "本当らしさ", difficulty: "難しさ", variety: "多様さ", consistency: "人ごとの筋", learning: "学べるか" };
 export type JudgeScore = { run: number; scores: Record<JudgeAxis, number> | null; notes: string[]; error: string | null };
 
 const clamp = (n: number) => Math.min(5, Math.max(1, Math.round(n)));

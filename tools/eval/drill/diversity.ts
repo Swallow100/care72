@@ -23,8 +23,8 @@ export type DiversityNumbers = {
   };
 };
 
-/** 数えない変化（止まった印・代替の印・規模の出来事） */
-const NOT_STORY = new Set(["ai_stop", "world_note"]);
+/** 数えない変化（止まった印・代替の印・世界の刻みごとの 1 文） */
+const NOT_STORY = new Set(["ai_stop", "world_note", "narration"]);
 
 /** AI が作った出来事の種類の並び（時刻の順） */
 export function aiKinds(o: RunOutcome): string[] {

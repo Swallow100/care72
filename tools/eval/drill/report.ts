@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { scaleLabel, type DrillScale } from "../../../lib/drill/scale.ts";
 import type { RunNumbers } from "./checks.ts";
 import type { DiversityNumbers } from "./diversity.ts";
-import { JUDGE_AXES, type JudgeAxis, type JudgeScore } from "./judge.ts";
+import { JUDGE_AXES, JUDGE_LABELS, type JudgeAxis, type JudgeScore } from "./judge.ts";
 import { ROOM_BUDGET_USD } from "./prices.ts";
 
 export type RunSummary = { index: number; seed: string; scenario: string; scale: DrillScale | null; participants: number; numbers: RunNumbers };
@@ -247,7 +247,7 @@ export function markdown(cur: Summary, prev: Summary | null, line: string): stri
     "",
     "## 審査役（1〜5）",
     "",
-    `| 回 | ${JUDGE_AXES.join(" | ")} |`,
+    `| 回 | ${JUDGE_AXES.map((a) => JUDGE_LABELS[a]).join(" | ")} |`,
     `| --- | ${JUDGE_AXES.map(() => "---").join(" | ")} |`,
     ...(judge.length > 0 ? judge : [`| なし | ${JUDGE_AXES.map(() => "—").join(" | ")} |`]),
     "",

@@ -101,6 +101,8 @@ export async function runEval(cfg: EvalConfig): Promise<{ summary: Summary; dir:
   const judges: JudgeScore[] = [];
   const notes: string[] = [];
   let spent = 0;
+  // 世界の部屋の Agent と Environment は最初の回で作り、あとの回は同じ物を使う（回ごとに新しい DB のため）
+  let worldAgent: RunOutcome["worldAgent"] = null;
 
   for (let i = 1; i <= cfg.runs; i++) {
     if (cfg.real && cfg.maxUsd !== null && spent >= cfg.maxUsd) {
@@ -115,8 +117,9 @@ export async function runEval(cfg: EvalConfig): Promise<{ summary: Summary; dir:
     const claude = recordClaude(inner, log);
     const room = recordRoom(cfg.real ? roomClientOf({ ANTHROPIC_API_KEY: cfg.key }) : fakeRoom({ rng: rngOf(`${plan.seed}/room`), noise: cfg.noise }), log);
     say(`回 ${i}/${cfg.runs}: ${plan.scenario}${plan.scale ? ` ${plan.scale.kind}:${plan.scale.level}` : ""}、${plan.participants.length} 人、種 ${plan.seed}`);
-    const outcome = await runDrill(plan, { client: claude, room, log, key: cfg.key, world: cfg.world, real: cfg.real, maxAdvances: cfg.maxAdvances, review: cfg.review });
+    const outcome = await runDrill(plan, { client: claude, room, log, key: cfg.key, world: cfg.world, real: cfg.real, maxAdvances: cfg.maxAdvances, review: cfg.review, worldAgent });
     room.finish();
+    worldAgent = outcome.worldAgent ?? worldAgent;
     if (i <= cfg.judge && outcome.replay) {
       const j = await judgeRun(outcome, SEED_SOURCES, { client: claude, key: cfg.key });
       judges.push(j);

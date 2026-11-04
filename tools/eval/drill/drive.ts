@@ -104,7 +104,12 @@ export type RunOutcome = {
   callsLeft: number | null;
   /** 参加者の氏名（仮名化の門の試しの文に使った物。記録の外には出さない） */
   names: Record<string, string>;
+  /** 世界の部屋の Agent と Environment（ai_agents の行）。次の回に渡して作り直さない */
+  worldAgent: WorldAgentRow | null;
 };
+
+/** ai_agents の行（世界の部屋の Agent と Environment） */
+export type WorldAgentRow = { version: number; agent_id: string; agent_version: number; environment_id: string; updated_at: string };
 
 export type DriveDeps = {
   client: ClaudeClient;
@@ -119,6 +124,11 @@ export type DriveDeps = {
   maxAdvances: number;
   /** 終わったら講評（Opus 1 回）も作る */
   review: boolean;
+  /**
+   * 前の回で作った世界の部屋の Agent と Environment。回ごとに新しい DB なので、渡さないと本物の部屋は回ごとに Agent と Environment を作る
+   * （消さずに残る）。渡せば DB の ai_agents に入れてから始める
+   */
+  worldAgent?: WorldAgentRow | null;
 };
 
 /** 訓練の発災の時刻（決まった時刻から。本物の時計の経過を足す） */
@@ -215,6 +225,12 @@ export async function runDrill(plan: RunPlan, deps: DriveDeps): Promise<RunOutco
   const nowMs = () => DRILL_START + (Date.now() - t0);
   const now = () => new Date(nowMs()).toISOString();
   const sqlite = seededSqlite();
+  if (deps.worldAgent) {
+    const a = deps.worldAgent;
+    sqlite
+      .prepare("INSERT INTO ai_agents (purpose, version, agent_id, agent_version, environment_id, updated_at) VALUES ('drill_world', ?, ?, ?, ?, ?)")
+      .run(a.version, a.agent_id, a.agent_version, a.environment_id, a.updated_at);
+  }
   const db = d1FromSqlite(sqlite);
   const p = careManager();
   const env = { DB: db, ANTHROPIC_API_KEY: deps.key, DRILL_WORLD: deps.world };
@@ -299,7 +315,7 @@ export async function runDrill(plan: RunPlan, deps: DriveDeps): Promise<RunOutco
     const startReq = { scenario: plan.scenario, options };
     const started = await call("start", startReq, () => startPost(db, p, startReq, now(), stepHooks));
     const drillId = typeof started.body?.id === "string" ? started.body.id : null;
-    if (!drillId) return { plan, drillId: null, status: "not_started", advances: 0, replay: null, ops, errors, aiCalls: aiCallsOf(sqlite), callsLeft: null, names };
+    if (!drillId) return { plan, drillId: null, status: "not_started", advances: 0, replay: null, ops, errors, aiCalls: aiCallsOf(sqlite), callsLeft: null, names, worldAgent: worldAgentOf(sqlite) };
     let replay = await read(drillId);
     const clock = plan.scenario !== "short";
     let advances = 0;
@@ -357,10 +373,14 @@ export async function runDrill(plan: RunPlan, deps: DriveDeps): Promise<RunOutco
     }
     const callsLeft = (await loadDrillScreen(db, { officeId: DEMO.id }, drillId, null))?.left ?? null;
     log.push({ type: "end", status: replay.drill.status, step: replay.drill.step, minute: replay.minute, advances, callsLeft });
-    return { plan, drillId, status: replay.drill.status, advances, replay, ops, errors, aiCalls: aiCallsOf(sqlite), callsLeft, names };
+    return { plan, drillId, status: replay.drill.status, advances, replay, ops, errors, aiCalls: aiCallsOf(sqlite), callsLeft, names, worldAgent: worldAgentOf(sqlite) };
   } finally {
     sqlite.close();
   }
+}
+
+function worldAgentOf(sqlite: DatabaseSync): WorldAgentRow | null {
+  return (sqlite.prepare("SELECT version, agent_id, agent_version, environment_id, updated_at FROM ai_agents WHERE purpose = 'drill_world'").get() as WorldAgentRow | undefined) ?? null;
 }
 
 function aiCallsOf(sqlite: DatabaseSync): AiCallRow[] {

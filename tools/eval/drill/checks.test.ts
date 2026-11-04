@@ -52,6 +52,7 @@ function outcome(ticks: LooseTick[], actions: LooseAction[] = [], world: Record<
     aiCalls: [],
     callsLeft: 100,
     names: {},
+    worldAgent: null,
     ...over,
   };
 }

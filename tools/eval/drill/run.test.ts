@@ -96,6 +96,14 @@ describe("通し（偽の client）", () => {
     expect(other.summary.runs.map((r) => r.seed)).not.toEqual(first.summary.runs.map((r) => r.seed));
   });
 
+  it("世界の部屋の Agent と Environment は最初の回で作り、あとの回は同じ物を使う", async () => {
+    const r = await runEval(config({ runs: 2, scenarios: ["virtual"], stamp: "20261105-000400-fake", out: join(tmp, "out-room"), md: null, judge: 0, maxAdvances: 3 }));
+    const made = (n: number) => lines(join(r.dir, `run-0${n}.jsonl`)).filter((x) => x.type === "room_agent").length;
+    expect(made(1)).toBe(1);
+    expect(made(2)).toBe(0);
+    expect(lines(join(r.dir, "run-02.jsonl")).some((x) => x.type === "ai" && x.role === "world_room")).toBe(true);
+  });
+
   it("本物の client（--real）と偽の回は比べない", async () => {
     const r = await runEval(config({ runs: 1, scenarios: ["short"], stamp: "20261105-000300-fake", out: join(tmp, "out-cmp"), md: null, judge: 0 }));
     expect(r.line.startsWith("初回")).toBe(true);
