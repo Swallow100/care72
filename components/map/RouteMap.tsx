@@ -313,7 +313,7 @@ export function RouteEditor({ data, onClose }: { data: EditData; onClose: (why?:
             )}
             {candNote && (
               <span className="ml-2 font-bold" data-route-cand-note>
-                {L.candidates} {candNote}
+                {candNote === L.candidatesNone ? candNote : `${L.candidates} ${candNote}`}
               </span>
             )}
           </span>
