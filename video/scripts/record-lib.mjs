@@ -34,7 +34,7 @@ export async function launch() {
     executablePath: findChrome(),
     headless: true,
     // ライトで撮る。保存したパスワード・拡張・履歴の無い新しいプロフィール（puppeteer の既定）
-    args: ["--no-first-run", "--lang=ja-JP", "--force-color-profile=srgb", "--hide-scrollbars", `--force-device-scale-factor=${SCALE}`],
+    args: ["--no-first-run", "--lang=ja-JP", "--force-color-profile=srgb", "--hide-scrollbars", `--force-device-scale-factor=${SCALE}`, "--disable-smooth-scrolling"],
   });
 }
 
@@ -76,7 +76,8 @@ export async function login(page, base, id, password, role) {
       body.set("id", uid);
       body.set("password", pw);
       const r = await fetch("/api/auth/login", { method: "POST", body, credentials: "same-origin", redirect: "follow" });
-      return r.url;
+      // 送った先の 500（手元の D1 が空のときなど）は道が /api/auth/login のままなので、状態でも見る
+      return r.ok ? r.url : `${location.origin}/login?status=${r.status}`;
     },
     id,
     password,
@@ -203,6 +204,35 @@ export class Recorder {
     const seg = this.segments.at(-1);
     if (seg && seg.to === null) seg.to = this.now();
     this.active = false;
+  }
+
+  /**
+   * 下へ送る所はコマを自分で撮る。画面の流れ（screencast）は PC が忙しいと毎秒 2 コマまで落ち、送りがかくかくする（11/4 の撮り直しで R01 が 9 秒で 32 コマ）。
+   * 1/30 秒ぶんずつ送って 1 枚ずつ撮り、撮った物に 30fps の時刻を付ける（実際にかかった時間は録画に入らない）。送り方は始めと終わりをゆるめる。
+   * 起動で滑らかな送り（--disable-smooth-scrolling）を止めているので、1 回の送りはすぐ終わる
+   */
+  async scroll(px, seconds) {
+    const page = this.page;
+    const n = Math.max(1, Math.round(seconds * 30));
+    const ease = (t) => (t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2);
+    const vp = page.viewport();
+    await page.mouse.move(vp.width / 2, vp.height / 2);
+    this.pause();
+    const t0 = this.now();
+    this.segments.push({ from: t0, to: t0 + n / 30 });
+    let done = 0;
+    for (let k = 0; k < n; k++) {
+      const target = Math.round(px * ease((k + 1) / n));
+      if (target !== done) await page.mouse.wheel({ deltaY: target - done });
+      done = target;
+      await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+      const shot = await page.screenshot({ type: "jpeg", quality: 88 });
+      this.frames.push({ t: t0 + k / 30, data: Buffer.from(shot) });
+    }
+    // 撮るのが 1/30 秒より速かったときも、次の区切りが自分で撮ったコマの後ろに来るように待つ
+    const left = t0 + n / 30 + 0.05 - this.now();
+    if (left > 0) await sleep(left * 1000);
+    await this.resume();
   }
 
   /** 連番の中の今の秒を名前つきで覚える */

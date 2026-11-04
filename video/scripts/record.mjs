@@ -10,7 +10,7 @@
 // Git Bash で道（/ で始まる引数）を渡すときは MSYS_NO_PATHCONV=1。
 import { join } from "node:path";
 import { ROOT } from "./lib.mjs";
-import { Recorder, clickText, launch, login, newPage, open, PC, PHONE, scrollSlow, settle, sleep } from "./record-lib.mjs";
+import { Recorder, clickText, launch, login, newPage, open, PC, PHONE, settle, sleep } from "./record-lib.mjs";
 
 const base = process.env.CARE72_BASE ?? "http://localhost:3073";
 const cmPw = process.env.CARE72_CM_PASSWORD;
@@ -63,7 +63,7 @@ async function calm(browser) {
   await r.start();
   await sleep(2500);
   r.mark("下へ");
-  await scrollSlow(cm, 900, 9000);
+  await r.scroll(900, 9);
   await sleep(2000);
   await r.stop(recDir("R01"));
 
@@ -78,14 +78,14 @@ async function calm(browser) {
   for (const [id, path, px] of [
     ["R03", "/people/p-01/forms/matsuyama", 2600],
     ["R04", "/people/p-01/forms/own", 1600],
-    ["R05", "/people/p-01/forms/medical", 1800],
+    ["R05", "/people/p-01/forms/medical", 700], // 紙面の下の端まで（右の原本の列は長いので、送りすぎると左が空く）
   ]) {
     await open(cm, base, path);
     r = new Recorder(cm, id);
     await r.start();
     await sleep(2500);
     r.mark("下へ");
-    await scrollSlow(cm, px, 14000);
+    await r.scroll(px, 14);
     await sleep(2500);
     await r.stop(recDir(id));
   }
@@ -227,7 +227,7 @@ async function disaster(browser) {
   await cm.click('tr[data-row="p-01"] button[aria-expanded]');
   await sleep(3500);
   r10.mark("詳細を下へ");
-  await scrollSlow(cm, 400, 4000);
+  await r10.scroll(400, 4);
   await sleep(2000);
   await cm.screenshot({ path: join(ROOT, "out", "look", "R10-detail.png") }).catch(() => undefined);
   try {
@@ -282,7 +282,7 @@ async function staff(browser) {
   await settle(med);
   await sleep(3500);
   r13.mark("下へ");
-  await scrollSlow(med, 900, 7000);
+  await r13.scroll(900, 7);
   await sleep(2000);
   await r13.stop(recDir("R13"));
 }
