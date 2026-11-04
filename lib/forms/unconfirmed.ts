@@ -12,6 +12,7 @@
 import type { PendingStatus } from "../db/types.ts";
 import { PENDING_STATUS_LABELS } from "../labels.ts";
 import type { MappedSheet } from "./mapped-sheet.ts";
+import { MEDICAL_FIELDS, type MedicalSummary } from "./medical-summary.ts";
 import {
   MATSUYAMA_BLOCKS,
   MATSUYAMA_FIELDS,
@@ -165,6 +166,24 @@ export function mappedUnconfirmed(sheet: MappedSheet): UnconfirmedSummary {
         fields.push({ name, ...partsOf(cell), noSource: field.item === null });
       }
     }
+  }
+  return { count: fields.length, fields };
+}
+
+// ---------- 医療要約（原本の枠の紙、T101） ----------
+
+/**
+ * 医療要約の未確認の欄（紙の順）。医師が書く欄と範囲の外の欄（hidden）は数えない。
+ * 災害診療記録2018 の原本の枠の紙（T101）の帯と未記入の色付けが同じ欄を使う（前からの紙面の帯は台帳の pending のまま）
+ */
+export function medicalUnconfirmed(sheet: Pick<MedicalSummary, "cells" | "hidden">): UnconfirmedSummary {
+  const hidden = new Set(sheet.hidden ?? []);
+  const fields: UnconfirmedField[] = [];
+  for (const def of MEDICAL_FIELDS) {
+    if (("doctor" in def && def.doctor) || hidden.has(def.key)) continue;
+    const cell = sheet.cells[def.key];
+    if (!cell || !isUnconfirmedCell(cell)) continue;
+    fields.push({ name: def.label, ...partsOf(cell), noSource: def.source.startsWith(NO_SOURCE) });
   }
   return { count: fields.length, fields };
 }

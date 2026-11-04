@@ -4,6 +4,7 @@ import "@/components/forms/overlay-paper.css";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { FillToggle, wantsFill } from "@/components/forms/FillToggle";
 import { MappedSheet } from "@/components/forms/MappedSheet";
 import { OverlaySheet } from "@/components/forms/OverlaySheet";
 import { StateTag } from "@/components/person/parts";
@@ -35,7 +36,7 @@ export const metadata: Metadata = { title: "様式差込" };
 
 type Props = {
   params: Promise<{ id: string; mappingId: string }>;
-  searchParams: Promise<{ print?: string | string[]; view?: string | string[] }>;
+  searchParams: Promise<{ print?: string | string[]; view?: string | string[]; fill?: string | string[] }>;
 };
 
 // 汎用の差し込み（docs/tasks/T08.md）。確かめた対応表（確認済だけ）と台帳から、様式の欄の順に値を並べた紙面（A4、表の形）。
@@ -51,6 +52,8 @@ export default async function MappedFormPage({ params, searchParams }: Props) {
   const sp = await searchParams;
   const autoPrint = wantsPrint(sp.print);
   const listView = sp.view === "list";
+  // 未記入の欄（帯の未確認と同じ欄）を塗った版（T101。元の様式の上の紙だけ）
+  const fill = wantsFill(sp.fill);
   if (!/^[A-Za-z0-9_-]{1,64}$/.test(mappingId)) notFound();
   const { env } = await getCloudflareContext({ async: true });
   const opened = await loadPersonDocument(env.DB, principal, id, "mapped");
@@ -86,6 +89,7 @@ export default async function MappedFormPage({ params, searchParams }: Props) {
         autoPrint={autoPrint}
         actions={
           <>
+            {overlay && <FillToggle here={here} fill={fill} />}
             {/* 元の様式の上の紙と、欄名｜値の 2 列の紙の切替（T86） */}
             {overlay && (
               <ButtonLink href={`${here}?view=list`} kind="plain">
@@ -126,7 +130,7 @@ export default async function MappedFormPage({ params, searchParams }: Props) {
       </PaperBar>
       <FormAbout entry={entry} />
       {overlay ? (
-        <OverlaySheet sheet={overlay} imageSrc={(page) => pageImageHref(stored!.id, page)} checked={checked} />
+        <OverlaySheet sheet={overlay} imageSrc={(page) => pageImageHref(stored!.id, page)} checked={checked} fill={fill} />
       ) : (
         <MappedSheet sheet={sheet} meta={{ date: warekiText(today), checked, office: office?.name ?? null, author: rows.careManagerName }} />
       )}

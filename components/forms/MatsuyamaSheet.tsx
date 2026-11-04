@@ -17,6 +17,7 @@ import {
   type MatsuyamaSheet as Sheet,
 } from "@/lib/forms/matsuyama";
 import { paperText } from "@/lib/forms/paper-text";
+import type { RouteMapImage } from "@/lib/forms/frame-build";
 import { FormCell } from "./FormCell";
 import { PaperFoot } from "./PaperFoot";
 
@@ -284,7 +285,7 @@ function NotePart({ s, k }: { s: Sheet; k: MatsuyamaKey }) {
   );
 }
 
-function PageTwo({ s }: { s: Sheet }) {
+function PageTwo({ s, routeMap }: { s: Sheet; routeMap: RouteMapImage | null }) {
   return (
     <section className="paper form matsuyama" aria-label="2 ページ" data-page="2">
       <div className="blk key" data-block="plan">
@@ -367,6 +368,11 @@ function PageTwo({ s }: { s: Sheet }) {
         <div className="grid" style={cols("1fr")}>
           <F s={s} k="route.text" bare />
         </div>
+        {/* 避難経路の地図（T102 が渡す。T101 の受け口。原本の枠の紙は lib/forms/frame-build.ts の ROUTE_MAP_SLOT） */}
+        {routeMap && (
+          // eslint-disable-next-line @next/next/no-img-element -- 印刷に出すので <img>
+          <img className="route-map" src={routeMap.src} alt={routeMap.alt} data-slot="route-map" />
+        )}
       </div>
 
       {/* 様式の並び: 注は幅いっぱい、その下の行の左に松山市長、右に横長の市受付印の枠 */}
@@ -394,12 +400,13 @@ function PageTwo({ s }: { s: Sheet }) {
   );
 }
 
-export function MatsuyamaSheet({ sheet }: { sheet: Sheet }) {
+/** routeMap は避難経路の欄に置く地図（T102 が渡す。無ければ空ける） */
+export function MatsuyamaSheet({ sheet, routeMap = null }: { sheet: Sheet; routeMap?: RouteMapImage | null }) {
   return (
     <div className="paper-scroll">
       <div className="paper-stack" data-paper-root data-sheet="matsuyama" data-person={sheet.personId}>
         <PageOne s={sheet} />
-        <PageTwo s={sheet} />
+        <PageTwo s={sheet} routeMap={routeMap} />
       </div>
     </div>
   );

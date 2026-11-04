@@ -1,10 +1,27 @@
-// 様式 9（災害時利用者一覧表 安否確認優先順位）の紙面。A4 横の表で、人数に合わせて頁が続く（見出しの行は各頁の上に繰り返す）。
-// 列はひな形の 12 列の順と言葉（FORM9_COLUMNS）、そのあとにケア72 の列。紙の幅に収めるため、緊急連絡先 1・2 は 1 つの欄に 2 行で。
-// 画面（/office/form9）では出さず、印刷のときだけ出す（画面の表は Form9Table）。頁の下の端の文書名と頁番号は form9-paper.css の @page。
-// 発災時は表のあとに市町村への報告の下書き（lib/forms/form9-report.ts の文。Claude は呼ばない）。
+// 様式 9（災害時利用者一覧表 安否確認優先順位）の紙面。A4 横。画面（/office/form9）では出さず、印刷のときだけ出す（画面の表は Form9Table）。
+// T101: ひな形（厚労省の BCP ひな形の様式9 のシート）の枠のまま刷る。列幅・行の高さ・余白・字の大きさはひな形の Excel の値（lib/forms/frame-form9.ts）。
+//   1 枚のひな形は 20 行。21 人目からは同じ枠の 2 枚目（No は続き）。値は欄の大きさに収まる字（6.57pt から 6pt）で、収まらなければ欄に「別紙」。
+//   ひな形に無いケア72 の欄（連絡順・理由・緊急連絡先・安否確認の方法と結果・順位の手直し）と、欄に収まらない値は、あとの「別紙」の表に。
+//   発災時は別紙のあとに市町村への報告の下書き（lib/forms/form9-report.ts の文。Claude は呼ばない）。
+//   fill（?fill=1）で、人のいる行の値の無い欄の内側を要確認の黄の薄い色で塗る（罫線から離す。既定は色なし）。
+// 頁の下の端の文書名と頁番号は別紙の頁だけ（form9-paper.css の @page form9。ひな形の頁には刷らない）。
 // 状態を持たない（Server Component のまま、テストで renderToStaticMarkup できる）。
 
-import type { Form9Row, Form9Sheet } from "@/lib/forms/form9";
+import type { CSSProperties } from "react";
+import { FORM9_COLUMNS, type Form9Row, type Form9Sheet } from "@/lib/forms/form9";
+import {
+  form9Cell,
+  FORM9_COL_X,
+  FORM9_FONT_PT,
+  FORM9_HEADS,
+  FORM9_MARGIN_MM,
+  FORM9_ROW_Y,
+  FORM9_ROWS_PER_PAGE,
+  FORM9_VALUE_COLS,
+  form9Lines,
+  type Form9ValueColumn,
+} from "@/lib/forms/frame-form9";
+import { ANNEX_MARK, fitText, FONT_MIN_PT } from "@/lib/forms/overlay-sheet";
 import { paperText } from "@/lib/forms/paper-text";
 import { KeepNumbers } from "./FormCell";
 
@@ -16,78 +33,164 @@ export function cssString(s: string): string {
   return `"${s.replace(/[\\"]/g, (c) => `\\${c}`).replace(/[\n\r]/g, " ")}"`;
 }
 
-/** 列（幅は mm。合わせて 261mm = A4 横 297mm − ひな形の左右の余白 18mm。T85） */
-const COLS: ReadonlyArray<{ key: string; mm: number }> = [
-  { key: "no", mm: 6 },
-  { key: "medicalCare", mm: 21 },
-  { key: "environment", mm: 13.5 },
-  { key: "evacuation", mm: 20 },
-  { key: "area", mm: 14.5 },
-  { key: "nameAge", mm: 16.5 },
-  { key: "address", mm: 11.5 },
-  { key: "shelter", mm: 11.5 },
-  { key: "facility", mm: 10 },
-  { key: "notes", mm: 11 },
-  { key: "careManager", mm: 7.5 },
-  { key: "checkedAt", mm: 9.5 },
-  { key: "color", mm: 8 },
-  { key: "reason", mm: 16.5 },
-  { key: "emergency", mm: 38.5 },
-  { key: "means", mm: 22 },
-  { key: "result", mm: 10.5 },
-  { key: "manual", mm: 13 },
-];
-
 /** 安否確認できた日（2026-11-03 01:39）を紙の幅に合わせて 11/3 01:39 に（年は作成日でわかる） */
 export function shortAt(v: string): string {
   const m = /^\d{4}-(\d{2})-(\d{2}) (\d{2}:\d{2})$/.exec(v);
   return m ? `${Number(m[1])}/${Number(m[2])} ${m[3]}` : v;
 }
 
-/** 欄の文字。紙の書き方（数字と単位を詰める）。raw は本人の言葉の入る欄（特記）で台帳の文のまま */
-function Text({ v, raw = false }: { v: string; raw?: boolean }) {
-  return v ? <KeepNumbers text={raw ? v : paperText(v)} /> : null;
+/** 頁の内容の箱（A4 横 − ひな形の余白、mm） */
+const CONTENT_W = 261;
+const CONTENT_H = 172;
+const mm = (n: number) => `${Math.round(n * 1000) / 1000}mm`;
+/** 頁の内容の箱（@page の余白 = ひな形の余白）の左上からの位置 */
+const ox = (x: number) => x - FORM9_MARGIN_MM.left;
+const oy = (y: number) => y - FORM9_MARGIN_MM.top;
+
+/** 欄の字（紙の書き方。特記は本人の言葉なので台帳の文のまま） */
+function cellValue(r: Form9Row, col: Form9ValueColumn): string {
+  const v = col === "checkedAt" ? shortAt(r.cells.checkedAt) : r.cells[col];
+  return col === "notes" ? v : paperText(v);
 }
 
-function Row({ r }: { r: Form9Row }) {
+/** ひな形の欄に置く字。収まらなければ「別紙」 */
+export type Form9Placed = { col: Form9ValueColumn; text: string; lines: string[]; fontPt: number; annex: boolean };
+
+/** 1 行の値をひな形の欄の大きさに収める（6.57pt から 6pt）。値の無い欄は lines が空 */
+export function placeForm9Row(r: Form9Row): Form9Placed[] {
+  return FORM9_VALUE_COLS.map(({ id, col }) => {
+    const text = cellValue(r, id);
+    if (!text) return { col: id, text, lines: [], fontPt: FORM9_FONT_PT.cell, annex: false };
+    const box = form9Cell(`${col}7`);
+    const fitted = fitText([text], box.w, box.h, FORM9_FONT_PT.cell);
+    if (fitted) return { col: id, text, lines: fitted.lines, fontPt: fitted.fontPt, annex: false };
+    const mark = fitText([ANNEX_MARK], box.w, box.h, FORM9_FONT_PT.cell);
+    return { col: id, text, lines: [ANNEX_MARK], fontPt: mark?.fontPt ?? FONT_MIN_PT, annex: true };
+  });
+}
+
+/** 未記入の欄（人のいる行の、値の無いひな形の欄）。色付けの版で塗る所と、画面の数 */
+export function form9Blanks(rows: readonly Form9Row[]): Array<{ id: string; col: Form9ValueColumn }> {
+  return rows.flatMap((r) => FORM9_VALUE_COLS.filter(({ id }) => cellValue(r, id) === "").map(({ id }) => ({ id: r.id, col: id })));
+}
+
+const LABEL = new Map(FORM9_COLUMNS.map((c) => [c.id, c.csv]));
+
+/** ひな形の 1 枚（20 行）。first は 1 行目の No */
+function Sheet({ rows, first, office, date, title, fill }: { rows: Form9Row[]; first: number; office: string; date: string; title: string; fill: boolean }) {
+  const colW = (c: string) => form9Cell(`${c}7`).w;
+  const left = ox(FORM9_COL_X[1]);
+  const top = oy(FORM9_ROW_Y[4]);
+  const headH = [FORM9_ROW_Y[5] - FORM9_ROW_Y[4], FORM9_ROW_Y[6] - FORM9_ROW_Y[5]];
+  const rowH = form9Cell("B7").h;
+  const at = (ref: string): CSSProperties => {
+    const c = form9Cell(ref);
+    return { position: "absolute", left: mm(ox(c.x)), top: mm(oy(c.y)), height: mm(c.h) };
+  };
+  const head = (ref: string) => FORM9_HEADS.find((h) => h.ref === ref)!;
+  const H = ({ r, rowSpan, colSpan }: { r: string; rowSpan?: number; colSpan?: number }) => (
+    <th rowSpan={rowSpan} colSpan={colSpan} data-cell={r}>
+      {head(r)
+        .text.split("\n")
+        .map((l, i) => (
+          <span key={i} className="f9-hl">
+            {l}
+          </span>
+        ))}
+    </th>
+  );
+  return (
+    <section className="paper form9-sheet" aria-label={`${title} ${Math.floor(first / FORM9_ROWS_PER_PAGE) + 1} 枚目`} data-first={first}>
+      {/* ひな形の並び: B2 に題、4 行目の左（B4）に事業所名・右（M4、右寄せ）に作成 */}
+      <h1 className="title f9-at" style={{ ...at("B2"), width: mm(FORM9_COL_X[13] - FORM9_COL_X[1]) }}>
+        {title}
+      </h1>
+      <div className="top f9-at" style={{ ...at("B4"), width: mm(FORM9_COL_X[13] - FORM9_COL_X[1]) }}>
+        <span className="nowrap">事業所名：{office}</span>
+        <span className="nowrap">作成：{paperText(date)}</span>
+      </div>
+      {/* ひな形の罫線（B5:M26 の細線）。表の罫線でなく線で描く（表の罫線は画素に丸められて列の幅がずれるため） */}
+      <svg className="f9-lines" viewBox={`0 0 ${CONTENT_W} ${CONTENT_H}`} aria-hidden>
+        {form9Lines().map((l) => (
+          <line key={l.id} x1={ox(l.x1)} y1={oy(l.y1)} x2={ox(l.x2)} y2={oy(l.y2)} data-line={l.id} />
+        ))}
+      </svg>
+      <table className="f9-grid" style={{ left: mm(left), top: mm(top) }} data-grid>
+        <colgroup>
+          {[..."BCDEFGHIJKLM"].map((c) => (
+            <col key={c} style={{ width: mm(colW(c)) }} />
+          ))}
+        </colgroup>
+        <thead>
+          <tr style={{ height: mm(headH[0]) }}>
+            <H r="B5:B6" rowSpan={2} />
+            <H r="C5:E5" colSpan={3} />
+            <H r="F5:F6" rowSpan={2} />
+            <H r="G5:G6" rowSpan={2} />
+            <H r="H5:H6" rowSpan={2} />
+            <H r="I5:J5" colSpan={2} />
+            <H r="K5:K6" rowSpan={2} />
+            <H r="L5:L6" rowSpan={2} />
+            <H r="M5:M6" rowSpan={2} />
+          </tr>
+          <tr style={{ height: mm(headH[1]) }}>
+            <H r="C6" />
+            <H r="D6" />
+            <H r="E6" />
+            <H r="I6" />
+            <H r="J6" />
+          </tr>
+        </thead>
+        <tbody>
+          {Array.from({ length: FORM9_ROWS_PER_PAGE }, (_, i) => {
+            const r = rows[i] ?? null;
+            const placed = r ? placeForm9Row(r) : null;
+            return (
+              <tr key={i} style={{ height: mm(rowH) }} data-person={r?.id} data-rank={r?.rank}>
+                <td className="num">
+                  <span className="f9-in" style={{ height: mm(rowH - 0.3) }}>
+                    {first + i}
+                  </span>
+                </td>
+                {FORM9_VALUE_COLS.map(({ id }, j) => {
+                  const p = placed?.[j];
+                  return (
+                    <td key={id} data-col={id}>
+                      <span className="f9-in" style={{ height: mm(rowH - 0.3) }}>
+                        {fill && r && p && p.lines.length === 0 && <span className="f9-fill" data-fill-cell={`${r.id}:${id}`} aria-hidden />}
+                        {p && p.lines.length > 0 && (
+                          <span className="f9-v" style={{ fontSize: `${p.fontPt}pt` }} data-font={p.fontPt} data-over={p.annex ? "1" : undefined}>
+                            {p.lines.map((l, k) => (
+                              <span key={k} className="f9-ln">
+                                {l}
+                              </span>
+                            ))}
+                          </span>
+                        )}
+                      </span>
+                    </td>
+                  );
+                })}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </section>
+  );
+}
+
+/** 別紙の表の行（ケア72 の欄と、ひな形の欄に収まらない値） */
+function AnnexRow({ r }: { r: Form9Row }) {
   const c = r.cells;
+  const over = placeForm9Row(r).filter((p) => p.annex);
+  const Text = ({ v, raw = false }: { v: string; raw?: boolean }) => (v ? <KeepNumbers text={raw ? v : paperText(v)} /> : null);
   return (
     <tr data-person={r.id} data-rank={r.rank}>
       <td className="num">{r.rank}</td>
       <td>
-        <Text v={c.medicalCare} />
-      </td>
-      <td>
-        <Text v={c.environment} />
-      </td>
-      <td>
-        <Text v={c.evacuation} />
-      </td>
-      <td>
-        <Text v={c.area} />
-      </td>
-      <td>
         <span className="who">{r.name}</span>
-        {r.age != null && <span className="age">（{r.age}）</span>}
         <span className="kana">{r.kana}</span>
-      </td>
-      <td>
-        <Text v={c.address} />
-      </td>
-      <td>
-        <Text v={c.shelter} />
-      </td>
-      <td>
-        <Text v={c.facility} />
-      </td>
-      <td>
-        <Text v={c.notes} raw />
-      </td>
-      <td>
-        <Text v={c.careManager} />
-      </td>
-      <td>
-        <Text v={shortAt(c.checkedAt)} />
       </td>
       <td className="color" data-color={r.color ?? ""}>
         {c.color}
@@ -113,6 +216,13 @@ function Row({ r }: { r: Form9Row }) {
       <td>
         <Text v={c.manual} />
       </td>
+      <td data-overflow={over.length}>
+        {over.map((p) => (
+          <span key={p.col} className="line">
+            {LABEL.get(p.col)}：<Text v={p.text} raw={p.col === "notes"} />
+          </span>
+        ))}
+      </td>
     </tr>
   );
 }
@@ -126,75 +236,67 @@ export type Form9PaperProps = {
   order: string;
   /** 発災時の市町村への報告の下書き。平時は null */
   report: string | null;
+  /** 未記入の色付けの版（T101）。既定は色なし */
+  fill?: boolean;
 };
 
-export function Form9Paper({ sheet, office, date, order, report }: Form9PaperProps) {
+export function Form9Paper({ sheet, office, date, order, report, fill = false }: Form9PaperProps) {
   const title = FORM9_PAPER_TITLE;
+  const chunks: Form9Row[][] = [];
+  for (let i = 0; i < Math.max(1, sheet.rows.length); i += FORM9_ROWS_PER_PAGE) chunks.push(sheet.rows.slice(i, i + FORM9_ROWS_PER_PAGE));
   return (
     <div className="print-only" data-paper-print>
-      <style>{`@page form9 { @bottom-left { content: ${cssString(`${title}　${office}`)}; } }`}</style>
-      <section className="paper paper-flow form9-paper" data-paper-root data-sheet="form9" aria-label={title}>
-        {/* ひな形の並び（T85）: 上に題、その下の行の左に事業所名・右に作成。並び（ケア72）は間に */}
-        <h1 className="title">{title}</h1>
-        <div className="top">
-          <span className="nowrap">事業所名 {office}</span>
-          <span>{order}</span>
-          <span className="nowrap">作成 {paperText(date)}</span>
-        </div>
-        <table className="sheet form9-table">
-          <colgroup>
-            {COLS.map((col) => (
-              <col key={col.key} style={{ width: `${col.mm}mm` }} />
-            ))}
-          </colgroup>
-          <thead>
-            <tr>
-              <th rowSpan={2}>No</th>
-              <th colSpan={3}>優先順位※</th>
-              <th rowSpan={2}>地域・区分</th>
-              <th rowSpan={2}>氏名（年齢）</th>
-              <th rowSpan={2}>住所（自治会）</th>
-              <th colSpan={2}>想定される避難場所</th>
-              <th rowSpan={2}>特記</th>
-              <th rowSpan={2}>担当ケアマネ</th>
-              <th rowSpan={2}>安否確認できた日</th>
-              <th colSpan={6} className="added">ケア72 の欄</th>
-            </tr>
-            <tr>
-              <th>医療・介護</th>
-              <th>環境</th>
-              <th>避難</th>
-              <th>避難所</th>
-              <th>介護・医療機関</th>
-              <th className="added">連絡順</th>
-              <th className="added">連絡順の理由</th>
-              <th className="added">緊急連絡先</th>
-              <th className="added">安否確認の方法</th>
-              <th className="added">安否確認の結果</th>
-              <th className="added">備考（順位の手直し）</th>
-            </tr>
-          </thead>
-          <tbody>
-            {sheet.rows.map((r) => (
-              <Row key={r.id} r={r} />
-            ))}
-          </tbody>
-        </table>
-        <div className="small-note">
-          <p>※No から安否確認できた日までは厚生労働省の BCP ひな形（自然災害）様式9 の列。そのあとはケア72 の欄（連絡順・理由・緊急連絡先・安否確認の方法と結果・順位の手直し）</p>
-        </div>
-        {report && (
-          <div className="blk report" data-block="report">
-            <div className="blk-h">市町村への報告（下書き）</div>
-            {/* 段（空行で区切った塊）ごとに 1 つの段落。2 段組で、段の途中では割らない */}
-            <div className="report-text">
-              {report.split(/\n{2,}/).map((part, i) => (
-                <p key={i}>{paperText(part)}</p>
+      <style>{`@page form9 { @bottom-left { content: ${cssString(`${title} 別紙　${office}`)}; } }`}</style>
+      <div data-paper-root data-sheet="form9" data-fill={fill ? "1" : undefined}>
+        {chunks.map((rows, i) => (
+          <Sheet key={i} rows={rows} first={i * FORM9_ROWS_PER_PAGE + 1} office={office} date={date} title={title} fill={fill} />
+        ))}
+        <section className="paper paper-flow form9-paper" aria-label={`${title} 別紙`} data-annex="sheet">
+          <p className="f9-annex-h">
+            別紙　{title}　{office}　作成 {paperText(date)}
+          </p>
+          <p className="f9-annex-order">{order}</p>
+          <table className="sheet form9-table">
+            <colgroup>
+              {[6, 22, 10, 30, 46, 26, 26, 22, 73].map((w, i) => (
+                <col key={i} style={{ width: `${w}mm` }} />
               ))}
-            </div>
+            </colgroup>
+            <thead>
+              <tr>
+                <th>No</th>
+                <th>氏名</th>
+                <th>連絡順</th>
+                <th>連絡順の理由</th>
+                <th>緊急連絡先</th>
+                <th>安否確認の方法</th>
+                <th>安否確認の結果</th>
+                <th>備考（順位の手直し）</th>
+                <th>様式の欄に収まらない値</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sheet.rows.map((r) => (
+                <AnnexRow key={r.id} r={r} />
+              ))}
+            </tbody>
+          </table>
+          <div className="small-note">
+            <p>※厚生労働省の BCP ひな形（自然災害）様式9 の枠のまま刷った表の別紙。No は様式9 の No と同じ。連絡順からはケア72 の欄（様式9 に無い）と、様式の欄に収まらない値（欄に「別紙」）</p>
           </div>
-        )}
-      </section>
+          {report && (
+            <div className="blk report" data-block="report">
+              <div className="blk-h">市町村への報告（下書き）</div>
+              {/* 段（空行で区切った塊）ごとに 1 つの段落。2 段組で、段の途中では割らない */}
+              <div className="report-text">
+                {report.split(/\n{2,}/).map((part, i) => (
+                  <p key={i}>{paperText(part)}</p>
+                ))}
+              </div>
+            </div>
+          )}
+        </section>
+      </div>
     </div>
   );
 }
