@@ -173,7 +173,7 @@ export type ArrivalRole = (typeof ARRIVAL_ROLES)[number];
 
 /**
  * 本人の所へ向かっている 1 件。時刻は発災からの分。back は戻る時刻（職員の空きを戻すのは role staff だけ。戻ったら null）。
- * from は向かうきっかけになった手の番号（a1…）
+ * from は向かうきっかけになった手の番号（a1…）。出来事の表の業者の巡回（T92、WorldChange の schedule）は "director" か "world"
  */
 export type Arrival = {
   person: string;
