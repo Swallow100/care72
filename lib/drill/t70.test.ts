@@ -740,11 +740,11 @@ describe("デモ以外の事業所: 本人役の印、仮想モードの結末�
     expect(renderToStaticMarkup(createElement(FictionalNote, { kind: "role" }))).toContain("AI が演じる本人役");
   });
 
-  it("世界の指示は人数を決め打たず、結末を決めない訓練の決まりを持つ。部屋の Agent の版は 4", () => {
+  it("世界の指示は人数を決め打たず、結末を決めない訓練の決まりを持つ。部屋の Agent の版は 4 から上（T89 で 5）", () => {
     expect(WORLD_SYSTEM).not.toMatch(/10 人/);
     expect(WORLD_SYSTEM).toContain("人数は訓練ごとに違う");
     expect(WORLD_SYSTEM).toContain("入力に「結末: 決めない」とある訓練では、誰の結末も決めない。farewells はいつも空の配列にする");
-    expect(WORLD_AGENT_VERSION).toBe(4);
+    expect(WORLD_AGENT_VERSION).toBeGreaterThanOrEqual(4);
     expect(String(agentParams().system)).toContain(WORLD_SYSTEM);
   });
 
