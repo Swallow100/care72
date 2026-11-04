@@ -249,7 +249,7 @@ describe("世界の返事（手配型・受入型・記録型）", () => {
   it("手配: 電話の様子ごとの確率。不通なら不通、家へ向かう手配は通行止なら届かない", () => {
     expect(decideWorldReply(ask("arrange_medicine", "pharmacy"), WORLD_ODDS.arrange.ok - 0.01)).toMatchObject({ ok: true, status: "dispatched" });
     expect(decideWorldReply(ask("arrange_medicine", "pharmacy"), WORLD_ODDS.arrange.ok)).toMatchObject({ ok: false, status: "noDispatch" });
-    expect(decideWorldReply(ask("arrange_medicine", "pharmacy", w({ phone: "down" })), 0)).toMatchObject({ status: "noLine", because: "電話 不通" });
+    expect(decideWorldReply(ask("arrange_medicine", "pharmacy", w({ phone: "down" })), 0)).toMatchObject({ status: "noLine", because: "電話 通話不可" });
     const road = w({ roads: [{ id: "r", label: "川沿いの市道", open: false, person: "p-03" }] });
     expect(decideWorldReply(ask("arrange_power", null, road), 0)).toMatchObject({ status: "blocked", because: "川沿いの市道 通行止" });
     // 透析調整は家へ向かわないので通行止でも調整できる

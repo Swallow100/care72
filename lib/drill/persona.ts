@@ -420,7 +420,7 @@ function worldWords(world: WorldState, person: string, persona: Persona): string
   if (m.supplyLeft !== undefined) out.push(`栄養剤を家に置いてきた（${m.supplyLeft} 時間から）`);
   if (m.nurseAway !== undefined) out.push(`訪問看護が来られない（${m.nurseAway} 時間から）`);
   if (m.goingHome !== undefined) out.push(`本人が家に帰ろうとしている（${m.goingHome} 時間から）`);
-  if (m.lineDown !== undefined) out.push(`この家の電話が不通（${m.lineDown} 時間から）`);
+  if (m.lineDown !== undefined) out.push(`この家の電話で通話できない（${m.lineDown} 時間から）`);
   // 仮想モード（T50）の町の出来事
   if (m.flooded !== undefined) {
     const d = world.floods?.[person];

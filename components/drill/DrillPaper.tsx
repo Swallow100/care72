@@ -6,6 +6,8 @@
 // T94: 採点に内訳（空振り・重複・頼み事の未対応・通話の往復）と空振り・重複の表、対応履歴に「事実」の列（その手を打った時に分かっていた事）、
 // 自由対応の読み替え、通話の往復の数、訪問の様子と頼み事の 1 行（T93 の欄があるとき）。区切りの見出しは分の時刻（連続の時計）。
 // T59: 開始の前に選んだ物（職員・夜間発災）と取り消した手の数（「取消 N」）は、あるときだけ概要に。手のメモは対応の行の下に（採点は変えない）。状態を持たない（Server Component のまま、テストで renderToStaticMarkup できる）。
+// T105: 終わりに「発生と把握」の見比べ（起きたことと、ケアマネが把握した時刻・経路。遅れ・未把握の印）。分け方は経過のタブと同じ表
+// （lib/drill/timeline.ts）。数の 1 行は採点の内訳の下にも同じ形で（「発生 12・公表 8・遅れ 3・未把握 1」。数は採点に残さず、描くときに数える）。
 // 紙の決まりは components/forms/paper.css、流し方は components/drill/drill-paper.css。
 
 import { Fragment } from "react";
@@ -14,7 +16,22 @@ import { ACTION_STATUS_LABELS } from "@/lib/drill/actions";
 import { aiStopBand, aiStopParts, isStopIncident } from "@/lib/drill/ai-stop";
 import { callerLabel } from "@/lib/drill/calls";
 import type { ActionRecord } from "@/lib/drill/engine";
-import { ACTION_LABELS, ACTION_UI, BASIS_LABEL, calleeText, clockLabel, DRILL_LABELS, fictionLabels, SCENARIO_LABELS, STATUS_LABELS, T59_LABELS } from "@/lib/drill/labels";
+import {
+  ACTION_LABELS,
+  ACTION_UI,
+  BASIS_LABEL,
+  calleeText,
+  clockLabel,
+  DRILL_LABELS,
+  EVENT_KIND_LABELS,
+  fictionLabels,
+  LOG_LABELS,
+  SCENARIO_LABELS,
+  STATUS_LABELS,
+  T59_LABELS,
+} from "@/lib/drill/labels";
+import { incidentLabel } from "@/lib/drill/event-catalog";
+import { awareCounts, awareText, buildDrillLog, type Awareness, type LogRow } from "@/lib/drill/timeline";
 import type { DrillRecord, StoredReview } from "@/lib/drill/record";
 import type { ReviewBody } from "@/lib/drill/review";
 import { knownOf, rowOf, talkTurns, visitOf } from "@/lib/drill/score";
@@ -109,6 +126,15 @@ export function DrillPaper({ record, office, today, ai = null }: { record: Drill
     .join("・");
   // AI 停止は刻みごとに積まず、概要の 1 行（画面の帯と同じ。T76）
   const stop = aiStopBand(screen.ticks, { virtual: isVirtual(scenario), running: false, now: null });
+  // 発生と把握の見比べ（T105）。終わった訓練なので非公表の物も出す
+  const log = buildDrillLog(screen.ticks, actions, { finished: true });
+  const aware = awareCounts(log);
+  const viaOf = (w: Awareness): string => {
+    if (w.via === "public") return LOG_LABELS.public;
+    if (w.via === "signal") return LOG_LABELS.viaSignal;
+    const a = w.from ? actions.find((x) => `h-${x.id}` === w.from) : undefined;
+    return a ? ACTION_LABELS[a.kind] : "";
+  };
   const groups = screen.ticks
     .map((tick, i) => {
       // 刻みは前の刻みの時刻からこの刻みの時刻まで（10 分版は 12 → 72 時間のように広い）
@@ -364,6 +390,7 @@ export function DrillPaper({ record, office, today, ai = null }: { record: Drill
 
         {/* T94: 手の選び方の内訳。数は機械、4 つの数字には入れない。空振り・重複・頼み事の未対応がある時だけ表 */}
         <p data-detail="extra">{t(extraText(view.extra.counts))}</p>
+        <p data-detail="aware">{t(awareText(aware))}</p>
         {choiceRows.length > 0 && (
           <table className="sheet drill-table" data-detail="choice">
             <colgroup>
@@ -614,6 +641,71 @@ export function DrillPaper({ record, office, today, ai = null }: { record: Drill
           ))}
         </table>
       </section>
+
+      {/* 発生と把握（T105） */}
+      <section className="drill-sec" data-block="compare">
+        <h2 className="drill-h">{LOG_LABELS.compare}</h2>
+        <p>{t(awareText(aware))}</p>
+        <table className="sheet drill-table" data-detail="compare">
+          <colgroup>
+            <col style={{ width: "14%" }} />
+            <col style={{ width: "36%" }} />
+            <col style={{ width: "12%" }} />
+            <col style={{ width: "14%" }} />
+            <col style={{ width: "10%" }} />
+            <col style={{ width: "14%" }} />
+          </colgroup>
+          <thead>
+            <tr>
+              <th>{SCORE_LABELS.at}</th>
+              <th>{LOG_LABELS.happened}</th>
+              <th>{SCORE_LABELS.target}</th>
+              <th>{LOG_LABELS.knownAt}</th>
+              <th>{LOG_LABELS.via}</th>
+              <th>{LOG_LABELS.mark}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {log.occur.length === 0 && (
+              <tr>
+                <td colSpan={6}>{SCORE_LABELS.none}</td>
+              </tr>
+            )}
+            {log.occur.map((r) => {
+              const w = log.aware[r.key];
+              return (
+                <tr key={r.key} data-occur={r.key} data-aware={w?.mark ?? (w?.via === "public" ? "public" : "known")}>
+                  <td className="nowrap">{t(clockLabel(r.minute))}</td>
+                  <td>
+                    {happenedText(r)}
+                    {rowAi(r) && <span className="drill-ai"> AI</span>}
+                  </td>
+                  <td>{r.person ? name(r.person) : ACTION_UI.whole}</td>
+                  <td className="nowrap">{w?.at !== null && w?.at !== undefined ? t(clockLabel(w.at)) : ""}</td>
+                  <td>{w && w.at !== null ? viaOf(w) : ""}</td>
+                  <td className="nowrap">
+                    {w?.mark === "late" ? t(`${LOG_LABELS.late} ${clockLabel(w.lag ?? 0)}`) : w?.mark === "never" ? LOG_LABELS.never : ""}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </section>
     </div>
   );
+}
+
+/** 見比べの「起きたこと」（種類の印と文）。本人のする事は「行動」 */
+function happenedText(r: LogRow): string {
+  if (r.source === "incident") return t(`${incidentLabel(r.e) ?? EVENT_KIND_LABELS[r.e.change.kind]} ${r.e.text}`);
+  if (r.source === "doing") return t(`${LOG_LABELS.doing} ${r.t.doing ?? ""}`);
+  return "";
+}
+
+/** 見比べの行が AI の物か（監督・世界・本人役） */
+function rowAi(r: LogRow): boolean {
+  if (r.source === "incident") return r.e.ai;
+  if (r.source === "doing") return r.t.ai;
+  return false;
 }
