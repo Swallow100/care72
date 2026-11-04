@@ -44,14 +44,21 @@ export function CaseloadTable({
       </thead>
       <tbody>
         {rows.map((r) => (
-          <tr key={r.id}>
+          // 行のどこを押しても本人のページへ（氏名のリンクの ::after を行いっぱいに広げる。行の中にほかの押せる物は無い）。
+          // 押したときの灰色は行全体（data-press-host で行に。色は app/globals.css の tr[data-press]）
+          <tr key={r.id} className="relative" data-press="">
             <td className={`${CELL} text-center`}>
               <span className="text-lg leading-6 font-bold" title={TIER_LABELS[r.tier]}>
                 {r.tier}
               </span>
             </td>
             <td className={CELL}>
-              <Link href={rowLink(sort, null, r.id, view).href} className="-mx-1 rounded px-1 font-bold" data-press>
+              <Link
+                href={rowLink(sort, null, r.id, view).href}
+                className="-mx-1 rounded px-1 font-bold after:absolute after:inset-0 after:content-['']"
+                data-press
+                data-press-host="tr"
+              >
                 {r.name}
               </Link>
               <span className="ml-1.5 text-xs text-muted">{r.kana}</span>

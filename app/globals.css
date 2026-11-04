@@ -205,6 +205,13 @@ body {
   background-color: var(--press);
 }
 
+/* 行ごと押せる表の行（担当一覧の平時の表）。セルが面の白を持つので、灰色はセルの上に重ねる */
+tr[data-press]:active > td,
+tr[data-press][data-pressing="on"] > td,
+tr[data-press]:has([data-pending]) > td {
+  box-shadow: inset 0 0 0 100vmax var(--press);
+}
+
 /* 塗りのボタンは地の色を残し、上に同じ灰色を重ねる */
 [data-press="overlay"]:active,
 [data-press="overlay"][data-pressing="on"],
