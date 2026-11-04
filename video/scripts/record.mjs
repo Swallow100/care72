@@ -134,7 +134,7 @@ async function disaster(browser) {
   const self = await newPage(browser, PHONE);
   await login(cm, base, "yamamoto", cmPw);
   watchRefresh(cm);
-  // 最初に戻すと、それより前に作ったスマホの入口のセッションは使えなくなる（戻したあとのスマホは役選択へ）。スマホは戻してから入る
+  // スマホには最初に戻したあとに入る（戻す前の状態を撮らないため）。家族のスマホが平時のまま映った件の元は Service Worker の写し（record-lib.mjs の newPage）
   await prep(cm);
   await login(fam, base, "judge", judgePw, "family");
   await login(self, base, "judge", judgePw, "self");
