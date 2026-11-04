@@ -9,9 +9,9 @@
 - 使わない言葉: 診断・判定・重症・病気がわかる。赤は「至急」、灰は「不明」
 - 名前: 作者の名前は台本にもリポジトリにも書かない（言うかは作者が録音のときに決める）。家族のケアマネの名前・事業所・続柄の細かい所も書かない
 - 作者について言うのは docs/SPEC.md の「立ち位置」にあることだけ。内側にいるのは協力してくれるケアマネで、作者ではない。作者の強みは出荷の速さと、要約の医学的な確かめ（N13）
-- 冒頭 46 秒の流れ（11/4）: 問いかけ（N01）→ 個別避難計画とは何かと作成率（N02）→ 作者の家族のケアマネージャーの隣で見た理由（N03）→ アンケートの裏付け（N05）→ ケア72 の名前の 72 時間（N06）→ 計画・訓練・発災時の共有（N07）→ 輪島の手書きのメモ（N09）。最初の 10 秒で誰のどんな課題かが分かるようにする（審査基準のデモ）
+- 冒頭 46 秒の流れ（11/4）: 問いかけ（N01）→ 個別避難計画とは何かと作成率（N02）→ 作者の家族のケアマネージャーの隣で見た理由（N03）→ アンケートの裏付け（N05）→ 気づき: 楽に作れて実際の災害でも役立つ計画なら作る意味も大きくなる（N06）→ 題名ケア72 と名前の 72 時間（N07）→ 計画・訓練・発災時の共有（N08）。最初の 10 秒で誰のどんな課題かが分かるようにする（審査基準のデモ）
 - 声では「ケアマネ」と略さず「ケアマネージャー」と言う。「在宅の要介護」でなく「在宅の高齢者」
-- N08（能登の関連死）は 11/4 の冒頭の組み替えで外した（欠番）
+- 能登の関連死の文と輪島の手書きのメモの文（N09）は、11/4 の冒頭の組み替えで外した。N08 の ID は 3 本立ての文に使い直した（録った声はまだ無い）。N09 は欠番
 - N04（高校の災害の学習）は使わない（作者の決定、11/3）。ID は振り直さない（録音と絵コンテが ID で指すため。N04 は欠番）
 
 ## 台本
@@ -21,10 +21,10 @@
 | N01 | 0:00.3–0:03.9 | 突然ですが、『個別避難計画』を知っていますか。 | Have you heard of an "individual evacuation plan"? |
 | N02 | 0:04.1–0:12.9 | 災害のとき、在宅の高齢者を誰がどう助けるかを決めておく計画です。でも、できているのは対象者の 15.1% だけ。 | It sets out who will help an older person living at home in a disaster, and how. But only 15.1% of the people who need one have one. |
 | N03 | 0:13.1–0:21.3 | 私の家族はケアマネージャーで、その理由を家で見てきました。利用者のことは知っているのに、書く時間がないんです。 | My family member is a care manager, and I've seen why at home. They know their clients well, but there's no time to write it down. |
-| N05 | 0:21.5–0:26.8 | 家族だけではありません。アンケートでも、［N］人中［N］人が『書く時間が無い』と答えました。 | It's not just my family. In our survey, [N] of [N] said they have no time to write plans. |
-| N06 | 0:27.0–0:33.5 | そこで、医学生の私が作ったのがケア72。72 は、助けが届きにくい災害直後の 72 時間のことです。 | So, as a medical student, I built Care72. The 72 stands for the first 72 hours after a disaster, when help is slow to arrive. |
-| N07 | 0:33.7–0:41.4 | 話すだけで計画ができ、訓練もでき、災害が起きたら安否と大事な情報をまとめて、医療班と共有します。 | Talk, and the plan is made. Run drills with it. And in a disaster, it gathers who is safe and what matters, and shares it with the medical team. |
-| N09 | 0:41.6–0:45.9 | 輪島の避難所では、薬のメモが手書きで、用量が抜けていた。 | At shelters in Wajima, medication notes were handwritten, and doses were left out. |
+| N05 | 0:21.5–0:25.2 | アンケートでも、［N］人中［N］人が『書く時間が無い』と答えました。 | In our survey too, [N] of [N] said they have no time to write plans. |
+| N06 | 0:25.4–0:32.4 | そこで考えました。楽に作れて、実際の災害でも役立つ計画なら、作る意味も大きくなる。 | So I thought: if a plan were easy to make and actually useful in a real disaster, making it would mean much more. |
+| N07 | 0:32.6–0:37.9 | それがケア72。72 は、助けが届きにくい災害直後の 72 時間です。 | That's Care72. The 72 stands for the first 72 hours after a disaster, when help is slow to arrive. |
+| N08 | 0:38.1–0:45.8 | 話すだけで計画ができ、訓練もでき、災害時は安否と大事な情報をまとめて、医療班と共有します。 | Talk, and the plan is made. Run drills with it. In a disaster, it gathers who is safe and what matters, and shares it with the medical team. |
 | N10 | 0:46.3–0:51.3 | 主役は架空の利用者、山田ハナさん。84 歳、在宅酸素。 | Meet a fictional client, Hana Yamada. 84, on home oxygen. |
 | N11 | 0:51.5–0:58.3 | ケアマネージャーが話すと、Claude が台帳の欄に分け、空いている所だけ聞き返します。 | The care manager talks. Claude sorts it into her record, and asks back only about what's missing. |
 | N12 | 0:58.5–1:04.5 | 台帳から、市の様式の避難計画、本人の 1 枚、医療班の要約が出ます。 | From that one record: the city's evacuation plan form, a one-page sheet for her, and a summary for the medical team. |
@@ -71,9 +71,8 @@ N04 を消して空いた 6 秒は S6（発災時）に回した（並び替わ�
 
 | ID | 数字 | 出典 |
 | --- | --- | --- |
-| N07 | 作成率 15.1%（対象 670 万人） | [共同通信 2026-10-04（熊本日日新聞）](https://kumanichi.com/articles/2042908) |
-| N08 | 関連死 527 人（画面の棒で死者 755 人も出す） | [熊本日日新聞 2026-08](https://kumanichi.com/articles/2027266) |
-| N09 | 輪島の避難所の薬の情報が手書きのメモで用法用量が欠けた | [厚生労働省](https://www.mhlw.go.jp/content/001203369.pdf) |
+| N02 | 作成率 15.1%（対象 670 万人） | [共同通信 2026-10-04（熊本日日新聞）](https://kumanichi.com/articles/2042908) |
+| N05 | アンケートの「書く時間が無い」の人数 | T65（ケアマネージャーと包括支援センター。受付が閉じてから数える） |
 | N28 | 計画 1 件の時間 | 撮影の日の実測（MATERIALS.md の「数字」）。測るまでは「未測定」 |
 | N29 | アンケートの結果 | T34 |
 
