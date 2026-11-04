@@ -3,7 +3,7 @@
 
 import type { Field, Line, Pending, Row, Seg, StateTone } from "@/lib/person";
 import { BLANK_LABELS, CONSENT_STATUS_LABELS, PENDING_STATUS_LABELS } from "@/lib/labels";
-import { StateTag, TONE_TEXT } from "@/components/ui/Tag";
+import { Mark, StateTag, TONE_TEXT } from "@/components/ui/Tag";
 
 /** 見出しの段。単独のページは 1、担当一覧の右の面は 2 */
 export type Level = 1 | 2;
@@ -19,6 +19,8 @@ export function SegText({ seg }: { seg: Seg }) {
       </a>
     );
   }
+  // 色の無い地の印（関係者の役割「家族」「緊急 1」。状態の 4 色を使わない。T113）
+  if (seg.mark) return <Mark>{seg.text}</Mark>;
   if (seg.tone && seg.tone !== "muted") {
     return seg.tag ? (
       <StateTag tone={seg.tone}>{seg.text}</StateTag>
@@ -28,7 +30,9 @@ export function SegText({ seg }: { seg: Seg }) {
       </span>
     );
   }
-  return <span className={seg.tone === "muted" ? "text-muted" : undefined}>{seg.text}</span>;
+  // small は小さな字（心身の未入力の 1 行）
+  const cls = [seg.small ? "text-xs" : "", seg.tone === "muted" ? "text-muted" : ""].filter(Boolean).join(" ");
+  return <span className={cls || undefined}>{seg.text}</span>;
 }
 
 export function LineText({ line }: { line: Line }) {
@@ -77,12 +81,13 @@ export function Blank({ label = BLANK_LABELS.blank }: { label?: string }) {
   return <span className="text-muted">{label}</span>;
 }
 
-export function FieldValue({ field, pending, blank }: { field: Field; pending: readonly Pending[]; blank?: string }) {
+export function FieldValue({ field, pending, blank, apart = false }: { field: Field; pending: readonly Pending[]; blank?: string; apart?: boolean }) {
   const mark = pending.length > 0 ? <PendingMark pending={pending} /> : null;
   switch (field.kind) {
     case "lines":
       return (
-        <div className="space-y-0.5">
+        // apart は 1 行が 1 人の一覧（関係者の連絡先）。折り返した 1 人の行より、人と人の間を広く空ける
+        <div className={apart ? "space-y-1.5" : "space-y-0.5"}>
           {field.lines.map((line, i) => (
             <LineText key={i} line={line} />
           ))}
@@ -108,7 +113,12 @@ export function RowItem({ row }: { row: Row }) {
       <dt className="pt-px text-xs text-muted">{row.label}</dt>
       <dd className={`min-w-0 ${row.small ? "text-xs" : ""}`}>
         {/* 同意の行の空は状態の「未確認」（同意・不同意・未確認。lib/labels.ts の CONSENT_STATUS_LABELS）。ほかの空は「未入力」 */}
-        <FieldValue field={row.field} pending={row.pending} blank={row.key.startsWith("consent.") ? CONSENT_STATUS_LABELS.unconfirmed : undefined} />
+        <FieldValue
+          field={row.field}
+          pending={row.pending}
+          blank={row.key.startsWith("consent.") ? CONSENT_STATUS_LABELS.unconfirmed : undefined}
+          apart={row.apart === true}
+        />
       </dd>
     </div>
   );
