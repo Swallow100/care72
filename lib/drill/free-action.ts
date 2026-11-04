@@ -122,7 +122,7 @@ export function resolveFree(
 export function freeFacts(world: WorldState, person: string | null, minute: number): string {
   const lines = [`時刻: 発災から ${clockLabel(minute)}`, `電話: ${PHONE_LABELS[world.phone]}`];
   if (person) {
-    if (world.marks[person]?.lineDown !== undefined) lines.push("家の電話: 不通");
+    if (world.marks[person]?.lineDown !== undefined) lines.push(`家の電話: ${PHONE_LABELS.down}`);
     const road = world.roads.find((r) => r.person === person && !r.open);
     lines.push(`家の前の道: ${road ? "通行止" : "通れる"}`);
   }

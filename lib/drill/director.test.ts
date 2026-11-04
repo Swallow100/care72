@@ -574,7 +574,7 @@ describe("ケアマネの手への世界の返事（確率は表、文は固定�
     expect(decideWorldReply({ action: "call_person", person: "p-02", world: line, hour: 3 }, 0)).toMatchObject({
       ok: false,
       status: "noLine",
-      because: "家の電話 不通",
+      because: "家の電話 通話不可",
     });
     expect(decideWorldReply({ action: "call_contact", person: "p-02", callee: "family", world: line, hour: 3 }, 0.99)).toMatchObject({
       ok: true,
@@ -615,7 +615,7 @@ describe("ケアマネの手への世界の返事（確率は表、文は固定�
     expect(shelter(6, 0.29).ok).toBe(true);
     expect(shelter(6, 0.3)).toMatchObject({ ok: false, status: "refused" });
     expect(shelter(60, 0.79).ok).toBe(true);
-    expect(shelter(60, 0, { ...EMPTY_WORLD, phone: "down" })).toMatchObject({ ok: false, because: "電話 不通" });
+    expect(shelter(60, 0, { ...EMPTY_WORLD, phone: "down" })).toMatchObject({ ok: false, because: "電話 通話不可" });
     expect(decideWorldReply({ action: "report_city", person: null, world: EMPTY_WORLD, hour: 6 }, 0)).toMatchObject({ ok: true, status: "reported" });
     expect(decideWorldReply({ action: "evacuate_self", person: null, world: EMPTY_WORLD, hour: 6 }, 0.99)).toMatchObject({ ok: true, status: "evacuated" });
   });

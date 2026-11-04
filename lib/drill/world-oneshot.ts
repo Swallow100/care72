@@ -44,7 +44,7 @@ const KIND_WORDS: Readonly<Record<(typeof WORLD_KINDS)[number], string>> = {
   road: "道路。name に主な道の名前（無ければ town に地区）。value は closed（通行止）か open（開通）",
   outage: "停電。town に地区（「甲地区・乙地区」で複数）。value は start（始まり）か restored（全域の復旧）",
   water: "断水。town に地区。value は out か restored",
-  phone: "電話の様子。value は ok・busy・down。town を書くとその地区だけ不通（down のとき）",
+  phone: "電話の様子。value は ok・busy・down。town を書くとその地区だけ通話不可（down のとき）",
   shelter: "避難所。name に避難所の名前。value は open・crowded・full・closed",
   facility: "施設。name に施設の名前。value は closed（休止）か open（再開）",
   aftershock: "余震。value に震度（「4」「5弱」）",
