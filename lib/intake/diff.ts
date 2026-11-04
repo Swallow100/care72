@@ -3,13 +3,15 @@
 //
 // - 状態: 追加（空いた所に入る・配列に足す）、一致（今と同じ。保存しない）、既入力（今と違う。既定では保存しない）
 // - 欄の形に合わない値（選択肢に無い値など）は捨てて数える（dropped）
-// - 文字の値は仮名（A さん）を氏名に戻す。伏せ字（（氏名）（町名）（電話））が残る物は印を付けて人が直す
+// - 文字の値は仮名（A さん）・伏せ字を元の言葉に戻す（restore）。戻せない伏せ字（（氏名）（町名）（電話）（住所）（郵便番号）（メール）
+//   （生年月日））が残る物は画面に出さず、捨てた数（dropped）に数える（T118。保存の検査 save.ts も同じ印で断る）
 // - 特記は入力の 1 文をそのまま写させ、仮名化の前の同じ文に戻す（本人の言葉を言い換えない）
 
 import { sameMedication } from "../db/ledger.ts";
 import type { ContactRow, Ledger } from "../db/types.ts";
 import { CONTACT_KIND_LABELS, PENDING_STATUS_LABELS } from "../labels.ts";
 import {
+  changeHasMask,
   changeText as changeLabel,
   contactText,
   hasMask,
@@ -41,7 +43,7 @@ export type DiffItem = {
   /** 新しい値の言葉 */
   next: string;
   state: DiffState;
-  /** 伏せ字が残っている（人が直す） */
+  /** 伏せ字が残っている。Claude の分け方の差分には出さない（T118。人が直した値で残れば画面が印を付ける） */
   masked: boolean;
   /** 保存に渡す変更。一致は null */
   change: IntakeChange | null;
@@ -108,8 +110,14 @@ export function buildDiff(input: DiffInput, out: ExtractOutput, restore: Restore
   const items: DiffItem[] = [];
   let dropped = 0;
   const { ledger } = input;
-  const push = (item: Omit<DiffItem, "id" | "masked">, id: string) =>
-    items.push({ ...item, id, masked: hasMask(item.next) || (item.change?.t === "contact" && hasMask(item.change.value.note ?? "")) });
+  const push = (item: Omit<DiffItem, "id" | "masked">, id: string) => {
+    // 戻せない伏せ字が残る物は出さない（T118）
+    if (hasMask(item.next) || (item.change !== null && changeHasMask(item.change))) {
+      dropped++;
+      return;
+    }
+    items.push({ ...item, id, masked: false });
+  };
 
   // 欄（配列の欄は同じ欄の行をまとめる）
   const grouped = new Map<string, string[]>();

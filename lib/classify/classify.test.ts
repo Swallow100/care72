@@ -320,8 +320,9 @@ describe("分ける本体（classify）", () => {
 
   });
 
-  it("伏せたあとに元の情報が残る文は送らない（生年月日）", () => {
-    expect(() => seal("1942-04-18 うまれです")).toThrow(PseudonymLeakError);
+  it("伏せたあとに元の情報が残る文は送らない（電話の数字が長い数字の並びの中にある）", () => {
+    // 生年月日はどの書き方でも（生年月日）に伏せる（T118）。伏せきれない物の例は電話の数字を含む長い並び
+    expect(() => seal("09000000012345 にかけて")).toThrow(PseudonymLeakError);
   });
 
   it("答えと音の文は決まった言葉だけ", () => {
@@ -446,7 +447,7 @@ describe("信号の行に書く（classifySignal）", () => {
 
   it("伏せきれない文字起こしは送らずに「送信不可」", async () => {
     await earthquake();
-    const a = await redWithRecording("1942-04-18 うまれ");
+    const a = await redWithRecording("09000000012345 にかけて");
     const { client, calls } = fake(says(["water"]));
     const out = await classifySignal(db, target(a), deps(client));
     expect(out).toMatchObject({ result: { ok: false, error: "leak" } });

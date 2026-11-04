@@ -254,3 +254,46 @@ describe("多様さの数え方", () => {
     expect(aiSayings(o).map((s) => s.text)).toEqual(["AI の言葉", "通話の言葉", "往復の言葉"]);
   });
 });
+
+// ---------- T118: 台が同じ穴を見つけられること ----------
+
+describe("T118 の穴の形を台が拾う", () => {
+  it("送った中身の生年月日（台帳と同じ日の和暦・略記・漢数字・西暦）を、層の findLeaks を借りずに拾う", () => {
+    for (const form of ["昭和17年4月18日", "昭和 17 年 4 月 18 日", "S17.4.18", "昭和十七年四月十八日", "1942年4月18日", "昭和十七年"]) {
+      const rec = ai("free", { as: "note" }, `本人（${form}生）の家に行く`);
+      const hits = leakSentHits([rec], CTX);
+      expect(hits.some((h) => h.rule === "personal:生年月日（台の表）"), form).toBe(true);
+    }
+    // 伏せた物（（生年月日））と台帳に無い日は拾わない
+    expect(leakSentHits([ai("free", { as: "note" }, "本人（（生年月日）生）の家に行く。令和8年11月5日")], CTX)).toEqual([]);
+  });
+
+  it("本人役の決まりの形（薬の量の単位・流量、病名、助言、人の生き死にの言い方）を生の返事で拾う", () => {
+    const records: LogRecord[] = [
+      ai("persona", { speech: "インスリンは10単位打ちました", condition: "", action: "" }),
+      ai("persona_call", { speech: "酸素は2L/分にしています" }),
+      ai("persona_talk", { speech: "糖尿病があるので心配です", asks: [] }),
+      ai("persona_visit", { speech: "薬を飲んだほうがいいですよ", condition: "", location: "home", asks: [] }),
+      ai("persona_call", { speech: "息を引き取ったかもしれない" }),
+    ];
+    const hits = bannedHits(records, outcome([]), CTX).filter((h) => h.where === "raw");
+    const rules = hits.map((h) => `${h.seq}:${h.rule}`);
+    expect(rules).toContain(`${records[0].seq}:dose`);
+    expect(rules).toContain(`${records[1].seq}:dose`);
+    expect(rules).toContain(`${records[2].seq}:disease`);
+    expect(rules).toContain(`${records[3].seq}:advice`);
+    expect(rules).toContain(`${records[4].seq}:life`);
+  });
+
+  it("1 訓練の数え（画面の AI 残）に入らない呼び出し: ai_calls（講評・声のほか）との差を数え、印を出す", () => {
+    const row = (purpose: string) => ({ purpose, model: "claude-haiku-5-5", status: "ok", error: null, input_tokens: 1, output_tokens: 1 });
+    // T108 の偽の回の形: ai_calls 160（うち講評 0）に対し数え 144
+    const o = outcome([], [], {}, { callsLeft: 150 - 144, aiCalls: [...Array.from({ length: 150 }, () => row("persona")), ...Array.from({ length: 10 }, () => row("director")), row("scoring")] });
+    const { numbers, hits } = checkRun([], o, CTX);
+    expect(numbers.budget.uncounted).toBe(16);
+    expect(hits).toContainEqual(expect.objectContaining({ check: "budget", rule: "uncounted" }));
+    // 数えがそろえば 0、10 分版（数えなし）は見ない
+    expect(checkRun([], { ...o, callsLeft: 150 - 160 }, CTX).numbers.budget.uncounted).toBe(0);
+    expect(checkRun([], { ...o, callsLeft: null }, CTX).numbers.budget.uncounted).toBe(0);
+  });
+});

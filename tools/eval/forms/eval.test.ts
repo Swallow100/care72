@@ -109,6 +109,12 @@ describe("送る中身の漏れの検査", () => {
     const kinds = new Set(hits.map((h) => h.kind));
     expect(kinds).toEqual(new Set(["name", "kana", "town", "phone", "birth", "weak"]));
   });
+  it("生年月日は略記・漢数字・年だけの和暦の書き方でも見つける（T118）", () => {
+    for (const t of ["S17.4.18 生", "昭和十七年四月十八日生まれ", "Ｓ１７．４．１８", "昭和十七年の生まれ", "1942/4/18"]) {
+      expect(scanLeaks(t).map((h) => h.kind), t).toContain("birth");
+    }
+    expect(scanLeaks("（生年月日）生まれ、令和8年11月5日").filter((h) => h.kind === "birth")).toEqual([]);
+  });
   it("伏せ字と役割名は見つけない", () => {
     expect(scanLeaks("A さんは（町名）小学校へ。娘（電話）、支援者 1、（氏名）")).toEqual([]);
   });
