@@ -26,6 +26,13 @@ function Item({ it }: { it: OverlayItem }) {
       </div>
     );
   }
+  if (it.kind === "image") {
+    // 欄に置く画像（避難経路の地図。T101 の受け口）。縦横の比を保って欄の中に収める
+    return (
+      // eslint-disable-next-line @next/next/no-img-element -- 印刷に出すので <img>
+      <img className="ov-pic" style={at(it.box)} src={it.src} alt={it.alt} data-field={it.fieldId} data-slot={it.slot} />
+    );
+  }
   // レ点は □ の形のまま、丸は字の場所に合わせて伸ばす
   return it.mark === "check" ? (
     <svg className="ov-mark" style={at(it.box)} viewBox="0 0 10 10" preserveAspectRatio="xMidYMid meet" aria-hidden data-field={it.fieldId} data-mark="check">
@@ -38,10 +45,25 @@ function Item({ it }: { it: OverlayItem }) {
   );
 }
 
-export function OverlaySheet({ sheet, imageSrc, checked }: { sheet: Sheet; imageSrc: (page: number) => string; checked: string }) {
+export function OverlaySheet({
+  sheet,
+  imageSrc,
+  checked,
+  fill = false,
+  kind = "overlay",
+}: {
+  sheet: Sheet;
+  imageSrc: (page: number) => string;
+  /** 別紙の注の「対応表 確認 …」。原本の枠の紙（T101）は空にして、注を出典の形にする */
+  checked: string;
+  /** 未記入の色付けの版（T101）。既定は色なし（提出に使う紙） */
+  fill?: boolean;
+  /** data-sheet の値。原本の枠の紙は matsuyama・kiroku（印刷のテストが紙を見分ける） */
+  kind?: string;
+}) {
   return (
     <div className="paper-scroll">
-      <div className="paper-stack" data-paper-root data-sheet="overlay" data-person={sheet.personId} data-typeface={sheet.typeface}>
+      <div className="paper-stack" data-paper-root data-sheet={kind} data-person={sheet.personId} data-typeface={sheet.typeface} data-fill={fill ? "1" : undefined}>
         {sheet.pages.map((p) => (
           <section
             key={p.page}
@@ -51,7 +73,12 @@ export function OverlaySheet({ sheet, imageSrc, checked }: { sheet: Sheet; image
           >
             <div className="ov-img" style={{ left: mm(p.image.x), top: mm(p.image.y), width: mm(p.image.w), height: mm(p.image.h) }}>
               {/* eslint-disable-next-line @next/next/no-img-element -- 元の様式の頁の画像（R2 の物を API から）。印刷に出すので <img> */}
-              <img src={imageSrc(p.page)} alt={`${sheet.title} ${p.page}頁`} />
+              <img className="ov-bg" src={imageSrc(p.page)} alt={`${sheet.title} ${p.page}頁`} />
+              {/* 未記入の色付け（帯の未確認と同じ欄）。字と印の下、元の様式の頁の上に重ねて掛け合わせる（罫線と刷ってある字は黒のまま） */}
+              {fill &&
+                p.fills.map((f) => (
+                  <div key={f.keys.join(" ")} className="ov-fill" style={at(f.box)} data-fill-keys={f.keys.join(" ")} aria-hidden />
+                ))}
               {p.items.map((it) => (
                 <Item key={`${it.fieldId}-${it.kind}`} it={it} />
               ))}
@@ -88,7 +115,7 @@ export function OverlaySheet({ sheet, imageSrc, checked }: { sheet: Sheet; image
               </div>
             </div>
             <div className="small-note foot-note">
-              <p>※様式の欄に収まらない値（欄に「別紙」）と、様式に位置の無い欄の値。値は台帳から差し込み（対応表 確認 {checked}）</p>
+              <p>{`※様式の欄に収まらない値（欄に「別紙」）と、様式に位置の無い欄の値。値は台帳から差し込み${checked ? `（対応表 確認 ${checked}）` : ""}`}</p>
             </div>
             <PaperFoot doc={`${sheet.title} 別紙`} name={sheet.name} page={1} total={1} />
           </section>

@@ -5,6 +5,7 @@
 // 入れる欄（T03）はここに置かない。経過の書き足し（T24）は経過の区分の上（書ける種類があるときだけ）。
 // 見える区分と欄は lib/person.ts の toPersonView が見る人の範囲（lib/consent/scope.ts）で決める。ここは来た物を描くだけ。
 
+import { RouteMapPanel } from "@/components/map/RouteMap";
 import { ButtonLink } from "@/components/ui/Button";
 import { PaperIcon, PrintIcon } from "@/components/ui/Icon";
 import { StateText } from "@/components/ui/Tag";
@@ -28,7 +29,15 @@ export function PersonView({ view, level, edit = null }: { view: View; level: Le
       <PersonHead head={view.head} level={level} titleId={`${base}-title`} />
       <div className="gap-x-2 @[40rem]:columns-2 @5xl:columns-3">
         {view.sections.map((s) => (
-          <SectionPanel key={s.id} section={s} level={level} titleId={`${base}-${s.id}`} edit={edit}>
+          <SectionPanel
+            key={s.id}
+            section={s}
+            level={level}
+            titleId={`${base}-${s.id}`}
+            edit={edit}
+            // 避難経路の地図（T102）。ケアマネの役で開いたときだけ、避難の面の下に（位置を扱うので面の編集と同じ人だけ）
+            after={s.id === "evacuation" && edit ? <RouteMapPanel data={edit} /> : null}
+          >
             {/* 経過の書き足し（T24）。書ける種類（役と同意。lib/consent/scope.ts）があるときだけ、経過の上に */}
             {s.id === "timeline" && view.writes.length > 0 && <TimelineComposer personId={view.head.id} kinds={view.writes} />}
           </SectionPanel>
@@ -44,12 +53,15 @@ function SectionPanel({
   titleId,
   edit = null,
   children,
+  after = null,
 }: {
   section: Section;
   level: Level;
   titleId: string;
   edit?: EditData | null;
   children?: React.ReactNode;
+  /** 面の行の下に足す物（避難の面の経路地図、T102） */
+  after?: React.ReactNode;
 }) {
   const H = level === 1 ? "h2" : "h3";
   const head = (
@@ -68,6 +80,7 @@ function SectionPanel({
     <>
       {children}
       <Blocks blocks={section.blocks} />
+      {after}
     </>
   );
   if (edit && isEditSection(section.id)) {

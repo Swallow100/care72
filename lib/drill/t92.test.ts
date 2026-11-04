@@ -86,15 +86,16 @@ const BANNED = /診断|判定|重症|緊急度|札|死亡|亡くな/;
 // ---------- 表の形 ----------
 
 describe("出来事の表の形", () => {
-  it("前からの 6 つは同じ並び・同じ文・同じ変化。T92 の 20 を足して 26", () => {
+  it("前からの 6 つは同じ並び・同じ文・同じ変化。T92 の 20 を足して 26（T104 の自分の 4 つを足して 30）", () => {
     expect(INJECT_KINDS.slice(0, 6)).toEqual(["supply_left", "dialysis_flooded", "road_blocked", "line_down", "nurse_away", "going_home"]);
-    expect(INJECT_KINDS).toHaveLength(26);
-    expect(new Set(INJECT_KINDS).size).toBe(26);
+    expect(INJECT_KINDS).toHaveLength(30);
+    expect(new Set(INJECT_KINDS).size).toBe(30);
+    expect(INJECT_KINDS.slice(26)).toEqual(["self_outage", "self_family", "self_late", "self_battery"]);
     expect(INJECT_TEXTS).toMatchObject({
       supply_left: "家族が栄養剤を持ち出し忘れた",
       dialysis_flooded: "透析施設 浸水で休止",
       road_blocked: "家の前の道 通行止め",
-      line_down: "家の電話 不通",
+      line_down: "家の電話 通話不可",
       nurse_away: "訪問看護 来られない",
       going_home: "本人が家に帰ろうとする",
     });
@@ -131,8 +132,19 @@ describe("出来事の表の形", () => {
     expect(Object.keys(MARK_LABELS)).toHaveLength(11);
   });
 
-  it("根拠は登録簿の id だけ。監督が選ぶ種類は DIRECTOR_SOURCES の中だけで、DIRECTOR_SOURCES は 5 つのまま", () => {
-    expect([...DIRECTOR_SOURCES]).toEqual(["cao-shishin-2021", "mhlw-bcp-2020", "nanbyo-shishin-2017", "jadp-dialysis-2023", "mhlw-dementia-2018"]);
+  it("根拠は登録簿の id だけ。監督が選ぶ種類は DIRECTOR_SOURCES の中だけで、DIRECTOR_SOURCES は前からの 5 つと T104 の時間の目安の 5 つ", () => {
+    expect([...DIRECTOR_SOURCES]).toEqual([
+      "cao-shishin-2021",
+      "mhlw-bcp-2020",
+      "nanbyo-shishin-2017",
+      "jadp-dialysis-2023",
+      "mhlw-dementia-2018",
+      "soumu-iburi-2019",
+      "soumu-tsushin-2026",
+      "mhlw-water-2016",
+      "cao-hinanjo-2016",
+      "cao-fukushi-2021",
+    ]);
     for (const k of INJECT_KINDS) {
       const b = EVENT_CATALOG[k].basis;
       for (const id of b.ids) expect(isSourceId(id), `${k} ${id}`).toBe(true);
@@ -145,9 +157,13 @@ describe("出来事の表の形", () => {
     expect(EVENT_CATALOG.no_fridge.basis.ids).toEqual(["jadec-insulin-2023"]);
     expect(EVENT_CATALOG.car_sleep.basis.ids).toEqual(["mhlw-ecs-2018", "jsth-pe-2020"]);
     expect(EVENT_CATALOG.wandering.basis.ids).toEqual(["mhlw-dementia-2018"]);
-    for (const k of ["outage_spread", "mobile_down", "road_reopen", "water_station", "family_stranded", "info_confusion", "aftershock", "landslide_warn"] as const) {
+    for (const k of ["road_reopen", "family_stranded", "info_confusion", "aftershock", "landslide_warn"] as const) {
       expect(EVENT_CATALOG[k].basis.ids, k).toEqual([]);
     }
+    // T104: 停電の広がり・携帯・給水所は時間の目安の文書を監督が選べる（コードは付けない）
+    expect(EVENT_CATALOG.outage_spread.basis).toEqual({ by: "director", ids: ["soumu-iburi-2019"] });
+    expect(EVENT_CATALOG.mobile_down.basis).toEqual({ by: "director", ids: ["soumu-iburi-2019", "soumu-tsushin-2026"] });
+    expect(EVENT_CATALOG.water_station.basis).toEqual({ by: "director", ids: ["mhlw-water-2016"] });
   });
 
   it("根拠の付け方: コードの種類は監督の値を見ない、本人で変わる物は台帳から、表に無い根拠は捨てる", () => {
@@ -218,7 +234,7 @@ describe("表の行（種の 10 人）", () => {
     expect(ok("mobile_down", "p-01")).toBe(true);
     expect(ok("mobile_down", "p-01", { ...W, phone: "down" })).toBe(false);
     const parts = EVENT_CATALOG.mobile_down.build({ person: null }, 12, 2);
-    expect(parts.map((p) => p.text)).toEqual(["携帯電話も不通", "電話 一部回復見込 2 時間後"]);
+    expect(parts.map((p) => p.text)).toEqual(["携帯電話も通話不可", "電話 一部回復見込 2 時間後"]);
     const w = apply(W, "mobile_down", null, 12, 2);
     expect(w.phone).toBe("down");
     expect(w.scheduled).toEqual([{ at: 840, change: { kind: "phone", state: "busy" }, text: "電話 一部回復", by: "director" }]);

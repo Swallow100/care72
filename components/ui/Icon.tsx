@@ -38,9 +38,11 @@ export {
   MagnifyingGlassIcon as SearchIcon, // 検索
   MagnifyingGlassMinusIcon as ZoomOutIcon, // 縮小（地図）
   MagnifyingGlassPlusIcon as ZoomInIcon, // 拡大（地図）
+  MapIcon as RouteMapIcon, // 避難経路の地図（本人のページの避難の面、T102）
   LinkIcon, // リンク作成（アンケートの招待）
   NoSymbolIcon as DeclinedIcon, // 無回答（入れる欄の問い）
   MinusCircleIcon as RemoveIcon, // 外す（人でない物。対応表の欄など）
+  PaintBrushIcon as FillIcon, // 未記入色付け（書類の紙の未記入の欄を塗る版、T101）
   PaperAirplaneIcon as SendIcon, // 送信（アンケートの答え）
   PencilSquareIcon as EditIcon, // 編集（AI の下書きを直す）
   PhoneIcon, // 電話

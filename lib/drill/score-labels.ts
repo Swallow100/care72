@@ -5,6 +5,7 @@ import { AI_FAILURE_LABELS, AI_STATUS_LABELS } from "../claude/status.ts";
 import type { DrillAction } from "../db/types.ts";
 import { DEPENDS_ON_LABELS } from "../labels.ts";
 import { formatHours } from "../triage/index.ts";
+import { NO_CALL } from "./event-catalog.ts";
 import { clockLabel } from "./labels.ts";
 import type { AskKind } from "./scenarios.ts";
 import type { Form9PlanColumn, Known, OrderMissKind, Reached, WasteWhy } from "./score.ts";
@@ -94,7 +95,7 @@ export const SCORE_LABELS = {
 
 /** 空振りの理由（lib/drill/score.ts の WasteWhy） */
 export const WASTE_LABELS: Readonly<Record<WasteWhy, string>> = {
-  phone: "電話不通",
+  phone: NO_CALL,
   road: "通行止",
   staff: "職員なし",
   closed: "施設休止",
@@ -121,13 +122,13 @@ export const ASK_WORDS: Readonly<Record<AskKind, string>> = {
 export const askWords = (kinds: ReadonlyArray<AskKind>): string => kinds.map((k) => ASK_WORDS[k]).join("・");
 
 /**
- * 手を打った時に分かっていた世界の事実の言葉（「電話 不通」「道 通行止」「職員 0」「透析先 休止」）。講評の入力と紙面の対応履歴が読む。
+ * 手を打った時に分かっていた世界の事実の言葉（「電話 通話不可」「道 通行止」「職員 0」「透析先 休止」）。講評の入力と紙面の対応履歴が読む。
  * 職員の空きと訪問看護の印は、それを見る手（訪問依頼・応援依頼）のときだけ
  */
 export function factWords(k: Known, kind: DrillAction): string[] {
   const out: string[] = [];
-  if (k.line === "down") out.push("電話 不通");
-  else if (k.homeLine === "down") out.push("家の電話 不通");
+  if (k.line === "down") out.push(`電話 ${NO_CALL}`);
+  else if (k.homeLine === "down") out.push(`家の電話 ${NO_CALL}`);
   else if ((k.line ?? k.homeLine) === "busy") out.push("電話 不安定");
   if (k.roadClosed) out.push("道 通行止");
   if (kind === "dispatch" || kind === "request_backup") out.push(`職員 ${k.staff}`);

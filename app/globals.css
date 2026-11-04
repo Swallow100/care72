@@ -28,8 +28,8 @@
   出る・消す・外す操作の赤も、文字（text-danger、--danger-text）と塗りのボタン（bg-danger-fill、--danger）を分ける。
   薄い下地（色を面に混ぜた物）は、ダークで黒の混ざった濁った色になるので印に使わない。印は澄んだ色の塗りか、色の文字だけ。
   黄（要確認）は文字の色に使わない（白の上の対比が 3.2 しか無い）。黄は塗りの印（濃い文字）か細い帯だけで、
-  黄の文字だった所は本文色の文字と前に黄の細い帯（tone-check。components/ui/Tag の TONE_TEXT.check・StateText・Mark が使う）。
-  --state-check は帯と入力の欄の注意の枠（outline）の色。帯は細いので、地の上で 3:1 に届く濃さ（ライトは琥珀）。
+  黄の文字だった所は黄の塗りに濃い文字（tone-check。components/ui/Tag の TONE_TEXT.check・StateText が使う。Mark は塗りの印と同じ）。
+  --state-check は入力の欄の注意の枠（outline）などの細い線の色。線は細いので、地の上で 3:1 に届く濃さ（ライトは琥珀）。
   状態の人数（担当一覧の上の人数など）は 4 つとも言葉を塗りの印にし、数は本文色。0 人は印も数も灰（components/ui/Tag の CountLabel）。
 */
 :root {
@@ -175,24 +175,36 @@ body {
 }
 
 /*
-  要確認（黄）の文字の所: 文字は本文色、前に黄の細い帯（--state-check。ライトは白の上で 3:1 に届く琥珀、ダークは明るい黄で暗い面の上 8.4）。文字の大きさに合わせて伸び、
-  帯の幅は字の 0.2 倍（3px より細くしない）。数字の「1」と見間違えないよう字との間を空ける。帯は読み上げない（中身の無い ::before）
+  要確認（黄）の文字の所: 黄の塗り（--state-check-fill）の上に濃い文字（--on-state-check、対比 9.4）。塗りの印（StateTag）と同じ色。
+  前は本文色の文字と前に黄の細い帯だったが、何の印か伝わりにくかったので、作者が案（塗り・下線・丸）から塗りを選んだ（11/4）。
+  インラインの短い印に付ける（医療の印・時計の残り・数）。理由の長い文は塗らない（components/ui/Tag の REASON_TEXT）。折り返した行もそれぞれ塗る（clone）。
+  塗りは地の色なので、画面をそのままブラウザで印刷したときも落とさない（紙面の部品はこの印を使っていない）
 */
 @utility tone-check {
-  color: var(--ink);
-  &::before {
-    content: "";
-    display: inline-block;
-    width: max(3px, 0.2em);
-    height: 0.8em;
-    margin-right: 0.35em;
-    vertical-align: -0.05em;
-    border-radius: 1px;
-    background-color: var(--state-check);
-    /* 帯は地の色なので、画面をそのままブラウザで印刷したときも落とさない（紙面の部品はこの印を使っていない） */
-    print-color-adjust: exact;
-    -webkit-print-color-adjust: exact;
-  }
+  color: var(--on-state-check);
+  background-color: var(--state-check-fill);
+  padding-inline: 0.25em;
+  border-radius: 2px;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}
+
+/*
+  至急（赤）の短い印も同じ形で赤の塗りに白の文字（--state-urgent-fill・--on-state-urgent。StateTag の赤と同じ）。
+  黄を塗りにしたので、赤を色の文字のままにすると、急ぐ赤の印が黄の塗りより弱く見えた。作者が「赤も塗り」を選んだ（11/4）。
+  理由の長い文の赤は今までどおり赤の文字（REASON_TEXT）
+*/
+@utility tone-urgent {
+  color: var(--on-state-urgent);
+  background-color: var(--state-urgent-fill);
+  padding-inline: 0.25em;
+  border-radius: 2px;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
 }
 
 /* 押したときの変化は灰色の地だけ。縮める・薄くする・色を変えるは重ねない。

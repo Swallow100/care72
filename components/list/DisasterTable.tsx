@@ -4,7 +4,7 @@
 // 氏名のリンクは今までどおり本人のページを右に開く（?open=）。
 
 import Link from "next/link";
-import { StateTag, TONE_TEXT } from "@/components/person/parts";
+import { REASON_TEXT, StateTag } from "@/components/person/parts";
 import { StateText } from "@/components/ui/Tag";
 import { TABLE } from "@/components/ui/table";
 import { PLAN_TONES, rowLink, type CaseloadFilter, type CaseloadRow, type ListView, type SortDir, type SortKey } from "@/lib/caseload";
@@ -149,7 +149,7 @@ function Cells({
         <NarrowMarks items={r.markItems} fallback={r.devices} />
         {t && (
           // 句の塊ごとに折る（375 で 1 字だけ次の行に落ちない。T80）
-          <div className={`mt-0.5 font-bold ${TONE_TEXT[COLOR_TONES[t.color]]}`} data-reason>
+          <div className={`mt-0.5 font-bold ${REASON_TEXT[COLOR_TONES[t.color]]}`} data-reason>
             <ReasonText text={t.reason} />
           </div>
         )}

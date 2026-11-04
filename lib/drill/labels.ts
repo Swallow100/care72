@@ -6,7 +6,7 @@ import type { DrillAction, DrillScenario, DrillStatus } from "../db/types.ts";
 import { CATALOG_LABELS } from "./action-catalog.ts";
 import type { FictionKind } from "./fiction.ts";
 import type { AiStop, PhoneState, ShelterState, TsunamiState, WaterState, WorldEventKind } from "./scenarios.ts";
-import { markLabels } from "./event-catalog.ts";
+import { markLabels, NO_CALL } from "./event-catalog.ts";
 import { hourText, minuteText, TIME_WORDS } from "./time-text.ts";
 
 export const SCENARIO_LABELS: Record<DrillScenario, string> = {
@@ -193,6 +193,34 @@ export const MARK_LABELS = markLabels;
 /** 状況の欄で根拠の出典に添える言葉 */
 export const BASIS_LABEL = "出典";
 
+/**
+ * 経過の 3 つのタブ（T105、lib/drill/timeline.ts）。発生（起きたこと）・把握（分かったこと）・対応（した対応）。
+ * 見比べの印は遅れ（起きてから把握まで時間があった）・未把握（終わりまで届かなかった）・公表（起きた時に把握）
+ */
+export const LOG_LABELS = {
+  panel: "経過",
+  tabs: "経過切替",
+  occur: "発生",
+  know: "把握",
+  act: "対応",
+  /** 発生のタブの本人のする事（本人役・想定の表の doing）の印 */
+  doing: "行動",
+  /** 訓練の途中で発生に出していない行があるとき（数は出さない） */
+  hidden: "非公表分 終了後表示",
+  late: "遅れ",
+  never: "未把握",
+  public: "公表",
+  /** 把握の経路 */
+  viaSignal: "安否",
+  /** 訓練記録の見比べの欄 */
+  compare: "発生と把握",
+  happened: "起きたこと",
+  knownAt: "把握時刻",
+  lag: "差",
+  via: "経路",
+  mark: "印",
+} as const;
+
 /** 被害状況の欄の名前 */
 export const WORLD_LABELS = {
   alert: "警戒レベル",
@@ -221,7 +249,8 @@ export const WORLD_LABELS = {
   marks: "個別",
 } as const;
 
-export const PHONE_LABELS: Record<PhoneState, string> = { ok: "通常", busy: "不安定", down: "不通" };
+/** 電話の様子（T105 で down を「不通」から「通話不可」に。lib/drill/event-catalog.ts の NO_CALL） */
+export const PHONE_LABELS: Record<PhoneState, string> = { ok: "通常", busy: "不安定", down: NO_CALL };
 export const WATER_LABELS: Record<WaterState, string> = { none: "なし", out: "断水中", restored: "解消" };
 export const TSUNAMI_LABELS: Record<TsunamiState, string> = { none: "なし", evacuate: "避難", lifted: "解除" };
 export const SHELTER_LABELS: Record<ShelterState, string> = { open: "開設", crowded: "混雑", full: "満員", closed: "閉鎖" };

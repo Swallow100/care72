@@ -14,7 +14,7 @@ import { CaseloadEmpty } from "@/components/office/CaseloadEmpty";
 import { UnlistedFold } from "@/components/office/UnlistedFold";
 import { UnlistedRows } from "@/components/office/UnlistedRows";
 import { PersonWithIntake } from "@/components/person/PersonWithIntake";
-import { StateTag, TONE_TEXT } from "@/components/person/parts";
+import { REASON_TEXT, StateTag } from "@/components/person/parts";
 import { ButtonLink, buttonClass } from "@/components/ui/Button";
 import { AddPersonIcon, CloseIcon, DownloadIcon, PrintIcon } from "@/components/ui/Icon";
 import { PageHead, Panel } from "@/components/ui/Panel";
@@ -106,14 +106,14 @@ export default async function CaseloadPage({ searchParams }: Props) {
 
   const now = new Date().toISOString();
   let data: Caseload | null;
-  // 右の面の地図の真ん中（ピンが無いとき。事業所の中心、T68）と、気象庁の雨雲（デモでない事業所で旗 JMA_NOWCAST が on のとき）。T72
+  // 右の面の地図の真ん中（ピンが無いとき。事業所の中心、T68）と、気象庁の雨雲（旗 JMA_NOWCAST が on のとき。デモ事業所も。T72・T103）
   let map: SideMapOptions = { center: null, nowcast: false };
   try {
     const { env } = await getCloudflareContext({ async: true });
     data = scope ? await loadCaseload(env.DB, scope, todayJst(), now) : null;
     if (principal.office) {
       const place = await loadOfficePlace(env.DB, principal.office.id).catch(() => null);
-      map = { center: place?.center ?? null, nowcast: nowcastOn(env) && principal.office.kind !== "demo" };
+      map = { center: place?.center ?? null, nowcast: nowcastOn(env) };
     }
   } catch (e) {
     console.error("担当一覧を読めない", e);
@@ -179,8 +179,8 @@ export default async function CaseloadPage({ searchParams }: Props) {
   }
 
   // 右の面（T14）: 平時は計画の内訳・見直し・未確認・地図。災害モード（T09）は地図が上で、ピンは行の lib/triage の色、
-  // 雨雲・震度のデモは事業所の災害の種類と警戒レベルから
-  // 雨雲・震度のデモの絵はデモ事業所だけ（T72。本物の事業所の地図には出さない）
+  // 震度のデモは事業所の災害の種類から
+  // 震度のデモの絵はデモ事業所だけ（T72。本物の事業所の地図には出さない）。作り物の雨雲は描かない（訓練だけ。T103）
   const side = buildSidePane(all, {
     sort: key,
     disaster: data.situation ? sideDisasterOf(all, data.disaster, { office: principal.office?.kind ?? "regular" }) : null,
@@ -329,7 +329,7 @@ function CompactList({ rows, sort, open, view }: { rows: CaseloadRow[]; sort: So
               <span className="min-w-0">
                 <span className="block truncate">{r.name}</span>
                 {r.triage ? (
-                  <span className={`block truncate text-xs font-bold ${TONE_TEXT[COLOR_TONES[r.triage.color]]}`} title={r.triage.reason}>
+                  <span className={`block truncate text-xs font-bold ${REASON_TEXT[COLOR_TONES[r.triage.color]]}`} title={r.triage.reason}>
                     {r.triage.reason}
                   </span>
                 ) : (

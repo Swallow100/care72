@@ -33,7 +33,7 @@
 .paper.overlay .ov-img {
   position: absolute;
 }
-.paper.overlay .ov-img > img {
+.paper.overlay .ov-img > img.ov-bg {
   position: absolute;
   inset: 0;
   display: block;
@@ -60,6 +60,27 @@
 .paper.overlay .ov-ln {
   display: block;
   white-space: pre;
+}
+
+/*
+  未記入の色付け（T101）。帯の未確認と同じ欄の矩形の内側（罫線から 0.45mm 離した所）を、要確認の黄（--state-check-fill）の薄い色で塗る。
+  紙は画面のテーマによらず白なので、色は固定の値。元の様式の頁の上で掛け合わせ（multiply）、刷ってある字と罫線は黒のまま。
+  印刷でも塗る（背景を刷る設定によらない）
+*/
+.paper.overlay .ov-fill {
+  position: absolute;
+  background: color-mix(in srgb, #f2b125 34%, #fff);
+  mix-blend-mode: multiply;
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}
+
+/* 欄に置く画像（避難経路の地図、T102 が渡す）。縦横の比を保って欄の中 */
+.paper.overlay .ov-pic {
+  position: absolute;
+  display: block;
+  object-fit: contain;
+  object-position: center top;
 }
 
 .paper.overlay .ov-mark {

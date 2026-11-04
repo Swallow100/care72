@@ -1,4 +1,4 @@
-// 訓練の監督（docs/tasks/T19.md）。世界の状態（道路・停電・電話の不通・職員の空き・避難所の様子・本人ごとの印）と、
+// 訓練の監督（docs/tasks/T19.md）。世界の状態（道路・停電・電話の通話不可・職員の空き・避難所の様子・本人ごとの印）と、
 // 刻みごとの差し込み。形は「決まった流れ＋判断点 1 つ」（Building Effective Agents の workflow）:
 // - 決まった流れ: 想定の表（lib/drill/scenarios.ts）の出来事と固定の差し込みを順に当てる（Claude を呼ばない。engine の step）
 // - 判断点 1 つ: この刻みで、この事業所の台帳の弱点（空欄・支援者なし・残り時間の短さ）に合わせて差し込む状況を 0〜差し込める数
@@ -11,7 +11,7 @@
 //   世界の変化は表の build（コード）が組み、色と順位は安否と台帳の時計を lib/triage の表に流して決まる
 // - 種類は表の物だけ（T92 で 6 → 26）。表の外・その人に当てはまらない種類（栄養剤は経管栄養の人だけ、など）・知らない仮名は捨てる。
 //   全体の種類（停電の見込み・余震など）は target が「全体」、予定の種類は after（何時間後、表の範囲）
-// - 根拠は表が 1 つに決める種類はコードが付ける（監督に選ばせない）。監督が選ぶのは DIRECTOR_SOURCES の 5 つか根拠なしのまま
+// - 根拠は表が 1 つに決める種類はコードが付ける（監督に選ばせない）。監督が選ぶのは DIRECTOR_SOURCES（前からの 5 つと、T104 の時間の目安の 5 つ）の中で表の行が許す物か根拠なし
 // - 失敗（鍵なし・上限・断られた・形の違い・呼び出しの失敗・伏せきれない・台帳を読めない）は差し込みなし（表の固定の状況だけで進む）
 // - ケアマネの手（T20）への世界の返事は、確率をこの表で先に決め、Opus は文だけ（worldReply。本物の文は T20）
 
@@ -51,13 +51,15 @@ import {
 import { CALL_STATUS_LABELS, PHONE_LABELS, SHELTER_LABELS, TSUNAMI_LABELS, WATER_LABELS } from "./labels.ts";
 import { nightLine } from "./night.ts";
 import { hourText, minuteText as minuteWords } from "./time-text.ts";
-import { officePlaces } from "./area.ts";
+import { areaOf, placesOf } from "./area.ts";
 import { cleanWords, isPersonaFailure, reportersOf } from "./persona.ts";
 import {
   afterOf,
   ARRIVAL_ROLE_LABELS,
   EVENT_CATALOG,
   eligibleAreaKinds,
+  eligibleSelfKinds,
+  SELF_DRILL_MAX,
   INJECT_KINDS,
   isInjectKind,
   markWords,
@@ -66,6 +68,8 @@ import {
   type InjectKind,
 } from "./event-catalog.ts";
 import { scenarioOf, type AskKind, type PersonMarks, type WorldState } from "./scenarios.ts";
+import { homeFacts, homeWords } from "./self.ts";
+import { timelineText } from "./time-odds.ts";
 
 // ---------- 世界 → ルールの表の入力 ----------
 // lib/drill/world-clocks.ts へ移した（T90 の準備）。前からの import を壊さないよう、同じ名前をここからも出す
@@ -147,6 +151,8 @@ export function sceneText(input: DirectorInput, aliasOf: ReadonlyMap<string, str
     `差し込める数: ${budgetOf(input)}`,
     // 夜間発災（T59）だけ。時刻の 1 行
     ...(input.night ? [nightLine(input.hour)] : []),
+    // 発災からの時間の帯の目安（T104、lib/drill/time-odds.ts）。種類と出典の id を添える
+    timelineText(input.hour, { with: "director" }),
     ["今の様子:", ...now.map((x) => `- ${x}`)].join("\n"),
     input.incidents.length > 0
       ? ["この刻みの状況:", ...input.incidents.map((e) => `- ${e.text}${who(e.person) ? `（${who(e.person)}）` : ""}`)].join("\n")
@@ -246,6 +252,7 @@ export function weaknessText(
   world: WorldState,
   hour: number,
   area?: ReadonlyArray<InjectKind>,
+  self?: SelfLine,
 ): string {
   const lines = entries.map((e) => {
     const p = e.claude;
@@ -285,8 +292,17 @@ export function weaknessText(
     "本人ごとの弱点:",
     ...lines,
     ...(area ? [`全体に差し込める種類: ${area.length > 0 ? area.join("、") : "なし"}`] : []),
+    // 訓練する人（自分）の事（T104）。連続の時計の大雨想定・地震想定だけ（self が無ければ書かない）
+    ...(self
+      ? [
+          `訓練する人（自分）: 住む所 ${self.home}。自分に差し込める種類: ${self.kinds.length > 0 ? self.kinds.join("、") : "なし"}（訓練に多くて ${SELF_DRILL_MAX} つ）`,
+        ]
+      : []),
   ].join("\n");
 }
+
+/** 弱点の文の自分の行（T104）。home は別名と地形の一言（lib/drill/self.ts の homeWords）、kinds は今差し込める自分の種類 */
+export type SelfLine = { home: string; kinds: ReadonlyArray<InjectKind> };
 
 /** この区切りで差し込んでよい数（T90 の budget。0〜3。無ければ DIRECTOR_MAX） */
 export function budgetOf(input: Pick<DirectorInput, "budget">): number {
@@ -296,39 +312,48 @@ export function budgetOf(input: Pick<DirectorInput, "budget">): number {
 
 // ---------- 指示と返事の形 ----------
 
-/** 監督が根拠に引ける出典（登録簿の id）。返事の basis はこの中か「根拠なし」 */
+/**
+ * 監督が根拠に引ける出典（登録簿の id）。返事の basis はこの中か「根拠なし」。
+ * 前からの 5 つに、発災からの時間の目安（T104、lib/drill/time-odds.ts）の文書を足した（停電・通信・水道・避難所。健康の助言の文書は入れない）
+ */
 export const DIRECTOR_SOURCES = [
   "cao-shishin-2021",
   "mhlw-bcp-2020",
   "nanbyo-shishin-2017",
   "jadp-dialysis-2023",
   "mhlw-dementia-2018",
+  // T104
+  "soumu-iburi-2019",
+  "soumu-tsushin-2026",
+  "mhlw-water-2016",
+  "cao-hinanjo-2016",
+  "cao-fukushi-2021",
 ] as const satisfies ReadonlyArray<SourceId>;
 
-/** 指示の種類の 1 行（出来事の表から。本人か全体か、予定の種類は after の範囲） */
+/** 指示の種類の 1 行（出来事の表から。本人か全体か自分か、予定の種類は after の範囲） */
 function kindLine(k: InjectKind): string {
   const r = EVENT_CATALOG[k];
   const after = r.after ? `。after ${r.after.min}〜${r.after.max} 時間` : "";
-  return `- ${k}（${r.scope === "area" ? "全体" : "本人"}）: ${r.words}${after}`;
+  return `- ${k}（${r.self ? "自分" : r.scope === "area" ? "全体" : "本人"}）: ${r.words}${after}`;
 }
 
 /** 監督の指示を出来事の表から作る（種類の数・中身・何時間後の範囲は表のまま） */
 export const DIRECTOR_SYSTEM = [
   "災害の訓練（発災から 72 時間）の監督。ケアマネが担当する在宅の高齢者（人は全部架空）の訓練で、想定の表の状況に加えて、",
   "この事業所の台帳の弱点を突く小さな状況を差し込む。差し込みはケアマネの対応を試すためで、ケアマネが動けば確かめられる・防げる大きさにする。",
-  "入力は JSON。「想定」は今の時刻・この刻みに差し込める数・世界の様子・この刻みの状況、「弱点」は本人ごとの台帳の弱点の要約と、",
-  "その人に差し込める種類と、全体に差し込める種類。",
+  "入力は JSON。「想定」は今の時刻・この刻みに差し込める数・この時間帯に起きやすい事（公的な資料の目安）・世界の様子・この刻みの状況、",
+  "「弱点」は本人ごとの台帳の弱点の要約と、その人に差し込める種類と、全体に差し込める種類（あれば訓練する人〔自分〕に差し込める種類）。",
   "",
   "返す JSON:",
   "- events: 差し込む状況の配列。0 個から「想定」の「差し込める数」まで。差し込まない刻みがあってよい。",
-  "  - target: 本人の種類は本人の仮名（「A さん」。「弱点」にある人だけ）。全体の種類は「全体」。",
-  "  - kind: 種類の英字。本人の種類はその本人の「差し込める種類」、全体の種類は「全体に差し込める種類」にある物だけ。",
+  "  - target: 本人の種類は本人の仮名（「A さん」。「弱点」にある人だけ）。全体の種類は「全体」。自分の種類は「自分」。",
+  "  - kind: 種類の英字。本人の種類はその本人の「差し込める種類」、全体の種類は「全体に差し込める種類」、自分の種類は「自分に差し込める種類」にある物だけ。",
   "  - text: 画面に出す 1 行（25 字まで）。「家族が栄養剤を持ち出し忘れた」の形。仮名・名前・場所の名前を書かない（画面が名前を添える）。",
   "  - reason: その本人とその種類を選んだ理由。突いた弱点（空欄・支援者なし・残り時間の短さ・連絡なし）を書く（80 字まで）。",
   `  - basis: 根拠の出典の id。当てはまる物が無ければ「${NO_BASIS}」。`,
   "  - after: 予定の種類（after の範囲が書いてある種類）だけ、何時間後かの整数。ほかの種類は省く。",
   "",
-  `種類（kind）はこの ${INJECT_KINDS.length} だけ。表に無い状況は作らない（本人は本人 1 人の所の事、全体は事業所の全体の事）:`,
+  `種類（kind）はこの ${INJECT_KINDS.length} だけ。表に無い状況は作らない（本人は本人 1 人の所の事、全体は事業所の全体の事、自分は訓練するケアマネ自身の身の回りの事）:`,
   ...INJECT_KINDS.map(kindLine),
   "",
   "決まり:",
@@ -337,6 +362,8 @@ export const DIRECTOR_SYSTEM = [
   "3. 人の生き死にを決める状況（亡くなる・意識がない・火事）を作らない。けがや体の具合は書かない（本人役が演じる）。",
   "4. 色・順位・優先・助言を書かない。診断・病名・薬の量を書かない。",
   "5. 全体の種類は target に「全体」と書く。予定の種類は after に何時間後かを書く（範囲は種類ごと。範囲の外は使われない）。",
+  "6. 「この時間帯に起きやすい事」は公的な資料からの目安。種類と時刻を選ぶ参考にし、決めつけない（目安に無い種類を選んでもよく、時刻は前後してよい）。",
+  "7. 自分の種類は、訓練するケアマネ自身の身の回り（自宅・家族・出勤・携帯）。訓練の主役は担当の人なので、まれにだけ使う（全体の種類と合わせて 1 刻みに 1 つ）。",
   "",
   "入力に「返事」があるときだけ、replies も返す（無ければ空の配列か省く）。ケアマネの手（電話・訪問・手配・依頼・報告）に世界が返した結果の言い換え:",
   "- replies: 返事の id ごとに 1 つ。",
@@ -554,12 +581,20 @@ export function createDirectorHook(deps: DirectorDeps): DirectorHook {
         members.map((p) => ({ person: p, source: sources.get(p)!, state: input.people[p] ?? null })),
         input.world,
       );
+      // 地理（町名の別名と、訓練する人の住む所の地形）。参加者の台帳の町名から、世界の地理と同じ作り方（T88）
+      const ledgers = list.map((x) => x.ledger);
+      const geo = areaOf(deps.ai.office.id, ledgers.map((ledger) => ({ ledger })));
+      // 訓練する人（自分）の種類（T104）。self のある訓練（連続の時計の大雨・地震）だけ。全体の種類と同じ枠で受ける（印の付く人なし）
+      const selfKinds = input.self
+        ? eligibleSelfKinds({ world: input.world, hour: input.hour, night: input.night === true, home: homeFacts(input.self, geo) })
+        : [];
+      for (const k of selfKinds) area.set(k, []);
       const asked = input.replies ?? [];
       const max = budgetOf(input);
       if ((max === 0 || (![...eligible.values()].some((k) => k.length > 0) && area.size === 0)) && asked.length === 0) return none;
 
-      // 町名は地区の別名で渡す（T88。参加者の台帳の町名から、世界の地理と同じ作り方）
-      const places = officePlaces(deps.ai.office.id, list.map((x) => x.ledger));
+      // 町名は地区の別名で渡す（T88）
+      const places = placesOf(geo, ledgers);
       const { payload, key } = pseudonymize(list, { ...(deps.on ? { on: deps.on } : {}), places });
       const aliasOf = new Map(key.people.map((p) => [p.personId, p.alias]));
       const last = scenarioOf(input.scenario).hours.at(-1) ?? 72;
@@ -571,7 +606,9 @@ export function createDirectorHook(deps: DirectorDeps): DirectorHook {
         kinds: eligible.get(p) ?? [],
       }));
       const scene = pseudonymizeText(sceneText(input, aliasOf, last), key);
-      const weak = pseudonymizeText(weaknessText(entries, input.world, input.hour, [...area.keys()]), key);
+      const areaKinds = [...area.keys()].filter((k) => !selfKinds.includes(k));
+      const selfLine: SelfLine | undefined = input.self ? { home: homeWords(input.self, geo), kinds: selfKinds } : undefined;
+      const weak = pseudonymizeText(weaknessText(entries, input.world, input.hour, areaKinds, selfLine), key);
       const replies = asked.length > 0 ? pseudonymizeText(replyText(asked, aliasOf), key) : undefined;
       const r = await askJson(buildDirectorRequest(scene, weak, replies), deps.ai);
       return {

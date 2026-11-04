@@ -1,19 +1,28 @@
-// 雨雲・震度の「デモ」の表示（T14）。気象庁の情報は引かない（本物を引くのは本運用。docs/SPEC.md「範囲外」）。
+// 雨雲・震度の「デモ」の表示（T14）。この絵と数字は気象庁の情報を使わない（本物の雨雲は T72 の旗の下で lib/jma/nowcast.ts が重ねる）。
 // 災害の状態（T09 の災害の種類を lib/disaster/state.ts の DISASTER_SCENE で大雨か地震の場面に写した物と警戒レベル）か訓練の筋書き（docs/SPEC.md: 大雨は警戒レベル 3 → 4 → 浸水 3 m、
 // 地震は南海トラフで震度 6 強・沿岸の津波・停電 2 日）から作った絵と数字で、画面には必ず「デモ」の印を付ける。
+// 雨雲の絵は訓練だけ（T103 の決め (c)）: 筋書きの雨の表（lib/drill/rain.ts）から時刻で動く帯を作る（lib/map/drill-rain.ts）。
+// 平時（担当一覧。デモ事業所も本物の事業所も）は作り物の雨を描かず、旗が on なら本物の雨雲を重ねる（off なら雨は出さない）。
 // 本物の警報と見間違えないように、雨雲は気象庁の色の段（青・黄・赤・紫）を使わず、淡い青灰の面と短い雨の筋の 1 色で描き、
 // 「警報」「注意報」「速報」の言葉を使わない。
 
 import type { GeoPoint, HazardKind } from "../db/types.ts";
+import type { RainTrack } from "../drill/rain.ts";
+import { checkMark, sourceById, type CheckMark } from "../sources/index.ts";
+import { drillRain, type RainBand } from "./drill-rain.ts";
+import { seeded } from "./seeded.ts";
+
+export type { RainBand } from "./drill-rain.ts";
+
+/** 訓練の雨の元: 筋書きの雨の表、見ている時刻（発災からの時間。小数は分）、帯を置く真ん中（lib/map/drill-rain.ts の rainAnchor） */
+export type DrillRainInput = { track: RainTrack; hour: number; anchor: GeoPoint };
 
 /**
  * デモの場面。T09 の災害の状態（DISASTER_SCENE で写す。その他・平時は場面なしで、ここへ来ない）か訓練の筋書きから作る。
- * 大雨で警戒レベルを入れていない（null）ときは、名前を「大雨」だけにし、雨雲は弱の帯だけ（入れていないレベルを出さない）
+ * 大雨で警戒レベルを入れていない（null）ときは、名前を「大雨」だけにする。雨雲を描くのは訓練（drill がある）ときだけで、
+ * 描く段は警戒レベルまで（RAIN_STRENGTHS。解除・無しの null は雨なし）
  */
-export type DemoScene = { kind: "heavy_rain"; level: 3 | 4 | 5 | null } | { kind: "earthquake" };
-
-/** 雨雲の帯 1 つ。strength は 1 弱・2 強・3 猛（筋の密度と面の濃さで描き分ける） */
-export type RainBand = { ring: GeoPoint[]; strength: 1 | 2 | 3 };
+export type DemoScene = { kind: "heavy_rain"; level: 3 | 4 | 5 | null; drill?: DrillRainInput } | { kind: "earthquake" };
 
 /**
  * 雨雲の描き方（components/map/CaseMap.tsx の Rain）。淡い青灰の面に、細く短い雨の筋を斜めに不規則な間で置く。
@@ -41,18 +50,6 @@ export const RAIN_STREAK = "#35669a";
 
 /** 雨の筋 1 本（タイルの中の px） */
 export type RainStreak = { x1: number; y1: number; x2: number; y2: number };
-
-/** 決まった種から同じ並びを出す乱数（mulberry32）。描くたびに変わるとサーバーと手元の描画が食い違う */
-function seeded(seed: number): () => number {
-  let a = seed >>> 0;
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0;
-    let t = a;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
 
@@ -98,45 +95,27 @@ export type DemoOverlay = {
   quake: { intensity: string; area: string } | null;
   /** 既定で重ねるハザードの層 */
   layers: HazardKind[];
+  /**
+   * 訓練の雨の参考にした過去の雨（出典の登録簿から引いた題名の頭・URL・作者の確認の印）。雨を描くときだけ。
+   * 題名は括弧の前まで（地図の帯は狭い。全部の題名は docs/SOURCES.md）
+   */
+  basis: { label: string; href: string; mark: CheckMark } | null;
 };
 
-/** 筋書きの雨雲の帯の芯（南西の海から北東の山へ。松山の市街を斜めに横切る） */
-const RAIN_AXIS: [GeoPoint, GeoPoint] = [
-  { lat: 33.735, lng: 132.62 },
-  { lat: 33.925, lng: 132.89 },
-];
-
-/** 帯の半分の幅（km）。強い帯ほど細い */
-const RAIN_HALF_WIDTH_KM: Record<RainBand["strength"], number> = { 1: 3.4, 2: 1.9, 3: 0.9 };
-
-/** 警戒レベルごとに描く帯（レベル 3 は弱だけ、4 は強まで、5 は猛まで） */
-const RAIN_STRENGTHS: Record<3 | 4 | 5, RainBand["strength"][]> = { 3: [1], 4: [1, 2], 5: [1, 2, 3] };
-
-/** 2 点を結ぶ線の両側に半幅 km の帯（4 隅）。度と km の換算は帯の真ん中の緯度で */
-export function bandRing(a: GeoPoint, b: GeoPoint, halfWidthKm: number): GeoPoint[] {
-  const midLat = ((a.lat + b.lat) / 2) * (Math.PI / 180);
-  const kmLat = 111.32;
-  const kmLng = 111.32 * Math.cos(midLat);
-  // km の平面で垂直の向きを出す
-  const dx = (b.lng - a.lng) * kmLng;
-  const dy = (b.lat - a.lat) * kmLat;
-  const len = Math.hypot(dx, dy);
-  const nx = (-dy / len) * halfWidthKm;
-  const ny = (dx / len) * halfWidthKm;
-  const off = (p: GeoPoint, s: 1 | -1): GeoPoint => ({ lat: p.lat + (s * ny) / kmLat, lng: p.lng + (s * nx) / kmLng });
-  return [off(a, 1), off(b, 1), off(b, -1), off(a, -1)];
-}
+/** 警戒レベルごとに描く段（レベル 3 は弱だけ、4 は強まで、5 は猛まで）。訓練の雨が被害状況の警戒レベルより強くならない */
+export const RAIN_STRENGTHS: Record<3 | 4 | 5, RainBand["strength"][]> = { 3: [1], 4: [1, 2], 5: [1, 2, 3] };
 
 export function demoOverlay(scene: DemoScene): DemoOverlay {
   if (scene.kind === "heavy_rain") {
+    const d = scene.drill;
+    const rain = d ? drillRain(d.track, d.hour, scene.level === null ? [] : RAIN_STRENGTHS[scene.level], d.anchor) : [];
+    const src = d && rain.length > 0 ? sourceById(d.track.basis) : null;
     return {
       title: scene.level !== null ? `大雨 レベル ${scene.level}` : "大雨",
-      rain: RAIN_STRENGTHS[scene.level ?? 3].map((strength) => ({
-        strength,
-        ring: bandRing(RAIN_AXIS[0], RAIN_AXIS[1], RAIN_HALF_WIDTH_KM[strength]),
-      })),
+      rain,
       quake: null,
       layers: ["flood", "landslide"],
+      basis: src ? { label: src.title.split("（")[0], href: src.url, mark: checkMark(src.id) } : null,
     };
   }
   return {
@@ -144,5 +123,11 @@ export function demoOverlay(scene: DemoScene): DemoOverlay {
     rain: [],
     quake: { intensity: "6強", area: "松山市" },
     layers: ["tsunami", "landslide"],
+    basis: null,
   };
+}
+
+/** 地図の上に「デモ」の帯を出すか（作った絵か数字があるときだけ。平時の大雨の場面は雨を描かないので出さない） */
+export function demoShown(demo: DemoOverlay | null): demo is DemoOverlay {
+  return demo !== null && (demo.rain.length > 0 || demo.quake !== null);
 }

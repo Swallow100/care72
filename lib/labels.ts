@@ -373,7 +373,8 @@ export const AUTHOR_ROLE_LABELS: Record<AuthorRole, string> = {
 
 /** 入れる欄（T03）の言葉 */
 export const INTAKE_LABELS = {
-  title: "入力",
+  /** 見出し。主のボタンが「入力」なので、見出しは AI で入れる欄だと分かる言葉に（11/4。前は見出しもボタンの書き手も「入力」で、ボタンは「分ける」） */
+  title: "AI 入力",
   tabText: "文字",
   tabManual: "手入力",
   placeholder: "様子・ケアプランを貼る",
@@ -412,8 +413,8 @@ export const INTAKE_LABELS = {
   retry: "再試行",
   edited: "修正済",
   // ---- T45: 入れる欄を AI 専用に（文字・写真と PDF・小さなマイク）と会話の流れ ----
-  /** 分ける（文を Claude が台帳の欄に分ける主のボタン） */
-  split: "分ける",
+  /** 主のボタン（文を Claude が台帳の欄に振り分けて入れる）。前は「分ける」で、何をするのか伝わらなかった（11/4） */
+  split: "入力",
   /** 写真・PDF を選んで読ませる */
   readFile: "写真・PDF 読取",
   reading: "読取中",
@@ -422,7 +423,7 @@ export const INTAKE_LABELS = {
   fileEmpty: "空ファイル",
   /** 会話の流れの見出しと吹き出しの書き手 */
   log: "やりとり",
-  you: "入力",
+  you: "ケアマネ",
   ask: "問い",
   answer: "答え",
   /** 残りの問い（「残り 4 問」） */
@@ -503,6 +504,54 @@ export const PLACE_LABELS = {
 } as const;
 
 /**
+ * 避難経路の地図（T102）: 本人のページの避難の面の「経路地図」。ボタン・見出し・状態は 2〜4 字。
+ * 動かすボタン（左・右・上・下）は様式の欄の位置の直し（T86、components/forms/mapping/PageBoxes.tsx）と同じ言葉
+ */
+export const ROUTE_LABELS = {
+  /** 面の入口と窓の題 */
+  open: "経路地図",
+  title: "避難経路",
+  /** 地図を押すと置く物 */
+  tool: "置く物",
+  dest: "避難先",
+  via: "経由点",
+  /** 手段 */
+  mode: "手段",
+  foot: "徒歩",
+  car: "車",
+  /** openrouteservice で引く・手で足した経由点を 1 つ外す・地図を家と避難先が入る大きさに */
+  make: "経路作成",
+  viaUndo: "経由削除",
+  fit: "全体",
+  left: "左",
+  right: "右",
+  up: "上",
+  down: "下",
+  save: "保存",
+  discard: "取消",
+  close: "閉じる",
+  /** 線の出どころ（openrouteservice・手で結んだ線） */
+  ors: "自動",
+  hand: "手入力",
+  /** 家の位置が無い・避難先の位置が無い・線が無い */
+  noHome: "家 未設定",
+  noDest: "位置未設定",
+  none: "未作成",
+  busy: "取得中",
+  /** 「経路作成」の失敗（鍵なし・経路なし・上限・失敗）。どれも手入力の線に戻る */
+  no_key: "自動不可",
+  no_route: "経路なし",
+  limit: "上限到達",
+  failed: "取得失敗",
+  too_far: "遠すぎ",
+  /** 保存の結果 */
+  conflict: "競合",
+  saveFailed: "保存失敗",
+  /** 出典の見出し */
+  credit: "出典",
+} as const;
+
+/**
  * 写真・PDF を送る前に塗って隠す画面（T52。T45 の読む前の確認の窓「読取確認」を置き換えた）。
  * 写った氏名・住所・電話・町名を人が四角で黒く塗り、塗った後の画像だけを送る。元の写真・PDF はブラウザの外へ出さない。
  * ボタン・見出し・状態は 2〜4 字
@@ -553,9 +602,9 @@ export const dropConfirmText = (names: readonly string[]) =>
 
 /** 会話の流れの AI と人の言葉（T45）。AI の言葉は Claude の出力の数を数えるだけで、文は定型 */
 export const INTAKE_SAYS = {
-  /** 「7 項目に分けました（医療 3・連絡先 2・避難 2）」 */
-  split: (n: number, parts: string) => `${n} 項目に分けました${parts ? `（${parts}）` : ""}`,
-  /** 分ける物が無かった */
+  /** 「7 項目を見つけました（医療 3・連絡先 2・避難 2）」 */
+  split: (n: number, parts: string) => `${n} 項目を見つけました${parts ? `（${parts}）` : ""}`,
+  /** 入れる物が無かった */
   none: "本人のページに入る事は見つかりませんでした",
   /** 写真・PDF を読んだ（「お薬手帳.jpg を読みました」） */
   read: (name: string) => `${name} を読みました`,

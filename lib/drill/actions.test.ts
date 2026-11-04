@@ -389,7 +389,7 @@ describe("世界の返事", () => {
     expect(await call(SELF_01, seq(0, 0.95))).toMatchObject({ status: "noAnswer", ok: false, speech: null, pickup: "no_answer" });
     expect(await call({ ...SELF_01, hasPhone: false }, () => 0)).toMatchObject({ status: "noNumber", ok: false });
     const lineDown = { ...s, world: applyEvent(s.world, { change: injectChange("line_down", "p-01"), text: "", person: "p-01" }, 3) };
-    expect(await call(SELF_01, () => 0, lineDown)).toMatchObject({ status: "noLine", because: "家の電話 不通", ok: false });
+    expect(await call(SELF_01, () => 0, lineDown)).toMatchObject({ status: "noLine", because: "家の電話 通話不可", ok: false });
     // 施設: 田中の透析施設が休止なら受けられない
     const flooded = { ...s, world: applyEvent(s.world, { change: injectChange("dialysis_flooded", "p-03"), text: "", person: "p-03" }, 3) };
     const dialysis: ActTarget = { id: "c-03-4", kind: "dialysis_center", label: "透析施設", hasPhone: true };
@@ -412,7 +412,7 @@ describe("世界の返事", () => {
     expect(decideAction({ kind: "evacuate_self", person: null, target: null }, s.world, 3, () => 0.99).status).toBe("evacuated");
     expect(decideAction({ kind: "report_city", person: null, target: null }, { ...s.world, phone: "down" }, 3, () => 0)).toMatchObject({
       status: "noLine",
-      because: "電話 不通",
+      because: "電話 通話不可",
     });
   });
 });

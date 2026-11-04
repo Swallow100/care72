@@ -29,7 +29,7 @@ export type DrillKind = "heavy_rain" | "earthquake";
 export const WATER_STATES = ["none", "out", "restored"] as const;
 export type WaterState = (typeof WATER_STATES)[number];
 
-/** 電話: 通常・不安定・不通 */
+/** 電話: 通常・不安定・通話不可（T105 で「不通」から） */
 export const PHONE_STATES = ["ok", "busy", "down"] as const;
 export type PhoneState = (typeof PHONE_STATES)[number];
 
@@ -91,7 +91,17 @@ export type ExtraMark = (typeof EXTRA_MARKS)[number];
  * 世界の状態を変えない出来事の話題（T92、WorldChange の note）。状況の欄と本人役への文に出るだけ。
  * 給水所・情報の混乱・土砂の警戒
  */
-export const NOTE_TOPICS = ["water_station", "info_confusion", "landslide_warn"] as const;
+export const NOTE_TOPICS = [
+  "water_station",
+  "info_confusion",
+  "landslide_warn",
+  // T104: 訓練する人（自分）の身の回り（lib/drill/event-catalog.ts の self_*）。家族の無事の確認は予定の出来事から
+  "self_outage",
+  "self_family",
+  "self_family_ok",
+  "self_late",
+  "self_battery",
+] as const;
 export type NoteTopic = (typeof NOTE_TOPICS)[number];
 
 /**
@@ -553,7 +563,7 @@ const EARTHQUAKE: Scenario = {
         { change: { kind: "quake", intensity: "6強" }, text: "南海トラフ 震度 6強" },
         { change: { kind: "tsunami", state: "evacuate" }, text: "津波警報、沿岸に避難指示" },
         { change: { kind: "outage", area: { scope: "office" } }, text: "停電 全域" },
-        { change: { kind: "phone", state: "down" }, text: "電話 不通" },
+        { change: { kind: "phone", state: "down" }, text: "電話 通話不可" },
       ],
       turns: [{ person: "p-07", who: WHO.any, color: "green", source: "agent", whereNow: "home", saying: "家は大丈夫" }],
     },
