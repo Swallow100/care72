@@ -1461,7 +1461,7 @@ export async function loadPersonRows(db: D1Database, brief: PersonBrief): Promis
     db
       .prepare(
         `SELECT id, person_id, kind, relation, name, phone, reach, emergency_order, supporter_order,
-                night_ok, has_car, has_smartphone, note, sort
+                night_ok, has_car, has_smartphone, note, kana, address, mobile, sort
            FROM contacts WHERE person_id = ?1 ORDER BY sort, id`,
       )
       .bind(brief.id),

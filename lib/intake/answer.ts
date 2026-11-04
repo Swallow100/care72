@@ -3,6 +3,7 @@
 import type { PendingStatus } from "../db/types.ts";
 import type { Question } from "./ask.ts";
 import type { IntakeChange } from "./changes.ts";
+import { contactPartValue } from "./contact-parts.ts";
 import { intakeField, normalizeValue } from "./fields.ts";
 
 /** 答えの入力。choice は選んだ値（複数なら全部）、value は文字・数字の欄、night は選んだ連絡先 */
@@ -51,6 +52,12 @@ export function answerChanges(q: Question, input: AnswerInput): IntakeChange[] |
       }
       if (a.contacts.length === 0) return null;
       return a.contacts.map((c): IntakeChange => ({ t: "contact", id: c.id, value: { kind: c.kind, nightOk: false } }));
+    }
+    case "contact": {
+      // 連絡先のフリガナ・住所・携帯（T117）。その連絡先の空いた所に入る（保存は上書きしない）
+      if (input.kind !== "value") return null;
+      const v = contactPartValue(a.part, input.value);
+      return v === null ? null : [{ t: "contact", id: a.contactId, value: { kind: a.contactKind, [a.part]: v } }];
     }
     case "free":
       return null;

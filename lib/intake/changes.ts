@@ -75,6 +75,13 @@ export type ContactValue = {
    */
   hasSmartphone?: boolean | null;
   hasCar?: boolean | null;
+  /**
+   * フリガナ・住所（市町村と町名まで）・携帯番号（T117、contacts.kana・address・mobile）。問いの答え・面の編集・紙に直接書く道だけ。
+   * AI の分け方には無く、AI の保存に混ざるとサーバーが断る（save.ts の aiHandOnly。docs/progress/t117.md の問い 5）
+   */
+  kana?: string;
+  address?: string;
+  mobile?: string;
 };
 
 /** 本人の住所（市・町名。番地は持たない）。台帳の basic.address */
@@ -159,10 +166,13 @@ export function medicationText(m: Partial<MedicationValue>): string {
 export function contactText(c: Partial<ContactValue>): string {
   return join([
     c.name,
+    c.kana,
     c.relation,
     c.kind && CONTACT_KIND_LABELS[c.kind],
     c.reach ? CONTACT_REACH_LABELS[c.reach] : undefined,
+    c.address,
     c.phone,
+    c.mobile,
     c.nightOk === true ? "夜間可" : c.nightOk === false ? "夜間不可" : undefined,
     c.emergencyOrder != null ? `緊急 ${c.emergencyOrder}` : undefined,
     c.supporterOrder != null ? `支援 ${c.supporterOrder}` : undefined,

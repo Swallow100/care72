@@ -18,6 +18,7 @@ import type {
   DeviceKind,
   HazardKind,
   Household,
+  HousingType,
   Ledger,
   MedicationCategory,
   MyTimeline,
@@ -202,6 +203,15 @@ export const STRUCTURE_LABELS: Record<Structure, string> = {
   concrete: "鉄筋",
   other: "その他",
 };
+
+/** 住居の種別（T117。松山市の様式の【種別】の字のまま） */
+export const HOUSING_TYPE_LABELS: Record<HousingType, string> = { detached: "戸建住宅", apartment: "共同住宅" };
+
+/**
+ * 連絡先のフリガナ・住所・携帯（T117、contacts.kana・address・mobile）。面の編集の欄の名前と、問い・紙に直接書く窓の欄の名前。
+ * 2 つ目の電話は「携帯」（1 つ目の「電話」と並べる）
+ */
+export const CONTACT_PART_LABELS = { kana: "フリガナ", address: "住所", phone: "電話", mobile: "携帯" } as const;
 
 export const DEVICE_LABELS: Record<DeviceKind, string> = {
   oxygen: "在宅酸素",
