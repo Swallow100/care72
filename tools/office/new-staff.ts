@@ -83,7 +83,7 @@ export function parseNewStaffArgs(argv: string[]): ParseResult {
 
   const flags = (["reissue", "disable", "enable"] as const).filter((k) => values[k] === true);
   if (flags.length > 1) return { ok: false, error: `動き 1 つだけ: ${flags.map((k) => `--${k}`).join(" ")}` };
-  const action: StaffAction = flags[0] ?? "create";
+  const action: StaffAction = flags.length > 0 ? flags[0] : "create";
 
   const out = typeof values.out === "string" ? values.out : null;
   if (out !== null && insideRepo(out)) return { ok: false, error: "出力先 不可（リポジトリの中）" };
