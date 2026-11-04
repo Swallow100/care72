@@ -571,7 +571,12 @@ describe("自由対応", () => {
     expect(resolveFree({ kind: "evacuate_self", callee: "" }, ctx)).toEqual({ as: "evacuate_self", target: null });
     expect(resolveFree(null, ctx)).toEqual({ as: "note", target: null });
     // 119 は相手の区分が無ければ本人から
-    expect(resolveFree({ kind: "note", callee: "" }, { ...ctx, text: "救急を呼ぶ" })).toEqual({ as: "advise_119", target: SELF_01 });
+    expect(resolveFree({ kind: "note", callee: "" }, { ...ctx, text: "救急車を呼ぶ" })).toEqual({ as: "advise_119", target: SELF_01 });
+    expect(resolveFree({ kind: "note", callee: "" }, { ...ctx, text: "救急隊の要請" })).toEqual({ as: "advise_119", target: SELF_01 });
+    // 救急病院・救急外来は病院の手（119 にしない）
+    expect(
+      resolveFree({ kind: "request_hospital", callee: "hospital" }, { text: "救急病院に受け入れを頼む", person: "p-03", contacts: [HOSPITAL_03] }),
+    ).toEqual({ as: "request_hospital", target: HOSPITAL_03 });
     expect(resolveFree(null, { text: "119", person: null, contacts: [] })).toEqual({ as: "note", target: null });
   });
 
