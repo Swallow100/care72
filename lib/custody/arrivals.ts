@@ -3,10 +3,12 @@
 // 受け持ちを閉じた行（搬送・退所）も、受け入れた事実なので入れる。搬送で閉じた行は搬送の時刻と行き先も入れ、
 // 表の中で「搬送 行き先」になる（T24。退所は「到着」のまま）。発災から今までの物だけ（信号と同じ。lib/disaster/triage.ts の withinDisaster）。
 // ただし受入中（解除していない）の行は、今の災害の始まりより前に受け入れた物も渡す（arrivalInScope。T80）。
+// そのときは理由に受入日を添える（「到着 みどり小学校 受入 11/2」。triageArrivals。T82）。
 // 誰が受け入れても同じ（アカウントをまたいで読む）。担当一覧・本人のページ・様式 9・受け持ちの一覧はみなここを通る。
 
 import type { D1Database } from "@cloudflare/workers-types";
 import type { ReleaseKind } from "../db/types.ts";
+import { dayJst } from "../disaster/state.ts";
 import { withinDisaster } from "../disaster/triage.ts";
 import type { Situation, TriageArrival } from "../triage/index.ts";
 
@@ -45,11 +47,29 @@ export function arrivalInScope(r: Pick<ArrivalRow, "received_at" | "released_at"
   return withinDisaster(r.received_at, s);
 }
 
+/**
+ * 受入中のまま今の災害の始まりより前に受け入れた行は、表に渡す避難所の名前に受入日を添える（T82。review 11/4 正しさ 中 4）。
+ * 理由は「到着 みどり小学校 受入 11/2」。解除し忘れた何日も前の受け入れが、新しい発災の「到着」と見分けられるように。
+ * 色・行・組・並びは変えない（lib/triage は避難所の名前を理由の言葉にだけ使う。T80 の決め）
+ */
+function toScopedArrival(r: ArrivalRow, s: Pick<Situation, "disasterAt">): TriageArrival {
+  const a = toTriageArrival(r);
+  if (r.released_at === null && Date.parse(r.received_at) < Date.parse(s.disasterAt)) {
+    a.shelter = `${a.shelter} 受入 ${dayJst(r.received_at)}`;
+  }
+  return a;
+}
+
+/** 本人 1 人の受け入れの行を、表に渡す物（arrivalInScope）だけ表の入力に。受入一覧（board）もここを通る */
+export function triageArrivals(rows: ReadonlyArray<ArrivalRow>, s: Pick<Situation, "disasterAt" | "now">): TriageArrival[] {
+  return rows.filter((r) => arrivalInScope(r, s)).map((r) => toScopedArrival(r, s));
+}
+
 function group(rows: ReadonlyArray<ArrivalRow>, s: Situation | null): Map<string, TriageArrival[]> {
   const out = new Map<string, TriageArrival[]>();
   for (const r of rows) {
     if (s && !arrivalInScope(r, s)) continue;
-    out.set(r.person_id, [...(out.get(r.person_id) ?? []), toTriageArrival(r)]);
+    out.set(r.person_id, [...(out.get(r.person_id) ?? []), s ? toScopedArrival(r, s) : toTriageArrival(r)]);
   }
   return out;
 }

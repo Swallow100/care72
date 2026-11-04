@@ -27,7 +27,7 @@ import { COLOR_TONES, markItems, type MarkItem, type StateTone } from "../person
 import { toTriagePerson } from "../triage/from-ledger.ts";
 import { compareResults, type Color, type GreenVia, type Situation, type TriageResult } from "../triage/index.ts";
 import type { StaffActor } from "./actor.ts";
-import { ARRIVAL_COLUMNS, arrivalInScope, toTriageArrival, type ArrivalRow } from "./arrivals.ts";
+import { ARRIVAL_COLUMNS, triageArrivals, type ArrivalRow } from "./arrivals.ts";
 import { CUSTODY_LABELS } from "./labels.ts";
 
 export type StaffRow = {
@@ -208,7 +208,7 @@ export async function loadStaffBoard(
           clocks: myClocks,
         }),
         signals: (signalsOf.get(r.person_id) ?? []).filter((x) => withinDisaster(x.occurred_at, situation)).map(toTriageSignal),
-        arrivals: myArrivals.filter((a) => arrivalInScope(a, situation)).map(toTriageArrival),
+        arrivals: triageArrivals(myArrivals, situation),
         ...(override ? { override } : {}),
         town,
       },

@@ -76,7 +76,17 @@ export type CallPayload = {
   receivedAt?: string;
   /** 端末で作った重ならない id（同じ id の 2 回目は捨てる。経過の行の id は callEntryId） */
   clientId?: string;
+  /** 聞いた安否を信号にしなかった訳（T82）。heard は聞いた事実として残し、表には入れていない */
+  uncounted?: CallUncounted;
 };
+
+/**
+ * 聞いた安否を信号にしなかった訳（T82）。normal は平時、injury は至急維持（赤 けが・動けない の人への「無事」など、T58・T78）、
+ * old は古い押下（24 時間より古い・今の発災より前。callOccurredAt）。どれも電話の経過の行は書く
+ */
+export const CALL_UNCOUNTED = ["normal", "injury", "old"] as const;
+export type CallUncounted = (typeof CALL_UNCOUNTED)[number];
+const isCallUncounted = (v: unknown): v is CallUncounted => typeof v === "string" && (CALL_UNCOUNTED as readonly string[]).includes(v);
 
 export function parseCallPayload(text: string | null): CallPayload | null {
   if (!text) return null;
@@ -95,6 +105,7 @@ export function parseCallPayload(text: string | null): CallPayload | null {
       ...(memo ? { memo } : {}),
       ...(typeof v.receivedAt === "string" ? { receivedAt: v.receivedAt } : {}),
       ...(typeof v.clientId === "string" ? { clientId: v.clientId } : {}),
+      ...(heard && isCallUncounted(v.uncounted) ? { uncounted: v.uncounted } : {}),
     };
   } catch {
     return null;
@@ -142,18 +153,26 @@ export type CallError = "forbidden" | "not_found" | "invalid" | "normal" | "inju
 
 /**
  * duplicate は同じ端末の id の 2 回目（前に届いていたので書かない。端末は届いた扱いで消す）。
- * label は断った物と理由の短い形（injury だけ。「無事 不可（本人が「けが」）」、T78）。無ければ error の言葉
+ * uncounted は経過の行を書いたが聞いた安否を信号にしなかった訳（T82）。label はそのときの短い言葉（normal・injury だけ。
+ * 「無事 不可（本人が「けが」）」「無事 不可（平時）」）。断る（ok false）のは経過も書かない物だけ
  */
-export type CallSaveResult = { ok: true; duplicate?: true } | { ok: false; error: CallError; label?: string };
+export type CallSaveResult =
+  | { ok: true; duplicate?: true; uncounted?: CallUncounted; label?: string }
+  | { ok: false; error: CallError; label?: string };
+
+/** 信号にしなかった聞いた安否の言葉（T78・T82）: 聞いた安否（「無事」「無事でない」）＋「不可」＋訳 */
+const refusalLabel = (heard: Heard, why: string) => `${heard.color === "green" ? HEARD_LABELS.green : HEARD_LABELS.red} 不可（${why}）`;
 
 /**
- * 至急を保つために断った通話の言葉（T78）: 断った聞いた安否（「無事」「無事でない」）＋「不可」＋表の理由の頭（けが・動けないを言った人の答え。
+ * 至急を保つために信号にしなかった通話の言葉（T78）: 聞いた安否＋「不可」＋表の理由の頭（けが・動けないを言った人の答え。
  * 「本人が「けが」」「分類（ケアマネ）: 動けない」）。前は「至急維持」だけで、何を断ったか分からなかった。色と順は表のまま
  */
 export function injuryRefusal(heard: Heard, reason: string): string {
-  const why = reason.split("、")[0];
-  return `${heard.color === "green" ? HEARD_LABELS.green : HEARD_LABELS.red} 不可（${why}）`;
+  return refusalLabel(heard, reason.split("、")[0]);
 }
+
+/** 平時に聞いた安否を信号にしなかった言葉「無事 不可（平時）」（T82。電話の経過は書いたので、前の「平時」だけでは書かなかったように読める） */
+export const normalRefusal = (heard: Heard) => refusalLabel(heard, "平時");
 
 const bit = (v: boolean | undefined): 0 | 1 | null => (v === undefined ? null : v ? 1 : 0);
 
@@ -167,26 +186,31 @@ export const callSignalId = (clientId: string) => `call-${clientId}-s`;
 /** 押した時刻を経過に使える古さの上限（ミリ秒） */
 export const CALL_PRESSED_MAX_AGE_MS = 24 * 3_600_000;
 
+/** 経過と信号の時刻と、古い押下か（old なら聞いた安否の信号は作らない） */
+export type CallTime = { at: string; old: boolean };
+
 /**
- * 経過と信号の時刻: 端末で押した時刻。読めない・未来・発災より前・24 時間より古い物はサーバーの受けた時刻（now）に丸める
- * （端末の時計のずれや古い貯めで、最終連絡・連絡なしの時間を動かしすぎない。11/4 設計の答え）
+ * 経過と信号の時刻: 端末で押した時刻。サーバーの受けた時刻（now）に丸めるのは、読めない物と未来の物（端末の時計が進んでいる）だけ。
+ * 24 時間より古い・今の発災より前の押下は、押した時刻のまま返して old を立てる（経過には押した時刻で書き、安否の信号は作らない）。
+ * 前（T71 の続き）は古い押下も now に丸めていたので、古い「通話 無事」がいちばん新しい信号になり、あとから来た本人の赤を
+ * 上書きしえた（表はいちばん新しい信号で決まる。review 11/4 正しさ 高 1、T82）
  */
-export function callOccurredAt(pressedAt: string | null | undefined, now: string, disasterStartedAt: string | null): string {
+export function callOccurredAt(pressedAt: string | null | undefined, now: string, disasterStartedAt: string | null): CallTime {
   const t = Date.parse(pressedAt ?? "");
   const n = Date.parse(now);
-  if (!Number.isFinite(t) || !Number.isFinite(n)) return now;
-  if (t > n || n - t > CALL_PRESSED_MAX_AGE_MS) return now;
+  if (!Number.isFinite(t) || !Number.isFinite(n) || t > n) return { at: now, old: false };
   const s = disasterStartedAt ? Date.parse(disasterStartedAt) : NaN;
-  if (Number.isFinite(s) && t < s) return now;
-  return new Date(t).toISOString();
+  const old = n - t > CALL_PRESSED_MAX_AGE_MS || (Number.isFinite(s) && t < s);
+  return { at: new Date(t).toISOString(), old };
 }
 
 /**
  * 電話の記録を書く。ケアマネの役だけ、事業所の中の本人の、番号のある連絡先だけ。
- * 通話で聞いた安否があれば、災害モードの間だけ信号（出どころ care_manager）を足す（平時は normal で断る。平時の通話だけは残せる）。
- * 保存のときにサーバーで本人を表に当て直し（lib/list/override.ts の saveOverride と同じ personDisaster）、今の表の行が
- * red_injury（けが・動けない）なら、「無事」と、けが・動けないのどちらも付けない「無事でない」は書かずに断る（injury。
+ * 通話で聞いた安否があれば、災害モードの間だけ信号（出どころ care_manager）を足す。
+ * 保存のときにサーバーで本人を表に当て直し（lib/list/override.ts の saveOverride と同じ personDisaster。押した時刻までの信号で）、
+ * その時の表の行が red_injury（けが・動けない）なら、「無事」と、けが・動けないのどちらも付けない「無事でない」は信号にしない（injury。
  * どちらも連絡順の組を下げるため。けが か 動けない を付けた「無事でない」は通す。下げるなら理由つきの順番変更。11/3 設計の答え）。
+ * 平時（normal）と古い押下（old。callOccurredAt）も信号にしない。どれも電話の経過の行は書き、payload に uncounted を残す（T82）。
  * 期限を過ぎた機器の時計・頼り先の未確認・時計の半分は、ケアマネの緑のあとも表がそのまま赤・黄にする（ここでは見ない）
  */
 export async function saveCall(db: D1Database, p: Principal | null, input: CallInput, now: string): Promise<CallSaveResult> {
@@ -214,21 +238,35 @@ export async function saveCall(db: D1Database, p: Principal | null, input: CallI
   if (!contact) return { ok: false, error: "not_found" };
   if (!contact.phone?.trim()) return { ok: false, error: "invalid" };
 
-  if (heard) {
-    const rows = await loadPersonPage(db, p, person.id);
-    if (!rows) return { ok: false, error: "not_found" };
-    const d = await personDisaster(db, rows, now);
-    if (!d.triage) return { ok: false, error: "normal" };
-    const keepsInjury = heard.color === "red" && (heard.injured === true || heard.canMove === false);
-    if (d.triage.rule === "red_injury" && !keepsInjury) return { ok: false, error: "injury", label: injuryRefusal(heard, d.triage.reason) };
-  }
-
   // 押した時刻（丸めたあと）。発災より前かは事業所の今の災害モードの始まりで見る
   const disaster = await db
     .prepare("SELECT started_at FROM disaster_state WHERE office_id = ?1")
     .bind(person.office_id)
     .first<{ started_at: string | null }>();
-  const occurredAt = callOccurredAt(input.pressedAt, now, disaster?.started_at ?? null);
+  const time = callOccurredAt(input.pressedAt, now, disaster?.started_at ?? null);
+  const occurredAt = time.at;
+
+  // 聞いた安否を信号にするか。しないときも電話の経過の行は書く（端末の保留から送り直した通話の記録を捨てない。review 中 2、T82）
+  let uncounted: CallUncounted | null = null;
+  let label: string | undefined;
+  if (heard) {
+    if (time.old) uncounted = "old";
+    else {
+      const rows = await loadPersonPage(db, p, person.id);
+      if (!rows) return { ok: false, error: "not_found" };
+      // 押した時刻までの信号で当てる（押したあとに来た本人の「けが」で断らない。表はいちばん新しい信号で決まるので、
+      // 押した時刻の「無事」はあとの「けが」を上書きしない）
+      const d = await personDisaster(db, rows, occurredAt);
+      const keepsInjury = heard.color === "red" && (heard.injured === true || heard.canMove === false);
+      if (!d.triage) {
+        uncounted = "normal";
+        label = normalRefusal(heard);
+      } else if (d.triage.rule === "red_injury" && !keepsInjury) {
+        uncounted = "injury";
+        label = injuryRefusal(heard, d.triage.reason);
+      }
+    }
+  }
 
   const payload: CallPayload = {
     source: CALL_SOURCE,
@@ -239,15 +277,18 @@ export async function saveCall(db: D1Database, p: Principal | null, input: CallI
     ...(memo ? { memo } : {}),
     receivedAt: now,
     ...(clientId ? { clientId } : {}),
+    ...(heard && uncounted ? { uncounted } : {}),
   };
-  const signalId = heard ? (clientId ? callSignalId(clientId) : crypto.randomUUID()) : null;
+  const signalId = heard && !uncounted ? (clientId ? callSignalId(clientId) : crypto.randomUUID()) : null;
   const statements = [];
+  // 重ねないのは同じ id だけ（ON CONFLICT(id)）。INSERT OR IGNORE は CHECK の違反も黙って捨て、書けていないのに届いた扱いにしえた
   if (heard && signalId) {
     statements.push(
       db
         .prepare(
-          `INSERT OR IGNORE INTO signals (id, person_id, drill_id, color, source, injured, can_move, occurred_at)
-           VALUES (?1, ?2, NULL, ?3, 'care_manager', ?4, ?5, ?6)`,
+          `INSERT INTO signals (id, person_id, drill_id, color, source, injured, can_move, occurred_at)
+           VALUES (?1, ?2, NULL, ?3, 'care_manager', ?4, ?5, ?6)
+           ON CONFLICT(id) DO NOTHING`,
         )
         .bind(signalId, person.id, heard.color, bit(heard.injured), bit(heard.canMove), occurredAt),
     );
@@ -255,8 +296,9 @@ export async function saveCall(db: D1Database, p: Principal | null, input: CallI
   statements.push(
     db
       .prepare(
-        `INSERT OR IGNORE INTO timeline_entries (id, person_id, author_id, author_role, kind, body, payload, signal_id, occurred_at)
-         VALUES (?1, ?2, ?3, 'care_manager', 'called', ?4, ?5, ?6, ?7)`,
+        `INSERT INTO timeline_entries (id, person_id, author_id, author_role, kind, body, payload, signal_id, occurred_at)
+         VALUES (?1, ?2, ?3, 'care_manager', 'called', ?4, ?5, ?6, ?7)
+         ON CONFLICT(id) DO NOTHING`,
       )
       .bind(
         clientId ? callEntryId(clientId) : crypto.randomUUID(),
@@ -271,7 +313,8 @@ export async function saveCall(db: D1Database, p: Principal | null, input: CallI
   const results = await db.batch(statements);
   // 同じ id が同時に 2 つ来たときは、先に書いた方だけが残る（主キー）
   const wrote = (results[results.length - 1] as { meta?: { changes?: number } } | undefined)?.meta?.changes;
-  return clientId && wrote === 0 ? { ok: true, duplicate: true } : { ok: true };
+  if (clientId && wrote === 0) return { ok: true, duplicate: true };
+  return uncounted ? { ok: true, uncounted, ...(label ? { label } : {}) } : { ok: true };
 }
 
 /** 行の詳細に出す電話の記録 1 行 */
@@ -285,6 +328,8 @@ export type CallLog = {
   who: string | null;
   /** 通話で聞いた安否 */
   heard: Heard | null;
+  /** 聞いた安否を信号にしなかった訳（T82。行の詳細は意味色で塗らない） */
+  uncounted: CallUncounted | null;
   /** メモ（経過の payload から。本文には無い） */
   memo: string | null;
 };
@@ -310,6 +355,7 @@ export function callLogsOf(rows: ReadonlyArray<CallEntryRow>): CallLog[] {
         contactId: p?.contactId ?? null,
         who: r.author_name,
         heard: p?.heard ?? null,
+        uncounted: p?.uncounted ?? null,
         memo: p?.memo ?? null,
       };
     })
