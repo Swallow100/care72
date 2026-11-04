@@ -41,7 +41,7 @@ describe("wrangler: 手元でない命令を止める（CLAUDE.md「動かし方
     "pnpm wrangler deploy",
     "node_modules/.bin/wrangler secret put GEMINI_API_KEY",
     "node node_modules/wrangler/bin/wrangler.js deploy",
-    "cd /c/Users/choco/dev/care72 && wrangler deploy",
+    "cd /c/Users/user/dev/care72 && wrangler deploy",
     "npm test; npx wrangler login",
     "FOO=1 wrangler deploy",
     "env CLOUDFLARE_ACCOUNT_ID=x wrangler deploy",
@@ -79,8 +79,8 @@ describe("鍵のファイル: .env・.dev.vars を読む・書く命令を止め
   it.each([
     "cat .dev.vars",
     "cat ./.dev.vars",
-    "cat /c/Users/choco/dev/care72/.dev.vars",
-    'cat "C:\\Users\\choco\\dev\\care72\\.dev.vars"',
+    "cat /c/Users/user/dev/care72/.dev.vars",
+    'cat "C:\\Users\\user\\dev\\care72\\.dev.vars"',
     "cat '.dev.vars'",
     "cat .de\\v.vars",
     "type .dev.vars",
@@ -143,7 +143,7 @@ describe("履歴: force push・rebase・amend・reset --hard を止める（CLAU
     "git commit --amend -m x",
     "git commit --amend --no-edit",
     "git reset --hard HEAD~1",
-    "git -C /c/Users/choco/dev/care72 push --force",
+    "git -C /c/Users/user/dev/care72 push --force",
     "git -c core.editor=true rebase main",
     "git add -A && git commit --amend",
     "gh pr merge --squash",
@@ -206,7 +206,7 @@ describe("PowerShell", () => {
     ["Get-Content .dev.vars", SECRET],
     ["gc .\\.dev.vars", SECRET],
     ["type .dev.vars", SECRET],
-    ["Get-Content -Path C:\\Users\\choco\\dev\\care72\\.dev.vars", SECRET],
+    ["Get-Content -Path C:\\Users\\user\\dev\\care72\\.dev.vars", SECRET],
     ["Get-Content .dev.vars.example, .env", SECRET],
     ["Set-Content .dev.vars 'KEY=x'", SECRET],
     ["'KEY=x' | Out-File .dev.vars", SECRET],
@@ -243,7 +243,7 @@ describe("Read・Write・Edit・Grep のパス", () => {
   const at = (p: string) => `${ROOT}\\${p}`;
   it.each([
     ["Read", "file_path", at(".dev.vars")],
-    ["Read", "file_path", "/c/Users/choco/dev/care72/.env"],
+    ["Read", "file_path", "/c/Users/user/dev/care72/.env"],
     ["Write", "file_path", at(".dev.vars")],
     ["Edit", "file_path", at(".env.local")],
     ["NotebookEdit", "notebook_path", at(".env")],
@@ -277,7 +277,7 @@ describe("Read・Write・Edit・Grep のパス", () => {
 });
 
 describe("PostToolUse: 型の検査を流すファイル", () => {
-  const root = "C:\\Users\\choco\\dev\\care72";
+  const root = "C:\\Users\\user\\dev\\care72";
   const target = (tool: string, file: string, r = root) => typecheckTarget({ tool_name: tool, tool_input: { file_path: file } }, r);
 
   it("リポジトリの中の .ts・.tsx を Write・Edit したときだけ", () => {
@@ -286,13 +286,13 @@ describe("PostToolUse: 型の検査を流すファイル", () => {
     expect(target("Edit", `${root}\\cloudflare-env.d.ts`)).toBe("cloudflare-env.d.ts");
     expect(target("Write", `${root}\\README.md`)).toBeNull();
     expect(target("Read", `${root}\\lib\\x.ts`)).toBeNull();
-    expect(target("Write", "C:\\Users\\choco\\AppData\\Local\\Temp\\x.ts")).toBeNull();
+    expect(target("Write", "C:\\Users\\user\\AppData\\Local\\Temp\\x.ts")).toBeNull();
     expect(target("Write", `${root}\\node_modules\\x\\index.ts`)).toBeNull();
   });
 
   it("パスの書き方（Git Bash の /c/、大文字・小文字）が違っても同じ", () => {
-    expect(target("Write", `${root}\\lib\\x.ts`, "/c/Users/choco/dev/care72")).toBe("lib/x.ts");
-    expect(target("Write", "C:/Users/choco/dev/care72/lib/x.ts", "c:\\users\\choco\\dev\\care72")).toBe("lib/x.ts");
+    expect(target("Write", `${root}\\lib\\x.ts`, "/c/Users/user/dev/care72")).toBe("lib/x.ts");
+    expect(target("Write", "C:/Users/user/dev/care72/lib/x.ts", "c:\\users\\user\\dev\\care72")).toBe("lib/x.ts");
   });
 });
 

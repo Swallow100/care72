@@ -354,7 +354,7 @@ export const SEED_PEOPLE: SeedPerson[] = [
     ],
   },
 
-  // 3 緑だが透析先が未確認で黄（時計の頼り先の確認が未確認。docs/DECISIONS.md 案 1）。訓練: 透析施設が浸水 → 別の施設を探す
+  // 3 緑だが透析先が未確認で黄（時計の頼り先の確認が未確認。docs/DECISIONS.md「色と連絡順」）。訓練: 透析施設が浸水 → 別の施設を探す
   {
     person: {
       id: "p-03",
@@ -456,7 +456,7 @@ export const SEED_PEOPLE: SeedPerson[] = [
         unit: "day",
         starts_on: "disaster",
         source: "facility",
-        // 透析先が受け入れられるかはまだ確かめていない（docs/DECISIONS.md 案 1）
+        // 透析先が受け入れられるかはまだ確かめていない（docs/DECISIONS.md「色と連絡順」）
         depends_on: "dialysis_center",
         depends_check: "unconfirmed",
       }),
@@ -474,7 +474,7 @@ export const SEED_PEOPLE: SeedPerson[] = [
       birth_date: "1938-03-05",
       plan_status: "none",
       origin: "care_manager",
-      // 本人の報告を当てにしない印。ケアマネが付けた（docs/DECISIONS.md 案 4）
+      // 本人の報告を当てにしない印。ケアマネが付けた（docs/DECISIONS.md「色と連絡順」）
       self_report_unreliable: 1,
     },
     ledger: {
@@ -831,7 +831,7 @@ export const SEED_PEOPLE: SeedPerson[] = [
         value: 4,
         unit: "day",
         // 手元の残りの日数（物の時計 B）で、発災から走る。冷蔵が切れると走る、はやめた（未開封なら冷蔵が切れてもしばらく使える。
-        // jadec-insulin-2023）。暑さ・冷蔵は「確認」の欄の項目（頼り先 保管）で、ルールの表の入力にしない。docs/DECISIONS.md 11/3 04:0x の 1
+        // jadec-insulin-2023）。暑さ・冷蔵は「確認」の欄の項目（頼り先 保管）で、ルールの表の入力にしない。docs/DECISIONS.md「色と連絡順」
         starts_on: "disaster",
         source: "pharmacy",
         depends_on: "storage",

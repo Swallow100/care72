@@ -1,7 +1,7 @@
 // アンケートの質問の表（docs/tasks/T65.md の表が正。docs/survey/QUESTIONS.md と README.md の記号の表は、ここの写し）。
 // 答えの写し方（docs/survey/README.md）の記号は、並びの上から a・b・c…。
 // 並びか言葉を変えるときは QUESTIONS.md・README.md・answers.md の見出しも直す（answers.test.ts が言葉の一致を確かめる）。
-// 11/3 23:1x（T65）に 7 問から 9 問＋ご意見＋引用に作り直した。紙（paper.html）は使わない（Web 版に移した）。
+// T65 で 7 問から 9 問＋ご意見＋引用に作り直した。紙（paper.html）は使わない（Web 版に移した）。
 
 export type Choice = { readonly code: string; readonly label: string };
 
