@@ -34,6 +34,16 @@ export function isFixedAccount(id: string | null | undefined): boolean {
   return typeof id === "string" && FIXED_ACCOUNT_IDS.includes(id);
 }
 
+/**
+ * 審査員と同じ役変更（ケアマネ・医療班・本人スマホ・家族スマホ）を出すアカウント（T95）。固定の一覧のうち、ログインの ID がある
+ * 見本のケアマネ（山本）だけ。ケアマネ以外の役のときは審査員と同じ壁（lib/auth/wall.ts）。ほかのケアマネは役を替えられない
+ */
+export const ROLE_SWITCH_ACCOUNT_IDS: readonly string[] = [DEMO_CARE_MANAGER_ID];
+
+export function isRoleSwitchAccount(id: string | null | undefined): boolean {
+  return typeof id === "string" && ROLE_SWITCH_ACCOUNT_IDS.includes(id);
+}
+
 export function isReservedLoginId(loginId: string): boolean {
   return loginId.trim().toLowerCase() === JUDGE_LOGIN_ID;
 }

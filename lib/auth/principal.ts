@@ -24,6 +24,7 @@ import { issuedSec, linkTarget } from "../qr/phone-link-store.ts";
 import { MAX_PASSWORD_LENGTH, verifyPassword } from "./password.ts";
 import { homePath, type JudgeRole, type Role } from "./roles.ts";
 import { sessionTimes, signSession, verifySession, type SessionPayload } from "./session.ts";
+import { canChooseRole } from "./wall.ts";
 
 export type OfficeRef = { id: string; name: string; kind: OfficeKind };
 
@@ -36,6 +37,11 @@ export type Principal = {
    * 壁は審査員と同じ（lib/auth/wall.ts の isWalled: デモの人だけ・本物のアンケートは見えない・作るリンクは審査員の物）。無いのは false
    */
   judgeMade?: boolean;
+  /**
+   * 役を替えた見本のケアマネ（山本、T95）。役変更で医療班・本人・家族を選んでいる間だけ付く（ケアマネの役では付かない）。
+   * judge は付かず書き手も山本のままだが、壁は審査員と同じ（lib/auth/wall.ts の isWalled）。役を選べるかは canChooseRole（同じ所）。無いのは false
+   */
+  switched?: boolean;
   /** 事業所の管理者（ケアマネの印） */
   admin: boolean;
   /** 書き手（経過の author_id）。審査員は審査員のアカウント */
@@ -74,28 +80,23 @@ async function demoOffice(db: D1Database): Promise<OfficeRef | null> {
     .first<OfficeRef>();
 }
 
-/** 審査員の役ごとの形。役を選ぶ前は unselected（役選択の画面へ） */
-async function judgePrincipal(db: D1Database, role: JudgeRole | null): Promise<Principal | null> {
-  const office = await demoOffice(db);
-  if (!office) return null;
-  const p: Principal = { ...NOBODY, role: role ?? "unselected", judge: true, accountId: DEMO_JUDGE_ACCOUNT_ID, office };
+/** 審査員と山本が役変更で選ぶ、ケアマネでない役 */
+type DemoRole = Exclude<JudgeRole, "care_manager">;
+
+/**
+ * 見本の事業所の医療班・本人・家族の役の形（審査員と、役を替えた山本で同じ。T95）。p は役を付ける前の形（書き手・名前・事業所）。
+ * 医療班は p のまま（受け持ちは書き手のアカウントごと）、本人・家族は山田 ハナと山田の娘の行
+ */
+async function demoRolePrincipal(db: D1Database, office: OfficeRef, p: Principal, role: DemoRole): Promise<Principal> {
   switch (role) {
-    case null:
     case "medical":
-      return p;
-    case "care_manager": {
-      const cm = await db
-        .prepare("SELECT display_name FROM accounts WHERE id = ?1 AND office_id = ?2 AND role = 'care_manager'")
-        .bind(DEMO_CARE_MANAGER_ID, office.id)
-        .first<{ display_name: string }>();
-      return { ...p, caseloadOf: DEMO_CARE_MANAGER_ID, displayName: cm?.display_name || null };
-    }
+      return { ...p, role };
     case "self": {
       const person = await db
         .prepare("SELECT name FROM people WHERE id = ?1 AND office_id = ?2")
         .bind(DEMO_SELF_PERSON_ID, office.id)
         .first<{ name: string }>();
-      return { ...p, personId: DEMO_SELF_PERSON_ID, displayName: person?.name ?? null };
+      return { ...p, role, personId: DEMO_SELF_PERSON_ID, displayName: person?.name ?? null };
     }
     case "family": {
       const contact = await db
@@ -105,9 +106,39 @@ async function judgePrincipal(db: D1Database, role: JudgeRole | null): Promise<P
         )
         .bind(DEMO_FAMILY_CONTACT_ID, DEMO_SELF_PERSON_ID, office.id)
         .first<{ name: string | null }>();
-      return { ...p, personId: DEMO_SELF_PERSON_ID, contactId: DEMO_FAMILY_CONTACT_ID, displayName: contact?.name ?? null };
+      return { ...p, role, personId: DEMO_SELF_PERSON_ID, contactId: DEMO_FAMILY_CONTACT_ID, displayName: contact?.name ?? null };
     }
   }
+}
+
+/** 審査員の役ごとの形。役を選ぶ前は unselected（役選択の画面へ） */
+async function judgePrincipal(db: D1Database, role: JudgeRole | null): Promise<Principal | null> {
+  const office = await demoOffice(db);
+  if (!office) return null;
+  const p: Principal = { ...NOBODY, role: role ?? "unselected", judge: true, accountId: DEMO_JUDGE_ACCOUNT_ID, office };
+  switch (role) {
+    case null:
+      return p;
+    case "care_manager": {
+      const cm = await db
+        .prepare("SELECT display_name FROM accounts WHERE id = ?1 AND office_id = ?2 AND role = 'care_manager'")
+        .bind(DEMO_CARE_MANAGER_ID, office.id)
+        .first<{ display_name: string }>();
+      return { ...p, caseloadOf: DEMO_CARE_MANAGER_ID, displayName: cm?.display_name || null };
+    }
+    default:
+      return demoRolePrincipal(db, office, p, role);
+  }
+}
+
+/**
+ * 役を替えた山本の形（T95）。cm はケアマネの役の山本（accountPrincipal）。役を選べない人（canChooseRole）なら null。
+ * 書き手・名前・事業所は山本のまま、管理者・担当一覧は外し、switched の印（壁は審査員と同じ）
+ */
+async function switchedPrincipal(db: D1Database, cm: Principal, role: DemoRole): Promise<Principal | null> {
+  if (!canChooseRole(cm) || !cm.office) return null;
+  const p: Principal = { ...NOBODY, role, switched: true, accountId: cm.accountId, displayName: cm.displayName, office: cm.office };
+  return demoRolePrincipal(db, cm.office, p, role);
 }
 
 type AccountJoin = {
@@ -187,7 +218,10 @@ async function principalOf(db: D1Database, env: AuthEnv, secret: string, s: Sess
   const a = await accountById(db, s.a);
   const c = a ? accountCredential(env, a) : null;
   if (!a || !c || (await credentialVersion(c, secret)) !== s.pv) return null;
-  return accountPrincipal(a);
+  const p = accountPrincipal(a);
+  // 役の印（T95）が付いていれば、役を替えた山本。役を選べないアカウント・デモでない事業所なら通さない
+  if (!p || s.r === undefined || s.r === "care_manager") return p;
+  return switchedPrincipal(db, p, s.r);
 }
 
 /** cookie の文字列から。確かめられなければ null（ログインしていない）。now は秒 */
@@ -248,7 +282,7 @@ export async function login(
   return { ok: true, token, principal, path: homePath(principal.role) };
 }
 
-/** 審査員が役を選ぶ・選び直す。審査員のセッションでなければ null */
+/** 審査員が役を選ぶ・選び直す。審査員のセッションでなければ null（山本も。山本と審査員の両方は chooseRole） */
 export async function chooseJudgeRole(
   db: D1Database,
   env: AuthEnv,
@@ -264,4 +298,36 @@ export async function chooseJudgeRole(
   if (!principal) return null;
   const next = await signSession({ ...s, r: role, ...sessionTimes(now) }, secret);
   return { token: next, principal, path: homePath(role) };
+}
+
+/**
+ * 役を選ぶ・選び直す（ヘッダーの役変更・/login/role の送り先。app/api/auth/role）。審査員は chooseJudgeRole と同じ。
+ * 見本のケアマネ（山本、T95）は自分のセッションのまま役の印だけ替える（パスワードの指紋も書き手も山本のまま）。ケアマネの役に戻すと印を外し、
+ * ログインしたときと同じ形。ほかのアカウント・本人と家族のリンク・ログインなしは null（403）
+ */
+export async function chooseRole(
+  db: D1Database,
+  env: AuthEnv,
+  secret: string,
+  token: string | null | undefined,
+  role: JudgeRole,
+  now: number,
+): Promise<{ token: string; principal: Principal; path: string } | null> {
+  const s = await verifySession(token, secret, now);
+  if (!s) return null;
+  if (s.k === "judge") return chooseJudgeRole(db, env, secret, token, role, now);
+  if (s.k !== "account") return null;
+  const current = await principalOf(db, env, secret, s);
+  if (!current || !canChooseRole(current)) return null;
+  const payload: SessionPayload = {
+    v: 1,
+    k: "account",
+    a: s.a,
+    pv: s.pv,
+    ...(role === "care_manager" ? {} : { r: role }),
+    ...sessionTimes(now),
+  };
+  const principal = await principalOf(db, env, secret, payload);
+  if (!principal) return null;
+  return { token: await signSession(payload, secret), principal, path: homePath(principal.role) };
 }
