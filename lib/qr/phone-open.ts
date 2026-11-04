@@ -52,7 +52,8 @@ async function enter(request: Request, secret: string, payload: PhoneLinkPayload
   // セッションの iat は開いた時刻（リンクの iat が端末の時計の差で少し先でも、期限までの長さが 180 日を超えないように小さい方）
   const iat = Math.min(now, payload.iat);
   const session = await signSession(
-    { v: 1, k: "link", p: payload.p, c: payload.c, g: payload.g, pv: LINK_SESSION_PV, iat, exp: payload.exp },
+    // li はリンクを作った時刻（resolvePhoneLink が D1 の phone_link_issued_at と同じかを確かめた値）。開くたびに D1 と比べる（T81）
+    { v: 1, k: "link", p: payload.p, c: payload.c, g: payload.g, li: payload.iat, pv: LINK_SESSION_PV, iat, exp: payload.exp },
     secret,
   );
   const path = payload.c === null ? PAGE_PATHS.me : PAGE_PATHS.family;

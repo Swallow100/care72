@@ -308,7 +308,12 @@ async function used(): Promise<{ db: DatabaseSync; partnerDump: () => Record<str
     `INSERT INTO office_timeline_entries (id, office_id, author_id, author_role, kind, occurred_at) VALUES ('ot-partner', 'office-partner', 'acct-partner-cm', 'care_manager', 'disaster_on', '${at}')`,
   );
   db.exec(`INSERT INTO ai_calls (id, office_id, purpose, model, day, status, started_at) VALUES ('ai-partner', 'office-partner', 'classify', 'm', '2026-11-04', 'pending', '${at}')`);
-  expect((await receive(d1, staffActor(judgeMedical())!, { personId: "p-partner-1", shelter: "みどり小学校", via: "search" }, at)).ok).toBe(true);
+  // 審査員は医療班の役でもデモの人だけ（T81）。T81 の前に開いた受け持ち（壁の無い受入）は残っていることがあるので、壁を外して作る
+  expect(await receive(d1, staffActor(judgeMedical())!, { personId: "p-partner-1", shelter: "みどり小学校", via: "search" }, at)).toEqual({
+    ok: false,
+    error: "not_found",
+  });
+  expect((await receive(d1, { ...staffActor(judgeMedical())!, walled: false }, { personId: "p-partner-1", shelter: "みどり小学校", via: "search" }, at)).ok).toBe(true);
 
   /** 協力事業所の人・事業所の行と、所属なしの別の医療班の行（戻しても同じであるはずの物） */
   const partnerDump = () => {
@@ -318,9 +323,10 @@ async function used(): Promise<{ db: DatabaseSync; partnerDump: () => Record<str
       contacts: pick("SELECT * FROM contacts WHERE person_id IN ('p-partner-1', 'p-onsite-other')"),
       consents: pick("SELECT * FROM consents WHERE person_id IN ('p-partner-1', 'p-onsite-other')"),
       signals: pick("SELECT * FROM signals WHERE person_id IN ('p-partner-1', 'p-onsite-other')"),
-      timeline: pick("SELECT * FROM timeline_entries WHERE person_id IN ('p-partner-1', 'p-onsite-other')"),
-      custody: pick("SELECT * FROM custody WHERE person_id IN ('p-partner-1', 'p-onsite-other')"),
-      provisions: pick("SELECT * FROM third_party_provisions WHERE person_id IN ('p-partner-1', 'p-onsite-other')"),
+      // 審査員の受け持ちは戻しで閉じるので、比べるのはそれ以外（閉じ方は「最初に戻す」の試しで見る。T81）
+      timeline: pick("SELECT * FROM timeline_entries WHERE person_id IN ('p-partner-1', 'p-onsite-other') AND author_id IS NOT 'acct-judge'"),
+      custody: pick("SELECT * FROM custody WHERE person_id IN ('p-partner-1', 'p-onsite-other') AND holder_id <> 'acct-judge'"),
+      provisions: pick("SELECT * FROM third_party_provisions WHERE person_id IN ('p-partner-1', 'p-onsite-other') AND recipient_id IS NOT 'acct-judge'"),
       drills: pick("SELECT * FROM drills WHERE office_id = 'office-partner'"),
       events: pick("SELECT * FROM drill_events WHERE drill_id = 'drill-partner-1'"),
       disaster: pick("SELECT * FROM disaster_state WHERE office_id = 'office-partner'"),
@@ -384,8 +390,19 @@ describe("最初に戻す（デモ事業所だけ）", () => {
     // 審査員がその場で登録した所属なしの人は消え、別の医療班が登録した人は残る
     expect(count(db, "SELECT count(*) AS n FROM people WHERE id = 'p-onsite-judge'")).toBe(0);
     expect(count(db, "SELECT count(*) AS n FROM people WHERE id = 'p-onsite-other'")).toBe(1);
-    // 審査員が医療班の役で受け入れた協力事業所の人の受け持ちは、その人の行として残る
-    expect(count(db, "SELECT count(*) AS n FROM custody WHERE person_id = 'p-partner-1' AND holder_id = 'acct-judge'")).toBe(1);
+    // 審査員が医療班の役で受け入れた協力事業所の人の受け持ちは、その人の行として残り、退所で閉じる（T81）。提供の記録も閉じ、経過に「退所」
+    expect(db.prepare("SELECT released_at, release_kind, released_by FROM custody WHERE person_id = 'p-partner-1' AND holder_id = 'acct-judge'").all()).toEqual([
+      { released_at: NOW, release_kind: "discharged", released_by: "acct-judge" },
+    ]);
+    expect(db.prepare("SELECT closed_at FROM third_party_provisions WHERE person_id = 'p-partner-1' AND recipient_id = 'acct-judge'").all()).toEqual([
+      { closed_at: NOW },
+    ]);
+    expect(
+      db.prepare("SELECT kind, body, author_role FROM timeline_entries WHERE person_id = 'p-partner-1' AND author_id = 'acct-judge' ORDER BY occurred_at").all(),
+    ).toEqual([
+      { kind: "received", body: "みどり小学校", author_role: "medical" },
+      { kind: "released", body: "退所", author_role: "medical" },
+    ]);
 
     expect(withoutOthers(db)).toEqual(dump(fresh, ["ai_calls"]));
   });

@@ -95,6 +95,8 @@ export const SURVEY_LABELS = {
   done: "回答済",
   /** 開いてから 15 秒たっていない */
   tooFast: "少し待って再送信",
+  /** 開いてから 2 時間を過ぎた（開いた時刻の印の期限。lib/survey/token.ts、T81）。頁を開き直す */
+  stale: "期限切れ 再読込",
   /** 同じ所から 1 時間に 20 回を超えた */
   limited: "回数超過",
   /** リンクが無い */
@@ -130,6 +132,8 @@ export const SURVEY_OFFICE_LABELS = {
   risk: "要確認",
   close: "閉じる",
   failed: "作成失敗",
+  /** 1 日に作れる本数（lib/survey/share.ts の SURVEY_SHARES_PER_DAY）を超えた（T81） */
+  limited: "本日上限",
   /** QR の画像を保存 */
   qrSave: "QR保存",
 } as const;

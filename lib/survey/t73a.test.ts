@@ -8,9 +8,10 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { seedStatements } from "../../seed/sql.ts";
 import { d1FromSqlite } from "../db/test-d1.ts";
 import { demoResetStatements } from "../seed/reset.ts";
-import { createSurveyShare, loadSurveyOverview, lookupSurveyShare } from "./store.ts";
+import { shareExpiresAt, SURVEY_MAX_ANSWERS } from "./share.ts";
+import { loadSurveyOverview, lookupSurveyShare } from "./store.ts";
 import { submitSurvey } from "./submit.ts";
-import { MIN_FILL_SEC, openStamp } from "./token.ts";
+import { MIN_FILL_SEC, newSurveyToken, openStamp } from "./token.ts";
 
 const DIR = new URL("../../migrations/", import.meta.url);
 const NAMES = readdirSync(DIR)
@@ -105,8 +106,19 @@ async function send(token: string, sec: number, answers: Record<string, unknown>
 
 /** 山本の共有のリンクと答え 2 件、審査員のリンクと答え 1 件、T42 のリンクと答え 1 件 */
 async function fill(): Promise<{ real: string; judge: string }> {
-  const real = (await createSurveyShare(db, { officeId: "office-demo", memo: "紙の QR", createdBy: "acct-yamamoto", createdRole: "care_manager" }, T0)).token;
-  const judge = (await createSurveyShare(db, { officeId: "office-demo", memo: "試し", createdBy: "acct-judge", createdRole: "judge" }, T0)).token;
+  // 0021 の前の本番の形の DB なので、行はそのころの作り方（1 本ずつ INSERT。T81 の 1 日の本数の数えは accounts.judge_made〔0025〕を読むので使えない）
+  const made = (memo: string, createdBy: string, createdRole: "care_manager" | "judge") => {
+    const token = newSurveyToken();
+    sqlite
+      .prepare(
+        `INSERT INTO survey_shares (token, office_id, memo, created_by, created_role, created_at, expires_at, max_answers)
+         VALUES (?, 'office-demo', ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(token, memo, createdBy, createdRole, T0.toISOString(), shareExpiresAt(T0, createdRole === "judge"), SURVEY_MAX_ANSWERS);
+    return token;
+  };
+  const real = made("紙の QR", "acct-yamamoto", "care_manager");
+  const judge = made("試し", "acct-judge", "judge");
   expect((await send(real, 30)).status).toBe(200);
   expect((await send(real, 40, { ...ANSWERS, q1: "a", comment: "応援しています" })).status).toBe(200);
   expect((await send(judge, 50)).status).toBe(200);
@@ -189,7 +201,7 @@ describe("T73a: 配信の作り直し（前段 → drop → migrations → 種�
     const shape = schema(sqlite);
 
     // 事業所の画面（/office）: 山本のリンクと答え 2 件
-    const view = await loadSurveyOverview(db, "office-demo", { judge: false }, at(100).toISOString());
+    const view = await loadSurveyOverview(db, "office-demo", { walled: false, admin: true, accountId: "acct-yamamoto" }, at(100).toISOString());
     expect(view.shares.find((s) => s.token === real)).toMatchObject({ state: "open", answers: 2 });
     expect(view.answers.filter((a) => !a.judge).map((a) => a.id)).toEqual(["W001", "W002"]);
     // 答える頁（/survey/<token>）: まだ受け付け、3 件目が入る

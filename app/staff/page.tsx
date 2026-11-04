@@ -46,7 +46,7 @@ export default async function StaffPage({ searchParams }: Props) {
     const { env } = await getCloudflareContext({ async: true });
     [board, shelters, last] = await Promise.all([
       loadStaffBoard(env.DB, actor, todayJst(), now),
-      listShelters(env.DB),
+      listShelters(env.DB, actor),
       lastShelter(env.DB, actor),
     ]);
   }

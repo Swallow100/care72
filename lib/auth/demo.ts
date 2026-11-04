@@ -6,6 +6,8 @@
 export const JUDGE_LOGIN_ID = "judge";
 
 export const DEMO_OFFICE_ID = "office-demo";
+/** 所属なしの事業所の行（seed/people.ts の SEED_OFFICES と同じ id）。lib/custody/actor.ts からも同じ名前で読める */
+export const UNAFFILIATED_OFFICE_ID = "office-unaffiliated";
 /** 審査員（ケアマネの役）が開く担当一覧の持ち主 */
 export const DEMO_CARE_MANAGER_ID = "acct-yamamoto";
 /**

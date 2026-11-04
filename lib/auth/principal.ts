@@ -20,7 +20,7 @@ import {
   DEMO_SELF_PERSON_ID,
   JUDGE_LOGIN_ID,
 } from "./demo.ts";
-import { linkTarget } from "../qr/phone-link-store.ts";
+import { issuedSec, linkTarget } from "../qr/phone-link-store.ts";
 import { MAX_PASSWORD_LENGTH, verifyPassword } from "./password.ts";
 import { homePath, type JudgeRole, type Role } from "./roles.ts";
 import { sessionTimes, signSession, verifySession, type SessionPayload } from "./session.ts";
@@ -31,6 +31,11 @@ export type Principal = {
   role: Role;
   /** 審査員のログイン（役は role） */
   judge: boolean;
+  /**
+   * 審査員が足した・再発行したアカウント（accounts.judge_made、T81）。自分のパスワードで入るので judge は付かない（役変更は出ない）が、
+   * 壁は審査員と同じ（lib/auth/wall.ts の isWalled: デモの人だけ・本物のアンケートは見えない・作るリンクは審査員の物）。無いのは false
+   */
+  judgeMade?: boolean;
   /** 事業所の管理者（ケアマネの印） */
   admin: boolean;
   /** 書き手（経過の author_id）。審査員は審査員のアカウント */
@@ -113,12 +118,14 @@ type AccountJoin = {
   password_hash: string | null;
   /** 停止（T61）。あればログインもセッションも通さない */
   disabled_at: string | null;
+  /** 審査員が足した・再発行した（T81、migration 0025） */
+  judge_made: 0 | 1;
   office_id: string | null;
   office_name: string | null;
   office_kind: OfficeKind | null;
 };
 
-const ACCOUNT_SELECT = `SELECT a.id, a.role, a.is_office_admin, a.display_name, a.password_hash, a.disabled_at,
+const ACCOUNT_SELECT = `SELECT a.id, a.role, a.is_office_admin, a.display_name, a.password_hash, a.disabled_at, a.judge_made,
          o.id AS office_id, o.name AS office_name, o.kind AS office_kind
     FROM accounts a LEFT JOIN offices o ON o.id = a.office_id`;
 
@@ -140,7 +147,7 @@ function accountPrincipal(a: AccountJoin): Principal | null {
     a.office_id && a.office_name !== null && a.office_kind !== null
       ? { id: a.office_id, name: a.office_name, kind: a.office_kind }
       : null;
-  const base = { ...NOBODY, accountId: a.id, displayName: a.display_name || null, office };
+  const base = { ...NOBODY, accountId: a.id, displayName: a.display_name || null, office, judgeMade: a.judge_made === 1 };
   if (a.role === "care_manager") {
     if (!office) return null;
     return { ...base, role: "care_manager", admin: a.is_office_admin === 1, caseloadOf: a.id };
@@ -151,11 +158,16 @@ function accountPrincipal(a: AccountJoin): Principal | null {
 /**
  * スマホ入口のリンクで開いたセッション（T69a）。本人用は役 self、家族用は役 family。アカウントは無い（accountId null。
  * 経過の author_id は NULL になる）。版が違う（作り直した）・本人を一覧から外した・事業所が無い・連絡先が答えられる種類でないときは null。
- * 確かめ方はリンクを開くとき（lib/qr/phone-link-store.ts の resolvePhoneLink）と同じ linkTarget
+ * 確かめ方はリンクを開くとき（lib/qr/phone-link-store.ts の resolvePhoneLink）と同じ linkTarget。
+ * 版に加えて、リンクを作った時刻（li）も D1 と比べる（T81）: 毎朝 4 時の戻しで版が 0 に戻り、次に作ると版 1 になるので、
+ * 版だけだと前の日の版 1 のセッションが生き返る。li の無い前のセッション（T81 の前に開いた物）は iat で比べる
+ * （開く口 lib/qr/phone-open.ts はセッションの iat を「開いた時刻とリンクの時刻の小さい方」にするので、ふつうはリンクの時刻と同じ）
  */
 async function linkPrincipal(db: D1Database, s: Extract<SessionPayload, { k: "link" }>): Promise<Principal | null> {
   const t = await linkTarget(db, { personId: s.p, contactId: s.c, generation: s.g });
   if (!t) return null;
+  const issued = issuedSec(t.issuedAt);
+  if (issued === null || issued !== (s.li ?? s.iat)) return null;
   const base = { ...NOBODY, office: t.office, personId: t.personId };
   if (t.contact === null) return { ...base, role: "self", displayName: t.personName };
   return { ...base, role: "family", contactId: t.contact.id, displayName: t.contact.name };
