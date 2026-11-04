@@ -31,6 +31,9 @@ import {
 import { isSourceId, type SourceId } from "../sources/index.ts";
 import { NO_BASIS } from "../sources/prompt.ts";
 import { clockRemaining, formatHours, type Situation, type TriageClock } from "../triage/index.ts";
+// world-reply.ts は engine.ts より先に読む（engine → outcome → score → actions → director の輪で、actions.ts が
+// 世界の返事の言葉を読むときに初期化済みにしておく）
+import { WORLD_REPLY_LABELS } from "./world-reply.ts";
 import {
   DIRECTOR_MAX,
   type DirectorEvent,
@@ -55,7 +58,6 @@ import {
   type PersonMarks,
   type WorldState,
 } from "./scenarios.ts";
-import { WORLD_REPLY_LABELS } from "./world-reply.ts";
 
 // ---------- 世界 → ルールの表の入力 ----------
 // lib/drill/world-clocks.ts へ移した（T90 の準備）。前からの import を壊さないよう、同じ名前をここからも出す
