@@ -2,7 +2,7 @@
 // 種の 10 人から紙面の部品を renderToStaticMarkup で HTML にし、紙面の CSS（components/forms/*.css）を足した 1 枚の頁にする。
 // その頁を headless Chrome の印刷（printToPDF、CSS の @page）で PDF にして頁を数える。
 // 画面と同じにするため、画面の CSS の既定（Tailwind の preflight）と、上の帯・画面だけの操作の偽物を置く（印刷で消えるかを見る）。
-// 書体は手元の BIZ UDPゴシック（Windows に入っている。配信の画面は Google Fonts の同じ書体）。無ければテストは飛ばす。
+// 書体は手元の BIZ UDPゴシックと BIZ UDP明朝（Windows に入っている。配信の画面は Google Fonts の同じ書体）。無ければテストは飛ばす。
 
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -52,8 +52,11 @@ export function seedRows(p: SeedPerson): PersonPageRows {
 }
 
 /** 頁の中で書体が使えるかを測る（無い書体は既定の書体に替わり、幅が等幅の書体と同じになる） */
-export const FONT_PROBE = `(() => {
+const probe = (family: string) => `(() => {
   const c = document.createElement("canvas").getContext("2d");
   const w = (f) => { c.font = f; return c.measureText("避難計画 0123456789 ヤマダ").width; };
-  return w('20px "BIZ UDPGothic", monospace') !== w("20px monospace");
+  return w('20px "${family}", monospace') !== w("20px monospace");
 })()`;
+export const FONT_PROBE = probe("BIZ UDPGothic");
+/** 明朝（T85。松山市の様式の題・同意の問い・注）。Windows の BIZ UDP明朝 Medium（BIZ-UDMinchoM.ttc）か Google Fonts の同じ書体 */
+export const MINCHO_PROBE = probe("BIZ UDPMincho");

@@ -192,7 +192,6 @@ describe("元の様式の上に置く紙（buildOverlaySheet）", () => {
     expect(page).toContain("canOverlay(mapping.fields, images)");
     expect(page).toContain("<OverlaySheet");
     expect(page).toContain('sp.view === "list"');
-    expect(page).toContain("BIZ_UDPMincho");
     let decoded = false;
     const calls: string[] = [];
     const win: PrintWindow = {

@@ -3,7 +3,6 @@ import "@/components/forms/mapped-paper.css";
 import "@/components/forms/overlay-paper.css";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import type { Metadata } from "next";
-import { BIZ_UDPMincho } from "next/font/google";
 import { notFound } from "next/navigation";
 import { MappedSheet } from "@/components/forms/MappedSheet";
 import { OverlaySheet } from "@/components/forms/OverlaySheet";
@@ -31,9 +30,6 @@ export const dynamic = "force-dynamic";
 
 // 印刷の PDF の名前にもなる。氏名は入れない
 export const metadata: Metadata = { title: "様式差込" };
-
-// 明朝の様式の上に置く字（T86）。BIZ UDP明朝（OFL）を Google Fonts から（next/font が配信に入れる）。この紙面のページだけ
-const mincho = BIZ_UDPMincho({ weight: ["400"], subsets: ["latin"], preload: false, display: "swap", variable: "--font-ov-mincho" });
 
 type Props = {
   params: Promise<{ id: string; mappingId: string }>;
@@ -134,9 +130,7 @@ export default async function MappedFormPage({ params, searchParams }: Props) {
       </PaperBar>
       <FormAbout entry={entry} />
       {overlay ? (
-        <div className={mincho.variable}>
-          <OverlaySheet sheet={overlay} imageSrc={(page) => pageImageHref(stored!.id, page)} checked={checked} />
-        </div>
+        <OverlaySheet sheet={overlay} imageSrc={(page) => pageImageHref(stored!.id, page)} checked={checked} />
       ) : (
         <MappedSheet sheet={sheet} meta={{ date: warekiText(today), checked, office: office?.name ?? null, author: rows.careManagerName }} />
       )}

@@ -7,10 +7,10 @@ import { describe, expect, it } from "vitest";
 import { Form9Paper } from "../../components/forms/Form9Paper.tsx";
 import { MappedSheet } from "../../components/forms/MappedSheet.tsx";
 import { MatsuyamaSheet } from "../../components/forms/MatsuyamaSheet.tsx";
-import { MedicalSummarySheet } from "../../components/forms/MedicalSummarySheet.tsx";
+import { MedicalSummaryPaper, MedicalSummarySheet } from "../../components/forms/MedicalSummarySheet.tsx";
 import { SEED_PEOPLE } from "../../seed/people.ts";
 import { CAO_FORM_READ } from "./cao-form.fixture.ts";
-import { MATSUYAMA_AUDIT } from "./form-audit.ts";
+import { MATSUYAMA_AUDIT, MEDICAL_AUDIT } from "./form-audit.ts";
 import { buildForm9, type Form9PersonInput } from "./form9.ts";
 import { buildMappedSheet } from "./mapped-sheet.ts";
 import { checkReadResult } from "./mapping.ts";
@@ -73,11 +73,26 @@ describe("紙面の値に太字が無い", () => {
 
   it("計画書で太くするのは元の様式で太い段の名前と、同意・マイ・タイムラインの選択肢の言葉だけ", () => {
     const markup = html(createElement(MatsuyamaSheet, { sheet: buildMatsuyamaSheet(rowsOf("p-01"), OPTS) }));
-    const heads = [...markup.matchAll(/class="(?:blk-h b|f-l b)">([^<]+)/g)].map((m) => m[1]);
+    const heads = [...markup.matchAll(/class="(?:blk-h b|f-l b)"[^>]*>([^<]+)/g)].map((m) => m[1]);
     expect(heads).toEqual(["近親者及緊急時の連絡先", "避難支援等実施者(近隣協力員)", "避難支援等実施組織", "私の避難場所", "住居", "支援の内容（複数選択可）", "避難経路"]);
     for (const h of heads) expect(MATSUYAMA_AUDIT.bold).toContain(h);
     const opt = [...markup.matchAll(/class="[^"]*\bopt-b\b[^"]*" data-field="([^"]+)"/g)].map((m) => m[1]);
     expect(opt).toEqual(["target.timeline", "consent.registry", "consent.planShare"]);
+    // 段の注で太いのは近親者の段の注だけ（原本は塗りと線で太くした字。T85）
+    const notes = [...markup.matchAll(/class="note b[^"]*"[^>]*>([^<]+)/g)].map((m) => m[1]);
+    expect(notes).toEqual(["（安否確認ができたときの連絡先）"]);
+    expect(MATSUYAMA_AUDIT.bold).toContain(`${notes[0]}（近親者の段の注）`);
+  });
+
+  it("医療要約で太くするのは【禁忌事項等】・【特記事項（常用薬等）】の段の名前だけ（原本は塗りと線で太くした字。T85）。本人の 1 枚の裏は今のまま", () => {
+    const m = buildMedicalSummary(rowsOf("p-01"), OPTS);
+    if (m.kind !== "sheet") throw new Error("p-01 は医療要約を作る");
+    const markup = html(createElement(MedicalSummarySheet, { sheet: m.sheet }));
+    const heads = [...markup.matchAll(/class="blk-h b">([^<]+)/g)].map((x) => x[1]);
+    expect(heads).toEqual(["【禁忌事項等】", "【特記事項（常用薬等）】"]);
+    for (const h of heads) expect(MEDICAL_AUDIT.bold).toContain(h);
+    const back = html(createElement(MedicalSummaryPaper, { sheet: m.sheet, page: 2, doctorBlanks: false }));
+    expect(back).not.toContain('class="blk-h b"');
   });
 });
 
@@ -97,6 +112,7 @@ describe("紙面の CSS の太字", () => {
       ".paper :is(b, strong)",
       ".paper .title",
       ".paper .blk-h.b",
+      ".paper .blk-h .note.b",
       ".paper .f-l.b",
       ".paper .opt-b .ch",
       ".paper .p-strong",
