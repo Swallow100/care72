@@ -9,7 +9,7 @@
 // - 絵と PDF の中身は HTML で書き、Chrome で写真・PDF にする（tools/eval/forms/render.ts）。ここは文字と HTML だけで、決まった種で同じ物になる
 
 import type { ContactRow, Ledger } from "../../../lib/db/types.ts";
-import { warekiText } from "../../../lib/forms/wareki.ts";
+import { birthWritings } from "../shapes.ts";
 import { INTAKE_TEXT_MAX } from "../../../lib/intake/extract.ts";
 import { PENDING_KEYS, type ExtractOutput } from "../../../lib/intake/schema.ts";
 import {
@@ -248,11 +248,15 @@ function roleWord(kind: ContactRow["kind"]): string {
   return words[kind] ?? "関係先";
 }
 
-/** 頭の行（氏名・カナ・生年月日・住所・電話。伏せる所） */
+/**
+ * 頭の行（氏名・カナ・生年月日・住所・電話。伏せる所）。生年月日の書き方は入れ方ごとに変える（T118）:
+ * 書き起こしは漢数字（昭和十七年四月十八日）、箇条書きは略記（S17.4.18）、ほかは和暦の数字（昭和17年4月18日）
+ */
 export function identityLine(p: SeedPerson, style: Style): Line {
   const self = p.contacts.find((c) => c.kind === "self");
   const addr = p.ledger.basic.address;
-  const birth = p.person.birth_date ? warekiText(p.person.birth_date).replace(/ /g, "") : "";
+  const writings = p.person.birth_date ? birthWritings(p.person.birth_date) : null;
+  const birth = !writings ? "" : style === "voice" ? writings.kanji : style === "list" ? writings.short : writings.digits;
   if (style === "voice") return ["えー、", { secret: p.person.name }, "さん、", { secret: birth }, "生まれで、", { secret: addr ? `${addr.city}${addr.town}` : "" }, "にお住まいです。電話は", { secret: self?.phone ?? "" }, "。"];
   if (style === "list") return ["・氏名：", { secret: p.person.name }, "（", { secret: p.person.kana ?? "" }, "）　", { secret: birth }, "生　", { secret: addr ? `${addr.city}${addr.town}` : "" }, "　TEL ", { secret: self?.phone ?? "" }];
   return [{ secret: p.person.name }, "さん（", { secret: birth }, "生）、", { secret: addr ? `${addr.city}${addr.town}` : "" }, "在住。TEL ", { secret: self?.phone ?? "" }, "。"];

@@ -59,6 +59,25 @@ export function birthVariants(iso: string): string[] {
   return [...out].map(squash);
 }
 
+/**
+ * 入力の束に書く生年月日の書き方（T107 の書類の台の頭の行。T118 で略記・漢数字を足した）。
+ * digits「昭和17年4月18日」・kanji「昭和十七年四月十八日」・short「S17.4.18」。和暦にできなければ西暦の「1942年4月18日」
+ */
+export function birthWritings(iso: string): { digits: string; kanji: string; short: string } {
+  const w = wareki(iso);
+  if (!w) {
+    const [y, m, d] = iso.split("-").map(Number);
+    const west = `${y}年${m}月${d}日`;
+    return { digits: west, kanji: west, short: `${y}/${m}/${d}` };
+  }
+  const yy = w.year === 1 ? "元" : String(w.year);
+  return {
+    digits: `${w.era}${yy}年${w.month}月${w.day}日`,
+    kanji: `${w.era}${w.year === 1 ? "元" : kanjiForms(w.year)[0]}年${kanjiForms(w.month)[0]}月${kanjiForms(w.day)[0]}日`,
+    short: `${ERA_LETTER[w.era]}${w.year}.${w.month}.${w.day}`,
+  };
+}
+
 /** 文の中に台帳の生年月日の書き方のどれかがあるか。あれば当たった書き方（squash した形） */
 export function birthIn(text: string, iso: string): string | null {
   const flat = squash(text);
