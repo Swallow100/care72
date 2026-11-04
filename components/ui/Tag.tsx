@@ -4,19 +4,25 @@
 // 避難計画のような 2 番目の状態は色の文字（StateText）にする。
 // 「未確認 N」（台帳の未確認の数）は言葉と数ごと黄の塗りの印（StateTag tone="check"）。担当一覧の表・右の面・書類の紙面の帯（T87）で同じ形。
 // 前は黄の細い帯の文字だったが、数の前の帯が何の印か伝わらなかった（T96）。人数・件数の数そのものには帯も色も付けない。
-// 黄（要確認）だけは文字の色に使わない（白の上で読めない）。黄の文字の所は本文色の文字と、前に黄の細い帯
-// （app/globals.css の tone-check）。黄の塗りの印（StateTag）の文字は濃い色。
+// 黄（要確認）だけは文字の色に使わない（白の上で読めない）。黄の文字の所は黄の塗りに濃い文字（app/globals.css の tone-check。
+// 前は本文色の文字と前に黄の細い帯だったが、何の印か伝わりにくかった。11/4 に作者が塗りを選んだ）。黄の塗りの印（StateTag）と同じ色。
 
 /** 状態の 4 色の名前（lib/person の StateTone と同じ） */
 export type Tone = "ok" | "urgent" | "check" | "unknown";
 
-/** 状態の文字の色。要確認は本文色の文字＋前に黄の細い帯（tone-check） */
+/** 状態の文字の色。要確認は黄の塗りに濃い文字（tone-check）。インラインの要素に付ける（ブロックに付けると面ごと塗る） */
 export const TONE_TEXT: Record<Tone, string> = {
   ok: "text-state-ok",
   urgent: "text-state-urgent",
   check: "tone-check",
   unknown: "text-state-unknown",
 };
+
+/**
+ * 理由の行（「透析先 未確認、連絡なし 0 分」のような長い文）の文字の色。要確認だけは本文色（黄の塗りは状態の印と短い印だけ。
+ * 長い文を塗ると面のように重く、同じ行の至急の赤の文字より強く見える）。行の色は横の状態の印が持つ
+ */
+export const REASON_TEXT: Record<Tone, string> = { ...TONE_TEXT, check: "" };
 
 /** 状態の印の塗りと、その上の文字 */
 export const TONE_FILL: Record<Tone, string> = {
@@ -57,7 +63,7 @@ export function StateText({ tone, className = "", children }: { tone: Tone; clas
 
 /**
  * 色の無い地の印（医療の印・区分の名前）。面の上では面の中の灰色の地、面の中の上では白。
- * tone を付けると文字だけ状態の色の太字（地は塗らない。医療の印の時計の長さの色など。要確認は本文色＋黄の細い帯）。
+ * tone を付けると文字だけ状態の色の太字（地は塗らない。医療の印の時計の長さの色など）。要確認だけは印ごと黄の塗りに濃い文字（StateTag と同じ色）
  * wrap を付けると空白の所でだけ折り返す（狭い表の氏名の下の「経管栄養 2.9日」が列を広げて表が幅を超えないように。T54）
  */
 export function Mark({
@@ -76,7 +82,9 @@ export function Mark({
   const box = size === "md" ? "px-1.5 text-sm leading-6" : "px-1 text-xs leading-[1.125rem]";
   return (
     <span
-      className={`inline-block rounded-sm ${wrap ? "break-keep" : "whitespace-nowrap"} ${box} ${inPanel2 ? "bg-panel" : "bg-panel2"} ${tone ? `font-bold ${TONE_TEXT[tone]}` : ""}`}
+      className={`inline-block rounded-sm ${wrap ? "break-keep" : "whitespace-nowrap"} ${box} ${
+        tone === "check" ? `font-bold ${TONE_FILL.check}` : `${inPanel2 ? "bg-panel" : "bg-panel2"} ${tone ? `font-bold ${TONE_TEXT[tone]}` : ""}`
+      }`}
       data-tone={tone ?? undefined}
     >
       {children}

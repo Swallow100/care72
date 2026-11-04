@@ -3,7 +3,7 @@
 // AI の待ちの印（T44）。ログインの印（components/login/Mark72.tsx）と同じ輪で、操作の色の弧が回り続ける。
 // 輪の地は薄い本文色、弧は操作の色（状態の色は使わない。安否の意味ではないため）。3 つの切れ目は Mark72 と同じ 24 時間ごとの日。
 // 動きは CSS に足さず Web Animations で付ける。動きを減らす設定と animate の無い環境では、輪を出さず文字だけ（止めて文字だけ）。
-// role="status" で読み上げる。文字は呼ぶ側が渡す（lib/ui/labels.ts の WAIT_LABELS: 分けています・考えています・聞いています）。
+// role="status" で読み上げる。文字は呼ぶ側が渡す（lib/ui/labels.ts の WAIT_LABELS: 読み取っています・考えています・聞いています）。
 // 本人のスマホではふりがなの付いた言葉を渡せるよう、文字は ReactNode。ボタンの待ち（SubmitButton の灰色）と並べて出す。
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
