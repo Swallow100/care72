@@ -1,5 +1,5 @@
 // 着信の選び方（docs/tasks/T21.md）のテスト。電話の形（家族・支援者の言う事のある連絡）、1 刻みに 2 件まで、同じ人は 1 件、
-// 赤が先、相手の言い方。想定の表で大雨 1 時間の小林の夫が着信になる（11/3 07:0x の確定 3）。D1 を使わない。
+// 赤が先、相手の言い方。想定の表で大雨 1 時間の小林の夫が着信になる。D1 を使わない。
 
 import { describe, expect, it } from "vitest";
 import { callerLabel, callIndexes, callsOf, CALLS_PER_TICK, isPhoneTurn } from "./calls.ts";

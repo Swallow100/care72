@@ -116,7 +116,7 @@ describe("対応の順番の一致", () => {
     expect(scoreOrder(["p-01", "p-02"], actions, []).matched).toBe(2);
   });
 
-  it("赤の着信を拒否した人は一致にしない（11/3 08:1x の確定 2）。緑の拒否・赤の応答・未応答は数えない", () => {
+  it("赤の着信を拒否した人は一致にしない。緑の拒否・赤の応答・未応答は数えない", () => {
     const calls = [call("p-05", "red", "decline", 180), call("p-06", "green", "decline"), call("p-08", "red", "answer"), call("p-10", "red", null)];
     const o = scoreOrder(IDS, tenPeopleRun(), calls);
     expect(o.matched).toBe(6);

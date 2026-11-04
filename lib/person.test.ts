@@ -503,7 +503,7 @@ describe("D1 から読む（事業所の壁）", () => {
   });
 });
 
-describe("情報を多く出す（作者 16:3x）", () => {
+describe("情報を多く出す（CLAUDE.md「画面の決まり」）", () => {
   it("上に大きく: 時計の残り（短い順、値の無い物は後ろ）と緊急連絡先（順番・電話）", () => {
     const v = viewOf("p-01");
     expect(v.head.clocks).toEqual([

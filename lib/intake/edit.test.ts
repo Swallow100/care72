@@ -270,7 +270,7 @@ describe("面の編集の外す・値確認（components/person/SectionEdit.tsx�
 
   it("確認の窓の文: 外す物の名前と数。写真・PDF は読む前の注意の窓をやめ、黒塗りの画面（T52）の言葉に", () => {
     expect(dropConfirmText(["ワーファリン", "隣人"])).toBe("ワーファリン・隣人 の 2 件を外します。経過に「ケアマネが外した」と残ります。");
-    // 塗る物に生年月日・保険者番号を足した（DECISIONS 11/3 18:0x の T52-4。T54）
+    // 塗る物に生年月日・保険者番号を足した（T52 の問い 4。T54）
     expect(REDACT_LABELS.what).toBe("氏名・住所・電話・町名・生年月日・保険者番号");
     // 塗らずに送る確かめの窓は共通の部品で、題とボタンは 2〜4 字（T83、見直しの安全 中 5）
     expect([REDACT_LABELS.noneTitle, REDACT_LABELS.noneOk, REDACT_LABELS.noneBack]).toEqual(["塗り無し", "送信", "戻る"]);

@@ -353,7 +353,7 @@ describe("分ける本体（偽の Claude）", () => {
   });
 });
 
-// ---------- 引用と聞き取りメモが同じ文なら引用を出さない（11/4 設計の側の答え 1） ----------
+// ---------- 引用と聞き取りメモが同じ文なら引用を出さない ----------
 
 describe("分類の引用と聞き取りメモの重なり", () => {
   const row = (over: Partial<SignalClassFields & HearingSource> = {}): SignalClassFields & HearingSource => ({

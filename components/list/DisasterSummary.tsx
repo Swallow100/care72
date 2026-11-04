@@ -1,6 +1,6 @@
 // 人数を押すとその色で絞る（href を渡したとき。T58）。もう一度押すと解除。人数は絞る前の数（絞っても別の色を押せる）。
 // 担当一覧の発災時の上の数字（docs/tasks/T13.md「上の数字」）。至急・要確認・不明・無事の人数を大きく。
-// 1 人以上は横の言葉を状態の塗りの印に、数は本文色。0 人は印も数も灰（components/ui/Tag の CountLabel、DECISIONS 11/4 00:5x、T66）。横に発災と停電からの経過、時点。市役所向けの集計はこの人数で足りる（docs/SPEC.md「画面 6」）。
+// 1 人以上は横の言葉を状態の塗りの印に、数は本文色。0 人は印も数も灰（components/ui/Tag の CountLabel、T66）。横に発災と停電からの経過、時点。市役所向けの集計はこの人数で足りる（docs/SPEC.md「画面 6」）。
 
 import Link from "next/link";
 import { CountLabel, countClass, StateTag } from "@/components/ui/Tag";

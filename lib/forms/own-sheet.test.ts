@@ -162,7 +162,7 @@ describe("10 人分の文", () => {
     for (const id of ALL_IDS) expect(seed(id).ledger.evacuation.stayHome, id).toBeUndefined();
   });
 
-  it("在宅避難の印のある人の地震の行: 家の なかの 安全な ところで、添えに「あぶないときは 避難先 へ。ケアマネから 電話が きます」（11/3 確定の 8）", () => {
+  it("在宅避難の印のある人の地震の行: 家の なかの 安全な ところで、添えに「あぶないときは 避難先 へ。ケアマネから 電話が きます」", () => {
     const stay = (id: string, patch: Partial<SeedPerson["ledger"]["evacuation"]> = {}) => {
       const p = seed(id);
       return buildOwnSheet(seedRows({ ...p, ledger: { ...p.ledger, evacuation: { ...p.ledger.evacuation, stayHome: true, ...patch } } }), OPTS);
@@ -229,7 +229,7 @@ describe("10 人分の文", () => {
     }
   });
 
-  it("119 の行がある（「119番」は太く）。文は「命が危ないと感じたら、すぐ119番へ」で、スマホの 119 の 1 行と同じ（11/3 16:0x 確定）", () => {
+  it("119 の行がある（「119番」は太く）。文は「命が危ないと感じたら、すぐ119番へ」で、スマホの 119 の 1 行と同じ", () => {
     for (const id of ALL_IDS) {
       const s = sheetOf(id);
       expect(plainText(s.emergency), id).toBe("命が 危ないと 感じたら、すぐ 119番へ");
@@ -308,7 +308,7 @@ describe("同意の範囲", () => {
     expect(html.indexOf("加藤 実")).toBeGreaterThan(html.indexOf('data-block="call"'));
   });
 
-  it("加藤 正の裏（医療要約）も表と同じ扱い: 支援者の名前と電話を出さず「計画で決めた人」。家族の弟は名前と電話のまま（11/3 確定の 5）", () => {
+  it("加藤 正の裏（医療要約）も表と同じ扱い: 支援者の名前と電話を出さず「計画で決めた人」。家族の弟は名前と電話のまま", () => {
     const { back } = paper(rowsOf("p-07"));
     const backText = stripTags(back);
     for (const w of ["前田 和夫", "090-0000-0026", "緊急連絡 1実施者"]) expect(backText, w).not.toContain(w);
@@ -411,7 +411,7 @@ describe("裏の QR（T16 の QrBlock）", () => {
     return { html, head: back.slice(back.indexOf('class="head-row"'), end) };
   }
 
-  it("10 人とも、有効な QR は題名の段の中に一辺 24mm の四角だけで置き、表と裏の 2 頁のまま（11/3 確定の 6）", async () => {
+  it("10 人とも、有効な QR は題名の段の中に一辺 24mm の四角だけで置き、表と裏の 2 頁のまま", async () => {
     expect(OWN_QR_MM).toBe(24);
     for (const id of ALL_IDS) {
       const qr = await activeQr(id);

@@ -327,7 +327,7 @@ type QuestionProps = {
   onText: (key: TextKey, value: string) => void;
 };
 
-/** 記入欄（問 5・問 9 の理由・ご意見）。全部の問いが任意だが、書く手間のある記入欄にだけ「任意」を添える（作者 11/4） */
+/** 記入欄（問 5・問 9 の理由・ご意見）。全部の問いが任意だが、書く手間のある記入欄にだけ「任意」を添える */
 function FreeField({ fieldKey, label, value, onText, big }: { fieldKey: FreeKey; label: string; value: string; onText: QuestionProps["onText"]; big: boolean }) {
   const id = `survey-${fieldKey}`;
   return (

@@ -1,4 +1,4 @@
-// 着信の応答・拒否の記録（docs/tasks/T22.md、docs/DECISIONS.md 11/3 08:1x の確定 2）。D1 と範囲を引数で受け取る（テストで node:sqlite）。
+// 着信の応答・拒否の記録（docs/tasks/T22.md）。D1 と範囲を引数で受け取る（テストで node:sqlite）。
 //
 // 着信の画面（components/drill/IncomingCall、T21）で押した応答・拒否を drill_events に kind call_answer・call_decline で残す
 // （actor care_manager、person は着信の本人）。採点（lib/drill/score.ts）が読み、赤の着信の拒否は順番の誤りに数える。

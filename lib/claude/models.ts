@@ -33,7 +33,7 @@ export type PurposeSpec = {
 };
 
 /**
- * effort は分類のほかは high（作者 11/4 00:5x。docs/DECISIONS.md）。
+ * effort は分類のほかは high（docs/DECISIONS.md「AI の使い所」）。
  * high は考える分が増え、考えた分も maxTokens に入る（超えると AiBadOutput の max_tokens で、再試行しない）。
  * 待ちと上限の決め方は docs/progress/t67.md:
  * - Opus・Sonnet の high は 16000・180 秒にそろえる（前から high だった様式の読み取り・講評と同じ）
@@ -58,7 +58,7 @@ export const PURPOSES: Readonly<Record<ClaudePurpose, PurposeSpec>> = {
   persona: { model: HAIKU, effort: "high", maxTokens: 8000, timeoutMs: 90_000 },
   // 録音と自由文を 5 つに分ける（T12）。録音の応答のあとに waitUntil で走らせ、Workers が応答のあとに待つ 30 秒に
   // 再試行（1 回）込みで収める（12 秒 × 2）。短い文 1 つの分類で、これを超えたら分類なし（AI 失敗）にする。
-  // このため分類だけは high にせず low のまま（11/4 00:5x。high にすると考える分で 12 秒を超えやすい）
+  // このため分類だけは high にせず low のまま（high にすると考える分で 12 秒を超えやすい）
   classify: { model: HAIKU, effort: "low", maxTokens: 4000, timeoutMs: 12_000 },
 };
 

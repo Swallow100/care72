@@ -68,7 +68,7 @@ export type Shot = {
   sub?: string;
 };
 
-/** 地の色。青と白のコントラスト（作者の指示 11/3 03:4x）。話の段（S1〜S3・S8・S9）は青地、道具の段（S4〜S7）は白地 */
+/** 地の色。青と白のコントラスト。話の段（S1〜S3・S8・S9）は青地、道具の段（S4〜S7）は白地 */
 export type Ground = "white" | "blue";
 
 export type Scene = { id: string; title: string; ground: Ground; at: number; end: number; shots: Shot[] };
@@ -332,7 +332,7 @@ export const LINES: Line[] = [
   { id: "N01", at: 0.5, end: 6.5, ja: "医学部で学んでいます。家族は、在宅のお年寄りを受け持つケアマネです。", en: "I'm a medical student. Someone in my family is a care manager for older people who live at home." },
   { id: "N02", at: 7.1, end: 12.7, ja: "ケア72。ケアマネの知っていることを、災害の 72 時間に届けます。", en: "Care72 carries what a care manager knows into the first 72 hours of a disaster." },
   { id: "N03", at: 12.8, end: 19.6, ja: "話して埋まる避難計画。AI が利用者を演じる訓練。発災時の、安否と連絡の順。", en: "A plan you fill in by talking. A drill where AI plays your clients. And in a disaster: who is safe, and who to call first." },
-  // N04（高校の災害の学習）は作者の指示（11/3 09:2x）で消した。ID は振り直さない（欠番）
+  // N04 は消した。ID は振り直さない（欠番）
   { id: "N05", at: 20.3, end: 24.8, ja: "医学部で学びながら、家族の仕事を近くで見て、気づきました。", en: "While studying medicine, I watched my family's work up close, and I noticed something." },
   { id: "N06", at: 25.2, end: 33.2, ja: "ケアマネは利用者のことを全部知っている。でも計画に起こす時間がなく、72 時間に届く道もない。", en: "Care managers know everything about their clients. But there's no time to turn it into a plan, and no way for it to reach anyone in those 72 hours." },
   { id: "N07", at: 33.4, end: 38.0, ja: "個別避難計画ができているのは、対象の 15.1%。", en: "Only 15.1% of the people who need an individual evacuation plan have one." },

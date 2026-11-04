@@ -1,5 +1,5 @@
-// 訓練の通話で聞いた安否の至急維持（docs/tasks なし、T84。DECISIONS 11/4 12:4x「訓練の通話で聞いた「無事」も、本番の電話と同じく
-// 本人の「けが」「動けない」を置き換えない」）。本番の電話（lib/list/calls.ts の saveCall）と同じ線を、訓練の左の表に渡す所
+// 訓練の通話で聞いた安否の至急維持（docs/tasks なし、T84。docs/DECISIONS.md「訓練」: 訓練の通話で聞いた「無事」も、本番の電話と同じく
+// 本人の「けが」「動けない」を置き換えない）。本番の電話（lib/list/calls.ts の saveCall）と同じ線を、訓練の左の表に渡す所
 // （lib/drill/view.ts の loadDrillScreen）で当てる: その通話の前の表の行が red_injury なら、「無事」と、けが・動けないの
 // どちらも付けない「無事でない」は表に渡さず、画面に本番と同じ言葉（「無事 不可（本人が「けが」）」）を出す。
 // 訓練は node:sqlite の D1 と種の 10 人で本物の道で作る。Claude は呼ばない（想定の表の固定の安否）。
@@ -195,7 +195,7 @@ describe("通話で聞いた「無事」は 赤 けが・動けない を置き�
     expect(s.rows.find((x) => x.id === "p-03")!.triage).toMatchObject({ color: "yellow", rule: "green_unchecked" });
   });
 
-  it("訪問（着いた・確認済）は当てない（作者の決めは通話。訪問は問いに書いた）", async () => {
+  it("訪問（着いた・確認済）は当てない（当てるのは通話だけ。訪問は問いに書いた）", async () => {
     await start();
     putRed("p-04", "family");
     await doAct("visit", "p-04");

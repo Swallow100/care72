@@ -141,7 +141,7 @@ export function mappingEntry(m: { id: string; title: string; issuer: string; che
 }
 
 /**
- * 書類の 1 行の小さな注の中身（正式な名前・誰が誰に出す・版。11/3 10:2x）。説明の文（what・when）は画面に出さない（T79。常設の説明文を置かない）
+ * 書類の 1 行の小さな注の中身（正式な名前・誰が誰に出す・版）。説明の文（what・when）は画面に出さない（T79。常設の説明文を置かない）
  * 例: ["松山市避難行動要支援者名簿登録申込書 兼 個別避難計画", "本人・家族 → 市", "松山市 様式【2026.9.10】"]
  */
 export function aboutParts(e: CatalogEntry, opts: { official?: boolean } = {}): string[] {

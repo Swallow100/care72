@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="64" height="64">
-  <!-- ケア72 の印: 72 時間の輪（components/login/Mark72.tsx の満ちた形。11/4 に作者が B1 を選んだ）。日ごとの青と、Inter の字形を輪郭にした 72 -->
+  <!-- ケア72 の印: 72 時間の輪（components/login/Mark72.tsx の満ちた形）。日ごとの青と、Inter の字形を輪郭にした 72 -->
   <path d="M52.44 10.07 A40 40 0 0 1 85.80 67.85" fill="none" stroke="#0b4ea6" stroke-width="9"/>
   <path d="M83.36 72.08 A40 40 0 0 1 16.64 72.08" fill="none" stroke="#116bdf" stroke-width="9"/>
   <path d="M14.20 67.85 A40 40 0 0 1 47.56 10.07" fill="none" stroke="#6fa6ee" stroke-width="9"/>

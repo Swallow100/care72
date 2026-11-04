@@ -396,7 +396,7 @@ function FieldRow({
         )}
       </td>
       <td className={`${CELL} text-right`}>
-        {/* 外すは戻せる印なので無色（行ごとに赤を並べない。事業所の担当の表と同じ向き、11/3 03:3x の確定 7） */}
+        {/* 外すは戻せる印なので無色（行ごとに赤を並べない。事業所の担当の表と同じ向き） */}
         <Button size="sm" icon={off ? RestoreIcon : RemoveIcon} onClick={() => onChange({ removed: !off })}>
           {off ? L.restore : L.remove}
         </Button>

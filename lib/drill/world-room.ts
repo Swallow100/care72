@@ -31,7 +31,7 @@ import { applyContext, buildCast, openingText, tickText, WORLD_STEP_JSON_SCHEMA,
 /**
  * 部屋の Agent の設定（agentParams）の版。WORLD_SYSTEM・world_step の形・モデル・effort のどれかを変えたら 1 つ上げる。
  * 上げないと、本番の ai_agents に残る前の Agent（前の設定）が使われ続ける。
- * 2: 結末を世界が決める・理由の欄（T53）。3: effort を medium → high（11/4 00:5x、T67）。
+ * 2: 結末を世界が決める・理由の欄（T53）。3: effort を medium → high（T67）。
  * 4: WORLD_SYSTEM の人数を決め打たない・入力の「結末」が「決めない」の訓練では結末を決めない（T70 の続き）
  */
 export const WORLD_AGENT_VERSION = 4;
