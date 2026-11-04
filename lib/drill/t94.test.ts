@@ -651,6 +651,10 @@ describe("保存と講評と紙面（D1）", () => {
     expect(paper).toContain('data-detail="choice"');
     expect(paper).toContain('data-mark="空振り"');
     expect(paper).toContain('data-mark="重複"');
+    // 連続の時計の区切りの見出しは分の時刻（小数の時間を書かない）
+    const words = paper.replace(/<style>[^<]*<\/style>/g, "").replace(/<[^>]+>/g, " ");
+    expect(words).not.toMatch(/\d\.\d{2,}/);
+    expect(words).toMatch(/経過 \d+ ?時間〜\d+ ?時間 ?\d+ ?分/);
     for (const w of ["診断", "判定", "重症", "緊急度", "死亡"]) {
       expect(panel).not.toContain(w);
       expect(paper).not.toContain(w);

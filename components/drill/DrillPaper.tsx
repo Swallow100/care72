@@ -3,6 +3,8 @@
 // 講評（AI の印、直した物は修正済）→ 確認欄（管理者・確認日・印を手で）→ 対応履歴（経過の時間ごとに、状況・対応・着信）。
 // 数字は機械（lib/drill/score.ts）で、ここで数え直さない。言葉は画面と同じ（lib/drill/score-labels.ts）。紙の書き方（数字と単位を詰める）は
 // lib/forms/paper-text の paperText を描く直前にだけ通す。
+// T94: 採点に内訳（空振り・重複・頼み事の未対応・通話の往復）と空振り・重複の表、対応履歴に「事実」の列（その手を打った時に分かっていた事）、
+// 自由対応の読み替え、通話の往復の数、訪問の様子と頼み事の 1 行（T93 の欄があるとき）。区切りの見出しは分の時刻（連続の時計）。
 // T59: 開始の前に選んだ物（職員・夜間発災）と取り消した手の数（「取消 N」）は、あるときだけ概要に。手のメモは対応の行の下に（採点は変えない）。状態を持たない（Server Component のまま、テストで renderToStaticMarkup できる）。
 // 紙の決まりは components/forms/paper.css、流し方は components/drill/drill-paper.css。
 
@@ -59,6 +61,18 @@ function stopLine(b: NonNullable<ReturnType<typeof aiStopBand>>): string {
   return [AI_STATUS_LABELS.stop, p.reason, p.span, p.effect, p.resume].filter(Boolean).join(" ");
 }
 
+/**
+ * 対応履歴の区切りの見出しの時間（「6〜9 時間」）。連続の時計（T90）の区切りは分の時刻なので「3 時間 35 分〜7 時間 25 分」
+ * （小数の時間をそのまま書かない）。整数の時間だけの刻みは前と同じ書き方
+ */
+function elapsedSpan(from: number | null, hour: number): string {
+  const whole = (h: number) => Number.isInteger(h);
+  const span = from !== null && from + 1 < hour;
+  if (whole(hour) && (!span || whole(from!))) return `${span ? `${from}〜` : ""}${hour} ${DRILL_LABELS.hours}`;
+  const at = (h: number) => clockLabel(Math.round(h * 60));
+  return `${span ? `${at(from!)}〜` : ""}${at(hour)}`;
+}
+
 type HistoryRow =
   | { kind: "action"; at: number; order: number; a: ActionRecord }
   | { kind: "call"; at: number; order: number; c: DrillPaperRecord["calls"][number] };
@@ -70,6 +84,21 @@ export function DrillPaper({ record, office, today, ai = null }: { record: Drill
   const view = scoreView(score, names, previous);
   const wastedIds = new Set(view.extra.wasted.map((w) => w.action));
   const repeatIds = new Set(view.extra.repeat.map((r) => r.action));
+  // 空振りと重複の表は手を打った順に（同じ手が両方なら空振りを先に）
+  const minuteOf = new Map(screen.state.actions.map((a) => [a.id, a.atMinute]));
+  const choiceRows = [
+    ...view.extra.wasted.map((w) => ({ key: `w-${w.action}`, action: w.action, at: w.at, name: w.name, act: w.act, kind: SCORE_LABELS.wasted, why: w.why, order: 0 })),
+    ...view.extra.repeat.map((r) => ({
+      key: `r-${r.action}`,
+      action: r.action,
+      at: r.at,
+      name: r.name,
+      act: r.act,
+      kind: SCORE_LABELS.repeat,
+      why: `${SCORE_LABELS.gap} ${r.gap} 分`,
+      order: 1,
+    })),
+  ].sort((x, y) => (minuteOf.get(x.action) ?? 0) - (minuteOf.get(y.action) ?? 0) || x.order - y.order);
   const started = jst(screen.drill.started_at);
   const shown = shownOf(review);
   const scenario = screen.drill.scenario;
@@ -342,7 +371,7 @@ export function DrillPaper({ record, office, today, ai = null }: { record: Drill
 
         {/* T94: 手の選び方の内訳。数は機械、4 つの数字には入れない。空振り・重複・頼み事の未対応がある時だけ表 */}
         <p data-detail="extra">{t(extraText(view.extra.counts))}</p>
-        {(view.extra.wasted.length > 0 || view.extra.repeat.length > 0) && (
+        {choiceRows.length > 0 && (
           <table className="sheet drill-table" data-detail="choice">
             <colgroup>
               <col style={{ width: "18%" }} />
@@ -361,22 +390,13 @@ export function DrillPaper({ record, office, today, ai = null }: { record: Drill
               </tr>
             </thead>
             <tbody>
-              {view.extra.wasted.map((w) => (
-                <tr key={`w-${w.action}`} data-wasted={w.action}>
-                  <td className="nowrap">{t(w.at)}</td>
-                  <td>{w.name}</td>
-                  <td>{w.act}</td>
-                  <td>{SCORE_LABELS.wasted}</td>
-                  <td>{w.why}</td>
-                </tr>
-              ))}
-              {view.extra.repeat.map((r) => (
-                <tr key={`r-${r.action}`} data-repeat={r.action}>
-                  <td className="nowrap">{t(r.at)}</td>
-                  <td>{r.name}</td>
-                  <td>{r.act}</td>
-                  <td>{SCORE_LABELS.repeat}</td>
-                  <td>{t(`${SCORE_LABELS.gap} ${r.gap} 分`)}</td>
+              {choiceRows.map((c) => (
+                <tr key={c.key} {...(c.order === 0 ? { "data-wasted": c.action } : { "data-repeat": c.action })}>
+                  <td className="nowrap">{t(c.at)}</td>
+                  <td>{c.name}</td>
+                  <td>{c.act}</td>
+                  <td>{c.kind}</td>
+                  <td>{t(c.why)}</td>
                 </tr>
               ))}
             </tbody>
@@ -510,7 +530,7 @@ export function DrillPaper({ record, office, today, ai = null }: { record: Drill
             <tbody key={tick.step} data-hour={tick.hour}>
               <tr className="hour">
                 <td colSpan={6}>
-                  {t(`${SCORE_LABELS.elapsed} ${from !== null && from + 1 < tick.hour ? `${from}〜` : ""}${tick.hour} ${DRILL_LABELS.hours}`)}
+                  {t(`${SCORE_LABELS.elapsed} ${elapsedSpan(from, tick.hour)}`)}
                   {incidents.map((e, i) => (
                     <span key={i} className="incident">
                       {SCORE_LABELS.situation} {t(clockLabel(Math.round(e.at * 60)))} {t(e.text)}
