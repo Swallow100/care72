@@ -12,7 +12,7 @@
 
 - 頼み文は「目的・読む物・作る物・終わりの形・触るファイル・問い」の形。知らないエージェントでも [docs/tasks/CONTEXT.md](tasks/CONTEXT.md) → [CLAUDE.md](../CLAUDE.md) → [docs/tasks/README.md](tasks/README.md) → 頼み文の順に読めば始められるように書く。
 - 作業ごとに `git worktree add ../care72-tNN -b task/tNN` で別の checkout と branch を作り、その中で `npm ci` と手元の D1 を用意する。同じファイルを 2 つの作業で触らない。
-- 終わったら統合の branch（integrate/t11-t12）を取り込んで衝突を解き、PR を出す。取り込みは設計の側が merge commit で行う。履歴は書き換えない（rebase・amend・force push をしない）。
+- 終わったら統合の branch（integrate/t11-t12）を取り込んで衝突を解き、PR を出す。取り込みは設計の側が merge commit で行う。履歴は書き換えない（rebase・amend・force push をしない。例外は下の「公開の履歴」の 1 回）。
 - 決めきれない所は止まらずに、CLAUDE.md と文書に合う側を選んで進め、進みの記録の「問い」に残す。設計の側が答え、決まった事を DECISIONS.md に書く。
 
 ## 別の目の点検
@@ -34,6 +34,10 @@
 - **手元の MCP**（tools/mcp/care72-local）: 手元の D1 の種と訓練の記録を、仮名にしてから読むだけで返す。
 - **配信の守り**（tools/deploy）: 配信は人が端末で打つ。当てた migration の書き換えを錠（docs/deploy/migrations.lock の SHA-256）で止め、表を作り直す前に本物の事業所のデータを数えてあれば止め、配信のあとに /api/health の commit とログインの壁を確かめる。
 
+## 公開の履歴
+
+公開の中身を片付けるため、11/4 20:27 に一度だけ履歴を書き換え、リポジトリを同じ名前で作り直した。変えたのは文書の中の個人のメモと引用、commit メッセージの中の名前、12 件の作者欄のメールで、commit の数・日時・順番・親と、コードの変化（差はコメントだけ）は元のまま。文書の中の commit の番号は、書き換えたあとの番号に置き換えた。作り直す前の PR（#1〜#114）の番号・題・branch・取り込んだ日時は [docs/PULL_REQUESTS.md](PULL_REQUESTS.md) に残した。merge の commit メッセージの「PR #N」はこの一覧の番号。
+
 ## 数
 
 | 物 | 数 |
@@ -46,4 +50,4 @@
 | テスト | 2,543 件（155 ファイル。通過 2,542・skip 1。`npx vitest run`） |
 | 見直し役・Skill・フック・MCP の道具 | 3・3・2・7 |
 
-数え方: commit と Co-Authored-By は統合の branch（origin/integrate/t11-t12 の 5686d0a）の `git log`、PR は GitHub の merged の数、テストは `npx vitest run --maxWorkers=4` の結果。公開のための片付けの commit は数に入れていない。
+数え方: commit と Co-Authored-By は統合の branch（origin/integrate/t11-t12 の fb9a176）の `git log`、PR は作り直す前の GitHub の merged の数（[一覧](PULL_REQUESTS.md)）、テストは `npx vitest run --maxWorkers=4` の結果。公開のための片付けの commit は数に入れていない。

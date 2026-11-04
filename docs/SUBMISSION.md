@@ -35,6 +35,6 @@
 - 動画の URL
 - 数字 3 つ（docs/EVALUATION.md）。測れた物だけ概要文と README に件数で足す
 - 数え直し: README の「Claude Code で何が可能になったか」と docs/CLAUDE_CODE.md の「何が可能になったか」の数（commit・人が書いた行・テスト・PR・brief・足した行）を提出前の commit で数え直し、「数え直し」の印を外す。docs/JUDGING.md の「数は数え直し」も同じ
-- README の「できること」の本番の commit（今は 686f2e7）を提出前の配信に合わせる
+- README の「できること」の本番の commit（今は ee1dca9）を提出前の配信に合わせる
 - 本番の鍵で Claude の応答を一度通す（docs/KNOWN_UNKNOWN.md の U10）。審査員が最初に触ったときに待ちや失敗を見ないように
 - 概要文の字数を提出フォームの上限に合わせる

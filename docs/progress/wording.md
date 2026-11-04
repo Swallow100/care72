@@ -1,17 +1,17 @@
 # 発災時の画面の言葉の進み（Opus）
 
-worktree care72-wording、branch task/wording（integrate/t11-t12 の c60a4eb から）、11/3 未明。設計の側が Gemini の校正を受けて決めた 7 件を入れた。決めた中身と理由は docs/DECISIONS.md の「119 の案内と画面の言葉」。
+worktree care72-wording、branch task/wording（integrate/t11-t12 の 61ea903 から）、11/3 未明。設計の側が Gemini の校正を受けて決めた 7 件を入れた。決めた中身と理由は docs/DECISIONS.md の「119 の案内と画面の言葉」。
 
 ## できた物
 
 | # | 物 | 場所 | commit |
 | --- | --- | --- | --- |
-| 1 | 灰の状態「未知」→「不明」。担当一覧・本人のページ・地図のピン・様式 9・報告の下書き（「不明の N 人は安否を確かめています」）が同じ言葉になる。ルールの表の入力・読み方も「不明」に、docs/TRIAGE.md・docs/SOURCES.md を npm run docs:triage で作り直した。CLAUDE.md の「灰 未知」2 か所も | lib/labels.ts、lib/triage/index.ts、lib/forms/form9-report.ts、CLAUDE.md、docs/TRIAGE.md・SOURCES.md | 286df69 |
-| 2 | 理由の「未確認 N 時間」→「連絡なし N 時間」（発災から連絡が取れていない時間）。表の例も。「透析先 未確認」と時計の「未確認」はそのまま | lib/triage/index.ts、lib/triage/heavy-rain.fixture.ts | 286df69 |
-| 3 | 行の詳細の見出し「時計」→「残り時間」、「信号」→「安否」、「優先修正」→「優先変更」（見出し・aria-label・表の下の行）、「切れ」→「失効」 | lib/list/labels.ts | 47ff04f |
-| 4 | 本人のページの経過の種類「信号」→「安否」、「優先修正」→「優先変更」（様式 9 の経過も同じ表を読む） | lib/labels.ts の TIMELINE_KIND_LABELS | 47ff04f |
-| 5 | 列の見出し「計画」→「避難計画」: 担当一覧の列、本人のページの上の段、事業所の利用者の表、担当一覧の右の面の見出し | lib/list/labels.ts、lib/labels.ts、lib/office/labels.ts、components/list/SidePane.tsx | b53cc5f |
-| 6 | 言葉のテスト: 決めた言葉と、採らなかった案の言葉（優先・支援者・で開始・分類修正）を留める | lib/labels.test.ts | 17b12c3 |
+| 1 | 灰の状態「未知」→「不明」。担当一覧・本人のページ・地図のピン・様式 9・報告の下書き（「不明の N 人は安否を確かめています」）が同じ言葉になる。ルールの表の入力・読み方も「不明」に、docs/TRIAGE.md・docs/SOURCES.md を npm run docs:triage で作り直した。CLAUDE.md の「灰 未知」2 か所も | lib/labels.ts、lib/triage/index.ts、lib/forms/form9-report.ts、CLAUDE.md、docs/TRIAGE.md・SOURCES.md | 383255c |
+| 2 | 理由の「未確認 N 時間」→「連絡なし N 時間」（発災から連絡が取れていない時間）。表の例も。「透析先 未確認」と時計の「未確認」はそのまま | lib/triage/index.ts、lib/triage/heavy-rain.fixture.ts | 383255c |
+| 3 | 行の詳細の見出し「時計」→「残り時間」、「信号」→「安否」、「優先修正」→「優先変更」（見出し・aria-label・表の下の行）、「切れ」→「失効」 | lib/list/labels.ts | 1e1161b |
+| 4 | 本人のページの経過の種類「信号」→「安否」、「優先修正」→「優先変更」（様式 9 の経過も同じ表を読む） | lib/labels.ts の TIMELINE_KIND_LABELS | 1e1161b |
+| 5 | 列の見出し「計画」→「避難計画」: 担当一覧の列、本人のページの上の段、事業所の利用者の表、担当一覧の右の面の見出し | lib/list/labels.ts、lib/labels.ts、lib/office/labels.ts、components/list/SidePane.tsx | 0047ac3 |
+| 6 | 言葉のテスト: 決めた言葉と、採らなかった案の言葉（優先・支援者・で開始・分類修正）を留める | lib/labels.test.ts | 0259b4b |
 
 テストは 961 件（960 から。期待の文字列を直したほかに 1 件足した）。`npm run typecheck` も通る。
 

@@ -90,7 +90,7 @@ https://care72.app 。ID とパスワードは提出書類にある。利用者�
 
 ## できること
 
-https://care72.app（686f2e7）で動いている物だけを書いた。
+https://care72.app（ee1dca9）で動いている物だけを書いた。
 
 ### 計画（平時）
 
@@ -201,16 +201,16 @@ Messages API を呼ぶ所は lib/claude/call.ts の askJson の 1 か所で、�
 
 作り方の仕組み（設計と作業者のセッションの並列、1 作業 1 worktree、別の目の点検、ルールの表とテスト、配信の守り）は [docs/PROCESS.md](docs/PROCESS.md)、詳しい使い方は [docs/CLAUDE_CODE.md](docs/CLAUDE_CODE.md)。
 
-**数え直し**: 下の表の値は 11/3 18:14 の `36f82bd`（origin/integrate/t11-t12）で数えた物で、そのあとも作業が続いている。提出の前に作者が同じ数え方（[docs/CLAUDE_CODE.md](docs/CLAUDE_CODE.md) の一番下）で数え直し、この表を差し替える。
+**数え直し**: 下の表の値は 11/3 18:14 の `62ef6ee`（origin/integrate/t11-t12）で数えた物で、そのあとも作業が続いている。提出の前に作者が同じ数え方（[docs/CLAUDE_CODE.md](docs/CLAUDE_CODE.md) の一番下）で数え直し、この表を差し替える。
 
 | 数字 | 値 |
 | --- | --- |
 | 期間の始まり → 最初のコードの commit | 11/2 12:30 → 13:08 |
-| commit | 数え直し（`36f82bd` では 609。merge 94 を含む） |
-| 人が書いた行 | 数え直し（`36f82bd` では 0。Co-Authored-By の無い merge でない commit は、GitHub がリポジトリを作ったときの雛形 1 件だけ） |
-| テスト | 数え直し（`36f82bd` では 1,598 件、`npm test`） |
-| PR | 数え直し（`36f82bd` では 44。全部 merge commit で取り込み） |
-| 作業の brief | 数え直し（`36f82bd` では 53。今は docs/tasks の T74 まで） |
+| commit | 数え直し（`62ef6ee` では 609。merge 94 を含む） |
+| 人が書いた行 | 数え直し（`62ef6ee` では 0。Co-Authored-By の無い merge でない commit は、GitHub がリポジトリを作ったときの雛形 1 件だけ） |
+| テスト | 数え直し（`62ef6ee` では 1,598 件、`npm test`） |
+| PR | 数え直し（`62ef6ee` では 44。全部 merge commit で取り込み） |
+| 作業の brief | 数え直し（`62ef6ee` では 53。今は docs/tasks の T74 まで） |
 
 人（作者）は決めることを担い、設計は Claude Fable 5.1、実装は Claude Opus 5.5 のサブエージェントが worktree と branch で並べて進めた。11/3 の夜から 11/4 の朝は、選べる物の少なさと、実際の事業所で使うときの穴の洗い出しから、設計の側が作業を 4〜8 本ずつ並べて出した（T57〜T60 → T61〜T65 → T66〜T74）。線に関わる判断は作業者が決めきらず案として残し、作者が確かめてから入れた（決めた中身は docs/DECISIONS.md）。分担・フック・Skill・サブエージェント・MCP・モデルの使い分けと、数字の裏の commit は [docs/CLAUDE_CODE.md](docs/CLAUDE_CODE.md)。
 
