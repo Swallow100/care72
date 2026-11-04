@@ -65,6 +65,7 @@ import { castScenario, mayBeCalled, needsCast, type Cast } from "./cast.ts";
 import { castFactsMap } from "./cast-facts.ts";
 import { loadPersonaSources } from "./persona.ts";
 import { FREE_TEXT_MAX, isCatalogAction } from "./action-catalog.ts";
+import { dialogueFields } from "./dialogue.ts";
 import { DRILL_END_MINUTE, nextEventMinute, type ClockMark, type ClockTo } from "./clock.ts";
 
 /** 訓練を開ける範囲。ケアマネの役だけ（審査員のケアマネの役も）。事業所と担当一覧の持ち主 */
@@ -1054,6 +1055,8 @@ function asResult(p: Partial<ResultPayload>): { id: string; result: ActionResult
       heard: asHeard(p.heard),
       // 向かってもらった人の着く時刻（T91）。作り直しでも同じ時刻にする
       ...(isNum(p.arriveAt) ? { arriveAt: p.arriveAt } : {}),
+      // 通話の往復・訪問の様子（T93、lib/drill/talk.ts と act が書く）。画面と採点は作り直した状態から読むので写す
+      ...dialogueFields(p),
     },
   };
 }

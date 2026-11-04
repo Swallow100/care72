@@ -2,6 +2,7 @@
 // 手の打ち方は lib/drill/actions.ts、世界の返事は lib/drill/world-reply.ts。
 
 import type { ContactKind, DrillAction, SignalColor, WhereNow } from "../db/types.ts";
+import type { TalkLine, VisitReport } from "./dialogue.ts";
 import type { PersonState } from "./persona-types.ts";
 import type { PersonMarks, PhoneState } from "./scenarios.ts";
 
@@ -135,4 +136,14 @@ export type ActionResult = {
    * 保存した物からの作り直しでも同じ時刻にするため返事に残す。採点（T94）の「届いた」の時刻
    */
   arriveAt?: number;
+  /**
+   * 電話に出た人との往復（T93、lib/drill/talk.ts が足す。3 往復まで）。ケアマネの問いと本人役の言葉。
+   * 頼み事は world.asks にも積む（applyResult が作り直しでも積む）。無ければ往復なし。
+   * cm の行の文はケアマネが打った文（伏せて名前に戻した物）で、withoutMemo は落とさない。Claude に渡すなら仮名化の門を通す
+   */
+  talk?: TalkLine[];
+  /** 往復を切った時刻（発災からの分、T93）。切っていなければ無し */
+  talkEnd?: number;
+  /** 訪問で着いたときの様子と頼み事（T93、本人役 Haiku × 1 回）。色・聞いた安否は変えない */
+  visit?: VisitReport;
 };

@@ -64,6 +64,11 @@ export type PersonaInput = {
   state: PersonState | null;
   /** 直前のケアマネの手（この本人に向けた物。T20） */
   lastAction: ActionRecord | null;
+  /**
+   * この本人に向けたケアマネの手（T93。メモと自由の文を落とした物、打った順）。本人役の文は since 以後（無ければ前の刻みから）の物を
+   * 結果の言葉つきで書く。無ければ lastAction だけ
+   */
+  actions?: ReadonlyArray<ActionRecord>;
   /** 想定の表のこの本人の行（起きること）。ペルソナはこれを骨にする */
   fixed: ReadonlyArray<FixedTurn>;
   /** 仮想モード（T50）。本人役は表の行が無く、自分の町の状況から自由に動く */

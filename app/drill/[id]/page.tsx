@@ -110,6 +110,7 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
           heard={s.heard}
           recordings={recordings}
           ended={endedOf(s, r.id)}
+          asks={s.state.world.asks?.[r.id] ?? []}
         />
       ) : null,
     // 仮想モード（T50）: 結末の人の行に印と 1 文
@@ -231,7 +232,15 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
                   <ActionPanel drillId={id} step={s.drill.step} actions={actions.length} people={people} contacts={s.contacts} fiction={fiction} />
                 )}
                 {running && latest && (
-                  <LatestResult action={latest} names={s.names} ticks={s.ticks} voiceOf={voiceOf} fiction={fiction} refused={s.refused} />
+                  <LatestResult
+                    action={latest}
+                    names={s.names}
+                    ticks={s.ticks}
+                    voiceOf={voiceOf}
+                    fiction={fiction}
+                    refused={s.refused}
+                    talk={{ drillId: id, step: s.drill.step, actions: actions.length }}
+                  />
                 )}
                 <ActionLog
                   actions={actions}

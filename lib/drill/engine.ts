@@ -505,6 +505,7 @@ export async function step(
               incidents,
               state: state.people[person] ?? null,
               lastAction: actionWithoutMemo([...state.actions].reverse().find((a) => a.person === person) ?? null),
+              actions: withoutMemo(state.actions.filter((a) => a.person === person)), // T93: 前の呼びからの手を全部
               fixed: own,
               ...night,
             }),
@@ -577,6 +578,7 @@ async function virtualStep(
               incidents,
               state: state.people[person] ?? null,
               lastAction: actionWithoutMemo([...state.actions].reverse().find((a) => a.person === person) ?? null),
+              actions: withoutMemo(state.actions.filter((a) => a.person === person)), // T93: 前の呼びからの手を全部
               fixed: [],
               virtual: true,
               ...(isNight(state) ? { night: true } : {}),
@@ -809,6 +811,7 @@ export async function advance(
               incidents,
               state: state.people[person] ?? null,
               lastAction: actionWithoutMemo([...state.actions].reverse().find((a) => a.person === person) ?? null),
+              actions: withoutMemo(state.actions.filter((a) => a.person === person)), // T93: 前の呼びからの手を全部
               fixed: pending(person),
               ...(virtual ? { virtual: true } : {}),
               ...night,
