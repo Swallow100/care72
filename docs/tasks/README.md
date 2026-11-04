@@ -1,10 +1,10 @@
 # 作業の分け方（docs/tasks）
 
-ケア72 を 11/8 20:00 までに仕上げるための作業を、1 つ 1〜3 時間の単位に分けた。別のアカウントの Claude Code にそのまま渡せるように、各ファイルは単独で読める。番号は作る順で、「前に要る物」が済んでいれば並べて進めてよい。
+ケア72 を 11/8 20:00 までに仕上げるための作業を、1 つ 1〜3 時間の単位に分けた。別のセッションの Claude Code にそのまま渡せるように、各ファイルは単独で読める。番号は作る順で、「前に要る物」が済んでいれば並べて進めてよい。
 
 ## 渡し方
 
-別のアカウントで Claude Code を開き、このリポジトリで次のように頼む。このプロジェクトを知らないエージェントでも、`docs/tasks/CONTEXT.md`（何を作っているか・越えない線とその理由・地図・用語・進め方）を先に読めば、意図まで汲んで作業できる:
+別のセッションで Claude Code を開き、このリポジトリで次のように頼む。このプロジェクトを知らないエージェントでも、`docs/tasks/CONTEXT.md`（何を作っているか・越えない線とその理由・地図・用語・進め方）を先に読めば、意図まで汲んで作業できる:
 
 ```
 docs/tasks/CONTEXT.md → CLAUDE.md → docs/tasks/README.md → docs/tasks/T03.md の順に読んで、T03 をやって。
@@ -16,10 +16,10 @@ T49 以降の文書は、頭に「意図（なぜこの作業か）」と、末�
 
 ## 同じリポジトリで 2 つのセッションが動くとき
 
-- `C:\Users\choco\dev\care72` の main は、設計をしている側（Fable のセッション）の物。別のアカウントは必ず worktree で作業する: `git worktree add ../care72-t03 -b task/t03 main`、その中で `npm install` と `npm run db:reset`（手元の D1 は worktree ごと）。
+- 元の checkout の main は、設計をしている側（Fable のセッション）の物。作業のセッションは必ず worktree で作業する: `git worktree add ../care72-t03 -b task/t03 main`、その中で `npm install` と `npm run db:reset`（手元の D1 は worktree ごと）。
 - 小さく commit し、branch を push する。終わったら `gh pr create --fill` → `gh pr merge --merge --delete-branch`（merge commit を残す。rebase・squash・force push はしない）。
 - 同じファイルを 2 つの作業で触らない。各ファイルの「触るファイル」を見て重なるなら順番にする。
-- worktree の外を開かない。`C:\Users\choco\dev` の隣のフォルダは別のプロジェクトのコードと本物の鍵で、見るのも持ち込むのも禁止。
+- worktree の外を開かない。ほかのプロジェクトのコードを見ない・持ち込まない。
 - wrangler でネットに出る命令を打たない: `login`・`whoami`・`deploy`・`d1 create`・`r2 bucket create`・`secret put`。手元は `--local` だけ。配信は既存のアカウントで作者が手で打つ（T27）。エージェントはネットに出る wrangler を打たない。Cloudflare の MCP ツールも使わない。
 
 ## 全部の作業に共通の終わりの形
@@ -28,7 +28,7 @@ T49 以降の文書は、頭に「意図（なぜこの作業か）」と、末�
 - 画面は CLAUDE.md の「画面の決まり」のとおり。ライトとダークの両方。
 - Claude に渡す物は lib/pseudonym を通した仮名だけ。氏名・住所・電話・町名は渡さない。
 - 診断・用量・医療助言になる文を書かない。色と順位は lib/triage の表だけで出す。
-- 依存を足したら THIRD_PARTY.md（MIT・Apache-2.0・OFL だけ）。鍵は .dev.vars（手元）と Cloudflare の secret（配信）だけ。.env・.dev.vars は commit しない。
+- 依存を足したら THIRD_PARTY_NOTICES.md（MIT・Apache-2.0・OFL だけ）。鍵は .dev.vars（手元）と Cloudflare の secret（配信）だけ。.env・.dev.vars は commit しない。
 - 終わったら docs/PROGRESS.md に「できた物・未確認・決めた所」を足す。決めたことで仕様書と違う物は docs/DECISIONS.md に「案」として書く。docs/SPEC.md は書き換えない。
 - commit は日本語で小さく。末尾は Opus なら `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`、Fable なら `Claude Fable 5.1`、Sonnet なら `Claude Sonnet 5.5`。
 - 配信（wrangler deploy・d1 create・secret put）は T27 だけ。ほかの作業は `--local` だけ。
@@ -85,7 +85,7 @@ T49 以降の文書は、頭に「意図（なぜこの作業か）」と、末�
 | T45 | 入れる欄を AI 専用に（文字・写真と PDF・小さなマイク、会話の流れ、詳しい問い）、本人のページの欄を「編集」で手で直せる | 11/3 | T03・T04 |
 | T46 | 地図の全画面と拡大 | 11/3 | T14 |
 | T47 | 書類の正しさ（勝手な太字をやめる、欄の照合）、何の書類かの説明、様式の選択（自治体ごと） | 11/3 | T05〜T08・T36 |
-| T48 | アドバイザーの返事を入れる（AI の告知を声と文字で、訓練の 10 人に「AI が演じる架空の人」、医療班の要約は並べ替えだけ、言葉の確かめ、本運用で確かめること） | 11/3 | T10・T18・T07 |
+| T48 | 医療の高リスクな使い方への守りを入れる（AI の告知を声と文字で、訓練の 10 人に「AI が演じる架空の人」、医療班の要約は並べ替えだけ、言葉の確かめ、本運用で確かめること） | 11/3 | T10・T18・T07 |
 | T49 | 赤のあとの聞き取りを増やす（1 画面 1 問の枝分かれ、押すたびに送る、押せなければ声で同じ問い、Haiku の聞き取りメモは本人の言葉のまま欄に。色と順は動かさない） | 11/3〜 | T48・T12・T13 |
 | T50 | 仮想モード（Managed Agents の世界の部屋で街の出来事を自由に、本人役は自由に動く、結末は時計の計算でオブラートの 1 文。落ちたら 1 回呼びに戻る） | 11/3〜 | T17〜T22・T48 |
 | T51 | 写して移した画面の部品を、デザインだけを手本にケア72 のコードとして書き直す（確認の窓・押したときの灰色・ホーム画面に追加の判定・選ぶ部品）。機能は広げる | 11/3 | T44 |
