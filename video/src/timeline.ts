@@ -19,6 +19,25 @@ export type Box = { x: number; y: number; w: number; h: number };
  */
 export type Callout = { box: Box; label: string; at?: number; end?: number; tone?: "urgent"; place?: "above" | "below" | "left" | "right" };
 
+/**
+ * 声に合わせて出す言葉（文字が主役の絵。話の段）。出る時刻は書かない: 文 line の中の say（無ければ text）を声が言い始める所（src/voice.ts の sayAt）。
+ * 画面に出すのは声が強く言う 2〜4 句だけ（文の全部は字幕の帯にある）。
+ * size は字の大きさの段（theme.ts の TYPE）、row は行（同じ行の言葉は横に並ぶ）。後ろの行が出ると前の行は小さな字の色に下がる（hold なら下げない）。
+ * mark は行の左に 6px の帯。slot は決まった所に置く言葉（数字の画面の lead は数の上、tail は数の後ろ。mark は字を出さず、
+ * 声がその言葉を言う所で画面の物を強調する: 72 時間の輪の題名の数の下に帯）。shift は声からのずれの秒（先に出すなら負）
+ */
+export type Cue = {
+  text: string;
+  line: string;
+  say?: string;
+  size?: "display" | "hero" | "h1" | "h2";
+  row?: number;
+  hold?: boolean;
+  mark?: boolean;
+  slot?: "lead" | "tail" | "mark";
+  shift?: number;
+};
+
 export type Shot = {
   /** 動画の頭からの秒 */
   at: number;
@@ -67,6 +86,8 @@ export type Shot = {
   lines?: string[];
   /** 文字だけの画面で lines と sub を出す秒（絵の頭から。声に合わせる）。無ければ 0.9 秒ずつ */
   beats?: number[];
+  /** 声に合わせて出す言葉（文字が主役の絵）。あれば lines より先に使う */
+  cues?: Cue[];
   value?: string;
   sub?: string;
 };
@@ -93,13 +114,30 @@ export const SCENES: Scene[] = [
         footage: "R01",
         label: "ケアマネージャーの訪問の後ろ姿（B01）をぼかして奥に。問いかけの文字",
         bg: "B01",
-        // 冒頭は問いかけ（N01）。最初の 10 秒で誰のどんな課題かを言う（N01・N02）
-        lines: ["突然ですが", "個別避難計画を知っていますか"],
-        // N01 の「突然ですが」で 1 行目、「個別避難計画を」で 2 行目（仮の声で測る）
-        beats: [0.4, 1.35],
+        // 冒頭は問いかけ（N01）。最初の 10 秒で誰のどんな課題かを言う（N01・N02）。計画の名前を一番大きく
+        cues: [
+          { text: "突然ですが", line: "N01", size: "h1", row: 0 },
+          { text: "個別避難計画", line: "N01", size: "display", row: 1, hold: true },
+          { text: "を知っていますか", line: "N01", size: "h1", row: 1 },
+        ],
       },
-      // N02 の前半「災害のとき…決めておく計画です」の間は、本物の計画書（松山市の様式の 1 頁目）を見せる
-      { at: 4.1, end: 8.8, kind: "footage", footage: "R03", from: 3, label: "これが個別避難計画（松山市の様式）" },
+      // N02 の前半「災害のとき…決めておく計画です」の間は、左に計画の中身を言葉で、右に本物の計画書（松山市の様式の 1 頁目）
+      {
+        at: 4.1,
+        end: 8.8,
+        kind: "split",
+        footages: ["", "R03"],
+        // 様式の頭（題名「個別避難計画」が見える所。R03-3 の 0〜4 秒）
+        froms: [0, 0.5],
+        label: "これが個別避難計画（松山市の様式）",
+        cues: [
+          { text: "災害のとき", line: "N02", size: "h2", row: 0 },
+          { text: "在宅の高齢者を", line: "N02", size: "h1", row: 1 },
+          { text: "誰が", line: "N02", size: "hero", row: 2, hold: true },
+          { text: "どう助けるか", line: "N02", size: "hero", row: 3, hold: true },
+          { text: "決めておく計画", line: "N02", size: "h1", row: 4 },
+        ],
+      },
       {
         at: 8.8,
         end: 13.1,
@@ -111,6 +149,10 @@ export const SCENES: Scene[] = [
         sub: "対象 670 万人",
         // 数え上がりが止まるのは N02 の「15.1%」（仮の声で 11.0 秒）
         beats: [2.2],
+        cues: [
+          { text: "できているのは", line: "N02", size: "h2", slot: "lead" },
+          { text: "だけ", line: "N02", size: "h1", slot: "tail" },
+        ],
         source: "共同通信 2026-10-04（熊本日日新聞）",
       },
     ],
@@ -123,7 +165,20 @@ export const SCENES: Scene[] = [
     end: 25.2,
     shots: [
       // 作者の紹介は大きな字にせず、左下の名札（N03 の「私の家族はケアマネージャーで」）
-      { at: 13.1, end: 17.2, kind: "plate", label: "作者の名札（医学部の学生・家族にケアマネージャー）", lines: ["作者　医学部の学生", "家族にケアマネージャー"], beats: [0.3, 0.9], bg: "B02" },
+      // 真ん中には N03 の後半「その理由を家で見てきました」（作者が身近な所にいること）。名札より大きいが、作者の紹介そのものは大きくしない
+      {
+        at: 13.1,
+        end: 17.2,
+        kind: "plate",
+        label: "作者の名札（医学部の学生・家族にケアマネージャー）",
+        lines: ["作者　医学部の学生", "家族にケアマネージャー"],
+        beats: [0.3, 0.9],
+        bg: "B02",
+        cues: [
+          { text: "その理由を", line: "N03", size: "h1", row: 0 },
+          { text: "家で見てきた", line: "N03", say: "家で見てきました", size: "hero", row: 1 },
+        ],
+      },
       {
         at: 17.2,
         end: 21.5,
@@ -151,6 +206,7 @@ export const SCENES: Scene[] = [
         lines: ["書く時間が無い"],
         sub: "アンケート（ケアマネージャーと包括支援センター）",
         beats: [2.6],
+        cues: [{ text: "アンケートでも", line: "N05", size: "h2", slot: "lead" }],
       },
     ],
   },
@@ -167,19 +223,36 @@ export const SCENES: Scene[] = [
         kind: "text",
         label: "気づき（楽に作れて、実際の災害でも役立つ計画）",
         bg: "B05",
-        // N06 の「楽に作れて」で 1 行目、「実際の災害でも役立つ計画なら」で 2 行目（仮の声で 27.0 秒・28.0 秒）
-        lines: ["楽に作れて", "実際の災害でも役立つ計画"],
-        beats: [1.8, 2.8],
+        // 2 つの条件は下げずに残し、最後の「大きくなる」を一番大きく
+        cues: [
+          { text: "楽に作れて", line: "N06", size: "hero", row: 0, hold: true },
+          { text: "実際の災害でも役立つ計画", line: "N06", size: "hero", row: 1, hold: true },
+          { text: "作る意味も", line: "N06", size: "h1", row: 2 },
+          { text: "大きくなる", line: "N06", size: "display", row: 2, mark: true },
+        ],
       },
-      // 題名を 72 時間の輪（G1）の中に置く。題名は N07 の「ケア72」で出す（仮の声で 33.0 秒）。輪の中に名前の 72 時間の意味
-      { at: 32.5, end: 38, kind: "ring", label: "題名と 72 時間の輪", lines: ["ケア72"], sub: "助けが届きにくい災害直後の 72 時間", beats: [0.5] },
+      // 題名を 72 時間の輪（G1）の中に置く。題名は N07 の「ケア72」で出す（仮の声で 33.0 秒）。輪の中に名前の 72 時間の意味を声に合わせて
+      {
+        at: 32.5,
+        end: 38,
+        kind: "ring",
+        label: "題名と 72 時間の輪",
+        lines: ["ケア72"],
+        sub: "助けが届きにくい災害直後の 72 時間",
+        beats: [0.5],
+        cues: [
+          { text: "72", line: "N07", say: "72は", slot: "mark" },
+          { text: "助けが届きにくい", line: "N07", size: "h2", row: 0, hold: true },
+          { text: "災害直後の 72 時間", line: "N07", size: "h2", row: 1, hold: true },
+        ],
+      },
       {
         at: 38,
         end: 46,
         kind: "split",
         footages: ["R03", "R07", "R10"],
-        // R03 は様式の 1 頁目、R10 は山田の行が至急で一番上に上がったあと（R10-2 の 31.1 秒）
-        froms: [3, 0, 32.3],
+        // R03 は様式の頭（R03-3 の 0 秒から。4 秒ほどで下へ送る）、R10 は山田の行が至急で一番上に上がったあと（R10-2 の 31.1 秒）
+        froms: [0, 0, 32.3],
         lines: ["計画", "訓練", "発災時"],
         // N08 の「話すだけで計画ができ」「訓練もでき」「災害時は」に合わせて 1 つずつ（仮の声で 38.2・39.9・41.0 秒）
         beats: [0.2, 1.9, 3.0],
@@ -355,10 +428,25 @@ export const SCENES: Scene[] = [
     id: "S9",
     title: "締め",
     ground: "blue",
-    // 締めの文（N30）が長くなったので 2:52.5 から（11/4 15:5x）
+    // 締めの文（N30）が長くなったので 2:52.5 から（11/4 15:5x）。前半は言葉、「本当に使える形に」からロゴが描かれる
     at: 172.5,
     end: 180,
-    shots: [{ at: 172.5, end: 180, kind: "end", label: "終わりの画面", bg: "B08" }],
+    shots: [
+      {
+        at: 172.5,
+        end: 176.9,
+        kind: "text",
+        label: "締めの言葉（課題は山積み・それでも・まずは一部から）",
+        bg: "B08",
+        cues: [
+          { text: "実用化の課題は", line: "N30", size: "h1", row: 0 },
+          { text: "山積み", line: "N30", size: "hero", row: 0 },
+          { text: "それでも", line: "N30", size: "h1", row: 1 },
+          { text: "まずは一部から", line: "N30", size: "hero", row: 2, hold: true },
+        ],
+      },
+      { at: 176.9, end: 180, kind: "end", label: "終わりの画面", bg: "B08", bgFrom: 4.4 },
+    ],
   },
 ];
 

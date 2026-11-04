@@ -180,19 +180,38 @@ export const TextCard: React.FC<{ lines: string[]; sub?: string; beats?: number[
  * G1 72 時間の輪。目盛りが時計回りに 1 つずつ埋まり、12 時間ごとの太い目盛りに時間を添える。
  * 題名（ケア72）は輪の中で、目盛りが半分まで埋まった所で上がって出る
  */
-export const Ring72: React.FC<{ label: string; duration: number; sub?: string; titleAt?: number }> = ({ label, duration, sub, titleAt }) => {
+export const Ring72: React.FC<{ label: string; duration: number; sub?: string; titleAt?: number; markAt?: number; children?: React.ReactNode }> = ({
+  label,
+  duration,
+  sub,
+  titleAt,
+  markAt,
+  children,
+}) => {
   const frame = useCurrentFrame();
   const p = usePalette();
   const hours = interpolate(frame, [0, duration * 0.75], [0, 72], { ...clamp, easing: EASE_OUT });
   // 題名は声がその名前を言う所（titleAt のコマ）。無ければ輪が 2 割進んだ所
   const titleIn = progress(frame, titleAt ?? Math.round(duration * 0.18), 18);
+  // 声が「72 は」と言う所（markAt）で、題名の数の下に 6px の帯が左から伸びる（表の強調と同じ太さ）
+  const [, name = label, digits = ""] = /^(.*?)(\d+)$/.exec(label) ?? [];
+  const bar = markAt !== undefined ? progress(frame, markAt, 12) : 0;
   return (
     <Stage gap={0}>
       <div style={{ position: "relative", display: "flex", justifyContent: "center", alignItems: "center" }}>
         <Dial r={320} width={14} hours={hours} ticks={72} labels />
         <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", gap: 10 }}>
-          <div style={{ fontSize: TYPE.display, fontWeight: 600, lineHeight: 1, opacity: titleIn, transform: `translateY(${(1 - titleIn) * 26}px)` }}>{label}</div>
-          {sub ? <div style={{ fontSize: TYPE.body, color: p.sub, ...rise(frame, Math.round(duration * 0.35)) }}>{sub}</div> : null}
+          <div style={{ fontSize: TYPE.display, fontWeight: 600, lineHeight: 1, opacity: titleIn, transform: `translateY(${(1 - titleIn) * 26}px)` }}>
+            {name}
+            {digits ? (
+              <span style={{ position: "relative" }}>
+                {digits}
+                <span style={{ position: "absolute", left: 4, right: 4, bottom: -16, height: 6, background: p.fg, transformOrigin: "left", transform: `scaleX(${bar})` }} />
+              </span>
+            ) : null}
+          </div>
+          {/* 名前の意味は声に合わせた言葉（children）があればそれ、無ければ sub を 1 行で */}
+          {children ? <div style={{ marginTop: 46 }}>{children}</div> : sub ? <div style={{ fontSize: TYPE.body, color: p.sub, ...rise(frame, Math.round(duration * 0.35)) }}>{sub}</div> : null}
         </div>
       </div>
     </Stage>
@@ -262,10 +281,20 @@ export const Compare: React.FC<{ value: string; labels: [string, string]; sub?: 
  * 上に声が言う数（数え上がって、声がその数を言う所で止まる。land はそのコマ）。メーターは全体の線（地の 1 段明るい青）の上に一部の塗り（字の色）。
  * 塗りは左を角にして右の端だけ 4px 丸める（棒の決まり。カプセル形にしない）。名前は塗りの下の左と、線の右の端に字の色で
  */
-export const Share: React.FC<{ hero: string; share: number; part: string; whole: string; land?: number }> = ({ hero, share, part, whole, land = 40 }) => {
+type SlotWord = { text: string; frame: number; size: keyof typeof TYPE };
+
+export const Share: React.FC<{ hero: string; share: number; part: string; whole: string; land?: number; lead?: SlotWord; tail?: SlotWord }> = ({
+  hero,
+  share,
+  part,
+  whole,
+  land = 40,
+  lead,
+  tail,
+}) => {
   const frame = useCurrentFrame();
   const p = usePalette();
-  const m = /^(d+(?:.d+)?)(.*)$/.exec(hero);
+  const m = /^(\d+(?:\.\d+)?)(.*)$/.exec(hero);
   // 出てすぐ数え始め、声がその数を言う所（land）で止まる
   const t = progress(frame, 4, Math.max(20, land - 4));
   const digits = m ? (m[1].split(".")[1] ?? "").length : 0;
@@ -275,9 +304,12 @@ export const Share: React.FC<{ hero: string; share: number; part: string; whole:
   return (
     <Stage gap={0}>
       <div style={{ width: W, display: "flex", flexDirection: "column", gap: 40, ...rise(frame, 0, 20, 14) }}>
+        {/* 声が数の前に言う言葉（「できているのは」）は数の上に、後ろの言葉（「だけ」）は数の後ろに、言う所で出す */}
+        {lead ? <div style={{ fontSize: TYPE[lead.size], fontWeight: 600, lineHeight: 1, marginBottom: -12, ...rise(frame, lead.frame) }}>{lead.text}</div> : null}
         <div style={{ display: "flex", alignItems: "baseline", gap: 10, lineHeight: 1 }}>
           <span style={{ fontSize: m ? 220 : TYPE.hero, fontWeight: 600 }}>{shown}</span>
           {m ? <span style={{ fontSize: 110, fontWeight: 600 }}>{m[2]}</span> : null}
+          {tail ? <span style={{ fontSize: TYPE[tail.size], fontWeight: 600, marginLeft: 18, ...rise(frame, tail.frame, 16, 14) }}>{tail.text}</span> : null}
         </div>
         <div style={{ position: "relative", width: W, height: H, background: p.tint, borderRadius: RADIUS.mark }}>
           <div style={{ position: "absolute", left: 0, top: 0, height: H, width: W * share * t, background: p.fg, borderRadius: `0 ${RADIUS.mark}px ${RADIUS.mark}px 0` }} />

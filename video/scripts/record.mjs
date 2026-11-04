@@ -133,10 +133,11 @@ async function disaster(browser) {
   const fam = await newPage(browser, PHONE);
   const self = await newPage(browser, PHONE);
   await login(cm, base, "yamamoto", cmPw);
+  watchRefresh(cm);
+  // 最初に戻すと、それより前に作ったスマホの入口のセッションは使えなくなる（戻したあとのスマホは役選択へ）。スマホは戻してから入る
+  await prep(cm);
   await login(fam, base, "judge", judgePw, "family");
   await login(self, base, "judge", judgePw, "self");
-  watchRefresh(cm);
-  await prep(cm);
   await open(fam, base, "/family");
   await open(self, base, "/me");
 

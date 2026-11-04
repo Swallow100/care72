@@ -8,12 +8,36 @@ import { GroundProvider, usePalette } from "./ground";
 import { Footage } from "./parts/Footage";
 import { Framed, framedSize } from "./parts/Frame";
 import { BigNumber, Compare, EndCard, Flow, Memo, Models, Quote, Ring72, Plate, Rules, Share, Stage, TextCard, Title } from "./parts/Graphics";
+import { Kinetic, type KineticWord } from "./parts/Kinetic";
 import { CROSS, STAGGER, mix, progress, rise } from "./parts/motion";
 import { Caption, Header, Subtitle } from "./parts/Overlay";
 import { COLOR, FONT, LAYOUT, TYPE, palette } from "./theme";
-import { FPS, LINES, SCENES, type Scene, type Shot } from "./timeline";
+import { FPS, LINES, SCENES, type Cue, type Scene, type Shot } from "./timeline";
+import { sayAt } from "./voice";
 
 const f = (seconds: number) => Math.round(seconds * FPS);
+
+const LINE_BY_ID = new Map(LINES.map((l) => [l.id, l]));
+
+/** 言葉を出すコマ（絵の頭から）。声が say を言い始める所（src/voice.ts）。文の中に無い言葉は絵の頭（check.mjs が止める） */
+function cueFrame(cue: Cue, shot: Shot, assets: Assets): number {
+  const line = LINE_BY_ID.get(cue.line);
+  const at = line ? sayAt(line, assets.voice?.[cue.line], cue.say ?? cue.text) : null;
+  return at === null ? 0 : f(at + (cue.shift ?? 0) - shot.at);
+}
+
+/** 文字が主役の絵の言葉（slot の無い物）。row が無ければ 1 つずつ別の行 */
+function kineticWords(shot: Shot, assets: Assets): KineticWord[] {
+  return (shot.cues ?? [])
+    .filter((c) => !c.slot)
+    .map((c, i) => ({ text: c.text, frame: cueFrame(c, shot, assets), size: c.size ?? "h1", row: c.row ?? i, hold: c.hold, mark: c.mark }));
+}
+
+/** 数字の画面の数の上（lead）と後ろ（tail）の言葉。mark は画面に出ている物を強調する時刻だけ（72 時間の輪の題名の数） */
+function slotWord(shot: Shot, assets: Assets, slot: "lead" | "tail" | "mark") {
+  const c = shot.cues?.find((x) => x.slot === slot);
+  return c ? { text: c.text, frame: cueFrame(c, shot, assets), size: c.size ?? "h1" } : undefined;
+}
 
 /** 終わりの画面に出すリポジトリ（公開用の repo の名前が決まったらここを直す） */
 const REPO = "github.com/Swallow100/care72";
@@ -75,24 +99,38 @@ const WordsPanel: React.FC<{ width: number; height: number; text: string; delay?
 /** 録画を横に並べる（split）。スマホは舞台の高さいっぱい、窓は残りの幅を分ける。lines[i] を各録画の上の見出しに */
 const Split: React.FC<{ shot: Shot; assets: Assets; duration: number }> = ({ shot, assets, duration }) => {
   const frame = useCurrentFrame();
+  const p = usePalette();
   const ids = shot.footages ?? [];
   // beats があれば見出しと録画を声に合わせて 1 つずつ出す（S2 の「計画・訓練・発災時」）
   const delays = ids.map((_, i) => (shot.beats?.[i] !== undefined ? f(shot.beats[i]) : i * STAGGER));
   const gap = 56;
-  const heading = shot.lines?.length ? 64 : 0;
+  // 話の段（青地）の見出しは 1 段大きく（見出しそのものが話の強調）
+  const headingSize = p.bg === COLOR.blue ? TYPE.h1 : TYPE.h2;
+  const heading = shot.lines?.length ? headingSize + 20 : 0;
   const H = LAYOUT.stage.height - heading - 40;
+  // 録画の番号が空の所: cues があれば言葉（地の上にじかに、決まった幅）、無ければ文字の面
+  const words = shot.cues?.length ? kineticWords(shot, assets) : null;
+  const TEXT_W = 600;
+  const textW: number[] = ids.map((id) => (!id && words ? TEXT_W : 0));
   const phoneW = ids.map((id) => (id ? framedSize(id, 10000, H) : null)).map((s) => (s?.phone ? s.width : 0));
-  const windows = ids.filter((_, i) => phoneW[i] === 0).length;
-  const restW = LAYOUT.stage.width - phoneW.reduce((a, b) => a + b, 0) - gap * (ids.length - 1);
+  const windows = ids.filter((id, i) => phoneW[i] === 0 && textW[i] === 0).length;
+  const restW = LAYOUT.stage.width - phoneW.reduce((a, b) => a + b, 0) - textW.reduce((a, b) => a + b, 0) - gap * (ids.length - 1);
   const eachW = windows ? restW / windows : 0;
   return (
     <Stage row gap={gap}>
       {ids.map((id, i) => {
+        if (!id && words) {
+          return (
+            <div key={`text-${i}`} style={{ width: TEXT_W, display: "flex", flexDirection: "column", justifyContent: "center" }}>
+              <Kinetic words={words} />
+            </div>
+          );
+        }
         const size = id ? framedSize(id, phoneW[i] || eachW, H) : { width: eachW, height: Math.round((eachW * 9) / 16) + LAYOUT.windowBar };
         return (
           <div key={`${id}-${i}`} style={{ width: size.width, display: "flex", flexDirection: "column", alignItems: "center" }}>
             {shot.lines?.[i] ? (
-              <div style={{ fontSize: TYPE.h2, fontWeight: 600, marginBottom: 20, ...rise(frame, delays[i]) }}>{shot.lines[i]}</div>
+              <div style={{ fontSize: headingSize, fontWeight: 600, marginBottom: 20, ...rise(frame, delays[i]) }}>{shot.lines[i]}</div>
             ) : null}
             {id ? (
               <Framed
@@ -193,7 +231,13 @@ const ShotView: React.FC<{ shot: Shot; assets: Assets }> = ({ shot, assets }) =>
       body = (
         <>
           <Backdrop shot={shot} assets={assets} duration={duration} />
-          <TextCard lines={shot.lines ?? []} sub={shot.sub} beats={shot.beats} />
+          {shot.cues?.length ? (
+            <Stage>
+              <Kinetic words={kineticWords(shot, assets)} />
+            </Stage>
+          ) : (
+            <TextCard lines={shot.lines ?? []} sub={shot.sub} beats={shot.beats} />
+          )}
         </>
       );
       break;
@@ -201,12 +245,27 @@ const ShotView: React.FC<{ shot: Shot; assets: Assets }> = ({ shot, assets }) =>
       body = (
         <>
           <Backdrop shot={shot} assets={assets} duration={duration} />
+          {shot.cues?.length ? (
+            <Stage>
+              <Kinetic words={kineticWords(shot, assets)} />
+            </Stage>
+          ) : null}
           <Plate lines={shot.lines ?? []} beats={shot.beats} />
         </>
       );
       break;
     case "ring":
-      body = <Ring72 label={shot.lines?.[0] ?? "72 時間"} duration={duration} sub={shot.sub} titleAt={shot.beats?.[0] !== undefined ? f(shot.beats[0]) : undefined} />;
+      body = (
+        <Ring72
+          label={shot.lines?.[0] ?? "72 時間"}
+          duration={duration}
+          sub={shot.sub}
+          titleAt={shot.beats?.[0] !== undefined ? f(shot.beats[0]) : undefined}
+          markAt={slotWord(shot, assets, "mark")?.frame}
+        >
+          {shot.cues?.length ? <Kinetic words={kineticWords(shot, assets)} align="center" /> : null}
+        </Ring72>
+      );
       break;
     case "number":
       body = (
@@ -215,9 +274,22 @@ const ShotView: React.FC<{ shot: Shot; assets: Assets }> = ({ shot, assets }) =>
           {shot.value?.includes("→") ? (
             <Compare value={shot.value} labels={[shot.lines?.[0] ?? "", shot.lines?.[1] ?? ""]} sub={shot.sub} />
           ) : shot.value?.includes("人中") ? (
-            <Share {...peopleShare(shot.value, shot.lines?.[0] ?? "", shot.sub ?? "")} land={shot.beats?.[0] !== undefined ? f(shot.beats[0]) : undefined} />
+            <Share
+              {...peopleShare(shot.value, shot.lines?.[0] ?? "", shot.sub ?? "")}
+              land={shot.beats?.[0] !== undefined ? f(shot.beats[0]) : undefined}
+              lead={slotWord(shot, assets, "lead")}
+              tail={slotWord(shot, assets, "tail")}
+            />
           ) : shot.value?.endsWith("%") ? (
-            <Share hero={shot.value} share={Number.parseFloat(shot.value) / 100} part={shot.lines?.[0] ?? ""} whole={shot.sub ?? ""} land={shot.beats?.[0] !== undefined ? f(shot.beats[0]) : undefined} />
+            <Share
+              hero={shot.value}
+              share={Number.parseFloat(shot.value) / 100}
+              part={shot.lines?.[0] ?? ""}
+              whole={shot.sub ?? ""}
+              land={shot.beats?.[0] !== undefined ? f(shot.beats[0]) : undefined}
+              lead={slotWord(shot, assets, "lead")}
+              tail={slotWord(shot, assets, "tail")}
+            />
           ) : (
             <BigNumber value={shot.value ?? ""} sub={shot.sub} />
           )}
@@ -281,7 +353,7 @@ const ShotView: React.FC<{ shot: Shot; assets: Assets }> = ({ shot, assets }) =>
     <AbsoluteFill>
       {body}
       {shot.kind === "footage" && shot.sub ? <Caption text={shot.sub} corner="bottomLeft" /> : null}
-      {shot.source ? <Caption text={`出典 ${shot.source}`} corner="bottomLeft" /> : null}
+      {shot.source ? <Caption text={`出典 ${shot.source}`} corner={palette(sceneOf(shot.at).ground).bg === COLOR.blue ? "topLeft" : "bottomLeft"} /> : null}
       {image ? <Caption text={image} corner="bottomRight" /> : null}
       {showsApp(shot) ? <Caption text="利用者は架空" corner="topRight" /> : null}
       <AppAudio shot={shot} assets={assets} />

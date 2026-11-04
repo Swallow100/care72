@@ -12,9 +12,11 @@ export type Assets = {
   marks?: Record<string, { taps?: { at: number; x: number; y: number }[] }>;
   /** 背景の番号 → 連番の枚数（public/bg/<番号>/00001.jpg …。scripts/bg.mjs が作る） */
   bg?: Record<string, number>;
+  /** 文の番号 → 声の区切り（話している所。声のファイルの頭からの秒）。scripts/scan.mjs が声から測る（src/voice.ts） */
+  voice?: Record<string, [number, number][]>;
 };
 
-const EMPTY: Assets = { footage: {}, audio: [], marks: {}, bg: {} };
+const EMPTY: Assets = { footage: {}, audio: [], marks: {}, bg: {}, voice: {} };
 
 export function useAssets(): Assets {
   const [assets, setAssets] = useState<Assets>(EMPTY);
@@ -24,7 +26,7 @@ export function useAssets(): Assets {
     fetch(staticFile("assets.json"))
       .then((r) => (r.ok ? r.json() : EMPTY))
       .then((a: Partial<Assets>) => {
-        if (alive) setAssets({ footage: a.footage ?? {}, audio: a.audio ?? [], marks: a.marks ?? {}, bg: a.bg ?? {} });
+        if (alive) setAssets({ footage: a.footage ?? {}, audio: a.audio ?? [], marks: a.marks ?? {}, bg: a.bg ?? {}, voice: a.voice ?? {} });
       })
       .catch(() => undefined)
       .finally(() => continueRender(handle));
