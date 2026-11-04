@@ -8,9 +8,13 @@ export type Assets = {
   footage: Record<string, number>;
   /** public の下の音のファイル（audio/narration/N01.wav など） */
   audio: string[];
+  /** 録画の番号 → 撮るときに押した所（録画の中の秒と、幅・高さに対する割合）。record-lib.mjs の markers.json から */
+  marks?: Record<string, { taps?: { at: number; x: number; y: number }[] }>;
+  /** 背景の番号 → 連番の枚数（public/bg/<番号>/00001.jpg …。scripts/bg.mjs が作る） */
+  bg?: Record<string, number>;
 };
 
-const EMPTY: Assets = { footage: {}, audio: [] };
+const EMPTY: Assets = { footage: {}, audio: [], marks: {}, bg: {} };
 
 export function useAssets(): Assets {
   const [assets, setAssets] = useState<Assets>(EMPTY);
@@ -20,7 +24,7 @@ export function useAssets(): Assets {
     fetch(staticFile("assets.json"))
       .then((r) => (r.ok ? r.json() : EMPTY))
       .then((a: Partial<Assets>) => {
-        if (alive) setAssets({ footage: a.footage ?? {}, audio: a.audio ?? [] });
+        if (alive) setAssets({ footage: a.footage ?? {}, audio: a.audio ?? [], marks: a.marks ?? {}, bg: a.bg ?? {} });
       })
       .catch(() => undefined)
       .finally(() => continueRender(handle));

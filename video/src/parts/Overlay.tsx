@@ -1,143 +1,154 @@
-// 録画の上に重ねる物: 字幕、モデルの名前、出典、「利用者は架空」、上の 72 時間の線、強調の囲み。
-// どれもアプリの枠の外か、アプリの画面と見分けが付く形（青か白の面）にする。
+// 舞台の外に置く物: 字幕、上の見出しの帯（段の名前と 72 時間の線）、出典、「利用者は架空」、「イメージ（AI 生成）」。
+// どれも置き場所を 1 つに決め、場面ごとに動かさない。字は地の逆の色（青地に白、薄い青の地に青）。
 import React from "react";
 import { interpolate, useCurrentFrame } from "remotion";
 import { usePalette } from "../ground";
-import { COLOR, FONT, LAYOUT } from "../theme";
-import type { Ground, Line } from "../timeline";
+import { FONT, LAYOUT, TYPE } from "../theme";
+import type { Line } from "../timeline";
+import { progress } from "./motion";
 
 /**
- * 字幕。日本語を大きく、英語をその下に小さく。出入りは 4 コマで薄く。
- * 青地では帯を敷かず白い字。白地（録画の上）では濃い青の帯に白い字（半透明にしない）。
+ * 字幕。舞台の下の帯に、帯の面を敷かずに地の逆の色の字で。文の中の「／」で改行し、無ければ行の長さをそろえて折る（1 字だけの行を作らない）。
+ * 出入りは 5 コマで薄く。
  */
-export const Subtitle: React.FC<{ line: Line; duration: number; showEn: boolean; ground: Ground }> = ({
-  line,
-  duration,
-  showEn,
-  ground,
-}) => {
+export const Subtitle: React.FC<{ line: Line; duration: number; showEn: boolean }> = ({ line, duration, showEn }) => {
   const frame = useCurrentFrame();
-  const opacity = interpolate(frame, [0, 4, duration - 4, duration], [0, 1, 1, 0], {
-    extrapolateLeft: "clamp",
-    extrapolateRight: "clamp",
-  });
-  const onBlue = ground === "blue";
+  const p = usePalette();
+  const opacity = interpolate(frame, [0, 5, duration - 5, duration], [0, 1, 1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+  const rows = splitLine(line.ja);
   return (
     <div
       style={{
         position: "absolute",
         left: 0,
         right: 0,
-        bottom: LAYOUT.subtitle.bottom,
+        top: LAYOUT.subtitle.top,
+        height: LAYOUT.subtitle.height,
         display: "flex",
+        flexDirection: "column",
         justifyContent: "center",
+        alignItems: "center",
         opacity,
       }}
     >
       <div
         style={{
           maxWidth: LAYOUT.subtitle.maxWidth,
-          background: onBlue ? "transparent" : COLOR.blue,
-          borderRadius: 6,
-          padding: "10px 28px 12px",
           textAlign: "center",
-        }}
+          fontFamily: FONT.main,
+          fontWeight: 600,
+          fontSize: 42,
+          lineHeight: 1.38,
+          color: p.fg,
+          whiteSpace: "nowrap",
+        } as React.CSSProperties}
       >
-        <div style={{ fontFamily: FONT.main, fontWeight: 600, fontSize: 40, lineHeight: 1.35, color: COLOR.white }}>{line.ja}</div>
-        {showEn ? (
-          <div style={{ fontFamily: FONT.main, fontSize: 24, lineHeight: 1.35, color: COLOR.onBlueSub, marginTop: 4 }}>{line.en}</div>
-        ) : null}
+        {rows.map((r, i) => (
+          <div key={i}>{r}</div>
+        ))}
       </div>
+      {showEn ? (
+        <div style={{ fontFamily: FONT.main, fontSize: 24, lineHeight: 1.35, color: p.sub, marginTop: 4, maxWidth: LAYOUT.subtitle.maxWidth, textAlign: "center" }}>
+          {line.en}
+        </div>
+      ) : null}
     </div>
   );
 };
 
-/** 右上のモデルの名前。白い面に青の字と青の線（角は小さく） */
-export const Chip: React.FC<{ text: string }> = ({ text }) => (
-  <div
-    style={{
-      position: "absolute",
-      top: LAYOUT.footage.top + 20,
-      right: 1920 - LAYOUT.footage.left - LAYOUT.footage.width + 20,
-      background: COLOR.white,
-      color: COLOR.blue,
-      fontFamily: FONT.main,
-      fontWeight: 600,
-      fontSize: 28,
-      padding: "8px 16px",
-      borderRadius: 6,
-      border: `3px solid ${COLOR.blue}`,
-    }}
-  >
-    {text}
-  </div>
-);
+/**
+ * 字幕の行の分け方。「／」があればそこで。無ければ 28 字を超える文だけ、真ん中に一番近い「。」か「、」の後で 2 行に分ける
+ * （日本語は言葉の切れ目が分からないので、ブラウザに任せると「計／画」のように語の途中で折れる）
+ */
+export function splitLine(text: string): string[] {
+  if (text.includes("／")) return text.split("／");
+  if (text.length <= 28) return [text];
+  const mid = text.length / 2;
+  let best = -1;
+  for (let i = 1; i < text.length - 1; i++) {
+    const c = text[i];
+    if (c !== "。" && c !== "、") continue;
+    const score = Math.abs(i + 1 - mid) - (c === "。" ? 4 : 0);
+    if (best < 0 || score < Math.abs(best + 1 - mid) - (text[best] === "。" ? 4 : 0)) best = i;
+  }
+  return best < 0 ? [text] : [text.slice(0, best + 1), text.slice(best + 1)];
+}
 
-/** 左下の出典 */
-export const Source: React.FC<{ text: string }> = ({ text }) => {
+/** 小さな注記（出典・イメージ・利用者は架空）。置き場所は 4 つの隅のどれか */
+export const Caption: React.FC<{ text: string; corner: "bottomLeft" | "bottomRight" | "topRight" }> = ({ text, corner }) => {
   const p = usePalette();
+  const S = LAYOUT.stage;
+  const pos: React.CSSProperties =
+    corner === "bottomLeft"
+      ? { left: S.left, top: S.top + S.height + 6 }
+      : corner === "bottomRight"
+        ? { right: 1920 - S.left - S.width, top: S.top + S.height + 6 }
+        : { right: LAYOUT.header.right, top: LAYOUT.header.top + 8 };
   return (
-    <div
-      style={{
-        position: "absolute",
-        left: LAYOUT.footage.left + 20,
-        bottom: 150,
-        color: p.sub,
-        fontFamily: FONT.main,
-        fontSize: 24,
-      }}
-    >
-      出典 {text}
-    </div>
+    <div style={{ position: "absolute", ...pos, color: p.sub, fontFamily: FONT.main, fontSize: TYPE.caption, whiteSpace: "nowrap" }}>{text}</div>
   );
 };
 
-/** 右上の隅の「利用者は架空」 */
-export const Fictional: React.FC = () => {
-  const p = usePalette();
-  return (
-    <div
-      style={{
-        position: "absolute",
-        top: 6,
-        right: 1920 - LAYOUT.footage.left - LAYOUT.footage.width,
-        color: p.sub,
-        fontFamily: FONT.main,
-        fontSize: 20,
-      }}
-    >
-      利用者は架空
-    </div>
-  );
-};
+/** 上の見出しの帯の 72 時間の線の目盛り（時間） */
+const TICKS = [0, 6, 12, 24, 36, 48, 60, 72];
 
-/** 上の細い 72 時間の線（G4）。progress は 0〜1。アプリの 72 時間の棒と取り違えないよう、枠の外の一番上に置く */
-export const TopLine: React.FC<{ progress: number; label: string }> = ({ progress, label }) => {
+/**
+ * 上の見出しの帯（道具の段 S4〜S7）。左に段の名前、真ん中に 72 時間の線（G4）。
+ * progress は 0〜1（72 時間のうちどこか）。null なら線を出さない。アプリの 72 時間の棒と取り違えないよう、舞台の外の一番上に置く
+ */
+export const Header: React.FC<{ title: string; hours: number | null; state: string }> = ({ title, hours, state }) => {
+  const frame = useCurrentFrame();
   const p = usePalette();
-  // 右の端は「利用者は架空」の文字に空ける
-  const width = LAYOUT.footage.width - 420;
+  const H = LAYOUT.header;
+  const lineLeft = H.left + 260;
+  const lineWidth = 1920 - lineLeft - H.right - 220;
+  const enter = progress(frame, 0, 14);
+  const x = hours === null ? 0 : (Math.max(0, Math.min(72, hours)) / 72) * lineWidth;
   return (
-    <div style={{ position: "absolute", left: LAYOUT.footage.left, top: LAYOUT.topLine.top, display: "flex", alignItems: "center", gap: 14 }}>
-      <div style={{ width, height: LAYOUT.topLine.height, background: p.tint, borderRadius: 2, overflow: "hidden" }}>
-        <div style={{ width: width * Math.max(0, Math.min(1, progress)), height: LAYOUT.topLine.height, background: p.fg }} />
+    <div style={{ position: "absolute", left: 0, top: 0, width: 1920, height: H.top + H.height, fontFamily: FONT.main, opacity: enter }}>
+      <div style={{ position: "absolute", left: H.left, top: H.top, height: H.height, display: "flex", alignItems: "center", gap: 14 }}>
+        <span style={{ fontSize: 30, fontWeight: 600, color: p.fg }}>{title}</span>
+        <span style={{ fontSize: TYPE.caption, color: p.sub }}>{state}</span>
       </div>
-      <div style={{ fontFamily: FONT.main, fontSize: 18, color: p.sub, whiteSpace: "nowrap" }}>{label}</div>
+      {hours === null ? null : (
+        <div style={{ position: "absolute", left: lineLeft, top: H.top + 12, width: lineWidth, height: 26 }}>
+          <div style={{ position: "absolute", left: 0, top: 0, width: lineWidth, height: 4, background: p.tint, borderRadius: 2 }} />
+          <div style={{ position: "absolute", left: 0, top: 0, width: x, height: 4, background: p.fg, borderRadius: 2 }} />
+          {TICKS.map((h) => {
+            const tx = (h / 72) * lineWidth;
+            const passed = tx <= x + 0.5;
+            return (
+              <React.Fragment key={h}>
+                <div style={{ position: "absolute", left: tx - 1, top: -3, width: 2, height: 10, background: passed ? p.fg : p.tint }} />
+                <div
+                  style={{
+                    position: "absolute",
+                    left: tx,
+                    top: 10,
+                    transform: "translateX(-50%)",
+                    fontSize: 16,
+                    color: passed ? p.fg : p.sub,
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {h === 72 ? "72 時間" : h}
+                </div>
+              </React.Fragment>
+            );
+          })}
+          <div
+            style={{
+              position: "absolute",
+              left: x - 7,
+              top: -5,
+              width: 14,
+              height: 14,
+              borderRadius: 7,
+              background: p.fg,
+            }}
+          />
+        </div>
+      )}
     </div>
   );
 };
-
-/** 強調の所の囲み（青の細い線、光らせない） */
-export const Emphasis: React.FC = () => (
-  <div
-    style={{
-      position: "absolute",
-      left: LAYOUT.footage.left - 6,
-      top: LAYOUT.footage.top - 6,
-      width: LAYOUT.footage.width + 12,
-      height: LAYOUT.footage.height + 12,
-      border: `5px solid ${COLOR.blue}`,
-      borderRadius: 4,
-      boxSizing: "border-box",
-    }}
-  />
-);

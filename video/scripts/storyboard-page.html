@@ -1,0 +1,322 @@
+<title>ケア72 絵コンテ</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap">
+<style>
+/* 絵コンテ表（scripts/storyboard.mjs が中身を入れる）。動画と同じ青と薄い青の 2 色で、場面ごとの帯に絵を上から並べる */
+:root {
+  --ground: #e7effc;
+  --panel: #ffffff;
+  --panel2: #f3f7fe;
+  --ink: #0f2a5e;
+  --blue: #1453c8;
+  --on-blue: #ffffff;
+  --sub: #5674a8;
+  --line: #c7d8f5;
+  --urgent: #c0292b;
+  --font: "Inter", "Hiragino Sans", "Yu Gothic UI", "Meiryo", sans-serif;
+  --step-1: 0.8125rem;
+  --step0: 0.9375rem;
+  --step1: 1.125rem;
+  --step2: 1.5rem;
+  --step3: 2rem;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground: #0c1a36; --panel: #13254b; --panel2: #1a3060; --ink: #e7effc; --blue: #7aa2ff; --on-blue: #0c1a36;
+    --sub: #9db4e0; --line: #284177; --urgent: #ff7b7b; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --ground: #0c1a36; --panel: #13254b; --panel2: #1a3060; --ink: #e7effc; --blue: #7aa2ff; --on-blue: #0c1a36;
+  --sub: #9db4e0; --line: #284177; --urgent: #ff7b7b; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--font);
+  font-size: var(--step0);
+  line-height: 1.6;
+}
+.wrap {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 28px 64px;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+h1, h2, h3 { margin: 0; font-weight: 600; text-wrap: balance; }
+h1 { font-size: var(--step3); line-height: 1.2; }
+h2 { font-size: var(--step2); line-height: 1.3; }
+h3 { font-size: var(--step1); line-height: 1.4; }
+.meta { color: var(--sub); font-size: var(--step-1); display: flex; flex-wrap: wrap; gap: 4px 16px; }
+.counts { display: flex; flex-wrap: wrap; gap: 8px 20px; font-size: var(--step0); }
+.counts b { font-variant-numeric: tabular-nums; font-size: var(--step1); }
+
+/* 180 秒の帯。場面の長さの割合で区切り、青地の場面は青、薄い青の場面は白 */
+.ruler { display: flex; height: 44px; border-radius: 6px; overflow: hidden; background: var(--panel); }
+.ruler a {
+  display: flex; align-items: center; justify-content: center; min-width: 0; overflow: hidden;
+  font-size: var(--step-1); font-weight: 600; text-decoration: none; white-space: nowrap;
+  border-right: 1px solid var(--line);
+}
+.ruler a:last-child { border-right: 0; }
+.ruler a.blue { background: var(--blue); color: var(--on-blue); border-right-color: var(--ground); }
+.ruler a.white { background: var(--panel); color: var(--blue); }
+.ruler a:focus-visible { outline: 3px solid var(--urgent); outline-offset: -3px; }
+
+.notes { background: var(--panel); border-radius: 10px; padding: 18px 20px; display: flex; flex-direction: column; gap: 10px; }
+.notes[hidden] { display: none; }
+.notes ol { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.notes li { display: grid; grid-template-columns: 9.5em 1fr; gap: 12px; }
+.notes li a { color: var(--blue); font-weight: 600; font-variant-numeric: tabular-nums; text-decoration: none; }
+.notes li p { margin: 0; min-width: 0; white-space: pre-wrap; }
+
+.scene { display: flex; flex-direction: column; gap: 14px; scroll-margin-top: 16px; }
+.scene-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 16px; }
+.scene-head .id { color: var(--blue); }
+.scene-head .time { color: var(--sub); font-variant-numeric: tabular-nums; }
+.scene-head .ground { color: var(--sub); font-size: var(--step-1); }
+
+.shot {
+  background: var(--panel);
+  border-radius: 10px;
+  padding: 16px;
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  gap: 20px;
+  scroll-margin-top: 16px;
+}
+.shot img { width: 100%; height: auto; aspect-ratio: 16 / 9; display: block; border-radius: 6px; background: var(--panel2); }
+.shot .body { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.shot .time { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; }
+.shot .time strong { font-size: var(--step2); font-variant-numeric: tabular-nums; line-height: 1.2; }
+.shot .time span { color: var(--sub); font-size: var(--step-1); font-variant-numeric: tabular-nums; }
+
+.tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.tag { font-size: var(--step-1); padding: 2px 8px; border-radius: 4px; border: 1px solid var(--line); color: var(--ink); }
+.tag.done { border-color: var(--blue); color: var(--blue); font-weight: 600; }
+.tag.wait { border: 1px dashed var(--sub); color: var(--sub); font-weight: 600; }
+.tag.fig { background: var(--panel2); border-color: var(--panel2); }
+.tag.num { border-color: var(--urgent); color: var(--urgent); font-weight: 600; }
+
+.lines { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.lines li { display: grid; grid-template-columns: 2.6em 1fr; gap: 8px; }
+.lines li span { color: var(--sub); font-size: var(--step-1); font-variant-numeric: tabular-nums; padding-top: 2px; }
+.lines li p { margin: 0; min-width: 0; }
+.detail { color: var(--sub); font-size: var(--step-1); margin: 0; }
+
+.fix { display: flex; flex-direction: column; gap: 6px; margin-top: auto; }
+.fix label { font-size: var(--step-1); font-weight: 600; color: var(--sub); }
+.fix textarea {
+  width: 100%; min-height: 3.4em; resize: vertical; font: inherit; color: var(--ink);
+  background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px;
+}
+.fix textarea:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
+.fix .row { display: flex; align-items: center; gap: 12px; }
+.fix button {
+  font: inherit; font-weight: 600; font-size: var(--step-1); padding: 6px 16px; border-radius: 6px; cursor: pointer;
+  background: var(--panel); color: var(--blue); border: 1px solid var(--blue);
+}
+.fix button:disabled { color: var(--sub); border-color: var(--line); cursor: default; }
+.fix button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.fix .state { font-size: var(--step-1); color: var(--sub); }
+.fix .state.bad { color: var(--urgent); }
+
+@media (max-width: 760px) {
+  .shot { grid-template-columns: 1fr; }
+  .notes li { grid-template-columns: 1fr; gap: 0; }
+  .ruler { height: 36px; }
+}
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+html { scroll-behavior: smooth; }
+</style>
+
+<div class="wrap">
+  <header style="display:flex;flex-direction:column;gap:12px">
+    <h1>ケア72 絵コンテ</h1>
+    <div class="meta" id="meta"></div>
+    <div class="counts" id="counts"></div>
+    <nav class="ruler" id="ruler" aria-label="場面"></nav>
+  </header>
+  <section class="notes" id="notes" hidden>
+    <h2>直し一覧</h2>
+    <ol id="notes-list"></ol>
+  </section>
+  <main id="scenes" style="display:flex;flex-direction:column;gap:36px"></main>
+</div>
+
+<script>
+const DATA = /*DATA*/null;
+const notes = new Map();
+let db = null;
+/** pending: db を待っている、ready: 書ける、none: このページでは使えない */
+let dbState = "pending";
+let writable = true;
+
+const el = (tag, attrs = {}, ...kids) => {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === "class") e.className = v;
+    else if (k === "text") e.textContent = v;
+    else e.setAttribute(k, v);
+  }
+  for (const k of kids) if (k) e.append(k);
+  return e;
+};
+
+function hhmm(iso) {
+  try {
+    return new Date(iso).toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Tokyo" });
+  } catch { return ""; }
+}
+
+function render() {
+  const all = DATA.scenes.flatMap((s) => s.shots);
+  const done = all.filter((s) => s.recordings.length && s.recordings.every((r) => r.state === "done")).length;
+  const wait = all.filter((s) => s.recordings.some((r) => r.state === "wait")).length;
+  const fig = all.filter((s) => !s.recordings.length).length;
+  const num = all.filter((s) => s.waitNumber).length;
+  document.getElementById("meta").replaceChildren(
+    el("span", { text: `書出 ${hhmm(DATA.made)}` }),
+    el("span", { text: `task/t43 ${DATA.commit}` }),
+    el("span", { text: "録画は 11/3 の画面。撮り直したら差し替え" }),
+  );
+  const count = (n, label) => el("span", {}, el("b", { text: String(n) }), ` ${label}`);
+  document.getElementById("counts").replaceChildren(count(all.length, "絵"), count(done, "録画済"), count(wait, "撮影待ち"), count(fig, "図"), count(num, "数字待ち"));
+
+  const ruler = document.getElementById("ruler");
+  ruler.replaceChildren(...DATA.scenes.map((s) => {
+    const a = el("a", { href: `#${s.id}`, class: s.ground, title: `${s.id} ${s.title} ${s.time}`, text: s.id });
+    a.style.flex = String(s.end - s.at);
+    return a;
+  }));
+
+  const main = document.getElementById("scenes");
+  main.replaceChildren(...DATA.scenes.map((scene) => {
+    const section = el("section", { class: "scene", id: scene.id });
+    section.append(el("div", { class: "scene-head" },
+      el("h2", {}, el("span", { class: "id", text: scene.id }), ` ${scene.title}`),
+      el("span", { class: "time", text: scene.time }),
+      el("span", { class: "ground", text: scene.ground === "blue" ? "青地" : "薄い青の地" }),
+    ));
+    for (const shot of scene.shots) section.append(shotCard(scene, shot));
+    return section;
+  }));
+  renderNotes();
+}
+
+function shotCard(scene, shot) {
+  const card = el("article", { class: "shot", id: shot.key });
+  card.append(el("img", { src: `img/${shot.key}.jpg`, alt: `${shot.time} ${shot.label}`, loading: "lazy", width: "960", height: "540" }));
+  const body = el("div", { class: "body" });
+  body.append(el("div", { class: "time" }, el("strong", { text: shot.time }), el("span", { text: `静止画 ${shot.still}` })));
+  body.append(el("h3", { text: shot.label }));
+
+  const tags = el("div", { class: "tags" });
+  for (const r of shot.recordings) {
+    if (r.state === "done") tags.append(el("span", { class: "tag done", text: `録画済 ${r.id} ${r.name}` }));
+    else tags.append(el("span", { class: "tag wait", text: `撮影待ち ${r.id} ${r.name}（${r.who}）` }));
+  }
+  if (!shot.recordings.length) tags.append(el("span", { class: "tag fig", text: `図 ${shot.graphic ?? ""}` }));
+  if (shot.waitNumber) tags.append(el("span", { class: "tag num", text: "数字待ち" }));
+  if (shot.emphasis) tags.append(el("span", { class: "tag", text: "強調" }));
+  if (shot.rate) tags.append(el("span", { class: "tag", text: `${shot.rate} 倍` }));
+  if (shot.chip) tags.append(el("span", { class: "tag", text: shot.chip }));
+  body.append(tags);
+
+  if (shot.lines.length) {
+    body.append(el("ul", { class: "lines" }, ...shot.lines.map((l) => el("li", {}, el("span", { text: l.id }), el("p", { text: l.ja })))));
+  } else {
+    body.append(el("p", { class: "detail", text: "声なし" }));
+  }
+  const details = [];
+  if (shot.callouts.length) details.push(`囲み ${shot.callouts.join("・")}`);
+  if (shot.source) details.push(`出典 ${shot.source}`);
+  if (details.length) body.append(el("p", { class: "detail", text: details.join("　") }));
+
+  body.append(fixBox(scene, shot));
+  card.append(body);
+  return card;
+}
+
+function fixBox(scene, shot) {
+  const id = `fix-${shot.key}`;
+  const box = el("div", { class: "fix" });
+  const area = el("textarea", { id, placeholder: "例: 見出しを短く・囲みを早く" });
+  area.value = notes.get(shot.key)?.text ?? "";
+  const button = el("button", { type: "button", text: "保存" });
+  const state = el("span", { class: "state" });
+  const saved = notes.get(shot.key);
+  state.textContent = saved?.updatedAt ? `保存済 ${hhmm(saved.updatedAt)}` : "";
+  if (dbState !== "ready" || !writable) {
+    area.disabled = true;
+    button.disabled = true;
+    if (dbState === "pending") state.textContent = "接続中";
+    else if (dbState === "none") state.textContent = "書込不可（直しはチャットへ）";
+  }
+  area.addEventListener("input", () => { state.textContent = "未保存"; state.classList.remove("bad"); });
+  button.addEventListener("click", async () => {
+    if (!db) return;
+    button.disabled = true;
+    state.textContent = "保存中";
+    const text = area.value.trim();
+    try {
+      const ref = db.collection("notes").doc(shot.key);
+      if (text) await ref.set({ text, scene: scene.id, time: shot.time, label: shot.label, updatedAt: new Date().toISOString() });
+      else await ref.delete();
+      state.textContent = text ? "保存済" : "削除済";
+    } catch (e) {
+      state.textContent = "保存失敗";
+      state.classList.add("bad");
+      if (e && e.code === "invalid_argument") writable = false;
+    } finally {
+      button.disabled = !writable;
+    }
+  });
+  box.append(el("label", { for: id, text: "直し" }), area, el("div", { class: "row" }, button, state));
+  return box;
+}
+
+function renderNotes() {
+  const list = [...notes.entries()].filter(([, n]) => n.text);
+  const section = document.getElementById("notes");
+  section.hidden = list.length === 0;
+  const order = new Map(DATA.scenes.flatMap((s) => s.shots).map((s, i) => [s.key, i]));
+  list.sort((a, b) => (order.get(a[0]) ?? 999) - (order.get(b[0]) ?? 999));
+  document.getElementById("notes-list").replaceChildren(...list.map(([key, n]) =>
+    el("li", {}, el("a", { href: `#${key}`, text: `${n.scene ?? ""} ${n.time ?? key}` }), el("p", { text: n.text }))));
+}
+
+function syncAreas() {
+  for (const [key, n] of notes) {
+    const area = document.getElementById(`fix-${key}`);
+    if (area && document.activeElement !== area && area.value !== n.text) area.value = n.text;
+  }
+}
+
+render();
+
+(async () => {
+  try {
+    db = window.claude?.use ? await window.claude.use("db") : null;
+  } catch { db = null; }
+  dbState = db ? "ready" : "none";
+  render();
+  if (!db) return;
+  db.collection("notes").onSnapshot((snap) => {
+    notes.clear();
+    for (const d of snap.docs) if (d.exists) notes.set(d.id, d.data());
+    syncAreas();
+    renderNotes();
+    for (const [key, n] of notes) {
+      const state = document.querySelector(`#${CSS.escape(key)} .fix .state`);
+      if (state && state.textContent !== "未保存" && n.updatedAt) state.textContent = `保存済 ${hhmm(n.updatedAt)}`;
+    }
+  }, () => {});
+})();
+</script>

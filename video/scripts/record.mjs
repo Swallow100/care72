@@ -10,7 +10,7 @@
 // Git Bash で道（/ で始まる引数）を渡すときは MSYS_NO_PATHCONV=1。
 import { join } from "node:path";
 import { ROOT } from "./lib.mjs";
-import { Recorder, clickText, launch, login, newPage, open, PC, PHONE, scrollSlow, settle, sleep } from "./record-lib.mjs";
+import { Recorder, clickText, launch, login, newPage, open, PC, PHONE, settle, sleep } from "./record-lib.mjs";
 
 const base = process.env.CARE72_BASE ?? "http://localhost:3073";
 const cmPw = process.env.CARE72_CM_PASSWORD;
@@ -63,7 +63,7 @@ async function calm(browser) {
   await r.start();
   await sleep(2500);
   r.mark("下へ");
-  await scrollSlow(cm, 900, 9000);
+  await r.scroll(900, 9);
   await sleep(2000);
   await r.stop(recDir("R01"));
 
@@ -78,32 +78,33 @@ async function calm(browser) {
   for (const [id, path, px] of [
     ["R03", "/people/p-01/forms/matsuyama", 2600],
     ["R04", "/people/p-01/forms/own", 1600],
-    ["R05", "/people/p-01/forms/medical", 1800],
+    ["R05", "/people/p-01/forms/medical", 700], // 紙面の下の端まで（右の原本の列は長いので、送りすぎると左が空く）
   ]) {
     await open(cm, base, path);
     r = new Recorder(cm, id);
     await r.start();
     await sleep(2500);
     r.mark("下へ");
-    await scrollSlow(cm, px, 14000);
+    await r.scroll(px, 14);
     await sleep(2500);
     await r.stop(recDir(id));
   }
 }
 
-/** 赤が一覧に効くのは 1 分ごとの読み直し（AppHeader の AutoRefresh）。読み直しまで待つ間は録画を止める */
-async function waitRefresh(page, rec, loadedAt, label) {
-  const period = 60_000;
-  const lead = 8000;
-  const next = loadedAt + period * Math.max(1, Math.ceil((Date.now() + lead + 1000 - loadedAt) / period));
-  rec.pause();
-  await sleep(Math.max(0, next - Date.now() - lead));
+/**
+ * 赤が一覧に効くのは読み直し（AppHeader の AutoRefresh）。AutoRefresh は 1 分ごとと、画面が見えるようになった時に読み直す。
+ * 1 分ごとの方は、撮る道具がほかの窓を撮っている間（隠れた扱い）に来るととぶので待てない（11/4 の撮り直しで 60 秒撮りっぱなしになった）。
+ * 見えるようになった時の道（visibilitychange）で今すぐ読み直させる。読み直す中身はアプリのまま（サーバーで今の時刻から当て直す）
+ */
+async function waitRefresh(page, rec, label) {
   await rec.resume();
   rec.mark(`${label} 読み直しの前`);
-  // 読み直し（router.refresh の RSC の要求）が終わるのを待つ。時刻の見込みがずれても取り逃がさない
+  await sleep(1500);
   const seen = refreshes(page);
-  const until = Date.now() + 75_000;
+  await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+  const until = Date.now() + 30_000;
   while (Date.now() < until && refreshes(page) === seen) await sleep(200);
+  if (refreshes(page) === seen) console.log(`  ${label}: 読み直しが来ない`);
   await sleep(600);
   rec.mark(`${label} 読み直し`);
   await sleep(4500);
@@ -114,6 +115,8 @@ const refreshCount = new WeakMap();
 function watchRefresh(page) {
   refreshCount.set(page, 0);
   page.on("requestfinished", (req) => {
+    // 先読み（Link の prefetch）は数えない
+    if (req.headers()["next-router-prefetch"]) return;
     if (req.headers()["rsc"] === "1" || req.url().includes("_rsc=")) refreshCount.set(page, (refreshCount.get(page) ?? 0) + 1);
   });
   page.on("close", () => console.log("  頁が閉じた"));
@@ -151,7 +154,12 @@ async function disaster(browser) {
   await r10.start();
   await sleep(2000);
   r10.mark("大雨を押す");
-  await Promise.all([cm.waitForNavigation({ waitUntil: "networkidle0", timeout: 120_000 }), clickText(cm, "大雨", { exact: true, within: "main" })]);
+  await clickText(cm, "大雨", { exact: true, within: "main" });
+  // 平時から災害モードへは確認の窓が出る（T79）。窓を映してから「切替」を押す
+  await cm.waitForSelector('dialog[open] [data-dialog-action="ok"]', { visible: true, timeout: 15_000 });
+  r10.mark("確認の窓");
+  await sleep(1800);
+  await Promise.all([cm.waitForNavigation({ waitUntil: "networkidle0", timeout: 120_000 }), clickText(cm, "切替", { exact: true, within: "dialog[open]" })]);
   await settle(cm);
   await sleep(1500);
   r10.mark("災害情報");
@@ -170,13 +178,13 @@ async function disaster(browser) {
     }
   });
   await sleep(1500);
-  await Promise.all([cm.waitForNavigation({ waitUntil: "networkidle0", timeout: 120_000 }), clickText(cm, "保存", { exact: true, within: "main" })]);
+  // 事業所の画面には「保存」が 2 つある（上の地域の欄と、災害情報の欄）。災害情報の欄の物を押す
+  await Promise.all([cm.waitForNavigation({ waitUntil: "networkidle0", timeout: 120_000 }), clickText(cm, "保存", { exact: true, within: 'form[action="/office/info"]' })]);
   await settle(cm);
   await sleep(1500);
   r10.mark("担当一覧へ");
   await Promise.all([cm.waitForNavigation({ waitUntil: "networkidle0", timeout: 120_000 }), clickText(cm, "担当一覧", { exact: true, within: "header" })]);
   await settle(cm);
-  const listLoadedAt = Date.now();
   r10.mark("発災時の表");
   await sleep(5000);
   r10.pause();
@@ -194,10 +202,11 @@ async function disaster(browser) {
   r11.pause();
 
   // ケアマネ: 1 分ごとの読み直しで山田の行が至急に
-  await waitRefresh(cm, r10, listLoadedAt, "家族の赤");
+  await waitRefresh(cm, r10, "家族の赤");
   r10.pause();
 
-  // 本人のスマホ: 赤 → 4 つの問い（けが ある・家 はい・動けない・くすり ある）→ 送る
+  // 本人のスマホ: 赤 → 1 画面 1 問（押すたびに送る）。けが ある のあとは「動けますか」だけを聞いて、定型文と録音へ進む（lib/signals/phone.ts、T69b）。
+  // 手元の Chrome にはマイクが無いので録音には入らず、次の問いへ進む。動けない まで答えて止める
   await open(self, base, "/me");
   await r12.resume();
   r12.mark("赤と緑");
@@ -207,9 +216,7 @@ async function disaster(browser) {
   await sleep(2500);
   for (const [label, answer] of [
     ["けが", "ある"],
-    ["家", "はい"],
     ["動けますか", "動けない"],
-    ["くすり", "ある"],
   ]) {
     r12.mark(`${label} ${answer}`);
     await clickText(self, answer, { exact: true });
@@ -221,13 +228,13 @@ async function disaster(browser) {
   await r12.stop(recDir("R12"));
 
   // ケアマネ: 読み直しで理由が本人の答えに。行の詳細を開く → 電話の記録（不通）→ 優先変更の欄
-  await waitRefresh(cm, r10, listLoadedAt, "本人の赤");
+  await waitRefresh(cm, r10, "本人の赤");
   r10.mark("行の詳細を開く");
   // 行の左の開くボタン（名前を押すと右に本人のページが開くので、行の詳細はこちら）
   await cm.click('tr[data-row="p-01"] button[aria-expanded]');
   await sleep(3500);
   r10.mark("詳細を下へ");
-  await scrollSlow(cm, 400, 4000);
+  await r10.scroll(400, 4);
   await sleep(2000);
   await cm.screenshot({ path: join(ROOT, "out", "look", "R10-detail.png") }).catch(() => undefined);
   try {
@@ -246,7 +253,7 @@ async function disaster(browser) {
   await staff(browser);
 }
 
-/** 医療班: 受け持ちの画面で避難所を入れ、山田を検索して受入 → 本人のページ → 要約（R13）。disaster のあとに続けて撮る */
+/** 医療班: 受け持ちの画面で避難所を入れ、山田を検索して受入 → 受け持ちの表の行から医療要約（R13）。disaster のあとに続けて撮る */
 async function staff(browser) {
   const med = await newPage(browser, PC);
   await login(med, base, "judge", judgePw, "medical");
@@ -274,20 +281,16 @@ async function staff(browser) {
   await sleep(3500);
   await settle(med);
   r13.mark("受入のあと");
-  await sleep(3000);
-  // 受け持ちの表に入った山田を開く → 本人のページ（同意の範囲）→ 医療要約
-  r13.mark("本人のページ");
-  await Promise.all([med.waitForNavigation({ waitUntil: "networkidle0", timeout: 120_000 }), med.click('tr[data-hit="p-01"] a')]);
-  await settle(med);
   await sleep(2500);
-  r13.mark("下へ");
-  await scrollSlow(med, 600, 5000);
-  await sleep(1500);
+  // 受入のすぐあとに医療要約を開く（DECISIONS 11/4 09:2x。N25 の「要約が届きます」の間に書類が映るように）。
+  // 受け持ちの表に入った山田の行の、氏名の横の「医療要約」（StaffTable の data-summary）
   r13.mark("医療要約");
-  // 書類の「医療要約」の表示（a の href に forms/medical）
-  await Promise.all([med.waitForNavigation({ waitUntil: "networkidle0", timeout: 120_000 }), med.click('main a[href*="/forms/medical"]:not([href*="print"])')]);
+  await Promise.all([med.waitForNavigation({ waitUntil: "networkidle0", timeout: 120_000 }), med.click('tr[data-person="p-01"] a[data-summary]')]);
   await settle(med);
-  await sleep(4000);
+  await sleep(3500);
+  r13.mark("下へ");
+  await r13.scroll(900, 7);
+  await sleep(2000);
   await r13.stop(recDir("R13"));
 }
 
