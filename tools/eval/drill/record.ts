@@ -10,7 +10,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { appendFileSync } from "node:fs";
 import type { ClaudeClient, ClaudeRequestOptions } from "../../../lib/claude/client.ts";
 import { MAX_RETRIES } from "../../../lib/claude/client.ts";
-import type { RoomClient, RoomEvent } from "../../../lib/drill/world-room.ts";
+import { agentParams, type RoomClient, type RoomEvent } from "../../../lib/drill/world-room.ts";
 import { costUsd } from "./prices.ts";
 import { roleOfSystem, systemTexts, type Role } from "./roles.ts";
 
@@ -151,11 +151,15 @@ export function recordClaude(
   };
 }
 
-/** 世界の部屋を包む。刻みの文 1 つ（user.message）ごとに、返った world_step と止まった理由を 1 行に。finish で開いている物を閉じる */
-export function recordRoom(inner: RoomClient, log: RunLog, opts: { clock?: () => number } = {}): RoomClient & { finish(): void } {
+/**
+ * 世界の部屋を包む。刻みの文 1 つ（user.message）ごとに、返った world_step と止まった理由を 1 行に。finish で開いている物を閉じる。
+ * reuse は前の回で作った Agent を使い回すとき（agents.create が呼ばれない）に、その設定（agentParams）を記録に残す
+ */
+export function recordRoom(inner: RoomClient, log: RunLog, opts: { clock?: () => number } = {}): RoomClient & { finish(): void; reuse(agentId: string): void } {
   const clock = opts.clock ?? Date.now;
   const seen = new Set<string>();
-  let agent: { model: string | null; effort: string | null } = { model: null, effort: null };
+  const base = agentParams().model as { id?: string; effort?: string } | undefined;
+  let agent: { model: string | null; effort: string | null } = { model: base?.id ?? null, effort: base?.effort ?? null };
   let open: { sent: string; session: string; t0: number; tools: unknown[]; replies: string[] } | null = null;
   const close = (error: string | null, stop: string | null) => {
     if (!open) return;
@@ -180,10 +184,10 @@ export function recordRoom(inner: RoomClient, log: RunLog, opts: { clock?: () =>
     });
     open = null;
   };
-  const agentRecord = (op: string, p: Record<string, unknown>) => {
+  const agentRecord = (op: string, p: Record<string, unknown>, extra: Record<string, unknown> = {}) => {
     const model = p.model as { id?: string; effort?: string } | string | undefined;
     agent = typeof model === "string" ? { model, effort: null } : { model: model?.id ?? null, effort: model?.effort ?? null };
-    log.push({ type: "room_agent", op, model: agent.model, effort: agent.effort, system: p.system ?? null, tools: p.tools ?? null });
+    log.push({ type: "room_agent", op, model: agent.model, effort: agent.effort, system: p.system ?? null, tools: p.tools ?? null, ...extra });
   };
   return {
     agents: {
@@ -229,5 +233,6 @@ export function recordRoom(inner: RoomClient, log: RunLog, opts: { clock?: () =>
       },
     },
     finish: () => close("unfinished", null),
+    reuse: (agentId) => agentRecord("reuse", agentParams(), { agentId }),
   };
 }

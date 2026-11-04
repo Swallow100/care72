@@ -116,6 +116,7 @@ export async function runEval(cfg: EvalConfig): Promise<{ summary: Summary; dir:
       : fakeClaude({ rng: rngOf(`${plan.seed}/fake`), noise: cfg.noise });
     const claude = recordClaude(inner, log);
     const room = recordRoom(cfg.real ? roomClientOf({ ANTHROPIC_API_KEY: cfg.key }) : fakeRoom({ rng: rngOf(`${plan.seed}/room`), noise: cfg.noise }), log);
+    if (worldAgent && plan.scenario === "virtual" && cfg.world === "session") room.reuse(worldAgent.agent_id);
     say(`回 ${i}/${cfg.runs}: ${plan.scenario}${plan.scale ? ` ${plan.scale.kind}:${plan.scale.level}` : ""}、${plan.participants.length} 人、種 ${plan.seed}`);
     const outcome = await runDrill(plan, { client: claude, room, log, key: cfg.key, world: cfg.world, real: cfg.real, maxAdvances: cfg.maxAdvances, review: cfg.review, worldAgent });
     room.finish();

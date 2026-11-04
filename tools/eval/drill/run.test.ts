@@ -101,10 +101,14 @@ describe("通し（偽の client）", () => {
 
   it("世界の部屋の Agent と Environment は最初の回で作り、あとの回は同じ物を使う", async () => {
     const r = await runEval(config({ runs: 2, scenarios: ["virtual"], stamp: "20261105-000400-fake", out: join(tmp, "out-room"), md: null, judge: 0, maxAdvances: 3 }));
-    const made = (n: number) => lines(join(r.dir, `run-0${n}.jsonl`)).filter((x) => x.type === "room_agent").length;
-    expect(made(1)).toBe(1);
-    expect(made(2)).toBe(0);
-    expect(lines(join(r.dir, "run-02.jsonl")).some((x) => x.type === "ai" && x.role === "world_room")).toBe(true);
+    const ops = (n: number) => lines(join(r.dir, `run-0${n}.jsonl`)).filter((x) => x.type === "room_agent").map((x) => x.op);
+    expect(ops(1)).toEqual(["create"]);
+    expect(ops(2)).toEqual(["reuse"]);
+    // 使い回した回の部屋の行にも、モデルと effort が残る（その回の記録だけで読める）
+    const room = lines(join(r.dir, "run-02.jsonl")).find((x) => x.type === "ai" && x.role === "world_room")!;
+    expect(room).toMatchObject({ model: "claude-opus-5-5", effort: "high" });
+    const reuse = lines(join(r.dir, "run-02.jsonl")).find((x) => x.type === "room_agent")!;
+    expect(String(reuse.system)).toContain("世界");
   }, SLOW);
 
   it("本物の client（--real）と偽の回は比べない", async () => {
