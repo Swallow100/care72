@@ -219,6 +219,21 @@ export const SOURCES = [
     note: "頁に各地方の気象台の資料（PDF）へのリンクがある。数字は頁の本文から。雨雲の画像・数値は使っていない",
     checkedOn: null,
   },
+  {
+    id: "jma-nowc-legend",
+    publisher: "気象庁",
+    title: "雨雲の動き（高解像度降水ナウキャスト）の凡例",
+    year: 2026,
+    edition: "頁の凡例（降水強度、1 時間あたりの mm の 8 段）",
+    url: "https://www.jma.go.jp/bosai/nowc/",
+    summary:
+      "雨雲の動きの頁の降水強度の凡例。1 未満・1〜5・5〜10・10〜20・20〜30・30〜50・50〜80・80 以上（mm/h）の 8 段を、白に近い薄い青・水色・青・濃い青・黄・橙・赤・赤紫で塗り分ける",
+    scope:
+      "訓練の地図の想定の雨の色の段と凡例（lib/map/rain-scale.ts）。平時の地図に重ねる本物の雨雲（旗 JMA_NOWCAST）と同じ段と色にして、同じ読み方にする",
+    note:
+      "色の値（16 進）は気象庁の気象情報の配色の指針の降水量の段の値。この作業では頁と凡例の画像を開いていない（作者が凡例と並べて確かめる）。雨雲の画像・数値は使っていない",
+    checkedOn: null,
+  },
   // ---------- 発災からの時間の目安（T104。lib/drill/time-odds.ts と監督の根拠 DIRECTOR_SOURCES が引く） ----------
   {
     id: "soumu-iburi-2019",
