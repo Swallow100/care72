@@ -23,7 +23,20 @@ import { saveIntake, SaveRequestSchema } from "../intake/save.ts";
 import { loadPersonPage, toPersonView, type PersonPageRows } from "../person.ts";
 import { pseudonymize } from "../pseudonym/index.ts";
 import { project } from "./geo.ts";
-import { fetchRoute, lineLength, modeOf, ORS_ATTRIBUTION, orsRequest, parseOrs, ROUTE_MAX_KM, simplifyLine, withinReach } from "./route.ts";
+import {
+  coarsenHome,
+  distanceM,
+  fetchRoute,
+  HOME_GRID_DEG,
+  lineLength,
+  modeOf,
+  ORS_ATTRIBUTION,
+  orsRequest,
+  parseOrs,
+  ROUTE_MAX_KM,
+  simplifyLine,
+  withinReach,
+} from "./route.ts";
 import { evacRoute, evacRouteResponse } from "./route-api.ts";
 import {
   currentRoute,
@@ -146,9 +159,35 @@ describe("openrouteservice に送る物（T102 の 2）", () => {
     expect(sent).not.toContain(PID);
     // 種の「娘の車」は車
     expect(calls[0].url).toContain("/driving-car/");
-    // 本文は座標と instructions だけ。家は台帳の位置
-    expect(Object.keys(JSON.parse(String(calls[0].init.body)))).toEqual(["coordinates", "instructions"]);
-    expect(JSON.parse(String(calls[0].init.body)).coordinates[0]).toEqual([ledger.basic.location!.lng, ledger.basic.location!.lat]);
+    // 本文は座標と instructions だけ。家は台帳の位置を格子に丸めた点、避難先はそのまま
+    const body = JSON.parse(String(calls[0].init.body));
+    expect(Object.keys(body)).toEqual(["coordinates", "instructions"]);
+    const home = ledger.basic.location!;
+    const rounded = coarsenHome(home);
+    expect(body.coordinates).toEqual([
+      [rounded.lng, rounded.lat],
+      [DEST.lng, DEST.lat],
+    ]);
+    // 正確な家の座標は要求のどこにも無い（URL・見出し・本文）
+    expect(rounded).not.toEqual(home);
+    for (const v of [home.lat, home.lng]) expect(sent).not.toContain(String(v));
+  });
+
+  it("家の座標の丸め: 約 150 m の格子に寄せ、同じ家はいつも同じ点、家からの離れは 110 m ほどまで。格子の中の別の家も同じ点", () => {
+    expect(HOME_GRID_DEG).toBe(0.0015);
+    const a = coarsenHome(HOME);
+    expect(a).toEqual({ lat: 33.8115, lng: 132.7485 });
+    expect(coarsenHome({ ...HOME })).toEqual(a);
+    expect(coarsenHome(a)).toEqual(a);
+    expect(coarsenHome({ lat: 33.8118, lng: 132.7491 })).toEqual(a);
+    expect(distanceM(HOME, a)).toBeGreaterThan(10);
+    // どの家も丸めた点まで 110 m 以内（格子の半分の対角）
+    for (let i = 0; i < 200; i++) {
+      const p = { lat: 33.8 + i * 0.000137, lng: 132.7 + i * 0.000211 };
+      expect(distanceM(p, coarsenHome(p))).toBeLessThanOrEqual(110);
+    }
+    // 小数 4 桁（浮動小数の端数を送らない）
+    for (const v of [a.lat, a.lng]) expect(String(v)).toMatch(/^\d+\.\d{1,4}$/);
   });
 
   it("返事の [経度, 緯度] を { lat, lng } に戻し、長さと時間は返事の要約から", () => {
@@ -163,10 +202,10 @@ describe("openrouteservice に送る物（T102 の 2）", () => {
 
   it("鍵が無ければ外へ要求しない。失敗は投げずに理由の印（上限・経路なし・失敗・時間切れ・形の違い）", async () => {
     const none = fakeFetch(200, orsGeoJson(ROAD));
-    expect(await fetchRoute({ key: undefined, from: HOME, to: DEST, mode: "foot", fetch: none.f })).toEqual({ ok: false, error: "no_key" });
-    expect(await fetchRoute({ key: "  ", from: HOME, to: DEST, mode: "foot", fetch: none.f })).toEqual({ ok: false, error: "no_key" });
+    expect(await fetchRoute({ key: undefined, home: HOME, to: DEST, mode: "foot", fetch: none.f })).toEqual({ ok: false, error: "no_key" });
+    expect(await fetchRoute({ key: "  ", home: HOME, to: DEST, mode: "foot", fetch: none.f })).toEqual({ ok: false, error: "no_key" });
     expect(none.calls).toHaveLength(0);
-    const run = (status: number, body: unknown) => fetchRoute({ key: KEY, from: HOME, to: DEST, mode: "foot", fetch: fakeFetch(status, body).f });
+    const run = (status: number, body: unknown) => fetchRoute({ key: KEY, home: HOME, to: DEST, mode: "foot", fetch: fakeFetch(status, body).f });
     expect(await run(429, { error: "Rate limit exceeded" })).toEqual({ ok: false, error: "limit" });
     expect(await run(403, { error: "Quota exceeded" })).toEqual({ ok: false, error: "limit" });
     expect(await run(404, { error: { code: 2010, message: "Could not find routable point" } })).toEqual({ ok: false, error: "no_route" });
@@ -177,7 +216,7 @@ describe("openrouteservice に送る物（T102 の 2）", () => {
     const thrown = vi.fn(async () => {
       throw new Error("network");
     }) as unknown as typeof fetch;
-    expect(await fetchRoute({ key: KEY, from: HOME, to: DEST, mode: "foot", fetch: thrown })).toEqual({ ok: false, error: "failed" });
+    expect(await fetchRoute({ key: KEY, home: HOME, to: DEST, mode: "foot", fetch: thrown })).toEqual({ ok: false, error: "failed" });
   });
 
   it("応答は理由の印と画面の言葉だけ（外の返事の文・鍵を返さない）。失敗の経路は 200", async () => {
@@ -392,6 +431,12 @@ describe("紙の欄に入れる地図の画像（T102 の 4）", () => {
     expect(hand).not.toContain("openrouteservice");
     expect(hand).toContain("data-route-via");
     expect(ors).not.toContain("data-route-via");
+    // 「経路 目安」は線を引いたときいつも。点線（本当の家 → 丸めた点から引いた線の始まり）は自動の線だけ
+    for (const svg of [hand, ors]) expect(svg).toContain(">経路 目安</text>");
+    expect(ors).toMatch(/<polyline[^>]*stroke-dasharray="0 [\d.]+"[^>]*data-route-dotted/);
+    expect(hand).not.toContain("stroke-dasharray");
+    // 経路地図の無い人の紙には目安の言葉も出ない（null）
+    expect(routeMapSvg(l, { w: 180, h: 70 })).toBeNull();
   });
 
   it("欄の縦横の比が違えば、保存した範囲が全部入るように広げる（縮めて切らない）", async () => {
@@ -420,8 +465,15 @@ describe("紙の欄に入れる地図の画像（T102 の 4）", () => {
         expect(p.y).toBeLessThan(s.h);
       }
     }
-    // 自動の線は道の上から始まるので、家と避難先から線の端までも結ぶ
-    expect(wide.line.length).toBe(ROAD.length + 2);
+    // 自動の線は丸めた家の点の近くの道から始まるので、本当の家から始まりまでは点線。終わりと避難先の間は実線で結ぶ
+    expect(wide.line.length).toBe(ROAD.length + 1);
+    expect(wide.dotted).toEqual([wide.home, wide.line[0]]);
+    expect(wide.note).toBe("経路 目安");
+    // 手入力の線は家から始まり、点線は無い
+    const hand = routeSceneOf(withRoute("hand", await ledgerOf()), { w: 400, h: 100 })!;
+    expect(hand.dotted).toEqual([]);
+    expect(hand.line[0]).toEqual(hand.home);
+    expect(hand.note).toBe("経路 目安");
     // detail 1 はタイルの段が 1 つ細かい
     const z = l.evacuation.routeMap!.view.z;
     expect(routeSceneOf(l, { w: 180, h: 70 }, 1)!.tiles[0].href).toContain(`/pale/${z + 1}/`);
@@ -442,6 +494,11 @@ describe("紙の欄に入れる地図の画像（T102 の 4）", () => {
       expect(paper).toContain(t.href);
     }
     expect(screen).toContain(ORS_ATTRIBUTION.text.replace("&", "&amp;"));
+    // 画面も点線と「経路 目安」
+    const dotted = scene.dotted.map((p) => `${p.x},${p.y}`).join(" ");
+    expect(screen).toMatch(new RegExp(`points="${dotted}"[^>]*stroke-dasharray="0 [\\d.]+"[^>]*data-route-dotted`));
+    expect(paper).toContain(`points="${dotted}"`);
+    expect(screen).toContain(">経路 目安</text>");
     // 状態の 4 色を使わない（操作の色 1 色）
     expect(screen).not.toMatch(/state-(ok|urgent|check|unknown)/);
     expect(paper).toContain("#116bdf");
@@ -460,6 +517,8 @@ describe("紙の欄に入れる地図の画像（T102 の 4）", () => {
       size: ROUTE_FRAME,
     });
     expect(s.line).toEqual([]);
+    expect(s.dotted).toEqual([]);
+    expect(s.note).toBeNull();
     expect(s.home).not.toBeNull();
     expect(s.dest).toBeNull();
   });

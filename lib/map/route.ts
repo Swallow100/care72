@@ -1,6 +1,8 @@
 // 避難経路（T102）。openrouteservice（OpenStreetMap の道で経路を引く外のサービス、HeiGIT）で、家から避難先への経路を引く。
 // - 外へ送るのは 2 点の座標（経度・緯度）と手段（URL の徒歩・車）だけ。氏名・住所・町名・避難先の名前・台帳は送らない。
 //   家の位置はサーバーが台帳から読み（app/api/evac-route/route.ts）、避難先は家から ROUTE_MAX_KM の中だけ
+// - 家の座標は送る前に約 150 m の格子に丸める（coarsenHome。いつも同じ点に寄る）。正確な家の座標は外へ出さない。
+//   経路は丸めた点から引き、本当の家から線の始まりまでは地図と紙に点線で描く（lib/map/route-image.ts）。避難先は施設なので丸めない
 // - 鍵は Cloudflare の secret の ORS_API_KEY。無いとき・失敗したとき（上限・経路なし・時間切れ）は投げずに理由を返し、
 //   画面は家・経由の点・避難先を直線で結ぶ形（handLine）に戻る
 // - 外の返事の文はそのまま画面に出さない（理由の印だけ）。鍵は応答・ログに出さない
@@ -40,6 +42,18 @@ export const ROUTE_FAILURES = ["no_key", "no_route", "limit", "failed"] as const
 export type RouteFailure = (typeof ROUTE_FAILURES)[number];
 
 export type RouteResult = { ok: true; line: GeoPoint[]; distanceM: number; durationS: number } | { ok: false; error: RouteFailure };
+
+/**
+ * 家の座標を丸める格子（度）。緯度 0.0015° は約 167 m、経度 0.0015° は北緯 34 度で約 138 m。
+ * 格子の点に寄せるので、家から丸めた点までは最大 110 m ほど
+ */
+export const HOME_GRID_DEG = 0.0015;
+
+/** 家の座標を格子の点に丸める（外へ送る前。同じ家はいつも同じ点。小数 4 桁） */
+export function coarsenHome(p: GeoPoint): GeoPoint {
+  const g = (x: number) => Number((Math.round(x / HOME_GRID_DEG) * HOME_GRID_DEG).toFixed(4));
+  return { lat: g(p.lat), lng: g(p.lng) };
+}
 
 /**
  * 台帳の「手段」の文字から手段を決める。車（娘の車・家族の車）は車、ほかと空は徒歩。
@@ -106,12 +120,13 @@ export function parseOrs(status: number, json: unknown): RouteResult {
 }
 
 /**
- * 経路を引く。鍵が無ければ外へ要求しない（no_key）。投げない（時間切れ・通信の失敗も failed）。
+ * 経路を引く。家（home）は格子に丸めてから送り（coarsenHome。正確な家の座標は外へ出さない）、避難先はそのまま（5 桁）。
+ * 線は丸めた点の近くの道から始まる。鍵が無ければ外へ要求しない（no_key）。投げない（時間切れ・通信の失敗も failed）。
  * fetch はテストで偽の物を渡す（本物の openrouteservice はテストで呼ばない）
  */
 export async function fetchRoute(args: {
   key: string | undefined;
-  from: GeoPoint;
+  home: GeoPoint;
   to: GeoPoint;
   mode: RouteMode;
   fetch?: typeof fetch;
@@ -119,8 +134,8 @@ export async function fetchRoute(args: {
 }): Promise<RouteResult> {
   const key = args.key?.trim();
   if (!key) return { ok: false, error: "no_key" };
-  if (!isGeoPoint(args.from) || !isGeoPoint(args.to)) return { ok: false, error: "failed" };
-  const { url, init } = orsRequest(roundPoint(args.from), roundPoint(args.to), args.mode, key);
+  if (!isGeoPoint(args.home) || !isGeoPoint(args.to)) return { ok: false, error: "failed" };
+  const { url, init } = orsRequest(coarsenHome(args.home), roundPoint(args.to), args.mode, key);
   const doFetch = args.fetch ?? fetch;
   try {
     const res = await doFetch(url, { ...init, signal: AbortSignal.timeout(args.timeoutMs ?? ROUTE_TIMEOUT_MS) });

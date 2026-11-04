@@ -5,6 +5,8 @@
 // - 出典は枠の中の下に小さく: 地理院タイル（国土地理院の出典の記載例「地理院タイルに○○を追記して掲載」の形）と、
 //   openrouteservice の線なら HeiGIT の利用規約の表記。手で引いた線には openrouteservice の表記を出さない
 // - 色は操作の色 1 色（状態の 4 色は使わない。地図の状態の色はピンだけの決まり）。グラデーション・光る影は使わない
+// - openrouteservice の線は、丸めた家の点（lib/map/route.ts の coarsenHome）の近くの道から始まる。本当の家から線の始まりまでは点線
+// - 線を引いたときは枠の左上に「経路 目安」（道・通れるかは人が確かめる。常設の説明文は置かない）
 // - 台帳に経路地図か家の位置が無ければ null（紙は文字の経路だけ）
 // 名前・住所の文字は入れない（家の印は「家」、避難先は「避難先1」）。
 
@@ -22,8 +24,8 @@ export const ROUTE_ZOOM = { minZ: 9, maxZ: BASE_LAYER.maxZ } as const;
 /** 地理院タイルの出典（国土地理院の出典の記載例の形）と、リンク先（地理院タイル一覧） */
 export const GSI_ROUTE_CREDIT = { text: "地理院タイルに避難経路を追記して掲載", href: BASE_LAYER.attribution.href } as const;
 
-/** 印の言葉 */
-export const ROUTE_MARKS = { home: "家", dest: (to: 1 | 2) => `避難先${to}` } as const;
+/** 印の言葉と、線を引いたときの枠の左上の言葉 */
+export const ROUTE_MARKS = { home: "家", dest: (to: 1 | 2) => `避難先${to}`, note: "経路 目安" } as const;
 
 /** 点（viewBox の左上からの座標。ズーム z の世界の px） */
 export type ScenePoint = { x: number; y: number };
@@ -35,8 +37,12 @@ export type RouteScene = {
   /** 出力の 1 単位あたりの viewBox の px（線の太さ・字の大きさをこれで割り戻す） */
   scale: number;
   tiles: Array<{ href: string; x: number; y: number; size: number }>;
-  /** 描く線（家 → 道 → 避難先。openrouteservice の線の端が家・避難先から離れていれば、その間も結ぶ） */
+  /** 描く線（家 → 道 → 避難先。openrouteservice の線の終わりが避難先から離れていれば、その間も結ぶ） */
   line: ScenePoint[];
+  /** 点線（openrouteservice の線だけ: 本当の家 → 線の始まり。外へは丸めた家の点を送ったので、この区間は経路を引いていない）。無ければ空 */
+  dotted: ScenePoint[];
+  /** 線を引いたときの枠の左上の言葉（「経路 目安」）。線が無ければ null */
+  note: string | null;
   /** 家（経路地図の画面で家の位置がまだ無いときだけ null。紙は家が無ければ描かない） */
   home: ScenePoint | null;
   dest: ScenePoint | null;
@@ -78,13 +84,22 @@ export function routeScene(input: { map: RouteMap; home: GeoPoint | null; dest: 
     }
   }
 
-  // 線: openrouteservice の線は道の上から始まるので、家・避難先から 2 m より離れていれば端を足す
+  // 線: openrouteservice の線は丸めた家の点の近くの道から始まるので、本当の家から始まりまでは点線（2 m より離れていれば）。
+  // 手入力の線は家から始まる。終わりが避難先から 2 m より離れていれば実線で結ぶ
   const pts = map.line.filter(isGeoPoint);
   const end = dest ?? pts[pts.length - 1] ?? null;
-  const drawn = [...(home && (pts.length === 0 || distanceM(home, pts[0]) > 2) ? [home] : []), ...pts];
+  let drawn: GeoPoint[] = [...pts];
+  let dotted: GeoPoint[] = [];
+  if (home && (pts.length === 0 || distanceM(home, pts[0]) > 2)) {
+    if (map.source === "ors" && pts.length > 0) dotted = [home, pts[0]];
+    else drawn = [home, ...drawn];
+  }
   if (end && (drawn.length === 0 || distanceM(drawn[drawn.length - 1], end) > 2)) drawn.push(end);
   // 家が無い（画面だけ）・避難先が無いときは線を引かない
-  if (!home || !end) drawn.length = 0;
+  if (!home || !end) {
+    drawn = [];
+    dotted = [];
+  }
 
   const credits: string[] = [GSI_ROUTE_CREDIT.text];
   if (map.source === "ors") credits.push(ORS_ATTRIBUTION.text);
@@ -93,7 +108,9 @@ export function routeScene(input: { map: RouteMap; home: GeoPoint | null; dest: 
     h: round1(h),
     scale: w / size.w,
     tiles,
-    line: drawn.map(at),
+    line: drawn.length >= 2 ? drawn.map(at) : [],
+    dotted: dotted.map(at),
+    note: drawn.length >= 2 ? ROUTE_MARKS.note : null,
     home: home ? at(home) : null,
     dest: end ? at(end) : null,
     via: map.source === "hand" ? map.via.filter(isGeoPoint).map(at) : [],
@@ -157,14 +174,45 @@ export function sceneSvg(scene: RouteScene, size: Size, unit: RouteUnit): string
       `<polyline points="${pts}" fill="none" stroke="${C.accent}" stroke-width="${r2(s.line * k)}" stroke-linejoin="round" stroke-linecap="round" data-route-line/>`,
     );
   }
+  if (scene.dotted.length >= 2) {
+    // 本当の家 → 線の始まり（丸めた家の点から引いた線なので、この区間は点線）。縁も同じ間の点で
+    const dp = scene.dotted.map((p) => `${p.x},${p.y}`).join(" ");
+    const dash = `0 ${r2(dotGap(s) * k)}`;
+    out.push(`<polyline points="${dp}" fill="none" stroke="${C.panel}" stroke-width="${r2((s.line + s.halo * 2) * k)}" stroke-dasharray="${dash}" stroke-linecap="round"/>`);
+    out.push(
+      `<polyline points="${dp}" fill="none" stroke="${C.accent}" stroke-width="${r2(s.line * k)}" stroke-dasharray="${dash}" stroke-linecap="round" data-route-dotted/>`,
+    );
+  }
   for (const v of scene.via) {
     out.push(`<circle cx="${v.x}" cy="${v.y}" r="${r2(s.via * k)}" fill="${C.panel}" stroke="${C.accent}" stroke-width="${r2(s.halo * k)}" data-route-via/>`);
   }
   if (scene.home) out.push(pinSvg(scene.home, ROUTE_MARKS.home, "circle", s, k));
   if (scene.dest) out.push(pinSvg(scene.dest, scene.destLabel, "square", s, k));
+  if (scene.note) out.push(noteSvg(scene.note, s, k));
   out.push(creditSvg(scene, s, k));
   out.push(`</svg>`);
   return out.join("");
+}
+
+/** 点線の点の間（中心から中心、出力の単位）。線の太さの 2.2 倍 */
+export function dotGap(s: (typeof ROUTE_STYLE)[RouteUnit]): number {
+  return s.line * 2.2;
+}
+
+/** 枠の左上の言葉の大きさ（字の大きさ・帯の幅と高さ。出力の単位）。字は全角 4 字と空き */
+export function noteBox(note: string, s: (typeof ROUTE_STYLE)[RouteUnit]) {
+  const fs = s.credit * 1.2;
+  const pad = s.pad;
+  return { fs, pad, w: [...note].length * fs * 0.92 + pad * 2, h: fs * 1.4 + pad };
+}
+
+function noteSvg(note: string, s: (typeof ROUTE_STYLE)[RouteUnit], k: number): string {
+  const C = ROUTE_PAPER_COLORS;
+  const b = noteBox(note, s);
+  return (
+    `<g data-route-note><rect x="0" y="0" width="${r2(b.w * k)}" height="${r2(b.h * k)}" fill="${C.panel}" fill-opacity="0.85"/>` +
+    `<text x="${r2(b.pad * k)}" y="${r2((b.pad / 2 + b.fs * 1.1) * k)}" font-size="${r2(b.fs * k)}" font-weight="700" fill="${C.ink}">${esc(note)}</text></g>`
+  );
 }
 
 function pinSvg(p: ScenePoint, label: string, shape: "circle" | "square", s: (typeof ROUTE_STYLE)[RouteUnit], k: number): string {

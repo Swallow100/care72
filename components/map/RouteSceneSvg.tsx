@@ -5,7 +5,7 @@
 // - 出典は枠の中の下（紙と同じ）
 
 import type { RouteScene, ScenePoint } from "@/lib/map/route-image";
-import { ROUTE_MARKS, ROUTE_STYLE } from "@/lib/map/route-image";
+import { dotGap, noteBox, ROUTE_MARKS, ROUTE_STYLE } from "@/lib/map/route-image";
 import { BASE_OPACITY } from "@/lib/map/layers";
 
 const S = ROUTE_STYLE.px;
@@ -45,11 +45,34 @@ export function RouteSceneSvg({ scene, label, px }: { scene: RouteScene; label: 
           <polyline points={pts} fill="none" className="stroke-accent-fill" strokeWidth={S.line * k} strokeLinejoin="round" strokeLinecap="round" data-route-line="" />
         </>
       )}
+      {/* 本当の家 → 線の始まり（丸めた家の点から引いた線なので点線） */}
+      {scene.dotted.length >= 2 && (
+        <>
+          <polyline
+            points={scene.dotted.map((p) => `${p.x},${p.y}`).join(" ")}
+            fill="none"
+            className="stroke-panel"
+            strokeWidth={(S.line + S.halo * 2) * k}
+            strokeDasharray={`0 ${dotGap(S) * k}`}
+            strokeLinecap="round"
+          />
+          <polyline
+            points={scene.dotted.map((p) => `${p.x},${p.y}`).join(" ")}
+            fill="none"
+            className="stroke-accent-fill"
+            strokeWidth={S.line * k}
+            strokeDasharray={`0 ${dotGap(S) * k}`}
+            strokeLinecap="round"
+            data-route-dotted=""
+          />
+        </>
+      )}
       {scene.via.map((v, i) => (
         <circle key={i} cx={v.x} cy={v.y} r={S.via * k} className="fill-panel stroke-accent-fill" strokeWidth={S.halo * k} data-route-via="" />
       ))}
       {scene.home && <Pin p={scene.home} label={ROUTE_MARKS.home} shape="circle" k={k} />}
       {scene.dest && <Pin p={scene.dest} label={scene.destLabel} shape="square" k={k} />}
+      {scene.note && <Note note={scene.note} k={k} />}
       <Credits scene={scene} k={k} />
     </svg>
   );
@@ -77,6 +100,19 @@ function Pin({ p, label, shape, k }: { p: ScenePoint; label: string; shape: "cir
         strokeLinejoin="round"
       >
         {label}
+      </text>
+    </g>
+  );
+}
+
+/** 枠の左上の「経路 目安」 */
+function Note({ note, k }: { note: string; k: number }) {
+  const b = noteBox(note, S);
+  return (
+    <g data-route-note="">
+      <rect x={0} y={0} width={b.w * k} height={b.h * k} className="fill-panel" fillOpacity={0.85} />
+      <text x={b.pad * k} y={(b.pad / 2 + b.fs * 1.1) * k} fontSize={b.fs * k} fontWeight={700} className="fill-ink">
+        {note}
       </text>
     </g>
   );

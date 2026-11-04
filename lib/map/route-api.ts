@@ -2,7 +2,7 @@
 // - ケアマネの役だけ。本人は personInScope を通した事業所の中の人だけ（lib/person.ts の loadPersonPage）
 // - 家の位置はブラウザから受け取らず、台帳（basic.location）から読む。避難先はまだ保存していない位置でも引けるよう要求から受け、
 //   家から ROUTE_MAX_KM の中だけ（鍵の枠をほかの点で使わせない）
-// - 外へ送るのは家と避難先の座標と手段だけ（lib/map/route.ts の fetchRoute）。氏名・住所・台帳は読んでも送らない
+// - 外へ送るのは家（約 150 m の格子に丸めた点）と避難先の座標と手段だけ（lib/map/route.ts の fetchRoute）。氏名・住所・台帳は読んでも送らない
 // - 応答は線と長さと時間、または理由の印だけ（外の返事の文・鍵は返さない）
 
 import type { D1Database } from "@cloudflare/workers-types";
@@ -40,7 +40,8 @@ export async function evacRoute(
   const home = parseLedger(rows.person.ledger).basic.location;
   if (!isGeoPoint(home)) return { ok: false, error: "no_home" };
   if (!withinReach(home, req.to)) return { ok: false, error: "too_far" };
-  return fetchRoute({ key, from: home, to: req.to, mode: req.mode, fetch: fetchImpl });
+  // 家は fetchRoute が格子に丸めてから送る（正確な家の座標は外へ出さない）
+  return fetchRoute({ key, home, to: req.to, mode: req.mode, fetch: fetchImpl });
 }
 
 const STATUS: Record<EvacRouteRefusal | RouteFailure | "invalid", number> = {
