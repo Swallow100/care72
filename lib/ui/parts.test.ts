@@ -191,6 +191,15 @@ describe("選ぶ部品: 描画と aria", () => {
     expect(renderToStaticMarkup(h(Select, { value: "", disabled: true, onChange: () => {} }, children))).toMatch(/<button[^>]*disabled=""/);
   });
 
+  it("未選択の印の項目（data-placeholder）が選ばれている間は灰。印の無い value=\"\"（全部など）は黒のまま", () => {
+    const blank = [opt("", "距離 —", { "data-placeholder": true }), opt("near", "近い")];
+    expect(readOptions(blank).items.map((i) => i.placeholder)).toEqual([true, undefined]);
+    expect(renderToStaticMarkup(h(Select, { value: "", onChange: () => {} }, blank))).toMatch(/text-muted[^>]*>距離 —<\/span>/);
+    expect(renderToStaticMarkup(h(Select, { value: "near", onChange: () => {} }, blank))).not.toMatch(/text-muted[^>]*>近い/);
+    const all = renderToStaticMarkup(h(Select, { value: "", onChange: () => {} }, [opt("", "全部"), opt("a", "甲")]));
+    expect(all).not.toMatch(/text-muted[^>]*>全部/);
+  });
+
   it("複数: 隠しの欄は同じ name で複数、ボタンは「a・b」", () => {
     const html = renderToStaticMarkup(h(Select, { name: "dev", multiple: true, value: ["o2", "tel"], onChange: () => {} }, [opt("o2", "酸素"), opt("tel", "電話"), opt("x", "他")]));
     expect(html).toContain('<input type="hidden" name="dev" value="o2"/><input type="hidden" name="dev" value="tel"/>');

@@ -228,7 +228,9 @@ function EditChange({ change, onChange }: { change: IntakeChange; onChange: (c: 
             onChange={(e) => set({ nightOk: e.target.value === "" ? undefined : e.target.value === "true" })}
             aria-label="夜間"
           >
-            <option value="">夜間未確認</option>
+            <option value="" data-placeholder>
+              夜間未確認
+            </option>
             <option value="true">夜間可</option>
             <option value="false">夜間不可</option>
           </Select>
@@ -260,7 +262,9 @@ export function FieldInput({
     case "enum":
       return (
         <Select className={box} value={typeof value === "string" ? value : ""} onChange={(e) => onChange(e.target.value)} aria-label={field.label}>
-          <option value="">未確認</option>
+          <option value="" data-placeholder>
+            未確認
+          </option>
           {s.options.map((o) => (
             <option key={o.value} value={o.value}>
               {o.label}
@@ -276,7 +280,9 @@ export function FieldInput({
           onChange={(e) => onChange(e.target.value === "" ? undefined : e.target.value === "true")}
           aria-label={field.label}
         >
-          <option value="">未確認</option>
+          <option value="" data-placeholder>
+            未確認
+          </option>
           <option value="true">あり</option>
           <option value="false">なし</option>
         </Select>

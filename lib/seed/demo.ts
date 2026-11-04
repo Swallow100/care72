@@ -15,7 +15,7 @@ import { HAIKU } from "../claude/models.ts";
 import type { RecordingClass } from "../db/types.ts";
 import { DISASTER_KIND_LABELS, infoChanges, statePayload, type DisasterInfo } from "../disaster/state.ts";
 import { recordingLogBody, signalLogBody } from "../signals/labels.ts";
-import { SEED_PEOPLE } from "../../seed/people.ts";
+import { SEED_AT, SEED_PEOPLE } from "../../seed/people.ts";
 import { insert, type SqlValue } from "../../seed/sql.ts";
 
 const HOUR_MS = 3_600_000;
@@ -249,6 +249,14 @@ export function demoExtraRows(now: string, recording: SeedRecording = null): See
   return [...disasterRows(now), ...redSignalRows(now, recording)];
 }
 
+/**
+ * デモ事業所の 10 人は QR を作った形にする（本人の 1 枚の裏と QR の画面に QR が出る。前は未作成で、裏が空の枠だった）。
+ * 作った時刻は種の時刻で固定なので、毎朝の戻しでトークンは変わらない（前の日に刷った紙の QR も開ける）。期限は 180 日
+ */
+export const DEMO_QR = { generation: 1, issuedAt: SEED_AT, ttlDays: 180 } as const;
+
+const DEMO_QR_SQL = `UPDATE people SET qr_generation = ${DEMO_QR.generation}, qr_issued_at = '${DEMO_QR.issuedAt}', qr_ttl_days = ${DEMO_QR.ttlDays} WHERE office_id = '${DEMO_OFFICE_ID}'`;
+
 export function demoExtraStatements(now: string, recording: SeedRecording = null): string[] {
-  return demoExtraRows(now, recording).map((r) => insert(r.table, r.row));
+  return [...demoExtraRows(now, recording).map((r) => insert(r.table, r.row)), DEMO_QR_SQL];
 }

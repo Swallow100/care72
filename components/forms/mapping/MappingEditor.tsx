@@ -161,7 +161,7 @@ export function MappingEditor({
           </label>
         )}
         <div className="ml-auto flex items-center gap-2">
-          <Button icon={AddIcon} onClick={add}>
+          <Button kind="add" icon={AddIcon} onClick={add}>
             {L.addField}
           </Button>
           <Button kind="main" icon={SaveIcon} disabled={!canSave} onClick={save} data-pending={saving ? "" : undefined}>
@@ -243,7 +243,7 @@ export function MappingEditor({
         </table>
         {m.fields.length === 0 && (
           <div className="px-2 py-3 text-sm">
-            <Button kind="plainIn" icon={AddIcon} onClick={add}>
+            <Button kind="addIn" icon={AddIcon} onClick={add}>
               {L.addField}
             </Button>
           </div>

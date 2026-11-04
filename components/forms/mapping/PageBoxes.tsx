@@ -229,7 +229,7 @@ function BoxControls({
       ) : (
         <div className="flex items-center gap-2">
           <span className="text-xs text-muted">{L.noBox}</span>
-          <Button size="sm" icon={AddIcon} onClick={() => set(placeAt(null, defaultSize(field, target), 0.4, 0.45))}>
+          <Button kind="add" size="sm" icon={AddIcon} onClick={() => set(placeAt(null, defaultSize(field, target), 0.4, 0.45))}>
             {L.addBox}
           </Button>
         </div>

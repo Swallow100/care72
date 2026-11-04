@@ -55,7 +55,7 @@ export function DocumentMenu({ plan, person, office }: { plan: MenuItem[]; perso
         title={L.plan}
         items={plan}
         action={
-          <ButtonLink href="/forms/mapping" kind="plain" size="sm" icon={AddIcon} data-add-form>
+          <ButtonLink href="/forms/mapping" kind="add" size="sm" icon={AddIcon} data-add-form>
             {L.add}
           </ButtonLink>
         }
