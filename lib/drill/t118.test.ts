@@ -151,7 +151,7 @@ describe("本人役の言葉の掃除（全部の道で同じ決まり）", () =
       "救急車が来て運ばれた",
     ];
     for (const s of dropped) expect(cleanPersonaWords(s, KEY, SPEECH_MAX), s).toBeNull();
-    const kept = ["薬を届けてください", "胸が少し痛い", "足を打った", "水が2リットルしかない", "がんばって待っています", "病院に行きたい", "必死に逃げた"];
+    const kept = ["薬を届けてください", "胸が少し痛い", "足を打った", "水が2リットルしかない", "水が一滴もない", "包帯を一包み持ってきて", "がんばって待っています", "病院に行きたい", "必死に逃げた"];
     for (const s of kept) expect(cleanPersonaWords(s, KEY, SPEECH_MAX), s).toBe(s);
   });
 
