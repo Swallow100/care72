@@ -90,6 +90,8 @@ export type Shot = {
   beats?: number[];
   /** 声に合わせて出す言葉（文字が主役の絵）。あれば lines より先に使う */
   cues?: Cue[];
+  /** 白い帯（parts/Marker.tsx）を引く言葉。絵ごとに 1 つだけ。cues の text・分割の見出し（lines）・数字の画面の tail か lines[0] と同じ字で書く */
+  marker?: string;
   value?: string;
   sub?: string;
 };
@@ -132,6 +134,7 @@ export const SCENES: Scene[] = [
         // 様式の頭（題名「個別避難計画」が見える所。R03-3 の 0〜4 秒）
         froms: [0, 0.5],
         label: "これが個別避難計画（松山市の様式）",
+        marker: "どう助けるか",
         cues: [
           { text: "災害のとき", line: "N02", size: "h2", row: 0 },
           { text: "在宅の高齢者を", line: "N02", size: "h1", row: 1 },
@@ -146,6 +149,7 @@ export const SCENES: Scene[] = [
         kind: "number",
         bg: "B04",
         label: "作成率",
+        marker: "だけ",
         value: "15.1%",
         lines: ["個別避難計画あり"],
         sub: "対象 670 万人",
@@ -173,6 +177,7 @@ export const SCENES: Scene[] = [
         end: 17.2,
         kind: "plate",
         label: "作者の名札（医学部の学生・家族にケアマネージャー）",
+        marker: "家で見てきた",
         lines: ["作者　医学部の学生", "家族にケアマネージャー"],
         beats: [0.3, 0.9],
         bg: "B02",
@@ -195,6 +200,7 @@ export const SCENES: Scene[] = [
         beats: [0.1, 1.9],
         sub: "薬と残り日数・医療機器と電池・家族と支援者・夜に来られる人",
         label: "左に台帳の区分の名前、右に様式の未確認の欄",
+        marker: "書けていない",
       },
       {
         at: 21.5,
@@ -203,6 +209,7 @@ export const SCENES: Scene[] = [
         bg: "B02",
         bgFrom: 4,
         label: "アンケート（T65 の問 4）",
+        marker: "書く時間が無い",
         // 数は受付（11/5 23:59）が閉じてから。「何人中何人」の形（割合にしない）。入るまでは字だけ
         value: "［N］人中［N］人",
         lines: ["書く時間が無い"],
@@ -224,13 +231,14 @@ export const SCENES: Scene[] = [
         end: 32.5,
         kind: "text",
         label: "気づき（楽に作れて、実際の災害でも役立つ計画）",
+        marker: "大きくなる",
         bg: "B05",
         // 2 つの条件は下げずに残し、最後の「大きくなる」を一番大きく
         cues: [
           { text: "楽に作れて", line: "N06", size: "hero", row: 0, hold: true },
           { text: "実際の災害でも役立つ計画", line: "N06", size: "hero", row: 1, hold: true },
           { text: "作る意味も", line: "N06", size: "h1", row: 2 },
-          { text: "大きくなる", line: "N06", size: "display", row: 2, mark: true },
+          { text: "大きくなる", line: "N06", size: "display", row: 2 },
         ],
       },
       // 題名を 72 時間の輪（G1）の中に置く。題名は N07 の「ケア72」で出す（仮の声で 33.0 秒）。輪の中に名前の 72 時間の意味を声に合わせて
@@ -239,6 +247,7 @@ export const SCENES: Scene[] = [
         end: 38,
         kind: "ring",
         label: "題名と 72 時間の輪",
+        marker: "災害直後の 72 時間",
         lines: ["ケア72"],
         sub: "助けが届きにくい災害直後の 72 時間",
         beats: [0.5],
@@ -447,6 +456,7 @@ export const SCENES: Scene[] = [
         end: 176.9,
         kind: "text",
         label: "締めの言葉（課題は山積み・それでも・まずは一部から）",
+        marker: "まずは一部から",
         bg: "B08",
         cues: [
           { text: "実用化の課題は", line: "N30", size: "h1", row: 0 },

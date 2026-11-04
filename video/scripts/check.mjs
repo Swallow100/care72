@@ -61,6 +61,15 @@ for (const s of SCENES) {
   }
 }
 
+// 白い帯の言葉（marker）は、その絵に出る言葉（cues の text か lines）と同じ字か
+for (const s of SCENES) {
+  for (const sh of s.shots) {
+    if (!sh.marker) continue;
+    const shown = [...(sh.cues ?? []).filter((c) => c.slot !== "mark" && c.slot !== "lead").map((c) => c.text), ...(sh.lines ?? [])];
+    if (!shown.includes(sh.marker)) errors.push(`${s.id}: 白い帯の言葉「${sh.marker}」が絵「${sh.label}」に出る言葉に無い`);
+  }
+}
+
 // 文書を読む
 const docs = join(ROOT, "..", "docs", "video");
 const plan = readFileSync(join(docs, "PLAN.md"), "utf8");

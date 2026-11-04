@@ -8,6 +8,7 @@ import { usePalette } from "../ground";
 import { COLOR, FONT, LAYOUT, STATE_LABEL, TYPE } from "../theme";
 import { MODEL_ROWS, RULE_ROWS } from "../timeline";
 import { LOGO_INK, Logo } from "./Logo";
+import { Marker } from "./Marker";
 import { EASE_OUT, STAGGER, progress, rise } from "./motion";
 
 const clamp = { extrapolateLeft: "clamp", extrapolateRight: "clamp" } as const;
@@ -289,7 +290,7 @@ export const Compare: React.FC<{ value: string; labels: [string, string]; sub?: 
  */
 type SlotWord = { text: string; frame: number; size: keyof typeof TYPE };
 
-export const Share: React.FC<{ hero: string; share: number; part: string; whole: string; land?: number; lead?: SlotWord; tail?: SlotWord }> = ({
+export const Share: React.FC<{ hero: string; share: number; part: string; whole: string; land?: number; lead?: SlotWord; tail?: SlotWord; marker?: string }> = ({
   hero,
   share,
   part,
@@ -297,6 +298,7 @@ export const Share: React.FC<{ hero: string; share: number; part: string; whole:
   land = 40,
   lead,
   tail,
+  marker,
 }) => {
   const frame = useCurrentFrame();
   const p = usePalette();
@@ -315,13 +317,19 @@ export const Share: React.FC<{ hero: string; share: number; part: string; whole:
         <div style={{ display: "flex", alignItems: "baseline", gap: 10, lineHeight: 1 }}>
           <span style={{ fontSize: m ? 220 : TYPE.hero, fontWeight: 600 }}>{shown}</span>
           {m ? <span style={{ fontSize: 110, fontWeight: 600 }}>{m[2]}</span> : null}
-          {tail ? <span style={{ fontSize: TYPE[tail.size], fontWeight: 600, marginLeft: 18, ...rise(frame, tail.frame, 16, 14) }}>{tail.text}</span> : null}
+          {tail ? (
+            <span style={{ fontSize: TYPE[tail.size], fontWeight: 600, marginLeft: 18, ...rise(frame, tail.frame, 16, 14) }}>
+              {/* 白い帯の言葉なら、出てから帯を引く（「だけ」） */}
+              {marker === tail.text ? <Marker at={tail.frame + 12}>{tail.text}</Marker> : tail.text}
+            </span>
+          ) : null}
         </div>
         <div style={{ position: "relative", width: W, height: H, background: p.tint, borderRadius: RADIUS.mark }}>
           <div style={{ position: "absolute", left: 0, top: 0, height: H, width: W * share * t, background: p.fg, borderRadius: `0 ${RADIUS.mark}px ${RADIUS.mark}px 0` }} />
         </div>
         <div style={{ display: "flex", justifyContent: "space-between", fontSize: TYPE.body, marginTop: -16, ...rise(frame, 10) }}>
-          <span style={{ fontWeight: 600 }}>{part}</span>
+          {/* 名前が白い帯の言葉なら、数が止まった所で帯を引く（「書く時間が無い」） */}
+          <span style={{ fontWeight: 600 }}>{marker === part ? <Marker at={land}>{part}</Marker> : part}</span>
           <span style={{ color: p.sub }}>{whole}</span>
         </div>
       </div>

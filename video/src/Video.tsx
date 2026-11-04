@@ -9,6 +9,7 @@ import { Footage } from "./parts/Footage";
 import { Framed, framedSize } from "./parts/Frame";
 import { BigNumber, Compare, EndCard, Flow, Memo, Models, Quote, Ring72, Plate, Rules, Share, Stage, TextCard, Title } from "./parts/Graphics";
 import { Kinetic, type KineticWord } from "./parts/Kinetic";
+import { Marker } from "./parts/Marker";
 import { CROSS, STAGGER, mix, progress, rise } from "./parts/motion";
 import { Caption, Header, Subtitle } from "./parts/Overlay";
 import { COLOR, FONT, LAYOUT, TYPE, palette } from "./theme";
@@ -127,7 +128,7 @@ const Split: React.FC<{ shot: Shot; assets: Assets; duration: number }> = ({ sho
         if (!id && words) {
           return (
             <div key={`text-${i}`} style={{ width: TEXT_W, display: "flex", flexDirection: "column", justifyContent: "center" }}>
-              <Kinetic words={words} />
+              <Kinetic words={words} marker={shot.marker} duration={duration} exit />
             </div>
           );
         }
@@ -135,7 +136,10 @@ const Split: React.FC<{ shot: Shot; assets: Assets; duration: number }> = ({ sho
         return (
           <div key={`${id}-${i}`} style={{ width: size.width, display: "flex", flexDirection: "column", alignItems: "center" }}>
             {shot.lines?.[i] ? (
-              <div style={{ fontSize: headingSize, fontWeight: 600, marginBottom: 20, ...rise(frame, delays[i]) }}>{shot.lines[i]}</div>
+              <div style={{ fontSize: headingSize, fontWeight: 600, marginBottom: 20, ...rise(frame, delays[i]) }}>
+                {/* 見出しが白い帯の言葉なら、出てから帯を引く */}
+                {shot.lines[i] === shot.marker ? <Marker at={delays[i] + 12}>{shot.lines[i]}</Marker> : shot.lines[i]}
+              </div>
             ) : null}
             {id ? (
               <Framed
@@ -239,7 +243,7 @@ const ShotView: React.FC<{ shot: Shot; assets: Assets }> = ({ shot, assets }) =>
           <Backdrop shot={shot} assets={assets} duration={duration} />
           {shot.cues?.length ? (
             <Stage>
-              <Kinetic words={kineticWords(shot, assets)} />
+              <Kinetic words={kineticWords(shot, assets)} marker={shot.marker} duration={duration} exit />
             </Stage>
           ) : (
             <TextCard lines={shot.lines ?? []} sub={shot.sub} beats={shot.beats} />
@@ -253,7 +257,7 @@ const ShotView: React.FC<{ shot: Shot; assets: Assets }> = ({ shot, assets }) =>
           <Backdrop shot={shot} assets={assets} duration={duration} />
           {shot.cues?.length ? (
             <Stage>
-              <Kinetic words={kineticWords(shot, assets)} />
+              <Kinetic words={kineticWords(shot, assets)} marker={shot.marker} duration={duration} exit />
             </Stage>
           ) : null}
           <Plate lines={shot.lines ?? []} beats={shot.beats} />
@@ -269,7 +273,7 @@ const ShotView: React.FC<{ shot: Shot; assets: Assets }> = ({ shot, assets }) =>
           titleAt={shot.beats?.[0] !== undefined ? f(shot.beats[0]) : undefined}
           markAt={markFrames(shot, assets)[0]}
         >
-          {shot.cues?.length ? <Kinetic words={kineticWords(shot, assets)} align="center" /> : null}
+          {shot.cues?.length ? <Kinetic words={kineticWords(shot, assets)} align="center" marker={shot.marker} /> : null}
         </Ring72>
       );
       break;
@@ -285,6 +289,7 @@ const ShotView: React.FC<{ shot: Shot; assets: Assets }> = ({ shot, assets }) =>
               land={shot.beats?.[0] !== undefined ? f(shot.beats[0]) : undefined}
               lead={slotWord(shot, assets, "lead")}
               tail={slotWord(shot, assets, "tail")}
+              marker={shot.marker}
             />
           ) : shot.value?.endsWith("%") ? (
             <Share
@@ -295,6 +300,7 @@ const ShotView: React.FC<{ shot: Shot; assets: Assets }> = ({ shot, assets }) =>
               land={shot.beats?.[0] !== undefined ? f(shot.beats[0]) : undefined}
               lead={slotWord(shot, assets, "lead")}
               tail={slotWord(shot, assets, "tail")}
+              marker={shot.marker}
             />
           ) : (
             <BigNumber value={shot.value ?? ""} sub={shot.sub} />
@@ -342,7 +348,7 @@ const ShotView: React.FC<{ shot: Shot; assets: Assets }> = ({ shot, assets }) =>
         <>
           <Backdrop shot={shot} assets={assets} duration={duration} />
           <Quote text={shot.lines?.[0] ?? ""} sub={shot.sub}>
-            {shot.cues?.length ? <Kinetic words={kineticWords(shot, assets)} align="center" /> : undefined}
+            {shot.cues?.length ? <Kinetic words={kineticWords(shot, assets)} align="center" marker={shot.marker} duration={duration} exit /> : undefined}
           </Quote>
         </>
       );
