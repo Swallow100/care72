@@ -419,7 +419,7 @@ describe.skipIf(!chrome)("印刷（headless Chrome の printToPDF）", () => {
     expect(s.wordBreak).toBe("normal");
     expect(s.overflowWrap).toBe("normal");
     expect(s.letterSpacing).toBe("normal");
-    // 松山市の地は原本の本文と同じ BIZ UDゴシック（かなが等幅。11/4 15:4x 確定）、様式の無い文書は BIZ UDPゴシック
+    // 松山市の地は原本の本文と同じ BIZ UDゴシック（かなが等幅）、様式の無い文書は BIZ UDPゴシック
     expect(s.font).toContain("BIZ UDGothic");
     expect(s.docFont).toContain("BIZ UDPGothic");
     // 9.84pt = 13.12px、10.5pt = 14px
@@ -498,7 +498,7 @@ describe.skipIf(!chrome)("印刷（headless Chrome の printToPDF）", () => {
         if (Math.abs(e.px - c.px) > 0.05) bad.push(`${c.form} ${c.label}「${e.text}」: ${e.px}px（原本 ${c.px.toFixed(2)}px）`);
         if (c.bold !== null && e.weight >= 600 !== c.bold) bad.push(`${c.form} ${c.label}「${e.text}」: 太さ ${e.weight}`);
         if (c.underline !== null && e.underline !== c.underline) bad.push(`${c.form} ${c.label}「${e.text}」: 下線 ${e.underline}`);
-        // 原本に刷ってある字（欄の名前・注・選択肢）は原本どおり黒（11/4 15:4x 確定。前は欄の名前を灰色にしていた）
+        // 原本に刷ってある字（欄の名前・注・選択肢）は原本どおり黒（前は欄の名前を灰色にしていた）
         if (c.black && e.color !== "rgb(0, 0, 0)") bad.push(`${c.form} ${c.label}「${e.text}」: 色 ${e.color}`);
       }
     });

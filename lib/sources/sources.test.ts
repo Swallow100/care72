@@ -161,7 +161,7 @@ describe("docs/TRIAGE.md の出典", () => {
   });
 });
 
-describe("本運用で確かめること（T48、アドバイザーの返事）", () => {
+describe("本運用で確かめること（T48）", () => {
   it("README と docs/SOURCES.md に同じ一覧。同意・仮名と対応表・外国の事業者・表の監修を、断定せず「確かめる」の形で", () => {
     const readme = readFileSync(new URL("../../README.md", import.meta.url), "utf8").replaceAll("\r\n", "\n");
     const sources = readFileSync(new URL("../../docs/SOURCES.md", import.meta.url), "utf8").replaceAll("\r\n", "\n");

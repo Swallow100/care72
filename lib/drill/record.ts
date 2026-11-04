@@ -106,7 +106,7 @@ export function shownReview(r: StoredReview | null): (ReviewBody & { edited: boo
 type PersonForScore = Pick<PersonRow, "id" | "name" | "kana" | "birth_date" | "self_report_unreliable" | "ledger" | "care_manager_id">;
 type ContactForScore = Form9PersonInput["contacts"][number] & Pick<ContactRow, "person_id">;
 
-/** 採点の終わりの上限（発災から 72 時間。DECISIONS 11/3 17:1x。最後の刻みのあとに 72 時間をまたぐ手を打っても、結末の刻みとそろえる） */
+/** 採点の終わりの上限（発災から 72 時間。最後の刻みのあとに 72 時間をまたぐ手を打っても、結末の刻みとそろえる） */
 export const SCORE_END_MINUTE = 72 * 60;
 
 /** 訓練の終わり（ケアマネの時計、発災からの分。72 時間で切る） */

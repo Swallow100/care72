@@ -1,4 +1,4 @@
-// 事業所と最初の管理者を作る SQL（docs/tasks/T73.md の 3）。作者が端末で打つ。新規登録の画面は作らない（DECISIONS 11/4 00:5x）。
+// 事業所と最初の管理者を作る SQL（docs/tasks/T73.md の 3）。作者が端末で打つ。新規登録の画面は作らない（docs/DECISIONS.md「アカウントと事業所」）。
 // 使い方: node tools/office/new-office.ts --name <事業所名> --city <市町村> --login-id <ID> --display-name <管理者の名前>
 //         [--id office-xxx] [--plan-form matsuyama|cao] [--out <ファイル>]
 //

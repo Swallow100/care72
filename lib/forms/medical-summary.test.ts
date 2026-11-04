@@ -182,7 +182,7 @@ describe("医療班提供の同意", () => {
     expect(markup).toContain("未聴取");
   });
 
-  it("保留（未確認）の人は 10 人のだれでも要約を作らない。医療班の範囲（T24）で開いても、本人の 1 枚の裏でも同じ（11/3 確定の 4）", () => {
+  it("保留（未確認）の人は 10 人のだれでも要約を作らない。医療班の範囲（T24）で開いても、本人の 1 枚の裏でも同じ", () => {
     for (const id of ALL_IDS) {
       const rows = withMedicalConsent(id, "unconfirmed");
       const plain = build(rows);
@@ -262,7 +262,7 @@ describe("種の 9 人から欄が埋まる", () => {
     }
   });
 
-  it("出典の確認（作者が 11/7 までに）が済むまで、画面の脇の出典ごとに小さな「未確認」の印を出す。隠さない（11/3 確定の 10）", () => {
+  it("出典の確認（作者が 11/7 までに）が済むまで、画面の脇の出典ごとに小さな「未確認」の印を出す。隠さない", () => {
     for (const id of SHEET_IDS) {
       const side = basisHtml(sheetOf(id));
       const items = [...side.matchAll(/data-source="([^"]+)"(.*?)<\/li>/g)];
@@ -280,7 +280,7 @@ describe("種の 9 人から欄が埋まる", () => {
 describe("1 山田 ハナ（T07 の終わりの形）", () => {
   const s = sheetOf("p-01");
 
-  it("抗凝固薬（ワーファリン）にチェック。中断注意の印は様式の欄に出さない（補足の常用薬の表だけ。11/3 15:00 確定の 3）", () => {
+  it("抗凝固薬（ワーファリン）にチェック。中断注意の印は様式の欄に出さない（補足の常用薬の表だけ）", () => {
     expect(text(s, "drug.anticoagulant")).toBe("■抗凝固薬 ■ワーファリン ワーファリン 1 日 1 回");
     expect(s.medications[0].mark?.label).toBe("中断注意");
     expect(text(s, "drug.antiplatelet")).toBe("□抗血小板薬");
@@ -355,7 +355,7 @@ describe("中断注意の印（優先の骨格から機械的に、出典の id 
     }
   });
 
-  it("抗血小板薬（11/3 確定の 2）: 段 5 の印で、出典は循環器の指針（jcs-disaster-2014）を含む", () => {
+  it("抗血小板薬: 段 5 の印で、出典は循環器の指針（jcs-disaster-2014）を含む", () => {
     expect(interruptionMark({ category: "antiplatelet" })).toEqual({ label: "中断注意", tier: 5, sourceIds: tierBasis(5).sourceIds });
     expect(tierBasis(5).sourceIds).toContain("jcs-disaster-2014");
     expect(tierBasis(5).why).toContain("抗血小板薬");
@@ -440,7 +440,7 @@ describe("ほかの人", () => {
     expect(s.basis.map((b) => b.tier)).toEqual([5, 7]);
   });
 
-  it("6 高橋 ユキ: 胃ろう 経管栄養と栄養剤 3 日を機器の欄に。経管栄養（段 4）の行に中断注意（11/3 確定の 3）", () => {
+  it("6 高橋 ユキ: 胃ろう 経管栄養と栄養剤 3 日を機器の欄に。経管栄養（段 4）の行に中断注意", () => {
     const d = text(sheetOf("p-06"), "drug.devices");
     expect(d).toContain("胃ろう 経管栄養");
     expect(d).toContain("栄養剤 3 日");
@@ -499,8 +499,8 @@ describe("推し量らない", () => {
   });
 });
 
-describe("アドバイザーの返事（T48）: 並べ替えだけ・医師が書く欄は空欄", () => {
-  it("医師が書く欄（初診日・初診医師氏名・傷病名・トリアージタグ）は空欄で、紙面に「医師記入」を添えて出す（11/3 15:0x 確定）", () => {
+describe("医療要約の線（T48）: 並べ替えだけ・医師が書く欄は空欄", () => {
+  it("医師が書く欄（初診日・初診医師氏名・傷病名・トリアージタグ）は空欄で、紙面に「医師記入」を添えて出す", () => {
     expect(DOCTOR_KEYS).toEqual(["doctor.firstVisit", "doctor.physician", "doctor.disease", "doctor.triage"]);
     for (const id of SHEET_IDS) {
       const s = sheetOf(id);
@@ -510,7 +510,7 @@ describe("アドバイザーの返事（T48）: 並べ替えだけ・医師が�
     }
   });
 
-  it("様式の欄（特記事項の □ の後ろ）には中断注意の印を出さず、補足の常用薬の表と機器にだけ出す（11/3 15:00 確定の 3）", () => {
+  it("様式の欄（特記事項の □ の後ろ）には中断注意の印を出さず、補足の常用薬の表と機器にだけ出す", () => {
     let marked = 0;
     for (const id of SHEET_IDS) {
       const s = sheetOf(id);

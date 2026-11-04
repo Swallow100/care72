@@ -3,7 +3,9 @@
 # 本物の事業所のデータ（デモ事業所の外の利用者・訓練、種に無いアカウント・事業所）があれば、何もせずに止まる。
 # 消してよいときだけ ALLOW_DATA_LOSS=1 bash tools/deploy/rebuild-remote.sh <commit>（survey_ の表はどちらでも残す）
 set -e
-DEPLOY_DIR="${DEPLOY_DIR:-/c/Users/choco/dev/care72-deploy}"; [ -d "$DEPLOY_DIR" ] || git -C /c/Users/choco/dev/care72 worktree add --detach "$DEPLOY_DIR" "$1"; cd "$DEPLOY_DIR"
+# DEPLOY_DIR が無ければ、今の checkout の隣に配信用の worktree（care72-deploy）を作る
+REPO="$(git rev-parse --show-toplevel)"
+DEPLOY_DIR="${DEPLOY_DIR:-$REPO/../care72-deploy}"; [ -d "$DEPLOY_DIR" ] || git -C "$REPO" worktree add --detach "$DEPLOY_DIR" "$1"; cd "$DEPLOY_DIR"
 git checkout -q -- . && git checkout -q --detach "$1"
 echo "== commit: $(git log --format='%h %s' -1)"
 echo "== npm ci"; npm ci --no-audit --no-fund --loglevel=error 2>&1 | tail -1

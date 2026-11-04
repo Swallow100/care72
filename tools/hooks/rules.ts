@@ -32,7 +32,7 @@ const stop = (reason: string): Verdict => ({ block: true, reason });
 
 export const REASONS = {
   wrangler: (what: string) =>
-    `止めた: ${what}。wrangler でネットに出る命令は打たない（CLAUDE.md「動かし方」）。この PC の wrangler は別のアカウントに入っていて、打つと別のアカウントに資源ができる。手元は dev・types と --local を付けた d1・r2・kv だけ。配信は T27 で 作者と一緒に`,
+    `止めた: ${what}。wrangler でネットに出る命令は打たない（CLAUDE.md「動かし方」）。配信の手順の外で本物の資源を作ったり変えたりしない。手元は dev・types と --local を付けた d1・r2・kv だけ。配信は作者が手で打つ（docs/tasks/T27.md）`,
   secret: (what: string) =>
     `止めた: ${what}。鍵のファイル（.env・.dev.vars）は読まない・書かない（CLAUDE.md「守ること」）。鍵は人が手で入れる。鍵の有無は /api/health の ai で、項目は .dev.vars.example で見る`,
   history: (what: string) =>

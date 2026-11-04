@@ -14,7 +14,7 @@ docs/tasks/TNN.md の作業は、この文書と `CLAUDE.md` と `docs/tasks/REA
 
 ## 2. 越えない線と、その理由
 
-この線は、ハッカソンの運営とアドバイザー（小児科医）の返事（docs/DECISIONS.md 11/2 14:20・11/3 14:1x）と、Claude の利用ポリシー、医療機器プログラムの考え方から決めた。作業で迷ったら、こちらに倒す。
+この線は、Claude の利用ポリシー（医療の判断に関わる高リスクな使い方には、人の確認と AI であることの開示が要る）と、厚労省の医療機器プログラムの考え方（事例 197: 問診票を内容を変えずに電子化する物は医療機器に当たらない）から決めた（docs/DECISIONS.md「AI の使い所」）。作業で迷ったら、こちらに倒す。
 
 - **AI に本物の人の病気や緊急度を判断させない。** 症状を読んで緊急度を振り分けるのは医療の高リスクな使い方。だから色と順は表（lib/triage）が決め、Claude の分類は表に渡す印だけで、順を動かさない（11/3 T48 で直す）。「診断」「判定」「重症」「緊急度」の語を画面・紙・README に書かない。赤は「至急」（連絡の順の言葉）。
 - **AI の出力には画面に「AI」の印を付け、人が直せる形にする。** 最後に判断するのは人。
@@ -22,7 +22,7 @@ docs/tasks/TNN.md の作業は、この文書と `CLAUDE.md` と `docs/tasks/REA
 - **聞くのは事実だけ。** 「人工呼吸器を使っている」「停電」「水が来た」「挟まれている」は事実。「どのくらい苦しいか」の点数は聞かない。問診票を内容を変えずに電子化する物は医療機器に当たらない（厚労省の事例 197）。
 - **根拠は出典の登録簿（lib/sources）からだけ。** 作った根拠を残さない。
 - **氏名・住所・電話・町名を Claude に渡さない。** 必ず lib/pseudonym を通して仮名（A さん）と役割名（娘・支援者 1）にする。Claude を呼ぶ入口は lib/claude/call.ts の askJson の 1 か所で、型と実行時の両方で仮名化を確かめる。この門を迂回する道を作らない。
-- **訓練の人は架空。** 画面に「AI が演じる架空の人」と出す（T48）。訓練の中の架空の人の状態や結末は「シナリオ上の事実」で、本物の人への判断ではない（アドバイザー）。それでも「死亡」の語は使わず、オブラートに包む。
+- **訓練の人は架空。** 画面に「AI が演じる架空の人」と出す（T48）。訓練の中の架空の人の状態や結末は「シナリオ上の事実」で、本物の人への判断ではない。それでも「死亡」の語は使わず、オブラートに包む。
 - **人の手の代わりをしない。** 電話は番号を出すまでで、かけるのはケアマネ。自動の電話・自動の 119 はしない。
 
 ## 3. どこに何があるか（地図）
@@ -36,7 +36,7 @@ docs/tasks/TNN.md の作業は、この文書と `CLAUDE.md` と `docs/tasks/REA
 - `lib/forms/`: 様式（松山市の計画書、様式 9、本人の 1 枚 `own-sheet.ts`、医療要約 `medical-summary.ts`。全部定型で Claude を呼ばない）。
 - `lib/db/types.ts`: 表の型（Ledger が台帳）。`migrations/`: D1 の表（番号は origin を見て空いている物）。`seed/`: 架空の 10 人。
 - `components/ui/`: 共通の部品（Button・Badge・Page・表・印刷・戻る）。`lib/labels.ts`: 画面の言葉。
-- `docs/SPEC.md`: キックオフ前の設計（書き換えない）。`docs/DECISIONS.md`: 期間中の判断（確定＝作者、案＝設計の側）。`docs/PROGRESS.md`・`docs/progress/tNN.md`: 進み。`docs/HANDOFF.md`: 設計のセッション 2 つの連絡板。`docs/TRIAGE.md`・`docs/SOURCES.md`: コードから作る文書。`docs/JUDGING.md`: 審査基準と作品の対応。
+- `docs/SPEC.md`: キックオフ前の設計（書き換えない）。`docs/DECISIONS.md`: 設計の決め（テーマごと）。`docs/PROGRESS.md`・`docs/progress/tNN.md`: 進み。`docs/HANDOFF.md`: 設計のセッション 2 つの連絡板。`docs/TRIAGE.md`・`docs/SOURCES.md`: コードから作る文書。`docs/JUDGING.md`: 審査基準と作品の対応。
 
 ## 4. 言葉（用語）
 
@@ -46,14 +46,14 @@ docs/tasks/TNN.md の作業は、この文書と `CLAUDE.md` と `docs/tasks/REA
 - **刻み**: 訓練の 1 ステップ（発災から 0・1・3・6・9・12・18・24・36・48・60・72 時間。10 分版は 0・3・12・72）。
 - **仮名**: Claude に渡すときの「A さん」。対応表はサーバーの中だけ。
 - **AI の印**: Claude が作った物に付ける「AI」のラベル。
-- **確定／案**: docs/DECISIONS.md で、作者が決めた物が確定、設計の側が出した物が案。
+- **確定／案**: 作業の中で決まった物が確定、作業者が出してまだ決まっていない物が案。決まった中身は docs/DECISIONS.md にテーマごとに残る。
 
 ## 5. どう進めるか（分岐の作業）
 
-- 1 作業 1 worktree ＋ branch: `git worktree add ../care72-tNN -b task/tNN origin/main`、その中で `npm ci`、`npm run db:fresh`（手元の D1、--local だけ）。worktree の外を開かない（隣のフォルダは別のプロジェクトと本物の鍵）。
+- 1 作業 1 worktree ＋ branch: `git worktree add ../care72-tNN -b task/tNN origin/main`、その中で `npm ci`、`npm run db:fresh`（手元の D1、--local だけ）。worktree の外を開かない。
 - テストを先に書き、落ちるのを見てから中身を書く。commit は日本語で小さく、`npm test`（`--maxWorkers=4`。描くテストが時間切れなら `--testTimeout=60000`）と `npm run typecheck` が通ってから。末尾に `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`（書いたモデル名）。毎回 `git push origin HEAD`。
 - 進みは `docs/progress/tNN.md`（頭に「TNN 作業中（だれ、日時）」、終わりに「できた物・未確認・決めた所・問い」）。`docs/PROGRESS.md` と `docs/HANDOFF.md` は触らない（設計の側が書く。衝突を避けるため）。
-- 仕様と違う決めは `docs/DECISIONS.md` の「### 11/3 10:3x 確定」の節の上に「案」として足す。`docs/SPEC.md` は書き換えない。
+- 仕様と違う決めは `docs/DECISIONS.md` の合うテーマの節に「案」として足す。`docs/SPEC.md` は書き換えない。
 - 終わったら origin/integrate/t11-t12 を取り込んで衝突を解き（両方を活かす）、`gh pr create --base integrate/t11-t12 --fill`。**merge はしない**（設計の側が merge commit で取り込む）。
 - 履歴を書き換えない（rebase・amend・force push をしない）。フック（.claude/settings.json）が止めたら理由を読んで別の道を取る。鍵を探さない・置かない。本物の API は呼ばない（偽の client でテスト）。ネットに出る wrangler を打たない。
 - 決めきれない事は docs/progress/tNN.md の「問い」に書いて、止まらずに CLAUDE.md と文書に合う側を選んで進む。
@@ -62,12 +62,12 @@ docs/tasks/TNN.md の作業は、この文書と `CLAUDE.md` と `docs/tasks/REA
 ## 6. 審査で見られる所（作業の重みの付け方）
 
 - Claude の活用: 使う所と使わない所を分けたこと自体が設計（発災時の色と順に Claude を使わない、訓練は Haiku × 10 ＋ Opus、様式は Opus の文書の目）。新しい物を足すときも「どこに使い、どこに使わないか」を docs/progress に 1 行書く。
-- デモ: 審査員は care72.app にログインして自分で回す。10 分版の訓練と、本人のスマホの赤の流れと、担当一覧の並び替えが見せ場。壊さない。
+- デモ: 審査員が care72.app にログインして自分で回せる形にしてある。10 分版の訓練と、本人のスマホの赤の流れと、担当一覧の並び替えが見せ場。壊さない。
 - 深さ: テスト（1,300 件超）、出典の登録簿、意味色と密度の画面の決まり、docs の試行錯誤の跡。
 
 ## 7. 渡し方（文の形）
 
-別のアカウントの Claude Code（Opus 5.5、effort high）にそのまま貼る:
+別のセッションの Claude Code（Opus 5.5、effort high）にそのまま貼る:
 
 ```
 docs/tasks/CONTEXT.md → CLAUDE.md → docs/tasks/README.md → docs/tasks/T50.md の順に読んで、T50 をやって。

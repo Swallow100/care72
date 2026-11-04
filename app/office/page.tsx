@@ -338,7 +338,7 @@ function InfoSection({ state, towns }: { state: DisasterState; towns: TownCount[
             <input type="datetime-local" name="started" required defaultValue={toLocalInput(info.startedAt)} className={INPUT} />
           </label>
 
-          {/* 警戒レベルは大雨の場面の種類（大雨・台風・土砂）だけ。地震・津波・その他では出さない（11/3 21:5x 確定） */}
+          {/* 警戒レベルは大雨の場面の種類（大雨・台風・土砂）だけ。地震・津波・その他では出さない（docs/DECISIONS.md「地図と災害の情報」） */}
           {hasAlertLevel(state.kind) && (
           <fieldset>
             <legend className="text-xs text-muted">{DISASTER_LABELS.level}</legend>
@@ -452,7 +452,7 @@ const LOG_TONE: Record<OfficeLogItem["kind"], string> = {
 
 /**
  * 担当の割当（T30）。事業所の利用者を全部（カナの順）、行ごとに担当を選んで「変更」。行の右端の「詳細」で開いた行の中に
- * 登録・更新の時刻と「外す」（一覧から外す。消さない。一覧に赤を並べない、11/3 03:3x の確定 7）。
+ * 登録・更新の時刻と「外す」（一覧から外す。消さない。一覧に赤を並べない）。
  * 外した人は表の下の畳み「外した人 N」から戻す。表は 1 つの面の中で、ページの流れのまま（区分の中で送らない）。
  * 一括変更（T60）: 各行の左のチェック・見出しの全選択・表の上の帯（担当ごとの選択・移動先・一括変更）。戻ったら「変更済 N 人・飛ばし M 人」
  */

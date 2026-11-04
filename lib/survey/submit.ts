@@ -11,7 +11,7 @@
 // 6. Turnstile の鍵があるときだけ、その確かめ → 400
 // 7. 答えの形（知らない記号・長すぎる文・何も答えていない）→ 400
 // 保存は 1 文で、受付中（期限の前・件数が上限の下）のときだけ入れる（同時に送られても 31 件目は入らない）。
-// IP ごとの件数の上限は付けない（同じ職場の Wi-Fi で何人も答える。DECISIONS 11/3 23:1x）。同じ端末の 2 回目は頁の側の印（cookie と localStorage）で止める。
+// IP ごとの件数の上限は付けない（同じ職場の Wi-Fi で何人も答える）。同じ端末の 2 回目は頁の側の印（cookie と localStorage）で止める。
 
 import type { D1Database } from "@cloudflare/workers-types";
 import { utf8 } from "../auth/bytes.ts";

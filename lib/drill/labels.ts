@@ -129,7 +129,7 @@ export const AI_STOP_LABELS: Record<AiStop, string> = {
   world: "世界 停止",
 };
 
-/** 訓練の人の印（T48、アドバイザーの返事）。人は全部作った例で、本人役・家族役は AI が演じる */
+/** 訓練の人の印（T48）。人は全部作った例で、本人役・家族役は AI が演じる */
 export const FICTION_LABELS = {
   mark: "架空",
   title: "AI が演じる架空の人",
@@ -299,7 +299,7 @@ export const CALL_STATUS_TEXTS: Record<keyof typeof CALL_STATUS_LABELS, string> 
   noNumber: "電話番号が台帳にない",
 };
 
-/** 着信の画面と声（T21）の言葉。出る・出ない・切るは電話の画面の言い方（DECISIONS 11/3 09:4x 案の採った物、18:0x） */
+/** 着信の画面と声（T21）の言葉。出る・出ない・切るは電話の画面の言い方 */
 export const CALL_UI = {
   incoming: "着信",
   talking: "通話中",

@@ -3,7 +3,7 @@
 // buildOwnSheet・buildOwnSheetMedical（定型、Claude は呼ばない）、QR は qrState → currentQrToken → qrUrl。
 // 範囲の外・同意で開けない人は飛ばして数える。
 //
-// 読みは人数に関わらず D1 の batch 1 回（本人・連絡先・同意・時計を IN でまとめ読み。DECISIONS 11/4 00:0x）。
+// 読みは人数に関わらず D1 の batch 1 回（本人・連絡先・同意・時計を IN でまとめ読み）。
 // 1 人ずつ loadPersonDocument を並べると 1 人 3 回の往復になり、手元の D1 では 10 人で 6〜8 秒掛かっていた（docs/progress/t62.md）。
 // 組む物は lib/person.ts の loadPersonRows と同じ形の行。ただし本人の 1 枚と裏の要約は経過と提供の記録を読まないので、ここでは読まない
 // （読むようになったら lib/forms/t62.test.ts の「経過を読まない」が落ちる。1 人の頁の道と同じ紙になることもテストで比べる）。

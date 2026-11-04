@@ -1,5 +1,5 @@
 // 受け持ちの表（/staff）の絞込と並び（T62）。前は表の部品（components/staff/StaffTable.tsx）の中だけで持っていた状態を URL に載せ、
-// 画面と CSV（/staff/csv）が同じ関数で行を決める（DECISIONS 11/4 00:0x「画面と同じ行の決まり」）。D1 を使わない（ブラウザも読む）。
+// 画面と CSV（/staff/csv）が同じ関数で行を決める（画面と同じ行の決まり）。D1 を使わない（ブラウザも読む）。
 // URL: /staff?shelter=みどり小学校&color=red&q=やまだ&sort=age（既定は書かない）。
 // 色と連絡順の番号はルールの表の結果のまま（lib/custody/board.ts）。ここでは絞って並べるだけで、番号を数え直さない。
 

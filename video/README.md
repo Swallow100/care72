@@ -6,7 +6,7 @@
 
 ## ライセンスの注意
 
-Remotion は MIT ではない。Remotion License で、個人・従業員 3 人以下の営利の団体・非営利の団体は無料で使える（[LICENSE.md](https://github.com/remotion-dev/remotion/blob/main/LICENSE.md)）。このリポジトリの決まり（CLAUDE.md「依存は MIT・Apache-2.0・OFL の物だけ」）の外なので、使うかは作者が決める（docs/progress/t33.md の問い 1）。使わないなら、MIT の Motion Canvas で同じ形に組み直せる（`src/timeline.ts` と docs はそのまま使える）。ルートの THIRD_PARTY.md の「動画の編集の道具」の節にも書いた。
+Remotion は MIT ではない。Remotion License で、個人・従業員 3 人以下の営利の団体・非営利の団体は無料で使える（[LICENSE.md](https://github.com/remotion-dev/remotion/blob/main/LICENSE.md)）。このリポジトリの決まり（CLAUDE.md「依存は MIT・Apache-2.0・OFL の物だけ」）の外なので、使うかは作者が決める（docs/progress/t33.md の問い 1）。使わないなら、MIT の Motion Canvas で同じ形に組み直せる（`src/timeline.ts` と docs はそのまま使える）。ルートの THIRD_PARTY_NOTICES.md の「動画の編集の道具」の節にも書いた。
 
 ## 作り方
 

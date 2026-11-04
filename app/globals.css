@@ -1,6 +1,6 @@
 @import "tailwindcss";
 
-/* ダークは OS の設定に従わず、<html data-theme="dark"> を付けたときだけ（作者、11/3 10:1x）。既定はライト。
+/* ダークは OS の設定に従わず、<html data-theme="dark"> を付けたときだけ効く。既定はライト。
    Tailwind の dark: もその印で効かせる（既定では OS の設定に従うので、ライトの画面に dark: の影や明るさの調整が混ざる） */
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
@@ -18,7 +18,7 @@
   文字の色はボタン以外では本文（ink）と薄い本文（muted）の 2 つ。ほかの色は状態の色だけで、テーマ色の文字を飾りに使わない。
   操作の色は --accent の 1 色。出る・消す・外す操作と誤りは --danger（赤）。
 
-  意味色は黒を混ぜない（作者の決まり、11/3）。ライトもダークも澄んだ色相のまま。暗く濁った緑・赤・黄・青は使わない。
+  意味色は黒を混ぜない。ライトもダークも澄んだ色相のまま。暗く濁った緑・赤・黄・青は使わない。
   黒を混ぜてよいのは灰色と黒だけ。ダークは色の明るさを保ち、地と面を暗くして差を出す。
     --state-*-text   文字・数字の色（text-state-ok など）。地・面・面の中のどれの上でも対比 4.5 以上（T79、11/4 の点検の中 9）。
                      その対比に届く明るさの中で、いちばん鮮やかな色（黒は混ぜない。明るさだけ下げた同じ色相）
@@ -27,10 +27,10 @@
     --on-state-*     印の塗りの上の文字（白か、ほぼ黒）。緑の塗りの上は白だと 3.68 なので、ライトもほぼ黒（4.70）
   出る・消す・外す操作の赤も、文字（text-danger、--danger-text）と塗りのボタン（bg-danger-fill、--danger）を分ける。
   薄い下地（色を面に混ぜた物）は、ダークで黒の混ざった濁った色になるので印に使わない。印は澄んだ色の塗りか、色の文字だけ。
-  黄（要確認）は文字の色に使わない（白の上の対比が 3.2 しか無い。11/3 03:3x の確定 3）。黄は塗りの印（濃い文字）か細い帯だけで、
+  黄（要確認）は文字の色に使わない（白の上の対比が 3.2 しか無い）。黄は塗りの印（濃い文字）か細い帯だけで、
   黄の文字だった所は本文色の文字と前に黄の細い帯（tone-check。components/ui/Tag の TONE_TEXT.check・StateText・Mark が使う）。
-  --state-check は帯と入力の欄の注意の枠（outline）の色。帯は細いので、地の上で 3:1 に届く濃さ（ライトは琥珀、11/3 08:0x の確定 5）。
-  状態の人数（担当一覧の上の人数など）は 4 つとも言葉を塗りの印にし、数は本文色。0 人は印も数も灰（components/ui/Tag の CountLabel、11/4 00:5x）。
+  --state-check は帯と入力の欄の注意の枠（outline）の色。帯は細いので、地の上で 3:1 に届く濃さ（ライトは琥珀）。
+  状態の人数（担当一覧の上の人数など）は 4 つとも言葉を塗りの印にし、数は本文色。0 人は印も数も灰（components/ui/Tag の CountLabel）。
 */
 :root {
   --base: #eceef1;
@@ -149,7 +149,7 @@
   --color-accent: var(--accent-text);
   --color-accent-fill: var(--accent);
   --color-on-accent: var(--on-accent);
-  /* 画面の書体: 英数字は Inter、日本語は端末の書体（Mac は Hiragino Sans、Windows は Yu Gothic UI・Meiryo）。11/3 10:3x の判断（app/layout.tsx の注） */
+  /* 画面の書体: 英数字は Inter、日本語は端末の書体（Mac は Hiragino Sans、Windows は Yu Gothic UI・Meiryo）。理由は app/layout.tsx の注 */
   --font-sans: var(--font-inter), "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Yu Gothic", "Meiryo", system-ui, sans-serif;
   --font-ud: var(--font-biz-ud), system-ui, sans-serif;
 }
@@ -212,7 +212,7 @@ body {
   box-shadow: inset 0 0 0 100vmax var(--press);
 }
 
-/* 押す物は二度押しの拡大で押した回が遅れたり落ちたりしないように（ピンチの拡大はそのまま）、タップの青い光も出さない（灰色だけ。11/3 設計の答え） */
+/* 押す物は二度押しの拡大で押した回が遅れたり落ちたりしないように（ピンチの拡大はそのまま）、タップの青い光も出さない（灰色だけ） */
 [data-press] {
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;

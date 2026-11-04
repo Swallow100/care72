@@ -1,8 +1,8 @@
-// ルールの表（docs/SPEC.md「医療の芯」と docs/DECISIONS.md の案 1〜6）。安否の色と連絡の順位はこの表で出し、Claude は決めない。
+// ルールの表（docs/SPEC.md「医療の芯」と docs/DECISIONS.md「色と連絡順」の案 1〜6）。安否の色と連絡の順位はこの表で出し、Claude は決めない。
 // 表の行は下の RULES。上から順に当て、最初に当たった行で色と理由の 1 行が決まる。理由には QUALIFIERS の言葉を足し、
 // 並びは ORDER の順に比べる。行・足す言葉・優先の骨格の段（TIERS）には「なぜ」と出典の登録簿（lib/sources）の id を付ける。
 // docs/TRIAGE.md と docs/SOURCES.md はこれらから作る（npm run docs:triage。一致はテストで確かめる）。
-// 元が「案」の行は作者の確認待ち（docs/DECISIONS.md）。案のままでは本運用に使わない。
+// 元が「案」の行は作者の確認待ち（docs/DECISIONS.md「色と連絡順」）。案のままでは本運用に使わない。
 // テストは triage.test.ts と heavy-rain.test.ts（先に書いた）。
 //
 // 入力は時刻で持つ: 今・発災・停電の始まり（台帳の時計はここから走る）と、信号ごとの時刻と出どころ。
@@ -283,11 +283,11 @@ export const READING: ReadonlyArray<{ text: string; origin: string }> = [
   },
   {
     text: "保管（暑さ・冷蔵）と冷蔵の頼り先は時計の「確認」の欄の項目で、表の入力に使わない。インスリンの時計は手元の残りの日数（物の時計）で、冷蔵が切れても走らせない（未開封ならしばらく使える）",
-    origin: "11/3 確定の 1",
+    origin: "決めた所",
   },
   {
     text: "けが・動けないが 4 問の答え（ボタン）から来たら理由は「本人が「動けない」」、ケアマネが直した分類から来たら「分類（ケアマネ）: 動けない」（AI の印なし）で、この 2 つだけが赤の最上位の行に当たる。録音・自由文の分類（Claude）から来たら色も順も動かさず、赤の行の理由に「録音の分類（AI）: 動けない」と AI の印つきで続ける。分類が Claude か人かは信号の classified_by で見る。答えにある言葉は分類から、人の分類にある言葉は Claude の分類から重ねない。いくつかあれば「、」でつなぐ",
-    origin: "案（11/2 夕方 b）・T12・案 10",
+    origin: "案・T12・案 10",
   },
 ];
 
@@ -412,7 +412,7 @@ const WHO: Record<ReadSignal["source"], string> = {
   staff: "医療班・行政",
 };
 
-/** ケアマネが訪問で会えた緑の理由（訓練の「訪問」、T21。11/3 07:0x の確定 2） */
+/** ケアマネが訪問で会えた緑の理由（訓練の「訪問」、T21） */
 export const VISIT_CONFIRMED = "訪問 確認済";
 
 /** 表の行と足す言葉が見る物 */
@@ -498,7 +498,7 @@ export type Rule = Basis & {
   color: Color;
   /** 表の「理由の例」。triage.test.ts で本当の出力と同じかを確かめる */
   example: string;
-  /** 行の元（仕様書の表か、docs/DECISIONS.md の案の番号） */
+  /** 行の元（仕様書の表か、docs/DECISIONS.md「色と連絡順」の案の番号） */
   origin: string;
   /** 理由の言葉に頼り先の未確認を含む（足す言葉で重ねない） */
   saysUnchecked?: true;
@@ -756,7 +756,7 @@ function groupOf(color: Color, rule: RuleId): TriageResult["group"] {
 
 /**
  * 表の入力にする頼り先（透析先・配達）。保管（暑さ・冷蔵）と冷蔵は時計の「確認」の欄の項目で、表の色・理由に使わない
- * （docs/DECISIONS.md 11/3 04:0x の 1）。様式 9 の平時の優先の理由もこの表で見る
+ * （docs/DECISIONS.md「色と連絡順」）。様式 9 の平時の優先の理由もこの表で見る
  */
 export const TABLE_DEPENDS: ReadonlySet<DependsOn> = new Set<DependsOn>(["dialysis_center", "delivery"]);
 

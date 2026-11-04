@@ -5,7 +5,7 @@ import { COLOR_LABELS, HEAD_LABELS, TIMELINE_KIND_LABELS } from "./labels.ts";
 import { COLUMN_LABELS, DETAIL_LABELS } from "./list/labels.ts";
 import { OFFICE_LABELS } from "./office/labels.ts";
 
-// 画面の言葉で本人の状態を言い切らない（docs/DECISIONS.md「運営の返事を受けて」、CLAUDE.md「守ること」）。
+// 画面の言葉で本人の状態を言い切らない（docs/DECISIONS.md「119 の案内と画面の言葉」、CLAUDE.md「守ること」）。
 const ASSERTING_WORDS = ["危険", "診断", "判定", "重症", "病気がわかる"];
 
 describe("画面の言葉", () => {
@@ -13,7 +13,7 @@ describe("画面の言葉", () => {
     expect(COLOR_LABELS).toEqual({ red: "至急", yellow: "要確認", gray: "不明", green: "無事" });
   });
 
-  it("発災時の言葉（11/3 の校正、docs/DECISIONS.md）。採らなかった案の言葉はそのまま", () => {
+  it("発災時の言葉（docs/DECISIONS.md「119 の案内と画面の言葉」）。採らなかった案の言葉はそのまま", () => {
     expect(DETAIL_LABELS).toMatchObject({ clocks: "残り時間", signals: "安否", override: "順番変更", expired: "失効" });
     expect(TIMELINE_KIND_LABELS).toMatchObject({ signal: "安否", override: "順番変更" });
     expect([COLUMN_LABELS.plan, HEAD_LABELS.plan, OFFICE_LABELS.plan]).toEqual(["避難計画", "避難計画", "避難計画"]);
@@ -25,7 +25,7 @@ describe("画面の言葉", () => {
     ]);
   });
 
-  it("連絡の順番の言葉（11/3 16:0x 確定。アドバイザーの勧めで「優先」をやめる）: 列・本人のページの上・職員の並びは「連絡順」、上書きは「順番変更」", () => {
+  it("連絡の順番の言葉（「優先」をやめる）: 列・本人のページの上・職員の並びは「連絡順」、上書きは「順番変更」", () => {
     expect([COLUMN_LABELS.tier, HEAD_LABELS.priority, DETAIL_LABELS.override, TIMELINE_KIND_LABELS.override]).toEqual([
       "連絡順",
       "連絡順",

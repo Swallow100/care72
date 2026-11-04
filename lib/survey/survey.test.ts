@@ -592,7 +592,7 @@ describe("案内の文と言葉", () => {
     expect(SURVEY_DEADLINE_PARTS.join("")).toMatch(/^受付は11月5日（木）までです。/);
   });
 
-  it("「任意」は記入欄にだけ（選択の問いは案内の 1 文で伝える。作者 11/4）。複数の問いは「複数可」だけ。その他は選択肢の最後（その他の内容の欄がすぐ下に開く）", () => {
+  it("「任意」は記入欄にだけ（選択の問いは案内の 1 文で伝える）。複数の問いは「複数可」だけ。その他は選択肢の最後（その他の内容の欄がすぐ下に開く）", () => {
     expect(SURVEY_LABELS.optional).toBe("任意");
     for (const q of CHOICE_QUESTIONS) expect(q.text, q.key).not.toContain("任意");
     expect(SURVEY_PURPOSE).toContain("答えたくない問いは空けて構いません");
@@ -603,7 +603,7 @@ describe("案内の文と言葉", () => {
     expect(CHOICE_QUESTIONS.filter((q) => q.multi).map((q) => q.key)).toEqual(["q4", "q6"]);
   });
 
-  it("家族の話と「アプリを触る必要はありません」は外した（DECISIONS 11/3 23:1x）", () => {
+  it("家族の話と「アプリを触る必要はありません」は外した", () => {
     expect(invitation).not.toContain("家族にケアマネ");
     expect(invitation).not.toContain("触る必要");
   });
