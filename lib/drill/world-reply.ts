@@ -2,11 +2,12 @@
 // 本人・家族・支援者の電話に「出るか」は本人役（lib/drill/persona.ts の decideCallPickup・personaCallReply）。
 // ここは世界が答える所: 電話の線がつながるか、事業所・市役所につながるか、出向いて着けるか、出向いてもらえるか、受け入れるか、手配できるか。
 // 決め方は手の表（lib/drill/action-catalog.ts）の decide の種類で分ける（電話型・訪問型・訪問依頼・手配型・受入型・報告型・記録型）。
-// 世界の事実（通行止・不通・休止・職員の空き・訪問看護が来られない）を先に見て、確率はこの表で決める（roll は 0 以上 1 未満。Math.random など）。
+// 世界の事実（通行止・通話不可・休止・職員の空き・訪問看護が来られない）を先に見て、確率はこの表で決める（roll は 0 以上 1 未満。Math.random など）。
 // 文は固定で、Opus の言い換え（T20）があればそれ。Claude は結果を決めない。
 
 import type { ContactKind, DependsOn, DrillAction } from "../db/types.ts";
 import { actionRow, type ArrangeOdds } from "./action-catalog.ts";
+import { NO_CALL } from "./event-catalog.ts";
 import { phoneOf, type PhoneState, type WorldState } from "./scenarios.ts";
 
 /** 確率の表 */
@@ -17,7 +18,7 @@ export const WORLD_ODDS = {
   reach: { clear: 0.95, warning: 0.7 },
   /** 訪問看護・介護の人に出向いてもらえる（頼む電話の様子ごと）。職員の空きなし・訪問看護が来られない・通行止なら出せない */
   dispatch: { ok: 0.8, busy: 0.5, down: 0 } satisfies Record<PhoneState, number>,
-  /** 福祉避難所・病院が受け入れる（発災からの時間ごと。始めは開いていないことが多い）。電話が不通なら頼めない */
+  /** 福祉避難所・病院が受け入れる（発災からの時間ごと。始めは開いていないことが多い）。電話が通話不可なら頼めない */
   accept: [
     { until: 24, odds: 0.3 },
     { until: 48, odds: 0.6 },
@@ -44,7 +45,7 @@ const ARRANGE_ODDS: Readonly<Record<ArrangeOdds, Record<PhoneState, number>>> = 
 export const WORLD_REPLY_LABELS = {
   ringing: "呼出",
   connected: "通話",
-  noLine: "不通",
+  noLine: NO_CALL,
   closed: "休止",
   arrived: "到着",
   blocked: "通行止",
@@ -115,7 +116,7 @@ const closedRoad = (w: WorldState, person: string | null) => (person ? w.roads.f
 const closedFacility = (w: WorldState, person: string | null, depends: DependsOn) =>
   person ? (w.facilities.find((x) => x.person === person && !x.open && x.depends === depends) ?? null) : null;
 
-/** 電話の線の様子。本人の家にかけるときは家の電話（不通の印）、ほかは世界の電話 */
+/** 電話の線の様子。本人の家にかけるときは家の電話（通話不可の印）、ほかは世界の電話 */
 export function callLine(w: WorldState, person: string | null, callee: ContactKind | null | undefined): PhoneState {
   return callee === "self" || callee == null ? phoneOf(w, person) : w.phone;
 }
@@ -127,7 +128,7 @@ export function acceptOdds(hour: number): number {
 
 /**
  * ケアマネの手 1 つへの世界の返事（固定の文）。手の表の decide の種類で決める。確率は WORLD_ODDS、世界の事実は先に見る。
- * 本人・家族・支援者への電話は線がつながるか（呼出・不通）だけ返す。出るか・何を言うかは本人役（T18）。
+ * 本人・家族・支援者への電話は線がつながるか（呼出・通話不可）だけ返す。出るか・何を言うかは本人役（T18）。
  * roll は 1 回だけ使う（今までの 7 つの手と同じ。向かう人の着く分の幅は手の所が別に決める）
  */
 export function decideWorldReply(ask: WorldAsk, roll: number): WorldReply {
@@ -139,7 +140,7 @@ export function decideWorldReply(ask: WorldAsk, roll: number): WorldReply {
     case "call": {
       // 電話型（本人電話・連絡先電話・119勧奨・見守依頼）
       const line = callLine(w, person, callee);
-      if (line === "down") return reply(action, false, "noLine", w.phone === "down" ? "電話 不通" : "家の電話 不通");
+      if (line === "down") return reply(action, false, "noLine", w.phone === "down" ? `電話 ${NO_CALL}` : `家の電話 ${NO_CALL}`);
       if (callee === null || PERSON_CALLEES.has(callee)) return reply(action, true, "ringing");
       if (callee === "dialysis_center") {
         const f = closedFacility(w, person, "dialysis_center");
@@ -161,7 +162,7 @@ export function decideWorldReply(ask: WorldAsk, roll: number): WorldReply {
       if (callee !== "visiting_nurse" && w.staff <= 0) return reply(action, false, "noDispatch", "職員の空き なし");
       const road = closedRoad(w, person);
       if (road) return reply(action, false, "blocked", `${road.label} 通行止`);
-      if (w.phone === "down") return reply(action, false, "noDispatch", "電話 不通");
+      if (w.phone === "down") return reply(action, false, "noDispatch", `電話 ${NO_CALL}`);
       return roll < WORLD_ODDS.dispatch[w.phone] ? reply(action, true, "dispatched") : reply(action, false, "noDispatch");
     }
     case "arrange": {
@@ -171,7 +172,7 @@ export function decideWorldReply(ask: WorldAsk, roll: number): WorldReply {
         const f = closedFacility(w, person, decide.closedBy);
         if (f) return reply(action, false, "closed", `${f.label} 休止`);
       }
-      if (w.phone === "down") return reply(action, false, "noLine", "電話 不通");
+      if (w.phone === "down") return reply(action, false, "noLine", `電話 ${NO_CALL}`);
       // 本人の家へ向かう手配（薬・移送・電源・業者）は、家の前の道が通行止なら届かない
       const road = row.effects.some((e) => e.kind === "arrival") ? closedRoad(w, person) : null;
       if (road) return reply(action, false, "blocked", `${road.label} 通行止`);
@@ -179,11 +180,11 @@ export function decideWorldReply(ask: WorldAsk, roll: number): WorldReply {
     }
     case "accept": {
       // 受入型（受入依頼・病院受入）
-      if (w.phone === "down") return reply(action, false, "noLine", "電話 不通");
+      if (w.phone === "down") return reply(action, false, "noLine", `電話 ${NO_CALL}`);
       return roll < acceptOdds(ask.hour) ? reply(action, true, "accepted") : reply(action, false, "refused");
     }
     case "report": {
-      if (w.phone === "down") return reply(action, false, "noLine", "電話 不通");
+      if (w.phone === "down") return reply(action, false, "noLine", `電話 ${NO_CALL}`);
       return roll < WORLD_ODDS.report[w.phone] ? reply(action, true, "reported") : reply(action, false, "noLine");
     }
     case "record":

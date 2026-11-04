@@ -166,7 +166,7 @@ function townsOf(raw: string, area: Area): string[] {
 }
 
 const OPEN_WORDS = /^(open|opened|開通|通行可|再開|稼働|開設|restored|復旧|解消|ok|通常)$/i;
-const CLOSE_WORDS = /^(closed?|通行止め?|止|休止|閉鎖|out|start|started|始まり|発生|停止|down|不通)$/i;
+const CLOSE_WORDS = /^(closed?|通行止め?|止|休止|閉鎖|out|start|started|始まり|発生|停止|down|不通|通話不可)$/i;
 
 function openOf(raw: string): boolean | null {
   const v = raw.trim();
@@ -179,7 +179,7 @@ function phoneStateOf(raw: string): PhoneState | null {
   const v = raw.trim().toLowerCase();
   if (v === "ok" || v === "通常") return "ok";
   if (v === "busy" || v === "不安定" || v === "混雑") return "busy";
-  if (v === "down" || v === "不通") return "down";
+  if (v === "down" || v === "不通" || v === "通話不可") return "down";
   return null;
 }
 
@@ -294,7 +294,7 @@ function buildEvent(e: WorldStep["events"][number], ctx: ApplyContext): Built[] 
       if (!state) return [];
       const towns = placeOf(e, ctx);
       if (towns.length > 0 && state === "down") {
-        return [{ change: { kind: "town_line", towns, persons: residents(ctx, towns) }, text: `${townWords(towns)} 電話 不通` }];
+        return [{ change: { kind: "town_line", towns, persons: residents(ctx, towns) }, text: `${townWords(towns)} 電話 ${PHONE_LABELS.down}` }];
       }
       return [{ change: { kind: "phone", state }, text: `電話 ${PHONE_LABELS[state]}` }];
     }

@@ -31,7 +31,10 @@ import { VoicePlay } from "./VoicePlay";
 
 type Names = Readonly<Record<string, string>>;
 
-function toneOf(r: ActionResult): StateTone {
+/** 手の番号 → 電話に出た人の言う事の声の行き先（声を作れなければ null で文字だけ。T21） */
+export type VoiceOf = (act: string) => string | null;
+
+export function toneOf(r: ActionResult): StateTone {
   if (r.ok) return "ok";
   return r.status === "ringing" ? "unknown" : "check";
 }
@@ -40,7 +43,7 @@ const TURN_TONES: Record<DrillTurn["color"], StateTone> = { red: "urgent", green
 const TURN_LABELS: Record<DrillTurn["color"], string> = { red: COLOR_LABELS.red, green: COLOR_LABELS.green, unknown: COLOR_LABELS.gray };
 
 /** 通話で聞いた安否を表に渡さなかった手（T84、至急維持）。手の番号 → 本番の電話と同じ言葉（lib/drill/view.ts の refused） */
-type Refused = Readonly<Record<string, string>>;
+export type Refused = Readonly<Record<string, string>>;
 
 /** 手の 1 行（時刻・手・誰に・相手・返事）。refused は「通話」の横に、本番の電話と同じ赤の太字で */
 function Head({ a, names, fiction, refused }: { a: ActionRecord; names: Names; fiction?: FictionKind; refused?: Refused }) {
@@ -81,11 +84,8 @@ function Head({ a, names, fiction, refused }: { a: ActionRecord; names: Names; f
   );
 }
 
-/** 手の番号 → 電話に出た人の言う事の声の行き先（声を作れなければ null で文字だけ。T21） */
-type VoiceOf = (act: string) => string | null;
-
 /** 電話に出た人の言う事（吹き出し）。声があれば再生 */
-function Bubble({
+export function Bubble({
   speaker,
   text,
   ai,
@@ -117,7 +117,7 @@ function Bubble({
 }
 
 /** 往復を畳んだ物（T93。「通話 3 往復」。開くと全文）。名前付きの group で、外の刻みの畳みと開き方を分ける */
-function TalkFold({ lines, speaker }: { lines: ReadonlyArray<TalkLine>; speaker: string }) {
+export function TalkFold({ lines, speaker }: { lines: ReadonlyArray<TalkLine>; speaker: string }) {
   if (lines.length === 0) return null;
   return (
     <details className="group/talk mt-1" data-talk-fold>
@@ -131,7 +131,7 @@ function TalkFold({ lines, speaker }: { lines: ReadonlyArray<TalkLine>; speaker:
 }
 
 /** 訪問で着いたときの様子（T93、本人役の AI の印）と頼み事の印。言う事は吹き出し */
-function VisitLine({ visit }: { visit: VisitReport }) {
+export function VisitLine({ visit }: { visit: VisitReport }) {
   return (
     <div className="mt-1 space-y-0.5" data-visit-report>
       <div className="flex flex-wrap items-baseline gap-x-1.5 text-sm">
@@ -159,7 +159,7 @@ export function MemoLine({ memo }: { memo: string | undefined }) {
 /** 最後の手の取消（T59）。進行中の画面だけ。act は取り消せる手の番号（無ければ取消不可） */
 export type UndoSlot = { drillId: string; step: number; actions: number; act: string | null };
 
-function ActionItem({
+export function ActionItem({
   a,
   names,
   voiceOf,
