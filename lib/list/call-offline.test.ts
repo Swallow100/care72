@@ -1,5 +1,5 @@
 // 通信なしで貯めて送り直した通話の記録（T71 の続き、11/4 設計の答え 2・3）を D1（node:sqlite に種の 10 人）で。
-// 2: 端末で押した時刻 at を経過と信号の時刻にする（未来・発災より前・24 時間より古い物は受けた時刻）。受けた時刻は payload に
+// 2: 端末で押した時刻 at を経過と信号の時刻にする（未来の物は受けた時刻。発災より前・24 時間より古い物は押した時刻のまま信号を作らない、T82）。受けた時刻は payload に
 // 3: 端末で作った id の 2 回目は書かない（応答が落ちて送り直した物）
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -66,21 +66,21 @@ async function call(person: string, body: Record<string, unknown>, h: number) {
 describe("押した時刻の丸め（callOccurredAt）", () => {
   const now = at(1);
   it("24 時間の中の過去で発災のあとなら押した時刻", () => {
-    expect(callOccurredAt(at(0.5), now, at(-2))).toBe(at(0.5));
-    expect(callOccurredAt(at(-1.5), now, at(-2))).toBe(at(-1.5));
-    expect(callOccurredAt(new Date(FLOOD + 3_600_000 - CALL_PRESSED_MAX_AGE_MS).toISOString(), now, null)).toBe(
-      new Date(FLOOD + 3_600_000 - CALL_PRESSED_MAX_AGE_MS).toISOString(),
-    );
+    expect(callOccurredAt(at(0.5), now, at(-2))).toEqual({ at: at(0.5), old: false });
+    expect(callOccurredAt(at(-1.5), now, at(-2))).toEqual({ at: at(-1.5), old: false });
+    const edge = new Date(FLOOD + 3_600_000 - CALL_PRESSED_MAX_AGE_MS).toISOString();
+    expect(callOccurredAt(edge, now, null)).toEqual({ at: edge, old: false });
   });
-  it("未来・発災より前・24 時間より古い・読めない物は受けた時刻", () => {
-    expect(callOccurredAt(at(1.01), now, at(-2))).toBe(now);
-    expect(callOccurredAt(at(-2.5), now, at(-2))).toBe(now);
-    expect(callOccurredAt(new Date(FLOOD + 3_600_000 - CALL_PRESSED_MAX_AGE_MS - 1).toISOString(), now, null)).toBe(now);
-    expect(callOccurredAt("x", now, at(-2))).toBe(now);
-    expect(callOccurredAt(null, now, at(-2))).toBe(now);
+  it("未来・読めない物は受けた時刻。発災より前・24 時間より古い物は押した時刻のまま old（T82。前は受けた時刻）", () => {
+    expect(callOccurredAt(at(1.01), now, at(-2))).toEqual({ at: now, old: false });
+    expect(callOccurredAt(at(-2.5), now, at(-2))).toEqual({ at: at(-2.5), old: true });
+    const older = new Date(FLOOD + 3_600_000 - CALL_PRESSED_MAX_AGE_MS - 1).toISOString();
+    expect(callOccurredAt(older, now, null)).toEqual({ at: older, old: true });
+    expect(callOccurredAt("x", now, at(-2))).toEqual({ at: now, old: false });
+    expect(callOccurredAt(null, now, at(-2))).toEqual({ at: now, old: false });
   });
   it("平時（発災の時刻なし）は未来と 24 時間だけ見る", () => {
-    expect(callOccurredAt(at(-5), now, null)).toBe(at(-5));
+    expect(callOccurredAt(at(-5), now, null)).toEqual({ at: at(-5), old: false });
   });
 });
 
@@ -103,11 +103,11 @@ describe("貯めて送り直した記録の時刻", () => {
     expect(d.calls[0].at).toBe(at(0.25));
   });
 
-  it("発災より前に押した物は受けた時刻（payload の受けた時刻と同じ）", async () => {
+  it("発災より前に押した物は押した時刻のまま（T82。前は受けた時刻）。受けた時刻は payload に", async () => {
     await heavyRain();
     await call("p-01", { contact: contactOf("p-01"), result: "no_answer", id: ID, at: at(-3) }, 1);
     const t = rows("SELECT occurred_at, payload FROM timeline_entries WHERE kind = 'called'")[0];
-    expect(t.occurred_at).toBe(at(1));
+    expect(t.occurred_at).toBe(at(-3));
     expect(parseCallPayload(String(t.payload))!.receivedAt).toBe(at(1));
   });
 

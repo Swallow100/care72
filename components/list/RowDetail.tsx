@@ -70,7 +70,7 @@ export function RowDetail({
                         className={
                           c.result === "no_answer"
                             ? "font-bold tone-check"
-                            : c.heard
+                            : c.heard && !c.uncounted
                               ? `font-bold ${c.heard.color === "green" ? "text-state-ok" : "text-state-urgent"}`
                               : undefined
                         }
