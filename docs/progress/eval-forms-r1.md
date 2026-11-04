@@ -8,7 +8,7 @@ T107 の台（npm run eval:forms）の 1 回の数。中身・原本・名前は
 - 実際の命令: `node --env-file=<鍵のファイル> tools/eval/forms/cli.ts --real --max-usd=10`（紙は既定の all。回のフォルダは care72-qa/eval/forms/20261105-060528-real、一覧は filled/index.html）
 - 台に足した物: `--max-usd`（本物の回の見積もりの上限。超えたら次の様式・入力を始めず「上限」と数える。tools/eval/forms/run.ts・cli.ts）。訓練の台にはあったが書類の台に無く、費用の上限を効かせられなかったため。この回では上限に届かなかった
 - 同梱の 3 様式の原本: アプリの公式の URL（lib/forms/originals.ts の松山市の計画書・災害診療記録、lib/forms/frame-form9.ts の様式 9）から置き場 care72-eval-corpus/forms/originals/ に取り、SHA-256 がアプリの値と同じことを確かめた（manifest.json つき）。様式 9 は Excel のため形式外で、台の正解の表の名前（yoshiki9）に合うようファイル名を付け替えた
-- 本回の前に、同じ鍵で 1 様式・1 入力の予備の回（2 呼び出し、$0.153、回のフォルダはリポジトリの外の一時の置き場）を回して道を確かめた
+- 本回の前に、同じ鍵で 1 様式・1 入力の予備の回（`--forms=komorebi --inputs=text-p-01 --paper=none`、2 呼び出し、$0.153）を回して道を確かめた。記録は care72-qa/eval/forms/_smoke/20261105-060143-real（前の回との比べには入らない所）
 - 費用（USD）: ai_calls の token からの見積もり 6.977（台の記録の見積もりも同じ）。ほかに時間切れの送り 4 回（災害診療記録 2・吹田市の様式 2）は token が返らず見積もりの外（1 回 16,000 token の上限から見ると最大で約 1.6）。予備の回 0.153
 - 見えた問題は docs/progress/eval-r1-findings.md
 

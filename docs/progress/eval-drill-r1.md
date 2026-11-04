@@ -8,6 +8,7 @@ T108 の台（tools/eval/drill）の 1 回分。本物の Claude。数だけ（�
 - 実際の命令: `node --env-file=<鍵のファイル> tools/eval/drill/run.ts --real --runs 10 --seed e30735fa --judge 3 --max-usd 15`（世界は既定の session〔Managed Agents〕。使えることを一覧の読み取りだけで先に確かめた）
 - 種 e30735fa は、10 回の想定の並びが 10 分版 4・大雨 2・地震 2・仮想 2（仮想は地震 5強と大雨 5）、審査役の読む 1〜3 回が 10 分版・大雨・地震になる物を、API を呼ばずに planRun で探して選んだ
 - 費用（USD）: ai_calls の token からの見積もり 訓練 5.43 ＋ 審査役 0.14 ＝ 5.57。世界の部屋は台の見積もりでは 1 訓練 3.00 × 2 ＝ 6.00、session の使用量（list_cost）を読むと 0.53 ＋ 0.50 ＝ 1.03。台の見積もりの合計 11.57、実費の見込み 6.60。上限 15 には届かず全 10 回を回した
+- アカウントに残った物: 世界の部屋の Agent 1・Environment 1（最初の仮想の回で作り、2 回目は使い回し）と、2 つの session（待ちの状態のまま）。台は消さない（T108 の決めのとおり）。id は run-04.jsonl の room_agent・room_session と run-07.jsonl の room_session
 - 見えた問題は docs/progress/eval-r1-findings.md
 
 - 回し方: `npm run eval:drill -- --runs 10 --seed e30735fa`（同じ種で同じ回の選び方。本物の返事は同じにならない）
