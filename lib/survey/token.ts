@@ -45,6 +45,8 @@ export function clientIp(headers: Headers): string {
 // 共有のリンクは何人も開くので、リンクの行に開いた時刻を 1 つ持つ形（T42 の opened_at）では守れない。
 // 頁を出すときに「この token の頁をこの時刻に出した」を SESSION_SECRET で署名して埋め、送信でその時刻から 15 秒たったかを見る。
 // token も署名に入れるので、審査員のリンクで取った印を本物のリンクに使い回せない。
+// 印は 2 時間で切る（T81、朝の見直し 11/4 の安全 中 6）。1 つの印で何度でも送れると、印を 1 回取ったボットが 15 秒の守りを越え続けるので。
+// 9 問は 2 時間あれば答えられる。切れた印は too_fast と分けて stale（頁を開き直す）。
 
 async function stampKey(secret: string): Promise<CryptoKey> {
   return crypto.subtle.importKey("raw", utf8(`survey-stamp:${secret}`), { name: "HMAC", hash: "SHA-256" }, false, ["sign", "verify"]);
@@ -59,7 +61,10 @@ export async function openStamp(token: string, now: Date, secret: string): Promi
   return `${ms}.${toBase64Url(mac)}`;
 }
 
-/** 印を確かめ、頁を出した時刻（ミリ秒）を返す。形が違う・署名が合わない・先の時刻は null */
+/** 開いた時刻の印の期限（秒） */
+export const STAMP_TTL_SEC = 2 * 60 * 60;
+
+/** 印を確かめ、頁を出した時刻（ミリ秒）を返す。形が違う・署名が合わない・先の時刻は null（期限は checkStamp で見る） */
 export async function stampTime(stamp: unknown, token: string, now: Date, secret: string): Promise<number | null> {
   if (typeof stamp !== "string" || stamp.length > 128) return null;
   const m = /^(\d{12,14})\.([A-Za-z0-9_-]{43})$/.exec(stamp);
@@ -69,4 +74,19 @@ export async function stampTime(stamp: unknown, token: string, now: Date, secret
   if (!mac || !Number.isSafeInteger(ms) || ms > now.getTime()) return null;
   const ok = await crypto.subtle.verify("HMAC", await stampKey(secret), mac, stampMessage(token, ms));
   return ok ? ms : null;
+}
+
+export type StampCheck = { ok: true; openedAt: number } | { ok: false; error: "too_fast" | "stale" };
+
+/**
+ * 送信のときの印の確かめ（lib/survey/submit.ts）。印が無い・合わない・開いてから 15 秒未満は too_fast、2 時間を過ぎた物は stale。
+ * ちょうど 15 秒・ちょうど 2 時間は通す
+ */
+export async function checkStamp(stamp: unknown, token: string, now: Date, secret: string): Promise<StampCheck> {
+  const openedAt = await stampTime(stamp, token, now, secret);
+  if (openedAt === null) return { ok: false, error: "too_fast" };
+  const age = now.getTime() - openedAt;
+  if (age < MIN_FILL_SEC * 1000) return { ok: false, error: "too_fast" };
+  if (age > STAMP_TTL_SEC * 1000) return { ok: false, error: "stale" };
+  return { ok: true, openedAt };
 }

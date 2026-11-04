@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { BIZ_UDPGothic, Inter } from "next/font/google";
+import { BIZ_UDPGothic, BIZ_UDPMincho, Inter } from "next/font/google";
 import { AppHeader } from "@/components/AppHeader";
 import { CallQueueProvider } from "@/components/CallQueue";
 import { OfflineBand } from "@/components/OfflineBand";
@@ -28,6 +28,17 @@ const bizUd = BIZ_UDPGothic({
   variable: "--font-biz-ud",
 });
 
+// 書類の紙面で、元の様式が明朝の字だけ BIZ UDP明朝（OFL。T85、11/4 14:2x 作者）。松山市の計画書の題・
+// 同意の問い・注など（components/forms/paper.css の .mc）。原本の游明朝・MS 明朝は配信に入れられないので置き換えた。画面には使わない。
+// preload しないので、紙面の頁で明朝の字を描くときだけ読む。
+const bizMincho = BIZ_UDPMincho({
+  weight: ["400", "700"],
+  subsets: ["latin"],
+  preload: false,
+  display: "swap",
+  variable: "--font-biz-mincho",
+});
+
 export const metadata: Metadata = {
   title: "ケア72",
   description: "ケアマネの手元の道具。個別避難計画、72 時間の訓練、発災時の安否の整理",
@@ -37,7 +48,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // 通話の記録を端末に貯める持ち主（T71。ケアマネの役だけ。ヘッダーと同じ 1 回の読み）
   const callOwner = await callQueueOwnerOfRequest();
   return (
-    <html lang="ja" className={`${inter.variable} ${bizUd.variable}`}>
+    <html lang="ja" className={`${inter.variable} ${bizUd.variable} ${bizMincho.variable}`}>
       <head>
         {/* 押したときの灰色と、ホーム画面に追加の受け口（T44。lib/ui/head-scripts.ts）。部品が描かれる前に動かす */}
         <script dangerouslySetInnerHTML={{ __html: PRESS_SCRIPT }} />

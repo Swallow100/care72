@@ -5,9 +5,15 @@
   紙: A4。1 枚ずつの紙（.paper）は 210×297mm の箱で、余白は箱の中の padding（@page の余白は 0）。
       画面と紙で同じ位置に字が来る。ブラウザの頁の上下の日付・URL は余白 0 なので出ない。
       頁の下の端に文書名と頁番号（.paper-foot、余白の中）。
-  余白: 文書 上下 20mm・左右 18mm。様式（計画書・医療要約・差し込み）は市の紙に合わせて 上 12mm・下 14mm・左右 13mm。
-  字:   本文 10.5pt（様式の値は 10pt）、見出し 12〜14pt、欄の名前と注 8.5pt。行送り 1.6（様式は 1.4）。字間なし。
+  余白: 文書 上下 20mm・左右 18mm。差し込み（.paper.form）は 上 12mm・下 14mm・左右 13mm。
+        元の様式のある紙（松山市の計画書・医療要約・様式 9）は原本の余白（T85。lib/forms/form-audit.ts の paper.margins）。
+  字:   本文 10.5pt（差し込みの値は 10pt）、見出し 12〜14pt、欄の名前と注 8.5pt。行送り 1.6（様式は 1.4）。字間なし。
+        元の様式のある紙は原本の字の大きさ（T85。松山市は下の .paper.matsuyama、医療要約は medical-paper.css の .kiroku、
+        様式 9 は form9-paper.css）。値（欄に書く字）は原本では空欄なので、欄の名前と同じ大きさ。
   書体: BIZ UDPゴシック（UD の書体。行政の文書に使われ、刷って読み違えにくい）。画面の書体とは分けて固定する。
+        元の様式で明朝の字は BIZ UDP明朝（.mc。T85）。原本の書体（游明朝・MS 明朝・游ゴシック・MS ゴシック・MS P ゴシック・
+        BIZ UDゴシック・メイリオ UI）は配信に入れられない・幅が違うので、明朝は BIZ UDP明朝、ゴシックは BIZ UDPゴシック（どちらも OFL）に置き換えた。
+        置き換えたことは紙には出さない（照合の表 docs/progress/t47.md に書く）。
   禁則: 行頭の句読点・閉じ括弧を避ける（line-break: strict）。語の途中では割らない（word-break: normal。anywhere は使わない）。
   罫線: 表（欄の格子）だけ。黒の細線（1px = 0.75pt。0.5pt は Chrome の印刷で線の太さが揃わない）、外枠と大事な欄は太線。
         見出し行は薄い灰色の地。色は使わず、大きさと枠の太さで大事な欄を目立たせる。角の丸み・影・色の面は使わない。
@@ -53,19 +59,24 @@
   --gray: #5c5c5c;
   --gap: 2.4mm;
 
+  /* 書体（app/layout.tsx の next/font の変数。無いとき〔テストの頁〕は端末の同じ書体） */
+  --font-gothic: var(--font-biz-ud, "BIZ UDPGothic"), "BIZ UDPGothic", "BIZ UDPゴシック", sans-serif;
+  --font-mincho: var(--font-biz-mincho, "BIZ UDPMincho"), "BIZ UDPMincho", "BIZ UDP明朝", serif;
+
   page: paper;
   position: relative;
   box-sizing: border-box;
   width: 210mm;
   min-height: 297mm;
-  padding: var(--m-top) var(--m-x) var(--m-bottom);
+  /* 左右が違う様式（原本の左が綴じ代で広い）は --m-left・--m-right */
+  padding: var(--m-top) var(--m-right, var(--m-x)) var(--m-bottom) var(--m-left, var(--m-x));
   display: flex;
   flex-direction: column;
   gap: var(--gap);
   background: #fff;
   color: #000;
   color-scheme: light;
-  font-family: var(--font-biz-ud, "BIZ UDPGothic"), "BIZ UDPGothic", "BIZ UDPゴシック", sans-serif;
+  font-family: var(--font-gothic);
   font-size: var(--fs-body);
   font-weight: 400;
   line-height: var(--lh);
@@ -153,8 +164,8 @@
 /* 頁の下の端（余白の中）: 左に文書名と対象者、右に頁番号 */
 .paper .paper-foot {
   position: absolute;
-  left: var(--m-x);
-  right: var(--m-x);
+  left: var(--m-left, var(--m-x));
+  right: var(--m-right, var(--m-x));
   bottom: 6mm;
   display: flex;
   justify-content: space-between;
@@ -197,8 +208,14 @@
   font-size: var(--fs-label);
   color: var(--gray);
 }
+/* 元の様式で太い段の注（松山市の近親者の段の注。T85） */
+.paper .blk-h .note.b {
+  font-weight: 700;
+}
 .paper .blk-h .end {
   margin-left: auto;
+  /* 帯の右の欄（別紙・まつやま総合防災マップからの引用）は段の名前が太くても細い（元の様式のとおり） */
+  font-weight: 400;
 }
 
 /* 欄の格子。区切りは隙間から見える黒の地（行と列を全部埋める） */
@@ -397,6 +414,117 @@
   justify-content: space-between;
   align-items: flex-end;
   gap: 4mm;
+}
+
+/* 元の様式で明朝の字（T85）と、下線の字 */
+.paper .mc {
+  font-family: var(--font-mincho);
+}
+.paper .u {
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
+/* ---- 松山市の様式の字と余白（T85） ----
+  原本（市の PDF R8.9.10keikaku.pdf）の字の大きさ（pt）と余白（mm）。値は lib/forms/form-audit.ts の MATSUYAMA_AUDIT.paper と同じで、
+  lib/forms/print-pages.test.ts が印刷の頁で書体・大きさ・太さ・下線を照らす。
+  地は 9.84pt（欄の名前・選択肢の多く）、段の名前と大きい欄の名前は 10.68pt、注は 8.04〜10.68pt。
+  余白は 左 20.6mm（綴じ代）・右 15.6mm・下 15.8mm、上は 1 頁 9mm（様式の版の行）・2 頁 15.8mm。 */
+.paper.matsuyama {
+  --m-top: 15.8mm;
+  --m-bottom: 15.8mm;
+  --m-left: 20.6mm;
+  --m-right: 15.6mm;
+  --fs-body: 9.84pt;
+  --fs-label: 9.84pt;
+  --fs-note: 8.04pt;
+  --fs-h: 10.68pt;
+  --fs-title: 13.32pt;
+}
+.paper.matsuyama[data-page="1"] {
+  --m-top: 9mm;
+}
+.paper.matsuyama .top {
+  font-size: var(--fs-body);
+}
+/* 欄は名前と値を同じ大きさに（値は原本では空欄） */
+.paper.matsuyama [data-field] {
+  font-size: var(--fs-body);
+}
+.paper.matsuyama [data-field] > :is(.f-l, .f-v) {
+  font-size: inherit;
+}
+.paper.matsuyama
+  :is(
+    [data-field$=".name"],
+    [data-field$=".address"],
+    [data-field="target.district"],
+    [data-field="target.household"],
+    [data-field="target.timeline"],
+    [data-field="kin.relation"],
+    [data-field="sign.self"],
+    [data-field="head.number"],
+    [data-field="route.map"]
+  ) {
+  font-size: var(--fs-h);
+}
+/* フリガナは名前 7.08pt、値は 8.88pt */
+.paper.matsuyama [data-field$=".kana"] {
+  font-size: 8.88pt;
+}
+.paper.matsuyama [data-field$=".kana"] > .f-l {
+  font-size: 7.08pt;
+}
+/* 選択肢: 区分と手段の □ は 8.88pt、同意・マイ・タイムライン（太い）と避難のタイミングは 10.68pt、世帯と防災マップは 9.84pt */
+.paper.matsuyama :is([data-field="target.category"], [data-field$=".means"]) .ch {
+  font-size: 8.88pt;
+}
+.paper.matsuyama :is(.opt-b, [data-field="risk.timing"]) .ch {
+  font-size: var(--fs-h);
+}
+.paper.matsuyama :is([data-field="target.household"], [data-field="route.map"]) .ch {
+  font-size: var(--fs-body);
+}
+.paper.matsuyama .il {
+  grid-template-columns: 25mm minmax(0, 1fr);
+}
+/* 段の名前（帯）は 10.68pt、対象者は 12.48pt。実施者１・２の縦書きは 10.68pt、最寄りの避難場所は 8.16pt */
+.paper.matsuyama .blk-h {
+  font-size: var(--fs-h);
+}
+.paper.matsuyama [data-block="target"] > .blk-h {
+  font-size: 12.48pt;
+}
+.paper.matsuyama .vcap {
+  font-size: var(--fs-h);
+}
+.paper.matsuyama [data-cap="near"] {
+  font-size: 8.16pt;
+}
+/* 注: 代理人 5.4pt、実施者・組織 8.04pt、特記事項 8.88pt、近親者・避難経路 9.84pt、紙の下の注 10.68pt */
+.paper.matsuyama [data-tx="proxyNote"] {
+  font-size: 5.4pt;
+}
+.paper.matsuyama :is([data-tx="supportersNote"], [data-tx="orgNote"]) {
+  font-size: var(--fs-note);
+}
+.paper.matsuyama [data-tx="notesNote"] {
+  font-size: 8.88pt;
+}
+.paper.matsuyama .small-note {
+  font-size: var(--fs-h);
+}
+/* 特記事項の中の段の頭（ケア72 の言葉。原本は 1 つの書き込みの欄） */
+.paper.matsuyama .part > .lead {
+  font-size: 8.88pt;
+}
+/* 市受付印の枠は注の字が大きくなっても縮めない */
+.paper.matsuyama .stamp {
+  flex: none;
+}
+/* 本人・代理人の署名の空き。原本は 1 行（約 4.5mm）で、ケア72 は欄の名前の下に 6mm（2 頁に収める） */
+.paper.matsuyama [data-block="sign"] .hand {
+  min-height: 6mm;
 }
 
 /* 表（行と列のある物）。罫線は黒の細線、見出し行は薄い灰色の地 */

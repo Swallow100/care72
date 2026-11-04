@@ -272,7 +272,13 @@ describe("面の編集の外す・値確認（components/person/SectionEdit.tsx�
     expect(dropConfirmText(["ワーファリン", "隣人"])).toBe("ワーファリン・隣人 の 2 件を外します。経過に「ケアマネが外した」と残ります。");
     // 塗る物に生年月日・保険者番号を足した（DECISIONS 11/3 18:0x の T52-4。T54）
     expect(REDACT_LABELS.what).toBe("氏名・住所・電話・町名・生年月日・保険者番号");
-    expect(REDACT_LABELS.noneOk).toBe("隠す所は無い");
+    // 塗らずに送る確かめの窓は共通の部品で、題とボタンは 2〜4 字（T83、見直しの安全 中 5）
+    expect([REDACT_LABELS.noneTitle, REDACT_LABELS.noneOk, REDACT_LABELS.noneBack]).toEqual(["塗り無し", "送信", "戻る"]);
+    for (const w of [REDACT_LABELS.noneTitle, REDACT_LABELS.noneOk, REDACT_LABELS.noneBack]) {
+      expect(w.length, w).toBeGreaterThanOrEqual(2);
+      expect(w.length, w).toBeLessThanOrEqual(4);
+      expect(w).not.toMatch(/[をがのは]/);
+    }
     for (const w of ["診断", "判定"]) expect(JSON.stringify(REDACT_LABELS)).not.toContain(w);
   });
 });

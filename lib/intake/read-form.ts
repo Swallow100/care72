@@ -3,6 +3,8 @@
 // 写真・PDF は黒塗りの画面（components/person/RedactSheet.tsx）を必ず通り、送るのは塗った後の画像（canvas の JPEG、付け足しを外した物）だけ。
 // サーバーはこの形の物だけを受ける: 欄の名前が image（前の file＝生の写真・PDF は断る）、中身が JPEG、EXIF・XMP・コメントが無い、
 // 黒塗りの画面の印（source・page・redacted）がある。PDF の生のファイル・PNG・付け足しのある JPEG は「未加工」で断る。
+// 隠した所 0 の頁は、人が確かめの窓（RedactSheet の「塗り無し」）で「送信」を選んだ印（bare=1）が無ければ断る（T83、見直しの安全 中 5。
+// 0 のまま送るのは人が選んだときだけ）。様式の読み取り（lib/forms/read-upload.ts）も同じ印を使う。
 // 1 要求 1 枚（PDF は頁ごとに 1 要求）。大きさの上限は様式の読み取りと同じ（FORM_FILE_MAX_BYTES）。
 // ブラウザも読むので、サーバーだけの物（中身の確かめ、node:buffer）は lib/intake/read-check.ts に置く。
 
@@ -20,8 +22,9 @@ export const REDACTED_MAX = 500;
 /** 黒塗りの画面を通った印。経過に「写真を読んだ（隠した所 N か所）」と残す元 */
 export type ReadMeta = { source: ReadSource; page: number; redacted: number };
 
-/** 送る形の欄の名前 */
-export const READ_FORM = { personId: "personId", image: "image", source: "source", page: "page", redacted: "redacted" } as const;
+/** 送る形の欄の名前。bare は隠した所 0 の頁を人が「送信」と選んだ印（値は BARE_MARK） */
+export const READ_FORM = { personId: "personId", image: "image", source: "source", page: "page", redacted: "redacted", bare: "bare" } as const;
+export const BARE_MARK = "1";
 /** 前の形（T45）の欄。生の写真・PDF なので、来たら断る */
 export const RAW_FILE_FIELD = "file";
 
@@ -31,23 +34,37 @@ const int = (v: FormDataEntryValue | null, min: number, max: number): number | n
   return n >= min && n <= max ? n : null;
 };
 
-/** 黒塗りの画面の印を読む。無い・形が違えば null */
-export function readMetaOf(form: FormData): ReadMeta | null {
-  const source = form.get(READ_FORM.source);
+type MetaValues = { source: FormDataEntryValue | null; page: FormDataEntryValue | null; redacted: FormDataEntryValue | null; bare: FormDataEntryValue | null };
+
+/** 1 頁分の印を読む。無い・形が違う・隠した所 0 なのに人が選んだ印（bare）が無ければ null */
+export function parseReadMeta(v: MetaValues): ReadMeta | null {
+  const source = v.source;
   if (typeof source !== "string" || !(READ_SOURCES as readonly string[]).includes(source)) return null;
-  const page = int(form.get(READ_FORM.page), 1, source === "pdf" ? PDF_PAGES_MAX : 1);
-  const redacted = int(form.get(READ_FORM.redacted), 0, REDACTED_MAX);
+  const page = int(v.page, 1, source === "pdf" ? PDF_PAGES_MAX : 1);
+  const redacted = int(v.redacted, 0, REDACTED_MAX);
   if (page === null || redacted === null) return null;
+  if (redacted === 0 && v.bare !== BARE_MARK) return null;
   return { source: source as ReadSource, page, redacted };
 }
 
-/** ブラウザで送る形を作る */
-export function buildReadForm(personId: string, image: Blob, meta: ReadMeta): FormData {
+/** 黒塗りの画面の印を読む。無い・形が違う・隠した所 0 で人が選んだ印が無ければ null */
+export function readMetaOf(form: FormData): ReadMeta | null {
+  return parseReadMeta({
+    source: form.get(READ_FORM.source),
+    page: form.get(READ_FORM.page),
+    redacted: form.get(READ_FORM.redacted),
+    bare: form.get(READ_FORM.bare),
+  });
+}
+
+/** ブラウザで送る形を作る。bare は隠した所 0 の頁を人が確かめの窓で「送信」と選んだとき（ほかの頁には付けない） */
+export function buildReadForm(personId: string, image: Blob, meta: ReadMeta, opts: { bare?: boolean } = {}): FormData {
   const form = new FormData();
   form.set(READ_FORM.personId, personId);
   form.set(READ_FORM.source, meta.source);
   form.set(READ_FORM.page, String(meta.page));
   form.set(READ_FORM.redacted, String(meta.redacted));
+  if (opts.bare === true && meta.redacted === 0) form.set(READ_FORM.bare, BARE_MARK);
   form.set(READ_FORM.image, image, "redacted.jpg");
   return form;
 }

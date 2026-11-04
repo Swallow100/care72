@@ -14,8 +14,12 @@ export const MAX_KEEP_ASSETS: number;
 export const KEEP_MIN_MS: number;
 export const NETWORK_WAIT_MS: number;
 export const CLEAR_PATHS: readonly string[];
+export const SESSION_END_PATHS: readonly string[];
+export const COPY_TTL_MS: number;
+export const COPY_SKEW_MS: number;
 
 export type ResponseLike = { status: number; type: string; redirected: boolean; headers: { get(name: string): string | null } };
+export type FollowedLike = { status: number; redirected: boolean; url: string };
 export type CopyPick = { kind: "serve"; key: string } | { kind: "redirect"; key: string; to: string };
 
 export function copyKey(url: URL): string | null;
@@ -32,3 +36,5 @@ export function markCopy(html: string, at: string): string;
 export function assetUrls(html: string): string[];
 export function cssAssetUrls(css: string, cssHref: string, origin: string): string[];
 export function freshCopy(at: string | null | undefined, nowMs: number, minMs: number): boolean;
+export function copyExpired(at: string | null | undefined, nowMs: number): boolean;
+export function endsSession(res: FollowedLike | null | undefined, origin: string): boolean;

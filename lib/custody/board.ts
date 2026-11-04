@@ -26,8 +26,9 @@ import { PRESSED_LABELS } from "../signals/labels.ts";
 import { COLOR_TONES, markItems, type MarkItem, type StateTone } from "../person.ts";
 import { toTriagePerson } from "../triage/from-ledger.ts";
 import { compareResults, type Color, type GreenVia, type Situation, type TriageResult } from "../triage/index.ts";
+import { demoPersonSql } from "../auth/wall.ts";
 import type { StaffActor } from "./actor.ts";
-import { ARRIVAL_COLUMNS, arrivalInScope, toTriageArrival, type ArrivalRow } from "./arrivals.ts";
+import { ARRIVAL_COLUMNS, triageArrivals, type ArrivalRow } from "./arrivals.ts";
 import { CUSTODY_LABELS } from "./labels.ts";
 
 export type StaffRow = {
@@ -124,7 +125,10 @@ export function beforeReceive(
   return `${SOURCE_LABELS[last.source]}${said} ${shortJst(last.occurred_at)}`;
 }
 
-/** 自分の受け持ちを読む。now は ISO、today は JST の日付 */
+/**
+ * 自分の受け持ちを読む。now は ISO、today は JST の日付。
+ * 審査員（壁の中）はデモの人だけ（T81。前から開いていたほかの事業所の人の受け持ちも出さない。毎朝 4 時の戻しで閉じる）
+ */
 export async function loadStaffBoard(
   db: D1Database,
   actor: StaffActor,
@@ -139,7 +143,7 @@ export async function loadStaffBoard(
               (SELECT s.status FROM consents s WHERE s.person_id = p.id AND s.kind = 'medical') AS medical_status,
               (SELECT s.scope FROM consents s WHERE s.person_id = p.id AND s.kind = 'medical') AS medical_scope
          FROM custody c JOIN people p ON p.id = c.person_id JOIN offices o ON o.id = p.office_id
-        WHERE c.holder_id = ?1 AND c.released_at IS NULL
+        WHERE c.holder_id = ?1 AND c.released_at IS NULL${actor.walled ? ` AND ${demoPersonSql("p")}` : ""}
         ORDER BY c.received_at DESC, c.id`,
     )
     .bind(actor.accountId)
@@ -208,7 +212,7 @@ export async function loadStaffBoard(
           clocks: myClocks,
         }),
         signals: (signalsOf.get(r.person_id) ?? []).filter((x) => withinDisaster(x.occurred_at, situation)).map(toTriageSignal),
-        arrivals: myArrivals.filter((a) => arrivalInScope(a, situation)).map(toTriageArrival),
+        arrivals: triageArrivals(myArrivals, situation),
         ...(override ? { override } : {}),
         town,
       },

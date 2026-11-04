@@ -15,6 +15,18 @@ export const JUDGE_SHARE_HOURS = 24;
 
 const HOUR_MS = 60 * 60 * 1000;
 
+/**
+ * 1 つの事業所で 1 日（JST）に作れる共有のリンクの本数（T81、朝の見直し 11/4 の安全 中 6）。1 本で 30 件まで受けるので、
+ * 本数の上限が書き込みの上限になる。審査員の物（試し）と本物は別に数える（審査員が使い切っても本物は作れる。逆も）
+ */
+export const SURVEY_SHARES_PER_DAY = 5;
+
+/** now の JST の日の始まり（UTC の ISO）。1 日の本数を数える起点 */
+export function jstDayStartIso(now: Date): string {
+  const jst = new Date(now.getTime() + 9 * HOUR_MS);
+  return new Date(Date.UTC(jst.getUTCFullYear(), jst.getUTCMonth(), jst.getUTCDate()) - 9 * HOUR_MS).toISOString();
+}
+
 /** 作るリンクの受付の終わり。本物は締切、審査員は締切か作ってから 24 時間の遅い方 */
 export function shareExpiresAt(now: Date, judge: boolean): string {
   if (!judge) return SURVEY_DEADLINE_ISO;

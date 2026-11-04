@@ -195,7 +195,7 @@ export const FREE_QUESTIONS: ReadonlyArray<FreeQuestion> = [
     key: "q5",
     column: "問5",
     heading: "問 5　いちばん面倒な所",
-    text: "問5　いちばん面倒な所を、ひとことで",
+    text: "問5　いちばん面倒な所を、ひとことで教えてください",
     ask: "個別避難計画を作るとき、いちばん面倒な所をひとことで書いてください。",
   },
   {

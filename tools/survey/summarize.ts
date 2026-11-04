@@ -1,4 +1,4 @@
-// アンケートの集計。docs/survey/answers.md を読み、docs/survey/summary.md を書く。
+// アンケートの集計。手元の全部の写し docs/survey/answers.local.md（commit しない）を読み、docs/survey/summary.md を書く。
 //
 //   node tools/survey/summarize.ts [--answers 表] [--out 結果] [--no-ai]
 //
@@ -246,7 +246,7 @@ export function renderSummary(input: {
   const role = tallyChoice(respondents, "role");
   line("# アンケートの集計");
   line();
-  line("tools/survey/summarize.ts が docs/survey/answers.md から作った。直接は書き換えない（直すのは answers.md）。");
+  line("tools/survey/summarize.ts が手元の全部の写し（docs/survey/answers.local.md）から作った。直接は書き換えない（直すのは answers.local.md）。");
   line("数えた所は機械、「AI」の印の所は Claude が分けた物。AI の分けは間違うので、作者が元の答えと見比べてから使う。");
   line();
   line(`作った日時: ${jst(input.now)}（JST）`);
@@ -317,7 +317,7 @@ export function renderSummary(input: {
     line(`AI の分けに失敗した（${ai.reason}）。数えた所だけ。もう一度流す。`);
   } else {
     line(`AI（${ai.model}）が、答えを 7 つの型（${CATEGORIES.join("・")}）の 1 つに分け、原文から 1 文を抜いた引用の候補を出した。`);
-    line("固有名詞は「〇〇」に伏せさせてある。使う前に、answers.md の原文と見比べる。引用の了承は、最後の問い「引用」の「よい」で取ってある。");
+    line("固有名詞は「〇〇」に伏せさせてある。使う前に、answers.local.md の原文と見比べる。引用の了承は、最後の問い「引用」の「よい」で取ってある。");
     for (const section of ai.sections) {
       const q = AI_QUESTIONS.find((x) => x.key === section.key)!;
       const done = section.classified;
@@ -353,7 +353,7 @@ export function renderSummary(input: {
     line();
     line("## 要確認（AI に渡していない答え）");
     line();
-    line("answers.md を直して、もう一度流す。名前・電話らしい並びがあれば消す。引用が「よい」でない人の記入欄の文は写さない。");
+    line("answers.local.md を直して、もう一度流す。名前・電話らしい並びがあれば消す。引用が「よい」でない人の記入欄の文は写さない。");
     line();
     for (const h of held) line(`- ${h.ref}: ${h.reasons.join("、")}`);
   }
@@ -367,7 +367,7 @@ const ROOT = new URL("../../", import.meta.url);
 
 function parseArgs(argv: string[]): { answers: string; out: string; noAi: boolean } {
   const opts = {
-    answers: fileURLToPath(new URL("docs/survey/answers.md", ROOT)),
+    answers: fileURLToPath(new URL("docs/survey/answers.local.md", ROOT)),
     out: fileURLToPath(new URL("docs/survey/summary.md", ROOT)),
     noAi: false,
   };
@@ -382,7 +382,11 @@ function parseArgs(argv: string[]): { answers: string; out: string; noAi: boolea
 
 async function main(): Promise<void> {
   const opts = parseArgs(process.argv.slice(2));
-  const respondents = parseAnswers(await readFile(opts.answers, "utf8"));
+  const text = await readFile(opts.answers, "utf8").catch((e: NodeJS.ErrnoException) => {
+    if (e.code === "ENOENT") throw new Error(`${opts.answers} が無い。全部の写しは手元の answers.local.md に貼る（docs/survey/README.md の 2 節）`);
+    throw e;
+  });
+  const respondents = parseAnswers(text);
   const env: AiEnv = { ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY };
 
   let ai: AiOutcome;

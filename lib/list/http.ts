@@ -2,6 +2,7 @@
 // ここの応答を返すだけ。D1 と Principal を引数で受け取る（テストで node:sqlite を渡す）。
 // 断り方: ログインしていなければ 401、ケアマネの役でなければ 403、形が違う 400、範囲の外の本人・連絡先 404、
 // 平時の上書き 409、今と同じ色への上書き 409、平時の聞いた安否 409、赤 けが・動けない の人への「無事」409（「無事 不可（本人が「けが」）」、T78）。
+// 聞いた安否の 409 は、安否の信号だけを断り電話の経過の行は書いた印 logged: true を付ける（T82。端末は送り済みとして消す）。
 
 import type { D1Database } from "@cloudflare/workers-types";
 import type { Principal } from "../auth/principal.ts";
@@ -34,9 +35,15 @@ export const LIST_API_LABELS: Record<ListApiError, string> = {
 
 const NO_STORE = { "Cache-Control": "no-store" };
 
-/** 断りの応答。label を渡せばそれ（至急を保つ断りの「無事 不可（本人が「けが」）」、T78）、無ければ error の言葉 */
-export function listError(error: ListApiError, label?: string): Response {
-  return Response.json({ ok: false, error, label: label ?? LIST_API_LABELS[error] }, { status: STATUS[error], headers: NO_STORE });
+/**
+ * 断りの応答。label を渡せばそれ（至急を保つ断りの「無事 不可（本人が「けが」）」、T78）、無ければ error の言葉。
+ * logged は断ったのが安否の信号だけで、電話の経過の行は書いた印（T82）
+ */
+export function listError(error: ListApiError, label?: string, logged = false): Response {
+  return Response.json(
+    { ok: false, error, label: label ?? LIST_API_LABELS[error], ...(logged ? { logged: true } : {}) },
+    { status: STATUS[error], headers: NO_STORE },
+  );
 }
 
 const ID = /^[A-Za-z0-9_-]{1,64}$/;
@@ -59,7 +66,8 @@ export async function overridePost(db: D1Database, p: Principal | null, json: un
  * 電話の記録の POST（JSON）。{ person, contact, result: dialed・no_answer・connected, heard?, memo?, id?, at? }。
  * heard は通話で聞いた安否 { color: green か red, injured?, canMove? }、memo は 100 字までの文（どちらも通話のときだけ）。
  * id は端末で作った重ならない id（同じ id の 2 回目は書かずに { ok, duplicate } を返す）、at は端末で押した時刻
- * （通信なしで貯めて送り直した記録。T71 の続き。経過の時刻は lib/list/calls.ts の callOccurredAt で丸める）
+ * （通信なしで貯めて送り直した記録。T71 の続き。経過の時刻は lib/list/calls.ts の callOccurredAt で丸める）。
+ * 平時・至急維持の聞いた安否は 409 に logged: true（経過は書いた、信号は断った）。古い押下の安否は 200 に uncounted: "old"（T82）
  */
 export async function callPost(db: D1Database, p: Principal | null, json: unknown, now: string): Promise<Response> {
   if (!p) return listError("login_required");
@@ -76,5 +84,7 @@ export async function callPost(db: D1Database, p: Principal | null, json: unknow
   const pressedAt = typeof b.at === "string" ? b.at : null;
   const r = await saveCall(db, p, { personId: b.person, contactId: b.contact, result: b.result, heard, memo, clientId, pressedAt }, now);
   if (!r.ok) return listError(r.error, r.label);
-  return Response.json(r.duplicate ? { ok: true, duplicate: true } : { ok: true }, { headers: NO_STORE });
+  if (r.uncounted === "normal" || r.uncounted === "injury") return listError(r.uncounted, r.label, true);
+  const body = r.duplicate ? { ok: true, duplicate: true } : r.uncounted ? { ok: true, uncounted: r.uncounted } : { ok: true };
+  return Response.json(body, { headers: NO_STORE });
 }

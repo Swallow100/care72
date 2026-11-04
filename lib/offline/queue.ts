@@ -3,8 +3,10 @@
 //
 // - 送る前に端末（localStorage）に書き、届いたら消す。送る途中で頁を閉じても（電話の画面へ移っても）次に開いたときに送る
 // - 順は守る: 前の物が送れないうちは後ろを送らない（同じ人の「不通」のあとの「通話 無事」が逆に届かないように）
-// - 送り直しても通らない応答（400 形の違い・403 権限なし・404 対象なし・409 平時・至急維持）は捨てる。
+// - 送り直しても通らない応答（400 形の違い・403 権限なし・404 対象なし・409）は捨てる。
 //   通信の失敗・5xx・429・401 は残す（401 は同じアカウントでログインし直せば送れる）
+// - 聞いた安否だけ断られた 409（平時・至急維持。サーバーは電話の経過の行を書いた印 logged を付ける）は送り済みとして消し、
+//   断りの言葉を返す（T82。前は経過ごと捨てていた）
 // - 持ち主は「cm:<アカウントの id>」。同じ端末で別の人がログインしても、ほかの人の物は送らない・数えない（審査員は acct-judge）
 // - 聞いた安否は、届くまで色と連絡順に入らない（端末の中で表を動かさない。届いてからサーバーの表が決める）
 // - 同じ端末の 2 つのタブが同時に送らないよう、送る間は錠（ブラウザは navigator.locks）を持つ。毎回端末から読み直す
@@ -35,7 +37,10 @@ export type QueuedCall = {
   body: CallBody;
 };
 
-/** 送った結果。ok 届いた・retry 残して送り直す・drop 送り直しても通らないので捨てる */
+/**
+ * 送った結果。ok 届いた・retry 残して送り直す・drop 送り直しても通らないので捨てる。
+ * label は drop の応答の言葉、または ok で聞いた安否だけ断られたときの言葉（「無事 不可（本人が「けが」）」、T82）
+ */
 export type SendOutcome = "ok" | "retry" | "drop";
 export type SendResult = { outcome: SendOutcome; label?: string | null };
 /** 送る形: 送る中身に端末の id と押した時刻を足した物 */
@@ -45,9 +50,13 @@ export type CallTransport = (call: CallWire) => Promise<SendResult>;
 /** 送る間だけ持つ錠。同じ名前の錠を持つ物は順に動く */
 export type Lock = <T>(fn: () => Promise<T>) => Promise<T>;
 
-/** 画面に出す結果。sent 届いた・queued 端末に残した・dropped 届かず捨てた（label は応答の短い漢語） */
-export type CallDelivery = { kind: "sent" } | { kind: "queued" } | { kind: "dropped"; label: string | null };
-export type FlushReport = { sent: string[]; dropped: Array<{ id: string; label: string | null }> };
+/**
+ * 画面に出す結果。sent 届いた（label は聞いた安否だけ断られたときの言葉、T82）・queued 端末に残した・
+ * dropped 届かず捨てた（label は応答の短い漢語）
+ */
+export type CallDelivery = { kind: "sent"; label?: string } | { kind: "queued" } | { kind: "dropped"; label: string | null };
+/** notes は届いた物のうち、聞いた安否だけ断られた物の言葉 */
+export type FlushReport = { sent: string[]; dropped: Array<{ id: string; label: string | null }>; notes: Array<{ id: string; label: string }> };
 
 export type CallQueue = {
   /** 貯めて、前から順に送り、足した物の結果を返す */
@@ -155,7 +164,7 @@ export function createCallQueue(opts: {
   const own = () => load().filter((x) => x.owner === owner);
 
   async function flushOnce(): Promise<FlushReport> {
-    const report: FlushReport = { sent: [], dropped: [] };
+    const report: FlushReport = { sent: [], dropped: [], notes: [] };
     for (let i = 0; i < MAX_PER_FLUSH; i++) {
       const item = own()[0];
       if (!item) break;
@@ -167,8 +176,10 @@ export function createCallQueue(opts: {
       }
       if (r.outcome === "retry") break;
       save(load().filter((x) => x.id !== item.id));
-      if (r.outcome === "ok") report.sent.push(item.id);
-      else report.dropped.push({ id: item.id, label: r.label ?? null });
+      if (r.outcome === "ok") {
+        report.sent.push(item.id);
+        if (r.label) report.notes.push({ id: item.id, label: r.label });
+      } else report.dropped.push({ id: item.id, label: r.label ?? null });
     }
     return report;
   }
@@ -180,7 +191,10 @@ export function createCallQueue(opts: {
       const item: QueuedCall = { id: newId(), owner, at: now(), body: cleanBody(body) };
       save([...load(), item]);
       const report = await flush();
-      if (report.sent.includes(item.id)) return { kind: "sent" };
+      if (report.sent.includes(item.id)) {
+        const note = report.notes.find((x) => x.id === item.id);
+        return note ? { kind: "sent", label: note.label } : { kind: "sent" };
+      }
       const d = report.dropped.find((x) => x.id === item.id);
       if (d) return { kind: "dropped", label: d.label };
       // 残っていれば次に送る。無ければ、ほかのタブが先に送った
@@ -214,8 +228,11 @@ export function fetchCallTransport(fetchImpl: typeof fetch = (...a) => fetch(...
       });
       const outcome = callOutcomeOf(res.status);
       if (outcome !== "drop") return { outcome };
-      const j = (await res.json().catch(() => null)) as { label?: unknown } | null;
-      return { outcome, label: typeof j?.label === "string" ? j.label : null };
+      const j = (await res.json().catch(() => null)) as { label?: unknown; logged?: unknown } | null;
+      const label = typeof j?.label === "string" ? j.label : null;
+      // 聞いた安否だけ断られ、電話の経過の行は書けた（T82）。送り済みとして消す
+      if (res.status === 409 && j?.logged === true) return { outcome: "ok", label };
+      return { outcome, label };
     } finally {
       clearTimeout(timer);
     }

@@ -166,3 +166,6 @@ lib/version.ts
 # ケア72: 動画の素材と書き出し（video/assets の録画・声、video/out の mp4。docs/video/MATERIALS.md）
 video/assets/
 video/out/
+
+# アンケートの全部の写し（文の列入り。docs/survey/README.md の 2 節。commit しない）
+docs/survey/*.local.md

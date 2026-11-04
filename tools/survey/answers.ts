@@ -39,7 +39,8 @@ function normalizeCodes(cell: string): string {
 
 const BLANKS = new Set(["", "-", "－", "ー", "なし", "無"]);
 
-function splitRow(line: string): string[] {
+/** 表の 1 行を枠に分ける（頭と尻の | を外し、前後の空白を取る） */
+export function splitRow(line: string): string[] {
   return line
     .replace(/^\|/, "")
     .replace(/\|$/, "")
@@ -47,7 +48,8 @@ function splitRow(line: string): string[] {
     .map((c) => c.trim());
 }
 
-function isSeparator(cells: string[]): boolean {
+/** 見出しの下の区切りの行（| --- | --- |） */
+export function isSeparator(cells: string[]): boolean {
   return cells.length > 0 && cells.every((c) => /^:?-{2,}:?$/.test(c));
 }
 

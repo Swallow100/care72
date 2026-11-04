@@ -5,7 +5,8 @@
 // 「不通」は 1 押しで「電話 家族 娘 不通」を残す。残したら画面を読み直す（電話の記録と最後の電話が変わる）。
 // 「通話」（T58）は行の中に小さな欄を開く: 聞いた安否（無事・無事でない・聞けず）、無事でないときだけ けが・動けない、メモ（任意）。
 // 聞いた安否はサーバーが信号（出どころ ケアマネ）に足し、色と連絡順はルールの表が当て直す（画面では決めない）。
-// 赤 けが・動けない の人に「無事」か、けが・動けないを付けない「無事でない」を送ると、サーバーが断る（「無事 不可（本人が「けが」）」。断った物と表の理由の頭。T78）。
+// 赤 けが・動けない の人に「無事」か、けが・動けないを付けない「無事でない」を送ると、サーバーが安否の信号だけ断る（「無事 不可（本人が「けが」）」。
+// 断った物と表の理由の頭。T78）。電話の経過の行は書かれるので欄は閉じ、言葉だけ出す（T82）。
 // 通信が切れて送れない記録は捨てずに端末に貯め（T71。components/CallQueue.tsx・lib/offline/queue.ts）、つながったら送る。
 // 残っている間は連絡先の行に「保留 N」。聞いた安否も届くまで色と順に入らない（端末で表を動かさない）。
 
@@ -71,6 +72,8 @@ export function CallButtons({ personId, contacts }: { personId: string; contacts
       const sending = queue.send({ person: personId, contact: contactId, result, ...extra });
       const shown = (d: CallDelivery) => {
         if (d.kind === "dropped") setFailed(d.label ?? OFFLINE_LABELS.failed);
+        // 経過は書けたが聞いた安否だけ断られた（T82）
+        if (d.kind === "sent" && d.label) setFailed(d.label);
       };
       try {
         const d = await Promise.race([
@@ -80,6 +83,10 @@ export function CallButtons({ personId, contacts }: { personId: string; contacts
         if (d.kind === "dropped") {
           shown(d);
           return false;
+        }
+        if (d.kind === "sent") {
+          shown(d);
+          return true;
         }
         // 待ち切れなかった物は、あとで断られたときだけ言葉を出す
         void sending.then(shown, () => {});
@@ -100,8 +107,13 @@ export function CallButtons({ personId, contacts }: { personId: string; contacts
         keepalive: true,
       });
       if (!res.ok) {
-        const j = (await res.json().catch(() => null)) as { label?: string } | null;
+        const j = (await res.json().catch(() => null)) as { label?: string; logged?: boolean } | null;
         setFailed(j?.label ?? "記録失敗");
+        // 聞いた安否だけ断られ、電話の経過の行は書けた（T82）
+        if (res.status === 409 && j?.logged === true) {
+          router.refresh();
+          return true;
+        }
         return false;
       }
       router.refresh();

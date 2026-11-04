@@ -110,7 +110,7 @@ describe("四角", () => {
     expect(redactReducer(s, { type: "remove", page: "p1", index: 9 }).past).toHaveLength(s.past.length);
   });
 
-  it("塗らずに送る頁を拾う（送る前の確認「隠す所なし」に出す）", () => {
+  it("塗らずに送る頁を拾う（送る前の確かめの窓「塗り無し」に出す）", () => {
     let s = initialRedact([]);
     const pages = ["p1", "p2", "p3"];
     expect(unpainted(s, pages)).toEqual(["p1", "p2", "p3"]);

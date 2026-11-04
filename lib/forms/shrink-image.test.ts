@@ -44,10 +44,11 @@ describe("形の判定（sniffKind）", () => {
 });
 
 describe("使う所（様式の読み取りと入れる欄の写真）", () => {
-  it("様式の読み取りは縮めてから大きさを見て送る。入れる欄は縮めてから黒塗りの画面へ", () => {
+  it("様式の読み取りも入れる欄も、縮めてから黒塗りの画面へ（T83。生のファイルは送らない）", () => {
     const panel = readFileSync(new URL("../../components/forms/mapping/FormReadPanel.tsx", import.meta.url), "utf8");
-    expect(panel.indexOf("shrinkImage(file)")).toBeGreaterThan(0);
-    expect(panel.indexOf("shrinkImage(file)")).toBeLessThan(panel.indexOf('body.append("file", shrunk.file)'));
+    expect(panel.indexOf("shrinkImage(file, Number.POSITIVE_INFINITY)")).toBeGreaterThan(0);
+    expect(panel.indexOf("shrinkImage(file, Number.POSITIVE_INFINITY)")).toBeLessThan(panel.indexOf("setRedacting([shrunk.file])"));
+    expect(panel).not.toContain('body.append("file"');
     const intake = readFileSync(new URL("../../components/person/Intake.tsx", import.meta.url), "utf8");
     expect(intake.indexOf("shrinkImage(")).toBeGreaterThan(0);
     expect(intake.indexOf("shrinkImage(")).toBeLessThan(intake.indexOf("setRedacting(ok)"));

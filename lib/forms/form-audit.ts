@@ -49,6 +49,61 @@ export type FormAudit = {
   rows: readonly AuditRow[];
   /** 様式に刷ってある文（題・注・問い）の照合 */
   texts?: ReadonlyArray<{ where: string; result: AuditResult; note?: string }>;
+  /** 元の様式の字と余白と頁（T85） */
+  paper: PaperSpec;
+};
+
+// ---------- 字と余白（T85） ----------
+// 2026-11-04 に元の様式を読み直した（リポジトリの外。PDF は pdf.js で字の塊ごとに書体の名前・大きさ・位置、塗りと線で太くした字、
+// 罫線の位置。Excel はセルの書体・大きさ・太字、列幅、余白、印刷の倍率）。PDF・Excel・抜き出した字はリポジトリに入れない。
+// 原本の書体（游明朝・MS 明朝・游ゴシック・MS ゴシック・メイリオ UI）は配信に入れられないので、Web で配れる OFL の 2 つに置き換える:
+// 明朝 → BIZ UDP明朝、ゴシック → BIZ UDPゴシック。大きさ（pt）は紙の上の大きさ（Excel は印刷の倍率を掛けた後）をそのまま使う。
+
+/** ケア72 の紙の書体（components/forms/paper.css の --font-gothic・--font-mincho） */
+export type PaperFace = "gothic" | "mincho";
+export const PAPER_FACE_NAMES: Record<PaperFace, string> = { gothic: "BIZ UDPゴシック", mincho: "BIZ UDP明朝" };
+
+/** 原本の書体の名前から、置き換える書体（明朝は明朝、ほかはゴシック） */
+export function faceOf(original: string): PaperFace {
+  return /mincho|明朝/i.test(original) ? "mincho" : "gothic";
+}
+
+export type PaperType = {
+  /** 原本の字の役と例（様式の字） */
+  role: string;
+  /** 原本の書体の名前（PDF の書体・Excel のセルの書体） */
+  original: string;
+  /** 原本の大きさ（紙の上の pt） */
+  pt: number;
+  /** 原本で太い（書体の Bold か、塗りと線で太くした字） */
+  bold?: boolean;
+  /** 原本で下線を引いた字 */
+  underline?: boolean;
+  /**
+   * 紙面の中のどこか（その様式の紙面の根 [data-sheet] の中の CSS の選び方）。lib/forms/print-pages.test.ts が印刷の頁で
+   * 書体・大きさ・太さ・下線を計算して確かめる。ケア72 が刷らない字は無し
+   */
+  sel?: string;
+  /** 原本との違い・置き場所の注 */
+  note?: string;
+};
+
+export type PaperSpec = {
+  /** A4 の向き */
+  orientation: "縦" | "横";
+  /** 元の様式でケア72 が写す範囲の頁数（紙面の頁数はこれと同じにする） */
+  pages: number;
+  /** 余白（mm）。上は頁ごと（1 頁目・2 頁目…。足りない頁は最後の値） */
+  margins: { top: readonly number[]; right: number; bottom: number; left: number };
+  /** ケア72 の紙で原本と違う余白（理由は marginNote） */
+  used?: Partial<{ top: readonly number[]; right: number; bottom: number; left: number }>;
+  marginNote?: string;
+  /** Excel の印刷の倍率（%）。字の大きさはこれを掛けた後 */
+  scale?: number;
+  /** 字の役ごとの書体・大きさ・太さ */
+  type: readonly PaperType[];
+  /** ケア72 が足した物（様式外の欄・頁の下の端）の字。原本に無いので大きさはケア72 が決めた */
+  extra?: ReadonlyArray<{ where: string; pt: number; face: PaperFace; sel?: string }>;
 };
 
 const S = (n: 1 | 2) => `supporter${n}`;
@@ -90,7 +145,98 @@ export const MATSUYAMA_AUDIT: FormAudit = {
     "避難経路",
     "同意する・同意しない（選択肢の言葉）",
     "あり（アプリ・紙）・なし（選択肢の言葉）",
+    "（安否確認ができたときの連絡先）（近親者の段の注）",
   ],
+  paper: {
+    orientation: "縦",
+    pages: 2,
+    // 表の外枠: 左 x=58.5pt・右 x=551pt。1 頁の上は様式の版の行の字、2 頁の上と下は外枠（y=796.8・44.8pt）
+    margins: { top: [9, 15.8], right: 15.6, bottom: 15.8, left: 20.6 },
+    type: [
+      { role: "様式の版（左上）", original: "YuGothic-Regular", pt: 9.84, sel: '[data-tx="version"]' },
+      { role: "番号の【　】（右上）", original: "YuGothic-Regular", pt: 10.68, sel: '[data-field="head.number"]' },
+      { role: "題", original: "YuMincho-Regular", pt: 13.32, sel: '[data-tx="title"]' },
+      { role: "あて先・年 月 日作成", original: "YuMincho-Regular", pt: 9.84, sel: '[data-tx="to"], [data-field="head.date"]' },
+      {
+        role: "段の名前「対象者」",
+        original: "BIZ-UDGothic",
+        pt: 12.48,
+        sel: '[data-block="target"] > .blk-h',
+        note: "様式は左の縦書きの列。ケア72 は段の上の帯",
+      },
+      {
+        role: "段の名前（太い）「近親者及緊急時の連絡先・避難支援等実施者(近隣協力員)・避難支援等実施組織・私の避難場所・住居・避難経路」",
+        original: "BIZ-UDGothic-Bold",
+        pt: 10.68,
+        bold: true,
+        sel: ".blk-h.b",
+      },
+      { role: "段の名前「特記事項」", original: "BIZ-UDGothic", pt: 10.68, sel: '[data-block="notes"] > .blk-h' },
+      { role: "段の名前「実施者１・２」（縦書き）", original: "BIZ-UDGothic", pt: 10.68, sel: ".vcap" },
+      {
+        role: "欄の名前「氏名・住所・地区・世帯・マイ・タイムラインの作成・続柄・組織・団体名称・本人：氏名」",
+        original: "BIZ-UDGothic",
+        pt: 10.68,
+        sel: ':is([data-field$=".name"], [data-field$=".address"], [data-field="target.district"], [data-field="target.household"], [data-field="target.timeline"], [data-field="kin.relation"], [data-field="sign.self"]) > .f-l',
+      },
+      {
+        role: "欄の名前「生年月日・電話番号・携帯番号・関係・同意※・計画作成者・団体・かかりつけ医・薬局・自宅のリスク・避難のタイミング・【手段】・【時間】・【種別】・普段いる部屋・寝室 ほか」",
+        original: "BIZ-UDGothic",
+        pt: 9.84,
+        sel: ':is([data-field="target.birth"], [data-field$=".phone"], [data-field$=".mobile"], [data-field^="supporter"][data-field$=".relation"], [data-field$=".consent"], [data-field^="plan."], [data-field^="medical."], [data-field^="risk."], [data-field^="housing."], [data-field$=".means"], [data-field$=".minutes"]) > .f-l',
+      },
+      { role: "欄の名前「事前避難場所・市指定避難所」", original: "BIZ-UDGothic", pt: 9.84, sel: '[data-cap="pre"], [data-cap="city"]' },
+      { role: "欄の名前「最寄りの避難場所」", original: "BIZ-UDGothic", pt: 8.16, sel: '[data-cap="near"]' },
+      { role: "欄の名前「フリガナ」", original: "BIZ-UDGothic", pt: 7.08, sel: '[data-field$=".kana"] > .f-l' },
+      { role: "欄の名前（太い）「支援の内容（複数選択可）」", original: "BIZ-UDGothic-Bold", pt: 9.84, bold: true, sel: '[data-field="support.kinds"] > .f-l' },
+      { role: "欄の名前「民生・児童委員・みまもり員・事業所等」", original: "YuMincho-Regular", pt: 9.84, sel: '[data-field^="local."] > .f-l' },
+      { role: "欄の名前「代理人：氏名（続柄）連絡先：」", original: "YuMincho-Regular", pt: 9.84, sel: '[data-field="sign.proxy"] > .f-l' },
+      { role: "代理人の注「（やむを得ない理由により本人が記入できない場合）」", original: "YuMincho-Regular", pt: 5.4, sel: '[data-tx="proxyNote"]' },
+      {
+        role: "同意の問い 2 つ・「上記内容を確認し、了承しています。」",
+        original: "YuMincho-Regular",
+        pt: 9.84,
+        sel: '[data-tx="consentRegistry"], [data-tx="consentPlanShare"], [data-tx="confirmed"]',
+      },
+      { role: "近親者の段の注「（安否確認ができたときの連絡先）」", original: "YuMincho-Regular", pt: 9.84, bold: true, underline: true, sel: '[data-tx="kinNote"]' },
+      { role: "実施者・組織の段の注", original: "YuMincho-Regular", pt: 8.04, sel: '[data-tx="supportersNote"], [data-tx="orgNote"]' },
+      { role: "※ 実施者の同意の注（1 頁の下）", original: "YuMincho-Regular", pt: 10.68, sel: '[data-tx="supporterConsentNote"]' },
+      {
+        role: "選択肢「男・女・大正…令和・ひとり暮らし…・戸建住宅…・土砂災害…・避難の声掛け…・あり・なし」",
+        original: "BIZ-UDGothic",
+        pt: 9.84,
+        sel: ':is([data-field="target.sex"], [data-field="target.household"], [data-field^="housing."], [data-field="risk.home"], [data-field="support.kinds"], [data-field="notes.annex"], [data-field="route.map"]) .ch',
+      },
+      { role: "選択肢「高齢者（独居・要介護）…その他・徒歩・その他」", original: "BIZ-UDGothic", pt: 8.88, sel: ':is([data-field="target.category"], [data-field$=".means"]) .ch' },
+      {
+        role: "選択肢（太い）「同意する・同意しない・あり（アプリ・紙）・なし」",
+        original: "BIZ-UDGothic-Bold",
+        pt: 10.68,
+        bold: true,
+        sel: ".opt-b .ch",
+      },
+      { role: "選択肢「自主避難・レベル３高齢者等避難」", original: "BIZ-UDPGothic", pt: 10.68, sel: '[data-field="risk.timing"] .ch' },
+      { role: "私の避難場所の注「（親戚宅や近くの安全な場所等）」", original: "BIZ-UDGothic", pt: 9.84, sel: '[data-tx="preNote"]' },
+      { role: "特記事項の注", original: "BIZ-UDGothic", pt: 8.88, sel: '[data-tx="notesNote"]' },
+      { role: "別紙", original: "BIZ-UDGothic", pt: 9.84, sel: '[data-field="notes.annex"]' },
+      { role: "避難経路の注", original: "YuMincho-Regular", pt: 9.84, sel: '[data-tx="routeNote"]' },
+      { role: "まつやま総合防災マップからの引用", original: "BIZ-UDGothic", pt: 10.68, sel: '[data-field="route.map"]' },
+      { role: "2 頁の下の注 1 つ目（※自宅でできる…）", original: "YuMincho-Regular", pt: 10.68, underline: true, sel: '[data-tx="footPrepare"]' },
+      { role: "2 頁の下の注 2 つ目（※この個別避難計画は…）", original: "YuMincho-Regular", pt: 10.68, sel: '[data-tx="footNoGuarantee"]' },
+      { role: "2 頁の下の 1 文（この申込書に記載する情報は…）", original: "BIZ-UDGothic", pt: 10.68, sel: '[data-tx="footUse"]' },
+      { role: "松山市長（2 頁の下）", original: "BIZ-UDGothic", pt: 9.84, sel: '[data-tx="mayor"]' },
+      { role: "市受付印", original: "YuMincho-Regular", pt: 9.84, sel: '[data-field="city.stamp"]' },
+      { role: "氏名の枠の中の「氏」「名」", original: "YuMincho-Regular", pt: 5.4, note: "姓と名の書き分けの印。ケア72 は値を書くので刷らない" },
+      { role: "地域の支援者の行の「TEL(携帯)」", original: "YuMincho-Regular", pt: 7.56, note: "（携帯）は 5.52pt。ケア72 は値（電話番号）を書くので刷らない" },
+    ],
+    extra: [
+      { where: "値（原本は空欄。欄の名前と同じ大きさ）", pt: 9.84, face: "gothic", sel: '[data-field="target.phone"] > .f-v' },
+      { where: "値（名前の大きい欄）", pt: 10.68, face: "gothic", sel: '[data-field="target.name"] > .f-v' },
+      { where: "フリガナの値", pt: 8.88, face: "gothic", sel: '[data-field="target.kana"] > .f-v' },
+      { where: "特記事項の中の段の頭（医療・本人の言葉・夜間支援・その他。様式の欄の名前ではない）", pt: 8.88, face: "gothic", sel: ".part > .lead" },
+      { where: "頁の下の端の文書名と頁番号", pt: 8, face: "gothic", sel: ".paper-foot" },
+    ],
+  },
   rows: [
     { page: 1, original: "", keys: ["head.number"], code: "番号", result: "名付け", note: "右上の【　】。前は紙面に「番号」と刷っていた" },
     { page: 1, original: "年 月 日作成", keys: ["head.date"], result: "一致" },
@@ -232,6 +378,16 @@ export const MATSUYAMA_AUDIT: FormAudit = {
     { where: "特記事項・避難経路の注", result: "直した", note: "前は言い換え" },
     { where: "2 頁の下の注 2 つと最後の 1 文", result: "直した", note: "前は言い換え、最後の 1 文を 2 つ目の※に混ぜていた。様式どおり※の無い段落に" },
     { where: "2 頁の下の「※欄は松山市 様式による」", result: "直した", note: "様式に無い 1 行だったので外した（版は左上にある）" },
+    {
+      where: "字の書体・大きさと余白（T85）",
+      result: "直した",
+      note: "前はケア72 の決まり（全部 BIZ UDPゴシック、値 10pt・欄の名前 8.5pt・題 13pt、余白 上 12・下 14・左右 13mm）。原本の書体（游明朝は BIZ UDP明朝、BIZ UDゴシック・游ゴシックは BIZ UDPゴシックに置き換え）・大きさ・余白に",
+    },
+    {
+      where: "近親者の段の注の太さと下線、2 頁の下の注 1 つ目の下線（T85）",
+      result: "直した",
+      note: "注は塗りと線で太くした字で、書体の名前は細い（T47 は書体の名前だけ見て細いとしていた）",
+    },
   ],
 };
 
@@ -240,7 +396,65 @@ export const MEDICAL_AUDIT: FormAudit = {
   id: "medical",
   title: "医療要約（災害診療記録 2018 の順）",
   source: "災害診療記録2018（一般診療版。厚生労働省の通知の別添４、4 頁のうち 1・2 頁）",
-  bold: [],
+  bold: ["【禁忌事項等】", "【特記事項（常用薬等）】", "＊は必須記録項目（ケア72 は刷らない）"],
+  paper: {
+    orientation: "縦",
+    pages: 1,
+    // 表の外枠: 左 x=57.5pt・右 x=547.5pt・下 y=19pt（メディカル ID の枠）。上は（別添４）の字
+    margins: { top: [7.4], right: 16.9, bottom: 6.7, left: 20.3 },
+    used: { bottom: 11 },
+    marginNote: "下は原本 6.7mm。ケア72 の紙の決まりの頁の下の端（文書名と頁番号、下から 6mm）と重ならないよう 11mm",
+    type: [
+      {
+        role: "題「災害診療記録２０１８」",
+        original: "MS-PGothic",
+        pt: 20.04,
+        sel: ".title",
+        note: "ケア72 の題「医療要約」に当てた（様式の題は右上の 1 行）",
+      },
+      { role: "（別添４）", original: "MS-Mincho", pt: 12, note: "通知の別添の番号。ケア72 は刷らない" },
+      { role: "右上の頁の印「1頁/4頁」", original: "MS-Gothic", pt: 9, sel: ".top-col", note: "ケア72 は右上の版・作成・同意の小さな字に当てた" },
+      {
+        role: "段の名前（太い）「【禁忌事項等】・【特記事項（常用薬等）】」",
+        original: "MS-PGothic",
+        pt: 11.04,
+        bold: true,
+        sel: '[data-block="contra"] > .blk-h, [data-block="special"] > .blk-h',
+      },
+      {
+        role: "欄の名前「＊初診日・＊初診医師氏名・＊患者氏名・（漢字等）・＊生年月日・年齢・[携帯]電話番号・＊住所・連絡先・アレルギー・禁忌食物・トリアージタグ・メディカル ID」",
+        original: "MS-PGothic",
+        pt: 11.04,
+        sel: ':is([data-field="doctor.firstVisit"], [data-field="doctor.physician"], [data-field="doctor.triage"], [data-field="patient.kana"], [data-field="patient.name"], [data-field="patient.birth"], [data-field="patient.phone"], [data-field="patient.address"], [data-field="contact.kinds"], [data-field="contra.allergy"], [data-field="contra.food"]) > .f-l, .mid-label',
+      },
+      {
+        role: "□ の行「抗血小板薬・抗凝固薬・糖尿病治療薬・ステロイド・抗てんかん薬・その他・透析・在宅酸素療法（HOT)」",
+        original: "MS-PGothic",
+        pt: 11.04,
+        sel: '[data-block="special"] [data-field] > .f-v',
+      },
+      {
+        role: "「（カタカナ）・性別：・状態：・避難先１：・避難先２：・【要保護者】の行・＊傷病名」と災害時要配慮者の □",
+        original: "MS-PGothic",
+        pt: 10.56,
+        sel: ':is([data-field="patient.sex"], [data-field="patient.house"], [data-field="shelter.first"], [data-field="shelter.second"], [data-field="care.protect"], [data-field="doctor.disease"]) > .f-l, [data-field="care.vulnerable"] .ch',
+      },
+      { role: "連絡先の □「家族・知人・その他・連絡先なし」", original: "MS-PGothic", pt: 9, sel: '[data-field="contact.kinds"] .ch' },
+      { role: "2 頁の欄の名前「既往症・予防接種」", original: "MS-PGothic", pt: 9, sel: ':is([data-field="history.disease"], [data-field="history.vaccination"]) > .f-l' },
+      { role: "2 頁の □「高血圧…・麻疹…」", original: "MS-PGothic", pt: 8.04, note: "ケア72 は □ を刷らない。台帳の言葉を欄の名前と同じ 9pt で書く（照合の表の既往症・予防接種の行）" },
+      {
+        role: "注「最初の7文字をメディカル ID に転記・メディカル ID＝西暦生年月日 8 桁＋…」",
+        original: "MS-PGothic",
+        pt: 8.04,
+        sel: ".small-note, .mid-text > .f-l",
+      },
+    ],
+    extra: [
+      { where: "値（原本は空欄。欄の名前と同じ大きさ）", pt: 11.04, face: "gothic", sel: '[data-field="patient.phone"] > .f-v' },
+      { where: "補足（様式外の欄。原本に無い）と未確認の一覧の字（原本の注と同じ大きさ）", pt: 8.04, face: "gothic", sel: '[data-block="extra"] [data-field] > .f-v' },
+      { where: "頁の下の端の文書名と頁番号", pt: 8, face: "gothic", sel: ".paper-foot" },
+    ],
+  },
   rows: [
     { page: 1, original: "＊初診日", keys: ["doctor.firstVisit"], result: "直した", note: "医師が書く欄。前は出していなかった。空欄で出す（11/3 15:0x 確定。T48）" },
     { page: 1, original: "＊初診医師氏名", keys: ["doctor.physician"], result: "直した", note: "同上" },
@@ -340,7 +554,16 @@ export const MEDICAL_AUDIT: FormAudit = {
   ],
   texts: [
     { where: "題", result: "表記", note: "要約の題は「医療要約」（様式そのものではない）。様式の題「災害診療記録２０１８」は右上の 1 行に" },
-    { where: "字の太さ", result: "直した", note: "様式に太字は無い（MS 明朝・MS ゴシックだけ）。前は値・薬の名前・中断注意・ID・見出しを太字にしていた" },
+    {
+      where: "字の太さ",
+      result: "直した",
+      note: "様式で太いのは【禁忌事項等】・【特記事項（常用薬等）】（と刷らない「＊は必須記録項目」）だけ。書体は MS P ゴシックで、太さは塗りと線で付けている（T85 で読み直した。T47 は書体の名前だけ見て太字なしとしていた）。前は値・薬の名前・中断注意・ID・見出しを太字にしていた",
+    },
+    {
+      where: "字の書体・大きさと余白（T85）",
+      result: "直した",
+      note: "前はケア72 の決まり（値 10pt・欄の名前 8.5pt・題 13pt、余白 上 12・下 14・左右 13mm）。原本の大きさ（欄の名前 11.04pt・題 20.04pt ほか）と余白に。書体は MS P ゴシック・MS ゴシックを BIZ UDPゴシックに置き換え（原本の明朝は刷らない（別添４）だけ）",
+    },
     {
       where: "アドバイザー（11/3 14:1x の (3)）: 内容を変えずに並べ替えるだけ",
       result: "直した",
@@ -365,6 +588,24 @@ export const FORM9_AUDIT: FormAudit = {
   title: "様式9 災害時利用者一覧表",
   source: "介護施設・事業所における自然災害発生時の業務継続計画（ひな形）の Excel の「様式9」のシート",
   bold: ["様式9：災害時利用者一覧表 (安否確認優先順位)（題）"],
+  paper: {
+    orientation: "横",
+    pages: 1,
+    // シートの余白（左右 0.709in・上下 0.748in・ヘッダーとフッター 0.315in）と印刷の範囲 A1:N27（20 人の行で 1 頁）
+    margins: { top: [19], right: 18, bottom: 19, left: 18 },
+    scale: 73,
+    type: [
+      { role: "題（セル 11pt 太字）", original: "Meiryo UI", pt: 8.03, bold: true, sel: ".title" },
+      { role: "事業所名・作成（セル 11pt）", original: "Meiryo UI", pt: 8.03, sel: ".top" },
+      { role: "列の見出し（セル 10pt）", original: "Meiryo UI", pt: 7.3, sel: "th" },
+      { role: "No の列（セル 11pt）", original: "Meiryo UI", pt: 8.03, sel: "td.num" },
+      { role: "欄（セル 9pt。ひな形の例の行の字）", original: "Meiryo UI", pt: 6.57, sel: "td:not(.num)" },
+    ],
+    extra: [
+      { where: "列の注（※No から…ケア72 の欄）", pt: 8.03, face: "gothic", sel: ".small-note" },
+      { where: "市町村への報告（下書き。発災時だけ、表のあと）", pt: 9, face: "gothic", sel: ".report-text" },
+    ],
+  },
   rows: [
     { page: 1, original: "No", keys: ["no"], result: "一致" },
     { page: 1, original: "優先順位※ 医療・介護", keys: ["medicalCare"], code: "優先順位（医療・介護）", result: "表記", note: "2 段の見出し。紙面は様式と同じ 2 段、CSV は 1 行の見出し" },
@@ -389,6 +630,11 @@ export const FORM9_AUDIT: FormAudit = {
   texts: [
     { where: "題・事業所名・作成", result: "一致" },
     { where: "字の太さ", result: "直した", note: "ひな形で太いのは題だけ。前は見出し・順位・氏名・色も太字" },
+    {
+      where: "字の書体・大きさと余白（T85）",
+      result: "直した",
+      note: "前はケア72 の決まり（表 8.5pt・題 13pt、余白 上 11・下 13・左右 8.5mm）。ひな形はセル 11・10・9pt を印刷の倍率 73% で刷るので、紙の上の大きさ（8.03・7.3・6.57pt）と余白（上下 19・左右 18mm）に。書体はメイリオ UI を BIZ UDPゴシックに置き換え",
+    },
   ],
 };
 
@@ -414,12 +660,47 @@ export function auditCounts(a: FormAudit): Record<AuditResult, number> {
 
 const cell = (s: string) => s.replace(/\|/g, "／").replace(/\n/g, " ");
 
+const mm = (n: number) => `${n}mm`;
+
+/** 余白の 1 行（上は頁ごと） */
+function marginText(m: PaperSpec["margins"]): string {
+  const top = m.top.length > 1 ? `上 ${m.top.map((t, i) => `${i + 1} 頁 ${mm(t)}`).join("・")}` : `上 ${mm(m.top[0])}`;
+  return `${top}・右 ${mm(m.right)}・下 ${mm(m.bottom)}・左 ${mm(m.left)}`;
+}
+
+/** 字と余白の表（T85） */
+function paperMarkdown(p: PaperSpec): string[] {
+  const out: string[] = [];
+  const side = { top: "上", right: "右", bottom: "下", left: "左" } as const;
+  const usedSides = Object.entries(p.used ?? {}).map(([k, v]) => {
+    const value = typeof v === "number" ? mm(v) : (v as readonly number[]).map(mm).join("・");
+    return `${side[k as keyof typeof side]} ${value}`;
+  });
+  const used = usedSides.length > 0 ? `。ケア72 の紙は ${usedSides.join("・")}（${p.marginNote ?? ""}）` : "";
+  out.push(
+    `字と余白（T85）: A4 ${p.orientation} ${p.pages} 頁。余白 ${marginText(p.margins)}${used}。${p.scale ? `Excel の印刷の倍率 ${p.scale}%（大きさは倍率を掛けた紙の上の pt）。` : ""}書体は明朝を ${PAPER_FACE_NAMES.mincho}、ゴシックを ${PAPER_FACE_NAMES.gothic} に置き換えた`,
+    "",
+    "| 字の役 | 原本の書体 | 大きさ | 太さ・下線 | 紙の書体 | 注 |",
+    "| --- | --- | --- | --- | --- | --- |",
+  );
+  for (const t of p.type) {
+    const deco = [t.bold ? "太い" : "", t.underline ? "下線" : ""].filter(Boolean).join("・");
+    out.push(
+      `| ${cell(t.role)} | ${t.original} | ${t.pt}pt | ${deco} | ${t.sel ? PAPER_FACE_NAMES[faceOf(t.original)] : "刷らない"} | ${cell(t.note ?? "")} |`,
+    );
+  }
+  for (const e of p.extra ?? []) out.push(`| ${cell(e.where)} | （ケア72） | ${e.pt}pt |  | ${PAPER_FACE_NAMES[e.face]} | 原本に無い字 |`);
+  out.push("");
+  return out;
+}
+
 /** docs/progress/t47.md の照合の表（様式ごと） */
 export function auditMarkdown(): string {
   const out: string[] = [];
   for (const a of FORM_AUDITS) {
     out.push(`### ${a.title}`, "", `元の様式: ${a.source}`, "");
     out.push(`様式で太い所: ${a.bold.length > 0 ? a.bold.join("、") : "なし"}`, "");
+    out.push(...paperMarkdown(a.paper));
     out.push("| 頁 | 様式の欄 | 選択肢 | コードの欄 | 結果 | 違い・直した所 |", "| --- | --- | --- | --- | --- | --- |");
     for (const r of a.rows) {
       const code = r.keys.length > 0 ? `${r.keys.map((k) => `\`${k}\``).join(" ")}${r.code ? `（${r.code}）` : ""}` : "—";

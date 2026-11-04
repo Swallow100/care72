@@ -17,7 +17,7 @@ import * as z from "zod";
 import { askJson, type AskJsonContext, type AskJsonRequest } from "../claude/call.ts";
 import { RECORDING_SUMMARY } from "../claude/models.ts";
 import type { ClassifyError, SignalRow } from "../db/types.ts";
-import { pseudonymizeText, type ForClaude } from "../pseudonym/index.ts";
+import { maskReply, pseudonymizeText, type ForClaude, type PseudonymKey } from "../pseudonym/index.ts";
 import { classifyErrorOf } from "./classify.ts";
 import { SUMMARY_EDIT_MAX, SUMMARY_MAX } from "./labels.ts";
 import { summaryOf, type SignalSummary } from "./view.ts";
@@ -44,8 +44,11 @@ export const SUMMARY_SYSTEM = [
 /** 返事の形。長さは返ったあとにコードで切る（文法では縛らない） */
 export const SummarySchema = z.object({ summary: z.string() });
 
-/** まとめの元。分類と同じく伏せた文だけ（位置・避難先の名前・台帳の欄は持たない） */
-export type SummaryInput = { text: ForClaude<{ text: string }> | null };
+/**
+ * まとめの元。分類と同じく伏せた文だけ（位置・避難先の名前・台帳の欄は持たない）。key は伏せた鍵で、Claude には渡さず、
+ * 返った文を maskReply に通すのに使う（作った名前・住所の形は伏せ字に、台帳の名前・電話が残れば捨てる。T74 の置き換え）
+ */
+export type SummaryInput = { text: ForClaude<{ text: string }> | null; key: PseudonymKey };
 
 export type SummaryResult = { ok: true; model: string; summary: string } | { ok: false; error: ClassifyError };
 
@@ -72,13 +75,16 @@ export function normalizeSummary(raw: string, text: string): string | null {
 
 /**
  * 伏せた文を Claude（Haiku、用途 summary）に 1 回渡してまとめる。文が無ければ呼ばない。
+ * 返った文は本人役・講評と同じく maskReply に通してから（作った名前・住所・郵便番号・メールは伏せ字に。台帳の名前・生年月日・電話か
+ * 電話の形が残れば形の違いで捨てる。見直しの正しさ 低 7）、決まりに合わせる（伏せ字を足したあとの長さで 80 字に切る）。
  * AI の層の失敗は理由で返す。仮名化を通っていない入力（型を外して渡した物）は投げる
  */
 export async function summarize(input: SummaryInput, ctx: AskJsonContext): Promise<SummaryResult> {
   if (!input.text || !input.text.text.trim()) return { ok: false, error: "no_text" };
   try {
     const r = await askJson(buildSummaryRequest({ text: input.text }), ctx);
-    const summary = normalizeSummary(r.value.summary, input.text.text);
+    const masked = maskReply(r.value.summary, input.key);
+    const summary = masked === null ? null : normalizeSummary(masked, input.text.text);
     if (summary === null) return { ok: false, error: "bad_output" };
     return { ok: true, model: r.model, summary };
   } catch (e) {
@@ -128,7 +134,7 @@ export async function summarizeSignal(
   else {
     try {
       const key = await pseudonymKeyFor(db, t.officeId, t.personId);
-      result = key ? await summarize({ text: pseudonymizeText(sig.transcript, key) }, await deps.ai()) : { ok: false, error: "failed" };
+      result = key ? await summarize({ text: pseudonymizeText(sig.transcript, key), key }, await deps.ai()) : { ok: false, error: "failed" };
     } catch (e) {
       const error = classifyErrorOf(e);
       // 文字起こしをログに出さない（名前だけ）

@@ -281,6 +281,13 @@ export function shortJst(iso: string): string {
   return `${Number(p.mo)}/${Number(p.d)} ${p.h}:${p.mi}`;
 }
 
+/** 日付だけ「11/2」（日本の時刻） */
+export function dayJst(iso: string): string {
+  const p = jstParts(iso);
+  if (!p) return iso;
+  return `${Number(p.mo)}/${Number(p.d)}`;
+}
+
 /** datetime-local の欄の値（日本の時刻 YYYY-MM-DDTHH:MM）。読めなければ空 */
 export function toLocalInput(iso: string | null): string {
   if (!iso) return "";

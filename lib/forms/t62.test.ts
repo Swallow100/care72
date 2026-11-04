@@ -275,7 +275,9 @@ describe("受け持ちの CSV（/staff/csv）", () => {
     heavyRain();
     await receive(db, actor(), { personId: "p-01", shelter: SHELTER, via: "search" }, AT);
     await receive(db, actor(), { personId: "p-02", shelter: SHELTER, via: "qr" }, AT);
-    await receive(db, actor(), { personId: PARTNER_PERSON, shelter: "そらみ台小学校", via: "shelter" }, AT);
+    // 審査員はほかの事業所の人を受け入れられない（T81）。T81 の前に開いた受け持ち（壁の無い受入）も表と CSV に出さない
+    expect(await receive(db, actor(), { personId: PARTNER_PERSON, shelter: "そらみ台小学校", via: "shelter" }, AT)).toEqual({ ok: false, error: "not_found" });
+    await receive(db, { ...actor(), walled: false }, { personId: PARTNER_PERSON, shelter: "そらみ台小学校", via: "shelter" }, AT);
     // 別の医療班の受け持ちは入らない
     await receive(db, actor(medical2()), { personId: "p-03", shelter: SHELTER, via: "search" }, AT);
     expect(sqlite.prepare(`UPDATE consents SET status = 'refused' WHERE person_id = 'p-01' AND kind = 'medical'`).run().changes).toBe(1);
@@ -286,14 +288,14 @@ describe("受け持ちの CSV（/staff/csv）", () => {
     expect(res.headers.get("Content-Disposition")).toContain('filename="staff-20261103-1100.csv"');
     const { rows } = await csvOf(res);
     expect(rows[0]).toEqual(["受入一覧"]);
-    expect(rows[1]).toEqual(["受入者：審査員", "作成：2026年11月3日", "並び：連絡順", "絞込：なし", "3 人"]);
+    expect(rows[1]).toEqual(["受入者：審査員", "作成：2026年11月3日", "並び：連絡順", "絞込：なし", "2 人"]);
     const headers = ["連絡順", "状態", "理由", "氏名", "カナ", "年齢", "医療", "薬", "機器", "残り", "避難所", "経路", "受入時刻", "所属"];
     expect(rows[3]).toEqual(headers);
     expect(STAFF_COLUMNS.map((c) => c.header)).toEqual(headers);
     const board = await loadStaffBoard(db, actor(), TODAY, NOW);
     const body = rows.slice(4);
     expect(body.map((r) => r[3])).toEqual(board.rows.map((r) => r.name));
-    expect(body.map((r) => r[0])).toEqual(["1", "2", "3"]);
+    expect(body.map((r) => r[0])).toEqual(["1", "2"]);
     for (const r of body) expect(r).toHaveLength(14);
 
     const yamada = body.find((r) => r[3] === "山田 ハナ")!;
@@ -308,7 +310,8 @@ describe("受け持ちの CSV（/staff/csv）", () => {
     expect(row02[11]).toBe("QR");
     expect(row02[12]).toBe(p02.receivedWhen);
     expect(board.rows.filter((r) => r.personId !== "p-01").some((r) => r.reason !== "")).toBe(true);
-    expect(body.find((r) => r[3] === "架空 太郎")![13]).toBe("協力事業所");
+    expect(row02[13]).toBe("デモ事業所");
+    expect(body.some((r) => r[3] === "架空 太郎")).toBe(false);
     expect(body.some((r) => r[3] === SEED_PEOPLE.find((p) => p.person.id === "p-03")!.person.name)).toBe(false);
   });
 

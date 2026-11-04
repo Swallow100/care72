@@ -327,13 +327,15 @@ type QuestionProps = {
   onText: (key: TextKey, value: string) => void;
 };
 
-/** 記入欄（問 5・問 9 の理由・ご意見）。全部の問いが任意なので（案内の「答えたくない問いは空けて構いません」）、問いごとの「任意」は付けない */
+/** 記入欄（問 5・問 9 の理由・ご意見）。全部の問いが任意だが、書く手間のある記入欄にだけ「任意」を添える（作者 11/4） */
 function FreeField({ fieldKey, label, value, onText, big }: { fieldKey: FreeKey; label: string; value: string; onText: QuestionProps["onText"]; big: boolean }) {
   const id = `survey-${fieldKey}`;
   return (
     <div data-question={fieldKey}>
       <label htmlFor={id} className={`block leading-snug font-bold ${big ? "text-xl" : "mt-4 text-lg"}`}>
         {label}
+        {/* 「複数可」と同じ形（間は空白、1 語のまま） */}{" "}
+        <span className="text-[1rem] font-normal whitespace-nowrap text-muted">{SURVEY_LABELS.optional}</span>
       </label>
       <textarea
         id={id}

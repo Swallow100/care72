@@ -111,9 +111,10 @@ export default async function OfficePage({ searchParams }: Props) {
       loadOfficeTowns(env.DB, scope.officeId),
       listCareManagers(env.DB, scope.officeId),
       listOfficePeople(env.DB, scope.officeId, today),
-      listUnaffiliated(env.DB, today),
-      // アンケート（T42）。審査員は審査員が作った物だけ
-      loadSurveyOverview(env.DB, actor.officeId, { judge: principal.judge }, now),
+      // 所属なしの人。審査員の壁の中はデモのアカウントが登録した人だけ、外はそれ以外（T81）
+      listUnaffiliated(env.DB, actor, today),
+      // アンケート（T42）。審査員（と審査員が足したアカウント）は審査員が作った物だけ、本物は作った本人と壁の外の管理者だけ（T81）
+      loadSurveyOverview(env.DB, actor.officeId, { walled: actor.walled === true, admin: principal.admin, accountId: principal.accountId }, now),
     ]);
     const f9 = form9Scope(principal);
     const situation = toSituation(state, now);
@@ -180,7 +181,12 @@ export default async function OfficePage({ searchParams }: Props) {
           <FormChoice officeId={scope.officeId} error={q.form_error === "bad"} />
           <Panel aria-labelledby="cm-title">
             <AddCareManager count={careManagers.length} admin={actor.admin}>
-              <CareManagerList careManagers={careManagers} selfId={principal.judge ? null : principal.accountId} manage={actor.admin} />
+              <CareManagerList
+                careManagers={careManagers}
+                selfId={principal.judge ? null : principal.accountId}
+                manage={actor.admin}
+                walled={actor.walled === true}
+              />
             </AddCareManager>
           </Panel>
           {/* デモ事業所の「最初に戻す」（T26）。審査員と管理者だけ */}
@@ -605,13 +611,24 @@ function AssignSection({
 
 /**
  * ケアマネの一覧（T30）。足した順に名前・管理者の印・ID・担当の人数。見出しと「ケアマネ追加」は AddCareManager。
- * 行ごとの改名・管理者・停止・再発行（管理者だけ）と、自分の行のパスワード変更は CareManagerRow（T61）。停止した人も印つきで出す
+ * 行ごとの改名・管理者・停止・再発行（管理者だけ）と、自分の行のパスワード変更は CareManagerRow（T61）。停止した人も印つきで出す。
+ * 審査員の壁の中（walled、T81）は、審査員が足したアカウントの行だけ変えられる（サーバーも lib/office/staff.ts で断る）
  */
-function CareManagerList({ careManagers, selfId, manage }: { careManagers: CareManagerItem[]; selfId: string | null; manage: boolean }) {
+function CareManagerList({
+  careManagers,
+  selfId,
+  manage,
+  walled,
+}: {
+  careManagers: CareManagerItem[];
+  selfId: string | null;
+  manage: boolean;
+  walled: boolean;
+}) {
   return (
     <ul className="mt-2 grid gap-px text-sm">
       {careManagers.map((c) => (
-        <CareManagerRow key={c.id} item={c} self={c.id === selfId} manage={manage} />
+        <CareManagerRow key={c.id} item={c} self={c.id === selfId} manage={manage && (!walled || c.judgeMade === true)} />
       ))}
     </ul>
   );

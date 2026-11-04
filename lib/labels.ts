@@ -538,10 +538,10 @@ export const REDACT_LABELS = {
   unreadable: "読込不可",
   /** 頁の上限を超えた PDF（「12 頁中 3 頁」） */
   pagesOf: (shown: number, total: number) => `${total} 頁中 ${shown} 頁`,
-  /** 塗らずに送るときの確認の窓 */
-  noneTitle: "隠す所なし",
-  noneText: "塗った所の無い頁があります",
-  noneOk: "隠す所は無い",
+  /** 塗らずに送るときの確かめの窓（共通の部品 appChoice。題とボタンは 2〜4 字。本文は「隠した所 0」、下に塗っていない頁の名前） */
+  noneTitle: "塗り無し",
+  noneText: "隠した所 0",
+  noneOk: "送信",
   noneBack: "戻る",
   /** 頁の呼び名（「お薬手帳.pdf 2 頁」）。1 頁の物はファイル名だけ */
   pageName: (file: string, page: number, pages: number) => (pages > 1 ? `${file} ${page} 頁` : file),

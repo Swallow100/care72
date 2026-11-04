@@ -111,7 +111,8 @@ export const PERSON_FORM_ERRORS = ["name", "kana", "birth", "sex", "care_manager
 export type PersonFormError = (typeof PERSON_FORM_ERRORS)[number];
 
 /** ケアマネ追加の欄の誤り */
-export const STAFF_FORM_ERRORS = ["display_name", "login_id", "login_taken"] as const;
+/** login_taken は同じ事業所の ID と重なる、login_unavailable はほかの事業所の ID と重なる（T81。ほかの事業所の ID を「使用中」と言わない） */
+export const STAFF_FORM_ERRORS = ["display_name", "login_id", "login_taken", "login_unavailable"] as const;
 export type StaffFormError = (typeof STAFF_FORM_ERRORS)[number];
 
 /** 担当の割当・外す・戻すの誤り（画面へ戻す URL の people_error） */
@@ -134,6 +135,7 @@ export const OFFICE_ERROR_LABELS: Record<OfficeApiError | PeopleActionError, str
   display_name: "名前 不正",
   login_id: "ID 不正",
   login_taken: "ID 使用中",
+  login_unavailable: "ID 不可",
   invalid: "入力不正",
   forbidden: "権限なし",
   login_required: "ログイン要",
