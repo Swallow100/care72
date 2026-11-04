@@ -32,10 +32,22 @@ import { applyContext, buildCast, openingText, tickText, WORLD_STEP_JSON_SCHEMA,
  * 部屋の Agent の設定（agentParams）の版。WORLD_SYSTEM・world_step の形・モデル・effort のどれかを変えたら 1 つ上げる。
  * 上げないと、本番の ai_agents に残る前の Agent（前の設定）が使われ続ける。
  * 2: 結末を世界が決める・理由の欄（T53）。3: effort を medium → high（T67）。
- * 4: WORLD_SYSTEM の人数を決め打たない・入力の「結末」が「決めない」の訓練では結末を決めない（T70 の続き）
+ * 4: WORLD_SYSTEM の人数を決め打たない・入力の「結末」が「決めない」の訓練では結末を決めない（T70 の続き）。
+ * 5: 1 刻みに道具を 1 回だけ・道具の結果のあとは文字を返さずに終える（T89。1 刻みに 2 回呼ぶ・結果のあとに文を返して毎刻み約 4 秒余計だった）
  */
-export const WORLD_AGENT_VERSION = 4;
+export const WORLD_AGENT_VERSION = 5;
 export const WORLD_TOOL = "world_step";
+/** 部屋の Agent の system の終わりに足す 1 刻みの進め方（T89）。変えたら WORLD_AGENT_VERSION を上げる */
+export const ROOM_TURN_RULE = `1 刻みに ${WORLD_TOOL} の道具を 1 回だけ呼ぶ（2 回目は使われない）。道具の結果を受けたら、文字を返さずに終える（まとめ・説明・Markdown を書かない）。`;
+/**
+ * world_step の呼び出しに返す文（user.custom_tool_result）。1 刻みで使うのは形の合う最初の 1 回だけで、2 回目からは受け取り済み（T89）。
+ * 形の違う呼び出しは使わない（形を直した次の呼び出しがその刻みの 1 回目になる）
+ */
+export const TOOL_REPLIES = {
+  taken: "受け取った。文字を返さずに終える",
+  again: "この刻みは受け取り済みなので使わない。文字を返さずに終える",
+  bad: "形が違うので使わない",
+} as const;
 /** session の予算（セント。$3） */
 export const WORLD_BUDGET_CENTS = "300";
 export const POLL_MS = 1500;
@@ -118,12 +130,12 @@ export function agentParams(): Record<string, unknown> {
     description: "ケア72 の仮想モードの訓練の世界（架空の街の 72 時間）",
     // 1 回呼び（world-oneshot.ts、PURPOSES の director）と同じ high。変えたら WORLD_AGENT_VERSION を上げる
     model: { id: OPUS, effort: "high" },
-    system: [COMMON_SYSTEM, WORLD_SYSTEM, `毎刻み、${WORLD_TOOL} の道具を 1 回だけ呼んで返す。道具の結果を受け取ったら短く終える。`].join("\n\n"),
+    system: [COMMON_SYSTEM, WORLD_SYSTEM, ROOM_TURN_RULE].join("\n\n"),
     tools: [
       {
         type: "custom",
         name: WORLD_TOOL,
-        description: "この刻みの世界（街の様子の 1 文・出来事・結末を迎えた人と 1 文・理由）を返す。毎刻み 1 回だけ呼ぶ",
+        description: "この刻みの世界（街の様子の 1 文・出来事・結末を迎えた人と 1 文・理由）を返す。1 刻みに 1 回だけ呼ぶ。結果を受けたら文字を返さずに終える",
         input_schema: WORLD_STEP_JSON_SCHEMA,
       },
     ],
@@ -285,7 +297,7 @@ export async function roomStep(
       if (e.type === "agent.custom_tool_use") {
         const ok: ReturnType<typeof WorldStepSchema.safeParse> | null = e.name === WORLD_TOOL && answer === null ? WorldStepSchema.safeParse(e.input) : null;
         if (ok?.success) answer = ok.data;
-        const reply = ok?.success ? "受け取った" : answer ? "この刻みは受け取り済み" : "形が違うので使わない";
+        const reply = ok?.success ? TOOL_REPLIES.taken : answer ? TOOL_REPLIES.again : TOOL_REPLIES.bad;
         try {
           await deps.client.sessions.send(room, [{ type: "user.custom_tool_result", custom_tool_use_id: e.id, content: [{ type: "text", text: reply }] }]);
         } catch {
