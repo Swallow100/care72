@@ -138,7 +138,8 @@ export type ActionResult = {
   arriveAt?: number;
   /**
    * 電話に出た人との往復（T93、lib/drill/talk.ts が足す。3 往復まで）。ケアマネの問いと本人役の言葉。
-   * 頼み事は world.asks にも積む（applyResult が作り直しでも積む）。無ければ往復なし
+   * 頼み事は world.asks にも積む（applyResult が作り直しでも積む）。無ければ往復なし。
+   * cm の行の文はケアマネが打った文（伏せて名前に戻した物）で、withoutMemo は落とさない。Claude に渡すなら仮名化の門を通す
    */
   talk?: TalkLine[];
   /** 往復を切った時刻（発災からの分、T93）。切っていなければ無し */
