@@ -498,6 +498,11 @@ export const INTAKE_LABELS = {
   clockSourceNote: "出典補記",
   /** 本人の電話（連絡先の kind self、T68）が 2 つ（1 人 1 つ） */
   selfTwice: "本人重複",
+  /**
+   * 写真・PDF の読み取りの結果に添える 1 行（T117 の問い 5）。フリガナ・住所・電話は AI で埋めず、問い・面の編集・紙に直接書く道で入れる
+   */
+  handOnly: "手入力",
+  handOnlyFields: "フリガナ・住所・電話",
 } as const;
 
 /**

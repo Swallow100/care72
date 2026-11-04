@@ -417,7 +417,7 @@ export function buildFrameSheet<K extends string>(input: FrameSheetInput<K>): Ov
       return;
     }
     const ratio = toRatio(box, sizeOf(pageNo));
-    const fitted = fitText(lines, box.w, box.h, frame.maxPt);
+    const fitted = fitText(lines, box.w, box.h, frame.maxPt) ?? fitOneLine(lines, box, frame.maxPt);
     if (fitted) {
       page.items.push({ kind: "text", fieldId, box: ratio, ...fitted } satisfies OverlayItem);
       return;
@@ -429,6 +429,20 @@ export function buildFrameSheet<K extends string>(input: FrameSheetInput<K>): Ov
     page.items.push({ kind: "text", fieldId, box: ratio, lines: [ANNEX_MARK], fontPt: mark?.fontPt ?? FONT_MIN_PT, top: mark?.top ?? false });
   }
 }
+
+/**
+ * 1 行の値で、上下の空き（0.5mm）を取ると下限の字でも入らない低い欄（計画書の近親者・実施者のフリガナの欄は高さ 3.36mm。T111 の問い 1）は、
+ * 上下の空きを 0.2mm に詰めて 1 行で収める（T117。フリガナを台帳から刷るようにしたので、詰めないと全員の別紙に回る）。枠は動かさない。
+ * 字を真ん中に置くので、罫線との間は 0.4mm ほど残る
+ */
+function fitOneLine(lines: string[], box: MmBox, maxPt: number): ReturnType<typeof fitText> {
+  if (lines.length !== 1) return null;
+  const f = fitText(lines, box.w, box.h + ONE_LINE_PAD_GAIN_MM, maxPt);
+  return f && f.lines.length === 1 ? { ...f, top: false } : null;
+}
+
+/** 1 行の値の上下の空きを詰める分（上下 0.3mm ずつ。fitText の上下の空き 0.5mm → 0.2mm） */
+const ONE_LINE_PAD_GAIN_MM = 0.6;
 
 /** □ に近い形（縦横の比が 0.6〜1.6、8mm 以下）ならレ点、字の場所なら丸で囲む（T86 の markOf と同じ決まりを mm で） */
 function markOf(b: MmBox): "check" | "circle" {
