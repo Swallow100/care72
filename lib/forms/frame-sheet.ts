@@ -4,7 +4,9 @@
 // サーバーの描画で、Claude は呼ばない（氏名・住所・電話が入る）。純な計算だけ。
 //
 // 決まり:
-// - 字の欄は矩形に収まる大きさ（様式の地の字の大きさから 6pt まで）に縮める。6pt でも収まらなければ欄に「別紙」、値は最後の別紙の頁（T86 と同じ）
+// - 字の欄は矩形に収まる大きさ（様式の地の字の大きさから 6pt まで）に縮める。6pt でも収まらなければ欄に「別紙」、値は最後の別紙の頁（T86 と同じ）。
+//   「なし」だけの値は収まらなければ欄を空ける（別紙に回さない）。空き枠（empty。値の無い特記の段も）は刷らない（T111）
+// - 別紙の印（松山市の特記事項の「別紙（あり・なし）」）の「あり」は、別紙の頁に値が 1 つ以上あるとき（と、前からの紙面と同じく医療要約を添える人）
 // - 選ぶ欄は選んだ選択肢の □ にレ点（□ の無い選択肢は字を丸で囲む）。選択肢の（ ）の中身は（ ）の矩形に
 // - 様式に置き場の無い値（□ の無い選択肢の中身・書き足し・3 人目からの関係先）は、様式の書き込みの欄（松山市は特記事項）に名前を添えて足す。
 //   書き込みの欄が無い様式・書き込みの欄に収まらないときは別紙へ（値を落とさない）
@@ -21,6 +23,7 @@ import {
   fitText,
   FONT_MIN_PT,
   insetBox,
+  isNoneOnly,
   lineText,
   type AnnexRow,
   type OverlayItem,
@@ -96,8 +99,17 @@ export type Frame<K extends string> = {
 /** 欄の定義のうち使う所（様式の順） */
 export type FrameField<K extends string> = { key: K; label: string; handwrite?: boolean };
 
-/** 避難経路の地図の画像（T102 が渡す。src は同じ origin の URL か data: の URL） */
-export type SlotImage = { src: string; alt: string };
+/**
+ * 欄に置く画像（避難経路の地図、T106）。svg は欄の箱の大きさで描いた SVG の文字列で、紙面の部品が欄の中にそのまま埋め込む
+ * （<img> の src にしない。画像として読んだ SVG は中の地図のタイルを読まない）。中身は数・固定の言葉・タイルの URL だけで作る物に限る
+ */
+export type SlotImage = { svg: string; alt: string };
+
+/** 画像の受け口に置く物を、欄の箱の大きさ（mm）から作る（避難経路の文があれば箱は文の下だけ）。置かないときは null */
+export type SlotImageFor = (box: { w: number; h: number }) => SlotImage | null;
+
+/** 避難経路の欄の上に文を書く高さ（mm）と、地図の箱の上の空き（欄の上から） */
+export const ROUTE_TEXT_MM = { text: 12, top: 12.2 } as const;
 
 export type FrameSheetInput<K extends string> = {
   frame: Frame<K>;
@@ -110,8 +122,8 @@ export type FrameSheetInput<K extends string> = {
   cells: Record<K, Cell>;
   /** 下に敷く頁（取り込んだ原本の頁） */
   pages: readonly number[];
-  /** 画像の受け口（slot の名前 → 画像）。無ければ空ける */
-  images?: Readonly<Record<string, SlotImage | null | undefined>>;
+  /** 画像の受け口（slot の名前 → 欄の箱の大きさから画像を作る物）。無いか null を返せば空ける */
+  images?: Readonly<Record<string, SlotImageFor | null | undefined>>;
   /** 選ぶ欄の書き足しを書かない欄（同意の記録の日など、様式の値でないケア72 の添え） */
   dropAfter?: ReadonlySet<K>;
   /** 別紙があれば印を付ける選ぶ欄（松山市の特記事項の「別紙（あり・なし）」） */
@@ -150,7 +162,7 @@ function splitTel(line: readonly Piece[]): { name: string; tel: string } {
 
 /** 欄の値から、take で決めた所の字の行 */
 export function takeLines(cell: Cell, take: Take | undefined): string[] {
-  if (cell.kind === "handwrite" || cell.kind === "withheld" || cell.kind === "unconfirmed") return [];
+  if (cell.kind === "handwrite" || cell.kind === "withheld" || cell.kind === "unconfirmed" || cell.kind === "empty") return [];
   if (!take || (take.part === undefined && take.line === undefined)) return cellLines(cell);
   if (take.part === "after") {
     const s = afterText(cell);
@@ -270,9 +282,30 @@ export function buildFrameSheet<K extends string>(input: FrameSheetInput<K>): Ov
     if (after && !input.dropAfter?.has(key) && !textSlots.some((s) => s.keys.includes(key))) addExtra(key, after);
   }
 
-  // ---- 字の欄 ----
+  // ---- 避難経路の地図（T102 の受け口、T106）。文があれば欄の上を文に使い、地図は残りの箱の大きさで作る ----
   const routeImage = frame.slots.find((s): s is Extract<FrameSlot<K>, { kind: "image" }> => s.kind === "image");
-  const routePic = routeImage ? input.images?.[routeImage.slot] : null;
+  let routeItem: Extract<OverlayItem, { kind: "image" }> | null = null;
+  if (routeImage) {
+    const make = input.images?.[routeImage.slot];
+    const routeCell = cells[routeImage.key];
+    const hasText = !!routeCell && !handwrite.has(routeImage.key) && takeLines(routeCell, undefined).length > 0;
+    const top = hasText ? ROUTE_TEXT_MM.top : 0;
+    const b = routeImage.box;
+    const box: MmBox = { x: b.x, y: b.y + top, w: b.w, h: Math.round((b.h - top) * 100) / 100 };
+    const pic = make && pageOf(routeImage.page) ? make({ w: box.w, h: box.h }) : null;
+    if (pic) {
+      routeItem = {
+        kind: "image",
+        fieldId: `${routeImage.key}:${routeImage.slot}`,
+        box: toRatio(box, sizeOf(routeImage.page)),
+        slot: routeImage.slot,
+        svg: pic.svg,
+        alt: pic.alt,
+      };
+    }
+  }
+
+  // ---- 字の欄 ----
   const usedLines = new Map<K, Set<number>>();
   const deferred: Array<{ slot: Extract<FrameSlot<K>, { kind: "text" }>; lines: string[] }> = [];
   for (const slot of textSlots) {
@@ -298,7 +331,7 @@ export function buildFrameSheet<K extends string>(input: FrameSheetInput<K>): Ov
     if (lines.length === 0) continue;
     let box = slot.box;
     // 避難経路: 地図があれば欄の上に文（最大 12mm）、残りに地図
-    if (routeImage && routePic && slot.id === "route") box = { ...box, h: Math.min(box.h, 12) };
+    if (routeItem && slot.id === "route") box = { ...box, h: Math.min(box.h, ROUTE_TEXT_MM.text) };
     placeText(slot.page, box, lines, slot.keys.join("+") + (slot.take ? `:${slot.take.part ?? ""}${slot.take.line ?? ""}${slot.take.index ?? ""}` : ""), slot.keys.map((k) => nameOf.get(k) ?? k).join("・"));
   }
   // 様式に置き場の無い欄（矩形も □ も無い欄。医療要約の住まい・薬の用量など）は全部を書き込みの欄か別紙へ
@@ -312,23 +345,8 @@ export function buildFrameSheet<K extends string>(input: FrameSheetInput<K>): Ov
     for (const s of leftoverLines(cells[key], used)) addExtra(key, s);
   }
 
-  // ---- 避難経路の地図（T102 の受け口）----
-  if (routeImage && routePic) {
-    const page = pageOf(routeImage.page);
-    const hasText = cells[routeImage.key] && takeLines(cells[routeImage.key], undefined).length > 0;
-    const top = hasText ? 12.2 : 0;
-    const b = routeImage.box;
-    if (page) {
-      page.items.push({
-        kind: "image",
-        fieldId: `${routeImage.key}:${routeImage.slot}`,
-        box: toRatio({ x: b.x, y: b.y + top, w: b.w, h: b.h - top }, sizeOf(routeImage.page)),
-        slot: routeImage.slot,
-        src: routePic.src,
-        alt: routePic.alt,
-      });
-    }
-  }
+  // 地図は欄の字のあとに置く（字は欄の上の 12mm だけで、地図はその下）
+  if (routeImage && routeItem) pageOf(routeImage.page)?.items.push(routeItem);
 
   // ---- 書き込みの欄（様式に置き場の無い値を足す）----
   extras.sort((a, b) => (order.get(a.key) ?? 0) - (order.get(b.key) ?? 0));
@@ -394,6 +412,8 @@ export function buildFrameSheet<K extends string>(input: FrameSheetInput<K>): Ov
       page.items.push({ kind: "text", fieldId, box: ratio, ...fitted } satisfies OverlayItem);
       return;
     }
+    // 「なし」だけの値は別紙に回さず欄を空ける（T111。別紙の頁と「別紙（あり）」の印を「なし」だけで作らない）
+    if (isNoneOnly(lines)) return;
     annex.push({ fieldId, label, lines, reason: "overflow" });
     const mark = fitText([ANNEX_MARK], box.w, box.h, frame.maxPt);
     page.items.push({ kind: "text", fieldId, box: ratio, lines: [ANNEX_MARK], fontPt: mark?.fontPt ?? FONT_MIN_PT, top: mark?.top ?? false });

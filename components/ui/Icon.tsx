@@ -34,6 +34,7 @@ export {
   EllipsisVerticalIcon as BrowserMenuIcon, // Android の Chrome の右上のメニュー（追加の案内の手順）
   EyeIcon as ShowIcon, // パスワードを表示
   EyeSlashIcon as HideIcon, // パスワードを隠す
+  FlagIcon as ShelterIcon, // 避難先の候補（国土地理院の指定緊急避難場所・指定避難所、T112）
   LockClosedIcon as PasswordIcon, // パスワードの欄の印
   MagnifyingGlassIcon as SearchIcon, // 検索
   MagnifyingGlassMinusIcon as ZoomOutIcon, // 縮小（地図）

@@ -534,7 +534,8 @@ describe("本人のページの経路地図の行と窓（T102 の 3）", () => 
     expect(html).not.toContain("data-route-map");
     const html2 = renderToStaticMarkup(createElement(RouteMapPanel, { data: { ...data, ledger: withRoute("ors", data.ledger) } }));
     expect(html2).toContain("data-route-map");
-    expect(html2).toContain("徒歩 1.2 km 約 15 分 自動");
+    // 徒歩の時間は台帳の歩行（p-01 は一部、0.8 m/秒）からの見込み（T112。openrouteservice の大人の速さの 15 分は出さない）
+    expect(html2).toContain("徒歩 1.2 km 約 26 分 目安 自動");
   });
 
   it("本人のページ: 経路地図の行はケアマネの編集があるときだけ（ほかの役の見え方には家と避難先の位置を出さない）", async () => {

@@ -307,7 +307,8 @@ describe("避難経路の地図の受け口", () => {
     const sheet = matsuyamaOf(0);
     const none = matsuyamaFrameSheet(sheet, manifestOf("matsuyama"));
     expect(items(none).some((i) => i.kind === "image")).toBe(false);
-    const withMap = matsuyamaFrameSheet(sheet, manifestOf("matsuyama"), { routeMap: { src: "data:image/png;base64,AAAA", alt: "避難経路の地図" } });
+    // T106 で受け口は欄の箱の大きさから SVG を作る物に（<img> の src でなく、欄の中にそのまま埋め込む）
+    const withMap = matsuyamaFrameSheet(sheet, manifestOf("matsuyama"), { routeMap: (box) => ({ svg: `<svg data-box="${box.w}x${box.h}"></svg>`, alt: "避難経路の地図" }) });
     const pic = items(withMap).find((i) => i.kind === "image");
     expect(pic?.page).toBe(2);
     if (pic?.kind !== "image") throw new Error("画像が無い");
@@ -319,7 +320,8 @@ describe("避難経路の地図の受け口", () => {
     else expect(h).toBeCloseTo(ROUTE_MAP_BOX_MM.h, 1);
     const html = renderToStaticMarkup(createElement(OverlaySheet, { sheet: withMap, imageSrc: () => "/p.png", checked: "" }));
     expect(html).toContain('data-slot="route-map"');
-    expect(html).toContain('alt="避難経路の地図"');
+    expect(html).toContain('aria-label="避難経路の地図"');
+    expect(pic.svg).toBe(`<svg data-box="${ROUTE_MAP_BOX_MM.w}x${text ? ROUTE_MAP_BOX_MM.withTextH : ROUTE_MAP_BOX_MM.h}"></svg>`);
   });
 });
 
@@ -539,9 +541,13 @@ describe("避難経路の地図の受け口（前からの紙面）", () => {
     const sheet = matsuyamaOf(0);
     const none = renderToStaticMarkup(createElement(MatsuyamaSheet, { sheet }));
     expect(none).not.toContain('data-slot="route-map"');
-    const withMap = renderToStaticMarkup(createElement(MatsuyamaSheet, { sheet, routeMap: { src: "/m.png", alt: "避難経路の地図" } }));
+    const withMap = renderToStaticMarkup(
+      createElement(MatsuyamaSheet, { sheet, routeMap: (box) => ({ svg: `<svg data-box="${box.w}x${box.h}"></svg>`, alt: "避難経路の地図" }) }),
+    );
     const route = withMap.slice(withMap.indexOf('data-block="route"'));
     expect(route).toContain('data-slot="route-map"');
-    expect(route).toContain('src="/m.png"');
+    // T106: 前からの紙面の 2 頁に地図の場所が無いので、地図は別紙の頁（段には「地図 別紙」）
+    expect(route).toContain('<svg data-box="173.25x86.6"></svg>');
+    expect(route).toContain('data-annex-mark="route-map"');
   });
 });

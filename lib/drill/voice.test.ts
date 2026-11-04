@@ -167,6 +167,9 @@ describe("声の選び方", () => {
     expect(voiceEnabled({})).toBe(false);
     expect(voiceEnabled({ GEMINI_API_KEY: "  " })).toBe(false);
     expect(voiceEnabled(KEYED)).toBe(true);
+    // 配信の Secret は GEMINI_TTS の名前で入っている（lib/claude/client.ts の geminiKeyOf と同じく読む）
+    expect(voiceEnabled({ GEMINI_TTS: "k" })).toBe(true);
+    expect(voiceEnabled({ GEMINI_TTS: "  " })).toBe(false);
     expect(voiceHref(ID, { signal: `${ID}-1-s0` })).toBe(`/api/drill/voice?drill=${ID}&signal=${ID}-1-s0`);
     expect(voiceHref(ID, { act: "a3" })).toBe(`/api/drill/voice?drill=${ID}&act=a3`);
     expect(voiceKey(ID, { signal: `${ID}-1-s0` })).toBe(`drill/${ID}/${ID}-1-s0.wav`);

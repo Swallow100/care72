@@ -11,7 +11,7 @@ import { RoleMenu, type RoleChoice } from "@/components/ui/RoleMenu";
 import { loadDisasterState } from "@/lib/disaster/db";
 import { disasterMark, type DisasterMark } from "@/lib/disaster/state";
 import type { Principal } from "@/lib/auth/principal";
-import { judgeChoices } from "@/lib/auth/choices";
+import { currentChoice, roleChoicesFor } from "@/lib/auth/choices";
 import { ADMIN_LABEL, canViewPage, homePath, JUDGE_LABEL, LOGIN_PATH, ROLE_LABELS, ROLE_SELECT_PATH, showsLogout } from "@/lib/auth/roles";
 import { getPrincipal } from "@/lib/auth/server";
 import { SessionSecretMissing } from "@/lib/auth/session";
@@ -38,7 +38,7 @@ export async function AppHeader() {
   const desk = p !== null && canViewPage(p.role, "caseload");
   const mark = desk && p?.office ? await officeMark(p.office.id) : null;
   // 役変更は審査員と見本のケアマネの山本（T95。lib/auth/wall.ts の canChooseRole）
-  const choices = canChooseRole(p) ? await roleChoices() : null;
+  const choices = p && canChooseRole(p) ? await roleChoices(p) : null;
   return (
     <header className="bg-panel">
       <div className="mx-auto flex max-w-[90rem] flex-wrap items-center gap-x-4 gap-y-1 px-4 py-1.5">
@@ -75,11 +75,11 @@ async function officeMark(officeId: string): Promise<DisasterMark | null> {
   }
 }
 
-/** 審査員の役の一覧（役変更の Menu に先に入れておく）。読めなければ役変更の画面へのリンクにする */
-async function roleChoices(): Promise<RoleChoice[] | null> {
+/** 審査員の役の一覧（役変更の Menu に先に入れておく。審査員には「新規事業所」も、T115）。読めなければ役変更の画面へのリンクにする */
+async function roleChoices(p: Principal): Promise<RoleChoice[] | null> {
   try {
     const { env } = await getCloudflareContext({ async: true });
-    return await judgeChoices(env.DB);
+    return await roleChoicesFor(env.DB, p);
   } catch (e) {
     console.error("役の一覧を読めない", e);
     return null;
@@ -94,12 +94,13 @@ function Who({ p, choices }: { p: Principal; choices: RoleChoice[] | null }) {
       <span className="whitespace-nowrap">
         <span className="font-bold">{role}</span>
         {p.displayName && <span> {p.displayName}</span>}
-        {p.judge && <span className="ml-1.5 hidden text-xs text-muted sm:inline">{JUDGE_LABEL}</span>}
+        {/* 試用事業所（T115）の管理者の名前は「審査員」なので、同じ言葉を 2 回並べない */}
+        {p.judge && p.displayName !== JUDGE_LABEL && <span className="ml-1.5 hidden text-xs text-muted sm:inline">{JUDGE_LABEL}</span>}
       </span>
       <div className="flex items-center gap-1.5">
         {canChooseRole(p) && p.role !== "unselected" &&
           (choices ? (
-            <RoleMenu choices={choices} current={p.role} label="役変更" />
+            <RoleMenu choices={choices} current={currentChoice(p)} label="役変更" />
           ) : (
             <ButtonLink href={ROLE_SELECT_PATH} icon={RoleIcon}>
               役変更

@@ -591,7 +591,13 @@ describe("毎日 4 時（cron）", () => {
     expect(await scheduledReset(env, "*/5 * * * *", at)).toBeNull();
     expect(count(db, "SELECT count(*) AS n FROM drills WHERE office_id = 'office-demo'")).toBe(3);
 
-    expect(await scheduledReset(env, DAILY_RESET_CRON, at)).toEqual({ recording: false, removedRecordings: 0, removedFormPages: 0 });
+    expect(await scheduledReset(env, DAILY_RESET_CRON, at)).toEqual({
+      recording: false,
+      removedRecordings: 0,
+      removedFormPages: 0,
+      // 審査員の試用事業所（T115）は無いので消す物なし
+      sandboxes: { offices: 0, drills: 0, removedObjects: 0 },
+    });
     expect(partnerDump()).toEqual(before);
     const s = await loadDisasterState(d1FromSqlite(db), DEMO.id);
     expect(s.startedAt).toBe("2026-11-05T15:00:00.000Z");
