@@ -187,7 +187,7 @@ describe("通話で聞いた安否の撤回で、4 画面の色・順・理由�
     ]);
   });
 
-  it("「至急維持」で断られた通話は信号も経過も残らない。そのあとの安否なしの通話（聞けず）を撤回しても色は動かず、信号に触らない", async () => {
+  it("「至急維持」で断られた通話は信号を残さず、経過の行だけ書く（T82）。そのあとの安否なしの通話（聞けず）を撤回しても色は動かず、信号に触らない", async () => {
     await heavyRain();
     await receivedBeforeDisaster("p-01");
     await saveSignal(db, signalScope(self())!, red({ canMove: false }, at(0.3)), at(0.3));
@@ -195,12 +195,12 @@ describe("通話で聞いた安否の撤回で、4 画面の色・順・理由�
     expect(before.caseload).toMatchObject({ rule: "red_injury", reason: "本人が「動けない」" });
     expect(await call("p-01", { heard: { color: "green" } }, 0.5)).toEqual({
       status: 409,
-      json: { ok: false, error: "injury", label: "無事 不可（本人が「動けない」）" },
+      json: { ok: false, error: "injury", label: "無事 不可（本人が「動けない」）", logged: true },
     });
-    expect(rows("SELECT * FROM timeline_entries WHERE kind = 'called'")).toEqual([]);
+    expect(rows("SELECT signal_id FROM timeline_entries WHERE kind = 'called'")).toEqual([{ signal_id: null }]);
 
     expect((await call("p-01", { memo: "折り返し待ち" }, 0.5)).status).toBe(200);
-    expect(rows("SELECT signal_id FROM timeline_entries WHERE kind = 'called'")).toEqual([{ signal_id: null }]);
+    expect(rows("SELECT signal_id FROM timeline_entries WHERE kind = 'called'")).toEqual([{ signal_id: null }, { signal_id: null }]);
     await retractLastCall("p-01", 0.6);
     expect(await screens("p-01")).toEqual(before);
     expect(rows("SELECT source, retracted_at FROM signals")).toEqual([{ source: "self", retracted_at: null }]);

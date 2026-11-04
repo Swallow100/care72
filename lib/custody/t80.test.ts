@@ -82,7 +82,8 @@ describe("受入中の人は災害モードの切替のあとも「受入」（T
     await switchTo("heavy_rain", SWITCH);
     const { caseload, staff, page } = await everywhere();
     for (const r of [caseload, page]) {
-      expect([r.color, r.rule, r.greenVia, r.reason, stateLabel(r)]).toEqual(["green", "green", "arrival", `到着 ${SHELTER}`, "受入"]);
+      // 受け入れは今の発災より前なので理由に受入日（T82）
+      expect([r.color, r.rule, r.greenVia, r.reason, stateLabel(r)]).toEqual(["green", "green", "arrival", `到着 ${SHELTER} 受入 11/3`, "受入"]);
     }
     expect([staff!.color, staff!.greenVia, stateLabel(staff!)]).toEqual(["green", "arrival", "受入"]);
     expect(staff!.reason.startsWith(`到着 ${SHELTER}`)).toBe(true);

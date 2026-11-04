@@ -815,11 +815,12 @@ export async function listDrills(db: D1Database, officeId: string, limit = 50, n
 /**
  * 同じケアマネの進行中（T70）を引く文。自分（開始者のアカウント）が始めた物か、自分の担当一覧の人が参加している物。
  * 審査員は同じアカウント（acct-judge）で山本の担当一覧を使うので、審査員どうしも山本とも 1 つを共有する（今までどおり）。
- * 担当一覧の違うケアマネは別々に持てる。引数は SQL の番号（"?2" など）
+ * 担当一覧の違うケアマネは別々に持てる。引数は SQL の番号（"?2" など）。
+ * 開始者は = で比べる（IS だと accountId が null のとき開始者 NULL の訓練を自分の物と見ていた。T82）
  */
 function mineRunningSql(office: string, account: string, careManager: string): string {
   return `SELECT d.id FROM drills d WHERE d.office_id = ${office} AND d.status = 'running'
-            AND (d.started_by IS ${account}
+            AND (d.started_by = ${account}
                  OR EXISTS (SELECT 1 FROM json_each(d.world, '$.participants') j JOIN people p ON p.id = j.value
                              WHERE p.care_manager_id = ${careManager} AND p.office_id = d.office_id))`;
 }

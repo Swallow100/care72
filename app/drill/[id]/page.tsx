@@ -228,7 +228,9 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
                 {running && (
                   <ActionPanel drillId={id} step={s.drill.step} actions={actions.length} people={people} contacts={s.contacts} fiction={fiction} />
                 )}
-                {running && latest && <LatestResult action={latest} names={s.names} ticks={s.ticks} voiceOf={voiceOf} fiction={fiction} />}
+                {running && latest && (
+                  <LatestResult action={latest} names={s.names} ticks={s.ticks} voiceOf={voiceOf} fiction={fiction} refused={s.refused} />
+                )}
                 <ActionLog
                   actions={actions}
                   hours={s.hours}
@@ -236,6 +238,7 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
                   names={s.names}
                   voiceOf={voiceOf}
                   fiction={fiction}
+                  refused={s.refused}
                   {...(running ? { undo: { drillId: id, step: s.drill.step, actions: actions.length, act: s.undoable } } : {})}
                 />
               </div>

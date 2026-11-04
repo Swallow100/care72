@@ -6,6 +6,7 @@
 // 返事は色の文字（塗りの印は安否だけ）: 通話・到着・手配済・受入・報告済・避難済は緑、つながらない・着けない・断られたは黄（次の手が要る）。
 // 正解・不正解は出さない（採点は T22）。名前は台帳の id から引く（記録には名前が無い）。
 // T59: 手のメモを手の行の下に。進行中は最後の手に「取消」（刻みを越えなかった手だけ。越えた手は「取消不可」の印）。
+// T84: 通話で聞いた安否を表に渡さなかった手（至急維持）は「通話」の横に本番の電話と同じ言葉「無事 不可（本人が「けが」）」を赤の太字で。
 
 import { AiMark } from "@/components/person/parts";
 import { OpenIcon } from "@/components/ui/Icon";
@@ -34,8 +35,11 @@ function toneOf(r: ActionResult): StateTone {
 const TURN_TONES: Record<DrillTurn["color"], StateTone> = { red: "urgent", green: "ok", unknown: "unknown" };
 const TURN_LABELS: Record<DrillTurn["color"], string> = { red: COLOR_LABELS.red, green: COLOR_LABELS.green, unknown: COLOR_LABELS.gray };
 
-/** 手の 1 行（時刻・手・誰に・相手・返事） */
-function Head({ a, names, fiction }: { a: ActionRecord; names: Names; fiction?: FictionKind }) {
+/** 通話で聞いた安否を表に渡さなかった手（T84、至急維持）。手の番号 → 本番の電話と同じ言葉（lib/drill/view.ts の refused） */
+type Refused = Readonly<Record<string, string>>;
+
+/** 手の 1 行（時刻・手・誰に・相手・返事）。refused は「通話」の横に、本番の電話と同じ赤の太字で */
+function Head({ a, names, fiction, refused }: { a: ActionRecord; names: Names; fiction?: FictionKind; refused?: Refused }) {
   const r = a.result;
   const who = a.person ? (names[a.person] ?? a.person) : a.kind === "report_city" ? ACTION_UI.whole : null;
   const callee = calleeText(a);
@@ -57,6 +61,11 @@ function Head({ a, names, fiction }: { a: ActionRecord; names: Names; fiction?: 
         <>
           {/* 返事は 2 番目の状態なので色の文字（塗りの印は安否だけ。components/ui/Tag の決まり） */}
           <StateText tone={toneOf(r)}>{ACTION_STATUS_LABELS[r.status]}</StateText>
+          {refused?.[a.id] && (
+            <span className="font-bold text-danger" data-heard-refused>
+              {refused[a.id]}
+            </span>
+          )}
           {r.ai && <AiMark small />}
           {r.speech === null && <span>{r.text}</span>}
           {r.because && <span className="text-xs text-muted">{r.because}</span>}
@@ -123,12 +132,14 @@ function ActionItem({
   voiceOf,
   undo,
   fiction,
+  refused,
 }: {
   a: ActionRecord;
   names: Names;
   voiceOf?: VoiceOf;
   undo?: UndoSlot;
   fiction?: FictionKind;
+  refused?: Refused;
 }) {
   const r = a.result;
   return (
@@ -136,7 +147,7 @@ function ActionItem({
       {undo ? (
         <div className="flex flex-wrap items-start gap-x-2">
           <div className="min-w-0 flex-1">
-            <Head a={a} names={names} fiction={fiction} />
+            <Head a={a} names={names} fiction={fiction} refused={refused} />
           </div>
           {undo.act === a.id ? (
             <UndoButton drillId={undo.drillId} step={undo.step} actions={undo.actions} act={a.id} />
@@ -147,7 +158,7 @@ function ActionItem({
           )}
         </div>
       ) : (
-        <Head a={a} names={names} fiction={fiction} />
+        <Head a={a} names={names} fiction={fiction} refused={refused} />
       )}
       <MemoLine memo={a.memo} />
       {r?.speech && <Bubble speaker={calleeText(a) ?? ""} text={r.speech} ai={r.speechAi} voice={voiceOf?.(a.id) ?? null} />}
@@ -162,12 +173,14 @@ export function LatestResult({
   ticks,
   voiceOf,
   fiction,
+  refused,
 }: {
   action: ActionRecord;
   names: Names;
   ticks: ReadonlyArray<Tick>;
   voiceOf?: VoiceOf;
   fiction?: FictionKind;
+  refused?: Refused;
 }) {
   const r = action.result;
   const crossed = r ? ticks.filter((t) => r.crossed.includes(t.step)) : [];
@@ -175,7 +188,7 @@ export function LatestResult({
   return (
     <section aria-label={ACTION_UI.result} className="rounded-md bg-panel2 px-2.5 py-2" data-latest={action.id}>
       <div className="text-sm">
-        <Head a={action} names={names} fiction={fiction} />
+        <Head a={action} names={names} fiction={fiction} refused={refused} />
         <MemoLine memo={action.memo} />
       </div>
       {r?.speech && <Bubble speaker={calleeText(action) ?? ""} text={r.speech} ai={r.speechAi} large voice={voiceOf?.(action.id) ?? null} />}
@@ -229,6 +242,7 @@ export function ActionLog({
   voiceOf,
   undo,
   fiction,
+  refused,
 }: {
   actions: ReadonlyArray<ActionRecord>;
   hours: readonly number[];
@@ -240,6 +254,8 @@ export function ActionLog({
   undo?: UndoSlot;
   /** 名前のそばの印（T70。デモ以外は本人役） */
   fiction?: FictionKind;
+  /** 通話で聞いた安否を表に渡さなかった手（T84） */
+  refused?: Refused;
 }) {
   const lastId = actions.at(-1)?.id ?? null;
   if (actions.length === 0) return <p className="text-sm text-muted">{DRILL_LABELS.none}</p>;
@@ -263,7 +279,15 @@ export function ActionLog({
             </summary>
             <ol className="mt-1 space-y-1">
               {own.map((a) => (
-                <ActionItem key={a.id} a={a} names={names} voiceOf={voiceOf} fiction={fiction} {...(undo && a.id === lastId ? { undo } : {})} />
+                <ActionItem
+                  key={a.id}
+                  a={a}
+                  names={names}
+                  voiceOf={voiceOf}
+                  fiction={fiction}
+                  refused={refused}
+                  {...(undo && a.id === lastId ? { undo } : {})}
+                />
               ))}
             </ol>
           </details>

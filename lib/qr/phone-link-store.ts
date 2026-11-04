@@ -29,7 +29,8 @@ export type PhoneLinkState = {
   expiresAt: string | null;
 };
 
-function issuedSec(iso: string | null): number | null {
+/** 作った時刻（ISO）を秒に。無い・読めなければ null。開いたあとのセッションの比べ（lib/auth/principal.ts）でも使う */
+export function issuedSec(iso: string | null): number | null {
   if (!iso) return null;
   const t = Date.parse(iso);
   return Number.isNaN(t) ? null : Math.floor(t / 1000);

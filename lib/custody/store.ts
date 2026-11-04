@@ -9,6 +9,7 @@
 
 import type { D1Database } from "@cloudflare/workers-types";
 import { JUDGE_LABEL } from "../auth/roles.ts";
+import { demoPersonSql } from "../auth/wall.ts";
 import { unconfirmedConsents } from "../consent/unconfirmed.ts";
 import type { ConsentStatus, CustodyVia, Ledger, PersonOrigin, ReleaseKind } from "../db/types.ts";
 import { UNAFFILIATED_OFFICE_ID, type StaffActor } from "./actor.ts";
@@ -20,7 +21,10 @@ import type { OnSiteInput } from "./forms.ts";
 
 export type ReceiveResult = { ok: true; custodyId: string; personId: string } | { ok: false; error: CustodyError };
 
-/** 受け入れる。personId は検索・避難所の一覧・QR（トークンを引き直した物）から */
+/**
+ * 受け入れる。personId は検索・避難所の一覧・QR（トークンを引き直した物）から。
+ * 審査員（壁の中）はデモの人だけ。ほかの事業所の人は無いのと同じ not_found（T81。id を知っていても、QR を持っていても）
+ */
 export async function receive(
   db: D1Database,
   actor: StaffActor,
@@ -34,7 +38,7 @@ export async function receive(
               (SELECT c.status FROM consents c WHERE c.person_id = p.id AND c.kind = 'medical') AS medical,
               (SELECT c.scope FROM consents c WHERE c.person_id = p.id AND c.kind = 'medical') AS medical_scope,
               (SELECT cu.id FROM custody cu WHERE cu.person_id = p.id AND cu.holder_id = ?2 AND cu.released_at IS NULL) AS open_id
-         FROM people p WHERE p.id = ?1`,
+         FROM people p WHERE p.id = ?1${actor.walled ? ` AND ${demoPersonSql("p")}` : ""}`,
     )
     .bind(input.personId, actor.accountId)
     .first<{ id: string; origin: PersonOrigin; medical: ConsentStatus | null; medical_scope: string | null; open_id: string | null }>();

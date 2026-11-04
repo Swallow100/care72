@@ -4,6 +4,9 @@
 // 表に入れるのは lib/auth/password.ts のハッシュだけ。平文はこの関数の返り値にだけあり、応答で画面に 1 回だけ出す。
 // 平文は表・経過・ログ・URL に出さない。ファイルにも書かない。
 // 足したケアマネは管理者でない（is_office_admin 0）。ログインは ID と初期パスワード（lib/auth/principal.ts の login）。
+// 審査員（壁の中、lib/auth/wall.ts）が足した人には印（judge_made、T81）を付ける。その人で入っても審査員と同じ壁。
+// ID の重なり（T81）: login_id は全事業所で 1 つ（ログインは ID だけで引く）。同じ事業所の重なりは「ID 使用中」、
+// ほかの事業所の ID と重なるときは別の言い方（login_unavailable「ID 不可」）で断り、ほかの事業所の ID を「使用中」と言わない。
 
 import type { D1Database } from "@cloudflare/workers-types";
 import { isFixedAccount } from "../auth/demo.ts";
@@ -32,11 +35,18 @@ export function generateInitialPassword(): string {
 
 export type AddCareManagerResult =
   | { ok: true; account: { id: string; displayName: string; loginId: string }; password: string }
-  | { ok: false; error: "forbidden" | "login_taken" };
+  | { ok: false; error: "forbidden" | "login_taken" | "login_unavailable" };
+
+/** ID がもう使われているときの断り。同じ事業所なら login_taken、ほかの事業所（事業所なしの行も）なら login_unavailable。空いていれば null */
+async function loginIdRefusal(db: D1Database, officeId: string, loginId: string): Promise<"login_taken" | "login_unavailable" | null> {
+  const row = await db.prepare("SELECT office_id FROM accounts WHERE login_id = ?1").bind(loginId).first<{ office_id: string | null }>();
+  if (!row) return null;
+  return row.office_id === officeId ? "login_taken" : "login_unavailable";
+}
 
 /**
- * ケアマネを 1 人足す。管理者でなければ forbidden、ID が使われていれば login_taken。
- * 事業所の経過に「ケアマネ追加 佐藤」。opts.iterations はテストだけ（ハッシュの回数を減らして速くする）
+ * ケアマネを 1 人足す。管理者でなければ forbidden、ID が同じ事業所で使われていれば login_taken、ほかの事業所なら login_unavailable。
+ * 事業所の経過に「ケアマネ追加 佐藤」。壁の中の人が足すと印（judge_made）。opts.iterations はテストだけ（ハッシュの回数を減らして速くする）
  */
 export async function addCareManager(
   db: D1Database,
@@ -46,8 +56,8 @@ export async function addCareManager(
   opts: { iterations?: number } = {},
 ): Promise<AddCareManagerResult> {
   if (!actor.admin) return { ok: false, error: "forbidden" };
-  const taken = await db.prepare("SELECT 1 AS x FROM accounts WHERE login_id = ?1").bind(input.loginId).first();
-  if (taken) return { ok: false, error: "login_taken" };
+  const taken = await loginIdRefusal(db, actor.officeId, input.loginId);
+  if (taken) return { ok: false, error: taken };
 
   const password = generateInitialPassword();
   const hash = await hashPassword(password, opts.iterations ? { iterations: opts.iterations } : {});
@@ -57,11 +67,11 @@ export async function addCareManager(
     const [r] = await db.batch([
       db
         .prepare(
-          `INSERT INTO accounts (id, office_id, role, is_office_admin, display_name, login_id, password_hash, created_at)
-           SELECT ?1, o.id, 'care_manager', 0, ?3, ?4, ?5, ?6 FROM offices o
+          `INSERT INTO accounts (id, office_id, role, is_office_admin, display_name, login_id, password_hash, created_at, judge_made)
+           SELECT ?1, o.id, 'care_manager', 0, ?3, ?4, ?5, ?6, ?7 FROM offices o
             WHERE o.id = ?2 AND NOT EXISTS (SELECT 1 FROM accounts WHERE login_id = ?4)`,
         )
-        .bind(id, actor.officeId, input.displayName, input.loginId, hash, at),
+        .bind(id, actor.officeId, input.displayName, input.loginId, hash, at, actor.walled ? 1 : 0),
       db
         .prepare(
           `INSERT INTO office_timeline_entries (id, office_id, author_id, author_role, kind, body, payload, occurred_at)
@@ -71,17 +81,20 @@ export async function addCareManager(
     ]);
     inserted = r.meta.changes ?? 0;
   } catch (e) {
-    // 同時に同じ ID を足したとき（UNIQUE）。ほかの誤りはそのまま投げる
-    if (e instanceof Error && /UNIQUE/i.test(e.message)) return { ok: false, error: "login_taken" };
+    // 同時に同じ ID を足したとき（UNIQUE）。ほかの誤りはそのまま投げる。断り方は先に入った行の事業所で
+    if (e instanceof Error && /UNIQUE/i.test(e.message)) {
+      return { ok: false, error: (await loginIdRefusal(db, actor.officeId, input.loginId)) ?? "login_taken" };
+    }
     throw e;
   }
-  if (inserted === 0) return { ok: false, error: "login_taken" };
+  if (inserted === 0) return { ok: false, error: (await loginIdRefusal(db, actor.officeId, input.loginId)) ?? "login_taken" };
   return { ok: true, account: { id, displayName: input.displayName, loginId: input.loginId }, password };
 }
 
 // ---------- 名前の変更・管理者の付け外し・停止と再開・パスワードの再発行（T61） ----------
 //
 // どれも事業所の管理者だけ・同じ事業所のケアマネだけ。種のデモ事業所のアカウント（山本・審査員）は固定で断る（lib/auth/demo.ts）。
+// 審査員（壁の中）は印（judge_made）の付いたアカウントだけ。ほかは固定と同じ断り（T81）。
 // 書くのは事業所の経過の 1 行（care_manager_changed）とアカウントの行を 1 つの batch で。経過の行を「読んだ時の条件のまま」のときだけ入れ、
 // アカウントの行の書き換えはその経過の行があるときだけ（lib/office/people.ts の guardedWrite と同じ作り）。
 // 自分の停止・管理者解除・再発行は断る（self。自分のパスワードは lib/auth/password-change.ts）。
@@ -119,6 +132,8 @@ export type StaffChangeResult = { ok: true; changed: boolean } | { ok: false; er
 type Target = {
   id: string;
   display_name: string;
+  /** 審査員が足した・再発行した（T81） */
+  judge_made: 0 | 1;
   is_office_admin: 0 | 1;
   disabled_at: string | null;
   /** 一覧にいる担当の人数（listCareManagers の people と同じ数え方） */
@@ -141,11 +156,19 @@ function refuse(actor: OfficeActor, accountId: string): StaffChangeError | null 
   return null;
 }
 
+/**
+ * 壁の中の人（審査員と審査員が足したアカウント、T81）が変えられるのは印（judge_made）の付いたアカウントだけ。
+ * 審査員でない人が足した本物のアカウントの再発行で、その人として入り直せないように（断りは固定のアカウントと同じ fixed）
+ */
+function outOfReach(actor: OfficeActor, t: Pick<Target, "judge_made">): boolean {
+  return actor.walled === true && Number(t.judge_made) !== 1;
+}
+
 /** 同じ事業所のケアマネ。違う事業所・ケアマネでない（審査員の行・医療班）・無ければ null */
 async function targetOf(db: D1Database, actor: OfficeActor, accountId: string): Promise<Target | null> {
   const row = await db
     .prepare(
-      `SELECT a.id, a.display_name, a.is_office_admin, a.disabled_at,
+      `SELECT a.id, a.display_name, a.is_office_admin, a.disabled_at, a.judge_made,
               (SELECT count(*) FROM people p
                 WHERE p.care_manager_id = a.id AND p.office_id = a.office_id AND p.unlisted_at IS NULL) AS people,
               (SELECT count(*) FROM accounts o
@@ -218,6 +241,7 @@ export async function renameCareManager(
   if (no) return { ok: false, error: no };
   const t = await targetOf(db, actor, accountId);
   if (!t) return { ok: false, error: "not_found" };
+  if (outOfReach(actor, t)) return { ok: false, error: "fixed" };
   if (t.display_name === displayName) return { ok: true, changed: false };
   const ok = await guardedChange(db, actor, {
     accountId,
@@ -245,6 +269,7 @@ export async function setCareManagerAdmin(
   if (no) return { ok: false, error: no };
   const t = await targetOf(db, actor, accountId);
   if (!t) return { ok: false, error: "not_found" };
+  if (outOfReach(actor, t)) return { ok: false, error: "fixed" };
   if ((t.is_office_admin === 1) === admin) return { ok: true, changed: false };
   if (!admin && accountId === actor.authorId) return { ok: false, error: "self" };
   if (!admin && t.other_admins === 0) return { ok: false, error: "last_admin" };
@@ -276,6 +301,7 @@ export async function setCareManagerDisabled(
   if (no) return { ok: false, error: no };
   const t = await targetOf(db, actor, accountId);
   if (!t) return { ok: false, error: "not_found" };
+  if (outOfReach(actor, t)) return { ok: false, error: "fixed" };
   if ((t.disabled_at !== null) === disabled) return { ok: true, changed: false };
   if (disabled && accountId === actor.authorId) return { ok: false, error: "self" };
   if (disabled && t.people > 0) return { ok: false, error: "has_people" };
@@ -314,6 +340,7 @@ export async function resetCareManagerPassword(
   if (no) return { ok: false, error: no };
   const t = await targetOf(db, actor, accountId);
   if (!t) return { ok: false, error: "not_found" };
+  if (outOfReach(actor, t)) return { ok: false, error: "fixed" };
   if (accountId === actor.authorId) return { ok: false, error: "self" };
   const password = generateInitialPassword();
   const hash = await hashPassword(password, opts.iterations ? { iterations: opts.iterations } : {});

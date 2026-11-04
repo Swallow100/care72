@@ -164,8 +164,8 @@ describe("役の壁", () => {
 });
 
 describe("検索（事業所をまたぐ）", () => {
-  it("ほかの事業所の人も見つかり、ヒットはカナ・生年月日・年齢だけ（住所・電話・漢字の氏名なし）", async () => {
-    const out = await searchRequest(db, medical(), { text: "かくう" }, TODAY);
+  it("ほかの事業所の人も見つかり、ヒットはカナ・生年月日・年齢だけ（住所・電話・漢字の氏名なし）。審査員はデモの人だけ（T81、lib/custody/t81.test.ts）", async () => {
+    const out = await searchRequest(db, medical2(), { text: "かくう" }, TODAY);
     expect(out.status).toBe(200);
     const hits = out.body.hits as Array<Record<string, unknown>>;
     expect(hits).toHaveLength(1);
@@ -298,7 +298,8 @@ describe("ケアマネの一覧の状態「到着 避難所」", () => {
     sqlite.exec("DELETE FROM signals WHERE id = 's-red'");
     sqlite.prepare("UPDATE disaster_state SET started_at = ?").run(NOW);
     const open = await loadCaseload(db, { officeId: "office-demo", careManagerId: "acct-yamamoto" }, TODAY, NOW);
-    expect(open!.rows.find((r) => r.id === "p-09")!.triage!.reason).toBe(`到着 ${SHELTER}`);
+    // 受け入れは今の発災より前なので理由に受入日（T82）
+    expect(open!.rows.find((r) => r.id === "p-09")!.triage!.reason).toBe(`到着 ${SHELTER} 受入 11/3`);
 
     // 発災より前に閉じた（退所）受け入れは数えない
     if (!r.ok) throw new Error(r.error);
@@ -364,7 +365,7 @@ describe("台帳に無い人（その場で登録）と引受", () => {
   it("ケアマネが引き受けると自分の事業所・担当に移り、経過は「引受 山本」、事業所の経過に引受", async () => {
     const r = await registerOnSite(db, actor(), parseOnSiteOk(), AT, { personId: "p-matsumoto" });
     expect(r.ok).toBe(true);
-    const list = await listUnaffiliated(db, TODAY);
+    const list = await listUnaffiliated(db, officeActor(judgeCm())!, TODAY);
     expect(list).toEqual([
       { id: "p-matsumoto", kana: "マツモト ミツ", age: 80, ageReported: true, shelters: [SHELTER], createdAt: AT, createdWhen: "11/3 10:00" },
     ]);
@@ -375,7 +376,7 @@ describe("台帳に無い人（その場で登録）と引受", () => {
     expect(out).toEqual({ status: 303, location: "/office#unaffiliated" });
     const p = sqlite.prepare("SELECT office_id, care_manager_id, version FROM people WHERE id = 'p-matsumoto'").get();
     expect(p).toMatchObject({ office_id: "office-demo", care_manager_id: "acct-yamamoto", version: 2 });
-    expect(await listUnaffiliated(db, TODAY)).toEqual([]);
+    expect(await listUnaffiliated(db, officeActor(judgeCm())!, TODAY)).toEqual([]);
 
     const rows = (await loadPersonPage(db, yamamoto(), "p-matsumoto"))!;
     const take = timelineItems(rows).find((t) => t.at === LATER)!;
@@ -403,12 +404,13 @@ function parseOnSiteOk() {
 describe("受け持ちの一覧", () => {
   it("自分の受け持ちだけ、事業所をまたいで、避難所・状態・所属を持つ。上の人数は状態の 4 色", async () => {
     heavyRain();
-    await receive(db, actor(), { personId: "p-01", shelter: SHELTER, via: "search" }, AT);
-    await receive(db, actor(), { personId: PARTNER_PERSON, shelter: "そらみ台小学校", via: "search" }, AT);
-    await registerOnSite(db, actor(), parseOnSiteOk(), AT, { personId: "p-matsumoto" });
-    await receive(db, actor(medical2()), { personId: "p-02", shelter: SHELTER, via: "search" }, AT);
+    // 事業所をまたぐのは審査員でない医療班（審査員はデモの人だけ。T81）
+    await receive(db, actor(medical2()), { personId: "p-01", shelter: SHELTER, via: "search" }, AT);
+    await receive(db, actor(medical2()), { personId: PARTNER_PERSON, shelter: "そらみ台小学校", via: "search" }, AT);
+    await registerOnSite(db, actor(medical2()), parseOnSiteOk(), AT, { personId: "p-matsumoto" });
+    await receive(db, actor(), { personId: "p-02", shelter: SHELTER, via: "search" }, AT);
 
-    const board = await loadStaffBoard(db, actor(), TODAY, NOW);
+    const board = await loadStaffBoard(db, actor(medical2()), TODAY, NOW);
     expect(board.rows.map((r) => r.personId).sort()).toEqual(["p-01", "p-matsumoto", PARTNER_PERSON].sort());
     expect(board.shelters).toEqual(["そらみ台小学校", SHELTER].sort((a, b) => a.localeCompare(b, "ja")));
     const total = Object.values(board.counts).reduce((a, b) => a + b, 0);
@@ -429,8 +431,8 @@ describe("受け持ちの一覧", () => {
     // 要配慮（医療の印・機器・薬のある人）
     expect(board.medical).toBe(2);
 
-    // 別の医療班の受け持ちは別
-    const other = await loadStaffBoard(db, actor(medical2()), TODAY, NOW);
+    // 別の医療班（審査員）の受け持ちは別
+    const other = await loadStaffBoard(db, actor(), TODAY, NOW);
     expect(other.rows.map((r) => r.personId)).toEqual(["p-02"]);
   });
 
@@ -473,7 +475,7 @@ describe("避難所の一覧（既に受け入れられた人）", () => {
   it("避難所の名前と人数、その避難所の人はカナ・生年月日・年齢だけ。受け入れると mine", async () => {
     await receive(db, actor(medical2()), { personId: "p-02", shelter: SHELTER, via: "search" }, AT);
     await receive(db, actor(medical2()), { personId: "p-03", shelter: "みずほし公民館", via: "search" }, AT);
-    expect(await listShelters(db)).toEqual([
+    expect(await listShelters(db, actor())).toEqual([
       { shelter: "みずほし公民館", people: 1 },
       { shelter: SHELTER, people: 1 },
     ].sort((a, b) => (a.shelter < b.shelter ? -1 : 1)));

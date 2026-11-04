@@ -9,7 +9,7 @@ export const SURVEY_TITLE = "アンケートのお願い";
 /** 自己紹介と事情（頁の頭） */
 export const SURVEY_INTRO: ReadonlyArray<string> = [
   "突然のお願いで恐縮です。お時間のあるときに、5分ほどご協力いただけませんか。",
-  "私は医学部の学生です。いま、ハッカソン「Built with Claude: Japan 2026」に作品を出そうとしています。ハッカソンは、決まった期間（今回は11月8日まで）でアプリなどを作り、出来を競う大会です。私は、在宅の要介護の方の災害への備えを手伝うアプリ「ケア72」を作っています。",
+  "私は医学部の学生です。いま、Anthropic によるハッカソン「Built with Claude: Japan 2026」に作品を出そうとしています。ハッカソンは、決まった期間（今回は11月8日まで）でアプリなどを作り、出来を競う大会です。私は、在宅の要介護の方の災害への備えを手伝うアプリ「ケア72」を作っています。",
 ];
 
 export type FeatureGroup = { readonly heading: string; readonly items: ReadonlyArray<string> };
@@ -82,6 +82,8 @@ export const SURVEY_LABELS = {
   about: "あなたについて",
   questions: "問い",
   multi: "複数可",
+  /** 記入欄（問 5・問 9 の理由・ご意見）の名前の横 */
+  optional: "任意",
   /** その他を選んだときの記入欄の名前 */
   otherText: "その他の内容",
   submit: "送信",
@@ -93,6 +95,8 @@ export const SURVEY_LABELS = {
   done: "回答済",
   /** 開いてから 15 秒たっていない */
   tooFast: "少し待って再送信",
+  /** 開いてから 2 時間を過ぎた（開いた時刻の印の期限。lib/survey/token.ts、T81）。頁を開き直す */
+  stale: "期限切れ 再読込",
   /** 同じ所から 1 時間に 20 回を超えた */
   limited: "回数超過",
   /** リンクが無い */
@@ -128,6 +132,8 @@ export const SURVEY_OFFICE_LABELS = {
   risk: "要確認",
   close: "閉じる",
   failed: "作成失敗",
+  /** 1 日に作れる本数（lib/survey/share.ts の SURVEY_SHARES_PER_DAY）を超えた（T81） */
+  limited: "本日上限",
   /** QR の画像を保存 */
   qrSave: "QR保存",
 } as const;

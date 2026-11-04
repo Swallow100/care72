@@ -522,6 +522,8 @@ export type AccountRow = {
   created_at: string;
   /** 停止（退職）した時刻。NULL は使える。停止した人はログインできず、割当の候補に出ない（T61、migration 0012） */
   disabled_at: string | null;
+  /** 審査員が足した・再発行したアカウント（T81、migration 0025）。ログインも審査員と同じ壁（lib/auth/wall.ts） */
+  judge_made: 0 | 1;
 };
 
 export type PersonRow = {

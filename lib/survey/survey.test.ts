@@ -89,9 +89,14 @@ const ANSWERS = {
 
 /** 共有のリンクを作る */
 async function share(role: "care_manager" | "judge" = "care_manager", office = "office-demo", now = T0): Promise<string> {
-  const { token } = await createSurveyShare(db, { officeId: office, memo: "包括配布", createdBy: "acct-yamamoto", createdRole: role }, now);
-  return token;
+  const made = await createSurveyShare(db, { officeId: office, memo: "包括配布", createdBy: "acct-yamamoto", createdRole: role }, now);
+  if (!made.ok) throw new Error(made.error);
+  return made.token;
 }
+
+/** 事業所の画面を見る人（T81）: 壁の外の管理者（山本）と審査員 */
+const ADMIN = { walled: false, admin: true, accountId: "acct-yamamoto" };
+const JUDGE = { walled: true, admin: false, accountId: "acct-judge" };
 
 /** 頁を開いたときの印（T0 に開いた） */
 const stampOf = (token: string, openedAt = T0) => openStamp(token, openedAt, SECRET);
@@ -440,7 +445,7 @@ describe("事業所の画面の一覧と写し", () => {
     await send(partner, { answers: ANSWERS }, { now: at(MIN_FILL_SEC + 50) });
 
     const now = at(100).toISOString();
-    const all = await loadSurveyOverview(db, "office-demo", { judge: false }, now);
+    const all = await loadSurveyOverview(db, "office-demo", ADMIN, now);
     expect(all.shares).toHaveLength(2);
     expect(all.shares.find((s) => s.token === real)).toMatchObject({ state: "open", answers: 2, maxAnswers: 30, judge: false });
     expect(all.answers.map((a) => [a.id, a.judge])).toEqual([
@@ -448,15 +453,15 @@ describe("事業所の画面の一覧と写し", () => {
       ["W002", false],
       ["T001", true],
     ]);
-    const later = await loadSurveyOverview(db, "office-demo", { judge: false }, AFTER_DEADLINE.toISOString());
+    const later = await loadSurveyOverview(db, "office-demo", ADMIN, AFTER_DEADLINE.toISOString());
     expect(later.shares.find((s) => s.token === real)?.state).toBe("closed");
 
     // 審査員は審査員が作った物だけ（本物の答えを読めない）
-    const forJudge = await loadSurveyOverview(db, "office-demo", { judge: true }, now);
+    const forJudge = await loadSurveyOverview(db, "office-demo", JUDGE, now);
     expect(forJudge.shares.map((s) => s.token)).toEqual([judge]);
     expect(forJudge.answers.map((a) => a.id)).toEqual(["T001"]);
     // 協力事業所は自分の事業所の物だけ
-    const p = await loadSurveyOverview(db, "office-partner", { judge: false }, now);
+    const p = await loadSurveyOverview(db, "office-partner", { ...ADMIN, accountId: "acct-partner-cm" }, now);
     expect(p.answers.map((a) => a.id)).toEqual(["W001"]);
     expect(p.shares.map((s) => s.token)).toEqual([partner]);
     expect(Object.values(SURVEY_SHARE_STATE_LABELS)).toEqual(["受付中", "上限到達", "受付終了"]);
@@ -465,7 +470,7 @@ describe("事業所の画面の一覧と写し", () => {
   it("写しの行は docs/survey/README.md の形で、tools/survey/answers.ts の parseAnswers がそのまま読める", async () => {
     const token = await share();
     await send(token, { answers: { ...ANSWERS, q5: "様式が|多い\n二行目", q4: ["b", "g"], q4Other: "電話が多い" } });
-    const [item] = (await loadSurveyOverview(db, "office-demo", { judge: false }, at(100).toISOString())).answers;
+    const [item] = (await loadSurveyOverview(db, "office-demo", ADMIN, at(100).toISOString())).answers;
     const line = answerLine(item.id, item.answers);
     expect(line).toBe(
       "| W001 | a |  | c | b | d | b |  | b,g | 電話が多い | 様式が、多い 二行目 | a,b |  | c | b | a | 話すだけなら続けられる | 応援しています | a |",
@@ -587,8 +592,9 @@ describe("案内の文と言葉", () => {
     expect(SURVEY_DEADLINE_PARTS.join("")).toMatch(/^受付は11月5日（木）までです。/);
   });
 
-  it("問いごとの「任意」は付けない（全部の問いが任意で、案内の 1 文で伝える）。複数の問いは「複数可」だけ。その他は選択肢の最後（その他の内容の欄がすぐ下に開く）", () => {
-    expect(Object.values(SURVEY_LABELS)).not.toContain("任意");
+  it("「任意」は記入欄にだけ（選択の問いは案内の 1 文で伝える。作者 11/4）。複数の問いは「複数可」だけ。その他は選択肢の最後（その他の内容の欄がすぐ下に開く）", () => {
+    expect(SURVEY_LABELS.optional).toBe("任意");
+    for (const q of CHOICE_QUESTIONS) expect(q.text, q.key).not.toContain("任意");
     expect(SURVEY_PURPOSE).toContain("答えたくない問いは空けて構いません");
     for (const q of CHOICE_QUESTIONS) {
       expect(q.text, q.key).not.toContain("いくつでも");

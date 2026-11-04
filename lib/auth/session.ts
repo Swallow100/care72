@@ -3,7 +3,7 @@
 // 中身は「誰か」だけで、事業所・役の名前・担当は毎回 D1 から読む（アカウントを消せば次の要求から入れない）。
 // pv はパスワードのハッシュの指紋。パスワードを変えると前のセッションは使えなくなる。
 // 3 つ目の形 link（T69a）: 本人・家族がスマホ入口のリンク（lib/qr/phone-link.ts）で開いたセッション。パスワードは無く pv は固定の "link"。
-// 期限はリンクの期限と同じ（最長 180 日。本人・家族はホーム画面に追加して何か月も開く）。版（g）は毎回 D1 と比べ、作り直すと切れる。
+// 期限はリンクの期限と同じ（最長 180 日。本人・家族はホーム画面に追加して何か月も開く）。版（g）とリンクを作った時刻（li）は毎回 D1 と比べ、作り直すと切れる。
 
 import { z } from "zod";
 import { PHONE_LINK_TTL_SEC } from "../qr/phone-link.ts";
@@ -33,6 +33,11 @@ const payloadSchema = z.discriminatedUnion("k", [
       c: z.string().min(1).max(128).nullable(),
       /** リンクの版（people.phone_link_generation） */
       g: z.number().int().min(1),
+      /**
+       * リンクを作った時刻（秒。people.phone_link_issued_at、T81）。版と一緒に毎回 D1 と比べる（毎朝の戻しで版が 0 に戻り、作り直して
+       * 同じ版になっても、前の日のセッションは時刻が違うので通らない）。T81 の前に開いたセッションには無い（iat で比べる。lib/auth/principal.ts）
+       */
+      li: z.number().int().optional(),
     })
     .strict(),
 ]);
