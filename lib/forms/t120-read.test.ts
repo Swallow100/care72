@@ -16,7 +16,7 @@ import { doneFieldsOf, joinPageReads, readForm, salvagePageRead, toPageRead, typ
 import { pageReadReply, requestedDone, requestedPage, requestInput } from "./form-read-fake.ts";
 import { komorebiReadResult } from "./komorebi-form.fixture.ts";
 import { checkReadResult, type ReadResult } from "./mapping.ts";
-import { getMapping } from "./mapping-db.ts";
+import { getMapping, saveCheckedMapping } from "./mapping-db.ts";
 import type { PageImageBucket } from "./page-images.ts";
 import { formReadPost, formRereadPost, mergeReread } from "./read-post.ts";
 import { buildFormReadForm } from "./read-upload.ts";
@@ -305,17 +305,24 @@ describe("受け口: 読めた頁から見せ、読めなかった頁を読み�
     expect(first.mapping.unread).toEqual([2]);
     const before = first.mapping.fields.length;
 
+    // 人が確認保存したあとでも、再読で AI の欄が足されたら下書きに戻る
+    const checked = await saveCheckedMapping(db, { officeId: "office-demo", id: "fm-t120", version: first.version, mapping: first.mapping, by: "acct-yamamoto", at: "2026-11-05T01:00:00.000Z" });
+    expect(checked.ok).toBe(true);
+    const confirmed = (await getMapping(db, "office-demo", "fm-t120"))!;
+    expect(confirmed.status).toBe("checked");
+
     down = false;
-    const conflict = await formRereadPost(deps, SCOPE, "fm-t120", first.version + 1);
+    const conflict = await formRereadPost(deps, SCOPE, "fm-t120", confirmed.version + 1);
     expect(conflict.status).toBe(409);
     const n = calls.length;
-    const again = await formRereadPost(deps, SCOPE, "fm-t120", first.version);
+    const again = await formRereadPost(deps, SCOPE, "fm-t120", confirmed.version);
     expect(again.status).toBe(200);
     const body = (await again.json()) as { version: number; unread: number[] };
-    expect(body).toMatchObject({ ok: true, version: first.version + 1, unread: [] });
+    expect(body).toMatchObject({ ok: true, version: confirmed.version + 1, unread: [] });
     expect(calls.slice(n).map(requestedPage)).toEqual([2]);
     const after = (await getMapping(db, "office-demo", "fm-t120"))!;
     expect(after.status).toBe("draft");
+    expect(after.checked_at).toBeNull();
     expect(after.mapping.unread).toBeUndefined();
     expect(after.mapping.fields.length).toBe(before + answer.fields.filter((f) => f.page === 2).length);
     expect(new Set(after.mapping.fields.map((f) => f.id)).size).toBe(after.mapping.fields.length);

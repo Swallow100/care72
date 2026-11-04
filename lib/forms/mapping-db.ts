@@ -199,7 +199,8 @@ export async function saveCheckedMapping(
 }
 
 /**
- * 読み直した対応表を書く（T120。読めなかった頁を読み直したとき）。状態（下書き・確認済）は変えず、版を 1 つ上げる。
+ * 読み直した対応表を書く（T120。読めなかった頁を読み直したとき）。AI の読んだ欄が足されるので、確認済でも下書きに戻し
+ * （確かめた人と時を外す。差し込みに使うのは人が確かめた物だけ）、版を 1 つ上げる。
  * 版が違えば conflict。範囲の外は not_found
  */
 export async function updateReadMapping(
@@ -209,7 +210,7 @@ export async function updateReadMapping(
   const r = await db
     .prepare(
       `UPDATE form_mappings
-          SET title = ?1, mapping = ?2, version = version + 1, updated_at = ?3
+          SET title = ?1, mapping = ?2, status = 'draft', checked_by = NULL, checked_at = NULL, version = version + 1, updated_at = ?3
         WHERE id = ?4 AND office_id = ?5 AND version = ?6`,
     )
     .bind(s.mapping.title, JSON.stringify(s.mapping), s.at, s.id, s.officeId, s.version)

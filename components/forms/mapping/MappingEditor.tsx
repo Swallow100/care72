@@ -121,6 +121,8 @@ export function MappingEditor({
       if (res.ok && data?.ok && typeof data.version === "number" && data.mapping) {
         setM(data.mapping);
         setVersion(data.version);
+        // AI の読んだ欄が足されたので、確かめるまで下書き（サーバーも下書きに戻す）
+        setStatus("draft");
         setMsg({ tone: (data.mapping.unread ?? []).length > 0 ? "error" : "ok", text: (data.mapping.unread ?? []).length > 0 ? L.unread : L.reused });
       } else {
         setMsg({ tone: "error", text: data?.label ?? L.aiFailed });

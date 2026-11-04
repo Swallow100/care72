@@ -95,7 +95,7 @@ export async function formReadPost(deps: FormReadDeps, scope: FormsScope, form: 
 
 /**
  * 読めなかった頁を読み直す（T120）。置いた頁の画像（R2）から mapping.unread の頁だけを読み、欄を足して unread から外す。
- * 対応表の状態（下書き・確認済）は変えず、版を 1 つ上げる。版が違えば conflict（画面に直しかけがあるときは押せない）
+ * 足した欄は AI が読んだ物なので、確認済の対応表も下書きに戻す（人が確かめてから差し込みに使う）。版を 1 つ上げる。版が違えば conflict（画面に直しかけがあるときは押せない）
  */
 export async function formRereadPost(deps: FormReadDeps, scope: FormsScope, id: string, version: number): Promise<Response> {
   const stored = await getMapping(deps.db, scope.officeId, id);
