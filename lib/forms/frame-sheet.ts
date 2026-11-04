@@ -73,8 +73,8 @@ export type FrameSlot<K extends string> =
    * shape は印の形（既定は □ の形ならレ点、字の場所なら丸。markOf）
    */
   | { kind: "mark"; key: K; page: number; option: string; box: MmBox; shape?: "check" | "circle" }
-  /** 選択肢の（ ）の中 */
-  | { kind: "detail"; key: K; page: number; option: string; box: MmBox }
+  /** 選択肢の（ ）の中。drop は書かない頭の言葉（欄で分かる添え。洪水の（ ）の「浸水」） */
+  | { kind: "detail"; key: K; page: number; option: string; box: MmBox; drop?: string }
   /** 画像の受け口（避難経路の地図） */
   | { kind: "image"; key: K; page: number; slot: string; box: MmBox };
 
@@ -260,7 +260,8 @@ export function buildFrameSheet<K extends string>(input: FrameSheetInput<K>): Ov
       }
       if (c.detail) {
         const slot = detailSlots.find((s) => s.key === key && s.option === path);
-        if (slot && pageOf(slot.page)) placeText(slot.page, slot.box, [c.detail], `${key}:${path}:detail`, `${nameOf.get(key) ?? key} ${c.label}`);
+        const detail = slot?.drop && c.detail.startsWith(slot.drop) ? c.detail.slice(slot.drop.length).trim() : c.detail;
+        if (slot && pageOf(slot.page)) placeText(slot.page, slot.box, [detail], `${key}:${path}:detail`, `${nameOf.get(key) ?? key} ${c.label}`);
         else addExtra(key, `${c.label}（${c.detail}）`);
       }
     }

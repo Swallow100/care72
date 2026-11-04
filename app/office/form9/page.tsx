@@ -3,7 +3,8 @@ import "@/components/forms/form9-paper.css";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { CountLabel, countClass } from "@/components/ui/Tag";
 import { FormAbout } from "@/components/forms/FormAbout";
-import { Form9Paper } from "@/components/forms/Form9Paper";
+import { FillToggle, wantsFill } from "@/components/forms/FillToggle";
+import { Form9Paper, form9Blanks } from "@/components/forms/Form9Paper";
 import { buttonClass } from "@/components/ui/Button";
 import { DownloadIcon } from "@/components/ui/Icon";
 import { wantsPrint } from "@/components/ui/PaperBar";
@@ -26,17 +27,19 @@ import { COLOR_TONES, formatJst } from "@/lib/person";
 export const dynamic = "force-dynamic";
 
 type Props = {
-  searchParams: Promise<{ sort?: string | string[]; edit?: string | string[]; error?: string | string[]; print?: string | string[] }>;
+  searchParams: Promise<{ sort?: string | string[]; edit?: string | string[]; error?: string | string[]; print?: string | string[]; fill?: string | string[] }>;
 };
 
 // 様式 9（災害時利用者一覧表 安否確認優先順位）。事業所の全員を優先順位で並べ、順位を手で直せる。CSV で落とせる。
 // 開けるのはケアマネの役（管理者・審査員のケアマネの役を含む）。ほかの役はそれぞれの入口へ送る（requirePage）。
 // 発災時（災害モード、T09）は色と順位で並び、結果の列と市町村への報告の下書きが出る
 // 印刷は様式 9 の紙（Form9Paper: A4 横、順位の順、報告の下書きつき）。画面の表と操作は紙に出さない。?print=1 で開くとすぐ印刷の窓。
+// T101: 紙はひな形の枠のまま（ケア72 の欄は別紙）。?fill=1 で紙の未記入の欄を塗った版（画面に未記入の数）
 export default async function Form9Page({ searchParams }: Props) {
   const principal = await requirePage("caseload");
   const q = await searchParams;
   const sort = parseSort(q.sort);
+  const fill = wantsFill(q.fill);
   const scope = form9Scope(principal);
 
   let data: Form9Data | null;
@@ -96,6 +99,12 @@ export default async function Form9Page({ searchParams }: Props) {
             <DownloadIcon aria-hidden className="size-4 shrink-0" />
             CSV出力
           </a>
+          {fill && (
+            <span className="text-sm" data-form9-blanks>
+              <span className="text-muted">未記入</span> <span className="font-bold tabular-nums">{form9Blanks(sheet.rows).length}</span>
+            </span>
+          )}
+          <FillToggle here="/office/form9" fill={fill} keep={typeof q.sort === "string" ? { sort: q.sort } : {}} />
           <PrintButton auto={wantsPrint(q.print)} />
         </div>
       </div>
@@ -115,7 +124,7 @@ export default async function Form9Page({ searchParams }: Props) {
           )}
         </section>
       </div>
-      <Form9Paper sheet={sheet} office={data.office.name} date={warekiText(todayJst())} order={order} report={report} />
+      <Form9Paper sheet={sheet} office={data.office.name} date={warekiText(todayJst())} order={order} report={report} fill={fill} />
     </main>
   );
 }

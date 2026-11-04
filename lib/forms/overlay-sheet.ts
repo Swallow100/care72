@@ -136,10 +136,12 @@ const pieceText = (p: Piece) => (p.raw ? p.text : paperText(p.text));
 
 /**
  * 1 行の言葉を字に。未確認の言葉は落とす（紙に「未確認」を刷らない）。添えの言葉（sub）だけの行は括弧に入れる（「（同居）」）。
- * 区切りの「／」はそのまま
+ * 未確認の言葉の前の添え（「用量」「残り」。未確認の所の名前）も落とし、前後と重なった区切りの「／」を詰める（T101）。ほかの「／」はそのまま
  */
 export function lineText(pieces: readonly Piece[]): string {
-  const kept = pieces.filter((p) => !p.unconfirmed && p.text.trim() !== "");
+  const SEP = "／";
+  const named = pieces.filter((p, i) => !p.unconfirmed && p.text.trim() !== "" && !(p.sub && p.text !== SEP && pieces[i + 1]?.unconfirmed));
+  const kept = named.filter((p, i) => p.text !== SEP || (i > 0 && i < named.length - 1 && named[i + 1].text !== SEP));
   if (kept.length === 0) return "";
   if (kept.every((p) => p.sub && p.text !== "／")) return `（${kept.map(pieceText).join("・")}）`;
   const joined = kept.map(pieceText).join(" ");

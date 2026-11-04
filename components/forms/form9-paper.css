@@ -116,3 +116,109 @@
     break-after: auto;
   }
 }
+
+/*
+  ひな形の枠のまま刷る様式9 の 1 枚（T101。components/forms/Form9Paper.tsx の Sheet、寸法は lib/forms/frame-form9.ts）。
+  頁は @page form9-sheet（ひな形の余白、頁の下の端に何も刷らない）。内容の箱の左上がひな形の印刷の範囲の左上（A1）で、
+  題・事業所名・作成・表は Excel の列幅と行の高さ（印刷の倍率 73%）の位置に置く。表の罫線は黒の細線（border-collapse で線の中心が列と行の境）。
+  欄の高さは決まっていて、字は欄の中で縮める（lib/forms/overlay-sheet.ts の fitText）。行が字で伸びないよう、欄の中の箱の高さを決めて溢れを隠す。
+*/
+@page form9-sheet {
+  size: A4 landscape;
+  margin: 19mm 18mm 19mm 18mm;
+}
+
+.paper.form9-sheet {
+  page: form9-sheet;
+  box-sizing: border-box;
+  width: 261mm;
+  height: 172mm;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+  break-after: page;
+  --fs-body: 6.57pt;
+  --fs-label: 7.3pt;
+  --fs-note: 8.03pt;
+  --fs-title: 8.03pt;
+}
+.paper.form9-sheet .f9-at {
+  display: flex;
+  align-items: center;
+  margin: 0;
+}
+.paper.form9-sheet .title {
+  text-align: left;
+}
+.paper.form9-sheet .top {
+  justify-content: space-between;
+}
+.paper .f9-grid {
+  position: absolute;
+  table-layout: fixed;
+  border-collapse: collapse;
+  width: max-content;
+}
+.paper .f9-grid :is(th, td) {
+  border: 0.15mm solid #000;
+  padding: 0;
+  overflow: hidden;
+}
+.paper .f9-grid th {
+  font-size: var(--fs-label);
+  font-weight: 400;
+  line-height: 1.15;
+  text-align: center;
+  vertical-align: middle;
+}
+.paper .f9-grid .f9-hl {
+  display: block;
+}
+.paper .f9-grid td {
+  font-size: var(--fs-body);
+  line-height: 1.15;
+  vertical-align: middle;
+}
+.paper .f9-grid td.num {
+  font-size: 8.03pt;
+  text-align: center;
+}
+.paper .f9-grid .f9-in {
+  position: relative;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  overflow: hidden;
+  padding: 0.35mm 0.65mm;
+}
+.paper .f9-grid td.num .f9-in {
+  align-items: center;
+}
+.paper .f9-grid .f9-v {
+  display: block;
+}
+.paper .f9-grid .f9-ln {
+  display: block;
+  white-space: pre;
+}
+/* 未記入の色付け（T101）。欄の内側（罫線から 0.45mm）を要確認の黄の薄い色。印刷でも塗る */
+.paper .f9-grid .f9-fill {
+  position: absolute;
+  inset: 0.375mm;
+  background: color-mix(in srgb, #f2b125 34%, #fff);
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}
+.paper .f9-grid .f9-fill + .f9-v {
+  position: relative;
+}
+
+/* 別紙（ケア72 の欄と、ひな形の欄に収まらない値）。ひな形の欄と同じ字の大きさ */
+.paper .f9-annex-h {
+  font-size: 8.03pt;
+}
+.paper .f9-annex-order {
+  font-size: var(--fs-label);
+  color: var(--gray);
+}
