@@ -38,12 +38,12 @@
 
 | 物 | 数 |
 | --- | --- |
-| commit（初日 12:42 のリポジトリ作成から） | 1,047（merge commit 202） |
-| commit を書いたモデル（Co-Authored-By） | Opus 5.5 833・Fable 5.1 94・Sonnet 5.5 5 |
+| commit（初日 12:42 のリポジトリ作成から） | 1,068（merge commit 210） |
+| commit を書いたモデル（Co-Authored-By） | Opus 5.5 850・Fable 5.1 94・Sonnet 5.5 5（初日の 8 件は Fable と書いてあるが Opus が書いた） |
 | 取り込んだ PR | 97 |
-| 頼み文（docs/tasks/TNN.md） | 73 |
-| 進みの記録（docs/progress の md） | 87 |
-| テスト | TESTS 件（FILES ファイル。`npx vitest run`） |
+| 頼み文（docs/tasks/TNN.md） | 74 |
+| 進みの記録（docs/progress の md） | 88 |
+| テスト | 2,543 件（155 ファイル。通過 2,542・skip 1。`npx vitest run`） |
 | 見直し役・Skill・フック・MCP の道具 | 3・3・2・7 |
 
-数え方: commit と Co-Authored-By は `git log`、PR は GitHub の merged の数、テストは `npx vitest run --maxWorkers=4` の結果。公開のための片付けの commit は数に入れていない。
+数え方: commit と Co-Authored-By は統合の branch（origin/integrate/t11-t12 の 5686d0a）の `git log`、PR は GitHub の merged の数、テストは `npx vitest run --maxWorkers=4` の結果。公開のための片付けの commit は数に入れていない。

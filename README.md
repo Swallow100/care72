@@ -198,6 +198,8 @@ Messages API を呼ぶ所は lib/claude/call.ts の askJson の 1 か所で、�
 
 ## Claude Code で何が可能になったか
 
+作り方の仕組み（設計と作業者のセッションの並列、1 作業 1 worktree、別の目の点検、ルールの表とテスト、配信の守り）は [docs/PROCESS.md](docs/PROCESS.md)、詳しい使い方は [docs/CLAUDE_CODE.md](docs/CLAUDE_CODE.md)。
+
 **数え直し**: 下の表の値は 11/3 18:14 の `36f82bd`（origin/integrate/t11-t12）で数えた物で、そのあとも作業が続いている。提出の前に作者が同じ数え方（[docs/CLAUDE_CODE.md](docs/CLAUDE_CODE.md) の一番下）で数え直し、この表を差し替える。
 
 | 数字 | 値 |
