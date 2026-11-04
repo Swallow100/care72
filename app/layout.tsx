@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { BIZ_UDGothic, BIZ_UDPGothic, BIZ_UDPMincho, Inter } from "next/font/google";
 import { AppHeader } from "@/components/AppHeader";
 import { CallQueueProvider } from "@/components/CallQueue";
+import { NavPending } from "@/components/NavPending";
 import { OfflineBand } from "@/components/OfflineBand";
 import { SwRegister } from "@/components/SwRegister";
 import { DialogHost } from "@/components/ui/DialogHost";
@@ -71,6 +72,8 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
           <OfflineBand stamp={new Date().toISOString()} />
           {children}
         </CallQueueProvider>
+        {/* 画面を移る途中の印（押した物の灰色と上の端の帯） */}
+        <NavPending />
         {/* アプリ内の確認・お知らせの窓（T44。lib/ui/dialog.ts） */}
         <DialogHost />
         {/* 最後の写しの Service Worker（T71。public/sw.js） */}
