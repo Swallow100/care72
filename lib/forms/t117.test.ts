@@ -13,6 +13,9 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: () => {}, push:
 
 import { PaperEdit } from "../../components/forms/PaperEdit.tsx";
 import { MatsuyamaSheet } from "../../components/forms/MatsuyamaSheet.tsx";
+import { OverlaySheet } from "../../components/forms/OverlaySheet.tsx";
+import { matsuyamaFrameSheet } from "./frame-build.ts";
+import { ORIGINALS, type OriginalManifest } from "./originals.ts";
 import { SEED_PEOPLE, type SeedPerson } from "../../seed/people.ts";
 import { seedStatements } from "../../seed/sql.ts";
 import type { Principal } from "../auth/principal.ts";
@@ -440,6 +443,38 @@ describe("紙に直接書く", () => {
     // 紙には押せる印の CSS が印刷で消える決まりがある
     const css = readFileSync(new URL("../../components/forms/paper-edit.css", import.meta.url), "utf8");
     expect(css).toMatch(/@media print[\s\S]*\.ov-edit[\s\S]*display: none/);
+  });
+});
+
+describe("原本の枠の紙（T101）", () => {
+  const manifest: OriginalManifest = {
+    id: "matsuyama",
+    sha256: ORIGINALS.matsuyama.sha256,
+    pages: ORIGINALS.matsuyama.usePages.map((page) => ({ page, width: 3307, height: 4677, bytes: 1 })),
+    importedAt: "2026-11-05T00:00:00.000Z",
+  };
+  const p = seed("p-01");
+  const rows = seedRows({ ...p, contacts: p.contacts.map((c) => ({ ...c, kana: c.name ? "モリ ケイコ" : null })) });
+  const framed = matsuyamaFrameSheet(buildMatsuyamaSheet(rows, OPTS), manifest);
+
+  it("フリガナの低い欄（高さ 3.36mm）に 1 行で収まり、別紙に回らない", () => {
+    const texts = framed.pages.flatMap((pg) => pg.items.filter((it) => it.kind === "text"));
+    for (const k of ["kin.kana", "supporter1.kana", "supporter2.kana"]) {
+      const it = texts.find((x) => x.fieldId === k);
+      expect(it, k).toMatchObject({ lines: ["モリ ケイコ"] });
+    }
+    expect(framed.annex.map((r) => r.fieldId).filter((f) => f.endsWith(".kana"))).toEqual([]);
+  });
+
+  it("紙に直接書く押す所は値の無い欄にもあり、edit のときだけ描く（印刷では消える）。手書きの欄は無い", () => {
+    const keys = framed.pages.flatMap((pg) => (pg.targets ?? []).flatMap((t) => t.keys));
+    for (const k of ["kin.address", "shelter.near.place", "org.name", "housing.type"]) expect(keys, k).toContain(k);
+    for (const k of ["sign.self", "city.stamp", "head.number"]) expect(keys, k).not.toContain(k);
+    const props = { sheet: framed, imageSrc: (n: number) => `/p/${n}.png`, checked: "", kind: "matsuyama" };
+    expect(renderToStaticMarkup(createElement(OverlaySheet, props))).not.toContain("ov-edit");
+    const html = renderToStaticMarkup(createElement(OverlaySheet, { ...props, edit: true }));
+    expect(html).toContain('class="ov-edit"');
+    expect(html).toContain('data-edit-key="kin.address"');
   });
 });
 

@@ -1,6 +1,7 @@
 /*
   紙に直接書く（T117、components/forms/PaperEdit.tsx）。押せる欄の印は画面だけ（紙には刷らない）。
-  印は細い灰の点線の枠（色の枠は選択・注意・危険だけの決まり。押せることだけを示す灰）。押したとき・指を載せたときは灰色だけ（--press）。
+  印は細い灰の点線の枠（色の枠は選択・注意・危険だけの決まり。押せることだけを示す灰）。指を載せたとき・焦点は灰色の地だけ
+  （透ける黒〔--press〕は紙の上で真っ黒に描かれることがあったので、不透明の薄い灰）。
   紙は画面のテーマによらず白なので、線の色は固定の灰。
 */
 @media screen {
@@ -11,7 +12,7 @@
   }
   [data-paper-edit] [data-editable]:hover,
   [data-paper-edit] [data-editable]:focus-visible {
-    background-color: rgb(0 0 0 / 0.06);
+    background-color: #eef0f2;
   }
   [data-paper-edit] [data-editable]:focus-visible {
     outline: 2px solid var(--accent);
