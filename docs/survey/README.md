@@ -6,7 +6,8 @@
 | --- | --- |
 | 質問（9 問と属性 2 つ、ご意見、引用の確認 1 つ） | [QUESTIONS.md](QUESTIONS.md)（正は tools/survey/questions.ts） |
 | 答えの頁（ログインなし、共有のリンク 1 本） | /survey/<token>（app/survey、lib/survey） |
-| 答えの写し（1 行 1 人、匿名） | [answers.md](answers.md) |
+| 答えの全部の写し（1 行 1 人、匿名。文の列も） | `answers.local.md`（手元だけ。.gitignore にあり commit しない） |
+| 公開してよい写し（文の列を空にした物） | [answers.md](answers.md)（tools/survey/strip-answers.ts が作る） |
 | 集計と、AI で分けた自由記述 | `summary.md`（tools/survey/summarize.ts が作る） |
 | 紙（使わない。Web 版に移した） | [paper.html](paper.html) |
 
@@ -22,7 +23,7 @@
 
 ## 2　答えを写す
 
-/office の「全員写し」（または 1 人分の「写し」）を、`answers.md` の表の下に貼る。番号は W001・W002…（送った順。審査員の試しは T001… で、全員写しには入らない）。答えの元（D1 の survey_responses の行）は **11 月末までに消す**（案内の文で約束した）。
+/office の「全員写し」（または 1 人分の「写し」）を、手元の `docs/survey/answers.local.md` の表の下に貼る（初めは `answers.md` を写して作る。このファイルは .gitignore にあり、commit しない。リポジトリは公開なので、文の列〔記入欄とその他の記入〕の入った写しを載せない）。番号は W001・W002…（送った順。審査員の試しは T001… で、全員写しには入らない）。答えの元（D1 の survey_responses の行）は **11 月末までに消す**（案内の文で約束した）。
 
 ### 表の列
 
@@ -72,14 +73,15 @@
 ```
 node tools/survey/summarize.ts --no-ai
 node --env-file=.dev.vars tools/survey/summarize.ts
+node tools/survey/strip-answers.ts
 ```
 
-1. 先に `--no-ai`（鍵を使わない）。表が読めるか、要確認が無いかを見る。読めない所は行ごとに出るので、answers.md を直して流し直す。
+1. 先に `--no-ai`（鍵を使わない）。表が読めるか、要確認が無いかを見る。読めない所は行ごとに出るので、answers.local.md を直して流し直す。
 2. 鍵は環境変数 `ANTHROPIC_API_KEY` で渡す（手元の `.dev.vars` に入っていれば、2 行目のように `--env-file` で読ませる。鍵をコマンドやチャットに書かない）。鍵が無いときは、AI の所だけ飛ばして数えた所を書く。
 3. 結果は `docs/survey/summary.md`。数えた所は機械で、自由記述の型と引用候補は Claude（Sonnet）が分けた物で、「AI」の印が付く。AI に渡すのは自由記述の文だけ（番号と文。名前・事業所名は無い前提）。
 4. 問 5 と問 9 の理由は 7 つの型（時間・様式・聞き取り・支援者・市町村・使われない・その他）の 1 つに分けられ、1 つの答えは 1 つの型に数える。引用候補は原文から 1 文をそのまま抜いた物で、固有名詞は「〇〇」に伏せられている。原文と合わない候補は自動で捨てられる。ご意見とその他の記入は AI に渡さず、引用が「よい」の人の物だけ原文を並べる。
-5. AI の分けは間違う。**answers.md の原文と見比べて、採るかどうかを作者が決める。**
-6. 良ければ `answers.md` と `summary.md` を commit する。
+5. AI の分けは間違う。**answers.local.md の原文と見比べて、採るかどうかを作者が決める。**
+6. 良ければ `node tools/survey/strip-answers.ts` で、answers.local.md から文の列（役その他・問3その他・問4その他・問5・問6その他・問9理由・ご意見）を空にした写しを `answers.md` に作る。commit するのは、この `answers.md` と `summary.md` だけ。`answers.local.md` は commit しない（`git status` に出ないことを確かめる）。summary.md に載る文は、引用が「よい」の人の物だけ（候補は固有名詞を伏せた 1 文）。載せたくない文があれば summary.md から消してから commit する。
 
 ## 4　動画と README に出す
 
@@ -94,7 +96,7 @@ node --env-file=.dev.vars tools/survey/summarize.ts
 
 ## 5　守ること
 
-- 名前・事業所名・利用者のことを集めない・書かない。回答の原本はリポジトリに入れない。
+- 名前・事業所名・利用者のことを集めない・書かない。回答の原本と、文の列の入った写し（answers.local.md）はリポジトリに入れない。commit する answers.md は文の列が空の物だけ（`npm test` が見る）。
 - 引用に使うのは、最後の問いで了承を取った人の文だけ。
 - 一人ひとりの元の答え（D1 の survey_responses）は 11 月末までに消す（案内の文の約束）。
 - 質問や選択肢を変えるときは QUESTIONS.md・この表・answers.md の見出し・tools/survey/questions.ts を一緒に直す（`npm test` が言葉の一致を確かめる）。
