@@ -19,12 +19,14 @@ const f = (seconds: number) => Math.round(seconds * FPS);
 const FLOW_NAMES = ["松山市の様式", "本人の 1 枚", "医療班の要約"];
 
 /** 文字だけの面（split の中で録画の番号が空の所）。sub を「・」で分けて 1 行ずつ出す */
-const WordsPanel: React.FC<{ width: number; height: number; text: string; delay?: number }> = ({ width, height, text, delay = 0 }) => {
+const WordsPanel: React.FC<{ width: number; height: number; text: string; delay?: number; bg?: { id: string; count: number } }> = ({ width, height, text, delay = 0, bg }) => {
   const frame = useCurrentFrame();
   const p = usePalette();
   return (
     <div
       style={{
+        position: "relative",
+        overflow: "hidden",
         width,
         height,
         ...rise(frame, delay),
@@ -43,8 +45,15 @@ const WordsPanel: React.FC<{ width: number; height: number; text: string; delay?
         fontWeight: 600,
       }}
     >
+      {/* 背景の生成動画は文字の面の中だけ（録画の後ろには敷かない）。色を抜いて面の色を重ねる */}
+      {bg ? (
+        <AbsoluteFill>
+          <Img src={staticFile(`bg/${bg.id}/${String(Math.min(bg.count, frame + 1)).padStart(5, "0")}.jpg`)} style={{ width: "100%", height: "100%", objectFit: "cover", filter: "grayscale(1)" }} />
+          <AbsoluteFill style={{ background: p.surface, opacity: 0.8 }} />
+        </AbsoluteFill>
+      ) : null}
       {text.split("・").map((w, i) => (
-        <div key={w} style={{ display: "flex", alignItems: "center", gap: 20, ...rise(frame, delay + 8 + i * STAGGER * 2) }}>
+        <div key={w} style={{ position: "relative", display: "flex", alignItems: "center", gap: 20, ...rise(frame, delay + 8 + i * STAGGER * 2) }}>
           <span style={{ width: 12, height: 12, borderRadius: 6, background: p.onSurface, flex: "none" }} />
           {w}
         </div>
@@ -88,7 +97,13 @@ const Split: React.FC<{ shot: Shot; assets: Assets; duration: number }> = ({ sho
                 callouts={i === ids.length - 1 ? shot.callouts : undefined}
               />
             ) : (
-              <WordsPanel width={size.width} height={size.height} text={shot.sub ?? ""} delay={delays[i]} />
+              <WordsPanel
+                width={size.width}
+                height={size.height}
+                text={shot.sub ?? ""}
+                delay={delays[i]}
+                bg={shot.bg && (assets.bg?.[shot.bg] ?? 0) > 0 ? { id: shot.bg, count: assets.bg?.[shot.bg] ?? 0 } : undefined}
+              />
             )}
           </div>
         );
@@ -115,7 +130,7 @@ const Backdrop: React.FC<{ shot: Shot; assets: Assets; duration: number }> = ({ 
   const p = usePalette();
   const count = shot.bg ? (assets.bg?.[shot.bg] ?? 0) : 0;
   if (count > 0) {
-    const index = Math.min(count, frame + 1);
+    const index = Math.min(count, f(shot.bgFrom ?? 0) + frame + 1);
     return (
       <AbsoluteFill>
         <Img src={staticFile(`bg/${shot.bg}/${String(index).padStart(5, "0")}.jpg`)} style={{ width: 1920, height: 1080, objectFit: "cover", filter: "grayscale(1)" }} />
@@ -222,10 +237,20 @@ const ShotView: React.FC<{ shot: Shot; assets: Assets }> = ({ shot, assets }) =>
       );
       break;
     case "quote":
-      body = <Quote text={shot.lines?.[0] ?? ""} sub={shot.sub} />;
+      body = (
+        <>
+          <Backdrop shot={shot} assets={assets} duration={duration} />
+          <Quote text={shot.lines?.[0] ?? ""} sub={shot.sub} />
+        </>
+      );
       break;
     case "end":
-      body = <EndCard />;
+      body = (
+        <>
+          <Backdrop shot={shot} assets={assets} duration={duration} />
+          <EndCard />
+        </>
+      );
       break;
   }
   const image = shot.bg && (assets.bg?.[shot.bg] ?? 0) > 0 ? "イメージ（AI 生成）" : shot.kind === "memo" ? "イメージ" : null;

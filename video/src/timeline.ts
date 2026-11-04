@@ -52,8 +52,10 @@ export type Shot = {
   zoom?: [Rect, Rect];
   /** 録画の上の囲み */
   callouts?: Callout[];
-  /** 奥に敷く背景の生成動画（docs/video/BACKGROUND.md の B01…）。無ければ地の色だけ */
+  /** 奥に敷く背景の生成動画（docs/video/BACKGROUND.md の B01…）。無ければ地の色だけ。split では文字の面の中だけに敷く（録画の後ろには敷かない） */
   bg?: string;
+  /** 背景の生成動画の何秒目から使うか（1 本を 2 つの絵で続けて使うとき） */
+  bgFrom?: number;
   /** 窓の上の帯の右に出すモデルの名前（スマホの録画では横に出す） */
   chip?: string;
   /** 下に小さく出す出典 */
@@ -88,7 +90,8 @@ export const SCENES: Scene[] = [
         end: 7,
         kind: "text",
         footage: "R01",
-        label: "担当一覧の平時をぼかして奥に。作者の紹介の文字",
+        label: "ケアマネの訪問の後ろ姿（B01）をぼかして奥に。作者の紹介の文字",
+        bg: "B01",
         lines: ["作者 医学部の学生"],
         sub: "ケアマネ × 在宅の要介護高齢者 × 災害の最初の 72 時間",
         // N01 の「医学部で」で 1 行目、「家族は、在宅のお年寄りを受け持つケアマネです」で下の帯
@@ -127,7 +130,7 @@ export const SCENES: Scene[] = [
     at: 20,
     end: 46,
     shots: [
-      { at: 20, end: 25, kind: "text", label: "医学部 → 家族はケアマネ", lines: ["医学部", "家族はケアマネ"], beats: [0.4, 1.9] },
+      { at: 20, end: 25, kind: "text", label: "医学部 → 家族はケアマネ", lines: ["医学部", "家族はケアマネ"], beats: [0.4, 1.9], bg: "B02" },
       {
         at: 25,
         end: 33,
@@ -137,6 +140,7 @@ export const SCENES: Scene[] = [
         // 様式の下の方（未確認の欄。R03-2 は始めと終わりをゆるめて送るので、前の 12 秒と同じ所が 11 秒）
         froms: [0, 11],
         lines: ["知っている", "届かない"],
+        bg: "B03",
         // N06 の「ケアマネは…全部知っている」「でも計画に起こす時間がなく」に合わせて
         beats: [0.3, 3.3],
         sub: "薬と残り日数・医療機器と電池・家族と支援者・夜に来られる人",
@@ -146,12 +150,13 @@ export const SCENES: Scene[] = [
         at: 33,
         end: 38,
         kind: "number",
+        bg: "B04",
         label: "作成率",
         value: "15.1%",
         sub: "対象 670 万人",
         source: "共同通信 2026-10-04（熊本日日新聞）",
       },
-      { at: 38, end: 42, kind: "bars", label: "能登の死者と関連死", source: "熊本日日新聞 2026-08" },
+      { at: 38, end: 42, kind: "bars", label: "能登の死者と関連死", source: "熊本日日新聞 2026-08", bg: "B05" },
       // 量の欄を囲むのは N09 の「用量が抜けていた」の頭（仮の声で 44.2 秒。本人の声に替えたら測り直す）
       { at: 42, end: 46, kind: "memo", label: "避難所の手書きの薬のメモ（イメージ）。量の欄が空いている", source: "厚生労働省", beats: [2.2] },
     ],
@@ -309,13 +314,15 @@ export const SCENES: Scene[] = [
         at: 163,
         end: 169,
         kind: "number",
+        bg: "B07",
         label: "計画 1 件の時間の前と後",
         value: "［X 時間］ → ［Y 分］",
         // 「→」のある値は前と後を 1 行に並べる（Graphics.tsx の Compare）。lines は各数の下の名前
         lines: ["ふだん", "ケア72"],
         sub: "実測 架空の事例［N］件・ケアマネ［N］人。ふだんの時間は本人の申告",
       },
-      { at: 169, end: 175, kind: "quote", label: "協力ケアマネの一言と 2 つ目の数字", lines: ["［協力ケアマネの一言］"], sub: "医療班の手元の割合 ［T34 か訓練の結果。無ければ未測定］" },
+      // 背景の B07 は 1 本（14 秒）を 2 つの絵で続けて使う（前の絵が 6 秒）
+      { at: 169, end: 175, kind: "quote", label: "協力ケアマネの一言と 2 つ目の数字", lines: ["［協力ケアマネの一言］"], sub: "医療班の手元の割合 ［T34 か訓練の結果。無ければ未測定］", bg: "B07", bgFrom: 6 },
     ],
   },
   {
@@ -324,7 +331,7 @@ export const SCENES: Scene[] = [
     ground: "blue",
     at: 175,
     end: 180,
-    shots: [{ at: 175, end: 180, kind: "end", label: "終わりの画面" }],
+    shots: [{ at: 175, end: 180, kind: "end", label: "終わりの画面", bg: "B08" }],
   },
 ];
 
