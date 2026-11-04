@@ -3,6 +3,7 @@
 // 入力の違いは 3 つだけ: 状況は訓練の時計（lib/drill/engine.ts の drillSituation）、安否は訓練の物（signals の drill_id がこの訓練）、
 // 時計の頼り先は訓練の世界で書き換えた写し（lib/drill/director.ts の drillClocks。栄養剤の持ち出し忘れ・透析施設の休止）。
 // 電話の記録・ケアマネの上書き（本番の経過）は読まない。再生も同じ道（Claude を呼ばない）。
+// 通話で聞いた安否は、本番の電話と同じく 赤 けが・動けない（red_injury）の人への「無事」を表に渡さない（T84、lib/drill/heard-keep.ts）。
 
 import type { D1Database } from "@cloudflare/workers-types";
 import { toCaseloadRows, type CaseloadRow } from "../caseload.ts";
@@ -17,6 +18,7 @@ import { heardSignalId, loadDrillRow, loadTicks, participantsOf, replayState, un
 import { drillClocks } from "./director.ts";
 import { drillSituation, nowHour, simAt, type ActionRecord, type DrillState, type HeardSignal, type Tick } from "./engine.ts";
 import { fictionKindOf, type FictionKind } from "./fiction.ts";
+import { passHeard } from "./heard-keep.ts";
 import { nightTimeLabel } from "./night.ts";
 import { lastHour, scenarioOf } from "./scenarios.ts";
 import { shortJst } from "../disaster/state.ts";
@@ -43,8 +45,16 @@ export type DrillScreen = {
   bands: Band[];
   /** 本人役（T18、Claude）が作った安否の signals の id。行の詳細の安否に AI の印を付ける */
   aiSignals: string[];
-  /** ケアマネが通話・訪問で聞いた安否の signals の id → 通話か訪問か（T21。行の詳細で「通話」「訪問 確認済」と添える。AI の印なし） */
+  /**
+   * ケアマネが通話・訪問で聞いた安否の signals の id → 通話か訪問か（T21。行の詳細で「通話」「訪問 確認済」と添える。AI の印なし）。
+   * 表に渡さなかった物（refused）は入れない
+   */
   heard: Record<string, HeardSignal["via"]>;
+  /**
+   * 通話で聞いた安否を表に渡さなかった手（T84、至急維持）。手の番号 → 本番の電話と同じ言葉「無事 不可（本人が「けが」）」。
+   * 手の結果の「通話」の横と紙の訓練記録に出す
+   */
+  refused: Record<string, string>;
   /**
    * 本人ごとの連絡先（ケアマネの手の相手を選ぶ。T20）。区分と続柄の言い方と、番号があるかだけ（名前と番号は画面に出さない。
    * 訓練の画面から本物の番号にかけない、T17 の決め）
@@ -155,23 +165,37 @@ export async function loadDrillScreen(
 
   const signalRows = signals.results as SignalForDetail[];
   // ケアマネが通話・訪問で聞いた安否（T21）。訪問で会えた物は緑の理由が「訪問 確認済」
-  const heard = heardOf(id, state.actions);
-  const byPerson = new Map<string, TriageSignal[]>();
-  for (const s of signalRows) {
+  const heardAll = heardOf(id, state.actions);
+  const toSignal = (s: SignalForDetail): TriageSignal => {
     const t = toTriageSignal(s);
-    byPerson.set(s.person_id, [...(byPerson.get(s.person_id) ?? []), heard[s.id] === "visit" ? { ...t, visit: true } : t]);
-  }
+    return heardAll[s.id] === "visit" ? { ...t, visit: true } : t;
+  };
   // 訓練の世界が時計の頼り先を書き換える（栄養剤の持ち出し忘れ・透析施設の休止 → 未確認）。台帳そのものは変えない
   const clockRows = drillClocks(clocks.results as unknown as Array<ClockRow>, state.world);
   const contactRows = contacts.results as unknown as Array<ContactRow>;
+  const today = jstDate(situation.now);
 
-  const rows = toCaseloadRows(peopleRows, clockRows, contactRows, jstDate(situation.now), {
+  // 至急維持（T84）: 通話で聞いた「無事」と けが・動けない の無い「無事でない」は、その前の表の行が red_injury なら表に渡さない
+  // （本番の電話と同じ線。lib/drill/heard-keep.ts）。その前の表は、その人の渡した安否だけで担当一覧と同じ道で当てる
+  const pass = passHeard(signalRows, heardAll, toSignal, situation.now, (personId, sigs) => {
+    const one = toCaseloadRows(
+      peopleRows.filter((p) => p.id === personId),
+      clockRows,
+      contactRows,
+      today,
+      { situation, signals: new Map([[personId, sigs]]) },
+    )[0];
+    return one?.triage ? { rule: one.triage.rule, reason: one.triage.reason } : null;
+  });
+  const heard = Object.fromEntries(Object.entries(heardAll).filter(([sid]) => !pass.refused.has(sid)));
+
+  const rows = toCaseloadRows(peopleRows, clockRows, contactRows, today, {
     situation,
-    signals: byPerson,
+    signals: pass.byPerson,
     detail: {
       contacts: contactRows as unknown as ContactForDetail[],
       clocks: clockRows as unknown as Array<ClockForDetail & { person_id: string }>,
-      signals: signalRows,
+      signals: pass.kept,
       calls: [],
     },
   });
@@ -199,6 +223,7 @@ export async function loadDrillScreen(
       .map((r) => r.signal)
       .filter((x): x is string => typeof x === "string"),
     heard,
+    refused: refusedOf(id, state.actions, pass.refused),
     contacts: contactsByPerson(contactRows),
     undoable: undoableAct(row),
     fiction: fictionKindOf(scope.officeId),
@@ -210,6 +235,16 @@ export function heardOf(drillId: string, actions: ReadonlyArray<ActionRecord>): 
   const out: Record<string, HeardSignal["via"]> = {};
   for (const a of actions) {
     if (a.result?.heard) out[heardSignalId(drillId, a.id)] = a.result.heard.via;
+  }
+  return out;
+}
+
+/** 表に渡さなかった聞いた安否（signals の id → 言葉）を、手の番号 → 言葉に（lib/drill/db.ts の heardSignalId の逆） */
+export function refusedOf(drillId: string, actions: ReadonlyArray<ActionRecord>, refused: ReadonlyMap<string, string>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const a of actions) {
+    const label = refused.get(heardSignalId(drillId, a.id));
+    if (label) out[a.id] = label;
   }
   return out;
 }
