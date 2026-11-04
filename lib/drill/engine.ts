@@ -63,6 +63,8 @@ import {
   type ClockMark,
 } from "./clock.ts";
 import { fireScheduled } from "./schedule.ts";
+import { cleanScale, fitToScale, scaleIncidents, type DrillScale } from "./scale.ts";
+import { HOME_TOWN_MAX } from "./self.ts";
 
 export { isStaffCount, STAFF_MAX } from "./options.ts";
 import { fallbackIncidents } from "./world-apply.ts";
@@ -98,6 +100,18 @@ export type DrillOptions = {
    * （開始の画面が付ける。10 分版には付けない）。無ければ刻みの道（step）で今までと同じ
    */
   clock?: true;
+  /**
+   * 仮想の規模（T104、lib/drill/scale.ts）。仮想だけ（ほかの想定に来たら startDrill が捨てる）。おまかせは開始の時に幅の中から引いた値。
+   * 最初の区切りに規模の出来事を当て、世界の余震を規模の震度までにする
+   */
+  scale?: DrillScale;
+  /** 規模をおまかせで引いたか（T104。訓練記録の言葉に使う） */
+  scaleAuto?: true;
+  /**
+   * 訓練する人（自分）の住む所の町名（T104、lib/drill/self.ts）。無ければ事業所の近く。
+   * サーバーの中だけ。監督には地区の別名と地形の一言だけを渡す
+   */
+  home?: string;
 };
 
 export type DrillState = {
@@ -350,13 +364,34 @@ export function initialState(
 }
 
 
-/** 選んだ物だけ残す（職員は 0〜9 の整数、夜間発災・連続の時計は true のときだけ） */
+/** 選んだ物だけ残す（職員は 0〜9 の整数、夜間発災・連続の時計は true のときだけ、規模は形の合う物、住む所は短い文字） */
 export function cleanOptions(o: DrillOptions | null | undefined): DrillOptions {
+  const scale = cleanScale(o?.scale);
+  const home = typeof o?.home === "string" ? o.home.trim() : "";
   return {
     ...(isStaffCount(o?.staff) ? { staff: o!.staff } : {}),
     ...(o?.night === true ? { night: true } : {}),
     ...(o?.clock === true ? { clock: true as const } : {}),
+    ...(scale ? { scale } : {}),
+    ...(scale && o?.scaleAuto === true ? { scaleAuto: true as const } : {}),
+    ...(home && Array.from(home).length <= HOME_TOWN_MAX ? { home } : {}),
   };
+}
+
+/**
+ * 監督・世界に渡す T104 の欄。仮想は規模（scale）、連続の時計の大雨想定・地震想定は訓練する人の住む所（self。選ばなければ事業所の近く）。
+ * 10 分版・刻みの道の訓練には付けない（前と同じ入力）
+ */
+export function worldExtras(state: Pick<DrillState, "scenario" | "options">): Pick<DirectorInput, "scale" | "self"> {
+  if (isVirtual(state.scenario)) return state.options?.scale ? { scale: state.options.scale } : {};
+  if (state.scenario === "short" || state.options?.clock !== true) return {};
+  return { self: { home: state.options.home ?? null } };
+}
+
+/** 仮想の最初の区切りに当てる規模の出来事（T104）。規模の無い訓練・2 つ目からの区切りは空 */
+export function openingIncidents(state: Pick<DrillState, "scenario" | "options">, first: boolean): DrillIncident[] {
+  const scale = state.options?.scale;
+  return first && isVirtual(state.scenario) && scale ? scaleIncidents(scale, 0) : [];
 }
 
 /** 連続の時計の訓練か（T90） */
@@ -435,10 +470,14 @@ export async function step(
 
   // 表の状況（出ない本人の物は外す）。監督の固定の差し込み（by: director）は actor が director で、AI の印なし。
   // 代わりの人の選び方（who）は表の物で、状況に残さない
-  const fixed: DrillIncident[] = def.events
-    .map((e, i) => castEvent(e, cast[eventKey(hour, i)]))
-    .filter((e) => !e.person || members.has(e.person))
-    .map(({ by, who: _who, ...e }) => ({ ...e, actor: by ?? "world", at: eventHour(e, hour), ai: false }));
+  // 仮想の規模（T104）の出来事は最初の刻みの先頭に（規模の無い訓練は空）
+  const fixed: DrillIncident[] = [
+    ...openingIncidents(state, index === 0),
+    ...def.events
+      .map((e, i) => castEvent(e, cast[eventKey(hour, i)]))
+      .filter((e) => !e.person || members.has(e.person))
+      .map(({ by, who: _who, ...e }) => ({ ...e, actor: by ?? "world", at: eventHour(e, hour), ai: false })),
+  ];
   let world = fixed.reduce((w, e) => applyEvent(w, e, e.at), settleWorld(state.world, hour * 60));
 
   // 手の途中でこの刻みに着いたとき、その手の返事をここで決め、監督に言い換えを頼む（T20。監督の呼び出しは増やさない）
@@ -458,6 +497,7 @@ export async function step(
     actions,
     ...(replies.length > 0 ? { replies } : {}),
     ...night,
+    ...worldExtras(state),
   };
   if (isVirtual(state.scenario)) return virtualStep(state, hooks, { index, hour, last, world, fixed, members, directorInput });
 
@@ -554,9 +594,12 @@ async function virtualStep(
   const r: WorldResult | null = hooks.world
     ? await safely(() => hooks.world!({ ...t.directorInput, world, hints, session: world.session ?? null, minute }), null)
     : null;
-  // 結末の人がまた結末になる・参加者でない人の状況は当てない（世界の口でも捨てるが、ここでも守る）
+  // 結末の人がまた結末になる・参加者でない人の状況は当てない（世界の口でも捨てるが、ここでも守る）。余震は規模まで（T104）
   const inserted = r
-    ? r.incidents.filter((e) => !e.person || (members.has(e.person) && !(e.change.kind === "outcome" && world.ended?.[e.person])))
+    ? fitToScale(
+        r.incidents.filter((e) => !e.person || (members.has(e.person) && !(e.change.kind === "outcome" && world.ended?.[e.person]))),
+        state.options?.scale,
+      )
     : fallbackIncidents(hour, hooks.world ? "down" : "off");
   if (r && r.session !== undefined) world = { ...world, session: r.session };
   world = inserted.reduce((w, e) => applyEvent(w, e, e.at), world);
@@ -673,7 +716,8 @@ export async function advance(
 
   // 1. 表の出来事と予定の出来事（区切りの中の物を時刻の順に。同じ時刻は表が先）
   const table = tableOf(state);
-  const fixed = table.events.filter((x) => x.minute > from && x.minute <= to).map((x) => x.event);
+  // 仮想の規模（T104）の出来事は最初の区切りの先頭に（規模の無い訓練は空）
+  const fixed = [...openingIncidents(state, first), ...table.events.filter((x) => x.minute > from && x.minute <= to).map((x) => x.event)];
   const fired = fireScheduled(state.world, to);
   const due = fired.incidents.filter((e) => !e.person || members.has(e.person));
   const happened = [...fixed, ...due].map((e, i) => ({ e, i })).sort((a, b) => a.e.at - b.e.at || a.i - b.i).map((x) => x.e);
@@ -725,6 +769,7 @@ export async function advance(
     ...night,
     since: Math.max(0, from),
     budget,
+    ...worldExtras(state),
   };
   let inserted: DrillIncident[] = [];
   let directorAt = state.directorAt;
@@ -738,8 +783,12 @@ export async function advance(
       const r = await safely(() => hooks.world!({ ...directorInput, hints, session: world.session ?? null, minute: to }), null);
       counts.director += 1;
       directorAt = to;
+      // 余震は規模まで（T104）
       inserted = r
-        ? r.incidents.filter((e) => !e.person || (members.has(e.person) && !(e.change.kind === "outcome" && world.ended?.[e.person])))
+        ? fitToScale(
+            r.incidents.filter((e) => !e.person || (members.has(e.person) && !(e.change.kind === "outcome" && world.ended?.[e.person]))),
+            state.options?.scale,
+          )
         : fallbackIncidents(hour, "down");
       if (r && r.session !== undefined) {
         world = { ...world, session: r.session };

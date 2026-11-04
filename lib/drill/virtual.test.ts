@@ -593,7 +593,8 @@ describe("仮想の筋（偽の部屋・偽の Haiku）", () => {
     if (!rec || rec === "running") throw new Error("記録が無い");
     expect(rec.score.ended).toEqual([]);
     const screen = (await loadDrillScreen(db, drillScope(careManager())!, "drill-v", null))!;
-    expect(screen.ticks[0].incidents[0]).toMatchObject({ change: { kind: "world_note", state: "off" }, ai: false });
+    // T104: 最初の区切りの先頭は規模の出来事（おまかせで引いた規模。AI の印なし）、そのあとに世界の停止の印
+    expect(screen.ticks[0].incidents.find((e) => e.change.kind === "world_note")).toMatchObject({ change: { kind: "world_note", state: "off" }, ai: false });
   });
 
   it("部屋の Agent: 道具は world_step だけ（砂場の道具なし）、モデルは Opus・考える深さ high（T67）", () => {

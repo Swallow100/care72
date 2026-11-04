@@ -20,6 +20,8 @@ import { PHONE_LABELS, SHELTER_LABELS } from "./labels.ts";
 import { nightLine } from "./night.ts";
 import { hourText, minuteText } from "./time-text.ts";
 import type { OutcomeSource } from "./outcome.ts";
+import { scaleWords } from "./scale.ts";
+import { timelineText } from "./timeline.ts";
 import { reportersOf } from "./persona.ts";
 import type { WorldState, WorldVia } from "./scenarios.ts";
 import {
@@ -285,6 +287,10 @@ export function tickText(input: WorldInput, cast: Pick<WorldCast, "key"> & Parti
     `時刻: 発災から ${hourText(input.hour)}（${last} 時間まで）`,
     // 夜間発災（T59）だけ。時刻の 1 行
     ...(input.night ? [nightLine(input.hour)] : []),
+    // 規模（T104、lib/drill/scale.ts）。開始の前に決めた災害と規模（おまかせも開始の時に決まる）。規模の無い前からの訓練は書かない
+    ...(input.scale ? [scaleWords(input.scale)] : []),
+    // 発災からの時間の帯の目安（T104、lib/drill/timeline.ts。世界には文だけ）
+    timelineText(input.hour, { with: "world" }),
     acts.length > 0 ? ["前の刻みからケアマネがした事:", ...acts].join("\n") : "前の刻みからケアマネがした事: なし",
     contacts.length > 0 ? ["前の刻みからの本人たちの連絡:", ...contacts].join("\n") : "前の刻みからの本人たちの連絡: なし",
     seen.length > 0 ? ["本人たちの最後の様子:", ...seen].join("\n") : "本人たちの最後の様子: なし",
