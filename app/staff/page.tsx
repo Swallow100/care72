@@ -5,7 +5,9 @@ import { ColorCounts } from "@/components/disaster/ColorCounts";
 import { StaffIntake } from "@/components/staff/StaffIntake";
 import { StaffTable } from "@/components/staff/StaffTable";
 import { StaffCsvLink } from "@/components/staff/StaffCsvLink";
+import { StaffPassword } from "@/components/staff/StaffPassword";
 import { todayJst } from "@/lib/age";
+import { ownLoginId, ownPasswordEntry } from "@/lib/auth/password-change";
 import { requirePage } from "@/lib/auth/server";
 import { staffActor } from "@/lib/custody/actor";
 import { loadStaffBoard, type StaffBoard } from "@/lib/custody/board";
@@ -32,9 +34,11 @@ function parseError(v: unknown): CustodyError | null {
 // QR は本人の 1 枚の裏から /q/<token> を開き、その頁の「受入」から（受け入れるとここへ戻る）。
 // 状態はケアマネの一覧と同じルールの表（lib/custody/board.ts）。1 分ごとに読み直す（時計が進む）
 // 見出しの行の右に「CSV出力」（T62、/staff/csv）。表の絞込と並びは URL に載せ（lib/custody/staff-view.ts）、CSV は画面と同じ行を書く
+// その右に「パスワード変更」（T99。医療班・行政のアカウントだけ。審査員と固定のアカウントは「固定」の印。lib/auth/password-change.ts の ownPasswordEntry）
 export default async function StaffPage({ searchParams }: Props) {
   const principal = await requirePage("staff");
   const actor = staffActor(principal);
+  const entry = ownPasswordEntry(principal);
   const q = await searchParams;
   const error = parseError(q.error);
   const now = new Date().toISOString();
@@ -42,12 +46,15 @@ export default async function StaffPage({ searchParams }: Props) {
   let board: StaffBoard = { rows: [], counts: { red: 0, yellow: 0, gray: 0, green: 0 }, shelters: [], medical: 0 };
   let shelters: ShelterCount[] = [];
   let last: string | null = null;
+  let loginId: string | null = null;
   if (actor) {
     const { env } = await getCloudflareContext({ async: true });
-    [board, shelters, last] = await Promise.all([
+    [board, shelters, last, loginId] = await Promise.all([
       loadStaffBoard(env.DB, actor, todayJst(), now),
       listShelters(env.DB, actor),
       lastShelter(env.DB, actor),
+      // パスワードの欄の隠した ID（パスワードの管理の道具が組にできるように）
+      entry === "open" && principal.accountId ? ownLoginId(env.DB, principal.accountId) : null,
     ]);
   }
 
@@ -69,8 +76,10 @@ export default async function StaffPage({ searchParams }: Props) {
           <span className="text-xs text-muted">
             {shortJst(now)} {CUSTODY_LABELS.at}
           </span>
-          {/* 書き出し（T62）: 表の今の絞込と並びのまま（URL の query を持ち越す） */}
-          <StaffCsvLink className="ml-auto self-center" />
+          {/* 書き出し（T62）: 表の今の絞込と並びのまま（URL の query を持ち越す）。その右に自分のパスワードの変更（T99。欄はこの行の下に開く） */}
+          <StaffPassword entry={entry} loginId={loginId}>
+            <StaffCsvLink />
+          </StaffPassword>
         </div>
         {error && (
           <p role="alert" className="mt-1 text-sm font-bold text-danger">
