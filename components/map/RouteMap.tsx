@@ -7,6 +7,10 @@
 //   鍵が無い・失敗したときは、家 → 経由点 → 避難先を直線で結んだ線（手入力）のまま。
 //   範囲は 左・右・上・下・拡大・縮小・全体（様式の欄の位置の直し T86 と同じ言葉）。紙はこの範囲を刷る（lib/map/route-image.ts）。
 //   「保存」で避難先の位置・経路地図・範囲を台帳に（/api/intake/save の edit、経過に「ケアマネが直した: 経路地図」）
+// T112:
+//   「候補」は国土地理院の指定緊急避難場所・指定避難所を、押したときだけブラウザが読む（lib/map/shelters.ts。外へ出るのは層とタイルの z/x/y だけ）。
+//   一覧か地図の印を押すと、名前と位置が今の避難先（1・2）に入る（保存で避難先の文字も直す）。手で置く道も残す（置いた所が候補の近くなら候補に寄せる）
+//   徒歩の時間は台帳の歩行から出典の速さで見込み「目安」と添える。浸水のハザードがあり手段が車なら「冠水注意」（色と連絡順には使わない）
 // 担当一覧の地図（CaseMap）の雨と状態の層とは別の部品。位置は Claude に渡さない。ケアマネの役で開いたときだけ出す（PersonView）。
 
 import { useRouter } from "next/navigation";
@@ -23,6 +27,7 @@ import {
   RetryIcon,
   RouteMapIcon,
   SaveIcon,
+  ShelterIcon,
   ZoomInIcon,
   ZoomOutIcon,
 } from "@/components/ui/Icon";
@@ -35,7 +40,20 @@ import { isGeoPoint } from "@/lib/map/geo";
 import { BASE_LAYER } from "@/lib/map/layers";
 import { ORS_ATTRIBUTION, type RouteResult } from "@/lib/map/route";
 import {
+  candidateKinds,
+  fetchShelters,
+  shelterLayers,
+  snapCandidate,
+  SHELTER_CREDIT,
+  type ShelterCandidate,
+} from "@/lib/map/shelters";
+import { floodCar, FLOOD_CAR_SOURCE, walkSpeedOf, WALK_SPEED_SOURCE } from "@/lib/map/transport";
+import { sourceById } from "@/lib/sources";
+import {
   currentRoute,
+  destNameChanges,
+  frameOf,
+  pickCandidate,
   fitRoute,
   panRoute,
   pickPoint,
@@ -48,7 +66,7 @@ import {
   type PanDir,
   type RouteDraft,
 } from "@/lib/map/route-edit";
-import { ROUTE_FRAME, ROUTE_ZOOM, routeScene, routeSceneOf } from "@/lib/map/route-image";
+import { markPath, ROUTE_FRAME, ROUTE_ZOOM, routeScene, routeSceneOf } from "@/lib/map/route-image";
 import { RouteSceneSvg } from "./RouteSceneSvg";
 
 const LABEL_COL = "grid grid-cols-[4.5rem_minmax(0,1fr)] gap-x-2";
@@ -82,14 +100,16 @@ export function RouteMapPanel({ data }: { data: EditData }) {
   const [box, px] = useWidth<HTMLDivElement>();
   const map = data.ledger.evacuation.routeMap;
   const scene = routeSceneOf(data.ledger, ROUTE_FRAME, px && px >= DETAIL_PX ? 1 : 0);
+  const flood = map && scene ? floodCar(data.ledger, map.mode) : false;
   return (
     <div className={`${LABEL_COL} mt-1`} data-field="evacuation.routeMap">
       <span className="pt-1 text-xs text-muted">{L.open}</span>
       <div className="min-w-0 space-y-1">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-sm tabular-nums" data-route-summary>
-            {map && scene ? routeSummary(map) : L.none}
+            {map && scene ? routeSummary(map, walkSpeedOf(data.ledger)) : L.none}
           </span>
+          {flood && <FloodMark />}
           {note && (
             <span role="alert" className="text-xs font-bold text-danger">
               {note}
@@ -125,7 +145,15 @@ export function RouteMapPanel({ data }: { data: EditData }) {
   );
 }
 
-type Busy = "route" | "save" | null;
+type Busy = "route" | "save" | "candidates" | null;
+
+/** 候補の読み込みの状態（押す前・読めた・読めない） */
+type Cands = { state: "idle" } | { state: "ok"; list: ShelterCandidate[] } | { state: "failed" };
+
+/** 地図を押した所から候補に寄せる距離（m） */
+const SNAP_M = 40;
+
+const samePlace = (a: GeoPoint | null, b: GeoPoint) => !!a && Math.abs(a.lat - b.lat) < 1e-6 && Math.abs(a.lng - b.lng) < 1e-6;
 
 /** 経路地図の窓。閉じるときに理由（競合）があれば渡す */
 export function RouteEditor({ data, onClose }: { data: EditData; onClose: (why?: string) => void }) {
@@ -138,6 +166,7 @@ export function RouteEditor({ data, onClose }: { data: EditData; onClose: (why?:
   const [busy, setBusy] = useState<Busy>(null);
   const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [cands, setCands] = useState<Cands>({ state: "idle" });
 
   // 開く。開いている間は後ろを送らない（地図の全画面・黒塗りの窓と同じ形）
   useEffect(() => {
@@ -162,19 +191,38 @@ export function RouteEditor({ data, onClose }: { data: EditData; onClose: (why?:
     size: ROUTE_FRAME,
     detail: px && px >= DETAIL_PX ? 1 : 0,
   });
-  const change = routeChange(data.ledger, d);
+  const routeCh = routeChange(data.ledger, d);
+  // 経路地図と、候補から選んだ避難先の名前を 1 回で保存する
+  const changes = [...(routeCh ? [routeCh] : []), ...destNameChanges(data.ledger, d)];
   const set = (next: RouteDraft) => {
     setD(next);
     setError(null);
   };
+  const list = cands.state === "ok" ? cands.list : [];
+  const walk = walkSpeedOf(data.ledger);
+  const flood = floodCar(data.ledger, d.mode);
+  const nameOf = (n: 1 | 2) => d.names?.[n] || (n === 1 ? e.destination1 : e.destination2) || undefined;
 
   const onPick = (ev: MouseEvent<HTMLButtonElement>) => {
-    // キーで押したとき（detail 0）は真ん中に置く
-    if (ev.detail === 0) return set(pickPoint(d, pointInFrame(d.view, 0.5, 0.5)));
     const r = ev.currentTarget.getBoundingClientRect();
-    if (r.width <= 0 || r.height <= 0) return;
-    set(pickPoint(d, pointInFrame(d.view, (ev.clientX - r.left) / r.width, (ev.clientY - r.top) / r.height)));
+    // キーで押したとき（detail 0）は真ん中に置く
+    let p: GeoPoint;
+    if (ev.detail === 0) p = pointInFrame(d.view, 0.5, 0.5);
+    else if (r.width <= 0 || r.height <= 0) return;
+    else p = pointInFrame(d.view, (ev.clientX - r.left) / r.width, (ev.clientY - r.top) / r.height);
+    // 避難先を置くとき、候補の近くなら候補に寄せる（名前も入る）
+    const near = d.tool === "dest" ? snapCandidate(list, p, SNAP_M) : null;
+    set(near ? pickCandidate(d, near) : pickPoint(d, p));
   };
+
+  async function loadCandidates() {
+    if (!home || busy) return;
+    setBusy("candidates");
+    setNote(null);
+    const r = await fetchShelters({ home, layers: shelterLayers(data.ledger) });
+    setBusy(null);
+    setCands(r.ok ? { state: "ok", list: r.candidates } : { state: "failed" });
+  }
 
   async function makeRoute() {
     if (!home || !dest || busy) return;
@@ -197,10 +245,10 @@ export function RouteEditor({ data, onClose }: { data: EditData; onClose: (why?:
   }
 
   async function save() {
-    if (!change || busy) return;
+    if (changes.length === 0 || busy) return;
     setBusy("save");
     setError(null);
-    const r = await postJson<{ ok: true }>("/api/intake/save", { personId: data.personId, version: data.version, ai: null, edit: true, changes: [change] });
+    const r = await postJson<{ ok: true }>("/api/intake/save", { personId: data.personId, version: data.version, ai: null, edit: true, changes });
     setBusy(null);
     if (isError(r)) {
       // 競合はほかの人の保存。閉じて読み直す（ほかの人の保存を上書きしない。置いた所は開き直して置き直す。面の編集と同じ）
@@ -216,8 +264,10 @@ export function RouteEditor({ data, onClose }: { data: EditData; onClose: (why?:
     router.refresh();
   }
 
+  // 一覧の中で作る物にも key を付ける（React の key の警告。T112）
   const toggle = (on: boolean, label: string, onClick: () => void, attr: string, sub?: string) => (
     <button
+      key={attr}
       type="button"
       aria-pressed={on}
       onClick={onClick}
@@ -231,7 +281,11 @@ export function RouteEditor({ data, onClose }: { data: EditData; onClose: (why?:
   );
   const pan = (dir: PanDir) => set({ ...d, view: panRoute(d.view, dir) });
 
-  const status = !home ? L.noHome : !dest ? `${L.dest}${d.to} ${L.noDest}` : route ? routeSummary(route) : L.none;
+  const status = !home ? L.noHome : !dest ? `${L.dest}${d.to} ${L.noDest}` : route ? routeSummary(route, walk) : L.none;
+  const candNote =
+    busy === "candidates" ? null : cands.state === "failed" ? L.failed : cands.state === "ok" && cands.list.length === 0 ? L.candidatesNone : null;
+  const walkBasis = sourceById(WALK_SPEED_SOURCE);
+  const floodBasis = sourceById(FLOOD_CAR_SOURCE);
 
   return (
     <dialog
@@ -250,10 +304,16 @@ export function RouteEditor({ data, onClose }: { data: EditData; onClose: (why?:
             {L.title}
           </h2>
           <span role="status" className="text-xs tabular-nums" data-route-status>
-            {busy === "route" ? <span className="text-muted">{L.busy}</span> : status}
+            {busy === "route" || busy === "candidates" ? <span className="text-muted">{L.busy}</span> : status}
+            {flood && busy === null && <FloodMark className="ml-2" />}
             {note && busy !== "route" && (
               <span className="ml-2 font-bold" data-route-note>
                 {note}
+              </span>
+            )}
+            {candNote && (
+              <span className="ml-2 font-bold" data-route-cand-note>
+                {L.candidates} {candNote}
               </span>
             )}
           </span>
@@ -261,7 +321,7 @@ export function RouteEditor({ data, onClose }: { data: EditData; onClose: (why?:
             <Button kind="quiet" size="sm" icon={CloseIcon} disabled={busy === "save"} onClick={() => onClose()} data-route-discard>
               {L.discard}
             </Button>
-            <Button kind="main" size="sm" icon={SaveIcon} disabled={busy !== null || change === null} onClick={() => void save()} data-route-save>
+            <Button kind="main" size="sm" icon={SaveIcon} disabled={busy !== null || changes.length === 0} onClick={() => void save()} data-route-save>
               {L.save}
             </Button>
           </div>
@@ -274,9 +334,7 @@ export function RouteEditor({ data, onClose }: { data: EditData; onClose: (why?:
 
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <Choice label={L.dest}>
-            {([1, 2] as const).map((n) =>
-              toggle(d.to === n, `${L.dest}${n}`, () => set({ ...d, to: n, tool: d.dest[n] ? d.tool : "dest" }), `to-${n}`, (n === 1 ? e.destination1 : e.destination2) || undefined),
-            )}
+            {([1, 2] as const).map((n) => toggle(d.to === n, `${L.dest}${n}`, () => set({ ...d, to: n, tool: d.dest[n] ? d.tool : "dest" }), `to-${n}`, nameOf(n)))}
           </Choice>
           <Choice label={L.mode}>
             {(["foot", "car"] as const satisfies readonly RouteMode[]).map((m) => toggle(d.mode === m, L[m], () => set({ ...d, mode: m }), `mode-${m}`))}
@@ -299,6 +357,28 @@ export function RouteEditor({ data, onClose }: { data: EditData; onClose: (why?:
             data-no-press
             data-route-surface
           />
+          {/* 候補の印（白抜きの旗。旗の竿の根元が位置）。押すと今の避難先に。選んだ避難先と同じ所の候補は塗った旗が出ているので出さない */}
+          {list.map((c) => {
+            const { fx, fy } = frameOf(d.view, c.at);
+            if (fx < 0 || fx > 1 || fy < 0 || fy > 1 || samePlace(dest, c.at)) return null;
+            return (
+              <button
+                key={c.id}
+                type="button"
+                title={c.name}
+                aria-label={`${c.name} ${L.dest}${d.to}`}
+                onClick={() => set(pickCandidate(d, c))}
+                className={`absolute size-6 -translate-x-[42%] -translate-y-[96%] cursor-pointer ${FOCUS}`}
+                style={{ left: `${fx * 100}%`, top: `${fy * 100}%` }}
+                data-no-press
+                data-route-candidate={c.id}
+              >
+                <svg viewBox="0 0 24 24" className="size-6" aria-hidden>
+                  <path d={markPath("dest", 10, 23, 8.5)} className="fill-panel stroke-accent-fill" strokeWidth={1.8} strokeLinejoin="round" />
+                </svg>
+              </button>
+            );
+          })}
         </div>
 
         <div className="flex flex-wrap items-center gap-1">
@@ -330,6 +410,9 @@ export function RouteEditor({ data, onClose }: { data: EditData; onClose: (why?:
             {L.fit}
           </Button>
           <span className="mx-0.5 hidden h-4 w-px bg-panel2 sm:inline-block" aria-hidden />
+          <Button size="sm" icon={ShelterIcon} className={FOCUS} disabled={!home || busy !== null} onClick={() => void loadCandidates()} data-route-candidates>
+            {L.candidates}
+          </Button>
           <Button size="sm" icon={RetryIcon} className={FOCUS} disabled={!home || !dest || busy !== null} onClick={() => void makeRoute()} data-route-make>
             {L.make}
           </Button>
@@ -337,6 +420,32 @@ export function RouteEditor({ data, onClose }: { data: EditData; onClose: (why?:
             {L.viaUndo}
           </Button>
         </div>
+
+        {list.length > 0 && (
+          <ul aria-label={L.candidates} className="grid gap-x-3 sm:grid-cols-2" data-route-candidate-list>
+            {list.map((c) => {
+              const on = samePlace(dest, c.at);
+              return (
+                <li key={c.id} className="min-w-0">
+                  <button
+                    type="button"
+                    aria-pressed={on}
+                    onClick={() => set(pickCandidate(d, c))}
+                    className={`flex w-full min-w-0 items-baseline gap-2 rounded px-1 py-1 text-left ${FOCUS}`}
+                    data-press=""
+                    data-route-candidate-row={c.id}
+                  >
+                    <span className={`min-w-0 truncate ${on ? "font-bold underline decoration-2 underline-offset-4" : ""}`}>{c.name}</span>
+                    <span className="shrink-0 text-xs text-muted tabular-nums">{c.distanceM >= 1000 ? `${(c.distanceM / 1000).toFixed(1)} km` : `${c.distanceM} m`}</span>
+                    <span className="min-w-0 truncate text-xs text-muted">
+                      {candidateKinds(c, { emergency: L.kindEmergency, shelter: L.kindShelter, welfare: L.kindWelfare })}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
 
         <p className="text-[11px] leading-4 text-muted">
           {L.credit}{" "}
@@ -351,9 +460,49 @@ export function RouteEditor({ data, onClose }: { data: EditData; onClose: (why?:
               </a>
             </>
           )}
+          {cands.state === "ok" && (
+            <>
+              {" "}
+              <a href={SHELTER_CREDIT.href} target="_blank" rel="noreferrer" className="underline underline-offset-2" data-press data-route-shelter-credit>
+                {SHELTER_CREDIT.text}
+              </a>{" "}
+              <a href={SHELTER_CREDIT.noticeHref} target="_blank" rel="noreferrer" className="underline underline-offset-2" data-press data-route-shelter-notice>
+                {SHELTER_CREDIT.notice}
+              </a>
+            </>
+          )}
+          {route?.mode === "foot" && (
+            <>
+              {" "}
+              <span data-route-walk>
+                {L.speed} {walk} m/秒
+              </span>{" "}
+              <a href={walkBasis.url} target="_blank" rel="noreferrer" title={walkBasis.title} className="underline underline-offset-2" data-press data-basis={walkBasis.id}>
+                {L.basis} {walkBasis.publisher} {walkBasis.year}
+              </a>
+            </>
+          )}
+          {flood && (
+            <>
+              {" "}
+              {L.floodCar}{" "}
+              <a href={floodBasis.url} target="_blank" rel="noreferrer" title={floodBasis.title} className="underline underline-offset-2" data-press data-basis={floodBasis.id}>
+                {L.basis} {floodBasis.publisher} {floodBasis.year}
+              </a>
+            </>
+          )}
         </p>
       </div>
     </dialog>
+  );
+}
+
+/** 「冠水注意」の 1 語（本文の色。状態の色と連絡の順には使わない） */
+function FloodMark({ className = "" }: { className?: string }) {
+  return (
+    <span className={`text-xs font-bold ${className}`} data-route-flood>
+      {L.floodCar}
+    </span>
   );
 }
 

@@ -11,7 +11,8 @@ import { ROUTE_LABELS } from "../labels.ts";
 import { roundPoint } from "./center.ts";
 import { fitView, isGeoPoint, project, unproject, type Padding } from "./geo.ts";
 import { ROUTE_FRAME, ROUTE_ZOOM } from "./route-image.ts";
-import { handLine, LINE_MAX_POINTS, lineLength, modeOf } from "./route.ts";
+import { handLine, LINE_MAX_POINTS, lineLength } from "./route.ts";
+import { routeModeOf, walkMinutes } from "./transport.ts";
 
 /** 手で足せる経由点の数 */
 export const ROUTE_VIA_MAX = 20;
@@ -36,6 +37,11 @@ export type RouteDraft = {
   view: RouteView;
   /** 地図を押すと置く物 */
   tool: "dest" | "via";
+  /**
+   * 避難先 1・2 の名前（T112。候補から選ぶと入る。台帳の避難先の文字と違えば保存で一緒に直す）。
+   * 無い下書き（前の形）は名前を直さない
+   */
+  names?: { 1: string; 2: string };
 };
 
 const samePoint = (a: GeoPoint | null | undefined, b: GeoPoint | null | undefined) =>
@@ -43,7 +49,7 @@ const samePoint = (a: GeoPoint | null | undefined, b: GeoPoint | null | undefine
 
 const pointOrNull = (p: unknown): GeoPoint | null => (isGeoPoint(p) ? { lat: p.lat, lng: p.lng } : null);
 
-/** 台帳から下書き。経路地図があればその形、無ければ手段は台帳の「手段」の文字から、範囲は家と避難先が入る大きさ */
+/** 台帳から下書き。経路地図があればその形、無ければ手段は台帳の「手段」の選ぶ欄から（T112。lib/map/transport.ts）、範囲は家と避難先が入る大きさ */
 export function routeDraft(ledger: Ledger, fallback: GeoPoint): RouteDraft {
   const e = ledger.evacuation;
   const home = pointOrNull(ledger.basic.location);
@@ -59,19 +65,43 @@ export function routeDraft(ledger: Ledger, fallback: GeoPoint): RouteDraft {
       auto: map.source === "ors" && d ? { to: map.to, mode: map.mode, dest: d, line: map.line, distanceM: map.distanceM, durationS: map.durationS ?? 0 } : null,
       view: { center: map.view.center, z: clampZ(map.view.z) },
       tool: d ? "via" : "dest",
+      names: namesOf(e),
     };
   }
   // 避難先 1 の名前か位置があれば 1、無くて 2 だけあれば 2
   const to: 1 | 2 = !e.destination1 && !dest[1] && (e.destination2 || dest[2]) ? 2 : 1;
   return {
     to,
-    mode: modeOf(e.transport),
+    mode: routeModeOf(e),
     dest,
     via: [],
     auto: null,
     view: fitRoute([home, dest[to]].filter((p): p is GeoPoint => p !== null), fallback),
     tool: dest[to] ? "via" : "dest",
+    names: namesOf(e),
   };
+}
+
+const namesOf = (e: Ledger["evacuation"]) => ({ 1: e.destination1?.trim() ?? "", 2: e.destination2?.trim() ?? "" });
+
+/** 避難先 1・2 の名前の欄（入れる欄の鍵） */
+export const DEST_NAME_KEYS = { 1: "evacuation.destination1", 2: "evacuation.destination2" } as const;
+
+/**
+ * 避難先の名前の保存の変更（T112。候補から選んだ名前）。台帳の文字と同じ・空・下書きに名前が無いときは送らない。
+ * 手で直すときの上書き（overwrite）で、経路地図の保存と同じ 1 回で送る
+ */
+export function destNameChanges(ledger: Ledger, d: RouteDraft): IntakeChange[] {
+  if (!d.names) return [];
+  const cur = namesOf(ledger.evacuation);
+  return ([1, 2] as const)
+    .filter((n) => d.names![n].trim() !== "" && d.names![n].trim() !== cur[n])
+    .map((n): IntakeChange => ({ t: "field", key: DEST_NAME_KEYS[n], value: d.names![n].trim(), overwrite: true }));
+}
+
+/** 候補を選んだ: 今の避難先の位置と名前を入れる（経由点を置く側に切り替える） */
+export function pickCandidate(d: RouteDraft, c: { name: string; at: GeoPoint }): RouteDraft {
+  return { ...d, dest: { ...d.dest, [d.to]: { lat: c.at.lat, lng: c.at.lng } }, names: { ...(d.names ?? { 1: "", 2: "" }), [d.to]: c.name }, tool: "via" };
 }
 
 /** 今の線（家と避難先の位置があるときだけ）。openrouteservice の線が今の組と同じなら ors、ほかは手入力 */
@@ -216,10 +246,21 @@ export function evacMapText(v: EvacMapValue): string {
   return `${ROUTE_LABELS.open} ${routeSummary(v.route)}`;
 }
 
-/** 線の要約（「徒歩 1.2 km 約 18 分 自動」「車 3.4 km 手入力」） */
-export function routeSummary(r: Pick<RouteMap, "mode" | "source" | "distanceM" | "durationS">): string {
+/**
+ * 線の要約（「徒歩 1.2 km 約 25 分 目安 自動」「車 3.4 km 約 6 分 自動」「車 3.4 km 手入力」）。
+ * 徒歩の時間は openrouteservice の大人の速さを使わず、walkSpeed（m/秒。台帳の歩行から lib/map/transport.ts の walkSpeedOf）で見込んで「目安」と添える（T112）。
+ * walkSpeed が無ければ徒歩は時間を出さない（経過の文など台帳を見ない所）。車は openrouteservice の時間のまま（手入力の線は時間なし）
+ */
+export function routeSummary(r: Pick<RouteMap, "mode" | "source" | "distanceM" | "durationS">, walkSpeed?: number): string {
   const km = r.distanceM >= 1000 ? `${(r.distanceM / 1000).toFixed(1)} km` : `${Math.round(r.distanceM)} m`;
-  const min = r.source === "ors" && r.durationS ? `約 ${Math.max(1, Math.round(r.durationS / 60))} 分` : null;
+  const min =
+    r.mode === "foot"
+      ? walkSpeed && walkSpeed > 0 && r.distanceM > 0
+        ? `約 ${walkMinutes(r.distanceM, walkSpeed)} 分 ${ROUTE_LABELS.estimate}`
+        : null
+      : r.source === "ors" && r.durationS
+        ? `約 ${Math.max(1, Math.round(r.durationS / 60))} 分`
+        : null;
   return [ROUTE_LABELS[r.mode], km, min, ROUTE_LABELS[r.source]].filter(Boolean).join(" ");
 }
 
@@ -257,6 +298,13 @@ export function panRoute(v: RouteView, dir: PanDir): RouteView {
 export function pointInFrame(v: RouteView, fx: number, fy: number): GeoPoint {
   const c = project(v.center, v.z);
   return roundPoint(unproject({ x: c.x + (fx - 0.5) * ROUTE_FRAME.w, y: c.y + (fy - 0.5) * ROUTE_FRAME.h }, v.z));
+}
+
+/** 緯度経度 → 枠の中の位置（左上からの比。pointInFrame の逆。枠の外は 0〜1 の外） */
+export function frameOf(v: RouteView, p: GeoPoint): { fx: number; fy: number } {
+  const c = project(v.center, v.z);
+  const q = project(p, v.z);
+  return { fx: (q.x - c.x) / ROUTE_FRAME.w + 0.5, fy: (q.y - c.y) / ROUTE_FRAME.h + 0.5 };
 }
 
 /** 地図を押した: 置く物が避難先なら今の避難先の位置を、経由点なら経由点を足す（上限まで） */

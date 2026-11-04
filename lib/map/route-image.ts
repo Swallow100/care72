@@ -5,6 +5,7 @@
 // - 出典は枠の中の下に小さく: 地理院タイル（国土地理院の出典の記載例「地理院タイルに○○を追記して掲載」の形）と、
 //   openrouteservice の線なら HeiGIT の利用規約の表記。手で引いた線には openrouteservice の表記を出さない
 // - 色は操作の色 1 色（状態の 4 色は使わない。地図の状態の色はピンだけの決まり）。グラデーション・光る影は使わない
+// - 家は家の形（五角形）、避難先は旗の形（T112）。形は markPath の 1 か所で作り、画面の絵（RouteSceneSvg）と紙で同じ
 // - openrouteservice の線は、丸めた家の点（lib/map/route.ts の coarsenHome）の近くの道から始まる。本当の家から線の始まりまでは点線
 // - 線を引いたときは枠の左上に「経路 目安」（道・通れるかは人が確かめる。常設の説明文は置かない）
 // - 台帳に経路地図か家の位置が無ければ null（紙は文字の経路だけ）
@@ -186,8 +187,8 @@ export function sceneSvg(scene: RouteScene, size: Size, unit: RouteUnit): string
   for (const v of scene.via) {
     out.push(`<circle cx="${v.x}" cy="${v.y}" r="${r2(s.via * k)}" fill="${C.panel}" stroke="${C.accent}" stroke-width="${r2(s.halo * k)}" data-route-via/>`);
   }
-  if (scene.home) out.push(pinSvg(scene.home, ROUTE_MARKS.home, "circle", s, k));
-  if (scene.dest) out.push(pinSvg(scene.dest, scene.destLabel, "square", s, k));
+  if (scene.home) out.push(pinSvg(scene.home, ROUTE_MARKS.home, "home", s, k));
+  if (scene.dest) out.push(pinSvg(scene.dest, scene.destLabel, "dest", s, k));
   if (scene.note) out.push(noteSvg(scene.note, s, k));
   out.push(creditSvg(scene, s, k));
   out.push(`</svg>`);
@@ -215,19 +216,35 @@ function noteSvg(note: string, s: (typeof ROUTE_STYLE)[RouteUnit], k: number): s
   );
 }
 
-function pinSvg(p: ScenePoint, label: string, shape: "circle" | "square", s: (typeof ROUTE_STYLE)[RouteUnit], k: number): string {
+/** 印の形（T112）: 家は家の形（五角形）、避難先は旗の形 */
+export type MarkShape = "home" | "dest";
+
+/**
+ * 印の形の path（d）。(x, y) は位置、r は大きさ（s.pin × 縮尺）。家は (x, y) が家の形の真ん中、旗は (x, y) が竿の根元。
+ * 画面の絵（components/map/RouteSceneSvg.tsx）と紙（sceneSvg）が同じこの関数を使う
+ */
+export function markPath(shape: MarkShape, x: number, y: number, r: number): string {
+  const p = (dx: number, dy: number) => `${r2(x + dx * r)},${r2(y + dy * r)}`;
+  if (shape === "home") return `M${p(0, -1.15)}L${p(1.05, -0.2)}L${p(1.05, 1)}L${p(-1.05, 1)}L${p(-1.05, -0.2)}Z`;
+  // 竿（幅 0.4）の上に右へ三角の旗
+  return `M${p(-0.2, 0)}L${p(-0.2, -2.3)}L${p(1.7, -1.75)}L${p(0.2, -1.2)}L${p(0.2, 0)}Z`;
+}
+
+/** 印のいちばん上（位置からの上への長さ。r の倍）。名前の字はこの上に置く */
+export function markTop(shape: MarkShape): number {
+  return shape === "home" ? 1.15 : 2.3;
+}
+
+function pinSvg(p: ScenePoint, label: string, shape: MarkShape, s: (typeof ROUTE_STYLE)[RouteUnit], k: number): string {
   const C = ROUTE_PAPER_COLORS;
   const r = s.pin * k;
   const ring = s.halo * k;
-  const mark =
-    shape === "circle"
-      ? `<circle cx="${p.x}" cy="${p.y}" r="${r2(r)}" fill="${C.accent}" stroke="${C.panel}" stroke-width="${r2(ring)}"/>`
-      : `<rect x="${r2(p.x - r)}" y="${r2(p.y - r)}" width="${r2(r * 2)}" height="${r2(r * 2)}" fill="${C.accent}" stroke="${C.panel}" stroke-width="${r2(ring)}"/>`;
+  const mark = `<path d="${markPath(shape, p.x, p.y, r)}" fill="${C.accent}" stroke="${C.panel}" stroke-width="${r2(ring)}" stroke-linejoin="round"/>`;
   // 印の上に名前（白い縁取りの字）
   const text =
-    `<text x="${p.x}" y="${r2(p.y - r - ring * 2)}" text-anchor="middle" font-size="${r2(s.font * k)}" font-weight="700" fill="${C.ink}" ` +
+    `<text x="${p.x}" y="${r2(p.y - r * markTop(shape) - ring * 2)}" text-anchor="middle" font-size="${r2(s.font * k)}" font-weight="700" fill="${C.ink}" ` +
     `stroke="${C.panel}" stroke-width="${r2(s.halo * 1.6 * k)}" paint-order="stroke" stroke-linejoin="round">${esc(label)}</text>`;
-  return `<g data-route-pin="${shape === "circle" ? "home" : "dest"}">${mark}${text}</g>`;
+  return `<g data-route-pin="${shape}">${mark}${text}</g>`;
 }
 
 function creditSvg(scene: RouteScene, s: (typeof ROUTE_STYLE)[RouteUnit], k: number): string {
