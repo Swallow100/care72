@@ -844,7 +844,8 @@ export async function listDrills(db: D1Database, officeId: string, limit = 50, n
   return res.results
     .map((r) => {
       const { mode: _mode, ...rest } = rowScenario(r);
-      return { ...rest, abandon_reason: rest.abandon_reason === "24h" ? ("24h" as const) : null };
+      // 一覧の経過は時間の整数（連続の時計の訓練〔T90〕の区切りは 6.1666… 時間のような小数。「経過 6 / 72 時間」と出す）
+      return { ...rest, sim_hour: Math.floor(rest.sim_hour), abandon_reason: rest.abandon_reason === "24h" ? ("24h" as const) : null };
     })
     .filter((r) => (DRILL_SCENARIOS as readonly string[]).includes(r.scenario) && (DRILL_STATUSES as readonly string[]).includes(r.status));
 }
