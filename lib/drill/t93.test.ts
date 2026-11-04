@@ -372,8 +372,9 @@ describe("通話の往復", () => {
     expect(saved.ask).toBeUndefined();
 
     const before = await stored();
-    const birth = seedOf("p-01").person.birth_date!;
-    const res = await talk({ text: `生年月日 ${birth} で合っていますか` }, hook);
+    // 生年月日はどの書き方でも伏せる（T118）。伏せきれない物の例は電話の数字を含む長い数字の並び
+    const digits = seedOf("p-01").contacts.find((c) => c.kind === "self")!.phone!.replace(/-/g, "");
+    const res = await talk({ text: `番号 ${digits}2345 で合っていますか` }, hook);
     expect(res.status).toBe(400);
     expect(await res.json()).toMatchObject({ ok: false, label: "伏字不可" });
     expect(calls).toHaveLength(1);
@@ -482,7 +483,7 @@ describe("訪問の様子と頼み事", () => {
     const seen: string[] = [];
     const visit: VisitHook = async (v) => {
       seen.push(v.person);
-      return { condition: "居間にいる", asks: ["water"], speech: "来てくれてありがとう", ai: true };
+      return { report: { condition: "居間にいる", asks: ["water"], speech: "来てくれてありがとう", ai: true }, called: true };
     };
     const base = initialState("heavy_rain", ["p-01", "p-03"], START);
     const arrived = await act(base, { kind: "visit", person: "p-01", target: null }, { visit }, () => 0);
@@ -527,10 +528,10 @@ describe("訪問の様子と頼み事", () => {
     const { ai, calls } = visitAi(() => VISIT_ANSWER());
     const visit = createVisitHook({ load: () => loadPersonaSources(db, DEMO.id), ai });
     const w = (over: Partial<WorldState>): WorldState => ({ ...EMPTY_WORLD, ...over });
-    expect(await visit({ person: "p-01", hour: 3, world: w({ ended: { "p-01": { at: 2, label: "x" } } }), incidents: [], state: null })).toBeNull();
-    expect(await visit({ person: "p-01", hour: 3, world: w({ counts: { director: DRILL_CALL_CAP, persona: 0, call: 0, free: 0 } }), incidents: [], state: null })).toBeNull();
+    expect(await visit({ person: "p-01", hour: 3, world: w({ ended: { "p-01": { at: 2, label: "x" } } }), incidents: [], state: null })).toEqual({ report: null, called: false });
+    expect(await visit({ person: "p-01", hour: 3, world: w({ counts: { director: DRILL_CALL_CAP, persona: 0, call: 0, free: 0 } }), incidents: [], state: null })).toEqual({ report: null, called: false });
     expect(calls).toHaveLength(0);
-    expect(await visit({ person: "p-01", hour: 3, world: EMPTY_WORLD, incidents: [], state: null })).toMatchObject({ condition: "居間の椅子に座っている", asks: ["water", "power"] });
+    expect(await visit({ person: "p-01", hour: 3, world: EMPTY_WORLD, incidents: [], state: null })).toMatchObject({ report: { condition: "居間の椅子に座っている", asks: ["water", "power"] }, called: true });
     expect(calls).toHaveLength(1);
   });
 });

@@ -97,7 +97,12 @@ export type VisitTurn = {
   state: PersonState | null;
   night?: boolean;
 };
-export type VisitHook = (v: VisitTurn) => Promise<VisitReport | null>;
+/**
+ * 訪問の口の返事（T118）。report は様子と頼み事（使える物が無ければ null）、called は Claude を呼んだか
+ * （失敗も数える。手の所が 1 訓練の数え counts.persona に足す。往復の TalkReply.called と同じ）
+ */
+export type VisitReply = { report: VisitReport | null; called: boolean };
+export type VisitHook = (v: VisitTurn) => Promise<VisitReply>;
 
 // ---------- 画面の言葉（2〜4 字） ----------
 
@@ -195,8 +200,44 @@ export function asksOf(raw: unknown, max: number): AskKind[] {
 export const CONDITION_BANNED =
   /診断|判定|重症|緊急度|病気がわかる|病気が分かる|死亡|亡くな|死ん|心肺停止|意識が(?:ない|無い)|危篤|搬送|救急車|骨折|脱水|肺炎|梗塞|出血|発作|低体温|熱中症|低血糖|感染/;
 
-/** 往復と訪問の言葉に書かせない語（人の生き死に・救急の結果。本人役の決まり 9: 救急が来た先の事は言わない）。当たれば言葉ごと捨てる */
-export const SPEECH_DANGER = /死亡|亡くな|死ん|心肺停止|危篤|搬送された|運ばれた|救急車が来/;
+/**
+ * 本人役の言葉に書かせない語（人の生き死に・救急の結果。本人役の決まり 9: 救急が来た先の事は言わない）。
+ * 「必死に」は人の生き死にでないので除く。当たった文を落とす（T118。lib/drill/persona.ts の cleanWords）
+ */
+export const SPEECH_DANGER = /死亡|亡くな|死ん|死ぬ|(?<!必)死に|関連死|遺体|息を引き取|心肺停止|危篤|搬送された|運ばれた|救急車が来/;
+
+// ---------- 本人役の言葉の決まり（T118。刻み・通話・往復・訪問の全部の道で同じ） ----------
+
+/** 診断の語（CLAUDE.md: 画面に「診断」「判定」「病気がわかる」「重症」と書かない） */
+export const SPEECH_DIAGNOSIS = /診断|判定|重症|緊急度|病気がわかる|病気が分かる/;
+/**
+ * 薬の量（数と単位、量の言葉、酸素の流量）。NFKC にした文に当てる（全角の数字・ｍｇも当たる）。
+ * 数の無い単位（「錠剤」）・酸素の無いリットル（「水が 2 リットル」）は当てない
+ */
+export const SPEECH_DOSE =
+  /(?:[0-9.]+|[〇一二三四五六七八九十百半]+)\s*(?:mg|ミリグラム|μg|マイクログラム|錠|カプセル|包(?![み帯丁装])|単位|ml|ミリリットル|cc|パフ|l\/分|リットル\/分|リットル毎分)|酸素[^。！？!?]{0,8}?[0-9.]+\s*(?:l|リットル)|用量|増量|減量|倍量|投与量|服用量/i;
+/** 病名（言い切りかは見ない。本人役は病名を言わない）。体の訴え（「胸が少し痛い」「足を打った」）は当てない */
+export const SPEECH_DISEASE =
+  /肺炎|梗塞|脳卒中|低血糖|高血糖|脱水|熱中症|低体温|感染症|血栓|塞栓|心停止|骨折|糖尿病|認知症|心不全|腎不全|呼吸不全|狭心症|不整脈|喘息|インフルエンザ|コロナ|癌|パーキンソン|COPD|ALS|褥瘡|誤嚥|てんかん|高血圧/;
+/** 医療の助言（飲む・打つ・増やす・減らす・止める・冷やす・温める・横になる・安静にするを勧める形）。頼み事（「薬を届けてください」）は当てない */
+export const SPEECH_ADVICE =
+  /(?:飲んで|飲ませて|服用して|打って|増やして|減らして|止めて|やめて|冷やして|温めて|横になって)(?:ください|下さい)|(?:飲んだ|飲ませた|服用した|打った|増やした|減らした|止めた|やめた|冷やした|温めた|横になった|安静にした)(?:ほう|方)が(?:いい|良い|よい)|安静に(?:して|しなさい|しましょう)/;
+
+/** 本人役の言葉の決まりの表（名前・住所・電話は lib/pseudonym の maskReply が見る）。id はログに残す名前 */
+export const SPEECH_RULES: ReadonlyArray<{ id: string; re: RegExp }> = [
+  { id: "diagnosis", re: SPEECH_DIAGNOSIS },
+  { id: "life", re: SPEECH_DANGER },
+  { id: "dose", re: SPEECH_DOSE },
+  { id: "disease", re: SPEECH_DISEASE },
+  { id: "advice", re: SPEECH_ADVICE },
+];
+
+/** 文が当たった決まりの id（無ければ null）。extra は様子の欄に足す決まり（CONDITION_BANNED） */
+export function speechRuleOf(sentence: string, extra?: RegExp): string | null {
+  const t = sentence.normalize("NFKC");
+  for (const r of SPEECH_RULES) if (r.re.test(t)) return r.id;
+  return extra?.test(t) ? "condition" : null;
+}
 
 // ---------- 往復の数・時刻 ----------
 

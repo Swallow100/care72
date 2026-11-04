@@ -40,7 +40,7 @@ import { PENDING_STATUS_LABELS } from "../labels.ts";
 import { clockCheckEntry, type MarkAuthor, type NewTimelineEntry } from "../ledger-marks.ts";
 import { applyEvacMap, EVAC_MAP_FIELDS, EvacMapSchema } from "../map/route-edit.ts";
 import { loadPersonPage, pendingClockId, type PersonPageRows } from "../person.ts";
-import type { IntakeChange } from "./changes.ts";
+import { changeHasMask, type IntakeChange } from "./changes.ts";
 import { labelOfKey } from "./diff.ts";
 import { ADDRESS_MAX } from "./edit.ts";
 import { INTAKE_KEYS, isHandOnlyKey } from "./fields.ts";
@@ -177,6 +177,8 @@ export const SaveRequestSchema = z
   .refine((r) => r.edit === true || !r.changes.some((c) => editOnly(c as IntakeChange)), {
     message: "edit_only",
   })
+  // Claude の分け方の保存に、元に戻せなかった伏せ字（（氏名）（町名）（電話）（住所）（郵便番号）（メール）（生年月日））を残さない（T118）
+  .refine((r) => r.ai === null || !r.changes.some(changeHasMask), { message: "masked" })
   // AI の分け方の保存にフリガナ・住所・電話を混ぜない（T117 の問い 5）
   .refine((r) => r.ai === null || !r.changes.some((c) => aiHandOnly(c as IntakeChange)), { message: "ai_hand_only" });
 

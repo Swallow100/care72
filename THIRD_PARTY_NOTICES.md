@@ -15,7 +15,7 @@
 | @google/genai | Gemini TTS で声を作る（lib/gemini。fetch だけで動く web の入口を使う） | Apache-2.0 | Google LLC |
 | zod | Claude の返す JSON の形を書き、返った物を検査する | MIT | Colin McDonnell |
 | qrcode-generator | QR の点の並び（lib/qr/image.ts）。SVG はこちらで描く | MIT | Kazuhiko Arase |
-| fast-xml-parser | 気象庁の防災情報 XML を読む（lib/jma/xml.ts。Workers には DOMParser が無いので）。間接の依存の is-unsafe は package.json の overrides で 2.0.2 に固定 | MIT | Amit Kumar Gupta |
+| fast-xml-parser | 気象庁の防災情報 XML を読む（lib/jma/xml.ts。Workers には DOMParser が無いので）。様式の Excel・Word の中の XML をブラウザで読む（lib/ooxml/xml.ts、T119。Excel・Word を選んだときだけ読み込む）。間接の依存の is-unsafe は package.json の overrides で 2.0.2 に固定 | MIT | Amit Kumar Gupta |
 | @heroicons/react | 操作のアイコン（components/ui/Icon.tsx） | MIT | Tailwind Labs, Inc. |
 | pdfjs-dist | 黒塗りの画面で、選んだ PDF の頭の 3 頁をブラウザの中で画像にする（lib/redact/browser.ts）。PDF を選んだときだけ読み込む | Apache-2.0 | Mozilla Foundation |
 | wrangler・@cloudflare/workers-types | Workers の設定と手元の D1・R2 の模擬、D1・R2 の型（開発） | MIT OR Apache-2.0 | Cloudflare, Inc. |
@@ -25,6 +25,8 @@
 | vitest | テスト（開発） | MIT | VoidZero Inc. and Vitest contributors |
 | puppeteer-core | 紙面の印刷の確かめ（手元の Chrome・Edge で印刷して PDF の頁数を数える。開発。Chrome は同梱しない） | Apache-2.0 | Google LLC（The Chromium Authors） |
 | @modelcontextprotocol/sdk | 手元の MCP サーバー（tools/mcp/care72-local。開発） | MIT | Anthropic, PBC |
+
+Excel・Word の様式を頁に描く所（lib/ooxml、T119）は依存を足していない。zip の展開は Web 標準の DecompressionStream、XML は上の fast-xml-parser、描くのはブラウザの canvas。元の書体（ＭＳ 明朝・游ゴシックなど）は配信に入れず、端末にあればその名前で、無ければ近い書体で描く。評価の台（tools/eval/forms）と枠を比べる道具（tools/print/ooxml-frames.ts）は、pdfjs-dist の任意の依存の @napi-rs/canvas（MIT）で描く（開発だけ）。
 
 ## 依存の全部
 

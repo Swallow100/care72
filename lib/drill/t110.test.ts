@@ -599,8 +599,9 @@ describe("自由対応のそのままの手（読み替え → 確かめ → 打
   it("伏せきれない文は 400「伏字不可」で、Claude に送らず確かめも置かない。文の長さは 200 字まで", async () => {
     await start();
     const { free, calls } = freeHooksOf(() => OWN());
-    const birth = seedOf("p-03").person.birth_date!;
-    const res = await freePost(db, careManager(), ID, { step: 0, actions: 0, person: "p-03", text: `生年月日 ${birth} の人に電話` }, planOf(free));
+    // 生年月日はどの書き方でも伏せる（T118）。伏せきれない物の例は電話の数字を含む長い数字の並び
+    const digits = seedOf("p-03").contacts.find((c) => c.kind === "self")!.phone!.replace(/-/g, "");
+    const res = await freePost(db, careManager(), ID, { step: 0, actions: 0, person: "p-03", text: `番号 ${digits}2345 の人に電話` }, planOf(free));
     expect(res.status).toBe(400);
     expect(await res.json()).toMatchObject({ label: "伏字不可" });
     expect(calls).toHaveLength(0);

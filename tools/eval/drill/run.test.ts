@@ -251,3 +251,31 @@ describe("引数", () => {
     expect("error" in parseArgs(["--noise", "2"], {})).toBe(true);
   });
 });
+
+describe("T118: 台が見つけた穴が直っていることを、台で確かめる", () => {
+  it("偽の返事に決まりを破る言葉を混ぜても、画面に出た物（刻み・通話・往復・訪問）には残らない", async () => {
+    const { numbers, hits } = await drive(busyPlan({ talkRate: 1 }), 1);
+    expect(numbers.banned.raw).toBeGreaterThan(0);
+    const shown = hits.filter((h) => h.check === "banned" && h.where === "shown" && !h.rule.startsWith("personal:避難先"));
+    expect(shown.map((h) => `${h.rule} ${h.evidence}`)).toEqual([]);
+  }, SLOW);
+
+  it("通話の最初の言葉と訪問の本人役も 1 訓練の数えに入り、ai_calls と同じ数（数えに入らない呼び出し 0）", async () => {
+    const { log, numbers, hits } = await drive(busyPlan({ actMax: 3, talkRate: 0 }));
+    const roles = new Set(log.records.filter((r) => r.type === "ai").map((r) => (r as AiRecord).role));
+    expect(roles.has("persona_call")).toBe(true);
+    expect(numbers.budget.uncounted).toBe(0);
+    expect(hits.filter((h) => h.check === "budget")).toEqual([]);
+  }, SLOW);
+
+  it("門の試しに和暦の生年月日（T107 の入力と同じ形）を混ぜても、送った中身に残らない", async () => {
+    const { log, outcome, numbers } = await drive(busyPlan({ freeRate: 1, probeRate: 1, talkRate: 0, scenario: "short" }));
+    const probes = outcome.ops.filter((o) => o.op === "act_probe");
+    expect(probes.length).toBeGreaterThan(0);
+    expect(probes.every((o) => o.ok)).toBe(true);
+    const sent = log.records.filter((r) => r.type === "ai").map((r) => (r as AiRecord).sent.user).join("\n");
+    expect(sent).toContain("（生年月日）");
+    expect(sent).not.toMatch(/昭和[0-9]+年[0-9]+月[0-9]+日/);
+    expect(numbers.leaks).toBe(0);
+  }, SLOW);
+});

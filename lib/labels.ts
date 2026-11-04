@@ -642,6 +642,15 @@ export const REDACT_LABELS = {
   noneText: "隠した所 0",
   noneOk: "送信",
   noneBack: "戻る",
+  /** Excel・Word（T119）: 送る頁を選ぶ（4 頁以上のとき）。押すと外す・戻す、今の頁が外れていれば「除外」、送る数「対象 3/3」 */
+  skip: "除外",
+  pick: "戻す",
+  skipped: "除外",
+  picked: "対象",
+  /** Excel・Word を描いた頁は元の印刷と少しずれる。PDF に保存して取り込むと元のまま */
+  officeHint: "近似描画・PDF 保存で正確",
+  /** 古い形（.xls・.doc）は読まない */
+  legacy: "旧形式・PDF 保存で取込",
   /** 頁の呼び名（「お薬手帳.pdf 2 頁」）。1 頁の物はファイル名だけ */
   pageName: (file: string, page: number, pages: number) => (pages > 1 ? `${file} ${page} 頁` : file),
 } as const;

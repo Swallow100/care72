@@ -75,7 +75,9 @@ export function checkContext(): CheckContext {
       if (typeof c.phone === "string" && c.phone.trim()) extra.push({ value: c.phone.trim(), what: "連絡先の電話" });
     }
   }
-  return { key, extra };
+  // 生年月日（台の表で和暦・略記・漢数字の書き方も。T118）
+  const births = SEED_SOURCES.flatMap((s) => (s.person.birth_date ? [{ iso: s.person.birth_date, what: "生年月日（台の表）" }] : []));
+  return { key, extra, births };
 }
 
 const pad = (n: number) => String(n).padStart(2, "0");

@@ -24,6 +24,7 @@ import { buildFormReadForm } from "../../../lib/forms/read-upload.ts";
 import type { DiffItem } from "../../../lib/intake/diff.ts";
 import { extractIntake, INTAKE_TEXT_MAX, pseudonymInputOf, type IntakeProposal } from "../../../lib/intake/extract.ts";
 import { aiConsentRefusal } from "../../../lib/intake/http.ts";
+import type { ReadSource } from "../../../lib/intake/read-form.ts";
 import { checkRedactedImage } from "../../../lib/intake/read-check.ts";
 import { readIntake, sealReadOutput } from "../../../lib/intake/read.ts";
 import { saveIntake, SaveRequestSchema } from "../../../lib/intake/save.ts";
@@ -43,8 +44,8 @@ import { heicBytes, launchRenderer, withExif, type Ratio, type Renderer } from "
 import { cellOfSheet, scoreIntake, scorePaper, scoreRead, type IntakeScore, type Judgement, type PaperScore, type ReadScore } from "./score.ts";
 
 export const REPO_ROOT = resolve(fileURLToPath(new URL("../../../", import.meta.url)));
-/** 入力の作り方の版。変えたら入力を作り直す（置き場の _inputs/<版>） */
-export const GEN_VERSION = "g1";
+/** 入力の作り方の版。変えたら入力を作り直す（置き場の _inputs/<版>）。g2: 頭の行の生年月日を入れ方ごとに略記・漢数字に（T118） */
+export const GEN_VERSION = "g2";
 /** 紙の日付（決まった日。年齢と作成日がこの日で数わる） */
 export const EVAL_TODAY = "2026-11-05";
 const OFFICE = "office-demo";
@@ -78,6 +79,8 @@ export type EvalOptions = {
   /** テストの差し替え: 様式の頁の画像（id → JPEG の頁）と、入力の絵（id → 選んだファイルと伏せる所） */
   formPages?: Record<string, Uint8Array[]>;
   inputFiles?: Record<string, { bytes: Uint8Array; secrets: Ratio[][] }>;
+  /** 本物の回の費用の見積もりの上限（ドル）。超えたら次の様式・入力を始めない（飛ばした物は「上限」と数える） */
+  maxUsd?: number | null;
   log?: (line: string) => void;
 };
 
@@ -262,6 +265,9 @@ export async function runEval(opts: EvalOptions): Promise<RunResult> {
   const judge = (js: Judgement[]) => {
     for (const x of js) log.write("judgements.jsonl", { run, ...x });
   };
+  // 費用の上限（本物の回だけ）。記録した呼び出しの見積もりの合計で見て、超えたら次の様式・入力を始めない
+  const spentUsd = () => rec.all().reduce((n, r) => n + (r.costUsd ?? 0), 0);
+  const overBudget = () => opts.mode === "real" && opts.maxUsd != null && spentUsd() >= opts.maxUsd;
 
   try {
     // ---------- 様式 ----------
@@ -308,13 +314,18 @@ export async function runEval(opts: EvalOptions): Promise<RunResult> {
 
     for (const job of jobs) {
       say(`様式 ${job.id}`);
+      if (overBudget()) {
+        forms.push({ id: job.id, title: job.title, gold: !!job.gold, status: "skipped", reason: "上限", pages: 0, read: null, overlay: false });
+        step({ stage: "form", form: job.id, ok: false, reason: `費用の上限 $${opts.maxUsd}（見積もり $${spentUsd().toFixed(2)}）` });
+        continue;
+      }
       const orig = await job.original();
       if (!orig) {
         forms.push({ id: job.id, title: job.title, gold: !!job.gold, status: "skipped", reason: "Chrome なし", pages: 0, read: null, overlay: false });
         step({ stage: "form", form: job.id, ok: false, reason: "Chrome が無く白紙を作れない" });
         continue;
       }
-      let pages: Array<{ bytes: Uint8Array; source: "photo" | "pdf"; page: number }>;
+      let pages: Array<{ bytes: Uint8Array; source: ReadSource; page: number }>;
       if ("pages" in orig) pages = orig.pages.map((b, i) => ({ bytes: b, source: "pdf" as const, page: i + 1 }));
       else {
         const br: BrowserResult = await browserStage(orig.bytes, []);
@@ -388,6 +399,12 @@ export async function runEval(opts: EvalOptions): Promise<RunResult> {
       const seed = SEED_PEOPLE.find((p) => p.person.id === spec.personId)!;
       const result: InputResult = { id: spec.id, kind: spec.kind, personId: spec.personId, status: "ok", failures: [], pieces: 0, sentPieces: 0, rawOverLimit: false, intake: null, carryLoss: 0 };
       inputs.push(result);
+      if (spec.kind !== "ledger" && overBudget()) {
+        result.status = "skipped";
+        result.failures.push("budget");
+        step({ stage: "input.receive", input: spec.id, ok: false, error: `費用の上限 $${opts.maxUsd}（見積もり $${spentUsd().toFixed(2)}）` });
+        continue;
+      }
       if (spec.kind === "ledger") {
         const rows = (await loadPersonPage(db, PRINCIPAL, spec.personId))!;
         rowsOf.set(spec.id, { actual: rows, expected: rows });
@@ -403,7 +420,7 @@ export async function runEval(opts: EvalOptions): Promise<RunResult> {
       const load = async (id: string) => (await loadPersonPage(db, PRINCIPAL, id))!;
 
       // 送る単位（文 1 つ、または ブラウザの段を通った頁）
-      type Piece = { kind: "text"; text: string; oracle: ExtractOutput } | { kind: "image"; bytes: Uint8Array; meta: { source: "photo" | "pdf"; page: number; redacted: number }; redactOk: boolean | null; oracle: ExtractOutput };
+      type Piece = { kind: "text"; text: string; oracle: ExtractOutput } | { kind: "image"; bytes: Uint8Array; meta: { source: ReadSource; page: number; redacted: number }; redactOk: boolean | null; oracle: ExtractOutput };
       const pieces: Piece[] = [];
       if (spec.text !== undefined) {
         if (spec.text.trim().length > INTAKE_TEXT_MAX) {
@@ -586,7 +603,7 @@ export async function runEval(opts: EvalOptions): Promise<RunResult> {
   }
 
   /** 差分の「追加」を保存（画面の既定と同じ。既入力・一致は保存しない） */
-  async function save(personId: string, version: number, proposal: IntakeProposal, piece: { kind: string; meta?: { source: "photo" | "pdf"; page: number; redacted: number } }): Promise<{ ok: true } | { ok: false; error: string }> {
+  async function save(personId: string, version: number, proposal: IntakeProposal, piece: { kind: string; meta?: { source: ReadSource; page: number; redacted: number } }): Promise<{ ok: true } | { ok: false; error: string }> {
     const changes = proposal.items.filter((d) => d.change && d.state === "add").map((d) => d.change!);
     if (changes.length === 0) return { ok: true };
     const req = SaveRequestSchema.safeParse({ personId, version, ai: { model: proposal.ai.model }, ...(piece.kind === "image" && piece.meta ? { read: piece.meta } : {}), changes });
