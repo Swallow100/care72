@@ -27,7 +27,8 @@
     "docs:notices": "node tools/licenses/notices.mjs",
     "hash-password": "node tools/hash-password.ts",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "eval:drill": "node tools/eval/drill/run.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "1.3.0",
