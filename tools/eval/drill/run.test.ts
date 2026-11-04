@@ -24,6 +24,9 @@ import { checkContext, parseArgs, runEval, SEED_SOURCES, type EvalConfig } from 
 const tmp = mkdtempSync(join(tmpdir(), "t108-"));
 afterAll(() => rmSync(tmp, { recursive: true, force: true }));
 
+/** 訓練を最後まで回すテストの待ち（PC が混んでいると既定の 20 秒を超える） */
+const SLOW = 240_000;
+
 const lines = (file: string) => readFileSync(file, "utf8").trim().split("\n").map((l) => JSON.parse(l) as Record<string, unknown>);
 
 /** 人の値（氏名・カナ・町名・電話・避難先）。md に出てはいけない */
@@ -92,9 +95,9 @@ describe("通し（偽の client）", () => {
     expect(readFileSync(second.mdPath!, "utf8")).toContain("20261105-000000-fake（3 回）");
 
     // 種が違えば選び方が変わる（種は回ごとに変える）
-    const other = await runEval(config({ seed: "unit-2", stamp: "20261105-000200-fake", md: null }));
+    const other = await runEval(config({ seed: "unit-2", stamp: "20261105-000200-fake", md: null, judge: 0, maxAdvances: 2 }));
     expect(other.summary.runs.map((r) => r.seed)).not.toEqual(first.summary.runs.map((r) => r.seed));
-  });
+  }, SLOW);
 
   it("世界の部屋の Agent と Environment は最初の回で作り、あとの回は同じ物を使う", async () => {
     const r = await runEval(config({ runs: 2, scenarios: ["virtual"], stamp: "20261105-000400-fake", out: join(tmp, "out-room"), md: null, judge: 0, maxAdvances: 3 }));
@@ -102,12 +105,12 @@ describe("通し（偽の client）", () => {
     expect(made(1)).toBe(1);
     expect(made(2)).toBe(0);
     expect(lines(join(r.dir, "run-02.jsonl")).some((x) => x.type === "ai" && x.role === "world_room")).toBe(true);
-  });
+  }, SLOW);
 
   it("本物の client（--real）と偽の回は比べない", async () => {
     const r = await runEval(config({ runs: 1, scenarios: ["short"], stamp: "20261105-000300-fake", out: join(tmp, "out-cmp"), md: null, judge: 0 }));
     expect(r.line.startsWith("初回")).toBe(true);
-  });
+  }, SLOW);
 });
 
 /** 手と通話が多い回の選び方（決まった種で） */
@@ -133,7 +136,7 @@ describe("手・往復・仮名化の門の試し", () => {
     expect(outcome.ops.some((o) => o.op === "talk" && o.ok)).toBe(true);
     expect(outcome.ops.some((o) => o.op === "talk_end" && o.ok)).toBe(true);
     expect(log.records.some((r) => r.type === "ai" && r.role === "persona_talk")).toBe(true);
-  });
+  }, SLOW);
 
   it("自由文に本人の氏名を混ぜても、送った中身に氏名は無い（門が伏せる）", async () => {
     const { log, outcome, numbers, hits } = await drive(busyPlan({ freeRate: 1, probeRate: 1, talkRate: 0, scenario: "short" }));
@@ -145,13 +148,13 @@ describe("手・往復・仮名化の門の試し", () => {
     expect(hits.filter((h) => h.check === "leak")).toEqual([]);
     const sent = log.records.filter((r) => r.type === "ai").map((r) => (r as AiRecord).sent.user).join("\n");
     for (const name of Object.values(outcome.names)) expect(sent).not.toContain(name);
-  });
+  }, SLOW);
 
   it("偽の返事に決まりを破る言葉を混ぜると、生の返事の禁じた中身と形の失敗を拾う", async () => {
     const { numbers, hits } = await drive(busyPlan({ scenario: "short", talkRate: 0 }), 1);
     expect(numbers.banned.raw).toBeGreaterThan(0);
     expect(hits.some((h) => h.check === "banned" && h.where === "raw" && NOISE_WORDS.some((w) => h.evidence.includes(Array.from(w).slice(0, 4).join(""))))).toBe(true);
-  });
+  }, SLOW);
 });
 
 describe("記録の層", () => {
