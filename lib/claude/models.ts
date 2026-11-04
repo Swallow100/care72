@@ -33,7 +33,7 @@ export type PurposeSpec = {
 };
 
 /**
- * effort は分類（low）と本人役（medium）のほかは high（docs/DECISIONS.md 11/4 00:5x 確定、本人役は 11/4 16:4x 案）。
+ * effort は分類（low）と本人役（medium）のほかは high（docs/DECISIONS.md 11/4 00:5x 確定、本人役は 11/4 17:0x 案）。
  * high は考える分が増え、考えた分も maxTokens に入る（超えると AiBadOutput の max_tokens で、再試行しない）。
  * 待ちと上限の決め方は docs/progress/t67.md:
  * - Opus・Sonnet の high は 16000・180 秒にそろえる（前から high だった様式の読み取り・講評と同じ）
