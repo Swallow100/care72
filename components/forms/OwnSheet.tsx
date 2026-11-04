@@ -2,7 +2,7 @@
 // 裏は医療要約（T07）の頁をそのまま（MedicalSummaryPaper）と QR（T16）。医療班提供の同意が無い人の裏は「同意なし」だけ。
 // 状態を持たない（Server Component のまま、テストで renderToStaticMarkup できる）。
 // 見た目は paper.css・medical-paper.css・own-paper.css（読み込むのはページの側。テストでは読まない）。
-// QR は題名の段の右に 24mm の四角（T16 の QrBlock の字を外した形。11/3 に 18mm から大きくした、docs/DECISIONS.md 11/3 04:0x の 6）。
+// QR は題名の段の右に 24mm の四角（T16 の QrBlock の字を外した形。18mm から大きくした）。
 // 「この QR は医療班が読みます」と期限は段の右の小さな字の一番上。
 // QR がまだ無い（未作成・期限切れ）ときは同じ 24mm の枠に状態を書く。QR の頁は同意の無い人にも「同意なし」を出す作りなので、裏の両方に置く。
 

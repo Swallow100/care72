@@ -1,6 +1,6 @@
 // 医療要約の「なぜこの行があるか」（画面の脇だけ。紙に出さない）。ケアマネ・主治医が見る物で、医療班の画面には出さない。
 // 文は優先の骨格の段の根拠（lib/triage の TIERS の why）と、出典の登録簿（lib/sources）の題名だけ。新しい文は足さない。
-// 出典は 作者が本文を確かめたら「確認済」、それまで「未確認」。
+// 出典は作者が本文を確かめたら「確認済」、それまで「未確認」。
 
 import { FORM_ORDER_BASIS, type BasisLine, type MedicalSummary } from "@/lib/forms/medical-summary";
 import { TIER_LABELS } from "@/lib/labels";

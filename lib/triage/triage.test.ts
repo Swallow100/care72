@@ -1,4 +1,4 @@
-// ルールの表のテスト。docs/SPEC.md「医療の芯」の表と docs/DECISIONS.md の案 1〜6・9、
+// ルールの表のテスト。docs/SPEC.md「医療の芯」の表と docs/DECISIONS.md「色と連絡順」の案 1〜6・9、
 // 架空の 10 人 × 信号（緑・赤・未知）× 停電の経過時間の組。
 // 入力は時刻で持つ（今・発災・停電の始まり・信号の時刻）。ここでは発災の時刻を基準に「何時間あと」で書く。
 // 大雨の筋を 10 人に流す受け入れのテストは heavy-rain.test.ts。
@@ -101,7 +101,7 @@ describe("優先の骨格", () => {
     expect(tierOf({ ...base, bedridden: false, dementia: true, livesAlone: true })).toBe(6);
   });
 
-  it("抗血小板薬は段 5（抗凝固薬・ステロイド・抗てんかん薬と同じ。11/3 確定の 2）。根拠は循環器の指針", () => {
+  it("抗血小板薬は段 5（抗凝固薬・ステロイド・抗てんかん薬と同じ）。根拠は循環器の指針", () => {
     expect(categoryTier("antiplatelet")).toBe(5);
     const p: TriagePerson = {
       id: "x",
@@ -217,7 +217,7 @@ describe("10 人 × 赤 × 停電の経過時間", () => {
   });
 });
 
-describe("案 10: 録音・自由文の分類（Claude）は赤の中の順を動かさない（T48、アドバイザーの返事）", () => {
+describe("案 10: 録音・自由文の分類（Claude）は赤の中の順を動かさない（T48）", () => {
   const r = (signals: TriageSignal[]) => one(person("p-09"), signals, S.calm);
 
   it("Claude の分類の「けが」「動けない」だけなら赤だけの行（組 1）で、理由に AI の印つきで添える", () => {
@@ -296,7 +296,7 @@ describe("案 1: 外の物に頼る時計の確認", () => {
     expect(one(checked(delivery), GREEN, S.dry30).color).toBe("green");
   });
 
-  it("保管（暑さ・冷蔵）と冷蔵は確認の欄の項目で、未確認でも表の色と理由に使わない（11/3 確定の 1）", () => {
+  it("保管（暑さ・冷蔵）と冷蔵は確認の欄の項目で、未確認でも表の色と理由に使わない", () => {
     const inoue = person("p-08");
     expect(inoue.clocks.map((k) => [k.depends_on, k.depends_check])).toEqual([["storage", "confirmed"]]);
     for (const dep of ["storage", "refrigeration"] as const) {
@@ -310,7 +310,7 @@ describe("案 1: 外の物に頼る時計の確認", () => {
   });
 });
 
-describe("11/3 確定の 1: インスリンの時計は残りの日数だけ", () => {
+describe("インスリンの時計は残りの日数だけ", () => {
   const inoue = person("p-08");
 
   it("8 井上: 物の時計 4 日で発災から走る。停電の有無で残りが変わらない", () => {

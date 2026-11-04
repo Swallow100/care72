@@ -205,7 +205,7 @@ describe("分ける本体（classify）", () => {
       const r = await classify(seal(text), aiCtx(client));
       expect(r, c).toMatchObject({ ok: true, model: HAIKU, value: { categories: [c], confidence: 0.9, quote } });
       expect(calls[0].model).toBe(HAIKU);
-      // ほかの用途は high だが、分類は録音の応答のあとの 30 秒に収めるため low のまま（11/4 00:5x、T67）
+      // ほかの用途は high だが、分類は録音の応答のあとの 30 秒に収めるため low のまま（T67）
       expect(calls[0].output_config?.effort).toBe("low");
     }
     expect(aiRows()).toHaveLength(RECORDING_CLASSES.length);
@@ -278,7 +278,7 @@ describe("分ける本体（classify）", () => {
     expect(aiRows().map((r) => r.error)).toEqual(["refused", "bad_output", "bad_output", "api_error"]);
   });
 
-  it("文字起こしが無ければ呼ばない（不明。うめき声・黙っているは DECISIONS 9）", async () => {
+  it("文字起こしが無ければ呼ばない（不明。うめき声・黙っているも不明）", async () => {
     const { client, calls } = fake(says(["water"]));
     expect(await classify(seal(null), aiCtx(client))).toEqual({ ok: false, error: "no_text" });
     expect(await classify(seal("   "), aiCtx(client))).toEqual({ ok: false, error: "no_text" });

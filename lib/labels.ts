@@ -234,7 +234,7 @@ export const CLOCK_KIND_LABELS: Record<ClockKind, string> = {
 
 export const CLOCK_UNIT_LABELS: Record<ClockUnit, string> = { minute: "分", hour: "時間", day: "日", week: "週" };
 
-/** 医療の印に添える時計の残りの短い形（「酸素 4h」「透析 2日」。11/3 03:3x の確定 8） */
+/** 医療の印に添える時計の残りの短い形（「酸素 4h」「透析 2日」） */
 export const CLOCK_UNIT_SHORT: Record<ClockUnit, string> = { minute: "分", hour: "h", day: "日", week: "週" };
 
 /** 時計が走り出すきっかけ */
@@ -508,7 +508,7 @@ export const PLACE_LABELS = {
  * ボタン・見出し・状態は 2〜4 字
  */
 export const REDACT_LABELS = {
-  /** 窓の題と、題の横の小さな字（塗る物。生年月日・保険者番号は 11/3 18:0x の T52-4 で足した） */
+  /** 窓の題と、題の横の小さな字（塗る物。生年月日・保険者番号は T52 の問い 4 で足した） */
   title: "黒塗り",
   what: "氏名・住所・電話・町名・生年月日・保険者番号",
   /** 指・マウスで引くと塗る／画像を送る（拡大中）。2 つのどちらか */

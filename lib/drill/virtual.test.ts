@@ -596,7 +596,7 @@ describe("仮想の筋（偽の部屋・偽の Haiku）", () => {
     expect(screen.ticks[0].incidents[0]).toMatchObject({ change: { kind: "world_note", state: "off" }, ai: false });
   });
 
-  it("部屋の Agent: 道具は world_step だけ（砂場の道具なし）、モデルは Opus・考える深さ high（11/4 00:5x、T67）", () => {
+  it("部屋の Agent: 道具は world_step だけ（砂場の道具なし）、モデルは Opus・考える深さ high（T67）", () => {
     const p = agentParams() as { tools: Array<{ type: string; name: string }>; model: { id: string; effort: string } };
     expect(p.tools).toEqual([expect.objectContaining({ type: "custom", name: WORLD_TOOL })]);
     expect(p.model).toEqual({ id: OPUS, effort: "high" });

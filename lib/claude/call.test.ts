@@ -101,7 +101,7 @@ describe("askJson", () => {
     // Haiku には fallback を送らない
     expect(params).not.toHaveProperty("fallbacks");
     expect(params).not.toHaveProperty("betas");
-    // 分類は録音の応答のあとに走らせるので短く（T12）。ほかが high になっても分類だけは low のまま（11/4 00:5x、T67）
+    // 分類は録音の応答のあとに走らせるので短く（T12）。ほかが high になっても分類だけは low のまま（T67）
     expect(options).toEqual({ timeout: 12_000, maxRetries: 1 });
 
     // 渡った物に氏名・電話が無く、仮名がある

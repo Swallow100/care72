@@ -17,13 +17,13 @@ export const PHONE_PHRASES = {
   where: "どこに いますか",
   sending: "{送|おく}っています",
   sent: "とどきました",
-  /** 聞き直しても無音のまま、録音だけ送ったとき（T37。docs/DECISIONS.md 11/3 04:0x の 9） */
+  /** 聞き直しても無音のまま、録音だけ送ったとき（T37） */
   recordingSent: "ろくおんを おくりました",
   queued: "まだ とどいて いません",
   queuedSub: "つながったら {送|おく}ります",
   /** 送り終わりのボタン（上へ戻る）。家族の画面も同じ言葉（T80。前は本人「もう 一度」・家族「最初から」） */
   again: "{最初|さいしょ}から",
-  /** AI の印（「AI」）のあとに続ける。録っている間は「AI が きいています」と出す（docs/DECISIONS.md 運営の返事） */
+  /** AI の印（「AI」）のあとに続ける。録っている間は「AI が きいています」と出す（AI であることを示す。docs/DECISIONS.md「AI の使い所」） */
   aiListening: "が きいています",
   prompt1: "{大丈夫|だいじょうぶ}ですか",
   prompt2: "{状況|じょうきょう}を {説明|せつめい}して ください",
@@ -57,7 +57,7 @@ export const RED_QUESTION_PHRASES: Record<RedQuestion, { q: string; yes: string;
 export { emergencyWords };
 
 /**
- * AI の告知（T48、アドバイザーの返事）。一般の人が使う仕組みは AI であることを伝える決まりで、画面を見られない人がいるので声でも出す。
+ * AI の告知（T48）。一般の人が使う仕組みは AI であることを伝える決まり（Anthropic の利用ポリシー）で、画面を見られない人がいるので声でも出す。
  * 本人のスマホの赤の流れの最初（1 問目）と定型文の画面に文字で、定型文の声の頭に声で。文はここの 1 か所だけで、AI の印（「AI」）を挟んで前後に分けて持つ
  */
 export const AI_NOTICE = {

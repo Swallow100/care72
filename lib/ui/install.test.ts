@@ -1,4 +1,4 @@
-// ホーム画面に追加の判定（T51 で書き直した。対応は iPhone・Android・LINE の中の 3 つ、11/3 15:4x 確定）と、先頭の script
+// ホーム画面に追加の判定（T51 で書き直した。対応は iPhone・Android・LINE の中の 3 つ）と、先頭の script
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { INSTALL_SCRIPT, PRESS_FADE_MS, PRESS_MIN_MS, PRESS_SCRIPT } from "./head-scripts";
 import {

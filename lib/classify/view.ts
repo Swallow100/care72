@@ -57,7 +57,7 @@ export function parseClassList(text: string | null): RecordingClass[] | null {
 }
 
 /**
- * 聞き取りの欄（T49）に出している文。分類の引用と同じ文なら引用を出さない（同じ文を 2 回出さない。11/4 設計の側の答え）。
+ * 聞き取りの欄（T49）に出している文。分類の引用と同じ文なら引用を出さない（同じ文を 2 回出さない）。
  * 比べるのは画面に出す文（直した文か Claude の文。lib/signals/hearing.ts の hearingViewOf と同じ選び方）で、違えば両方出す
  */
 function hearingTexts(row: HearingSource): Set<string> {

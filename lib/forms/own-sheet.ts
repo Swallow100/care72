@@ -51,7 +51,7 @@ export const OWN_PHRASES = {
   quakeHead: "{地震|じしん}の とき",
   quakeTsunami: "{揺|ゆ}れたら すぐ {逃|に}げます",
   quakeAfter: "{揺|ゆ}れが おさまったら {逃|に}げます",
-  // 在宅避難の人（台帳の evacuation.stayHome。docs/DECISIONS.md 11/3 04:0x の 8）。地震の行と、小さな添えの 1 行（2 つの文を「。」でつなぐ）
+  // 在宅避難の人（台帳の evacuation.stayHome）。地震の行と、小さな添えの 1 行（2 つの文を「。」でつなぐ）
   quakeStay: "ゆれが おさまったら、{家|いえ}の なかの {安全|あんぜん}な ところで",
   quakeStayDangerLead: "あぶないときは ",
   quakeStayDangerTail: " へ",
@@ -66,7 +66,7 @@ export const OWN_PHRASES = {
   careManager: "ケアマネジャー",
   homeDoctor: "かかりつけの {病院|びょういん}",
   dialysis: "{透析|とうせき}の {病院|びょういん}",
-  // 119 の 1 行（11/3 16:0x 確定。アドバイザーの OK 例のまま。「と感じたら」で判断が本人の側）。本人・家族のスマホと本人の 1 枚が同じ文
+  // 119 の 1 行（docs/DECISIONS.md「119 の案内と画面の言葉」。「と感じたら」で判断が本人の側）。本人・家族のスマホと本人の 1 枚が同じ文
   emergencyLead: "{命|いのち}が {危|あぶ}ないと {感|かん}じたら、すぐ",
   emergencyNumber: "119",
   emergencyCounter: "{番|ばん}",
