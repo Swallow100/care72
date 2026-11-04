@@ -89,6 +89,9 @@ describe("関係者の面（T113）", () => {
     expect(people).not.toBe("");
     expect(people.split("架空 一郎").length - 1).toBe(1);
     expect(people.split('href="tel:09000000091"').length - 1).toBe(1);
+    // 1 行が 1 人の一覧は、人と人の間を 1 人の中の折り返しより広く空ける
+    expect(list?.apart).toBe(true);
+    expect(people).toMatch(/data-field="people.contacts"[\s\S]*?class="space-y-1.5"/);
     // 計画書・連絡順の元（上の段の緊急連絡先）はそのまま
     expect(v.head.emergency).toHaveLength(1);
   });

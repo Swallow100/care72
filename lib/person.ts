@@ -247,6 +247,8 @@ export type Row = {
   pending: Pending[];
   /** 細かい物（既往・予防接種・手帳など）。小さな字で出す */
   small?: true;
+  /** 1 行が 1 人（関係者の連絡先の一覧。T113）。狭い幅で 1 人の行が折り返しても人の境目が分かるよう、行の間を空ける */
+  apart?: true;
 };
 
 export type ClockView = {
@@ -812,7 +814,13 @@ function peopleBlocks(contacts: Contact[], ledger: Ledger): Block[] {
   const listed = contacts.filter((c) => !SHOWN_ELSEWHERE.has(c.kind)).sort(listOrder);
   const out: Row[] = [];
   if (listed.length > 0) {
-    out.push({ key: "people.contacts", label: CONTACT_ROLE_LABELS.list, field: { kind: "lines", lines: listed.map(contactListLine) }, pending: [] });
+    out.push({
+      key: "people.contacts",
+      label: CONTACT_ROLE_LABELS.list,
+      field: { kind: "lines", lines: listed.map(contactListLine) },
+      pending: [],
+      apart: true,
+    });
   }
   const has = (f: (c: Contact) => boolean) => contacts.some(f);
   if (!has((c) => c.kind === "family")) out.push(row("people.family", { kind: "none" }));
