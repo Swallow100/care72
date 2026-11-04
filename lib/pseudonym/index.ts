@@ -33,9 +33,11 @@ import type {
   SupportKind,
 } from "../db/types.ts";
 import { ageOn, todayJst } from "../age.ts";
-import { CONTACT_PASSES, formLeaks, maskContactForms, maskPlaceAndNameForms, NAME_MARK, PLACE_NAME_PASSES, type Span } from "./forms.ts";
+import { BIRTH_MARK, birthSpans, maskBirthForms, type Birth } from "./birth.ts";
+import { ADDRESS_MARK, CONTACT_PASSES, formLeaks, MAIL_MARK, maskContactForms, maskPlaceAndNameForms, NAME_MARK, PLACE_NAME_PASSES, POSTAL_MARK, type Span } from "./forms.ts";
 
 export { ADDRESS_MARK, MAIL_MARK, NAME_MARK, NOT_NAME_WORDS, POSTAL_MARK } from "./forms.ts";
+export { BIRTH_MARK } from "./birth.ts";
 
 // ---------- 入れる形（DB の行でも種のデータでも通る） ----------
 
@@ -170,6 +172,11 @@ export type PseudonymKey = {
    * 無ければ台帳の町名は（町名）
    */
   readonly places?: ReadonlyArray<Place>;
+  /**
+   * 台帳の生年月日（T118）。和暦・略記・漢数字・西暦のどの書き方でも同じ日を（生年月日）に伏せ、漏れの見張りにも使う（./birth.ts）。
+   * 無ければ形だけで見る（生年月日らしい形）
+   */
+  readonly births?: ReadonlyArray<Birth>;
 };
 
 /** 町名と、Claude に見せる地区の別名（甲地区） */
@@ -296,6 +303,17 @@ function townStem(town: string): string {
 const PHONE_LIKE = /(?<![0-9０-９])[0０][0-9０-９]{1,4}[-‐－ー ]?[0-9０-９]{1,4}[-‐－ー ]?[0-9０-９]{3,4}(?![0-9０-９])/g;
 export const PHONE_MARK = "（電話）";
 export const TOWN_MARK = "（町名）";
+
+/**
+ * 仮名化の層が文に入れる伏せ字の全部（T118）。Claude の返事を台帳に入れる道（入れる欄の文・写真・PDF）は、元に戻せなかった伏せ字が
+ * 残る値を画面に出さず、保存もしない（lib/intake の diff.ts・save.ts）
+ */
+export const MASK_MARKS: readonly string[] = [NAME_MARK, TOWN_MARK, PHONE_MARK, ADDRESS_MARK, POSTAL_MARK, MAIL_MARK, BIRTH_MARK];
+
+/** 伏せ字が残っているか */
+export function hasMaskMark(text: string): boolean {
+  return MASK_MARKS.some((m) => text.includes(m));
+}
 /** みまもり員の名前の置き換え先 */
 export const WATCHER_ROLE = "みまもり員";
 
@@ -330,6 +348,7 @@ function buildKey(
   const people: PseudonymKey["people"] = [];
   const contacts: PseudonymKey["contacts"] = [];
   const roles: string[][] = [];
+  const births: Birth[] = [];
   const secrets: Array<{ value: string; what: string }> = [];
   const batch = inputs.length > 1;
 
@@ -373,7 +392,10 @@ function buildKey(
       for (const p of parts) add(partial, p, personTarget);
       for (const p of parts) if (p.length >= 2) secrets.push({ value: p, what: `${alias}の氏名` });
     }
-    if (input.person.birth_date) secrets.push({ value: input.person.birth_date, what: `${alias}の生年月日` });
+    if (input.person.birth_date) {
+      secrets.push({ value: input.person.birth_date, what: `${alias}の生年月日` });
+      births.push({ iso: input.person.birth_date, what: `${alias}の生年月日` });
+    }
 
     const town = input.ledger.basic.address?.town?.trim();
     if (town && !placeTowns.has(town)) townRules(town, TOWN_MARK, `${alias}の町名`, rules, secrets);
@@ -460,6 +482,7 @@ function buildKey(
     contacts,
     rules: Object.freeze(rules.map(({ pattern, replacement }) => ({ pattern, replacement }))),
     secrets: Object.freeze(secrets.filter((s) => s.value.length >= 2)),
+    births: Object.freeze(births),
     ...(places.length > 0 ? { places: Object.freeze(places.map((p) => ({ town: p.town.trim(), alias: p.alias }))) } : {}),
   };
   return { key, roles };
@@ -514,7 +537,7 @@ function restorable(replacement: string, key: PseudonymKey): boolean {
 
 /**
  * 自由文の中の名前・町名・電話を置き換え、どの元の語をどの印にしたかを 1 字ずつ記録する（T88。入れる欄の戻しが使う）。
- * 順: 台帳の名前・町名（表）→ メール・郵便番号 → 電話の形 → 住所の形 → 名前の形（T74・T88。./forms.ts）
+ * 順: 台帳の名前・町名（表）→ メール・郵便番号 → 生年月日（T118。./birth.ts）→ 電話の形 → 住所の形 → 名前の形（T74・T88。./forms.ts）
  */
 function scrubUnits(text: string, key: PseudonymKey): { units: Unit[]; count: number } {
   let units: Unit[] = Array.from(text, (c) => ({ out: c, orig: c, kind: "plain" as const }));
@@ -529,6 +552,8 @@ function scrubUnits(text: string, key: PseudonymKey): { units: Unit[]; count: nu
     if (spans.length > 0) step(spans, replacement, restorable(replacement, key) ? "back" : "keep");
   }
   for (const p of CONTACT_PASSES) step(p.find(joinOut(units)), p.mark, "back");
+  // 生年月日（T118）: 電話・住所の形より先に（「昭和17-4-18」を住所の 1-2-3 にしない）
+  step(birthSpans(joinOut(units), key.births ?? []), BIRTH_MARK, "back");
   step(regexSpans(PHONE_LIKE, joinOut(units)), PHONE_MARK, "back");
   for (const p of PLACE_NAME_PASSES) step(p.find(joinOut(units)), p.mark, "back");
   return { units, count };
@@ -536,7 +561,7 @@ function scrubUnits(text: string, key: PseudonymKey): { units: Unit[]; count: nu
 
 /**
  * 自由文の中の名前・町名・電話を置き換え、置き換えた所の数を返す。
- * 順: 台帳の名前・町名（表）→ メール・郵便番号 → 電話の形 → 住所の形 → 名前の形（T74・T88。./forms.ts）
+ * 順: 台帳の名前・町名（表）→ メール・郵便番号 → 生年月日（T118。./birth.ts）→ 電話の形 → 住所の形 → 名前の形（T74・T88。./forms.ts）
  */
 function scrubCounted(text: string, key: PseudonymKey): { text: string; count: number } {
   const { units, count } = scrubUnits(text, key);
@@ -557,12 +582,14 @@ export function maskedCount(text: string, key: PseudonymKey): number {
 
 /**
  * できた物に元の情報が残っていないか。残っていれば何が残ったかを返す（値は返さない）。
- * 台帳の名前・電話・生年月日と、電話・敬称つきの名前・住所・郵便番号・メールの形（T74）を見る
+ * 台帳の名前・電話・生年月日（和暦・略記・漢数字も。T118）と、電話・敬称つきの名前・住所・郵便番号・メール・生年月日らしい日付の形（T74・T118）を見る
  */
 export function findLeaks(value: unknown, key: PseudonymKey): string[] {
   const json = typeof value === "string" ? value : JSON.stringify(value);
   const found = new Set<string>();
   for (const s of key.secrets) if (json.includes(s.value)) found.add(s.what);
+  // 生年月日（T118）: 台帳と同じ日はどの書き方でも、生年月日らしい形も
+  for (const b of birthSpans(json, key.births ?? [])) found.add(b.what);
   if (new RegExp(PHONE_LIKE.source).test(json)) found.add("電話番号らしい並び");
   for (const what of formLeaks(json)) found.add(what);
   return [...found];
@@ -732,7 +759,8 @@ export function sealItemCatalog<T extends object>(catalog: T): ForClaude<T> {
  * Claude に渡す前の検査（pseudonymize・pseudonymizeText の findLeaks）はこれを通らず、形が残れば今のまま止める
  */
 export function maskReply(text: string, key: PseudonymKey): string | null {
-  const masked = maskPlaceAndNameForms(maskContactForms(text).text).text;
+  // 生年月日らしい形（T118）は伏せ字に。台帳と同じ日は下の findLeaks で null
+  const masked = maskPlaceAndNameForms(maskBirthForms(maskContactForms(text).text)).text;
   return findLeaks(masked, key).length > 0 ? null : masked;
 }
 
@@ -776,7 +804,8 @@ export function inputTexts(input: PseudonymInput): string[] {
  * 入れる欄（T88）: Claude が写した値の伏せ字・仮名を、伏せる前の元の言葉に戻す関数を作る。sources はケアマネが入れた文と
  * 台帳の文字の値（inputTexts）。値がどれかの元の伏せたあとの文にそのまま入っていて、元の言葉が 1 つに決まるときだけ、その元の言葉に
  * （「（町名）小学校」→ 台帳の「かわなぎ小学校」）。役割名（娘・支援者 1）は戻さない（Claude は続柄の言葉として使う）。
- * 決まらなければ restoreText（仮名だけ氏名に、伏せ字はそのまま残り、画面が人に直させる）
+ * 元の言葉の候補に伏せ字の無い物があれば、それだけで決める（Claude の返事そのものを元の文に入れたとき、写した伏せ字の
+ * 「（町名）小学校」自身も候補になるので。T118）。決まらなければ restoreText（仮名だけ氏名に、伏せ字は残り、入れる欄は出さない）
  */
 export function sourceRestorer(sources: ReadonlyArray<string>, key: PseudonymKey): (value: string) => string {
   const traces = [...new Set(sources)].map((s) => {
@@ -807,6 +836,8 @@ export function sourceRestorer(sources: ReadonlyArray<string>, key: PseudonymKey
         );
       }
     }
+    const clear = [...found].filter((f) => !hasMaskMark(f));
+    if (clear.length === 1) return clear[0];
     return found.size === 1 ? [...found][0] : restoreText(value, key);
   };
 }
