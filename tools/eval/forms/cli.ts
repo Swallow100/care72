@@ -1,7 +1,7 @@
 // 書類の AI の評価の台（T107）。npm run eval:forms
 //
 //   node tools/eval/forms/cli.ts [--real] [--gold] [--paper=all|pdf|png|none] [--forms=komorebi,aozora] [--inputs=text-,photo-p-01]
-//                                [--people=p-01,p-02] [--paper-all-forms] [--out=<回の置き場>] [--corpus=<様式の置き場>] [--no-corpus] [--no-progress]
+//                                [--people=p-01,p-02] [--paper-all-forms] [--out=<回の置き場>] [--corpus=<様式の置き場>] [--no-corpus] [--no-progress] [--max-usd=10]
 //
 // - 既定は偽の client（本物の API を呼ばない）。--gold は崩さない偽（台の数え方の確かめ）
 // - --real は本物の API。鍵は環境変数 ANTHROPIC_API_KEY だけを読む（台は鍵のファイルを探さない・読まない。人が node の --env-file で渡す）
@@ -30,6 +30,13 @@ if (!["none", "png", "pdf", "all"].includes(paper)) {
   console.error("--paper は all・pdf・png・none");
   process.exit(2);
 }
+// 費用の見積もりの上限（ドル、本物の回だけ。既定 10）。超えたら次の様式・入力を始めない
+const maxUsdRaw = value("max-usd");
+const maxUsd = maxUsdRaw === undefined ? (real ? 10 : null) : Number(maxUsdRaw);
+if (maxUsd !== null && !(Number.isFinite(maxUsd) && maxUsd > 0)) {
+  console.error("--max-usd は正の数");
+  process.exit(2);
+}
 const outRoot = value("out") ?? process.env.CARE72_EVAL_OUT ?? join(REPO_ROOT, "..", "care72-qa", "eval", "forms");
 const corpusRoot = flag("no-corpus") ? null : (value("corpus") ?? process.env.CARE72_EVAL_CORPUS ?? join(REPO_ROOT, "..", "care72-eval-corpus", "forms"));
 
@@ -46,6 +53,7 @@ const result = await runEval({
   forms: list("forms"),
   inputs: list("inputs"),
   people: list("people"),
+  maxUsd,
   log: (line) => process.stderr.write(`${line}\n`),
 });
 const prev = previousRun(outRoot, result);
