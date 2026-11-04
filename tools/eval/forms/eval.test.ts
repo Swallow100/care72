@@ -6,7 +6,7 @@
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { checkReadResult, type FormMapping } from "../../../lib/forms/mapping.ts";
 import type { DiffItem } from "../../../lib/intake/diff.ts";
 import { GOLD_FORMS, goldReading } from "./gold.ts";
@@ -139,6 +139,13 @@ describe("出力先の守り", () => {
 
 describe("偽の client で 1 周（Chrome を使わない）", () => {
   const roots: string[] = [];
+  // gold の 1 周は 1 回だけ回し、外れ 0 と記録の形の両方を見る（全体のテストで重ならないように）
+  let gold: RunResult;
+  const goldRoot = mkdtempSync(join(tmpdir(), "care72-eval-"));
+  roots.push(goldRoot);
+  beforeAll(async () => {
+    gold = await run("gold", "20261105-000000-fake", goldRoot);
+  }, 120_000);
   afterAll(() => {
     for (const r of roots) rmSync(r, { recursive: true, force: true });
   });
@@ -161,8 +168,8 @@ describe("偽の client で 1 周（Chrome を使わない）", () => {
     });
   };
 
-  it("gold: 正解どおりの偽は、様式・入れる欄・紙の外れが 0", async () => {
-    const r = await run("gold", "t-gold");
+  it("gold: 正解どおりの偽は、様式・入れる欄・紙の外れが 0", () => {
+    const r = gold;
     const t = totals(r);
     expect(r.forms.map((f) => f.status)).toEqual(["ok", "ok"]);
     expect(t.read.hit).toBe(t.read.goldFields);
@@ -182,13 +189,13 @@ describe("偽の client で 1 周（Chrome を使わない）", () => {
     expect(r.leaks.strongHits).toBe(0);
   }, 60_000);
 
-  it("記録: 呼び出しごとの中身・判定・段・結果の JSON", async () => {
-    const r = await run("gold", "t-log");
+  it("記録: 呼び出しごとの中身・判定・段・結果の JSON", () => {
+    const r = gold;
     const lines = (f: string) => readFileSync(join(r.dir, f), "utf8").trim().split("\n").map((l) => JSON.parse(l) as Record<string, unknown>);
     const calls = lines("calls.jsonl");
     expect(calls).toHaveLength(6);
     for (const c of calls) {
-      expect(c).toMatchObject({ run: "t-log", usage: { status: "ok" } });
+      expect(c).toMatchObject({ run: "20261105-000000-fake", usage: { status: "ok" } });
       expect(typeof (c.request as { userText: string }).userText).toBe("string");
       expect((c.response as { text: string }).text.length).toBeGreaterThan(0);
       expect(c.attempts).toHaveLength(1);
@@ -207,10 +214,8 @@ describe("偽の client で 1 周（Chrome を使わない）", () => {
   }, 60_000);
 
   it("noisy: 崩した数が数に出て、足すと正解の数になる。送り直しと形の違う返事も数える", async () => {
-    const root = mkdtempSync(join(tmpdir(), "care72-eval-"));
-    roots.push(root);
-    const prev = await run("gold", "20261105-000000-fake", root);
-    const r = await run("noisy", "20261105-000001-fake", root);
+    const prev = gold;
+    const r = await run("noisy", "20261105-000001-fake", goldRoot);
     const t = totals(r);
     expect(t.read.wrong).toBeGreaterThan(0);
     expect(t.read.missItem).toBeGreaterThan(0);
