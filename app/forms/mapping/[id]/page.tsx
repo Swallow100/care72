@@ -10,6 +10,7 @@ import { FormsTabs } from "@/components/ui/Tabs";
 import { requirePage } from "@/lib/auth/server";
 import { MAPPING_LABELS as L } from "@/lib/forms/mapping";
 import { formsScope, getMapping, officePeople, type StoredMapping } from "@/lib/forms/mapping-db";
+import { pageImageHref } from "@/lib/forms/page-images";
 import { formatJst } from "@/lib/person";
 
 // D1 を毎回読む
@@ -23,6 +24,7 @@ const SOURCE_LABELS = { image: "写真", pdf: "PDF", manual: "手作成" } as co
 
 // 対応表を確かめる画面。AI が読んだ欄と台帳の項目の対応を欄ごとに見せ、ケアマネが直す・外す・足す。確認保存で差し込みに使える。
 // 差込は確認済の対応表だけ（事業所の本人ごとの紙面へ）。範囲は事業所（ほかの事業所の対応表は 404）
+// T86: 様式の頁の画像があれば、頁の上に欄ごとの値の場所を重ねて見せ、直せる（components/forms/mapping/PageBoxes.tsx）
 export default async function FormMappingPage({ params }: Props) {
   const principal = await requirePage("caseload");
   const scope = formsScope(principal);
@@ -54,7 +56,13 @@ export default async function FormMappingPage({ params }: Props) {
 
       {/* 1 列のときも列の幅を 0 から（広い表は面の中で横に送り、画面を横に送らない） */}
       <div className="mt-3 grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_16rem]">
-        <MappingEditor id={stored.id} version={stored.version} status={stored.status} initial={stored.mapping} />
+        <MappingEditor
+          id={stored.id}
+          version={stored.version}
+          status={stored.status}
+          initial={stored.mapping}
+          pageImages={stored.pageImages?.map((p) => ({ ...p, src: pageImageHref(stored.id, p.page) })) ?? null}
+        />
         <FillSection m={stored} people={people} />
       </div>
     </main>

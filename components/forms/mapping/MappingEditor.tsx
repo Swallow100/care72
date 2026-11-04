@@ -4,6 +4,8 @@
 // 直す（項目・欄の名前・段・頁・形・選択肢）・外す・欄を足す。確認保存で事業所に保存し、差し込みに使えるようになる。
 // 自信が低い欄と台帳に無い項目名を返した欄は要確認（本文色＋黄の帯・黄の塗りの印）。人が直した欄は「修正済」。
 // 表は欄の中で送らない（画面全体の縦 1 本。見出しの行は画面の上に留める、T38）。
+// T86: 様式の頁の画像があれば、左に頁の画像と欄ごとの値の場所（AI が読んだ矩形）を重ね（PageBoxes）、ずれていれば直す。
+// 行を選ぶ（行の欄に触る・位置を押す）とその欄の枠が選ばれ、枠を押すと行が選ばれる。書体（ゴシック・明朝）もここで直す。
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -11,6 +13,8 @@ import { AiMark, StateTag } from "@/components/person/parts";
 import { INPUT } from "@/components/person/intake-ui";
 import { Button } from "@/components/ui/Button";
 import { AddIcon, RemoveIcon, RestoreIcon, SaveIcon } from "@/components/ui/Icon";
+import { PageBoxes, type PageImageView } from "./PageBoxes";
+import { FIELD_TARGET, realignOptionBoxes, withBox, type BoxTarget } from "@/lib/forms/box-edit";
 import type { FormMappingStatus } from "@/lib/db/types";
 import { Select } from "@/components/ui/Select";
 import {
@@ -24,10 +28,14 @@ import {
   LIMITS,
   MAPPING_LABELS as L,
   mappingStats,
+  TYPEFACE_LABELS,
+  TYPEFACES,
+  type FieldBox,
   type FieldShape,
   type FormMapping,
   type LedgerItemKey,
   type MappingField,
+  type Typeface,
 } from "@/lib/forms/mapping";
 
 const GROUPED = (Object.keys(ITEM_GROUPS) as Array<keyof typeof ITEM_GROUPS>).map((g) => ({
@@ -46,11 +54,14 @@ export function MappingEditor({
   version: initialVersion,
   status: initialStatus,
   initial,
+  pageImages = null,
 }: {
   id: string;
   version: number;
   status: FormMappingStatus;
   initial: FormMapping;
+  /** 様式の頁の画像（T86）。無ければ場所の確かめは出さない */
+  pageImages?: PageImageView[] | null;
 }) {
   const router = useRouter();
   const [m, setM] = useState<FormMapping>(initial);
@@ -59,6 +70,9 @@ export function MappingEditor({
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<Msg | null>(null);
   const [dirty, setDirty] = useState(false);
+  const [selected, setSelected] = useState<string | null>(null);
+  const [target, setTarget] = useState<BoxTarget>(FIELD_TARGET);
+  const images = pageImages && pageImages.length > 0 ? pageImages : null;
 
   const stats = mappingStats(m);
   const emptyLabels = m.fields.filter((f) => !f.removed && !f.label.trim()).map((f) => f.id);
@@ -71,6 +85,17 @@ export function MappingEditor({
   };
   const editField = (fid: string, patch: Partial<MappingField>) =>
     edit({ fields: m.fields.map((f) => (f.id === fid ? { ...f, ...patch } : f)) });
+  const replaceField = (fid: string, next: (f: MappingField) => MappingField) => edit({ fields: m.fields.map((f) => (f.id === fid ? next(f) : f)) });
+  const select = (fid: string) => {
+    if (fid !== selected) setTarget(FIELD_TARGET);
+    setSelected(fid);
+  };
+  // 枠を押して選んだ行を見える所へ
+  const selectFromBox = (fid: string) => {
+    select(fid);
+    document.querySelector(`tr[data-field="${fid}"]`)?.scrollIntoView({ block: "nearest" });
+  };
+  const setBox = (fid: string, t: BoxTarget, box: FieldBox | null) => replaceField(fid, (f) => withBox(f, t, box));
   const add = () => edit({ fields: [...m.fields, blankField(m.fields, m.pages)] });
 
   const save = async () => {
@@ -121,6 +146,18 @@ export function MappingEditor({
             onChange={(e) => edit({ pages: Math.min(Math.max(1, Number(e.target.value) || 1), LIMITS.pages) })}
           />
         </label>
+        {images && (
+          <label className="grid w-28 gap-0.5 text-xs text-muted">
+            {L.typeface}
+            <Select className={`${INPUT} text-ink`} value={m.typeface ?? "gothic"} onChange={(e) => edit({ typeface: e.target.value as Typeface })}>
+              {TYPEFACES.map((t) => (
+                <option key={t} value={t}>
+                  {TYPEFACE_LABELS[t]}
+                </option>
+              ))}
+            </Select>
+          </label>
+        )}
         <div className="ml-auto flex items-center gap-2">
           <Button icon={AddIcon} onClick={add}>
             {L.addField}
@@ -138,6 +175,8 @@ export function MappingEditor({
         <Stat label={L.changed} value={stats.changed} />
         <Stat label={L.added} value={stats.added} />
         <Stat label="対応" value={stats.mapped} />
+        {images && <Stat label={L.box} value={`${stats.placed}/${stats.fields}`} />}
+        {images && stats.boxMoved > 0 && <Stat label={L.boxMoved} value={stats.boxMoved} />}
         {msg && (
           <span role={msg.tone === "error" ? "alert" : "status"} className={`font-bold ${msg.tone === "error" ? "text-danger" : "text-state-ok"}`}>
             {msg.text}
@@ -145,8 +184,15 @@ export function MappingEditor({
         )}
       </div>
 
+      <div className={images ? "mt-2 grid grid-cols-1 gap-3 xl:grid-cols-[minmax(20rem,26rem)_minmax(0,1fr)]" : "contents"}>
+      {images && (
+        // 頁の画像は表を送っても見えるように留める（広い画面だけ。狭い画面は表の上）
+        <div className="self-start xl:sticky xl:top-2">
+          <PageBoxes pages={images} fields={m.fields} selected={selected} target={target} onSelect={selectFromBox} onTarget={setTarget} onBox={setBox} />
+        </div>
+      )}
       {/* 欄の中で送らない（前は 68vh の箱の中で縦に送っていた）。clip は留めた見出しを効かせたまま角の外を切る */}
-      <div className="mt-2 overflow-clip rounded bg-panel2">
+      <div className={`${images ? "" : "mt-2 "}min-w-0 self-start overflow-clip rounded bg-panel2`}>
         {/* 行の区切りは線でなく、行の間から見える面の中の灰色 */}
         <table className="w-full border-separate [border-spacing:0_1px] text-sm">
           <thead className="sticky top-0 z-10 bg-panel2 text-left text-xs text-muted">
@@ -155,6 +201,7 @@ export function MappingEditor({
               <th className={`${CELL} w-32`}>段</th>
               <th className={CELL}>欄の名前</th>
               <th className={`${CELL} w-24`}>形</th>
+              {images && <th className={`${CELL} w-16`}>{L.box}</th>}
               <th className={`${CELL} w-52`}>台帳の項目</th>
               <th className={`${CELL} w-56`}>AI</th>
               <th className={`${CELL} w-16`} />
@@ -162,7 +209,15 @@ export function MappingEditor({
           </thead>
           <tbody>
             {m.fields.map((f) => (
-              <FieldRow key={f.id} f={f} pages={m.pages} empty={emptyLabels.includes(f.id)} onChange={(p) => editField(f.id, p)} />
+              <FieldRow
+                key={f.id}
+                f={f}
+                pages={m.pages}
+                empty={emptyLabels.includes(f.id)}
+                onChange={(p) => editField(f.id, p)}
+                onOptions={(options) => replaceField(f.id, (x) => realignOptionBoxes(x, options))}
+                place={images ? { selected: f.id === selected, select: () => select(f.id) } : null}
+              />
             ))}
           </tbody>
         </table>
@@ -173,6 +228,7 @@ export function MappingEditor({
             </Button>
           </div>
         )}
+      </div>
       </div>
     </section>
   );
@@ -186,11 +242,33 @@ function Stat({ label, value }: { label: string; value: number | string }) {
   );
 }
 
-function FieldRow({ f, pages, empty, onChange }: { f: MappingField; pages: number; empty: boolean; onChange: (p: Partial<MappingField>) => void }) {
+function FieldRow({
+  f,
+  pages,
+  empty,
+  onChange,
+  onOptions,
+  place,
+}: {
+  f: MappingField;
+  pages: number;
+  empty: boolean;
+  onChange: (p: Partial<MappingField>) => void;
+  onOptions: (options: string[]) => void;
+  /** 場所の確かめ（T86）。頁の画像が無ければ null */
+  place: { selected: boolean; select: () => void } | null;
+}) {
   const off = f.removed;
   const low = f.ai !== null && (f.ai.confidence === "low" || f.ai.rejected !== undefined);
   return (
-    <tr className={`bg-panel ${off ? "text-muted" : ""}`} data-field={f.id} data-removed={off ? "1" : undefined}>
+    <tr
+      // 選んだ行は左の操作の色の帯（下地は敷かない）
+      className={`bg-panel ${off ? "text-muted" : ""} ${place?.selected ? "shadow-[inset_3px_0_0_var(--accent)]" : ""}`}
+      data-field={f.id}
+      data-removed={off ? "1" : undefined}
+      data-selected={place?.selected ? "1" : undefined}
+      onFocusCapture={place && !off ? place.select : undefined}
+    >
       <td className={CELL}>
         <input
           type="number"
@@ -226,13 +304,13 @@ function FieldRow({ f, pages, empty, onChange }: { f: MappingField; pages: numbe
             defaultValue={f.options.join("・")}
             disabled={off}
             onBlur={(e) =>
-              onChange({
-                options: e.target.value
+              onOptions(
+                e.target.value
                   .split(/[・、,，]/)
                   .map((x) => x.trim())
                   .filter((x) => x !== "")
                   .slice(0, LIMITS.options),
-              })
+              )
             }
           />
         )}
@@ -246,6 +324,20 @@ function FieldRow({ f, pages, empty, onChange }: { f: MappingField; pages: numbe
           ))}
         </Select>
       </td>
+      {place && (
+        <td className={CELL}>
+          <button
+            type="button"
+            className={`relative rounded px-1 py-0.5 text-xs whitespace-nowrap ${f.box ? "text-ink" : "text-muted"} ${place.selected ? "font-bold underline decoration-2 underline-offset-4" : ""}`}
+            disabled={off}
+            data-press
+            data-place={f.id}
+            onClick={place.select}
+          >
+            {f.box ? `${f.page}頁` : L.noBox}
+          </button>
+        </td>
+      )}
       <td className={CELL}>
         <Select
           aria-label="台帳の項目"
