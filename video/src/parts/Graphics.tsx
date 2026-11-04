@@ -652,16 +652,21 @@ export const Quote: React.FC<{ text: string; sub?: string; children?: React.Reac
  * G5 終わりの画面。アプリのロゴ（印と名前。白い面の上に置く。ロゴの青は青い地では沈むため）が、12 時から順に描かれて満ちる。下に GitHub だけ。
  * デモの URL と審査員の ID・パスワードは出さない（提出書類の欄に書く物で、どの画面もログインが要るため）。「利用者は架空」は録画が映る間の隅に出ていて、ここでは出さない
  */
-export const EndCard: React.FC<{ repo: string }> = ({ repo }) => {
+export const EndCard: React.FC<{ repo: string; duration?: number }> = ({ repo, duration = 120 }) => {
   const frame = useCurrentFrame();
   const p = usePalette();
+  // 短いとき（締めの言葉のあとの 1.7 秒）は描く動きを詰める。描き終えてから 0.5 秒以上は止めて見せる
+  const short = duration < 70;
+  const logoStart = short ? 3 : 10;
+  const logoLen = short ? 30 : 48;
+  const repoAt = short ? 18 : 40;
   return (
     <Stage gap={44}>
       <div style={{ background: COLOR.white, borderRadius: RADIUS.panel, padding: "40px 76px 40px 52px", display: "flex", alignItems: "center", gap: 34, ...rise(frame, 0, 20, 16) }}>
-        <Logo size={210} start={10} len={48} />
+        <Logo size={210} start={logoStart} len={logoLen} />
         <div style={{ fontSize: 150, fontWeight: 600, lineHeight: 1, color: LOGO_INK }}>ケア72</div>
       </div>
-      <div style={{ fontSize: TYPE.h2, color: p.fg, ...rise(frame, 40) }}>{repo}</div>
+      <div style={{ fontSize: TYPE.h2, color: p.fg, ...rise(frame, repoAt) }}>{repo}</div>
     </Stage>
   );
 };

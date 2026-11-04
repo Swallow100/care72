@@ -357,7 +357,7 @@ const ShotView: React.FC<{ shot: Shot; assets: Assets }> = ({ shot, assets }) =>
       body = (
         <>
           <Backdrop shot={shot} assets={assets} duration={duration} />
-          <EndCard repo={REPO} />
+          <EndCard repo={REPO} duration={duration} />
         </>
       );
       break;

@@ -453,19 +453,23 @@ export const SCENES: Scene[] = [
     shots: [
       {
         at: 172.5,
-        end: 176.9,
+        end: 178.3,
         kind: "text",
-        label: "締めの言葉（課題は山積み・それでも・まずは一部から）",
-        marker: "まずは一部から",
+        label: "締めの言葉（課題は山積み・それでも・まずは一部から・本当に使える形に）",
+        // 一番の言葉は「本当に使える形に」（作者の決め 11/5。字幕だけでなく大きく出し、ロゴはそのあと）
+        marker: "本当に使える形に",
         bg: "B08",
         cues: [
           { text: "実用化の課題は", line: "N30", size: "h1", row: 0 },
           { text: "山積み", line: "N30", size: "hero", row: 0 },
           { text: "それでも", line: "N30", size: "h1", row: 1 },
           { text: "まずは一部から", line: "N30", size: "hero", row: 2, hold: true },
+          // 声より 0.25 秒先に出す（帯を引き終えてから抜ける間を作るため）
+          { text: "本当に使える形に", line: "N30", size: "hero", row: 3, hold: true, shift: -0.25 },
         ],
       },
-      { at: 176.9, end: 180, kind: "end", label: "終わりの画面", bg: "B08", bgFrom: 4.4 },
+      // ロゴは 1.7 秒（描く動きを短くする。parts/Graphics.tsx の EndCard）
+      { at: 178.3, end: 180, kind: "end", label: "終わりの画面", bg: "B08", bgFrom: 5.8 },
     ],
   },
 ];
