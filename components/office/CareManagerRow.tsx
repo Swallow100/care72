@@ -46,7 +46,21 @@ export type CareManagerRowItem = {
 
 type Mode = "rename" | "password" | null;
 
-export function CareManagerRow({ item, self, manage }: { item: CareManagerRowItem; self: boolean; manage: boolean }) {
+/**
+ * ownPassword は自分の行のパスワード変更を出すか（既定は出す）。審査員の試用事業所（T115）の管理者はパスワードを持たない
+ * （入れるのは審査員のセッションだけで、サーバーも fixed で断る）ので出さない
+ */
+export function CareManagerRow({
+  item,
+  self,
+  manage,
+  ownPassword = true,
+}: {
+  item: CareManagerRowItem;
+  self: boolean;
+  manage: boolean;
+  ownPassword?: boolean;
+}) {
   const router = useRouter();
   const fixed = isFixedAccount(item.id);
   const [mode, setMode] = useState<Mode>(null);
@@ -60,7 +74,7 @@ export function CareManagerRow({ item, self, manage }: { item: CareManagerRowIte
   // 管理者の操作は自分の行には出さない（自分の停止・管理者解除・再発行はサーバーも断る）。改名は自分にも
   const canManage = manage && !fixed;
   const others = canManage && !self;
-  const canPassword = self && !fixed;
+  const canPassword = self && !fixed && ownPassword;
 
   function open(next: Mode) {
     setError(null);

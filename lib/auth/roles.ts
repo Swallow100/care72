@@ -15,6 +15,27 @@ export function isJudgeRole(v: unknown): v is JudgeRole {
   return typeof v === "string" && (JUDGE_ROLES as readonly string[]).includes(v);
 }
 
+/**
+ * 審査員だけの役の一覧の項目（T115）。押すとその審査員のセッションだけの空の事業所（試用事業所、lib/office/sandbox.ts）を作り、
+ * 審査員がその管理者（ケアマネの役）になる。山本（T95）の役変更には出さない（JUDGE_ROLES とは別に持つ）
+ */
+export const SANDBOX_CHOICE = "sandbox";
+/** 審査員のセッションの役の印（lib/auth/session.ts の judge の r）。4 つの役と試用事業所 */
+export const JUDGE_SESSION_ROLES = [...JUDGE_ROLES, SANDBOX_CHOICE] as const;
+export type JudgeSessionRole = (typeof JUDGE_SESSION_ROLES)[number];
+
+export function isJudgeSessionRole(v: unknown): v is JudgeSessionRole {
+  return typeof v === "string" && (JUDGE_SESSION_ROLES as readonly string[]).includes(v);
+}
+
+/** 役の一覧の「新規事業所」の言葉と、作った事業所の初めの名前（審査員が /office で直せる） */
+export const SANDBOX_LABELS = {
+  choice: "新規事業所",
+  officeName: "試用事業所",
+  /** 作れる数の上限に達したとき（役選択の画面） */
+  limit: "上限到達",
+} as const;
+
 export const ROLE_LABELS: Record<Role, string> = {
   care_manager: "ケアマネ",
   government: "行政",
