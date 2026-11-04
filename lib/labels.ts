@@ -549,6 +549,8 @@ export const ROUTE_LABELS = {
   saveFailed: "保存失敗",
   /** 出典の見出し */
   credit: "出典",
+  /** 計画書の紙の避難経路の地図（T106）。前からの紙面は段に「地図 別紙」と書き、地図は別紙の頁に */
+  paperMap: "地図",
 } as const;
 
 /**

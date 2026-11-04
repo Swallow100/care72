@@ -23,10 +23,10 @@ export const ROUTE_MAP_SLOT = "route-map";
 export const ROUTE_MAP_BOX_MM = { w: 173.25, h: 73.46, withTextH: Math.round((73.46 - ROUTE_TEXT_MM.top) * 100) / 100 } as const;
 
 /**
- * 原本を取り込む前の紙面（T85、components/forms/MatsuyamaSheet.tsx）の避難経路の段の地図の箱（mm）。幅は段の内側
- * （A4 から左 20.6mm・右 15.6mm の余白と段の枠の線を引いた幅）、高さは 2 頁に収まる分
+ * 原本を取り込む前の紙面（T85、components/forms/MatsuyamaSheet.tsx）の避難経路の地図の箱（mm）。その紙は 2 頁に地図の場所が無いので
+ * 地図は別紙の頁に置く。幅は段の内側（A4 から左 20.6mm・右 15.6mm の余白と段の枠の線を引いた幅）、高さは経路地図で決めた範囲と同じ 2:1
  */
-export const ROUTE_MAP_PAPER_MM = { w: 173.25, h: 45 } as const;
+export const ROUTE_MAP_ANNEX_MM = { w: 173.25, h: 86.6 } as const;
 
 /** 避難経路の地図（T106）。欄の箱の大きさ（mm）を受けて SVG を作る（lib/forms/frame-sheet.ts の SlotImageFor） */
 export type RouteMapImage = SlotImageFor;

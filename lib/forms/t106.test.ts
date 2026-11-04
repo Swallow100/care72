@@ -13,7 +13,7 @@ import type { GeoPoint, Ledger, RouteMap } from "../db/types.ts";
 import { fitRoute } from "../map/route-edit.ts";
 import { GSI_ROUTE_CREDIT } from "../map/route-image.ts";
 import { hasFillablePaper, matsuyamaBatchPaper, medicalBatchPaper } from "./batch.ts";
-import { matsuyamaFrameSheet, ROUTE_MAP_BOX_MM, ROUTE_MAP_PAPER_MM, ROUTE_MAP_SLOT, routeMapFor } from "./frame-build.ts";
+import { matsuyamaFrameSheet, ROUTE_MAP_ANNEX_MM, ROUTE_MAP_BOX_MM, ROUTE_MAP_SLOT, routeMapFor } from "./frame-build.ts";
 import { MATSUYAMA_FRAME } from "./frame-matsuyama.ts";
 import { buildMatsuyamaSheet, t, value, type MatsuyamaSheet as Sheet } from "./matsuyama.ts";
 import { buildMedicalSummary, type MedicalSummary } from "./medical-summary.ts";
@@ -158,17 +158,27 @@ describe("原本の枠の紙（OverlaySheet）の避難経路の欄", () => {
   });
 });
 
-describe("前からの紙面（MatsuyamaSheet）の避難経路の段", () => {
-  it("経路地図があれば段の中に 173.25 × 45mm の SVG、無ければ置かない", () => {
+describe("前からの紙面（MatsuyamaSheet）の避難経路", () => {
+  it("経路地図があれば段の文の後に「地図 別紙」、地図は最後の別紙の頁に 173.25 × 86.6mm の SVG。無ければどちらも無い", () => {
     const sheet = sheetOf(0);
     const html = renderToStaticMarkup(createElement(MatsuyamaSheet, { sheet, routeMap: routeMapFor(withRoute(0)) }));
-    const route = html.slice(html.indexOf('data-block="route"'));
-    expect(route).toContain('class="route-map"');
-    expect(route).toContain(`width="${ROUTE_MAP_PAPER_MM.w}mm" height="${ROUTE_MAP_PAPER_MM.h}mm"`);
-    expect(route).toMatch(TILE);
-    expect(viewRatio(route.slice(route.indexOf("<svg")))).toBeCloseTo(ROUTE_MAP_PAPER_MM.w / ROUTE_MAP_PAPER_MM.h, 2);
+    const pageTwo = html.slice(html.indexOf('data-page="2"'), html.indexOf('data-annex="route-map"'));
+    const block = pageTwo.slice(pageTwo.indexOf('data-block="route"'));
+    expect(block).toMatch(/data-annex-mark="route-map">地図 別紙<\/span>/);
+    expect(block).not.toContain("<svg xmlns");
+    const annex = html.slice(html.indexOf('data-annex="route-map"'));
+    expect(annex).toContain("別紙　避難経路");
+    expect(annex).toContain(`対象者 <span data-field="target.name">${sheet.name}</span>`);
+    expect(annex).toContain('class="route-map"');
+    expect(annex).toContain(`width="${ROUTE_MAP_ANNEX_MM.w}mm" height="${ROUTE_MAP_ANNEX_MM.h}mm"`);
+    expect(annex).toMatch(TILE);
+    expect(annex).toContain('data-paper-foot="1/1"');
+    expect(viewRatio(annex.slice(annex.indexOf("<svg")))).toBeCloseTo(ROUTE_MAP_ANNEX_MM.w / ROUTE_MAP_ANNEX_MM.h, 2);
+    // 2 頁の下は 2/2 のまま
+    expect(pageTwo).toContain('data-paper-foot="2/2"');
     const none = renderToStaticMarkup(createElement(MatsuyamaSheet, { sheet, routeMap: routeMapFor(parseLedger(seedRows(SEED_PEOPLE[0]).person.ledger)) }));
     expect(none).not.toContain('data-slot="route-map"');
+    expect(none).not.toContain("data-annex");
     expect(none).not.toContain("<svg xmlns");
   });
 });

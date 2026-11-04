@@ -546,6 +546,8 @@ describe("避難経路の地図の受け口（前からの紙面）", () => {
     );
     const route = withMap.slice(withMap.indexOf('data-block="route"'));
     expect(route).toContain('data-slot="route-map"');
-    expect(route).toContain('<svg data-box="173.25x45"></svg>');
+    // T106: 前からの紙面の 2 頁に地図の場所が無いので、地図は別紙の頁（段には「地図 別紙」）
+    expect(route).toContain('<svg data-box="173.25x86.6"></svg>');
+    expect(route).toContain('data-annex-mark="route-map"');
   });
 });
