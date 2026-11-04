@@ -5,6 +5,7 @@
 import type { DrillAction, DrillScenario, DrillStatus } from "../db/types.ts";
 import type { FictionKind } from "./fiction.ts";
 import type { AiStop, PhoneState, ShelterState, TsunamiState, WaterState, WorldEventKind } from "./scenarios.ts";
+import { markLabels } from "./event-catalog.ts";
 
 export const SCENARIO_LABELS: Record<DrillScenario, string> = {
   heavy_rain: "大雨想定",
@@ -177,17 +178,15 @@ export const EVENT_KIND_LABELS: Record<WorldEventKind, string> = {
   outcome: "結末",
   ai_stop: "停止",
   auto_abandon: "中断",
+  // T92 の出来事の表の変化（状況の欄は種類の印 lib/drill/event-catalog.ts の incidentLabel を先に見る）
+  note: "情報",
+  mark: "個別",
+  check: "確認",
+  schedule: "予定",
 };
 
-/** 本人ごとの印（被害状況の「個別」の欄）。PersonMarks の鍵ごと */
-export const MARK_LABELS = {
-  supplyLeft: "持ち出し忘れ",
-  nurseAway: "訪問不可",
-  goingHome: "帰宅希望",
-  lineDown: "電話不通",
-  flooded: "浸水",
-  waterOut: "断水",
-} as const;
+/** 本人ごとの印（被害状況の「個別」の欄）。PersonMarks の鍵ごと（出来事の表 lib/drill/event-catalog.ts の markLabels。T92 で 5 つ足した） */
+export const MARK_LABELS = markLabels;
 
 /** 状況の欄で根拠の出典に添える言葉 */
 export const BASIS_LABEL = "出典";

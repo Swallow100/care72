@@ -11,6 +11,7 @@
 // - 画面の言葉: 筋書き → 「想定」、出来事 → 「状況」、刻み → 画面に出さない（「経過 6 時間」）。言葉は lib/drill/labels.ts
 
 import type { CheckStatus, DependsOn, DrillScenario, HazardKind, SignalColor, SignalSource, WhereNow } from "../db/types.ts";
+import { INJECT_TEXTS, injectChange, type InjectKind } from "./event-catalog.ts";
 import type { SourceId } from "../sources/index.ts";
 import type { CastPick } from "./cast.ts";
 
@@ -68,7 +69,29 @@ export type PersonMarks = {
   lineDown?: number;
   flooded?: number;
   waterOut?: number;
+  // T92: 出来事の表（lib/drill/event-catalog.ts）の印。付けるのは WorldChange の mark だけ
+  /** 介護事業所の休止（訪問の手配の相手を介護事業所にすると来られない） */
+  helperAway?: number;
+  /** 同居でない家族が帰宅困難で来られない */
+  familyAway?: number;
+  /** 車中泊（避難所の外の車の中で過ごす） */
+  carSleep?: number;
+  /** 近所の人が様子を見に来た（支援者の連絡先の無い人） */
+  neighborWatch?: number;
+  /** 本人が家の外へ出た（行き先が分からない） */
+  wandering?: number;
 };
+
+/** T92 の印（WorldChange の mark が付ける物。前からの印は種類ごとの WorldChange が付ける） */
+export const EXTRA_MARKS = ["helperAway", "familyAway", "carSleep", "neighborWatch", "wandering"] as const;
+export type ExtraMark = (typeof EXTRA_MARKS)[number];
+
+/**
+ * 世界の状態を変えない出来事の話題（T92、WorldChange の note）。状況の欄と本人役への文に出るだけ。
+ * 給水所・情報の混乱・土砂の警戒
+ */
+export const NOTE_TOPICS = ["water_station", "info_confusion", "landslide_warn"] as const;
+export type NoteTopic = (typeof NOTE_TOPICS)[number];
 
 /**
  * 結末（仮想モード、T50・T53）。世界（部屋・1 回呼び）が決めた架空の人の結末（lib/drill/world-apply.ts の farewellIncidents）。
@@ -138,6 +161,10 @@ export type WorldState = {
   touched?: Record<string, number>;
   /** この訓練の AI の呼び出しの数（1 訓練の上限に使う） */
   counts?: DrillCounts;
+  /**
+   * 起きた note の話題と最初の時刻（T92。発災からの時間）。note は世界の様子を変えないが、同じ話題を 2 度差し込まないために覚える
+   */
+  notes?: Partial<Record<NoteTopic, number>>;
 };
 
 /** 向かっている人の役。staff 事業所の職員・nurse 訪問看護・supporter 支援者・family 家族・vendor 業者・transport 移送・power 電源・medicine 薬 */
@@ -251,7 +278,20 @@ export type WorldChange =
   | { kind: "supply_left" }
   | { kind: "nurse_away" }
   | { kind: "going_home" }
-  | { kind: "line_down" };
+  | { kind: "line_down" }
+  // ---------- T92: 出来事の表（lib/drill/event-catalog.ts）が組む変化。足すのはこの 4 つだけ ----------
+  // 世界の様子を変えない出来事（給水所・情報の混乱・土砂の警戒）。notes に話題と時刻を覚えるだけ
+  | { kind: "note"; topic: NoteTopic }
+  // T92 の印（person が要る）
+  | { kind: "mark"; mark: ExtraMark }
+  // 本人の時計の頼り先の確認の上書き（world.checks。person が要る）。ルールの表の入力の形は変えない（lib/drill/world-clocks.ts）
+  | { kind: "check"; depends: DependsOn[]; status: CheckStatus }
+  // 予定を積む。at は起きる・着く時刻（発災からの分）。then が event なら world.scheduled（時刻が来たら lib/drill/schedule.ts の
+  // fireScheduled が状況にする）、arrival なら world.arrivals（着いたら settleWorld）。by は積んだ所
+  | { kind: "schedule"; at: number; by: "director" | "world"; then: ScheduledThen };
+
+/** 予定の中身（T92）。event は時刻が来たら当てる変化と画面の文、arrival は向かってくる人の役 */
+export type ScheduledThen = { kind: "event"; change: WorldChange; text: string } | { kind: "arrival"; role: ArrivalRole };
 
 export type WorldEventKind = WorldChange["kind"];
 
@@ -262,53 +302,11 @@ export type AiStop = (typeof AI_STOPS)[number];
 /** 世界の 1 刻みを作った所。room は Managed Agents の部屋、oneshot は Messages API の 1 回呼び（部屋が使えないときの代替） */
 export type WorldVia = "room" | "oneshot";
 
-// ---------- 監督の差し込みの種類（T19） ----------
+// ---------- 監督の差し込みの種類（T19・T92） ----------
+// 種類・固定の文・世界の変化は出来事の表（lib/drill/event-catalog.ts）が持つ。前からの import を壊さないよう、ここからも出す。
+// event-catalog.ts はこのファイルを型だけ読む（HEAVY_RAIN を作るときに injectChange を呼ぶので、輪にしない）
 
-/**
- * 監督（Opus）が差し込める状況の種類。この 6 つだけ（表の外は捨てる。自由な出来事は採点が揺れる）。
- * どれも本人 1 人を指し、世界の変化はコード（injectChange）が組む。Opus が選ぶのは種類・相手・文・理由・根拠だけ
- */
-export const INJECT_KINDS = [
-  "supply_left", // 栄養剤の持ち出し忘れ
-  "dialysis_flooded", // 透析施設の浸水
-  "road_blocked", // 道路が通れない
-  "line_down", // 電話が不通
-  "nurse_away", // 訪問看護が来られない
-  "going_home", // 本人が家に帰ろうとする
-] as const;
-export type InjectKind = (typeof INJECT_KINDS)[number];
-
-export function isInjectKind(v: unknown): v is InjectKind {
-  return typeof v === "string" && (INJECT_KINDS as readonly string[]).includes(v);
-}
-
-/** 種類ごとの固定の文（画面の 1 行。Opus の文が使えないときもこれ）。氏名・町名・施設の名前を書かない */
-export const INJECT_TEXTS: Readonly<Record<InjectKind, string>> = {
-  supply_left: "家族が栄養剤を持ち出し忘れた",
-  dialysis_flooded: "透析施設 浸水で休止",
-  road_blocked: "家の前の道 通行止め",
-  line_down: "家の電話 不通",
-  nurse_away: "訪問看護 来られない",
-  going_home: "本人が家に帰ろうとする",
-};
-
-/** 差し込み 1 つの世界の変化。道路・施設の id は本人ごと（同じ人に 2 度当てても 1 つ） */
-export function injectChange(kind: InjectKind, person: string): WorldChange {
-  switch (kind) {
-    case "supply_left":
-      return { kind: "supply_left" };
-    case "dialysis_flooded":
-      return { kind: "facility", id: `fc-${person}`, label: "透析施設", open: false, depends: "dialysis_center" };
-    case "road_blocked":
-      return { kind: "road", id: `rd-${person}`, label: "家の前の道", open: false };
-    case "line_down":
-      return { kind: "line_down" };
-    case "nurse_away":
-      return { kind: "nurse_away" };
-    case "going_home":
-      return { kind: "going_home" };
-  }
-}
+export { INJECT_KINDS, INJECT_TEXTS, injectChange, isInjectKind, type InjectKind } from "./event-catalog.ts";
 
 /** 世界の出来事（状況）1 つ。text は画面の 1 行（氏名・町名・施設の名前を書かない） */
 export type WorldEvent = {
@@ -759,6 +757,11 @@ export function applyEvent(world: WorldState, e: WorldEvent, hour: number): Worl
         const since = { ...(c.area.since ?? {}), ...(o.area.since ?? {}) };
         return { ...world, outage: { ...o, area: { scope: "towns", towns, since } } };
       }
+      // 続いている停電が全域に広がる（T92 の outage_spread）: 始まりは最初の時刻のまま。今の時刻にすると、ルールの表の停電の始まり
+      // （outageAt）が後ろにずれ、もう走っている機器の電池の時計が戻る
+      if (o && o.restoredAt === null && c.area.scope === "office") {
+        return { ...world, outage: { ...o, area: { scope: "office" } } };
+      }
       return { ...world, outage: { area: c.area, since: hour, restoredAt: null } };
     }
     case "outage_restored":
@@ -826,6 +829,34 @@ export function applyEvent(world: WorldState, e: WorldEvent, hour: number): Worl
     case "outcome": {
       if (!person || world.ended?.[person]) return world;
       return { ...world, ended: { ...(world.ended ?? {}), [person]: { at: hour, label: c.label, reason: c.reason ?? null } } };
+    }
+    // ---------- T92 の出来事の表の変化 ----------
+    case "note":
+      return world.notes?.[c.topic] !== undefined ? world : { ...world, notes: { ...(world.notes ?? {}), [c.topic]: hour } };
+    case "mark":
+      return mark(world, person, c.mark, hour);
+    case "check": {
+      if (!person || c.depends.length === 0) return world;
+      const own = { ...(world.checks?.[person] ?? {}) };
+      for (const d of c.depends) own[d] = c.status;
+      return { ...world, checks: { ...(world.checks ?? {}), [person]: own } };
+    }
+    case "schedule": {
+      const t = c.then;
+      if (t.kind === "arrival") {
+        if (!person) return world;
+        const a: Arrival = { person, role: t.role, arrive: c.at, back: null, arrived: false, from: c.by };
+        return { ...world, arrivals: [...(world.arrivals ?? []), a] };
+      }
+      const s: Scheduled = {
+        at: c.at,
+        change: t.change,
+        text: t.text,
+        ...(person ? { person } : {}),
+        ...(e.basis ? { basis: e.basis } : {}),
+        by: c.by,
+      };
+      return { ...world, scheduled: [...(world.scheduled ?? []), s] };
     }
   }
 }

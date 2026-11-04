@@ -1,22 +1,24 @@
 // 訓練の監督（docs/tasks/T19.md）。世界の状態（道路・停電・電話の不通・職員の空き・避難所の様子・本人ごとの印）と、
 // 刻みごとの差し込み。形は「決まった流れ＋判断点 1 つ」（Building Effective Agents の workflow）:
 // - 決まった流れ: 想定の表（lib/drill/scenarios.ts）の出来事と固定の差し込みを順に当てる（Claude を呼ばない。engine の step）
-// - 判断点 1 つ: この刻みで、この事業所の台帳の弱点（空欄・支援者なし・残り時間の短さ）に合わせて差し込む状況を 0〜2 個。
-//   Opus に 1 刻み 1 回だけ、決まった JSON で { events: [{ target, kind, text, reason, basis }] }
+// - 判断点 1 つ: この刻みで、この事業所の台帳の弱点（空欄・支援者なし・残り時間の短さ）に合わせて差し込む状況を 0〜差し込める数
+//   （DirectorInput.budget、無ければ 2）。Opus に 1 刻み 1 回だけ、決まった JSON で { events: [{ target, kind, text, reason, basis, after }] }
 //
 // 守ること:
 // - Claude に渡すのは lib/pseudonym を通した物だけ。本人は仮名（A さん）、渡すのは世界の様子と台帳の弱点の要約だけ
 //   （氏名・住所・電話・町名・避難先の名前を渡さない。色・順位も渡さない）
-// - 監督に色・順位を決めさせない。差し込みは種類（表の 6 つ）と相手を選ぶだけで、世界の変化はコード（injectChange）が組み、
-//   色と順位は安否と台帳の時計を lib/triage の表に流して決まる
-// - 種類は表の 6 つだけ。表の外・その人に当てはまらない種類（栄養剤は経管栄養の人だけ、など）・知らない仮名は捨てる
+// - 監督に色・順位を決めさせない。差し込みは種類（出来事の表 lib/drill/event-catalog.ts）と相手を選ぶだけで、
+//   世界の変化は表の build（コード）が組み、色と順位は安否と台帳の時計を lib/triage の表に流して決まる
+// - 種類は表の物だけ（T92 で 6 → 26）。表の外・その人に当てはまらない種類（栄養剤は経管栄養の人だけ、など）・知らない仮名は捨てる。
+//   全体の種類（停電の見込み・余震など）は target が「全体」、予定の種類は after（何時間後、表の範囲）
+// - 根拠は表が 1 つに決める種類はコードが付ける（監督に選ばせない）。監督が選ぶのは DIRECTOR_SOURCES の 5 つか根拠なしのまま
 // - 失敗（鍵なし・上限・断られた・形の違い・呼び出しの失敗・伏せきれない・台帳を読めない）は差し込みなし（表の固定の状況だけで進む）
 // - ケアマネの手（T20）への世界の返事は、確率をこの表で先に決め、Opus は文だけ（worldReply。本物の文は T20）
 
 import * as z from "zod";
 import { askJson, type AskJsonContext, type AskJsonRequest } from "../claude/call.ts";
 import { AiLimitReached } from "../claude/errors.ts";
-import type { ClockCategory, DrillAction } from "../db/types.ts";
+import type { DrillAction } from "../db/types.ts";
 import { EXTRA_PENDING_LABELS, intakeField } from "../intake/fields.ts";
 import { CARE_LEVEL_LABELS, CONTACT_KIND_LABELS, DEVICE_LABELS, HOUSEHOLD_LABELS, MEDICATION_CATEGORY_LABELS } from "../labels.ts";
 import {
@@ -50,15 +52,18 @@ import { nightLine } from "./night.ts";
 import { officePlaces } from "./area.ts";
 import { cleanWords, isPersonaFailure, reportersOf } from "./persona.ts";
 import {
+  afterOf,
+  ARRIVAL_ROLE_LABELS,
+  EVENT_CATALOG,
+  eligibleAreaKinds,
   INJECT_KINDS,
-  INJECT_TEXTS,
   isInjectKind,
-  phoneOf,
-  scenarioOf,
+  markWords,
+  SUPPLY_LABELS,
+  type EventSource,
   type InjectKind,
-  type PersonMarks,
-  type WorldState,
-} from "./scenarios.ts";
+} from "./event-catalog.ts";
+import { scenarioOf, type AskKind, type PersonMarks, type WorldState } from "./scenarios.ts";
 
 // ---------- 世界 → ルールの表の入力 ----------
 // lib/drill/world-clocks.ts へ移した（T90 の準備）。前からの import を壊さないよう、同じ名前をここからも出す
@@ -68,48 +73,41 @@ export { drillClocks, type ClockForWorld } from "./world-clocks.ts";
 // ---------- 差し込める種類（台帳と世界から。コードで決める） ----------
 
 /**
- * この本人に差し込める種類。その人に当てはまり、まだ起きていない物だけ。
+ * この本人に差し込める本人の種類（出来事の表 lib/drill/event-catalog.ts の eligible。表の並び）。その人に当てはまり、まだ起きていない物だけ。
  * 栄養剤は経管栄養の時計がある人、透析施設は透析の時計がある人、訪問看護は訪問看護の連絡先がある人、
- * 家に帰ろうとするのは家の外（避難所・その他）にいると連絡のあった人
+ * 家に帰ろうとするのは家の外（避難所・その他）にいると連絡のあった人、ほかは表の行の注。
+ * 全体の種類（停電の見込み・余震など）はここに入れない（eligibleAreaKinds）
  */
-export function eligibleKinds(
-  source: Pick<PseudonymInput, "clocks" | "contacts">,
-  person: string,
-  world: WorldState,
-  state: PersonState | null,
-): InjectKind[] {
-  const own: PersonMarks = world.marks[person] ?? {};
-  const has = (c: ClockCategory) => source.clocks.some((k) => k.category === c);
-  const out: InjectKind[] = [];
-  if (has("tube_feeding") && own.supplyLeft === undefined) out.push("supply_left");
-  if (has("dialysis") && !world.facilities.some((f) => f.person === person && !f.open)) out.push("dialysis_flooded");
-  if (!world.roads.some((r) => r.person === person && !r.open)) out.push("road_blocked");
-  if (phoneOf(world, person) !== "down") out.push("line_down");
-  if (source.contacts.some((c) => c.kind === "visiting_nurse") && own.nurseAway === undefined) out.push("nurse_away");
-  if ((state?.whereNow === "shelter" || state?.whereNow === "other") && own.goingHome === undefined) out.push("going_home");
-  return out;
+export function eligibleKinds(source: EventSource, person: string, world: WorldState, state: PersonState | null): InjectKind[] {
+  return INJECT_KINDS.filter((k) => {
+    const row = EVENT_CATALOG[k];
+    return row.scope === "person" && row.eligible(source, person, world, state);
+  });
 }
 
 // ---------- 想定の文と弱点の要約（Claude に渡す前に pseudonymizeText で伏せる） ----------
 
-/** 種類の中身（指示の文。画面の言葉ではない） */
-const KIND_WORDS: Readonly<Record<InjectKind, string>> = {
-  supply_left: "家族・本人が栄養剤を持ち出し忘れた（経管栄養の人）",
-  dialysis_flooded: "通う透析施設が浸水して休止（透析の人）",
-  road_blocked: "家の前の道が通れない（冠水・土砂・倒木）",
-  line_down: "家の電話が不通",
-  nurse_away: "訪問看護が来られない（訪問看護を使う人）",
-  going_home: "本人が避難先から家に帰ろうとする（家の外にいる人）",
+/** 本人ごとの印の言い方（指示の文。出来事の表の markWords） */
+const MARK_WORDS: Readonly<Record<keyof PersonMarks, string>> = markWords;
+
+/** 頼み事の言い方（指示の文） */
+const ASK_WORDS: Readonly<Record<AskKind, string>> = {
+  medicine: "薬",
+  water: "水",
+  food: "食事",
+  power: "電源",
+  transport: "移送",
+  family_contact: "家族連絡",
+  battery: "電池",
+  toilet: "便所",
+  warmth: "保温",
 };
 
-const MARK_WORDS: Readonly<Record<keyof PersonMarks, string>> = {
-  supplyLeft: "栄養剤の持ち出し忘れ",
-  nurseAway: "訪問看護が来られない",
-  goingHome: "家に帰ろうとしている",
-  lineDown: "家の電話が不通",
-  flooded: "家の辺りが浸水",
-  waterOut: "家の辺りが断水",
-};
+/** 発災からの分 → 「N 時間 M 分」（指示の文） */
+function minuteWords(minute: number): string {
+  const m = Math.max(0, Math.round(minute));
+  return m % 60 === 0 ? `${m / 60} 時間` : `${Math.floor(m / 60)} 時間 ${m % 60} 分`;
+}
 
 const SCENE_WORDS = { heavy_rain: "大雨（警戒レベル 3 → 4 → 浸水）", earthquake: "地震（南海トラフ 震度 6強・津波・停電）" } as const;
 
@@ -144,10 +142,13 @@ export function sceneText(input: DirectorInput, aliasOf: ReadonlyMap<string, str
       if (at !== undefined) now.push(`${a}: ${MARK_WORDS[k]}（${at} 時間から）`);
     }
   }
+  // 予定の出来事（T92。停電の復旧の見込み・電話の回復の見込み）。同じ見込みを重ねて差し込まないために見せる
+  for (const s of w.scheduled ?? []) now.push(`予定: ${s.text}（${minuteWords(s.at)}${who(s.person) ? `、${who(s.person)}` : ""}）`);
   const kind = scenarioOf(input.scenario).kind;
   return [
     `想定: ${SCENE_WORDS[kind]}`,
-    `時刻: 発災から ${input.hour} 時間（${last} 時間まで）`,
+    `時刻: 発災から ${minuteWords(input.hour * 60)}（${last} 時間まで）`,
+    `差し込める数: ${budgetOf(input)}`,
     // 夜間発災（T59）だけ。時刻の 1 行
     ...(input.night ? [nightLine(input.hour)] : []),
     ["今の様子:", ...now.map((x) => `- ${x}`)].join("\n"),
@@ -214,8 +215,42 @@ export type WeakEntry = {
   kinds: ReadonlyArray<InjectKind>;
 };
 
-/** 本人ごとの台帳の弱点の要約（仮名・年齢・介護度・医療・残り時間・空欄・支援者・押せる人・今の安否・差し込める種類） */
-export function weaknessText(entries: ReadonlyArray<WeakEntry>, world: WorldState, hour: number): string {
+const DEPENDS_WORDS = { dialysis_center: "透析先", refrigeration: "冷蔵", delivery: "配達", storage: "保管" } as const;
+const CHECK_WORDS = { confirmed: "確認済", unconfirmed: "未確認" } as const;
+
+/**
+ * 本人ごとの T90 の準備の欄（頼み事の未対応・届いた物・向かっている人・確認の上書き）。無い欄は書かない。
+ * 本人の体の様子は書かない（世界と手の事実だけ）
+ */
+function sharedLines(world: WorldState, person: string): string[] {
+  const out: string[] = [];
+  const open = (world.asks?.[person] ?? []).filter((a) => a.done === null).map((a) => ASK_WORDS[a.kind]);
+  if (open.length > 0) out.push(`  頼み事（未対応）: ${[...new Set(open)].join("、")}`);
+  const got = Object.entries(world.supplies?.[person] ?? {}).flatMap(([k, at]) =>
+    typeof at === "number" ? [`${SUPPLY_LABELS[k as keyof typeof SUPPLY_LABELS]}（${minuteWords(at)}）`] : [],
+  );
+  if (got.length > 0) out.push(`  届いた物: ${got.join("、")}`);
+  const coming = (world.arrivals ?? [])
+    .filter((a) => a.person === person && !a.arrived)
+    .map((a) => `${ARRIVAL_ROLE_LABELS[a.role]}（${minuteWords(a.arrive)}ごろ）`);
+  if (coming.length > 0) out.push(`  向かっている人: ${coming.join("、")}`);
+  const checks = Object.entries(world.checks?.[person] ?? {}).flatMap(([d, c]) =>
+    c ? [`${DEPENDS_WORDS[d as keyof typeof DEPENDS_WORDS]} ${CHECK_WORDS[c]}`] : [],
+  );
+  if (checks.length > 0) out.push(`  確認: ${checks.join("、")}`);
+  return out;
+}
+
+/**
+ * 本人ごとの台帳の弱点の要約（仮名・年齢・介護度・医療・残り時間・空欄・支援者・押せる人・今の安否・頼み事・届いた物・向かっている人・
+ * 確認・差し込める種類）と、全体に差し込める種類（T92。area が無ければ書かない）
+ */
+export function weaknessText(
+  entries: ReadonlyArray<WeakEntry>,
+  world: WorldState,
+  hour: number,
+  area?: ReadonlyArray<InjectKind>,
+): string {
   const lines = entries.map((e) => {
     const p = e.claude;
     const head = [
@@ -246,10 +281,21 @@ export function weaknessText(entries: ReadonlyArray<WeakEntry>, world: WorldStat
       `  支援者: ${supporters > 0 ? `${supporters} 人` : "なし"}`,
       `  スマホで押せる人: ${pressers.length > 0 ? pressers.join("、") : "いない"}`,
       `  今の安否: ${stateWords(e.state)}`,
+      ...sharedLines(world, e.person),
       `  差し込める種類: ${e.kinds.length > 0 ? e.kinds.join("、") : "なし"}`,
     ].join("\n");
   });
-  return ["本人ごとの弱点:", ...lines].join("\n");
+  return [
+    "本人ごとの弱点:",
+    ...lines,
+    ...(area ? [`全体に差し込める種類: ${area.length > 0 ? area.join("、") : "なし"}`] : []),
+  ].join("\n");
+}
+
+/** この区切りで差し込んでよい数（T90 の budget。0〜3。無ければ DIRECTOR_MAX） */
+export function budgetOf(input: Pick<DirectorInput, "budget">): number {
+  const b = input.budget;
+  return typeof b === "number" && Number.isFinite(b) ? Math.max(0, Math.min(3, Math.floor(b))) : DIRECTOR_MAX;
 }
 
 // ---------- 指示と返事の形 ----------
@@ -263,27 +309,38 @@ export const DIRECTOR_SOURCES = [
   "mhlw-dementia-2018",
 ] as const satisfies ReadonlyArray<SourceId>;
 
+/** 指示の種類の 1 行（出来事の表から。本人か全体か、予定の種類は after の範囲） */
+function kindLine(k: InjectKind): string {
+  const r = EVENT_CATALOG[k];
+  const after = r.after ? `。after ${r.after.min}〜${r.after.max} 時間` : "";
+  return `- ${k}（${r.scope === "area" ? "全体" : "本人"}）: ${r.words}${after}`;
+}
+
+/** 監督の指示を出来事の表から作る（種類の数・中身・何時間後の範囲は表のまま） */
 export const DIRECTOR_SYSTEM = [
   "災害の訓練（発災から 72 時間）の監督。ケアマネが担当する在宅の高齢者（人は全部架空）の訓練で、想定の表の状況に加えて、",
   "この事業所の台帳の弱点を突く小さな状況を差し込む。差し込みはケアマネの対応を試すためで、ケアマネが動けば確かめられる・防げる大きさにする。",
-  "入力は JSON。「想定」は今の時刻・世界の様子・この刻みの状況、「弱点」は本人ごとの台帳の弱点の要約と、その人に差し込める種類。",
+  "入力は JSON。「想定」は今の時刻・この刻みに差し込める数・世界の様子・この刻みの状況、「弱点」は本人ごとの台帳の弱点の要約と、",
+  "その人に差し込める種類と、全体に差し込める種類。",
   "",
   "返す JSON:",
-  "- events: 差し込む状況の配列。0〜2 個。差し込まない刻みがあってよい。",
-  "  - target: 本人の仮名（「A さん」）。「弱点」にある人だけ。",
-  "  - kind: 種類の英字。その本人の「差し込める種類」にある物だけ。",
+  "- events: 差し込む状況の配列。0 個から「想定」の「差し込める数」まで。差し込まない刻みがあってよい。",
+  "  - target: 本人の種類は本人の仮名（「A さん」。「弱点」にある人だけ）。全体の種類は「全体」。",
+  "  - kind: 種類の英字。本人の種類はその本人の「差し込める種類」、全体の種類は「全体に差し込める種類」にある物だけ。",
   "  - text: 画面に出す 1 行（25 字まで）。「家族が栄養剤を持ち出し忘れた」の形。仮名・名前・場所の名前を書かない（画面が名前を添える）。",
   "  - reason: その本人とその種類を選んだ理由。突いた弱点（空欄・支援者なし・残り時間の短さ・連絡なし）を書く（80 字まで）。",
   `  - basis: 根拠の出典の id。当てはまる物が無ければ「${NO_BASIS}」。`,
+  "  - after: 予定の種類（after の範囲が書いてある種類）だけ、何時間後かの整数。ほかの種類は省く。",
   "",
-  "種類（kind）はこの 6 つだけ。表に無い状況は作らない:",
-  ...INJECT_KINDS.map((k) => `- ${k}: ${KIND_WORDS[k]}`),
+  `種類（kind）はこの ${INJECT_KINDS.length} だけ。表に無い状況は作らない（本人は本人 1 人の所の事、全体は事業所の全体の事）:`,
+  ...INJECT_KINDS.map(kindLine),
   "",
   "決まり:",
   "1. 弱点に合わせる。弱点の無い人、もう同じ状況が起きている人には差し込まない。",
-  "2. 1 刻みに多くて 2 つ。同じ人に 2 つ差し込まない。この刻みの状況と同じ事を重ねない。",
+  "2. 1 刻みに多くて「差し込める数」まで。同じ人に 2 つ差し込まない。全体の種類は 1 刻みに 1 つまで。この刻みの状況と同じ事を重ねない。",
   "3. 人の生き死にを決める状況（亡くなる・意識がない・火事）を作らない。けがや体の具合は書かない（本人役が演じる）。",
   "4. 色・順位・優先・助言を書かない。診断・病名・薬の量を書かない。",
+  "5. 全体の種類は target に「全体」と書く。予定の種類は after に何時間後かを書く（範囲は種類ごと。範囲の外は使われない）。",
   "",
   "入力に「返事」があるときだけ、replies も返す（無ければ空の配列か省く）。ケアマネの手（電話・訪問・手配・依頼・報告）に世界が返した結果の言い換え:",
   "- replies: 返事の id ごとに 1 つ。",
@@ -304,6 +361,8 @@ export const DirectorSchema = z.object({
       text: z.string(),
       reason: z.string(),
       basis: z.string(),
+      // 予定の種類（T92）の何時間後。ほかの種類は省く（T19 の形の返事も受ける）
+      after: z.number().nullish(),
     }),
   ),
   // 世界の返事の言い換え（T20）。「返事」を渡したときだけ。省いてよい（T19 の形の返事も受ける）
@@ -398,34 +457,78 @@ const isDirectorSource = (v: string): v is (typeof DIRECTOR_SOURCES)[number] =>
   isSourceId(v) && (DIRECTOR_SOURCES as readonly string[]).includes(v);
 
 /**
- * Opus の返事を差し込みにする。表の外の種類・知らない仮名・その人に差し込めない種類・同じ人に 2 つ目・人の生き死にの文は捨てる。
+ * 根拠（出典の登録簿の id）。表の basis が code の種類はコードが付け（監督の値は見ない。本人で変わる物は basisFor）、
+ * director の種類は監督の値が表の一覧と DIRECTOR_SOURCES の両方にあるときだけ受ける。一覧が空なら根拠なし（監督の値は捨てる）
+ */
+export function basisOf(kind: InjectKind, raw: string, source?: EventSource): SourceId | null {
+  const row = EVENT_CATALOG[kind];
+  const ids = row.basis.ids;
+  if (ids.length === 0) return null;
+  if (row.basis.by === "code") return row.basisFor ? (source ? row.basisFor(source) : null) : ids[0];
+  const v = raw.trim();
+  return isDirectorSource(v) && (ids as readonly string[]).includes(v) ? v : null;
+}
+
+export type DirectorEventsContext = {
+  key: PseudonymKey;
+  /** 本人 → その人に差し込める本人の種類 */
+  eligible: ReadonlyMap<string, ReadonlyArray<InjectKind>>;
+  /** 全体に差し込める種類 → 印の付く人（eligibleAreaKinds）。無ければ全体の種類は捨てる */
+  area?: ReadonlyMap<InjectKind, ReadonlyArray<string>>;
+  /** 差し込める数（budgetOf）。無ければ DIRECTOR_MAX */
+  max?: number;
+  /** 本人の台帳（根拠と事実をコードが付けるのに使う） */
+  sources?: ReadonlyMap<string, EventSource>;
+  /** 今の世界（満員になる避難所を選ぶ） */
+  world?: WorldState;
+};
+
+/**
+ * Opus の返事を差し込みにする。表の外の種類・知らない仮名・その人に差し込めない種類・同じ人に 2 つ目・全体の 2 つ目・
+ * 範囲の外の何時間後・人の生き死にの文は捨てる。
  * 文は本人役と同じ掃除（仮名は「本人」、使わない言葉・元の情報が残る物は捨てる）で、使えなければ種類の固定の文（選んだのは AI のまま）。
+ * 何時間後・震度・避難所の名前の入る種類は、文をコードが書く（Opus の文と食い違わないように）。
  * 理由は仮名を氏名に戻して訓練記録に残す（サーバーの中だけ。採点 T22 が Claude に渡すときはまた伏せる）
  */
-export function directorEvents(
-  answer: DirectorAnswer,
-  ctx: { key: PseudonymKey; eligible: ReadonlyMap<string, ReadonlyArray<InjectKind>> },
-): DirectorEvent[] {
+export function directorEvents(answer: DirectorAnswer, ctx: DirectorEventsContext): DirectorEvent[] {
+  const max = ctx.max ?? DIRECTOR_MAX;
   const out: DirectorEvent[] = [];
+  let areaUsed = false;
   for (const e of answer.events) {
-    if (out.length >= DIRECTOR_MAX) break;
+    if (out.length >= max) break;
     const kind = e.kind.trim();
     if (!isInjectKind(kind)) continue;
-    const person = personOfAlias(e.target, ctx.key);
-    if (!person || out.some((x) => x.person === person)) continue;
-    if (!(ctx.eligible.get(person) ?? []).includes(kind)) continue;
+    const row = EVENT_CATALOG[kind];
     if (DANGER.test(e.text)) continue;
-    const text = cleanWords(e.text, ctx.key, INJECT_TEXT_MAX) ?? INJECT_TEXTS[kind];
+    const after = afterOf(row, e.after ?? undefined);
+    if (after === undefined) continue;
+    let person: string | null = null;
+    if (row.scope === "person") {
+      person = personOfAlias(e.target, ctx.key);
+      if (!person || out.some((x) => x.person === person)) continue;
+      if (!(ctx.eligible.get(person) ?? []).includes(kind)) continue;
+    } else if (areaUsed || !ctx.area?.has(kind)) {
+      continue;
+    }
+    const place = row.place ? (ctx.world ? row.place(ctx.world) : null) : null;
+    if (row.place && !place) continue;
+    const source = person ? ctx.sources?.get(person) : undefined;
+    const text = row.ownText ? row.text(after) : (cleanWords(e.text, ctx.key, INJECT_TEXT_MAX) ?? row.text(after));
     const reason = Array.from(restoreText(e.reason.replace(/\s+/g, " ").trim(), ctx.key)).slice(0, REASON_MAX).join("");
-    const basis = e.basis.trim();
+    const basis = basisOf(kind, e.basis, source);
     out.push({
       inject: kind,
-      person,
+      ...(person ? { person } : {}),
       text,
       ...(reason ? { reason } : {}),
-      ...(isDirectorSource(basis) ? { basis } : {}),
+      ...(basis ? { basis } : {}),
       ai: true,
+      ...(row.after && after !== null ? { after } : {}),
+      ...(row.touches === "persons" ? { persons: [...(ctx.area?.get(kind) ?? [])] } : {}),
+      ...(place ? { place } : {}),
+      ...(row.factsFor && source ? { facts: row.factsFor(source) } : {}),
     });
+    if (!person) areaUsed = true;
   }
   return out;
 }
@@ -458,8 +561,14 @@ export function createDirectorHook(deps: DirectorDeps): DirectorHook {
       if (members.length === 0) return none;
       const list = members.map((p) => sources.get(p)!);
       const eligible = new Map(members.map((p) => [p, eligibleKinds(sources.get(p)!, p, input.world, input.people[p] ?? null)]));
+      // 全体の種類（T92）。参加者の誰か 1 人で当てはまれば差し込める
+      const area = eligibleAreaKinds(
+        members.map((p) => ({ person: p, source: sources.get(p)!, state: input.people[p] ?? null })),
+        input.world,
+      );
       const asked = input.replies ?? [];
-      if (![...eligible.values()].some((k) => k.length > 0) && asked.length === 0) return none;
+      const max = budgetOf(input);
+      if ((max === 0 || (![...eligible.values()].some((k) => k.length > 0) && area.size === 0)) && asked.length === 0) return none;
 
       // 町名は地区の別名で渡す（T88。参加者の台帳の町名から、世界の地理と同じ作り方）
       const places = officePlaces(deps.ai.office.id, list.map((x) => x.ledger));
@@ -474,10 +583,13 @@ export function createDirectorHook(deps: DirectorDeps): DirectorHook {
         kinds: eligible.get(p) ?? [],
       }));
       const scene = pseudonymizeText(sceneText(input, aliasOf, last), key);
-      const weak = pseudonymizeText(weaknessText(entries, input.world, input.hour), key);
+      const weak = pseudonymizeText(weaknessText(entries, input.world, input.hour, [...area.keys()]), key);
       const replies = asked.length > 0 ? pseudonymizeText(replyText(asked, aliasOf), key) : undefined;
       const r = await askJson(buildDirectorRequest(scene, weak, replies), deps.ai);
-      return { events: directorEvents(r.value, { key, eligible }), words: directorWords(r.value, { key, asked }) };
+      return {
+        events: directorEvents(r.value, { key, eligible, area, max, sources, world: input.world }),
+        words: directorWords(r.value, { key, asked }),
+      };
     } catch (e) {
       if (e instanceof AiLimitReached) deps.stops?.hit("director");
       if (!isPersonaFailure(e)) console.error("監督の 1 刻みに失敗", e instanceof Error ? e.name : typeof e);
