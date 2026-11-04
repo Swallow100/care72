@@ -12,7 +12,7 @@ import type { AiCallRow } from "../db/types.ts";
 import { d1FromSqlite, migratedSqlite } from "../db/test-d1.ts";
 import { isForClaude } from "../pseudonym/index.ts";
 import { CAO_FORM_READ } from "./cao-form.fixture.ts";
-import { buildReadRequest, FORM_FILE_MAX_BYTES, formHash, readForm, sniffFormFile, toFormFile } from "./form-read.ts";
+import { buildReadRequest, FORM_FILE_MAX_BYTES, formHash, readForm, sniffFormFile, toFormFile, toPageRead } from "./form-read.ts";
 
 type Params = Anthropic.Beta.Messages.MessageCreateParamsNonStreaming;
 type Message = Anthropic.Beta.Messages.BetaMessage;
@@ -44,8 +44,8 @@ function setup(env: AskJsonContext["env"] = { ANTHROPIC_API_KEY: "dummy" }) {
       messages: {
         create: async (params) => {
           calls.push(params);
-          // T86 から返事の形に場所と書体の欄がある（場所を読めなかった返事として null と空）
-          return reply(JSON.stringify({ ...CAO_FORM_READ, typeface: "gothic", fields: CAO_FORM_READ.fields.map((f) => ({ ...f, box: null, option_boxes: [] })) }));
+          // T86 から返事の形に場所と書体の欄がある（場所を読めなかった返事として null と空）。T120 から 1 頁の返事の形（1 つの PDF を 1 頁として）
+          return reply(JSON.stringify(toPageRead({ ...CAO_FORM_READ, typeface: "gothic", fields: CAO_FORM_READ.fields.map((f) => ({ ...f, page: 1, box: null, option_boxes: [] })) }, 1)));
         },
       },
     },
@@ -93,12 +93,13 @@ describe("Claude への頼み", () => {
     const req = buildReadRequest(r.file);
     expect(isForClaude(req.input)).toBe(true);
     const p = buildParams(req, OPUS);
-    expect(p).toMatchObject({ model: OPUS, max_tokens: 16000, output_config: { effort: "high", format: { type: "json_schema" } } });
+    expect(p).toMatchObject({ model: OPUS, max_tokens: 20000, output_config: { effort: "high", format: { type: "json_schema" } } });
     const content = p.messages[0].content as Anthropic.Beta.Messages.BetaContentBlockParam[];
     expect(content.map((b) => b.type)).toEqual(["document", "text"]);
     expect(content[0]).toMatchObject({ type: "document", source: { type: "base64", media_type: "application/pdf" } });
     const text = (content[1] as { text: string }).text;
     expect(JSON.parse(text).items[0]).toEqual({ key: "person.name", group: "本人", label: "氏名" });
+    expect(JSON.parse(text).頁).toEqual({ no: 1, of: 1 });
     for (const person of SEED_PEOPLE) expect(text).not.toContain(person.person.name);
     expect(text).not.toMatch(/090-0000/);
     // 指示（system）にも人の値が無い

@@ -16,7 +16,7 @@ import { assertForClaude, isForClaude, type ForClaude } from "../pseudonym/index
 import type { SourceId } from "../sources/index.ts";
 import { sourcesSystem } from "../sources/prompt.ts";
 import { createClaudeClient, MAX_RETRIES, type ClaudeClient } from "./client.ts";
-import { AiBadOutput, AiCallFailed, AiRefused } from "./errors.ts";
+import { AiBadOutput, AiCallFailed, AiRefused, AiTruncated } from "./errors.ts";
 import {
   PURPOSES,
   type PurposeSpec,
@@ -138,12 +138,13 @@ function usedTokens(m: Anthropic.Beta.Messages.BetaMessage): UsedTokens {
 /** 返事から JSON を取り出し、schema で確かめる */
 export function readJson<S extends z.ZodType>(m: Anthropic.Beta.Messages.BetaMessage, schema: S): z.output<S> {
   if (m.stop_reason === "refusal") throw new AiRefused(m.stop_details?.category ?? null);
-  if (m.stop_reason === "max_tokens") throw new AiBadOutput("max_tokens");
-  if (m.stop_reason !== "end_turn") throw new AiBadOutput("stop_reason");
   const text = m.content
     .filter((b): b is Anthropic.Beta.Messages.BetaTextBlock => b.type === "text")
     .map((b) => b.text)
     .join("");
+  // 切れた答えは、切れるまでの文を持たせて投げる（様式の読み取りが読めた欄を捨てない。T120）
+  if (m.stop_reason === "max_tokens") throw new AiTruncated(text, m.model);
+  if (m.stop_reason !== "end_turn") throw new AiBadOutput("stop_reason");
   if (!text.trim()) throw new AiBadOutput("no_text");
   let parsed: unknown;
   try {

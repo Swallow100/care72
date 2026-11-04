@@ -191,7 +191,9 @@ describe("askJson", () => {
     for (const [over, reason] of cases) {
       const { ctx } = setup();
       const { client } = fake(() => reply(over));
-      await expect(askJson({ ...classify, input: text }, ctx(client))).rejects.toMatchObject({ name: "AiBadOutput", reason });
+      // 途中で切れた物は AiBadOutput の仲間 AiTruncated（切れるまでの文を持つ。T120）
+      await expect(askJson({ ...classify, input: text }, ctx(client))).rejects.toMatchObject({ name: reason === "max_tokens" ? "AiTruncated" : "AiBadOutput", reason });
+      await expect(askJson({ ...classify, input: text }, ctx(client))).rejects.toBeInstanceOf(AiBadOutput);
     }
   });
 

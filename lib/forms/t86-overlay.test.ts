@@ -19,6 +19,7 @@ import { d1UsageStore } from "../claude/usage.ts";
 import { d1FromSqlite, migratedSqlite } from "../db/test-d1.ts";
 import { moveBox } from "./box-edit.ts";
 import { KOMOREBI_LAYOUT, komorebiBlankHtml, komorebiReadResult } from "./komorebi-form.fixture.ts";
+import { pageReadReply } from "./form-read-fake.ts";
 import { buildMappedSheet } from "./mapped-sheet.ts";
 import { checkReadResult, type FieldBox, type FormMapping } from "./mapping.ts";
 import { getMapping, loadCheckedMapping, saveCheckedMapping } from "./mapping-db.ts";
@@ -268,13 +269,13 @@ describe.skipIf(!chrome)("架空の様式で通す: 白紙の PDF → 頁の画�
     const claude: ClaudeClient = {
       beta: {
         messages: {
-          create: async () =>
+          create: async (params) =>
             ({
               id: "msg_test",
               type: "message",
               role: "assistant",
               model: OPUS,
-              content: [{ type: "text", text: JSON.stringify(answer), citations: null }],
+              content: [{ type: "text", text: pageReadReply(answer, params), citations: null }],
               stop_reason: "end_turn",
               stop_details: null,
               stop_sequence: null,

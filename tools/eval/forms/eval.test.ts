@@ -14,7 +14,9 @@ import { buildInputs, factsOf, mergeExtract } from "./inputs.ts";
 import { diffMarkdown, oneLine, totals } from "./report.ts";
 import { scanLeaks } from "./record.ts";
 import { assertOutside, REPO_ROOT, runEval, type RunResult } from "./run.ts";
-import { scoreIntake, scoreRead } from "./score.ts";
+import { scoreIntake, scoreRead, uncountedBlanks } from "./score.ts";
+import { distinctIds } from "./corpus.ts";
+import type { Cell } from "../../../lib/forms/matsuyama.ts";
 import { SEED_PEOPLE } from "../../../seed/people.ts";
 
 /** 形だけの JPEG（SOI・JFIF・SOF0・SOS・EOI。付け足しなし）。lib/forms/t86-read.test.ts と同じ形 */
@@ -186,10 +188,10 @@ describe("偽の client で 1 周（Chrome を使わない）", () => {
     expect(t.paper.filled).toBeGreaterThan(0);
     expect(t.paper.hit).toBe(t.paper.filled);
     expect(t.paper.miss + t.paper.wrong + t.paper.extra + t.paper.boxMiss + t.paper.uncountedBlank).toBe(0);
-    // 長すぎる書き起こしは失敗に数え、AI を呼ばない
-    expect(r.inputs.find((i) => i.kind === "long")!.failures).toEqual(["too_long"]);
-    // 呼び出し: 様式 2 ＋ 文 4（自由文・書き起こし × 2 人）
-    expect(r.calls.calls).toBe(6);
+    // 4,000 字を超える書き起こしは文の切れ目で分けて読む（T120。前は失敗に数えて AI を呼ばなかった）
+    expect(r.inputs.find((i) => i.kind === "long")!.failures).toEqual([]);
+    // 呼び出し: 様式 3（T120 から 1 頁 1 回。こもれび市 2 頁・あおぞら市 1 頁）＋ 文 4（自由文・書き起こし × 2 人）＋ 長い書き起こし 2（2 つの塊）
+    expect(r.calls.calls).toBe(9);
     expect(r.calls.failed).toBe(0);
     // 送った文に種の氏名・電話・町名が無い（仮名化の門を通った後）
     expect(r.leaks.strongHits).toBe(0);
@@ -199,7 +201,7 @@ describe("偽の client で 1 周（Chrome を使わない）", () => {
     const r = gold;
     const lines = (f: string) => readFileSync(join(r.dir, f), "utf8").trim().split("\n").map((l) => JSON.parse(l) as Record<string, unknown>);
     const calls = lines("calls.jsonl");
-    expect(calls).toHaveLength(6);
+    expect(calls).toHaveLength(9);
     for (const c of calls) {
       expect(c).toMatchObject({ run: "20261105-000000-fake", usage: { status: "ok" } });
       expect(typeof (c.request as { userText: string }).userText).toBe("string");
@@ -216,7 +218,7 @@ describe("偽の client で 1 周（Chrome を使わない）", () => {
     expect(lines("steps.jsonl").some((s) => s.stage === "paper")).toBe(true);
     expect(lines("judgements.jsonl").every((j) => typeof j.reason === "string")).toBe(true);
     const saved = JSON.parse(readFileSync(join(r.dir, "result.json"), "utf8")) as RunResult;
-    expect(saved.calls.calls).toBe(6);
+    expect(saved.calls.calls).toBe(9);
   }, 60_000);
 
   it("noisy: 崩した数が数に出て、足すと正解の数になる。送り直しと形の違う返事も数える", async () => {
@@ -241,4 +243,47 @@ describe("偽の client で 1 周（Chrome を使わない）", () => {
     expect(md).not.toMatch(/山田|かわなぎ|090-0000/);
     expect(oneLine(r, prev)).toMatch(/^20261105-000001-fake（偽 noisy） \| 様式 当\d+\/\d+\([+-]\d+|±0\)/);
   }, 60_000);
+});
+
+describe("台の数え方の直し（T120）", () => {
+  it("空き枠（T111: 居ない人の 2 人目以降・値の無い特記の段）は未記入の数え漏れに数えない。未確認でない空の値は今までどおり数える", () => {
+    const m = checkReadResult({
+      title: "様式",
+      issuer: "",
+      pages: 1,
+      fields: [
+        { page: 1, section: "支援者2", label: "氏名", position: "", shape: "text", options: [], item: "supporter2.name", confidence: "high", reason: "" },
+        { page: 1, section: "", label: "本人", position: "", shape: "text", options: [], item: "person.name", confidence: "high", reason: "" },
+        { page: 1, section: "", label: "備考", position: "", shape: "text", options: [], item: "notes.other", confidence: "high", reason: "" },
+        { page: 1, section: "", label: "自宅のリスク（複数選択可）", position: "", shape: "choice", options: ["浸水", "土砂"], item: "evacuation.hazards", confidence: "high", reason: "" },
+      ],
+    }).mapping;
+    const cells: Record<string, Cell> = {
+      f1: { kind: "empty" },
+      f2: { kind: "unconfirmed" },
+      f3: { kind: "value", lines: [] },
+      // 何も選んでいない選ぶ欄（リスクが無いと分かっている）も答え
+      f4: { kind: "choice", options: [{ label: "浸水", on: false }, { label: "土砂", on: false }] },
+    };
+    expect(uncountedBlanks(m, (f) => cells[f.id])).toEqual(["f3"]);
+  });
+
+  it("同じフォルダの同じ名前の PDF と Excel は拡張子で id を分ける。重ならない id は変えない", () => {
+    const f = (fileName: string, id: string) => ({ id, city: "西宮市", dir: "nishinomiya", path: fileName, fileName, formName: null, role: null, url: null, pages: null, sha256: fileName, bytes: 1 });
+    const out = distinctIds([f("kobetsu.pdf", "nishinomiya-kobetsu"), f("kobetsu.xlsx", "nishinomiya-kobetsu"), f("other.pdf", "nishinomiya-other")]);
+    expect(out.map((x) => x.id)).toEqual(["nishinomiya-kobetsu-pdf", "nishinomiya-kobetsu-xlsx", "nishinomiya-other"]);
+  });
+
+  it("同意の欄は項目なしも別解（読み取りの決まり 11）。候補が正解の項目なら判定の理由に出す", () => {
+    const g = GOLD_FORMS.find((x) => x.id === "komorebi")!;
+    const consent = g.fields.findIndex((x) => x.item?.startsWith("consent."));
+    expect(consent).toBeGreaterThanOrEqual(0);
+    expect(g.fields[consent].accept).toContain(null);
+    const answer = goldReading(g, 2);
+    answer.fields = answer.fields.map((x, i) => (i === consent ? { ...x, item: null, candidate: g.fields[consent].item } : x));
+    const s = scoreRead(g, checkReadResult(answer).mapping, 0);
+    expect(s.score.alt).toBe(1);
+    expect(s.score.missItem).toBe(0);
+    expect(s.judgements.some((x) => x.reason.includes("候補が正解の項目"))).toBe(true);
+  });
 });

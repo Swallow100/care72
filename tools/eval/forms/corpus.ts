@@ -109,8 +109,18 @@ export function readCorpus(root: string | null): Corpus {
       push(fileOf(root, { file: name }, dir));
     }
   }
-  const files = all.filter(isFormBody);
+  const files = distinctIds(all.filter(isFormBody));
   return { files, excluded: all.length - files.length, cities: [...new Set(all.map((f) => f.city))].sort(), missing: false };
+}
+
+/**
+ * 同じフォルダに同じ名前の PDF と Excel があると id（フォルダとファイル名の拡張子なし）が重なる（T120。評価の 1 回目の 15）。
+ * 重なった物だけ拡張子を足して分ける（重ならない id は前の回と比べられるよう変えない）
+ */
+export function distinctIds(files: readonly CorpusFile[]): CorpusFile[] {
+  const count = new Map<string, number>();
+  for (const f of files) count.set(f.id, (count.get(f.id) ?? 0) + 1);
+  return files.map((f) => ((count.get(f.id) ?? 0) > 1 ? { ...f, id: `${f.id}-${extname(f.fileName).slice(1).toLowerCase() || "x"}`.slice(0, 64) } : f));
 }
 
 /** 置き場のファイルが正解の表の様式か（ハッシュ → URL → ファイル名の順） */

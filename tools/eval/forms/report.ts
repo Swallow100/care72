@@ -87,6 +87,7 @@ export const METRICS: Metric[] = [
   { label: "入力の数", get: (r) => totals(r).inputs },
   { label: "入力の失敗（全部）", get: (r) => totals(r).inputsFailed },
   { label: "入力の失敗 形式（HEIC など）", get: (r) => totals(r).failures.type ?? 0 },
+  { label: "入力の失敗 HEIC を描けない（T120。ブラウザが描ければ JPEG に直す）", get: (r) => totals(r).failures.heic ?? 0 },
   { label: "入力の失敗 長すぎる文", get: (r) => totals(r).failures.too_long ?? 0 },
   { label: "入力の失敗 大きさ（縮めても 5 MB 超）", get: (r) => totals(r).failures.too_large ?? 0 },
   { label: "入力の失敗 AI", get: (r) => Object.entries(totals(r).failures).filter(([k]) => k.startsWith("ai_")).reduce((n, [, v]) => n + v, 0) },
@@ -157,7 +158,7 @@ export function diffMarkdown(r: RunResult, prev: RunResult | null): string {
     const t = totals(r, { form: f.id });
     const rd = f.read;
     lines.push(
-      `| ${f.id} | ${f.status === "ok" ? "済" : `${f.status === "skipped" ? "飛ばし" : "失敗"}（${f.reason ?? ""}）`} | ${f.fields ?? "-"} | ${f.mapped ?? "-"} | ${rd?.goldFields ?? "-"} | ${rd ? rd.hit + rd.alt : "-"} | ${rd?.wrong ?? "-"} | ${rd?.missItem ?? "-"} | ${rd?.missField ?? "-"} | ${rd?.extraField ?? "-"} | ${rd?.boxMiss ?? "-"} | ${t.paper.hit}/${t.paper.filled} | ${t.paper.miss} | ${t.paper.wrong + t.paper.extra} | ${t.paper.annexOverflow + t.paper.annexUnplaced} |`,
+      `| ${f.id} | ${f.status === "ok" ? `済${f.unread?.length ? `（未読 ${f.unread.join("・")}頁）` : ""}${f.partial?.length ? `（一部 ${f.partial.join("・")}頁）` : ""}` : `${f.status === "skipped" ? "飛ばし" : "失敗"}（${f.reason ?? ""}）`} | ${f.fields ?? "-"} | ${f.mapped ?? "-"} | ${rd?.goldFields ?? "-"} | ${rd ? rd.hit + rd.alt : "-"} | ${rd?.wrong ?? "-"} | ${rd?.missItem ?? "-"} | ${rd?.missField ?? "-"} | ${rd?.extraField ?? "-"} | ${rd?.boxMiss ?? "-"} | ${t.paper.hit}/${t.paper.filled} | ${t.paper.miss} | ${t.paper.wrong + t.paper.extra} | ${t.paper.annexOverflow + t.paper.annexUnplaced} |`,
     );
   }
   lines.push("");

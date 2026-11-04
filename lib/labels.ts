@@ -533,8 +533,10 @@ export const PLACE_LABELS = {
   unknown: "未確認",
   /** 事業所の地域の保存を断った（市が空・緯度経度の外・片方だけ） */
   bad: "保存不可",
-  /** 写真の縮小で読めない形（HEIC など）。受ける形を 1 行で */
+  /** 写真の縮小で読めない形。受ける形を 1 行で */
   fileKinds: "JPEG・PNG・PDF",
+  /** HEIC をこのブラウザが描けない（Safari は描ける。T120） */
+  heic: "HEIC 不可・JPEG で",
 } as const;
 
 /**
