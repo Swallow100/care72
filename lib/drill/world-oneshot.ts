@@ -47,6 +47,13 @@ const KIND_WORDS: Readonly<Record<(typeof WORLD_KINDS)[number], string>> = {
   facility: "施設。name に施設の名前。value は closed（休止）か open（再開）",
   aftershock: "余震。value に震度（「4」「5弱」）",
   weather: "天候。value は rain（大雨）か clear（止む）",
+  // T92（出来事の表と同じ形。名前は地理にある物だけ）
+  welfare_shelter: "福祉避難所の開設。name に地理の福祉避難所の名前（空文字なら地理の福祉避難所）。value は open（開設）・full・closed",
+  water_station: "給水所の開設（断水の地区。断水は続く）。town に地区",
+  pharmacy: "地理の薬局の休止・再開。value は closed（休止）か open（再開）",
+  helper: "介護事業所の休止（介護事業所を使う人のヘルパーが来られない）。value は closed",
+  vendor: "酸素業者の巡回。target に酸素・呼吸器を使う人の仮名。value に何時間後に着くか（「4」。2〜12）",
+  info: "避難の情報が食い違って広まる。value は空文字",
 };
 
 /** 世界の指示（部屋の system と 1 回呼びの system に同じ物を使う） */
@@ -162,6 +169,7 @@ export function buildCast(
       depends: dependsOf(p),
       categories: src.clocks.map((k) => k.category),
       nurse: nurseOf(src),
+      helper: src.contacts.some((c) => c.kind === "care_service"),
     });
     const c = payload[i];
     const head = [
