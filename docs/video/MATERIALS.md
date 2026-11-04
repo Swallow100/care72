@@ -98,7 +98,14 @@
 | ファイル | 使う所 | 道具 | 作った日 | 指示の要点 | 権利の確認（道具の利用規約で出力を動画に使えるか、確かめた日と頁） |
 | --- | --- | --- | --- | --- | --- |
 | video/assets/bg/frames/B01-1.png〜B08-2.png（16 枚、案） | B01〜B08 の見た目を決める（動画には使わない） | GPT Image 2（fal.ai の openai/gpt-image-2、medium） | 11/4 | BACKGROUND.md の指示文から動きの言葉を落とし、写真の作り（自然光・彩度を抑える）と共通の禁止を足した（`video/scripts/gen-frame.mjs`、指示文は横の .json） | 11/4 fal.ai の利用規約（https://fal.ai/terms）: 出力の持ち主は書かれていない。自分の使用と、法に沿い他人の権利を侵さない使用は可（4(a)(c)）。モデルごとの条件は別紙で未確認 |
-| video/assets/bg/B03.mp4（案） | S3 0:25–0:33 の奥（B03） | Seedance 2.0（fal.ai の bytedance/seedance-2.0/text-to-video、720p・10 秒・音なし、seed 664000208） | 11/4 | BACKGROUND.md の B03 の指示文と共通の禁止（文だけから。`video/scripts/gen-bg.mjs`、横の .json） | 同上 |
+| video/assets/bg/B01.mp4 | S1 0:00–0:07 の奥 | Seedance 2.5（fal.ai の bytedance/seedance-2.5/image-to-video、480p・9 秒・音なし） | 11/4 | 選んだ静止画 B01-2.png を最初のコマにして、BACKGROUND.md の B01 の指示文と共通の禁止で動かした（`video/scripts/gen-bg.mjs --from`、seed は横の .json）。顔・読める字・看板が無いことをコマで確かめた | 同上 |
+| video/assets/bg/B02.mp4 | S3 0:20–0:25 の奥 | Seedance 2.5（fal.ai の bytedance/seedance-2.5/image-to-video、480p・7 秒・音なし） | 11/4 | 選んだ静止画 B02-2.png を最初のコマにして、BACKGROUND.md の B02 の指示文と共通の禁止で動かした（`video/scripts/gen-bg.mjs --from`、seed は横の .json）。顔・読める字・看板が無いことをコマで確かめた | 同上 |
+| video/assets/bg/B03.mp4 | S3 0:25–0:33 の「知っている」の面の中（録画の後ろには敷かない） | Seedance 2.5（fal.ai の bytedance/seedance-2.5/image-to-video、480p・10 秒・音なし） | 11/4 | 選んだ静止画 B03-2.png を最初のコマにして、BACKGROUND.md の B03 の指示文と共通の禁止で動かした（`video/scripts/gen-bg.mjs --from`、seed は横の .json）。顔・読める字・看板が無いことをコマで確かめた | 同上 |
+| video/assets/bg/B04.mp4 | S3 0:33–0:38 の奥 | Seedance 2.5（fal.ai の bytedance/seedance-2.5/image-to-video、480p・7 秒・音なし） | 11/4 | 選んだ静止画 B04-1.png を最初のコマにして、BACKGROUND.md の B04 の指示文と共通の禁止で動かした（`video/scripts/gen-bg.mjs --from`、seed は横の .json）。顔・読める字・看板が無いことをコマで確かめた | 同上 |
+| video/assets/bg/B05.mp4 | S3 0:38–0:42 の奥 | Seedance 2.5（fal.ai の bytedance/seedance-2.5/image-to-video、480p・6 秒・音なし） | 11/4 | 選んだ静止画 B05-1.png を最初のコマにして、BACKGROUND.md の B05 の指示文と共通の禁止で動かした（`video/scripts/gen-bg.mjs --from`、seed は横の .json）。顔・読める字・看板が無いことをコマで確かめた | 同上 |
+| video/assets/bg/B07.mp4 | S8 2:43–2:55 の奥（2 つの絵で続けて） | Seedance 2.5（fal.ai の bytedance/seedance-2.5/image-to-video、480p・14 秒・音なし） | 11/4 | 選んだ静止画 B07-1.png を最初のコマにして、BACKGROUND.md の B07 の指示文と共通の禁止で動かした（`video/scripts/gen-bg.mjs --from`、seed は横の .json）。顔・読める字・看板が無いことをコマで確かめた | 同上 |
+| video/assets/bg/B08.mp4 | S9 2:55–3:00 の奥 | Seedance 2.5（fal.ai の bytedance/seedance-2.5/image-to-video、480p・7 秒・音なし） | 11/4 | 選んだ静止画 B08-1.png を最初のコマにして、BACKGROUND.md の B08 の指示文と共通の禁止で動かした（`video/scripts/gen-bg.mjs --from`、seed は横の .json）。顔・読める字・看板が無いことをコマで確かめた | 同上 |
+| video/assets/bg/old/B03-….mp4（使わない） | — | Seedance 2.0（text-to-video、720p・10 秒） | 11/4 | 文だけから作った試し。静止画から作る形に替えた | 同上 |
 
 ## 声
 

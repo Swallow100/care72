@@ -40,7 +40,8 @@ B06 は被災地の映像に見えやすい。でき上がりが実在の避難�
 ## 作り方（11/4）
 
 - 道具は fal.ai（前払い、月額なし）。鍵は環境変数 `FAL_KEY` で渡すだけで、ファイル・記録に書かない
-- 動画: `FAL_KEY=… node video/scripts/gen-bg.mjs <ID> [秒] [解像度]`（Seedance 2.0、16:9、音なし）→ `video/assets/bg/<ID>.mp4`。11/4 は B03 を文だけから 1 本（720p・10 秒）作って見た。選んだ静止画から動画にする道（image-to-video）は、案が決まってから足す
+- 動画: `FAL_KEY=… node video/scripts/gen-bg.mjs <ID> [秒] [解像度] --from video/assets/bg/frames/<ID>-<n>.png`（Seedance 2.5 の image-to-video、音なし）→ `video/assets/bg/<ID>.mp4`。前の物は `assets/bg/old/` へ退く
+- 敷き方: `node video/scripts/bg.mjs` で 160px に縮めてから 1920px に戻してぼかした連番にし、`npm run scan`。編集で色を抜き、地の色を 74% 重ねる（split の文字の面の中は面の色を 80%）。隅に「イメージ（AI 生成）」
 - できた物は MATERIALS.md の「生成画像・生成動画」に書く
 
 ## 置き場と組み込み
