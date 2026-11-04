@@ -24,7 +24,8 @@ function MenuGroup({ title, items, action }: { title: string; items: ReadonlyArr
         <h3 className="text-xs font-bold text-muted">{title}</h3>
         {action && <div className="ml-auto">{action}</div>}
       </div>
-      <ul className="mt-1">
+      {/* 1024px 未満は表の上に置くので、行を横に詰めて版の注を省く（版は右の面の題の下にも出る） */}
+      <ul className="mt-1 flex flex-wrap gap-x-4 lg:block">
         {items.map((m) => (
           <li key={m.key}>
             <Link
@@ -36,7 +37,7 @@ function MenuGroup({ title, items, action }: { title: string; items: ReadonlyArr
             >
               <span className={m.current ? "font-bold text-ink underline decoration-2 underline-offset-[6px]" : "text-ink"}>{m.label}</span>
               {m.isDefault && <Mark>{L.isDefault}</Mark>}
-              <span className="basis-full text-xs text-muted">{m.note}</span>
+              <span className="hidden basis-full text-xs text-muted lg:block">{m.note}</span>
               <LinkPending />
             </Link>
           </li>
@@ -178,7 +179,7 @@ export function DocumentPeople({
                     </td>
                   )}
                   <td className={TD}>
-                    <span className="flex flex-wrap gap-1">
+                    <span className="flex gap-1">
                       <ButtonLink href={r.href} kind="plain" size="sm" icon={PaperIcon}>
                         {L.open}
                       </ButtonLink>
