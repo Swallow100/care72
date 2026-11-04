@@ -1,7 +1,9 @@
 // PDF の頁を JPEG にする道具（テストと手元の確かめだけ。配信のコードからは使わない）。T86。
 // ブラウザの黒塗りの画面（lib/redact/browser.ts）が pdf.js で頁を画像にするのと同じ形を、Node の pdf.js と @napi-rs/canvas
 // （pdfjs-dist の任意の依存。MIT）で作る。@napi-rs/canvas が入っていない端末では null（テストは飛ばす）。
-// 長い辺 2000 px（送る大きさと同じ）。JPEG に付け足し（EXIF など）は付かない。
+// 長い辺 2000 px（送る大きさと同じ）。JPEG の付け足し（@napi-rs/canvas は ICC の APP2 を付ける）は、ブラウザと同じく外す。
+
+import { stripJpegMetadata } from "../../lib/redact/jpeg.ts";
 
 /** @napi-rs/canvas のうち使う所（任意の依存なので型を引かない。無い端末でも型の検査が通るように） */
 type NodeCanvas = {
@@ -35,7 +37,7 @@ export async function pdfToJpegPages(pdf: Uint8Array, longSide = 2000): Promise<
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     // pdf.js の型は DOM の canvas。@napi-rs/canvas は同じ形の 2D の文脈を持つ
     await page.render({ canvasContext: ctx as unknown as CanvasRenderingContext2D, canvas: canvas as unknown as HTMLCanvasElement, viewport }).promise;
-    out.push(new Uint8Array(await canvas.encode("jpeg", 86)));
+    out.push(stripJpegMetadata(new Uint8Array(await canvas.encode("jpeg", 86))));
   }
   await doc.cleanup();
   return out;

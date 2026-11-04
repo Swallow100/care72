@@ -25,6 +25,7 @@
 | @modelcontextprotocol/sdk | 手元の MCP サーバー（tools/mcp/care72-local）。開発の道具で配信には入らない（devDependencies）。間接の依存の内訳は docs/progress/t32.md | MIT |
 | Inter（next/font/google で build のときに取り込む） | 画面の英数字の書体（日本語は端末の書体に任せ、配信に入れない。11/3 10:3x に M PLUS 2 から替えた。前の比較は docs/progress/t35.md） | OFL-1.1 |
 | BIZ UDPGothic（同上） | 本人・家族のスマホと本人の 1 枚の書体、書類の紙面（印刷）の書体（components/forms/paper.css） | OFL-1.1 |
+| BIZ UDPMincho（同上） | 明朝の様式の上に台帳の値を置く紙の字（T86。app/people/[id]/forms/mapped/[mappingId]/page.tsx、components/forms/overlay-paper.css） | OFL-1.1 |
 
 ## 画面で読み込む外の配信（リポジトリにも build にも入れない）
 

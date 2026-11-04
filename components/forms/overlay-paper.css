@@ -1,0 +1,70 @@
+/*
+  元の様式の上に台帳の値を置いた紙（components/forms/OverlaySheet.tsx、T86）。paper.css の .paper の上に足す。
+  紙: A4 の箱（横長の様式は A4 横）。余白は持たない（元の様式の頁の画像が自分の余白を持つ）。画像は縦横の比を保って箱の真ん中（.ov-img）。
+  値: 欄の矩形（画像の上の比）に絶対位置で置く。字の大きさと行は lib/forms/overlay-sheet.ts が見積もった物で、行の中は折らない。
+      色は黒、太字にしない（T47）。書体は様式に合わせて BIZ UDP ゴシック（paper.css の既定）か BIZ UDP 明朝（.mincho）。
+  印: □ のレ点と、選択肢を囲む丸は SVG の線（黒、塗らない）。
+*/
+
+@page overlay-land {
+  size: A4 landscape;
+  margin: 0;
+}
+
+.paper.overlay {
+  display: block;
+  width: 210mm;
+  height: 297mm;
+  min-height: 297mm;
+  padding: 0;
+  overflow: hidden;
+  line-height: 1.15;
+}
+.paper.overlay.land {
+  page: overlay-land;
+  width: 297mm;
+  height: 210mm;
+  min-height: 210mm;
+}
+.paper.overlay.mincho {
+  font-family: var(--font-ov-mincho, "BIZ UDPMincho"), "BIZ UDPMincho", "BIZ UDP明朝", serif;
+}
+
+.paper.overlay .ov-img {
+  position: absolute;
+}
+.paper.overlay .ov-img > img {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.paper.overlay .ov-text {
+  position: absolute;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 0.5mm 0.8mm;
+  overflow: hidden;
+  color: #000;
+  font-weight: 400;
+  line-height: 1.15;
+}
+/* 複数行の高い欄は上から（1・2 行の欄は高さの真ん中） */
+.paper.overlay .ov-text.ov-top {
+  justify-content: flex-start;
+}
+.paper.overlay .ov-ln {
+  display: block;
+  white-space: pre;
+}
+
+.paper.overlay .ov-mark {
+  position: absolute;
+  overflow: visible;
+  fill: none;
+  stroke: #000;
+}
