@@ -24,7 +24,7 @@ import { DEFAULT_VOICE, speak, type TtsClient } from "../gemini/tts.ts";
 import { pseudonymize, pseudonymizeText, PseudonymLeakError } from "../pseudonym/index.ts";
 import { drillScope, loadDrillRow, stateOfRow } from "./db.ts";
 import { drillError, isDrillId } from "./http.ts";
-import { loadPersonaSources } from "./persona.ts";
+import { loadPersonaSources, personaPlaces } from "./persona.ts";
 
 // ---------- 声の選び方 ----------
 
@@ -232,9 +232,12 @@ export async function drillVoice(deps: VoiceDeps, scope: VoiceScope, drillId: st
   if (!voiceEnabled(deps.env)) return { ok: false, reason: "not_configured" };
 
   try {
-    const source = (await loadPersonaSources(deps.db, officeId)).get(resolved.person);
+    const sources = await loadPersonaSources(deps.db, officeId);
+    const source = sources.get(resolved.person);
     if (!source) return { ok: false, reason: "not_found" };
-    const { key: pseudonymKey } = pseudonymize([source]);
+    // 本人役の言葉は画面の文（地区の別名を町名に戻した文。T88）なので、事業所の町名と地理の町名も全部（町名）に伏せて読む（近く）
+    const towns = [...new Set([...sources.values()].map((x) => x.ledger.basic.address?.town ?? ""))];
+    const { key: pseudonymKey } = pseudonymize([source], { towns: [...towns, ...personaPlaces(scope, sources).map((p) => p.town)] });
     const text = pseudonymizeText(resolved.text, pseudonymKey);
     const r = await speak(
       { text, voice, key: pseudonymKey },

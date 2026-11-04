@@ -134,11 +134,12 @@ describe("speak", () => {
   it("key を渡せば、読み上げる文に元の情報が残っていないかを確かめる", async () => {
     const { ctx } = setup();
     const { tts, calls } = fake();
-    // 仮名化の層は台帳に無い並びを伏せきれないことがある（敬称の無い名前は形でも伏せない。T74）。ここでは別の本人の key で作った文を、小林さんの key で確かめる
+    // 仮名化の層は台帳に無い並びを伏せきれないことがある（文脈の無い敬称なしの名前は形でも伏せない。T74・T88。続柄＋空き＋名前は T88 から伏せるので空きなしで）。
+    // ここでは別の本人の key で作った文を、小林さんの key で確かめる
     const other = pseudonymize([{ ...kobayashiInput, person: { ...kobayashiInput.person, id: "x", name: "架空 太郎", kana: "カクウ タロウ" } }], {
       on: "2026-11-02",
     });
-    const text = pseudonymizeText(`${kobayashi.person.name}に伝えて`, other.key);
+    const text = pseudonymizeText(`${kobayashi.person.name.replace(" ", "")}に伝えて`, other.key);
     await expect(speak({ text, key }, ctx(tts))).rejects.toBeInstanceOf(PseudonymLeakError);
     expect(calls).toHaveLength(0);
   });

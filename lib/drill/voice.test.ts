@@ -223,6 +223,22 @@ describe("drillVoice", () => {
     expectNoPersonalData(JSON.stringify(calls[0]));
   });
 
+  it("本人役の言葉にほかの人の町名・地理の架空の町名があっても TTS に渡らない（画面は地区の別名を町名に戻した文。T88）", async () => {
+    await start();
+    sqlite
+      .prepare(
+        `INSERT INTO signals (id, person_id, drill_id, color, source, transcript, occurred_at)
+         VALUES (?, 'p-02', ?, 'green', 'family', ?, ?)`,
+      )
+      .run(`${ID}-0-s8`, ID, "みずほし町としおかぜ町が停電、かわなぎ町も", START);
+    const { d, calls } = deps();
+    const r = await drillVoice(d, { office: DEMO }, ID, { signal: `${ID}-0-s8` });
+    expect(r).toMatchObject({ ok: true });
+    expect(calls).toHaveLength(1);
+    for (const t of ["みずほし", "しおかぜ", "かわなぎ"]) expect(calls[0].input, t).not.toContain(t);
+    expectNoPersonalData(JSON.stringify(calls[0]));
+  });
+
   it("役ごとに声が違う: 小林の夫・山田の本人（3 時間の赤の録音）・山田の娘（連絡先電話に出た言葉）", async () => {
     await start();
     // 0 時間: 連絡先電話 → 山田の娘（出る。roll を 0 に固定）

@@ -9,10 +9,11 @@ import { askJson, type AskJsonContext, type AskJsonRequest } from "../claude/cal
 import type { PersonPageRows } from "../person.ts";
 import { parseLedger } from "../db/ledger.ts";
 import {
+  inputTexts,
   maskedCount,
   pseudonymize,
   pseudonymizeText,
-  restoreText,
+  sourceRestorer,
   type ClaudePerson,
   type ForClaude,
   type PseudonymInput,
@@ -139,9 +140,11 @@ export async function extractIntake(
   const { payload, key } = pseudonymize([input], { on: opts.today });
   const sealed = pseudonymizeText(text, key);
   const r = await askJson(buildExtractRequest(payload, sealed, opts.focus ?? null), ctx);
+  // 写した値の伏せ字は、入れた文と今の台帳の元の言葉に戻す（「（町名）小学校」→「かわなぎ小学校」。役割名は戻さない。T88）
+  const restore = sourceRestorer([text, ...inputTexts(input)], key);
   const { items, dropped } = buildDiff({ ledger: input.ledger, contacts: rows.contacts }, r.value, {
-    text: (s) => restoreText(s, key),
-    note: (s) => restoreText(restoreNote(s, text, sealed.text), key),
+    text: restore,
+    note: (s) => restore(restoreNote(s, text, sealed.text)),
   });
   return { ai: { model: r.model }, items, dropped, masked: maskedCount(text, key) };
 }

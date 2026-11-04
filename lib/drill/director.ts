@@ -44,6 +44,7 @@ import {
 } from "./engine.ts";
 import { CALL_STATUS_LABELS, PHONE_LABELS, SHELTER_LABELS, TSUNAMI_LABELS, WATER_LABELS } from "./labels.ts";
 import { nightLine } from "./night.ts";
+import { officePlaces } from "./area.ts";
 import { cleanWords, isPersonaFailure, reportersOf } from "./persona.ts";
 import {
   INJECT_KINDS,
@@ -485,7 +486,9 @@ export function createDirectorHook(deps: DirectorDeps): DirectorHook {
       const asked = input.replies ?? [];
       if (![...eligible.values()].some((k) => k.length > 0) && asked.length === 0) return none;
 
-      const { payload, key } = pseudonymize(list, deps.on ? { on: deps.on } : {});
+      // 町名は地区の別名で渡す（T88。参加者の台帳の町名から、世界の地理と同じ作り方）
+      const places = officePlaces(deps.ai.office.id, list.map((x) => x.ledger));
+      const { payload, key } = pseudonymize(list, { ...(deps.on ? { on: deps.on } : {}), places });
       const aliasOf = new Map(key.people.map((p) => [p.personId, p.alias]));
       const last = scenarioOf(input.scenario).hours.at(-1) ?? 72;
       const entries: WeakEntry[] = members.map((p, i) => ({
