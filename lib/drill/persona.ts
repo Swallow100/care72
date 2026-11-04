@@ -63,6 +63,7 @@ import {
   type PseudonymKey,
 } from "../pseudonym/index.ts";
 import { officePlaces } from "./area.ts";
+import { extraWorldWords } from "./event-catalog.ts";
 import type { ActionRecord, DrillIncident, DrillTurn, HeardSignal, PersonaHook, PersonaInput, PersonState, StopLog } from "./engine.ts";
 import { clockLabel, PHONE_LABELS, SHELTER_LABELS, TSUNAMI_LABELS, WATER_LABELS } from "./labels.ts";
 import { nightLine } from "./night.ts";
@@ -330,6 +331,7 @@ function worldWords(world: WorldState, person: string, persona: Persona): string
   }
   if (m.waterOut !== undefined) out.push(`家の辺りが断水（${m.waterOut} 時間から）`);
   if (world.weather) out.push(world.weather === "rain" ? "大雨が続いている" : "雨は止んだ");
+  out.push(...extraWorldWords(world, person)); // T92: 出来事の表の印・予定・向かっている人・届いた物・頼み事
   return out;
 }
 
