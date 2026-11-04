@@ -12,10 +12,12 @@ import { loadDisasterState } from "@/lib/disaster/db";
 import { disasterMark, type DisasterMark } from "@/lib/disaster/state";
 import type { Principal } from "@/lib/auth/principal";
 import { currentChoice, roleChoicesFor } from "@/lib/auth/choices";
+import { initialPasswordHref } from "@/lib/auth/password-change";
 import { ADMIN_LABEL, canViewPage, homePath, JUDGE_LABEL, LOGIN_PATH, ROLE_LABELS, ROLE_SELECT_PATH, showsLogout } from "@/lib/auth/roles";
 import { getPrincipal } from "@/lib/auth/server";
 import { SessionSecretMissing } from "@/lib/auth/session";
 import { canChooseRole } from "@/lib/auth/wall";
+import { InitialPasswordBand } from "./InitialPasswordBand";
 import { LogoutButton } from "./LogoutButton";
 import { NavLinks } from "./NavLinks";
 
@@ -24,6 +26,7 @@ import { NavLinks } from "./NavLinks";
 // 右: 自分のこと 事業所名 → 今の役（ケアマネ 山本）→ 役変更（審査員だけ。押すとその下に役の一覧）→ ログアウト（赤。本人・家族の頁には置かない）。
 // 事業所の状態を左に置くのは、右を「自分は誰か・出る」だけにして、事業所名と災害の状態が並んで読み違えないため。
 // ログインしていなければ名前だけ（ログインの画面にいる）。押せる高さは 32px 以上、押してから移るまで灰色を残す。
+// 初期パスワードのまま入った人だけ、2 段目の右に「初期パスワード」の印と「変更」（T114。components/InitialPasswordBand.tsx）。
 export async function AppHeader() {
   let p: Principal | null = null;
   try {
@@ -39,6 +42,7 @@ export async function AppHeader() {
   const mark = desk && p?.office ? await officeMark(p.office.id) : null;
   // 役変更は審査員と見本のケアマネの山本（T95。lib/auth/wall.ts の canChooseRole）
   const choices = p && canChooseRole(p) ? await roleChoices(p) : null;
+  const initialHref = initialPasswordHref(p);
   return (
     <header className="bg-panel">
       <div className="mx-auto flex max-w-[90rem] flex-wrap items-center gap-x-4 gap-y-1 px-4 py-1.5">
@@ -58,6 +62,8 @@ export async function AppHeader() {
         </div>
         {p && <Who p={p} choices={choices} />}
       </div>
+      {/* 初期パスワードのまま入った人の印と変更の入口（T114）。右の並びに割り込まず 2 段目に */}
+      {initialHref && <InitialPasswordBand href={initialHref} />}
       {/* 災害モードの間は 1 分ごとに読み直す（担当一覧・本人のページ・様式 9 の色と並びが今の時刻で変わる） */}
       {mark?.kind === "disaster" && <AutoRefresh seconds={60} />}
     </header>

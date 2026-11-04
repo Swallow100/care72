@@ -18,8 +18,11 @@ import { SideFold } from "./SideFold";
 /** 平時に既定で重ねる層（発災時はデモの場面の層） */
 const NORMAL_LAYERS: HazardKind[] = ["flood"];
 
-/** 地図の真ん中（ピンが無いとき。事業所の中心、T68）と、気象庁の雨雲を重ねるか（デモでない事業所で旗が on のとき）。T72 */
-export type SideMapOptions = { center: GeoPoint | null; nowcast: boolean };
+/**
+ * 地図の真ん中（ピンが無いとき。事業所の中心、T68）と、気象庁の雨雲を重ねるか（デモでない事業所で旗が on のとき）。T72。
+ * fictional はピンが種の架空の位置（デモ事業所）のとき。地図の出典の行に「位置は架空」（T114。本物の事業所は出さない）
+ */
+export type SideMapOptions = { center: GeoPoint | null; nowcast: boolean; fictional: boolean };
 
 export function SidePane({ data, map: mapOptions }: { data: SidePaneData; map?: SideMapOptions }) {
   const disaster = data.mode === "disaster";
@@ -104,6 +107,7 @@ function MapSection({ data, options }: { data: SidePaneData; options?: SideMapOp
         unplaced={data.unplaced}
         center={options?.center ?? undefined}
         nowcast={options?.nowcast ?? false}
+        fictional={options?.fictional ?? false}
       />
       {data.states && (
         <div className="mt-2 rounded-md bg-panel2 px-2 py-1.5">

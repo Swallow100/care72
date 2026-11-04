@@ -57,7 +57,9 @@ const ENTRIES = SEED_PEOPLE.map((p) => ({ person: toTriagePerson(p), signals: SI
 /** 停電から 3 時間（小林の呼吸器の電池 3 時間を過ぎる前後で色が分かれる時刻） */
 const results = rank(ENTRIES, { now: at(3.5), disasterAt: at(-2), outageAt: at(0) });
 
-const render = (data: ReturnType<typeof buildSidePane>) => renderToStaticMarkup(createElement(SidePane, { data }));
+/** 種の 10 人はデモ事業所の架空の位置なので、地図には「位置は架空」の印（T114。本物の事業所は lib/map/t114.test.ts） */
+const render = (data: ReturnType<typeof buildSidePane>) =>
+  renderToStaticMarkup(createElement(SidePane, { data, map: { center: null, nowcast: false, fictional: true } }));
 
 /** 描いた HTML のピン（data-pin と data-tone） */
 function pinsIn(html: string): Map<string, string | null> {
