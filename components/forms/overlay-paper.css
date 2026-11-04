@@ -76,13 +76,14 @@
 }
 
 /*
-  欄に置く画像（避難経路の地図、T106）。欄の箱の大きさで描いた SVG を箱いっぱいに（SVG の width・height の mm より箱に合わせる。
-  頁の比で置いた箱との丸めの差で罫線に掛からない）。地図の背景は白で、未記入の色付けの塗りはその下に隠れる
+  欄に置く画像（避難経路の地図、T106）。欄の箱の大きさで描いた SVG を箱いっぱいに（SVG の width・height の mm より箱に合わせる）。
+  原本の頁の上で掛け合わせ（multiply）、欄の罫線の際に地図が掛かっても原本の線は黒のまま刷れる（色付けの塗りと同じ）
 */
 .paper.overlay .ov-pic {
   position: absolute;
   display: block;
   overflow: hidden;
+  mix-blend-mode: multiply;
   print-color-adjust: exact;
   -webkit-print-color-adjust: exact;
 }
