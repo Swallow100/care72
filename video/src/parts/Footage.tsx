@@ -103,7 +103,7 @@ export const Placeholder: React.FC<{ id: string; width: number; height: number; 
       <div style={{ fontSize: Math.min(64, width / 12), fontWeight: 600 }}>撮影待ち {id}</div>
       {name ? <div style={{ fontSize: Math.min(48, width / 16), fontWeight: 600 }}>{name}</div> : null}
       {note ? (
-        <div style={{ fontSize: Math.min(28, width / 24), maxWidth: width * 0.85, color: COLOR.blueLight }}>{note}</div>
+        <div style={{ fontSize: Math.min(28, width / 24), maxWidth: width * 0.85, color: COLOR.blueMid }}>{note}</div>
       ) : null}
     </div>
   );

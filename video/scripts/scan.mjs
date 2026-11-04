@@ -12,8 +12,9 @@
 // 録画の古い回を使うときは、新しい回のフォルダの名前を変えるか消す。
 import { copyFileSync, existsSync, linkSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
-import { ROOT } from "./lib.mjs";
+import { ROOT, capture, ffmpeg } from "./lib.mjs";
 import { LINES, SCENES } from "../src/timeline.ts";
+import { chunks, speechSegments } from "../src/voice.ts";
 
 const pub = join(ROOT, "public");
 const store = join(ROOT, "assets");
@@ -109,7 +110,35 @@ if (existsSync(bgDir)) {
   }
 }
 
-writeFileSync(join(pub, "assets.json"), JSON.stringify({ footage, audio, marks, bg }, null, 2) + "\n");
+// 声の区切り（話している所）。画面の言葉を声に合わせて出す（src/voice.ts の sayAt）。
+// 黙っている所は -38 dB より小さい音が 0.09 秒以上続く所。区切りの数が文の「、」「。」の数と違う文は知らせる（その文は割合で出す）
+const voice = {};
+const ff = ffmpeg();
+const unmatched = [];
+for (const l of LINES) {
+  const file = ["wav", "mp3", "m4a"].map((ext) => join(narration, `${l.id}.${ext}`)).find((p) => existsSync(p));
+  if (!file) continue;
+  const r = capture(ff.cmd, [...ff.pre, "-hide_banner", "-i", file, "-af", "silencedetect=noise=-38dB:d=0.09", "-f", "null", "-"]);
+  const log = `${r.stdout ?? ""}${r.stderr ?? ""}`;
+  const d = /Duration: (\d+):(\d+):(\d+(?:\.\d+)?)/.exec(log);
+  if (!d) continue;
+  const length = Number(d[1]) * 3600 + Number(d[2]) * 60 + Number(d[3]);
+  const silences = [];
+  let open = null;
+  for (const m of log.matchAll(/silence_(start|end): (-?\d+(?:\.\d+)?)/g)) {
+    if (m[1] === "start") open = Math.max(0, Number(m[2]));
+    else if (open !== null) {
+      silences.push([open, Number(m[2])]);
+      open = null;
+    }
+  }
+  if (open !== null) silences.push([open, length]);
+  const segments = speechSegments(silences, length).map(([s, e]) => [Number(s.toFixed(3)), Number(e.toFixed(3))]);
+  voice[l.id] = segments;
+  if (segments.length !== chunks(l.ja).length) unmatched.push(`${l.id}（声 ${segments.length}・文 ${chunks(l.ja).length}）`);
+}
+
+writeFileSync(join(pub, "assets.json"), JSON.stringify({ footage, audio, marks, bg, voice }, null, 2) + "\n");
 
 // 足りない録画と声を出す
 const wanted = new Set();
@@ -125,3 +154,4 @@ const tts = Object.values(voiceFrom).filter((k) => k === "仮").length;
 const none = LINES.filter((l) => !voiceFrom[l.id]).map((l) => l.id);
 console.log(`声: 作者 ${own} 文、仮 ${tts} 文、なし ${none.length} 文${none.length ? `（${none.join(" ")}）` : ""}`);
 console.log(`音 ${audio.length} 本を public/assets.json に書いた`);
+if (unmatched.length) console.log(`声の区切りが文の区切りと合わない文（言葉は文の中の割合で出す）: ${unmatched.join(" ")}`);

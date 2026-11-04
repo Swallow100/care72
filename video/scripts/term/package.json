@@ -1,0 +1,13 @@
+{
+  "name": "care72-video-term",
+  "private": true,
+  "description": "S7 の端末の録画（R20〜R24）を撮る道具。疑似端末で本物の命令を流して出力を記録し、xterm.js で連番に描く",
+  "type": "module",
+  "dependencies": {
+    "@lydell/node-pty": "1.1.0",
+    "@xterm/addon-canvas": "0.7.0",
+    "@xterm/addon-unicode11": "0.8.0",
+    "@xterm/headless": "5.5.0",
+    "@xterm/xterm": "5.5.0"
+  }
+}

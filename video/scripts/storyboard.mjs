@@ -6,6 +6,7 @@
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { LINES, RECORDINGS, SCENES } from "../src/timeline.ts";
+import { sayAt } from "../src/voice.ts";
 import { ROOT, capture, ffmpeg, tmpEnv } from "./lib.mjs";
 
 Object.assign(process.env, tmpEnv());
@@ -30,6 +31,12 @@ function stillAt(shot) {
   let t = len * 0.7;
   for (const c of shot.callouts ?? []) if (c.at !== undefined) t = Math.max(t, Math.min(c.end ?? len, c.at + 0.6));
   for (const b of shot.beats ?? []) t = Math.max(t, b + 0.8);
+  // 声に合わせて出す言葉は、全部が出たあと
+  for (const c of shot.cues ?? []) {
+    const line = LINES.find((l) => l.id === c.line);
+    const at = line ? sayAt(line, assets.voice?.[c.line], c.say ?? c.text) : null;
+    if (at !== null) t = Math.max(t, at + (c.shift ?? 0) - shot.at + 0.8);
+  }
   return shot.at + Math.min(Math.max(t, 0.5), len - 0.35);
 }
 
@@ -41,7 +48,7 @@ function recordingState(id, from) {
   return { id, name: RECORDINGS[id] ?? "", state: "wait", who };
 }
 
-const GRAPHIC = { title: "題名", text: "文字", ring: "72 時間の輪", number: "数字", bars: "棒", memo: "メモの線画", rules: "ルールの表", quote: "一言", end: "終わりの画面" };
+const GRAPHIC = { title: "題名", text: "文字", plate: "名札", ring: "72 時間の輪", number: "数字", bars: "棒", memo: "メモの線画", rules: "ルールの表", quote: "一言", end: "終わりの画面" };
 
 const fmt = (s) => `${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, "0")}`;
 
@@ -65,7 +72,7 @@ try {
       rmSync(png);
       const ids = [shot.footage, ...(shot.footages ?? [])].filter(Boolean);
       const recordings = ids.map((id, i) => recordingState(id, shot.froms?.[i] ?? shot.from));
-      const text = [shot.value, ...(shot.lines ?? []), shot.sub].filter(Boolean).join(" ");
+      const text = [shot.value, ...(shot.lines ?? []), ...(shot.cues ?? []).map((c) => c.text), shot.sub].filter(Boolean).join(" ");
       const lines = LINES.filter((l) => l.at < shot.end && l.end > shot.at).map((l) => ({ id: l.id, ja: l.ja }));
       shots.push({
         key,
