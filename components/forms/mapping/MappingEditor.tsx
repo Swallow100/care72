@@ -138,13 +138,14 @@ export function MappingEditor({
         </label>
         <label className="grid w-16 gap-0.5 text-xs text-muted">
           頁数
+          {/* 頁の画像があれば頁の数は画像の数まで（画像の無い頁の欄は元の様式の上に置けない。T86） */}
           <input
             type="number"
             min={1}
-            max={LIMITS.pages}
+            max={images ? images.length : LIMITS.pages}
             className={`${INPUT} text-ink tabular-nums`}
             value={m.pages}
-            onChange={(e) => edit({ pages: Math.min(Math.max(1, Number(e.target.value) || 1), LIMITS.pages) })}
+            onChange={(e) => edit({ pages: Math.min(Math.max(1, Number(e.target.value) || 1), images ? images.length : LIMITS.pages) })}
           />
         </label>
         {images && (
