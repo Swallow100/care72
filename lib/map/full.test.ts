@@ -324,8 +324,9 @@ const results = rank(
 const normalPins = mapPins(rows, "tier");
 const disasterPins = mapPins(rows, "tier", results);
 const choice = { on: new Set(["flood"] as const), toggle: () => {}, rainOn: true, toggleRain: () => {} };
+// 種の 10 人はデモ事業所の架空の位置（「位置は架空」の印。T114。本物の事業所は lib/map/t114.test.ts）
 const full = (pins: typeof normalPins, size: Size, demo = null as ReturnType<typeof demoOverlay> | null) =>
-  renderToStaticMarkup(createElement(FullMap, { pins, demo, unplaced: 0, choice, onClose: () => {}, initialSize: size }));
+  renderToStaticMarkup(createElement(FullMap, { pins, demo, unplaced: 0, choice, fictional: true, onClose: () => {}, initialSize: size }));
 
 describe("全画面の画面", () => {
   it("小さな地図に「全画面」のボタン（アイコンと文字）。閉じている間は <dialog> もタイルの要求も作らない", () => {

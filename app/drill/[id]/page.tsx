@@ -278,7 +278,14 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
               <DamagePanel kind={drillKindOf(s.drill.scenario, s.state.world)} world={s.state.world} now={s.state.hour} names={s.names} hidePrivate={running} />
             </Panel>
             <Panel title={DRILL_LABELS.map} id="map">
-              <CaseMap pins={pins} layers={side.demo?.layers ?? []} demo={side.demo} unplaced={side.unplaced} />
+              {/* 「位置は架空」はデモ事業所（種の架空の位置）だけ。本物の事業所の訓練は台帳の位置なので出さない（T114） */}
+              <CaseMap
+                pins={pins}
+                layers={side.demo?.layers ?? []}
+                demo={side.demo}
+                unplaced={side.unplaced}
+                fictional={principal.office?.kind === "demo"}
+              />
             </Panel>
           </div>
         </div>
