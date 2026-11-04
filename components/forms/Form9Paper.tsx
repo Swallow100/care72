@@ -18,6 +18,7 @@ import {
   FORM9_ROW_Y,
   FORM9_ROWS_PER_PAGE,
   FORM9_VALUE_COLS,
+  form9Lines,
   type Form9ValueColumn,
 } from "@/lib/forms/frame-form9";
 import { ANNEX_MARK, fitText, FONT_MIN_PT } from "@/lib/forms/overlay-sheet";
@@ -38,6 +39,9 @@ export function shortAt(v: string): string {
   return m ? `${Number(m[1])}/${Number(m[2])} ${m[3]}` : v;
 }
 
+/** 頁の内容の箱（A4 横 − ひな形の余白、mm） */
+const CONTENT_W = 261;
+const CONTENT_H = 172;
 const mm = (n: number) => `${Math.round(n * 1000) / 1000}mm`;
 /** 頁の内容の箱（@page の余白 = ひな形の余白）の左上からの位置 */
 const ox = (x: number) => x - FORM9_MARGIN_MM.left;
@@ -105,6 +109,12 @@ function Sheet({ rows, first, office, date, title, fill }: { rows: Form9Row[]; f
         <span className="nowrap">事業所名：{office}</span>
         <span className="nowrap">作成：{paperText(date)}</span>
       </div>
+      {/* ひな形の罫線（B5:M26 の細線）。表の罫線でなく線で描く（表の罫線は画素に丸められて列の幅がずれるため） */}
+      <svg className="f9-lines" viewBox={`0 0 ${CONTENT_W} ${CONTENT_H}`} aria-hidden>
+        {form9Lines().map((l) => (
+          <line key={l.id} x1={ox(l.x1)} y1={oy(l.y1)} x2={ox(l.x2)} y2={oy(l.y2)} data-line={l.id} />
+        ))}
+      </svg>
       <table className="f9-grid" style={{ left: mm(left), top: mm(top) }} data-grid>
         <colgroup>
           {[..."BCDEFGHIJKLM"].map((c) => (

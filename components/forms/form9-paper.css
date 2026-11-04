@@ -120,7 +120,7 @@
 /*
   ひな形の枠のまま刷る様式9 の 1 枚（T101。components/forms/Form9Paper.tsx の Sheet、寸法は lib/forms/frame-form9.ts）。
   頁は @page form9-sheet（ひな形の余白、頁の下の端に何も刷らない）。内容の箱の左上がひな形の印刷の範囲の左上（A1）で、
-  題・事業所名・作成・表は Excel の列幅と行の高さ（印刷の倍率 73%）の位置に置く。表の罫線は黒の細線（border-collapse で線の中心が列と行の境）。
+  題・事業所名・作成・表は Excel の列幅と行の高さ（印刷の倍率 73%）の位置に置く。罫線は黒の細線（.f9-lines の線。中心が列と行の境）。
   欄の高さは決まっていて、字は欄の中で縮める（lib/forms/overlay-sheet.ts の fitText）。行が字で伸びないよう、欄の中の箱の高さを決めて溢れを隠す。
 */
 @page form9-sheet {
@@ -153,14 +153,26 @@
 .paper.form9-sheet .top {
   justify-content: space-between;
 }
+/* 罫線は線（.f9-lines）で描き、表は罫線なし（列の幅と行の高さがそのまま欄の矩形） */
+.paper .f9-lines {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 261mm;
+  height: 172mm;
+  overflow: visible;
+  stroke: #000;
+  stroke-width: 0.15;
+}
 .paper .f9-grid {
   position: absolute;
   table-layout: fixed;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   width: max-content;
 }
 .paper .f9-grid :is(th, td) {
-  border: 0.15mm solid #000;
+  border: 0;
   padding: 0;
   overflow: hidden;
 }
@@ -205,7 +217,7 @@
 /* 未記入の色付け（T101）。欄の内側（罫線から 0.45mm）を要確認の黄の薄い色。印刷でも塗る */
 .paper .f9-grid .f9-fill {
   position: absolute;
-  inset: 0.375mm;
+  inset: 0.45mm;
   background: color-mix(in srgb, #f2b125 34%, #fff);
   print-color-adjust: exact;
   -webkit-print-color-adjust: exact;

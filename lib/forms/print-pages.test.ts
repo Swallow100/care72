@@ -22,6 +22,7 @@ import { medicalConsentOf } from "../qr/view.ts";
 import { CAO_FORM_READ } from "./cao-form.fixture.ts";
 import { FORM_AUDITS, FORM9_AUDIT, faceOf, MATSUYAMA_AUDIT, MEDICAL_AUDIT, type PaperFace } from "./form-audit.ts";
 import { buildForm9, type Form9PersonInput } from "./form9.ts";
+import { FORM9_HEADS, FORM9_ROWS_PER_PAGE } from "./frame-form9.ts";
 import { buildMappedSheet } from "./mapped-sheet.ts";
 import { checkReadResult } from "./mapping.ts";
 import { buildMatsuyamaSheet } from "./matsuyama.ts";
@@ -178,11 +179,15 @@ describe("書き方（Chrome なしで読む）", () => {
     expect(m.slice(m.indexOf('data-field="notes.words"'))).toContain("薬は 2 階の箪笥");
   });
 
-  it("様式 9 の紙: 順位の順に 10 人、ひな形の列の見出し、安否確認の時刻は 11/3 01:39 の形、報告の下書きは発災時だけ", () => {
+  it("様式 9 の紙: ひな形の枠（20 行）に順位の順に 10 人、別紙にも同じ順、ひな形の列の見出し（字のまま）、安否確認の時刻は 11/3 01:39 の形、報告の下書きは発災時だけ（T101）", () => {
     const f = form9Html(null);
-    expect([...f.matchAll(/data-rank="(\d+)"/g)].map((m) => Number(m[1]))).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
-    for (const h of ["優先順位※", "地域・区分", "氏名（年齢）", "住所（自治会）", "想定される避難場所", "特記", "担当ケアマネ", "安否確認できた日"]) {
-      expect(f, h).toContain(`>${h}</th>`);
+    const [sheetPart, annexPart] = f.split("data-annex");
+    expect([...sheetPart.matchAll(/data-rank="(\d+)"/g)].map((m) => Number(m[1]))).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    expect([...annexPart.matchAll(/data-rank="(\d+)"/g)].map((m) => Number(m[1]))).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    // ひな形の 20 行（No 1〜20 はひな形に刷ってある番号）
+    expect((sheetPart.match(/<td class="num">/g) ?? []).length).toBe(FORM9_ROWS_PER_PAGE);
+    for (const h of FORM9_HEADS) {
+      for (const line of h.text.split("\n")) expect(sheetPart, h.ref).toContain(`>${line}</span>`);
     }
     expect(f).toContain("様式9：災害時利用者一覧表（安否確認優先順位）");
     expect(f).not.toContain('data-block="report"');
@@ -339,15 +344,15 @@ describe.skipIf(!chrome)("印刷（headless Chrome の printToPDF）", () => {
     expect(got).toEqual(Object.fromEntries(IDS.map((id) => [id, 1])));
   }, 180_000);
 
-  it("様式 9 は A4 横で、10 人の表はひな形と同じ 1 頁（T85）。報告の下書き（発災時、ひな形に無い）が付いても 2 頁まで", async (ctx) => {
+  it("様式 9 は A4 横で、10 人のひな形の枠はひな形と同じ 1 頁（T85）。ケア72 の欄の別紙が 1 頁（T101）、報告の下書き（発災時）は別紙のあと", async (ctx) => {
     if (!fontOk) ctx.skip();
     const boxesOf = (pdf: Uint8Array) =>
       [...Buffer.from(pdf).toString("latin1").matchAll(/\/MediaBox\s*\[\s*0 0 ([\d.]+) ([\d.]+)\s*\]/g)].map((m) => [Number(m[1]), Number(m[2])]);
     const plain = boxesOf(await pdfOf(form9Html(null)));
-    expect(plain).toHaveLength(FORM9_AUDIT.paper.pages);
+    expect(plain).toHaveLength(FORM9_AUDIT.paper.pages + 1);
     const withReport = boxesOf(await pdfOf(form9Html("【安否報告（下書き）】\n事業所：デモ事業所")));
-    expect(withReport.length).toBeGreaterThanOrEqual(1);
-    expect(withReport.length).toBeLessThanOrEqual(2);
+    expect(withReport.length).toBeGreaterThanOrEqual(FORM9_AUDIT.paper.pages + 1);
+    expect(withReport.length).toBeLessThanOrEqual(FORM9_AUDIT.paper.pages + 2);
     for (const [w, h] of [...plain, ...withReport]) {
       expect(Math.round(w)).toBe(842);
       expect(Math.round(h)).toBe(595);
