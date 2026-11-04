@@ -15,7 +15,7 @@
 
 import type { D1Database } from "@cloudflare/workers-types";
 import type { Principal } from "../auth/principal.ts";
-import { keyOf, type AiEnv } from "../claude/client.ts";
+import { geminiKeyOf, type AiEnv } from "../claude/client.ts";
 import { AiBadOutput, AiCallFailed, AiLimitReached, AiNotConfigured } from "../claude/errors.ts";
 import { d1UsageStore } from "../claude/usage.ts";
 import { parseLedger } from "../db/ledger.ts";
@@ -73,9 +73,9 @@ export function voiceOf(speaker: Speaker): string {
   return DEFAULT_VOICE;
 }
 
-/** 声を作れるか（Gemini の鍵がある）。無ければ画面は文字だけ */
-export function voiceEnabled(env: Pick<AiEnv, "GEMINI_API_KEY">): boolean {
-  return keyOf(env.GEMINI_API_KEY) !== null;
+/** 声を作れるか（Gemini の鍵がある。配信の Secret の名前 GEMINI_TTS も読む）。無ければ画面は文字だけ */
+export function voiceEnabled(env: Pick<AiEnv, "GEMINI_API_KEY" | "GEMINI_TTS">): boolean {
+  return geminiKeyOf(env) !== null;
 }
 
 // ---------- clip ----------
