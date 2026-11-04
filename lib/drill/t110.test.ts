@@ -376,7 +376,8 @@ describe("手の分（時計は進めず、手に使った時間を AI も動か
       },
     };
     let s = await clockAt0();
-    for (const p of ["p-01", "p-02", "p-04"]) s = (await act(s, { kind: "call_person", person: p, target: SELF_01 }, {}, () => 0.99)).state;
+    // T121: 電話に出た（本人に届いた）手の人を呼ぶ。出なかった電話は本人役を呼ぶ理由にしない
+    for (const p of ["p-01", "p-02", "p-04"]) s = (await act(s, { kind: "call_person", person: p, target: SELF_01 }, {}, () => 0)).state;
     expect(busyOf(s, { on: true, aiAt: aiAtOf(s) }).used).toBe(15);
     const r = (await advance(s, s.minute, hooks, { policy: "clock", acts: true }))!;
     expect(r.state.minute).toBe(15);

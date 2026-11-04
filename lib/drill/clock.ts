@@ -5,7 +5,8 @@
 // - 本人役はその区切りで理由のある人だけ（1 区切り 6 人まで）、監督は表の出来事のある区切り・前の監督から 3 時間・「次まで」のどれか
 // - 1 訓練の AI の呼び出しは 2 段の上限（120 で巡回と 3 時間ごとの監督を止め、150 で AI を呼ばない）。講評と 1 日の上限は別
 
-import type { DrillScenario } from "../db/types.ts";
+import type { DrillAction, DrillScenario } from "../db/types.ts";
+import { actionRow, isCatalogAction } from "./action-catalog.ts";
 import type { PersonaReason } from "./persona-types.ts";
 import { eventHour, scenarioOf, type DrillCounts, type WorldState } from "./scenarios.ts";
 
@@ -142,3 +143,56 @@ export function nextEventMinute(
   ];
   return Math.min(DRILL_END_MINUTE, Math.ceil(Math.min(...candidates)));
 }
+
+// ---------- 本人役の呼び出しを減らす決め（T121） ----------
+// 評価の 1 回目で、10 人・72 時間の訓練 1 回が 1 訓練の上限の 89% を使った。大半は本人役で、その半分ほどは「連絡しない」の返事。
+// 呼ぶ理由のうち、本人に届かない手（行政報告・記録）・本人がもう話した手（電話に出て話した・訪問で会った）の返事と、
+// 短い区切り（30 分）の急がない理由（状況・時計・巡回）が多かった。上限の値は上げず、使う数を減らす。
+
+/** 短い区切りで急がない理由（状況・時計・巡回）を次の区切りへまとめる分。この分たつまで持ち越す */
+export const GATHER_MINUTES = 60;
+
+/** 急がない理由（表の行・手の返事のほか） */
+export const QUIET_REASONS: ReadonlyArray<PersonaReason> = ["incident", "clock", "round"];
+
+/** 手の返事の形のうち、本人役の理由を決めるのに読む所 */
+export type ReasonAction = {
+  kind: DrillAction;
+  as?: DrillAction | null;
+  result: { status: string; speechAi?: boolean; talk?: ReadonlyArray<unknown>; visit?: unknown } | null;
+};
+
+/**
+ * 手の返事が本人役を呼ぶ理由になるか。手の表（action-catalog.ts）の届き方（reach）が手の終わりに本人に届く手で、届いた結果だけ。
+ * 着いたら届く手（訪問依頼・手配）は到着（arrivals・dispatched）の時刻で呼ぶので、ここでは呼ばない。
+ * 電話に出て AI が話した・訪問で AI が様子を返した手は、本人がもう話したので呼ばない（119 の勧めは、かけるかを次に言うので呼ぶ）
+ */
+export function actionReaches(a: ReasonAction): boolean {
+  const r = a.result;
+  if (!r) return false;
+  const kind = a.kind === "free" ? a.as : a.kind;
+  if (!kind || !isCatalogAction(kind)) return false;
+  const row = actionRow(kind);
+  if (!row.towardPerson || !row.reach || row.reach.at !== "end" || !row.reach.statuses.includes(r.status as never)) return false;
+  if (kind === "advise_119") return true;
+  const spoke = r.speechAi === true || (Array.isArray(r.talk) && r.talk.length > 0) || r.visit !== undefined;
+  return !spoke;
+}
+
+/** この人の身の回りが since（発災からの分）より後に変わったか（世界の変わった時刻・印・到着・届いた物・頼み事）。巡回の門 */
+export function changedSince(world: WorldState, person: string, since: number): boolean {
+  const after = (h: number | undefined) => typeof h === "number" && h * 60 > since;
+  const s = world.stamps ?? {};
+  if (after(s.phone) || after(s.outage) || after(s.water) || after(s.weather)) return true;
+  if (world.roads.some((r) => (!r.person || r.person === person) && after(s[`road:${r.id}`]))) return true;
+  if (world.facilities.some((f) => (!f.person || f.person === person) && after(s[`facility:${f.id}`]))) return true;
+  if (world.shelters.some((x) => after(s[`shelter:${x.id}`]))) return true;
+  if (Object.values(world.marks[person] ?? {}).some((h) => after(h))) return true;
+  if ((world.arrivals ?? []).some((a) => a.person === person && a.arrive > since)) return true;
+  if (Object.values(world.supplies?.[person] ?? {}).some((m) => typeof m === "number" && m > since)) return true;
+  if ((world.asks?.[person] ?? []).some((a) => a.at > since || (a.done !== null && a.done > since))) return true;
+  return false;
+}
+
+/** 身の回りが何も変わらない人を巡回で呼ぶまでの分（変わった人は ROUND_MINUTES） */
+export const ROUND_QUIET_MINUTES = 1440;

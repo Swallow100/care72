@@ -218,13 +218,15 @@ describe("本人役を呼ぶ人（この区切りで理由のある人だけ）"
           minutes: 5,
           step: 0,
           before: { person: null, marks: {}, staff: 3, phone: "ok", roadClosed: false },
-          result: { ok: false, status: "noAnswer", because: null, text: "", ai: false, speech: null, speechAi: false, pickup: "no_answer", cleared: [], staff: 0, crossed: [], atMinute: 5, heard: null },
+          // T121: 手の終わりに本人に届いた（電話に出た）手だけが理由。出なかった電話・本人がもう話した電話では呼ばない
+          result: { ok: true, status: "connected", because: null, text: "", ai: false, speech: null, speechAi: false, pickup: "answers", cleared: [], staff: 0, crossed: [], atMinute: 5, heard: null },
         },
       ],
       minute: 5,
     };
     const marks: ClockMark[] = [{ person: "p-02", at: 25, kind: "half" }];
-    await go(s, 30, { persona: p.hook, clock: { marks: async () => marks } });
+    // T121: 1 時間未満の区切りは急がない理由（状況・時計）を持ち越すので、1 時間の区切りで見る
+    await go(s, 60, { persona: p.hook, clock: { marks: async () => marks } });
     const by = Object.fromEntries(p.log.map((x) => [x.person, x.reasons]));
     expect(by).toEqual({ "p-07": ["action"], "p-05": ["incident"], "p-02": ["clock"] });
   });
@@ -234,11 +236,11 @@ describe("本人役を呼ぶ人（この区切りで理由のある人だけ）"
     let s = await begin("virtual", { persona: p.hook });
     const scheduled = TEN.slice(0, 8).map((person) => ({ at: 10, change: { kind: "line_down" as const }, text: "家の電話 不通", person, by: "director" as const }));
     s = { ...s, world: { ...s.world, scheduled } };
-    const r1 = await go(s, 30, { persona: p.hook });
+    const r1 = await go(s, 60, { persona: p.hook });
     expect(p.log.map((x) => x.person)).toEqual(TEN.slice(0, 6));
     expect(Object.keys(r1.state.world.touched ?? {}).sort()).toEqual(["p-07", "p-08"]);
     p.log.length = 0;
-    const r2 = await go(r1.state, 60, { persona: p.hook });
+    const r2 = await go(r1.state, 120, { persona: p.hook });
     expect(p.log.map((x) => x.person)).toEqual(["p-07", "p-08"]);
     expect(p.log.every((x) => x.reasons?.join() === "incident")).toBe(true);
     expect(r2.state.world.touched).toEqual({});
@@ -248,13 +250,16 @@ describe("本人役を呼ぶ人（この区切りで理由のある人だけ）"
     const p = fakePersona();
     const clock = { pressable: async () => new Set(TEN.filter((x) => x !== "p-01")) };
     let s = await begin("virtual", { persona: p.hook, clock });
+    // T121: 巡回は身の回りが変わった人だけ（何も変わらなければ 24 時間）。10 時間に全体の断水
+    s = { ...s, world: { ...s.world, scheduled: [{ at: 600, change: { kind: "water", out: true }, text: "断水", by: "director" }] } };
     for (let m = 180; m < 720; m += 180) s = (await go(s, m, { persona: p.hook, clock })).state;
     expect(p.log).toEqual([]);
     s = (await go(s, 720, { persona: p.hook, clock })).state;
     expect(p.log.map((x) => x.person)).toEqual(["p-02", "p-03", "p-04"]);
     expect(p.log.every((x) => x.reasons?.join() === "round")).toBe(true);
     p.log.length = 0;
-    await go(s, 750, { persona: p.hook, clock });
+    // 1 時間未満の区切りは巡回を持ち越すので、1 時間の区切りで次の 3 人
+    await go(s, 780, { persona: p.hook, clock });
     expect(p.log.map((x) => x.person)).toEqual(["p-05", "p-06", "p-07"]);
   });
 
@@ -263,7 +268,7 @@ describe("本人役を呼ぶ人（この区切りで理由のある人だけ）"
     let s = await begin("virtual", { persona: p.hook });
     const scheduled = ["p-01", "p-02"].map((person) => ({ at: 10, change: { kind: "line_down" as const }, text: "家の電話 不通", person, by: "director" as const }));
     s = { ...s, world: { ...s.world, scheduled, ended: { "p-01": { at: 0, label: "", reason: null } } } };
-    await go(s, 30, { persona: p.hook });
+    await go(s, 60, { persona: p.hook });
     expect(p.log.map((x) => x.person)).toEqual(["p-02"]);
   });
 
@@ -272,7 +277,7 @@ describe("本人役を呼ぶ人（この区切りで理由のある人だけ）"
     let s = await begin("virtual", { persona: p.hook });
     const scheduled = ["p-01", "p-02"].map((person) => ({ at: 10, change: { kind: "line_down" as const }, text: "家の電話 不通", person, by: "director" as const }));
     s = { ...s, world: { ...s.world, scheduled } };
-    const r = await go(s, 30, { persona: p.hook, clock: { pressable: async () => new Set(["p-02"]) } });
+    const r = await go(s, 60, { persona: p.hook, clock: { pressable: async () => new Set(["p-02"]) } });
     expect(p.log.map((x) => x.person)).toEqual(["p-02"]);
     expect(r.state.world.touched).toEqual({});
   });
@@ -384,7 +389,7 @@ describe("1 訓練の AI の上限", () => {
     let s = await begin("virtual", { persona: p.hook });
     const scheduled = TEN.slice(0, 5).map((person) => ({ at: 10, change: { kind: "line_down" as const }, text: "家の電話 不通", person, by: "director" as const }));
     s = { ...s, world: { ...s.world, scheduled, counts: { director: 0, persona: DRILL_CALL_CAP - 2, call: 0, free: 0 } } };
-    const r = await go(s, 30, { persona: p.hook });
+    const r = await go(s, 60, { persona: p.hook });
     expect(p.log.length).toBe(2);
     expect(r.state.world.counts?.persona).toBe(DRILL_CALL_CAP);
   });
@@ -430,11 +435,13 @@ describe("手の途中（clock の訓練）", () => {
     // 表の行（1 山田・6 高橋）は本人役の骨として残り、道の状況の 5 伊藤は touched。次の進めで呼ぶ（5 伊藤は手の返事のほうが強い理由）
     expect(out.ticks[0].turns).toEqual([]);
     expect(Object.keys(out.state.world.touched ?? {})).toEqual(["p-05"]);
-    await go(out.state, 220, hooks);
+    // T121: 通行止で着けなかった訪問は本人に届いていないので手の返事の理由にならず、道の状況（incident）で呼ぶ。
+    // 1 時間未満の区切りは急がない理由を持ち越すので、手の途中の区切り（190 分）から 1 時間の区切りで見る
+    await go(out.state, 250, hooks);
     expect(p.log.map((x) => [x.person, x.reasons?.join()])).toEqual([
       ["p-01", "table"],
       ["p-06", "table"],
-      ["p-05", "action"],
+      ["p-05", "incident"],
     ]);
     expect(p.log[0].fixed.map((f) => f.at)).toEqual([3]);
   });

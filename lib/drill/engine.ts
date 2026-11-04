@@ -45,7 +45,12 @@ import {
 import type { DrillTurn, PersonaHook, PersonaReason, PersonState } from "./persona-types.ts";
 import {
   budgetOf,
+  actionReaches,
   CAP_REASON,
+  changedSince,
+  GATHER_MINUTES,
+  QUIET_REASONS,
+  ROUND_QUIET_MINUTES,
   capReached,
   CLOCK_LABELS,
   crossedClocks,
@@ -859,8 +864,10 @@ export async function advance(
     };
     const since = (p: string) => lastCalled[p] ?? -1;
     for (const p of live) if (pending(p).length > 0) give(p, "table");
+    // 手の返事は、手の終わりに本人に届いた手で、本人がまだ話していない物だけ（T121、clock.ts の actionReaches。行政報告・記録・
+    // 電話で話した・訪問で会った手では呼ばない。着いたら届く手は下の到着で呼ぶ）
     for (const a of state.actions) {
-      if (a.person && a.result && a.result.atMinute > since(a.person) && a.result.atMinute <= to) give(a.person, "action");
+      if (a.person && a.result && a.result.atMinute > since(a.person) && a.result.atMinute <= to && actionReaches(a)) give(a.person, "action");
     }
     for (const a of [...(world.arrivals ?? []), ...(world.dispatched ?? [])]) {
       if (a.arrive > since(a.person) && a.arrive <= to) give(a.person, "action");
@@ -872,8 +879,14 @@ export async function advance(
     const press = hooks.clock?.pressable ? await safely(() => hooks.clock!.pressable!(), null) : null;
     const canPress = (p: string) => press === null || press.has(p);
     if (!soft) {
+      // 巡回は、前に呼んでから身の回りが変わった人だけ（T121。変化の無い人を呼ばない。時計は理由 clock で呼ぶ）。
+      // 何も変わらない人も ROUND_QUIET_MINUTES（24 時間）たてば呼ぶ（静かになりすぎないため）
+      const due = (p: string) => {
+        const gap = to - (lastCalled[p] ?? 0);
+        return gap >= ROUND_QUIET_MINUTES || (gap >= ROUND_MINUTES && changedSince(world, p, lastCalled[p] ?? 0));
+      };
       live
-        .filter((p) => !reasons.has(p) && canPress(p) && to - (lastCalled[p] ?? 0) >= ROUND_MINUTES)
+        .filter((p) => !reasons.has(p) && canPress(p) && due(p))
         .sort((a, b) => (lastCalled[a] ?? 0) - (lastCalled[b] ?? 0))
         .slice(0, ROUND_PER_CUT)
         .forEach((p) => give(p, "round"));
@@ -882,6 +895,17 @@ export async function advance(
     const rank = (p: string) => Math.min(...[...(reasons.get(p) ?? [])].map((r) => REASON_ORDER.indexOf(r)));
     const order = live.filter((p) => reasons.has(p) && (canPress(p) || pending(p).length > 0));
     for (const p of reasons.keys()) if (!order.includes(p)) delete touched[p];
+    // 短い区切り（1 時間未満）は、急がない理由（状況・時計・巡回）だけの人を持ち越してまとめる（T121。理由ができてから
+    // GATHER_MINUTES たてば呼ぶ）。表の行と手の返事の人はその区切りで呼ぶ
+    if (to - Math.max(0, from) < GATHER_MINUTES) {
+      for (const p of [...order]) {
+        const quiet = [...reasons.get(p)!].every((r) => QUIET_REASONS.includes(r));
+        if (quiet && to - (touched[p] ?? to) < GATHER_MINUTES) {
+          touched[p] = Math.min(touched[p] ?? to, to);
+          order.splice(order.indexOf(p), 1);
+        }
+      }
+    }
     order.sort((a, b) => rank(a) - rank(b) || (touched[a] ?? to) - (touched[b] ?? to) || live.indexOf(a) - live.indexOf(b));
     const room = Math.max(0, Math.min(PERSONA_PER_CUT, DRILL_CALL_CAP - totalCalls(counts)));
     const called = order.slice(0, room);
