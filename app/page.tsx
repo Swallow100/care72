@@ -10,6 +10,7 @@ import { DisasterTable } from "@/components/list/DisasterTable";
 import { FilterBar } from "@/components/list/FilterBar";
 import type { ClassificationSlot, HearingSlot, SummarySlot } from "@/components/list/RowDetail";
 import { SidePane, type SideMapOptions } from "@/components/list/SidePane";
+import { CaseloadEmpty } from "@/components/office/CaseloadEmpty";
 import { UnlistedFold } from "@/components/office/UnlistedFold";
 import { UnlistedRows } from "@/components/office/UnlistedRows";
 import { PersonWithIntake } from "@/components/person/PersonWithIntake";
@@ -48,6 +49,7 @@ import { buildSidePane, sideDisasterOf } from "@/lib/map/side";
 import { loadOfficePlace } from "@/lib/office/place";
 import { parsePeopleError } from "@/lib/office/http";
 import { NEW_PERSON_PATH } from "@/lib/office/http-paths";
+import { canSeeSetup } from "@/lib/office/setup";
 import { OFFICE_ERROR_LABELS, OFFICE_LABELS } from "@/lib/office/labels";
 import { loadPlanForm, planFormView } from "@/lib/forms/plan-form";
 import { COLOR_TONES, loadPersonPage, toPersonView, type PersonView as View } from "@/lib/person";
@@ -229,9 +231,7 @@ export default async function CaseloadPage({ searchParams }: Props) {
           </p>
         )}
         {rows.length === 0 ? (
-          <p className="mt-3 rounded-lg bg-panel px-3 py-2 text-muted" data-empty>
-            なし
-          </p>
+          <CaseloadEmpty addPerson={all.length === 0 && canSeeSetup(principal)} />
         ) : (
           // 横に送らない。PC の幅（1024px 以上）は全部の列、狭い幅は列を省く（表の部品）
           <div className={`mt-3 ${TABLE_BOX}`}>
