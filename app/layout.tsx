@@ -39,7 +39,7 @@ const bizMincho = BIZ_UDPMincho({
   variable: "--font-biz-mincho",
 });
 
-// 松山市の計画書の紙面の本文だけ BIZ UDゴシック（かなが等幅。原本の書体のまま。OFL。11/4 15:4x 確定）。components/forms/paper.css の
+// 松山市の計画書の紙面の本文だけ BIZ UDゴシック（かなが等幅。原本の書体のまま。OFL）。components/forms/paper.css の
 // .paper.matsuyama。画面には使わない。preload しないので、計画書の紙面を描くときだけ読む。
 const bizUdGothic = BIZ_UDGothic({
   weight: ["400", "700"],
