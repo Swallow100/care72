@@ -23,6 +23,7 @@ import { CHOICE_INPUT, CHOICE_LABEL } from "@/components/ui/choice";
 import { TABLE, TABLE_BOX, TD, TH } from "@/components/ui/table";
 import { StateTag, StateText, TONE_TEXT } from "@/components/ui/Tag";
 import { todayJst } from "@/lib/age";
+import { wantsOwnPassword } from "@/lib/auth/password-change";
 import { requirePage } from "@/lib/auth/server";
 import { PLAN_TONES } from "@/lib/caseload";
 import { ALERT_LEVELS, DISASTER_KINDS, OUTAGE_SCOPES, type DisasterKind, type GeoPoint } from "@/lib/db/types";
@@ -79,6 +80,8 @@ type Props = {
     form_error?: string | string[];
     moved?: string | string[];
     skipped?: string | string[];
+    /** ヘッダーの「初期パスワード」の「変更」から（自分の行の変更の欄を開いて出す。T114） */
+    password?: string | string[];
   }>;
 };
 
@@ -203,6 +206,7 @@ export default async function OfficePage({ searchParams }: Props) {
                 selfId={principal.judge ? null : principal.accountId}
                 manage={actor.admin}
                 walled={actor.walled === true}
+                openPassword={wantsOwnPassword(q.password)}
               />
             </AddCareManager>
           </Panel>
@@ -636,16 +640,25 @@ function CareManagerList({
   selfId,
   manage,
   walled,
+  openPassword = false,
 }: {
   careManagers: CareManagerItem[];
   selfId: string | null;
   manage: boolean;
   walled: boolean;
+  /** 自分の行の変更の欄を開いて出す（ヘッダーの「初期パスワード」の「変更」から。T114） */
+  openPassword?: boolean;
 }) {
   return (
     <ul className="mt-2 grid gap-px text-sm">
       {careManagers.map((c) => (
-        <CareManagerRow key={c.id} item={c} self={c.id === selfId} manage={manage && (!walled || c.judgeMade === true)} />
+        <CareManagerRow
+          key={c.id}
+          item={c}
+          self={c.id === selfId}
+          manage={manage && (!walled || c.judgeMade === true)}
+          openPassword={openPassword && c.id === selfId}
+        />
       ))}
     </ul>
   );

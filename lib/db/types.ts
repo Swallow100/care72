@@ -574,6 +574,8 @@ export type AccountRow = {
   disabled_at: string | null;
   /** 審査員が足した・再発行したアカウント（T81、migration 0025）。ログインも審査員と同じ壁（lib/auth/wall.ts） */
   judge_made: 0 | 1;
+  /** 初期パスワード（人が作った物）のまま。本人が変えると 0、再発行で 1（T114、migration 0027。既定 1） */
+  password_initial: 0 | 1;
 };
 
 export type PersonRow = {

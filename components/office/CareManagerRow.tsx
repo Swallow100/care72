@@ -46,10 +46,21 @@ export type CareManagerRowItem = {
 
 type Mode = "rename" | "password" | null;
 
-export function CareManagerRow({ item, self, manage }: { item: CareManagerRowItem; self: boolean; manage: boolean }) {
+export function CareManagerRow({
+  item,
+  self,
+  manage,
+  openPassword = false,
+}: {
+  item: CareManagerRowItem;
+  self: boolean;
+  manage: boolean;
+  /** 自分の行の変更の欄を開いて出す（ヘッダーの「初期パスワード」の「変更」から。T114）。自分で固定でない行だけ効く */
+  openPassword?: boolean;
+}) {
   const router = useRouter();
   const fixed = isFixedAccount(item.id);
-  const [mode, setMode] = useState<Mode>(null);
+  const [mode, setMode] = useState<Mode>(openPassword && self && !fixed ? "password" : null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<{ label: string; hasPeople: boolean } | null>(null);
   const [reissued, setReissued] = useState<string | null>(null);
