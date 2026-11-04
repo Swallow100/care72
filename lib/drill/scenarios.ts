@@ -361,7 +361,7 @@ const HEAVY_RAIN: Scenario = {
         { change: { kind: "outage", area: FLOOD_AREA }, text: "浸水 3 m の地区で停電" },
       ],
       turns: [
-        // 小林の夫の電話（動画で必ず出すため表で固定。11/3 07:0x の確定 3）。停電と同時に呼吸器が内蔵電池（3 時間）に替わる
+        // 小林の夫の電話（動画で必ず出すため表で固定）。停電と同時に呼吸器が内蔵電池（3 時間）に替わる
         {
           person: "p-02", who: WHO.ventilator,
           color: "green",

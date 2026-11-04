@@ -1,5 +1,5 @@
 // ケア72 の Workers の設定。
-// 配信は作者が手で打つ（docs/tasks/T27.md）。D1 care72 と R2 care72-recordings は 11/2 に作った本物。
+// 配信は作者が手で打つ（docs/tasks/T27.md）。D1 care72 と R2 care72-recordings は配信先の本物。
 // account_id は書かない（作者の wrangler のログインから決まる）。手元の dev と --local はこの設定のまま動く。
 {
   "$schema": "node_modules/wrangler/config-schema.json",
@@ -24,7 +24,7 @@
   // 毎日 19:00 UTC（4:00 JST）にデモ事業所を種に戻す（lib/seed/cron.ts の DAILY_RESET_CRON と同じ文字）。
   // 5 分ごとに気象庁の防災情報 XML を取って D1 に写す（lib/jma/cron.ts の JMA_FETCH_CRON と同じ文字。T72）
   "triggers": { "crons": ["0 19 * * *", "*/5 * * * *"] },
-  // AI の 1 日の上限（デモ事業所だけに効く。lib/claude/usage.ts の dailyLimit）。既定 200 を作者の判断で 600 に（DECISIONS 11/4 12:4x）
+  // AI の 1 日の上限（デモ事業所だけに効く。lib/claude/usage.ts の dailyLimit）。既定は 200、デモ事業所は 600（docs/DECISIONS.md「配信と守り」）
   "vars": { "AI_DAILY_LIMIT": "600" },
   "r2_buckets": [
     {

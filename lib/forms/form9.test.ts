@@ -168,7 +168,7 @@ describe("平時の優先順位（10 人）", () => {
     expect(row(normal, "p-10").reason).toBe("医療の時計なし");
   });
 
-  it("保管（暑さ・冷蔵）・冷蔵の未確認は優先の理由に足さない（表の入力でない。11/3 確定の 1）", () => {
+  it("保管（暑さ・冷蔵）・冷蔵の未確認は優先の理由に足さない（表の入力でない）", () => {
     expect(row(normal, "p-08").reason).toBe("インスリン 4 日");
     for (const dep of ["storage", "refrigeration"] as const) {
       const unchecked = people.map((p) =>

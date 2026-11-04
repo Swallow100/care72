@@ -24,7 +24,7 @@ import { CLASSIFY_COLUMNS, classViewOf, parseClassList, type ClassView, type Sig
 export const CLASSIFY_LOG_SOURCE = "classify";
 export const CLASS_EDIT_LOG_SOURCE = "class_edit";
 
-/** 録音はあるが文字起こしが空の信号の分類（Claude を呼ばずに決める。T37、docs/DECISIONS.md 11/3 04:0x の 9） */
+/** 録音はあるが文字起こしが空の信号の分類（Claude を呼ばずに決める。T37） */
 export const SILENT_CLASSES: readonly RecordingClass[] = ["unknown"];
 
 /** どの信号を分けるか（本人のスマホの録音のあと。事業所と本人はログインから決めた物） */

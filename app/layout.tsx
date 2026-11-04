@@ -11,8 +11,8 @@ import { INSTALL_SCRIPT, PRESS_SCRIPT } from "@/lib/ui/head-scripts";
 import "./globals.css";
 
 // 画面の書体は Inter（英数字。OFL）＋ OS の日本語書体（Hiragino Sans・Yu Gothic UI・Meiryo。globals.css の --font-sans）。
-// 作者の判断（11/3 10:3x）: Web の日本語書体（M PLUS 2 など）は「AI が作った画面」の顔になる。作者の別のアプリと
-// Claude Code の画面と同じく、英数字だけ Inter で、日本語は端末の書体に任せると、端末のアプリと同じ顔になる。
+// Web の日本語書体（M PLUS 2 など）は「AI が作った画面」の顔になるので使わない。英数字だけ Inter で、日本語は端末の書体に
+// 任せると、端末のアプリと同じ顔になる。
 // Inter は数字を等幅にできる（tabular-nums）ので、表の時刻・残り時間・人数の縦が揃う。日本語の書体は配信に入れない（要求が増えない）。
 const inter = Inter({
   subsets: ["latin"],
@@ -29,7 +29,7 @@ const bizUd = BIZ_UDPGothic({
   variable: "--font-biz-ud",
 });
 
-// 書類の紙面で、元の様式が明朝の字だけ BIZ UDP明朝（OFL。T85、11/4 14:2x 作者）。松山市の計画書の題・
+// 書類の紙面で、元の様式が明朝の字だけ BIZ UDP明朝（OFL。T85。書類は元の様式に合わせる）。松山市の計画書の題・
 // 同意の問い・注など（components/forms/paper.css の .mc）。原本の游明朝・MS 明朝は配信に入れられないので置き換えた。画面には使わない。
 // preload しないので、紙面の頁で明朝の字を描くときだけ読む。
 const bizMincho = BIZ_UDPMincho({
@@ -40,7 +40,7 @@ const bizMincho = BIZ_UDPMincho({
   variable: "--font-biz-mincho",
 });
 
-// 松山市の計画書の紙面の本文だけ BIZ UDゴシック（かなが等幅。原本の書体のまま。OFL。11/4 15:4x 確定）。components/forms/paper.css の
+// 松山市の計画書の紙面の本文だけ BIZ UDゴシック（かなが等幅。原本の書体のまま。OFL）。components/forms/paper.css の
 // .paper.matsuyama。画面には使わない。preload しないので、計画書の紙面を描くときだけ読む。
 const bizUdGothic = BIZ_UDGothic({
   weight: ["400", "700"],

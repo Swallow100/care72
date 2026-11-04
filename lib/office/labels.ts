@@ -91,7 +91,7 @@ export const STAFF_CONFIRM_LABELS = {
   removeAdminOk: "解除",
 } as const;
 
-/** 確認の窓の名前の箇条書きは 6 行まで。超えたら 5 人と「ほか N 件」（窓の中を送れる箱にしない。DECISIONS 11/3 17:0x の T51-2） */
+/** 確認の窓の名前の箇条書きは 6 行まで。超えたら 5 人と「ほか N 件」（窓の中を送れる箱にしない。T51 の問い 2） */
 export const CONFIRM_DETAIL_ROWS = 6;
 
 export function assignManyDetails(names: readonly string[]): string[] {

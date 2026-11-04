@@ -209,7 +209,7 @@ export function callOccurredAt(pressedAt: string | null | undefined, now: string
  * 通話で聞いた安否があれば、災害モードの間だけ信号（出どころ care_manager）を足す。
  * 保存のときにサーバーで本人を表に当て直し（lib/list/override.ts の saveOverride と同じ personDisaster。押した時刻までの信号で）、
  * その時の表の行が red_injury（けが・動けない）なら、「無事」と、けが・動けないのどちらも付けない「無事でない」は信号にしない（injury。
- * どちらも連絡順の組を下げるため。けが か 動けない を付けた「無事でない」は通す。下げるなら理由つきの順番変更。11/3 設計の答え）。
+ * どちらも連絡順の組を下げるため。けが か 動けない を付けた「無事でない」は通す。下げるなら理由つきの順番変更）。
  * 平時（normal）と古い押下（old。callOccurredAt）も信号にしない。どれも電話の経過の行は書き、payload に uncounted を残す（T82）。
  * 期限を過ぎた機器の時計・頼り先の未確認・時計の半分は、ケアマネの緑のあとも表がそのまま赤・黄にする（ここでは見ない）
  */

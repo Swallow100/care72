@@ -5,7 +5,9 @@
 # wrangler の出力を変数に取るので、migrations apply の確かめ（Ok to proceed?）は聞かれずに yes で進む。
 # 作り直し（表を全部落として種から）は tools/deploy/rebuild-remote.sh。本物のデータがあると止まる。
 set -e
-DEPLOY_DIR="${DEPLOY_DIR:-/c/Users/choco/dev/care72-deploy}"; [ -d "$DEPLOY_DIR" ] || git -C /c/Users/choco/dev/care72 worktree add --detach "$DEPLOY_DIR" "$1"; cd "$DEPLOY_DIR"
+# DEPLOY_DIR が無ければ、今の checkout の隣に配信用の worktree（care72-deploy）を作る
+REPO="$(git rev-parse --show-toplevel)"
+DEPLOY_DIR="${DEPLOY_DIR:-$REPO/../care72-deploy}"; [ -d "$DEPLOY_DIR" ] || git -C "$REPO" worktree add --detach "$DEPLOY_DIR" "$1"; cd "$DEPLOY_DIR"
 git checkout -q -- . && git checkout -q --detach "$1"
 echo "== commit: $(git log --format='%h %s' -1)"
 echo "== npm ci"; npm ci --no-audit --no-fund --loglevel=error 2>&1 | tail -1

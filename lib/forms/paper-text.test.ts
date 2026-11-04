@@ -1,4 +1,4 @@
-// 紙の書き方（数字と単位・年月日を詰める。T37、docs/DECISIONS.md 11/3 07:3x の 1）
+// 紙の書き方（数字と単位・年月日を詰める。T37）
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";

@@ -231,7 +231,7 @@ describe("ルールの表の結果は災害の種類で変わらない", () => {
   });
 });
 
-describe("警戒レベルは大雨の場面の種類だけ（11/3 21:5x 確定）", () => {
+describe("警戒レベルは大雨の場面の種類だけ", () => {
   const info = (alertLevel: 3 | 4 | 5 | null) => ({
     startedAt: at(-2),
     outage: { scope: "none" as const, towns: [], startedAt: null },

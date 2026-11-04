@@ -139,7 +139,7 @@ https://care72.app（686f2e7）で動いている物だけを書いた。
 | 気象庁の警報・地震・雨雲 | 使わない | — | 電文の名前・市町村・時刻のまま並べ、画像は加工しない。色と連絡順の入力にもしない |
 | 通信なしの写し・保留 | 使わない | — | 端末のブラウザの中だけ |
 
-Messages API を呼ぶ所は lib/claude/call.ts の askJson の 1 か所で、仮名化した物（型 `ForClaude`）しか渡せない。返事は形を検査し、画面に AI の印を付ける。世界の部屋にも仮名化した文だけを送り、同じ 1 日の上限で数える。effort は分類のほか high にそろえた（11/4。待ちと上限は docs/progress/t67.md）。
+Messages API を呼ぶ所は lib/claude/call.ts の askJson の 1 か所で、仮名化した物（型 `ForClaude`）しか渡せない。返事は形を検査し、画面に AI の印を付ける。世界の部屋にも仮名化した文だけを送り、同じ 1 日の上限で数える。effort は分類のほか high にそろえた（待ちと上限は docs/progress/t67.md）。
 
 ## この道具がしないこと
 
@@ -162,12 +162,12 @@ Messages API を呼ぶ所は lib/claude/call.ts の askJson の 1 か所で、�
 
 ### 本運用で確かめること
 
-大会のあと実際の人で使うときに確かめる事（アドバイザーの返事。docs/SOURCES.md の末にも同じ一覧）。
+大会のあと実際の人で使うときに確かめる事（docs/SOURCES.md の末にも同じ一覧）。
 
 - 要配慮個人情報（薬・持病・機器。個人情報保護法 2 条 3 項）の同意の流れ: 平時の計画づくりの段階で、本人と家族に、台帳に入れること・発災時の録音・医療班と支援者への提供の範囲の同意を取る形にする
 - 仮名化と対応表: Claude には仮名（A さん）と役割名で渡すが、対応表を持つ事業所の側では個人情報のまま（同法 2 条 1 項）。発災時の録音は本人が話すので名前や住所が混ざる。対応表の置き場所と消し方を決める
 - 外国にある事業者への提供: Claude（Anthropic）と Gemini（Google）へ送る扱いを、同法 28 条（外国にある第三者への提供）と合わせて確かめる。委託契約・学習に使わない契約の確認も
-- ルールの表（医療依存の段と色の行）の監修: 医師・訪問看護師に見てもらい、監修者と版を画面に出す（11/3 16:0x 確定。進めている所）
+- ルールの表（医療依存の段と色の行）の監修: 医師・訪問看護師に見てもらい、監修者と版を画面に出す（進めている所）
 - 医療機器プログラムに当たらないか: 条件を事実にとどめ症状を点数にしない今の作りが、厚生労働省の医療機器プログラムの事例（問診票をそのまま電子化する物 197 など）の線の内か、相談窓口で確かめる（https://www.mhlw.go.jp/stf/seisakunitsuite/bunya/0000179749_00004.html）
 - 相談窓口: 個人情報は個人情報保護委員会、医療機器プログラムは厚生労働省の窓口。大会のあと実際の人で使う前に
 
@@ -198,6 +198,8 @@ Messages API を呼ぶ所は lib/claude/call.ts の askJson の 1 か所で、�
 
 ## Claude Code で何が可能になったか
 
+作り方の仕組み（設計と作業者のセッションの並列、1 作業 1 worktree、別の目の点検、ルールの表とテスト、配信の守り）は [docs/PROCESS.md](docs/PROCESS.md)、詳しい使い方は [docs/CLAUDE_CODE.md](docs/CLAUDE_CODE.md)。
+
 **数え直し**: 下の表の値は 11/3 18:14 の `36f82bd`（origin/integrate/t11-t12）で数えた物で、そのあとも作業が続いている。提出の前に作者が同じ数え方（[docs/CLAUDE_CODE.md](docs/CLAUDE_CODE.md) の一番下）で数え直し、この表を差し替える。
 
 | 数字 | 値 |
@@ -209,6 +211,7 @@ Messages API を呼ぶ所は lib/claude/call.ts の askJson の 1 か所で、�
 | PR | 数え直し（`36f82bd` では 44。全部 merge commit で取り込み） |
 | 作業の brief | 数え直し（`36f82bd` では 53。今は docs/tasks の T74 まで） |
 
+人（作者）は決めることを担い、設計は Claude Fable 5.1、実装は Claude Opus 5.5 のサブエージェントが worktree と branch で並べて進めた。11/3 の夜から 11/4 の朝は、選べる物の少なさと、実際の事業所で使うときの穴の洗い出しから、設計の側が作業を 4〜8 本ずつ並べて出した（T57〜T60 → T61〜T65 → T66〜T74）。線に関わる判断は作業者が決めきらず案として残し、作者が確かめてから入れた（決めた中身は docs/DECISIONS.md）。分担・フック・Skill・サブエージェント・MCP・モデルの使い分けと、数字の裏の commit は [docs/CLAUDE_CODE.md](docs/CLAUDE_CODE.md)。
 
 ## 使った資料と方法
 
@@ -242,7 +245,7 @@ Messages API を呼ぶ所は lib/claude/call.ts の askJson の 1 か所で、�
 
 ## 試行錯誤の跡
 
-- [docs/DECISIONS.md](docs/DECISIONS.md): 期間中の判断（案 → 確定）。運営とアドバイザー（小児科医）の返事で、赤を「至急」に、列を「連絡順」に、119 を固定の文に、AI の分類で連絡順を動かさないように変えた記録
+- [docs/DECISIONS.md](docs/DECISIONS.md): 期間中に決めた設計をテーマ別に。医療の高リスクな使い方を避けるため、赤を「至急」に、列を「連絡順」に、119 を固定の文に、AI の分類で連絡順を動かさないようにした理由（「色と連絡順」「119 の案内と画面の言葉」「AI の使い所」）
 - [docs/PROGRESS.md](docs/PROGRESS.md) と docs/progress: 作業ごとの「できた物・未確認・決めた所・問い」。未確認を隠さない
 - [docs/progress/real-use-audit-20261104.md](docs/progress/real-use-audit-20261104.md): 「本物の事業所が 1 日目に使ったら」とコードを追った洗い出し（地域・本人と家族の入口・オフライン・訓練の進み・同意）。ここから T68〜T74 を出した
 - [docs/JUDGING.md](docs/JUDGING.md): 審査基準の全項目と、作品のどこで満たすか
@@ -250,4 +253,4 @@ Messages API を呼ぶ所は lib/claude/call.ts の askJson の 1 か所で、�
 
 ## ライセンス
 
-AGPL-3.0（LICENSE）。依存は MIT・Apache-2.0・OFL の物だけで、一覧は [THIRD_PARTY.md](THIRD_PARTY.md)。根拠の出典は [docs/SOURCES.md](docs/SOURCES.md)（役所・学会の PDF はリポジトリに入れずリンク）。本運用で別の条件が要るときは作者に相談する。
+作品そのもののライセンスは付けていない（すべての権利を作者が持つ）。直接の依存は MIT・Apache-2.0・OFL の物だけ。間接の依存・書体・地図とデータの条件・動画の道具（Remotion License）を含む一覧は [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。根拠の出典は [docs/SOURCES.md](docs/SOURCES.md)（役所・学会の PDF はリポジトリに入れずリンク）。本運用で別の条件が要るときは作者に相談する。
