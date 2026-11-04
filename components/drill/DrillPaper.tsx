@@ -596,7 +596,7 @@ export function DrillPaper({ record, office, today, ai = null }: { record: Drill
                         <span className="nowrap">{t(clockLabel(a.atMinute))}</span>
                         <span className="p-sub">
                           {" "}
-                          {t(`〜${a.result ? clockLabel(Math.max(a.endMinute, a.result.atMinute)) : ""} ${a.minutes} 分`)}
+                          {t(`〜${a.result ? clockLabel(Math.max(a.endMinute, a.result.atMinute)) : ""}（${a.minutes} 分）`)}
                           {a.adds && a.adds.length > 0 && ` ${a.adds.join("・")}`}
                         </span>
                       </td>
