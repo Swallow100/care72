@@ -7,6 +7,8 @@ import { FillToggle, wantsFill } from "@/components/forms/FillToggle";
 import { MatsuyamaSheet } from "@/components/forms/MatsuyamaSheet";
 import { OriginalImport } from "@/components/forms/OriginalImport";
 import { OverlaySheet } from "@/components/forms/OverlaySheet";
+import { PaperEdit } from "@/components/forms/PaperEdit";
+import { paperEditData } from "@/lib/forms/paper-edit";
 import { UnconfirmedFold } from "@/components/forms/UnconfirmedFold";
 import { FormAbout } from "@/components/forms/FormAbout";
 import { PaperBar, wantsPrint } from "@/components/ui/PaperBar";
@@ -63,6 +65,14 @@ export default async function MatsuyamaFormPage({ params, searchParams }: Props)
   const routeMap = routeMapFor(parseLedger(rows.person.ledger));
   const framed = manifest ? matsuyamaFrameSheet(sheet, manifest, { routeMap }) : null;
   const here = `/people/${encodeURIComponent(id)}/forms/matsuyama`;
+  // 紙に直接書く窓の欄と今の値（T117）。書けるのはケアマネの役（審査員を含む）で、自分の事業所の人だけ（保存も同じ壁。lib/intake/save.ts）
+  const edit = principal.role === "care_manager" && ownOffice ? paperEditData(rows) : null;
+
+  const paper = framed ? (
+    <OverlaySheet sheet={framed} imageSrc={(page) => originalPageHref("matsuyama", page)} checked="" fill={fill} kind="matsuyama" edit={edit !== null} />
+  ) : (
+    <MatsuyamaSheet sheet={sheet} routeMap={routeMap} />
+  );
 
   return (
     <main className="py-4 print:p-0">
@@ -83,11 +93,7 @@ export default async function MatsuyamaFormPage({ params, searchParams }: Props)
         {ownOffice && !manifest && <OriginalImport id="matsuyama" />}
       </PaperBar>
       <FormAbout entry={DOCUMENT_CATALOG.matsuyama} />
-      {framed ? (
-        <OverlaySheet sheet={framed} imageSrc={(page) => originalPageHref("matsuyama", page)} checked="" fill={fill} kind="matsuyama" />
-      ) : (
-        <MatsuyamaSheet sheet={sheet} routeMap={routeMap} />
-      )}
+      {edit ? <PaperEdit data={edit}>{paper}</PaperEdit> : paper}
     </main>
   );
 }

@@ -383,6 +383,16 @@ export function buildFrameSheet<K extends string>(input: FrameSheetInput<K>): Ov
     if (inner) page.fills.push({ keys: [...keys], box: inner });
   }
 
+  // ---- 紙に直接書く窓の押す所（T117。値の有無を問わず欄の矩形。手書きの欄は押せない）----
+  for (const area of frame.areas) {
+    const page = pageOf(area.page);
+    if (!page) continue;
+    const keys = area.keys.filter((k) => !handwrite.has(k));
+    if (keys.length === 0) continue;
+    const inner = insetBox(toRatio(area.box, sizeOf(area.page)), sizeOf(area.page), FILL_INSET_MM);
+    if (inner) (page.targets ??= []).push({ keys: [...keys], box: inner });
+  }
+
   // 別紙は様式の順
   annex.sort((a, b) => (order.get(a.fieldId.split(/[:+]/)[0] as K) ?? 0) - (order.get(b.fieldId.split(/[:+]/)[0] as K) ?? 0));
 
