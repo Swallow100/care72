@@ -3,9 +3,19 @@
 // 名前は台帳の id から引く（記録には名前が無い）。引けなければ id のまま。
 
 import type { DrillScenario } from "../db/types.ts";
-import { SCENARIO_LABELS } from "./labels.ts";
-import { FORM9_PLAN_LABELS, MISS_LABELS, minuteText, orderText, reachedText, reportText, SCORE_LABELS } from "./score-labels.ts";
-import { scoreNumbers, type DrillScore, type ScoreNumbers } from "./score.ts";
+import { ACTION_LABELS, ACTION_UI, SCENARIO_LABELS } from "./labels.ts";
+import {
+  askWords,
+  FORM9_PLAN_LABELS,
+  MISS_LABELS,
+  minuteText,
+  orderText,
+  reachedText,
+  reportText,
+  SCORE_LABELS,
+  WASTE_LABELS,
+} from "./score-labels.ts";
+import { extrasCount, scoreNumbers, type DrillScore, type ScoreNumbers } from "./score.ts";
 
 type Names = Readonly<Record<string, string>>;
 
@@ -28,7 +38,52 @@ export type ScoreView = {
   calls: string;
   /** 前回の訓練（「11/2 大雨想定」の元） */
   previous: { id: string; scenario: DrillScenario; startedAt: string } | null;
+  /** 内訳に足す数（T94。空振り・重複・頼み事の未対応・通話の往復）。T94 より前に残した採点は 0 */
+  extra: ScoreExtraView;
 };
+
+export type ScoreExtraView = {
+  counts: { wasted: number; repeat: number; asksOpen: number; talks: number };
+  /** 空振りの手（時刻・対応・対象・理由） */
+  wasted: Array<{ action: string; person: string | null; name: string; act: string; why: string; at: string }>;
+  /** 重複の手（前の同じ手からの分） */
+  repeat: Array<{ action: string; person: string; name: string; act: string; gap: number; at: string }>;
+  /** 頼み事の未対応のある人と種類 */
+  asks: Array<{ person: string; name: string; kinds: string }>;
+};
+
+/** 内訳の 1 行（「空振り 2・重複 1・頼み事 未対応 1・通話 3 往復」） */
+export function extraText(c: ScoreExtraView["counts"]): string {
+  return [
+    `${SCORE_LABELS.wasted} ${c.wasted}`,
+    `${SCORE_LABELS.repeat} ${c.repeat}`,
+    `${SCORE_LABELS.asks} ${SCORE_LABELS.asksOpen} ${c.asksOpen}`,
+    `${SCORE_LABELS.talk} ${c.talks} ${SCORE_LABELS.talks}`,
+  ].join("・");
+}
+
+function extraView(score: DrillScore, name: (p: string) => string): ScoreExtraView {
+  return {
+    counts: extrasCount(score),
+    wasted: (score.wasted?.rows ?? []).map((r) => ({
+      action: r.action,
+      person: r.person,
+      name: r.person ? name(r.person) : ACTION_UI.whole,
+      act: ACTION_LABELS[r.kind] ?? r.kind,
+      why: WASTE_LABELS[r.why] ?? r.why,
+      at: minuteText(r.atMinute),
+    })),
+    repeat: (score.repeat?.rows ?? []).map((r) => ({
+      action: r.action,
+      person: r.person,
+      name: name(r.person),
+      act: ACTION_LABELS[r.kind] ?? r.kind,
+      gap: r.gap,
+      at: minuteText(r.atMinute),
+    })),
+    asks: (score.asks?.rows ?? []).map((r) => ({ person: r.person, name: name(r.person), kinds: askWords(r.kinds) })),
+  };
+}
 
 export type PreviousNumbers = { id: string; scenario: DrillScenario; startedAt: string; numbers: ScoreNumbers };
 
@@ -82,6 +137,7 @@ export function scoreView(score: DrillScore, names: Names, previous: PreviousNum
       `${SCORE_LABELS.open} ${score.calls.open}`,
     ].join("・"),
     previous: previous ? { id: previous.id, scenario: previous.scenario, startedAt: previous.startedAt } : null,
+    extra: extraView(score, name),
   };
 }
 
