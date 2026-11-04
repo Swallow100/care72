@@ -533,6 +533,8 @@ SIL Open Font License 1.1 の全文はこのファイルの末尾。
 | 重ねるハザードマップ（洪水浸水想定区域〔想定最大規模〕・土砂災害警戒区域・津波浸水想定） | 地図に透過して重ねる層（lib/map/layers.ts） | ハザードマップポータルサイトのオープンデータ（https://disaportal.gsi.go.jp/hazardmap/copyright/opendata.html）。出典「ハザードマップポータルサイト」と層ごとの作成者を地図の下に出す。土砂災害警戒区域は「国土交通省政策統括官付地理空間情報課『国土数値情報（土砂災害警戒区域）』をもとに国土地理院が加工」と、国土数値情報の利用規約・都道府県の条件 |
 | 気象庁 防災情報XML（PULL 型のフィード extra.xml・eqvol.xml と電文） | 事業所の画面の警報・注意報と地震。Workers の cron が 5 分ごとに 1 か所で取って D1 に写す（lib/jma） | 気象庁ホームページのコンテンツ利用規約（https://www.jma.go.jp/jma/kishou/info/coment.html、公共データ利用規約 第1.0版）。加工せず、出典「気象庁ホームページ（https://www.jma.go.jp/bosai/warning/）、気象庁防災情報XML」を出す |
 | 気象庁 降水ナウキャストのタイルと凡例の画像 | 本物の事業所の地図の雨雲（旗 JMA_NOWCAST が on のときだけ） | 同上。加工せず重ね、凡例も気象庁のまま。出典「雨雲：気象庁ホームページ（https://www.jma.go.jp/bosai/nowc/）／背景：地理院タイル」 |
+| 地理院タイル（淡色地図）を刷る避難経路の地図 | 本人のページの避難の面の経路地図と、計画書の避難経路の欄に入れる画像（lib/map/route-image.ts。T102） | 上の地理院タイルと同じ規約。印刷物は図の所に出典を書く。枠の中の下に「地理院タイルに避難経路を追記して掲載」（国土地理院の出典の記載例の形）。刷った計画書を渡すのが測量法の申請の要らない使い方に当たるかは未確認（docs/progress/t102.md の問い 4） |
+| openrouteservice（HeiGIT、経路。データは OpenStreetMap） | 避難経路の「経路作成」（lib/map/route.ts。鍵 ORS_API_KEY があるときだけ、Workers から 1 回ずつ。送るのは 2 点の座標と手段だけ） | HeiGIT の利用規約（https://account.heigit.org/info/tos）。結果は CC-BY-SA 4.0。出典「© openrouteservice by HeiGIT \| Data from OpenStreetMap」を自動の線の地図の枠の中に出す。OpenStreetMap のデータは ODbL（https://www.openstreetmap.org/copyright）と OSMF の利用規約。無料の枠は 1 日 2,000 回・1 分 40 回（Standard） |
 
 lib/jma/fixtures/sample の XML は、防災情報 XML の形に合わせて作った見本で、気象庁の電文の写しではない。
 

@@ -10,6 +10,7 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: () => {}, push:
 
 import { RouteEditor, RouteMapPanel } from "../../components/map/RouteMap.tsx";
 import { RouteSceneSvg } from "../../components/map/RouteSceneSvg.tsx";
+import { PersonView } from "../../components/person/PersonView.tsx";
 import { seedStatements } from "../../seed/sql.ts";
 import type { Principal } from "../auth/principal.ts";
 import { parseLedger } from "../db/ledger.ts";
@@ -19,7 +20,7 @@ import { changeText } from "../intake/changes.ts";
 import type { EditData } from "../intake/edit.ts";
 import { intakePropsOf } from "../intake/props.ts";
 import { saveIntake, SaveRequestSchema } from "../intake/save.ts";
-import { loadPersonPage, type PersonPageRows } from "../person.ts";
+import { loadPersonPage, toPersonView, type PersonPageRows } from "../person.ts";
 import { pseudonymize } from "../pseudonym/index.ts";
 import { project } from "./geo.ts";
 import { fetchRoute, lineLength, modeOf, ORS_ATTRIBUTION, orsRequest, parseOrs, ROUTE_MAX_KM, simplifyLine, withinReach } from "./route.ts";
@@ -475,6 +476,18 @@ describe("本人のページの経路地図の行と窓（T102 の 3）", () => 
     const html2 = renderToStaticMarkup(createElement(RouteMapPanel, { data: { ...data, ledger: withRoute("ors", data.ledger) } }));
     expect(html2).toContain("data-route-map");
     expect(html2).toContain("徒歩 1.2 km 約 15 分 自動");
+  });
+
+  it("本人のページ: 経路地図の行はケアマネの編集があるときだけ（ほかの役の見え方には家と避難先の位置を出さない）", async () => {
+    const rows = await rowsOf();
+    const props = intakePropsOf(rows, false);
+    const view = toPersonView(rows, { today: "2026-11-04" });
+    const withEdit = renderToStaticMarkup(createElement(PersonView, { view, level: 1, edit: props.edit }));
+    expect(withEdit).toContain("data-route-open");
+    expect(withEdit.indexOf("data-route-open")).toBeGreaterThan(withEdit.indexOf('data-section="evacuation"'));
+    const readOnly = renderToStaticMarkup(createElement(PersonView, { view, level: 1, edit: null }));
+    expect(readOnly).not.toContain("data-route-open");
+    expect(readOnly).not.toContain('data-field="evacuation.routeMap"');
   });
 
   it("窓: 避難先 1・2、手段、置く物、左・右・上・下・拡大・縮小・全体、経路作成・経由削除、保存・取消と出典", async () => {
