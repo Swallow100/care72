@@ -22,7 +22,7 @@ import { pageImageKey, parsePageImages, type PageImage, type PageImageBucket } f
 import { formReadPost } from "../../../lib/forms/read-post.ts";
 import { buildFormReadForm } from "../../../lib/forms/read-upload.ts";
 import type { DiffItem } from "../../../lib/intake/diff.ts";
-import { extractIntake, INTAKE_TEXT_MAX, pseudonymInputOf, type IntakeProposal } from "../../../lib/intake/extract.ts";
+import { extractIntake, INTAKE_TEXT_MAX, pseudonymInputOf, splitIntakeText, type IntakeProposal } from "../../../lib/intake/extract.ts";
 import { aiConsentRefusal } from "../../../lib/intake/http.ts";
 import type { ReadSource } from "../../../lib/intake/read-form.ts";
 import { checkRedactedImage } from "../../../lib/intake/read-check.ts";
@@ -599,8 +599,10 @@ export async function runEval(opts: EvalOptions): Promise<RunResult> {
       if (piece.kind === "text") {
         // 正解は送る文と同じ仮名化（同じ人の鍵）で伏せた形（完全に読めた Claude が返す形）
         const { key } = pseudonymize([pseudonymInputOf(rows)], { on: today });
-        client?.expect({ kind: "extract", answer: sealReadOutput(piece.oracle, key) }, seedKey);
-        return { ok: true, proposal: await extractIntake(rows, piece.text, ctx, { today }) };
+        // 4,000 字を超える文は塊ごとに 1 回（T120）。正解は塊ごとに全体の正解（まとめるときに同じ物は 1 つになる）
+        const chunks = splitIntakeText(piece.text).length;
+        for (let c = 0; c < chunks; c++) client?.expect({ kind: "extract", answer: sealReadOutput(piece.oracle, key) }, c === 0 ? seedKey : `${seedKey}~${c}`);
+        return { ok: true, proposal: await extractIntake(rows, piece.text, ctx, { today, concurrency: 1 }) };
       }
       const checked = checkRedactedImage(piece.bytes);
       if (!checked.ok) return { ok: false, error: checked.error };

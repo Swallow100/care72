@@ -10,8 +10,9 @@
 
 import type { ContactRow, Ledger } from "../../../lib/db/types.ts";
 import { birthWritings } from "../shapes.ts";
-import { INTAKE_TEXT_MAX } from "../../../lib/intake/extract.ts";
+import { INTAKE_CHUNK_MAX } from "../../../lib/intake/extract.ts";
 import { PENDING_KEYS, type ExtractOutput } from "../../../lib/intake/schema.ts";
+import { kindFromText } from "../../../lib/map/transport.ts";
 import {
   CARE_LEVEL_LABELS,
   DEVICE_LABELS,
@@ -19,6 +20,7 @@ import {
   HOUSEHOLD_LABELS,
   STRUCTURE_LABELS,
   SUPPORT_KIND_LABELS,
+  TRANSPORT_KIND_LABELS,
 } from "../../../lib/labels.ts";
 import { SEED_PEOPLE, type SeedPerson } from "../../../seed/people.ts";
 
@@ -194,7 +196,12 @@ export function factsOf(p: SeedPerson): Fact[] {
   });
   if (e.destination1) out.push({ id: "evacuation.destination1", group: "避難", say: says(`避難先は${e.destination1}。`, `・避難先：${e.destination1}`, `避難→${e.destination1}`, `避難先は${e.destination1}`), piece: item("evacuation.destination1", e.destination1) });
   if (e.destination2) out.push({ id: "evacuation.destination2", group: "避難", say: all(`第二の避難先は${e.destination2}。`), piece: item("evacuation.destination2", e.destination2) });
-  if (e.transport) out.push({ id: "evacuation.transport", group: "避難", say: says(`避難の移動は${e.transport}。`, `・移動手段：${e.transport}`, `移動 ${e.transport}`, `移動は${e.transport}`), piece: item("evacuation.transport", e.transport) });
+  if (e.transport) {
+    // 手段は選ぶ欄と補記（T112）。正解は選ぶ欄（台帳の文字からの読み替え kindFromText）と、選ぶ欄の言葉と違えば補記の文字（T120 で正解の表を直した）
+    const kind = e.transportKind ?? kindFromText(e.transport);
+    const items = [...(kind ? [{ field: "evacuation.transportKind", value: kind }] : []), ...(kind && TRANSPORT_KIND_LABELS[kind] === e.transport ? [] : [{ field: "evacuation.transport", value: e.transport }])];
+    out.push({ id: "evacuation.transport", group: "避難", say: says(`避難の移動は${e.transport}。`, `・移動手段：${e.transport}`, `移動 ${e.transport}`, `移動は${e.transport}`), piece: { items } });
+  }
   if (e.support?.length) out.push({ id: "evacuation.support", group: "避難", say: all(`支援者には${e.support.map((s) => SUPPORT_KIND_LABELS[s]).join("と")}をお願いする。`), piece: { items: e.support.map((s) => ({ field: "evacuation.support", value: s })) } });
   if (e.carryItems?.length) out.push({ id: "evacuation.carryItems", group: "避難", say: says(`持ち出す物は${e.carryItems.join("、")}。`, `・持出品：${e.carryItems.join("、")}`, `持出 ${e.carryItems.join("・")}`, `持って出る物は${e.carryItems.join("と")}`), piece: { items: e.carryItems.map((x) => ({ field: "evacuation.carryItems", value: x })) } });
   if (e.route) out.push({ id: "evacuation.route", group: "避難", say: all(`避難経路は${e.route}。`), piece: item("evacuation.route", e.route) });
@@ -372,7 +379,7 @@ export function buildInputs(people: readonly SeedPerson[] = SEED_PEOPLE): InputS
   const long = people[5] ?? people[0];
   const longFacts = factsOf(long);
   let longText = "";
-  for (let n = 0; longText.length <= INTAKE_TEXT_MAX; n++) longText += joinLines(composeLines(long, longFacts, "voice", `long-${long.person.id}-${n}`), "voice");
+  for (let n = 0; longText.length <= INTAKE_CHUNK_MAX; n++) longText += joinLines(composeLines(long, longFacts, "voice", `long-${long.person.id}-${n}`), "voice");
   out.push({ id: `long-${long.person.id}`, personId: long.person.id, kind: "long", style: "voice", text: longText, oracle: [mergeExtract(longFacts.map((f) => f.piece))], facts: longFacts.map((f) => f.id) });
   // 台帳そのまま（入れる欄を通さない）
   for (const p of people) out.push({ id: `ledger-${p.person.id}`, personId: p.person.id, kind: "ledger", style: null, oracle: [], facts: [] });

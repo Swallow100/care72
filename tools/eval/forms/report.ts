@@ -87,6 +87,7 @@ export const METRICS: Metric[] = [
   { label: "入力の数", get: (r) => totals(r).inputs },
   { label: "入力の失敗（全部）", get: (r) => totals(r).inputsFailed },
   { label: "入力の失敗 形式（HEIC など）", get: (r) => totals(r).failures.type ?? 0 },
+  { label: "入力の失敗 HEIC を描けない（T120。ブラウザが描ければ JPEG に直す）", get: (r) => totals(r).failures.heic ?? 0 },
   { label: "入力の失敗 長すぎる文", get: (r) => totals(r).failures.too_long ?? 0 },
   { label: "入力の失敗 大きさ（縮めても 5 MB 超）", get: (r) => totals(r).failures.too_large ?? 0 },
   { label: "入力の失敗 AI", get: (r) => Object.entries(totals(r).failures).filter(([k]) => k.startsWith("ai_")).reduce((n, [, v]) => n + v, 0) },

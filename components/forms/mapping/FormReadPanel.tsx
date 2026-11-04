@@ -75,7 +75,7 @@ export function FormReadPanel({ aiReady }: { aiReady: boolean }) {
     }
     const shrunk = await shrinkImage(file, Number.POSITIVE_INFINITY);
     if (!shrunk.ok) {
-      setFail({ label: shrunk.error === "type" ? PLACE_LABELS.fileKinds : L.fileLarge });
+      setFail({ label: shrunk.error === "type" ? PLACE_LABELS.fileKinds : shrunk.error === "heic" ? PLACE_LABELS.heic : L.fileLarge });
       return;
     }
     setRedacting([shrunk.file]);
