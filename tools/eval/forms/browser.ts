@@ -10,6 +10,7 @@
 
 import { FORM_FILE_MAX_BYTES } from "../../../lib/forms/mapping.ts";
 import { PDF_PAGES_MAX, type ReadMeta, type ReadSource } from "../../../lib/intake/read-form.ts";
+import { isHeic } from "../../../lib/forms/shrink-image.ts";
 import { drawPage, pageSize, type Draw2d } from "../../../lib/ooxml/draw.ts";
 import { cssFont } from "../../../lib/ooxml/fonts.ts";
 import { OFFICE_PAGES_MAX, OfficeReadError, renderOffice } from "../../../lib/ooxml/index.ts";
@@ -57,14 +58,16 @@ export type BrowserPage = {
 };
 
 /** legacy は古い形（.xls・.doc）、office は Excel・Word を描けなかった */
-export type BrowserError = "type" | "decode" | "too_large" | "no_canvas" | "legacy" | "office";
+export type BrowserError = "type" | "heic" | "decode" | "too_large" | "no_canvas" | "legacy" | "office";
 export type BrowserResult =
   | { ok: true; source: ReadSource; pages: BrowserPage[]; totalPages: number; rawBytes: number }
   | { ok: false; error: BrowserError; rawBytes: number };
 
-export function kindOf(bytes: Uint8Array): "image" | "pdf" | "office" | "legacy" | null {
+export function kindOf(bytes: Uint8Array): "image" | "heic" | "pdf" | "office" | "legacy" | null {
   const head = (sig: number[]) => sig.every((x, i) => bytes[i] === x);
   if (head([0xff, 0xd8, 0xff]) || head([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) return "image";
+  // HEIC（T120）: ブラウザ（lib/forms/shrink-image.ts）は描ければ JPEG に直す。台は描ける所までブラウザと同じに試す
+  if (isHeic(bytes)) return "heic";
   if (head([0x25, 0x50, 0x44, 0x46, 0x2d])) return "pdf";
   if (head([0x50, 0x4b, 0x03, 0x04])) return "office";
   if (head([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1])) return "legacy";
@@ -173,12 +176,13 @@ export async function browserStage(bytes: Uint8Array, secrets: ReadonlyArray<rea
 
   if (kind === "office") return officeStage(mod, bytes, secrets, rawBytes);
 
-  if (kind === "image") {
+  if (kind === "image" || kind === "heic") {
     let img: { width: number; height: number };
     try {
       img = await mod.loadImage(bytes);
     } catch {
-      return { ok: false, error: "decode", rawBytes };
+      // HEIC を描けない（Chrome と同じ）。画面は「HEIC 不可・JPEG で」
+      return { ok: false, error: kind === "heic" ? "heic" : "decode", rawBytes };
     }
     const enc = await encodePage(mod, { w: img.width, h: img.height, draw: (ctx, w, h) => ctx.drawImage(img, 0, 0, w, h) }, secrets[0] ?? []);
     if (!enc) return { ok: false, error: "too_large", rawBytes };

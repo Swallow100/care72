@@ -319,7 +319,11 @@ describe("分ける（lib/intake/extract.ts）", () => {
     expect(EXTRACT_SYSTEM).toContain("言い換えない");
     expect(EXTRACT_SYSTEM).toContain("今の台帳の値は変えない");
     expect(EXTRACT_SYSTEM).toContain("医療依存の度合い・優先・緊急度");
-    for (const f of INTAKE_FIELDS) expect(EXTRACT_SYSTEM).toContain(`- ${f.key}:`);
+    // AI で埋めない欄（ai: false の電話。T117 の問い 5）は載せない
+    for (const f of INTAKE_FIELDS) {
+      if (f.ai === false) expect(EXTRACT_SYSTEM).not.toContain(`- ${f.key}:`);
+      else expect(EXTRACT_SYSTEM).toContain(`- ${f.key}:`);
+    }
     for (const bad of ["診断して", "判定して", "重症"]) expect(EXTRACT_SYSTEM).not.toContain(bad);
   });
 
@@ -445,7 +449,8 @@ describe("次の問い（lib/intake/ask.ts）", () => {
     // 種の 10 人と、台帳が空の人（全部の欄を問う）
     const empty = { ...seedRows(seed("p-04"), parseLedger("{}")), contacts: [] };
     const all = [...SEED_PEOPLE.map((p) => questionQueue(seedRows(p))), questionQueue(empty)].flat();
-    expect(questionQueue(empty).length).toBeGreaterThanOrEqual(INTAKE_FIELDS.length - NOT_ASKED.size);
+    // 様式の欄（T117）は場所が入ってから聞く物があるので、その他の欄の数を下限に
+    expect(questionQueue(empty).length).toBeGreaterThanOrEqual(INTAKE_FIELDS.filter((f) => !f.form).length - NOT_ASKED.size);
     for (const x of all) {
       expect(x.text, x.key).toMatch(/[。）]$/);
       expect(x.why, x.key).toMatch(/。$/);

@@ -35,6 +35,7 @@ import {
   CONSENT_KIND_LABELS,
   CONSENT_STATUS_LABELS,
   CONTACT_KIND_LABELS,
+  CONTACT_PART_LABELS,
   CONTACT_REACH_LABELS,
   DEPENDS_ON_LABELS,
   DEVICE_LABELS,
@@ -817,6 +818,25 @@ function OtherFields({
         onChange={(e) => p({ relation: e.target.value })}
       />
       <input className={INPUT_IN} placeholder="名前" aria-label={`${who} 名前`} value={c.name} onChange={(e) => p({ name: e.target.value })} />
+      {/* フリガナ・住所（市町村と町名まで）・携帯（T117）。計画書の近親者・実施者の欄の元 */}
+      <input
+        className={INPUT_IN}
+        maxLength={40}
+        placeholder={CONTACT_PART_LABELS.kana}
+        aria-label={`${who} ${CONTACT_PART_LABELS.kana}`}
+        value={c.kana ?? ""}
+        onChange={(e) => p({ kana: e.target.value })}
+        data-contact-part="kana"
+      />
+      <input
+        className={INPUT_IN}
+        maxLength={60}
+        placeholder={CONTACT_PART_LABELS.address}
+        aria-label={`${who} ${CONTACT_PART_LABELS.address}`}
+        value={c.address ?? ""}
+        onChange={(e) => p({ address: e.target.value })}
+        data-contact-part="address"
+      />
       <input
         className={`${INPUT_IN} tabular-nums`}
         placeholder="電話"
@@ -824,6 +844,15 @@ function OtherFields({
         aria-label={`${who} 電話`}
         value={c.phone}
         onChange={(e) => p({ phone: e.target.value })}
+      />
+      <input
+        className={`${INPUT_IN} tabular-nums`}
+        placeholder={CONTACT_PART_LABELS.mobile}
+        inputMode="tel"
+        aria-label={`${who} ${CONTACT_PART_LABELS.mobile}`}
+        value={c.mobile ?? ""}
+        onChange={(e) => p({ mobile: e.target.value })}
+        data-contact-part="mobile"
       />
       <Select className={INPUT_IN} aria-label={`${who} 夜間`} value={c.night} onChange={(e) => p({ night: e.target.value as NightDraft })}>
         {NIGHT.map((n) => (

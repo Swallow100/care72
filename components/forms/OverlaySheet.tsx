@@ -51,6 +51,7 @@ export function OverlaySheet({
   checked,
   fill = false,
   kind = "overlay",
+  edit = false,
 }: {
   sheet: Sheet;
   imageSrc: (page: number) => string;
@@ -60,6 +61,10 @@ export function OverlaySheet({
   fill?: boolean;
   /** data-sheet の値。原本の枠の紙は matsuyama・kiroku（印刷のテストが紙を見分ける） */
   kind?: string;
+  /**
+   * 紙に直接書く窓の押す所を描く（T117。components/forms/PaperEdit.tsx が押せる欄に印を付けて受ける）。画面だけで、印刷では消す（paper-edit.css）
+   */
+  edit?: boolean;
 }) {
   return (
     <div className="paper-scroll">
@@ -80,8 +85,12 @@ export function OverlaySheet({
                   <div key={f.keys.join(" ")} className="ov-fill" style={at(f.box)} data-fill-keys={f.keys.join(" ")} aria-hidden />
                 ))}
               {p.items.map((it) => (
-                <Item key={`${it.fieldId}-${it.kind}`} it={it} />
+                <Item key={`${it.fieldId}-${it.kind}${it.kind === "text" && it.part !== undefined ? `-${it.part}` : ""}`} it={it} />
               ))}
+              {edit &&
+                (p.targets ?? []).map((t) => (
+                  <div key={`edit-${t.keys.join(" ")}`} className="ov-edit" style={at(t.box)} data-edit-key={t.keys.join(" ")} />
+                ))}
             </div>
           </section>
         ))}

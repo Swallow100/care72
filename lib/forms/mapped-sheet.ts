@@ -22,6 +22,7 @@ import {
   CONTACT_REACH_LABELS,
   HAZARD_LABELS,
   HOUSEHOLD_LABELS,
+  HOUSING_TYPE_LABELS,
   MY_TIMELINE_LABELS,
   SEX_LABELS,
   SMARTPHONE_LABELS,
@@ -32,6 +33,7 @@ import { formatJst, type PersonPageRows } from "../person.ts";
 import {
   buildMatsuyamaSheet,
   contactName,
+  contactPhones,
   deviceLine,
   EMPTY,
   NONE,
@@ -111,12 +113,24 @@ function bool(v: boolean | undefined, reason?: PendingStatus): ItemValue {
 
 const fromSheet = (key: MatsuyamaKey) => (c: Ctx): ItemValue => ({ cell: c.sheet.cells[key] });
 
-/** 電話の欄: 番号と固定・携帯の区別。番号が無ければ未確認。居ない人の欄は空き枠（T111。松山市の様式と同じ） */
+/**
+ * 電話の欄: 番号と固定・携帯の区別。電話と携帯（T117、contacts.mobile）があれば 2 行。番号が無ければ未確認。
+ * 居ない人の欄は空き枠（T111。松山市の様式と同じ）
+ */
 function phoneCell(contact: Contact | null): Cell {
   if (!contact) return EMPTY;
-  if (!contact.phone) return unconfirmed();
-  const mobile = (contact.note ?? "").includes("携帯");
-  return value([t(contact.phone), sub(mobile ? "携帯" : contact.kind === "self" ? "固定" : "電話")]);
+  const { phone, mobile } = contactPhones(contact);
+  if (!phone && !mobile) return unconfirmed();
+  const lines: PieceLine[] = [];
+  if (phone) lines.push([t(phone), sub(contact.kind === "self" ? "固定" : "電話")]);
+  if (mobile) lines.push([t(mobile), sub("携帯")]);
+  return value(...lines);
+}
+
+/** フリガナの欄（T117）。居ない人の欄は空き枠 */
+function kanaCell(c: Contact | null): Cell {
+  if (!c) return EMPTY;
+  return c.kana?.trim() ? value([t(c.kana.trim())]) : unconfirmed();
 }
 
 /** 関係の欄: 続柄・種類・連絡順・車・夜間・スマホ・備考。居ない人の欄は空き枠 */
@@ -134,9 +148,11 @@ function relationCell(c: Contact | null): Cell {
   return value(head, flags);
 }
 
-/** 住所の欄: 住所は持たないので未確認。どこにいる人か（同居・近所・市内）を添える（松山市の様式と同じ） */
+/** 住所の欄（T117）: 住所（市町村と町名まで）と近さ。住所が無ければ未確認に近さを添える（松山市の様式と同じ） */
 function addressCell(c: Contact | null): Cell {
   if (!c) return EMPTY;
+  const a = c.address?.trim();
+  if (a) return value([t(a), ...(c.reach ? [sub(CONTACT_REACH_LABELS[c.reach])] : [])]);
   return c.reach ? { kind: "value", lines: [[unconfirmedPiece(), sub(CONTACT_REACH_LABELS[c.reach])]] } : unconfirmed();
 }
 
@@ -150,7 +166,8 @@ function nameCell(c: Contact | null, reason?: PendingStatus): Cell {
 function contactLine(c: Contact): PieceLine {
   const line: PieceLine = [...contactName(c), sub(CONTACT_KIND_LABELS[c.kind])];
   if (c.reach) line.push(sub(CONTACT_REACH_LABELS[c.reach]));
-  line.push(sub("TEL"), c.phone ? t(c.phone) : unconfirmedPiece());
+  const tel = c.phone || c.mobile;
+  line.push(sub("TEL"), tel ? t(tel) : unconfirmedPiece());
   if (c.note) line.push(sub(c.note));
   return line;
 }
@@ -352,6 +369,9 @@ export const ITEM_VALUES: Record<LedgerItemKey, Resolver> = {
   },
   "evacuation.carryItems": (c) => list(c.ledger.evacuation.carryItems, pendingOf(c.ledger, "evacuation.carryItems")),
   "evacuation.pets": (c) => ({ cell: text(c.ledger.evacuation.pets, pendingOf(c.ledger, "evacuation.pets")) }),
+  "evacuation.destination1Minutes": fromSheet("shelter.city.minutes"),
+  "evacuation.destination2Minutes": fromSheet("shelter.pre.minutes"),
+  "evacuation.nearest": fromSheet("shelter.near.place"),
   "evacuation.myTimeline": (c) => {
     const v = c.ledger.evacuation.myTimeline;
     const reason = pendingOf(c.ledger, "evacuation.myTimeline");
@@ -378,21 +398,29 @@ export const ITEM_VALUES: Record<LedgerItemKey, Resolver> = {
     return { cell: n == null ? unconfirmed(pendingOf(c.ledger, "basic.housing.floor")) : value([strong(String(n)), t("階")]) };
   },
   "basic.housing.bedroom": (c) => ({ cell: text(c.ledger.basic.housing?.bedroom, pendingOf(c.ledger, "basic.housing.bedroom")) }),
+  "basic.housing.type": (c) => {
+    const v = c.ledger.basic.housing?.type;
+    return v ? { cell: value([t(HOUSING_TYPE_LABELS[v])]), words: [HOUSING_TYPE_LABELS[v]] } : { cell: unconfirmed(pendingOf(c.ledger, "basic.housing.type")) };
+  },
 
   // ---- 連絡先・支援者 ----
   "emergency1.name": fromSheet("kin.name"),
+  "emergency1.kana": fromSheet("kin.kana"),
   "emergency1.relation": (c) => ({ cell: relationCell(byEmergency(c, 1)) }),
   "emergency1.phone": (c) => ({ cell: phoneCell(byEmergency(c, 1)) }),
   "emergency1.address": fromSheet("kin.address"),
   "emergency2.name": emergency2(nameCell),
+  "emergency2.kana": emergency2(kanaCell),
   "emergency2.relation": emergency2(relationCell),
   "emergency2.phone": emergency2(phoneCell),
   "emergency2.address": emergency2(addressCell),
   "supporter1.name": fromSheet("supporter1.name"),
+  "supporter1.kana": fromSheet("supporter1.kana"),
   "supporter1.relation": (c) => ({ cell: relationCell(bySupporter(c, 1)) }),
   "supporter1.phone": (c) => ({ cell: phoneCell(bySupporter(c, 1)) }),
   "supporter1.address": fromSheet("supporter1.address"),
   "supporter2.name": fromSheet("supporter2.name"),
+  "supporter2.kana": fromSheet("supporter2.kana"),
   "supporter2.relation": (c) => ({ cell: relationCell(bySupporter(c, 2)) }),
   "supporter2.phone": (c) => ({ cell: phoneCell(bySupporter(c, 2)) }),
   "supporter2.address": fromSheet("supporter2.address"),
@@ -400,6 +428,9 @@ export const ITEM_VALUES: Record<LedgerItemKey, Resolver> = {
   "people.welfare": fromSheet("local.welfare"),
   "local.watcher": fromSheet("local.watcher"),
   "people.offices": fromSheet("local.office"),
+  // 実施組織（T117）。値の出し方は松山市の様式と同じ（実施者がいれば空き枠）
+  "org.name": fromSheet("org.name"),
+  "org.phone": fromSheet("org.phone"),
 
   // ---- 同意 ----
   "consent.registry": consentItem("registry"),

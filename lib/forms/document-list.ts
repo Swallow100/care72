@@ -15,6 +15,7 @@ import { buildMatsuyamaSheet, type BuildOptions, type MatsuyamaSheet } from "./m
 import { buildMedicalSummary } from "./medical-summary.ts";
 import { buildOwnSheet } from "./own-sheet.ts";
 import { CAO_MAPPING_ID, caoMapping, parsePlanForm, planFormHref, type PlanFormOption } from "./plan-form.ts";
+import { matsuyamaAskableOf } from "./form-asks.ts";
 import { mappedUnconfirmed, matsuyamaUnconfirmed, unconfirmedView, type UnconfirmedSummary, type UnconfirmedView } from "./unconfirmed.ts";
 
 /** 一覧の道 */
@@ -126,9 +127,9 @@ export function buildPlanSheet(rows: PersonPageRows, form: ResolvedPlanForm, opt
     : { kind: "mapped", sheet: buildMappedSheet(rows, form.mapping, opts) };
 }
 
-/** 紙面の未確認の欄 */
-export function planUnconfirmed(s: PlanSheet): UnconfirmedSummary {
-  return s.kind === "matsuyama" ? matsuyamaUnconfirmed(s.sheet) : mappedUnconfirmed(s.sheet);
+/** 紙面の未確認の欄。rows を渡すと、計画書（松山市）の未確認を問いで埋められる物と未入力に分ける（T117。lib/forms/form-asks.ts） */
+export function planUnconfirmed(s: PlanSheet, rows?: PersonPageRows): UnconfirmedSummary {
+  return s.kind === "matsuyama" ? matsuyamaUnconfirmed(s.sheet, rows ? matsuyamaAskableOf(rows) : undefined) : mappedUnconfirmed(s.sheet);
 }
 
 // ---------- 人ごとの行 ----------
@@ -164,7 +165,7 @@ export function planRow(rows: PersonPageRows, form: ResolvedPlanForm, opts: Buil
     name: rows.person.name,
     href,
     printHref: withPrint(href),
-    unconfirmed: unconfirmedView(planUnconfirmed(buildPlanSheet(rows, form, opts))),
+    unconfirmed: unconfirmedView(planUnconfirmed(buildPlanSheet(rows, form, opts), rows)),
     blocked: null,
   };
 }

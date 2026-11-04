@@ -2,7 +2,7 @@
 // 指示の文に決まりが入っていることと、返事の形（zod）を変えていないことを見る。
 
 import { describe, expect, it } from "vitest";
-import { FORM_READ_SYSTEM, ReadSchema } from "../forms/form-read.ts";
+import { FORM_READ_SYSTEM, PageReadSchema } from "../forms/form-read.ts";
 import { EXTRACT_RULES, EXTRACT_SYSTEM } from "./extract.ts";
 import { INTAKE_READ_SYSTEM } from "./read.ts";
 import { ExtractSchema } from "./schema.ts";
@@ -60,16 +60,14 @@ describe("様式の読み取りの指示（T89）", () => {
     expect(FORM_READ_SYSTEM).toContain("「年築」「建築年」は建てた年で、木造・鉄骨などの種類（構造）とは違う");
   });
 
-  it("場所（矩形）を返す形は変えない（T86）", () => {
-    expect(Object.keys(ReadSchema.shape)).toEqual(["title", "issuer", "pages", "typeface", "fields"]);
-    expect(Object.keys(ReadSchema.shape.fields.element.shape)).toEqual([
-      "page",
-      "section",
+  it("場所（矩形）を返す（T86）。T120 から 1 頁の短い形（段ごと、頁・位置の説明は返させない、候補）", () => {
+    expect(Object.keys(PageReadSchema.shape)).toEqual(["title", "issuer", "typeface", "sections"]);
+    expect(Object.keys(PageReadSchema.shape.sections.element.shape.fields.element.shape)).toEqual([
       "label",
-      "position",
       "shape",
       "options",
       "item",
+      "candidate",
       "confidence",
       "reason",
       "box",

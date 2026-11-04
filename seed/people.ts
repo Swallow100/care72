@@ -27,6 +27,10 @@ export type SeedOffice = Omit<OfficeRow, "created_at" | "judge_sandbox">;
  * 初期パスワードの印（password_initial、T114）も持たない（表の既定。種のアカウントは固定で、印は出さない）
  */
 export type SeedAccount = Omit<AccountRow, "created_at" | "disabled_at" | "judge_made" | "password_initial">;
+/**
+ * 連絡先のフリガナ・住所・携帯（T117、migration 0029）は種に持たない。種の文は 0029 の前の形の D1 にも流すテストがある（migration ごとのテスト）。
+ * 空けておけば、問いと紙に直接書く道の見本にもなる
+ */
 export type SeedContact = Omit<ContactRow, "person_id" | "created_at" | "sort">;
 export type SeedClock = Omit<ClockRow, "person_id" | "sort">;
 export type SeedPerson = {
@@ -173,7 +177,7 @@ export const SEED_PEOPLE: SeedPerson[] = [
         sex: "female",
         address: { city: CITY, town: "かわなぎ町" },
         location: SEED_LOCATIONS["p-01"],
-        housing: { floor: 1, floors: 2, structure: "wood" },
+        housing: { floor: 1, floors: 2, structure: "wood", type: "detached" },
         household: "alone",
         // スマホは使える（審査員の「本人スマホ」は山田で、訓練の想定でも本人が 3 時間に赤を押す。T26、設計の側の決定）
         contactMeans: { landline: true, smartphone: "uses" },
@@ -287,7 +291,7 @@ export const SEED_PEOPLE: SeedPerson[] = [
         sex: "female",
         address: { city: CITY, town: "かわなぎ町" },
         location: SEED_LOCATIONS["p-02"],
-        housing: { floor: 1, floors: 2, structure: "wood" },
+        housing: { floor: 1, floors: 2, structure: "wood", type: "detached" },
         household: "with_spouse",
         contactMeans: { landline: true, smartphone: "none" },
       },
@@ -376,7 +380,7 @@ export const SEED_PEOPLE: SeedPerson[] = [
         sex: "male",
         address: { city: CITY, town: "みずほし町" },
         location: SEED_LOCATIONS["p-03"],
-        housing: { floor: 2, floors: 2, structure: "wood" },
+        housing: { floor: 2, floors: 2, structure: "wood", type: "detached" },
         household: "with_spouse",
         contactMeans: { landline: true, smartphone: "none" },
       },
@@ -486,7 +490,7 @@ export const SEED_PEOPLE: SeedPerson[] = [
         sex: "female",
         address: { city: CITY, town: "くぬぎ谷町" },
         location: SEED_LOCATIONS["p-04"],
-        housing: { floor: 1, floors: 1, structure: "wood" },
+        housing: { floor: 1, floors: 1, structure: "wood", type: "detached" },
         household: "alone",
         contactMeans: { landline: true, smartphone: "none" },
       },
@@ -561,7 +565,7 @@ export const SEED_PEOPLE: SeedPerson[] = [
         sex: "female",
         address: { city: CITY, town: "みずほし町" },
         location: SEED_LOCATIONS["p-05"],
-        housing: { floor: 2, floors: 2, structure: "wood" },
+        housing: { floor: 2, floors: 2, structure: "wood", type: "detached" },
         household: "alone",
         contactMeans: { landline: true, smartphone: "none" },
       },
@@ -620,7 +624,7 @@ export const SEED_PEOPLE: SeedPerson[] = [
         sex: "female",
         address: { city: CITY, town: "あしなみ町" },
         location: SEED_LOCATIONS["p-06"],
-        housing: { floor: 1, floors: 2, structure: "wood" },
+        housing: { floor: 1, floors: 2, structure: "wood", type: "detached" },
         household: "with_child",
         contactMeans: { landline: true, smartphone: "none" },
       },
@@ -710,7 +714,7 @@ export const SEED_PEOPLE: SeedPerson[] = [
         sex: "male",
         address: { city: CITY, town: "くぬぎ谷町" },
         location: SEED_LOCATIONS["p-07"],
-        housing: { floor: 1, floors: 1, structure: "wood" },
+        housing: { floor: 1, floors: 1, structure: "wood", type: "detached" },
         household: "alone",
         contactMeans: { mobile: true, smartphone: "uses" },
       },
@@ -782,7 +786,7 @@ export const SEED_PEOPLE: SeedPerson[] = [
         sex: "male",
         address: { city: CITY, town: "うみなり町" },
         location: SEED_LOCATIONS["p-08"],
-        housing: { floor: 2, floors: 2, structure: "wood" },
+        housing: { floor: 2, floors: 2, structure: "wood", type: "detached" },
         household: "with_child",
         contactMeans: { mobile: true, smartphone: "uses" },
       },
@@ -862,7 +866,7 @@ export const SEED_PEOPLE: SeedPerson[] = [
         sex: "male",
         address: { city: CITY, town: "そらみ台" },
         location: SEED_LOCATIONS["p-09"],
-        housing: { floor: 2, floors: 2, structure: "wood" },
+        housing: { floor: 2, floors: 2, structure: "wood", type: "detached" },
         household: "alone",
         contactMeans: { mobile: true, smartphone: "uses" },
       },
@@ -933,7 +937,7 @@ export const SEED_PEOPLE: SeedPerson[] = [
         sex: "male",
         address: { city: CITY, town: "そらみ台" },
         location: SEED_LOCATIONS["p-10"],
-        housing: { floor: 2, floors: 2, structure: "wood" },
+        housing: { floor: 2, floors: 2, structure: "wood", type: "detached" },
         household: "with_spouse",
         contactMeans: { landline: true, smartphone: "none" },
       },

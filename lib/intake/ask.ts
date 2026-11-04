@@ -7,20 +7,27 @@
 
 import { parseLedger, sameMedication } from "../db/ledger.ts";
 import type { Ledger, MedicationCategory } from "../db/types.ts";
-import { CONTACT_KIND_LABELS, MED_PARTS } from "../labels.ts";
+import { CONTACT_KIND_LABELS, CONTACT_PART_LABELS, MED_PARTS } from "../labels.ts";
 import { pendingClockId, type PersonPageRows } from "../person.ts";
 import { categoryTier } from "../triage/index.ts";
-import { transportKindOf } from "../map/transport.ts";
-import { INTAKE_FIELDS, isFilled, ledgerValue, type IntakeField, type IntakeSection } from "./fields.ts";
+import { transportKindOf, walkMinutes, walkSpeedOf } from "../map/transport.ts";
+import type { ContactPart } from "./contact-parts.ts";
+import { INTAKE_FIELDS, intakeField, isFilled, ledgerValue, type IntakeField, type IntakeSection } from "./fields.ts";
 
-export type QuestionGroup = "medical" | "night" | "other";
+/** form は様式の欄のために置き場を作った欄（T117。連絡先のフリガナ・住所・携帯と、支援組織・避難場所の手段と時間・住居の種別） */
+export type QuestionGroup = "medical" | "night" | "other" | "form";
+
+export type { ContactPart };
 
 export type QuestionAnswer =
   /** 選択肢（enum・はい／いいえ）。multi は支援の内容のような複数 */
   | { kind: "choice"; field: string; options: ReadonlyArray<{ value: string; label: string }>; multi: boolean }
   | { kind: "text"; field: string }
   | { kind: "list"; field: string }
-  | { kind: "int"; field: string; unit?: string }
+  /** suggest は入力の初めの値（経路地図の見込みの分。T117）。人が確かめて保存する */
+  | { kind: "int"; field: string; unit?: string; suggest?: number }
+  /** 連絡先のフリガナ・住所・携帯（T117）。答えはその連絡先の空いた所に入る（Claude を通らない） */
+  | { kind: "contact"; contactId: string; contactKind: Exclude<PersonPageRows["contacts"][number]["kind"], "self">; part: ContactPart }
   /** 時計の長さ（残り）。clockId が無ければ薬（medIndex）の時計を作る */
   | { kind: "clock"; clockId: string | null; medIndex: number | null; clockLabel: string; unit: "hour" | "day" }
   /** 薬の文字の所（回数・用量・保管） */
@@ -236,7 +243,75 @@ export const FIELD_QUESTIONS: Record<string, QuestionWords> = {
     why: "受給者証の病名を、医療班への要約に載せます。",
     example: "例: パーキンソン病（無ければ「なし」）",
   },
+  // ---- 様式の欄のために置き場を作った欄（T117） ----
+  "local.orgName": {
+    text: "避難を支える地域の組織（自主防災組織・町内会など）の名前を教えてください。",
+    why: "避難を手伝う人がいないとき、計画書の実施組織の欄に載せます。",
+    example: "例: ○○町自主防災会",
+  },
+  "local.orgPhone": {
+    text: "その組織の連絡先の電話番号を教えてください。",
+    why: "発災時に組織へ声をかける番号として、計画書に載せます。",
+    example: "例: 089-000-0000",
+  },
+  "evacuation.destination1Minutes": {
+    text: "市の指定避難所（避難先 1）まで、何分かかりますか。",
+    why: "計画書の避難場所の【時間】に載せ、早めに動く時刻の目安にします。",
+    example: "例: 15",
+  },
+  "evacuation.destination2Means": {
+    text: "早めに身を寄せる所（避難先 2）まで、どうやって移りますか。",
+    why: "計画書の事前避難場所の【手段】に載せます。",
+    example: "例: 家族の車",
+  },
+  "evacuation.destination2Minutes": {
+    text: "早めに身を寄せる所（避難先 2）まで、何分かかりますか。",
+    why: "計画書の事前避難場所の【時間】に載せます。",
+    example: "例: 20",
+  },
+  "evacuation.nearest": {
+    text: "家からいちばん近い避難場所（指定緊急避難場所など）はどこですか。",
+    why: "急な災害で避難所まで行けないとき、まず逃げる所として計画書に載せます。",
+    example: "例: 近くの公園・高台の神社",
+  },
+  "evacuation.nearestMeans": {
+    text: "いちばん近い避難場所まで、どうやって移りますか。",
+    why: "計画書の最寄りの避難場所の【手段】に載せます。",
+    example: "例: 徒歩",
+  },
+  "evacuation.nearestMinutes": {
+    text: "いちばん近い避難場所まで、何分かかりますか。",
+    why: "計画書の最寄りの避難場所の【時間】に載せます。",
+    example: "例: 5",
+  },
+  "basic.housing.type": {
+    text: "住まいは一戸建てですか、アパート・マンションなどの共同住宅ですか。",
+    why: "計画書の住居の【種別】に載せ、上の階へ逃げる道を確かめます。",
+    example: "例: 戸建住宅",
+  },
 };
+
+/** 連絡先のフリガナ・住所・携帯の問いの文（T117。who は名前と続柄。画面に出すだけで Claude には渡さない） */
+export const CONTACT_QUESTIONS: Record<ContactPart, (who: string) => QuestionWords> = {
+  kana: (who) => ({
+    text: `${who}の名前のフリガナを教えてください。`,
+    why: "計画書の近親者・支援者の欄に、氏名と並べて載せます。",
+    example: "例: モリ ケイコ",
+  }),
+  address: (who) => ({
+    text: `${who}の住所を、市町村と町名まで教えてください（番地は書きません）。`,
+    why: "どこから駆けつける人かを、計画書の住所の欄に載せます。",
+    example: "例: 松山市 ○○町",
+  }),
+  mobile: (who) => ({
+    text: `${who}の携帯電話の番号を教えてください。`,
+    why: "発災時に連絡する番号として、計画書と連絡の順に載せます。",
+    example: "例: 090-0000-0000",
+  }),
+};
+
+/** 連絡先の問いの名前（「娘 フリガナ」）と pending の場所（contacts.<id>.<part>） */
+export const contactPartKey = (contactId: string, part: ContactPart) => `contacts.${contactId}.${part}`;
 
 /** 時計・薬・人の問いの文（名前を差し込む物は関数）。全部定型 */
 export const GENERATED_QUESTIONS = {
@@ -448,10 +523,10 @@ export function questionQueue(rows: PersonPageRows): Question[] {
     });
   }
 
-  // ---- その他: 本人のページの区分の順 ----
+  // ---- その他: 本人のページの区分の順（様式の欄のために置き場を作った欄は、下の様式の問いで） ----
   for (const section of OTHER_ORDER) {
     for (const f of INTAKE_FIELDS) {
-      if (f.section !== section || NOT_ASKED.has(f.key)) continue;
+      if (f.section !== section || NOT_ASKED.has(f.key) || f.form) continue;
       if (f.key === "evacuation.transportKind" ? transportKindOf(ledger.evacuation) !== null : isFilled(ledgerValue(ledger, f.key))) continue;
       const at = PENDING_AT[f.key] ?? f.key;
       const match = (field: string) => field === f.key || field.startsWith(`${f.key}.`) || field === at;
@@ -468,7 +543,120 @@ export function questionQueue(rows: PersonPageRows): Question[] {
       });
     }
   }
+
+  // ---- 様式の欄（T117）: 今の決まりの後ろに、計画書の欄の順 ----
+  out.push(...formQuestions(ledger, contacts));
   return out;
+}
+
+type Contact = PersonPageRows["contacts"][number];
+
+/** 問いに出す連絡先（計画書の近親者 → 実施者 1・2、と内閣府の様式例の緊急連絡先 2）。同じ人は 1 回 */
+export function formContacts(contacts: ReadonlyArray<Contact>): Contact[] {
+  const out: Contact[] = [];
+  const pick = (c: Contact | undefined) => {
+    if (c && c.kind !== "self" && !out.includes(c)) out.push(c);
+  };
+  pick(contacts.find((c) => c.emergency_order === 1));
+  pick(contacts.find((c) => c.supporter_order === 1));
+  pick(contacts.find((c) => c.supporter_order === 2));
+  pick(contacts.find((c) => c.emergency_order === 2));
+  return out;
+}
+
+/**
+ * 連絡先の問いの所が空いているか。携帯は電話も携帯も無い人だけに聞く（どちらか 1 つあれば、紙のもう 1 つの欄は空き枠。
+ * 「なし」を残す場所が無いので、持っていない人に聞き続けない）
+ */
+export function contactPartMissing(c: Contact, part: ContactPart): boolean {
+  if (part === "mobile") return !isFilled(c.phone) && !isFilled(c.mobile);
+  return !isFilled(c[part]);
+}
+
+/** 連絡先の呼び名（問いの文。名前と続柄。画面に出すだけ） */
+const whoOf = (c: Contact) => {
+  const rel = c.relation ?? CONTACT_KIND_LABELS[c.kind];
+  return c.name ? `${c.name}（${rel}）` : rel;
+};
+
+/**
+ * 様式の欄で、台帳に置き場を作った欄の問い（T117）。順は計画書（松山市）の欄の順: 近親者・実施者のフリガナ・携帯・住所 →
+ * 実施組織（実施者がいないときだけ。様式の注「※避難支援等実施者がいない場合」）→ 私の避難場所（事前・最寄り・市指定）の手段と時間 → 住居の種別。
+ * 避難場所の手段・時間は場所が入ってから聞く（場所の未確認が先）。市指定避難所の時間は経路地図（T102）の見込みを初めの値に
+ */
+function formQuestions(ledger: Ledger, contacts: ReadonlyArray<Contact>): Question[] {
+  const out: Question[] = [];
+  for (const c of formContacts(contacts)) {
+    if (c.kind === "self") continue;
+    for (const part of ["kana", "mobile", "address"] as const) {
+      if (!contactPartMissing(c, part)) continue;
+      const key = contactPartKey(c.id, part);
+      if (answered(ledger, (f) => f === key)) continue;
+      out.push({
+        key,
+        section: "people",
+        group: "form",
+        label: `${c.relation ?? CONTACT_KIND_LABELS[c.kind]} ${CONTACT_PART_LABELS[part]}`,
+        ...CONTACT_QUESTIONS[part](whoOf(c)),
+        // 自由文の問いでないので Claude には渡らない（名前を入れない）
+        focus: CONTACT_PART_LABELS[part],
+        answer: { kind: "contact", contactId: c.id, contactKind: c.kind, part },
+      });
+    }
+  }
+  const e = ledger.evacuation;
+  const hasSupporter = contacts.some((c) => c.supporter_order != null);
+  const when: Record<string, boolean> = {
+    "local.orgName": !hasSupporter,
+    "local.orgPhone": !hasSupporter && isFilled(ledger.local?.orgName),
+    "evacuation.destination2Means": isFilled(e.destination2),
+    "evacuation.destination2Minutes": isFilled(e.destination2),
+    "evacuation.nearest": true,
+    "evacuation.nearestMeans": isFilled(e.nearest),
+    "evacuation.nearestMinutes": isFilled(e.nearest),
+    "evacuation.destination1Minutes": isFilled(e.destination1),
+    "basic.housing.type": true,
+  };
+  for (const key of FORM_FIELD_ORDER) {
+    const f = intakeField(key);
+    if (!f || !when[key] || isFilled(ledgerValue(ledger, key)) || answered(ledger, (x) => x === key)) continue;
+    const answer = fieldAnswer(f);
+    const suggest = key === "evacuation.destination1Minutes" ? routeMinutes(ledger, 1) : key === "evacuation.destination2Minutes" ? routeMinutes(ledger, 2) : null;
+    out.push({
+      key,
+      section: f.section,
+      group: "form",
+      label: f.label,
+      ...(FIELD_QUESTIONS[key] ?? { text: f.label, why: "", example: "" }),
+      focus: f.label,
+      answer: answer.kind === "int" && suggest != null ? { ...answer, suggest } : answer,
+    });
+  }
+  return out;
+}
+
+/** 様式の欄の問いの順（計画書の 1 頁 → 2 頁）。fields.ts の form の欄を全部持つ（テストで確かめる） */
+export const FORM_FIELD_ORDER = [
+  "local.orgName",
+  "local.orgPhone",
+  "evacuation.destination2Means",
+  "evacuation.destination2Minutes",
+  "evacuation.nearest",
+  "evacuation.nearestMeans",
+  "evacuation.nearestMinutes",
+  "evacuation.destination1Minutes",
+  "basic.housing.type",
+] as const;
+
+/**
+ * 経路地図（T102）の見込みの分。その避難先への経路があるときだけ。徒歩は台帳の歩行の速さ（lib/map/transport.ts の walkSpeedOf）、
+ * 車は経路の時間。問いの入力の初めの値にするだけで、人が確かめて保存する（紙には保存した値だけが載る）
+ */
+export function routeMinutes(ledger: Ledger, to: 1 | 2): number | null {
+  const r = ledger.evacuation.routeMap;
+  if (!r || r.to !== to || !(r.distanceM > 0)) return null;
+  if (r.mode === "foot") return walkMinutes(r.distanceM, walkSpeedOf(ledger));
+  return r.durationS != null && r.durationS > 0 ? Math.max(1, Math.ceil(r.durationS / 60)) : null;
 }
 
 /** 次の 1 問。この回で「次回」にした欄（skip）は飛ばす。空欄が無ければ null */

@@ -24,7 +24,10 @@ export type Effort = "low" | "medium" | "high";
 export type PurposeSpec = {
   model: ClaudeModel;
   effort: Effort;
-  /** 考える分も含めた出力の上限。stream しない呼び方なので 16000 まで */
+  /**
+   * 考える分も含めた出力の上限。stream しない呼び方。SDK は待ち（timeout）を渡さないと上限 21,333 を超える要求を断るが、
+   * ここでは必ず待ちを渡す（askJson）。ただし待ちの中に収まる数にする（Opus の出力は 1 秒に 130 字ほど。20000 で 150 秒）
+   */
   maxTokens: number;
   /** 1 回の待ち（ミリ秒）。SDK の再試行（1 回）があるので、最長でこの倍 */
   timeoutMs: number;
@@ -43,8 +46,10 @@ export type PurposeSpec = {
  *   API の待ちを数えない）ので、長くなっても切れない。切れるのはここに書いた待ちだけ
  */
 export const PURPOSES: Readonly<Record<ClaudePurpose, PurposeSpec>> = {
-  // 様式の写真・PDF から欄の対応表を作る（T08）
-  form_read: { model: OPUS, effort: "high", maxTokens: 16000, timeoutMs: 180_000 },
+  // 様式の写真・PDF から欄の対応表を作る（T08）。T120 から 1 頁 1 回（lib/forms/form-read.ts の readForm が頁を並べて呼ぶ）。
+  // 1 頁の答えは欄 30〜40 で 5,000〜10,000（考える分を含む）。欄の多い頁の余裕に上限を 20000 に（16000 で切れた様式は 2 頁まとめて
+  // 61〜82 欄だった。評価の 1 回目、docs/progress/eval-r1-findings.md の 1）。切れても読めた欄は捨てず、続きを 1 回頼む
+  form_read: { model: OPUS, effort: "high", maxTokens: 20000, timeoutMs: 180_000 },
   // 訓練の監督: 出来事の差し込み、世界の状態（T19）。仮想モードの世界の 1 回呼び（world-oneshot.ts）もこれ
   director: { model: OPUS, effort: "high", maxTokens: 16000, timeoutMs: 180_000 },
   // 訓練の採点とレビュー（T22）

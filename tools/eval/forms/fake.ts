@@ -7,6 +7,7 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import type { ClaudeClient, ClaudeRequestOptions } from "../../../lib/claude/client.ts";
 import { HAIKU } from "../../../lib/claude/models.ts";
+import { pageReadReply } from "../../../lib/forms/form-read-fake.ts";
 import { LEDGER_ITEMS, type ReadResult } from "../../../lib/forms/mapping.ts";
 import { intakeField } from "../../../lib/intake/fields.ts";
 import type { ExtractOutput } from "../../../lib/intake/schema.ts";
@@ -125,8 +126,9 @@ export function fakeClient(style: FakeStyle, holder: AttemptHolder): FakeClient 
           holder.current?.push({ n: (holder.current?.length ?? 0) + 1, status: 200, ms: 120 });
           // 形の違う返事（askJson が AiBadOutput の not_json にする）
           if (noisy && h % 17 === 0) return message(model, "読み取れませんでした", params);
-          const answer = e.kind === "read" ? (noisy && e.noise !== false ? noisyRead(e.answer, seed) : e.answer) : noisy ? noisyExtract(e.answer, seed) : e.answer;
-          return message(model, JSON.stringify(answer), params);
+          // 様式の読み取りは 1 頁 1 回（T120）。正解の表から頼まれた頁の分を 1 頁の返事の形に
+          if (e.kind === "read") return message(model, pageReadReply(noisy && e.noise !== false ? noisyRead(e.answer, seed) : e.answer, params), params);
+          return message(model, JSON.stringify(noisy ? noisyExtract(e.answer, seed) : e.answer), params);
         },
       },
     },
