@@ -69,6 +69,10 @@
   --accent: #116bdf;
   --accent-text: #0065da;
   --on-accent: #ffffff;
+  /* 作品の印（72 時間の輪、components/login/Mark72）の日ごとの青。1 日目がいちばん濃い。状態の色ではない */
+  --mark-d1: #0b4ea6;
+  --mark-d2: #116bdf;
+  --mark-d3: #6fa6ee;
   color-scheme: light;
 }
 
@@ -101,6 +105,10 @@
   --accent: #76b5fb;
   --accent-text: #76b5fb;
   --on-accent: #0b0d10;
+  /* 印の日ごとの青（ダークの地で 1 日目が沈まないように明るくし、濃淡の並びは同じ） */
+  --mark-d1: #2f6fd0;
+  --mark-d2: #4a8ff0;
+  --mark-d3: #8dbbf5;
   color-scheme: dark;
 }
 
