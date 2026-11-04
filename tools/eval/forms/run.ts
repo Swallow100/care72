@@ -79,6 +79,8 @@ export type EvalOptions = {
   /** テストの差し替え: 様式の頁の画像（id → JPEG の頁）と、入力の絵（id → 選んだファイルと伏せる所） */
   formPages?: Record<string, Uint8Array[]>;
   inputFiles?: Record<string, { bytes: Uint8Array; secrets: Ratio[][] }>;
+  /** 本物の回の費用の見積もりの上限（ドル）。超えたら次の様式・入力を始めない（飛ばした物は「上限」と数える） */
+  maxUsd?: number | null;
   log?: (line: string) => void;
 };
 
@@ -263,6 +265,9 @@ export async function runEval(opts: EvalOptions): Promise<RunResult> {
   const judge = (js: Judgement[]) => {
     for (const x of js) log.write("judgements.jsonl", { run, ...x });
   };
+  // 費用の上限（本物の回だけ）。記録した呼び出しの見積もりの合計で見て、超えたら次の様式・入力を始めない
+  const spentUsd = () => rec.all().reduce((n, r) => n + (r.costUsd ?? 0), 0);
+  const overBudget = () => opts.mode === "real" && opts.maxUsd != null && spentUsd() >= opts.maxUsd;
 
   try {
     // ---------- 様式 ----------
@@ -309,6 +314,11 @@ export async function runEval(opts: EvalOptions): Promise<RunResult> {
 
     for (const job of jobs) {
       say(`様式 ${job.id}`);
+      if (overBudget()) {
+        forms.push({ id: job.id, title: job.title, gold: !!job.gold, status: "skipped", reason: "上限", pages: 0, read: null, overlay: false });
+        step({ stage: "form", form: job.id, ok: false, reason: `費用の上限 $${opts.maxUsd}（見積もり $${spentUsd().toFixed(2)}）` });
+        continue;
+      }
       const orig = await job.original();
       if (!orig) {
         forms.push({ id: job.id, title: job.title, gold: !!job.gold, status: "skipped", reason: "Chrome なし", pages: 0, read: null, overlay: false });
@@ -389,6 +399,12 @@ export async function runEval(opts: EvalOptions): Promise<RunResult> {
       const seed = SEED_PEOPLE.find((p) => p.person.id === spec.personId)!;
       const result: InputResult = { id: spec.id, kind: spec.kind, personId: spec.personId, status: "ok", failures: [], pieces: 0, sentPieces: 0, rawOverLimit: false, intake: null, carryLoss: 0 };
       inputs.push(result);
+      if (spec.kind !== "ledger" && overBudget()) {
+        result.status = "skipped";
+        result.failures.push("budget");
+        step({ stage: "input.receive", input: spec.id, ok: false, error: `費用の上限 $${opts.maxUsd}（見積もり $${spentUsd().toFixed(2)}）` });
+        continue;
+      }
       if (spec.kind === "ledger") {
         const rows = (await loadPersonPage(db, PRINCIPAL, spec.personId))!;
         rowsOf.set(spec.id, { actual: rows, expected: rows });
