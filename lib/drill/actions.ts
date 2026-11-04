@@ -47,10 +47,12 @@ import {
   type StepHooks,
   type Tick,
 } from "./engine.ts";
-import { countFree, readFree, type FreeHook } from "./free-action.ts";
+import { countFree, freeText, planFree, type FreeHook } from "./free-action.ts";
+import { actionTerm, blockOf, termFactsOf } from "./action-terms.ts";
+import type { FreePlan } from "./action-types.ts";
 import { talkEnd, withResultAsks, type VisitHook } from "./dialogue.ts";
 import { CALL_FIXED_SPEECH, CALL_STATUS_LABELS, CALL_STATUS_TEXTS } from "./labels.ts";
-import { decideCallPickup, type CallPickup } from "./persona.ts";
+import { CALL_PICKUP_ODDS, decideCallPickup, type CallPickup } from "./persona.ts";
 import {
   clearMarks,
   phoneOf,
@@ -106,6 +108,23 @@ export const ACTION_STATUS_LABELS: Readonly<Record<ActionStatus, string>> = { ..
 
 /** 返事の固定の文 */
 export const ACTION_STATUS_TEXTS: Readonly<Record<ActionStatus, string>> = { ...WORLD_REPLY_TEXTS, ...CALL_STATUS_TEXTS };
+
+/**
+ * 決まりの表（lib/drill/action-terms.ts、T110）で押せない手。label は押せない理由（2〜4 字。「通行止」「通話不可」）。
+ * 画面は押せないようにしているので、ほかの画面の古い表示・二度押しのときだけ（API は 409 と理由）
+ */
+export class ActionBlocked extends Error {
+  // Node の型の取り除き（種の作り・道具）で読めるよう、引数の readonly でなく欄で持つ
+  readonly label: string;
+  constructor(label: string) {
+    super(`押せない手: ${label}`);
+    this.name = "ActionBlocked";
+    this.label = label;
+  }
+}
+
+/** 決まりの表を当てる訓練か（T110。開始で選んだ訓練だけ） */
+export const termsOn = (s: Pick<DrillState, "options">): boolean => s.options?.terms === true;
 
 // ---------- 入力と呼び口 ----------
 
@@ -177,15 +196,19 @@ function fixed(status: ActionStatus, ok: boolean, because: string | null, pickup
 /**
  * 世界の返事を決める（文は固定）。電話は台帳に番号が無ければ「番号なし」。本人・家族・支援者への電話は、
  * 線がつながる（呼出）なら出るかを T18 の割合で決める（出る → 通話、出ない → 応答なし、背景の音だけ → 無言。本人が話せない も無言）。
- * 自由対応は読み替えた手（kind に読み替えた手を渡す）
+ * 自由対応は読み替えた手（kind に読み替えた手を渡す）。pickupFactor は決まりの表の電話に出る割合に掛ける数（T110。1 は昼のまま）
  */
-export function decideAction(input: ActInput, world: WorldState, hour: number, roll: () => number): Decision {
+export function decideAction(input: ActInput, world: WorldState, hour: number, roll: () => number, pickupFactor = 1): Decision {
   const callee = calleeOf(input);
   if (isCall(input.kind) && (!input.target || !input.target.hasPhone)) return fixed("noNumber", false, null);
   const w = decideWorldReply({ action: input.kind, person: input.person, callee, world, hour }, roll());
   const d = fixed(w.status as WorldReplyStatus, w.ok, w.because);
   if (!isCall(input.kind) || w.status !== "ringing") return d;
-  const pickup = decideCallPickup(callLine(world, input.person, callee), roll(), true);
+  const line = callLine(world, input.person, callee);
+  const r = roll();
+  let pickup = decideCallPickup(line, r, true);
+  // 夜は電話に出にくい（T110 の決まりの表の pickup。出る割合を下げた分は応答なし。roll の数は同じ）
+  if (pickup === "answers" && pickupFactor < 1 && r >= CALL_PICKUP_ODDS[line].answers * pickupFactor) pickup = "no_answer";
   if (pickup === "answers") return fixed("connected", true, null, pickup);
   if (pickup === "background_only") return fixed("silent", false, null, pickup);
   return fixed("noAnswer", false, null, pickup);
@@ -394,25 +417,43 @@ export async function act(
   extra: Pick<ActionBefore, "triage" | "ranking"> = {},
 ): Promise<ActOutcome> {
   if (state.status !== "running") throw new DrillEnded();
-  let start = state;
+  // 自由対応の確かめ（T110）は打つ前だけの物。手を打ったあとの状態には残さない
+  const { draft, ...clean } = state;
+  let start: DrillState = clean;
   let input = raw;
-  let free: { as: DrillAction; stored: string; words: string | null; reason: string | null } | null = null;
+  let free: FreePlan | null = null;
   if (raw.kind === "free") {
-    const r = await readFree(
-      { world: state.world, participants: state.participants, minute: state.minute },
-      { text: raw.text ?? "", person: raw.person, contacts: raw.contacts ?? [] },
-      hooks.free,
-    );
-    free = { as: r.as, stored: r.stored, words: r.words, reason: r.reason };
-    if (r.called) start = { ...state, world: countFree(state.world) };
-    input = { ...raw, kind: r.as, person: r.as === "evacuate_self" ? null : raw.person, target: r.target };
+    const text = freeText(raw.text ?? "");
+    // 読み替えの口（POST /api/drill/[id]/free）が置いた確かめが同じ文・本人・時刻・手の数なら、それを使う（Claude をもう 1 回呼ばない。数え済み）
+    const fresh = draft && draft.text === text && draft.person === raw.person && draft.minute === state.minute && draft.actions === state.actions.length;
+    free = fresh
+      ? draft.plan
+      : await planFree(
+          { ...clean, participants: state.participants },
+          { text, person: raw.person, contacts: raw.contacts ?? [] },
+          hooks.free,
+        );
+    if (free.called && !fresh) start = { ...start, world: countFree(start.world) };
+    if (free.block) throw new ActionBlocked(free.block);
+    const as = free.as ?? "free";
+    input = { ...raw, kind: as, person: as === "evacuate_self" ? null : raw.person, target: free.target };
   }
+  const own = free !== null && free.as === null ? free : null;
   const kind = input.kind;
   const row = actionRow(kind);
-  const minutes = ACTION_MINUTES[kind];
+  const callee = own ? own.callee : calleeOf(input);
+  // 時間と状況で変わる手（T110）: 決まりを選んだ訓練は、押せない手を断り、所要に足し分を足す（無ければ表の分のまま）
+  const term = own
+    ? null
+    : actionTerm(kind, termFactsOf(start, input.person), { on: termsOn(start) });
+  if (term) {
+    const block = blockOf(term, kind === "call_person" ? "self" : (input.target?.kind ?? (row.fixed ? "fixed" : null)));
+    if (block) throw new ActionBlocked(block);
+  }
+  const minutes = own ? own.minutes : term!.minutes;
+  const adds = own ? own.adds : term!.adds;
   const atMinute = start.minute;
   const endMinute = atMinute + minutes;
-  const callee = calleeOf(input);
   const fixedLabel = !input.target && !LEGACY.has(kind) && row.fixed ? FIXED_CALLEE_LABELS[row.fixed] : null;
   const record: ActionRecord = {
     // 取り消した手の番号は使い直さない（T59。声の R2 の鍵 act-<番号> と drill_events の id が前の手と重ならない）
@@ -421,7 +462,7 @@ export async function act(
     person: input.person,
     target: input.target?.id ?? null,
     callee,
-    calleeLabel: input.target?.label ?? fixedLabel,
+    calleeLabel: own ? own.calleeLabel : (input.target?.label ?? fixedLabel),
     at: atMinute / 60,
     atMinute,
     endMinute,
@@ -430,7 +471,17 @@ export async function act(
     before: beforeOf(start, input.person, extra),
     result: null,
     ...(raw.memo ? { memo: raw.memo } : {}),
-    ...(free ? { as: free.as, text: free.stored, ...(free.reason ? { reason: free.reason } : {}) } : {}),
+    ...(free
+      ? {
+          ...(free.as ? { as: free.as } : {}),
+          text: free.stored,
+          ...(free.reason ? { reason: free.reason } : {}),
+          ...(own?.way ? { way: own.way } : {}),
+          ...(own?.words ? { words: own.words } : {}),
+          judge: free.judge,
+        }
+      : {}),
+    ...(adds.length > 0 ? { adds: [...adds] } : {}),
   };
 
   // 手の途中で次の刻みの時刻を越えたら、その刻みを進める。返事はその刻みの表の出来事のあとの世界で決め、監督に言い換えを頼む
@@ -438,6 +489,10 @@ export async function act(
   const hours = scenarioOf(s.scenario).hours;
   const ticks: Tick[] = [];
   const held: { decided: Decision | null } = { decided: null };
+  // そのままの手（T110）は世界の返事を確率で決めない。起きたこと（AI）か固定の文で「実施」。世界は変えない
+  const pickupFactor = term?.pickup ?? 1;
+  const decide = (world: WorldState, hour: number): Decision =>
+    own ? { ...fixed("done", true, null), text: own.outcome ?? ACTION_STATUS_TEXTS.done } : decideAction(input, world, hour, roll, pickupFactor);
   let words: ReplyWords[] = [];
   let incidents: ReadonlyArray<DrillIncident> = [];
   // 連続の時計の訓練（T90）: 手は区切りを起こさない。手の分の (始め, 終わり] に入る表の出来事と予定の出来事を AI を呼ばずに当て
@@ -454,10 +509,10 @@ export async function act(
     const at = hours[s.step + 1];
     const r = await step(s, hooks, {
       replies: (world): ReplyAsk[] => {
-        const x = decideAction(input, world, at, roll);
+        const x = decide(world, at);
         held.decided = x;
         // 自由対応で Claude の 1 文があれば、監督に言い換えを頼まない
-        if (!wordable(x) || free?.words) return [];
+        if (!wordable(x) || free?.words || own) return [];
         return [{ id: record.id, action: kind, person: input.person, callee, status: x.status, because: x.because, text: x.text }];
       },
     });
@@ -466,7 +521,7 @@ export async function act(
     words = r.words;
     incidents = r.tick.incidents;
   }
-  const d: Decision = held.decided ?? decideAction(input, settleWorld(s.world, endMinute), endMinute / 60, roll);
+  const d: Decision = held.decided ?? decide(settleWorld(s.world, endMinute), endMinute / 60);
 
   // 出たら言う事（本人役。鍵が無い・失敗は固定の言葉）
   let speech: string | null = null;
@@ -516,7 +571,8 @@ export async function act(
   const visit = seen ? await hooks.visit!({ person: seen, hour: endMinute / 60, world: s.world, incidents, state: s.people[seen] ?? null, ...(isNight(s) ? { night: true } : {}) }).catch(() => null) : null;
 
   const reworded = words.find((w) => w.id === record.id)?.text.trim() ?? "";
-  const said = free?.words?.trim() ?? "";
+  // 表の手に読み替えた自由対応は Claude の現場の言い方。そのままの手は起きたこと（AI）が返事の文
+  const said = own ? (own.outcome?.trim() ?? "") : (free?.words?.trim() ?? "");
   const clears = ok && hasEffect(row, "clearMarks") && input.person;
   const keys = row.effects.flatMap((e) => (e.kind === "clearMarks" ? e.keys : []));
   const arriveAt = ok ? arriveAtOf(row, endMinute, roll) : undefined;
