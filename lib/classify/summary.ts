@@ -20,7 +20,7 @@ import type { ClassifyError, SignalRow } from "../db/types.ts";
 import { maskReply, pseudonymizeText, type ForClaude, type PseudonymKey } from "../pseudonym/index.ts";
 import { classifyErrorOf } from "./classify.ts";
 import { SUMMARY_EDIT_MAX, SUMMARY_MAX } from "./labels.ts";
-import { summaryOf, type SignalSummary } from "./view.ts";
+import { ownCall, summaryOf, type SignalSummary } from "./view.ts";
 import { pseudonymKeyFor, type ClassifyDeps, type ClassifyTarget } from "./store.ts";
 
 /** 長さの上限（字）は画面も読むので lib/classify/labels.ts に置く */
@@ -84,7 +84,8 @@ export async function summarize(input: SummaryInput, ctx: AskJsonContext): Promi
   try {
     const r = await askJson(buildSummaryRequest({ text: input.text }), ctx);
     const masked = maskReply(r.value.summary, input.key);
-    const summary = masked === null ? null : normalizeSummary(masked, input.text.text);
+    // 本人の仮名（A さん）は保存と画面では「本人」に（T88。Claude には仮名で渡したまま）
+    const summary = masked === null ? null : normalizeSummary(ownCall(masked), input.text.text);
     if (summary === null) return { ok: false, error: "bad_output" };
     return { ok: true, model: r.model, summary };
   } catch (e) {

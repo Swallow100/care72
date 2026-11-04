@@ -100,11 +100,22 @@ export type SignalSummary = {
   error: SignalRow["ai_summary_error"];
 };
 
-/** 信号の行からまとめの形（T69b）。ケアマネが直した文（summary）があればそれ、無ければ Claude の文（ai_summary） */
+/**
+ * まとめの中の本人の仮名（「A さん」）を「本人」に（T88）。まとめは本人 1 人の鍵で伏せた文字起こしから作るので、仮名は本人の A さんだけ。
+ * Claude には仮名で渡したまま（名前を渡さない線は変えない）、画面と保存の文だけ元の呼び方にする
+ */
+export function ownCall(text: string): string {
+  return text.replace(/(?<![A-Za-z])A[ 　]?さん/gu, "本人");
+}
+
+/**
+ * 信号の行からまとめの形（T69b）。ケアマネが直した文（summary）があればそれ、無ければ Claude の文（ai_summary）。
+ * Claude の文の仮名は「本人」に（T88 より前に保存した文も）
+ */
 export function summaryOf(s: Partial<Pick<SignalRow, "ai_summary" | "ai_summary_error" | "summary">>): SignalSummary {
   const human = s.summary?.trim();
   if (human) return { text: human, by: "human", error: null };
   const ai = s.ai_summary?.trim();
-  if (ai) return { text: ai, by: "ai", error: null };
+  if (ai) return { text: ownCall(ai), by: "ai", error: null };
   return { text: null, by: null, error: s.ai_summary_error ?? null };
 }
