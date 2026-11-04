@@ -18,6 +18,7 @@ export const PAPER_CSS_FILES = [
   "components/forms/medical-paper.css",
   "components/forms/own-paper.css",
   "components/forms/mapped-paper.css",
+  "components/forms/overlay-paper.css",
   "components/forms/form9-paper.css",
   "components/qr/qr-print.css",
 ] as const;
