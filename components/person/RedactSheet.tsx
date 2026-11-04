@@ -20,6 +20,7 @@ import { AddIcon, BackIcon, CloseIcon, FitIcon, RemoveIcon, SendIcon, ZoomInIcon
 import { Loader72 } from "@/components/ui/Loader72";
 import { REDACT_LABELS as L } from "@/lib/labels";
 import { PDF_PAGES_MAX, type ReadMeta } from "@/lib/intake/read-form";
+import { defaultExcluded } from "@/lib/office/pick";
 import { encodeRedacted, loadPages, metaOf, releasePages, type RedactPage } from "@/lib/redact/browser";
 import { hitRect, initialRedact, rectFromDrag, redactReducer, totalHidden, unpainted, type Rect } from "@/lib/redact/rects";
 import { fitView, panView, pinchView, refitView, viewToImage, zoomAt, ZOOM_MAX, ZOOM_STEP, type Frame, type Pt, type View } from "@/lib/redact/view";
@@ -32,13 +33,7 @@ export type RedactedPage = { name: string; blob: Blob; meta: ReadMeta; bare: boo
 /** これより動かなければ「押した」（四角を選ぶ）。px */
 const TAP_SLOP = 6;
 
-/** 4 頁以上（Excel・Word）のとき既定で送らない頁: 記入例・記載例のシートを外し、頭から 3 頁を残す */
-export function defaultExcluded(pages: ReadonlyArray<{ id: string; example: boolean }>): Set<string> {
-  if (pages.length <= PDF_PAGES_MAX) return new Set();
-  const plain = pages.filter((p) => !p.example);
-  const keep = new Set((plain.length > 0 ? plain : pages).slice(0, PDF_PAGES_MAX).map((p) => p.id));
-  return new Set(pages.filter((p) => !keep.has(p.id)).map((p) => p.id));
-}
+
 
 type Mode = "paint" | "move";
 

@@ -24,6 +24,7 @@ import { buildFormReadForm } from "../../../lib/forms/read-upload.ts";
 import type { DiffItem } from "../../../lib/intake/diff.ts";
 import { extractIntake, INTAKE_TEXT_MAX, pseudonymInputOf, type IntakeProposal } from "../../../lib/intake/extract.ts";
 import { aiConsentRefusal } from "../../../lib/intake/http.ts";
+import type { ReadSource } from "../../../lib/intake/read-form.ts";
 import { checkRedactedImage } from "../../../lib/intake/read-check.ts";
 import { readIntake, sealReadOutput } from "../../../lib/intake/read.ts";
 import { saveIntake, SaveRequestSchema } from "../../../lib/intake/save.ts";
@@ -314,7 +315,7 @@ export async function runEval(opts: EvalOptions): Promise<RunResult> {
         step({ stage: "form", form: job.id, ok: false, reason: "Chrome が無く白紙を作れない" });
         continue;
       }
-      let pages: Array<{ bytes: Uint8Array; source: "photo" | "pdf"; page: number }>;
+      let pages: Array<{ bytes: Uint8Array; source: ReadSource; page: number }>;
       if ("pages" in orig) pages = orig.pages.map((b, i) => ({ bytes: b, source: "pdf" as const, page: i + 1 }));
       else {
         const br: BrowserResult = await browserStage(orig.bytes, []);
@@ -403,7 +404,7 @@ export async function runEval(opts: EvalOptions): Promise<RunResult> {
       const load = async (id: string) => (await loadPersonPage(db, PRINCIPAL, id))!;
 
       // 送る単位（文 1 つ、または ブラウザの段を通った頁）
-      type Piece = { kind: "text"; text: string; oracle: ExtractOutput } | { kind: "image"; bytes: Uint8Array; meta: { source: "photo" | "pdf"; page: number; redacted: number }; redactOk: boolean | null; oracle: ExtractOutput };
+      type Piece = { kind: "text"; text: string; oracle: ExtractOutput } | { kind: "image"; bytes: Uint8Array; meta: { source: ReadSource; page: number; redacted: number }; redactOk: boolean | null; oracle: ExtractOutput };
       const pieces: Piece[] = [];
       if (spec.text !== undefined) {
         if (spec.text.trim().length > INTAKE_TEXT_MAX) {
@@ -586,7 +587,7 @@ export async function runEval(opts: EvalOptions): Promise<RunResult> {
   }
 
   /** 差分の「追加」を保存（画面の既定と同じ。既入力・一致は保存しない） */
-  async function save(personId: string, version: number, proposal: IntakeProposal, piece: { kind: string; meta?: { source: "photo" | "pdf"; page: number; redacted: number } }): Promise<{ ok: true } | { ok: false; error: string }> {
+  async function save(personId: string, version: number, proposal: IntakeProposal, piece: { kind: string; meta?: { source: ReadSource; page: number; redacted: number } }): Promise<{ ok: true } | { ok: false; error: string }> {
     const changes = proposal.items.filter((d) => d.change && d.state === "add").map((d) => d.change!);
     if (changes.length === 0) return { ok: true };
     const req = SaveRequestSchema.safeParse({ personId, version, ai: { model: proposal.ai.model }, ...(piece.kind === "image" && piece.meta ? { read: piece.meta } : {}), changes });

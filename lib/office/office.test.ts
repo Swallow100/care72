@@ -1,8 +1,6 @@
 // T119: Excel・Word を印刷の頁の形にする所のテスト。架空の小さな xlsx・docx をここで作る（原本の様式は使わない）。
 
-import { deflateRawSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
-import { defaultExcluded } from "../../components/person/RedactSheet.tsx";
 import { buildFormReadForm, formReadPagesOf } from "../forms/read-upload.ts";
 import { parseReadMeta, readTimelineHead } from "../intake/read-form.ts";
 import { REDACT_LABELS } from "../labels.ts";
@@ -10,41 +8,13 @@ import { drawPage, pageSize, type Draw2d } from "./draw.ts";
 import { estimateWidth, mdwOf } from "./fonts.ts";
 import { OfficeReadError, renderOffice, sniffOffice } from "./index.ts";
 import type { OfficePage, PageItem } from "./page.ts";
+import { defaultExcluded } from "./pick.ts";
 import { isLegacyOffice, isZip } from "./sniff.ts";
 import { cellRef, rangeRef, wrapLine } from "./xlsx.ts";
+import { makeZip, type Entry } from "./test-zip.ts";
 import { readZip, ZipReadError } from "./zip.ts";
 
 // ---------------------------------------------------------------- 架空の zip を作る
-
-type Entry = { name: string; data: string | Uint8Array; deflate?: boolean; flags?: number };
-
-function u16(n: number) {
-  return [n & 0xff, (n >> 8) & 0xff];
-}
-function u32(n: number) {
-  return [n & 0xff, (n >> 8) & 0xff, (n >> 16) & 0xff, (n >>> 24) & 0xff];
-}
-
-function makeZip(entries: Entry[]): Uint8Array {
-  const enc = new TextEncoder();
-  const local: number[] = [];
-  const central: number[] = [];
-  for (const e of entries) {
-    const raw = typeof e.data === "string" ? enc.encode(e.data) : e.data;
-    const body = e.deflate === false ? raw : new Uint8Array(deflateRawSync(raw));
-    const method = e.deflate === false ? 0 : 8;
-    const name = enc.encode(e.name);
-    const offset = local.length;
-    const head = [...u32(0x04034b50), ...u16(20), ...u16(e.flags ?? 0), ...u16(method), ...u16(0), ...u16(0), ...u32(0), ...u32(body.length), ...u32(raw.length), ...u16(name.length), ...u16(0)];
-    local.push(...head, ...name, ...body);
-    central.push(
-      ...u32(0x02014b50), ...u16(20), ...u16(20), ...u16(e.flags ?? 0), ...u16(method), ...u16(0), ...u16(0), ...u32(0), ...u32(body.length), ...u32(raw.length),
-      ...u16(name.length), ...u16(0), ...u16(0), ...u16(0), ...u16(0), ...u32(0), ...u32(offset), ...name,
-    );
-  }
-  const eocd = [...u32(0x06054b50), ...u16(0), ...u16(0), ...u16(entries.length), ...u16(entries.length), ...u32(central.length), ...u32(local.length), ...u16(0)];
-  return new Uint8Array([...local, ...central, ...eocd]);
-}
 
 const CT_XLSX = `<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/></Types>`;
 const CT_DOCX = `<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>`;
@@ -343,6 +313,26 @@ describe("Word の頁（T119）", () => {
     expect(texts(p)).toContain("受付");
   });
 
+  it("段落の途中の改ページは、その後の字から次の頁", async () => {
+    const body = `<w:p><w:r><w:t>前</w:t></w:r><w:r><w:br w:type="page"/></w:r><w:r><w:t>後</w:t></w:r></w:p>`;
+    const pages = (await renderOffice(docx(body))).pages;
+    expect(pages.map(texts)).toEqual([["前"], ["後"]]);
+  });
+
+  it("Word が保存した頁の切れ目（lastRenderedPageBreak）で頁を分け、少しの食み出しは同じ頁に残す", async () => {
+    // 1 頁に入らない高さの表（13 行 × 20mm）。切れ目は 12 行目の頭（Word ではそこまで 1 頁）
+    const r = (i: number) =>
+      row(
+        `<w:tc><w:tcPr><w:tcW w:w="2000" w:type="dxa"/></w:tcPr><w:p><w:r>${i === 12 ? "<w:lastRenderedPageBreak/>" : ""}<w:t>${i}</w:t></w:r></w:p></w:tc>` + cell(3000) + cell(4000),
+        1134,
+      );
+    const pages = (await renderOffice(docx(table(Array.from({ length: 13 }, (_, i) => r(i + 1)).join(""))))).pages;
+    expect(pages).toHaveLength(2);
+    // 1〜11 行目が 1 頁目（11 × 20mm ＝ 220mm は本文の高さ 257mm に入る）、12 行目から 2 頁目
+    expect(texts(pages[0])).toContain("11");
+    expect(texts(pages[1])[0]).toBe("12");
+  });
+
   it("行の終わりの全角の空白では折り返さない（様式の「氏名　　　」で行が増えない）", async () => {
     const spaces = "　".repeat(40);
     const body = table(row(cell(2000, "", `氏名${spaces}`) + cell(3000) + cell(4000), 400, "atLeast"));
@@ -372,6 +362,20 @@ describe("描く所（T119）", () => {
     drawPage(ctx as unknown as Draw2d, page, k);
     expect(calls).toContain(`moveTo(${Math.round(10 * k)},${Math.round(20 * k)})`);
     expect(calls).toContain(`lineTo(${Math.round(110 * k)},${Math.round(20 * k)})`);
+  });
+
+  it("絵文字で描かれる四角は紙の記号で描く（⬜ → □）", () => {
+    const page: OfficePage = { w: 100, h: 100, sheet: null, page: 1, items: [{ k: "text", text: "⬜障がい者手帳☑️", x: 1, y: 5, font: { family: "serif", size: 3 }, color: "#000000" }] };
+    const drawn: string[] = [];
+    const ctx = new Proxy({} as Record<string, unknown>, {
+      get: (t, name) => (name in t ? t[name as string] : name === "fillText" ? (s: string) => drawn.push(s) : () => ({ width: 0 })),
+      set: (t, name, v) => {
+        t[name as string] = v;
+        return true;
+      },
+    });
+    drawPage(ctx as unknown as Draw2d, page, 10);
+    expect(drawn).toEqual(["□障がい者手帳☑"]);
   });
 
   it("字の幅の見積もり・折り返し・数字の幅", () => {

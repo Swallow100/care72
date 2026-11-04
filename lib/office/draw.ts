@@ -1,7 +1,7 @@
 // 頁の形（page.ts）を canvas の 2D の文脈に描く（T119）。ブラウザの canvas と、評価の台の @napi-rs/canvas の両方が同じ形の口を持つ。
 // 地は白、線は元の色。字は元の書体の名前を先に置いた並び（fonts.ts の cssFamily）で描く。
 
-import { cssFont } from "./fonts.ts";
+import { cssFont, printable } from "./fonts.ts";
 import type { OfficePage, PageItem, Stroke } from "./page.ts";
 
 /** 使う所だけの 2D の文脈の形（CanvasRenderingContext2D と @napi-rs/canvas の SKRSContext2D の共通の所） */
@@ -133,6 +133,7 @@ function drawItem(ctx: Draw2d, it: PageItem, k: number, images: DecodedImages | 
     }
     case "text": {
       if (!it.text) return;
+      const text = printable(it.text);
       const px = it.font.size * k;
       if (px < 0.5) return;
       ctx.save();
@@ -147,7 +148,7 @@ function drawItem(ctx: Draw2d, it: PageItem, k: number, images: DecodedImages | 
         ctx.textAlign = "center";
         ctx.textBaseline = "top";
         let y = it.y * k;
-        for (const ch of it.text) {
+        for (const ch of text) {
           ctx.fillText(ch, it.x * k, y);
           y += px;
         }
@@ -155,7 +156,7 @@ function drawItem(ctx: Draw2d, it: PageItem, k: number, images: DecodedImages | 
         ctx.textAlign = "left";
         ctx.textBaseline = "alphabetic";
         let i = 0;
-        for (const ch of it.text) {
+        for (const ch of text) {
           const cx = it.chars[i++];
           if (cx === undefined) break;
           ctx.fillText(ch, cx * k, it.y * k);
@@ -163,10 +164,10 @@ function drawItem(ctx: Draw2d, it: PageItem, k: number, images: DecodedImages | 
       } else {
         ctx.textAlign = it.align ?? "left";
         ctx.textBaseline = "alphabetic";
-        if (it.maxWidth && it.maxWidth > 0) ctx.fillText(it.text, it.x * k, it.y * k, it.maxWidth * k);
-        else ctx.fillText(it.text, it.x * k, it.y * k);
+        if (it.maxWidth && it.maxWidth > 0) ctx.fillText(text, it.x * k, it.y * k, it.maxWidth * k);
+        else ctx.fillText(text, it.x * k, it.y * k);
         if (it.underline) {
-          const w = Math.min(ctx.measureText(it.text).width, it.maxWidth ? it.maxWidth * k : Number.POSITIVE_INFINITY);
+          const w = Math.min(ctx.measureText(text).width, it.maxWidth ? it.maxWidth * k : Number.POSITIVE_INFINITY);
           const x0 = it.align === "center" ? it.x * k - w / 2 : it.align === "right" ? it.x * k - w : it.x * k;
           ctx.strokeStyle = it.color;
           ctx.setLineDash([]);

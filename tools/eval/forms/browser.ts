@@ -4,10 +4,17 @@
 // - PDF は頭から PDF_PAGES_MAX 頁まで（倍率は min(4, 2000 / 長い辺)）
 // - 長い辺を OUTPUT_MAX_SIDE に縮め、伏せる所を paintRects で黒く塗り、JPEG の質を 86→75→60→45 と下げて上限（5 MB）に収め、付け足しを外す
 // 描くのは @napi-rs/canvas（pdfjs-dist の任意の依存、MIT。tools/print/pdf-pages.ts と同じ）。無い端末では no_canvas。
+// Excel・Word（T119）は lib/office で印刷の頁に描き（字の幅は @napi-rs/canvas の measureText）、ブラウザと同じ決まり（lib/office/pick.ts）で
+// 記入例のシートを外した頭の 3 頁を送る。古い形（.xls・.doc）は legacy で断る（画面は「旧形式・PDF 保存で取込」）。
 // 送ったあとに塗った所が本当に黒いかを測る（redactOk）。塗れていない頁は送らない（Claude に人の値の写る絵を渡さない）。
 
 import { FORM_FILE_MAX_BYTES } from "../../../lib/forms/mapping.ts";
-import { PDF_PAGES_MAX, type ReadMeta } from "../../../lib/intake/read-form.ts";
+import { PDF_PAGES_MAX, type ReadMeta, type ReadSource } from "../../../lib/intake/read-form.ts";
+import { drawPage, pageSize, type Draw2d } from "../../../lib/office/draw.ts";
+import { cssFont } from "../../../lib/office/fonts.ts";
+import { OFFICE_PAGES_MAX, OfficeReadError, renderOffice } from "../../../lib/office/index.ts";
+import { defaultExcluded } from "../../../lib/office/pick.ts";
+import { isExampleSheet } from "../../../lib/office/xlsx.ts";
 import { stripJpegMetadata } from "../../../lib/redact/jpeg.ts";
 import { OUTPUT_MAX_SIDE, outputSize, paintRects } from "../../../lib/redact/paint.ts";
 import type { Ratio } from "./render.ts";
@@ -49,15 +56,18 @@ export type BrowserPage = {
   quality: number;
 };
 
-export type BrowserError = "type" | "decode" | "too_large" | "no_canvas";
+/** legacy は古い形（.xls・.doc）、office は Excel・Word を描けなかった */
+export type BrowserError = "type" | "decode" | "too_large" | "no_canvas" | "legacy" | "office";
 export type BrowserResult =
-  | { ok: true; source: "photo" | "pdf"; pages: BrowserPage[]; totalPages: number; rawBytes: number }
+  | { ok: true; source: ReadSource; pages: BrowserPage[]; totalPages: number; rawBytes: number }
   | { ok: false; error: BrowserError; rawBytes: number };
 
-export function kindOf(bytes: Uint8Array): "image" | "pdf" | null {
+export function kindOf(bytes: Uint8Array): "image" | "pdf" | "office" | "legacy" | null {
   const head = (sig: number[]) => sig.every((x, i) => bytes[i] === x);
   if (head([0xff, 0xd8, 0xff]) || head([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) return "image";
   if (head([0x25, 0x50, 0x44, 0x46, 0x2d])) return "pdf";
+  if (head([0x50, 0x4b, 0x03, 0x04])) return "office";
+  if (head([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1])) return "legacy";
   return null;
 }
 
@@ -110,6 +120,46 @@ async function redactedDark(mod: CanvasModule, bytes: Uint8Array, w: number, h: 
   return true;
 }
 
+/** Excel・Word の頁（ブラウザの lib/office/browser.ts と同じく、描いて頁の画像にしてから塗る） */
+async function officeStage(mod: CanvasModule, bytes: Uint8Array, secrets: ReadonlyArray<readonly Ratio[]>, rawBytes: number): Promise<BrowserResult> {
+  const mctx = mod.createCanvas(10, 10).getContext("2d") as unknown as { font: string; measureText(t: string): { width: number } };
+  const measure = (t: string, f: Parameters<typeof cssFont>[0]) => {
+    mctx.font = cssFont(f, 100);
+    return (mctx.measureText(t).width / 100) * f.size;
+  };
+  let rendered: Awaited<ReturnType<typeof renderOffice>>;
+  try {
+    rendered = await renderOffice(bytes, { measure, maxPages: OFFICE_PAGES_MAX });
+  } catch (e) {
+    return { ok: false, error: e instanceof OfficeReadError && e.code === "legacy" ? "legacy" : "office", rawBytes };
+  }
+  const all = rendered.pages.map((p, i) => ({ id: String(i), example: p.sheet ? isExampleSheet(p.sheet) : false, page: p }));
+  const skip = defaultExcluded(all);
+  const chosen = all.filter((p) => !skip.has(p.id));
+  const pages: BrowserPage[] = [];
+  for (const [i, c] of chosen.entries()) {
+    const { w, h, k } = pageSize(c.page, OUTPUT_MAX_SIDE);
+    const pageCanvas = mod.createCanvas(w, h);
+    const pctx = pageCanvas.getContext("2d");
+    const images = new Map<unknown, unknown>();
+    for (const it of c.page.items) {
+      if (it.k !== "image") continue;
+      try {
+        images.set(it, await mod.loadImage(it.data));
+      } catch {
+        // 開けない画像は描かない
+      }
+    }
+    drawPage(pctx as unknown as Draw2d, c.page, k, images as Parameters<typeof drawPage>[3]);
+    const enc = await encodePage(mod, { w, h, draw: (ctx, cw, ch) => ctx.drawImage(pageCanvas, 0, 0, cw, ch) }, secrets[i] ?? []);
+    if (!enc) return { ok: false, error: "too_large", rawBytes };
+    const redactOk = await redactedDark(mod, enc.bytes, enc.w, enc.h, enc.rects);
+    const n = enc.rects.length;
+    pages.push({ bytes: enc.bytes, meta: { source: rendered.kind, page: i + 1, redacted: n }, bare: n === 0, redactOk, width: enc.w, height: enc.h, quality: enc.quality });
+  }
+  return { ok: true, source: rendered.kind, pages, totalPages: rendered.pages.length, rawBytes };
+}
+
 /**
  * 選んだファイル 1 つを送る頁にする。secrets は頁ごとの伏せる所（頁の比）。様式の白紙は伏せる所が無く bare（人が「送信」を選んだ形）
  */
@@ -117,8 +167,11 @@ export async function browserStage(bytes: Uint8Array, secrets: ReadonlyArray<rea
   const rawBytes = bytes.length;
   const kind = bytes.length > 0 ? kindOf(bytes) : null;
   if (!kind) return { ok: false, error: "type", rawBytes };
+  if (kind === "legacy") return { ok: false, error: "legacy", rawBytes };
   const mod = await loadCanvas();
   if (!mod) return { ok: false, error: "no_canvas", rawBytes };
+
+  if (kind === "office") return officeStage(mod, bytes, secrets, rawBytes);
 
   if (kind === "image") {
     let img: { width: number; height: number };

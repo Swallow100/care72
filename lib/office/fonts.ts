@@ -161,3 +161,10 @@ export function digitEmOf(name: string | null | undefined): number {
 export function autoRowFactorOf(name: string | null | undefined): number {
   return /^(游|Yu)s*(ゴシック|Gothic)/i.test((name ?? "").trim()) ? 0.9637 : 1;
 }
+
+/** 絵文字で描かれる字を、紙の記号に（Chrome は ⬜ を色の付いた絵文字で描く。様式の □ は線の記号のはず） */
+const EMOJI_TO_PRINT: Record<string, string> = { "⬜": "□", "⬛": "■", "✅": "☑", "❌": "✕", "⭕": "○", "✔": "✓", "🔲": "□", "🔳": "□", "◻": "□", "◼": "■" };
+
+export function printable(text: string): string {
+  return text.replace(/[⬜⬛✅❌⭕✔◻◼️]|\u{1F532}|\u{1F533}/gu, (c) => (c === "️" ? "" : (EMOJI_TO_PRINT[c] ?? c)));
+}
