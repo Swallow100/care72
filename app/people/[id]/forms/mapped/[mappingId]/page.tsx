@@ -7,6 +7,7 @@ import { notFound } from "next/navigation";
 import { MappedSheet } from "@/components/forms/MappedSheet";
 import { OverlaySheet } from "@/components/forms/OverlaySheet";
 import { StateTag } from "@/components/person/parts";
+import { UnconfirmedFold } from "@/components/forms/UnconfirmedFold";
 import { ButtonLink } from "@/components/ui/Button";
 import { FormAbout } from "@/components/forms/FormAbout";
 import { PaperBar, wantsPrint } from "@/components/ui/PaperBar";
@@ -20,6 +21,7 @@ import { loadCheckedMapping } from "@/lib/forms/mapping-db";
 import { CAO_MAPPING_ID, caoMapping } from "@/lib/forms/plan-form";
 import { buildOverlaySheet, canOverlay } from "@/lib/forms/overlay-sheet";
 import { pageImageHref } from "@/lib/forms/page-images";
+import { mappedUnconfirmed, unconfirmedView } from "@/lib/forms/unconfirmed";
 import { warekiText } from "@/lib/forms/wareki";
 import { CONSENT_KIND_LABELS } from "@/lib/labels";
 import { loadPersonDocument } from "@/lib/consent/documents";
@@ -103,14 +105,8 @@ export default async function MappedFormPage({ params, searchParams }: Props) {
           </>
         }
       >
-        {sheet.unconfirmed.length > 0 && (
-          <div className="flex flex-wrap items-baseline gap-x-2" data-unconfirmed={sheet.unconfirmed.length}>
-            <StateTag tone="check">
-              {L.unconfirmed} <span className="tabular-nums">{sheet.unconfirmed.length}</span>
-            </StateTag>
-            <span className="text-xs text-muted">{sheet.unconfirmed.join("・")}</span>
-          </div>
-        )}
+        {/* 未確認の欄（元の様式の上の紙は空けて刷る欄）。押すと欄の一覧。帯だけで、紙には刷らない（T87） */}
+        <UnconfirmedFold view={unconfirmedView(mappedUnconfirmed(sheet))} />
         {sheet.unmapped.length > 0 && (
           <span className="text-sm">
             <span className="text-muted">{L.unmapped}</span> <span className="font-bold tabular-nums">{sheet.unmapped.length}</span>

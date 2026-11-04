@@ -1,4 +1,4 @@
-// 画面の中の切替（様式9・様式対応など）。Link の並び。今の物は文字の色（本文色）と太字と下線で示し、下地は敷かない。
+// 画面の中の切替（書類・様式9・様式追加など）。Link の並び。今の物は文字の色（本文色）と太字と下線で示し、下地は敷かない。
 // 押してから次の画面が出るまで灰色を残す（LinkPending）。
 
 import Link from "next/link";
@@ -25,14 +25,18 @@ export function Tabs({ items, label }: { items: ReadonlyArray<TabItem>; label: s
   );
 }
 
-/** 様式の切替（ヘッダーの「様式」の下の 2 つ）。/office/form9・/forms/mapping・/forms/mapping/[id] の上に置く */
-export function FormsTabs({ current }: { current: "form9" | "mapping" }) {
+/**
+ * 書類の切替（ヘッダーの「書類」の下の 3 つ。T87）。/forms（書類の一覧）・/office/form9・/forms/mapping（様式追加。前の「様式対応」、URL は同じ）
+ * ・/forms/mapping/[id] の上に置く
+ */
+export function FormsTabs({ current }: { current: "list" | "form9" | "mapping" }) {
   return (
     <Tabs
-      label="様式"
+      label="書類"
       items={[
+        { href: "/forms", label: "書類", current: current === "list" },
         { href: "/office/form9", label: "様式9", current: current === "form9" },
-        { href: "/forms/mapping", label: "様式対応", current: current === "mapping" },
+        { href: "/forms/mapping", label: "様式追加", current: current === "mapping" },
       ]}
     />
   );

@@ -16,7 +16,7 @@ import { formatJst } from "@/lib/person";
 // D1 を毎回読む
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = { title: "様式対応" };
+export const metadata: Metadata = { title: "様式追加" };
 
 type Props = { params: Promise<{ id: string }> };
 
