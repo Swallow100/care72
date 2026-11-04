@@ -15,6 +15,9 @@ import { FPS, LINES, SCENES, type Scene, type Shot } from "./timeline";
 
 const f = (seconds: number) => Math.round(seconds * FPS);
 
+/** 終わりの画面に出すリポジトリ（公開用の repo の名前が決まったらここを直す） */
+const REPO = "github.com/Swallow100/care72";
+
 /** 「12 人中 9 人」を割合の図に（アンケート。人数が少ないので割合でなく人数で言う）。数が［ ］のうちは字だけ（塗りなし） */
 function peopleShare(value: string, part: string, whole: string) {
   const m = /(\d+)\s*人中\s*(\d+)\s*人/.exec(value);
@@ -268,7 +271,7 @@ const ShotView: React.FC<{ shot: Shot; assets: Assets }> = ({ shot, assets }) =>
       body = (
         <>
           <Backdrop shot={shot} assets={assets} duration={duration} />
-          <EndCard />
+          <EndCard repo={REPO} />
         </>
       );
       break;

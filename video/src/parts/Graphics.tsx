@@ -7,6 +7,7 @@ import { AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig } from "remo
 import { usePalette } from "../ground";
 import { COLOR, FONT, LAYOUT, STATE_LABEL, TYPE } from "../theme";
 import { MODEL_ROWS, RULE_ROWS } from "../timeline";
+import { LOGO_INK, Logo } from "./Logo";
 import { EASE_OUT, STAGGER, progress, rise } from "./motion";
 
 const clamp = { extrapolateLeft: "clamp", extrapolateRight: "clamp" } as const;
@@ -600,27 +601,20 @@ export const Quote: React.FC<{ text: string; sub?: string }> = ({ text, sub }) =
   );
 };
 
-/** G5 終わりの画面。72 時間の輪を小さく題名の横に。審査員の ID とパスワードは出さない */
-export const EndCard: React.FC = () => {
+/**
+ * G5 終わりの画面。アプリのロゴ（印と名前。白い面の上に置く。ロゴの青は青い地では沈むため）が、12 時から順に描かれて満ちる。下に GitHub だけ。
+ * デモの URL と審査員の ID・パスワードは出さない（提出書類の欄に書く物で、どの画面もログインが要るため）。「利用者は架空」は録画が映る間の隅に出ていて、ここでは出さない
+ */
+export const EndCard: React.FC<{ repo: string }> = ({ repo }) => {
   const frame = useCurrentFrame();
   const p = usePalette();
-  // 輪は S2 と同じ部品。0 時から一周を描く
-  const hours = 72 * progress(frame, 4, 26);
   return (
-    <Stage gap={26}>
-      <div style={{ display: "flex", alignItems: "center", gap: 40, ...rise(frame, 0, 20, 16) }}>
-        <Dial r={76} width={8} hours={hours} ticks={12} />
-        <div style={{ fontSize: 150, fontWeight: 600, lineHeight: 1 }}>ケア72</div>
+    <Stage gap={44}>
+      <div style={{ background: COLOR.white, borderRadius: RADIUS.panel, padding: "40px 76px 40px 52px", display: "flex", alignItems: "center", gap: 34, ...rise(frame, 0, 20, 16) }}>
+        <Logo size={210} start={10} len={48} />
+        <div style={{ fontSize: 150, fontWeight: 600, lineHeight: 1, color: LOGO_INK }}>ケア72</div>
       </div>
-      <div style={{ background: p.strong, color: p.onStrong, fontSize: TYPE.h1, fontWeight: 600, padding: "10px 40px", borderRadius: RADIUS.panel, ...rise(frame, 8) }}>
-        care72.app
-      </div>
-      <div style={{ fontSize: TYPE.body, color: p.sub, ...rise(frame, 12) }}>github.com/Swallow100/care72</div>
-      <div style={{ display: "flex", gap: 28, fontSize: TYPE.caption, color: p.sub, marginTop: 34, ...rise(frame, 18) }}>
-        <span>利用者は全員架空</span>
-        <span>医療の助言はしない</span>
-        <span>色と順位はルールの表 AI は決めない</span>
-      </div>
+      <div style={{ fontSize: TYPE.h2, color: p.fg, ...rise(frame, 40) }}>{repo}</div>
     </Stage>
   );
 };
