@@ -37,7 +37,8 @@ export function palette(ground: Ground) {
     : {
         bg: COLOR.blueTint,
         fg: COLOR.blue,
-        sub: COLOR.blueLight,
+        // 小さな字は blueMid（薄い地の上で 4.8:1）。blueLight は 2.8:1 で字に足りないので、線と目盛りだけに使う
+        sub: COLOR.blueMid,
         surface: COLOR.white,
         onSurface: COLOR.blue,
         strong: COLOR.blue,
@@ -64,7 +65,7 @@ export const TYPE = {
   h1: 64, // 文字だけの画面の 2 行目・数字の単位
   h2: 44, // 面の見出し
   body: 34, // 表の行・図の中の字
-  caption: 22, // 出典・「利用者は架空」・目盛り
+  caption: 26, // 出典・「利用者は架空」・目盛り（22 だと幅 960 の縮みで読めない）
 } as const;
 
 // 置き場所（1920×1080 の中の px）。上から 見出しの帯 → 舞台 → 字幕の帯。舞台の物は全部、舞台の中で真ん中にそろえる

@@ -7,7 +7,7 @@ import { type Assets, audioPath, useAssets } from "./assets";
 import { GroundProvider, usePalette } from "./ground";
 import { Footage } from "./parts/Footage";
 import { Framed, framedSize } from "./parts/Frame";
-import { Bars, BigNumber, Compare, EndCard, Flow, Memo, Models, Quote, Ring72, Rules, Stage, TextCard, Title } from "./parts/Graphics";
+import { BigNumber, Compare, EndCard, Flow, Memo, Models, Quote, Ring72, Rules, Share, Stage, TextCard, Title } from "./parts/Graphics";
 import { CROSS, STAGGER, mix, progress, rise } from "./parts/motion";
 import { Caption, Header, Subtitle } from "./parts/Overlay";
 import { COLOR, FONT, LAYOUT, TYPE, palette } from "./theme";
@@ -48,7 +48,7 @@ const WordsPanel: React.FC<{ width: number; height: number; text: string; delay?
       {/* 背景の生成動画は文字の面の中だけ（録画の後ろには敷かない）。色を抜いて面の色を重ねる */}
       {bg ? (
         <AbsoluteFill>
-          <Img src={staticFile(`bg/${bg.id}/${String(Math.min(bg.count, frame + 1)).padStart(5, "0")}.jpg`)} style={{ width: "100%", height: "100%", objectFit: "cover", filter: "grayscale(1)" }} />
+          <Img src={staticFile(`bg/${bg.id}/${String(Math.min(bg.count, frame + 1)).padStart(5, "0")}.jpg`)} style={{ width: "100%", height: "100%", objectFit: "cover", filter: "grayscale(1) brightness(0.5)" }} />
           <AbsoluteFill style={{ background: p.surface, opacity: 0.8 }} />
         </AbsoluteFill>
       ) : null}
@@ -133,8 +133,9 @@ const Backdrop: React.FC<{ shot: Shot; assets: Assets; duration: number }> = ({ 
     const index = Math.min(count, f(shot.bgFrom ?? 0) + frame + 1);
     return (
       <AbsoluteFill>
-        <Img src={staticFile(`bg/${shot.bg}/${String(index).padStart(5, "0")}.jpg`)} style={{ width: 1920, height: 1080, objectFit: "cover", filter: "grayscale(1)" }} />
-        <AbsoluteFill style={{ background: p.bg, opacity: 0.74 }} />
+        <Img src={staticFile(`bg/${shot.bg}/${String(index).padStart(5, "0")}.jpg`)} style={{ width: 1920, height: 1080, objectFit: "cover", filter: "grayscale(1) brightness(0.5)" }} />
+        {/* 沈め方: 明るさ 0.5 に地の色を 80%。真っ白な所の上でも白い字 6.3:1、小さな字（onBlueSub）4.6:1（ぼかしは bg.mjs のまま） */}
+        <AbsoluteFill style={{ background: p.bg, opacity: 0.8 }} />
       </AbsoluteFill>
     );
   }
@@ -195,6 +196,8 @@ const ShotView: React.FC<{ shot: Shot; assets: Assets }> = ({ shot, assets }) =>
           <Backdrop shot={shot} assets={assets} duration={duration} />
           {shot.value?.includes("→") ? (
             <Compare value={shot.value} labels={[shot.lines?.[0] ?? "", shot.lines?.[1] ?? ""]} sub={shot.sub} />
+          ) : shot.value?.endsWith("%") ? (
+            <Share hero={shot.value} share={Number.parseFloat(shot.value) / 100} part={shot.lines?.[0] ?? ""} whole={shot.sub ?? ""} land={shot.beats?.[0] !== undefined ? f(shot.beats[0]) : undefined} />
           ) : (
             <BigNumber value={shot.value ?? ""} sub={shot.sub} />
           )}
@@ -205,7 +208,7 @@ const ShotView: React.FC<{ shot: Shot; assets: Assets }> = ({ shot, assets }) =>
       body = (
         <>
           <Backdrop shot={shot} assets={assets} duration={duration} />
-          <Bars />
+          <Share hero="527 人" share={527 / 755} part="うち関連死" whole="死者 755 人" land={shot.beats?.[0] !== undefined ? f(shot.beats[0]) : undefined} />
         </>
       );
       break;

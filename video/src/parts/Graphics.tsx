@@ -177,14 +177,12 @@ export const BigNumber: React.FC<{ value: string; sub?: string }> = ({ value, su
   const m = /^(\d+(?:\.\d+)?)(%?)(.*)$/.exec(value);
   const count = m ? interpolate(frame, [4, 40], [0, Number(m[1])], { ...clamp, easing: EASE_OUT }) : 0;
   const digits = m ? (m[1].split(".")[1] ?? "").length : 0;
-  const percent = m?.[2] === "%";
   return (
     <Stage gap={34}>
       <div style={{ display: "flex", alignItems: "baseline", gap: 8, ...rise(frame, 0, 20, 14) }}>
         <span style={{ fontSize: 230, fontWeight: 600, lineHeight: 1 }}>{m ? count.toFixed(digits) : value}</span>
         {m ? <span style={{ fontSize: 120, fontWeight: 600, lineHeight: 1 }}>{m[2] + m[3]}</span> : null}
       </div>
-      {percent ? <Dots share={count / 100} delay={8} /> : null}
       {sub ? <div style={{ fontSize: TYPE.h2, color: p.sub, maxWidth: 1500, textAlign: "center", ...rise(frame, 16) }}>{sub}</div> : null}
     </Stage>
   );
@@ -227,56 +225,36 @@ export const Compare: React.FC<{ value: string; labels: [string, string]; sub?: 
 };
 
 /** 100 個の点（10 × 10 でなく横 50 × 2 段）。share の割合だけ濃い色 */
-const Dots: React.FC<{ share: number; delay: number }> = ({ share, delay }) => {
+/**
+ * 割合の図（S3 の 15.1% と、能登の死者のうちの関連死）。全体の中の一部なので、2 本の棒にせず 1 本のメーターに描く。
+ * 上に声が言う数（数え上がって、声がその数を言う所で止まる。land はそのコマ）。メーターは全体の線（地の 1 段明るい青）の上に一部の塗り（字の色）。
+ * 塗りは左を角にして右の端だけ 4px 丸める（棒の決まり。カプセル形にしない）。名前は塗りの下の左と、線の右の端に字の色で
+ */
+export const Share: React.FC<{ hero: string; share: number; part: string; whole: string; land?: number }> = ({ hero, share, part, whole, land = 40 }) => {
   const frame = useCurrentFrame();
   const p = usePalette();
-  const lit = Math.floor(share * 100 + 1e-6);
+  const m = /^(d+(?:.d+)?)(.*)$/.exec(hero);
+  // 出てすぐ数え始め、声がその数を言う所（land）で止まる
+  const t = progress(frame, 4, Math.max(20, land - 4));
+  const digits = m ? (m[1].split(".")[1] ?? "").length : 0;
+  const shown = m ? (Number(m[1]) * t).toFixed(digits) : hero;
+  const W = 1240;
+  const H = 30;
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(50, 18px)", gap: 8, ...rise(frame, delay) }}>
-      {Array.from({ length: 100 }, (_, i) => (
-        <div key={i} style={{ width: 18, height: 18, borderRadius: 9, background: i < lit ? p.fg : p.tint }} />
-      ))}
-    </div>
-  );
-};
-
-/** G2 2 本の棒（能登の死者 755 人と、そのうち関連死 527 人）。棒の長さは 755 を舞台の幅に合わせる */
-export const Bars: React.FC = () => {
-  const frame = useCurrentFrame();
-  const p = usePalette();
-  const max = 980;
-  const rows = [
-    { label: "死者", n: 755, color: p.tint, strong: false },
-    { label: "うち関連死", n: 527, color: p.fg, strong: true },
-  ];
-  return (
-    <Stage gap={44} align="center">
-      {rows.map((row, i) => {
-        const t = progress(frame, 4 + i * 12, 30);
-        return (
-          <div key={row.label} style={{ display: "flex", alignItems: "center", gap: 32, width: 1560, ...rise(frame, i * STAGGER * 2) }}>
-            <div style={{ width: 260, fontSize: TYPE.h2, textAlign: "right", fontWeight: row.strong ? 600 : 400, whiteSpace: "nowrap" }}>{row.label}</div>
-            <div style={{ width: max + 220, height: 84, position: "relative" }}>
-              <div style={{ position: "absolute", left: 0, top: 0, height: 84, width: (row.n / 755) * max * t, background: row.color, borderRadius: 6 }} />
-              <div
-                style={{
-                  position: "absolute",
-                  left: (row.n / 755) * max * t + 28,
-                  top: 0,
-                  height: 84,
-                  display: "flex",
-                  alignItems: "center",
-                  fontSize: TYPE.h1,
-                  fontWeight: 600,
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {Math.round(row.n * t)} 人
-              </div>
-            </div>
-          </div>
-        );
-      })}
+    <Stage gap={0}>
+      <div style={{ width: W, display: "flex", flexDirection: "column", gap: 40, ...rise(frame, 0, 20, 14) }}>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 10, lineHeight: 1 }}>
+          <span style={{ fontSize: 220, fontWeight: 600 }}>{shown}</span>
+          {m ? <span style={{ fontSize: 110, fontWeight: 600 }}>{m[2]}</span> : null}
+        </div>
+        <div style={{ position: "relative", width: W, height: H, background: p.tint, borderRadius: 4 }}>
+          <div style={{ position: "absolute", left: 0, top: 0, height: H, width: W * share * t, background: p.fg, borderRadius: "0 4px 4px 0" }} />
+        </div>
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: TYPE.body, marginTop: -16, ...rise(frame, 10) }}>
+          <span style={{ fontWeight: 600 }}>{part}</span>
+          <span style={{ color: p.sub }}>{whole}</span>
+        </div>
+      </div>
     </Stage>
   );
 };
@@ -466,7 +444,7 @@ export const Rules: React.FC = () => {
           <span style={{ background: p.strong, color: p.onStrong, fontSize: 28, fontWeight: 600, padding: "6px 16px", borderRadius: 4 }}>AI を使わない</span>
         </div>
         <div style={{ background: COLOR.white, borderRadius: 10, overflow: "hidden", padding: "6px 0" }}>
-          <div style={{ display: "flex", gap: 24, padding: "10px 32px", fontSize: TYPE.caption, color: COLOR.blueLight, ...rise(frame, 4) }}>
+          <div style={{ display: "flex", gap: 24, padding: "10px 32px", fontSize: TYPE.caption, color: COLOR.blueMid, ...rise(frame, 4) }}>
             <div style={{ width: 600 }}>入ってきた事実</div>
             <div style={{ width: 180 }}>色</div>
             <div>理由の 1 行</div>
@@ -559,7 +537,7 @@ export const Models: React.FC<{ children: React.ReactNode; counters?: string[] }
               const count = at > 0 ? c.slice(at).trim() : "";
               return (
                 <div key={c} style={{ background: COLOR.white, color: COLOR.blue, borderRadius: 10, padding: "16px 22px", ...rise(frame, 30 + i * STAGGER) }}>
-                  <div style={{ fontSize: TYPE.caption, fontWeight: 600, whiteSpace: "nowrap", color: COLOR.blueLight }}>{name}</div>
+                  <div style={{ fontSize: TYPE.caption, fontWeight: 600, whiteSpace: "nowrap", color: COLOR.blueMid }}>{name}</div>
                   <div style={{ fontSize: TYPE.h2, fontWeight: 600, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>{count}</div>
                 </div>
               );
