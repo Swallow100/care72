@@ -130,7 +130,10 @@ describe("住所と位置の手入力（T68 の 1）", () => {
     const l = parseLedger(rows.person.ledger);
     expect(l.basic.address).toEqual({ city: "高知市", town: KOCHI_TOWN });
     expect(l.basic.location).toEqual(POINT);
-    const body = sqlite.prepare("SELECT body FROM timeline_entries WHERE person_id = ?1 ORDER BY created_at DESC, id DESC LIMIT 1").get(pid) as { body: string };
+    // 種の経過の行は本物の時刻で入るので、NOW（固定）より新しくなりうる。直した行だけを見る（時刻で落ちないように）
+    const body = sqlite
+      .prepare("SELECT body FROM timeline_entries WHERE person_id = ?1 AND body LIKE 'ケアマネが直した%' ORDER BY created_at DESC, id DESC LIMIT 1")
+      .get(pid) as { body: string };
     expect(body.body).toBe("ケアマネが直した: 住所・位置");
     // 読み戻した下書きは今の値。同じ値なら何も送らない
     const back = editDraft(await editData());
