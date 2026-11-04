@@ -8,7 +8,7 @@
 
 このリポジトリは Built with Claude: Japan 2026 の期間中（2026-11-02 12:30 JST 以降）に作った。設計はキックオフ前に文書で行い、[docs/SPEC.md](docs/SPEC.md) に写した。コードと文書の行は Claude Code が書き、人は決めることを受け持った（下の「Claude Code で何が可能になったか」）。
 
-履歴について: 公開の文書に個人に関わる情報が含まれていたため、11/4 に一度だけ履歴を書き換え、同じ URL でリポジトリを作り直した。commit の数・日時・順番とコードの変化は元のまま（最初の commit は 11/2 12:42）。くわしくは [docs/PROCESS.md](docs/PROCESS.md) の「公開の履歴」。
+履歴について: 公開の文書に個人に関わる情報が含まれていたため、11/4 に一度だけ履歴を書き換え、同じ URL でリポジトリを作り直した。commit の数・日時・順番とコードの変化は元のまま（最初の commit は 11/2 12:42）。作り直す前の PR の一覧は [docs/PULL_REQUESTS.md](docs/PULL_REQUESTS.md)、GitHub が受け取った push の日時は [docs/PUSHES.md](docs/PUSHES.md)。くわしくは [docs/PROCESS.md](docs/PROCESS.md) の「公開の履歴」。
 
 ## 作者と、足りないもの
 
