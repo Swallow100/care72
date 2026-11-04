@@ -140,7 +140,10 @@ export const DRILL_EVENT_KINDS = [
 ] as const;
 export type DrillEventKind = (typeof DRILL_EVENT_KINDS)[number];
 
-/** 訓練のケアマネの手 7 つ（11/2 に確定） */
+/**
+ * 訓練のケアマネの手。7 つ（11/2 に確定）に T91 で 11 を足した 18。手の表（時間・相手・効き目）は lib/drill/action-catalog.ts。
+ * 手は drill_events の payload の kind なので、足しても migration は要らない
+ */
 export const DRILL_ACTIONS = [
   "call_person", // 本人に電話
   "call_contact", // 家族・支援者に電話
@@ -149,6 +152,18 @@ export const DRILL_ACTIONS = [
   "request_welfare_shelter", // 福祉避難所に依頼
   "report_city", // 市役所に報告
   "evacuate_self", // 自分も避難
+  // T91
+  "advise_119", // 119 への連絡を勧める（自動の 119 はしない）
+  "ask_check", // 家族・支援者・民生委員に見に行ってもらう
+  "request_backup", // ほかの事業所に応援を頼む
+  "arrange_medicine", // 薬局・かかりつけに薬の手配
+  "arrange_dialysis", // 透析の受け入れ先の調整
+  "request_hospital", // 病院に受け入れを頼む
+  "arrange_transport", // 移送の手配
+  "arrange_power", // 電源の手配
+  "call_vendor", // 酸素業者などに連絡
+  "note", // 記録だけ
+  "free", // 自由対応（文で書き、監督が表の手に読み替える）
 ] as const;
 export type DrillAction = (typeof DRILL_ACTIONS)[number];
 
