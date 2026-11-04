@@ -243,11 +243,14 @@ export const BigNumber: React.FC<{ value: string; sub?: string }> = ({ value, su
  * 前と後の 2 つの数（S8 の「［X 時間］ → ［Y 分］」）。value を「→」で分け、前は薄い色で先に、後は大きく後から出す。
  * 間の矢印は線が伸びる。labels は各数の下の短い名前（ふだん・ケア72）。数が入る前の［ ］のままでも 1 行に収める
  */
-export const Compare: React.FC<{ value: string; labels: [string, string]; sub?: string }> = ({ value, labels, sub }) => {
+export const Compare: React.FC<{ value: string; labels: [string, string]; sub?: string; lead?: SlotWord; marks?: number[] }> = ({ value, labels, sub, lead, marks }) => {
   const frame = useCurrentFrame();
   const p = usePalette();
   const [before, after] = value.split("→").map((s) => s.trim());
-  const arrow = progress(frame, 12, 14);
+  // 前の数と後の数は、声がそれを言う所（marks。無ければ 0 コマと 22 コマ）で出す。矢印は後の数の 10 コマ前から伸びる
+  const at0 = marks?.[0] ?? 0;
+  const at1 = Math.max(at0 + 12, marks?.[1] ?? 22);
+  const arrow = progress(frame, at1 - 10, 14);
   // 2 段の格子: 上の段に数と矢印（下の線をそろえる）、下の段に名前（同じ高さに並べる）
   const amount = (text: string, delay: number, strong: boolean) => (
     <div style={{ fontSize: strong ? 168 : 120, fontWeight: 600, lineHeight: 1, whiteSpace: "nowrap", color: strong ? p.fg : p.sub, justifySelf: "center", ...rise(frame, delay, 22, 16) }}>
@@ -259,18 +262,21 @@ export const Compare: React.FC<{ value: string; labels: [string, string]; sub?: 
   );
   return (
     <Stage gap={56}>
+      {/* 声が数の前に言う言葉（「計画 1 件」）は上に、言う所で出す */}
+      {lead ? <div style={{ fontSize: TYPE[lead.size], fontWeight: 600, marginBottom: -20, ...rise(frame, lead.frame) }}>{lead.text}</div> : null}
       <div style={{ display: "grid", gridTemplateColumns: "auto 160px auto", alignItems: "end", columnGap: 56, rowGap: 22 }}>
-        {amount(before ?? "", 0, false)}
+        {amount(before ?? "", at0, false)}
         <svg width={160} height={60} viewBox="0 0 160 60" style={{ marginBottom: 30 }}>
-          <line x1={4} y1={30} x2={4 + 148 * arrow} y2={30} stroke={p.fg} strokeWidth={6} strokeLinecap="round" />
+          {/* 伸びる前は描かない（長さ 0 の線でも丸い端が点に見える） */}
+          {arrow > 0 ? <line x1={4} y1={30} x2={4 + 148 * arrow} y2={30} stroke={p.fg} strokeWidth={6} strokeLinecap="round" /> : null}
           <path d="M 128 10 L 152 30 L 128 50" stroke={p.fg} strokeWidth={6} strokeLinecap="round" strokeLinejoin="round" fill="none" opacity={arrow > 0.9 ? 1 : 0} />
         </svg>
-        {amount(after ?? "", 22, true)}
-        {label(labels[0], 0, false)}
+        {amount(after ?? "", at1, true)}
+        {label(labels[0], at0, false)}
         <div />
-        {label(labels[1], 22, true)}
+        {label(labels[1], at1, true)}
       </div>
-      {sub ? <div style={{ fontSize: TYPE.body, color: p.sub, maxWidth: 1500, textAlign: "center", ...rise(frame, 34) }}>{sub}</div> : null}
+      {sub ? <div style={{ fontSize: TYPE.body, color: p.sub, maxWidth: 1500, textAlign: "center", ...rise(frame, at1 + 12) }}>{sub}</div> : null}
     </Stage>
   );
 };

@@ -33,8 +33,13 @@ function kineticWords(shot: Shot, assets: Assets): KineticWord[] {
     .map((c, i) => ({ text: c.text, frame: cueFrame(c, shot, assets), size: c.size ?? "h1", row: c.row ?? i, hold: c.hold, mark: c.mark }));
 }
 
-/** 数字の画面の数の上（lead）と後ろ（tail）の言葉。mark は画面に出ている物を強調する時刻だけ（72 時間の輪の題名の数） */
-function slotWord(shot: Shot, assets: Assets, slot: "lead" | "tail" | "mark") {
+/** 声がその言葉を言うコマ（slot が mark の言葉を順に）。字は出さず、画面の物を出す・強調する時刻に使う（72 時間の輪の題名の数、前と後の 2 つの数） */
+function markFrames(shot: Shot, assets: Assets): number[] {
+  return (shot.cues ?? []).filter((c) => c.slot === "mark").map((c) => cueFrame(c, shot, assets));
+}
+
+/** 数字の画面の数の上（lead）と後ろ（tail）の言葉 */
+function slotWord(shot: Shot, assets: Assets, slot: "lead" | "tail") {
   const c = shot.cues?.find((x) => x.slot === slot);
   return c ? { text: c.text, frame: cueFrame(c, shot, assets), size: c.size ?? "h1" } : undefined;
 }
@@ -262,7 +267,7 @@ const ShotView: React.FC<{ shot: Shot; assets: Assets }> = ({ shot, assets }) =>
           duration={duration}
           sub={shot.sub}
           titleAt={shot.beats?.[0] !== undefined ? f(shot.beats[0]) : undefined}
-          markAt={slotWord(shot, assets, "mark")?.frame}
+          markAt={markFrames(shot, assets)[0]}
         >
           {shot.cues?.length ? <Kinetic words={kineticWords(shot, assets)} align="center" /> : null}
         </Ring72>
@@ -273,7 +278,7 @@ const ShotView: React.FC<{ shot: Shot; assets: Assets }> = ({ shot, assets }) =>
         <>
           <Backdrop shot={shot} assets={assets} duration={duration} />
           {shot.value?.includes("→") ? (
-            <Compare value={shot.value} labels={[shot.lines?.[0] ?? "", shot.lines?.[1] ?? ""]} sub={shot.sub} />
+            <Compare value={shot.value} labels={[shot.lines?.[0] ?? "", shot.lines?.[1] ?? ""]} sub={shot.sub} lead={slotWord(shot, assets, "lead")} marks={markFrames(shot, assets)} />
           ) : shot.value?.includes("人中") ? (
             <Share
               {...peopleShare(shot.value, shot.lines?.[0] ?? "", shot.sub ?? "")}
