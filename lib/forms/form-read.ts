@@ -5,6 +5,8 @@
 // - 1 要求 1 回（長い処理にしない）。上限は lib/claude/usage.ts（用途 form_read、Opus、effort high）。
 // - 返った対応表は checkReadResult で台帳の一覧と照らし（無い項目名は弾く）、下書きとして保存する。使うのはケアマネが確かめてから。
 // - 同じ写真・PDF（SHA-256 が同じ）は読み直さない（lib/forms/mapping-db.ts の findByHash を先に引く）。
+// - T86: 欄ごとに値を書く場所（頁の画像の上の 0〜1 の矩形）と、様式の字の書体も返させる。場所は人が確かめる画面で重ねて見せ、直せる。
+//   元の様式の頁の画像（受けた物そのまま）の上に値を置く紙（lib/forms/overlay-sheet.ts）に使う。
 // - T83: 画面からは黒塗りの画面（components/person/RedactSheet.tsx）を通した頁の画像（JPEG）を頁の順に受け、1 回の呼び出しに並べて渡す
 //   （app/api/forms/read、送る形は lib/forms/read-upload.ts）。記入済みの様式に書かれた値は人が黒く塗ってから送る。
 
@@ -12,7 +14,7 @@ import { Buffer } from "node:buffer";
 import * as z from "zod";
 import { askJson, type AiMark, type AskJsonContext, type AskJsonRequest, type ClaudeAttachment } from "../claude/call.ts";
 import { sealItemCatalog } from "../pseudonym/index.ts";
-import { CONFIDENCES, FIELD_SHAPES, FORM_FILE_MAX_BYTES, checkReadResult, itemCatalog, type CheckedRead } from "./mapping.ts";
+import { CONFIDENCES, FIELD_SHAPES, FORM_FILE_MAX_BYTES, TYPEFACES, checkReadResult, itemCatalog, type CheckedRead } from "./mapping.ts";
 
 export { FORM_FILE_MAX_BYTES };
 
@@ -60,14 +62,23 @@ export const FORM_READ_SYSTEM = [
   "6. 様式に書き込まれた値（氏名・住所・電話番号・日付）があっても読まない。出力に書かない。黒く塗りつぶした四角は、ケアマネが隠した所。中身を推し量らない・出さない。",
   "画像が何枚かあれば、並びの順に 1 枚が 1 頁（page は 1 から）。",
   "7. confidence: high は名前も中身も合う、medium は中身は近いが範囲が違う、low は推測。reason は対応の理由を 30 字まで。",
-  "title は様式の題名、issuer は様式を出した所（分からなければ空）、pages は頁の数。",
+  "8. box はその欄の値を書き込む空白の所（欄の名前の字や □ の印は含めない、書き込む枠の内側）。その頁の画像の左上を (0,0)、右下を (1,1) とした比で、左端 x・上端 y・幅 w・高さ h（どれも 0〜1、小数 3 桁まで）。読み取れなければ null。",
+  "9. check の box は □ の印そのものの場所。choice の box は選択肢が並ぶ所全体で、option_boxes に選択肢ごとの □（□ が無ければ選択肢の字）の場所を options と同じ順に入れる。choice のほかの形の option_boxes は空の配列。handwrite の box は人が手で書く空白の所。",
+  "title は様式の題名、issuer は様式を出した所（分からなければ空）、pages は頁の数。typeface は様式に印刷された字の書体（明朝なら mincho、ゴシックなら gothic）。",
 ].join("\n");
+
+/**
+ * 頁の中の場所（T86。0〜1 の比）。数の範囲は構造化出力の形に書かず（範囲の縛りは形の検査に載らない物がある）、
+ * 受けたあと checkReadResult の clampBox で 0〜1 に収める
+ */
+const BoxSchema = z.object({ x: z.number(), y: z.number(), w: z.number(), h: z.number() });
 
 /** 返事の形。いちばん外は object。item は文字のまま受け、台帳の一覧との照合は checkReadResult で（無い名前で全体を落とさない） */
 export const ReadSchema = z.object({
   title: z.string(),
   issuer: z.string(),
   pages: z.number().int(),
+  typeface: z.enum(TYPEFACES),
   fields: z.array(
     z.object({
       page: z.number().int(),
@@ -79,6 +90,8 @@ export const ReadSchema = z.object({
       item: z.string().nullable(),
       confidence: z.enum(CONFIDENCES),
       reason: z.string(),
+      box: BoxSchema.nullable(),
+      option_boxes: z.array(BoxSchema.nullable()),
     }),
   ),
 });

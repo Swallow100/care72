@@ -107,7 +107,7 @@ describe("AI の返事の検査", () => {
     const r = checkReadResult(CAO_FORM_READ);
     expect(r.rejected).toEqual([]);
     expect(r.mapping).toMatchObject({ title: "個別避難計画", issuer: "内閣府（様式例）", pages: 2 });
-    expect(mappingStats(r.mapping)).toEqual({ fields: 41, read: 41, autoMapped: 34, kept: 34, changed: 0, added: 0, mapped: 34 });
+    expect(mappingStats(r.mapping)).toEqual({ fields: 41, read: 41, autoMapped: 34, kept: 34, changed: 0, added: 0, mapped: 34, placed: 0, boxMoved: 0 });
   });
 });
 

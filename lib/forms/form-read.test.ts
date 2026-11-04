@@ -44,7 +44,8 @@ function setup(env: AskJsonContext["env"] = { ANTHROPIC_API_KEY: "dummy" }) {
       messages: {
         create: async (params) => {
           calls.push(params);
-          return reply(JSON.stringify(CAO_FORM_READ));
+          // T86 から返事の形に場所と書体の欄がある（場所を読めなかった返事として null と空）
+          return reply(JSON.stringify({ ...CAO_FORM_READ, typeface: "gothic", fields: CAO_FORM_READ.fields.map((f) => ({ ...f, box: null, option_boxes: [] })) }));
         },
       },
     },
