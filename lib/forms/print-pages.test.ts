@@ -1,5 +1,7 @@
 // 紙面の印刷（T36）: 頁数・印刷で画面の帯が消える・禁則・空欄の「未確認」・頁の下の端・?print=1。
 // 頁数は headless Chrome の印刷（printToPDF、CSS の @page）で PDF を作って数える。Chrome・Edge か BIZ UDPゴシックが無ければ飛ばす。
+// 元の様式のある紙（松山市・医療要約・様式 9）の頁数・字（書体・大きさ・太さ・下線）・余白は照合の表（lib/forms/form-audit.ts の paper）と照らす（T85）。
+// 字のテストは BIZ UDP明朝も要る（Windows の BIZ UDP明朝 Medium。無ければ飛ばす）。
 // サーバーも D1 も使わない（lib/forms/print-harness.ts）。本物の画面の書体での頁数は tools/print/samples.ts --count（docs/progress/t36.md）。
 
 import { createElement, type ReactElement } from "react";
@@ -18,13 +20,14 @@ import { SEED_ACCOUNTS, SEED_PEOPLE } from "../../seed/people.ts";
 import { chromePath, pdfPageCount } from "../../tools/print/chrome.ts";
 import { medicalConsentOf } from "../qr/view.ts";
 import { CAO_FORM_READ } from "./cao-form.fixture.ts";
+import { FORM_AUDITS, FORM9_AUDIT, faceOf, MATSUYAMA_AUDIT, MEDICAL_AUDIT, type PaperFace } from "./form-audit.ts";
 import { buildForm9, type Form9PersonInput } from "./form9.ts";
 import { buildMappedSheet } from "./mapped-sheet.ts";
 import { checkReadResult } from "./mapping.ts";
 import { buildMatsuyamaSheet } from "./matsuyama.ts";
 import { buildMedicalSummary, buildOwnSheetMedical } from "./medical-summary.ts";
 import { buildOwnSheet } from "./own-sheet.ts";
-import { FONT_PROBE, PAPER_CSS_FILES, paperCss, paperPage, readRepoFile, seedRows } from "./print-harness.ts";
+import { FONT_PROBE, MINCHO_PROBE, PAPER_CSS_FILES, paperCss, paperPage, readRepoFile, seedRows } from "./print-harness.ts";
 import { autoPrint, type PrintWindow } from "./print.ts";
 import { warekiText } from "./wareki.ts";
 
@@ -260,6 +263,7 @@ describe.skipIf(!chrome)("印刷（headless Chrome の printToPDF）", () => {
   let browser: Browser;
   let page: Page;
   let fontOk = false;
+  let minchoOk = false;
   const css = paperCss();
 
   beforeAll(async () => {
@@ -267,6 +271,7 @@ describe.skipIf(!chrome)("印刷（headless Chrome の printToPDF）", () => {
     page = await browser.newPage();
     await page.setContent(paperPage("<p>書体</p>", css));
     fontOk = (await page.evaluate(FONT_PROBE)) === true;
+    minchoOk = (await page.evaluate(MINCHO_PROBE)) === true;
   }, 60_000);
 
   afterAll(async () => {
@@ -281,14 +286,14 @@ describe.skipIf(!chrome)("印刷（headless Chrome の printToPDF）", () => {
   }
   const pages = async (body: string) => pdfPageCount(await pdfOf(body));
 
-  it("計画書は 10 人とも A4 2 頁", async (ctx) => {
+  it("計画書は 10 人とも A4 2 頁（松山市の様式と同じ。T85 で元の字の大きさ・余白にしても）", async (ctx) => {
     if (!fontOk) ctx.skip();
     const got: Record<string, number> = {};
     for (const id of IDS) got[id] = await pages(matsuyamaHtml(id));
-    expect(got).toEqual(Object.fromEntries(IDS.map((id) => [id, 2])));
+    expect(got).toEqual(Object.fromEntries(IDS.map((id) => [id, MATSUYAMA_AUDIT.paper.pages])));
   }, 180_000);
 
-  it("医療要約は要約を作る人（医療班提供に同意）とも A4 1 頁", async (ctx) => {
+  it("医療要約は要約を作る人（医療班提供に同意）とも A4 1 頁（災害診療記録2018 の 1 頁と同じ。T85）", async (ctx) => {
     if (!fontOk) ctx.skip();
     const got: Record<string, number> = {};
     for (const id of IDS) {
@@ -296,7 +301,7 @@ describe.skipIf(!chrome)("印刷（headless Chrome の printToPDF）", () => {
       if (m) got[id] = await pages(m);
     }
     expect(Object.keys(got).length).toBeGreaterThanOrEqual(8);
-    expect(got).toEqual(Object.fromEntries(Object.keys(got).map((id) => [id, 1])));
+    expect(got).toEqual(Object.fromEntries(Object.keys(got).map((id) => [id, MEDICAL_AUDIT.paper.pages])));
   }, 180_000);
 
   it("本人の 1 枚は 10 人とも表と裏の 2 頁（裏に QR）", async (ctx) => {
@@ -332,13 +337,16 @@ describe.skipIf(!chrome)("印刷（headless Chrome の printToPDF）", () => {
     expect(got).toEqual(Object.fromEntries(IDS.map((id) => [id, 1])));
   }, 180_000);
 
-  it("様式 9 は A4 横で、10 人の表と報告の下書きが続く（3 頁まで）", async (ctx) => {
+  it("様式 9 は A4 横で、10 人の表はひな形と同じ 1 頁（T85）。報告の下書き（発災時、ひな形に無い）が付いても 2 頁まで", async (ctx) => {
     if (!fontOk) ctx.skip();
-    const pdf = Buffer.from(await pdfOf(form9Html("【安否報告（下書き）】\n事業所：デモ事業所"))).toString("latin1");
-    const boxes = [...pdf.matchAll(/\/MediaBox\s*\[\s*0 0 ([\d.]+) ([\d.]+)\s*\]/g)].map((m) => [Number(m[1]), Number(m[2])]);
-    expect(boxes.length).toBeGreaterThanOrEqual(1);
-    expect(boxes.length).toBeLessThanOrEqual(3);
-    for (const [w, h] of boxes) {
+    const boxesOf = (pdf: Uint8Array) =>
+      [...Buffer.from(pdf).toString("latin1").matchAll(/\/MediaBox\s*\[\s*0 0 ([\d.]+) ([\d.]+)\s*\]/g)].map((m) => [Number(m[1]), Number(m[2])]);
+    const plain = boxesOf(await pdfOf(form9Html(null)));
+    expect(plain).toHaveLength(FORM9_AUDIT.paper.pages);
+    const withReport = boxesOf(await pdfOf(form9Html("【安否報告（下書き）】\n事業所：デモ事業所")));
+    expect(withReport.length).toBeGreaterThanOrEqual(1);
+    expect(withReport.length).toBeLessThanOrEqual(2);
+    for (const [w, h] of [...plain, ...withReport]) {
       expect(Math.round(w)).toBe(842);
       expect(Math.round(h)).toBe(595);
     }
@@ -381,7 +389,7 @@ describe.skipIf(!chrome)("印刷（headless Chrome の printToPDF）", () => {
     }
   }, 60_000);
 
-  it("紙の字: 禁則（strict）・字間なし・書体は BIZ UDPゴシック・本文 10.5pt（様式 10pt）・未確認は小さく灰色", async (ctx) => {
+  it("紙の字: 禁則（strict）・字間なし・地の書体は BIZ UDPゴシック・様式の無い文書の本文 10.5pt（松山市の様式は原本の 9.84pt）・未確認は小さく灰色", async (ctx) => {
     if (!fontOk) ctx.skip();
     await page.setContent(paperPage(matsuyamaHtml("p-01") + qrHtml("p-01"), css), { waitUntil: "load" });
     await page.emulateMediaType("print");
@@ -409,11 +417,110 @@ describe.skipIf(!chrome)("印刷（headless Chrome の printToPDF）", () => {
     expect(s.overflowWrap).toBe("normal");
     expect(s.letterSpacing).toBe("normal");
     expect(s.font).toContain("BIZ UDPGothic");
-    // 10pt = 13.33px、10.5pt = 14px
-    expect(Number.parseFloat(s.formSize)).toBeCloseTo(13.33, 1);
+    // 9.84pt = 13.12px、10.5pt = 14px
+    expect(Number.parseFloat(s.formSize)).toBeCloseTo(13.12, 1);
     expect(Number.parseFloat(s.docSize)).toBeCloseTo(14, 1);
     expect(Number.parseFloat(s.uncSize)).toBeLessThan(Number.parseFloat(s.formSize));
     expect(s.uncColor).not.toBe("rgb(0, 0, 0)");
     expect(s.bg).toBe("rgb(255, 255, 255)");
+  }, 60_000);
+
+  /** 照合の表（lib/forms/form-audit.ts）の字の行を、紙面の中の選び方・書体・大きさ（px）・太さ・下線に */
+  type TypeCheck = { form: string; label: string; sel: string; px: number; face: PaperFace; bold: boolean | null; underline: boolean | null };
+  const typeChecks: TypeCheck[] = FORM_AUDITS.flatMap((a) => [
+    ...a.paper.type
+      .filter((t) => t.sel)
+      .map((t) => ({
+        form: a.id,
+        label: t.role,
+        sel: t.sel!,
+        px: (t.pt * 96) / 72,
+        face: faceOf(t.original),
+        bold: t.bold === true,
+        underline: t.underline === true,
+      })),
+    ...(a.paper.extra ?? [])
+      .filter((e) => e.sel)
+      .map((e) => ({ form: a.id, label: e.where, sel: e.sel!, px: (e.pt * 96) / 72, face: e.face, bold: null, underline: null })),
+  ]);
+
+  it("字の書体・大きさ・太さ・下線は元の様式のとおり（照合の表の paper.type。T85）: 松山市・医療要約・様式 9", async (ctx) => {
+    if (!fontOk || !minchoOk) ctx.skip();
+    // 計画書・医療要約（山田 ハナ）と様式 9（報告の下書き付き）を 1 枚の頁に
+    const body = [matsuyamaHtml("p-01"), medicalHtml("p-01")!, form9Html("【安否報告（下書き）】\n事業所：デモ事業所")].join("");
+    await page.setContent(paperPage(body, css), { waitUntil: "load" });
+    await page.emulateMediaType("print");
+    const got = await page.evaluate((checks: TypeCheck[]) => {
+      return checks.map((c) => {
+        const els = [...document.querySelectorAll<HTMLElement>(`[data-sheet="${c.form}"] :is(${c.sel})`)];
+        return els.map((el) => {
+          const st = getComputedStyle(el);
+          return {
+            family: st.fontFamily.split(",")[0].replace(/["']/g, "").trim(),
+            px: Number.parseFloat(st.fontSize),
+            weight: Number(st.fontWeight),
+            underline: st.textDecorationLine.includes("underline"),
+            text: (el.textContent ?? "").slice(0, 12),
+          };
+        });
+      });
+    }, typeChecks);
+    // 実際に字を描いた書体（CSS の指定でなく、Chrome が選んだ端末の書体。明朝が無くてゴシックに落ちていないか）
+    const cdp = await page.createCDPSession();
+    await cdp.send("DOM.enable");
+    await cdp.send("CSS.enable");
+    const { root } = await cdp.send("DOM.getDocument", { depth: -1 });
+    const drawn: string[] = [];
+    for (const c of typeChecks) {
+      const { nodeId } = await cdp.send("DOM.querySelector", { nodeId: root.nodeId, selector: `[data-sheet="${c.form}"] :is(${c.sel})` });
+      if (!nodeId) continue;
+      const { fonts } = await cdp.send("CSS.getPlatformFontsForNode", { nodeId });
+      const main = [...fonts].sort((a, b) => b.glyphCount - a.glyphCount)[0];
+      if (main && !(c.face === "mincho" ? /Mincho/ : /Gothic/).test(main.familyName)) drawn.push(`${c.form} ${c.label}: ${main.familyName}`);
+    }
+    await cdp.detach();
+    await page.emulateMediaType(undefined);
+    const bad: string[] = [...drawn];
+    typeChecks.forEach((c, i) => {
+      const els = got[i];
+      if (els.length === 0) bad.push(`${c.form} ${c.label}: 紙面に無い（${c.sel}）`);
+      for (const e of els) {
+        const want = c.face === "mincho" ? /Mincho/ : /Gothic/;
+        if (!want.test(e.family)) bad.push(`${c.form} ${c.label}「${e.text}」: 書体 ${e.family}`);
+        if (Math.abs(e.px - c.px) > 0.05) bad.push(`${c.form} ${c.label}「${e.text}」: ${e.px}px（原本 ${c.px.toFixed(2)}px）`);
+        if (c.bold !== null && e.weight >= 600 !== c.bold) bad.push(`${c.form} ${c.label}「${e.text}」: 太さ ${e.weight}`);
+        if (c.underline !== null && e.underline !== c.underline) bad.push(`${c.form} ${c.label}「${e.text}」: 下線 ${e.underline}`);
+      }
+    });
+    expect(bad).toEqual([]);
+  }, 60_000);
+
+  it("余白は元の様式のとおり（松山市・医療要約は紙の箱の内側、様式 9 は @page。T85）", async (ctx) => {
+    if (!fontOk) ctx.skip();
+    await page.setContent(paperPage(matsuyamaHtml("p-01") + medicalHtml("p-01")!, css), { waitUntil: "load" });
+    await page.emulateMediaType("print");
+    const pad = await page.evaluate(() => {
+      const mmOf = (px: string) => Math.round((Number.parseFloat(px) * 25.4 * 10) / 96) / 10;
+      return [...document.querySelectorAll<HTMLElement>("[data-sheet] > .paper")].map((el) => {
+        const st = getComputedStyle(el);
+        return {
+          sheet: el.parentElement!.dataset.sheet,
+          top: mmOf(st.paddingTop),
+          right: mmOf(st.paddingRight),
+          bottom: mmOf(st.paddingBottom),
+          left: mmOf(st.paddingLeft),
+        };
+      });
+    });
+    await page.emulateMediaType(undefined);
+    const want = (a: typeof MATSUYAMA_AUDIT, page: number) => {
+      const m = { ...a.paper.margins, ...a.paper.used };
+      return { sheet: a.id, top: m.top[Math.min(page, m.top.length - 1)], right: m.right, bottom: m.bottom, left: m.left };
+    };
+    expect(pad).toEqual([want(MATSUYAMA_AUDIT, 0), want(MATSUYAMA_AUDIT, 1), want(MEDICAL_AUDIT, 0)]);
+    const m = FORM9_AUDIT.paper.margins;
+    expect(readRepoFile("components/forms/form9-paper.css")).toMatch(
+      new RegExp(`@page form9 \\{\\s*size: A4 landscape;\\s*margin: ${m.top[0]}mm ${m.right}mm ${m.bottom}mm ${m.left}mm;`),
+    );
   }, 60_000);
 });

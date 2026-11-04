@@ -16,26 +16,26 @@ export function cssString(s: string): string {
   return `"${s.replace(/[\\"]/g, (c) => `\\${c}`).replace(/[\n\r]/g, " ")}"`;
 }
 
-/** 列（幅は mm。合わせて 280mm = A4 横 297mm − 左右 8.5mm） */
+/** 列（幅は mm。合わせて 261mm = A4 横 297mm − ひな形の左右の余白 18mm。T85） */
 const COLS: ReadonlyArray<{ key: string; mm: number }> = [
-  { key: "no", mm: 7 },
-  { key: "medicalCare", mm: 19 },
-  { key: "environment", mm: 15 },
-  { key: "evacuation", mm: 18 },
-  { key: "area", mm: 15 },
-  { key: "nameAge", mm: 19 },
-  { key: "address", mm: 13 },
-  { key: "shelter", mm: 14 },
-  { key: "facility", mm: 12 },
-  { key: "notes", mm: 13 },
-  { key: "careManager", mm: 9 },
-  { key: "checkedAt", mm: 18 },
-  { key: "color", mm: 11 },
-  { key: "reason", mm: 21 },
-  { key: "emergency", mm: 30 },
-  { key: "means", mm: 20 },
-  { key: "result", mm: 15 },
-  { key: "manual", mm: 11 },
+  { key: "no", mm: 6 },
+  { key: "medicalCare", mm: 21 },
+  { key: "environment", mm: 13.5 },
+  { key: "evacuation", mm: 20 },
+  { key: "area", mm: 14.5 },
+  { key: "nameAge", mm: 16.5 },
+  { key: "address", mm: 11.5 },
+  { key: "shelter", mm: 11.5 },
+  { key: "facility", mm: 10 },
+  { key: "notes", mm: 11 },
+  { key: "careManager", mm: 7.5 },
+  { key: "checkedAt", mm: 9.5 },
+  { key: "color", mm: 8 },
+  { key: "reason", mm: 16.5 },
+  { key: "emergency", mm: 38.5 },
+  { key: "means", mm: 22 },
+  { key: "result", mm: 10.5 },
+  { key: "manual", mm: 13 },
 ];
 
 /** 安否確認できた日（2026-11-03 01:39）を紙の幅に合わせて 11/3 01:39 に（年は作成日でわかる） */
@@ -134,13 +134,12 @@ export function Form9Paper({ sheet, office, date, order, report }: Form9PaperPro
     <div className="print-only" data-paper-print>
       <style>{`@page form9 { @bottom-left { content: ${cssString(`${title}　${office}`)}; } }`}</style>
       <section className="paper paper-flow form9-paper" data-paper-root data-sheet="form9" aria-label={title}>
-        <div className="head-row">
-          <h1 className="title">{title}</h1>
-          <div className="top-col">
-            <span className="nowrap">事業所名 {office}</span>
-            <span className="nowrap">作成 {paperText(date)}</span>
-            <span className="nowrap">{order}</span>
-          </div>
+        {/* ひな形の並び（T85）: 上に題、その下の行の左に事業所名・右に作成。並び（ケア72）は間に */}
+        <h1 className="title">{title}</h1>
+        <div className="top">
+          <span className="nowrap">事業所名 {office}</span>
+          <span>{order}</span>
+          <span className="nowrap">作成 {paperText(date)}</span>
         </div>
         <table className="sheet form9-table">
           <colgroup>
