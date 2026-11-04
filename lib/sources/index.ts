@@ -37,7 +37,7 @@ type SourceFields = {
 /** 引用の長さの上限（字） */
 export const QUOTE_MAX = 15;
 
-/** 登録簿。並びは docs/SOURCES.md の並び（制度 → 機器 → 透析 → 薬 → 認知症 → 血栓 → 記録） */
+/** 登録簿。並びは docs/SOURCES.md の並び（制度 → 機器 → 透析 → 薬 → 認知症 → 血栓 → 記録 → 発災からの時間の目安〔T104〕） */
 export const SOURCES = [
   {
     id: "cao-shishin-2021",
@@ -63,7 +63,8 @@ export const SOURCES = [
     page: "https://www.mhlw.go.jp/stf/seisakunitsuite/bunya/hukushi_kaigo/kaigo_koureisha/douga_00002.html",
     summary:
       "介護事業所の自然災害の BCP の作り方。居宅介護支援は、先に安否を確かめる利用者を台帳で分かるようにし、連絡手段を複数持つ。ひな形の様式 9 は災害時利用者一覧表（安否確認の優先順位）",
-    scope: "安否を確かめる順を事業所が持つことの根拠（信号の行・並び・骨格の段 8・様式 9）",
+    scope:
+      "安否を確かめる順を事業所が持つことの根拠（信号の行・並び・骨格の段 8・様式 9）。訓練の時間帯の目安で、行政の支援が始まる目安を被災後 3 日目とする備蓄の記述（lib/drill/timeline.ts）",
     quote: { text: "優先的に安否確認が必要な利用者", where: "3-2-4 居宅介護支援サービス固有事項" },
     note: "ひな形（Excel）は同じ頁の「自然災害ひな形」",
     checkedOn: null,
@@ -203,6 +204,74 @@ export const SOURCES = [
       "避難所などで医療班が使う共通の診療記録。特記事項（常用薬等）に抗血小板薬・抗凝固薬・糖尿病の薬・ステロイド・抗てんかん薬・透析・在宅酸素の欄、要保護者に支援者のいない要配慮者の欄、メディカル ID の作り方",
     scope: "医療班の要約（T07）の順と欄、骨格の段 7、「支援者なし」",
     quote: { text: "支援者のいない要配慮者等", where: "【要保護者】の欄" },
+    checkedOn: null,
+  },
+  // ---------- 発災からの時間の目安（T104。lib/drill/timeline.ts と監督の根拠 DIRECTOR_SOURCES が引く） ----------
+  {
+    id: "soumu-iburi-2019",
+    publisher: "総務省",
+    title: "通信・放送の被害状況 平成30年北海道胆振東部地震",
+    year: 2019,
+    edition: "被害の数は平成31年1月16日現在",
+    url: "https://www.soumu.go.jp/main_content/000585075.pdf",
+    summary:
+      "北海道の地震（2018 年 9 月）の通信の被害。発災から約 11 時間は全道で停電し、5 割が解けたのは約 30 時間後、電力会社の復旧の宣言は約 64 時間後。長い停電で携帯の基地局の予備電源が尽き、発災の日の夜に最大約 6,500 局が止まった",
+    scope: "訓練の時間帯の目安（停電の続く時間と、停電が長引いて携帯がつながらなくなる時期。lib/drill/timeline.ts）",
+    quote: { text: "基地局の予備電源が枯渇し", where: "携帯電話の被害の頁" },
+    note: "停電の時間は通信の資料の中の概況として載っている。一部の町の停電は約 1 か月続いた",
+    checkedOn: null,
+  },
+  {
+    id: "soumu-tsushin-2026",
+    publisher: "総務省総合通信基盤局電気通信事業部",
+    title: "災害時における通信の確保について",
+    year: 2026,
+    edition: "令和8年2月25日（総合通信局の防災セミナーの資料）",
+    url: "https://www.soumu.go.jp/main_content/001060240.pdf",
+    summary:
+      "災害時の通信の対策のまとめ。情報通信ネットワーク安全・信頼性基準で、市町村役場などをカバーする携帯電話の基地局に少なくとも 24 時間の停電対策を義務とし、離島・半島の役場や国の機関をカバーする局は 72 時間を推奨する（令和 7 年 3 月の改正）",
+    scope: "訓練の時間帯の目安（停電が 1 日を超えると基地局の電源が尽きうること。lib/drill/timeline.ts）",
+    quote: { text: "少なくとも24時間の停電対策", where: "携帯電話基地局等の停電対策の頁" },
+    note: "セミナーの資料。基準の本体は告示（情報通信ネットワーク安全・信頼性基準）",
+    checkedOn: null,
+  },
+  {
+    id: "mhlw-water-2016",
+    publisher: "厚生労働省",
+    title: "平成28年熊本地震における主な対応（水道関係）",
+    year: 2016,
+    edition: "資料1-1（断水の数は平成28年5月20日現在）",
+    url: "https://www.mhlw.go.jp/file/05-Shingikai-10601000-Daijinkanboukouseikagakuka-Kouseikagakuka/0000124972.pdf",
+    summary:
+      "熊本の地震の水道の被害と対応。断水は最大約 44.6 万戸。過去の主な地震と大雨の断水の戸数と最大断水日数の表があり、どの災害も断水は 3 日以上続いている",
+    scope: "訓練の時間帯の目安（断水は 72 時間のうちには戻らないことが多い。lib/drill/timeline.ts）",
+    quote: { text: "最大断水日数", where: "主な地震による被害の表" },
+    checkedOn: null,
+  },
+  {
+    id: "cao-hinanjo-2016",
+    publisher: "内閣府（防災担当）",
+    title: "避難所運営ガイドライン",
+    year: 2016,
+    edition: "平成28年4月",
+    url: "https://www.bousai.go.jp/taisaku/hinanjo/pdf/1604hinanjo_guideline.pdf",
+    summary:
+      "避難所の運営の手引き。災害の段階を初動（発災当日）・応急期（3 日目まで）・復旧期（1 週間まで）・復興期に分け、寝床は初動に毛布、応急期にマットや段ボール、4 日目以降に簡易ベッドと、時を追って環境を良くする",
+    scope: "訓練の時間帯の目安（避難所の段階。lib/drill/timeline.ts）",
+    quote: { text: "初動（発災当日）", where: "本ガイドラインの使い方" },
+    checkedOn: null,
+  },
+  {
+    id: "cao-fukushi-2021",
+    publisher: "内閣府（防災担当）",
+    title: "福祉避難所の確保・運営ガイドライン",
+    year: 2021,
+    edition: "平成28年4月（令和3年5月改定）",
+    url: "https://www.bousai.go.jp/taisaku/hinanjo/pdf/r3_hinanjo_guideline.pdf",
+    summary:
+      "福祉避難所の指定・確保・運営の手引き。直接の避難を進める一方で、支援者の到着が間に合わないなどで災害の初日に開設が間に合わない場合もあるとし、市町村に発災直後の要配慮者の避難先を考えておくよう求める",
+    scope: "訓練の時間帯の目安（福祉避難所は初日に開かないことがある。lib/drill/timeline.ts）",
+    quote: { text: "初日に開設が間に合わない", where: "第1章 2.2.5（p.24）" },
     checkedOn: null,
   },
 ] as const satisfies ReadonlyArray<SourceFields>;
