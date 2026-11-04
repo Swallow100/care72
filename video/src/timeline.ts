@@ -328,7 +328,8 @@ export const SCENES: Scene[] = [
       { at: 85, end: 88, kind: "footage", footage: "R07", from: 150.5, rate: 4, label: "72 時間を早送り" },
       // 強調の着信は小林 トシの夫（呼吸器の電池。訓練の 2 回とも山田の娘の着信は来なかった）。1.6 秒から: 鳴る → 3.06 秒に出る → 声（video/scripts/app-audio.mjs が R08 の音を作る）
       { at: 88, end: 93, kind: "footage", footage: "R08", from: 1.6, emphasis: true, label: "強調: 着信 小林 トシの夫（呼吸器の電池）", zoom: [{ x: 0.2, y: 0.08, w: 0.6 }, { x: 0.265, y: 0.115, w: 0.48 }] },
-      { at: 93, end: 99, kind: "footage", footage: "R07", from: 49.6, label: "手: 小林 トシに訪問依頼" },
+      // 手: 53.4 秒に小林 トシ、55.3 秒に訪問依頼、57.4 秒に実行（R07-2 の押した所）。対応の欄を上から下へ追う
+      { at: 93, end: 99, kind: "footage", footage: "R07", from: 53.0, label: "手: 小林 トシに訪問依頼", zoom: [{ x: 0.25, y: 0.08, w: 0.6 }, { x: 0.25, y: 0.4, w: 0.6 }] },
       // 採点（N19 の「対応の順を採点」「透析先の確認が後回し」）: 右の列の採点と条件到達に寄る。田中の透析先 未確認の行に囲み
       {
         at: 99,
