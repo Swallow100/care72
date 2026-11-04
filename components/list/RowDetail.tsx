@@ -3,7 +3,7 @@
 // 分類と直す口（T12）は classification で受ける。無ければ信号に付いた分類を読むだけで出し、それも無ければ「分類なし」。
 // 録音のまとめ（T69b）は分類の上に、本人の言葉（文字起こし）と左右に並べる。直す口は summary で受ける（無ければ読むだけ）。
 
-import { AiMark, StateTag, TONE_TEXT } from "@/components/person/parts";
+import { AiMark, REASON_TEXT, StateTag, TONE_TEXT } from "@/components/person/parts";
 import { COLOR_LABELS } from "@/lib/labels";
 import type { DetailSignal, RowDetail as Detail } from "@/lib/list/detail";
 import { CLASS_LABELS, DETAIL_LABELS } from "@/lib/list/labels";
@@ -34,7 +34,7 @@ export function RowDetail({
     <div className="space-y-2 text-sm" data-detail-of={d.personId}>
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 pt-1">
         <span className="text-xs text-muted">{DETAIL_LABELS.reason}</span>
-        <span className={`text-[15px] font-bold ${TONE_TEXT[d.tone]}`} data-reason>
+        <span className={`text-[15px] font-bold ${REASON_TEXT[d.tone]}`} data-reason>
           {d.reason}
         </span>
         {d.override && (

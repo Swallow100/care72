@@ -7,7 +7,7 @@
 import type { PersonHead as Head } from "@/lib/person";
 import { BLANK_LABELS, HEAD_LABELS } from "@/lib/labels";
 import { Mark } from "@/components/ui/Tag";
-import { LineText, StateTag, TONE_TEXT, type Level } from "./parts";
+import { LineText, REASON_TEXT, StateTag, TONE_TEXT, type Level } from "./parts";
 
 function Fact({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -86,7 +86,7 @@ export function PersonHead({ head, level, titleId }: { head: Head; level: Level;
                 ) : (
                   <div className="space-y-1">
                     <StateTag tone={p.tone} size="md">{p.label}</StateTag>
-                    {p.reason && <p className={`text-sm font-bold ${TONE_TEXT[p.tone]}`}>{p.reason}</p>}
+                    {p.reason && <p className={`text-sm font-bold ${REASON_TEXT[p.tone]}`}>{p.reason}</p>}
                   </div>
                 )}
               </Cell>
