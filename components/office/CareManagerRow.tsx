@@ -61,6 +61,12 @@ export function CareManagerRow({
   const router = useRouter();
   const fixed = isFixedAccount(item.id);
   const [mode, setMode] = useState<Mode>(openPassword && self && !fixed ? "password" : null);
+  // 同じ事業所の画面でヘッダーの「変更」を押したとき（部品は残り、印だけが付く）も欄を開く
+  const [openedFor, setOpenedFor] = useState(openPassword);
+  if (openPassword !== openedFor) {
+    setOpenedFor(openPassword);
+    if (openPassword && self && !fixed) setMode("password");
+  }
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<{ label: string; hasPeople: boolean } | null>(null);
   const [reissued, setReissued] = useState<string | null>(null);

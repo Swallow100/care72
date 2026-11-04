@@ -29,6 +29,12 @@ export function StaffPassword({
   children?: React.ReactNode;
 }) {
   const [open, setOpen] = useState(initialOpen && entry === "open");
+  // 受入一覧でヘッダーの「変更」を押したとき（部品は残り、印だけが付く）も欄を開く
+  const [openedFor, setOpenedFor] = useState(initialOpen);
+  if (initialOpen !== openedFor) {
+    setOpenedFor(initialOpen);
+    if (initialOpen && entry === "open") setOpen(true);
+  }
   const [done, setDone] = useState(false);
   const id = useId();
   return (
