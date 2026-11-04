@@ -36,16 +36,17 @@ export const HEAVY_RAIN_TRACK: RainTrack = {
   axisDeg: 32,
   flow: 6,
   keys: [
-    // 強い芯（帯の南西寄り）が 3 時間に南の低い所（浸水の想定の地区の辺り）、9 時間に北東の山すそを通るように置いた
-    { hour: 0, east: -3, north: -6, length: 18, width: 2.6, power: 1.4 },
-    { hour: 1, east: 0.5, north: -3.6, length: 22, width: 3, power: 2.3 },
-    { hour: 3, east: 3.5, north: -1.3, length: 26, width: 3.4, power: 3 },
-    { hour: 6, east: 5.3, north: 1.4, length: 26, width: 3.4, power: 2.7 },
-    { hour: 9, east: 6.8, north: 4, length: 24, width: 3.2, power: 2.3 },
-    { hour: 12, east: 8.5, north: 6.5, length: 22, width: 3, power: 1.9 },
-    { hour: 18, east: 11.5, north: 9.5, length: 18, width: 2.6, power: 1.3 },
-    { hour: 24, east: 14, north: 12, length: 14, width: 2.2, power: 0.9 },
-    { hour: 30, east: 17, north: 14.5, length: 10, width: 1.6, power: 0 },
+    // 強の芯（帯の南西寄り）が 3 時間に南の低い所（浸水の想定の地区の辺り）、9 時間に北東の山すそを通るように置いた。
+    // 帯は本物の線状の雨より小さい（担当一覧の地図の 1 枚に縁が見える大きさ）
+    { hour: 0, east: -2.1, north: -5.6, length: 14, width: 1.9, power: 1.4 },
+    { hour: 1, east: 0.2, north: -3.4, length: 17, width: 2.2, power: 2.3 },
+    { hour: 3, east: 2, north: -1.7, length: 20, width: 2.4, power: 3 },
+    { hour: 6, east: 3.5, north: 0.8, length: 20, width: 2.4, power: 2.7 },
+    { hour: 9, east: 4.9, north: 3.2, length: 19, width: 2.3, power: 2.3 },
+    { hour: 12, east: 6.7, north: 5.6, length: 17, width: 2.1, power: 1.9 },
+    { hour: 18, east: 9.5, north: 8.3, length: 14, width: 1.8, power: 1.3 },
+    { hour: 24, east: 12, north: 10.5, length: 11, width: 1.5, power: 0.9 },
+    { hour: 30, east: 14.5, north: 12.5, length: 8, width: 1.1, power: 0 },
   ],
   basis: "jma-h30-july-rain-2018",
 };

@@ -28,9 +28,9 @@ const TIER: Record<RainBand["strength"], { len: number; wid: number; shift: numb
 };
 /** 縁の凹凸の波（km の波長と、幅に対する振れ） */
 const WAVES = [
-  { length: 8.5, amp: 0.17 },
-  { length: 4.7, amp: 0.11 },
-  { length: 2.6, amp: 0.07 },
+  { length: 7, amp: 0.17 },
+  { length: 3.9, amp: 0.11 },
+  { length: 2.2, amp: 0.07 },
 ] as const;
 /** 帯の片側の点の数（両端は尖らせて 1 つ） */
 const SIDE_POINTS = 30;
@@ -85,7 +85,7 @@ function shapeOf(seed: number) {
   const cells = Array.from({ length: CELLS }, () => ({
     along: rand() * 0.8 - 0.4,
     across: (1.7 + rand() * 0.9) * (rand() < 0.5 ? -1 : 1),
-    radius: 0.8 + rand() * 0.8,
+    radius: 0.6 + rand() * 0.6,
     from: rand() * 8,
     life: 5 + rand() * 8,
     phase: rand() * Math.PI * 2,
