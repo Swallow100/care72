@@ -33,7 +33,7 @@ import type {
   SupportKind,
 } from "../db/types.ts";
 import { ageOn, todayJst } from "../age.ts";
-import { formLeaks, maskContactForms, maskPlaceAndNameForms, NAME_MARK } from "./forms.ts";
+import { CONTACT_PASSES, formLeaks, maskContactForms, maskPlaceAndNameForms, NAME_MARK, PLACE_NAME_PASSES, type Span } from "./forms.ts";
 
 export { ADDRESS_MARK, MAIL_MARK, NAME_MARK, NOT_NAME_WORDS, POSTAL_MARK } from "./forms.ts";
 
@@ -165,7 +165,15 @@ export type PseudonymKey = {
   readonly rules: ReadonlyArray<{ pattern: RegExp; replacement: string }>;
   /** 残っていたら漏れとみなす文字列（2 字以上） */
   readonly secrets: ReadonlyArray<{ value: string; what: string }>;
+  /**
+   * 町名 → 地区の別名（訓練の入力。T88）。置き換えの表は町名を別名にし、restoreText は別名を町名に戻す。
+   * 無ければ台帳の町名は（町名）
+   */
+  readonly places?: ReadonlyArray<Place>;
 };
+
+/** 町名と、Claude に見せる地区の別名（甲地区） */
+export type Place = { town: string; alias: string };
 
 export class PseudonymLeakError extends Error {
   readonly findings: string[];
@@ -236,6 +244,13 @@ export const KIND_ROLE: Readonly<Record<Exclude<ContactKind, "self" | "family" |
   other: "その他の連絡先",
 };
 
+/** 連絡先の役割名の元の語（番号の前。娘・支援者・民生委員）。名前のすぐ前に書かれた同じ語を名前と一緒に置き換える（T88） */
+function roleWord(c: Pick<ContactRow, "kind" | "relation">): string {
+  if (c.kind === "family" || c.kind === "self") return c.relation?.trim() || "家族";
+  if (c.kind === "supporter") return "支援者";
+  return KIND_ROLE[c.kind];
+}
+
 /** 本人の連絡先（self を除く）に役割名を付ける。本人の中で重ならない */
 export function contactRoles(contacts: ReadonlyArray<Pick<ContactRow, "kind" | "relation">>): string[] {
   const base = contacts.map((c) => {
@@ -284,9 +299,30 @@ export const TOWN_MARK = "（町名）";
 /** みまもり員の名前の置き換え先 */
 export const WATCHER_ROLE = "みまもり員";
 
-type Target = { kind: "person" | "contact"; replacement: string };
+/**
+ * 置き換え先。prefix は名前のすぐ前に書かれがちな同じ意味の語（続柄・役割の語）で、名前と一緒に置き換え先 1 つにする
+ * （「娘の森 恵子さん」→「娘」。「娘の娘」にしない。T88）
+ */
+type Target = { kind: "person" | "contact"; replacement: string; prefix: string | null };
 
-function buildKey(inputs: ReadonlyArray<PseudonymInput>): {
+/** 名前のすぐ後ろが施設・店の語なら、名前でなく施設の名前の一部（「森田医院」）。役割名・仮名にせず（氏名）にする（T88） */
+const FACILITY_AFTER =
+  "(?=病院|医院|クリニック|診療所|薬局|歯科|眼科|内科|外科|皮膚科|整形|小学校|中学校|高校|学校|保育園|幼稚園|公民館|集会所|会館|センター|ステーション|ホーム|商店|酒店|工務店|書店|製作所|建設|運送|自動車|団地|ハイツ|荘|苑|ビル|マンション|アパート|駅|橋)";
+
+/** 町名の rule と漏れの見張りの言葉 */
+function townRules(town: string, replacement: string, what: string, rules: Array<{ pattern: RegExp; replacement: string; len: number }>, secrets: Array<{ value: string; what: string }>): void {
+  for (const t of new Set([town, townStem(town)])) {
+    if (t.length >= 2) {
+      rules.push({ pattern: new RegExp(esc(t), "g"), replacement, len: t.length });
+      secrets.push({ value: t, what });
+    }
+  }
+}
+
+function buildKey(
+  inputs: ReadonlyArray<PseudonymInput>,
+  places: ReadonlyArray<Place> = [],
+): {
   key: PseudonymKey;
   roles: string[][];
 } {
@@ -307,10 +343,19 @@ function buildKey(inputs: ReadonlyArray<PseudonymInput>): {
   };
   const rules: Array<{ pattern: RegExp; replacement: string; len: number }> = [];
 
+  // 訓練の町名（T88）: 事業所の町名は全部、地区の別名に（本人自身の町名も）
+  const placeTowns = new Set<string>();
+  for (const p of places) {
+    const town = p.town.trim();
+    if (!town || placeTowns.has(town)) continue;
+    placeTowns.add(town);
+    townRules(town, p.alias, "町名", rules, secrets);
+  }
+
   inputs.forEach((input, i) => {
     const alias = aliasFor(i);
     people.push({ alias, personId: input.person.id, name: input.person.name });
-    const personTarget: Target = { kind: "person", replacement: alias };
+    const personTarget: Target = { kind: "person", replacement: alias, prefix: "本人" };
     for (const full of [input.person.name, input.person.kana]) {
       const parts = nameParts(full);
       add(exact, parts.join("\u0000"), personTarget);
@@ -321,21 +366,14 @@ function buildKey(inputs: ReadonlyArray<PseudonymInput>): {
     }
     if (input.person.birth_date) secrets.push({ value: input.person.birth_date, what: `${alias}の生年月日` });
 
-    const town = input.ledger.basic.address?.town;
-    if (town) {
-      for (const t of new Set([town, townStem(town)])) {
-        if (t.length >= 2) {
-          rules.push({ pattern: new RegExp(esc(t), "g"), replacement: TOWN_MARK, len: t.length });
-          secrets.push({ value: t, what: `${alias}の町名` });
-        }
-      }
-    }
+    const town = input.ledger.basic.address?.town?.trim();
+    if (town && !placeTowns.has(town)) townRules(town, TOWN_MARK, `${alias}の町名`, rules, secrets);
 
     // みまもり員（台帳の地域の支援者）は連絡先の表に無い名前。連絡先と同じく役割名に置き換え、漏れの見張りにも足す
     const watcher = input.ledger.local?.watcher?.trim();
     if (watcher) {
       const replacement = batch ? `${alias}の${WATCHER_ROLE}` : WATCHER_ROLE;
-      const t: Target = { kind: "contact", replacement };
+      const t: Target = { kind: "contact", replacement, prefix: WATCHER_ROLE };
       const parts = nameParts(watcher);
       add(exact, parts.join("\u0000"), t);
       secrets.push({ value: parts.join(" "), what: `${alias}の${WATCHER_ROLE}の名前` });
@@ -358,7 +396,7 @@ function buildKey(inputs: ReadonlyArray<PseudonymInput>): {
       }
       if (!c.name || c.kind === "self") return;
       const replacement = batch ? `${alias}の${r[j]}` : r[j];
-      const t: Target = { kind: "contact", replacement };
+      const t: Target = { kind: "contact", replacement, prefix: roleWord(c) };
       const parts = nameParts(c.name);
       add(exact, parts.join("\u0000"), t);
       secrets.push({ value: parts.join(" "), what: `${alias}の${r[j]}の名前` });
@@ -379,15 +417,32 @@ function buildKey(inputs: ReadonlyArray<PseudonymInput>): {
     return NAME_MARK;
   };
 
+  // 置き換え先が 1 つに決まり、その前置きの語（続柄・役割）も 1 つなら、名前の前のその語も一緒に置き換える（「娘の森 恵子さん」→「娘」）
+  const prefixOf = (targets: Target[], replacement: string): string => {
+    if (replacement === NAME_MARK) return "";
+    const ws = [...new Set(targets.filter((t) => t.replacement === replacement).map((t) => t.prefix))];
+    return ws.length === 1 && ws[0] ? `(?:${esc(ws[0])}[ 　]*(?:の|：|:)?[ 　]*)?` : "";
+  };
   for (const [joined, targets] of exact) {
     const parts = joined.split("\u0000");
-    const src = parts.map(esc).join(SPACE) + HONORIFIC;
-    rules.push({ pattern: new RegExp(src, "g"), replacement: pick(targets), len: joined.length + 100 });
+    const replacement = pick(targets);
+    const src = prefixOf(targets, replacement) + parts.map(esc).join(SPACE) + HONORIFIC;
+    rules.push({ pattern: new RegExp(src, "g"), replacement, len: joined.length + 100 });
   }
   for (const [part, targets] of partial) {
-    // 1 字の姓・名は敬称が付いたときだけ置き換える（「正」「清」は普通の言葉にも出る）
-    const src = part.length >= 2 ? esc(part) + HONORIFIC : esc(part) + "(?:さん|さま|様|氏|ちゃん|くん)";
-    rules.push({ pattern: new RegExp(src, "g"), replacement: pick(targets), len: part.length });
+    const replacement = pick(targets);
+    if (part.length >= 2) {
+      // 施設・店の名前の中の姓（「森田医院」）は仮名・役割名にしない（「A さん医院」「娘病院」にしない）
+      rules.push({ pattern: new RegExp(esc(part) + FACILITY_AFTER, "g"), replacement: NAME_MARK, len: part.length + 0.5 });
+      rules.push({ pattern: new RegExp(prefixOf(targets, replacement) + esc(part) + HONORIFIC, "g"), replacement, len: part.length });
+    } else {
+      // 1 字の姓・名は敬称が付いたときだけ置き換える（「正」「清」は普通の言葉にも出る）
+      rules.push({
+        pattern: new RegExp(prefixOf(targets, replacement) + esc(part) + "(?:さん|さま|様|氏|ちゃん|くん)", "g"),
+        replacement,
+        len: part.length,
+      });
+    }
   }
   rules.sort((a, b) => b.len - a.len);
 
@@ -396,24 +451,87 @@ function buildKey(inputs: ReadonlyArray<PseudonymInput>): {
     contacts,
     rules: Object.freeze(rules.map(({ pattern, replacement }) => ({ pattern, replacement }))),
     secrets: Object.freeze(secrets.filter((s) => s.value.length >= 2)),
+    ...(places.length > 0 ? { places: Object.freeze(places.map((p) => ({ town: p.town.trim(), alias: p.alias }))) } : {}),
   };
   return { key, roles };
 }
 
 /**
+ * 置き換えの記録の 1 単位（T88）。plain は元の 1 字のまま、back は元に戻せる印（仮名・（町名）・（氏名）などの伏せ字と、
+ * 地区の別名）、keep は戻さない印（役割名「娘」「支援者 1」。Claude は続柄の言葉として使うので、元の名前に戻すと続柄が名前になる）
+ */
+type Unit = { out: string; orig: string; kind: "plain" | "back" | "keep" };
+
+/** 印を当てる。spans は今の文（out を並べた物）の位置。重なりは先の物を取り、印の途中にかかる所は印ごと */
+function applyUnits(units: Unit[], spans: ReadonlyArray<Span>, mark: string, kind: "back" | "keep"): { units: Unit[]; count: number } {
+  if (spans.length === 0) return { units, count: 0 };
+  const starts: number[] = [];
+  let pos = 0;
+  for (const u of units) {
+    starts.push(pos);
+    pos += u.out.length;
+  }
+  const out: Unit[] = [];
+  let i = 0;
+  let last = 0;
+  let count = 0;
+  for (const s of [...spans].sort((a, b) => a.start - b.start)) {
+    if (s.start < last || s.end <= s.start) continue;
+    last = s.end;
+    while (i < units.length && starts[i] + units[i].out.length <= s.start) out.push(units[i++]);
+    let orig = "";
+    let j = i;
+    while (j < units.length && starts[j] < s.end) orig += units[j++].orig;
+    if (j === i) continue;
+    out.push({ out: mark, orig, kind });
+    count++;
+    i = j;
+  }
+  while (i < units.length) out.push(units[i++]);
+  return { units: out, count };
+}
+
+const regexSpans = (re: RegExp, text: string): Span[] => {
+  const g = re.global ? re : new RegExp(re.source, `${re.flags}g`);
+  return [...text.matchAll(g)].map((m) => ({ start: m.index, end: m.index + m[0].length }));
+};
+
+const joinOut = (units: ReadonlyArray<Unit>) => units.map((u) => u.out).join("");
+
+/** 置き換えの表の置き換え先のうち、元に戻せる物（仮名・伏せ字・地区の別名）。ほかは役割名 */
+function restorable(replacement: string, key: PseudonymKey): boolean {
+  return /^[A-Z]+ さん$/u.test(replacement) || replacement.startsWith("（") || (key.places ?? []).some((p) => p.alias === replacement);
+}
+
+/**
+ * 自由文の中の名前・町名・電話を置き換え、どの元の語をどの印にしたかを 1 字ずつ記録する（T88。入れる欄の戻しが使う）。
+ * 順: 台帳の名前・町名（表）→ メール・郵便番号 → 電話の形 → 住所の形 → 名前の形（T74・T88。./forms.ts）
+ */
+function scrubUnits(text: string, key: PseudonymKey): { units: Unit[]; count: number } {
+  let units: Unit[] = Array.from(text, (c) => ({ out: c, orig: c, kind: "plain" as const }));
+  let count = 0;
+  const step = (spans: Span[], mark: string, kind: "back" | "keep") => {
+    const r = applyUnits(units, spans, mark, kind);
+    units = r.units;
+    count += r.count;
+  };
+  for (const { pattern, replacement } of key.rules) {
+    const spans = regexSpans(pattern, joinOut(units));
+    if (spans.length > 0) step(spans, replacement, restorable(replacement, key) ? "back" : "keep");
+  }
+  for (const p of CONTACT_PASSES) step(p.find(joinOut(units)), p.mark, "back");
+  step(regexSpans(PHONE_LIKE, joinOut(units)), PHONE_MARK, "back");
+  for (const p of PLACE_NAME_PASSES) step(p.find(joinOut(units)), p.mark, "back");
+  return { units, count };
+}
+
+/**
  * 自由文の中の名前・町名・電話を置き換え、置き換えた所の数を返す。
- * 順: 台帳の名前・町名（表）→ メール・郵便番号 → 電話の形 → 住所の形 → 敬称つきの名前の形（T74。./forms.ts）
+ * 順: 台帳の名前・町名（表）→ メール・郵便番号 → 電話の形 → 住所の形 → 名前の形（T74・T88。./forms.ts）
  */
 function scrubCounted(text: string, key: PseudonymKey): { text: string; count: number } {
-  let out = text;
-  let count = 0;
-  for (const { pattern, replacement } of key.rules) {
-    out = out.replace(pattern, () => (count++, replacement));
-  }
-  const contact = maskContactForms(out);
-  out = contact.text.replace(PHONE_LIKE, () => (count++, PHONE_MARK));
-  const rest = maskPlaceAndNameForms(out);
-  return { text: rest.text, count: count + contact.count + rest.count };
+  const { units, count } = scrubUnits(text, key);
+  return { text: joinOut(units), count };
 }
 
 function scrub(text: string, key: PseudonymKey): string {
@@ -550,6 +668,11 @@ function toClaudePerson(input: PseudonymInput, alias: string, roles: string[], k
 export type PseudonymizeOptions = {
   /** 年齢を数える日（YYYY-MM-DD、JST）。既定は今日 */
   on?: string;
+  /**
+   * 町名 → 地区の別名（訓練の本人役・監督・講評・世界。T88）。ここにある町名は（町名）でなく別名にし（本人自身の町名も）、
+   * 漏れの見張りにも足す（台帳の本人の町でなくても、事業所の町名が残れば止める）
+   */
+  places?: ReadonlyArray<Place>;
 };
 
 /**
@@ -561,7 +684,7 @@ export function pseudonymize(
   options: PseudonymizeOptions = {},
 ): { payload: ForClaude<ClaudePerson[]>; key: PseudonymKey } {
   const on = options.on ?? todayJst();
-  const { key, roles } = buildKey(inputs);
+  const { key, roles } = buildKey(inputs, options.places ?? []);
   const people = inputs.map((input, i) => toClaudePerson(input, aliasFor(i), roles[i], key, on));
   assertNoLeak(people, key);
   return { payload: seal(people), key };
@@ -600,7 +723,7 @@ export function maskReply(text: string, key: PseudonymKey): string | null {
   return findLeaks(masked, key).length > 0 ? null : masked;
 }
 
-/** Claude の返事の中の仮名（A さん）を氏名に戻す。画面に出す前に、ブラウザかサーバーで使う */
+/** Claude の返事の中の仮名（A さん）を氏名に、地区の別名（訓練の甲地区。T88）を町名に戻す。画面に出す前に、ブラウザかサーバーで使う */
 export function restoreText(text: string, key: PseudonymKey): string {
   const people = [...key.people].sort((a, b) => b.alias.length - a.alias.length);
   let out = text;
@@ -608,5 +731,69 @@ export function restoreText(text: string, key: PseudonymKey): string {
     const letters = esc(p.alias.replace(" さん", ""));
     out = out.replace(new RegExp(`(?<![A-Za-z])${letters}[ 　]?さん`, "g"), `${p.name}さん`);
   }
+  return restorePlaces(out, key);
+}
+
+/** 地区の別名（甲地区）を町名に戻す。長い別名から（甲2地区 を 甲地区 より先に） */
+export function restorePlaces(text: string, key: PseudonymKey): string {
+  let out = text;
+  for (const p of [...(key.places ?? [])].sort((a, b) => b.alias.length - a.alias.length)) out = out.split(p.alias).join(p.town);
   return out;
+}
+
+/**
+ * 仮名化の層に入れた本人の文字の値（台帳の文字の欄・連絡先の続柄と備考）。入れる欄で Claude が写した値を元の言葉に戻す元（T88）。
+ * 氏名・電話・生年月日は入れない
+ */
+export function inputTexts(input: PseudonymInput): string[] {
+  const out: string[] = [];
+  const walk = (v: unknown) => {
+    if (typeof v === "string") {
+      if (v.trim()) out.push(v);
+    } else if (Array.isArray(v)) v.forEach(walk);
+    else if (v && typeof v === "object") Object.values(v).forEach(walk);
+  };
+  walk(input.ledger);
+  for (const c of input.contacts) walk([c.relation, c.note]);
+  for (const k of input.clocks) walk([k.label, k.note]);
+  return out;
+}
+
+/**
+ * 入れる欄（T88）: Claude が写した値の伏せ字・仮名を、伏せる前の元の言葉に戻す関数を作る。sources はケアマネが入れた文と
+ * 台帳の文字の値（inputTexts）。値がどれかの元の伏せたあとの文にそのまま入っていて、元の言葉が 1 つに決まるときだけ、その元の言葉に
+ * （「（町名）小学校」→ 台帳の「かわなぎ小学校」）。役割名（娘・支援者 1）は戻さない（Claude は続柄の言葉として使う）。
+ * 決まらなければ restoreText（仮名だけ氏名に、伏せ字はそのまま残り、画面が人に直させる）
+ */
+export function sourceRestorer(sources: ReadonlyArray<string>, key: PseudonymKey): (value: string) => string {
+  const traces = [...new Set(sources)].map((s) => {
+    const units = scrubUnits(s, key).units;
+    const starts: number[] = [];
+    let pos = 0;
+    for (const u of units) {
+      starts.push(pos);
+      pos += u.out.length;
+    }
+    return { units, starts, out: joinOut(units) };
+  });
+  return (value: string) => {
+    if (!value.trim()) return value;
+    const found = new Set<string>();
+    for (const t of traces) {
+      for (let i = t.out.indexOf(value); i >= 0; i = t.out.indexOf(value, i + 1)) {
+        const a = t.starts.indexOf(i);
+        const end = i + value.length;
+        const b = end === t.out.length ? t.units.length : t.starts.indexOf(end);
+        // 印の途中で始まる・終わる所は戻さない
+        if (a < 0 || b < 0) continue;
+        found.add(
+          t.units
+            .slice(a, b)
+            .map((u) => (u.kind === "keep" ? u.out : u.orig))
+            .join(""),
+        );
+      }
+    }
+    return found.size === 1 ? [...found][0] : restoreText(value, key);
+  };
 }
