@@ -3,7 +3,7 @@
 
 import type { Field, Line, Pending, Row, Seg, StateTone } from "@/lib/person";
 import { BLANK_LABELS, CONSENT_STATUS_LABELS, PENDING_STATUS_LABELS } from "@/lib/labels";
-import { StateTag, TONE_TEXT } from "@/components/ui/Tag";
+import { Mark, StateTag, TONE_TEXT } from "@/components/ui/Tag";
 
 /** 見出しの段。単独のページは 1、担当一覧の右の面は 2 */
 export type Level = 1 | 2;
@@ -19,6 +19,8 @@ export function SegText({ seg }: { seg: Seg }) {
       </a>
     );
   }
+  // 色の無い地の印（関係者の役割「家族」「緊急 1」。状態の 4 色を使わない。T113）
+  if (seg.mark) return <Mark>{seg.text}</Mark>;
   if (seg.tone && seg.tone !== "muted") {
     return seg.tag ? (
       <StateTag tone={seg.tone}>{seg.text}</StateTag>
@@ -28,7 +30,9 @@ export function SegText({ seg }: { seg: Seg }) {
       </span>
     );
   }
-  return <span className={seg.tone === "muted" ? "text-muted" : undefined}>{seg.text}</span>;
+  // small は小さな字（心身の未入力の 1 行）
+  const cls = [seg.small ? "text-xs" : "", seg.tone === "muted" ? "text-muted" : ""].filter(Boolean).join(" ");
+  return <span className={cls || undefined}>{seg.text}</span>;
 }
 
 export function LineText({ line }: { line: Line }) {

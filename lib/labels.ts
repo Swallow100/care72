@@ -137,7 +137,8 @@ export const TIER_LABELS: Record<Tier, string> = {
 export const SECTION_LABELS = {
   medical: "医療",
   evacuation: "避難",
-  people: "人",
+  // 家族・緊急連絡先・支援者・民生委員・みまもり員・夜間支援の面。「人」だけでは何の面か分かりにくかった（T113、11/5 の決め）
+  people: "関係者",
   basic: "基本",
   consent: "同意",
   documents: "書類",
@@ -284,6 +285,12 @@ export const CONTACT_FLAG_LABELS = {
   nightUnknown: "夜間未確認",
   hasSmartphone: "スマホ",
 } as const;
+
+/**
+ * 関係者の面の連絡先の一覧（T113）。1 人 1 行で、役割（家族・緊急 1・支援 1・夜間可など）を印で並べる。
+ * 「緊急 1」「支援 1」は面の編集の欄（INTAKE_LABELS.emergency・supporter）と同じ言葉に順番を付けた物
+ */
+export const CONTACT_ROLE_LABELS = { list: "連絡先", emergency: "緊急", supporter: "支援" } as const;
 
 /** 薬・機器の行の中の小さな見出し */
 export const MED_PARTS = { amount: "用量", remaining: "残り", storage: "保管", battery: "電池" } as const;
@@ -491,6 +498,8 @@ export const PLACE_LABELS = {
   zoomOut: "縮小",
   /** 位置・中心がまだ無い */
   none: "未設定",
+  /** 位置・中心を置いてある（緯度経度の数字は出さない。T113） */
+  set: "設定済",
   /** スマホ・車の有無の選択（— / あり / なし） */
   smartphone: "スマホ",
   car: "車",

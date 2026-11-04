@@ -79,10 +79,10 @@ const ALL_IDS = SEED_PEOPLE.map((p) => p.person.id);
 const ASSERTING_WORDS = ["危険", "診断", "判定", "重症", "病気がわかる"];
 
 describe("本人のページ（種の 10 人）", () => {
-  it("10 人全員、区分が 医療・避難・人・基本・同意・書類・経過 の順で出る", () => {
+  it("10 人全員、区分が 医療・避難・関係者・基本・同意・書類・経過 の順で出る（T113 で「人」→「関係者」）", () => {
     for (const id of ALL_IDS) {
       const v = viewOf(id);
-      expect(v.sections.map((s) => s.label), id).toEqual(["医療", "避難", "人", "基本", "同意", "書類", "経過"]);
+      expect(v.sections.map((s) => s.label), id).toEqual(["医療", "避難", "関係者", "基本", "同意", "書類", "経過"]);
       expect(v.head.name).toBe(seed(id).person.name);
     }
   });
@@ -104,11 +104,13 @@ describe("本人のページ（種の 10 人）", () => {
 
     const people = textOf(v, "people");
     for (const w of ["森 恵子", "娘", "市内", "木村 ヨシ", "隣人", "090-0000-0011", "090-0000-0012"]) expect(people).toContain(w);
-    expect(rowOf(v, "people.supporter1")?.field).toMatchObject({ kind: "lines" });
+    // 支援者は連絡先の一覧の 1 行に「支援 1」の印（T113。埋まった支援者1 の行は出さない）
+    expect(people).toContain("森 恵子 娘 家族 緊急 1 支援 1");
+    expect(rowOf(v, "people.supporter1")).toBeUndefined();
     expect(textOf(v, "people")).toContain("民生委員 なし");
 
     const basic = textOf(v, "basic");
-    for (const w of ["松山市 かわなぎ町", "1942-04-18", "女", "090-0000-0001", "固定電話", "独居", "通常", "薬は 2 階の箪笥"]) {
+    for (const w of ["松山市 かわなぎ町", "昭和17年4月18日（1942）", "女", "090-0000-0001", "固定電話", "独居", "通常", "薬は 2 階の箪笥"]) {
       expect(basic).toContain(w);
     }
 
@@ -120,9 +122,13 @@ describe("本人のページ（種の 10 人）", () => {
 
   it("電話は tel: のリンク（ハイフンを落とす）", () => {
     const v = viewOf("p-01");
-    const field = rowOf(v, "people.supporter1")!.field;
+    // 連絡先の一覧は 1 人 1 回だけ電話（T113）
+    const field = rowOf(v, "people.contacts")!.field;
     const tels = field.kind === "lines" ? field.lines.flat().filter((s) => s.tel) : [];
-    expect(tels).toEqual([{ text: "090-0000-0011", tel: "09000000011" }]);
+    expect(tels).toEqual([
+      { text: "090-0000-0011", tel: "09000000011" },
+      { text: "090-0000-0012", tel: "09000000012" },
+    ]);
     expect(telHref("090-0000-0011")).toBe("09000000011");
     const html = renderToStaticMarkup(createElement(PersonView, { view: v, level: 1 }));
     expect(html).toContain('href="tel:09000000011"');
@@ -190,7 +196,7 @@ describe("本人のページ（種の 10 人）", () => {
     const v = viewOf("p-04");
     expect(textOf(v, "basic")).toContain("本人報告 参考扱い");
     expect(textOf(v, "basic")).toContain("判断 困難");
-    expect(textOf(v, "people")).toContain("支援者1 清水 正子 民生委員");
+    expect(textOf(v, "people")).toContain("清水 正子 民生委員 緊急 1 支援 1");
     expect(clocksOf(v)[0]).toMatchObject({ kind: "状態", value: null, runs: false, tone: null, start: "なし" });
   });
 
@@ -549,9 +555,10 @@ describe("情報を多く出す（CLAUDE.md「画面の決まり」）", () => {
 
   it("連絡先は 役割・名前・電話と来られる時間（夜間）", () => {
     const people = textOf(viewOf("p-03"), "people");
-    expect(people).toContain("田中 和子 妻 同居 夜間可");
-    expect(people).toContain("田中 浩 長男 市内 車 夜間未確認 スマホ 090-0000-0016");
-    expect(textOf(viewOf("p-01"), "people")).toContain("森 恵子 娘 市内 車 夜間未確認 スマホ 090-0000-0011");
+    // 1 人 1 行: 名前・間柄・役割の印・夜間・距離・車・スマホ・電話（T113）
+    expect(people).toContain("田中 和子 妻 家族 緊急 1 支援 1 夜間可 同居");
+    expect(people).toContain("田中 浩 長男 家族 緊急 2 支援 2 夜間未確認 市内 車 スマホ 090-0000-0016");
+    expect(textOf(viewOf("p-01"), "people")).toContain("森 恵子 娘 家族 緊急 1 支援 1 夜間未確認 市内 車 スマホ 090-0000-0011");
   });
 
   it("台帳の項目は空でも行を出す（細かい物は小さく）", () => {
@@ -574,7 +581,8 @@ describe("情報を多く出す（CLAUDE.md「画面の決まり」）", () => {
       expect(rowOf(v, "basic.housing")?.small).toBeUndefined();
     }
     expect(textOf(viewOf("p-01"), "basic")).toContain("寝たきり なし 認知症 なし");
-    expect(textOf(viewOf("p-02"), "basic")).toContain("聴覚 未入力");
+    // 心身の空の項目は下の 1 行にまとめる（T113）
+    expect(textOf(viewOf("p-02"), "basic")).toContain("未入力　聴覚");
   });
 });
 

@@ -338,8 +338,9 @@ describe("連絡先のスマホ・車（T68 の 3）", () => {
     expect(sqlite.prepare("SELECT has_smartphone, has_car FROM contacts WHERE person_id = ?1").get(pid)).toEqual({ has_smartphone: null, has_car: 1 });
     rows = await rowsOf();
     const view = toPersonView(rows, { today: TODAY });
-    const emergency = view.sections.flatMap((s) => s.blocks).find((b) => b.type === "row" && b.row.key === "people.emergency");
-    expect(JSON.stringify(emergency)).toContain('"車"');
+    // 関係者の面の連絡先の一覧（1 人 1 行。T113）の行に「車」
+    const contacts = view.sections.flatMap((s) => s.blocks).find((b) => b.type === "row" && b.row.key === "people.contacts");
+    expect(JSON.stringify(contacts)).toContain('"車"');
   });
 
   it("スマホ・車は手で直すときだけ（AI の分け方の保存に混ざると断る）", () => {
