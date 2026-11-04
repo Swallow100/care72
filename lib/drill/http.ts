@@ -8,7 +8,10 @@ import type { D1Database } from "@cloudflare/workers-types";
 import type { Principal } from "../auth/principal.ts";
 import { DRILL_ACTIONS, type DrillAction } from "../db/types.ts";
 import { COLOR_LABELS } from "../labels.ts";
+import { PseudonymLeakError } from "../pseudonym/index.ts";
+import { FREE_TEXT_MAX } from "./action-catalog.ts";
 import type { ActionHooks } from "./actions.ts";
+import { FREE_LABELS } from "./free-action.ts";
 import {
   abandonDrill,
   actDrill,
@@ -123,7 +126,8 @@ const isCount = (v: unknown): v is number => typeof v === "number" && Number.isI
 const isRef = (v: unknown): v is string | null => v === null || v === undefined || (typeof v === "string" && ID.test(v));
 
 /**
- * ケアマネの手の POST（JSON、T20）。{ step: 読んだ今の刻み, actions: 読んだ手の数, kind: 7 つの手, person: 本人の id か null, target: 連絡先の id か null }。
+ * ケアマネの手の POST（JSON、T20・T91）。{ step: 読んだ今の刻み, actions: 読んだ手の数, kind: 手の表の id, person: 本人の id か null, target: 連絡先の id か null,
+ * text: 自由対応の文（自由対応だけ、120 字まで） }。自由対応の文を伏せきれなければ 400（label「伏字不可」）。
  * 相手は台帳の連絡先から決める（lib/drill/db.ts）。手の前の左の表は画面と同じ道（loadDrillScreen）で作って手の記録に残す
  */
 export async function actionPost(
@@ -143,6 +147,10 @@ export async function actionPost(
   // 手のメモ（T59、任意、100 字まで）。記録に残すだけで Claude には渡さない
   if (b.memo !== undefined && b.memo !== null && (typeof b.memo !== "string" || [...b.memo.trim()].length > MEMO_MAX)) return drillError("invalid");
   const memo = typeof b.memo === "string" ? b.memo.trim() : "";
+  // 自由対応の文（T91、自由対応だけ、120 字まで）。伏せきれない文は 400「伏字不可」（Claude には送らない）
+  if (b.text !== undefined && b.text !== null && (typeof b.text !== "string" || [...b.text.trim()].length > FREE_TEXT_MAX)) return drillError("invalid");
+  const text = typeof b.text === "string" ? b.text.trim() : "";
+  if (b.kind === "free" && text === "") return drillError("invalid");
   const screen = await loadDrillScreen(db, scope, id, null);
   if (!screen) return drillError("not_found");
   const ranked = screen.rows.filter((r) => r.rank !== null).sort((x, y) => x.rank! - y.rank!);
@@ -152,20 +160,29 @@ export async function actionPost(
     ),
     ranking: ranked.map((r) => r.id),
   };
-  const r = await actDrill(
-    db,
-    scope,
-    id,
-    { step: b.step, actions: b.actions },
-    {
-      kind: b.kind as DrillAction,
-      person: (b.person as string | null | undefined) ?? null,
-      target: (b.target as string | null | undefined) ?? null,
-      ...(memo ? { memo } : {}),
-    },
-    now,
-    { ...(opts.hooks ? { hooks: opts.hooks } : {}), ...(opts.roll ? { roll: opts.roll } : {}), triage },
-  );
+  let r: Awaited<ReturnType<typeof actDrill>>;
+  try {
+    r = await actDrill(
+      db,
+      scope,
+      id,
+      { step: b.step, actions: b.actions },
+      {
+        kind: b.kind as DrillAction,
+        person: (b.person as string | null | undefined) ?? null,
+        target: (b.target as string | null | undefined) ?? null,
+        ...(memo ? { memo } : {}),
+        ...(b.kind === "free" ? { text } : {}),
+      },
+      now,
+      { ...(opts.hooks ? { hooks: opts.hooks } : {}), ...(opts.roll ? { roll: opts.roll } : {}), triage },
+    );
+  } catch (e) {
+    if (e instanceof PseudonymLeakError) {
+      return Response.json({ ok: false, error: "invalid", label: FREE_LABELS.refused }, { status: STATUS.invalid, headers: NO_STORE });
+    }
+    throw e;
+  }
   if (!r.ok) return drillError(r.error);
   return Response.json({ ok: true, id: r.record.id, step: r.step, hour: r.hour, minute: r.minute, status: r.status }, { headers: NO_STORE });
 }

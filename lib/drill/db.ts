@@ -61,6 +61,7 @@ import { EMPTY_WORLD, isInjectKind, SCENARIO_ORDER, scenarioOf, type WorldState 
 import { castScenario, mayBeCalled, needsCast, type Cast } from "./cast.ts";
 import { castFactsMap } from "./cast-facts.ts";
 import { loadPersonaSources } from "./persona.ts";
+import { FREE_TEXT_MAX, isCatalogAction } from "./action-catalog.ts";
 
 /** 訓練を開ける範囲。ケアマネの役だけ（審査員のケアマネの役も）。事業所と担当一覧の持ち主 */
 export type DrillScope = { officeId: string; careManagerId: string; accountId: string | null };
@@ -499,8 +500,8 @@ export async function advanceDrill(
 
 // ---------- ケアマネの手（T20） ----------
 
-/** memo はケアマネのメモ（T59、100 字まで。空は無し） */
-export type ActRequest = { kind: DrillAction; person: string | null; target: string | null; memo?: string };
+/** memo はケアマネのメモ（T59、100 字まで。空は無し）。text は自由対応の文（T91、120 字まで。自由対応だけ） */
+export type ActRequest = { kind: DrillAction; person: string | null; target: string | null; memo?: string; text?: string };
 
 /** 手のメモの長さの上限（字） */
 export const MEMO_MAX = 100;
@@ -538,7 +539,6 @@ async function resolveTarget(
     )
     .bind(req.person, officeId)
     .all<ContactForAct>();
-  const asTarget = (c: ContactForAct): ActTarget => ({ id: c.id, kind: c.kind, label: callTargetText(c), hasPhone: c.has_phone === 1 });
   if (req.kind === "call_person") {
     const self = rows.results.find((c) => c.kind === "self" && c.has_phone === 1) ?? rows.results.find((c) => c.kind === "self");
     return { ok: true, target: self ? asTarget(self) : null };
@@ -547,6 +547,22 @@ async function resolveTarget(
   const hit = rows.results.find((c) => c.id === req.target);
   if (!hit || !kinds.includes(hit.kind)) return { ok: false };
   return { ok: true, target: asTarget(hit) };
+}
+
+const asTarget = (c: ContactForAct): ActTarget => ({ id: c.id, kind: c.kind, label: callTargetText(c), hasPhone: c.has_phone === 1 });
+
+/** 自由対応（T91）の相手を選ぶ元: 本人の台帳の連絡先の全部（名前と番号は持たない）。本人なしは空 */
+async function freeContacts(db: D1Database, officeId: string, person: string | null): Promise<ActTarget[]> {
+  if (!person) return [];
+  const rows = await db
+    .prepare(
+      `SELECT c.id, c.kind, c.relation, CASE WHEN TRIM(COALESCE(c.phone, '')) <> '' THEN 1 ELSE 0 END AS has_phone
+         FROM contacts c JOIN people p ON p.id = c.person_id
+        WHERE c.person_id = ?1 AND p.office_id = ?2 ORDER BY c.sort, c.id`,
+    )
+    .bind(person, officeId)
+    .all<ContactForAct>();
+  return rows.results.map(asTarget);
 }
 
 /**
@@ -583,9 +599,13 @@ export async function actDrill(
     : {};
   const memo = req.memo?.trim() ?? "";
   if ([...memo].length > MEMO_MAX) return { ok: false, error: "invalid" };
+  // 自由対応（T91）: 文は要る。相手は読み替えた手で本人の台帳の連絡先から選ぶ（伏せきれない文は act が PseudonymLeakError を投げる）
+  const text = req.kind === "free" ? (req.text?.trim() ?? "") : "";
+  if (req.kind === "free" && (text === "" || [...text].length > FREE_TEXT_MAX)) return { ok: false, error: "invalid" };
+  const free = req.kind === "free" ? { text, contacts: await freeContacts(db, scope.officeId, person) } : {};
   const { state, record, ticks } = await act(
     before,
-    { kind: req.kind, person, target: resolved.target, ...(memo ? { memo } : {}) },
+    { kind: req.kind, person, target: resolved.target, ...(memo ? { memo } : {}), ...free },
     opts.hooks ?? {},
     opts.roll ?? Math.random,
     extra,
@@ -969,6 +989,10 @@ function asAction(person: string | null, p: Partial<ActionPayload>): ActionRecor
     before: p.before ?? { person: null, marks: {}, staff: 0, phone: "ok", roadClosed: false },
     result: null,
     ...(typeof p.memo === "string" && p.memo.trim() ? { memo: p.memo } : {}),
+    // 自由対応（T91）: 読み替えた手と文・理由（文と理由はサーバーの中だけ。withoutMemo が落とす）
+    ...(isCatalogAction(p.as) ? { as: p.as } : {}),
+    ...(typeof p.text === "string" && p.text.trim() ? { text: p.text } : {}),
+    ...(typeof p.reason === "string" && p.reason.trim() ? { reason: p.reason } : {}),
   };
 }
 
@@ -990,6 +1014,8 @@ function asResult(p: Partial<ResultPayload>): { id: string; result: ActionResult
       crossed: Array.isArray(p.crossed) ? p.crossed.filter(isNum) : [],
       atMinute: p.atMinute,
       heard: asHeard(p.heard),
+      // 向かってもらった人の着く時刻（T91）。作り直しでも同じ時刻にする
+      ...(isNum(p.arriveAt) ? { arriveAt: p.arriveAt } : {}),
     },
   };
 }
