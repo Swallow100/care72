@@ -63,6 +63,7 @@ import {
   type ClockMark,
 } from "./clock.ts";
 import { fireScheduled } from "./schedule.ts";
+import { screenIncidents, tableAheadOf } from "./state-rules.ts";
 import { cleanScale, fitToScale, scaleIncidents, type DrillScale } from "./scale.ts";
 import { HOME_TOWN_MAX } from "./self.ts";
 
@@ -744,10 +745,16 @@ export async function advance(
   const fixed = [...openingIncidents(state, first), ...table.events.filter((x) => x.minute > from && x.minute <= to).map((x) => x.event)];
   const fired = fireScheduled(state.world, to);
   const due = fired.incidents.filter((e) => !e.person || members.has(e.person));
-  const happened = [...fixed, ...due].map((e, i) => ({ e, i })).sort((a, b) => a.e.at - b.e.at || a.i - b.i).map((x) => x.e);
+  const sorted = [...fixed, ...due].map((e, i) => ({ e, i })).sort((a, b) => a.e.at - b.e.at || a.i - b.i).map((x) => x.e);
   // 世界の帳簿（予定の取り出し・本人役の呼んだ時刻・理由・数）。foldTick はここに状況を当て直す
   let book: WorldState = fired.world;
-  let world = happened.reduce((w, e) => applyEvent(w, e, e.at), settleWorld(book, to));
+  // 変わり方の決まり（T121、lib/drill/state-rules.ts）。表の出来事は「もう起きている」の門だけ、予定の出来事は時刻が来たときの門。
+  // 外した物は区切りに残さない（保存した区切りから作り直しても同じ世界）
+  const dueSet = new Set<DrillIncident>(due);
+  const ahead = tableAheadOf(table.events, to);
+  const screened = screenIncidents(settleWorld(book, to), sorted, { origin: "table", originOf: (e) => (dueSet.has(e) ? "scheduled" : "table") });
+  const happened = screened.kept;
+  let world = screened.world;
   const counts = { ...ZERO_COUNTS, ...(book.counts ?? {}) };
   const lastCalled = { ...(book.lastCalled ?? {}) };
   const touched = { ...(book.touched ?? {}) };
@@ -825,9 +832,13 @@ export async function advance(
     const out = await safely(() => hooks.director!(directorInput), [] as DirectorEvent[]);
     counts.director += 1;
     directorAt = to;
-    inserted = directorIncidents(Array.isArray(out) ? out : (out?.events ?? []), members, hour).slice(0, budget);
+    // 差し込みの数（種類ごと）を budget で切る。行（部品）で切ると、2 行になる種類（携帯不可と回復見込・土砂警戒と道）の 2 行目が落ちる（T121）
+    inserted = directorIncidents(Array.isArray(out) ? out : (out?.events ?? []), members, hour, budget);
   }
-  world = inserted.reduce((w, e) => applyEvent(w, e, e.at), world);
+  // 監督・世界の出来事も変わり方の決まりで見る（T121）。表がこのあと変える状態を先に変えない・一度きり・変わるのに要る時間
+  const kept = screenIncidents(world, inserted, { origin: "ai", minute: to, ahead });
+  inserted = kept.kept;
+  world = kept.world;
   const incidents = [...happened, ...inserted];
 
   // 3. 本人役
