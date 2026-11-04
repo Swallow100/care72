@@ -1,4 +1,4 @@
-// 色と置き場所。作者の指示（11/3 03:4x）で。
+// 色と置き場所。色は「青と白のコントラスト」。
 // 青地に白の字と面（話の段）、薄い青の地に白い面と青の字（道具の段）の 2 つを場面で切り替える（場面ごとの地は timeline.ts の ground）。
 // 澄んだ青 2 段と白だけ。強調に意味色の赤（至急）と緑（無事）だけを使う。
 // 区切りは線より地の色の段（地 → 面）で付ける。線を使うのは録画の上の囲みだけ。
@@ -49,7 +49,7 @@ export function palette(ground: Ground) {
 export const STATE_LABEL = { urgent: "至急", check: "要確認", unknown: "不明", ok: "無事" } as const;
 
 export const FONT = {
-  // アプリと同じ書体: 英数字は Inter、日本語は端末の書体（11/3 10:3x 作者。Web の日本語書体は使わない）。
+  // アプリと同じ書体: 英数字は Inter、日本語は端末の書体（Web の日本語書体は使わない）。
   // 書き出す端末（Windows）では Yu Gothic UI。本人・家族のスマホの文字を引用するときだけ UD
   main: '"Inter", "Hiragino Sans", "Yu Gothic UI", "Meiryo", sans-serif',
   ud: '"BIZ UDPGothic", "Inter", "Yu Gothic UI", sans-serif',
