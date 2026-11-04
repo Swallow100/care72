@@ -6,13 +6,15 @@
 // 表は欄の中で送らない（画面全体の縦 1 本。見出しの行は画面の上に留める、T38）。
 // T86: 様式の頁の画像があれば、左に頁の画像と欄ごとの値の場所（AI が読んだ矩形）を重ね（PageBoxes）、ずれていれば直す。
 // 行を選ぶ（行の欄に触る・位置を押す）とその欄の枠が選ばれ、枠を押すと行が選ばれる。書体（ゴシック・明朝）もここで直す。
+// T120: 台帳の項目なしで人が選ぶ欄（AI の候補がある欄・同意の欄）は「要選択」（黄の印）と候補の「採用」。読めなかった頁は「未読」と「再読」。
+// 日付・電話の欄は区切りの字（年・月・日）を直せる（区切りの空きの場所は頁の画像の上で）。
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { AiMark, StateTag } from "@/components/person/parts";
 import { INPUT } from "@/components/person/intake-ui";
 import { Button } from "@/components/ui/Button";
-import { AddIcon, RemoveIcon, RestoreIcon, SaveIcon } from "@/components/ui/Icon";
+import { AddIcon, RemoveIcon, RestoreIcon, RetryIcon, SaveIcon } from "@/components/ui/Icon";
 import { PageBoxes, type PageImageView } from "./PageBoxes";
 import { FIELD_TARGET, realignOptionBoxes, withBox, type BoxTarget } from "@/lib/forms/box-edit";
 import type { FormMappingStatus } from "@/lib/db/types";
@@ -25,9 +27,12 @@ import {
   fieldChanged,
   ITEM_GROUPS,
   LEDGER_ITEMS,
+  ledgerItem,
   LIMITS,
   MAPPING_LABELS as L,
   mappingStats,
+  needsPick,
+  PART_SHAPES,
   TYPEFACE_LABELS,
   TYPEFACES,
   type FieldBox,
@@ -76,6 +81,9 @@ export function MappingEditor({
   const images = pageImages && pageImages.length > 0 ? pageImages : null;
 
   const stats = mappingStats(m);
+  const picks = m.fields.filter(needsPick).length;
+  const unread = m.unread ?? [];
+  const [rereading, setRereading] = useState(false);
   const emptyLabels = m.fields.filter((f) => !f.removed && !f.label.trim()).map((f) => f.id);
   const canSave = !saving && stats.fields > 0 && emptyLabels.length === 0 && m.title.trim() !== "";
 
@@ -98,6 +106,31 @@ export function MappingEditor({
   };
   const setBox = (fid: string, t: BoxTarget, box: FieldBox | null) => replaceField(fid, (f) => withBox(f, t, box));
   const add = () => edit({ fields: [...m.fields, blankField(m.fields, m.pages)] });
+
+  // 読めなかった頁を読み直す（T120）。直しかけがあるときは押せない（保存した物に足すため）
+  const reread = async () => {
+    setRereading(true);
+    setMsg(null);
+    try {
+      const res = await fetch(`/api/forms/mappings/${encodeURIComponent(id)}/reread`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ version }),
+      });
+      const data = (await res.json().catch(() => null)) as { ok?: boolean; version?: number; mapping?: FormMapping; label?: string } | null;
+      if (res.ok && data?.ok && typeof data.version === "number" && data.mapping) {
+        setM(data.mapping);
+        setVersion(data.version);
+        setMsg({ tone: (data.mapping.unread ?? []).length > 0 ? "error" : "ok", text: (data.mapping.unread ?? []).length > 0 ? L.unread : L.reused });
+      } else {
+        setMsg({ tone: "error", text: data?.label ?? L.aiFailed });
+      }
+    } catch {
+      setMsg({ tone: "error", text: L.aiFailed });
+    } finally {
+      setRereading(false);
+    }
+  };
 
   const save = async () => {
     setSaving(true);
@@ -177,6 +210,20 @@ export function MappingEditor({
         <Stat label={L.changed} value={stats.changed} />
         <Stat label={L.added} value={stats.added} />
         <Stat label="対応" value={stats.mapped} />
+        {picks > 0 && (
+          <span className="tabular-nums" data-picks={picks}>
+            <StateTag tone="check">{L.pick}</StateTag> <span className="font-bold">{picks}</span>
+          </span>
+        )}
+        {unread.length > 0 && (
+          <span className="flex items-baseline gap-1.5" data-unread={unread.join(",")}>
+            <StateTag tone="check">{L.unread}</StateTag>
+            <span className="font-bold tabular-nums">{unread.map((p) => `${p}頁`).join("・")}</span>
+            <Button size="sm" icon={RetryIcon} disabled={dirty || rereading} onClick={reread} data-pending={rereading ? "" : undefined}>
+              {rereading ? L.reading : "再読"}
+            </Button>
+          </span>
+        )}
         {images && <Stat label={L.box} value={`${stats.placed}/${stats.fields}`} />}
         {images && stats.boxMoved > 0 && <Stat label={L.boxMoved} value={stats.boxMoved} />}
         {msg && (
@@ -315,11 +362,11 @@ function FieldRow({
           onChange={(e) => onChange({ label: e.target.value })}
         />
         {f.position && <div className="mt-0.5 truncate text-[11px] text-muted">{f.position}</div>}
-        {f.shape === "choice" && (
+        {(f.shape === "choice" || (PART_SHAPES.includes(f.shape) && (f.shape !== "text" || f.options.length > 0))) && (
           <input
             key={`${f.id}-${f.options.join("・")}`}
-            aria-label="選択肢"
-            placeholder="選択肢（・区切り）"
+            aria-label={f.shape === "choice" ? "選択肢" : L.parts}
+            placeholder={f.shape === "choice" ? "選択肢（・区切り）" : f.shape === "phone" ? "区切り（局番・市内・番号）" : "区切り（年・月・日）"}
             className={`${IN} mt-0.5`}
             defaultValue={f.options.join("・")}
             disabled={off}
@@ -366,7 +413,7 @@ function FieldRow({
           disabled={off || f.shape === "handwrite"}
           onChange={(e) => onChange({ item: (e.target.value || null) as LedgerItemKey | null })}
         >
-          <option value="">{f.shape === "handwrite" ? "手書き" : L.noItem}</option>
+          <option value="">{f.shape === "handwrite" ? "手書き" : needsPick(f) ? L.pick : L.noItem}</option>
           {GROUPED.map((g) => (
             <optgroup key={g.group} label={g.label}>
               {g.items.map((i) => (
@@ -377,6 +424,17 @@ function FieldRow({
             </optgroup>
           ))}
         </Select>
+        {needsPick(f) && (
+          // 項目なしで人が選ぶ欄（同意など。AI は本人の意思の欄を決まりで項目なしにする）。黄の印と、候補があれば採用
+          <div className="mt-0.5 flex flex-wrap items-center gap-1 text-xs" data-pick={f.id}>
+            <StateTag tone="check">{L.pick}</StateTag>
+            {f.ai?.candidate && (
+              <Button size="sm" onClick={() => onChange({ item: f.ai!.candidate! })}>
+                {L.candidate} {ledgerItem(f.ai.candidate).label} {L.adopt}
+              </Button>
+            )}
+          </div>
+        )}
       </td>
       <td className={CELL}>
         {f.ai ? (

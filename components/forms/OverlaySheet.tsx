@@ -80,7 +80,7 @@ export function OverlaySheet({
                   <div key={f.keys.join(" ")} className="ov-fill" style={at(f.box)} data-fill-keys={f.keys.join(" ")} aria-hidden />
                 ))}
               {p.items.map((it) => (
-                <Item key={`${it.fieldId}-${it.kind}`} it={it} />
+                <Item key={`${it.fieldId}-${it.kind}${it.kind === "text" && it.part !== undefined ? `-${it.part}` : ""}`} it={it} />
               ))}
             </div>
           </section>

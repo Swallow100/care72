@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/Button";
 import { AddIcon, MoveDownIcon, MoveLeftIcon, MoveRightIcon, MoveUpIcon, RemoveIcon, ZoomInIcon, ZoomOutIcon } from "@/components/ui/Icon";
 import { INPUT } from "@/components/person/intake-ui";
 import { BOX_STEP, boxOf, defaultSize, FIELD_TARGET, fromPercent, moveBox, placeAt, resizeBox, type BoxTarget } from "@/lib/forms/box-edit";
-import { MAPPING_LABELS as L, type FieldBox, type MappingField } from "@/lib/forms/mapping";
+import { keepsOptionBoxes, MAPPING_LABELS as L, type FieldBox, type MappingField } from "@/lib/forms/mapping";
 
 export type PageImageView = { page: number; width: number; height: number; src: string };
 
@@ -135,7 +135,7 @@ export function PageBoxes({
           );
         })}
         {sel?.page === img.page &&
-          sel.shape === "choice" &&
+          keepsOptionBoxes(sel.shape) &&
           sel.options.map((o, i) => {
             const b = sel.optionBoxes?.[i] ?? null;
             if (!b) return null;
@@ -177,7 +177,8 @@ function BoxControls({
   set: (b: FieldBox | null) => void;
 }) {
   const move = (dx: number, dy: number) => box && set(moveBox(box, dx * BOX_STEP, dy * BOX_STEP));
-  const targets = field.shape === "choice" ? [{ t: FIELD_TARGET, label: "欄" }, ...field.options.map((o, i) => ({ t: i, label: o }))] : [];
+  // 選ぶ欄の選択肢と、日付・電話の区切りの空き（T120）の場所も直せる
+  const targets = keepsOptionBoxes(field.shape) && field.options.length > 0 ? [{ t: FIELD_TARGET, label: "欄" }, ...field.options.map((o, i) => ({ t: i, label: o }))] : [];
   return (
     <div className="grid gap-1.5 rounded bg-panel2 p-2 text-sm" data-box-controls={field.id}>
       <div className="flex flex-wrap items-baseline gap-x-2">

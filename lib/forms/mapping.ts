@@ -654,3 +654,17 @@ export function nextFieldId(fields: readonly MappingField[]): string {
 export function blankField(fields: readonly MappingField[], page = 1): MappingField {
   return { id: nextFieldId(fields), page, section: "", label: "", position: "", shape: "text", options: [], item: null, removed: false, ai: null };
 }
+
+// ---------- 人が選ぶ欄（T120） ----------
+
+/** 同意・承諾の欄（決まりで AI が項目なしにする。取りこぼすと全部の紙で空く。評価の 1 回目の 11） */
+const CONSENT_LIKE = /同意|承諾/;
+
+/**
+ * 台帳の項目なしで、人が選ぶ欄か（確かめの画面で目立たせる）。外した欄・手書きの欄は除く。
+ * AI が候補を挙げた欄と、同意・承諾の欄（候補が無くても）
+ */
+export function needsPick(f: MappingField): boolean {
+  if (f.removed || f.item !== null || f.shape === "handwrite") return false;
+  return f.ai?.candidate !== undefined || CONSENT_LIKE.test(`${f.section} ${f.label}`);
+}
