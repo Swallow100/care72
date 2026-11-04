@@ -72,6 +72,7 @@ export function MappingEditor({
   const [dirty, setDirty] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const [target, setTarget] = useState<BoxTarget>(FIELD_TARGET);
+  const [zoom, setZoom] = useState(false);
   const images = pageImages && pageImages.length > 0 ? pageImages : null;
 
   const stats = mappingStats(m);
@@ -184,11 +185,29 @@ export function MappingEditor({
         )}
       </div>
 
-      <div className={images ? "mt-2 grid grid-cols-1 gap-3 xl:grid-cols-[minmax(20rem,26rem)_minmax(0,1fr)]" : "contents"}>
+      <div
+        className={
+          !images
+            ? "contents"
+            : zoom
+              ? "mt-2 grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,44rem)_minmax(0,1fr)]"
+              : "mt-2 grid grid-cols-1 gap-3 xl:grid-cols-[minmax(20rem,26rem)_minmax(0,1fr)]"
+        }
+      >
       {images && (
-        // 頁の画像は表を送っても見えるように留める（広い画面だけ。狭い画面は表の上）
-        <div className="self-start xl:sticky xl:top-2">
-          <PageBoxes pages={images} fields={m.fields} selected={selected} target={target} onSelect={selectFromBox} onTarget={setTarget} onBox={setBox} />
+        // 頁の画像は表を送っても見えるように留める（広い画面で、拡大していないとき。狭い画面は表の上）
+        <div className={zoom ? "self-start" : "self-start xl:sticky xl:top-2"}>
+          <PageBoxes
+            pages={images}
+            fields={m.fields}
+            selected={selected}
+            target={target}
+            onSelect={selectFromBox}
+            onTarget={setTarget}
+            onBox={setBox}
+            zoom={zoom}
+            onZoom={setZoom}
+          />
         </div>
       )}
       {/* 欄の中で送らない（前は 68vh の箱の中で縦に送っていた）。clip は留めた見出しを効かせたまま角の外を切る */}

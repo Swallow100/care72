@@ -29,7 +29,7 @@ const L = (y: number, h?: number): FieldBox => ({ x: 0.08, w: 0.22, ...row(y, h)
 const V = (y: number, h?: number): FieldBox => ({ x: 0.3, w: 0.62, ...row(y, h) });
 
 /** 選択肢の □ の場所（値の枠の中に、左から 0.12 ずつ） */
-const opts = (y: number, n: number): FieldBox[] => Array.from({ length: n }, (_, i) => ({ x: 0.31 + i * 0.12, y: y + 0.009, w: 0.018, h: 0.017 }));
+const opts = (y: number, n: number): FieldBox[] => Array.from({ length: n }, (_, i) => ({ x: 0.31 + i * 0.12, y: y + 0.011, w: 0.018, h: 0.013 }));
 
 export const KOMOREBI_LAYOUT: KomorebiField[] = [
   // ---- 1 頁 ----
@@ -64,7 +64,7 @@ export const KOMOREBI_LAYOUT: KomorebiField[] = [
     options: [],
     item: "medical.devices",
     labelBox: { x: 0.08, y: 0.68, w: 0.4, h: 0.035 },
-    box: { x: 0.5, y: 0.689, w: 0.018, h: 0.017 },
+    box: { x: 0.5, y: 0.691, w: 0.018, h: 0.013 },
   },
   { page: 1, section: "", label: "本人署名", shape: "handwrite", options: [], item: null, labelBox: L(0.78, 0.05), box: V(0.78, 0.05) },
   // ---- 2 頁 ----
@@ -81,8 +81,8 @@ export const KOMOREBI_LAYOUT: KomorebiField[] = [
     labelBox: L(0.42),
     box: V(0.42),
     optionBoxes: [
-      { x: 0.31, y: 0.429, w: 0.018, h: 0.017 },
-      { x: 0.5, y: 0.429, w: 0.018, h: 0.017 },
+      { x: 0.31, y: 0.431, w: 0.018, h: 0.013 },
+      { x: 0.5, y: 0.431, w: 0.018, h: 0.013 },
     ],
   },
   { page: 2, section: "", label: "市受付印", shape: "handwrite", options: [], item: null, labelBox: L(0.8, 0.08), box: V(0.8, 0.08) },
@@ -109,4 +109,46 @@ export function komorebiReadResult(typeface: Typeface = "mincho"): Required<Pick
       option_boxes: f.optionBoxes ?? [],
     })),
   };
+}
+
+const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+const at = (b: FieldBox) => `left:${b.x * 100}%;top:${b.y * 100}%;width:${b.w * 100}%;height:${b.h * 100}%`;
+
+/**
+ * 白紙の様式（A4 縦、2 頁）の HTML。印刷すると架空の様式の PDF になる（テストはこれを頁の画像にして読み取りに渡す代わりにする）。
+ * 欄の名前の枠と値を書く枠を罫線で描き、選ぶ欄は □ と選択肢の字、□ 1 つの欄は □ だけを刷る。値は何も書かない
+ */
+export function komorebiBlankHtml(): string {
+  const pages = [1, 2].map((page) => {
+    const cells = KOMOREBI_LAYOUT.filter((f) => f.page === page).flatMap((f) => {
+      const name = f.section && f.shape !== "check" ? `<span class="sec">${esc(f.section)}</span>${esc(f.label)}` : esc(f.label);
+      const out = [`<div class="lbl" style="${at(f.labelBox)}">${name}</div>`];
+      if (f.shape === "check") {
+        out.push(`<div class="sq" style="${at(f.box)}"></div>`);
+        return out;
+      }
+      out.push(`<div class="val" style="${at(f.box)}"></div>`);
+      (f.optionBoxes ?? []).forEach((b, i) => {
+        out.push(`<div class="sq" style="${at(b)}"></div>`);
+        out.push(`<div class="opt" style="left:${(b.x + b.w + 0.004) * 100}%;top:${b.y * 100}%;height:${b.h * 100}%">${esc(f.options[i])}</div>`);
+      });
+      return out;
+    });
+    const head = page === 1 ? `<h1>${esc(KOMOREBI_TITLE)}</h1><p class="ver">様式第1号（架空）</p>` : `<p class="ver">（裏）</p>`;
+    return `<section class="pg">${head}${cells.join("")}</section>`;
+  });
+  return `<!doctype html><html lang="ja"><head><meta charset="utf-8"><title>白紙の様式</title><style>
+@page { size: A4 portrait; margin: 0; }
+html, body { margin: 0; padding: 0; background: #fff; }
+.pg { position: relative; width: 210mm; height: 297mm; overflow: hidden; break-after: page; font-family: "BIZ UDPMincho", "BIZ UDP明朝", serif; color: #000; }
+.pg:last-child { break-after: auto; }
+h1 { position: absolute; left: 8%; top: 4%; margin: 0; font-size: 15pt; font-weight: 400; }
+.ver { position: absolute; right: 8%; top: 2.5%; margin: 0; font-size: 8pt; }
+.lbl, .val, .sq, .opt { position: absolute; box-sizing: border-box; }
+.lbl { border: 1px solid #000; background: #eee; font-size: 9pt; padding: 0 1.5mm; display: flex; align-items: center; gap: 1.5mm; }
+.sec { font-size: 7pt; }
+.val { border: 1px solid #000; border-left: none; }
+.sq { border: 1px solid #000; }
+.opt { font-size: 9pt; display: flex; align-items: center; }
+</style></head><body>${pages.join("")}</body></html>`;
 }

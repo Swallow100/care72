@@ -153,7 +153,7 @@ describe("場所の形（0〜1 の矩形）", () => {
     const sex = mapping.fields.find((f) => f.label === "性別")!;
     expect(sex.options).toEqual(["男", "女"]);
     expect(sex.optionBoxes).toHaveLength(2);
-    expect(sex.optionBoxes![1]).toEqual({ x: 0.43, y: 0.239, w: 0.018, h: 0.017 });
+    expect(sex.optionBoxes![1]).toEqual({ x: 0.43, y: 0.241, w: 0.018, h: 0.013 });
     // choice のほかの形は選択肢の場所を持たない
     expect(mapping.fields.find((f) => f.shape === "check")!.optionBoxes).toBeUndefined();
     expect(mappingStats(mapping)).toMatchObject({ fields: 20, placed: 20, boxMoved: 0 });
@@ -226,7 +226,7 @@ describe("場所を直す（確かめの画面の計算）", () => {
 
   it("選択肢の場所を替える・選択肢を書き直すと同じ名前の場所を引き継ぐ", () => {
     const sex = checkReadResult(komorebiReadResult()).mapping.fields.find((f) => f.label === "性別")!;
-    const moved = withBox(sex, 1, { x: 0.5, y: 0.239, w: 0.018, h: 0.017 });
+    const moved = withBox(sex, 1, { x: 0.5, y: 0.241, w: 0.018, h: 0.013 });
     expect(moved.optionBoxes![1]!.x).toBe(0.5);
     expect(moved.box).toEqual(sex.box);
     const cleared = withBox(withBox(sex, 0, null), 1, null);

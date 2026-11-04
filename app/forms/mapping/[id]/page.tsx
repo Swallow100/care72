@@ -55,7 +55,8 @@ export default async function FormMappingPage({ params }: Props) {
       </div>
 
       {/* 1 列のときも列の幅を 0 から（広い表は面の中で横に送り、画面を横に送らない） */}
-      <div className="mt-3 grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_16rem]">
+      {/* 頁の画像があるとき（T86）は画像と表を横に並べるので、差込の列は 1536px 以上だけ右に（それより狭いと表の列が潰れる） */}
+      <div className={`mt-3 grid grid-cols-1 gap-3 ${stored.pageImages ? "2xl:grid-cols-[minmax(0,1fr)_16rem]" : "xl:grid-cols-[minmax(0,1fr)_16rem]"}`}>
         <MappingEditor
           id={stored.id}
           version={stored.version}
