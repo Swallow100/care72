@@ -33,6 +33,7 @@ import {
   PENDING_STATUS_LABELS,
   PLACE_LABELS,
 } from "../labels.ts";
+import { evacMapText, type EvacMapValue } from "../map/route-edit.ts";
 import { NAME_MARK, PHONE_MARK, TOWN_MARK } from "../pseudonym/index.ts";
 import { displayValue, intakeField } from "./fields.ts";
 
@@ -114,7 +115,12 @@ export type IntakeChange =
    */
   | { t: "address"; value: AddressValue | null }
   /** 地図の位置（緯度経度）を置く・外す（null）。手で直すときだけ（T68）。Claude には渡さない（lib/pseudonym の ClaudePerson に無い） */
-  | { t: "location"; value: GeoPoint | null };
+  | { t: "location"; value: GeoPoint | null }
+  /**
+   * 避難先 1・2 の位置と避難経路の地図（T102。lib/map/route-edit.ts）。手で直すときだけ（経路地図の画面の保存）。
+   * 位置なので Claude には渡さない（lib/pseudonym の ClaudePerson に無い）
+   */
+  | { t: "evacMap"; value: EvacMapValue };
 
 export type ClockAddValue = {
   label: string;
@@ -219,6 +225,8 @@ export function changeText(c: IntakeChange): string {
       return addressText(c.value);
     case "location":
       return locationText(c.value);
+    case "evacMap":
+      return evacMapText(c.value);
   }
 }
 
