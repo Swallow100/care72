@@ -9,6 +9,7 @@
 // - 返事の形は部屋の custom tool と同じ WorldStepSchema（lib/drill/world-apply.ts）
 
 import { askJson, type AskJsonContext, type AskJsonRequest } from "../claude/call.ts";
+import { CATALOG_WORDS } from "./action-catalog.ts";
 import { CARE_LEVEL_LABELS, CLOCK_START_LABELS, CLOCK_UNIT_LABELS, DEVICE_LABELS, HOUSEHOLD_LABELS } from "../labels.ts";
 import { pseudonymize, pseudonymizeText, type ForClaude, type PseudonymInput, type PseudonymKey } from "../pseudonym/index.ts";
 import { aliasOfTown, areaOf, DEMO_AREA, geographyText, placesOf, townOfLedger, type Area } from "./area.ts";
@@ -198,15 +199,7 @@ export function buildCast(
   return { key, facts, people: ["本人たち（仮名。どこに住むかは書かない）:", ...lines].join("\n"), area, endings: endingsAllowed(officeId) };
 }
 
-const ACTION_WORDS: Readonly<Record<ActionRecord["kind"], string>> = {
-  call_person: "本人に電話",
-  call_contact: "家族・支援者に電話",
-  visit: "家に向かった",
-  dispatch: "訪問看護・介護の人に行ってもらうよう頼んだ",
-  request_welfare_shelter: "福祉避難所に受け入れを頼んだ",
-  report_city: "市役所に報告",
-  evacuate_self: "自分も避難",
-};
+const ACTION_WORDS: Readonly<Record<ActionRecord["kind"], string>> = CATALOG_WORDS;
 
 const COLOR_WORDS = { red: "赤（無事じゃない）", green: "緑（無事）", unknown: "連絡（安否は不明）" } as const;
 
@@ -280,8 +273,10 @@ export function worldNow(w: WorldState, area: Area = DEMO_AREA): string[] {
 export function tickText(input: WorldInput, cast: Pick<WorldCast, "key"> & Partial<Pick<WorldCast, "endings">>, prevHour: number, last: number): string {
   const endings = cast.endings !== false;
   const aliasOf = new Map(cast.key.people.map((p) => [p.personId, p.alias]));
-  const acts = actionLines(input.actions, prevHour, aliasOf);
-  const contacts = contactLines(input, prevHour, aliasOf);
+  // 連続の時計の訓練（T90）は前の区切りの時刻（分）から。刻みの道は前の刻みの時刻
+  const from = input.since !== undefined ? input.since / 60 : prevHour;
+  const acts = actionLines(input.actions, from, aliasOf);
+  const contacts = contactLines(input, from, aliasOf);
   const seen = lastLines(input, aliasOf);
   const hints = hintLines(input, aliasOf);
   const ended = Object.keys(input.world.ended ?? {}).flatMap((p) => (aliasOf.has(p) ? [aliasOf.get(p)!] : []));

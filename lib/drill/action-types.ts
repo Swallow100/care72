@@ -64,6 +64,11 @@ export type ActionRecord = {
   text?: string;
   /** 自由に書く手の読み替えの理由（T91）。text と同じく Claude の入力には渡さない（withoutMemo で落とす） */
   reason?: string;
+  /**
+   * 自由に書く手（kind free）の読み替えた手（T91。lib/drill/action-catalog.ts の id）。時間・結果・効き目はこの手の行で決まり、
+   * 採点（T94）と本人役（T93）はこの手として数え・言う。Claude に渡るのはこの id と表の言い方だけ（文は渡さない）
+   */
+  as?: DrillAction;
 };
 
 /** 手の前の状態。本人の今の様子・印、職員の空き、電話の線、家の前の道。左の表の色と順位は保存の所が足す */
@@ -80,7 +85,7 @@ export type ActionBefore = {
   ranking?: string[];
 };
 
-/** 世界の返事の状態。T19 の WORLD_REPLY_LABELS の 13 と、電話に出ない・声がない・番号が無い */
+/** 世界の返事の状態。T19 の WORLD_REPLY_LABELS の 13 と記録（T91）と、電話に出ない・声がない・番号が無い */
 export type ActionStatus =
   | "ringing"
   | "connected"
@@ -95,6 +100,7 @@ export type ActionStatus =
   | "refused"
   | "reported"
   | "evacuated"
+  | "noted"
   | "noAnswer"
   | "silent"
   | "noNumber";
@@ -124,4 +130,9 @@ export type ActionResult = {
   atMinute: number;
   /** 通話・訪問で聞いた安否（T21）。保存の所が signals に足す（id は `<訓練>-<手の番号>-h`）。無ければ null */
   heard?: HeardSignal | null;
+  /**
+   * 向かってもらった人が本人の所に着く時刻（発災からの分。T91）。手の表の効き目 arrival の分（幅のある物は確率で決めた分）。
+   * 保存した物からの作り直しでも同じ時刻にするため返事に残す。採点（T94）の「届いた」の時刻
+   */
+  arriveAt?: number;
 };

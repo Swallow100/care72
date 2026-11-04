@@ -12,9 +12,13 @@ import { d1UsageStore } from "../claude/usage.ts";
 import type { PseudonymInput } from "../pseudonym/index.ts";
 import type { ActionHooks, CallHook } from "./actions.ts";
 import { drillScope } from "./db.ts";
-import { stopLog } from "./engine.ts";
+import { stopLog, type ClockHooks, type DrillState } from "./engine.ts";
+import { castFactsMap } from "./cast-facts.ts";
+import { clockMarksOf, type ClockMark } from "./clock.ts";
+import { drillClocks } from "./world-clocks.ts";
+import { clockRuns } from "./score.ts";
 import { createDirectorHook } from "./director.ts";
-import { createOutcomeHook, loadOutcomeSources, type OutcomeSource } from "./outcome.ts";
+import { createOutcomeHook, loadOutcomeSources, outageForRuns, type OutcomeSource } from "./outcome.ts";
 import { buildPersona, createPersonaHook, isPersonaFailure, loadPersonaSources, personaCallReply, personaPlaces } from "./persona.ts";
 import { createWorldHook, roomClientOf, worldModeOf, type RoomClient } from "./world-room.ts";
 
@@ -68,6 +72,8 @@ export function drillHooks(
       ...(mode === "session" ? { room: () => ({ db: env.DB, client: opts.room ?? roomClientOf(env), ai, ...(opts.roomTime ?? {}) }) } : {}),
     }),
     outcome: createOutcomeHook({ load: loadOutcome }),
+    // 連続の時計（T90）: 時計の半分・切れ（本人役の理由と「次まで」）と押せる人（巡回）。Claude を呼ばない
+    clock: createClockHooks({ loadOutcome, load }),
   };
 }
 
@@ -80,7 +86,39 @@ export function drillStepHooks(env: DrillHookEnv, p: Principal | null, opts: Par
   if (hooks) return hooks;
   const scope = drillScope(p);
   if (!scope) return undefined;
-  return { outcome: createOutcomeHook({ load: () => loadOutcomeSources(env.DB, scope.officeId) }) };
+  const loadOutcome = () => loadOutcomeSources(env.DB, scope.officeId);
+  // 連続の時計（T90）の「次まで」は鍵が無くても時計の半分・切れを読む（本人役は呼ばないので押せる人は要らない）
+  return { outcome: createOutcomeHook({ load: loadOutcome }), clock: createClockHooks({ loadOutcome }) };
+}
+
+/**
+ * 連続の時計（T90）の口。marks は走っている時計（ルールの表と同じ時計を訓練の世界で書き換えた物。採点の clockRuns）の半分と切れの時刻、
+ * pressable はスマホで押せる人のいる本人（本人役と同じ reportersOf、lib/drill/cast-facts.ts）。台帳は 1 要求に 1 回だけ読む
+ */
+export function createClockHooks(deps: {
+  loadOutcome: () => Promise<ReadonlyMap<string, OutcomeSource>>;
+  load?: () => Promise<ReadonlyMap<string, PseudonymInput>>;
+}): ClockHooks {
+  let outcome: Promise<ReadonlyMap<string, OutcomeSource>> | null = null;
+  const load = deps.load;
+  return {
+    marks: async (state: DrillState): Promise<ClockMark[]> => {
+      const sources = await (outcome ??= deps.loadOutcome());
+      const members = state.participants.filter((p) => sources.has(p) && !state.world.ended?.[p]);
+      const ledgers = members.map((p) => sources.get(p)!.ledger);
+      const towns = new Map(members.map((p) => [p, sources.get(p)!.ledger.basic.address?.town ?? null] as const));
+      const clocks = members.flatMap((p) => [...sources.get(p)!.clocks]);
+      return clockMarksOf(clockRuns(drillClocks(clocks, state.world), towns, outageForRuns(state.world, ledgers)));
+    },
+    ...(load
+      ? {
+          pressable: async () => {
+            const facts = castFactsMap(await load());
+            return new Set([...facts].filter(([, f]) => f.canPress).map(([id]) => id));
+          },
+        }
+      : {}),
+  };
 }
 
 /**

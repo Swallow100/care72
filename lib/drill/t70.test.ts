@@ -428,9 +428,9 @@ describe("押せる人なしと見込み（T70 の 2・5）", () => {
     const html = renderToStaticMarkup(createElement(StartButtons, { scenarios: SCENARIO_ORDER, disabled: false, people, ai: { kind: "ready", remaining: 30, limit: 200 } }));
     expect(html).toContain('data-no-presser-count="1"');
     expect(html).toContain("押せる人なし 1 人");
-    // 10 分版: 4 ×（1 + 2）+ 1 + 4 = 17。大雨: 12 × 3 + 1 + 12 = 49 は残り 30 を超える
+    // 10 分版: 4 ×（1 + 2）+ 1 + 4 = 17。大雨（T90 から連続の時計の式）: 監督 20 + 本人役 2 × 9 + 講評 1 + 声 9 = 48 は残り 30 を超える
     expect(html).toContain('data-estimate-scenario="short" data-estimate-calls="17"');
-    expect(html).toMatch(/data-estimate-scenario="heavy_rain" data-estimate-calls="49" data-over=""/);
+    expect(html).toMatch(/data-estimate-scenario="heavy_rain" data-estimate-calls="48" data-over=""/);
     expect(html).toContain("上限不足");
     expect(html).not.toMatch(/data-scenario="heavy_rain"[^>]*disabled/);
     const unknown = renderToStaticMarkup(createElement(StartButtons, { scenarios: SCENARIO_ORDER, disabled: false, people, ai: null }));

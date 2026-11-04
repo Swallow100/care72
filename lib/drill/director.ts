@@ -36,6 +36,7 @@ import { clockRemaining, formatHours, type Situation, type TriageClock } from ".
 // world-reply.ts は engine.ts より先に読む（engine → outcome → score → actions → director の輪で、actions.ts が
 // 世界の返事の言葉を読むときに初期化済みにしておく）
 import { WORLD_REPLY_LABELS } from "./world-reply.ts";
+import { CATALOG_WORDS } from "./action-catalog.ts";
 import {
   DIRECTOR_MAX,
   type DirectorEvent,
@@ -391,16 +392,8 @@ export function buildDirectorRequest(
 /** 言い換えの文の長さの上限（字） */
 export const REPLY_TEXT_MAX = 30;
 
-/** 手の言い方（指示の文。画面の言葉ではない） */
-const REPLY_ACTION_WORDS: Readonly<Record<DrillAction, string>> = {
-  call_person: "本人に電話",
-  call_contact: "連絡先に電話",
-  visit: "ケアマネが家に向かった",
-  dispatch: "訪問看護・介護の人に行ってもらうよう頼んだ",
-  request_welfare_shelter: "福祉避難所に受け入れを頼んだ",
-  report_city: "市役所に報告",
-  evacuate_self: "ケアマネが自分も避難",
-};
+/** 手の言い方（指示の文。画面の言葉ではない）。手の表（T91 の lib/drill/action-catalog.ts）の words */
+const REPLY_ACTION_WORDS: Readonly<Record<DrillAction, string>> = CATALOG_WORDS;
 
 const statusWords = (s: string): string =>
   (WORLD_REPLY_LABELS as Readonly<Record<string, string>>)[s] ?? (CALL_STATUS_LABELS as Readonly<Record<string, string>>)[s] ?? s;
