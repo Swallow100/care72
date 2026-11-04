@@ -42,7 +42,7 @@ export type UnconfirmedSummary = {
 };
 
 /** 帯と一覧に出す言葉 */
-export const UNCONFIRMED_LABELS = { unconfirmed: "未確認", blank: "未入力", noSource: "対応なし", fields: "欄一覧" } as const;
+export const UNCONFIRMED_LABELS = { unconfirmed: "未確認", blank: "未入力", noSource: "対応なし" } as const;
 
 /** 紙に「未確認」と刷る欄か（値の形で見る。lib/forms/mapped-sheet.ts の未確認の判定と同じ） */
 export function isUnconfirmedCell(cell: Cell): boolean {
