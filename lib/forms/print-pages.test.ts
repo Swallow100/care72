@@ -181,7 +181,7 @@ describe("書き方（Chrome なしで読む）", () => {
 
   it("様式 9 の紙: ひな形の枠（20 行）に順位の順に 10 人、別紙にも同じ順、ひな形の列の見出し（字のまま）、安否確認の時刻は 11/3 01:39 の形、報告の下書きは発災時だけ（T101）", () => {
     const f = form9Html(null);
-    const [sheetPart, annexPart] = f.split("data-annex");
+    const [sheetPart, annexPart] = f.split('data-annex="sheet"');
     expect([...sheetPart.matchAll(/data-rank="(\d+)"/g)].map((m) => Number(m[1]))).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
     expect([...annexPart.matchAll(/data-rank="(\d+)"/g)].map((m) => Number(m[1]))).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
     // ひな形の 20 行（No 1〜20 はひな形に刷ってある番号）

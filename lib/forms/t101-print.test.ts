@@ -53,7 +53,7 @@ describe.skipIf(!chrome)("印刷の頁で測る（headless Chrome）", () => {
     browser = await puppeteer.launch({ executablePath: chrome!, headless: true });
     page = await browser.newPage();
     await page.setContent(paperPage("<p>字</p>", css));
-    fontOk = await page.evaluate(FONT_PROBE);
+    fontOk = Boolean(await page.evaluate(FONT_PROBE));
   }, 60_000);
 
   afterAll(async () => {

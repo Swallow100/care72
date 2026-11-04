@@ -82,7 +82,7 @@ export default async function MatsuyamaFormPage({ params, searchParams }: Props)
       {framed ? (
         <OverlaySheet sheet={framed} imageSrc={(page) => originalPageHref("matsuyama", page)} checked="" fill={fill} kind="matsuyama" />
       ) : (
-        <MatsuyamaSheet sheet={sheet} />
+        <MatsuyamaSheet sheet={sheet} routeMap={routeMap} />
       )}
     </main>
   );

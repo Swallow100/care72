@@ -159,7 +159,7 @@ function Sheet({ rows, first, office, date, title, fill }: { rows: Form9Row[]; f
                       <span className="f9-in" style={{ height: mm(rowH - 0.3) }}>
                         {fill && r && p && p.lines.length === 0 && <span className="f9-fill" data-fill-cell={`${r.id}:${id}`} aria-hidden />}
                         {p && p.lines.length > 0 && (
-                          <span className="f9-v" style={{ fontSize: `${p.fontPt}pt` }} data-font={p.fontPt} data-annex={p.annex ? "1" : undefined}>
+                          <span className="f9-v" style={{ fontSize: `${p.fontPt}pt` }} data-font={p.fontPt} data-over={p.annex ? "1" : undefined}>
                             {p.lines.map((l, k) => (
                               <span key={k} className="f9-ln">
                                 {l}
@@ -251,7 +251,7 @@ export function Form9Paper({ sheet, office, date, order, report, fill = false }:
         {chunks.map((rows, i) => (
           <Sheet key={i} rows={rows} first={i * FORM9_ROWS_PER_PAGE + 1} office={office} date={date} title={title} fill={fill} />
         ))}
-        <section className="paper paper-flow form9-paper" aria-label={`${title} 別紙`} data-annex>
+        <section className="paper paper-flow form9-paper" aria-label={`${title} 別紙`} data-annex="sheet">
           <p className="f9-annex-h">
             別紙　{title}　{office}　作成 {paperText(date)}
           </p>

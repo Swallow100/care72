@@ -532,3 +532,16 @@ describe("buildFrameSheet の決まり", () => {
     expect(s.annex).toEqual([{ fieldId: "c:extra", label: "欄C", lines: ["し", "い"], reason: "unplaced" }]);
   });
 });
+
+describe("避難経路の地図の受け口（前からの紙面）", () => {
+  it("原本を取り込む前の紙面にも、渡したときだけ避難経路の段に画像", async () => {
+    const { MatsuyamaSheet } = await import("../../components/forms/MatsuyamaSheet.tsx");
+    const sheet = matsuyamaOf(0);
+    const none = renderToStaticMarkup(createElement(MatsuyamaSheet, { sheet }));
+    expect(none).not.toContain('data-slot="route-map"');
+    const withMap = renderToStaticMarkup(createElement(MatsuyamaSheet, { sheet, routeMap: { src: "/m.png", alt: "避難経路の地図" } }));
+    const route = withMap.slice(withMap.indexOf('data-block="route"'));
+    expect(route).toContain('data-slot="route-map"');
+    expect(route).toContain('src="/m.png"');
+  });
+});

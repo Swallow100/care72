@@ -651,3 +651,12 @@
     break-after: auto;
   }
 }
+
+/* 避難経路の地図（T102 が渡す。T101 の受け口）。欄の幅いっぱい、縦横の比を保って高さ 45mm まで */
+.paper.matsuyama .route-map {
+  display: block;
+  width: 100%;
+  max-height: 45mm;
+  object-fit: contain;
+  object-position: left top;
+}
