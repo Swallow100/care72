@@ -4,7 +4,9 @@
 // - 未確認の欄: 値の無い欄（kind unconfirmed）・選ぶ欄の未確認（choice の unconfirmed）・値の中に未確認のある欄（薬の用量など）。
 //   判定は文字（「未確認」を含むか）でなく欄の値の形で見る（注の字に「未確認」が入ることがあるため）
 // - 数えない: 手で書く欄（番号・自署・代理人・市受付印。紙面でも空けている）・同意の無い範囲（省略）・「なし」
-// - 未入力（台帳に項目はあるが値が無い。本人のページで直せる）と、対応なし（台帳に項目の無い欄。紙に手で書くか対応表で）を分ける
+// - 問い（台帳に置き場があり、本人のページの問い〔lib/intake/ask.ts の questionQueue〕で埋められる。T117）・未入力（台帳に置き場はあるが
+//   今の問いに無い。不明・無回答と記録した欄、面の編集で直す欄）・手書き（台帳に置き場が無い欄。紙に手で書く）に分ける。
+//   問いの分け方は lib/forms/form-inputs.ts の欄の元の表（紙に直接書く窓と同じ表）と、本人のページの「問い 残り N 問」と同じ問いの列から
 // - 松山市の計画書は buildMatsuyamaSheet の欄、対応表の紙（内閣府の様式例・事業所の対応表）は buildMappedSheet の欄。
 //   T86 の元の様式の上の紙は同じ欄を空けて刷る（未確認と刷らない）が、空く欄は同じなので同じ数え方
 // どちらも定型の計算で、Claude は呼ばない。
@@ -19,6 +21,7 @@ import {
   type Cell,
   type MatsuyamaBlock,
   type MatsuyamaFieldDef,
+  type MatsuyamaKey,
   type MatsuyamaSheet,
   type Piece,
 } from "./matsuyama.ts";
@@ -31,8 +34,10 @@ export type UnconfirmedField = {
   parts: string[];
   /** 台帳の pending の理由（いちばん初めの物） */
   reason: PendingStatus | null;
-  /** 台帳に項目の無い欄（対応なし） */
+  /** 台帳に項目の無い欄（手書き。紙に手で書く） */
   noSource: boolean;
+  /** 問いで埋められる欄（T117。本人のページの問いの列のどれかが、この欄の元に当たる） */
+  ask?: boolean;
 };
 
 export type UnconfirmedSummary = {
@@ -40,10 +45,15 @@ export type UnconfirmedSummary = {
   count: number;
   /** 欄（紙の順） */
   fields: UnconfirmedField[];
+  /**
+   * 手で印を付ける欄（T117 の棚卸しの C。計画書の「まつやま総合防災マップからの引用」）。紙は空けて刷り、未確認に数えず、帯の「手書き」にだけ出す。
+   * 署名・受付印のような手で書く欄（handwrite）は入れない（いつも空けておく物）
+   */
+  hand?: UnconfirmedField[];
 };
 
-/** 帯と一覧に出す言葉 */
-export const UNCONFIRMED_LABELS = { unconfirmed: "未確認", blank: "未入力", noSource: "対応なし" } as const;
+/** 帯と一覧に出す言葉（T117 で「対応なし」は「手書き」に。台帳に置き場の無い欄は紙に手で書く。docs/progress/t117.md の問い 4） */
+export const UNCONFIRMED_LABELS = { unconfirmed: "未確認", ask: "問い", blank: "未入力", noSource: "手書き" } as const;
 
 /** 紙に「未確認」と刷る欄か（値の形で見る。lib/forms/mapped-sheet.ts の未確認の判定と同じ） */
 export function isUnconfirmedCell(cell: Cell): boolean {
@@ -88,14 +98,19 @@ export function unconfirmedText(f: UnconfirmedField): string {
   return inner ? `${f.name}（${inner}）` : f.name;
 }
 
-/** 帯・一覧に渡す形（文字だけ。client の部品に渡せる） */
-export type UnconfirmedView = { count: number; blank: string[]; noSource: string[] };
+/**
+ * 帯・一覧に渡す形（文字だけ。client の部品に渡せる）。count は未確認（台帳に置き場のある欄。問い ＋ 未入力）、
+ * ask は問いで埋められる欄、blank は未入力、noSource は手書き（台帳に置き場の無い欄と、手で印を付ける欄）。帯は「未確認 N・手書き M」
+ */
+export type UnconfirmedView = { count: number; ask?: string[]; blank: string[]; noSource: string[] };
 
 export function unconfirmedView(s: UnconfirmedSummary): UnconfirmedView {
+  const placed = s.fields.filter((f) => !f.noSource);
   return {
-    count: s.count,
-    blank: s.fields.filter((f) => !f.noSource).map(unconfirmedText),
-    noSource: s.fields.filter((f) => f.noSource).map(unconfirmedText),
+    count: placed.length,
+    ask: placed.filter((f) => f.ask).map(unconfirmedText),
+    blank: placed.filter((f) => !f.ask).map(unconfirmedText),
+    noSource: [...s.fields.filter((f) => f.noSource), ...(s.hand ?? [])].map(unconfirmedText),
   };
 }
 
@@ -123,6 +138,7 @@ function plainLabel(label: string): string {
 }
 
 const NO_SOURCE = "台帳に無い";
+const HANDWRITE = "手書き";
 const PLAIN_COUNT = new Map<string, number>();
 for (const f of MATSUYAMA_FIELDS) PLAIN_COUNT.set(plainLabel(f.label), (PLAIN_COUNT.get(plainLabel(f.label)) ?? 0) + 1);
 
@@ -141,16 +157,27 @@ export function matsuyamaFieldName(f: MatsuyamaFieldDef): string {
   return plain;
 }
 
-/** 松山市の計画書の未確認の欄（紙の順） */
-export function matsuyamaUnconfirmed(sheet: MatsuyamaSheet): UnconfirmedSummary {
+/**
+ * 松山市の計画書の未確認の欄（紙の順）。askable は問いで埋められる欄（lib/forms/form-inputs.ts の matsuyamaAskable。
+ * 本人のページの問いの列から作る。渡さなければ全部「未入力」）
+ */
+export function matsuyamaUnconfirmed(sheet: MatsuyamaSheet, askable?: ReadonlySet<MatsuyamaKey>): UnconfirmedSummary {
   const fields: UnconfirmedField[] = [];
+  const hand: UnconfirmedField[] = [];
   for (const def of MATSUYAMA_FIELDS) {
     if (def.shape === "handwrite") continue;
     const cell = sheet.cells[def.key];
-    if (!cell || !isUnconfirmedCell(cell)) continue;
-    fields.push({ name: matsuyamaFieldName(def), ...partsOf(cell), noSource: def.source === NO_SOURCE });
+    if (!cell) continue;
+    // 手で印を付ける欄（source が手書きで、署名のような手書きの形でない欄）。何も選んでいなければ帯の「手書き」に
+    if (def.source === HANDWRITE) {
+      if (cell.kind === "choice" && !cell.options.some((o) => o.on)) hand.push({ name: matsuyamaFieldName(def), parts: [], reason: null, noSource: true });
+      continue;
+    }
+    if (!isUnconfirmedCell(cell)) continue;
+    const noSource = def.source === NO_SOURCE;
+    fields.push({ name: matsuyamaFieldName(def), ...partsOf(cell), noSource, ...(!noSource && askable?.has(def.key) ? { ask: true } : {}) });
   }
-  return { count: fields.length, fields };
+  return { count: fields.length, fields, hand };
 }
 
 // ---------- 対応表の紙（内閣府の様式例・事業所の対応表） ----------

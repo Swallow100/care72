@@ -63,6 +63,10 @@ export type EditData = {
     /** スマホ・車の有無（T68。無ければ未確認）。古い形の EditData（テスト）には無いので省ける */
     has_smartphone?: 0 | 1 | null;
     has_car?: 0 | 1 | null;
+    /** フリガナ・住所（市町村と町名まで）・携帯（T117、migration 0029）。古い形の EditData（テスト）には無いので省ける */
+    kana?: string | null;
+    address?: string | null;
+    mobile?: string | null;
   }>;
   clocks: Array<{
     id: string;
@@ -122,6 +126,10 @@ export type ContactDraft = {
   /** スマホ・車の有無（T68。空は未確認。省くと未確認） */
   smartphone?: FlagDraft;
   car?: FlagDraft;
+  /** フリガナ・住所・携帯（T117。省くと空） */
+  kana?: string;
+  address?: string;
+  mobile?: string;
 };
 /** 走る時計の起点（停電・発災）。走らない状態の時計（condition）は足せず、起点も none のまま */
 export type RunningStart = Exclude<ClockStart, "none">;
@@ -236,6 +244,9 @@ export const blankContact = (): ContactDraft => ({
   reach: "",
   smartphone: "",
   car: "",
+  kana: "",
+  address: "",
+  mobile: "",
 });
 
 const orderDraft = (n: number | null): OrderDraft => (n == null ? "" : String(n));
@@ -289,6 +300,9 @@ export function editDraft(d: EditData): EditDraft {
         reach: c.reach ?? "",
         smartphone: flagDraft(c.has_smartphone),
         car: flagDraft(c.has_car),
+        kana: s(c.kana),
+        address: s(c.address),
+        mobile: s(c.mobile),
       }),
     ),
     newContacts: [],
@@ -375,7 +389,7 @@ export function removalNames(changes: ReadonlyArray<IntakeChange>, d: EditData):
 
 /** 足す連絡先を送るか（何か書いたか） */
 function newContactFilled(c: ContactDraft): boolean {
-  return [c.relation, c.name, c.phone, c.note].some((x) => x.trim() !== "");
+  return [c.relation, c.name, c.phone, c.note, c.kana ?? "", c.address ?? "", c.mobile ?? ""].some((x) => x.trim() !== "");
 }
 
 /** 順の重なり（同じ緊急・支援の順を 2 人に付けた）。外す行と送らない空の行は数えない。保存（lib/intake/save.ts）も同じ物を断る */
@@ -626,6 +640,13 @@ export function editChanges(section: EditSection, d: EditData, draft: EditDraft)
         value[col] = c[col].trim();
         changed = true;
       }
+      // フリガナ・住所・携帯（T117）。省いた下書き（前の形）は変えない
+      for (const col of ["kana", "address", "mobile"] as const) {
+        const next = c[col];
+        if (next === undefined || next.trim() === s(cur[col])) continue;
+        value[col] = next.trim();
+        changed = true;
+      }
       const night = nightOf(c.night);
       const curNight = cur.night_ok === 1 ? true : cur.night_ok === 0 ? false : null;
       if (night !== curNight) {
@@ -684,6 +705,9 @@ export function editChanges(section: EditSection, d: EditData, draft: EditDraft)
           ...(c.relation.trim() ? { relation: c.relation.trim() } : {}),
           ...(c.name.trim() ? { name: c.name.trim() } : {}),
           ...(c.phone.trim() ? { phone: c.phone.trim() } : {}),
+          ...(c.kana?.trim() ? { kana: c.kana.trim() } : {}),
+          ...(c.address?.trim() ? { address: c.address.trim() } : {}),
+          ...(c.mobile?.trim() ? { mobile: c.mobile.trim() } : {}),
           ...(night !== null ? { nightOk: night } : {}),
           ...(c.note.trim() ? { note: c.note.trim() } : {}),
           ...(emergency !== null ? { emergencyOrder: emergency } : {}),

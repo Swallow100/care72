@@ -20,6 +20,7 @@ import { formsScope } from "@/lib/forms/mapping-db";
 import { originalPageHref } from "@/lib/forms/originals";
 import { loadOriginal } from "@/lib/forms/originals-http";
 import { matsuyamaUnconfirmed, unconfirmedView } from "@/lib/forms/unconfirmed";
+import { matsuyamaAskableOf } from "@/lib/forms/form-asks";
 import { MAPPING_LABELS as L } from "@/lib/forms/mapping";
 import { loadPersonDocument } from "@/lib/consent/documents";
 
@@ -55,7 +56,9 @@ export default async function MatsuyamaFormPage({ params, searchParams }: Props)
   ]);
   const sheet = buildMatsuyamaSheet(rows, { today: todayJst(), officeName: office?.name ?? null });
   // 紙面が「未確認」と刷る欄（台帳の pending の欄も入る。理由を添える）。帯だけで、紙には刷らない（T87）。原本の紙は同じ欄を空けて刷る
-  const unconfirmed = unconfirmedView(matsuyamaUnconfirmed(sheet));
+  // 未確認のうち問いで埋められる欄（T117。本人のページの「問い 残り N 問」と同じ問いの列から）
+  const askable = matsuyamaAskableOf(rows);
+  const unconfirmed = unconfirmedView(matsuyamaUnconfirmed(sheet, askable));
   // 避難経路の地図（T106）。台帳の経路地図（T102）を欄の大きさで描く。経路地図か家の位置が無ければ欄を空ける
   const routeMap = routeMapFor(parseLedger(rows.person.ledger));
   const framed = manifest ? matsuyamaFrameSheet(sheet, manifest, { routeMap }) : null;
