@@ -37,9 +37,12 @@ import {
   type ActTarget,
 } from "./actions.ts";
 import {
+  advance,
   cleanOptions,
+  drillEnded,
   foldTick,
   initialState,
+  isClock,
   isStaffCount,
   lastStep,
   simAt,
@@ -61,6 +64,7 @@ import { EMPTY_WORLD, isInjectKind, SCENARIO_ORDER, scenarioOf, type WorldState 
 import { castScenario, mayBeCalled, needsCast, type Cast } from "./cast.ts";
 import { castFactsMap } from "./cast-facts.ts";
 import { loadPersonaSources } from "./persona.ts";
+import { DRILL_END_MINUTE, nextEventMinute, type ClockMark, type ClockTo } from "./clock.ts";
 
 /** 訓練を開ける範囲。ケアマネの役だけ（審査員のケアマネの役も）。事業所と担当一覧の持ち主 */
 export type DrillScope = { officeId: string; careManagerId: string; accountId: string | null };
@@ -109,6 +113,10 @@ type StoredWorld = {
   undo?: UndoSnapshot;
   /** 想定の表の配役（T70、lib/drill/cast.ts）。代わりの人に当てた行だけ。無ければ鍵ごと無い（デモ事業所は前と同じ JSON） */
   cast?: Cast;
+  /** 連続の時計の訓練（T90）の区切りの時刻（発災からの分。i 番目は step i の終わり）。clock の無い訓練は鍵ごと無い */
+  cuts?: number[];
+  /** 連続の時計の訓練で監督（仮想は世界）を最後に呼んだ区切りの時刻（発災からの分） */
+  directorAt?: number;
 };
 
 /** 手の前の状態の写し（取消で戻す物） */
@@ -127,6 +135,8 @@ function storeWorld(s: DrillState, undo?: UndoSnapshot): string {
     ...(s.undone ? { undone: s.undone } : {}),
     ...(undo ? { undo } : {}),
     ...(s.cast && Object.keys(s.cast).length > 0 ? { cast: s.cast } : {}),
+    ...(s.cuts ? { cuts: s.cuts } : {}),
+    ...(s.directorAt !== undefined ? { directorAt: s.directorAt } : {}),
   };
   return JSON.stringify(body);
 }
@@ -149,6 +159,8 @@ function parseStoredWorld(text: string): StoredWorld {
       ? { undo: { ...u, world: { ...EMPTY_WORLD, ...(u.world ?? {}) }, people: u.people ?? {} } }
       : {}),
     ...(cast ? { cast } : {}),
+    ...(Array.isArray(raw.cuts) ? { cuts: raw.cuts.filter(isNum) } : {}),
+    ...(isNum(raw.directorAt) ? { directorAt: raw.directorAt } : {}),
   };
 }
 
@@ -180,7 +192,19 @@ export function stateOfRow(row: DrillRow): DrillState {
     people: w.people,
     actions: w.actions,
     ...extrasOf(w),
+    ...(w.cuts ? { cuts: w.cuts } : {}),
+    ...(w.directorAt !== undefined ? { directorAt: w.directorAt } : {}),
   };
+}
+
+/**
+ * 連続の時計の訓練（T90）か、と区切りの時刻（時間）・この訓練の AI の呼び出しの数（drills.world の写しから）。
+ * clock の無い訓練は clock false・cuts 空
+ */
+export function clockOfRow(row: Pick<DrillRow, "world">): { clock: boolean; hours: number[]; counts: WorldState["counts"] | null } {
+  const w = parseStoredWorld(row.world);
+  if (w.options?.clock !== true) return { clock: false, hours: [], counts: null };
+  return { clock: true, hours: (w.cuts ?? []).map((m) => m / 60), counts: w.world.counts ?? null };
 }
 
 /**
@@ -395,10 +419,10 @@ export async function startDrill(
   const cast = needsCast(def, participants) ? castScenario(def, participants, castFactsMap(await loadPersonaSources(db, scope.officeId))) : {};
 
   const id = newId();
-  const { state, tick } = await step(
-    initialState(scenario, participants, now, { staff: options.staff, night: options.night }, cast),
-    hooks,
-  );
+  // 連続の時計（T90）は大雨・地震・仮想だけ。10 分版に来たら捨てる（刻みの道のまま）
+  const clock = options.clock === true && scenario !== "short";
+  const init = initialState(scenario, participants, now, { staff: options.staff, night: options.night, ...(clock ? { clock: true as const } : {}) }, cast);
+  const { state, tick } = clock ? (await advance(init, 0, hooks, { policy: "clock" }))! : await step(init, hooks);
   const [inserted] = await db.batch([
     db
       .prepare(
@@ -428,8 +452,8 @@ export async function startDrill(
 }
 
 export type AdvanceResult =
-  | { ok: true; step: number; hour: number; status: DrillRow["status"] }
-  | { ok: false; error: "not_found" | "conflict" | "ended" };
+  | { ok: true; step: number; hour: number; status: DrillRow["status"]; minute?: number }
+  | { ok: false; error: "not_found" | "conflict" | "ended" | "invalid" };
 
 /** 事業所の中の訓練を 1 つ。範囲の外は null */
 export async function loadDrillRow(
@@ -449,7 +473,9 @@ export async function loadDrillRow(
 
 /**
  * 1 刻み進める。expected は画面で読んだ今の刻み（違えば競合）。最後の刻みに着いたら終了。
- * 保存は 1 つの取引で、drills の刻みを進められたときだけ状況と安否を足す
+ * 保存は 1 つの取引で、drills の刻みを進められたときだけ状況と安否を足す。
+ * 連続の時計の訓練（T90）は to（30・60・180 分か、次の出来事まで）が要り（無ければ invalid）、ケアマネの時計からそこまでを 1 区切りに。
+ * clock の無い訓練は to を見ない（今までどおり 1 刻み）
  */
 export async function advanceDrill(
   db: D1Database,
@@ -458,13 +484,16 @@ export async function advanceDrill(
   expected: number,
   now: string,
   hooks: StepHooks = {},
+  to?: ClockTo,
 ): Promise<AdvanceResult> {
   const row = await loadDrillRow(db, scope.officeId, id);
   if (!row) return { ok: false, error: "not_found" };
-  if (row.status !== "running" || row.step >= lastStep(row.scenario)) return { ok: false, error: "ended" };
+  const before = stateOfRow(row);
+  if (drillEnded(before)) return { ok: false, error: "ended" };
   if (row.step !== expected) return { ok: false, error: "conflict" };
+  if (isClock(before) && !to) return { ok: false, error: "invalid" };
 
-  const { state, tick } = await step(stateOfRow(row), hooks);
+  const { state, tick } = isClock(before) ? (await advance(before, await clockTarget(before, to!, hooks), hooks, { policy: "clock", next: "next" in to! }))! : await step(before, hooks);
   let updated;
   try {
     // 読んだ今の状態（world の写し）のときだけ書く。その間にケアマネの手（T20）が入っていれば競合（手の履歴を消さない）
@@ -494,7 +523,15 @@ export async function advanceDrill(
     throw e;
   }
   if ((updated.meta.changes ?? 0) === 0) return { ok: false, error: "conflict" };
-  return { ok: true, step: state.step, hour: state.hour, status: state.status };
+  // ケアマネの時計（分）は連続の時計の訓練だけ返す（clock の無い訓練の返事は前と同じ形）
+  return { ok: true, step: state.step, hour: state.hour, status: state.status, ...(isClock(state) ? { minute: state.minute } : {}) };
+}
+
+/** 連続の時計の行き先（発災からの分）。分の進めはケアマネの時計から、「次まで」は lib/drill/clock.ts の nextEventMinute（72 時間まで） */
+async function clockTarget(state: DrillState, to: ClockTo, hooks: StepHooks): Promise<number> {
+  if ("minutes" in to) return Math.min(state.minute + to.minutes, DRILL_END_MINUTE);
+  const marks = hooks.clock?.marks ? await hooks.clock.marks(state).catch((): ClockMark[] => []) : [];
+  return nextEventMinute(state, marks);
 }
 
 // ---------- ケアマネの手（T20） ----------
@@ -566,8 +603,8 @@ export async function actDrill(
 ): Promise<ActDrillResult> {
   const row = await loadDrillRow(db, scope.officeId, id);
   if (!row) return { ok: false, error: "not_found" };
-  if (row.status !== "running" || row.step >= lastStep(row.scenario)) return { ok: false, error: "ended" };
   const before = stateOfRow(row);
+  if (drillEnded(before)) return { ok: false, error: "ended" };
   if (row.step !== expected.step || before.actions.length !== expected.actions) return { ok: false, error: "conflict" };
 
   // 相手の本人は参加者だけ。本人が要らない手（行政報告は任意、退避は受けない）
@@ -1012,8 +1049,11 @@ function asHeard(v: unknown): HeardSignal | null {
   };
 }
 
-/** 保存した刻み（0 から upTo まで）と、その間のケアマネの手。刻みの時刻は想定の表から */
-export async function loadTicks(db: D1Database, drillId: string, hours: readonly number[], upTo: number): Promise<ReplayTick[]> {
+/**
+ * 保存した刻み（0 から upTo まで）と、その間のケアマネの手。刻みの時刻は想定の表から（連続の時計の訓練は区切りの時刻。lib/drill/view.ts）。
+ * endHour を渡すと、終わりはその時刻に着いた刻み（連続の時計。渡さなければ hours の最後の刻み）
+ */
+export async function loadTicks(db: D1Database, drillId: string, hours: readonly number[], upTo: number, endHour?: number): Promise<ReplayTick[]> {
   const res = await db
     .prepare(
       `SELECT step, sim_hour, person_id, actor, kind, payload FROM drill_events
@@ -1023,7 +1063,8 @@ export async function loadTicks(db: D1Database, drillId: string, hours: readonly
     .all<Pick<DrillEventRow, "step" | "sim_hour" | "person_id" | "actor" | "kind" | "payload">>();
   const ticks: ReplayTick[] = [];
   for (let i = 0; i <= upTo && i < hours.length; i++) {
-    ticks.push({ step: i, hour: hours[i], incidents: [], turns: [], world: EMPTY_WORLD, finished: i === hours.length - 1, acts: [] });
+    const finished = endHour === undefined ? i === hours.length - 1 : hours[i] >= endHour;
+    ticks.push({ step: i, hour: hours[i], incidents: [], turns: [], world: EMPTY_WORLD, finished, acts: [] });
   }
   for (const r of res.results) {
     const t = ticks[r.step];

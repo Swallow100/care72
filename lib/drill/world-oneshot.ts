@@ -272,8 +272,10 @@ export function worldNow(w: WorldState, area: Area = DEMO_AREA): string[] {
 export function tickText(input: WorldInput, cast: Pick<WorldCast, "key"> & Partial<Pick<WorldCast, "endings">>, prevHour: number, last: number): string {
   const endings = cast.endings !== false;
   const aliasOf = new Map(cast.key.people.map((p) => [p.personId, p.alias]));
-  const acts = actionLines(input.actions, prevHour, aliasOf);
-  const contacts = contactLines(input, prevHour, aliasOf);
+  // 連続の時計の訓練（T90）は前の区切りの時刻（分）から。刻みの道は前の刻みの時刻
+  const from = input.since !== undefined ? input.since / 60 : prevHour;
+  const acts = actionLines(input.actions, from, aliasOf);
+  const contacts = contactLines(input, from, aliasOf);
   const seen = lastLines(input, aliasOf);
   const hints = hintLines(input, aliasOf);
   const ended = Object.keys(input.world.ended ?? {}).flatMap((p) => (aliasOf.has(p) ? [aliasOf.get(p)!] : []));
