@@ -6,7 +6,8 @@
 // 決まり:
 // - 頁は元の様式の頁の画像の数と同じ。画像は A4（横長の画像は A4 横）の中に縦横の比を保って収める（余白は様式の画像の中にある）
 // - 文字の欄は矩形に収まる大きさ（10.5pt から 6pt まで 0.25pt ずつ）に縮め、行を折る。6pt でも収まらなければ欄に「別紙」と書き、
-//   値は最後の「別紙」の頁に欄の名前と並べる。場所の無い欄で値のある物も別紙に（値を落とさない）
+//   値は最後の「別紙」の頁に欄の名前と並べる。場所の無い欄で値のある物も別紙に（値を落とさない）。
+//   「なし」だけの値は、収まらなければ別紙に回さず欄を空ける（T111。別紙の頁を「なし」だけで作らない）。空き枠（empty）は刷らない
 // - 字の幅は見積もり（全角 1 字・半角 0.8 字・M や W は 1 字。BIZ UDP の書体を測った値より少し広く）。描く側は見積もった行で折り、行の中で折らない
 // - □ 1 つの欄は当てはまれば □ の中にレ点。選ぶ欄は選択肢の □ の場所があれば選んだ物の □ にレ点（□ でなく字の場所なら丸で囲む）、
 //   無ければ選んだ言葉を欄に書く
@@ -169,12 +170,19 @@ export function cellLines(cell: Cell, phone = false): string[] {
     }
     case "none":
       return [BLANK.none];
+    case "empty":
     case "unconfirmed":
     case "withheld":
     case "handwrite":
       return [];
   }
 }
+
+/**
+ * 「なし」だけの値か（T111）。収まらなくても別紙に回さず、欄を空ける（別紙の頁と別紙の印を「なし」だけで作らない）。
+ * 値のある別紙が 1 つも無いのに、市に出す紙が「別紙あり」になるのを防ぐ
+ */
+export const isNoneOnly = (lines: readonly string[]): boolean => lines.length > 0 && lines.every((l) => l === BLANK.none);
 
 // ---------- 紙面 ----------
 
@@ -299,6 +307,8 @@ export function buildOverlaySheet(mapped: MappedSheet, images: readonly PageImag
           page.items.push({ kind: "text", fieldId: field.id, box, ...fitted });
           continue;
         }
+        // 「なし」だけの値は別紙に回さず欄を空ける（T111）
+        if (isNoneOnly(lines)) continue;
         annex.push({ fieldId: field.id, label: nameOf(field), lines, reason: "overflow" });
         const mark = fitText([ANNEX_MARK], wMm, hMm);
         page.items.push({ kind: "text", fieldId: field.id, box, lines: [ANNEX_MARK], fontPt: mark?.fontPt ?? FONT_MIN_PT, top: mark?.top ?? false });

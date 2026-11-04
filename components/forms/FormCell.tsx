@@ -146,6 +146,9 @@ export function FormCell({ cell, tight = true }: { cell: Cell; tight?: boolean }
       return <PieceText p={{ text: BLANK.unconfirmed, unconfirmed: true, reason: cell.reason }} tight={tight} />;
     case "none":
       return <span>{BLANK.none}</span>;
+    case "empty":
+      // 空き枠（T111）。原本の紙に手で書くときと同じく空ける
+      return null;
     case "withheld":
       return (
         <span className="p-withheld" data-withheld={cell.consent}>
