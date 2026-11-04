@@ -16,11 +16,11 @@ import Link from "next/link";
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type SyntheticEvent } from "react";
 import { Button } from "@/components/ui/Button";
 import { CloseIcon, FitIcon, FullIcon, ZoomInIcon, ZoomOutIcon } from "@/components/ui/Icon";
-import { CountLabel, countClass, TONE_FILL } from "@/components/ui/Tag";
+import { CountLabel, countClass, StateTag, TONE_FILL } from "@/components/ui/Tag";
 import type { GeoPoint, HazardKind } from "@/lib/db/types";
 import { DRAG_SLOP, FULL_ZOOM, keyAction, MAP_LIMITS, pinchView, sameView, sideWheelTakes, stepZoom, toFrame, wheelZoom } from "@/lib/map/camera";
 import { COUNT_W, groupPins, labelWidth, memberStates, statesWidth, type PinGroup } from "@/lib/map/cluster";
-import { RAIN_EDGE, RAIN_HATCH, RAIN_INK, type DemoOverlay } from "@/lib/map/demo";
+import { RAIN_FILL, RAIN_STREAK, RAIN_STYLE, rainStreaks, type DemoOverlay } from "@/lib/map/demo";
 import {
   BASE_SIZE,
   clampView,
@@ -630,11 +630,14 @@ function LayerToggles({ choice, demo, tz }: { choice: LayerChoice; demo: DemoOve
   );
 }
 
+/** 位置の無い人の数（地図に出ない人）。言葉と数を黄の塗りの印に入れる（前の黄の細い帯は何の印か伝わらなかった。T96） */
 function Unplaced({ n }: { n: number }) {
   if (n <= 0) return null;
   return (
-    <span className="text-xs tone-check tabular-nums">
-      {MAP_UI.unplaced} {n} 人
+    <span className="tabular-nums" data-unplaced={n}>
+      <StateTag tone="check">
+        {MAP_UI.unplaced} {n} 人
+      </StateTag>
     </span>
   );
 }
@@ -732,9 +735,13 @@ function HazardTiles({ tiles, shown }: { tiles: TileSpot[]; shown: readonly Haza
   );
 }
 
-/** 雨雲のデモ（濃い墨の斜線。lib/map/demo.ts の RAIN_HATCH）。枠の大きさの座標で描く */
+/**
+ * 雨雲のデモ（淡い青灰の面と、細く短い雨の筋。lib/map/demo.ts の RAIN_STYLE・rainStreaks）。枠の大きさの座標で描く。
+ * 面は縁をぼかして雲の形に、筋は帯の形のまま。帯は入れ子なので、強い所ほど面が濃く筋が詰む。色はライトとダークで同じ
+ * （下の地図はダークでも明るい）。くり返しの 1 枚の始まりを強さごとにずらし、3 つの帯の筋が同じ所に並ばないようにする
+ */
 function Rain({ demo, view, size }: { demo: DemoOverlay; view: View; size: Size }) {
-  const hatchId = useId();
+  const rainId = useId();
   if (demo.rain.length === 0) return null;
   const px = (p: GeoPoint) => {
     const at = place(view, p, size);
@@ -749,30 +756,50 @@ function Rain({ demo, view, size }: { demo: DemoOverlay; view: View; size: Size 
       data-demo="rain"
     >
       <defs>
-        {demo.rain.map((b) => (
-          <pattern
-            key={b.strength}
-            id={`${hatchId}-${b.strength}`}
-            patternUnits="userSpaceOnUse"
-            width={RAIN_HATCH[b.strength].gap}
-            height={RAIN_HATCH[b.strength].gap}
-            patternTransform="rotate(-35)"
-          >
-            <line x1="0" y1="0" x2="0" y2={RAIN_HATCH[b.strength].gap} stroke={RAIN_INK} strokeWidth={RAIN_HATCH[b.strength].width} />
-          </pattern>
-        ))}
+        <filter id={`${rainId}-soft`} x="-10%" y="-10%" width="120%" height="120%">
+          <feGaussianBlur stdDeviation="3" />
+        </filter>
+        {demo.rain.map((b) => {
+          const st = RAIN_STYLE[b.strength];
+          return (
+            <pattern
+              key={b.strength}
+              id={`${rainId}-${b.strength}`}
+              patternUnits="userSpaceOnUse"
+              width={st.tile}
+              height={st.tile}
+              patternTransform={`translate(${b.strength * 7} ${b.strength * 11})`}
+            >
+              {rainStreaks(b.strength)
+                .flat()
+                .map((s, i) => (
+                  <line
+                    key={i}
+                    x1={s.x1}
+                    y1={s.y1}
+                    x2={s.x2}
+                    y2={s.y2}
+                    stroke={RAIN_STREAK}
+                    strokeWidth={st.width}
+                    strokeLinecap="round"
+                  />
+                ))}
+            </pattern>
+          );
+        })}
       </defs>
       {demo.rain.map((b) => (
         <polygon
-          key={b.strength}
+          key={`fill-${b.strength}`}
           points={b.ring.map(px).join(" ")}
-          fill={`url(#${hatchId}-${b.strength})`}
-          fillOpacity={RAIN_HATCH[b.strength].opacity}
-          stroke={RAIN_INK}
-          strokeOpacity={RAIN_EDGE.opacity}
-          strokeDasharray="4 3"
-          strokeWidth={RAIN_EDGE.width}
+          fill={RAIN_FILL}
+          fillOpacity={RAIN_STYLE[b.strength].fill}
+          filter={`url(#${rainId}-soft)`}
+          data-rain-fill={b.strength}
         />
+      ))}
+      {demo.rain.map((b) => (
+        <polygon key={`streaks-${b.strength}`} points={b.ring.map(px).join(" ")} fill={`url(#${rainId}-${b.strength})`} data-rain-streaks={b.strength} />
       ))}
     </svg>
   );
