@@ -1,7 +1,8 @@
 // 医療要約の紙面（A4 縦 1 枚）。欄の名前と順は lib/forms/medical-summary.ts の MEDICAL_FIELDS（災害診療記録 2018 の 1 頁の順）。
 // 状態を持たない（Server Component のまま、テストで renderToStaticMarkup できる）。
 // 大事な欄（禁忌事項・特記事項（常用薬等）のチェック・常用薬と中断注意・透析・在宅酸素・メディカル ID）は太い枠と大きい文字。
-// 字は太くしない（災害診療記録 2018 に太字は無い。T47）。様式に無い欄（住まい・連絡先の人・関係先・機器・常用薬の表・持出品・特記）は
+// 字は太くしない。災害診療記録 2018 で太いのは【禁忌事項等】・【特記事項（常用薬等）】の段の名前だけ（T85 で読み直した。T47 は書体の名前だけ見て
+// 太字なしとしていた）。字の大きさと余白は原本のとおり（T85。.kiroku、medical-paper.css）。様式に無い欄（住まい・連絡先の人・関係先・機器・常用薬の表・持出品・特記）は
 // 様式の欄のあとの「補足」の段にまとめる（様式の欄の中に混ぜない）。
 // 医師が書く欄（初診日・初診医師氏名・傷病名・トリアージタグ）は空欄で出し、欄の名前に「医師記入」を添える（11/3 15:0x 確定）。
 // 中断注意の印は補足の段（常用薬の表・機器）にだけ。様式の欄は台帳の値の並べ替えだけ（11/3 15:00 確定の 3）。
@@ -183,7 +184,7 @@ export function MedicalSummarySheet({ sheet: s }: { sheet: MedicalSummary }) {
   return (
     <div className="paper-scroll">
       <div className="paper-stack" data-paper-root data-sheet="medical" data-person={s.personId}>
-        <MedicalSummaryPaper sheet={s} />
+        <MedicalSummaryPaper sheet={s} original />
       </div>
     </div>
   );
@@ -194,7 +195,9 @@ export function MedicalSummarySheet({ sheet: s }: { sheet: MedicalSummary }) {
  * page は束の中の何頁目か、aside は題名の段の右に置く物（本人の 1 枚の QR）、
  * note は題名の段の右の小さな字の一番上に足す 1 行（本人の 1 枚の「この QR は医療班が読みます」と期限）、
  * foot は頁の下の端の文書名と頁番号（既定は医療要約の 1 / 1。本人の 1 枚の裏は 2 / 2）、
- * doctorBlanks は医師が書く欄の空欄の行（既定は出す。本人の 1 枚の裏は QR の枠で 1 頁に収まらないので出さない）
+ * doctorBlanks は医師が書く欄の空欄の行（既定は出す。本人の 1 枚の裏は QR の枠で 1 頁に収まらないので出さない）、
+ * original は災害診療記録2018 の字（大きさ・太さ）と余白で刷る（T85。医療要約の紙面。.kiroku。本人の 1 枚の裏は元の様式の無い文書の
+ * 一部なので今のまま）
  */
 export function MedicalSummaryPaper({
   sheet: s,
@@ -203,6 +206,7 @@ export function MedicalSummaryPaper({
   note,
   foot = { doc: DOCUMENT_LABELS.medical, page: 1, total: 1 },
   doctorBlanks = true,
+  original = false,
 }: {
   sheet: MedicalSummary;
   page?: 1 | 2;
@@ -210,11 +214,14 @@ export function MedicalSummaryPaper({
   note?: ReactNode;
   foot?: { doc: string; page: number; total: number };
   doctorBlanks?: boolean;
+  original?: boolean;
 }) {
   const author = [s.author.office, s.author.careManager ? `${s.author.careManager}（ケアマネ）` : ""].filter(Boolean).join(" ");
   const consentAt = s.consent.recordedAt ? formatJst(s.consent.recordedAt).slice(0, 10) : null;
+  // 原本で太い段の名前（【禁忌事項等】・【特記事項（常用薬等）】。塗りと線で太くした字）
+  const boldHead = original ? "blk-h b" : "blk-h";
   return (
-        <section className="paper form med-paper" aria-label={DOCUMENT_LABELS.medical} data-page={page}>
+        <section className={original ? "paper form med-paper kiroku" : "paper form med-paper"} aria-label={DOCUMENT_LABELS.medical} data-page={page}>
           <div className="head-row">
             <h1 className="title">{DOCUMENT_LABELS.medical}</h1>
             <div className="top-col">
@@ -269,7 +276,7 @@ export function MedicalSummaryPaper({
           </div>
 
           <div className="blk key" data-block="contra">
-            <div className="blk-h">【禁忌事項等】</div>
+            <div className={boldHead}>【禁忌事項等】</div>
             <div className="grid" style={cols("1.6fr 1fr")}>
               <F s={s} k="contra.allergy" size="lg" />
               <F s={s} k="contra.food" size="lg" />
@@ -277,7 +284,7 @@ export function MedicalSummaryPaper({
           </div>
 
           <div className="blk key" data-block="special">
-            <div className="blk-h">【特記事項（常用薬等）】</div>
+            <div className={boldHead}>【特記事項（常用薬等）】</div>
             {/* 様式の □ の並び（抗血小板薬 → 抗凝固薬 → 糖尿病治療薬 → ステロイド → 抗てんかん薬 → その他 → 透析）を 1 つの枠に流す */}
             <div className="grid chk" style={cols("1fr")}>
               <div className="flow">

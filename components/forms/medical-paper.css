@@ -126,3 +126,89 @@
 .paper [data-doctor] .hand {
   min-height: 6mm;
 }
+
+/* ---- 災害診療記録2018 の字と余白（T85。医療要約の紙面 .kiroku。本人の 1 枚の裏は今のまま） ----
+  原本（厚労省の通知の別添４の 1 頁）の字の大きさ（pt）と余白（mm）。値は lib/forms/form-audit.ts の MEDICAL_AUDIT.paper と同じで、
+  lib/forms/print-pages.test.ts が印刷の頁で書体・大きさ・太さを照らす。原本は全部ゴシック（MS P ゴシック → BIZ UDPゴシック）。
+  欄の名前は 11.04pt、（カタカナ）・性別・状態・避難先・要保護者・傷病名と災害時要配慮者の □ は 10.56pt、連絡先の □ と 2 頁の欄の名前は 9pt、
+  注と 2 頁の □ は 8.04pt、題は 20.04pt。値は原本では空欄なので欄の名前と同じ大きさ。
+  余白は 上 7.4mm・左 20.3mm・右 16.9mm。下は原本 6.7mm だが、頁の下の端（文書名と頁番号）と重ならないよう 11mm。 */
+.paper.med-paper.kiroku {
+  --m-top: 7.4mm;
+  --m-bottom: 11mm;
+  --m-left: 20.3mm;
+  --m-right: 16.9mm;
+  --fs-body: 11.04pt;
+  --fs-label: 11.04pt;
+  --fs-note: 8.04pt;
+  --fs-h: 11.04pt;
+  --fs-title: 20.04pt;
+  /* 段の間。原本は表が続いて段の間が無いので、ケア72 の 2mm を 1mm に（1 頁に収める） */
+  --gap: 1mm;
+}
+/* 医師が書く欄の空き（原本の傷病名の表の 1 行は約 5mm） */
+.paper.med-paper.kiroku [data-doctor] .hand {
+  min-height: 4mm;
+}
+.paper.med-paper.kiroku .top-col {
+  font-size: 9pt;
+}
+.paper.med-paper.kiroku [data-field] {
+  font-size: var(--fs-body);
+}
+.paper.med-paper.kiroku [data-field] > :is(.f-l, .f-v) {
+  font-size: inherit;
+}
+.paper.med-paper.kiroku
+  :is(
+    [data-field="patient.sex"],
+    [data-field="patient.house"],
+    [data-field="shelter.first"],
+    [data-field="shelter.second"],
+    [data-field="care.protect"],
+    [data-field="doctor.disease"]
+  ) {
+  font-size: 10.56pt;
+}
+.paper.med-paper.kiroku .chk .ch {
+  font-size: 1em;
+}
+.paper.med-paper.kiroku [data-field="care.vulnerable"] .ch {
+  font-size: 10.56pt;
+}
+.paper.med-paper.kiroku [data-field="contact.kinds"] .ch {
+  font-size: 9pt;
+}
+.paper.med-paper.kiroku :is([data-field="history.disease"], [data-field="history.vaccination"]) {
+  font-size: 9pt;
+}
+.paper.med-paper.kiroku :is([data-field="history.disease"], [data-field="history.vaccination"]) .ch {
+  font-size: var(--fs-note);
+}
+.paper.med-paper.kiroku .mid-box {
+  font-size: var(--fs-body);
+}
+.paper.med-paper.kiroku .mid-text {
+  font-size: var(--fs-body);
+}
+.paper.med-paper.kiroku .mid-text > .f-l {
+  font-size: var(--fs-note);
+}
+/* 補足（様式外の欄。原本に無い）と未確認の一覧は原本の注と同じ 8.04pt（1 頁に収める） */
+.paper.med-paper.kiroku :is([data-block="extra"], [data-block="pending"]) [data-field],
+.paper.med-paper.kiroku [data-block="pending"] {
+  font-size: var(--fs-note);
+}
+.paper.med-paper.kiroku :is([data-block="extra"], [data-block="pending"]) :is(.f-l, .f-v),
+.paper.med-paper.kiroku [data-block="extra"] .med-table :is(td, .med-name, .med-remaining) {
+  font-size: inherit;
+}
+.paper.med-paper.kiroku [data-block="extra"] .med-table {
+  font-size: var(--fs-note);
+}
+.paper.med-paper.kiroku [data-block="extra"] :is(.blk-h, .med-table th) {
+  font-size: var(--fs-note);
+}
+.paper.med-paper.kiroku [data-block="extra"] > .blk-h .note {
+  font-size: inherit;
+}
