@@ -37,6 +37,12 @@ No faces visible. No text, no signs, no logos, no screens. No people looking at 
 
 B06 は被災地の映像に見えやすい。でき上がりが実在の避難所の報道写真に似ていたら使わず、S3 の最後は手書きのメモの線画（G3）だけにする。
 
+## 作り方（11/4）
+
+- 道具は fal.ai（前払い、月額なし）。鍵は環境変数 `FAL_KEY` で渡すだけで、ファイル・記録に書かない
+- 動画: `FAL_KEY=… node video/scripts/gen-bg.mjs <ID> [秒] [解像度]`（Seedance 2.0、16:9、音なし）→ `video/assets/bg/<ID>.mp4`。11/4 は B03 を文だけから 1 本（720p・10 秒）作って見た。選んだ静止画から動画にする道（image-to-video）は、案が決まってから足す
+- できた物は MATERIALS.md の「生成画像・生成動画」に書く
+
 ## 置き場と組み込み
 
 - 置き場は `video/assets/bg/B01.mp4` の形（ID と同じ名前。commit しない）。2 本つないだ物は `B07-1.mp4`・`B07-2.mp4`
