@@ -34,8 +34,9 @@ import { applyContext, buildCast, openingText, tickText, WORLD_STEP_JSON_SCHEMA,
  * 2: 結末を世界が決める・理由の欄（T53）。3: effort を medium → high（T67）。
  * 4: WORLD_SYSTEM の人数を決め打たない・入力の「結末」が「決めない」の訓練では結末を決めない（T70 の続き）。
  * 5: 1 刻みに道具を 1 回だけ・道具の結果のあとは文字を返さずに終える（T89。1 刻みに 2 回呼ぶ・結果のあとに文を返して毎刻み約 4 秒余計だった）
+ * 6: 出来事の種類を足した（福祉避難所・給水所・薬局・介護事業所・酸素業者の巡回・情報の食い違い。T92）
  */
-export const WORLD_AGENT_VERSION = 5;
+export const WORLD_AGENT_VERSION = 6;
 export const WORLD_TOOL = "world_step";
 /** 部屋の Agent の system の終わりに足す 1 刻みの進め方（T89）。変えたら WORLD_AGENT_VERSION を上げる */
 export const ROOM_TURN_RULE = `1 刻みに ${WORLD_TOOL} の道具を 1 回だけ呼ぶ（2 回目は使われない）。道具の結果を受けたら、文字を返さずに終える（まとめ・説明・Markdown を書かない）。`;

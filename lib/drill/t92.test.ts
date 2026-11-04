@@ -708,11 +708,11 @@ describe("仮想の街（world_step の新しい種類）", () => {
     expect(worldIncidents(step1([e("helper", { value: "open" })]), ctx)).toEqual([]);
   });
 
-  it("指示と返事の形: 種類の一覧に新しい 6 つ、欄は増やさない。部屋の版は T89 の 5 のまま", () => {
+  it("指示と返事の形: 種類の一覧に新しい 6 つ、欄は増やさない。部屋の版は 6（種類を足したので上げる）", () => {
     for (const k of ["welfare_shelter", "water_station", "pharmacy", "helper", "vendor", "info"]) expect(WORLD_SYSTEM).toContain(`  - ${k}: `);
     expect(WORLD_STEP_JSON_SCHEMA.properties.events.items.required).toEqual(["kind", "town", "target", "name", "value"]);
     expect(WORLD_STEP_JSON_SCHEMA.properties.events.items.properties.kind.description).toContain("vendor");
-    expect(WORLD_AGENT_VERSION).toBe(5);
+    expect(WORLD_AGENT_VERSION).toBe(6);
   });
 });
 

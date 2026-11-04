@@ -106,7 +106,7 @@ async function firstTick(client: RoomClient) {
 
 describe("世界の部屋（T89）", () => {
   it("部屋の Agent の指示: 1 刻みに道具を 1 回だけ・道具の結果を受けたら文字を返さずに終える。道具の説明にも同じ。版は 5", () => {
-    expect(WORLD_AGENT_VERSION).toBe(5);
+    expect(WORLD_AGENT_VERSION).toBeGreaterThanOrEqual(5);
     expect(ROOM_TURN_RULE).toContain(`1 刻みに ${WORLD_TOOL} の道具を 1 回だけ呼ぶ`);
     expect(ROOM_TURN_RULE).toContain("道具の結果を受けたら、文字を返さずに終える");
     expect(ROOM_TURN_RULE).toContain("Markdown を書かない");
