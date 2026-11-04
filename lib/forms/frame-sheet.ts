@@ -4,7 +4,9 @@
 // サーバーの描画で、Claude は呼ばない（氏名・住所・電話が入る）。純な計算だけ。
 //
 // 決まり:
-// - 字の欄は矩形に収まる大きさ（様式の地の字の大きさから 6pt まで）に縮める。6pt でも収まらなければ欄に「別紙」、値は最後の別紙の頁（T86 と同じ）
+// - 字の欄は矩形に収まる大きさ（様式の地の字の大きさから 6pt まで）に縮める。6pt でも収まらなければ欄に「別紙」、値は最後の別紙の頁（T86 と同じ）。
+//   「なし」だけの値は収まらなければ欄を空ける（別紙に回さない）。空き枠（empty）は刷らない。特記事項の段で「なし」の段は刷らない（T111）
+// - 別紙の印（松山市の特記事項の「別紙（あり・なし）」）の「あり」は、別紙の頁に値が 1 つ以上あるとき（と、前からの紙面と同じく医療要約を添える人）
 // - 選ぶ欄は選んだ選択肢の □ にレ点（□ の無い選択肢は字を丸で囲む）。選択肢の（ ）の中身は（ ）の矩形に
 // - 様式に置き場の無い値（□ の無い選択肢の中身・書き足し・3 人目からの関係先）は、様式の書き込みの欄（松山市は特記事項）に名前を添えて足す。
 //   書き込みの欄が無い様式・書き込みの欄に収まらないときは別紙へ（値を落とさない）
@@ -21,6 +23,7 @@ import {
   fitText,
   FONT_MIN_PT,
   insetBox,
+  isNoneOnly,
   lineText,
   type AnnexRow,
   type OverlayItem,
@@ -159,7 +162,7 @@ function splitTel(line: readonly Piece[]): { name: string; tel: string } {
 
 /** 欄の値から、take で決めた所の字の行 */
 export function takeLines(cell: Cell, take: Take | undefined): string[] {
-  if (cell.kind === "handwrite" || cell.kind === "withheld" || cell.kind === "unconfirmed") return [];
+  if (cell.kind === "handwrite" || cell.kind === "withheld" || cell.kind === "unconfirmed" || cell.kind === "empty") return [];
   if (!take || (take.part === undefined && take.line === undefined)) return cellLines(cell);
   if (take.part === "after") {
     const s = afterText(cell);
@@ -310,6 +313,8 @@ export function buildFrameSheet<K extends string>(input: FrameSheetInput<K>): Ov
     for (const key of slot.keys) {
       const cell = cells[key];
       if (!cell || handwrite.has(key)) continue;
+      // 段の名前を添える書き込みの欄（松山市の特記事項）は、値の無い段（「なし」）を段ごと刷らない（T111）
+      if (slot.labels && cell.kind === "none") continue;
       if (slot.take?.line !== undefined) {
         const set = usedLines.get(key) ?? new Set<number>();
         set.add(slot.take.line);
@@ -409,6 +414,8 @@ export function buildFrameSheet<K extends string>(input: FrameSheetInput<K>): Ov
       page.items.push({ kind: "text", fieldId, box: ratio, ...fitted } satisfies OverlayItem);
       return;
     }
+    // 「なし」だけの値は別紙に回さず欄を空ける（T111。別紙の頁と「別紙（あり）」の印を「なし」だけで作らない）
+    if (isNoneOnly(lines)) return;
     annex.push({ fieldId, label, lines, reason: "overflow" });
     const mark = fitText([ANNEX_MARK], box.w, box.h, frame.maxPt);
     page.items.push({ kind: "text", fieldId, box: ratio, lines: [ANNEX_MARK], fontPt: mark?.fontPt ?? FONT_MIN_PT, top: mark?.top ?? false });

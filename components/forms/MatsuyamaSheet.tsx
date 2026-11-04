@@ -284,8 +284,13 @@ function ShelterRow({ s, id, note }: { s: Sheet; id: "pre" | "near" | "city"; no
   );
 }
 
-/** 特記事項の書き込みの 1 段（段の名前は小さく灰色で行の頭に。様式の欄の名前ではない） */
+/**
+ * 特記事項の書き込みの 1 段（段の名前は小さく灰色で行の頭に。様式の欄の名前ではない）。
+ * 値の無い段（空き枠・「なし」）は段ごと刷らない（T111。原本の枠の紙と同じ）
+ */
 function NotePart({ s, k }: { s: Sheet; k: MatsuyamaKey }) {
+  const cell = s.cells[k];
+  if (cell.kind === "empty" || cell.kind === "none") return null;
   return (
     <div className="part" data-field={k}>
       <span className="lead">{matsuyamaField(k).label}</span>
