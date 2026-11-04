@@ -40,7 +40,10 @@ describe("場面の表から地図へ", () => {
       const d = pane(kind, 5).demo!;
       expect(d.title, kind).toBe("大雨 レベル 5");
       expect(d.rain).toEqual([]);
-      expect([...new Set(pane(kind, 5, true).demo!.rain.map((b) => b.strength))].sort()).toEqual([1, 2, 3]);
+      // 訓練の雨の段（降水量 mm/h の下の境。T116）: レベル 3 は 10〜20 まで、5 は表の 3 時間の芯（30〜50）まで
+      const steps = (level: 3 | 5) => [...new Set(pane(kind, level, true).demo!.rain.map((b) => b.min))].sort((a, b) => a - b);
+      expect(steps(5)).toEqual([0, 1, 5, 10, 20, 30]);
+      expect(steps(3)).toEqual([0, 1, 5, 10]);
       expect(pane(kind, null).demo?.title).toBe("大雨");
     }
   });
