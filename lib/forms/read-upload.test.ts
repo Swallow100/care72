@@ -77,8 +77,13 @@ describe("送る形（ブラウザ → /api/forms/read）", () => {
 });
 
 describe("受け口と画面", () => {
-  it("受け口（app/api/forms/read）は印と中身を確かめてから Claude を呼ぶ。生のファイルの欄（file）と toFormFile は使わない", () => {
-    const route = readFileSync(new URL("../../app/api/forms/read/route.ts", import.meta.url), "utf8");
+  it("受け口（app/api/forms/read → lib/forms/read-post.ts）は印と中身を確かめてから Claude を呼ぶ。生のファイルの欄（file）と toFormFile は使わない", () => {
+    const entry = readFileSync(new URL("../../app/api/forms/read/route.ts", import.meta.url), "utf8");
+    expect(entry).toContain("formReadPost(");
+    expect(entry).not.toContain("toFormFile(");
+    expect(entry).not.toContain('form?.get("file")');
+    // T86 で中身を lib に移した（テストで通すため）。順の確かめは移した先で
+    const route = readFileSync(new URL("./read-post.ts", import.meta.url), "utf8");
     const pages = route.indexOf("formReadPagesOf(form)");
     const check = route.indexOf("checkRedactedImage(bytes)");
     const ask = route.indexOf("readForm(files, ctx)");

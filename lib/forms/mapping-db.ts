@@ -7,6 +7,7 @@ import type { Principal } from "../auth/principal.ts";
 import { canViewPage } from "../auth/roles.ts";
 import type { FormMappingRow, FormMappingStatus, FormSourceKind } from "../db/types.ts";
 import { isLedgerItemKey, mappingStats, parseMappingInput, type FormMapping, type MappingStats } from "./mapping.ts";
+import { parsePageImages, type PageImage } from "./page-images.ts";
 
 export type FormsScope = { officeId: string; accountId: string | null };
 
@@ -41,12 +42,14 @@ export function readStoredMapping(json: string): FormMapping | null {
 
 export type StoredMapping = Omit<FormMappingRow, "mapping"> & {
   mapping: FormMapping;
+  /** 様式の頁の画像（T86）。無い・壊れていれば null */
+  pageImages: PageImage[] | null;
   checked_by_name: string | null;
   created_by_name: string | null;
 };
 
 const SELECT = `SELECT m.id, m.office_id, m.title, m.form_hash, m.source_kind, m.mapping, m.status, m.ai_model,
-       m.created_by, m.created_at, m.checked_by, m.checked_at, m.version, m.updated_at,
+       m.created_by, m.created_at, m.checked_by, m.checked_at, m.version, m.updated_at, m.page_images,
        c.display_name AS checked_by_name, b.display_name AS created_by_name
   FROM form_mappings m
   LEFT JOIN accounts c ON c.id = m.checked_by
@@ -56,7 +59,7 @@ type Joined = FormMappingRow & { checked_by_name: string | null; created_by_name
 
 function toStored(r: Joined): StoredMapping | null {
   const mapping = readStoredMapping(r.mapping);
-  return mapping ? { ...r, mapping } : null;
+  return mapping ? { ...r, mapping, pageImages: parsePageImages(r.page_images) } : null;
 }
 
 /** 事業所の対応表 1 つ。範囲の外・壊れた物は null */
@@ -105,12 +108,16 @@ export async function listMappings(db: D1Database, officeId: string): Promise<Ma
   return out;
 }
 
-/** 同じ写真・PDF から作った対応表（読み直さないため）。無ければ null */
-export async function findMappingByHash(db: D1Database, officeId: string, hash: string): Promise<{ id: string; status: FormMappingStatus } | null> {
+/** 同じ写真・PDF から作った対応表（読み直さないため）。無ければ null。page_images は頁の画像を置いたか（T86） */
+export async function findMappingByHash(
+  db: D1Database,
+  officeId: string,
+  hash: string,
+): Promise<{ id: string; status: FormMappingStatus; page_images: string | null } | null> {
   return db
-    .prepare("SELECT id, status FROM form_mappings WHERE office_id = ?1 AND form_hash = ?2")
+    .prepare("SELECT id, status, page_images FROM form_mappings WHERE office_id = ?1 AND form_hash = ?2")
     .bind(officeId, hash)
-    .first<{ id: string; status: FormMappingStatus }>();
+    .first<{ id: string; status: FormMappingStatus; page_images: string | null }>();
 }
 
 /** 差し込みの宛先（事業所の本人。カナの順） */
