@@ -29,7 +29,7 @@ import { DrillEnded, initialState, simAt, step, type DirectorHook, type DrillSta
 import { drillHooks } from "./hooks.ts";
 import { actionPost } from "./http.ts";
 import { ACTION_LABELS, CALL_FIXED_SPEECH, clockLabel } from "./labels.ts";
-import { CALL_SYSTEM, PERSONA_SYSTEM, type PersonaAnswer } from "./persona.ts";
+import { CALL_SYSTEM, PERSONA_SYSTEM, VISIT_SYSTEM, type PersonaAnswer } from "./persona.ts";
 import { applyEvent, EMPTY_WORLD, injectChange, SCENARIOS } from "./scenarios.ts";
 import { VISIT_CONFIRMED } from "../triage/index.ts";
 import { loadDrillScreen } from "./view.ts";
@@ -488,6 +488,8 @@ function rain(p: Params): Message {
   const system = systemOf(p);
   const input = inputOf(p);
   if (system.includes(CALL_SYSTEM)) return reply({ speech: "いたい、うごけん。足が動かんのよ" }, HAIKU);
+  // 訪問で着いたときの様子（T93）。使える物の無い返事（手の返事に様子を載せない）
+  if (system.includes(VISIT_SYSTEM)) return reply({ condition: "", location: "home", asks: [], speech: "" }, HAIKU);
   if (system.includes(PERSONA_SYSTEM)) {
     const profile = input["本人役"]?.text ?? "";
     const tick = input["この刻み"]?.text ?? "";
@@ -546,11 +548,11 @@ describe("鍵あり（偽の Claude）", () => {
     expect(screen.ticks[1].turns.find((t) => t.person === "p-02")).toMatchObject({ source: "family", ai: true });
     expect(screen.state.actions.map((a) => a.id)).toEqual(["a1", "a2", "a3"]);
 
-    // 呼び出しの数: 本人役 10 人 × 2 刻み + 電話 1、監督 2
+    // 呼び出しの数: 本人役 10 人 × 2 刻み + 電話 1 + 着いた訪問 2 の様子（T93）、監督 2
     const ai = sqlite.prepare("SELECT purpose, count(*) AS n FROM ai_calls GROUP BY purpose ORDER BY purpose").all();
     expect(ai).toEqual([
       { purpose: "director", n: 2 },
-      { purpose: "persona", n: 21 },
+      { purpose: "persona", n: 23 },
     ]);
   });
 

@@ -32,6 +32,7 @@ import {
   advance,
   DrillEnded,
   isClock,
+  isNight,
   step,
   type ActionBefore,
   type ActionRecord,
@@ -47,6 +48,7 @@ import {
   type Tick,
 } from "./engine.ts";
 import { countFree, readFree, type FreeHook } from "./free-action.ts";
+import { talkEnd, withResultAsks, type VisitHook } from "./dialogue.ts";
 import { CALL_FIXED_SPEECH, CALL_STATUS_LABELS, CALL_STATUS_TEXTS } from "./labels.ts";
 import { decideCallPickup, type CallPickup } from "./persona.ts";
 import {
@@ -151,7 +153,7 @@ export type CallAsk = {
 export type CallHook = (ask: CallAsk) => Promise<{ pickup: CallPickup; speech: string | null; ai: boolean }>;
 
 /** free は自由対応の読み替え（T91、Opus × 1 回。lib/drill/free-action.ts の createFreeHook） */
-export type ActionHooks = StepHooks & { call?: CallHook; free?: FreeHook };
+export type ActionHooks = StepHooks & { call?: CallHook; free?: FreeHook; visit?: VisitHook };
 
 // ---------- 返事を決める ----------
 
@@ -363,7 +365,9 @@ export function applyResult(state: DrillState, id: string, result: ActionResult)
   let world = state.world;
   if (rec.person && result.cleared.length > 0) world = clearMarks(world, rec.person, result.cleared).world;
   if (result.ok) world = applyEffects(world, rec, result, actionRow(effectiveKind(rec)));
-  const minute = Math.max(state.minute, result.atMinute);
+  // T93: 往復と訪問の頼み事を積み、時計は往復の終わりまで（作り直しでも同じ）
+  world = withResultAsks(world, rec.person, result);
+  const minute = Math.max(state.minute, result.atMinute, talkEnd(result));
   const actions = [...state.actions];
   actions[i] = { ...rec, result };
   world = settleAsks(settleWorld(world, minute), actions);
@@ -507,6 +511,9 @@ export async function act(
   if (row.decide.type === "visit" && status === "arrived" && input.person && s.world.ended?.[input.person] === undefined) {
     heard = heardOf(s.people[input.person] ?? null, "visit", endMinute / 60);
   }
+  // T93: 着いたら本人役が見て分かる様子と頼み事（Haiku × 1 回）。聞いた安否・色は変えない。頼み事は applyResult が積む
+  const seen = heard?.via === "visit" && hooks.visit ? input.person : null;
+  const visit = seen ? await hooks.visit!({ person: seen, hour: endMinute / 60, world: s.world, incidents, state: s.people[seen] ?? null, ...(isNight(s) ? { night: true } : {}) }).catch(() => null) : null;
 
   const reworded = words.find((w) => w.id === record.id)?.text.trim() ?? "";
   const said = free?.words?.trim() ?? "";
@@ -529,6 +536,7 @@ export async function act(
     atMinute: endMinute,
     heard,
     ...(arriveAt !== undefined ? { arriveAt } : {}),
+    ...(visit ? { visit } : {}),
   };
   s = applyResult(s, record.id, result);
   return { state: s, record: s.actions.find((a) => a.id === record.id)!, ticks };

@@ -7,6 +7,8 @@
 // 正解・不正解は出さない（採点は T22）。名前は台帳の id から引く（記録には名前が無い）。
 // T59: 手のメモを手の行の下に。進行中は最後の手に「取消」（刻みを越えなかった手だけ。越えた手は「取消不可」の印）。
 // T84: 通話で聞いた安否を表に渡さなかった手（至急維持）は「通話」の横に本番の電話と同じ言葉「無事 不可（本人が「けが」）」を赤の太字で。
+// T93: 最新の電話の手は最初の言葉の下に往復の欄（TalkBox。問い 7 つ・自由の 1 文・切る）、履歴は「通話 N 往復」に畳む（開くと全文）。
+//   訪問で着いた手は様子の 1 行（AI の印）と頼み事の印（灰の文字）。
 
 import { AiMark } from "@/components/person/parts";
 import { OpenIcon } from "@/components/ui/Icon";
@@ -19,9 +21,11 @@ import { COLOR_LABELS, CONTACT_KIND_LABELS } from "@/lib/labels";
 import { SOURCE_LABELS } from "@/lib/list/detail";
 import type { StateTone } from "@/lib/person";
 import { callsOf } from "@/lib/drill/calls";
+import { TALK_UI, talkRounds, type TalkLine, type VisitReport } from "@/lib/drill/dialogue";
 import type { FictionKind } from "@/lib/drill/fiction";
 import { FictionalMark } from "./Fictional";
 import { ActionIcon, CallInIcon } from "./icons";
+import { AskMarks, TalkBox, TalkLines } from "./TalkBox";
 import { UndoButton } from "./UndoButton";
 import { VoicePlay } from "./VoicePlay";
 
@@ -112,6 +116,35 @@ function Bubble({
   );
 }
 
+/** 往復を畳んだ物（T93。「通話 3 往復」。開くと全文）。名前付きの group で、外の刻みの畳みと開き方を分ける */
+function TalkFold({ lines, speaker }: { lines: ReadonlyArray<TalkLine>; speaker: string }) {
+  if (lines.length === 0) return null;
+  return (
+    <details className="group/talk mt-1" data-talk-fold>
+      <summary className="flex w-fit cursor-pointer list-none items-center gap-1 rounded px-1 py-0.5 text-xs [&::-webkit-details-marker]:hidden" data-press>
+        <OpenIcon aria-hidden className="size-3.5 shrink-0 -rotate-90 text-muted transition-transform group-open/talk:rotate-0" />
+        <span className="font-bold">{`${TALK_UI.talk} ${talkRounds({ talk: [...lines] })} ${TALK_UI.rounds}`}</span>
+      </summary>
+      <TalkLines lines={lines} speaker={speaker} />
+    </details>
+  );
+}
+
+/** 訪問で着いたときの様子（T93、本人役の AI の印）と頼み事の印。言う事は吹き出し */
+function VisitLine({ visit, speaker }: { visit: VisitReport; speaker: string }) {
+  return (
+    <div className="mt-1 space-y-0.5" data-visit-report>
+      <div className="flex flex-wrap items-baseline gap-x-1.5 text-sm">
+        <span className="text-xs text-muted">{TALK_UI.condition}</span>
+        {visit.ai && <AiMark small />}
+        {visit.condition && <span>{visit.condition}</span>}
+        <AskMarks asks={visit.asks} />
+      </div>
+      {visit.speech && <Bubble speaker={speaker} text={visit.speech} ai={visit.ai} />}
+    </div>
+  );
+}
+
 /** 手のメモ（T59。ケアマネが書いた物なので AI の印なし） */
 export function MemoLine({ memo }: { memo: string | undefined }) {
   if (!memo) return null;
@@ -162,6 +195,8 @@ function ActionItem({
       )}
       <MemoLine memo={a.memo} />
       {r?.speech && <Bubble speaker={calleeText(a) ?? ""} text={r.speech} ai={r.speechAi} voice={voiceOf?.(a.id) ?? null} />}
+      {r?.talk && <TalkFold lines={r.talk} speaker={calleeText(a) ?? ""} />}
+      {r?.visit && <VisitLine visit={r.visit} speaker={a.person ? (names[a.person] ?? "") : ""} />}
     </li>
   );
 }
@@ -174,6 +209,7 @@ export function LatestResult({
   voiceOf,
   fiction,
   refused,
+  talk,
 }: {
   action: ActionRecord;
   names: Names;
@@ -181,6 +217,8 @@ export function LatestResult({
   voiceOf?: VoiceOf;
   fiction?: FictionKind;
   refused?: Refused;
+  /** 往復の欄（T93）。進行中の画面だけ渡す（読んだ刻みと手の数）。無ければ往復は畳んで出す */
+  talk?: { drillId: string; step: number; actions: number };
 }) {
   const r = action.result;
   const crossed = r ? ticks.filter((t) => r.crossed.includes(t.step)) : [];
@@ -192,6 +230,12 @@ export function LatestResult({
         <MemoLine memo={action.memo} />
       </div>
       {r?.speech && <Bubble speaker={calleeText(action) ?? ""} text={r.speech} ai={r.speechAi} large voice={voiceOf?.(action.id) ?? null} />}
+      {r?.speech && talk ? (
+        <TalkBox drillId={talk.drillId} step={talk.step} actions={talk.actions} action={action} speaker={calleeText(action) ?? ""} />
+      ) : (
+        r?.talk && <TalkFold lines={r.talk} speaker={calleeText(action) ?? ""} />
+      )}
+      {r?.visit && <VisitLine visit={r.visit} speaker={action.person ? (names[action.person] ?? "") : ""} />}
       {calls.length > 0 && (
         <ul className="mt-2 space-y-1 text-sm" data-call-ins>
           {calls.map((t, i) => (

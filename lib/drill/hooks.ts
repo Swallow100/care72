@@ -9,17 +9,28 @@ import type { Principal } from "../auth/principal.ts";
 import type { AskJsonContext } from "../claude/call.ts";
 import { hasAnthropicKey, type AiEnv, type ClaudeClient } from "../claude/client.ts";
 import { d1UsageStore } from "../claude/usage.ts";
-import type { PseudonymInput } from "../pseudonym/index.ts";
+import { pseudonymize, pseudonymizeText, restoreText, type ForClaude, type PseudonymInput, type PseudonymKey } from "../pseudonym/index.ts";
 import type { ActionHooks, CallHook } from "./actions.ts";
 import { drillScope } from "./db.ts";
 import { stopLog, type ClockHooks, type DrillState } from "./engine.ts";
 import { castFactsMap } from "./cast-facts.ts";
-import { clockMarksOf, type ClockMark } from "./clock.ts";
+import { capReached, clockMarksOf, type ClockMark } from "./clock.ts";
 import { drillClocks } from "./world-clocks.ts";
 import { clockRuns } from "./score.ts";
 import { createDirectorHook } from "./director.ts";
 import { createOutcomeHook, loadOutcomeSources, outageForRuns, type OutcomeSource } from "./outcome.ts";
-import { buildPersona, createPersonaHook, isPersonaFailure, loadPersonaSources, personaCallReply, personaPlaces } from "./persona.ts";
+import {
+  buildPersona,
+  createPersonaHook,
+  isPersonaFailure,
+  loadPersonaSources,
+  personaCallReply,
+  personaPlaces,
+  personaTalkReply,
+  personaVisitReport,
+  talkText,
+} from "./persona.ts";
+import { TALK_ASK_WORDS, type TalkHook, type TalkReply, type VisitHook } from "./dialogue.ts";
 import { createWorldHook, roomClientOf, worldModeOf, type RoomClient } from "./world-room.ts";
 
 /** DRILL_WORLD: 仮想モードの世界の道（session 既定 = Managed Agents の部屋・messages = 1 回呼び・off = 世界を動かさない） */
@@ -62,6 +73,8 @@ export function drillHooks(
     director: createDirectorHook({ load, ai, stops }),
     persona: createPersonaHook({ load, ai, stops }),
     call: createCallHook({ load, ai }),
+    // 訪問で着いたときの様子と頼み事（T93、本人役 Haiku × 1 回）
+    visit: createVisitHook({ load, ai }),
     // 仮想モード（T50・T53）だけが使う。世界は部屋（Managed Agents）か 1 回呼びで、結末も世界が決める。outcome は時計の目安
     world: createWorldHook({
       mode,
@@ -158,4 +171,106 @@ export function createCallHook(deps: { load: () => Promise<ReadonlyMap<string, P
       return { pickup: ask.pickup, speech: null, ai: false };
     }
   };
+}
+
+/**
+ * 訪問で着いたときの様子と頼み事（T93 の personaVisitReport、本人役 Haiku × 1 回）。手の所（lib/drill/actions.ts）が訪問の到着でだけ呼ぶ。
+ * 結末の人・台帳に無い本人・1 訓練の上限（T90 の 150）・失敗は null（様子なし。聞いた安否は今までどおりコードが決める）
+ */
+export function createVisitHook(deps: { load: () => Promise<ReadonlyMap<string, PseudonymInput>>; ai: AskJsonContext; on?: string }): VisitHook {
+  return async (v) => {
+    if (v.world.ended?.[v.person] || capReached(v.world.counts)) return null;
+    try {
+      const sources = await deps.load();
+      const source = sources.get(v.person);
+      if (!source) return null;
+      const persona = buildPersona(source, { ...(deps.on ? { on: deps.on } : {}), places: personaPlaces(deps.ai, sources) });
+      return await personaVisitReport(
+        persona,
+        { person: v.person, hour: v.hour, world: v.world, incidents: v.incidents, state: v.state, ...(v.night ? { night: true } : {}) },
+        deps.ai,
+      );
+    } catch (e) {
+      if (!isPersonaFailure(e)) console.error("訪問の様子に失敗", e instanceof Error ? e.name : typeof e);
+      return null;
+    }
+  };
+}
+
+/**
+ * 通話の往復の 1 回（T93、本人役 Haiku × 1 回）。ケアマネの自由の文は事業所の全員の鍵（本人が先頭で「A さん」。本人役の説明と同じ）で
+ * pseudonymizeText を通し、伏せきれなければ PseudonymLeakError を投げる（往復を断る。Claude には何も送らない）。
+ * それまでの往復と今の言葉も同じ鍵でもう一度伏せてから渡す。台帳が読めない・相手が本人役の周りにいない・Claude の失敗は言葉なし
+ * （talk.ts が固定の言葉にする）
+ */
+export function createTalkHook(deps: { load: () => Promise<ReadonlyMap<string, PseudonymInput>>; ai: AskJsonContext; on?: string }): TalkHook {
+  let loaded: Promise<ReadonlyMap<string, PseudonymInput>> | null = null;
+  return async (t): Promise<TalkReply> => {
+    const raw = t.text?.trim() ?? "";
+    const plain: TalkReply = { said: t.ask ? TALK_ASK_WORDS[t.ask] : raw, speech: null, asks: [], ai: false, called: false };
+    let key: PseudonymKey;
+    let persona: ReturnType<typeof buildPersona>;
+    try {
+      const sources = await (loaded ??= deps.load());
+      const source = sources.get(t.person);
+      if (!source) return plain;
+      const opts = { ...(deps.on ? { on: deps.on } : {}), places: personaPlaces(deps.ai, sources) };
+      persona = buildPersona(source, opts);
+      const others = [...sources.entries()].filter(([id]) => id !== t.person).map(([, s]) => s);
+      key = pseudonymize([source, ...others], opts).key;
+    } catch (e) {
+      if (!isPersonaFailure(e)) console.error("通話の往復の台帳に失敗", e instanceof Error ? e.name : typeof e);
+      return plain;
+    }
+    // ケアマネの自由の文を伏せる。伏せきれなければここで投げる（往復を断る）
+    const said = t.ask ? TALK_ASK_WORDS[t.ask] : restoreText(pseudonymizeText(raw, key).text, key);
+    const callee = t.callee.kind === "self" ? "本人" : t.callee.id ? (persona.roles.get(t.callee.id) ?? null) : null;
+    if (!callee) return { ...plain, said };
+    let text: ForClaude<{ text: string }>;
+    try {
+      text = pseudonymizeText(
+        talkText(
+          {
+            person: t.person,
+            hour: t.minute / 60,
+            world: t.world,
+            incidents: [],
+            state: t.state,
+            callee,
+            ...(t.tell ? { tell: t.tell } : {}),
+            ...(t.night ? { night: true } : {}),
+            first: t.first,
+            lines: t.lines,
+            said,
+          },
+          persona,
+        ),
+        key,
+      );
+    } catch (e) {
+      if (!isPersonaFailure(e)) console.error("通話の往復の文に失敗", e instanceof Error ? e.name : typeof e);
+      return { ...plain, said };
+    }
+    const r = await personaTalkReply(persona, text, key, deps.ai);
+    return { said, speech: r.speech, asks: r.asks, ai: r.ai, called: true };
+  };
+}
+
+/**
+ * 通話の往復の route（app/api/drill/[id]/talk）が使う口。鍵があり、ケアマネの役（審査員のケアマネの役も）なら作る。
+ * 無ければ undefined（talk.ts が固定の言葉で往復を残す。Claude は呼ばない）
+ */
+export function drillTalkHook(env: DrillHookEnv, p: Principal | null, opts: { claude?: ClaudeClient; now?: () => Date } = {}): TalkHook | undefined {
+  if (!hasAnthropicKey(env)) return undefined;
+  const scope = drillScope(p);
+  if (!scope || !p?.office) return undefined;
+  const ai: AskJsonContext = {
+    env,
+    usage: d1UsageStore(env.DB),
+    office: { id: p.office.id, kind: p.office.kind },
+    ...(opts.claude ? { claude: opts.claude } : {}),
+    ...(opts.now ? { now: opts.now } : {}),
+  };
+  let sources: Promise<ReadonlyMap<string, PseudonymInput>> | null = null;
+  return createTalkHook({ load: () => (sources ??= loadPersonaSources(env.DB, scope.officeId)), ai });
 }
