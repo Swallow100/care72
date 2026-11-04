@@ -10,6 +10,7 @@ import type { D1Database } from "@cloudflare/workers-types";
 import { isSameOrigin, sessionCookie } from "../auth/cookie.ts";
 import type { Principal } from "../auth/principal.ts";
 import { PAGE_PATHS } from "../auth/roles.ts";
+import { canChooseRole } from "../auth/wall.ts";
 import { LINK_SESSION_PV, signSession } from "../auth/session.ts";
 import { PHONE_LINK_INVALID_PATH, PHONE_LINK_PATH, type PhoneLinkPayload } from "./phone-link.ts";
 import { resolvePhoneLink } from "./phone-link-store.ts";
@@ -32,12 +33,12 @@ export function phoneLinkOpenPath(token: string): string {
 }
 
 /**
- * リンクを開くと今のログインを失う人か。ケアマネ・行政・医療班のアカウントと、審査員（どの役でも。役変更で戻れなくなるので）。
+ * リンクを開くと今のログインを失う人か。ケアマネ・行政・医療班のアカウントと、審査員・山本（どの役でも。役変更で戻れなくなるので。T95）。
  * 本人・家族のリンクのセッション（審査員でない self・family）とログインなしは false（そのまま開く）
  */
 export function linkReplacesLogin(p: Principal | null): boolean {
   if (p === null) return false;
-  if (p.judge) return true;
+  if (canChooseRole(p)) return true;
   return p.role !== "self" && p.role !== "family";
 }
 

@@ -4,6 +4,7 @@
 // pv はパスワードのハッシュの指紋。パスワードを変えると前のセッションは使えなくなる。
 // 3 つ目の形 link（T69a）: 本人・家族がスマホ入口のリンク（lib/qr/phone-link.ts）で開いたセッション。パスワードは無く pv は固定の "link"。
 // 期限はリンクの期限と同じ（最長 180 日。本人・家族はホーム画面に追加して何か月も開く）。版（g）とリンクを作った時刻（li）は毎回 D1 と比べ、作り直すと切れる。
+// account の r（T95）: 見本のケアマネ（山本）が役変更で選んだ役。審査員の r と同じ一覧で、ケアマネの役のときは付けない。
 
 import { z } from "zod";
 import { PHONE_LINK_TTL_SEC } from "../qr/phone-link.ts";
@@ -20,7 +21,18 @@ const MAX_TOKEN_LENGTH = 2048;
 
 const base = { v: z.literal(1), pv: z.string().min(1).max(64), iat: z.number().int(), exp: z.number().int() };
 const payloadSchema = z.discriminatedUnion("k", [
-  z.object({ ...base, k: z.literal("account"), a: z.string().min(1).max(128) }).strict(),
+  z
+    .object({
+      ...base,
+      k: z.literal("account"),
+      a: z.string().min(1).max(128),
+      /**
+       * 役を替えた山本の役（T95。lib/auth/demo.ts の ROLE_SWITCH_ACCOUNT_IDS だけ）。ケアマネの役は付けない（前のセッションと同じ形）。
+       * 付いていても役を選べるアカウントでなければ通さない（lib/auth/principal.ts）
+       */
+      r: z.enum(JUDGE_ROLES).optional(),
+    })
+    .strict(),
   z.object({ ...base, k: z.literal("judge"), r: z.enum(JUDGE_ROLES).nullable() }).strict(),
   z
     .object({

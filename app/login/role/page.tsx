@@ -7,15 +7,17 @@ import { SubmitButton } from "@/components/ui/SubmitButton";
 import { judgeChoices } from "@/lib/auth/choices";
 import { homePath, LOGIN_PATH } from "@/lib/auth/roles";
 import { getPrincipal } from "@/lib/auth/server";
+import { canChooseRole } from "@/lib/auth/wall";
 
 export const metadata: Metadata = { title: "役選択 | ケア72" };
 
 // 審査員がログインのあとに役を選ぶ。選び直しはふだんヘッダーの「役変更」（その場で開く一覧）で、ここはその一覧が使えないときの入口。
+// 見本のケアマネ（山本）も同じ一覧で選び直せる（T95）。ほかの人は自分の役の入口へ。
 // 上はログインと同じ印（72 時間の輪）。選んだ役は枠で示す（下地は敷かない）。押してから移るまで灰色を残す
 export default async function RoleSelectPage() {
   const p = await getPrincipal();
   if (!p) redirect(LOGIN_PATH);
-  if (!p.judge) redirect(homePath(p.role));
+  if (!canChooseRole(p)) redirect(homePath(p.role));
   const { env } = await getCloudflareContext({ async: true });
   const choices = await judgeChoices(env.DB);
 

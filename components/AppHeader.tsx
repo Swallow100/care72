@@ -15,6 +15,7 @@ import { judgeChoices } from "@/lib/auth/choices";
 import { ADMIN_LABEL, canViewPage, homePath, JUDGE_LABEL, LOGIN_PATH, ROLE_LABELS, ROLE_SELECT_PATH, showsLogout } from "@/lib/auth/roles";
 import { getPrincipal } from "@/lib/auth/server";
 import { SessionSecretMissing } from "@/lib/auth/session";
+import { canChooseRole } from "@/lib/auth/wall";
 import { LogoutButton } from "./LogoutButton";
 import { NavLinks } from "./NavLinks";
 
@@ -36,7 +37,8 @@ export async function AppHeader() {
 
   const desk = p !== null && canViewPage(p.role, "caseload");
   const mark = desk && p?.office ? await officeMark(p.office.id) : null;
-  const choices = p?.judge ? await roleChoices() : null;
+  // 役変更は審査員と見本のケアマネの山本（T95。lib/auth/wall.ts の canChooseRole）
+  const choices = canChooseRole(p) ? await roleChoices() : null;
   return (
     <header className="bg-panel">
       <div className="mx-auto flex max-w-[90rem] flex-wrap items-center gap-x-4 gap-y-1 px-4 py-1.5">
@@ -95,7 +97,7 @@ function Who({ p, choices }: { p: Principal; choices: RoleChoice[] | null }) {
         {p.judge && <span className="ml-1.5 hidden text-xs text-muted sm:inline">{JUDGE_LABEL}</span>}
       </span>
       <div className="flex items-center gap-1.5">
-        {p.judge && p.role !== "unselected" &&
+        {canChooseRole(p) && p.role !== "unselected" &&
           (choices ? (
             <RoleMenu choices={choices} current={p.role} label="役変更" />
           ) : (
