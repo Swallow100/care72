@@ -158,6 +158,23 @@ export async function changeOwnPassword(
   return { ok: true, token };
 }
 
+/**
+ * 受入一覧（/staff）の見出しの行の「パスワード変更」（T99）。医療班・行政のアカウント（作者の道具 tools/office/new-staff.ts で作る。T97）は open。
+ * 審査員のログインと種の固定のアカウント（役を替えた山本など）は fixed（「固定」の印だけ。changeOwnPassword も同じ所で断る）。
+ * ケアマネは事業所の画面の自分の行から（T61）、本人・家族はアカウントが無いので null
+ */
+export function ownPasswordEntry(p: Pick<Principal, "role" | "judge" | "accountId"> | null): "open" | "fixed" | null {
+  if (!p || (p.role !== "medical" && p.role !== "government")) return null;
+  if (p.judge || isFixedAccount(p.accountId)) return "fixed";
+  return p.accountId ? "open" : null;
+}
+
+/** 欄の隠した ID（パスワードの管理の道具が新しいパスワードを ID と組にできるように）。無い・停止した人は null */
+export async function ownLoginId(db: D1Database, accountId: string): Promise<string | null> {
+  const r = await db.prepare("SELECT login_id FROM accounts WHERE id = ?1 AND disabled_at IS NULL").bind(accountId).first<{ login_id: string | null }>();
+  return r?.login_id ?? null;
+}
+
 export type PasswordChangeOutcome = {
   status: number;
   body: Record<string, unknown>;

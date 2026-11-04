@@ -3,8 +3,8 @@
 // ケアマネの一覧の 1 行（docs/tasks/T61.md）。名前・管理者の印・停止の印・ID・担当の人数と、行の下の操作。
 // - 管理者には「改名」「管理者」/「管理者解除」「停止」/「再開」「再発行」（停止・管理者解除・再発行は確認の窓を通す）。
 //   改名は行の下に欄が開く。再発行した初期パスワードはこの画面の状態にだけ持って 1 回だけ出す（URL・保存・ログに残さない）
-// - 自分の行には「パスワード変更」（管理者でなくても）。現在・新規・確認の 3 つの欄。変えたあともこの端末はログインしたまま、
-//   ほかの端末は入り直し（「他端末 再ログイン」）
+// - 自分の行には「パスワード変更」（管理者でなくても）。欄は components/office/OwnPassword.tsx（医療班・行政の受入一覧と同じ部品。T99）。
+//   現在・新規・確認の 3 つの欄。変えたあともこの端末はログインしたまま、ほかの端末は入り直し（「他端末 再ログイン」）
 // - 種のデモ事業所のアカウント（山本）は「固定」の 1 語でボタンを出さない（サーバーも断る）
 // 送ったあとは一覧を読み直す（router.refresh。この部品の状態は残る）。
 
@@ -21,19 +21,19 @@ import {
   RemoveIcon,
   RestoreIcon,
   RetryIcon,
-  SaveIcon,
   UnlistIcon,
 } from "@/components/ui/Icon";
 import { StateText } from "@/components/ui/Tag";
 import { isFixedAccount } from "@/lib/auth/demo";
 import { DISPLAY_NAME_MAX } from "@/lib/office/forms";
-import { ASSIGN_ANCHOR, careManagerApiPath, OWN_PASSWORD_API_PATH } from "@/lib/office/http-paths";
+import { ASSIGN_ANCHOR, careManagerApiPath } from "@/lib/office/http-paths";
 import { OFFICE_LABELS, STAFF_CONFIRM_LABELS } from "@/lib/office/labels";
 import { appConfirm } from "@/lib/ui/dialog";
 import { INPUT } from "./AddCareManager";
+import { FormButtons, OwnPasswordForm, PasswordDone, post, type Reply } from "./OwnPassword";
 
-/** 新しいパスワードの長さ（lib/auth/password-change.ts の NEW_PASSWORD_MIN・MAX と同じ。テストで確かめる） */
-export const PASSWORD_INPUT = { min: 8, max: 64 } as const;
+/** 新しいパスワードの長さ（欄の部品 OwnPassword.tsx の物。T61 のテストはここから読む） */
+export { PASSWORD_INPUT } from "./OwnPassword";
 
 export type CareManagerRowItem = {
   id: string;
@@ -45,21 +45,6 @@ export type CareManagerRowItem = {
 };
 
 type Mode = "rename" | "password" | null;
-type Reply = { ok: true; changed?: boolean; password?: string } | { ok: false; error?: string; label?: string };
-
-async function post(path: string, body: unknown): Promise<Reply> {
-  try {
-    const res = await fetch(path, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-      cache: "no-store",
-    });
-    return ((await res.json().catch(() => null)) as Reply | null) ?? { ok: false };
-  } catch {
-    return { ok: false };
-  }
-}
 
 export function CareManagerRow({ item, self, manage }: { item: CareManagerRowItem; self: boolean; manage: boolean }) {
   const router = useRouter();
@@ -71,7 +56,6 @@ export function CareManagerRow({ item, self, manage }: { item: CareManagerRowIte
   const [copied, setCopied] = useState(false);
   const [passwordDone, setPasswordDone] = useState(false);
   const [name, setName] = useState(item.name);
-  const [pw, setPw] = useState({ current: "", next: "", confirm: "" });
 
   // 管理者の操作は自分の行には出さない（自分の停止・管理者解除・再発行はサーバーも断る）。改名は自分にも
   const canManage = manage && !fixed;
@@ -83,7 +67,6 @@ export function CareManagerRow({ item, self, manage }: { item: CareManagerRowIte
     setPasswordDone(false);
     setMode(next);
     if (next === "rename") setName(item.name);
-    if (next === "password") setPw({ current: "", next: "", confirm: "" });
   }
 
   async function act(body: Record<string, unknown>): Promise<Reply> {
@@ -135,26 +118,6 @@ export function CareManagerRow({ item, self, manage }: { item: CareManagerRowIte
     setCopied(false);
     const r = await act({ action: "reset_password" });
     if (r.ok && typeof r.password === "string") setReissued(r.password);
-  }
-
-  async function changePassword(e: React.FormEvent) {
-    e.preventDefault();
-    if (pw.next !== pw.confirm) {
-      setError({ label: OFFICE_LABELS.confirmMismatch, hasPeople: false });
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    const r = await post(OWN_PASSWORD_API_PATH, { current: pw.current, next: pw.next });
-    setBusy(false);
-    if (r.ok) {
-      setPw({ current: "", next: "", confirm: "" });
-      setMode(null);
-      setPasswordDone(true);
-      router.refresh();
-    } else {
-      setError({ label: r.label ?? "送信失敗", hasPeople: false });
-    }
   }
 
   async function copy() {
@@ -262,24 +225,19 @@ export function CareManagerRow({ item, self, manage }: { item: CareManagerRowIte
       )}
 
       {mode === "password" && (
-        <form onSubmit={changePassword} aria-label={OFFICE_LABELS.changePassword} className="mt-1.5 grid gap-1.5" data-cm-form="password">
-          {/* パスワードの管理の道具が ID と組にできるように（見せない） */}
-          <input type="text" name="username" autoComplete="username" value={item.loginId ?? ""} readOnly hidden />
-          <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-3">
-            <PasswordField label={OFFICE_LABELS.currentPassword} auto="current-password" value={pw.current} onChange={(v) => setPw({ ...pw, current: v })} focus />
-            <PasswordField label={OFFICE_LABELS.nextPassword} auto="new-password" min value={pw.next} onChange={(v) => setPw({ ...pw, next: v })} />
-            <PasswordField label={OFFICE_LABELS.confirmPassword} auto="new-password" min value={pw.confirm} onChange={(v) => setPw({ ...pw, confirm: v })} />
-          </div>
-          <FormButtons busy={busy} ok={OFFICE_LABELS.change} onCancel={() => setMode(null)} error={error?.label ?? null} />
-        </form>
+        <OwnPasswordForm
+          loginId={item.loginId}
+          onCancel={() => setMode(null)}
+          onDone={() => {
+            setMode(null);
+            setPasswordDone(true);
+          }}
+          className="mt-1.5"
+          data-cm-form="password"
+        />
       )}
 
-      {passwordDone && (
-        <p role="status" className="mt-1 flex flex-wrap items-baseline justify-end gap-x-2 text-sm">
-          <StateText tone="ok">{OFFICE_LABELS.changed}</StateText>
-          <span className="text-muted">{OFFICE_LABELS.otherDevices}</span>
-        </p>
-      )}
+      {passwordDone && <PasswordDone className="mt-1" />}
 
       {reissued && (
         <div role="status" className="mt-1.5 rounded bg-panel px-2.5 py-2 text-sm" data-cm-reissued>
@@ -324,57 +282,5 @@ function DangerIn({ icon: I, children, className = "", ...rest }: { icon: IconTy
       <I aria-hidden className="size-3.5 shrink-0 text-danger group-disabled:text-muted" />
       <span className="text-danger group-disabled:text-muted">{children}</span>
     </Button>
-  );
-}
-
-function PasswordField({
-  label,
-  auto,
-  min = false,
-  focus = false,
-  value,
-  onChange,
-}: {
-  label: string;
-  auto: "current-password" | "new-password";
-  min?: boolean;
-  focus?: boolean;
-  value: string;
-  onChange: (v: string) => void;
-}) {
-  return (
-    <label className="flex min-w-0 flex-col gap-0.5">
-      <span className="text-xs text-muted">{label}</span>
-      <input
-        type="password"
-        required
-        autoComplete={auto}
-        autoFocus={focus}
-        minLength={min ? PASSWORD_INPUT.min : undefined}
-        maxLength={min ? PASSWORD_INPUT.max : undefined}
-        spellCheck={false}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className={INPUT}
-      />
-    </label>
-  );
-}
-
-function FormButtons({ busy, ok, onCancel, error }: { busy: boolean; ok: string; onCancel: () => void; error: string | null }) {
-  return (
-    <div className="flex flex-wrap items-center gap-1.5">
-      <Button type="submit" kind="main" size="sm" icon={SaveIcon} disabled={busy} data-pending={busy ? "" : undefined}>
-        {busy ? OFFICE_LABELS.sending : ok}
-      </Button>
-      <Button kind="quiet" size="sm" icon={CloseIcon} onClick={onCancel} disabled={busy}>
-        {OFFICE_LABELS.cancel}
-      </Button>
-      {error && (
-        <span role="alert" className="text-sm font-bold text-danger">
-          {error}
-        </span>
-      )}
-    </div>
   );
 }
