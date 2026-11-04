@@ -405,7 +405,8 @@ export function SelectList({
         data-value={it.value}
         data-active={p === active ? "" : undefined}
         data-press={it.disabled ? undefined : ""}
-        className={`${ITEM} ${it.disabled ? "text-muted" : ""} ${on && !multiple ? "font-bold" : ""}`}
+        // 未選択の印の項目（data-placeholder）は閉じた欄の字と同じ灰の細い字。選ばれていても太字にしない（選んだ印は右のチェックだけ。T113）
+        className={`${ITEM} ${it.disabled || it.placeholder ? "text-muted" : ""} ${on && !multiple && !it.placeholder ? "font-bold" : ""}`}
         onClick={() => onPick?.(i)}
         onFocus={() => {
           if (p !== active) onActive?.(p);

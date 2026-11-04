@@ -9,6 +9,8 @@
 // T84: 通話で聞いた安否を表に渡さなかった手（至急維持）は「通話」の横に本番の電話と同じ言葉「無事 不可（本人が「けが」）」を赤の太字で。
 // T93: 最新の電話の手は最初の言葉の下に往復の欄（TalkBox。問い 7 つ・自由の 1 文・切る）、履歴は「通話 N 往復」に畳む（開くと全文）。
 //   訪問で着いた手は様子の 1 行（AI の印）と頼み事の印（灰の文字）。
+// T110: 手の行に打った時刻と終わる時刻（「1 時間 5 分〜10 分」）と所要（決まりの表で伸びた理由つき）。自由対応は読み替えた手かやり方、
+//   ケアマネの文（内容）と AI の読み替えの理由（短く、AI の印）を行の下に。
 
 import { AiMark } from "@/components/person/parts";
 import { OpenIcon } from "@/components/ui/Icon";
@@ -21,6 +23,9 @@ import { COLOR_LABELS, CONTACT_KIND_LABELS } from "@/lib/labels";
 import { SOURCE_LABELS } from "@/lib/list/detail";
 import type { StateTone } from "@/lib/person";
 import { callsOf } from "@/lib/drill/calls";
+import { FREE_LABELS } from "@/lib/drill/action-catalog";
+import { FREE_WAY_LABELS } from "@/lib/drill/action-terms";
+import { spanLabel } from "@/lib/drill/busy";
 import { TALK_UI, talkRounds, type TalkLine, type VisitReport } from "@/lib/drill/dialogue";
 import type { FictionKind } from "@/lib/drill/fiction";
 import { FictionalMark } from "./Fictional";
@@ -52,11 +57,22 @@ function Head({ a, names, fiction, refused }: { a: ActionRecord; names: Names; f
   const callee = calleeText(a);
   return (
     <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
-      <span className="text-xs text-muted tabular-nums">{clockLabel(a.atMinute)}</span>
+      <span className="text-xs text-muted tabular-nums" data-act-span={`${a.atMinute}-${a.endMinute}`}>
+        {r ? spanLabel(a.atMinute, Math.max(a.endMinute, r.atMinute), clockLabel) : clockLabel(a.atMinute)}
+        <span className="ml-1">
+          {a.minutes} {ACTION_UI.minutes}
+          {a.adds && a.adds.length > 0 && ` ${a.adds.join("・")}`}
+        </span>
+      </span>
       <span className="flex items-center gap-1 self-center font-bold">
         <ActionIcon kind={a.kind} className="size-3.5" />
         {ACTION_LABELS[a.kind]}
       </span>
+      {a.kind === "free" && (a.as || a.way) && (
+        <span className="text-xs" data-free-as={a.as ?? a.way}>
+          {a.as ? `${FREE_LABELS.read} ${ACTION_LABELS[a.as]}` : `${FREE_LABELS.own} ${FREE_WAY_LABELS[a.way!]}`}
+        </span>
+      )}
       {who && (
         <span>
           {who}
@@ -145,6 +161,28 @@ export function VisitLine({ visit }: { visit: VisitReport }) {
   );
 }
 
+/** 自由対応の文（ケアマネが書いた物）と AI の読み替えの理由（短く、AI の印）。T110 */
+export function FreeTextLine({ a }: { a: ActionRecord }) {
+  if (a.kind !== "free" || (!a.text && !a.reason)) return null;
+  return (
+    <div className="mt-0.5 space-y-0.5 text-xs" data-act-free-text>
+      {a.text && (
+        <p className="flex gap-1.5">
+          <span className="shrink-0 text-muted">{FREE_LABELS.text}</span>
+          <span className="min-w-0 break-words">{a.text}</span>
+        </p>
+      )}
+      {a.reason && (
+        <p className="flex items-center gap-1.5 text-muted" data-act-free-reason>
+          <span className="shrink-0">{FREE_LABELS.why}</span>
+          <AiMark small />
+          <span className="min-w-0 break-words">{a.reason}</span>
+        </p>
+      )}
+    </div>
+  );
+}
+
 /** 手のメモ（T59。ケアマネが書いた物なので AI の印なし） */
 export function MemoLine({ memo }: { memo: string | undefined }) {
   if (!memo) return null;
@@ -193,6 +231,7 @@ export function ActionItem({
       ) : (
         <Head a={a} names={names} fiction={fiction} refused={refused} />
       )}
+      <FreeTextLine a={a} />
       <MemoLine memo={a.memo} />
       {r?.speech && <Bubble speaker={calleeText(a) ?? ""} text={r.speech} ai={r.speechAi} voice={voiceOf?.(a.id) ?? null} />}
       {r?.talk && <TalkFold lines={r.talk} speaker={calleeText(a) ?? ""} />}
@@ -227,6 +266,7 @@ export function LatestResult({
     <section aria-label={ACTION_UI.result} className="rounded-md bg-panel2 px-2.5 py-2" data-latest={action.id}>
       <div className="text-sm">
         <Head a={action} names={names} fiction={fiction} refused={refused} />
+        <FreeTextLine a={action} />
         <MemoLine memo={action.memo} />
       </div>
       {r?.speech && <Bubble speaker={calleeText(action) ?? ""} text={r.speech} ai={r.speechAi} large voice={voiceOf?.(action.id) ?? null} />}

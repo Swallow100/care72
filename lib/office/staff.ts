@@ -349,7 +349,8 @@ export async function resetCareManagerPassword(
     change: "reset_password",
     body: staffChangeBody(t.display_name, "reset_password"),
     guard: "1 = 1",
-    set: "password_hash = ?4",
+    // 人が作ったパスワードに戻るので、初期パスワードの印も戻す（T114。本人が変えると外れる）
+    set: "password_hash = ?4, password_initial = 1",
     setArg: hash,
     at,
   });

@@ -26,6 +26,7 @@ import {
   CATALOG_WORDS,
   effectiveKind,
   FREE_MAX,
+  FREE_TEXT_MAX,
 } from "./action-catalog.ts";
 import { act, applyResult, BACKUP_PERSON, settleAsks, type ActTarget, type ActionHooks } from "./actions.ts";
 import { actDrill, drillScope, loadDrillRow, loadTicks, participantsOf, replayState, startDrill, stateOfRow } from "./db.ts";
@@ -521,11 +522,11 @@ describe("自由対応", () => {
     expect((await stored()).actions).toEqual([]);
   });
 
-  it("文が無い・120 字を超える自由対応は 400。鍵が無ければ読み替えずに記録", async () => {
+  it("文が無い・200 字を超える自由対応は 400（T110 で 120 字から）。鍵が無ければ読み替えずに記録", async () => {
     await start();
     expect((await actionPost(db, careManager(), ID, body({ kind: "free", person: null }), START)).status).toBe(400);
     expect((await actionPost(db, careManager(), ID, body({ kind: "free", person: null, text: " " }), START)).status).toBe(400);
-    expect((await actionPost(db, careManager(), ID, body({ kind: "free", person: null, text: "あ".repeat(121) }), START)).status).toBe(400);
+    expect((await actionPost(db, careManager(), ID, body({ kind: "free", person: null, text: "あ".repeat(FREE_TEXT_MAX + 1) }), START)).status).toBe(400);
     expect((await actionPost(db, careManager(), ID, body({ kind: "visit", person: "p-01", text: 3 }), START)).status).toBe(400);
     expect(drillFreeHook({ DB: db }, careManager())).toBeUndefined();
     const ok = await actionPost(db, careManager(), ID, body({ kind: "free", person: null, text: "事業所の発電機を確かめる" }), START, { roll: () => 0 });

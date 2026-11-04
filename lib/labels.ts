@@ -27,6 +27,7 @@ import type {
   SmartphoneUse,
   SupportKind,
   TimelineKind,
+  TransportKind,
 } from "./db/types.ts";
 import type { Color, GreenVia, Tier } from "./triage/index.ts";
 
@@ -137,7 +138,8 @@ export const TIER_LABELS: Record<Tier, string> = {
 export const SECTION_LABELS = {
   medical: "医療",
   evacuation: "避難",
-  people: "人",
+  // 家族・緊急連絡先・支援者・民生委員・みまもり員・夜間支援の面。「人」だけでは何の面か分かりにくかった（T113、11/5 の決め）
+  people: "関係者",
   basic: "基本",
   consent: "同意",
   documents: "書類",
@@ -181,6 +183,15 @@ export const SUPPORT_KIND_LABELS: Record<SupportKind, string> = {
   call: "声掛け",
   guide: "誘導",
   assist: "移動介助",
+  other: "その他",
+};
+
+/** 避難の手段の選ぶ欄（T112） */
+export const TRANSPORT_KIND_LABELS: Record<TransportKind, string> = {
+  foot: "徒歩",
+  wheelchair: "車いす",
+  family_car: "家族の車",
+  pickup: "送迎",
   other: "その他",
 };
 
@@ -284,6 +295,12 @@ export const CONTACT_FLAG_LABELS = {
   nightUnknown: "夜間未確認",
   hasSmartphone: "スマホ",
 } as const;
+
+/**
+ * 関係者の面の連絡先の一覧（T113）。1 人 1 行で、役割（家族・緊急 1・支援 1・夜間可など）を印で並べる。
+ * 「緊急 1」「支援 1」は面の編集の欄（INTAKE_LABELS.emergency・supporter）と同じ言葉に順番を付けた物
+ */
+export const CONTACT_ROLE_LABELS = { list: "連絡先", emergency: "緊急", supporter: "支援" } as const;
 
 /** 薬・機器の行の中の小さな見出し */
 export const MED_PARTS = { amount: "用量", remaining: "残り", storage: "保管", battery: "電池" } as const;
@@ -491,6 +508,8 @@ export const PLACE_LABELS = {
   zoomOut: "縮小",
   /** 位置・中心がまだ無い */
   none: "未設定",
+  /** 位置・中心を置いてある（緯度経度の数字は出さない。T113） */
+  set: "設定済",
   /** スマホ・車の有無の選択（— / あり / なし） */
   smartphone: "スマホ",
   car: "車",
@@ -551,6 +570,20 @@ export const ROUTE_LABELS = {
   credit: "出典",
   /** 計画書の紙の避難経路の地図（T106）。前からの紙面は段に「地図 別紙」と書き、地図は別紙の頁に */
   paperMap: "地図",
+  /** 避難先の候補（T112。国土地理院の指定緊急避難場所・指定避難所）: 切替・読込中・無し・読めない */
+  candidates: "候補",
+  candidatesNone: "候補なし",
+  /** 候補の種類: 指定緊急避難場所・指定避難所・福祉避難所 */
+  kindEmergency: "緊急避難",
+  kindShelter: "避難所",
+  kindWelfare: "福祉",
+  /** 徒歩の時間の見込み（T112）と、歩く速さの見出し */
+  estimate: "目安",
+  speed: "歩行",
+  /** 浸水のハザードがあり手段が車のときの 1 語（T112。色と連絡順には使わない） */
+  floodCar: "冠水注意",
+  /** 根拠（出典の登録簿へのリンクの頭） */
+  basis: "根拠",
 } as const;
 
 /**

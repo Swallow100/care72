@@ -7,6 +7,7 @@
 // 早送りの間（T59）は早送りの横で 1・2.5・5 秒から選ぶ（端末の中だけ。保存しない。既定 2.5 秒）。
 // 連続の時計の訓練（T90）は「進める」の代わりに 30 分・1 時間・3 時間・次まで（主の操作は次まで）。早送りは「次まで」を間を置いて繰り返す。
 // 横に 1 訓練の AI の残り回数（lib/drill/clock.ts。上限に達したら「AI 停止 訓練上限」の帯）。10 分版は今の「進める」のまま。
+// T110: 連続の時計の訓練は先頭に「手の分」（時計は進めず、手に使った時間を AI も動かして閉じる。使った分があるときだけ押せる）。
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -15,7 +16,7 @@ import { CHOICE_INPUT } from "@/components/ui/choice";
 import { Loader72 } from "@/components/ui/Loader72";
 import { Select } from "@/components/ui/Select";
 import { CLOCK_LABELS, CLOCK_STEP_LABELS, CLOCK_STEPS, type ClockStep } from "@/lib/drill/clock";
-import { DRILL_LABELS, T59_LABELS } from "@/lib/drill/labels";
+import { ACTION_UI, DRILL_LABELS, T59_LABELS } from "@/lib/drill/labels";
 import { DEFAULT_FAST_MS, FAST_INTERVALS, intervalLabel, parseInterval } from "@/lib/drill/speed";
 import { appConfirm } from "@/lib/ui/dialog";
 import { CONFIRM_LABELS, WAIT_LABELS } from "@/lib/ui/labels";
@@ -26,7 +27,7 @@ const SELECT =
   "h-8 min-w-0 rounded bg-panel2 px-2 text-sm text-ink outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-accent";
 
 /** 進め方（連続の時計の訓練）。無ければ刻みの道（1 刻み） */
-type Move = { minutes: ClockStep } | { next: true } | null;
+type Move = { minutes: ClockStep } | { next: true } | { acts: true } | null;
 
 export function DrillControls({
   id,
@@ -34,6 +35,7 @@ export function DrillControls({
   done,
   clock = false,
   left = null,
+  used = null,
 }: {
   id: string;
   step: number;
@@ -42,6 +44,8 @@ export function DrillControls({
   clock?: boolean;
   /** 1 訓練の AI の残り回数（連続の時計の訓練だけ） */
   left?: number | null;
+  /** 手に使った時間（分、T110。AI を動かした最後の区切りから。連続の時計の訓練だけ） */
+  used?: number | null;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -63,7 +67,7 @@ export function DrillControls({
     setBusy(true);
     setStepping(true);
     setError(null);
-    setMoving(move ? ("next" in move ? "next" : String(move.minutes)) : null);
+    setMoving(move ? ("next" in move ? "next" : "acts" in move ? "acts" : String(move.minutes)) : null);
     sentRef.current = stepRef.current;
     try {
       const res = await fetch(`/api/drill/${encodeURIComponent(id)}/step`, {
@@ -133,6 +137,17 @@ export function DrillControls({
     <div className="flex flex-wrap items-center gap-2" data-controls={clock ? "clock" : ""}>
       {clock ? (
         <>
+          <Button
+            kind="plain"
+            onClick={() => void advance({ acts: true })}
+            disabled={busy || fast || !used || used <= 0}
+            data-action="advance"
+            data-acts={used ?? 0}
+            data-pending={busy && !fast && moving === "acts" ? "" : undefined}
+          >
+            {CLOCK_LABELS.acts}
+            {used !== null && used > 0 && <span className="text-xs font-normal tabular-nums">{used} {ACTION_UI.minutes}</span>}
+          </Button>
           {CLOCK_STEPS.map((m) => (
             <Button
               key={m}

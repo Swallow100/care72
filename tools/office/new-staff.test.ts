@@ -108,7 +108,7 @@ describe("医療班・行政のアカウントを作る道具: 引数（T97）",
     );
     const where = "login_id = 'kyugo1' AND office_id IS NULL AND role IN ('medical', 'government')";
     expect(newStaffSql({ action: "reissue", loginId: "kyugo1", out: null }, o)).toBe(
-      `UPDATE accounts SET password_hash = 'pbkdf2-sha256:1:AAAAAAAAAAA:BBBB' WHERE ${where};\n`,
+      `UPDATE accounts SET password_hash = 'pbkdf2-sha256:1:AAAAAAAAAAA:BBBB', password_initial = 1 WHERE ${where};\n`,
     );
     expect(newStaffSql({ action: "disable", loginId: "kyugo1", out: null }, { ...o, passwordHash: null })).toBe(
       `UPDATE accounts SET disabled_at = '2026-11-04T00:00:00.000Z' WHERE ${where} AND disabled_at IS NULL;\n`,

@@ -45,6 +45,7 @@ import {
   type Tier,
   type TriageResult,
 } from "../triage/index.ts";
+import { transportText } from "../map/transport.ts";
 
 // ---------- 列 ----------
 
@@ -498,7 +499,7 @@ function buildOne(p: Form9PersonInput, today: string): Built {
       evacuation: join([
         supporters > 0 ? `支援者 ${supporters} 人` : "支援者なし",
         ledger.care.bedridden ? "寝たきり" : walking,
-        ledger.evacuation.transport ? `手段 ${ledger.evacuation.transport}` : null,
+        transportText(ledger.evacuation) ? `手段 ${transportText(ledger.evacuation)}` : null,
       ]),
       area: join([town, careLevel], "／"),
       nameAge: age === null ? p.person.name : `${p.person.name}（${age}）`,

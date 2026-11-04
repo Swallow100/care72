@@ -35,6 +35,7 @@ import type {
 import { ageOn, todayJst } from "../age.ts";
 import { BIRTH_MARK, birthSpans, maskBirthForms, type Birth } from "./birth.ts";
 import { ADDRESS_MARK, CONTACT_PASSES, formLeaks, MAIL_MARK, maskContactForms, maskPlaceAndNameForms, NAME_MARK, PLACE_NAME_PASSES, POSTAL_MARK, type Span } from "./forms.ts";
+import { transportText } from "../map/transport.ts";
 
 export { ADDRESS_MARK, MAIL_MARK, NAME_MARK, NOT_NAME_WORDS, POSTAL_MARK } from "./forms.ts";
 export { BIRTH_MARK } from "./birth.ts";
@@ -659,7 +660,7 @@ function toClaudePerson(input: PseudonymInput, alias: string, roles: string[], k
       destination2: s(evacuation.destination2),
       route: s(evacuation.route),
       barriers: s(evacuation.barriers),
-      transport: s(evacuation.transport),
+      transport: s(transportText(evacuation)),
       pets: s(evacuation.pets),
       carryItems: ss(evacuation.carryItems),
       myTimeline: evacuation.myTimeline ?? null,

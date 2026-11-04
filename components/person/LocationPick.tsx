@@ -152,8 +152,9 @@ export function LocationPick({ value, onChange, center, label, readOnly = false 
             {PLACE_LABELS.unset}
           </Button>
         )}
-        <span className="ml-auto text-xs text-muted tabular-nums" data-location-value>
-          {value ? `${value.lat.toFixed(5)}, ${value.lng.toFixed(5)}` : PLACE_LABELS.none}
+        {/* 置いたかどうかだけ。緯度経度の数字は読む人に要らないので出さない（T113）。置いた所は地図のピンで見る */}
+        <span className={`ml-auto text-xs ${value ? "" : "text-muted"}`} data-location-value={value ? "set" : "none"}>
+          {value ? PLACE_LABELS.set : PLACE_LABELS.none}
         </span>
       </div>
       <p className="text-[11px] leading-4 text-muted">

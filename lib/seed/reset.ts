@@ -191,8 +191,8 @@ export async function clearDemoFormPages(bucket: SeedBucket): Promise<number> {
   return clearPrefix(bucket, prefix, new Set(), `${prefix}originals/`);
 }
 
-/** R2 の頭の同じ物を消す（keep にある物と、skipPrefix の下は残す）。消した数 */
-async function clearPrefix(bucket: SeedBucket, prefix: string, keep: ReadonlySet<string> = new Set(), skipPrefix?: string): Promise<number> {
+/** R2 の頭の同じ物を消す（keep にある物と、skipPrefix の下は残す）。消した数。試用事業所の掃除（lib/seed/sandbox.ts、T115）も使う */
+export async function clearPrefix(bucket: SeedBucket, prefix: string, keep: ReadonlySet<string> = new Set(), skipPrefix?: string): Promise<number> {
   let removed = 0;
   let cursor: string | undefined;
   for (;;) {

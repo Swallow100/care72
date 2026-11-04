@@ -74,8 +74,11 @@ export function splitLine(text: string): string[] {
   return best < 0 ? [text] : [text.slice(0, best + 1), text.slice(best + 1)];
 }
 
-/** 小さな注記（出典・イメージ・利用者は架空）。置き場所は 4 つの隅のどれか */
-export const Caption: React.FC<{ text: string; corner: "bottomLeft" | "bottomRight" | "topRight" }> = ({ text, corner }) => {
+/**
+ * 小さな注記（出典・イメージ・利用者は架空）。置き場所は 4 つの隅のどれか。
+ * 話の段（見出しの帯の無い青地）の出典は左上（下の隅は 2 行の字幕と重なる）
+ */
+export const Caption: React.FC<{ text: string; corner: "bottomLeft" | "bottomRight" | "topRight" | "topLeft" }> = ({ text, corner }) => {
   const p = usePalette();
   const S = LAYOUT.stage;
   const pos: React.CSSProperties =
@@ -83,7 +86,9 @@ export const Caption: React.FC<{ text: string; corner: "bottomLeft" | "bottomRig
       ? { left: S.left, top: S.top + S.height + 6 }
       : corner === "bottomRight"
         ? { right: 1920 - S.left - S.width, top: S.top + S.height + 6 }
-        : { right: LAYOUT.header.right, top: LAYOUT.header.top + 8 };
+        : corner === "topLeft"
+          ? { left: LAYOUT.header.left, top: LAYOUT.header.top + 8 }
+          : { right: LAYOUT.header.right, top: LAYOUT.header.top + 8 };
   return (
     <div style={{ position: "absolute", ...pos, color: p.sub, fontFamily: FONT.main, fontSize: TYPE.caption, whiteSpace: "nowrap" }}>{text}</div>
   );

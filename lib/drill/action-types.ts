@@ -2,6 +2,7 @@
 // 手の打ち方は lib/drill/actions.ts、世界の返事は lib/drill/world-reply.ts。
 
 import type { ContactKind, DrillAction, SignalColor, WhereNow } from "../db/types.ts";
+import type { FreeWay } from "./action-terms.ts";
 import type { TalkLine, VisitReport } from "./dialogue.ts";
 import type { PersonState } from "./persona-types.ts";
 import type { PersonMarks, PhoneState } from "./scenarios.ts";
@@ -70,6 +71,96 @@ export type ActionRecord = {
    * 採点（T94）と本人役（T93）はこの手として数え・言う。Claude に渡るのはこの id と表の言い方だけ（文は渡さない）
    */
   as?: DrillAction;
+  /**
+   * 自由対応のそのままの手（T110。表の手に当たらなかった物、as なし）のやり方（電話・訪問・机）。決まりの表（lib/drill/action-terms.ts）を
+   * このやり方で当てる。無ければ表の手か、前からの記録
+   */
+  way?: FreeWay;
+  /**
+   * 自由対応のそのままの手で、ケアマネが何をしたかの 1 文（T110。AI が伏せた文から作り、本人役と同じ掃除をした物。名前・町名は入らない）。
+   * 本人役・監督・世界・講評は、この手をこの言い方で読む（ケアマネの文そのものは渡さない）
+   */
+  words?: string;
+  /** 所要を伸ばした決まり（T110、lib/drill/action-terms.ts の言葉。「夜間」「浸水」）。無ければ表の分のまま */
+  adds?: string[];
+  /**
+   * 自由対応の AI の判断の記録（T110。仮名化したあとの入力と出力の要約）。評価の台が読む。サーバーの中だけで、
+   * 監督・世界・本人役・講評の入力には渡さない（withoutMemo で落とす）
+   */
+  judge?: FreeJudge;
+};
+
+/**
+ * 自由対応の AI の判断の記録（T110）。入力は伏せた文と、その時の事実（伏せた物）。出力は AI の返した物を表で絞る前の要約と、
+ * コードが決めた結果（読み替えた手・やり方・所要・可否）。名前・住所・電話は入らない（伏せた側だけを残す）
+ */
+export type FreeJudge = {
+  /** 記録の形の版 */
+  v: 1;
+  /** 伏せた文（仮名化の門を通した物） */
+  input: string;
+  /** その時の事実（伏せた物。時刻・電話・道・職員） */
+  facts: string;
+  /** AI の答え（形を確かめたあと、表で絞る前）。読み替えなし（鍵なし・失敗・上限）なら null */
+  output: {
+    kind: string;
+    callee: string;
+    way: string | null;
+    minutes: number | null;
+    can: boolean;
+    whyNot: string | null;
+    text: string | null;
+    outcome: string | null;
+    reason: string | null;
+  } | null;
+  /** コードが決めた物 */
+  decided: { as: DrillAction | null; way: FreeWay | null; minutes: number; block: string | null };
+  /** Claude を呼んだか */
+  called: boolean;
+};
+
+/**
+ * 自由対応の確かめ（T110）。読み替えの口（POST /api/drill/[id]/free）が置き、打つ口（action）が同じ文・同じ本人・同じ時刻・同じ手の数のときだけ使う
+ * （Claude をもう 1 回呼ばない）。drills.world の上の段に置き、Claude の入力には渡さない
+ */
+export type FreeDraft = {
+  text: string;
+  person: string | null;
+  /** 読み替えたときのケアマネの時計（発災からの分）と手の数（違えば古い） */
+  minute: number;
+  actions: number;
+  plan: FreePlan;
+};
+
+/** 自由対応の読み替えの結果（打つ前に画面で見せる物と、打つときに使う物） */
+export type FreePlan = {
+  /** 表の手に当たったときの手（無ければそのままの手） */
+  as: DrillAction | null;
+  /** そのままの手のやり方（表の手に当たったときは null） */
+  way: FreeWay | null;
+  /** 相手の連絡先（台帳の行。名前と番号は持たない） */
+  target: { id: string; kind: ContactKind; label: string; hasPhone: boolean } | null;
+  /** 相手の言い方（固定の相手・連絡先・無し） */
+  calleeLabel: string | null;
+  callee: ContactKind | null;
+  /** 所要（分）。決まりの足し分のあと */
+  minutes: number;
+  adds: string[];
+  /** 押せない理由（決まりの表か AI）。押せれば null */
+  block: string | null;
+  /** 押せない理由が AI の物 */
+  blockAi: boolean;
+  /** ケアマネが何をしたかの 1 文（AI、掃除済み）。無ければ null */
+  words: string | null;
+  /** 起きたこと（AI、掃除済み。そのままの手の結果の文）。無ければ null */
+  outcome: string | null;
+  /** 読み替えの理由（氏名に戻した物。サーバーと訓練記録の中だけ） */
+  reason: string | null;
+  /** 手の記録の text（伏せて戻した文） */
+  stored: string;
+  judge: FreeJudge;
+  /** Claude を呼んだか（counts.free に数えた） */
+  called: boolean;
 };
 
 /** 手の前の状態。本人の今の様子・印、職員の空き、電話の線、家の前の道。左の表の色と順位は保存の所が足す */
@@ -102,6 +193,7 @@ export type ActionStatus =
   | "reported"
   | "evacuated"
   | "noted"
+  | "done"
   | "noAnswer"
   | "silent"
   | "noNumber";

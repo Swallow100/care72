@@ -33,7 +33,9 @@ import { aiStatusFor } from "@/lib/claude/cloudflare";
 import type { AiStatus } from "@/lib/claude/status";
 import { aiStopBand } from "@/lib/drill/ai-stop";
 import { ScorePanel } from "@/components/drill/ScorePanel";
-import { PaperIcon, PrintIcon } from "@/components/ui/Icon";
+import { DownloadIcon, PaperIcon, PrintIcon } from "@/components/ui/Icon";
+import { BusyLine } from "@/components/drill/BusyLine";
+import { ACT_LOG_LABELS } from "@/lib/drill/act-log";
 import { DRILL_LABELS, elapsedClockLabel, LOG_LABELS, SCENARIO_LABELS, STATUS_LABELS, VIRTUAL_LABELS } from "@/lib/drill/labels";
 import { parseLogTab } from "@/lib/drill/timeline";
 import { COLOR_LABELS } from "@/lib/labels";
@@ -44,7 +46,7 @@ import { loadDrillScreen, screenTimeText, type DrillScreen } from "@/lib/drill/v
 import { simTimeText } from "@/lib/drill/time-text";
 import { voiceEnabled, voiceHref } from "@/lib/drill/voice";
 import { buildSidePane, sideDisasterOf } from "@/lib/map/side";
-import { ButtonLink } from "@/components/ui/Button";
+import { ButtonLink, buttonClass } from "@/components/ui/Button";
 import { LinkPending } from "@/components/ui/LinkPending";
 import { BackLink, Panel as UiPanel, PanelHead } from "@/components/ui/Panel";
 
@@ -165,13 +167,18 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
         </span>
         <div className="ml-auto flex flex-wrap items-center gap-2">
           {running ? (
-            <DrillControls id={id} step={s.drill.step} done={false} clock={s.clock} left={s.left} />
+            <DrillControls id={id} step={s.drill.step} done={false} clock={s.clock} left={s.left} used={s.busy.used} />
           ) : (
             <>
               <ReplayNav shown={s.shown} reached={s.drill.step} hrefOf={(i) => here({ step: i })} />
               <ButtonLink href={reportHref(id)} kind="plain" icon={PaperIcon} data-report-link>
                 {SCORE_LABELS.paper}
               </ButtonLink>
+              {/* 手と出来事のログの CSV（T110） */}
+              <a href={`/api/drill/${encodeURIComponent(id)}/log`} download className={buttonClass("plain")} data-press data-log-csv>
+                <DownloadIcon aria-hidden className="size-4 shrink-0" />
+                {ACT_LOG_LABELS.csv}
+              </a>
               <ButtonLink href={reportHref(id, { print: true })} kind="main" icon={PrintIcon} data-print-link="drill">
                 {SCORE_LABELS.print}
               </ButtonLink>
@@ -230,7 +237,16 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
             <Panel title={DRILL_LABELS.actions} id="actions">
               <div className="space-y-2.5">
                 {running && (
-                  <ActionPanel drillId={id} step={s.drill.step} actions={actions.length} people={people} contacts={s.contacts} fiction={fiction} />
+                  <ActionPanel
+                    drillId={id}
+                    step={s.drill.step}
+                    actions={actions.length}
+                    people={people}
+                    contacts={s.contacts}
+                    fiction={fiction}
+                    terms={s.terms}
+                    status={<BusyLine busy={s.busy} />}
+                  />
                 )}
                 {running && latest && (
                   <LatestResult
@@ -278,7 +294,14 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
               <DamagePanel kind={drillKindOf(s.drill.scenario, s.state.world)} world={s.state.world} now={s.state.hour} names={s.names} hidePrivate={running} />
             </Panel>
             <Panel title={DRILL_LABELS.map} id="map">
-              <CaseMap pins={pins} layers={side.demo?.layers ?? []} demo={side.demo} unplaced={side.unplaced} />
+              {/* 「位置は架空」はデモ事業所（種の架空の位置）だけ。本物の事業所の訓練は台帳の位置なので出さない（T114） */}
+              <CaseMap
+                pins={pins}
+                layers={side.demo?.layers ?? []}
+                demo={side.demo}
+                unplaced={side.unplaced}
+                fictional={principal.office?.kind === "demo"}
+              />
             </Panel>
           </div>
         </div>

@@ -346,6 +346,13 @@ export type GeoPoint = { lat: number; lng: number };
 export const ROUTE_MODES = ["foot", "car"] as const;
 export type RouteMode = (typeof ROUTE_MODES)[number];
 
+/**
+ * 避難の手段の選ぶ欄（T112）: 徒歩・車いす・家族の車・送迎・その他。書き足しは evacuation.transport（補記）。
+ * 経路地図の手段は選んだ物から決める（lib/map/transport.ts の routeModeOf）
+ */
+export const TRANSPORT_KINDS = ["foot", "wheelchair", "family_car", "pickup", "other"] as const;
+export type TransportKind = (typeof TRANSPORT_KINDS)[number];
+
 /** 経路の線の出どころ（T102）: ors は openrouteservice が引いた線、hand は家・経由の点・避難先を直線で結んだ線 */
 export const ROUTE_SOURCES = ["ors", "hand"] as const;
 export type RouteSource = (typeof ROUTE_SOURCES)[number];
@@ -453,6 +460,9 @@ export type Ledger = {
     route?: string;
     /** 段差・エレベーター */
     barriers?: string;
+    /** 手段の選ぶ欄（T112）。無い古い台帳は transport の文字から読み替える（lib/map/transport.ts の transportKindOf） */
+    transportKind?: TransportKind;
+    /** 手段の書き足し（娘の車・杖 など）。T112 の前は手段そのものの文字 */
     transport?: string;
     pets?: string;
     carryItems?: string[];
@@ -487,6 +497,8 @@ export type OfficeRow = {
   /** 地図の中心（migration 0017、T68）。両方ある か 両方 null（未設定） */
   center_lat: number | null;
   center_lng: number | null;
+  /** 審査員の試用事業所（migration 0027、T115）。1 なら毎朝 4 時に丸ごと消える（lib/seed/sandbox.ts） */
+  judge_sandbox: 0 | 1;
   created_at: string;
 };
 
@@ -574,6 +586,8 @@ export type AccountRow = {
   disabled_at: string | null;
   /** 審査員が足した・再発行したアカウント（T81、migration 0025）。ログインも審査員と同じ壁（lib/auth/wall.ts） */
   judge_made: 0 | 1;
+  /** 初期パスワード（人が作った物）のまま。本人が変えると 0、再発行で 1（T114、migration 0028。既定 1） */
+  password_initial: 0 | 1;
 };
 
 export type PersonRow = {

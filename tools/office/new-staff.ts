@@ -143,7 +143,8 @@ export function newStaffSql(
       );
     case "reissue":
       if (!o.passwordHash) throw new Error("ハッシュなし");
-      return `UPDATE accounts SET password_hash = ${lit(o.passwordHash)} WHERE ${staffRow(v.loginId)};\n`;
+      // 人が作ったパスワードに戻るので初期パスワードの印も戻す（T114。作成は表の既定 1 で付く）
+      return `UPDATE accounts SET password_hash = ${lit(o.passwordHash)}, password_initial = 1 WHERE ${staffRow(v.loginId)};\n`;
     case "disable":
       return `UPDATE accounts SET disabled_at = ${lit(o.at)} WHERE ${staffRow(v.loginId)} AND disabled_at IS NULL;\n`;
     case "enable":

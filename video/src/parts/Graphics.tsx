@@ -3,13 +3,66 @@
 // どの図も舞台（LAYOUT.stage）の中で真ん中にそろえ、出るときは下から上がる（motion.ts）。並ぶ物は 4 コマずつずらす。
 // 話の段（青地）は文字が主役: 言葉を声に合わせて 1 つずつ出し、大きさの段で強弱を付ける。
 import React from "react";
-import { interpolate, useCurrentFrame, useVideoConfig } from "remotion";
+import { AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig } from "remotion";
 import { usePalette } from "../ground";
 import { COLOR, FONT, LAYOUT, STATE_LABEL, TYPE } from "../theme";
 import { MODEL_ROWS, RULE_ROWS } from "../timeline";
+import { LOGO_INK, Logo } from "./Logo";
+import { Marker } from "./Marker";
 import { EASE_OUT, STAGGER, progress, rise } from "./motion";
 
 const clamp = { extrapolateLeft: "clamp", extrapolateRight: "clamp" } as const;
+
+/**
+ * 図どうしで揃える決まり（11/4）。面の角は 10px、塗りの端は 4px、線は 2px、表の行の区切りは 1px の薄い線。
+ * 強調する行は「左の帯 6px ＋ 薄い地 ＋ 太字」（ルールの表と使い分けの表で同じ）。メーターは太い線の上に字の色の塗り
+ */
+const RADIUS = { panel: 10, mark: 4 } as const;
+const LINE = 2;
+const HAIRLINE = `1px solid ${COLOR.blueTint}`;
+
+/**
+ * 72 時間の輪（S2 の題名と終わりの画面）。全体の輪（地の 1 段明るい青）の上に、0 時から時計回りに字の色の弧が伸びる（Share のメーターを輪にした物）。
+ * 目盛りは輪の内側に細い線（時計の文字盤の向き。外へ出すと太陽の印に見える）。12 時間ごとは長く、過ぎた所は字の色。
+ * ticks は目盛りの数（72 なら 1 時間ごと）、labels なら外側に 0・12・24… の数。hours は塗る時間（0〜72）
+ */
+const Dial: React.FC<{ r: number; width: number; hours: number; ticks: number; labels?: boolean }> = ({ r, width, hours, ticks, labels }) => {
+  const p = usePalette();
+  const c = 2 * Math.PI * r;
+  const size = r * 2 + width + (labels ? 160 : 8);
+  const unit = r / 300;
+  return (
+    <svg width={size} height={size} viewBox={`${-size / 2} ${-size / 2} ${size} ${size}`} style={{ display: "block" }}>
+      <circle r={r} fill="none" stroke={p.tint} strokeWidth={width} />
+      <circle r={r} fill="none" stroke={p.fg} strokeWidth={width} strokeDasharray={`${(c * hours) / 72} ${c}`} transform="rotate(-90)" />
+      {Array.from({ length: ticks }, (_, i) => {
+        const h = (i * 72) / ticks;
+        const a = (h / 72) * Math.PI * 2 - Math.PI / 2;
+        const major = h % 12 === 0;
+        const r0 = r - width / 2 - 10 * unit;
+        const r1 = r0 - (major ? 30 : 14) * unit;
+        const passed = hours >= h;
+        return (
+          <g key={i}>
+            <line x1={Math.cos(a) * r0} y1={Math.sin(a) * r0} x2={Math.cos(a) * r1} y2={Math.sin(a) * r1} stroke={passed ? p.fg : p.sub} strokeWidth={LINE} />
+            {labels && major ? (
+              <text
+                x={Math.cos(a) * (r + width / 2 + 40)}
+                y={Math.sin(a) * (r + width / 2 + 40) + 9}
+                textAnchor="middle"
+                fontFamily={FONT.main}
+                fontSize={TYPE.caption}
+                fill={passed ? p.fg : p.sub}
+              >
+                {h}
+              </text>
+            ) : null}
+          </g>
+        );
+      })}
+    </svg>
+  );
+};
 
 /** 舞台。中の物を上下左右の真ん中に置く */
 export const Stage: React.FC<{ children: React.ReactNode; gap?: number; row?: boolean; align?: "center" | "stretch" }> = ({
@@ -59,6 +112,30 @@ export const Title: React.FC<{ title: string; sub?: string }> = ({ title, sub })
  * 行の中の「→」は矢印の線に置き換え、前の言葉から後の言葉へ線が伸びる。
  * sub は下の帯（S1 の「誰の・どの場面」）。「×」で分けた言葉を 1 つずつ面に並べる
  */
+/**
+ * 左下の名札（S3 の作者の紹介）。大きな字の画面にしない（11/4）。字幕の帯の上、舞台の左に 2 行。
+ * 1 行目は名前の代わり（作者　医学部の学生）、2 行目は理由（家族にケアマネージャー）。左の帯は表の強調と同じ 6px
+ */
+export const Plate: React.FC<{ lines: string[]; beats?: number[] }> = ({ lines, beats }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const p = usePalette();
+  return (
+    <AbsoluteFill>
+      <div style={{ position: "absolute", left: LAYOUT.stage.left, bottom: 1080 - (LAYOUT.stage.top + LAYOUT.stage.height) + 24, display: "flex", gap: 22 }}>
+        <div style={{ width: 6, background: p.fg, ...rise(frame, Math.round((beats?.[0] ?? 0.3) * fps)) }} />
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {lines.map((l, i) => (
+            <div key={l} style={{ fontSize: i === 0 ? TYPE.h2 : TYPE.body, fontWeight: i === 0 ? 600 : 400, color: i === 0 ? p.fg : p.sub, ...rise(frame, Math.round((beats?.[i] ?? i * 0.9) * fps)) }}>
+              {l}
+            </div>
+          ))}
+        </div>
+      </div>
+    </AbsoluteFill>
+  );
+};
+
 export const TextCard: React.FC<{ lines: string[]; sub?: string; beats?: number[] }> = ({ lines, sub, beats }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
@@ -85,7 +162,7 @@ export const TextCard: React.FC<{ lines: string[]; sub?: string; beats?: number[
                   fontSize: 38,
                   fontWeight: 600,
                   padding: "14px 26px",
-                  borderRadius: 8,
+                  borderRadius: RADIUS.panel,
                   whiteSpace: "nowrap",
                   ...rise(frame, subStart + i * 6),
                 }}
@@ -104,63 +181,38 @@ export const TextCard: React.FC<{ lines: string[]; sub?: string; beats?: number[
  * G1 72 時間の輪。目盛りが時計回りに 1 つずつ埋まり、12 時間ごとの太い目盛りに時間を添える。
  * 題名（ケア72）は輪の中で、目盛りが半分まで埋まった所で上がって出る
  */
-export const Ring72: React.FC<{ label: string; duration: number; sub?: string }> = ({ label, duration, sub }) => {
+export const Ring72: React.FC<{ label: string; duration: number; sub?: string; titleAt?: number; markAt?: number; children?: React.ReactNode }> = ({
+  label,
+  duration,
+  sub,
+  titleAt,
+  markAt,
+  children,
+}) => {
   const frame = useCurrentFrame();
   const p = usePalette();
-  const fill = interpolate(frame, [0, duration * 0.75], [0, 72], { ...clamp, easing: EASE_OUT });
-  const r = 320;
-  const ticks = Array.from({ length: 72 }, (_, i) => {
-    const a = (i / 72) * Math.PI * 2 - Math.PI / 2;
-    const major = i % 12 === 0;
-    const on = Math.max(0, Math.min(1, fill - i));
-    const inner = r - (major ? 46 : 30);
-    return (
-      <g key={i}>
-        <line x1={Math.cos(a) * inner} y1={Math.sin(a) * inner} x2={Math.cos(a) * r} y2={Math.sin(a) * r} stroke={p.tint} strokeWidth={major ? 8 : 4} strokeLinecap="round" />
-        <line
-          x1={Math.cos(a) * inner}
-          y1={Math.sin(a) * inner}
-          x2={Math.cos(a) * (inner + (r - inner) * on)}
-          y2={Math.sin(a) * (inner + (r - inner) * on)}
-          stroke={p.fg}
-          strokeWidth={major ? 8 : 4}
-          strokeLinecap="round"
-        />
-        {major ? (
-          <text
-            x={Math.cos(a) * (r + 40)}
-            y={Math.sin(a) * (r + 40) + 9}
-            textAnchor="middle"
-            fontFamily={FONT.main}
-            fontSize={TYPE.caption}
-            fill={on > 0 ? p.fg : p.sub}
-          >
-            {i}
-          </text>
-        ) : null}
-      </g>
-    );
-  });
-  const titleIn = progress(frame, Math.round(duration * 0.18), 18);
+  const hours = interpolate(frame, [0, duration * 0.75], [0, 72], { ...clamp, easing: EASE_OUT });
+  // 題名は声がその名前を言う所（titleAt のコマ）。無ければ輪が 2 割進んだ所
+  const titleIn = progress(frame, titleAt ?? Math.round(duration * 0.18), 18);
+  // 声が「72 は」と言う所（markAt）で、題名の数の下に 6px の帯が左から伸びる（表の強調と同じ太さ）
+  const [, name = label, digits = ""] = /^(.*?)(\d+)$/.exec(label) ?? [];
+  const bar = markAt !== undefined ? progress(frame, markAt, 12) : 0;
   return (
     <Stage gap={0}>
-      <div style={{ position: "relative", width: 820, height: 820 }}>
-        <svg width={820} height={820} viewBox="-410 -410 820 820" style={{ position: "absolute", inset: 0 }}>
-          {ticks}
-        </svg>
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            display: "flex",
-            flexDirection: "column",
-            justifyContent: "center",
-            alignItems: "center",
-            gap: 10,
-          }}
-        >
-          <div style={{ fontSize: TYPE.display, fontWeight: 600, lineHeight: 1, opacity: titleIn, transform: `translateY(${(1 - titleIn) * 26}px)` }}>{label}</div>
-          {sub ? <div style={{ fontSize: TYPE.body, color: p.sub, ...rise(frame, Math.round(duration * 0.35)) }}>{sub}</div> : null}
+      <div style={{ position: "relative", display: "flex", justifyContent: "center", alignItems: "center" }}>
+        <Dial r={320} width={14} hours={hours} ticks={72} labels />
+        <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", gap: 10 }}>
+          <div style={{ fontSize: TYPE.display, fontWeight: 600, lineHeight: 1, opacity: titleIn, transform: `translateY(${(1 - titleIn) * 26}px)` }}>
+            {name}
+            {digits ? (
+              <span style={{ position: "relative" }}>
+                {digits}
+                <span style={{ position: "absolute", left: 4, right: 4, bottom: -16, height: 6, background: p.fg, transformOrigin: "left", transform: `scaleX(${bar})` }} />
+              </span>
+            ) : null}
+          </div>
+          {/* 名前の意味は声に合わせた言葉（children）があればそれ、無ければ sub を 1 行で */}
+          {children ? <div style={{ marginTop: 46 }}>{children}</div> : sub ? <div style={{ fontSize: TYPE.body, color: p.sub, ...rise(frame, Math.round(duration * 0.35)) }}>{sub}</div> : null}
         </div>
       </div>
     </Stage>
@@ -177,14 +229,12 @@ export const BigNumber: React.FC<{ value: string; sub?: string }> = ({ value, su
   const m = /^(\d+(?:\.\d+)?)(%?)(.*)$/.exec(value);
   const count = m ? interpolate(frame, [4, 40], [0, Number(m[1])], { ...clamp, easing: EASE_OUT }) : 0;
   const digits = m ? (m[1].split(".")[1] ?? "").length : 0;
-  const percent = m?.[2] === "%";
   return (
     <Stage gap={34}>
       <div style={{ display: "flex", alignItems: "baseline", gap: 8, ...rise(frame, 0, 20, 14) }}>
         <span style={{ fontSize: 230, fontWeight: 600, lineHeight: 1 }}>{m ? count.toFixed(digits) : value}</span>
         {m ? <span style={{ fontSize: 120, fontWeight: 600, lineHeight: 1 }}>{m[2] + m[3]}</span> : null}
       </div>
-      {percent ? <Dots share={count / 100} delay={8} /> : null}
       {sub ? <div style={{ fontSize: TYPE.h2, color: p.sub, maxWidth: 1500, textAlign: "center", ...rise(frame, 16) }}>{sub}</div> : null}
     </Stage>
   );
@@ -194,11 +244,14 @@ export const BigNumber: React.FC<{ value: string; sub?: string }> = ({ value, su
  * 前と後の 2 つの数（S8 の「［X 時間］ → ［Y 分］」）。value を「→」で分け、前は薄い色で先に、後は大きく後から出す。
  * 間の矢印は線が伸びる。labels は各数の下の短い名前（ふだん・ケア72）。数が入る前の［ ］のままでも 1 行に収める
  */
-export const Compare: React.FC<{ value: string; labels: [string, string]; sub?: string }> = ({ value, labels, sub }) => {
+export const Compare: React.FC<{ value: string; labels: [string, string]; sub?: string; lead?: SlotWord; marks?: number[] }> = ({ value, labels, sub, lead, marks }) => {
   const frame = useCurrentFrame();
   const p = usePalette();
   const [before, after] = value.split("→").map((s) => s.trim());
-  const arrow = progress(frame, 12, 14);
+  // 前の数と後の数は、声がそれを言う所（marks。無ければ 0 コマと 22 コマ）で出す。矢印は後の数の 10 コマ前から伸びる
+  const at0 = marks?.[0] ?? 0;
+  const at1 = Math.max(at0 + 12, marks?.[1] ?? 22);
+  const arrow = progress(frame, at1 - 10, 14);
   // 2 段の格子: 上の段に数と矢印（下の線をそろえる）、下の段に名前（同じ高さに並べる）
   const amount = (text: string, delay: number, strong: boolean) => (
     <div style={{ fontSize: strong ? 168 : 120, fontWeight: 600, lineHeight: 1, whiteSpace: "nowrap", color: strong ? p.fg : p.sub, justifySelf: "center", ...rise(frame, delay, 22, 16) }}>
@@ -210,73 +263,76 @@ export const Compare: React.FC<{ value: string; labels: [string, string]; sub?: 
   );
   return (
     <Stage gap={56}>
+      {/* 声が数の前に言う言葉（「計画 1 件」）は上に、言う所で出す */}
+      {lead ? <div style={{ fontSize: TYPE[lead.size], fontWeight: 600, marginBottom: -20, ...rise(frame, lead.frame) }}>{lead.text}</div> : null}
       <div style={{ display: "grid", gridTemplateColumns: "auto 160px auto", alignItems: "end", columnGap: 56, rowGap: 22 }}>
-        {amount(before ?? "", 0, false)}
+        {amount(before ?? "", at0, false)}
         <svg width={160} height={60} viewBox="0 0 160 60" style={{ marginBottom: 30 }}>
-          <line x1={4} y1={30} x2={4 + 148 * arrow} y2={30} stroke={p.fg} strokeWidth={6} strokeLinecap="round" />
+          {/* 伸びる前は描かない（長さ 0 の線でも丸い端が点に見える） */}
+          {arrow > 0 ? <line x1={4} y1={30} x2={4 + 148 * arrow} y2={30} stroke={p.fg} strokeWidth={6} strokeLinecap="round" /> : null}
           <path d="M 128 10 L 152 30 L 128 50" stroke={p.fg} strokeWidth={6} strokeLinecap="round" strokeLinejoin="round" fill="none" opacity={arrow > 0.9 ? 1 : 0} />
         </svg>
-        {amount(after ?? "", 22, true)}
-        {label(labels[0], 0, false)}
+        {amount(after ?? "", at1, true)}
+        {label(labels[0], at0, false)}
         <div />
-        {label(labels[1], 22, true)}
+        {label(labels[1], at1, true)}
       </div>
-      {sub ? <div style={{ fontSize: TYPE.body, color: p.sub, maxWidth: 1500, textAlign: "center", ...rise(frame, 34) }}>{sub}</div> : null}
+      {sub ? <div style={{ fontSize: TYPE.body, color: p.sub, maxWidth: 1500, textAlign: "center", ...rise(frame, at1 + 12) }}>{sub}</div> : null}
     </Stage>
   );
 };
 
 /** 100 個の点（10 × 10 でなく横 50 × 2 段）。share の割合だけ濃い色 */
-const Dots: React.FC<{ share: number; delay: number }> = ({ share, delay }) => {
-  const frame = useCurrentFrame();
-  const p = usePalette();
-  const lit = Math.floor(share * 100 + 1e-6);
-  return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(50, 18px)", gap: 8, ...rise(frame, delay) }}>
-      {Array.from({ length: 100 }, (_, i) => (
-        <div key={i} style={{ width: 18, height: 18, borderRadius: 9, background: i < lit ? p.fg : p.tint }} />
-      ))}
-    </div>
-  );
-};
+/**
+ * 割合の図（S3 の 15.1% と、能登の死者のうちの関連死）。全体の中の一部なので、2 本の棒にせず 1 本のメーターに描く。
+ * 上に声が言う数（数え上がって、声がその数を言う所で止まる。land はそのコマ）。メーターは全体の線（地の 1 段明るい青）の上に一部の塗り（字の色）。
+ * 塗りは左を角にして右の端だけ 4px 丸める（棒の決まり。カプセル形にしない）。名前は塗りの下の左と、線の右の端に字の色で
+ */
+type SlotWord = { text: string; frame: number; size: keyof typeof TYPE };
 
-/** G2 2 本の棒（能登の死者 755 人と、そのうち関連死 527 人）。棒の長さは 755 を舞台の幅に合わせる */
-export const Bars: React.FC = () => {
+export const Share: React.FC<{ hero: string; share: number; part: string; whole: string; land?: number; lead?: SlotWord; tail?: SlotWord; marker?: string }> = ({
+  hero,
+  share,
+  part,
+  whole,
+  land = 40,
+  lead,
+  tail,
+  marker,
+}) => {
   const frame = useCurrentFrame();
   const p = usePalette();
-  const max = 980;
-  const rows = [
-    { label: "死者", n: 755, color: p.tint, strong: false },
-    { label: "うち関連死", n: 527, color: p.fg, strong: true },
-  ];
+  const m = /^(\d+(?:\.\d+)?)(.*)$/.exec(hero);
+  // 出てすぐ数え始め、声がその数を言う所（land）で止まる
+  const t = progress(frame, 4, Math.max(20, land - 4));
+  const digits = m ? (m[1].split(".")[1] ?? "").length : 0;
+  const shown = m ? (Number(m[1]) * t).toFixed(digits) : hero;
+  const W = 1240;
+  const H = 30;
   return (
-    <Stage gap={44} align="center">
-      {rows.map((row, i) => {
-        const t = progress(frame, 4 + i * 12, 30);
-        return (
-          <div key={row.label} style={{ display: "flex", alignItems: "center", gap: 32, width: 1560, ...rise(frame, i * STAGGER * 2) }}>
-            <div style={{ width: 260, fontSize: TYPE.h2, textAlign: "right", fontWeight: row.strong ? 600 : 400, whiteSpace: "nowrap" }}>{row.label}</div>
-            <div style={{ width: max + 220, height: 84, position: "relative" }}>
-              <div style={{ position: "absolute", left: 0, top: 0, height: 84, width: (row.n / 755) * max * t, background: row.color, borderRadius: 6 }} />
-              <div
-                style={{
-                  position: "absolute",
-                  left: (row.n / 755) * max * t + 28,
-                  top: 0,
-                  height: 84,
-                  display: "flex",
-                  alignItems: "center",
-                  fontSize: TYPE.h1,
-                  fontWeight: 600,
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {Math.round(row.n * t)} 人
-              </div>
-            </div>
-          </div>
-        );
-      })}
+    <Stage gap={0}>
+      <div style={{ width: W, display: "flex", flexDirection: "column", gap: 40, ...rise(frame, 0, 20, 14) }}>
+        {/* 声が数の前に言う言葉（「できているのは」）は数の上に、後ろの言葉（「だけ」）は数の後ろに、言う所で出す */}
+        {lead ? <div style={{ fontSize: TYPE[lead.size], fontWeight: 600, lineHeight: 1, marginBottom: -12, ...rise(frame, lead.frame) }}>{lead.text}</div> : null}
+        <div style={{ display: "flex", alignItems: "baseline", gap: 10, lineHeight: 1 }}>
+          <span style={{ fontSize: m ? 220 : TYPE.hero, fontWeight: 600 }}>{shown}</span>
+          {m ? <span style={{ fontSize: 110, fontWeight: 600 }}>{m[2]}</span> : null}
+          {tail ? (
+            <span style={{ fontSize: TYPE[tail.size], fontWeight: 600, marginLeft: 18, ...rise(frame, tail.frame, 16, 14) }}>
+              {/* 白い帯の言葉なら、出てから帯を引く（「だけ」） */}
+              {marker === tail.text ? <Marker at={tail.frame + 12}>{tail.text}</Marker> : tail.text}
+            </span>
+          ) : null}
+        </div>
+        <div style={{ position: "relative", width: W, height: H, background: p.tint, borderRadius: RADIUS.mark }}>
+          <div style={{ position: "absolute", left: 0, top: 0, height: H, width: W * share * t, background: p.fg, borderRadius: `0 ${RADIUS.mark}px ${RADIUS.mark}px 0` }} />
+        </div>
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: TYPE.body, marginTop: -16, ...rise(frame, 10) }}>
+          {/* 名前が白い帯の言葉なら、数が止まった所で帯を引く（「書く時間が無い」） */}
+          <span style={{ fontWeight: 600 }}>{marker === part ? <Marker at={land}>{part}</Marker> : part}</span>
+          <span style={{ color: p.sub }}>{whole}</span>
+        </div>
+      </div>
     </Stage>
   );
 };
@@ -422,7 +478,7 @@ export const Flow: React.FC<{ children: React.ReactNode[]; names: string[]; card
   const grow = progress(frame, 6, 14);
   return (
     <Stage gap={0}>
-      <div style={{ background: p.strong, color: p.onStrong, borderRadius: 8, padding: "16px 64px", fontSize: TYPE.h2, fontWeight: 600, ...rise(frame, 0) }}>台帳</div>
+      <div style={{ background: p.strong, color: p.onStrong, borderRadius: RADIUS.panel, padding: "16px 64px", fontSize: TYPE.h2, fontWeight: 600, ...rise(frame, 0) }}>台帳</div>
       <svg width={total} height={70} style={{ display: "block" }}>
         {[0, 1, 2].map((i) => {
           const x = cardWidth / 2 + i * (cardWidth + gap);
@@ -431,7 +487,7 @@ export const Flow: React.FC<{ children: React.ReactNode[]; names: string[]; card
               key={i}
               d={`M ${total / 2} 0 L ${total / 2} 26 L ${x} 26 L ${x} 70`}
               stroke={p.fg}
-              strokeWidth={4}
+              strokeWidth={LINE}
               fill="none"
               strokeDasharray={1200}
               strokeDashoffset={1200 * (1 - grow)}
@@ -463,10 +519,10 @@ export const Rules: React.FC = () => {
       <div style={{ width: 1500 }}>
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 18, ...rise(frame, 0) }}>
           <span style={{ fontSize: TYPE.h2, fontWeight: 600 }}>ルールの表</span>
-          <span style={{ background: p.strong, color: p.onStrong, fontSize: 28, fontWeight: 600, padding: "6px 16px", borderRadius: 4 }}>AI を使わない</span>
+          <span style={{ background: p.strong, color: p.onStrong, fontSize: 28, fontWeight: 600, padding: "6px 16px", borderRadius: RADIUS.mark }}>AI を使わない</span>
         </div>
-        <div style={{ background: COLOR.white, borderRadius: 10, overflow: "hidden", padding: "6px 0" }}>
-          <div style={{ display: "flex", gap: 24, padding: "10px 32px", fontSize: TYPE.caption, color: COLOR.blueLight, ...rise(frame, 4) }}>
+        <div style={{ background: COLOR.white, borderRadius: RADIUS.panel, overflow: "hidden", padding: "6px 0" }}>
+          <div style={{ display: "flex", gap: 24, padding: "10px 32px", fontSize: TYPE.caption, color: COLOR.blueMid, ...rise(frame, 4) }}>
             <div style={{ width: 600 }}>入ってきた事実</div>
             <div style={{ width: 180 }}>色</div>
             <div>理由の 1 行</div>
@@ -487,6 +543,7 @@ export const Rules: React.FC = () => {
                   color: COLOR.blue,
                   fontWeight: strong ? 600 : 400,
                   background: strong ? COLOR.blueTint : COLOR.white,
+                  borderTop: i === 0 ? undefined : HAIRLINE,
                   ...rise(frame, 8 + i * STAGGER, 12),
                 }}
               >
@@ -527,23 +584,28 @@ export const Models: React.FC<{ children: React.ReactNode; counters?: string[] }
     <Stage row gap={48}>
       <div style={{ width: 760 }}>
         <div style={{ fontSize: TYPE.h2, fontWeight: 600, marginBottom: 16, ...rise(frame, 0) }}>道具の中の使い分け</div>
-        <div style={{ background: COLOR.white, borderRadius: 10, overflow: "hidden" }}>
+        <div style={{ background: COLOR.white, borderRadius: RADIUS.panel, overflow: "hidden" }}>
           {MODEL_ROWS.map((m, i) => {
+            // 最後の行（ルールの表、AI を使わない）を強調。強調の形はルールの表と同じ（左の帯・薄い地・太字）
             const last = i === MODEL_ROWS.length - 1;
             return (
               <div
                 key={m.what}
                 style={{
+                  position: "relative",
                   display: "flex",
                   justifyContent: "space-between",
                   gap: 16,
                   padding: "18px 26px",
                   fontSize: 28,
-                  background: last ? p.strong : i % 2 === 0 ? COLOR.white : COLOR.blueTint,
-                  color: last ? p.onStrong : COLOR.blue,
+                  background: last ? COLOR.blueTint : COLOR.white,
+                  color: COLOR.blue,
+                  fontWeight: last ? 600 : 400,
+                  borderTop: i === 0 ? undefined : HAIRLINE,
                   ...rise(frame, 6 + i * STAGGER, 12),
                 }}
               >
+                {last ? <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 6, background: COLOR.blue }} /> : null}
                 <span>{m.what}</span>
                 <span style={{ fontWeight: 600, whiteSpace: "nowrap" }}>{m.who}</span>
               </div>
@@ -558,8 +620,8 @@ export const Models: React.FC<{ children: React.ReactNode; counters?: string[] }
               const name = at > 0 ? c.slice(0, at).trim() : c;
               const count = at > 0 ? c.slice(at).trim() : "";
               return (
-                <div key={c} style={{ background: COLOR.white, color: COLOR.blue, borderRadius: 10, padding: "16px 22px", ...rise(frame, 30 + i * STAGGER) }}>
-                  <div style={{ fontSize: TYPE.caption, fontWeight: 600, whiteSpace: "nowrap", color: COLOR.blueLight }}>{name}</div>
+                <div key={c} style={{ background: COLOR.white, color: COLOR.blue, borderRadius: RADIUS.panel, padding: "16px 22px", ...rise(frame, 30 + i * STAGGER) }}>
+                  <div style={{ fontSize: TYPE.caption, fontWeight: 600, whiteSpace: "nowrap", color: COLOR.blueMid }}>{name}</div>
                   <div style={{ fontSize: TYPE.h2, fontWeight: 600, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>{count}</div>
                 </div>
               );
@@ -573,48 +635,38 @@ export const Models: React.FC<{ children: React.ReactNode; counters?: string[] }
 };
 
 /** 協力ケアマネの一言（文字。顔は出さない） */
-export const Quote: React.FC<{ text: string; sub?: string }> = ({ text, sub }) => {
+export const Quote: React.FC<{ text: string; sub?: string; children?: React.ReactNode }> = ({ text, sub, children }) => {
   const frame = useCurrentFrame();
   const p = usePalette();
   return (
     <Stage gap={28}>
-      <div style={{ fontSize: TYPE.h1, fontWeight: 600, maxWidth: 1400, textAlign: "center", lineHeight: 1.4, ...rise(frame, 0, 22, 16) }}>{text}</div>
-      <div style={{ fontSize: TYPE.body, color: p.sub, ...rise(frame, 8) }}>協力してくれたケアマネ</div>
+      {/* 一言は声に合わせた言葉（children）があればそれ、無ければ 1 つの文で */}
+      {children ?? <div style={{ fontSize: TYPE.h1, fontWeight: 600, maxWidth: 1400, textAlign: "center", lineHeight: 1.4, ...rise(frame, 0, 22, 16) }}>{text}</div>}
+      <div style={{ fontSize: TYPE.body, color: p.sub, ...rise(frame, 8) }}>協力してくれたケアマネージャー</div>
       {sub ? <div style={{ fontSize: TYPE.body, marginTop: 24, ...rise(frame, 16) }}>{sub}</div> : null}
     </Stage>
   );
 };
 
-/** G5 終わりの画面。72 時間の輪を小さく題名の横に。審査員の ID とパスワードは出さない */
-export const EndCard: React.FC = () => {
+/**
+ * G5 終わりの画面。アプリのロゴ（印と名前。白い面の上に置く。ロゴの青は青い地では沈むため）が、12 時から順に描かれて満ちる。下に GitHub だけ。
+ * デモの URL と審査員の ID・パスワードは出さない（提出書類の欄に書く物で、どの画面もログインが要るため）。「利用者は架空」は録画が映る間の隅に出ていて、ここでは出さない
+ */
+export const EndCard: React.FC<{ repo: string; duration?: number }> = ({ repo, duration = 120 }) => {
   const frame = useCurrentFrame();
   const p = usePalette();
-  const ticks = Array.from({ length: 72 }, (_, i) => {
-    const a = (i / 72) * Math.PI * 2 - Math.PI / 2;
-    const major = i % 12 === 0;
-    const r = 84;
-    const inner = r - (major ? 16 : 10);
-    // 目盛りが 0 時から時計回りに 1 つずつ出る（S2 の輪と同じ向き）
-    const on = progress(frame, 4 + (i / 72) * 24, 3);
-    return <line key={i} x1={Math.cos(a) * inner} y1={Math.sin(a) * inner} x2={Math.cos(a) * r} y2={Math.sin(a) * r} stroke={p.fg} strokeWidth={major ? 4 : 2} strokeLinecap="round" opacity={on} />;
-  });
+  // 短いとき（締めの言葉のあとの 1.7 秒）は描く動きを詰める。描き終えてから 0.5 秒以上は止めて見せる
+  const short = duration < 70;
+  const logoStart = short ? 3 : 10;
+  const logoLen = short ? 30 : 48;
+  const repoAt = short ? 18 : 40;
   return (
-    <Stage gap={26}>
-      <div style={{ display: "flex", alignItems: "center", gap: 40, ...rise(frame, 0, 20, 16) }}>
-        <svg width={180} height={180} viewBox="-90 -90 180 180">
-          {ticks}
-        </svg>
-        <div style={{ fontSize: 150, fontWeight: 600, lineHeight: 1 }}>ケア72</div>
+    <Stage gap={44}>
+      <div style={{ background: COLOR.white, borderRadius: RADIUS.panel, padding: "40px 76px 40px 52px", display: "flex", alignItems: "center", gap: 34, ...rise(frame, 0, 20, 16) }}>
+        <Logo size={210} start={logoStart} len={logoLen} />
+        <div style={{ fontSize: 150, fontWeight: 600, lineHeight: 1, color: LOGO_INK }}>ケア72</div>
       </div>
-      <div style={{ background: p.strong, color: p.onStrong, fontSize: TYPE.h1, fontWeight: 600, padding: "10px 40px", borderRadius: 8, ...rise(frame, 8) }}>
-        care72.app
-      </div>
-      <div style={{ fontSize: TYPE.body, color: p.sub, ...rise(frame, 12) }}>github.com/Swallow100/care72</div>
-      <div style={{ display: "flex", gap: 28, fontSize: TYPE.caption, color: p.sub, marginTop: 34, ...rise(frame, 18) }}>
-        <span>利用者は全員架空</span>
-        <span>医療の助言はしない</span>
-        <span>色と順位はルールの表 AI は決めない</span>
-      </div>
+      <div style={{ fontSize: TYPE.h2, color: p.fg, ...rise(frame, repoAt) }}>{repo}</div>
     </Stage>
   );
 };

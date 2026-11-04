@@ -18,7 +18,9 @@
 import type { D1Database } from "@cloudflare/workers-types";
 import * as z from "zod";
 import { askJson, type AskJsonContext, type AskJsonRequest } from "../claude/call.ts";
-import { CATALOG_WORDS, effectiveKind } from "./action-catalog.ts";
+// ケアマネの手の言い方（Claude に渡す文。画面の言葉ではない）は手の表（T91 の lib/drill/action-catalog.ts）の words。
+// 自由対応は読み替えた手の言い方、そのままの手（T110）は AI が伏せた文から作った 1 文
+import { actionWords as catalogWordsOf, isOwnFree } from "./action-catalog.ts";
 import {
   ASK_MEANINGS,
   asksOf,
@@ -259,8 +261,6 @@ const SOURCE_WORDS: Record<FixedTurn["source"], string> = { agent: "本人", fam
 const WHERE_WORDS: Record<WhereNow, string> = { home: "家", shelter: "避難所", other: "その他" };
 const COLOR_WORDS: Record<SignalColor, string> = { red: "赤（無事じゃない）", green: "緑（無事）", unknown: "連絡（安否は不明）" };
 
-/** ケアマネの手の言い方（Claude に渡す文。画面の言葉ではない）。手の表（T91 の lib/drill/action-catalog.ts）の words */
-const ACTION_WORDS: Record<DrillAction, string> = CATALOG_WORDS;
 
 function answersWords(x: { injured?: boolean | null; atHome?: boolean | null; canMove?: boolean | null; hasMedicine?: boolean | null }): string {
   const yn = (v: boolean | undefined | null, yes: string, no: string) => (v == null ? null : v ? yes : no);
@@ -302,6 +302,8 @@ function resultWords(a: ActionRecord): string {
   const r = a.result;
   if (!r) return "返事待ち";
   const parts = [RESULT_WORDS[r.status]];
+  // 自由対応のそのままの手（T110）は起きたこと（AI の 1 文。名前・町名の入らない物だけを残している）
+  if (isOwnFree(a) && r.ai && r.text) parts.push(r.text);
   if (typeof r.arriveAt === "number") parts.push(`${clockLabel(r.arriveAt)}ごろ着く`);
   const rounds = talkRounds(r);
   if (rounds > 0) parts.push(`${rounds} 往復話した`);
@@ -315,7 +317,7 @@ function actionWords(a: ActionRecord | null, persona: Persona): string {
   // 時刻は発災からの「N 時間 M 分」（手の時刻は分まで。小数の時間を書かない）
   const when = typeof a.atMinute === "number" ? clockLabel(a.atMinute) : `${a.at} 時間`;
   // 自由に書く手（T91）は読み替えた手の言い方（文は渡さない）。結果の言葉つき（T93）
-  return `${when}にケアマネが${ACTION_WORDS[effectiveKind(a)]}${target ? `（相手 ${target}）` : ""} → ${resultWords(a)}`;
+  return `${when}にケアマネが${catalogWordsOf(a)}${target ? `（相手 ${target}）` : ""} → ${resultWords(a)}`;
 }
 
 /** 1 回の本人役の文に書く手の数（新しい物から） */
@@ -369,7 +371,7 @@ function reasonLine(input: PersonaInput, incidents: ReadonlyArray<DrillIncident>
       out.push(texts.length > 0 ? texts.join("。") : "身の回りの状況が変わった");
     } else if (r === "action") {
       const last = acts.at(-1);
-      if (last) out.push(`ケアマネが${ACTION_WORDS[effectiveKind(last)]} → ${resultWords(last)}`);
+      if (last) out.push(`ケアマネが${catalogWordsOf(last)} → ${resultWords(last)}`);
       for (const a of input.world.arrivals ?? []) {
         if (a.person === input.person && a.arrived && a.arrive > since && a.arrive <= now) out.push(`${ARRIVAL_WORDS[a.role] ?? a.role}が来た`);
       }

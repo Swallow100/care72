@@ -28,6 +28,7 @@ import { callTargetText } from "../list/calls.ts";
 import { isSourceId } from "../sources/index.ts";
 import {
   act,
+  ActionBlocked,
   applyResult,
   needsPerson,
   needsTarget,
@@ -38,6 +39,7 @@ import {
 } from "./actions.ts";
 import {
   advance,
+  aiAtOf,
   cleanOptions,
   drillEnded,
   foldTick,
@@ -50,6 +52,9 @@ import {
   type ActionRecord,
   type ActionResult,
   type DrillIncident,
+  type FreeDraft,
+  type FreeJudge,
+  type FreePlan,
   type DrillOptions,
   type DrillState,
   type DrillTurn,
@@ -70,6 +75,7 @@ import { loadPersonaSources } from "./persona.ts";
 import { FREE_TEXT_MAX, isCatalogAction } from "./action-catalog.ts";
 import { dialogueFields } from "./dialogue.ts";
 import { DRILL_END_MINUTE, nextEventMinute, type ClockMark, type ClockTo } from "./clock.ts";
+import { isFreeWay } from "./action-terms.ts";
 
 /** 訓練を開ける範囲。ケアマネの役だけ（審査員のケアマネの役も）。事業所と担当一覧の持ち主 */
 export type DrillScope = { officeId: string; careManagerId: string; accountId: string | null };
@@ -122,6 +128,10 @@ type StoredWorld = {
   cuts?: number[];
   /** 連続の時計の訓練で監督（仮想は世界）を最後に呼んだ区切りの時刻（発災からの分） */
   directorAt?: number;
+  /** 連続の時計の訓練で AI も動かして進めた最後の区切りの時刻（発災からの分、T110。「手の分」の始め） */
+  aiAt?: number;
+  /** 自由対応の確かめ（T110。読み替えたあと打つ前だけ。手を打つと消える。Claude の入力に渡さない） */
+  draft?: FreeDraft;
 };
 
 /** 手の前の状態の写し（取消で戻す物） */
@@ -142,6 +152,8 @@ function storeWorld(s: DrillState, undo?: UndoSnapshot): string {
     ...(s.cast && Object.keys(s.cast).length > 0 ? { cast: s.cast } : {}),
     ...(s.cuts ? { cuts: s.cuts } : {}),
     ...(s.directorAt !== undefined ? { directorAt: s.directorAt } : {}),
+    ...(s.aiAt !== undefined ? { aiAt: s.aiAt } : {}),
+    ...(s.draft ? { draft: s.draft } : {}),
   };
   return JSON.stringify(body);
 }
@@ -166,7 +178,16 @@ function parseStoredWorld(text: string): StoredWorld {
     ...(cast ? { cast } : {}),
     ...(Array.isArray(raw.cuts) ? { cuts: raw.cuts.filter(isNum) } : {}),
     ...(isNum(raw.directorAt) ? { directorAt: raw.directorAt } : {}),
+    ...(isNum(raw.aiAt) ? { aiAt: raw.aiAt } : {}),
+    ...(isDraft(raw.draft) ? { draft: raw.draft } : {}),
   };
+}
+
+/** 自由対応の確かめの形（T110）。形が違えば無し（読み替え直し） */
+function isDraft(v: unknown): v is FreeDraft {
+  if (!v || typeof v !== "object") return false;
+  const d = v as Partial<FreeDraft>;
+  return typeof d.text === "string" && isNum(d.minute) && isNum(d.actions) && (d.person === null || typeof d.person === "string") && !!d.plan && typeof d.plan === "object";
 }
 
 /** 配役の JSON（行の鍵 → 人の id の文字）。形が違う・空なら無し */
@@ -199,6 +220,8 @@ export function stateOfRow(row: DrillRow): DrillState {
     ...extrasOf(w),
     ...(w.cuts ? { cuts: w.cuts } : {}),
     ...(w.directorAt !== undefined ? { directorAt: w.directorAt } : {}),
+    ...(w.aiAt !== undefined ? { aiAt: w.aiAt } : {}),
+    ...(w.draft ? { draft: w.draft } : {}),
   };
 }
 
@@ -206,10 +229,16 @@ export function stateOfRow(row: DrillRow): DrillState {
  * 連続の時計の訓練（T90）か、と区切りの時刻（時間）・この訓練の AI の呼び出しの数（drills.world の写しから）。
  * clock の無い訓練は clock false・cuts 空
  */
-export function clockOfRow(row: Pick<DrillRow, "world">): { clock: boolean; hours: number[]; counts: WorldState["counts"] | null } {
+export function clockOfRow(row: Pick<DrillRow, "world">): {
+  clock: boolean;
+  hours: number[];
+  counts: WorldState["counts"] | null;
+  /** AI も動かして進めた最後の区切りの時刻（発災からの分、T110）。無ければ最後の区切り（clock の無い訓練は null） */
+  aiAt: number | null;
+} {
   const w = parseStoredWorld(row.world);
-  if (w.options?.clock !== true) return { clock: false, hours: [], counts: null };
-  return { clock: true, hours: (w.cuts ?? []).map((m) => m / 60), counts: w.world.counts ?? null };
+  if (w.options?.clock !== true) return { clock: false, hours: [], counts: null, aiAt: null };
+  return { clock: true, hours: (w.cuts ?? []).map((m) => m / 60), counts: w.world.counts ?? null, aiAt: w.aiAt ?? w.cuts?.at(-1) ?? null };
 }
 
 /**
@@ -472,6 +501,8 @@ export async function startDrill(
       staff: options.staff,
       night: options.night,
       ...(clock ? { clock: true as const } : {}),
+      // 時間と状況で変わる手（T110）は連続の時計の訓練だけ（10 分版に来たら捨てる）
+      ...(clock && options.terms === true ? { terms: true as const } : {}),
       ...scale,
       ...(home !== undefined ? { home: home.trim() } : {}),
     },
@@ -547,8 +578,13 @@ export async function advanceDrill(
   if (drillEnded(before)) return { ok: false, error: "ended" };
   if (row.step !== expected) return { ok: false, error: "conflict" };
   if (isClock(before) && !to) return { ok: false, error: "invalid" };
+  // 手の分（T110）は、手に使った時間があるときだけ（AI を動かした最後の区切りより時計が先）
+  const acts = to !== undefined && "acts" in to;
+  if (acts && (!isClock(before) || Math.round(before.minute) <= aiAtOf(before))) return { ok: false, error: "invalid" };
 
-  const { state, tick } = isClock(before) ? (await advance(before, await clockTarget(before, to!, hooks), hooks, { policy: "clock", next: "next" in to! }))! : await step(before, hooks);
+  const { state, tick } = isClock(before)
+    ? (await advance(before, await clockTarget(before, to!, hooks), hooks, { policy: "clock", next: "next" in to!, ...(acts ? { acts: true } : {}) }))!
+    : await step(before, hooks);
   let updated;
   try {
     // 読んだ今の状態（world の写し）のときだけ書く。その間にケアマネの手（T20）が入っていれば競合（手の履歴を消さない）
@@ -564,7 +600,7 @@ export async function advanceDrill(
           scope.officeId,
           state.step,
           state.hour,
-          storeWorld(state),
+          storeWorld({ ...state, draft: undefined }),
           state.status,
           state.status === "finished" ? now : null,
           expected,
@@ -584,6 +620,7 @@ export async function advanceDrill(
 
 /** 連続の時計の行き先（発災からの分）。分の進めはケアマネの時計から、「次まで」は lib/drill/clock.ts の nextEventMinute（72 時間まで） */
 async function clockTarget(state: DrillState, to: ClockTo, hooks: StepHooks): Promise<number> {
+  if ("acts" in to) return Math.round(state.minute);
   if ("minutes" in to) return Math.min(state.minute + to.minutes, DRILL_END_MINUTE);
   const marks = hooks.clock?.marks ? await hooks.clock.marks(state).catch((): ClockMark[] => []) : [];
   return nextEventMinute(state, marks);
@@ -599,7 +636,9 @@ export const MEMO_MAX = 100;
 
 export type ActDrillResult =
   | { ok: true; record: ActionRecord; step: number; hour: number; minute: number; status: DrillStatus }
-  | { ok: false; error: "not_found" | "conflict" | "ended" | "invalid" };
+  | { ok: false; error: "not_found" | "conflict" | "ended" | "invalid" }
+  /** 決まりの表（T110）で押せない手。label は理由（「通行止」「通話不可」） */
+  | { ok: false; error: "blocked"; label: string };
 
 /** 手の前の左の表（画面と同じ道で作った色・順位・理由と並び）。採点 T22 のために手の前の状態に残す */
 export type TriageSnapshot = {
@@ -694,13 +733,20 @@ export async function actDrill(
   const text = req.kind === "free" ? (req.text?.trim() ?? "") : "";
   if (req.kind === "free" && (text === "" || [...text].length > FREE_TEXT_MAX)) return { ok: false, error: "invalid" };
   const free = req.kind === "free" ? { text, contacts: await freeContacts(db, scope.officeId, person) } : {};
-  const { state, record, ticks } = await act(
-    before,
-    { kind: req.kind, person, target: resolved.target, ...(memo ? { memo } : {}), ...free },
-    opts.hooks ?? {},
-    opts.roll ?? Math.random,
-    extra,
-  );
+  let acted: Awaited<ReturnType<typeof act>>;
+  try {
+    acted = await act(
+      before,
+      { kind: req.kind, person, target: resolved.target, ...(memo ? { memo } : {}), ...free },
+      opts.hooks ?? {},
+      opts.roll ?? Math.random,
+      extra,
+    );
+  } catch (e) {
+    if (e instanceof ActionBlocked) return { ok: false, error: "blocked", label: e.label };
+    throw e;
+  }
+  const { state, record, ticks } = acted;
   const gate: Gate = { step: state.step, actions: state.actions.length };
   const { result: maybe, ...actionPayload } = record;
   // act は返事を当ててから返す（null は刻みを越える途中だけ）
@@ -811,6 +857,102 @@ function heardStatements(
   ];
 }
 
+// ---------- 自由対応の確かめ（T110） ----------
+
+/** 読み替えを頼む物。text は自由対応の文（200 字まで）、person は相手の本人（任意） */
+export type FreeReadRequest = { person: string | null; text: string };
+
+export type FreeReadResult =
+  | { ok: true; plan: FreePlan }
+  | { ok: false; error: "not_found" | "conflict" | "ended" | "invalid" };
+
+/**
+ * 自由対応を打つ前に読み替える（T110。POST /api/drill/[id]/free）。読み替え（plan。Claude を呼ぶのはここの 1 回）を drills.world の上の段に
+ * 確かめ（draft）として置き、Claude を呼んだら counts.free を 1 つ足す（打たずにやめても数える。1 訓練 10 回の上限が効くように）。
+ * 打つ口（actDrill）は同じ文・本人・時刻・手の数の確かめがあればそれを使う。読んだ状態（world の写し）のときだけ書く。
+ * plan は読み替えの口（lib/drill/free-action.ts の planFree。db.ts から free-action.ts を読まないため、呼ぶ側が渡す）。伏せきれない文は plan が投げる
+ */
+export async function readFreeDraft(
+  db: D1Database,
+  scope: DrillScope,
+  id: string,
+  expected: { step: number; actions: number },
+  req: FreeReadRequest,
+  plan: (state: DrillState, input: { text: string; person: string | null; contacts: ReadonlyArray<ActTarget> }) => Promise<FreePlan>,
+): Promise<FreeReadResult> {
+  const row = await loadDrillRow(db, scope.officeId, id);
+  if (!row) return { ok: false, error: "not_found" };
+  const before = stateOfRow(row);
+  if (drillEnded(before)) return { ok: false, error: "ended" };
+  if (row.step !== expected.step || before.actions.length !== expected.actions) return { ok: false, error: "conflict" };
+  if (req.person !== null && !before.participants.includes(req.person)) return { ok: false, error: "invalid" };
+  const text = req.text.trim();
+  if (text === "" || [...text].length > FREE_TEXT_MAX) return { ok: false, error: "invalid" };
+  const made = await plan(before, { text, person: req.person, contacts: await freeContacts(db, scope.officeId, req.person) });
+  const next: DrillState = {
+    ...before,
+    world: made.called ? countFree(before.world) : before.world,
+    draft: { text, person: req.person, minute: before.minute, actions: before.actions.length, plan: made },
+  };
+  const updated = await db
+    .prepare(`UPDATE drills SET world = ?3 WHERE id = ?1 AND office_id = ?2 AND step = ?4 AND status = 'running' AND world = ?5`)
+    .bind(id, scope.officeId, storeWorld(next, parseStoredWorld(row.world).undo), row.step, row.world)
+    .run();
+  if ((updated.meta.changes ?? 0) === 0) return { ok: false, error: "conflict" };
+  return { ok: true, plan: made };
+}
+
+/** counts.free を 1 つ足す（lib/drill/free-action.ts の countFree と同じ。db.ts から free-action.ts を読まないため） */
+function countFree(world: WorldState): WorldState {
+  const c = world.counts ?? { director: 0, persona: 0, call: 0, free: 0 };
+  return { ...world, counts: { ...c, free: c.free + 1 } };
+}
+
+// ---------- AI の判断の記録（T110。評価の台が読む） ----------
+
+/**
+ * 自由対応の AI の判断の記録の 1 行（評価の台 T108 が読む形）。入力は伏せた文と事実（仮名化の門を通した物）、出力は AI の答えの要約と
+ * コードが決めた物（lib/drill/action-types.ts の FreeJudge）。氏名・住所・電話は入らない
+ */
+export type JudgeLogRow = {
+  drillId: string;
+  /** 手の番号（a1…） */
+  action: string;
+  /** 打った時刻・終わる時刻（発災からの分） */
+  atMinute: number;
+  endMinute: number;
+  /** 読み替えた手（表の手）か null（そのままの手） */
+  as: DrillAction | null;
+  judge: FreeJudge;
+};
+
+/**
+ * 訓練 1 つの自由対応の AI の判断の記録（drill_events の action の payload の judge）。打った順。取り消した手は drill_events から消えるので入らない。
+ * 事業所の外の訓練は読まない（officeId で縛る）
+ */
+export async function loadJudgeLog(db: D1Database, officeId: string, drillId: string): Promise<JudgeLogRow[]> {
+  const res = await db
+    .prepare(
+      `SELECT e.payload FROM drill_events e JOIN drills d ON d.id = e.drill_id
+        WHERE e.drill_id = ?1 AND d.office_id = ?2 AND e.kind = 'action' AND json_extract(e.payload, '$.judge') IS NOT NULL
+        ORDER BY e.seq`,
+    )
+    .bind(drillId, officeId)
+    .all<{ payload: string }>();
+  const out: JudgeLogRow[] = [];
+  for (const r of res.results) {
+    let p: Partial<ActionPayload>;
+    try {
+      p = JSON.parse(r.payload) as Partial<ActionPayload>;
+    } catch {
+      continue;
+    }
+    if (typeof p.id !== "string" || !isNum(p.atMinute) || !isNum(p.endMinute) || !isJudge(p.judge)) continue;
+    out.push({ drillId, action: p.id, atMinute: p.atMinute, endMinute: p.endMinute, as: isCatalogAction(p.as) ? p.as : null, judge: p.judge });
+  }
+  return out;
+}
+
 // ---------- 手の取消（T59） ----------
 
 /**
@@ -846,6 +988,7 @@ export async function undoDrill(
 
   const back: DrillState = {
     ...now,
+    draft: undefined,
     minute: snap.minute,
     hour: snap.hour,
     step: snap.step,
@@ -883,7 +1026,8 @@ export async function abandonDrill(
 ): Promise<{ ok: true } | { ok: false; error: "not_found" | "ended" }> {
   const r = await db
     .prepare(
-      `UPDATE drills SET status = 'abandoned', finished_at = ?3
+      // 自由対応の確かめ（T110。打つ前だけの物）は中断した訓練に残さない（無ければ world の文字は前と同じ）
+      `UPDATE drills SET status = 'abandoned', finished_at = ?3, world = CASE WHEN json_extract(world, '$.draft') IS NULL THEN world ELSE json_remove(world, '$.draft') END
         WHERE id = ?1 AND office_id = ?2 AND status = 'running'`,
     )
     .bind(id, scope.officeId, now)
@@ -994,7 +1138,7 @@ export async function expireStaleDrills(db: D1Database, officeId: string, now: s
     const [updated] = await db.batch([
       db
         .prepare(
-          `UPDATE drills SET status = 'abandoned', finished_at = ?3, world = json_set(world, '$.abandoned', json(?4))
+          `UPDATE drills SET status = 'abandoned', finished_at = ?3, world = json_set(CASE WHEN json_extract(world, '$.draft') IS NULL THEN world ELSE json_remove(world, '$.draft') END, '$.abandoned', json(?4))
             WHERE id = ?1 AND office_id = ?2 AND status = 'running' AND started_at <= ?5`,
         )
         .bind(d.id, officeId, now, JSON.stringify({ reason: "24h" satisfies AbandonReason, at: now }), cutoff),
@@ -1085,7 +1229,19 @@ function asAction(person: string | null, p: Partial<ActionPayload>): ActionRecor
     ...(isCatalogAction(p.as) ? { as: p.as } : {}),
     ...(typeof p.text === "string" && p.text.trim() ? { text: p.text } : {}),
     ...(typeof p.reason === "string" && p.reason.trim() ? { reason: p.reason } : {}),
+    // T110: そのままの手のやり方と 1 文、所要の足し分の理由、AI の判断の記録（作り直しでも同じ手の記録に）
+    ...(isFreeWay(p.way) ? { way: p.way } : {}),
+    ...(typeof p.words === "string" && p.words.trim() ? { words: p.words } : {}),
+    ...(Array.isArray(p.adds) && p.adds.length > 0 ? { adds: p.adds.filter((x): x is string => typeof x === "string") } : {}),
+    ...(isJudge(p.judge) ? { judge: p.judge } : {}),
   };
+}
+
+/** AI の判断の記録の形（T110）。版と入力の文があれば読む（中身はそのまま） */
+function isJudge(v: unknown): v is FreeJudge {
+  if (!v || typeof v !== "object") return false;
+  const j = v as Partial<FreeJudge>;
+  return j.v === 1 && typeof j.input === "string" && typeof j.facts === "string" && !!j.decided && typeof j.called === "boolean";
 }
 
 function asResult(p: Partial<ResultPayload>): { id: string; result: ActionResult } | null {
