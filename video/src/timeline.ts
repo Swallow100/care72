@@ -45,6 +45,7 @@ export type Shot = {
   kind:
     | "footage" // 録画 1 本
     | "split" // 録画を横に並べる（footages）
+    | "carousel" // 録画の窓を円柱に並べて回す（footages と lines。cues の mark で回る）
     | "title" // ケア72 の題名
     | "text" // 文字だけ（lines）
     | "plate" // 左下の名札（lines。大きな字にしない自己紹介）
@@ -260,14 +261,18 @@ export const SCENES: Scene[] = [
       {
         at: 38,
         end: 46,
-        kind: "split",
+        // 3 本立ての円柱（parts/Carousel.tsx。作者の頼み 11/5）。声の「計画ができ」「訓練もでき」「災害時は」で円柱が回り、その窓が正面に来る
+        kind: "carousel",
         footages: ["R03", "R07", "R10"],
         // R03 は様式の頭（R03-3 の 0 秒から。4 秒ほどで下へ送る）、R10 は山田の行が至急で一番上に上がったあと（R10-3 の 49.6 秒）
         froms: [0, 0, 50.9],
         lines: ["計画", "訓練", "発災時"],
-        // N08 の「話すだけで計画ができ」「訓練もでき」「災害時は」に合わせて 1 つずつ（仮の声で 38.2・39.9・41.0 秒）
-        beats: [0.2, 1.9, 3.0],
-        label: "様式が埋まる・72 時間の棒・一覧が並び替わる",
+        cues: [
+          { text: "計画", line: "N08", say: "計画ができ", slot: "mark" },
+          { text: "訓練", line: "N08", say: "訓練もでき", slot: "mark" },
+          { text: "発災時", line: "N08", say: "災害時は", slot: "mark" },
+        ],
+        label: "様式が埋まる・72 時間の棒・一覧が並び替わる（円柱）",
       },
     ],
   },

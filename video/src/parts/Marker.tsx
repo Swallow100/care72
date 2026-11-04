@@ -9,22 +9,26 @@ import { progress } from "./motion";
 /** 帯が引かれる長さ（コマ） */
 export const MARKER_SWEEP = 10;
 
-export const Marker: React.FC<{ at: number; children: React.ReactNode }> = ({ at, children }) => {
+export const Marker: React.FC<{ at: number; out?: number; children: React.ReactNode }> = ({ at, out, children }) => {
   const frame = useCurrentFrame();
   const p = usePalette();
+  // 引く（左から右へ）。out があれば、そのコマから同じ向きに抜ける（帯が次の言葉へ移るとき）
   const t = progress(frame, at, MARKER_SWEEP);
+  const gone = out !== undefined ? progress(frame, out, MARKER_SWEEP) : 0;
   const right = ((1 - t) * 100).toFixed(2);
+  const left = (gone * 100).toFixed(2);
+  if (gone >= 1) return <span style={{ display: "inline-block", whiteSpace: "nowrap" }}>{children}</span>;
   const pad = "0 0.14em";
   return (
     <span style={{ position: "relative", display: "inline-block", padding: pad, margin: "0 -0.14em", whiteSpace: "nowrap" }}>
       {/* 帯の高さは字の大きさから（行の高さが 1 でも 1.18 でも字を覆う）。上下は字の真ん中から 0.56em ずつ */}
       {t > 0 ? (
-        <span style={{ position: "absolute", left: 0, right: 0, top: "calc(50% - 0.56em)", height: "1.12em", background: p.fg, borderRadius: 4, clipPath: `inset(0 ${right}% 0 0)` }} />
+        <span style={{ position: "absolute", left: 0, right: 0, top: "calc(50% - 0.56em)", height: "1.12em", background: p.fg, borderRadius: 4, clipPath: `inset(0 ${right}% 0 ${left}%)` }} />
       ) : null}
       <span style={{ position: "relative" }}>{children}</span>
       {/* 帯の上の字の写し（地の色）。上下は切らない（帯が字を覆うので、写しが帯の外に出ることはない） */}
       {t > 0 ? (
-        <span aria-hidden style={{ position: "absolute", inset: 0, padding: pad, color: p.bg, clipPath: `inset(-50% ${right}% -50% 0)`, whiteSpace: "nowrap" }}>
+        <span aria-hidden style={{ position: "absolute", inset: 0, padding: pad, color: p.bg, clipPath: `inset(-50% ${right}% -50% ${left}%)`, whiteSpace: "nowrap" }}>
           {children}
         </span>
       ) : null}

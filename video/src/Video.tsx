@@ -8,6 +8,7 @@ import { GroundProvider, usePalette } from "./ground";
 import { Footage } from "./parts/Footage";
 import { Framed, framedSize } from "./parts/Frame";
 import { BigNumber, Compare, EndCard, Flow, Memo, Models, Quote, Ring72, Plate, Rules, Share, Stage, TextCard, Title } from "./parts/Graphics";
+import { Carousel } from "./parts/Carousel";
 import { Kinetic, type KineticWord } from "./parts/Kinetic";
 import { Marker } from "./parts/Marker";
 import { CROSS, STAGGER, mix, progress, rise } from "./parts/motion";
@@ -229,6 +230,17 @@ const ShotView: React.FC<{ shot: Shot; assets: Assets }> = ({ shot, assets }) =>
             screen={shot.screen}
           />
         </Stage>
+      );
+      break;
+    case "carousel":
+      body = (
+        <Carousel
+          items={(shot.footages ?? []).map((id, i) => ({ id, title: shot.lines?.[i] ?? "", from: shot.froms?.[i] ?? shot.from }))}
+          marks={markFrames(shot, assets)}
+          duration={duration}
+          assets={assets}
+          note={shot.label}
+        />
       );
       break;
     case "split":
