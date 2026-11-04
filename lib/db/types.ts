@@ -242,7 +242,7 @@ export type IntakePayload = {
   /** 本人のページの面の「編集」で手で直した（T45） */
   edit?: true;
   /** 写真・PDF を黒塗りして読んだ（T52）。どれを何頁目・隠した所の数。画像は残さない */
-  read?: { source: "photo" | "pdf"; page: number; redacted: number };
+  read?: { source: "photo" | "pdf" | "excel" | "word"; page: number; redacted: number };
   /** 変えた欄（台帳の場所・連絡先・時計） */
   fields: string[];
 };

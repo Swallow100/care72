@@ -66,8 +66,9 @@ export async function formReadPost(deps: FormReadDeps, scope: FormsScope, form: 
       id: deps.newId?.() ?? crypto.randomUUID(),
       officeId: scope.officeId,
       hash,
-      // 元の形（写真か PDF か）。送られたのは頁の画像
-      kind: got.pages[0].meta.source === "pdf" ? "pdf" : "image",
+      // 元の形（写真か、頁の並ぶ文書か）。送られたのは頁の画像。Excel・Word（T119）は頁の並ぶ文書として PDF と同じ印
+      // （form_mappings.source_kind の CHECK は image・pdf・manual。表を作り直さないための決め。docs/progress/t119.md）
+      kind: got.pages[0].meta.source === "photo" ? "image" : "pdf",
       // 頁の番号は受けた画像の順（下に敷く画像と合わせる）
       mapping: fitPages(read.mapping, files.length),
       model: read.mark.model,
