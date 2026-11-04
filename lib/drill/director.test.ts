@@ -26,6 +26,7 @@ import {
   directorEvents,
   drillClocks,
   eligibleKinds,
+  eligibleKinds as allEligible,
   personOfAlias,
   WORLD_ODDS,
   worldReply,
@@ -426,9 +427,14 @@ describe("監督（Opus、偽の client）", () => {
   it("差し込める人がいなければ Opus を呼ばない", async () => {
     const { client, calls } = fake(() => reply(NONE));
     const hook = createDirectorHook({ load: seedLoad, ai: aiCtx(client) });
-    // 伊藤（p-05）だけ: 家の前の道はもう通行止、電話は不通、経管栄養・透析・訪問看護なし、家にいる
-    let world: WorldState = { ...EMPTY_WORLD, phone: "down" };
-    world = applyEvent(world, { change: injectChange("road_blocked", "p-05"), text: "", person: "p-05" }, 1);
+    // 伊藤（p-05）だけ: 川沿いの道はもう通行止、電話は不通、経管栄養・透析・訪問看護なし、家にいる。
+    // T92 の種類も起きたあと（薬局の休止・家族の帰宅困難・近所の声掛、福祉避難所は満員・情報の混乱は済み）
+    let world: WorldState = { ...EMPTY_WORLD, phone: "down", notes: { info_confusion: 0 } };
+    world = applyEvent(world, { change: { kind: "road", id: "rd-1", label: "川沿いの市道", open: false }, text: "", person: "p-05" }, 1);
+    world = applyEvent(world, { change: injectChange("pharmacy_closed", "p-05"), text: "", person: "p-05" }, 1);
+    world = applyEvent(world, { change: injectChange("family_stranded", "p-05"), text: "", person: "p-05" }, 1);
+    world = applyEvent(world, { change: injectChange("neighbor_help", "p-05"), text: "", person: "p-05" }, 1);
+    world = { ...world, shelters: [{ id: "sh-welfare", label: "福祉避難所", state: "full", person: null }] };
     expect(eligibleKinds(input("p-05"), "p-05", world, null)).toEqual([]);
     expect(await hook(directorInput({ participants: ["p-05"], world }))).toEqual({ events: [], words: [] });
     expect(calls).toHaveLength(0);
@@ -440,6 +446,9 @@ describe("監督（Opus、偽の client）", () => {
 describe("差し込める種類と世界の状態", () => {
   it("その人に当てはまる種類だけ（栄養剤は経管栄養、透析施設は透析、訪問看護は連絡先、帰宅は家の外）、起きた物は外す", () => {
     const w = { ...EMPTY_WORLD, staff: 3 };
+    // 前からの 6 つの並びと当て方（T92 の種類は lib/drill/t92.test.ts）
+    const OLD = new Set<string>(INJECT_KINDS.slice(0, 6));
+    const eligibleKinds = (...a: Parameters<typeof allEligible>) => allEligible(...a).filter((k) => OLD.has(k));
     expect(eligibleKinds(input("p-06"), "p-06", w, null)).toEqual(["supply_left", "road_blocked", "line_down"]);
     expect(eligibleKinds(input("p-03"), "p-03", w, null)).toEqual(["dialysis_flooded", "road_blocked", "line_down"]);
     expect(eligibleKinds(input("p-02"), "p-02", w, null)).toEqual(["road_blocked", "line_down", "nurse_away"]);

@@ -1,6 +1,6 @@
 // 訓練の真ん中の「状況」（docs/tasks/T17.md）。刻みごとに新しい順: 世界の出来事（停電・道路・電話・避難所…）と、
 // 本人ごとの安否（色の印・誰から・答え・言う事）。監督（Opus、T19）が差し込んだ状況とペルソナ（T18）の物には AI の印。
-// 想定の表の固定の差し込みは AI の印なし。差し込みに根拠の出典があれば添える（監督の判断の理由は訓練記録にだけ残し、画面に出さない）。
+// 想定の表の固定の差し込みは AI の印なし。世界の様子を変えない出来事（給水所・印・確認・予定、T92）は出来事の表の印。差し込みに根拠の出典があれば添える（監督の判断の理由は訓練記録にだけ残し、画面に出さない）。
 // 色は安否の色だけ（lib/triage の色ではなく、本人・家族が押した色）。氏名は台帳の id から引く（表の文には氏名が無い）。
 // ケアマネの手（T20）の途中で進んだ刻みは、見出しに「対応中 訪問 伊藤 フミ」。安否のうち電話の形の物（lib/drill/calls.ts、
 // 1 刻みに 2 件まで）に着信の印（T21。進めるで来た物も手の途中の物も。着信の画面と声は components/drill/IncomingCall）。
@@ -10,6 +10,7 @@ import { shortJst } from "@/lib/disaster/state";
 import type { DrillIncident, DrillTurn, Tick } from "@/lib/drill/engine";
 import { simAt } from "@/lib/drill/engine";
 import { isStopIncident } from "@/lib/drill/ai-stop";
+import { incidentLabel } from "@/lib/drill/event-catalog";
 import { ACTION_UI, BASIS_LABEL, DRILL_LABELS, elapsedLabel, EVENT_KIND_LABELS, VIRTUAL_LABELS } from "@/lib/drill/labels";
 import { callIndexes } from "@/lib/drill/calls";
 import { CallInMark } from "./ActionLog";
@@ -122,7 +123,7 @@ function IncidentItem({
       data-actor={e.actor}
       {...(e.inject ? { "data-inject": e.inject } : {})}
     >
-      <span className="rounded bg-panel px-1 py-px text-xs text-muted">{EVENT_KIND_LABELS[e.change.kind]}</span>
+      <span className="rounded bg-panel px-1 py-px text-xs text-muted">{incidentLabel(e) ?? EVENT_KIND_LABELS[e.change.kind]}</span>
       {e.ai && <AiMark small />}
       {fallback && (
         <span className="rounded bg-panel px-1 py-px text-xs text-muted" data-world-fallback>

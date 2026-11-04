@@ -15,13 +15,34 @@ import { maskReply, restoreText, type PseudonymKey } from "../pseudonym/index.ts
 import { aliasOfTown, AREA_ROADS, DEMO_AREA, facilityOf, roadOf, restoreTowns, shelterOf, townOfAlias, type Area } from "./area.ts";
 import { personOfAlias } from "./director.ts";
 import type { DrillIncident } from "./engine.ts";
+import { afterOf, EVENT_CATALOG } from "./event-catalog.ts";
 import { PHONE_LABELS, SHELTER_LABELS } from "./labels.ts";
 import type { PhoneState, ShelterState, Weather, WorldChange, WorldVia } from "./scenarios.ts";
 
 // ---------- 返事の形 ----------
 
-/** 世界の出来事の種類（部屋が選ぶ英字） */
-export const WORLD_KINDS = ["flood", "landslide", "road", "outage", "water", "phone", "shelter", "facility", "aftershock", "weather"] as const;
+/**
+ * 世界の出来事の種類（部屋が選ぶ英字）。T92 で福祉避難所・給水所・薬局・介護事業所・業者の巡回・情報の混乱を足した
+ * （世界の変化は監督の出来事の表 lib/drill/event-catalog.ts と同じ形。返事の欄は増やさない）
+ */
+export const WORLD_KINDS = [
+  "flood",
+  "landslide",
+  "road",
+  "outage",
+  "water",
+  "phone",
+  "shelter",
+  "facility",
+  "aftershock",
+  "weather",
+  "welfare_shelter",
+  "water_station",
+  "pharmacy",
+  "helper",
+  "vendor",
+  "info",
+] as const;
 export type WorldKind = (typeof WORLD_KINDS)[number];
 
 /** 種類の言い方（日本語で返ったときも受ける） */
@@ -41,6 +62,16 @@ const KIND_ALIASES: Readonly<Record<string, WorldKind>> = {
   地震: "aftershock",
   天候: "weather",
   天気: "weather",
+  福祉避難所: "welfare_shelter",
+  給水所: "water_station",
+  給水: "water_station",
+  薬局: "pharmacy",
+  介護事業所: "helper",
+  介護: "helper",
+  業者: "vendor",
+  巡回: "vendor",
+  情報: "info",
+  情報混乱: "info",
 };
 
 /**
@@ -94,6 +125,8 @@ export type PersonFacts = {
   categories: ReadonlyArray<ClockCategory>;
   /** 訪問看護の連絡先がある */
   nurse: boolean;
+  /** 介護事業所の連絡先がある（T92 の helper。無ければ無い物として読む） */
+  helper?: boolean;
 };
 
 export type ApplyContext = {
@@ -295,6 +328,57 @@ function buildEvent(e: WorldStep["events"][number], ctx: ApplyContext): Built[] 
       const state = weatherOf(e.value);
       return state ? [{ change: { kind: "weather", state }, text: state === "rain" ? "大雨" : "雨が止む" }] : [];
     }
+    // ---------- T92（出来事の表と同じ形の変化） ----------
+    case "welfare_shelter": {
+      // 名前が無ければ地理の福祉避難所。福祉避難所でない避難所は捨てる。値が無ければ開設
+      const s = (e.name.trim() ? shelterOf(e.name, area) : area.shelters.find((x) => x.welfare)) ?? null;
+      const state = e.value.trim() ? shelterStateOf(e.value) : "open";
+      if (!s || !s.welfare || !state) return [];
+      return [{ change: { kind: "shelter", id: `sh-${s.id}`, label: s.name, state }, text: `${s.name} ${SHELTER_LABELS[state]}` }];
+    }
+    case "water_station": {
+      // 給水所（世界の様子は変えない。断水の印は消さない）
+      const towns = placeOf(e, ctx);
+      return [{ change: { kind: "note", topic: "water_station" }, text: towns.length > 0 ? `${townWords(towns)} 給水所 開設` : "給水所 開設" }];
+    }
+    case "pharmacy": {
+      // 地理の薬局（AREA_FACILITIES の pharmacy）だけ。休止で頼る人の時計の頼り先が未確認（施設の休止と同じ道）
+      const f = area.facilities.find((x) => x.id === "pharmacy");
+      const open = e.value.trim() ? openOf(e.value) : false;
+      if (!f || open === null) return [];
+      return [
+        {
+          change: { kind: "town_facility", facility: f.id, label: f.name, open, depends: f.depends, persons: dependents(ctx, f.depends) },
+          text: `${f.name} ${open ? "再開" : "休止"}`,
+        },
+      ];
+    }
+    case "helper": {
+      // 介護事業所の休止だけ（介護事業所を使う人に「介護休止」の印）。再開は受けない
+      const open = e.value.trim() ? openOf(e.value) : false;
+      if (open !== false) return [];
+      return [...ctx.facts]
+        .filter(([p, f]) => f.helper === true && !ctx.ended.has(p))
+        .map(([p]): Built => ({ change: { kind: "mark", mark: "helperAway" }, text: "介護事業所 休止", person: p }));
+    }
+    case "vendor": {
+      // 酸素業者の巡回: target の人（酸素・呼吸器の時計のある人）に、value 時間後に業者が着く（着いたら settleWorld が酸素を届いた物に）
+      const p = e.target.trim() ? personOfAlias(e.target, ctx.key) : null;
+      const f = p ? ctx.facts.get(p) : undefined;
+      if (!p || !f || ctx.ended.has(p) || !(f.categories.includes("oxygen") || f.categories.includes("ventilator"))) return [];
+      const raw = e.value.replace(/[^\d.]/g, "");
+      const after = afterOf(EVENT_CATALOG.vendor_round, raw ? Number(raw) : undefined);
+      if (after == null) return [];
+      return [
+        {
+          change: { kind: "schedule", at: Math.round((ctx.hour + after) * 60), by: "world", then: { kind: "arrival", role: "vendor" } },
+          text: `酸素業者 巡回予定 ${after} 時間後`,
+          person: p,
+        },
+      ];
+    }
+    case "info":
+      return [{ change: { kind: "note", topic: "info_confusion" }, text: "避難の情報が食い違っている" }];
   }
 }
 
