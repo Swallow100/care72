@@ -70,11 +70,12 @@ export function OverrideForm({ personId, color, overridden }: { personId: string
             role="radio"
             aria-checked={to === c}
             onClick={() => setTo(to === c ? null : c)}
-            className={`inline-flex h-8 items-center rounded bg-panel px-3 text-sm font-bold ${TEXT[c]} ${to === c ? "outline-2 -outline-offset-2 outline-accent" : ""}`}
+            className={`inline-flex h-8 items-center rounded bg-panel px-3 text-sm font-bold ${to === c ? "outline-2 -outline-offset-2 outline-accent" : ""}`}
             data-press
             data-override-to={c}
           >
-            {COLOR_LABELS[c]}
+            {/* 色は言葉の span に（要確認の黄の塗りがボタンの地と重ならないように） */}
+            <span className={TEXT[c]}>{COLOR_LABELS[c]}</span>
           </button>
         ))}
       </div>

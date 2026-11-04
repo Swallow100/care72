@@ -14,7 +14,7 @@ import { CaseloadEmpty } from "@/components/office/CaseloadEmpty";
 import { UnlistedFold } from "@/components/office/UnlistedFold";
 import { UnlistedRows } from "@/components/office/UnlistedRows";
 import { PersonWithIntake } from "@/components/person/PersonWithIntake";
-import { StateTag, TONE_TEXT } from "@/components/person/parts";
+import { REASON_TEXT, StateTag } from "@/components/person/parts";
 import { ButtonLink, buttonClass } from "@/components/ui/Button";
 import { AddPersonIcon, CloseIcon, DownloadIcon, PrintIcon } from "@/components/ui/Icon";
 import { PageHead, Panel } from "@/components/ui/Panel";
@@ -329,7 +329,7 @@ function CompactList({ rows, sort, open, view }: { rows: CaseloadRow[]; sort: So
               <span className="min-w-0">
                 <span className="block truncate">{r.name}</span>
                 {r.triage ? (
-                  <span className={`block truncate text-xs font-bold ${TONE_TEXT[COLOR_TONES[r.triage.color]]}`} title={r.triage.reason}>
+                  <span className={`block truncate text-xs font-bold ${REASON_TEXT[COLOR_TONES[r.triage.color]]}`} title={r.triage.reason}>
                     {r.triage.reason}
                   </span>
                 ) : (

@@ -434,7 +434,7 @@ describe("不同意の人は本人のページを開いた時点で入れる欄�
     const file = h.match(/<input[^>]*type="file"[^>]*>/)![0];
     expect(file).toMatch(/disabled=""/);
     // 文字の欄は書ける（手で書いて残す。分けるのは押せない）
-    const text = h.match(/<textarea[^>]*aria-label="入力"[^>]*>/)![0];
+    const text = h.match(/<textarea[^>]*aria-label="AI 入力"[^>]*>/)![0];
     expect(text).not.toMatch(/disabled=""/);
     // 鍵が無くても「同意 拒否」が先（何が止めているかを出す）
     expect(draw(await rowsOf("p-01"), false)).toContain("同意 拒否");

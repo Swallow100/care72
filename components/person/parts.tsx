@@ -9,7 +9,7 @@ import { StateTag, TONE_TEXT } from "@/components/ui/Tag";
 export type Level = 1 | 2;
 
 // 状態の印と色の文字は components/ui/Tag（全画面で同じ部品）。ここからも使えるように出し直す
-export { StateTag, StateText, TONE_TEXT } from "@/components/ui/Tag";
+export { REASON_TEXT, StateTag, StateText, TONE_TEXT } from "@/components/ui/Tag";
 
 export function SegText({ seg }: { seg: Seg }) {
   if (seg.tel) {
