@@ -1,12 +1,14 @@
 "use client";
 
-// 黒塗りの画面（T52）。入れる欄で写真・PDF を選ぶと必ずここを通り、写った氏名・住所・電話・町名・生年月日・保険者番号を人が四角で黒く塗ってから送る。
+// 黒塗りの画面（T52）。入れる欄と様式の読み取り（T83）で写真・PDF を選ぶと必ずここを通り、写った氏名・住所・電話・町名・生年月日・保険者番号を人が四角で黒く塗ってから送る。
 // - 全画面の窓（<dialog> の showModal。後ろは押せず、Tab は窓の中を回る）。Escape・「取消」で何も送らずに閉じる
 // - 写真は 1 枚 1 頁、PDF は頭から 3 頁まで（lib/redact/browser.ts）。1 頁ずつ出し、「前頁」「次頁」で移る
 // - 塗る: 指・マウスで引くと黒い四角。押した四角は選ばれ（操作の色の枠）、「外す」で外す。「一手戻す」「全解除」（この頁）
 // - 拡大: ボタン（拡大・縮小・全体）・ホイール・2 本の指。拡大中は「移動」で画像を送る（2 本の指はいつでも送れる）
 // - 画面の中にスクロールの箱を作らない。画像は枠に収め、拡大中だけ画像の中を動かす（窓は送らない）
-// - 送信: 塗った所の無い頁があれば確認の窓「隠す所なし」。塗った後の画像（JPEG、EXIF なし）だけを呼ぶ側へ渡す。元の写真・PDF は渡さない
+// - 送信: 塗った所の無い頁があれば確かめの窓「塗り無し」（共通の部品 appChoice。戻る・送信）。隠した所 0 の頁を送れるのは、
+//   人がそこで「送信」を選んだときだけで、その頁に bare の印を付けて渡す（サーバーは印の無い 0 を断る。T83）。
+//   塗った後の画像（JPEG、EXIF なし）だけを呼ぶ側へ渡す。元の写真・PDF は渡さない
 // 座標・塗り・JPEG の計算は lib/redact（純な関数、テストあり）。ここは描くのと指・マウスを受けるだけ。
 
 import { useEffect, useId, useLayoutEffect, useReducer, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
@@ -21,8 +23,8 @@ import { fitView, panView, pinchView, refitView, viewToImage, zoomAt, ZOOM_MAX, 
 import { appChoice } from "@/lib/ui/dialog";
 import { ClearIcon, MoveIcon, NextIcon, PaintIcon, UndoIcon } from "./icons";
 
-/** 送る 1 頁（塗った後の画像と、黒塗りの画面の印） */
-export type RedactedPage = { name: string; blob: Blob; meta: ReadMeta };
+/** 送る 1 頁（塗った後の画像と、黒塗りの画面の印）。bare は隠した所 0 の頁を人が確かめの窓で「送信」と選んだ印 */
+export type RedactedPage = { name: string; blob: Blob; meta: ReadMeta; bare: boolean };
 
 /** これより動かなければ「押した」（四角を選ぶ）。px */
 const TAP_SLOP = 6;
@@ -232,13 +234,13 @@ export function RedactSheet({ files, onSend, onCancel }: { files: readonly File[
         const p = pages.find((x) => x.id === id)!;
         return L.pageName(p.fileName, p.page, p.pages);
       });
-      // 戻るを先に置く（最初の焦点。Enter だけで塗らずに送らない）
+      // 戻るを先に置く（最初の焦点。Enter だけで塗らずに送らない）。塗らずに送るのは赤（隠さずに AI へ出す）
       const a = await appChoice(L.noneText, {
         title: L.noneTitle,
         details: names,
         options: [
           { value: "back", label: L.noneBack, icon: "BackIcon" },
-          { value: "send", label: L.noneOk, icon: "SendIcon" },
+          { value: "send", label: L.noneOk, icon: "SendIcon", danger: true },
         ],
       });
       if (a !== "send") {
@@ -253,7 +255,8 @@ export function RedactSheet({ files, onSend, onCancel }: { files: readonly File[
       const out: RedactedPage[] = [];
       for (const p of pages) {
         const r = state.rects[p.id] ?? [];
-        out.push({ name: L.pageName(p.fileName, p.page, p.pages), blob: await encodeRedacted(p, r), meta: metaOf(p, r) });
+        // ここに来た隠した所 0 の頁は、上の窓で人が「送信」を選んだ物だけ
+        out.push({ name: L.pageName(p.fileName, p.page, p.pages), blob: await encodeRedacted(p, r), meta: metaOf(p, r), bare: r.length === 0 });
       }
       onSend(out);
     } catch {

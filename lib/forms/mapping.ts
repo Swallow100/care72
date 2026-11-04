@@ -269,6 +269,8 @@ export const MAPPING_LABELS = {
   fileType: "形式外",
   fileLarge: "容量超過",
   fileEmpty: "空ファイル",
+  /** 黒塗りの画面を通っていない（生の写真・PDF、付け足しのある JPEG、隠した所 0 で人が選んだ印が無い）。入れる欄と同じ言葉 */
+  notRedacted: "未加工",
   notFound: "該当なし",
   forbidden: "権限なし",
   unconfirmed: "未確認",

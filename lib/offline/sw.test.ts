@@ -12,10 +12,15 @@ import {
   AT_HEADER,
   CACHE_PREFIX,
   CACHED_AT_META,
+  CACHE_VERSION,
   clearsCopies,
+  COPY_SKEW_MS,
+  COPY_TTL_MS,
   copyCandidates,
+  copyExpired,
   copyKey,
   cssAssetUrls,
+  endsSession,
   fellThrough,
   freshCopy,
   isAssetRequest,
@@ -27,6 +32,7 @@ import {
   markCopy,
   PAGE_CACHE,
   pickCopy,
+  SESSION_END_PATHS,
   storable,
   URL_HEADER,
 } from "./sw-core.js";
@@ -197,6 +203,47 @@ describe("写しの印と部品", () => {
   });
 });
 
+describe("ログインの終わりと写しの期限（T83、見直しの安全 中 4）", () => {
+  it("ログインの終わり: 401・403 か、同じ origin の /login・/s/invalid へ移った応答", () => {
+    expect(SESSION_END_PATHS).toEqual(["/login", "/s/invalid"]);
+    const moved = (path: string, status = 200) => ({ status, redirected: true, url: `${ORIGIN}${path}` });
+    expect(endsSession(moved("/login"), ORIGIN)).toBe(true);
+    expect(endsSession(moved("/login?e=1"), ORIGIN)).toBe(true);
+    expect(endsSession(moved("/s/invalid"), ORIGIN)).toBe(true);
+    expect(endsSession({ status: 401, redirected: false, url: "" }, ORIGIN)).toBe(true);
+    expect(endsSession({ status: 403, redirected: false, url: "" }, ORIGIN)).toBe(true);
+    // 役の違う頁・役の選び直しへの移り、移っていない /login、別の origin の /login は違う
+    for (const r of [
+      moved("/me"),
+      moved("/"),
+      moved("/login/role"),
+      { status: 200, redirected: false, url: `${ORIGIN}/login` },
+      { status: 200, redirected: true, url: "https://example.com/login" },
+      { status: 404, redirected: false, url: "" },
+      { status: 0, redirected: false, url: "" },
+    ]) {
+      expect(endsSession(r, ORIGIN), JSON.stringify(r)).toBe(false);
+    }
+    expect(endsSession(null, ORIGIN)).toBe(false);
+  });
+
+  it("写しの期限は 72 時間。読めない時刻・時計のずれより先の時刻は切れた扱い", () => {
+    const now = Date.parse("2026-11-07T00:00:00.000Z");
+    expect(COPY_TTL_MS).toBe(72 * 3600 * 1000);
+    expect(copyExpired(new Date(now - COPY_TTL_MS + 1).toISOString(), now)).toBe(false);
+    expect(copyExpired(new Date(now - COPY_TTL_MS).toISOString(), now)).toBe(true);
+    expect(copyExpired(new Date(now + COPY_SKEW_MS).toISOString(), now)).toBe(false);
+    expect(copyExpired(new Date(now + COPY_SKEW_MS + 1).toISOString(), now)).toBe(true);
+    expect(copyExpired(null, now)).toBe(true);
+    expect(copyExpired("x", now)).toBe(true);
+  });
+
+  it("写しの決まりを変えたので版を上げた（activate で前の版の写しを消す）", () => {
+    expect(CACHE_VERSION).toBe("2");
+    expect(PAGE_CACHE).toBe(`${CACHE_PREFIX}pages-v2`);
+  });
+});
+
 describe("public/sw.js は sw-core.js の写し", () => {
   it("<core> の間が sw-core.js と同じ（違えば node tools/offline/build-sw.ts）", () => {
     expect(embedCore(CORE_SRC, SW_SRC)).toBe(SW_SRC.replace(/\r\n/g, "\n"));
@@ -256,6 +303,13 @@ function basic(body: string | null, init: ResponseInit & { type?: string } = {})
   return res;
 }
 const opaqueRedirect = () => ({ type: "opaqueredirect", status: 0, ok: false, redirected: false, headers: new Headers() });
+/** redirect: "follow" で移った後の応答（res.url は着いた所） */
+function followed(path: string, body = "<html><head></head><body>ログイン</body></html>"): Response {
+  const res = basic(body);
+  Object.defineProperty(res, "redirected", { value: true });
+  Object.defineProperty(res, "url", { value: `${ORIGIN}${path}` });
+  return res;
+}
 
 type FetchFn = (input: Key, init?: RequestInit) => Promise<unknown>;
 
@@ -419,19 +473,37 @@ describe("sw.js: 頁は network-first", () => {
     expect(res!.type).toBe("error");
   });
 
-  it("ログインへの移り・401・403・404 は写さず、写しがあってもネットの応答のまま", async () => {
+  it("移り・401・403・404 は写さず、写しがあってもネットの応答のまま（ログインの終わりでなければ写しは残す）", async () => {
     let next: () => unknown = () => basic(PAGE("一覧"));
-    const sw = boot(async () => next());
+    const probe: Array<RequestInit | undefined> = [];
+    const sw = boot(async (_input, init) => {
+      if (init?.redirect === "follow") {
+        probe.push(init);
+        // 役の違う頁への移り（取り直すと /me に着く）
+        return followed("/me", PAGE("本人"));
+      }
+      return next();
+    });
     await sw.request("/");
     next = opaqueRedirect;
     expect((await sw.request("/")).res!.type).toBe("opaqueredirect");
-    for (const status of [401, 403, 404]) {
-      next = () => basic("x", { status });
-      expect((await sw.request("/")).res!.status).toBe(status);
-    }
+    expect(probe).toHaveLength(1);
+    expect(probe[0]).toMatchObject({ credentials: "same-origin", redirect: "follow" });
+    expect(sw.pages()).toEqual([`${ORIGIN}/`]);
+    next = () => basic("x", { status: 404 });
+    expect((await sw.request("/")).res!.status).toBe(404);
     next = () => basic('{"a":1}', { headers: { "content-type": "application/json" } });
     await sw.request("/me");
     expect(sw.pages()).toEqual([`${ORIGIN}/`]);
+    // 401・403 はネットの応答のまま返し、写しを全部消す
+    for (const status of [401, 403]) {
+      next = () => basic(PAGE("一覧"));
+      await sw.request("/");
+      expect(sw.pages()).toEqual([`${ORIGIN}/`]);
+      next = () => basic("x", { status });
+      expect((await sw.request("/")).res!.status).toBe(status);
+      expect(sw.pages()).toEqual([]);
+    }
   });
 
   it("一覧で開いた人の写しが無いときは本人のページの写しへ移す（302）", async () => {
@@ -527,6 +599,147 @@ describe("sw.js: 消す", () => {
   });
 });
 
+describe("sw.js: ログインの終わりで消す（T83）", () => {
+  it("頁の移り（opaqueredirect）を follow で取り直し、/login に着いたら写しを全部消す。応答は移りのまま返す", async () => {
+    let session = true;
+    const sw = boot(async (input, init) => {
+      const url = keyUrl(input);
+      if (url.includes("/_next/static/")) return basic("js", { headers: { "content-type": "application/javascript" } });
+      if (session) return basic(PAGE("一覧"));
+      return init?.redirect === "follow" ? followed("/login") : opaqueRedirect();
+    });
+    await sw.request("/");
+    await sw.request("/people/p-01");
+    expect(sw.pages()).toHaveLength(2);
+    session = false;
+    const { res } = await sw.request("/?open=p-01");
+    expect(res!.type).toBe("opaqueredirect");
+    expect(sw.caches.map.has(PAGE_CACHE)).toBe(false);
+  });
+
+  it("本人・家族の頁が /s/invalid（リンクの再発行・一覧から外した）へ移ったら消す", async () => {
+    let linked = true;
+    const sw = boot(async (_input, init) => {
+      if (linked) return basic(PAGE("本人"));
+      return init?.redirect === "follow" ? followed("/s/invalid", PAGE("無効")) : opaqueRedirect();
+    });
+    await sw.request("/me");
+    expect(sw.pages()).toEqual([`${ORIGIN}/me`]);
+    linked = false;
+    await sw.request("/me");
+    expect(sw.pages()).toEqual([]);
+  });
+
+  it("取り直しで通信が切れたら消さない（分からないので次の時に）", async () => {
+    let step = 0;
+    const sw = boot(async (_input, init) => {
+      if (step === 0) return basic(PAGE("一覧"));
+      if (init?.redirect === "follow") throw new TypeError("Failed to fetch");
+      return opaqueRedirect();
+    });
+    await sw.request("/");
+    step = 1;
+    await sw.request("/");
+    expect(sw.pages()).toEqual([`${ORIGIN}/`]);
+  });
+
+  it("4 秒待って写しを出したあとに来た応答がログインの終わりなら、写しを消す", async () => {
+    vi.useFakeTimers();
+    try {
+      let release: (r: unknown) => void = () => {};
+      let slow = false;
+      const sw = boot((input, init) => {
+        if (keyUrl(input).includes("static")) return Promise.resolve(basic("js"));
+        if (!slow) return Promise.resolve(basic(PAGE("一覧")));
+        if (init?.redirect === "follow") return Promise.resolve(followed("/login"));
+        return new Promise((resolve) => (release = resolve));
+      });
+      await sw.request("/");
+      slow = true;
+      await vi.advanceTimersByTimeAsync(10_000);
+      const pending = sw.request("/", {}, { settle: false });
+      await vi.advanceTimersByTimeAsync(NETWORK_WAIT_MS);
+      const r = await pending;
+      expect(await r.res!.text()).toContain(CACHED_AT_META);
+      release(opaqueRedirect());
+      await r.done();
+      expect(sw.pages()).toEqual([]);
+      // 401 の遅れた応答も同じ
+      slow = false;
+      await sw.request("/");
+      expect(sw.pages()).toEqual([`${ORIGIN}/`]);
+      slow = true;
+      await vi.advanceTimersByTimeAsync(10_000);
+      const again = sw.request("/", {}, { settle: false });
+      await vi.advanceTimersByTimeAsync(NETWORK_WAIT_MS);
+      const r2 = await again;
+      expect(await r2.res!.text()).toContain(CACHED_AT_META);
+      release(basic("x", { status: 401 }));
+      await r2.done();
+      expect(sw.pages()).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe("sw.js: 写しの期限（72 時間）", () => {
+  /** 写しの時刻を書き換える（写してから何時間たったか） */
+  async function age(sw: ReturnType<typeof boot>, key: string, hours: number) {
+    const cache = await sw.caches.open(PAGE_CACHE);
+    const e = cache.entries.find((x) => x.url === `${ORIGIN}${key}`)!;
+    const headers = new Headers(e.res.headers);
+    headers.set(AT_HEADER, new Date(Date.now() - hours * 3600 * 1000).toISOString());
+    e.res = new Response(await e.res.clone().text(), { status: 200, headers });
+  }
+
+  it("過ぎた写しは出さずに消す（通信なしならブラウザの失敗）。期限の中の写しは今までどおり", async () => {
+    let online = true;
+    const sw = boot(async () => {
+      if (!online) throw new TypeError("Failed to fetch");
+      return basic(PAGE("本人"));
+    });
+    await sw.request("/me");
+    await sw.request("/people/p-01");
+    await age(sw, "/me", 72);
+    await age(sw, "/people/p-01", 71);
+    online = false;
+    expect((await sw.request("/me")).res!.type).toBe("error");
+    expect(sw.pages()).toEqual([`${ORIGIN}/people/p-01`]);
+    const ok = (await sw.request("/people/p-01")).res!;
+    expect(ok.status).toBe(200);
+    expect(await ok.text()).toContain(CACHED_AT_META);
+  });
+
+  it("探す順の先の写しが切れていれば消して次の写しへ（?open=X → 本人のページ）", async () => {
+    let online = true;
+    const sw = boot(async () => {
+      if (!online) throw new TypeError("Failed to fetch");
+      return basic(PAGE("x"));
+    });
+    await sw.request("/?open=p-02");
+    await sw.request("/people/p-02");
+    await age(sw, "/?open=p-02", 80);
+    online = false;
+    const r = (await sw.request("/?open=p-02")).res!;
+    expect(r.status).toBe(302);
+    expect(r.headers.get("location")).toBe(`${ORIGIN}/people/p-02`);
+    expect(sw.pages()).toEqual([`${ORIGIN}/people/p-02`]);
+  });
+
+  it("写すたびと activate で、切れた写しを消す", async () => {
+    const sw = boot(async () => basic(PAGE("x")));
+    await sw.request("/me");
+    await sw.request("/family");
+    await age(sw, "/me", 100);
+    await sw.request("/people/p-01");
+    expect(sw.pages()).toEqual([`${ORIGIN}/family`, `${ORIGIN}/people/p-01`]);
+    await age(sw, "/family", 73);
+    await sw.activate();
+    expect(sw.pages()).toEqual([`${ORIGIN}/people/p-01`]);
+  });
+});
+
 describe("sw.js: 画面からの頼みと部品", () => {
   it("今の頁を取りに行って写す。同じ URL は間を置くまで 2 回取らない。ログインへ移れば写さない", async () => {
     let next: () => unknown = () => basic(PAGE("一覧"));
@@ -535,15 +748,20 @@ describe("sw.js: 画面からの頼みと部品", () => {
     expect(sw.pages()).toEqual([`${ORIGIN}/?open=p-03`]);
     const [input, init] = sw.fetch.mock.calls[0];
     expect(input).toBe(`${ORIGIN}/?open=p-03`);
-    expect(init).toMatchObject({ redirect: "manual", credentials: "same-origin" });
+    expect(init).toMatchObject({ redirect: "follow", credentials: "same-origin" });
     await sw.message({ type: KEEP_MESSAGE, url: `${ORIGIN}/?open=p-03` });
     expect(sw.fetch).toHaveBeenCalledTimes(1);
 
-    next = opaqueRedirect;
+    // 役の違う頁へ移った物は写さない（写しも消さない）
+    next = () => followed("/login/role", PAGE("役選択"));
     await sw.message({ type: KEEP_MESSAGE, url: `${ORIGIN}/me` });
     await sw.message({ type: KEEP_MESSAGE, url: "https://example.com/" });
     await sw.message({ type: KEEP_MESSAGE, url: `${ORIGIN}/drill` });
     expect(sw.pages()).toEqual([`${ORIGIN}/?open=p-03`]);
+    // ログインへ移った（期限切れ・停止）: 写しを全部消す
+    next = () => followed("/login");
+    await sw.message({ type: KEEP_MESSAGE, url: `${ORIGIN}/people/p-01` });
+    expect(sw.pages()).toEqual([]);
   });
 
   it("写した頁の部品を先に取る（CSS の書体も）。次からはネットに出ずに返す", async () => {

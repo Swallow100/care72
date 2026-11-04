@@ -85,7 +85,38 @@ describe("黒塗りの画面の印（source・page・redacted）", () => {
     expect(readMetaOf(f({ source: "photo", page: "2", redacted: "0" }))).toBeNull();
     expect(readMetaOf(f({ source: "pdf", page: String(PDF_PAGES_MAX + 1), redacted: "0" }))).toBeNull();
     expect(readMetaOf(f({ source: "pdf", page: "1", redacted: "-1" }))).toBeNull();
-    expect(readMetaOf(f({ source: "photo", page: "1", redacted: "0" }))).toEqual({ source: "photo", page: 1, redacted: 0 });
+    expect(readMetaOf(f({ source: "photo", page: "1", redacted: "1" }))).toEqual({ source: "photo", page: 1, redacted: 1 });
+  });
+
+  it("隠した所 0 は、人が確かめの窓で「送信」を選んだ印（bare=1）があるときだけ通る（T83、見直しの安全 中 5）", () => {
+    const f = (o: Record<string, string>) => {
+      const form = new FormData();
+      for (const [k, v] of Object.entries(o)) form.set(k, v);
+      return form;
+    };
+    expect(readMetaOf(f({ source: "photo", page: "1", redacted: "0" }))).toBeNull();
+    expect(readMetaOf(f({ source: "photo", page: "1", redacted: "0", bare: "0" }))).toBeNull();
+    expect(readMetaOf(f({ source: "photo", page: "1", redacted: "0", bare: "1" }))).toEqual({ source: "photo", page: 1, redacted: 0 });
+    // ブラウザの送る形: 人が選んだときだけ印を付ける。隠した所のある頁には付けない
+    const blob = new Blob([CLEAN], { type: "image/jpeg" });
+    const zero = { source: "photo", page: 1, redacted: 0 } as const;
+    expect(readMetaOf(buildReadForm("p-04", blob, zero))).toBeNull();
+    expect(readMetaOf(buildReadForm("p-04", blob, zero, { bare: true }))).toEqual(zero);
+    expect(buildReadForm("p-04", blob, { ...zero, redacted: 2 }, { bare: true }).has(READ_FORM.bare)).toBe(false);
+  });
+
+  it("黒塗りの画面: 塗っていない頁があれば共通の部品の確かめの窓（戻るが先、送信は赤）。0 の頁に bare を付けるのは窓のあとだけ", () => {
+    const sheet = readFileSync(new URL("../../components/person/RedactSheet.tsx", import.meta.url), "utf8");
+    const ask = sheet.indexOf("await appChoice(L.noneText");
+    const back = sheet.indexOf('{ value: "back", label: L.noneBack');
+    const send = sheet.indexOf('{ value: "send", label: L.noneOk, icon: "SendIcon", danger: true }');
+    const bare = sheet.indexOf("bare: r.length === 0");
+    for (const at of [ask, back, send, bare]) expect(at).toBeGreaterThan(0);
+    expect(back).toBeLessThan(send);
+    expect(ask).toBeLessThan(bare);
+    expect(sheet).toMatch(/if \(a !== "send"\) \{/);
+    const intake = readFileSync(new URL("../../components/person/Intake.tsx", import.meta.url), "utf8");
+    expect(intake).toContain("buildReadForm(props.personId, page.blob, page.meta, { bare: page.bare })");
   });
 
   it("受け口（app/api/intake/read）は生のファイルの欄を断り、checkRedactedImage と印を通してから Claude を呼ぶ", () => {
@@ -162,12 +193,12 @@ describe("入れる欄（components/person/Intake.tsx）は写真・PDF を黒�
     const src = readFileSync(new URL("../../components/person/Intake.tsx", import.meta.url), "utf8");
     expect(src).toContain("setRedacting(");
     expect(src).toContain("<RedactSheet");
-    expect(src).toContain("buildReadForm(props.personId, page.blob, page.meta)");
+    expect(src).toContain("buildReadForm(props.personId, page.blob, page.meta, { bare: page.bare })");
     expect(src).not.toMatch(/form\.set\("file"/);
     expect(src).not.toContain("FILE_NOTICE");
     // 黒塗りの画面は元のファイルを呼ぶ側へ返さない（返すのは塗った後の Blob と印）
     const sheet = readFileSync(new URL("../../components/person/RedactSheet.tsx", import.meta.url), "utf8");
-    expect(sheet).toContain("export type RedactedPage = { name: string; blob: Blob; meta: ReadMeta }");
+    expect(sheet).toContain("export type RedactedPage = { name: string; blob: Blob; meta: ReadMeta; bare: boolean }");
     expect(sheet).toContain("encodeRedacted(p, r)");
   });
 });

@@ -14,6 +14,7 @@ export type MappingErrorCode =
   | "file_type"
   | "file_large"
   | "file_empty"
+  | "not_redacted"
   | "not_found"
   | "forbidden"
   | "conflict";
@@ -28,6 +29,7 @@ const LABELS: Record<MappingErrorCode, string> = {
   file_type: MAPPING_LABELS.fileType,
   file_large: MAPPING_LABELS.fileLarge,
   file_empty: MAPPING_LABELS.fileEmpty,
+  not_redacted: MAPPING_LABELS.notRedacted,
   not_found: MAPPING_LABELS.notFound,
   forbidden: MAPPING_LABELS.forbidden,
   conflict: MAPPING_LABELS.conflict,
@@ -43,6 +45,7 @@ const STATUS: Record<MappingErrorCode, number> = {
   file_type: 415,
   file_large: 413,
   file_empty: 400,
+  not_redacted: 415,
   not_found: 404,
   forbidden: 403,
   conflict: 409,

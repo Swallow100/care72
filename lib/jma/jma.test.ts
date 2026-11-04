@@ -12,7 +12,20 @@ import { seedStatements } from "../../seed/sql.ts";
 import { d1FromSqlite, migratedSqlite } from "../db/test-d1.ts";
 import { DAILY_RESET_CRON } from "../seed/cron.ts";
 import { JMA_FETCH_CRON, scheduledJmaFetch } from "./cron.ts";
-import { MAX_ENTRIES_PER_RUN, parseFeed, pickNew, typeCodeOf, type FeedEntry } from "./feed.ts";
+import {
+  FETCH_NOTES,
+  fetchFeed,
+  fetchText,
+  jmaUrlAllowed,
+  MAX_BODY_BYTES,
+  MAX_ENTRIES_PER_RUN,
+  MAX_REDIRECTS,
+  parseFeed,
+  pickNew,
+  typeCodeOf,
+  type FeedEntry,
+  type Fetcher,
+} from "./feed.ts";
 import { fixtureFetcher, fixtureText, REAL_DIR, SAMPLE_DIR } from "./fixture-fetch.ts";
 import { intensityLabel, isQuakeCode, isWarningCode, isWarningKind, JMA_FEED_URLS, magnitudeLabel, priorityOf } from "./labels.ts";
 import { cityOf, sameCity, uniqueCities } from "./match.ts";
@@ -88,6 +101,93 @@ describe("フィード（Atom）", () => {
     expect(two.take.map((e) => e.id)).toEqual([VPWW54_HIROSHIMA, VPWW54]);
     expect(two.deferred).toBe(1);
     expect(MAX_ENTRIES_PER_RUN).toBeLessThanOrEqual(48);
+  });
+});
+
+describe("取りに行く所と大きさ（見直しの安全 低）", () => {
+  it("取りに行くのは https の気象庁の置き場（data.jma.go.jp・xml.kishou.go.jp とその下）だけ", () => {
+    for (const ok of [JMA_FEED_URLS.extra, JMA_FEED_URLS.eqvol, VPWW55, "https://data.jma.go.jp/x.xml", "https://xml.kishou.go.jp/data/a.xml"]) {
+      expect(jmaUrlAllowed(ok), ok).toBe(true);
+    }
+    for (const ng of [
+      "http://www.data.jma.go.jp/developer/xml/data/a.xml",
+      "https://www.jma.go.jp/bosai/warning/",
+      "https://data.jma.go.jp.example.com/a.xml",
+      "https://evildata.jma.go.jp/a.xml",
+      "https://www.data.jma.go.jp:8443/a.xml",
+      "https://u:p@www.data.jma.go.jp/a.xml",
+      "https://169.254.169.254/latest",
+      "file:///etc/passwd",
+      "not a url",
+    ]) {
+      expect(jmaUrlAllowed(ng), ng).toBe(false);
+    }
+  });
+
+  it("フィードに載った外の URL の電文は取らない（数えない・次の回にも残さない）", () => {
+    const outside: FeedEntry = { id: "x", title: "気象警報・注意報", updated: "2026-11-03T13:00:00.000Z", url: "https://example.com/20261103130000_0_VPWW54_380000.xml", typeCode: "VPWW54" };
+    const entries = [...parseFeed(sample("extra.xml")), outside];
+    const r = pickNew(entries, new Set(), 10);
+    expect(r.take.map((e) => e.url)).not.toContain(outside.url);
+    expect(r.take).toHaveLength(4);
+    expect(r.deferred).toBe(0);
+  });
+
+  it("外の URL は取りに行かない。移りは redirect: manual で受け、移った先も確かめて上限の回までたどる", async () => {
+    const calls: Array<{ url: string; redirect?: RequestRedirect }> = [];
+    const routes: Record<string, () => Response> = {
+      [VPWW55]: () => new Response(null, { status: 302, headers: { Location: "/developer/xml/data/moved.xml" } }),
+      [`${DATA}moved.xml`]: () => new Response("<Report/>", { status: 200 }),
+      [VPWW54]: () => new Response(null, { status: 301, headers: { Location: "https://example.com/x.xml" } }),
+    };
+    const fetcher: Fetcher = async (url, init) => {
+      calls.push({ url, redirect: init?.redirect });
+      return routes[url]?.() ?? new Response(null, { status: 302, headers: { Location: `${url}x` } });
+    };
+    expect(await fetchText(VPWW55, fetcher)).toEqual({ ok: true, text: "<Report/>" });
+    expect(calls.map((c) => c.redirect)).toEqual(["manual", "manual"]);
+    calls.length = 0;
+    expect(await fetchText(VPWW54, fetcher)).toEqual({ ok: false, note: FETCH_NOTES.host });
+    expect(calls.map((c) => c.url)).toEqual([VPWW54]);
+    calls.length = 0;
+    expect(await fetchText("https://example.com/a.xml", fetcher)).toEqual({ ok: false, note: FETCH_NOTES.host });
+    expect(calls).toEqual([]);
+    expect(await fetchFeed("https://example.com/feed.xml", null, fetcher)).toEqual({ kind: "error", note: FETCH_NOTES.host });
+    expect(calls).toEqual([]);
+    // 移りが続けば MAX_REDIRECTS 回で止める
+    expect(await fetchText(VPWW53, fetcher)).toEqual({ ok: false, note: FETCH_NOTES.redirects });
+    expect(calls).toHaveLength(MAX_REDIRECTS + 1);
+  });
+
+  it("本文は 2MB まで。Content-Length が超えれば読まず、無い物も読みながら数えて切る。304 はそのまま", async () => {
+    expect(MAX_BODY_BYTES).toBe(2 * 1024 * 1024);
+    const big = "あ".repeat(Math.ceil(MAX_BODY_BYTES / 3) + 1);
+    let pulled = 0;
+    const stream = () =>
+      new ReadableStream<Uint8Array>({
+        pull(c) {
+          pulled++;
+          c.enqueue(new Uint8Array(512 * 1024).fill(0x41));
+          if (pulled > 20) c.close();
+        },
+      });
+    const fetcher: Fetcher = async (url) => {
+      if (url === VPWW55) return new Response(big, { status: 200 });
+      if (url === VPWW54) return new Response("x", { status: 200, headers: { "Content-Length": String(MAX_BODY_BYTES + 1) } });
+      if (url === VPWW53) return new Response(stream(), { status: 200 });
+      if (url === JMA_FEED_URLS.extra) return new Response(big, { status: 200 });
+      if (url === JMA_FEED_URLS.eqvol) return new Response(null, { status: 304 });
+      return new Response(sample("extra.xml"), { status: 200 });
+    };
+    expect(await fetchText(VPWW55, fetcher)).toEqual({ ok: false, note: FETCH_NOTES.large });
+    expect(await fetchText(VPWW54, fetcher)).toEqual({ ok: false, note: FETCH_NOTES.large });
+    expect(await fetchText(VPWW53, fetcher)).toEqual({ ok: false, note: FETCH_NOTES.large });
+    // 上限の少しあとで読むのを止める（全部は読まない）
+    expect(pulled).toBeLessThanOrEqual(6);
+    expect(await fetchFeed(JMA_FEED_URLS.extra, null, fetcher)).toEqual({ kind: "error", note: FETCH_NOTES.large });
+    expect(await fetchFeed(JMA_FEED_URLS.eqvol, "Tue, 03 Nov 2026 13:00:00 GMT", fetcher)).toEqual({ kind: "not_modified" });
+    const ok = await fetchText(VXSE53, fetcher);
+    expect(ok.ok && ok.text).toBe(sample("extra.xml"));
   });
 });
 

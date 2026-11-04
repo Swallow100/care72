@@ -3,7 +3,8 @@
 //
 // migration だけ当てる配信（tools/deploy/migrate-remote.sh）は、d1_migrations に無い番号だけを当てる。
 // だから入った番号のファイルを書き換えても本番には届かず、手元（db:fresh）と本番の表の形が黙って食い違う。
-// 錠にある番号のファイルが変わった・消えた・名前が変わった・同じ番号のファイルが増えたら落ちる。新しい番号は錠に無くてよい。
+// 錠にある番号のファイルが変わった・消えた・名前が変わった・同じ番号のファイルが増えたら落ちる。新しい番号は錠に無くてよいが、
+// 錠の最大より大きい番号だけ（空いた番号を埋めると、migration だけの配信と作り直しで当てる順が分かれる）。
 // 錠を作り直すのは、本番がまだ当てていない番号を直したときだけ。commit のメッセージに理由を書く。
 // 改行は LF にそろえて計る（.gitattributes は eol=lf だが、core.autocrlf の checkout でも同じ値にするため）。
 
@@ -66,9 +67,21 @@ export function parseLock(text: string): LockEntry[] {
   return out;
 }
 
-/** 錠と今の migrations を比べる。違いの 1 行ずつ（無ければ空）。錠に無い新しい番号は違いにしない */
+/**
+ * 錠と今の migrations を比べる。違いの 1 行ずつ（無ければ空）。錠に無い新しい番号は、錠の最大より大きければ違いにしない。
+ * 錠の最大より小さい新しい番号（空いた 0019 などを埋めた物）は断る: migration だけの配信（migrate-remote.sh）は
+ * d1_migrations に無い番号を今の表に最後に当て、作り直し（db:fresh・rebuild-remote.sh）は番号の順に途中で当てるので、
+ * 当てる順が 2 つに分かれ、表の形が黙って食い違う（review-20261104 の正しさ 低 9）
+ */
 export function compareLock(lock: readonly LockEntry[], current: readonly LockEntry[]): string[] {
   const problems: string[] = [];
+  const max = lock.reduce<LockEntry | null>((m, l) => (m === null || Number(l.number) > Number(m.number) ? l : m), null);
+  if (max) {
+    for (const c of current) {
+      if (lock.some((l) => l.number === c.number)) continue;
+      if (Number(c.number) < Number(max.number)) problems.push(`${c.number} 最大より小さい番号 ${c.file}（錠の最大 ${max.number}）`);
+    }
+  }
   for (const l of lock) {
     const same = current.filter((c) => c.number === l.number);
     const file = same.find((c) => c.file === l.file);

@@ -2,14 +2,19 @@ import { isSameOrigin } from "@/lib/auth/cookie";
 import { denied } from "@/lib/auth/guard";
 import { principalFromRequest } from "@/lib/auth/server";
 import { aiContextFor } from "@/lib/claude/cloudflare";
-import { FORM_FILE_MAX_BYTES, formHash, readForm, toFormFile } from "@/lib/forms/form-read";
+import { FORM_FILE_MAX_BYTES, formHash, readForm, type FormFile } from "@/lib/forms/form-read";
 import { findMappingByHash, formsScope, insertReadMapping } from "@/lib/forms/mapping-db";
 import { mappingError, mappingErrorOf, NO_STORE } from "@/lib/forms/mapping-http";
+import { FORM_READ_PAGES_MAX, formReadPagesOf } from "@/lib/forms/read-upload";
+import { checkRedactedImage } from "@/lib/intake/read-check";
 
-// 様式の読み取り: 写真（JPEG・PNG）か PDF の空の様式を受け取り、Opus に欄と台帳の項目の対応表を出させ、下書きで保存する。
-// ケアマネの役だけ（管理者・審査員のケアマネの役を含む）。範囲は事業所。Claude の呼び出しは 1 要求 1 回。
-// 同じ写真・PDF（SHA-256 が同じ）が事業所にあれば読まずにその対応表を返す（上限も減らさない）。
-// Claude に渡すのは写真・PDF と台帳の項目表（値は無い）だけ。台帳の値・氏名は渡さない。写真・PDF は保存しない
+// 様式の読み取り: 空の様式の写真・PDF を、黒塗りの画面（components/person/RedactSheet.tsx）を通した頁の画像（JPEG、付け足しなし）で
+// 頁の順に 1〜3 枚受け取り、Opus に欄と台帳の項目の対応表を出させ、下書きで保存する（T83、見直しの安全 中 5。前は生の写真・PDF を
+// そのまま Opus に渡していた）。白紙の様式は塗らずに送れる（人が確かめの窓で「送信」を選んだ印 bare）、記入済みなら値を塗ってから。
+// 生の写真・PDF（前の file の欄・PDF・PNG・EXIF の付いた JPEG）・印の無い物は「未加工」（415）で断り、Claude は呼ばない。
+// ケアマネの役だけ（管理者・審査員のケアマネの役を含む）。範囲は事業所。Claude の呼び出しは 1 要求 1 回（頁を並べて渡す）。
+// 同じ頁の画像の並び（SHA-256 が同じ）が事業所にあれば読まずにその対応表を返す（上限も減らさない）。
+// Claude に渡すのは塗った後の頁の画像と台帳の項目表（値は無い）だけ。台帳の値・氏名は渡さない。画像は保存しない
 export async function POST(request: Request) {
   if (!isSameOrigin(request)) return mappingError("forbidden");
   const { principal, env } = await principalFromRequest(request);
@@ -18,29 +23,44 @@ export async function POST(request: Request) {
   const scope = formsScope(principal);
   if (!scope) return mappingError("forbidden");
 
-  // 読む前に大きさで断る（multipart の枠の分だけ余裕を見る）
+  // 読む前に大きさで断る（頁の数 × 1 枚の上限と、multipart の枠の分だけ余裕を見る）
   const length = Number(request.headers.get("content-length") ?? "0");
-  if (length > FORM_FILE_MAX_BYTES + 64 * 1024) return mappingError("file_large");
+  if (length > FORM_FILE_MAX_BYTES * FORM_READ_PAGES_MAX + 64 * 1024) return mappingError("file_large");
   const form = await request.formData().catch(() => null);
-  const file = form?.get("file");
-  if (!file || typeof file === "string") return mappingError("invalid");
-  if (file.size > FORM_FILE_MAX_BYTES) return mappingError("file_large");
-  const bytes = new Uint8Array(await file.arrayBuffer());
-  const checked = toFormFile(bytes);
-  if (!checked.ok) return mappingError(checked.error === "type" ? "file_type" : checked.error === "empty" ? "file_empty" : "file_large");
+  if (!form) return mappingError("invalid");
+  const got = formReadPagesOf(form);
+  if (!got.ok) return mappingError(got.error);
 
-  const hash = await formHash(bytes);
+  const files: FormFile[] = [];
+  const parts: Uint8Array[] = [];
+  for (const p of got.pages) {
+    if (p.image.size > FORM_FILE_MAX_BYTES) return mappingError("file_large");
+    const bytes = new Uint8Array(await p.image.arrayBuffer());
+    const checked = checkRedactedImage(bytes);
+    if (!checked.ok) return mappingError(checked.error);
+    files.push(checked.file);
+    parts.push(bytes);
+  }
+
+  const all = new Uint8Array(parts.reduce((n, b) => n + b.length, 0));
+  let at = 0;
+  for (const b of parts) {
+    all.set(b, at);
+    at += b.length;
+  }
+  const hash = await formHash(all);
   const known = await findMappingByHash(env.DB, scope.officeId, hash);
   if (known) return Response.json({ ok: true, id: known.id, reused: true }, { headers: NO_STORE });
 
   try {
     const ctx = await aiContextFor(scope.officeId);
-    const read = await readForm(checked.file, ctx);
+    const read = await readForm(files, ctx);
     const saved = await insertReadMapping(env.DB, {
       id: crypto.randomUUID(),
       officeId: scope.officeId,
       hash,
-      kind: checked.file.kind,
+      // 元の形（写真か PDF か）。送られたのは頁の画像
+      kind: got.pages[0].meta.source === "pdf" ? "pdf" : "image",
       mapping: read.mapping,
       model: read.mark.model,
       by: scope.accountId,
