@@ -249,7 +249,7 @@ export function buildOwnSheet(rows: PersonPageRows, opts: OwnBuildOptions): OwnS
       comes.push({
         key: `who.${c.supporter_order}`,
         words: [...who(c), { text: "が " }, ...(c.has_car === 1 ? p("comesByCar") : p("comes"))],
-        phone: { number: c.phone },
+        phone: { number: c.phone ?? c.mobile ?? null },
       });
       if (c.night_ok === 1) comes.push({ key: `who.${c.supporter_order}.night`, words: p("night"), tone: "sub" });
     }
@@ -291,17 +291,17 @@ export function buildOwnSheet(rows: PersonPageRows, opts: OwnBuildOptions): OwnS
   open.push({ key: "call.cm", label: "ケアマネの電話", kind: "write" });
   // 家族: 緊急連絡先の順。来てくれる人に電話を出した人は重ねない（同意の無い人の家族はここに出す。計画書の近親者と同じ）
   const family = contacts.filter((c) => c.kind === "family" && !shown.has(c.id)).sort(byOrder("emergency_order"));
-  for (const c of family) call.push({ key: `call.family.${c.id}`, words: who(c), phone: { number: c.phone } });
+  for (const c of family) call.push({ key: `call.family.${c.id}`, words: who(c), phone: { number: c.phone ?? c.mobile ?? null } });
   const doctors = contacts.filter((c) => c.kind === "home_doctor");
   if (doctors.length === 0) {
     call.push({ key: "call.doctor", words: p("homeDoctor"), phone: { number: null } });
     open.push({ key: "call.doctor", label: "かかりつけの電話", kind: "write" });
   }
   for (const c of doctors) {
-    call.push({ key: `call.doctor.${c.id}`, words: [...p("homeDoctor"), sp, ...v(c.name ?? "")], phone: { number: c.phone } });
+    call.push({ key: `call.doctor.${c.id}`, words: [...p("homeDoctor"), sp, ...v(c.name ?? "")], phone: { number: c.phone ?? c.mobile ?? null } });
   }
   for (const c of contacts.filter((x) => x.kind === "dialysis_center")) {
-    call.push({ key: `call.dialysis.${c.id}`, words: [...p("dialysis"), sp, ...v(c.name ?? "")], phone: { number: c.phone } });
+    call.push({ key: `call.dialysis.${c.id}`, words: [...p("dialysis"), sp, ...v(c.name ?? "")], phone: { number: c.phone ?? c.mobile ?? null } });
   }
 
   // ---- 本人の言葉（特記のまま） ----

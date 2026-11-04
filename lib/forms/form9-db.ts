@@ -138,7 +138,7 @@ export async function loadForm9(
     db.prepare("SELECT id, display_name FROM accounts WHERE office_id = ?1").bind(office.id),
     db
       .prepare(
-        `SELECT person_id, kind, relation, name, phone, emergency_order, supporter_order, has_smartphone FROM contacts
+        `SELECT person_id, kind, relation, name, COALESCE(phone, mobile) AS phone, emergency_order, supporter_order, has_smartphone FROM contacts
           WHERE person_id IN (${mine}) ORDER BY person_id, sort`,
       )
       .bind(office.id),
