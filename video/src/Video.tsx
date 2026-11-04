@@ -7,7 +7,7 @@ import { type Assets, audioPath, useAssets } from "./assets";
 import { GroundProvider, usePalette } from "./ground";
 import { Footage } from "./parts/Footage";
 import { Framed, framedSize } from "./parts/Frame";
-import { BigNumber, Compare, EndCard, Flow, Memo, Models, Quote, Ring72, Rules, Share, Stage, TextCard, Title } from "./parts/Graphics";
+import { BigNumber, Compare, EndCard, Flow, Memo, Models, Quote, Ring72, Plate, Rules, Share, Stage, TextCard, Title } from "./parts/Graphics";
 import { CROSS, STAGGER, mix, progress, rise } from "./parts/motion";
 import { Caption, Header, Subtitle } from "./parts/Overlay";
 import { COLOR, FONT, LAYOUT, TYPE, palette } from "./theme";
@@ -187,8 +187,16 @@ const ShotView: React.FC<{ shot: Shot; assets: Assets }> = ({ shot, assets }) =>
         </>
       );
       break;
+    case "plate":
+      body = (
+        <>
+          <Backdrop shot={shot} assets={assets} duration={duration} />
+          <Plate lines={shot.lines ?? []} beats={shot.beats} />
+        </>
+      );
+      break;
     case "ring":
-      body = <Ring72 label={shot.lines?.[0] ?? "72 時間"} duration={duration} sub={shot.sub} />;
+      body = <Ring72 label={shot.lines?.[0] ?? "72 時間"} duration={duration} sub={shot.sub} titleAt={shot.beats?.[0] !== undefined ? f(shot.beats[0]) : undefined} />;
       break;
     case "number":
       body = (

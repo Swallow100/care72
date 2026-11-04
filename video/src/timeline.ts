@@ -28,6 +28,7 @@ export type Shot = {
     | "split" // 録画を横に並べる（footages）
     | "title" // ケア72 の題名
     | "text" // 文字だけ（lines）
+    | "plate" // 左下の名札（lines。大きな字にしない自己紹介）
     | "ring" // 72 時間の輪（G1）
     | "number" // 大きな数字（value）
     | "bars" // 2 本の棒（G2）
@@ -35,7 +36,7 @@ export type Shot = {
     | "flow" // 台帳から 3 つの出力（F1）
     | "rules" // ルールの表の 1 枚（F2）
     | "models" // 使い分けの図（F3）と端末の録画
-    | "quote" // 協力ケアマネの一言
+    | "quote" // 協力ケアマネージャーの一言
     | "end"; // 終わりの画面（G5）
   /** 何を映すか（作る人向けの説明。素材が無い間は仮の面に出す） */
   label: string;
@@ -90,12 +91,14 @@ export const SCENES: Scene[] = [
         end: 7,
         kind: "text",
         footage: "R01",
-        label: "ケアマネの訪問の後ろ姿（B01）をぼかして奥に。作者の紹介の文字",
+        label: "ケアマネージャーの訪問の後ろ姿（B01）をぼかして奥に。問いかけの文字",
         bg: "B01",
-        lines: ["作者 医学部の学生"],
-        sub: "ケアマネ × 在宅の要介護高齢者 × 災害の最初の 72 時間",
-        // N01 の「医学部で」で 1 行目、「家族は、在宅のお年寄りを受け持つケアマネです」で下の帯
-        beats: [0.4, 2.9],
+        // 冒頭は問いかけ（N01）。作者の紹介は S3 の名札で小さく（11/4 作者）
+        lines: ["突然ですが", "知っているのは、誰？"],
+        // 下の帯は声の「在宅の高齢者の薬や家族のことまで」と同じ言葉
+        sub: "在宅の高齢者 × 薬 × 家族",
+        // N01 の「突然ですが」で 1 行目、「知っているのは」で 2 行目、「在宅の高齢者の…」で下の帯（beats の 3 つ目。仮の声で測った）
+        beats: [0.4, 4.3, 1.6],
       },
     ],
   },
@@ -108,7 +111,8 @@ export const SCENES: Scene[] = [
     shots: [
       // 題名を 72 時間の輪（G1）の中に置く。輪の目盛りが N02 の間に埋まる
       // 副題は字幕（N02）と同じ言葉になるので出さない
-      { at: 7, end: 13, kind: "ring", label: "題名と 72 時間の輪", lines: ["ケア72"] },
+      // 題名は N02 の「ケア72 は」で出す（仮の声で 8.85 秒）
+      { at: 7, end: 13, kind: "ring", label: "題名と 72 時間の輪", lines: ["ケア72"], beats: [1.85] },
       {
         at: 13,
         end: 20,
@@ -130,9 +134,10 @@ export const SCENES: Scene[] = [
     at: 20,
     end: 46,
     shots: [
-      { at: 20, end: 25, kind: "text", label: "医学部 → 家族はケアマネ", lines: ["医学部", "家族はケアマネ"], beats: [0.4, 1.9], bg: "B02" },
+      // 作者の紹介は大きな字にせず、左下の名札（N05 の「医学部の学生です」で 1 行目、「家族にケアマネージャーがいて」で 2 行目）
+      { at: 20, end: 26, kind: "plate", label: "作者の名札（医学部の学生・家族にケアマネージャー）", lines: ["作者　医学部の学生", "家族にケアマネージャー"], beats: [0.3, 2.3], bg: "B02" },
       {
-        at: 25,
+        at: 26,
         end: 33,
         kind: "split",
         // 録画の番号が空の所は文字の面（sub を「・」で分けて並べる）
@@ -312,7 +317,7 @@ export const SCENES: Scene[] = [
     title: "数字と一言",
     ground: "blue",
     at: 163,
-    end: 175,
+    end: 172.5,
     shots: [
       {
         at: 163,
@@ -323,53 +328,54 @@ export const SCENES: Scene[] = [
         value: "［X 時間］ → ［Y 分］",
         // 「→」のある値は前と後を 1 行に並べる（Graphics.tsx の Compare）。lines は各数の下の名前
         lines: ["ふだん", "ケア72"],
-        sub: "実測 架空の事例［N］件・ケアマネ［N］人。ふだんの時間は本人の申告",
+        sub: "実測 架空の事例［N］件・ケアマネージャー［N］人。ふだんの時間は本人の申告",
       },
       // 背景の B07 は 1 本（14 秒）を 2 つの絵で続けて使う（前の絵が 6 秒）
-      { at: 169, end: 175, kind: "quote", label: "協力ケアマネの一言と 2 つ目の数字", lines: ["［協力ケアマネの一言］"], sub: "医療班の手元の割合 ［T34 か訓練の結果。無ければ未測定］", bg: "B07", bgFrom: 6 },
+      { at: 169, end: 172.5, kind: "quote", label: "協力ケアマネージャーの一言と 2 つ目の数字", lines: ["［協力ケアマネージャーの一言］"], sub: "医療班の手元の割合 ［T34 か訓練の結果。無ければ未測定］", bg: "B07", bgFrom: 6 },
     ],
   },
   {
     id: "S9",
     title: "締め",
     ground: "blue",
-    at: 175,
+    // 締めの文（N30）が長くなったので 2:52.5 から（11/4 15:5x）
+    at: 172.5,
     end: 180,
-    shots: [{ at: 175, end: 180, kind: "end", label: "終わりの画面", bg: "B08" }],
+    shots: [{ at: 172.5, end: 180, kind: "end", label: "終わりの画面", bg: "B08" }],
   },
 ];
 
 export const LINES: Line[] = [
-  { id: "N01", at: 0.5, end: 6.5, ja: "医学部で学んでいます。家族は、在宅のお年寄りを受け持つケアマネです。", en: "I'm a medical student. Someone in my family is a care manager for older people who live at home." },
-  { id: "N02", at: 7.1, end: 12.7, ja: "ケア72。ケアマネの知っていることを、災害の 72 時間に届けます。", en: "Care72 carries what a care manager knows into the first 72 hours of a disaster." },
+  { id: "N01", at: 0.3, end: 6.9, ja: "突然ですが、在宅の高齢者の薬や家族のことまで知っているのは、誰でしょう。", en: "Here's a question: who knows an older person's medications, and even their family, at home?" },
+  { id: "N02", at: 7.1, end: 12.7, ja: "答えはケアマネージャー。ケア72 は、その知識を 72 時間に届けます。", en: "The answer: their care manager. Care72 carries what they know into those 72 hours." },
   { id: "N03", at: 12.8, end: 19.6, ja: "話して埋まる避難計画。AI が利用者を演じる訓練。発災時の、安否と連絡の順。", en: "A plan you fill in by talking. A drill where AI plays your clients. And in a disaster: who is safe, and who to call first." },
   // N04（高校の災害の学習）は作者の指示（11/3 09:2x）で消した。ID は振り直さない（欠番）
-  { id: "N05", at: 20.3, end: 24.8, ja: "医学部で学びながら、家族の仕事を近くで見て、気づきました。", en: "While studying medicine, I watched my family's work up close, and I noticed something." },
-  { id: "N06", at: 25.2, end: 33.2, ja: "ケアマネは利用者のことを全部知っている。でも計画に起こす時間がなく、72 時間に届く道もない。", en: "Care managers know everything about their clients. But there's no time to turn it into a plan, and no way for it to reach anyone in those 72 hours." },
+  { id: "N05", at: 20.3, end: 25.9, ja: "医学部の学生です。家族にケアマネージャーがいて、気づきました。", en: "I'm a medical student. Someone in my family is a care manager, and I noticed something." },
+  { id: "N06", at: 26.1, end: 33.2, ja: "利用者のことは全部知っている。でも計画に起こす時間も、72 時間に届く道もない。", en: "They know everything about their clients. But there's no time to turn it into a plan, and no way to get it there in those 72 hours." },
   { id: "N07", at: 33.4, end: 38.0, ja: "個別避難計画ができているのは、対象の 15.1%。", en: "Only 15.1% of the people who need an individual evacuation plan have one." },
   { id: "N08", at: 38.2, end: 41.4, ja: "能登では、527 人が関連死でした。", en: "In the Noto earthquake, 527 deaths were disaster-related." },
   { id: "N09", at: 41.6, end: 45.9, ja: "輪島の避難所では、薬のメモが手書きで、用量が抜けていた。", en: "At shelters in Wajima, medication notes were handwritten, and doses were left out." },
   { id: "N10", at: 46.3, end: 51.3, ja: "主役は架空の利用者、山田ハナさん。84 歳、在宅酸素。", en: "Meet a fictional client, Hana Yamada. 84, on home oxygen." },
-  { id: "N11", at: 51.5, end: 58.3, ja: "ケアマネが話すと、Claude が台帳の欄に分け、空いている所だけ聞き返します。", en: "The care manager talks. Claude sorts it into her record, and asks back only about what's missing." },
+  { id: "N11", at: 51.5, end: 58.3, ja: "ケアマネージャーが話すと、Claude が台帳の欄に分け、空いている所だけ聞き返します。", en: "The care manager talks. Claude sorts it into her record, and asks back only about what's missing." },
   { id: "N12", at: 58.5, end: 64.5, ja: "台帳から、市の様式の避難計画、本人の 1 枚、医療班の要約が出ます。", en: "From that one record: the city's evacuation plan form, a one-page sheet for her, and a summary for the medical team." },
   { id: "N13", at: 64.7, end: 69.8, ja: "要約は医療班の記録と同じ順。医学生の目で確かめました。", en: "The summary follows the medical team's own record format. I checked it as a medical student." },
   { id: "N14", at: 70.0, end: 73.6, ja: "ほかの市の様式も、写真から読み取ります。", en: "Other cities' forms can be read from a photo." },
   { id: "N15", at: 74.3, end: 80.0, ja: "次は訓練。利用者 10 人に、Claude Haiku が 1 体ずつ付きます。", en: "Next, the drill. Each of the 10 clients gets their own Claude Haiku agent." },
   { id: "N16", at: 80.2, end: 84.6, ja: "台帳を読み、本人や家族になりきって動きます。", en: "Each one reads the record and plays the client or a family member." },
   { id: "N17", at: 84.8, end: 88.0, ja: "72 時間を早送りで進めると、", en: "Fast-forward through the 72 hours, and..." },
-  { id: "N18", at: 93.2, end: 98.8, ja: "ケアマネは本番と同じ画面で手を打ちます。電話、出向く、避難所に頼む。", en: "The care manager responds on the same screen used in a real disaster: call, visit, ask a shelter." },
+  { id: "N18", at: 93.2, end: 98.8, ja: "ケアマネージャーは本番と同じ画面で、電話、出向く、避難所に頼む。", en: "The care manager responds on the same screen used in a real disaster: call, visit, ask a shelter." },
   { id: "N19", at: 99.0, end: 107.6, ja: "終わると Opus が対応の順を採点。透析先の確認が後回しだったと、出典つきで指摘しました。", en: "At the end, Opus scores the order of response. It pointed out, with sources, that checking the dialysis clinic came too late." },
   { id: "N20", at: 108.3, end: 112.3, ja: "そして本番。大雨で、災害モードに入りました。", en: "Then the real thing. Heavy rain, and disaster mode is on." },
   { id: "N21", at: 112.5, end: 116.0, ja: "娘さんのスマホには、赤と緑の 2 つだけ。", en: "Her daughter's phone shows just two buttons: red and green." },
   { id: "N22", at: 121.2, end: 126.0, ja: "本人の答えが止まると、声で問いかけ、周りの音ごと録音します。", en: "If she stops answering, the app asks out loud and records the sound around her." },
   { id: "N23", at: 130.3, end: 135.0, ja: "色と順を決めるのは AI ではなく、人が読めるルールの表。", en: "The color and order are set not by AI, but by a rule table people can read." },
-  { id: "N24", at: 135.3, end: 140.8, ja: "Claude は録音を分けるだけ。最後に決めるのは、ケアマネです。", en: "Claude only sorts the recording. The care manager makes the final call." },
+  { id: "N24", at: 135.3, end: 140.8, ja: "Claude は録音を分けるだけ。最後に決めるのは、ケアマネージャーです。", en: "Claude only sorts the recording. The care manager makes the final call." },
   { id: "N25", at: 143.0, end: 147.7, ja: "電話し、避難所の医療班が受け入れると、要約が届きます。", en: "The care manager calls, and when the shelter's medical team takes her in, the summary is there." },
   { id: "N26", at: 150.3, end: 156.0, ja: "作ったのは Claude Code。設計と実装を分け、並行で進めました。", en: "It was built with Claude Code, with design and implementation split and run in parallel." },
   { id: "N27", at: 156.3, end: 162.7, ja: "フックで鍵と配信を守り、本名を見ない MCP と見直し役で確かめています。", en: "Hooks guard the keys and deploys. An MCP server that never sees real names, and reviewer agents, check the work." },
-  { id: "N28", at: 163.3, end: 169.0, ja: "協力してくれたケアマネの計画 1 件は、ふだん［X 時間］、ケア72 で［Y 分］。", en: "For the care manager who helped us, one plan usually takes [X hours]. With Care72, [Y minutes]." },
-  { id: "N29", at: 169.2, end: 174.8, ja: "［協力ケアマネの一言、または T34 のアンケートの結果 1 文］", en: "[A word from the partner care manager, or one line from the T34 survey]" },
-  { id: "N30", at: 175.4, end: 179.4, ja: "知っていることを、最初の 72 時間に。ケア72。", en: "What they know, into the first 72 hours. Care72." },
+  { id: "N28", at: 163.3, end: 169, ja: "協力してくれたケアマネージャーの計画 1 件は、ふだん［X 時間］、ケア72 で［Y 分］。", en: "For the care manager who helped us, one plan usually takes [X hours]. With Care72, [Y minutes]." },
+  { id: "N29", at: 169.2, end: 172.3, ja: "［協力ケアマネージャーの一言、または T34 のアンケートの結果 1 文］", en: "[A word from the partner care manager, or one line from the T34 survey]" },
+  { id: "N30", at: 172.6, end: 179.9, ja: "実用化の課題は山積みです。それでも、まずは一部から、本当に使える形にしていきます。", en: "Getting this into real use still faces many hurdles. But we'll keep working to make it truly usable, starting with one part." },
 ];
 
 /** ルールの表の 1 枚（F2）に出す行。docs/TRIAGE.md の「色と理由の 1 行」から写した 13 行のうちの 7 行。撮影の前に今の表と照らす */

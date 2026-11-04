@@ -41,7 +41,7 @@ function recordingState(id, from) {
   return { id, name: RECORDINGS[id] ?? "", state: "wait", who };
 }
 
-const GRAPHIC = { title: "題名", text: "文字", ring: "72 時間の輪", number: "数字", bars: "棒", memo: "メモの線画", rules: "ルールの表", quote: "一言", end: "終わりの画面" };
+const GRAPHIC = { title: "題名", text: "文字", plate: "名札", ring: "72 時間の輪", number: "数字", bars: "棒", memo: "メモの線画", rules: "ルールの表", quote: "一言", end: "終わりの画面" };
 
 const fmt = (s) => `${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, "0")}`;
 

@@ -3,7 +3,7 @@
 // どの図も舞台（LAYOUT.stage）の中で真ん中にそろえ、出るときは下から上がる（motion.ts）。並ぶ物は 4 コマずつずらす。
 // 話の段（青地）は文字が主役: 言葉を声に合わせて 1 つずつ出し、大きさの段で強弱を付ける。
 import React from "react";
-import { interpolate, useCurrentFrame, useVideoConfig } from "remotion";
+import { AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig } from "remotion";
 import { usePalette } from "../ground";
 import { COLOR, FONT, LAYOUT, STATE_LABEL, TYPE } from "../theme";
 import { MODEL_ROWS, RULE_ROWS } from "../timeline";
@@ -110,6 +110,30 @@ export const Title: React.FC<{ title: string; sub?: string }> = ({ title, sub })
  * 行の中の「→」は矢印の線に置き換え、前の言葉から後の言葉へ線が伸びる。
  * sub は下の帯（S1 の「誰の・どの場面」）。「×」で分けた言葉を 1 つずつ面に並べる
  */
+/**
+ * 左下の名札（S3 の作者の紹介）。大きな字の画面にしない（11/4 作者）。字幕の帯の上、舞台の左に 2 行。
+ * 1 行目は名前の代わり（作者　医学部の学生）、2 行目は理由（家族にケアマネージャー）。左の帯は表の強調と同じ 6px
+ */
+export const Plate: React.FC<{ lines: string[]; beats?: number[] }> = ({ lines, beats }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const p = usePalette();
+  return (
+    <AbsoluteFill>
+      <div style={{ position: "absolute", left: LAYOUT.stage.left, bottom: 1080 - (LAYOUT.stage.top + LAYOUT.stage.height) + 24, display: "flex", gap: 22 }}>
+        <div style={{ width: 6, background: p.fg, ...rise(frame, Math.round((beats?.[0] ?? 0.3) * fps)) }} />
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {lines.map((l, i) => (
+            <div key={l} style={{ fontSize: i === 0 ? TYPE.h2 : TYPE.body, fontWeight: i === 0 ? 600 : 400, color: i === 0 ? p.fg : p.sub, ...rise(frame, Math.round((beats?.[i] ?? i * 0.9) * fps)) }}>
+              {l}
+            </div>
+          ))}
+        </div>
+      </div>
+    </AbsoluteFill>
+  );
+};
+
 export const TextCard: React.FC<{ lines: string[]; sub?: string; beats?: number[] }> = ({ lines, sub, beats }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
@@ -155,11 +179,12 @@ export const TextCard: React.FC<{ lines: string[]; sub?: string; beats?: number[
  * G1 72 時間の輪。目盛りが時計回りに 1 つずつ埋まり、12 時間ごとの太い目盛りに時間を添える。
  * 題名（ケア72）は輪の中で、目盛りが半分まで埋まった所で上がって出る
  */
-export const Ring72: React.FC<{ label: string; duration: number; sub?: string }> = ({ label, duration, sub }) => {
+export const Ring72: React.FC<{ label: string; duration: number; sub?: string; titleAt?: number }> = ({ label, duration, sub, titleAt }) => {
   const frame = useCurrentFrame();
   const p = usePalette();
   const hours = interpolate(frame, [0, duration * 0.75], [0, 72], { ...clamp, easing: EASE_OUT });
-  const titleIn = progress(frame, Math.round(duration * 0.18), 18);
+  // 題名は声がその名前を言う所（titleAt のコマ）。無ければ輪が 2 割進んだ所
+  const titleIn = progress(frame, titleAt ?? Math.round(duration * 0.18), 18);
   return (
     <Stage gap={0}>
       <div style={{ position: "relative", display: "flex", justifyContent: "center", alignItems: "center" }}>
@@ -569,7 +594,7 @@ export const Quote: React.FC<{ text: string; sub?: string }> = ({ text, sub }) =
   return (
     <Stage gap={28}>
       <div style={{ fontSize: TYPE.h1, fontWeight: 600, maxWidth: 1400, textAlign: "center", lineHeight: 1.4, ...rise(frame, 0, 22, 16) }}>{text}</div>
-      <div style={{ fontSize: TYPE.body, color: p.sub, ...rise(frame, 8) }}>協力してくれたケアマネ</div>
+      <div style={{ fontSize: TYPE.body, color: p.sub, ...rise(frame, 8) }}>協力してくれたケアマネージャー</div>
       {sub ? <div style={{ fontSize: TYPE.body, marginTop: 24, ...rise(frame, 16) }}>{sub}</div> : null}
     </Stage>
   );
