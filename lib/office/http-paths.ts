@@ -6,6 +6,8 @@ export const CARE_MANAGERS_API_PATH = "/api/office/care-managers";
 export const OFFICE_PEOPLE_PATH = "/office/people";
 /** 事業所の画面の担当の表の場所 */
 export const ASSIGN_ANCHOR = "assign";
+/** 事業所の画面のケアマネの区分の場所（準備の欄の「ケアマネ追加」の送り先。T98） */
+export const CARE_MANAGERS_ANCHOR = "care-managers";
 /** 自分のパスワードの変更（T61。事業所のケアマネの行から開く） */
 export const OWN_PASSWORD_API_PATH = "/api/auth/password";
 
