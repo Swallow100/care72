@@ -460,7 +460,11 @@ export function DrillPaper({ record, office, today, ai = null }: { record: Drill
                       <td>{ACTION_LABELS[r.a.kind]}</td>
                       <td>{name(r.a.person)}</td>
                       <td>{calleeText(r.a) ?? ""}</td>
-                      <td>{r.a.result ? ACTION_STATUS_LABELS[r.a.result.status] : ACTION_UI.during}</td>
+                      <td>
+                        {r.a.result ? ACTION_STATUS_LABELS[r.a.result.status] : ACTION_UI.during}
+                        {/* 通話で聞いた安否を表に渡さなかった手（T84、至急維持）。本番の電話と同じ言葉 */}
+                        {screen.refused?.[r.a.id] && <span data-heard-refused> {t(screen.refused[r.a.id])}</span>}
+                      </td>
                     </tr>
                     {r.a.memo && (
                       <tr data-memo={r.a.id}>
