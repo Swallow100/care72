@@ -102,7 +102,9 @@ export async function formRereadPost(deps: FormReadDeps, scope: FormsScope, id: 
   if (!stored) return mappingError("not_found");
   if (stored.version !== version) return mappingError("conflict");
   const unread = stored.mapping.unread ?? [];
-  if (unread.length === 0 || !stored.pageImages) return Response.json({ ok: true, version: stored.version, mapping: stored.mapping, unread: [] }, { headers: NO_STORE });
+  if (unread.length === 0) return Response.json({ ok: true, version: stored.version, mapping: stored.mapping, unread: [] }, { headers: NO_STORE });
+  // 頁の画像を置けなかった対応表は読み直せない（受けた画像を持たない）
+  if (!stored.pageImages) return mappingError("not_found");
 
   const files: FormFile[] = [];
   const pageNumbers: number[] = [];
