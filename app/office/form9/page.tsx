@@ -14,7 +14,7 @@ import { Form9Table } from "@/components/forms/Form9Table";
 import { todayJst } from "@/lib/age";
 import { requirePage } from "@/lib/auth/server";
 import { DOCUMENT_CATALOG } from "@/lib/forms/catalog";
-import { colorCounts, FORM9_TITLE, NORMAL_ORDER_LABELS } from "@/lib/forms/form9";
+import { colorCounts, DISASTER_ORDER_LABELS, FORM9_TITLE, NORMAL_ORDER_LABELS } from "@/lib/forms/form9";
 import { form9Scope, loadForm9, loadSituation, type Form9Data } from "@/lib/forms/form9-db";
 import { FORM9_CSV_PATH, parseEdit, parseError, parseSort, sortRows } from "@/lib/forms/form9-href";
 import { form9Report, REPORT_COLORS, tally } from "@/lib/forms/form9-report";
@@ -59,7 +59,7 @@ export default async function Form9Page({ searchParams }: Props) {
   const report = disaster && situation ? form9Report(sheet, { officeName: data.office.name, at: situation.now }) : null;
   const order =
     disaster && situation
-      ? `発災時 色 → 時計の残り → 支援者なし → 骨格（${formatJst(situation.now)} 時点）`
+      ? `発災時 ${DISASTER_ORDER_LABELS.join(" → ")}（${formatJst(situation.now)} 時点）`
       : `平時 ${NORMAL_ORDER_LABELS.join(" → ")}`;
 
   return (
@@ -81,7 +81,7 @@ export default async function Form9Page({ searchParams }: Props) {
                     {COLOR_LABELS[c]}
                   </CountLabel>
                 </dt>
-                <dd className={`font-bold tabular-nums ${countClass(COLOR_TONES[c], counts[c])}`}>{counts[c]}</dd>
+                <dd className={`font-bold tabular-nums ${countClass(counts[c])}`}>{counts[c]}</dd>
               </div>
             ))}
           </dl>
@@ -100,9 +100,9 @@ export default async function Form9Page({ searchParams }: Props) {
         </div>
       </div>
       <p className="mt-1 text-xs text-muted">
-        並び {disaster && situation ? `色 → 時計の残り → 支援者なし → 骨格（${formatJst(situation.now)} 時点）` : NORMAL_ORDER_LABELS.join(" → ")}
+        並び {disaster && situation ? `${DISASTER_ORDER_LABELS.join(" → ")}（${formatJst(situation.now)} 時点）` : NORMAL_ORDER_LABELS.join(" → ")}
       </p>
-      <FormAbout entry={DOCUMENT_CATALOG.form9} className="screen-only" />
+      <FormAbout entry={DOCUMENT_CATALOG.form9} official={false} className="screen-only" />
 
       <div className="mt-3 grid gap-3">
         {report && <Form9Report text={report} tally={tally(sheet.rows)} />}

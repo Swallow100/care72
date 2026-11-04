@@ -1,20 +1,19 @@
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import type { Metadata } from "next";
+import { DrillRecordTable } from "@/components/drill/DrillRecordTable";
 import { StartButtons, type StartPerson } from "@/components/drill/StartButtons";
 import { ButtonLink } from "@/components/ui/Button";
-import { PlayIcon, PrintIcon } from "@/components/ui/Icon";
+import { PlayIcon } from "@/components/ui/Icon";
 import { Panel, PageHead } from "@/components/ui/Panel";
-import { TABLE, TABLE_BOX, TD, TH } from "@/components/ui/table";
 import { requirePage } from "@/lib/auth/server";
-import { aiContextFor } from "@/lib/claude/cloudflare";
-import { drillGate, type DailyUsage } from "@/lib/claude/gate";
-import { usageToday } from "@/lib/claude/usage";
-import { LIMIT_LABELS } from "@/lib/seed/labels";
-import { shortJst } from "@/lib/disaster/state";
-import { caseloadForDrill, drillScope, listDrills, type DrillListItem } from "@/lib/drill/db";
-import { DRILL_LABELS, progressLabel, SCENARIO_LABELS, STATUS_LABELS, VIRTUAL_LABELS } from "@/lib/drill/labels";
-import { drillHref, reportHref } from "@/lib/drill/paths";
-import { SCORE_LABELS } from "@/lib/drill/score-labels";
+import { AiStatusMark } from "@/components/ui/AiStatus";
+import { aiStatusFor } from "@/lib/claude/cloudflare";
+import { drillGate, gateUsage } from "@/lib/claude/gate";
+import type { AiStatus } from "@/lib/claude/status";
+import { caseloadForDrill, drillScope, listDrills, runningDrillId, type DrillListItem } from "@/lib/drill/db";
+import { DRILL_LABELS, progressLabel, SCENARIO_LABELS, VIRTUAL_LABELS } from "@/lib/drill/labels";
+import { endingsAllowed } from "@/lib/drill/fiction";
+import { drillHref } from "@/lib/drill/paths";
 import { lastHour, SCENARIO_ORDER, scenarioOf } from "@/lib/drill/scenarios";
 
 export const metadata: Metadata = { title: "訓練記録 | ケア72" };
@@ -23,21 +22,27 @@ export const metadata: Metadata = { title: "訓練記録 | ケア72" };
 export const dynamic = "force-dynamic";
 
 // 訓練記録の一覧（事業所ごと。審査員の回も残る）と開始（大雨想定・地震想定・10 分版）。docs/tasks/T17.md。
-// 進行中の訓練は事業所に 1 つ。あれば開始を押せず、一覧の進行中から再開（途中から続ける）。終わった・中断した訓練は再生（Claude を呼ばない）。
+// 進行中の訓練はケアマネごとに 1 つ（T70）。自分の進行中があれば開始を押せず、一覧の進行中から再開（途中から続ける）。24 時間たった進行中は読むときに中断。終わった・中断した訓練は再生（Claude を呼ばない）。
 // ケアマネの役だけ（審査員のケアマネの役も）。デモ事業所の終わった訓練の種は T26
+// AI の状態（T76）: 未設定（鍵なし）・上限到達・本日残りを lib/claude/status.ts の 1 か所で読み、開始の欄に見込みと並べる（StartButtons）。
+// 鍵が無くても開始は止めない（固定の筋は想定の表で進み、仮想は世界が止まる。その言葉を想定ごとに出す）。上限到達は今までどおり再生（T26）
 export default async function DrillPage() {
   const principal = await requirePage("drill");
   const scope = drillScope(principal);
   let items: DrillListItem[] = [];
-  let usage: DailyUsage | null = null;
+  let ai: AiStatus | null = null;
   // 開始の前の設定の参加者（T59。担当一覧の人）
   let people: StartPerson[] = [];
+  // 自分の進行中（T70。開始者か担当一覧の人で見る。ほかのケアマネの進行中では開始を止めない）
+  let mine: string | null = null;
   try {
     const { env } = await getCloudflareContext({ async: true });
-    items = scope ? await listDrills(env.DB, scope.officeId) : [];
+    // 24 時間たった進行中は読む前に中断（T70）
+    items = scope ? await listDrills(env.DB, scope.officeId, 50, new Date().toISOString()) : [];
     people = scope ? await caseloadForDrill(env.DB, scope) : [];
-    // AI の 1 日の上限（T26）。読めなければ開始のまま
-    usage = scope ? await aiContextFor(scope.officeId).then(usageToday).catch(() => null) : null;
+    mine = scope ? await runningDrillId(env.DB, scope.officeId, { scope }) : null;
+    // AI の今の状態（T76。1 日の上限は T26）。読めなければ開始のまま
+    ai = scope ? await aiStatusFor(scope.officeId).catch(() => null) : null;
   } catch (e) {
     console.error("訓練記録を読めない", e);
     return (
@@ -47,8 +52,9 @@ export default async function DrillPage() {
       </main>
     );
   }
-  const running = items.find((d) => d.status === "running") ?? null;
-  const gate = drillGate(usage, items);
+  // 進行中はケアマネごとに 1 つ（T70。審査員は同じアカウントなので共有）。ほかのケアマネの進行中は一覧から再開できる
+  const running = items.find((d) => d.id === mine) ?? null;
+  const gate = drillGate(gateUsage(ai), items);
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-4">
@@ -59,22 +65,17 @@ export default async function DrillPage() {
           {DRILL_LABELS.start}
         </h2>
         {gate.kind === "start" ? (
-          <StartButtons scenarios={SCENARIO_ORDER} disabled={running !== null} people={people} />
+          <StartButtons scenarios={SCENARIO_ORDER} disabled={running !== null} people={people} ai={ai} />
         ) : (
           // 上限に達したら開始でなく、終わった訓練の再生（0 時間から刻みごとに）
           <div className="flex flex-wrap items-center gap-2" data-limit>
-            <span className="text-sm font-bold">{LIMIT_LABELS.reached}</span>
+            {ai && <AiStatusMark status={ai} size="md" />}
             {gate.replay && (
               <ButtonLink href={drillHref(gate.replay, { step: 0 })} kind="main" icon={PlayIcon}>
                 {DRILL_LABELS.replay}
               </ButtonLink>
             )}
           </div>
-        )}
-        {gate.limit !== null && (
-          <span className="text-sm text-muted tabular-nums" data-ai-remaining={gate.remaining}>
-            {LIMIT_LABELS.ai} {LIMIT_LABELS.remaining} {gate.remaining} / {gate.limit} {LIMIT_LABELS.unit}
-          </span>
         )}
         {running && (
           <ButtonLink href={drillHref(running.id)} kind="main" icon={PlayIcon} className="ml-auto">
@@ -84,59 +85,13 @@ export default async function DrillPage() {
         {gate.kind === "start" && (
           // 仮想モード（T50）の 1 行
           <p className="w-full text-sm text-muted" data-virtual-note>
-            {VIRTUAL_LABELS.note}
+            {scope && !endingsAllowed(scope.officeId) ? VIRTUAL_LABELS.noteRole : VIRTUAL_LABELS.note}
           </p>
         )}
       </Panel>
 
-      <div className={`mt-3 ${TABLE_BOX}`}>
-        <table className={TABLE} data-table="drills">
-          <thead>
-            <tr>
-              <th className={TH}>{DRILL_LABELS.startedAt}</th>
-              <th className={TH}>{DRILL_LABELS.scenario}</th>
-              <th className={TH}>{DRILL_LABELS.elapsed}</th>
-              <th className={TH}>{DRILL_LABELS.status}</th>
-              <th className={TH}>{DRILL_LABELS.startedBy}</th>
-              <th className={TH}>
-                <span className="sr-only">{DRILL_LABELS.replay}</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.length === 0 && (
-              <tr>
-                <td colSpan={6} className={`${TD} text-muted`}>
-                  {DRILL_LABELS.none}
-                </td>
-              </tr>
-            )}
-            {items.map((d) => (
-              <tr key={d.id} data-drill={d.id} data-status={d.status}>
-                <td className={`${TD} tabular-nums`}>{shortJst(d.started_at)}</td>
-                <td className={`${TD} font-bold`}>{SCENARIO_LABELS[d.scenario]}</td>
-                <td className={`${TD} tabular-nums`}>{progressLabel(d.sim_hour, lastHour(scenarioOf(d.scenario)))}</td>
-                <td className={`${TD} ${d.status === "running" ? "font-bold" : d.status === "abandoned" ? "text-muted" : ""}`}>
-                  {STATUS_LABELS[d.status]}
-                </td>
-                <td className={TD}>{d.started_by_name ?? <span className="text-muted">—</span>}</td>
-                <td className={`${TD} w-px py-1 text-right`}>
-                  <div className="flex justify-end gap-1.5">
-                    <ButtonLink href={drillHref(d.id)} kind="plain" size="sm" icon={PlayIcon}>
-                      {d.status === "running" ? DRILL_LABELS.resume : DRILL_LABELS.replay}
-                    </ButtonLink>
-                    {/* 訓練記録の紙面（T22）。終わった・中断した訓練だけ。開いてすぐ印刷の画面（?print=1） */}
-                    {d.status !== "running" && (
-                      <ButtonLink href={reportHref(d.id, { print: true })} kind="plain" size="sm" icon={PrintIcon} data-print-link="drill">
-                        {SCORE_LABELS.print}
-                      </ButtonLink>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="mt-3">
+        <DrillRecordTable items={items} />
       </div>
     </main>
   );

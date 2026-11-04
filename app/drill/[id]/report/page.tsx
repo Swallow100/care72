@@ -5,6 +5,8 @@ import type { Metadata } from "next";
 import { DrillPaper } from "@/components/drill/DrillPaper";
 import { PaperBar, wantsPrint } from "@/components/ui/PaperBar";
 import { todayJst } from "@/lib/age";
+import { aiStatusFor } from "@/lib/claude/cloudflare";
+import type { AiStatus } from "@/lib/claude/status";
 import { requirePage } from "@/lib/auth/server";
 import { drillScope } from "@/lib/drill/db";
 import { isDrillId } from "@/lib/drill/http";
@@ -34,10 +36,13 @@ export default async function DrillReportPage({ params, searchParams }: Props) {
 
   let record: DrillRecord | "running" | null;
   let office = "";
+  // AI の今の状態（T76。作っていない講評を「AI 停止（未設定）」と書く）。読めなければ null
+  let ai: AiStatus | null = null;
   try {
     const { env } = await getCloudflareContext({ async: true });
     record = await loadDrillRecord(env.DB, scope, id, new Date().toISOString());
     office = (await env.DB.prepare("SELECT name FROM offices WHERE id = ?1").bind(scope.officeId).first<{ name: string }>())?.name ?? "";
+    ai = await aiStatusFor(scope.officeId).catch(() => null);
   } catch (e) {
     console.error("訓練記録を読めない", e);
     return <Message back={drillHref(id)} title="読込失敗" />;
@@ -50,7 +55,7 @@ export default async function DrillReportPage({ params, searchParams }: Props) {
       <PaperBar back={drillHref(id)} title={SCORE_LABELS.paper} name={SCENARIO_LABELS[record.screen.drill.scenario]} autoPrint={autoPrint} />
       <div className="paper-scroll">
         <div className="paper-stack">
-          <DrillPaper record={record} office={office} today={todayJst()} />
+          <DrillPaper record={record} office={office} today={todayJst()} ai={ai} />
         </div>
       </div>
     </main>

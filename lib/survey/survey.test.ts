@@ -16,14 +16,18 @@ import { lastMoment, shareExpiresAt, SURVEY_DEADLINE_ISO, SURVEY_MAX_ANSWERS } f
 import { createSurveyShare, loadSurveyOverview, lookupSurveyShare } from "./store.ts";
 import { HONEYPOT_FIELD, submitSurvey, type SubmitInput } from "./submit.ts";
 import {
+  SURVEY_CLOSED_TEXT,
   SURVEY_DEADLINE_PARTS,
+  SURVEY_DONE_TEXT,
   SURVEY_FEATURES,
   SURVEY_HANDLING,
   SURVEY_INTRO,
   SURVEY_LABELS,
   SURVEY_OFFICE_LABELS,
+  SURVEY_PLAN_NOTE,
   SURVEY_PURPOSE,
   SURVEY_SHARE_STATE_LABELS,
+  SURVEY_THANKS,
   SURVEY_TITLE,
 } from "./text.ts";
 import { isSurveyTokenShape, MIN_FILL_SEC, newSurveyToken, openStamp, RATE_LIMIT_PER_HOUR, sourceHash, stampTime } from "./token.ts";
@@ -543,18 +547,18 @@ describe("案内の文と言葉", () => {
   it("自己紹介と事情・ハッカソンの説明・作っている機能 3 つ・答えの扱い・受付が入っている", () => {
     for (const w of [
       "お時間のあるときに",
-      "5 分ほど",
+      "5分ほど",
       "医学部の学生",
       "Built with Claude: Japan 2026",
       "ハッカソンは、決まった期間",
-      "11 月 8 日",
+      "11月8日",
       "ケア72",
       "お名前・事業所名は聞きません",
       "人数にまとめ",
       "公開します",
       "「よい」を選んだ方",
-      "11 月末までに消します",
-      "11 月 5 日（木）まで",
+      "11月末までに消します",
+      "11月5日（木）まで",
       "AI は順番を決めません",
       "すぐ119番へ",
       "答えたくない問いは空けて構いません",
@@ -562,6 +566,35 @@ describe("案内の文と言葉", () => {
       expect(invitation, w).toContain(w);
     }
     expect(SURVEY_FEATURES.map((g) => g.heading)).toEqual(["平時（計画づくり）", "訓練", "災害のとき"]);
+  });
+
+  it("答えの頁の文は数字の前後に半角の空白を置かない（11月8日・問1・5年未満。119番とそろえる。T65b）", () => {
+    const page = [
+      SURVEY_TITLE,
+      invitation,
+      SURVEY_PLAN_NOTE,
+      ...SURVEY_THANKS,
+      SURVEY_CLOSED_TEXT,
+      SURVEY_DONE_TEXT,
+      ...Object.values(SURVEY_LABELS),
+      ...CHOICE_QUESTIONS.flatMap((q) => [q.text, ...q.choices.map((c) => c.label), q.note ?? ""]),
+      ...FREE_QUESTIONS.map((q) => q.text),
+    ];
+    // 「Japan 2026」のような英語の中の空白は数えない（日本語の字と数字の間だけ）
+    const spaced = page.filter((t) => /[^\x00-\x7F] \d|\d [^\x00-\x7F]/.test(t));
+    expect(spaced).toEqual([]);
+    expect(invitation).toContain("Built with Claude: Japan 2026");
+    expect(SURVEY_DEADLINE_PARTS.join("")).toMatch(/^受付は11月5日（木）までです。/);
+  });
+
+  it("問いごとの「任意」は付けない（全部の問いが任意で、案内の 1 文で伝える）。複数の問いは「複数可」だけ。その他は選択肢の最後（その他の内容の欄がすぐ下に開く）", () => {
+    expect(Object.values(SURVEY_LABELS)).not.toContain("任意");
+    expect(SURVEY_PURPOSE).toContain("答えたくない問いは空けて構いません");
+    for (const q of CHOICE_QUESTIONS) {
+      expect(q.text, q.key).not.toContain("いくつでも");
+      if (q.other) expect(q.choices.at(-1)?.code, q.key).toBe(q.other.code);
+    }
+    expect(CHOICE_QUESTIONS.filter((q) => q.multi).map((q) => q.key)).toEqual(["q4", "q6"]);
   });
 
   it("家族の話と「アプリを触る必要はありません」は外した（DECISIONS 11/3 23:1x）", () => {
@@ -611,6 +644,7 @@ describe("ログインなしの壁の例外", () => {
     walk("app");
     const open = pages.filter((p) => !/requirePage|getPrincipal/.test(read(p)));
     expect(pages.length).toBeGreaterThan(10);
-    expect(open).toEqual(["app/survey/[token]/page.tsx"]);
+    // /s/invalid はスマホ入口のリンクが通らなかったときの「無効」の 1 画面（T69a）。誰のリンクかも出さない
+    expect(open).toEqual(["app/s/invalid/page.tsx", "app/survey/[token]/page.tsx"]);
   });
 });

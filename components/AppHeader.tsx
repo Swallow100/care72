@@ -1,25 +1,26 @@
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import Link from "next/link";
 import { unstable_rethrow } from "next/navigation";
+import { BrandMark } from "@/components/brand/BrandMark";
 import { AutoRefresh } from "@/components/disaster/AutoRefresh";
 import { DisasterBadge } from "@/components/disaster/DisasterBadge";
 import { ButtonLink } from "@/components/ui/Button";
 import { RoleIcon } from "@/components/ui/Icon";
 import { LinkPending } from "@/components/ui/LinkPending";
 import { RoleMenu, type RoleChoice } from "@/components/ui/RoleMenu";
-import { SubmitButton } from "@/components/ui/SubmitButton";
 import { loadDisasterState } from "@/lib/disaster/db";
 import { disasterMark, type DisasterMark } from "@/lib/disaster/state";
 import type { Principal } from "@/lib/auth/principal";
 import { judgeChoices } from "@/lib/auth/choices";
-import { ADMIN_LABEL, canViewPage, homePath, JUDGE_LABEL, LOGIN_PATH, ROLE_LABELS, ROLE_SELECT_PATH } from "@/lib/auth/roles";
+import { ADMIN_LABEL, canViewPage, homePath, JUDGE_LABEL, LOGIN_PATH, ROLE_LABELS, ROLE_SELECT_PATH, showsLogout } from "@/lib/auth/roles";
 import { getPrincipal } from "@/lib/auth/server";
 import { SessionSecretMissing } from "@/lib/auth/session";
+import { LogoutButton } from "./LogoutButton";
 import { NavLinks } from "./NavLinks";
 
 // 全部の画面の上の帯。
-// 左: 名前と画面の切替（担当一覧・訓練・事業所・様式）、その右に事業所の状態（大雨 レベル 4 停電 3 時間。押すと事業所の画面）。
-// 右: 自分のこと 事業所名 → 今の役（ケアマネ 山本）→ 役変更（審査員だけ。押すとその下に役の一覧）→ ログアウト（赤）。
+// 左: 印と名前（印は components/brand/BrandMark の 1 か所から。動かない満ちた形。T66）と画面の切替（担当一覧・訓練・事業所・様式）、その右に事業所の状態（大雨 レベル 4 停電 3 時間。押すと事業所の画面）。
+// 右: 自分のこと 事業所名 → 今の役（ケアマネ 山本）→ 役変更（審査員だけ。押すとその下に役の一覧）→ ログアウト（赤。本人・家族の頁には置かない）。
 // 事業所の状態を左に置くのは、右を「自分は誰か・出る」だけにして、事業所名と災害の状態が並んで読み違えないため。
 // ログインしていなければ名前だけ（ログインの画面にいる）。押せる高さは 32px 以上、押してから移るまで灰色を残す。
 export async function AppHeader() {
@@ -42,9 +43,11 @@ export async function AppHeader() {
         <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1">
           <Link
             href={p ? homePath(p.role) : LOGIN_PATH}
-            className="relative -mx-1 inline-flex h-8 items-center rounded px-1 text-[1.0625rem] font-bold whitespace-nowrap"
+            className="relative -mx-1 inline-flex h-8 items-center gap-1.5 rounded px-1 text-[1.0625rem] font-bold whitespace-nowrap outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-accent"
             data-press
+            data-brand
           >
+            <BrandMark size={24} still className="shrink-0" />
             ケア72
             <LinkPending />
           </Link>
@@ -100,11 +103,13 @@ function Who({ p, choices }: { p: Principal; choices: RoleChoice[] | null }) {
               役変更
             </ButtonLink>
           ))}
-        <form method="post" action="/api/auth/logout">
-          <SubmitButton kind="danger" icon="LogoutIcon">
-            ログアウト
-          </SubmitButton>
-        </form>
+        {/* 本人・家族の頁にはログアウトを置かない（T69a。lib/auth/roles.ts の showsLogout） */}
+        {showsLogout(p.role) && (
+          <form method="post" action="/api/auth/logout">
+            {/* 送れていない通話の記録があれば送信待ちか破棄かを選ぶ（T71 の続き） */}
+            <LogoutButton />
+          </form>
+        )}
       </div>
     </div>
   );

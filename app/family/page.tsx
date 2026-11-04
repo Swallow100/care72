@@ -1,12 +1,14 @@
 import "@/components/phone/phone.css";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
+import { redirect } from "next/navigation";
 import { AutoRefresh } from "@/components/disaster/AutoRefresh";
 import { FamilyDisaster } from "@/components/phone/FamilyDisaster";
 import { InstallHint } from "@/components/phone/InstallHint";
+import { PhoneNormalMark } from "@/components/phone/PhoneMarks";
 import { PhoneSheet } from "@/components/phone/PhoneSheet";
 import { todayJst } from "@/lib/age";
+import { phoneGoneExit } from "@/lib/auth/phone-gate";
 import { requirePage } from "@/lib/auth/server";
 import { loadDisasterState } from "@/lib/disaster/db";
 import { isDisaster } from "@/lib/disaster/state";
@@ -29,12 +31,13 @@ const NORMAL_REFRESH_SEC = 30;
 // Claude は呼ばない。
 export default async function FamilyPage() {
   const principal = await requirePage("family");
-  if (!principal.personId) notFound();
+  // 本人・連絡先の行が読めないときは 404 にせず、審査員は役選択・家族は「無効」の頁へ（T77。lib/auth/phone-gate.ts）
+  if (!principal.personId) redirect(phoneGoneExit(principal));
   const { env } = await getCloudflareContext({ async: true });
   const rows = await loadPersonPage(env.DB, principal, principal.personId);
-  if (!rows) notFound();
+  if (!rows) redirect(phoneGoneExit(principal));
   const writer = familyWriterOf(rows, principal.contactId);
-  if (!writer) notFound();
+  if (!writer) redirect(phoneGoneExit(principal));
 
   const [disaster, office] = await Promise.all([
     loadDisasterState(env.DB, rows.person.office_id),
@@ -53,6 +56,8 @@ export default async function FamilyPage() {
 
   return (
     <main className="mx-auto max-w-md px-3 py-4 font-ud">
+      {/* 事業所名と平時の印「ふだん」（T69a。災害モードになると 30 秒の読み直しで 3 つのボタンに替わる） */}
+      <PhoneNormalMark office={office?.name ?? null} />
       {/* ホーム画面に追加の案内（T44。平時だけ、入れるまで） */}
       <InstallHint />
       <PhoneSheet sheet={sheet} only={FAMILY_SHEET_BLOCKS} />

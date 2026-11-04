@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- 作った見本。本物の電文ではない（docs/tasks/T72.md）。区のある市（電文の市町村が「○○市○○区」の形）を確かめるための見本。
+     形は気象警報・注意報（Ｈ２７）（VPWW54）の文書の形式から。名前とコードは見本 -->
+<Report xmlns="http://xml.kishou.go.jp/jmaxml1/" xmlns:jmx="http://xml.kishou.go.jp/jmaxml1/">
+  <Control>
+    <Title>気象警報・注意報（Ｈ２７）</Title>
+    <DateTime>2026-11-03T12:55:00Z</DateTime>
+    <Status>通常</Status>
+    <EditorialOffice>広島地方気象台</EditorialOffice>
+    <PublishingOffice>広島地方気象台</PublishingOffice>
+  </Control>
+  <Head xmlns="http://xml.kishou.go.jp/jmaxml1/informationBasis1/">
+    <Title>広島県気象警報・注意報</Title>
+    <ReportDateTime>2026-11-03T21:55:00+09:00</ReportDateTime>
+    <TargetDateTime>2026-11-03T21:55:00+09:00</TargetDateTime>
+    <EventID/>
+    <InfoType>発表</InfoType>
+    <Serial/>
+    <InfoKind>気象警報・注意報</InfoKind>
+    <InfoKindVersion>1.1_1</InfoKindVersion>
+    <Headline>
+      <Text>（作った見本）</Text>
+    </Headline>
+  </Head>
+  <Body xmlns="http://xml.kishou.go.jp/jmaxml1/body/meteorology1/">
+    <Warning type="気象警報・注意報（市町村等）">
+      <Item>
+        <Kind>
+          <Name>強風注意報</Name>
+          <Code>15</Code>
+          <Status>発表</Status>
+        </Kind>
+        <Area>
+          <Name>広島市中区</Name>
+          <Code>3410100</Code>
+        </Area>
+      </Item>
+      <Item>
+        <Kind>
+          <Name>強風注意報</Name>
+          <Code>15</Code>
+          <Status>発表</Status>
+        </Kind>
+        <Area>
+          <Name>広島市南区</Name>
+          <Code>3410300</Code>
+        </Area>
+      </Item>
+      <Item>
+        <Kind>
+          <Name>強風注意報</Name>
+          <Code>15</Code>
+          <Status>発表</Status>
+        </Kind>
+        <Area>
+          <Name>府中市</Name>
+          <Code>3420800</Code>
+        </Area>
+      </Item>
+    </Warning>
+  </Body>
+</Report>

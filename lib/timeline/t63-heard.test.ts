@@ -117,7 +117,7 @@ async function retractLastCall(person: string, h: number) {
   return id;
 }
 
-/** 医療班が受け入れる。発災より前の受け入れはルールの表に数えない（到着で色が動かない）ので、受け持ちの一覧を開くためだけ */
+/** 医療班が発災より前に受け入れる（受け持ちの一覧を開くため）。受入中の受け入れは発災より前でも表に数える（T80）ので、通話の前は受入の緑「到着」 */
 async function receivedBeforeDisaster(person: string) {
   const r = await receive(db, staffActor(medical())!, { personId: person, shelter: "みどり小学校", via: "search" }, at(-3));
   expect(r.ok).toBe(true);
@@ -144,12 +144,14 @@ async function screens(person: string): Promise<{ caseload: Shot; page: Shot; fo
 const colors = (s: Awaited<ReturnType<typeof screens>>) => [s.caseload.color, s.page.color, s.form9.color, s.staff.color];
 
 describe("通話で聞いた安否の撤回で、4 画面の色・順・理由が通話の前に戻る", () => {
-  it("通話で「無事」→ 4 画面とも緑 → 撤回 → 4 画面とも通話の前（灰 不明）と同じ。信号は消えず retracted_at だけ", async () => {
+  it("通話で「無事」→ 4 画面とも「ケアマネが「無事」」→ 撤回 → 4 画面とも通話の前（受入の緑「到着」）と同じ。信号は消えず retracted_at だけ", async () => {
     await heavyRain();
     await receivedBeforeDisaster("p-05");
     const before = await screens("p-05");
-    expect(before.caseload).toMatchObject({ color: "gray", rule: "unknown" });
-    expect(colors(before)).toEqual(["gray", "gray", "gray", "gray"]);
+    // 受入中は発災より前の受け入れも表に数える（T80。前は数えず 灰 不明だった）
+    expect(before.caseload).toMatchObject({ color: "green", rule: "green" });
+    expect(before.caseload.reason.startsWith("到着 みどり小学校")).toBe(true);
+    expect(colors(before)).toEqual(["green", "green", "green", "green"]);
 
     expect((await call("p-05", { heard: { color: "green" } }, 0.5)).status).toBe(200);
     const heard = await screens("p-05");
@@ -193,7 +195,7 @@ describe("通話で聞いた安否の撤回で、4 画面の色・順・理由�
     expect(before.caseload).toMatchObject({ rule: "red_injury", reason: "本人が「動けない」" });
     expect(await call("p-01", { heard: { color: "green" } }, 0.5)).toEqual({
       status: 409,
-      json: { ok: false, error: "injury", label: "至急維持" },
+      json: { ok: false, error: "injury", label: "無事 不可（本人が「動けない」）" },
     });
     expect(rows("SELECT * FROM timeline_entries WHERE kind = 'called'")).toEqual([]);
 

@@ -7,13 +7,24 @@
 // - 1 回押せば送る。本人の代わりに答えるので、緑の 1 問・20 秒の音声・録音は無い（家族はその場にいないことが多い・押せる前提）
 // - 無事じゃない のあとは 1 画面 1 問（lib/signals/questions.ts。本人だけの問い〔連絡手段・頼みごと〕は聞かない）。
 //   押すたびに、それまでの答えの全部を同じ信号に送る（後勝ち）。どの問いもとばせる
+// - けが・動けない・出られない・水・火やガス・機器の停止の答え（T69b）は、残りの問いを聞かずに送れたかへ（録音は無い）。
+//   けが ある のあとに 動けるか がまだ無ければ「動けますか」の 1 問だけ聞いてから（表が読む 2 問を落とさない）
 // - 「分からない（連絡が つかない）」は未知の信号（色は未知のまま）
 // - 戻るは無い。答えたあとは「最初から」で上へ（次の報告。複数の家族が答えても、いちばん新しい答えが効く）
 
 import { newSignalId, type FamilyAnswer, type FamilySignalBody } from "./body.ts";
 import type { AnswersItem, Delivery } from "./outbox.ts";
 import { worseDelivery } from "./phone.ts";
-import { choiceOf, firstQuestion, nextQuestion, type Answers, type Asker, type QuestionId } from "./questions.ts";
+import {
+  choiceOf,
+  firstQuestion,
+  nextQuestion,
+  rushesToRecording,
+  rushNext,
+  type Answers,
+  type Asker,
+  type QuestionId,
+} from "./questions.ts";
 
 export type FamilyState =
   | { step: "top" }
@@ -30,6 +41,8 @@ export type FamilyDeps = {
   sendAnswers(item: AnswersItem): Promise<Delivery>;
   /** 台帳に機器がある（機器の問いを聞く） */
   hasDevice?: boolean;
+  /** 台帳の避難先の数（T69b。0 なら「どこの 避難所ですか」を聞かない） */
+  shelters?: number;
   onChange(state: FamilyState): void;
 };
 
@@ -52,10 +65,19 @@ export function createFamilyPhone(deps: FamilyDeps): FamilyPhone {
   let state: FamilyState = { step: "top" };
   /** 流れの番号。閉じた・最初からのあとに、前の送信の結果を当てない */
   let run = 0;
-  const asker: Asker = { who: "family", hasDevice: deps.hasDevice ?? false };
+  const asker: Asker = { who: "family", hasDevice: deps.hasDevice ?? false, shelters: deps.shelters ?? 0 };
   let signal: { id: string; delivery: Promise<Delivery> } | null = null;
   let answers: Answers = {};
   let lastAnswers: Promise<Delivery> | null = null;
+  /** 残りの問いを飛ばす答えを押した（T69b） */
+  let rushing = false;
+
+  /** 答えた（choice が null ならとばした）あとの次の問い */
+  const nextAfter = (id: QuestionId, choice: string | null): QuestionId | null => {
+    if (rushesToRecording(id, choice)) rushing = true;
+    // 答えで決まっている問い（外にいると答えた人の 外に出られるか）は聞かない（T77）
+    return rushing ? rushNext(id, answers, asker) : nextQuestion(id, choice, asker, answers);
+  };
 
   const set = (s: FamilyState) => {
     state = s;
@@ -92,6 +114,7 @@ export function createFamilyPhone(deps: FamilyDeps): FamilyPhone {
         signal = { id, delivery };
         answers = {};
         lastAnswers = null;
+        rushing = false;
         set({ step: "question", id: first, answers });
         return;
       }
@@ -106,11 +129,11 @@ export function createFamilyPhone(deps: FamilyDeps): FamilyPhone {
       if (!choiceOf(q, choice)) return;
       answers = { ...answers, [q]: { choice, via: "press" as const } };
       lastAnswers = deps.sendAnswers({ signalId: signal.id, answers: { ...answers } }).catch((): Delivery => "queued");
-      step(nextQuestion(q, choice, asker));
+      step(nextAfter(q, choice));
     },
     skip() {
       if (state.step !== "question") return;
-      step(nextQuestion(state.id, null, asker));
+      step(nextAfter(state.id, null));
     },
     again() {
       if (state.step !== "done") return;

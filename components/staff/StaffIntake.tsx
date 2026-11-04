@@ -5,10 +5,12 @@
 // 受け入れる避難所は上の 1 つの欄（既定は自分がいちばん最近に受け入れた所）。
 // ヒットはカナ・生年月日・年齢だけ（サーバーが住所・電話・漢字の氏名を返さない）。受け入れて初めて本人のページを開ける。
 // 検索の言葉は本文（JSON）で送り、URL に載せない。受け入れたら表を読み直す（router.refresh）。
+// 避難所の欄が空のまま受入・新規登録を押すと、送らずに欄へ送って焦点を置き、欄に注意の枠と「未入力」（T78。前は下に文字だけで、
+// ボタンも押せなかった）。受入一覧が空のときの入口（components/staff/StaffTable）は検索の欄（INTAKE_SEARCH_ID）へ送る。
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { createContext, useContext, useRef, useState } from "react";
 import type { PersonHit } from "@/lib/custody/search";
 import { DEVICE_NAME_MAX, MED_MAX, NOTE_MAX, SHELTER_MAX } from "@/lib/custody/forms";
 import { CUSTODY_ERROR_LABELS, CUSTODY_LABELS } from "@/lib/custody/labels";
@@ -38,6 +40,12 @@ const HIT_TH = "bg-panel2 px-2 py-1 text-left text-xs font-bold whitespace-nowra
 
 type Json = { ok?: boolean; label?: string; hits?: PersonHit[]; more?: boolean; personId?: string };
 
+/** 受入の面の検索の欄の id（受入一覧が空のときの入口が焦点を送る。T78） */
+export const INTAKE_SEARCH_ID = "staff-intake-search";
+
+/** 避難所の欄が空のまま押したときに、欄へ送って印を付ける（StaffIntake が渡す） */
+const ShelterMissing = createContext<() => void>(() => {});
+
 async function post(url: string, body: unknown): Promise<Json> {
   try {
     const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -50,18 +58,37 @@ async function post(url: string, body: unknown): Promise<Json> {
 export function StaffIntake({ shelters, defaultShelter }: { shelters: Array<{ shelter: string; people: number }>; defaultShelter: string | null }) {
   const [tab, setTab] = useState<Tab>("search");
   const [shelter, setShelter] = useState(defaultShelter ?? "");
+  // 空のまま受入・新規登録を押した（入れるまで欄に印）
+  const [missing, setMissing] = useState(false);
+  const field = useRef<HTMLInputElement>(null);
+  const flagged = missing && !shelter.trim();
+  const markShelter = () => {
+    setMissing(true);
+    field.current?.scrollIntoView({ block: "center" });
+    field.current?.focus({ preventScroll: true });
+  };
   return (
     <Panel aria-labelledby="intake-title">
       <PanelHead id="intake-title" title={CUSTODY_LABELS.receive} />
       <label className="mt-2 flex flex-col gap-0.5 text-sm">
-        <span className="text-muted">{CUSTODY_LABELS.shelter}</span>
+        <span className="flex items-baseline gap-2">
+          <span className="text-muted">{CUSTODY_LABELS.shelter}</span>
+          {flagged && (
+            <span className="text-xs font-bold tone-check" data-shelter-missing>
+              {CUSTODY_LABELS.missing}
+            </span>
+          )}
+        </span>
         <input
+          ref={field}
           type="text"
           value={shelter}
           onChange={(e) => setShelter(e.target.value)}
           maxLength={SHELTER_MAX}
           list="staff-shelters"
-          className={INPUT}
+          aria-invalid={flagged || undefined}
+          // 焦点のある間も注意の枠のまま（焦点の枠の色に替えない）
+          className={`${INPUT}${flagged ? " outline-2 outline-solid outline-state-check focus-visible:outline-state-check" : ""}`}
           data-field="shelter"
         />
         <datalist id="staff-shelters">
@@ -87,9 +114,11 @@ export function StaffIntake({ shelters, defaultShelter }: { shelters: Array<{ sh
         ))}
       </div>
       <div className="mt-2" role="tabpanel">
-        {tab === "search" && <SearchPanel shelter={shelter} />}
-        {tab === "shelter" && <ShelterPanel shelter={shelter} shelters={shelters} />}
-        {tab === "register" && <RegisterPanel shelter={shelter} />}
+        <ShelterMissing value={markShelter}>
+          {tab === "search" && <SearchPanel shelter={shelter} />}
+          {tab === "shelter" && <ShelterPanel shelter={shelter} shelters={shelters} />}
+          {tab === "register" && <RegisterPanel shelter={shelter} />}
+        </ShelterMissing>
       </div>
     </Panel>
   );
@@ -120,7 +149,15 @@ function SearchPanel({ shelter }: { shelter: string }) {
       <form onSubmit={search} className="grid grid-cols-[minmax(0,1fr)_9.5rem] gap-2 text-sm" data-form="search">
         <label className="flex flex-col gap-0.5">
           <span className="text-muted">{CUSTODY_LABELS.nameKana}</span>
-          <input type="search" value={text} onChange={(e) => setText(e.target.value)} maxLength={NAME_MAX} autoComplete="off" className={INPUT} />
+          <input
+            id={INTAKE_SEARCH_ID}
+            type="search"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            maxLength={NAME_MAX}
+            autoComplete="off"
+            className={INPUT}
+          />
         </label>
         <label className="flex flex-col gap-0.5">
           <span className="text-muted">{CUSTODY_LABELS.birth}</span>
@@ -208,10 +245,16 @@ function Hits({
   onReceived: () => void;
 }) {
   const router = useRouter();
+  const markShelter = useContext(ShelterMissing);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function receive(id: string) {
+    // 避難所が空なら送らずに欄へ（欄に印。サーバーも「避難所 未入力」で断る）
+    if (!shelter.trim()) {
+      markShelter();
+      return;
+    }
     setBusyId(id);
     setError(null);
     const data = await post(CUSTODY_RECEIVE_API, { personId: id, shelter, via });
@@ -262,7 +305,7 @@ function Hits({
                     <Button
                       size="sm"
                       icon={AddPersonIcon}
-                      disabled={busyId !== null || !shelter.trim()}
+                      disabled={busyId !== null}
                       onClick={() => receive(h.id)}
                       data-pending={busyId === h.id ? "" : undefined}
                     >
@@ -294,11 +337,17 @@ function RegisterPanel({ shelter }: { shelter: string }) {
   const [relation, setRelation] = useState("");
   const [contactName, setContactName] = useState("");
   const [phone, setPhone] = useState("");
+  const markShelter = useContext(ShelterMissing);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    // 避難所が空なら送らずに欄へ（欄に印）
+    if (!shelter.trim()) {
+      markShelter();
+      return;
+    }
     setBusy(true);
     setError(null);
     const data = await post(CUSTODY_REGISTER_API, {
@@ -422,7 +471,7 @@ function RegisterPanel({ shelter }: { shelter: string }) {
           type="submit"
           kind="main"
           icon={AddPersonIcon}
-          disabled={busy || !shelter.trim() || deviceNameMissing}
+          disabled={busy || deviceNameMissing}
           data-pending={busy ? "" : undefined}
         >
           {busy ? CUSTODY_LABELS.sending : CUSTODY_LABELS.register}

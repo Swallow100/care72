@@ -28,7 +28,7 @@ import type {
   SupportKind,
   TimelineKind,
 } from "./db/types.ts";
-import type { Color, Tier } from "./triage/index.ts";
+import type { Color, GreenVia, Tier } from "./triage/index.ts";
 
 export const CARE_LEVEL_LABELS: Record<CareLevel, string> = {
   support1: "要支援1",
@@ -107,6 +107,17 @@ export const COLOR_LABELS: Record<Color, string> = {
   gray: "不明",
   green: "無事",
 };
+
+/**
+ * 受入・搬送から来た緑の状態の言葉（T78）。本人がけが・動けないと答えたまま医療班・行政が受け入れても、表は受け入れを緑に数える
+ * （色と順は表のまま）。そのとき人ごとの状態の印で「無事」と言い切らない。色の区分の名前（人数の帯・絞込）は COLOR_LABELS のまま
+ */
+export const GREEN_VIA_LABELS: Record<GreenVia, string> = { arrival: "受入", transport: "搬送" };
+
+/** 人ごとの状態の言葉: 表の色の言葉。表の緑が受入・搬送から来たときだけ「受入」「搬送」（lib/triage の greenVia） */
+export function stateLabel(t: { color: Color; greenVia?: GreenVia | null }): string {
+  return t.color === "green" && t.greenVia ? GREEN_VIA_LABELS[t.greenVia] : COLOR_LABELS[t.color];
+}
 
 /** 優先の骨格の名前（docs/SPEC.md「医療の芯」） */
 export const TIER_LABELS: Record<Tier, string> = {
@@ -299,12 +310,13 @@ export const HEAD_LABELS = {
 /** 時計の行の中の小さな見出し */
 export const CLOCK_PARTS = { confirmed: "確認", source: "出典", start: "起点" } as const;
 
-/** 同意 4 つ */
+/** 同意 5 つ（AI 提供は T74。Claude〔海外の事業者〕に仮名化した台帳を渡すこと） */
 export const CONSENT_KIND_LABELS: Record<ConsentKind, string> = {
   registry: "名簿登録",
   plan_share: "計画共有",
   supporters: "支援者提供",
   medical: "医療班提供",
+  ai_overseas: "AI 提供",
 };
 
 export const CONSENT_STATUS_LABELS: Record<ConsentStatus, string> = {
@@ -320,8 +332,12 @@ export const PENDING_STATUS_LABELS: Record<PendingStatus, string> = {
   declined: "無回答",
 };
 
-/** 空欄の言い方 */
-export const BLANK_LABELS = { unconfirmed: "未確認", none: "なし" } as const;
+/**
+ * 空欄の言い方。unconfirmed「未確認」は台帳の pending（数える。本人のページの上・区分の見出し・担当一覧の「未確認 N」）と、
+ * 状態としての未確認（同意・時計の値）だけ。まだ誰も入れていない欄は blank「未入力」で、数えない（T79、点検の中 11:
+ * 新しく足した人の上が「未確認 0」なのに欄がほぼ全部「未確認」だった）
+ */
+export const BLANK_LABELS = { unconfirmed: "未確認", blank: "未入力", none: "なし" } as const;
 
 export const TIMELINE_KIND_LABELS: Record<TimelineKind, string> = {
   signal: "安否",
@@ -452,6 +468,38 @@ export const INTAKE_LABELS = {
   clockCategory: "対象",
   clockSource: "出典",
   clockSourceNote: "出典補記",
+  /** 本人の電話（連絡先の kind self、T68）が 2 つ（1 人 1 つ） */
+  selfTwice: "本人重複",
+} as const;
+
+/**
+ * 地域と住所（T68）: 本人のページの基本の面の 市・町名・位置、連絡先のスマホ・車、事業所の地域（市・中心）。
+ * ボタン・見出し・状態は 2〜4 字
+ */
+export const PLACE_LABELS = {
+  city: "市",
+  town: "町名",
+  location: "位置",
+  /** 事業所の画面の区分と、その中の欄 */
+  region: "地域",
+  center: "中心",
+  save: "保存",
+  /** 位置を外す・地図の拡大と縮小 */
+  unset: "外す",
+  zoomIn: "拡大",
+  zoomOut: "縮小",
+  /** 位置・中心がまだ無い */
+  none: "未設定",
+  /** スマホ・車の有無の選択（— / あり / なし） */
+  smartphone: "スマホ",
+  car: "車",
+  yes: "あり",
+  no: "なし",
+  unknown: "未確認",
+  /** 事業所の地域の保存を断った（市が空・緯度経度の外・片方だけ） */
+  bad: "保存不可",
+  /** 写真の縮小で読めない形（HEIC など）。受ける形を 1 行で */
+  fileKinds: "JPEG・PNG・PDF",
 } as const;
 
 /**
@@ -534,7 +582,7 @@ export const AI_FAIL_REASON_LABELS = {
 export const DIFF_STATE_LABELS = { add: "追加", same: "一致", filled: "既入力" } as const;
 
 /** 書類（T05〜T07 で作る）の入口 */
-export const DOCUMENT_LABELS = { matsuyama: "計画書", medical: "医療要約", own: "本人の1枚", qr: "QR" } as const;
+export const DOCUMENT_LABELS = { matsuyama: "計画書", medical: "医療要約", own: "本人の1枚", qr: "QR", phone: "スマホ入口" } as const;
 export const DOCUMENT_STATUS_LABELS = { pending: "準備中", ready: "表示" } as const;
 
 /**

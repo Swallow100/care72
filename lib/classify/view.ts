@@ -89,3 +89,22 @@ export function classViewOf(row: SignalClassFields & HearingSource): ClassView {
   if (!row.transcript?.trim() && !row.recording_key) return { kind: "absent" };
   return { kind: "pending" };
 }
+
+// ---------- 録音のまとめ（T69b） ----------
+
+/** 録音のまとめの形（T69b）。text は出す文、by は human（ケアマネが直した。AI の印なし）か ai（Claude。AI の印）か null（まだ・失敗） */
+export type SignalSummary = {
+  text: string | null;
+  by: "human" | "ai" | null;
+  /** まとめられなかった理由（Claude を呼んで失敗したとき）。まだなら null */
+  error: SignalRow["ai_summary_error"];
+};
+
+/** 信号の行からまとめの形（T69b）。ケアマネが直した文（summary）があればそれ、無ければ Claude の文（ai_summary） */
+export function summaryOf(s: Partial<Pick<SignalRow, "ai_summary" | "ai_summary_error" | "summary">>): SignalSummary {
+  const human = s.summary?.trim();
+  if (human) return { text: human, by: "human", error: null };
+  const ai = s.ai_summary?.trim();
+  if (ai) return { text: ai, by: "ai", error: null };
+  return { text: null, by: null, error: s.ai_summary_error ?? null };
+}

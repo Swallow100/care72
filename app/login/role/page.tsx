@@ -1,7 +1,7 @@
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { Mark72 } from "@/components/login/Mark72";
+import { BrandMark } from "@/components/brand/BrandMark";
 import { Page } from "@/components/ui/Panel";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { judgeChoices } from "@/lib/auth/choices";
@@ -22,7 +22,7 @@ export default async function RoleSelectPage() {
   return (
     <Page width="full" className="max-w-md py-8 sm:py-14">
       <div className="flex items-center gap-3">
-        <Mark72 size={44} className="shrink-0" />
+        <BrandMark size={44} className="shrink-0" />
         <div className="min-w-0">
           <h1 className="text-xl leading-7 font-bold">役選択</h1>
           <p className="text-xs text-muted">再選択: 右上の「役変更」</p>

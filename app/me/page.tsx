@@ -1,18 +1,20 @@
 import "@/components/phone/phone.css";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
+import { redirect } from "next/navigation";
 import { AutoRefresh } from "@/components/disaster/AutoRefresh";
 import { InstallHint } from "@/components/phone/InstallHint";
 import { PhoneDisaster } from "@/components/phone/PhoneDisaster";
+import { PhoneNormalMark } from "@/components/phone/PhoneMarks";
 import { PhoneSheet } from "@/components/phone/PhoneSheet";
 import { todayJst } from "@/lib/age";
+import { phoneGoneExit } from "@/lib/auth/phone-gate";
 import { requirePage } from "@/lib/auth/server";
 import { loadDisasterState } from "@/lib/disaster/db";
 import { isDisaster } from "@/lib/disaster/state";
 import { buildOwnSheet } from "@/lib/forms/own-sheet";
 import { loadPersonPage } from "@/lib/person";
-import { personHasDevice } from "@/lib/signals/family";
+import { personHasDevice, shelterOptionsOf } from "@/lib/signals/family";
 
 // 事業所の災害モードと本人の 1 枚を毎回読む
 export const dynamic = "force-dynamic";
@@ -27,17 +29,23 @@ const NORMAL_REFRESH_SEC = 30;
 // 壁は本人のページと同じ（loadPersonPage が personInScope を通す。本人は自分だけ）。Claude は呼ばない。
 export default async function MePage() {
   const principal = await requirePage("me");
-  if (!principal.personId) notFound();
+  // 本人の行が読めないときは 404 にせず、審査員は役選択・本人は「無効」の頁へ（T77。lib/auth/phone-gate.ts）
+  if (!principal.personId) redirect(phoneGoneExit(principal));
   const { env } = await getCloudflareContext({ async: true });
   const rows = await loadPersonPage(env.DB, principal, principal.personId);
-  if (!rows) notFound();
+  if (!rows) redirect(phoneGoneExit(principal));
   const disaster = await loadDisasterState(env.DB, rows.person.office_id);
 
   if (isDisaster(disaster)) {
     return (
       <main className="mx-auto max-w-md font-ud">
         {/* 新しい災害モードに入ったら、前の流れを持ち越さない */}
-        <PhoneDisaster key={disaster.startedAt ?? "disaster"} personId={rows.person.id} hasDevice={personHasDevice(rows)} />
+        <PhoneDisaster
+          key={disaster.startedAt ?? "disaster"}
+          personId={rows.person.id}
+          hasDevice={personHasDevice(rows)}
+          shelters={shelterOptionsOf(rows)}
+        />
       </main>
     );
   }
@@ -48,6 +56,8 @@ export default async function MePage() {
   const sheet = buildOwnSheet(rows, { today: todayJst(), officeName: office?.name ?? null });
   return (
     <main className="mx-auto max-w-md px-3 py-4 font-ud">
+      {/* 事業所名と平時の印「ふだん」（T69a。災害モードになると 30 秒の読み直しで 2 つのボタンに替わる） */}
+      <PhoneNormalMark office={office?.name ?? null} />
       {/* ホーム画面に追加の案内（T44。平時だけ、入れるまで） */}
       <InstallHint />
       <PhoneSheet sheet={sheet} />

@@ -2,13 +2,13 @@
 // 平時: 計画の内訳 → 見直し（今週。計画が下書きで未確認のある人）→ 未確認の多い人 → 地図・ハザード・避難先
 // 発災時: 地図（ピンは lib/triage の色）・状態の人数・ハザード（状態の内訳）・避難先 → 見直し → 未確認 → 計画
 // 1024px 以上で右に出し、狭い幅は畳む（SideFold）。本人のページ（?open=）が開いているときは、この面の代わりに本人のページ（app/page.tsx）。
-// 司令室の見た目にしない: 右端の 1 列で、地図は小さく固定（拡大・縮小・移動は地図の「全画面」で。T46）。雨雲・震度はデモの印を付ける（components/map/CaseMap.tsx）。
+// 司令室の見た目にしない: 右端の 1 列で、地図は小さく（その場の拡大・縮小は T66、広く見るのは地図の「全画面」で。T46）。雨雲・震度はデモの印を付ける（components/map/CaseMap.tsx）。
 
 import Link from "next/link";
 import { CaseMap } from "@/components/map/CaseMap";
 import { TONE_TEXT } from "@/components/person/parts";
-import { CountLabel, countClass, StateText } from "@/components/ui/Tag";
-import type { HazardKind } from "@/lib/db/types";
+import { CountLabel, countClass, StateTag, StateText } from "@/components/ui/Tag";
+import type { GeoPoint, HazardKind } from "@/lib/db/types";
 import type { DestinationCount, HazardCount, PlanCount, ReviewItem, SidePaneData, StateCount } from "@/lib/map/side";
 import { PLAN_STATUS_LABELS } from "@/lib/labels";
 import { PLAN_TONES } from "@/lib/caseload";
@@ -26,9 +26,12 @@ const BAR: Record<StateTone, string> = {
   unknown: "bg-state-unknown-fill",
 };
 
-export function SidePane({ data }: { data: SidePaneData }) {
+/** 地図の真ん中（ピンが無いとき。事業所の中心、T68）と、気象庁の雨雲を重ねるか（デモでない事業所で旗が on のとき）。T72 */
+export type SideMapOptions = { center: GeoPoint | null; nowcast: boolean };
+
+export function SidePane({ data, map: mapOptions }: { data: SidePaneData; map?: SideMapOptions }) {
   const disaster = data.mode === "disaster";
-  const map = <MapSection key="map" data={data} />;
+  const map = <MapSection key="map" data={data} options={mapOptions} />;
   const review = <ReviewSection key="review" items={data.review} />;
   const pending = <PendingSection key="pending" items={data.pendingTop} />;
   const plan = <PlanSection key="plan" counts={data.plan} />;
@@ -75,20 +78,19 @@ function Count({ n, tone }: { n: number; tone?: StateTone }) {
   );
 }
 
-/** 至急・要確認・不明・無事の人数。数字に状態の色（0 は色なし）。要確認は言葉を黄の塗りの印に、数は本文色 */
+/** 至急・要確認・不明・無事の人数。1 人以上は言葉を状態の塗りの印に、数は本文色。0 人は印も数も灰（CountLabel）。lg は面の中の箱の上 */
 function StateNumbers({ counts, size }: { counts: StateCount[]; size: "sm" | "lg" }) {
   return (
     <dl className={`flex flex-wrap items-baseline ${size === "lg" ? "gap-x-4 gap-y-1" : "gap-x-2.5"}`} data-states>
       {counts.map((s) => (
         <div key={s.color} className="flex items-baseline gap-1" data-color={s.color}>
           <dt className={size === "lg" ? "text-sm text-muted" : "text-xs text-muted"}>
-            <CountLabel tone={s.tone} count={s.count}>
+            <CountLabel tone={s.tone} count={s.count} inPanel2={size === "lg"}>
               {s.label}
             </CountLabel>
           </dt>
           <dd
-            className={`font-bold tabular-nums ${size === "lg" ? "text-2xl" : ""} ${countClass(s.tone, s.count)}`}
-            data-tone={s.count > 0 ? s.tone : undefined}
+            className={`font-bold tabular-nums ${size === "lg" ? "text-2xl" : ""} ${countClass(s.count)}`}
           >
             {s.count}
           </dd>
@@ -98,14 +100,21 @@ function StateNumbers({ counts, size }: { counts: StateCount[]; size: "sm" | "lg
   );
 }
 
-function MapSection({ data }: { data: SidePaneData }) {
+function MapSection({ data, options }: { data: SidePaneData; options?: SideMapOptions }) {
   return (
     <Section
       id="map"
       title="地図"
       aside={<span className="text-xs font-normal text-muted tabular-nums">{data.pins.length} 人</span>}
     >
-      <CaseMap pins={data.pins} layers={data.demo?.layers ?? NORMAL_LAYERS} demo={data.demo} unplaced={data.unplaced} />
+      <CaseMap
+        pins={data.pins}
+        layers={data.demo?.layers ?? NORMAL_LAYERS}
+        demo={data.demo}
+        unplaced={data.unplaced}
+        center={options?.center ?? undefined}
+        nowcast={options?.nowcast ?? false}
+      />
       {data.states && (
         <div className="mt-2 rounded-md bg-panel2 px-2 py-1.5">
           <StateNumbers counts={data.states} size="lg" />
@@ -131,11 +140,13 @@ function HazardList({ rows }: { rows: HazardCount[] }) {
               {h.count}
               <span className="text-xs text-muted"> 人</span>
             </span>
+            {/* 状態の内訳は人数の帯と同じ形（言葉を塗りの印、数は本文色。0 の状態は出さない。T66） */}
             {h.states.length > 0 && (
-              <span className="flex w-36 shrink-0 gap-1.5 text-xs" data-hazard-states>
+              <span className="flex w-36 shrink-0 flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-xs" data-hazard-states>
                 {h.states.map((s) => (
-                  <span key={s.color} className={`font-bold ${TONE_TEXT[s.tone]}`} data-tone={s.tone}>
-                    {s.label} <span className="tabular-nums">{s.count}</span>
+                  <span key={s.color} className="flex items-baseline gap-0.5" data-hazard-state={s.color}>
+                    <StateTag tone={s.tone}>{s.label}</StateTag>
+                    <span className="font-bold tabular-nums">{s.count}</span>
                   </span>
                 ))}
               </span>
@@ -241,7 +252,7 @@ function PendingSection({ items }: { items: ReviewItem[] }) {
   );
 }
 
-/** 計画の状態の内訳。細い帯と数字（数字に状態の色、0 は色なし） */
+/** 計画の状態の内訳。細い帯と、言葉の印と数（人数の帯と同じ形。1 人以上は塗りの印、0 は灰） */
 function PlanSection({ counts }: { counts: PlanCount[] }) {
   const total = counts.reduce((s, c) => s + c.count, 0);
   return (
@@ -268,8 +279,7 @@ function PlanSection({ counts }: { counts: PlanCount[] }) {
               </CountLabel>
             </dt>
             <dd
-              className={`text-lg font-bold tabular-nums ${countClass(c.tone, c.count)}`}
-              data-tone={c.count > 0 ? c.tone : undefined}
+              className={`text-lg font-bold tabular-nums ${countClass(c.count)}`}
             >
               {c.count}
             </dd>

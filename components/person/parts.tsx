@@ -2,7 +2,7 @@
 // 色は意味にだけ使う（app/globals.css の --state-*）。色の印には必ず文字を添え、面全体は塗らない。
 
 import type { Field, Line, Pending, Row, Seg, StateTone } from "@/lib/person";
-import { BLANK_LABELS, PENDING_STATUS_LABELS } from "@/lib/labels";
+import { BLANK_LABELS, CONSENT_STATUS_LABELS, PENDING_STATUS_LABELS } from "@/lib/labels";
 import { StateTag, TONE_TEXT } from "@/components/ui/Tag";
 
 /** 見出しの段。単独のページは 1、担当一覧の右の面は 2 */
@@ -72,12 +72,12 @@ export function AiMark({ title = "AI の出力。人が確認", small = false }:
   );
 }
 
-/** 空の欄（pending に無い物）。数えない */
-export function Blank() {
-  return <span className="text-muted">{BLANK_LABELS.unconfirmed}</span>;
+/** 空の欄（pending に無い物）。数えないので「未入力」。同意・時計の値のように状態としての未確認は label で「未確認」を渡す */
+export function Blank({ label = BLANK_LABELS.blank }: { label?: string }) {
+  return <span className="text-muted">{label}</span>;
 }
 
-export function FieldValue({ field, pending }: { field: Field; pending: readonly Pending[] }) {
+export function FieldValue({ field, pending, blank }: { field: Field; pending: readonly Pending[]; blank?: string }) {
   const mark = pending.length > 0 ? <PendingMark pending={pending} /> : null;
   switch (field.kind) {
     case "lines":
@@ -97,7 +97,7 @@ export function FieldValue({ field, pending }: { field: Field; pending: readonly
         </div>
       );
     case "unconfirmed":
-      return mark ?? <Blank />;
+      return mark ?? <Blank label={blank} />;
   }
 }
 
@@ -107,7 +107,8 @@ export function RowItem({ row }: { row: Row }) {
     <div className="grid grid-cols-[4.5rem_minmax(0,1fr)] gap-x-2" data-field={row.key}>
       <dt className="pt-px text-xs text-muted">{row.label}</dt>
       <dd className={`min-w-0 ${row.small ? "text-xs" : ""}`}>
-        <FieldValue field={row.field} pending={row.pending} />
+        {/* 同意の行の空は状態の「未確認」（同意・不同意・未確認。lib/labels.ts の CONSENT_STATUS_LABELS）。ほかの空は「未入力」 */}
+        <FieldValue field={row.field} pending={row.pending} blank={row.key.startsWith("consent.") ? CONSENT_STATUS_LABELS.unconfirmed : undefined} />
       </dd>
     </div>
   );

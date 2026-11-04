@@ -33,10 +33,10 @@ const usePicks = (): Picks => {
   return c;
 };
 
-/** チェック。押せる所は周りの 32px 四方（label） */
+/** チェック（18px）。押せる所は周りの 36px 四方（label） */
 const CHECK =
-  "size-4 shrink-0 accent-accent outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-accent";
-const HIT = "-m-1.5 inline-flex size-8 cursor-pointer items-center justify-center rounded";
+  "size-[1.125rem] shrink-0 accent-accent outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-accent";
+const HIT = "-m-2 inline-flex size-9 cursor-pointer items-center justify-center rounded";
 
 const SELECT =
   "h-8 min-w-0 rounded bg-panel2 px-2 text-sm text-ink outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-accent";

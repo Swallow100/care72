@@ -6,7 +6,7 @@ import { principalFromRequest } from "@/lib/auth/server";
 import { aiContextFor } from "@/lib/claude/cloudflare";
 import { questionQueue } from "@/lib/intake/ask";
 import { extractIntake, INTAKE_TEXT_MAX } from "@/lib/intake/extract";
-import { intakeError, intakeErrorOf } from "@/lib/intake/http";
+import { aiConsentRefusal, intakeError, intakeErrorOf } from "@/lib/intake/http";
 import { loadPersonPage } from "@/lib/person";
 
 const Body = z.object({
@@ -29,6 +29,9 @@ export async function POST(request: Request) {
   if (!body.success) return intakeError("invalid");
   const rows = await loadPersonPage(env.DB, principal, body.data.personId);
   if (!rows) return intakeError("not_found");
+  // AI 提供が不同意の人の台帳は Claude に渡さない（T74。未確認は通す）
+  const refused = aiConsentRefusal(rows.consents);
+  if (refused) return refused;
   const focus = body.data.focus ? (questionQueue(rows).find((q) => q.key === body.data.focus)?.focus ?? null) : null;
 
   try {

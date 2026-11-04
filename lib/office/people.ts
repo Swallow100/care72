@@ -10,6 +10,7 @@ import type { D1Database } from "@cloudflare/workers-types";
 import { ageOn } from "../age.ts";
 import { ROLE_LABELS } from "../auth/roles.ts";
 import type { Ledger, PersonRow, PlanStatus, Sex } from "../db/types.ts";
+import { unconfirmedConsents } from "../consent/unconfirmed.ts";
 import type { PersonInput } from "./forms.ts";
 import type { OfficeActor } from "./scope.ts";
 import { officePayload, type OfficeAction } from "./timeline.ts";
@@ -25,7 +26,10 @@ export type CareManagerItem = {
   disabled: boolean;
 };
 
-/** 事業所のケアマネ（足した順）。担当の人数つき。停止した人も印つきで全部（割当の候補は activeCareManagers で使える人だけ） */
+/**
+ * 事業所のケアマネ（管理者が先、あとは足した順）。担当の人数つき。停止した人も印つきで全部（割当の候補は activeCareManagers で使える人だけ）。
+ * 管理者を先にするのは、種の 2 人（山本・西村。同じ時刻に入る）で山本を上にするため（T79）
+ */
 export async function listCareManagers(db: D1Database, officeId: string): Promise<CareManagerItem[]> {
   const res = await db
     .prepare(
@@ -34,7 +38,7 @@ export async function listCareManagers(db: D1Database, officeId: string): Promis
                 WHERE p.care_manager_id = a.id AND p.office_id = a.office_id AND p.unlisted_at IS NULL) AS people
          FROM accounts a
         WHERE a.office_id = ?1 AND a.role = 'care_manager'
-        ORDER BY a.created_at, a.id`,
+        ORDER BY a.is_office_admin DESC, a.created_at, a.id`,
     )
     .bind(officeId)
     .all<{ id: string; display_name: string; login_id: string | null; is_office_admin: 0 | 1; disabled_at: string | null; people: number }>();
@@ -158,6 +162,8 @@ export async function createPerson(
       .bind(id, input.careManagerId, input.name, input.kana, input.birthDate, JSON.stringify(newLedger(input.sex)), at, actor.officeId),
     personEntry(db, actor, id, body, officePayload("added", { to: input.careManagerId }), at),
     officeEntry(db, actor, "person_added", id, body, JSON.stringify({ personId: id, to: input.careManagerId }), at),
+    // 同意の行を全部「未確認」で（T69a）。本人がその事業所にいるときだけ入る
+    unconfirmedConsents(db, id, at, actor.officeId),
   ]);
   return (inserted.meta.changes ?? 0) > 0 ? { ok: true, id } : { ok: false, error: "care_manager" };
 }
@@ -322,7 +328,12 @@ export async function setUnlisted(
     // ?9・?10 は使わない（番号をそろえるために null を渡し、条件に置く）
     guard: `p.unlisted_at IS ${input.unlisted ? "" : "NOT "}NULL AND ?9 IS NULL AND ?10 IS NULL`,
     guardArgs: [null, null],
-    set: "unlisted_at = ?3",
+    // 外すときは本人・家族のスマホ入口（T69a）も切る: 版を上げて作った時刻を消す。戻しても前のリンクは通らず、新しく発行する
+    // （設計の答え 11/4）。まだ発行していない人（版 0）はそのまま
+    set: input.unlisted
+      ? `unlisted_at = ?3, phone_link_generation = CASE WHEN phone_link_generation > 0 THEN phone_link_generation + 1 ELSE 0 END,
+         phone_link_issued_at = NULL`
+      : "unlisted_at = ?3",
     setArg: input.unlisted ? at : null,
     body: null,
     officePayload: JSON.stringify({ personId: input.personId }),

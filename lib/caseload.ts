@@ -76,6 +76,11 @@ export type CaseloadRow = {
   destination: string | null;
   /** 地図のピンの位置（架空）。無ければ地図に出さない */
   location: GeoPoint | null;
+  /**
+   * 本人が送った端末の位置（T69b）。今の災害モードの中で最も新しい、撤回されていない赤の信号の申告位置。平時・無ければ null。
+   * 地図のピンは これ ?? location に置く（lib/map/side.ts の mapPins）。ルールの表には渡さない（表示だけ）
+   */
+  reported: GeoPoint | null;
 };
 
 /** 一覧から外した人（T30。担当一覧の下の畳み「外した人 N」）。外した時刻の新しい順 */
@@ -124,6 +129,27 @@ export function hazardsOf(ledger: Pick<Ledger, "evacuation">): string[] {
   return ledger.evacuation.hazards.map(hazardText);
 }
 
+/**
+ * 申告位置（T69b）: 赤の信号のうち、位置のある最も新しい物（now より後は使わない）。信号は発災から今までの撤回されていない物（loadDetailSource）。
+ * 色と順には使わない（ルールの表は読まない。地図のピンの置き場所だけ）
+ */
+export function reportedPoint(
+  signals: ReadonlyArray<Pick<SignalForDetail, "color" | "occurred_at" | "reported_lat" | "reported_lng">>,
+  now: string,
+): GeoPoint | null {
+  const t = Date.parse(now);
+  let best: { at: number; p: GeoPoint } | null = null;
+  for (const s of signals) {
+    if (s.color !== "red") continue;
+    const p = { lat: s.reported_lat, lng: s.reported_lng };
+    if (!isGeoPoint(p)) continue;
+    const at = Date.parse(s.occurred_at);
+    if (at > t) continue;
+    if (!best || at >= best.at) best = { at, p };
+  }
+  return best?.p ?? null;
+}
+
 /** 行の詳細の元（D1 の行。本人の id で引く）。発災時だけ */
 export type CaseloadDetailSource = {
   contacts: ReadonlyArray<ContactForDetail>;
@@ -141,7 +167,7 @@ export type CaseloadDisaster = {
   signals: ReadonlyMap<string, ReadonlyArray<TriageSignal>>;
   /** 本人ごとのケアマネの上書き（発災から今まで、lib/disaster/override.ts） */
   overrides?: ReadonlyMap<string, StoredOverride>;
-  /** 本人ごとの医療班・行政の受け入れ（発災から今まで、lib/custody/arrivals.ts。T23）。状態は「到着 避難所」 */
+  /** 本人ごとの医療班・行政の受け入れ（発災から今までと受入中の物、lib/custody/arrivals.ts。T23・T80）。状態は「到着 避難所」 */
   arrivals?: ReadonlyMap<string, ReadonlyArray<TriageArrival>>;
   /** 行の詳細の元。無ければ詳細を作らない */
   detail?: CaseloadDetailSource;
@@ -208,6 +234,7 @@ export function toCaseloadRows(
       hazardKinds: ledger.evacuation.hazards.map((h) => ({ kind: h.kind, depthM: h.depthM ?? null })),
       destination: ledger.evacuation.destination1?.trim() || null,
       location: isGeoPoint(ledger.basic.location) ? ledger.basic.location : null,
+      reported: src && own ? reportedPoint(src.signals.filter((x) => x.person_id === p.id), own.now) : null,
     };
   });
   // 優先の番号: ルールの表の並び（compareResults）で 1 から。画面で並べ替えても番号は変わらない

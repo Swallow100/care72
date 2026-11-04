@@ -113,9 +113,9 @@ describe("本人のページ（種の 10 人）", () => {
     }
 
     expect(textOf(v, "consent")).toBe(
-      "名簿登録 同意 2026-11-02 山本 計画共有 同意 2026-11-02 山本 支援者提供 同意 2026-11-02 山本 医療班提供 同意 2026-11-02 山本",
+      "名簿登録 同意 2026-11-02 山本 計画共有 同意 2026-11-02 山本 支援者提供 同意 2026-11-02 山本 医療班提供 同意 2026-11-02 山本 AI 提供 同意 2026-11-02 山本",
     );
-    expect(textOf(v, "documents")).toBe("計画書 表示 医療要約 表示 本人の1枚 表示 QR 表示");
+    expect(textOf(v, "documents")).toBe("計画書 表示 医療要約 表示 本人の1枚 表示 QR 表示 スマホ入口 表示");
   });
 
   it("電話は tel: のリンク（ハイフンを落とす）", () => {
@@ -167,7 +167,7 @@ describe("本人のページ（種の 10 人）", () => {
     ]);
   });
 
-  it("pending に無い空の欄も「未確認」と出すが数えない（山田さんのアレルギー・かかりつけ）", () => {
+  it("pending に無い空の欄は「未入力」と出し数えない（山田さんのアレルギー・かかりつけ。T79）", () => {
     const v = viewOf("p-01");
     expect(rowOf(v, "medical.allergies")).toMatchObject({ field: { kind: "unconfirmed" }, pending: [] });
     expect(rowOf(v, "medical.doctor")).toMatchObject({ field: { kind: "unconfirmed" }, pending: [] });
@@ -377,7 +377,7 @@ describe("経過", () => {
     const items = timelineItems(seedRows(seed("p-07")));
     expect(items.map((t) => [t.when, t.kind, t.body, t.who, t.tone])).toEqual([
       ["2026-11-02 12:00", "入力", "台帳作成", "ケアマネ 山本", null],
-      ["2026-11-02 12:00", "同意", "名簿登録 同意・計画共有 同意・支援者提供 不同意・医療班提供 同意", "ケアマネ 山本", "check"],
+      ["2026-11-02 12:00", "同意", "名簿登録 同意・計画共有 同意・支援者提供 不同意・医療班提供 同意・AI 提供 同意", "ケアマネ 山本", "check"],
     ]);
     expect(timelineItems(seedRows(seed("p-01")))[1].tone).toBe("ok");
   });
@@ -523,9 +523,9 @@ describe("情報を多く出す（作者 16:3x）", () => {
       const f = rowOf(viewOf(id), "medical.medications")!.field;
       return f.kind === "lines" ? f.lines.map((l) => l.map((s) => s.text).join(" ")) : [];
     };
-    expect(meds("p-01")).toEqual(["ワーファリン 抗凝固薬 1 日 1 回 用量 未確認 残り 未確認 保管 未確認 中断注意"]);
-    expect(meds("p-05")).toEqual(["ステロイド ステロイド 1 日 1 回 用量 未確認 残り 5 日 保管 未確認 中断注意"]);
-    expect(meds("p-08")).toEqual(["インスリン インスリン 朝夕 用量 未確認 残り 4 日 保管 冷蔵庫 要冷蔵 中断注意"]);
+    expect(meds("p-01")).toEqual(["ワーファリン 抗凝固薬 1 日 1 回 用量 未入力 残り 未確認 保管 未入力 中断注意"]);
+    expect(meds("p-05")).toEqual(["ステロイド ステロイド 1 日 1 回 用量 未入力 残り 5 日 保管 未入力 中断注意"]);
+    expect(meds("p-08")).toEqual(["インスリン インスリン 朝夕 用量 未入力 残り 4 日 保管 冷蔵庫 要冷蔵 中断注意"]);
     expect(meds("p-07")[0]).toContain("残り 7 日");
 
     const devices = (id: string) => {
@@ -533,7 +533,7 @@ describe("情報を多く出す（作者 16:3x）", () => {
       return f.kind === "lines" ? f.lines.map((l) => l.map((s) => s.text).join(" ")) : [];
     };
     expect(devices("p-01")).toEqual(["在宅酸素 酸素濃縮器 1 L/分 酸素 内蔵電池 2 時間 酸素 予備ボンベ 8 時間"]);
-    expect(devices("p-02")).toEqual(["人工呼吸器 気管切開 人工呼吸器 内蔵電池 3 時間", "吸引 1 日 6 回 電池 未確認"]);
+    expect(devices("p-02")).toEqual(["人工呼吸器 気管切開 人工呼吸器 内蔵電池 3 時間", "吸引 1 日 6 回 電池 未入力"]);
   });
 
   it("時計は 値・単位・起点・出典・確認の日", () => {
@@ -574,7 +574,7 @@ describe("情報を多く出す（作者 16:3x）", () => {
       expect(rowOf(v, "basic.housing")?.small).toBeUndefined();
     }
     expect(textOf(viewOf("p-01"), "basic")).toContain("寝たきり なし 認知症 なし");
-    expect(textOf(viewOf("p-02"), "basic")).toContain("聴覚 未確認");
+    expect(textOf(viewOf("p-02"), "basic")).toContain("聴覚 未入力");
   });
 });
 

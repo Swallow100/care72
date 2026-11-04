@@ -11,6 +11,7 @@ import { seedStatements } from "../../seed/sql.ts";
 import {
   DEMO_CARE_MANAGER_ID,
   DEMO_JUDGE_ACCOUNT_ID,
+  DEMO_SECOND_CARE_MANAGER_ID,
   DEMO_OFFICE_ID,
   FIXED_ACCOUNT_IDS,
   isFixedAccount,
@@ -25,7 +26,7 @@ import { d1FromSqlite, migratedSqlite } from "../db/test-d1.ts";
 import { loadOfficeLog } from "../disaster/db.ts";
 import { OFFICE_TIMELINE_KIND_LABELS } from "../disaster/state.ts";
 import { demoResetStatements } from "../seed/reset.ts";
-import { careManagerActionRequest } from "./http.ts";
+import { addCareManagerRequest, careManagerActionRequest } from "./http.ts";
 import { activeCareManagers, assignMany, assignPerson, createPerson, listCareManagers } from "./people.ts";
 import { officeActor, type OfficeActor } from "./scope.ts";
 import {
@@ -118,10 +119,10 @@ async function adminSato() {
 // ---------- 固定 ----------
 
 describe("固定のアカウント", () => {
-  it("種のデモ事業所のアカウント（山本・審査員）と同じ集合", () => {
+  it("種のデモ事業所のアカウント（山本・西村・審査員）と同じ集合", () => {
     const seed = SEED_ACCOUNTS.filter((a) => a.office_id === DEMO_OFFICE_ID).map((a) => a.id);
     expect([...FIXED_ACCOUNT_IDS].sort()).toEqual([...seed].sort());
-    expect([...FIXED_ACCOUNT_IDS].sort()).toEqual([DEMO_CARE_MANAGER_ID, DEMO_JUDGE_ACCOUNT_ID].sort());
+    expect([...FIXED_ACCOUNT_IDS].sort()).toEqual([DEMO_CARE_MANAGER_ID, DEMO_SECOND_CARE_MANAGER_ID, DEMO_JUDGE_ACCOUNT_ID].sort());
   });
 
   it("固定は山本と審査員だけ。協力事業所・足したケアマネ・空は固定でない", () => {
@@ -189,14 +190,34 @@ describe("固定のアカウント", () => {
     ).toEqual({ ok: false, error: "fixed" });
   });
 
-  it("審査員のケアマネの役は管理者でない（officeActor のまま）ので、足したケアマネにも 403", async () => {
-    const sato = await addAndLogin("sato", "佐藤");
+  it("審査員のケアマネの役はデモ事業所の管理者として、足したケアマネを足す・改名・管理者・停止・再発行できる。固定（山本・西村・審査員）は 403（T79）", async () => {
     const j = await loginOk(JUDGE_LOGIN_ID, JUDGE_PW);
     const cm = (await chooseJudgeRole(db, env(), SECRET, j.token, "care_manager", NOW))!;
-    expect(officeActor(cm.principal)?.admin).toBe(false);
-    const r = await careManagerActionRequest(db, cm.principal, sato.id, { action: "disable", disabled: true }, AT);
-    expect(r).toMatchObject({ status: 403, body: { error: "forbidden" } });
-    expect(account(sato.id)?.disabled_at).toBeNull();
+    expect(officeActor(cm.principal)).toMatchObject({ admin: true, placeEdit: false });
+
+    const added = await addCareManagerRequest(db, cm.principal, { displayName: "鈴木", loginId: "suzuki" }, AT, FAST);
+    expect(added).toMatchObject({ status: 200, body: { ok: true, account: { displayName: "鈴木", loginId: "suzuki" } } });
+    const id = (added.body as { account: { id: string } }).account.id;
+    expect(await careManagerActionRequest(db, cm.principal, id, { action: "rename", displayName: "鈴木 花子" }, AT)).toEqual({ status: 200, body: { ok: true, changed: true } });
+    expect(await careManagerActionRequest(db, cm.principal, id, { action: "admin", admin: true }, AT)).toEqual({ status: 200, body: { ok: true, changed: true } });
+    expect(await careManagerActionRequest(db, cm.principal, id, { action: "disable", disabled: true }, AT)).toEqual({ status: 200, body: { ok: true, changed: true } });
+    expect((await careManagerActionRequest(db, cm.principal, id, { action: "reset_password" }, AT, FAST)).status).toBe(200);
+    expect(account(id)).toMatchObject({ display_name: "鈴木 花子", is_office_admin: 1 });
+    // 書き手は審査員のアカウント
+    expect(changeLog().at(-1)).toMatchObject({ author_id: DEMO_JUDGE_ACCOUNT_ID, author_role: "care_manager" });
+
+    for (const fixed of [DEMO_CARE_MANAGER_ID, DEMO_SECOND_CARE_MANAGER_ID, DEMO_JUDGE_ACCOUNT_ID]) {
+      for (const body of [
+        { action: "rename", displayName: "変更" },
+        { action: "admin", admin: fixed !== DEMO_CARE_MANAGER_ID },
+        { action: "disable", disabled: true },
+        { action: "reset_password" },
+      ]) {
+        const r = await careManagerActionRequest(db, cm.principal, fixed, body, AT, FAST);
+        expect(r.status, `${fixed} ${body.action}`).toBe(403);
+      }
+    }
+    expect(account(DEMO_SECOND_CARE_MANAGER_ID)).toMatchObject({ display_name: "西村", is_office_admin: 0, disabled_at: null });
   });
 });
 
@@ -358,7 +379,7 @@ describe("停止と再開", () => {
     const list = await listCareManagers(db, DEMO_OFFICE_ID);
     expect(list.find((c) => c.id === sato.id)).toMatchObject({ name: "佐藤", disabled: true, people: 0 });
     expect(list.find((c) => c.id === DEMO_CARE_MANAGER_ID)).toMatchObject({ disabled: false });
-    expect(activeCareManagers(list).map((c) => c.id)).toEqual([DEMO_CARE_MANAGER_ID]);
+    expect(activeCareManagers(list).map((c) => c.id)).toEqual([DEMO_CARE_MANAGER_ID, DEMO_SECOND_CARE_MANAGER_ID]);
 
     const people = () => sqlite.prepare("SELECT count(*) AS n FROM people").get() as { n: number };
     const n = people().n;
@@ -620,7 +641,11 @@ describe("migration 0012（accounts.disabled_at と、事業所の経過の種�
   });
 
   it("今ある事業所の経過の行を全部写す（列・作った時刻もそのまま）。外部キーは効いたまま", () => {
-    const d = sqliteUpTo((n) => n < MIGRATION_0012);
+    // 種は今の事業所の列（0017 の地図の中心、T68）を書くので、0017 は先に当てる（offices に列を足すだけで 0012 の表に触れない）。
+    // 種は気象庁の写しの表（0020、T72）も空にするので 0020 も先に（新しい表を作るだけで 0012 の表に触れない）。
+    // 種は同意の AI 提供（0024、T74）を書くので 0024 も先に（consents を建て直すだけで 0012 の表に触れない）
+    const early = (n: string) => n.startsWith("0017_") || n.startsWith("0020_") || n.startsWith("0024_");
+    const d = sqliteUpTo((n) => n < MIGRATION_0012 || early(n));
     for (const s of seedStatements()) d.exec(s);
     d.prepare(
       `INSERT INTO office_timeline_entries (id, office_id, author_id, author_role, kind, occurred_at)
@@ -633,7 +658,7 @@ describe("migration 0012（accounts.disabled_at と、事業所の経過の種�
     const before = d.prepare("SELECT * FROM office_timeline_entries ORDER BY id").all();
     expect(before.length).toBeGreaterThan(1);
     d.exec(readFileSync(new URL(MIGRATION_0012, MIGRATIONS), "utf8"));
-    for (const n of migrationNames().filter((n) => n > MIGRATION_0012)) d.exec(readFileSync(new URL(n, MIGRATIONS), "utf8"));
+    for (const n of migrationNames().filter((n) => n > MIGRATION_0012 && !early(n))) d.exec(readFileSync(new URL(n, MIGRATIONS), "utf8"));
     expect(d.prepare("SELECT * FROM office_timeline_entries ORDER BY id").all()).toEqual(before);
     expect(d.prepare("SELECT disabled_at FROM accounts WHERE id = 'acct-yamamoto'").get()).toEqual({ disabled_at: null });
     expect(() =>

@@ -15,7 +15,7 @@ import { parseStaffView } from "@/lib/custody/staff-view";
 import { lastShelter } from "@/lib/custody/store";
 import { shortJst } from "@/lib/disaster/state";
 
-export const metadata: Metadata = { title: "受け持ち | ケア72" };
+export const metadata: Metadata = { title: `${CUSTODY_LABELS.page} | ケア72` };
 
 // D1 を毎回読む
 export const dynamic = "force-dynamic";

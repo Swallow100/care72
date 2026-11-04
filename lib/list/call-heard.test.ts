@@ -245,7 +245,8 @@ describe("聞いた安否と表の色（色と連絡順は表だけ）", () => {
     const before = await row("p-01", 0.7);
     expect(before.triage).toMatchObject({ rule: "red_injury", reason: "本人が「動けない」" });
     const r = await call("p-01", { contact: contactOf("p-01").id, result: "connected", heard: { color: "green" }, memo: "本人は大丈夫と" }, 0.6);
-    expect(r).toEqual({ status: 409, json: { ok: false, error: "injury", label: "至急維持" } });
+    // 何を断ったか（無事）と、表の理由の頭（本人が「動けない」）。T78（前は「至急維持」だけ）
+    expect(r).toEqual({ status: 409, json: { ok: false, error: "injury", label: "無事 不可（本人が「動けない」）" } });
     expect(rows("SELECT * FROM signals WHERE source = 'care_manager'")).toEqual([]);
     expect(rows("SELECT * FROM timeline_entries WHERE kind = 'called'")).toEqual([]);
     const after = await row("p-01", 0.7);
@@ -279,7 +280,7 @@ describe("聞いた安否と表の色（色と連絡順は表だけ）", () => {
     const c = contactOf("p-01").id;
     expect(await call("p-01", { contact: c, result: "connected", heard: { color: "red" } }, 0.6)).toEqual({
       status: 409,
-      json: { ok: false, error: "injury", label: "至急維持" },
+      json: { ok: false, error: "injury", label: "無事でない 不可（本人が「けが」）" },
     });
     expect(rows("SELECT * FROM signals WHERE source = 'care_manager'")).toEqual([]);
     expect(rows("SELECT * FROM timeline_entries WHERE kind = 'called'")).toEqual([]);

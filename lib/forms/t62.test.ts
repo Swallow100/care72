@@ -21,7 +21,7 @@ import { loadStaffBoard } from "../custody/board.ts";
 import { parseStaffView, staffQueryOf, staffViewQuery, staffViewRows } from "../custody/staff-view.ts";
 import { receive } from "../custody/store.ts";
 import { d1FromSqlite, migratedSqlite } from "../db/test-d1.ts";
-import { COLOR_LABELS } from "../labels.ts";
+import { COLOR_LABELS, stateLabel } from "../labels.ts";
 import { listHref, listQueryOf, listView, type ListQuery } from "../list/view.ts";
 import { issueQr, loadQrRow, qrState } from "../qr/store.ts";
 import { caseloadColumns, caseloadCsvResponse } from "./caseload-csv.ts";
@@ -141,7 +141,7 @@ const params = (q: string) => new URLSearchParams(q);
 const caseload = async (): Promise<Caseload> =>
   (await loadCaseload(db, { officeId: "office-demo", careManagerId: "acct-yamamoto" }, TODAY, NOW))!;
 
-const NORMAL_HEADERS = ["連絡順", "氏名", "カナ", "年齢", "介護度", "医療", "ハザード", "支援者", "避難計画", "未確認", "地区"];
+const NORMAL_HEADERS = ["組", "氏名", "カナ", "年齢", "介護度", "医療", "ハザード", "支援者", "避難計画", "未確認", "地区"];
 
 describe("CSV の共通の道（様式 9 の csvText・csvFileNames）", () => {
   it("名前の頭を渡せる。渡さなければ様式 9 のまま", () => {
@@ -171,7 +171,7 @@ describe("担当一覧の CSV（/caseload/csv）", () => {
     expect(raw.endsWith("\r\n")).toBe(true);
     expect(raw.replaceAll("\r\n", "")).not.toMatch(/[\r\n]/);
     expect(rows[0]).toEqual(["担当一覧"]);
-    expect(rows[1]).toEqual(["事業所名：デモ事業所", "担当：山本", "作成：2026年11月3日", "並び：連絡順", "絞込：なし"]);
+    expect(rows[1]).toEqual(["事業所名：デモ事業所", "担当：山本", "作成：2026年11月3日", "並び：組", "絞込：なし"]);
     expect(rows[2]).toEqual([""]);
     expect(rows[3]).toEqual(NORMAL_HEADERS);
     const body = rows.slice(4);
@@ -179,7 +179,7 @@ describe("担当一覧の CSV（/caseload/csv）", () => {
     const screen = listView(await caseload(), {});
     expect(body.map((r) => r[1])).toEqual(screen.rows.map((r) => r.name));
     expect(body).toHaveLength(10);
-    // 連絡順は骨格の段、カナ・避難計画・未確認・地区は行の値
+    // 組は骨格の段（T78 で平時の「連絡順」から改名）、カナ・避難計画・未確認・地区は行の値
     const first = screen.rows[0];
     expect(body[0][0]).toBe(String(first.tier));
     expect(body[0][2]).toBe(first.kana);
@@ -226,7 +226,7 @@ describe("担当一覧の CSV（/caseload/csv）", () => {
       expect(r).toHaveLength(16);
       // 連絡順は発災時の表の「連絡順」の列（DisasterTable の data-rank）と同じ rank
       expect(r[0]).toBe(String(s.rank));
-      expect(r[1]).toBe(COLOR_LABELS[s.triage!.color]);
+      expect(r[1]).toBe(stateLabel(s.triage!));
       expect(r[2]).toBe(s.triage!.reason);
       expect(r[3]).toBe(String(s.tier));
       expect(r[14]).toBe(s.remain ? `${s.remain.text} ${s.remain.label}` : "");
@@ -285,7 +285,7 @@ describe("受け持ちの CSV（/staff/csv）", () => {
     expect(res.headers.get("Cache-Control")).toBe("no-store");
     expect(res.headers.get("Content-Disposition")).toContain('filename="staff-20261103-1100.csv"');
     const { rows } = await csvOf(res);
-    expect(rows[0]).toEqual(["受け持ち"]);
+    expect(rows[0]).toEqual(["受入一覧"]);
     expect(rows[1]).toEqual(["受入者：審査員", "作成：2026年11月3日", "並び：連絡順", "絞込：なし", "3 人"]);
     const headers = ["連絡順", "状態", "理由", "氏名", "カナ", "年齢", "医療", "薬", "機器", "残り", "避難所", "経路", "受入時刻", "所属"];
     expect(rows[3]).toEqual(headers);
@@ -299,7 +299,7 @@ describe("受け持ちの CSV（/staff/csv）", () => {
     const yamada = body.find((r) => r[3] === "山田 ハナ")!;
     expect(yamada.slice(6, 10)).toEqual(["", "", "", ""]);
     expect(yamada[2]).toBe("");
-    expect(yamada[1]).toBe(COLOR_LABELS[board.rows.find((r) => r.personId === "p-01")!.color]);
+    expect(yamada[1]).toBe(stateLabel(board.rows.find((r) => r.personId === "p-01")!));
     // 同意のある人は理由と医療が入る（行の値をそのまま）
     const p02 = board.rows.find((r) => r.personId === "p-02")!;
     const row02 = body.find((r) => r[3] === p02.name)!;
@@ -525,12 +525,13 @@ describe("入口と頁の作り（ファイルを読む）", () => {
     }
   });
 
-  it("担当一覧は画面・CSV・一括印刷が同じ listView。書き出しの 2 つは見出しと絞込の帯の右端、今の query を持ち越す", async () => {
+  it("担当一覧は画面・CSV・一括印刷が同じ listView。書き出しの 2 つは絞込の帯の右端の 1 か所（T78）、今の query を持ち越す", async () => {
     const list = readRepoFile("app/page.tsx");
     expect(list).toContain("listView(data, q)");
     expect(list).toContain("listHref(CASELOAD_CSV_PATH, view)");
     expect(list).toContain('listHref(OWN_SHEETS_PATH, view, { print: "1" })');
-    expect(list.match(/<ExportButtons view=\{lv\} \/>/g)).toHaveLength(2);
+    expect(list.match(/<ExportButtons view=\{lv\} \/>/g)).toHaveLength(1);
+    expect(list).toContain("filterBar(<ExportButtons view={lv} />)");
     expect(readRepoFile("components/list/FilterBar.tsx")).toContain("data-filter-actions");
     // 受け持ち: 見出しの CSV出力は URL の絞込と並びを持ち越す。表は絞込と並びを URL に書き、CSV と同じ関数で行を決める
     const staff = readRepoFile("app/staff/page.tsx");

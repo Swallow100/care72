@@ -50,8 +50,12 @@ export type ContactKind = (typeof CONTACT_KINDS)[number];
 export const CONTACT_REACHES = ["together", "nearby", "in_city", "out_of_pref", "far"] as const;
 export type ContactReach = (typeof CONTACT_REACHES)[number];
 
-/** 同意 4 つ: 名簿登録・計画の共有・支援者への提供・医療班への提供（決め方は docs/PROGRESS.md の問い） */
-export const CONSENT_KINDS = ["registry", "plan_share", "supporters", "medical"] as const;
+/**
+ * 同意 5 つ: 名簿登録・計画の共有・支援者への提供・医療班への提供（決め方は docs/PROGRESS.md の問い）と、
+ * AI 提供（ai_overseas。Claude〔海外の事業者〕に仮名化した台帳の内容を渡すこと。T74、migration 0024）。
+ * AI 提供は見え方（lib/consent/scope.ts）に使わず、「不同意」の人の入れる欄の AI だけを断る（lib/intake/http.ts）
+ */
+export const CONSENT_KINDS = ["registry", "plan_share", "supporters", "medical", "ai_overseas"] as const;
 export type ConsentKind = (typeof CONSENT_KINDS)[number];
 
 export const CONSENT_STATUSES = ["granted", "refused", "unconfirmed"] as const;
@@ -426,7 +430,13 @@ export type OfficeRow = {
   id: string;
   name: string;
   kind: OfficeKind;
+  /** 市（T68 から事業所の画面の「地域」で管理者が直す。本人の住所の市の欄の既定、様式の既定 lib/forms/plan-form.ts の defaultPlanForm） */
   city: string;
+  /** 計画書に使う様式（migration 0005。matsuyama・cao・mapping:<id>） */
+  plan_form: string;
+  /** 地図の中心（migration 0017、T68）。両方ある か 両方 null（未設定） */
+  center_lat: number | null;
+  center_lng: number | null;
   created_at: string;
 };
 
@@ -537,6 +547,12 @@ export type PersonRow = {
  * PersonRow に入れないのは、種と本人のページの型に波及させないため（QR の列と同じ扱い）
  */
 export type PersonListMark = { unlisted_at: string | null };
+
+/**
+ * 本人・家族のスマホ入口の版と作った時刻（people.phone_link_generation・phone_link_issued_at、T69a、migration 0018）。
+ * 版 0 はまだ作っていない。PersonRow に入れないのは unlisted_at と同じ理由（種と本人のページの型に波及させない）
+ */
+export type PersonPhoneLink = { phone_link_generation: number; phone_link_issued_at: string | null };
 
 /**
  * 申告の年齢（people.reported_age、T23）。医療班・行政がその場で作った人で、生年月日が分からないとき。作った日の年齢。
@@ -667,6 +683,25 @@ export type SignalRow = {
   ai_memo: string | null;
   /** ケアマネが直した聞き取りの欄（T49）。ルールの表に渡さない */
   memo: string | null;
+  /**
+   * 申告位置（T69b）。本人が赤のあとに「おくる」と許したときだけの端末の位置。台帳の位置とは別で、本人が今いる所。
+   * Claude には渡さない。ルールの表にも渡さない（地図のピンと聞き取りの欄だけ）
+   */
+  reported_lat: number | null;
+  reported_lng: number | null;
+  /** 端末が返した精度（m） */
+  reported_accuracy_m: number | null;
+  /** 位置を取った時刻（端末の時計） */
+  reported_at: string | null;
+  /** 録音のまとめ（T69b）。Claude（Haiku）の 80 字までの言い換え。AI の印。ルールの表に渡さない */
+  ai_summary: string | null;
+  ai_summary_model: string | null;
+  /** まとめを試みた時刻 */
+  ai_summary_at: string | null;
+  /** まとめられなかった理由（分類と同じ集合） */
+  ai_summary_error: ClassifyError | null;
+  /** ケアマネが直したまとめ（T69b）。null は直していない。ルールの表に渡さない */
+  summary: string | null;
   occurred_at: string;
   created_at: string;
   /**
@@ -907,6 +942,72 @@ export type ThirdPartyProvisionRow = {
   provided_at: string;
   /** 受け持ちを閉じた時刻 */
   closed_at: string | null;
+};
+
+// ---------- 気象庁の写し（T72、migrations/0020_jma.sql） ----------
+
+/** 気象庁の PULL 型のフィード（extra.xml 警報など・eqvol.xml 地震） */
+export const JMA_FEEDS = ["extra", "eqvol"] as const;
+export type JmaFeed = (typeof JMA_FEEDS)[number];
+
+/** 取った電文 1 通 */
+export type JmaEntryRow = {
+  id: string;
+  feed: JmaFeed;
+  type_code: string;
+  title: string;
+  updated_at: string;
+  fetched_at: string;
+  /** 読めなかった・飛ばした理由（読めた物は null） */
+  note: string | null;
+};
+
+/** 警報・注意報の市町村ごと・種類ごとの 1 行。名前・状態・発表時刻・発表官署は電文のまま */
+export type JmaWarningRow = {
+  entry_id: string;
+  type_code: string;
+  area_code: string;
+  area_name: string;
+  /** 種類の名前（「大雨警報」「レベル3大雨警報」など）。発表が無い市町村は '' */
+  kind: string;
+  /** 発表・継続・解除など（電文のまま） */
+  status: string;
+  issued_at: string;
+  office_name: string;
+  sort: number;
+};
+
+/** 地震の情報 1 通 */
+export type JmaQuakeRow = {
+  entry_id: string;
+  type_code: string;
+  event_id: string;
+  info_type: string;
+  report_at: string;
+  origin_at: string | null;
+  hypocenter: string | null;
+  /** 電文のまま（「4.5」。不明は「NaN」） */
+  magnitude: string | null;
+  /** 電文のまま（1〜4・5-・5+・6-・6+・7） */
+  max_intensity: string | null;
+};
+
+/** 観測点ごとの震度 */
+export type JmaQuakePointRow = {
+  entry_id: string;
+  area_name: string;
+  point_name: string;
+  intensity: string;
+};
+
+/** フィードごとの取得の状態 */
+export type JmaFetchStateRow = {
+  feed: JmaFeed;
+  last_modified: string | null;
+  fetched_at: string;
+  ok: 0 | 1;
+  ok_at: string | null;
+  note: string | null;
 };
 
 // ---------- 訓練の JSON の形 ----------

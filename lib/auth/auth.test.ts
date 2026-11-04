@@ -30,7 +30,15 @@ import {
   type Role,
 } from "./roles.ts";
 import { caseloadScope, personInScope } from "./scope.ts";
-import { SESSION_TTL_SEC, signSession, sessionTimes, passwordVersion, plainPasswordVersion } from "./session.ts";
+import {
+  LINK_SESSION_PV,
+  LINK_SESSION_TTL_SEC,
+  SESSION_TTL_SEC,
+  signSession,
+  sessionTimes,
+  passwordVersion,
+  plainPasswordVersion,
+} from "./session.ts";
 import { fromBase64Url } from "./bytes.ts";
 
 // テストだけの値（本物のパスワード・鍵ではない）。回数を少なくして速くする
@@ -334,6 +342,76 @@ describe("cookie からの役", () => {
   });
 });
 
+describe("スマホ入口のセッション（link の形、T69a）", () => {
+  const DAY = 24 * 60 * 60;
+  /** p-01 に版 1 を発行した形にし、その版の link の cookie（iat は NOW、期限は exp） */
+  async function linkCookie(exp: number, c: string | null = null, g = 1): Promise<string> {
+    sqlite.prepare("UPDATE people SET phone_link_generation = 1, phone_link_issued_at = ? WHERE id = ?").run(new Date(NOW * 1000).toISOString(), DEMO_SELF_PERSON_ID);
+    return signSession({ v: 1, k: "link", p: DEMO_SELF_PERSON_ID, c, g, pv: LINK_SESSION_PV, iat: NOW, exp }, SECRET);
+  }
+
+  it("8 日目・179 日目も通り（account・judge の 7 日の上限は効かない）、180 日を超える長さの物は通らない", async () => {
+    expect(LINK_SESSION_TTL_SEC).toBe(180 * DAY);
+    const t = await linkCookie(NOW + 180 * DAY);
+    for (const d of [8, 179]) expect((await resolvePrincipal(db, env(), SECRET, t, NOW + d * DAY))?.role, `${d}`).toBe("self");
+    expect(await resolvePrincipal(db, env(), SECRET, t, NOW + 180 * DAY)).toBeNull();
+    const long = await linkCookie(NOW + 181 * DAY);
+    expect(await resolvePrincipal(db, env(), SECRET, long, NOW + DAY)).toBeNull();
+  });
+
+  it("account・judge は今までどおり 7 日を超える長さの物（8 日目）を通さない", async () => {
+    const { token } = await loginOk("yamamoto", CM_PW);
+    expect(await resolvePrincipal(db, env(), SECRET, token, NOW + 8 * DAY)).toBeNull();
+    const eight = await signSession(
+      { v: 1, k: "account", a: DEMO_CARE_MANAGER_ID, pv: await passwordVersion(cmHash), iat: NOW, exp: NOW + 8 * DAY },
+      SECRET,
+    );
+    expect(await resolvePrincipal(db, env(), SECRET, eight, NOW + DAY)).toBeNull();
+    // 同じ形で 7 日なら通る（上の null は長さで落ちている）
+    const seven = await signSession(
+      { v: 1, k: "account", a: DEMO_CARE_MANAGER_ID, pv: await passwordVersion(cmHash), ...sessionTimes(NOW) },
+      SECRET,
+    );
+    expect((await resolvePrincipal(db, env(), SECRET, seven, NOW + DAY))?.role).toBe("care_manager");
+    const judge = await signSession({ v: 1, k: "judge", r: "self", pv: await passwordVersion(judgeHash), iat: NOW, exp: NOW + 8 * DAY }, SECRET);
+    expect(await resolvePrincipal(db, env(), SECRET, judge, NOW + DAY)).toBeNull();
+  });
+
+  it("本人用は役 self・家族用は役 family。アカウントは無く、審査員でも管理者でもない。入口は /me・/family", async () => {
+    const self = await resolvePrincipal(db, env(), SECRET, await linkCookie(NOW + DAY), NOW);
+    expect(self).toMatchObject({ role: "self", judge: false, admin: false, accountId: null, caseloadOf: null, personId: DEMO_SELF_PERSON_ID, contactId: null });
+    expect(homePath(self!.role)).toBe("/me");
+    const fam = await resolvePrincipal(db, env(), SECRET, await linkCookie(NOW + DAY, DEMO_FAMILY_CONTACT_ID), NOW);
+    expect(fam).toMatchObject({ role: "family", accountId: null, personId: DEMO_SELF_PERSON_ID, contactId: DEMO_FAMILY_CONTACT_ID });
+    expect(homePath(fam!.role)).toBe("/family");
+    // 役で持てる物は審査員の本人・家族と同じ（Claude は呼べない）
+    for (const p of [self!, fam!]) {
+      expect(allows(p, "read")).toBe(true);
+      expect(allows(p, "save")).toBe(true);
+      expect(allows(p, "ai")).toBe(false);
+      expect(canViewPage(p.role, "person")).toBe(false);
+      expect(canViewPage(p.role, "caseload")).toBe(false);
+      expect(caseloadScope(p)).toBeNull();
+    }
+    // 本人のページの壁: 自分の本人だけ
+    expect(await personInScope(db, self!, DEMO_SELF_PERSON_ID)).not.toBeNull();
+    expect(await personInScope(db, self!, "p-02")).toBeNull();
+  });
+
+  it("版が違う・pv が link でない・審査員の役を選べない（役選択は審査員のセッションだけ）", async () => {
+    expect(await resolvePrincipal(db, env(), SECRET, await linkCookie(NOW + DAY, null, 2), NOW)).toBeNull();
+    const t = await linkCookie(NOW + DAY);
+    const sign = (o: object) => signSession(o as never, SECRET);
+    expect(await resolvePrincipal(db, env(), SECRET, await sign({ v: 1, k: "link", p: DEMO_SELF_PERSON_ID, c: null, g: 1, pv: "x", iat: NOW, exp: NOW + DAY }), NOW)).toBeNull();
+    expect(await chooseJudgeRole(db, env(), SECRET, t, "care_manager", NOW)).toBeNull();
+  });
+
+  it("審査員の本人・家族は今までどおり（版 0 のままでも開ける。judgePrincipal は変えない）", async () => {
+    expect((await asJudge("self")).principal).toMatchObject({ role: "self", judge: true, accountId: DEMO_JUDGE_ACCOUNT_ID, personId: DEMO_SELF_PERSON_ID });
+    expect((await asJudge("family")).principal).toMatchObject({ role: "family", judge: true, contactId: DEMO_FAMILY_CONTACT_ID });
+  });
+});
+
 describe("審査員の役選択", () => {
   it("4 つの役で、それぞれの入口と中身", async () => {
     const cm = await asJudge("care_manager");
@@ -382,7 +460,7 @@ describe("審査員の役選択", () => {
   it("役選択の画面の 4 つ（名前は種から）", async () => {
     expect(await judgeChoices(db)).toEqual([
       { role: "care_manager", label: "ケアマネ", sub: "山本" },
-      { role: "medical", label: "医療班", sub: "受け持ち" },
+      { role: "medical", label: "医療班", sub: "受入一覧" },
       { role: "self", label: "本人スマホ", sub: "山田 ハナ" },
       { role: "family", label: "家族スマホ", sub: "娘 森 恵子" },
     ]);

@@ -5,9 +5,10 @@
 // 発災時: 地図が上（ピンは状態の色と 2 字ほどの状態）、状態ごとの人数、ハザードごとの人数と状態の内訳、避難先、見直し
 
 import { PLAN_TONES, rowLink, type CaseloadRow, type SortKey } from "../caseload.ts";
-import { PLAN_STATUSES, type GeoPoint, type HazardKind, type PlanStatus } from "../db/types.ts";
+import { PLAN_STATUSES, type GeoPoint, type HazardKind, type OfficeKind, type PlanStatus } from "../db/types.ts";
 import { DISASTER_SCENE, type DisasterState } from "../disaster/state.ts";
-import { BLANK_LABELS, COLOR_LABELS, HAZARD_LABELS, PLAN_STATUS_LABELS } from "../labels.ts";
+import { BLANK_LABELS, COLOR_LABELS, HAZARD_LABELS, PLAN_STATUS_LABELS, stateLabel } from "../labels.ts";
+import { PLACE_LABELS } from "../signals/labels.ts";
 import { COLOR_TONES, fieldLabelOf, type StateTone } from "../person.ts";
 import { compareResults, type Color, type TriageResult } from "../triage/index.ts";
 import { demoOverlay, type DemoOverlay, type DemoScene } from "./demo.ts";
@@ -27,11 +28,15 @@ export type SideDisaster = {
  * 災害モードの担当一覧の行（lib/caseload.ts が行ごとに lib/triage の結果を付けた物）と事業所の災害の状態から、右の面の発災時の入力を作る。
  * 結果は表の並び（compareResults）に並べ直す（ピンの重なりは連絡の順。一覧の並びが氏名・年齢でも変わらない）。
  * 場面は災害の種類を DISASTER_SCENE で引いた物と警戒レベル（入れていなければ null）。場面の無い種類（その他）は scene が null。
+ * 雨雲・震度のデモの絵はデモ事業所だけ（T72）: office にデモでない事業所の種類（regular・unaffiliated）を渡すと scene は null
+ * （本物の事業所の地図に松山の雨雲と「震度6強」を出さない）。office を渡さないのは訓練の画面で、場面は筋書きの物なので今まで通り。
+ * 訓練の仮想モードは scene: false（T79、11/4 の点検の低: 架空の街の出来事なのに本物の松山の地図に雨雲が出た）。ピンと色はそのまま
  * 平時か、結果の無い行があるときは null（平時の面）
  */
 export function sideDisasterOf(
   rows: ReadonlyArray<Pick<CaseloadRow, "triage">>,
   state: Pick<DisasterState, "kind" | "alertLevel">,
+  opts: { office?: OfficeKind; scene?: boolean } = {},
 ): SideDisaster | null {
   if (state.kind === "normal") return null;
   const results: TriageResult[] = [];
@@ -39,7 +44,7 @@ export function sideDisasterOf(
     if (!r.triage) return null;
     results.push(r.triage);
   }
-  const kind = DISASTER_SCENE[state.kind];
+  const kind = opts.scene !== false && (opts.office === undefined || opts.office === "demo") ? DISASTER_SCENE[state.kind] : null;
   const scene: DemoScene | null =
     kind === "heavy_rain" ? { kind: "heavy_rain", level: state.alertLevel } : kind === "earthquake" ? { kind: "earthquake" } : null;
   return { results: results.sort(compareResults), scene };
@@ -192,7 +197,10 @@ export function destinationCounts(rows: ReadonlyArray<CaseloadRow>): Destination
   return out;
 }
 
-/** 地図のピン。発災時はルールの表の色と状態の言葉、理由を title に */
+/**
+ * 地図のピン。発災時はルールの表の色と状態の言葉、理由を title に。
+ * 本人が送った端末の位置（T69b の reported）があればそこに置き、title に「申告位置」を添える（無ければ台帳の位置）。印の形は同じ
+ */
 export function mapPins(
   rows: ReadonlyArray<CaseloadRow>,
   sort: SortKey,
@@ -201,15 +209,19 @@ export function mapPins(
   const rank = new Map((results ?? []).map((r, i) => [r.personId, { r, i }]));
   const n = rows.length;
   return rows
-    .filter((r): r is CaseloadRow & { location: GeoPoint } => r.location !== null)
-    .map((row, i) => {
+    .flatMap((r) => {
+      const at = r.reported ?? r.location;
+      return at ? [{ row: r, at, reported: r.reported !== null && r.reported !== undefined }] : [];
+    })
+    .map(({ row, at, reported }, i) => {
       const hit = rank.get(row.id);
-      const state = hit ? COLOR_LABELS[hit.r.color] : null;
+      const state = hit ? stateLabel(hit.r) : null;
+      const base = hit ? `${row.name} ${state} ${hit.r.reason}` : row.name;
       return {
         id: row.id,
         label: surname(row.name),
-        title: hit ? `${row.name} ${state} ${hit.r.reason}` : row.name,
-        location: row.location,
+        title: reported ? `${base} ${PLACE_LABELS.reported}` : base,
+        location: at,
         href: rowLink(sort, null, row.id).href,
         tone: hit ? COLOR_TONES[hit.r.color] : null,
         state,

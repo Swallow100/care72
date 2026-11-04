@@ -77,7 +77,7 @@ const emptyTexts = (): Record<TextKey, string> =>
 
 const PANEL = "rounded-lg bg-panel px-4 py-4";
 const FIELD =
-  "block w-full rounded-lg bg-panel2 px-3 py-2 text-xl leading-relaxed text-ink outline-none focus-visible:outline-2 focus-visible:outline-accent";
+  "block w-full rounded-lg bg-panel2 px-3 py-2 text-xl leading-relaxed text-ink outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-accent";
 
 /** 見出しと 1 行だけの頁（受付終了・回答済） */
 export function SurveyNotice({ state, heading, text }: { state: "closed" | "done"; heading: string; text: string }) {
@@ -296,7 +296,7 @@ export function SurveyForm({ token, opened, turnstileSiteKey }: { token: string;
         <button
           type="submit"
           disabled={busy || waitingTurnstile}
-          className="relative flex h-14 w-full items-center justify-center gap-2 rounded-lg bg-accent text-xl font-bold text-on-accent disabled:bg-panel disabled:text-muted"
+          className="relative flex h-14 w-full items-center justify-center gap-2 rounded-lg bg-accent-fill text-xl font-bold text-on-accent disabled:bg-panel disabled:text-muted"
           data-press="overlay"
         >
           <SendIcon aria-hidden className="size-6 shrink-0" />
@@ -327,14 +327,13 @@ type QuestionProps = {
   onText: (key: TextKey, value: string) => void;
 };
 
-/** 記入欄（問 5・問 9 の理由・ご意見）。答えは任意 */
+/** 記入欄（問 5・問 9 の理由・ご意見）。全部の問いが任意なので（案内の「答えたくない問いは空けて構いません」）、問いごとの「任意」は付けない */
 function FreeField({ fieldKey, label, value, onText, big }: { fieldKey: FreeKey; label: string; value: string; onText: QuestionProps["onText"]; big: boolean }) {
   const id = `survey-${fieldKey}`;
   return (
     <div data-question={fieldKey}>
       <label htmlFor={id} className={`block leading-snug font-bold ${big ? "text-xl" : "mt-4 text-lg"}`}>
         {label}
-        <span className="ml-2 text-[1rem] font-normal text-muted">{SURVEY_LABELS.optional}</span>
       </label>
       <textarea
         id={id}
@@ -345,7 +344,8 @@ function FreeField({ fieldKey, label, value, onText, big }: { fieldKey: FreeKey;
         className={`mt-2 resize-y ${FIELD}`}
       />
       <p className="mt-1 text-right text-[1rem] text-muted">
-        {value.length}/{FREE_MAX} {SURVEY_LABELS.chars}
+        {value.length}/{FREE_MAX}
+        {SURVEY_LABELS.chars}
       </p>
     </div>
   );
@@ -371,7 +371,13 @@ function Question({ item, choices, texts, onToggle, onText }: QuestionProps) {
       <div role={q.multi ? "group" : "radiogroup"} aria-labelledby={titleId}>
         <h3 id={titleId} className="text-xl leading-snug font-bold">
           {q.text}
-          {q.multi && <span className="ml-2 text-[1rem] font-normal text-muted">{SURVEY_LABELS.multi}</span>}
+          {/* 「複数可」は 1 語のまま（375px で「複数／可」に割れない）。間は空白にして、次の行に送られたときに頭が下がらないように */}
+          {q.multi && (
+            <>
+              {" "}
+              <span className="text-[1rem] font-normal whitespace-nowrap text-muted">{SURVEY_LABELS.multi}</span>
+            </>
+          )}
         </h3>
         <div className="mt-3 grid gap-2">
           {q.choices.map((c) => {
@@ -399,8 +405,8 @@ function Question({ item, choices, texts, onToggle, onText }: QuestionProps) {
             );
           })}
         </div>
-        {q.note && <p className="mt-2 text-[1rem] text-muted">{q.note}</p>}
       </div>
+      {/* その他の内容は「その他」（どの問いでも選択肢の最後）のすぐ下。問 4 の支援者の注はその下 */}
       {q.other && otherOpen && (
         <label className="mt-3 block" data-question={q.other.key}>
           <span className="block text-lg font-bold">{SURVEY_LABELS.otherText}</span>
@@ -414,6 +420,7 @@ function Question({ item, choices, texts, onToggle, onText }: QuestionProps) {
           />
         </label>
       )}
+      {q.note && <p className="mt-2 text-[1rem] text-muted">{q.note}</p>}
       {follow && <FreeField fieldKey={follow.key} label={follow.text} value={texts[follow.key]} onText={onText} big={false} />}
     </section>
   );

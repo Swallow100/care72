@@ -3,12 +3,13 @@ import Link from "next/link";
 import { countColors } from "@/components/disaster/ColorCounts";
 import { Classification } from "@/components/list/Classification";
 import { Hearing } from "@/components/list/Hearing";
+import { Summary } from "@/components/list/Summary";
 import { CaseloadTable } from "@/components/list/CaseloadTable";
 import { DisasterSummary } from "@/components/list/DisasterSummary";
 import { DisasterTable } from "@/components/list/DisasterTable";
 import { FilterBar } from "@/components/list/FilterBar";
-import type { ClassificationSlot, HearingSlot } from "@/components/list/RowDetail";
-import { SidePane } from "@/components/list/SidePane";
+import type { ClassificationSlot, HearingSlot, SummarySlot } from "@/components/list/RowDetail";
+import { SidePane, type SideMapOptions } from "@/components/list/SidePane";
 import { UnlistedFold } from "@/components/office/UnlistedFold";
 import { UnlistedRows } from "@/components/office/UnlistedRows";
 import { PersonWithIntake } from "@/components/person/PersonWithIntake";
@@ -22,7 +23,7 @@ import type { Principal } from "@/lib/auth/principal";
 import { caseloadScope } from "@/lib/auth/scope";
 import { classViewOf } from "@/lib/classify/view";
 import { requirePage } from "@/lib/auth/server";
-import { hasAnthropicKey } from "@/lib/claude/client";
+import { aiStatusFor } from "@/lib/claude/cloudflare";
 import { intakePropsOf, type IntakeProps } from "@/lib/intake/props";
 import {
   caseloadHref,
@@ -41,14 +42,16 @@ import { CASELOAD_CSV_PATH, EXPORT_LABELS, OWN_SHEETS_PATH } from "@/lib/forms/e
 import { listHref, listView, type ListViewResult } from "@/lib/list/view";
 import { personDisaster } from "@/lib/disaster/person";
 import { elapsedText, shortJst } from "@/lib/disaster/state";
-import { COLOR_LABELS, TIER_LABELS } from "@/lib/labels";
+import { stateLabel, TIER_LABELS } from "@/lib/labels";
+import { nowcastOn } from "@/lib/jma/nowcast";
 import { buildSidePane, sideDisasterOf } from "@/lib/map/side";
+import { loadOfficePlace } from "@/lib/office/place";
 import { parsePeopleError } from "@/lib/office/http";
 import { NEW_PERSON_PATH } from "@/lib/office/http-paths";
 import { OFFICE_ERROR_LABELS, OFFICE_LABELS } from "@/lib/office/labels";
 import { loadPlanForm, planFormView } from "@/lib/forms/plan-form";
 import { COLOR_TONES, loadPersonPage, toPersonView, type PersonView as View } from "@/lib/person";
-import type { Color } from "@/lib/triage/index";
+import type { TriageResult } from "@/lib/triage/index";
 
 // D1 を毎回読む
 export const dynamic = "force-dynamic";
@@ -73,10 +76,19 @@ type Props = {
  */
 const CLASSIFICATION: ClassificationSlot = (s) => <Classification signalId={s.id} view={classViewOf(s.row)} editable inset />;
 
-/** 行の詳細の「聞き取り」（T49）。押した答えと Claude の聞き取りメモ（AI の印）。ケアマネが直せる。色と順は動かさない */
+/** 行の詳細の「聞き取り」（T49）。押した答えと Claude の聞き取りメモ（AI の印）。ケアマネが直せる。色と順は動かさない。場所の欄に避難先の名前と申告位置（T69b） */
 const HEARING: HearingSlot = (s) => (
-  <Hearing signalId={s.id} source={{ answers: s.row.answers, ai_memo: s.row.ai_memo, memo: s.row.memo }} editable inset />
+  <Hearing
+    signalId={s.id}
+    source={{ answers: s.row.answers, ai_memo: s.row.ai_memo, memo: s.row.memo }}
+    place={s.place}
+    editable
+    inset
+  />
 );
+
+/** 行の詳細の「まとめ」（T69b）。Claude のまとめ（AI の印）と本人の言葉を並べる。ケアマネが直せる・まとめが無ければ「生成」。色と順は動かさない */
+const SUMMARY: SummarySlot = (s) => <Summary signalId={s.id} summary={s.summary} transcript={s.transcript} editable inset />;
 
 // 担当一覧。ケアマネは自分の担当、審査員（ケアマネの役）はデモ事業所の山本の担当。
 // 行を押すと本人のページが右に開き（?open=<id>）、一覧は左に圧縮される。狭い幅は本人のページだけ。
@@ -92,9 +104,15 @@ export default async function CaseloadPage({ searchParams }: Props) {
 
   const now = new Date().toISOString();
   let data: Caseload | null;
+  // 右の面の地図の真ん中（ピンが無いとき。事業所の中心、T68）と、気象庁の雨雲（デモでない事業所で旗 JMA_NOWCAST が on のとき）。T72
+  let map: SideMapOptions = { center: null, nowcast: false };
   try {
     const { env } = await getCloudflareContext({ async: true });
     data = scope ? await loadCaseload(env.DB, scope, todayJst(), now) : null;
+    if (principal.office) {
+      const place = await loadOfficePlace(env.DB, principal.office.id).catch(() => null);
+      map = { center: place?.center ?? null, nowcast: nowcastOn(env) && principal.office.kind !== "demo" };
+    }
   } catch (e) {
     console.error("担当一覧を読めない", e);
     return <Message title="読込失敗" />;
@@ -110,12 +128,15 @@ export default async function CaseloadPage({ searchParams }: Props) {
   const view: ListView = { dir, filter };
   const count = filterActive(filter) ? `${rows.length} / ${all.length} 人` : `${all.length} 人`;
   const options = filterOptions(data.rows);
+  // 色ごとの人数（絞る前）。上の人数と絞込の帯の状態の切替で同じ数
+  const colorCounts = countColors(all.flatMap((r) => (r.triage ? [r.triage.color] : [])));
   const filterBar = (actions?: React.ReactNode) => (
     <FilterBar
       filter={filter}
       areas={options.areas}
       marks={options.marks}
       disaster={disaster}
+      colorCounts={colorCounts}
       sort={key}
       dir={dir}
       open={open}
@@ -157,7 +178,11 @@ export default async function CaseloadPage({ searchParams }: Props) {
 
   // 右の面（T14）: 平時は計画の内訳・見直し・未確認・地図。災害モード（T09）は地図が上で、ピンは行の lib/triage の色、
   // 雨雲・震度のデモは事業所の災害の種類と警戒レベルから
-  const side = buildSidePane(all, { sort: key, disaster: data.situation ? sideDisasterOf(all, data.disaster) : null });
+  // 雨雲・震度のデモの絵はデモ事業所だけ（T72。本物の事業所の地図には出さない）
+  const side = buildSidePane(all, {
+    sort: key,
+    disaster: data.situation ? sideDisasterOf(all, data.disaster, { office: principal.office?.kind ?? "regular" }) : null,
+  });
   const s = data.situation;
   // 発災時は列が多く表に約 64rem 要るので広く使い、右の面を横に出すのは 1536px（2xl）から（それ未満は表の下、components/list/SidePane）
   return (
@@ -170,25 +195,22 @@ export default async function CaseloadPage({ searchParams }: Props) {
     >
       <section aria-labelledby="caseload-title" className="min-w-0">
         {/* 利用者追加（T30）は見出しの段の右上。事業所のケアマネ追加と同じ形（主の操作・人＋のアイコン・32px）。
-            その左に書き出し（T62）: CSV出力・一括印刷（今の並びと絞込のまま） */}
+            書き出し（T62: CSV出力・一括印刷）は絞込の帯の右端の 1 か所だけ（T78。前は見出しの段にも同じ 2 つがあった） */}
         <PageHead
           id="caseload-title"
           title="担当一覧"
           count={count}
           actions={
-            <>
-              <ExportButtons view={lv} />
-              <ButtonLink href={NEW_PERSON_PATH} kind="main" icon={AddPersonIcon}>
-                {OFFICE_LABELS.addPerson}
-              </ButtonLink>
-            </>
+            <ButtonLink href={NEW_PERSON_PATH} kind="main" icon={AddPersonIcon}>
+              {OFFICE_LABELS.addPerson}
+            </ButtonLink>
           }
         />
         {/* 災害モードは色ごとの人数（大きく）と発災・停電からの経過（平時の計画の人数は右の面の「計画」） */}
         {s && (
           <Panel as="div" className="mt-3 px-4">
             <DisasterSummary
-              counts={countColors(all.flatMap((r) => (r.triage ? [r.triage.color] : [])))}
+              counts={colorCounts}
               disaster={elapsedText(s.disasterAt, s.now)}
               outage={s.outageAt ? { elapsed: elapsedText(s.outageAt, s.now), area: s.outageTowns !== null } : null}
               at={shortJst(now)}
@@ -198,7 +220,7 @@ export default async function CaseloadPage({ searchParams }: Props) {
           </Panel>
         )}
         <Panel as="div" className="mt-3 px-3 py-2">
-          {/* 絞ったあとに押す流れ。帯の右端にも同じ 2 つ（T62） */}
+          {/* 書き出しは絞ったあとに押す流れなので、絞込の帯の右端に 1 か所（T62・T78） */}
           {filterBar(<ExportButtons view={lv} />)}
         </Panel>
         {peopleError && (
@@ -214,7 +236,7 @@ export default async function CaseloadPage({ searchParams }: Props) {
           // 横に送らない。PC の幅（1024px 以上）は全部の列、狭い幅は列を省く（表の部品）
           <div className={`mt-3 ${TABLE_BOX}`}>
             {disaster ? (
-              <DisasterTable rows={rows} sort={key} dir={dir} filter={filter} classification={CLASSIFICATION} hearing={HEARING} />
+              <DisasterTable rows={rows} sort={key} dir={dir} filter={filter} classification={CLASSIFICATION} hearing={HEARING} summary={SUMMARY} />
             ) : (
               <CaseloadTable rows={rows} sort={key} dir={dir} filter={filter} />
             )}
@@ -222,7 +244,7 @@ export default async function CaseloadPage({ searchParams }: Props) {
         )}
         {unlisted}
       </section>
-      <SidePane data={side} />
+      <SidePane data={side} map={map} />
     </main>
   );
 }
@@ -252,7 +274,8 @@ async function PersonPanel({
     const planForm = rows ? planFormView(await loadPlanForm(env.DB, rows.person.office_id)) : undefined;
     view = rows && d ? toPersonView(rows, { today: todayJst(), mode: d.mode, triage: d.triage, situation: d.situation, planForm }) : null;
     // 入れる欄（T03）はケアマネの役だけ（担当一覧はケアマネの役しか開けない）
-    intake = rows && principal.role === "care_manager" ? intakePropsOf(rows, hasAnthropicKey(env)) : null;
+    // AI の状態（未設定・上限到達・本日残り）は lib/claude/status.ts の 1 か所（T76）
+    intake = rows && principal.role === "care_manager" ? intakePropsOf(rows, await aiStatusFor(rows.person.office_id)) : null;
   } catch (e) {
     console.error("本人のページを読めない", e);
     failed = true;
@@ -295,7 +318,7 @@ function CompactList({ rows, sort, open, view }: { rows: CaseloadRow[]; sort: So
             >
               {r.triage ? (
                 <span className="text-center">
-                  <TriageTag color={r.triage.color} />
+                  <TriageTag triage={r.triage} />
                   {r.rank !== null && <span className="mt-0.5 block text-xs text-muted">{r.rank}</span>}
                 </span>
               ) : (
@@ -340,11 +363,11 @@ function ExportButtons({ view }: { view: ListViewResult }) {
   );
 }
 
-/** ルールの表の色の印（至急・要確認・不明・無事）。色だけにせず文字を添える */
-function TriageTag({ color, size = "sm" }: { color: Color; size?: "sm" | "md" }) {
+/** ルールの表の色の印（至急・要確認・不明・無事。受入・搬送から来た緑は「受入」「搬送」、T78）。色だけにせず文字を添える */
+function TriageTag({ triage, size = "sm" }: { triage: Pick<TriageResult, "color" | "greenVia">; size?: "sm" | "md" }) {
   return (
-    <StateTag tone={COLOR_TONES[color]} size={size}>
-      {COLOR_LABELS[color]}
+    <StateTag tone={COLOR_TONES[triage.color]} size={size}>
+      {stateLabel(triage)}
     </StateTag>
   );
 }

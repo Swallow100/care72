@@ -1,12 +1,14 @@
 // 経過の撤回（docs/tasks/T63.md）の画面の言葉と断り。画面（client の部品）からも読むので、ここは D1 に触らない。
 // 書き足しの言葉（lib/consent/labels.ts の COMPOSER_LABELS）と、フォームの「取消」（lib/labels.ts の OFFICE_LABELS.cancel）と分ける。
 
+import { DIALOG_LABELS } from "../ui/labels.ts";
+
 export const RETRACT_LABELS = {
   /** 行の右の小さなボタン（開く）と、開いた欄の確定（赤の文字） */
   open: "撤回",
   confirm: "撤回",
-  /** 開いた欄を閉じる */
-  cancel: "戻る",
+  /** 開いた欄を閉じる。ほかの確認の窓（components/ui の Dialog）と同じ「取消」（T78。前はここだけ「戻る」） */
+  cancel: DIALOG_LABELS.cancel,
   /** 理由の欄の名前と placeholder（任意） */
   note: "理由",
   sending: "送信中",

@@ -15,11 +15,11 @@ export type ButtonSize = "sm" | "md" | "lg";
 type IconType = ComponentType<SVGProps<SVGSVGElement>>;
 
 const KIND: Record<ButtonKind, string> = {
-  main: "bg-accent text-on-accent disabled:bg-panel2 disabled:text-muted",
+  main: "bg-accent-fill text-on-accent disabled:bg-panel2 disabled:text-muted",
   plain: "bg-panel2 text-ink disabled:text-muted",
   plainIn: "bg-panel text-ink disabled:text-muted",
   danger: "bg-panel2 text-danger disabled:text-muted",
-  dangerFill: "bg-danger text-on-accent disabled:bg-panel2 disabled:text-muted",
+  dangerFill: "bg-danger-fill text-on-accent disabled:bg-panel2 disabled:text-muted",
   quiet: "text-ink disabled:text-muted",
 };
 

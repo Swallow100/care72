@@ -51,7 +51,7 @@ import {
 } from "../labels.ts";
 import {
   contactRoles,
-  findLeaks,
+  maskReply,
   pseudonymize,
   PseudonymLeakError,
   pseudonymizeText,
@@ -60,7 +60,7 @@ import {
   type PseudonymInput,
   type PseudonymKey,
 } from "../pseudonym/index.ts";
-import type { ActionRecord, DrillIncident, DrillTurn, HeardSignal, PersonaHook, PersonaInput, PersonState } from "./engine.ts";
+import type { ActionRecord, DrillIncident, DrillTurn, HeardSignal, PersonaHook, PersonaInput, PersonState, StopLog } from "./engine.ts";
 import { clockLabel, PHONE_LABELS, SHELTER_LABELS, TSUNAMI_LABELS, WATER_LABELS } from "./labels.ts";
 import { nightLine } from "./night.ts";
 import { eventHour, type FixedTurn, type OutageArea, type PhoneState, type WorldState } from "./scenarios.ts";
@@ -372,7 +372,7 @@ export const PERSONA_SYSTEM = [
   "1. 想定の表の行がある時は、その行のとおりに連絡する（誰が・赤か緑か・4 問・いる所）。speech は行の「言う事の元」を、その人が言いそうな言い方に言い換える。元が無ければその人らしい短い言葉。",
   "2. 想定の表の行が無い時は、状況と前の連絡から自分で決める。連絡するのは、状況が変わってケアマネに伝えたい事がある時だけ。前と同じなら連絡しない。",
   "3. 押せるのは「押せる人」に書いた人だけ。押せる人がいなければ連絡しない。遠くに住む家族は本人の様子が分からなければ押さない。",
-  "4. 本人（80 代）の言葉はやさしい短い話し言葉で 1〜2 文。松山の言い方（「行かん」「〜けん」「〜じゃ」）でもよい。認知症の本人は話が噛み合わないことがある。",
+  "4. 本人の言葉はやさしい短い話し言葉で 1〜2 文。認知症の本人は話が噛み合わないことがある。",
   "5. 家族は娘・息子・夫・妻の口調、支援者は近所の人の口調。本人のことは「母」「父」「うちの人」「おばあちゃん」などと言う。",
   "6. 名前・住所・電話番号を言わない。「A さん」とも言わない。",
   "7. 「診断」「判定」「重症」と言わない。病名を言い切らない。薬の量を言わない。助言をしない。",
@@ -433,14 +433,18 @@ export const DOING_MAX = 40;
 const BANNED = /診断|判定|重症|病気がわかる|病気が分かる/;
 const ALIAS = /(?<![A-Za-z])[A-Z]{1,3}[ 　]?さん/g;
 
-/** Haiku の言葉を画面に出せる形に。仮名（A さん）は「本人」に、禁じた言葉・元の情報が残る物は捨てる、長さで切る */
+/**
+ * Haiku の言葉を画面に出せる形に。仮名（A さん）は「本人」に、禁じた言葉・元の情報（台帳の名前・電話）が残る物は捨てる、長さで切る。
+ * 作った名前・住所の形（「隣の佐藤さん」）は捨てずに伏せ字に（T74 の続き。lib/pseudonym の maskReply）
+ */
 export function cleanWords(raw: string, key: PseudonymKey, max: number): string | null {
   let t = raw.replace(/\s+/g, " ").trim();
   if (!t) return null;
   t = t.replace(ALIAS, "本人");
   if (BANNED.test(t)) return null;
-  if (findLeaks(t, key).length > 0) return null;
-  return Array.from(t).slice(0, max).join("");
+  const masked = maskReply(t, key);
+  if (masked === null) return null;
+  return Array.from(masked).slice(0, max).join("");
 }
 
 function doingOf(answer: PersonaAnswer, key: PseudonymKey): string | null {
@@ -602,6 +606,8 @@ export type PersonaDeps = {
   ai: AskJsonContext;
   /** 年齢を数える日（JST、YYYY-MM-DD）。無ければ今日 */
   on?: string;
+  /** 上限で落ちたときに「本人役 停止」を書き留める所（T70）。返す物は変わらない（表の固定の安否か連絡なし） */
+  stops?: StopLog;
 };
 
 /**
@@ -622,6 +628,7 @@ export function createPersonaHook(deps: PersonaDeps): PersonaHook {
       const r = await askJson(buildPersonaRequest(persona.profile, tick, input.virtual === true), deps.ai);
       return personaTurns(input, persona, r.value);
     } catch (e) {
+      if (e instanceof AiLimitReached) deps.stops?.hit("persona");
       // AI の層の失敗と伏せきれないは想定どおり。それ以外（台帳を読めないなど）は名前だけログに残す（中身は書かない）
       if (!isPersonaFailure(e)) console.error("本人役の 1 刻みに失敗", e instanceof Error ? e.name : typeof e);
       return fixedTurns(input);
@@ -675,7 +682,7 @@ export const CALL_SYSTEM = [
   "入力は JSON。「本人役」は本人と周りの人の説明、「電話」は今の時刻・状況・前の連絡・電話に出た人。",
   "電話に出た人が言う事を speech に 1〜3 文で返す。ケアマネは「大丈夫ですか。今どこにいますか」と聞いている。",
   "「伝える様子」があれば、その様子と食い違わない事を言う（無事なのにけがをしたと言わない、けがなのに無事と言わない）。",
-  "本人（80 代）はやさしい短い話し言葉。松山の言い方でもよい。認知症の本人は話が噛み合わないことがある。家族・支援者はその人の口調。",
+  "本人はやさしい短い話し言葉。認知症の本人は話が噛み合わないことがある。家族・支援者はその人の口調。",
   "名前・住所・電話番号を言わない。「A さん」とも言わない。「診断」「判定」「重症」と言わない。病名を言い切らない。薬の量を言わない。",
 ].join("\n");
 

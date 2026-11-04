@@ -34,6 +34,12 @@ export function insert(table: string, row: Record<string, SqlValue>): string {
  * 災害モード（disaster_state）は平時に、事業所の経過・様式 9 の手直し・様式の対応表は空に戻る
  */
 export const CLEAR_ORDER = [
+  // 気象庁の写し（T72）。子（警報・地震・観測点）が電文を指すので子から。事業所ごとでないのでデモの戻しでは消さない（lib/seed/reset.ts）
+  "jma_quake_points",
+  "jma_quakes",
+  "jma_warnings",
+  "jma_entries",
+  "jma_fetch_state",
   // アンケートの共有のリンクと答え（T65）。答えがリンクを指すので答えから
   "survey_responses",
   "survey_shares",
@@ -92,7 +98,7 @@ export type SeedOptions = {
 };
 
 /** 種で消さない表: 世界の部屋の ID（T50。消すと次の仮想の訓練で Agent を作り直し、前の Agent が残る）と、アンケートの Web 版（T42）。本物のケアマネの答えが入るので、配信の作り直し（tools/deploy/rebuild-remote.sh の seed）でも残す。
- *  事業所の行は消して入れ直すので、答えのリンクが事業所を指す外部キーは取引の終わりまで後回しにする（PRAGMA defer_foreign_keys。事業所の id は種で同じ） */
+ *  事業所の行は消して入れ直す（事業所の id は種で同じ）。答えのリンクの office_id は 0021 から外部キーでない（T73a）。外部キーは取引の終わりまで後回しにする（PRAGMA defer_foreign_keys） */
 export const KEEP_ON_SEED: ReadonlySet<string> = new Set(["survey_responses", "survey_shares", "survey_answers", "survey_links", "survey_attempts", "ai_agents"]);
 
 export function seedStatements(opts: SeedOptions = {}): string[] {

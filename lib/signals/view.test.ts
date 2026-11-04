@@ -5,13 +5,13 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { PhoneSheet } from "../../components/phone/PhoneSheet.tsx";
+import { PhoneSheet, phoneBlocks } from "../../components/phone/PhoneSheet.tsx";
 import { PhoneView, type PhoneActions } from "../../components/phone/PhoneView.tsx";
 import { SEED_AT, SEED_PEOPLE, seedConsents } from "../../seed/people.ts";
 import { buildOwnSheet, EMERGENCY_TEXT, lineText } from "../forms/own-sheet.ts";
 import type { PersonPageRows } from "../person.ts";
 import { createPhone, type PhoneState } from "./phone.ts";
-import { QUESTIONS, type QuestionId } from "./questions.ts";
+import { choicesFor, QUESTIONS, type QuestionId } from "./questions.ts";
 
 const noop: PhoneActions = {
   green() {},
@@ -19,6 +19,7 @@ const noop: PhoneActions = {
   where() {},
   answer() {},
   skip() {},
+  locate() {},
   extend() {},
   finish() {},
   again() {},
@@ -51,6 +52,8 @@ const STATES: PhoneState[] = [
   ...QUESTIONS.slice(1).map((x) => q(x.id)),
   q("canMove", { voice: "speaking" }),
   q("canMove", { voice: "listening" }),
+  // いまの 場所を おくりますか（T69b）
+  { step: "locate", answers: {} },
   { step: "prompt" },
   { step: "recording", startedAt: T, until: T + 30_000 },
   { step: "sending", color: "red" },
@@ -138,23 +141,23 @@ describe("災害モードの画面", () => {
 
   it("赤の終わりは「とどきました」と 119 の 1 行。緑の終わりに 119 は無い。通信なしは「まだ とどいて いません」", () => {
     const red = view({ step: "done", color: "red", delivery: "sent" });
-    expect(text(red)).toBe("とどきました命が 危ないと 感じたら、すぐ 119番へもう 一度");
+    expect(text(red)).toBe("とどきました命が 危ないと 感じたら、すぐ 119番へ最初から");
     expect(buttons(red)).toEqual(["again"]);
     // 119 は押してもかからない（リンクにしない）
     expect(red).not.toContain("tel:");
     const green = view({ step: "done", color: "green", delivery: "queued" });
-    expect(text(green)).toBe("まだ とどいて いませんつながったら 送りますもう 一度");
+    expect(text(green)).toBe("まだ とどいて いませんつながったら 送ります最初から");
     expect(text(view({ step: "done", color: "red", delivery: "dropped" }))).not.toContain("つながったら");
   });
 
   it("聞き直しても無音のまま録音だけ送った終わりは「ろくおんを おくりました」と 119 の 1 行（T37）", () => {
     const html = view({ step: "done", color: "red", delivery: "sent", silent: true });
-    expect(text(html)).toBe("ろくおんを おくりました命が 危ないと 感じたら、すぐ 119番へもう 一度");
+    expect(text(html)).toBe("ろくおんを おくりました命が 危ないと 感じたら、すぐ 119番へ最初から");
     expect(html).toContain("data-silent");
     expect(buttons(html)).toEqual(["again"]);
     // 赤が端末に残っている間は、今まで通り「まだ とどいて いません」
     expect(text(view({ step: "done", color: "red", delivery: "queued", silent: true }))).toBe(
-      "まだ とどいて いませんつながったら 送ります命が 危ないと 感じたら、すぐ 119番へもう 一度",
+      "まだ とどいて いませんつながったら 送ります命が 危ないと 感じたら、すぐ 119番へ最初から",
     );
   });
 
@@ -162,7 +165,8 @@ describe("災害モードの画面", () => {
     for (const s of STATES) {
       const html = view(s);
       if (s.step === "question") {
-        const choices = QUESTIONS.find((x) => x.id === s.id)!.choices.length;
+        // 避難所の問い（T69b）は台帳の避難先だけ出す（ここは避難先なし）
+        const choices = choicesFor(QUESTIONS.find((x) => x.id === s.id)!).length;
         expect(buttons(html).length, s.id).toBe(choices + 1);
       } else expect(buttons(html).length, s.step).toBeLessThanOrEqual(3);
       const t = text(html);
@@ -182,6 +186,7 @@ describe("119 の 1 行（T48、アドバイザーの返事）", () => {
     // 声の問いでも、からだの訴えを押したあとでも同じ 1 行（答えで出し分けない）
     q("water", { voice: "listening", answers: { body: { choice: "breath", via: "press" } } }),
     q("fireGas", { voice: "speaking", answers: { body: { choice: "chest", via: "voice" } } }),
+    { step: "locate", answers: { place: { choice: "car", via: "press" } } },
     { step: "prompt" },
     { step: "recording", startedAt: T, until: T + 30_000 },
     { step: "recording", startedAt: T, until: T + 120_000 },
@@ -192,12 +197,12 @@ describe("119 の 1 行（T48、アドバイザーの返事）", () => {
     ]),
   ];
 
-  it("無事じゃない を押したあとの全部の画面に、同じ固定の 1 行をいちばん下（終わりは もう 一度 の上）に出す", () => {
+  it("無事じゃない を押したあとの全部の画面に、同じ固定の 1 行をいちばん下（終わりは 最初から の上）に出す", () => {
     for (const s of RED_FLOW) {
       const html = view(s);
       expect(html.match(/data-emergency/g), JSON.stringify(s)).toHaveLength(1);
       const t = text(html);
-      const tail = s.step === "done" ? t.slice(0, t.lastIndexOf("もう 一度")) : t;
+      const tail = s.step === "done" ? t.slice(0, t.lastIndexOf("最初から")) : t;
       expect(tail.endsWith(E), JSON.stringify(s)).toBe(true);
       // 押してもかからない（リンクにしない）
       expect(html).not.toContain("tel:");
@@ -240,13 +245,19 @@ describe("平時の画面", () => {
   };
   const sheet = buildOwnSheet(rows, { today: "2026-11-02", officeName: "デモ事業所" });
 
-  it("本人の 1 枚（T06）の文をそのまま。電話は押すとかけられ、119 はリンクにしない", () => {
+  it("本人の 1 枚（T06）の文をそのまま。電話は押すとかけられ、119 はリンクにしない。電話の段は番号のある行だけ（T77）", () => {
     const html = renderToStaticMarkup(createElement(PhoneSheet, { sheet }));
     const t = text(html);
     for (const line of sheet.blocks.flatMap((b) => b.lines)) {
       const words = lineText({ ...line, phone: undefined });
-      expect(t, line.key).toContain(words);
+      // 紙で手で書く線の行（ケアマネ・かかりつけ。番号の欄がまだ無い）はスマホに出さない
+      const handwritten = line.key.startsWith("call.") && !line.phone?.number;
+      if (handwritten) expect(t, line.key).not.toContain(words);
+      else expect(t, line.key).toContain(words);
     }
+    // 山田 ハナは電話の段の行が全部手書きなので、段ごと出さない（家族の番号は 来てくれる 人 の段に）
+    expect(phoneBlocks(sheet.blocks).map((b) => b.id)).not.toContain("call");
+    expect(html).not.toContain("data-block=\"call\"");
     expect(t).toContain("命が 危ないと 感じたら、すぐ 119番へ");
     const tels = [...html.matchAll(/href="tel:([^"]+)"/g)].map((m) => m[1]);
     const numbers = sheet.blocks.flatMap((b) => b.lines).flatMap((l) => (l.phone?.number ? [l.phone.number] : []));

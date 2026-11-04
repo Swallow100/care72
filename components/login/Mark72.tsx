@@ -3,6 +3,7 @@
 // 開いたときに操作の色の輪が一度だけ回って満ちる（12 時から時計回り、1.1 秒）。常時は動かさない。
 // 動きを減らす設定と animate が無い環境では、満ちた形で止める。動画の図「72 時間の輪」と同じ考え（docs/video/MATERIALS.md）。
 // 色は本文色（数字）・薄い本文色（輪の地）・操作の色（満ちる輪）の 3 つだけ。状態の色は使わない（安否の意味ではないため）。
+// still を付けると最初から満ちた形で動かさない（ヘッダーの左上。T66）。画面からは components/brand/BrandMark を通して読む。
 
 import { useEffect, useRef } from "react";
 
@@ -11,11 +12,11 @@ const CIRC = 2 * Math.PI * R;
 /** 日の切れ目（0・24・48 時間の所）。12 時から時計回りの角度 */
 const DAYS = [0, 120, 240];
 
-export function Mark72({ size = 56, className = "" }: { size?: number; className?: string }) {
+export function Mark72({ size = 56, still = false, className = "" }: { size?: number; still?: boolean; className?: string }) {
   const arc = useRef<SVGCircleElement>(null);
   useEffect(() => {
     const el = arc.current;
-    if (!el) return;
+    if (!el || still) return;
     if (typeof el.animate !== "function" || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
       el.style.strokeDashoffset = "0";
       return;
@@ -27,7 +28,7 @@ export function Mark72({ size = 56, className = "" }: { size?: number; className
       fill: "both",
     });
     return () => fill.cancel();
-  }, []);
+  }, [still]);
   return (
     <svg width={size} height={size} viewBox="0 0 100 100" className={className} aria-hidden>
       {/* 輪の地（薄い本文色の灰色） */}
@@ -42,7 +43,7 @@ export function Mark72({ size = 56, className = "" }: { size?: number; className
         stroke="var(--accent)"
         strokeWidth="9"
         strokeDasharray={CIRC}
-        strokeDashoffset={CIRC}
+        strokeDashoffset={still ? 0 : CIRC}
         transform="rotate(-90 50 50)"
       />
       {/* 日の切れ目（面の色で輪を切る） */}

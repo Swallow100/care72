@@ -3,7 +3,7 @@
 // 形は様式 9 の CSV と同じ（lib/forms/form9-csv.ts の csvText: UTF-8 の BOM・CRLF・式の守り）。
 // 上の 2 行は題「担当一覧」と、事業所名・担当・作成日・並び・絞込。1 行空けて見出し、その下に行。
 // 列は表と同じ言葉（lib/list/labels.ts の COLUMN_LABELS、本人のページの上の段の HEAD_LABELS）。
-//   平時:   連絡順（骨格の段。画面の平時の表の連絡順と同じ）・氏名・カナ・年齢・介護度・医療・ハザード・支援者・避難計画・未確認・地区
+//   平時:   組（骨格の段。画面の平時の表の組と同じ。T78 で連絡順から改名）・氏名・カナ・年齢・介護度・医療・ハザード・支援者・避難計画・未確認・地区
 //   発災時: 連絡順（ルールの表の並びの番号。画面の発災時の表の連絡順と同じ値で、絞っても元の番号）・状態・理由・組（骨格の段 1〜8）、
 //           そのあと平時の 氏名〜地区、末尾に 残り・最終連絡（DECISIONS 11/4 00:0x。2 つの番号が同じ名前に見えないよう、段は「組」）
 // 断り方は様式 9 の CSV と同じ: ログインなし 401、役が違う 403、範囲の外 404。書き出したことは経過に残さない（T62 の決め）。
@@ -13,7 +13,7 @@ import { denied } from "../auth/guard.ts";
 import type { Principal } from "../auth/principal.ts";
 import { caseloadScope } from "../auth/scope.ts";
 import { loadCaseload, type Caseload, type CaseloadRow } from "../caseload.ts";
-import { BLANK_LABELS, CARE_LEVEL_LABELS, COLOR_LABELS, HEAD_LABELS, PLAN_STATUS_LABELS } from "../labels.ts";
+import { BLANK_LABELS, CARE_LEVEL_LABELS, HEAD_LABELS, PLAN_STATUS_LABELS, stateLabel } from "../labels.ts";
 import { COLUMN_LABELS, DETAIL_LABELS, FILTER_LABELS } from "../list/labels.ts";
 import { filterWords, listQueryOf, listView, sortWords, type ListViewResult } from "../list/view.ts";
 import { CUSTODY_LABELS } from "../custody/labels.ts";
@@ -36,8 +36,8 @@ export function medicalText(r: Pick<CaseloadRow, "markItems" | "devices">): stri
 /** 発災時の「組」の列の見出し（骨格の段 1〜8。発災時の連絡順と別の値なので別の名前） */
 export const GROUP_HEADER = "組";
 
-/** 平時の連絡順（骨格の段） */
-const NORMAL_ORDER: Column = { header: COLUMN_LABELS.tier, cell: (r) => String(r.tier) };
+/** 平時の組（骨格の段。画面の平時の表と同じ見出し。T78） */
+const NORMAL_ORDER: Column = { header: GROUP_HEADER, cell: (r) => String(r.tier) };
 
 /** 氏名から地区まで（平時・発災時で同じ） */
 const BODY_COLUMNS: ReadonlyArray<Column> = [
@@ -56,7 +56,7 @@ const BODY_COLUMNS: ReadonlyArray<Column> = [
 /** 発災時の先頭（連絡順・状態・理由・組） */
 const DISASTER_HEAD: ReadonlyArray<Column> = [
   { header: COLUMN_LABELS.tier, cell: (r) => num(r.rank) },
-  { header: COLUMN_LABELS.state, cell: (r) => (r.triage ? COLOR_LABELS[r.triage.color] : "") },
+  { header: COLUMN_LABELS.state, cell: (r) => (r.triage ? stateLabel(r.triage) : "") },
   { header: DETAIL_LABELS.reason, cell: (r) => r.triage?.reason ?? "" },
   { header: GROUP_HEADER, cell: (r) => String(r.tier) },
 ];
@@ -88,7 +88,7 @@ export function caseloadCsv(
       `事業所名：${data.office.name}`,
       `担当：${data.careManager.name}`,
       `作成：${jstDateLabel(madeAt)}`,
-      sortWords(view),
+      sortWords(view, data.situation !== null),
       filterWords(view.filter),
     ],
     [],

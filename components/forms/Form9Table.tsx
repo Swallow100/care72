@@ -81,28 +81,30 @@ const HIDE: Partial<Record<Form9ColumnId, string>> = {
 
 /**
  * 列の幅（表は table-fixed。理由の列だけ幅を決めず、残りを全部使う）。1280px で 19 列が 1248px に収まる値。
- * 電話の番号（連絡先）は折り返さない幅
+ * 電話の番号（連絡先）は折り返さず、隣の列にはみ出さない幅（96px では 3px はみ出していた）。
+ * T79（11/4 の点検の低: 1280 で行が 3〜5 行に折れた）: 氏名は名前と年齢が 1 行に、避難・地域・確認方法は 1 項目が 1 行に収まる幅へ広げ、
+ * 理由（1280 で 141px あった）から分けた。医療・介護は段の名前でなく医療の印を並べる（下の cellOf）
  */
 const WIDTH: Record<Form9ColumnId, string> = {
-  no: "w-[34px]",
-  color: "w-[46px]",
-  nameAge: "w-[82px]",
-  medicalCare: "w-[80px]",
-  environment: "w-[64px]",
-  evacuation: "w-[68px]",
-  area: "w-[54px]",
+  no: "w-[30px]",
+  color: "w-[48px]",
+  nameAge: "w-[90px]",
+  medicalCare: "w-[76px]",
+  environment: "w-[66px]",
+  evacuation: "w-[80px]",
+  area: "w-[62px]",
   address: "w-[52px]",
   shelter: "w-[60px]",
   facility: "w-[52px]",
   notes: "w-[52px]",
   careManager: "w-[32px]",
   reason: "",
-  emergency1: "w-[96px]",
-  emergency2: "w-[96px]",
-  means: "w-[66px]",
-  result: "w-[62px]",
-  checkedAt: "w-[52px]",
-  manual: "w-[44px]",
+  emergency1: "w-[100px]",
+  emergency2: "w-[100px]",
+  means: "w-[68px]",
+  result: "w-[60px]",
+  checkedAt: "w-[50px]",
+  manual: "w-[42px]",
 };
 
 type Props = {
@@ -237,18 +239,18 @@ function Cell({ id, row: r, sort, editing, disaster }: { id: Form9ColumnId; row:
         </div>
       );
     case "medicalCare":
+      // 画面は段の数字と医療の印（「5 ステロイド」）。印の無い段（認知症で独居・寝たきり・それ以外）は段の名前。
+      // 段の名前（「抗血小板薬・抗凝固薬・ステロイド・抗てんかん薬」）は長く 5 行に折れたので、画面では title に（紙・CSV は名前のまま。T79）
       return (
-        <div>
-          <span className="font-bold tabular-nums">{r.tier}</span> <span>{TIER_LABELS[r.tier]}</span>
-          {r.marks.length > 0 && (
-            <div className="mt-0.5 flex flex-wrap gap-0.5">
-              {r.marks.map((m) => (
+        <div className="flex flex-wrap items-baseline gap-0.5" title={`${r.tier} ${TIER_LABELS[r.tier]}`}>
+          <span className="mr-0.5 font-bold tabular-nums">{r.tier}</span>
+          {r.marks.length > 0
+            ? r.marks.map((m) => (
                 <span key={m} className="rounded bg-panel2 px-1">
                   {m}
                 </span>
-              ))}
-            </div>
-          )}
+              ))
+            : <span>{TIER_LABELS[r.tier]}</span>}
         </div>
       );
     case "evacuation":

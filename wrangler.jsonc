@@ -21,8 +21,11 @@
       "migrations_dir": "migrations"
     }
   ],
-  // 毎日 19:00 UTC（4:00 JST）にデモ事業所を種に戻す（lib/seed/cron.ts の DAILY_RESET_CRON と同じ文字）
-  "triggers": { "crons": ["0 19 * * *"] },
+  // 毎日 19:00 UTC（4:00 JST）にデモ事業所を種に戻す（lib/seed/cron.ts の DAILY_RESET_CRON と同じ文字）。
+  // 5 分ごとに気象庁の防災情報 XML を取って D1 に写す（lib/jma/cron.ts の JMA_FETCH_CRON と同じ文字。T72）
+  "triggers": { "crons": ["0 19 * * *", "*/5 * * * *"] },
+  // AI の 1 日の上限（デモ事業所だけに効く。lib/claude/usage.ts の dailyLimit）。既定 200 を作者の判断で 600 に（DECISIONS 11/4 12:4x）
+  "vars": { "AI_DAILY_LIMIT": "600" },
   "r2_buckets": [
     {
       "binding": "RECORDINGS",

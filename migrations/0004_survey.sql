@@ -1,4 +1,5 @@
 -- 本物のケアマネの答えが入る表なので、配信の作り直し（tools/deploy/rebuild-remote.sh）で落とさず、IF NOT EXISTS で作る（11/3 10:3x）。
+-- survey_links の offices への外部キーは 0021 で外した（行を残して建て直す。配信の作り直しの drop が落ちないように。T73a）。ここは書き換えない。
 -- ケアマネ向けアンケートの Web 版（docs/tasks/T42.md）。ログインなしの 1 ページ（/survey/<token>）で答えてもらう。
 -- 問いと記号は tools/survey/questions.ts（docs/survey/README.md の写し方と同じ a・b・c…）。
 -- 毎朝 4 時のデモの戻し（lib/seed/reset.ts）では、審査員が作ったリンクと答えだけを消す（本物のケアマネの答えは残す）。

@@ -9,6 +9,7 @@ import { askJson, type AskJsonContext, type AskJsonRequest } from "../claude/cal
 import type { PersonPageRows } from "../person.ts";
 import { parseLedger } from "../db/ledger.ts";
 import {
+  maskedCount,
   pseudonymize,
   pseudonymizeText,
   restoreText,
@@ -102,6 +103,11 @@ export type IntakeProposal = {
   items: DiffItem[];
   /** 欄の形に合わずに捨てた数 */
   dropped: number;
+  /**
+   * 送った文のうち伏せた所の数（台帳の名前・町名・電話と、敬称つきの名前・住所・郵便番号・メールの形。T74）。
+   * 画面は「伏せ字 N」とだけ出す（何を伏せたかは返さない）。文を送らない写真・PDF の読み取りには無い
+   */
+  masked?: number;
 };
 
 export type ExtractOptions = {
@@ -130,5 +136,5 @@ export async function extractIntake(
     text: (s) => restoreText(s, key),
     note: (s) => restoreText(restoreNote(s, text, sealed.text), key),
   });
-  return { ai: { model: r.model }, items, dropped };
+  return { ai: { model: r.model }, items, dropped, masked: maskedCount(text, key) };
 }

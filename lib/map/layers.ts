@@ -17,6 +17,14 @@ export const BASE_LAYER = {
   attribution: { text: "地理院タイル", href: "https://maps.gsi.go.jp/development/ichiran.html" } satisfies Attribution,
 } as const;
 
+/**
+ * 気象庁の雨雲（降水ナウキャスト、T72）。本物の事業所の地図に、旗 JMA_NOWCAST が on のときだけ、加工せずに重ねる。
+ * タイルは Workers の route（app/api/jma/nowc）から。出典と凡例は地図の右下（components/map/NowcastLayer.tsx、lib/jma/nowcast.ts）
+ */
+export const NOWCAST_LAYER = {
+  attribution: { text: "気象庁ホームページ", href: "https://www.jma.go.jp/bosai/nowc/" } satisfies Attribution,
+} as const;
+
 /** 重ねるハザードマップのポータル（出典の記載例の名前） */
 export const HAZARD_PORTAL: Attribution = {
   text: "ハザードマップポータルサイト",
@@ -80,5 +88,11 @@ export function hazardLayer(id: HazardKind): HazardLayer {
   return l;
 }
 
-/** 重ねた層の不透明度（下の地図とピンが読めるように） */
-export const HAZARD_OPACITY = 0.6;
+/** 重ねた層の不透明度（下の地図とピンが読めるように）。T66 で 0.6 → 0.72（下の地図を薄くした分、層を強く） */
+export const HAZARD_OPACITY = 0.72;
+
+/**
+ * 下の地図（淡色地図）の不透明度。ライトだけ少し薄くして、重ねた層と雨雲とピンを浮かせる（T66。地は面の中の灰）。
+ * ダークは明るさを落とした地図のまま（薄くすると暗い地が透けて雨雲の線が沈む）
+ */
+export const BASE_OPACITY = 0.7;

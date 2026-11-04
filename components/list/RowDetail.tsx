@@ -1,6 +1,7 @@
 // 担当一覧の発災時の行の詳細（docs/tasks/T13.md）。中身は lib/list/detail.ts の buildRowDetail で作り、ここは並べるだけ。
 // 上に理由の 1 行（表の理由のまま）と上書きの状態。下は 3 列: 連絡先と電話 / 時計・避難先・支援者 / 最終連絡・信号・録音・分類・優先修正。
 // 分類と直す口（T12）は classification で受ける。無ければ信号に付いた分類を読むだけで出し、それも無ければ「分類なし」。
+// 録音のまとめ（T69b）は分類の上に、本人の言葉（文字起こし）と左右に並べる。直す口は summary で受ける（無ければ読むだけ）。
 
 import { AiMark, StateTag, TONE_TEXT } from "@/components/person/parts";
 import { COLOR_LABELS } from "@/lib/labels";
@@ -9,19 +10,24 @@ import { CLASS_LABELS, DETAIL_LABELS } from "@/lib/list/labels";
 import { CallButtons } from "./CallButtons";
 import { Hearing } from "./Hearing";
 import { OverrideForm } from "./OverrideForm";
+import { Summary } from "./Summary";
 
 export type ClassificationSlot = (signal: DetailSignal) => React.ReactNode;
 /** 聞き取りの欄（T49）。無ければ読むだけで出す */
 export type HearingSlot = (signal: DetailSignal) => React.ReactNode;
+/** 録音のまとめ（T69b）。無ければ読むだけで出す（まとめと本人の言葉を並べる） */
+export type SummarySlot = (signal: DetailSignal) => React.ReactNode;
 
 export function RowDetail({
   detail,
   classification,
   hearing,
+  summary,
 }: {
   detail: Detail;
   classification?: ClassificationSlot;
   hearing?: HearingSlot;
+  summary?: SummarySlot;
 }) {
   const d = detail;
   return (
@@ -170,7 +176,7 @@ export function RowDetail({
             ) : (
               <ul className="space-y-2">
                 {d.signals.map((s) => (
-                  <SignalItem key={s.id} signal={s} classification={classification} hearing={hearing} />
+                  <SignalItem key={s.id} signal={s} classification={classification} hearing={hearing} summary={summary} />
                 ))}
               </ul>
             )}
@@ -188,10 +194,12 @@ function SignalItem({
   signal: s,
   classification,
   hearing,
+  summary,
 }: {
   signal: DetailSignal;
   classification?: ClassificationSlot;
   hearing?: HearingSlot;
+  summary?: SummarySlot;
 }) {
   const hasVoice = s.recording !== null || s.transcript !== null;
   return (
@@ -202,17 +210,18 @@ function SignalItem({
         <StateTag tone={s.tone}>{s.color === "red" ? COLOR_LABELS.red : s.color === "green" ? COLOR_LABELS.green : COLOR_LABELS.gray}</StateTag>
         <span>{s.body}</span>
       </div>
-      <div className="mt-1 empty:hidden">{hearing ? hearing(s) : <Hearing signalId={s.id} source={{ answers: s.row.answers, ai_memo: s.row.ai_memo, memo: s.row.memo }} inset />}</div>
+      <div className="mt-1 empty:hidden">{hearing ? hearing(s) : <Hearing signalId={s.id} source={{ answers: s.row.answers, ai_memo: s.row.ai_memo, memo: s.row.memo }} place={s.place} inset />}</div>
       {s.recording && (
         <div className="mt-1 flex items-center gap-2">
           <span className="text-xs text-muted">{DETAIL_LABELS.recording}</span>
           <audio controls preload="none" src={s.recording} className="h-8 min-w-0 flex-1" data-recording={s.id} />
         </div>
       )}
+      {/* 録音のまとめ（T69b）と本人の言葉。まとめは AI の印、色と順には使わない */}
       {s.transcript && (
-        <p className="mt-1">
-          <span className="text-xs text-muted">{DETAIL_LABELS.transcript}</span> 「{s.transcript}」
-        </p>
+        <div className="mt-1">
+          {summary ? summary(s) : <Summary signalId={s.id} summary={s.summary} transcript={s.transcript} inset />}
+        </div>
       )}
       {hasVoice && <div className="mt-1">{classification ? classification(s) : <ClassesReadOnly signal={s} />}</div>}
     </li>

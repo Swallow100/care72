@@ -18,6 +18,7 @@ import { COLOR_LABELS, CONTACT_KIND_LABELS } from "@/lib/labels";
 import { SOURCE_LABELS } from "@/lib/list/detail";
 import type { StateTone } from "@/lib/person";
 import { callsOf } from "@/lib/drill/calls";
+import type { FictionKind } from "@/lib/drill/fiction";
 import { FictionalMark } from "./Fictional";
 import { ActionIcon, CallInIcon } from "./icons";
 import { UndoButton } from "./UndoButton";
@@ -34,7 +35,7 @@ const TURN_TONES: Record<DrillTurn["color"], StateTone> = { red: "urgent", green
 const TURN_LABELS: Record<DrillTurn["color"], string> = { red: COLOR_LABELS.red, green: COLOR_LABELS.green, unknown: COLOR_LABELS.gray };
 
 /** 手の 1 行（時刻・手・誰に・相手・返事） */
-function Head({ a, names }: { a: ActionRecord; names: Names }) {
+function Head({ a, names, fiction }: { a: ActionRecord; names: Names; fiction?: FictionKind }) {
   const r = a.result;
   const who = a.person ? (names[a.person] ?? a.person) : a.kind === "report_city" ? ACTION_UI.whole : null;
   const callee = calleeText(a);
@@ -48,7 +49,7 @@ function Head({ a, names }: { a: ActionRecord; names: Names }) {
       {who && (
         <span>
           {who}
-          {a.person && <FictionalMark />}
+          {a.person && <FictionalMark kind={fiction} />}
         </span>
       )}
       {callee && callee !== CONTACT_KIND_LABELS.self && <span className="text-xs text-muted">{callee}</span>}
@@ -116,14 +117,26 @@ export function MemoLine({ memo }: { memo: string | undefined }) {
 /** 最後の手の取消（T59）。進行中の画面だけ。act は取り消せる手の番号（無ければ取消不可） */
 export type UndoSlot = { drillId: string; step: number; actions: number; act: string | null };
 
-function ActionItem({ a, names, voiceOf, undo }: { a: ActionRecord; names: Names; voiceOf?: VoiceOf; undo?: UndoSlot }) {
+function ActionItem({
+  a,
+  names,
+  voiceOf,
+  undo,
+  fiction,
+}: {
+  a: ActionRecord;
+  names: Names;
+  voiceOf?: VoiceOf;
+  undo?: UndoSlot;
+  fiction?: FictionKind;
+}) {
   const r = a.result;
   return (
     <li className="rounded-md bg-panel2 px-2 py-1.5 text-sm" data-act={a.id} data-act-kind={a.kind} data-act-status={r?.status ?? "pending"}>
       {undo ? (
         <div className="flex flex-wrap items-start gap-x-2">
           <div className="min-w-0 flex-1">
-            <Head a={a} names={names} />
+            <Head a={a} names={names} fiction={fiction} />
           </div>
           {undo.act === a.id ? (
             <UndoButton drillId={undo.drillId} step={undo.step} actions={undo.actions} act={a.id} />
@@ -134,7 +147,7 @@ function ActionItem({ a, names, voiceOf, undo }: { a: ActionRecord; names: Names
           )}
         </div>
       ) : (
-        <Head a={a} names={names} />
+        <Head a={a} names={names} fiction={fiction} />
       )}
       <MemoLine memo={a.memo} />
       {r?.speech && <Bubble speaker={calleeText(a) ?? ""} text={r.speech} ai={r.speechAi} voice={voiceOf?.(a.id) ?? null} />}
@@ -148,11 +161,13 @@ export function LatestResult({
   names,
   ticks,
   voiceOf,
+  fiction,
 }: {
   action: ActionRecord;
   names: Names;
   ticks: ReadonlyArray<Tick>;
   voiceOf?: VoiceOf;
+  fiction?: FictionKind;
 }) {
   const r = action.result;
   const crossed = r ? ticks.filter((t) => r.crossed.includes(t.step)) : [];
@@ -160,14 +175,14 @@ export function LatestResult({
   return (
     <section aria-label={ACTION_UI.result} className="rounded-md bg-panel2 px-2.5 py-2" data-latest={action.id}>
       <div className="text-sm">
-        <Head a={action} names={names} />
+        <Head a={action} names={names} fiction={fiction} />
         <MemoLine memo={action.memo} />
       </div>
       {r?.speech && <Bubble speaker={calleeText(action) ?? ""} text={r.speech} ai={r.speechAi} large voice={voiceOf?.(action.id) ?? null} />}
       {calls.length > 0 && (
         <ul className="mt-2 space-y-1 text-sm" data-call-ins>
           {calls.map((t, i) => (
-            <CallInItem key={`${t.person}-${i}`} t={t} name={names[t.person] ?? t.person} />
+            <CallInItem key={`${t.person}-${i}`} t={t} name={names[t.person] ?? t.person} fiction={fiction} />
           ))}
         </ul>
       )}
@@ -189,13 +204,13 @@ export function CallInMark() {
   );
 }
 
-function CallInItem({ t, name }: { t: DrillTurn; name: string }) {
+function CallInItem({ t, name, fiction }: { t: DrillTurn; name: string; fiction?: FictionKind }) {
   return (
     <li className="flex flex-wrap items-baseline gap-x-1.5" data-call-in={t.person}>
       <CallInMark />
       <span className="font-bold">
         {name}
-        <FictionalMark />
+        <FictionalMark kind={fiction} />
       </span>
       <StateTag tone={TURN_TONES[t.color]}>{TURN_LABELS[t.color]}</StateTag>
       <span className="text-xs text-muted">{SOURCE_LABELS[t.source]}</span>
@@ -213,6 +228,7 @@ export function ActionLog({
   names,
   voiceOf,
   undo,
+  fiction,
 }: {
   actions: ReadonlyArray<ActionRecord>;
   hours: readonly number[];
@@ -222,6 +238,8 @@ export function ActionLog({
   voiceOf?: VoiceOf;
   /** 進行中の最後の手の取消（T59）。再生では渡さない */
   undo?: UndoSlot;
+  /** 名前のそばの印（T70。デモ以外は本人役） */
+  fiction?: FictionKind;
 }) {
   const lastId = actions.at(-1)?.id ?? null;
   if (actions.length === 0) return <p className="text-sm text-muted">{DRILL_LABELS.none}</p>;
@@ -245,7 +263,7 @@ export function ActionLog({
             </summary>
             <ol className="mt-1 space-y-1">
               {own.map((a) => (
-                <ActionItem key={a.id} a={a} names={names} voiceOf={voiceOf} {...(undo && a.id === lastId ? { undo } : {})} />
+                <ActionItem key={a.id} a={a} names={names} voiceOf={voiceOf} fiction={fiction} {...(undo && a.id === lastId ? { undo } : {})} />
               ))}
             </ol>
           </details>

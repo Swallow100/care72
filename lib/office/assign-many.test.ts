@@ -84,6 +84,7 @@ describe("一括変更（people.ts の assignMany）", () => {
     expect(cmOf("p-04")).toBe("acct-yamamoto");
     expect((await listCareManagers(db, "office-demo")).map((c) => [c.name, c.people])).toEqual([
       ["山本", 7],
+      ["西村", 0],
       ["佐藤", 3],
     ]);
 

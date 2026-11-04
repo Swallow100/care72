@@ -65,8 +65,8 @@ describe("面の編集の変更（lib/intake/edit.ts）", () => {
   it("人: 連絡先は直した所だけ（空にすると消す・夜間は未確認に戻せる）、足す連絡先は書いた所だけ", () => {
     const d = editOf("p-04");
     const draft = editDraft(d);
-    expect(draft.contacts.map((c) => c.id)).toEqual(["c-04-1", "c-04-2"]); // 本人の行は出さない
-    draft.contacts[1] = { ...draft.contacts[1], phone: "090-0000-0099", note: "", night: "yes" };
+    expect(draft.contacts.map((c) => c.id)).toEqual(["c-04-0", "c-04-1", "c-04-2"]); // 本人の電話の行も出す（T68。電話と備考だけを直す）
+    draft.contacts[2] = { ...draft.contacts[2], phone: "090-0000-0099", note: "", night: "yes" };
     draft.newContacts = [
       { id: null, kind: "supporter", relation: "隣人", name: "", phone: "", night: "no", note: "", emergency: "", supporter: "", reach: "" },
       { id: null, kind: "family", relation: "", name: "", phone: "", night: "", note: "", emergency: "", supporter: "", reach: "" }, // 空 → 送らない
@@ -169,6 +169,22 @@ describe("入れる欄の画面（components/person/Intake.tsx、T45）", () => 
     expect(html()).not.toContain('data-intake="speak"');
   });
 
+  it("AI の状態（T76）: 未設定・上限到達は中立の地の印（要確認の黄の塗りでない）、使えるときは本日残り。言葉は訓練の画面と同じ", () => {
+    const draw = (ai: Parameters<typeof intakePropsOf>[1]) => renderToStaticMarkup(createElement(Intake, { ...intakePropsOf(seedRows(seed("p-04")), ai), level: 1 }));
+    const unset = draw({ kind: "unset" });
+    expect(unset).toContain("AI 未設定");
+    expect(unset).not.toMatch(/data-tone="check"[^<]*>AI 未設定/);
+    expect(unset).toMatch(/<button[^>]*type="submit"[^>]*disabled=""[^>]*data-intake="split"/);
+    const limit = draw({ kind: "limit", limit: 200 });
+    expect(limit).toContain("AI 上限到達");
+    expect(limit).toMatch(/<button[^>]*type="submit"[^>]*disabled=""[^>]*data-intake="split"/);
+    expect(limit).toMatch(/<label(?=[^>]*data-intake="read")(?=[^>]*aria-disabled="true")[^>]*>/);
+    // 使える: 写真と PDF を押せる（分けるは文字が無いので押せないまま）
+    const ready = draw({ kind: "ready", remaining: 37, limit: 200 });
+    expect(ready).toContain("AI 本日残り 37 / 200 回");
+    expect(ready).not.toMatch(/<label(?=[^>]*data-intake="read")(?=[^>]*aria-disabled="true")[^>]*>/);
+  });
+
   it("AI 未設定: 分ける・写真と PDF は押せず、問いには答えられる", () => {
     const h = html("p-04", false);
     expect(h).toContain("AI 未設定");
@@ -229,12 +245,12 @@ describe("面の編集の外す・値確認（components/person/SectionEdit.tsx�
     return renderToStaticMarkup(createElement(SectionForm, { section, data: d, draft: { ...editDraft(d), ...patch }, set: () => {} }));
   };
 
-  it("薬・機器・ハザード・連絡先・特記の行に「外す」（本人の行は無い）。印を付けた行は「外す予定」と「戻す」", () => {
+  it("薬・機器・ハザード・連絡先・特記の行に「外す」（本人の行にも。T68 の続き）。印を付けた行は「外す予定」と「戻す」", () => {
     expect(form("medical", "p-01")).toContain('aria-label="ワーファリン 外す"');
     expect(form("medical", "p-01")).toContain('aria-label="在宅酸素 外す"');
     expect(form("evacuation", "p-01")).toMatch(/aria-label="[^"]+ 外す"/);
     const people = form("people", "p-01");
-    expect(people.match(/data-drop="true"/g)).toHaveLength(2); // c-01-1・c-01-2（本人の行 c-01-0 は出さない）
+    expect(people.match(/data-drop="true"/g)).toHaveLength(3); // c-01-0（本人、T68 の続きから外せる）・c-01-1・c-01-2
     expect(form("basic", "p-01")).toContain('aria-label="特記 外す"');
     const dropped = form("medical", "p-01", { drops: [dropKey.med(0)] });
     expect(dropped).toContain("data-dropped");

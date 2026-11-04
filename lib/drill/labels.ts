@@ -3,7 +3,8 @@
 // 安否の色の言葉（至急・要確認・灰・無事）は lib/labels.ts の COLOR_LABELS を読み、ここに書かない。
 
 import type { DrillAction, DrillScenario, DrillStatus } from "../db/types.ts";
-import type { PhoneState, ShelterState, TsunamiState, WaterState, WorldEventKind } from "./scenarios.ts";
+import type { FictionKind } from "./fiction.ts";
+import type { AiStop, PhoneState, ShelterState, TsunamiState, WaterState, WorldEventKind } from "./scenarios.ts";
 
 export const SCENARIO_LABELS: Record<DrillScenario, string> = {
   heavy_rain: "大雨想定",
@@ -22,6 +23,8 @@ export const STATUS_LABELS: Record<DrillStatus, string> = {
 /** 仮想モード（T50）の言葉 */
 export const VIRTUAL_LABELS = {
   note: "仮想モード 架空の人と街。結末まで出ます",
+  /** デモ以外の事業所（T70。結末は出さない） */
+  noteRole: "仮想モード 本人役と街は AI。結末なし",
   ended: "結末",
   /** 結末の理由（世界が決めた街と物の事実。T53） */
   endedReason: "経緯",
@@ -85,12 +88,65 @@ export const T59_LABELS = {
   oclock: "時",
 } as const;
 
+/** 訓練を本物の事業所で（T70）の言葉。開始の前の押せる人なし・見込み、刻みの停止の印、自動中断 */
+export const T70_LABELS = {
+  /** 本人も家族・支援者もスマホで赤緑を押せない人（灰の文字） */
+  noPresser: "押せる人なし",
+  /** AI の呼び出しの見込み（「見込み 約 65 回」） */
+  estimate: "見込み",
+  about: "約",
+  times: "回",
+  /** 見込みが残りを超える（赤の文字。開始は止めない） */
+  short: "上限不足",
+  autoAbandon: "自動中断",
+  /** 自動中断の理由（一覧の行の詳細） */
+  day: "24 時間",
+} as const;
+
+/**
+ * AI が止まったときの訓練の帯（T76。lib/drill/ai-stop.ts）。刻みごとに積まず 1 本。理由の言葉は lib/claude/status.ts の AI_STATUS_LABELS。
+ * 固定の筋は想定の表の出来事と安否だけで進む（想定のみ）、仮想は街と本人役が止まる（世界停止）。戻り方は engine の動きのまま
+ */
+export const AI_STOP_UI = {
+  title: "AI 停止",
+  fixed: "想定のみ",
+  fixedTitle: "想定の表の出来事と安否だけで進む。監督と本人役の AI は使わない",
+  virtual: "世界停止",
+  virtualTitle: "街の出来事と本人役の連絡が止まる。対応と時計は進む",
+  /** まだ止まった刻みが無く、次の刻みから止まる（上限に今達した） */
+  next: "次から",
+  /** 次の「進める」で呼び直す（失敗・日が替わった上限） */
+  retry: "自動再試行",
+  /** 上限は日（JST）が替われば戻る */
+  tomorrow: "翌日再開",
+  resumed: "再開済",
+} as const;
+
+/** 上限で止まった AI の役の印（状況 ai_stop の文。画面には出さず、帯 1 本にまとめる。T76） */
+export const AI_STOP_LABELS: Record<AiStop, string> = {
+  persona: "本人役 停止",
+  director: "監督 停止",
+  world: "世界 停止",
+};
+
 /** 訓練の人の印（T48、アドバイザーの返事）。人は全部作った例で、本人役・家族役は AI が演じる */
 export const FICTION_LABELS = {
   mark: "架空",
   title: "AI が演じる架空の人",
   note: "訓練の人は AI が演じる架空の人（作った例の記録）",
 } as const;
+
+/** デモ以外の事業所の訓練の人の印（T70。本人役は利用者の台帳から作り、AI が演じる。lib/drill/fiction.ts） */
+export const ROLE_LABELS = {
+  mark: "本人役",
+  title: "AI が演じる訓練の本人役",
+  note: "訓練の本人・家族の言葉は AI が演じる本人役",
+} as const;
+
+/** 印の言葉（デモ事業所は架空、ほかは本人役） */
+export function fictionLabels(kind: FictionKind = "fictional"): { mark: string; title: string; note: string } {
+  return kind === "role" ? ROLE_LABELS : FICTION_LABELS;
+}
 
 /** 状況（世界の出来事）の種類の印 */
 export const EVENT_KIND_LABELS: Record<WorldEventKind, string> = {
@@ -119,6 +175,8 @@ export const EVENT_KIND_LABELS: Record<WorldEventKind, string> = {
   narration: "世界",
   world_note: "世界",
   outcome: "結末",
+  ai_stop: "停止",
+  auto_abandon: "中断",
 };
 
 /** 本人ごとの印（被害状況の「個別」の欄）。PersonMarks の鍵ごと */

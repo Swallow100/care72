@@ -9,6 +9,8 @@ import { AssignRow } from "@/components/office/AssignRow";
 import { CareManagerRow } from "@/components/office/CareManagerRow";
 import { FormChoice } from "@/components/office/FormChoice";
 import { MoreFold } from "@/components/office/MoreFold";
+import { JmaAlerts } from "@/components/office/JmaAlerts";
+import { OfficePlace } from "@/components/office/OfficePlace";
 import { UnlistedFold } from "@/components/office/UnlistedFold";
 import { UnlistedRows } from "@/components/office/UnlistedRows";
 import { ButtonLink, buttonClass } from "@/components/ui/Button";
@@ -16,6 +18,7 @@ import { AddPersonIcon, CloseIcon, DownloadIcon, PaperIcon } from "@/components/
 import { LinkPending } from "@/components/ui/LinkPending";
 import { Page, PageHead, Panel, PanelHead } from "@/components/ui/Panel";
 import { SubmitButton } from "@/components/ui/SubmitButton";
+import { CHOICE_INPUT, CHOICE_LABEL } from "@/components/ui/choice";
 import { TABLE, TABLE_BOX, TD, TH } from "@/components/ui/table";
 import { StateTag, StateText, TONE_TEXT } from "@/components/ui/Tag";
 import { todayJst } from "@/lib/age";
@@ -36,6 +39,7 @@ import {
   infoOf,
   isDisaster,
   MAX_TEXT_LENGTH,
+  modeConfirm,
   OUTAGE_SCOPE_LABELS,
   shortJst,
   toLocalInput,
@@ -128,6 +132,7 @@ export default async function OfficePage({ searchParams }: Props) {
   const error = parseFormError(q.error);
   const peopleError = parsePeopleError(q.people_error);
   const moved = parseAssignedMany(q);
+  const reset = canResetDemo(principal) ? parseResetState(q.reset) : null;
 
 
   return (
@@ -147,10 +152,22 @@ export default async function OfficePage({ searchParams }: Props) {
           {DISASTER_FORM_ERROR_LABELS[error]}
         </p>
       )}
+      {/* 最初に戻すのあとの知らせ（T79）。戻すと画面の頭に来るので、右下の「初期化」の区分でなくここに出す */}
+      {reset === "done" && (
+        <p role="status" className="mt-2 text-sm" data-reset-notice="done">
+          <StateText tone="ok">{RESET_LABELS.done}</StateText>
+        </p>
+      )}
+      {reset === "failed" && (
+        <p role="alert" className="mt-2 text-sm font-bold text-danger" data-reset-notice="failed">
+          {RESET_LABELS.failed}
+        </p>
+      )}
 
       <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="grid min-w-0 content-start gap-3">
-          <ModeSection state={state} now={now} confirm={confirm} />
+          <ModeSection state={state} now={now} confirm={confirm} officeId={scope.officeId} />
+          <OfficePlace officeId={scope.officeId} admin={actor.placeEdit} error={q.form_error === "place"} />
           {disaster && <InfoSection state={state} towns={towns} />}
           {/* 所属なし（T23）は引き受ける人がいるときだけ。担当の長い表の前に置く */}
           <UnaffiliatedSection people={unaffiliated} />
@@ -167,7 +184,7 @@ export default async function OfficePage({ searchParams }: Props) {
             </AddCareManager>
           </Panel>
           {/* デモ事業所の「最初に戻す」（T26）。審査員と管理者だけ */}
-          {canResetDemo(principal) && <ResetSection state={parseResetState(q.reset)} />}
+          {canResetDemo(principal) && <ResetSection state={reset} />}
           <LogSection log={log} />
         </div>
       </div>
@@ -183,13 +200,18 @@ async function requestOrigin(): Promise<string> {
   return `${proto}://${host}`;
 }
 
+/** 切替のボタンの段（気象庁の欄の「切替」が送る所） */
+const MODE_BUTTONS_ID = "mode-buttons";
+
 /** 災害モードの切替。今の状態は枠と太字（下地は敷かない）、ほかは無色。災害の種類はすぐ切り替え、平時に戻すは確認の欄を通す */
-function ModeSection({ state, now, confirm }: { state: DisasterState; now: string; confirm: boolean }) {
+function ModeSection({ state, now, confirm, officeId }: { state: DisasterState; now: string; confirm: boolean; officeId: string }) {
   const disaster = isDisaster(state);
   return (
     <Panel aria-labelledby="mode-title">
       <PanelHead id="mode-title" title={DISASTER_LABELS.mode} />
-      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+      {/* 気象庁の警報・注意報と地震（T72）。切替は勧めるだけで、押すのは人 */}
+      <JmaAlerts officeId={officeId} disaster={disaster} now={now} switchHref={`#${MODE_BUTTONS_ID}`} />
+      <div id={MODE_BUTTONS_ID} className="mt-2 flex scroll-mt-20 flex-wrap items-center gap-1.5">
         {DISASTER_KINDS.map((k) => (
           <ModeButton key={k} kind={k} state={state} />
         ))}
@@ -248,38 +270,34 @@ function ModeButton({ kind, state }: { kind: DisasterKind; state: DisasterState 
       </span>
     );
   }
-  // 平時に戻すはアプリ内の確認の窓で決めてから送る（T44）。窓が出せないときはサーバーが確認の欄（URL の confirm）へ戻す
-  if (kind === "normal") {
-    return (
-      <form method="post" action={OFFICE_MODE_PATH}>
-        <input type="hidden" name="kind" value={kind} />
-        <input type="hidden" name="version" value={state.version} />
-        <SubmitButton
-          confirm={{
-            title: CONFIRM_LABELS.normalTitle,
-            message: DISASTER_LABELS.clearOnNormal,
-            ok: CONFIRM_LABELS.normalOk,
-            icon: "RestoreIcon",
-            danger: true,
-            fields: { confirm: "1" },
-          }}
-        >
-          {label}
-        </SubmitButton>
-      </form>
-    );
-  }
+  // 平時に戻すと、平時から災害モードへは、アプリ内の確認の窓で決めてから送る（T44・T79）。
+  // 平時に戻すは窓が出せないとき（JS が動く前）サーバーが確認の欄（URL の confirm）へ戻す。災害の種類どうしは窓なし
+  const c = modeConfirm(state, kind);
+  const confirm =
+    c?.step === "to_normal"
+      ? {
+          title: CONFIRM_LABELS.normalTitle,
+          message: c.message,
+          details: c.details,
+          ok: CONFIRM_LABELS.normalOk,
+          icon: "RestoreIcon" as const,
+          danger: true,
+          fields: { confirm: "1" },
+        }
+      : c?.step === "to_disaster"
+        ? { title: CONFIRM_LABELS.disasterTitle, message: c.message, details: c.details, ok: CONFIRM_LABELS.disasterOk }
+        : undefined;
   return (
     <form method="post" action={OFFICE_MODE_PATH}>
       <input type="hidden" name="kind" value={kind} />
       <input type="hidden" name="version" value={state.version} />
-      <SubmitButton>{label}</SubmitButton>
+      <SubmitButton confirm={confirm}>{label}</SubmitButton>
     </form>
   );
 }
 
 const INPUT = "h-8 rounded bg-panel2 px-2 text-sm text-ink outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-accent";
-const CHOICE = "flex h-8 items-center gap-1.5 rounded bg-panel2 px-2 text-sm";
+const CHOICE = CHOICE_LABEL;
 
 /** 災害の情報。発災・停電（範囲・開始・地区）・警戒レベル・断水・道路。保存で変わった所が経過に残る */
 function InfoSection({ state, towns }: { state: DisasterState; towns: TownCount[] }) {
@@ -320,12 +338,12 @@ function InfoSection({ state, towns }: { state: DisasterState; towns: TownCount[
             <legend className="text-xs text-muted">{DISASTER_LABELS.level}</legend>
             <div className="mt-0.5 flex flex-wrap gap-1">
               <label className={CHOICE}>
-                <input type="radio" name="level" value="" defaultChecked={info.alertLevel === null} className="accent-accent" />
+                <input type="radio" name="level" value="" defaultChecked={info.alertLevel === null} className={CHOICE_INPUT} />
                 {DISASTER_LABELS.levelNone}
               </label>
               {ALERT_LEVELS.map((l) => (
                 <label key={l} className={CHOICE}>
-                  <input type="radio" name="level" value={l} defaultChecked={info.alertLevel === l} className="accent-accent" />
+                  <input type="radio" name="level" value={l} defaultChecked={info.alertLevel === l} className={CHOICE_INPUT} />
                   {l}
                 </label>
               ))}
@@ -339,7 +357,7 @@ function InfoSection({ state, towns }: { state: DisasterState; towns: TownCount[
               <div className="flex flex-wrap gap-1">
                 {OUTAGE_SCOPES.map((s) => (
                   <label key={s} className={CHOICE}>
-                    <input type="radio" name="outage" value={s} defaultChecked={info.outage.scope === s} className="accent-accent" />
+                    <input type="radio" name="outage" value={s} defaultChecked={info.outage.scope === s} className={CHOICE_INPUT} />
                     {OUTAGE_SCOPE_LABELS[s]}
                   </label>
                 ))}
@@ -356,7 +374,7 @@ function InfoSection({ state, towns }: { state: DisasterState; towns: TownCount[
                   .filter((t): t is TownCount & { town: string } => t.town !== null)
                   .map((t) => (
                     <label key={t.town} className={CHOICE}>
-                      <input type="checkbox" name="town" value={t.town} defaultChecked={inArea(t.town)} className="accent-accent" />
+                      <input type="checkbox" name="town" value={t.town} defaultChecked={inArea(t.town)} className={CHOICE_INPUT} />
                       {t.town}
                       <span className="text-xs text-muted">{t.count}</span>
                     </label>
@@ -688,16 +706,13 @@ function ResetSection({ state }: { state: ResetState | null }) {
         sub={
           <>
             <span className="text-xs text-muted">{RESET_LABELS.daily}</span>
+            {/* 知らせ（role）は画面の頭の 1 行に出す。ここは区分の中の印だけ */}
             {state === "done" && (
-              <span role="status" className="text-sm">
+              <span className="text-sm">
                 <StateText tone="ok">{RESET_LABELS.done}</StateText>
               </span>
             )}
-            {state === "failed" && (
-              <span role="alert" className="text-sm font-bold text-danger">
-                {RESET_LABELS.failed}
-              </span>
-            )}
+            {state === "failed" && <span className="text-sm font-bold text-danger">{RESET_LABELS.failed}</span>}
           </>
         }
       />

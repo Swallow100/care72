@@ -205,6 +205,7 @@ describe("分ける本体（classify）", () => {
       const r = await classify(seal(text), aiCtx(client));
       expect(r, c).toMatchObject({ ok: true, model: HAIKU, value: { categories: [c], confidence: 0.9, quote } });
       expect(calls[0].model).toBe(HAIKU);
+      // ほかの用途は high だが、分類は録音の応答のあとの 30 秒に収めるため low のまま（11/4 00:5x、T67）
       expect(calls[0].output_config?.effort).toBe("low");
     }
     expect(aiRows()).toHaveLength(RECORDING_CLASSES.length);

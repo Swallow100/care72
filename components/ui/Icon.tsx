@@ -8,6 +8,7 @@
 export type DialogIconName = "RemoveIcon" | "UnlistIcon" | "RestoreIcon" | "SaveIcon" | "CloseIcon";
 
 export {
+  ArrowDownCircleIcon as GoToIcon, // 同じ画面の操作の所へ送る（気象庁の欄の切替 → 切替のボタン、T72）
   ArrowDownTrayIcon as DownloadIcon, // CSV 出力
   ArrowRightEndOnRectangleIcon as LoginIcon, // ログイン（扉に入る矢印。ログアウトと対）
   ArrowUturnLeftIcon as RestoreIcon, // 外した物を戻す
@@ -22,6 +23,7 @@ export {
   ClockIcon as LaterIcon, // 次回（入れる欄の問いを後に回す）
   ChevronDownIcon as OpenIcon, // 開く・畳む
   ChevronLeftIcon as BackIcon, // 戻る
+  ChevronUpDownIcon as SortIcon, // 並べ替えできる列の見出しの印（押していない列。押している列は向きの印。T66）
   ClipboardDocumentIcon as CopyIcon, // コピー
   DocumentArrowUpIcon as ReadIcon, // 様式の読取（写真・PDF を AI が読む）
   DocumentTextIcon as PaperIcon, // 紙面の表示

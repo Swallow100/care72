@@ -4,7 +4,7 @@ import { denied } from "@/lib/auth/guard";
 import { principalFromRequest } from "@/lib/auth/server";
 import { aiContextFor } from "@/lib/claude/cloudflare";
 import { FORM_FILE_MAX_BYTES } from "@/lib/forms/form-read";
-import { intakeError, intakeErrorOf } from "@/lib/intake/http";
+import { aiConsentRefusal, intakeError, intakeErrorOf } from "@/lib/intake/http";
 import { readIntake } from "@/lib/intake/read";
 import { checkRedactedImage } from "@/lib/intake/read-check";
 import { RAW_FILE_FIELD, READ_FORM, readMetaOf } from "@/lib/intake/read-form";
@@ -42,6 +42,9 @@ export async function POST(request: Request) {
 
   const rows = await loadPersonPage(env.DB, principal, personId);
   if (!rows) return intakeError("not_found");
+  // AI 提供が不同意の人の台帳は Claude に渡さない（T74。未確認は通す）
+  const refused = aiConsentRefusal(rows.consents);
+  if (refused) return refused;
 
   try {
     const ctx = await aiContextFor(principal.office.id);

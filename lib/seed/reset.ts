@@ -48,6 +48,12 @@ const SEED_ACCOUNT_IDS = FIXED_ACCOUNT_IDS.map((id) => lit(id));
 
 /** 表ごとに消す範囲（WHERE の中身）。null は消さない。CLEAR_ORDER と同じ順に流す */
 export const DEMO_CLEAR: Readonly<Record<Table, string | null>> = {
+  // 気象庁の写し（T72）。事業所ごとでなく、5 分ごとの cron が入れ直す本物の情報なので消さない
+  jma_quake_points: null,
+  jma_quakes: null,
+  jma_warnings: null,
+  jma_entries: null,
+  jma_fetch_state: null,
   survey_responses: `token IN (${JUDGE_SURVEY_SHARES})`,
   survey_shares: `office_id = ${OFFICE} AND created_role = 'judge'`,
   survey_answers: `token IN (${JUDGE_SURVEY_LINKS})`,
@@ -90,7 +96,8 @@ function upsertStatements(): string[] {
   for (const o of SEED_OFFICES) {
     if (o.id === DEMO_OFFICE_ID) {
       out.push(
-        `${insert("offices", { ...o, created_at: SEED_AT }).replace(/;$/, "")} ON CONFLICT (id) DO UPDATE SET name = excluded.name, kind = excluded.kind, city = excluded.city;`,
+        // 様式と地図の中心（T68）も種に戻す（審査員が様式を変えても毎朝松山市に戻る）
+        `${insert("offices", { ...o, created_at: SEED_AT }).replace(/;$/, "")} ON CONFLICT (id) DO UPDATE SET name = excluded.name, kind = excluded.kind, city = excluded.city, plan_form = excluded.plan_form, center_lat = excluded.center_lat, center_lng = excluded.center_lng;`,
       );
     } else if (o.id === UNAFFILIATED_OFFICE_ID) {
       // 所属なしの事業所は無ければ作る（ほかの事業所の行には触らない）

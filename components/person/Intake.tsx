@@ -15,8 +15,13 @@
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { useRef, useState, type ReactNode } from "react";
+import { AiStatusMark } from "@/components/ui/AiStatus";
 import { Button, buttonClass } from "@/components/ui/Button";
-import { AI_FAIL_REASON_LABELS, INTAKE_LABELS, INTAKE_SAYS, PENDING_STATUS_LABELS, SECTION_LABELS } from "@/lib/labels";
+import { Mark } from "@/components/ui/Tag";
+import { aiStatusText, type AiStatus } from "@/lib/claude/status";
+import { AI_FAIL_REASON_LABELS, INTAKE_LABELS, INTAKE_SAYS, PENDING_STATUS_LABELS, PLACE_LABELS, SECTION_LABELS } from "@/lib/labels";
+import { AI_CONSENT_REFUSED_LABEL } from "@/lib/consent/labels";
+import { shrinkImage } from "@/lib/forms/shrink-image";
 import { buildReadForm, READ_FILES_MAX, type ReadMeta } from "@/lib/intake/read-form";
 import type { AiFailReason } from "@/lib/intake/http";
 import type { DictationError } from "@/lib/speech/dictation";
@@ -44,7 +49,8 @@ const TEXT_MAX = 4000;
 /** 流れに出す入力の文の長さ（貼ったケアプランは頭だけ） */
 const ECHO_MAX = 140;
 
-type Proposal = { model: string; dropped: number; rows: ChangeRow[] };
+/** masked: 送った文のうち伏せた所の数（T74。「伏せ字 N」。何を伏せたかは持たない） */
+type Proposal = { model: string; dropped: number; rows: ChangeRow[]; masked?: number };
 /** 再試行できる失敗（AI の返事の失敗）。文は同じ文・同じ問いで、写真・PDF は塗った後の同じ画像で送り直す */
 type Retry = { kind: "text"; source: string; focus: string | null } | { kind: "file"; page: RedactedPage };
 
@@ -83,6 +89,15 @@ export function splitSay(items: readonly DiffItem[]): string {
   return INTAKE_SAYS.split(live.length, parts.join("・"));
 }
 
+const UNSET: AiStatus = { kind: "unset" };
+
+/** API が断った AI の状態を、開いたときと同じ言葉に（「AI 未設定」「AI 上限到達」。lib/claude/status.ts） */
+function blockLabel(error: string, label: string): string {
+  if (error === "ai_not_configured") return aiStatusText(UNSET);
+  if (error === "ai_limit") return aiStatusText({ kind: "limit", limit: 0 });
+  return label;
+}
+
 const echo = (s: string) => (s.length > ECHO_MAX ? `${s.slice(0, ECHO_MAX)}…` : s);
 
 let seq = 0;
@@ -90,7 +105,11 @@ const nextId = () => `log-${++seq}`;
 
 export function Intake(props: IntakeProps & { level: Level }) {
   const router = useRouter();
-  const [aiBlock, setAiBlock] = useState<string | null>(props.aiReady ? null : INTAKE_LABELS.aiNotConfigured);
+  // AI 提供が不同意の人（T74 の続き）は開いた時点で AI の操作を止める（手で書く欄は使える）。AI が使えなければ「AI 未設定」「AI 上限到達」
+  // （AI の状態の言葉は lib/claude/status.ts の 1 か所。訓練の画面と同じ。T76）
+  const [aiBlock, setAiBlock] = useState<string | null>(
+    props.aiConsentRefused ? AI_CONSENT_REFUSED_LABEL : props.aiReady ? null : aiStatusText(props.aiStatus ?? UNSET),
+  );
   const [text, setText] = useState("");
   const [busy, setBusy] = useState<null | "split" | "read" | "save">(null);
   const [error, setError] = useState<string | null>(null);
@@ -117,19 +136,20 @@ export function Intake(props: IntakeProps & { level: Level }) {
   const listening = speech.state !== "idle";
 
   function failed(r: { error: string; label: string; reason?: AiFailReason }, retry: Retry | null) {
-    if (r.error === "ai_not_configured" || r.error === "ai_limit") setAiBlock(r.label);
+    // AI 提供が不同意の人（T74）は、この人の間は AI の操作を止める（上に「同意 拒否」）
+    if (r.error === "ai_not_configured" || r.error === "ai_limit" || r.error === "consent_refused") setAiBlock(blockLabel(r.error, r.label));
     // AI の返事の失敗（形が違う・断られた・時間切れ・API）は理由と「再試行」を流れに。ほかは上の状態の欄に
     if (r.error === "ai_failed" || r.error === "ai_refused") push({ id: nextId(), who: "ai", kind: "failed", label: r.label, reason: r.reason ?? null, retry });
     else push({ id: nextId(), who: "app", text: r.label, tone: "danger" });
   }
 
-  type Proposed = { ok: true; ai: { model: string }; items: DiffItem[]; dropped: number };
+  type Proposed = { ok: true; ai: { model: string }; items: DiffItem[]; dropped: number; masked?: number };
   const proposalOf = (r: Proposed): LogEntry => ({
     id: nextId(),
     who: "ai",
     kind: "split",
     say: splitSay(r.items),
-    proposal: { model: r.ai.model, dropped: r.dropped, rows: rowsOf(r.items) },
+    proposal: { model: r.ai.model, dropped: r.dropped, rows: rowsOf(r.items), masked: r.masked },
     state: "open",
   });
 
@@ -155,10 +175,19 @@ export function Intake(props: IntakeProps & { level: Level }) {
     push({ ...proposalOf(r), say: `${INTAKE_SAYS.read(page.name)}。${splitSay(r.items)}`, read: page.meta } as LogEntry);
   }
 
-  /** 写真・PDF を選んだら、必ず黒塗りの画面へ（読む前の確認の窓の代わり。T52） */
-  function readFiles(files: FileList | null) {
-    if (files && files.length > 0) setRedacting([...files].slice(0, READ_FILES_MAX));
+  /**
+   * 写真・PDF を選んだら、必ず黒塗りの画面へ（読む前の確認の窓の代わり。T52）。
+   * 写真は先に端末で縮めて JPEG に（T68。塗るのは縮めた絵の上。順は 縮小 → 塗り → 送る）。JPEG・PNG・PDF のほかは 1 行で断る
+   */
+  async function readFiles(files: FileList | null) {
+    const picked = files ? [...files].slice(0, READ_FILES_MAX) : [];
     if (fileInput.current) fileInput.current.value = "";
+    if (picked.length === 0) return;
+    setError(null);
+    const shrunk = await Promise.all(picked.map((f) => shrinkImage(f, Number.POSITIVE_INFINITY)));
+    const ok = shrunk.flatMap((r) => (r.ok ? [r.file] : []));
+    if (shrunk.some((r) => !r.ok)) setError(PLACE_LABELS.fileKinds);
+    if (ok.length > 0) setRedacting(ok);
   }
 
   async function save(changes: IntakeChange[], ai: { model: string } | null, read?: ReadMeta): Promise<number | null> {
@@ -206,7 +235,16 @@ export function Intake(props: IntakeProps & { level: Level }) {
         <H id={titleId} className="text-[1rem] leading-6 font-bold">
           {INTAKE_LABELS.title}
         </H>
-        {aiBlock && <StateTag tone="check">{aiBlock}</StateTag>}
+        {/* AI の状態は中立の地の印（状態の 4 色を使わない。T76）。同意 拒否は同意の状態なので今までの印のまま。使えるときは本日残り */}
+        {aiBlock === AI_CONSENT_REFUSED_LABEL ? (
+          <StateTag tone="check">{aiBlock}</StateTag>
+        ) : aiBlock ? (
+          <span className="font-bold" data-ai-status="blocked">
+            <Mark>{aiBlock}</Mark>
+          </span>
+        ) : (
+          props.aiStatus && <AiStatusMark status={props.aiStatus} />
+        )}
         <span role="status" className="ml-auto text-xs">
           {status}
         </span>
@@ -433,6 +471,11 @@ export function LogBubble({ entry: e, props, busy, aiReady, onRows, onSave, onDi
             <p className="font-bold" data-intake="say">
               {e.say}
             </p>
+            {(e.proposal.masked ?? 0) > 0 && (
+              <p className="mt-0.5 text-xs text-muted tabular-nums" data-intake="masked">
+                {INTAKE_LABELS.masked} {e.proposal.masked}
+              </p>
+            )}
             {e.state !== "open" && <p className="mt-0.5 text-xs text-muted">{e.state === "saved" ? INTAKE_LABELS.saved : INTAKE_LABELS.discard}</p>}
           </Bubble>
           {e.state === "open" && e.proposal.rows.length > 0 && (

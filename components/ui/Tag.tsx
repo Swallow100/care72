@@ -24,9 +24,19 @@ export const TONE_FILL: Record<Tone, string> = {
   unknown: "bg-state-unknown-fill text-on-state-unknown",
 };
 
+/**
+ * 塗りの印の箱（大きさ）。人数の 0 の灰の印（CountLabel）も同じ箱にして、0 と 1 で並びが動かないようにする。
+ * fit は 640px 未満で sm、それより広いと md（表の残りの列。375 で表が画面の幅を超えないように。T66）
+ */
+const TAG_BOX = {
+  sm: "px-1 text-xs leading-[1.125rem]",
+  md: "px-1.5 py-px text-sm leading-5",
+  fit: "px-1 text-xs leading-[1.125rem] sm:px-1.5 sm:py-px sm:text-sm sm:leading-5",
+} as const;
+
 /** 色の付いた印（塗り）。文字（至急・未確認・同意など）を必ず持つ */
-export function StateTag({ tone, size = "sm", children }: { tone: Tone; size?: "sm" | "md"; children: React.ReactNode }) {
-  const box = size === "md" ? "px-1.5 py-px text-sm leading-5" : "px-1 text-xs leading-[1.125rem]";
+export function StateTag({ tone, size = "sm", children }: { tone: Tone; size?: keyof typeof TAG_BOX; children: React.ReactNode }) {
+  const box = TAG_BOX[size];
   return (
     <span className={`inline-block rounded-sm font-bold whitespace-nowrap ${box} ${TONE_FILL[tone]}`} data-tone={tone}>
       {children}
@@ -73,33 +83,44 @@ export function Mark({
 }
 
 /**
- * 状態の人数の組（「至急 2」「要確認 1」）の言葉。要確認で人数があるときだけ言葉を黄の塗りの印にし、数は本文色にする
- * （大きな数に黄の帯を付けない。11/3 08:0x の確定 4）。ほかの状態は言葉はそのまま（呼ぶ側の薄い本文色）、数に状態の色（countClass）
+ * 状態の人数の組（「至急 2」「要確認 1」「無事 0」）の言葉。1 人以上は 4 つとも言葉を状態の塗りの印（StateTag）にし、数は本文色
+ * （countClass）。0 人は印も数も灰: 同じ箱で色の無い地（面の上は面の中の灰、面の中の上は白）に薄い本文色の言葉、数も薄い本文色。
+ * 決め: DECISIONS 11/4 00:5x（問い 2 は (a)。0 人は灰のまま、作者）。前は数に状態の色・要確認だけ言葉を黄の塗りで、
+ * 色の付く所が状態ごとに違った（T66）。0 の灰は不明の塗り（--state-unknown-fill）を使わない（0 人の至急が不明に見えないように）。
+ * 担当一覧の上・右の面・地図の全画面・訓練・事業所・様式 9・受入一覧・避難計画の内訳で同じ形
  */
 export function CountLabel({
   tone,
   count,
   size = "sm",
+  inPanel2 = false,
   children,
 }: {
   tone: Tone | null;
   count: number;
   size?: "sm" | "md";
+  /** 面の中（灰の地）の上に置くとき。0 の印の地を白にする */
+  inPanel2?: boolean;
   children: React.ReactNode;
 }) {
-  if (tone === "check" && count > 0) {
+  if (tone && count > 0) {
     return (
-      <StateTag tone="check" size={size}>
+      <StateTag tone={tone} size={size}>
         {children}
       </StateTag>
     );
   }
-  return <>{children}</>;
+  return (
+    <span
+      className={`inline-block rounded-sm font-bold whitespace-nowrap text-muted ${TAG_BOX[size]} ${inPanel2 ? "bg-panel" : "bg-panel2"}`}
+      data-zero
+    >
+      {children}
+    </span>
+  );
 }
 
-/** 状態の人数の数の文字の色（CountLabel と組で使う）。0 は薄い本文色、要確認は本文色（言葉が黄の印）、ほかは状態の色 */
-export function countClass(tone: Tone | null, count: number): string {
-  if (count <= 0) return "text-muted";
-  if (!tone || tone === "check") return "";
-  return TONE_TEXT[tone];
+/** 状態の人数の数の文字の色（CountLabel と組で使う）。1 人以上は本文色（色は言葉の印だけに置く）、0 は薄い本文色 */
+export function countClass(count: number): string {
+  return count > 0 ? "" : "text-muted";
 }

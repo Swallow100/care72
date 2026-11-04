@@ -19,6 +19,7 @@ import { PhoneIcon } from "@/components/ui/Icon";
 import { StateTag, type Tone } from "@/components/ui/Tag";
 import { CALL_UI, clockLabel } from "@/lib/drill/labels";
 import { COLOR_LABELS } from "@/lib/labels";
+import type { FictionKind } from "@/lib/drill/fiction";
 import { FictionalMark } from "./Fictional";
 import { CallInIcon } from "./icons";
 
@@ -116,7 +117,16 @@ function sendResponse(drillId: string, signal: string, response: "answer" | "dec
 
 type Voice = { state: "none" } | { state: "loading"; ready: Promise<string | null> } | { state: "ready"; url: string };
 
-export function IncomingCall({ drillId, calls }: { drillId: string; calls: ReadonlyArray<IncomingCallItem> }) {
+export function IncomingCall({
+  drillId,
+  calls,
+  fiction,
+}: {
+  drillId: string;
+  calls: ReadonlyArray<IncomingCallItem>;
+  /** 名前のそばの印（T70。デモ以外は本人役） */
+  fiction?: FictionKind;
+}) {
   /** まだ応答・拒否していない着信（読み込んだあとに sessionStorage から決める。最初の描画は空） */
   const [queue, setQueue] = useState<IncomingCallItem[]>([]);
   const [total, setTotal] = useState(0);
@@ -260,7 +270,7 @@ export function IncomingCall({ drillId, calls }: { drillId: string; calls: Reado
         </h2>
         <p className="text-lg leading-7" data-incoming-name>
           {current.name}
-          <FictionalMark />
+          <FictionalMark kind={fiction} />
         </p>
 
         {phase === "talking" && (

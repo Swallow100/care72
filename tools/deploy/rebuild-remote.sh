@@ -1,9 +1,26 @@
 # remote D1 を作り直して再配信する。作者が端末で打つ。使い方: bash tools/deploy/rebuild-remote.sh <commit>
+# 11/4 から既定の配信は tools/deploy/migrate-remote.sh（表を落とさない）。これは作り直しが要るときだけ。
+# 本物の事業所のデータ（デモ事業所の外の利用者・訓練、種に無いアカウント・事業所）があれば、何もせずに止まる。
+# 消してよいときだけ ALLOW_DATA_LOSS=1 bash tools/deploy/rebuild-remote.sh <commit>（survey_ の表はどちらでも残す）
 set -e
 DEPLOY_DIR="${DEPLOY_DIR:-/c/Users/choco/dev/care72-deploy}"; [ -d "$DEPLOY_DIR" ] || git -C /c/Users/choco/dev/care72 worktree add --detach "$DEPLOY_DIR" "$1"; cd "$DEPLOY_DIR"
 git checkout -q -- . && git checkout -q --detach "$1"
 echo "== commit: $(git log --format='%h %s' -1)"
 echo "== npm ci"; npm ci --no-audit --no-fund --loglevel=error 2>&1 | tail -1
+echo "== 守り（本物の事業所のデータがあれば止める。数が読めないときも止める。前段・drop より前）"
+node tools/deploy/guard-remote.mjs || { echo "作り直し 停止（表には触っていない）"; exit 1; }
+echo "== 前段（migrations/0021 を drop の前に流す。survey_shares・survey_links に offices への外部キーが残っていると、リンクが 1 本でもあれば drop が落ちる。何度流しても同じ）"
+# migrations apply と同じ道（--command。1 つの取引なので、落ちれば巻き戻って行は変わらない）。落ちたら drop に進まず止める。
+# survey_ の 4 表がまだ無い D1（作ったばかり）では飛ばす（0021 は 4 表を建て直すので、無いと落ちる。migrations が 0004・0016 のあとに流す）
+HAS=$(npx wrangler d1 execute care72 --remote --json --command "select count(*) as t from sqlite_master where type='table' and name in ('survey_links','survey_answers','survey_shares','survey_responses')" 2>/dev/null | grep -o '"t": *[0-9]*' | grep -o '[0-9]*' || true)
+if [ "$HAS" = "4" ]; then
+  # npx は Windows で cmd.exe を通り、複数行の長い --command を「コマンド ラインが長すぎます」で断るので、node で wrangler を直に呼ぶ
+  PRE=$(node node_modules/wrangler/bin/wrangler.js d1 execute care72 --remote --json --command="$(cat migrations/0021_survey_no_office_fk.sql)" 2>&1) || { echo "前段が落ちた"; echo "$PRE" | grep -v -i token | head -20; exit 1; }
+  if echo "$PRE" | grep -qiE '"error"|SQLITE_|constraint failed'; then echo "前段が落ちた"; echo "$PRE" | grep -v -i token | head -20; exit 1; fi
+  echo "  外部キーを外した（survey_ の行はそのまま）"
+else
+  echo "  survey_ の表が 4 つそろっていない（${HAS:-読めない}）。前段は飛ばす"
+fi
 echo "== drop（sqlite_master から全部、外部キーは後回し。残れば繰り返す。survey_ の表は本物の答えが入るので落とさない）"
 KEEP="and name not like 'survey_%'"
 for i in 1 2 3 4; do

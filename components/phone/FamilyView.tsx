@@ -124,6 +124,7 @@ export function FamilyView({ state, screen, on }: { state: FamilyState; screen: 
           <QuestionBody
             id={state.id}
             family
+            shelters={screen.shelters}
             lead={
               <>
                 <EasyWords words={screen.callName} />

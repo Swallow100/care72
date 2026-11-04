@@ -8,12 +8,13 @@ import { StateTag, TONE_TEXT } from "@/components/person/parts";
 import { StateText } from "@/components/ui/Tag";
 import { TABLE } from "@/components/ui/table";
 import { PLAN_TONES, rowLink, type CaseloadFilter, type CaseloadRow, type ListView, type SortDir, type SortKey } from "@/lib/caseload";
-import { CARE_LEVEL_LABELS, COLOR_LABELS, PLAN_STATUS_LABELS, TIER_LABELS } from "@/lib/labels";
+import { CARE_LEVEL_LABELS, COLOR_LABELS, PLAN_STATUS_LABELS, stateLabel, TIER_LABELS } from "@/lib/labels";
 import { DETAIL_LABELS } from "@/lib/list/labels";
 import { COLOR_TONES } from "@/lib/person";
 import { ExpandRow } from "./ExpandRow";
 import { MedicalCell, NarrowMarks } from "./NarrowMarks";
-import { RowDetail, type ClassificationSlot, type HearingSlot } from "./RowDetail";
+import { ReasonText } from "./ReasonText";
+import { RowDetail, type ClassificationSlot, type HearingSlot, type SummarySlot } from "./RowDetail";
 import { SortHeader } from "./SortHeader";
 
 const CELL = "bg-panel px-1.5 py-1.5 align-top";
@@ -21,6 +22,7 @@ const CELL = "bg-panel px-1.5 py-1.5 align-top";
 /**
  * 横に送らない。PC の幅（1024px 以上）は全部の列。狭い幅は列を省く: 640px 未満は最終連絡、768px 未満は医療・避難計画、
  * 1024px 未満は年齢・ハザード・支援者。状態・優先・氏名と理由・残りはいつも出す。768px 未満は医療の印を氏名の下に（T54）。
+ * 640px 未満は状態の印を小さく・開け閉めの印を印の下に・連絡順の見出しを 2 字で折り、理由の列に幅を回す（375 で理由が 1〜2 字ずつ折れていた。T78）。
  * 医療の印はどの幅でも時計の残りつき（768px 以上は医療の列に。T56）
  */
 const SM = "hidden sm:table-cell";
@@ -49,6 +51,7 @@ export function DisasterTable({
   filter,
   classification,
   hearing,
+  summary,
   slots,
 }: {
   rows: CaseloadRow[];
@@ -61,6 +64,8 @@ export function DisasterTable({
   classification?: ClassificationSlot;
   /** 聞き取りの欄と直す口（T49） */
   hearing?: HearingSlot;
+  /** 録音のまとめと直す口（T69b） */
+  summary?: SummarySlot;
   slots?: TableSlots;
 }) {
   const h = (k: SortKey) => slots?.sortHref(k);
@@ -69,8 +74,8 @@ export function DisasterTable({
     <table className={TABLE} data-table="disaster">
       <thead>
         <tr>
-          <SortHeader k="state" sort={sort} dir={dir} filter={filter} href={h("state")} className="w-[4.75rem] text-center" />
-          <SortHeader k="tier" sort={sort} dir={dir} filter={filter} href={h("tier")} className="w-8 text-center sm:w-10" />
+          <SortHeader k="state" sort={sort} dir={dir} filter={filter} href={h("state")} className="text-center sm:w-[4.75rem]" />
+          <SortHeader k="tier" sort={sort} dir={dir} filter={filter} href={h("tier")} className="w-8 text-center sm:w-10" narrowWrap />
           <SortHeader k="kana" sort={sort} dir={dir} filter={filter} href={h("kana")} />
           <SortHeader k="remain" sort={sort} dir={dir} filter={filter} href={h("remain")} />
           <SortHeader k="contact" sort={sort} dir={dir} filter={filter} href={h("contact")} className={SM} />
@@ -91,13 +96,14 @@ export function DisasterTable({
             cellClass={CELL}
             head={
               r.triage ? (
-                <StateTag tone={COLOR_TONES[r.triage.color]} size="md">
-                  {COLOR_LABELS[r.triage.color]}
+                // 640px 未満は小さい印（375 で状態の列を詰め、理由の列を広く。T78）
+                <StateTag tone={COLOR_TONES[r.triage.color]} size="fit">
+                  {stateLabel(r.triage)}
                 </StateTag>
               ) : null
             }
             cells={<Cells row={r} sort={sort} view={view} nameHref={slots ? slots.nameHref(r.id) : undefined} nameMark={slots?.nameMark?.(r)} note={slots?.nameNote?.(r.id)} />}
-            detail={slots ? slots.detail(r) : r.detail ? <RowDetail detail={r.detail} classification={classification} hearing={hearing} /> : null}
+            detail={slots ? slots.detail(r) : r.detail ? <RowDetail detail={r.detail} classification={classification} hearing={hearing} summary={summary} /> : null}
           />
         ))}
       </tbody>
@@ -142,8 +148,9 @@ function Cells({
         {note}
         <NarrowMarks items={r.markItems} fallback={r.devices} />
         {t && (
+          // 句の塊ごとに折る（375 で 1 字だけ次の行に落ちない。T80）
           <div className={`mt-0.5 font-bold ${TONE_TEXT[COLOR_TONES[t.color]]}`} data-reason>
-            {t.reason}
+            <ReasonText text={t.reason} />
           </div>
         )}
         {t?.override && (
@@ -153,11 +160,18 @@ function Cells({
           </div>
         )}
       </td>
+      {/* 残りは状態の色が付くとき（至急・要確認）は塗りの印に、付かないときは本文色の文字（人数の帯と同じ考え。黄は文字に使わない。T66） */}
       <td className={`${CELL} sm:min-w-[5.5rem]`}>
         {r.remain ? (
           <>
-            <div className={`whitespace-nowrap font-bold ${r.remain.tone ? TONE_TEXT[r.remain.tone] : ""}`}>
-              {r.remain.text}
+            <div className="whitespace-nowrap font-bold tabular-nums" data-remain={r.remain.tone ?? "none"}>
+              {r.remain.tone ? (
+                <StateTag tone={r.remain.tone} size="fit">
+                  {r.remain.text}
+                </StateTag>
+              ) : (
+                r.remain.text
+              )}
             </div>
             <div className="text-xs text-muted">{r.remain.label}</div>
           </>

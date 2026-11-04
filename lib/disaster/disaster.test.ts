@@ -25,6 +25,7 @@ import {
   disasterMark,
   fromLocalInput,
   inOutageArea,
+  modeConfirm,
   parseInfoForm,
   personSituation,
   toLocalInput,
@@ -154,6 +155,33 @@ describe("切替と事業所の経過", () => {
     const s = await loadDisasterState(db, "office-demo");
     expect(s).toMatchObject({ kind: "earthquake", startedAt: at(-2), alertLevel: null, version: 3 });
     expect(s.outage).toEqual({ scope: "office", towns: [], startedAt: at(0) });
+  });
+
+  it("大雨 → 台風は停電の範囲（地区）と始まりを残す。警戒レベルも大雨の場面の種類なので残る（T79、点検の中 8）", async () => {
+    await heavyRain({ scope: "area", towns: ["かわなぎ町"], startedAt: at(0) });
+    expect(await switchDisasterMode(db, YAMAMOTO, { kind: "typhoon", version: 2, at: at(1) })).toEqual({ ok: true, changed: true });
+    const s = await loadDisasterState(db, "office-demo");
+    expect(s).toMatchObject({ kind: "typhoon", startedAt: at(-2), alertLevel: 4, version: 3 });
+    expect(s.outage).toEqual({ scope: "area", towns: ["かわなぎ町"], startedAt: at(0) });
+    expect(await loadSituation(db, "office-demo", at(2))).toEqual({ now: at(2), disasterAt: at(-2), outageAt: at(0), outageTowns: ["かわなぎ町"] });
+  });
+
+  it("確認の窓: 平時 → 災害モードと 災害モード → 平時は窓、災害の種類どうしは窓なし。平時に戻す窓は今入っていて消える値を出す（T79）", async () => {
+    const normal = await loadDisasterState(db, "office-demo");
+    expect(modeConfirm(normal, "heavy_rain")).toEqual({ step: "to_disaster", message: "災害モード 大雨", details: ["発災: 押した時刻", "並び: 色と連絡順"] });
+    expect(modeConfirm(normal, "earthquake")?.message).toBe("災害モード 地震");
+    expect(modeConfirm(normal, "normal")).toBeNull();
+
+    await heavyRain({ scope: "area", towns: ["かわなぎ町"], startedAt: at(0) });
+    const rain = await loadDisasterState(db, "office-demo");
+    expect(modeConfirm(rain, "heavy_rain")).toBeNull();
+    expect(modeConfirm(rain, "typhoon")).toBeNull();
+    expect(modeConfirm(rain, "earthquake")).toBeNull();
+    expect(modeConfirm(rain, "normal")).toEqual({
+      step: "to_normal",
+      message: "消す項目: 停電・警戒レベル・断水・道路",
+      details: ["停電 地区（かわなぎ町） 11/4 10:00〜", "警戒レベル 4"],
+    });
   });
 
   it("平時に戻すは確認が要る。確認のあとは発災・停電・レベル・断水・道路を全部空に戻し、経過に「平時」", async () => {

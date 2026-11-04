@@ -60,3 +60,9 @@ export const TIMELINE_ERROR_STATUS: Record<TimelineError, number> = {
 
 /** 送信の失敗（通信） */
 export const COMPOSER_FAILED = "送信失敗";
+
+/**
+ * AI 提供（ai_overseas）が「不同意」の人の台帳を、入れる欄の AI（文を分ける・写真と PDF を読む）に渡さないときの断り（T74）。
+ * 未確認は通す。録音の分類・まとめと訓練の本人役は断らない（lib/intake/http.ts の aiConsentRefusal）
+ */
+export const AI_CONSENT_REFUSED_LABEL = "同意 拒否";

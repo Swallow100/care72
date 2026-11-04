@@ -6,8 +6,8 @@
 import type { CustodyVia, ReleaseKind } from "../db/types.ts";
 
 export const CUSTODY_LABELS = {
-  /** 画面の見出し（/staff） */
-  page: "受け持ち",
+  /** 画面の見出し（/staff）。医療班・行政が受け入れた人の一覧。画面と紙の言葉は「受入一覧」（DECISIONS 11/4 01:0x、前は「受け持ち」。コードの名前 custody・staff はそのまま） */
+  page: "受入一覧",
   people: "人",
   at: "時点",
   /** 受け入れる操作と経過の種類 */
@@ -39,6 +39,10 @@ export const CUSTODY_LABELS = {
   remain: "残り",
   office: "所属",
   receivedAt: "受入",
+  /** 受入の前の最後の知らせが赤のとき、行の理由の下に出す頭（T78） */
+  before: "受入前",
+  /** 避難所の欄が空のまま受入・新規登録を押したとき、欄の名前の横に出す（T78） */
+  missing: "未入力",
   by: "受入者",
   /** 所属なし（offices.kind unaffiliated の名前と同じ） */
   unaffiliated: "所属なし",

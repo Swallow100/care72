@@ -22,6 +22,9 @@ export const CONFIRM_LABELS = {
   resetOk: "戻す",
   normalTitle: "平時復帰",
   normalOk: "戻す",
+  /** 平時から災害モードへの切替（T79） */
+  disasterTitle: "災害切替",
+  disasterOk: "切替",
   unlistTitle: "一覧除外",
   unlistOk: "外す",
   abandonTitle: "訓練中断",

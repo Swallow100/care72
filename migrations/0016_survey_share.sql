@@ -1,4 +1,5 @@
 -- アンケートを共有の 1 本のリンク（紙に刷る QR 1 つ）と 9 問に（docs/tasks/T65.md、DECISIONS 11/3 23:1x）。
+-- survey_shares（と 0004 の survey_links）の offices への外部キーは 0021 で外した（行を残して 4 表を建て直す。配信の作り直しの drop が落ちないように。T73a）。ここは書き換えない。
 -- 0004 の表（survey_links・survey_answers・survey_attempts）は DROP・建て直し・ALTER をしない（T42 の行はそのまま残す）。
 -- ALTER TABLE ADD COLUMN も使わない: 配信の作り直し（tools/deploy/rebuild-remote.sh）は survey_ の表を落とさずに d1_migrations を落とし、
 -- migrations を 0001 から流し直す。そのとき ALTER は「列がもうある」で止まる。新しい表を IF NOT EXISTS で足すだけにする。

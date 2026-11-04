@@ -14,20 +14,20 @@ import { staffActor, type StaffActor } from "../custody/actor.ts";
 import { loadStaffBoard, type StaffBoard, type StaffRow } from "../custody/board.ts";
 import { CUSTODY_LABELS, CUSTODY_VIA_LABELS } from "../custody/labels.ts";
 import { parseStaffView, staffQueryOf, staffViewRows, staffViewWords, type StaffView } from "../custody/staff-view.ts";
-import { COLOR_LABELS } from "../labels.ts";
+import { stateLabel } from "../labels.ts";
 import { COLUMN_LABELS, DETAIL_LABELS } from "../list/labels.ts";
 import { csvFileNames, csvText, jstDateLabel } from "./form9-csv.ts";
 import { csvResponse } from "./csv-response.ts";
 
 export const STAFF_CSV_TITLE = CUSTODY_LABELS.page;
-export const STAFF_CSV_NAMES = { ascii: "staff", utf8: "受け持ち" } as const;
+export const STAFF_CSV_NAMES = { ascii: "staff", utf8: CUSTODY_LABELS.page } as const;
 
 type Column = { header: string; cell: (r: StaffRow) => string };
 
 /** 列（画面の受け持ちの表の言葉） */
 export const STAFF_COLUMNS: ReadonlyArray<Column> = [
   { header: COLUMN_LABELS.tier, cell: (r) => String(r.rank) },
-  { header: CUSTODY_LABELS.state, cell: (r) => COLOR_LABELS[r.color] },
+  { header: CUSTODY_LABELS.state, cell: (r) => stateLabel(r) },
   { header: DETAIL_LABELS.reason, cell: (r) => r.reason },
   { header: CUSTODY_LABELS.name, cell: (r) => r.name },
   { header: CUSTODY_LABELS.kana, cell: (r) => r.kana },

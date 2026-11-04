@@ -36,11 +36,14 @@ export type SeedPerson = {
 
 // デモ事業所は審査員・動画の物。協力事業所は協力してくれるケアマネの訓練の物で、審査員には見せない。
 // 協力事業所には利用者を入れない。ケアマネ 1 人の枠だけ（名前は空。本人が入れる）。
+// 様式（plan_form）は 3 つとも松山市（種は松山市。lib/forms/plan-form.ts の defaultPlanForm と同じ。種に書くので、審査員が
+// /office で様式を変えても毎朝の戻しで松山市に戻る。T68）。地図の中心（T68、migration 0017）はデモ事業所だけ松山市の市街
+// （lib/map/center.ts の DEFAULT_CENTER と同じ値）。協力事業所・所属なしは未設定（null）
 export const SEED_OFFICES: SeedOffice[] = [
-  { id: "office-demo", name: "デモ事業所", kind: "demo", city: CITY },
-  { id: "office-partner", name: "協力事業所", kind: "regular", city: CITY },
+  { id: "office-demo", name: "デモ事業所", kind: "demo", city: CITY, plan_form: "matsuyama", center_lat: 33.84, center_lng: 132.765 },
+  { id: "office-partner", name: "協力事業所", kind: "regular", city: CITY, plan_form: "matsuyama", center_lat: null, center_lng: null },
   // 所属なし（T23）。医療班・行政がその場で作った人の置き場。ケアマネはいない。ケアマネが引き受けると自分の事業所へ移る
-  { id: "office-unaffiliated", name: "所属なし", kind: "unaffiliated", city: CITY },
+  { id: "office-unaffiliated", name: "所属なし", kind: "unaffiliated", city: CITY, plan_form: "matsuyama", center_lat: null, center_lng: null },
 ];
 
 // パスワードのハッシュは種に書かない（null）。山本のハッシュは手元の鍵のファイルの
@@ -54,6 +57,17 @@ export const SEED_ACCOUNTS: SeedAccount[] = [
     is_office_admin: 1,
     display_name: "山本",
     login_id: "yamamoto",
+    password_hash: null,
+  },
+  // 2 人目のケアマネ（T79。架空、ログインの ID なし。担当 0 人）。審査員が担当の一括変更とケアマネの管理を試すときの相手。
+  // 変えられないアカウント（lib/auth/demo.ts の FIXED_ACCOUNT_IDS）で、改名・管理者・停止・再発行はサーバーが断る
+  {
+    id: "acct-nishimura",
+    office_id: "office-demo",
+    role: "care_manager",
+    is_office_admin: 0,
+    display_name: "西村",
+    login_id: null,
     password_hash: null,
   },
   {

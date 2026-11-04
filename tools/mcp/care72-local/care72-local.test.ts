@@ -211,7 +211,8 @@ describe("読む関数（仮名で返す）", () => {
 
   it("check_leaks: 何が漏れたかだけを返す（値は返さない）", () => {
     const leaks = withRoster((_, r) => checkLeaks(r, `${p01.person.name}さんは元気`));
-    expect(leaks).toEqual(["A さんの氏名"]);
+    // 台帳の氏名と、敬称つきの名前の形（T74）。どちらも何が漏れたかだけで値は無い
+    expect(leaks).toEqual(["A さんの氏名", "敬称つきの名前"]);
     expect(withRoster((_, r) => checkLeaks(r, "A さんは家にいる"))).toEqual([]);
   });
 
