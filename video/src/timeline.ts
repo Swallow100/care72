@@ -120,7 +120,7 @@ export const SCENES: Scene[] = [
     title: "理由",
     ground: "blue",
     at: 13.1,
-    end: 27,
+    end: 25.2,
     shots: [
       // 作者の紹介は大きな字にせず、左下の名札（N03 の「私の家族はケアマネージャーで」）
       { at: 13.1, end: 17.2, kind: "plate", label: "作者の名札（医学部の学生・家族にケアマネージャー）", lines: ["作者　医学部の学生", "家族にケアマネージャー"], beats: [0.3, 0.9], bg: "B02" },
@@ -141,7 +141,7 @@ export const SCENES: Scene[] = [
       },
       {
         at: 21.5,
-        end: 27,
+        end: 25.2,
         kind: "number",
         bg: "B02",
         bgFrom: 4,
@@ -150,7 +150,7 @@ export const SCENES: Scene[] = [
         value: "［N］人中［N］人",
         lines: ["書く時間が無い"],
         sub: "アンケート（ケアマネージャーと包括支援センター）",
-        beats: [3.5],
+        beats: [2.6],
       },
     ],
   },
@@ -158,25 +158,33 @@ export const SCENES: Scene[] = [
     id: "S3",
     title: "ケア72",
     ground: "blue",
-    at: 27,
+    at: 25.2,
     end: 46,
     shots: [
-      // 題名を 72 時間の輪（G1）の中に置く。題名は N06 の「ケア72」で出す（仮の声で 29.7 秒）。輪の中に名前の 72 時間の意味
-      { at: 27, end: 33.6, kind: "ring", label: "題名と 72 時間の輪", lines: ["ケア72"], sub: "助けが届きにくい災害直後の 72 時間", beats: [2.7] },
       {
-        at: 33.6,
-        end: 41.6,
+        at: 25.2,
+        end: 32.5,
+        kind: "text",
+        label: "気づき（楽に作れて、実際の災害でも役立つ計画）",
+        bg: "B05",
+        // N06 の「楽に作れて」で 1 行目、「実際の災害でも役立つ計画なら」で 2 行目（仮の声で測る）
+        lines: ["楽に作れて", "実際の災害でも役立つ計画"],
+        beats: [1.6, 2.8],
+      },
+      // 題名を 72 時間の輪（G1）の中に置く。題名は N07 の「ケア72」で出す（仮の声で測る）。輪の中に名前の 72 時間の意味
+      { at: 32.5, end: 38, kind: "ring", label: "題名と 72 時間の輪", lines: ["ケア72"], sub: "助けが届きにくい災害直後の 72 時間", beats: [0.5] },
+      {
+        at: 38,
+        end: 46,
         kind: "split",
         footages: ["R03", "R07", "R10"],
         // R03 は様式の 1 頁目、R10 は山田の行が至急で一番上に上がったあと（R10-2 の 31.1 秒）
         froms: [3, 0, 32.3],
         lines: ["計画", "訓練", "発災時"],
-        // N07 の「話すだけで計画ができ」「訓練もでき」「災害が起きたら」に合わせて 1 つずつ（仮の声で 33.8・35.5・36.6 秒）
-        beats: [0.1, 1.8, 2.9],
+        // N08 の「話すだけで計画ができ」「訓練もでき」「災害時は」に合わせて 1 つずつ（仮の声で測る）
+        beats: [0.2, 1.9, 3.0],
         label: "様式が埋まる・72 時間の棒・一覧が並び替わる",
       },
-      // 量の欄を囲むのは N09 の「用量が抜けていた」の頭（仮の声で 44.2 秒）
-      { at: 41.6, end: 46, kind: "memo", label: "避難所の手書きの薬のメモ（イメージ）。量の欄が空いている", source: "厚生労働省", beats: [2.6] },
     ],
   },
   {
@@ -359,11 +367,12 @@ export const LINES: Line[] = [
   { id: "N02", at: 4.1, end: 12.9, ja: "災害のとき、在宅の高齢者を誰がどう助けるかを決めておく計画です。でも、できているのは対象者の 15.1% だけ。", en: "It sets out who will help an older person living at home in a disaster, and how. But only 15.1% of the people who need one have one." },
   { id: "N03", at: 13.1, end: 21.3, ja: "私の家族はケアマネージャーで、その理由を家で見てきました。利用者のことは知っているのに、書く時間がないんです。", en: "My family member is a care manager, and I've seen why at home. They know their clients well, but there's no time to write it down." },
   // N04（高校の災害の学習）は作者の指示（11/3 09:2x）で消した。ID は振り直さない（欠番）
-  { id: "N05", at: 21.5, end: 26.8, ja: "家族だけではありません。アンケートでも、［N］人中［N］人が『書く時間が無い』と答えました。", en: "It's not just my family. In our survey, [N] of [N] said they have no time to write plans." },
-  { id: "N06", at: 27, end: 33.5, ja: "そこで、医学生の私が作ったのがケア72。72 は、助けが届きにくい災害直後の 72 時間のことです。", en: "So, as a medical student, I built Care72. The 72 stands for the first 72 hours after a disaster, when help is slow to arrive." },
-  { id: "N07", at: 33.7, end: 41.4, ja: "話すだけで計画ができ、訓練もでき、災害が起きたら安否と大事な情報をまとめて、医療班と共有します。", en: "Talk, and the plan is made. Run drills with it. And in a disaster, it gathers who is safe and what matters, and shares it with the medical team." },
-  // N08（能登の関連死）は 11/4 の冒頭の組み替えで外した（欠番）
-  { id: "N09", at: 41.6, end: 45.9, ja: "輪島の避難所では、薬のメモが手書きで、用量が抜けていた。", en: "At shelters in Wajima, medication notes were handwritten, and doses were left out." },
+  { id: "N05", at: 21.5, end: 25.2, ja: "アンケートでも、［N］人中［N］人が『書く時間が無い』と答えました。", en: "In our survey too, [N] of [N] said they have no time to write plans." },
+  { id: "N06", at: 25.4, end: 32.4, ja: "そこで考えました。楽に作れて、実際の災害でも役立つ計画なら、作る意味も大きくなる。", en: "So I thought: if a plan were easy to make and actually useful in a real disaster, making it would mean much more." },
+  { id: "N07", at: 32.6, end: 37.9, ja: "それがケア72。72 は、助けが届きにくい災害直後の 72 時間です。", en: "That's Care72. The 72 stands for the first 72 hours after a disaster, when help is slow to arrive." },
+  // N08 は 3 本立ての文に使い直した（前の能登の関連死の文は 11/4 の冒頭の組み替えで外した）
+  { id: "N08", at: 38.1, end: 45.8, ja: "話すだけで計画ができ、訓練もでき、災害時は安否と大事な情報をまとめて、医療班と共有します。", en: "Talk, and the plan is made. Run drills with it. In a disaster, it gathers who is safe and what matters, and shares it with the medical team." },
+  // N09（輪島の手書きのメモ）は 11/4 の冒頭の組み替えで外した（欠番）
   { id: "N10", at: 46.3, end: 51.3, ja: "主役は架空の利用者、山田ハナさん。84 歳、在宅酸素。", en: "Meet a fictional client, Hana Yamada. 84, on home oxygen." },
   { id: "N11", at: 51.5, end: 58.3, ja: "ケアマネージャーが話すと、Claude が台帳の欄に分け、空いている所だけ聞き返します。", en: "The care manager talks. Claude sorts it into her record, and asks back only about what's missing." },
   { id: "N12", at: 58.5, end: 64.5, ja: "台帳から、市の様式の避難計画、本人の 1 枚、医療班の要約が出ます。", en: "From that one record: the city's evacuation plan form, a one-page sheet for her, and a summary for the medical team." },
