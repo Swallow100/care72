@@ -30,6 +30,8 @@ export type FramedProps = {
   callouts?: Callout[];
   /** 出る動きを遅らせる（コマ） */
   delay?: number;
+  /** 窓の帯に出す画面の名前。無ければ録画の名前（1 本の録画の中で画面が替わるとき） */
+  screen?: string;
 };
 
 /** 枠の大きさ（箱に収まる一番大きい物） */
@@ -60,7 +62,7 @@ export const Framed: React.FC<FramedProps> = (props) => {
 
 type Sized = FramedProps & { width: number; height: number; style: React.CSSProperties };
 
-const WindowFrame: React.FC<Sized> = ({ id, assets, width, height, from, rate, zoom, duration, note, chip, callouts, style }) => {
+const WindowFrame: React.FC<Sized> = ({ id, assets, width, height, from, rate, zoom, duration, note, chip, callouts, style, screen }) => {
   // 帯は地の上で目立つ面の色（薄い青の地では青、青地では白）。地と同じ色にすると枠が溶ける
   const p = usePalette();
   const contentW = width;
@@ -81,7 +83,7 @@ const WindowFrame: React.FC<Sized> = ({ id, assets, width, height, from, rate, z
           fontWeight: 600,
         }}
       >
-        <span>{RECORDINGS[id] ?? ""}</span>
+        <span>{screen ?? RECORDINGS[id] ?? ""}</span>
         {chip ? <ChipInBar text={chip} inverse={p.strong === COLOR.white} /> : null}
       </div>
       <div style={{ position: "relative", width: contentW, height: contentH }}>

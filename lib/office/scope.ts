@@ -6,7 +6,8 @@
 //   毎朝 4 時の戻し（lib/seed/reset.ts）で消える。審査員が足した・再発行したアカウントには印（accounts.judge_made、T81）を付け、
 //   そのアカウントで入っても審査員と同じ壁（lib/auth/wall.ts）。壁の中の人が変えられるのは印の付いたアカウントだけ
 //   （審査員でない人が足した本物のアカウントの再発行で、その人として入れないように）
-// - 事業所の地域（市と地図の中心）: 管理者だけ。審査員は見るだけ（変えるとほかの審査員の地図の真ん中が翌朝まで動くので）
+// - 事業所の地域（市と地図の中心）: 管理者だけ。審査員は見るだけ（変えるとほかの審査員の地図の真ん中が翌朝まで動くので）。
+//   審査員の試用事業所（T115、lib/office/sandbox.ts）では審査員が管理者として置く（その審査員だけの事業所）
 // 行政・医療班（save は持つ）・本人・家族・役を選ぶ前の審査員は、どれもできない。
 
 import type { Principal } from "../auth/principal.ts";
@@ -40,8 +41,9 @@ export function officeActor(p: Principal | null): OfficeActor | null {
     authorId: p.accountId,
     authorRole: "care_manager",
     admin: p.admin || p.judge,
-    // 審査員が足して管理者にしたアカウントも、事業所の地域は書けない（審査員と同じ）
-    placeEdit: p.admin && !walled,
+    // 審査員が足して管理者にしたアカウントも、事業所の地域は書けない（審査員と同じ）。
+    // 例外は審査員の試用事業所の管理者の役（T115）: その審査員のセッションだけの事業所で、変えてもほかの審査員の地図は動かない
+    placeEdit: p.admin && (!walled || p.sandbox === true),
     defaultCareManagerId: p.caseloadOf,
     walled,
   };

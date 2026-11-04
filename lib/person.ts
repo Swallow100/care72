@@ -53,6 +53,7 @@ import {
   CONTACT_FLAG_LABELS,
   CONTACT_KIND_LABELS,
   CONTACT_REACH_LABELS,
+  CONTACT_ROLE_LABELS,
   DEPENDENCE_MARKS,
   DEPENDS_ON_LABELS,
   DERIVED_TIMELINE_LABELS,
@@ -74,10 +75,12 @@ import {
   stateLabel,
   STRUCTURE_LABELS,
   SUPPORT_KIND_LABELS,
+  TRANSPORT_KIND_LABELS,
   TIER_LABELS,
   TIMELINE_KIND_LABELS,
 } from "./labels.ts";
 import { toTriagePerson } from "./triage/from-ledger.ts";
+import { transportKindOf } from "./map/transport.ts";
 import { clockRemaining, formatHours, tierOf, type Color, type Situation, type Tier, type TriageClock, type TriageResult } from "./triage/index.ts";
 import { personSituation, type DisasterSituation } from "./disaster/state.ts";
 import type { PersonBrief } from "./auth/scope.ts";
@@ -89,6 +92,7 @@ import { RETRACT_LABELS } from "./timeline/labels.ts";
 import { canRetract, type Retracter } from "./timeline/retract.ts";
 import { PROVISION_BASIS_LABELS, PROVISION_SECTION_LABELS, PROVISION_TIMELINE_LABEL } from "./consent/labels.ts";
 import { aboutLine, DOCUMENT_CATALOG } from "./forms/catalog.ts";
+import { wareki } from "./forms/wareki.ts";
 import {
   PROVISION_SECTIONS,
   peopleMode,
@@ -223,8 +227,11 @@ export function fieldLabelOf(field: string): string {
  */
 export type StateTone = "ok" | "urgent" | "check" | "unknown";
 
-/** 1 つの言葉。tel は電話のリンク（tel: の後ろ、ハイフンなし）。tag は色の付いた印（色だけにせず文字を必ず持つ） */
-export type Seg = { text: string; tel?: string; tone?: "muted" | StateTone; tag?: true };
+/**
+ * 1 つの言葉。tel は電話のリンク（tel: の後ろ、ハイフンなし）。tag は色の付いた印（色だけにせず文字を必ず持つ）。
+ * mark は色の無い地の印（関係者の役割「家族」「緊急 1」など。状態の 4 色を使わない。T113）、small は小さな字（心身の未入力の行）
+ */
+export type Seg = { text: string; tel?: string; tone?: "muted" | StateTone; tag?: true; mark?: true; small?: true };
 export type Line = Seg[];
 export type Pending = Ledger["pending"][number];
 
@@ -242,6 +249,8 @@ export type Row = {
   pending: Pending[];
   /** 細かい物（既往・予防接種・手帳など）。小さな字で出す */
   small?: true;
+  /** 1 行が 1 人（関係者の連絡先の一覧。T113）。狭い幅で 1 人の行が折り返しても人の境目が分かるよう、行の間を空ける */
+  apart?: true;
 };
 
 export type ClockView = {
@@ -435,9 +444,25 @@ export function telHref(phone: string): string {
   return phone.replace(/[^0-9+]/g, "");
 }
 
+/**
+ * 生年月日の言葉（T113）。和暦と西暦の年「昭和16年3月12日（1941）」。1 年目は「元年」。
+ * 大正より前は西暦だけ「1911年5月1日」、形が違えばそのまま。年齢の出し方（上の段）は変えない。
+ * 計画書の紙（lib/forms/wareki.ts の warekiText）は数の前後を空けるが、本人のページの欄は詰めて 1 つの値として読ませる
+ */
+export function birthText(iso: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (!m) return iso;
+  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const w = wareki(iso);
+  if (!w) return `${y}年${mo}月${d}日`;
+  return `${w.era}${w.year === 1 ? "元" : w.year}年${mo}月${d}日（${y}）`;
+}
+
 const text = (t: string): Seg => ({ text: t });
 const muted = (t: string): Seg => ({ text: t, tone: "muted" });
 const tag = (t: string, tone: StateTone): Seg => ({ text: t, tone, tag: true });
+/** 色の無い地の印（関係者の役割） */
+const mark = (t: string): Seg => ({ text: t, mark: true });
 
 /** 残りが短いほど黄 → 赤にする境目（時間）。1 日以内は赤、7 日より短ければ黄、それ以上は色なし */
 export const CLOCK_TONE_HOURS = { urgent: 24, check: 168 } as const;
@@ -701,7 +726,7 @@ function evacuationBlocks(ledger: Ledger): Block[] {
     row("evacuation.destination2", textField(e.destination2)),
     // 在宅避難の印（T37）。無ければ避難所へ（「なし」）
     row("evacuation.stayHome", e.stayHome === true ? { kind: "lines", lines: [[text("あり")]] } : { kind: "none" }),
-    row("evacuation.transport", textField(e.transport)),
+    row("evacuation.transport", transportField(e)),
     row("evacuation.support", supportField(e)),
     row("evacuation.route", textField(e.route)),
     row("evacuation.barriers", textField(e.barriers)),
@@ -711,6 +736,18 @@ function evacuationBlocks(ledger: Ledger): Block[] {
     row("evacuation.pets", textField(e.pets)),
     row("evacuation.myTimeline", textField(e.myTimeline ? MY_TIMELINE_LABELS[e.myTimeline] : null)),
   ].map((r): Block => ({ type: "row", row: r }));
+}
+
+/**
+ * 手段（T112）: 選ぶ欄と書き足し（支援の内容と同じ形）。選ぶ欄の無い古い台帳は文字から読み替えた選ぶ欄と、その文字を書き足しに。
+ * 書き足しが選ぶ欄の言葉と同じなら出さない
+ */
+function transportField(e: Ledger["evacuation"]): Field {
+  const kind = transportKindOf(e);
+  const note = e.transport?.trim() ?? "";
+  if (!kind) return note ? { kind: "lines", lines: [[text(note)]] } : { kind: "unconfirmed" };
+  const label = TRANSPORT_KIND_LABELS[kind];
+  return { kind: "lines", lines: [[text(label), ...(note && note !== label ? [muted(note)] : [])]] };
 }
 
 /** 支援の内容: 選んだ物と書き足し。選んだ物が空の配列なら「なし」 */
@@ -751,7 +788,73 @@ function partialPeopleBlocks(blocks: Block[], contacts: Contact[]): Block[] {
   });
 }
 
+/**
+ * 連絡先の一覧の 1 行（T113）: 名前・間柄・役割の印（種類・緊急 N・支援 N・夜間可）・夜間の不可と未確認・距離・車・スマホ・電話・備考。
+ * 1 人を 1 行にまとめ、電話は 1 回だけ出す
+ */
+function contactListLine(c: Contact): Line {
+  const label = c.name ?? (c.relation || CONTACT_KIND_LABELS[c.kind]);
+  const segs: Seg[] = [text(label)];
+  if (c.name && c.relation) segs.push(muted(c.relation));
+  // 種類の印（家族・支援者・民生委員・訪問看護など）。名前の代わりに出した言葉と同じなら重ねない。「その他」は何も言わないので付けない
+  const kind = CONTACT_KIND_LABELS[c.kind];
+  if (c.kind !== "other" && kind !== label) segs.push(mark(kind));
+  if (c.emergency_order != null) segs.push(mark(`${CONTACT_ROLE_LABELS.emergency} ${c.emergency_order}`));
+  if (c.supporter_order != null) segs.push(mark(`${CONTACT_ROLE_LABELS.supporter} ${c.supporter_order}`));
+  if (c.night_ok === 1) segs.push(mark(CONTACT_FLAG_LABELS.nightOk));
+  else if (COMES_KINDS.has(c.kind)) segs.push(muted(c.night_ok === 0 ? CONTACT_FLAG_LABELS.nightNo : CONTACT_FLAG_LABELS.nightUnknown));
+  if (c.reach) segs.push(muted(CONTACT_REACH_LABELS[c.reach]));
+  if (c.has_car === 1) segs.push(muted(CONTACT_FLAG_LABELS.hasCar));
+  if (c.has_smartphone === 1) segs.push(muted(CONTACT_FLAG_LABELS.hasSmartphone));
+  if (c.phone) segs.push({ text: c.phone, tel: telHref(c.phone) });
+  if (c.note) segs.push(muted(c.note));
+  return segs;
+}
+
+/** 一覧の並び: 緊急の順 → 支援の順 → ほか（台帳の並び）。順の無い人は後ろ */
+function listOrder(a: Contact, b: Contact): number {
+  const by = (k: "emergency_order" | "supporter_order") => (a[k] ?? Infinity) - (b[k] ?? Infinity);
+  return by("emergency_order") || by("supporter_order") || 0;
+}
+
+/**
+ * 関係者の区分（読む側。T113）。連絡先は 1 人 1 行の一覧にし、役割（家族・緊急 1・支援 1・夜間可など）を印で並べる
+ * （前は家族・緊急連絡先・支援者1・夜間支援の 4 か所に同じ人が並び、電話が 3 回出た）。
+ * 役割の欄は、埋まっていないときだけ「なし」「未入力」の行で残す（支援者1 なしは注意の色。みまもり員は連絡先でないのでいつも）。
+ * 埋まった役割に付いた未確認は attachPending がその欄の名前の行を足す。
+ * 計画書・連絡順・医療要約・上の段の緊急連絡先は contacts を直に読むので変わらない。医療班・行政の「人の一部」は peopleRoleBlocks
+ */
 function peopleBlocks(contacts: Contact[], ledger: Ledger): Block[] {
+  const listed = contacts.filter((c) => !SHOWN_ELSEWHERE.has(c.kind)).sort(listOrder);
+  const out: Row[] = [];
+  if (listed.length > 0) {
+    out.push({
+      key: "people.contacts",
+      label: CONTACT_ROLE_LABELS.list,
+      field: { kind: "lines", lines: listed.map(contactListLine) },
+      pending: [],
+      apart: true,
+    });
+  }
+  const has = (f: (c: Contact) => boolean) => contacts.some(f);
+  if (!has((c) => c.kind === "family")) out.push(row("people.family", { kind: "none" }));
+  if (!has((c) => c.emergency_order != null)) out.push(row("people.emergency", { kind: "none" }));
+  // 支援者1 が無い（連絡順の並びで「支援者なし」が先になる）は注意の色。前の形（peopleRoleBlocks）と同じ
+  if (!has((c) => c.supporter_order === 1)) out.push(row("people.supporter1", { kind: "none", tone: "check" }));
+  if (!has((c) => c.supporter_order === 2)) out.push(row("people.supporter2", { kind: "none" }));
+  if (!has((c) => c.kind === "welfare_commissioner")) out.push(row("people.welfare_commissioner", { kind: "none" }));
+  out.push(row("local.watcher", textField(ledger.local?.watcher)));
+  if (!has((c) => c.night_ok === 1)) {
+    out.push(row("people.night_supporter", has((c) => c.night_ok === 0) ? { kind: "none" } : { kind: "unconfirmed" }));
+  }
+  return out.map((r): Block => ({ type: "row", row: r }));
+}
+
+/**
+ * 役割ごとの欄（前の形）。医療班・行政の「人の一部」（partialPeopleBlocks）だけがこれを絞って使う:
+ * 緊急連絡先（名前・電話つき）と支援者 1・2 の役割名。範囲の外の欄に付いた未確認を出さないため、欄の形はそのまま
+ */
+function peopleRoleBlocks(contacts: Contact[], ledger: Ledger): Block[] {
   const byOrder = (key: "emergency_order" | "supporter_order") =>
     contacts.filter((c) => c[key] != null).sort((a, b) => (a[key] ?? 0) - (b[key] ?? 0));
   const family = contacts.filter((c) => c.kind === "family");
@@ -816,18 +919,31 @@ function basicBlocks(rows: PersonPageRows, ledger: Ledger): Block[] {
     ...(means.length > 0 ? [[text(means.join("・"))]] : []),
   ]);
 
-  // 心身: 内閣府様式の裏の 6 項目と、寝たきり・認知症。空の項目も「未入力」で出す
-  const abilities: Line = (Object.keys(ABILITY_ITEM_LABELS) as Array<keyof typeof ABILITY_ITEM_LABELS>).map((k) => {
+  // 心身: 内閣府様式の裏の 6 項目と、寝たきり・認知症。入った項目だけを並べ、空の項目は下の 1 行に灰の小さな字で
+  // 「未入力　聴覚・視覚・…」とまとめる（前は空も 1 つずつ「聴覚 未入力」と出し、入った値が埋もれた。T113、11/5 の決め）。
+  // 寝たきり・認知症の「なし」（無いと分かっている）は入った物。全部空なら lines が「未入力」だけにする
+  const entered: Seg[] = [];
+  const blank: string[] = [];
+  for (const k of Object.keys(ABILITY_ITEM_LABELS) as Array<keyof typeof ABILITY_ITEM_LABELS>) {
     const v = care[k];
-    return v ? text(`${ABILITY_ITEM_LABELS[k]} ${ABILITY_LABELS[v]}`) : muted(`${ABILITY_ITEM_LABELS[k]} ${BLANK_LABELS.blank}`);
-  });
-  const flag = (label: string, v: boolean | undefined): Seg =>
-    v === true ? text(label) : muted(`${label} ${v === false ? BLANK_LABELS.none : BLANK_LABELS.blank}`);
-  const careLines: Line[] = [abilities, [flag(CARE_FLAG_LABELS.bedridden, care.bedridden), flag(CARE_FLAG_LABELS.dementia, care.dementia)]];
+    if (v) entered.push(text(`${ABILITY_ITEM_LABELS[k]} ${ABILITY_LABELS[v]}`));
+    else blank.push(ABILITY_ITEM_LABELS[k]);
+  }
+  for (const [k, label] of [
+    ["bedridden", CARE_FLAG_LABELS.bedridden],
+    ["dementia", CARE_FLAG_LABELS.dementia],
+  ] as const) {
+    const v = care[k];
+    if (v === true) entered.push(text(label));
+    else if (v === false) entered.push(text(`${label} ${BLANK_LABELS.none}`));
+    else blank.push(label);
+  }
+  const blankLine: Line = [{ ...muted(`${BLANK_LABELS.blank}　${blank.join("・")}`), small: true }];
+  const careLines: Line[] = entered.length === 0 ? [] : blank.length > 0 ? [entered, blankLine] : [entered];
 
   const out = [
     row("basic.address", basic.address ? textField(`${basic.address.city} ${basic.address.town}`) : { kind: "unconfirmed" }),
-    row("basic.birth", textField(rows.person.birth_date)),
+    row("basic.birth", textField(rows.person.birth_date ? birthText(rows.person.birth_date) : null)),
     row("basic.sex", textField(basic.sex ? SEX_LABELS[basic.sex] : null)),
     row("basic.contactMeans", contactMeans),
     row(
@@ -1108,9 +1224,12 @@ function attachPending(sections: Map<SectionId, Block[]>, ledger: Ledger, rows: 
       out.push({ section: def.section, field: p.field, status: p.status, label: target.label });
       continue;
     }
-    // 画面に欄の無い場所。区分の終わりに 1 行足す
-    const section = sectionOfField(p.field);
-    const extra: Row = { key: p.field, label: "その他", field: { kind: "unconfirmed" }, pending: [p] };
+    // 画面に欄の無い場所。区分の終わりに 1 行足す。欄の決まりはあるのに行を出していない物（関係者の埋まった役割。T113）は、
+    // その欄の名前と場所の行にする（同じ欄の 2 つ目からはこの行に付く）。決まりの無い場所は「その他」
+    const section = def?.section ?? sectionOfField(p.field);
+    const extra: Row = def
+      ? { key: def.key, label: def.label, field: { kind: "unconfirmed" }, pending: [p] }
+      : { key: p.field, label: "その他", field: { kind: "unconfirmed" }, pending: [p] };
     sections.get(section)!.push({ type: "row", row: extra });
     out.push({ section, field: p.field, status: p.status, label: extra.label });
   }
@@ -1251,7 +1370,8 @@ export function toPersonView(rows: PersonPageRows, opts: ViewOptions): PersonVie
   const sections = new Map<SectionId, Block[]>([
     ["medical", medicalBlocks(ledger, contacts, clocks)],
     ["evacuation", evacuationBlocks(ledger)],
-    ["people", peopleBlocks(contacts, ledger)],
+    // 医療班・行政の「人の一部」は役割ごとの欄から絞る（緊急連絡先と支援者 1・2 の役割名）。ほかは 1 人 1 行の一覧（T113）
+    ["people", peopleMode(scope) === "partial" ? peopleRoleBlocks(contacts, ledger) : peopleBlocks(contacts, ledger)],
     ["basic", basicBlocks({ ...rows, contacts }, ledger)],
     ["consent", consentBlocks(rows.consents)],
     ["documents", documentBlocks(person.id, scope.documents, opts.planForm)],

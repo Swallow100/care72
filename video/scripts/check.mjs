@@ -4,10 +4,11 @@
 // - 文（N01〜）の日本語が docs/video/PLAN.md・SCRIPT.md・timeline.ts で同じか。英語と秒が SCRIPT.md と timeline.ts で同じか
 // - 1 秒あたりの字数の目安（数字は読みが長いので 2 字、英字は 0.6 字に数える）。6 を超えたら知らせる（止めはしない）
 // - ［ ］の埋める所の一覧
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { ROOT } from "./lib.mjs";
 import { LINES, SCENES, TOTAL_SECONDS } from "../src/timeline.ts";
+import { plain, sayAt } from "../src/voice.ts";
 
 const errors = [];
 const warns = [];
@@ -35,6 +36,38 @@ for (const l of LINES) {
   if (l.at < prev - 0.001) errors.push(`${l.id}: 前の文と重なる`);
   if (l.end > TOTAL_SECONDS) errors.push(`${l.id}: ${TOTAL_SECONDS} 秒を超える`);
   prev = l.end;
+}
+
+// 声に合わせて出す言葉（cues）: 言葉が文の中にあるか、出る時刻が絵の中か（声の区切りは public/assets.json にあれば使う）
+const assetsFile = join(ROOT, "public", "assets.json");
+const voice = existsSync(assetsFile) ? (JSON.parse(readFileSync(assetsFile, "utf8")).voice ?? {}) : {};
+const lineById = new Map(LINES.map((l) => [l.id, l]));
+for (const s of SCENES) {
+  for (const sh of s.shots) {
+    for (const c of sh.cues ?? []) {
+      const l = lineById.get(c.line);
+      if (!l) {
+        errors.push(`${s.id}: 言葉「${c.text}」の文 ${c.line} が無い`);
+        continue;
+      }
+      const say = c.say ?? c.text;
+      if (!plain(l.ja).includes(plain(say))) {
+        errors.push(`${s.id}: 言葉「${say}」が ${c.line} の文に無い（文を直したら cues の text か say も直す）\n  文: ${l.ja}`);
+        continue;
+      }
+      const at = sayAt(l, voice[c.line], say) + (c.shift ?? 0);
+      if (at < sh.at - 0.5 || at > sh.end - 0.3) warns.push(`${s.id}: 言葉「${c.text}」が ${at.toFixed(2)} 秒に出る（絵は ${sh.at}〜${sh.end} 秒）`);
+    }
+  }
+}
+
+// 白い帯の言葉（marker）は、その絵に出る言葉（cues の text か lines）と同じ字か
+for (const s of SCENES) {
+  for (const sh of s.shots) {
+    if (!sh.marker) continue;
+    const shown = [...(sh.cues ?? []).filter((c) => c.slot !== "mark" && c.slot !== "lead").map((c) => c.text), ...(sh.lines ?? [])];
+    if (!shown.includes(sh.marker)) errors.push(`${s.id}: 白い帯の言葉「${sh.marker}」が絵「${sh.label}」に出る言葉に無い`);
+  }
 }
 
 // 文書を読む

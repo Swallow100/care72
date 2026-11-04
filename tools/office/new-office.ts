@@ -24,7 +24,9 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { hashPassword } from "../../lib/auth/password.ts";
 import { defaultPlanForm } from "../../lib/forms/plan-form.ts";
+import { newOfficeRows } from "../../lib/office/create.ts";
 import { parseStaffInput, tidySpaces } from "../../lib/office/forms.ts";
+import { isSandboxOfficeId } from "../../lib/office/sandbox-id.ts";
 import { generateInitialPassword } from "../../lib/office/staff.ts";
 import { SEED_ACCOUNTS, SEED_OFFICES } from "../../seed/people.ts";
 import { insert } from "../../seed/sql.ts";
@@ -112,6 +114,8 @@ export function parseNewOfficeArgs(argv: string[], newId: () => string = () => `
   const officeId = values.id ?? newId();
   if (!OFFICE_ID_PATTERN.test(officeId)) return { ok: false, error: "id 不正（office-英小文字・数字）" };
   if (SEED_OFFICES.some((o) => o.id === officeId)) return { ok: false, error: "id 使用中（種の事業所）" };
+  // 審査員の試用事業所の id（T115。毎朝 4 時の掃除が R2 をこの頭で消す）を本物の事業所に使わない
+  if (isSandboxOfficeId(officeId)) return { ok: false, error: "id 不可（試用事業所の頭）" };
 
   const planRaw = values["plan-form"];
   if (planRaw !== undefined && planRaw !== "matsuyama" && planRaw !== "cao") return { ok: false, error: "様式 不正（matsuyama か cao）" };
@@ -123,23 +127,15 @@ export function parseNewOfficeArgs(argv: string[], newId: () => string = () => `
   return { ok: true, value: { officeId, name, city, planForm, loginId: staff.value.loginId, displayName: staff.value.displayName, out } };
 }
 
-/** 事業所の 1 行と管理者の 1 行。注は付けない（先頭が -- だと --command の値が旗と読まれることがある） */
+/**
+ * 事業所の 1 行と管理者の 1 行。注は付けない（先頭が -- だと --command の値が旗と読まれることがある）。
+ * 行の形は審査員の試用事業所（lib/office/sandbox.ts、T115）と同じ所（lib/office/create.ts の newOfficeRows）から取る
+ */
 export function newOfficeSql(
   o: Omit<NewOfficeInput, "out"> & { accountId: string; passwordHash: string; at: string },
 ): string {
-  return [
-    insert("offices", { id: o.officeId, name: o.name, kind: "regular", city: o.city, plan_form: o.planForm, created_at: o.at }),
-    insert("accounts", {
-      id: o.accountId,
-      office_id: o.officeId,
-      role: "care_manager",
-      is_office_admin: 1,
-      display_name: o.displayName,
-      login_id: o.loginId,
-      password_hash: o.passwordHash,
-      created_at: o.at,
-    }),
-  ].join("\n") + "\n";
+  const rows = newOfficeRows(o);
+  return [insert("offices", rows.office), insert("accounts", rows.admin)].join("\n") + "\n";
 }
 
 /** ファイル名の時刻（20261104-153000）。端末の時計 */

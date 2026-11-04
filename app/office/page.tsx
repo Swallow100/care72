@@ -23,6 +23,7 @@ import { CHOICE_INPUT, CHOICE_LABEL } from "@/components/ui/choice";
 import { TABLE, TABLE_BOX, TD, TH } from "@/components/ui/table";
 import { StateTag, StateText, TONE_TEXT } from "@/components/ui/Tag";
 import { todayJst } from "@/lib/age";
+import { wantsOwnPassword } from "@/lib/auth/password-change";
 import { requirePage } from "@/lib/auth/server";
 import { PLAN_TONES } from "@/lib/caseload";
 import { ALERT_LEVELS, DISASTER_KINDS, OUTAGE_SCOPES, type DisasterKind, type GeoPoint } from "@/lib/db/types";
@@ -79,6 +80,8 @@ type Props = {
     form_error?: string | string[];
     moved?: string | string[];
     skipped?: string | string[];
+    /** ヘッダーの「初期パスワード」の「変更」から（自分の行の変更の欄を開いて出す。T114） */
+    password?: string | string[];
   }>;
 };
 
@@ -198,11 +201,14 @@ export default async function OfficePage({ searchParams }: Props) {
           <FormChoice officeId={scope.officeId} error={q.form_error === "bad"} />
           <Panel id={CARE_MANAGERS_ANCHOR} aria-labelledby="cm-title" className="scroll-mt-4">
             <AddCareManager count={careManagers.length} admin={actor.admin}>
+              {/* 審査員のケアマネの役の書き手（acct-judge）はケアマネの一覧にいない。試用事業所（T115）では管理者の行が自分 */}
               <CareManagerList
                 careManagers={careManagers}
-                selfId={principal.judge ? null : principal.accountId}
+                selfId={principal.judge && !principal.sandbox ? null : principal.accountId}
+                ownPassword={!principal.judge}
                 manage={actor.admin}
                 walled={actor.walled === true}
+                openPassword={wantsOwnPassword(q.password)}
               />
             </AddCareManager>
           </Panel>
@@ -634,18 +640,31 @@ function AssignSection({
 function CareManagerList({
   careManagers,
   selfId,
+  ownPassword,
   manage,
   walled,
+  openPassword = false,
 }: {
   careManagers: CareManagerItem[];
   selfId: string | null;
+  /** 自分の行のパスワード変更（審査員の試用事業所の管理者は持たない。T115） */
+  ownPassword: boolean;
   manage: boolean;
   walled: boolean;
+  /** 自分の行の変更の欄を開いて出す（ヘッダーの「初期パスワード」の「変更」から。T114） */
+  openPassword?: boolean;
 }) {
   return (
     <ul className="mt-2 grid gap-px text-sm">
       {careManagers.map((c) => (
-        <CareManagerRow key={c.id} item={c} self={c.id === selfId} manage={manage && (!walled || c.judgeMade === true)} />
+        <CareManagerRow
+          key={c.id}
+          item={c}
+          self={c.id === selfId}
+          ownPassword={ownPassword}
+          manage={manage && (!walled || c.judgeMade === true)}
+          openPassword={openPassword && c.id === selfId}
+        />
       ))}
     </ul>
   );

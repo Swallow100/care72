@@ -3,6 +3,7 @@
 //   デモの固定の帯は描かない（ハザードの既定の層は残す）
 // - 訓練は筋書きの雨（lib/drill/rain.ts の表の種と時刻ごとの形）: 不規則な縁、時刻で北東へ動き、強まり弱まる。強さの段は被害状況の
 //   警戒レベル（世界の状態）を超えない。サーバーと手元で同じ絵（決まった種、時計・乱数を使わない）。「デモ」の印と参考にした過去の雨の出典
+// - 強さは T116 で降水量（mm/h）の 8 段（lib/map/rain-scale.ts）に替えた。前の弱・強・猛の 3 段の所は段の下の境（0・1・5・10・20・30）で言い直した
 // - 雨は色と連絡順に使わない（ルールの表だけ）
 // テストは外へ出ない（fetch を偽にして、呼ばれたら落とす）。
 
@@ -19,8 +20,9 @@ import { HEAVY_RAIN_TRACK, RAIN_TRACKS, rainTrackOf, type RainTrack } from "../d
 import { applyEvents, EMPTY_WORLD, scenarioOf, type WorldState } from "../drill/scenarios.ts";
 import { checkMark, sourceById } from "../sources/index.ts";
 import type { TriageSignal } from "../triage/index.ts";
-import { demoOverlay, RAIN_FILL, RAIN_STRENGTHS, type RainBand } from "./demo.ts";
+import { demoOverlay, rainCapOf, type RainBand } from "./demo.ts";
 import { drillRain, rainAnchor, rainFrame } from "./drill-rain.ts";
+import { rainColor, type RainMin } from "./rain-scale.ts";
 import { buildSidePane, sideDisasterOf } from "./side.ts";
 
 const people = SEED_PEOPLE.map((p) => ({ ...p.person, ledger: JSON.stringify(p.ledger) }));
@@ -52,9 +54,9 @@ function worldAt(id: "heavy_rain" | "short", hour: number): WorldState {
     .reduce((w, t) => applyEvents(w, t.events.filter((e) => (e.at ?? t.hour) <= hour), t.hour), EMPTY_WORLD);
 }
 
-const capOf = (level: WorldState["alertLevel"]) => (level === null ? [] : RAIN_STRENGTHS[level]);
-const strengths = (bands: RainBand[]) => [...new Set(bands.map((b) => b.strength))].sort();
-const main = (bands: RainBand[], k: 1 | 2 | 3) => bands.find((b) => b.strength === k && b.main) ?? null;
+/** 描いた段（下の境 mm/h、弱い順） */
+const strengths = (bands: RainBand[]) => [...new Set(bands.map((b) => b.min))].sort((a, b) => a - b);
+const main = (bands: RainBand[], k: RainMin) => bands.find((b) => b.min === k && b.main) ?? null;
 /** 輪の重心（頂点の平均） */
 const centroid = (ring: GeoPoint[]) => ({
   lat: ring.reduce((a, p) => a + p.lat, 0) / ring.length,
@@ -98,12 +100,13 @@ describe("筋書きの雨の表（lib/drill/rain.ts）", () => {
     expect([...hours].sort((a, b) => a - b)).toEqual(hours);
     expect(new Set(hours).size).toBe(hours.length);
     expect(sourceById(HEAVY_RAIN_TRACK.basis).publisher).toBe("気象庁");
-    expect(HEAVY_RAIN_TRACK.keys.at(-1)?.power).toBe(0);
+    expect(HEAVY_RAIN_TRACK.keys.at(-1)?.peak).toBe(0);
   });
 });
 
 describe("筋書きの雨の形（lib/map/drill-rain.ts）", () => {
-  const ALL = [1, 2, 3] as const;
+  /** 上限なし（どの段も描く） */
+  const ALL = Number.POSITIVE_INFINITY;
 
   it("同じ表と時刻なら同じ絵（何度作っても、小数の時刻でも）。種を変えると縁が変わる", () => {
     for (const h of [0, 1, 2.5, 3, 7.25, 12, 23.5]) {
@@ -128,7 +131,7 @@ describe("筋書きの雨の形（lib/map/drill-rain.ts）", () => {
   });
 
   it("縁は不規則（帯の芯からの距離が一定でない）で、小さな雨も散らばる", () => {
-    const b = main(drillRain(HEAVY_RAIN_TRACK, 3, ALL, ANCHOR), 1)!;
+    const b = main(drillRain(HEAVY_RAIN_TRACK, 3, ALL, ANCHOR), 0)!;
     const c = centroid(b.ring);
     const d = b.ring.map((p) => Math.hypot(p.lat - c.lat, (p.lng - c.lng) * 0.83));
     const m = d.reduce((a, x) => a + x, 0) / d.length;
@@ -138,61 +141,66 @@ describe("筋書きの雨の形（lib/map/drill-rain.ts）", () => {
     const extra = [0, 1, 3, 6, 9, 12].map((h) => drillRain(HEAVY_RAIN_TRACK, h, ALL, ANCHOR).filter((x) => !x.main).length);
     expect(Math.max(...extra)).toBeGreaterThan(0);
     for (const h of [0, 3, 9]) {
-      for (const x of drillRain(HEAVY_RAIN_TRACK, h, ALL, ANCHOR).filter((y) => !y.main)) expect(x.strength).toBe(1);
+      for (const x of drillRain(HEAVY_RAIN_TRACK, h, ALL, ANCHOR).filter((y) => !y.main)) expect(x.min).toBeLessThan(10);
     }
   });
 
-  it("時刻で北東へ動く（弱の帯の重心の緯度も経度も増える）", () => {
+  it("時刻で北東へ動く（いちばん外の帯の重心の緯度も経度も増える）", () => {
     const hs = [0, 3, 6, 12, 18, 24];
-    const cs = hs.map((h) => centroid(main(drillRain(HEAVY_RAIN_TRACK, h, ALL, ANCHOR), 1)!.ring));
+    const cs = hs.map((h) => centroid(main(drillRain(HEAVY_RAIN_TRACK, h, ALL, ANCHOR), 0)!.ring));
     for (let i = 1; i < cs.length; i++) {
       expect(cs[i].lat, `${hs[i]} 時間`).toBeGreaterThan(cs[i - 1].lat);
       expect(cs[i].lng, `${hs[i]} 時間`).toBeGreaterThan(cs[i - 1].lng);
     }
     // 間の時刻は前後の間（連続の時計で滑らかに）
-    const mid = centroid(main(drillRain(HEAVY_RAIN_TRACK, 4.5, ALL, ANCHOR), 1)!.ring);
+    const mid = centroid(main(drillRain(HEAVY_RAIN_TRACK, 4.5, ALL, ANCHOR), 0)!.ring);
     expect(mid.lat).toBeGreaterThan(cs[1].lat);
     expect(mid.lat).toBeLessThan(cs[2].lat);
   });
 
-  it("強まって弱まる: 発災のすぐあとに強い段が増え、1 日で弱だけになり、最後の時刻のあとは雨なし", () => {
+  it("強まって弱まる: 発災のすぐあとに強い段が増え、1 日で弱い段だけになり、最後の時刻のあとは雨なし", () => {
     const at = (h: number) => strengths(drillRain(HEAVY_RAIN_TRACK, h, ALL, ANCHOR));
-    expect(at(0)).toEqual([1, 2]);
-    expect(at(3)).toEqual([1, 2, 3]);
-    expect(at(24)).toEqual([1]);
+    expect(at(0)).toEqual([0, 1, 5, 10]);
+    expect(at(3)).toEqual([0, 1, 5, 10, 20, 30]);
+    expect(at(24)).toEqual([0, 1, 5]);
     const last = HEAVY_RAIN_TRACK.keys.at(-1)!.hour;
     expect(at(last)).toEqual([]);
     expect(at(48)).toEqual([]);
     expect(at(72)).toEqual([]);
-    const area = (h: number) => areaKm2(main(drillRain(HEAVY_RAIN_TRACK, h, ALL, ANCHOR), 1)!.ring);
+    const area = (h: number) => areaKm2(main(drillRain(HEAVY_RAIN_TRACK, h, ALL, ANCHOR), 0)!.ring);
     expect(area(3)).toBeGreaterThan(area(0));
     expect(area(3)).toBeGreaterThan(area(24));
-    expect(rainFrame(HEAVY_RAIN_TRACK, 3)!.power).toBeGreaterThan(rainFrame(HEAVY_RAIN_TRACK, 24)!.power);
+    // 強い段（10〜20）の帯も 3 時間がいちばん広い
+    const core = (h: number) => areaKm2(main(drillRain(HEAVY_RAIN_TRACK, h, ALL, ANCHOR), 10)!.ring);
+    expect(core(3)).toBeGreaterThan(core(0));
+    expect(core(3)).toBeGreaterThan(core(12));
+    expect(rainFrame(HEAVY_RAIN_TRACK, 3)!.peak).toBeGreaterThan(rainFrame(HEAVY_RAIN_TRACK, 24)!.peak);
   });
 
-  it("強い所は弱い所の内側（入れ子）", () => {
-    for (const h of [0, 1, 3, 6, 9, 12]) {
+  it("強い所は弱い所の内側（入れ子。段ごとに 1 つ前の段の内側）", () => {
+    const steps: RainMin[] = [0, 1, 5, 10, 20, 30, 50, 80];
+    for (const h of [0, 1, 3, 6, 9, 12, 18, 24]) {
       const bands = drillRain(HEAVY_RAIN_TRACK, h, ALL, ANCHOR);
-      for (const k of [2, 3] as const) {
-        const inner = main(bands, k);
-        const outer = main(bands, (k - 1) as 1 | 2)!;
+      for (let i = 1; i < steps.length; i++) {
+        const inner = main(bands, steps[i]);
         if (!inner) continue;
-        for (const p of inner.ring) expect(inside(p, outer.ring), `${h} 時間 段 ${k}`).toBe(true);
+        const outer = main(bands, steps[i - 1])!;
+        for (const p of inner.ring) expect(inside(p, outer.ring), `${h} 時間 段 ${steps[i]}`).toBe(true);
       }
     }
   });
 
-  it("描く段は渡した段まで（警戒レベルの上限）。段が無ければ雨なし", () => {
-    expect(strengths(drillRain(HEAVY_RAIN_TRACK, 3, [1], ANCHOR))).toEqual([1]);
-    expect(strengths(drillRain(HEAVY_RAIN_TRACK, 3, [1, 2], ANCHOR))).toEqual([1, 2]);
-    expect(drillRain(HEAVY_RAIN_TRACK, 3, [], ANCHOR)).toEqual([]);
+  it("描く段は渡した上限の降水量の下まで（警戒レベルの上限）。上限 0 は雨なし", () => {
+    expect(strengths(drillRain(HEAVY_RAIN_TRACK, 3, 20, ANCHOR))).toEqual([0, 1, 5, 10]);
+    expect(strengths(drillRain(HEAVY_RAIN_TRACK, 3, 50, ANCHOR))).toEqual([0, 1, 5, 10, 20, 30]);
+    expect(drillRain(HEAVY_RAIN_TRACK, 3, 0, ANCHOR)).toEqual([]);
   });
 
   it("帯は利用者の位置の範囲の真ん中に合わせる（本物の事業所の訓練でも地図の中を通る）。位置が無ければ松山市の市街", () => {
     expect(rainAnchor([])).toEqual({ lat: 33.84, lng: 132.765 });
     expect(rainAnchor([{ lat: 34, lng: 135 }, { lat: 34.2, lng: 135.4 }])).toEqual({ lat: 34.1, lng: 135.2 });
     const far = rainAnchor([{ lat: 35.6812, lng: 139.7671 }]);
-    const c = centroid(main(drillRain(HEAVY_RAIN_TRACK, 6, [1, 2, 3], far), 1)!.ring);
+    const c = centroid(main(drillRain(HEAVY_RAIN_TRACK, 6, Number.POSITIVE_INFINITY, far), 0)!.ring);
     expect(Math.abs(c.lat - far.lat)).toBeLessThan(0.1);
     expect(Math.abs(c.lng - far.lng)).toBeLessThan(0.1);
   });
@@ -200,30 +208,29 @@ describe("筋書きの雨の形（lib/map/drill-rain.ts）", () => {
 
 describe("被害状況（警戒レベル・浸水）と地図の雨が食い違わない", () => {
   for (const id of ["heavy_rain", "short"] as const) {
-    it(`${id}: どの刻みでも雨の段は警戒レベルの上限まで、解除のあとは雨なし、浸水の刻みは強い雨`, () => {
+    it(`${id}: どの刻みでも雨の段は警戒レベルの上限まで、解除のあとは雨なし、浸水の刻みは強い雨（20 mm/h 以上の段）`, () => {
       const hours = scenarioOf(id).hours;
       for (const h of hours) {
         const w = worldAt(id, h);
         const side = sideDisasterOf(rows, { kind: "heavy_rain", alertLevel: w.alertLevel }, { rain: { scenario: id, hour: h } })!;
         const d = demoOverlay(side.scene!);
-        const cap = capOf(w.alertLevel);
-        for (const b of d.rain) expect(cap, `${h} 時間`).toContain(b.strength);
+        for (const b of d.rain) expect(b.min, `${h} 時間`).toBeLessThan(rainCapOf(w.alertLevel));
         if (w.alertLevel === null) expect(d.rain, `${h} 時間`).toEqual([]);
-        if (w.flood && h <= 6) expect(strengths(d.rain), `${h} 時間`).toContain(2);
+        if (w.flood && h <= 6) expect(strengths(d.rain), `${h} 時間`).toContain(20);
       }
     });
   }
 
-  it("大雨の想定の刻みごとの段（レベル 3 → 4 → 3 → 解除）", () => {
+  it("大雨の想定の刻みごとの段（レベル 3 → 4 → 3 → 解除。レベル 3 は 10〜20 まで、4 は 30〜50 まで）", () => {
     const at = (h: number) => {
       const w = worldAt("heavy_rain", h);
       const side = sideDisasterOf(rows, { kind: "heavy_rain", alertLevel: w.alertLevel }, { rain: { scenario: "heavy_rain", hour: h } })!;
       return strengths(demoOverlay(side.scene!).rain);
     };
-    expect(at(0)).toEqual([1]);
-    expect(at(1)).toEqual([1, 2]);
-    expect(at(3)).toEqual([1, 2]);
-    expect(at(24)).toEqual([1]);
+    expect(at(0)).toEqual([0, 1, 5, 10]);
+    expect(at(1)).toEqual([0, 1, 5, 10, 20, 30]);
+    expect(at(3)).toEqual([0, 1, 5, 10, 20, 30]);
+    expect(at(24)).toEqual([0, 1, 5]);
     expect(at(48)).toEqual([]);
     expect(at(72)).toEqual([]);
   });
@@ -261,14 +268,14 @@ describe("場面と画面", () => {
     for (const w of ["警報", "注意報", "速報", "気象庁"]) expect(html, w).not.toContain(w);
   });
 
-  it("訓練の雨は帯と小さな雨の輪を全部描く（面と筋）。色は T96 の 1 組（気象庁の色の段でない）", () => {
+  it("訓練の雨は帯と小さな雨の輪を全部描く。色は降水量の段の色（T116。前は T96 の淡い面と筋）", () => {
     const demo = demoOverlay({ kind: "heavy_rain", level: 5, drill: { track: HEAVY_RAIN_TRACK, hour: 3, anchor: ANCHOR } });
     const html = renderToStaticMarkup(createElement(CaseMap, { pins: [], layers: [], demo, unplaced: 0 }));
     const svg = html.match(/<svg[^>]*data-demo="rain"[\s\S]*?<\/svg>/)?.[0] ?? "";
-    expect([...svg.matchAll(/data-rain-fill=/g)]).toHaveLength(demo.rain.length);
-    expect([...svg.matchAll(/data-rain-streaks=/g)]).toHaveLength(demo.rain.length);
-    expect([...svg.matchAll(/<pattern /g)]).toHaveLength(3);
-    expect(svg).toContain(`fill="${RAIN_FILL}"`);
+    expect([...svg.matchAll(/data-rain-step=/g)]).toHaveLength(demo.rain.length);
+    expect(demo.rain.some((b) => !b.main)).toBe(true);
+    for (const b of demo.rain) expect(svg).toContain(`fill="${rainColor(b.min)}"`);
+    expect(svg).not.toContain("<pattern");
     // 雨雲の切替が出る
     expect(html).toContain('data-toggle="rain"');
   });

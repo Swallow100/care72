@@ -7,7 +7,7 @@ import { StaffTable } from "@/components/staff/StaffTable";
 import { StaffCsvLink } from "@/components/staff/StaffCsvLink";
 import { StaffPassword } from "@/components/staff/StaffPassword";
 import { todayJst } from "@/lib/age";
-import { ownLoginId, ownPasswordEntry } from "@/lib/auth/password-change";
+import { ownLoginId, ownPasswordEntry, wantsOwnPassword } from "@/lib/auth/password-change";
 import { requirePage } from "@/lib/auth/server";
 import { staffActor } from "@/lib/custody/actor";
 import { loadStaffBoard, type StaffBoard } from "@/lib/custody/board";
@@ -23,7 +23,8 @@ export const metadata: Metadata = { title: `${CUSTODY_LABELS.page} | ケア72` }
 export const dynamic = "force-dynamic";
 
 type Param = string | string[];
-type Props = { searchParams: Promise<{ error?: Param; shelter?: Param; color?: Param; q?: Param; sort?: Param }> };
+// password はヘッダーの「初期パスワード」の「変更」から（変更の欄を開いて出す。T114）
+type Props = { searchParams: Promise<{ error?: Param; shelter?: Param; color?: Param; q?: Param; sort?: Param; password?: Param }> };
 
 function parseError(v: unknown): CustodyError | null {
   return typeof v === "string" && (CUSTODY_ERRORS as readonly string[]).includes(v) ? (v as CustodyError) : null;
@@ -77,7 +78,7 @@ export default async function StaffPage({ searchParams }: Props) {
             {shortJst(now)} {CUSTODY_LABELS.at}
           </span>
           {/* 書き出し（T62）: 表の今の絞込と並びのまま（URL の query を持ち越す）。その右に自分のパスワードの変更（T99。欄はこの行の下に開く） */}
-          <StaffPassword entry={entry} loginId={loginId}>
+          <StaffPassword entry={entry} loginId={loginId} initialOpen={wantsOwnPassword(q.password)}>
             <StaffCsvLink />
           </StaffPassword>
         </div>

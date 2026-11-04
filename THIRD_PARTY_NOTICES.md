@@ -535,6 +535,7 @@ SIL Open Font License 1.1 の全文はこのファイルの末尾。
 | 気象庁 降水ナウキャストのタイルと凡例の画像 | 本物の事業所の地図の雨雲（旗 JMA_NOWCAST が on のときだけ） | 同上。加工せず重ね、凡例も気象庁のまま。出典「雨雲：気象庁ホームページ（https://www.jma.go.jp/bosai/nowc/）／背景：地理院タイル」 |
 | 地理院タイル（淡色地図）を刷る避難経路の地図 | 本人のページの避難の面の経路地図と、計画書の避難経路の欄に入れる画像（lib/map/route-image.ts。T102） | 上の地理院タイルと同じ規約。印刷物は図の所に出典を書く。枠の中の下に「地理院タイルに避難経路を追記して掲載」（国土地理院の出典の記載例の形）。刷った計画書を渡すのが測量法の申請の要らない使い方に当たるかは未確認（docs/progress/t102.md の問い 3） |
 | openrouteservice（HeiGIT、経路。データは OpenStreetMap） | 避難経路の「経路作成」（lib/map/route.ts。鍵 ORS_API_KEY があるときだけ、Workers から 1 回ずつ。送るのは 2 点の座標と手段だけで、家は約 150 m の格子に丸めた点） | HeiGIT の利用規約（https://account.heigit.org/info/tos）。結果は CC-BY-SA 4.0。出典「© openrouteservice by HeiGIT \| Data from OpenStreetMap」を自動の線の地図の枠の中に出す。OpenStreetMap のデータは ODbL（https://www.openstreetmap.org/copyright）と OSMF の利用規約。無料の枠は 1 日 2,000 回・1 分 40 回（Standard） |
+| 国土地理院 指定緊急避難場所・指定避難所データ（地理院タイルの GeoJSON。層 skhb01〜08・sih・sfh、ズーム 10） | 経路地図の「候補」（lib/map/shelters.ts。T112）。ケアマネが押したときだけブラウザが読み、家のまわり 5 km の近い順に出す。送るのは層とタイルの z/x/y だけ。台帳に残すのは選んだ候補の名前と位置だけ。データの一式はダウンロードせずリポジトリにも入れない | 国土地理院コンテンツ利用規約（https://www.gsi.go.jp/kikakuchousei/kikakuchousei40182.html、公共データ利用規約 第1.0版。出典の記載と、加工したらその旨）と、データの「ご利用上の注意」（https://www.gsi.go.jp/bousaichiri/hinanbasho-menseki.html: 市町村が登録した物で最新でない・載っていないことがあり市町村に確かめる、指定緊急避難場所は災害の種類ごと、随時更新、第三者に渡すときはこの注意が伝わるように）。窓の出典の行に「国土地理院「指定緊急避難場所・指定避難所データ」を加工して作成」と「最新は市町村に確認」（注意の頁へのリンク）を出し、候補ごとに種類（避難所・福祉・緊急避難と災害の種類）を出す |
 
 lib/jma/fixtures/sample の XML は、防災情報 XML の形に合わせて作った見本で、気象庁の電文の写しではない。
 
@@ -561,6 +562,9 @@ lib/jma/fixtures/sample の XML は、防災情報 XML の形に合わせて作�
 | remotion・@remotion/cli（4.0.539） | 動画の編集の枠と書き出し | Remotion License（MIT ではない） |
 | react・react-dom | 動画の画面 | MIT |
 | typescript・@types/react | 型 | Apache-2.0・MIT |
+| @lydell/node-pty（1.1.0）・@xterm/xterm・@xterm/headless（5.5.0）・@xterm/addon-canvas（0.7.0）・@xterm/addon-unicode11（0.8.0） | 端末の録画（R20〜R24）を撮る道具。`video/scripts/term/package.json` だけの依存 | MIT |
+
+動画の音楽は `video/scripts/music/` のコードがこの期間に音を合成して作る（外の音源・サンプルは使わない）。
 
 Remotion License（4.0.539 の LICENSE.md、https://github.com/remotion-dev/remotion/blob/v4.0.539/LICENSE.md）の Free License は、次のどれかに当たる者が無料で使える: 「an individual」「a for-profit organization with up to 3 employees」「a non-profit or not-for-profit organization」「evaluating whether Remotion is a good fit, and are not yet using it in a commercial way」。これに当たらない営利の団体は Company License が要る。許される使い方は動画と画像を作ること（商用を含む）と、自分の用途のための改変。Remotion の改変版を売る・貸す・再許諾することは許されない。著作権の表示は「Copyright © 2026 Remotion」。
 

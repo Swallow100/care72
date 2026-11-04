@@ -37,7 +37,7 @@ type SourceFields = {
 /** 引用の長さの上限（字） */
 export const QUOTE_MAX = 15;
 
-/** 登録簿。並びは docs/SOURCES.md の並び（制度 → 機器 → 透析 → 薬 → 認知症 → 血栓 → 記録 → 気象 → 発災からの時間の目安〔T104〕） */
+/** 登録簿。並びは docs/SOURCES.md の並び（制度 → 機器 → 透析 → 薬 → 認知症 → 血栓 → 記録 → 気象 → 発災からの時間の目安〔T104〕→ 避難の経路〔T112〕） */
 export const SOURCES = [
   {
     id: "cao-shishin-2021",
@@ -219,6 +219,21 @@ export const SOURCES = [
     note: "頁に各地方の気象台の資料（PDF）へのリンクがある。数字は頁の本文から。雨雲の画像・数値は使っていない",
     checkedOn: null,
   },
+  {
+    id: "jma-nowc-legend",
+    publisher: "気象庁",
+    title: "雨雲の動き（高解像度降水ナウキャスト）の凡例",
+    year: 2026,
+    edition: "頁の凡例（降水強度、1 時間あたりの mm の 8 段）",
+    url: "https://www.jma.go.jp/bosai/nowc/",
+    summary:
+      "雨雲の動きの頁の降水強度の凡例。1 未満・1〜5・5〜10・10〜20・20〜30・30〜50・50〜80・80 以上（mm/h）の 8 段を、白に近い薄い青・水色・青・濃い青・黄・橙・赤・赤紫で塗り分ける",
+    scope:
+      "訓練の地図の想定の雨の色の段と凡例（lib/map/rain-scale.ts）。平時の地図に重ねる本物の雨雲（旗 JMA_NOWCAST）と同じ段と色にして、同じ読み方にする",
+    note:
+      "色の値（16 進）は気象庁の気象情報の配色の指針の降水量の段の値。この作業では頁と凡例の画像を開いていない（作者が凡例と並べて確かめる）。雨雲の画像・数値は使っていない",
+    checkedOn: null,
+  },
   // ---------- 発災からの時間の目安（T104。lib/drill/time-odds.ts と監督の根拠 DIRECTOR_SOURCES が引く） ----------
   {
     id: "soumu-iburi-2019",
@@ -285,6 +300,34 @@ export const SOURCES = [
       "福祉避難所の指定・確保・運営の手引き。直接の避難を進める一方で、支援者の到着が間に合わないなどで災害の初日に開設が間に合わない場合もあるとし、市町村に発災直後の要配慮者の避難先を考えておくよう求める",
     scope: "訓練の時間帯の目安（福祉避難所は初日に開かないことがある。lib/drill/time-odds.ts）",
     quote: { text: "初日に開設が間に合わない", where: "第1章 2.2.5（p.24）" },
+    checkedOn: null,
+  },
+  {
+    id: "fdma-tsunami-2013",
+    publisher: "消防庁国民保護・防災部防災課",
+    title: "津波避難対策推進マニュアル検討会報告書 第2章 市町村における津波避難計画策定指針",
+    year: 2013,
+    edition: "平成25年3月（第2章は令和8年1月16日改正の版を読んだ）",
+    url: "https://www.fdma.go.jp/singi_kento/kento/2026/09/01/items/kento106_01_2syou2.pdf",
+    page: "https://www.fdma.go.jp/singi_kento/kento/kento106.html",
+    summary:
+      "市町村が津波の避難計画を作るための指針。避難の歩く速さは老人の自由歩行なども含めて 1.0 m/秒を目安とし、歩行困難者・身体障がい者・重病人などは 0.5 m/秒に下がること、東日本大震災の平均の避難速度 0.62 m/秒も考えるとする。参考に、自力のみで行動しにくい人の水平の歩行 0.8 m/秒を挙げる",
+    scope: "経路地図の徒歩の見込み時間（歩行 問題なし 1.0・一部 0.8・困難と未確認 0.5 m/秒。lib/map/transport.ts の walkSpeedOf）",
+    quote: { text: "歩行速度は 1.0ｍ／秒", where: "2.3.2 の 3 (1) 歩行速度（p.25）" },
+    note: "津波の避難の指針。ほかの災害の徒歩の見込みにも同じ速さを当てるのはこの作品の判断。0.8 m/秒は p.26 の【参考】の値",
+    checkedOn: null,
+  },
+  {
+    id: "mlit-kansui-2019",
+    publisher: "国土交通省自動車局審査・リコール課",
+    title: "水深が床面を超えたら、もう危険！ －自動車が冠水した道路を走行する場合に発生する不具合について－",
+    year: 2019,
+    edition: "令和元年11月27日（報道発表）",
+    url: "https://www.mlit.go.jp/report/press/jidosha08_hh_003565.html",
+    summary:
+      "冠水した道路を車で走ると、水深が床面を超えたあたりからエンジンや電気装置が止まるおそれがあり、ドアの高さの半分を超えると車内からドアがほぼ開かなくなる",
+    scope: "浸水のハザードがある人で手段が車のときの経路地図の「冠水注意」（色と連絡の順には使わない）",
+    quote: { text: "水深が床面を超えたら", where: "報道発表の題" },
     checkedOn: null,
   },
 ] as const satisfies ReadonlyArray<SourceFields>;

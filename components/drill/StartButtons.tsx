@@ -124,7 +124,8 @@ export function StartButtons({
     try {
       // 連続の時計は送るときだけ足す（設定の「変更あり」の印には数えない）
       const chosen = options();
-      const o = usesClock(scenario) ? { ...(chosen ?? {}), clock: true } : chosen;
+      // 時間と状況で変わる手（T110）も連続の時計の訓練に付ける（10 分版には付けない）
+      const o = usesClock(scenario) ? { ...(chosen ?? {}), clock: true, terms: true } : chosen;
       const res = await fetch("/api/drill", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

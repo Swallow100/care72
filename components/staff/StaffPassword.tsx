@@ -18,14 +18,23 @@ import { OwnPasswordForm, PasswordDone } from "@/components/office/OwnPassword";
 export function StaffPassword({
   entry,
   loginId,
+  initialOpen = false,
   children,
 }: {
   entry: "open" | "fixed" | null;
   loginId: string | null;
+  /** 欄を開いて出す（ヘッダーの「初期パスワード」の「変更」から。T114）。入口が open のときだけ効く */
+  initialOpen?: boolean;
   /** 左に並べる物（受入一覧では CSV出力） */
   children?: React.ReactNode;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(initialOpen && entry === "open");
+  // 受入一覧でヘッダーの「変更」を押したとき（部品は残り、印だけが付く）も欄を開く
+  const [openedFor, setOpenedFor] = useState(initialOpen);
+  if (initialOpen !== openedFor) {
+    setOpenedFor(initialOpen);
+    if (initialOpen && entry === "open") setOpen(true);
+  }
   const [done, setDone] = useState(false);
   const id = useId();
   return (

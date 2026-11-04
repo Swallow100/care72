@@ -1,0 +1,631 @@
+// 評価の台（T107）の正解の表（gold）: 様式の欄 → 台帳の項目（lib/forms/mapping.ts の LEDGER_ITEMS の key）。手で作った物。
+//
+// - 架空の様式 3 つ: こもれび市（T86 の lib/forms/komorebi-form.fixture.ts の並び）と、ここで足す あおぞら市（1 頁、□ の多い表）・
+//   しおかぜ町（A4 横 2 頁、言い方の違う欄）。並び（欄の名前の枠・値の枠・□ の場所）から白紙の HTML も作る（T86 と同じ作り方）
+// - 同梱の様式 3 つ: 松山市の計画書（lib/forms/matsuyama.ts の MATSUYAMA_FIELDS）、災害診療記録2018（lib/forms/medical-summary.ts の
+//   MEDICAL_FIELDS）、様式 9（lib/forms/form9.ts の列）。欄の名前と順はコードの表から引き、原本の中身や絵は持たない。
+//   場所は原本の枠の寸法（lib/forms/frame-*.ts の areas、mm）を頁の寸法で割った比。原本はリポジトリの外の置き場から読む
+// - 項目の当て方は様式の読み取りの指示（lib/forms/form-read.ts の FORM_READ_SYSTEM）の決まりに合わせる:
+//   手で書く欄・市が書く欄・同意と署名の欄は null（11）、2 つ目の電話は台帳に 2 番目の値が無ければ null（12）、意味の違う欄に名前の近い
+//   項目を当てない（13）。決めきれない欄だけ accept に別の答えを足す（判定の記録に「別解」と残る）
+
+import { KIROKU_FRAME } from "../../../lib/forms/frame-kiroku.ts";
+import { MATSUYAMA_FRAME } from "../../../lib/forms/frame-matsuyama.ts";
+import type { Frame } from "../../../lib/forms/frame-sheet.ts";
+import { FORM9_COLUMNS, type Form9ColumnId } from "../../../lib/forms/form9.ts";
+import { KOMOREBI_ISSUER, KOMOREBI_LAYOUT, KOMOREBI_TITLE, komorebiBlankHtml, type KomorebiField } from "../../../lib/forms/komorebi-form.fixture.ts";
+import { isLedgerItemKey, type FieldBox, type FieldShape, type FormMapping, type LedgerItemKey, type ReadResult, type Typeface } from "../../../lib/forms/mapping.ts";
+import { MATSUYAMA_FIELDS, MATSUYAMA_FORM_URL, type MatsuyamaKey } from "../../../lib/forms/matsuyama.ts";
+import { MEDICAL_FIELDS, type MedicalKey } from "../../../lib/forms/medical-summary.ts";
+import { ORIGINALS } from "../../../lib/forms/originals.ts";
+
+export type GoldField = {
+  page: number;
+  section: string;
+  label: string;
+  shape: FieldShape;
+  options: string[];
+  /** 正しい台帳の項目。null は台帳に合う物が無い・人が書く欄 */
+  item: LedgerItemKey | null;
+  /** 別解（決めきれない欄だけ） */
+  accept?: ReadonlyArray<LedgerItemKey | null>;
+  /** 値を書く所（頁の比）。分からなければ無い */
+  box?: FieldBox;
+  optionBoxes?: FieldBox[];
+};
+
+/** 原本の取り方。generated は架空の様式（白紙の HTML を Chrome で PDF に）。corpus は置き場の原本と照らす */
+export type GoldSource =
+  | { kind: "generated"; html: () => string; landscape: boolean }
+  | { kind: "corpus"; sha256?: string; url?: string; fileName?: RegExp };
+
+export type GoldForm = {
+  id: string;
+  title: string;
+  issuer: string;
+  /** 置き場の市町村のフォルダの名前（corpus の物） */
+  city: string | null;
+  source: GoldSource;
+  typeface: Typeface;
+  /** 正解を数える頁（原本の頁が多いとき、正解を作った頁だけ） */
+  pages: number[];
+  fields: GoldField[];
+};
+
+const key = (k: string | null): LedgerItemKey | null => {
+  if (k === null) return null;
+  if (!isLedgerItemKey(k)) throw new Error(`正解の表に台帳に無い項目: ${k}`);
+  return k;
+};
+
+// ---------- 架空の様式（並びから正解と白紙） ----------
+
+function layoutGold(layout: readonly KomorebiField[], accept: Record<string, ReadonlyArray<string | null>> = {}): GoldField[] {
+  return layout.map((f) => ({
+    page: f.page,
+    section: f.section,
+    label: f.label,
+    shape: f.shape,
+    options: [...f.options],
+    item: key(f.item),
+    ...(accept[`${f.section}|${f.label}`] ? { accept: accept[`${f.section}|${f.label}`].map(key) } : {}),
+    box: f.box,
+    ...(f.optionBoxes ? { optionBoxes: f.optionBoxes } : {}),
+  }));
+}
+
+const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+const at = (b: FieldBox) => `left:${b.x * 100}%;top:${b.y * 100}%;width:${b.w * 100}%;height:${b.h * 100}%`;
+
+/**
+ * 白紙の様式の HTML（lib/forms/komorebi-form.fixture.ts の komorebiBlankHtml と同じ作り。向きと書体と頁の数を選べる）。
+ * 欄の名前の枠と値を書く枠を罫線で描き、選ぶ欄は □ と選択肢の字、□ 1 つの欄は □ だけ。値は何も書かない
+ */
+export function layoutBlankHtml(o: {
+  layout: readonly KomorebiField[];
+  title: string;
+  ver: string;
+  landscape: boolean;
+  typeface: Typeface;
+}): string {
+  const pageNos = [...new Set(o.layout.map((f) => f.page))].sort((a, b) => a - b);
+  const pages = pageNos.map((page) => {
+    const cells = o.layout
+      .filter((f) => f.page === page)
+      .flatMap((f) => {
+        const name = f.section && f.shape !== "check" ? `<span class="sec">${esc(f.section)}</span>${esc(f.label)}` : esc(f.label);
+        const out = [`<div class="lbl" style="${at(f.labelBox)}">${name}</div>`];
+        if (f.shape === "check") {
+          out.push(`<div class="sq" style="${at(f.box)}"></div>`);
+          return out;
+        }
+        out.push(`<div class="val" style="${at(f.box)}"></div>`);
+        (f.optionBoxes ?? []).forEach((b, i) => {
+          out.push(`<div class="sq" style="${at(b)}"></div>`);
+          out.push(`<div class="opt" style="left:${(b.x + b.w + 0.004) * 100}%;top:${b.y * 100}%;height:${b.h * 100}%">${esc(f.options[i])}</div>`);
+        });
+        return out;
+      });
+    const head = page === pageNos[0] ? `<h1>${esc(o.title)}</h1><p class="ver">${esc(o.ver)}</p>` : `<p class="ver">（${page}）</p>`;
+    return `<section class="pg">${head}${cells.join("")}</section>`;
+  });
+  const [w, h] = o.landscape ? [297, 210] : [210, 297];
+  const font = o.typeface === "mincho" ? `"BIZ UDPMincho", "BIZ UDP明朝", serif` : `"BIZ UDPGothic", "BIZ UDPゴシック", sans-serif`;
+  return `<!doctype html><html lang="ja"><head><meta charset="utf-8"><title>白紙の様式</title><style>
+@page { size: A4 ${o.landscape ? "landscape" : "portrait"}; margin: 0; }
+html, body { margin: 0; padding: 0; background: #fff; }
+.pg { position: relative; width: ${w}mm; height: ${h}mm; overflow: hidden; break-after: page; font-family: ${font}; color: #000; }
+.pg:last-child { break-after: auto; }
+h1 { position: absolute; left: 8%; top: 3.5%; margin: 0; font-size: 15pt; font-weight: 400; }
+.ver { position: absolute; right: 8%; top: 2.5%; margin: 0; font-size: 8pt; }
+.lbl, .val, .sq, .opt { position: absolute; box-sizing: border-box; }
+.lbl { border: 1px solid #000; background: #eee; font-size: 8.5pt; padding: 0 1.2mm; display: flex; align-items: center; gap: 1.2mm; line-height: 1.15; }
+.sec { font-size: 6.5pt; }
+.val { border: 1px solid #000; border-left: none; }
+.sq { border: 1px solid #000; }
+.opt { font-size: 8.5pt; display: flex; align-items: center; white-space: nowrap; }
+</style></head><body>${pages.join("")}</body></html>`;
+}
+
+/** 1 行の欄（名前 x0〜x1、値 x1〜x2） */
+const row = (
+  page: number,
+  section: string,
+  label: string,
+  item: string | null,
+  y: number,
+  o: { shape?: FieldShape; h?: number; x?: [number, number, number]; options?: string[] } = {},
+): KomorebiField => {
+  const [x0, x1, x2] = o.x ?? [0.06, 0.26, 0.94];
+  const h = o.h ?? 0.032;
+  const options = o.options ?? [];
+  const box = { x: x1, y, w: x2 - x1, h };
+  return {
+    page,
+    section,
+    label,
+    shape: o.shape ?? "text",
+    options,
+    item,
+    labelBox: { x: x0, y, w: x1 - x0, h },
+    box,
+    ...(options.length > 0
+      ? { optionBoxes: options.map((_, i) => ({ x: x1 + 0.01 + i * ((x2 - x1 - 0.02) / options.length), y: y + h / 2 - 0.007, w: 0.016, h: 0.014 })) }
+      : {}),
+  };
+};
+
+/** □ 1 つの欄（名前の枠の右に □） */
+const check = (page: number, section: string, label: string, item: string | null, x: number, y: number, w = 0.2): KomorebiField => ({
+  page,
+  section,
+  label,
+  shape: "check",
+  options: [],
+  item,
+  labelBox: { x, y, w, h: 0.03 },
+  box: { x: x + w + 0.008, y: y + 0.008, w: 0.016, h: 0.014 },
+});
+
+/** あおぞら市（架空）: 1 頁に詰めた表。言い方は「お名前」「ご住所」、心身の状況は □ の並び */
+export const AOZORA_LAYOUT: KomorebiField[] = [
+  row(1, "", "記入日", "plan.date", 0.085, { x: [0.56, 0.68, 0.94] }),
+  row(1, "ご本人", "ふりがな", "person.kana", 0.13),
+  row(1, "ご本人", "お名前", "person.name", 0.162),
+  row(1, "ご本人", "性別", "basic.sex", 0.194, { shape: "choice", options: ["男", "女"], x: [0.06, 0.26, 0.5] }),
+  row(1, "ご本人", "生年月日", "person.birth", 0.194, { shape: "date", x: [0.5, 0.62, 0.94] }),
+  row(1, "ご本人", "ご住所", "basic.address", 0.226),
+  row(1, "ご本人", "自宅電話", "self.phone", 0.258, { shape: "phone", x: [0.06, 0.26, 0.5] }),
+  row(1, "ご本人", "携帯電話", "self.mobile", 0.258, { shape: "phone", x: [0.5, 0.62, 0.94] }),
+  row(1, "ご本人", "世帯の状況", "basic.household", 0.29, { shape: "choice", options: ["ひとり暮らし", "高齢者のみ", "その他"] }),
+  row(1, "ご本人", "要介護認定", "care.careLevel", 0.322, { x: [0.06, 0.26, 0.5] }),
+  row(1, "ご本人", "障害者手帳", "care.handbook", 0.322, { x: [0.5, 0.62, 0.94] }),
+  check(1, "心身の状況", "歩行が困難", "care.walking", 0.06, 0.37),
+  check(1, "心身の状況", "耳が聞こえにくい", "care.hearing", 0.36, 0.37),
+  check(1, "心身の状況", "目が見えにくい", "care.vision", 0.66, 0.37),
+  check(1, "心身の状況", "認知症がある", "care.dementia", 0.06, 0.405),
+  check(1, "心身の状況", "寝たきり", "care.bedridden", 0.36, 0.405),
+  check(1, "心身の状況", "医療機器を使用", "medical.devices", 0.66, 0.405),
+  row(1, "医療", "常用薬", "medical.medications", 0.45, { shape: "lines", h: 0.05 }),
+  row(1, "医療", "かかりつけ医", "medical.doctor", 0.5),
+  row(1, "家族等連絡先", "氏名", "emergency1.name", 0.55, { x: [0.06, 0.26, 0.5] }),
+  row(1, "家族等連絡先", "続柄", "emergency1.relation", 0.55, { x: [0.5, 0.62, 0.94] }),
+  row(1, "家族等連絡先", "電話", "emergency1.phone", 0.582, { shape: "phone" }),
+  row(1, "避難支援者①", "氏名", "supporter1.name", 0.63, { x: [0.06, 0.26, 0.5] }),
+  row(1, "避難支援者①", "電話", "supporter1.phone", 0.63, { shape: "phone", x: [0.5, 0.62, 0.94] }),
+  row(1, "避難支援者②", "氏名", "supporter2.name", 0.662, { x: [0.06, 0.26, 0.5] }),
+  row(1, "避難支援者②", "電話", "supporter2.phone", 0.662, { shape: "phone", x: [0.5, 0.62, 0.94] }),
+  row(1, "避難", "避難場所", "evacuation.destination1", 0.71),
+  row(1, "避難", "避難時の配慮事項", "care.issues", 0.742, { shape: "lines", h: 0.06 }),
+  check(1, "", "情報の提供に同意する", null, 0.06, 0.82, 0.3),
+  row(1, "", "担当ケアマネ", "plan.author", 0.86),
+  row(1, "", "受付番号（市記入）", null, 0.91, { x: [0.56, 0.74, 0.94] }),
+];
+
+/** しおかぜ町（架空）: A4 横 2 頁。左右 2 列、言い方の違う欄（要配慮者氏名・浸水想定・医療的ケア） */
+const L2: [number, number, number] = [0.05, 0.19, 0.48];
+const R2: [number, number, number] = [0.52, 0.66, 0.95];
+export const SHIOKAZE_LAYOUT: KomorebiField[] = [
+  row(1, "要配慮者", "要配慮者氏名", "person.name", 0.15, { x: L2, h: 0.045 }),
+  row(1, "要配慮者", "フリガナ", "person.kana", 0.195, { x: L2, h: 0.045 }),
+  row(1, "要配慮者", "生年月日", "person.birth", 0.24, { shape: "date", x: L2, h: 0.045 }),
+  row(1, "要配慮者", "年齢", "person.age", 0.285, { x: L2, h: 0.045 }),
+  row(1, "要配慮者", "住所", "basic.address", 0.33, { x: L2, h: 0.045 }),
+  row(1, "要配慮者", "連絡先電話", "self.phone", 0.375, { shape: "phone", x: L2, h: 0.045 }),
+  row(1, "要配慮者", "要介護度", "care.careLevel", 0.42, { x: L2, h: 0.045 }),
+  row(1, "要配慮者", "難病", "care.intractableDisease", 0.465, { x: L2, h: 0.045 }),
+  row(1, "要配慮者", "住まいの構造", "basic.housing.structure", 0.51, { x: L2, h: 0.045 }),
+  row(1, "要配慮者", "居室の階", "basic.housing.floor", 0.555, { x: L2, h: 0.045 }),
+  row(1, "避難", "浸水想定", "evacuation.hazards", 0.15, { x: R2, h: 0.045 }),
+  row(1, "避難", "避難先", "evacuation.destination1", 0.195, { x: R2, h: 0.045 }),
+  row(1, "避難", "第二避難先", "evacuation.destination2", 0.24, { x: R2, h: 0.045 }),
+  row(1, "避難", "移動手段", "evacuation.transport", 0.285, { x: R2, h: 0.045 }),
+  row(1, "避難", "避難経路", "evacuation.route", 0.33, { shape: "lines", x: R2, h: 0.09 }),
+  row(1, "避難", "持ち出す物", "evacuation.carryItems", 0.42, { shape: "lines", x: R2, h: 0.09 }),
+  row(1, "避難", "ペット", "evacuation.pets", 0.51, { x: R2, h: 0.045 }),
+  row(1, "", "町確認欄", null, 0.7, { shape: "handwrite", x: R2, h: 0.12 }),
+  row(2, "医療的ケア", "医療機器", "medical.devices", 0.15, { shape: "lines", x: L2, h: 0.09 }),
+  row(2, "医療的ケア", "服薬", "medical.medications", 0.24, { shape: "lines", x: L2, h: 0.12 }),
+  row(2, "医療的ケア", "アレルギー", "medical.allergies", 0.36, { x: L2, h: 0.045 }),
+  row(2, "医療的ケア", "既往歴", "medical.history", 0.405, { x: L2, h: 0.045 }),
+  row(2, "支援者", "支援者1 氏名", "supporter1.name", 0.15, { x: R2, h: 0.045 }),
+  row(2, "支援者", "支援者1 電話", "supporter1.phone", 0.195, { shape: "phone", x: R2, h: 0.045 }),
+  row(2, "支援者", "支援者2 氏名", "supporter2.name", 0.24, { x: R2, h: 0.045 }),
+  row(2, "支援者", "支援者2 電話", "supporter2.phone", 0.285, { shape: "phone", x: R2, h: 0.045 }),
+  row(2, "支援者", "夜間の対応", "people.night", 0.33, { x: R2, h: 0.045 }),
+  row(2, "支援者", "民生委員", "people.welfare", 0.375, { x: R2, h: 0.045 }),
+  row(2, "", "本人の希望", "notes.words", 0.5, { shape: "lines", x: L2, h: 0.12 }),
+  row(2, "", "特記事項", "notes.other", 0.5, { shape: "lines", x: R2, h: 0.12 }),
+];
+
+// ---------- 同梱の様式 ----------
+
+/** 枠（mm）から欄の場所（頁の比）。areas に無ければ slots の矩形を合わせる */
+function frameBox<K extends string>(frame: Frame<K>, k: K, page: number): FieldBox | undefined {
+  const size = frame.pages.find((p) => p.page === page);
+  if (!size) return undefined;
+  let boxes = frame.areas.filter((a) => a.page === page && a.keys.includes(k)).map((a) => a.box);
+  if (boxes.length === 0) boxes = frame.slots.filter((s) => s.page === page && ("keys" in s ? s.keys.includes(k) : s.key === k)).map((s) => s.box);
+  if (boxes.length === 0) return undefined;
+  const x0 = Math.min(...boxes.map((b) => b.x));
+  const y0 = Math.min(...boxes.map((b) => b.y));
+  const x1 = Math.max(...boxes.map((b) => b.x + b.w));
+  const y1 = Math.max(...boxes.map((b) => b.y + b.h));
+  const r = (n: number) => Math.round(n * 10000) / 10000;
+  return { x: r(x0 / size.w), y: r(y0 / size.h), w: r((x1 - x0) / size.w), h: r((y1 - y0) / size.h) };
+}
+
+/** 松山市の計画書の欄 → 項目。無い欄は正解に入れない（特記事項の中の段・様式に無い欄は下で 1 つにまとめる） */
+const MATSUYAMA_ITEMS: Partial<Record<MatsuyamaKey, string | null>> = {
+  "head.number": null,
+  "head.date": "plan.date",
+  "target.kana": "person.kana",
+  "target.name": "person.name",
+  "target.sex": "basic.sex",
+  "target.birth": "person.birth",
+  "target.district": "basic.town",
+  "target.address": "basic.address",
+  "target.phone": "self.phone",
+  "target.mobile": "self.mobile",
+  "target.category": null,
+  "local.welfare": "people.welfare",
+  "local.watcher": "local.watcher",
+  "local.office": "people.offices",
+  "local.other": null,
+  "target.household": "basic.household",
+  "target.timeline": "evacuation.myTimeline",
+  "consent.registry": null,
+  "consent.planShare": null,
+  "sign.self": null,
+  "sign.proxy": null,
+  "kin.kana": null,
+  "kin.name": "emergency1.name",
+  "kin.relation": "emergency1.relation",
+  "kin.phone": "emergency1.phone",
+  "kin.mobile": null,
+  "kin.address": "emergency1.address",
+  "supporter1.kana": null,
+  "supporter1.name": "supporter1.name",
+  "supporter1.address": "supporter1.address",
+  "supporter1.phone": "supporter1.phone",
+  "supporter1.mobile": null,
+  "supporter1.relation": "supporter1.relation",
+  "supporter1.consent": null,
+  "supporter2.kana": null,
+  "supporter2.name": "supporter2.name",
+  "supporter2.address": "supporter2.address",
+  "supporter2.phone": "supporter2.phone",
+  "supporter2.mobile": null,
+  "supporter2.relation": "supporter2.relation",
+  "supporter2.consent": null,
+  "org.name": null,
+  "org.phone": null,
+  "org.consent": null,
+  "plan.author": "plan.author",
+  "medical.doctor": "medical.doctor",
+  "medical.drugs": "medical.medications",
+  "risk.home": "evacuation.hazards",
+  "risk.timing": null,
+  "risk.issues": "care.issues",
+  "shelter.pre.place": "evacuation.destination2",
+  "shelter.pre.means": null,
+  "shelter.pre.minutes": null,
+  "shelter.near.place": null,
+  "shelter.near.means": null,
+  "shelter.near.minutes": null,
+  "shelter.city.place": "evacuation.destination1",
+  "shelter.city.means": "evacuation.transport",
+  "shelter.city.minutes": null,
+  "housing.type": null,
+  "housing.structure": "basic.housing.structure",
+  "housing.floors": "basic.housing.floors",
+  "housing.room": "basic.housing.floor",
+  "housing.bedroom": "basic.housing.bedroom",
+  "support.kinds": "evacuation.support",
+  "notes.annex": "medical.annex",
+  "route.text": "evacuation.route",
+  "route.map": null,
+  "city.stamp": null,
+};
+/** 決めきれない欄の別解 */
+const MATSUYAMA_ACCEPT: Partial<Record<MatsuyamaKey, ReadonlyArray<string | null>>> = {
+  "target.category": ["care.careLevel"],
+  "local.other": ["people.offices"],
+  "housing.room": ["basic.housing.bedroom"],
+  "shelter.city.means": [null],
+};
+
+function matsuyamaGold(): GoldField[] {
+  const out: GoldField[] = [];
+  for (const f of MATSUYAMA_FIELDS) {
+    if (!(f.key in MATSUYAMA_ITEMS)) continue;
+    const item = MATSUYAMA_ITEMS[f.key as MatsuyamaKey] ?? null;
+    const box = frameBox(MATSUYAMA_FRAME, f.key as MatsuyamaKey, f.page);
+    const shape: FieldShape = f.shape === "consent" ? "choice" : f.shape;
+    out.push({
+      page: f.page,
+      section: f.block === "head" || f.block === "target" ? "" : blockName(f.block),
+      label: f.label,
+      shape,
+      options: "options" in f && f.options ? [...f.options] : [],
+      item: key(item),
+      ...(MATSUYAMA_ACCEPT[f.key as MatsuyamaKey] ? { accept: MATSUYAMA_ACCEPT[f.key as MatsuyamaKey]!.map(key) } : {}),
+      ...(box ? { box } : {}),
+    });
+    // 特記事項は様式では 1 つの書き込みの欄（中の段はケア72 の分け方）。別紙の あり・なし の前に 1 欄で置く
+    if (f.key === "support.kinds") {
+      const notes = frameBox(MATSUYAMA_FRAME, "notes.other", 2);
+      out.push({
+        page: 2,
+        section: "",
+        label: "特記事項",
+        shape: "lines",
+        options: [],
+        item: "notes.other",
+        accept: ["notes.words", "medical.notes"],
+        ...(notes ? { box: notes } : {}),
+      });
+    }
+  }
+  return out;
+}
+
+const BLOCK_NAMES: Record<string, string> = {
+  local: "地域の支援者",
+  consent: "同意",
+  sign: "署名",
+  kin: "近親者及緊急時の連絡先",
+  supporter1: "避難支援等実施者１",
+  supporter2: "避難支援等実施者２",
+  org: "避難支援等実施組織",
+  plan: "",
+  risk: "自宅のリスク",
+  shelter: "私の避難場所",
+  housing: "住居",
+  support: "",
+  notes: "特記事項",
+  route: "",
+  city: "",
+};
+const blockName = (b: string) => BLOCK_NAMES[b] ?? "";
+
+/** 災害診療記録2018 の 1・2 頁の欄 → 項目（医師が書く欄・ケア72 が足した欄〔extra〕は様式の欄でないので入れない） */
+const KIROKU_ITEMS: Partial<Record<MedicalKey, string | null>> = {
+  "doctor.firstVisit": null,
+  "doctor.physician": null,
+  "patient.kana": "person.kana",
+  "patient.name": "person.name",
+  "patient.sex": "basic.sex",
+  "patient.birth": "person.birth",
+  "patient.phone": "self.mobile",
+  "patient.address": "basic.address",
+  "patient.house": null,
+  "shelter.first": "evacuation.destination1",
+  "shelter.second": "evacuation.destination2",
+  "contact.kinds": null,
+  "contra.allergy": "medical.allergies",
+  "contra.food": null,
+  "drug.antiplatelet": null,
+  "drug.anticoagulant": null,
+  "drug.diabetes": null,
+  "drug.steroid": null,
+  "drug.antiepileptic": null,
+  "drug.other": null,
+  "drug.dialysis": "medical.dialysis",
+  "drug.hot": "medical.devices",
+  "care.vulnerable": null,
+  "care.protect": null,
+  "doctor.disease": null,
+  "doctor.triage": null,
+  "id.medical": null,
+  "history.disease": "medical.history",
+  "history.vaccination": "medical.vaccinations",
+};
+const KIROKU_ACCEPT: Partial<Record<MedicalKey, ReadonlyArray<string | null>>> = {
+  "patient.birth": ["person.age"],
+  "patient.phone": ["self.phone"],
+  "contact.kinds": ["emergency1.relation", "emergency1.name"],
+  "drug.antiplatelet": ["medical.medications"],
+  "drug.anticoagulant": ["medical.medications"],
+  "drug.diabetes": ["medical.medications"],
+  "drug.steroid": ["medical.medications"],
+  "drug.antiepileptic": ["medical.medications"],
+  "drug.other": ["medical.medications"],
+  "drug.dialysis": ["medical.devices"],
+  "care.vulnerable": ["care.careLevel"],
+};
+const KIROKU_SHAPES: Partial<Record<MedicalKey, FieldShape>> = {
+  "patient.sex": "choice",
+  "patient.birth": "date",
+  "patient.phone": "phone",
+  "drug.antiplatelet": "check",
+  "drug.anticoagulant": "check",
+  "drug.diabetes": "check",
+  "drug.steroid": "check",
+  "drug.antiepileptic": "check",
+  "drug.other": "check",
+  "drug.dialysis": "check",
+  "drug.hot": "check",
+  "doctor.firstVisit": "date",
+  "doctor.physician": "handwrite",
+  "doctor.disease": "handwrite",
+  "doctor.triage": "handwrite",
+};
+
+function kirokuGold(): GoldField[] {
+  return MEDICAL_FIELDS.filter((f) => f.key in KIROKU_ITEMS).map((f) => {
+    const k = f.key as MedicalKey;
+    const box = frameBox(KIROKU_FRAME, k, f.page);
+    return {
+      page: f.page,
+      section: "",
+      label: f.label,
+      shape: KIROKU_SHAPES[k] ?? "text",
+      options: [],
+      item: key(KIROKU_ITEMS[k] ?? null),
+      ...(KIROKU_ACCEPT[k] ? { accept: KIROKU_ACCEPT[k]!.map(key) } : {}),
+      ...(box ? { box } : {}),
+    };
+  });
+}
+
+/** 様式 9 の列（ひな形の列だけ）→ 項目。1 行目の欄として数える */
+const FORM9_ITEMS: Partial<Record<Form9ColumnId, string | null>> = {
+  no: null,
+  medicalCare: null,
+  environment: null,
+  evacuation: null,
+  area: "basic.town",
+  nameAge: "person.name",
+  address: "basic.address",
+  shelter: "evacuation.destination1",
+  facility: null,
+  notes: "notes.other",
+  careManager: "plan.author",
+  checkedAt: null,
+};
+const FORM9_ACCEPT: Partial<Record<Form9ColumnId, ReadonlyArray<string | null>>> = {
+  area: ["basic.address"],
+  nameAge: ["person.age"],
+  facility: ["evacuation.destination2"],
+  notes: ["medical.notes", "notes.words"],
+  careManager: [null],
+};
+
+function form9Gold(): GoldField[] {
+  return FORM9_COLUMNS.filter((c) => c.origin === "mhlw").map((c) => ({
+    page: 1,
+    section: c.group ?? "",
+    label: c.group ? c.csv.replace(`${c.group}（`, "").replace(/）$/, "") : c.csv,
+    shape: "text" as const,
+    options: [],
+    item: key(FORM9_ITEMS[c.id] ?? null),
+    ...(FORM9_ACCEPT[c.id] ? { accept: FORM9_ACCEPT[c.id]!.map(key) } : {}),
+  }));
+}
+
+// ---------- 一覧 ----------
+
+export const GOLD_FORMS: readonly GoldForm[] = [
+  {
+    id: "komorebi",
+    title: KOMOREBI_TITLE,
+    issuer: KOMOREBI_ISSUER,
+    city: null,
+    source: { kind: "generated", html: komorebiBlankHtml, landscape: false },
+    typeface: "mincho",
+    pages: [1, 2],
+    fields: layoutGold(KOMOREBI_LAYOUT),
+  },
+  {
+    id: "aozora",
+    title: "あおぞら市 避難行動要支援者 個別避難計画書",
+    issuer: "あおぞら市（架空）",
+    city: null,
+    source: {
+      kind: "generated",
+      html: () => layoutBlankHtml({ layout: AOZORA_LAYOUT, title: "あおぞら市 避難行動要支援者 個別避難計画書", ver: "様式第2号（架空）", landscape: false, typeface: "gothic" }),
+      landscape: false,
+    },
+    typeface: "gothic",
+    pages: [1],
+    fields: layoutGold(AOZORA_LAYOUT, { "避難|避難時の配慮事項": ["notes.other"] }),
+  },
+  {
+    id: "shiokaze",
+    title: "しおかぜ町 災害時避難支援プラン（個別計画）",
+    issuer: "しおかぜ町（架空）",
+    city: null,
+    source: {
+      kind: "generated",
+      html: () => layoutBlankHtml({ layout: SHIOKAZE_LAYOUT, title: "しおかぜ町 災害時避難支援プラン（個別計画）", ver: "町様式（架空）", landscape: true, typeface: "mincho" }),
+      landscape: true,
+    },
+    typeface: "mincho",
+    pages: [1, 2],
+    fields: layoutGold(SHIOKAZE_LAYOUT, { "支援者|夜間の対応": ["supporter1.relation"] }),
+  },
+  {
+    id: "matsuyama",
+    title: ORIGINALS.matsuyama.title,
+    issuer: "松山市",
+    city: "松山市",
+    source: { kind: "corpus", sha256: ORIGINALS.matsuyama.sha256, url: ORIGINALS.matsuyama.url, fileName: /keikaku/i },
+    typeface: "gothic",
+    pages: [1, 2],
+    fields: matsuyamaGold(),
+  },
+  {
+    id: "kiroku",
+    title: ORIGINALS.kiroku.title,
+    issuer: "厚生労働省",
+    city: null,
+    source: { kind: "corpus", sha256: ORIGINALS.kiroku.sha256, url: ORIGINALS.kiroku.url },
+    typeface: "gothic",
+    pages: [1, 2],
+    fields: kirokuGold(),
+  },
+  {
+    id: "form9",
+    title: "様式9：災害時利用者一覧表 (安否確認優先順位)",
+    issuer: "厚生労働省",
+    city: null,
+    source: { kind: "corpus", fileName: /様式9|yoshiki9|bcp/i },
+    typeface: "gothic",
+    pages: [1],
+    fields: form9Gold(),
+  },
+];
+
+export const MATSUYAMA_SOURCE_URL = MATSUYAMA_FORM_URL;
+
+/** 正解どおりに読んだときの Opus の返事の形（偽の client の正解の答え） */
+export function goldReading(form: GoldForm, pages: number): ReadResult {
+  return {
+    title: form.title,
+    issuer: form.issuer,
+    pages,
+    typeface: form.typeface,
+    fields: form.fields
+      .filter((f) => f.page <= pages)
+      .map((f) => ({
+        page: f.page,
+        section: f.section,
+        label: f.label,
+        position: `${f.page}頁 ${f.section || "表"}`,
+        shape: f.shape,
+        options: f.options,
+        item: f.shape === "handwrite" ? null : f.item,
+        confidence: "high" as const,
+        reason: "正解の表",
+        box: f.box ?? null,
+        option_boxes: f.shape === "choice" ? (f.optionBoxes ?? []) : [],
+      })),
+  };
+}
+
+/** 正解の対応表（紙の値の正解を作る）。頁は原本の頁の数の中だけ */
+export function goldMapping(form: GoldForm, pages: number): FormMapping {
+  return {
+    title: form.title,
+    issuer: form.issuer,
+    pages,
+    typeface: form.typeface,
+    fields: form.fields
+      .filter((f) => f.page <= pages)
+      .map((f, i) => ({
+        id: `g${i + 1}`,
+        page: f.page,
+        section: f.section,
+        label: f.label,
+        position: "",
+        shape: f.shape,
+        options: f.options,
+        item: f.shape === "handwrite" ? null : f.item,
+        removed: false,
+        ai: null,
+        box: f.box ?? null,
+        ...(f.optionBoxes ? { optionBoxes: f.optionBoxes } : {}),
+      })),
+  };
+}

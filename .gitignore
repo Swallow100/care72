@@ -169,3 +169,6 @@ video/out/
 
 # アンケートの全部の写し（文の列入り。docs/survey/README.md の 2 節。commit しない）
 docs/survey/*.local.md
+
+# 評価の台の回のフォルダ（T107。既定の置き場 ../care72-qa/eval/ は同じ repo の別の worktree。原本の写る紙・送った画像を履歴に入れない）
+/eval/
