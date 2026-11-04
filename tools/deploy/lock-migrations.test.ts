@@ -72,6 +72,22 @@ describe("migrations の錠（T73 の 1）", () => {
     ).toEqual(["0002 番号重複 0002_z.sql"]);
   });
 
+  it("錠の最大より小さい新しい番号は落ちる（migration だけの配信は最後に、作り直しは番号の順に当て、当てる順が分かれる）", () => {
+    const base = lockEntries([
+      { name: "0001_init.sql", text: "x" },
+      { name: "0003_c.sql", text: "z" },
+      { name: "0010_j.sql", text: "j" },
+    ]);
+    // 空いた番号（0002・0009）を埋める新しい物は断る。数で比べる（0009 < 0010）
+    expect(
+      compareLock(base, [...base, ...lockEntries([{ name: "0002_b.sql", text: "y" }, { name: "0009_i.sql", text: "i" }])]),
+    ).toEqual(["0002 最大より小さい番号 0002_b.sql（錠の最大 0010）", "0009 最大より小さい番号 0009_i.sql（錠の最大 0010）"]);
+    // 最大より大きい物は今までどおり通る
+    expect(compareLock(base, [...base, ...lockEntries([{ name: "0011_k.sql", text: "k" }])])).toEqual([]);
+    // 錠が空なら比べる最大が無い
+    expect(compareLock([], lockEntries([{ name: "0001_init.sql", text: "x" }]))).toEqual([]);
+  });
+
   it("改行の CRLF と LF は同じ値", () => {
     expect(hashMigration("a\r\nb\r\n")).toBe(hashMigration("a\nb\n"));
     expect(hashMigration("a\nb\n")).not.toBe(hashMigration("a\nb"));
