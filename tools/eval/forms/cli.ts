@@ -48,7 +48,7 @@ const result = await runEval({
   people: list("people"),
   log: (line) => process.stderr.write(`${line}\n`),
 });
-const prev = previousRun(outRoot, result.run, result.mode);
+const prev = previousRun(outRoot, result);
 const md = diffMarkdown(result, prev);
 writeFileSync(join(result.dir, "report.md"), md, "utf8");
 if (!flag("no-progress")) writeFileSync(join(REPO_ROOT, "docs", "progress", `eval-forms-${result.run}.md`), md, "utf8");

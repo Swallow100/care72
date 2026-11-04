@@ -1,6 +1,6 @@
 // 評価の台（T107）の偽の client（本物の API を呼ばない）。呼ぶ前に台が「この呼び出しの正解」を積み、偽の client はそれを返す。
 // - gold: 正解のまま返す（台の数え方が正しければ、外れ 0 になる。テストで確かめる）
-// - noisy（既定）: 正解を決まった種で崩して返す（欄を落とす・項目を外す・場所をずらす・台帳に無い項目名・分け方の取りこぼし・値の取り違え）。
+// - noisy（既定）: 正解を決まった位置・種で崩して返す（欄を落とす・項目を外す・場所をずらす・台帳に無い項目名・分け方の取りこぼし・値の取り違え）。
 //   決まった入力で、送り直し（1 回目が 529）と形の違う返事（JSON でない）も起こし、失敗と再試行の数え方を通す
 // 偽の回の数は台の確かめ用で、AI の力ではない（md と index.html に「偽」と出す）。
 
@@ -18,7 +18,8 @@ type Message = Anthropic.Beta.Messages.BetaMessage;
 
 export type FakeStyle = "gold" | "noisy";
 
-export type Expected = { kind: "read"; answer: ReadResult } | { kind: "extract"; answer: ExtractOutput };
+/** noise: false は崩さない（正解の表の無い様式の空の返事） */
+export type Expected = { kind: "read"; answer: ReadResult; noise?: false } | { kind: "extract"; answer: ExtractOutput };
 
 export type FakeClient = ClaudeClient & {
   /** 次の呼び出しの正解。seed は崩し方の種（入力の id と送る単位） */
@@ -54,21 +55,20 @@ export function noisyRead(r: ReadResult, seed: string): ReadResult {
   const groupOf = new Map<string, string>(LEDGER_ITEMS.map((i) => [i.key as string, i.group]));
   let rejectedDone = false;
   const fields: ReadResult["fields"] = [];
+  // 崩す所は欄の並びの決まった位置（どの崩し方も様式ごとに 1 つ以上出る）。別の項目の選び方だけ種の乱数
   r.fields.forEach((f, i) => {
-    const u = rand();
-    const u2 = rand();
-    if (u < 0.05) return; // 欄の読み落とし
+    if (i % 17 === 7) return; // 欄の読み落とし
     let item = f.item;
-    if (item && u < 0.12) item = null; // 項目の取りこぼし
-    else if (item && u < 0.17) {
+    if (item && i % 13 === 5) item = null; // 項目の取りこぼし
+    else if (item && i % 11 === 2) {
       // 同じ区分の別の項目（外れ）
       const same = keys.filter((k) => k !== item && groupOf.get(k) === groupOf.get(item!));
       item = same[Math.floor(rand() * same.length)] ?? null;
-    } else if (!rejectedDone && item && i >= 3) {
+    } else if (!rejectedDone && item && i >= 3 && i % 2 === 1) {
       item = FAKE_UNKNOWN_ITEM;
       rejectedDone = true;
     }
-    const box = f.box && u2 < 0.12 ? { ...f.box, y: Math.min(0.97, f.box.y + 0.03) } : f.box;
+    const box = f.box && i % 9 === 4 ? { ...f.box, y: Math.min(0.97, f.box.y + 0.03) } : f.box;
     fields.push({ ...f, item, box, confidence: item === f.item ? "high" : "medium", reason: item === f.item ? "欄の名前と中身が合う" : "近い項目" });
   });
   // 余分な欄（様式に無い）
@@ -125,7 +125,7 @@ export function fakeClient(style: FakeStyle, holder: AttemptHolder): FakeClient 
           holder.current?.push({ n: (holder.current?.length ?? 0) + 1, status: 200, ms: 120 });
           // 形の違う返事（askJson が AiBadOutput の not_json にする）
           if (noisy && h % 17 === 0) return message(model, "読み取れませんでした", params);
-          const answer = e.kind === "read" ? (noisy ? noisyRead(e.answer, seed) : e.answer) : noisy ? noisyExtract(e.answer, seed) : e.answer;
+          const answer = e.kind === "read" ? (noisy && e.noise !== false ? noisyRead(e.answer, seed) : e.answer) : noisy ? noisyExtract(e.answer, seed) : e.answer;
           return message(model, JSON.stringify(answer), params);
         },
       },

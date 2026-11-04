@@ -212,7 +212,11 @@ describe("偽の client で 1 周（Chrome を使わない）", () => {
     const prev = await run("gold", "20261105-000000-fake", root);
     const r = await run("noisy", "20261105-000001-fake", root);
     const t = totals(r);
-    expect(t.read.wrong + t.read.missItem + t.read.missField + t.read.extraField).toBeGreaterThan(0);
+    expect(t.read.wrong).toBeGreaterThan(0);
+    expect(t.read.missItem).toBeGreaterThan(0);
+    expect(t.read.missField).toBeGreaterThan(0);
+    expect(t.read.extraField).toBe(2);
+    expect(t.read.rejected).toBe(2);
     expect(t.read.hit + t.read.alt + t.read.wrong + t.read.missItem + t.read.missField).toBe(t.read.goldFields);
     expect(t.intake.miss + t.intake.wrong).toBeGreaterThan(0);
     expect(t.paper.hit + t.paper.miss + t.paper.wrong).toBeLessThanOrEqual(t.paper.filled + t.paper.wrong);

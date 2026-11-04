@@ -133,6 +133,8 @@ export type RunResult = {
   genVersion: string;
   corpus: { root: string | null; missing: boolean; files: number; excluded: number; cities: string[] };
   renderer: boolean;
+  /** 埋めた紙を刷ったか（all・pdf・png・none） */
+  paper?: PaperMode;
   forms: FormResult[];
   inputs: InputResult[];
   papers: PaperResult[];
@@ -324,7 +326,7 @@ export async function runEval(opts: EvalOptions): Promise<RunResult> {
         pages = br.pages.map((p) => ({ bytes: p.bytes, source: p.meta.source, page: p.meta.page }));
       }
       const answer = job.gold ? goldReading(job.gold, pages.length) : { title: job.title, issuer: "", pages: pages.length, typeface: "gothic" as const, fields: [] };
-      fake?.expect({ kind: "read", answer }, job.id);
+      fake?.expect(job.gold ? { kind: "read", answer } : { kind: "read", answer, noise: false }, job.id);
       rec.scope(job.id, "form_read");
       const form = buildFormReadForm(pages.map((p) => ({ blob: new Blob([p.bytes as BlobPart], { type: "image/jpeg" }), meta: { source: pages[0].source, page: p.page, redacted: 0 }, bare: true })));
       const res = await formReadPost({ db, bucket, aiContext: async () => evalCtx, newId: () => `fm-${job.id}` }, { officeId: OFFICE, accountId: ACCOUNT }, form);
@@ -538,6 +540,7 @@ export async function runEval(opts: EvalOptions): Promise<RunResult> {
       genVersion: GEN_VERSION,
       corpus: { root: opts.corpusRoot, missing: corpus.missing, files: corpus.files.length, excluded: corpus.excluded, cities: corpus.cities },
       renderer: !!renderer,
+      paper: opts.paper,
       forms,
       inputs,
       papers,
@@ -750,14 +753,18 @@ function readFileSafe(path: string): Array<Record<string, unknown>> {
     .map((l) => JSON.parse(l) as Record<string, unknown>);
 }
 
-/** 置き場の中の前の回（同じ mode、result.json のある物のうち新しい物） */
-export function previousRun(outRoot: string, current: string, mode: string): RunResult | null {
+/** 置き場の中の前の回（同じ mode と偽の崩し方、result.json のある物のうち、今の回より前で新しい物） */
+export function previousRun(outRoot: string, current: RunResult): RunResult | null {
   if (!existsSync(outRoot)) return null;
   const runs = readdirSync(outRoot)
-    .filter((d) => d !== current && d.endsWith(`-${mode}`) && existsSync(join(outRoot, d, "result.json")))
-    .sort();
-  const last = runs[runs.length - 1];
-  return last ? (JSON.parse(readFileSync(join(outRoot, last, "result.json"), "utf8")) as RunResult) : null;
+    .filter((d) => d !== current.run && d < current.run && existsSync(join(outRoot, d, "result.json")))
+    .sort()
+    .reverse();
+  for (const d of runs) {
+    const r = JSON.parse(readFileSync(join(outRoot, d, "result.json"), "utf8")) as RunResult;
+    if (r.mode === current.mode && r.fakeStyle === current.fakeStyle) return r;
+  }
+  return null;
 }
 
 export const SEP = sep;

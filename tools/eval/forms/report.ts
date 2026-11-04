@@ -135,7 +135,7 @@ export function diffMarkdown(r: RunResult, prev: RunResult | null): string {
   lines.push("");
   lines.push(`- 回: ${r.run}（${r.mode === "fake" ? `偽の client ${r.fakeStyle}。数は台の確かめ用で AI の力ではない` : "本物の API"}）`);
   lines.push(`- 前の回: ${prev ? prev.run : "なし"}`);
-  lines.push(`- 入力の作り方の版: ${r.genVersion}、紙の日付: ${r.today}、Chrome: ${r.renderer ? "あり" : "なし"}`);
+  lines.push(`- 入力の作り方の版: ${r.genVersion}、紙の日付: ${r.today}、Chrome: ${r.renderer ? "あり" : "なし"}、埋めた紙: ${r.paper === "none" ? "刷らない（数だけ）" : (r.paper ?? "all")}`);
   lines.push(`- 様式の置き場: ${r.corpus.missing ? "なし" : `様式本体 ${r.corpus.files} 件（${r.corpus.cities.length} 市町村）、記載例・手引きなど読まない物 ${r.corpus.excluded} 件`}`);
   lines.push(`- 費用は ${PRICES_AS_OF} 時点の単価の見積もり（ai_calls のトークンから）`);
   lines.push("");
@@ -187,7 +187,9 @@ export function writeIndex(r: RunResult): string {
   const dir = join(r.dir, "filled");
   mkdirSync(dir, { recursive: true });
   const kindOf = new Map(r.inputs.map((i) => [i.id, i]));
+  // 数も紙も無い組（正解の表の無い様式の、刷らなかった入力）は出さない
   const rows = r.papers
+    .filter((p) => p.score || p.files.pdf || p.files.png)
     .map((p) => {
       const s = p.score;
       const inp = kindOf.get(p.input);
