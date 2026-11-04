@@ -413,9 +413,11 @@ function sectionOf(x: XNode | null, ctx: Ctx): Section {
 type Piece =
   | { k: "text"; text: string; props: RunProps; width: number }
   | { k: "tab" }
+  /** 改ページ（hard: w:br の改ページ、ほか: Word が前に保存したときの頁の切れ目 lastRenderedPageBreak） */
+  | { k: "brk"; hard: boolean }
   | { k: "box"; w: number; h: number; draw: (x: number, y: number) => PageItem[] };
 
-type Line = { pieces: Array<{ piece: Piece; x: number; w: number }>; width: number; ascent: number; height: number; natural: number; last: boolean };
+type Line = { pieces: Array<{ piece: Piece; x: number; w: number }>; width: number; ascent: number; height: number; natural: number; last: boolean; breakBefore: boolean };
 
 type Flow = {
   ctx: Ctx;
@@ -432,6 +434,8 @@ type Flow = {
   /** 前の段落の後の空き（次の段落の前の空きと大きい方だけ。Word は足す。合わせて足す） */
   floats: PageItem[];
   maxPages: number;
+  /** 頁の下を越えてよい長さ（mm）。Word が保存した頁の切れ目がある文書は、切れ目を正にして少しの食み出しは次の頁に送らない */
+  slack: number;
 };
 
 function fontSpec(p: RunProps, sizeMul = 1): FontSpec {
@@ -476,12 +480,13 @@ function collectPieces(ctx: Ctx, p: XNode, base: RunProps, anchors: XNode[], out
           if (c.n === "t") out.push({ k: "text", text: textOf(c), props, width: 0 });
           else if (c.n === "tab" || c.n === "ptab") out.push({ k: "tab" });
           else if (c.n === "br" || c.n === "cr") {
-            if (c.a.type === "page") out.push({ k: "text", text: "\f", props, width: 0 });
+            if (c.a.type === "page") out.push({ k: "brk", hard: true });
             else out.push({ k: "text", text: "\n", props, width: 0 });
           } else if (c.n === "sym") {
             const code = parseInt(c.a.char ?? "", 16);
             if (Number.isFinite(code)) out.push({ k: "text", text: symbolChar(code, c.a.font ?? ""), props, width: 0 });
-          } else if (c.n === "noBreakHyphen") out.push({ k: "text", text: "-", props, width: 0 });
+          } else if (c.n === "lastRenderedPageBreak") out.push({ k: "brk", hard: false });
+          else if (c.n === "noBreakHyphen") out.push({ k: "text", text: "-", props, width: 0 });
           else if (c.n === "drawing") {
             for (const d of kids(c)) {
               if (d.n === "anchor") anchors.push(d);
@@ -548,7 +553,7 @@ function inlineBox(ctx: Ctx, d: XNode): Piece {
 /** 段落を行に分ける */
 function breakLines(ctx: Ctx, pieces: Piece[], firstWidth: number, width: number, para: ParaProps, base: RunProps, left0: number): Line[] {
   const lines: Line[] = [];
-  let cur: Line = { pieces: [], width: 0, ascent: 0, height: 0, natural: 0, last: false };
+  let cur: Line = { pieces: [], width: 0, ascent: 0, height: 0, natural: 0, last: false, breakBefore: false };
   let avail = firstWidth;
   const lineMetrics = (p: RunProps) => {
     const em = lineEmOf(p.font);
@@ -573,10 +578,16 @@ function breakLines(ctx: Ctx, pieces: Piece[], firstWidth: number, width: number
       cur.ascent = m.a;
     }
     lines.push(cur);
-    cur = { pieces: [], width: 0, ascent: 0, height: 0, natural: 0, last: false };
+    cur = { pieces: [], width: 0, ascent: 0, height: 0, natural: 0, last: false, breakBefore: false };
     avail = width;
   };
   for (const piece of pieces) {
+    if (piece.k === "brk") {
+      // 改ページ: 字の途中なら行を終え、次の行の前で頁を変える
+      if (cur.pieces.length > 0) newLine();
+      cur.breakBefore = true;
+      continue;
+    }
     if (piece.k === "tab") {
       // 次のタブ位置（段落の左の端から）。既定のタブは defaultTab の倍数
       const at = cur.width + (lines.length === 0 ? left0 : 0);
@@ -593,9 +604,9 @@ function breakLines(ctx: Ctx, pieces: Piece[], firstWidth: number, width: number
       continue;
     }
     const props = piece.props;
-    const parts = piece.text.split(/(\n|\f)/);
+    const parts = piece.text.split(/(\n)/);
     for (const part of parts) {
-      if (part === "\n" || part === "\f") {
+      if (part === "\n") {
         newLine();
         continue;
       }
@@ -645,6 +656,12 @@ function breakLines(ctx: Ctx, pieces: Piece[], firstWidth: number, width: number
     cur.ascent = m.a;
   }
   cur.last = true;
+  // 段落の終わりの改ページ（次の段落・表から次の頁）: 空の行を足さずに印だけ残す
+  if (cur.pieces.length === 0 && cur.breakBefore && lines.length > 0) {
+    lines[lines.length - 1].last = true;
+    (lines as Line[] & { trailingBreak?: boolean }).trailingBreak = true;
+    return lines;
+  }
   lines.push(cur);
   return lines;
 }
@@ -717,7 +734,6 @@ function layoutParagraph(f: Flow, p: XNode, area: Area, table: TableStyle | null
     }
   }
   collectPieces(ctx, p, run, anchors, pieces);
-  const hasPageBreak = pieces.some((x) => x.k === "text" && x.text.includes("\f"));
   const sectBreak = !!kid(kid(p, "pPr"), "sectPr");
   if (!opts.measure && para.pageBreakBefore && !f.pageTop) newPage(f);
 
@@ -732,12 +748,14 @@ function layoutParagraph(f: Flow, p: XNode, area: Area, table: TableStyle | null
   height += heights.reduce((s, h) => s + h, 0);
   if (opts.measure) return { height: height + after, after };
 
-  // 置く
+  // 置く（1 行目の前の改ページは前の空きより先に）
+  if (lines[0]?.breakBefore && !f.pageTop && !opts.inCell) newPage(f);
+  if (lines[0]) lines[0].breakBefore = false;
   f.y += before;
   const paraTop = f.y;
   lines.forEach((ln, i) => {
     const h = heights[i];
-    if (!opts.inCell && f.y + h > f.bottom + 0.01 && !f.pageTop) newPage(f);
+    if (!opts.inCell && !f.pageTop && (ln.breakBefore || f.y + h > f.bottom + f.slack + 0.01)) newPage(f);
     const x0 = area.x + left + (i === 0 ? first : 0);
     const avail = width - (i === 0 ? first : 0);
     const free = avail - ln.width;
@@ -796,7 +814,7 @@ function layoutParagraph(f: Flow, p: XNode, area: Area, table: TableStyle | null
   // 浮いた図形（段落の位置から）
   for (const a of anchors) placeAnchor(f, a, paraTop, area);
   f.y += after;
-  if (hasPageBreak) newPage(f);
+  if ((lines as Line[] & { trailingBreak?: boolean }).trailingBreak && !opts.inCell) newPage(f);
   void sectBreak;
   return { height: f.y - paraTop + before, after };
 }
@@ -969,7 +987,8 @@ function layoutTable(f: Flow, tbl: XNode, area: Area, opts: { measure?: boolean;
   const rowY: number[] = [];
   const rowPage: number[] = [];
   for (let r = 0; r < rows.length; r++) {
-    if (!opts.inCell && f.y + rowH[r] > f.bottom + 0.01 && !f.pageTop) {
+    const cachedBreak = rowCells[r].some((c) => c.vm !== "cont" && startsWithBreak(kids(c.node, "p")[0]));
+    if (!opts.inCell && !f.pageTop && (cachedBreak || f.y + rowH[r] > f.bottom + f.slack + 0.01)) {
       newPage(f);
       // 見出しの行を繰り返す
       for (let hr = 0; hr < r && header[hr]; hr++) {
@@ -984,6 +1003,18 @@ function layoutTable(f: Flow, tbl: XNode, area: Area, opts: { measure?: boolean;
     f.pageTop = false;
   }
   return total;
+}
+
+/** 段落の頭に Word の頁の切れ目（lastRenderedPageBreak）があるか */
+function startsWithBreak(p: XNode | undefined): boolean {
+  if (!p) return false;
+  for (const r of kids(p, "r")) {
+    for (const c of kids(r)) {
+      if (c.n === "lastRenderedPageBreak") return true;
+      if (c.n === "t" && textOf(c) !== "") return false;
+    }
+  }
+  return false;
 }
 
 function drawRow(
@@ -1228,7 +1259,7 @@ function shapeItems(ctx: Ctx, spPr: XNode | null, style: XNode | null, box: Box,
 
 function textBox(ctx: Ctx, body: XNode, box: Box, ins: { l: number; r: number; t: number; b: number; anchor: string; vertical: boolean }, out: PageItem[]) {
   const sec: Section = { w: box.w, h: box.h, top: 0, bottom: 0, left: 0, right: 0, header: 0, footer: 0, pitch: null, titlePg: false, headers: new Map(), footers: new Map() };
-  const sub: Flow = { ctx, sec, items: [], pages: [], floats: [], y: 0, top: 0, bottom: Number.POSITIVE_INFINITY, pageTop: false, maxPages: 0 };
+  const sub: Flow = { ctx, sec, items: [], pages: [], floats: [], y: 0, top: 0, bottom: Number.POSITIVE_INFINITY, pageTop: false, maxPages: 0, slack: 0 };
   const area = { x: box.x + ins.l, w: Math.max(1, box.w - ins.l - ins.r) };
   let h = 0;
   for (const b of kids(body)) {
@@ -1307,6 +1338,9 @@ function placeVml(f: Flow, v: XNode, paraTop: number, area: Area) {
   f.floats.push(...out);
 }
 
+/** Word の頁の切れ目がある文書で、頁の下を越えてよい割合（本文の高さに掛ける） */
+const CACHED_SLACK = 0.04;
+
 // ---------------------------------------------------------------- 本体
 
 export type DocxResult = { pages: OfficePage[]; warnings: string[] };
@@ -1362,6 +1396,8 @@ export async function renderDocx(zip: ZipArchive, opts: DocxOptions = {}): Promi
     images,
   };
   const body = kid(doc, "body");
+  // Word が保存したときの頁の切れ目があれば、それを頁の切れ目の正にする（字の幅の違いで少し食み出しても次の頁に送らない）
+  const cached = docText.includes("lastRenderedPageBreak");
   // 節ごとに分ける（段落の pPr の sectPr が節の終わり、最後は body の sectPr）
   const blocks = kids(body).filter((b) => b.n !== "sectPr");
   const sections: Array<{ sec: XNode | null; blocks: XNode[] }> = [];
@@ -1383,7 +1419,7 @@ export async function renderDocx(zip: ZipArchive, opts: DocxOptions = {}): Promi
   for (const s of sections) {
     if (s.blocks.length === 0 && pages.length > 0) continue;
     const sec = sectionOf(s.sec, ctx);
-    const f: Flow = { ctx, sec, items: [], pages: [], floats: [], y: sec.top, top: sec.top, bottom: sec.h - sec.bottom, pageTop: true, maxPages: maxPages - pages.length };
+    const f: Flow = { ctx, sec, items: [], pages: [], floats: [], y: sec.top, top: sec.top, bottom: sec.h - sec.bottom, pageTop: true, maxPages: maxPages - pages.length, slack: cached ? CACHED_SLACK * (sec.h - sec.top - sec.bottom) : 0 };
     const area = { x: sec.left, w: sec.w - sec.left - sec.right };
     for (const b of s.blocks) {
       if (f.pages.length >= f.maxPages) break;
@@ -1406,7 +1442,7 @@ export async function renderDocx(zip: ZipArchive, opts: DocxOptions = {}): Promi
         const hfRels = await readRels(zip, part);
         const hctx: Ctx = { ...ctx, rels: hfRels };
         for (const r of hfRels.values()) if (r.type === "image" && !r.external && !ctx.images.has(r.target)) ctx.images.set(r.target, await zip.bytes(r.target).catch(() => null));
-        const sub: Flow = { ctx: hctx, sec, items: [], pages: [], floats: [], y: 0, top: 0, bottom: Number.POSITIVE_INFINITY, pageTop: false, maxPages: 0 };
+        const sub: Flow = { ctx: hctx, sec, items: [], pages: [], floats: [], y: 0, top: 0, bottom: Number.POSITIVE_INFINITY, pageTop: false, maxPages: 0, slack: 0 };
         let h = 0;
         for (const b of kids(root)) {
           if (b.n === "p") h += layoutParagraph(sub, b, area, null, { measure: true, inCell: true }).height;
