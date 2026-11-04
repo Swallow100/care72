@@ -27,10 +27,10 @@ function Item({ it }: { it: OverlayItem }) {
     );
   }
   if (it.kind === "image") {
-    // 欄に置く画像（避難経路の地図。T101 の受け口）。縦横の比を保って欄の中に収める
+    // 欄に置く画像（避難経路の地図。T101 の受け口、T106）。欄の箱の大きさで描いた SVG を欄の中にそのまま置く
+    // （<img> にすると中の地理院タイルを読まない）。中身は lib/forms/frame-build.ts の routeMapFor が数と固定の言葉だけで作った物
     return (
-      // eslint-disable-next-line @next/next/no-img-element -- 印刷に出すので <img>
-      <img className="ov-pic" style={at(it.box)} src={it.src} alt={it.alt} data-field={it.fieldId} data-slot={it.slot} />
+      <div className="ov-pic" style={at(it.box)} role="img" aria-label={it.alt} data-field={it.fieldId} data-slot={it.slot} dangerouslySetInnerHTML={{ __html: it.svg }} />
     );
   }
   // レ点は □ の形のまま、丸は字の場所に合わせて伸ばす

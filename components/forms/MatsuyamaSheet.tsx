@@ -17,7 +17,7 @@ import {
   type MatsuyamaSheet as Sheet,
 } from "@/lib/forms/matsuyama";
 import { paperText } from "@/lib/forms/paper-text";
-import type { RouteMapImage } from "@/lib/forms/frame-build";
+import { ROUTE_MAP_PAPER_MM, type RouteMapImage } from "@/lib/forms/frame-build";
 import { FormCell } from "./FormCell";
 import { PaperFoot } from "./PaperFoot";
 
@@ -286,6 +286,7 @@ function NotePart({ s, k }: { s: Sheet; k: MatsuyamaKey }) {
 }
 
 function PageTwo({ s, routeMap }: { s: Sheet; routeMap: RouteMapImage | null }) {
+  const pic = routeMap?.(ROUTE_MAP_PAPER_MM) ?? null;
   return (
     <section className="paper form matsuyama" aria-label="2 ページ" data-page="2">
       <div className="blk key" data-block="plan">
@@ -368,11 +369,9 @@ function PageTwo({ s, routeMap }: { s: Sheet; routeMap: RouteMapImage | null }) 
         <div className="grid" style={cols("1fr")}>
           <F s={s} k="route.text" bare />
         </div>
-        {/* 避難経路の地図（T102 が渡す。T101 の受け口。原本の枠の紙は lib/forms/frame-build.ts の ROUTE_MAP_SLOT） */}
-        {routeMap && (
-          // eslint-disable-next-line @next/next/no-img-element -- 印刷に出すので <img>
-          <img className="route-map" src={routeMap.src} alt={routeMap.alt} data-slot="route-map" />
-        )}
+        {/* 避難経路の地図（T106。原本の枠の紙は lib/forms/frame-build.ts の ROUTE_MAP_SLOT）。箱の大きさで描いた SVG を段の中にそのまま置く
+            （<img> にすると中の地理院タイルを読まない）。中身は routeMapFor が数と固定の言葉だけで作った物 */}
+        {pic && <div className="route-map" role="img" aria-label={pic.alt} data-slot="route-map" dangerouslySetInnerHTML={{ __html: pic.svg }} />}
       </div>
 
       {/* 様式の並び: 注は幅いっぱい、その下の行の左に松山市長、右に横長の市受付印の枠 */}
@@ -400,7 +399,7 @@ function PageTwo({ s, routeMap }: { s: Sheet; routeMap: RouteMapImage | null }) 
   );
 }
 
-/** routeMap は避難経路の欄に置く地図（T102 が渡す。無ければ空ける） */
+/** routeMap は避難経路の段に置く地図（lib/forms/frame-build.ts の routeMapFor。無ければ空ける） */
 export function MatsuyamaSheet({ sheet, routeMap = null }: { sheet: Sheet; routeMap?: RouteMapImage | null }) {
   return (
     <div className="paper-scroll">

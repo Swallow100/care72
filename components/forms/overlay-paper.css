@@ -75,12 +75,21 @@
   -webkit-print-color-adjust: exact;
 }
 
-/* 欄に置く画像（避難経路の地図、T102 が渡す）。縦横の比を保って欄の中 */
+/*
+  欄に置く画像（避難経路の地図、T106）。欄の箱の大きさで描いた SVG を箱いっぱいに（SVG の width・height の mm より箱に合わせる。
+  頁の比で置いた箱との丸めの差で罫線に掛からない）。地図の背景は白で、未記入の色付けの塗りはその下に隠れる
+*/
 .paper.overlay .ov-pic {
   position: absolute;
   display: block;
-  object-fit: contain;
-  object-position: center top;
+  overflow: hidden;
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}
+.paper.overlay .ov-pic > svg {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
 .paper.overlay .ov-mark {
