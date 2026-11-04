@@ -8,6 +8,8 @@
 // T59: 開始の前に選んだ物（職員・夜間発災）と取り消した手の数（「取消 N」）は、あるときだけ概要に。手のメモは対応の行の下に（採点は変えない）。状態を持たない（Server Component のまま、テストで renderToStaticMarkup できる）。
 // T105: 終わりに「発生と把握」の見比べ（起きたことと、ケアマネが把握した時刻・経路。遅れ・未把握の印）。分け方は経過のタブと同じ表
 // （lib/drill/timeline.ts）。数の 1 行は採点の内訳の下にも同じ形で（「発生 12・公表 8・遅れ 3・未把握 1」。数は採点に残さず、描くときに数える）。
+// T110: 対応履歴の時刻を打った時刻と終わる時刻と所要に（決まりの表で伸びた理由つき）、自由対応はやり方・ケアマネの文・AI の読み替えの理由を行の下に。
+// 手と出来事を時刻の順に 1 本にした表（lib/drill/act-log.ts）は CSV（GET /api/drill/[id]/log）で出す（紙は頁を増やさない）。
 // 紙の決まりは components/forms/paper.css、流し方は components/drill/drill-paper.css。
 
 import { Fragment } from "react";
@@ -32,6 +34,8 @@ import {
 } from "@/lib/drill/labels";
 import { incidentLabel } from "@/lib/drill/event-catalog";
 import { awareCounts, awareText, buildDrillLog, type Awareness, type LogRow } from "@/lib/drill/timeline";
+import { FREE_LABELS } from "@/lib/drill/action-catalog";
+import { FREE_WAY_LABELS } from "@/lib/drill/action-terms";
 import type { DrillRecord, StoredReview } from "@/lib/drill/record";
 import type { ReviewBody } from "@/lib/drill/review";
 import { knownOf, rowOf, talkTurns, visitOf } from "@/lib/drill/score";
@@ -588,7 +592,14 @@ export function DrillPaper({ record, office, today, ai = null }: { record: Drill
                 return (
                   <Fragment key={a.id}>
                     <tr data-action={a.kind}>
-                      <td className="nowrap">{t(clockLabel(a.atMinute))}</td>
+                      <td data-span={`${a.atMinute}-${a.endMinute}`}>
+                        <span className="nowrap">{t(clockLabel(a.atMinute))}</span>
+                        <span className="p-sub">
+                          {" "}
+                          {t(`〜${a.result ? clockLabel(Math.max(a.endMinute, a.result.atMinute)) : ""} ${a.minutes} 分`)}
+                          {a.adds && a.adds.length > 0 && ` ${a.adds.join("・")}`}
+                        </span>
+                      </td>
                       <td>
                         {ACTION_LABELS[a.kind]}
                         {/* 自由対応は読み替えた手（ケアマネの文は紙に出さない。T91） */}
@@ -596,6 +607,13 @@ export function DrillPaper({ record, office, today, ai = null }: { record: Drill
                           <span className="p-sub" data-reading={a.as}>
                             {" "}
                             {SCORE_LABELS.reading} {ACTION_LABELS[a.as]}
+                          </span>
+                        )}
+                        {/* そのままの手（T110）はやり方。文は終わりの「手と出来事」に */}
+                        {a.kind === "free" && !a.as && a.way && (
+                          <span className="p-sub" data-own-way={a.way}>
+                            {" "}
+                            {FREE_WAY_LABELS[a.way]}
                           </span>
                         )}
                       </td>
@@ -623,6 +641,23 @@ export function DrillPaper({ record, office, today, ai = null }: { record: Drill
                           )}
                           {visit.condition && visit.asks.length > 0 && "　"}
                           {visit.asks.length > 0 && `${SCORE_LABELS.asks} ${askWords(visit.asks)}`}
+                        </td>
+                      </tr>
+                    )}
+                    {/* 自由対応の文と AI の読み替えの理由（T110。ケアマネ本人の記録） */}
+                    {a.kind === "free" && (a.text || a.reason) && (
+                      <tr data-free-text={a.id}>
+                        <td />
+                        <td colSpan={5}>
+                          {a.text && `${FREE_LABELS.text} ${t(a.text)}`}
+                          {a.text && a.reason && "　"}
+                          {a.reason && (
+                            <>
+                              {FREE_LABELS.why}
+                              <span className="drill-ai"> AI </span>
+                              {t(a.reason)}
+                            </>
+                          )}
                         </td>
                       </tr>
                     )}

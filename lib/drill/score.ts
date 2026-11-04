@@ -26,7 +26,7 @@ import type { ClockRow, ContactKind, DependsOn, DrillAction } from "../db/types.
 import { inOutageArea } from "../disaster/state.ts";
 import type { Form9Row } from "../forms/form9.ts";
 import { clockHours } from "../triage/index.ts";
-import { ACTION_CATALOG, actionRow, effectiveKind, isCatalogAction, type ActionRow } from "./action-catalog.ts";
+import { ACTION_CATALOG, actionRow, effectiveKind, isCatalogAction, isOwnFree, type ActionRow } from "./action-catalog.ts";
 import type { ActionRecord } from "./engine.ts";
 import type { PersonState } from "./persona-types.ts";
 import type { CallRecord } from "./responses.ts";
@@ -43,9 +43,14 @@ export function rowOf(a: Pick<ActionRecord, "kind" | "as">): ActionRow | null {
 /** 本人に向けた手（順番と条件で、その人への手に数える物）。手の表の towardPerson */
 export const PERSON_ACTIONS: ReadonlyArray<DrillAction> = ACTION_CATALOG.filter((r) => r.towardPerson).map((r) => r.id);
 
-/** その人への手か（自由対応は読み替えた手で） */
-export const isPersonAction = (a: Pick<ActionRecord, "kind" | "person" | "as">): a is Pick<ActionRecord, "kind" | "as"> & { person: string } =>
-  a.person !== null && rowOf(a)?.towardPerson === true;
+/**
+ * その人への手か（自由対応は読み替えた手で）。自由対応のそのままの手（T110）は、本人を選び、電話か訪問のやり方の物を数える
+ * （順番の一致に入る。世界を変えないので「届いた」には数えない）
+ */
+export const isPersonAction = (
+  a: Pick<ActionRecord, "kind" | "person" | "as"> & Partial<Pick<ActionRecord, "way">>,
+): a is Pick<ActionRecord, "kind" | "as"> & { person: string } =>
+  a.person !== null && (rowOf(a)?.towardPerson === true || (isOwnFree(a) && a.way !== "desk"));
 
 // ---------- 順番 ----------
 

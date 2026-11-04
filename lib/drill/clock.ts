@@ -18,8 +18,10 @@ export type ClockStep = (typeof CLOCK_STEPS)[number];
 
 export const isClockStep = (v: unknown): v is ClockStep => typeof v === "number" && (CLOCK_STEPS as readonly number[]).includes(v);
 
-/** 進め方の行き先。分だけ進めるか、次の出来事まで */
-export type ClockTo = { minutes: ClockStep } | { next: true };
+/**
+ * 進め方の行き先。分だけ進めるか、次の出来事までか、手の分（T110: 時計は進めず、手に使った時間を AI も動かして閉じる）
+ */
+export type ClockTo = { minutes: ClockStep } | { next: true } | { acts: true };
 
 /** 画面の言葉（lib/drill/labels.ts は触らない） */
 export const CLOCK_LABELS = {
@@ -27,6 +29,8 @@ export const CLOCK_LABELS = {
   h1: "1 時間",
   h3: "3 時間",
   next: "次まで",
+  /** 手の分（T110）。手に使った時間を、AI も動かして閉じる */
+  acts: "手の分",
   /** 1 訓練の AI の上限に達した（帯の理由） */
   cap: "訓練上限",
   /** 1 訓練の AI の残り回数（操作の横の数） */
