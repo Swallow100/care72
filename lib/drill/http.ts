@@ -29,6 +29,7 @@ import { isStaffCount } from "./engine.ts";
 import type { StepHooks } from "./engine.ts";
 import { DRILL_API_LABELS, type DrillApiError } from "./labels.ts";
 import { lastHour, scenarioOf } from "./scenarios.ts";
+import { isClockStep, type ClockTo } from "./clock.ts";
 import { loadDrillScreen } from "./view.ts";
 
 const STATUS: Record<DrillApiError, number> = {
@@ -65,13 +66,13 @@ const PARTICIPANTS_MAX = 200;
 
 /**
  * 開始の前に選んだ物（T59）の形を見る。無ければ {}（今と同じ）。形が違えば null。
- * { participants?: 本人の id の配列（1 人以上）, staff?: 0〜9, night?: 真偽 }。担当一覧の中かは startDrill が見る
+ * { participants?: 本人の id の配列（1 人以上）, staff?: 0〜9, night?: 真偽, clock?: 真偽（T90）}。担当一覧の中かは startDrill が見る
  */
 export function parseStartOptions(v: unknown): StartOptions | null {
   if (v === undefined || v === null) return {};
   const o = obj(v);
   if (!o) return null;
-  const out: { participants?: string[]; staff?: number; night?: boolean } = {};
+  const out: { participants?: string[]; staff?: number; night?: boolean; clock?: true } = {};
   if (o.participants !== undefined) {
     const ps = o.participants;
     if (!Array.isArray(ps) || ps.length === 0 || ps.length > PARTICIPANTS_MAX || !ps.every(isDrillId)) return null;
@@ -84,6 +85,11 @@ export function parseStartOptions(v: unknown): StartOptions | null {
   if (o.night !== undefined) {
     if (typeof o.night !== "boolean") return null;
     if (o.night) out.night = true;
+  }
+  // 連続の時計（T90。開始の画面が大雨・地震・仮想に付ける）。10 分版に来たら startDrill が捨てる
+  if (o.clock !== undefined) {
+    if (typeof o.clock !== "boolean") return null;
+    if (o.clock) out.clock = true;
   }
   return out;
 }
@@ -104,7 +110,21 @@ export async function startPost(db: D1Database, p: Principal | null, json: unkno
   return Response.json({ ok: true, id: r.id }, { headers: NO_STORE });
 }
 
-/** 1 刻み進める POST（JSON）。{ step: 画面で読んだ今の刻み } */
+/**
+ * 進め方（T90）の形を見る。{ minutes: 30・60・180 } か { next: true }。どちらも無ければ undefined、形が違えば null（400）。
+ * 両方あれば次の出来事まで
+ */
+export function parseClockTo(b: Record<string, unknown>): ClockTo | undefined | null {
+  if (b.next !== undefined && b.next !== true) return null;
+  if (b.minutes !== undefined && !isClockStep(b.minutes)) return null;
+  if (b.next === true) return { next: true };
+  return isClockStep(b.minutes) ? { minutes: b.minutes } : undefined;
+}
+
+/**
+ * 1 刻み進める POST（JSON）。{ step: 画面で読んだ今の刻み, minutes?: 30・60・180, next?: true }。
+ * 連続の時計の訓練（T90）は minutes か next のどちらかが要る（無ければ 400）。clock の無い訓練は見ない（今までどおり 1 刻み）
+ */
 export async function stepPost(
   db: D1Database,
   p: Principal | null,
@@ -117,9 +137,14 @@ export async function stepPost(
   if (scope instanceof Response) return scope;
   const b = obj(json);
   if (!isDrillId(id) || !b || !isStep(b.step)) return drillError("invalid");
-  const r = await advanceDrill(db, scope, id, b.step, now, hooks);
+  const to = parseClockTo(b);
+  if (to === null) return drillError("invalid");
+  const r = await advanceDrill(db, scope, id, b.step, now, hooks, to);
   if (!r.ok) return drillError(r.error);
-  return Response.json({ ok: true, step: r.step, hour: r.hour, status: r.status }, { headers: NO_STORE });
+  return Response.json(
+    { ok: true, step: r.step, hour: r.hour, status: r.status, ...(r.minute !== undefined ? { minute: r.minute } : {}) },
+    { headers: NO_STORE },
+  );
 }
 
 const isCount = (v: unknown): v is number => typeof v === "number" && Number.isInteger(v) && v >= 0 && v < 10_000;

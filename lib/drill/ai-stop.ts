@@ -13,8 +13,10 @@
 import { AI_STATUS_LABELS, type AiStatus } from "../claude/status.ts";
 import type { DrillIncident, Tick } from "./engine.ts";
 import { AI_STOP_UI, DRILL_LABELS } from "./labels.ts";
+import { CAP_REASON, CLOCK_LABELS } from "./clock.ts";
 
-export type AiStopReason = "unset" | "limit" | "failed";
+/** cap は連続の時計の訓練（T90）の 1 訓練の上限（150 回、lib/drill/clock.ts）。戻らない */
+export type AiStopReason = "unset" | "limit" | "failed" | "cap";
 
 /** 戻り方。next = 次の刻みで呼び直す、tomorrow = 上限の日が替われば戻る、done = もう戻った、null = 戻らない（未設定）か再生 */
 export type AiStopResume = "next" | "tomorrow" | "done" | null;
@@ -32,7 +34,12 @@ export type AiStopBand = {
   whole: boolean;
 };
 
-type TickLike = Pick<Tick, "hour" | "incidents">;
+type TickLike = Pick<Tick, "hour" | "incidents"> & { turns?: Tick["turns"] };
+
+/** 区切りに AI の出した物（監督の差し込み・世界の 1 文・本人役の安否）があるか */
+function hasAi(t: TickLike): boolean {
+  return t.incidents.some((e) => e.ai || e.change.kind === "narration") || (t.turns ?? []).some((x) => x.ai);
+}
 
 function hasNarration(t: Pick<Tick, "incidents">): boolean {
   return t.incidents.some((e) => e.change.kind === "narration");
@@ -45,8 +52,9 @@ export function isStopIncident(e: DrillIncident, tick: Pick<Tick, "incidents">):
   return e.change.state === "off" || !hasNarration(tick);
 }
 
-/** 刻みが AI の止まった刻みなら理由。上限の印が先（上限で世界も落ちると world_note down も並ぶ） */
+/** 刻みが AI の止まった刻みなら理由。1 訓練の上限（T90）が先、次に 1 日の上限の印（上限で世界も落ちると world_note down も並ぶ） */
 export function tickStopReason(t: Pick<Tick, "incidents">): AiStopReason | null {
+  if (t.incidents.some((e) => e.change.kind === "ai_stop" && e.reason === CAP_REASON)) return "cap";
   if (t.incidents.some((e) => e.change.kind === "ai_stop")) return "limit";
   const notes = t.incidents.filter((e) => e.change.kind === "world_note");
   if (notes.some((e) => e.change.kind === "world_note" && e.change.state === "off")) return "unset";
@@ -60,7 +68,7 @@ export function tickStopReason(t: Pick<Tick, "incidents">): AiStopReason | null 
  */
 export function aiStopBand(
   ticks: ReadonlyArray<TickLike>,
-  opts: { virtual: boolean; running: boolean; now: AiStatus | null },
+  opts: { virtual: boolean; running: boolean; now: AiStatus | null; clock?: boolean },
 ): AiStopBand | null {
   const first = ticks[0]?.hour ?? 0;
   let cur: { reason: AiStopReason; from: number; to: number } | null = null;
@@ -68,6 +76,8 @@ export function aiStopBand(
   for (const t of ticks) {
     const r = tickStopReason(t);
     if (r) cur = cur ? { reason: r, from: cur.from, to: t.hour } : { reason: r, from: t.hour, to: t.hour };
+    // 連続の時計（T90）は AI を呼ばない区切り（空の 30 分・手の途中）があるので、AI の出した物の無い区切りでは止まりを終えない
+    else if (cur && opts.clock && !hasAi(t)) continue;
     else if (cur) {
       ended = cur;
       cur = null;
@@ -82,6 +92,8 @@ export function aiStopBand(
     whole: from === first && to === null,
   });
 
+  // 1 訓練の上限（T90）は日が替わっても戻らない
+  if (cur?.reason === "cap") return band("cap", cur.from, null, null);
   if (opts.running && opts.now?.kind === "unset") return band("unset", cur?.from ?? first, null, null);
   if (opts.running && opts.now?.kind === "limit") return band("limit", cur?.from ?? "next", null, "tomorrow");
   if (cur) {
@@ -95,7 +107,7 @@ export function aiStopBand(
 
 /** 帯の言葉の組（画面と紙面で同じ）。span は「経過 6 時間〜」「経過 6〜9 時間」「次から」、最初から止まっていれば null */
 export function aiStopParts(b: AiStopBand): { title: string; reason: string; span: string | null; effect: string; effectTitle: string; resume: string | null } {
-  const reason = { unset: AI_STATUS_LABELS.unset, limit: AI_STATUS_LABELS.limit, failed: AI_STATUS_LABELS.failed }[b.reason];
+  const reason = { unset: AI_STATUS_LABELS.unset, limit: AI_STATUS_LABELS.limit, failed: AI_STATUS_LABELS.failed, cap: CLOCK_LABELS.cap }[b.reason];
   const span =
     b.from === "next"
       ? AI_STOP_UI.next

@@ -27,8 +27,11 @@ import type { ContactKind, DrillAction } from "../db/types.ts";
 import { actionRow, effectiveKind, FIXED_CALLEE_LABELS, type ActionEffect, type ActionRow } from "./action-catalog.ts";
 import { ACTION_MINUTES } from "./action-table.ts";
 import { callLine, decideWorldReply, WORLD_REPLY_LABELS, WORLD_REPLY_TEXTS, type WorldReplyStatus } from "./world-reply.ts";
+import { DRILL_END_MINUTE } from "./clock.ts";
 import {
+  advance,
   DrillEnded,
+  isClock,
   step,
   type ActionBefore,
   type ActionRecord,
@@ -433,7 +436,17 @@ export async function act(
   const held: { decided: Decision | null } = { decided: null };
   let words: ReplyWords[] = [];
   let incidents: ReadonlyArray<DrillIncident> = [];
-  while (s.status === "running" && s.step < hours.length - 1 && hours[s.step + 1] * 60 <= endMinute) {
+  // 連続の時計の訓練（T90）: 手は区切りを起こさない。手の分の (始め, 終わり] に入る表の出来事と予定の出来事を AI を呼ばずに当て
+  // （当てる物があるときだけ区切りを 1 つ残す）、返事は進めたあとの世界で決める。言い換えは頼まない（監督の呼び出しを手で増やさない）
+  if (isClock(s)) {
+    const r = await advance(s, Math.min(endMinute, DRILL_END_MINUTE), hooks, { policy: "silent" });
+    if (r) {
+      s = r.state;
+      ticks.push(r.tick);
+      incidents = r.tick.incidents;
+    }
+  }
+  while (!isClock(s) && s.status === "running" && s.step < hours.length - 1 && hours[s.step + 1] * 60 <= endMinute) {
     const at = hours[s.step + 1];
     const r = await step(s, hooks, {
       replies: (world): ReplyAsk[] => {
