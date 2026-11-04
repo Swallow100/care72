@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { BIZ_UDPGothic, BIZ_UDPMincho, Inter } from "next/font/google";
+import { BIZ_UDGothic, BIZ_UDPGothic, BIZ_UDPMincho, Inter } from "next/font/google";
 import { AppHeader } from "@/components/AppHeader";
 import { CallQueueProvider } from "@/components/CallQueue";
 import { OfflineBand } from "@/components/OfflineBand";
@@ -39,6 +39,16 @@ const bizMincho = BIZ_UDPMincho({
   variable: "--font-biz-mincho",
 });
 
+// 松山市の計画書の紙面の本文だけ BIZ UDゴシック（かなが等幅。原本の書体のまま。OFL。11/4 15:4x 確定）。components/forms/paper.css の
+// .paper.matsuyama。画面には使わない。preload しないので、計画書の紙面を描くときだけ読む。
+const bizUdGothic = BIZ_UDGothic({
+  weight: ["400", "700"],
+  subsets: ["latin"],
+  preload: false,
+  display: "swap",
+  variable: "--font-biz-ud-gothic",
+});
+
 export const metadata: Metadata = {
   title: "ケア72",
   description: "ケアマネの手元の道具。個別避難計画、72 時間の訓練、発災時の安否の整理",
@@ -48,7 +58,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // 通話の記録を端末に貯める持ち主（T71。ケアマネの役だけ。ヘッダーと同じ 1 回の読み）
   const callOwner = await callQueueOwnerOfRequest();
   return (
-    <html lang="ja" className={`${inter.variable} ${bizUd.variable} ${bizMincho.variable}`}>
+    <html lang="ja" className={`${inter.variable} ${bizUd.variable} ${bizUdGothic.variable} ${bizMincho.variable}`}>
       <head>
         {/* 押したときの灰色と、ホーム画面に追加の受け口（T44。lib/ui/head-scripts.ts）。部品が描かれる前に動かす */}
         <script dangerouslySetInnerHTML={{ __html: PRESS_SCRIPT }} />

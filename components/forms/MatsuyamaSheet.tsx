@@ -335,7 +335,7 @@ function PageTwo({ s }: { s: Sheet }) {
 
       <div className="blk key grow" data-block="notes">
         <div className="blk-h">
-          特記事項
+          <span className="nowrap">特記事項</span>
           <span className="note" data-tx="notesNote">
             {TX.notesNote}
           </span>
@@ -369,18 +369,19 @@ function PageTwo({ s }: { s: Sheet }) {
         </div>
       </div>
 
+      {/* 様式の並び: 注は幅いっぱい、その下の行の左に松山市長、右に横長の市受付印の枠 */}
+      <div className="small-note">
+        <p className="mc u" data-tx="footPrepare">
+          {TX.footPrepare}
+        </p>
+        <p className="mc" data-tx="footNoGuarantee">
+          {TX.footNoGuarantee}
+        </p>
+        <p className="plain" data-tx="footUse">
+          {TX.footUse}
+        </p>
+      </div>
       <div className="foot">
-        <div className="small-note">
-          <p className="mc u" data-tx="footPrepare">
-            {TX.footPrepare}
-          </p>
-          <p className="mc" data-tx="footNoGuarantee">
-            {TX.footNoGuarantee}
-          </p>
-          <p className="plain" data-tx="footUse">
-            {TX.footUse}
-          </p>
-        </div>
         <div className="nowrap" data-tx="mayor">
           {TX.mayor}
         </div>
