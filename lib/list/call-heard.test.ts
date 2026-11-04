@@ -157,13 +157,17 @@ describe("通話と聞いた安否の保存", () => {
     ]);
   });
 
-  it("断る: 平時の安否 409（通話だけは通る）、範囲の外の連絡先 404、通話でない結果の安否・メモ 400、メモ 101 字 400、形の違う安否 400、ケアマネでない 403", async () => {
+  it("断る: 平時の安否 409（信号だけ断り、通話の経過は書く。T82）、範囲の外の連絡先 404、通話でない結果の安否・メモ 400、メモ 101 字 400、形の違う安否 400、ケアマネでない 403", async () => {
     const c = contactOf("p-01");
     const other = contactOf("p-02");
     expect(await call("p-01", { contact: c.id, result: "connected", heard: { color: "green" } }, 1)).toEqual({
       status: 409,
-      json: { ok: false, error: "normal", label: "平時" },
+      json: { ok: false, error: "normal", label: "無事 不可（平時）", logged: true },
     });
+    // 平時の通話の経過は書く（信号は作らない）。ここから下の断りは何も書かない
+    expect(rows("SELECT * FROM signals")).toEqual([]);
+    expect(rows("SELECT COUNT(*) AS n FROM timeline_entries WHERE kind = 'called'")[0].n).toBe(1);
+    sqlite.exec("DELETE FROM timeline_entries WHERE kind = 'called'");
     await heavyRain();
     expect((await call("p-01", { contact: other.id, result: "connected", heard: { color: "green" } }, 1)).status).toBe(404);
     expect((await call("p-01", { contact: c.id, result: "no_answer", heard: { color: "green" } }, 1)).status).toBe(400);
@@ -239,16 +243,16 @@ describe("聞いた安否と表の色（色と連絡順は表だけ）", () => {
     expect(r.rank).toBe(1);
   });
 
-  it("赤 けが・動けない の人への「無事」は書かずに断る（至急維持）。色・理由・連絡順は変わらない", async () => {
+  it("赤 けが・動けない の人への「無事」は信号にせず断る（至急維持。通話の経過は書く、T82）。色・理由・連絡順は変わらない", async () => {
     await heavyRain();
     await saveSignal(db, signalScope(self())!, red({ canMove: false }, at(0.5)), at(0.5));
     const before = await row("p-01", 0.7);
     expect(before.triage).toMatchObject({ rule: "red_injury", reason: "本人が「動けない」" });
     const r = await call("p-01", { contact: contactOf("p-01").id, result: "connected", heard: { color: "green" }, memo: "本人は大丈夫と" }, 0.6);
     // 何を断ったか（無事）と、表の理由の頭（本人が「動けない」）。T78（前は「至急維持」だけ）
-    expect(r).toEqual({ status: 409, json: { ok: false, error: "injury", label: "無事 不可（本人が「動けない」）" } });
+    expect(r).toEqual({ status: 409, json: { ok: false, error: "injury", label: "無事 不可（本人が「動けない」）", logged: true } });
     expect(rows("SELECT * FROM signals WHERE source = 'care_manager'")).toEqual([]);
-    expect(rows("SELECT * FROM timeline_entries WHERE kind = 'called'")).toEqual([]);
+    expect(rows("SELECT signal_id FROM timeline_entries WHERE kind = 'called'")).toEqual([{ signal_id: null }]);
     const after = await row("p-01", 0.7);
     expect(after.triage).toMatchObject({ rule: "red_injury", reason: "本人が「動けない」" });
     expect(after.rank).toBe(before.rank);
@@ -274,16 +278,16 @@ describe("聞いた安否と表の色（色と連絡順は表だけ）", () => {
     expect((await row("p-01", 0.7)).triage).toMatchObject({ color: "green", reason: "ケアマネが「無事」" });
   });
 
-  it("赤 けが の人への けが・動けないを付けない「無事でない」も断る（組が下がるので。至急維持）。けが か 動けない を付ければ通す", async () => {
+  it("赤 けが の人への けが・動けないを付けない「無事でない」も信号にせず断る（組が下がるので。至急維持。通話の経過は書く）。けが か 動けない を付ければ通す", async () => {
     await heavyRain();
     await saveSignal(db, signalScope(self())!, red({ injured: true }, at(0.5)), at(0.5));
     const c = contactOf("p-01").id;
     expect(await call("p-01", { contact: c, result: "connected", heard: { color: "red" } }, 0.6)).toEqual({
       status: 409,
-      json: { ok: false, error: "injury", label: "無事でない 不可（本人が「けが」）" },
+      json: { ok: false, error: "injury", label: "無事でない 不可（本人が「けが」）", logged: true },
     });
     expect(rows("SELECT * FROM signals WHERE source = 'care_manager'")).toEqual([]);
-    expect(rows("SELECT * FROM timeline_entries WHERE kind = 'called'")).toEqual([]);
+    expect(rows("SELECT signal_id FROM timeline_entries WHERE kind = 'called'")).toEqual([{ signal_id: null }]);
     expect((await row("p-01", 0.7)).triage).toMatchObject({ rule: "red_injury", group: 0, reason: "本人が「けが」" });
 
     expect((await call("p-01", { contact: c, result: "connected", heard: { color: "red", canMove: false } }, 0.6)).status).toBe(200);

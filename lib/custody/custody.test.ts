@@ -298,7 +298,8 @@ describe("ケアマネの一覧の状態「到着 避難所」", () => {
     sqlite.exec("DELETE FROM signals WHERE id = 's-red'");
     sqlite.prepare("UPDATE disaster_state SET started_at = ?").run(NOW);
     const open = await loadCaseload(db, { officeId: "office-demo", careManagerId: "acct-yamamoto" }, TODAY, NOW);
-    expect(open!.rows.find((r) => r.id === "p-09")!.triage!.reason).toBe(`到着 ${SHELTER}`);
+    // 受け入れは今の発災より前なので理由に受入日（T82）
+    expect(open!.rows.find((r) => r.id === "p-09")!.triage!.reason).toBe(`到着 ${SHELTER} 受入 11/3`);
 
     // 発災より前に閉じた（退所）受け入れは数えない
     if (!r.ok) throw new Error(r.error);

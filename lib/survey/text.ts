@@ -9,7 +9,7 @@ export const SURVEY_TITLE = "アンケートのお願い";
 /** 自己紹介と事情（頁の頭） */
 export const SURVEY_INTRO: ReadonlyArray<string> = [
   "突然のお願いで恐縮です。お時間のあるときに、5分ほどご協力いただけませんか。",
-  "私は医学部の学生です。いま、ハッカソン「Built with Claude: Japan 2026」に作品を出そうとしています。ハッカソンは、決まった期間（今回は11月8日まで）でアプリなどを作り、出来を競う大会です。私は、在宅の要介護の方の災害への備えを手伝うアプリ「ケア72」を作っています。",
+  "私は医学部の学生です。いま、Anthropic によるハッカソン「Built with Claude: Japan 2026」に作品を出そうとしています。ハッカソンは、決まった期間（今回は11月8日まで）でアプリなどを作り、出来を競う大会です。私は、在宅の要介護の方の災害への備えを手伝うアプリ「ケア72」を作っています。",
 ];
 
 export type FeatureGroup = { readonly heading: string; readonly items: ReadonlyArray<string> };
@@ -82,6 +82,8 @@ export const SURVEY_LABELS = {
   about: "あなたについて",
   questions: "問い",
   multi: "複数可",
+  /** 記入欄（問 5・問 9 の理由・ご意見）の名前の横 */
+  optional: "任意",
   /** その他を選んだときの記入欄の名前 */
   otherText: "その他の内容",
   submit: "送信",

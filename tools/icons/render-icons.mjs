@@ -1,7 +1,7 @@
 // ホーム画面に追加の印（public/icon-192.png・icon-512.png）を app/icon.svg から描く（T44）。手元で 1 回だけ回し、PNG を commit する。
 // 使い方: node tools/icons/render-icons.mjs（Chrome の場所は CHROME で変えられる）。
 // ホーム画面の印は透けると iPhone が黒く塗るので、白の地に輪を置く（輪は 72% の大きさで、角を丸められても欠けない）。
-// 「72」の字は画面と同じ M PLUS 2 で描く（Google Fonts から読み、読めるまで待つ）。
+// 「72」は app/icon.svg の中で Inter の字形を輪郭にした図形（書体を読まない。11/4 の B1）。
 
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
