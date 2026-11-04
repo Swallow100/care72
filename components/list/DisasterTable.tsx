@@ -218,7 +218,14 @@ function Cells({
       <td className={`${CELL} ${MD} whitespace-nowrap`}>
         {/* 避難計画は 2 番目の状態なので色の文字（塗りの印は安否の状態だけ） */}
         <StateText tone={PLAN_TONES[r.plan]}>{PLAN_STATUS_LABELS[r.plan]}</StateText>
-        {r.pending > 0 && <div className="text-xs font-bold tone-check">未確認 {r.pending}</div>}
+        {/* 未確認の数は言葉ごと黄の塗りの印（右の面・書類の紙面の帯と同じ形。前の黄の細い帯は何の印か伝わらなかった。T96） */}
+        {r.pending > 0 && (
+          <div className="mt-0.5" data-row-pending={r.pending}>
+            <StateTag tone="check">
+              未確認 <span className="tabular-nums">{r.pending}</span>
+            </StateTag>
+          </div>
+        )}
       </td>
     </>
   );

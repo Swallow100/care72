@@ -16,7 +16,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type SyntheticEvent } from "react";
 import { Button } from "@/components/ui/Button";
 import { CloseIcon, FitIcon, FullIcon, ZoomInIcon, ZoomOutIcon } from "@/components/ui/Icon";
-import { CountLabel, countClass, TONE_FILL } from "@/components/ui/Tag";
+import { CountLabel, countClass, StateTag, TONE_FILL } from "@/components/ui/Tag";
 import type { GeoPoint, HazardKind } from "@/lib/db/types";
 import { DRAG_SLOP, FULL_ZOOM, keyAction, MAP_LIMITS, pinchView, sameView, sideWheelTakes, stepZoom, toFrame, wheelZoom } from "@/lib/map/camera";
 import { COUNT_W, groupPins, labelWidth, memberStates, statesWidth, type PinGroup } from "@/lib/map/cluster";
@@ -630,11 +630,14 @@ function LayerToggles({ choice, demo, tz }: { choice: LayerChoice; demo: DemoOve
   );
 }
 
+/** 位置の無い人の数（地図に出ない人）。言葉と数を黄の塗りの印に入れる（前の黄の細い帯は何の印か伝わらなかった。T96） */
 function Unplaced({ n }: { n: number }) {
   if (n <= 0) return null;
   return (
-    <span className="text-xs tone-check tabular-nums">
-      {MAP_UI.unplaced} {n} 人
+    <span className="tabular-nums" data-unplaced={n}>
+      <StateTag tone="check">
+        {MAP_UI.unplaced} {n} 人
+      </StateTag>
     </span>
   );
 }
