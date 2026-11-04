@@ -10,6 +10,15 @@ export const TOTAL_SECONDS = 180;
 /** 寄りの枠。録画の幅と高さに対する割合（0〜1）。w は幅の割合で、高さは同じ割合（縦横の比は録画のまま） */
 export type Rect = { x: number; y: number; w: number };
 
+/** 囲みの枠。録画の幅と高さに対する割合（0〜1）。寄りの前の録画の上の位置で書く */
+export type Box = { x: number; y: number; w: number; h: number };
+
+/**
+ * 録画の上の囲み（細い線）と、その脇の短い名前（2〜4 字の漢語）。at・end は絵の頭からの秒（無ければ絵の間ずっと）。
+ * place は名前を置く向き。above・below は囲みに付けた小さな面、left・right は録画の外（スマホの横）に線を引いて置く
+ */
+export type Callout = { box: Box; label: string; at?: number; end?: number; tone?: "urgent"; place?: "above" | "below" | "left" | "right" };
+
 export type Shot = {
   /** 動画の頭からの秒 */
   at: number;
@@ -41,7 +50,11 @@ export type Shot = {
   rate?: number;
   /** 寄り。始まりの枠から終わりの枠へ動く */
   zoom?: [Rect, Rect];
-  /** 右上に小さく出すモデルの名前 */
+  /** 録画の上の囲み */
+  callouts?: Callout[];
+  /** 奥に敷く背景の生成動画（docs/video/BACKGROUND.md の B01…）。無ければ地の色だけ */
+  bg?: string;
+  /** 窓の上の帯の右に出すモデルの名前（スマホの録画では横に出す） */
   chip?: string;
   /** 下に小さく出す出典 */
   source?: string;
@@ -49,6 +62,8 @@ export type Shot = {
   emphasis?: boolean;
   /** 文字の画面・数字の画面の中身 */
   lines?: string[];
+  /** 文字だけの画面で lines と sub を出す秒（絵の頭から。声に合わせる）。無ければ 0.9 秒ずつ */
+  beats?: number[];
   value?: string;
   sub?: string;
 };
@@ -76,6 +91,8 @@ export const SCENES: Scene[] = [
         label: "担当一覧の平時をぼかして奥に。作者の紹介の文字",
         lines: ["作者 医学部の学生"],
         sub: "ケアマネ × 在宅の要介護高齢者 × 災害の最初の 72 時間",
+        // N01 の「医学部で」で 1 行目、「家族は、在宅のお年寄りを受け持つケアマネです」で下の帯
+        beats: [0.4, 2.9],
       },
     ],
   },
@@ -87,15 +104,18 @@ export const SCENES: Scene[] = [
     end: 20,
     shots: [
       // 題名を 72 時間の輪（G1）の中に置く。輪の目盛りが N02 の間に埋まる
-      { at: 7, end: 13, kind: "ring", label: "題名と 72 時間の輪", lines: ["ケア72"], sub: "ケアマネが知っていることを 災害の最初の 72 時間に" },
+      // 副題は字幕（N02）と同じ言葉になるので出さない
+      { at: 7, end: 13, kind: "ring", label: "題名と 72 時間の輪", lines: ["ケア72"] },
       {
         at: 13,
         end: 20,
         kind: "split",
         footages: ["R03", "R07", "R10"],
-        // R03 は様式の 1 頁目、R10 は山田の行が至急で一番上に上がったあと（R10-1 の 25.8 秒）
-        froms: [3, 0, 27],
+        // R03 は様式の 1 頁目、R10 は山田の行が至急で一番上に上がったあと（R10-2 の 31.1 秒）
+        froms: [3, 0, 32.3],
         lines: ["計画", "訓練", "発災時"],
+        // N03 の「話して埋まる避難計画」「AI が利用者を演じる訓練」「発災時の」に合わせて 1 つずつ（仮の声の切れ目で測った。本人の声に替えたら測り直す）
+        beats: [0.1, 1.85, 3.9],
         label: "様式が埋まる・72 時間の棒・一覧が並び替わる",
       },
     ],
@@ -107,16 +127,18 @@ export const SCENES: Scene[] = [
     at: 20,
     end: 46,
     shots: [
-      { at: 20, end: 25, kind: "text", label: "医学部 → 家族はケアマネ", lines: ["医学部", "家族はケアマネ"] },
+      { at: 20, end: 25, kind: "text", label: "医学部 → 家族はケアマネ", lines: ["医学部", "家族はケアマネ"], beats: [0.4, 1.9] },
       {
         at: 25,
         end: 33,
         kind: "split",
         // 録画の番号が空の所は文字の面（sub を「・」で分けて並べる）
         footages: ["", "R03"],
-        // 様式の下の方（未確認の欄）
-        froms: [0, 12],
+        // 様式の下の方（未確認の欄。R03-2 は始めと終わりをゆるめて送るので、前の 12 秒と同じ所が 11 秒）
+        froms: [0, 11],
         lines: ["知っている", "届かない"],
+        // N06 の「ケアマネは…全部知っている」「でも計画に起こす時間がなく」に合わせて
+        beats: [0.3, 3.3],
         sub: "薬と残り日数・医療機器と電池・家族と支援者・夜に来られる人",
         label: "左に台帳の区分の名前、右に様式の未確認の欄",
       },
@@ -130,7 +152,8 @@ export const SCENES: Scene[] = [
         source: "共同通信 2026-10-04（熊本日日新聞）",
       },
       { at: 38, end: 42, kind: "bars", label: "能登の死者と関連死", source: "熊本日日新聞 2026-08" },
-      { at: 42, end: 46, kind: "memo", label: "手書きのメモの線画（イメージ）", source: "厚生労働省" },
+      // 量の欄を囲むのは N09 の「用量が抜けていた」の頭（仮の声で 44.2 秒。本人の声に替えたら測り直す）
+      { at: 42, end: 46, kind: "memo", label: "避難所の手書きの薬のメモ（イメージ）。量の欄が空いている", source: "厚生労働省", beats: [2.2] },
     ],
   },
   {
@@ -189,30 +212,72 @@ export const SCENES: Scene[] = [
     at: 108,
     end: 150,
     shots: [
-      // 秒は R10-1・R11-1・R12-1・R13-1（手元の dev、11/3）の markers.json から。撮り直したら合わせ直す
-      // 事業所の画面は左の災害モードと災害情報だけに寄る（右の列にケアマネのログインの ID が出るため）
+      // 秒は R10-2・R11-2・R12-2・R13-2（手元の dev、11/4 に今の main で撮り直した）の markers.json とコマの変わり目から。撮り直したら合わせ直す
+      // 事業所の画面は左の災害モードと災害情報と、真ん中の確認の窓（T79）に寄る（右の列にケアマネのログインの ID が出るため）
       {
         at: 108,
         end: 112,
         kind: "footage",
         footage: "R10",
         from: 1,
-        label: "大雨に切替 → 発災時の表",
+        label: "大雨に切替（確認の窓）",
         zoom: [
-          { x: 0, y: 0, w: 0.6 },
-          { x: 0.02, y: 0.03, w: 0.5 },
+          { x: 0, y: 0, w: 0.66 },
+          { x: 0.04, y: 0.05, w: 0.6 },
         ],
       },
-      { at: 112, end: 116, kind: "split", footages: ["R11", "R10"], froms: [2, 16], label: "娘のスマホ（赤と緑）と担当一覧" },
-      // 1 分ごとの読み直しで山田の行が 2 番目から一番上へ（R10-1 の 25.8 秒）。半分の速さで
-      { at: 116, end: 121, kind: "footage", footage: "R10", from: 24, rate: 0.5, emphasis: true, label: "強調: 山田の行が一番上へ（至急）" },
+      { at: 112, end: 116, kind: "split", footages: ["R11", "R10"], froms: [2, 22.6], label: "娘のスマホ（赤と緑）と担当一覧" },
+      // 読み直しで山田の行が 2 番目から一番上へ（R10-2 の 31.07 秒）。半分の速さで
+      {
+        at: 116,
+        end: 121,
+        kind: "footage",
+        footage: "R10",
+        from: 29.3,
+        rate: 0.5,
+        emphasis: true,
+        label: "強調: 山田の行が一番上へ（至急）",
+        // 録画の 31.07 秒（絵の 3.6 秒）で山田の行が 1 番目に上がる。囲みは上がった行に（R10-2 の 31.5 秒のコマで測った）
+        callouts: [{ at: 3.8, box: { x: 0.0125, y: 0.394, w: 0.975, h: 0.072 }, label: "至急 連絡順 1", tone: "urgent", place: "below" }],
+      },
       { at: 121, end: 126, kind: "footage", footage: "R12", from: 3.5, label: "本人のスマホ: 赤 → けが → 止まる → 声の問いかけ" },
       { at: 126, end: 130, kind: "footage", footage: "R12", from: 40, emphasis: true, label: "強調: 録音と文字起こし。理由に分類（AI）" },
       { at: 130, end: 135, kind: "rules", label: "ルールの表の 1 枚" },
       // 手元の録画の行の詳細には録音の分類が無い（録音は撮っていない）ので、Haiku の名前は録音の分類を撮れてから付ける
-      { at: 135, end: 143, kind: "footage", footage: "R10", from: 39, label: "行の詳細: 分類修正・優先変更" },
-      { at: 143, end: 146.5, kind: "footage", footage: "R10", from: 50, label: "電話 → 電話の記録" },
-      { at: 146.5, end: 150, kind: "footage", footage: "R13", from: 7.5, label: "医療班の受入 → 要約" },
+      {
+        at: 135,
+        end: 143,
+        kind: "footage",
+        footage: "R10",
+        // 行の詳細が開いたあと（R10-2 の 44.4 秒で開き始め、44.8 秒で開き終わる）、47.9 秒まで画面が止まっている。その間を 0.4 倍で長く見せ、囲みを 1 つずつ出す
+        from: 44.85,
+        rate: 0.4,
+        label: "行の詳細: 分類修正・優先変更",
+        // 囲みの位置は R10-2 の 46.5 秒のコマで測った。47.9 秒から下へ送るので、囲みはその前に消す。撮り直したら測り直す
+        callouts: [
+          { at: 2.9, end: 7.4, box: { x: 0.0188, y: 0.474, w: 0.153, h: 0.037 }, label: "理由", place: "below" },
+          { at: 4.2, end: 7.4, box: { x: 0.664, y: 0.523, w: 0.314, h: 0.231 }, label: "安否の経過" },
+          { at: 5.5, end: 7.4, box: { x: 0.664, y: 0.769, w: 0.314, h: 0.151 }, label: "人の判断", place: "below" },
+        ],
+      },
+
+      { at: 143, end: 146.5, kind: "footage", footage: "R10", from: 53.3, label: "電話 → 電話の記録" },
+      // 受入（R13-2 の 8.5 秒）を押す所を 1.4 秒だけ見せ、N25 の「要約が届きます」の間は医療要約の書類へ。間は 10 コマの重ねでつなぐ
+      // R13-2 は受入のすぐあとに受入一覧の「医療要約」を押して撮った（15.0 秒に押し、17.8 秒に書類が出る）
+      { at: 146.5, end: 147.9, kind: "footage", footage: "R13", from: 7.7, label: "医療班の受入" },
+      {
+        at: 147.9,
+        end: 150,
+        kind: "footage",
+        footage: "R13",
+        // 17.8 秒に書類が出る。左の紙面（右の原本の列は「受入 到着 かわなぎ小学校」）に寄る
+        from: 18,
+        label: "医療班に届いた要約",
+        zoom: [
+          { x: 0.03, y: 0.16, w: 0.64 },
+          { x: 0.05, y: 0.2, w: 0.58 },
+        ],
+      },
     ],
   },
   {
@@ -246,6 +311,8 @@ export const SCENES: Scene[] = [
         kind: "number",
         label: "計画 1 件の時間の前と後",
         value: "［X 時間］ → ［Y 分］",
+        // 「→」のある値は前と後を 1 行に並べる（Graphics.tsx の Compare）。lines は各数の下の名前
+        lines: ["ふだん", "ケア72"],
         sub: "実測 架空の事例［N］件・ケアマネ［N］人。ふだんの時間は本人の申告",
       },
       { at: 169, end: 175, kind: "quote", label: "協力ケアマネの一言と 2 つ目の数字", lines: ["［協力ケアマネの一言］"], sub: "医療班の手元の割合 ［T34 か訓練の結果。無ければ未測定］" },
