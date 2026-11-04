@@ -45,47 +45,52 @@ const GRAPHIC = { title: "題名", text: "文字", ring: "72 時間の輪", numb
 
 const fmt = (s) => `${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, "0")}`;
 
+// 束は 1 つ 0.7 GB（public の録画を写す）。終わったら消す（.tmp に残すと C: が埋まる）
 const serveUrl = await bundle({ entryPoint: join(ROOT, "src/index.ts"), publicDir: join(ROOT, "public") });
-const composition = await selectComposition({ serveUrl, id: "Care72Ja", inputProps: { showEn: false } });
-const ff = ffmpeg();
-
 const scenes = [];
-for (const scene of SCENES) {
-  const shots = [];
-  for (const shot of scene.shots) {
-    const key = keyOf(shot);
-    const at = stillAt(shot);
-    const png = join(imgDir, `${key}.png`);
-    await renderStill({ serveUrl, composition, frame: Math.round(at * composition.fps), output: png, inputProps: { showEn: false }, imageFormat: "png" });
-    const jpg = join(imgDir, `${key}.jpg`);
-    const r = capture(ff.cmd, [...ff.pre, "-hide_banner", "-loglevel", "error", "-y", "-i", png, "-vf", "scale=960:-1:flags=lanczos", "-q:v", "3", jpg]);
-    if (r.status !== 0) throw new Error(`縮める所で失敗: ${r.stderr}`);
-    rmSync(png);
-    const ids = [shot.footage, ...(shot.footages ?? [])].filter(Boolean);
-    const recordings = ids.map((id, i) => recordingState(id, shot.froms?.[i] ?? shot.from));
-    const text = [shot.value, ...(shot.lines ?? []), shot.sub].filter(Boolean).join(" ");
-    const lines = LINES.filter((l) => l.at < shot.end && l.end > shot.at).map((l) => ({ id: l.id, ja: l.ja }));
-    shots.push({
-      key,
-      at: shot.at,
-      end: shot.end,
-      time: `${fmt(shot.at)}–${fmt(shot.end)}`,
-      still: fmt(at),
-      kind: shot.kind,
-      graphic: GRAPHIC[shot.kind] ?? null,
-      label: shot.label,
-      recordings,
-      waitNumber: /［/.test(text) || lines.some((l) => /［/.test(l.ja)),
-      chip: shot.chip ?? null,
-      source: shot.source ?? null,
-      rate: shot.rate ?? null,
-      emphasis: !!shot.emphasis,
-      callouts: (shot.callouts ?? []).map((c) => c.label),
-      lines,
-    });
-    console.log(`${scene.id} ${fmt(shot.at)} ${shot.label}`);
+try {
+  const composition = await selectComposition({ serveUrl, id: "Care72Ja", inputProps: { showEn: false } });
+  const ff = ffmpeg();
+
+  for (const scene of SCENES) {
+    const shots = [];
+    for (const shot of scene.shots) {
+      const key = keyOf(shot);
+      const at = stillAt(shot);
+      const png = join(imgDir, `${key}.png`);
+      await renderStill({ serveUrl, composition, frame: Math.round(at * composition.fps), output: png, inputProps: { showEn: false }, imageFormat: "png" });
+      const jpg = join(imgDir, `${key}.jpg`);
+      const r = capture(ff.cmd, [...ff.pre, "-hide_banner", "-loglevel", "error", "-y", "-i", png, "-vf", "scale=960:-1:flags=lanczos", "-q:v", "3", jpg]);
+      if (r.status !== 0) throw new Error(`縮める所で失敗: ${r.stderr}`);
+      rmSync(png);
+      const ids = [shot.footage, ...(shot.footages ?? [])].filter(Boolean);
+      const recordings = ids.map((id, i) => recordingState(id, shot.froms?.[i] ?? shot.from));
+      const text = [shot.value, ...(shot.lines ?? []), shot.sub].filter(Boolean).join(" ");
+      const lines = LINES.filter((l) => l.at < shot.end && l.end > shot.at).map((l) => ({ id: l.id, ja: l.ja }));
+      shots.push({
+        key,
+        at: shot.at,
+        end: shot.end,
+        time: `${fmt(shot.at)}–${fmt(shot.end)}`,
+        still: fmt(at),
+        kind: shot.kind,
+        graphic: GRAPHIC[shot.kind] ?? null,
+        label: shot.label,
+        recordings,
+        waitNumber: /［/.test(text) || lines.some((l) => /［/.test(l.ja)),
+        chip: shot.chip ?? null,
+        source: shot.source ?? null,
+        rate: shot.rate ?? null,
+        emphasis: !!shot.emphasis,
+        callouts: (shot.callouts ?? []).map((c) => c.label),
+        lines,
+      });
+      console.log(`${scene.id} ${fmt(shot.at)} ${shot.label}`);
+    }
+    scenes.push({ id: scene.id, title: scene.title, ground: scene.ground, at: scene.at, end: scene.end, time: `${fmt(scene.at)}–${fmt(scene.end)}`, shots });
   }
-  scenes.push({ id: scene.id, title: scene.title, ground: scene.ground, at: scene.at, end: scene.end, time: `${fmt(scene.at)}–${fmt(scene.end)}`, shots });
+} finally {
+  rmSync(serveUrl, { recursive: true, force: true });
 }
 
 const head = capture("git", ["rev-parse", "--short", "HEAD"]).stdout.trim();

@@ -34,13 +34,16 @@ export async function launch() {
     executablePath: findChrome(),
     headless: true,
     // ライトで撮る。保存したパスワード・拡張・履歴の無い新しいプロフィール（puppeteer の既定）
-    args: ["--no-first-run", "--lang=ja-JP", "--force-color-profile=srgb", "--hide-scrollbars"],
+    args: ["--no-first-run", "--lang=ja-JP", "--force-color-profile=srgb", "--hide-scrollbars", `--force-device-scale-factor=${SCALE}`],
   });
 }
 
 /** 撮る窓。PC は 1280×720 を 1.5 倍（コマは 1920×1080）、スマホは 375×812 を 2 倍 */
-export const PC = { width: 1280, height: 720, deviceScaleFactor: 1.5 };
-export const PHONE = { width: 375, height: 812, deviceScaleFactor: 2, isMobile: true, hasTouch: true };
+// 画面の流れ（screencast）は、窓の倍率を起動の --force-device-scale-factor に合わせないと CSS の大きさ（1280×720・375×812）で来る
+// （11/3 の録画は頭の 1 枚だけ 1920×1080 で、残りは 1280×720 だった）。起動の倍率は 1 つなので、PC もスマホも 1.5 にそろえる
+export const SCALE = 1.5;
+export const PC = { width: 1280, height: 720, deviceScaleFactor: SCALE };
+export const PHONE = { width: 375, height: 812, deviceScaleFactor: SCALE, isMobile: true, hasTouch: true };
 
 /** 新しい窓（cookie を分ける）を開き、ライトにする */
 export async function newPage(browser, viewport) {

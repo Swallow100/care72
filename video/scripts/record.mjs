@@ -246,7 +246,7 @@ async function disaster(browser) {
   await staff(browser);
 }
 
-/** 医療班: 受け持ちの画面で避難所を入れ、山田を検索して受入 → 本人のページ → 要約（R13）。disaster のあとに続けて撮る */
+/** 医療班: 受け持ちの画面で避難所を入れ、山田を検索して受入 → 受け持ちの表の行から医療要約（R13）。disaster のあとに続けて撮る */
 async function staff(browser) {
   const med = await newPage(browser, PC);
   await login(med, base, "judge", judgePw, "medical");
@@ -274,20 +274,16 @@ async function staff(browser) {
   await sleep(3500);
   await settle(med);
   r13.mark("受入のあと");
-  await sleep(3000);
-  // 受け持ちの表に入った山田を開く → 本人のページ（同意の範囲）→ 医療要約
-  r13.mark("本人のページ");
-  await Promise.all([med.waitForNavigation({ waitUntil: "networkidle0", timeout: 120_000 }), med.click('tr[data-hit="p-01"] a')]);
-  await settle(med);
   await sleep(2500);
-  r13.mark("下へ");
-  await scrollSlow(med, 600, 5000);
-  await sleep(1500);
+  // 受入のすぐあとに医療要約を開く（DECISIONS 11/4 09:2x。N25 の「要約が届きます」の間に書類が映るように）。
+  // 受け持ちの表に入った山田の行の、氏名の横の「医療要約」（StaffTable の data-summary）
   r13.mark("医療要約");
-  // 書類の「医療要約」の表示（a の href に forms/medical）
-  await Promise.all([med.waitForNavigation({ waitUntil: "networkidle0", timeout: 120_000 }), med.click('main a[href*="/forms/medical"]:not([href*="print"])')]);
+  await Promise.all([med.waitForNavigation({ waitUntil: "networkidle0", timeout: 120_000 }), med.click('tr[data-person="p-01"] a[data-summary]')]);
   await settle(med);
-  await sleep(4000);
+  await sleep(3500);
+  r13.mark("下へ");
+  await scrollSlow(med, 900, 7000);
+  await sleep(2000);
   await r13.stop(recDir("R13"));
 }
 
