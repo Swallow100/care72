@@ -12,7 +12,7 @@ import { EASE_OUT, STAGGER, progress, rise } from "./motion";
 const clamp = { extrapolateLeft: "clamp", extrapolateRight: "clamp" } as const;
 
 /**
- * 図どうしで揃える決まり（11/4 15:4x 作者）。面の角は 10px、塗りの端は 4px、線は 2px、表の行の区切りは 1px の薄い線。
+ * 図どうしで揃える決まり（11/4）。面の角は 10px、塗りの端は 4px、線は 2px、表の行の区切りは 1px の薄い線。
  * 強調する行は「左の帯 6px ＋ 薄い地 ＋ 太字」（ルールの表と使い分けの表で同じ）。メーターは太い線の上に字の色の塗り
  */
 const RADIUS = { panel: 10, mark: 4 } as const;
@@ -111,7 +111,7 @@ export const Title: React.FC<{ title: string; sub?: string }> = ({ title, sub })
  * sub は下の帯（S1 の「誰の・どの場面」）。「×」で分けた言葉を 1 つずつ面に並べる
  */
 /**
- * 左下の名札（S3 の作者の紹介）。大きな字の画面にしない（11/4 作者）。字幕の帯の上、舞台の左に 2 行。
+ * 左下の名札（S3 の作者の紹介）。大きな字の画面にしない（11/4）。字幕の帯の上、舞台の左に 2 行。
  * 1 行目は名前の代わり（作者　医学部の学生）、2 行目は理由（家族にケアマネージャー）。左の帯は表の強調と同じ 6px
  */
 export const Plate: React.FC<{ lines: string[]; beats?: number[] }> = ({ lines, beats }) => {
@@ -275,7 +275,7 @@ export const Share: React.FC<{ hero: string; share: number; part: string; whole:
     <Stage gap={0}>
       <div style={{ width: W, display: "flex", flexDirection: "column", gap: 40, ...rise(frame, 0, 20, 14) }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: 10, lineHeight: 1 }}>
-          <span style={{ fontSize: 220, fontWeight: 600 }}>{shown}</span>
+          <span style={{ fontSize: m ? 220 : TYPE.hero, fontWeight: 600 }}>{shown}</span>
           {m ? <span style={{ fontSize: 110, fontWeight: 600 }}>{m[2]}</span> : null}
         </div>
         <div style={{ position: "relative", width: W, height: H, background: p.tint, borderRadius: RADIUS.mark }}>

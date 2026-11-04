@@ -15,6 +15,13 @@ import { FPS, LINES, SCENES, type Scene, type Shot } from "./timeline";
 
 const f = (seconds: number) => Math.round(seconds * FPS);
 
+/** 「12 人中 9 人」を割合の図に（アンケート。人数が少ないので割合でなく人数で言う）。数が［ ］のうちは字だけ（塗りなし） */
+function peopleShare(value: string, part: string, whole: string) {
+  const m = /(\d+)\s*人中\s*(\d+)\s*人/.exec(value);
+  if (!m) return { hero: value, share: 0, part, whole };
+  return { hero: `${m[2]} 人`, share: Number(m[2]) / Number(m[1]), part, whole: `答えた ${m[1]} 人` };
+}
+
 /** 3 つの紙面の名前（F1。S4 の flow） */
 const FLOW_NAMES = ["松山市の様式", "本人の 1 枚", "医療班の要約"];
 
@@ -204,6 +211,8 @@ const ShotView: React.FC<{ shot: Shot; assets: Assets }> = ({ shot, assets }) =>
           <Backdrop shot={shot} assets={assets} duration={duration} />
           {shot.value?.includes("→") ? (
             <Compare value={shot.value} labels={[shot.lines?.[0] ?? "", shot.lines?.[1] ?? ""]} sub={shot.sub} />
+          ) : shot.value?.includes("人中") ? (
+            <Share {...peopleShare(shot.value, shot.lines?.[0] ?? "", shot.sub ?? "")} land={shot.beats?.[0] !== undefined ? f(shot.beats[0]) : undefined} />
           ) : shot.value?.endsWith("%") ? (
             <Share hero={shot.value} share={Number.parseFloat(shot.value) / 100} part={shot.lines?.[0] ?? ""} whole={shot.sub ?? ""} land={shot.beats?.[0] !== undefined ? f(shot.beats[0]) : undefined} />
           ) : (

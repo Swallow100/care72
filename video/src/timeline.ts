@@ -81,93 +81,102 @@ export type Line = { id: string; at: number; end: number; ja: string; en: string
 export const SCENES: Scene[] = [
   {
     id: "S1",
-    title: "自己紹介",
+    title: "問いかけ",
     ground: "blue",
     at: 0,
-    end: 7,
+    end: 13.1,
     shots: [
       {
         at: 0,
-        end: 7,
+        end: 4.1,
         kind: "text",
         footage: "R01",
         label: "ケアマネージャーの訪問の後ろ姿（B01）をぼかして奥に。問いかけの文字",
         bg: "B01",
-        // 冒頭は問いかけ（N01）。作者の紹介は S3 の名札で小さく（11/4 作者）
-        lines: ["突然ですが", "知っているのは、誰？"],
-        // 下の帯は声の「在宅の高齢者の薬や家族のことまで」と同じ言葉
-        sub: "在宅の高齢者 × 薬 × 家族",
-        // N01 の「突然ですが」で 1 行目、「知っているのは」で 2 行目、「在宅の高齢者の…」で下の帯（beats の 3 つ目。仮の声で測った）
-        beats: [0.4, 4.3, 1.6],
+        // 冒頭は問いかけ（N01）。最初の 10 秒で誰のどんな課題かを言う（N01・N02）
+        lines: ["突然ですが", "個別避難計画を知っていますか"],
+        // N01 の「突然ですが」で 1 行目、「個別避難計画を」で 2 行目（仮の声で測る）
+        beats: [0.4, 1.4],
       },
-    ],
-  },
-  {
-    id: "S2",
-    title: "3 本立て",
-    ground: "blue",
-    at: 7,
-    end: 20,
-    shots: [
-      // 題名を 72 時間の輪（G1）の中に置く。輪の目盛りが N02 の間に埋まる
-      // 副題は字幕（N02）と同じ言葉になるので出さない
-      // 題名は N02 の「ケア72 は」で出す（仮の声で 8.85 秒）
-      { at: 7, end: 13, kind: "ring", label: "題名と 72 時間の輪", lines: ["ケア72"], beats: [1.85] },
+      // N02 の前半「災害のとき…決めておく計画です」の間は、本物の計画書（松山市の様式の 1 頁目）を見せる
+      { at: 4.1, end: 8.8, kind: "footage", footage: "R03", from: 3, label: "これが個別避難計画（松山市の様式）" },
       {
-        at: 13,
-        end: 20,
-        kind: "split",
-        footages: ["R03", "R07", "R10"],
-        // R03 は様式の 1 頁目、R10 は山田の行が至急で一番上に上がったあと（R10-2 の 31.1 秒）
-        froms: [3, 0, 32.3],
-        lines: ["計画", "訓練", "発災時"],
-        // N03 の「話して埋まる避難計画」「AI が利用者を演じる訓練」「発災時の」に合わせて 1 つずつ（仮の声の切れ目で測った。本人の声に替えたら測り直す）
-        beats: [0.1, 1.85, 3.9],
-        label: "様式が埋まる・72 時間の棒・一覧が並び替わる",
-      },
-    ],
-  },
-  {
-    id: "S3",
-    title: "経緯",
-    ground: "blue",
-    at: 20,
-    end: 46,
-    shots: [
-      // 作者の紹介は大きな字にせず、左下の名札（N05 の「医学部の学生です」で 1 行目、「家族にケアマネージャーがいて」で 2 行目）
-      { at: 20, end: 26, kind: "plate", label: "作者の名札（医学部の学生・家族にケアマネージャー）", lines: ["作者　医学部の学生", "家族にケアマネージャー"], beats: [0.3, 2.3], bg: "B02" },
-      {
-        at: 26,
-        end: 33,
-        kind: "split",
-        // 録画の番号が空の所は文字の面（sub を「・」で分けて並べる）
-        footages: ["", "R03"],
-        // 様式の下の方（未確認の欄。R03-2 は始めと終わりをゆるめて送るので、前の 12 秒と同じ所が 11 秒）
-        froms: [0, 11],
-        lines: ["知っている", "届かない"],
-        bg: "B03",
-        // N06 の「ケアマネは…全部知っている」「でも計画に起こす時間がなく」に合わせて
-        beats: [0.3, 3.3],
-        sub: "薬と残り日数・医療機器と電池・家族と支援者・夜に来られる人",
-        label: "左に台帳の区分の名前、右に様式の未確認の欄",
-      },
-      {
-        at: 33,
-        end: 38,
+        at: 8.8,
+        end: 13.1,
         kind: "number",
         bg: "B04",
         label: "作成率",
         value: "15.1%",
         lines: ["個別避難計画あり"],
         sub: "対象 670 万人",
-        // 数え上がりが止まるのは N07 の「15.1%」（仮の声で 36.4 秒）
-        beats: [3.4],
+        // 数え上がりが止まるのは N02 の「15.1%」（仮の声で測る）
+        beats: [3.2],
         source: "共同通信 2026-10-04（熊本日日新聞）",
       },
-      // 数え上がりが止まるのは N08 の「527 人」（仮の声で 39.3 秒）
-      { at: 38, end: 42, kind: "bars", label: "能登の死者と関連死", source: "熊本日日新聞 2026-08", bg: "B05", beats: [1.3] },
-      // 量の欄を囲むのは N09 の「用量が抜けていた」の頭（仮の声で 44.2 秒。本人の声に替えたら測り直す）
-      { at: 42, end: 46, kind: "memo", label: "避難所の手書きの薬のメモ（イメージ）。量の欄が空いている", source: "厚生労働省", beats: [2.2] },
+    ],
+  },
+  {
+    id: "S2",
+    title: "理由",
+    ground: "blue",
+    at: 13.1,
+    end: 27,
+    shots: [
+      // 作者の紹介は大きな字にせず、左下の名札（N03 の「私の家族はケアマネージャーで」）
+      { at: 13.1, end: 17.2, kind: "plate", label: "作者の名札（医学部の学生・家族にケアマネージャー）", lines: ["作者　医学部の学生", "家族にケアマネージャー"], beats: [0.3, 0.9], bg: "B02" },
+      {
+        at: 17.2,
+        end: 21.5,
+        kind: "split",
+        // 録画の番号が空の所は文字の面（sub を「・」で分けて並べる）
+        footages: ["", "R03"],
+        // 様式の下の方（未確認の欄。R03-2 の 11 秒）
+        froms: [0, 11],
+        lines: ["知っている", "書けていない"],
+        bg: "B03",
+        // N03 の「利用者のことは知っているのに」「書く時間がないんです」に合わせて（仮の声で測る）
+        beats: [0.1, 2.2],
+        sub: "薬と残り日数・医療機器と電池・家族と支援者・夜に来られる人",
+        label: "左に台帳の区分の名前、右に様式の未確認の欄",
+      },
+      {
+        at: 21.5,
+        end: 27,
+        kind: "number",
+        bg: "B02",
+        bgFrom: 4,
+        label: "アンケート（T65 の問 4）",
+        // 数は受付（11/5 23:59）が閉じてから。「何人中何人」の形（割合にしない）。入るまでは字だけ
+        value: "［N］人中［N］人",
+        lines: ["書く時間が無い"],
+        sub: "アンケート（ケアマネージャーと包括支援センター）",
+        beats: [3.5],
+      },
+    ],
+  },
+  {
+    id: "S3",
+    title: "ケア72",
+    ground: "blue",
+    at: 27,
+    end: 46,
+    shots: [
+      // 題名を 72 時間の輪（G1）の中に置く。題名は N06 の「ケア72」で出す（仮の声で測る）。輪の中に名前の 72 時間の意味
+      { at: 27, end: 33.6, kind: "ring", label: "題名と 72 時間の輪", lines: ["ケア72"], sub: "助けが届きにくい災害直後の 72 時間", beats: [2.4] },
+      {
+        at: 33.6,
+        end: 41.6,
+        kind: "split",
+        footages: ["R03", "R07", "R10"],
+        // R03 は様式の 1 頁目、R10 は山田の行が至急で一番上に上がったあと（R10-2 の 31.1 秒）
+        froms: [3, 0, 32.3],
+        lines: ["計画", "訓練", "発災時"],
+        // N07 の「話すだけで計画ができ」「訓練もでき」「災害が起きたら」に合わせて 1 つずつ（仮の声で測る）
+        beats: [0.1, 2.0, 3.4],
+        label: "様式が埋まる・72 時間の棒・一覧が並び替わる",
+      },
+      // 量の欄を囲むのは N09 の「用量が抜けていた」の頭（仮の声で 44.2 秒）
+      { at: 41.6, end: 46, kind: "memo", label: "避難所の手書きの薬のメモ（イメージ）。量の欄が空いている", source: "厚生労働省", beats: [2.6] },
     ],
   },
   {
@@ -346,14 +355,14 @@ export const SCENES: Scene[] = [
 ];
 
 export const LINES: Line[] = [
-  { id: "N01", at: 0.3, end: 6.9, ja: "突然ですが、在宅の高齢者の薬や家族のことまで知っているのは、誰でしょう。", en: "Here's a question: who knows an older person's medications, and even their family, at home?" },
-  { id: "N02", at: 7.1, end: 12.7, ja: "答えはケアマネージャー。ケア72 は、その知識を 72 時間に届けます。", en: "The answer: their care manager. Care72 carries what they know into those 72 hours." },
-  { id: "N03", at: 12.8, end: 19.6, ja: "話して埋まる避難計画。AI が利用者を演じる訓練。発災時の、安否と連絡の順。", en: "A plan you fill in by talking. A drill where AI plays your clients. And in a disaster: who is safe, and who to call first." },
+  { id: "N01", at: 0.3, end: 3.9, ja: "突然ですが、『個別避難計画』を知っていますか。", en: "Have you heard of an \"individual evacuation plan\"?" },
+  { id: "N02", at: 4.1, end: 12.9, ja: "災害のとき、在宅の高齢者を誰がどう助けるかを決めておく計画です。でも、できているのは対象者の 15.1% だけ。", en: "It sets out who will help an older person living at home in a disaster, and how. But only 15.1% of the people who need one have one." },
+  { id: "N03", at: 13.1, end: 21.3, ja: "私の家族はケアマネージャーで、その理由を家で見てきました。利用者のことは知っているのに、書く時間がないんです。", en: "My family member is a care manager, and I've seen why at home. They know their clients well, but there's no time to write it down." },
   // N04（高校の災害の学習）は作者の指示（11/3 09:2x）で消した。ID は振り直さない（欠番）
-  { id: "N05", at: 20.3, end: 25.9, ja: "医学部の学生です。家族にケアマネージャーがいて、気づきました。", en: "I'm a medical student. Someone in my family is a care manager, and I noticed something." },
-  { id: "N06", at: 26.1, end: 33.2, ja: "利用者のことは全部知っている。でも計画に起こす時間も、72 時間に届く道もない。", en: "They know everything about their clients. But there's no time to turn it into a plan, and no way to get it there in those 72 hours." },
-  { id: "N07", at: 33.4, end: 38.0, ja: "個別避難計画ができているのは、対象の 15.1%。", en: "Only 15.1% of the people who need an individual evacuation plan have one." },
-  { id: "N08", at: 38.2, end: 41.4, ja: "能登では、527 人が関連死でした。", en: "In the Noto earthquake, 527 deaths were disaster-related." },
+  { id: "N05", at: 21.5, end: 26.8, ja: "家族だけではありません。アンケートでも、［N］人中［N］人が『書く時間が無い』と答えました。", en: "It's not just my family. In our survey, [N] of [N] said they have no time to write plans." },
+  { id: "N06", at: 27, end: 33.5, ja: "そこで、医学生の私が作ったのがケア72。72 は、助けが届きにくい災害直後の 72 時間のことです。", en: "So, as a medical student, I built Care72. The 72 stands for the first 72 hours after a disaster, when help is slow to arrive." },
+  { id: "N07", at: 33.7, end: 41.4, ja: "話すだけで計画ができ、訓練もでき、災害が起きたら安否と大事な情報をまとめて、医療班と共有します。", en: "Talk, and the plan is made. Run drills with it. And in a disaster, it gathers who is safe and what matters, and shares it with the medical team." },
+  // N08（能登の関連死）は 11/4 の冒頭の組み替えで外した（欠番）
   { id: "N09", at: 41.6, end: 45.9, ja: "輪島の避難所では、薬のメモが手書きで、用量が抜けていた。", en: "At shelters in Wajima, medication notes were handwritten, and doses were left out." },
   { id: "N10", at: 46.3, end: 51.3, ja: "主役は架空の利用者、山田ハナさん。84 歳、在宅酸素。", en: "Meet a fictional client, Hana Yamada. 84, on home oxygen." },
   { id: "N11", at: 51.5, end: 58.3, ja: "ケアマネージャーが話すと、Claude が台帳の欄に分け、空いている所だけ聞き返します。", en: "The care manager talks. Claude sorts it into her record, and asks back only about what's missing." },
