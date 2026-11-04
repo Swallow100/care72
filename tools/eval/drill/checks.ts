@@ -7,12 +7,15 @@
 // 層の物差しを借りると層の穴を見つけられないので、ここは層より広めに取る。
 // T118: 送った中身と画面の言葉の生年月日（和暦・略記・漢数字）と、1 訓練の数え（画面の AI 残）に入らない呼び出しも数える
 
+import { isCatalogAction } from "../../../lib/drill/action-catalog.ts";
+import { ACTION_WAYS, actionTerm, blockOf, dayHourOf, isDark, type TermCallee, type TermFacts } from "../../../lib/drill/action-terms.ts";
 import { CONDITION_BANNED, SPEECH_DANGER, SPEECH_DIAGNOSIS } from "../../../lib/drill/dialogue.ts";
+import type { PhoneState } from "../../../lib/drill/scenarios.ts";
 import { bandOf, TIMELINE, type TimeBandId } from "../../../lib/drill/time-odds.ts";
 import { FORBIDDEN_WORDS, REASON_MEDICAL_WORDS } from "../../../lib/drill/world-apply.ts";
 import { findLeaks, type PseudonymKey } from "../../../lib/pseudonym/index.ts";
 import { birthIn } from "../shapes.ts";
-import type { LooseAction, LooseTurn, RunOutcome } from "./drive.ts";
+import { DRILL_START, type LooseAction, type LooseTurn, type RunOutcome } from "./drive.ts";
 import type { AiRecord, LogRecord } from "./record.ts";
 import { PERSONA_ROLES, type Role } from "./roles.ts";
 
@@ -50,11 +53,28 @@ export const REASON_RULE: Rule = { id: "medical_reason", re: REASON_MEDICAL_WORD
 /** 言葉と色の食い違いの語 */
 const HURT = /けが|怪我|痛い|動けな|挟まれ|閉じ込め|血が|倒れて/;
 const FINE = /無事です|大丈夫です|元気です|心配いりません/;
+/**
+ * けがを打ち消す言い方と、人でなく物が倒れた言い方（T121。評価の 1 回目で「緑なのにけが」の誤検知のほとんどがこれ）。
+ * 文から外してから HURT を見る
+ */
+const NOT_HURT = [
+  /(?:大きな|ひどい)?(?:けが|怪我)(?:は|も|など)?(?:ない|無い|ありません|なし|なく|していません|してない|しておりません)/gu,
+  /痛く(?:ない|ありません|は(?:ない|ありません))/gu,
+  /挟まれ(?:ては|て)?(?:いない|いません)/gu,
+  /(?:木|倒木|棚|家具|タンス|塀|ブロック|電柱|本棚|看板|物|瓶|テレビ|壁|竹|枝|家の前の[^。、]{0,6})(?:が|も)倒れ(?:て|た)/gu,
+];
+
+/** けがの言葉があるか（打ち消しと物が倒れた言い方を外して）。台が足した目安 */
+export function hurtIn(text: string): boolean {
+  let t = text.normalize("NFKC");
+  for (const re of NOT_HURT) t = t.replace(re, "");
+  return HURT.test(t);
+}
 
 // ---------- 引っかかった所 ----------
 
 export type CheckHit = {
-  check: "banned" | "shape" | "leak" | "contradiction" | "time_odds" | "stop" | "op_failed" | "budget";
+  check: "banned" | "shape" | "leak" | "contradiction" | "time_odds" | "stop" | "op_failed" | "budget" | "terms";
   rule: string;
   /** banned: raw（モデルの生の返事）か shown（画面に出た物） */
   where?: "raw" | "shown" | "sent";
@@ -82,6 +102,12 @@ function ruleHits(text: string, rules: ReadonlyArray<Rule>): Array<{ rule: strin
   return out;
 }
 
+/** 仮名化の層の漏れの見張り（findLeaks）が返す「敬称つきの名前」 */
+const HONORIFIC_NAME = "敬称つきの名前";
+/** 役・続柄・商いの呼び名に付いた敬称（人の名前でない）。台が足した目安 */
+const ROLE_HONORIFIC =
+  /(?:ケアマネ|ヘルパー|看護師|看護婦|民生委員|お医者|医者|先生|職員|業者|配達|運転手|大家|管理人|消防|救急隊|役所|お隣|隣|近所|ご近所|娘|息子|嫁|孫|兄|姉|弟|妹|おばあ|おじい|お母|お父|叔母|叔父|伯母|伯父|おば|おじ|奥|旦那|(?:酸素|薬|電気|米|魚|八百|酒|肉|パン|花|布団|ガス|灯油|燃料|水道)屋)(?:さん|さま|様|ちゃん|くん)/gu;
+
 /**
  * 鍵の秘密（名前・カナ・町名・生年月日）と電話の形。町名を除くか（画面の文は町名に戻すので）。
  * 生年月日は台の表（tools/eval/shapes.ts の birthVariants。和暦・略記・漢数字）でも見る（T118。層の findLeaks を借りない）
@@ -91,7 +117,12 @@ function leakHits(
   key: PseudonymKey,
   opts: { towns: boolean; extra?: ReadonlyArray<{ value: string; what: string }>; births?: ReadonlyArray<{ iso: string; what: string }> },
 ): Array<{ rule: string; evidence: string }> {
-  const found = findLeaks(text, key).filter((w) => opts.towns || !/町名/.test(w));
+  let found = findLeaks(text, key).filter((w) => opts.towns || !/町名/.test(w));
+  // 役の呼び名に付いた敬称（酸素屋さん・ケアマネさん・民生委員さん）は人の名前でない（T121。台の誤検知）。外して見直す
+  if (found.includes(HONORIFIC_NAME)) {
+    const again = findLeaks(text.replace(ROLE_HONORIFIC, "　"), key);
+    if (!again.includes(HONORIFIC_NAME)) found = found.filter((w) => w !== HONORIFIC_NAME);
+  }
   const out = found.map((what) => {
     const s = key.secrets.find((x) => x.what === what && text.includes(x.value));
     return { rule: `personal:${what}`, evidence: s ? excerpt(text, text.indexOf(s.value)) : "" };
@@ -276,8 +307,8 @@ export function contradictionHits(outcome: RunOutcome): CheckHit[] {
       const minute = Math.round(u.at * 60);
       const end = ended[person]?.at;
       if (typeof end === "number" && u.at > end) hits.push({ check: "contradiction", rule: "after_end", person, minute, evidence: `結末 ${Math.round(end * 60)} 分のあとに ${u.color}` });
-      if (u.color === "green" && u.saying && HURT.test(u.saying)) hits.push({ check: "contradiction", rule: "green_but_hurt", person, minute, evidence: u.saying });
-      if (u.color === "red" && u.saying && FINE.test(u.saying) && !HURT.test(u.saying)) hits.push({ check: "contradiction", rule: "red_but_fine", person, minute, evidence: u.saying });
+      if (u.color === "green" && u.saying && hurtIn(u.saying)) hits.push({ check: "contradiction", rule: "green_but_hurt", person, minute, evidence: u.saying });
+      if (u.color === "red" && u.saying && FINE.test(u.saying) && !hurtIn(u.saying)) hits.push({ check: "contradiction", rule: "red_but_fine", person, minute, evidence: u.saying });
       const next = turns[i + 1];
       if (next && u.color === "red" && (u.injured === true || u.canMove === false) && next.color === "green") {
         const to = Math.round(next.at * 60);
@@ -300,7 +331,52 @@ export function stopHits(outcome: RunOutcome): CheckHit[] {
       if (kind === "world_note") hits.push({ check: "stop", rule: `world_note:${String((e.change as { state?: unknown }).state ?? "")}`, minute: Math.round((e.at ?? t.hour) * 60), evidence: e.text ?? "" });
     }
   }
-  for (const o of outcome.ops) if (!o.ok) hits.push({ check: "op_failed", rule: `${o.op}:${o.status}`, evidence: o.error ?? "" });
+  for (const o of outcome.ops) {
+    if (o.ok) continue;
+    // 手の決まり（T110）・AI のできないで断った手（409 blocked）は決まりどおりの断り。失敗した要求に数えない（T121）
+    if (o.status === 409 && o.error === "blocked") hits.push({ check: "terms", rule: `refused:${o.op}`, evidence: "" });
+    else hits.push({ check: "op_failed", rule: `${o.op}:${o.status}`, evidence: o.error ?? "" });
+  }
+  return hits;
+}
+
+/** 手の打つ前の事実（手の記録の before。読む所だけ） */
+type LooseBefore = { phone?: PhoneState; roadClosed?: boolean; staff?: number; marks?: Record<string, number | undefined> };
+
+/**
+ * 7. 手の決まり（T110 の terms、T121）。夜・停電・通行止め・電話の様子で押せない手が打てていないか（打つ前の事実 before から決まりの表
+ * TERM_RULES で見直す）と、夜の訪問の所要が夜の足し分を含むか。開始に決まりを送った訓練では 0 のはず。送らない訓練は、送っていれば
+ * 押せなかった手の数（比べるため）。浸水・施設の休止・出勤遅れ・電池は打つ前の記録に無いので見ない
+ */
+export function termHits(outcome: RunOutcome): CheckHit[] {
+  const hits: CheckHit[] = [];
+  const startedAt = new Date(DRILL_START).toISOString();
+  for (const a of outcome.replay?.actions ?? []) {
+    const kind = a.kind === "free" ? a.as : a.kind;
+    if (!a.result || typeof kind !== "string" || !isCatalogAction(kind) || typeof a.atMinute !== "number") continue;
+    const b = (a.before ?? {}) as LooseBefore;
+    const marks = b.marks ?? {};
+    const facts: TermFacts = {
+      dark: isDark(dayHourOf(startedAt, a.atMinute, outcome.plan.night)),
+      phone: b.phone ?? "ok",
+      lineDown: marks.lineDown !== undefined,
+      roadClosed: b.roadClosed === true,
+      flood: false,
+      staff: typeof b.staff === "number" ? b.staff : 1,
+      nurseAway: marks.nurseAway !== undefined,
+      closed: [],
+      battery: false,
+      late: false,
+    };
+    const term = actionTerm(kind, facts, { on: true });
+    const callee = typeof a.callee === "string" ? (a.callee as TermCallee) : null;
+    const block = blockOf(term, callee);
+    const minute = a.atMinute;
+    if (block) hits.push({ check: "terms", rule: `ran:${block}`, person: a.person ?? null, minute, evidence: `${kind}${callee ? `（${callee}）` : ""}` });
+    else if (outcome.terms === true && facts.dark && ACTION_WAYS[kind] === "visit" && typeof a.minutes === "number" && a.minutes < term.minutes) {
+      hits.push({ check: "terms", rule: "dark_minutes", person: a.person ?? null, minute, evidence: `${kind} ${a.minutes} 分（夜の決まりで ${term.minutes} 分以上）` });
+    }
+  }
   return hits;
 }
 
@@ -332,6 +408,11 @@ export type RunNumbers = {
   contradictions: { total: number; byRule: Record<string, number> };
   timeOdds: { checked: number; offBand: number; rate: number | null };
   stops: { aiStop: number; worldNote: number; opFailed: number; exceptions: number };
+  /**
+   * 手の決まり（T110 の terms、T121）。on は開始に送ったか、refused は決まりどおりに断った手、ran は打つ前の事実で押せない手が打てた数
+   * （送った訓練では 0 のはず）、dark は夜の訪問の所要が夜の足し分より短い数
+   */
+  terms: { on: boolean; refused: number; ran: number; dark: number };
   timing: { advanceP50: number | null; advanceP95: number | null; advanceMax: number | null; actP50: number | null; actP95: number | null };
   cost: { usd: number; inputTokens: number; outputTokens: number; roomSteps: number; unpricedCalls: number };
 };
@@ -353,6 +434,7 @@ export function checkRun(records: ReadonlyArray<LogRecord>, outcome: RunOutcome,
   const odds = timeOddsOf(outcome);
   const contra = contradictionHits(outcome);
   const stops = stopHits(outcome);
+  const terms = termHits(outcome);
   const ai = records.filter((r): r is AiRecord => r.type === "ai" && (r as AiRecord).role !== "judge");
   // 1 訓練の数え（画面の「AI 残」から。10 分版は数えないので本人役と監督の呼び出しの数）
   const drillCounted = outcome.callsLeft !== null ? DRILL_CAP - outcome.callsLeft : ai.filter((a) => a.role === "persona" || a.role === "director" || a.role === "world" || a.role === "world_room").length;
@@ -393,6 +475,12 @@ export function checkRun(records: ReadonlyArray<LogRecord>, outcome: RunOutcome,
       opFailed: stops.filter((h) => h.check === "op_failed").length,
       exceptions: outcome.errors.length,
     },
+    terms: {
+      on: outcome.terms === true,
+      refused: stops.filter((h) => h.check === "terms").length,
+      ran: terms.filter((h) => h.rule.startsWith("ran:")).length,
+      dark: terms.filter((h) => h.rule === "dark_minutes").length,
+    },
     timing: {
       advanceP50: quantile(ms("advance"), 0.5),
       advanceP95: quantile(ms("advance"), 0.95),
@@ -408,5 +496,5 @@ export function checkRun(records: ReadonlyArray<LogRecord>, outcome: RunOutcome,
       unpricedCalls: ai.filter((a) => a.costUsd === null && a.role !== "world_room").length,
     },
   };
-  return { hits: [...banned, ...leaks, ...shape, ...odds.hits, ...contra, ...stops, ...budgetHits], numbers };
+  return { hits: [...banned, ...leaks, ...shape, ...odds.hits, ...contra, ...stops, ...terms, ...budgetHits], numbers };
 }
