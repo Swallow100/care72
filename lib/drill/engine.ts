@@ -105,7 +105,7 @@ export type DrillOptions = {
    * 最初の区切りに規模の出来事を当て、世界の余震を規模の震度までにする
    */
   scale?: DrillScale;
-  /** 規模をおまかせで引いたか（T104。訓練記録の言葉に使う） */
+  /** 規模をおまかせで引いたか（T104。残すだけで、画面の言葉にはまだ使っていない） */
   scaleAuto?: true;
   /**
    * 訓練する人（自分）の住む所の町名（T104、lib/drill/self.ts）。無ければ事業所の近く。
@@ -476,7 +476,7 @@ export async function step(
     ...def.events
       .map((e, i) => castEvent(e, cast[eventKey(hour, i)]))
       .filter((e) => !e.person || members.has(e.person))
-      .map(({ by, who: _who, ...e }) => ({ ...e, actor: by ?? "world", at: eventHour(e, hour), ai: false })),
+      .map(({ by, who: _who, ...e }): DrillIncident => ({ ...e, actor: by ?? "world", at: eventHour(e, hour), ai: false })),
   ];
   let world = fixed.reduce((w, e) => applyEvent(w, e, e.at), settleWorld(state.world, hour * 60));
 
