@@ -55,11 +55,14 @@ import {
   pseudonymize,
   PseudonymLeakError,
   pseudonymizeText,
+  restorePlaces,
   type ClaudePerson,
   type ForClaude,
+  type Place,
   type PseudonymInput,
   type PseudonymKey,
 } from "../pseudonym/index.ts";
+import { officePlaces } from "./area.ts";
 import type { ActionRecord, DrillIncident, DrillTurn, HeardSignal, PersonaHook, PersonaInput, PersonState, StopLog } from "./engine.ts";
 import { clockLabel, PHONE_LABELS, SHELTER_LABELS, TSUNAMI_LABELS, WATER_LABELS } from "./labels.ts";
 import { nightLine } from "./night.ts";
@@ -205,10 +208,11 @@ export function profileText(
 }
 
 /**
- * 台帳（仮名化の前）から本人役を作る。説明の文は仮名化の層を通し、氏名・町名・電話が残れば PseudonymLeakError（送らない）
+ * 台帳（仮名化の前）から本人役を作る。説明の文は仮名化の層を通し、氏名・町名・電話が残れば PseudonymLeakError（送らない）。
+ * places（事業所の町名 → 地区の別名、lib/drill/area.ts の officePlaces）があれば、説明にも刻みの文にも町名は別名で渡る（T88）
  */
-export function buildPersona(source: PseudonymInput, opts: { on?: string } = {}): Persona {
-  const { payload, key } = pseudonymize([source], opts.on ? { on: opts.on } : {});
+export function buildPersona(source: PseudonymInput, opts: { on?: string; places?: ReadonlyArray<Place> } = {}): Persona {
+  const { payload, key } = pseudonymize([source], { ...(opts.on ? { on: opts.on } : {}), ...(opts.places ? { places: opts.places } : {}) });
   const p = payload[0];
   const reporters = reportersOf(source);
   const means = source.ledger.basic.contactMeans ?? {};
@@ -444,7 +448,8 @@ export function cleanWords(raw: string, key: PseudonymKey, max: number): string 
   if (BANNED.test(t)) return null;
   const masked = maskReply(t, key);
   if (masked === null) return null;
-  return Array.from(masked).slice(0, max).join("");
+  // 地区の別名（甲地区）は画面では町名に（T88。訓練の入力は町名を別名で渡す）
+  return Array.from(restorePlaces(masked, key)).slice(0, max).join("");
 }
 
 function doingOf(answer: PersonaAnswer, key: PseudonymKey): string | null {
@@ -600,6 +605,17 @@ export async function loadPersonaSources(db: D1Database, officeId: string): Prom
   return out;
 }
 
+/**
+ * 本人役・通話の入力の町名 → 地区の別名（T88）。事業所の本人たち全部の台帳の町名から作る（本人役は参加者の一覧を持たない）。
+ * 入力の町名はこの別名で渡し、言葉の別名は町名に戻すので、世界の別名と番号が違っても本人役の中では食い違わない
+ */
+export function personaPlaces(ai: Pick<AskJsonContext, "office">, sources: ReadonlyMap<string, PseudonymInput>): Place[] {
+  return officePlaces(
+    ai.office.id,
+    [...sources.values()].map((s) => s.ledger),
+  );
+}
+
 export type PersonaDeps = {
   /** 本人の台帳（仮名化の前）。最初の呼び出しで 1 回だけ読む */
   load: () => Promise<ReadonlyMap<string, PseudonymInput>>;
@@ -620,9 +636,10 @@ export function createPersonaHook(deps: PersonaDeps): PersonaHook {
   let loaded: Promise<ReadonlyMap<string, PseudonymInput>> | null = null;
   return async (input) => {
     try {
-      const source = (await (loaded ??= deps.load())).get(input.person);
+      const sources = await (loaded ??= deps.load());
+      const source = sources.get(input.person);
       if (!source) return fixedTurns(input);
-      const persona = buildPersona(source, deps.on ? { on: deps.on } : {});
+      const persona = buildPersona(source, { ...(deps.on ? { on: deps.on } : {}), places: personaPlaces(deps.ai, sources) });
       if (input.fixed.length === 0 && !persona.reporters.some((r) => r.canPress)) return [];
       const tick = pseudonymizeText(tickText(input, persona), persona.key);
       const r = await askJson(buildPersonaRequest(persona.profile, tick, input.virtual === true), deps.ai);

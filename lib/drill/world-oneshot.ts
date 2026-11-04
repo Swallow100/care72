@@ -11,7 +11,7 @@
 import { askJson, type AskJsonContext, type AskJsonRequest } from "../claude/call.ts";
 import { CARE_LEVEL_LABELS, CLOCK_START_LABELS, CLOCK_UNIT_LABELS, DEVICE_LABELS, HOUSEHOLD_LABELS } from "../labels.ts";
 import { pseudonymize, pseudonymizeText, type ForClaude, type PseudonymInput, type PseudonymKey } from "../pseudonym/index.ts";
-import { aliasOfTown, areaOf, DEMO_AREA, geographyText, townOfLedger, type Area } from "./area.ts";
+import { aliasOfTown, areaOf, DEMO_AREA, geographyText, placesOf, townOfLedger, type Area } from "./area.ts";
 import { DEMO_OFFICE_ID } from "../auth/demo.ts";
 import { endingsAllowed } from "./fiction.ts";
 import type { ActionRecord, DrillIncident, WorldInput } from "./engine.ts";
@@ -145,13 +145,14 @@ export function buildCast(
 ): WorldCast {
   const members = participants.filter((p) => sources.has(p));
   const list = members.map((p) => sources.get(p)!);
-  const { payload, key } = pseudonymize(list, on ? { on } : {});
   const dependsOf = (p: string) => (outcomeSources.get(p)?.clocks ?? []).flatMap((k) => (k.depends_on ? [k.depends_on] : []));
   const nurseOf = (src: PseudonymInput) => src.contacts.some((c) => c.kind === "visiting_nurse");
   const area = areaOf(
     officeId,
     members.map((p, i) => ({ ledger: list[i].ledger, depends: dependsOf(p), nurse: nurseOf(list[i]) })),
   );
+  // 町名は地区の別名で渡す（T88。本人たちの欄・これまでの世界・刻みの文に町名が入っても、地理と同じ別名に）
+  const { payload, key } = pseudonymize(list, { ...(on ? { on } : {}), places: placesOf(area, list.map((x) => x.ledger)) });
   const facts = new Map<string, PersonFacts>();
   const lines: string[] = [];
   members.forEach((p, i) => {

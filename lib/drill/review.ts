@@ -26,6 +26,7 @@ import {
 } from "../pseudonym/index.ts";
 import { isSourceId, type SourceId } from "../sources/index.ts";
 import { NO_BASIS } from "../sources/prompt.ts";
+import { officePlaces } from "./area.ts";
 import { personOfAlias } from "./director.ts";
 import type { ActionRecord } from "./engine.ts";
 import { ACTION_LABELS, SCENARIO_LABELS, STATUS_LABELS } from "./labels.ts";
@@ -345,7 +346,9 @@ export async function createReview(deps: ReviewDeps, ctx: ReviewContext): Promis
   try {
     const members = ctx.score.participants.filter((p) => deps.sources.has(p));
     const list = members.map((p) => deps.sources.get(p)!);
-    const { key } = pseudonymize(list, deps.on ? { on: deps.on } : {});
+    // 町名は地区の別名で渡す（T88。記録の文の町名〔世界の出来事・結末の理由〕も、参加者の台帳の町名から作った別名に）
+    const places = officePlaces(deps.ai.office.id, list.map((x) => x.ledger));
+    const { key } = pseudonymize(list, { ...(deps.on ? { on: deps.on } : {}), places });
     const aliasOf = new Map(key.people.map((p) => [p.personId, p.alias]));
     const record = pseudonymizeText(reviewText(ctx, aliasOf), key);
     const r = await askJson(buildReviewRequest(record), deps.ai);

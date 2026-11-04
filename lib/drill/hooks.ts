@@ -15,7 +15,7 @@ import { drillScope } from "./db.ts";
 import { stopLog } from "./engine.ts";
 import { createDirectorHook } from "./director.ts";
 import { createOutcomeHook, loadOutcomeSources, type OutcomeSource } from "./outcome.ts";
-import { buildPersona, createPersonaHook, isPersonaFailure, loadPersonaSources, personaCallReply } from "./persona.ts";
+import { buildPersona, createPersonaHook, isPersonaFailure, loadPersonaSources, personaCallReply, personaPlaces } from "./persona.ts";
 import { createWorldHook, roomClientOf, worldModeOf, type RoomClient } from "./world-room.ts";
 
 /** DRILL_WORLD: 仮想モードの世界の道（session 既定 = Managed Agents の部屋・messages = 1 回呼び・off = 世界を動かさない） */
@@ -92,9 +92,11 @@ export function createCallHook(deps: { load: () => Promise<ReadonlyMap<string, P
     // 結末の人（仮想モード、T50）は出ない
     if (ask.world.ended?.[ask.person]) return { pickup: "no_answer", speech: null, ai: false };
     try {
-      const source = (await deps.load()).get(ask.person);
+      const sources = await deps.load();
+      const source = sources.get(ask.person);
       if (!source) return { pickup: ask.pickup, speech: null, ai: false };
-      const persona = buildPersona(source, deps.on ? { on: deps.on } : {});
+      // 町名は地区の別名で渡す（T88。本人役と同じ作り方）
+      const persona = buildPersona(source, { ...(deps.on ? { on: deps.on } : {}), places: personaPlaces(deps.ai, sources) });
       const callee = ask.target.kind === "self" ? "本人" : (persona.roles.get(ask.target.id) ?? null);
       if (!callee) return { pickup: ask.pickup, speech: null, ai: false };
       const r = await personaCallReply(
