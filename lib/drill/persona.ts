@@ -18,6 +18,7 @@
 import type { D1Database } from "@cloudflare/workers-types";
 import * as z from "zod";
 import { askJson, type AskJsonContext, type AskJsonRequest } from "../claude/call.ts";
+import { CATALOG_WORDS } from "./action-catalog.ts";
 import { AiBadOutput, AiCallFailed, AiLimitReached, AiNotConfigured, AiRefused } from "../claude/errors.ts";
 import { parseLedger } from "../db/ledger.ts";
 import {
@@ -243,16 +244,8 @@ const SOURCE_WORDS: Record<FixedTurn["source"], string> = { agent: "本人", fam
 const WHERE_WORDS: Record<WhereNow, string> = { home: "家", shelter: "避難所", other: "その他" };
 const COLOR_WORDS: Record<SignalColor, string> = { red: "赤（無事じゃない）", green: "緑（無事）", unknown: "連絡（安否は不明）" };
 
-/** ケアマネの手の言い方（Claude に渡す文。画面の言葉ではない） */
-const ACTION_WORDS: Record<DrillAction, string> = {
-  call_person: "本人に電話した",
-  call_contact: "家族・支援者に電話した",
-  visit: "家に向かった",
-  dispatch: "訪問看護・介護の人に行ってもらうよう頼んだ",
-  request_welfare_shelter: "福祉避難所に受け入れを頼んだ",
-  report_city: "市役所に報告した",
-  evacuate_self: "自分も避難した",
-};
+/** ケアマネの手の言い方（Claude に渡す文。画面の言葉ではない）。手の表（T91 の lib/drill/action-catalog.ts）の words */
+const ACTION_WORDS: Record<DrillAction, string> = CATALOG_WORDS;
 
 function answersWords(x: { injured?: boolean | null; atHome?: boolean | null; canMove?: boolean | null; hasMedicine?: boolean | null }): string {
   const yn = (v: boolean | undefined | null, yes: string, no: string) => (v == null ? null : v ? yes : no);

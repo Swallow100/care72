@@ -3,6 +3,7 @@
 // 安否の色の言葉（至急・要確認・灰・無事）は lib/labels.ts の COLOR_LABELS を読み、ここに書かない。
 
 import type { DrillAction, DrillScenario, DrillStatus } from "../db/types.ts";
+import { CATALOG_LABELS } from "./action-catalog.ts";
 import type { FictionKind } from "./fiction.ts";
 import type { AiStop, PhoneState, ShelterState, TsunamiState, WaterState, WorldEventKind } from "./scenarios.ts";
 
@@ -260,16 +261,8 @@ export function elapsedLabel(hour: number): string {
 
 // ---------- ケアマネの手（T20） ----------
 
-/** 7 つの手（ボタン）。form9 の安否確認の方法（本人電話・連絡先電話・訪問）と同じ言い方 */
-export const ACTION_LABELS: Record<DrillAction, string> = {
-  call_person: "本人電話",
-  call_contact: "連絡先電話",
-  visit: "訪問",
-  dispatch: "訪問依頼",
-  request_welfare_shelter: "受入依頼",
-  report_city: "行政報告",
-  evacuate_self: "退避",
-};
+/** 手（ボタン）。form9 の安否確認の方法（本人電話・連絡先電話・訪問）と同じ言い方。手の表（T91 の lib/drill/action-catalog.ts）の label */
+export const ACTION_LABELS: Record<DrillAction, string> = { ...CATALOG_LABELS };
 
 /** 対応の欄の言葉 */
 export const ACTION_UI = {
