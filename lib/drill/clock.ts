@@ -196,3 +196,13 @@ export function changedSince(world: WorldState, person: string, since: number): 
 
 /** 身の回りが何も変わらない人を巡回で呼ぶまでの分（変わった人は ROUND_MINUTES） */
 export const ROUND_QUIET_MINUTES = 1440;
+
+/** 本人役をまとめて呼ぶとき（T121）の 1 回の人数。1 区切り PERSONA_PER_CUT 人を多くて 2 回に */
+export const PERSONA_BATCH_MAX = 4;
+
+/** 並びを n 個ずつに分ける */
+export function chunks<T>(xs: ReadonlyArray<T>, n: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < xs.length; i += n) out.push(xs.slice(i, i + n));
+  return out;
+}

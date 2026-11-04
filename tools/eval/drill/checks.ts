@@ -139,7 +139,11 @@ function leakHits(
 function wordsOf(role: Role, value: unknown): Array<{ field: string; text: string }> {
   const v = (value ?? {}) as Record<string, unknown>;
   const s = (k: string) => (typeof v[k] === "string" ? [{ field: k, text: v[k] as string }] : []);
-  if (role === "persona") return [...s("speech"), ...s("condition"), ...s("action")];
+  if (role === "persona") {
+    // まとめて呼んだ本人役（T121）は answers の並び
+    if (Array.isArray(v.answers)) return (v.answers as Array<Record<string, unknown>>).flatMap((a, i) => wordsOf(role, a).map((w) => ({ field: `answers.${i}.${w.field}`, text: w.text })));
+    return [...s("speech"), ...s("condition"), ...s("action")];
+  }
   if (role === "persona_call" || role === "persona_talk") return s("speech");
   if (role === "persona_visit") return [...s("speech"), ...s("condition")];
   if (role === "director") {

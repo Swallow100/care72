@@ -82,7 +82,7 @@ import {
 } from "../pseudonym/index.ts";
 import { officePlaces } from "./area.ts";
 import { extraWorldWords } from "./event-catalog.ts";
-import type { ActionRecord, DrillIncident, DrillTurn, HeardSignal, PersonaHook, PersonaInput, PersonState, StopLog } from "./engine.ts";
+import type { ActionRecord, DrillIncident, DrillTurn, HeardSignal, PersonaBatchHook, PersonaHook, PersonaInput, PersonState, StopLog } from "./engine.ts";
 import { CALL_STATUS_TEXTS, clockLabel, PHONE_LABELS, SHELTER_LABELS, TSUNAMI_LABELS, WATER_LABELS } from "./labels.ts";
 import { nightLine } from "./night.ts";
 import { ASK_KINDS, eventHour, type AskKind, type FixedTurn, type OutageArea, type PhoneState, type WorldState } from "./scenarios.ts";
@@ -892,6 +892,76 @@ export function createPersonaHook(deps: PersonaDeps): PersonaHook {
       // AI の層の失敗と伏せきれないは想定どおり。それ以外（台帳を読めないなど）は名前だけログに残す（中身は書かない）
       if (!isPersonaFailure(e)) console.error("本人役の 1 刻みに失敗", e instanceof Error ? e.name : typeof e);
       return fixedTurns(input);
+    }
+  };
+}
+
+// ---------- まとめて呼ぶ（T121） ----------
+// 評価の 1 回目で、本人役は 1 区切りに 1 人 1 回を呼び、10 人・72 時間で 1 訓練の上限の大半を使った。連続の時計の区切りで呼ぶ人を
+// 1 回にまとめる（lib/drill/clock.ts の PERSONA_BATCH_MAX 人まで）。人ごとの説明と刻みの文は今までどおり人ごとに仮名化して並べ、
+// 返事は人ごとに今までと同じ形（PersonaSchema）で受けて、同じ personaTurns で安否にする。色と順位は今までどおり表（lib/triage）
+
+/** まとめて呼ぶときに先に付ける指示（PERSONA_SYSTEM の前）。評価の台はこの頭で役を見分ける */
+export const PERSONA_BATCH_HEAD = [
+  "この呼び出しは、番号ごとに別の本人（と周りの人）をまとめて演じる。番号ごとに入力は「本人役」と「この刻み」。",
+  "番号ごとに、下の決まりで 1 つずつ答え、answers に番号（id）を付けて並べる。人どうしの事を混ぜない（ほかの番号の人・出来事・言葉を使わない）。",
+  "どの番号も同じ「A さん」と書かれることがあるが、それぞれ別の人。",
+].join("\n");
+
+export const PERSONA_BATCH_SYSTEM = `${PERSONA_BATCH_HEAD}\n\n${PERSONA_SYSTEM}`;
+
+export const PersonaBatchSchema = z.object({ answers: z.array(PersonaSchema.extend({ id: z.string() })) });
+
+/** まとめて呼ぶ要求。items は番号と、その人の説明と刻みを人ごとの鍵で伏せた文 */
+export function buildPersonaBatchRequest(
+  items: ReadonlyArray<{ id: string; text: ForClaude<{ text: string }> }>,
+  virtual = false,
+): AskJsonRequest<typeof PersonaBatchSchema> {
+  const system = virtual ? `${PERSONA_BATCH_SYSTEM}\n\n${PERSONA_VIRTUAL}` : PERSONA_BATCH_SYSTEM;
+  return { purpose: "persona", system, input: Object.fromEntries(items.map((x) => [x.id, x.text])), schema: PersonaBatchSchema };
+}
+
+/**
+ * engine の PersonaBatchHook を作る（1 要求ごと）。入力の人ごとに、本人役の 1 刻みと同じ決め（押せる人も表の行も無い人は呼ばずに連絡なし）
+ * をして、残りを 1 回の Haiku にまとめる。答えが無い・使えない人は表の固定の安否（無ければ連絡なし）。失敗は全員を同じ戻り先に
+ */
+export function createPersonaBatchHook(deps: PersonaDeps): PersonaBatchHook {
+  let loaded: Promise<ReadonlyMap<string, PseudonymInput>> | null = null;
+  return async (inputs) => {
+    const out: DrillTurn[][] = inputs.map(() => []);
+    const asked: Array<{ i: number; id: string; persona: Persona; text: ForClaude<{ text: string }> }> = [];
+    try {
+      const sources = await (loaded ??= deps.load());
+      const places = personaPlaces(deps.ai, sources);
+      inputs.forEach((input, i) => {
+        const source = sources.get(input.person);
+        if (!source) {
+          out[i] = fixedTurns(input);
+          return;
+        }
+        try {
+          const persona = buildPersona(source, { ...(deps.on ? { on: deps.on } : {}), places });
+          if (input.fixed.length === 0 && !persona.reporters.some((r) => r.canPress)) return;
+          const text = pseudonymizeText(`本人役:\n${persona.profile.text}\n\nこの刻み:\n${tickText(input, persona)}`, persona.key);
+          asked.push({ i, id: String(asked.length + 1), persona, text });
+        } catch (e) {
+          if (!isPersonaFailure(e)) console.error("本人役の 1 刻みに失敗", e instanceof Error ? e.name : typeof e);
+          out[i] = fixedTurns(input);
+        }
+      });
+      if (asked.length === 0) return out;
+      const virtual = asked.some((x) => inputs[x.i].virtual === true);
+      const r = await askJson(buildPersonaBatchRequest(asked, virtual), deps.ai);
+      const byId = new Map(r.value.answers.map((a) => [a.id.trim(), a] as const));
+      for (const x of asked) {
+        const a = byId.get(x.id);
+        out[x.i] = a ? personaTurns(inputs[x.i], x.persona, a) : fixedTurns(inputs[x.i]);
+      }
+      return out;
+    } catch (e) {
+      if (e instanceof AiLimitReached) deps.stops?.hit("persona");
+      if (!isPersonaFailure(e)) console.error("本人役のまとめた呼び出しに失敗", e instanceof Error ? e.name : typeof e);
+      return inputs.map((input, i) => (out[i].length > 0 ? out[i] : fixedTurns(input)));
     }
   };
 }

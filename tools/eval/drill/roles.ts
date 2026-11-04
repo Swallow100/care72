@@ -4,7 +4,7 @@
 
 import { DIRECTOR_SYSTEM } from "../../../lib/drill/director.ts";
 import { FREE_SYSTEM } from "../../../lib/drill/free-action.ts";
-import { CALL_SYSTEM, PERSONA_SYSTEM, TALK_SYSTEM, VISIT_SYSTEM } from "../../../lib/drill/persona.ts";
+import { CALL_SYSTEM, PERSONA_BATCH_HEAD, PERSONA_SYSTEM, PERSONA_VIRTUAL, TALK_SYSTEM, VISIT_SYSTEM } from "../../../lib/drill/persona.ts";
 import { REVIEW_SYSTEM } from "../../../lib/drill/review.ts";
 import { WORLD_SYSTEM } from "../../../lib/drill/world-oneshot.ts";
 import { JUDGE_SYSTEM } from "./judge.ts";
@@ -29,6 +29,8 @@ export const PERSONA_ROLES: ReadonlySet<Role> = new Set(["persona", "persona_cal
 
 const BY_SYSTEM: ReadonlyArray<readonly [string, Role]> = [
   [PERSONA_SYSTEM, "persona"],
+  // 本人役をまとめて呼ぶ（T121）。役は本人役のまま（返事は answers の並び。isPersonaBatch で見分ける）
+  [PERSONA_BATCH_HEAD, "persona"],
   [CALL_SYSTEM, "persona_call"],
   [TALK_SYSTEM, "persona_talk"],
   [VISIT_SYSTEM, "persona_visit"],
@@ -53,7 +55,14 @@ export function roleOfSystem(system: unknown): Role {
   return "other";
 }
 
-/** 仮想モードの本人役か（本人役の指示に仮想の決まりが足されている） */
+/** 仮想モードの本人役か（本人役の指示に仮想の決まりが足されている。まとめて呼ぶ指示も同じ） */
 export function isVirtualPersona(system: unknown): boolean {
-  return systemTexts(system).some((t) => t.startsWith(PERSONA_SYSTEM) && t.length > PERSONA_SYSTEM.length);
+  return systemTexts(system).some(
+    (t) => (t.startsWith(PERSONA_SYSTEM) && t.length > PERSONA_SYSTEM.length) || (t.startsWith(PERSONA_BATCH_HEAD) && t.includes(PERSONA_VIRTUAL)),
+  );
+}
+
+/** 本人役をまとめて呼んだ物か（T121） */
+export function isPersonaBatch(system: unknown): boolean {
+  return systemTexts(system).some((t) => t.startsWith(PERSONA_BATCH_HEAD));
 }

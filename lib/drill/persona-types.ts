@@ -85,3 +85,8 @@ export type PersonaInput = {
 
 /** 本人 1 人の 1 刻み。空の配列は「連絡なし」。投げたら連絡なしとして進む */
 export type PersonaHook = (input: PersonaInput) => Promise<DrillTurn[]>;
+
+/**
+ * 本人役をまとめて呼ぶ口（T121）。入力の並びと同じ並びで、1 人ずつの安否（空の配列は連絡なし）を返す。投げたら全員連絡なし
+ */
+export type PersonaBatchHook = (inputs: ReadonlyArray<PersonaInput>) => Promise<DrillTurn[][]>;

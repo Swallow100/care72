@@ -425,3 +425,134 @@ describe("監督と本人役を並べて呼ぶ（T121）", () => {
     expect(seen).toContain("p-09");
   });
 });
+
+// ---------- 3. 本人役をまとめて呼ぶ ----------
+
+import type Anthropic from "@anthropic-ai/sdk";
+import type { AskJsonContext } from "../claude/call.ts";
+import type { ClaudeClient } from "../claude/client.ts";
+import { HAIKU } from "../claude/models.ts";
+import type { UsageStore } from "../claude/usage.ts";
+import { findLeaks } from "../pseudonym/index.ts";
+import { createPersonaBatchHook, PERSONA_BATCH_HEAD } from "./persona.ts";
+
+type Params = Anthropic.Beta.Messages.MessageCreateParamsNonStreaming;
+
+function memoryUsage(): UsageStore {
+  let n = 0;
+  return { reserve: async () => (n += 1) > 0, finish: async () => {}, countDay: async () => n };
+}
+
+function batchClient(answer: (input: Record<string, { text: string }>) => unknown) {
+  const calls: Params[] = [];
+  const client: ClaudeClient = {
+    beta: {
+      messages: {
+        create: async (params) => {
+          calls.push(params as Params);
+          const input = JSON.parse((params as Params).messages[0].content as string) as Record<string, { text: string }>;
+          return {
+            id: "msg",
+            type: "message",
+            role: "assistant",
+            model: HAIKU,
+            content: [{ type: "text", text: JSON.stringify(answer(input)), citations: null }],
+            stop_reason: "end_turn",
+            stop_details: null,
+            stop_sequence: null,
+            usage: { input_tokens: 900, output_tokens: 200, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+          } as unknown as Anthropic.Beta.Messages.BetaMessage;
+        },
+      },
+    },
+  };
+  return { client, calls };
+}
+
+const ctxOf = (client: ClaudeClient): AskJsonContext => ({
+  env: { ANTHROPIC_API_KEY: "dummy" },
+  usage: memoryUsage(),
+  office: { id: "office-demo", kind: "demo" },
+  claude: client,
+  now: () => new Date(START),
+});
+
+const answerOf = (id: string, speech: string) => ({
+  id,
+  condition: "家にいる",
+  location: "home",
+  action: "様子を見る",
+  contactsCaremanager: true,
+  from: "本人",
+  pressesRed: false,
+  redAnswers: null,
+  speech,
+});
+
+describe("本人役をまとめて呼ぶ（T121）", () => {
+  const load = async () => new Map(SEED_PEOPLE.map((p) => [p.person.id, sourceOf(p.person.id)]));
+  const tick = (person: string, fixed: PersonaInput["fixed"] = []): PersonaInput => ({
+    step: 1,
+    hour: 3,
+    person,
+    world: { ...EMPTY_WORLD },
+    incidents: [],
+    state: null,
+    lastAction: null,
+    fixed,
+    since: 0,
+    reasons: ["incident"],
+    toMinute: 180,
+  });
+
+  it("呼ぶ人を 1 回にまとめ、人ごとに仮名化した文を番号で並べ、番号ごとの答えを人ごとの安否に", async () => {
+    const { client, calls } = batchClient((input) => ({ answers: Object.keys(input).map((id) => answerOf(id, `番号${id}の言葉です。`)) }));
+    const hook = createPersonaBatchHook({ load, ai: ctxOf(client) });
+    // p-01 と p-08 は本人がスマホを使える
+    const out = await hook([tick("p-01"), tick("p-08")]);
+    expect(calls).toHaveLength(1);
+    const system = (calls[0].system as Array<{ text: string }>).map((b) => b.text).join("\n");
+    expect(system).toContain(PERSONA_BATCH_HEAD);
+    const sent = calls[0].messages[0].content as string;
+    for (const p of SEED_PEOPLE) expect(sent).not.toContain(p.person.name);
+    expect(Object.keys(JSON.parse(sent))).toEqual(["1", "2"]);
+    expect(out.map((t) => t.map((x) => [x.person, x.saying]))).toEqual([[["p-01", "番号1の言葉です。"]], [["p-08", "番号2の言葉です。"]]]);
+    expect(findLeaks(sent, buildPersona(sourceOf("p-01")).key)).toEqual([]);
+  });
+
+  it("答えの無い人は表の固定の安否、押せる人も表の行も無い人は呼ばずに連絡なし。失敗は全員を戻り先に", async () => {
+    const fixedRow = { person: "p-06", color: "green" as const, source: "family" as const, whereNow: "home" as const, saying: "家にいます" };
+    const { client, calls } = batchClient(() => ({ answers: [answerOf("1", "来てくれました。")] }));
+    // p-04 の家族のスマホを外した台帳（押せる人なし・表の行なし）→ 呼ばない
+    const noPress = async () => {
+      const m = await load();
+      const src = m.get("p-04")!;
+      m.set("p-04", { ...src, contacts: src.contacts.map((c) => ({ ...c, has_smartphone: 0 })) });
+      return m;
+    };
+    const hook = createPersonaBatchHook({ load: noPress, ai: ctxOf(client) });
+    const out = await hook([tick("p-01"), tick("p-04"), tick("p-06", [fixedRow])]);
+    expect(calls).toHaveLength(1);
+    expect(Object.keys(JSON.parse(calls[0].messages[0].content as string))).toEqual(["1", "2"]);
+    expect(out[1]).toEqual([]);
+    expect(out[2]).toMatchObject([{ person: "p-06", saying: "家にいます", ai: false }]);
+    const bad = batchClient(() => "壊れた");
+    const failed = await createPersonaBatchHook({ load, ai: ctxOf(bad.client) })([tick("p-01"), tick("p-06", [fixedRow])]);
+    expect(failed[0]).toEqual([]);
+    expect(failed[1]).toMatchObject([{ person: "p-06", saying: "家にいます", ai: false }]);
+  });
+
+  it("連続の時計の区切りは 4 人ずつ 1 回で、1 訓練の数えは呼び出しの数", async () => {
+    let s = await begin("virtual");
+    const scheduled = TEN.slice(0, 6).map((person) => ({ at: 10, change: { kind: "line_down" as const }, text: "家の電話 不通", person, by: "director" as const }));
+    s = { ...s, world: { ...s.world, scheduled } };
+    const groups: string[][] = [];
+    const personas = async (inputs: ReadonlyArray<PersonaInput>) => {
+      groups.push(inputs.map((x) => x.person));
+      return inputs.map(() => []);
+    };
+    const r = (await advance(s, 60, { personas, persona: async () => [] }, { policy: "clock" }))!;
+    expect(groups).toEqual([TEN.slice(0, 4), TEN.slice(4, 6)]);
+    expect(r.state.world.counts?.persona).toBe(2);
+  });
+});

@@ -13,7 +13,7 @@ import { REVIEW_ACTION_LABELS, REVIEW_KINDS } from "../../../lib/drill/review.ts
 import { ASK_KINDS } from "../../../lib/drill/scenarios.ts";
 import { WORLD_TOOL, type RoomClient, type RoomEvent } from "../../../lib/drill/world-room.ts";
 import { NO_BASIS } from "../../../lib/sources/prompt.ts";
-import { isVirtualPersona, roleOfSystem, systemTexts, type Role } from "./roles.ts";
+import { isPersonaBatch, isVirtualPersona, roleOfSystem, systemTexts, type Role } from "./roles.ts";
 import type { Rng } from "./rng.ts";
 
 type Params = Anthropic.Beta.Messages.MessageCreateParamsNonStreaming;
@@ -170,6 +170,22 @@ function personaAnswer(rng: Rng, input: Input, opts: FakeOptions, virtual: boole
     speech: speech ? withNoise(opts, rng, speech) : "",
   };
 }
+
+/** まとめて呼んだ本人役（T121）。番号ごとの文（「本人役:」と「この刻み:」）を分けて、1 人ずつ同じ作り方で答える */
+function personaBatchAnswer(rng: Rng, input: Input, opts: FakeOptions, virtual: boolean) {
+  const answers = Object.entries(input).map(([id, v]) => {
+    const text = textOf(v);
+    const at = text.indexOf(TICK_HEAD);
+    const profile = at >= 0 ? text.slice(0, at).replace(PROFILE_HEAD, "") : text;
+    const tick = at >= 0 ? text.slice(at + TICK_HEAD.length) : "";
+    return { id, ...personaAnswer(rng.fork(id), { 本人役: { text: profile }, この刻み: { text: tick } }, opts, virtual) };
+  });
+  return { answers };
+}
+
+/** まとめた本人役の 1 人の文の区切り（lib/drill/persona.ts の createPersonaBatchHook と同じ） */
+const TICK_HEAD = "\n\nこの刻み:\n";
+const PROFILE_HEAD = /^本人役:\n/;
 
 function callAnswer(rng: Rng, input: Input, opts: FakeOptions, talk: boolean) {
   const call = textOf(input["電話"]);
@@ -435,7 +451,8 @@ export function fakeClaude(opts: FakeOptions): ClaudeClient & { roles: Role[] } 
           if (opts.noise && role !== "judge" && rng.chance(opts.noise / 5)) return message(params, "{");
           const input = inputOf(params);
           let value: unknown;
-          if (role === "persona") value = personaAnswer(rng, input, opts, isVirtualPersona(params.system));
+          if (role === "persona" && isPersonaBatch(params.system)) value = personaBatchAnswer(rng, input, opts, isVirtualPersona(params.system));
+          else if (role === "persona") value = personaAnswer(rng, input, opts, isVirtualPersona(params.system));
           else if (role === "persona_call") value = callAnswer(rng, input, opts, false);
           else if (role === "persona_talk") value = callAnswer(rng, input, opts, true);
           else if (role === "persona_visit") value = visitAnswer(rng, input, opts);

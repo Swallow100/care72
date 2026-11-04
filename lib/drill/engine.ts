@@ -42,7 +42,7 @@ import {
   type ReplyAsk,
   type ReplyWords,
 } from "./incident-types.ts";
-import type { DrillTurn, PersonaHook, PersonaReason, PersonState } from "./persona-types.ts";
+import type { DrillTurn, PersonaBatchHook, PersonaHook, PersonaInput, PersonaReason, PersonState } from "./persona-types.ts";
 import {
   budgetOf,
   actionReaches,
@@ -58,6 +58,8 @@ import {
   DIRECTOR_GAP_MINUTES,
   DRILL_CALL_CAP,
   DRILL_END_MINUTE,
+  chunks,
+  PERSONA_BATCH_MAX,
   PERSONA_PER_CUT,
   REASON_ORDER,
   ROUND_MINUTES,
@@ -91,7 +93,7 @@ export type {
   ReplyWords,
 } from "./incident-types.ts";
 export { aiStoppedOf, DIRECTOR_MAX, directorIncidents, stopIncidents } from "./incident-types.ts";
-export type { DrillTurn, PersonaHook, PersonaInput, PersonaReason, PersonState } from "./persona-types.ts";
+export type { DrillTurn, PersonaBatchHook, PersonaHook, PersonaInput, PersonaReason, PersonState } from "./persona-types.ts";
 
 /**
  * 開始の前に選んだ物（T59）。選ばなかった物は持たない（何も選ばなければ options ごと無い＝今までと同じ）。
@@ -210,6 +212,11 @@ export type WorldHook = (input: WorldInput) => Promise<WorldResult>;
  */
 export type StepHooks = {
   persona?: PersonaHook;
+  /**
+   * 本人役をまとめて呼ぶ口（T121、lib/drill/persona.ts の createPersonaBatchHook）。連続の時計の区切りで、呼ぶ人を
+   * PERSONA_BATCH_MAX 人ずつ 1 回の呼び出しにする。無ければ 1 人 1 回（persona）。10 分版（刻みの道）は使わない
+   */
+  personas?: PersonaBatchHook;
   director?: DirectorHook;
   world?: WorldHook;
   outcome?: OutcomeHook;
@@ -916,36 +923,37 @@ export async function advance(
     const room = Math.max(0, Math.min(PERSONA_PER_CUT, DRILL_CALL_CAP - totalCalls(counts)));
     const called = order.slice(0, room);
     for (const p of order.slice(room)) touched[p] = Math.min(touched[p] ?? to, to);
+    const inputOf = (person: string): PersonaInput => ({
+      step: index,
+      hour,
+      person,
+      world,
+      incidents,
+      state: state.people[person] ?? null,
+      lastAction: actionWithoutMemo([...state.actions].reverse().find((a) => a.person === person) ?? null),
+      actions: withoutMemo(state.actions.filter((a) => a.person === person)), // T93: 前の呼びからの手を全部
+      fixed: pending(person),
+      ...(virtual ? { virtual: true } : {}),
+      ...night,
+      since: Math.max(0, lastCalled[person] ?? 0),
+      reasons: REASON_ORDER.filter((r) => reasons.get(person)!.has(r)),
+      toMinute: to,
+    });
+    // まとめて呼ぶ口があれば PERSONA_BATCH_MAX 人ずつ 1 回（T121）。数えるのは呼び出しの数
+    const groups: string[][] = hooks.personas ? chunks(called, PERSONA_BATCH_MAX) : called.map((p) => [p]);
     const results = await Promise.all(
-      called.map((person) =>
-        safely(
-          () =>
-            hooks.persona!({
-              step: index,
-              hour,
-              person,
-              world,
-              incidents,
-              state: state.people[person] ?? null,
-              lastAction: actionWithoutMemo([...state.actions].reverse().find((a) => a.person === person) ?? null),
-              actions: withoutMemo(state.actions.filter((a) => a.person === person)), // T93: 前の呼びからの手を全部
-              fixed: pending(person),
-              ...(virtual ? { virtual: true } : {}),
-              ...night,
-              since: Math.max(0, lastCalled[person] ?? 0),
-              reasons: REASON_ORDER.filter((r) => reasons.get(person)!.has(r)),
-              toMinute: to,
-            }),
-          [] as DrillTurn[],
-        ),
+      groups.map((g) =>
+        hooks.personas
+          ? safely(() => hooks.personas!(g.map(inputOf)), g.map(() => [] as DrillTurn[]))
+          : safely(() => hooks.persona!(inputOf(g[0])), [] as DrillTurn[]).then((r) => [r]),
       ),
     );
-    results.forEach((r, i) => turns.push(...r.filter((t) => t.person === called[i])));
+    results.forEach((r, i) => groups[i].forEach((person, j) => turns.push(...(r[j] ?? []).filter((t) => t.person === person))));
     for (const p of called) {
       lastCalled[p] = to;
       delete touched[p];
     }
-    counts.persona += called.length;
+    counts.persona += groups.length;
   }
 
   // 監督の差し込み（並べて呼んだ物）を区切りの終わりに当てる。指す人は次の区切りで本人役を呼ぶ（T121）
