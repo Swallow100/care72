@@ -190,6 +190,42 @@ export const BigNumber: React.FC<{ value: string; sub?: string }> = ({ value, su
   );
 };
 
+/**
+ * 前と後の 2 つの数（S8 の「［X 時間］ → ［Y 分］」）。value を「→」で分け、前は薄い色で先に、後は大きく後から出す。
+ * 間の矢印は線が伸びる。labels は各数の下の短い名前（ふだん・ケア72）。数が入る前の［ ］のままでも 1 行に収める
+ */
+export const Compare: React.FC<{ value: string; labels: [string, string]; sub?: string }> = ({ value, labels, sub }) => {
+  const frame = useCurrentFrame();
+  const p = usePalette();
+  const [before, after] = value.split("→").map((s) => s.trim());
+  const arrow = progress(frame, 12, 14);
+  // 2 段の格子: 上の段に数と矢印（下の線をそろえる）、下の段に名前（同じ高さに並べる）
+  const amount = (text: string, delay: number, strong: boolean) => (
+    <div style={{ fontSize: strong ? 168 : 120, fontWeight: 600, lineHeight: 1, whiteSpace: "nowrap", color: strong ? p.fg : p.sub, justifySelf: "center", ...rise(frame, delay, 22, 16) }}>
+      {text}
+    </div>
+  );
+  const label = (text: string, delay: number, strong: boolean) => (
+    <div style={{ fontSize: TYPE.h2, fontWeight: 600, color: strong ? p.fg : p.sub, justifySelf: "center", ...rise(frame, delay + 4) }}>{text}</div>
+  );
+  return (
+    <Stage gap={56}>
+      <div style={{ display: "grid", gridTemplateColumns: "auto 160px auto", alignItems: "end", columnGap: 56, rowGap: 22 }}>
+        {amount(before ?? "", 0, false)}
+        <svg width={160} height={60} viewBox="0 0 160 60" style={{ marginBottom: 30 }}>
+          <line x1={4} y1={30} x2={4 + 148 * arrow} y2={30} stroke={p.fg} strokeWidth={6} strokeLinecap="round" />
+          <path d="M 128 10 L 152 30 L 128 50" stroke={p.fg} strokeWidth={6} strokeLinecap="round" strokeLinejoin="round" fill="none" opacity={arrow > 0.9 ? 1 : 0} />
+        </svg>
+        {amount(after ?? "", 22, true)}
+        {label(labels[0], 0, false)}
+        <div />
+        {label(labels[1], 22, true)}
+      </div>
+      {sub ? <div style={{ fontSize: TYPE.body, color: p.sub, maxWidth: 1500, textAlign: "center", ...rise(frame, 34) }}>{sub}</div> : null}
+    </Stage>
+  );
+};
+
 /** 100 個の点（10 × 10 でなく横 50 × 2 段）。share の割合だけ濃い色 */
 const Dots: React.FC<{ share: number; delay: number }> = ({ share, delay }) => {
   const frame = useCurrentFrame();
@@ -423,12 +459,19 @@ export const Models: React.FC<{ children: React.ReactNode; counters?: string[] }
           })}
         </div>
         {counters ? (
-          <div style={{ display: "flex", gap: 40, fontSize: TYPE.body, fontWeight: 600, marginTop: 28 }}>
-            {counters.map((c, i) => (
-              <span key={c} style={rise(frame, 30 + i * STAGGER)}>
-                {c}
-              </span>
-            ))}
+          // 「commit ［N］」を名前と数に分け、名前を上に小さく・数を下に大きく。3 つを同じ幅に並べる
+          <div style={{ display: "grid", gridTemplateColumns: `repeat(${counters.length}, 1fr)`, gap: 16, marginTop: 28 }}>
+            {counters.map((c, i) => {
+              const at = c.search(/[［\d]/);
+              const name = at > 0 ? c.slice(0, at).trim() : c;
+              const count = at > 0 ? c.slice(at).trim() : "";
+              return (
+                <div key={c} style={{ background: COLOR.white, color: COLOR.blue, borderRadius: 10, padding: "16px 22px", ...rise(frame, 30 + i * STAGGER) }}>
+                  <div style={{ fontSize: TYPE.caption, fontWeight: 600, whiteSpace: "nowrap", color: COLOR.blueLight }}>{name}</div>
+                  <div style={{ fontSize: TYPE.h2, fontWeight: 600, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>{count}</div>
+                </div>
+              );
+            })}
           </div>
         ) : null}
       </div>
@@ -459,7 +502,9 @@ export const EndCard: React.FC = () => {
     const major = i % 12 === 0;
     const r = 84;
     const inner = r - (major ? 16 : 10);
-    return <line key={i} x1={Math.cos(a) * inner} y1={Math.sin(a) * inner} x2={Math.cos(a) * r} y2={Math.sin(a) * r} stroke={p.fg} strokeWidth={major ? 4 : 2} strokeLinecap="round" />;
+    // 目盛りが 0 時から時計回りに 1 つずつ出る（S2 の輪と同じ向き）
+    const on = progress(frame, 4 + (i / 72) * 24, 3);
+    return <line key={i} x1={Math.cos(a) * inner} y1={Math.sin(a) * inner} x2={Math.cos(a) * r} y2={Math.sin(a) * r} stroke={p.fg} strokeWidth={major ? 4 : 2} strokeLinecap="round" opacity={on} />;
   });
   return (
     <Stage gap={26}>

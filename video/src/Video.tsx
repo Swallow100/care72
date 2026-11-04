@@ -7,7 +7,7 @@ import { type Assets, audioPath, useAssets } from "./assets";
 import { GroundProvider, usePalette } from "./ground";
 import { Footage } from "./parts/Footage";
 import { Framed, framedSize } from "./parts/Frame";
-import { Bars, BigNumber, EndCard, Flow, Memo, Models, Quote, Ring72, Rules, Stage, TextCard, Title } from "./parts/Graphics";
+import { Bars, BigNumber, Compare, EndCard, Flow, Memo, Models, Quote, Ring72, Rules, Stage, TextCard, Title } from "./parts/Graphics";
 import { CROSS, STAGGER, mix, progress, rise } from "./parts/motion";
 import { Caption, Header, Subtitle } from "./parts/Overlay";
 import { COLOR, FONT, LAYOUT, TYPE, palette } from "./theme";
@@ -19,7 +19,7 @@ const f = (seconds: number) => Math.round(seconds * FPS);
 const FLOW_NAMES = ["松山市の様式", "本人の 1 枚", "医療班の要約"];
 
 /** 文字だけの面（split の中で録画の番号が空の所）。sub を「・」で分けて 1 行ずつ出す */
-const WordsPanel: React.FC<{ width: number; height: number; text: string }> = ({ width, height, text }) => {
+const WordsPanel: React.FC<{ width: number; height: number; text: string; delay?: number }> = ({ width, height, text, delay = 0 }) => {
   const frame = useCurrentFrame();
   const p = usePalette();
   return (
@@ -27,6 +27,7 @@ const WordsPanel: React.FC<{ width: number; height: number; text: string }> = ({
       style={{
         width,
         height,
+        ...rise(frame, delay),
         background: p.surface,
         color: p.onSurface,
         borderRadius: 10,
@@ -43,7 +44,7 @@ const WordsPanel: React.FC<{ width: number; height: number; text: string }> = ({
       }}
     >
       {text.split("・").map((w, i) => (
-        <div key={w} style={{ display: "flex", alignItems: "center", gap: 20, ...rise(frame, 8 + i * STAGGER * 2) }}>
+        <div key={w} style={{ display: "flex", alignItems: "center", gap: 20, ...rise(frame, delay + 8 + i * STAGGER * 2) }}>
           <span style={{ width: 12, height: 12, borderRadius: 6, background: p.onSurface, flex: "none" }} />
           {w}
         </div>
@@ -56,6 +57,8 @@ const WordsPanel: React.FC<{ width: number; height: number; text: string }> = ({
 const Split: React.FC<{ shot: Shot; assets: Assets; duration: number }> = ({ shot, assets, duration }) => {
   const frame = useCurrentFrame();
   const ids = shot.footages ?? [];
+  // beats があれば見出しと録画を声に合わせて 1 つずつ出す（S2 の「計画・訓練・発災時」）
+  const delays = ids.map((_, i) => (shot.beats?.[i] !== undefined ? f(shot.beats[i]) : i * STAGGER));
   const gap = 56;
   const heading = shot.lines?.length ? 64 : 0;
   const H = LAYOUT.stage.height - heading - 40;
@@ -70,7 +73,7 @@ const Split: React.FC<{ shot: Shot; assets: Assets; duration: number }> = ({ sho
         return (
           <div key={`${id}-${i}`} style={{ width: size.width, display: "flex", flexDirection: "column", alignItems: "center" }}>
             {shot.lines?.[i] ? (
-              <div style={{ fontSize: TYPE.h2, fontWeight: 600, marginBottom: 20, ...rise(frame, i * STAGGER) }}>{shot.lines[i]}</div>
+              <div style={{ fontSize: TYPE.h2, fontWeight: 600, marginBottom: 20, ...rise(frame, delays[i]) }}>{shot.lines[i]}</div>
             ) : null}
             {id ? (
               <Framed
@@ -81,11 +84,11 @@ const Split: React.FC<{ shot: Shot; assets: Assets; duration: number }> = ({ sho
                 from={shot.froms?.[i] ?? shot.from}
                 duration={duration}
                 note={shot.label}
-                delay={i * STAGGER}
+                delay={delays[i]}
                 callouts={i === ids.length - 1 ? shot.callouts : undefined}
               />
             ) : (
-              <WordsPanel width={size.width} height={size.height} text={shot.sub ?? ""} />
+              <WordsPanel width={size.width} height={size.height} text={shot.sub ?? ""} delay={delays[i]} />
             )}
           </div>
         );
@@ -175,7 +178,11 @@ const ShotView: React.FC<{ shot: Shot; assets: Assets }> = ({ shot, assets }) =>
       body = (
         <>
           <Backdrop shot={shot} assets={assets} duration={duration} />
-          <BigNumber value={shot.value ?? ""} sub={shot.sub} />
+          {shot.value?.includes("→") ? (
+            <Compare value={shot.value} labels={[shot.lines?.[0] ?? "", shot.lines?.[1] ?? ""]} sub={shot.sub} />
+          ) : (
+            <BigNumber value={shot.value ?? ""} sub={shot.sub} />
+          )}
         </>
       );
       break;

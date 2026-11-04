@@ -4,7 +4,6 @@
 import React from "react";
 import { Img, interpolate, staticFile, useCurrentFrame, useVideoConfig } from "remotion";
 import type { Assets } from "../assets";
-import { useGround } from "../ground";
 import { COLOR, FONT } from "../theme";
 import { RECORDINGS, type Rect } from "../timeline";
 import { EASE_IN_OUT } from "./motion";
@@ -75,19 +74,21 @@ export const Footage: React.FC<{
 
 /**
  * 録画がまだ無い所の仮の面。「撮影待ち R07 訓練」と、何を撮るか（絵の説明）を出す。
+ * 白い面に点線の枠（撮った録画と同じ白い面にして、塗りの面が図に見えないように）。
  * 録画を置いて npm run scan を流すと、この面が録画に替わる
  */
 export const Placeholder: React.FC<{ id: string; width: number; height: number; note?: string }> = ({ id, width, height, note }) => {
-  const ground = useGround();
-  const onBlue = ground === "blue";
   const name = RECORDINGS[id];
+  const inset = Math.min(20, width / 40);
   return (
     <div
       style={{
         width,
         height,
-        background: onBlue ? COLOR.white : COLOR.blue,
-        color: onBlue ? COLOR.blue : COLOR.white,
+        background: COLOR.white,
+        color: COLOR.blue,
+        outline: `3px dashed ${COLOR.blueLight}`,
+        outlineOffset: -inset,
         display: "flex",
         flexDirection: "column",
         justifyContent: "center",
@@ -102,7 +103,7 @@ export const Placeholder: React.FC<{ id: string; width: number; height: number; 
       <div style={{ fontSize: Math.min(64, width / 12), fontWeight: 600 }}>撮影待ち {id}</div>
       {name ? <div style={{ fontSize: Math.min(48, width / 16), fontWeight: 600 }}>{name}</div> : null}
       {note ? (
-        <div style={{ fontSize: Math.min(28, width / 24), maxWidth: width * 0.85, color: onBlue ? COLOR.blueLight : COLOR.onBlueSub }}>{note}</div>
+        <div style={{ fontSize: Math.min(28, width / 24), maxWidth: width * 0.85, color: COLOR.blueLight }}>{note}</div>
       ) : null}
     </div>
   );
