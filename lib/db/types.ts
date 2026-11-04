@@ -342,6 +342,36 @@ export type PendingStatus = (typeof PENDING_STATUSES)[number];
 /** 緯度経度（世界測地系、度）。担当一覧の右の面の地図のピンに使う */
 export type GeoPoint = { lat: number; lng: number };
 
+/** 避難の手段（T102）。徒歩と車。openrouteservice の foot-walking・driving-car */
+export const ROUTE_MODES = ["foot", "car"] as const;
+export type RouteMode = (typeof ROUTE_MODES)[number];
+
+/** 経路の線の出どころ（T102）: ors は openrouteservice が引いた線、hand は家・経由の点・避難先を直線で結んだ線 */
+export const ROUTE_SOURCES = ["ors", "hand"] as const;
+export type RouteSource = (typeof ROUTE_SOURCES)[number];
+
+/**
+ * 避難経路の地図（T102）。本人のページの避難の面の「経路地図」で作り、計画書の避難経路の欄に刷る（lib/map/route-image.ts）。
+ * 線は家から避難先へ。外へ要求するのはケアマネが「経路作成」を押したときだけで、引いた線はここに残す（刷るたびに外へ要求しない）。
+ * 位置なので Claude には渡さない（lib/pseudonym の ClaudePerson に無い）
+ */
+export type RouteMap = {
+  /** どの避難先への経路か（避難先 1・2） */
+  to: 1 | 2;
+  mode: RouteMode;
+  source: RouteSource;
+  /** 線（家 → 避難先）。ors は間引いた線（lib/map/route.ts の simplifyLine） */
+  line: GeoPoint[];
+  /** 手で足した経由の点（hand のときだけ。家に近い順） */
+  via: GeoPoint[];
+  /** 道のりの長さ（m）。hand は直線の和 */
+  distanceM: number;
+  /** かかる時間（秒）。ors のときだけ */
+  durationS?: number;
+  /** 地図の範囲: 真ん中とズーム。枠は lib/map/route-image.ts の ROUTE_FRAME（紙の欄の大きさが違えば、この範囲が全部入るように広げる） */
+  view: { center: GeoPoint; z: number };
+};
+
 export type Ledger = {
   basic: {
     sex?: Sex;
@@ -410,6 +440,11 @@ export type Ledger = {
     hazards: Array<{ kind: HazardKind; depthM?: number; note?: string }>;
     destination1?: string;
     destination2?: string;
+    /** 避難先 1・2 の位置（T102）。経路地図で置く。Claude には渡さない（lib/pseudonym の ClaudePerson に無い） */
+    destination1Location?: GeoPoint;
+    destination2Location?: GeoPoint;
+    /** 避難経路の地図（T102）。文字の経路（route）とは別に持ち、紙は地図の下に文字を書く */
+    routeMap?: RouteMap;
     /**
      * 在宅避難の印（T37）。住まいが安全で、計画で家に留まると決めた人だけ true。
      * 無ければ避難所へ（種は全員）。本人の 1 枚の地震の行を書き分ける

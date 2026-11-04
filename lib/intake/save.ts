@@ -38,6 +38,7 @@ import {
 } from "../db/types.ts";
 import { PENDING_STATUS_LABELS } from "../labels.ts";
 import { clockCheckEntry, type MarkAuthor, type NewTimelineEntry } from "../ledger-marks.ts";
+import { applyEvacMap, EVAC_MAP_FIELDS, EvacMapSchema } from "../map/route-edit.ts";
 import { loadPersonPage, pendingClockId, type PersonPageRows } from "../person.ts";
 import type { IntakeChange } from "./changes.ts";
 import { labelOfKey } from "./diff.ts";
@@ -102,6 +103,8 @@ const ChangeSchema = z.discriminatedUnion("t", [
     t: z.literal("location"),
     value: z.object({ lat: z.number().min(-85).max(85), lng: z.number().min(-180).max(180) }).nullable(),
   }),
+  // 避難先 1・2 の位置と避難経路の地図（T102）。手で直すときだけ（経路地図の画面の保存）
+  z.object({ t: z.literal("evacMap"), value: EvacMapSchema }),
   z.object({
     t: z.literal("clock"),
     clockId: z.string().regex(ID).nullable(),
@@ -224,6 +227,8 @@ function editOnly(c: IntakeChange): boolean {
   if (c.t === "consent" || c.t === "clockCheck" || c.t === "remove" || c.t === "clockSeen" || c.t === "clockAdd" || c.t === "clockStart") return true;
   // 住所・位置は手入力だけ（T68。AI の分け方に足さない。町名が仮名化の門の前に Claude へ届かないように）
   if (c.t === "address" || c.t === "location") return true;
+  // 避難先の位置と経路地図も手入力だけ（T102。経路地図の画面の保存）
+  if (c.t === "evacMap") return true;
   // 緊急・支援の順は人が決める（AI の分け方・問いの答えからは付けない。docs/PROGRESS.md の T03 の決め、T57）。
   // スマホ・車の有無と本人の電話（self）も手で直すときだけ（T68）
   if (
@@ -243,6 +248,7 @@ function editOnly(c: IntakeChange): boolean {
 function fieldName(field: string): string {
   if (field === "basic.address") return "住所";
   if (field === "basic.location") return "位置";
+  if (field in EVAC_MAP_FIELDS) return EVAC_MAP_FIELDS[field as keyof typeof EVAC_MAP_FIELDS];
   if (field.startsWith("contacts.")) return "連絡先";
   if (field.startsWith("clocks.")) return "時計";
   if (field.startsWith("consent.")) return "同意";
@@ -294,6 +300,10 @@ export async function saveIntake(db: D1Database, principal: Principal, req: Save
   const place = applyPlace(ledger, changes);
   ledger = place.ledger;
   fields.push(...place.fields);
+  // ---- 避難先の位置と経路地図（T102。手で直すときだけ。台帳の evacuation に） ----
+  const evac = applyEvacMap(ledger, changes);
+  ledger = evac.ledger;
+  fields.push(...evac.fields);
 
   // ---- 連絡先 ----
   // 同じ緊急・支援の順を 2 人に付ける保存は断る（ルールの表の「支援者」と様式の ①② が崩れる）。今ある重なりに触れない保存は通す

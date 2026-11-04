@@ -26,6 +26,8 @@ declare global {
     // アンケートの頁（T42）の Cloudflare Turnstile。両方あるときだけ効く（lib/survey/turnstile.ts）
     TURNSTILE_SITE_KEY?: string;
     TURNSTILE_SECRET_KEY?: string;
+    /** 避難経路の openrouteservice の鍵（T102、lib/map/route.ts）。無ければ経路は家と避難先と経由の点を手で結ぶ形だけ */
+    ORS_API_KEY?: string;
   }
 }
 
