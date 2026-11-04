@@ -8,7 +8,9 @@ import { describe, expect, it } from "vitest";
 import { CaseMap } from "../../components/map/CaseMap.tsx";
 import { SEED_PEOPLE } from "../../seed/people.ts";
 import { toCaseloadRows } from "../caseload.ts";
+import { HEAVY_RAIN_TRACK } from "../drill/rain.ts";
 import { demoOverlay, RAIN_FILL, RAIN_SLANT_DEG, RAIN_STREAK, RAIN_STYLE, rainStreaks, type RainStreak } from "./demo.ts";
+import { rainAnchor } from "./drill-rain.ts";
 import { mapPins } from "./side.ts";
 
 const people = SEED_PEOPLE.map((p) => ({ ...p.person, ledger: JSON.stringify(p.ledger) }));
@@ -122,19 +124,20 @@ describe("雨雲の筋（lib/map/demo.ts の rainStreaks）", () => {
 });
 
 describe("雨雲の描き（components/map/CaseMap.tsx の Rain）", () => {
+  // 雨雲は訓練の筋書きの雨（T103。いちばん強い 3 時間）。輪は帯の段と、帯のまわりの小さな雨（弱）
   const svgOf = (level: 3 | 4 | 5) => {
-    const html = renderToStaticMarkup(
-      createElement(CaseMap, { pins, layers: ["flood"], demo: demoOverlay({ kind: "heavy_rain", level }), unplaced: 0 }),
-    );
-    return { html, rain: html.match(/<svg[^>]*data-demo="rain"[\s\S]*?<\/svg>/)?.[0] ?? "" };
+    const demo = demoOverlay({ kind: "heavy_rain", level, drill: { track: HEAVY_RAIN_TRACK, hour: 3, anchor: rainAnchor(pins.map((p) => p.location)) } });
+    const html = renderToStaticMarkup(createElement(CaseMap, { pins, layers: ["flood"], demo, unplaced: 0 }));
+    return { html, demo, rain: html.match(/<svg[^>]*data-demo="rain"[\s\S]*?<\/svg>/)?.[0] ?? "" };
   };
 
-  it("レベル 5: 帯ごとにぼかした面と筋の 2 枚。斜線（回した長い線）・破線の縁は無い", () => {
-    const { html, rain } = svgOf(5);
+  it("レベル 5: 輪ごとにぼかした面と筋の 2 枚（筋のくり返しは段ごとに 1 つ）。斜線（回した長い線）・破線の縁は無い", () => {
+    const { html, demo, rain } = svgOf(5);
     expect(rain).not.toBe("");
     expect([...rain.matchAll(/<pattern /g)]).toHaveLength(3);
-    expect([...rain.matchAll(/data-rain-fill="\d"/g)]).toHaveLength(3);
-    expect([...rain.matchAll(/data-rain-streaks="\d"/g)]).toHaveLength(3);
+    expect([...rain.matchAll(/data-rain-fill="\d"/g)]).toHaveLength(demo.rain.length);
+    expect([...rain.matchAll(/data-rain-streaks="\d"/g)]).toHaveLength(demo.rain.length);
+    for (const k of [1, 2, 3]) expect(rain).toContain(`data-rain-fill="${k}"`);
     expect(rain).toContain("feGaussianBlur");
     expect(rain).not.toContain("stroke-dasharray");
     expect(rain).not.toContain("rotate(");
@@ -152,7 +155,7 @@ describe("雨雲の描き（components/map/CaseMap.tsx の Rain）", () => {
     expect(html).toContain("想定値");
   });
 
-  it("レベル 3 は弱の帯だけ（面 1 枚と筋 1 枚）", () => {
+  it("レベル 3 は弱だけ（筋のくり返し 1 つ）", () => {
     const { rain } = svgOf(3);
     expect([...rain.matchAll(/<pattern /g)]).toHaveLength(1);
     expect(rain).toContain('data-rain-fill="1"');

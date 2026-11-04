@@ -14,7 +14,9 @@ import { COLOR_TONES } from "../person.ts";
 import { pseudonymize } from "../pseudonym/index.ts";
 import { toTriagePerson } from "../triage/from-ledger.ts";
 import { rank, type TriageSignal } from "../triage/index.ts";
-import { bandRing, demoOverlay } from "./demo.ts";
+import { HEAVY_RAIN_TRACK } from "../drill/rain.ts";
+import { demoOverlay, type DemoScene } from "./demo.ts";
+import { rainAnchor } from "./drill-rain.ts";
 import {
   fitView,
   inView,
@@ -355,13 +357,24 @@ describe("平時の右の面", () => {
 // ---------- 発災時のデモの雨雲・震度 ----------
 
 describe("デモの雨雲と震度", () => {
-  it("大雨: 地図が一番上、「デモ」の印、雨雲の斜線、状態の人数", () => {
-    const html = render(buildSidePane(rows, { sort: "tier", disaster: { results, scene: { kind: "heavy_rain", level: 4 } } }));
+  // 雨雲を描くのは訓練の筋書きの雨だけ（T103）。ここでは 3 時間（いちばん強い）の大雨の想定の雨を使う
+  const drill = { track: HEAVY_RAIN_TRACK, hour: 3, anchor: rainAnchor(Object.values(SEED_LOCATIONS)) };
+  const rainScene = (level: 3 | 4 | 5 | null): DemoScene => ({ kind: "heavy_rain", level, drill });
+
+  it("大雨（訓練）: 地図が一番上、「デモ」の印、雨雲、状態の人数", () => {
+    const html = render(buildSidePane(rows, { sort: "tier", disaster: { results, scene: rainScene(4) } }));
     expect(html.indexOf('data-section="map"')).toBeLessThan(html.indexOf('data-section="review"'));
     expect(html).toContain('data-demo="label"');
     expect(html).toMatch(/data-demo="label"[^>]*><span class="font-bold">デモ<\/span><span[^>]*>大雨 レベル 4<\/span>/);
     expect(html).toContain('data-demo="rain"');
     expect(html).toContain("想定値");
+    expect(html).toContain("data-states");
+  });
+
+  it("大雨（平時の担当一覧）: 作り物の雨を描かず、「デモ」の印も出さない。状態の人数は出る（T103）", () => {
+    const html = render(buildSidePane(rows, { sort: "tier", disaster: { results, scene: { kind: "heavy_rain", level: 4 } } }));
+    expect(html).not.toContain('data-demo="label"');
+    expect(html).not.toContain('data-demo="rain"');
     expect(html).toContain("data-states");
   });
 
@@ -372,30 +385,34 @@ describe("デモの雨雲と震度", () => {
     expect(html).toContain("04_tsunami_newlegend_data");
   });
 
-  it("本物の警報と見間違える言葉を使わない", () => {
-    for (const scene of [{ kind: "heavy_rain", level: 5 } as const, { kind: "earthquake" } as const]) {
+  it("本物の警報と見間違える言葉を使わない（訓練の雨の参考の出典の題名にも）", () => {
+    for (const scene of [rainScene(5), { kind: "heavy_rain", level: 5 } as const, { kind: "earthquake" } as const]) {
       const html = render(buildSidePane(rows, { sort: "tier", disaster: { results, scene } }));
       for (const w of ["警報", "注意報", "速報", "気象庁"]) expect(html, w).not.toContain(w);
     }
   });
 
-  it("雨雲の帯はレベルが上がるほど強い帯が増え、強い帯ほど細い", () => {
-    expect(demoOverlay({ kind: "heavy_rain", level: 3 }).rain.map((b) => b.strength)).toEqual([1]);
-    expect(demoOverlay({ kind: "heavy_rain", level: 5 }).rain.map((b) => b.strength)).toEqual([1, 2, 3]);
-    const a = { lat: 33.8, lng: 132.7 };
-    const b = { lat: 33.9, lng: 132.8 };
-    const wide = bandRing(a, b, 5);
-    const thin = bandRing(a, b, 1);
-    const width = (r: typeof wide) => Math.hypot(r[0].lat - r[3].lat, r[0].lng - r[3].lng);
-    expect(width(wide)).toBeGreaterThan(width(thin));
-    expect(wide).toHaveLength(4);
+  it("雨雲の段はレベルが上がるほど増え、強い段ほど細い", () => {
+    const strengths = (level: 3 | 4 | 5) => [...new Set(demoOverlay(rainScene(level)).rain.map((b) => b.strength))].sort();
+    expect(strengths(3)).toEqual([1]);
+    expect(strengths(4)).toEqual([1, 2]);
+    expect(strengths(5)).toEqual([1, 2, 3]);
+    const bands = demoOverlay(rainScene(5)).rain.filter((b) => b.main);
+    const span = (k: number) => {
+      const r = bands.find((b) => b.strength === k)!.ring;
+      return Math.max(...r.map((p) => p.lat)) - Math.min(...r.map((p) => p.lat));
+    };
+    expect(span(1)).toBeGreaterThan(span(2));
+    expect(span(2)).toBeGreaterThan(span(3));
   });
 
-  it("警戒レベルを入れていない大雨は「大雨」だけで、雨雲は弱の帯", () => {
+  it("警戒レベルを入れていない大雨は「大雨」だけで、雨雲は描かない。ハザードの層は浸水・土砂", () => {
     const d = demoOverlay({ kind: "heavy_rain", level: null });
     expect(d.title).toBe("大雨");
-    expect(d.rain.map((b) => b.strength)).toEqual([1]);
+    expect(d.rain).toEqual([]);
     expect(d.layers).toEqual(["flood", "landslide"]);
+    // 訓練でレベルが解除（null）になったら雨なし
+    expect(demoOverlay(rainScene(null)).rain).toEqual([]);
   });
 });
 

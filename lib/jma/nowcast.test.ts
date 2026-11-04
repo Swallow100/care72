@@ -182,7 +182,7 @@ describe("地図に重ねる", () => {
     expect(NOWCAST_LAYER.attribution.href).toBe(NOWC_SOURCE.href);
   });
 
-  it("旗 off（既定）・デモ事業所では地図に雨雲の層も切替も出さない", () => {
+  it("旗 off（既定）では地図に雨雲の層も切替も出さない", () => {
     const html = renderToStaticMarkup(createElement(CaseMap, { pins: [], layers: [], demo: null, unplaced: 0 }));
     expect(html).not.toContain('data-layer="nowcast"');
     expect(html).not.toContain('data-toggle="rain"');
@@ -191,8 +191,8 @@ describe("地図に重ねる", () => {
     expect(on).not.toContain('data-layer="nowcast"');
   });
 
-  it("担当一覧はデモでない事業所で旗が on のときだけ雨雲を渡す", () => {
+  it("担当一覧は旗が on のときだけ雨雲を渡す（デモ事業所も。T103 の決め (c)）", () => {
     const src = readFileSync(new URL("../../app/page.tsx", import.meta.url), "utf8");
-    expect(src).toContain('nowcast: nowcastOn(env) && principal.office.kind !== "demo"');
+    expect(src).toContain("nowcast: nowcastOn(env) }");
   });
 });

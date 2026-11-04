@@ -10,7 +10,8 @@
 //   移動（ドラッグ・指・矢印のキー）ができる。ズームは 9〜18（lib/map/camera.ts）。名前の印が重なれば近い物をまとめて
 //   「他 N 人」（lib/map/cluster.ts）。Escape か「閉じる」で戻る。開いている間は後ろを送らない
 // 層の切替は小さな地図と全画面で同じ物を使う。ピンの色は lib/triage の色（発災時）。色だけにせず、印に状態の言葉と姓を出す。
-// 平時は姓だけ。雨雲・震度はデモの絵と数字で、地図の上の帯に「デモ」の印を必ず出す（全画面でも）。
+// 平時は姓だけ。雨雲・震度はデモの絵と数字で、地図の上の帯に「デモ」の印を必ず出す（全画面でも）。デモの雨雲は訓練だけ（筋書きの雨、T103）で、
+// 帯に参考にした過去の雨の出典を添える。平時の雨雲は気象庁の画像（旗 JMA_NOWCAST が on のときだけ、NowcastLayer）。
 
 import Link from "next/link";
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type SyntheticEvent } from "react";
@@ -20,7 +21,7 @@ import { CountLabel, countClass, StateTag, TONE_FILL } from "@/components/ui/Tag
 import type { GeoPoint, HazardKind } from "@/lib/db/types";
 import { DRAG_SLOP, FULL_ZOOM, keyAction, MAP_LIMITS, pinchView, sameView, sideWheelTakes, stepZoom, toFrame, wheelZoom } from "@/lib/map/camera";
 import { COUNT_W, groupPins, labelWidth, memberStates, statesWidth, type PinGroup } from "@/lib/map/cluster";
-import { RAIN_FILL, RAIN_STREAK, RAIN_STYLE, rainStreaks, type DemoOverlay } from "@/lib/map/demo";
+import { demoShown, RAIN_FILL, RAIN_STREAK, RAIN_STYLE, rainStreaks, type DemoOverlay } from "@/lib/map/demo";
 import {
   BASE_SIZE,
   clampView,
@@ -98,7 +99,7 @@ export type CaseMapProps = {
   unplaced: number;
   /** ピンが無いときの真ん中（事業所の中心、T68）。無ければ FALLBACK（松山市の市街）。T72 */
   center?: GeoPoint;
-  /** 気象庁の雨雲を重ねる（事業所がデモでなく旗 JMA_NOWCAST が on のとき。サーバーが決める。T72） */
+  /** 気象庁の雨雲を重ねる（旗 JMA_NOWCAST が on のとき。デモ事業所も。訓練の画面は渡さない。サーバーが決める。T72・T103） */
   nowcast?: boolean;
 };
 
@@ -199,7 +200,7 @@ export function CaseMap({ pins, layers, demo, unplaced, center, nowcast = false 
           </Button>
         </div>
 
-        {demo && <DemoBand demo={demo} />}
+        {demoShown(demo) && <DemoBand demo={demo} />}
 
         <div
           ref={box}
@@ -560,7 +561,7 @@ export function FullMap({ pins, demo, unplaced, choice, center, onClose, initial
           </div>
         </div>
 
-        {demo && <DemoBand demo={demo} />}
+        {demoShown(demo) && <DemoBand demo={demo} />}
 
         <div
           ref={box}
@@ -675,11 +676,14 @@ function PinStates({ pins }: { pins: ReadonlyArray<MapPin> }) {
   );
 }
 
-/** デモの印は地図の真上の帯に置く（地図の中に置くとピンと重なる）。破線の枠で、本物の情報と見分ける */
+/**
+ * デモの印は地図の真上の帯に置く（地図の中に置くとピンと重なる）。破線の枠で、本物の情報と見分ける。
+ * 訓練の雨には 2 行目に参考にした過去の雨（出典の登録簿の題名・リンク・作者の確認の印。T103）
+ */
 function DemoBand({ demo }: { demo: DemoOverlay }) {
   return (
     <div
-      className="flex items-baseline gap-1.5 rounded border border-dashed border-ink px-1.5 py-0.5 text-xs leading-5"
+      className="flex flex-wrap items-baseline gap-x-1.5 rounded border border-dashed border-ink px-1.5 py-0.5 text-xs leading-5"
       data-demo="label"
     >
       <span className="font-bold">デモ</span>
@@ -690,6 +694,21 @@ function DemoBand({ demo }: { demo: DemoOverlay }) {
         </span>
       )}
       <span className="ml-auto text-muted">想定値</span>
+      {demo.basis && (
+        <span className="flex basis-full flex-wrap items-baseline gap-x-1.5 text-[11px] leading-4 text-muted" data-demo="basis">
+          <span>参考</span>
+          <a
+            href={demo.basis.href}
+            target="_blank"
+            rel="noreferrer"
+            data-press
+            className="underline underline-offset-2 outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-accent"
+          >
+            {demo.basis.label}
+          </a>
+          <StateTag tone={demo.basis.mark === "確認済" ? "ok" : "check"}>{demo.basis.mark}</StateTag>
+        </span>
+      )}
     </div>
   );
 }
@@ -735,17 +754,23 @@ function HazardTiles({ tiles, shown }: { tiles: TileSpot[]; shown: readonly Haza
   );
 }
 
+/** 雨の輪の点の座標（枠の px）を 0.1px に丸める */
+const rainPx = (n: number) => Math.round(n * 10) / 10;
+
 /**
  * 雨雲のデモ（淡い青灰の面と、細く短い雨の筋。lib/map/demo.ts の RAIN_STYLE・rainStreaks）。枠の大きさの座標で描く。
  * 面は縁をぼかして雲の形に、筋は帯の形のまま。帯は入れ子なので、強い所ほど面が濃く筋が詰む。色はライトとダークで同じ
- * （下の地図はダークでも明るい）。くり返しの 1 枚の始まりを強さごとにずらし、3 つの帯の筋が同じ所に並ばないようにする
+ * （下の地図はダークでも明るい）。くり返しの 1 枚の始まりを強さごとにずらし、3 つの帯の筋が同じ所に並ばないようにする。
+ * 輪は訓練の筋書きの雨（lib/map/drill-rain.ts）: 帯の段と、帯のまわりの小さな雨（弱）。筋のくり返しの 1 枚は強さごとに 1 つ。
+ * 点は 0.1px に丸める（サーバーと手元で投影の計算の最後の桁が違い、丸めないと描き直しの食い違いになった。T103）
  */
 function Rain({ demo, view, size }: { demo: DemoOverlay; view: View; size: Size }) {
   const rainId = useId();
   if (demo.rain.length === 0) return null;
+  const strengths = [...new Set(demo.rain.map((b) => b.strength))].sort();
   const px = (p: GeoPoint) => {
     const at = place(view, p, size);
-    return `${(at.left / 100) * size.w},${(at.top / 100) * size.h}`;
+    return `${rainPx((at.left / 100) * size.w)},${rainPx((at.top / 100) * size.h)}`;
   };
   return (
     <svg
@@ -759,18 +784,18 @@ function Rain({ demo, view, size }: { demo: DemoOverlay; view: View; size: Size 
         <filter id={`${rainId}-soft`} x="-10%" y="-10%" width="120%" height="120%">
           <feGaussianBlur stdDeviation="3" />
         </filter>
-        {demo.rain.map((b) => {
-          const st = RAIN_STYLE[b.strength];
+        {strengths.map((k) => {
+          const st = RAIN_STYLE[k];
           return (
             <pattern
-              key={b.strength}
-              id={`${rainId}-${b.strength}`}
+              key={k}
+              id={`${rainId}-${k}`}
               patternUnits="userSpaceOnUse"
               width={st.tile}
               height={st.tile}
-              patternTransform={`translate(${b.strength * 7} ${b.strength * 11})`}
+              patternTransform={`translate(${k * 7} ${k * 11})`}
             >
-              {rainStreaks(b.strength)
+              {rainStreaks(k)
                 .flat()
                 .map((s, i) => (
                   <line
@@ -788,9 +813,9 @@ function Rain({ demo, view, size }: { demo: DemoOverlay; view: View; size: Size 
           );
         })}
       </defs>
-      {demo.rain.map((b) => (
+      {demo.rain.map((b, i) => (
         <polygon
-          key={`fill-${b.strength}`}
+          key={`fill-${i}`}
           points={b.ring.map(px).join(" ")}
           fill={RAIN_FILL}
           fillOpacity={RAIN_STYLE[b.strength].fill}
@@ -798,8 +823,8 @@ function Rain({ demo, view, size }: { demo: DemoOverlay; view: View; size: Size 
           data-rain-fill={b.strength}
         />
       ))}
-      {demo.rain.map((b) => (
-        <polygon key={`streaks-${b.strength}`} points={b.ring.map(px).join(" ")} fill={`url(#${rainId}-${b.strength})`} data-rain-streaks={b.strength} />
+      {demo.rain.map((b, i) => (
+        <polygon key={`streaks-${i}`} points={b.ring.map(px).join(" ")} fill={`url(#${rainId}-${b.strength})`} data-rain-streaks={b.strength} />
       ))}
     </svg>
   );
