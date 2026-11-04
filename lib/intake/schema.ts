@@ -4,9 +4,10 @@
 
 import * as z from "zod";
 import { CONTACT_KINDS, DEVICE_KINDS, HAZARD_KINDS, MEDICATION_CATEGORIES } from "../db/types.ts";
-import { EXTRA_PENDING_KEYS, INTAKE_KEYS } from "./fields.ts";
+import { AI_INTAKE_KEYS, EXTRA_PENDING_KEYS } from "./fields.ts";
 
-export const PENDING_KEYS = [...INTAKE_KEYS, ...EXTRA_PENDING_KEYS] as [string, ...string[]];
+/** AI が「分からない」を残せる場所。AI で埋めない欄（ai: false。T117 の問い 5）は AI の分け方に出さないので、ここにも無い */
+export const PENDING_KEYS = [...AI_INTAKE_KEYS, ...EXTRA_PENDING_KEYS] as [string, ...string[]];
 
 /**
  * 保存（lib/intake/save.ts）が受ける連絡先の種類。本人の電話（self）は本人のページの面の編集でだけ作る・直す（T68）。
@@ -37,8 +38,8 @@ export const HAZARD_KINDS_FOR_INTAKE = HAZARD_KINDS.filter((k) => k !== "other")
 ];
 
 export const ExtractSchema = z.object({
-  /** 欄の表（lib/intake/fields.ts）の欄。配列の欄は 1 つずつ別の行 */
-  items: z.array(z.object({ field: z.enum(INTAKE_KEYS), value: z.string() })),
+  /** 欄の表（lib/intake/fields.ts）の欄のうち AI で埋めてよい物（AI_INTAKE_KEYS。T117）。配列の欄は 1 つずつ別の行 */
+  items: z.array(z.object({ field: z.enum(AI_INTAKE_KEYS), value: z.string() })),
   medications: z.array(
     z.object({
       name: z.string(),

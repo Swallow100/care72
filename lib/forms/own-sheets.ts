@@ -98,7 +98,7 @@ export async function loadOfficeSheetRows(
     db
       .prepare(
         `SELECT id, person_id, kind, relation, name, phone, reach, emergency_order, supporter_order,
-                night_ok, has_car, has_smartphone, note, sort
+                night_ok, has_car, has_smartphone, note, kana, address, mobile, sort
            FROM contacts WHERE person_id IN (${IN_OFFICE}) ORDER BY person_id, sort, id`,
       )
       .bind(json, officeId),

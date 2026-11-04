@@ -476,6 +476,12 @@ export function LogBubble({ entry: e, props, busy, aiReady, onRows, onSave, onDi
                 {INTAKE_LABELS.masked} {e.proposal.masked}
               </p>
             )}
+            {/* 写真・PDF の読み取りは、塗って隠したフリガナ・住所・電話を AI で埋めない（T117 の問い 5）。手で入れる欄を 1 行で */}
+            {e.read && e.state === "open" && (
+              <p className="mt-0.5 text-xs text-muted" data-intake="hand-only">
+                {INTAKE_LABELS.handOnly} {INTAKE_LABELS.handOnlyFields}
+              </p>
+            )}
             {e.state !== "open" && <p className="mt-0.5 text-xs text-muted">{e.state === "saved" ? INTAKE_LABELS.saved : INTAKE_LABELS.discard}</p>}
           </Bubble>
           {e.state === "open" && e.proposal.rows.length > 0 && (

@@ -171,6 +171,10 @@ describe("連絡先の種類と距離・migration 0008（T57 の 2）", () => {
       "note",
       "sort",
       "created_at",
+      // 0029（T117）が後ろに足した列
+      "kana",
+      "address",
+      "mobile",
     ]);
     expect(sqlite.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'contacts' AND name = 'contacts_person'").get()).toEqual({
       name: "contacts_person",

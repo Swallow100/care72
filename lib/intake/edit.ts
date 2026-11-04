@@ -63,6 +63,10 @@ export type EditData = {
     /** スマホ・車の有無（T68。無ければ未確認）。古い形の EditData（テスト）には無いので省ける */
     has_smartphone?: 0 | 1 | null;
     has_car?: 0 | 1 | null;
+    /** フリガナ・住所（市町村と町名まで）・携帯（T117、migration 0029）。古い形の EditData（テスト）には無いので省ける */
+    kana?: string | null;
+    address?: string | null;
+    mobile?: string | null;
   }>;
   clocks: Array<{
     id: string;
@@ -122,6 +126,10 @@ export type ContactDraft = {
   /** スマホ・車の有無（T68。空は未確認。省くと未確認） */
   smartphone?: FlagDraft;
   car?: FlagDraft;
+  /** フリガナ・住所・携帯（T117。省くと空） */
+  kana?: string;
+  address?: string;
+  mobile?: string;
 };
 /** 走る時計の起点（停電・発災）。走らない状態の時計（condition）は足せず、起点も none のまま */
 export type RunningStart = Exclude<ClockStart, "none">;
@@ -236,6 +244,9 @@ export const blankContact = (): ContactDraft => ({
   reach: "",
   smartphone: "",
   car: "",
+  kana: "",
+  address: "",
+  mobile: "",
 });
 
 const orderDraft = (n: number | null): OrderDraft => (n == null ? "" : String(n));
@@ -289,6 +300,9 @@ export function editDraft(d: EditData): EditDraft {
         reach: c.reach ?? "",
         smartphone: flagDraft(c.has_smartphone),
         car: flagDraft(c.has_car),
+        kana: s(c.kana),
+        address: s(c.address),
+        mobile: s(c.mobile),
       }),
     ),
     newContacts: [],
@@ -375,7 +389,7 @@ export function removalNames(changes: ReadonlyArray<IntakeChange>, d: EditData):
 
 /** 足す連絡先を送るか（何か書いたか） */
 function newContactFilled(c: ContactDraft): boolean {
-  return [c.relation, c.name, c.phone, c.note].some((x) => x.trim() !== "");
+  return [c.relation, c.name, c.phone, c.note, c.kana ?? "", c.address ?? "", c.mobile ?? ""].some((x) => x.trim() !== "");
 }
 
 /** 順の重なり（同じ緊急・支援の順を 2 人に付けた）。外す行と送らない空の行は数えない。保存（lib/intake/save.ts）も同じ物を断る */
@@ -463,6 +477,29 @@ const nightOf =(n: NightDraft): boolean | null => (n === "yes" ? true : n === "n
 /** 表の 0・1 を有無に（無ければ未確認） */
 const flagOf = (n: 0 | 1 | null | undefined): boolean | null => (n === 1 ? true : n === 0 ? false : null);
 
+/**
+ * 欄の表の欄の下書きから、直した欄だけの変更（手で直す。埋まった欄も上書き）。空にした欄は外す。形の合わない値は送らない。
+ * 本人のページの面の編集と、紙に直接書く窓（T117、components/forms/PaperEdit.tsx）が同じ決まりで作る
+ */
+export function fieldEditChanges(keys: readonly string[], l: Ledger, values: Readonly<Record<string, unknown>>): IntakeChange[] {
+  const out: IntakeChange[] = [];
+  for (const key of keys) {
+    const f = INTAKE_FIELDS.find((x) => x.key === key);
+    if (!f || !(key in values)) continue;
+    const cur = editValueOf(l, f.key);
+    const raw = values[f.key];
+    if (same(raw, cur)) continue;
+    if (emptyDraft(raw)) {
+      if (isFilled(cur) && !emptyDraft(cur)) out.push({ t: "remove", target: { what: "field", key: f.key } });
+      continue;
+    }
+    const value = normalizeValue(f, raw);
+    if (value === null || same(value, cur)) continue;
+    out.push({ t: "field", key: f.key, value, overwrite: true });
+  }
+  return out;
+}
+
 /** 面の下書きから、直した所だけの変更を作る */
 export function editChanges(section: EditSection, d: EditData, draft: EditDraft): IntakeChange[] {
   const out: IntakeChange[] = [];
@@ -473,19 +510,13 @@ export function editChanges(section: EditSection, d: EditData, draft: EditDraft)
 
   // 欄の表の欄（この面の物）。埋まった欄を空にしたら外す。形の合わない値は送らない
   if (section !== "consent") {
-    for (const f of INTAKE_FIELDS) {
-      if (f.section !== (section as IntakeSection)) continue;
-      const cur = editValueOf(l, f.key);
-      const raw = draft.values[f.key];
-      if (same(raw, cur)) continue;
-      if (emptyDraft(raw)) {
-        if (isFilled(cur) && !emptyDraft(cur)) remove({ what: "field", key: f.key });
-        continue;
-      }
-      const value = normalizeValue(f, raw);
-      if (value === null || same(value, cur)) continue;
-      out.push({ t: "field", key: f.key, value, overwrite: true });
-    }
+    out.push(
+      ...fieldEditChanges(
+        INTAKE_FIELDS.filter((f) => f.section === (section as IntakeSection)).map((f) => f.key),
+        l,
+        draft.values,
+      ),
+    );
   }
 
   if (section === "medical") {
@@ -626,6 +657,13 @@ export function editChanges(section: EditSection, d: EditData, draft: EditDraft)
         value[col] = c[col].trim();
         changed = true;
       }
+      // フリガナ・住所・携帯（T117）。省いた下書き（前の形）は変えない
+      for (const col of ["kana", "address", "mobile"] as const) {
+        const next = c[col];
+        if (next === undefined || next.trim() === s(cur[col])) continue;
+        value[col] = next.trim();
+        changed = true;
+      }
       const night = nightOf(c.night);
       const curNight = cur.night_ok === 1 ? true : cur.night_ok === 0 ? false : null;
       if (night !== curNight) {
@@ -684,6 +722,9 @@ export function editChanges(section: EditSection, d: EditData, draft: EditDraft)
           ...(c.relation.trim() ? { relation: c.relation.trim() } : {}),
           ...(c.name.trim() ? { name: c.name.trim() } : {}),
           ...(c.phone.trim() ? { phone: c.phone.trim() } : {}),
+          ...(c.kana?.trim() ? { kana: c.kana.trim() } : {}),
+          ...(c.address?.trim() ? { address: c.address.trim() } : {}),
+          ...(c.mobile?.trim() ? { mobile: c.mobile.trim() } : {}),
           ...(night !== null ? { nightOk: night } : {}),
           ...(c.note.trim() ? { note: c.note.trim() } : {}),
           ...(emergency !== null ? { emergencyOrder: emergency } : {}),

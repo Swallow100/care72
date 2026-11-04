@@ -42,9 +42,11 @@ const contactItems = (
   const c = consent ? { consent } : {};
   return [
     { key: `${prefix}.name`, group: "contacts", label: `${name} 氏名`, hint: "団体なら団体名", ...c },
+    // フリガナ（T117、contacts.kana）
+    { key: `${prefix}.kana`, group: "contacts", label: `${name} フリガナ`, ...c },
     { key: `${prefix}.relation`, group: "contacts", label: `${name} 続柄・関係`, hint: "車・夜間・スマホの有無も", ...c },
-    { key: `${prefix}.phone`, group: "contacts", label: `${name} 電話`, hint: "固定と携帯の区別つき。メール・FAX は持たない", ...c },
-    { key: `${prefix}.address`, group: "contacts", label: `${name} 住所`, hint: "住所は持たない。同居・近所・市内などの近さだけ", ...c },
+    { key: `${prefix}.phone`, group: "contacts", label: `${name} 電話`, hint: "電話と携帯の 2 つまで。メール・FAX は持たない", ...c },
+    { key: `${prefix}.address`, group: "contacts", label: `${name} 住所`, hint: "市町村と町名まで（番地は持たない）と、同居・近所・市内などの近さ", ...c },
   ];
 };
 
@@ -116,12 +118,17 @@ export const LEDGER_ITEMS = [
   { key: "evacuation.carryItems", group: "evacuation", label: "持出品" },
   { key: "evacuation.pets", group: "evacuation", label: "ペット" },
   { key: "evacuation.myTimeline", group: "evacuation", label: "マイ・タイムライン", hint: "作成の有無" },
+  // 避難場所の時間・最寄りの避難場所（T117）
+  { key: "evacuation.destination1Minutes", group: "evacuation", label: "避難先1までの時間", hint: "分" },
+  { key: "evacuation.destination2Minutes", group: "evacuation", label: "避難先2までの時間", hint: "分" },
+  { key: "evacuation.nearest", group: "evacuation", label: "最寄りの避難場所", hint: "指定緊急避難場所など。名称だけ" },
 
   // ---- 住まい ----
   { key: "basic.housing.structure", group: "housing", label: "構造・築年", hint: "木造・鉄骨・鉄筋など" },
   { key: "basic.housing.floors", group: "housing", label: "建物の階数" },
   { key: "basic.housing.floor", group: "housing", label: "普段いる階" },
   { key: "basic.housing.bedroom", group: "housing", label: "寝室" },
+  { key: "basic.housing.type", group: "housing", label: "住居の種別", hint: "戸建住宅・共同住宅" },
 
   // ---- 連絡先・支援者 ----
   ...contactItems("emergency1", "緊急連絡先1"),
@@ -132,6 +139,9 @@ export const LEDGER_ITEMS = [
   { key: "people.welfare", group: "contacts", label: "民生委員" },
   { key: "local.watcher", group: "contacts", label: "みまもり員" },
   { key: "people.offices", group: "contacts", label: "事業所等", hint: "訪問看護・介護の事業所" },
+  // 避難支援等実施組織（T117。自主防災組織・町内会など）。計画書と同じく計画共有に従う
+  { key: "org.name", group: "contacts", label: "避難支援組織", hint: "自主防災組織・町内会など", consent: "plan_share" },
+  { key: "org.phone", group: "contacts", label: "避難支援組織 電話", consent: "plan_share" },
 
   // ---- 同意 ----
   { key: "consent.registry", group: "consent", label: "名簿登録の同意", hint: "名簿への登録と平常時からの提供" },
