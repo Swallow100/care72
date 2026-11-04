@@ -8,6 +8,8 @@ import { AI_STOP_LABELS } from "./labels.ts";
 import type { PersonState } from "./persona-types.ts";
 import { afterOf, EVENT_CATALOG, isInjectKind, type EventFacts, type EventPlace, type InjectKind } from "./event-catalog.ts";
 import { AI_STOPS, type AiStop, type WorldEvent, type WorldState } from "./scenarios.ts";
+import type { DrillScale } from "./scale.ts";
+import type { SelfInput } from "./self.ts";
 
 /**
  * 状況（世界の出来事）1 つ。表の世界の出来事は world、監督（T19）の差し込みは director（想定の表の固定の物と Opus の物）。
@@ -42,6 +44,13 @@ export type DirectorInput = {
   since?: number;
   /** この区切りで差し込んでよい数（T90）。無ければ DIRECTOR_MAX */
   budget?: number;
+  /** 仮想の訓練の規模（T104、lib/drill/scale.ts）。仮想だけ。世界に「決まっている災害」の 1 行を渡す */
+  scale?: DrillScale;
+  /**
+   * 訓練する人（自分）の住む所（T104、lib/drill/self.ts）。連続の時計の大雨想定・地震想定だけ。
+   * 無ければ監督は自分の出来事を差し込まない（10 分版・仮想・前からの訓練）
+   */
+  self?: SelfInput;
 };
 
 /** 監督に言い換えを頼む世界の返事 1 つ。結果（status・because）は決まっていて、監督は文だけ返す */

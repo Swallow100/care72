@@ -30,6 +30,8 @@ import type { StepHooks } from "./engine.ts";
 import { DRILL_API_LABELS, type DrillApiError } from "./labels.ts";
 import { lastHour, scenarioOf } from "./scenarios.ts";
 import { isClockStep, type ClockTo } from "./clock.ts";
+import { cleanScale, type DrillScale } from "./scale.ts";
+import { HOME_TOWN_MAX } from "./self.ts";
 import { loadDrillScreen } from "./view.ts";
 
 const STATUS: Record<DrillApiError, number> = {
@@ -66,13 +68,14 @@ const PARTICIPANTS_MAX = 200;
 
 /**
  * 開始の前に選んだ物（T59）の形を見る。無ければ {}（今と同じ）。形が違えば null。
- * { participants?: 本人の id の配列（1 人以上）, staff?: 0〜9, night?: 真偽, clock?: 真偽（T90）}。担当一覧の中かは startDrill が見る
+ * { participants?: 本人の id の配列（1 人以上）, staff?: 0〜9, night?: 真偽, clock?: 真偽（T90）, scale?: 規模（T104）, home?: 町名（T104）}。
+ * 担当一覧の中か・地区の中かは startDrill が見る
  */
 export function parseStartOptions(v: unknown): StartOptions | null {
   if (v === undefined || v === null) return {};
   const o = obj(v);
   if (!o) return null;
-  const out: { participants?: string[]; staff?: number; night?: boolean; clock?: true } = {};
+  const out: { participants?: string[]; staff?: number; night?: boolean; clock?: true; scale?: DrillScale; home?: string } = {};
   if (o.participants !== undefined) {
     const ps = o.participants;
     if (!Array.isArray(ps) || ps.length === 0 || ps.length > PARTICIPANTS_MAX || !ps.every(isDrillId)) return null;
@@ -90,6 +93,17 @@ export function parseStartOptions(v: unknown): StartOptions | null {
   if (o.clock !== undefined) {
     if (typeof o.clock !== "boolean") return null;
     if (o.clock) out.clock = true;
+  }
+  // 仮想の規模（T104）。選ばなければおまかせ（startDrill が引く）。仮想でない想定に来たら startDrill が捨てる
+  if (o.scale !== undefined) {
+    const scale = cleanScale(o.scale);
+    if (!scale) return null;
+    out.scale = scale;
+  }
+  // 訓練する人の住む所（T104）。町名。担当一覧の人の地区の中かは startDrill が見る
+  if (o.home !== undefined) {
+    if (typeof o.home !== "string" || !o.home.trim() || Array.from(o.home.trim()).length > HOME_TOWN_MAX) return null;
+    out.home = o.home.trim();
   }
   return out;
 }
