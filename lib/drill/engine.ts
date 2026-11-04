@@ -836,18 +836,24 @@ export async function advance(
     } else {
       inserted = fallbackIncidents(hour, "off");
     }
-  } else if (wantDirector && hooks.director) {
-    const out = await safely(() => hooks.director!(directorInput), [] as DirectorEvent[]);
+  }
+  // 固定の筋（大雨・地震）の監督は本人役と並べて呼ぶ（T121。進める 1 回の待ちが「監督 ＋ 本人役」から長い方だけに）。
+  // 本人役はこの区切りの表と予定の出来事を当てた世界で答え、監督の差し込みは区切りの終わりに当てる。差し込みの指す人は
+  // touched に積み、次の区切りで呼ぶ（仮想の世界は結末を決めるので、本人役より先のまま）
+  let directorP: Promise<DrillIncident[]> | null = null;
+  if (!virtual && wantDirector && hooks.director) {
     counts.director += 1;
     directorAt = to;
     // 差し込みの数（種類ごと）を budget で切る。行（部品）で切ると、2 行になる種類（携帯不可と回復見込・土砂警戒と道）の 2 行目が落ちる（T121）
-    inserted = directorIncidents(Array.isArray(out) ? out : (out?.events ?? []), members, hour, budget);
+    directorP = safely(() => hooks.director!(directorInput), [] as DirectorEvent[]).then((out) =>
+      directorIncidents(Array.isArray(out) ? out : (out?.events ?? []), members, hour, budget),
+    );
   }
   // 監督・世界の出来事も変わり方の決まりで見る（T121）。表がこのあと変える状態を先に変えない・一度きり・変わるのに要る時間
   const kept = screenIncidents(world, inserted, { origin: "ai", minute: to, ahead });
   inserted = kept.kept;
   world = kept.world;
-  const incidents = [...happened, ...inserted];
+  let incidents = [...happened, ...inserted];
 
   // 3. 本人役
   const live = state.participants.filter((p) => !world.ended?.[p]);
@@ -940,6 +946,16 @@ export async function advance(
       delete touched[p];
     }
     counts.persona += called.length;
+  }
+
+  // 監督の差し込み（並べて呼んだ物）を区切りの終わりに当てる。指す人は次の区切りで本人役を呼ぶ（T121）
+  if (directorP) {
+    const late = screenIncidents(world, await directorP, { origin: "ai", minute: to, ahead });
+    world = late.world;
+    incidents = [...incidents, ...late.kept];
+    if (hooks.persona && !capped) {
+      for (const e of late.kept) for (const p of incidentPersons(e)) if (members.has(p) && !world.ended?.[p]) touched[p] = Math.min(touched[p] ?? to, to);
+    }
   }
 
   // 4. 上限の印（上限に達したあとの区切り。帯の理由「訓練上限」）と、1 日の上限で止まった役の印

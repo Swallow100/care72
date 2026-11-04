@@ -393,3 +393,35 @@ describe("起きやすい物と起きにくい物（time-odds と訓練の種）
     expect(text).toMatch(/- 川沿いの道（[A-Z] さん）: 通行止（3 時間から）。9 時間まで変わらない/);
   });
 });
+
+// ---------- 4. 監督と本人役を並べて呼ぶ（固定の筋の連続の時計） ----------
+
+describe("監督と本人役を並べて呼ぶ（T121）", () => {
+  const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+  it("進める 1 回の待ちが監督と本人役の長い方だけになり、監督の差し込みの指す人は次の区切りで呼ぶ", async () => {
+    const seen: string[] = [];
+    const persona = async (input: PersonaInput) => {
+      seen.push(input.person);
+      await wait(250);
+      return [];
+    };
+    const d = director((input) => (input.hour * 60 === 180 ? [ev("road_blocked", { person: "p-09", text: "家の前の道が通れない" })] : []));
+    const slow = async (input: DirectorInput) => {
+      await wait(400);
+      return d.hook(input);
+    };
+    let s = await begin("heavy_rain");
+    const t0 = Date.now();
+    const r = (await advance(s, 180, { director: slow, persona }, { policy: "clock" }))!;
+    const took = Date.now() - t0;
+    expect(took).toBeLessThan(400 + 250);
+    expect(r.tick.incidents.some((e) => e.inject === "road_blocked" && e.person === "p-09")).toBe(true);
+    // 3 時間の区切りの本人役は表の行の人（差し込みの指す人は入らない）。指す人は touched に残る
+    expect(seen).not.toContain("p-09");
+    expect(Object.keys(r.state.world.touched ?? {})).toContain("p-09");
+    s = r.state;
+    seen.length = 0;
+    await advance(s, 240, { director: d.hook, persona }, { policy: "clock" });
+    expect(seen).toContain("p-09");
+  });
+});
