@@ -743,7 +743,17 @@ export async function actDrill(
       extra,
     );
   } catch (e) {
-    if (e instanceof ActionBlocked) return { ok: false, error: "blocked", label: e.label };
+    if (e instanceof ActionBlocked) {
+      // 断る前に読み替えで Claude を呼んだ分は 1 訓練の数えに入れる（T121。読んだ状態のときだけ書く。書けなくても断りは返す）
+      if (e.counted) {
+        const next: DrillState = { ...before, world: countFree(before.world) };
+        await db
+          .prepare(`UPDATE drills SET world = ?3 WHERE id = ?1 AND office_id = ?2 AND step = ?4 AND status = 'running' AND world = ?5`)
+          .bind(id, scope.officeId, storeWorld(next, parseStoredWorld(row.world).undo), row.step, row.world)
+          .run();
+      }
+      return { ok: false, error: "blocked", label: e.label };
+    }
     throw e;
   }
   const { state, record, ticks } = acted;

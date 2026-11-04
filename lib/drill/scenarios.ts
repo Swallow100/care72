@@ -176,6 +176,12 @@ export type WorldState = {
    * 起きた note の話題と最初の時刻（T92。発災からの時間）。note は世界の様子を変えないが、同じ話題を 2 度差し込まないために覚える
    */
   notes?: Partial<Record<NoteTopic, number>>;
+  /**
+   * 状態が最後に変わった時刻（T121。発災からの時間）。鍵は phone・outage・water・weather・road:<id>・facility:<id>・shelter:<id>。
+   * applyEvent が変わったときだけ書く（表の出来事も AI の出来事も同じ所を通るので、再生でも同じ値になる）。
+   * 変わるのに時間が要る状態の決まり（lib/drill/state-rules.ts）と、本人役・監督に渡す「いつから」の元
+   */
+  stamps?: Record<string, number>;
 };
 
 /** 向かっている人の役。staff 事業所の職員・nurse 訪問看護・supporter 支援者・family 家族・vendor 業者・transport 移送・power 電源・medicine 薬 */
@@ -746,8 +752,39 @@ function mark(world: WorldState, person: string | null, key: keyof PersonMarks, 
   return { ...world, marks: { ...world.marks, [person]: { ...own, [key]: hour } } };
 }
 
-/** 出来事 1 つを世界に当てる（新しい世界を返す。元は変えない） */
+/** 出来事 1 つを世界に当てる（新しい世界を返す。元は変えない）。状態が変わったら変わった時刻を stamps に書く（T121） */
 export function applyEvent(world: WorldState, e: WorldEvent, hour: number): WorldState {
+  return stampChanges(world, applyChange(world, e, hour), hour);
+}
+
+/** 状態の鍵と今の値（stamps の比べ方）。道・施設・避難所は id ごと */
+function stateValues(w: WorldState): Map<string, string> {
+  const out = new Map<string, string>([
+    ["phone", w.phone],
+    ["outage", w.outage ? `${w.outage.since}|${w.outage.restoredAt ?? ""}` : ""],
+    ["water", w.water],
+    ["weather", w.weather ?? ""],
+  ]);
+  for (const r of w.roads) out.set(`road:${r.id}`, r.open ? "open" : "closed");
+  for (const f of w.facilities) out.set(`facility:${f.id}`, f.open ? "open" : "closed");
+  for (const s of w.shelters) out.set(`shelter:${s.id}`, s.state);
+  return out;
+}
+
+/** 前と後の世界を比べ、変わった状態の時刻を stamps に書く（変わらなければ後の世界をそのまま返す） */
+export function stampChanges(before: WorldState, after: WorldState, hour: number): WorldState {
+  if (before === after) return after;
+  const a = stateValues(before);
+  const b = stateValues(after);
+  const changed: string[] = [];
+  for (const [k, v] of b) if (a.get(k) !== v) changed.push(k);
+  if (changed.length === 0) return after;
+  const stamps = { ...(after.stamps ?? {}) };
+  for (const k of changed) stamps[k] = hour;
+  return { ...after, stamps };
+}
+
+function applyChange(world: WorldState, e: WorldEvent, hour: number): WorldState {
   const c = e.change;
   const person = e.person ?? null;
   switch (c.kind) {

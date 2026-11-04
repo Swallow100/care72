@@ -376,7 +376,8 @@ describe("手の分（時計は進めず、手に使った時間を AI も動か
       },
     };
     let s = await clockAt0();
-    for (const p of ["p-01", "p-02", "p-04"]) s = (await act(s, { kind: "call_person", person: p, target: SELF_01 }, {}, () => 0.99)).state;
+    // T121: 電話に出た（本人に届いた）手の人を呼ぶ。出なかった電話は本人役を呼ぶ理由にしない
+    for (const p of ["p-01", "p-02", "p-04"]) s = (await act(s, { kind: "call_person", person: p, target: SELF_01 }, {}, () => 0)).state;
     expect(busyOf(s, { on: true, aiAt: aiAtOf(s) }).used).toBe(15);
     const r = (await advance(s, s.minute, hooks, { policy: "clock", acts: true }))!;
     expect(r.state.minute).toBe(15);
@@ -562,6 +563,19 @@ describe("自由対応のそのままの手（読み替え → 確かめ → 打
     const visit = freeHooksOf(() => OWN({ way: "visit", callee: "", minutes: 30 }));
     const r2 = await freePost(db, careManager(), ID, { step: 0, actions: 0, person: "p-01", text: "家に行って様子を見る" }, planOf(visit.free));
     expect(((await r2.json()) as { plan: unknown }).plan).toMatchObject({ block: TERM_LABELS.road, blockAi: false, way: "訪問" });
+  });
+
+  it("断る前に読み替えで Claude を呼んだ分は、断った要求でも 1 訓練の数えに入る（T121）", async () => {
+    await start();
+    const { free, calls } = freeHooksOf(() => OWN({ can: false, whyNot: "相手不在" }));
+    const res = await actionPost(db, careManager(), ID, { step: 0, actions: 0, kind: "free", person: "p-01", target: null, text: "近所の人に頼む" }, START, {
+      hooks: { free },
+      roll: () => 0,
+    });
+    expect(res.status).toBe(409);
+    expect(calls).toHaveLength(1);
+    expect((await stored()).world.counts?.free).toBe(1);
+    expect((await stored()).actions).toEqual([]);
   });
 
   it("所要は下限と上限の中（500 → 120、0 → 2）。夜は電話のやり方でも出にくさ以外は同じ、訪問は伸びる", async () => {

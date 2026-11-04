@@ -21,6 +21,7 @@ import { createDirectorHook } from "./director.ts";
 import { createOutcomeHook, loadOutcomeSources, outageForRuns, type OutcomeSource } from "./outcome.ts";
 import {
   buildPersona,
+  createPersonaBatchHook,
   createPersonaHook,
   isPersonaFailure,
   loadPersonaSources,
@@ -72,6 +73,8 @@ export function drillHooks(
     stops,
     director: createDirectorHook({ load, ai, stops }),
     persona: createPersonaHook({ load, ai, stops }),
+    // 連続の時計の区切りの本人役はまとめて呼ぶ（T121。10 分版の刻みの道は persona のまま）
+    personas: createPersonaBatchHook({ load, ai, stops }),
     call: createCallHook({ load, ai }),
     // 訪問で着いたときの様子と頼み事（T93、本人役 Haiku × 1 回）
     visit: createVisitHook({ load, ai }),

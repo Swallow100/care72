@@ -32,6 +32,11 @@ export type Totals = {
   dayRatioMax: number | null;
   /** 1 訓練の数えに入らない呼び出し（T118） */
   uncounted: number;
+  /** 手の決まり（T110 の terms）で決まりどおりに断った手（T121。失敗した要求に入れない） */
+  termsRefused?: number;
+  /** 手の決まりで押せないはずの手が打てた数・夜の訪問の所要が足りない数（T121。決まりを送った回は 0 のはず） */
+  termsRan?: number;
+  termsDark?: number;
   advanceP50: number | null;
   advanceP95: number | null;
   usdPerRun: number | null;
@@ -86,6 +91,9 @@ export function totalsOf(runs: ReadonlyArray<RunSummary>): Totals {
     capRatioMax: max(n.map((x) => x.budget.capRatio)),
     dayRatioMax: max(n.map((x) => x.budget.dayRatio)),
     uncounted: sum(n.map((x) => x.budget.uncounted ?? 0)),
+    termsRefused: sum(n.map((x) => x.terms?.refused ?? 0)),
+    termsRan: sum(n.map((x) => x.terms?.ran ?? 0)),
+    termsDark: sum(n.map((x) => x.terms?.dark ?? 0)),
     advanceP50: mean(n.map((x) => x.timing.advanceP50)),
     advanceP95: max(n.map((x) => x.timing.advanceP95)),
     usdPerRun: mean(n.map((x) => x.cost.usd)),
@@ -143,6 +151,8 @@ export const METRICS: ReadonlyArray<Metric> = [
   { label: "停止の印（上限）", get: (s) => s.totals.aiStop, format: int, lowerBetter: true },
   { label: "世界の代替・停止の印", get: (s) => s.totals.worldNote, format: int, lowerBetter: true },
   { label: "失敗した要求", get: (s) => s.totals.opFailed + s.totals.exceptions, format: int, lowerBetter: true },
+  { label: "手の決まりで断った手（決まりどおり）", get: (s) => s.totals.termsRefused ?? 0, format: int },
+  { label: "手の決まりで押せない手が打てた・夜の所要不足", get: (s) => (s.totals.termsRan ?? 0) + (s.totals.termsDark ?? 0), format: int, lowerBetter: true },
   { label: "AI の呼び出し/回（ai_calls）", get: (s) => s.totals.callsPerRun, format: two },
   { label: "1 訓練の上限 150 との比（最大）", get: (s) => s.totals.capRatioMax, format: pct },
   { label: "1 日の上限 200 との比（最大）", get: (s) => s.totals.dayRatioMax, format: pct },

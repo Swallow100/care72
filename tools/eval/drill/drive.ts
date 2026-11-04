@@ -107,6 +107,8 @@ export type RunOutcome = {
   names: Record<string, string>;
   /** 世界の部屋の Agent と Environment（ai_agents の行）。次の回に渡して作り直さない */
   worldAgent: WorldAgentRow | null;
+  /** 開始に手の決まり（T110 の terms）を送ったか（T121） */
+  terms?: boolean;
 };
 
 /** ai_agents の行（世界の部屋の Agent と Environment） */
@@ -125,6 +127,11 @@ export type DriveDeps = {
   maxAdvances: number;
   /** 終わったら講評（Opus 1 回）も作る */
   review: boolean;
+  /**
+   * 時間と状況で変わる手の決まり（T110 の DrillOptions.terms）を連続の時計の訓練の開始に送る（T121。開始の画面と同じ）。
+   * 無ければ送る（false で送らない。決まりの無い前の回と比べるとき）
+   */
+  terms?: boolean;
   /**
    * 前の回で作った世界の部屋の Agent と Environment。回ごとに新しい DB なので、渡さないと本物の部屋は回ごとに Agent と Environment を作る
    * （消さずに残る）。渡せば DB の ai_agents に入れてから始める
@@ -280,7 +287,9 @@ export async function runDrill(plan: RunPlan, deps: DriveDeps): Promise<RunOutco
     const took = Date.now() - a;
     const ok = error === null && status === 200 && body?.ok === true;
     failsInRow = ok ? 0 : failsInRow + 1;
-    ops.push({ op, status, ok, took, error });
+    // 断られた要求の理由（body の error。決まりどおりの断り blocked を失敗と分ける、T121）
+    const refused = !ok && error === null && typeof body?.error === "string" ? body.error : null;
+    ops.push({ op, status, ok, took, error: error ?? refused });
     log.push({ type: "op", phase: "end", op, status, ok, took, body, error });
     return { status, body };
   };
@@ -318,6 +327,7 @@ export async function runDrill(plan: RunPlan, deps: DriveDeps): Promise<RunOutco
       ...(plan.night ? { night: true } : {}),
       ...(plan.staff !== null ? { staff: plan.staff } : {}),
       ...(plan.scenario !== "short" ? { clock: true } : {}),
+      ...(plan.scenario !== "short" && deps.terms !== false ? { terms: true } : {}),
       ...(plan.scale ? { scale: plan.scale } : {}),
     };
     const startReq = { scenario: plan.scenario, options };
@@ -381,7 +391,7 @@ export async function runDrill(plan: RunPlan, deps: DriveDeps): Promise<RunOutco
     }
     const callsLeft = (await loadDrillScreen(db, { officeId: DEMO.id }, drillId, null))?.left ?? null;
     log.push({ type: "end", status: replay.drill.status, step: replay.drill.step, minute: replay.minute, advances, callsLeft });
-    return { plan, drillId, status: replay.drill.status, advances, replay, ops, errors, aiCalls: aiCallsOf(sqlite), callsLeft, names, worldAgent: worldAgentOf(sqlite) };
+    return { plan, drillId, status: replay.drill.status, advances, replay, ops, errors, aiCalls: aiCallsOf(sqlite), callsLeft, names, worldAgent: worldAgentOf(sqlite), terms: options.terms === true };
   } finally {
     sqlite.close();
   }

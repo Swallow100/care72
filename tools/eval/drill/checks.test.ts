@@ -297,3 +297,59 @@ describe("T118 の穴の形を台が拾う", () => {
     expect(checkRun([], { ...o, callsLeft: null }, CTX).numbers.budget.uncounted).toBe(0);
   });
 });
+
+// ---------- T121: 台の誤検知と手の決まりの検査 ----------
+
+import { hurtIn, stopHits, termHits } from "./checks.ts";
+
+describe("台の誤検知（T121）", () => {
+  it("けがを打ち消す言い方と、物が倒れた言い方は「緑なのにけが」にしない（作った文）", () => {
+    for (const s of ["家にいます。大きな怪我はありません。", "大丈夫よ。けがもないの。", "停電だけど、怪我はないし家にいるよ。", "家の前の道に木が倒れて、通れないの。", "棚が倒れたけど、無事です。", "痛くはないです。"]) {
+      expect(hurtIn(s), s).toBe(false);
+    }
+    for (const s of ["転んで足が痛いです。", "けがをしました。", "動けないんです。", "母が倒れて動けません。"]) expect(hurtIn(s), s).toBe(true);
+    const ticks: LooseTick[] = [{ step: 1, hour: 8, incidents: [], turns: [turn("p-07", 8, "green", { saying: "家におります。大きな怪我はありません。" })] }];
+    expect(contradictionHits(outcome(ticks))).toEqual([]);
+  });
+
+  it("役の呼び名に付いた敬称（酸素屋さん・ケアマネさん）は敬称つきの名前にしない。作った名前は今までどおり拾う", () => {
+    const ok = ai("persona", { speech: "ケアマネさん、酸素屋さんが来る前にボンベが空になりそうです。" });
+    expect(bannedHits([ok], outcome([]), CTX).filter((h) => h.rule === "personal:敬称つきの名前")).toEqual([]);
+    const bad = ai("persona", { speech: "隣の佐々木さんが来てくれました。" });
+    expect(bannedHits([bad], outcome([]), CTX).some((h) => h.rule.startsWith("personal:"))).toBe(true);
+  });
+});
+
+describe("手の決まりの検査（T121）", () => {
+  const act = (over: Partial<LooseAction>): LooseAction => ({
+    id: "a1",
+    kind: "call_person",
+    person: "p-01",
+    callee: "self",
+    atMinute: 120,
+    minutes: 5,
+    before: { phone: "ok", roadClosed: false, staff: 2, marks: {} },
+    result: { status: "connected", atMinute: 125 },
+    ...over,
+  });
+  it("電話が通話不可・家の電話の不通・通行止の人に打てた手を拾う（決まりを送らない回の比べにも）", () => {
+    const o = outcome([], [
+      act({ before: { phone: "down", roadClosed: false, staff: 2, marks: {} } }),
+      act({ id: "a2", before: { phone: "ok", roadClosed: false, staff: 2, marks: { lineDown: 3 } } }),
+      act({ id: "a3", kind: "visit", callee: null, minutes: 40, before: { phone: "ok", roadClosed: true, staff: 2, marks: {} } }),
+      act({ id: "a4" }),
+    ]);
+    expect(termHits(o).map((h) => h.rule)).toEqual(["ran:通話不可", "ran:通話不可", "ran:通行止"]);
+  });
+  it("決まりを送った回の夜の訪問の所要が夜の足し分より短ければ拾う", () => {
+    const night = { ...planRun("test", 1, CASELOAD, ["heavy_rain"]), night: true };
+    const o = (minutes: number) =>
+      outcome([], [act({ kind: "visit", callee: null, atMinute: 60, minutes })], {}, { plan: night, terms: true });
+    expect(termHits(o(40)).map((h) => h.rule)).toEqual(["dark_minutes"]);
+    expect(termHits(o(60))).toEqual([]);
+  });
+  it("決まりどおりの断り（409 blocked）は失敗した要求に数えない", () => {
+    const o = outcome([], [], {}, { ops: [{ op: "act", status: 409, ok: false, took: 1, error: "blocked" }, { op: "advance", status: 500, ok: false, took: 1, error: "x" }] });
+    expect(stopHits(o).map((h) => `${h.check}:${h.rule}`)).toEqual(["terms:refused:act", "op_failed:advance:500"]);
+  });
+});

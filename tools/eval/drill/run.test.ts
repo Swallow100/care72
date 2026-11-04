@@ -49,6 +49,7 @@ const config = (over: Partial<EvalConfig>): EvalConfig => ({
   md: join(tmp, "md"),
   noise: 0,
   maxUsd: null,
+  terms: true,
   say: () => {},
   ...over,
 });
