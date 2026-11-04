@@ -382,7 +382,11 @@ function parseArgs(argv: string[]): { answers: string; out: string; noAi: boolea
 
 async function main(): Promise<void> {
   const opts = parseArgs(process.argv.slice(2));
-  const respondents = parseAnswers(await readFile(opts.answers, "utf8"));
+  const text = await readFile(opts.answers, "utf8").catch((e: NodeJS.ErrnoException) => {
+    if (e.code === "ENOENT") throw new Error(`${opts.answers} が無い。全部の写しは手元の answers.local.md に貼る（docs/survey/README.md の 2 節）`);
+    throw e;
+  });
+  const respondents = parseAnswers(text);
   const env: AiEnv = { ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY };
 
   let ai: AiOutcome;
