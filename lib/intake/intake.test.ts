@@ -207,7 +207,7 @@ describe("Claude の分け方を差分にする（lib/intake/diff.ts）", () => 
     expect(item).toMatchObject({ state: "filled", current: "要介護2", next: "要介護3", change: { overwrite: true } });
   });
 
-  it("伏せ字が残る値には印。分からない・答えないは空いた欄にだけ", () => {
+  it("戻せない伏せ字が残る値は出さず、捨てた数に（T118）。分からない・答えないは空いた欄にだけ", () => {
     const out: ExtractOutput = {
       ...SATO_OUTPUT,
       items: [{ field: "evacuation.destination1", value: "（町名）集会所" }],
@@ -219,8 +219,9 @@ describe("Claude の分け方を差分にする（lib/intake/diff.ts）", () => 
         { field: "basic.household", status: "declined" },
       ],
     };
-    const items = buildDiff(input, out, restoreIdentity).items;
-    expect(items.find((i) => i.label === "避難先1")?.masked).toBe(true);
+    const { items, dropped } = buildDiff(input, out, restoreIdentity);
+    expect(items.find((i) => i.label === "避難先1")).toBeUndefined();
+    expect(dropped).toBe(1);
     expect(items.filter((i) => i.change?.t === "pending").map((i) => [i.label, i.next])).toEqual([["寝室", "不明"]]);
   });
 
@@ -273,7 +274,7 @@ describe("分ける（lib/intake/extract.ts）", () => {
     expect(p.items.find((i) => i.label === "特記")?.next).toBe("88 歳、独居、認知症で民生委員の〇〇さんが週 2 回来る。");
   });
 
-  it("写真・PDF を読む（T45）: Opus を 1 回、書類は添え物で、本人は仮名化した台帳だけ。写した氏名・電話は伏せ字に戻して差分に", async () => {
+  it("写真・PDF を読む（T45）: Opus を 1 回、書類は添え物で、本人は仮名化した台帳だけ。写した氏名は役割名に、伏せ直した電話は元に戻して差分に（T118）", async () => {
     // 書類から写してしまった氏名・電話（指示に反した返事）の代わり
     const out: ExtractOutput = {
       ...SATO_OUTPUT,
@@ -295,12 +296,12 @@ describe("分ける（lib/intake/extract.ts）", () => {
     expect(JSON.stringify(calls[0].system)).toContain("氏名・住所・電話番号・生年月日");
     // 用途は台帳の入力のまま（記録のモデルは答えたモデル。偽の返事は Sonnet の名前）
     expect(aiCalls()).toMatchObject([{ purpose: "ledger_input", status: "ok", error: null }]);
-    // 返った文の電話は伏せ字（印が付き人が直す）、名前は台帳の役割名から氏名に戻る
+    // 返った文の名前は台帳の役割名に。電話は伏せ直したあと、返事の元の文から元に戻す（伏せた物は全部戻す。T118）
     const c = p.items.find((i) => i.label === "民生委員")!;
-    // 書類から写した部分（備考）は「民生委員 （電話） 週 2 回」。前の部分は今の連絡先の行の言葉
-    expect(c.next).toContain("民生委員 （電話） 週 2 回");
+    // 書類から写した部分（備考）は「民生委員 090-0000-0019 週 2 回」。前の部分は今の連絡先の行の言葉
+    expect(c.next).toContain("民生委員 090-0000-0019 週 2 回");
     expect(c.next).not.toContain("清水 正子 090-0000-0019 週");
-    expect(c.masked).toBe(true);
+    expect(c.masked).toBe(false);
     expect(p.items.map((i) => i.label)).toContain("既往");
     // 決まりは文の分け方と同じ
     expect(INTAKE_READ_SYSTEM).toContain(EXTRACT_RULES);

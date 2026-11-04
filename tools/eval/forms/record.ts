@@ -13,7 +13,7 @@ import { join } from "node:path";
 import type { ClaudeClient, ClaudeRequestOptions } from "../../../lib/claude/client.ts";
 import { MAX_RETRIES } from "../../../lib/claude/client.ts";
 import type { AiCallDone, NewAiCall, UsageStore } from "../../../lib/claude/usage.ts";
-import { warekiText } from "../../../lib/forms/wareki.ts";
+import { birthVariants } from "../shapes.ts";
 import { SEED_PEOPLE } from "../../../seed/people.ts";
 
 type Params = Anthropic.Beta.Messages.MessageCreateParamsNonStreaming;
@@ -63,13 +63,8 @@ export function bannedWords(): Banned[] {
     add("name", p.person.name);
     add("kana", p.person.kana);
     weak(p.person.name);
-    if (p.person.birth_date) {
-      const [y, m, d] = p.person.birth_date.split("-").map(Number);
-      add("birth", p.person.birth_date);
-      add("birth", `${y}/${m}/${d}`);
-      add("birth", `${y}年${m}月${d}日`);
-      add("birth", warekiText(p.person.birth_date));
-    }
+    // 生年月日は西暦・和暦・略記（S17.4.18）・漢数字・和暦の年だけの書き方を全部（tools/eval/shapes.ts。T118）
+    if (p.person.birth_date) for (const v of birthVariants(p.person.birth_date)) add("birth", v);
     const a = p.ledger.basic.address;
     if (a) {
       add("town", a.town);

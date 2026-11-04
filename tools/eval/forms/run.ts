@@ -44,8 +44,8 @@ import { heicBytes, launchRenderer, withExif, type Ratio, type Renderer } from "
 import { cellOfSheet, scoreIntake, scorePaper, scoreRead, type IntakeScore, type Judgement, type PaperScore, type ReadScore } from "./score.ts";
 
 export const REPO_ROOT = resolve(fileURLToPath(new URL("../../../", import.meta.url)));
-/** 入力の作り方の版。変えたら入力を作り直す（置き場の _inputs/<版>） */
-export const GEN_VERSION = "g1";
+/** 入力の作り方の版。変えたら入力を作り直す（置き場の _inputs/<版>）。g2: 頭の行の生年月日を入れ方ごとに略記・漢数字に（T118） */
+export const GEN_VERSION = "g2";
 /** 紙の日付（決まった日。年齢と作成日がこの日で数わる） */
 export const EVAL_TODAY = "2026-11-05";
 const OFFICE = "office-demo";
