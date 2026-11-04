@@ -10,7 +10,7 @@
 // - 色と順位はここで決めない。安否を表（lib/triage）に流すだけ
 // - 画面の言葉: 筋書き → 「想定」、出来事 → 「状況」、刻み → 画面に出さない（「経過 6 時間」）。言葉は lib/drill/labels.ts
 
-import type { DependsOn, DrillScenario, HazardKind, SignalColor, SignalSource, WhereNow } from "../db/types.ts";
+import type { CheckStatus, DependsOn, DrillScenario, HazardKind, SignalColor, SignalSource, WhereNow } from "../db/types.ts";
 import type { SourceId } from "../sources/index.ts";
 import type { CastPick } from "./cast.ts";
 
@@ -53,7 +53,7 @@ export type OutageArea =
 /** 道路・避難所・施設。label は場所の名前を書かない一般の言い方（川沿いの市道・指定避難所） */
 export type Road = { id: string; label: string; open: boolean; person: string | null };
 export type Shelter = { id: string; label: string; state: ShelterState; person: string | null };
-/** depends は台帳の時計の頼り先（透析先など）。休止すると、その人のその頼り先の時計を「未確認」に戻す（lib/drill/director.ts の drillClocks） */
+/** depends は台帳の時計の頼り先（透析先など）。休止すると、その人のその頼り先の時計を「未確認」に戻す（lib/drill/world-clocks.ts の drillClocks） */
 export type Facility = { id: string; label: string; open: boolean; person: string | null; depends: DependsOn | null };
 
 /**
@@ -113,7 +113,83 @@ export type WorldState = {
   story?: string[];
   /** 仮想モード: 世界の部屋（Managed Agents）の session の ID。drills.world_session_id にも写す */
   session?: string | null;
+  // ---------- T90 の準備で足した共有の欄。どれも省略可で、無ければ今までと同じ（drills.world の JSON に入る。migration は要らない） ----------
+  /**
+   * 本人ごとの時計の頼り先の確認の上書き（透析先・配達・冷蔵）。lib/drill/world-clocks.ts の drillClocks が最後に当てる
+   * （施設の休止・栄養剤の持ち出し忘れの書き換えより後。両方あればこちら）。ルールの表の入力の形は変えない
+   */
+  checks?: Record<string, Partial<Record<DependsOn, CheckStatus>>>;
+  /**
+   * 本人の所へ向かっている人（dispatched の一般形）。settleWorld が arrive を過ぎたら arrived にして CLEARED_ON_ARRIVAL の印を消し、
+   * 届く物（ARRIVAL_SUPPLIES）を supplies に書き、職員（role staff）は back を過ぎたら職員の空きを 1 戻す。着いた物も記録として残す
+   */
+  arrivals?: Arrival[];
+  /** 本人の所へ届いた物（台帳の id → 物 → 届いた時刻、発災からの分）。settleWorld が arrivals の到着から書く */
+  supplies?: Record<string, Partial<Record<SupplyKind, number>>>;
+  /** 本人・家族からの頼み事（台帳の id → 頼み事の一覧） */
+  asks?: Record<string, Ask[]>;
+  /** 予定の出来事。lib/drill/schedule.ts の fireScheduled が時刻の来た物を取り出して状況にする */
+  scheduled?: Scheduled[];
+  /** 119 への連絡を勧めた時刻（台帳の id → 発災からの分）。勧めるまでで、自動の 119 はしない */
+  advised?: Record<string, number>;
+  /** 本人役を最後に呼んだ時刻（台帳の id → 発災からの分） */
+  lastCalled?: Record<string, number>;
+  /** 本人役を呼ぶ理由ができた時刻（台帳の id → 発災からの分）。呼べなかった人を次の進めに持ち越す */
+  touched?: Record<string, number>;
+  /** この訓練の AI の呼び出しの数（1 訓練の上限に使う） */
+  counts?: DrillCounts;
 };
+
+/** 向かっている人の役。staff 事業所の職員・nurse 訪問看護・supporter 支援者・family 家族・vendor 業者・transport 移送・power 電源・medicine 薬 */
+export const ARRIVAL_ROLES = ["staff", "nurse", "supporter", "family", "vendor", "transport", "power", "medicine"] as const;
+export type ArrivalRole = (typeof ARRIVAL_ROLES)[number];
+
+/**
+ * 本人の所へ向かっている 1 件。時刻は発災からの分。back は戻る時刻（職員の空きを戻すのは role staff だけ。戻ったら null）。
+ * from は向かうきっかけになった手の番号（a1…）
+ */
+export type Arrival = {
+  person: string;
+  role: ArrivalRole;
+  arrive: number;
+  back: number | null;
+  arrived: boolean;
+  from: string;
+};
+
+/** 届く物の種類 */
+export const SUPPLY_KINDS = ["power", "oxygen", "medicine", "water"] as const;
+export type SupplyKind = (typeof SUPPLY_KINDS)[number];
+
+/** 着いたら届く物（役 → 物）。ほかの役は物を届けない */
+export const ARRIVAL_SUPPLIES: Readonly<Partial<Record<ArrivalRole, SupplyKind>>> = {
+  power: "power",
+  vendor: "oxygen",
+  medicine: "medicine",
+};
+
+/** 頼み事の種類（閉じた一覧） */
+export const ASK_KINDS = ["medicine", "water", "food", "power", "transport", "family_contact", "battery", "toilet", "warmth"] as const;
+export type AskKind = (typeof ASK_KINDS)[number];
+
+/** 頼み事 1 つ。at は頼まれた時刻、done は済んだ時刻（発災からの分。まだなら null） */
+export type Ask = { kind: AskKind; at: number; done: number | null };
+
+/**
+ * 予定の出来事 1 つ。at は起きる時刻（発災からの分）。text は起きたときの画面の 1 行（氏名・町名・施設の名前を書かない）。
+ * by は積んだ所（監督・世界・ケアマネの手）
+ */
+export type Scheduled = {
+  at: number;
+  change: WorldChange;
+  text: string;
+  person?: string;
+  basis?: SourceId;
+  by: "director" | "world" | "action";
+};
+
+/** この訓練の AI の呼び出しの数（監督・本人役・通話の相手・自由に書く手） */
+export type DrillCounts = { director: number; persona: number; call: number; free: number };
 
 /** 世界の履歴に残す文の数 */
 export const STORY_MAX = 24;
@@ -787,9 +863,15 @@ export function clearMarks(
 
 /**
  * 世界を時刻（発災からの分）まで進める。出向いてもらった人が着いたら印を消し、事業所の職員が戻ったら職員の空きを 1 戻す。
- * 同じ時刻で何度呼んでも同じ（刻みでも手でも呼ぶ）
+ * 向かっている人（arrivals、T90 の準備）も同じ動きで、着いたら届く物を supplies に書く。
+ * 同じ時刻で何度呼んでも同じ（刻みでも手でも呼ぶ）。進める物が無ければ同じ世界を返す
  */
 export function settleWorld(world: WorldState, minute: number): WorldState {
+  return settleArrivals(settleDispatched(world, minute), minute);
+}
+
+/** 出向いてもらった人（dispatched、T20） */
+function settleDispatched(world: WorldState, minute: number): WorldState {
   const list = world.dispatched ?? [];
   if (!list.some((d) => (!d.arrived && d.arrive <= minute) || (d.back !== null && d.back <= minute))) return world;
   let w: WorldState = world;
@@ -807,6 +889,39 @@ export function settleWorld(world: WorldState, minute: number): WorldState {
     if (!x.arrived || x.back !== null) rest.push(x);
   }
   return { ...w, dispatched: rest };
+}
+
+/**
+ * 向かっている人（arrivals、T90 の準備）。着いたら印を消し、届く物を supplies に書き（届いた時刻は arrive。前より後なら書き直す）、
+ * 職員（role staff）は戻ったら職員の空きを 1 戻す。dispatched と違い、着いた・戻った物も一覧に残す（採点・本人役が読む）
+ */
+function settleArrivals(world: WorldState, minute: number): WorldState {
+  const list = world.arrivals;
+  if (!list || !list.some((a) => (!a.arrived && a.arrive <= minute) || (a.back !== null && a.back <= minute))) return world;
+  let w: WorldState = world;
+  const next = list.map((a) => {
+    let x = a;
+    if (!x.arrived && x.arrive <= minute) {
+      w = clearMarks(w, x.person, CLEARED_ON_ARRIVAL).world;
+      const kind = ARRIVAL_SUPPLIES[x.role];
+      if (kind) w = supplied(w, x.person, kind, x.arrive);
+      x = { ...x, arrived: true };
+    }
+    if (x.back !== null && x.back <= minute) {
+      if (x.role === "staff") w = { ...w, staff: w.staff + 1 };
+      x = { ...x, back: null };
+    }
+    return x;
+  });
+  return { ...w, arrivals: next };
+}
+
+/** 届いた物を書く（前に届いた時刻より後なら書き直す） */
+function supplied(world: WorldState, person: string, kind: SupplyKind, at: number): WorldState {
+  const own = world.supplies?.[person] ?? {};
+  const prev = own[kind];
+  if (prev !== undefined && prev >= at) return world;
+  return { ...world, supplies: { ...(world.supplies ?? {}), [person]: { ...own, [kind]: at } } };
 }
 
 /** 本人の家の電話の様子（家の電話が不通の印があれば不通。無ければ世界の電話） */
