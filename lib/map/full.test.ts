@@ -10,7 +10,9 @@ import { COLOR_LABELS } from "../labels.ts";
 import { COLOR_TONES } from "../person.ts";
 import { toTriagePerson } from "../triage/from-ledger.ts";
 import { rank } from "../triage/index.ts";
+import { HEAVY_RAIN_TRACK } from "../drill/rain.ts";
 import { demoOverlay } from "./demo.ts";
+import { rainAnchor } from "./drill-rain.ts";
 import { MAP_UI } from "./labels.ts";
 import { mapPins } from "./side.ts";
 import { FULL_ZOOM, JAPAN_BOUNDS, KEY_PAN, keyAction, pinchView, stepZoom, wheelZoom } from "./camera.ts";
@@ -416,7 +418,10 @@ describe("全画面の画面", () => {
   });
 
   it("デモの印（雨雲・震度）は全画面でも消さない", () => {
-    const rain = full(disasterPins, FULL, demoOverlay({ kind: "heavy_rain", level: 4 }));
+    // 雨雲は訓練の筋書きの雨（T103）。参考にした過去の雨の行も全画面で
+    const drill = { track: HEAVY_RAIN_TRACK, hour: 3, anchor: rainAnchor(Object.values(SEED_LOCATIONS)) };
+    const rain = full(disasterPins, FULL, demoOverlay({ kind: "heavy_rain", level: 4, drill }));
+    expect(rain).toContain('data-demo="basis"');
     expect(rain).toContain('data-demo="label"');
     expect(rain).toContain('data-demo="rain"');
     expect(rain).toContain("大雨 レベル 4");

@@ -122,11 +122,12 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
   const voiceOf = (act: string) => (voiceOn ? voiceHref(id, { act }) : null);
   const side = buildSidePane(s.rows, {
     sort,
-    // 仮想モードは架空の街なので、本物の地図に雨雲・震度の絵を重ねない（T79）
+    // 仮想モードは架空の街なので、本物の地図に雨雲・震度の絵を重ねない（T79）。大雨の想定は筋書きの雨を見ている時刻で（T103。
+    // 雨の段は世界の警戒レベルまでなので、被害状況の欄と食い違わない。色と順には使わない）
     disaster: sideDisasterOf(
       s.rows,
       { kind: drillKindOf(s.drill.scenario, s.state.world), alertLevel: s.state.world.alertLevel },
-      { scene: !isVirtual(s.drill.scenario) },
+      { scene: !isVirtual(s.drill.scenario), rain: { scenario: s.drill.scenario, hour: nowHour(s.state) } },
     ),
   });
   const pins = side.pins.map((p) => ({ ...p, href: here() }));

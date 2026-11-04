@@ -5,13 +5,15 @@
 // 発災時: 地図が上（ピンは状態の色と 2 字ほどの状態）、状態ごとの人数、ハザードごとの人数と状態の内訳、避難先、見直し
 
 import { PLAN_TONES, rowLink, type CaseloadRow, type SortKey } from "../caseload.ts";
-import { PLAN_STATUSES, type GeoPoint, type HazardKind, type OfficeKind, type PlanStatus } from "../db/types.ts";
+import { PLAN_STATUSES, type DrillScenario, type GeoPoint, type HazardKind, type OfficeKind, type PlanStatus } from "../db/types.ts";
 import { DISASTER_SCENE, type DisasterState } from "../disaster/state.ts";
+import { rainTrackOf } from "../drill/rain.ts";
 import { BLANK_LABELS, COLOR_LABELS, HAZARD_LABELS, PLAN_STATUS_LABELS, stateLabel } from "../labels.ts";
 import { PLACE_LABELS } from "../signals/labels.ts";
 import { COLOR_TONES, fieldLabelOf, type StateTone } from "../person.ts";
 import { compareResults, type Color, type TriageResult } from "../triage/index.ts";
 import { demoOverlay, type DemoOverlay, type DemoScene } from "./demo.ts";
+import { rainAnchor } from "./drill-rain.ts";
 
 /** 状態の 4 色の並び（至急・要確認・不明・無事） */
 export const COLOR_ORDER: readonly Color[] = ["red", "yellow", "gray", "green"];
@@ -31,12 +33,15 @@ export type SideDisaster = {
  * 雨雲・震度のデモの絵はデモ事業所だけ（T72）: office にデモでない事業所の種類（regular・unaffiliated）を渡すと scene は null
  * （本物の事業所の地図に松山の雨雲と「震度6強」を出さない）。office を渡さないのは訓練の画面で、場面は筋書きの物なので今まで通り。
  * 訓練の仮想モードは scene: false（T79、11/4 の点検の低: 架空の街の出来事なのに本物の松山の地図に雨雲が出た）。ピンと色はそのまま
+ * 雨雲を描くのは訓練だけ（T103 の決め (c)）: rain に想定と見ている時刻を渡すと、筋書きの雨の表（lib/drill/rain.ts。大雨と 10 分版）から
+ * 時刻で動く雨を作る。帯は利用者の位置の範囲の真ん中に置く。担当一覧は rain を渡さない（作り物の雨を描かない。本物の雨雲は T72 の旗）。
+ * 雨は場面の絵だけで、結果の並び・色は rain によらない
  * 平時か、結果の無い行があるときは null（平時の面）
  */
 export function sideDisasterOf(
-  rows: ReadonlyArray<Pick<CaseloadRow, "triage">>,
+  rows: ReadonlyArray<Pick<CaseloadRow, "triage"> & Partial<Pick<CaseloadRow, "location">>>,
   state: Pick<DisasterState, "kind" | "alertLevel">,
-  opts: { office?: OfficeKind; scene?: boolean } = {},
+  opts: { office?: OfficeKind; scene?: boolean; rain?: { scenario: DrillScenario; hour: number } } = {},
 ): SideDisaster | null {
   if (state.kind === "normal") return null;
   const results: TriageResult[] = [];
@@ -45,8 +50,19 @@ export function sideDisasterOf(
     results.push(r.triage);
   }
   const kind = opts.scene !== false && (opts.office === undefined || opts.office === "demo") ? DISASTER_SCENE[state.kind] : null;
+  const track = opts.rain ? rainTrackOf(opts.rain.scenario) : null;
   const scene: DemoScene | null =
-    kind === "heavy_rain" ? { kind: "heavy_rain", level: state.alertLevel } : kind === "earthquake" ? { kind: "earthquake" } : null;
+    kind === "heavy_rain"
+      ? {
+          kind: "heavy_rain",
+          level: state.alertLevel,
+          ...(track && opts.rain
+            ? { drill: { track, hour: opts.rain.hour, anchor: rainAnchor(rows.flatMap((r) => (r.location ? [r.location] : []))) } }
+            : {}),
+        }
+      : kind === "earthquake"
+        ? { kind: "earthquake" }
+        : null;
   return { results: results.sort(compareResults), scene };
 }
 

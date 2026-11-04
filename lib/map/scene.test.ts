@@ -27,16 +27,20 @@ const signals = new Map<string, TriageSignal[]>([
 const situation = { now: at(3.5), disasterAt: at(-2), outageAt: at(0), outageTowns: null };
 const rows = toCaseloadRows(people, clocks, contacts, "2026-11-02", { situation, signals });
 
-const pane = (kind: (typeof DISASTER_KINDS)[number], alertLevel: 3 | 4 | 5 | null = 4) =>
-  buildSidePane(rows, { sort: "tier", disaster: sideDisasterOf(rows, { kind, alertLevel }) });
+const pane = (kind: (typeof DISASTER_KINDS)[number], alertLevel: 3 | 4 | 5 | null = 4, drill = false) =>
+  buildSidePane(rows, {
+    sort: "tier",
+    disaster: sideDisasterOf(rows, { kind, alertLevel }, drill ? { rain: { scenario: "heavy_rain", hour: 3 } } : {}),
+  });
 
 describe("場面の表から地図へ", () => {
-  it("大雨・台風・土砂は大雨の場面（警戒レベルが名前と雨雲に効く）", () => {
+  it("大雨・台風・土砂は大雨の場面（警戒レベルが名前に効き、訓練の雨の段にも効く。平時の担当一覧は雨を描かない）", () => {
     for (const kind of ["heavy_rain", "typhoon", "landslide"] as const) {
       expect(sideDisasterOf(rows, { kind, alertLevel: 4 })?.scene, kind).toEqual({ kind: "heavy_rain", level: 4 });
       const d = pane(kind, 5).demo!;
       expect(d.title, kind).toBe("大雨 レベル 5");
-      expect(d.rain.map((b) => b.strength)).toEqual([1, 2, 3]);
+      expect(d.rain).toEqual([]);
+      expect([...new Set(pane(kind, 5, true).demo!.rain.map((b) => b.strength))].sort()).toEqual([1, 2, 3]);
       expect(pane(kind, null).demo?.title).toBe("大雨");
     }
   });
@@ -64,8 +68,8 @@ describe("場面の表から地図へ", () => {
     expect(html).not.toContain('data-demo="label"');
     expect(html).not.toContain('data-demo="rain"');
     expect(html).not.toContain('data-demo="quake"');
-    // 平時の面の既定の層（浸水・土砂）のまま
-    const rain = renderToStaticMarkup(createElement(SidePane, { data: pane("typhoon") }));
+    // 平時の面の既定の層（浸水・土砂）のまま。台風の訓練の雨にはデモの印
+    const rain = renderToStaticMarkup(createElement(SidePane, { data: pane("typhoon", 4, true) }));
     expect(rain).toContain('data-demo="label"');
   });
 

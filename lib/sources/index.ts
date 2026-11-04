@@ -37,7 +37,7 @@ type SourceFields = {
 /** 引用の長さの上限（字） */
 export const QUOTE_MAX = 15;
 
-/** 登録簿。並びは docs/SOURCES.md の並び（制度 → 機器 → 透析 → 薬 → 認知症 → 血栓 → 記録） */
+/** 登録簿。並びは docs/SOURCES.md の並び（制度 → 機器 → 透析 → 薬 → 認知症 → 血栓 → 記録 → 気象） */
 export const SOURCES = [
   {
     id: "cao-shishin-2021",
@@ -203,6 +203,19 @@ export const SOURCES = [
       "避難所などで医療班が使う共通の診療記録。特記事項（常用薬等）に抗血小板薬・抗凝固薬・糖尿病の薬・ステロイド・抗てんかん薬・透析・在宅酸素の欄、要保護者に支援者のいない要配慮者の欄、メディカル ID の作り方",
     scope: "医療班の要約（T07）の順と欄、骨格の段 7、「支援者なし」",
     quote: { text: "支援者のいない要配慮者等", where: "【要保護者】の欄" },
+    checkedOn: null,
+  },
+  {
+    id: "jma-h30-july-rain-2018",
+    publisher: "気象庁",
+    title: "平成30年7月豪雨（前線及び台風第7号による大雨等）",
+    year: 2018,
+    edition: "災害をもたらした気象事例（平成30年6月28日〜7月8日）",
+    url: "https://www.data.jma.go.jp/obd/stats/data/bosai/report/2018/20180713/20180713.html",
+    summary:
+      "前線と台風第7号の影響で西日本を中心に長い期間続いた大雨のまとめ。四国では期間の雨量が 1,800 mm を超えた所があり、24・48・72 時間の雨量の多さの記録を塗り替えた地点が多かった。愛媛県を含む府県に大雨の特別警報",
+    scope: "訓練の地図の想定の雨（lib/drill/rain.ts）の参考。発災の前後に強い雨が続き、1 日ほどかけて弱まる長さ。形と道筋は架空",
+    note: "頁に各地方の気象台の資料（PDF）へのリンクがある。数字は頁の本文から。雨雲の画像・数値は使っていない",
     checkedOn: null,
   },
 ] as const satisfies ReadonlyArray<SourceFields>;
