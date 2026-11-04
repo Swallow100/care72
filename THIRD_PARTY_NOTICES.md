@@ -561,6 +561,9 @@ lib/jma/fixtures/sample の XML は、防災情報 XML の形に合わせて作�
 | remotion・@remotion/cli（4.0.539） | 動画の編集の枠と書き出し | Remotion License（MIT ではない） |
 | react・react-dom | 動画の画面 | MIT |
 | typescript・@types/react | 型 | Apache-2.0・MIT |
+| @lydell/node-pty（1.1.0）・@xterm/xterm・@xterm/headless（5.5.0）・@xterm/addon-canvas（0.7.0）・@xterm/addon-unicode11（0.8.0） | 端末の録画（R20〜R24）を撮る道具。`video/scripts/term/package.json` だけの依存 | MIT |
+
+動画の音楽は `video/scripts/music/` のコードがこの期間に音を合成して作る（外の音源・サンプルは使わない）。
 
 Remotion License（4.0.539 の LICENSE.md、https://github.com/remotion-dev/remotion/blob/v4.0.539/LICENSE.md）の Free License は、次のどれかに当たる者が無料で使える: 「an individual」「a for-profit organization with up to 3 employees」「a non-profit or not-for-profit organization」「evaluating whether Remotion is a good fit, and are not yet using it in a commercial way」。これに当たらない営利の団体は Company License が要る。許される使い方は動画と画像を作ること（商用を含む）と、自分の用途のための改変。Remotion の改変版を売る・貸す・再許諾することは許されない。著作権の表示は「Copyright © 2026 Remotion」。
 
