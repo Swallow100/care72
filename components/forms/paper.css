@@ -11,8 +11,9 @@
         元の様式のある紙は原本の字の大きさ（T85。松山市は下の .paper.matsuyama、医療要約は medical-paper.css の .kiroku、
         様式 9 は form9-paper.css）。値（欄に書く字）は原本では空欄なので、欄の名前と同じ大きさ。
   書体: BIZ UDPゴシック（UD の書体。行政の文書に使われ、刷って読み違えにくい）。画面の書体とは分けて固定する。
-        元の様式で明朝の字は BIZ UDP明朝（.mc。T85）。原本の書体（游明朝・MS 明朝・游ゴシック・MS ゴシック・MS P ゴシック・
-        BIZ UDゴシック・メイリオ UI）は配信に入れられない・幅が違うので、明朝は BIZ UDP明朝、ゴシックは BIZ UDPゴシック（どちらも OFL）に置き換えた。
+        元の様式のある紙は原本の書体（T85）: 原本が BIZ UDゴシック（松山市の本文、かなが等幅）・BIZ UDPゴシックの字はその書体のまま（OFL）。
+        ほかの原本の書体（游明朝・MS 明朝・游ゴシック・MS ゴシック・MS P ゴシック・メイリオ UI）は配信に入れられないので、
+        明朝は BIZ UDP明朝（.mc）、ゴシックは BIZ UDPゴシック（どちらも OFL）に置き換えた。
         置き換えたことは紙には出さない（照合の表 docs/progress/t47.md に書く）。
   禁則: 行頭の句読点・閉じ括弧を避ける（line-break: strict）。語の途中では割らない（word-break: normal。anywhere は使わない）。
   罫線: 表（欄の格子）だけ。黒の細線（1px = 0.75pt。0.5pt は Chrome の印刷で線の太さが揃わない）、外枠と大事な欄は太線。
@@ -62,6 +63,8 @@
   /* 書体（app/layout.tsx の next/font の変数。無いとき〔テストの頁〕は端末の同じ書体） */
   --font-gothic: var(--font-biz-ud, "BIZ UDPGothic"), "BIZ UDPGothic", "BIZ UDPゴシック", sans-serif;
   --font-mincho: var(--font-biz-mincho, "BIZ UDPMincho"), "BIZ UDPMincho", "BIZ UDP明朝", serif;
+  /* かなが等幅の BIZ UDゴシック（松山市の本文。原本のまま） */
+  --font-ud-gothic: var(--font-biz-ud-gothic, "BIZ UDGothic"), "BIZ UDGothic", "BIZ UDゴシック", sans-serif;
 
   page: paper;
   position: relative;
@@ -428,6 +431,8 @@
 /* ---- 松山市の様式の字と余白（T85） ----
   原本（市の PDF R8.9.10keikaku.pdf）の字の大きさ（pt）と余白（mm）。値は lib/forms/form-audit.ts の MATSUYAMA_AUDIT.paper と同じで、
   lib/forms/print-pages.test.ts が印刷の頁で書体・大きさ・太さ・下線を照らす。
+  書体は原本の本文の BIZ UDゴシック（かなが等幅）。原本で游ゴシックの様式の版・番号の【　】と、BIZ UDPゴシックの避難のタイミングの選択肢は
+  BIZ UDPゴシック、游明朝の字は BIZ UDP明朝（.mc）。欄の名前・注は原本どおり黒（ケア72 の段の頭・未確認・値の添えは灰色のまま）。
   地は 9.84pt（欄の名前・選択肢の多く）、段の名前と大きい欄の名前は 10.68pt、注は 8.04〜10.68pt。
   余白は 左 20.6mm（綴じ代）・右 15.6mm・下 15.8mm、上は 1 頁 9mm（様式の版の行）・2 頁 15.8mm。 */
 .paper.matsuyama {
@@ -443,6 +448,16 @@
 }
 .paper.matsuyama[data-page="1"] {
   --m-top: 9mm;
+}
+.paper.matsuyama {
+  font-family: var(--font-ud-gothic);
+}
+.paper.matsuyama :is([data-tx="version"], [data-field="head.number"], [data-field="risk.timing"] .ch) {
+  font-family: var(--font-gothic);
+}
+/* 欄の名前・段の注・地域の支援者の欄の名前は原本どおり黒 */
+.paper.matsuyama :is(.f-l, .blk-h .note) {
+  color: #000;
 }
 .paper.matsuyama .top {
   font-size: var(--fs-body);
@@ -513,14 +528,21 @@
 }
 .paper.matsuyama .small-note {
   font-size: var(--fs-h);
+  /* 原本の注の行送り（10.68pt の字で 13pt ごと） */
+  line-height: 1.22;
 }
 /* 特記事項の中の段の頭（ケア72 の言葉。原本は 1 つの書き込みの欄） */
 .paper.matsuyama .part > .lead {
   font-size: 8.88pt;
 }
-/* 市受付印の枠は注の字が大きくなっても縮めない */
+/* 市受付印の枠は様式のとおり横長（55.6×7.4mm、左上に「市受付印」）で、注の下の行の右 */
 .paper.matsuyama .stamp {
   flex: none;
+  width: 55.6mm;
+  height: 7.4mm;
+  padding: 0.4mm 0.8mm;
+  line-height: 1.2;
+  color: #000;
 }
 /* 本人・代理人の署名の空き。原本は 1 行（約 4.5mm）で、ケア72 は欄の名前の下に 6mm（2 頁に収める） */
 .paper.matsuyama [data-block="sign"] .hand {

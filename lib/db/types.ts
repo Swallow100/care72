@@ -888,6 +888,8 @@ export type FormMappingRow = {
   checked_at: string | null;
   version: number;
   updated_at: string;
+  /** 様式の頁の画像（T86、migration 0026）。R2 に置いた頁の数と大きさの JSON。無ければ null（lib/forms/page-images.ts） */
+  page_images: string | null;
 };
 
 // ---------- 受け持ち（T23） ----------

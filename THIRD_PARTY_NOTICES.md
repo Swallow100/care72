@@ -514,13 +514,14 @@ MIT・Apache-2.0 のほかに入っている物:
 
 ## 書体
 
-画面の日本語は端末の書体（Hiragino Sans・Yu Gothic UI・Meiryo）で、配信に入れない。次の 3 つは next/font/google が build のときに Google Fonts から取り込み、配信の静的ファイルとして配る。動画（video/）は書き出しのときに Google Fonts の CSS から Inter と BIZ UDPGothic を読む。
+画面の日本語は端末の書体（Hiragino Sans・Yu Gothic UI・Meiryo）で、配信に入れない。次の 4 つは next/font/google が build のときに Google Fonts から取り込み、配信の静的ファイルとして配る。動画（video/）は書き出しのときに Google Fonts の CSS から Inter と BIZ UDPGothic を読む。
 
 | 書体 | 使う所 | ライセンス | 著作権の表示（Google Fonts の OFL.txt のまま） |
 | --- | --- | --- | --- |
 | Inter | 画面の英数字（数字を等幅にして表の縦を揃える） | SIL Open Font License 1.1 | Copyright 2020 The Inter Project Authors (https://github.com/rsms/inter) |
 | BIZ UDPGothic | 本人・家族のスマホ、本人の 1 枚、書類の紙面 | SIL Open Font License 1.1 | Copyright 2022 The BIZ UDGothic Project Authors (https://github.com/googlefonts/morisawa-biz-ud-mincho) |
-| BIZ UDPMincho | 書類の紙面で、元の様式が明朝の字（計画書の題・同意の問い・注など） | SIL Open Font License 1.1 | Copyright 2022 The BIZ UDMincho Project Authors (https://github.com/googlefonts/morisawa-biz-ud-mincho) |
+| BIZ UDGothic | 書類の紙面で、松山市の計画書の本文（原本の書体のまま。かなが等幅） | SIL Open Font License 1.1 | Copyright 2022 The BIZ UDGothic Project Authors (https://github.com/googlefonts/morisawa-biz-ud-mincho) |
+| BIZ UDPMincho | 書類の紙面で、元の様式が明朝の字（計画書の題・同意の問い・注など）と、明朝の様式の上に台帳の値を置く紙の字 | SIL Open Font License 1.1 | Copyright 2022 The BIZ UDMincho Project Authors (https://github.com/googlefonts/morisawa-biz-ud-mincho) |
 
 SIL Open Font License 1.1 の全文はこのファイルの末尾。
 
@@ -565,7 +566,7 @@ Remotion License（4.0.539 の LICENSE.md、https://github.com/remotion-dev/remo
 
 ## SIL Open Font License 1.1
 
-Inter・BIZ UDPGothic・BIZ UDPMincho に掛かる許諾の全文（https://openfontlicense.org）。
+Inter・BIZ UDPGothic・BIZ UDGothic・BIZ UDPMincho に掛かる許諾の全文（https://openfontlicense.org）。
 
 ```text
 This license is copied below, and is also available with a FAQ at:

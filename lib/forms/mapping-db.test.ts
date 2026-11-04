@@ -65,7 +65,7 @@ describe("役の壁", () => {
 describe("保存と再利用", () => {
   it("読んだ対応表は下書きで入り、同じ写真・PDF は同じ対応表を返す（読み直さない）", async () => {
     expect(await read()).toEqual({ id: "fm-1", reused: false });
-    expect(await findMappingByHash(db, "office-demo", HASH)).toEqual({ id: "fm-1", status: "draft" });
+    expect(await findMappingByHash(db, "office-demo", HASH)).toEqual({ id: "fm-1", status: "draft", page_images: null });
     // 同じ物をもう一度（同時に読んだときも）: 足さずに前の id
     expect(await read({ id: "fm-2" })).toEqual({ id: "fm-1", reused: true });
     expect(sqlite.prepare("SELECT COUNT(*) AS n FROM form_mappings").get()).toEqual({ n: 1 });

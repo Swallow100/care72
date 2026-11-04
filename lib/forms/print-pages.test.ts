@@ -1,7 +1,7 @@
 // 紙面の印刷（T36）: 頁数・印刷で画面の帯が消える・禁則・空欄の「未確認」・頁の下の端・?print=1。
 // 頁数は headless Chrome の印刷（printToPDF、CSS の @page）で PDF を作って数える。Chrome・Edge か BIZ UDPゴシックが無ければ飛ばす。
 // 元の様式のある紙（松山市・医療要約・様式 9）の頁数・字（書体・大きさ・太さ・下線）・余白は照合の表（lib/forms/form-audit.ts の paper）と照らす（T85）。
-// 字のテストは BIZ UDP明朝も要る（Windows の BIZ UDP明朝 Medium。無ければ飛ばす）。
+// 字のテストは BIZ UDP明朝と BIZ UDゴシックも要る（Windows に入っている。無ければ飛ばす）。
 // サーバーも D1 も使わない（lib/forms/print-harness.ts）。本物の画面の書体での頁数は tools/print/samples.ts --count（docs/progress/t36.md）。
 
 import { createElement, type ReactElement } from "react";
@@ -27,7 +27,7 @@ import { checkReadResult } from "./mapping.ts";
 import { buildMatsuyamaSheet } from "./matsuyama.ts";
 import { buildMedicalSummary, buildOwnSheetMedical } from "./medical-summary.ts";
 import { buildOwnSheet } from "./own-sheet.ts";
-import { FONT_PROBE, MINCHO_PROBE, PAPER_CSS_FILES, paperCss, paperPage, readRepoFile, seedRows } from "./print-harness.ts";
+import { FONT_PROBE, MINCHO_PROBE, UD_GOTHIC_PROBE, PAPER_CSS_FILES, paperCss, paperPage, readRepoFile, seedRows } from "./print-harness.ts";
 import { autoPrint, type PrintWindow } from "./print.ts";
 import { warekiText } from "./wareki.ts";
 
@@ -264,6 +264,7 @@ describe.skipIf(!chrome)("印刷（headless Chrome の printToPDF）", () => {
   let page: Page;
   let fontOk = false;
   let minchoOk = false;
+  let udGothicOk = false;
   const css = paperCss();
 
   beforeAll(async () => {
@@ -272,6 +273,7 @@ describe.skipIf(!chrome)("印刷（headless Chrome の printToPDF）", () => {
     await page.setContent(paperPage("<p>書体</p>", css));
     fontOk = (await page.evaluate(FONT_PROBE)) === true;
     minchoOk = (await page.evaluate(MINCHO_PROBE)) === true;
+    udGothicOk = (await page.evaluate(UD_GOTHIC_PROBE)) === true;
   }, 60_000);
 
   afterAll(async () => {
@@ -389,7 +391,7 @@ describe.skipIf(!chrome)("印刷（headless Chrome の printToPDF）", () => {
     }
   }, 60_000);
 
-  it("紙の字: 禁則（strict）・字間なし・地の書体は BIZ UDPゴシック・様式の無い文書の本文 10.5pt（松山市の様式は原本の 9.84pt）・未確認は小さく灰色", async (ctx) => {
+  it("紙の字: 禁則（strict）・字間なし・地の書体は BIZ UDPゴシック（松山市は原本の BIZ UDゴシック）・様式の無い文書の本文 10.5pt（松山市の様式は原本の 9.84pt）・未確認は小さく灰色", async (ctx) => {
     if (!fontOk) ctx.skip();
     await page.setContent(paperPage(matsuyamaHtml("p-01") + qrHtml("p-01"), css), { waitUntil: "load" });
     await page.emulateMediaType("print");
@@ -404,6 +406,7 @@ describe.skipIf(!chrome)("印刷（headless Chrome の printToPDF）", () => {
         overflowWrap: form.overflowWrap,
         letterSpacing: form.letterSpacing,
         font: form.fontFamily,
+        docFont: doc.fontFamily,
         formSize: form.fontSize,
         docSize: doc.fontSize,
         uncSize: unc.fontSize,
@@ -416,7 +419,9 @@ describe.skipIf(!chrome)("印刷（headless Chrome の printToPDF）", () => {
     expect(s.wordBreak).toBe("normal");
     expect(s.overflowWrap).toBe("normal");
     expect(s.letterSpacing).toBe("normal");
-    expect(s.font).toContain("BIZ UDPGothic");
+    // 松山市の地は原本の本文と同じ BIZ UDゴシック（かなが等幅。11/4 15:4x 確定）、様式の無い文書は BIZ UDPゴシック
+    expect(s.font).toContain("BIZ UDGothic");
+    expect(s.docFont).toContain("BIZ UDPGothic");
     // 9.84pt = 13.12px、10.5pt = 14px
     expect(Number.parseFloat(s.formSize)).toBeCloseTo(13.12, 1);
     expect(Number.parseFloat(s.docSize)).toBeCloseTo(14, 1);
@@ -426,7 +431,9 @@ describe.skipIf(!chrome)("印刷（headless Chrome の printToPDF）", () => {
   }, 60_000);
 
   /** 照合の表（lib/forms/form-audit.ts）の字の行を、紙面の中の選び方・書体・大きさ（px）・太さ・下線に */
-  type TypeCheck = { form: string; label: string; sel: string; px: number; face: PaperFace; bold: boolean | null; underline: boolean | null };
+  type TypeCheck = { form: string; label: string; sel: string; px: number; face: PaperFace; bold: boolean | null; underline: boolean | null; black: boolean };
+  /** 書体の名前（CSS の指定・端末の書体）が紙の書体か */
+  const FACE_RE: Record<PaperFace, RegExp> = { mincho: /UDPMincho/, gothic: /UDPGothic/, "ud-gothic": /UDGothic/ };
   const typeChecks: TypeCheck[] = FORM_AUDITS.flatMap((a) => [
     ...a.paper.type
       .filter((t) => t.sel)
@@ -437,15 +444,16 @@ describe.skipIf(!chrome)("印刷（headless Chrome の printToPDF）", () => {
         px: (t.pt * 96) / 72,
         face: faceOf(t.original),
         bold: t.bold === true,
+        black: true,
         underline: t.underline === true,
       })),
     ...(a.paper.extra ?? [])
       .filter((e) => e.sel)
-      .map((e) => ({ form: a.id, label: e.where, sel: e.sel!, px: (e.pt * 96) / 72, face: e.face, bold: null, underline: null })),
+      .map((e) => ({ form: a.id, label: e.where, sel: e.sel!, px: (e.pt * 96) / 72, face: e.face, bold: null, underline: null, black: false })),
   ]);
 
   it("字の書体・大きさ・太さ・下線は元の様式のとおり（照合の表の paper.type。T85）: 松山市・医療要約・様式 9", async (ctx) => {
-    if (!fontOk || !minchoOk) ctx.skip();
+    if (!fontOk || !minchoOk || !udGothicOk) ctx.skip();
     // 計画書・医療要約（山田 ハナ）と様式 9（報告の下書き付き）を 1 枚の頁に
     const body = [matsuyamaHtml("p-01"), medicalHtml("p-01")!, form9Html("【安否報告（下書き）】\n事業所：デモ事業所")].join("");
     await page.setContent(paperPage(body, css), { waitUntil: "load" });
@@ -460,6 +468,7 @@ describe.skipIf(!chrome)("印刷（headless Chrome の printToPDF）", () => {
             px: Number.parseFloat(st.fontSize),
             weight: Number(st.fontWeight),
             underline: st.textDecorationLine.includes("underline"),
+            color: st.color,
             text: (el.textContent ?? "").slice(0, 12),
           };
         });
@@ -476,7 +485,7 @@ describe.skipIf(!chrome)("印刷（headless Chrome の printToPDF）", () => {
       if (!nodeId) continue;
       const { fonts } = await cdp.send("CSS.getPlatformFontsForNode", { nodeId });
       const main = [...fonts].sort((a, b) => b.glyphCount - a.glyphCount)[0];
-      if (main && !(c.face === "mincho" ? /Mincho/ : /Gothic/).test(main.familyName)) drawn.push(`${c.form} ${c.label}: ${main.familyName}`);
+      if (main && !FACE_RE[c.face].test(main.familyName)) drawn.push(`${c.form} ${c.label}: ${main.familyName}`);
     }
     await cdp.detach();
     await page.emulateMediaType(undefined);
@@ -485,11 +494,12 @@ describe.skipIf(!chrome)("印刷（headless Chrome の printToPDF）", () => {
       const els = got[i];
       if (els.length === 0) bad.push(`${c.form} ${c.label}: 紙面に無い（${c.sel}）`);
       for (const e of els) {
-        const want = c.face === "mincho" ? /Mincho/ : /Gothic/;
-        if (!want.test(e.family)) bad.push(`${c.form} ${c.label}「${e.text}」: 書体 ${e.family}`);
+        if (!FACE_RE[c.face].test(e.family)) bad.push(`${c.form} ${c.label}「${e.text}」: 書体 ${e.family}`);
         if (Math.abs(e.px - c.px) > 0.05) bad.push(`${c.form} ${c.label}「${e.text}」: ${e.px}px（原本 ${c.px.toFixed(2)}px）`);
         if (c.bold !== null && e.weight >= 600 !== c.bold) bad.push(`${c.form} ${c.label}「${e.text}」: 太さ ${e.weight}`);
         if (c.underline !== null && e.underline !== c.underline) bad.push(`${c.form} ${c.label}「${e.text}」: 下線 ${e.underline}`);
+        // 原本に刷ってある字（欄の名前・注・選択肢）は原本どおり黒（11/4 15:4x 確定。前は欄の名前を灰色にしていた）
+        if (c.black && e.color !== "rgb(0, 0, 0)") bad.push(`${c.form} ${c.label}「${e.text}」: 色 ${e.color}`);
       }
     });
     expect(bad).toEqual([]);

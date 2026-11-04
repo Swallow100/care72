@@ -56,16 +56,18 @@ export type FormAudit = {
 // ---------- 字と余白（T85） ----------
 // 2026-11-04 に元の様式を読み直した（リポジトリの外。PDF は pdf.js で字の塊ごとに書体の名前・大きさ・位置、塗りと線で太くした字、
 // 罫線の位置。Excel はセルの書体・大きさ・太字、列幅、余白、印刷の倍率）。PDF・Excel・抜き出した字はリポジトリに入れない。
-// 原本の書体（游明朝・MS 明朝・游ゴシック・MS ゴシック・メイリオ UI）は配信に入れられないので、Web で配れる OFL の 2 つに置き換える:
+// 原本が BIZ UDゴシック・BIZ UDPゴシック（OFL で配れる）の字はその書体のまま（松山市の本文は BIZ UDゴシック。かなが等幅。11/4 15:4x 確定）。
+// ほかの原本の書体（游明朝・MS 明朝・游ゴシック・MS ゴシック・MS P ゴシック・メイリオ UI）は配信に入れられないので置き換える:
 // 明朝 → BIZ UDP明朝、ゴシック → BIZ UDPゴシック。大きさ（pt）は紙の上の大きさ（Excel は印刷の倍率を掛けた後）をそのまま使う。
 
-/** ケア72 の紙の書体（components/forms/paper.css の --font-gothic・--font-mincho） */
-export type PaperFace = "gothic" | "mincho";
-export const PAPER_FACE_NAMES: Record<PaperFace, string> = { gothic: "BIZ UDPゴシック", mincho: "BIZ UDP明朝" };
+/** ケア72 の紙の書体（components/forms/paper.css の --font-gothic・--font-ud-gothic・--font-mincho） */
+export type PaperFace = "gothic" | "ud-gothic" | "mincho";
+export const PAPER_FACE_NAMES: Record<PaperFace, string> = { gothic: "BIZ UDPゴシック", "ud-gothic": "BIZ UDゴシック", mincho: "BIZ UDP明朝" };
 
-/** 原本の書体の名前から、置き換える書体（明朝は明朝、ほかはゴシック） */
+/** 原本の書体の名前から、紙の書体（BIZ UDゴシックはそのまま、明朝は BIZ UDP明朝、ほかは BIZ UDPゴシック） */
 export function faceOf(original: string): PaperFace {
-  return /mincho|明朝/i.test(original) ? "mincho" : "gothic";
+  if (/mincho|明朝/i.test(original)) return "mincho";
+  return /^BIZ[- ]?UDGothic/i.test(original) ? "ud-gothic" : "gothic";
 }
 
 export type PaperType = {
@@ -230,11 +232,11 @@ export const MATSUYAMA_AUDIT: FormAudit = {
       { role: "地域の支援者の行の「TEL(携帯)」", original: "YuMincho-Regular", pt: 7.56, note: "（携帯）は 5.52pt。ケア72 は値（電話番号）を書くので刷らない" },
     ],
     extra: [
-      { where: "値（原本は空欄。欄の名前と同じ大きさ）", pt: 9.84, face: "gothic", sel: '[data-field="target.phone"] > .f-v' },
-      { where: "値（名前の大きい欄）", pt: 10.68, face: "gothic", sel: '[data-field="target.name"] > .f-v' },
-      { where: "フリガナの値", pt: 8.88, face: "gothic", sel: '[data-field="target.kana"] > .f-v' },
-      { where: "特記事項の中の段の頭（医療・本人の言葉・夜間支援・その他。様式の欄の名前ではない）", pt: 8.88, face: "gothic", sel: ".part > .lead" },
-      { where: "頁の下の端の文書名と頁番号", pt: 8, face: "gothic", sel: ".paper-foot" },
+      { where: "値（原本は空欄。欄の名前と同じ大きさ・本文の書体）", pt: 9.84, face: "ud-gothic", sel: '[data-field="target.phone"] > .f-v' },
+      { where: "値（名前の大きい欄）", pt: 10.68, face: "ud-gothic", sel: '[data-field="target.name"] > .f-v' },
+      { where: "フリガナの値", pt: 8.88, face: "ud-gothic", sel: '[data-field="target.kana"] > .f-v' },
+      { where: "特記事項の中の段の頭（医療・本人の言葉・夜間支援・その他。様式の欄の名前ではない）", pt: 8.88, face: "ud-gothic", sel: ".part > .lead" },
+      { where: "頁の下の端の文書名と頁番号", pt: 8, face: "ud-gothic", sel: ".paper-foot" },
     ],
   },
   rows: [
@@ -381,7 +383,7 @@ export const MATSUYAMA_AUDIT: FormAudit = {
     {
       where: "字の書体・大きさと余白（T85）",
       result: "直した",
-      note: "前はケア72 の決まり（全部 BIZ UDPゴシック、値 10pt・欄の名前 8.5pt・題 13pt、余白 上 12・下 14・左右 13mm）。原本の書体（游明朝は BIZ UDP明朝、BIZ UDゴシック・游ゴシックは BIZ UDPゴシックに置き換え）・大きさ・余白に",
+      note: "前はケア72 の決まり（全部 BIZ UDPゴシック、値 10pt・欄の名前 8.5pt・題 13pt、余白 上 12・下 14・左右 13mm）。原本の書体（本文の BIZ UDゴシックはそのまま。游明朝は BIZ UDP明朝、游ゴシックは BIZ UDPゴシックに置き換え）・大きさ・余白と、欄の名前・注の色（前は灰色、原本どおり黒。11/4 15:4x 確定）に",
     },
     {
       where: "近親者の段の注の太さと下線、2 頁の下の注 1 つ目の下線（T85）",
@@ -562,7 +564,7 @@ export const MEDICAL_AUDIT: FormAudit = {
     {
       where: "字の書体・大きさと余白（T85）",
       result: "直した",
-      note: "前はケア72 の決まり（値 10pt・欄の名前 8.5pt・題 13pt、余白 上 12・下 14・左右 13mm）。原本の大きさ（欄の名前 11.04pt・題 20.04pt ほか）と余白に。書体は MS P ゴシック・MS ゴシックを BIZ UDPゴシックに置き換え（原本の明朝は刷らない（別添４）だけ）",
+      note: "前はケア72 の決まり（値 10pt・欄の名前 8.5pt・題 13pt、余白 上 12・下 14・左右 13mm）。原本の大きさ（欄の名前 11.04pt・題 20.04pt ほか）と余白と、欄の名前の色（前は灰色、原本どおり黒）に。書体は MS P ゴシック・MS ゴシックを BIZ UDPゴシックに置き換え（原本の明朝は刷らない（別添４）だけ）",
     },
     {
       where: "医療の線引き: 内容を変えずに並べ替えるだけ",
@@ -678,7 +680,7 @@ function paperMarkdown(p: PaperSpec): string[] {
   });
   const used = usedSides.length > 0 ? `。ケア72 の紙は ${usedSides.join("・")}（${p.marginNote ?? ""}）` : "";
   out.push(
-    `字と余白（T85）: A4 ${p.orientation} ${p.pages} 頁。余白 ${marginText(p.margins)}${used}。${p.scale ? `Excel の印刷の倍率 ${p.scale}%（大きさは倍率を掛けた紙の上の pt）。` : ""}書体は明朝を ${PAPER_FACE_NAMES.mincho}、ゴシックを ${PAPER_FACE_NAMES.gothic} に置き換えた`,
+    `字と余白（T85）: A4 ${p.orientation} ${p.pages} 頁。余白 ${marginText(p.margins)}${used}。${p.scale ? `Excel の印刷の倍率 ${p.scale}%（大きさは倍率を掛けた紙の上の pt）。` : ""}書体は BIZ UD の字はそのまま、ほかの明朝を ${PAPER_FACE_NAMES.mincho}、ほかのゴシックを ${PAPER_FACE_NAMES.gothic} に置き換えた`,
     "",
     "| 字の役 | 原本の書体 | 大きさ | 太さ・下線 | 紙の書体 | 注 |",
     "| --- | --- | --- | --- | --- | --- |",

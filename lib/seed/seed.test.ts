@@ -487,7 +487,7 @@ describe("最初に戻す（デモ事業所だけ）", () => {
       ...Object.fromEntries(judgeKeys.map((k) => [k, "audio/webm"])),
     });
     const r = await resetDemoOffice(d1FromSqlite(db), bucket, NOW);
-    expect(r).toEqual({ recording: true, removedRecordings: 3 });
+    expect(r).toEqual({ recording: true, removedRecordings: 3, removedFormPages: 0 });
     expect([...objects.keys()].sort()).toEqual([partnerKey, SEED_RECORDING_KEYS.m4a].sort());
 
     const sig = db.prepare("SELECT recording_key AS k FROM signals WHERE id = ?").get(SEED_RED_SIGNAL_ID);
@@ -578,7 +578,7 @@ describe("毎日 4 時（cron）", () => {
     expect(await scheduledReset(env, "*/5 * * * *", at)).toBeNull();
     expect(count(db, "SELECT count(*) AS n FROM drills WHERE office_id = 'office-demo'")).toBe(3);
 
-    expect(await scheduledReset(env, DAILY_RESET_CRON, at)).toEqual({ recording: false, removedRecordings: 0 });
+    expect(await scheduledReset(env, DAILY_RESET_CRON, at)).toEqual({ recording: false, removedRecordings: 0, removedFormPages: 0 });
     expect(partnerDump()).toEqual(before);
     const s = await loadDisasterState(d1FromSqlite(db), DEMO.id);
     expect(s.startedAt).toBe("2026-11-05T15:00:00.000Z");

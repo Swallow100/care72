@@ -131,7 +131,7 @@
   原本（厚労省の通知の別添４の 1 頁）の字の大きさ（pt）と余白（mm）。値は lib/forms/form-audit.ts の MEDICAL_AUDIT.paper と同じで、
   lib/forms/print-pages.test.ts が印刷の頁で書体・大きさ・太さを照らす。原本は全部ゴシック（MS P ゴシック → BIZ UDPゴシック）。
   欄の名前は 11.04pt、（カタカナ）・性別・状態・避難先・要保護者・傷病名と災害時要配慮者の □ は 10.56pt、連絡先の □ と 2 頁の欄の名前は 9pt、
-  注と 2 頁の □ は 8.04pt、題は 20.04pt。値は原本では空欄なので欄の名前と同じ大きさ。
+  注と 2 頁の □ は 8.04pt、題は 20.04pt。値は原本では空欄なので欄の名前と同じ大きさ。欄の名前は原本どおり黒。
   余白は 上 7.4mm・左 20.3mm・右 16.9mm。下は原本 6.7mm だが、頁の下の端（文書名と頁番号）と重ならないよう 11mm。 */
 .paper.med-paper.kiroku {
   --m-top: 7.4mm;
@@ -152,6 +152,10 @@
 }
 .paper.med-paper.kiroku .top-col {
   font-size: 9pt;
+}
+/* 欄の名前と注は原本どおり黒（ケア72 の「医師記入」・未確認・値の添えは灰色のまま） */
+.paper.med-paper.kiroku .f-l {
+  color: #000;
 }
 .paper.med-paper.kiroku [data-field] {
   font-size: var(--fs-body);

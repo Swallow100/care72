@@ -38,6 +38,7 @@ import {
   type SeedRecording,
 } from "./demo.ts";
 import { seedDrill } from "./drill.ts";
+import { pageImagePrefix } from "../forms/page-images.ts";
 
 type Table = (typeof CLEAR_ORDER)[number];
 
@@ -178,11 +179,24 @@ export async function findSeedRecording(bucket: SeedBucket): Promise<SeedRecordi
 
 /** デモ事業所の録音のうち、種でない物（審査員が本人のスマホで録った物など）を消す。消した数 */
 export async function clearDemoRecordings(bucket: SeedBucket): Promise<number> {
+  return clearPrefix(bucket, DEMO_RECORDING_PREFIX, SEED_KEYS);
+}
+
+/**
+ * デモ事業所の様式の頁の画像（T86。lib/forms/page-images.ts）を消す。対応表（form_mappings）は戻しで消えるので、
+ * 画像だけ R2 に残らないように。消した数
+ */
+export async function clearDemoFormPages(bucket: SeedBucket): Promise<number> {
+  return clearPrefix(bucket, pageImagePrefix(DEMO_OFFICE_ID));
+}
+
+/** R2 の頭の同じ物を消す（keep にある物は残す）。消した数 */
+async function clearPrefix(bucket: SeedBucket, prefix: string, keep: ReadonlySet<string> = new Set()): Promise<number> {
   let removed = 0;
   let cursor: string | undefined;
   for (;;) {
-    const page = await bucket.list({ prefix: DEMO_RECORDING_PREFIX, ...(cursor ? { cursor } : {}) });
-    const keys = page.objects.map((o) => o.key).filter((k) => k.startsWith(DEMO_RECORDING_PREFIX) && !SEED_KEYS.has(k));
+    const page = await bucket.list({ prefix, ...(cursor ? { cursor } : {}) });
+    const keys = page.objects.map((o) => o.key).filter((k) => k.startsWith(prefix) && !keep.has(k));
     if (keys.length > 0) {
       await bucket.delete(keys);
       removed += keys.length;
@@ -195,7 +209,7 @@ export async function clearDemoRecordings(bucket: SeedBucket): Promise<number> {
 
 // ---------- 全部 ----------
 
-export type ResetResult = { recording: boolean; removedRecordings: number };
+export type ResetResult = { recording: boolean; removedRecordings: number; removedFormPages: number };
 
 /** デモ事業所を種に戻す。now は種の時刻の元（ボタンは押した時刻、毎日 4 時は予定の時刻） */
 export async function resetDemoOffice(db: D1Database, bucket: SeedBucket, now: string): Promise<ResetResult> {
@@ -203,5 +217,6 @@ export async function resetDemoOffice(db: D1Database, bucket: SeedBucket, now: s
   await db.batch(demoResetStatements(now, recording).map((s) => db.prepare(s)));
   await seedDrill(db, now);
   const removedRecordings = await clearDemoRecordings(bucket);
-  return { recording: recording !== null, removedRecordings };
+  const removedFormPages = await clearDemoFormPages(bucket);
+  return { recording: recording !== null, removedRecordings, removedFormPages };
 }
