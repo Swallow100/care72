@@ -8,6 +8,10 @@
 export type DialogIconName = "RemoveIcon" | "UnlistIcon" | "RestoreIcon" | "SaveIcon" | "CloseIcon";
 
 export {
+  ArrowDownIcon as MoveDownIcon, // 下へ動かす（様式の欄の位置、T86）
+  ArrowLeftIcon as MoveLeftIcon, // 左へ動かす（様式の欄の位置、T86）
+  ArrowRightIcon as MoveRightIcon, // 右へ動かす（様式の欄の位置、T86）
+  ArrowUpIcon as MoveUpIcon, // 上へ動かす（様式の欄の位置、T86）
   ArrowDownCircleIcon as GoToIcon, // 同じ画面の操作の所へ送る（気象庁の欄の切替 → 切替のボタン、T72）
   ArrowDownTrayIcon as DownloadIcon, // CSV 出力
   ArrowRightEndOnRectangleIcon as LoginIcon, // ログイン（扉に入る矢印。ログアウトと対）

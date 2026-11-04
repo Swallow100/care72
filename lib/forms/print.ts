@@ -7,12 +7,12 @@
 export type PrintWindow = {
   location: { href: string };
   history: { replaceState(data: unknown, unused: string, url: string): void };
-  document: { fonts?: { ready: Promise<unknown> } };
+  document: { fonts?: { ready: Promise<unknown> }; images?: ArrayLike<{ complete: boolean; decode?: () => Promise<void> }> };
   print(): void;
 };
 
 /**
- * URL に print=1 があれば、書体を読み終えてから URL の印を外して印刷の窓を 1 回出す
+ * URL に print=1 があれば、書体と画像を読み終えてから URL の印を外して印刷の窓を 1 回出す
  * （読み終える前に出すと、紙の字が仮の書体になり頁の割れ方も変わる）。
  * 印は窓を出す直前に読み直す（ほかの部品が先に出して印を外していれば出さない。2 回出さない）。
  * 読み直しで何度も出さないよう、出す前に URL から外す。出したかを返す
@@ -20,6 +20,8 @@ export type PrintWindow = {
 export async function autoPrint(win: PrintWindow): Promise<boolean> {
   if (!hasPrintMark(win.location.href)) return false;
   await (win.document.fonts?.ready ?? Promise.resolve());
+  // 画像（元の様式の上の紙の頁の画像。T86）も読み終えてから。読めない画像は待たない
+  await Promise.all(Array.from(win.document.images ?? []).map((img) => (img.complete || !img.decode ? null : img.decode().catch(() => null))));
   if (!hasPrintMark(win.location.href)) return false;
   const url = new URL(win.location.href);
   url.searchParams.delete("print");

@@ -114,11 +114,14 @@ describe("字と余白（T85）", () => {
       createElement(MatsuyamaSheet, { sheet: buildMatsuyamaSheet(seedRows(SEED_PEOPLE[0]), { today: "2026-11-03", officeName: "デモ事業所" }) }),
     );
 
-  it("原本の書体の置き換え: 明朝（游明朝・MS 明朝）は BIZ UDP明朝、ほか（BIZ UDゴシック・游ゴシック・MS P ゴシック・MS ゴシック・メイリオ UI）は BIZ UDPゴシック", () => {
+  it("原本の書体: BIZ UDゴシック（松山市の本文）はそのまま、明朝（游明朝・MS 明朝）は BIZ UDP明朝、ほか（BIZ UDPゴシック・游ゴシック・MS P ゴシック・MS ゴシック・メイリオ UI）は BIZ UDPゴシック", () => {
     expect(faceOf("YuMincho-Regular")).toBe("mincho");
     expect(faceOf("MS-Mincho")).toBe("mincho");
-    for (const g of ["BIZ-UDGothic", "BIZ-UDGothic-Bold", "BIZ-UDPGothic", "YuGothic-Regular", "MS-PGothic", "MS-Gothic", "Meiryo UI"]) expect(faceOf(g), g).toBe("gothic");
-    expect(PAPER_FACE_NAMES).toEqual({ gothic: "BIZ UDPゴシック", mincho: "BIZ UDP明朝" });
+    for (const u of ["BIZ-UDGothic", "BIZ-UDGothic-Bold"]) expect(faceOf(u), u).toBe("ud-gothic");
+    for (const g of ["BIZ-UDPGothic", "YuGothic-Regular", "MS-PGothic", "MS-Gothic", "Meiryo UI"]) expect(faceOf(g), g).toBe("gothic");
+    expect(PAPER_FACE_NAMES).toEqual({ gothic: "BIZ UDPゴシック", "ud-gothic": "BIZ UDゴシック", mincho: "BIZ UDP明朝" });
+    // 松山市の欄の名前・選択肢・段の名前の多くは BIZ UDゴシック（原本のまま）
+    expect(MATSUYAMA_AUDIT.paper.type.filter((t) => t.sel && faceOf(t.original) === "ud-gothic").length).toBeGreaterThan(15);
   });
 
   it("原本で読んだ字の大きさ（松山市は PDF の pt、災害診療記録も PDF、様式 9 はセルの大きさ × 印刷の倍率 73%）", () => {
