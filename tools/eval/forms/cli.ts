@@ -1,7 +1,7 @@
 // 書類の AI の評価の台（T107）。npm run eval:forms
 //
 //   node tools/eval/forms/cli.ts [--real] [--gold] [--paper=all|pdf|png|none] [--forms=komorebi,aozora] [--inputs=text-,photo-p-01]
-//                                [--people=p-01,p-02] [--out=<回の置き場>] [--corpus=<様式の置き場>] [--no-corpus] [--no-progress]
+//                                [--people=p-01,p-02] [--paper-all-forms] [--out=<回の置き場>] [--corpus=<様式の置き場>] [--no-corpus] [--no-progress]
 //
 // - 既定は偽の client（本物の API を呼ばない）。--gold は崩さない偽（台の数え方の確かめ）
 // - --real は本物の API。鍵は環境変数 ANTHROPIC_API_KEY だけを読む（台は鍵のファイルを探さない・読まない。人が node の --env-file で渡す）
@@ -42,6 +42,7 @@ const result = await runEval({
   corpusRoot,
   progressDir: flag("no-progress") ? null : join(REPO_ROOT, "docs", "progress"),
   paper,
+  paperAllForms: flag("paper-all-forms"),
   forms: list("forms"),
   inputs: list("inputs"),
   people: list("people"),

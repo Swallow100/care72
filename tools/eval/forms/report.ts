@@ -136,7 +136,7 @@ export function diffMarkdown(r: RunResult, prev: RunResult | null): string {
   lines.push(`- 回: ${r.run}（${r.mode === "fake" ? `偽の client ${r.fakeStyle}。数は台の確かめ用で AI の力ではない` : "本物の API"}）`);
   lines.push(`- 前の回: ${prev ? prev.run : "なし"}`);
   lines.push(`- 入力の作り方の版: ${r.genVersion}、紙の日付: ${r.today}、Chrome: ${r.renderer ? "あり" : "なし"}`);
-  lines.push(`- 様式の置き場: ${r.corpus.missing ? "なし" : `${r.corpus.files} 件（${r.corpus.cities.length} 市町村）`}`);
+  lines.push(`- 様式の置き場: ${r.corpus.missing ? "なし" : `様式本体 ${r.corpus.files} 件（${r.corpus.cities.length} 市町村）、記載例・手引きなど読まない物 ${r.corpus.excluded} 件`}`);
   lines.push(`- 費用は ${PRICES_AS_OF} 時点の単価の見積もり（ai_calls のトークンから）`);
   lines.push("");
   lines.push("## 全体");
@@ -151,13 +151,13 @@ export function diffMarkdown(r: RunResult, prev: RunResult | null): string {
   lines.push("");
   lines.push("## 様式ごと");
   lines.push("");
-  lines.push("| 様式 | 状態 | 正解の欄 | 当たり | 外れ | 取りこぼし | 読み落とし | 余分 | 位置違い | 紙 当たり | 紙 取りこぼし | 紙 置き間違い | 別紙 |");
-  lines.push("| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |");
+  lines.push("| 様式 | 状態 | 読めた欄 | 項目あり | 正解の欄 | 当たり | 外れ | 取りこぼし | 読み落とし | 余分 | 位置違い | 紙 当たり | 紙 取りこぼし | 紙 置き間違い | 別紙 |");
+  lines.push("| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |");
   for (const f of r.forms) {
     const t = totals(r, { form: f.id });
     const rd = f.read;
     lines.push(
-      `| ${f.id} | ${f.status === "ok" ? "済" : `${f.status === "skipped" ? "飛ばし" : "失敗"}（${f.reason ?? ""}）`} | ${rd?.goldFields ?? "-"} | ${rd ? rd.hit + rd.alt : "-"} | ${rd?.wrong ?? "-"} | ${rd?.missItem ?? "-"} | ${rd?.missField ?? "-"} | ${rd?.extraField ?? "-"} | ${rd?.boxMiss ?? "-"} | ${t.paper.hit}/${t.paper.filled} | ${t.paper.miss} | ${t.paper.wrong + t.paper.extra} | ${t.paper.annexOverflow + t.paper.annexUnplaced} |`,
+      `| ${f.id} | ${f.status === "ok" ? "済" : `${f.status === "skipped" ? "飛ばし" : "失敗"}（${f.reason ?? ""}）`} | ${f.fields ?? "-"} | ${f.mapped ?? "-"} | ${rd?.goldFields ?? "-"} | ${rd ? rd.hit + rd.alt : "-"} | ${rd?.wrong ?? "-"} | ${rd?.missItem ?? "-"} | ${rd?.missField ?? "-"} | ${rd?.extraField ?? "-"} | ${rd?.boxMiss ?? "-"} | ${t.paper.hit}/${t.paper.filled} | ${t.paper.miss} | ${t.paper.wrong + t.paper.extra} | ${t.paper.annexOverflow + t.paper.annexUnplaced} |`,
     );
   }
   lines.push("");

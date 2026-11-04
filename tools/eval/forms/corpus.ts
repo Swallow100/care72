@@ -1,17 +1,38 @@
-// 評価の台（T107）の様式の置き場（リポジトリの外、既定 C:\Users\choco\dev\care72-eval-corpus\forms\<市町村>\）。読むだけ。
-// 市町村のフォルダに manifest.json（市町村・URL・ファイル名・頁数）があればその並び、無ければフォルダの中のファイル。
+// 評価の台（T107）の様式の置き場（リポジトリの外、既定 C:\Users\choco\dev\care72-eval-corpus\forms\）。読むだけ。
+// 置き場の manifest.json（files: 市町村・フォルダ・様式の名前・役割〔様式本体・記載例・手引き〕・URL・ファイル）があればその並び、
+// 無ければ市町村のフォルダの中のファイル（市町村のフォルダの manifest.json も読む）。
+// 様式として読むのは役割が「様式本体」の物だけ（記載例は値が書いてあり、手引きは様式でない）。ほかは数だけ残す。
 // 原本の中身は台の外に出さない（回のフォルダの埋めた紙と、送った画像だけ。どちらもリポジトリの外）。
 
 import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { basename, join } from "node:path";
+import { basename, extname, join } from "node:path";
 import type { GoldForm } from "./gold.ts";
 
-export type CorpusFile = { city: string; path: string; fileName: string; url: string | null; pages: number | null; sha256: string; bytes: number };
+export type CorpusFile = {
+  /** 台の中の id（フォルダとファイル名から。英数字と - だけ） */
+  id: string;
+  city: string;
+  dir: string;
+  path: string;
+  fileName: string;
+  formName: string | null;
+  role: string | null;
+  url: string | null;
+  pages: number | null;
+  sha256: string;
+  bytes: number;
+};
 
-const pick = (o: Record<string, unknown>, keys: string[]): unknown => keys.map((k) => o[k]).find((v) => v !== undefined && v !== null && v !== "");
+const str = (o: Record<string, unknown>, keys: string[]): string | null => {
+  for (const k of keys) {
+    const v = o[k];
+    if (typeof v === "string" && v.trim() !== "") return v.trim();
+  }
+  return null;
+};
 
-/** manifest.json の 1 行（キーの名前の揺れを受ける） */
+/** manifest.json の行（キーの名前の揺れを受ける） */
 function entriesOf(raw: unknown): Array<Record<string, unknown>> {
   if (Array.isArray(raw)) return raw.filter((x): x is Record<string, unknown> => !!x && typeof x === "object");
   if (raw && typeof raw === "object") {
@@ -21,41 +42,75 @@ function entriesOf(raw: unknown): Array<Record<string, unknown>> {
   return [];
 }
 
-export function readCorpus(root: string | null): { files: CorpusFile[]; cities: string[]; missing: boolean } {
-  if (!root || !existsSync(root)) return { files: [], cities: [], missing: true };
-  const files: CorpusFile[] = [];
-  const cities: string[] = [];
-  for (const city of readdirSync(root).sort()) {
-    const dir = join(root, city);
-    if (!statSync(dir).isDirectory()) continue;
-    cities.push(city);
-    const manifestPath = join(dir, "manifest.json");
-    let listed: Array<{ fileName: string; url: string | null; pages: number | null; city: string }> = [];
-    if (existsSync(manifestPath)) {
-      try {
-        listed = entriesOf(JSON.parse(readFileSync(manifestPath, "utf8"))).map((e) => ({
-          fileName: String(pick(e, ["fileName", "file", "filename", "name", "ファイル名", "path"]) ?? ""),
-          url: (pick(e, ["url", "URL", "source"]) as string | undefined) ?? null,
-          pages: Number(pick(e, ["pages", "頁数", "pageCount"])) || null,
-          city: String(pick(e, ["city", "市町村", "municipality"]) ?? city),
-        }));
-      } catch {
-        listed = [];
-      }
+const idOf = (dir: string, fileName: string) => `${dir}-${basename(fileName, extname(fileName))}`.replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 60);
+
+function fileOf(root: string, e: Record<string, unknown>, fallbackDir: string): CorpusFile | null {
+  const rel = str(e, ["file", "fileName", "filename", "path", "ファイル名", "name"]);
+  if (!rel) return null;
+  const dir = str(e, ["dir", "folder"]) ?? fallbackDir;
+  // file は置き場の親からの道（forms/<dir>/<名前>）のことがある。名前だけを使い、フォルダは dir
+  const fileName = basename(rel);
+  const path = join(root, dir, fileName);
+  if (!existsSync(path)) return null;
+  const buf = readFileSync(path);
+  return {
+    id: idOf(dir, fileName),
+    city: str(e, ["municipality", "city", "市町村"]) ?? dir,
+    dir,
+    path,
+    fileName,
+    formName: str(e, ["formName", "title", "様式"]),
+    role: str(e, ["role", "役割"]),
+    url: str(e, ["url", "URL", "source"]),
+    pages: Number(e.pages ?? e["頁数"] ?? e.pageCount) || null,
+    sha256: createHash("sha256").update(buf).digest("hex"),
+    bytes: buf.length,
+  };
+}
+
+const readJson = (path: string): unknown => {
+  try {
+    return JSON.parse(readFileSync(path, "utf8"));
+  } catch {
+    return null;
+  }
+};
+
+export type Corpus = {
+  /** 様式として読む物（役割が様式本体か、役割の書いていない物） */
+  files: CorpusFile[];
+  /** 読まない物（記載例・手引きなど）の数 */
+  excluded: number;
+  cities: string[];
+  missing: boolean;
+};
+
+/** 様式として読むか（役割の無い物は読む） */
+export const isFormBody = (f: Pick<CorpusFile, "role">) => f.role === null || f.role.includes("様式本体") || f.role === "様式";
+
+export function readCorpus(root: string | null): Corpus {
+  if (!root || !existsSync(root)) return { files: [], excluded: 0, cities: [], missing: true };
+  const all: CorpusFile[] = [];
+  const seen = new Set<string>();
+  const push = (f: CorpusFile | null) => {
+    if (f && !seen.has(f.path)) {
+      seen.add(f.path);
+      all.push(f);
     }
-    if (listed.length === 0)
-      listed = readdirSync(dir)
-        .filter((f) => f !== "manifest.json" && statSync(join(dir, f)).isFile())
-        .sort()
-        .map((fileName) => ({ fileName, url: null, pages: null, city }));
-    for (const e of listed) {
-      const path = join(dir, basename(e.fileName));
-      if (!e.fileName || !existsSync(path)) continue;
-      const buf = readFileSync(path);
-      files.push({ city: e.city, path, fileName: basename(e.fileName), url: e.url, pages: e.pages, sha256: createHash("sha256").update(buf).digest("hex"), bytes: buf.length });
+  };
+  for (const e of entriesOf(readJson(join(root, "manifest.json")))) push(fileOf(root, e, ""));
+  for (const dir of readdirSync(root).sort()) {
+    const full = join(root, dir);
+    if (!statSync(full).isDirectory()) continue;
+    for (const e of entriesOf(readJson(join(full, "manifest.json")))) push(fileOf(root, e, dir));
+    for (const name of readdirSync(full).sort()) {
+      if (name === "manifest.json" || !statSync(join(full, name)).isFile()) continue;
+      if (seen.has(join(full, name))) continue;
+      push(fileOf(root, { file: name }, dir));
     }
   }
-  return { files, cities, missing: false };
+  const files = all.filter(isFormBody);
+  return { files, excluded: all.length - files.length, cities: [...new Set(all.map((f) => f.city))].sort(), missing: false };
 }
 
 /** 置き場のファイルが正解の表の様式か（ハッシュ → URL → ファイル名の順） */

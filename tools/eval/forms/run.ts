@@ -38,7 +38,7 @@ import { fakeClient, type FakeClient, type FakeStyle } from "./fake.ts";
 import { GOLD_FORMS, goldMapping, goldReading, type GoldForm } from "./gold.ts";
 import { buildInputs, handwriteHtml, hashSeed, pdfHtml, photoHtml, type InputKind, type InputSpec } from "./inputs.ts";
 import { buildSheets, sheetHtml, type Sheets } from "./paper.ts";
-import { jsonl, realClient, recorder, type CallRecord, type Jsonl } from "./record.ts";
+import { costUsd, jsonl, realClient, recorder, type CallRecord, type Jsonl } from "./record.ts";
 import { heicBytes, launchRenderer, withExif, type Ratio, type Renderer } from "./render.ts";
 import { cellOfSheet, scoreIntake, scorePaper, scoreRead, type IntakeScore, type Judgement, type PaperScore, type ReadScore } from "./score.ts";
 
@@ -64,7 +64,9 @@ export type EvalOptions = {
   /** 前の回との差の md を置く所（null なら回のフォルダだけ） */
   progressDir: string | null;
   paper: PaperMode;
-  /** 絞り込み（様式の id・入力の id の頭・人の id） */
+  /** 正解の表の無い様式（置き場の様式）の紙も、全部の入力で刷る（既定は台帳そのままの 1 人だけ） */
+  paperAllForms?: boolean;
+  /** 絞り込み（様式の id・入力の id の頭・人の id）。様式は gold（正解の表のある物）・corpus（置き場の正解の無い物）・置き場のフォルダの名前も */
   forms?: string[];
   inputs?: string[];
   people?: string[];
@@ -90,6 +92,10 @@ export type FormResult = {
   pages: number;
   read: ReadScore | null;
   overlay: boolean;
+  /** 読めた欄・台帳の項目に当てた欄・場所のある欄 */
+  fields?: number;
+  mapped?: number;
+  placed?: number;
 };
 
 export type InputResult = {
@@ -110,7 +116,10 @@ export type InputResult = {
 
 export type PaperResult = { form: string; input: string; kind: InputKind; score: PaperScore | null; files: { pdf?: string; fillPdf?: string; png?: string; fillPng?: string } };
 
-export type CallSummary = { calls: number; ok: number; failed: number; retried: number; attempts: number; durationMs: number; inputTokens: number; outputTokens: number; costUsd: number; byModel: Record<string, { calls: number; costUsd: number }> };
+/** aiCalls は手元の D1 の ai_calls の行から数えた物（費用の見積もりの元） */
+export type CallSummary = {
+  aiCalls: { rows: number; ok: number; failed: number; inputTokens: number; outputTokens: number; costUsd: number; byPurpose: Record<string, number> };
+  calls: number; ok: number; failed: number; retried: number; attempts: number; durationMs: number; inputTokens: number; outputTokens: number; costUsd: number; byModel: Record<string, { calls: number; costUsd: number }> };
 
 export type LeakSummary = { calls: number; textHits: number; strongHits: number; birthHits: number; weakHits: number; images: number; imagesRedacted: number; imagesNotRedacted: number };
 
@@ -122,7 +131,7 @@ export type RunResult = {
   finishedAt: string;
   today: string;
   genVersion: string;
-  corpus: { root: string | null; missing: boolean; files: number; cities: string[] };
+  corpus: { root: string | null; missing: boolean; files: number; excluded: number; cities: string[] };
   renderer: boolean;
   forms: FormResult[];
   inputs: InputResult[];
@@ -260,7 +269,7 @@ export async function runEval(opts: EvalOptions): Promise<RunResult> {
     type FormJob = { id: string; gold: GoldForm | null; title: string; original: () => Promise<{ bytes: Uint8Array } | { pages: Uint8Array[] } | null> };
     const jobs: FormJob[] = [];
     for (const g of GOLD_FORMS) {
-      if (!matchesAny(g.id, opts.forms)) continue;
+      if (!matchesAny(g.id, opts.forms) && !opts.forms?.includes("gold")) continue;
       if (g.source.kind === "generated") {
         const src = g.source;
         jobs.push({
@@ -289,13 +298,11 @@ export async function runEval(opts: EvalOptions): Promise<RunResult> {
       }
     }
     // 置き場の様式のうち正解の表の無い物（数は読めた欄だけ）
-    corpus.files.forEach((f, i) => {
-      if (goldOf(f, GOLD_FORMS)) return;
-      const id = `corpus-${hashSeed(`${f.city}/${f.fileName}`).toString(36)}`;
-      if (!matchesAny(id, opts.forms) && !matchesAny(f.city, opts.forms)) return;
-      jobs.push({ id, gold: null, title: `${f.city} ${f.fileName}`, original: async () => ({ bytes: new Uint8Array(readFileSync(f.path)) }) });
-      void i;
-    });
+    for (const f of corpus.files) {
+      if (goldOf(f, GOLD_FORMS)) continue;
+      if (!matchesAny(f.id, opts.forms) && !matchesAny(f.dir, opts.forms) && !opts.forms?.includes("corpus")) continue;
+      jobs.push({ id: f.id, gold: null, title: `${f.city} ${f.formName ?? f.fileName}`, original: async () => ({ bytes: new Uint8Array(readFileSync(f.path)) }) });
+    }
 
     for (const job of jobs) {
       say(`様式 ${job.id}`);
@@ -322,6 +329,7 @@ export async function runEval(opts: EvalOptions): Promise<RunResult> {
       const form = buildFormReadForm(pages.map((p) => ({ blob: new Blob([p.bytes as BlobPart], { type: "image/jpeg" }), meta: { source: pages[0].source, page: p.page, redacted: 0 }, bare: true })));
       const res = await formReadPost({ db, bucket, aiContext: async () => evalCtx, newId: () => `fm-${job.id}` }, { officeId: OFFICE, accountId: ACCOUNT }, form);
       rec.flush();
+      fake?.drain();
       const body = (await res.json()) as { ok: boolean; id?: string; error?: string; rejected?: number };
       if (!body.ok || !body.id) {
         forms.push({ id: job.id, title: job.title, gold: !!job.gold, status: "failed", reason: body.error ?? `http_${res.status}`, pages: pages.length, read: null, overlay: false });
@@ -352,7 +360,18 @@ export async function runEval(opts: EvalOptions): Promise<RunResult> {
         fieldsRead: stored.mapping.fields.map((f) => ({ id: f.id, page: f.page, section: f.section, label: f.label, shape: f.shape, item: f.item, confidence: f.ai?.confidence, reason: f.ai?.reason, rejected: f.ai?.rejected ?? null, box: f.box ?? null })),
         score: read,
       });
-      forms.push({ id: job.id, title: job.title, gold: !!job.gold, status: "ok", pages: stored.mapping.pages, read, overlay: !!images && stored.mapping.fields.some((f) => (f.box ?? null) !== null) });
+      forms.push({
+        id: job.id,
+        title: job.title,
+        gold: !!job.gold,
+        status: "ok",
+        pages: stored.mapping.pages,
+        read,
+        overlay: !!images && stored.mapping.fields.some((f) => (f.box ?? null) !== null),
+        fields: stored.mapping.fields.length,
+        mapped: stored.mapping.fields.filter((f) => f.item !== null).length,
+        placed: stored.mapping.fields.filter((f) => (f.box ?? null) !== null).length,
+      });
       ready.push({ form: job.gold, id: job.id, title: job.title, mapping: stored.mapping, images, pages: pages.map((p) => p.bytes), pairs });
     }
 
@@ -416,6 +435,7 @@ export async function runEval(opts: EvalOptions): Promise<RunResult> {
         // 正解の側
         const expRows = await load(expId);
         const expProposal = await runPiece(piece, expRows, oracleCtx, oracle, today, seedKey);
+        oracle.drain();
         if (expProposal.ok) {
           expItems.push(...expProposal.proposal.items);
           await save(expId, expRows.person.version ?? 1, expProposal.proposal, piece);
@@ -436,6 +456,7 @@ export async function runEval(opts: EvalOptions): Promise<RunResult> {
         rec.scope(spec.id, piece.kind === "text" ? "intake_text" : `intake_read_${piece.meta.page}`);
         const act = await runPiece(piece, actRows, evalCtx, fake, today, seedKey);
         rec.flush();
+        fake?.drain();
         if (!act.ok) {
           result.failures.push(act.error);
           step({ stage: "input.read", input: spec.id, piece: i + 1, ok: false, error: act.error });
@@ -462,7 +483,8 @@ export async function runEval(opts: EvalOptions): Promise<RunResult> {
       judge(s.judgements);
       const actual = await load(actId);
       const expected = await load(expId);
-      result.carryLoss = carryLoss(seed.ledger, JSON.parse(expected.person.ledger) as Ledger, spec);
+      // 道で運べない値は、送る単位があった入力だけ（失敗した入力は失敗に数える）
+      result.carryLoss = pieces.length > 0 ? carryLoss(seed.ledger, JSON.parse(expected.person.ledger) as Ledger, spec) : 0;
       rowsOf.set(spec.id, { actual, expected });
       if (result.failures.length > 0) result.status = result.sentPieces > 0 ? "partial" : "failed";
       step({ stage: "input.done", input: spec.id, status: result.status, failures: result.failures, intake: result.intake, carryLoss: result.carryLoss });
@@ -470,6 +492,7 @@ export async function runEval(opts: EvalOptions): Promise<RunResult> {
 
     // ---------- 紙 ----------
     const papers: PaperResult[] = [];
+    const sampleInput = specs.find((s) => s.kind === "ledger")?.id ?? null;
     for (const f of ready) {
       const imgSrc = pageSources(f.id, f.images, bucket.objects);
       const gm = f.form ? goldMapping(f.form, f.mapping.pages) : null;
@@ -496,7 +519,9 @@ export async function runEval(opts: EvalOptions): Promise<RunResult> {
           judge(s.judgements);
           step({ stage: "paper", form: f.id, input: spec.id, overlay: !!actual.overlay, score, rows: s.rows, annex: actual.overlay?.annex.map((a) => ({ field: a.label, reason: a.reason })) ?? [], unconfirmed: actual.mapped.unconfirmed });
         } else step({ stage: "paper", form: f.id, input: spec.id, overlay: !!actual.overlay, annex: actual.overlay?.annex.length ?? 0, unconfirmed: actual.mapped.unconfirmed.length });
-        const files = await renderPaper(actual, imgSrc, { renderer, mode: opts.paper, dir, form: f.id, input: spec.id, today });
+        // 正解の表の無い様式は、既定で台帳そのままの 1 人だけ刷る（置き場の様式は数が多い）
+        const draw = !!f.form || opts.paperAllForms || spec.id === sampleInput;
+        const files = draw ? await renderPaper(actual, imgSrc, { renderer, mode: opts.paper, dir, form: f.id, input: spec.id, today }) : {};
         papers.push({ form: f.id, input: spec.id, kind: spec.kind, score, files });
       }
     }
@@ -511,12 +536,12 @@ export async function runEval(opts: EvalOptions): Promise<RunResult> {
       finishedAt: new Date().toISOString(),
       today,
       genVersion: GEN_VERSION,
-      corpus: { root: opts.corpusRoot, missing: corpus.missing, files: corpus.files.length, cities: corpus.cities },
+      corpus: { root: opts.corpusRoot, missing: corpus.missing, files: corpus.files.length, excluded: corpus.excluded, cities: corpus.cities },
       renderer: !!renderer,
       forms,
       inputs,
       papers,
-      calls: callSummary(records),
+      calls: { ...callSummary(records), aiCalls: await aiCallsSummary(db) },
       leaks: leakSummary(records, inputs, dir),
       dir,
     };
@@ -658,8 +683,26 @@ async function renderPaper(
   return files;
 }
 
-function callSummary(records: readonly CallRecord[]): CallSummary {
-  const s: CallSummary = { calls: records.length, ok: 0, failed: 0, retried: 0, attempts: 0, durationMs: 0, inputTokens: 0, outputTokens: 0, costUsd: 0, byModel: {} };
+/** ai_calls の行（askJson が呼ぶ前に足し、終わりに状態とトークンを書いた物）から回数と費用 */
+async function aiCallsSummary(db: ReturnType<typeof d1FromSqlite>): Promise<CallSummary["aiCalls"]> {
+  const { results } = await db
+    .prepare("SELECT purpose, model, status, input_tokens, output_tokens FROM ai_calls WHERE office_id = ?1")
+    .bind(OFFICE)
+    .all<{ purpose: string; model: string; status: string; input_tokens: number | null; output_tokens: number | null }>();
+  const out: CallSummary["aiCalls"] = { rows: results.length, ok: 0, failed: 0, inputTokens: 0, outputTokens: 0, costUsd: 0, byPurpose: {} };
+  for (const r of results) {
+    if (r.status === "ok") out.ok += 1;
+    else out.failed += 1;
+    out.inputTokens += r.input_tokens ?? 0;
+    out.outputTokens += r.output_tokens ?? 0;
+    out.costUsd += costUsd(r.model, r.input_tokens, r.output_tokens) ?? 0;
+    out.byPurpose[r.purpose] = (out.byPurpose[r.purpose] ?? 0) + 1;
+  }
+  return out;
+}
+
+function callSummary(records: readonly CallRecord[]): Omit<CallSummary, "aiCalls"> {
+  const s: Omit<CallSummary, "aiCalls"> = { calls: records.length, ok: 0, failed: 0, retried: 0, attempts: 0, durationMs: 0, inputTokens: 0, outputTokens: 0, costUsd: 0, byModel: {} };
   for (const r of records) {
     if (r.usage?.status === "ok") s.ok += 1;
     else s.failed += 1;

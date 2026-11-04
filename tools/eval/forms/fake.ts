@@ -23,6 +23,8 @@ export type Expected = { kind: "read"; answer: ReadResult } | { kind: "extract";
 export type FakeClient = ClaudeClient & {
   /** 次の呼び出しの正解。seed は崩し方の種（入力の id と送る単位） */
   expect(e: Expected, seed: string): void;
+  /** 使われなかった正解を捨てる（読み直さずに返した・呼ぶ前に止まったとき、次の呼び出しとずれないように）。捨てた数 */
+  drain(): number;
 };
 
 /** 台帳に無い項目名（偽の崩し方で 1 欄に入れ、checkReadResult が弾くのを数える） */
@@ -103,6 +105,9 @@ export function fakeClient(style: FakeStyle, holder: AttemptHolder): FakeClient 
   return {
     expect(e, seed) {
       queue.push({ e, seed });
+    },
+    drain() {
+      return queue.splice(0).length;
     },
     beta: {
       messages: {
