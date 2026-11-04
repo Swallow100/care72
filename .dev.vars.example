@@ -14,7 +14,7 @@ CAREMANAGER_DEMO_PASSWORD_HASH=
 CAREMANAGER_DEMO_PASSWORD=
 # デモ事業所の AI の 1 日の上限（回）。Claude と声を合わせて数える。ほかの事業所は 200 のまま
 AI_DAILY_LIMIT=200
-# 気象庁の雨雲（降水ナウキャスト）を本物の事業所の地図に重ねる旗（T72）。on のときだけ。既定は off（空）。
+# 気象庁の雨雲（降水ナウキャスト）を担当一覧の地図に重ねる旗（T72。デモ事業所も、T103）。on のときだけ。既定は off（空）。
 # 配信はダッシュボードの変数で入れる（wrangler.jsonc の vars には書かない）。on にすると Workers が気象庁のタイルを取りに行く
 JMA_NOWCAST=
 # 避難経路の openrouteservice の鍵（T102）。空なら外へ要求せず、経路は家と避難先と手で足す経由の点を結ぶ形だけ。

@@ -18,6 +18,8 @@
 // 未設定の印は中立の地の印（components/ui/AiStatus。状態の 4 色を使わない）。開始は止めない
 // T90: 大雨想定・地震想定・仮想は連続の時計（30 分・1 時間・3 時間・次まで）で始める（選ばせない）。送る物の options に clock を足し、
 // 見込みは連続の時計の式（lib/drill/estimate.ts の estimateClockCalls）。10 分版は前のまま（送る物も見込みも）
+// T104: 設定に「仮想規模」（既定おまかせ。仮想だけに効く。lib/drill/scale.ts）と「自宅」（既定 事業所付近。大雨想定・地震想定の監督が
+// 訓練する人の身の回りの出来事に使う。lib/drill/self.ts）。どちらも既定のままなら送る物は前と同じ
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -33,7 +35,8 @@ import { aiRemaining, aiUsable, type AiStatus } from "@/lib/claude/status";
 import { estimateClockCalls, estimateDrillCalls, overLimit } from "@/lib/drill/estimate";
 import { AI_STOP_UI, DRILL_LABELS, SCENARIO_LABELS, T59_LABELS, T70_LABELS } from "@/lib/drill/labels";
 import { isVirtual } from "@/lib/drill/scenarios";
-import { STAFF_MAX } from "@/lib/drill/options";
+import { STAFF_MAX, T104_LABELS } from "@/lib/drill/options";
+import { SCALE_CHOICES, scaleKey, scaleLabel, scaleOfKey, type DrillScale } from "@/lib/drill/scale";
 
 /** 主の操作の色にする想定 */
 const MAIN_SCENARIO: DrillScenario = "short";
@@ -65,6 +68,7 @@ export function StartButtons({
   disabled,
   people = [],
   ai = null,
+  towns = [],
 }: {
   scenarios: ReadonlyArray<DrillScenario>;
   disabled: boolean;
@@ -72,6 +76,8 @@ export function StartButtons({
   people?: ReadonlyArray<StartPerson>;
   /** AI の今の状態（lib/claude/status.ts。app/drill/page.tsx が lib/claude/cloudflare.ts の aiStatusFor で読む）。読めなければ null */
   ai?: AiStatus | null;
+  /** 訓練する人の住む所に選べる地区（T104、lib/drill/self.ts の homeTowns）。無ければ自宅の欄を出さない */
+  towns?: ReadonlyArray<string>;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState<DrillScenario | null>(null);
@@ -80,6 +86,9 @@ export function StartButtons({
   const [chosen, setChosen] = useState<ReadonlySet<string>>(() => new Set(people.map((p) => p.id)));
   const [staff, setStaff] = useState("");
   const [night, setNight] = useState(false);
+  // T104: 仮想の規模（空はおまかせ）と自宅の地区（空は事業所付近）
+  const [scale, setScale] = useState("");
+  const [home, setHome] = useState("");
   const boxId = useId();
 
   const all = chosen.size === people.length;
@@ -91,10 +100,13 @@ export function StartButtons({
 
   /** 選んだ物だけ（何も変えなければ undefined。送る物は前と同じ） */
   const options = () => {
-    const o: { participants?: string[]; staff?: number; night?: boolean } = {};
+    const o: { participants?: string[]; staff?: number; night?: boolean; scale?: DrillScale; home?: string } = {};
     if (!all) o.participants = people.filter((p) => chosen.has(p.id)).map((p) => p.id);
     if (staff !== "") o.staff = Number(staff);
     if (night) o.night = true;
+    const s = scale !== "" ? scaleOfKey(scale) : null;
+    if (s) o.scale = s;
+    if (home !== "") o.home = home;
     return Object.keys(o).length > 0 ? o : undefined;
   };
 
@@ -153,7 +165,9 @@ export function StartButtons({
         data-changed={changed ? "" : undefined}
       >
         {T59_LABELS.settings}
-        {changed && !open && <span className="text-xs font-normal text-muted">{settingsSummary(people.length, chosen.size, staff, night)}</span>}
+        {changed && !open && (
+          <span className="text-xs font-normal text-muted">{settingsSummary(people.length, chosen.size, staff, night, scale, home)}</span>
+        )}
       </Button>
       {ordered.map((s) => (
         <Button
@@ -282,6 +296,31 @@ export function StartButtons({
               <input type="checkbox" className={CHECK} checked={night} onChange={(e) => setNight(e.target.checked)} data-start-night />
               {T59_LABELS.night}
             </label>
+            {/* T104: 仮想の規模（おまかせは開始の時に幅の中から決まる）と、訓練する人の自宅の地区 */}
+            <label className="flex items-center gap-1.5 text-sm">
+              <span className={LABEL}>{T104_LABELS.scale}</span>
+              <Select value={scale} onChange={(e) => setScale(e.target.value)} className={SELECT} aria-label={T104_LABELS.scale} data-start-scale>
+                <option value="">{T104_LABELS.scaleAuto}</option>
+                {SCALE_CHOICES.map((s) => (
+                  <option key={scaleKey(s)} value={scaleKey(s)}>
+                    {scaleLabel(s)}
+                  </option>
+                ))}
+              </Select>
+            </label>
+            {towns.length > 0 && (
+              <label className="flex min-w-0 items-center gap-1.5 text-sm">
+                <span className={LABEL}>{T104_LABELS.home}</span>
+                <Select value={home} onChange={(e) => setHome(e.target.value)} className={SELECT} aria-label={T104_LABELS.home} data-start-home>
+                  <option value="">{T104_LABELS.homeNear}</option>
+                  {towns.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </Select>
+              </label>
+            )}
           </div>
         </div>
       )}
@@ -289,12 +328,15 @@ export function StartButtons({
   );
 }
 
-/** 閉じた設定に添える選んだ物（「3 人・職員 1・夜間」） */
-function settingsSummary(total: number, chosen: number, staff: string, night: boolean): string {
+/** 閉じた設定に添える選んだ物（「3 人・職員 1・夜間・地震 震度 6強・自宅 みずほし町」） */
+function settingsSummary(total: number, chosen: number, staff: string, night: boolean, scale = "", home = ""): string {
+  const s = scale !== "" ? scaleOfKey(scale) : null;
   return [
     chosen !== total ? `${chosen} ${T59_LABELS.people}` : null,
     staff !== "" ? `${T59_LABELS.staff} ${staff}` : null,
     night ? T59_LABELS.night : null,
+    s ? scaleLabel(s) : null,
+    home !== "" ? `${T104_LABELS.home} ${home}` : null,
   ]
     .filter(Boolean)
     .join("・");

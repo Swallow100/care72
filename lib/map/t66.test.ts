@@ -12,7 +12,9 @@ import { toCaseloadRows } from "../caseload.ts";
 import { toTriagePerson } from "../triage/from-ledger.ts";
 import { rank } from "../triage/index.ts";
 import { FULL_ZOOM, JAPAN_BOUNDS, MAP_LIMITS, sameView, sideWheelTakes, stepZoom, toFrame, wheelZoom } from "./camera.ts";
+import { HEAVY_RAIN_TRACK } from "../drill/rain.ts";
 import { demoOverlay, RAIN_FILL, RAIN_STREAK, RAIN_STYLE } from "./demo.ts";
+import { rainAnchor } from "./drill-rain.ts";
 import { BASE_SIZE, clampView, fitView, place, tilesFor, tileZoom, VIEW_H, VIEW_W, zoomAt, type View } from "./geo.ts";
 import { BASE_LAYER, BASE_OPACITY, HAZARD_OPACITY } from "./layers.ts";
 import { MAP_UI } from "./labels.ts";
@@ -153,7 +155,13 @@ describe("地図の見やすさ（雨雲・下の地図・層）", () => {
 
   it("雨雲の色はライトとダークで同じ値（下の地図はダークでも明るいので、本文色〔currentColor〕や CSS 変数にしない）", () => {
     const html = renderToStaticMarkup(
-      createElement(CaseMap, { pins, layers: ["flood"], demo: demoOverlay({ kind: "heavy_rain", level: 5 }), unplaced: 0 }),
+      createElement(CaseMap, {
+        pins,
+        layers: ["flood"],
+        // 雨雲は訓練の筋書きの雨（T103。いちばん強い 3 時間）
+        demo: demoOverlay({ kind: "heavy_rain", level: 5, drill: { track: HEAVY_RAIN_TRACK, hour: 3, anchor: rainAnchor(pins.map((p) => p.location)) } }),
+        unplaced: 0,
+      }),
     );
     const rain = html.match(/<svg[^>]*data-demo="rain"[\s\S]*?<\/svg>/)?.[0] ?? "";
     expect(rain).not.toBe("");

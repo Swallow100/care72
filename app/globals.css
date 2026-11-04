@@ -177,12 +177,28 @@ body {
 /*
   要確認（黄）の文字の所: 黄の塗り（--state-check-fill）の上に濃い文字（--on-state-check、対比 9.4）。塗りの印（StateTag）と同じ色。
   前は本文色の文字と前に黄の細い帯だったが、何の印か伝わりにくかったので、作者が案（塗り・下線・丸）から塗りを選んだ（11/4）。
-  インラインの要素に付ける（ブロックに付けると面ごと塗る。理由の行などは中の span に付ける）。折り返した行もそれぞれ塗る（clone）。
+  インラインの短い印に付ける（医療の印・時計の残り・数）。理由の長い文は塗らない（components/ui/Tag の REASON_TEXT）。折り返した行もそれぞれ塗る（clone）。
   塗りは地の色なので、画面をそのままブラウザで印刷したときも落とさない（紙面の部品はこの印を使っていない）
 */
 @utility tone-check {
   color: var(--on-state-check);
   background-color: var(--state-check-fill);
+  padding-inline: 0.25em;
+  border-radius: 2px;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}
+
+/*
+  至急（赤）の短い印も同じ形で赤の塗りに白の文字（--state-urgent-fill・--on-state-urgent。StateTag の赤と同じ）。
+  黄を塗りにしたので、赤を色の文字のままにすると、急ぐ赤の印が黄の塗りより弱く見えた。作者が「赤も塗り」を選んだ（11/4）。
+  理由の長い文の赤は今までどおり赤の文字（REASON_TEXT）
+*/
+@utility tone-urgent {
+  color: var(--on-state-urgent);
+  background-color: var(--state-urgent-fill);
   padding-inline: 0.25em;
   border-radius: 2px;
   -webkit-box-decoration-break: clone;

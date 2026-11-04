@@ -10,7 +10,7 @@ import { AiStatusMark } from "@/components/ui/AiStatus";
 import { aiStatusFor } from "@/lib/claude/cloudflare";
 import { drillGate, gateUsage } from "@/lib/claude/gate";
 import type { AiStatus } from "@/lib/claude/status";
-import { caseloadForDrill, drillScope, listDrills, runningDrillId, type DrillListItem } from "@/lib/drill/db";
+import { drillScope, drillStartInfo, listDrills, runningDrillId, type DrillListItem } from "@/lib/drill/db";
 import { DRILL_LABELS, progressLabel, SCENARIO_LABELS, VIRTUAL_LABELS } from "@/lib/drill/labels";
 import { endingsAllowed } from "@/lib/drill/fiction";
 import { drillHref } from "@/lib/drill/paths";
@@ -33,13 +33,17 @@ export default async function DrillPage() {
   let ai: AiStatus | null = null;
   // 開始の前の設定の参加者（T59。担当一覧の人）
   let people: StartPerson[] = [];
+  // 訓練する人の自宅に選べる地区（T104）
+  let towns: string[] = [];
   // 自分の進行中（T70。開始者か担当一覧の人で見る。ほかのケアマネの進行中では開始を止めない）
   let mine: string | null = null;
   try {
     const { env } = await getCloudflareContext({ async: true });
     // 24 時間たった進行中は読む前に中断（T70）
     items = scope ? await listDrills(env.DB, scope.officeId, 50, new Date().toISOString()) : [];
-    people = scope ? await caseloadForDrill(env.DB, scope) : [];
+    const info = scope ? await drillStartInfo(env.DB, scope) : { people: [], towns: [] };
+    people = info.people;
+    towns = info.towns;
     mine = scope ? await runningDrillId(env.DB, scope.officeId, { scope }) : null;
     // AI の今の状態（T76。1 日の上限は T26）。読めなければ開始のまま
     ai = scope ? await aiStatusFor(scope.officeId).catch(() => null) : null;
@@ -65,7 +69,7 @@ export default async function DrillPage() {
           {DRILL_LABELS.start}
         </h2>
         {gate.kind === "start" ? (
-          <StartButtons scenarios={SCENARIO_ORDER} disabled={running !== null} people={people} ai={ai} />
+          <StartButtons scenarios={SCENARIO_ORDER} disabled={running !== null} people={people} ai={ai} towns={towns} />
         ) : (
           // 上限に達したら開始でなく、終わった訓練の再生（0 時間から刻みごとに）
           <div className="flex flex-wrap items-center gap-2" data-limit>

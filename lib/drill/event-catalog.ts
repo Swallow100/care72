@@ -67,6 +67,11 @@ export const INJECT_KINDS = [
   "aftershock", // 余震
   "landslide_warn", // 土砂の警戒
   "wandering", // 本人が外へ出た
+  // T104: 訓練する人（自分）の身の回り。target は「自分」。訓練に多くて SELF_DRILL_MAX、主役は担当の人のまま
+  "self_outage", // 自宅の停電
+  "self_family", // 家族と連絡がつかない（何時間後かに無事が分かる）
+  "self_late", // 夜の発災で出勤が遅れる
+  "self_battery", // 携帯の電池が少ない
 ] as const;
 export type InjectKind = (typeof INJECT_KINDS)[number];
 
@@ -137,6 +142,22 @@ export type EventRow = {
   after?: AfterRange;
   /** 全体の種類で場所が要る物（満員になる避難所）。無ければ差し込めない */
   place?: (world: WorldState) => EventPlace | null;
+  /**
+   * 訓練する人（自分）の種類（T104）。target は「自分」で、参加者の台帳を見ない（eligible はいつも false）。
+   * 当てはまるかは自分の住む所と世界で見る（eligibleSelfKinds）。scope は area（1 区切りに全体の種類と合わせて 1 つ）
+   */
+  self?: (f: SelfFacts) => boolean;
+};
+
+/**
+ * 訓練する人（自分）の出来事を決める事実（T104）。home は住む所の地理（地区を選んだとき。町名は持たない）、
+ * null は事業所の近く（事業所と同じ所と見る）
+ */
+export type SelfFacts = {
+  world: WorldState;
+  hour: number;
+  night: boolean;
+  home: { floodM: number | null; landslide: boolean } | null;
 };
 
 // ---------- 当てはまるかを見る小さな道具（scenarios.ts を値で読まない） ----------
@@ -171,7 +192,7 @@ export const aftershockIntensity = (hour: number) => (hour < 24 ? "5弱" : "4");
 
 const NONE: EventBasis = { by: "code", ids: [] };
 const code = (...ids: SourceId[]): EventBasis => ({ by: "code", ids });
-/** 前からの 6 つ: 監督が DIRECTOR_SOURCES の 5 つから選ぶ（前と同じ。lib/drill/director.ts で絞る） */
+/** 前からの 6 つ: 監督が DIRECTOR_SOURCES の前からの 5 つから選ぶ（前と同じ。lib/drill/director.ts で絞る） */
 const ANY: EventBasis = {
   by: "director",
   ids: ["cao-shishin-2021", "mhlw-bcp-2020", "nanbyo-shishin-2017", "jadp-dialysis-2023", "mhlw-dementia-2018"],
@@ -267,7 +288,8 @@ const ROWS: ReadonlyArray<EventRow> = [
     },
     text: (after) => `停電 復旧見込 ${after ?? 6} 時間後`,
     ownText: true,
-    basis: { by: "director", ids: ["mhlw-bcp-2020"] },
+    // T104: 停電の続く時間の目安の文書も監督が選べる
+    basis: { by: "director", ids: ["mhlw-bcp-2020", "soumu-iburi-2019"] },
     touches: "none",
     after: { min: 2, max: 12, default: 6 },
   },
@@ -279,7 +301,8 @@ const ROWS: ReadonlyArray<EventRow> = [
     eligible: (_s, _p, w) => w.outage !== null && w.outage.restoredAt === null && w.outage.area.scope !== "office",
     build: () => one({ kind: "outage", area: { scope: "office" } }, "停電 全域に拡大"),
     text: () => "停電 全域に拡大",
-    basis: NONE,
+    // T104: 広い停電の例（北海道の地震）。監督が選ぶ（選ばなければ根拠なし）
+    basis: { by: "director", ids: ["soumu-iburi-2019"] },
     touches: "all",
   },
   {
@@ -300,7 +323,8 @@ const ROWS: ReadonlyArray<EventRow> = [
     },
     text: () => `携帯電話も${NO_CALL}`,
     ownText: true,
-    basis: NONE,
+    // T104: 停電が長引くと基地局の予備電源が尽きる（北海道の地震・基地局の停電対策）。監督が選ぶ
+    basis: { by: "director", ids: ["soumu-iburi-2019", "soumu-tsushin-2026"] },
     touches: "all",
     after: { min: 1, max: 6, default: 3 },
   },
@@ -348,7 +372,8 @@ const ROWS: ReadonlyArray<EventRow> = [
     eligible: (_s, _p, w) => w.water === "out" && w.notes?.water_station === undefined,
     build: () => one({ kind: "note", topic: "water_station" }, "給水所 開設"),
     text: () => "給水所 開設",
-    basis: NONE,
+    // T104: 断水は 72 時間のうちには戻らないことが多い（熊本の地震の水道）。監督が選ぶ
+    basis: { by: "director", ids: ["mhlw-water-2016"] },
     touches: "all",
   },
   {
@@ -529,7 +554,103 @@ const ROWS: ReadonlyArray<EventRow> = [
     basis: code("mhlw-dementia-2018"),
     touches: "person",
   },
+
+  // ---------- T104: 訓練する人（自分）の身の回り（target は「自分」。印だけで、世界の様子・採点・色は変えない） ----------
+  {
+    kind: "self_outage",
+    label: "自宅停電",
+    scope: "area",
+    words: "自分の家が停電する（家族が家にいる。停電の範囲に自分の家が入るとき）",
+    eligible: () => false,
+    self: (f) => {
+      const o = f.world.outage;
+      if (!o || o.restoredAt !== null || f.world.notes?.self_outage !== undefined) return false;
+      if (o.area.scope === "office") return true;
+      // 地区の停電は、住む所の浸水の想定がその深さ以上のときだけ（事業所の近く・地区の分からない所は入らない）
+      return o.area.scope === "hazard" && o.area.hazard === "flood" && f.home?.floodM != null && f.home.floodM >= o.area.minDepthM;
+    },
+    build: () => one({ kind: "note", topic: "self_outage" }, "自宅 停電"),
+    text: () => "自宅 停電",
+    basis: NONE,
+    touches: "none",
+  },
+  {
+    kind: "self_family",
+    label: "家族連絡",
+    scope: "area",
+    words: "自分の家族と連絡がつかない（after に何時間後に家族の無事が分かるか）",
+    eligible: () => false,
+    self: (f) => f.world.notes?.self_family === undefined,
+    build: (_t, hour, after) => {
+      const n = after ?? 2;
+      return [
+        { change: { kind: "note", topic: "self_family" }, text: "自分の家族と連絡がつかない" },
+        {
+          change: {
+            kind: "schedule",
+            at: atMinute(hour, n),
+            by: "director",
+            then: { kind: "event", change: { kind: "note", topic: "self_family_ok" }, text: "自分の家族 無事を確認" },
+          },
+          text: `家族の無事 ${n} 時間後に分かる`,
+        },
+      ];
+    },
+    text: () => "自分の家族と連絡がつかない",
+    ownText: true,
+    basis: NONE,
+    touches: "none",
+    after: { min: 1, max: 6, default: 2 },
+  },
+  {
+    kind: "self_late",
+    label: "出勤遅れ",
+    scope: "area",
+    words: "夜の発災で、自分の出勤が遅れる（道の様子・家の片付け。夜間発災の 6 時間まで）",
+    eligible: () => false,
+    self: (f) => f.night && f.hour < 6 && f.world.notes?.self_late === undefined,
+    build: () => one({ kind: "note", topic: "self_late" }, "自分の出勤 遅れ"),
+    text: () => "自分の出勤 遅れ",
+    basis: NONE,
+    touches: "none",
+  },
+  {
+    kind: "self_battery",
+    label: "携帯電池",
+    scope: "area",
+    words: "停電が 6 時間を超えて、自分の携帯の電池が少ない（全域の停電で事業所でも充電できない）",
+    eligible: () => false,
+    self: (f) => {
+      const o = f.world.outage;
+      return !!o && o.restoredAt === null && o.area.scope === "office" && f.hour - o.since >= 6 && f.world.notes?.self_battery === undefined;
+    },
+    build: () => one({ kind: "note", topic: "self_battery" }, "自分の携帯 電池少"),
+    text: () => "自分の携帯 電池少",
+    basis: NONE,
+    touches: "none",
+  },
 ];
+
+/** 訓練する人（自分）の種類を訓練に差し込める数（T104。主役は担当の人なので少なく） */
+export const SELF_DRILL_MAX = 2;
+
+/** 自分の種類の話題（world.notes に最初の時刻が残る。家族の無事の確認は数えない） */
+const SELF_TOPICS = ["self_outage", "self_family", "self_late", "self_battery"] as const satisfies ReadonlyArray<NoteTopic>;
+
+/** 自分の種類か（T104） */
+export function isSelfKind(kind: InjectKind): boolean {
+  return EVENT_CATALOG[kind].self !== undefined;
+}
+
+/**
+ * 今差し込める自分の種類（T104。表の並び）。訓練にもう SELF_DRILL_MAX 起きていれば無し。
+ * 当てはまるかは自分の住む所と世界だけで見る（参加者の台帳を見ない）
+ */
+export function eligibleSelfKinds(f: SelfFacts): InjectKind[] {
+  const used = SELF_TOPICS.filter((t) => f.world.notes?.[t] !== undefined).length;
+  if (used >= SELF_DRILL_MAX) return [];
+  return ROWS.filter((r) => r.self?.(f) === true).map((r) => r.kind);
+}
 
 /** 福祉避難所（全体の出来事で開く物）と訪問看護ステーション（全体の休止）の id */
 export const WELFARE_SHELTER_ID = "sh-welfare";
@@ -607,6 +728,12 @@ export const NOTE_LABELS: Readonly<Record<NoteTopic, string>> = {
   water_station: "給水所",
   info_confusion: "情報混乱",
   landslide_warn: "土砂警戒",
+  // T104: 訓練する人（自分）
+  self_outage: "自宅停電",
+  self_family: "家族連絡",
+  self_family_ok: "家族無事",
+  self_late: "出勤遅れ",
+  self_battery: "携帯電池",
 };
 
 /** 本人ごとの印（被害状況の「個別」。lib/drill/labels.ts の MARK_LABELS はこれを読む） */

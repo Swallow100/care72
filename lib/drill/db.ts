@@ -60,7 +60,10 @@ import {
 } from "./engine.ts";
 import { callIndexes } from "./calls.ts";
 import { T70_LABELS } from "./labels.ts";
-import { EMPTY_WORLD, isInjectKind, SCENARIO_ORDER, scenarioOf, type WorldState } from "./scenarios.ts";
+import { EMPTY_WORLD, isInjectKind, isVirtual, SCENARIO_ORDER, scenarioOf, type WorldState } from "./scenarios.ts";
+import { isDrillScale, pickScale, seededRand } from "./scale.ts";
+import { homeTowns } from "./self.ts";
+import type { PseudonymInput } from "../pseudonym/index.ts";
 import { castScenario, mayBeCalled, needsCast, type Cast } from "./cast.ts";
 import { castFactsMap } from "./cast-facts.ts";
 import { loadPersonaSources } from "./persona.ts";
@@ -369,15 +372,29 @@ export type CaseloadPerson = {
  * 押せる人のいない人は本人役が呼ばれず、表の行が当たれば表の固定の安否になる（lib/drill/persona.ts の createPersonaHook）
  */
 export async function caseloadForDrill(db: D1Database, scope: DrillScope): Promise<CaseloadPerson[]> {
+  return (await drillStartInfo(db, scope)).people;
+}
+
+/**
+ * 開始の前の設定に出す物（T59・T70・T104）: 参加者の選択と、訓練する人の住む所に選べる地区（担当一覧の人の台帳の町名。
+ * デモ事業所は架空の街の町）。台帳は事業所の分を 1 回の batch で読む
+ */
+export async function drillStartInfo(db: D1Database, scope: DrillScope): Promise<{ people: CaseloadPerson[]; towns: string[] }> {
   const rows = await caseloadRows(db, scope);
-  if (rows.length === 0) return [];
-  const facts = castFactsMap(await loadPersonaSources(db, scope.officeId));
-  return rows.map((r) => ({
+  if (rows.length === 0) return { people: [], towns: [] };
+  const sources = await loadPersonaSources(db, scope.officeId);
+  const facts = castFactsMap(sources);
+  const people = rows.map((r) => ({
     id: r.id,
     name: r.name,
     canPress: facts.get(r.id)?.canPress ?? false,
     callable: SCENARIO_ORDER.filter((s) => mayBeCalled(scenarioOf(s), r.id, facts)),
   }));
+  const ledgers = rows.flatMap((r) => {
+    const s = sources.get(r.id);
+    return s ? [s.ledger] : [];
+  });
+  return { people, towns: homeTowns(scope.officeId, ledgers) };
 }
 
 async function caseloadPeople(db: D1Database, scope: DrillScope): Promise<string[]> {
@@ -407,23 +424,59 @@ export async function startDrill(
   hooks: StepHooks = {},
   newId: () => string = () => crypto.randomUUID(),
   options: StartOptions = {},
+  /** 規模のおまかせを引く乱数（T104）。無ければ訓練の id と開始の時刻から（訓練ごとに違い、同じ訓練なら同じ） */
+  rand?: () => number,
 ): Promise<StartResult> {
   const caseload = await caseloadPeople(db, scope);
   if (caseload.length === 0) return { ok: false, error: "empty" };
   const participants = pickParticipants(caseload, options.participants);
   if (!participants) return { ok: false, error: "invalid" };
   if (options.staff !== undefined && !isStaffCount(options.staff)) return { ok: false, error: "invalid" };
+  if (options.scale !== undefined && !isDrillScale(options.scale)) return { ok: false, error: "invalid" };
+  // 連続の時計（T90）は大雨・地震・仮想だけ。10 分版に来たら捨てる（刻みの道のまま）
+  const clock = options.clock === true && scenario !== "short";
+  // 訓練する人の住む所（T104）は連続の時計の大雨想定・地震想定だけが使う（ほかの想定に来たら捨てる）。担当一覧の人の地区の中だけ
+  const home = clock && !isVirtual(scenario) && options.home !== undefined ? options.home : undefined;
+  let sources: Map<string, PseudonymInput> | null = null;
+  const loadSources = async () => (sources ??= await loadPersonaSources(db, scope.officeId));
+  if (home !== undefined) {
+    const all = await loadSources();
+    const towns = homeTowns(
+      scope.officeId,
+      caseload.flatMap((p) => {
+        const s = all.get(p);
+        return s ? [s.ledger] : [];
+      }),
+    );
+    if (typeof home !== "string" || !towns.includes(home.trim())) return { ok: false, error: "invalid" };
+  }
   await expireStaleDrills(db, scope.officeId, now);
   if (await runningDrillId(db, scope.officeId, { scope })) return { ok: false, error: "running" };
 
   // 想定の表の配役（T70）。事業所にいない人（デモの 10 人）の行があるときだけ台帳を読み、参加者の中の代わりの人を決める
   const def = scenarioOf(scenario);
-  const cast = needsCast(def, participants) ? castScenario(def, participants, castFactsMap(await loadPersonaSources(db, scope.officeId))) : {};
+  const cast = needsCast(def, participants) ? castScenario(def, participants, castFactsMap(await loadSources())) : {};
 
   const id = newId();
-  // 連続の時計（T90）は大雨・地震・仮想だけ。10 分版に来たら捨てる（刻みの道のまま）
-  const clock = options.clock === true && scenario !== "short";
-  const init = initialState(scenario, participants, now, { staff: options.staff, night: options.night, ...(clock ? { clock: true as const } : {}) }, cast);
+  // 仮想の規模（T104）。選ばなければおまかせ（幅の中から今 1 回引いて残す）。ほかの想定には付けない
+  const scale = isVirtual(scenario)
+    ? options.scale
+      ? { scale: options.scale }
+      : { scale: pickScale(rand ?? seededRand(`${id}|${now}`)), scaleAuto: true as const }
+    : {};
+  const init = initialState(
+    scenario,
+    participants,
+    now,
+    {
+      staff: options.staff,
+      night: options.night,
+      ...(clock ? { clock: true as const } : {}),
+      ...scale,
+      ...(home !== undefined ? { home: home.trim() } : {}),
+    },
+    cast,
+  );
   const { state, tick } = clock ? (await advance(init, 0, hooks, { policy: "clock" }))! : await step(init, hooks);
   const [inserted] = await db.batch([
     db

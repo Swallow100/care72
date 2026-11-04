@@ -18,7 +18,7 @@ export const BASE_LAYER = {
 } as const;
 
 /**
- * 気象庁の雨雲（降水ナウキャスト、T72）。本物の事業所の地図に、旗 JMA_NOWCAST が on のときだけ、加工せずに重ねる。
+ * 気象庁の雨雲（降水ナウキャスト、T72）。担当一覧の地図（デモ事業所も。T103）に、旗 JMA_NOWCAST が on のときだけ、加工せずに重ねる。訓練の画面には重ねない。
  * タイルは Workers の route（app/api/jma/nowc）から。出典と凡例は地図の右下（components/map/NowcastLayer.tsx、lib/jma/nowcast.ts）
  */
 export const NOWCAST_LAYER = {
