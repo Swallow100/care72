@@ -143,6 +143,8 @@ export const TALK_UI = {
   done: "済",
   condition: "様子",
   visit: "訪問",
+  /** 訪問の言う事の話し手（本人か家族） */
+  visitee: "訪問先",
   /** ケアマネの吹き出しの話し手 */
   me: "自分",
 } as const;

@@ -131,7 +131,7 @@ function TalkFold({ lines, speaker }: { lines: ReadonlyArray<TalkLine>; speaker:
 }
 
 /** 訪問で着いたときの様子（T93、本人役の AI の印）と頼み事の印。言う事は吹き出し */
-function VisitLine({ visit, speaker }: { visit: VisitReport; speaker: string }) {
+function VisitLine({ visit }: { visit: VisitReport }) {
   return (
     <div className="mt-1 space-y-0.5" data-visit-report>
       <div className="flex flex-wrap items-baseline gap-x-1.5 text-sm">
@@ -140,7 +140,7 @@ function VisitLine({ visit, speaker }: { visit: VisitReport; speaker: string }) 
         {visit.condition && <span>{visit.condition}</span>}
         <AskMarks asks={visit.asks} />
       </div>
-      {visit.speech && <Bubble speaker={speaker} text={visit.speech} ai={visit.ai} />}
+      {visit.speech && <Bubble speaker={TALK_UI.visitee} text={visit.speech} ai={visit.ai} />}
     </div>
   );
 }
@@ -196,7 +196,7 @@ function ActionItem({
       <MemoLine memo={a.memo} />
       {r?.speech && <Bubble speaker={calleeText(a) ?? ""} text={r.speech} ai={r.speechAi} voice={voiceOf?.(a.id) ?? null} />}
       {r?.talk && <TalkFold lines={r.talk} speaker={calleeText(a) ?? ""} />}
-      {r?.visit && <VisitLine visit={r.visit} speaker={a.person ? (names[a.person] ?? "") : ""} />}
+      {r?.visit && <VisitLine visit={r.visit} />}
     </li>
   );
 }
@@ -235,7 +235,7 @@ export function LatestResult({
       ) : (
         r?.talk && <TalkFold lines={r.talk} speaker={calleeText(action) ?? ""} />
       )}
-      {r?.visit && <VisitLine visit={r.visit} speaker={action.person ? (names[action.person] ?? "") : ""} />}
+      {r?.visit && <VisitLine visit={r.visit} />}
       {calls.length > 0 && (
         <ul className="mt-2 space-y-1 text-sm" data-call-ins>
           {calls.map((t, i) => (
