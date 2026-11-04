@@ -99,6 +99,9 @@ export type FormResult = {
   fields?: number;
   mapped?: number;
   placed?: number;
+  /** 読めなかった頁・切れた答えから拾った欄だけの頁（T120。読めた頁の欄で対応表にした） */
+  unread?: number[];
+  partial?: number[];
 };
 
 export type InputResult = {
@@ -337,13 +340,15 @@ export async function runEval(opts: EvalOptions): Promise<RunResult> {
         pages = br.pages.map((p) => ({ bytes: p.bytes, source: p.meta.source, page: p.meta.page }));
       }
       const answer = job.gold ? goldReading(job.gold, pages.length) : { title: job.title, issuer: "", pages: pages.length, typeface: "gothic" as const, fields: [] };
-      fake?.expect(job.gold ? { kind: "read", answer } : { kind: "read", answer, noise: false }, job.id);
+      // 様式の読み取りは 1 頁 1 回（T120）。頁の数だけ正解を積む（崩し方の種は様式で 1 つ。偽の client が頼まれた頁の分を返す）
+      for (let i = 0; i < pages.length; i++) fake?.expect(job.gold ? { kind: "read", answer } : { kind: "read", answer, noise: false }, job.id);
       rec.scope(job.id, "form_read");
       const form = buildFormReadForm(pages.map((p) => ({ blob: new Blob([p.bytes as BlobPart], { type: "image/jpeg" }), meta: { source: pages[0].source, page: p.page, redacted: 0 }, bare: true })));
-      const res = await formReadPost({ db, bucket, aiContext: async () => evalCtx, newId: () => `fm-${job.id}` }, { officeId: OFFICE, accountId: ACCOUNT }, form);
+      // 頁は 1 つずつ読む（呼び出しの記録を順に結ぶため。アプリは並べて読む）
+      const res = await formReadPost({ db, bucket, aiContext: async () => evalCtx, newId: () => `fm-${job.id}`, readConcurrency: 1 }, { officeId: OFFICE, accountId: ACCOUNT }, form);
       rec.flush();
       fake?.drain();
-      const body = (await res.json()) as { ok: boolean; id?: string; error?: string; rejected?: number };
+      const body = (await res.json()) as { ok: boolean; id?: string; error?: string; rejected?: number; unread?: number[]; partial?: number[] };
       if (!body.ok || !body.id) {
         forms.push({ id: job.id, title: job.title, gold: !!job.gold, status: "failed", reason: body.error ?? `http_${res.status}`, pages: pages.length, read: null, overlay: false });
         step({ stage: "form.read", form: job.id, ok: false, status: res.status, error: body.error });
@@ -369,6 +374,8 @@ export async function runEval(opts: EvalOptions): Promise<RunResult> {
         placed: stored.mapping.fields.filter((f) => (f.box ?? null) !== null).length,
         rejected: body.rejected ?? 0,
         pages: stored.mapping.pages,
+        unread: body.unread ?? [],
+        partial: body.partial ?? [],
         typeface: stored.mapping.typeface ?? null,
         fieldsRead: stored.mapping.fields.map((f) => ({ id: f.id, page: f.page, section: f.section, label: f.label, shape: f.shape, item: f.item, confidence: f.ai?.confidence, reason: f.ai?.reason, rejected: f.ai?.rejected ?? null, box: f.box ?? null })),
         score: read,
@@ -384,6 +391,8 @@ export async function runEval(opts: EvalOptions): Promise<RunResult> {
         fields: stored.mapping.fields.length,
         mapped: stored.mapping.fields.filter((f) => f.item !== null).length,
         placed: stored.mapping.fields.filter((f) => (f.box ?? null) !== null).length,
+        ...(body.unread?.length ? { unread: body.unread } : {}),
+        ...(body.partial?.length ? { partial: body.partial } : {}),
       });
       ready.push({ form: job.gold, id: job.id, title: job.title, mapping: stored.mapping, images, pages: pages.map((p) => p.bytes), pairs });
     }

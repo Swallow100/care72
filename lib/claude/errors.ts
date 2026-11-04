@@ -62,6 +62,22 @@ export class AiBadOutput extends Error {
   }
 }
 
+/**
+ * 出力の上限で答えが途中で切れた（AiBadOutput の max_tokens）。partial は切れるまでに返った文（T120）。
+ * 様式の読み取りが、読めた欄を捨てずに続きを頼むために使う。partial はメッセージに入れない（ログに残さない）
+ */
+export class AiTruncated extends AiBadOutput {
+  readonly partial: string;
+  /** 答えたモデル */
+  readonly model: string;
+  constructor(partial: string, model: string) {
+    super("max_tokens");
+    this.name = "AiTruncated";
+    this.partial = partial;
+    this.model = model;
+  }
+}
+
 /** API に届かない・API の失敗（再試行のあとも）。元の SDK の例外は cause に */
 export class AiCallFailed extends Error {
   readonly code: Extract<AiCallError, "timeout" | "api_error">;

@@ -250,6 +250,11 @@ export type AiReading = {
   rejected?: string;
   /** AI が読んだ値の場所（T86。場所を読む前に作った対応表には無い） */
   box?: FieldBox | null;
+  /**
+   * 項目なし（item が null）にした欄で、AI が「たぶんこの項目」と挙げた物（T120）。同意・署名など本人の意思の欄は
+   * 決まりで item を null にするので、候補だけを出し、確かめの画面で人が選ぶ
+   */
+  candidate?: LedgerItemKey;
 };
 
 export type MappingField = {
@@ -277,7 +282,11 @@ export type MappingField = {
    * 場所を読む前に作った対応表には無い（undefined は null と同じ）
    */
   box?: FieldBox | null;
-  /** choice の選択肢ごとの □（□ が無ければ選択肢の字）の場所。options と同じ順。無い物は null */
+  /**
+   * choice の選択肢ごとの □（□ が無ければ選択肢の字）の場所。options と同じ順。無い物は null。
+   * T120: 日付・電話・文字の欄で、欄の中に「年」「月」「日」「歳」や「−」が刷ってあり値を空きに分けて書く物は、
+   * options に区切りの字（["年","月","日"]）、optionBoxes に空きごとの場所（lib/forms/split-parts.ts）
+   */
   optionBoxes?: Array<FieldBox | null>;
 };
 
@@ -290,7 +299,14 @@ export type FormMapping = {
   fields: MappingField[];
   /** 様式の字の書体（T86。無ければゴシック） */
   typeface?: Typeface;
+  /** 読み取りに失敗した頁（T120。読めた頁の欄だけで対応表にした。無ければ全部の頁を読めた） */
+  unread?: number[];
 };
+
+/** 区切りの空きを持てる欄の形（T120。選ぶ欄は選択肢の □） */
+export const PART_SHAPES: readonly FieldShape[] = ["date", "phone", "text"];
+/** 欄の形が選択肢・区切りの場所を持つか */
+export const keepsOptionBoxes = (shape: FieldShape) => shape === "choice" || PART_SHAPES.includes(shape);
 
 // ---------- 画面の言葉（2〜4 字の漢語） ----------
 
@@ -342,6 +358,17 @@ export const MAPPING_LABELS = {
   typeface: "書体",
   /** 欄に収まらない値を書く別の紙。欄には「別紙」と書く */
   annex: "別紙",
+  // ---- T120 ----
+  /** 読み取りに失敗した頁 */
+  unread: "未読",
+  /** 台帳の項目なしで、人が選ぶ欄（同意など） */
+  pick: "要選択",
+  /** AI の挙げた候補の項目 */
+  candidate: "候補",
+  /** 候補をそのまま使う */
+  adopt: "採用",
+  /** 区切りの字（年 月 日・− −） */
+  parts: "区切り",
 } as const;
 
 // ---------- 長さの上限（画面・保存・AI の返事で同じ） ----------
@@ -357,7 +384,8 @@ const clip = (s: string, n: number) => s.trim().slice(0, n);
 const PHONE_LIKE = /(?<![0-9０-９])[0０][0-9０-９]{1,4}[-‐－ー ]?[0-9０-９]{1,4}[-‐－ー ]?[0-9０-９]{3,4}(?![0-9０-９])/g;
 const PHONE_MARK = "（番号）";
 
-function clean(s: string, n: number): string {
+/** 長さを切り、電話番号らしい並びを消す（対応表に残す文字。T120 から読み取りの続きの頼みにも） */
+export function clean(s: string, n: number): string {
   return clip(s.replace(PHONE_LIKE, PHONE_MARK), n);
 }
 
@@ -376,6 +404,8 @@ export type ReadResult = {
     shape: FieldShape;
     options: string[];
     item: string | null;
+    /** 項目なしの欄の候補（T120。無い返事もある） */
+    candidate?: string | null;
     confidence: Confidence;
     reason: string;
     /** 値を書く場所（T86。前の固定の返事〔内閣府の様式例〕には無い） */
@@ -385,6 +415,8 @@ export type ReadResult = {
   }>;
   /** 様式の字の書体（T86） */
   typeface?: Typeface;
+  /** 読めなかった頁（T120） */
+  unread?: number[];
 };
 
 /**
@@ -445,12 +477,15 @@ export function checkReadResult(r: ReadResult): CheckedRead {
       ai.rejected = clean(raw, LIMITS.label);
       rejected.push({ id, label, item: ai.rejected });
     }
+    // 候補（T120）は項目なしの欄で、台帳の一覧にある物だけ
+    const cand = f.candidate?.trim() || null;
+    if (!known && f.shape !== "handwrite" && isLedgerItemKey(cand)) ai.candidate = cand;
     // 手で書く欄に台帳の値は入れない
     const item = f.shape === "handwrite" ? null : known;
     // 場所（T86）。返事に場所の欄があれば AI の読んだ物として残す（人が動かしたかを数える）
     const box = clampBox(f.box);
     if (f.box !== undefined) ai.box = box;
-    const opts = optionsOf(f.options, f.shape === "choice" ? f.option_boxes : undefined);
+    const opts = optionsOf(f.options, keepsOptionBoxes(f.shape) ? f.option_boxes : undefined);
     fields.push({
       id,
       page: Math.min(Math.max(1, Math.trunc(f.page) || 1), pages),
@@ -472,9 +507,17 @@ export function checkReadResult(r: ReadResult): CheckedRead {
       pages,
       fields,
       ...(r.typeface !== undefined ? { typeface: typefaceOf(r.typeface) } : {}),
+      ...unreadOf(r.unread, pages),
     },
     rejected,
   };
+}
+
+/** 読めなかった頁の並び（1〜頁の数、重ねない、昇順）。無ければ欄ごと付けない */
+function unreadOf(v: unknown, pages: number): { unread?: number[] } {
+  if (!Array.isArray(v)) return {};
+  const list = [...new Set(v.filter((n): n is number => Number.isInteger(n) && n >= 1 && n <= pages))].sort((a, b) => a - b);
+  return list.length > 0 ? { unread: list } : {};
 }
 
 // ---------- 画面から保存する対応表の検査 ----------
@@ -512,7 +555,7 @@ export function parseMappingInput(v: unknown): { ok: true; mapping: FormMapping 
     const cleanLabel = clean(label, LIMITS.label);
     if (!cleanLabel) return { ok: false, error: "invalid", at: id };
     // 場所（T86）は 0〜1 の中に収めて受ける（はみ出しは切る、形の違う物は場所なし）。前の対応表には無い
-    const opts = optionsOf(Array.isArray(f.options) ? f.options : [], shape === "choice" ? f.optionBoxes : undefined);
+    const opts = optionsOf(Array.isArray(f.options) ? f.options : [], keepsOptionBoxes(shape) ? f.optionBoxes : undefined);
     fields.push({
       id,
       page: Math.min(Math.max(1, Math.trunc(f.page)), pages),
@@ -535,6 +578,7 @@ export function parseMappingInput(v: unknown): { ok: true; mapping: FormMapping 
       pages,
       fields,
       ...(o.typeface !== undefined ? { typeface: typefaceOf(o.typeface) } : {}),
+      ...unreadOf(o.unread, pages),
     },
   };
 }
@@ -549,6 +593,7 @@ function parseAi(v: unknown): AiReading | null | undefined {
   const out: AiReading = { item: a.item as LedgerItemKey | null, confidence: a.confidence as Confidence, reason: clean(a.reason, LIMITS.reason) };
   if (typeof a.rejected === "string" && a.rejected) out.rejected = clean(a.rejected, LIMITS.label);
   if (a.box !== undefined) out.box = clampBox(a.box);
+  if (isLedgerItemKey(a.candidate)) out.candidate = a.candidate;
   return out;
 }
 

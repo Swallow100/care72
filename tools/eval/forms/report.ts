@@ -157,7 +157,7 @@ export function diffMarkdown(r: RunResult, prev: RunResult | null): string {
     const t = totals(r, { form: f.id });
     const rd = f.read;
     lines.push(
-      `| ${f.id} | ${f.status === "ok" ? "済" : `${f.status === "skipped" ? "飛ばし" : "失敗"}（${f.reason ?? ""}）`} | ${f.fields ?? "-"} | ${f.mapped ?? "-"} | ${rd?.goldFields ?? "-"} | ${rd ? rd.hit + rd.alt : "-"} | ${rd?.wrong ?? "-"} | ${rd?.missItem ?? "-"} | ${rd?.missField ?? "-"} | ${rd?.extraField ?? "-"} | ${rd?.boxMiss ?? "-"} | ${t.paper.hit}/${t.paper.filled} | ${t.paper.miss} | ${t.paper.wrong + t.paper.extra} | ${t.paper.annexOverflow + t.paper.annexUnplaced} |`,
+      `| ${f.id} | ${f.status === "ok" ? `済${f.unread?.length ? `（未読 ${f.unread.join("・")}頁）` : ""}${f.partial?.length ? `（一部 ${f.partial.join("・")}頁）` : ""}` : `${f.status === "skipped" ? "飛ばし" : "失敗"}（${f.reason ?? ""}）`} | ${f.fields ?? "-"} | ${f.mapped ?? "-"} | ${rd?.goldFields ?? "-"} | ${rd ? rd.hit + rd.alt : "-"} | ${rd?.wrong ?? "-"} | ${rd?.missItem ?? "-"} | ${rd?.missField ?? "-"} | ${rd?.extraField ?? "-"} | ${rd?.boxMiss ?? "-"} | ${t.paper.hit}/${t.paper.filled} | ${t.paper.miss} | ${t.paper.wrong + t.paper.extra} | ${t.paper.annexOverflow + t.paper.annexUnplaced} |`,
     );
   }
   lines.push("");

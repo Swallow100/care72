@@ -188,8 +188,8 @@ describe("偽の client で 1 周（Chrome を使わない）", () => {
     expect(t.paper.miss + t.paper.wrong + t.paper.extra + t.paper.boxMiss + t.paper.uncountedBlank).toBe(0);
     // 長すぎる書き起こしは失敗に数え、AI を呼ばない
     expect(r.inputs.find((i) => i.kind === "long")!.failures).toEqual(["too_long"]);
-    // 呼び出し: 様式 2 ＋ 文 4（自由文・書き起こし × 2 人）
-    expect(r.calls.calls).toBe(6);
+    // 呼び出し: 様式 3（T120 から 1 頁 1 回。こもれび市 2 頁・あおぞら市 1 頁）＋ 文 4（自由文・書き起こし × 2 人）
+    expect(r.calls.calls).toBe(7);
     expect(r.calls.failed).toBe(0);
     // 送った文に種の氏名・電話・町名が無い（仮名化の門を通った後）
     expect(r.leaks.strongHits).toBe(0);
@@ -199,7 +199,7 @@ describe("偽の client で 1 周（Chrome を使わない）", () => {
     const r = gold;
     const lines = (f: string) => readFileSync(join(r.dir, f), "utf8").trim().split("\n").map((l) => JSON.parse(l) as Record<string, unknown>);
     const calls = lines("calls.jsonl");
-    expect(calls).toHaveLength(6);
+    expect(calls).toHaveLength(7);
     for (const c of calls) {
       expect(c).toMatchObject({ run: "20261105-000000-fake", usage: { status: "ok" } });
       expect(typeof (c.request as { userText: string }).userText).toBe("string");
@@ -216,7 +216,7 @@ describe("偽の client で 1 周（Chrome を使わない）", () => {
     expect(lines("steps.jsonl").some((s) => s.stage === "paper")).toBe(true);
     expect(lines("judgements.jsonl").every((j) => typeof j.reason === "string")).toBe(true);
     const saved = JSON.parse(readFileSync(join(r.dir, "result.json"), "utf8")) as RunResult;
-    expect(saved.calls.calls).toBe(6);
+    expect(saved.calls.calls).toBe(7);
   }, 60_000);
 
   it("noisy: 崩した数が数に出て、足すと正解の数になる。送り直しと形の違う返事も数える", async () => {

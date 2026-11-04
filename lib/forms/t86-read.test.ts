@@ -16,9 +16,10 @@ import { d1FromSqlite, migratedSqlite } from "../db/test-d1.ts";
 import { clearDemoFormPages, type SeedBucket } from "../seed/reset.ts";
 import { BOX_STEP, defaultSize, FIELD_TARGET, fromPercent, moveBox, placeAt, realignOptionBoxes, resizeBox, withBox } from "./box-edit.ts";
 import { CAO_FORM_READ } from "./cao-form.fixture.ts";
-import { buildReadRequest, FORM_READ_SYSTEM, ReadSchema } from "./form-read.ts";
+import { buildReadRequest, FORM_READ_SYSTEM, PageReadSchema, toPageRead } from "./form-read.ts";
+import { pageReadReply } from "./form-read-fake.ts";
 import { KOMOREBI_LAYOUT, komorebiReadResult } from "./komorebi-form.fixture.ts";
-import { boxMoved, checkReadResult, clampBox, fitPages, mappingStats, parseMappingInput, type FormMapping } from "./mapping.ts";
+import { boxMoved, checkReadResult, clampBox, fitPages, mappingStats, parseMappingInput, type FormMapping, type ReadResult } from "./mapping.ts";
 import { getMapping, readStoredMapping } from "./mapping-db.ts";
 import { pageImageGet } from "./page-image-http.ts";
 import { jpegSize, pageImageHref, pageImageKey, parsePageImages, storePageImages, type PageImageBucket } from "./page-images.ts";
@@ -106,7 +107,7 @@ function aiFake(answer: object = { ...komorebiReadResult(), pages: 3 }) {
       messages: {
         create: async (params) => {
           calls.push(params);
-          return reply(JSON.stringify(answer));
+          return reply(pageReadReply(answer as ReadResult, params));
         },
       },
     },
@@ -242,10 +243,11 @@ describe("場所を直す（確かめの画面の計算）", () => {
 
 describe("Claude への頼み（form_read）", () => {
   it("返事の形に欄ごとの場所・選択肢の場所・書体。指示に場所の決まり。モデルは Opus・effort high のまま", () => {
-    const shape = ReadSchema.safeParse(komorebiReadResult());
+    const shape = PageReadSchema.safeParse(toPageRead(komorebiReadResult(), 1));
     expect(shape.success).toBe(true);
-    // 前の形（場所の欄が無い返事）は通さない（構造化出力で全部の欄を求める）
-    expect(ReadSchema.safeParse(CAO_FORM_READ).success).toBe(false);
+    // 前の形（頁ごとでない返事）は通さない（構造化出力で全部の欄を求める）
+    expect(PageReadSchema.safeParse(CAO_FORM_READ).success).toBe(false);
+    expect(PageReadSchema.safeParse(komorebiReadResult()).success).toBe(false);
     expect(FORM_READ_SYSTEM).toContain("左上を (0,0)、右下を (1,1)");
     expect(FORM_READ_SYSTEM).toContain("option_boxes");
     expect(FORM_READ_SYSTEM).toContain("typeface");
@@ -263,8 +265,9 @@ describe("様式の読み取りの受け口（lib/forms/read-post.ts）", () => 
     const ai = aiFake();
     const res = await formReadPost({ db, bucket, aiContext: ai.aiContext, newId: () => "fm-komorebi" }, SCOPE, pagesForm(A4));
     expect(res.status).toBe(200);
-    expect(await res.json()).toMatchObject({ ok: true, id: "fm-komorebi", reused: false, rejected: 0 });
-    expect(ai.calls).toHaveLength(1);
+    expect(await res.json()).toMatchObject({ ok: true, id: "fm-komorebi", reused: false, rejected: 0, unread: [] });
+    // T120 から 1 頁 1 回
+    expect(ai.calls).toHaveLength(2);
 
     const stored = (await getMapping(db, "office-demo", "fm-komorebi"))!;
     expect(stored.status).toBe("draft");
@@ -289,7 +292,7 @@ describe("様式の読み取りの受け口（lib/forms/read-post.ts）", () => 
     objects.clear();
     const again = await formReadPost(deps, SCOPE, pagesForm(A4));
     expect(await again.json()).toMatchObject({ ok: true, id: "fm-1", reused: true });
-    expect(ai.calls).toHaveLength(1);
+    expect(ai.calls).toHaveLength(2);
     expect(objects.size).toBe(2);
     expect((await getMapping(db, "office-demo", "fm-1"))!.pageImages).toHaveLength(2);
   });
