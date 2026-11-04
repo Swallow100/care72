@@ -182,8 +182,8 @@ export type OverlayItem =
   | { kind: "text"; fieldId: string; box: FieldBox; lines: string[]; fontPt: number; top: boolean }
   /** □ の中のレ点（check）か、選択肢を丸で囲む（circle） */
   | { kind: "mark"; fieldId: string; box: FieldBox; mark: "check" | "circle" }
-  /** 欄に置く画像（避難経路の地図。T101 の受け口、T102 が渡す） */
-  | { kind: "image"; fieldId: string; box: FieldBox; slot: string; src: string; alt: string };
+  /** 欄に置く画像（避難経路の地図。T101 の受け口、T106 がつなぐ）。svg は欄の箱の大きさで描いた SVG の文字列（欄の中にそのまま埋め込む） */
+  | { kind: "image"; fieldId: string; box: FieldBox; slot: string; svg: string; alt: string };
 
 /** 未記入の色付け（T101）で塗る所。欄の矩形の内側（罫線に掛からないよう縮めた物）と、その欄の id（帯の未確認と同じ欄） */
 export type OverlayFill = { keys: string[]; box: FieldBox };

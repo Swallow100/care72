@@ -8,16 +8,20 @@
 // 大きさは paper.css の .paper.matsuyama が持つ。近親者の段の注は太く下線、2 頁の下の注 1 つ目は下線（.u。様式のとおり）。
 // 見た目は components/forms/paper.css（読み込むのはページの側。テストでは読まない）。
 
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import {
   cellText,
+  MATSUYAMA_BLOCKS,
   MATSUYAMA_TEXTS as TX,
   matsuyamaField,
   type MatsuyamaKey,
   type MatsuyamaSheet as Sheet,
 } from "@/lib/forms/matsuyama";
 import { paperText } from "@/lib/forms/paper-text";
-import type { RouteMapImage } from "@/lib/forms/frame-build";
+import { ROUTE_MAP_ANNEX_MM, type RouteMapImage } from "@/lib/forms/frame-build";
+import type { SlotImage } from "@/lib/forms/frame-sheet";
+import { ANNEX_MARK } from "@/lib/forms/overlay-sheet";
+import { ROUTE_LABELS } from "@/lib/labels";
 import { FormCell } from "./FormCell";
 import { PaperFoot } from "./PaperFoot";
 
@@ -34,10 +38,13 @@ function F({
   inline,
   note,
   style,
+  after,
 }: {
   s: Sheet;
   k: MatsuyamaKey;
   size?: Size;
+  /** 値のあとに続ける物（避難経路の「地図 別紙」。行を増やさない） */
+  after?: ReactNode;
   /** 見出しの段に名前があるときは欄の名前を出さない */
   bare?: boolean;
   /** 選択肢の言葉が様式で太い欄（同意の問い・マイ・タイムライン） */
@@ -72,12 +79,16 @@ function F({
       )}
       <span className="f-v">
         <FormCell cell={s.cells[k]} />
+        {after}
       </span>
     </div>
   );
 }
 
 const cols = (template: string): CSSProperties => ({ gridTemplateColumns: template });
+
+/** 避難経路の文の欄に「地図 別紙」を右上に置くときの欄（文は印の手前で折り返す） */
+const ROUTE_ANNEX_CELL: CSSProperties = { position: "relative", paddingRight: "17mm" };
 
 const SUPPORTER_PARTS = ["kana", "name", "address", "phone", "mobile", "relation", "consent"] as const;
 
@@ -285,7 +296,7 @@ function NotePart({ s, k }: { s: Sheet; k: MatsuyamaKey }) {
   );
 }
 
-function PageTwo({ s, routeMap }: { s: Sheet; routeMap: RouteMapImage | null }) {
+function PageTwo({ s, map }: { s: Sheet; map: boolean }) {
   return (
     <section className="paper form matsuyama" aria-label="2 ページ" data-page="2">
       <div className="blk key" data-block="plan">
@@ -366,13 +377,21 @@ function PageTwo({ s, routeMap }: { s: Sheet; routeMap: RouteMapImage | null }) 
           </span>
         </div>
         <div className="grid" style={cols("1fr")}>
-          <F s={s} k="route.text" bare />
+          {/* 地図は 2 頁に場所が無いので別紙（T106）。段の右上に「地図 別紙」（行を増やさない。文はその手前で折り返す） */}
+          <F
+            s={s}
+            k="route.text"
+            bare
+            style={map ? ROUTE_ANNEX_CELL : undefined}
+            after={
+              map && (
+                <span className="route-annex" data-annex-mark="route-map">
+                  {ROUTE_LABELS.paperMap} {ANNEX_MARK}
+                </span>
+              )
+            }
+          />
         </div>
-        {/* 避難経路の地図（T102 が渡す。T101 の受け口。原本の枠の紙は lib/forms/frame-build.ts の ROUTE_MAP_SLOT） */}
-        {routeMap && (
-          // eslint-disable-next-line @next/next/no-img-element -- 印刷に出すので <img>
-          <img className="route-map" src={routeMap.src} alt={routeMap.alt} data-slot="route-map" />
-        )}
       </div>
 
       {/* 様式の並び: 注は幅いっぱい、その下の行の左に松山市長、右に横長の市受付印の枠 */}
@@ -400,13 +419,41 @@ function PageTwo({ s, routeMap }: { s: Sheet; routeMap: RouteMapImage | null }) 
   );
 }
 
-/** routeMap は避難経路の欄に置く地図（T102 が渡す。無ければ空ける） */
+/**
+ * 避難経路の地図の別紙（T106）。前からの紙面の 2 頁は詰めてあり（T85）、避難経路の段に地図の場所が無い（種の 10 人で空きは 1.65〜27mm）。
+ * T101 の決まり（欄に収まらない物は欄に「別紙」、最後に別紙の頁）のとおり、地図はこの頁に。頁の数は 2 ＋ 別紙 1。
+ * 地図は箱の大きさで描いた SVG を箱の中にそのまま置く（<img> にすると中の地理院タイルを読まない）。中身は routeMapFor が数と固定の言葉だけで作った物
+ */
+function RouteMapAnnex({ s, pic }: { s: Sheet; pic: SlotImage }) {
+  return (
+    <section className="paper form matsuyama route-annex-page" aria-label={ANNEX_MARK} data-annex="route-map">
+      <div className="head-row">
+        <h1 className="title">
+          {ANNEX_MARK}　{MATSUYAMA_BLOCKS.route}
+        </h1>
+      </div>
+      <div className="top">
+        <span>
+          対象者 <span data-field="target.name">{s.name}</span>
+        </span>
+      </div>
+      <div className="blk" data-block="route-annex">
+        <div className="route-map" role="img" aria-label={pic.alt} data-slot="route-map" dangerouslySetInnerHTML={{ __html: pic.svg }} />
+      </div>
+      <PaperFoot doc={`個別避難計画 ${ANNEX_MARK}`} name={s.name} page={1} total={1} />
+    </section>
+  );
+}
+
+/** routeMap は避難経路の地図（lib/forms/frame-build.ts の routeMapFor。無ければ置かない）。あれば段に「地図 別紙」、地図は別紙の頁 */
 export function MatsuyamaSheet({ sheet, routeMap = null }: { sheet: Sheet; routeMap?: RouteMapImage | null }) {
+  const pic = routeMap?.(ROUTE_MAP_ANNEX_MM) ?? null;
   return (
     <div className="paper-scroll">
       <div className="paper-stack" data-paper-root data-sheet="matsuyama" data-person={sheet.personId}>
         <PageOne s={sheet} />
-        <PageTwo s={sheet} routeMap={routeMap} />
+        <PageTwo s={sheet} map={pic !== null} />
+        {pic && <RouteMapAnnex s={sheet} pic={pic} />}
       </div>
     </div>
   );

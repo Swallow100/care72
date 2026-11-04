@@ -652,11 +652,27 @@
   }
 }
 
-/* 避難経路の地図（T102 が渡す。T101 の受け口）。欄の幅いっぱい、縦横の比を保って高さ 45mm まで */
+/*
+  避難経路の地図（T106）。前からの紙面の 2 頁に場所が無いので別紙の頁に、段の幅いっぱい・高さ 86.6mm
+  （lib/forms/frame-build.ts の ROUTE_MAP_ANNEX_MM）。その大きさで描いた SVG を箱いっぱいに
+  （段の幅との丸めの差は SVG の中で縦横の比を保って受ける）。2 頁の段の文の後の「地図 別紙」は行を増やさない
+*/
 .paper.matsuyama .route-map {
   display: block;
   width: 100%;
-  max-height: 45mm;
-  object-fit: contain;
-  object-position: left top;
+  height: 86.6mm;
+  overflow: hidden;
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}
+.paper.matsuyama .route-annex {
+  position: absolute;
+  top: 0.5mm;
+  right: 1.8mm;
+  white-space: nowrap;
+}
+.paper.matsuyama .route-map > svg {
+  display: block;
+  width: 100%;
+  height: 100%;
 }

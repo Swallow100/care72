@@ -13,7 +13,8 @@ import { PaperBar, wantsPrint } from "@/components/ui/PaperBar";
 import { todayJst } from "@/lib/age";
 import { requirePage } from "@/lib/auth/server";
 import { DOCUMENT_CATALOG } from "@/lib/forms/catalog";
-import { matsuyamaFrameSheet, type RouteMapImage } from "@/lib/forms/frame-build";
+import { parseLedger } from "@/lib/db/ledger";
+import { matsuyamaFrameSheet, routeMapFor } from "@/lib/forms/frame-build";
 import { buildMatsuyamaSheet } from "@/lib/forms/matsuyama";
 import { formsScope } from "@/lib/forms/mapping-db";
 import { originalPageHref } from "@/lib/forms/originals";
@@ -55,8 +56,8 @@ export default async function MatsuyamaFormPage({ params, searchParams }: Props)
   const sheet = buildMatsuyamaSheet(rows, { today: todayJst(), officeName: office?.name ?? null });
   // 紙面が「未確認」と刷る欄（台帳の pending の欄も入る。理由を添える）。帯だけで、紙には刷らない（T87）。原本の紙は同じ欄を空けて刷る
   const unconfirmed = unconfirmedView(matsuyamaUnconfirmed(sheet));
-  // 避難経路の地図（T102 がここに渡す。lib/forms/frame-build.ts の RouteMapImage・ROUTE_MAP_BOX_MM）
-  const routeMap: RouteMapImage | null = null;
+  // 避難経路の地図（T106）。台帳の経路地図（T102）を欄の大きさで描く。経路地図か家の位置が無ければ欄を空ける
+  const routeMap = routeMapFor(parseLedger(rows.person.ledger));
   const framed = manifest ? matsuyamaFrameSheet(sheet, manifest, { routeMap }) : null;
   const here = `/people/${encodeURIComponent(id)}/forms/matsuyama`;
 

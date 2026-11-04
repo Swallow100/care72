@@ -2,7 +2,10 @@
 // 値は前からの紙面と同じ（buildMatsuyamaSheet・buildMedicalSummary の cells）。原本の頁は事業所が取り込んだ物（lib/forms/originals.ts）。
 // サーバーの描画で、Claude は呼ばない。
 
-import { buildFrameSheet, type SlotImage } from "./frame-sheet.ts";
+import type { Ledger } from "../db/types.ts";
+import { ROUTE_LABELS } from "../labels.ts";
+import { routeMapSvg, routeSceneOf } from "../map/route-image.ts";
+import { buildFrameSheet, ROUTE_TEXT_MM, type SlotImageFor } from "./frame-sheet.ts";
 import { MATSUYAMA_FRAME } from "./frame-matsuyama.ts";
 import { KIROKU_FRAME } from "./frame-kiroku.ts";
 import { MATSUYAMA_FIELDS, MATSUYAMA_FORM_VERSION, type MatsuyamaKey, type MatsuyamaSheet } from "./matsuyama.ts";
@@ -17,10 +20,35 @@ export const ROUTE_MAP_SLOT = "route-map";
 /**
  * 避難経路の欄の大きさ（mm。地図の画像を作るときの縦横の比に）。避難経路の文があれば欄の上 12.2mm を文に使うので、地図は withText の高さ
  */
-export const ROUTE_MAP_BOX_MM = { w: 173.25, h: 73.46, withTextH: 61.26 } as const;
+export const ROUTE_MAP_BOX_MM = { w: 173.25, h: 73.46, withTextH: Math.round((73.46 - ROUTE_TEXT_MM.top) * 100) / 100 } as const;
 
-/** 避難経路の地図（T102）。src は同じ origin の URL か data: の URL。alt は「避難経路の地図」など */
-export type RouteMapImage = SlotImage;
+/**
+ * 原本を取り込む前の紙面（T85、components/forms/MatsuyamaSheet.tsx）の避難経路の地図の箱（mm）。その紙は 2 頁に地図の場所が無いので
+ * 地図は別紙の頁に置く。幅は段の内側（A4 から左 20.6mm・右 15.6mm の余白と段の枠の線を引いた幅）、高さは経路地図で決めた範囲と同じ 2:1
+ */
+export const ROUTE_MAP_ANNEX_MM = { w: 173.25, h: 86.6 } as const;
+
+/** 避難経路の地図（T106）。欄の箱の大きさ（mm）を受けて SVG を作る（lib/forms/frame-sheet.ts の SlotImageFor） */
+export type RouteMapImage = SlotImageFor;
+
+/**
+ * 紙の地図のタイルの細かさ（lib/map/route-image.ts の routeMapSvg の detail）。1 はタイルを 1 段細かく敷き、刷った線と道がくっきりする
+ * （地図の字はその分小さい）
+ */
+export const ROUTE_MAP_DETAIL = 1;
+
+/**
+ * 台帳の経路地図（T102）を紙の避難経路の欄に置く物（T106）。経路地図か家の位置が無ければ null（欄を空け、文字の経路だけ）。
+ * SVG は地理院タイルを <image href> で読むので、紙面の部品は <img> にせず欄の中にそのまま埋め込む。
+ * 中身は台帳の座標から計算した数・固定の言葉（「家」「避難先1」「経路 目安」と出典）・地理院タイルの URL だけで、名前・住所の文字は入らない
+ */
+export function routeMapFor(ledger: Ledger): RouteMapImage | null {
+  if (!routeSceneOf(ledger, { w: ROUTE_MAP_BOX_MM.w, h: ROUTE_MAP_BOX_MM.h })) return null;
+  return (box) => {
+    const svg = routeMapSvg(ledger, box, { unit: "mm", detail: ROUTE_MAP_DETAIL });
+    return svg ? { svg, alt: ROUTE_LABELS.open } : null;
+  };
+}
 
 /** 同意の記録の日と人（ケア72 の添え。様式の値でない）は原本の紙に書かない */
 const MATSUYAMA_DROP_AFTER = new Set<MatsuyamaKey>(["consent.registry", "consent.planShare"]);

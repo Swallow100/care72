@@ -48,6 +48,7 @@ import {
   SMARTPHONE_LABELS,
   STRUCTURE_LABELS,
 } from "../labels.ts";
+import { ROUTE_FRAME, routeSceneOf } from "../map/route-image.ts";
 import { formatJst, FIELDS as PAGE_FIELDS, type PersonPageRows } from "../person.ts";
 import { ERAS, wareki, warekiDate, warekiText } from "./wareki.ts";
 
@@ -1345,7 +1346,8 @@ export function buildMatsuyamaSheet(rows: PersonPageRows, opts: BuildOptions): M
         { label: "なし", on: !(medicalShared && hasMedicalDetail) },
       ],
     },
-    "route.text": route ? value([t(route)]) : unconfirmed(routeReason),
+    // 様式の注は「地図上または箇条書き等で避難経路を記入」。経路地図（T102）を紙に置ける人は、文が無くても欄は埋まる（T106。未確認に数えない）
+    "route.text": route ? value([t(route)]) : routeSceneOf(ledger, ROUTE_FRAME) ? { kind: "value", lines: [] } : unconfirmed(routeReason),
     "route.map": {
       kind: "choice",
       options: [
