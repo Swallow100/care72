@@ -21,7 +21,7 @@ import { ORIGINALS, type OriginalManifest } from "./originals.ts";
 import type { OverlaySheet as Overlay } from "./overlay-sheet.ts";
 import { seedRows } from "./print-harness.ts";
 import { autoPrint, SVG_IMAGE_SELECTOR, waitSvgImages, type PrintWindow } from "./print.ts";
-import { medicalUnconfirmed } from "./unconfirmed.ts";
+import { matsuyamaUnconfirmed, medicalUnconfirmed } from "./unconfirmed.ts";
 
 const OPTS = { today: "2026-11-05", officeName: "デモ事業所" };
 const manifestOf = (id: "matsuyama" | "kiroku"): OriginalManifest => ({
@@ -98,6 +98,31 @@ describe("台帳の経路地図 → 避難経路の欄の地図（routeMapFor）
       // 埋め込む文字列に script・on〜 の属性・外の SVG の参照が無い
       expect(svg).not.toMatch(/<script|\son[a-z]+=|<foreignObject|xlink:href|<use /i);
     }
+  });
+});
+
+describe("経路地図のある人の避難経路の欄は埋まった扱い（様式の注「地図上または箇条書き等で」）", () => {
+  it("文が無くても未確認に数えず、色付けで塗らない（地図が塗りで黄色くならない）。文があれば文を書く", () => {
+    const seed = SEED_PEOPLE[1];
+    const rowsWith = (l: Ledger) => ({ ...seedRows(seed), person: { ...seedRows(seed).person, ledger: JSON.stringify(l) } });
+    const noText = withRoute(1);
+    delete noText.evacuation.route;
+    const plain = parseLedger(seedRows(seed).person.ledger);
+    delete plain.evacuation.route;
+    const without = buildMatsuyamaSheet(rowsWith(plain), OPTS);
+    const withMap = buildMatsuyamaSheet(rowsWith(noText), OPTS);
+    expect(without.cells["route.text"].kind).toBe("unconfirmed");
+    expect(withMap.cells["route.text"]).toEqual({ kind: "value", lines: [] });
+    const names = (s: Sheet) => matsuyamaUnconfirmed(s).fields.map((f) => f.name);
+    expect(names(without)).toContain("避難経路");
+    expect(names(withMap)).not.toContain("避難経路");
+    expect(matsuyamaUnconfirmed(withMap).count).toBe(matsuyamaUnconfirmed(without).count - 1);
+    const framed = matsuyamaFrameSheet(withMap, manifestOf("matsuyama"), { routeMap: routeMapFor(noText) });
+    expect(framed.pages.flatMap((p) => p.fills).some((f) => f.keys.includes("route.text"))).toBe(false);
+    expect(images(framed)[0].box.h * MATSUYAMA_FRAME.pages[1].h).toBeCloseTo(ROUTE_MAP_BOX_MM.h, 2);
+    const textToo = withRoute(1);
+    textToo.evacuation.route = "南の道から公民館へ";
+    expect(buildMatsuyamaSheet(rowsWith(textToo), OPTS).cells["route.text"]).toEqual(value([t("南の道から公民館へ")]));
   });
 });
 
