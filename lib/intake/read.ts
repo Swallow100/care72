@@ -7,17 +7,19 @@
 // - 仮名化: 「本人」（今の台帳）は lib/pseudonym を通す。写真・PDF の中の文字は仮名化の層では伏せられないので、
 //   送る前にブラウザの黒塗りの画面（T52、components/person/RedactSheet.tsx）で人が氏名・住所・電話・町名・生年月日・保険者番号を塗り、
 //   塗った後の画像（JPEG、EXIF なし）だけをサーバーが受ける（lib/intake/read-form.ts）。PDF は頁ごとに画像にしてから。
-//   塗り残しに備えて、氏名・住所・電話を出力に書かないよう指示し（INTAKE_READ_SYSTEM）、返った文字は名前・電話を伏せ字に戻してから差分にする。
-//   伏せ字が残る所は画面で印が付き、人が直す
+//   塗り残しに備えて、氏名・住所・電話を出力に書かないよう指示し（INTAKE_READ_SYSTEM）、返った文字は仮名化と同じ置き換え（連絡先の名前は役割名）を通す。
+//   伏せた物は全部元に戻す（T118）: Claude が写した台帳の伏せ字（「（町名）小学校」）は台帳の文から、返事を伏せ直した所は返事の元の文から
+//   （文の道 extract.ts と同じ sourceRestorer）。戻せない伏せ字が残る値は差分に出さず保存もしない（diff.ts・save.ts）
 
 import { askJson, type AskJsonContext, type AskJsonRequest } from "../claude/call.ts";
 import { OPUS } from "../claude/models.ts";
 import type { FormFile } from "../forms/form-read.ts";
 import type { PersonPageRows } from "../person.ts";
 import {
+  inputTexts,
   pseudonymize,
   pseudonymizeText,
-  restoreText,
+  sourceRestorer,
   type ClaudePerson,
   type ForClaude,
   type PseudonymKey,
@@ -49,6 +51,15 @@ export function buildReadIntakeRequest(person: ForClaude<ClaudePerson[]>, file: 
   };
 }
 
+/** 文字の値を全部並べる（戻す元の文に） */
+function stringsOf(v: unknown, out: string[] = []): string[] {
+  if (typeof v === "string") {
+    if (v.trim()) out.push(v);
+  } else if (Array.isArray(v)) v.forEach((x) => stringsOf(x, out));
+  else if (v && typeof v === "object") Object.values(v).forEach((x) => stringsOf(x, out));
+  return out;
+}
+
 /** 文字の値を全部同じ関数に通した写し（形は変えない） */
 function mapStrings<T>(v: T, f: (s: string) => string): T {
   if (typeof v === "string") return f(v) as T;
@@ -59,7 +70,7 @@ function mapStrings<T>(v: T, f: (s: string) => string): T {
 
 /**
  * 返った物に書類から写した氏名・電話が残っていれば、仮名化と同じ置き換えで伏せる（本人は A さん、連絡先は役割名、電話は（電話））。
- * このあと差分にするときに仮名を氏名に戻す。台帳に無い名前は残りうる（文の分け方と同じ）
+ * このあと差分にするときに、仮名と伏せ字を元の言葉に戻す（readIntake の sourceRestorer。役割名は戻さない）。台帳に無い名前は残りうる（文の分け方と同じ）
  */
 export function sealReadOutput(out: ExtractOutput, key: PseudonymKey): ExtractOutput {
   return mapStrings(out, (s) => pseudonymizeText(s, key).text);
@@ -74,7 +85,8 @@ export async function readIntake(rows: PersonPageRows, file: FormFile, ctx: AskJ
   const { payload, key } = pseudonymize([input], { on: opts.today });
   const r = await askJson(buildReadIntakeRequest(payload, file), ctx);
   const sealed = sealReadOutput(r.value, key);
-  const restore = (s: string) => restoreText(s, key);
+  // 伏せた物を元に戻す元: 返事の元の文（伏せ直した所）と台帳の文（Claude が写した台帳の伏せ字）。T118
+  const restore = sourceRestorer([...stringsOf(r.value), ...inputTexts(input)], key);
   const { items, dropped } = buildDiff({ ledger: input.ledger, contacts: rows.contacts }, sealed, { text: restore, note: restore });
   return { ai: { model: r.model }, items, dropped };
 }
