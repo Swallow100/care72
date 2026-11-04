@@ -152,7 +152,9 @@ describe("入れる欄の画面（components/person/Intake.tsx、T45）", () => 
     expect(h).toContain('data-intake="read"');
     expect(h).toContain("写真・PDF 読取");
     expect(h).toContain('data-intake="split"');
-    expect(h).toContain("分ける");
+    expect(h).toMatch(/<button[^>]*data-intake="split"[^>]*>(?:(?!<\/button>)[\s\S])*入力<\/button>/);
+    expect(h).not.toContain("分ける");
+    expect(h).toContain("AI 入力");
     expect(h).not.toContain("手入力");
     expect(h).not.toContain('role="tablist"');
     const q = intakePropsOf(seedRows(seed("p-04")), true).queue[0];
@@ -199,7 +201,7 @@ describe("入れる欄の画面（components/person/Intake.tsx、T45）", () => 
       { section: "evacuation", change: { t: "note", value: "z" } },
       { section: "basic", change: null },
     ] as unknown as DiffItem[];
-    expect(splitSay(items)).toBe("3 項目に分けました（医療 2・避難 1）");
+    expect(splitSay(items)).toBe("3 項目を見つけました（医療 2・避難 1）");
     expect(splitSay([])).toBe("本人のページに入る事は見つかりませんでした");
     const props = intakePropsOf(seedRows(seed("p-04")), true);
     const render = (entry: LogEntry) =>
@@ -208,7 +210,7 @@ describe("入れる欄の画面（components/person/Intake.tsx、T45）", () => 
       );
     const split = render({ id: "1", who: "ai", kind: "split", say: splitSay(items), proposal: { model: "claude-sonnet-5-5", dropped: 0, rows: [] }, state: "saved" });
     expect(split).toContain('data-ai=""');
-    expect(split).toContain("3 項目に分けました（医療 2・避難 1）");
+    expect(split).toContain("3 項目を見つけました（医療 2・避難 1）");
     const q = props.queue[0];
     const asked = render({ id: "2", who: "ask", q });
     expect(asked).toContain(q.why);
