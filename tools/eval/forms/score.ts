@@ -299,7 +299,8 @@ export function uncountedBlanks(mapping: FormMapping, cellOf: CellOf): string[] 
   for (const f of mapping.fields) {
     if (f.removed || f.shape === "handwrite" || f.shape === "check") continue;
     const cell = cellOf(f);
-    if (cell.kind === "withheld" || cell.kind === "handwrite" || cell.kind === "empty") continue;
+    // 選ぶ欄で何も選んでいない値（自宅のリスクが無いと分かっている人の「複数選択可」）も答え。分からない値は未確認の値になる
+    if (cell.kind === "withheld" || cell.kind === "handwrite" || cell.kind === "empty" || cell.kind === "choice") continue;
     if (paperText(f, cell) === "" && !isUnconfirmedCell(cell)) out.push(f.id);
   }
   return out;

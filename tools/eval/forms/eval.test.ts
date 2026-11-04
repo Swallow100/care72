@@ -255,9 +255,16 @@ describe("台の数え方の直し（T120）", () => {
         { page: 1, section: "支援者2", label: "氏名", position: "", shape: "text", options: [], item: "supporter2.name", confidence: "high", reason: "" },
         { page: 1, section: "", label: "本人", position: "", shape: "text", options: [], item: "person.name", confidence: "high", reason: "" },
         { page: 1, section: "", label: "備考", position: "", shape: "text", options: [], item: "notes.other", confidence: "high", reason: "" },
+        { page: 1, section: "", label: "自宅のリスク（複数選択可）", position: "", shape: "choice", options: ["浸水", "土砂"], item: "evacuation.hazards", confidence: "high", reason: "" },
       ],
     }).mapping;
-    const cells: Record<string, Cell> = { f1: { kind: "empty" }, f2: { kind: "unconfirmed" }, f3: { kind: "value", lines: [] } };
+    const cells: Record<string, Cell> = {
+      f1: { kind: "empty" },
+      f2: { kind: "unconfirmed" },
+      f3: { kind: "value", lines: [] },
+      // 何も選んでいない選ぶ欄（リスクが無いと分かっている）も答え
+      f4: { kind: "choice", options: [{ label: "浸水", on: false }, { label: "土砂", on: false }] },
+    };
     expect(uncountedBlanks(m, (f) => cells[f.id])).toEqual(["f3"]);
   });
 
