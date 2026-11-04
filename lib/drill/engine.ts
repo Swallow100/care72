@@ -29,7 +29,7 @@ import {
 import { castEvent, castTurn, eventKey, turnKey, type Cast } from "./cast.ts";
 import { NO_HINTS, type OutcomeHints, type OutcomeHook } from "./outcome.ts";
 import { isStaffCount } from "./options.ts";
-import type { ActionRecord } from "./action-types.ts";
+import type { ActionRecord, FreeDraft } from "./action-types.ts";
 import {
   DIRECTOR_MAX,
   directorIncidents,
@@ -73,7 +73,7 @@ const HOUR_MS = 3_600_000;
 
 // 型は 3 つのファイルに分けた（T90 の準備）。前からの import（"./engine.ts"）を壊さないよう、同じ名前をここからも出す:
 // 手（T91）は action-types.ts、状況と監督（T92）は incident-types.ts、本人役（T93）は persona-types.ts
-export type { ActionBefore, ActionRecord, ActionResult, ActionStatus, HeardSignal } from "./action-types.ts";
+export type { ActionBefore, ActionRecord, ActionResult, ActionStatus, FreeDraft, FreeJudge, FreePlan, HeardSignal } from "./action-types.ts";
 export type {
   DirectorEvent,
   DirectorHook,
@@ -112,6 +112,11 @@ export type DrillOptions = {
    * サーバーの中だけ。監督には地区の別名と地形の一言だけを渡す
    */
   home?: string;
+  /**
+   * 時間と状況で変わる手（T110、lib/drill/action-terms.ts）。夜・停電・浸水や通行止め・職員の数・自分の被災で手の可否と所要が変わる。
+   * 開始の画面が連続の時計の訓練に付ける（10 分版には付けない）。無ければ表の分のまま（前からある訓練と同じ）
+   */
+  terms?: true;
 };
 
 export type DrillState = {
@@ -149,6 +154,13 @@ export type DrillState = {
   cuts?: number[];
   /** 連続の時計の訓練で、監督（仮想は世界）を最後に呼んだ区切りの時刻（発災からの分）。まだなら無い */
   directorAt?: number;
+  /**
+   * 連続の時計の訓練で、AI も動かして進めた区切り（30 分・1 時間・3 時間・次まで・手の分）の最後の時刻（発災からの分、T110）。
+   * 手の途中の区切り（silent）では変わらない。ここからケアマネの時計までが「手の分」で閉じる時間。無ければ最後の区切り
+   */
+  aiAt?: number;
+  /** 自由対応の確かめ（T110、lib/drill/free-action.ts）。読み替えたあと打つ前だけ。サーバーの中だけで Claude の入力に渡さない */
+  draft?: FreeDraft;
 };
 
 /** 1 刻みで起きた事。保存（lib/drill/db.ts）はこれを drill_events と signals に書く */
@@ -375,6 +387,7 @@ export function cleanOptions(o: DrillOptions | null | undefined): DrillOptions {
     ...(scale ? { scale } : {}),
     ...(scale && o?.scaleAuto === true ? { scaleAuto: true as const } : {}),
     ...(home && Array.from(home).length <= HOME_TOWN_MAX ? { home } : {}),
+    ...(o?.terms === true ? { terms: true as const } : {}),
   };
 }
 
@@ -397,6 +410,14 @@ export function openingIncidents(state: Pick<DrillState, "scenario" | "options">
 /** 連続の時計の訓練か（T90） */
 export const isClock = (s: Pick<DrillState, "options">): boolean => s.options?.clock === true;
 
+/**
+ * AI も動かして進めた最後の区切りの時刻（発災からの分、T110）。無ければ最後の区切り。
+ * ケアマネの時計がこれより先なら、その間は手に使った時間で、AI はまだ動いていない（「手の分」で閉じる）
+ */
+export function aiAtOf(s: Pick<DrillState, "step" | "hour" | "cuts" | "aiAt">): number {
+  return s.aiAt ?? lastCutOf(s);
+}
+
 /** 最後の区切りの時刻（発災からの分）。始める前は -1。clock の無い訓練は今の刻みの時刻 */
 export function lastCutOf(s: Pick<DrillState, "step" | "hour" | "cuts">): number {
   if (s.step < 0) return -1;
@@ -412,14 +433,14 @@ export function drillEnded(s: Pick<DrillState, "scenario" | "status" | "step" | 
 }
 
 /**
- * 手の記録からケアマネの書いた文を落とす（T59 のメモ、T90 の準備で自由に書く手〔T91〕の文 text と読み替えの理由 reason）。
+ * 手の記録からケアマネの書いた文を落とす（T59 のメモ、T90 の準備で自由に書く手〔T91〕の文 text と読み替えの理由 reason、T110 の AI の判断の記録 judge）。
  * 講評・監督・世界・本人役（Claude）の入力に渡す前に必ず通す。どれも無い手は同じ物を返す。
  * これらを Claude に渡したくなったら、仮名化の門（lib/pseudonym → askJson）を通す別の作業にする
  */
 export function withoutMemo<T extends ActionRecord>(actions: ReadonlyArray<T>): T[] {
   return actions.map((a) => {
-    if (a.memo === undefined && a.text === undefined && a.reason === undefined) return a;
-    const { memo: _memo, text: _text, reason: _reason, ...rest } = a;
+    if (a.memo === undefined && a.text === undefined && a.reason === undefined && a.judge === undefined) return a;
+    const { memo: _memo, text: _text, reason: _reason, judge: _judge, ...rest } = a;
     return rest as T;
   });
 }
@@ -648,9 +669,10 @@ export function lastStep(scenario: DrillScenario): number {
 
 /**
  * 進め方。clock は「30 分」「1 時間」「3 時間」「次まで」の進め（監督と本人役を下の決めで呼ぶ。next は「次まで」で進めた）。
- * silent は手の途中（lib/drill/actions.ts）の進め: 表の出来事と予定の出来事だけ当て、AI を呼ばない（理由のできた人は touched に積む）
+ * silent は手の途中（lib/drill/actions.ts）の進め: 表の出来事と予定の出来事だけ当て、AI を呼ばない（理由のできた人は touched に積む）。
+ * acts は「手の分」（T110）: 時計を進めず、手に使った時間（AI を動かした最後の区切り aiAt から今のケアマネの時計まで）を AI も動かして閉じる
  */
-export type AdvanceOptions = { policy: "clock" | "silent"; next?: boolean };
+export type AdvanceOptions = { policy: "clock" | "silent"; next?: boolean; acts?: boolean };
 
 /** 想定の表の行（配役を当てた物）と、その時刻（発災からの分） */
 type TableEvent = { event: DrillIncident; minute: number };
@@ -704,7 +726,9 @@ export async function advance(
   if (drillEnded(state)) throw new DrillEnded();
   const first = state.step < 0;
   const to = Math.min(Math.round(toMinute), DRILL_END_MINUTE);
-  if (first ? to !== 0 : to <= state.minute) throw new RangeError(`進める時刻が違う: ${toMinute}`);
+  // 手の分（T110）は今の時計まで（AI を動かした最後の区切りより後のときだけ）。ほかは今の時計より後
+  const closing = opts.acts === true && !first && to === Math.round(state.minute) && to > aiAtOf(state);
+  if (first ? to !== 0 : to <= state.minute && !closing) throw new RangeError(`進める時刻が違う: ${toMinute}`);
   const silent = opts.policy === "silent";
   const from = lastCutOf(state);
   const index = state.step + 1;
@@ -893,6 +917,6 @@ export async function advance(
     world,
     finished: to >= DRILL_END_MINUTE,
   };
-  const base: DrillState = { ...state, world: book, ...(directorAt !== undefined ? { directorAt } : {}) };
+  const base: DrillState = { ...state, world: book, ...(directorAt !== undefined ? { directorAt } : {}), aiAt: to };
   return { state: foldTick(base, tick, lastStep(state.scenario)), tick, words: [] };
 }

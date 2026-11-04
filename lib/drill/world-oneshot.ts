@@ -9,7 +9,7 @@
 // - 返事の形は部屋の custom tool と同じ WorldStepSchema（lib/drill/world-apply.ts）
 
 import { askJson, type AskJsonContext, type AskJsonRequest } from "../claude/call.ts";
-import { CATALOG_WORDS } from "./action-catalog.ts";
+import { actionWords, CATALOG_WORDS } from "./action-catalog.ts";
 import { CARE_LEVEL_LABELS, CLOCK_START_LABELS, CLOCK_UNIT_LABELS, DEVICE_LABELS, HOUSEHOLD_LABELS } from "../labels.ts";
 import { pseudonymize, pseudonymizeText, type ForClaude, type PseudonymInput, type PseudonymKey } from "../pseudonym/index.ts";
 import { aliasOfTown, areaOf, DEMO_AREA, geographyText, placesOf, townOfLedger, type Area } from "./area.ts";
@@ -213,7 +213,7 @@ function actionLines(actions: ReadonlyArray<ActionRecord>, from: number, aliasOf
     .map((a) => {
       const who = a.person ? (aliasOf.get(a.person) ?? null) : null;
       const r = a.result ? (a.result.ok ? "届いた" : "届かなかった") : "途中";
-      return `- ${minuteText(a.atMinute)}: ${ACTION_WORDS[a.kind]}${who ? `（${who}）` : ""} → ${r}`;
+      return `- ${minuteText(a.atMinute)}: ${a.kind === "free" ? actionWords(a) : ACTION_WORDS[a.kind]}${who ? `（${who}）` : ""} → ${r}`;
     });
 }
 

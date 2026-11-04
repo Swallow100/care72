@@ -494,15 +494,30 @@ export function effectiveKind(a: { kind: DrillAction; as?: DrillAction | null })
   return a.kind === "free" && a.as ? a.as : a.kind;
 }
 
-/** 打った手の言い方（自由対応は読み替えた手の言い方。ケアマネの文は渡さない） */
-export function actionWords(a: { kind: DrillAction; as?: DrillAction | null }): string {
+/**
+ * 打った手の言い方（自由対応は読み替えた手の言い方。ケアマネの文は渡さない）。
+ * 表の手に当たらなかった自由対応（T110 のそのままの手）は、AI が伏せた文から作った 1 文（words。名前・町名なし）
+ */
+export function actionWords(a: { kind: DrillAction; as?: DrillAction | null; words?: string | null }): string {
+  if (a.kind === "free" && !a.as && a.words) return a.words;
   return CATALOG_WORDS[effectiveKind(a)];
+}
+
+/** 表の手に当たらなかった自由対応（T110 のそのままの手）か */
+export function isOwnFree(a: { kind: DrillAction; as?: DrillAction | null; way?: string | null }): boolean {
+  return a.kind === "free" && !a.as && typeof a.way === "string";
 }
 
 // ---------- 自由対応 ----------
 
-/** 自由対応の文の長さの上限（字） */
-export const FREE_TEXT_MAX = 120;
+/**
+ * 自由対応の文の長さの上限（字）。T91 の 120 字から 200 字に（T110）。誰に・何を・なぜ（停電なので・家族が来られないので）を
+ * 1 つの文で書くと 120 字を越えることがあり、読み替えに要る事実が欄に入らなかった。読み替えは最初の手 1 つで、入力の長さは Opus の待ちにほぼ効かない
+ */
+export const FREE_TEXT_MAX = 200;
+
+/** そのままの手の所要（分）の下限と上限（AI の値をこの中に。決まりの足し分はこのあと） */
+export const FREE_MINUTES = { min: 2, max: 120 } as const;
 
 /** 自由対応の画面の言葉（2〜4 字） */
 export const FREE_LABELS = {
@@ -514,6 +529,19 @@ export const FREE_LABELS = {
   left: "残り",
   /** 読み替えの待ち（実行の横） */
   reading: "読替中",
+  /** 読み替えを頼むボタン（T110。打つ前に相手と所要を見せる） */
+  read: "読替",
+  /** 表の手に当たらなかったとき（そのままの手） */
+  own: "自由",
+  /** 相手と所要の見出し */
+  callee: "相手",
+  minutes: "所要",
+  /** 押せないとき */
+  block: "不可",
+  /** 文を直したあと（読み替え直しが要る） */
+  stale: "再読替",
+  /** 読み替えの理由（AI。履歴・紙・CSV） */
+  why: "理由",
 } as const;
 /** 自由対応の読み替え（Opus）の 1 訓練の回数の上限。超えたら読み替えずに記録 */
 export const FREE_MAX = 10;

@@ -27,6 +27,7 @@ import {
 import { isSourceId, type SourceId } from "../sources/index.ts";
 import { NO_BASIS } from "../sources/prompt.ts";
 import { ACTION_CATALOG, type ActionRow } from "./action-catalog.ts";
+import { FREE_WAY_LABELS } from "./action-terms.ts";
 import { NO_CALL } from "./event-catalog.ts";
 import { officePlaces } from "./area.ts";
 import { personOfAlias } from "./director.ts";
@@ -207,6 +208,7 @@ export const RESULT_WORDS: Readonly<Record<string, string>> = {
   reported: "報告済",
   evacuated: "避難済",
   noted: "記録済",
+  done: "実施",
   noAnswer: "応答なし",
   silent: "無言",
   noNumber: "番号なし",
@@ -221,10 +223,15 @@ export const WASTE_WORDS: Readonly<Record<WasteWhy, string>> = {
   nurse: "訪問看護 来られない",
 };
 
-/** 手の言葉。自由対応は「自由対応（読み替え: 薬手配）」（ケアマネの文は渡さない） */
-function actionName(a: Pick<ActionRecord, "kind" | "as">): string {
+/**
+ * 手の言葉。自由対応は「自由対応（読み替え: 薬手配）」（ケアマネの文は渡さない）。
+ * そのままの手（T110）は「自由対応（電話 15 分: 近所の人に発電機の貸し出しを頼んだ）」（AI が伏せた文から作った 1 文。名前・町名なし）
+ */
+function actionName(a: Pick<ActionRecord, "kind" | "as" | "way" | "words" | "minutes">): string {
   if (a.kind !== "free") return ACTION_LABELS[a.kind];
-  return a.as ? `${ACTION_LABELS.free}（読み替え: ${ACTION_LABELS[a.as]}）` : ACTION_LABELS.free;
+  if (a.as) return `${ACTION_LABELS.free}（読み替え: ${ACTION_LABELS[a.as]}）`;
+  if (a.way) return `${ACTION_LABELS.free}（${FREE_WAY_LABELS[a.way]} ${a.minutes} 分${a.words ? `: ${a.words}` : ""}）`;
+  return ACTION_LABELS.free;
 }
 
 /** 通話の往復の間に頼まれた事（T93。その人の頼み事のうち、手を打った時刻から最後の往復の時刻まで） */
