@@ -2,19 +2,17 @@ import { isSameOrigin } from "@/lib/auth/cookie";
 import { denied } from "@/lib/auth/guard";
 import { principalFromRequest } from "@/lib/auth/server";
 import { aiContextFor } from "@/lib/claude/cloudflare";
-import { FORM_FILE_MAX_BYTES, formHash, readForm, type FormFile } from "@/lib/forms/form-read";
-import { findMappingByHash, formsScope, insertReadMapping } from "@/lib/forms/mapping-db";
-import { mappingError, mappingErrorOf, NO_STORE } from "@/lib/forms/mapping-http";
-import { FORM_READ_PAGES_MAX, formReadPagesOf } from "@/lib/forms/read-upload";
-import { checkRedactedImage } from "@/lib/intake/read-check";
+import { FORM_FILE_MAX_BYTES } from "@/lib/forms/form-read";
+import { formsScope } from "@/lib/forms/mapping-db";
+import { mappingError } from "@/lib/forms/mapping-http";
+import { formReadPost } from "@/lib/forms/read-post";
+import { FORM_READ_PAGES_MAX } from "@/lib/forms/read-upload";
 
 // 様式の読み取り: 空の様式の写真・PDF を、黒塗りの画面（components/person/RedactSheet.tsx）を通した頁の画像（JPEG、付け足しなし）で
-// 頁の順に 1〜3 枚受け取り、Opus に欄と台帳の項目の対応表を出させ、下書きで保存する（T83、見直しの安全 中 5。前は生の写真・PDF を
-// そのまま Opus に渡していた）。白紙の様式は塗らずに送れる（人が確かめの窓で「送信」を選んだ印 bare）、記入済みなら値を塗ってから。
-// 生の写真・PDF（前の file の欄・PDF・PNG・EXIF の付いた JPEG）・印の無い物は「未加工」（415）で断り、Claude は呼ばない。
+// 頁の順に 1〜3 枚受け取り、Opus に欄と台帳の項目の対応表（T86 から欄ごとの値の場所と書体も）を出させ、下書きで保存する。
+// 中身（印と画像の確かめ → 同じ画像の見分け → Opus 1 回 → 保存 → 頁の画像を R2 に置く）は lib/forms/read-post.ts。
 // ケアマネの役だけ（管理者・審査員のケアマネの役を含む）。範囲は事業所。Claude の呼び出しは 1 要求 1 回（頁を並べて渡す）。
-// 同じ頁の画像の並び（SHA-256 が同じ）が事業所にあれば読まずにその対応表を返す（上限も減らさない）。
-// Claude に渡すのは塗った後の頁の画像と台帳の項目表（値は無い）だけ。台帳の値・氏名は渡さない。画像は保存しない
+// Claude に渡すのは塗った後の頁の画像と台帳の項目表（値は無い）だけ。台帳の値・氏名は渡さない
 export async function POST(request: Request) {
   if (!isSameOrigin(request)) return mappingError("forbidden");
   const { principal, env } = await principalFromRequest(request);
@@ -28,49 +26,17 @@ export async function POST(request: Request) {
   if (length > FORM_FILE_MAX_BYTES * FORM_READ_PAGES_MAX + 64 * 1024) return mappingError("file_large");
   const form = await request.formData().catch(() => null);
   if (!form) return mappingError("invalid");
-  const got = formReadPagesOf(form);
-  if (!got.ok) return mappingError(got.error);
 
-  const files: FormFile[] = [];
-  const parts: Uint8Array[] = [];
-  for (const p of got.pages) {
-    if (p.image.size > FORM_FILE_MAX_BYTES) return mappingError("file_large");
-    const bytes = new Uint8Array(await p.image.arrayBuffer());
-    const checked = checkRedactedImage(bytes);
-    if (!checked.ok) return mappingError(checked.error);
-    files.push(checked.file);
-    parts.push(bytes);
-  }
-
-  const all = new Uint8Array(parts.reduce((n, b) => n + b.length, 0));
-  let at = 0;
-  for (const b of parts) {
-    all.set(b, at);
-    at += b.length;
-  }
-  const hash = await formHash(all);
-  const known = await findMappingByHash(env.DB, scope.officeId, hash);
-  if (known) return Response.json({ ok: true, id: known.id, reused: true }, { headers: NO_STORE });
-
-  try {
-    const ctx = await aiContextFor(scope.officeId);
-    const read = await readForm(files, ctx);
-    const saved = await insertReadMapping(env.DB, {
-      id: crypto.randomUUID(),
-      officeId: scope.officeId,
-      hash,
-      // 元の形（写真か PDF か）。送られたのは頁の画像
-      kind: got.pages[0].meta.source === "pdf" ? "pdf" : "image",
-      mapping: read.mapping,
-      model: read.mark.model,
-      by: scope.accountId,
-      at: new Date().toISOString(),
-    });
-    return Response.json({ ok: true, id: saved.id, reused: saved.reused, rejected: read.rejected.length }, { headers: NO_STORE });
-  } catch (e) {
-    const res = mappingErrorOf(e);
-    if (res) return res;
-    console.error("様式の読み取りに失敗", e instanceof Error ? e.name : typeof e);
-    return mappingError("ai_failed");
-  }
+  return formReadPost(
+    {
+      db: env.DB,
+      bucket: {
+        put: (key, value, options) => env.RECORDINGS.put(key, value, options),
+        get: (key) => env.RECORDINGS.get(key),
+      },
+      aiContext: aiContextFor,
+    },
+    scope,
+    form,
+  );
 }

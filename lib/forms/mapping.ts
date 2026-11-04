@@ -194,6 +194,52 @@ export const CONFIDENCES = ["high", "medium", "low"] as const;
 export type Confidence = (typeof CONFIDENCES)[number];
 export const CONFIDENCE_LABELS: Record<Confidence, string> = { high: "高", medium: "中", low: "低" };
 
+/**
+ * 頁の中の場所（T86）。その頁の画像の左上を (0,0)、右下を (1,1) とした比で、左 x・上 y・幅 w・高さ h。
+ * 欄の値を書き込む所（欄の名前の字や □ の印の外の空白）。元の様式の頁の画像の上に値を置くときに使う（lib/forms/overlay-sheet.ts）
+ */
+export type FieldBox = { x: number; y: number; w: number; h: number };
+
+/** 様式に印刷された字の書体。値を置くときに合わせる（BIZ UDPゴシック・BIZ UDP明朝） */
+export const TYPEFACES = ["gothic", "mincho"] as const;
+export type Typeface = (typeof TYPEFACES)[number];
+export const TYPEFACE_LABELS: Record<Typeface, string> = { gothic: "ゴシック", mincho: "明朝" };
+
+/** 場所の小ささの下限（頁の 0.2%）。これより小さい枠は場所なしにする */
+const BOX_MIN = 0.002;
+const round4 = (n: number) => Math.round(n * 10000) / 10000;
+
+/**
+ * 場所を 0〜1 の中に収める。数でない・幅や高さが 0 以下の物は null。頁の外にはみ出した分は切り、切って小さすぎれば null。
+ * AI の返事・画面からの保存・保存した JSON の読み出しで同じ物を通す
+ */
+export function clampBox(v: unknown): FieldBox | null {
+  if (!v || typeof v !== "object") return null;
+  const b = v as Record<string, unknown>;
+  const nums = [b.x, b.y, b.w, b.h];
+  if (!nums.every((n) => typeof n === "number" && Number.isFinite(n))) return null;
+  let [x, y, w, h] = nums as number[];
+  if (w <= 0 || h <= 0) return null;
+  // 左・上にはみ出した分は幅・高さから引く
+  if (x < 0) {
+    w += x;
+    x = 0;
+  }
+  if (y < 0) {
+    h += y;
+    y = 0;
+  }
+  w = Math.min(w, 1 - x);
+  h = Math.min(h, 1 - y);
+  if (x >= 1 || y >= 1 || w < BOX_MIN || h < BOX_MIN) return null;
+  return { x: round4(x), y: round4(y), w: round4(w), h: round4(h) };
+}
+
+export function sameBox(a: FieldBox | null | undefined, b: FieldBox | null | undefined): boolean {
+  if (!a || !b) return !a && !b;
+  return a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h;
+}
+
 /** AI が読んだときの対応（人が直しても残す） */
 export type AiReading = {
   item: LedgerItemKey | null;
@@ -202,6 +248,8 @@ export type AiReading = {
   reason: string;
   /** 台帳に無い項目名を返したとき、その名前（弾いて item は null） */
   rejected?: string;
+  /** AI が読んだ値の場所（T86。場所を読む前に作った対応表には無い） */
+  box?: FieldBox | null;
 };
 
 export type MappingField = {
@@ -224,6 +272,13 @@ export type MappingField = {
   removed: boolean;
   /** AI が読んだ物。手で足した欄は null */
   ai: AiReading | null;
+  /**
+   * 値を書く場所（T86。頁は page）。無い・読めなかった欄は null。check は □ の場所、handwrite は空けておく所。
+   * 場所を読む前に作った対応表には無い（undefined は null と同じ）
+   */
+  box?: FieldBox | null;
+  /** choice の選択肢ごとの □（□ が無ければ選択肢の字）の場所。options と同じ順。無い物は null */
+  optionBoxes?: Array<FieldBox | null>;
 };
 
 export type FormMapping = {
@@ -233,6 +288,8 @@ export type FormMapping = {
   issuer: string;
   pages: number;
   fields: MappingField[];
+  /** 様式の字の書体（T86。無ければゴシック） */
+  typeface?: Typeface;
 };
 
 // ---------- 画面の言葉（2〜4 字の漢語） ----------
@@ -276,6 +333,15 @@ export const MAPPING_LABELS = {
   unconfirmed: "未確認",
   unmapped: "対応なし",
   withheld: "省略",
+  // ---- 値の場所（T86） ----
+  box: "位置",
+  noBox: "位置なし",
+  addBox: "位置追加",
+  clearBox: "位置解除",
+  boxMoved: "位置修正",
+  typeface: "書体",
+  /** 欄に収まらない値を書く別の紙。欄には「別紙」と書く */
+  annex: "別紙",
 } as const;
 
 // ---------- 長さの上限（画面・保存・AI の返事で同じ） ----------
@@ -312,8 +378,42 @@ export type ReadResult = {
     item: string | null;
     confidence: Confidence;
     reason: string;
+    /** 値を書く場所（T86。前の固定の返事〔内閣府の様式例〕には無い） */
+    box?: FieldBox | null;
+    /** choice の選択肢ごとの場所（options と同じ順） */
+    option_boxes?: Array<FieldBox | null>;
   }>;
+  /** 様式の字の書体（T86） */
+  typeface?: Typeface;
 };
+
+/**
+ * 選択肢と、その場所の並びをそろえて切る（空の選択肢を落とすと、場所もいっしょに落とす）。
+ * 場所が 1 つも無ければ optionBoxes は付けない
+ */
+function optionsOf(rawOptions: readonly unknown[], rawBoxes: unknown): { options: string[]; optionBoxes?: Array<FieldBox | null> } {
+  const boxes = Array.isArray(rawBoxes) ? rawBoxes : [];
+  const pairs: Array<{ label: string; box: FieldBox | null }> = [];
+  rawOptions.forEach((o, i) => {
+    if (typeof o !== "string") return;
+    const label = clean(o, LIMITS.option);
+    if (label !== "") pairs.push({ label, box: clampBox(boxes[i]) });
+  });
+  const kept = pairs.slice(0, LIMITS.options);
+  const options = kept.map((p) => p.label);
+  return kept.some((p) => p.box !== null) ? { options, optionBoxes: kept.map((p) => p.box) } : { options };
+}
+
+const typefaceOf = (v: unknown): Typeface => ((TYPEFACES as readonly unknown[]).includes(v) ? (v as Typeface) : "gothic");
+
+/**
+ * 頁の数を、受けた頁の画像の数にそろえる（T86）。AI の言う頁の数は信じず、欄の頁も画像の数の中に収める
+ * （値を置く紙は頁の画像を下に敷くので、頁の番号が画像の順と合っていないと別の頁に字が乗る）
+ */
+export function fitPages(m: FormMapping, pages: number): FormMapping {
+  const n = Math.min(Math.max(1, Math.trunc(pages) || 1), LIMITS.pages);
+  return { ...m, pages: n, fields: m.fields.map((f) => (f.page > n ? { ...f, page: n } : f)) };
+}
 
 export type CheckedRead = {
   mapping: FormMapping;
@@ -347,6 +447,10 @@ export function checkReadResult(r: ReadResult): CheckedRead {
     }
     // 手で書く欄に台帳の値は入れない
     const item = f.shape === "handwrite" ? null : known;
+    // 場所（T86）。返事に場所の欄があれば AI の読んだ物として残す（人が動かしたかを数える）
+    const box = clampBox(f.box);
+    if (f.box !== undefined) ai.box = box;
+    const opts = optionsOf(f.options, f.shape === "choice" ? f.option_boxes : undefined);
     fields.push({
       id,
       page: Math.min(Math.max(1, Math.trunc(f.page) || 1), pages),
@@ -354,14 +458,21 @@ export function checkReadResult(r: ReadResult): CheckedRead {
       label,
       position: clean(f.position, LIMITS.position),
       shape: f.shape,
-      options: f.options.map((o) => clean(o, LIMITS.option)).filter((o) => o !== "").slice(0, LIMITS.options),
+      ...opts,
       item,
       removed: false,
       ai,
+      ...(f.box !== undefined ? { box } : {}),
     });
   }
   return {
-    mapping: { title: clean(r.title, LIMITS.title) || "様式", issuer: clean(r.issuer, LIMITS.issuer), pages, fields },
+    mapping: {
+      title: clean(r.title, LIMITS.title) || "様式",
+      issuer: clean(r.issuer, LIMITS.issuer),
+      pages,
+      fields,
+      ...(r.typeface !== undefined ? { typeface: typefaceOf(r.typeface) } : {}),
+    },
     rejected,
   };
 }
@@ -392,7 +503,6 @@ export function parseMappingInput(v: unknown): { ok: true; mapping: FormMapping 
     ids.add(id);
     if (!(FIELD_SHAPES as readonly unknown[]).includes(f.shape)) return { ok: false, error: "invalid", at: id };
     if (f.item !== null && !isLedgerItemKey(f.item)) return { ok: false, error: "unknown_item", at: id };
-    const options = Array.isArray(f.options) ? f.options.filter((x): x is string => typeof x === "string") : [];
     const ai = parseAi(f.ai);
     if (ai === undefined) {
       const aiItem = f.ai && typeof f.ai === "object" ? (f.ai as Record<string, unknown>).item : null;
@@ -401,6 +511,8 @@ export function parseMappingInput(v: unknown): { ok: true; mapping: FormMapping 
     const shape = f.shape as FieldShape;
     const cleanLabel = clean(label, LIMITS.label);
     if (!cleanLabel) return { ok: false, error: "invalid", at: id };
+    // 場所（T86）は 0〜1 の中に収めて受ける（はみ出しは切る、形の違う物は場所なし）。前の対応表には無い
+    const opts = optionsOf(Array.isArray(f.options) ? f.options : [], shape === "choice" ? f.optionBoxes : undefined);
     fields.push({
       id,
       page: Math.min(Math.max(1, Math.trunc(f.page)), pages),
@@ -408,13 +520,23 @@ export function parseMappingInput(v: unknown): { ok: true; mapping: FormMapping 
       label: cleanLabel,
       position: clean(str(f.position) ?? "", LIMITS.position),
       shape,
-      options: options.map((x) => clean(x, LIMITS.option)).filter((x) => x !== "").slice(0, LIMITS.options),
+      ...opts,
       item: shape === "handwrite" ? null : (f.item as LedgerItemKey | null),
       removed: f.removed === true,
       ai,
+      ...(f.box !== undefined ? { box: clampBox(f.box) } : {}),
     });
   }
-  return { ok: true, mapping: { title: clean(title, LIMITS.title) || "様式", issuer: clean(issuer, LIMITS.issuer), pages, fields } };
+  return {
+    ok: true,
+    mapping: {
+      title: clean(title, LIMITS.title) || "様式",
+      issuer: clean(issuer, LIMITS.issuer),
+      pages,
+      fields,
+      ...(o.typeface !== undefined ? { typeface: typefaceOf(o.typeface) } : {}),
+    },
+  };
 }
 
 /** 保存の要求の ai（AI が読んだ物）。無ければ null、形が違えば undefined */
@@ -426,6 +548,7 @@ function parseAi(v: unknown): AiReading | null | undefined {
   if (!(CONFIDENCES as readonly unknown[]).includes(a.confidence) || typeof a.reason !== "string") return undefined;
   const out: AiReading = { item: a.item as LedgerItemKey | null, confidence: a.confidence as Confidence, reason: clean(a.reason, LIMITS.reason) };
   if (typeof a.rejected === "string" && a.rejected) out.rejected = clean(a.rejected, LIMITS.label);
+  if (a.box !== undefined) out.box = clampBox(a.box);
   return out;
 }
 
@@ -446,10 +569,19 @@ export type MappingStats = {
   added: number;
   /** 台帳の項目に対応する欄（外した欄を除く） */
   mapped: number;
+  /** 値を書く場所がある欄（外した欄を除く。T86） */
+  placed: number;
+  /** AI が読んだ場所を人が動かした・外した・足した欄（T86。AI が場所を読んだ欄だけ数える） */
+  boxMoved: number;
 };
 
 export function fieldChanged(f: MappingField): boolean {
   return f.ai !== null && (f.removed || f.item !== f.ai.item);
+}
+
+/** AI が読んだ場所から人が動かしたか（場所を読む前の対応表・手で足した欄は false） */
+export function boxMoved(f: MappingField): boolean {
+  return f.ai !== null && f.ai.box !== undefined && !f.removed && !sameBox(f.ai.box, f.box ?? null);
 }
 
 export function mappingStats(m: FormMapping): MappingStats {
@@ -462,6 +594,8 @@ export function mappingStats(m: FormMapping): MappingStats {
     changed: read.filter(fieldChanged).length,
     added: m.fields.filter((f) => f.ai === null).length,
     mapped: m.fields.filter((f) => !f.removed && f.item !== null).length,
+    placed: m.fields.filter((f) => !f.removed && (f.box ?? null) !== null).length,
+    boxMoved: m.fields.filter(boxMoved).length,
   };
 }
 
