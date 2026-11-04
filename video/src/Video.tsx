@@ -198,7 +198,7 @@ const ShotView: React.FC<{ shot: Shot; assets: Assets }> = ({ shot, assets }) =>
       body = (
         <>
           <Backdrop shot={shot} assets={assets} duration={duration} />
-          <Memo />
+          <Memo mark={shot.beats?.[0] !== undefined ? f(shot.beats[0]) : undefined} />
         </>
       );
       break;

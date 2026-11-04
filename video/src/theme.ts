@@ -53,6 +53,8 @@ export const FONT = {
   // 書き出す端末（Windows）では Yu Gothic UI。本人・家族のスマホの文字を引用するときだけ UD
   main: '"Inter", "Hiragino Sans", "Yu Gothic UI", "Meiryo", sans-serif',
   ud: '"BIZ UDPGothic", "Inter", "Yu Gothic UI", sans-serif',
+  // 手書きのメモの図（G3）だけ。Windows の教科書体（端末の書体なので読み込まない）
+  hand: '"UD Digi Kyokasho N-R", "UD デジタル 教科書体 N-R", "Yu Gothic UI", sans-serif',
 } as const;
 
 /** 字の大きさの段。部品はこの 6 つだけを使う（場面ごとにばらばらの大きさにしない） */

@@ -281,39 +281,131 @@ export const Bars: React.FC = () => {
   );
 };
 
-/** G3 手書きのメモの線画。字の線が書かれていき、用量・用法の欄は点線のまま空いて残る。「イメージ」は注記の隅に（Video.tsx） */
-export const Memo: React.FC = () => {
+/**
+ * G3 避難所の手書きの薬のメモ（イメージ）。ちぎったメモ用紙に、薬・量・いつ の表を手で書いていき、量の欄だけ空いている。
+ * 書き終わったあと、声の「用量」（mark のコマ）で量の欄を赤の線で囲み（線が一周する）、下に「用量 空欄」。「イメージ」は注記の隅に（Video.tsx）。
+ * 字は教科書体（Windows の UD デジタル 教科書体。手で書いた字に近い端末の書体。Web の日本語書体は使わない）。
+ * 薬は中断に注意する例（血圧・ワルファリン・インスリン）。量は書かない（医療の助言にしない。空いていることが話の中身）
+ */
+const MEMO_ROWS = [
+  { name: "血圧の薬　白い粒", when: "朝", amount: "" },
+  { name: "ワルファリン", when: "夕", amount: "" },
+  { name: "インスリン 注射", when: "食前", amount: "？" },
+] as const;
+
+/** 手で引いた線（両端の間に小さな揺れ）。seed で揺れ方を変える */
+function wobble(x1: number, y1: number, x2: number, y2: number, seed: number): string {
+  const j = (k: number) => Math.sin(seed * 12.9898 + k * 78.233) * 2.6;
+  const mx = (x1 + x2) / 2;
+  const my = (y1 + y2) / 2;
+  return `M ${x1} ${y1 + j(1)} Q ${(x1 + mx) / 2 + j(2)} ${(y1 + my) / 2 + j(3)} ${mx} ${my + j(4)} T ${x2} ${y2 + j(5)}`;
+}
+
+/** ちぎった上の縁。歯の高さを少しずつ変える */
+function tornPaper(left: number, top: number, right: number, bottom: number): string {
+  const teeth: string[] = [];
+  for (let x = left, i = 0; x <= right; x += 18, i++) teeth.push(`L ${Math.min(x, right)} ${top + (i % 2 ? 7 : 0) + Math.sin(i * 1.7) * 3}`);
+  return `M ${left} ${top} ${teeth.join(" ")} L ${right} ${bottom} L ${left} ${bottom} Z`;
+}
+
+export const Memo: React.FC<{ mark?: number }> = ({ mark = 64 }) => {
   const frame = useCurrentFrame();
-  const p = usePalette();
   const ink = COLOR.blue;
-  const draw = (start: number, len = 400) => ({
-    strokeDasharray: len,
-    strokeDashoffset: len * (1 - progress(frame, start, 14)),
-  });
-  const stroke = { stroke: ink, strokeWidth: 6, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, fill: "none" };
-  const blank = progress(frame, 44, 12);
+  const hand = { fontFamily: FONT.hand, fill: ink } as const;
+  // 書く動き: 左から右へ字が現れる（ペンの速さは一定なので直線）
+  const write = (start: number, len: number) => progress(frame, start, len, (t) => t);
+  const line = (start: number, len = 10) => {
+    const t = write(start, len);
+    return { strokeDasharray: 1000, strokeDashoffset: 1000 * (1 - t) };
+  };
+  const stroke = { stroke: ink, strokeWidth: 3, strokeLinecap: "round" as const, fill: "none" };
+  // 表の置き場所（viewBox の中）。列は 薬 | 量 | いつ
+  const L = 90;
+  const R = 910;
+  const C1 = 520;
+  const C2 = 690;
+  const ROW_TOP = 216;
+  const ROW_H = 92;
+  const rowsBottom = ROW_TOP + ROW_H * MEMO_ROWS.length;
+  const clips: { id: string; x: number; y: number; w: number; h: number; t: number }[] = [];
+  const text = (key: string, x: number, y: number, w: number, size: number, start: number, len: number, body: string, anchor: "start" | "middle" | "end" = "start") => {
+    const id = `memo-${key}`;
+    const left = anchor === "start" ? x : anchor === "middle" ? x - w / 2 : x - w;
+    clips.push({ id, x: left - 6, y: y - size - 6, w: w + 12, h: size * 1.6, t: write(start, len) });
+    return (
+      <text key={key} x={x} y={y} fontSize={size} textAnchor={anchor} clipPath={`url(#${id})`} {...hand}>
+        {body}
+      </text>
+    );
+  };
+  const words = [
+    text("title", 100, 118, 260, 58, 4, 10, "おくすり"),
+    text("who", 900, 116, 300, 36, 10, 8, "3班　80代 女性", "end"),
+    text("h-name", L + 20, 194, 200, 38, 16, 5, "くすり"),
+    text("h-amount", (C1 + C2) / 2, 194, 60, 38, 19, 3, "量", "middle"),
+    text("h-when", (C2 + R) / 2, 194, 120, 38, 21, 4, "いつ", "middle"),
+    ...MEMO_ROWS.flatMap((row, i) => {
+      const y = ROW_TOP + ROW_H * i + 62;
+      const at = 25 + i * 10;
+      return [
+        text(`n${i}`, L + 20, y, C1 - L - 30, 44, at, 7, row.name),
+        text(`w${i}`, (C2 + R) / 2, y, 160, 44, at + 7, 3, row.when, "middle"),
+        ...(row.amount ? [text(`a${i}`, (C1 + C2) / 2, y, 50, 44, at + 9, 2, row.amount, "middle")] : []),
+      ];
+    }),
+    text("note", 100, 590, 360, 40, 56, 7, "お薬手帳 なし"),
+  ];
+  // 声の「用量」で量の欄を赤の線で囲む（線が一周する）
+  const ring = progress(frame, mark, 12);
+  const box = { x: C1 + 10, y: ROW_TOP + 8, w: C2 - C1 - 20, h: rowsBottom - ROW_TOP - 16 };
+  const perimeter = 2 * (box.w + box.h);
   return (
     <Stage>
-      <div style={{ ...rise(frame, 0, 20, 14) }}>
-        <svg width={820} height={600} viewBox="0 0 820 600">
-          <rect x={0} y={0} width={820} height={600} rx={12} fill={COLOR.white} />
-          {[120, 220, 320, 420, 520].map((y) => (
-            <line key={y} x1={60} y1={y} x2={760} y2={y} stroke={p.bg === COLOR.blue ? "#dbe6fa" : COLOR.blueTint} strokeWidth={2} />
+      <div style={{ ...rise(frame, 0, 20, 14), transform: `${rise(frame, 0, 20, 14).transform} rotate(-1.2deg)` }}>
+        <svg width={1000} height={660} viewBox="0 0 1000 660">
+          <defs>
+            {clips.map((c) => (
+              <clipPath key={c.id} id={c.id}>
+                <rect x={c.x} y={c.y} width={c.w * c.t} height={c.h} />
+              </clipPath>
+            ))}
+          </defs>
+          <path d={tornPaper(40, 34, 960, 640)} fill={COLOR.white} />
+          {/* メモ用紙の罫線。表の行の線と同じ高さ（手で罫線の上に表を引いた形。ずらすと線が二重に見える） */}
+          {[150, ROW_TOP, ROW_TOP + ROW_H, ROW_TOP + ROW_H * 2, rowsBottom, 604].map((y) => (
+            <line key={y} x1={60} y1={y} x2={940} y2={y} stroke="#dbe6fa" strokeWidth={2} />
           ))}
-          <path d="M80 104 q 40 -18 80 0 t 80 0 t 80 -6 t 70 4" {...stroke} style={draw(4)} />
-          <path d="M80 204 q 50 -14 100 2 t 100 -2 t 60 6" {...stroke} style={draw(12)} />
-          <path d="M80 304 q 30 -14 60 0 t 50 2" {...stroke} style={draw(20, 200)} />
-          <text x={330} y={316} fontFamily={FONT.main} fontSize={TYPE.h2} fill={ink} opacity={progress(frame, 28, 8)}>
-            用量
-          </text>
-          <line x1={440} y1={312} x2={720} y2={312} stroke={COLOR.urgent} strokeWidth={4} strokeDasharray="14 12" opacity={blank} />
-          <path d="M80 404 q 50 -14 100 0 t 90 6" {...stroke} style={draw(32, 300)} />
-          <text x={330} y={416} fontFamily={FONT.main} fontSize={TYPE.h2} fill={ink} opacity={progress(frame, 38, 8)}>
-            用法
-          </text>
-          <line x1={440} y1={412} x2={720} y2={412} stroke={COLOR.urgent} strokeWidth={4} strokeDasharray="14 12" opacity={blank} />
-          <text x={736} y={330} fontFamily={FONT.main} fontSize={TYPE.body} fontWeight={600} fill={COLOR.urgent} opacity={blank} textAnchor="end" dy={-40}>
-            空欄
+          {/* 題の下線と、手で引いた表の線 */}
+          <path d={wobble(96, 134, 330, 132, 1)} {...stroke} strokeWidth={4} style={line(12, 6)} />
+          {[ROW_TOP, ROW_TOP + ROW_H, ROW_TOP + ROW_H * 2].map((y, i) => (
+            <path key={y} d={wobble(L, y, R, y + 2, 2 + i)} {...stroke} style={line(14 + i * 2)} />
+          ))}
+          {[C1, C2].map((x, i) => (
+            <path key={x} d={wobble(x, 156, x + 2, rowsBottom - 6, 7 + i)} {...stroke} style={line(15 + i * 2)} />
+          ))}
+          {words}
+          <rect
+            x={box.x}
+            y={box.y}
+            width={box.w}
+            height={box.h}
+            rx={10}
+            fill="none"
+            stroke={COLOR.urgent}
+            strokeWidth={5}
+            strokeDasharray={`${perimeter * ring} ${perimeter}`}
+          />
+          <text
+            x={(C1 + C2) / 2}
+            y={rowsBottom + 50}
+            textAnchor="middle"
+            fontFamily={FONT.main}
+            fontSize={TYPE.body}
+            fontWeight={600}
+            fill={COLOR.urgent}
+            opacity={progress(frame, mark + 6, 8)}
+          >
+            用量 空欄
           </text>
         </svg>
       </div>
