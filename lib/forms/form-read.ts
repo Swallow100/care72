@@ -5,6 +5,8 @@
 // - 1 要求 1 回（長い処理にしない）。上限は lib/claude/usage.ts（用途 form_read、Opus、effort high）。
 // - 返った対応表は checkReadResult で台帳の一覧と照らし（無い項目名は弾く）、下書きとして保存する。使うのはケアマネが確かめてから。
 // - 同じ写真・PDF（SHA-256 が同じ）は読み直さない（lib/forms/mapping-db.ts の findByHash を先に引く）。
+// - T83: 画面からは黒塗りの画面（components/person/RedactSheet.tsx）を通した頁の画像（JPEG）を頁の順に受け、1 回の呼び出しに並べて渡す
+//   （app/api/forms/read、送る形は lib/forms/read-upload.ts）。記入済みの様式に書かれた値は人が黒く塗ってから送る。
 
 import { Buffer } from "node:buffer";
 import * as z from "zod";
@@ -55,7 +57,8 @@ export const FORM_READ_SYSTEM = [
   "3. label は様式に印刷された欄の名前のまま（言い換えない）。段の見出しは section（例「緊急時の連絡先①」）。position は欄の場所を短く（例「表 上から 3 段目 右」）。page は 1 から。",
   "4. shape: text 文字・date 日付・choice 選ぶ・check □ 1 つ・phone 電話番号・lines 何行かの自由記入・handwrite 本人の署名・押印・受付印など人が手で書く欄。",
   "5. item はその欄に入れる値に合う台帳の項目の key を items から 1 つ。合う物が無い・決められない欄は null。items に無い key を作らない。手で書く欄は null。",
-  "6. 様式に書き込まれた値（氏名・住所・電話番号・日付）があっても読まない。出力に書かない。",
+  "6. 様式に書き込まれた値（氏名・住所・電話番号・日付）があっても読まない。出力に書かない。黒く塗りつぶした四角は、ケアマネが隠した所。中身を推し量らない・出さない。",
+  "画像が何枚かあれば、並びの順に 1 枚が 1 頁（page は 1 から）。",
   "7. confidence: high は名前も中身も合う、medium は中身は近いが範囲が違う、low は推測。reason は対応の理由を 30 字まで。",
   "title は様式の題名、issuer は様式を出した所（分からなければ空）、pages は頁の数。",
 ].join("\n");
@@ -80,12 +83,14 @@ export const ReadSchema = z.object({
   ),
 });
 
-export function buildReadRequest(file: FormFile): AskJsonRequest<typeof ReadSchema> {
+/** 頼み。様式の頁（1 つか、頁の順に何枚か）を並べて 1 回で渡す */
+export function buildReadRequest(file: FormFile | ReadonlyArray<FormFile>): AskJsonRequest<typeof ReadSchema> {
+  const files: ReadonlyArray<FormFile> = Array.isArray(file) ? file : [file as FormFile];
   return {
     purpose: "form_read",
     system: FORM_READ_SYSTEM,
     input: sealItemCatalog({ items: itemCatalog() }),
-    attachments: [file.attachment],
+    attachments: files.map((f) => f.attachment),
     schema: ReadSchema,
   };
 }
@@ -93,7 +98,7 @@ export function buildReadRequest(file: FormFile): AskJsonRequest<typeof ReadSche
 export type FormReadResult = CheckedRead & { mark: AiMark };
 
 /** 様式を読ませて対応表（下書き）にする。失敗は askJson の例外（AiNotConfigured・AiLimitReached・AiRefused・AiBadOutput・AiCallFailed） */
-export async function readForm(file: FormFile, ctx: AskJsonContext): Promise<FormReadResult> {
+export async function readForm(file: FormFile | ReadonlyArray<FormFile>, ctx: AskJsonContext): Promise<FormReadResult> {
   const r = await askJson(buildReadRequest(file), ctx);
   const checked = checkReadResult(r.value);
   return { ...checked, mark: { ai: r.ai, model: r.model, purpose: r.purpose } };

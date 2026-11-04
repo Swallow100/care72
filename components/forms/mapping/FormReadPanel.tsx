@@ -1,16 +1,24 @@
 "use client";
 
-// 様式の読取（写真・PDF → /api/forms/read）と手作成（/api/forms/mappings）。読めたら確かめる画面へ送る。
+// 様式の読取（写真・PDF → 黒塗りの画面 → /api/forms/read）と手作成（/api/forms/mappings）。読めたら確かめる画面へ送る。
 // AI 未設定のときは読取を押せず、手作成の道だけ残す。読取は Opus で数十秒かかるので、待った秒を出す。
+// 写真・PDF は入れる欄と同じ黒塗りの画面（components/person/RedactSheet.tsx）を必ず通す（T83、見直しの安全 中 5）。
+// 白紙の様式は塗らずに「送信」（確かめの窓「塗り無し」で人が選ぶ）、記入済みなら書いた値を塗ってから。送るのは塗った後の頁の画像だけ。
 
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import type { RedactedPage } from "@/components/person/RedactSheet";
 import { BTN_MAIN, BTN_SIDE, INPUT } from "@/components/person/intake-ui";
 import { AddIcon, PaperIcon, ReadIcon } from "@/components/ui/Icon";
 import { Loader72 } from "@/components/ui/Loader72";
-import { FORM_FILE_MAX_BYTES, LIMITS, MAPPING_LABELS as L } from "@/lib/forms/mapping";
+import { LIMITS, MAPPING_LABELS as L } from "@/lib/forms/mapping";
+import { buildFormReadForm, FORM_READ_PAGES_MAX } from "@/lib/forms/read-upload";
 import { shrinkImage } from "@/lib/forms/shrink-image";
 import { PLACE_LABELS } from "@/lib/labels";
+
+// 黒塗りの画面は写真・PDF を選んで読取を押したときだけ読み込む（ブラウザだけ。pdf.js をサーバーの束に入れない）
+const RedactSheet = dynamic(() => import("@/components/person/RedactSheet").then((m) => m.RedactSheet), { ssr: false });
 
 type Fail = { label: string };
 
@@ -36,6 +44,7 @@ export function FormReadPanel({ aiReady }: { aiReady: boolean }) {
   const [fail, setFail] = useState<Fail | null>(null);
   const [title, setTitle] = useState("");
   const [seconds, setSeconds] = useState(0);
+  const [redacting, setRedacting] = useState<File[] | null>(null);
 
   useEffect(() => {
     if (busy !== "read") return;
@@ -44,20 +53,24 @@ export function FormReadPanel({ aiReady }: { aiReady: boolean }) {
     return () => clearInterval(t);
   }, [busy]);
 
+  // 読取: 写真は端末で縮めて JPEG に（T68。順は 縮小 → 塗り → 送る）。PDF はそのまま黒塗りの画面へ。JPEG・PNG・PDF のほかは断る
   const read = async () => {
     if (!file) return;
-    // 写真は端末で縮めて JPEG に（T68。iPhone の大きな写真も上限に収まる）。PDF はそのまま。JPEG・PNG・PDF のほかは断る
-    setBusy("read");
     setFail(null);
-    const shrunk = await shrinkImage(file);
-    if (!shrunk.ok || shrunk.file.size > FORM_FILE_MAX_BYTES) {
-      setFail({ label: !shrunk.ok && shrunk.error === "type" ? PLACE_LABELS.fileKinds : L.fileLarge });
-      setBusy(null);
+    const shrunk = await shrinkImage(file, Number.POSITIVE_INFINITY);
+    if (!shrunk.ok) {
+      setFail({ label: shrunk.error === "type" ? PLACE_LABELS.fileKinds : L.fileLarge });
       return;
     }
-    const body = new FormData();
-    body.append("file", shrunk.file);
-    const r = await post("/api/forms/read", body);
+    setRedacting([shrunk.file]);
+  };
+
+  // 塗った後の頁（頭から FORM_READ_PAGES_MAX 頁）を 1 要求で送る
+  const send = async (pages: RedactedPage[]) => {
+    setRedacting(null);
+    setBusy("read");
+    setFail(null);
+    const r = await post("/api/forms/read", buildFormReadForm(pages.slice(0, FORM_READ_PAGES_MAX)));
     if (r.ok) {
       router.push(`/forms/mapping/${encodeURIComponent(r.id)}`);
       return;
@@ -85,7 +98,7 @@ export function FormReadPanel({ aiReady }: { aiReady: boolean }) {
       <section aria-labelledby="read-title" className="rounded-lg bg-panel p-3">
         <h2 id="read-title" className="flex items-baseline gap-2 font-bold">
           {L.read}
-          <span className="text-xs font-normal text-muted">写真 JPEG・PNG 縮小／PDF 5MB まで</span>
+          <span className="text-xs font-normal text-muted">写真 JPEG・PNG／PDF {FORM_READ_PAGES_MAX} 頁まで</span>
         </h2>
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <label className={`${BTN_SIDE} cursor-pointer`} data-press>
@@ -105,7 +118,7 @@ export function FormReadPanel({ aiReady }: { aiReady: boolean }) {
           <span className="min-w-0 flex-1 truncate text-sm" data-file>
             {file ? file.name : <span className="text-muted">未選択</span>}
           </span>
-          <button type="button" className={BTN_MAIN} disabled={!aiReady || !file || busy !== null} onClick={read} data-press="overlay">
+          <button type="button" className={BTN_MAIN} disabled={!aiReady || !file || busy !== null || redacting !== null} onClick={read} data-press="overlay">
             <ReadIcon aria-hidden className="size-3.5 shrink-0" />
             {busy === "read" ? L.reading : L.read}
           </button>
@@ -149,6 +162,8 @@ export function FormReadPanel({ aiReady }: { aiReady: boolean }) {
           {fail.label}
         </p>
       )}
+
+      {redacting && <RedactSheet files={redacting} onCancel={() => setRedacting(null)} onSend={(pages) => void send(pages)} />}
     </div>
   );
 }

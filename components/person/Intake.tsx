@@ -169,7 +169,7 @@ export function Intake(props: IntakeProps & { level: Level }) {
     if (echoed) push({ id: nextId(), who: "you", text: INTAKE_SAYS.sent(page.name, page.meta.redacted) });
     setBusy("read");
     setError(null);
-    const r = await postForm<Proposed>("/api/intake/read", buildReadForm(props.personId, page.blob, page.meta));
+    const r = await postForm<Proposed>("/api/intake/read", buildReadForm(props.personId, page.blob, page.meta, { bare: page.bare }));
     setBusy(null);
     if (isError(r)) return failed(r, { kind: "file", page });
     push({ ...proposalOf(r), say: `${INTAKE_SAYS.read(page.name)}。${splitSay(r.items)}`, read: page.meta } as LogEntry);
