@@ -116,10 +116,16 @@ export const ACTION_STATUS_TEXTS: Readonly<Record<ActionStatus, string>> = { ...
 export class ActionBlocked extends Error {
   // Node の型の取り除き（種の作り・道具）で読めるよう、引数の readonly でなく欄で持つ
   readonly label: string;
-  constructor(label: string) {
+  /**
+   * 断る前に自由対応の読み替えで Claude を 1 回呼んだ（T121）。断った要求でも 1 訓練の数え（counts.free）に入れる。
+   * 入れないと ai_calls と 1 訓練の数えがずれる（評価の 1 回目のあとの偽の回で見えた）
+   */
+  readonly counted: boolean;
+  constructor(label: string, counted = false) {
     super(`押せない手: ${label}`);
     this.name = "ActionBlocked";
     this.label = label;
+    this.counted = counted;
   }
 }
 
@@ -443,7 +449,7 @@ export async function act(
           hooks.free,
         );
     if (free.called && !fresh) start = { ...start, world: countFree(start.world) };
-    if (free.block) throw new ActionBlocked(free.block);
+    if (free.block) throw new ActionBlocked(free.block, free.called && !fresh);
     const as = free.as ?? "free";
     input = { ...raw, kind: as, person: as === "evacuate_self" ? null : raw.person, target: free.target };
   }
@@ -457,7 +463,7 @@ export async function act(
     : actionTerm(kind, termFactsOf(start, input.person), { on: termsOn(start) });
   if (term) {
     const block = blockOf(term, kind === "call_person" ? "self" : (input.target?.kind ?? (row.fixed ? "fixed" : null)));
-    if (block) throw new ActionBlocked(block);
+    if (block) throw new ActionBlocked(block, free !== null && start.world !== clean.world);
   }
   const minutes = own ? own.minutes : term!.minutes;
   const adds = own ? own.adds : term!.adds;

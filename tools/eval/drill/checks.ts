@@ -362,7 +362,9 @@ export function termHits(outcome: RunOutcome): CheckHit[] {
     const marks = b.marks ?? {};
     const facts: TermFacts = {
       dark: isDark(dayHourOf(startedAt, a.atMinute, outcome.plan.night)),
-      phone: b.phone ?? "ok",
+      // 打つ前の記録の電話は本人の家の電話（家の電話の不通の印があれば不通。lib/drill/scenarios.ts の phoneOf）。印があるときは
+      // 世界の電話が分からないので、家の電話の決まり（line_down）だけで見る
+      phone: marks.lineDown !== undefined ? "ok" : (b.phone ?? "ok"),
       lineDown: marks.lineDown !== undefined,
       roadClosed: b.roadClosed === true,
       flood: false,

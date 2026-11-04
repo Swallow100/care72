@@ -565,6 +565,19 @@ describe("自由対応のそのままの手（読み替え → 確かめ → 打
     expect(((await r2.json()) as { plan: unknown }).plan).toMatchObject({ block: TERM_LABELS.road, blockAi: false, way: "訪問" });
   });
 
+  it("断る前に読み替えで Claude を呼んだ分は、断った要求でも 1 訓練の数えに入る（T121）", async () => {
+    await start();
+    const { free, calls } = freeHooksOf(() => OWN({ can: false, whyNot: "相手不在" }));
+    const res = await actionPost(db, careManager(), ID, { step: 0, actions: 0, kind: "free", person: "p-01", target: null, text: "近所の人に頼む" }, START, {
+      hooks: { free },
+      roll: () => 0,
+    });
+    expect(res.status).toBe(409);
+    expect(calls).toHaveLength(1);
+    expect((await stored()).world.counts?.free).toBe(1);
+    expect((await stored()).actions).toEqual([]);
+  });
+
   it("所要は下限と上限の中（500 → 120、0 → 2）。夜は電話のやり方でも出にくさ以外は同じ、訪問は伸びる", async () => {
     const s = await clockAt0();
     const hook = (answer: Record<string, unknown>): FreeHook => async (a) => ({ stored: a.text, reading: { kind: "free", callee: "", text: null, reason: null, ...answer } });
