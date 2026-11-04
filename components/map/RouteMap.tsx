@@ -55,11 +55,32 @@ const FOCUS = "outline-none focus-visible:outline-2 focus-visible:outline-solid 
 
 const pointOrNull = (p: unknown): GeoPoint | null => (isGeoPoint(p) ? p : null);
 
+/** 画面に描いた幅がこれ以上なら、地図のタイルを 1 段細かくする（基準の枠 480px を大きく伸ばすと地図の字がぼやけて大きくなる） */
+const DETAIL_PX = 720;
+
+/** 要素の幅（px）。測れるまで null */
+function useWidth<T extends HTMLElement>() {
+  const ref = useRef<T>(null);
+  const [w, setW] = useState<number | null>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const read = () => setW(el.getBoundingClientRect().width || null);
+    read();
+    const ro = new ResizeObserver(read);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  return [ref, w] as const;
+}
+
 /** 本人のページの避難の面の「経路地図」の行（小さな絵と要約、窓を開くボタン） */
 export function RouteMapPanel({ data }: { data: EditData }) {
   const [open, setOpen] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  const [box, px] = useWidth<HTMLDivElement>();
   const map = data.ledger.evacuation.routeMap;
-  const scene = routeSceneOf(data.ledger, ROUTE_FRAME);
+  const scene = routeSceneOf(data.ledger, ROUTE_FRAME, px && px >= DETAIL_PX ? 1 : 0);
   return (
     <div className={`${LABEL_COL} mt-1`} data-field="evacuation.routeMap">
       <span className="pt-1 text-xs text-muted">{L.open}</span>
@@ -68,28 +89,49 @@ export function RouteMapPanel({ data }: { data: EditData }) {
           <span className="text-sm tabular-nums" data-route-summary>
             {map && scene ? routeSummary(map) : L.none}
           </span>
-          <Button size="sm" icon={RouteMapIcon} className="ml-auto" onClick={() => setOpen(true)} data-route-open>
+          {note && (
+            <span role="alert" className="text-xs font-bold text-danger">
+              {note}
+            </span>
+          )}
+          <Button
+            size="sm"
+            icon={RouteMapIcon}
+            className="ml-auto"
+            onClick={() => {
+              setNote(null);
+              setOpen(true);
+            }}
+            data-route-open
+          >
             {L.open}
           </Button>
         </div>
-        {scene && (
-          <div className="overflow-hidden rounded">
-            <RouteSceneSvg scene={scene} label={L.title} />
-          </div>
-        )}
+        <div ref={box} className="overflow-hidden rounded">
+          {scene && <RouteSceneSvg scene={scene} label={L.title} px={px} />}
+        </div>
       </div>
-      {open && <RouteEditor data={data} onClose={() => setOpen(false)} />}
+      {open && (
+        <RouteEditor
+          data={data}
+          onClose={(why) => {
+            setOpen(false);
+            setNote(why ?? null);
+          }}
+        />
+      )}
     </div>
   );
 }
 
 type Busy = "route" | "save" | null;
 
-/** 経路地図の窓 */
-export function RouteEditor({ data, onClose }: { data: EditData; onClose: () => void }) {
+/** 経路地図の窓。閉じるときに理由（競合）があれば渡す */
+export function RouteEditor({ data, onClose }: { data: EditData; onClose: (why?: string) => void }) {
   const router = useRouter();
   const dialog = useRef<HTMLDialogElement>(null);
   const titleId = useId();
+  const [frame, px] = useWidth<HTMLDivElement>();
   const home = pointOrNull(data.ledger.basic.location);
   const [d, setD] = useState<RouteDraft>(() => routeDraft(data.ledger, pickCenter(home, data.place?.center)));
   const [busy, setBusy] = useState<Busy>(null);
@@ -117,6 +159,7 @@ export function RouteEditor({ data, onClose }: { data: EditData; onClose: () => 
     home,
     dest,
     size: ROUTE_FRAME,
+    detail: px && px >= DETAIL_PX ? 1 : 0,
   });
   const change = routeChange(data.ledger, d);
   const set = (next: RouteDraft) => {
@@ -159,8 +202,13 @@ export function RouteEditor({ data, onClose }: { data: EditData; onClose: () => 
     const r = await postJson<{ ok: true }>("/api/intake/save", { personId: data.personId, version: data.version, ai: null, edit: true, changes: [change] });
     setBusy(null);
     if (isError(r)) {
-      setError(r.error === "conflict" ? L.conflict : r.label || L.saveFailed);
-      if (r.error === "conflict") router.refresh();
+      // 競合はほかの人の保存。閉じて読み直す（ほかの人の保存を上書きしない。置いた所は開き直して置き直す。面の編集と同じ）
+      if (r.error === "conflict") {
+        onClose(L.conflict);
+        router.refresh();
+        return;
+      }
+      setError(r.label || L.saveFailed);
       return;
     }
     onClose();
@@ -182,7 +230,7 @@ export function RouteEditor({ data, onClose }: { data: EditData; onClose: () => 
   );
   const pan = (dir: PanDir) => set({ ...d, view: panRoute(d.view, dir) });
 
-  const status = !home ? L.noHome : !dest ? L.noDest : route ? routeSummary(route) : L.none;
+  const status = !home ? L.noHome : !dest ? `${L.dest}${d.to} ${L.noDest}` : route ? routeSummary(route) : L.none;
 
   return (
     <dialog
@@ -209,7 +257,7 @@ export function RouteEditor({ data, onClose }: { data: EditData; onClose: () => 
             )}
           </span>
           <div className="ml-auto flex gap-1.5">
-            <Button kind="quiet" size="sm" icon={CloseIcon} disabled={busy === "save"} onClick={onClose} data-route-discard>
+            <Button kind="quiet" size="sm" icon={CloseIcon} disabled={busy === "save"} onClick={() => onClose()} data-route-discard>
               {L.discard}
             </Button>
             <Button kind="main" size="sm" icon={SaveIcon} disabled={busy !== null || change === null} onClick={() => void save()} data-route-save>
@@ -238,8 +286,8 @@ export function RouteEditor({ data, onClose }: { data: EditData; onClose: () => 
           </Choice>
         </div>
 
-        <div className="relative overflow-hidden rounded bg-panel2" style={{ aspectRatio: `${ROUTE_FRAME.w} / ${ROUTE_FRAME.h}` }}>
-          <RouteSceneSvg scene={scene} label={L.title} />
+        <div ref={frame} className="relative overflow-hidden rounded bg-panel2" style={{ aspectRatio: `${ROUTE_FRAME.w} / ${ROUTE_FRAME.h}` }}>
+          <RouteSceneSvg scene={scene} label={L.title} px={px} />
           {/* 地図の面そのものが押す所（置く物を置く） */}
           <button
             type="button"

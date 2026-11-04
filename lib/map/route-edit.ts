@@ -19,8 +19,8 @@ export const ROUTE_VIA_MAX = 20;
 /** 「全体」の余白（基準の px）。下は出典の字の分を広く、上は印の名前の分 */
 export const ROUTE_PADDING: Padding = { top: 30, right: 24, bottom: 40, left: 24 };
 
-/** 置いていないときのズーム（家だけ） */
-export const ROUTE_HOME_Z = 16;
+/** 避難先を置いていないときのズーム（家だけ）。家のまわり 2 km ほど（避難先を探して押せる広さ） */
+export const ROUTE_HOME_Z = 15;
 
 export type RouteView = RouteMap["view"];
 

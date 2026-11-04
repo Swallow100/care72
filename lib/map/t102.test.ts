@@ -279,7 +279,7 @@ describe("避難先の位置と経路地図の保存（T102 の 1・3）", () =>
     const back = routeDraft(await ledgerOf(), HOME);
     expect(currentRoute(back, HOME)?.source).toBe("ors");
     // 避難先を動かす・経由点・手段を変えると手入力
-    expect(currentRoute({ ...back, tool: "dest", ...pickPoint({ ...back, tool: "dest" }, { lat: 33.806, lng: 132.757 }) }, HOME)?.source).toBe("hand");
+    expect(currentRoute(pickPoint({ ...back, tool: "dest" }, { lat: 33.806, lng: 132.757 }), HOME)?.source).toBe("hand");
     expect(currentRoute(pickPoint(back, { lat: 33.81, lng: 132.751 }), HOME)?.source).toBe("hand");
     expect(currentRoute({ ...back, mode: "foot" }, HOME)?.source).toBe("hand");
   });
@@ -343,7 +343,7 @@ describe("範囲の直し（T102 の 3）", () => {
       return Math.abs(q.x - c2.x) > ROUTE_FRAME.w / 2 - 24 || Math.abs(q.y - c2.y) > ROUTE_FRAME.h / 2 - 30;
     });
     expect(out2).toBe(true);
-    expect(fitRoute([HOME], DEST)).toEqual({ center: HOME, z: 16 });
+    expect(fitRoute([HOME], DEST)).toEqual({ center: HOME, z: 15 });
   });
 });
 
@@ -445,6 +445,10 @@ describe("紙の欄に入れる地図の画像（T102 の 4）", () => {
     expect(screen).not.toMatch(/state-(ok|urgent|check|unknown)/);
     expect(paper).toContain("#116bdf");
     expect(paper).not.toMatch(/gradient|filter|feGaussianBlur/i);
+    // 画面に描いた幅を渡すと、印の名前の字は画面の 12px のまま（半分の幅に縮めて描くなら viewBox の中では 2 倍）
+    const half = renderToStaticMarkup(createElement(RouteSceneSvg, { scene, label: "避難経路", px: scene.w / 2 }));
+    expect(screen).toContain('font-size="12"');
+    expect(half).toContain('font-size="24"');
   });
 
   it("経路地図の点の組み立て（routeScene）は避難先の無い下書きで線を引かない", () => {
@@ -479,8 +483,8 @@ describe("本人のページの経路地図の行と窓（T102 の 3）", () => 
     for (const w of ["避難経路", "避難先1", "避難先2", "徒歩", "車", "経由点", "左", "右", "上", "下", "拡大", "縮小", "全体", "経路作成", "経由削除", "保存", "取消", "地理院タイル"]) {
       expect(html).toContain(w);
     }
-    // 種の人は避難先の位置が無いので、状態は「位置未設定」で経路作成は押せない
-    expect(html).toContain("位置未設定");
+    // 種の人は避難先の位置が無いので、状態は「避難先1 位置未設定」で経路作成は押せない
+    expect(html).toContain("避難先1 位置未設定");
     expect(html).toMatch(/<button[^>]*disabled=""[^>]*data-route-make/);
     // 避難先 1 の名前を選択の横に
     expect(html).toContain(data.ledger.evacuation.destination1!);

@@ -10,8 +10,12 @@ import { BASE_OPACITY } from "@/lib/map/layers";
 
 const S = ROUTE_STYLE.px;
 
-export function RouteSceneSvg({ scene, label }: { scene: RouteScene; label: string }) {
-  const k = scene.scale;
+/**
+ * px は画面に描いた幅（測れたとき）。渡すと線・印・字を画面の px で同じ大きさに保つ（小さな絵でも字が潰れない）。
+ * 渡さなければ絵の中身の大きさ（routeScene の size）のまま
+ */
+export function RouteSceneSvg({ scene, label, px }: { scene: RouteScene; label: string; px?: number | null }) {
+  const k = px && px > 0 ? scene.w / px : scene.scale;
   const pts = scene.line.map((p) => `${p.x},${p.y}`).join(" ");
   return (
     <svg
@@ -46,7 +50,7 @@ export function RouteSceneSvg({ scene, label }: { scene: RouteScene; label: stri
       ))}
       {scene.home && <Pin p={scene.home} label={ROUTE_MARKS.home} shape="circle" k={k} />}
       {scene.dest && <Pin p={scene.dest} label={scene.destLabel} shape="square" k={k} />}
-      <Credits scene={scene} />
+      <Credits scene={scene} k={k} />
     </svg>
   );
 }
@@ -78,8 +82,7 @@ function Pin({ p, label, shape, k }: { p: ScenePoint; label: string; shape: "cir
   );
 }
 
-function Credits({ scene }: { scene: RouteScene }) {
-  const k = scene.scale;
+function Credits({ scene, k }: { scene: RouteScene; k: number }) {
   const fs = S.credit * k;
   const pad = S.pad * k;
   const lineH = fs * 1.3;
