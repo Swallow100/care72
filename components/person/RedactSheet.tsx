@@ -385,7 +385,7 @@ export function RedactSheet({ files, onSend, onCancel }: { files: readonly File[
                 </>
               )}
               <span className="min-w-0 truncate">{L.pageName(page.fileName, page.page, page.pages)}</span>
-              {page.sheet && <span className="min-w-0 truncate text-muted" data-redact="sheet">{page.sheet}</span>}
+              {page.sheet && <span className="min-w-0 truncate text-muted" data-redact="sheet-name">{page.sheet}</span>}
               {page.total > page.pages && <span className="text-muted">{L.pagesOf(page.pages, page.total)}</span>}
               {choosing && (
                 <>
