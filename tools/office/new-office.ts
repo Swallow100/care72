@@ -64,8 +64,8 @@ function text(raw: string | undefined, max: number): string | null {
   return v && v.length <= max ? v : null;
 }
 
-/** パスがリポジトリの中か（Windows は大文字小文字を区別しない） */
-function insideRepo(path: string): boolean {
+/** パスがリポジトリの中か（Windows は大文字小文字を区別しない）。医療班・行政の道具（new-staff.ts）も使う */
+export function insideRepo(path: string): boolean {
   const norm = (p: string) => (process.platform === "win32" ? p.toLowerCase() : p);
   const root = norm(resolve(ROOT));
   const p = norm(resolve(path));
@@ -142,11 +142,15 @@ export function newOfficeSql(
   ].join("\n") + "\n";
 }
 
+/** ファイル名の時刻（20261104-153000）。端末の時計 */
+export function fileStamp(now: Date): string {
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${now.getFullYear()}${p(now.getMonth() + 1)}${p(now.getDate())}-${p(now.getHours())}${p(now.getMinutes())}${p(now.getSeconds())}`;
+}
+
 /** 既定の SQL のファイル（リポジトリの外）。時刻は端末の時計 */
 export function defaultOutPath(now: Date, home: string = homedir()): string {
-  const p = (n: number) => String(n).padStart(2, "0");
-  const stamp = `${now.getFullYear()}${p(now.getMonth() + 1)}${p(now.getDate())}-${p(now.getHours())}${p(now.getMinutes())}${p(now.getSeconds())}`;
-  return resolve(home, `care72-new-office-${stamp}.sql`);
+  return resolve(home, `care72-new-office-${fileStamp(now)}.sql`);
 }
 
 async function main(): Promise<void> {
