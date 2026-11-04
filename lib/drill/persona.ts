@@ -23,7 +23,7 @@ import {
   ASK_MEANINGS,
   asksOf,
   CONDITION_BANNED,
-  SPEECH_DANGER,
+  speechRuleOf,
   TALK_ASK_WORDS,
   TALK_ASKS_MAX,
   talkRounds,
@@ -539,13 +539,14 @@ export function buildPersonaRequest(
 export const SPEECH_MAX = 60;
 export const DOING_MAX = 40;
 
-/** 本人役に言わせない言葉（CLAUDE.md: 画面に「診断」「判定」「病気がわかる」「重症」と書かない） */
+/** 監督・自由文の読み替えの言葉に書かせない言葉（CLAUDE.md: 画面に「診断」「判定」「病気がわかる」「重症」と書かない） */
 const BANNED = /診断|判定|重症|病気がわかる|病気が分かる/;
 const ALIAS = /(?<![A-Za-z])[A-Z]{1,3}[ 　]?さん/g;
 
 /**
- * Haiku の言葉を画面に出せる形に。仮名（A さん）は「本人」に、禁じた言葉・元の情報（台帳の名前・電話）が残る物は捨てる、長さで切る。
- * 作った名前・住所の形（「隣の佐藤さん」）は捨てずに伏せ字に（T74 の続き。lib/pseudonym の maskReply）
+ * 監督の言い換え・差し込みと自由文の読み替えの言葉（Opus）を画面に出せる形に。仮名（A さん）は「本人」に、禁じた言葉・
+ * 元の情報（台帳の名前・電話）が残る物は捨てる、長さで切る。作った名前・住所の形（「隣の佐藤さん」）は捨てずに伏せ字に
+ * （T74 の続き。lib/pseudonym の maskReply）。本人役（Haiku）の言葉は cleanPersonaWords
  */
 export function cleanWords(raw: string, key: PseudonymKey, max: number): string | null {
   let t = raw.replace(/\s+/g, " ").trim();
@@ -558,9 +559,38 @@ export function cleanWords(raw: string, key: PseudonymKey, max: number): string 
   return Array.from(restorePlaces(masked, key)).slice(0, max).join("");
 }
 
+/** 文の区切り（句点・感嘆・疑問）。区切りの字は前の文に付ける */
+const sentencesOf = (t: string): string[] => t.split(/(?<=[。！？!?])/u).filter((x) => x.trim() !== "");
+
+/**
+ * 本人役（Haiku）の言葉を画面に出せる形に（刻みの言う事・する事・様子、通話の最初の言葉、往復、訪問の言う事・様子の全部の道。T118）。
+ * 仮名（A さん）は「本人」に、本人役の決まり（lib/drill/dialogue.ts の SPEECH_RULES: 診断・人の生き死に・薬の量・病名・医療の助言。
+ * extra は様子の欄の決まり CONDITION_BANNED）に当たる文と、元の情報（台帳の名前・生年月日・電話）が残る文は落とし、残りの文を使う。
+ * 全部落ちれば null。長さで切る。作った名前・住所の形（「隣の佐藤さん」）は捨てずに伏せ字に（cleanWords と同じ）。
+ * 落としたことは決まりの名前だけをログに残す（言葉の中身は書かない）
+ */
+export function cleanPersonaWords(raw: string, key: PseudonymKey, max: number, extra?: RegExp): string | null {
+  let t = raw.replace(/\s+/g, " ").trim();
+  if (!t) return null;
+  t = t.replace(ALIAS, "本人");
+  const kept: string[] = [];
+  const dropped: string[] = [];
+  for (const s of sentencesOf(t)) {
+    const rule = speechRuleOf(s, extra);
+    const masked = rule ? null : maskReply(s, key);
+    if (masked === null) dropped.push(rule ?? "personal");
+    else kept.push(masked);
+  }
+  if (dropped.length > 0) console.warn("言葉の掃除で文を落とした", dropped.join("・"));
+  const joined = kept.join("").trim();
+  if (!joined) return null;
+  // 地区の別名（甲地区）は画面では町名に（T88。訓練の入力は町名を別名で渡す）
+  return Array.from(restorePlaces(joined, key)).slice(0, max).join("");
+}
+
 function doingOf(answer: PersonaAnswer, key: PseudonymKey): string | null {
-  const action = cleanWords(answer.action, key, DOING_MAX);
-  const condition = cleanWords(answer.condition, key, DOING_MAX);
+  const action = cleanPersonaWords(answer.action, key, DOING_MAX);
+  const condition = cleanPersonaWords(answer.condition, key, DOING_MAX, CONDITION_BANNED);
   const joined = [action, condition && condition !== action ? condition : null].filter(Boolean).join("。");
   return joined ? Array.from(joined).slice(0, DOING_MAX).join("") : null;
 }
@@ -607,7 +637,7 @@ export function fixedTurns(input: Pick<PersonaInput, "fixed" | "hour">): DrillTu
  * - 表の行が無い: 連絡するときだけ 1 つ。押す人が「押せる人」でなければ連絡なし。赤は 4 問、緑はいる所、いる所が分からなければ安否不明
  */
 export function personaTurns(input: PersonaInput, persona: Persona, answer: PersonaAnswer): DrillTurn[] {
-  const speech = cleanWords(answer.speech, persona.key, SPEECH_MAX);
+  const speech = cleanPersonaWords(answer.speech, persona.key, SPEECH_MAX);
   const doing = doingOf(answer, persona.key);
 
   if (input.fixed.length > 0) {
@@ -806,7 +836,7 @@ export const CALL_SYSTEM = [
   "電話に出た人が言う事を speech に 1〜3 文で返す。ケアマネは「大丈夫ですか。今どこにいますか」と聞いている。",
   "「伝える様子」があれば、その様子と食い違わない事を言う（無事なのにけがをしたと言わない、けがなのに無事と言わない）。",
   "本人はやさしい短い話し言葉。認知症の本人は話が噛み合わないことがある。家族・支援者はその人の口調。",
-  "名前・住所・電話番号を言わない。「A さん」とも言わない。「診断」「判定」「重症」と言わない。病名を言い切らない。薬の量を言わない。",
+  "名前・住所・電話番号を言わない。「A さん」とも言わない。「診断」「判定」「重症」「死亡」と言わない。病名を言い切らない。薬の量を言わない。助言をしない。",
 ].join("\n");
 
 /**
@@ -851,7 +881,7 @@ export async function personaCallReply(
   try {
     const text = pseudonymizeText(callText(call, persona), persona.key);
     const r = await askJson(buildPersonaCallRequest(persona.profile, text), ctx);
-    const speech = cleanWords(r.value.speech, persona.key, SPEECH_MAX);
+    const speech = cleanPersonaWords(r.value.speech, persona.key, SPEECH_MAX);
     return { pickup, speech, ai: speech !== null };
   } catch (e) {
     if (isPersonaFailure(e)) return { pickup, speech: null, ai: false };
@@ -904,12 +934,6 @@ export function buildPersonaTalkRequest(
 /** 往復の返事。言葉が使えなければ null（頼み事も積まない） */
 export type TalkReplyWords = { speech: string | null; asks: AskKind[]; ai: boolean };
 
-/** 往復と訪問の言葉の掃除（本人役と同じ掃除に、人の生き死に・救急の結果の語を足す） */
-function cleanTalkWords(raw: string, key: PseudonymKey, max: number): string | null {
-  if (SPEECH_DANGER.test(raw)) return null;
-  return cleanWords(raw, key, max);
-}
-
 /**
  * 往復の 1 回（Haiku × 1 回）。talk は伏せた文（呼ぶ側が事業所の全員の鍵で pseudonymizeText を通した物）。key はその鍵
  * （返事の掃除と町名の戻し）。失敗は言葉なし（呼ぶ側が固定の言葉に）
@@ -922,7 +946,7 @@ export async function personaTalkReply(
 ): Promise<TalkReplyWords> {
   try {
     const r = await askJson(buildPersonaTalkRequest(persona.profile, talk), ctx);
-    const speech = cleanTalkWords(r.value.speech, key, SPEECH_MAX);
+    const speech = cleanPersonaWords(r.value.speech, key, SPEECH_MAX);
     return speech === null ? { speech: null, asks: [], ai: false } : { speech, asks: asksOf(r.value.asks, TALK_ASKS_MAX), ai: true };
   } catch (e) {
     if (isPersonaFailure(e)) return { speech: null, asks: [], ai: false };
@@ -975,9 +999,8 @@ export async function personaVisitReport(persona: Persona, visit: PersonaVisit, 
   try {
     const text = pseudonymizeText(visitText(visit, persona), persona.key);
     const r = await askJson(buildPersonaVisitRequest(persona.profile, text), ctx);
-    const raw = r.value.condition;
-    const condition = CONDITION_BANNED.test(raw) ? null : cleanTalkWords(raw, persona.key, VISIT_CONDITION_MAX);
-    const speech = cleanTalkWords(r.value.speech, persona.key, SPEECH_MAX);
+    const condition = cleanPersonaWords(r.value.condition, persona.key, VISIT_CONDITION_MAX, CONDITION_BANNED);
+    const speech = cleanPersonaWords(r.value.speech, persona.key, SPEECH_MAX);
     const asks = asksOf(r.value.asks, VISIT_ASKS_MAX);
     if (condition === null && speech === null && asks.length === 0) return null;
     return { condition, asks, speech, ai: true };

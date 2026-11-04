@@ -27,7 +27,7 @@ import type { ContactKind, DrillAction } from "../db/types.ts";
 import { actionRow, effectiveKind, FIXED_CALLEE_LABELS, type ActionEffect, type ActionRow } from "./action-catalog.ts";
 import { ACTION_MINUTES } from "./action-table.ts";
 import { callLine, decideWorldReply, WORLD_REPLY_LABELS, WORLD_REPLY_TEXTS, type WorldReplyStatus } from "./world-reply.ts";
-import { DRILL_END_MINUTE } from "./clock.ts";
+import { DRILL_END_MINUTE, ZERO_COUNTS } from "./clock.ts";
 import {
   advance,
   DrillEnded,
@@ -149,8 +149,11 @@ export type CallAsk = {
   night?: boolean;
 };
 
-/** 出た人の言う事。pickup が no_answer なら本人役の周りにいない相手（出ない） */
-export type CallHook = (ask: CallAsk) => Promise<{ pickup: CallPickup; speech: string | null; ai: boolean }>;
+/**
+ * 出た人の言う事。pickup が no_answer なら本人役の周りにいない相手（出ない）。called は Claude を呼んだか
+ * （失敗も数える。手の所が 1 訓練の数え counts.call に足す。T118）
+ */
+export type CallHook = (ask: CallAsk) => Promise<{ pickup: CallPickup; speech: string | null; ai: boolean; called?: boolean }>;
 
 /** free は自由対応の読み替え（T91、Opus × 1 回。lib/drill/free-action.ts の createFreeHook） */
 export type ActionHooks = StepHooks & { call?: CallHook; free?: FreeHook; visit?: VisitHook };
@@ -203,6 +206,12 @@ const SOURCE_OF: Partial<Record<ContactKind, PersonState["source"]>> = {
   supporter: "supporter",
   welfare_commissioner: "supporter",
 };
+
+/** 通話の最初の言葉（counts.call）と訪問の本人役（counts.persona）を 1 訓練の数えに足した世界（T118） */
+export function countPersonaCalls(world: WorldState, call: number, visit: number): WorldState {
+  const c = { ...ZERO_COUNTS, ...(world.counts ?? {}) };
+  return { ...world, counts: { ...c, call: c.call + call, persona: c.persona + visit } };
+}
 
 export function fixedSpeech(state: PersonState | null, callee: ContactKind | null): string {
   const src = callee ? SOURCE_OF[callee] : undefined;
@@ -476,6 +485,7 @@ export async function act(
   let text = d.text;
   let pickup = d.pickup;
   let heard: HeardSignal | null = null;
+  let callReply: Awaited<ReturnType<CallHook>> | null = null;
   if (d.status === "connected" && input.person && input.target && PERSON_CALLEES.has(input.target.kind)) {
     const own = s.people[input.person] ?? null;
     const tell = heardOf(own, "call", endMinute / 60);
@@ -494,6 +504,7 @@ export async function act(
           })
           .catch(() => null)
       : null;
+    callReply = reply;
     // 結末の人（仮想モード、T50）は電話に出ない（鍵が無く本人役のいないときも）
     if (reply?.pickup === "no_answer" || s.world.ended?.[input.person] !== undefined) {
       status = "noAnswer";
@@ -513,7 +524,10 @@ export async function act(
   }
   // T93: 着いたら本人役が見て分かる様子と頼み事（Haiku × 1 回）。聞いた安否・色は変えない。頼み事は applyResult が積む
   const seen = heard?.via === "visit" && hooks.visit ? input.person : null;
-  const visit = seen ? await hooks.visit!({ person: seen, hour: endMinute / 60, world: s.world, incidents, state: s.people[seen] ?? null, ...(isNight(s) ? { night: true } : {}) }).catch(() => null) : null;
+  const seenReply = seen ? await hooks.visit!({ person: seen, hour: endMinute / 60, world: s.world, incidents, state: s.people[seen] ?? null, ...(isNight(s) ? { night: true } : {}) }).catch(() => null) : null;
+  const visit = seenReply?.report ?? null;
+  // T118: 通話の最初の言葉と訪問の本人役も 1 訓練の数え（T90 の 150）に入れる（往復は talk.ts、自由文は countFree）
+  if (callReply?.called || seenReply?.called) s = { ...s, world: countPersonaCalls(s.world, callReply?.called ? 1 : 0, seenReply?.called ? 1 : 0) };
 
   const reworded = words.find((w) => w.id === record.id)?.text.trim() ?? "";
   const said = free?.words?.trim() ?? "";

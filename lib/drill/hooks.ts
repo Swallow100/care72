@@ -8,7 +8,7 @@ import type { D1Database } from "@cloudflare/workers-types";
 import type { Principal } from "../auth/principal.ts";
 import type { AskJsonContext } from "../claude/call.ts";
 import { hasAnthropicKey, type AiEnv, type ClaudeClient } from "../claude/client.ts";
-import { d1UsageStore } from "../claude/usage.ts";
+import { d1UsageStore, type UsageStore } from "../claude/usage.ts";
 import { pseudonymize, pseudonymizeText, restoreText, type ForClaude, type PseudonymInput, type PseudonymKey } from "../pseudonym/index.ts";
 import type { ActionHooks, CallHook } from "./actions.ts";
 import { drillScope } from "./db.ts";
@@ -135,21 +135,42 @@ export function createClockHooks(deps: {
 }
 
 /**
+ * ai_calls に行を足せた（呼んだ）かを数える包み（T118）。1 日の上限（ai_calls）と同じ物を数えるので、
+ * 1 訓練の数えと ai_calls の行の数がそろう（上限で断られた呼び出しは行が無いので数えない）
+ */
+function tallied(ai: AskJsonContext): { ai: AskJsonContext; called: () => boolean } {
+  let n = 0;
+  const usage: UsageStore = {
+    reserve: async (call, limit) => {
+      const ok = await ai.usage.reserve(call, limit);
+      if (ok) n += 1;
+      return ok;
+    },
+    finish: (id, done) => ai.usage.finish(id, done),
+    countDay: (officeId, day) => ai.usage.countDay(officeId, day),
+  };
+  return { ai: { ...ai, usage }, called: () => n > 0 };
+}
+
+/**
  * 電話に出た人の言う事（T18 の personaCallReply）。相手の呼び方は本人役の役割名（本人・娘・支援者 1）。
- * 台帳に無い本人・読めない台帳・Haiku の失敗は言葉なし（手の所が固定の言葉にする）
+ * 台帳に無い本人・読めない台帳・Haiku の失敗は言葉なし（手の所が固定の言葉にする）。
+ * 1 訓練の上限（T90 の 150）に達していれば呼ばない（言葉なし。訪問・往復と同じ）。called は Claude を呼んだか（T118。ai_calls の行で数える）
  */
 export function createCallHook(deps: { load: () => Promise<ReadonlyMap<string, PseudonymInput>>; ai: AskJsonContext; on?: string }): CallHook {
   return async (ask) => {
     // 結末の人（仮想モード、T50）は出ない
-    if (ask.world.ended?.[ask.person]) return { pickup: "no_answer", speech: null, ai: false };
+    if (ask.world.ended?.[ask.person]) return { pickup: "no_answer", speech: null, ai: false, called: false };
+    if (capReached(ask.world.counts)) return { pickup: ask.pickup, speech: null, ai: false, called: false };
+    const tally = tallied(deps.ai);
     try {
       const sources = await deps.load();
       const source = sources.get(ask.person);
-      if (!source) return { pickup: ask.pickup, speech: null, ai: false };
+      if (!source) return { pickup: ask.pickup, speech: null, ai: false, called: false };
       // 町名は地区の別名で渡す（T88。本人役と同じ作り方）
       const persona = buildPersona(source, { ...(deps.on ? { on: deps.on } : {}), places: personaPlaces(deps.ai, sources) });
       const callee = ask.target.kind === "self" ? "本人" : (persona.roles.get(ask.target.id) ?? null);
-      if (!callee) return { pickup: ask.pickup, speech: null, ai: false };
+      if (!callee) return { pickup: ask.pickup, speech: null, ai: false, called: false };
       const r = await personaCallReply(
         persona,
         {
@@ -163,36 +184,39 @@ export function createCallHook(deps: { load: () => Promise<ReadonlyMap<string, P
           ...(ask.night ? { night: true } : {}),
         },
         ask.pickup,
-        deps.ai,
+        tally.ai,
       );
-      return { pickup: r.pickup, speech: r.speech, ai: r.ai };
+      return { pickup: r.pickup, speech: r.speech, ai: r.ai, called: tally.called() };
     } catch (e) {
       if (!isPersonaFailure(e)) console.error("通話の相手に失敗", e instanceof Error ? e.name : typeof e);
-      return { pickup: ask.pickup, speech: null, ai: false };
+      return { pickup: ask.pickup, speech: null, ai: false, called: tally.called() };
     }
   };
 }
 
 /**
  * 訪問で着いたときの様子と頼み事（T93 の personaVisitReport、本人役 Haiku × 1 回）。手の所（lib/drill/actions.ts）が訪問の到着でだけ呼ぶ。
- * 結末の人・台帳に無い本人・1 訓練の上限（T90 の 150）・失敗は null（様子なし。聞いた安否は今までどおりコードが決める）
+ * 結末の人・台帳に無い本人・1 訓練の上限（T90 の 150）・失敗は様子なし（聞いた安否は今までどおりコードが決める）。
+ * called は Claude を呼んだか（T118。ai_calls の行で数え、手の所が counts.persona に足す）
  */
 export function createVisitHook(deps: { load: () => Promise<ReadonlyMap<string, PseudonymInput>>; ai: AskJsonContext; on?: string }): VisitHook {
   return async (v) => {
-    if (v.world.ended?.[v.person] || capReached(v.world.counts)) return null;
+    if (v.world.ended?.[v.person] || capReached(v.world.counts)) return { report: null, called: false };
+    const tally = tallied(deps.ai);
     try {
       const sources = await deps.load();
       const source = sources.get(v.person);
-      if (!source) return null;
+      if (!source) return { report: null, called: false };
       const persona = buildPersona(source, { ...(deps.on ? { on: deps.on } : {}), places: personaPlaces(deps.ai, sources) });
-      return await personaVisitReport(
+      const report = await personaVisitReport(
         persona,
         { person: v.person, hour: v.hour, world: v.world, incidents: v.incidents, state: v.state, ...(v.night ? { night: true } : {}) },
-        deps.ai,
+        tally.ai,
       );
+      return { report, called: tally.called() };
     } catch (e) {
       if (!isPersonaFailure(e)) console.error("訪問の様子に失敗", e instanceof Error ? e.name : typeof e);
-      return null;
+      return { report: null, called: tally.called() };
     }
   };
 }
