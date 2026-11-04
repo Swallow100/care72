@@ -84,7 +84,7 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
   // 採点（T22）: 終わった・中断した訓練だけ。再生で見ている刻みでなく、訓練の全部で数える（loadDrillRecord が最後の刻みを読む）
   const scored = running ? null : await loadScore(scope, id, ai);
   // AI 停止の帯 1 本（T76）。刻みの跡（見ている刻みまで）と、進行中なら今の状態から
-  const stopBand = aiStopBand(s.ticks, { virtual: isVirtual(s.drill.scenario), running, now: running ? ai : null });
+  const stopBand = aiStopBand(s.ticks, { virtual: isVirtual(s.drill.scenario), running, now: running ? ai : null, clock: s.clock });
   const replay = !running;
   const here = (over: { sort?: SortKey; step?: number | null; view?: DrillView } = {}) =>
     drillHref(id, { sort, step: replay ? s.shown : null, view, ...over });
@@ -162,7 +162,7 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
         </span>
         <div className="ml-auto flex flex-wrap items-center gap-2">
           {running ? (
-            <DrillControls id={id} step={s.drill.step} done={false} />
+            <DrillControls id={id} step={s.drill.step} done={false} clock={s.clock} left={s.left} />
           ) : (
             <>
               <ReplayNav shown={s.shown} reached={s.drill.step} hrefOf={(i) => here({ step: i })} />
@@ -196,6 +196,7 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
           bands={s.bands}
           reached={s.drill.step}
           night={s.state.options?.night === true}
+          clock={s.clock}
           {...(replay ? { hrefOf: (i: number) => here({ step: i }) } : {})}
         />
       </section>
