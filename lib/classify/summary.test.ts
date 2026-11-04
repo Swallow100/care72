@@ -185,7 +185,7 @@ describe("まとめの本体（summarize）", () => {
     expect(PURPOSES.summary).toEqual({ model: SONNET, effort: "high", maxTokens: 16000, timeoutMs: 180_000 });
     expect(PURPOSES.classify).toMatchObject({ model: HAIKU, effort: "low", timeoutMs: 12_000 });
     const { client, calls } = fake({ summary: () => ({ summary: "足が痛く、動けないと話している。" }) });
-    const r = await summarize({ text: pseudonymizeText("あしが いたい うごけない", key) }, aiCtx(client));
+    const r = await summarize({ text: pseudonymizeText("あしが いたい うごけない", key), key }, aiCtx(client));
     expect(r).toEqual({ ok: true, model: HAIKU, summary: "足が痛く、動けないと話している。" });
     expect(calls).toHaveLength(1);
     expect(calls[0].params).toMatchObject({ model: HAIKU, max_tokens: 4000, output_config: { effort: "high" } });
@@ -211,26 +211,26 @@ describe("まとめの本体（summarize）", () => {
     // 本人がその言葉を言ったなら言い換えに残ってよい
     expect(normalizeSummary("診断書を探していると話す。", "しんだんしょ 診断書 が ない")).toBe("診断書を探していると話す。");
     const { client } = fake({ summary: () => ({ summary: "緊急度は高い。" }) });
-    expect(await summarize({ text: pseudonymizeText("たすけて", key) }, aiCtx(client))).toEqual({ ok: false, error: "bad_output" });
+    expect(await summarize({ text: pseudonymizeText("たすけて", key), key }, aiCtx(client))).toEqual({ ok: false, error: "bad_output" });
   });
 
   it("文字が無ければ呼ばない。未設定・上限・断られた・形の違いは投げずに理由", async () => {
     const { client, calls } = fake({ summary: () => ({ summary: "x" }) });
-    expect(await summarize({ text: null }, aiCtx(client))).toEqual({ ok: false, error: "no_text" });
+    expect(await summarize({ text: null, key }, aiCtx(client))).toEqual({ ok: false, error: "no_text" });
     expect(calls).toEqual([]);
-    expect(await summarize({ text: pseudonymizeText("いたい", key) }, aiCtx(undefined, {}))).toEqual({ ok: false, error: "not_configured" });
+    expect(await summarize({ text: pseudonymizeText("いたい", key), key }, aiCtx(undefined, {}))).toEqual({ ok: false, error: "not_configured" });
     expect(
-      await summarize({ text: pseudonymizeText("いたい", key) }, aiCtx(client, { ANTHROPIC_API_KEY: "dummy", AI_DAILY_LIMIT: "0" })),
+      await summarize({ text: pseudonymizeText("いたい", key), key }, aiCtx(client, { ANTHROPIC_API_KEY: "dummy", AI_DAILY_LIMIT: "0" })),
     ).toEqual({ ok: false, error: "limit" });
     const bad = fake({ summary: () => ({ wrong: 1 }) });
-    expect(await summarize({ text: pseudonymizeText("いたい", key) }, aiCtx(bad.client))).toEqual({ ok: false, error: "bad_output" });
+    expect(await summarize({ text: pseudonymizeText("いたい", key), key }, aiCtx(bad.client))).toEqual({ ok: false, error: "bad_output" });
   });
 
   it("仮名化の門: 入力は伏せた文だけ（型で通らず、実行時にも止まる）。位置・避難先の名前の欄は入力の型に無い", async () => {
     // @ts-expect-error 伏せていない文は渡せない
     buildSummaryRequest({ text: { text: "山田 ハナ" } });
     const { client } = fake({ summary: () => ({ summary: "x" }) });
-    await expect(summarize({ text: { text: "山田 ハナ" } } as unknown as SummaryInput, aiCtx(client))).rejects.toThrow();
+    await expect(summarize({ text: { text: "山田 ハナ" }, key } as unknown as SummaryInput, aiCtx(client))).rejects.toThrow();
     type Place = "reported" | "reported_lat" | "reported_lng" | "lat" | "lng" | "location" | "shelters" | "destination1";
     expectTypeOf<Extract<keyof SummaryInput, Place>>().toEqualTypeOf<never>();
     expectTypeOf<Extract<keyof ClassifySource, Place>>().toEqualTypeOf<never>();
@@ -243,9 +243,23 @@ describe("まとめの本体（summarize）", () => {
   it("送った物に氏名・町名・電話が無い（伏せた文だけ）", async () => {
     const { client, calls } = fake({ summary: () => ({ summary: "（氏名）さんに電話してほしいと話す。" }) });
     const text = pseudonymizeText("山田 ハナです。森 恵子に 090-0000-0012 で でんわして。かわなぎ町", key);
-    await summarize({ text }, aiCtx(client));
+    await summarize({ text, key }, aiCtx(client));
     const sent = JSON.stringify(calls[0].params.messages);
     expect(sent).not.toMatch(/山田|ハナ|森 恵子|090-0000-0012|かわなぎ/);
+  });
+
+  it("返った文も maskReply を通す: 作った名前・住所は伏せ字に、台帳の名前・電話の形が残れば捨てる（見直しの正しさ 低 7）", async () => {
+    const text = pseudonymizeText("となりの さとうさんが いる。みずが きた", key);
+    const made = fake({ summary: () => ({ summary: "隣の佐藤さんがいて、愛媛県松山市○○町 1-2-3 に水が来たと話す。" }) });
+    expect(await summarize({ text, key }, aiCtx(made.client))).toEqual({
+      ok: true,
+      model: HAIKU,
+      summary: "隣の（氏名）がいて、（住所） に水が来たと話す。",
+    });
+    for (const leaked of ["山田 ハナが家で動けないと話す。", "娘の番号は 090-0000-0011 と話す。", "電話は 089-000-0000 と話す。"]) {
+      const { client } = fake({ summary: () => ({ summary: leaked }) });
+      expect(await summarize({ text, key }, aiCtx(client)), leaked).toEqual({ ok: false, error: "bad_output" });
+    }
   });
 });
 
