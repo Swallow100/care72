@@ -295,6 +295,35 @@ describe("話した文は送る前に直せる", () => {
     expect(log.done[1]).toEqual({ text: "88歳、独居。\n土砂の区域", spoken: true });
   });
 
+  it("聞いている間に直した所は、次の音声の文字で上書きしない（T143）。直した時に見えていた認識中の区切りは足し直さない", () => {
+    const { d, last, field, log } = setup();
+    d.start("");
+    last().say([["88歳独居", true], ["認知", false]]);
+    expect(field()).toBe("88歳独居\n認知");
+    // 人が欄を直す（認識中の「認知」も直した文に入る）
+    const edited = "88歳、独居。\n認知症あり";
+    d.edit(edited);
+    // さっきの認識中の区切りが確定しても足さない
+    last().say([["認知症で", true]]);
+    expect(field()).toBe(edited);
+    // そのあとに話した確定の区切りは、直した文のあとにつながる
+    last().say([["土砂の区域", true]]);
+    expect(field()).toBe(`${edited}\n土砂の区域`);
+    d.stop();
+    last().end();
+    expect(log.done[0]).toEqual({ text: `${edited}\n土砂の区域`, spoken: true });
+  });
+
+  it("止まっているときの edit は何もしない（止めたあとは欄の文をそのまま始めに渡す）", () => {
+    const { d, last, log } = setup();
+    d.edit("無視される");
+    d.start("始め");
+    last().say([["続き", true]]);
+    d.stop();
+    last().end();
+    expect(log.done[0]).toEqual({ text: "始め\n続き", spoken: true });
+  });
+
   it("送るのは話して足したときだけで、欄の文そのまま（空白だけは送らない）", () => {
     expect(dictationToSend({ text: "88歳\n独居", spoken: true })).toBe("88歳\n独居");
     expect(dictationToSend({ text: "書いた文", spoken: false })).toBeNull();
