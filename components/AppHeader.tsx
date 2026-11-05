@@ -9,6 +9,7 @@ import { RoleIcon } from "@/components/ui/Icon";
 import { LinkPending } from "@/components/ui/LinkPending";
 import { RoleMenu, type RoleChoice } from "@/components/ui/RoleMenu";
 import { loadDisasterState } from "@/lib/disaster/db";
+import { loadRegionWarnings, NO_REGION_WARNINGS, type RegionWarnings } from "@/lib/jma/alerts";
 import { disasterMark, type DisasterMark } from "@/lib/disaster/state";
 import type { Principal } from "@/lib/auth/principal";
 import { currentChoice, roleChoicesFor } from "@/lib/auth/choices";
@@ -25,6 +26,7 @@ import { PcHint } from "./PcHint";
 
 // 全部の画面の上の帯。
 // 左: 印と名前（印は components/brand/BrandMark の 1 か所から。動かない満ちた形。T66）と画面の切替（担当一覧・訓練・事業所・様式）、その右に事業所の状態（大雨 レベル 4 停電 3 時間。押すと事業所の画面）。
+//   事業所の地域の市と利用者の市に気象庁の警報が出ていれば「警報 2」を添える（T148。表示だけで災害モードは切り替えない）。
 // 右: 自分のこと 事業所名 → 今の役（ケアマネ 山本）→ 役変更（審査員だけ。押すとその下に役の一覧）→ ログアウト（赤。本人・家族の頁には置かない）。
 // 事業所の状態を左に置くのは、右を「自分は誰か・出る」だけにして、事業所名と災害の状態が並んで読み違えないため。
 // ログインしていなければ名前だけ（ログインの画面にいる）。押せる高さは 32px 以上、押してから移るまで灰色を残す。
@@ -42,7 +44,7 @@ export async function AppHeader() {
   }
 
   const desk = p !== null && canViewPage(p.role, "caseload");
-  const mark = desk && p?.office ? await officeMark(p.office.id) : null;
+  const [mark, warnings] = desk && p?.office ? await Promise.all([officeMark(p.office.id), regionWarnings(p.office.id)]) : [null, NO_REGION_WARNINGS];
   // 役変更は審査員と見本のケアマネの山本（T95。lib/auth/wall.ts の canChooseRole）
   const choices = p && canChooseRole(p) ? await roleChoices(p) : null;
   const initialHref = initialPasswordHref(p);
@@ -62,7 +64,7 @@ export async function AppHeader() {
           </Link>
           {desk && <NavLinks />}
           {/* 訓練の画面では事業所の状態の代わりに訓練の想定・規模・経過（T125、components/HeaderMarkSlot） */}
-          {desk && <HeaderMarkSlot>{mark && <DisasterBadge mark={mark} link />}</HeaderMarkSlot>}
+          {desk && <HeaderMarkSlot>{mark && <DisasterBadge mark={mark} link warnings={warnings} />}</HeaderMarkSlot>}
         </div>
         {p && <Who p={p} choices={choices} />}
       </div>
@@ -84,6 +86,19 @@ async function officeMark(officeId: string): Promise<DisasterMark | null> {
   } catch (e) {
     console.error("事業所の状態を読めない", e);
     return null;
+  }
+}
+
+/**
+ * 事業所の地域の市と利用者の市に今出ている気象庁の警報の数（T148。上の帯に添える。表示だけ）。読めなければ 0（ヘッダーは落とさない）
+ */
+async function regionWarnings(officeId: string): Promise<RegionWarnings> {
+  try {
+    const { env } = await getCloudflareContext({ async: true });
+    return await loadRegionWarnings(env.DB, officeId);
+  } catch (e) {
+    console.error("地域の警報を読めない", e);
+    return NO_REGION_WARNINGS;
   }
 }
 

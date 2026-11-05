@@ -1,5 +1,6 @@
 // 事業所の画面（/office）の気象庁の欄の中身（T72 の 2）。D1 の写し（lib/jma/store.ts）だけを読む（気象庁には繋がない）。
-// - 警報・注意報: 事業所の市と、利用者の住所の市に今出ている物を、名前・市町村・状態・発表時刻・発表官署のまま。
+// - 警報・注意報: 事業所の地域の市（主な市 → 周りの市。T148、lib/office/region.ts）と、利用者の住所の市に今出ている物を、
+//   名前・市町村・状態・発表時刻・発表官署のまま。
 //   今の状態は (市町村, 電文の種類) ごとに一番新しい発表の行。同じ市町村に新しい体系（VPWW55〜61）があればそれだけ、無ければ VPWW54、
 //   無ければ VPWW53（経過措置の電文と同じ発表を 2 つの呼び方で並べない。docs/progress/t72.md の問い）。解除と発表なしは出さない
 // - 該当: 住所の市がその市町村に当たる利用者の数（名前は出さない。一覧から外した人は数えない）
@@ -12,6 +13,7 @@ import { JMA_FEEDS, type JmaFetchStateRow, type JmaQuakePointRow, type JmaQuakeR
 import { isWarningKind, WARNING_CODES_NEW } from "./labels.ts";
 import { sameCity, uniqueCities } from "./match.ts";
 import { loadFetchStates } from "./store.ts";
+import { regionCitiesOf } from "../office/region.ts";
 
 /** 取得がこれより古ければ未取得（cron は 5 分ごと。3 回続けて取れていない） */
 export const STALE_MINUTES = 20;
@@ -152,17 +154,19 @@ export function quakeLines(
 
 /** 事業所の気象庁の欄を読む */
 export async function loadJmaAlerts(db: D1Database, officeId: string, now: string): Promise<JmaAlertsData> {
-  const [office, people] = await db.batch<{ city: string | null; n?: number }>([
-    db.prepare("SELECT city FROM offices WHERE id = ?1").bind(officeId),
+  const [office, people] = await db.batch<{ city: string | null; region_cities?: string | null; n?: number }>([
+    db.prepare("SELECT city, region_cities FROM offices WHERE id = ?1").bind(officeId),
     db
       .prepare(
         "SELECT json_extract(ledger, '$.basic.address.city') AS city, count(*) AS n FROM people WHERE office_id = ?1 AND unlisted_at IS NULL GROUP BY 1",
       )
       .bind(officeId),
   ]);
-  const officeCity = office.results[0]?.city ?? null;
+  const o = office.results[0];
+  // 地域の市（主な市 → 周りの市）が先、次に利用者の住所の市
+  const regionCities = o ? regionCitiesOf({ city: o.city, region_cities: o.region_cities ?? null }) : [];
   const counts = people.results.map((r) => ({ city: typeof r.city === "string" ? r.city.trim() : "", n: Number(r.n ?? 0) }));
-  const cities = uniqueCities([officeCity, ...counts.map((c) => c.city)]);
+  const cities = uniqueCities([...regionCities, ...counts.map((c) => c.city)]);
   const noCity = counts.filter((c) => c.city === "").reduce((s, c) => s + c.n, 0);
   if (cities.length === 0) return { ...EMPTY_ALERTS, noCity };
 
@@ -203,4 +207,40 @@ export async function loadJmaAlerts(db: D1Database, officeId: string, now: strin
     quakes: quakeLines(quakes.results as unknown as JmaQuakeRow[], points.results as unknown as JmaQuakePointRow[], cities, now),
     noCity,
   };
+}
+
+/** 上の帯の警報（地域の市と利用者の市に今出ている警報。注意報は数えない）。kinds は種類の名前（重ねない、出た順） */
+export type RegionWarnings = { count: number; kinds: string[] };
+
+export const NO_REGION_WARNINGS: RegionWarnings = { count: 0, kinds: [] };
+
+/** 事業所の地域の市と利用者の住所の市（SQL の中で作る。上の帯の 1 回の往復のため）。?1 は事業所 */
+const CITIES_SQL = `SELECT trim(c) AS c FROM (
+    SELECT o.city AS c FROM offices o WHERE o.id = ?1
+    UNION ALL SELECT j.value FROM offices o, json_each(CASE WHEN json_valid(o.region_cities) THEN o.region_cities ELSE '[]' END) j WHERE o.id = ?1
+    UNION ALL SELECT json_extract(p.ledger, '$.basic.address.city') FROM people p WHERE p.office_id = ?1 AND p.unlisted_at IS NULL
+  ) WHERE typeof(c) = 'text' AND trim(c) <> ''`;
+
+/**
+ * 上の帯（components/AppHeader.tsx）に添える警報の数（T148）。気象庁の欄（loadJmaAlerts）と同じ市（地域の市 → 利用者の市）・
+ * 同じ今の状態の決め方（currentWarnings）で、警報（注意報でない物）の行だけを数える。D1 は 1 回の往復（batch）。
+ * 表示だけで、災害モード・色・連絡順には使わない。取得の新しさは見ない（写しにある今の状態。欄の「未取得」と同じ物を見る）
+ */
+export async function loadRegionWarnings(db: D1Database, officeId: string): Promise<RegionWarnings> {
+  const [office, cityRows, warnings] = await db.batch<Record<string, unknown>>([
+    db.prepare("SELECT city, region_cities FROM offices WHERE id = ?1").bind(officeId),
+    db.prepare(CITIES_SQL).bind(officeId),
+    db
+      .prepare(
+        `SELECT w.*, e.updated_at AS entry_updated FROM jma_warnings w JOIN jma_entries e ON e.id = w.entry_id
+          WHERE EXISTS (SELECT 1 FROM (${CITIES_SQL}) x
+                         WHERE w.area_name = x.c OR (substr(w.area_name, 1, length(x.c)) = x.c AND w.area_name LIKE '%区'))`,
+      )
+      .bind(officeId),
+  ]);
+  const o = office.results[0] as { city: string | null; region_cities: string | null } | undefined;
+  if (!o) return NO_REGION_WARNINGS;
+  const cities = uniqueCities([...regionCitiesOf(o), ...(cityRows.results as Array<{ c: string }>).map((r) => r.c)]);
+  const rows = currentWarnings(warnings.results as unknown as WarningWithEntry[], cities).filter((w) => isWarningKind(w.kind));
+  return { count: rows.length, kinds: uniqueCities(rows.map((r) => r.kind)) };
 }

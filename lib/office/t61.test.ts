@@ -171,18 +171,18 @@ describe("固定のアカウント", () => {
   it("山本・審査員の自分のパスワードの変更は fixed。山本のパスワードも審査員の env も変わらない", async () => {
     const y = await asYamamoto();
     const before = accounts();
-    expect(await changeOwnPassword(db, env(), SECRET, y.principal, { current: YAMAMOTO_PW, next: "new-pass-0001" }, NOW, FAST)).toEqual({
+    expect(await changeOwnPassword(db, env(), SECRET, y.principal, { current: YAMAMOTO_PW, next: "New-pass-0001" }, NOW, FAST)).toEqual({
       ok: false,
       error: "fixed",
     });
     for (const role of [null, "care_manager", "medical", "self", "family"] as const) {
       const j = await loginOk(JUDGE_LOGIN_ID, JUDGE_PW);
       const p = role === null ? j.principal : (await chooseJudgeRole(db, env(), SECRET, j.token, role, NOW))!.principal;
-      expect(await changeOwnPassword(db, env(), SECRET, p, { current: JUDGE_PW, next: "new-pass-0001" }, NOW, FAST)).toEqual({
+      expect(await changeOwnPassword(db, env(), SECRET, p, { current: JUDGE_PW, next: "New-pass-0001" }, NOW, FAST)).toEqual({
         ok: false,
         error: "fixed",
       });
-      const http = await passwordChangeRequest(db, env(), SECRET, p, { current: JUDGE_PW, next: "new-pass-0001" }, NOW, FAST);
+      const http = await passwordChangeRequest(db, env(), SECRET, p, { current: JUDGE_PW, next: "New-pass-0001" }, NOW, FAST);
       expect(http.status).toBe(403);
       expect(http.token).toBeNull();
     }
@@ -194,7 +194,7 @@ describe("固定のアカウント", () => {
     const y = await asYamamoto();
     const envWithCm = { ...env(), CAREMANAGER_DEMO_PASSWORD: "env-yamamoto-pass" };
     expect(
-      await changeOwnPassword(db, envWithCm, SECRET, y.principal, { current: "env-yamamoto-pass", next: "new-pass-0001" }, NOW, FAST),
+      await changeOwnPassword(db, envWithCm, SECRET, y.principal, { current: "env-yamamoto-pass", next: "New-pass-0001" }, NOW, FAST),
     ).toEqual({ ok: false, error: "fixed" });
   });
 
@@ -433,7 +433,7 @@ describe("パスワードの再発行", () => {
     expect(r.status).toBe(200);
     expect(r.body).toMatchObject({ ok: true, account: { id: sato.id, displayName: "佐藤" } });
     const password = r.body.password as string;
-    expect(password).toMatch(/^[a-z2-9]{4}-[a-z2-9]{4}-[a-z2-9]{4}$/);
+    expect(password).toMatch(/^[a-zA-Z2-9]{4}-[a-zA-Z2-9]{4}-[a-zA-Z2-9]{4}$/);
     expect(password).not.toBe(sato.password);
 
     expect(await resolvePrincipal(db, env(), SECRET, sato.token, NOW)).toBeNull();
@@ -464,7 +464,7 @@ describe("パスワードの再発行", () => {
 // ---------- 自分のパスワード ----------
 
 describe("自分のパスワードの変更", () => {
-  const NEXT = "sato-new-pass-01";
+  const NEXT = "Sato-new-pass-01";
 
   it("変えると新しい token が返り（この端末はログインしたまま）、前の token は切れる。経過に「佐藤 パスワード変更」", async () => {
     const sato = await addAndLogin("sato", "佐藤");
@@ -499,7 +499,7 @@ describe("自分のパスワードの変更", () => {
     }
   });
 
-  it("今のパスワードが違えば wrong_password、同じなら same、8〜64 字でなければ password。表は変わらない", async () => {
+  it("今のパスワードが違えば wrong_password、同じなら same、決まり（10〜64 字・大文字・小文字・記号。T148）に合わなければ password。表は変わらない", async () => {
     const sato = await addAndLogin("sato", "佐藤");
     const before = account(sato.id)?.password_hash;
     const call = (current: string, next: string) => changeOwnPassword(db, env(), SECRET, sato.principal, { current, next }, NOW, FAST);
@@ -560,8 +560,8 @@ describe("自分のパスワードの変更", () => {
   it("同時に 2 つ変えても片方だけ（古いハッシュで比べる）", async () => {
     const sato = await addAndLogin("sato", "佐藤");
     const results = await Promise.all([
-      changeOwnPassword(db, env(), SECRET, sato.principal, { current: sato.password, next: "first-pass-0001" }, NOW, FAST),
-      changeOwnPassword(db, env(), SECRET, sato.principal, { current: sato.password, next: "second-pass-0001" }, NOW, FAST),
+      changeOwnPassword(db, env(), SECRET, sato.principal, { current: sato.password, next: "First-pass-0001" }, NOW, FAST),
+      changeOwnPassword(db, env(), SECRET, sato.principal, { current: sato.password, next: "Second-pass-0001" }, NOW, FAST),
     ]);
     expect(results.filter((r) => r.ok)).toHaveLength(1);
     expect(results.filter((r) => !r.ok)).toEqual([{ ok: false, error: "conflict" }]);
@@ -574,7 +574,7 @@ describe("自分のパスワードの変更", () => {
       .prepare("INSERT INTO accounts (id, office_id, role, display_name, login_id, password_hash) VALUES ('acct-med-1', NULL, 'medical', '医療班 1', 'med1', ?)")
       .run(hash);
     const m = await loginOk("med1", "med-pass-000001");
-    const r = await changeOwnPassword(db, env(), SECRET, m.principal, { current: "med-pass-000001", next: "med-pass-000002" }, NOW, FAST);
+    const r = await changeOwnPassword(db, env(), SECRET, m.principal, { current: "med-pass-000001", next: "Med-pass-000002" }, NOW, FAST);
     expect(r.ok).toBe(true);
     expect(changeLog()).toHaveLength(0);
   });
@@ -654,7 +654,8 @@ describe("migration 0012（accounts.disabled_at と、事業所の経過の種�
     // 種は同意の AI 提供（0024、T74）を書くので 0024 も先に（consents を建て直すだけで 0012 の表に触れない）。
     // 種は書類の見直しの表（0032、T136）と紙の手入れの表（0033、T135）も空にするので 0032・0033 も先に（新しい表を作るだけで 0012 の表に触れない）
     // 0029（連絡先のフリガナ・住所・携帯、T117）も先に: T142 で種が書く列（contacts に列を足すだけ）
-    const early = (n: string) => n.startsWith("0017_") || n.startsWith("0020_") || n.startsWith("0024_") || n.startsWith("0029_") || n.startsWith("0032_") || n.startsWith("0033_");
+    // 種はデモ事業所の情報と地域の周りの市（0036、T148）を書くので 0036 も先に（offices に列を足すだけで 0012 の表に触れない）
+    const early = (n: string) => n.startsWith("0017_") || n.startsWith("0020_") || n.startsWith("0024_") || n.startsWith("0029_") || n.startsWith("0032_") || n.startsWith("0033_") || n.startsWith("0036_");
     const d = sqliteUpTo((n) => n < MIGRATION_0012 || early(n));
     for (const s of seedStatements()) d.exec(s);
     d.prepare(

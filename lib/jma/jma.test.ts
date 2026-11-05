@@ -311,10 +311,15 @@ const rows = <T>(sql: string): T[] => sqlite!.prepare(sql).all() as T[];
 const count = (table: string) => (sqlite!.prepare(`SELECT count(*) AS n FROM ${table}`).get() as { n: number }).n;
 
 describe("写す 1 回", () => {
-  it("写す市は事業所の市と、一覧から外していない利用者の住所の市", async () => {
+  it("写す市は事業所の地域の市（主な市・周りの市、T148）と、一覧から外していない利用者の住所の市", async () => {
+    // 種のデモ事業所と確認用の事業所（T144）の周りの市（東温市、T148）を外して、利用者の市の数え方だけを見る
+    sqlite!.exec("UPDATE offices SET region_cities = NULL WHERE id IN ('office-demo', 'office-demo-check')");
     expect(await relevantCities(d1FromSqlite(sqlite!))).toEqual(["松山市", "東温市"]);
     sqlite!.exec(`UPDATE people SET unlisted_at = '${NOW}' WHERE id = 'p-02'`);
     expect(await relevantCities(d1FromSqlite(sqlite!))).toEqual(["松山市"]);
+    // 周りの市は利用者がいなくても写す
+    sqlite!.exec(`UPDATE offices SET region_cities = '["伊予市"]' WHERE id = 'office-partner'`);
+    expect(await relevantCities(d1FromSqlite(sqlite!))).toEqual(["松山市", "伊予市"]);
   });
 
   it("地震 → 警報の順に取り、対象の電文だけ。写すのは事業所と利用者の市の行だけ（広島・今治・伊予は写さない）", async () => {

@@ -51,12 +51,15 @@ export async function knownIds(db: D1Database, ids: ReadonlyArray<string>): Prom
 }
 
 /**
- * 写す市（事業所の市と、一覧から外していない利用者の住所の市）。全国の行を写さず、ここに当たる市町村の行だけを写す。
- * 利用者の市は台帳の basic.address.city（T68 で画面から入れられる）
+ * 写す市（事業所の地域の市〔主な市と周りの市、T148〕と、一覧から外していない利用者の住所の市）。全国の行を写さず、ここに当たる市町村の行だけを写す。
+ * 利用者の市は台帳の basic.address.city（T68 で画面から入れられる）。周りの市は offices.region_cities（JSON の配列、migration 0036）
  */
 export async function relevantCities(db: D1Database): Promise<string[]> {
   const [offices, people] = await db.batch<{ city: string | null }>([
-    db.prepare("SELECT city FROM offices"),
+    db.prepare(
+      `SELECT city FROM offices
+       UNION ALL SELECT j.value FROM offices o, json_each(CASE WHEN json_valid(o.region_cities) THEN o.region_cities ELSE '[]' END) j`,
+    ),
     db.prepare("SELECT DISTINCT json_extract(ledger, '$.basic.address.city') AS city FROM people WHERE unlisted_at IS NULL"),
   ]);
   const all = [...offices.results, ...people.results].map((r) => (typeof r.city === "string" ? r.city.trim() : ""));

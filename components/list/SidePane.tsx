@@ -7,6 +7,7 @@
 // 人数は本文色の数と単位（0 は薄い本文色）。「未確認 N」「未確認」は言葉ごと黄の塗りの印（書類の紙面の帯の未確認と同じ形。T87）
 
 import Link from "next/link";
+import type { MapRegion } from "@/lib/map/region";
 import { CaseMap } from "@/components/map/CaseMap";
 import { CountLabel, countClass, StateTag } from "@/components/ui/Tag";
 import type { GeoPoint, HazardKind } from "@/lib/db/types";
@@ -22,7 +23,8 @@ const NORMAL_LAYERS: HazardKind[] = ["flood"];
  * 地図の真ん中（ピンが無いとき。事業所の中心、T68）と、気象庁の雨雲を重ねるか（デモでない事業所で旗が on のとき）。T72。
  * fictional はピンが種の架空の位置（デモ事業所）のとき。地図の出典の行に「位置は架空」（T114。本物の事業所は出さない）
  */
-export type SideMapOptions = { center: GeoPoint | null; nowcast: boolean; fictional: boolean };
+/** region は事業所の地域（中心と広さ、T148）。無ければ地図に「地域」を出さず、ピンが無いときは center（前から） */
+export type SideMapOptions = { center: GeoPoint | null; nowcast: boolean; fictional: boolean; region?: MapRegion | null };
 
 export function SidePane({ data, map: mapOptions }: { data: SidePaneData; map?: SideMapOptions }) {
   const disaster = data.mode === "disaster";
@@ -106,6 +108,7 @@ function MapSection({ data, options }: { data: SidePaneData; options?: SideMapOp
         demo={data.demo}
         unplaced={data.unplaced}
         center={options?.center ?? undefined}
+        region={options?.region ?? null}
         nowcast={options?.nowcast ?? false}
         fictional={options?.fictional ?? false}
       />

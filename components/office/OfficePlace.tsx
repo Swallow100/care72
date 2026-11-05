@@ -1,58 +1,109 @@
-// 事業所の「地域」（docs/tasks/T68.md の 4）: 市と地図の中心。保存はフォームの POST（app/office/place）。
-// - 市: 本人のページの住所の市の欄の既定（台帳に住所が無い人）。変えても今の利用者の市は変えない
-// - 中心: 本人のページの位置を置く地図が、本人の位置が無いときに開く所（components/person/LocationPick.tsx を使い回す）
-// 書けるのは事業所の管理者だけ。ほか（管理者でないケアマネ・審査員のケアマネの役）は見るだけ。事業所の経過には残さない。
-// 自分で D1 を読む（事業所の画面 app/office/page.tsx には 1 行で置く。components/office/FormChoice.tsx と同じ形）。
+// 事業所の「地域」（docs/tasks/T68.md の 4、T148 で複数の市に）: 主な市・周りの市・中心・広さ・区域。保存はフォームの POST（app/office/place）。
+// - 主な市: 本人のページの住所の市の欄の既定（台帳に住所が無い人）。変えても今の利用者の市は変えない
+// - 周りの市: 担当の利用者がいる隣の市など（「東温市・砥部町」と区切って入れる）。気象庁の欄・上の帯の警報・様式の一覧の初めの市に効く
+// - 中心と広さ: 地図のピンが無いときの初めの表示と「地域」の表示（雨雲はその表示に重なる）。本人のページの位置の地図の真ん中
+// - 区域: 事業所の建物のある所の浸水・土砂・津波（offices.hazards。訓練の区域の出来事が事業所に効くか）
+// - 地域に追加: 利用者の住所の市で地域に入っていない市を 1 つずつ周りの市に足す
+// 効く所の決まりは lib/office/region.ts。書けるのは事業所の管理者と試用事業所の審査員だけ。ほか（審査員のケアマネの役など）は見るだけ。
+// 事業所の経過には残さない。自分で D1 を読む（事業所の画面 app/office/page.tsx には 1 行で置く）。
 
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { LocationField } from "@/components/person/LocationPick";
 import { Panel, PanelHead } from "@/components/ui/Panel";
 import { SubmitButton } from "@/components/ui/SubmitButton";
-import { PLACE_LABELS } from "@/lib/labels";
+import { CHOICE_INPUT, CHOICE_LABEL } from "@/components/ui/choice";
+import { HAZARD_LABELS, PLACE_LABELS } from "@/lib/labels";
 import { DEFAULT_CENTER } from "@/lib/map/center";
-import { CITY_MAX, loadOfficePlace, OFFICE_PLACE_ANCHOR, OFFICE_PLACE_PATH, type OfficePlace as Place } from "@/lib/office/place";
+import { CITY_MAX, OFFICE_PLACE_ANCHOR, OFFICE_PLACE_PATH } from "@/lib/office/place";
+import { FLOOD_DEPTHS, loadOfficeRegion, OFFICE_ZONE_KINDS, REGION_KMS, type OfficeRegion } from "@/lib/office/region";
+import { DepthSelect, ExtentSelect } from "./RegionSelects";
 
-const ROW = "grid grid-cols-[3rem_minmax(0,1fr)] items-center gap-x-2";
-const ROW_TOP = "grid grid-cols-[3rem_minmax(0,1fr)] items-start gap-x-2";
+const ROW = "grid grid-cols-[4.5rem_minmax(0,1fr)] items-center gap-x-2";
+const ROW_TOP = "grid grid-cols-[4.5rem_minmax(0,1fr)] items-start gap-x-2";
 const INPUT =
   "w-full min-w-0 rounded bg-panel2 px-2 py-1 text-sm outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-accent";
 
 export async function OfficePlace({ officeId, admin, error }: { officeId: string; admin: boolean; error?: boolean }) {
-  let place: Place | null;
+  let region: OfficeRegion | null;
   try {
     const { env } = await getCloudflareContext({ async: true });
-    place = await loadOfficePlace(env.DB, officeId);
+    region = await loadOfficeRegion(env.DB, officeId);
   } catch (e) {
     console.error("事業所の地域を読めない", e);
     return null;
   }
-  if (!place) return null;
+  if (!region) return null;
+  const zone = new Map(region.zones.map((z) => [z.kind, z]));
+  const flood = zone.get("flood");
   return (
     <Panel aria-labelledby="office-place-title">
-      <form method="post" action={OFFICE_PLACE_PATH} id={OFFICE_PLACE_ANCHOR} data-office-place>
-        <PanelHead id="office-place-title" title={PLACE_LABELS.region} />
+      <form method="post" action={OFFICE_PLACE_PATH} id={OFFICE_PLACE_ANCHOR} className="scroll-mt-4" data-office-place>
+        <input type="hidden" name="region" value="1" />
+        <PanelHead
+          id="office-place-title"
+          title={PLACE_LABELS.region}
+          sub={
+            <span className="text-sm" data-office-region-cities>
+              {region.cities.join("・") || PLACE_LABELS.none}
+            </span>
+          }
+        />
         {error && (
           <p role="alert" className="mt-1 text-sm font-bold text-danger">
             {PLACE_LABELS.bad}
           </p>
         )}
-        <div className="mt-2 grid gap-1.5 md:grid-cols-[minmax(0,16rem)_minmax(0,1fr)] md:gap-x-4">
-          {admin ? (
-            <label className={`${ROW} self-start`}>
-              <span className="text-xs text-muted">{PLACE_LABELS.city}</span>
-              <input name="city" className={INPUT} required maxLength={CITY_MAX} defaultValue={place.city} autoComplete="off" data-office-city />
-            </label>
-          ) : (
-            <div className={`${ROW} self-start`}>
-              <span className="text-xs text-muted">{PLACE_LABELS.city}</span>
-              <span className="text-sm" data-office-city>
-                {place.city || PLACE_LABELS.none}
-              </span>
-            </div>
-          )}
+        <div className="mt-2 grid gap-1.5 md:grid-cols-[minmax(0,18rem)_minmax(0,1fr)] md:gap-x-4">
+          <div className="grid content-start gap-1.5">
+            {admin ? (
+              <>
+                <label className={ROW}>
+                  <span className="text-xs text-muted">{PLACE_LABELS.mainCity}</span>
+                  <input name="city" className={INPUT} required maxLength={CITY_MAX} defaultValue={region.city} autoComplete="off" data-office-city />
+                </label>
+                <label className={ROW}>
+                  <span className="text-xs text-muted">{PLACE_LABELS.otherCities}</span>
+                  <input name="region_city" className={INPUT} defaultValue={region.others.join("・")} autoComplete="off" data-office-region-others />
+                </label>
+                <div className={ROW}>
+                  <span className="text-xs text-muted">{PLACE_LABELS.extent}</span>
+                  <ExtentSelect kms={REGION_KMS} value={region.km} autoKm={region.kmUsed} />
+                </div>
+                <fieldset className={ROW_TOP}>
+                  <legend className="sr-only">{PLACE_LABELS.zones}</legend>
+                  <span aria-hidden className="pt-2 text-xs text-muted">
+                    {PLACE_LABELS.zones}
+                  </span>
+                  <div className="flex flex-wrap gap-1" data-office-zones>
+                    {OFFICE_ZONE_KINDS.map((k) => (
+                      <label key={k} className={CHOICE_LABEL}>
+                        <input type="checkbox" name="zone" value={k} defaultChecked={zone.has(k)} className={CHOICE_INPUT} />
+                        {HAZARD_LABELS[k]}
+                      </label>
+                    ))}
+                    <DepthSelect depths={FLOOD_DEPTHS} value={flood?.depthM ?? null} />
+                  </div>
+                </fieldset>
+              </>
+            ) : (
+              <dl className="grid gap-1 text-sm">
+                <ReadRow label={PLACE_LABELS.mainCity} value={region.city || PLACE_LABELS.none} data="city" />
+                <ReadRow label={PLACE_LABELS.otherCities} value={region.others.join("・") || PLACE_LABELS.noneShort} data="others" />
+                <ReadRow label={PLACE_LABELS.extent} value={`${region.kmUsed} km${region.km === null ? ` ${PLACE_LABELS.auto}` : ""}`} data="km" />
+                <ReadRow
+                  label={PLACE_LABELS.zones}
+                  value={
+                    region.zones.map((z) => (z.kind === "flood" && z.depthM != null ? `${HAZARD_LABELS[z.kind]} ${z.depthM} m` : HAZARD_LABELS[z.kind])).join("・") ||
+                    PLACE_LABELS.noneShort
+                  }
+                  data="zones"
+                />
+              </dl>
+            )}
+          </div>
           <div className={ROW_TOP}>
             <span className="pt-1 text-xs text-muted">{PLACE_LABELS.center}</span>
-            <LocationField name="center" defaultValue={place.center} center={place.center ?? DEFAULT_CENTER} label={PLACE_LABELS.center} readOnly={!admin} />
+            <LocationField name="center" defaultValue={region.center} center={region.center ?? DEFAULT_CENTER} label={PLACE_LABELS.center} readOnly={!admin} />
           </div>
         </div>
         {admin && (
@@ -63,6 +114,35 @@ export async function OfficePlace({ officeId, admin, error }: { officeId: string
           </div>
         )}
       </form>
+      {/* 利用者の住所の市で地域に入っていない市（T148）。管理者は 1 つずつ周りの市に足せる */}
+      {region.suggestions.length > 0 && (
+        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded bg-panel2 px-2.5 py-1.5 text-sm" data-region-suggest>
+          <span className="text-xs text-muted">{PLACE_LABELS.outside}</span>
+          {region.suggestions.map((s) => (
+            <span key={s.city} className="flex items-center gap-1.5" data-region-suggest-city={s.city}>
+              <span className="font-bold">{s.city}</span>
+              <span className="text-xs text-muted tabular-nums">{s.count} 人</span>
+              {admin && (
+                <form method="post" action={OFFICE_PLACE_PATH}>
+                  <input type="hidden" name="add_city" value={s.city} />
+                  <SubmitButton kind="addIn" size="sm" icon="AddIcon">
+                    {PLACE_LABELS.addCity}
+                  </SubmitButton>
+                </form>
+              )}
+            </span>
+          ))}
+        </div>
+      )}
     </Panel>
+  );
+}
+
+function ReadRow({ label, value, data }: { label: string; value: string; data: string }) {
+  return (
+    <div className="grid grid-cols-[4.5rem_minmax(0,1fr)] items-baseline gap-x-2">
+      <dt className="text-xs text-muted">{label}</dt>
+      <dd data-office-region-read={data}>{value}</dd>
+    </div>
   );
 }

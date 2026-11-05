@@ -155,8 +155,9 @@ function upsertStatements(officeId: string): string[] {
   for (const o of SEED_OFFICES) {
     if (o.id === officeId) {
       out.push(
-        // 様式と地図の中心（T68）も種に戻す（審査員が様式を変えても毎朝松山市に戻る）
-        `${insert("offices", { ...o, created_at: SEED_AT }).replace(/;$/, "")} ON CONFLICT (id) DO UPDATE SET name = excluded.name, kind = excluded.kind, city = excluded.city, plan_form = excluded.plan_form, center_lat = excluded.center_lat, center_lng = excluded.center_lng;`,
+        // 様式と地図の中心（T68）も種に戻す（審査員が様式を変えても毎朝松山市に戻る）。事業所の情報と地域（T148）も。
+        // 区域（hazards、0030）は種に持たない（NULL = 架空の街の区域）ので、地域の区分で置いた区域も NULL に戻す
+        `${insert("offices", { ...o, created_at: SEED_AT }).replace(/;$/, "")} ON CONFLICT (id) DO UPDATE SET name = excluded.name, kind = excluded.kind, city = excluded.city, plan_form = excluded.plan_form, center_lat = excluded.center_lat, center_lng = excluded.center_lng, address = excluded.address, phone = excluded.phone, fax = excluded.fax, office_number = excluded.office_number, region_cities = excluded.region_cities, region_km = excluded.region_km, hazards = NULL;`,
       );
     } else if (o.id === UNAFFILIATED_OFFICE_ID) {
       // 所属なしの事業所は無ければ作る（ほかの事業所の行には触らない）

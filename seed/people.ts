@@ -21,7 +21,12 @@ export const SEED_AT = "2026-11-02T03:00:00.000Z";
 export const CITY = "松山市";
 
 /** 試用事業所の印（judge_sandbox、T115）は種に持たない（0） */
-export type SeedOffice = Omit<OfficeRow, "created_at" | "judge_sandbox">;
+export type SeedOffice = Omit<OfficeRow, "created_at" | "judge_sandbox" | SeedOfficeProfileKey> & Partial<Pick<OfficeRow, SeedOfficeProfileKey>>;
+/**
+ * 事業所の情報と地域の周りの市・広さ（migration 0036、T148）。種ではデモ事業所と確認用の事業所だけが持つ（架空の所在地と電話、周りの市）。
+ * 協力事業所・所属なしの行には書かない（NULL のまま。種の文を 0036 の前の D1 に流すテストの行を増やさないため）
+ */
+type SeedOfficeProfileKey = "address" | "phone" | "fax" | "office_number" | "region_cities" | "region_km";
 /**
  * 停止の印（disabled_at）と審査員が足した印（judge_made、T81）は種に持たない（NULL と 0。種の戻しも戻す）。
  * 初期パスワードの印（password_initial、T114）も持たない（表の既定。種のアカウントは固定で、印は出さない）
@@ -47,13 +52,36 @@ export type SeedPerson = {
 // 様式（plan_form）は 3 つとも松山市（種は松山市。lib/forms/plan-form.ts の defaultPlanForm と同じ。種に書くので、審査員が
 // /office で様式を変えても毎朝の戻しで松山市に戻る。T68）。地図の中心（T68、migration 0017）はデモ事業所だけ松山市の市街
 // （lib/map/center.ts の DEFAULT_CENTER と同じ値）。協力事業所・所属なしは未設定（null）
+/** デモ事業所と確認用の事業所の事業所の情報と地域（T148。架空の値） */
+function demoProfile(): Pick<SeedOffice, SeedOfficeProfileKey> {
+  return {
+    address: `愛媛県${CITY}みずほし町`,
+    phone: phone(90),
+    fax: null,
+    office_number: null,
+    region_cities: JSON.stringify(["東温市"]),
+    region_km: null,
+  };
+}
+
 export const SEED_OFFICES: SeedOffice[] = [
   // ハザード（offices.hazards、T125）は持たない（NULL = 区域なし。架空の街の高台で、訓練の区域の出来事は事業所に効かない）。
   // 種の行に列を足すと migration 0030 の前の D1 に種を入れられなくなる
-  { id: "office-demo", name: "デモ事業所", kind: "demo", city: CITY, plan_form: "matsuyama", center_lat: 33.84, center_lng: 132.765 },
+  // 事業所の情報と地域（T148）は架空の値: 所在地は架空の町名（番地なし）、電話は 090-0000-00NN の形、周りの市は 1 つ、広さは自動。
+  // 事業所番号・FAX は持たない（本物の番号と重ならないように）。確認用の事業所（T144）も同じ値（デモ事業所と同じ種の事業所なので）
+  { id: "office-demo", name: "デモ事業所", kind: "demo", city: CITY, plan_form: "matsuyama", center_lat: 33.84, center_lng: 132.765, ...demoProfile() },
   // 確認用の事業所（T144）。見本のケアマネ（山本）のログインが入る、デモ事業所と同じ種の事業所（中の 10 人・災害モード・訓練は
   // lib/seed/check.ts がデモ事業所の種から写す）。審査員は入らない。作者が山本で確かめた物が審査員のデモ事業所に効かないように
-  { id: "office-demo-check", name: "デモ事業所（確認用）", kind: "demo", city: CITY, plan_form: "matsuyama", center_lat: 33.84, center_lng: 132.765 },
+  {
+    id: "office-demo-check",
+    name: "デモ事業所（確認用）",
+    kind: "demo",
+    city: CITY,
+    plan_form: "matsuyama",
+    center_lat: 33.84,
+    center_lng: 132.765,
+    ...demoProfile(),
+  },
   { id: "office-partner", name: "協力事業所", kind: "regular", city: CITY, plan_form: "matsuyama", center_lat: null, center_lng: null },
   // 所属なし（T23）。医療班・行政がその場で作った人の置き場。ケアマネはいない。ケアマネが引き受けると自分の事業所へ移る
   { id: "office-unaffiliated", name: "所属なし", kind: "unaffiliated", city: CITY, plan_form: "matsuyama", center_lat: null, center_lng: null },

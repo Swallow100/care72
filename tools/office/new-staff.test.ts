@@ -131,7 +131,7 @@ describe("医療班・行政のアカウントを作る道具: 動かす", () =>
     const r = run(script, [...BASE, "--out", out]);
     expect(r.status, r.stderr).toBe(0);
     const password = passwordOf(r.stdout);
-    expect(password).toMatch(/^[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}$/);
+    expect(password).toMatch(/^[a-zA-Z0-9]{4}-[a-zA-Z0-9]{4}-[a-zA-Z0-9]{4}$/);
 
     const sql = readFileSync(out, "utf8");
     expect(sql).not.toContain(password);
@@ -194,7 +194,7 @@ describe("医療班・行政のアカウントを作る道具: 動かす", () =>
     if (!res.ok) throw new Error("ログインできない");
     const timeline = () => (db.prepare("SELECT count(*) AS n FROM office_timeline_entries").get() as { n: number }).n;
     const n = timeline();
-    const next = "kyugo-new-pass-01";
+    const next = "Kyugo-new-pass-01";
     const changed = await changeOwnPassword(d1, {}, SECRET, res.principal, { current: password, next }, NOW, { iterations: 1000 });
     expect(changed.ok).toBe(true);
     expect(timeline()).toBe(n);

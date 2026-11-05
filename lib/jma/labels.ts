@@ -85,6 +85,9 @@ export const JMA_LABELS = {
   legend: "凡例",
 } as const;
 
+/** 事業所の画面の気象庁の欄の場所（上の帯の「警報 2」の送り先。T148） */
+export const JMA_ANCHOR = "jma";
+
 /** 警報（注意報でない物）か。名前に「警報」があり「注意報」が無い物（特別警報・危険警報も警報に数える） */
 export function isWarningKind(kind: string): boolean {
   return kind.includes("警報") && !kind.includes("注意報");
