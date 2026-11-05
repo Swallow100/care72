@@ -258,13 +258,11 @@
     border: solid #fff;
     border-width: 19mm 18mm;
     background: #fff;
-    box-shadow: 0 1px 3px rgb(0 0 0 / 0.18);
   }
   .form9-onscreen .paper.paper-flow {
     box-sizing: border-box;
     width: 297mm;
     padding: 19mm 18mm;
     background: #fff;
-    box-shadow: 0 1px 3px rgb(0 0 0 / 0.18);
   }
 }
