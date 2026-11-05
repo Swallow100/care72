@@ -937,7 +937,7 @@ function ContactRow({
           <span className="self-center px-0.5 text-xs font-bold">{CONTACT_KIND_LABELS[c.kind] ?? c.kind}</span>
         ))}
       {/* 本人の行は電話の欄（電話と備考）だけ（T68） */}
-      {c.kind === "self" ? <SelfFields c={c} p={p} onDrop={onDrop} /> : <OtherFields c={c} p={p} who={who} clash={clash} onDrop={onDrop} />}
+      {c.kind === "self" ? <SelfFields c={c} p={p} onDrop={onDrop} /> : <OtherFields c={c} p={p} who={who} clash={clash} onDrop={onDrop} shifted={showKind} />}
     </div>
   );
 }
@@ -988,12 +988,15 @@ function OtherFields({
   who,
   clash,
   onDrop,
+  shifted = false,
 }: {
   c: ContactDraft;
   p: (patch: Partial<ContactDraft>) => void;
   who: string;
   clash: OrderClash;
   onDrop?: () => void;
+  /** 行の頭に種類の欄がある（欄が 1 つずれる）。狭い幅で住所の右が空かないよう、住所も 1 段に */
+  shifted?: boolean;
 }) {
   return (
     <>
@@ -1020,6 +1023,7 @@ function OtherFields({
       />
       <LabeledInput
         box={INPUT_IN}
+        className={shifted ? WIDE_NARROW : ""}
         label={CONTACT_PART_LABELS.address}
         maxLength={60}
         aria-label={`${who} ${CONTACT_PART_LABELS.address}`}
