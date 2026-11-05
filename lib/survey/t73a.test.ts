@@ -35,12 +35,13 @@ function tx(db: DatabaseSync, sql: string): void {
 
 /**
  * 0021 の前まで（今の本番の形: survey_shares・survey_links が offices を指す）に種を入れた DB。
- * 種は同意の AI 提供（0024、T74）を書くので 0024 は先に当てる（consents を建て直すだけで survey_ の表に触れない）
+ * 種は同意の AI 提供（0024、T74）を書くので 0024 は先に当てる（consents を建て直すだけで survey_ の表に触れない）。
+ * 種は紙の手入れの表（0031、T135）も空にするので 0031 も先に（新しい表を作るだけで survey_ の表に触れない）
  */
 function beforeT73a(): DatabaseSync {
   const db = new DatabaseSync(":memory:");
   db.exec("PRAGMA foreign_keys = ON;");
-  for (const name of NAMES.filter((n) => n < T73A || n.startsWith("0024_"))) tx(db, sqlOf(name));
+  for (const name of NAMES.filter((n) => n < T73A || n.startsWith("0024_") || n.startsWith("0031_"))) tx(db, sqlOf(name));
   tx(db, seedStatements().join("\n"));
   return db;
 }

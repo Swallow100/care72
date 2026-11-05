@@ -61,6 +61,12 @@ const when = (iso: string) => {
   return Number.isNaN(d.getTime()) ? "" : d.toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Tokyo" });
 };
 
+/** 書き始めは入っている字の後ろから */
+const caretToEnd = (e: { currentTarget: HTMLTextAreaElement }) => {
+  const n = e.currentTarget.value.length;
+  e.currentTarget.setSelectionRange(n, n);
+};
+
 /** 欄の印の文字（台帳・様式）と、誰がいつ */
 const handTitle = (s: PaperSlot) => `${s.dest === "ledger" ? L.ledger : L.form}${s.hand ? ` ${s.hand.by ?? ""} ${when(s.hand.at)}` : ""}`.trim();
 
@@ -427,6 +433,7 @@ export function PaperFill({ data, children }: { data: PaperFillData; children: R
             </Button>
           </div>
           {question ? (
+            <div className="rounded bg-panel2 p-2">
             <IntakeQuestion
               question={question}
               left={questions.length}
@@ -444,6 +451,7 @@ export function PaperFill({ data, children }: { data: PaperFillData; children: R
               }}
               onFree={() => undefined}
             />
+            </div>
           ) : (
             <p className="text-xs text-muted" data-fill-no-ask>
               {L.noAsk}
@@ -607,6 +615,7 @@ function SlotView({ slot, ...p }: LayerProps & { slot: PaperSlot }) {
           maxLength={input.max}
           inputMode={input.tel ? "tel" : undefined}
           autoFocus
+          onFocus={caretToEnd}
           {...common}
           data-font={font.fontPt}
           onChange={(e) => p.setEditing({ key: slot.key, parts: [e.target.value] })}
@@ -746,6 +755,7 @@ function FreeView({ entry, layer, ...p }: LayerProps & { entry: FormEntry; layer
           aria-label={L.textBox}
           maxLength={400}
           autoFocus
+          onFocus={caretToEnd}
           onChange={(e) => p.setFreeEdit({ ...writing, text: e.target.value })}
           onBlur={commitText}
           onKeyDown={(e) => {
