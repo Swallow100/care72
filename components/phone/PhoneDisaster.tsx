@@ -26,6 +26,7 @@ import {
 import { createOutbox, fetchTransport, VOICE_PATH, type ReportedPosition, type StorageLike } from "@/lib/signals/outbox";
 import { createPhone, type Phone, type PhoneState } from "@/lib/signals/phone";
 import type { ShelterOption } from "@/lib/signals/questions";
+import { fetchTalk } from "@/lib/signals/talk-client";
 import { PhoneView, type PhoneActions } from "./PhoneView";
 
 const REFRESH_MS = 30_000;
@@ -112,6 +113,8 @@ export function PhoneDisaster({
       locate: typeof navigator !== "undefined" && navigator.geolocation ? () => locateOnce() ?? Promise.resolve(null) : undefined,
       // 声の問い（T49）は端末の読み上げ。読み上げの無い端末は声の問いを出さず、今まで通り定型文へ
       speak: synth && Utterance ? (text) => player.say(text) : undefined,
+      // 声の聞き取りの会話（T137）: 20 秒押さない人に、問いの表を読む代わりに短い会話。次の手はサーバー（Claude は次の 1 文だけ）
+      talk: (signalId, log) => fetchTalk(signalId, log),
       prime: () => {
         player.prime();
         mic = primeMicrophone({ getUserMedia, queryPermission });
@@ -163,6 +166,7 @@ export function PhoneDisaster({
       where: (w) => phone.current?.where(w),
       answer: (c) => phone.current?.answer(c),
       skip: () => phone.current?.skip(),
+      yesNo: (yes) => phone.current?.yesNo(yes),
       locate: (send) => phone.current?.locate(send),
       extend: () => phone.current?.extend(),
       finish: () => phone.current?.finish(),

@@ -78,6 +78,13 @@ export const PURPOSES: Readonly<Record<ClaudePurpose, PurposeSpec>> = {
 export const RECORDING_SUMMARY: PurposeSpec = { model: HAIKU, effort: "high", maxTokens: 4000, timeoutMs: 20_000, maxRetries: 0 };
 
 /**
+ * 声の聞き取りの会話の次の 1 文（T137、lib/signals/talk-ai.ts）の呼び方。用途は classify（ai_calls の CHECK はそのまま。分類と同じ発災時の
+ * 本人の言葉を読む 1 往復）で、要求に spec として渡す。本人が答えを待っている間に呼ぶので、Haiku・low・出力を短く（答えは 4 つの短い欄）・
+ * 6 秒・再試行なし。遅い・失敗は決まった問いで続ける（本人を待たせない）
+ */
+export const TALK_SPEC: PurposeSpec = { model: HAIKU, effort: "low", maxTokens: 1200, timeoutMs: 6_000, maxRetries: 0 };
+
+/**
  * 断られた（stop_reason が refusal）ときにサーバー側で別のモデルに回す設定を送るモデル。
  * Haiku 5.5 には回す先が無く、送っても断られたままなので送らない（skill claude-api）。
  */
