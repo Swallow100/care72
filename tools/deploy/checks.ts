@@ -5,7 +5,8 @@
 //   ログインなしの / ・/me・/office・/drill が /login へ、訓練の API が 401、
 //   workers.dev が閉じている（CHECK_WORKERS_DEV_HOST があるときだけ。ホスト名はアカウント名を含むのでファイルに書かない）。
 // ログインあり（CHECK_LOGIN_ID と CHECK_LOGIN_PASSWORD があるときだけ。作者が自分の端末で流す。エージェントは流さない）:
-//   ログイン → 審査員なら役選択（ケアマネ）→ 担当一覧、本人のスマホ、訓練 10 分版を 1 回（AI を使う）、最初に戻す。
+//   ログイン → 審査員なら役選択（ケアマネ）→ 担当一覧、本人のスマホ、訓練 大雨想定を開始の画面と同じ形で始めて「次まで」で
+//   2 回進めて中断（AI を少し使う。72 時間まで回すと 1 日の上限の大半を使うので回さない。10 分版は T124 で外した）、最初に戻す。
 //   最初に戻すはデモ事業所を種に戻す（審査員が触っている時間には流さない）。
 // パスワードは出力・エラーに出さない。lib を import しない（node でそのまま流すため。値は lib/auth/roles.ts と同じ）。
 
@@ -30,8 +31,11 @@ const ROLE_SELECT_PATH = "/login/role";
 const SESSION_COOKIE = "care72_session";
 /** ログインなしで /login へ送られるはずの画面（担当一覧・本人のスマホ・事業所・訓練記録） */
 export const GUARDED_PAGES = ["/", "/me", "/office", "/drill"] as const;
-/** 訓練の刻みの数の上限（10 分版は 4 刻み。止まらないように） */
-const MAX_STEPS = 20;
+/** 訓練を進める回数（「次まで」。T124 で 10 分版を外し、最後まで回さず進めたら中断する） */
+const DRILL_ADVANCES = 2;
+/** 開始の画面（components/drill/StartButtons の startBody）と同じ送り方 */
+export const DRILL_START_BODY = { scenario: "heavy_rain", options: { clock: true, terms: true } } as const;
+const DRILL_CHECK = "訓練 大雨想定";
 
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
 
@@ -241,18 +245,18 @@ async function loginChecks(base: string, env: CheckEnv, f: Fetch): Promise<Check
     return out;
   }
 
-  // 訓練 10 分版を 1 回（AI を使う）
+  // 訓練 大雨想定を始めて「次まで」で進め、中断（AI を少し使う）
   try {
-    const start = await postJson(base, "/api/drill", { scenario: "short" }, f, s);
+    const start = await postJson(base, "/api/drill", DRILL_START_BODY, f, s);
     const started = (await start.json().catch(() => null)) as { ok?: boolean; id?: string; error?: string } | null;
     if (start.status !== 200 || !started?.ok || !started.id) {
-      out.push(fail("訓練 10 分版", `開始 HTTP ${start.status} ${started?.error ?? ""}`.trim()));
+      out.push(fail(DRILL_CHECK, `開始 HTTP ${start.status} ${started?.error ?? ""}`.trim()));
     } else {
       let step = 0;
       let status = "running";
       let n = 0;
-      while (status === "running" && n < MAX_STEPS) {
-        const r = await postJson(base, `/api/drill/${started.id}/step`, { step }, f, s);
+      while (status === "running" && n < DRILL_ADVANCES) {
+        const r = await postJson(base, `/api/drill/${started.id}/step`, { step, next: true }, f, s);
         const b = (await r.json().catch(() => null)) as { ok?: boolean; step?: number; status?: string; error?: string } | null;
         if (r.status !== 200 || !b?.ok || typeof b.step !== "number") {
           status = `HTTP ${r.status} ${b?.error ?? ""}`.trim();
@@ -262,10 +266,17 @@ async function loginChecks(base: string, env: CheckEnv, f: Fetch): Promise<Check
         status = b.status ?? "running";
         n++;
       }
-      out.push(status === "finished" ? pass("訓練 10 分版", `${n} 刻みで終了`) : fail("訓練 10 分版", `${n} 刻みで ${status}`));
+      if (status !== "running" && status !== "finished") out.push(fail(DRILL_CHECK, `${n} 回進めて ${status}`));
+      else {
+        // 進行中のまま残さない（記録は残り、再生できる）
+        const a = status === "running" ? await postJson(base, `/api/drill/${started.id}/abandon`, {}, f, s) : null;
+        out.push(
+          a && a.status !== 200 ? fail(DRILL_CHECK, `${n} 回進めて 中断 HTTP ${a.status}`) : pass(DRILL_CHECK, `${n} 回進めて${a ? "中断" : "終了"}`),
+        );
+      }
     }
   } catch (e) {
-    out.push(fail("訓練 10 分版", errorText(e)));
+    out.push(fail(DRILL_CHECK, errorText(e)));
   }
 
   // 最初に戻す（確認の欄を通った形）

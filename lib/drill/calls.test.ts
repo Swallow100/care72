@@ -4,7 +4,7 @@
 import { describe, expect, it } from "vitest";
 import { callerLabel, callIndexes, callsOf, CALLS_PER_TICK, isPhoneTurn } from "./calls.ts";
 import { initialState, step, type DrillTurn } from "./engine.ts";
-import { SCENARIOS, SCENARIO_ORDER } from "./scenarios.ts";
+import { SCENARIOS } from "./scenarios.ts";
 
 const START = "2026-11-05T01:00:00.000Z";
 const TEN = ["p-01", "p-02", "p-03", "p-04", "p-05", "p-06", "p-07", "p-08", "p-09", "p-10"];
@@ -104,8 +104,8 @@ describe("想定の表の着信", () => {
     ]);
   });
 
-  it("どの想定のどの刻みも着信は 2 件まで", async () => {
-    for (const id of SCENARIO_ORDER) {
+  it("どの想定のどの刻みも着信は 2 件まで（前からある 10 分版の記録の表も）", async () => {
+    for (const id of Object.keys(SCENARIOS) as Array<keyof typeof SCENARIOS>) {
       let s = initialState(id, TEN, START);
       for (let i = 0; i < SCENARIOS[id].hours.length; i++) {
         const r = await step(s);

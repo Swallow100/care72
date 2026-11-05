@@ -41,7 +41,7 @@ const config = (over: Partial<EvalConfig>): EvalConfig => ({
   real: false,
   key: "fake-key-not-used",
   world: "session",
-  scenarios: ["short", "virtual"],
+  scenarios: ["heavy_rain", "virtual"],
   judge: 1,
   review: false,
   maxAdvances: 8,
@@ -113,7 +113,7 @@ describe("通し（偽の client）", () => {
   }, SLOW);
 
   it("本物の client（--real）と偽の回は比べない", async () => {
-    const r = await runEval(config({ runs: 1, scenarios: ["short"], stamp: "20261105-000300-fake", out: join(tmp, "out-cmp"), md: null, judge: 0 }));
+    const r = await runEval(config({ runs: 1, scenarios: ["heavy_rain"], stamp: "20261105-000300-fake", out: join(tmp, "out-cmp"), md: null, judge: 0 }));
     expect(r.line.startsWith("初回")).toBe(true);
   }, SLOW);
 });
@@ -144,10 +144,12 @@ describe("手・往復・仮名化の門の試し", () => {
   }, SLOW);
 
   it("自由文に本人の氏名を混ぜても、送った中身に氏名は無い（門が伏せる）", async () => {
-    const { log, outcome, numbers, hits } = await drive(busyPlan({ freeRate: 1, probeRate: 1, talkRate: 0, scenario: "short" }));
+    const { log, outcome, numbers, hits } = await drive(busyPlan({ freeRate: 1, probeRate: 1, talkRate: 0, scenario: "earthquake" }));
     const probes = outcome.ops.filter((o) => o.op === "act_probe");
     expect(probes.length).toBeGreaterThan(0);
-    expect(probes.every((o) => o.ok)).toBe(true);
+    // 連続の時計の訓練（T124 で台の想定は全部これ）は手の決まり（T110）で断られる手がある（通話不可など。blocked）。門を通って届いた手が要る
+    expect(probes.every((o) => o.ok || o.error === "blocked")).toBe(true);
+    expect(probes.some((o) => o.ok)).toBe(true);
     expect(log.records.some((r) => r.type === "ai" && r.role === "free")).toBe(true);
     expect(numbers.leaks).toBe(0);
     expect(hits.filter((h) => h.check === "leak")).toEqual([]);
@@ -156,7 +158,7 @@ describe("手・往復・仮名化の門の試し", () => {
   }, SLOW);
 
   it("偽の返事に決まりを破る言葉を混ぜると、生の返事の禁じた中身と形の失敗を拾う", async () => {
-    const { numbers, hits } = await drive(busyPlan({ scenario: "short", talkRate: 0 }), 1);
+    const { numbers, hits } = await drive(busyPlan({ scenario: "earthquake", talkRate: 0 }), 1);
     expect(numbers.banned.raw).toBeGreaterThan(0);
     expect(hits.some((h) => h.check === "banned" && h.where === "raw" && NOISE_WORDS.some((w) => h.evidence.includes(Array.from(w).slice(0, 4).join(""))))).toBe(true);
   }, SLOW);
@@ -247,7 +249,7 @@ describe("引数", () => {
     expect(d).toMatchObject({ runs: 4, real: false, world: "session", judge: 2, review: false, maxUsd: null });
     expect("error" in parseArgs(["--real"], {})).toBe(true);
     expect(parseArgs(["--real", "--runs", "2"], { ANTHROPIC_API_KEY: "k" })).toMatchObject({ real: true, runs: 2, maxUsd: 10, key: "k" });
-    expect(parseArgs(["--scenario", "virtual,short", "--seed", "abc", "--no-md"], {})).toMatchObject({ scenarios: ["virtual", "short"], seed: "abc", md: null });
+    expect(parseArgs(["--scenario", "virtual,earthquake", "--seed", "abc", "--no-md"], {})).toMatchObject({ scenarios: ["virtual", "earthquake"], seed: "abc", md: null });
     expect("error" in parseArgs(["--scenario", "fire"], {})).toBe(true);
     expect("error" in parseArgs(["--noise", "2"], {})).toBe(true);
   });
@@ -270,10 +272,12 @@ describe("T118: 台が見つけた穴が直っていることを、台で確か�
   }, SLOW);
 
   it("門の試しに和暦の生年月日（T107 の入力と同じ形）を混ぜても、送った中身に残らない", async () => {
-    const { log, outcome, numbers } = await drive(busyPlan({ freeRate: 1, probeRate: 1, talkRate: 0, scenario: "short" }));
+    const { log, outcome, numbers } = await drive(busyPlan({ freeRate: 1, probeRate: 1, talkRate: 0, scenario: "earthquake" }));
     const probes = outcome.ops.filter((o) => o.op === "act_probe");
     expect(probes.length).toBeGreaterThan(0);
-    expect(probes.every((o) => o.ok)).toBe(true);
+    // 連続の時計の訓練（T124 で台の想定は全部これ）は手の決まり（T110）で断られる手がある（通話不可など。blocked）。門を通って届いた手が要る
+    expect(probes.every((o) => o.ok || o.error === "blocked")).toBe(true);
+    expect(probes.some((o) => o.ok)).toBe(true);
     const sent = log.records.filter((r) => r.type === "ai").map((r) => (r as AiRecord).sent.user).join("\n");
     expect(sent).toContain("（生年月日）");
     expect(sent).not.toMatch(/昭和[0-9]+年[0-9]+月[0-9]+日/);
