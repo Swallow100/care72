@@ -1,4 +1,5 @@
 // 訓練の想定の表（docs/tasks/T17.md）。大雨と地震の 2 本と、大雨を 4 刻みにした 10 分版。
+// 10 分版は T124 で開始の画面と開始の API から外した。表は前からある 10 分版の記録（一覧・紙・講評・再生・再開）を読むためだけに残す。
 // 出来事の骨はこの表で固定する（docs/SPEC.md「作り」: 審査員の回でも形は同じで、言葉だけ変わる）。
 // 刻みは 12（0・1・3・6・9・12・18・24・36・48・60・72 時間）。刻みごとに、世界の出来事（停電・道路・電話・避難所…）と、
 // 本人ごとの固定の安否（ペルソナ T18 が来るまでの仮。赤・緑・不明と 4 問の答え、言う事）を持つ。
@@ -19,7 +20,7 @@ import type { CastPick } from "./cast.ts";
 /** 12 の刻み（発災からの時間） */
 export const DRILL_HOURS = [0, 1, 3, 6, 9, 12, 18, 24, 36, 48, 60, 72] as const;
 
-/** 10 分版の 4 刻み（DRILL_HOURS の中から）。大雨の想定の出来事を、次の刻みに寄せる */
+/** 10 分版の 4 刻み（DRILL_HOURS の中から）。大雨の想定の出来事を、次の刻みに寄せる。前からある記録を読むためだけ（T124） */
 export const SHORT_HOURS = [0, 3, 12, 72] as const;
 
 /** 想定の災害の種類（事業所の災害モードと同じ言葉） */
@@ -722,8 +723,16 @@ export const SCENARIOS: Readonly<Record<DrillScenario, Scenario>> = {
   virtual: VIRTUAL,
 };
 
-/** 想定の並び（開始のボタンの順。10 分版は画面が先頭に出す） */
-export const SCENARIO_ORDER: ReadonlyArray<DrillScenario> = ["heavy_rain", "earthquake", "short", "virtual"];
+/**
+ * 始められる想定の並び（開始のボタンの順。先頭が主の操作）。10 分版（short）は T124 で外した。
+ * 前からある 10 分版の記録は SCENARIOS から読めるが、開始の API（lib/drill/http.ts の startPost）は断る
+ */
+export const SCENARIO_ORDER: ReadonlyArray<DrillScenario> = ["heavy_rain", "earthquake", "virtual"];
+
+/** 新しく始められる想定か（開始の API の門。10 分版は前からある記録だけ） */
+export function isStartScenario(id: DrillScenario): boolean {
+  return SCENARIO_ORDER.includes(id);
+}
 
 /** 仮想モード（世界の部屋が街を進める）か */
 export function isVirtual(id: DrillScenario): boolean {

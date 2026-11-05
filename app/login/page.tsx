@@ -8,6 +8,7 @@ import { SubmitButton } from "@/components/ui/SubmitButton";
 import { waitMinutes } from "@/lib/auth/lockout";
 import { homePath } from "@/lib/auth/roles";
 import { getPrincipal } from "@/lib/auth/server";
+import { PC_HINT_LABELS } from "@/lib/ui/labels";
 
 export const metadata: Metadata = { title: "ログイン | ケア72" };
 
@@ -37,9 +38,15 @@ export default async function LoginPage({ searchParams }: Props) {
   return (
     <Page width="full" className="max-w-[26rem] py-8 sm:py-14">
       <Panel aria-labelledby="login-title" className="p-5 sm:p-6">
-        <h1 id="login-title" className="text-lg leading-7 font-bold sm:text-xl">
-          ログイン
-        </h1>
+        <div className="flex items-baseline justify-between gap-3">
+          <h1 id="login-title" className="text-lg leading-7 font-bold sm:text-xl">
+            ログイン
+          </h1>
+          {/* 審査員には PC で触ってもらう（T124 の追加）。説明文にしない 1 語 */}
+          <span className="text-xs text-muted" data-pc-hint-login>
+            {PC_HINT_LABELS.hint}
+          </span>
+        </div>
         <form method="post" action="/api/auth/login" className="mt-5 grid gap-4">
           <div>
             <label htmlFor="login-id" className={`${LABEL} font-bold`}>
