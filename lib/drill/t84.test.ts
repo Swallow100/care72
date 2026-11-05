@@ -73,9 +73,12 @@ function setPersonState(person: string, state: PersonState) {
   sqlite.prepare("UPDATE drills SET world = json_set(world, ?, json(?)) WHERE id = ?").run(`$.people.${person}`, JSON.stringify(state), ID);
 }
 
-/** 入れた順（同じ時刻の安否は created_at の順で読む） */
+/**
+ * 入れた順（同じ時刻の安否は created_at の順で読む）。刻みの安否の created_at は SQLite の既定（壁の時計の今）なので、入れる物も
+ * 壁の時計の今からの秒にする（T123。前は 2026-11-05T00:00 の固定の値で、日本の 9 時より後は刻み 0 の緑の方が新しくなり結果が変わった）
+ */
 let put = 0;
-const createdAt = () => `2026-11-05T00:00:${String(put++).padStart(2, "0")}.000Z`;
+const createdAt = () => `+${++put} seconds`;
 
 /**
  * 本人・家族の答えの 赤 けが を、訓練の安否として入れる（想定の表に無い筋を作る。保存の形は刻みの安否と同じ）。
@@ -85,14 +88,14 @@ function putRed(person: string, source: "agent" | "family", answers: { injured?:
   sqlite
     .prepare(
       `INSERT INTO signals (id, person_id, drill_id, color, source, injured, can_move, occurred_at, created_at)
-       VALUES (?, ?, ?, 'red', ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, 'red', ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ?))`,
     )
     .run(`${ID}-x${put}-${person}`, person, ID, source, answers.injured ?? null, answers.can_move ?? null, simAt(START, 0), createdAt());
 }
 
 function putGreen(person: string, source: "agent" | "family") {
   sqlite
-    .prepare(`INSERT INTO signals (id, person_id, drill_id, color, source, occurred_at, created_at) VALUES (?, ?, ?, 'green', ?, ?, ?)`)
+    .prepare(`INSERT INTO signals (id, person_id, drill_id, color, source, occurred_at, created_at) VALUES (?, ?, ?, 'green', ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ?))`)
     .run(`${ID}-x${put}-${person}`, person, ID, source, simAt(START, 0), createdAt());
 }
 
