@@ -2,7 +2,7 @@
 // 枠は録画の外側だけ。道具の URL の欄やボタンのような、アプリに無い物は描かない。
 // 録画の上に置くのは、細い線の囲みと、押した所の輪だけ（囲みの名前は囲みに付けた小さな面）。
 import React from "react";
-import { useCurrentFrame, useVideoConfig } from "remotion";
+import { Sequence, useCurrentFrame, useVideoConfig } from "remotion";
 import type { Assets } from "../assets";
 import { usePalette } from "../ground";
 import { COLOR, FONT, LAYOUT, TYPE } from "../theme";
@@ -14,6 +14,8 @@ import { progress, rise } from "./motion";
 export const PHONES = new Set(["R11", "R12"]);
 const PHONE_RATIO = 375 / 812;
 const BEZEL = 14;
+/** 録画に寄る動きの大きさ（絵の間に 1.5%。窓の外の帯・字幕には届かない） */
+const PUSH = 0.015;
 
 export type FramedProps = {
   id: string;
@@ -32,6 +34,10 @@ export type FramedProps = {
   delay?: number;
   /** 窓の帯に出す画面の名前。無ければ録画の名前（1 本の録画の中で画面が替わるとき） */
   screen?: string;
+  /** 録画に寄る動き（既定は寄る。円柱の窓は円柱が動くので寄らない） */
+  push?: boolean;
+  /** 録画を流し始めるのを遅らせる（コマ）。窓が出始めるところ（delay と同じ）から from 秒を流す */
+  hold?: number;
 };
 
 /** 枠の大きさ（箱に収まる一番大きい物） */
@@ -50,11 +56,13 @@ export const Framed: React.FC<FramedProps> = (props) => {
   const { id, maxWidth, maxHeight, delay = 0 } = props;
   const size = framedSize(id, maxWidth, maxHeight);
   const t = progress(frame, delay, 16);
+  // 寄る所を決めていない録画（zoom の無い絵）は、絵の間に窓ごと PUSH だけ一定の速さで寄る。zoom のある絵は中身が動くので窓は動かさない
+  const push = props.zoom || props.push === false ? 1 : 1 + PUSH * Math.min(1, frame / Math.max(1, props.duration));
   const style: React.CSSProperties = {
     width: size.width,
     height: size.height,
     opacity: t,
-    transform: `translateY(${(1 - t) * 14}px) scale(${0.985 + 0.015 * t})`,
+    transform: `translateY(${(1 - t) * 14}px) scale(${((0.985 + 0.015 * t) * push).toFixed(4)})`,
     transformOrigin: "50% 60%",
   };
   return size.phone ? <PhoneFrame {...props} {...size} style={style} /> : <WindowFrame {...props} {...size} style={style} />;
@@ -62,7 +70,20 @@ export const Framed: React.FC<FramedProps> = (props) => {
 
 type Sized = FramedProps & { width: number; height: number; style: React.CSSProperties };
 
-const WindowFrame: React.FC<Sized> = ({ id, assets, width, height, from, rate, zoom, duration, note, chip, callouts, style, screen }) => {
+/**
+ * 録画の中身（録画と囲み）を hold コマ止めておき、窓が出始めるところで from 秒から流す
+ * （段の頭の最初の録画は大きな名前の間は隠れているので、選んだ from の所を見せるため）
+ */
+const Held: React.FC<{ hold?: number; children: React.ReactNode }> = ({ hold, children }) =>
+  hold && hold > 0 ? (
+    <Sequence from={hold} layout="none">
+      {children}
+    </Sequence>
+  ) : (
+    <>{children}</>
+  );
+
+const WindowFrame: React.FC<Sized> = ({ id, assets, width, height, from, rate, zoom, duration, note, chip, callouts, style, screen, hold }) => {
   // 帯は地の上で目立つ面の色（薄い青の地では青、青地では白）。地と同じ色にすると枠が溶ける
   const p = usePalette();
   const contentW = width;
@@ -87,14 +108,16 @@ const WindowFrame: React.FC<Sized> = ({ id, assets, width, height, from, rate, z
         {chip ? <ChipInBar text={chip} inverse={p.strong === COLOR.white} /> : null}
       </div>
       <div style={{ position: "relative", width: contentW, height: contentH }}>
-        <Footage id={id} assets={assets} width={contentW} height={contentH} from={from} rate={rate} zoom={zoom} duration={duration} note={note} />
-        <Marks id={id} assets={assets} width={contentW} height={contentH} from={from} rate={rate} zoom={zoom} duration={duration} callouts={callouts} />
+        <Held hold={hold}>
+          <Footage id={id} assets={assets} width={contentW} height={contentH} from={from} rate={rate} zoom={zoom} duration={duration - (hold ?? 0)} note={note} />
+          <Marks id={id} assets={assets} width={contentW} height={contentH} from={from} rate={rate} zoom={zoom} duration={duration - (hold ?? 0)} callouts={callouts} />
+        </Held>
       </div>
     </div>
   );
 };
 
-const PhoneFrame: React.FC<Sized> = ({ id, assets, width, height, from, rate, duration, note, chip, callouts, style }) => {
+const PhoneFrame: React.FC<Sized> = ({ id, assets, width, height, from, rate, duration, note, chip, callouts, style, hold }) => {
   const screenW = width - BEZEL * 2;
   const screenH = height - BEZEL * 2;
   const outside = (callouts ?? []).filter((c) => c.place === "left" || c.place === "right");
@@ -104,11 +127,15 @@ const PhoneFrame: React.FC<Sized> = ({ id, assets, width, height, from, rate, du
       <div style={{ width, height, borderRadius: 46, background: COLOR.blue, padding: BEZEL, boxSizing: "border-box" }}>
         <div style={{ position: "relative", width: screenW, height: screenH, borderRadius: 34, overflow: "hidden", background: COLOR.white }}>
           {/* スマホの録画は寄らない（1 画面 1 問の画面を丸ごと見せる） */}
-          <Footage id={id} assets={assets} width={screenW} height={screenH} from={from} rate={rate} still duration={duration} note={note} />
-          <Marks id={id} assets={assets} width={screenW} height={screenH} from={from} rate={rate} still duration={duration} callouts={inside} />
+          <Held hold={hold}>
+            <Footage id={id} assets={assets} width={screenW} height={screenH} from={from} rate={rate} still duration={duration} note={note} />
+            <Marks id={id} assets={assets} width={screenW} height={screenH} from={from} rate={rate} still duration={duration} callouts={inside} />
+          </Held>
         </div>
       </div>
-      <SideLabels callouts={outside} screenW={screenW} screenH={screenH} offset={BEZEL} phoneWidth={width} />
+      <Held hold={hold}>
+        <SideLabels callouts={outside} screenW={screenW} screenH={screenH} offset={BEZEL} phoneWidth={width} />
+      </Held>
       {chip ? (
         <div style={{ position: "absolute", left: width + 28, top: BEZEL + 8, whiteSpace: "nowrap" }}>
           <ChipInBar text={chip} large />

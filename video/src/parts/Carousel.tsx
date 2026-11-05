@@ -97,7 +97,7 @@ export const Carousel: React.FC<{ items: CarouselItem[]; marks: number[]; durati
                     opacity,
                   }}
                 >
-                  <Framed id={it.id} assets={assets} maxWidth={PANEL_W} maxHeight={PANEL_H} from={it.from} duration={duration} note={note} delay={0} />
+                  <Framed id={it.id} assets={assets} maxWidth={PANEL_W} maxHeight={PANEL_H} from={it.from} duration={duration} note={note} delay={0} push={false} />
                 </div>
               );
             })}
