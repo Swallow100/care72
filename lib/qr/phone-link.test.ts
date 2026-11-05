@@ -301,6 +301,8 @@ describe("開く口（/s/<token>）", () => {
       caseloadOf: null,
       personId: "p-01",
       contactId: null,
+      // リンクで入った印（T149。ID を作れるのはこの入り方だけ）
+      phoneEntry: "link",
     } satisfies Principal);
     // https では Secure
     expect((await open(t, NOW, "https://care72.app/s/x")).set).toContain("Secure");

@@ -37,6 +37,8 @@ export const SETUP_EASY = {
   unsupported: "この ブラウザでは {通知|つうち}できません",
   /** 鍵（VAPID）が無い配信 */
   notConfigured: "{通知|つうち} {未設定|みせってい}",
+  /** 段の印の横（「通知 未設定」の後ろだけ） */
+  off: "{未設定|みせってい}",
   failed: "{失敗|しっぱい}しました もう {一度|いちど}",
 } as const;
 

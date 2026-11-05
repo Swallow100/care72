@@ -240,11 +240,11 @@ export function PhoneSetup({ vapidKey, account: initialAccount, compact = false 
   };
 
   const status = (
-    <ul className="flex flex-wrap gap-x-4 gap-y-1 text-lg" aria-label="準備">
+    <ul className="flex flex-wrap gap-x-4 gap-y-1 text-lg">
       {steps.map((s) => (
         <li key={s.step} className={s.done ? "text-muted" : "font-bold"} data-setup-step={s.step} data-done={s.done ? "1" : "0"}>
           {s.done && <SaveIcon aria-hidden className="mr-1 inline size-5 align-[-0.15em]" />}
-          <Easy m={STEP_WORDS[s.step]} /> <Easy m={s.done ? S.done : s.step === "notify" && notify === "off" ? S.notConfigured : S.todo} />
+          <Easy m={STEP_WORDS[s.step]} /> <Easy m={s.done ? S.done : s.step === "notify" && notify === "off" ? S.off : S.todo} />
         </li>
       ))}
     </ul>
