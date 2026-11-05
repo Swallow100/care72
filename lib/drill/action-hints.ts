@@ -193,7 +193,8 @@ export const ALT_ACTIONS: ReadonlyArray<DrillAction> = ["visit", "dispatch", "as
  * 見守依頼は代替の側（近所の人へは歩いて頼める。押せるかは決まりの表の結果のまま）なので数えない
  */
 export const PHONE_ACTIONS: ReadonlyArray<DrillAction> = ACTION_CATALOG.filter(
-  (r) => r.decide.type === "call" && r.needsPerson && !ALT_ACTIONS.includes(r.id),
+  // メッセージ（T125）はデータの道で、通話（音声）でない（電話が押せない間も届く）ので数えない
+  (r) => r.decide.type === "call" && r.needsPerson && !ALT_ACTIONS.includes(r.id) && r.id !== "message",
 ).map((r) => r.id);
 
 // ---------- 候補を組む ----------

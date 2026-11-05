@@ -12,7 +12,9 @@
 import { effectiveKind, isOwnFree } from "./action-catalog.ts";
 import { dayHourOf, isDark, type TermSource } from "./action-terms.ts";
 import type { ActionRecord } from "./action-types.ts";
-import { ARRIVAL_ROLE_LABELS } from "./event-catalog.ts";
+import { ARRIVAL_ROLE_LABELS, NO_CALL } from "./event-catalog.ts";
+import { homeComms } from "./comms.ts";
+import { fitKindOf, profileOf } from "./fit.ts";
 import { clockLabel, PHONE_LABELS, TSUNAMI_LABELS } from "./labels.ts";
 import type { PersonState } from "./persona-types.ts";
 import type { WorldState } from "./scenarios.ts";
@@ -80,7 +82,9 @@ export function situationText(s: SituationSource, person: string | null): string
         : WHERE_LABELS[where.kind]
     }`,
   );
+  // 通信の段（T125、lib/drill/comms.ts）: 通話の様子（規制は全部止めない）と、携帯の電波の全域の不通
   lines.push(`電話: ${PHONE_LABELS[w.phone]}`);
+  if (w.radio === "down") lines.push("携帯の電波: 不通");
   const o = w.outage;
   if (o && o.restoredAt === null) {
     const hours = Math.max(0, Math.floor(s.minute / 60 - o.since));
@@ -97,7 +101,12 @@ export function situationText(s: SituationSource, person: string | null): string
   lines.push(`職員の空き: ${w.staff} 人`);
   if (person) {
     const marks = w.marks[person] ?? {};
-    lines.push(`対象の本人の家の電話: ${marks.lineDown !== undefined ? PHONE_LABELS.down : PHONE_LABELS[w.phone]}`);
+    // 本人の家の固定電話（停電・家の電話の印で使えない）と携帯（電波不通）。手の可否と世界の返事と同じ事実（T125）
+    const c = homeComms(w, profileOf(fitKindOf({ scenario: s.scenario ?? "heavy_rain", options: s.options ?? null }, { ...w, quake: w.quake ?? null })), person, s.homes?.[person] ?? null, s.minute);
+    void marks;
+    lines.push(
+      `対象の本人の家の電話: 固定 ${c.landline === "ok" ? "使える" : c.landline === "out" ? NO_CALL : "なし"}・携帯 ${c.mobile === "ok" ? "使える" : c.mobile === "down" ? "電波不通" : "なし"}`,
+    );
     lines.push(`対象の本人の家の前の道: ${w.roads.some((r) => r.person === person && !r.open) ? "通行止" : "通れる"}`);
     const closed = w.facilities.filter((f) => f.person === person && !f.open).length;
     if (closed > 0) lines.push(`対象の本人の頼り先: 休止 ${closed} か所`);

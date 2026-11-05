@@ -22,6 +22,7 @@
 // - 内訳に足す数（4 つの大きな数字は増やさない。docs/DECISIONS.md の T94 の案）: 空振り（打った時に分かっていた事実で結果の決まっていた手）・
 //   重複（同じ人に同じ手を、新しい事が無いまま 30 分以内に 2 回）・頼み事の未対応・通話の往復（T93 の欄。入る前の記録には無く 0）
 
+import type { PlanScore } from "./person-facts.ts";
 import type { ClockRow, ContactKind, DependsOn, DrillAction } from "../db/types.ts";
 import { inOutageArea } from "../disaster/state.ts";
 import type { Form9Row } from "../forms/form9.ts";
@@ -328,6 +329,8 @@ export type TickWorld = { step: number; world: { phone: PhoneState; facilities: 
 export type Known = {
   /** 本人の家の電話（家の電話の不通の印を含む） */
   homeLine: PhoneState;
+  /** 本人の家の電話の印（家の電話 通話不可。T125） */
+  homeDown: boolean;
   /** 世界の電話（本人の家のほかへかける線）。分からなければ null（家の電話の不通の印があり、刻みの世界も無いとき） */
   line: PhoneState | null;
   roadClosed: boolean;
@@ -351,6 +354,7 @@ export function knownOf(a: Pick<ActionRecord, "person" | "step" | "before">, tic
   }
   return {
     homeLine: b.phone,
+    homeDown,
     line: tick ? tick.world.phone : homeDown ? null : b.phone,
     roadClosed: b.roadClosed,
     staff: b.staff,
@@ -387,8 +391,8 @@ export function wasteOf(a: ActionRecord, k: Known): WasteWhy | null {
   const callee: ContactKind | null = kind === "call_person" ? "self" : a.callee;
   switch (row.decide.type) {
     case "call": {
-      const line = callee === "self" || callee === null ? k.homeLine : k.line;
-      if (line === "down") return "phone";
+      // 事実で決まるのは本人の家の電話の印だけ（T125。世界の電話の規制は確率で、全部は止まらない）
+      if ((callee === "self" || callee === null) && k.homeDown && kind !== "message") return "phone";
       if (callee === "dialysis_center" && k.closed.includes("dialysis_center")) return "closed";
       return null;
     }
@@ -397,17 +401,15 @@ export function wasteOf(a: ActionRecord, k: Known): WasteWhy | null {
     case "dispatch":
       if (callee === "visiting_nurse" && k.nurseAway) return "nurse";
       if (callee !== "visiting_nurse" && k.staff <= 0) return "staff";
-      if (k.roadClosed) return "road";
-      return k.line === "down" ? "phone" : null;
+      return k.roadClosed ? "road" : null;
     case "arrange": {
       const by = row.decide.closedBy;
       if (by && callee === by && k.closed.includes(by)) return "closed";
-      if (k.line === "down") return "phone";
       return k.roadClosed && row.effects.some((e) => e.kind === "arrival") ? "road" : null;
     }
     case "accept":
     case "report":
-      return k.line === "down" ? "phone" : null;
+      return null;
     case "record":
       return null;
   }
@@ -563,6 +565,8 @@ export type ScoreInput = {
   endMinute: number;
   /** 仮想モードの結末（世界が決めた。T53）。固定の筋は渡さない */
   ended?: ReadonlyArray<EndedScore>;
+  /** 計画で動けた人と、計画が無く手が要った人（T130。台帳を読むので record.ts が数えて渡す） */
+  plans?: PlanScore;
   /** 刻みのあとの世界の写し（手を打った時の電話・施設の休止。T94 の空振り）。無ければ手の前の状態だけで決める */
   ticks?: ReadonlyArray<TickWorld>;
   /** 状況（重複の「新しい事」。at は発災からの時間） */
@@ -592,10 +596,15 @@ export type DrillScore = {
   calls: CallScore;
   /** 仮想モードの結末（AI の筋書き）。固定の筋と T53 より前の記録には無い */
   ended?: EndedScore[];
+  /**
+   * 計画で動けた人と、計画が無く手が要った人（T130、lib/drill/person-facts.ts の scorePlans）。講評の入力と訓練の記録に残す（画面は読まない）。
+   * T130 より前の記録には無い
+   */
+  plans?: PlanScore;
 } & Partial<ScoreExtras>;
 
 /** 内訳に足す数（空振り・重複・頼み事の未対応・通話の往復）。様式 9 と台帳を読まないので、前の記録でも訓練の記録だけから数え直せる */
-export function scoreExtras(input: Omit<ScoreInput, "runs" | "form9" | "ended">): ScoreExtras {
+export function scoreExtras(input: Omit<ScoreInput, "runs" | "form9" | "ended" | "plans">): ScoreExtras {
   return {
     wasted: scoreWasted(input.actions, input.ticks),
     repeat: scoreRepeat(input.actions, {
@@ -620,6 +629,7 @@ export function scoreDrill(input: ScoreInput): DrillScore {
     reached: scoreReached(input.runs, input.actions, input.endMinute, arriveIndex(input.world?.arrivals)),
     calls: scoreCalls(input.calls),
     ...(input.ended ? { ended: [...input.ended] } : {}),
+    ...(input.plans ? { plans: input.plans } : {}),
     ...scoreExtras(input),
   };
 }

@@ -52,7 +52,7 @@ import { CALL_STATUS_LABELS, PHONE_LABELS, SHELTER_LABELS, TSUNAMI_LABELS, WATER
 import { nightLine } from "./night.ts";
 import { hourText, minuteText as minuteWords } from "./time-text.ts";
 import { areaOf, placesOf } from "./area.ts";
-import { cleanWords, isPersonaFailure, reportersOf } from "./persona.ts";
+import { cleanWords, inOutageArea, isPersonaFailure, reportersOf } from "./persona.ts";
 import {
   afterOf,
   ARRIVAL_ROLE_LABELS,
@@ -70,7 +70,20 @@ import {
 import { scenarioOf, type AskKind, type PersonMarks, type WorldState } from "./scenarios.ts";
 import { homeFacts, homeWords } from "./self.ts";
 import { oddsText, seededShuffle, timelineText } from "./time-odds.ts";
+import { fitKindOf, fitText, injectFits, profileOf } from "./fit.ts";
 import { screenIncident, STATE_RULES_TEXT, stateLines } from "./state-rules.ts";
+import {
+  factLines,
+  factsOf,
+  issuedBlock,
+  kindSpent,
+  planLines,
+  planOf,
+  sameWording,
+  supplyAllowed,
+  wordingUsed,
+  type GateLog,
+} from "./person-facts.ts";
 
 // ---------- 世界 → ルールの表の入力 ----------
 // lib/drill/world-clocks.ts へ移した（T90 の準備）。前からの import を壊さないよう、同じ名前をここからも出す
@@ -146,21 +159,26 @@ export function sceneText(input: DirectorInput, aliasOf: ReadonlyMap<string, str
   // 予定の出来事（T92。停電の復旧の見込み・電話の回復の見込み）。同じ見込みを重ねて差し込まないために見せる
   for (const s of w.scheduled ?? []) now.push(`予定: ${s.text}（${minuteWords(s.at)}${who(s.person) ? `、${who(s.person)}` : ""}）`);
   const kind = scenarioOf(input.scenario).kind;
+  const profile = profileOf(fitKindOf({ scenario: input.scenario, options: { scale: input.scale ?? null } }, w));
   return [
     `想定: ${SCENE_WORDS[kind]}`,
+    // 想定に効くハザード・起きない事・差し込まない種類（T125、lib/drill/fit.ts の表から）
+    ...(profile ? [fitText(profile, { with: "director" })] : []),
     `時刻: 発災から ${minuteWords(input.hour * 60)}（${last} 時間まで）`,
     `差し込める数: ${budgetOf(input)}`,
     // 夜間発災（T59）だけ。時刻の 1 行
     ...(input.night ? [nightLine(input.hour)] : []),
     // 発災からの時間の帯の目安（T104、lib/drill/time-odds.ts）。種類と出典の id を添える
-    timelineText(input.hour, { with: "director" }),
+    timelineText(input.hour, { with: "director", profile }),
     // 起きやすい物・起きにくい物と、この訓練の傾向（T121。訓練ごとの種で揺らす）。種の無い訓練は書かない
-    ...(input.seed ? [oddsText(input.hour, input.seed)] : []),
+    ...(input.seed ? [oddsText(input.hour, input.seed, undefined, profile)] : []),
     ["今の様子:", ...now.map((x) => `- ${x}`)].join("\n"),
     // 今の状態のいつからと、まだ変わらない時刻（T121、lib/drill/state-rules.ts）。連続の時計の訓練だけ
     ...(input.since !== undefined
       ? [["今の状態（いつから・まだ変わらない時刻）:", ...stateLines(w, Math.round(input.hour * 60), who).map((x) => `- ${x}`)].join("\n")]
       : []),
+    // もう出した出来事（T130。同じ種類・同じ言い回しを別の人にくり返さない）
+    ...issuedBlock(w, (k) => (isInjectKind(k) ? EVENT_CATALOG[k].label : k), who),
     input.incidents.length > 0
       ? ["この刻みの状況:", ...input.incidents.map((e) => `- ${e.text}${who(e.person) ? `（${who(e.person)}）` : ""}`)].join("\n")
       : "この刻みの状況: 新しい事はない",
@@ -222,6 +240,9 @@ export type WeakEntry = {
   source: PseudonymInput;
   state: PersonState | null;
   kinds: ReadonlyArray<InjectKind>;
+  /** 人ごとの事実の帳面と計画の行（T130、lib/drill/person-facts.ts。名前・場所の名前は無い）。無ければ書かない */
+  facts?: ReadonlyArray<string>;
+  plan?: ReadonlyArray<string>;
 };
 
 const DEPENDS_WORDS = { dialysis_center: "透析先", refrigeration: "冷蔵", delivery: "配達", storage: "保管" } as const;
@@ -292,6 +313,8 @@ export function weaknessText(
       `  スマホで押せる人: ${pressers.length > 0 ? pressers.join("、") : "いない"}`,
       `  今の安否: ${stateWords(e.state)}`,
       ...sharedLines(world, e.person),
+      ...(e.facts && e.facts.length > 0 ? [`  事実: ${e.facts.join("／")}`] : []),
+      ...(e.plan && e.plan.length > 0 ? [`  計画: ${e.plan.join("／")}`] : []),
       `  差し込める種類: ${e.kinds.length > 0 ? e.kinds.join("、") : "なし"}`,
     ].join("\n");
   });
@@ -372,6 +395,7 @@ export const DIRECTOR_SYSTEM = [
   "6. 「この時間帯に起きやすい事」は公的な資料からの目安。種類と時刻を選ぶ参考にし、決めつけない（目安に無い種類を選んでもよく、時刻は前後してよい）。",
   "7. 自分の種類は、訓練するケアマネ自身の身の回り（自宅・家族・出勤・携帯）。訓練の主役は担当の人なので、まれにだけ使う（全体の種類と合わせて 1 刻みに 1 つ）。",
   "8. 人ごと・場所ごとの筋を通す。「今の状態」のいつからと、まだ変わらない時刻に合わせ、下の変わり方の決まりに反する出来事を選ばない（反する物は使われない）。「起きにくい」種類は筋が通るときだけ。",
+  "9. 「もう出した出来事」と同じ言い回しを別の人に使わない。同じ種類を何人にもくり返さない（その人の弱点に合う別の種類か、差し込まない）。本人ごとの「事実」「計画」と食い違う事を差し込まない。",
   "",
   STATE_RULES_TEXT,
   "",
@@ -568,6 +592,8 @@ export type DirectorDeps = {
   on?: string;
   /** 上限で落ちたときに「監督 停止」を書き留める所（T70）。返す物は変わらない */
   stops?: StopLog;
+  /** 帳面の門（業者の巡回・同じ出来事のくり返し）で落とした数を書き留める所（T130） */
+  gates?: GateLog;
 };
 
 /**
@@ -598,6 +624,40 @@ export function kindAllowed(kind: InjectKind, person: string | null, world: Worl
   return v.keep !== false;
 }
 
+/** 弱点の行に足す帳面と計画（T130）。停電の地区は台帳の町名とハザードで見る */
+function weakFacts(person: string, source: PseudonymInput, plan: ReturnType<typeof planOf> | null, input: DirectorInput, minute: number): Pick<WeakEntry, "facts" | "plan"> {
+  const o = input.world.outage;
+  const hazards = source.ledger.evacuation.hazards.map((x) => ({ kind: x.kind, depthM: x.depthM ?? null }));
+  const town = source.ledger.basic.address?.town?.trim() || null;
+  const f = factsOf({
+    person,
+    world: input.world,
+    state: input.people[person] ?? null,
+    actions: input.actions.filter((a) => a.person === person),
+    now: minute,
+    plan,
+    inOutage: o !== null && inOutageArea(o.area, hazards, town),
+  });
+  return { facts: factLines(f), plan: plan ? planLines(plan) : [] };
+}
+
+/**
+ * 同じ言い回しの出来事を別の人にくり返さない（T130）。もう出した出来事（world.issued）と同じ言い回しの物と、この答えの中で同じ種類・同じ言い回しの 2 つ目を外す。
+ * 文をコードが書く種類（何時間後・震度の入る物）は言い回しで見ない（同じ文が決まりなので）
+ */
+export function screenRepeats(events: ReadonlyArray<DirectorEvent>, world: WorldState, gates?: GateLog): DirectorEvent[] {
+  const out: DirectorEvent[] = [];
+  for (const e of events) {
+    const own = isInjectKind(e.inject) && EVENT_CATALOG[e.inject].ownText === true;
+    if (!own && (wordingUsed(world, e.text, e.person ?? null) || out.some((x) => x.inject === e.inject && sameWording(x.text, e.text)))) {
+      gates?.hit("repeat_text");
+      continue;
+    }
+    out.push(e);
+  }
+  return out;
+}
+
 export function createDirectorHook(deps: DirectorDeps): DirectorHook {
   let loaded: Promise<ReadonlyMap<string, PseudonymInput>> | null = null;
   const none: DirectorResult = { events: [], words: [] };
@@ -624,11 +684,22 @@ export function createDirectorHook(deps: DirectorDeps): DirectorHook {
       // 変わり方の決まり（T121）で今は使われない種類を外す（同じ役の到着が近い・家の電話がもう不通・すぐに入れ替わる電話など）。
       // 差し込める種類の並びは訓練ごとの種で揺らす（並びの先頭ばかり選ばれないように）
       const minute = Math.round(input.hour * 60);
+      // 想定に合わない種類（T125。地震の透析施設の浸水・大雨の余震）は差し込ませない
+      const profile = profileOf(fitKindOf({ scenario: input.scenario, options: { scale: input.scale ?? null } }, input.world));
+      // T130: 業者の巡回（届く物）は、その人への手（業者連絡・電源手配・薬手配）か計画（業者の約束）があるときだけ。
+      // 人ごとの種類は訓練に KIND_REPEAT_MAX 回まで（評価の 3 回目で、薬局の休止・帰宅困難が何人にも同じ形で出た。全体の種類〔余震など〕は数えない）
+      const plans = new Map(members.map((p) => [p, planOf(sources.get(p)!)]));
       for (const [p, ks] of eligible) {
-        const kept = ks.filter((k) => kindAllowed(k, p, input.world, input.hour, minute, sources.get(p)));
+        const kept = ks.filter(
+          (k) =>
+            injectFits(profile, k) &&
+            kindAllowed(k, p, input.world, input.hour, minute, sources.get(p)) &&
+            !kindSpent(input.world, k) &&
+            (k !== "vendor_round" || supplyAllowed(p, input.actions, plans.get(p) ?? null)),
+        );
         eligible.set(p, input.seed ? seededShuffle(kept, `${input.seed}|${p}|${minute}`) : kept);
       }
-      for (const k of [...area.keys()]) if (!kindAllowed(k, null, input.world, input.hour, minute)) area.delete(k);
+      for (const k of [...area.keys()]) if (!injectFits(profile, k) || !kindAllowed(k, null, input.world, input.hour, minute)) area.delete(k);
       const asked = input.replies ?? [];
       const max = budgetOf(input);
       if ((max === 0 || (![...eligible.values()].some((k) => k.length > 0) && area.size === 0)) && asked.length === 0) return none;
@@ -644,6 +715,7 @@ export function createDirectorHook(deps: DirectorDeps): DirectorHook {
         source: list[i],
         state: input.people[p] ?? null,
         kinds: eligible.get(p) ?? [],
+        ...weakFacts(p, list[i], plans.get(p) ?? null, input, minute),
       }));
       const scene = pseudonymizeText(sceneText(input, aliasOf, last), key);
       const areaKinds = (input.seed ? seededShuffle([...area.keys()], `${input.seed}|area|${minute}`) : [...area.keys()]).filter((k) => !selfKinds.includes(k));
@@ -652,7 +724,7 @@ export function createDirectorHook(deps: DirectorDeps): DirectorHook {
       const replies = asked.length > 0 ? pseudonymizeText(replyText(asked, aliasOf), key) : undefined;
       const r = await askJson(buildDirectorRequest(scene, weak, replies), deps.ai);
       return {
-        events: directorEvents(r.value, { key, eligible, area, max, sources, world: input.world }),
+        events: screenRepeats(directorEvents(r.value, { key, eligible, area, max, sources, world: input.world }), input.world, deps.gates),
         words: directorWords(r.value, { key, asked }),
       };
     } catch (e) {

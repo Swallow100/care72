@@ -269,7 +269,8 @@ describe("3 つのタブの描き", () => {
     const html = renderLog(false);
     expect(html).toContain('role="tablist"');
     expect(html).toContain(`aria-label="${LOG_LABELS.tabs}"`);
-    const tabs = [...html.matchAll(/data-log-tab="(\w+)"[^>]*>([^<]+)<span[^>]*>(\d+)</g)].map((m) => [m[1], m[2], Number(m[3])]);
+    // T128: 名前と数の間は空白 1 つ（下の線を 1 本にするため。components/ui/Tabs の TabText）
+    const tabs = [...html.matchAll(/data-log-tab="(\w+)"[^>]*>([^<]+?) ?<span[^>]*>(\d+)</g)].map((m) => [m[1], m[2], Number(m[3])]);
     expect(tabs).toEqual([
       ["occur", "発生", 2],
       ["know", "把握", 8],
@@ -339,7 +340,8 @@ describe("3 つのタブの描き", () => {
 describe("電話の言い方（不通 → 通話不可）", () => {
   it("被害状況・状況・手の返事・本人ごとの印・出来事の表の言葉が「通話不可」", () => {
     expect(NO_CALL).toBe("通話不可");
-    expect(PHONE_LABELS.down).toBe("通話不可");
+    // 世界の電話の down は通話の規制（T125。全部は止まらない）。家の電話の不通は「通話不可」のまま
+    expect(PHONE_LABELS.down).toBe("規制");
     expect(WORLD_REPLY_LABELS.noLine).toBe("通話不可");
     expect(ACTION_STATUS_LABELS.noLine).toBe("通話不可");
     expect(MARK_LABELS.lineDown).toBe("通話不可");
@@ -347,9 +349,9 @@ describe("電話の言い方（不通 → 通話不可）", () => {
     expect(markWords.lineDown).toBe("家の電話で通話できない");
     expect(INJECT_TEXTS.line_down).toBe("家の電話 通話不可");
     expect(EVENT_LABELS.line_down).toBe("通話不可");
-    expect(EVENT_LABELS.mobile_down).toBe("携帯不可");
+    expect(EVENT_LABELS.mobile_down).toBe("電波不通");
     expect(EVENT_CATALOG.line_down.build({ person: "p-02" }, 3, null)).toEqual([{ change: { kind: "line_down" }, text: "家の電話 通話不可", person: "p-02" }]);
-    expect(EVENT_CATALOG.mobile_down.build({ person: null }, 3, 2).map((p) => p.text)).toEqual(["携帯電話も通話不可", "電話 一部回復見込 2 時間後"]);
+    expect(EVENT_CATALOG.mobile_down.build({ person: null }, 3, 2).map((p) => p.text)).toEqual(["携帯 電波不通", "携帯 電波 回復見込 2 時間後"]);
     expect(EVENT_KIND_LABELS.line_down).toBe("電話");
   });
 
@@ -368,7 +370,8 @@ describe("電話の言い方（不通 → 通話不可）", () => {
       ...Object.values(RESULT_WORDS),
       REVIEW_SYSTEM,
     ];
-    for (const w of words) expect(w).not.toContain("不通");
+    // 「電波不通」（T125。携帯の基地局の止まり）は電話の不通と別の段なので残す
+    for (const w of words) expect(w.replaceAll("電波不通", "")).not.toContain("不通");
   });
 
   it("世界の返事の事実と、採点・講評の事実の言葉が同じ（返事の形と表の言葉をそろえる）", () => {
@@ -377,34 +380,37 @@ describe("電話の言い方（不通 → 通話不可）", () => {
       status: "noLine",
       because: "家の電話 通話不可",
     });
-    expect(decideWorldReply({ action: "call_contact", person: "p-02", callee: "family", world: w({ phone: "down" }), hour: 3 }, 0)).toMatchObject({
+    // 通話の規制（T125）は全部を止めない。家族の携帯は全域の電波不通で届かない
+    expect(decideWorldReply({ action: "call_contact", person: "p-02", callee: "family", world: w({ phone: "down" }), hour: 3 }, 0)).toMatchObject({ status: "ringing" });
+    expect(decideWorldReply({ action: "call_contact", person: "p-02", callee: "family", world: w({ radio: "down" }), hour: 3 }, 0)).toMatchObject({
       status: "noLine",
-      because: "電話 通話不可",
+      because: "携帯 電波不通",
     });
-    expect(decideWorldReply({ action: "report_city", person: null, world: w({ phone: "down" }), hour: 3 }, 0)).toMatchObject({ because: "電話 通話不可" });
-    // 手の前の電話は本人の家の電話。刻みの世界の電話が通常なら「家の電話 通話不可」、世界も不可なら「電話 通話不可」
+    expect(decideWorldReply({ action: "report_city", person: null, world: w({ phone: "down" }), hour: 3 }, 0.9)).toMatchObject({ status: "noLine" });
+    // 手の前の電話は本人の家の電話。家の電話の印なら「家の電話 通話不可」、世界の電話の規制は「電話 規制」
     const before = { person: null, marks: { lineDown: 3 }, staff: 1, phone: "down" as const, roadClosed: false };
     const tickWorld = (phone: "ok" | "down") => [{ step: 0, world: { phone, facilities: [] } }];
-    expect(factWords(knownOf({ person: "p-02", step: 0, before }, tickWorld("down")), "call_contact")).toContain("電話 通話不可");
+    expect(factWords(knownOf({ person: "p-02", step: 0, before }, tickWorld("down")), "call_contact")).toContain("電話 規制");
     expect(factWords(knownOf({ person: "p-02", step: 0, before }, tickWorld("ok")), "call_person")).toContain("家の電話 通話不可");
-    expect(WASTE_WORDS.phone).toBe("電話 通話不可");
+    expect(WASTE_WORDS.phone).toBe("家の電話 通話不可");
     expect(WASTE_LABELS.phone).toBe("通話不可");
     expect(RESULT_WORDS.noLine).toBe("通話不可");
-    expect(REVIEW_SYSTEM).toContain("- 電話 通話不可:");
+    expect(REVIEW_SYSTEM).toContain("- 家の電話 通話不可:");
+    expect(REVIEW_SYSTEM).toContain("- 電話 規制:");
   });
 
-  it("世界（AI）の返す電話の値は、前の「不通」も新しい「通話不可」も down として読み、画面の文は「電話 通話不可」", () => {
+  it("世界（AI）の返す電話の値は、前の「不通」・「通話不可」・「規制」も down として読み、画面の文は「電話 規制」（T125）", () => {
     const ctx = { key: { people: [] } as unknown as PseudonymKey, facts: new Map(), ended: new Set<string>(), hour: 6, via: "room" as const };
-    for (const value of ["down", "不通", "通話不可"]) {
+    for (const value of ["down", "不通", "通話不可", "規制"]) {
       const out = worldIncidents({ narration: "", events: [{ kind: "phone", town: "", target: "", name: "", value }], farewells: [] }, ctx);
-      expect(out.filter((e) => e.change.kind === "phone").map((e) => [e.change, e.text]), value).toEqual([[{ kind: "phone", state: "down" }, "電話 通話不可"]]);
+      expect(out.filter((e) => e.change.kind === "phone").map((e) => [e.change, e.text]), value).toEqual([[{ kind: "phone", state: "down" }, "電話 規制"]]);
     }
   });
 
-  it("被害状況の電話は「通話不可」。途中は本人の非公表の印を出さず、終わると出す", () => {
+  it("被害状況の電話は「規制」（T125）。途中は本人の非公表の印を出さず、終わると出す", () => {
     const world: WorldState = { ...EMPTY_WORLD, phone: "down", marks: { "p-02": { lineDown: 3 }, "p-06": { supplyLeft: 2 } } };
     const run = renderToStaticMarkup(createElement(DamagePanel, { kind: "heavy_rain", world, now: 3, names: NAMES, hidePrivate: true }));
-    expect(run).toMatch(/data-world="phone"[^>]*><span[^>]*>通話不可</);
+    expect(run).toMatch(/data-world="phone"[^>]*><span[^>]*>規制</);
     expect(run).not.toContain("不通");
     expect(run).toContain("高橋 一郎");
     expect(run).not.toContain("佐藤 次郎");

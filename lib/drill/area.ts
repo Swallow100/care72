@@ -67,6 +67,13 @@ export const AREA_FACILITIES: ReadonlyArray<AreaFacility> = [
   { id: "hospital", name: "川沿いの病院", town: "かわなぎ町", depends: null, kind: "病院" },
 ];
 
+/**
+ * デモ事業所の区域（T125。offices.hazards が NULL のデモ事業所に訓練の開始の時に写す）。架空の街の乙地区（みずほし町、白波川から少し離れた平地）
+ * にあり、洪水 0.5 m の区域。種の行に列を足さない（migration 0030 の前の D1 に種を入れられなくなるため）のでコードに持つ。
+ * 大雨の警戒レベル（避難指示）は事業所も対象、深い所（3 m 以上）の川の氾濫・津波・土砂は対象外。津波の区域ではないので職員の退避は起きない
+ */
+export const DEMO_OFFICE_ZONES: ReadonlyArray<{ kind: "flood"; depthM: number }> = [{ kind: "flood", depthM: 0.5 }];
+
 /** 事業所の地理 1 つ（デモ事業所は架空の街、ほかの事業所は台帳の町名から作る。T70） */
 export type Area = {
   /** 川（部屋に見せる架空の名前）。無ければ地理の文に川の行を書かない */

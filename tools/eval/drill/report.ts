@@ -37,10 +37,16 @@ export type Totals = {
   /** 手の決まりで押せないはずの手が打てた数・夜の訪問の所要が足りない数（T121。決まりを送った回は 0 のはず） */
   termsRan?: number;
   termsDark?: number;
+  /** 想定に合わない物（T125。直したあとは 0 のはず）と、1 つの門が捨てた・直した数 */
+  fitMisfit?: number;
+  fitGated?: number;
   /** 自由対応（T129）: 画面に出た内部の名前・表の手から変化なしに落ちた数（0 のはず）と、不可の手を「できる」と答えた生の返事 */
   freeInnerShown?: number;
   freeDropped?: number;
   freeCanMismatch?: number;
+  /** 帳面との矛盾（T130。門が効いていれば 0）と、門が落とした・直した数 */
+  factHits?: number;
+  gated?: number;
   advanceP50: number | null;
   advanceP95: number | null;
   usdPerRun: number | null;
@@ -98,9 +104,13 @@ export function totalsOf(runs: ReadonlyArray<RunSummary>): Totals {
     termsRefused: sum(n.map((x) => x.terms?.refused ?? 0)),
     termsRan: sum(n.map((x) => x.terms?.ran ?? 0)),
     termsDark: sum(n.map((x) => x.terms?.dark ?? 0)),
+    fitMisfit: sum(n.map((x) => x.fit?.misfit ?? 0)),
+    fitGated: sum(n.map((x) => x.fit?.gated ?? 0)),
     freeInnerShown: sum(n.map((x) => x.free?.innerShown ?? 0)),
     freeDropped: sum(n.map((x) => x.free?.dropped ?? 0)),
     freeCanMismatch: sum(n.map((x) => x.free?.canMismatch ?? 0)),
+    factHits: sum(n.map((x) => x.facts?.hits ?? 0)),
+    gated: sum(n.map((x) => Object.values(x.facts?.gated ?? {}).reduce((a, b) => a + b, 0))),
     advanceP50: mean(n.map((x) => x.timing.advanceP50)),
     advanceP95: max(n.map((x) => x.timing.advanceP95)),
     usdPerRun: mean(n.map((x) => x.cost.usd)),
@@ -154,12 +164,16 @@ export const METRICS: ReadonlyArray<Metric> = [
   { label: "再試行", get: (s) => s.totals.retries, format: int, lowerBetter: true },
   { label: "仮名の漏れ（送った中身）", get: (s) => s.totals.leaks, format: int, lowerBetter: true },
   { label: "矛盾/回", get: (s) => per(s, s.totals.contradictions), format: two, lowerBetter: true },
+  { label: "帳面との矛盾/回（T130）", get: (s) => per(s, s.totals.factHits ?? 0), format: two, lowerBetter: true },
+  { label: "帳面の門で落とした・直した数", get: (s) => s.totals.gated ?? 0, format: int },
   { label: "時間の目安の帯の外（監督の差し込み）", get: (s) => s.totals.offBandRate, format: pct },
   { label: "停止の印（上限）", get: (s) => s.totals.aiStop, format: int, lowerBetter: true },
   { label: "世界の代替・停止の印", get: (s) => s.totals.worldNote, format: int, lowerBetter: true },
   { label: "失敗した要求", get: (s) => s.totals.opFailed + s.totals.exceptions, format: int, lowerBetter: true },
   { label: "手の決まりで断った手（決まりどおり）", get: (s) => s.totals.termsRefused ?? 0, format: int },
   { label: "手の決まりで押せない手が打てた・夜の所要不足", get: (s) => (s.totals.termsRan ?? 0) + (s.totals.termsDark ?? 0), format: int, lowerBetter: true },
+  { label: "想定に合わない物（出来事・言葉・所要の理由・着信）", get: (s) => s.totals.fitMisfit ?? 0, format: int, lowerBetter: true },
+  { label: "1 つの門が捨てた・直した物", get: (s) => s.totals.fitGated ?? 0, format: int },
   { label: "自由対応の画面の内部の名前・変化なしに落ちた手", get: (s) => (s.totals.freeInnerShown ?? 0) + (s.totals.freeDropped ?? 0), format: int, lowerBetter: true },
   { label: "自由対応で不可の手を「できる」と答えた（生の返事）", get: (s) => s.totals.freeCanMismatch ?? 0, format: int, lowerBetter: true },
   { label: "AI の呼び出し/回（ai_calls）", get: (s) => s.totals.callsPerRun, format: two },

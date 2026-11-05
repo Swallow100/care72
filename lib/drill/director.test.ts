@@ -429,7 +429,8 @@ describe("監督（Opus、偽の client）", () => {
     const hook = createDirectorHook({ load: seedLoad, ai: aiCtx(client) });
     // 伊藤（p-05）だけ: 川沿いの道はもう通行止、電話は不通、経管栄養・透析・訪問看護なし、家にいる。
     // T92 の種類も起きたあと（薬局の休止・家族の帰宅困難・近所の声掛、福祉避難所は満員・情報の混乱は済み）
-    let world: WorldState = { ...EMPTY_WORLD, phone: "down", notes: { info_confusion: 0 } };
+    // 電波はもう不通（T125。携帯の基地局の停止 mobile_down は電波が通じている間だけ）
+    let world: WorldState = { ...EMPTY_WORLD, phone: "down", radio: "down", notes: { info_confusion: 0 } };
     world = applyEvent(world, { change: { kind: "road", id: "rd-1", label: "川沿いの市道", open: false }, text: "", person: "p-05" }, 1);
     world = applyEvent(world, { change: injectChange("pharmacy_closed", "p-05"), text: "", person: "p-05" }, 1);
     world = applyEvent(world, { change: injectChange("family_stranded", "p-05"), text: "", person: "p-05" }, 1);
@@ -615,7 +616,9 @@ describe("ケアマネの手への世界の返事（確率は表、文は固定�
     expect(shelter(6, 0.29).ok).toBe(true);
     expect(shelter(6, 0.3)).toMatchObject({ ok: false, status: "refused" });
     expect(shelter(60, 0.79).ok).toBe(true);
-    expect(shelter(60, 0, { ...EMPTY_WORLD, phone: "down" })).toMatchObject({ ok: false, because: "電話 通話不可" });
+    // 通話の規制（T125）はつながる分だけ頼める
+    expect(shelter(60, 0, { ...EMPTY_WORLD, phone: "down" })).toMatchObject({ ok: true });
+    expect(shelter(60, 0.5, { ...EMPTY_WORLD, phone: "down" })).toMatchObject({ ok: false, because: "電話 規制" });
     expect(decideWorldReply({ action: "report_city", person: null, world: EMPTY_WORLD, hour: 6 }, 0)).toMatchObject({ ok: true, status: "reported" });
     expect(decideWorldReply({ action: "evacuate_self", person: null, world: EMPTY_WORLD, hour: 6 }, 0.99)).toMatchObject({ ok: true, status: "evacuated" });
   });

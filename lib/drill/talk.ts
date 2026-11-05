@@ -34,7 +34,9 @@ import {
   type TalkHook,
   type TalkLine,
 } from "./dialogue.ts";
-import { drillEnded, isNight, type ActionResult } from "./engine.ts";
+import { drillEnded, fitOf, isNight, type ActionResult } from "./engine.ts";
+import { gateWords, tallyGate } from "./gate.ts";
+import { fitKindOf } from "./fit.ts";
 import { drillError, isDrillId } from "./http.ts";
 
 /** 往復の要求。ask（決まった問い）・text（自由の 1 文）・end（切る）のどれか 1 つ */
@@ -89,6 +91,7 @@ export async function talkDrill(
             world,
             state: before.people[person] ?? null,
             tell: r.heard ?? null,
+            fit: fitKindOf(before, world),
             ...(isNight(before) ? { night: true } : {}),
             first: r.speech,
             lines: r.talk ?? [],
@@ -98,10 +101,13 @@ export async function talkDrill(
     const said = reply?.said ?? (ask ? TALK_ASK_WORDS[ask] : (text ?? ""));
     const ai = reply?.speech != null && reply.ai;
     const cm: TalkLine = { who: "cm", text: said, ai: false, minute: at, ...(ask ? { ask } : {}) };
+    // 想定の門（T125。合わない文と内部の名前の残る文を落とす。全部落ちたら固定の言葉）
+    const gated = ai ? gateWords(reply?.speech ?? null, fitOf(before, world), world) : null;
+    if (gated && gated.dropped.length > 0) world = tallyGate(world, "persona", gated.dropped);
     const them: TalkLine = {
       who: "them",
-      text: (ai ? reply?.speech : null) ?? TALK_FIXED_SPEECH,
-      ai,
+      text: (ai ? gated?.text : null) ?? TALK_FIXED_SPEECH,
+      ai: ai && gated?.text != null,
       minute: replyAt,
       ...(ai && reply!.asks.length > 0 ? { asks: [...reply!.asks] } : {}),
     };

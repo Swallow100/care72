@@ -13,10 +13,11 @@ import type { DrillTurn } from "./engine.ts";
 /** 1 刻みの着信の上限 */
 export const CALLS_PER_TICK = 2;
 
-type PhoneShape = Pick<DrillTurn, "source" | "saying" | "color" | "injured" | "atHome" | "canMove" | "hasMedicine">;
+type PhoneShape = Pick<DrillTurn, "source" | "saying" | "color" | "injured" | "atHome" | "canMove" | "hasMedicine"> & Partial<Pick<DrillTurn, "via">>;
 
-/** 電話の形の連絡か（家族・支援者の言う事のある連絡。本人と、赤の 4 問に答えた物はボタン） */
+/** 電話の形の連絡か（家族・支援者の言う事のある連絡。本人と、赤の 4 問に答えた物はボタン）。経路（T125）が着信でなければ電話でない */
 export function isPhoneTurn(t: PhoneShape): boolean {
+  if (t.via !== undefined && t.via !== "call") return false;
   if (t.source === "agent") return false;
   if (!t.saying?.trim()) return false;
   const answered = [t.injured, t.atHome, t.canMove, t.hasMedicine].some((v) => v === true || v === false);
@@ -60,13 +61,14 @@ export function missedIndexes(turns: ReadonlyArray<PhoneShape & Pick<DrillTurn, 
 
 /**
  * 安否がケアマネにどう届いたか（T127。経過の把握の行の印）。call 着信（鳴らした電話）・missed 不在（鳴らさなかった電話）・
- * button 安否のボタン（本人の連絡と、赤の 4 問に答えた物・言う事の無い物）。
- * 経路は今は出どころと電話の形（isPhoneTurn）から出す。世界の状態の側で経路を決める作業（T125）が安否に経路を付けたら、
- * ここだけをそれに合わせる
+ * button 安否のボタン（本人の連絡と、赤の 4 問に答えた物・言う事の無い物）・message 伝言（通話の規制の間の家族・支援者のメッセージ。T125）。
+ * 世界の状態の側（T125、lib/drill/comms.ts）が安否に付けた経路（via）を先に読む: 伝言は不在着信にしない。経路の無い前からの安否は
+ * 出どころと電話の形（isPhoneTurn）から出す
  */
-export type TurnRoute = "call" | "missed" | "button";
+export type TurnRoute = "call" | "missed" | "button" | "message";
 
 export function turnRoute(t: PhoneShape, rung: boolean): TurnRoute {
+  if (t.via === "message") return "message";
   if (!isPhoneTurn(t)) return "button";
   return rung ? "call" : "missed";
 }

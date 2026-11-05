@@ -191,6 +191,8 @@ describe("着信の往復（保存・上限・門）", () => {
       { kind: "medicine", at: before.minute + 2, done: null },
       { kind: "water", at: before.minute + 2, done: null },
     ]);
+    // T130: ケアマネに言われた事を世界に積む（次の区切りの本人役の帳面に入る）
+    expect(s.world.told?.[call.person]?.map((l) => l.ask)).toEqual(["safe", "device_medicine", "stay"]);
 
     // 着信の記録（採点・紙・経過が読む）に往復と話し手
     const rec = (await loadCallRecords(db, ID)).find((c) => c.signal === call.signal)!;
@@ -228,6 +230,9 @@ describe("着信の往復（保存・上限・門）", () => {
     const screen = (await loadDrillScreen(db, SCOPE, ID, null))!;
     expect(screen.state.minute).toBe(s.minute);
     expect(screen.state.world.asks).toEqual(s.world.asks);
+    // T130: ケアマネに言われた事も作り直しと保存が同じ
+    expect(screen.state.world.told).toEqual(s.world.told);
+    expect(s.world.told?.[call.person]?.map((l) => l.text)).toEqual(["ご本人は動けますか", "避難所には行けそうですか"]);
     expect(undoableAct((await loadDrillRow(db, DEMO.id, ID))!)).toBeNull();
   });
 

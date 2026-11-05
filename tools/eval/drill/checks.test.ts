@@ -332,14 +332,14 @@ describe("手の決まりの検査（T121）", () => {
     result: { status: "connected", atMinute: 125 },
     ...over,
   });
-  it("電話が通話不可・家の電話の不通・通行止の人に打てた手を拾う（決まりを送らない回の比べにも）", () => {
+  it("家の電話の不通・通行止の人に打てた手を拾う（決まりを送らない回の比べにも）。通話の規制（電話 down）は全部を止めない（T125）", () => {
     const o = outcome([], [
       act({ before: { phone: "down", roadClosed: false, staff: 2, marks: {} } }),
       act({ id: "a2", before: { phone: "ok", roadClosed: false, staff: 2, marks: { lineDown: 3 } } }),
       act({ id: "a3", kind: "visit", callee: null, minutes: 40, before: { phone: "ok", roadClosed: true, staff: 2, marks: {} } }),
       act({ id: "a4" }),
     ]);
-    expect(termHits(o).map((h) => h.rule)).toEqual(["ran:通話不可", "ran:通話不可", "ran:通行止"]);
+    expect(termHits(o).map((h) => h.rule)).toEqual(["ran:通話不可", "ran:通行止"]);
   });
   it("決まりを送った回の夜の訪問の所要が夜の足し分より短ければ拾う", () => {
     const night = { ...planRun("test", 1, CASELOAD, ["heavy_rain"]), night: true };
@@ -351,5 +351,61 @@ describe("手の決まりの検査（T121）", () => {
   it("決まりどおりの断り（409 blocked）は失敗した要求に数えない", () => {
     const o = outcome([], [], {}, { ops: [{ op: "act", status: 409, ok: false, took: 1, error: "blocked" }, { op: "advance", status: 500, ok: false, took: 1, error: "x" }] });
     expect(stopHits(o).map((h) => `${h.check}:${h.rule}`)).toEqual(["terms:refused:act", "op_failed:advance:500"]);
+  });
+});
+
+// ---------- T125 想定に合わない物 ----------
+
+describe("想定に合わない物（T125。表から作った一覧で、全部の想定で効く）", () => {
+  const quakePlan = (scenario: "earthquake" | "heavy_rain" | "virtual") => ({ ...planRun("test", 1, CASELOAD, [scenario]), scenario, scale: null });
+  const inc = (at: number, change: LooseIncident["change"], text: string, more: Partial<LooseIncident> = {}): LooseIncident => ({ at, change, text, actor: "director", ai: true, ...more });
+
+  it("地震: 河川の浸水の出来事・大雨の言葉・区域でない人の「浸水」・通話の規制の間の着信・内部の名前を数える", () => {
+    const ticks: LooseTick[] = [
+      {
+        step: 0,
+        hour: 0,
+        incidents: [
+          inc(0, { kind: "quake", intensity: "6強" }, "震度 6強", { ai: false, actor: "world" }),
+          inc(0, { kind: "phone", state: "down" }, "電話 規制", { ai: false, actor: "world" }),
+          inc(0, { kind: "flood" }, "川が氾濫"),
+          inc(0, { kind: "note", topic: "info_confusion" }, "大雨の情報が広まる"),
+        ],
+        turns: [turn("p-02", 3, "green", { source: "family", saying: "家にいます" }), turn("p-03", 3, "green", { saying: "川が増水しています" })],
+      },
+    ];
+    const actions: LooseAction[] = [
+      { id: "a1", kind: "visit", person: "p-05", atMinute: 60, minutes: 60, adds: ["浸水"], result: { ok: true, status: "arrived" } },
+      { id: "a2", kind: "free", person: "p-05", atMinute: 70, minutes: 5, reason: "一覧にadvise_119が無いためfreeの電話とした", result: { ok: true, status: "done" } },
+    ];
+    const r = checkRun([], outcome(ticks, actions, {}, { plan: quakePlan("earthquake") }), CTX);
+    expect(r.numbers.fit?.byRule).toMatchObject({
+      "event:fit:river_flood": 1,
+      "event_text:fit:rain_word": 2,
+      "persona:fit:rain_word": 1,
+      "terms:浸水": 1,
+      "call_down:phone": 1,
+      "free:internal_id": 1,
+    });
+  });
+
+  it("大雨: 余震・揺れの言葉を数える。合う物（氾濫・洪水の区域の浸水・着信）は数えない", () => {
+    const ticks: LooseTick[] = [
+      {
+        step: 0,
+        hour: 1,
+        incidents: [inc(1, { kind: "alert", level: 4 }, "警戒レベル 4", { ai: false, actor: "world" }), inc(1, { kind: "flood" }, "川が氾濫"), inc(1, { kind: "quake", intensity: "4" }, "余震 震度 4")],
+        turns: [turn("p-02", 1, "green", { source: "family", saying: "家にいます" }), turn("p-03", 1, "green", { saying: "また揺れました" })],
+      },
+    ];
+    const actions: LooseAction[] = [{ id: "a1", kind: "visit", person: "p-05", atMinute: 90, minutes: 60, adds: ["浸水"], result: { ok: true, status: "arrived" } }];
+    const r = checkRun([], outcome(ticks, actions, {}, { plan: quakePlan("heavy_rain") }), CTX);
+    // 帯は門の前の世界（余震が当たった）で作るので、帯にも震度が出る（門があれば余震は当たらない）
+    expect(r.numbers.fit?.byRule).toEqual({ "event:fit:quake": 1, "event_text:fit:quake_word": 1, "persona:fit:quake_word": 1, "band:fit:quake_word": 1 });
+  });
+
+  it("門が捨てた数（世界の gated）を数える", () => {
+    const r = checkRun([], outcome([], [], { gated: { "director:fit:alert": 2, "persona:fit:rain_word": 1 } }, { plan: quakePlan("earthquake") }), CTX);
+    expect(r.numbers.fit?.gated).toBe(3);
   });
 });
