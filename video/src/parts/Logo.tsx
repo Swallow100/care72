@@ -45,10 +45,12 @@ export const LogoMark: React.FC<{
   spin?: number;
   digits?: number;
   mark?: number;
+  /** 帯を消すときの濃さ（帯の長さは mark のまま。長さで縮めると左に細い線が残る） */
+  markOpacity?: number;
   fg: string;
   bg: string;
   children?: React.ReactNode;
-}> = ({ size, drawn = [1, 1, 1], lit = [1, 1, 1], spin = 0, digits = 1, mark = 0, fg, bg, children }) => {
+}> = ({ size, drawn = [1, 1, 1], lit = [1, 1, 1], spin = 0, digits = 1, mark = 0, markOpacity = 1, fg, bg, children }) => {
   const id = `m${React.useId().replace(/[^a-zA-Z0-9]/g, "")}`;
   // 帯は「72」の外に 3 の余白。左から伸びる
   const box = { x: 26.5, y: 34, w: 47, h: 33 };
@@ -70,12 +72,12 @@ export const LogoMark: React.FC<{
       </g>
       {children}
       <path d={DIGITS} fill={fg} opacity={digits} />
-      {mark > 0 ? (
+      {mark > 0 && markOpacity > 0 ? (
         <>
           <clipPath id={id}>
             <rect x={box.x} y={box.y} width={box.w * mark} height={box.h} />
           </clipPath>
-          <g clipPath={`url(#${id})`}>
+          <g clipPath={`url(#${id})`} opacity={markOpacity}>
             <rect x={box.x} y={box.y} width={box.w} height={box.h} rx={2} fill={fg} />
             <path d={DIGITS} fill={bg} />
           </g>

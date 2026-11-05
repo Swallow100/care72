@@ -60,7 +60,7 @@ export const LogoClock: React.FC<{
   // 点は 1 周で消える（12 時の切れ目の上で薄く残すと、にじんだ丸に見えるので 4 コマで）
   const dot = progress(frame, sweep[0] - 4, 6) * (1 - progress(frame, sweep[1], 4));
   // 「72」の白い帯: 声の「72 は」から 10 コマで伸び、見出しへ動く前に消える
-  const mark = progress(frame, markAt + 4, 10) * fade;
+  const mark = progress(frame, markAt + 4, 10);
   // 目盛り（6 時間ごと 12 本。24 時間ごとの日の切れ目は長く）: 時計になる間に 12 時から順に出る
   const ring = MARK_RING.r + MARK_RING.stroke / 2;
   const ticks = Array.from({ length: 12 }, (_, i) => {
@@ -113,7 +113,7 @@ export const LogoClock: React.FC<{
   return (
     <div style={{ position: "absolute", left: S.left, top: S.top, width: S.width, height: S.height, fontFamily: FONT.main, color: p.fg }}>
       <div style={{ position: "absolute", left: box.x, top: box.y }}>
-        <LogoMark size={box.size} drawn={drawn} lit={lit} digits={progress(frame, 2, 12)} mark={mark} fg={p.fg} bg={p.bg}>
+        <LogoMark size={box.size} drawn={drawn} lit={lit} digits={progress(frame, 2, 12)} mark={mark} markOpacity={fade} fg={p.fg} bg={p.bg}>
           {ticks}
           {dot > 0 ? (
             <circle cx={50 + Math.cos(dotA) * MARK_RING.r} cy={50 + Math.sin(dotA) * MARK_RING.r} r={5.4} fill={p.fg} stroke={p.bg} strokeWidth={1.4} opacity={dot} />
