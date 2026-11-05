@@ -48,6 +48,9 @@ export function splitParts(value: string, options: readonly string[]): string[] 
     return m ? [m[1], m[2], m[3]] : null;
   }
   if (options.length === 2) {
+    // 電話の 2 つの空き（「（　）　」の局番と残り。T140）。郵便番号より先に見る（電話の後ろの 7 桁を郵便番号に取らない）
+    const tel = v.match(PHONE_PAREN) ?? v.match(PHONE);
+    if (tel) return [tel[1], `${tel[2]}-${tel[3]}`];
     const m = v.match(ZIP);
     return m ? [m[1], m[2]] : null;
   }

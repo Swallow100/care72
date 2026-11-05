@@ -13,7 +13,8 @@ import type { FakeClient, FakeStyle } from "./fake.ts";
 import type { Sheets } from "./paper.ts";
 import type { Renderer } from "./render.ts";
 
-export type RuleCounts = { fix: number; check: number; note: number; kinds: Record<string, number> };
+/** dups は重複の所（T140。欄の名前となぜ。値は書かない） */
+export type RuleCounts = { fix: number; check: number; note: number; kinds: Record<string, number>; dups?: Array<{ label: string; why: string }> };
 export type AiReviewResult = {
   status: "ok" | "failed";
   /** 使った AI の所（塗った欄と知らない id を捨てたあと） */
@@ -39,7 +40,14 @@ function countKinds(fs: readonly ReviewFinding[]): Record<string, number> {
 export function ruleCounts(sheets: Sheets): RuleCounts | null {
   if (!sheets.overlay) return null;
   const fs = ruleReview(mappedSubject(sheets.mapped, sheets.overlay));
-  return { fix: fs.filter((f) => f.level === "fix").length, check: fs.filter((f) => f.level === "check").length, note: fs.filter((f) => f.level === "note").length, kinds: countKinds(fs) };
+  const dups = fs.filter((f) => f.kind === "duplicate" || f.kind === "date").map((f) => ({ label: f.label, why: f.why }));
+  return {
+    fix: fs.filter((f) => f.level === "fix").length,
+    check: fs.filter((f) => f.level === "check").length,
+    note: fs.filter((f) => f.level === "note").length,
+    kinds: countKinds(fs),
+    ...(dups.length > 0 ? { dups } : {}),
+  };
 }
 
 /** 偽の照合の答え（台の数え方の確かめ用） */

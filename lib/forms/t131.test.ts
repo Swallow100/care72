@@ -301,11 +301,11 @@ describe("実在の様式の読み違いと紙のずれ（T131、評価の 3 回
     expect(pc?.kind === "value" && pc.lines.flat().map((x) => x.text).join("")).toBe("家族の車");
     expect(c.get(near.id)?.kind).toBe("empty");
     expect(ons(c.get(city.id))).toEqual(["徒歩"]);
-    // 補記のある人は印だけにせず、選択肢を □ のまま並べて補記ごと後ろに（前のまま）
+    // 補記のある人も手段の種類の □ に印を付け、補記はその選択肢に添える（T140。前は □ のまま補記ごと後ろに並べ、紙では「その他」に入った）
     const noted = { ...person, ledger: { ...person.ledger, evacuation: { ...person.ledger.evacuation, transport: "杖をついて" } } };
     const nc = cellsOf(noted, [city]).get(city.id);
-    expect(ons(nc)).toEqual([]);
-    expect(nc?.kind === "choice" && (nc.after ?? []).map((x) => x.text).join("")).toContain("杖をついて");
+    expect(ons(nc)).toEqual(["徒歩"]);
+    expect(nc?.kind === "choice" && nc.options.find((o) => o.on)?.detail).toBe("杖をついて");
   });
 });
 

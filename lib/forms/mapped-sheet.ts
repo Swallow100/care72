@@ -58,7 +58,8 @@ import {
 import { heldFields } from "./field-risk.ts";
 import { ledgerItem, listFieldIds, type FormMapping, type LedgerItemKey, type ListShape, type MappingField } from "./mapping.ts";
 import { warekiText } from "./wareki.ts";
-import { transportText } from "../map/transport.ts";
+import { codeOfOption, codesOf, freeCodes, optionTable, pickByCodes } from "./option-values.ts";
+import { transportKindOf, transportText } from "../map/transport.ts";
 
 // ---------- 項目の値 ----------
 
@@ -81,6 +82,13 @@ export type ItemValue = {
   match?: (label: string) => boolean;
   /** 選択肢の字が同じときだけ照らす言葉（T133） */
   exact?: readonly string[];
+  /**
+   * 台帳の値のコード（T140、lib/forms/option-values.ts の ITEM_CODES の code）。選ぶ欄の選択肢と台帳の値の表と照らす。
+   * 空の並びは「無い」と分かっている値（機器なし・連絡先なし）。無ければ表で照らさない（前のまま言葉で）
+   */
+  codes?: readonly string[];
+  /** 表で当たった選択肢に添える字（T140。手段の補記「娘の車」。1 つを選ぶ欄だけ） */
+  codeDetail?: string;
 };
 
 type Ctx = {
@@ -122,10 +130,11 @@ const text = (v: string | null | undefined, reason?: PendingStatus, emphasize = 
   v == null || v.trim() === "" ? unconfirmed(reason) : withPending(value([emphasize ? strong(v) : t(v)]), reason);
 
 /** 配列の値。無ければ未確認、空ならなし。複数選択の欄では値の全部に印、「あり・なし」の欄はあり（T122） */
-function list(v: readonly string[] | undefined, reason?: PendingStatus): ItemValue {
+function list(v: readonly string[] | undefined, reason?: PendingStatus, item?: LedgerItemKey): ItemValue {
   if (v === undefined) return { cell: unconfirmed(reason), flag: null };
-  if (v.length === 0) return { cell: withPending(NONE, reason), flag: false, words: ["なし"], multi: true };
-  return { cell: withPending(value([t(v.join("・"))]), reason), flag: true, words: [...v, "あり"], multi: true };
+  const codes = item ? { codes: freeCodes(item, v) } : {};
+  if (v.length === 0) return { cell: withPending(NONE, reason), flag: false, words: ["なし"], multi: true, ...codes };
+  return { cell: withPending(value([t(v.join("・"))]), reason), flag: true, words: [...v, "あり"], multi: true, ...codes };
 }
 
 /** 自宅のリスクの種類の言い方（様式の選択肢「洪水」「土砂災害」と台帳の「浸水」「土砂」を照らす。T122） */
@@ -171,14 +180,14 @@ const MEDICATION_KINDS = [...new Set([...Object.values(MEDICATION_KIND_WORDS).fl
 
 function bool(v: boolean | undefined, reason?: PendingStatus): ItemValue {
   if (v === undefined) return { cell: unconfirmed(reason), flag: null };
-  return { cell: withPending(value([t(v ? "あり" : "なし")]), reason), flag: v, words: [v ? "あり" : "なし", v ? "有" : "無"] };
+  return { cell: withPending(value([t(v ? "あり" : "なし")]), reason), flag: v, words: [v ? "あり" : "なし", v ? "有" : "無"], codes: [v ? "yes" : "no"] };
 }
 
 /** 避難場所ごとの手段（T131）: 避難場所が無ければ空き枠、手段が無ければ未確認。選ぶ欄は手段の言葉と照らす */
 function meansItem(kind: TransportKind | undefined, place: string | undefined, reason?: PendingStatus): ItemValue {
   if (!place?.trim()) return { cell: withPending(EMPTY, reason) };
   if (!kind) return { cell: unconfirmed(reason) };
-  return { cell: withPending(value([t(TRANSPORT_KIND_LABELS[kind])]), reason), words: [TRANSPORT_KIND_LABELS[kind]] };
+  return { cell: withPending(value([t(TRANSPORT_KIND_LABELS[kind])]), reason), words: [TRANSPORT_KIND_LABELS[kind]], codes: [kind] };
 }
 
 const fromSheet = (key: MatsuyamaKey) => (c: Ctx): ItemValue => ({ cell: c.sheet.cells[key] });
@@ -216,6 +225,14 @@ function relationCell(c: Contact | null): Cell {
   if (c.night_ok === 0) flags.push(sub("夜間不可"));
   if (c.note) flags.push(sub(c.note));
   return value(head, flags);
+}
+
+/**
+ * 関係の欄の値（T140）。選ぶ欄（「連絡先 □家族 □知人 □その他 □連絡先なし」）は連絡先の種類のコード（家族・支援者〔知人〕、ほかは その他）と照らす。
+ * 居ない人は空の並び（「連絡先なし」の選択肢）
+ */
+function relationItem(c: Contact | null): ItemValue {
+  return { cell: relationCell(c), codes: c ? [c.kind === "family" || c.kind === "supporter" ? c.kind : "kind:" + c.kind] : [] };
 }
 
 /** 住所の欄（T117）: 住所（市町村と町名まで）と近さ。住所が無ければ未確認に近さを添える（松山市の様式と同じ） */
@@ -280,7 +297,7 @@ function ability(k: (typeof ABILITY_KEYS)[number]) {
     const reason = pendingOf(c.ledger, `care.${k}`);
     if (!v) return { cell: unconfirmed(reason), flag: null };
     // 当てはまる（□ に ■）のは「一部」「困難」
-    return { cell: withPending(value([v === "ok" ? t(ABILITY_LABELS[v]) : strong(ABILITY_LABELS[v])]), reason), flag: v !== "ok", words: [ABILITY_LABELS[v]] };
+    return { cell: withPending(value([v === "ok" ? t(ABILITY_LABELS[v]) : strong(ABILITY_LABELS[v])]), reason), flag: v !== "ok", words: [ABILITY_LABELS[v]], codes: [v] };
   };
 }
 
@@ -291,7 +308,7 @@ function consentItem(kind: ConsentKind) {
     if (status === "unconfirmed") return { cell: unconfirmed(reason), flag: null };
     const row = c.rows.consents.find((x) => x.kind === kind);
     const rec = row ? [sub(`記録 ${formatJst(row.recorded_at).slice(0, 10)}${row.recorded_by_name ? ` ${row.recorded_by_name}` : ""}`)] : [];
-    return { cell: value([strong(CONSENT_STATUS_LABELS[status]), ...rec]), flag: status === "granted", words: CONSENT_WORDS[status] };
+    return { cell: value([strong(CONSENT_STATUS_LABELS[status]), ...rec]), flag: status === "granted", words: CONSENT_WORDS[status], codes: [status] };
   };
 }
 
@@ -324,7 +341,7 @@ export const ITEM_VALUES: Record<LedgerItemKey, Resolver> = {
   },
   "basic.sex": (c) => {
     const s = c.ledger.basic.sex;
-    return s ? { cell: value([t(SEX_LABELS[s])]), words: SEX_WORDS[s] } : { cell: unconfirmed(pendingOf(c.ledger, "basic.sex")) };
+    return s ? { cell: value([t(SEX_LABELS[s])]), words: SEX_WORDS[s], codes: [s] } : { cell: unconfirmed(pendingOf(c.ledger, "basic.sex")) };
   },
   "basic.address": fromSheet("target.address"),
   "basic.town": fromSheet("target.district"),
@@ -351,7 +368,7 @@ export const ITEM_VALUES: Record<LedgerItemKey, Resolver> = {
   "basic.household": (c) => {
     const h = c.ledger.basic.household;
     return h
-      ? { cell: value([t(HOUSEHOLD_LABELS[h])]), words: [HOUSEHOLD_LABELS[h], ...(HOUSEHOLD_WORDS[h] ?? [])], exact: HOUSEHOLD_EXACT[h] }
+      ? { cell: value([t(HOUSEHOLD_LABELS[h])]), words: [HOUSEHOLD_LABELS[h], ...(HOUSEHOLD_WORDS[h] ?? [])], exact: HOUSEHOLD_EXACT[h], codes: [h] }
       : { cell: unconfirmed(pendingOf(c.ledger, "basic.household")) };
   },
   "people.together": (c) => {
@@ -370,7 +387,7 @@ export const ITEM_VALUES: Record<LedgerItemKey, Resolver> = {
   "care.careLevel": (c) => {
     const v = c.ledger.care.careLevel;
     const reason = pendingOf(c.ledger, "care.careLevel");
-    return v ? { cell: value([strong(CARE_LEVEL_LABELS[v])]), flag: true, words: [CARE_LEVEL_LABELS[v]] } : { cell: unconfirmed(reason), flag: null };
+    return v ? { cell: value([strong(CARE_LEVEL_LABELS[v])]), flag: true, words: [CARE_LEVEL_LABELS[v]], codes: [v] } : { cell: unconfirmed(reason), flag: null };
   },
   "care.handbook": (c) => {
     const v = c.ledger.care.handbook?.trim();
@@ -397,7 +414,7 @@ export const ITEM_VALUES: Record<LedgerItemKey, Resolver> = {
   "medical.devices": (c) => {
     const devices = c.ledger.medical.devices;
     const reason = pendingOf(c.ledger, "medical.devices");
-    if (devices.length === 0) return { cell: withPending(NONE, reason), flag: reason ? null : false, words: ["なし"], multi: true, kinds: DEVICE_KINDS };
+    if (devices.length === 0) return { cell: withPending(NONE, reason), flag: reason ? null : false, words: ["なし"], multi: true, kinds: DEVICE_KINDS, ...(reason ? {} : { codes: [] }) };
     const used = new Set<string>();
     const clocks = [...c.rows.clocks].sort((a, b) => a.sort - b.sort || (a.id < b.id ? -1 : 1));
     return {
@@ -406,6 +423,7 @@ export const ITEM_VALUES: Record<LedgerItemKey, Resolver> = {
       words: [...devices.map((d) => deviceText(d)), "あり"],
       multi: true,
       kinds: DEVICE_KINDS,
+      codes: [...new Set(devices.map((d) => d.kind))],
     };
   },
   "medical.medications": (c) => {
@@ -442,7 +460,7 @@ export const ITEM_VALUES: Record<LedgerItemKey, Resolver> = {
     const hz = c.ledger.evacuation.hazards;
     const reason = pendingOf(c.ledger, "evacuation.hazards");
     const kinds = Object.values(HAZARD_WORDS).flat();
-    if (hz.length === 0) return { cell: withPending(NONE, reason), flag: reason ? null : false, words: ["なし"], multi: true, kinds };
+    if (hz.length === 0) return { cell: withPending(NONE, reason), flag: reason ? null : false, words: ["なし"], multi: true, kinds, ...(reason ? {} : { codes: [] }) };
     return {
       cell: withPending(value(hz.flatMap((h, i) => [...(i > 0 ? [sub("／")] : []), strong(HAZARD_LABELS[h.kind]), ...(h.depthM != null ? [sub(`${h.depthM} m`)] : []), ...(h.note?.trim() ? [sub(h.note.trim())] : [])])), reason),
       flag: true,
@@ -450,6 +468,7 @@ export const ITEM_VALUES: Record<LedgerItemKey, Resolver> = {
       multi: true,
       kinds,
       match: (label) => hz.some((h) => hazardMatches(h.kind, label)),
+      codes: [...new Set(hz.map((h) => h.kind))],
       details: hz.flatMap((h) => {
         const d = [h.depthM != null ? `${h.depthM} m` : "", h.note?.trim() ?? ""].filter(Boolean).join(" ");
         return d ? [{ words: HAZARD_WORDS[h.kind], detail: d, kind: h.kind }] : [];
@@ -464,7 +483,16 @@ export const ITEM_VALUES: Record<LedgerItemKey, Resolver> = {
     // 前のまま選択肢を □ のまま並べて値を後ろに添える（印だけにすると補記が紙から落ちる）
     const kind = e.transportKind ? TRANSPORT_KIND_LABELS[e.transportKind] : undefined;
     const shown = transportText(e);
-    return { cell: text(shown, pendingOf(c.ledger, "evacuation.transport")), ...(kind && shown === kind ? { words: [kind] } : {}) };
+    // 選択肢と台帳の値の表（T140）では、手段の種類（選ぶ欄の値、無い古い台帳は補記の字から読み替え）のコードで □ に印を付け、
+    // 補記（「娘の車」）はその選択肢の所の空きに添える（入らなければ別紙）。補記を紙から落とさない
+    const code = transportKindOf(e);
+    const note = e.transport?.trim();
+    const noteOf = code && note && note !== TRANSPORT_KIND_LABELS[code] ? note : undefined;
+    return {
+      cell: text(shown, pendingOf(c.ledger, "evacuation.transport")),
+      ...(kind && shown === kind ? { words: [kind] } : {}),
+      ...(code ? { codes: [code], ...(noteOf ? { codeDetail: noteOf } : {}) } : {}),
+    };
   },
   "evacuation.route": fromSheet("route.text"),
   "evacuation.barriers": (c) => ({ cell: text(c.ledger.evacuation.barriers, pendingOf(c.ledger, "evacuation.barriers")) }),
@@ -478,10 +506,11 @@ export const ITEM_VALUES: Record<LedgerItemKey, Resolver> = {
       words: s.map((k) => SUPPORT_KIND_LABELS[k]),
       flag: s.length > 0,
       multi: true,
+      codes: [...s],
       kinds: Object.values(SUPPORT_KIND_LABELS),
     };
   },
-  "evacuation.carryItems": (c) => list(c.ledger.evacuation.carryItems, pendingOf(c.ledger, "evacuation.carryItems")),
+  "evacuation.carryItems": (c) => list(c.ledger.evacuation.carryItems, pendingOf(c.ledger, "evacuation.carryItems"), "evacuation.carryItems"),
   "evacuation.pets": (c) => ({ cell: text(c.ledger.evacuation.pets, pendingOf(c.ledger, "evacuation.pets")) }),
   "evacuation.destination1Minutes": fromSheet("shelter.city.minutes"),
   "evacuation.destination2Minutes": fromSheet("shelter.pre.minutes"),
@@ -493,7 +522,7 @@ export const ITEM_VALUES: Record<LedgerItemKey, Resolver> = {
   "evacuation.myTimeline": (c) => {
     const v = c.ledger.evacuation.myTimeline;
     const reason = pendingOf(c.ledger, "evacuation.myTimeline");
-    return v ? { cell: value([t(MY_TIMELINE_LABELS[v])]), words: [MY_TIMELINE_LABELS[v]], flag: v !== "none" } : { cell: unconfirmed(reason), flag: null };
+    return v ? { cell: value([t(MY_TIMELINE_LABELS[v])]), words: [MY_TIMELINE_LABELS[v]], flag: v !== "none", codes: [v] } : { cell: unconfirmed(reason), flag: null };
   },
 
   // ---- 住まい ----
@@ -504,6 +533,7 @@ export const ITEM_VALUES: Record<LedgerItemKey, Resolver> = {
     return {
       cell: withPending(value([t(STRUCTURE_LABELS[h.structure]), ...(h.builtYear != null ? [sub(`${h.builtYear} 年築`)] : [])]), reason),
       words: [STRUCTURE_LABELS[h.structure]],
+      codes: [h.structure],
     };
   },
   "basic.housing.floors": (c) => {
@@ -518,28 +548,31 @@ export const ITEM_VALUES: Record<LedgerItemKey, Resolver> = {
   "basic.housing.bedroom": (c) => ({ cell: text(c.ledger.basic.housing?.bedroom, pendingOf(c.ledger, "basic.housing.bedroom")) }),
   "basic.housing.type": (c) => {
     const v = c.ledger.basic.housing?.type;
-    return v ? { cell: value([t(HOUSING_TYPE_LABELS[v])]), words: [HOUSING_TYPE_LABELS[v]] } : { cell: unconfirmed(pendingOf(c.ledger, "basic.housing.type")) };
+    return v ? { cell: value([t(HOUSING_TYPE_LABELS[v])]), words: [HOUSING_TYPE_LABELS[v]], codes: [v] } : { cell: unconfirmed(pendingOf(c.ledger, "basic.housing.type")) };
   },
 
   // ---- 連絡先・支援者 ----
   "emergency1.name": fromSheet("kin.name"),
   "emergency1.kana": fromSheet("kin.kana"),
-  "emergency1.relation": (c) => ({ cell: relationCell(byEmergency(c, 1)) }),
+  "emergency1.relation": (c) => relationItem(byEmergency(c, 1)),
   "emergency1.phone": (c) => ({ cell: phoneCell(byEmergency(c, 1)) }),
   "emergency1.address": fromSheet("kin.address"),
   "emergency2.name": emergency2(nameCell),
   "emergency2.kana": emergency2(kanaCell),
-  "emergency2.relation": emergency2(relationCell),
+  "emergency2.relation": (c) => {
+    const v = emergency2(relationCell)(c);
+    return v.cell.kind === "withheld" ? v : relationItem(byEmergency(c, 2));
+  },
   "emergency2.phone": emergency2(phoneCell),
   "emergency2.address": emergency2(addressCell),
   "supporter1.name": fromSheet("supporter1.name"),
   "supporter1.kana": fromSheet("supporter1.kana"),
-  "supporter1.relation": (c) => ({ cell: relationCell(bySupporter(c, 1)) }),
+  "supporter1.relation": (c) => relationItem(bySupporter(c, 1)),
   "supporter1.phone": (c) => ({ cell: phoneCell(bySupporter(c, 1)) }),
   "supporter1.address": fromSheet("supporter1.address"),
   "supporter2.name": fromSheet("supporter2.name"),
   "supporter2.kana": fromSheet("supporter2.kana"),
-  "supporter2.relation": (c) => ({ cell: relationCell(bySupporter(c, 2)) }),
+  "supporter2.relation": (c) => relationItem(bySupporter(c, 2)),
   "supporter2.phone": (c) => ({ cell: phoneCell(bySupporter(c, 2)) }),
   "supporter2.address": fromSheet("supporter2.address"),
   "people.night": fromSheet("supporter.night"),
@@ -624,6 +657,9 @@ export function shapeCell(field: MappingField, v: ItemValue): Cell {
   if (cell.kind === "withheld" || cell.kind === "handwrite" || cell.kind === "empty") return cell;
   // □ 1 つの欄は、欄の名前を左の列に出すので ■・□ と値だけ（名前を繰り返さない）
   if (field.shape === "check") {
+    // 要介護度の幅の □（「要介護認定が 3〜5 の方」。T140）: 台帳の値が幅の中のときだけ印（前は要介護度があれば印）
+    const range = field.item === "care.careLevel" && v.codes ? codeOfOption(field.item, field.label, field) : null;
+    if (range && range.length > 0 && v.codes) return { kind: "choice", options: [v.codes.some((c) => range.includes(c)) ? CHECK_ON : CHECK_OFF] };
     const kind = kindFlag(field, v);
     // 種類の □ は印だけ（ほかの種類の値を横に並べない）
     if (kind === true) return { kind: "choice", options: [CHECK_ON] };
@@ -636,6 +672,28 @@ export function shapeCell(field: MappingField, v: ItemValue): Cell {
   if (field.shape === "choice" && field.options.length > 0) {
     if (cell.kind === "unconfirmed") {
       return { kind: "choice", options: field.options.map((label) => ({ label, on: false })), unconfirmed: cell.reason ? { reason: cell.reason } : {} };
+    }
+    // 選択肢と台帳の値の表（T140、lib/forms/option-values.ts）: 台帳の値のコードと照らす。当たれば印、範囲外なら空ける（空くのが答え）。
+    // 1 つを選ぶ欄で 2 つ以上当たれば選ばない（選択肢に無い）。表で当たらない選択肢だけのときは、前の言葉の照らし方へ
+    const table = field.item ? optionTable(field) : null;
+    if (table && v.codes) {
+      const pick = pickByCodes(table, v.codes, v.multi === true, codesOf(field.item!));
+      if (pick.hits.length > 0) {
+        const detailOf = (label: string) =>
+          v.details?.find((d) => (d.kind ? hazardMatches(d.kind, label) : wordMatches(label, d.words)))?.detail ?? (v.multi ? undefined : v.codeDetail);
+        return {
+          kind: "choice",
+          options: field.options.map((label, i) => {
+            const on = pick.hits.includes(i);
+            const detail = on ? detailOf(label) : undefined;
+            return { label, on, ...(detail ? { detail } : {}) };
+          }),
+        };
+      }
+      // 範囲外で空けるのは、種類の並びの欄（機器・ハザード・持ち出し品などの「あてはまる物」）と要介護度の幅だけ。1 つを選ぶ分け方の欄
+      // （構造・性別・世帯）で値の選択肢が無いのは読み落としのことがあるので、選択肢に無い（置けなかった）として人に見せる
+      if (pick.range && (v.multi || field.item === "care.careLevel")) return { kind: "choice", options: field.options.map((label) => ({ label, on: false })), range: true };
+      if (pick.ambiguous) return { kind: "choice", options: field.options.map((label) => ({ label, on: false })), after: pieces(cell), ambiguous: true };
     }
     // 複数選択の欄（T122）: 種類が並ぶ項目は、合う選択肢の全部に印
     if (v.multi && v.words) {

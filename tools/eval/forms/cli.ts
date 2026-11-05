@@ -16,6 +16,7 @@
 //   版のハッシュが同じファイル → 回の置き場の親の _catalog/ の写し → --catalog-fetch のときだけ一覧の URL から取る（版が同じ物を写しに置く）。
 //   読み取りは一覧の道（共有の対応表）で、2 つ目の事業所が AI を呼ばずに写せたかを数える
 
+import dns from "node:dns";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { diffMarkdown, oneLine, writeIndex } from "./report.ts";
@@ -54,6 +55,25 @@ if (real && replayDir) {
   process.exit(2);
 }
 
+/**
+ * 一覧の公式の URL を取る（T140）。評価の 4 回目で浜松市が取れなかったのは、作業者の端末から IPv6 の経路で TLS が途中で切られた物
+ * （IPv4 なら取れて、版のハッシュは一覧と同じ）。名前は IPv4 を先に引き、接続の失敗（例外）は間を置いて 3 回まで試す。
+ * 取る URL は変えない（一覧の url と、fetchOfficial が許す転送の先だけ）。アプリの受け口（Workers の fetch）は触らない
+ */
+dns.setDefaultResultOrder("ipv4first");
+async function catalogFetch(url: string): Promise<Response> {
+  let last: unknown;
+  for (let i = 0; i < 3; i++) {
+    try {
+      return await fetch(url, { redirect: "manual", signal: AbortSignal.timeout(30_000) });
+    } catch (e) {
+      last = e;
+      await new Promise((r) => setTimeout(r, 1000 * (i + 1)));
+    }
+  }
+  throw last;
+}
+
 const t0 = Date.now();
 const result = await runEval({
   mode: real ? "real" : replayDir ? "replay" : "fake",
@@ -70,7 +90,7 @@ const result = await runEval({
   people: list("people"),
   maxUsd,
   // 一覧の URL から取る（転送は自分でたどる。lib/forms/municipal-http.ts の fetchOfficial が一覧のホストの中だけに絞る）
-  catalogFetch: flag("catalog-fetch") ? (url: string) => fetch(url, { redirect: "manual" }) : null,
+  catalogFetch: flag("catalog-fetch") ? catalogFetch : null,
   review: flag("review") || (!real && !flag("no-review")),
   // 照合を回す紙を絞る（本物の回の費用のため）と、再考する紙の数の上限
   ...(list("review-only") ? { reviewOnly: list("review-only") } : {}),

@@ -267,6 +267,15 @@ export function insetBox(b: FieldBox, image: { w: number; h: number }, mmInset =
 
 export type AnnexRow = { fieldId: string; label: string; lines: string[]; reason: "overflow" | "unplaced" };
 
+/**
+ * 置けなかった訳（T140）。option は値が様式の選択肢に無い（選択肢と台帳の値の表〔lib/forms/option-values.ts〕でも当たらない・候補が 2 つ以上）、
+ * room は欄・部品・選択肢の所の空きに収まらない（下限の字でも、別紙の印も入らない）、box は選んだ選択肢の □ の場所が無い（□ が刷ってある欄）
+ */
+export const UNPLACED_REASONS = ["option", "room", "box"] as const;
+export type UnplacedReason = (typeof UNPLACED_REASONS)[number];
+/** 画面の言葉（2〜4 字）。帯の「未配置」の訳 */
+export const UNPLACED_REASON_LABELS: Record<UnplacedReason, string> = { option: "選択肢外", room: "空き不足", box: "□位置無" };
+
 export type OverlaySheet = {
   personId: string;
   name: string;
@@ -282,6 +291,8 @@ export type OverlaySheet = {
   unplaced?: string[];
   /** 同じ欄の id（T136 の見直しの取込漏れに渡す） */
   unplacedIds?: string[];
+  /** 置けなかった訳（T140。欄の id → 訳） */
+  unplacedWhy?: Record<string, UnplacedReason>;
   unmapped: string[];
   withheld: ConsentKind[];
   /** 一覧の形の様式（T131、差し込みの紙面の list のまま）。一括印刷で行ごとに 1 人を置く（lib/forms/list-sheet.ts） */
@@ -341,6 +352,11 @@ export function buildOverlaySheet(mapped: MappedSheet, images: readonly PageImag
   const annex: AnnexRow[] = [];
   /** 値があるのに置けなかった欄 */
   const unplaced = new Map<string, MappingField>();
+  const why = new Map<string, UnplacedReason>();
+  const miss = (field: MappingField, reason: UnplacedReason) => {
+    unplaced.set(field.id, field);
+    if (!why.has(field.id)) why.set(field.id, reason);
+  };
   const all = mapped.pages.flatMap((p) => p.sections.flatMap((s) => s.rows));
   // 名前と電話の列（T131）: 名前の欄の値の電話を、同じ行の右の電話の列（項目なし）に分けて置く
   const tels = telColumns(all);
@@ -376,8 +392,9 @@ export function buildOverlaySheet(mapped: MappedSheet, images: readonly PageImag
         if (field.shape === "choice" && cell.kind === "choice" && pc && box) {
           const r = placeChoice(field, cell, pc);
           pc.page.items.push(...r.items);
+          for (const lines of r.annex) annex.push({ fieldId: field.id, label: nameOf(field), lines, reason: "overflow" });
           for (const id of r.filled) childFilled.add(id);
-          if (r.unplaced) unplaced.set(field.id, field);
+          if (r.unplaced) miss(field, r.unplaced);
           continue;
         }
         if (lines.length === 0) continue;
@@ -388,7 +405,7 @@ export function buildOverlaySheet(mapped: MappedSheet, images: readonly PageImag
         // 区切りの空きに分けて置く（T120）。分けられる欄で、どれかの空きに置けなければ置かない（欄全体に 1 本で置かない。T133）
         const parts = partItems(field, lines, pc);
         if (parts === "fail") {
-          unplaced.set(field.id, field);
+          miss(field, "room");
           continue;
         }
         if (parts) {
@@ -398,11 +415,21 @@ export function buildOverlaySheet(mapped: MappedSheet, images: readonly PageImag
         // 区切りの場所が無い日付の欄で、欄の中に「年 月 日」の 3 字だけが刷ってあれば、その字の前の空きに分けて置く（T133）
         const dated = inkDateParts(field, lines, pc);
         if (dated === "fail") {
-          unplaced.set(field.id, field);
+          miss(field, "room");
           continue;
         }
         if (dated) {
           page.items.push(...dated);
+          continue;
+        }
+        // 区切りの場所が無い電話の欄で、欄の中に「−」「（　）」が刷ってあれば、局番・市内・番号を空きに分けて置く（T140）
+        const phoned = inkPhoneParts(field, lines, pc);
+        if (phoned === "fail") {
+          miss(field, "room");
+          continue;
+        }
+        if (phoned) {
+          page.items.push(...phoned);
           continue;
         }
         // 名前と電話を別の列に分けて置く（T131）。どちらかが収まらなければ今までどおり欄全体に
@@ -432,7 +459,7 @@ export function buildOverlaySheet(mapped: MappedSheet, images: readonly PageImag
     }
     // 「なし」だけの値は別紙に回さず欄を空ける（T111）
     if (isNoneOnly(lines)) continue;
-    // 長い自由記入だけ別紙に（欄に「別紙」）。短い値は置かずに「置けなかった」（T133）
+    // 長い自由記入だけ別紙に（欄に「別紙」）。短い値は置かずに「置けなかった」（T133）。選ぶ欄の「その他（　）」の書き足しは placeChoice で別紙へ（T140）
     const long = group.some((g) => g.field.shape === "lines" || g.lines.length > 1 || textEm(g.lines.join("")) > ANNEX_LONG_EM);
     const mark = long ? placeText(group[0].field.id, [ANNEX_MARK], box, pc) : null;
     if (long && mark) {
@@ -440,7 +467,7 @@ export function buildOverlaySheet(mapped: MappedSheet, images: readonly PageImag
       page.items.push(mark);
       continue;
     }
-    for (const g of group) unplaced.set(g.field.id, g.field);
+    for (const g of group) miss(g.field, "room");
   }
   // 別紙 あり・なし（T133）: この紙に別紙の頁が付くときだけ あり
   for (const { field, pc } of annexChoices) pc.page.items.push(...annexMarks(field, annex.length > 0, pc));
@@ -463,7 +490,7 @@ export function buildOverlaySheet(mapped: MappedSheet, images: readonly PageImag
     pages,
     annex,
     unconfirmed: mapped.unconfirmed,
-    ...(unplaced.size > 0 ? { unplaced: [...unplaced.values()].map(nameOf), unplacedIds: [...unplaced.keys()] } : {}),
+    ...(unplaced.size > 0 ? { unplaced: [...unplaced.values()].map(nameOf), unplacedIds: [...unplaced.keys()], unplacedWhy: Object.fromEntries(why) } : {}),
     unmapped: mapped.unmapped,
     withheld: mapped.withheld,
     ...(mapped.list ? { list: mapped.list } : {}),
@@ -667,11 +694,19 @@ function optionArea(field: MappingField, i: number, image: { w: number; h: numbe
  * 選ぶ欄を置く（T133）。選んだ選択肢の □ に印。選択肢の添え（浸水の深さ）はその選択肢の所の空き、選択肢に合わない値は「その他」の □ に印を付けて
  * その後ろの空き（「その他（　）」の括弧の中）。置けない物は unplaced（□ の行の上に字を書かない）
  */
-function placeChoice(field: MappingField, cell: Extract<Cell, { kind: "choice" }>, pc: PlaceCtx): { items: OverlayItem[]; unplaced: boolean; filled: string[] } {
+function placeChoice(
+  field: MappingField,
+  cell: Extract<Cell, { kind: "choice" }>,
+  pc: PlaceCtx,
+): { items: OverlayItem[]; unplaced: UnplacedReason | null; filled: string[]; annex: string[][] } {
   const image = pc.page.image;
   const items: OverlayItem[] = [];
   const filled: string[] = [];
-  let unplaced = false;
+  const annex: string[][] = [];
+  let unplaced: UnplacedReason | null = null;
+  const fail = (r: UnplacedReason) => {
+    unplaced ??= r;
+  };
   /**
    * 選択肢の所の空きに字を置く。空きの中に項目なしの字の欄（「その他（　）」の書く所を AI が別の欄に読んだ物）があれば、その欄の枠に置く
    */
@@ -684,6 +719,21 @@ function placeChoice(field: MappingField, cell: Extract<Cell, { kind: "choice" }
     }
     return placeText(field.id, [text], area, pc, { own: field.box! });
   };
+  /** 選択肢の所の空きに収まらない字は、その空きに「別紙」と書いて別紙へ（T140）。「別紙」も入らなければ置けなかった */
+  const putOrAnnex = (text: string, area: FieldBox | null) => {
+    const t = area ? putIn(text, area) : null;
+    if (t) return items.push(t);
+    const m = area ? placeText(field.id, [ANNEX_MARK], area, pc, { own: field.box! }) : null;
+    if (m) {
+      items.push(m);
+      annex.push([text]);
+    } else fail("room");
+  };
+  // 台帳の値に当たる選択肢が 2 つ以上（T140）: 選ばず、その他にも書かない
+  if (cell.ambiguous) {
+    fail("option");
+    return { items, unplaced, filled, annex };
+  }
   const box = field.box!;
   const hits = cell.options.flatMap((o, i) => (o.on && o.label !== "" ? [i] : []));
   const after = cell.after ? lineText(cell.after) : "";
@@ -695,34 +745,28 @@ function placeChoice(field: MappingField, cell: Extract<Cell, { kind: "choice" }
       items.push({ kind: "mark", fieldId: field.id, box: b, mark: markOf(b, image) });
       const detail = cell.options[i].detail;
       if (!detail) continue;
-      const area = optionArea(field, i, image, false);
-      const t = area ? putIn(paperText(detail), area) : null;
-      if (t) items.push(t);
-      else unplaced = true;
+      putOrAnnex(paperText(detail), optionArea(field, i, image, false));
     }
   } else if (hits.length > 0) {
     // 選んだ選択肢の □ の場所が無い: 欄に □ が刷ってなければ選んだ言葉を空いた所に、刷ってあれば置かない
     const words = hits.map((i) => cell.options[i]).map((o) => `${o.label}${o.detail ? `（${o.detail}）` : ""}`);
     const t = printedBoxes || (field.optionBoxes ?? []).some(Boolean) ? null : placeText(field.id, [words.join(" ")], box, pc);
     if (t) items.push(t);
-    else unplaced = true;
+    else fail(printedBoxes || (field.optionBoxes ?? []).some(Boolean) ? "box" : "room");
   }
   if (after) {
     const other = cell.options.findIndex((o) => OTHER_OPTION.test(o.label.normalize("NFKC").trim()));
     const ob = other >= 0 ? optionBoxOf(field, other, image) : null;
     if (ob) {
       if (!hits.includes(other)) items.push({ kind: "mark", fieldId: field.id, box: ob, mark: markOf(ob, image) });
-      const area = optionArea(field, other, image, true);
-      const t = area ? putIn(after, area) : null;
-      if (t) items.push(t);
-      else unplaced = true;
+      putOrAnnex(after, optionArea(field, other, image, true));
     } else if (!printedBoxes && !(field.optionBoxes ?? []).some(Boolean) && hits.length === 0) {
       const t = placeText(field.id, [after], box, pc);
       if (t) items.push(t);
-      else unplaced = true;
-    } else unplaced = true;
+      else fail("room");
+    } else fail("option");
   }
-  return { items, unplaced, filled };
+  return { items, unplaced, filled, annex };
 }
 
 /** a の面のうち b に入る割合 */
@@ -864,7 +908,8 @@ export function partItems(field: MappingField, lines: readonly string[], pc: Pla
   const image = pc.page.image;
   const boxes = field.optionBoxes ?? [];
   if (boxes.length !== field.options.length || boxes.some((b) => !b)) return null;
-  const eraIdx = field.options.flatMap((o, i) => ((ERA_NAMES as readonly string[]).includes(o.normalize("NFKC").trim()) ? [i] : []));
+  // 元号の選択肢と「西暦」の選択肢（T140。「□西暦 □明治 □大正…」のように西暦も □ で選ぶ様式）
+  const eraIdx = field.options.flatMap((o, i) => ((ERA_NAMES as readonly string[]).includes(o.normalize("NFKC").trim()) || isWestern(o) ? [i] : []));
   const unitIdx = field.options.flatMap((_, i) => (eraIdx.includes(i) ? [] : [i]));
   if (unitIdx.length === 0) return null;
   const parts = splitParts(lines.join(" "), unitIdx.map((i) => field.options[i]));
@@ -878,8 +923,13 @@ export function partItems(field: MappingField, lines: readonly string[], pc: Pla
   if (era) {
     let eraBox: FieldBox | null = null;
     const opt = eraIdx.find((i) => field.options[i].normalize("NFKC").trim() === era);
+    const western = eraIdx.find((i) => isWestern(field.options[i]));
     if (opt !== undefined) eraBox = boxes[opt];
-    else if (pc.ink) {
+    else if (western !== undefined) {
+      // 値の元号の □ が無く「西暦」の □ がある（令和の日付を元号が平成までの欄に）: 西暦の □ に印、年は西暦の数（T140）
+      eraBox = boxes[western];
+      parts[0] = westernYear(parts[0]) ?? parts[0];
+    } else if (pc.ink) {
       const printed = inkIn(field.box, pc.ink)
         .filter((b) => b.box && !boxes.some((x) => x && inside(b, x)))
         .sort(readingOrder);
@@ -890,7 +940,8 @@ export function partItems(field: MappingField, lines: readonly string[], pc: Pla
     if (eraBox) {
       out.push({ kind: "mark", fieldId: field.id, box: eraBox, mark: markOf(eraBox, image) });
       parts[0] = parts[0].replace(ERA_HEAD, "");
-    } else if (era === "令和") parts[0] = parts[0].replace(ERA_HEAD, "");
+    } else if (westernField(field)) parts[0] = westernYear(parts[0]) ?? parts[0];
+    else if (era === "令和") parts[0] = parts[0].replace(ERA_HEAD, "");
     // ほかの元号で □ が無ければ、元号ごと年の空きに（入らなければ下で fail）
   }
   for (const [k, part] of parts.entries()) {
@@ -923,6 +974,21 @@ function grownPart(part: FieldBox, fieldBox: FieldBox, parts: ReadonlyArray<Fiel
 
 const DATE_VALUE = /\d+\s*年\s*\d+\s*月\s*\d+\s*日/;
 
+/** 元号の初めの年（西暦）。和暦の年を西暦にする（T140） */
+const ERA_START: Record<(typeof ERA_NAMES)[number], number> = { 明治: 1868, 大正: 1912, 昭和: 1926, 平成: 1989, 令和: 2019 };
+/** 「西暦」の選択肢 */
+const isWestern = (o: string) => /^西暦$/.test(o.normalize("NFKC").trim());
+/** 西暦で書く欄（欄の名前・段に「西暦」。「生年月日（西暦）」） */
+const westernField = (field: Pick<MappingField, "label" | "section">) => /西暦/.test(`${field.section} ${field.label}`);
+
+/** 年の値（「昭和17」「令和8」「令和元」）を西暦の数に。元号が無ければ null */
+export function westernYear(year: string): string | null {
+  const m = year.normalize("NFKC").trim().match(/^(明治|大正|昭和|平成|令和)\s*(\d{1,2}|元)$/);
+  if (!m) return null;
+  const n = m[2] === "元" ? 1 : Number(m[2]);
+  return String(ERA_START[m[1] as (typeof ERA_NAMES)[number]] + n - 1);
+}
+
 /**
  * 区切りの場所の無い日付の欄（T133）: 欄の中の印刷の字が 1 行に 3 字（年・月・日）だけなら、それぞれの字の前の空きに年・月・日を置く。
  * 3 字でなければ null（ほかの置き方へ）。分けたのに入らなければ "fail"。元号の □ が無いので、今の元号（令和）は数だけ、ほかの元号は年の空きに元号ごと
@@ -949,18 +1015,93 @@ export function inkDateParts(field: MappingField, lines: readonly string[], pc: 
       chars[chars.length - 1] = { x: last.x, y: y0, w: x1 - last.x, h: y1 - y0 };
     } else chars.push({ x: g.x, y: g.y, w: g.w, h: g.h });
   }
-  if (chars.length !== 3) return null;
   // 1 行に並ぶこと（縦の真ん中が近い）
   const mid = chars.map((c) => c.y + c.h / 2);
-  if (Math.max(...mid) - Math.min(...mid) > Math.max(...chars.map((c) => c.h))) return null;
-  const era = parts[0].match(ERA_HEAD)?.[1];
-  if (era === "令和") parts[0] = parts[0].replace(ERA_HEAD, "");
-  const out: OverlayItem[] = [];
+  if (chars.length < 3 || Math.max(...mid) - Math.min(...mid) > Math.max(...chars.map((c) => c.h))) return null;
+  // T140: 4 字のかたまり。頭が 2 字の幅（刷ってある元号「令和 年 月 日」「西暦 年 月 日」）なら、その後ろの 3 つが年・月・日。
+  // 4 つ目が 1 字（「年 月 日 生」）なら頭の 3 つ。5 つ以上は分けない
+  let unitChars = chars;
   let left = box.x;
-  for (const [k, c] of chars.entries()) {
+  let printedEra = false;
+  if (chars.length === 4) {
+    const median = chars
+      .slice(1)
+      .map((c) => c.w)
+      .sort((a, b) => a - b)[1];
+    if (chars[0].w > 1.6 * median) {
+      unitChars = chars.slice(1);
+      left = chars[0].x + chars[0].w;
+      printedEra = true;
+    } else unitChars = chars.slice(0, 3);
+  } else if (chars.length !== 3) return null;
+  const era = parts[0].match(ERA_HEAD)?.[1];
+  if (westernField(field)) parts[0] = westernYear(parts[0]) ?? parts[0];
+  else if (era === "令和") parts[0] = parts[0].replace(ERA_HEAD, "");
+  // 刷ってある元号の後ろの空きに、ほかの元号の年は書かない（刷ってある元号を読めないので、今の元号の日付だけ）
+  else if (printedEra) return "fail";
+  const out: OverlayItem[] = [];
+  for (const [k, c] of unitChars.entries()) {
     const slot = { x: left, y: box.y, w: c.x - left, h: box.h };
     left = c.x + c.w;
     const t = slot.w > 0 ? placeText(field.id, [parts[k]], slot, pc, { own: box }) : null;
+    if (!t) return "fail";
+    out.push({ ...t, part: k, shifted: true });
+  }
+  return out;
+}
+
+/** 電話番号の値（局番・市内・番号。「（089）000-0001」も） */
+const PHONE_VALUE = /^[（(]?\s*(\d{2,5})\s*[）)]?\s*[-‐－−ー―]?\s*(\d{1,4})\s*[-‐－−ー―]\s*(\d{3,4})$/;
+
+/**
+ * 区切りの場所の無い電話の欄（T140）: 欄の中に刷ってある区切り（「　−　−　」の 2 つの横棒、「（　）　−　」の括弧と横棒、「（　）」だけ）を
+ * 頁の印刷の字の形から見分け、局番・市内・番号をそれぞれの空きに置く。区切りが見分けられない・値が 1 つの電話番号でなければ null（ほかの置き方へ）。
+ * 分けたのにどれかの空きに入らなければ "fail"
+ */
+export function inkPhoneParts(field: MappingField, lines: readonly string[], pc: PlaceCtx): OverlayItem[] | null | "fail" {
+  const box = field.box;
+  if (!box || !pc.ink || field.shape !== "phone" || (field.optionBoxes ?? []).some(Boolean) || lines.length !== 1) return null;
+  // 行の終わりの添え（携帯・固定）は外して照らす（携帯だけの連絡先の行は「090-… 携帯」）
+  const m = lines[0]
+    .normalize("NFKC")
+    .trim()
+    .replace(/\s*(携帯|固定|自宅|電話)$/, "")
+    .match(PHONE_VALUE);
+  if (!m) return null;
+  const image = pc.page.image;
+  const glyphs = inkIn(box, pc.ink).filter((b) => !b.line && !b.box);
+  const boxH = box.h * image.h;
+  const hyphens = glyphs.filter((g) => g.w * image.w >= 1.5 * g.h * image.h && g.h * image.h <= 0.35 * boxH).sort((a, b) => a.x - b.x);
+  const parens = glyphs.filter((g) => g.h * image.h >= 1.8 * g.w * image.w && g.h * image.h >= 0.25 * boxH).sort((a, b) => a.x - b.x);
+  const right = box.x + box.w;
+  let slots: FieldBox[] | null = null;
+  let values: string[];
+  if (parens.length === 2 && hyphens.length <= 1) {
+    const [p1, p2] = parens;
+    const h = hyphens.find((x) => x.x > p2.x);
+    slots = h
+      ? [
+          { x: p1.x + p1.w, y: box.y, w: p2.x - (p1.x + p1.w), h: box.h },
+          { x: p2.x + p2.w, y: box.y, w: h.x - (p2.x + p2.w), h: box.h },
+          { x: h.x + h.w, y: box.y, w: right - (h.x + h.w), h: box.h },
+        ]
+      : [
+          { x: p1.x + p1.w, y: box.y, w: p2.x - (p1.x + p1.w), h: box.h },
+          { x: p2.x + p2.w, y: box.y, w: right - (p2.x + p2.w), h: box.h },
+        ];
+    values = h ? [m[1], m[2], m[3]] : [m[1], `${m[2]}-${m[3]}`];
+  } else if (parens.length === 0 && hyphens.length === 2) {
+    const [h1, h2] = hyphens;
+    slots = [
+      { x: box.x, y: box.y, w: h1.x - box.x, h: box.h },
+      { x: h1.x + h1.w, y: box.y, w: h2.x - (h1.x + h1.w), h: box.h },
+      { x: h2.x + h2.w, y: box.y, w: right - (h2.x + h2.w), h: box.h },
+    ];
+    values = [m[1], m[2], m[3]];
+  } else return null;
+  const out: OverlayItem[] = [];
+  for (const [k, slot] of slots.entries()) {
+    const t = slot.w > 0 ? placeText(field.id, [values[k]], slot, pc, { own: box }) : null;
     if (!t) return "fail";
     out.push({ ...t, part: k, shifted: true });
   }

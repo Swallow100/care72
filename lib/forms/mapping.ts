@@ -9,6 +9,7 @@
 
 import type { ConsentKind } from "../db/types.ts";
 import { refineItems } from "./item-hints.ts";
+import { codesOf, hasCodes, type OptionValues } from "./option-values.ts";
 
 // ---------- 台帳の項目の一覧 ----------
 
@@ -327,6 +328,11 @@ export type MappingField = {
    * 人が確かめの画面で「確認」した・直した要確認の欄（T122、lib/forms/field-risk.ts）。holdRisky のとき、確認するまで紙に使わない
    */
   confirmed?: boolean;
+  /**
+   * 選ぶ欄の選択肢と台帳の値の表のうち、言い換えの表で当たらず AI が当てた物（T140、lib/forms/option-values.ts）。
+   * 言い換えの表で当たる物はいつもコードで当てる（表を直せば前の対応表にも効く）。様式の版ごとの共有の対応表にもこのまま入る
+   */
+  optionValues?: OptionValues;
 };
 
 /**
@@ -447,7 +453,8 @@ export const MAPPING_LABELS = {
 /** 読む写真・PDF 1 つの上限。写真は API の上限（5 MB）、PDF も同じにそろえる（様式は数頁なので足りる） */
 export const FORM_FILE_MAX_BYTES = 5 * 1024 * 1024;
 
-export const LIMITS = { title: 80, issuer: 40, section: 40, label: 80, position: 60, reason: 120, option: 30, options: 16, fields: 200, pages: 20, listRows: 100 } as const;
+/** options（選択肢の数）は T140 で 16 → 40（持ち出し品の □ が 24 並ぶ様式で後ろの選択肢〔お薬〕が切れ、台帳の値があるのに印が付かなかった） */
+export const LIMITS = { title: 80, issuer: 40, section: 40, label: 80, position: 60, reason: 120, option: 30, options: 40, fields: 200, pages: 20, listRows: 100 } as const;
 
 const clip = (s: string, n: number) => s.trim().slice(0, n);
 
@@ -685,6 +692,7 @@ export function parseMappingInput(v: unknown): { ok: true; mapping: FormMapping 
       ai,
       ...(f.box !== undefined ? { box: clampBox(f.box) } : {}),
       ...(f.confirmed === true ? { confirmed: true } : {}),
+      ...optionValuesOf(f.optionValues, opts.options.length),
     });
   }
   return {
@@ -700,6 +708,25 @@ export function parseMappingInput(v: unknown): { ok: true; mapping: FormMapping 
       ...savedListOf(o.list, pages),
     },
   };
+}
+
+/**
+ * 保存した・画面から来た選択肢と台帳の値の表（T140）。項目に値の表があり、選択肢の数が同じで、コードが項目の値の中の物だけ受ける。
+ * 形が違えば落とす（欄ごと断らない。表はいつでも作り直せる）
+ */
+export function optionValuesOf(v: unknown, options: number): { optionValues?: OptionValues } {
+  if (!v || typeof v !== "object") return {};
+  const o = v as Record<string, unknown>;
+  if (!isLedgerItemKey(o.item) || !hasCodes(o.item) || !Array.isArray(o.values) || o.values.length !== options) return {};
+  const known = new Set(codesOf(o.item));
+  const values: Array<string[] | null> = [];
+  for (const x of o.values as unknown[]) {
+    if (x === null) values.push(null);
+    else if (Array.isArray(x) && x.length <= 16 && x.every((c) => typeof c === "string" && known.has(c))) values.push([...new Set(x as string[])]);
+    else return {};
+  }
+  const ai = Array.isArray(o.ai) ? [...new Set((o.ai as unknown[]).filter((n): n is number => Number.isInteger(n) && (n as number) >= 0 && (n as number) < options))] : [];
+  return { optionValues: { item: o.item, values, ai } };
 }
 
 /** 保存の要求の ai（AI が読んだ物）。無ければ null、形が違えば undefined */

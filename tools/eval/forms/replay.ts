@@ -8,6 +8,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ClaudeClient } from "../../../lib/claude/client.ts";
 import type { AttemptHolder, CallRecord } from "./record.ts";
+import { OPTION_AI_SYSTEM } from "../../../lib/forms/option-ai.ts";
 
 type Params = Anthropic.Beta.Messages.MessageCreateParamsNonStreaming;
 type Message = Anthropic.Beta.Messages.BetaMessage;
@@ -39,6 +40,8 @@ export function replayText(text: string): string {
 export type ReplayClient = ClaudeClient & {
   /** 使われなかった記録の数（入力・段ごと） */
   left(): Record<string, number>;
+  /** 前の回に選択肢と台帳の値の AI の当て（T140、lib/forms/option-ai.ts）の呼び出しがあるか */
+  hasOptions(): boolean;
 };
 
 /**
@@ -53,7 +56,10 @@ export function replayClient(records: readonly CallRecord[], scope: () => { inpu
     q.push(r);
     queues.set(k, q);
   }
+  // 記録の形の古い回・テストの記録には頼みが無いことがある
+  const options = records.some((r) => (r.request as CallRecord["request"] | undefined)?.system?.some((t) => t.startsWith(OPTION_AI_SYSTEM.slice(0, 40))) ?? false);
   return {
+    hasOptions: () => options,
     left: () => Object.fromEntries([...queues].filter(([, q]) => q.length > 0).map(([k, q]) => [k.replace("\u0000", " "), q.length])),
     beta: {
       messages: {

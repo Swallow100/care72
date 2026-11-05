@@ -24,10 +24,11 @@ import type { MappedSheet } from "./mapped-sheet.ts";
 import type { FieldBox, FieldShape } from "./mapping.ts";
 import { MATSUYAMA_FIELDS, type Cell, type MatsuyamaKey, type MatsuyamaSheet } from "./matsuyama.ts";
 import { MEDICAL_FIELDS, type MedicalKey, type MedicalSummary } from "./medical-summary.ts";
-import { ANNEX_MARK, cellLines, FONT_MIN_PT, textEm, type OverlayItem, type OverlaySheet } from "./overlay-sheet.ts";
+import { ANNEX_MARK, cellLines, FONT_MIN_PT, textEm, UNPLACED_REASON_LABELS, type OverlayItem, type OverlaySheet } from "./overlay-sheet.ts";
 import { matsuyamaFieldName } from "./unconfirmed.ts";
 import { MATSUYAMA_FRAME } from "./frame-matsuyama.ts";
 import { KIROKU_FRAME } from "./frame-kiroku.ts";
+import { extraItemFields, repeatOk } from "./form-shape.ts";
 
 // ---------- 形 ----------
 
@@ -300,7 +301,7 @@ export function dateProblem(value: string, eraOptions: readonly string[]): strin
   const iso = ISO_RE.exec(value);
   if (!m && !iso) return null;
   if (iso && !m) {
-    if (eraOptions.length > 0) return "西暦・欄は元号";
+    if (eraOptions.length > 0 && !eraOptions.includes("西暦")) return "西暦・欄は元号";
     const mo = Number(iso[2]);
     const d = Number(iso[3]);
     if (mo < 1 || mo > 12 || d < 1 || d > DAYS[mo - 1]) return "月日の範囲外";
@@ -310,9 +311,10 @@ export function dateProblem(value: string, eraOptions: readonly string[]): strin
   const y = yRaw === "元" ? 1 : Number(yRaw);
   const mo = Number(moRaw);
   const d = Number(dRaw);
-  if (era && eraOptions.length > 0 && !eraOptions.includes(era)) return `${era}・欄に無い元号`;
+  // 「西暦」の □ がある欄は、ほかの元号の日付を西暦で書く（T140。lib/forms/overlay-sheet.ts の partItems）
+  if (era && eraOptions.length > 0 && !eraOptions.includes(era) && !eraOptions.includes("西暦")) return `${era}・欄に無い元号`;
   if (era && (y < 1 || y > ERA_MAX[era])) return `${era}${y}年・範囲外`;
-  if (!era && yRaw.length === 4 && eraOptions.length > 0) return "西暦・欄は元号";
+  if (!era && yRaw.length === 4 && eraOptions.length > 0 && !eraOptions.includes("西暦")) return "西暦・欄は元号";
   if (mo < 1 || mo > 12 || d < 1 || d > DAYS[mo - 1]) return "月日の範囲外";
   return null;
 }
@@ -380,7 +382,9 @@ export function ruleReview(s: ReviewSubject): ReviewFinding[] {
     const f = byId.get(s.fieldOf(id) ?? "");
     if (!f || carried.has(f.id)) continue;
     carried.add(f.id);
-    push("carried", f, "台帳に値あり・紙は空");
+    // 置けなかった訳（T140）: 選択肢に無い値は紙の上で選ぶ、空きに収まらない値は手で書くか別紙
+    const why = s.sheet.unplacedWhy?.[id];
+    push("carried", f, why ? `台帳に値あり・${UNPLACED_REASON_LABELS[why]}` : "台帳に値あり・紙は空");
   }
   // 空欄（帯の未確認と同じ欄。色付けの黄の塗りの「台帳に無い」〔ask〕）。置けなかった欄は上の取込漏れで、空欄に重ねない
   for (const page of s.sheet.pages) {
@@ -448,7 +452,7 @@ export function ruleReview(s: ReviewSubject): ReviewFinding[] {
     }
     // 日付
     if (isDateField(f) && f.values.length > 0) {
-      const eras = f.options.filter((o) => ERAS.includes(o));
+      const eras = f.options.filter((o) => ERAS.includes(o) || o === "西暦");
       const p = dateProblem(f.values.join(" "), eras);
       if (p) push("date", f, p);
       // 年・月・日の空きのある欄に 1 つの字で置いた（印刷の「年 月 日」と重なる）
@@ -474,26 +478,24 @@ export function ruleReview(s: ReviewSubject): ReviewFinding[] {
     else if (hasAnnex && anyMarked && !yesMarked) push("annex", f, "別紙頁あり・印なし");
   }
 
-  // 重複（同じ値が 2 つの欄に）
-  const seen = new Map<string, ReviewField>();
+  // 重複（同じ値が 2 つの欄に）。頁ごとの同じ場所の欄（同じ様式が何頁か並ぶ写し・頁の頭に繰り返す欄）と電話・携帯の欄は、同じ値でよい
+  // （T140、lib/forms/form-shape.ts）
+  const seen = new Map<string, ReviewField[]>();
   for (const f of s.fields) {
     const items = (itemsOf.get(f.id) ?? []).filter((x) => x.it.kind === "text" && x.it.part === undefined) as Array<{ it: Extract<OverlayItem, { kind: "text" }> }>;
     const v = norm(items.flatMap((x) => x.it.lines).join(""));
     if (v.length < 4 || TRIVIAL.test(v) || v === ANNEX_MARK || /^\d{1,4}$/.test(v)) continue;
-    const first = seen.get(v);
+    const before = seen.get(v) ?? [];
+    seen.set(v, [...before, f]);
+    if (before.length === 0 || repeatOk(before, f)) continue;
+    const first = before[0];
     // 同じ名前の欄（近親者 氏名と実施者1 氏名）は、同じ人が 2 つの役のことがあるので見ない
-    if (first && baseLabel(first) !== baseLabel(f)) push("duplicate", f, `${first.label}と同じ`);
-    else if (!first) seen.set(v, f);
+    if (baseLabel(first) !== baseLabel(f)) push("duplicate", f, `${first.label}と同じ`);
   }
-  // 同じ台帳の項目を 2 つの欄に当てた（対応表の紙）
+  // 同じ台帳の項目を、様式の形で当ててよい数より多くの欄に当てた（対応表の紙）。頁ごとの同じ場所・電話と携帯は数えない
   if (s.redoable) {
-    const bySource = new Map<string, ReviewField>();
-    for (const f of s.fields) {
-      if (!f.source || f.state === "empty" || f.values.length === 0) continue;
-      const first = bySource.get(f.source);
-      if (first) push("duplicate", f, `${first.label}と同じ項目`);
-      else bySource.set(f.source, f);
-    }
+    const valued = s.fields.filter((f) => f.source && f.state !== "empty" && f.values.length > 0);
+    for (const [id, first] of extraItemFields(valued)) push("duplicate", byId.get(id)!, `${first.label}と同じ項目`);
   }
 
   const levelRank: Record<ReviewLevel, number> = { fix: 0, check: 1, note: 2 };

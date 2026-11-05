@@ -19,7 +19,8 @@ export const ORIGINAL_FORM9 = {
   sheet: "様式9",
 } as const;
 
-const SCALE = 0.73;
+export const FORM9_PRINT_SCALE = 0.73;
+const SCALE = FORM9_PRINT_SCALE;
 const PX_MM = 25.4 / 96;
 const PT_MM = 25.4 / 72;
 /** 游ゴシック 11pt の最大の数字の幅（px） */
@@ -29,7 +30,7 @@ const colMm = (chars: number) => Math.round(chars * MDW) * PX_MM * SCALE;
 const rowMm = (pt: number) => pt * PT_MM * SCALE;
 
 /** 列幅（mm、刷った紙の上）。A〜N */
-const COL_CHARS = [1, 3.625, 12.375, 7.625, 7.625, 9.25, 15.125, 29.25, 12.875, 12.875, 26.25, 9.875, 8.25, 0.5] as const;
+export const FORM9_COL_CHARS = [1, 3.625, 12.375, 7.625, 7.625, 9.25, 15.125, 29.25, 12.875, 12.875, 26.25, 9.875, 8.25, 0.5] as const;
 /** 行の高さ（pt）。1〜27 行目 */
 const ROW_PT = Array.from({ length: 27 }, (_, i) => (i + 1 === 3 ? 18.75 : i + 1 >= 7 && i + 1 <= 26 ? 27 : 15.75));
 
@@ -37,7 +38,7 @@ export const FORM9_PAGE_MM = { w: 297, h: 210 } as const;
 export const FORM9_MARGIN_MM = { left: r2(0.70866141732283472 * 25.4), top: r2(0.74803149606299213 * 25.4) } as const;
 
 /** 列の左の線の位置（mm、頁の左から）。index 0 が A の左、14 が N の右 */
-export const FORM9_COL_X: readonly number[] = COL_CHARS.reduce<number[]>((xs, c) => [...xs, xs[xs.length - 1] + colMm(c)], [FORM9_MARGIN_MM.left]).map(r2);
+export const FORM9_COL_X: readonly number[] = FORM9_COL_CHARS.reduce<number[]>((xs, c) => [...xs, xs[xs.length - 1] + colMm(c)], [FORM9_MARGIN_MM.left]).map(r2);
 /** 行の上の線の位置（mm、頁の上から）。index 0 が 1 行目の上、27 が 27 行目の下 */
 export const FORM9_ROW_Y: readonly number[] = ROW_PT.reduce<number[]>((ys, pt) => [...ys, ys[ys.length - 1] + rowMm(pt)], [FORM9_MARGIN_MM.top]).map(r2);
 

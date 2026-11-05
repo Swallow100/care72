@@ -12,7 +12,7 @@
 // 下書きでは要確認順（要確認を先に）で並べ、「確認」で外す（項目を直しても確認に）。「保留」を選ぶと、確認していない要確認の欄を紙に使わない。
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { AiMark, StateTag } from "@/components/person/parts";
 import { INPUT } from "@/components/person/intake-ui";
 import { Button, ButtonLink } from "@/components/ui/Button";
@@ -23,6 +23,7 @@ import { FIELD_RISK_LABELS, fieldRisks, openRisks, riskOrder, type FieldRisk } f
 import { FIELD_TARGET, realignOptionBoxes, withBox, type BoxTarget } from "@/lib/forms/box-edit";
 import type { FormMappingStatus } from "@/lib/db/types";
 import { Select } from "@/components/ui/Select";
+import { codeLabel, editOptionValue, hasCodes, ITEM_CODES, NONE_CODE, OTHER_CODE, optionTable } from "@/lib/forms/option-values";
 import {
   blankField,
   CONFIDENCE_LABELS,
@@ -494,6 +495,7 @@ function FieldRow({
             )}
           </div>
         )}
+        {f.shape === "choice" && hasCodes(f.item) && f.options.length > 0 && !off && <OptionValueRows f={f} onChange={onChange} />}
       </td>
       <td className={CELL}>
         {risk !== null && !off && (
@@ -535,5 +537,52 @@ function FieldRow({
         </Button>
       </td>
     </tr>
+  );
+}
+
+/**
+ * 選ぶ欄の選択肢と台帳の値の当て（T140、lib/forms/option-values.ts）。選択肢ごとに、印を付ける台帳の値。言い換えの表で当たる物は既定のまま、
+ * AI が当てた物は AI の印。人が直すと AI の印が外れ、確認した欄になる。紙は台帳の値がこの当てに合う □ に印を付ける
+ */
+function OptionValueRows({ f, onChange }: { f: MappingField; onChange: (p: Partial<MappingField>) => void }) {
+  const table = optionTable(f) ?? [];
+  const own = f.optionValues && f.optionValues.item === f.item ? f.optionValues : null;
+  const ai = new Set(own?.ai ?? []);
+  const defs = ITEM_CODES[f.item!] ?? [];
+  const named = (codes: readonly string[]) => (codes.length === 0 ? "対象外" : codes.map((c) => codeLabel(f.item!, c)).join("・"));
+  return (
+    <div className="mt-1 grid grid-cols-[minmax(0,auto)_minmax(0,1fr)] items-center gap-x-1.5 gap-y-0.5 text-xs" data-option-values={f.id}>
+      {f.options.map((o, i) => {
+        const stored = own?.values[i] ?? null;
+        const shown = table[i];
+        return (
+          <Fragment key={`${f.id}-${i}`}>
+            <span className="truncate text-muted">{o}</span>
+            <span className="flex items-center gap-1">
+              <Select
+                aria-label={`${o} 値`}
+                className={IN}
+                value={stored === null ? "" : stored.length === 0 ? "-" : stored[0]}
+                onChange={(e) => {
+                  const x = e.target.value;
+                  onChange({ optionValues: editOptionValue(f, i, x === "" ? null : x === "-" ? [] : [x]), confirmed: true });
+                }}
+              >
+                <option value="">{shown === null ? "未定" : named(shown)}</option>
+                <option value="-">対象外</option>
+                {defs.map((d) => (
+                  <option key={d.code} value={d.code}>
+                    {d.label}
+                  </option>
+                ))}
+                <option value={OTHER_CODE}>その他</option>
+                <option value={NONE_CODE}>なし</option>
+              </Select>
+              {ai.has(i) && <AiMark small title="AI の当て。人が確認" />}
+            </span>
+          </Fragment>
+        );
+      })}
+    </div>
   );
 }

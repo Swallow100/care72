@@ -16,9 +16,25 @@ import type { Cell } from "../../../lib/forms/matsuyama.ts";
 import type { PersonPageRows } from "../../../lib/person.ts";
 
 /** blanksChoice は台帳あり空欄のうち、選ぶ欄で値が選択肢に合わず「その他」の空きも無い欄（要介護 1 の人の「要介護 3〜5」の □ のように、空くのが答えの欄も入る） */
-export type LookScore = Omit<LookCheck, "issues"> & { blanks: number; blanksChoice: number; masks: number };
+/** unplacedOption・unplacedRoom・unplacedBox は置けなかった欄の訳（T140。lib/forms/overlay-sheet.ts の UnplacedReason） */
+export type LookScore = Omit<LookCheck, "issues"> & { blanks: number; blanksChoice: number; masks: number; unplacedOption: number; unplacedRoom: number; unplacedBox: number };
 
-export const emptyLookScore = (): LookScore => ({ texts: 0, marks: 0, overlap: 0, outside: 0, neighbor: 0, shifted: 0, unplaced: 0, inkPages: 0, blanks: 0, blanksChoice: 0, masks: 0 });
+export const emptyLookScore = (): LookScore => ({
+  texts: 0,
+  marks: 0,
+  overlap: 0,
+  outside: 0,
+  neighbor: 0,
+  shifted: 0,
+  unplaced: 0,
+  inkPages: 0,
+  blanks: 0,
+  blanksChoice: 0,
+  masks: 0,
+  unplacedOption: 0,
+  unplacedRoom: 0,
+  unplacedBox: 0,
+});
 
 /** 伏字の跡・仮の言い方（括弧の全角・半角どちらも） */
 export const MASK_WORDS = /[（(]\s*(氏名|町名|電話|住所|郵便番号|メール|生年月日|市内|近所|同居|県外|遠方)\s*[）)]/;
@@ -90,7 +106,22 @@ export function lookOfPaper(o: {
       }
   for (const a of o.overlay.annex) if (a.lines.some((l) => MASK_WORDS.test(l))) masks.push({ field: a.fieldId, label: a.label });
   const { issues: _i, ...rest } = check;
-  return { score: { ...rest, blanks: blanks.length, blanksChoice: blanks.filter((b) => b.choice).length, masks: masks.length }, check, blanks, masks };
+  const why = Object.values(o.overlay.unplacedWhy ?? {});
+  const reason = (r: string) => why.filter((w) => w === r).length;
+  return {
+    score: {
+      ...rest,
+      blanks: blanks.length,
+      blanksChoice: blanks.filter((b) => b.choice).length,
+      masks: masks.length,
+      unplacedOption: reason("option"),
+      unplacedRoom: reason("room"),
+      unplacedBox: reason("box"),
+    },
+    check,
+    blanks,
+    masks,
+  };
 }
 
 export function addLook(a: LookScore, b: LookScore): LookScore {
