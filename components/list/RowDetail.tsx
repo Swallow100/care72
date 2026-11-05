@@ -16,6 +16,7 @@ import { FullToggle } from "./FullToggle";
 import { Hearing } from "./Hearing";
 import { OverrideForm } from "./OverrideForm";
 import { Summary } from "./Summary";
+import { Talk } from "./Talk";
 
 export type ClassificationSlot = (signal: DetailSignal) => React.ReactNode;
 /** 聞き取りの欄（T49）。無ければ読むだけで出す */
@@ -191,6 +192,12 @@ function SignalItem({
         <span>{s.body}</span>
       </div>
       <div className="mt-1 empty:hidden">{hearing ? hearing(s) : <Hearing signalId={s.id} source={{ answers: s.row.answers, ai_memo: s.row.ai_memo, memo: s.row.memo }} place={s.place} inset />}</div>
+      {/* 声の聞き取りの会話（T137）: 問いと本人の答え、AI の印、応答不明瞭の印。色と順には使わない */}
+      {s.talk && (
+        <div className="mt-1">
+          <Talk log={s.talk} />
+        </div>
+      )}
       {s.recording && (
         <div className="mt-1 flex items-center gap-2">
           <span className="text-xs text-muted">{DETAIL_LABELS.recording}</span>

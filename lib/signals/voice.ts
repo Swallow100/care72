@@ -10,6 +10,7 @@ import { hasGeminiKey } from "../claude/client.ts";
 import { pseudonymizeText, type PseudonymKey } from "../pseudonym/index.ts";
 import { DEFAULT_VOICE, speak, TTS_MODEL, type SpeakContext } from "../gemini/tts.ts";
 import { VOICE_PROMPT_TEXT } from "./phrases.ts";
+import { BUTTON_QUESTIONS, buttonLine, closingOf, TALK_ENDS, TALK_TOPIC_SPECS, TALK_TOPICS, talkVoicePath } from "./talk.ts";
 
 /** 文の版。文を変えたら上げる（R2 の古い声を使わない） */
 export const VOICE_PROMPT_VERSION = 2;
@@ -41,4 +42,91 @@ export async function promptVoice(bucket: VoiceBucket, ctx: SpeakContext): Promi
     console.error("定型文の声を作れない", e instanceof Error ? e.name : "unknown");
     return null;
   }
+}
+
+// ---------- 声の聞き取りの会話の 1 文（T137） ----------
+//
+// 会話の決まった文（話題の決まった問い・ボタンの答え方の問い・締め）は id で頼まれ、文はここの表から引く（端末から文を受けない）。
+// 置いてあればそれ、無ければ作って置く（定型文と同じ）。AI の 1 文は、サーバーが会話の API の中で作り（待ちは短く）、文の hash で置く。
+// GET は hash の物を読むだけ（作らない）。名前・住所は入らない（AI の文は Claude に伏せた文しか見せていない。読む前に仮名化の門も通す）。
+
+/** 会話の声の版。文の言い方を変えたら上げる */
+export const TALK_VOICE_VERSION = 1;
+
+/** 会話の決まった文の id と文（話題の決まった問い・ボタンの答え方の問い・締め） */
+export function talkFixedTexts(): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const t of TALK_TOPICS) out[`topic-${t}`] = TALK_TOPIC_SPECS[t].text;
+  for (const id of BUTTON_QUESTIONS) out[`button-${id}`] = buttonLine(id);
+  for (const end of TALK_ENDS) out[`close-${end}`] = closingOf(end).text;
+  return out;
+}
+
+const FIXED_ID = /^(topic|button|close)-[A-Za-z_]{1,24}$/;
+const HASH = /^[0-9a-f]{32}$/;
+
+export const isTalkFixedId = (v: string) => FIXED_ID.test(v) && v in talkFixedTexts();
+export const isTalkHash = (v: string) => HASH.test(v);
+
+/** 文の hash（sha256 の頭 32 字） */
+export async function talkTextHash(text: string): Promise<string> {
+  const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(d).slice(0, 16), (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+export function talkVoiceKey(hash: string, model = TTS_MODEL, voice = DEFAULT_VOICE): string {
+  return `voice/${model}/${voice}/talk-${TALK_VOICE_VERSION}-${hash}.wav`;
+}
+
+
+async function makeVoice(bucket: VoiceBucket, key: string, text: string, ctx: SpeakContext, pkey: PseudonymKey): Promise<Uint8Array | null> {
+  if (!ctx.tts && !hasGeminiKey(ctx.env)) return null;
+  try {
+    const r = await speak({ text: pseudonymizeText(text, pkey), key: pkey }, ctx);
+    await bucket.put(key, r.audio, { httpMetadata: { contentType: r.mimeType } });
+    return r.audio;
+  } catch (e) {
+    console.error("会話の声を作れない", e instanceof Error ? e.name : "unknown");
+    return null;
+  }
+}
+
+/** 決まった文の声（GET ?fixed=id）。置いてあればそれ、無ければ作って置く。作れなければ null（端末は読み上げ） */
+export async function talkFixedVoice(bucket: VoiceBucket, id: string, ctx: SpeakContext): Promise<Uint8Array | null> {
+  const text = talkFixedTexts()[id];
+  if (!text) return null;
+  const hash = await talkTextHash(text);
+  const cached = await bucket.get(talkVoiceKey(hash));
+  if (cached) return new Uint8Array(await cached.arrayBuffer());
+  return makeVoice(bucket, talkVoiceKey(hash), text, ctx, NO_PEOPLE);
+}
+
+/** AI の文の声を読む（GET ?talk=hash）。作らない */
+export async function talkVoiceByHash(bucket: VoiceBucket, hash: string): Promise<Uint8Array | null> {
+  if (!isTalkHash(hash)) return null;
+  const cached = await bucket.get(talkVoiceKey(hash));
+  return cached ? new Uint8Array(await cached.arrayBuffer()) : null;
+}
+
+/** AI の文の声を待つ上限（会話の API の中。過ぎたら端末の読み上げ。作るのは続けて置く） */
+export const TALK_VOICE_WAIT_MS = 3_000;
+
+/**
+ * AI の 1 文の声を用意して URL を返す（会話の API の中）。置いてあればすぐ。無ければ作り始め、TALK_VOICE_WAIT_MS で間に合えば URL、
+ * 間に合わなければ null（端末の読み上げ）。作るのは keep（waitUntil）で続け、次に同じ文が来たら置いた物を使う。pkey は本人の鍵（読む文に名前が残っていないか）
+ */
+export async function talkLineVoice(
+  bucket: VoiceBucket,
+  text: string,
+  ctx: SpeakContext,
+  pkey: PseudonymKey,
+  opts: { waitMs?: number; keep?: (p: Promise<unknown>) => void } = {},
+): Promise<string | null> {
+  const hash = await talkTextHash(text);
+  if (await bucket.get(talkVoiceKey(hash))) return talkVoicePath(hash);
+  if (!ctx.tts && !hasGeminiKey(ctx.env)) return null;
+  const made = makeVoice(bucket, talkVoiceKey(hash), text, ctx, pkey);
+  opts.keep?.(made);
+  const r = await Promise.race([made, new Promise<"late">((res) => setTimeout(() => res("late"), opts.waitMs ?? TALK_VOICE_WAIT_MS))]);
+  return r && r !== "late" ? talkVoicePath(hash) : null;
 }

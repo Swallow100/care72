@@ -12,6 +12,7 @@
 
 import type { AnySignalBody } from "./body.ts";
 import type { Answers } from "./questions.ts";
+import type { TalkLog } from "./talk.ts";
 
 export const OUTBOX_KEY = "care72.phone.outbox.v1";
 
@@ -29,6 +30,8 @@ export type AttachItem = {
   durationSec: number | null;
   /** 録り終えた時刻（端末の時計） */
   recordedAt: string;
+  /** 声の聞き取りの会話の記録（T137）。会話をしなかった録音は無い */
+  talk?: TalkLog | null;
 };
 
 /** 赤のあとの聞き取りの答え（T49）。それまでの答えの全部（後勝ち。端末に残っている古い答えは新しい答えで置き換える） */
@@ -137,9 +140,10 @@ export function createOutbox(opts: {
         return transport.location ? await transport.location({ signalId, lat, lng, accuracyM, at }) : "drop";
       }
       const audio = audios.get(item.signalId) ?? null;
-      if (!audio && !item.transcript?.trim()) return "drop";
+      // 会話の記録（T137）があれば、音声も文字起こしも無くても送る（無音のまま ボタンで答えた・応答不明瞭の印）
+      if (!audio && !item.transcript?.trim() && !item.talk) return "drop";
       const { signalId, transcript, durationSec, recordedAt } = item;
-      return await transport.attach({ signalId, transcript, durationSec, recordedAt, sentAt: now() }, audio);
+      return await transport.attach({ signalId, transcript, durationSec, recordedAt, sentAt: now(), ...(item.talk ? { talk: item.talk } : {}) }, audio);
     } catch {
       return "retry";
     }
@@ -218,6 +222,7 @@ export function fetchTransport(fetchImpl: typeof fetch = (...a) => fetch(...a)):
       form.set("sentAt", item.sentAt);
       if (item.transcript?.trim()) form.set("transcript", item.transcript.trim());
       if (item.durationSec !== null) form.set("durationSec", String(item.durationSec));
+      if (item.talk) form.set("talk", JSON.stringify(item.talk));
       if (audio) form.set("audio", audio, "recording");
       const res = await fetchImpl(RECORDINGS_PATH, { method: "POST", body: form, credentials: "same-origin" });
       return outcomeOf(res.status);

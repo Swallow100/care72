@@ -29,10 +29,35 @@
 //   マイクが無い・許されていない（赤を押した時の許可か、録り始めて分かる）ときは、声の問いにも定型文と録音にも入らず、
 //   「たのみたい ことは ありますか」（はなす）も聞かない。押せばそのまま次の問いへ（赤はもう届いている）
 // - 戻るは無い。終わったら「最初から」で上へ（家族の画面と同じ言葉。T80）
+// - 声の聞き取りの会話（T137）: 会話の道（talk）を渡した端末では、20 秒押さない人の声の問い（T49）の代わりに短い会話をする。
+//   定型文（AI の告知から）→ 聞く（話し終えて 3 秒静かになるまで。話さなければ 15 秒）→ 次の手（lib/signals/talk.ts の planTalk と
+//   サーバーの nextTalk。Claude は次の 1 文だけ）→ 読む → 聞く … → 締め（119 の文で終わる）→ 録音と会話の記録を添えて送る。
+//   命に関わる言葉・終えたい・上限は締め、聞き取れないが 2 回続いたらボタンの答え方（はいなら緑・いいえなら赤）に替えて応答不明瞭の印。
+//   サーバーに届かない・遅い（8 秒）ときは端末だけで決まった問いを続ける。決まった問いのまま取れた答えは押した答えと同じに送る（声の印）
 
 import { newSignalId, NO_ANSWERS, type PhoneColor, type SignalBody } from "./body.ts";
 import type { AnswersItem, AttachItem, Delivery, LocationItem, ReportedPosition } from "./outbox.ts";
 import { AI_NOTICE_VOICE } from "./phrases.ts";
+import {
+  buttonLine,
+  buttonQuestions,
+  buttonVoice,
+  closingOf,
+  closingVoice,
+  fixedLine,
+  heardTurn,
+  newTalkLog,
+  planTalk,
+  TALK_OPENING,
+  talkReplies,
+  topicOfQuestion,
+  yesNoChoice,
+  type TalkBy,
+  type TalkEnd,
+  type TalkLine,
+  type TalkLog,
+} from "./talk.ts";
+import type { TalkReply } from "./talk-ai.ts";
 import {
   choiceOf,
   firstQuestion,
@@ -70,6 +95,17 @@ export const SPEAK_WAIT_MS = 15_000;
 /** 声の問いの段: 読み上げている・聞いている（T49） */
 export type VoiceStep = "speaking" | "listening";
 
+/** 会話（T137）で、話し始めを待つ長さ。話さなければこの長さで 1 往復を閉じる */
+export const TALK_LISTEN_MS = 15_000;
+/** 会話で、話し終えたとみなす静かな間（最後に文字が届いてから） */
+export const TALK_QUIET_MS = 3_000;
+/** 会話の 1 回の答えの長さの上限（話し続けても閉じる） */
+export const TALK_TURN_MAX_MS = 45_000;
+/** 会話の次の手をサーバーに聞いて待つ上限。過ぎたら端末だけで決まった問い */
+export const TALK_WAIT_MS = 8_000;
+/** 締めの文（119 の文まで）が終わらないときに待つ上限 */
+export const CLOSING_WAIT_MS = 25_000;
+
 export type PhoneState =
   | { step: "top" }
   | { step: "where" }
@@ -78,6 +114,15 @@ export type PhoneState =
   /** いまの 場所を おくりますか（T69b。車・ほかの ところ のあと、本人の画面だけ） */
   | { step: "locate"; answers: Answers }
   | { step: "prompt" }
+  /**
+   * 声の聞き取りの会話（T137）。line は読む文（ふりがなを落とした文）、easy は決まった文の画面の文（AI の文は null）、
+   * by は文を作った物（ai は AI の印）、first は最初の問い（AI の告知を出す）。thinking は次の 1 文を決めている間
+   */
+  | { step: "talk"; line: string; easy: string | null; by: TalkBy; first: boolean; voice: VoiceStep | "thinking" }
+  /** ボタンの答え方（T137。聞き取れないが続いたとき）: はい（緑）・いいえ（赤）・とばす */
+  | { step: "yesno"; id: QuestionId; answers: Answers; voice: "speaking" | null }
+  /** 会話の締め（T137）。easy は画面の文。danger は命に関わる言葉のとき（119 の文を先に読んだ） */
+  | { step: "closing"; easy: string; danger: boolean }
   | { step: "recording"; startedAt: number; until: number }
   | { step: "sending"; color: PhoneColor }
   /** silent: 文字が 1 字も取れないまま録音だけ送った（「ろくおんを おくりました」） */
@@ -125,6 +170,13 @@ export type PhoneDeps = {
   playPrompt(): Promise<unknown>;
   startRecording(): Promise<Recording | null>;
   startTranscript?(events: TranscriptEvents): Stoppable<string | null> | null;
+  /**
+   * 声の聞き取りの会話（T137）。1 往復を聞くたびに会話の記録の全部を送り、次の手を受け取る（app/api/signals/[id]/talk）。
+   * 届かない・失敗は null（端末の決まりで決まった問いを続ける）。無ければ会話をせず、今までの声の問い（T49）
+   */
+  talk?(signalId: string, log: TalkLog): Promise<TalkReply | null>;
+  /** 会話の 1 文を読んで、終わるのを待つ。voice は Gemini の声の URL（無い・鳴らない時は端末の読み上げ）。無ければ speak */
+  say?(text: string, voice?: string | null): Promise<unknown>;
   onChange(state: PhoneState): void;
 };
 
@@ -137,6 +189,8 @@ export type Phone = {
   answer(choice: string): void;
   /** 問いをとばす */
   skip(): void;
+  /** ボタンの答え方（T137）: はい（true）・いいえ（false） */
+  yesNo(yes: boolean): void;
   /** いまの 場所を おくりますか（T69b）: はい（true）・いいえ（false） */
   locate(send: boolean): void;
   /** 録音の延長 */
@@ -214,6 +268,19 @@ export function createPhone(deps: PhoneDeps): Phone {
   let micOk: boolean | null = null;
   /** マイクが無い・許されていないと分かった。声の問い・定型文と録音・「はなす」の問いに入らない */
   let micMissing = false;
+  // ---- 声の聞き取りの会話（T137） ----
+  /** 会話の記録。会話に入っていなければ null */
+  let talkLog: TalkLog | null = null;
+  /** 今読んだ（聞いている）1 文 */
+  let talkLine: TalkLine | null = null;
+  /** 今の 1 往復の聞き取り */
+  let talkTranscript: Stoppable<string | null> | null = null;
+  /** 今の 1 往復を聞き始めた時刻 */
+  let talkTurnAt = 0;
+  /** 文字起こしが使えた（聞き取れないが続いたのを本人の答えとして数える。使えない端末は印を付けない） */
+  let talkEars = false;
+  /** ボタンの答え方で聞く残りの問い */
+  let buttonQueue: QuestionId[] = [];
 
   const set = (s: PhoneState) => {
     state = s;
@@ -380,6 +447,11 @@ export function createPhone(deps: PhoneDeps): Phone {
     }
     voiceMode = true;
     recording = rec;
+    // 会話の道がある端末は、問いの表を読む代わりに短い会話（T137）
+    if (deps.talk) {
+      startTalk();
+      return;
+    }
     void askByVoice(id, true);
   }
 
@@ -427,6 +499,202 @@ export function createPhone(deps: PhoneDeps): Phone {
     const choice = matchVoiceAnswer(text, id);
     if (choice) record(id, choice, "voice");
     advance(nextAfter(id, choice));
+  }
+
+  // ---------- 声の聞き取りの会話（T137） ----------
+
+  /** 1 文を読んで終わるのを待つ（終わらなければ打ち切る） */
+  const sayOnce = (text: string, waitMs: number, voice: string | null = null) =>
+    Promise.race([
+      Promise.resolve()
+        .then(() => (deps.say ? deps.say(text, voice) : deps.speak?.(text)))
+        .catch(() => undefined),
+      new Promise((r) => setTimeout(r, waitMs)),
+    ]);
+
+  function startTalk() {
+    talkLog = newTalkLog(iso(now()));
+    talkEars = false;
+    buttonQueue = [];
+    void talkSay(TALK_OPENING);
+  }
+
+  const talkState = (line: TalkLine, voice: VoiceStep | "thinking"): PhoneState => ({
+    step: "talk",
+    line: line.text,
+    easy: line.easy,
+    by: line.by,
+    first: line.topic === "open",
+    voice,
+  });
+
+  /** 1 文を読む（最初の問いは定型文の声。録音は読む間だけ止める）→ 聞く */
+  async function talkSay(line: TalkLine) {
+    const mine = run;
+    const my = ++ask;
+    talkLine = line;
+    set(talkState(line, "speaking"));
+    pauseRecording();
+    if (line.topic === "open") await playPrompt();
+    else await sayOnce(line.text, SPEAK_WAIT_MS, line.voice ?? null);
+    if (mine !== run || my !== ask) return;
+    resumeRecording();
+    talkListen(my);
+  }
+
+  /** 聞く: 話し終えて静かになるまで（話さなければ TALK_LISTEN_MS、話し続けても TALK_TURN_MAX_MS） */
+  function talkListen(my: number) {
+    if (!talkLine) return;
+    const mine = run;
+    set(talkState(talkLine, "listening"));
+    listeningAt = now();
+    talkTurnAt = listeningAt;
+    const live = () => mine === run && my === ask;
+    talkTranscript =
+      deps.startTranscript?.({
+        onSilence: () => {
+          if (live()) void talkHeard(my);
+        },
+        onText: () => {
+          if (!live()) return;
+          if (now() - talkTurnAt >= TALK_TURN_MAX_MS) void talkHeard(my);
+          else after(TALK_QUIET_MS, () => void talkHeard(my));
+        },
+      }) ?? null;
+    if (talkTranscript) talkEars = true;
+    after(TALK_LISTEN_MS, () => void talkHeard(my));
+  }
+
+  /** 1 往復を閉じて、本人の言葉を記録に足し、次の手へ */
+  async function talkHeard(my: number) {
+    if (my !== ask || state.step !== "talk" || !talkLog || !talkLine) return;
+    clear();
+    const mine = run;
+    const token = ++ask;
+    const t = talkTranscript;
+    talkTranscript = null;
+    closeListening(now());
+    const text = (await t?.stop().catch(() => null))?.trim() ?? "";
+    if (mine !== run || token !== ask || !talkLog) return;
+    if (text) heard.push(text);
+    const turn = heardTurn(talkLine, text || null, iso(talkTurnAt));
+    talkLog.turns.push(turn);
+    // 決まった問いのまま取れた答えは、押した答えと同じに送る（声の印。ルールの表の 4 列にもなる）
+    if (turn.answer) record(turn.answer.id, turn.answer.choice, "voice");
+    await talkNext(token);
+  }
+
+  /** 次の手: 端末の決まり（planTalk）を先に当て、次の 1 文はサーバー（Claude）に聞く。届かなければ決まった問い */
+  async function talkNext(token: number) {
+    const log = talkLog;
+    if (!log || !talkLine) return;
+    const mine = run;
+    const plan = planTalk(log, { hasDevice: asker.hasDevice, answers, now: now() });
+    if (plan.kind === "danger") {
+      log.danger = plan.danger;
+      return talkClose("danger");
+    }
+    if (plan.kind === "close") return talkClose(plan.end);
+    if (plan.kind === "buttons") return toButtons();
+    set(talkState(talkLine, "thinking"));
+    let reply: TalkReply | null = null;
+    if (deps.talk && signal) {
+      const asked = deps.talk(signal.id, structuredClone(log)).catch(() => null);
+      reply = await Promise.race([asked, new Promise<null>((r) => setTimeout(() => r(null), TALK_WAIT_MS))]);
+    }
+    if (mine !== run || token !== ask || !talkLog) return;
+    if (reply?.called) log.aiCalls++;
+    if (!reply) return talkSay(fixedLine(plan.fallback));
+    if (reply.kind === "danger") {
+      log.danger = reply.danger;
+      return talkClose("danger");
+    }
+    if (reply.kind === "close") return talkClose(reply.end);
+    if (reply.kind === "buttons") return toButtons();
+    const line = reply.line;
+    const ok = typeof line?.text === "string" && line.text.length > 0 && line.text.length <= 80;
+    return talkSay(ok ? line : fixedLine(plan.fallback));
+  }
+
+  /** ボタンの答え方へ（聞き取れないが続いた）。文字起こしの使えた端末だけ応答不明瞭の印 */
+  function toButtons() {
+    if (!talkLog) return;
+    if (talkEars) talkLog.unclear = true;
+    buttonQueue = buttonQuestions(talkLog, answers);
+    void buttonAsk();
+  }
+
+  /** ボタンの答え方の次の 1 問を読む（はいなら みどり…）。20 秒押さなければ答えなしで次へ。全部終えたら締め */
+  async function buttonAsk() {
+    if (!talkLog) return;
+    const id = buttonQueue.shift();
+    if (!id) return talkClose(talkLog.unclear ? "unclear" : "grasped");
+    const mine = run;
+    const my = ++ask;
+    set({ step: "yesno", id, answers, voice: "speaking" });
+    pauseRecording();
+    await sayOnce(buttonLine(id), SPEAK_WAIT_MS, buttonVoice(id));
+    if (mine !== run || my !== ask) return;
+    resumeRecording();
+    set({ step: "yesno", id, answers, voice: null });
+    after(IDLE_MS, () => {
+      if (my !== ask || !talkLog) return;
+      ask++;
+      talkLog.turns.push({ ask: buttonLine(id), by: "fixed", topic: topicOfQuestion(id), reply: null, heard: "silent", at: iso(now()) });
+      void buttonAsk();
+    });
+  }
+
+  /** 締めの文（119 の文で終わる）を読んで、録音と会話の記録を添えて送る */
+  async function talkClose(end: TalkEnd) {
+    const log = talkLog;
+    if (!log || log.end !== null) return;
+    clear();
+    const mine = run;
+    ++ask;
+    log.end = end;
+    const t = talkTranscript;
+    talkTranscript = null;
+    if (t) {
+      closeListening(now());
+      const text = (await t.stop().catch(() => null))?.trim() ?? "";
+      if (text && talkLine) log.turns.push(heardTurn(talkLine, text, iso(talkTurnAt)));
+      if (text) heard.push(text);
+    }
+    if (mine !== run) return;
+    const c = closingOf(end);
+    log.closing = c.text;
+    set({ step: "closing", easy: c.easy, danger: end === "danger" });
+    pauseRecording();
+    await sayOnce(c.text, CLOSING_WAIT_MS, closingVoice(end));
+    if (mine !== run) return;
+    await sendTalk();
+  }
+
+  /** 録音を止めて、会話の記録と本人の言葉を添える */
+  async function sendTalk() {
+    const log = talkLog;
+    if (!log || !signal) return;
+    const mine = run;
+    const sig = signal;
+    set({ step: "sending", color: "red" });
+    const endedAt = now();
+    closeListening(endedAt);
+    const audio = await (recording?.stop().catch(() => null) ?? Promise.resolve(null));
+    recording = null;
+    const words = talkReplies(log);
+    const delivery = await redDelivery();
+    await deps
+      .sendRecording(
+        { signalId: sig.id, transcript: words, durationSec: Math.round(listenedMs / 1000), recordedAt: iso(endedAt), talk: structuredClone(log) },
+        audio,
+      )
+      .catch(() => "queued" as const);
+    if (mine !== run) return;
+    // 文字が 1 字も取れず、ボタンも押さず、録音だけ送った
+    const pressedAny = log.turns.some((x) => x.heard === "press");
+    const silent = talkEars && words === null && !pressedAny && audio !== null;
+    set({ step: "done", color: "red", delivery, ...(silent ? { silent: true as const } : {}) });
   }
 
   // ---------- 定型文と録音 ----------
@@ -613,6 +881,9 @@ export function createPhone(deps: PhoneDeps): Phone {
       heard = [];
       listenedMs = 0;
       listeningAt = null;
+      talkLog = null;
+      talkLine = null;
+      buttonQueue = [];
       try {
         deps.prime?.();
       } catch {
@@ -664,7 +935,35 @@ export function createPhone(deps: PhoneDeps): Phone {
       }
       advance(next);
     },
+    yesNo(yes) {
+      if (state.step !== "yesno" || !talkLog) return;
+      const id = state.id;
+      const choice = yesNoChoice(id, yes);
+      clear();
+      ask++;
+      pressed = true;
+      if (choice) record(id, choice, "press");
+      talkLog.turns.push({
+        ask: buttonLine(id),
+        by: "fixed",
+        topic: topicOfQuestion(id),
+        reply: null,
+        heard: "press",
+        ...(choice ? { answer: { id, choice } } : {}),
+        at: iso(now()),
+      });
+      void buttonAsk();
+    },
     skip() {
+      if (state.step === "yesno" && talkLog) {
+        const id = state.id;
+        clear();
+        ask++;
+        pressed = true;
+        talkLog.turns.push({ ask: buttonLine(id), by: "fixed", topic: topicOfQuestion(id), reply: null, heard: "skip", at: iso(now()) });
+        void buttonAsk();
+        return;
+      }
       if (state.step !== "question") return;
       const id = state.id;
       pressed = true;
@@ -693,6 +992,11 @@ export function createPhone(deps: PhoneDeps): Phone {
       after(until - now(), () => void timeUp());
     },
     finish() {
+      // 会話の途中で「送る」: 締めの文を読んで送る（T137）
+      if (state.step === "talk" && talkLog) {
+        void talkClose("send");
+        return;
+      }
       void stopRecording();
     },
     again() {
@@ -708,9 +1012,11 @@ export function createPhone(deps: PhoneDeps): Phone {
       void recording?.stop().catch(() => null);
       void transcript?.stop().catch(() => null);
       void answerTranscript?.stop().catch(() => null);
+      void talkTranscript?.stop().catch(() => null);
       recording = null;
       transcript = null;
       answerTranscript = null;
+      talkTranscript = null;
       attempt++;
       ending = false;
     },
