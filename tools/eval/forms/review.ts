@@ -7,7 +7,7 @@ import type { AskJsonContext } from "../../../lib/claude/call.ts";
 import { pseudonymInputOf } from "../../../lib/intake/extract.ts";
 import type { PersonPageRows } from "../../../lib/person.ts";
 import { pseudonymize } from "../../../lib/pseudonym/index.ts";
-import { composePlan, paintCounts, paintedFields, reviewList, runAiReview, type ReviewListRow, type ReviewReply } from "../../../lib/forms/review-ai.ts";
+import { composePlan, paintCounts, paintedFields, reviewGroups, reviewList, runAiReview, type ReviewListRow, type ReviewReply } from "../../../lib/forms/review-ai.ts";
 import { mappedSubject, reviewCount, ruleReview, sheetHash, type ReviewFinding } from "../../../lib/forms/review.ts";
 import type { FakeClient, FakeStyle } from "./fake.ts";
 import type { Sheets } from "./paper.ts";
@@ -97,7 +97,9 @@ export async function reviewPaper(args: {
     images = plan.pages.map((p) => args.blankPage(p.page)).filter((b): b is Uint8Array => b !== null);
   }
   const base = { painted: painted.size, paints: paintCounts(plan), images: kind };
-  args.fake?.expect({ kind: "review", answer: fakeReviewAnswer(list, args.fakeStyle) }, args.seed);
+  // 5 頁からは 4 頁ずつに分けて呼ぶ（T146）ので、偽の答えを呼ぶ回の数だけ積む（頁の外の行は捨てられる）
+  const answer = fakeReviewAnswer(list, args.fakeStyle);
+  for (let i = 0; i < reviewGroups(images.length).length; i++) args.fake?.expect({ kind: "review", answer }, args.seed);
   try {
     const { findings } = await runAiReview(args.ctx, { subject, rows: list, images, key });
     const detail = findings.map((f) => ({ id: f.id, field: f.field, label: f.label, kind: f.kind, level: f.level, page: f.page, ...(f.redo ? { redo: true } : {}) }));
