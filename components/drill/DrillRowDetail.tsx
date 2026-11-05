@@ -6,6 +6,7 @@
 // 本人役の赤（本人の言う事つき）は、言う事を声にした物を「録音」として置く（発災時の録音と同じ場所。T21、声は AI の音声）。
 // 仮想モードの結末の人（T53）は、上に結末の 1 文と、世界が決めた理由（街と物の事実）を AI の印つきで出す。
 // 本人・家族の頼み事のうち未対応の物（T93、通話の往復と訪問で聞いた）は、理由の行の下に灰の文字の印で（色の印にしない。済ませるのは手）。
+// その下に打てる手の候補（T126、components/drill/ActionHints の DetailHints）。押すと対応の欄でこの本人とその手を選ぶ。
 
 import { AiMark, REASON_TEXT, StateTag, TONE_TEXT } from "@/components/person/parts";
 import { CALL_UI, VIRTUAL_LABELS } from "@/lib/drill/labels";
@@ -15,6 +16,8 @@ import type { RowDetail } from "@/lib/list/detail";
 import { DETAIL_LABELS } from "@/lib/list/labels";
 import { TALK_UI } from "@/lib/drill/dialogue";
 import type { Ask } from "@/lib/drill/scenarios";
+import type { ActionHints } from "@/lib/drill/action-hints";
+import { DetailHints } from "./ActionHints";
 import { AskMarks } from "./TalkBox";
 
 const MINUTE_MS = 60_000;
@@ -27,6 +30,7 @@ export function DrillRowDetail({
   recordings = {},
   ended = null,
   asks = [],
+  hints = null,
 }: {
   detail: RowDetail;
   startedAt: string;
@@ -39,6 +43,8 @@ export function DrillRowDetail({
   ended?: { text: string; reason: string | null; ai: boolean } | null;
   /** 本人・家族の頼み事（T93、world.asks のこの人の物）。未対応だけ出す */
   asks?: ReadonlyArray<Ask>;
+  /** 打てる手の候補（T126、進行中の今の区切りだけ）。押すと対応の欄でこの本人とその手を選ぶ */
+  hints?: ActionHints | null;
 }) {
   const open = [...new Set(asks.filter((a) => a.done === null).map((a) => a.kind))];
   const ai = new Set(aiSignals);
@@ -74,6 +80,7 @@ export function DrillRowDetail({
           <AskMarks asks={open} />
         </div>
       )}
+      {hints && <DetailHints person={d.personId} hints={hints} />}
       {/* 表の幅で並べる（圧縮した表は 2 列、広げた表は 3 列） */}
       <div className="grid gap-2 @sm:grid-cols-2 @3xl:grid-cols-3">
         <div className="space-y-2">
