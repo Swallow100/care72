@@ -23,6 +23,7 @@ import { TimelineComposer } from "./TimelineComposer";
 import { ChangeHistory } from "./ChangeHistory";
 import { Fold } from "./Fold";
 import { FOLD_LABELS } from "@/lib/timeline/labels";
+import { COMPOSER_LABELS } from "@/lib/consent/labels";
 import type { PageMode, TimelineItem } from "@/lib/person";
 
 /**
@@ -44,6 +45,7 @@ export function PersonView({ view, level, edit = null }: { view: View; level: Le
               titleId={`${base}-${s.id}`}
               mode={view.mode}
               composer={view.writes.length > 0 ? <TimelineComposer personId={view.head.id} kinds={view.writes} /> : null}
+              composerOpen={view.writesOpen}
             />
           ) : (
             <SectionPanel
@@ -76,8 +78,9 @@ function historyItems(sections: readonly Section[]): TimelineItem[] {
 }
 
 /**
- * 経過の区分（T24・T63・T79・T143）。書き足しの欄はいつも見出しの下に（書ける種類があるときだけ）。
- * 行が無ければ「記録なし」の一言。平時は畳み、発災時は開く（記録があるときだけ。無ければ一言なので畳む物が無い）
+ * 経過の区分（T24・T63・T79・T143）。平時は畳み（「経過 3 件」と最後の 1 行）、発災時は記録があれば開く。行が無ければ「記録なし」の一言。
+ * 書き足しの欄（書ける種類があるときだけ）は、災害モードと医療班・行政の役（composerOpen）は見出しの下にいつも、
+ * 平時のケアマネは畳みの中（開いた時だけ。行が無ければ「追記」で開く）
  */
 function TimelinePanel({
   section,
@@ -85,12 +88,14 @@ function TimelinePanel({
   titleId,
   mode,
   composer,
+  composerOpen,
 }: {
   section: Section;
   level: Level;
   titleId: string;
   mode: PageMode;
   composer: React.ReactNode;
+  composerOpen: boolean;
 }) {
   const H = level === 1 ? "h2" : "h3";
   const items = recordItems(timelineOf(section));
@@ -99,10 +104,16 @@ function TimelinePanel({
       {section.label}
     </H>
   );
-  const between = composer ? <div className="mt-1.5">{composer}</div> : null;
+  const writer = composer ? <div className="mt-1.5">{composer}</div> : null;
+  const folded = composerOpen ? null : writer;
+  const empty = (
+    <p className="mt-1 text-xs text-muted" data-timeline-empty>
+      {FOLD_LABELS.empty}
+    </p>
+  );
   return (
     <section aria-labelledby={titleId} className="mb-2 break-inside-avoid rounded-lg bg-panel px-3 py-2.5 text-sm" data-section="timeline">
-      {items.length === 0 ? (
+      {items.length === 0 && !folded ? (
         <>
           <div className="flex items-baseline gap-2">
             {head}
@@ -110,7 +121,7 @@ function TimelinePanel({
               {FOLD_LABELS.empty}
             </span>
           </div>
-          {between}
+          {composerOpen && writer}
         </>
       ) : (
         <Fold
@@ -120,11 +131,13 @@ function TimelinePanel({
           name="timeline"
           head={head}
           count={items.length}
-          between={between}
-          defaultOpen={mode === "disaster"}
-          summary={<TimelineSummary item={items[items.length - 1]} />}
+          openLabel={COMPOSER_LABELS.title}
+          between={composerOpen ? writer : null}
+          defaultOpen={mode === "disaster" && items.length > 0}
+          summary={items.length > 0 ? <TimelineSummary item={items[items.length - 1]} /> : empty}
         >
-          <Timeline items={items} />
+          {folded}
+          {items.length > 0 && <Timeline items={items} />}
         </Fold>
       )}
     </section>
@@ -157,6 +170,12 @@ function SectionPanel({
         <StateText tone="check" className="text-xs">
           {BLANK_LABELS.unconfirmed} {section.unconfirmed}
         </StateText>
+      )}
+      {/* 見る方の画面で区分の中が全部当たり前の値だった（T143） */}
+      {section.quiet && (
+        <span className="text-xs text-muted" data-section-quiet>
+          {BLANK_LABELS.usual}
+        </span>
       )}
     </>
   );
@@ -200,7 +219,7 @@ export function Blocks({ blocks }: { blocks: readonly Block[] }) {
           case "row":
             return <RowItem key={b.row.key} row={b.row} />;
           case "clocks":
-            return <ClocksRow key="clocks" label={b.label} clocks={b.clocks} />;
+            return <ClocksRow key="clocks" label={b.label} clocks={b.clocks} quiet={b.quiet === true} />;
           case "documents":
             return b.documents.map((d) => <DocumentRow key={d.key} doc={d} />);
           case "timeline":
@@ -254,7 +273,7 @@ function DocumentRow({ doc }: { doc: DocumentView }) {
  * 時計。区分（機器・物品・薬・状態）の見出しで束ね、1 つの時計を 2 行で: 物の名前ときっかけから長さ（「停電から 2 時間」）、
  * その下に小さく出典・確認日・メモ。言葉は担当一覧・訓練の行の詳細と同じ所（lib/ledger-words.ts、components/person/ClockLines。T132）
  */
-function ClocksRow({ label, clocks }: { label: string; clocks: readonly ClockView[] }) {
+function ClocksRow({ label, clocks, quiet }: { label: string; clocks: readonly ClockView[]; quiet: boolean }) {
   return (
     <div className={LABEL_COL} data-field="clocks">
       <dt className="pt-px text-xs text-muted">{label}</dt>
@@ -264,6 +283,7 @@ function ClocksRow({ label, clocks }: { label: string; clocks: readonly ClockVie
         ) : (
           <ClockLines
             boxed
+            quiet={quiet}
             items={clocks.map((k) => ({
               id: k.id,
               text: k.text,

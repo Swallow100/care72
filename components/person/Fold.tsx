@@ -19,6 +19,7 @@ export function Fold({
   defaultOpen = false,
   children,
   name,
+  openLabel,
 }: {
   /** 中身の id（aria-controls） */
   id: string;
@@ -32,13 +33,15 @@ export function Fold({
   children: React.ReactNode;
   /** 確かめの印（data-fold） */
   name: string;
+  /** 行が 0 で開く物がある時（平時の経過の書き足しの欄）のボタンの言葉。無ければ 0 の時はボタンを出さない */
+  openLabel?: string;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
     <div data-fold={name} data-open={open ? "" : undefined}>
       <div className="flex flex-wrap items-center gap-x-2">
         {head}
-        {count > 0 && (
+        {(count > 0 || openLabel) && (
           <Button
             kind="quiet"
             size="sm"
@@ -49,7 +52,7 @@ export function Fold({
             className={`-my-1 ${open ? "[&>svg]:rotate-180" : ""}`}
             data-fold-toggle={name}
           >
-            <span className="tabular-nums">{open ? FOLD_LABELS.close : FOLD_LABELS.count(count)}</span>
+            <span className="tabular-nums">{open ? FOLD_LABELS.close : count > 0 ? FOLD_LABELS.count(count) : openLabel}</span>
           </Button>
         )}
       </div>

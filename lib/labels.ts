@@ -398,7 +398,8 @@ export const PENDING_STATUS_LABELS: Record<PendingStatus, string> = {
  * 状態としての未確認（同意・時計の値）だけ。まだ誰も入れていない欄は blank「未入力」で、数えない（T79、点検の中 11:
  * 新しく足した人の上が「未確認 0」なのに欄がほぼ全部「未確認」だった）
  */
-export const BLANK_LABELS = { unconfirmed: "未確認", blank: "未入力", none: "なし" } as const;
+/** usual は見る方の画面で、行・区分の中が全部当たり前の値（lib/intake/fields.ts の USUAL_VALUES）だったとき（T143） */
+export const BLANK_LABELS = { unconfirmed: "未確認", blank: "未入力", none: "なし", usual: "特記なし" } as const;
 
 export const TIMELINE_KIND_LABELS: Record<TimelineKind, string> = {
   signal: "安否",
@@ -453,6 +454,8 @@ export const INTAKE_LABELS = {
   overwrite: "上書き",
   busy: "処理中",
   saved: "保存済",
+  /** AI の吹き出しの保存した中身の 6 件目から（T143、lib/intake/saved-say.ts） */
+  savedMore: (n: number) => `他 ${n} 件`,
   unchanged: "変更なし",
   aiNotConfigured: "AI 未設定",
   aiLimit: "上限到達",
