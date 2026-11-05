@@ -15,6 +15,13 @@ import { FictionalMark, FictionalNote } from "@/components/drill/Fictional";
 import { IncomingCall, type IncomingCallItem } from "@/components/drill/IncomingCall";
 import { MissedCalls, type MissedItem } from "@/components/drill/MissedCalls";
 import { DrillLog } from "@/components/drill/DrillLog";
+import { DrillPanes } from "@/components/drill/DrillPanes";
+import { NewsBar } from "@/components/drill/NewsBar";
+import { newsItemsOf, StripRows } from "@/components/drill/StripRows";
+import { timeBaseOf } from "@/lib/drill/act-time";
+import { areaTargetOf } from "@/lib/drill/area-targets";
+import { buildStrip } from "@/lib/drill/strip";
+import { buildDrillLog } from "@/lib/drill/timeline";
 import { DisasterSummary } from "@/components/list/DisasterSummary";
 import { DisasterTable, type TableSlots } from "@/components/list/DisasterTable";
 import { CaseMap } from "@/components/map/CaseMap";
@@ -64,7 +71,10 @@ type Props = {
 // 訓練の画面（docs/tasks/T17.md、docs/SPEC.md「画面 4 訓練」）。横画面の分割:
 // 上に 72 時間の棒と今の時刻、左に担当一覧と同じ形の表（components/list/DisasterTable。訓練の安否で lib/triage の色が付く。圧縮できる）、
 // 真ん中に対応（T20: 対象・7 つの手・相手を選んで実行、結果の吹き出しと着信）と経過（T105: 発生・把握・対応の 3 つのタブ、components/drill/DrillLog）、
-// 右に被害状況と地図。終わった・中断した訓練は右の上に採点（T22: 数字 4 つ・前回・内訳・講評）と、上の帯に訓練記録の紙面と印刷。1536px は 3 列、1280px は 2 列（真ん中と右を重ねる）。
+// 右に被害状況と地図。終わった・中断した訓練は対応の代わりに採点（T22: 数字 4 つ・前回・内訳・講評）と、上の帯に訓練記録の紙面と印刷。
+// T128: PC で送らずに分かる並び。1536px 以上は 表（圧縮）・対応・経過・被害状況と地図 の 4 列、1280px は 表・対応か経過（切替）・被害状況と地図 の 3 列
+// （components/drill/DrillPanes）。上の 72 時間の棒は種類の段の出来事の一覧（components/drill/StripRows、lib/drill/strip.ts）と、その下に新着
+// （components/drill/NewsBar）。区域の出来事の対象は被害状況と帯と地図に（lib/drill/area-targets.ts）。
 // 上の大きな経過はケアマネの時計（手に使った時間も進む。「経過 1 時間 25 分」）。
 // 進行中は「進める」（既定）と早送り（切替）と中断。終わった・中断した訓練は再生（刻みの印か前・次で見る。Claude を呼ばない）。
 // 着信（T21）: 進行中の今の刻みの安否のうち電話の形の物（1 刻みに 2 件まで）を、画面の上に重ねた着信の画面で鳴らす（IncomingCall）。
@@ -94,6 +104,8 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
   const here = (over: { sort?: SortKey; step?: number | null; view?: DrillView } = {}) =>
     drillHref(id, { sort, step: replay ? s.shown : null, view, ...over });
   const grid = GRID[view];
+  // 対応・経過の欄の見出し（T128）。切替を出す幅では切替が見出しを兼ねるので、読み上げだけにする
+  const paneHead = grid.wide ? "sr-only 2xl:not-sr-only 2xl:mb-1.5" : "sr-only";
 
   const rows = sortCaseload(s.rows, sort);
   const sit = s.situation;
@@ -138,7 +150,14 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
       { scene: !isVirtual(s.drill.scenario), rain: { scenario: s.drill.scenario, hour: nowHour(s.state) } },
     ),
   });
-  const pins = side.pins.map((p) => ({ ...p, href: here() }));
+  // 地図: 今の避難の出来事（津波の避難・警戒レベル 4 以上）の対象の人のピンに「避難」（T128）
+  const evac = new Set([
+    ...(s.state.world.tsunami === "evacuate" ? (areaTargetOf({ kind: "tsunami", state: "evacuate" }, s.area)?.persons ?? []) : []),
+    ...(s.state.world.alertLevel !== null && s.state.world.alertLevel >= 4
+      ? (areaTargetOf({ kind: "alert", level: s.state.world.alertLevel }, s.area)?.persons ?? [])
+      : []),
+  ]);
+  const pins = side.pins.map((p) => ({ ...p, href: here(), note: evac.has(p.id) ? MAP_NOTE : null }));
 
   // 対応の欄（T20）: 対象は左の表の優先の順、色の印はルールの表の色。手の途中で進んだ刻みは状況の欄で着信に
   const actions = s.state.actions;
@@ -153,6 +172,12 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
   // 着信の記録（応答・拒否と往復、T127）。経過・着信の画面・不在着信の一覧が読む。読めなければ空
   const callRecords = await callRecordsOf(id);
   const missed = running ? missedOf(s, callRecords) : [];
+  // 手の時刻の元（訓練の中の時刻。T128、lib/drill/act-time.ts）
+  const base = timeBaseOf(s.drill.started_at, s.state.options?.night);
+  // 上の帯の段と新着（T128）。経過と同じ行から（進行中は公表の物だけ）
+  const log = buildDrillLog(s.ticks, actions, { finished: !running, calls: callRecords });
+  const strip = buildStrip(log, [...new Set(s.bands.map((b) => b.kind))]);
+  const news = running ? newsItemsOf(log, { names: s.names, people: s.area, base }) : [];
 
   return (
     <main className="mx-auto max-w-[112rem] space-y-3 px-4 py-4" data-drill={id} data-step={s.shown} data-status={s.drill.status}>
@@ -175,7 +200,7 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
         </span>
         <div className="ml-auto flex flex-wrap items-center gap-2">
           {running ? (
-            <DrillControls id={id} step={s.drill.step} done={false} clock={s.clock} left={s.left} used={s.busy.used} />
+            <DrillControls id={id} step={s.drill.step} done={false} clock={s.clock} left={s.left} />
           ) : (
             <>
               <ReplayNav shown={s.shown} reached={s.drill.step} hrefOf={(i) => here({ step: i })} />
@@ -197,7 +222,7 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
       <FictionalNote kind={fiction} />
       <AiStopBand band={stopBand} />
 
-      <section aria-label={DRILL_LABELS.elapsed} className="grid gap-x-6 gap-y-2 rounded-lg bg-panel px-3 py-3 lg:grid-cols-[11rem_minmax(0,1fr)]">
+      <section aria-label={DRILL_LABELS.elapsed} className="grid gap-x-6 gap-y-2 rounded-lg bg-panel px-3 py-3 lg:grid-cols-[10rem_minmax(0,1fr)]" data-strip-panel>
         <div>
           <div className="text-2xl font-bold tabular-nums" data-now-hour={s.state.hour} data-now-minute={s.state.minute}>
             {elapsedClockLabel(s.state.minute)}
@@ -216,11 +241,13 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
           night={s.state.options?.night === true}
           clock={s.clock}
           {...(replay ? { hrefOf: (i: number) => here({ step: i }) } : {})}
+          strip={<StripRows lanes={strip} bands={s.bands} last={s.last} now={nowHour(s.state)} world={s.state.world} names={s.names} people={s.area} base={base} />}
         />
+        {running && <NewsBar drillId={id} items={news} className="lg:col-span-2" />}
       </section>
 
       <div className={`grid items-start gap-3 ${grid.outer}`}>
-        <section aria-labelledby="drill-table" className="min-w-0 space-y-2">
+        <section aria-labelledby="drill-table" className={`min-w-0 space-y-2 ${grid.table}`}>
           <div className="flex flex-wrap items-center gap-x-3 rounded-lg bg-panel px-3 py-2.5">
             <h2 id="drill-table" className="sr-only">
               {DRILL_LABELS.page}
@@ -239,16 +266,20 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
           </div>
         </section>
 
-        <div className={`grid min-w-0 items-start gap-3 ${grid.inner}`}>
-          <div className="min-w-0 space-y-3">
-            {/* ケアマネの手（T20）: 対象・手・相手を選んで実行、結果、刻みごとの履歴 */}
-            <Panel title={DRILL_LABELS.actions} id="actions">
-              <div className="space-y-2.5">
-                {/* 鳴らさなかった電話の形の連絡（T127）。折返で連絡先電話・本人電話を打つ */}
-                {running && missed.length > 0 && (
-                  <MissedCalls drillId={id} step={s.drill.step} actions={actions.length} items={missed} fiction={fiction} />
-                )}
-                {running && (
+        {/* 対応（終わった訓練は採点）と経過（T105）。1536px 以上は 2 列、それ未満は切替（T128、components/drill/DrillPanes） */}
+        <DrillPanes
+          wide={grid.wide}
+          label={LOG_LABELS.panes}
+          mainLabel={running ? DRILL_LABELS.actions : SCORE_LABELS.score}
+          logLabel={LOG_LABELS.panel}
+          logCount={log.occur.length + log.know.length + log.act.length}
+          main={
+            running ? (
+              // ケアマネの手（T20）: 対象・手・相手を選んで実行、結果
+              <Panel title={DRILL_LABELS.actions} id="actions" head={paneHead}>
+                <div className="space-y-2.5">
+                  {/* 鳴らさなかった電話の形の連絡（T127）。折返で連絡先電話・本人電話を打つ */}
+                  {missed.length > 0 && <MissedCalls drillId={id} step={s.drill.step} actions={actions.length} items={missed} fiction={fiction} />}
                   <ActionPanel
                     drillId={id}
                     step={s.drill.step}
@@ -258,29 +289,44 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
                     fiction={fiction}
                     terms={s.terms}
                     hints={s.hints}
-                    status={<BusyLine busy={s.busy} />}
+                    status={<BusyLine busy={s.busy} base={base} />}
                   />
-                )}
-                {running && latest && (
-                  <LatestResult
-                    action={latest}
-                    names={s.names}
-                    ticks={s.ticks}
-                    voiceOf={voiceOf}
-                    fiction={fiction}
-                    refused={s.refused}
-                    talk={{ drillId: id, step: s.drill.step, actions: actions.length }}
-                  />
-                )}
-              </div>
-            </Panel>
-            {/* 経過（T105）: 発生・把握・対応の 3 つのタブ。前の「状況」と対応の履歴をここに。行の分け方は lib/drill/timeline.ts */}
-            <Panel title={LOG_LABELS.panel} id="log">
+                  {latest && (
+                    <LatestResult
+                      action={latest}
+                      names={s.names}
+                      ticks={s.ticks}
+                      voiceOf={voiceOf}
+                      fiction={fiction}
+                      refused={s.refused}
+                      talk={{ drillId: id, step: s.drill.step, actions: actions.length }}
+                      base={base}
+                    />
+                  )}
+                </div>
+              </Panel>
+            ) : scored ? (
+              // 採点（T22）: 終わった・中断した訓練の数字 4 つ・前回・内訳・講評。読めなければ出さない（訓練の再生はそのまま）
+              <UiPanel aria-label={SCORE_LABELS.score} data-panel="score">
+                <ScorePanel
+                  drillId={id}
+                  view={scoreView(scored.record.score, scored.record.screen.names, scored.record.previous, base)}
+                  review={scored.record.review}
+                  canReview={scored.canReview}
+                  names={scored.record.screen.names}
+                />
+              </UiPanel>
+            ) : null
+          }
+          log={
+            // 経過（T105）: 発生・把握・対応の 3 つのタブ。行の分け方は lib/drill/timeline.ts
+            <Panel title={LOG_LABELS.panel} id="log" head={paneHead}>
               <DrillLog
                 ticks={s.ticks}
                 actions={actions}
                 names={s.names}
                 startedAt={s.drill.started_at}
+                night={s.state.options?.night === true}
                 finished={!running}
                 initial={parseLogTab(Array.isArray(q.log) ? q.log[0] : q.log)}
                 fiction={fiction}
@@ -290,34 +336,30 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
                 {...(running ? { undo: { drillId: id, step: s.drill.step, actions: actions.length, act: s.undoable } } : {})}
               />
             </Panel>
-          </div>
-          <div className="min-w-0 space-y-3">
-            {/* 採点（T22）: 終わった・中断した訓練の数字 4 つ・前回・内訳・講評。読めなければ出さない（訓練の再生はそのまま） */}
-            {scored && (
-              <UiPanel aria-label={SCORE_LABELS.score} data-panel="score">
-                <ScorePanel
-                  drillId={id}
-                  view={scoreView(scored.record.score, scored.record.screen.names, scored.record.previous)}
-                  review={scored.record.review}
-                  canReview={scored.canReview}
-                  names={scored.record.screen.names}
-                />
-              </UiPanel>
-            )}
-            <Panel title={DRILL_LABELS.damage} id="damage">
-              <DamagePanel kind={drillKindOf(s.drill.scenario, s.state.world)} world={s.state.world} now={s.state.hour} names={s.names} hidePrivate={running} />
-            </Panel>
-            <Panel title={DRILL_LABELS.map} id="map">
-              {/* 「位置は架空」はデモ事業所（種の架空の位置）だけ。本物の事業所の訓練は台帳の位置なので出さない（T114） */}
-              <CaseMap
-                pins={pins}
-                layers={side.demo?.layers ?? []}
-                demo={side.demo}
-                unplaced={side.unplaced}
-                fictional={principal.office?.kind === "demo"}
-              />
-            </Panel>
-          </div>
+          }
+        />
+
+        <div className="min-w-0 space-y-3">
+          <Panel title={DRILL_LABELS.damage} id="damage">
+            <DamagePanel
+              kind={drillKindOf(s.drill.scenario, s.state.world)}
+              world={s.state.world}
+              now={s.state.hour}
+              names={s.names}
+              hidePrivate={running}
+              people={s.area}
+            />
+          </Panel>
+          <Panel title={DRILL_LABELS.map} id="map">
+            {/* 「位置は架空」はデモ事業所（種の架空の位置）だけ。本物の事業所の訓練は台帳の位置なので出さない（T114） */}
+            <CaseMap
+              pins={pins}
+              layers={side.demo?.layers ?? []}
+              demo={side.demo}
+              unplaced={side.unplaced}
+              fictional={principal.office?.kind === "demo"}
+            />
+          </Panel>
         </div>
       </div>
       {running && (
@@ -431,30 +473,33 @@ async function voiceReady(): Promise<boolean> {
 }
 
 /**
- * 列の組み方。左は表、右は真ん中（状況・対応）と右（被害状況・地図）の組。
- * 圧縮（4 列の表 26rem）は 1280px で 3 列に並ぶ。全部の列（約 64rem）は 1536px から右の組を 28rem に重ね、
- * それ未満は右の組を表の下に回す（表を横に送らない）。auto は 1536px 未満で圧縮、以上で全部の列
+ * 列の組み方（T128）。子は 表・対応と経過（DrillPanes）・被害状況と地図 の 3 つ。
+ * - 圧縮（auto も同じ）: 1536px 以上は 表 26rem・対応と経過の 2 列・被害状況と地図 22rem（4 列に見える）。1280px は 表・対応か経過の切替・
+ *   被害状況と地図 20rem。1024px は表を上に全部の幅で、下に 対応か経過・被害状況と地図。それ未満は縦に積む
+ * - 展開（全部の列の表、約 64rem）: 1536px 以上は 表・右の 28rem（対応か経過の切替の下に被害状況と地図）。それ未満は表を上に
+ * wide は対応と経過を 1536px 以上で 2 列に並べるか（展開の右の列は狭いので切替のまま）
  */
-const GRID: Record<DrillView, { outer: string; inner: string }> = {
-  compact: { outer: "xl:grid-cols-[26rem_minmax(0,1fr)]", inner: "lg:grid-cols-[minmax(0,1fr)_20rem]" },
-  full: { outer: "2xl:grid-cols-[minmax(0,1fr)_28rem]", inner: "lg:grid-cols-2 2xl:grid-cols-1" },
-  auto: {
-    outer: "xl:grid-cols-[26rem_minmax(0,1fr)] 2xl:grid-cols-[minmax(0,1fr)_28rem]",
-    inner: "lg:grid-cols-[minmax(0,1fr)_20rem] 2xl:grid-cols-1",
+const COMPACT = {
+  outer: "lg:grid-cols-[minmax(0,1fr)_20rem] xl:grid-cols-[26rem_minmax(0,1fr)_20rem] 2xl:grid-cols-[26rem_minmax(0,1fr)_22rem]",
+  table: "lg:col-span-2 xl:col-span-1",
+  wide: true,
+};
+const GRID: Record<DrillView, { outer: string; table: string; wide: boolean }> = {
+  compact: COMPACT,
+  auto: COMPACT,
+  full: {
+    outer: "lg:grid-cols-[minmax(0,1fr)_20rem] 2xl:grid-cols-[minmax(0,1fr)_28rem]",
+    table: "lg:col-span-2 2xl:col-span-1 2xl:row-span-2",
+    wide: false,
   },
 };
 
-/** 圧縮・展開。auto は幅で見えている方の逆を出す（1536px 未満は展開、以上は圧縮） */
+/** 地図のピンの「避難」（T128。今の津波の避難・警戒レベル 4 以上の対象の人） */
+const MAP_NOTE = "避難";
+
+/** 圧縮・展開。auto は圧縮と同じ（T128）なので展開を出す */
 function ViewToggle({ view, hrefOf }: { view: DrillView; hrefOf: (v: DrillView) => string }) {
   const cls = "relative ml-auto rounded px-2 py-1 text-sm text-muted";
-  if (view === "compact") {
-    return (
-      <Link href={hrefOf("full")} className={cls} data-press data-view-toggle="full">
-        {DRILL_LABELS.expand}
-        <LinkPending />
-      </Link>
-    );
-  }
   if (view === "full") {
     return (
       <Link href={hrefOf("compact")} className={cls} data-press data-view-toggle="compact">
@@ -464,16 +509,10 @@ function ViewToggle({ view, hrefOf }: { view: DrillView; hrefOf: (v: DrillView) 
     );
   }
   return (
-    <>
-      <Link href={hrefOf("full")} className={`${cls} 2xl:hidden`} data-press data-view-toggle="full">
-        {DRILL_LABELS.expand}
-        <LinkPending />
-      </Link>
-      <Link href={hrefOf("compact")} className={`${cls} hidden 2xl:inline`} data-press data-view-toggle="compact">
-        {DRILL_LABELS.compact}
-        <LinkPending />
-      </Link>
-    </>
+    <Link href={hrefOf("full")} className={cls} data-press data-view-toggle="full">
+      {DRILL_LABELS.expand}
+      <LinkPending />
+    </Link>
   );
 }
 
@@ -490,10 +529,10 @@ async function load(scope: DrillScope, id: string, want: number | null): Promise
   }
 }
 
-function Panel({ title, id, children }: { title: string; id: string; children: React.ReactNode }) {
+function Panel({ title, id, children, head = "mb-1.5" }: { title: string; id: string; children: React.ReactNode; head?: string }) {
   return (
     <UiPanel aria-labelledby={`drill-${id}`} data-panel={id}>
-      <PanelHead id={`drill-${id}`} title={title} className="mb-1.5" />
+      <PanelHead id={`drill-${id}`} title={title} className={head} />
       {children}
     </UiPanel>
   );

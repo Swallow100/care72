@@ -4,7 +4,7 @@
 // 事業所に進行中があれば断られる（実施中あり）。そのときは一覧の進行中から再開か中断。
 // 並びは lib/drill の SCENARIO_ORDER のまま。主の操作の色は先頭（大雨想定）だけで、ほかは無色。押してから画面が移るまで、押したボタンに灰色を残す（data-pending）。
 // T124: 10 分版を外した（前からある 10 分版の記録は一覧・再生・紙で読める）。想定のボタンの下に進め方の 1 行
-// （訓練の画面の並びと同じ 手の分・30 分・1 時間・3 時間・次まで、主の操作は次まで。最後まで一通り見るのは早送り＝次までの繰り返し）。
+// （訓練の画面の並びと同じ。T128 で訓練の画面の進め方を次までだけにしたので「進め方 次まで」、最後まで一通り見るのは自動進行＝次までの繰り返し）。
 //
 // 設定（T59）: 想定のボタンの前に畳んだ「設定」。開くと参加者（担当一覧の人のチェック。既定は全員）・職員（既定は想定の表の値）・夜間発災。
 // 閉じたまま・何も変えずに想定を押せば、送る物は前と同じ { scenario } だけ（選んだ物だけ options に入れる）。
@@ -33,15 +33,12 @@ import { LABEL } from "@/components/ui/Panel";
 import { Select } from "@/components/ui/Select";
 import { AiStatusMark } from "@/components/ui/AiStatus";
 import { aiRemaining, aiUsable, type AiStatus } from "@/lib/claude/status";
-import { CLOCK_LABELS, CLOCK_STEP_LABELS, CLOCK_STEPS } from "@/lib/drill/clock";
+import { CLOCK_LABELS } from "@/lib/drill/clock";
 import { estimateClockCalls, overLimit } from "@/lib/drill/estimate";
 import { AI_STOP_UI, DRILL_LABELS, SCENARIO_LABELS, T124_LABELS, T59_LABELS, T70_LABELS } from "@/lib/drill/labels";
 import { isVirtual } from "@/lib/drill/scenarios";
 import { STAFF_MAX, T104_LABELS } from "@/lib/drill/options";
 import { SCALE_CHOICES, scaleKey, scaleLabel, scaleOfKey, type DrillScale } from "@/lib/drill/scale";
-
-/** 進め方（訓練の画面の DrillControls と同じ並び。最後の次までが主の操作） */
-const PACES: ReadonlyArray<string> = [CLOCK_LABELS.acts, ...CLOCK_STEPS.map((m) => CLOCK_STEP_LABELS[m]), CLOCK_LABELS.next];
 
 /**
  * 開始の POST の中身（T124）。どの想定も連続の時計（T90）と、時間と状況で変わる手（T110）で始める。
@@ -189,10 +186,10 @@ export function StartButtons({
           {error}
         </span>
       )}
-      {/* T124: 進め方（訓練の画面と同じ並び。主の次までと、最後まで見る早送りを本文色で） */}
+      {/* T124: 進め方（訓練の画面と同じ。T128 で次までだけ）と、最後まで見る自動進行（前の早送り）を本文色で */}
       <p className="flex w-full flex-wrap items-baseline gap-x-3 gap-y-0.5 text-xs text-muted" data-start-pace>
         <span>
-          {T124_LABELS.pace} {PACES.slice(0, -1).join("・")}・<span className="font-bold text-ink">{CLOCK_LABELS.next}</span>
+          {T124_LABELS.pace} <span className="font-bold text-ink">{CLOCK_LABELS.next}</span>
         </span>
         <span>
           {T124_LABELS.toEnd} <span className="font-bold text-ink">{DRILL_LABELS.fastForward}</span>

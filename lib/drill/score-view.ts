@@ -3,6 +3,7 @@
 // 名前は台帳の id から引く（記録には名前が無い）。引けなければ id のまま。
 
 import type { DrillScenario } from "../db/types.ts";
+import { clockText, type TimeBase } from "./act-time.ts";
 import { ACTION_LABELS, ACTION_UI, SCENARIO_LABELS } from "./labels.ts";
 import {
   askWords,
@@ -62,7 +63,8 @@ export function extraText(c: ScoreExtraView["counts"]): string {
   ].join("・");
 }
 
-function extraView(score: DrillScore, name: (p: string) => string): ScoreExtraView {
+/** 手を打った時刻（T128。訓練の中の時刻「14:05」。元が無ければ発災からの経過） */
+function extraView(score: DrillScore, name: (p: string) => string, base: TimeBase | null): ScoreExtraView {
   return {
     counts: extrasCount(score),
     wasted: (score.wasted?.rows ?? []).map((r) => ({
@@ -71,7 +73,7 @@ function extraView(score: DrillScore, name: (p: string) => string): ScoreExtraVi
       name: r.person ? name(r.person) : ACTION_UI.whole,
       act: ACTION_LABELS[r.kind] ?? r.kind,
       why: WASTE_LABELS[r.why] ?? r.why,
-      at: minuteText(r.atMinute),
+      at: clockText(base, r.atMinute),
     })),
     repeat: (score.repeat?.rows ?? []).map((r) => ({
       action: r.action,
@@ -79,7 +81,7 @@ function extraView(score: DrillScore, name: (p: string) => string): ScoreExtraVi
       name: name(r.person),
       act: ACTION_LABELS[r.kind] ?? r.kind,
       gap: r.gap,
-      at: minuteText(r.atMinute),
+      at: clockText(base, r.atMinute),
     })),
     asks: (score.asks?.rows ?? []).map((r) => ({ person: r.person, name: name(r.person), kinds: askWords(r.kinds) })),
   };
@@ -105,7 +107,8 @@ export function numberText(key: ScoreKey, n: ScoreNumbers): string {
 
 export const SCORE_KEYS: ReadonlyArray<ScoreKey> = ["order", "report", "form9", "reached", "ended"];
 
-export function scoreView(score: DrillScore, names: Names, previous: PreviousNumbers | null): ScoreView {
+/** base は手を打った時刻の元（T128。訓練の中の時刻で書く）。無ければ発災からの経過 */
+export function scoreView(score: DrillScore, names: Names, previous: PreviousNumbers | null, base: TimeBase | null = null): ScoreView {
   const now = scoreNumbers(score);
   const name = (p: string) => names[p] ?? p;
   // 仮想モード（T53）だけ結末（AI 筋書）の行を足し、条件到達に「時計計算」と添えて別の数と分かるように
@@ -137,7 +140,7 @@ export function scoreView(score: DrillScore, names: Names, previous: PreviousNum
       `${SCORE_LABELS.open} ${score.calls.open}`,
     ].join("・"),
     previous: previous ? { id: previous.id, scenario: previous.scenario, startedAt: previous.startedAt } : null,
-    extra: extraView(score, name),
+    extra: extraView(score, name, base),
   };
 }
 
