@@ -7,9 +7,10 @@ import { type Assets, audioPath, useAssets } from "./assets";
 import { GroundProvider, usePalette } from "./ground";
 import { Footage } from "./parts/Footage";
 import { Framed, framedSize } from "./parts/Frame";
-import { BigNumber, Compare, EndCard, Flow, Memo, Models, Quote, Ring72, Plate, Rules, Share, Stage, TextCard, Title } from "./parts/Graphics";
-import { Carousel } from "./parts/Carousel";
+import { BigNumber, Compare, EndCard, Flow, Memo, Models, Quote, Plate, Rules, Share, Stage, TextCard, Title } from "./parts/Graphics";
+import { Carousel, carouselHead } from "./parts/Carousel";
 import { Kinetic, type KineticWord } from "./parts/Kinetic";
+import { LogoClock } from "./parts/LogoClock";
 import { Marker } from "./parts/Marker";
 import { CROSS, EASE_IN_OUT, STAGGER, progress, rise } from "./parts/motion";
 import { Caption, Header, Subtitle } from "./parts/Overlay";
@@ -207,7 +208,7 @@ const Backdrop: React.FC<{ shot: Shot; assets: Assets; duration: number }> = ({ 
   return null;
 };
 
-const ShotView: React.FC<{ shot: Shot; assets: Assets; entryDelay?: number }> = ({ shot, assets, entryDelay = 0 }) => {
+const ShotView: React.FC<{ shot: Shot; assets: Assets; entryDelay?: number; next?: Shot }> = ({ shot, assets, entryDelay = 0, next }) => {
   const duration = f(shot.end) - f(shot.at);
   const S = LAYOUT.stage;
   let body: React.ReactNode = null;
@@ -278,19 +279,26 @@ const ShotView: React.FC<{ shot: Shot; assets: Assets; entryDelay?: number }> = 
         </>
       );
       break;
-    case "ring":
+    case "ring": {
+      // アプリの印を 72 時間の時計にする（parts/LogoClock.tsx）。声の「72 は」で時計へ、言葉の間に白い点が 0 → 72 時間を回る。
+      // 次が重ねずに切り替える 3 本立てなら、最後に印がその見出しの印の所へ縮んで収まる
+      const words = kineticWords(shot, assets);
+      const markAt = markFrames(shot, assets)[0] ?? Math.round(duration * 0.3);
+      const sweep: [number, number] = [words[0]?.frame ?? markAt + 24, Math.min(duration - 18, (words[words.length - 1]?.frame ?? markAt + 50) + 32)];
       body = (
-        <Ring72
-          label={shot.lines?.[0] ?? "72 時間"}
+        <LogoClock
+          name={shot.lines?.[0] ?? "ケア72"}
           duration={duration}
-          sub={shot.sub}
-          titleAt={shot.beats?.[0] !== undefined ? f(shot.beats[0]) : undefined}
-          markAt={markFrames(shot, assets)[0]}
+          nameAt={shot.beats?.[0] !== undefined ? f(shot.beats[0]) - 3 : 12}
+          markAt={markAt}
+          sweep={sweep}
+          to={next?.kind === "carousel" && next.cutIn ? carouselHead(next.lines ?? []).mark : undefined}
         >
-          {shot.cues?.length ? <Kinetic words={kineticWords(shot, assets)} align="center" marker={shot.marker} /> : null}
-        </Ring72>
+          {words.length ? <Kinetic words={words} align="left" marker={shot.marker} /> : null}
+        </LogoClock>
       );
       break;
+    }
     case "number":
       body = (
         <>
@@ -566,6 +574,8 @@ export const Care72Video: React.FC<{ showEn: boolean }> = ({ showEn }) => {
   const shots = SCENES.flatMap((scene) => scene.shots.map((shot) => ({ scene, shot })));
   // 段の最初の絵で、前の段と地が違う（幕で入れ替わる）
   const wipeIn = (k: number) => k > 0 && k < shots.length && shots[k].shot === shots[k].scene.shots[0] && groundChanges(shots[k].scene);
+  // 重ねずに切り替える絵（前の絵の印が収まる続き）
+  const cutIn = (k: number) => k > 0 && k < shots.length && shots[k].shot.cutIn === true;
   const toolFrom = f(TOOLS[0]?.at ?? 0);
   const toolTo = f(TOOLS[TOOLS.length - 1]?.end ?? 0);
   return (
@@ -575,12 +585,17 @@ export const Care72Video: React.FC<{ showEn: boolean }> = ({ showEn }) => {
         const length = f(shot.end) - f(shot.at);
         const last = k === shots.length - 1;
         // 次の段へ幕で替わる絵は、幕が覆い終わるまで残す
-        const extended = length + (last ? 0 : wipeIn(k + 1) ? WIPE : CROSS);
+        const extended = length + (last ? 0 : wipeIn(k + 1) ? WIPE : cutIn(k + 1) ? 0 : CROSS);
         return (
           <Sequence key={`${shot.at}`} from={f(shot.at)} durationInFrames={extended} name={`${scene.id} ${shot.label}`}>
             <GroundProvider ground={scene.ground}>
-              <Faded length={extended} fadeIn={k > 0} fadeOut={!last} wipeIn={wipeIn(k)} wipeOut={!last && wipeIn(k + 1)}>
-                <ShotView shot={shot} assets={assets} entryDelay={FLY_SCENES.has(scene.id) && shot === scene.shots[0] ? entryDelay(scene) : 0} />
+              <Faded length={extended} fadeIn={k > 0 && !cutIn(k)} fadeOut={!last && !cutIn(k + 1)} wipeIn={wipeIn(k)} wipeOut={!last && wipeIn(k + 1)}>
+                <ShotView
+                  shot={shot}
+                  assets={assets}
+                  entryDelay={FLY_SCENES.has(scene.id) && shot === scene.shots[0] ? entryDelay(scene) : 0}
+                  next={shots[k + 1]?.shot}
+                />
               </Faded>
             </GroundProvider>
           </Sequence>
