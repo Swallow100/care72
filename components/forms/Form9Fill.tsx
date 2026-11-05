@@ -136,7 +136,8 @@ export function Form9Fill({ slots, children }: { slots: Form9Slot[]; children: R
                   <span key={key}>
                     <textarea
                       className="pf-input"
-                      style={{ ...style, fontSize: `${font.fontPt}pt` }}
+                      // 紙の白で欄の今の字を覆う（書いている字と重ねない）
+                      style={{ ...style, fontSize: `${font.fontPt}pt`, background: "#fff" }}
                       value={editing.text}
                       aria-label={`${s.name} ${s.col}`}
                       maxLength={200}
