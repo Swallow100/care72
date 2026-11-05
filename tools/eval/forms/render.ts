@@ -4,7 +4,21 @@
 // Chrome が無い端末では null（絵・PDF・紙の入力は飛ばし、飛ばした数を記録する）。
 
 import puppeteer, { type Browser, type Page } from "puppeteer-core";
+import { fileURLToPath } from "node:url";
 import { chromePath } from "../../print/chrome.ts";
+import type { ComposePage } from "../../../lib/forms/review-ai.ts";
+
+/** 照合の絵の描き方（lib/forms/review-compose.ts を 1 つの script に。初めの 1 回だけ作る） */
+let composeScript: Promise<string> | null = null;
+function composeBundle(): Promise<string> {
+  composeScript ??= (async () => {
+    const { build } = await import("esbuild");
+    const entry = new URL("../../../lib/forms/review-compose.ts", import.meta.url);
+    const r = await build({ entryPoints: [fileURLToPath(entry)], bundle: true, format: "iife", globalName: "RC", platform: "browser", write: false, logLevel: "silent" });
+    return r.outputFiles[0].text;
+  })();
+  return composeScript;
+}
 
 /** 頁の比の矩形（左上 0・右下 1） */
 export type Ratio = { x: number; y: number; w: number; h: number };
@@ -16,6 +30,11 @@ export type Renderer = {
   pdf(html: string): Promise<{ bytes: Uint8Array; secrets: Ratio[][] }>;
   /** 紙の HTML を PDF と 1 頁目の PNG（png は無ければ作らない） */
   paper(html: string, o: { png: boolean }): Promise<{ pdf: Uint8Array; png: Uint8Array | null }>;
+  /**
+   * 紙の AI の照合（T136）に送る頁の絵。アプリと同じ描き方（lib/forms/review-compose.ts の composePage）をこの頁で動かす。
+   * href は頁の画像の data: の URL。塗った後の JPEG（付け足しなし）と塗った数
+   */
+  compose(page: ComposePage, family: string): Promise<{ bytes: Uint8Array; paints: number }>;
   close(): Promise<void>;
 };
 
@@ -78,6 +97,22 @@ export async function launchRenderer(): Promise<Renderer | null> {
         if (first) png = new Uint8Array(await first.screenshot({ type: "png" }));
       }
       return { pdf, png };
+    },
+    async compose(plan, family) {
+      await page.setViewport({ width: 800, height: 600, deviceScaleFactor: 1 });
+      await page.emulateMediaType("screen");
+      await page.setContent(`<!doctype html><html lang="ja"><head><meta charset="utf-8"></head><body></body></html>`, { waitUntil: "load" });
+      await page.addScriptTag({ content: await composeBundle() });
+      const got = await page.evaluate(
+        async (p, fam) => {
+          const rc = (window as unknown as { RC: { composePage: (x: unknown, f: string) => Promise<{ blob: Blob; paints: number }> } }).RC;
+          const { blob, paints } = await rc.composePage(p, fam);
+          return { bytes: Array.from(new Uint8Array(await blob.arrayBuffer())), paints };
+        },
+        plan,
+        family,
+      );
+      return { bytes: new Uint8Array(got.bytes), paints: got.paints };
     },
     async close() {
       // Windows では browser.close() が数分かかることがある（後片付けの待ち）。5 秒で切り、残りは止める

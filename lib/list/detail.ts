@@ -20,6 +20,7 @@ import { clockText, leftText, nightText, type ClockText } from "../ledger-words.
 import { clockTone, COLOR_TONES, telHref, type StateTone } from "../person.ts";
 import { summaryOf, type SignalSummary } from "../classify/view.ts";
 import type { HearingPlace, HearingPosition } from "../signals/hearing.ts";
+import { readTalkLog, type TalkLog } from "../signals/talk.ts";
 import { signalLogBody } from "../signals/labels.ts";
 import { clockRemaining, type Color, type Override, type Situation, type TriageResult } from "../triage/index.ts";
 import { callLogsOf, type CallEntryRow, type CallLog } from "./calls.ts";
@@ -68,6 +69,7 @@ export type SignalForDetail = Pick<
       | "ai_summary_at"
       | "ai_summary_error"
       | "summary"
+      | "talk"
     >
   >;
 
@@ -152,6 +154,8 @@ export type DetailSignal = {
   place: HearingPlace;
   /** 録音のまとめ（T69b）。ケアマネが直した文 → Claude の文の順。色と連絡の順には使わない */
   summary: SignalSummary;
+  /** 声の聞き取りの会話（T137）。問い・本人の言葉・AI の印・応答不明瞭。無ければ null。色と連絡の順には使わない */
+  talk: TalkLog | null;
   /**
    * 信号の行そのもの（サーバーの中だけで使う）。分類の部品（T12 の components/list/Classification.tsx）は
    * lib/classify/view.ts の classViewOf にこの行（ai_* の列を含む）を渡して形を作る
@@ -285,6 +289,7 @@ function detailSignal(s: SignalForDetail, shelters: HearingPlace["shelters"]): D
     classifiedBy: s.classified_by,
     place: { shelters, reported: reportedOf(s) },
     summary: summaryOf(s),
+    talk: readTalkLog(s.talk),
     row: s,
   };
 }

@@ -43,7 +43,15 @@ export type PromptPlayer = {
   play(): Promise<PromptResult>;
   /** 声の問い（T49）を端末の読み上げで 1 回読み、終わるのを待つ。読み上げが無ければ none */
   say(text: string): Promise<PromptResult>;
+  /**
+   * 会話の 1 文（T137）。Gemini の声の URL があれば鳴らし、LINE_START_MS で鳴り始めない・鳴らない時は端末の読み上げで同じ文を読む。
+   * URL が無ければ端末の読み上げ
+   */
+  line(text: string, url: string | null): Promise<PromptResult>;
 };
+
+/** 会話の 1 文の声が鳴り始めるのを待つ上限（決まった文の声を初めて作る時など。過ぎたら端末の読み上げ） */
+export const LINE_START_MS = 4_000;
 
 function wait(start: (done: (ok: boolean) => void) => void, timeoutMs: number): Promise<boolean> {
   return new Promise((resolve) => {
@@ -76,6 +84,8 @@ export function createPromptPlayer(deps: {
   /** Gemini の声が使えない（読み込めない・鳴らせない） */
   let audioFailed = audio === null;
   let primed: Promise<void> | null = null;
+  /** 音の要素に今入っている声（会話の 1 文を鳴らしたあと、定型文の声に戻すため） */
+  let src: string | null = null;
 
   return {
     prime() {
@@ -85,6 +95,7 @@ export function createPromptPlayer(deps: {
         };
         audio.muted = true;
         audio.src = deps.voiceUrl;
+        src = deps.voiceUrl;
         primed = audio
           .play()
           .then(() => {
@@ -116,6 +127,10 @@ export function createPromptPlayer(deps: {
           audio.onended = () => done(true);
           audio.onerror = () => done(false);
           audio.muted = false;
+          if (src !== deps.voiceUrl) {
+            audio.src = deps.voiceUrl;
+            src = deps.voiceUrl;
+          }
           audio.currentTime = 0;
           audio.play().catch(() => done(false));
         }, timeoutMs);
@@ -125,6 +140,37 @@ export function createPromptPlayer(deps: {
       return speakWith(VOICE_PROMPT_TEXT);
     },
     say(text) {
+      return speakWith(text);
+    },
+    async line(text, url) {
+      if (primed) await primed;
+      if (audio && url) {
+        const ok = await wait((done) => {
+          const late = setTimeout(() => done(false), LINE_START_MS);
+          audio.onended = () => done(true);
+          audio.onerror = () => {
+            clearTimeout(late);
+            done(false);
+          };
+          audio.muted = false;
+          audio.src = url;
+          src = url;
+          audio.currentTime = 0;
+          audio.play().then(
+            () => clearTimeout(late),
+            () => {
+              clearTimeout(late);
+              done(false);
+            },
+          );
+        }, timeoutMs);
+        if (ok) return "audio";
+        try {
+          audio.pause();
+        } catch {
+          // 止められない
+        }
+      }
       return speakWith(text);
     },
   };

@@ -29,6 +29,7 @@ import {
   type SignalWriterKind,
 } from "./labels.ts";
 import { legacyColumnsOf, type Answers, type HearingField } from "./questions.ts";
+import { readTalkLog, type TalkLog } from "./talk.ts";
 
 /** 書いた人。本人のスマホは本人、家族のスマホはログインの連絡先の行 */
 export type SignalWriter = { kind: "self" } | { kind: "contact"; contactId: string };
@@ -431,5 +432,37 @@ export async function saveLocation(
     )
     .bind(row.id, s.personId, loc.lat, loc.lng, loc.accuracyM, loc.at)
     .run();
+  return { ok: true, changed: true };
+}
+
+// ---------- 声の聞き取りの会話（T137） ----------
+
+export type SaveTalkResult = { ok: true; changed: boolean } | { ok: false; error: "not_found" | "invalid" };
+
+/** 会話の記録の強さ（後勝ちの比べ方）: 締めた物が勝ち、同じなら往復の多い物 */
+const talkRank = (log: TalkLog) => (log.end !== null ? 1000 : 0) + log.turns.length;
+
+/**
+ * 本人の赤の信号に会話の記録を書く（lib/signals/talk.ts の TalkLog）。端末は聞くたびに、それまでの全部を送る（後勝ち）。
+ * 前の記録より弱い物（締めていない・往復が少ない）は書かない（遅れて届いた古い送りで上書きしない）。
+ * 本人だけ・自分の赤の信号だけ（家族・ほかの人・緑・訓練の信号は断る）。平時かどうかは見ない（録音と同じ。通信が戻ってから届くことがある）。
+ * 経過の行は足さない（会話は安否の行の詳細に出す）。色と順は変わらない（ルールの表に渡さない）
+ */
+export async function saveTalk(db: D1Database, s: SignalScope, signalId: string, log: TalkLog): Promise<SaveTalkResult> {
+  if (s.writer.kind !== "self") return { ok: false, error: "not_found" };
+  const row = await db
+    .prepare(
+      `SELECT s.id, s.color, s.talk FROM signals s JOIN people p ON p.id = s.person_id
+        WHERE s.id = ?1 AND s.person_id = ?2 AND p.office_id = ?3 AND s.drill_id IS NULL AND s.source = 'self'`,
+    )
+    .bind(signalId, s.personId, s.officeId)
+    .first<{ id: string; color: string; talk: string | null }>();
+  if (!row) return { ok: false, error: "not_found" };
+  if (row.color !== "red") return { ok: false, error: "invalid" };
+  const json = JSON.stringify(log);
+  if (row.talk === json) return { ok: true, changed: false };
+  const before = readTalkLog(row.talk);
+  if (before && talkRank(before) > talkRank(log)) return { ok: true, changed: false };
+  await db.prepare(`UPDATE signals SET talk = ?3 WHERE id = ?1 AND person_id = ?2`).bind(row.id, s.personId, json).run();
   return { ok: true, changed: true };
 }

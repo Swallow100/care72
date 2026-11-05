@@ -12,6 +12,7 @@ import { roleAllows } from "../auth/roles.ts";
 import { FamilySignalBodySchema, SignalBodySchema, UUID } from "./body.ts";
 import { MEMO_TEXT_MAX } from "./hearing.ts";
 import { HEARING_FIELDS, parseAnswers, type HearingField } from "./questions.ts";
+import { parseTalkLog, type TalkLog } from "./talk.ts";
 import {
   attachRecording,
   parseLocation,
@@ -22,6 +23,7 @@ import {
   MAX_RECORDING_SEC,
   MAX_TRANSCRIPT_LENGTH,
   saveSignal,
+  saveTalk,
   signalScope,
   type RecordingBucket,
   type RecordingInput,
@@ -88,13 +90,17 @@ function parseIso(v: FormDataEntryValue | null): string | null {
   return s && s.length <= 40 && !Number.isNaN(Date.parse(s)) ? s : null;
 }
 
+/** 録音の欄の会話の記録の上限（字） */
+export const TALK_FORM_MAX = 24_000;
+
 /** 録音を信号に添えたあと（初めて添えたときだけ）。分類（T12）をここから走らせる */
 export type AttachedRecording = { officeId: string; personId: string; signalId: string; durationSec: number | null };
 export type RecordingHooks = { afterAttach?: (a: AttachedRecording) => void };
 
 /**
  * 録音の POST（multipart）。欄は signal（信号の id）・audio（音声のファイル、無くてもよい）・transcript（文字起こし）・
- * durationSec・recordedAt・sentAt。音声も文字起こしも無ければ 400。
+ * durationSec・recordedAt・sentAt・talk（声の聞き取りの会話の記録の JSON、T137。無くてもよい）。音声も文字起こしも会話も無ければ 400。
+ * 会話があれば信号に書く（後勝ち）。音声も文字起こしも無く会話だけ（無音のまま ボタンで答えた）なら会話だけ書いて 200（録音は無い）。
  * 初めて添えたときだけ hooks.afterAttach を呼ぶ（送り直し・重なりでは呼ばない）。応答は待たせない（呼ぶ側が waitUntil で走らせる）
  */
 export async function recordingPost(
@@ -120,6 +126,17 @@ export async function recordingPost(
     return signalError("invalid");
   }
   if (transcript !== null && transcript.length > MAX_TRANSCRIPT_LENGTH) return signalError("invalid");
+  const talkRaw = text(form.get("talk"));
+  let talk: TalkLog | null = null;
+  if (talkRaw !== null && talkRaw !== "") {
+    if (talkRaw.length > TALK_FORM_MAX) return signalError("invalid");
+    try {
+      talk = parseTalkLog(JSON.parse(talkRaw));
+    } catch {
+      talk = null;
+    }
+    if (!talk) return signalError("invalid");
+  }
 
   const file = form.get("audio");
   let audio: RecordingInput["audio"] = null;
@@ -129,6 +146,12 @@ export async function recordingPost(
     if (file.size > 0) audio = { bytes: await file.arrayBuffer(), type: file.type };
   }
 
+  if (talk) {
+    const t = await saveTalk(db, scope, signalId, talk);
+    if (!t.ok) return signalError(t.error);
+    // 会話だけ（音声も文字起こしも無い）: 録音は添えない
+    if (!audio && !transcript?.trim()) return Response.json({ ok: true, duplicate: !t.changed, recorded: false }, { headers: NO_STORE });
+  }
   const r = await attachRecording(db, bucket, scope, { signalId, audio, transcript, durationSec: duration, recordedAt, sentAt }, now);
   if (!r.ok) return signalError(r.error);
   if (!r.duplicate) {

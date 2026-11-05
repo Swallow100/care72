@@ -2,8 +2,10 @@
 //
 //   node tools/eval/forms/cli.ts [--real] [--gold] [--paper=all|pdf|png|none] [--forms=komorebi,aozora] [--inputs=text-,photo-p-01]
 //                                [--people=p-01,p-02] [--paper-all-forms] [--out=<回の置き場>] [--corpus=<様式の置き場>] [--no-corpus] [--no-progress] [--max-usd=10]
+//                                [--review] [--no-review]
 //
 // - 既定は偽の client（本物の API を呼ばない）。--gold は崩さない偽（台の数え方の確かめ）
+// - 紙の AI の照合（T136）は偽の回は既定で回す（--no-review で止める）。本物の回は --review のときだけ（紙 1 枚 1 回の Sonnet）
 // - --real は本物の API。鍵は環境変数 ANTHROPIC_API_KEY だけを読む（台は鍵のファイルを探さない・読まない。人が node の --env-file で渡す）
 // - 回のフォルダ（既定 ../care72-qa/eval/forms/<日時>-<fake|real>/）に calls.jsonl・steps.jsonl・judgements.jsonl・result.json・
 //   report.md・sent/（送った画像）・filled/（埋めた紙と index.html）。リポジトリの中を指すと止まる
@@ -54,6 +56,7 @@ const result = await runEval({
   inputs: list("inputs"),
   people: list("people"),
   maxUsd,
+  review: flag("review") || (!real && !flag("no-review")),
   log: (line) => process.stderr.write(`${line}\n`),
 });
 const prev = previousRun(outRoot, result);

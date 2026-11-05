@@ -116,3 +116,42 @@ export function positionText(accuracyM: number | null): string {
 export function coordText(p: { lat: number; lng: number }): string {
   return `${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}`;
 }
+
+// ---------- 声の聞き取りの会話（T137）: ケアマネの画面の言葉 ----------
+
+/** 会話の欄の言葉（2〜4 字）。応答不明瞭はコードが付けた印（無音・うめき声・短すぎるが続いた）で、色と順には使わない */
+export const TALK_LABELS = {
+  title: "会話",
+  ask: "問",
+  reply: "答",
+  unclear: "応答不明瞭",
+  silent: "無音",
+  mumble: "不明瞭",
+  pressed: "押下",
+  noPress: "未押下",
+  skipped: "とばし",
+  got: "取得",
+  end: "終了",
+  danger: "危険語",
+  aiCalls: "AI 呼出",
+  closing: "締め",
+} as const;
+
+/** 終わり方の言葉 */
+export const TALK_END_LABELS = {
+  grasped: "把握",
+  wants_end: "本人終了",
+  send: "送信",
+  unclear: "ボタン回答",
+  cap: "上限",
+  danger: "危険語",
+} as const;
+
+/** 命に関わる言葉の種類の言葉 */
+export const DANGER_LABELS = {
+  fire: "火・煙",
+  water: "水",
+  breath: "息",
+  trapped: "挟まれ",
+  bleeding: "出血",
+} as const;
