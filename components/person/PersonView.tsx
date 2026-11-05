@@ -7,6 +7,7 @@
 // 経過（T143）: 人が書き足す記録だけを経過の区分に。平時は畳んで「経過 3 件」と最後の 1 行、発災時に記録があれば開いた形（今どおり上）。
 // 台帳を直した跡（入力・同意・台帳作成など。item.history）は区分の並びの下に「変更履歴」として畳んで置く（components/person/ChangeHistory）。
 
+import { Fragment } from "react";
 import { RouteMapPanel } from "@/components/map/RouteMap";
 import { StateText } from "@/components/ui/Tag";
 import type { Block, ClockView, PersonView as View, Section } from "@/lib/person";
@@ -29,35 +30,49 @@ import type { PageMode, TimelineItem } from "@/lib/person";
  * edit はケアマネの役で開いたときだけ（入れる欄と同じ）。渡すと面の右上に「編集」（T45、components/person/SectionEdit.tsx）。
  * 書類と経過の面は編集しない
  */
-export function PersonView({ view, level, edit = null }: { view: View; level: Level; edit?: EditData | null }) {
+export function PersonView({
+  view,
+  level,
+  edit = null,
+  phone = null,
+}: {
+  view: View;
+  level: Level;
+  edit?: EditData | null;
+  /** スマホの面（T149、components/phone/PhoneSection.tsx）。ケアマネの役だけ。同意の面のすぐ後（同意の面が無ければ最後） */
+  phone?: React.ReactNode;
+}) {
   const base = `person-${view.head.id}`;
   return (
     <div className="@container space-y-2" data-mode={view.mode}>
       <PersonHead head={view.head} level={level} titleId={`${base}-title`} />
       <div className="gap-x-2 @[40rem]:columns-2 @5xl:columns-3">
-        {view.sections.map((s) =>
-          s.id === "timeline" ? (
-            <TimelinePanel
-              key={s.id}
-              section={s}
-              level={level}
-              titleId={`${base}-${s.id}`}
-              mode={view.mode}
-              composer={view.writes.length > 0 ? <TimelineComposer personId={view.head.id} kinds={view.writes} /> : null}
-              composerOpen={view.writesOpen}
-            />
-          ) : (
-            <SectionPanel
-              key={s.id}
-              section={s}
-              level={level}
-              titleId={`${base}-${s.id}`}
-              edit={edit}
-              // 避難経路の地図（T102）。ケアマネの役で開いたときだけ、避難の面の下に（位置を扱うので面の編集と同じ人だけ）
-              after={s.id === "evacuation" && edit ? <RouteMapPanel data={edit} /> : null}
-            />
-          ),
-        )}
+        {view.sections.map((s) => (
+          <Fragment key={s.id}>
+            {s.id === "timeline" ? (
+              <TimelinePanel
+                section={s}
+                level={level}
+                titleId={`${base}-${s.id}`}
+                mode={view.mode}
+                composer={view.writes.length > 0 ? <TimelineComposer personId={view.head.id} kinds={view.writes} /> : null}
+                composerOpen={view.writesOpen}
+              />
+            ) : (
+              <SectionPanel
+                section={s}
+                level={level}
+                titleId={`${base}-${s.id}`}
+                edit={edit}
+                // 避難経路の地図（T102）。ケアマネの役で開いたときだけ、避難の面の下に（位置を扱うので面の編集と同じ人だけ）
+                after={s.id === "evacuation" && edit ? <RouteMapPanel data={edit} /> : null}
+              />
+            )}
+            {/* スマホの面（T149）は同意の面のすぐ後 */}
+            {s.id === "consent" && phone}
+          </Fragment>
+        ))}
+        {!view.sections.some((s) => s.id === "consent") && phone}
       </div>
       {/* 台帳を直した跡（T143）。区分の並びの下に、ページの幅で畳んで */}
       <ChangeHistory items={historyItems(view.sections)} idBase={base} level={level} />

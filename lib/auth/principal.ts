@@ -22,11 +22,20 @@ import {
   judgeAccountOfLogin,
   seedTargets,
 } from "./demo.ts";
-import { issuedSec, linkTarget } from "../qr/phone-link-store.ts";
+import { issuedSec, linkTarget, type LinkTarget } from "../qr/phone-link-store.ts";
+import { phoneAccountById, phoneAccountByLoginId, phoneAccountTarget } from "../phone/account.ts";
 import { MAX_PASSWORD_LENGTH, verifyPassword } from "./password.ts";
 import { homePath, type JudgeRole, type JudgeSessionRole, type Role } from "./roles.ts";
 import { createSandbox, loadSandboxAdmin, SANDBOX_START_PATH } from "../office/sandbox.ts";
-import { sessionTimes, signSession, verifySession, type SessionPayload } from "./session.ts";
+import {
+  passwordVersion,
+  PHONE_SESSION_TTL_SEC,
+  phoneSessionTimes,
+  sessionTimes,
+  signSession,
+  verifySession,
+  type SessionPayload,
+} from "./session.ts";
 import { canChooseRole } from "./wall.ts";
 
 export type OfficeRef = { id: string; name: string; kind: OfficeKind };
@@ -55,6 +64,11 @@ export type Principal = {
    * judge も付いたまま（壁の中・役変更が出る）。事業所はその試用事業所、書き手と担当一覧の持ち主は試用事業所の管理者のアカウント。無いのは false
    */
   sandbox?: boolean;
+  /**
+   * 本人・家族の入り方（T149）。link はスマホ入口のリンク（T69a）、account は本人・家族の ID とパスワード（lib/phone/account.ts）。
+   * 審査員・役を替えた山本の本人・家族の役とほかの役には付けない。ID を作れるのは link だけ
+   */
+  phoneEntry?: "link" | "account";
   /** 事業所の管理者（ケアマネの印） */
   admin: boolean;
   /** 書き手（経過の author_id）。審査員は審査員のアカウント */
@@ -262,9 +276,25 @@ async function linkPrincipal(db: D1Database, s: Extract<SessionPayload, { k: "li
   if (!t) return null;
   const issued = issuedSec(t.issuedAt);
   if (issued === null || issued !== (s.li ?? s.iat)) return null;
-  const base = { ...NOBODY, office: t.office, personId: t.personId };
+  return targetPrincipal(t, "link");
+}
+
+/** リンク・ID で開く本人（と連絡先）から、本人スマホ・家族スマホの役の形（accountId は null） */
+function targetPrincipal(t: LinkTarget, entry: "link" | "account"): Principal {
+  const base = { ...NOBODY, office: t.office, personId: t.personId, phoneEntry: entry };
   if (t.contact === null) return { ...base, role: "self", displayName: t.personName };
   return { ...base, role: "family", contactId: t.contact.id, displayName: t.contact.name };
+}
+
+/**
+ * 本人・家族の ID で入ったセッション（T149）。ID の行が無い（消えた・作り直して別の行）・パスワードが変わった（pv）・
+ * 作った時のリンクの版と時刻が本人の行と違う（再発行・一覧から外した）・連絡先が答えられる種類でない、のどれでも null
+ */
+async function phoneSessionPrincipal(db: D1Database, s: Extract<SessionPayload, { k: "phone" }>): Promise<Principal | null> {
+  const row = await phoneAccountById(db, s.a);
+  if (!row || (await passwordVersion(row.password_hash)) !== s.pv) return null;
+  const t = await phoneAccountTarget(db, row);
+  return t ? targetPrincipal(t, "account") : null;
 }
 
 /**
@@ -278,6 +308,7 @@ async function principalOf(db: D1Database, env: AuthEnv, secret: string, s: Sess
     return judgePrincipal(db, s.r, s.b, judgeAccountOf(s));
   }
   if (s.k === "link") return linkPrincipal(db, s);
+  if (s.k === "phone") return phoneSessionPrincipal(db, s);
   const a = await accountById(db, s.a);
   const c = a ? accountCredential(env, a) : null;
   if (!a || !c || (await credentialVersion(c, secret)) !== s.pv) return null;
@@ -304,7 +335,8 @@ function judgeAccountOf(s: Extract<SessionPayload, { k: "judge" }>): string {
   return s.a ?? DEMO_JUDGE_ACCOUNT_ID;
 }
 
-export type LoginResult = { ok: true; token: string; principal: Principal; path: string } | { ok: false };
+/** maxAge は cookie の Max-Age（秒）。無ければ既定の 7 日。本人・家族の ID（T149）は 180 日 */
+export type LoginResult = { ok: true; token: string; principal: Principal; path: string; maxAge?: number } | { ok: false };
 const FAIL: LoginResult = { ok: false };
 
 /**
@@ -348,6 +380,19 @@ export async function login(
   }
 
   const a = await accountByLoginId(db, loginId);
+  // ケアマネなどの表に無い ID は、本人・家族の ID（T149）。どちらも PBKDF2 は 1 回（ID が有るかを時間で分からせない）
+  const phone = a ? null : await phoneAccountByLoginId(db, loginId);
+  if (phone) {
+    if (!(await verifyPassword(password, phone.password_hash))) return FAIL;
+    const t = await phoneAccountTarget(db, phone);
+    if (!t) return FAIL;
+    const principal = targetPrincipal(t, "account");
+    const token = await signSession(
+      { v: 1, k: "phone", a: phone.id, pv: await passwordVersion(phone.password_hash), ...phoneSessionTimes(now) },
+      secret,
+    );
+    return { ok: true, token, principal, path: homePath(principal.role), maxAge: PHONE_SESSION_TTL_SEC };
+  }
   const c = a ? accountCredential(env, a) : null;
   if (!(await verifyCredential(password, c)) || !a || !c) return FAIL;
   const principal = accountPrincipal(a);

@@ -53,6 +53,8 @@ export const SANDBOX_CLEAR: Readonly<Record<Table, string | null>> = {
   ai_calls: `office_id IN (${SB})`,
   ai_agents: null,
   login_attempts: null,
+  phone_accounts: `person_id IN (${PEOPLE})`,
+  push_subscriptions: `person_id IN (${PEOPLE})`,
   signals: `person_id IN (${PEOPLE}) OR drill_id IN (${DRILLS})`,
   drill_events: `drill_id IN (${DRILLS}) OR person_id IN (${PEOPLE})`,
   drills: `office_id IN (${SB})`,

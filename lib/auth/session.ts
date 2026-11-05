@@ -7,6 +7,9 @@
 // account の r（T95）: 見本のケアマネ（山本）が役変更で選んだ役。審査員の r と同じ一覧で、ケアマネの役のときは付けない。
 // judge の r の sandbox と b（T115）: 審査員の試用事業所。account の r には無い（山本は試用事業所を作れない）。
 // judge の a（T144）: 審査員 2・3 の書き手のアカウント。審査員 1 は付けない（前の cookie と同じ形）。
+// 4 つ目の形 phone（T149）: 本人・家族がスマホ入口のリンクから作った ID とパスワード（lib/phone/account.ts）で入ったセッション。
+// a は phone_accounts の id、pv はパスワードのハッシュの指紋（変えると切れる）。期限は link と同じ上限 180 日（ホーム画面に追加して何か月も開く）。
+// 本人の行の版と時刻・連絡先の種類・一覧にいるかは毎回 D1 と比べる（lib/auth/principal.ts）。
 
 import { z } from "zod";
 import { PHONE_LINK_TTL_SEC } from "../qr/phone-link.ts";
@@ -16,6 +19,8 @@ import { JUDGE_ROLES, JUDGE_SESSION_ROLES } from "./roles.ts";
 export const SESSION_TTL_SEC = 7 * 24 * 60 * 60;
 /** スマホ入口のセッションの上限（リンクの期限と同じ 180 日）。account・judge は SESSION_TTL_SEC のまま */
 export const LINK_SESSION_TTL_SEC = PHONE_LINK_TTL_SEC;
+/** 本人・家族の ID のセッションの上限（T149。link と同じ 180 日） */
+export const PHONE_SESSION_TTL_SEC = PHONE_LINK_TTL_SEC;
 /** スマホ入口のセッションの pv（パスワードの指紋の代わりの固定の字） */
 export const LINK_SESSION_PV = "link";
 /** 長すぎる cookie は読む前に捨てる */
@@ -71,6 +76,14 @@ const payloadSchema = z.discriminatedUnion("k", [
       li: z.number().int().optional(),
     })
     .strict(),
+  z
+    .object({
+      ...base,
+      k: z.literal("phone"),
+      /** 本人・家族の ID（phone_accounts.id、T149） */
+      a: z.string().min(1).max(128),
+    })
+    .strict(),
 ]);
 export type SessionPayload = z.infer<typeof payloadSchema>;
 
@@ -123,7 +136,7 @@ export async function signSession(payload: SessionPayload, secret: string): Prom
 export async function verifySession(token: string | null | undefined, secret: string, now: number): Promise<SessionPayload | null> {
   const p = await decodeSession(token, secret);
   if (!p) return null;
-  const maxTtl = p.k === "link" ? LINK_SESSION_TTL_SEC : SESSION_TTL_SEC;
+  const maxTtl = p.k === "link" ? LINK_SESSION_TTL_SEC : p.k === "phone" ? PHONE_SESSION_TTL_SEC : SESSION_TTL_SEC;
   if (p.exp <= now || p.iat > now + 60 || p.exp - p.iat > maxTtl) return null;
   return p;
 }
@@ -156,6 +169,11 @@ export async function decodeSession(token: string | null | undefined, secret: st
 /** 新しいセッションの時刻（今から 7 日） */
 export function sessionTimes(now: number): { iat: number; exp: number } {
   return { iat: now, exp: now + SESSION_TTL_SEC };
+}
+
+/** 本人・家族の ID のセッションの時刻（今から 180 日。T149） */
+export function phoneSessionTimes(now: number): { iat: number; exp: number } {
+  return { iat: now, exp: now + PHONE_SESSION_TTL_SEC };
 }
 
 /** パスワードのハッシュの指紋（SHA-256 の先頭 16 字）。ハッシュそのものは cookie に入れない */

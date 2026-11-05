@@ -1,4 +1,4 @@
-// ホーム画面に追加の案内の判定（T51 で書き直した）。本人・家族のスマホの平時の画面の上（components/phone/InstallHint.tsx）。
+// ホーム画面に追加の案内の判定（T51 で書き直した）。本人・家族のスマホの頁の上の準備の欄のホーム画面の段（components/phone/PhoneSetup.tsx。T149）。
 // 対応は iPhone（iPad も同じ手順）・Android・LINE の中の 3 つ（増やしも減らしもしない）。
 // 判定は端末の様子を引数で受ける純な関数（installMode）。テストは node で回す。
 // beforeinstallprompt（Android の 1 押しの画面）は読み込みの早いうちに 1 回だけ来るので、先頭の script（lib/ui/head-scripts.ts の

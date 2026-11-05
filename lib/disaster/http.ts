@@ -8,9 +8,9 @@ import type { D1Database } from "@cloudflare/workers-types";
 import type { Principal } from "../auth/principal.ts";
 import { seeOther } from "../auth/cookie.ts";
 import { allows } from "../auth/guard.ts";
-import { saveDisasterInfo, switchDisasterMode } from "./db.ts";
+import { loadDisasterState, saveDisasterInfo, switchDisasterMode } from "./db.ts";
 import { disasterScope } from "./scope.ts";
-import { DISASTER_FORM_ERRORS, parseInfoForm, parseModeForm, type DisasterFormError, type FormLike } from "./state.ts";
+import { DISASTER_FORM_ERRORS, isDisaster, parseInfoForm, parseModeForm, type DisasterFormError, type FormLike } from "./state.ts";
 
 export const OFFICE_PATH = "/office";
 export const OFFICE_MODE_PATH = "/office/mode";
@@ -71,4 +71,23 @@ export async function infoPost(db: D1Database, p: Principal | null, form: FormLi
   if (!parsed.ok) return { status: 303, location: officeHref({ error: parsed.error }) };
   const r = await saveDisasterInfo(db, scope, { info: parsed.value, version: parsed.version, at });
   return { status: 303, location: r.ok ? OFFICE_PATH : officeHref({ error: r.error }) };
+}
+
+/**
+ * 切替のあと、平時からこの要求で災害モードに入った事業所（T149）。入っていなければ null。
+ * 入ったら route（app/office/mode）が応答のあとに本人・家族へ「大丈夫ですか」の通知を送る（lib/push/http.ts の officeSafety）。
+ * 前の状態が平時（または始まりの無い状態）で、あとの状態の始まりがこの要求の時刻のときだけ（ほかの人の切替を数えない）
+ */
+export async function modePostEntered(
+  db: D1Database,
+  p: Principal | null,
+  form: FormLike | null,
+  at: string,
+): Promise<{ outcome: PostOutcome; entered: string | null }> {
+  const scope = allows(p, "save") ? disasterScope(p) : null;
+  const before = scope ? await loadDisasterState(db, scope.officeId) : null;
+  const outcome = await modePost(db, p, form, at);
+  if (!scope || !before || isDisaster(before) || outcome.status !== 303) return { outcome, entered: null };
+  const after = await loadDisasterState(db, scope.officeId);
+  return { outcome, entered: isDisaster(after) && after.startedAt === at ? scope.officeId : null };
 }

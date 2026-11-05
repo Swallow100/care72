@@ -344,7 +344,8 @@ describe("同意のない範囲は落とす", () => {
 });
 
 describe("本人のページの書類の入口", () => {
-  it("計画書・医療要約（T07）・本人の 1 枚（T06）・QR（T16）・スマホ入口（T69a）は画面へのリンク", () => {
+  // スマホ入口（T69a）は書類の行から外し、同意の面の後のスマホの面へ（T149）
+  it("計画書・医療要約（T07）・本人の 1 枚（T06）・QR（T16）は画面へのリンク", () => {
     const v = toPersonView(seedRows(seed("p-01")), { today: TODAY });
     const docs = v.sections.find((x) => x.id === "documents")!.blocks.flatMap((b) => (b.type === "documents" ? b.documents : []));
     expect(docs.map((d) => [d.key, d.status, d.href ?? null])).toEqual([
@@ -352,7 +353,6 @@ describe("本人のページの書類の入口", () => {
       ["medical", "表示", "/people/p-01/forms/medical"],
       ["own", "表示", "/people/p-01/forms/own"],
       ["qr", "表示", "/people/p-01/forms/qr"],
-      ["phone", "表示", "/people/p-01/phone"],
     ]);
   });
 });

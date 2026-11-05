@@ -239,8 +239,8 @@ describe("ログインの終わりと写しの期限（T83、見直しの安全 
   });
 
   it("写しの決まりを変えたので版を上げた（activate で前の版の写しを消す）", () => {
-    expect(CACHE_VERSION).toBe("2");
-    expect(PAGE_CACHE).toBe(`${CACHE_PREFIX}pages-v2`);
+    expect(CACHE_VERSION).toBe("3");
+    expect(PAGE_CACHE).toBe(`${CACHE_PREFIX}pages-v3`);
   });
 });
 

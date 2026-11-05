@@ -1138,7 +1138,8 @@ function consentBlocks(consents: PersonPageRows["consents"]): Block[] {
 
 /** 書類の区分。範囲（lib/consent/scope.ts の documents）にある書類だけ */
 function documentBlocks(personId: string, allowed: readonly ScopeDocument[], plan: PlanFormView | undefined): Block[] {
-  const keys = (Object.keys(DOCUMENT_LABELS) as Array<keyof typeof DOCUMENT_LABELS>).filter((k) => allowed.includes(k));
+  // スマホ入口（T69a）は書類の行に出さない（本人と家族のスマホの入口。同意の面の後のスマホの面、T149）。範囲の鍵は画面の壁に残す
+  const keys = (Object.keys(DOCUMENT_LABELS) as Array<keyof typeof DOCUMENT_LABELS>).filter((k) => allowed.includes(k) && k !== "phone");
   return [
     {
       type: "documents",

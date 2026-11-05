@@ -95,6 +95,9 @@ export function seedClear(officeId: string): Readonly<Record<Table, string | nul
   // 世界の部屋（T50）の ID。事業所ごとでない
   ai_agents: null,
   login_attempts: null,
+  // 本人・家族の ID と通知の購読（T149）。デモの人の物は毎朝消える（審査員は開き直すと購読を送り直す）
+  phone_accounts: `person_id IN (${PEOPLE})`,
+  push_subscriptions: `person_id IN (${PEOPLE})`,
   signals: `person_id IN (${PEOPLE}) OR drill_id IN (${DRILLS})`,
   drill_events: `drill_id IN (${DRILLS}) OR person_id IN (${PEOPLE})`,
   drills: `office_id = ${OFFICE}`,

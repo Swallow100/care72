@@ -655,7 +655,8 @@ describe("migration 0012（accounts.disabled_at と、事業所の経過の種�
     // 種は書類の見直しの表（0032、T136）と紙の手入れの表（0033、T135）も空にするので 0032・0033 も先に（新しい表を作るだけで 0012 の表に触れない）
     // 0029（連絡先のフリガナ・住所・携帯、T117）も先に: T142 で種が書く列（contacts に列を足すだけ）
     // 種はデモ事業所の情報と地域の周りの市（0036、T148）を書くので 0036 も先に（offices に列を足すだけで 0012 の表に触れない）
-    const early = (n: string) => n.startsWith("0017_") || n.startsWith("0020_") || n.startsWith("0024_") || n.startsWith("0029_") || n.startsWith("0032_") || n.startsWith("0033_") || n.startsWith("0036_");
+    // 種は本人・家族の ID と通知の購読の表（0037、T149）も空にするので 0037 も先に（新しい表を作るだけ）
+    const early = (n: string) => n.startsWith("0017_") || n.startsWith("0020_") || n.startsWith("0024_") || n.startsWith("0029_") || n.startsWith("0032_") || n.startsWith("0033_") || n.startsWith("0036_") || n.startsWith("0037_");
     const d = sqliteUpTo((n) => n < MIGRATION_0012 || early(n));
     for (const s of seedStatements()) d.exec(s);
     d.prepare(

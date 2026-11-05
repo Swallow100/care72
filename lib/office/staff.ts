@@ -57,7 +57,11 @@ export type AddCareManagerResult =
 /** ID がもう使われているときの断り。同じ事業所なら login_taken、ほかの事業所（事業所なしの行も）なら login_unavailable。空いていれば null */
 async function loginIdRefusal(db: D1Database, officeId: string, loginId: string): Promise<"login_taken" | "login_unavailable" | null> {
   const row = await db.prepare("SELECT office_id FROM accounts WHERE login_id = ?1").bind(loginId).first<{ office_id: string | null }>();
-  if (!row) return null;
+  // 本人・家族のスマホの ID（T149、phone_accounts）とも重ならない（ログインは ID だけで引くので、ケアマネの ID が本人・家族の ID を隠す）
+  if (!row) {
+    const phone = await db.prepare("SELECT 1 AS hit FROM phone_accounts WHERE login_id = ?1").bind(loginId).first<{ hit: number }>();
+    return phone ? "login_unavailable" : null;
+  }
   return row.office_id === officeId ? "login_taken" : "login_unavailable";
 }
 
@@ -88,7 +92,8 @@ export async function addCareManager(
         .prepare(
           `INSERT INTO accounts (id, office_id, role, is_office_admin, display_name, login_id, password_hash, created_at, judge_made)
            SELECT ?1, o.id, 'care_manager', 0, ?3, ?4, ?5, ?6, ?7 FROM offices o
-            WHERE o.id = ?2 AND NOT EXISTS (SELECT 1 FROM accounts WHERE login_id = ?4)`,
+            WHERE o.id = ?2 AND NOT EXISTS (SELECT 1 FROM accounts WHERE login_id = ?4)
+              AND NOT EXISTS (SELECT 1 FROM phone_accounts WHERE login_id = ?4)`,
         )
         .bind(id, actor.officeId, input.displayName, input.loginId, hash, at, actor.walled ? 1 : 0),
       db

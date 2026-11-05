@@ -68,6 +68,9 @@ export const CLEAR_ORDER = [
   "ai_agents",
   // ログインの回数の制限（T41）。手元の入れ直しでは消す（配信の毎日 4 時・最初に戻すでは消さない。lib/seed/reset.ts）
   "login_attempts",
+  // 本人・家族のスマホの ID と通知の購読（T149、migration 0037）。本人・連絡先を指すので先に
+  "phone_accounts",
+  "push_subscriptions",
   "signals",
   "drill_events",
   "drills",
