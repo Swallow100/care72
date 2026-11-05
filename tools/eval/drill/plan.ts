@@ -41,8 +41,14 @@ export type RunPlan = {
 /** 回の種（基の種と番号） */
 export const runSeed = (base: string, index: number) => `${base}-${index}`;
 
-/** 1 回の選び方。caseload は担当一覧の人の id（並びのまま）。scenarios は選んでよい想定 */
-export function planRun(base: string, index: number, caseload: ReadonlyArray<string>, scenarios: ReadonlyArray<EvalScenario> = SCENARIOS): RunPlan {
+/** 1 回の選び方。caseload は担当一覧の人の id（並びのまま）。scenarios は選んでよい想定。allPeople は担当の全員で回す（ほかの選び方は同じ種のまま） */
+export function planRun(
+  base: string,
+  index: number,
+  caseload: ReadonlyArray<string>,
+  scenarios: ReadonlyArray<EvalScenario> = SCENARIOS,
+  opts: { allPeople?: boolean } = {},
+): RunPlan {
   const seed = runSeed(base, index);
   const rng = rngOf(`${seed}/plan`);
   const scenario = rng.pick(scenarios);
@@ -60,7 +66,7 @@ export function planRun(base: string, index: number, caseload: ReadonlyArray<str
     seed,
     scenario,
     scale: scenario === "virtual" ? rng.pick(SCALE_CHOICES) : null,
-    participants: caseload.filter((p) => chosen.has(p)),
+    participants: opts.allPeople ? [...caseload] : caseload.filter((p) => chosen.has(p)),
     night: rng.chance(0.25),
     staff: rng.chance(0.3) ? rng.int(0, 5) : null,
     pace,

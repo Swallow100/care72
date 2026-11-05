@@ -10,7 +10,8 @@
 //       --md <dir>（差の表。既定 docs/progress）・--no-md・--noise P（偽の client に決まりを破る言葉を混ぜる割合、0）・
 //       --latency S（偽の client の待ちの縮尺。役ごとの本物の待ちの目安に掛ける。0.01 で 100 分の 1、0 は待たない。T123）・
 //       --max-usd X（本物の見積もりの上限。超えたら次の回を始めない。本物の既定 10）・
-//       --terms on|off（連続の時計の訓練の開始に手の決まり〔T110 の terms〕を送るか。既定 on、開始の画面と同じ。T121）
+//       --terms on|off（連続の時計の訓練の開始に手の決まり〔T110 の terms〕を送るか。既定 on、開始の画面と同じ。T121）・
+//       --all-people（参加する人を担当の全員に。ほかの選び方は同じ種のまま）
 //
 // 記録: <out>/<日時>-<fake|real>/run-NN.jsonl（1 回の訓練の起きた順。AI の呼び出しは送った中身の全文と返った中身の全文つき）と
 // summary.json。架空の人の台詞が入るのでリポジトリに入れない。md は数だけ。
@@ -60,6 +61,8 @@ export type EvalConfig = {
   maxUsd: number | null;
   /** 手の決まり（T110 の terms）を送るか（T121。既定は送る。--terms off で送らない） */
   terms: boolean;
+  /** 参加する人を担当の全員にする（--all-people） */
+  allPeople?: boolean;
   /** 記録の名前の日時（テストで固定） */
   stamp?: string;
   /** 途中の知らせ（既定は標準出力） */
@@ -117,7 +120,7 @@ export async function runEval(cfg: EvalConfig): Promise<{ summary: Summary; dir:
       notes.push(`見積もりの上限 $${cfg.maxUsd} に達したので ${i - 1} 回で止めた`);
       break;
     }
-    const plan = planRun(cfg.seed, i, caseload, cfg.scenarios);
+    const plan = planRun(cfg.seed, i, caseload, cfg.scenarios, { allPeople: cfg.allPeople });
     const log = runLog(join(dir, `run-${pad(i)}.jsonl`));
     const inner: ClaudeClient = cfg.real
       ? (new Anthropic({ apiKey: cfg.key, maxRetries: 0 }) as unknown as ClaudeClient)
@@ -151,7 +154,7 @@ export async function runEval(cfg: EvalConfig): Promise<{ summary: Summary; dir:
     client,
     seed: cfg.seed,
     world: cfg.world,
-    args: { runs: cfg.runs, scenarios: cfg.scenarios, judge: cfg.judge, review: cfg.review, maxAdvances: cfg.maxAdvances, noise: cfg.noise, maxUsd: cfg.maxUsd, terms: cfg.terms },
+    args: { runs: cfg.runs, scenarios: cfg.scenarios, judge: cfg.judge, review: cfg.review, maxAdvances: cfg.maxAdvances, noise: cfg.noise, maxUsd: cfg.maxUsd, terms: cfg.terms, allPeople: cfg.allPeople ?? false },
     runs,
     totals: totalsOf(runs),
     diversity: diversityOf(outcomes),
@@ -224,6 +227,7 @@ export function parseArgs(argv: ReadonlyArray<string>, env: Readonly<Record<stri
     latency,
     maxUsd,
     terms: terms !== "off",
+    allPeople: has("all-people"),
   };
 }
 
