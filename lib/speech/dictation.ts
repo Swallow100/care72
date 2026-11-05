@@ -6,6 +6,8 @@
 //   句点の無い話し言葉でも特記を元の文に戻せる
 // - 止め方は 2 つ: 人が「停止」を押した（onDone。呼ぶ側が抽出に送る）と、ブラウザ側で終わった・失敗した（onEnd。送らない）
 // - 画面（DOM）に触らない。SpeechRecognition は作る物を渡す（テストは偽物で差し替える）
+// - 聞いている間も人は欄を直せる（T143、edit）。直した文をその時の欄の文として持ち、そのあとの確定した区切りだけを後ろにつなぐ。
+//   直した時に見えていた認識中の区切りは、直した文に入った物として扱い、あとで確定しても足さない（直した所を音声の文字で上書きしない）
 
 /** 認識の候補 1 つ */
 export type SpeechAlternative = { readonly transcript: string };
@@ -116,6 +118,8 @@ export type Dictation = {
   stop(): void;
   /** 何も呼ばずにやめる（画面を閉じた・別の人に移った・切り替えた） */
   abort(): void;
+  /** 聞いている間に人が欄を直した（T143）。直した文を欄の文にし、そのあとの確定した区切りだけを足す。止まっていれば何もしない */
+  edit(value: string): void;
   readonly state: DictationState;
 };
 
@@ -133,6 +137,8 @@ export function createDictation(Ctor: SpeechRecognitionCtor, handlers: Dictation
   let interim = "";
   /** results のうち text に入れた数 */
   let folded = 0;
+  /** 最後に来た results の数（人が直したとき、それまでの区切りを入った物として飛ばす） */
+  let seen = 0;
   let byUser = false;
   let error: DictationError | null = null;
   let timer: ReturnType<typeof setTimeout> | null = null;
@@ -196,11 +202,13 @@ export function createDictation(Ctor: SpeechRecognitionCtor, handlers: Dictation
       text = base;
       interim = "";
       folded = 0;
+      seen = 0;
       byUser = false;
       error = null;
 
       r.onresult = (e) => {
         if (rec !== r) return;
+        seen = e.results.length;
         let pending = "";
         for (let i = folded; i < e.results.length; i++) {
           const res = e.results[i];
@@ -240,6 +248,12 @@ export function createDictation(Ctor: SpeechRecognitionCtor, handlers: Dictation
       return true;
     },
     stop,
+    edit(value: string) {
+      if (state === "idle") return;
+      text = cut(value);
+      interim = "";
+      folded = Math.max(folded, seen);
+    },
     abort() {
       clearTimer();
       const r = rec;
