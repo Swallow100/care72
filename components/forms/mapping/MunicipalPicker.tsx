@@ -99,7 +99,7 @@ export function MunicipalPicker({ shared, own, defaultCity, aiReady, busy, onPic
 
   return (
     <Panel aria-labelledby="municipal-title" data-municipal-picker>
-      <PanelHead id="municipal-title" title={L.title} count={allMunicipalEntries().length} />
+      <PanelHead id="municipal-title" title={L.title} count={`${MUNICIPAL_CITIES.length} 市区・${allMunicipalEntries().length} 様式`} />
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <Select
           value={pref}

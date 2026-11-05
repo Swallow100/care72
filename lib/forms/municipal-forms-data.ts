@@ -23,7 +23,7 @@ export const MUNICIPAL_CITIES: readonly MunicipalCity[] = [
         sha256: "81fa0103d078970480d20c77381fbb5d309c5e553c34c7c480011897fa9de093",
         bytes: 45405,
         pages: 2,
-        version: "令和6年度モデル実施版（頁の更新日 2024-08-01）",
+        version: "令和6年度モデル・頁 2024-08-01",
       },
     ],
     refs: [
@@ -72,7 +72,7 @@ export const MUNICIPAL_CITIES: readonly MunicipalCity[] = [
         sha256: "798c1ab403684656821b6810e47d65a7616782af4d11ea2c904c5273292b3db9",
         bytes: 583451,
         pages: 2,
-        version: "頁の更新日 2026-10-30",
+        version: "頁 2026-10-30",
         note: "同意確認書・状況調査書と一体",
       },
     ],
@@ -252,7 +252,7 @@ export const MUNICIPAL_CITIES: readonly MunicipalCity[] = [
         sha256: "15c26d982b39c601ed816dca65e41f2b1a0a2fe59d364f6b7296d4a20ee424f8",
         bytes: 444469,
         pages: 2,
-        version: "頁の更新日 令和7年4月9日（記載例は 2024-12-26 版）",
+        version: "頁 2025-04-09",
         note: "セルフ作成用",
       },
       {
@@ -263,7 +263,7 @@ export const MUNICIPAL_CITIES: readonly MunicipalCity[] = [
         sha256: "872564436b3890b36ad7b4a593a4c6d07d5f568b12ce2fe7a7dcec3eb72054b2",
         bytes: 32058,
         pages: 2,
-        version: "頁の更新日 令和7年4月9日（記載例は 2024-12-26 版）",
+        version: "頁 2025-04-09",
         note: "セルフ作成用",
       },
       {
@@ -274,7 +274,7 @@ export const MUNICIPAL_CITIES: readonly MunicipalCity[] = [
         sha256: "ec022a381d39e609cb31bfd90f0b9475f2271a58495e21fdf5b1aef4f6107549",
         bytes: 227409,
         pages: 2,
-        version: "頁の更新日 令和7年4月9日（記載例は 2024-12-26 版）",
+        version: "頁 2025-04-09",
         note: "相談支援事業所向け",
       },
       {
@@ -285,7 +285,7 @@ export const MUNICIPAL_CITIES: readonly MunicipalCity[] = [
         sha256: "b1668eee6b200cfc9018c6a771d12deada51b6ae03c7eab32738bdf6dd36215a",
         bytes: 32805,
         pages: 2,
-        version: "頁の更新日 令和7年4月9日（記載例は 2024-12-26 版）",
+        version: "頁 2025-04-09",
         note: "相談支援事業所向け",
       },
     ],
@@ -409,7 +409,7 @@ export const MUNICIPAL_CITIES: readonly MunicipalCity[] = [
         sha256: "f4832e16ab46330d81dca053c4a62aa16f06551b0b758bc27e905b57267db7ea",
         bytes: 59816,
         pages: 5,
-        version: "頁の最終更新日 2023-12-25",
+        version: "頁 2023-12-25",
       },
     ],
     refs: [
@@ -486,7 +486,7 @@ export const MUNICIPAL_CITIES: readonly MunicipalCity[] = [
         sha256: "18301e7d7daa5c6c3260424f3f427e58f1605524d0c86e25c8f95b9086a978a4",
         bytes: 407133,
         pages: 2,
-        version: "頁の更新日 2026-07-01",
+        version: "頁 2026-07-01",
       },
       {
         id: "matsumoto-2",
@@ -496,7 +496,7 @@ export const MUNICIPAL_CITIES: readonly MunicipalCity[] = [
         sha256: "f1ccf63029e55ce8d2fa02de333995bfb2cab1a9456e898bf0b56bc441711c50",
         bytes: 87288,
         pages: 2,
-        version: "頁の更新日 2026-07-01",
+        version: "頁 2026-07-01",
       },
       {
         id: "matsumoto-3",
@@ -506,7 +506,7 @@ export const MUNICIPAL_CITIES: readonly MunicipalCity[] = [
         sha256: "a2a87a09703b08627113b8db23fb12b766ea70b460e008e876891259c2c43180",
         bytes: 733928,
         pages: 9,
-        version: "頁の更新日 2026-07-01",
+        version: "頁 2026-07-01",
         note: "医療的ケア",
       },
       {
@@ -517,7 +517,7 @@ export const MUNICIPAL_CITIES: readonly MunicipalCity[] = [
         sha256: "08603ba44650af64bd667476ece3787c6d2675d9c9915038b96c6911bc227488",
         bytes: 144949,
         pages: 9,
-        version: "頁の更新日 2026-07-01",
+        version: "頁 2026-07-01",
         note: "医療的ケア",
       },
     ],
@@ -670,7 +670,7 @@ export const MUNICIPAL_CITIES: readonly MunicipalCity[] = [
         sha256: "47573f8618fd231ec9c685e2dab4784c2fba88e222f18ecec778dfe66ac40420",
         bytes: 29864,
         pages: 2,
-        version: "令和8年度モデル事業（頁の更新日 2026-07-10）",
+        version: "令和8年度・頁 2026-07-10",
       },
     ],
     refs: [
@@ -848,7 +848,7 @@ export const MUNICIPAL_CITIES: readonly MunicipalCity[] = [
         sha256: "4d02df228e2ea3ea418a81b92d1953895d72ce93597b1652bf1ce9031200b7f2",
         bytes: 469251,
         pages: 2,
-        version: "大阪府の頁（更新日 2023-03-13）に掲載された吹田市の様式。吹田市自身の頁の最新版は未確認",
+        version: "大阪府の頁 2023-03-13",
       },
       {
         id: "suita-2",
@@ -858,7 +858,7 @@ export const MUNICIPAL_CITIES: readonly MunicipalCity[] = [
         sha256: "34f45d25b5ae4b1476bdd74bc043703620bd944736e65cb037291af4687ed8b8",
         bytes: 86828,
         pages: 3,
-        version: "大阪府の頁（更新日 2023-03-13）に掲載された吹田市の様式。吹田市自身の頁の最新版は未確認",
+        version: "大阪府の頁 2023-03-13",
       },
     ],
     refs: [
@@ -909,7 +909,7 @@ export const MUNICIPAL_CITIES: readonly MunicipalCity[] = [
         sha256: "80f36899284e674b89f1f4b7cb9d2b468105cb56d247986ff98531dc987a7be9",
         bytes: 272160,
         pages: 2,
-        version: "頁の更新日 2025-06-03（事業者向けの頁）",
+        version: "頁 2025-06-03",
       },
     ],
     refs: [
@@ -1080,7 +1080,7 @@ export const MUNICIPAL_CITIES: readonly MunicipalCity[] = [
         sha256: "b06aab0e75885d527c2ab2dd8073221d2132bc7a3b6843f9a84612a614708650",
         bytes: 184569,
         pages: 2,
-        version: "様式集の頁（避難支援プランは 2023-08 更新。記入例は新しい番号 256648・256649）",
+        version: "頁 2023-08",
       },
       {
         id: "fukuyama-2",
@@ -1090,7 +1090,7 @@ export const MUNICIPAL_CITIES: readonly MunicipalCity[] = [
         sha256: "09c6d371d717b5ab8a049623d75c8fe55628c0a8123bf200c2714d7d95d6399e",
         bytes: 76288,
         pages: null,
-        version: "様式集の頁（避難支援プランは 2023-08 更新。記入例は新しい番号 256648・256649）",
+        version: "頁 2023-08",
       },
     ],
     refs: [
@@ -1139,7 +1139,7 @@ export const MUNICIPAL_CITIES: readonly MunicipalCity[] = [
         sha256: "2c83de63d19377998826da99f3ce32d09557a18ba316a32150d19eb57537f9bf",
         bytes: 33722,
         pages: 3,
-        version: "令和7年度版（頁の最終更新日 2026-02-04）",
+        version: "令和7年度・頁 2026-02-04",
       },
     ],
     refs: [
@@ -1189,7 +1189,7 @@ export const MUNICIPAL_CITIES: readonly MunicipalCity[] = [
         sha256: "393bc8c6dc4b174a4f977aa2f97cc74011d4c53b08491846438f8942eaa01c80",
         bytes: 61765,
         pages: 1,
-        version: "令和8年3月10日の事業者説明会資料を載せた最新の頁（様式は令和7年度の版）",
+        version: "令和7年度",
       },
     ],
     refs: [
@@ -1316,7 +1316,7 @@ export const MUNICIPAL_CITIES: readonly MunicipalCity[] = [
         sha256: "4fe09c4b3fca554cfafdf24a85581c86c6de72f602308a0d43b8ff9dc8fad566",
         bytes: 336683,
         pages: 4,
-        version: "頁の更新日 2023-05-12",
+        version: "頁 2023-05-12",
       },
       {
         id: "togitsu-2",
@@ -1326,7 +1326,7 @@ export const MUNICIPAL_CITIES: readonly MunicipalCity[] = [
         sha256: "943df74a065f089a436230318e892ab6c5a9e6f736eb65f83d04a67a5287b7b7",
         bytes: 41262,
         pages: 2,
-        version: "頁の更新日 2023-05-12",
+        version: "頁 2023-05-12",
         note: "事例付きのシートあり",
       },
     ],
@@ -1350,7 +1350,7 @@ export const MUNICIPAL_CITIES: readonly MunicipalCity[] = [
         sha256: "c6142ed96812203d2f0217f83f575d54bb6059c293bff2e727ac4e2af1f34560",
         bytes: 814444,
         pages: 2,
-        version: "頁の最終更新日 2026-09-25（手引きは令和7年9月改訂）",
+        version: "頁 2026-09-25",
       },
       {
         id: "kumamoto-2",
@@ -1360,7 +1360,7 @@ export const MUNICIPAL_CITIES: readonly MunicipalCity[] = [
         sha256: "cfb29c8bff7bd5040b92c835825fd04c5828b600936185c291725f7b64d4fa1b",
         bytes: 65540,
         pages: 2,
-        version: "頁の最終更新日 2026-09-25（手引きは令和7年9月改訂）",
+        version: "頁 2026-09-25",
       },
     ],
     refs: [
@@ -1432,7 +1432,7 @@ export const MUNICIPAL_CITIES: readonly MunicipalCity[] = [
         sha256: "77a2ec628f75a4ebecb547953186356136bfe78a8b94fd646e07b141d60453c7",
         bytes: 4365391,
         pages: 2,
-        version: "令和8年度（頁の更新日 令和8年9月30日。旧 URL は 301 で移転）",
+        version: "令和8年度・頁 2026-09-30",
       },
       {
         id: "naha-2",
@@ -1442,7 +1442,7 @@ export const MUNICIPAL_CITIES: readonly MunicipalCity[] = [
         sha256: "2e38b476dcea7aa1d25fedc29cf38709ac445bfa176186c1d5077b7122bf4827",
         bytes: 114688,
         pages: null,
-        version: "令和8年度（頁の更新日 令和8年9月30日。旧 URL は 301 で移転）",
+        version: "令和8年度・頁 2026-09-30",
       },
     ],
     refs: [

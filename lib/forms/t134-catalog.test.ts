@@ -71,6 +71,7 @@ describe("一覧の形", () => {
       expect(f.sha256, f.id).toMatch(/^[0-9a-f]{64}$/);
       expect(f.bytes, f.id).toBeGreaterThan(1000);
       expect(f.name.length, f.id).toBeGreaterThan(2);
+      expect(f.version.length, f.id).toBeLessThanOrEqual(30);
       if (f.format === "doc" || f.format === "xls") expect(f.pages, f.id).toBeNull();
       else expect(f.pages, f.id).toBeGreaterThanOrEqual(1);
     }
