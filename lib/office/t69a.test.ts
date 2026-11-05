@@ -19,8 +19,8 @@ import { CONSENT_KINDS } from "../db/types.ts";
 import { d1FromSqlite, migratedSqlite } from "../db/test-d1.ts";
 import { easy, kanjiWithoutRuby, yomi } from "../forms/easy-words.ts";
 import { loadPersonPage, timelineItems, toPersonView } from "../person.ts";
-import { PHONE_EASY, PHONE_LINK_LABELS } from "../qr/phone-labels.ts";
-import { issuePhoneLinkFor } from "../qr/phone-link-http.ts";
+import { PHONE_EASY, PHONE_LINK_API_LABELS, PHONE_LINK_LABELS } from "../qr/phone-labels.ts";
+import { issuePhoneLinkFor, PHONE_LINK_CONSENT, PHONE_LINK_ISSUE_STATUS } from "../qr/phone-link-http.ts";
 import { issuePhoneLink, loadPhoneLinkRow } from "../qr/phone-link-store.ts";
 import { buildPhoneLinkView, familyLinkContacts } from "../qr/phone-link-view.ts";
 import { PHONE_LINK_TTL_SEC } from "../qr/phone-link.ts";
@@ -282,5 +282,29 @@ describe("ログイン中の 1 枚とログアウト（設計の答え 11/4）",
     for (const r of ["care_manager", "government", "medical", "unselected"] as const) expect(showsLogout(r), r).toBe(true);
     const header = readFileSync(new URL("../../components/AppHeader.tsx", import.meta.url), "utf8");
     expect(header).toMatch(/\{showsLogout\(p\.role\) && \(\s*<form method="post" action="\/api\/auth\/logout">/);
+  });
+});
+
+describe("スマホ入口は同意のある人だけ（T147）", () => {
+  it("計画共有が同意ありでなければ（未確認・同意なし・行なし）409 で断り、版は上がらない。同意ありに戻せば出せる", async () => {
+    for (const status of ["unconfirmed", "refused"] as const) {
+      sqlite.prepare("UPDATE consents SET status = ? WHERE person_id = 'p-03' AND kind = ?").run(status, PHONE_LINK_CONSENT);
+      expect(await issuePhoneLinkFor(db, yamamoto(), "p-03", AT), status).toEqual({ ok: false, error: "no_consent" });
+      expect((await loadPhoneLinkRow(db, "p-03"))?.phone_link_generation, status).toBe(0);
+    }
+    sqlite.prepare("DELETE FROM consents WHERE person_id = 'p-03' AND kind = ?").run(PHONE_LINK_CONSENT);
+    expect(await issuePhoneLinkFor(db, yamamoto(), "p-03", AT)).toEqual({ ok: false, error: "no_consent" });
+    sqlite.prepare("INSERT INTO consents (person_id, kind, status, recorded_at) VALUES ('p-03', ?, 'granted', ?)").run(PHONE_LINK_CONSENT, AT);
+    expect(await issuePhoneLinkFor(db, yamamoto(), "p-03", AT)).toEqual({ ok: true, personId: "p-03", generation: 1 });
+    expect(PHONE_LINK_ISSUE_STATUS.no_consent).toBe(409);
+  });
+
+  it("新しく足した人（同意は全部未確認）には出せない。受け口は「同意なし」を返す", async () => {
+    const r = await createPerson(db, officeActor(yamamoto())!, { ...INPUT }, AT, "p-new-phone");
+    expect(r.ok).toBe(true);
+    expect(await issuePhoneLinkFor(db, yamamoto(), "p-new-phone", AT)).toEqual({ ok: false, error: "no_consent" });
+    const src = readFileSync(new URL("../../app/api/people/[id]/phone/route.ts", import.meta.url), "utf8");
+    expect(src).toContain("no_consent: PHONE_LINK_API_LABELS.noConsent");
+    expect(PHONE_LINK_API_LABELS.noConsent).toBe("同意なし");
   });
 });
