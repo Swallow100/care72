@@ -1,8 +1,10 @@
 "use client";
 
 // ケアマネの一覧の 1 行（docs/tasks/T61.md）。名前・管理者の印・停止の印・ID・担当の人数と、行の下の操作。
-// - 管理者には「改名」「管理者」/「管理者解除」「停止」/「再開」「再発行」（停止・管理者解除・再発行は確認の窓を通す）。
-//   改名は行の下に欄が開く。再発行した初期パスワードはこの画面の状態にだけ持って 1 回だけ出す（URL・保存・ログに残さない）
+// - 管理者には「改名」「管理者」/「管理者解除」「停止」/「再開」「再設定」（停止・管理者解除・自動発行は確認の窓を通す）。
+//   改名・再設定は行の下に欄が開く。再設定（T148）は管理者が決めたパスワード（新規・確認、決まりは lib/auth/password-rule.ts）か
+//   「自動発行」（前からの再発行）。自動発行した初期パスワードはこの画面の状態にだけ持って 1 回だけ出す（URL・保存・ログに残さない）。
+//   決めたパスワードは送るだけで、応答にも画面にも出さない（「再発行済 パスワード 設定済」）
 // - 自分の行には「パスワード変更」（管理者でなくても）。欄は components/office/OwnPassword.tsx（医療班・行政の受入一覧と同じ部品。T99）。
 //   現在・新規・確認の 3 つの欄。変えたあともこの端末はログインしたまま、ほかの端末は入り直し（「他端末 再ログイン」）
 // - 種のデモ事業所のアカウント（山本）は「固定」の 1 語でボタンを出さない（サーバーも断る）
@@ -29,8 +31,8 @@ import { DISPLAY_NAME_MAX } from "@/lib/office/forms";
 import { ASSIGN_ANCHOR, careManagerApiPath } from "@/lib/office/http-paths";
 import { OFFICE_LABELS, STAFF_CONFIRM_LABELS } from "@/lib/office/labels";
 import { appConfirm } from "@/lib/ui/dialog";
-import { INPUT } from "./AddCareManager";
-import { FormButtons, OwnPasswordForm, PasswordDone, post, type Reply } from "./OwnPassword";
+import { INPUT } from "./field";
+import { FormButtons, OwnPasswordForm, PasswordDone, PasswordField, PasswordRule, passwordInputError, post, type Reply } from "./OwnPassword";
 
 /** 新しいパスワードの長さ（欄の部品 OwnPassword.tsx の物。T61 のテストはここから読む） */
 export { PASSWORD_INPUT } from "./OwnPassword";
@@ -44,7 +46,7 @@ export type CareManagerRowItem = {
   disabled: boolean;
 };
 
-type Mode = "rename" | "password" | null;
+type Mode = "rename" | "password" | "reset" | null;
 
 /**
  * ownPassword は自分の行のパスワード変更を出すか（既定は出す）。審査員の試用事業所（T115）の管理者はパスワードを持たない
@@ -78,6 +80,9 @@ export function CareManagerRow({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<{ label: string; hasPeople: boolean } | null>(null);
   const [reissued, setReissued] = useState<string | null>(null);
+  // 決めたパスワードで再設定した（パスワードは出さない）
+  const [resetSet, setResetSet] = useState(false);
+  const [resetPw, setResetPw] = useState({ next: "", confirm: "" });
   const [copied, setCopied] = useState(false);
   const [passwordDone, setPasswordDone] = useState(false);
   const [name, setName] = useState(item.name);
@@ -90,6 +95,8 @@ export function CareManagerRow({
   function open(next: Mode) {
     setError(null);
     setPasswordDone(false);
+    setResetSet(false);
+    setResetPw({ next: "", confirm: "" });
     setMode(next);
     if (next === "rename") setName(item.name);
   }
@@ -142,7 +149,27 @@ export function CareManagerRow({
     setReissued(null);
     setCopied(false);
     const r = await act({ action: "reset_password" });
-    if (r.ok && typeof r.password === "string") setReissued(r.password);
+    if (r.ok && typeof r.password === "string") {
+      setReissued(r.password);
+      setMode(null);
+    }
+  }
+
+  /** 管理者が決めたパスワードで再設定（T148）。決まりと確認を送る前に見る（サーバーも同じ決まりで断る） */
+  async function resetTo(e: React.FormEvent) {
+    e.preventDefault();
+    const bad = passwordInputError(resetPw.next, resetPw.confirm);
+    if (bad) {
+      setError({ label: bad, hasPeople: false });
+      return;
+    }
+    setReissued(null);
+    const r = await act({ action: "reset_password", password: resetPw.next });
+    if (r.ok) {
+      setResetPw({ next: "", confirm: "" });
+      setResetSet(true);
+      setMode(null);
+    }
   }
 
   async function copy() {
@@ -205,8 +232,8 @@ export function CareManagerRow({
                   {OFFICE_LABELS.disable}
                 </DangerIn>
               )}
-              <DangerIn icon={RetryIcon} disabled={busy} onClick={() => void reissue()}>
-                {OFFICE_LABELS.resetPassword}
+              <DangerIn icon={RetryIcon} disabled={busy} onClick={() => open("reset")}>
+                {OFFICE_LABELS.resetOpen}
               </DangerIn>
             </>
           )}
@@ -260,6 +287,56 @@ export function CareManagerRow({
           className="mt-1.5"
           data-cm-form="password"
         />
+      )}
+
+      {mode === "reset" && (
+        <form onSubmit={resetTo} aria-label={`${item.name} ${OFFICE_LABELS.resetOpen}`} className="mt-1.5 grid gap-1.5" data-cm-form="reset">
+          <div className="grid grid-cols-2 gap-1.5">
+            <PasswordField
+              label={OFFICE_LABELS.nextPassword}
+              auto="new-password"
+              input={INPUT}
+              min
+              focus
+              value={resetPw.next}
+              onChange={(v) => setResetPw({ ...resetPw, next: v })}
+            />
+            <PasswordField
+              label={OFFICE_LABELS.confirmPassword}
+              auto="new-password"
+              input={INPUT}
+              min
+              value={resetPw.confirm}
+              onChange={(v) => setResetPw({ ...resetPw, confirm: v })}
+            />
+          </div>
+          <PasswordRule />
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Button type="submit" kind="main" size="sm" icon={PasswordIcon} disabled={busy} data-pending={busy ? "" : undefined}>
+              {busy ? OFFICE_LABELS.sending : OFFICE_LABELS.setPassword}
+            </Button>
+            {/* 決めずにサーバーが作る（前からの再発行。確認の窓を通し、1 回だけ出す） */}
+            <DangerIn icon={RetryIcon} disabled={busy} onClick={() => void reissue()} data-cm-auto>
+              {OFFICE_LABELS.autoPassword}
+            </DangerIn>
+            <Button kind="quiet" size="sm" icon={CloseIcon} onClick={() => setMode(null)} disabled={busy}>
+              {OFFICE_LABELS.cancel}
+            </Button>
+            {error && (
+              <span role="alert" className="text-sm font-bold text-danger">
+                {error.label}
+              </span>
+            )}
+          </div>
+        </form>
+      )}
+
+      {resetSet && (
+        <p role="status" className="mt-1 flex flex-wrap items-baseline justify-end gap-x-2 text-sm" data-cm-reset-set>
+          <StateText tone="ok">{OFFICE_LABELS.reissued}</StateText>
+          <span className="text-muted">{OFFICE_LABELS.password}</span>
+          <span className="font-bold">{OFFICE_LABELS.passwordSet}</span>
+        </p>
       )}
 
       {passwordDone && <PasswordDone className="mt-1" />}

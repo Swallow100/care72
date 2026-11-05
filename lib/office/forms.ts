@@ -4,10 +4,12 @@
 // - 氏名は空白をそろえるだけ（全角の空白も半角 1 つに）。40 字まで
 // - カナはひらがな・半角カナもカタカナにそろえる（seed と同じ「ヤマダ ハナ」の形）。40 字まで
 // - 生年月日は暦にある日で、1900 年から今日（JST）まで
-// ケアマネ: 名前（20 字まで）と ID（英小文字・数字・「._-」の 3〜32 字。大文字・全角は小文字の半角にそろえる）。
-// 初期パスワードは入力にしない（サーバーが作り、画面に 1 回だけ出す。lib/office/staff.ts）
+// ケアマネ: 名前（20 字まで）と ID（英小文字・数字・「._-」の 3〜32 字。大文字・全角は小文字の半角にそろえる）と、任意のパスワード（T148）。
+// パスワードを入れれば lib/auth/password-rule.ts の決まり（10〜64 字・大文字・小文字・記号）で確かめ、ハッシュだけを表に入れる（返さない）。
+// 空ならサーバーが作り、画面に 1 回だけ出す（前からの形。lib/office/staff.ts）
 
 import { isReservedLoginId } from "../auth/demo.ts";
+import { checkPassword } from "../auth/password-rule.ts";
 import { SEXES, type Sex } from "../db/types.ts";
 import type { PersonFormError, StaffFormError } from "./labels.ts";
 
@@ -20,7 +22,8 @@ const ID = /^[A-Za-z0-9_-]{1,64}$/;
 const CONTROL = /[\u0000-\u001f\u007f]/;
 
 export type PersonInput = { name: string; kana: string; birthDate: string; sex: Sex; careManagerId: string };
-export type StaffInput = { displayName: string; loginId: string };
+/** password は管理者が決めたパスワード（NFC にそろえた値）。無ければサーバーが作る */
+export type StaffInput = { displayName: string; loginId: string; password?: string };
 
 type Parsed<T, E> = { ok: true; value: T } | { ok: false; error: E };
 
@@ -99,5 +102,9 @@ export function parseStaffInput(raw: unknown): Parsed<StaffInput, StaffFormError
   const loginId = normalizeLoginId(str(o.loginId));
   if (!LOGIN_ID_PATTERN.test(loginId) || isReservedLoginId(loginId)) return { ok: false, error: "login_id" };
 
-  return { ok: true, value: { displayName, loginId } };
+  // パスワードは任意（無い・空ならサーバーが作る）。入れたら決まりで確かめる
+  if (o.password === undefined || o.password === null || o.password === "") return { ok: true, value: { displayName, loginId } };
+  const pw = checkPassword(o.password);
+  if (!pw.ok) return { ok: false, error: "password" };
+  return { ok: true, value: { displayName, loginId, password: pw.value } };
 }

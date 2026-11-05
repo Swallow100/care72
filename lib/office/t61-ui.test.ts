@@ -1,5 +1,5 @@
 // ケアマネの一覧の行（components/office/CareManagerRow.tsx、docs/tasks/T61.md）の描画。
-// 固定の行はボタンなし、管理者の見るほかの人の行は 改名・管理者・停止・再発行、自分の行は パスワード変更、停止した行は 停止の印と 再開。
+// 固定の行はボタンなし、管理者の見るほかの人の行は 改名・管理者・停止・再設定、自分の行は パスワード変更、停止した行は 停止の印と 再開。
 
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -46,18 +46,18 @@ describe("ケアマネの一覧の行", () => {
     }
   });
 
-  it("管理者が見るほかの人の行: 改名・管理者・停止・再発行（停止と再発行は赤）", () => {
+  it("管理者が見るほかの人の行: 改名・管理者・停止・再設定（停止と再設定は赤。再設定の欄に決めたパスワードと自動発行、T148）", () => {
     const html = render({ item: item(), self: false, manage: true });
-    expect(buttons(html)).toEqual([OFFICE_LABELS.rename, OFFICE_LABELS.makeAdmin, OFFICE_LABELS.disable, OFFICE_LABELS.resetPassword]);
+    expect(buttons(html)).toEqual([OFFICE_LABELS.rename, OFFICE_LABELS.makeAdmin, OFFICE_LABELS.disable, OFFICE_LABELS.resetOpen]);
     expect(html).not.toContain(OFFICE_LABELS.changePassword);
   });
 
-  it("赤の操作（停止・管理者解除・再発行）も白い地のボタンで、文字と印だけ赤（灰色の行に溶けない）", () => {
+  it("赤の操作（停止・管理者解除・再設定）も白い地のボタンで、文字と印だけ赤（灰色の行に溶けない）", () => {
     const tags = [
       ...buttonTags(render({ item: item(), self: false, manage: true })),
       ...buttonTags(render({ item: item({ admin: true }), self: false, manage: true })),
     ];
-    for (const label of [OFFICE_LABELS.disable, OFFICE_LABELS.resetPassword, OFFICE_LABELS.removeAdmin]) {
+    for (const label of [OFFICE_LABELS.disable, OFFICE_LABELS.resetOpen, OFFICE_LABELS.removeAdmin]) {
       const b = tags.find((t) => t.text === label);
       expect(b, label).toBeDefined();
       expect(b!.attrs).toContain("bg-panel ");
@@ -75,7 +75,7 @@ describe("ケアマネの一覧の行", () => {
     const html = render({ item: item({ disabled: true }), self: false, manage: true });
     expect(html).toContain('data-disabled=""');
     expect(html).toMatch(/data-tone="unknown"[^>]*>停止</);
-    expect(buttons(html)).toEqual([OFFICE_LABELS.rename, OFFICE_LABELS.makeAdmin, OFFICE_LABELS.enable, OFFICE_LABELS.resetPassword]);
+    expect(buttons(html)).toEqual([OFFICE_LABELS.rename, OFFICE_LABELS.makeAdmin, OFFICE_LABELS.enable, OFFICE_LABELS.resetOpen]);
   });
 
   it("自分の行: 管理者なら 改名 と パスワード変更、管理者でなければ パスワード変更 だけ", () => {

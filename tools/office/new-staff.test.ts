@@ -194,7 +194,7 @@ describe("医療班・行政のアカウントを作る道具: 動かす", () =>
     if (!res.ok) throw new Error("ログインできない");
     const timeline = () => (db.prepare("SELECT count(*) AS n FROM office_timeline_entries").get() as { n: number }).n;
     const n = timeline();
-    const next = "kyugo-new-pass-01";
+    const next = "Kyugo-new-pass-01";
     const changed = await changeOwnPassword(d1, {}, SECRET, res.principal, { current: password, next }, NOW, { iterations: 1000 });
     expect(changed.ok).toBe(true);
     expect(timeline()).toBe(n);

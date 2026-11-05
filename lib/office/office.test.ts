@@ -135,10 +135,12 @@ describe("入力の読み方", () => {
     expect(parseStaffInput({ displayName: "", loginId: "sato" })).toEqual({ ok: false, error: "display_name" });
   });
 
-  it("初期パスワードは 12 字＋区切りで、見分けにくい字を使わず、毎回違う", () => {
+  it("初期パスワードは 12 字＋区切りで、見分けにくい字を使わず、大文字・小文字を含み（T148 の決まり）、毎回違う", () => {
     const a = generateInitialPassword();
-    expect(a).toMatch(/^[a-hjkmnp-z2-9]{4}-[a-hjkmnp-z2-9]{4}-[a-hjkmnp-z2-9]{4}$/);
-    expect(a).not.toMatch(/[01ilo]/);
+    expect(a).toMatch(/^[a-hjkmnp-zA-HJKMNP-Z2-9]{4}-[a-hjkmnp-zA-HJKMNP-Z2-9]{4}-[a-hjkmnp-zA-HJKMNP-Z2-9]{4}$/);
+    expect(a).not.toMatch(/[01iloILO]/);
+    expect(a).toMatch(/[A-Z]/);
+    expect(a).toMatch(/[a-z]/);
     expect(new Set(Array.from({ length: 20 }, generateInitialPassword)).size).toBe(20);
   });
 });
