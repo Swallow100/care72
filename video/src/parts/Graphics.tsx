@@ -21,49 +21,6 @@ const RADIUS = { panel: 10, mark: 4 } as const;
 const LINE = 2;
 const HAIRLINE = `1px solid ${COLOR.blueTint}`;
 
-/**
- * 72 時間の輪（S2 の題名と終わりの画面）。全体の輪（地の 1 段明るい青）の上に、0 時から時計回りに字の色の弧が伸びる（Share のメーターを輪にした物）。
- * 目盛りは輪の内側に細い線（時計の文字盤の向き。外へ出すと太陽の印に見える）。12 時間ごとは長く、過ぎた所は字の色。
- * ticks は目盛りの数（72 なら 1 時間ごと）、labels なら外側に 0・12・24… の数。hours は塗る時間（0〜72）
- */
-const Dial: React.FC<{ r: number; width: number; hours: number; ticks: number; labels?: boolean }> = ({ r, width, hours, ticks, labels }) => {
-  const p = usePalette();
-  const c = 2 * Math.PI * r;
-  const size = r * 2 + width + (labels ? 160 : 8);
-  const unit = r / 300;
-  return (
-    <svg width={size} height={size} viewBox={`${-size / 2} ${-size / 2} ${size} ${size}`} style={{ display: "block" }}>
-      <circle r={r} fill="none" stroke={p.tint} strokeWidth={width} />
-      <circle r={r} fill="none" stroke={p.fg} strokeWidth={width} strokeDasharray={`${(c * hours) / 72} ${c}`} transform="rotate(-90)" />
-      {Array.from({ length: ticks }, (_, i) => {
-        const h = (i * 72) / ticks;
-        const a = (h / 72) * Math.PI * 2 - Math.PI / 2;
-        const major = h % 12 === 0;
-        const r0 = r - width / 2 - 10 * unit;
-        const r1 = r0 - (major ? 30 : 14) * unit;
-        const passed = hours >= h;
-        return (
-          <g key={i}>
-            <line x1={Math.cos(a) * r0} y1={Math.sin(a) * r0} x2={Math.cos(a) * r1} y2={Math.sin(a) * r1} stroke={passed ? p.fg : p.sub} strokeWidth={LINE} />
-            {labels && major ? (
-              <text
-                x={Math.cos(a) * (r + width / 2 + 40)}
-                y={Math.sin(a) * (r + width / 2 + 40) + 9}
-                textAnchor="middle"
-                fontFamily={FONT.main}
-                fontSize={TYPE.caption}
-                fill={passed ? p.fg : p.sub}
-              >
-                {h}
-              </text>
-            ) : null}
-          </g>
-        );
-      })}
-    </svg>
-  );
-};
-
 /** 舞台。中の物を上下左右の真ん中に置く */
 export const Stage: React.FC<{ children: React.ReactNode; gap?: number; row?: boolean; align?: "center" | "stretch" }> = ({
   children,
@@ -173,48 +130,6 @@ export const TextCard: React.FC<{ lines: string[]; sub?: string; beats?: number[
           ))}
         </div>
       ) : null}
-    </Stage>
-  );
-};
-
-/**
- * G1 72 時間の輪。目盛りが時計回りに 1 つずつ埋まり、12 時間ごとの太い目盛りに時間を添える。
- * 題名（ケア72）は輪の中で、目盛りが半分まで埋まった所で上がって出る
- */
-export const Ring72: React.FC<{ label: string; duration: number; sub?: string; titleAt?: number; markAt?: number; children?: React.ReactNode }> = ({
-  label,
-  duration,
-  sub,
-  titleAt,
-  markAt,
-  children,
-}) => {
-  const frame = useCurrentFrame();
-  const p = usePalette();
-  const hours = interpolate(frame, [0, duration * 0.75], [0, 72], { ...clamp, easing: EASE_OUT });
-  // 題名は声がその名前を言う所（titleAt のコマ）。無ければ輪が 2 割進んだ所
-  const titleIn = progress(frame, titleAt ?? Math.round(duration * 0.18), 18);
-  // 声が「72 は」と言う所（markAt）で、題名の数の下に 6px の帯が左から伸びる（表の強調と同じ太さ）
-  const [, name = label, digits = ""] = /^(.*?)(\d+)$/.exec(label) ?? [];
-  const bar = markAt !== undefined ? progress(frame, markAt, 12) : 0;
-  return (
-    <Stage gap={0}>
-      <div style={{ position: "relative", display: "flex", justifyContent: "center", alignItems: "center" }}>
-        <Dial r={320} width={14} hours={hours} ticks={72} labels />
-        <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", gap: 10 }}>
-          <div style={{ fontSize: TYPE.display, fontWeight: 600, lineHeight: 1, opacity: titleIn, transform: `translateY(${(1 - titleIn) * 26}px)` }}>
-            {name}
-            {digits ? (
-              <span style={{ position: "relative" }}>
-                {digits}
-                <span style={{ position: "absolute", left: 4, right: 4, bottom: -16, height: 6, background: p.fg, transformOrigin: "left", transform: `scaleX(${bar})` }} />
-              </span>
-            ) : null}
-          </div>
-          {/* 名前の意味は声に合わせた言葉（children）があればそれ、無ければ sub を 1 行で */}
-          {children ? <div style={{ marginTop: 46 }}>{children}</div> : sub ? <div style={{ fontSize: TYPE.body, color: p.sub, ...rise(frame, Math.round(duration * 0.35)) }}>{sub}</div> : null}
-        </div>
-      </div>
     </Stage>
   );
 };

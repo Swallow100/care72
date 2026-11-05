@@ -95,6 +95,8 @@ export type Shot = {
   marker?: string;
   value?: string;
   sub?: string;
+  /** 前の絵と重ねずに切り替える（前の絵の印がこの絵の同じ所へ縮んで収まる、続きの絵。72 時間の輪 → 3 本立ての円柱） */
+  cutIn?: boolean;
 };
 
 /** 地の色。青と白のコントラスト。話の段（S1〜S3・S8・S9）は青地、道具の段（S4〜S7）は白地 */
@@ -254,15 +256,17 @@ export const SCENES: Scene[] = [
         beats: [0.5],
         cues: [
           { text: "72", line: "N07", say: "72は", slot: "mark" },
-          { text: "助けが届きにくい", line: "N07", size: "h2", row: 0, hold: true },
-          { text: "災害直後の 72 時間", line: "N07", size: "h2", row: 1, hold: true },
+          { text: "助けが届きにくい", line: "N07", size: "h1", row: 0, hold: true },
+          { text: "災害直後の 72 時間", line: "N07", size: "h1", row: 1, hold: true },
         ],
       },
       {
         at: 38,
         end: 46,
-        // 3 本立ての円柱（parts/Carousel.tsx。作者の頼み 11/5）。声の「計画ができ」「訓練もでき」「災害時は」で円柱が回り、その窓が正面に来る
+        // 3 本立ての円柱（parts/Carousel.tsx。作者の頼み 11/5）。声の「計画ができ」「訓練もでき」「災害時は」で円柱が回り、その窓が正面に来る。
+        // 見出しの左に白いロゴの印。前の 72 時間の輪の印がそこへ縮んで収まるので、重ねずに切り替える
         kind: "carousel",
+        cutIn: true,
         footages: ["R03", "R07", "R10"],
         // R03 は様式の頭（R03-3 の 0 秒から。4 秒ほどで下へ送る）、R10 は山田の行が至急で一番上に上がったあと（R10-3 の 49.6 秒）
         froms: [0, 7.2, 50.9],

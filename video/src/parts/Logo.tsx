@@ -33,6 +33,63 @@ const DIGITS =
 const DAY_COLORS = ["#0b4ea6", "#116bdf", "#6fa6ee"];
 export const LOGO_INK = "#161b21";
 
+/**
+ * 青地に置く白い印（S3 の 72 時間の輪と、3 本立ての見出し）。形はロゴのまま、色だけ白にする（ロゴの青は青地で沈むため）。
+ * drawn は日ごとの弧の描けた割合、lit は日ごとの明るさ（1 で白、0 で地に沈む薄い白）、spin は弧だけを回す角度（「72」は回さない）。
+ * mark は「72」に白い帯（parts/Marker.tsx と同じ形: 白い面が左から伸び、帯の上の字は地の色）。children は同じ 100 の升の上に描く物（目盛りなど）
+ */
+export const LogoMark: React.FC<{
+  size: number;
+  drawn?: number[];
+  lit?: number[];
+  spin?: number;
+  digits?: number;
+  mark?: number;
+  /** 帯を消すときの濃さ（帯の長さは mark のまま。長さで縮めると左に細い線が残る） */
+  markOpacity?: number;
+  fg: string;
+  bg: string;
+  children?: React.ReactNode;
+}> = ({ size, drawn = [1, 1, 1], lit = [1, 1, 1], spin = 0, digits = 1, mark = 0, markOpacity = 1, fg, bg, children }) => {
+  const id = `m${React.useId().replace(/[^a-zA-Z0-9]/g, "")}`;
+  // 帯は「72」の外に 3 の余白。左から伸びる
+  const box = { x: 26.5, y: 34, w: 47, h: 33 };
+  return (
+    <svg width={size} height={size} viewBox="0 0 100 100" style={{ display: "block", overflow: "visible" }}>
+      <g transform={`rotate(${spin.toFixed(3)} 50 50)`}>
+        {DAYS.map((d, i) => (
+          <path
+            key={i}
+            d={d}
+            fill="none"
+            stroke={fg}
+            strokeOpacity={0.3 + 0.7 * Math.max(0, Math.min(1, lit[i] ?? 1))}
+            strokeWidth={STROKE}
+            strokeDasharray={DAY_LEN}
+            strokeDashoffset={DAY_LEN * (1 - Math.max(0, Math.min(1, drawn[i] ?? 1)))}
+          />
+        ))}
+      </g>
+      {children}
+      <path d={DIGITS} fill={fg} opacity={digits} />
+      {mark > 0 && markOpacity > 0 ? (
+        <>
+          <clipPath id={id}>
+            <rect x={box.x} y={box.y} width={box.w * mark} height={box.h} />
+          </clipPath>
+          <g clipPath={`url(#${id})`} opacity={markOpacity}>
+            <rect x={box.x} y={box.y} width={box.w} height={box.h} rx={2} fill={fg} />
+            <path d={DIGITS} fill={bg} />
+          </g>
+        </>
+      ) : null}
+    </svg>
+  );
+};
+
+/** 印の 100 の升の中の輪の半径と太さ（目盛りを輪にそろえて描くため） */
+export const MARK_RING = { r: R, stroke: STROKE, gap: GAP } as const;
+
 /** start のコマから len コマで 3 つの日の弧を順に描く。最後の日だけゆるめて止める（アプリと同じ） */
 export const Logo: React.FC<{ size: number; start: number; len: number }> = ({ size, start, len }) => {
   const frame = useCurrentFrame();
