@@ -12,7 +12,7 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: () => {}, push: () => {} }) }));
 
 import { Intake, LogBubble, type LogEntry } from "../../components/person/Intake.tsx";
-import { currentAsk, logTurns, TURNS_SHOWN, visibleTurns } from "../../components/person/intake-log.ts";
+import { currentAsk, logTurns, saveVersion, TURNS_SHOWN, visibleTurns } from "../../components/person/intake-log.ts";
 import { SEED_AT, SEED_PEOPLE, seedConsents, type SeedPerson } from "../../seed/people.ts";
 import type { PersonPageRows } from "../person.ts";
 import type { IntakeProps } from "./props.ts";
@@ -174,6 +174,14 @@ describe("今の問いの置き場所（T138）", () => {
     expect(currentAsk(queue, [queue[0].key, queue[1].key]).question?.key).toBe(queue[2].key);
     // 全部済めば問いは無い
     expect(currentAsk(queue, queue.map((x) => x.key))).toEqual({ question: null, left: 0 });
+  });
+
+  it("すぐ替わった次の問いに、ページの読み直しが届く前に答えても、自分の前の保存の版で送る（競合にしない）", () => {
+    expect(saveVersion(3, 0)).toBe(3); // まだ保存していない: ページの版
+    expect(saveVersion(3, 4)).toBe(4); // 保存の返事が 4、読み直しはまだ: 4 で送る
+    expect(saveVersion(5, 4)).toBe(5); // ほかの保存を含めて読み直した: ページの版
+    const src = readFileSync(new URL("../../components/person/Intake.tsx", import.meta.url), "utf8");
+    expect(src).toContain("version: saveVersion(props.version, savedVersion)");
   });
 
   it("今の問いの所の印（data-key）が、答えた欄を飛ばした次の問いに替わる（描いた画面で）", () => {

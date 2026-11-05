@@ -38,7 +38,7 @@ import { Loader72 } from "@/components/ui/Loader72";
 import { WAIT_LABELS } from "@/lib/ui/labels";
 import { FoldIcon, MicIcon, MoreIcon, ReadFileIcon, RetryIcon, SplitIcon, StopIcon } from "./icons";
 import { isError, postForm, postJson } from "./intake-api";
-import { currentAsk, logTurns, TURNS_SHOWN, visibleTurns } from "./intake-log";
+import { currentAsk, logTurns, saveVersion, TURNS_SHOWN, visibleTurns } from "./intake-log";
 import { IntakeChanges, rowsOf, type ChangeRow } from "./IntakeChanges";
 import { IntakeQuestion } from "./IntakeQuestion";
 import { INPUT } from "./intake-ui";
@@ -151,6 +151,8 @@ export function Intake(props: IntakeProps & { level: Level }) {
   const [askError, setAskError] = useState<string | null>(null);
   /** 畳んだ古い組を開いている */
   const [all, setAll] = useState(false);
+  /** 自分の保存の返事の版（ページの読み直しが届く前に次の問いへ答えても、自分の保存で競合にしない） */
+  const [savedVersion, setSavedVersion] = useState(0);
   /** 黒塗りの画面に渡している写真・PDF（開いている間だけ） */
   const [redacting, setRedacting] = useState<File[] | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -233,9 +235,9 @@ export function Intake(props: IntakeProps & { level: Level }) {
   async function save(changes: IntakeChange[], ai: { model: string } | null, read?: ReadMeta): Promise<Saved> {
     setBusy("save");
     setError(null);
-    const r = await postJson<{ ok: true; changed: number }>("/api/intake/save", {
+    const r = await postJson<{ ok: true; changed: number; version: number }>("/api/intake/save", {
       personId: props.personId,
-      version: props.version,
+      version: saveVersion(props.version, savedVersion),
       ai,
       changes,
       ...(read && ai ? { read } : {}),
@@ -245,6 +247,7 @@ export function Intake(props: IntakeProps & { level: Level }) {
       if (r.error === "conflict") router.refresh();
       return { ok: false, label: r.label };
     }
+    setSavedVersion((v) => Math.max(v, r.version));
     router.refresh();
     return { ok: true, changed: r.changed };
   }

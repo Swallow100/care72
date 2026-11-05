@@ -39,6 +39,14 @@ export function visibleTurns<E>(turns: readonly E[][], all: boolean, keep: (turn
  * 今の問いと残りの数。hidden はこの画面で答えた・「次回」にした欄で、保存のあとページを読み直す前から次の問いに替える。
  * 保存に失敗した答えは hidden に入れない（同じ問いが残る）
  */
+/**
+ * 保存に送る版。保存の返事の版（saved）と、ページを読み直して来た版（page）の大きい方。
+ * 答えるとすぐ次の問いに替わるので、読み直しが届く前に次を答えても、自分の前の保存で「競合」にならないように
+ */
+export function saveVersion(page: number, saved: number): number {
+  return Math.max(page, saved);
+}
+
 export function currentAsk<Q extends { key: string }>(queue: readonly Q[], hidden: readonly string[]): { question: Q | null; left: number } {
   // 選び方は lib/intake/ask.ts の nextQuestion と同じ（並びの先頭から、飛ばした欄を除く）
   const open = queue.filter((q) => !hidden.includes(q.key));
