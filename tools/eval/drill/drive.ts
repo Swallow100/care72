@@ -109,6 +109,8 @@ export type RunOutcome = {
   worldAgent: WorldAgentRow | null;
   /** 開始に手の決まり（T110 の terms）を送ったか（T121） */
   terms?: boolean;
+  /** 人ごとの事実の帳面の門で落とした・直した数（T130。drills.world の写しの world.gated。再生の世界には入らない） */
+  gated?: Record<string, number>;
 };
 
 /** ai_agents の行（世界の部屋の Agent と Environment） */
@@ -391,7 +393,7 @@ export async function runDrill(plan: RunPlan, deps: DriveDeps): Promise<RunOutco
     }
     const callsLeft = (await loadDrillScreen(db, { officeId: DEMO.id }, drillId, null))?.left ?? null;
     log.push({ type: "end", status: replay.drill.status, step: replay.drill.step, minute: replay.minute, advances, callsLeft });
-    return { plan, drillId, status: replay.drill.status, advances, replay, ops, errors, aiCalls: aiCallsOf(sqlite), callsLeft, names, worldAgent: worldAgentOf(sqlite), terms: options.terms === true };
+    return { plan, drillId, status: replay.drill.status, advances, replay, ops, errors, aiCalls: aiCallsOf(sqlite), callsLeft, names, worldAgent: worldAgentOf(sqlite), terms: options.terms === true, gated: gatedOf(sqlite, drillId) };
   } finally {
     sqlite.close();
   }
@@ -399,6 +401,16 @@ export async function runDrill(plan: RunPlan, deps: DriveDeps): Promise<RunOutco
 
 function worldAgentOf(sqlite: DatabaseSync): WorldAgentRow | null {
   return (sqlite.prepare("SELECT version, agent_id, agent_version, environment_id, updated_at FROM ai_agents WHERE purpose = 'drill_world'").get() as WorldAgentRow | undefined) ?? null;
+}
+
+/** 帳面の門の数（T130。保存した drills.world の写しから） */
+function gatedOf(sqlite: DatabaseSync, drillId: string): Record<string, number> {
+  const row = sqlite.prepare("SELECT json_extract(world, '$.world.gated') AS g FROM drills WHERE id = ?").get(drillId) as { g: string | null } | undefined;
+  try {
+    return row?.g ? (JSON.parse(row.g) as Record<string, number>) : {};
+  } catch {
+    return {};
+  }
 }
 
 function aiCallsOf(sqlite: DatabaseSync): AiCallRow[] {

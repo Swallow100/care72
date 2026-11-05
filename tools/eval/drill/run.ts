@@ -23,7 +23,10 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import type { ClaudeClient } from "../../../lib/claude/client.ts";
 import { officePlaces } from "../../../lib/drill/area.ts";
 import { roomClientOf, worldModeOf, type WorldMode } from "../../../lib/drill/world-room.ts";
-import { pseudonymize, type PseudonymInput } from "../../../lib/pseudonym/index.ts";
+import { contactRoles, pseudonymize, type PseudonymInput } from "../../../lib/pseudonym/index.ts";
+import { housemates } from "../../../lib/drill/persona.ts";
+import { planOf } from "../../../lib/drill/person-facts.ts";
+import type { FactPerson } from "./facts-check.ts";
 import { SEED_PEOPLE } from "../../../seed/people.ts";
 import { checkRun, type CheckContext } from "./checks.ts";
 import { diversityOf } from "./diversity.ts";
@@ -83,7 +86,17 @@ export function checkContext(): CheckContext {
   }
   // 生年月日（台の表で和暦・略記・漢数字の書き方も。T118）
   const births = SEED_SOURCES.flatMap((s) => (s.person.birth_date ? [{ iso: s.person.birth_date, what: "生年月日（台の表）" }] : []));
-  return { key, extra, births };
+  // 帳面の検査（T130）に要る本人ごとの計画・同居・家族・ハザード（本人役と同じ作り方）
+  const facts: Record<string, FactPerson> = Object.fromEntries(
+    SEED_SOURCES.map((s) => {
+      const { together, kin } = housemates(s, contactRoles(s.contacts), s.ledger.basic.sex ?? null);
+      return [
+        s.person.id,
+        { plan: planOf(s), together, kin, hazards: s.ledger.evacuation.hazards, town: s.ledger.basic.address?.town ?? null },
+      ];
+    }),
+  );
+  return { key, extra, births, facts };
 }
 
 const pad = (n: number) => String(n).padStart(2, "0");

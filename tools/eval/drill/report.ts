@@ -37,6 +37,9 @@ export type Totals = {
   /** 手の決まりで押せないはずの手が打てた数・夜の訪問の所要が足りない数（T121。決まりを送った回は 0 のはず） */
   termsRan?: number;
   termsDark?: number;
+  /** 帳面との矛盾（T130。門が効いていれば 0）と、門が落とした・直した数 */
+  factHits?: number;
+  gated?: number;
   advanceP50: number | null;
   advanceP95: number | null;
   usdPerRun: number | null;
@@ -94,6 +97,8 @@ export function totalsOf(runs: ReadonlyArray<RunSummary>): Totals {
     termsRefused: sum(n.map((x) => x.terms?.refused ?? 0)),
     termsRan: sum(n.map((x) => x.terms?.ran ?? 0)),
     termsDark: sum(n.map((x) => x.terms?.dark ?? 0)),
+    factHits: sum(n.map((x) => x.facts?.hits ?? 0)),
+    gated: sum(n.map((x) => Object.values(x.facts?.gated ?? {}).reduce((a, b) => a + b, 0))),
     advanceP50: mean(n.map((x) => x.timing.advanceP50)),
     advanceP95: max(n.map((x) => x.timing.advanceP95)),
     usdPerRun: mean(n.map((x) => x.cost.usd)),
@@ -147,6 +152,8 @@ export const METRICS: ReadonlyArray<Metric> = [
   { label: "再試行", get: (s) => s.totals.retries, format: int, lowerBetter: true },
   { label: "仮名の漏れ（送った中身）", get: (s) => s.totals.leaks, format: int, lowerBetter: true },
   { label: "矛盾/回", get: (s) => per(s, s.totals.contradictions), format: two, lowerBetter: true },
+  { label: "帳面との矛盾/回（T130）", get: (s) => per(s, s.totals.factHits ?? 0), format: two, lowerBetter: true },
+  { label: "帳面の門で落とした・直した数", get: (s) => s.totals.gated ?? 0, format: int },
   { label: "時間の目安の帯の外（監督の差し込み）", get: (s) => s.totals.offBandRate, format: pct },
   { label: "停止の印（上限）", get: (s) => s.totals.aiStop, format: int, lowerBetter: true },
   { label: "世界の代替・停止の印", get: (s) => s.totals.worldNote, format: int, lowerBetter: true },
