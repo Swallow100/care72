@@ -8,6 +8,7 @@
 //       --scenario short,virtual,heavy_rain,earthquake（全部）・--judge K（審査役に読ませる回の数、2）・--review（講評も作る）・
 //       --max-advances N（1 回の進める回数の上限、400）・--out <dir>（記録の置き場。既定はリポジトリの隣の care72-qa/eval/drill）・
 //       --md <dir>（差の表。既定 docs/progress）・--no-md・--noise P（偽の client に決まりを破る言葉を混ぜる割合、0）・
+//       --latency S（偽の client の待ちの縮尺。役ごとの本物の待ちの目安に掛ける。0.01 で 100 分の 1、0 は待たない。T123）・
 //       --max-usd X（本物の見積もりの上限。超えたら次の回を始めない。本物の既定 10）・
 //       --terms on|off（連続の時計の訓練の開始に手の決まり〔T110 の terms〕を送るか。既定 on、開始の画面と同じ。T121）
 //
@@ -54,6 +55,8 @@ export type EvalConfig = {
   out: string;
   md: string | null;
   noise: number;
+  /** 偽の client の待ちの縮尺（T123。--latency S。0 は待たない） */
+  latency?: number;
   maxUsd: number | null;
   /** 手の決まり（T110 の terms）を送るか（T121。既定は送る。--terms off で送らない） */
   terms: boolean;
@@ -118,9 +121,9 @@ export async function runEval(cfg: EvalConfig): Promise<{ summary: Summary; dir:
     const log = runLog(join(dir, `run-${pad(i)}.jsonl`));
     const inner: ClaudeClient = cfg.real
       ? (new Anthropic({ apiKey: cfg.key, maxRetries: 0 }) as unknown as ClaudeClient)
-      : fakeClaude({ rng: rngOf(`${plan.seed}/fake`), noise: cfg.noise });
+      : fakeClaude({ rng: rngOf(`${plan.seed}/fake`), noise: cfg.noise, latency: cfg.latency ?? 0 });
     const claude = recordClaude(inner, log);
-    const room = recordRoom(cfg.real ? roomClientOf({ ANTHROPIC_API_KEY: cfg.key }) : fakeRoom({ rng: rngOf(`${plan.seed}/room`), noise: cfg.noise }), log);
+    const room = recordRoom(cfg.real ? roomClientOf({ ANTHROPIC_API_KEY: cfg.key }) : fakeRoom({ rng: rngOf(`${plan.seed}/room`), noise: cfg.noise, latency: cfg.latency ?? 0 }), log);
     if (worldAgent && plan.scenario === "virtual" && cfg.world === "session") room.reuse(worldAgent.agent_id);
     say(`回 ${i}/${cfg.runs}: ${plan.scenario}${plan.scale ? ` ${plan.scale.kind}:${plan.scale.level}` : ""}、${plan.participants.length} 人、種 ${plan.seed}`);
     const outcome = await runDrill(plan, { client: claude, room, log, key: cfg.key, world: cfg.world, real: cfg.real, maxAdvances: cfg.maxAdvances, review: cfg.review, worldAgent, terms: cfg.terms });
@@ -198,9 +201,10 @@ export function parseArgs(argv: ReadonlyArray<string>, env: Readonly<Record<stri
   const judge = num("judge", 2);
   const maxAdvances = num("max-advances", 400);
   const noise = num("noise", 0);
+  const latency = num("latency", 0);
   const maxUsdRaw = get("max-usd");
   const maxUsd = maxUsdRaw === undefined ? (real ? 10 : null) : Number(maxUsdRaw);
-  if (![runs, judge, maxAdvances, noise].every(Number.isFinite) || runs < 1 || noise < 0 || noise > 1 || (maxUsd !== null && !Number.isFinite(maxUsd))) {
+  if (![runs, judge, maxAdvances, noise, latency].every(Number.isFinite) || runs < 1 || noise < 0 || noise > 1 || latency < 0 || latency > 1 || (maxUsd !== null && !Number.isFinite(maxUsd))) {
     return { error: "数の引数が違う（--runs 1 以上、--noise 0〜1）" };
   }
   return {
@@ -217,6 +221,7 @@ export function parseArgs(argv: ReadonlyArray<string>, env: Readonly<Record<stri
     out: resolve(get("out") ?? DEFAULT_OUT),
     md: has("no-md") ? null : resolve(get("md") ?? DEFAULT_MD),
     noise,
+    latency,
     maxUsd,
     terms: terms !== "off",
   };

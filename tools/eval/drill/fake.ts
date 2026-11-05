@@ -23,7 +23,36 @@ export type FakeOptions = {
   rng: Rng;
   /** 決まりを破る言葉・壊れた JSON を混ぜる割合（0〜1）。既定 0 */
   noise?: number;
+  /**
+   * 返事の待ちの縮尺（T123）。役ごとの本物の待ちの目安（LATENCY_MS、評価の 2 回目の平均）にこの数を掛けて待つ（0.01 なら 100 分の 1）。
+   * 進める 1 回の待ちの形（監督と本人役が順か並びか・最後の刻みの監督）を偽の回で比べるため。既定 0（待たない）
+   */
+  latency?: number;
 };
+
+/** 役ごとの本物の待ちの目安（ミリ秒。評価の 2 回目の訓練の記録の平均。本人役のまとめ呼びは 1 人より長い） */
+export const LATENCY_MS: Readonly<Partial<Record<Role | "persona_batch" | "world_room", number>>> = {
+  director: 12000,
+  persona: 5000,
+  persona_batch: 8000,
+  persona_call: 4000,
+  persona_talk: 5000,
+  persona_visit: 5000,
+  world: 11000,
+  world_room: 7000,
+  free: 2600,
+  judge: 15000,
+  review: 15000,
+};
+
+const pause = (ms: number) => (ms > 0 ? new Promise<void>((r) => setTimeout(r, ms)) : Promise.resolve());
+
+/** 役の待ち（縮尺つき。揺れは 0.6〜1.8 倍で、本物と同じく遅い物がまれに出る） */
+function latencyOf(opts: FakeOptions, rng: Rng, role: keyof typeof LATENCY_MS): number {
+  if (!opts.latency) return 0;
+  const x = rng.next();
+  return Math.round((LATENCY_MS[role] ?? 3000) * opts.latency * (x < 0.85 ? 0.6 + x : 1.8));
+}
 
 // ---------- token の推し量り ----------
 
@@ -448,6 +477,7 @@ export function fakeClaude(opts: FakeOptions): ClaudeClient & { roles: Role[] } 
           const role = roleOfSystem(params.system);
           roles.push(role);
           const rng = opts.rng.fork(`${roles.length}:${role}`);
+          await pause(latencyOf(opts, rng.fork("wait"), role === "persona" && isPersonaBatch(params.system) ? "persona_batch" : role));
           if (opts.noise && role !== "judge" && rng.chance(opts.noise / 5)) return message(params, "{");
           const input = inputOf(params);
           let value: unknown;
@@ -496,6 +526,7 @@ export function fakeRoom(opts: FakeOptions): RoomClient {
             const text = ((e.content as Array<{ text?: string }>)[0]?.text ?? "") as string;
             geo = readGeography(text, geo);
             const rng = opts.rng.fork(`room:${n}`);
+            await pause(latencyOf(opts, rng.fork("wait"), "world_room"));
             if (opts.noise && rng.chance(opts.noise / 5)) events.push({ id: `ev_${++n}`, type: "session.error" });
             else events.push({ id: `ev_${++n}`, type: "agent.custom_tool_use", name: WORLD_TOOL, input: worldAnswer(rng, text, geo, opts) });
           } else if (e.type === "user.custom_tool_result") {
