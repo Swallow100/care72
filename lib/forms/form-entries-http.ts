@@ -3,7 +3,8 @@
 // 壁: ケアマネの役で事業所があり（formsScope）、本人が範囲の中で自分の事業所の人（personInScope と office_id）。ほかは 403・404。
 // 様式は計画書・医療要約か、自分の事業所の確認済の対応表だけ。
 // op:
-// - put: 様式だけの欄の値（台帳に項目の無い欄だけ。値は欄の形に合う物）・文字の枠（字と頁の上の矩形）・画像（事業所の画像の id と矩形）
+// - put: この様式だけの欄の値（台帳に項目の無い欄と、台帳に値があるのに紙に置けなかった欄〔T133〕をこの様式に合う形で書いた物。
+//   台帳の値は変えない。手書きの欄と、同意の要る範囲で同意の無い欄は受けない。値は欄の形に合う物）・文字の枠（字と頁の上の矩形）・画像（事業所の画像の id と矩形）
 // - remove: 取り消す（行は消さない）
 // - ledger: 台帳に入れる（lib/intake/save.ts の saveIntake。面の編集と同じ edit か、問いの答え）。入ったら欄の印（誰がいつ）を残す
 // Claude は呼ばない。紙に置く画像・手入れの値はどこにも送らない。
@@ -16,7 +17,7 @@ import { saveIntake, SaveRequestSchema } from "../intake/save.ts";
 import { ENTRY_ID, ENTRY_LIMITS, fieldValueEmpty, formOnlyField, markLedgerEntry, parseFormId, putFormEntry, removeFormEntry, type FieldValue, type FormId } from "./form-entries.ts";
 import { KIROKU_FRAME } from "./frame-kiroku.ts";
 import { MATSUYAMA_FRAME } from "./frame-matsuyama.ts";
-import { clampBox, type FieldBox, type FormMapping } from "./mapping.ts";
+import { clampBox, ledgerItem, type FieldBox, type FormMapping } from "./mapping.ts";
 import { formsScope, loadCheckedMapping } from "./mapping-db.ts";
 import { MATSUYAMA_FIELDS } from "./matsuyama.ts";
 import { MATSUYAMA_FORM_ONLY } from "./paper-slots.ts";
@@ -83,7 +84,7 @@ export type EntriesRequest = z.output<typeof EntriesRequestSchema>;
 /** 様式の頁の数と、様式だけの欄の形（添付の様式は対応表から） */
 type FormShape = { pages: number; fieldShape: (key: string) => { shape: "text" | "check" | "choice"; options: readonly string[] } | null };
 
-async function formShape(db: D1Database, officeId: string, formId: FormId): Promise<FormShape | null> {
+async function formShape(db: D1Database, officeId: string, formId: FormId, personId: string): Promise<FormShape | null> {
   if (formId === "matsuyama") {
     return {
       pages: MATSUYAMA_FRAME.pages.length,
@@ -98,11 +99,18 @@ async function formShape(db: D1Database, officeId: string, formId: FormId): Prom
   const stored = await loadCheckedMapping(db, officeId, formId.slice("mapped:".length));
   if (!stored) return null;
   const m: FormMapping = stored.mapping;
+  const rows = await db.prepare("SELECT kind, status FROM consents WHERE person_id = ?1").bind(personId).all<{ kind: string; status: string }>();
+  const consents = new Map((rows.results ?? []).map((r) => [r.kind, r.status]));
   return {
     pages: stored.pageImages?.length ?? 0,
     fieldShape: (key) => {
       const f = m.fields.find((x) => x.id === key);
-      if (!f || !formOnlyField(f)) return null;
+      // 様式だけの欄と、台帳の欄のこの様式だけの手入れ（置けなかった欄。台帳の値は変えない）。手書きの欄は受けない
+      if (!f || f.removed || f.shape === "handwrite") return null;
+      if (!formOnlyField(f) && f.item !== null) {
+        const need = ledgerItem(f.item).consent;
+        if (need && consents.get(need) !== "granted") return null;
+      }
       return { shape: f.shape === "check" ? "check" : f.shape === "choice" && f.options.length > 0 ? "choice" : "text", options: f.options };
     },
   };
@@ -143,7 +151,7 @@ export async function handleEntries(db: D1Database, p: Principal | null, body: u
   if (!formId) return entriesError("invalid");
   const person = await personInScope(db, p, req.personId);
   if (!person || person.office_id !== scope.officeId) return entriesError("not_found");
-  const form = await formShape(db, scope.officeId, formId);
+  const form = await formShape(db, scope.officeId, formId, req.personId);
   if (!form) return entriesError("not_found");
   const at = { officeId: scope.officeId, personId: req.personId, formId, accountId: scope.accountId, now: now.toISOString() };
 

@@ -6,6 +6,7 @@ import type { D1Database } from "@cloudflare/workers-types";
 import { questionQueue } from "../intake/ask.ts";
 import type { PersonPageRows } from "../person.ts";
 import { assetsByIds } from "./form-assets.ts";
+import { unpackInk } from "./ink.ts";
 import { loadFormEntries, mappedFormId, withFreeItems, withMappedEntries, withMatsuyamaEntries, type FormEntry } from "./form-entries.ts";
 import { MATSUYAMA_FRAME } from "./frame-matsuyama.ts";
 import { matsuyamaFrameSheet, type RouteMapImage } from "./frame-build.ts";
@@ -54,7 +55,9 @@ export async function mappedPaper(
   const overlay = withFreeItems(buildOverlaySheet(sheet, input.images, mapping.typeface), entries, assets, FONT_MAX_PT);
   if (!input.edit) return { sheet, overlay, fill: null };
   const queue = questionQueue(rows);
-  const slots = mappedSlots(rows, mapping, overlay, sheet, entries, queue);
+  // 紙に置くときの印刷の字の位置（T133）。画面の入力の字の置き場を紙と同じ関数で決めるため、欄ごとに枠の中の物だけ渡す
+  const inks = new Map((input.images ?? []).map((img) => [img.page, img.ink ? unpackInk(img.ink) : null]));
+  const slots = mappedSlots(rows, mapping, overlay, sheet, entries, queue, inks);
   return {
     sheet,
     overlay,
