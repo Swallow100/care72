@@ -287,7 +287,12 @@ export async function roomStep(
   const deadline = clock() + timeout;
   const handled = new Set<string>();
   let answer: WorldStep | null = null;
-  let mine = sent.length === 0;
+  // この刻みの文より後の出来事だけを読む（T123）。送りの返事に id が無ければ、文の中身で自分の user.message を探す。
+  // 前は id が無いと全部を自分の物として読み、読みの窓（送る 5 秒前から）に入った前の刻みの idle（end_turn）で「world_step なしで止まった」と
+  // すぐ落ちて 1 回呼びに代わり、部屋はその刻みを続けて答え（答えていない呼び出しが残り）、次の刻みの送りが 400 になっていた
+  let mine = false;
+  // 自分の文のあとに部屋が動いたか（agent.* の出来事）。動く前の end_turn は前の刻みの物として読まない
+  let active = false;
   while (clock() < deadline) {
     await sleep(POLL_MS);
     let events: RoomEvent[];
@@ -298,11 +303,12 @@ export async function roomStep(
     }
     for (const e of events) {
       if (!mine) {
-        if (sent.includes(e.id)) mine = true;
+        if (sent.length > 0 ? sent.includes(e.id) : e.type === "user.message" && (e.content ?? []).some((c) => c.text === text)) mine = true;
         continue;
       }
       if (handled.has(e.id)) continue;
       handled.add(e.id);
+      if (e.type.startsWith("agent.")) active = true;
       if (e.type === "agent.custom_tool_use") {
         const ok: ReturnType<typeof WorldStepSchema.safeParse> | null = e.name === WORLD_TOOL && answer === null ? WorldStepSchema.safeParse(e.input) : null;
         if (ok?.success) answer = ok.data;
@@ -315,6 +321,8 @@ export async function roomStep(
       } else if (e.type === "session.error" || e.type === "session.status_terminated") {
         return fail("api_error", e.type);
       } else if (e.type === "session.status_idle" && e.stop_reason && TERMINAL_IDLE.has(e.stop_reason.type)) {
+        // 部屋が動く前の end_turn は前の刻みの物（T123）。読み続ける（予算・再試行の尽きは今までどおりすぐ落とす）
+        if (!active && !answer && e.stop_reason.type === "end_turn") continue;
         if (answer) {
           await ticket.ok({ model: OPUS, inputTokens: null, outputTokens: null });
           return { session: room, step: answer, incidents: worldIncidents(answer, applyContext(input, cast, "room"), input.hints.reached) };

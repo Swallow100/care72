@@ -134,7 +134,7 @@ const STEP: WorldStep = {
 
 // ---------- 偽の部屋 ----------
 
-function fakeRoom(answer: (text: string, n: number) => WorldStep | "fail" | "silent" | "late" | "landed_throw" = () => STEP) {
+function fakeRoom(answer: (text: string, n: number) => WorldStep | "fail" | "silent" | "late" | "landed_throw" = () => STEP, opts: { noIds?: boolean; idleFirst?: boolean } = {}) {
   const events: RoomEvent[] = [];
   const texts: string[] = [];
   const made = { agents: 0, environments: 0, sessions: 0, updates: 0 };
@@ -184,6 +184,8 @@ function fakeRoom(answer: (text: string, n: number) => WorldStep | "fail" | "sil
             const text = ((e.content as Array<{ text: string }>)[0]).text;
             texts.push(text);
             const a = answer(text, texts.length);
+            // 部屋が動く前の end_turn が自分の文のあとに並ぶ形（T123。時計のずれ・並びの違いで前の刻みの idle が読みに入る）
+            if (opts.idleFirst && texts.length > 1) events.push({ id: `ev_${++n}`, type: "session.status_idle", stop_reason: { type: "end_turn" } });
             if (a === "fail") events.push({ id: `ev_${++n}`, type: "session.error" });
             else if (a === "late") late.push({ id: `ev_late_${texts.length}`, type: "agent.custom_tool_use", name: WORLD_TOOL, input: STEP });
             // 届いたのに送りが例外（T121）
@@ -196,7 +198,8 @@ function fakeRoom(answer: (text: string, n: number) => WorldStep | "fail" | "sil
           }
         }
         if (thrown) throw new Error("socket hang up");
-        return { ids };
+        // 送りの返事に出来事の id が無い形（T123。本物の返事の data は省略できる）
+        return { ids: opts.noIds ? [] : ids };
       },
       list: async () => [...events],
     },
@@ -586,6 +589,32 @@ describe("仮想の筋（偽の部屋・偽の Haiku）", () => {
     expect(rows.filter((r) => r.status === "failed")).toHaveLength(1);
     expect(room.texts).toHaveLength(12);
     expect(room.made.sessions).toBe(1);
+  });
+
+  it("送りの返事に id が無くても、読みに入った前の刻みの idle で止まらず、この刻みの答えを使う（T123）", async () => {
+    // 評価の 2 回目の代替の形: 前は id が無いと全部を自分の物として読み、前の刻みの end_turn で「world_step なしで止まった」とすぐ 1 回呼びに落ちた
+    // 刻みごとに違う答え。前の刻みの呼び出し・idle を自分の物として読むと、前の刻みの答えを使うか止まる
+    const room = fakeRoom((_text, n) => ({ ...STEP, narration: `甲地区で白波川が増水している（${n} 回目）` }), { noIds: true });
+    const { client } = fakeClaude();
+    const hooks = drillHooks({ DB: db, ANTHROPIC_API_KEY: "dummy" }, careManager(), { claude: client, now: () => new Date(START), room: room.client, roomTime: fastClock() })!;
+    await runVirtual(hooks);
+    const rows = aiRows().filter((r) => r.purpose === "director");
+    expect(rows.filter((r) => r.status === "failed")).toHaveLength(0);
+    expect(room.texts).toHaveLength(12);
+    const screen = (await loadDrillScreen(db, drillScope(careManager())!, "drill-v", null))!;
+    expect(screen.ticks.flatMap((tk) => tk.incidents).some((e) => e.change.kind === "world_note")).toBe(false);
+    const said = screen.ticks.map((tk) => (tk.incidents.find((e) => e.change.kind === "narration")?.change as { room?: string } | undefined)?.room ?? "");
+    expect(said).toEqual(said.map((_, i) => `甲地区で白波川が増水している（${i + 1} 回目）`));
+  });
+
+  it("自分の文のあと部屋が動く前に並んだ end_turn では止まらない（T123）", async () => {
+    const room = fakeRoom(() => STEP, { idleFirst: true });
+    const { client } = fakeClaude();
+    const hooks = drillHooks({ DB: db, ANTHROPIC_API_KEY: "dummy" }, careManager(), { claude: client, now: () => new Date(START), room: room.client, roomTime: fastClock() })!;
+    await runVirtual(hooks);
+    expect(aiRows().filter((r) => r.purpose === "director" && r.status === "failed")).toHaveLength(0);
+    const screen = (await loadDrillScreen(db, drillScope(careManager())!, "drill-v", null))!;
+    expect(screen.ticks.flatMap((tk) => tk.incidents).some((e) => e.change.kind === "world_note")).toBe(false);
   });
 
   it("送りが例外でも部屋に文が届いていれば、1 回呼びに落ちずに部屋の答えを使う（T121）", async () => {
