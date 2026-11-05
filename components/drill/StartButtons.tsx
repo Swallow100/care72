@@ -4,7 +4,7 @@
 // 事業所に進行中があれば断られる（実施中あり）。そのときは一覧の進行中から再開か中断。
 // 並びは lib/drill の SCENARIO_ORDER のまま。主の操作の色は先頭（大雨想定）だけで、ほかは無色。押してから画面が移るまで、押したボタンに灰色を残す（data-pending）。
 // T124: 10 分版を外した（前からある 10 分版の記録は一覧・再生・紙で読める）。想定のボタンの下に進め方の 1 行
-// （訓練の画面の並びと同じ 手の分・30 分・1 時間・3 時間・次まで、主の操作は次まで。通しは早送り＝次までの繰り返し）。
+// （訓練の画面の並びと同じ 手の分・30 分・1 時間・3 時間・次まで、主の操作は次まで。最後まで一通り見るのは早送り＝次までの繰り返し）。
 //
 // 設定（T59）: 想定のボタンの前に畳んだ「設定」。開くと参加者（担当一覧の人のチェック。既定は全員）・職員（既定は想定の表の値）・夜間発災。
 // 閉じたまま・何も変えずに想定を押せば、送る物は前と同じ { scenario } だけ（選んだ物だけ options に入れる）。
@@ -189,13 +189,13 @@ export function StartButtons({
           {error}
         </span>
       )}
-      {/* T124: 進め方（訓練の画面と同じ並び。主の次までと、通しの早送りを本文色で） */}
+      {/* T124: 進め方（訓練の画面と同じ並び。主の次までと、最後まで見る早送りを本文色で） */}
       <p className="flex w-full flex-wrap items-baseline gap-x-3 gap-y-0.5 text-xs text-muted" data-start-pace>
         <span>
           {T124_LABELS.pace} {PACES.slice(0, -1).join("・")}・<span className="font-bold text-ink">{CLOCK_LABELS.next}</span>
         </span>
         <span>
-          {T124_LABELS.through} <span className="font-bold text-ink">{DRILL_LABELS.fastForward}</span>
+          {T124_LABELS.toEnd} <span className="font-bold text-ink">{DRILL_LABELS.fastForward}</span>
         </span>
       </p>
       {(estimates || (ai !== null && !(ai.kind === "ready" && ai.remaining === null))) && (

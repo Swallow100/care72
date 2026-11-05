@@ -332,7 +332,9 @@ export async function runDrill(plan: RunPlan, deps: DriveDeps): Promise<RunOutco
       ...(plan.scale ? { scale: plan.scale } : {}),
     };
     const startReq = { scenario: plan.scenario, options };
-    const started = await call("start", startReq, () => startPost(db, p, startReq, now(), stepHooks));
+    // 開始の時刻は記録の startedAt と同じ DRILL_START にそろえる（訓練の種〔lib/drill/time-odds.ts の drillSeed〕が開始の時刻から作られ、
+    // 壁の時計の数 ms のずれで同じ種の回の出来事が変わらないように。T124 で台の既定の組が全部連続の時計になった）
+    const started = await call("start", startReq, () => startPost(db, p, startReq, new Date(DRILL_START).toISOString(), stepHooks));
     const drillId = typeof started.body?.id === "string" ? started.body.id : null;
     if (!drillId) return { plan, drillId: null, status: "not_started", advances: 0, replay: null, ops, errors, aiCalls: aiCallsOf(sqlite), callsLeft: null, names, worldAgent: worldAgentOf(sqlite) };
     let replay = await read(drillId);

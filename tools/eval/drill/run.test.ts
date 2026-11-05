@@ -147,7 +147,9 @@ describe("手・往復・仮名化の門の試し", () => {
     const { log, outcome, numbers, hits } = await drive(busyPlan({ freeRate: 1, probeRate: 1, talkRate: 0, scenario: "earthquake" }));
     const probes = outcome.ops.filter((o) => o.op === "act_probe");
     expect(probes.length).toBeGreaterThan(0);
-    expect(probes.every((o) => o.ok)).toBe(true);
+    // 連続の時計の訓練（T124 で台の想定は全部これ）は手の決まり（T110）で断られる手がある（通話不可など。blocked）。門を通って届いた手が要る
+    expect(probes.every((o) => o.ok || o.error === "blocked")).toBe(true);
+    expect(probes.some((o) => o.ok)).toBe(true);
     expect(log.records.some((r) => r.type === "ai" && r.role === "free")).toBe(true);
     expect(numbers.leaks).toBe(0);
     expect(hits.filter((h) => h.check === "leak")).toEqual([]);
@@ -273,7 +275,9 @@ describe("T118: 台が見つけた穴が直っていることを、台で確か�
     const { log, outcome, numbers } = await drive(busyPlan({ freeRate: 1, probeRate: 1, talkRate: 0, scenario: "earthquake" }));
     const probes = outcome.ops.filter((o) => o.op === "act_probe");
     expect(probes.length).toBeGreaterThan(0);
-    expect(probes.every((o) => o.ok)).toBe(true);
+    // 連続の時計の訓練（T124 で台の想定は全部これ）は手の決まり（T110）で断られる手がある（通話不可など。blocked）。門を通って届いた手が要る
+    expect(probes.every((o) => o.ok || o.error === "blocked")).toBe(true);
+    expect(probes.some((o) => o.ok)).toBe(true);
     const sent = log.records.filter((r) => r.type === "ai").map((r) => (r as AiRecord).sent.user).join("\n");
     expect(sent).toContain("（生年月日）");
     expect(sent).not.toMatch(/昭和[0-9]+年[0-9]+月[0-9]+日/);

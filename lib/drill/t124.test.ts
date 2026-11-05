@@ -84,12 +84,12 @@ describe("開始の画面（components/drill/StartButtons）", () => {
     expect(buttons.filter((m) => m[0].includes("bg-accent-fill")).map((m) => m[1])).toEqual(["heavy_rain"]);
   });
 
-  it("進め方の 1 行: 訓練の画面と同じ並び（手の分・30 分・1 時間・3 時間・次まで）で次までを本文色、通しは早送り", () => {
+  it("進め方の 1 行: 訓練の画面と同じ並び（手の分・30 分・1 時間・3 時間・次まで）で次までを本文色、最後までは早送り", () => {
     const html = draw();
     const line = html.slice(html.indexOf("data-start-pace"), html.indexOf("</p>", html.indexOf("data-start-pace")));
     const text = line.replace(/<[^>]+>/g, "");
     expect(text).toContain(`${T124_LABELS.pace} 手の分・30 分・1 時間・3 時間・次まで`);
-    expect(text).toContain(`${T124_LABELS.through} 早送り`);
+    expect(text).toContain(`${T124_LABELS.toEnd} 早送り`);
     expect(line).toContain(`<span class="font-bold text-ink">${CLOCK_LABELS.next}</span>`);
     // 常設の説明文にしない（句点を持たない短い 1 行）
     expect(text).not.toMatch(/[。、]/);
