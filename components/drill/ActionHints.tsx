@@ -32,7 +32,7 @@ export function ActTime({ kind, minutes, longer = false }: { kind: DrillAction; 
     <span className="inline-flex gap-1 text-xs whitespace-nowrap tabular-nums" data-act-time={parts.map((p) => `${p.who ?? ""}${p.minutes}`).join(" ")}>
       {parts.map((p, i) => (
         <span key={i} className={i === 0 && longer ? "font-bold text-ink" : "font-normal text-muted"}>
-          {p.who && <span className="mr-0.5">{ACTOR_LABELS[p.who]}</span>}
+          {p.who && <span className="mr-1">{ACTOR_LABELS[p.who]}</span>}
           {p.minutes} {ACTION_UI.minutes}
         </span>
       ))}

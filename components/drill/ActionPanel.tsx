@@ -34,7 +34,7 @@ import {
   FREE_LABELS,
   FREE_TEXT_MAX,
 } from "@/lib/drill/action-catalog";
-import { actAvail, HINT_LABELS, panelActionsOf, usableFirst, type ActionHints } from "@/lib/drill/action-hints";
+import { actAvail, HINT_LABELS, panelActionsOf, timeParts, usableFirst, type ActionHints } from "@/lib/drill/action-hints";
 import type { ActionTerm, TermCallee } from "@/lib/drill/action-terms";
 import { ACTION_MINUTES, needsTarget, picksTarget, targetKinds } from "@/lib/drill/action-table";
 import type { FreePlanView } from "@/lib/drill/http";
@@ -59,7 +59,11 @@ const FIXED = "__fixed__";
 const TOGGLE = "w-full min-w-0 justify-start! px-2! font-normal!";
 /** 選ぶボタンの並び（幅に合わせて段を折る。横に送らない） */
 const GRID = "grid grid-cols-[repeat(auto-fill,minmax(8.5rem,1fr))] gap-1";
-/** 職員に行ってもらう手（自分の分と職員の分の 2 つの時間）は 2 枠の幅（手の名前を切らない） */
+/**
+ * 手の並び（T126）。手の名前と押せない理由・時間を切らない幅（9.5rem）で、狭い画面でも 2 列。
+ * 訪問と訪問依頼は「自分 40 分」「自分 10 分 職員 40 分」を並べて見比べるので 2 枠の幅
+ */
+const ACT_GRID = "grid grid-cols-[repeat(auto-fill,minmax(min(9.5rem,calc(50%_-_0.125rem)),1fr))] gap-1";
 const WIDE = "col-span-2";
 /** 自由対応の文の欄（面の中の色、枠線なし。焦点は操作の色の枠。3 行） */
 const FREE_FIELD =
@@ -74,6 +78,7 @@ export function ActionPanel({
   fiction,
   terms = null,
   status = null,
+  hints = null,
 }: {
   drillId: string;
   step: number;
@@ -282,12 +287,12 @@ export function ActionPanel({
             <h3 id={`act-group-${g}`} className={`${LABEL} leading-8`}>
               {ACTION_GROUP_LABELS[g]}
             </h3>
-            <div className={GRID}>
+            <div className={ACT_GRID}>
               {/* 押せる手を先、押せない手をあと（同じ状態の中は手の表の順。本人を選ぶ前の本人の要る手は押せる側に数える） */}
               {usableFirst(panelActionsOf(g).map((k) => ({ k, ...availOf(k) }))).map(({ k, state, why }) => {
                 const block = state === "block";
                 const longer = (termOf(k)?.adds.length ?? 0) > 0;
-                const wide = actionRow(k).staff > 0;
+                const wide = timeParts(k, minutesOf(k)).some((p) => p.who !== null);
                 return (
                   <Button
                     key={k}
