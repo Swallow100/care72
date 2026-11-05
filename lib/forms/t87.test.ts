@@ -11,7 +11,7 @@ import { PaperBatch, type BatchPaper } from "../../components/forms/PaperBatch.t
 import { UnconfirmedFold } from "../../components/forms/UnconfirmedFold.tsx";
 import { PaperBar } from "../../components/ui/PaperBar.tsx";
 import { FormsTabs } from "../../components/ui/Tabs.tsx";
-import { SEED_PEOPLE } from "../../seed/people.ts";
+
 import { seedStatements } from "../../seed/sql.ts";
 import { chromePath, pdfPageCount } from "../../tools/print/chrome.ts";
 import { d1FromSqlite, migratedSqlite } from "../db/test-d1.ts";
@@ -42,12 +42,14 @@ import {
   unconfirmedText,
   unconfirmedView,
 } from "./unconfirmed.ts";
+// T142 で種の台帳を埋めた。このテストは空いた欄を前提にするので、T142 より前の空きの多い形（seed/sparse.ts）を使う
+import { SPARSE_PEOPLE } from "../../seed/sparse.ts";
 
 const TODAY = "2026-11-04";
 const OPTS = { today: TODAY, officeName: "デモ事業所" };
-const seed = (id: string) => SEED_PEOPLE.find((p) => p.person.id === id)!;
+const seed = (id: string) => SPARSE_PEOPLE.find((p) => p.person.id === id)!;
 const rowsOf = (id: string): PersonPageRows => seedRows(seed(id));
-const IDS = SEED_PEOPLE.filter((p) => p.person.office_id === "office-demo").map((p) => p.person.id);
+const IDS = SPARSE_PEOPLE.filter((p) => p.person.office_id === "office-demo").map((p) => p.person.id);
 const HANDWRITE = MATSUYAMA_FIELDS.filter((f) => f.shape === "handwrite");
 
 describe("未確認の欄を数える（松山市の計画書）", () => {
@@ -151,7 +153,7 @@ let db: ReturnType<typeof d1FromSqlite>;
 
 beforeEach(() => {
   sqlite = migratedSqlite();
-  for (const s of seedStatements()) sqlite.exec(s);
+  for (const s of seedStatements({ people: SPARSE_PEOPLE })) sqlite.exec(s);
   db = d1FromSqlite(sqlite);
 });
 afterEach(() => sqlite.close());

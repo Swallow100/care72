@@ -8,15 +8,17 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: () => {}, push:
 
 import { Intake, LogBubble, splitSay, type LogEntry } from "../../components/person/Intake.tsx";
 import { SectionEdit, SectionForm } from "../../components/person/SectionEdit.tsx";
-import { SEED_AT, SEED_PEOPLE, seedConsents, type SeedPerson } from "../../seed/people.ts";
+import { SEED_AT, seedConsents, type SeedPerson } from "../../seed/people.ts";
 import type { PersonPageRows } from "../person.ts";
 import { speechRecognitionOf } from "../speech/dictation.ts";
 import { dropConfirmText, REDACT_LABELS } from "../labels.ts";
 import { dropKey, editChanges, editDraft, isEditSection, removalNames, toggled } from "./edit.ts";
 import { intakePropsOf } from "./props.ts";
 import type { DiffItem } from "./diff.ts";
+// T142 で種の台帳を埋めた。このテストは空いた欄を前提にするので、T142 より前の空きの多い形（seed/sparse.ts）を使う
+import { SPARSE_PEOPLE } from "../../seed/sparse.ts";
 
-const seed = (id: string) => SEED_PEOPLE.find((p) => p.person.id === id)!;
+const seed = (id: string) => SPARSE_PEOPLE.find((p) => p.person.id === id)!;
 
 function seedRows(p: SeedPerson): PersonPageRows {
   return {
@@ -33,7 +35,7 @@ const editOf = (id: string) => intakePropsOf(seedRows(seed(id)), false).edit;
 
 describe("面の編集の変更（lib/intake/edit.ts）", () => {
   it("何も直さなければ、どの面も変更は 0", () => {
-    for (const p of SEED_PEOPLE) {
+    for (const p of SPARSE_PEOPLE) {
       const d = intakePropsOf(seedRows(p), false).edit;
       for (const s of ["medical", "evacuation", "people", "basic", "consent"] as const) expect(editChanges(s, d, editDraft(d)), `${p.person.id} ${s}`).toEqual([]);
     }

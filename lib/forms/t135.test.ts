@@ -32,6 +32,8 @@ import { paperCss, paperPage, readRepoFile } from "./print-harness.ts";
 import { buildMatsuyamaSheet } from "./matsuyama.ts";
 import { ORIGINALS, type OriginalManifest } from "./originals.ts";
 import { intakeField } from "../intake/fields.ts";
+// T142 で種の台帳を埋めた。このテストは空いた欄を前提にするので、T142 より前の空きの多い形（seed/sparse.ts）を使う
+import { SPARSE_PEOPLE } from "../../seed/sparse.ts";
 
 const OFFICE = "office-demo";
 const MAPPING_ID = "fm-t135";
@@ -119,7 +121,7 @@ function insertMapping(m: FormMapping, office = OFFICE, id = MAPPING_ID) {
 
 beforeEach(() => {
   sqlite = migratedSqlite();
-  for (const s of seedStatements()) sqlite.exec(s);
+  for (const s of seedStatements({ people: SPARSE_PEOPLE })) sqlite.exec(s);
   db = d1FromSqlite(sqlite);
   insertMapping(mapping());
 });

@@ -5,7 +5,6 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { OverlaySheet as OverlayView } from "../../components/forms/OverlaySheet.tsx";
-import { SEED_PEOPLE } from "../../seed/people.ts";
 import { grayOf, inkBlobs, packInk, unpackInk, type InkBlob } from "./ink.ts";
 import { itemHints, refineItems } from "./item-hints.ts";
 import { buildMappedSheet, phoneRole } from "./mapped-sheet.ts";
@@ -16,13 +15,15 @@ import { buildOverlaySheet, fieldLines, hitsInk, inside, placeText, printedOff, 
 import { parsePageImages, type PageImage } from "./page-images.ts";
 import { freeRects } from "./place.ts";
 import { seedRows } from "./print-harness.ts";
+// T142 で種の台帳を埋めた。このテストは空いた欄を前提にするので、T142 より前の空きの多い形（seed/sparse.ts）を使う
+import { SPARSE_PEOPLE } from "../../seed/sparse.ts";
 
 const OPTS = { today: "2026-11-05", officeName: "デモ事業所" };
 const IMAGE = { x: 0, y: 0, w: 210, h: 297 };
 const pc = (ink: InkBlob[] | null): PlaceCtx => ({ page: { page: 1, landscape: false, image: IMAGE, items: [], fills: [] }, ink });
 /** 印刷の字のかたまり（頁の比） */
 const blob = (x: number, y: number, w: number, h: number, box = false): InkBlob => ({ x, y, w, h, box });
-const seed = (id: string) => SEED_PEOPLE.find((p) => p.person.id === id)!;
+const seed = (id: string) => SPARSE_PEOPLE.find((p) => p.person.id === id)!;
 
 let n = 0;
 const field = (over: Partial<MappingField>): MappingField => ({
