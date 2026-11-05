@@ -89,6 +89,11 @@ const ROW = "grid grid-cols-[4.5rem_minmax(0,1fr)] items-center gap-x-2";
 /** 同じ段で、右が高い物（位置の地図）。欄の名前は上に揃える */
 const ROW_TOP = "grid grid-cols-[4.5rem_minmax(0,1fr)] items-start gap-x-2";
 const SUB = "text-xs text-muted";
+/**
+ * 連絡先の行（2 列、@container）の電話・携帯: 行が狭い（スマホの幅）ときは 1 段を使う。
+ * 欄の名前を枠の中に出すので、半分の幅では電話番号の最後の字が切れる（T145）
+ */
+const WIDE_NARROW = "col-span-2 @[21rem]:col-span-1";
 
 type Props = {
   section: EditSection;
@@ -283,7 +288,7 @@ export function SectionForm({ section, data, draft, set, active = null, onActive
             ) : (
               <div key={d.kind} className={ROW} data-device={d.kind}>
                 <span className={SUB}>{DEVICE_LABELS[d.kind]}</span>
-                <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-1">
+                <div className="grid grid-cols-[minmax(0,3fr)_minmax(0,2fr)_auto] gap-1">
                   <LabeledInput
                     box={INPUT}
                     label={d.kind === "other" ? INTAKE_LABELS.deviceName : "中身"}
@@ -334,19 +339,19 @@ export function SectionForm({ section, data, draft, set, active = null, onActive
             }
             return (
               <div key={k.id} className="space-y-1" data-clock={k.id}>
-                {/* 時計の名前は長い（「酸素 予備ボンベ」）ので、名前の横に値と単位を折り返して並べる */}
-                <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                  <span className="min-w-0 flex-1 text-xs font-bold">{k.label}</span>
-                  <div className="flex items-center gap-1">
+                {/* 時計の名前（「酸素 予備ボンベ」）・値・単位の 1 段。名前が長ければ名前の列の中で折り返す */}
+                <div className="grid grid-cols-[minmax(0,1fr)_5rem_5.5rem] items-center gap-1">
+                  <span className="text-xs font-bold">{k.label}</span>
+                  <div className="contents">
                     <input
-                      className={`${INPUT} w-20 tabular-nums`}
+                      className={`${INPUT} tabular-nums`}
                       inputMode="decimal"
                       aria-label={`${k.label} 値`}
                       value={k.value}
                       onChange={(e) => set({ clocks: draft.clocks.map((x, j) => (j === i ? { ...x, value: e.target.value } : x)) })}
                     />
                     <Select
-                      className={`${INPUT} w-20`}
+                      className={INPUT}
                       aria-label={`${k.label} 単位`}
                       value={k.unit}
                       onChange={(e) => set({ clocks: draft.clocks.map((x, j) => (j === i ? { ...x, unit: e.target.value as ClockUnit } : x)) })}
@@ -437,10 +442,9 @@ export function SectionForm({ section, data, draft, set, active = null, onActive
             ) : (
               <div key={h.kind} className={ROW} data-hazard={h.kind}>
                 <span className={SUB}>{HAZARD_LABELS[h.kind]}</span>
-                <div className="flex flex-wrap items-center gap-1">
+                <div className="grid grid-cols-[6.5rem_minmax(0,1fr)_auto] items-center gap-1">
                   <LabeledInput
                     box={INPUT}
-                    className="w-28"
                     label="深さ"
                     suffix="m"
                     inputMode="decimal"
@@ -451,7 +455,6 @@ export function SectionForm({ section, data, draft, set, active = null, onActive
                   {/* 書き足し（その他の中身・裏山など。60 字。T57） */}
                   <LabeledInput
                     box={INPUT}
-                    className="w-auto min-w-24 flex-1"
                     label={INTAKE_LABELS.hazardNote}
                     maxLength={60}
                     aria-label={`${HAZARD_LABELS[h.kind]} ${INTAKE_LABELS.hazardNote}`}
@@ -920,7 +923,7 @@ function ContactRow({
   const kinds = group.contactKinds ?? [];
   const showKind = kinds.length > 1 || !kinds.includes(c.kind) || group.label !== CONTACT_KIND_LABELS[c.kind];
   return (
-    <div className="grid grid-cols-2 gap-1 rounded bg-panel2 p-1.5" data-contact={c.id ?? "new"}>
+    <div className="@container grid grid-cols-2 gap-1 rounded bg-panel2 p-1.5" data-contact={c.id ?? "new"}>
       {showKind &&
         (isNew && kinds.length > 1 ? (
           <Select className={INPUT_IN} aria-label="連絡先の種類" value={c.kind} onChange={(e) => p({ kind: e.target.value as ContactKind })}>
@@ -943,7 +946,7 @@ function ContactRow({
 function SelfRow({ c, onChange, onDrop }: { c: ContactDraft; onChange: (c: ContactDraft) => void; onDrop?: () => void }) {
   const p = (patch: Partial<ContactDraft>) => onChange({ ...c, ...patch });
   return (
-    <div className="grid grid-cols-2 gap-1 rounded bg-panel2 p-1.5" data-contact={c.id ?? "new"} data-contact-self>
+    <div className="@container grid grid-cols-2 gap-1 rounded bg-panel2 p-1.5" data-contact={c.id ?? "new"} data-contact-self>
       <SelfFields c={c} p={p} onDrop={onDrop} />
     </div>
   );
@@ -953,8 +956,8 @@ function SelfFields({ c, p, onDrop }: { c: ContactDraft; p: (patch: Partial<Cont
   const who = CONTACT_KIND_LABELS.self;
   return (
     <>
-      <LabeledInput box={INPUT_IN} label="電話" inputMode="tel" aria-label={`${who} 電話`} value={c.phone} onChange={(e) => p({ phone: e.target.value })} />
-      <div className="flex items-center gap-1">
+      <LabeledInput box={INPUT_IN} className={WIDE_NARROW} label="電話" inputMode="tel" aria-label={`${who} 電話`} value={c.phone} onChange={(e) => p({ phone: e.target.value })} />
+      <div className={`${WIDE_NARROW} flex items-center gap-1`}>
         <LabeledInput box={INPUT_IN} className="min-w-0 flex-1" label="備考" aria-label={`${who} 備考`} value={c.note} onChange={(e) => p({ note: e.target.value })} />
         {onDrop && <DropButton onClick={onDrop} name={who} />}
       </div>
@@ -1024,9 +1027,10 @@ function OtherFields({
         onChange={(e) => p({ address: e.target.value })}
         data-contact-part="address"
       />
-      <LabeledInput box={INPUT_IN} label="電話" inputMode="tel" aria-label={`${who} 電話`} value={c.phone} onChange={(e) => p({ phone: e.target.value })} />
+      <LabeledInput box={INPUT_IN} className={WIDE_NARROW} label="電話" inputMode="tel" aria-label={`${who} 電話`} value={c.phone} onChange={(e) => p({ phone: e.target.value })} />
       <LabeledInput
         box={INPUT_IN}
+        className={WIDE_NARROW}
         label={CONTACT_PART_LABELS.mobile}
         inputMode="tel"
         aria-label={`${who} ${CONTACT_PART_LABELS.mobile}`}
