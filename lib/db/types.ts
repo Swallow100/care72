@@ -19,7 +19,7 @@ export type OfficeKind = (typeof OFFICE_KINDS)[number];
 export const ACCOUNT_ROLES = ["care_manager", "government", "medical", "judge"] as const;
 export type AccountRole = (typeof ACCOUNT_ROLES)[number];
 
-/** 計画の状態: 未作成・下書き・同意済・訓練済 */
+/** 計画の状態（DB の値）: 未作成・下書き・同意済・訓練済。画面と紙は 3 つの段階（同意済・訓練済は作成済）と別の訓練の日で出す（lib/plan-status.ts、T146） */
 export const PLAN_STATUSES = ["none", "draft", "consented", "trained"] as const;
 export type PlanStatus = (typeof PLAN_STATUSES)[number];
 
@@ -233,7 +233,30 @@ export type TimelineKind = (typeof TIMELINE_KINDS)[number];
  */
 export const INTAKE_SOURCE = "intake";
 
-/** 入れる欄の保存の経過の payload。値は持たず、変えた欄の場所だけ */
+/**
+ * 経過の変更履歴で出す区分（T143）。本人のページの区分と同じ並び。住所と位置は見る人の範囲が別（lib/consent/scope.ts の address）なので分ける
+ */
+export const INTAKE_DIFF_SECTIONS = ["medical", "evacuation", "people", "basic", "address", "consent"] as const;
+export type IntakeDiffSection = (typeof INTAKE_DIFF_SECTIONS)[number];
+
+/**
+ * 保存で変えた欄 1 つの前と後の言葉（T143）。画面の言葉のまま（選択肢は名前、配列は「・」でつなぐ）。空は null。
+ * 位置・経路地図のように数を見せない欄は前も後も null（画面は欄の名前と「変更」だけ）
+ */
+export type IntakeDiff = {
+  /** 台帳の場所・連絡先・時計・同意（contacts.<id>・clocks.<id>・consent.<kind>） */
+  key: string;
+  section: IntakeDiffSection;
+  /** 欄の名前（既往・連絡先 長女・時計 酸素 など） */
+  label: string;
+  before: string | null;
+  after: string | null;
+};
+
+/**
+ * 入れる欄の保存の経過の payload。変えた欄の場所と、T143 から欄ごとの前と後の言葉（diff。それより前の行には無い）。
+ * 前と後は本人のページの見る人の範囲で絞って出す（lib/person.ts）。Claude を呼ぶ所は経過の表を読まない
+ */
 export type IntakePayload = {
   source: typeof INTAKE_SOURCE;
   /** Claude の分け方を使ったか（使ったときは画面に AI の印） */
@@ -246,6 +269,8 @@ export type IntakePayload = {
   read?: { source: "photo" | "pdf" | "excel" | "word"; page: number; redacted: number };
   /** 変えた欄（台帳の場所・連絡先・時計） */
   fields: string[];
+  /** 欄ごとの前と後（T143）。無い行は欄の名前だけを出す */
+  diff?: IntakeDiff[];
 };
 
 /** AI を呼ぶ用途。Claude の 7 つ（モデルは lib/claude/models.ts）と、声（Gemini TTS） */
@@ -528,16 +553,16 @@ export type OfficeRow = {
    * NULL は「まだ無い」（区域なし）。前からのテストの行には無い
    */
   hazards?: string | null;
-  /** 所在地（migration 0035、T148）。NULL は未入力 */
+  /** 所在地（migration 0036、T148）。NULL は未入力 */
   address: string | null;
-  /** 電話・FAX（migration 0035、T148） */
+  /** 電話・FAX（migration 0036、T148） */
   phone: string | null;
   fax: string | null;
-  /** 介護保険の事業所番号（数字 10 桁。migration 0035、T148） */
+  /** 介護保険の事業所番号（数字 10 桁。migration 0036、T148） */
   office_number: string | null;
-  /** 地域の周りの市の JSON の配列（migration 0035、T148。主な市は city）。NULL は周りの市なし */
+  /** 地域の周りの市の JSON の配列（migration 0036、T148。主な市は city）。NULL は周りの市なし */
   region_cities: string | null;
-  /** 地図の広さ（中心からの km。5・10・20・40。migration 0035、T148）。NULL は自動 */
+  /** 地図の広さ（中心からの km。5・10・20・40。migration 0036、T148）。NULL は自動 */
   region_km: number | null;
   created_at: string;
 };

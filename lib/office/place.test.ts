@@ -59,7 +59,7 @@ describe("migration 0017（offices の地図の中心）", () => {
     for (const n of names().filter((n) => n >= "0017_")) d.exec(readFileSync(new URL(n, MIGRATIONS), "utf8"));
     const after = d.prepare("SELECT * FROM offices").all() as Array<Record<string, unknown>>;
     // 0027（T115）の試用事業所の印も後から足す列（前からある行は 0）。0030（T125）の事業所の区域も後から足す列（前からある行は NULL）。
-    // 0035（T148）の事業所の情報と地域の列も後から足す列（前からある行は NULL。lib/office/t148.test.ts）
+    // 0036（T148）の事業所の情報と地域の列も後から足す列（前からある行は NULL。lib/office/t148.test.ts）
     expect(
       after.map(
         ({ center_lat: _a, center_lng: _b, judge_sandbox: _c, hazards: _d, address: _e, phone: _f, fax: _g, office_number: _h, region_cities: _i, region_km: _j, ...rest }) => rest,
@@ -87,9 +87,10 @@ describe("migration 0017（offices の地図の中心）", () => {
 });
 
 describe("種と戻し（T68 の 4・6）", () => {
-  it("種の 3 事業所は様式 松山市。デモ事業所の中心は松山市の市街（既定の中心と同じ）、ほかは未設定", () => {
+  it("種の 4 事業所は様式 松山市。デモ事業所と確認用（T144）の中心は松山市の市街（既定の中心と同じ）、ほかは未設定", () => {
     expect(SEED_OFFICES.map((o) => [o.id, o.plan_form, o.center_lat, o.center_lng])).toEqual([
       ["office-demo", "matsuyama", DEFAULT_CENTER.lat, DEFAULT_CENTER.lng],
+      ["office-demo-check", "matsuyama", DEFAULT_CENTER.lat, DEFAULT_CENTER.lng],
       ["office-partner", "matsuyama", null, null],
       ["office-unaffiliated", "matsuyama", null, null],
     ]);

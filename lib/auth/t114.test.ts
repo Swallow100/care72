@@ -20,7 +20,7 @@ import { d1FromSqlite, migratedSqlite } from "../db/test-d1.ts";
 import { addCareManager, resetCareManagerPassword } from "../office/staff.ts";
 import { officeActor } from "../office/scope.ts";
 import { CARE_MANAGERS_ANCHOR } from "../office/http-paths.ts";
-import { DEMO_CARE_MANAGER_ID, DEMO_OFFICE_ID } from "./demo.ts";
+import { DEMO_CARE_MANAGER_ID, DEMO_OFFICE_ID, LOGIN_CARE_MANAGER_ID } from "./demo.ts";
 import { hashPassword } from "./password.ts";
 import { changeOwnPassword, initialPasswordHref, wantsOwnPassword } from "./password-change.ts";
 import { chooseJudgeRole, chooseRole, login, resolvePrincipal, type Principal } from "./principal.ts";
@@ -50,7 +50,7 @@ const env = () => ({ JUDGE_PASSWORD_HASH: judgeHash });
 
 beforeEach(() => {
   sqlite = migratedSqlite();
-  for (const s of seedStatements({ passwordHashes: { [DEMO_CARE_MANAGER_ID]: yamamotoHash } })) sqlite.exec(s);
+  for (const s of seedStatements({ passwordHashes: { [LOGIN_CARE_MANAGER_ID]: yamamotoHash } })) sqlite.exec(s);
   // new-office.ts の新しい事業所（本物の事業所の形。種の位置でない）と最初の管理者
   sqlite.exec(
     newOfficeSql({

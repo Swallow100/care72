@@ -312,8 +312,8 @@ const count = (table: string) => (sqlite!.prepare(`SELECT count(*) AS n FROM ${t
 
 describe("写す 1 回", () => {
   it("写す市は事業所の地域の市（主な市・周りの市、T148）と、一覧から外していない利用者の住所の市", async () => {
-    // 種のデモ事業所の周りの市（東温市、T148）を外して、利用者の市の数え方だけを見る
-    sqlite!.exec("UPDATE offices SET region_cities = NULL WHERE id = 'office-demo'");
+    // 種のデモ事業所と確認用の事業所（T144）の周りの市（東温市、T148）を外して、利用者の市の数え方だけを見る
+    sqlite!.exec("UPDATE offices SET region_cities = NULL WHERE id IN ('office-demo', 'office-demo-check')");
     expect(await relevantCities(d1FromSqlite(sqlite!))).toEqual(["松山市", "東温市"]);
     sqlite!.exec(`UPDATE people SET unlisted_at = '${NOW}' WHERE id = 'p-02'`);
     expect(await relevantCities(d1FromSqlite(sqlite!))).toEqual(["松山市"]);

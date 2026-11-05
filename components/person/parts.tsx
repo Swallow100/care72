@@ -4,6 +4,7 @@
 import type { Field, Line, Pending, Row, Seg, StateTone } from "@/lib/person";
 import { BLANK_LABELS, CONSENT_STATUS_LABELS, PENDING_STATUS_LABELS } from "@/lib/labels";
 import { Mark, StateTag, TONE_TEXT } from "@/components/ui/Tag";
+import { Hint } from "./Hint";
 
 /** 見出しの段。単独のページは 1、担当一覧の右の面は 2 */
 export type Level = 1 | 2;
@@ -12,6 +13,8 @@ export type Level = 1 | 2;
 export { REASON_TEXT, StateTag, StateText, TONE_TEXT } from "@/components/ui/Tag";
 
 export function SegText({ seg }: { seg: Seg }) {
+  // 触れた時だけ出す添え（T143。時計の出典・確認日・未確認）。中の文字は添えの無い形で描く
+  if (seg.hint) return <Hint hint={seg.hint}>{<SegText seg={{ ...seg, hint: undefined }} />}</Hint>;
   if (seg.tel) {
     return (
       <a href={`tel:${seg.tel}`} className="-mx-0.5 rounded px-0.5 text-accent tabular-nums underline underline-offset-2" data-press>

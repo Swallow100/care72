@@ -2,7 +2,7 @@
 // （components/office/OfficeProfile.tsx、保存は app/office/profile のフォームの POST）。
 // - 事業所名（offices.name）は計画書・様式 9・本人の 1 枚・医療要約・様式の対応表の事業所名の欄が前から読む（officeName）。
 //   ヘッダーの事業所名・役の Principal も次の要求から新しい名前（lib/auth/principal.ts が offices を毎回読む）
-// - 所在地・電話・FAX・事業所番号（migration 0035）は区分に出す。紙のどの欄に置くかは問い（docs/progress/t148.md）
+// - 所在地・電話・FAX・事業所番号（migration 0036）は区分に出す。紙のどの欄に置くかは問い（docs/progress/t148.md）
 // 書けるのは地域と同じ人（lib/office/scope.ts の officeActor.placeEdit: 事業所の管理者と、試用事業所の審査員）。
 // デモ事業所の審査員は見るだけ（皆で 1 つの事業所なので、1 人が名前を変えると次の審査員の画面が変わる）。
 // 事業所の経過には残さない（office_timeline_entries の kind の CHECK を広げるには表の建て直しが要る。地域〔T68〕と同じ）。

@@ -248,10 +248,11 @@ function PendingSection({ items }: { items: ReviewItem[] }) {
 
 /**
  * 計画の状態の内訳。言葉の印と数（人数の帯と同じ形。1 人以上は塗りの印、0 は灰）。
- * 前は上に色の割合の横の帯があったが、色だけで段の名前が読めず意味が伝わらなかったので外した（T96）
+ * 前は上に色の割合の横の帯があったが、色だけで段の名前が読めず意味が伝わらなかったので外した（T96）。
+ * T146: 段階 3 つ（未作成・下書き・作成済）と、別に訓練に出た人の数。訓練は計画の段階でないので色の印にせず小さな言葉（人数の合計は段階 3 つだけ）
  */
 function PlanSection({ counts }: { counts: PlanCount[] }) {
-  const total = counts.reduce((s, c) => s + c.count, 0);
+  const total = counts.filter((c) => c.status !== "drill").reduce((s, c) => s + c.count, 0);
   return (
     <Section
       id="plan"
@@ -262,9 +263,13 @@ function PlanSection({ counts }: { counts: PlanCount[] }) {
         {counts.map((c) => (
           <div key={c.status} className="flex flex-col items-start" data-status={c.status}>
             <dt className="text-xs text-muted">
-              <CountLabel tone={c.tone} count={c.count}>
-                {c.label}
-              </CountLabel>
+              {c.status === "drill" ? (
+                <span className="inline-block leading-[1.125rem] font-bold">{c.label}</span>
+              ) : (
+                <CountLabel tone={c.tone} count={c.count}>
+                  {c.label}
+                </CountLabel>
+              )}
             </dt>
             <dd
               className={`text-lg font-bold tabular-nums ${countClass(c.count)}`}

@@ -50,7 +50,7 @@ describe("担当一覧の行", () => {
     expect(ids.slice(3, 5)).toEqual(["p-01", "p-07"]);
   });
 
-  it("計画の状態の色: 未作成は灰、下書きは黄、同意済・訓練済は緑（赤は使わない）", () => {
+  it("計画の状態の色: 未作成は灰、下書きは黄、作成済（同意済・訓練済）は緑（赤は使わない）", () => {
     expect(PLAN_TONES).toEqual({ none: "unknown", draft: "check", consented: "ok", trained: "ok" });
     for (const s of PLAN_STATUSES) expect(PLAN_TONES[s], s).not.toBe("urgent");
   });

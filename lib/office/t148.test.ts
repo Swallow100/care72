@@ -11,7 +11,15 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { DisasterBadge } from "../../components/disaster/DisasterBadge.tsx";
 import { SEED_OFFICES, SEED_PEOPLE } from "../../seed/people.ts";
 import { seedStatements } from "../../seed/sql.ts";
-import { DEMO_CARE_MANAGER_ID, DEMO_OFFICE_ID, DEMO_SECOND_CARE_MANAGER_ID, FIXED_ACCOUNT_IDS } from "../auth/demo.ts";
+import {
+  CHECK_OFFICE_ID,
+  CHECK_SECOND_CARE_MANAGER_ID,
+  checkSeedId,
+  DEMO_CARE_MANAGER_ID,
+  DEMO_OFFICE_ID,
+  FIXED_ACCOUNT_IDS,
+  LOGIN_CARE_MANAGER_ID,
+} from "../auth/demo.ts";
 import { hashPassword, verifyPassword } from "../auth/password.ts";
 import { changeOwnPassword, NEW_PASSWORD_MAX, NEW_PASSWORD_MIN, passwordChangeRequest } from "../auth/password-change.ts";
 import { checkPassword, PASSWORD_MAX, PASSWORD_MIN, passwordProblemLabel, passwordProblems } from "../auth/password-rule.ts";
@@ -61,7 +69,7 @@ const env = () => ({ JUDGE_PASSWORD_HASH: judgeHash });
 
 beforeEach(() => {
   sqlite = migratedSqlite();
-  for (const s of seedStatements({ passwordHashes: { [DEMO_CARE_MANAGER_ID]: yamamotoHash } })) sqlite.exec(s);
+  for (const s of seedStatements({ passwordHashes: { [LOGIN_CARE_MANAGER_ID]: yamamotoHash } })) sqlite.exec(s);
   db = d1FromSqlite(sqlite);
 });
 afterEach(() => sqlite.close());
@@ -70,6 +78,8 @@ const form = (o: Record<string, string | string[]>) => ({
   get: (k: string) => (k in o ? (Array.isArray(o[k]) ? (o[k] as string[])[0] : o[k]) : null),
   getAll: (k: string) => (k in o ? (Array.isArray(o[k]) ? (o[k] as string[]) : [o[k]]) : []),
 });
+/** 見本のケアマネ（山本）がログインで入る事業所（T144 から確認用の事業所。管理者として事業所の情報と地域を書ける） */
+const YAM = CHECK_OFFICE_ID;
 const office = (id = DEMO_OFFICE_ID) => sqlite.prepare("SELECT * FROM offices WHERE id = ?").get(id) as Record<string, unknown>;
 
 async function loginOk(loginId: string, password: string, at = NOW) {
@@ -93,23 +103,23 @@ async function sandbox(): Promise<Principal> {
   return p;
 }
 
-// ---------- migration 0035 ----------
+// ---------- migration 0036 ----------
 
-describe("migration 0035（事業所の情報と地域）", () => {
+describe("migration 0036（事業所の情報と地域）", () => {
   const MIGRATIONS = new URL("../../migrations/", import.meta.url);
   const names = () => readdirSync(MIGRATIONS).filter((n) => n.endsWith(".sql")).sort();
 
-  it("番号は 0035 で 1 つだけ", () => {
-    expect(names().filter((n) => n.startsWith("0035_"))).toEqual(["0035_office_profile_region.sql"]);
+  it("番号は 0036 で 1 つだけ", () => {
+    expect(names().filter((n) => n.startsWith("0036_"))).toEqual(["0036_office_profile_region.sql"]);
   });
 
   it("前からある事業所の行は新しい列が NULL（ほかの列はそのまま）。形の違う値は CHECK で断る", () => {
     const d = new DatabaseSync(":memory:");
     d.exec("PRAGMA foreign_keys = ON;");
-    for (const n of names().filter((n) => n < "0035_")) d.exec(readFileSync(new URL(n, MIGRATIONS), "utf8"));
+    for (const n of names().filter((n) => n < "0036_")) d.exec(readFileSync(new URL(n, MIGRATIONS), "utf8"));
     d.exec("INSERT INTO offices (id, name, kind, city, created_at) VALUES ('o-old', '前の事業所', 'regular', '高知市', '2026-11-01T00:00:00.000Z')");
     const before = d.prepare("SELECT * FROM offices").get() as Record<string, unknown>;
-    for (const n of names().filter((n) => n >= "0035_")) d.exec(readFileSync(new URL(n, MIGRATIONS), "utf8"));
+    for (const n of names().filter((n) => n >= "0036_")) d.exec(readFileSync(new URL(n, MIGRATIONS), "utf8"));
     const after = d.prepare("SELECT * FROM offices").get() as Record<string, unknown>;
     expect(after).toEqual({ ...before, address: null, phone: null, fax: null, office_number: null, region_cities: null, region_km: null });
     const bad = (set: string) => expect(() => d.exec(`UPDATE offices SET ${set} WHERE id = 'o-old'`), set).toThrow(/CHECK/);
@@ -130,7 +140,9 @@ describe("migration 0035（事業所の情報と地域）", () => {
     expect(demo.region_km).toBeNull();
     expect(demo.office_number).toBeNull();
     expect(office("office-partner")).toMatchObject({ address: null, phone: null, region_cities: null });
-    expect(SEED_OFFICES.filter((o) => "address" in o).map((o) => o.id)).toEqual([DEMO_OFFICE_ID]);
+    // 確認用の事業所（T144）も同じ値（デモ事業所と同じ種の事業所）
+    expect(office(YAM)).toMatchObject({ address: "愛媛県松山市みずほし町", phone: "090-0000-0090", region_cities: '["東温市"]' });
+    expect(SEED_OFFICES.filter((o) => "address" in o).map((o) => o.id)).toEqual([DEMO_OFFICE_ID, CHECK_OFFICE_ID]);
   });
 
   it("デモ事業所の戻しは事業所の情報と地域も種に戻す", () => {
@@ -161,7 +173,7 @@ describe("事業所の情報", () => {
     const y = await yamamoto();
     const r = await profilePost(db, y, form({ name: "架空ケアセンター", address: "愛媛県松山市そらみ台", phone: "090-0000-0091", fax: "", number: "0000000001" }));
     expect(r).toEqual({ status: 303, location: "/office#office-profile" });
-    expect(await loadOfficeProfile(db, DEMO_OFFICE_ID)).toEqual({
+    expect(await loadOfficeProfile(db, YAM)).toEqual({
       name: "架空ケアセンター",
       address: "愛媛県松山市そらみ台",
       phone: "090-0000-0091",
@@ -175,28 +187,30 @@ describe("事業所の情報", () => {
     expect(f9?.office.name).toBe("架空ケアセンター");
     expect(form9Csv(f9!.sheet, { officeName: f9!.office.name, madeAt: AT })).toContain("事業所名：架空ケアセンター");
     // 計画書の計画作成者（画面は offices.name を読む。app/people/[id]/forms/matsuyama）
-    const name = (sqlite.prepare("SELECT name FROM offices WHERE id = ?").get(DEMO_OFFICE_ID) as { name: string }).name;
+    const name = (sqlite.prepare("SELECT name FROM offices WHERE id = ?").get(YAM) as { name: string }).name;
     const sheet = buildMatsuyamaSheet(seedRows(SEED_PEOPLE[0]), { today: TODAY, officeName: name });
     expect(cellText(sheet.cells["plan.author"])).toContain("架空ケアセンター");
   });
 
   it("形が違えば欄の名前を添えて戻し、表は変えない", async () => {
-    const before = office();
+    const before = office(YAM);
     expect(await profilePost(db, await yamamoto(), form({ name: "架空", phone: "abc" }))).toEqual({
       status: 303,
       location: "/office?profile_error=phone#office-profile",
     });
-    expect(office()).toEqual(before);
+    expect(office(YAM)).toEqual(before);
   });
 
   it("デモ事業所の審査員（ケアマネの役）と管理者でないケアマネは書けない。試用事業所の審査員は自分の事業所だけ書ける", async () => {
     const before = office();
+    const beforeCheck = office(YAM);
     expect(await profilePost(db, await judgeCm(), form({ name: "審査員が変えた" }))).toEqual({ status: 403 });
     expect(await profilePost(db, null, form({ name: "x" }))).toEqual({ status: 401 });
     const y = await yamamoto();
-    const notAdmin: Principal = { ...y, admin: false, accountId: DEMO_SECOND_CARE_MANAGER_ID };
+    const notAdmin: Principal = { ...y, admin: false, accountId: CHECK_SECOND_CARE_MANAGER_ID };
     expect(await profilePost(db, notAdmin, form({ name: "x" }))).toEqual({ status: 403 });
     expect(office()).toEqual(before);
+    expect(office(YAM)).toEqual(beforeCheck);
     const s = await sandbox();
     expect(await profilePost(db, s, form({ name: "試し 架空事業所", address: "高知県高知市架空町" }))).toMatchObject({ status: 303 });
     expect(await loadOfficeProfile(db, s.office!.id)).toMatchObject({ name: "試し 架空事業所", address: "高知県高知市架空町" });
@@ -247,12 +261,12 @@ describe("地域（主な市＋周りの市・広さ・区域）", () => {
         form({ city: "松山市", center_lat: "33.84", center_lng: "132.765", region: "1", region_city: "東温市・伊予市", region_km: "20", zone: ["flood", "landslide"], flood_depth: "0.5" }),
       ),
     ).toEqual({ status: 303, location: "/office#office-place" });
-    expect(office()).toMatchObject({ region_cities: '["東温市","伊予市"]', region_km: 20, hazards: '[{"kind":"flood","depthM":0.5},{"kind":"landslide"}]' });
+    expect(office(YAM)).toMatchObject({ region_cities: '["東温市","伊予市"]', region_km: 20, hazards: '[{"kind":"flood","depthM":0.5},{"kind":"landslide"}]' });
     expect(await savePlace(db, y, { city: "松山市", center: { lat: 33.84, lng: 132.765 } })).toEqual({ ok: true });
-    expect(office()).toMatchObject({ region_cities: '["東温市","伊予市"]', region_km: 20 });
+    expect(office(YAM)).toMatchObject({ region_cities: '["東温市","伊予市"]', region_km: 20 });
     // 周りの市を空にすると NULL、区域を全部外すと区域なし（"[]"）
     await placePost(db, y, form({ city: "松山市", region: "1", region_city: "", region_km: "" }));
-    expect(office()).toMatchObject({ region_cities: null, region_km: null, hazards: "[]" });
+    expect(office(YAM)).toMatchObject({ region_cities: null, region_km: null, hazards: "[]" });
   });
 
   it("審査員（ケアマネの役）は地域を書けない（前と同じ）。試用事業所の審査員は書ける", async () => {
@@ -276,10 +290,12 @@ describe("地域（主な市＋周りの市・広さ・区域）", () => {
   });
 
   it("地域に追加: 利用者の住所の市で地域に入っていない市を人数の順に。押すと周りの市の後ろに 1 つ足す", async () => {
-    sqlite.exec(`UPDATE people SET ledger = json_set(ledger, '$.basic.address.city', '伊予市') WHERE id IN ('p-02', 'p-03')`);
-    sqlite.exec(`UPDATE people SET ledger = json_set(ledger, '$.basic.address.city', '砥部町') WHERE id = 'p-04'`);
-    sqlite.exec(`UPDATE people SET ledger = json_set(ledger, '$.basic.address.city', '東温市') WHERE id = 'p-05'`);
-    const r = await loadOfficeRegion(db, DEMO_OFFICE_ID);
+    // 山本の事業所（確認用）の写しの人（T144）
+    const ids = (...xs: string[]) => xs.map((x) => `'${checkSeedId(x)}'`).join(", ");
+    sqlite.exec(`UPDATE people SET ledger = json_set(ledger, '$.basic.address.city', '伊予市') WHERE id IN (${ids("p-02", "p-03")})`);
+    sqlite.exec(`UPDATE people SET ledger = json_set(ledger, '$.basic.address.city', '砥部町') WHERE id IN (${ids("p-04")})`);
+    sqlite.exec(`UPDATE people SET ledger = json_set(ledger, '$.basic.address.city', '東温市') WHERE id IN (${ids("p-05")})`);
+    const r = await loadOfficeRegion(db, YAM);
     expect(r?.cities).toEqual(["松山市", "東温市"]);
     expect(r?.suggestions).toEqual([
       { city: "伊予市", count: 2 },
@@ -289,8 +305,10 @@ describe("地域（主な市＋周りの市・広さ・区域）", () => {
     expect(await placePost(db, y, form({ add_city: "伊予市" }))).toEqual({ status: 303, location: "/office#office-place" });
     expect(await addRegionCity(db, y, "伊予市")).toEqual({ ok: true });
     expect(await addRegionCity(db, y, "松山市")).toEqual({ ok: true });
-    expect(JSON.parse(String(office().region_cities))).toEqual(["東温市", "伊予市"]);
-    expect((await loadOfficeRegion(db, DEMO_OFFICE_ID))?.suggestions).toEqual([{ city: "砥部町", count: 1 }]);
+    expect(JSON.parse(String(office(YAM).region_cities))).toEqual(["東温市", "伊予市"]);
+    expect((await loadOfficeRegion(db, YAM))?.suggestions).toEqual([{ city: "砥部町", count: 1 }]);
+    // 審査員のデモ事業所は変わらない
+    expect(JSON.parse(String(office().region_cities))).toEqual(["東温市"]);
     // 区のある市は同じ市（「○○市○○区」）。空の市は候補にしない
     expect(citySuggestions(["広島市"], [{ city: "広島市中区", count: 2 }, { city: "", count: 3 }])).toEqual([]);
   });
@@ -302,8 +320,8 @@ describe("地域（主な市＋周りの市・広さ・区域）", () => {
     }
     expect((await loadOfficeRegion(db, DEMO_OFFICE_ID))?.zones).toEqual([{ kind: "flood", depthM: 0.5 }]);
     await placePost(db, await yamamoto(), form({ city: "松山市", region: "1", zone: "tsunami" }));
-    const saved = (sqlite.prepare("SELECT hazards FROM offices WHERE id = ?").get(DEMO_OFFICE_ID) as { hazards: string }).hazards;
-    expect(officeZonesOf(saved, DEMO_OFFICE_ID)).toEqual([{ kind: "tsunami", depthM: null }]);
+    const saved = (sqlite.prepare("SELECT hazards FROM offices WHERE id = ?").get(YAM) as { hazards: string }).hazards;
+    expect(officeZonesOf(saved, YAM)).toEqual([{ kind: "tsunami", depthM: null }]);
   });
 
   it("様式の一覧の初めの市: 地域の市を順に見て一覧にある最初の市（主な市が一覧に無ければ周りの市）", () => {
@@ -549,9 +567,15 @@ describe("管理者の再設定", () => {
       expect(r, id).toMatchObject({ status: 403, body: { error: "fixed" } });
     }
     const a = await added();
-    // 審査員は印の無い（本物の）アカウントを再設定できない
-    expect(await resetCareManagerPassword(db, officeActor(await judgeCm())!, a.account.id, AT, { ...FAST, chosen: CHOSEN })).toEqual({ ok: false, error: "fixed" });
+    // 審査員は印の無い（本物の）アカウントを再設定できない（デモ事業所の中の印の無いケアマネ）。ほかの事業所（山本の確認用）の人には届かない
+    sqlite.exec(
+      `INSERT INTO accounts (id, office_id, role, is_office_admin, display_name, login_id, password_hash) VALUES ('acct-real-1', '${DEMO_OFFICE_ID}', 'care_manager', 0, '架空 本物', 'kakuu.real', NULL)`,
+    );
+    const judge = officeActor(await judgeCm())!;
+    expect(await resetCareManagerPassword(db, judge, "acct-real-1", AT, { ...FAST, chosen: CHOSEN })).toEqual({ ok: false, error: "fixed" });
+    expect(await resetCareManagerPassword(db, judge, a.account.id, AT, { ...FAST, chosen: CHOSEN })).toEqual({ ok: false, error: "not_found" });
     // 自分は再設定できない（自分のパスワードは変更の欄から）
+    expect(await resetCareManagerPassword(db, officeActor(y)!, LOGIN_CARE_MANAGER_ID, AT, { ...FAST, chosen: CHOSEN })).toEqual({ ok: false, error: "fixed" });
     expect(await resetCareManagerPassword(db, officeActor(y)!, DEMO_CARE_MANAGER_ID, AT, { ...FAST, chosen: CHOSEN })).toEqual({ ok: false, error: "fixed" });
   });
 });

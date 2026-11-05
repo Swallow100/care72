@@ -8,7 +8,7 @@
 --   region_cities: 周りの市の JSON の配列（["東温市","砥部町"]。主な市は入れない）。NULL は周りの市なし
 --   region_km: 地図の広さ（中心からの km。5・10・20・40）。NULL は自動（周りの市が無ければ 10、あれば 20）
 -- 事業所の区域（洪水・土砂・津波）は前からの offices.hazards（0030）を同じ区分で置く。
--- 番号: 11/6 02 時の時点で全部の branch に 0035 以上は無い。ほかの作業と重なったら、integrate に後から入る側が振り直す。
+-- 番号: 0035 は T144（確認用の事業所と審査員のアカウント）が先に integrate に入ったので 0036（11/6 の取り込みで振り直した）。
 ALTER TABLE offices ADD COLUMN address TEXT CHECK (address IS NULL OR length(address) BETWEEN 1 AND 80);
 ALTER TABLE offices ADD COLUMN phone TEXT CHECK (phone IS NULL OR length(phone) BETWEEN 1 AND 20);
 ALTER TABLE offices ADD COLUMN fax TEXT CHECK (fax IS NULL OR length(fax) BETWEEN 1 AND 20);

@@ -9,7 +9,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { seedStatements } from "../../seed/sql.ts";
 import { d1FromSqlite, migratedSqlite } from "../db/test-d1.ts";
-import { DEMO_CARE_MANAGER_ID, DEMO_JUDGE_ACCOUNT_ID, DEMO_SECOND_CARE_MANAGER_ID, JUDGE_LOGIN_ID } from "./demo.ts";
+import { DEMO_CARE_MANAGER_ID, DEMO_JUDGE_ACCOUNT_ID, DEMO_SECOND_CARE_MANAGER_ID, JUDGE_LOGIN_ID, LOGIN_CARE_MANAGER_ID } from "./demo.ts";
 import { LOCK_FAILURES } from "./lockout.ts";
 import { hashPassword } from "./password.ts";
 import { ownLoginId, ownPasswordEntry, passwordChangeRequest, PASSWORD_CHANGE_ERROR_LABELS } from "./password-change.ts";
@@ -39,7 +39,7 @@ const env = () => ({ JUDGE_PASSWORD_HASH: judgeHash });
 
 beforeEach(() => {
   sqlite = migratedSqlite();
-  for (const s of seedStatements({ passwordHashes: { [DEMO_CARE_MANAGER_ID]: cmHash } })) sqlite.exec(s);
+  for (const s of seedStatements({ passwordHashes: { [LOGIN_CARE_MANAGER_ID]: cmHash } })) sqlite.exec(s);
   // 作者の道具（T97）が作るのと同じ形: 事業所なし・管理者でない
   const add = sqlite.prepare(
     "INSERT INTO accounts (id, office_id, role, is_office_admin, display_name, login_id, password_hash) VALUES (?, NULL, ?, 0, ?, ?, ?)",
@@ -110,7 +110,8 @@ describe("受入一覧の入口（ownPasswordEntry）", () => {
 
     const y = await loginOk("yamamoto", CM_PW);
     const yMed = await chooseRole(db, env(), SECRET, y.token, "medical", NOW + 1);
-    expect(yMed?.principal).toMatchObject({ role: "medical", switched: true, accountId: DEMO_CARE_MANAGER_ID });
+    // T144: ログインの山本は確認用の事業所のアカウント
+    expect(yMed?.principal).toMatchObject({ role: "medical", switched: true, accountId: LOGIN_CARE_MANAGER_ID });
     expect(ownPasswordEntry(yMed!.principal)).toBe("fixed");
   });
 });

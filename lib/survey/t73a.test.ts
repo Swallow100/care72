@@ -41,8 +41,8 @@ function tx(db: DatabaseSync, sql: string): void {
 function beforeT73a(): DatabaseSync {
   const db = new DatabaseSync(":memory:");
   db.exec("PRAGMA foreign_keys = ON;");
-  // 種はデモ事業所の情報と地域（0035、T148）も書くので 0035 も先に（offices に列を足すだけで survey の表に触れない）
-  for (const name of NAMES.filter((n) => n < T73A || n.startsWith("0024_") || n.startsWith("0032_") || n.startsWith("0033_") || n.startsWith("0035_"))) tx(db, sqlOf(name));
+  // 種はデモ事業所の情報と地域（0036、T148）も書くので 0036 も先に（offices に列を足すだけで survey の表に触れない）
+  for (const name of NAMES.filter((n) => n < T73A || n.startsWith("0024_") || n.startsWith("0032_") || n.startsWith("0033_") || n.startsWith("0036_"))) tx(db, sqlOf(name));
   tx(db, seedStatements().join("\n"));
   return db;
 }

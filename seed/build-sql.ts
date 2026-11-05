@@ -1,5 +1,5 @@
 // node seed/build-sql.ts で seed/generated/seed.sql を書く（Node の型の取り除きで動く）。
-// 山本（デモ事業所のケアマネ）のパスワードのハッシュは CAREMANAGER_DEMO_PASSWORD_HASH から入れる。
+// 山本（確認用の事業所のケアマネ、T144）のパスワードのハッシュは CAREMANAGER_DEMO_PASSWORD_HASH から入れる。
 // 環境変数を先に見て、無ければ手元の .dev.vars から、この 1 つだけを取り出す（ほかの値は使わない・出さない）。
 // 無ければ種の山本はハッシュなし（審査員では開ける）。ハッシュは npm run hash-password で作る。
 // 種にハッシュが無くても、Worker の env に CAREMANAGER_DEMO_PASSWORD_HASH か CAREMANAGER_DEMO_PASSWORD（平文）があれば
@@ -8,7 +8,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseEnv } from "node:util";
-import { DEMO_CARE_MANAGER_ID } from "../lib/auth/demo.ts";
+import { LOGIN_CARE_MANAGER_ID } from "../lib/auth/demo.ts";
 import { isPasswordHash } from "../lib/auth/password.ts";
 import { fullSeedStatements, seedRecordingFile } from "./full.ts";
 
@@ -38,7 +38,7 @@ const audio = seedRecordingFile(here);
 const outDir = join(here, "generated");
 mkdirSync(outDir, { recursive: true });
 const outFile = join(outDir, "seed.sql");
-const passwordHashes: Record<string, string> = demoHash ? { [DEMO_CARE_MANAGER_ID]: demoHash } : {};
+const passwordHashes: Record<string, string> = demoHash ? { [LOGIN_CARE_MANAGER_ID]: demoHash } : {};
 const statements = await fullSeedStatements({ passwordHashes, now, recording: audio ? { key: audio.key, durationSec: null } : null });
 writeFileSync(
   outFile,

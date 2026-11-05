@@ -35,7 +35,8 @@ export default async function PersonPage({ params }: Props) {
   // 書類の行の計画書は事業所の選んだ様式（T47）
   const planForm = planFormView(await loadPlanForm(env.DB, rows.person.office_id));
   // 経過の撤回のボタン（T63）は見ている人が撤回できる行だけ（lib/timeline/retract.ts。押せるかはサーバーがもう一度決める）
-  const view = toPersonView(rows, { today: todayJst(), mode: d.mode, triage: d.triage, situation: d.situation, scope, planForm, viewer: principal });
+  // reading: 見る方の画面（当たり前の値・未入力の添え・時計の重なりを出さない。T143）。面の編集（SectionEdit）は台帳の値を別に読む
+  const view = toPersonView(rows, { today: todayJst(), mode: d.mode, triage: d.triage, situation: d.situation, scope, planForm, viewer: principal, reading: true });
   // 入れる欄（T03）はケアマネの役だけ。AI が使えなければ「AI 未設定」「AI 上限到達」と手入力（AI の状態は lib/claude/status.ts の 1 か所。T76）
   const intake = principal.role === "care_manager" ? intakePropsOf(rows, await aiStatusFor(rows.person.office_id)) : null;
 

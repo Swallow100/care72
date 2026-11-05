@@ -276,7 +276,8 @@ async function PersonPanel({
     const rows = await loadPersonPage(env.DB, principal, id);
     const d = rows ? await personDisaster(env.DB, rows, now) : null;
     const planForm = rows ? planFormView(await loadPlanForm(env.DB, rows.person.office_id)) : undefined;
-    view = rows && d ? toPersonView(rows, { today: todayJst(), mode: d.mode, triage: d.triage, situation: d.situation, planForm }) : null;
+    // 見る方の画面（T143。本人のページと同じ reading）
+    view = rows && d ? toPersonView(rows, { today: todayJst(), mode: d.mode, triage: d.triage, situation: d.situation, planForm, reading: true }) : null;
     // 入れる欄（T03）はケアマネの役だけ（担当一覧はケアマネの役しか開けない）
     // AI の状態（未設定・上限到達・本日残り）は lib/claude/status.ts の 1 か所（T76）
     intake = rows && principal.role === "care_manager" ? intakePropsOf(rows, await aiStatusFor(rows.person.office_id)) : null;

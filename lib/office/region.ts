@@ -1,5 +1,5 @@
 // 事業所の地域（docs/tasks/T148.md の 2）。T68 の「市 1 つ＋中心」を、主な市＋周りの市・中心・広さ・事業所の区域にした。
-// 主な市は offices.city、周りの市は offices.region_cities（JSON の配列、migration 0035）、広さは offices.region_km、
+// 主な市は offices.city、周りの市は offices.region_cities（JSON の配列、migration 0036）、広さは offices.region_km、
 // 区域は offices.hazards（0030）。置くのは事業所の画面の「地域」の区分（components/office/OfficePlace.tsx、保存は lib/office/place.ts）。
 //
 // その地域が次にそろって効く（どれもここの関数を通す）:
