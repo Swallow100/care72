@@ -76,12 +76,12 @@ export function mergeListSheets(sheets: ReadonlyArray<OverlaySheet>): OverlayShe
 const norm = (s: string) => s.normalize("NFKC").replace(/[\s　()（）【】「」※:：]/g, "");
 
 /**
- * 様式 9（厚労省 BCP のひな形の利用者一覧）を読み取った対応表か（T131）。一覧の形で、題に「様式9」か「利用者一覧」があり、
+ * 様式 9（厚労省 BCP のひな形の利用者一覧）を読み取った対応表か（T131）。題に「様式9」か「利用者一覧」があり、
  * ひな形の列の見出し（No・優先順位・地域区分・氏名（年齢）・住所・避難所・特記・担当ケアマネ・安否確認できた日…）の半分より多くが欄の名前にある。
  * 当たれば、確かめの画面から専用の紙へ案内する（差し込みの紙も作れるが、優先の順とケア72 の列は専用の紙にしか無い）
  */
-export function isForm9Like(m: Pick<FormMapping, "title" | "fields" | "list">): boolean {
-  if (!m.list) return false;
+export function isForm9Like(m: Pick<FormMapping, "title" | "fields">): boolean {
+  // 一覧の表の形（list）は見ない（本物が行の帯を返さない・形が合わずに一覧にならなくても、題と見出しで様式 9 と分かれば案内する）
   const title = norm(m.title);
   if (!title.includes("様式9") && !title.includes("利用者一覧")) return false;
   const heads = FORM9_HEADS.map((h) => norm(h.text)).filter((h) => h !== "");

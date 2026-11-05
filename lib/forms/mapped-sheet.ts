@@ -427,9 +427,11 @@ export const ITEM_VALUES: Record<LedgerItemKey, Resolver> = {
   "evacuation.destination2": fromSheet("shelter.pre.place"),
   "evacuation.transport": (c) => {
     const e = c.ledger.evacuation;
-    // 選ぶ欄（【手段】の □）は選んだ手段の言葉と照らす（T131）
+    // 選ぶ欄（【手段】の □）は選んだ手段の言葉と照らす（T131）。補記（「徒歩（杖をついて）」の括弧の中）のある人は照らさず、
+    // 前のまま選択肢を □ のまま並べて値を後ろに添える（印だけにすると補記が紙から落ちる）
     const kind = e.transportKind ? TRANSPORT_KIND_LABELS[e.transportKind] : undefined;
-    return { cell: text(transportText(e), pendingOf(c.ledger, "evacuation.transport")), ...(kind ? { words: [kind] } : {}) };
+    const shown = transportText(e);
+    return { cell: text(shown, pendingOf(c.ledger, "evacuation.transport")), ...(kind && shown === kind ? { words: [kind] } : {}) };
   },
   "evacuation.route": fromSheet("route.text"),
   "evacuation.barriers": (c) => ({ cell: text(c.ledger.evacuation.barriers, pendingOf(c.ledger, "evacuation.barriers")) }),

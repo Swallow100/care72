@@ -210,7 +210,9 @@ describe("一覧の形の様式（T131、評価の 3 回目の 3）", () => {
       list: { page: 1, rows: 20, first: { x: 0, y: 0.2, w: 1, h: 0.03 }, step: 0.03 },
     };
     expect(isForm9Like(m9)).toBe(true);
-    expect(isForm9Like({ ...m9, list: undefined })).toBe(false);
+    // 行の帯が合わずに一覧にならなくても、題と見出しで案内する
+    expect(isForm9Like({ title: m9.title, fields: m9.fields })).toBe(true);
+    expect(isForm9Like({ ...m9, title: "利用者台帳" })).toBe(false);
     expect(isForm9Like(checkReadResult(listRead()).mapping)).toBe(false);
     // 確かめの画面: 一覧の行の数と、様式 9 なら専用の紙へ
     const html = renderToStaticMarkup(createElement(MappingEditor, { id: "fm-9", version: 1, status: "draft", initial: m9 }));
@@ -288,7 +290,7 @@ describe("実在の様式の読み違いと紙のずれ（T131、評価の 3 回
       ...p,
       ledger: {
         ...structuredClone(p.ledger),
-        evacuation: { ...p.ledger.evacuation, destination2: "長女宅", destination2Means: "family_car" as const, nearest: undefined, nearestMeans: undefined, transportKind: "foot" as const },
+        evacuation: { ...p.ledger.evacuation, destination2: "長女宅", destination2Means: "family_car" as const, nearest: undefined, nearestMeans: undefined, transportKind: "foot" as const, transport: undefined },
       },
     };
     const pre = field({ label: "【手段】", item: "evacuation.destination2Means" });
@@ -299,6 +301,11 @@ describe("実在の様式の読み違いと紙のずれ（T131、評価の 3 回
     expect(pc?.kind === "value" && pc.lines.flat().map((x) => x.text).join("")).toBe("家族の車");
     expect(c.get(near.id)?.kind).toBe("empty");
     expect(ons(c.get(city.id))).toEqual(["徒歩"]);
+    // 補記のある人は印だけにせず、選択肢を □ のまま並べて補記ごと後ろに（前のまま）
+    const noted = { ...person, ledger: { ...person.ledger, evacuation: { ...person.ledger.evacuation, transport: "杖をついて" } } };
+    const nc = cellsOf(noted, [city]).get(city.id);
+    expect(ons(nc)).toEqual([]);
+    expect(nc?.kind === "choice" && (nc.after ?? []).map((x) => x.text).join("")).toContain("杖をついて");
   });
 });
 
