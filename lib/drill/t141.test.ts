@@ -24,6 +24,8 @@ import {
   slipContextOf,
 } from "./person-facts.ts";
 import { buildPersona, personaTurns, type PersonaAnswer } from "./persona.ts";
+import { pseudonymize } from "../pseudonym/index.ts";
+import { FINDING_ASK, FINDING_TEXT_MAX, findingRoom, findingRooms, kindCounts, kindSummary, REVIEW_LIMIT, REVIEW_SYSTEM, REVIEW_WEIGHT, reviewBody } from "./review.ts";
 import { applyEvent, EMPTY_WORLD, type WorldState } from "./scenarios.ts";
 import { AREA_GAP_MINUTES, areaRested } from "./time-odds.ts";
 
@@ -286,5 +288,66 @@ describe("全体の出来事の間隔と言い回し（余震）", () => {
     expect(new Set(texts).size).toBe(4);
     expect(aftershockOf(56, 1).intensity).toBe("3");
     expect(EVENT_CATALOG.aftershock.build({ person: null, nth: 2 }, 56, null)[0].text).toBe(aftershockOf(56, 2).text);
+  });
+});
+
+// ---------- 講評の指摘を重い順に絞る ----------
+
+describe("講評: 重い順に絞り、種類ごとに 1 つにまとめる", () => {
+  // 評価の 5 回目に近い形（架空の数）: 順番の外れ 9 人・条件 2 人・空欄 3 人・遅い報告・頼み事 2 人・計画なし 3 人
+  const who = (p: string | null | undefined) => (p ? `${p} さん` : "全体");
+  const people = ["p-01", "p-02", "p-03", "p-04", "p-05", "p-06", "p-07", "p-08", "p-09"];
+  const R5 = {
+    participants: [...people, "p-10"],
+    endMinute: 4320,
+    order: { matched: 1, total: 10, misses: people.map((p, i) => ({ person: p, why: [i % 2 ? "late" : "missing"], expected: i % 2 ? "p-10" : null })) },
+    report: { minute: 58 * 60 + 20, tries: 1 },
+    form9: { blanks: 3, rows: [{ person: "p-01", columns: ["shelter"] }, { person: "p-05", columns: ["shelter"] }, { person: "p-10", columns: ["shelter"] }] },
+    reached: [{ person: "p-09", label: "x", hours: 2, outMinute: 180, tries: 1 }, { person: "p-04", label: "y", hours: 3, outMinute: 240, tries: 0 }],
+    calls: { total: 11, answered: 5, declined: 0, open: 6, redDeclined: 0 },
+    asks: { rows: [{ person: "p-04", kinds: ["water"] }, { person: "p-06", kinds: ["medicine"] }] },
+    plans: { acted: 0, needed: 3, rows: [] },
+  } as unknown as Parameters<typeof findingRooms>[0];
+
+  it("候補は重い順に種類ごとの上限まで、合わせて REVIEW_LIMIT まで（順番は 1 つ）", () => {
+    const rooms = findingRooms(R5);
+    expect(rooms.order).toBe(1);
+    expect(rooms.reached).toBe(2);
+    expect(Object.values(rooms).reduce((a, b) => a + (b ?? 0), 0)).toBeLessThanOrEqual(REVIEW_LIMIT);
+    expect(findingRoom(R5)).toBeLessThanOrEqual(REVIEW_LIMIT);
+    // 重い種類から埋まる（空欄・ほかの種類は後）
+    expect(Object.keys(rooms)).toEqual(REVIEW_WEIGHT.filter((k) => rooms[k] !== undefined));
+    expect(kindCounts(R5)).toMatchObject({ order: 9, reached: 2, report: 1, blank: 3 });
+    // 早い報告は候補にしない
+    expect(kindCounts({ ...R5, report: { minute: 120, tries: 1 } } as typeof R5).report).toBe(0);
+  });
+
+  it("返事は重い順に並べ、種類ごと・全体の上限で切る", () => {
+    const { key } = pseudonymize([seedInput("p-01"), seedInput("p-02")], {});
+    const kinds = ["blank", "order", "order", "order", "choice", "reached", "order", "call", "report", "choice", "choice"];
+    const many = kinds.map((k, i) => ({ person: "全体", kind: k, text: `次は手を変えて試す ${i}`, basis: "根拠なし" }));
+    const body = reviewBody({ summary: "s", findings: many }, { key, members: new Set(["p-01", "p-02"]), max: findingRoom(R5), rooms: findingRooms(R5) });
+    const got = body.findings.map((f) => f.kind);
+    expect(got.length).toBeLessThanOrEqual(REVIEW_LIMIT);
+    expect(got.filter((k) => k === "order")).toHaveLength(1);
+    expect(got[0]).toBe("reached");
+    const rank = got.map((k) => REVIEW_WEIGHT.indexOf(k));
+    expect([...rank].sort((a, b) => a - b)).toEqual(rank);
+  });
+
+  it("入力は種類ごとの要約を先に、順番の外れは訳ごとに 1 行（1 人 1 行で並べない）", () => {
+    const lines = kindSummary(R5, who);
+    expect(lines[0]).toContain("種類ごとの要約");
+    expect(lines.filter((l) => l.startsWith("- "))).toHaveLength(REVIEW_WEIGHT.length - 1);
+    expect(lines.join("\n")).toContain("外れ 9 人");
+    expect(lines.join("\n")).toContain("ほか");
+    expect(lines.join("\n")).toContain("24 時間より後");
+  });
+
+  it("指示に指摘の数の目安と短い字数を書く（決まった数をそろえさせない）", () => {
+    expect(REVIEW_SYSTEM).toContain(`${REVIEW_LIMIT} つまで`);
+    expect(REVIEW_SYSTEM).toContain(`${FINDING_ASK} 字まで`);
+    expect(REVIEW_SYSTEM).toContain("同じ種類は 1 つにまとめ");
+    expect(FINDING_ASK).toBeLessThan(FINDING_TEXT_MAX);
   });
 });
