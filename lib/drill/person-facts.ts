@@ -11,7 +11,8 @@
 // - Claude を呼ばない。色と連絡の順（lib/triage）は決めない・動かさない（安否の入力を使うか使わないかと、いる所を帳面に直すだけ）
 // - Claude に渡す文は名前・場所の名前を書かない（避難先は種類だけ。呼ぶ側が仮名化の門を通す）
 
-import type { ContactKind, ContactReach, Ledger, WhereNow } from "../db/types.ts";
+import type { ContactKind, ContactReach, Ledger, Sex, WhereNow } from "../db/types.ts";
+import { isSpouse, relationOf } from "./speaker.ts";
 import type { ActionRecord } from "./action-types.ts";
 import type { DrillTurn, PersonState } from "./persona-types.ts";
 import type { AskKind, WorldState } from "./scenarios.ts";
@@ -135,6 +136,27 @@ export function planLines(plan: Plan): string[] {
   else out.push("避難先は計画に無い（自分では移らない）");
   if (plan.vendor) out.push("機器の業者に届けてもらう約束がある（台帳の連絡先）");
   return out;
+}
+
+/** 夫・妻の続柄（本人の性別から。分からなければ両方） */
+const spouseOf = (sex: Sex | null | undefined): string[] => (sex === "female" ? ["夫"] : sex === "male" ? ["妻"] : ["夫", "妻"]);
+
+/**
+ * 同居の人と周りの家族の続柄（T130。台帳の連絡先の「同居」と世帯から）。同居の人は「来た」と言わない、台帳に無い続柄の家族は出さない。
+ * 世帯が「家族と」「その他」「施設」の人は周りの家族を確かめられないので kin は null
+ */
+export function housemates(
+  source: { ledger: { basic: Pick<Ledger["basic"], "household"> }; contacts: ReadonlyArray<{ kind: ContactKind; reach?: ContactReach | null }> },
+  roles: ReadonlyArray<string>,
+  sex: Sex | null | undefined,
+): { together: string[]; kin: string[] | null } {
+  const together = source.contacts.flatMap((c, i) => (c.reach === "together" && c.kind !== "self" ? [roles[i]] : []));
+  const household = source.ledger.basic.household ?? null;
+  if (household === "with_spouse" && !together.some(isSpouse)) together.push(spouseOf(sex)[0]);
+  const family = source.contacts.flatMap((c, i) => (c.kind === "family" ? [relationOf(roles[i])] : []));
+  if (household === "with_spouse") family.push(...spouseOf(sex));
+  const kin = household === "with_family" || household === "other" || household === "facility" ? null : [...new Set(family)];
+  return { together: [...new Set(together)], kin };
 }
 
 // ---------- 帳面（今ある物から引く） ----------
@@ -462,6 +484,9 @@ export function screenAsks(asks: ReadonlyArray<AskKind>, f: Facts, onDrop?: (rul
   return out;
 }
 
+/** いる所が家と家の外（避難所・その他）で入れ替わったか。家の外どうし（避難所 → 家にいない）は入れ替わりにしない */
+export const placeFlipped = (prev: WhereNow, next: WhereNow): boolean => (prev === "home") !== (next === "home");
+
 /**
  * 表の行の無い本人役の安否 1 つを帳面で見る（使えなければ null）。
  * - 赤（動けない・けが）→ 緑は、前の連絡から来た人・届いた手か、計画で移った（避難先と手段があり、同居の人と、家の外へ）ときだけ
@@ -483,9 +508,10 @@ export function screenTurn(turn: DrillTurn, f: Facts, onDrop?: (rule: GateRule) 
     return null;
   }
   const prev = f.place?.where ?? null;
-  if (prev && next && prev !== next && !f.help && !f.away) {
-    const leaving = prev === "home" && (next === "shelter" || next === "other");
-    const back = next === "home" && RETURNED.test(words.normalize("NFKC"));
+  // 見るのは家と家の外の入れ替わりだけ（赤の「家にいない」は避難所とも食い違わない）
+  if (prev && next && placeFlipped(prev, next) && !f.help && !f.away) {
+    const leaving = prev === "home";
+    const back = RETURNED.test(words.normalize("NFKC"));
     const ok = leaving ? !!f.plan?.move && (!f.hurt || f.plan.helper) : back;
     if (!ok) {
       onDrop?.("place_flip");

@@ -8,10 +8,14 @@
 // 同じ言い回しの出来事を別の人に（repeat_text）・同じ種類を上限より多く（repeat_kind）・画面に出た結末の理由の医療の言い方（reason_medical）。
 // 赤（動けない）→ 緑は checks.ts の hurt_to_safe（前からの検査）が数える
 
+import { castTurn, turnKey } from "../../../lib/drill/cast.ts";
 import { EVENT_CATALOG, isInjectKind } from "../../../lib/drill/event-catalog.ts";
+import type { DrillScenario } from "../../../lib/db/types.ts";
+import { eventHour, scenarioOf } from "../../../lib/drill/scenarios.ts";
 import {
   factsOf,
   KIND_REPEAT_MAX,
+  placeFlipped,
   placeOfState,
   powerBack,
   sameWording,
@@ -65,6 +69,19 @@ const stateOf = (u: LooseTurn & { at: number }): PersonState => ({
 
 const cut = (t: string) => Array.from(t).slice(0, 40).join("");
 
+/** 想定の表の行の安否（本人と発災からの分）。表の行は骨なので、いる所と声の門の外（言葉は見る）。配役（T70）を当てる */
+function tableTurns(outcome: RunOutcome): Set<string> {
+  const out = new Set<string>();
+  const cast = outcome.cast ?? {};
+  for (const t of scenarioOf(outcome.plan.scenario as DrillScenario).ticks) {
+    t.turns.forEach((raw, i) => {
+      const r = castTurn(raw, cast[turnKey(t.hour, i)]);
+      out.add(`${r.person}|${Math.round(eventHour(r, t.hour) * 60)}`);
+    });
+  }
+  return out;
+}
+
 /** 9. 帳面との矛盾（T130）。checked は見た数（安否・言葉・出来事・到着） */
 export function factHits(outcome: RunOutcome, people: Readonly<Record<string, FactPerson>>): { checked: number; hits: CheckHit[] } {
   const hits: CheckHit[] = [];
@@ -89,6 +106,18 @@ export function factHits(outcome: RunOutcome, people: Readonly<Record<string, Fa
     });
   };
 
+  const table = tableTurns(outcome);
+  // 家の外へ出た・車中泊・帰ろうとする印（その時の世界の印。終わりの世界では人が着くと消えているので、出来事から作る）
+  const awayMarks: Array<{ person: string; minute: number }> = [];
+  for (const t of r.ticks) {
+    for (const e of t.incidents) {
+      const k = e.change?.kind;
+      const mark = k === "mark" ? (e.change as { mark?: unknown }).mark : null;
+      if (e.person && (k === "going_home" || mark === "wandering" || mark === "carSleep")) awayMarks.push({ person: e.person, minute: Math.round((e.at ?? t.hour) * 60) });
+    }
+  }
+  const awayAt = (person: string, minute: number): boolean =>
+    awayMarks.some((m) => m.person === person && m.minute <= minute && !(world.arrivals ?? []).some((a) => a.person === person && a.arrived && a.arrive > m.minute && a.arrive <= minute));
   // 本人ごとの安否を時刻の順に（前の連絡からの帳面で、次の安否と言葉を見る）
   const byPerson = new Map<string, Array<LooseTurn & { at: number }>>();
   for (const t of r.ticks) for (const u of t.turns) if (u.person) byPerson.set(u.person, [...(byPerson.get(u.person) ?? []), { ...u, at: u.at ?? t.hour }]);
@@ -103,9 +132,10 @@ export function factHits(outcome: RunOutcome, people: Readonly<Record<string, Fa
       const words = `${u.saying ?? ""}${u.doing ?? ""}`;
       // 言葉の矛盾は AI の言葉だけ（表の固定の言葉は表の試験で見る）
       if (u.ai) {
-        if (f.voiceLost && u.source === "agent") hit("voice_lost", person, minute, `${Math.round(f.voiceLost.at)} 分に声なし → 本人`);
+        const row = table.has(`${person}|${minute}`);
+        if (!row && f.voiceLost && u.source === "agent") hit("voice_lost", person, minute, `${Math.round(f.voiceLost.at)} 分に声なし → 本人`);
         const prevPlace = f.place?.where ?? null;
-        if (prevPlace && place && prevPlace !== place && !f.help && !f.away) {
+        if (!row && prevPlace && place && placeFlipped(prevPlace, place) && !f.help && !awayAt(person, minute)) {
           const leaving = prevPlace === "home";
           const ok = leaving ? !!f.plan?.move && (!f.hurt || f.plan.helper) : RETURNED.test(words.normalize("NFKC"));
           if (!ok) hit("place_flip", person, minute, `${prevPlace} → ${place}`);

@@ -87,12 +87,13 @@ import { CALL_STATUS_TEXTS, clockLabel, PHONE_LABELS, SHELTER_LABELS, TSUNAMI_LA
 import { nightLine } from "./night.ts";
 import { ASK_KINDS, eventHour, type AskKind, type FixedTurn, type OutageArea, type PhoneState, type WorldState } from "./scenarios.ts";
 import { clockRemaining, formatHours, type Situation, type TriageClock } from "../triage/index.ts";
-import { callsFor, isSpouse, relationOf, speakerSlip, speakersLine, speakersOf, type Speaker, type Speakers } from "./speaker.ts";
+import { callsFor, speakerSlip, speakersLine, speakersOf, type Speaker, type Speakers } from "./speaker.ts";
 import { minuteText } from "./time-text.ts";
 import {
   dropFactSlips,
   factsBlock,
   factsOf,
+  housemates,
   placeOfState,
   planOf,
   screenAsks,
@@ -285,27 +286,6 @@ export function buildPersona(source: PseudonymInput, opts: { on?: string; places
     plan: planOf(source),
     ...housemates(source, roles, p.sex),
   };
-}
-
-/** 夫・妻の続柄（本人の性別から。分からなければ両方） */
-const spouseOf = (sex: ClaudePerson["sex"] | null | undefined): string[] => (sex === "female" ? ["夫"] : sex === "male" ? ["妻"] : ["夫", "妻"]);
-
-/**
- * 同居の人と周りの家族の続柄（T130。台帳の連絡先の「同居」と世帯から）。同居の人は「来た」と言わない、台帳に無い続柄の家族は出さない。
- * 世帯が「家族と」「その他」「施設」の人は周りの家族を確かめられないので kin は null
- */
-export function housemates(
-  source: Pick<PseudonymInput, "ledger" | "contacts">,
-  roles: ReadonlyArray<string>,
-  sex: ClaudePerson["sex"] | null | undefined,
-): { together: string[]; kin: string[] | null } {
-  const together = source.contacts.flatMap((c, i) => (c.reach === "together" && c.kind !== "self" ? [roles[i]] : []));
-  const household = source.ledger.basic.household ?? null;
-  if (household === "with_spouse" && !together.some(isSpouse)) together.push(spouseOf(sex)[0]);
-  const family = source.contacts.flatMap((c, i) => (c.kind === "family" ? [relationOf(roles[i])] : []));
-  if (household === "with_spouse") family.push(...spouseOf(sex));
-  const kin = household === "with_family" || household === "other" || household === "facility" ? null : [...new Set(family)];
-  return { together: [...new Set(together)], kin };
 }
 
 /** 本人役の帳面（T130）。actions はこの人への手（メモを落とした物）。停電の地区は本人の町名とハザードで見る */
