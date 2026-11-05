@@ -643,8 +643,9 @@ describe("migration 0012（accounts.disabled_at と、事業所の経過の種�
   it("今ある事業所の経過の行を全部写す（列・作った時刻もそのまま）。外部キーは効いたまま", () => {
     // 種は今の事業所の列（0017 の地図の中心、T68）を書くので、0017 は先に当てる（offices に列を足すだけで 0012 の表に触れない）。
     // 種は気象庁の写しの表（0020、T72）も空にするので 0020 も先に（新しい表を作るだけで 0012 の表に触れない）。
-    // 種は同意の AI 提供（0024、T74）を書くので 0024 も先に（consents を建て直すだけで 0012 の表に触れない）
-    const early = (n: string) => n.startsWith("0017_") || n.startsWith("0020_") || n.startsWith("0024_");
+    // 種は同意の AI 提供（0024、T74）を書くので 0024 も先に（consents を建て直すだけで 0012 の表に触れない）。
+    // 種は書類の見直しの表（0032、T136）も空にするので 0032 も先に（新しい表を作るだけで 0012 の表に触れない）
+    const early = (n: string) => n.startsWith("0017_") || n.startsWith("0020_") || n.startsWith("0024_") || n.startsWith("0032_");
     const d = sqliteUpTo((n) => n < MIGRATION_0012 || early(n));
     for (const s of seedStatements()) d.exec(s);
     d.prepare(
