@@ -10,6 +10,7 @@
 //   塗り残しに備えて、氏名・住所・電話を出力に書かないよう指示し（INTAKE_READ_SYSTEM）、返った文字は仮名化と同じ置き換え（連絡先の名前は役割名）を通す。
 //   伏せた物は全部元に戻す（T118）: Claude が写した台帳の伏せ字（「（町名）小学校」）は台帳の文から、返事を伏せ直した所は返事の元の文から
 //   （文の道 extract.ts と同じ sourceRestorer）。戻せない伏せ字が残る値は差分に出さず保存もしない（diff.ts・save.ts）
+//   括弧の崩れた伏せ字（「(町名)総合病院」「町名総合病院」）もそろえてから戻す（T122、lib/pseudonym/marks.ts）
 
 import { askJson, type AskJsonContext, type AskJsonRequest } from "../claude/call.ts";
 import { OPUS } from "../claude/models.ts";
@@ -86,7 +87,8 @@ export async function readIntake(rows: PersonPageRows, file: FormFile, ctx: AskJ
   const r = await askJson(buildReadIntakeRequest(payload, file), ctx);
   const sealed = sealReadOutput(r.value, key);
   // 伏せた物を元に戻す元: 返事の元の文（伏せ直した所）と台帳の文（Claude が写した台帳の伏せ字）。T118
-  const restore = sourceRestorer([...stringsOf(r.value), ...inputTexts(input)], key);
+  // 返事の文は戻す元にするが、崩れた伏せ字（「(町名)」）を「元の文に書いてある」とは見ない（T122）
+  const restore = sourceRestorer(inputTexts(input), key, { replies: stringsOf(r.value) });
   const { items, dropped } = buildDiff({ ledger: input.ledger, contacts: rows.contacts }, sealed, { text: restore, note: restore });
   return { ai: { model: r.model }, items, dropped };
 }

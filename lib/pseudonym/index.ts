@@ -34,11 +34,13 @@ import type {
 } from "../db/types.ts";
 import { ageOn, todayJst } from "../age.ts";
 import { BIRTH_MARK, birthSpans, maskBirthForms, type Birth } from "./birth.ts";
+import { canonicalMarks } from "./marks.ts";
 import { ADDRESS_MARK, CONTACT_PASSES, formLeaks, MAIL_MARK, maskContactForms, maskPlaceAndNameForms, NAME_MARK, PLACE_NAME_PASSES, POSTAL_MARK, type Span } from "./forms.ts";
 import { transportText } from "../map/transport.ts";
 
 export { ADDRESS_MARK, MAIL_MARK, NAME_MARK, NOT_NAME_WORDS, POSTAL_MARK } from "./forms.ts";
 export { BIRTH_MARK } from "./birth.ts";
+export { canonicalMarks, hasAnyMark, hasBrokenMark, markSpans, MARK_WORDS } from "./marks.ts";
 
 // ---------- 入れる形（DB の行でも種のデータでも通る） ----------
 
@@ -806,10 +808,19 @@ export function inputTexts(input: PseudonymInput): string[] {
  * 台帳の文字の値（inputTexts）。値がどれかの元の伏せたあとの文にそのまま入っていて、元の言葉が 1 つに決まるときだけ、その元の言葉に
  * （「（町名）小学校」→ 台帳の「かわなぎ小学校」）。役割名（娘・支援者 1）は戻さない（Claude は続柄の言葉として使う）。
  * 元の言葉の候補に伏せ字の無い物があれば、それだけで決める（Claude の返事そのものを元の文に入れたとき、写した伏せ字の
- * 「（町名）小学校」自身も候補になるので。T118）。決まらなければ restoreText（仮名だけ氏名に、伏せ字は残り、入れる欄は出さない）
+ * 「（町名）小学校」自身も候補になるので。T118）。決まらなければ restoreText（仮名だけ氏名に、伏せ字は残り、入れる欄は出さない）。
+ *
+ * T122: 伏せ字の括弧が崩れて返った値（「(町名)総合病院」「町名総合病院」。./marks.ts）は、全角の括弧の形にそろえてから照らす。
+ * 戻せなければ全角の括弧の形のまま返す（伏せ字の検査 hasMaskMark が捕まえ、画面に出さず保存しない）。
+ * sources にその崩れた形がそのまま書いてある物（ケアマネが「連絡(電話)」と書いた）は伏せ字と見ない。
+ * replies は Claude の返事の文（写真・PDF の道で、返事を伏せ直した所を戻す元）。戻す元にはするが、崩れた形を「元に書いてある」とは見ない
  */
-export function sourceRestorer(sources: ReadonlyArray<string>, key: PseudonymKey): (value: string) => string {
-  const traces = [...new Set(sources)].map((s) => {
+export function sourceRestorer(
+  sources: ReadonlyArray<string>,
+  key: PseudonymKey,
+  opts: { replies?: ReadonlyArray<string> } = {},
+): (value: string) => string {
+  const traces = [...new Set([...sources, ...(opts.replies ?? [])])].map((s) => {
     const units = scrubUnits(s, key).units;
     const starts: number[] = [];
     let pos = 0;
@@ -819,8 +830,10 @@ export function sourceRestorer(sources: ReadonlyArray<string>, key: PseudonymKey
     }
     return { units, starts, out: joinOut(units) };
   });
-  return (value: string) => {
-    if (!value.trim()) return value;
+  // 崩れた形が元の文（ケアマネの文・台帳）にそのまま書いてあれば、伏せ字でなく文の一部
+  const literal = (span: string) => sources.some((s) => s.includes(span));
+  const marked = (s: string) => hasMaskMark(canonicalMarks(s, literal));
+  const resolve = (value: string): string => {
     const found = new Set<string>();
     for (const t of traces) {
       for (let i = t.out.indexOf(value); i >= 0; i = t.out.indexOf(value, i + 1)) {
@@ -837,8 +850,16 @@ export function sourceRestorer(sources: ReadonlyArray<string>, key: PseudonymKey
         );
       }
     }
-    const clear = [...found].filter((f) => !hasMaskMark(f));
+    const clear = [...found].filter((f) => !marked(f));
     if (clear.length === 1) return clear[0];
     return found.size === 1 ? [...found][0] : restoreText(value, key);
+  };
+  return (value: string) => {
+    if (!value.trim()) return value;
+    const direct = resolve(value);
+    if (!marked(direct)) return direct;
+    // 崩れた形をそろえて照らし直す。戻せなければ全角の括弧の形で返す（T122）
+    const even = canonicalMarks(value, literal);
+    return canonicalMarks(even === value ? direct : resolve(even), literal);
   };
 }

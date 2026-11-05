@@ -55,7 +55,7 @@ export const LEDGER_ITEMS = [
   // ---- 本人 ----
   { key: "person.name", group: "person", label: "氏名" },
   { key: "person.kana", group: "person", label: "フリガナ" },
-  { key: "person.birth", group: "person", label: "生年月日", hint: "和暦で出す" },
+  { key: "person.birth", group: "person", label: "生年月日", hint: "和暦で出す。元号の選択肢と年月日は 1 つの欄" },
   { key: "person.age", group: "person", label: "年齢", hint: "作成日の満年齢" },
   { key: "basic.sex", group: "person", label: "性別" },
   { key: "basic.address", group: "person", label: "住所", hint: "市と町名まで。番地は持たない" },
@@ -91,13 +91,25 @@ export const LEDGER_ITEMS = [
   },
 
   // ---- 医療（計画の共有の同意の中） ----
-  { key: "medical.devices", group: "medical", label: "医療機器", hint: "酸素・人工呼吸器・吸引・経管栄養・透析と、電池と予備", consent: "plan_share" },
-  { key: "medical.medications", group: "medical", label: "常用薬", hint: "薬の名前・回数・残り・保管場所", consent: "plan_share" },
-  { key: "medical.doctor", group: "medical", label: "かかりつけ医・薬局", consent: "plan_share" },
-  { key: "medical.dialysis", group: "medical", label: "透析先", consent: "plan_share" },
+  {
+    key: "medical.devices",
+    group: "medical",
+    label: "医療機器",
+    hint: "在宅酸素・人工呼吸器・吸引・経管栄養・透析と、電池と予備。機器の種類ごとの □（在宅酸素療法・人工呼吸器）は □ ごとにこの項目",
+    consent: "plan_share",
+  },
+  {
+    key: "medical.medications",
+    group: "medical",
+    label: "常用薬",
+    hint: "薬の名前・回数・残り・保管場所。医薬品情報・お薬の欄（かかりつけ医・薬局の欄とは別）。薬の区分ごとの □（抗凝固薬・インスリン）は □ ごとにこの項目",
+    consent: "plan_share",
+  },
+  { key: "medical.doctor", group: "medical", label: "かかりつけ医・薬局", hint: "医療機関・薬局の名前と電話（医薬品情報の欄とは別）", consent: "plan_share" },
+  { key: "medical.dialysis", group: "medical", label: "透析先", hint: "透析を受ける施設の名前と電話", consent: "plan_share" },
   { key: "medical.allergies", group: "medical", label: "アレルギー", consent: "plan_share" },
-  { key: "medical.history", group: "medical", label: "既往症", consent: "plan_share" },
-  { key: "medical.vaccinations", group: "medical", label: "予防接種", consent: "plan_share" },
+  { key: "medical.history", group: "medical", label: "既往症", hint: "既往症・既往歴。病名の □ の並びは 1 つの欄", consent: "plan_share" },
+  { key: "medical.vaccinations", group: "medical", label: "予防接種", hint: "予防接種の種類の □ の並びは 1 つの欄", consent: "plan_share" },
   {
     key: "medical.notes",
     group: "medical",
@@ -105,16 +117,16 @@ export const LEDGER_ITEMS = [
     hint: "機器・時計・透析先・アレルギー・既往・予防接種をまとめた物",
     consent: "plan_share",
   },
-  { key: "medical.annex", group: "medical", label: "別紙（医療要約）", hint: "別紙の有無", consent: "plan_share" },
+  { key: "medical.annex", group: "medical", label: "別紙（医療要約）", hint: "別紙の有無。特記事項の横などの「別紙 あり・なし」の欄", consent: "plan_share" },
 
   // ---- 避難 ----
-  { key: "evacuation.hazards", group: "evacuation", label: "自宅のリスク", hint: "浸水（深さ）・土砂・津波" },
+  { key: "evacuation.hazards", group: "evacuation", label: "自宅のリスク", hint: "浸水（深さ）・土砂・津波。「自宅のリスク（複数選択可）」の □ の並びは 1 つの欄" },
   { key: "evacuation.destination1", group: "evacuation", label: "避難先1", hint: "市の指定避難所など。名称だけ（住所は持たない）" },
   { key: "evacuation.destination2", group: "evacuation", label: "避難先2", hint: "事前に行く所（親族の家など）" },
   { key: "evacuation.transport", group: "evacuation", label: "移動手段", hint: "徒歩・車いす・家族の車など" },
   { key: "evacuation.route", group: "evacuation", label: "避難経路" },
   { key: "evacuation.barriers", group: "evacuation", label: "段差・エレベーター" },
-  { key: "evacuation.support", group: "evacuation", label: "支援の内容", hint: "声掛け・誘導・移動介助と書き足し" },
+  { key: "evacuation.support", group: "evacuation", label: "支援の内容", hint: "声掛け・誘導・移動介助と書き足し。複数選択の □ の並びは 1 つの欄" },
   { key: "evacuation.carryItems", group: "evacuation", label: "持出品" },
   { key: "evacuation.pets", group: "evacuation", label: "ペット" },
   { key: "evacuation.myTimeline", group: "evacuation", label: "マイ・タイムライン", hint: "作成の有無" },
@@ -298,6 +310,10 @@ export type MappingField = {
    * options に区切りの字（["年","月","日"]）、optionBoxes に空きごとの場所（lib/forms/split-parts.ts）
    */
   optionBoxes?: Array<FieldBox | null>;
+  /**
+   * 人が確かめの画面で「確認」した・直した要確認の欄（T122、lib/forms/field-risk.ts）。holdRisky のとき、確認するまで紙に使わない
+   */
+  confirmed?: boolean;
 };
 
 export type FormMapping = {
@@ -311,6 +327,11 @@ export type FormMapping = {
   typeface?: Typeface;
   /** 読み取りに失敗した頁（T120。読めた頁の欄だけで対応表にした。無ければ全部の頁を読めた） */
   unread?: number[];
+  /**
+   * 要確認の欄（自信の低い欄・読み違いの多い種類の欄。lib/forms/field-risk.ts）を、人が確認するまで紙に使わない（T122）。
+   * ケアマネが確かめの画面で選ぶ。無ければ今まで通り（確認保存した対応表の欄を全部使う）
+   */
+  holdRisky?: boolean;
 };
 
 /** 区切りの空きを持てる欄の形（T120。選ぶ欄は選択肢の □） */
@@ -373,6 +394,16 @@ export const MAPPING_LABELS = {
   unread: "未読",
   /** 台帳の項目なしで、人が選ぶ欄（同意など） */
   pick: "要選択",
+  // ---- T122 ----
+  /** 自信の低い欄・読み違いの多い種類の欄（lib/forms/field-risk.ts）。人が「確認」すると外れる */
+  risk: "要確認",
+  confirm: "確認",
+  confirmed: "確認済",
+  /** 要確認の欄を確認するまで紙に使わない（押すと切り替え） */
+  hold: "保留",
+  /** 表の並び: 要確認を先に・様式の順 */
+  riskOrder: "要確認順",
+  formOrder: "様式順",
   /** AI の挙げた候補の項目 */
   candidate: "候補",
   /** 候補をそのまま使う */
@@ -578,6 +609,7 @@ export function parseMappingInput(v: unknown): { ok: true; mapping: FormMapping 
       removed: f.removed === true,
       ai,
       ...(f.box !== undefined ? { box: clampBox(f.box) } : {}),
+      ...(f.confirmed === true ? { confirmed: true } : {}),
     });
   }
   return {
@@ -589,6 +621,7 @@ export function parseMappingInput(v: unknown): { ok: true; mapping: FormMapping 
       fields,
       ...(o.typeface !== undefined ? { typeface: typefaceOf(o.typeface) } : {}),
       ...unreadOf(o.unread, pages),
+      ...(o.holdRisky === true ? { holdRisky: true } : {}),
     },
   };
 }

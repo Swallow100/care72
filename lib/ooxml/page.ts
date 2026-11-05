@@ -52,6 +52,8 @@ export type OfficePage = {
   sheet: string | null;
   /** シートの中・文書の中の頁の番号（1 から） */
   page: number;
+  /** シートに印刷範囲が決めてある（Excel。既定で送るシートの手掛かり。T122） */
+  printArea?: boolean;
 };
 
 export const PT_MM = 25.4 / 72;
