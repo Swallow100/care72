@@ -75,10 +75,15 @@ export function freeRects(box: FieldBox, obstacles: readonly InkBlob[], image: {
       stack.push(c);
     }
   }
-  return [...found.values()]
-    .sort((a, b) => b.area - a.area)
-    .slice(0, limit)
-    .map(({ area: _a, ...r }) => r);
+  // 極大の物だけ（ほかの空きの中に入る物を落とす。落とさないと広い空きの切れ端ばかりが上に来て、括弧の中のような別の空きが漏れる）
+  const kept: Array<FieldBox & { area: number }> = [];
+  const eps = 1e-9;
+  for (const r of [...found.values()].sort((a, b) => b.area - a.area)) {
+    if (kept.some((k) => r.x >= k.x - eps && r.y >= k.y - eps && r.x + r.w <= k.x + k.w + eps && r.y + r.h <= k.y + k.h + eps)) continue;
+    kept.push(r);
+    if (kept.length >= limit) break;
+  }
+  return kept.map(({ area: _a, ...r }) => r);
 }
 
 /** 読む順（上から、左から） */

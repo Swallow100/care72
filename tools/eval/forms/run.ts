@@ -588,6 +588,10 @@ export async function runEval(opts: EvalOptions): Promise<RunResult> {
             blanks: look.blanks.map((b) => ({ field: b.field, label: b.label, item: b.item })),
             masks: look.masks,
             unplaced: actual.overlay?.unplaced ?? [],
+            // 欄の枠の中でずらした字（目で確かめるため。欄と置いた所だけで、字は書かない）
+            shifted: (actual.overlay?.pages ?? []).flatMap((pg) =>
+              pg.items.flatMap((it) => (it.kind === "text" && it.shifted ? [{ page: pg.page, field: it.fieldId, label: label(it.fieldId), box: it.box }] : [])),
+            ),
           });
         }
         // 正解の表の無い様式は、既定で台帳そのままの 1 人だけ刷る（置き場の様式は数が多い）
