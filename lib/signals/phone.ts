@@ -56,6 +56,7 @@ import {
   newTalkLog,
   planTalk,
   TALK_OPENING,
+  TALK_RECORDING_SEC_MAX,
   talkReplies,
   topicOfQuestion,
   yesNoChoice,
@@ -804,7 +805,8 @@ export function createPhone(deps: PhoneDeps): Phone {
         {
           signalId: sig.id,
           transcript: words,
-          durationSec: Math.round(Math.max(0, endedAt - talkStartedAt) / 1000),
+          // 会話の全部の長さ（サーバーの上限 600 秒まで。超えると断られて録音と会話の記録が捨てられる）
+          durationSec: Math.min(Math.round(Math.max(0, endedAt - talkStartedAt) / 1000), TALK_RECORDING_SEC_MAX),
           recordedAt: iso(endedAt),
           talk: structuredClone(log),
         },

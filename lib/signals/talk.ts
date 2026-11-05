@@ -419,7 +419,8 @@ export function answerOf(line: Pick<TalkLine, "question" | "topic" | "item">, re
 
 /** 答えを足した 1 往復 */
 export function heardTurn(line: TalkLine, reply: string | null, at: string): TalkTurn {
-  const r = reply?.trim() || null;
+  // 1 回の答えは TALK_TEXT_MAX 字まで（長く話し続けても、会話の記録がサーバーの確かめで断られて捨てられないように）
+  const r = clipText(reply?.trim() || null, TALK_TEXT_MAX);
   const answer = answerOf(line, r);
   const item = line.topic !== "open" && line.item && line.item !== line.topic ? { item: line.item } : {};
   return { ask: line.text, by: line.by, topic: line.topic, ...item, reply: r, heard: heardOf(r), ...(answer ? { answer } : {}), at };
@@ -718,7 +719,19 @@ export function readTalkLog(text: string | null | undefined): TalkLog | null {
 /** 本人の言葉だけを改行でつないだ文（録音の文字起こしと分類の元。問いの文は入れない） */
 export function talkReplies(log: TalkLog): string | null {
   const r = log.turns.flatMap((t) => (t.reply ? [t.reply] : []));
-  return r.length > 0 ? r.join("\n") : null;
+  // 録音の文字起こしの上限（lib/signals/save.ts の MAX_TRANSCRIPT_LENGTH と同じ）まで。頭から残す（表の 2 問の答えが先にある）
+  return r.length > 0 ? clipText(r.join("\n"), TALK_TRANSCRIPT_MAX) : null;
+}
+
+/** 録音の文字起こしの上限（字。lib/signals/save.ts の MAX_TRANSCRIPT_LENGTH と同じ値。テストで確かめる） */
+export const TALK_TRANSCRIPT_MAX = 2000;
+/** 録音の長さの上限（秒。lib/signals/save.ts の MAX_RECORDING_SEC と同じ値） */
+export const TALK_RECORDING_SEC_MAX = 600;
+
+/** 長さ（サーバーの確かめと同じ UTF-16 の数）で切る。切れ目で割れたサロゲートは落とす */
+function clipText(s: string | null, max: number): string | null {
+  if (s === null || s.length <= max) return s;
+  return s.slice(0, max).replace(/[\uD800-\uDBFF]$/, "");
 }
 
 /** 問いと答えの文（分類の手がかり。仮名化の門を通してから渡す）。「問: …／答: …（無音）」の行 */
