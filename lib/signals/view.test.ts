@@ -63,7 +63,7 @@ const STATES: PhoneState[] = [
 ];
 
 describe("災害モードの画面", () => {
-  it("上は「無事」緑と「無事じゃない」赤の 2 つだけ。面で塗るのはこの 2 つ", () => {
+  it("上は「無事」緑と「無事じゃない」赤の 2 つだけ。面で塗るのはこの 2 つと、問いの印のある答え（T137b。端の線をやめて面に）", () => {
     const html = view({ step: "top" });
     expect(buttons(html)).toEqual(["green", "red"]);
     expect(text(html)).toBe("無事無事じゃない");
@@ -71,7 +71,14 @@ describe("災害モードの画面", () => {
     expect(html).toContain("phone-fill-urgent");
     for (const s of STATES.slice(1)) {
       const h = view(s);
-      expect(h, s.step).not.toContain("phone-fill-");
+      if (s.step !== "question") {
+        expect(h, s.step).not.toContain("phone-fill-");
+        continue;
+      }
+      // 問いの画面: 塗るのは印のある答え（data-tone）のボタンだけ
+      const filled = h.match(/<button[^>]*phone-fill-[^>]*>/g) ?? [];
+      for (const b of filled) expect(b, s.id).toMatch(/data-tone="(urgent|check|ok)"/);
+      expect(filled.length, s.id).toBe((h.match(/data-tone=/g) ?? []).length);
     }
   });
 

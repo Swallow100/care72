@@ -524,7 +524,8 @@ describe("画面の静的な描画", () => {
     expect(text(view({ step: "question", id: "injured", answers: {} }, screen))).toContain("お母さんは けがを して いますか");
     const after = view({ step: "question", id: "water", answers: { body: { choice: "breath", via: "press" } } }, screen);
     expect(after.match(/data-emergency/g)).toHaveLength(1);
-    expect(after).not.toContain("phone-fill-");
+    // 答えで画面を赤くしない（T137b から印のある選択肢は面を塗るので、選択肢の塗りのほかに赤の面が無いことを見る。水の問いに赤の印は無い）
+    expect(after).not.toContain("phone-fill-urgent");
     // 山田さんの台帳には機器がある（酸素）
     expect(screen.hasDevice).toBe(true);
   });
