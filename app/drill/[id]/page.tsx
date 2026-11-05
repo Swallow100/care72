@@ -6,6 +6,8 @@ import { countColors } from "@/components/disaster/ColorCounts";
 import { LatestResult } from "@/components/drill/ActionLog";
 import { ActionPanel, type PanelPerson } from "@/components/drill/ActionPanel";
 import { DamagePanel } from "@/components/drill/DamagePanel";
+import { DrillHeaderMark } from "@/components/drill/DrillHeaderMark";
+import { drillHeaderMark } from "@/lib/drill/header-mark";
 import { AiStopBand } from "@/components/drill/AiStopBand";
 import { DrillBar } from "@/components/drill/DrillBar";
 import { EndedNote } from "@/components/drill/Ended";
@@ -177,7 +179,7 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
   // 上の帯の段と新着（T128）。経過と同じ行から（進行中は公表の物だけ）
   const log = buildDrillLog(s.ticks, actions, { finished: !running, calls: callRecords });
   const strip = buildStrip(log, [...new Set(s.bands.map((b) => b.kind))]);
-  const news = running ? newsItemsOf(log, { names: s.names, people: s.area, base }) : [];
+  const news = running ? newsItemsOf(log, { names: s.names, people: s.area, base, office: s.state.officeZones ?? null }) : [];
 
   return (
     <main className="mx-auto max-w-[112rem] space-y-3 px-4 py-4" data-drill={id} data-step={s.shown} data-status={s.drill.status}>
@@ -219,6 +221,8 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
           )}
         </div>
       </header>
+      {/* 上の帯に訓練の想定・規模・経過（T125。事業所の今の状態と混ぜない） */}
+      <DrillHeaderMark mark={drillHeaderMark({ scenario: s.drill.scenario, options: s.state.options ?? null, world: s.state.world, minute: s.state.minute })} />
       <FictionalNote kind={fiction} />
       <AiStopBand band={stopBand} />
 
@@ -241,7 +245,7 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
           night={s.state.options?.night === true}
           clock={s.clock}
           {...(replay ? { hrefOf: (i: number) => here({ step: i }) } : {})}
-          strip={<StripRows lanes={strip} bands={s.bands} last={s.last} now={nowHour(s.state)} world={s.state.world} names={s.names} people={s.area} base={base} />}
+          strip={<StripRows lanes={strip} bands={s.bands} last={s.last} now={nowHour(s.state)} world={s.state.world} names={s.names} people={s.area} base={base} office={s.state.officeZones ?? null} />}
         />
         {running && <NewsBar drillId={id} items={news} className="lg:col-span-2" />}
       </section>
@@ -348,6 +352,7 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
               names={s.names}
               hidePrivate={running}
               people={s.area}
+              office={s.state.officeZones ?? null}
             />
           </Panel>
           <Panel title={DRILL_LABELS.map} id="map">

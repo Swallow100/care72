@@ -26,13 +26,14 @@
 import type { ContactKind, DrillAction } from "../db/types.ts";
 import { actionRow, effectiveKind, FIXED_CALLEE_LABELS, workRow, type ActionEffect, type ActionRow } from "./action-catalog.ts";
 import { ACTION_MINUTES } from "./action-table.ts";
-import { callLine, decideWorldReply, WORLD_ODDS, WORLD_REPLY_LABELS, WORLD_REPLY_TEXTS, type WorldReplyStatus } from "./world-reply.ts";
+import { callLine, decideWorldReply, WORLD_ODDS, WORLD_REPLY_LABELS, WORLD_REPLY_TEXTS, type WorldAsk, type WorldReplyStatus } from "./world-reply.ts";
 import { atHomeOf, whereOf } from "./free-situation.ts";
 import { NO_CALL } from "./event-catalog.ts";
 import { DRILL_END_MINUTE, ZERO_COUNTS } from "./clock.ts";
 import {
   advance,
   DrillEnded,
+  fitOf,
   isClock,
   isNight,
   step,
@@ -52,9 +53,11 @@ import {
 import { countFree, freeText, planFree, type FreeHook } from "./free-action.ts";
 import { actionTerm, blockOf, CLOCK_END_LABEL, clockOver, termFactsOf } from "./action-terms.ts";
 import type { FreePlan } from "./action-types.ts";
+import { gateWords, tallyGate } from "./gate.ts";
+import { fitKindOf } from "./fit.ts";
 import { talkEnd, withResultAsks, type VisitHook } from "./dialogue.ts";
 import { CALL_FIXED_SPEECH, CALL_STATUS_LABELS, CALL_STATUS_TEXTS } from "./labels.ts";
-import { CALL_PICKUP_ODDS, decideCallPickup, type CallPickup } from "./persona.ts";
+import { CALL_PICKUP_ODDS, decideCallPickup, MESSAGE_READ_ODDS, type CallPickup } from "./persona.ts";
 import {
   clearMarks,
   phoneOf,
@@ -62,6 +65,7 @@ import {
   settleWorld,
   type Arrival,
   type ArrivalRole,
+  type DrillKind,
   type WorldState,
 } from "./scenarios.ts";
 
@@ -168,6 +172,8 @@ export type ActInput = {
 
 /** 本人役の通話（T18 の personaCallReply）に渡す物。出ると決まったときだけ呼ぶ */
 export type CallAsk = {
+  /** 訓練の災害の種類（T125。本人役の説明のハザードを絞る） */
+  fit?: DrillKind | null;
   person: string;
   target: ActTarget;
   pickup: CallPickup;
@@ -216,20 +222,43 @@ function fixed(status: ActionStatus, ok: boolean, because: string | null, pickup
  * 線がつながる（呼出）なら出るかを T18 の割合で決める（出る → 通話、出ない → 応答なし、背景の音だけ → 無言。本人が話せない も無言）。
  * 自由対応は読み替えた手（kind に読み替えた手を渡す）。pickupFactor は決まりの表の電話に出る割合に掛ける数（T110。1 は昼のまま）
  */
-export function decideAction(input: ActInput, world: WorldState, hour: number, roll: () => number, pickupFactor = 1): Decision {
+export function decideAction(
+  input: ActInput,
+  world: WorldState,
+  hour: number,
+  roll: () => number,
+  pickupFactor = 1,
+  /** 本人の家の通信（T125、lib/drill/comms.ts。termFactsOf から）。無ければ家の電話の印だけで見る */
+  line?: Pick<WorldAsk, "selfLine" | "selfMobile">,
+): Decision {
   const callee = calleeOf(input);
   if (isCall(input.kind) && (!input.target || !input.target.hasPhone)) return fixed("noNumber", false, null);
-  const w = decideWorldReply({ action: input.kind, person: input.person, callee, world, hour }, roll());
+  const w = decideWorldReply({ action: input.kind, person: input.person, callee, world, hour, ...(line ?? {}) }, roll());
   const d = fixed(w.status as WorldReplyStatus, w.ok, w.because);
   if (!isCall(input.kind) || w.status !== "ringing") return d;
-  const line = callLine(world, input.person, callee);
+  // メッセージ（T125）: 返信・既読・未読（通話の様子によらない。夜は返信が減る）。返信なら本人役の言葉と聞いた安否
+  if (input.kind === "message") {
+    const r = roll();
+    if (r < MESSAGE_READ_ODDS.replied * pickupFactor) return fixed("replied", true, null, "answers");
+    if (r < MESSAGE_READ_ODDS.replied + MESSAGE_READ_ODDS.read) return fixed("read", true, null, "background_only");
+    return fixed("unread", false, null, "no_answer");
+  }
+  // 本人の家にはつながる道のどれか（固定電話か携帯）でかけている（つながらない家は世界の返事が先に外れと決める）。出る割合は通話の様子で
+  const line0 = line?.selfLine !== undefined ? world.phone : callLine(world, input.person, callee);
   const r = roll();
-  let pickup = decideCallPickup(line, r, true);
+  let pickup = decideCallPickup(line0, r, true);
   // 夜は電話に出にくい（T110 の決まりの表の pickup。出る割合を下げた分は応答なし。roll の数は同じ）
-  if (pickup === "answers" && pickupFactor < 1 && r >= CALL_PICKUP_ODDS[line].answers * pickupFactor) pickup = "no_answer";
+  if (pickup === "answers" && pickupFactor < 1 && r >= CALL_PICKUP_ODDS[line0].answers * pickupFactor) pickup = "no_answer";
   if (pickup === "answers") return fixed("connected", true, null, pickup);
   if (pickup === "background_only") return fixed("silent", false, null, pickup);
   return fixed("noAnswer", false, null, pickup);
+}
+
+/** 本人の家の通信（T125。決まりの表 action-terms.ts の termFactsOf と同じ事実。世界の返事に渡す） */
+function lineAt(s: DrillState, person: string | null, hour: number): Pick<WorldAsk, "selfLine" | "selfMobile"> | undefined {
+  if (!person) return undefined;
+  const f = termFactsOf(s, person, Math.round(hour * 60));
+  return { selfLine: f.selfLine, selfMobile: f.selfMobile };
 }
 
 /**
@@ -243,15 +272,23 @@ function decideOwn(
   world: WorldState,
   here: boolean,
   roll: () => number,
+  /** 本人の家の通信（T125。決まりの表と同じ事実） */
+  line?: Pick<WorldAsk, "selfLine" | "selfMobile">,
 ): Decision {
   if (own.idle) return fixed("unchanged", true, null);
   const done: Decision = { ...fixed("done", true, null), text: own.outcome ?? ACTION_STATUS_TEXTS.done };
   const toPerson = own.callee === null || own.callee === "self";
   if (own.way === "desk" || (here && (own.way === "visit" || toPerson))) return done;
   if (own.way === "phone") {
-    const line = own.callee === "self" ? callLine(world, person, "self") : world.phone;
-    if (line === "down") return fixed("noLine", false, own.callee === "self" && world.phone !== "down" ? `家の電話 ${NO_CALL}` : `電話 ${NO_CALL}`);
-    return roll() < WORLD_ODDS.connect[line] ? done : fixed("noLine", false, null);
+    // 通信の段（T125、lib/drill/comms.ts）: 本人の家は固定電話も携帯も使えない家だけ届かない。家族・支援者の携帯は全域の電波不通で届かない。
+    // 世界の電話の規制は全部を止めない（つながる分だけ）
+    if (own.callee === "self") {
+      const sl = line?.selfLine ?? (callLine(world, person, "self") === "down" && world.phone !== "down" ? "noCall" : "ok");
+      if (sl !== "ok") return fixed("noLine", false, sl === "noRadio" ? "携帯 電波不通" : `家の電話 ${NO_CALL}`);
+    } else if (world.radio === "down" && (own.callee === null || own.callee === "family" || own.callee === "supporter" || own.callee === "welfare_commissioner")) {
+      return fixed("noLine", false, "携帯 電波不通");
+    }
+    return roll() < WORLD_ODDS.connect[world.phone] ? done : fixed("noLine", false, null);
   }
   const road = person ? world.roads.find((r) => r.person === person && !r.open) : undefined;
   if (road) return fixed("blocked", false, `${road.label} 通行止`);
@@ -488,6 +525,8 @@ export async function act(
           hooks.free,
         );
     if (free.called && !fresh) start = { ...start, world: countFree(start.world) };
+    // 想定の門が落とした文（T125）を数える
+    if (free.gated?.length) start = { ...start, world: tallyGate(start.world, "free", free.gated) };
     if (free.block) throw new ActionBlocked(free.block, free.called && !fresh);
     const as = free.as ?? "free";
     // 本人を選ばずに名前を書いた文は、その人を対象に（T129）
@@ -552,7 +591,9 @@ export async function act(
   const pickupFactor = term?.pickup ?? 1;
   const here = own ? atHomeOf(whereOf(start.actions), input.person) : false;
   const decide = (world: WorldState, hour: number): Decision =>
-    own ? decideOwn(own, input.person, world, here, roll) : decideAction(input, world, hour, roll, pickupFactor);
+    own
+      ? decideOwn(own, input.person, world, here, roll, lineAt({ ...s, world }, input.person, hour))
+      : decideAction(input, world, hour, roll, pickupFactor, lineAt({ ...s, world }, input.person, hour));
   let words: ReplyWords[] = [];
   let incidents: ReadonlyArray<DrillIncident> = [];
   // 連続の時計の訓練（T90）: 手は区切りを起こさない。手の分の (始め, 終わり] に入る表の出来事と予定の出来事を AI を呼ばずに当て
@@ -592,7 +633,7 @@ export async function act(
   let pickup = d.pickup;
   let heard: HeardSignal | null = null;
   let callReply: Awaited<ReturnType<CallHook>> | null = null;
-  if (d.status === "connected" && input.person && input.target && PERSON_CALLEES.has(input.target.kind)) {
+  if ((d.status === "connected" || d.status === "replied") && input.person && input.target && PERSON_CALLEES.has(input.target.kind)) {
     const own = s.people[input.person] ?? null;
     const tell = heardOf(own, "call", endMinute / 60);
     const reply = hooks.call
@@ -606,6 +647,7 @@ export async function act(
             incidents,
             state: own,
             tell,
+            fit: fitKindOf(s, s.world),
             ...(s.options?.night === true ? { night: true } : {}),
           })
           .catch(() => null)
@@ -613,9 +655,10 @@ export async function act(
     callReply = reply;
     // 結末の人（仮想モード、T50）は電話に出ない（鍵が無く本人役のいないときも）
     if (reply?.pickup === "no_answer" || s.world.ended?.[input.person] !== undefined) {
-      status = "noAnswer";
+      // メッセージ（T125）は「未読」
+      status = input.kind === "message" ? "unread" : "noAnswer";
       ok = false;
-      text = ACTION_STATUS_TEXTS.noAnswer;
+      text = ACTION_STATUS_TEXTS[status];
       pickup = "no_answer";
     } else if (reply?.pickup === "background_only") {
       // 本人の声が無いと家族・支援者が伝えたあと、人が来るまで本人は話さない（T130 の帳面。出たが物音だけ）
@@ -636,12 +679,31 @@ export async function act(
   }
   // T93: 着いたら本人役が見て分かる様子と頼み事（Haiku × 1 回）。聞いた安否・色は変えない。頼み事は applyResult が積む
   const seen = heard?.via === "visit" && hooks.visit ? input.person : null;
-  const seenReply = seen ? await hooks.visit!({ person: seen, hour: endMinute / 60, world: s.world, incidents, state: s.people[seen] ?? null, ...(isNight(s) ? { night: true } : {}) }).catch(() => null) : null;
-  const visit = seenReply?.report ?? null;
+  const seenReply = seen ? await hooks.visit!({ person: seen, hour: endMinute / 60, world: s.world, incidents, state: s.people[seen] ?? null, fit: fitKindOf(s, s.world), ...(isNight(s) ? { night: true } : {}) }).catch(() => null) : null;
+  const visitRaw = seenReply?.report ?? null;
   // T118: 通話の最初の言葉と訪問の本人役も 1 訓練の数え（T90 の 150）に入れる（往復は talk.ts、自由文は countFree）
   if (callReply?.called || seenReply?.called) s = { ...s, world: countPersonaCalls(s.world, callReply?.called ? 1 : 0, seenReply?.called ? 1 : 0) };
 
-  const reworded = words.find((w) => w.id === record.id)?.text.trim() ?? "";
+  // 本人役の言葉・様子と監督の言い換えも想定の門に（T125。合わない文と内部の名前の残る文を落とす。全部落ちたら固定の言葉）
+  const fit = fitOf(s, s.world);
+  const dropped: string[] = [];
+  const gate = (t: string | null | undefined): string | null => {
+    const g = gateWords(t ?? null, fit, s.world);
+    dropped.push(...g.dropped);
+    return g.text;
+  };
+  if (speech !== null && speechAi) {
+    const kept = gate(speech);
+    if (kept === null && input.target) {
+      speech = fixedSpeech(s.people[input.person ?? ""] ?? null, input.target.kind);
+      speechAi = false;
+    } else speech = kept;
+  }
+  const visit = visitRaw
+    ? { ...visitRaw, speech: visitRaw.ai ? gate(visitRaw.speech) : visitRaw.speech, condition: visitRaw.ai ? gate(visitRaw.condition) : visitRaw.condition }
+    : null;
+  const reworded = gate(words.find((w) => w.id === record.id)?.text.trim() ?? "") ?? "";
+  if (dropped.length > 0) s = { ...s, world: tallyGate(s.world, "persona", dropped) };
   // 表の手に読み替えた自由対応は Claude の現場の言い方。そのままの手は起きたこと（AI）が返事の文
   // 届かなかったそのままの手は、起きたこと（届いた前の文）を使わない（T129）
   const said = own ? (ok ? (own.outcome?.trim() ?? "") : "") : (free?.words?.trim() ?? "");

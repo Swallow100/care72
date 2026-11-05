@@ -10,6 +10,7 @@
 import { ACTION_STATUS_LABELS } from "@/lib/drill/actions";
 import { clockText, type TimeBase } from "@/lib/drill/act-time";
 import { areaTargetOf, targetText, type AreaPerson } from "@/lib/drill/area-targets";
+import type { OfficeZone } from "@/lib/drill/comms";
 import { incidentLabel } from "@/lib/drill/event-catalog";
 import { ACTION_LABELS, CALL_UI, EVENT_KIND_LABELS, PHONE_LABELS, WATER_LABELS, WORLD_LABELS } from "@/lib/drill/labels";
 import type { WorldState } from "@/lib/drill/scenarios";
@@ -47,7 +48,8 @@ const SHAPE: Record<MarkTone, string> = {
   plain: "size-2.5 rounded-sm bg-muted",
 };
 
-export type LineCtx = { names: Names; people: ReadonlyArray<AreaPerson>; base: TimeBase | null };
+/** office は事業所の区域（T125。offices.hazards の写し DrillState.officeZones）。無ければ事業所は全域の停電のほか出さない */
+export type LineCtx = { names: Names; people: ReadonlyArray<AreaPerson>; base: TimeBase | null; office?: ReadonlyArray<OfficeZone> | null };
 type Ctx = LineCtx;
 
 const TURN_WORDS = { red: COLOR_LABELS.red, green: COLOR_LABELS.green, unknown: COLOR_LABELS.gray } as const;
@@ -63,7 +65,7 @@ export function rowLine(r: LogRow, c: LineCtx): string {
   switch (r.source) {
     case "incident": {
       const label = incidentLabel(r.e) ?? EVENT_KIND_LABELS[r.e.change.kind];
-      const t = areaTargetOf(r.e.change, c.people);
+      const t = areaTargetOf(r.e.change, c.people, c.office);
       return [label, r.e.text, name(r.e.person), t ? targetText(t, c.names, c.people.length) : ""].filter(Boolean).join(" ");
     }
     case "doing":
@@ -118,6 +120,7 @@ export function StripRows({
   names,
   people,
   base,
+  office,
 }: {
   lanes: ReadonlyArray<StripLaneView>;
   bands: ReadonlyArray<Band>;
@@ -131,8 +134,10 @@ export function StripRows({
   people: ReadonlyArray<AreaPerson>;
   /** 時刻の元（訓練の中の時刻） */
   base: TimeBase | null;
+  /** 事業所の区域（T125。区域の出来事で「事業所 対象・対象外」） */
+  office?: ReadonlyArray<OfficeZone> | null;
 }) {
-  const c: Ctx = { names, people, base };
+  const c: Ctx = { names, people, base, office: office ?? null };
   return (
     <>
       {lanes.map(({ lane, marks }) => {

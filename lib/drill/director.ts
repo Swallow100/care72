@@ -70,6 +70,7 @@ import {
 import { scenarioOf, type AskKind, type PersonMarks, type WorldState } from "./scenarios.ts";
 import { homeFacts, homeWords } from "./self.ts";
 import { oddsText, seededShuffle, timelineText } from "./time-odds.ts";
+import { fitKindOf, fitText, injectFits, profileOf } from "./fit.ts";
 import { screenIncident, STATE_RULES_TEXT, stateLines } from "./state-rules.ts";
 import {
   factLines,
@@ -158,16 +159,19 @@ export function sceneText(input: DirectorInput, aliasOf: ReadonlyMap<string, str
   // 予定の出来事（T92。停電の復旧の見込み・電話の回復の見込み）。同じ見込みを重ねて差し込まないために見せる
   for (const s of w.scheduled ?? []) now.push(`予定: ${s.text}（${minuteWords(s.at)}${who(s.person) ? `、${who(s.person)}` : ""}）`);
   const kind = scenarioOf(input.scenario).kind;
+  const profile = profileOf(fitKindOf({ scenario: input.scenario, options: { scale: input.scale ?? null } }, w));
   return [
     `想定: ${SCENE_WORDS[kind]}`,
+    // 想定に効くハザード・起きない事・差し込まない種類（T125、lib/drill/fit.ts の表から）
+    ...(profile ? [fitText(profile, { with: "director" })] : []),
     `時刻: 発災から ${minuteWords(input.hour * 60)}（${last} 時間まで）`,
     `差し込める数: ${budgetOf(input)}`,
     // 夜間発災（T59）だけ。時刻の 1 行
     ...(input.night ? [nightLine(input.hour)] : []),
     // 発災からの時間の帯の目安（T104、lib/drill/time-odds.ts）。種類と出典の id を添える
-    timelineText(input.hour, { with: "director" }),
+    timelineText(input.hour, { with: "director", profile }),
     // 起きやすい物・起きにくい物と、この訓練の傾向（T121。訓練ごとの種で揺らす）。種の無い訓練は書かない
-    ...(input.seed ? [oddsText(input.hour, input.seed)] : []),
+    ...(input.seed ? [oddsText(input.hour, input.seed, undefined, profile)] : []),
     ["今の様子:", ...now.map((x) => `- ${x}`)].join("\n"),
     // 今の状態のいつからと、まだ変わらない時刻（T121、lib/drill/state-rules.ts）。連続の時計の訓練だけ
     ...(input.since !== undefined
@@ -680,19 +684,22 @@ export function createDirectorHook(deps: DirectorDeps): DirectorHook {
       // 変わり方の決まり（T121）で今は使われない種類を外す（同じ役の到着が近い・家の電話がもう不通・すぐに入れ替わる電話など）。
       // 差し込める種類の並びは訓練ごとの種で揺らす（並びの先頭ばかり選ばれないように）
       const minute = Math.round(input.hour * 60);
+      // 想定に合わない種類（T125。地震の透析施設の浸水・大雨の余震）は差し込ませない
+      const profile = profileOf(fitKindOf({ scenario: input.scenario, options: { scale: input.scale ?? null } }, input.world));
       // T130: 業者の巡回（届く物）は、その人への手（業者連絡・電源手配・薬手配）か計画（業者の約束）があるときだけ。
       // 人ごとの種類は訓練に KIND_REPEAT_MAX 回まで（評価の 3 回目で、薬局の休止・帰宅困難が何人にも同じ形で出た。全体の種類〔余震など〕は数えない）
       const plans = new Map(members.map((p) => [p, planOf(sources.get(p)!)]));
       for (const [p, ks] of eligible) {
         const kept = ks.filter(
           (k) =>
+            injectFits(profile, k) &&
             kindAllowed(k, p, input.world, input.hour, minute, sources.get(p)) &&
             !kindSpent(input.world, k) &&
             (k !== "vendor_round" || supplyAllowed(p, input.actions, plans.get(p) ?? null)),
         );
         eligible.set(p, input.seed ? seededShuffle(kept, `${input.seed}|${p}|${minute}`) : kept);
       }
-      for (const k of [...area.keys()]) if (!kindAllowed(k, null, input.world, input.hour, minute)) area.delete(k);
+      for (const k of [...area.keys()]) if (!injectFits(profile, k) || !kindAllowed(k, null, input.world, input.hour, minute)) area.delete(k);
       const asked = input.replies ?? [];
       const max = budgetOf(input);
       if ((max === 0 || (![...eligible.values()].some((k) => k.length > 0) && area.size === 0)) && asked.length === 0) return none;

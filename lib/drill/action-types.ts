@@ -184,6 +184,8 @@ export type FreePlan = {
   judge: FreeJudge;
   /** Claude を呼んだか（counts.free に数えた） */
   called: boolean;
+  /** 想定の門（T125、lib/drill/gate.ts）が落とした文の決まり（打った手で世界の gated に数える） */
+  gated?: string[];
   /**
    * 対象の本人（T129）。本人を選ばずに打った文に参加者の名前が 1 人だけあれば、その人（伏せた文の仮名から決める）。
    * 省略は選んだ本人のまま（前の形）
@@ -233,7 +235,11 @@ export type ActionStatus =
   | "unchanged"
   | "noAnswer"
   | "silent"
-  | "noNumber";
+  | "noNumber"
+  // メッセージ（T125）: 返信・既読・未読
+  | "replied"
+  | "read"
+  | "unread";
 
 export type ActionResult = {
   ok: boolean;

@@ -58,8 +58,9 @@ describe("migration 0017（offices の地図の中心）", () => {
     const before = d.prepare("SELECT * FROM offices").all();
     for (const n of names().filter((n) => n >= "0017_")) d.exec(readFileSync(new URL(n, MIGRATIONS), "utf8"));
     const after = d.prepare("SELECT * FROM offices").all() as Array<Record<string, unknown>>;
-    // 0027（T115）の試用事業所の印も後から足す列（前からある行は 0）
-    expect(after.map(({ center_lat: _a, center_lng: _b, judge_sandbox: _c, ...rest }) => rest)).toEqual(before);
+    // 0027（T115）の試用事業所の印も後から足す列（前からある行は 0）。0030（T125）の事業所の区域も後から足す列（前からある行は NULL）
+    expect(after.map(({ center_lat: _a, center_lng: _b, judge_sandbox: _c, hazards: _d, ...rest }) => rest)).toEqual(before);
+    expect(after.map((r) => r.hazards)).toEqual([null]);
     expect(after.map((r) => [r.center_lat, r.center_lng])).toEqual([[null, null]]);
     expect(after.map((r) => r.judge_sandbox)).toEqual([0]);
     d.close();

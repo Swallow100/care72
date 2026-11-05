@@ -184,7 +184,8 @@ function phoneStateOf(raw: string): PhoneState | null {
   const v = raw.trim().toLowerCase();
   if (v === "ok" || v === "通常") return "ok";
   if (v === "busy" || v === "不安定" || v === "混雑") return "busy";
-  if (v === "down" || v === "不通" || v === "通話不可") return "down";
+  // 世界の電話の down は通話の規制（T125。前の「不通」「通話不可」も規制として読む）
+  if (v === "down" || v === "不通" || v === "通話不可" || v === "規制") return "down";
   return null;
 }
 
