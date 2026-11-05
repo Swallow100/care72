@@ -14,6 +14,7 @@ import {
   SMARTPHONE_USE,
   SUPPORT_KINDS,
   TRANSPORT_KINDS,
+  type ContactKind,
   type Ledger,
 } from "../db/types.ts";
 import {
@@ -81,7 +82,10 @@ const ability = (k: keyof typeof ABILITY_ITEM_LABELS): IntakeField => ({
   shape: { type: "enum", options: opts(ABILITIES, ABILITY_LABELS) },
 });
 
-/** 並びは本人のページの区分の中の並び（手入力の編集もこの順） */
+/**
+ * 並びは足した順で、問いの「その他」の順（lib/intake/ask.ts）がこの並びを使う。並べ替えない。
+ * 画面の区分の中の並びと見出しは下の組の表（FIELD_GROUPS）が決める（面の編集はそちらの並び。T145）
+ */
 export const INTAKE_FIELDS: readonly IntakeField[] = [
   // 医療（薬・機器は diff.ts）
   { key: "medical.allergies", section: "medical", label: "アレルギー", shape: { type: "list" }, hint: "アレルギー・禁忌食物。1 つずつ" },
@@ -285,6 +289,169 @@ const BY_KEY = new Map(INTAKE_FIELDS.map((f) => [f.key, f]));
 
 export function intakeField(key: string): IntakeField | undefined {
   return BY_KEY.get(key);
+}
+
+// ---------- 区分の中の組（T145） ----------
+
+/** 組を持つ区分（本人のページの区分のうち面の編集がある物。lib/intake/edit.ts の EditSection と同じ並び） */
+export type GroupSection = IntakeSection | "consent";
+
+export type FieldGroup = {
+  /** 全部の組で 1 つずつ（画面の飛び先と印 data-group に使う） */
+  id: string;
+  section: GroupSection;
+  /** 見出し（2〜4 字の漢語。薬・機器・ハザードは今の画面の言葉のまま） */
+  label: string;
+  /**
+   * 組に入る項目の鍵。並びが画面の並び。鍵は台帳の欄の表（INTAKE_FIELDS）の鍵と、表の外の項目の鍵
+   * （薬 medical.medications・機器 medical.devices・時計 clocks・ハザード evacuation.hazards・住所 basic.address・位置 basic.location・
+   * 特記 notes・同意 consent.<種類>、読む側だけの行 people.family など）。表の外の鍵は lib/person.ts の FIELDS と同じ書き方
+   */
+  keys: readonly string[];
+  /** 関係者の組だけ: 入る連絡先の種類（並びが足すときの既定の順。先頭が既定）。どの種類もちょうど 1 つの組に入る */
+  contactKinds?: readonly ContactKind[];
+};
+
+/**
+ * 区分の中の組。1 か所の表で、面の編集（components/person/SectionEdit.tsx）・読む側の画面・問いの順が同じ並びに使えるようにする。
+ * 今使うのは面の編集だけ（読む側の画面と問いの順はまだ使わない）。区分は今のコードのまま（住まいは避難、心身は基本）。
+ * 合わせた 1 行の 心身（care）と、連絡先の部分の場所（contacts.<id>.<所>）は組に入れない（部分の欄と連絡先の種類で決まる）。
+ * 欄の表・読む側の欄・連絡先の種類を漏れなく・重ならずに覆うことは lib/intake/t145.test.ts が確かめる
+ */
+export const FIELD_GROUPS: readonly FieldGroup[] = [
+  // 医療
+  { id: "medical-meds", section: "medical", label: "薬", keys: ["medical.medications"] },
+  { id: "medical-devices", section: "medical", label: "機器", keys: ["medical.devices"] },
+  { id: "medical-clocks", section: "medical", label: "時計", keys: ["clocks"] },
+  // かかりつけ・薬局・透析施設は連絡先の行で、直すのは関係者の面（関係先の組）。この組は読む側の行だけ
+  { id: "medical-doctor", section: "medical", label: "受診先", keys: ["medical.doctor", "medical.dialysis_center"] },
+  { id: "medical-history", section: "medical", label: "既往", keys: ["medical.allergies", "medical.history", "medical.vaccinations"] },
+  // 避難
+  { id: "evacuation-hazards", section: "evacuation", label: "ハザード", keys: ["evacuation.hazards"] },
+  {
+    id: "evacuation-places",
+    section: "evacuation",
+    label: "避難先",
+    keys: [
+      "evacuation.destination1",
+      "evacuation.destination1Minutes",
+      "evacuation.destination2",
+      "evacuation.destination2Means",
+      "evacuation.destination2Minutes",
+      "evacuation.nearest",
+      "evacuation.nearestMeans",
+      "evacuation.nearestMinutes",
+    ],
+  },
+  {
+    id: "evacuation-route",
+    section: "evacuation",
+    label: "経路",
+    keys: ["evacuation.transportKind", "evacuation.transport", "evacuation.route", "evacuation.barriers"],
+  },
+  { id: "evacuation-support", section: "evacuation", label: "支援", keys: ["evacuation.support", "evacuation.supportNote"] },
+  {
+    id: "evacuation-housing",
+    section: "evacuation",
+    label: "住居",
+    keys: [
+      "basic.housing",
+      "basic.housing.type",
+      "basic.housing.floor",
+      "basic.housing.floors",
+      "basic.housing.structure",
+      "basic.housing.builtYear",
+      "basic.housing.bedroom",
+    ],
+  },
+  { id: "evacuation-carry", section: "evacuation", label: "持出", keys: ["evacuation.carryItems", "evacuation.pets"] },
+  { id: "evacuation-plan", section: "evacuation", label: "計画", keys: ["evacuation.stayHome", "evacuation.myTimeline"] },
+  // 関係者（連絡先は種類で組に分ける。夜間に来られるかは連絡先ごとの欄なので組にしない）
+  { id: "people-family", section: "people", label: "家族", keys: ["people.family", "people.emergency"], contactKinds: ["family"] },
+  {
+    id: "people-supporter",
+    section: "people",
+    label: "支援者",
+    keys: ["people.supporter1", "people.supporter2", "people.night_supporter"],
+    contactKinds: ["supporter"],
+  },
+  {
+    id: "people-local",
+    section: "people",
+    label: "地域",
+    keys: ["people.welfare_commissioner", "local.watcher", "local.orgName", "local.orgPhone"],
+    contactKinds: ["welfare_commissioner"],
+  },
+  {
+    id: "people-others",
+    section: "people",
+    label: "関係先",
+    keys: ["people.others"],
+    contactKinds: [
+      "home_doctor",
+      "pharmacy",
+      "dialysis_center",
+      "visiting_nurse",
+      "care_service",
+      "hospital",
+      "oxygen_supplier",
+      "power_company",
+      "city_office",
+      "other",
+    ],
+  },
+  // 本人の電話（T68。読む側では基本の面の連絡手段に出る）
+  { id: "people-self", section: "people", label: "本人電話", keys: [], contactKinds: ["self"] },
+  // 基本（氏名と生年月日は面の上の段で、ここでは直さない）
+  {
+    id: "basic-self",
+    section: "basic",
+    label: "本人",
+    keys: ["basic.birth", "basic.sex", "basic.household", "basic.householdNote", "basic.selfReport"],
+  },
+  { id: "basic-address", section: "basic", label: "住所", keys: ["basic.address", "basic.location"] },
+  {
+    id: "basic-contact",
+    section: "basic",
+    label: "連絡",
+    keys: [
+      "basic.contactMeans",
+      "basic.contactMeans.landline",
+      "basic.contactMeans.mobile",
+      "basic.contactMeans.email",
+      "basic.contactMeans.smartphone",
+    ],
+  },
+  // 要介護認定・障害者手帳・指定難病
+  { id: "basic-cert", section: "basic", label: "認定", keys: ["care.careLevel", "care.handbook", "care.intractableDisease"] },
+  { id: "basic-move", section: "basic", label: "移動", keys: ["care.walking", "care.bedridden"] },
+  { id: "basic-sense", section: "basic", label: "感覚", keys: ["care.hearing", "care.vision"] },
+  { id: "basic-mind", section: "basic", label: "認知", keys: ["care.understanding", "care.judgment", "care.orientation", "care.dementia"] },
+  { id: "basic-notes", section: "basic", label: "特記", keys: ["notes"] },
+  // 同意
+  { id: "consent-registry", section: "consent", label: "登録", keys: ["consent.registry", "consent.plan_share"] },
+  { id: "consent-provide", section: "consent", label: "提供", keys: ["consent.supporters", "consent.medical", "consent.ai_overseas"] },
+];
+
+/** 区分の組（表の並び） */
+export function groupsOf(section: GroupSection): FieldGroup[] {
+  return FIELD_GROUPS.filter((g) => g.section === section);
+}
+
+const GROUP_BY_KEY = new Map(FIELD_GROUPS.flatMap((g) => g.keys.map((k) => [k, g] as const)));
+
+/** 項目の鍵の組。表に無ければ上の場所（basic.address.city → basic.address）で探す */
+export function groupOfKey(key: string): FieldGroup | undefined {
+  for (let k = key; k !== ""; k = k.includes(".") ? k.slice(0, k.lastIndexOf(".")) : "") {
+    const g = GROUP_BY_KEY.get(k);
+    if (g) return g;
+  }
+  return undefined;
+}
+
+/** 連絡先の種類の組（関係者の面） */
+export function groupOfContactKind(kind: ContactKind): FieldGroup | undefined {
+  return FIELD_GROUPS.find((g) => g.contactKinds?.includes(kind));
 }
 
 // ---------- 値の読み書き（台帳の中の場所） ----------

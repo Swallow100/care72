@@ -496,6 +496,8 @@ export const INTAKE_LABELS = {
   checkOn: "確認",
   checkOff: "確認取消",
   addContact: "連絡先追加",
+  /** 面の編集の組の目次（T145。読み上げだけ） */
+  groupNav: "目次",
   addHazard: "ハザード",
   addDevice: "機器",
   /** 面の編集で行を外す・外す印を戻す（保存の前に確認の窓） */
