@@ -218,7 +218,7 @@ describe("事業所の情報", () => {
 
 describe("地域（主な市＋周りの市・広さ・区域）", () => {
   it("周りの市の形: 区切った 1 欄・複数の欄、重なりと主な市を落とす、8 つまで、20 字まで", () => {
-    expect(parsePlaceForm(form({ city: "松山市", region: "1", region_city: "東温市・砥部町、松山市 東温市", region_km: "", flood_depth: "" }))).toEqual({
+    expect(parsePlaceForm(form({ city: "松山市", region: "1", region_city: "東温市・砥部町、松山市 東温市", region_km: "auto", flood_depth: "none" }))).toEqual({
       city: "松山市",
       center: null,
       region: { others: ["東温市", "砥部町"], km: null, zones: [] },

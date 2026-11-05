@@ -42,24 +42,24 @@ export async function OfficeProfile({ officeId, admin, error }: { officeId: stri
           </p>
         )}
         {admin ? (
-          <div className="mt-2 grid gap-x-3 gap-y-2 sm:grid-cols-2 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)]">
-            <label className={FIELD}>
+          <div className="mt-2 grid gap-x-3 gap-y-2 sm:grid-cols-6">
+            <label className={`${FIELD} sm:col-span-2`}>
               <span className="text-xs text-muted">{L.name}</span>
               <input name="name" required maxLength={OFFICE_NAME_MAX} defaultValue={profile.name} autoComplete="organization" className={INPUT} />
             </label>
-            <label className={FIELD}>
+            <label className={`${FIELD} sm:col-span-4`}>
               <span className="text-xs text-muted">{L.address}</span>
               <input name="address" maxLength={ADDRESS_MAX} defaultValue={profile.address ?? ""} autoComplete="street-address" className={INPUT} />
             </label>
-            <label className={FIELD}>
+            <label className={`${FIELD} sm:col-span-2`}>
               <span className="text-xs text-muted">{L.phone}</span>
               <input name="phone" type="tel" inputMode="tel" maxLength={PHONE_MAX} defaultValue={profile.phone ?? ""} autoComplete="tel" className={`${INPUT} tabular-nums`} />
             </label>
-            <label className={FIELD}>
+            <label className={`${FIELD} sm:col-span-2`}>
               <span className="text-xs text-muted">{L.fax}</span>
               <input name="fax" type="tel" inputMode="tel" maxLength={PHONE_MAX} defaultValue={profile.fax ?? ""} autoComplete="off" className={`${INPUT} tabular-nums`} />
             </label>
-            <label className={FIELD}>
+            <label className={`${FIELD} sm:col-span-2`}>
               <span className="text-xs text-muted">{L.number}</span>
               <input
                 name="number"

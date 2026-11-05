@@ -68,13 +68,12 @@ export async function OfficePlace({ officeId, admin, error }: { officeId: string
                 </label>
                 <label className={ROW}>
                   <span className="text-xs text-muted">{PLACE_LABELS.extent}</span>
-                  <Select name="region_km" defaultValue={region.km === null ? "" : String(region.km)} className={SELECT} aria-label={PLACE_LABELS.extent}>
-                    <option value="">
-                      {PLACE_LABELS.auto} {region.kmUsed} km
-                    </option>
+                  <Select name="region_km" defaultValue={region.km === null ? "auto" : String(region.km)} className={SELECT} aria-label={PLACE_LABELS.extent}>
+                    {/* 項目の字は 1 つの文字列で渡す（選ぶ部品が server と client で同じ字を読むように） */}
+                    <option value="auto">{`${PLACE_LABELS.auto} ${region.kmUsed} km`}</option>
                     {REGION_KMS.map((k) => (
                       <option key={k} value={String(k)}>
-                        {k} km
+                        {`${k} km`}
                       </option>
                     ))}
                   </Select>
@@ -91,11 +90,11 @@ export async function OfficePlace({ officeId, admin, error }: { officeId: string
                         {HAZARD_LABELS[k]}
                       </label>
                     ))}
-                    <Select name="flood_depth" defaultValue={flood?.depthM != null ? String(flood.depthM) : ""} className={SELECT} aria-label={PLACE_LABELS.floodDepth}>
-                      <option value="">{PLACE_LABELS.floodDepth} —</option>
+                    <Select name="flood_depth" defaultValue={flood?.depthM != null ? String(flood.depthM) : "none"} className={SELECT} aria-label={PLACE_LABELS.floodDepth}>
+                      <option value="none">{`${PLACE_LABELS.floodDepth} —`}</option>
                       {FLOOD_DEPTHS.map((d) => (
                         <option key={d} value={String(d)}>
-                          {PLACE_LABELS.floodDepth} {d} m
+                          {`${PLACE_LABELS.floodDepth} ${d} m`}
                         </option>
                       ))}
                     </Select>

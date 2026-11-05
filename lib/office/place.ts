@@ -95,7 +95,7 @@ export function parsePlaceForm(form: FormLike): PlaceForm | null {
 /**
  * 周りの市（region_city。1 つの欄に「東温市・砥部町」と区切って〔・、, ／ 空白〕も、欄を複数も。空は落とし、主な市と同じ・重なりは 1 つに。
  * 8 つまで、1 つ 20 字まで）、
- * 広さ（region_km: 5・10・20・40 か空〔自動〕）、区域（zone: flood・landslide・tsunami を複数、浸水の深さ flood_depth: 0.5・3・5・10 か空）。
+ * 広さ（region_km: 5・10・20・40 か auto・空〔自動〕）、区域（zone: flood・landslide・tsunami を複数、浸水の深さ flood_depth: 0.5・3・5・10 か none・空）。
  * 形が違えば null
  */
 function parseRegionPart(form: NonNullable<FormLike>, city: string): NonNullable<PlaceForm["region"]> | null {
@@ -109,13 +109,13 @@ function parseRegionPart(form: NonNullable<FormLike>, city: string): NonNullable
   if (others.length > REGION_CITY_MAX) return null;
   const kmRaw = form.get("region_km");
   const kmText = typeof kmRaw === "string" ? kmRaw.trim() : "";
-  const km = kmText === "" ? null : Number(kmText);
+  const km = kmText === "" || kmText === "auto" ? null : Number(kmText);
   if (km !== null && !isRegionKm(km)) return null;
   const kinds = all("zone");
   if (kinds.some((k) => !(OFFICE_ZONE_KINDS as readonly string[]).includes(k))) return null;
   const depthRaw = form.get("flood_depth");
   const depthText = typeof depthRaw === "string" ? depthRaw.trim() : "";
-  const depth = depthText === "" ? null : Number(depthText);
+  const depth = depthText === "" || depthText === "none" ? null : Number(depthText);
   if (depth !== null && !(FLOOD_DEPTHS as readonly number[]).includes(depth)) return null;
   const zones: OfficeZone[] = HAZARD_KINDS.filter((k): k is HazardKind => kinds.includes(k)).map((kind) => ({
     kind,
