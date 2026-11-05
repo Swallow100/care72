@@ -1,7 +1,7 @@
 // 気象庁の情報（T72）の外の URL・電文の種類・画面の言葉を 1 か所に置く。利用条件は docs/progress/jma-terms-20261104.md。
 // URL はどれも、この作業の中では本物に繋いで確かめていない（作者が tools/jma/fetch-fixtures.mjs で確かめる。docs/progress/t72.md の未確認）。
 // ブラウザはこれらを直接読まない: フィードと電文は cron（lib/jma/cron.ts）、雨雲は Workers の route（app/api/jma/nowc）が取る。
-// 例外は雨雲の凡例の画像 1 枚（旗が on のときだけ。lib/jma/nowcast.ts の NOWC_LEGEND_URL）。
+// 雨雲の凡例は手元で描く（T151。前は凡例の画像 1 枚だけブラウザが気象庁から読んでいた）。
 
 import type { JmaFeed } from "../db/types.ts";
 

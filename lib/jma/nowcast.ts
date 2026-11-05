@@ -4,7 +4,8 @@
 //   （時刻 2 分・タイル 5 分）。キャッシュの鍵は気象庁の URL そのもの
 // - 出すのは時刻の一覧の一番新しい実況（basetime と validtime が同じ物）の 1 枚だけ。補間・延長・動画・予報の時刻にしない
 // - タイルのズームは 5〜10、時刻は一覧にある物だけ（それ以外は 404）。ログインしていなければ 401、旗が off なら何もせず 404
-// - 凡例は気象庁の凡例の画像をそのまま（NOWC_LEGEND_URL。この 1 枚だけブラウザが気象庁から読む。URL は未確認）
+// - 凡例は地図の右下の小さな色の帯（lib/map/rain-scale.ts の 8 段、components/map/RainScaleLegend.tsx）。気象庁の凡例の画像は読まない
+//   （T151。前は画像をそのまま出し、時刻と出典の 1 文と合わせた白い四角が小さな地図の半分ほどを隠した）。出典は地図の下の出典の行
 // 雨量から危険度を作らない。色と連絡順には使わない。
 
 /** 時刻の一覧（実況。basetime・validtime は UTC の YYYYMMDDhhmmss、要素 hrpns） */
@@ -16,9 +17,7 @@ export const NOWC_ZOOM = { minZ: 5, maxZ: 10 } as const;
 /** Cache API で写す秒数 */
 export const NOWC_TIMES_TTL = 120;
 export const NOWC_TILE_TTL = 300;
-/** 凡例の画像（気象庁の物をそのまま）。この作業の中では本物で確かめていない（docs/progress/t72.md の未確認） */
-export const NOWC_LEGEND_URL = "https://www.jma.go.jp/bosai/nowc/images/legend_jp_normal_hrpns.svg";
-/** 地図の右下の出典（jma-terms の「出典の書き方の例」から、推計震度を出さないので雨雲だけ） */
+/** 出典（jma-terms の「出典の書き方の例」から、推計震度を出さないので雨雲だけ）。地図の下の出典の行に出す（T151 で右下の凡例から移した） */
 export const NOWC_SOURCE = {
   text: "雨雲：気象庁ホームページ（https://www.jma.go.jp/bosai/nowc/）／背景：地理院タイル",
   href: "https://www.jma.go.jp/bosai/nowc/",

@@ -170,16 +170,19 @@ describe("タイルの route の守り", () => {
 describe("地図に重ねる", () => {
   const view = { z: 12, center: project({ lat: 33.84, lng: 132.765 }, 12) };
 
-  it("タイルは Workers の route から（気象庁を直接読まない）。段は 10 まで、不透明度を付けない。右下に凡例・時刻・出典", () => {
+  it("タイルは Workers の route から（気象庁を直接読まない）。段は 10 まで、不透明度を付けない。右下に小さな凡例と時刻、出典は地図の下（T151）", () => {
     const html = renderToStaticMarkup(createElement(NowcastLayer, { time: LATEST, view, size: BASE_SIZE }));
     const srcs = [...html.matchAll(/<img src="([^"]+)"[^>]*data-layer="nowcast"/g)].map((m) => m[1]);
     expect(srcs.length).toBeGreaterThan(0);
     expect(srcs.every((s) => s.startsWith(`/api/jma/nowc/tile/${LATEST.basetime}/${LATEST.validtime}/10/`))).toBe(true);
     expect(html).not.toMatch(/data-layer="nowcast"[^>]*opacity|opacity[^>]*data-layer="nowcast"/);
     expect(html).toContain("22:10 時点");
-    expect(html).toContain(NOWC_SOURCE.text);
+    // 出典の文は地図の下の出典の行（CaseMap の MapSource。lib/map/t151.test.ts）。文は気象庁の書き方の例のまま
+    expect(html).not.toContain(NOWC_SOURCE.text);
     expect(NOWC_SOURCE.text).toBe("雨雲：気象庁ホームページ（https://www.jma.go.jp/bosai/nowc/）／背景：地理院タイル");
     expect(NOWCAST_LAYER.attribution.href).toBe(NOWC_SOURCE.href);
+    // ブラウザは気象庁を直接読まない（前は凡例の画像だけ読んでいた）
+    expect(html).not.toContain("jma.go.jp");
   });
 
   it("旗 off（既定）では地図に雨雲の層も切替も出さない", () => {

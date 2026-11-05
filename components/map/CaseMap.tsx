@@ -16,15 +16,15 @@
 // ピンの印は面の色の縁と細い線で囲み、赤や黄の雨の上でも状態の色が雨の色に溶けない（T116）。
 
 import Link from "next/link";
-import { Fragment, useCallback, useEffect, useId, useMemo, useRef, useState, type SyntheticEvent } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type SyntheticEvent } from "react";
 import { Button } from "@/components/ui/Button";
 import { CloseIcon, FitIcon, FullIcon, ZoomInIcon, ZoomOutIcon } from "@/components/ui/Icon";
 import { CountLabel, countClass, StateTag, TONE_FILL } from "@/components/ui/Tag";
 import type { GeoPoint, HazardKind } from "@/lib/db/types";
-import { DRAG_SLOP, FULL_ZOOM, keyAction, MAP_LIMITS, pinchView, sameView, sideWheelTakes, stepZoom, toFrame, wheelZoom } from "@/lib/map/camera";
+import { FULL_ZOOM, keyAction, MAP_LIMITS, pinchView, sameView, stepZoom, toFrame } from "@/lib/map/camera";
 import { COUNT_W, groupPins, labelWidth, memberStates, statesWidth, type PinGroup } from "@/lib/map/cluster";
 import { demoShown, type DemoOverlay } from "@/lib/map/demo";
-import { RAIN_LEGEND_LABEL, RAIN_OPACITY, RAIN_STEPS, rainColor } from "@/lib/map/rain-scale";
+import { RAIN_LEGEND_LABEL, RAIN_OPACITY, rainColor } from "@/lib/map/rain-scale";
 import {
   BASE_SIZE,
   clampView,
@@ -48,8 +48,11 @@ import { MAP_UI, othersLabel } from "@/lib/map/labels";
 import { BASE_LAYER, BASE_OPACITY, HAZARD_LAYERS, HAZARD_OPACITY, HAZARD_PORTAL, type Attribution, type HazardLayer } from "@/lib/map/layers";
 import type { MapPin } from "@/lib/map/side";
 import { COLOR_LABELS } from "@/lib/labels";
-import type { NowcTime } from "@/lib/jma/nowcast";
+import { NOWC_SOURCE, type NowcTime } from "@/lib/jma/nowcast";
 import { NowcastLayer, useNowcastTime } from "./NowcastLayer";
+import { RainScaleLegend } from "./RainScaleLegend";
+import { useMapDrag } from "./useMapDrag";
+import { WheelHint } from "./WheelHint";
 import type { StateTone } from "@/lib/person";
 
 /** ピンが無いときの真ん中（松山市の市街）。事業所の中心（center、T68）があればそちら（T72） */
@@ -152,19 +155,10 @@ export function CaseMap({ pins, layers, demo, unplaced, center, nowcast = false,
   const shown = HAZARD_LAYERS.filter((l) => on.has(l.id) && inRange(tz, l));
   useHideBrokenTiles(box, [tz, on]);
 
-  // 指・マウス・ホイール・キー。ホイールは Ctrl（⌘）か地図を押したあとだけ（ほかは画面の送り）。効かせなかったら短く知らせる
+  // 指・マウス・ホイール・キー（T151 で全部の地図と同じ部品に）。画面の送りの中にあるので、ホイールと縦の指は地図を押したあとだけ
+  // （ほかは画面の送り。ホイールは短く知らせる）。マウスのドラッグと横の指はいつも地図を動かす
   const frame = useCallback((): Size => BASE_SIZE, []);
-  const gestures = useMapPointer(box, frame, update, true);
-  const [hint, setHint] = useState(false);
-  const hintTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const onWheelPassed = useCallback(() => {
-    setHint(true);
-    if (hintTimer.current) clearTimeout(hintTimer.current);
-    hintTimer.current = setTimeout(() => setHint(false), 1500);
-  }, []);
-  useEffect(() => () => void (hintTimer.current && clearTimeout(hintTimer.current)), []);
-  const wheelSide = useMemo(() => ({ armed: gestures.armed, onPassed: onWheelPassed }), [gestures.armed, onWheelPassed]);
-  useMapWheel(box, frame, update, wheelSide);
+  const gestures = useMapGestures(box, frame, update, true);
 
   const choice: LayerChoice = {
     on,
@@ -211,17 +205,12 @@ export function CaseMap({ pins, layers, demo, unplaced, center, nowcast = false,
           ref={box}
           tabIndex={0}
           aria-label={MAP_UI.title}
-          className={`relative w-full cursor-grab touch-pan-y overflow-hidden rounded-md bg-panel2 select-none active:cursor-grabbing ${FOCUS} focus-visible:outline-offset-2`}
+          className={`relative w-full cursor-grab ${gestures.touch} overflow-hidden rounded-md bg-panel2 select-none active:cursor-grabbing ${FOCUS} focus-visible:outline-offset-2`}
           style={{ aspectRatio: `${VIEW_W} / ${VIEW_H}` }}
-          onPointerDown={gestures.onPointerDown}
-          onPointerMove={gestures.onPointerMove}
-          onPointerUp={gestures.onPointerEnd}
-          onPointerCancel={gestures.onPointerEnd}
-          onPointerLeave={gestures.onPointerLeave}
-          onBlur={gestures.onBlur}
-          onClickCapture={gestures.onClickCapture}
+          {...gestures.handlers}
           onDoubleClick={gestures.onDoubleClick}
           onKeyDown={gestures.onKeyDown}
+          data-armed={gestures.armed ? "" : undefined}
           data-zoom={view.z}
           data-tile-zoom={tz}
           data-map-side
@@ -235,18 +224,10 @@ export function CaseMap({ pins, layers, demo, unplaced, center, nowcast = false,
             const at = place(view, p.location);
             return <PinLink key={p.id} pin={p} style={{ left: `${at.left}%`, top: `${at.top}%`, zIndex: 10 + p.layer }} />;
           })}
-          {hint && (
-            <p
-              role="status"
-              className="pointer-events-none absolute inset-x-0 top-1/2 z-40 mx-auto w-fit -translate-y-1/2 rounded bg-panel px-2 py-1 text-xs font-bold text-ink ring-1 ring-ink/15"
-              data-wheel-hint
-            >
-              {MAP_UI.wheelHint}
-            </p>
-          )}
+          {gestures.hint && <WheelHint />}
         </div>
 
-        <MapSource shown={shown} fictional={fictional} />
+        <MapSource shown={shown} fictional={fictional} nowcast={!!nowc && rainOn} />
       </figure>
       {/* 全画面は押してから作る（閉じている間はタイルを要求しない）。<dialog> の showModal で一番上の層に出るので
           場所を取らない。figcaption を figure の最後に置くため、figure の外に置く */}
@@ -280,75 +261,24 @@ function ZoomButtons({ view, fitted, onZoom, onFit }: { view: View | null; fitte
 type Update = (f: (v: View, s: Size) => View) => void;
 
 /**
- * 地図の枠の指・マウス・キー。押しただけ（DRAG_SLOP より動かない）ならピンのリンクがそのまま効く。
- * side（小さな地図）: 指 1 本は画面の送りに任せて地図を動かさない（2 本のピンチだけ。枠は touch-pan-y）。マウス・ペンのドラッグは動かす。
- * 押すと armed（ホイールが地図に効く）になり、枠の外へ出るか焦点が外れると外れる
+ * 地図の枠の指・マウス・ホイール（components/map/useMapDrag.ts。全部の地図と同じ部品。T151）と、この地図だけのダブルクリック・キー。
+ * 押しただけ（DRAG_SLOP より動かない）ならピンのリンクがそのまま効き、動かしたあとの click はピンへ通さない。
+ * gated（小さな地図）: ホイールは Ctrl（⌘）か地図を押したあとだけ、指は押したあとだけ縦も地図に（押す前は縦の送りを画面に）。全画面はいつも地図に
  */
-function useMapPointer(box: React.RefObject<HTMLDivElement | null>, frame: () => Size | null, update: Update, side: boolean) {
-  const pointers = useRef(new Map<number, Pt>());
-  const drag = useRef<{ start: Pt; moved: boolean } | null>(null);
-  const armed = useRef(false);
+function useMapGestures(box: React.RefObject<HTMLDivElement | null>, frame: () => Size | null, update: Update, gated: boolean) {
   const local = (e: { clientX: number; clientY: number }): Pt | null => {
     const el = box.current;
     const s = frame();
     return el && s ? toFrame({ x: e.clientX, y: e.clientY }, el.getBoundingClientRect(), s) : null;
   };
-  const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (e.pointerType === "mouse" && e.button !== 0) return;
-    const at = local(e);
-    if (!at) return;
-    armed.current = true;
-    pointers.current.set(e.pointerId, at);
-    if (pointers.current.size === 1) drag.current = { start: at, moved: false };
-    else if (drag.current) drag.current.moved = true; // 2 本目の指が来たらピンチ（押したことにしない）
-  };
-  const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    const prev = pointers.current.get(e.pointerId);
-    if (!prev) return;
-    const now = local(e);
-    if (!now) return;
-    // 小さな地図の指 1 本は画面の送り（地図は動かさない。位置だけ覚えて 2 本目に備える）
-    if (side && e.pointerType === "touch" && pointers.current.size < 2) {
-      pointers.current.set(e.pointerId, now);
-      return;
-    }
-    const d = drag.current;
-    if (d && !d.moved) {
-      if (Math.hypot(now.x - d.start.x, now.y - d.start.y) < DRAG_SLOP) return;
-      d.moved = true;
-    }
-    const el = box.current;
-    if (el && !el.hasPointerCapture(e.pointerId)) el.setPointerCapture(e.pointerId);
-    const ids = [...pointers.current.keys()];
-    if (ids.length >= 2) {
-      const [a, b] = ids;
-      if (e.pointerId !== a && e.pointerId !== b) return;
-      const before: [Pt, Pt] = [pointers.current.get(a)!, pointers.current.get(b)!];
-      pointers.current.set(e.pointerId, now);
-      const after: [Pt, Pt] = [pointers.current.get(a)!, pointers.current.get(b)!];
-      update((v, s) => pinchView(v, s, before, after));
-    } else {
-      pointers.current.set(e.pointerId, now);
-      update((v) => panBy(v, now.x - prev.x, now.y - prev.y));
-    }
-  };
-  const onPointerEnd = (e: React.PointerEvent<HTMLDivElement>) => {
-    pointers.current.delete(e.pointerId);
-  };
-  const onPointerLeave = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (e.pointerType === "mouse") armed.current = false;
-  };
-  const onBlur = () => {
-    armed.current = false;
-  };
-  /** 動かしたあとの click はピンへ通さない */
-  const onClickCapture = (e: React.MouseEvent) => {
-    if (drag.current?.moved) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-    drag.current = null;
-  };
+  const drag = useMapDrag({
+    box,
+    frame,
+    gated,
+    onPan: (p) => update((v) => panBy(v, p.dx, p.dy)),
+    onPinch: (before, after) => update((v, s) => pinchView(v, s, before, after)),
+    onWheel: (dz, at) => update((v, s) => zoomAt(v, s, v.z + dz, at)),
+  });
   const onDoubleClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if ((e.target as HTMLElement).closest("[data-pin],[data-pin-group]")) return;
     const at = local(e);
@@ -363,37 +293,7 @@ function useMapPointer(box: React.RefObject<HTMLDivElement | null>, frame: () =>
     if (a.type === "pan") update((v) => panBy(v, a.dx, a.dy));
     else update((v, s) => zoomAt(v, s, stepZoom(v.z, a.dz)));
   };
-  return { armed, onPointerDown, onPointerMove, onPointerEnd, onPointerLeave, onBlur, onClickCapture, onDoubleClick, onKeyDown };
-}
-
-/**
- * ホイールの拡大・縮小（React の onWheel は passive で preventDefault できないので、ここで足す）。
- * side を渡すと小さな地図: sideWheelTakes が false のときは何もしない（画面が送れる）で onPassed を呼ぶ
- */
-function useMapWheel(
-  box: React.RefObject<HTMLDivElement | null>,
-  frame: () => Size | null,
-  update: Update,
-  side?: { armed: React.RefObject<boolean>; onPassed: () => void },
-) {
-  useEffect(() => {
-    const el = box.current;
-    if (!el) return;
-    const onWheel = (e: WheelEvent) => {
-      if (side && !sideWheelTakes(e, side.armed.current)) {
-        side.onPassed();
-        return;
-      }
-      const s = frame();
-      if (!s) return;
-      e.preventDefault();
-      const at = toFrame({ x: e.clientX, y: e.clientY }, el.getBoundingClientRect(), s);
-      const dz = wheelZoom(e);
-      update((v, sz) => zoomAt(v, sz, v.z + dz, at));
-    };
-    el.addEventListener("wheel", onWheel, { passive: false });
-    return () => el.removeEventListener("wheel", onWheel);
-  }, [box, frame, update, side]);
+  return { ...drag, onDoubleClick, onKeyDown };
 }
 
 /** 段が変わったあと、新しい段のタイルが届くまで前の段の読み込み済みのタイルを下に敷く（前の画像を使い回す。新しく要求しない） */
@@ -487,8 +387,7 @@ export function FullMap({ pins, demo, unplaced, choice, center, fictional = fals
 
   // ホイール・ドラッグ・指・キー（小さな地図と同じ部品。全画面はホイールも指 1 本もいつも地図に効かせる）
   const frame = useCallback(() => sizeRef.current, []);
-  useMapWheel(box, frame, update);
-  const g = useMapPointer(box, frame, update, false);
+  const gestures = useMapGestures(box, frame, update, false);
 
   const close = () => dialog.current?.close();
 
@@ -536,7 +435,7 @@ export function FullMap({ pins, demo, unplaced, choice, center, fictional = fals
       aria-labelledby={titleId}
       className="m-0 size-full max-h-none max-w-none overscroll-contain bg-base p-0 text-ink backdrop:bg-black/40"
       onClose={onClose}
-      onKeyDown={g.onKeyDown}
+      onKeyDown={gestures.onKeyDown}
       data-map-full
     >
       <figure className="flex h-full flex-col gap-2 p-2 sm:p-3">
@@ -574,13 +473,9 @@ export function FullMap({ pins, demo, unplaced, choice, center, fictional = fals
           ref={box}
           tabIndex={0}
           aria-label={MAP_UI.title}
-          className={`relative min-h-0 flex-1 cursor-grab touch-none overflow-hidden rounded-md bg-panel2 select-none active:cursor-grabbing ${FOCUS} focus-visible:-outline-offset-2`}
-          onPointerDown={g.onPointerDown}
-          onPointerMove={g.onPointerMove}
-          onPointerUp={g.onPointerEnd}
-          onPointerCancel={g.onPointerEnd}
-          onClickCapture={g.onClickCapture}
-          onDoubleClick={g.onDoubleClick}
+          className={`relative min-h-0 flex-1 cursor-grab ${gestures.touch} overflow-hidden rounded-md bg-panel2 select-none active:cursor-grabbing ${FOCUS} focus-visible:-outline-offset-2`}
+          {...gestures.handlers}
+          onDoubleClick={gestures.onDoubleClick}
           data-zoom={view ? view.z.toFixed(2) : undefined}
           data-tile-zoom={tz ?? undefined}
         >
@@ -607,7 +502,7 @@ export function FullMap({ pins, demo, unplaced, choice, center, fictional = fals
           )}
         </div>
 
-        <MapSource shown={shown} fictional={fictional} />
+        <MapSource shown={shown} fictional={fictional} nowcast={!!choice.nowcast && choice.rainOn} />
       </figure>
     </dialog>
   );
@@ -768,7 +663,7 @@ const rainPx = (n: number) => Math.round(n * 10) / 10;
  * 訓練の雨（筋書きの雨。lib/map/drill-rain.ts）。輪ごとに降水量の段の色で塗る（lib/map/rain-scale.ts。気象庁の降水ナウキャストの
  * 凡例と同じ 8 段と色）。輪は弱い段から並ぶので、強い段が上に重なる。輪をまとめた 1 枚を RAIN_OPACITY で透かす（段どうしの色は
  * 混ぜず、下の地図と層が透ける）。縁はぼかさない（隣の段の色が混ざると凡例と読み合わせられない）。色はライトとダークで同じ
- * （下の地図はダークでも明るい）。右下に凡例。
+ * （下の地図はダークでも明るい）。右下に小さな凡例（本物の雨雲と同じ部品 RainScaleLegend の「想定」。T151）。
  * 点は 0.1px に丸める（サーバーと手元で投影の計算の最後の桁が違い、丸めないと描き直しの食い違いになった。T103）
  */
 function Rain({ demo, view, size }: { demo: DemoOverlay; view: View; size: Size }) {
@@ -792,47 +687,8 @@ function Rain({ demo, view, size }: { demo: DemoOverlay; view: View; size: Size 
           ))}
         </g>
       </svg>
-      <RainLegend />
+      <RainScaleLegend kind="drill" head="想定" label={RAIN_LEGEND_LABEL} />
     </>
-  );
-}
-
-/**
- * 訓練の雨の凡例（地図の右下。本物の雨雲の凡例と同じ所）。1 時間の降水量の 8 段を上ほど強い順に色の見本で並べ、段の境に値
- * （80・50・30・20・10・5・1）。上に「想定」と単位。見本は透かさない（凡例と同じ値）。いちばん弱い段の見本は白に近いので、
- * 見本の列を細い線で囲む。発行元の名前は地図に出さない（出典は docs/SOURCES.md。T103）
- */
-function RainLegend() {
-  const steps = [...RAIN_STEPS].reverse();
-  return (
-    <div
-      role="img"
-      aria-label={RAIN_LEGEND_LABEL}
-      className="pointer-events-none absolute right-1 bottom-1 z-30 rounded bg-panel px-1.5 pt-1 pb-2 text-[10px] leading-3 text-ink"
-      data-rain-legend
-    >
-      <div className="font-bold">想定</div>
-      <div className="text-muted">mm/h</div>
-      <div className="mt-1 grid grid-cols-[10px_auto] gap-x-1">
-        {steps.map((s, i) => (
-          <Fragment key={s.min}>
-            <span
-              className={`block h-2.5 w-2.5 ring-1 ring-ink/25 ${i === 0 ? "rounded-t-sm" : ""} ${i === steps.length - 1 ? "rounded-b-sm" : ""}`}
-              title={s.label}
-              data-rain-legend-step={s.min}
-              style={{ background: s.color }}
-            />
-            <span className="relative h-2.5 tabular-nums">
-              {s.min > 0 && (
-                <span className="absolute top-full left-0 -translate-y-1/2" data-rain-legend-bound={s.min}>
-                  {s.min}
-                </span>
-              )}
-            </span>
-          </Fragment>
-        ))}
-      </div>
-    </div>
   );
 }
 
@@ -952,8 +808,11 @@ function LayerButton({
   );
 }
 
-/** 出典（地理院タイル、重ねた層があればハザードマップポータルサイトと層ごとの作成者）と、デモ事業所の種の位置なら「位置は架空」（T114） */
-function MapSource({ shown, fictional }: { shown: readonly HazardLayer[]; fictional: boolean }) {
+/**
+ * 出典（地理院タイル、重ねた層があればハザードマップポータルサイトと層ごとの作成者、雨雲を重ねていれば気象庁の文のまま）と、
+ * デモ事業所の種の位置なら「位置は架空」（T114）。雨雲の出典は前は地図の右下の凡例の中で、地図を隠していた（T151 で地図の下へ）
+ */
+function MapSource({ shown, fictional, nowcast }: { shown: readonly HazardLayer[]; fictional: boolean; nowcast: boolean }) {
   return (
     <figcaption className="text-[11px] leading-4 text-muted" data-attribution>
       <span>出典 </span>
@@ -964,6 +823,12 @@ function MapSource({ shown, fictional }: { shown: readonly HazardLayer[]; fictio
           <SourceLink a={HAZARD_PORTAL} />
           <span>（{shown.map((l) => `${l.data} ${l.origin}`).join("、")}）</span>
         </>
+      )}
+      {nowcast && (
+        <span data-nowcast-source>
+          <span>・</span>
+          <SourceLink a={NOWC_SOURCE} />
+        </span>
       )}
       {fictional && <span className="ml-1">位置は架空</span>}
     </figcaption>
