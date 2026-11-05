@@ -88,8 +88,8 @@ export const INTAKE_FIELDS: readonly IntakeField[] = [
   { key: "medical.history", section: "medical", label: "既往", shape: { type: "list" }, hint: "既往症・今の病名。1 つずつ" },
   { key: "medical.vaccinations", section: "medical", label: "予防接種", shape: { type: "list" }, hint: "1 つずつ" },
   // 避難（ハザードは diff.ts）
-  { key: "evacuation.destination1", section: "evacuation", label: "避難先1", shape: { type: "text" }, hint: "市の指定避難所など" },
-  { key: "evacuation.destination2", section: "evacuation", label: "避難先2", shape: { type: "text" }, hint: "事前に行く所（親族の家など）" },
+  { key: "evacuation.destination1", section: "evacuation", label: "避難先1", shape: { type: "text" }, hint: "1 番目・主な避難先。「第1」「1次」「一次」「①」と書かれた物と、番号の無い避難先が 1 つだけの時（病院・施設・親族の家でも）" },
+  { key: "evacuation.destination2", section: "evacuation", label: "避難先2", shape: { type: "text" }, hint: "2 番目の避難先。「第2」「2次」「二次」「②」「ほかに」「次に」、事前に行く所と書かれた物" },
   {
     key: "evacuation.stayHome",
     section: "evacuation",
@@ -140,7 +140,7 @@ export const INTAKE_FIELDS: readonly IntakeField[] = [
     section: "evacuation",
     label: "避難先1時間",
     shape: { type: "int", unit: "分" },
-    hint: "避難先1（市の指定避難所）まで何分かかるか。入力に分の数が書かれているときだけ",
+    hint: "避難先1 まで何分かかるか。入力に分の数が書かれているときだけ",
     form: true,
   },
   {
@@ -148,7 +148,7 @@ export const INTAKE_FIELDS: readonly IntakeField[] = [
     section: "evacuation",
     label: "避難先2手段",
     shape: { type: "enum", options: opts(TRANSPORT_KINDS, TRANSPORT_KIND_LABELS) },
-    hint: "避難先2（事前に行く所）へ移る手段。値は evacuation.transportKind と同じ",
+    hint: "避難先2 へ移る手段（避難先2 があるときだけ）。値は evacuation.transportKind と同じ",
     form: true,
   },
   {

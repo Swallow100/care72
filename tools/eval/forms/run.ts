@@ -912,6 +912,7 @@ async function renderPaper(
     mkdirSync(sub, { recursive: true });
     if (wantPdf) writeFileSync(`${base}.pdf`, r.pdf);
     if (wantPng && r.png) writeFileSync(`${base}.png`, r.png);
+    if (wantPng && r.annexPng && !v.fill) writeFileSync(`${base}.annex.png`, r.annexPng);
     const rel = (ext: string) => `${o.form}/${o.input}${v.suffix}.${ext}`;
     if (v.fill) {
       if (wantPdf) files.fillPdf = rel("pdf");

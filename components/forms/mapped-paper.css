@@ -30,3 +30,18 @@
 .paper.mapped .foot-note {
   margin-top: auto;
 }
+
+/* 元の様式の上の紙の別紙（components/forms/OverlaySheet.tsx、T141）。頁・欄・値の 3 列と見出しの行。頁は数を中央に、
+   欄の名前の下に、欄に「別紙」と書いた値か様式に欄の無い値かを小さく添える */
+.paper.mapped .row.annex-head > .lbl {
+  text-align: center;
+}
+.paper.mapped .row > .annex-page {
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.paper.mapped .annex-why {
+  display: block;
+  font-size: calc(var(--fs-label) * 0.85);
+  color: #555;
+}

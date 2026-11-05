@@ -10,14 +10,23 @@ import { itemHints } from "../../../lib/forms/item-hints.ts";
 import { buildMappedSheet, type MappedSheet } from "../../../lib/forms/mapped-sheet.ts";
 import type { FormMapping, LedgerItemKey, MappingField } from "../../../lib/forms/mapping.ts";
 import { checkLook, type LookCheck } from "../../../lib/forms/overlay-check.ts";
-import { fieldLines, isNoneOnly, type OverlaySheet } from "../../../lib/forms/overlay-sheet.ts";
+import { annexGaps, fieldLines, isNoneOnly, type OverlaySheet } from "../../../lib/forms/overlay-sheet.ts";
 import type { PageImage } from "../../../lib/forms/page-images.ts";
 import type { Cell } from "../../../lib/forms/matsuyama.ts";
 import type { PersonPageRows } from "../../../lib/person.ts";
 
 /** blanksChoice は台帳あり空欄のうち、選ぶ欄で値が選択肢に合わず「その他」の空きも無い欄（要介護 1 の人の「要介護 3〜5」の □ のように、空くのが答えの欄も入る） */
 /** unplacedOption・unplacedRoom・unplacedBox は置けなかった欄の訳（T140。lib/forms/overlay-sheet.ts の UnplacedReason） */
-export type LookScore = Omit<LookCheck, "issues"> & { blanks: number; blanksChoice: number; masks: number; unplacedOption: number; unplacedRoom: number; unplacedBox: number };
+/** annexGap は別紙の中身と紙の「別紙」の印のずれ（T141。lib/forms/overlay-sheet.ts の annexGaps の印なし・行なしの合計） */
+export type LookScore = Omit<LookCheck, "issues"> & {
+  blanks: number;
+  blanksChoice: number;
+  masks: number;
+  unplacedOption: number;
+  unplacedRoom: number;
+  unplacedBox: number;
+  annexGap?: number;
+};
 
 export const emptyLookScore = (): LookScore => ({
   texts: 0,
@@ -34,6 +43,7 @@ export const emptyLookScore = (): LookScore => ({
   unplacedOption: 0,
   unplacedRoom: 0,
   unplacedBox: 0,
+  annexGap: 0,
 });
 
 /** 伏字の跡・仮の言い方（括弧の全角・半角どちらも） */
@@ -117,6 +127,10 @@ export function lookOfPaper(o: {
       unplacedOption: reason("option"),
       unplacedRoom: reason("room"),
       unplacedBox: reason("box"),
+      annexGap: (() => {
+        const g = annexGaps(o.overlay);
+        return g.noMark.length + g.noRow.length;
+      })(),
     },
     check,
     blanks,

@@ -265,7 +265,27 @@ export function insetBox(b: FieldBox, image: { w: number; h: number }, mmInset =
   return { x: b.x + dx, y: b.y + dy, w: b.w - dx * 2, h: b.h - dy * 2 };
 }
 
-export type AnnexRow = { fieldId: string; label: string; lines: string[]; reason: "overflow" | "unplaced" };
+/**
+ * 別紙の行。page は欄の頁（場所の分かる物。T141 で別紙の頁に出す）、mark は紙の上に「別紙」と書いた欄の id（収まらない値。同じ書く所の
+ * 欄は先頭の欄に 1 つ。T141 で別紙の中身と紙の印がそろっているかを確かめる）
+ */
+export type AnnexRow = { fieldId: string; label: string; lines: string[]; reason: "overflow" | "unplaced"; page?: number; mark?: string };
+
+/**
+ * 別紙の中身と紙の「別紙」の印のずれ（T141）。noMark は紙に「別紙」の印の無い、収まらない値の行の欄、noRow は紙に「別紙」と書いたのに
+ * 別紙の行の無い欄。どちらも空ならそろっている（見直しの「別紙相違」と評価の台が使う）
+ */
+export function annexGaps(sheet: Pick<OverlaySheet, "pages" | "annex">): { noMark: string[]; noRow: string[] } {
+  const marked = new Set(
+    sheet.pages.flatMap((p) => p.items.filter((it) => it.kind === "text" && it.lines.length === 1 && it.lines[0] === ANNEX_MARK).map((it) => it.fieldId)),
+  );
+  const overflow = sheet.annex.filter((r) => r.reason === "overflow");
+  const marks = new Set(overflow.map((r) => r.mark ?? r.fieldId));
+  return {
+    noMark: [...new Set(overflow.filter((r) => !marked.has(r.mark ?? r.fieldId)).map((r) => r.fieldId))],
+    noRow: [...marked].filter((id) => !marks.has(id)),
+  };
+}
 
 /**
  * 置けなかった訳（T140）。option は値が様式の選択肢に無い（選択肢と台帳の値の表〔lib/forms/option-values.ts〕でも当たらない・候補が 2 つ以上）、
@@ -385,21 +405,21 @@ export function buildOverlaySheet(mapped: MappedSheet, images: readonly PageImag
           const on = cell.kind === "choice" && cell.options.some((o) => o.on);
           if (!on) continue;
           if (page && box) page.items.push({ kind: "mark", fieldId: field.id, box, mark: markOf(box, page.image) });
-          else annex.push({ fieldId: field.id, label: nameOf(field), lines: ["■"], reason: "unplaced" });
+          else annex.push({ fieldId: field.id, label: nameOf(field), lines: ["■"], reason: "unplaced", page: field.page });
           continue;
         }
         // 選ぶ欄: 選んだ選択肢の □ に印、選択肢に合わない値は「その他（　）」の空きへ、選択肢の添え（浸水の深さ）はその選択肢の所の空きへ
         if (field.shape === "choice" && cell.kind === "choice" && pc && box) {
           const r = placeChoice(field, cell, pc);
           pc.page.items.push(...r.items);
-          for (const lines of r.annex) annex.push({ fieldId: field.id, label: nameOf(field), lines, reason: "overflow" });
+          for (const lines of r.annex) annex.push({ fieldId: field.id, label: nameOf(field), lines, reason: "overflow", page: field.page, mark: field.id });
           for (const id of r.filled) childFilled.add(id);
           if (r.unplaced) miss(field, r.unplaced);
           continue;
         }
         if (lines.length === 0) continue;
         if (!page || !box || !pc) {
-          annex.push({ fieldId: field.id, label: nameOf(field), lines, reason: "unplaced" });
+          annex.push({ fieldId: field.id, label: nameOf(field), lines, reason: "unplaced", page: field.page });
           continue;
         }
         // 区切りの空きに分けて置く（T120）。分けられる欄で、どれかの空きに置けなければ置かない（欄全体に 1 本で置かない。T133）
@@ -463,7 +483,7 @@ export function buildOverlaySheet(mapped: MappedSheet, images: readonly PageImag
     const long = group.some((g) => g.field.shape === "lines" || g.lines.length > 1 || textEm(g.lines.join("")) > ANNEX_LONG_EM);
     const mark = long ? placeText(group[0].field.id, [ANNEX_MARK], box, pc) : null;
     if (long && mark) {
-      for (const g of group) annex.push({ fieldId: g.field.id, label: nameOf(g.field), lines: g.lines, reason: "overflow" });
+      for (const g of group) annex.push({ fieldId: g.field.id, label: nameOf(g.field), lines: g.lines, reason: "overflow", page: g.field.page, mark: mark.fieldId });
       page.items.push(mark);
       continue;
     }

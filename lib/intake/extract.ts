@@ -21,6 +21,7 @@ import {
 import { buildDiff, restoreNote, type DiffItem } from "./diff.ts";
 import { AI_INTAKE_FIELDS } from "./fields.ts";
 import { ExtractSchema, type ExtractOutput } from "./schema.ts";
+import { orderDestinations } from "./destination-order.ts";
 
 /** 1 回の呼び出しに渡す文の長さの上限（字）。ケアプラン 1 枚の写しが入る長さ */
 export const INTAKE_CHUNK_MAX = 4000;
@@ -75,6 +76,7 @@ export const EXTRACT_RULES = [
   "12. 介護の状態は care.* の欄に入れ、notes に流さない: 立ち上がり・移乗・歩行は care.walking、寝たきり（「ほぼ寝たきり」も true）は care.bedridden、聞こえは care.hearing、見えは care.vision、言葉の理解は care.understanding、危ないことの判断は care.judgment、人や場所の見分け（見当識）は care.orientation、要介護度は care.careLevel。",
   "   認知症と書かれていれば（「認知がある」「認知が進んだ」も認知症の意味）care.dementia を true。物忘れだけなら、理解・判断・見当識のどれかに当てられるときだけ当てる。",
   "   値は書かれた事から選ぶ（介助なしでできる ok、見守り・杖・一部の介助でできる some、できない・全介助 hard）。値を選べない書き方なら、その 1 文を notes に写す。",
+  "13. 避難先の番号（evacuation.destination1・2）は書類の手がかりで決める: 「第1」「1次」「一次」「①」は 1、「第2」「2次」「二次」「②」「ほかに」「次に」「事前に行く所」は 2。番号も手がかりも無い避難先が 1 つだけなら 1。種類（病院・施設・親族の家）だけで 2 にしない。2 の手段・時間は 2 があるときだけ。",
   "",
   "欄の一覧（items の field と値）:",
   fieldGuide(),
@@ -237,7 +239,8 @@ export async function extractIntake(
   // 塊ごとに仮名化の門を通す（伏せた後に元の情報が残れば、どの塊でも送らずに止まる）
   const chunks = splitIntakeText(text).map((chunk) => ({ chunk, sealed: pseudonymizeText(chunk, key) }));
   const answers = await pool(chunks, opts.concurrency ?? chunks.length, (c) => askJson(buildExtractRequest(payload, c.sealed, opts.focus ?? null), ctx));
-  const value = answers.length === 1 ? answers[0].value : mergeExtractOutputs(answers.map((a) => a.value));
+  // 避難先の番号は書類の手がかりで（T141、lib/intake/destination-order.ts。番号の無い 1 つだけの避難先を 2 に入れない）
+  const value = orderDestinations(answers.length === 1 ? answers[0].value : mergeExtractOutputs(answers.map((a) => a.value)), input.ledger, text);
   // 写した値の伏せ字は、入れた文と今の台帳の元の言葉に戻す（「（町名）小学校」→「かわなぎ小学校」。役割名は戻さない。T88）
   const restore = sourceRestorer([text, ...inputTexts(input)], key);
   // 特記は、写した文の入った塊の元の文に戻す

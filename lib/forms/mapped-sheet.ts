@@ -57,6 +57,7 @@ import {
 } from "./matsuyama.ts";
 import { heldFields } from "./field-risk.ts";
 import { ledgerItem, listFieldIds, type FormMapping, type LedgerItemKey, type ListShape, type MappingField } from "./mapping.ts";
+import { paperText } from "./paper-text.ts";
 import { warekiText } from "./wareki.ts";
 import { codeOfOption, codesOf, freeCodes, optionTable, pickByCodes } from "./option-values.ts";
 import { transportKindOf, transportText } from "../map/transport.ts";
@@ -754,7 +755,102 @@ export function mappedCell(field: MappingField, ctx: Ctx): Cell {
   if (field.item === null) return field.shape === "check" ? { kind: "choice", options: [CHECK_OFF], unconfirmed: {} } : unconfirmed();
   const def = ledgerItem(field.item);
   if (def.consent && ctx.consent[def.consent] !== "granted") return { kind: "withheld", consent: def.consent };
-  return shapeCell(field, ITEM_VALUES[field.item](ctx));
+  const cell = shapeCell(field, ITEM_VALUES[field.item](ctx));
+  // 欄の名前が 2 つの項目を含む欄（「生年月日・年齢」「氏名・ふりがな」「住所・電話」。T141）は、もう 1 つの項目も同じ欄に置く
+  const pair = pairedItem(field);
+  if (!pair || cell.kind !== "value" || field.shape === "choice" || field.shape === "check") return cell;
+  const def2 = ledgerItem(pair.item);
+  if (def2.consent && ctx.consent[def2.consent] !== "granted") return cell;
+  const other = ITEM_VALUES[pair.item](ctx).cell;
+  if (other.kind !== "value") return cell;
+  return pairCell(cell, other, pair, field);
+}
+
+// ---------- 2 つの項目を持つ欄（T141） ----------
+
+/**
+ * 欄の名前の言葉と、項目の役（T141）。評価の 5 回目で、災害診療記録の「生年月日・年齢」の欄を年齢の項目に当てた読み取りで
+ * 年齢だけが入ったと数えられた。欄の名前が 2 つの項目の言葉を区切りの字（・／、・及び・と）でつないでいれば、両方を置く
+ */
+const PAIR_ROLES = [
+  { role: "name", re: /氏名|名前/ },
+  { role: "kana", re: /ふりがな|フリガナ|カナ/ },
+  { role: "birth", re: /生年月日/ },
+  { role: "age", re: /年齢/ },
+  { role: "address", re: /住所/ },
+  { role: "phone", re: /電話|TEL/i },
+  { role: "relation", re: /続柄|関係/ },
+] as const;
+type PairRole = (typeof PAIR_ROLES)[number]["role"];
+
+/** 本人の項目の役 */
+const PERSON_ROLES: Partial<Record<PairRole, LedgerItemKey>> = {
+  name: "person.name",
+  kana: "person.kana",
+  birth: "person.birth",
+  age: "person.age",
+  address: "basic.address",
+  phone: "self.phone",
+};
+
+/** 項目の仲間（本人、緊急連絡先・支援者ごと）。仲間の外の項目は組にしない */
+function familyOf(item: LedgerItemKey): Partial<Record<PairRole, LedgerItemKey>> | null {
+  if ((Object.values(PERSON_ROLES) as string[]).includes(item)) return PERSON_ROLES;
+  const m = item.match(/^((?:emergency|supporter)\d)\.(name|kana|address|phone|relation)$/);
+  if (!m) return null;
+  const p = m[1];
+  return { name: `${p}.name`, kana: `${p}.kana`, address: `${p}.address`, phone: `${p}.phone`, relation: `${p}.relation` } as Partial<Record<PairRole, LedgerItemKey>>;
+}
+
+/** 2 つの言葉をつなぐ区切り（括弧は入れない。「患者氏名（カタカナ）」は 1 つの項目） */
+const JOINER = /^[^（）()［］[\]]{0,4}$/;
+const JOIN_WORD = /[・･／/、,]|及び|および|並びに|と/;
+
+/** 2 つの項目を持つ欄のもう 1 つの項目（T141）。second は欄の名前で後ろに書かれた方が組の相手か */
+export function pairedItem(field: Pick<MappingField, "item" | "label">): { item: LedgerItemKey; role: PairRole; own: PairRole; second: boolean } | null {
+  if (!field.item) return null;
+  const fam = familyOf(field.item);
+  if (!fam) return null;
+  const label = field.label.normalize("NFKC");
+  const own = (Object.entries(fam) as Array<[PairRole, LedgerItemKey]>).find(([, k]) => k === field.item)?.[0];
+  const ownRe = PAIR_ROLES.find((r) => r.role === own)?.re;
+  const ownAt = ownRe ? label.match(ownRe) : null;
+  if (!own || !ownAt || ownAt.index === undefined) return null;
+  for (const r of PAIR_ROLES) {
+    if (r.role === own || !fam[r.role]) continue;
+    const m = label.match(r.re);
+    if (!m || m.index === undefined) continue;
+    const [a, b] = m.index > ownAt.index ? [ownAt, m] : [m, ownAt];
+    const between = label.slice(a.index! + a[0].length, b.index!);
+    if (JOINER.test(between) && JOIN_WORD.test(between)) return { item: fam[r.role]!, role: r.role, own, second: m.index > ownAt.index };
+  }
+  return null;
+}
+
+/** 括弧で添える役（年齢・ふりがな・続柄）。ほかは全角の空きで並べる */
+const BRACKET_ROLES: ReadonlySet<PairRole> = new Set<PairRole>(["age", "kana", "relation"]);
+
+/**
+ * 2 つの項目の値を 1 つの欄に（T141）。欄に「歳」の区切りの空きがあれば（部品つきの欄）区切りで分けられる並べ方（「昭和17年4月18日 84 歳」）、
+ * 無ければ決まった並べ方（「昭和17年4月18日（84 歳）」「山田 ハナ（ヤマダ ハナ）」「市 町名　090-…」）。欄の名前の順に並べる
+ */
+function pairCell(main: Extract<Cell, { kind: "value" }>, other: Extract<Cell, { kind: "value" }>, pair: { role: PairRole; own: PairRole; second: boolean }, field: MappingField): Cell {
+  // 1 つの字にして並べる（数と単位は詰める。lib/forms/paper-text.ts）
+  const flat = (c: Extract<Cell, { kind: "value" }>): string =>
+    c.lines
+      .map((l) => paperText(l.filter((x) => !x.unconfirmed && x.text.trim() !== "").map((x) => x.text).join(" ")))
+      .filter((x) => x !== "")
+      .join(" ");
+  const [first, last] = pair.second ? [flat(main), flat(other)] : [flat(other), flat(main)];
+  if (first === "" || last === "") return main;
+  const lastRole = pair.second ? pair.role : pair.own;
+  const units = field.options.map((o) => o.normalize("NFKC").trim()).filter((o) => /[年月日歳]$/.test(o));
+  const agePart = units.some((o) => o.endsWith("歳"));
+  if (lastRole === "age" && agePart) return { kind: "value", lines: [[t(`${first} ${last}`)]] };
+  // 年月日の区切りの空きがあり「歳」の空きが無い欄は、空きに分けると年齢が落ちるので組にしない（前と同じく 1 つの項目）
+  if (units.length > 0) return main;
+  if (lastRole && BRACKET_ROLES.has(lastRole)) return { kind: "value", lines: [[t(`${first}（${last}）`)]] };
+  return { kind: "value", lines: [[t(`${first}　${last}`)]] };
 }
 
 const isUnconfirmed = (cell: Cell) =>
