@@ -44,6 +44,8 @@ export const SANDBOX_CLEAR: Readonly<Record<Table, string | null>> = {
   custody: `person_id IN (${PEOPLE})`,
   form9_rank_edits: `office_id IN (${SB}) OR person_id IN (${PEOPLE})`,
   form_mappings: `office_id IN (${SB})`,
+  // 様式の対応表の共有（T134）。事業所のデータでないので試用事業所の掃除でも消さない
+  form_shared_mappings: null,
   disaster_state: `office_id IN (${SB})`,
   ai_calls: `office_id IN (${SB})`,
   ai_agents: null,
