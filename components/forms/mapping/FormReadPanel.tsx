@@ -14,7 +14,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { RedactedPage } from "@/components/person/RedactSheet";
 import { BTN_MAIN, BTN_SIDE, INPUT } from "@/components/person/intake-ui";
-import { AddIcon, PaperIcon, ReadIcon } from "@/components/ui/Icon";
+import { AddIcon, OpenIcon, PaperIcon, ReadIcon } from "@/components/ui/Icon";
 import { Loader72 } from "@/components/ui/Loader72";
 import { MunicipalPicker, type MunicipalPickerProps } from "./MunicipalPicker";
 import { LIMITS, MAPPING_LABELS as L } from "@/lib/forms/mapping";
@@ -54,6 +54,9 @@ export function FormReadPanel({ aiReady, municipal }: { aiReady: boolean; munici
   const [redacting, setRedacting] = useState<File[] | null>(null);
   // 黒塗りの画面に渡したのが一覧の公式の様式なら、その id（T134）
   const [picked, setPicked] = useState<string | null>(null);
+  // 手作成（T147）: 読込で足りない時の逃げ道。AI が使えない時・読込に失敗した時は開いて出し、ほかは畳んで目立たせない
+  const [manualOpen, setManualOpen] = useState(false);
+  const showManual = !aiReady || fail !== null || manualOpen;
 
   useEffect(() => {
     if (busy !== "read") return;
@@ -126,9 +129,9 @@ export function FormReadPanel({ aiReady, municipal }: { aiReady: boolean; munici
   };
 
   return (
-    <div className="grid gap-3 md:grid-cols-2">
+    <div className="grid gap-3">
       {municipal && (
-        <div className="md:col-span-2">
+        <div>
           <MunicipalPicker
             {...municipal}
             aiReady={aiReady}
@@ -183,29 +186,46 @@ export function FormReadPanel({ aiReady, municipal }: { aiReady: boolean; munici
         )}
       </section>
 
-      <section aria-labelledby="manual-title" className="rounded-lg bg-panel p-3">
-        <h2 id="manual-title" className="font-bold">
-          {L.manual}
-        </h2>
-        <div className="mt-2 flex gap-2">
-          <input
-            className={INPUT}
-            placeholder="様式の題名"
-            aria-label="様式の題名"
-            maxLength={LIMITS.title}
-            value={title}
-            disabled={busy !== null}
-            onChange={(e) => setTitle(e.target.value)}
-          />
-          <button type="button" className={`${BTN_SIDE} shrink-0`} disabled={!title.trim() || busy !== null} onClick={manual} data-press>
-            <AddIcon aria-hidden className="size-3.5 shrink-0" />
+      {showManual ? (
+        <section aria-labelledby="manual-title" className="rounded-lg bg-panel p-3" data-manual-open>
+          <h2 id="manual-title" className="flex items-baseline gap-2 font-bold">
+            {L.manual}
+            <span className="text-xs font-normal text-muted">{L.manualNote}</span>
+          </h2>
+          <div className="mt-2 flex max-w-xl gap-2">
+            <input
+              className={INPUT}
+              placeholder="様式の題名"
+              aria-label="様式の題名"
+              maxLength={LIMITS.title}
+              value={title}
+              disabled={busy !== null}
+              onChange={(e) => setTitle(e.target.value)}
+            />
+            <button type="button" className={`${BTN_SIDE} shrink-0`} disabled={!title.trim() || busy !== null} onClick={manual} data-press>
+              <AddIcon aria-hidden className="size-3.5 shrink-0" />
+              {L.manual}
+            </button>
+          </div>
+        </section>
+      ) : (
+        <div>
+          <button
+            type="button"
+            className="-mx-1 inline-flex items-center gap-1 rounded px-1 py-0.5 text-xs text-muted"
+            aria-expanded={false}
+            onClick={() => setManualOpen(true)}
+            data-press
+            data-manual-toggle
+          >
+            <OpenIcon aria-hidden className="size-3.5 shrink-0" />
             {L.manual}
           </button>
         </div>
-      </section>
+      )}
 
       {fail && (
-        <p role="alert" className="text-sm font-bold text-danger md:col-span-2">
+        <p role="alert" className="text-sm font-bold text-danger">
           {fail.label}
         </p>
       )}

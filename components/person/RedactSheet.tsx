@@ -18,7 +18,7 @@
 
 import { useEffect, useId, useLayoutEffect, useReducer, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { Button, buttonClass } from "@/components/ui/Button";
-import { AddIcon, BackIcon, CloseIcon, FitIcon, OpenIcon, RemoveIcon, SendIcon, ZoomInIcon, ZoomOutIcon } from "@/components/ui/Icon";
+import { AddIcon, BackIcon, CloseIcon, FitIcon, OpenIcon, ReadIcon, RemoveIcon, SendIcon, ZoomInIcon, ZoomOutIcon } from "@/components/ui/Icon";
 import { Loader72 } from "@/components/ui/Loader72";
 import { REDACT_LABELS as L } from "@/lib/labels";
 import { PDF_PAGES_MAX, type ReadMeta } from "@/lib/intake/read-form";
@@ -42,7 +42,18 @@ const TAP_SLOP = 6;
 
 type Mode = "paint" | "move";
 
-export function RedactSheet({ files, onSend, onCancel }: { files: readonly File[]; onSend: (pages: RedactedPage[]) => void; onCancel: () => void }) {
+/** sendLabel は送るボタンと「塗り無し」の確かめの送る側の言葉（様式の読み取りは「読込」。T147）。既定は「送信」 */
+export function RedactSheet({
+  files,
+  onSend,
+  onCancel,
+  sendLabel = L.send,
+}: {
+  files: readonly File[];
+  onSend: (pages: RedactedPage[]) => void;
+  onCancel: () => void;
+  sendLabel?: string;
+}) {
   const titleId = useId();
   const dialog = useRef<HTMLDialogElement>(null);
   const stage = useRef<HTMLDivElement>(null);
@@ -304,7 +315,7 @@ export function RedactSheet({ files, onSend, onCancel }: { files: readonly File[
         details: names,
         options: [
           { value: "back", label: L.noneBack, icon: "BackIcon" },
-          { value: "send", label: L.noneOk, icon: "SendIcon", danger: true },
+          { value: "send", label: sendLabel === L.send ? L.noneOk : sendLabel, icon: "SendIcon", danger: true },
         ],
       });
       if (a !== "send") {
@@ -391,8 +402,8 @@ export function RedactSheet({ files, onSend, onCancel }: { files: readonly File[
               <Button kind="quiet" size="sm" icon={CloseIcon} disabled={encoding} onClick={onCancel} data-redact="cancel">
                 {L.cancel}
               </Button>
-              <Button kind="main" size="sm" icon={SendIcon} disabled={busy || !pages || chosen.length === 0 || chosen.length > PDF_PAGES_MAX} onClick={() => void send()} data-redact="send">
-                {L.send}
+              <Button kind="main" size="sm" icon={sendLabel === L.send ? SendIcon : ReadIcon} disabled={busy || !pages || chosen.length === 0 || chosen.length > PDF_PAGES_MAX} onClick={() => void send()} data-redact="send">
+                {sendLabel}
               </Button>
             </div>
           </div>
