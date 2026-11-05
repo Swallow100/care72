@@ -480,10 +480,11 @@ describe("自由対応のそのままの手（読み替え → 確かめ → 打
     const read = await freePost(db, careManager(), ID, { step: 0, actions: 0, person: "p-01", text }, planOf(free));
     expect(read.status).toBe(200);
     const body = (await read.json()) as { plan: Record<string, unknown> };
-    expect(body.plan).toMatchObject({ as: null, label: "自由", way: "電話", callee: "家族 娘", minutes: 15, block: null, ai: true });
+    // 扱いはやり方の言葉（T129 で「自由」の見出しから「扱い 電話」に）
+    expect(body.plan).toMatchObject({ as: null, label: "電話", way: "電話", callee: "家族 娘", minutes: 15, block: null, ai: true, idle: false, alt: null });
     // 起きたこと・伏せた文・AI の判断の記録は打つ前に返さない
     expect(JSON.stringify(body)).not.toContain("隣の人");
-    expect(Object.keys(body.plan).sort()).toEqual(["adds", "ai", "as", "block", "blockAi", "callee", "label", "minutes", "reason", "way", "words"]);
+    expect(Object.keys(body.plan).sort()).toEqual(["adds", "ai", "alt", "altAi", "as", "block", "blockAi", "callee", "idle", "label", "minutes", "person", "reason", "way", "words"]);
     expect(calls).toHaveLength(1);
     expect(systemOf(calls[0])).toContain(FREE_SYSTEM);
     // Claude に渡ったのは伏せた文だけ
@@ -711,7 +712,7 @@ describe("手と出来事のログ（画面・紙・CSV）", () => {
       at: 0,
       end: 15,
       minutes: 15,
-      what: "自由対応 電話",
+      what: "自由対応 扱い 電話",
       detail: "山田さんの近所の人に発電機を頼む",
       person: "p-01",
       callee: "家族 娘",
@@ -731,7 +732,7 @@ describe("手と出来事のログ（画面・紙・CSV）", () => {
     const lines = csv.split("\r\n");
     expect(lines[0]).toContain(ACT_LOG_LABELS.title);
     expect(lines[3]).toBe(["開始", "終了", "所要", "種類", "内容", "本人", "相手", "結果", "AI理由", "AI", "加算"].join(","));
-    expect(lines[5]).toContain("0 時間,0 時間 15 分,15,手,自由対応 電話 山田さんの近所の人に発電機を頼む,山田 花子,家族 娘");
+    expect(lines[5]).toContain("0 時間,0 時間 15 分,15,手,自由対応 扱い 電話 山田さんの近所の人に発電機を頼む,山田 花子,家族 娘");
     expect(lines[5]).toContain(TERM_LABELS.busy);
   });
 
@@ -820,7 +821,23 @@ describe("画面（対応の欄・使用の 1 行・手の分・読み替えの 
   it("読み替えの 1 行: 自由とやり方・相手・所要と伸びた理由・AI の印・押せない理由", () => {
     const html = renderToStaticMarkup(
       createElement(FreePlanLine, {
-        view: { as: null, label: "自由", way: "電話", callee: "家族 娘", minutes: 25, adds: ["電池"], block: "相手不在", blockAi: true, words: "近所に頼む", reason: "表に無い", ai: true },
+        view: {
+          as: null,
+          label: "電話",
+          way: "電話",
+          callee: "家族 娘",
+          minutes: 25,
+          adds: ["電池"],
+          block: "相手不在",
+          blockAi: true,
+          words: "近所に頼む",
+          reason: "表に無い",
+          ai: true,
+          person: null,
+          alt: null,
+          altAi: false,
+          idle: false,
+        },
       }),
     );
     expect(html).toContain('data-free-as="own"');

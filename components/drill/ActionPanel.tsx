@@ -10,8 +10,9 @@
 // メモ（T59）: 100 字まで、任意。手と一緒に送り、履歴と訓練記録に出す（Claude には渡さない）。
 // T110: 上に時間を使う手の 1 行（status。使用・職員の空き・外出・次空）。決まりを選んだ訓練は、手の所要を決まりの表の値で（夜・浸水などで
 // 伸びた分は太字）、押せない手と相手は灰で理由の 2〜4 字（「通行止」「通話不可」。lib/drill/action-terms.ts）。
-// 自由対応は 200 字。「読替」で監督役が読み替え（POST /api/drill/<id>/free、10〜13 秒）、読み替えた手（表の手か「自由」とやり方）・相手・所要・
-// 押せない理由を見せ、確かめてから実行（同じ文と本人なら Claude をもう 1 回呼ばない）。文か対象を直したら読み替え直し。
+// 自由対応は 200 字。「扱い確認」で監督役が今の状況に照らして読み替え（POST /api/drill/<id>/free、10〜13 秒）、扱い（表の手か、そのままの手のやり方。
+// 何も起きない文は「変化なし」）・相手・所要・押せない理由と今できる別の道（代案）を見せ、確かめてから実行（同じ文と本人なら Claude をもう 1 回
+// 呼ばない）。文か対象を直したら「再確認」。本人を選ばずに名前を書いた文は、決めた対象の名前を出す（T129）。
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -376,7 +377,12 @@ export function ActionPanel({
             </Button>
             {reading && <Loader72 label={FREE_LABELS.reading} size={18} className="text-sm text-muted" />}
           </div>
-          {fresh && <FreePlanLine view={plan.view} />}
+          {fresh && (
+            <FreePlanLine
+              view={plan.view}
+              person={plan.view.person && plan.view.person !== person ? (people.find((p) => p.id === plan.view.person)?.name ?? null) : null}
+            />
+          )}
         </div>
       )}
 
@@ -426,19 +432,33 @@ export function ActionPanel({
   );
 }
 
-/** 自由対応の読み替え（T110）。読み替えた手（表の手か「自由」とやり方）・相手・所要（伸びた理由）・AI の 1 文と理由・押せない理由 */
-export function FreePlanLine({ view }: { view: FreePlanView }) {
+/**
+ * 自由対応の確かめの 1 行（T110・T129）。扱い（表の手か「扱い 電話」、何も起きない文は「変化なし」）・決めた対象（本人を選ばずに名前を書いた文）・
+ * 相手・所要（伸びた理由）・AI の印・押せない理由と今できる別の道（代案）・AI の 1 文と理由
+ */
+export function FreePlanLine({ view, person = null }: { view: FreePlanView; person?: string | null }) {
+  const alt = view.alt ?? null;
   return (
-    <div className="rounded bg-panel2 px-2 py-1.5 text-sm" data-free-plan-line data-free-as={view.as ?? "own"}>
+    <div
+      className="rounded bg-panel2 px-2 py-1.5 text-sm"
+      data-free-plan-line
+      data-free-as={view.idle ? "idle" : (view.as ?? "own")}
+    >
       <p className="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5 tabular-nums">
         <span>
-          <span className="text-xs text-muted">{view.as ? FREE_LABELS.read : FREE_LABELS.own}</span>{" "}
+          {!view.idle && <span className="text-xs text-muted">{FREE_LABELS.as} </span>}
           <span className="font-bold">{view.label}</span>
-          {view.way && <span className="ml-1">{view.way}</span>}
         </span>
-        <span>
-          <span className="text-xs text-muted">{FREE_LABELS.callee}</span> {view.callee ?? ACTION_UI.whole}
-        </span>
+        {person && (
+          <span data-free-person>
+            <span className="text-xs text-muted">{FREE_LABELS.person}</span> {person}
+          </span>
+        )}
+        {!view.idle && (
+          <span>
+            <span className="text-xs text-muted">{FREE_LABELS.callee}</span> {view.callee ?? ACTION_UI.whole}
+          </span>
+        )}
         <span data-free-minutes={view.minutes}>
           <span className="text-xs text-muted">{FREE_LABELS.minutes}</span> <span className="font-bold">{view.minutes}</span>{" "}
           {ACTION_UI.minutes}
@@ -452,6 +472,13 @@ export function FreePlanLine({ view }: { view: FreePlanView }) {
           </span>
         )}
       </p>
+      {alt && (
+        <p className="mt-0.5 flex items-baseline gap-1.5" data-free-alt>
+          <span className="shrink-0 text-xs text-muted">{FREE_LABELS.alt}</span>
+          {view.altAi && <AiMark small />}
+          <span className="min-w-0 break-words">{alt}</span>
+        </p>
+      )}
       {view.words && <p className="mt-0.5">{view.words}</p>}
       {view.reason && <p className="mt-0.5 text-xs text-muted">{view.reason}</p>}
     </div>

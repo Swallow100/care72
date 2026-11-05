@@ -292,7 +292,8 @@ export async function freePost(
 
 /**
  * 画面に返す読み替え（T110）。打つ前に見せる物だけ（起きたこと・伏せた文・AI の判断の記録は返さない）。
- * label は読み替えた手の名前（そのままの手は「自由」）、way はそのままの手のやり方の言葉
+ * label は扱い（表の手の名前、そのままの手はやり方の言葉、何も起きない文は「変化なし」。T129）、way はそのままの手のやり方の言葉。
+ * person は本人を選ばずに名前を書いた文で決めた対象（T129）、alt は今できないときの今できる別の道（AI か決まりの言葉）
  */
 export type FreePlanView = {
   as: DrillAction | null;
@@ -306,12 +307,16 @@ export type FreePlanView = {
   words: string | null;
   reason: string | null;
   ai: boolean;
+  person: string | null;
+  alt: string | null;
+  altAi: boolean;
+  idle: boolean;
 };
 
 export function planView(plan: FreePlan): FreePlanView {
   return {
     as: plan.as,
-    label: plan.as ? ACTION_LABELS[plan.as] : FREE_LABELS.own,
+    label: plan.as ? ACTION_LABELS[plan.as] : plan.idle ? FREE_LABELS.idle : plan.way ? FREE_WAY_LABELS[plan.way] : FREE_LABELS.idle,
     way: plan.way ? FREE_WAY_LABELS[plan.way] : null,
     callee: plan.calleeLabel,
     minutes: plan.minutes,
@@ -321,6 +326,10 @@ export function planView(plan: FreePlan): FreePlanView {
     words: plan.words,
     reason: plan.reason,
     ai: plan.called,
+    person: plan.person ?? null,
+    alt: plan.alt ?? null,
+    altAi: plan.altAi === true,
+    idle: plan.idle === true,
   };
 }
 
