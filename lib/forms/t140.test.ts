@@ -2,7 +2,10 @@
 // 日付と電話の部品（西暦・刷ってある元号・横棒と括弧）、収まらない「その他」の書き足しの別紙、頁ごとの同じ場所の重複、シートの選び方。
 // どれも架空の頁と種の人で確かめる（原本の絵は使わない）。AI は偽の client
 import type Anthropic from "@anthropic-ai/sdk";
-import { describe, expect, it } from "vitest";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { describe, expect, it, vi } from "vitest";
+import { MappingEditor } from "../../components/forms/mapping/MappingEditor.tsx";
 import { SEED_PEOPLE } from "../../seed/people.ts";
 import type { AskJsonContext } from "../claude/call.ts";
 import type { ClaudeClient } from "../claude/client.ts";
@@ -15,13 +18,15 @@ import { packInk, type InkBlob } from "./ink.ts";
 import { buildMappedSheet } from "./mapped-sheet.ts";
 import { LIMITS, parseMappingInput, type FormMapping, type MappingField } from "./mapping.ts";
 import { assignOptionValues, OPTION_AI_SYSTEM, optionTargets } from "./option-ai.ts";
-import { codeOfOption, NONE_CODE, OTHER_CODE, optionTable, pickByCodes, codesOf } from "./option-values.ts";
+import { codeOfOption, editOptionValue, NONE_CODE, OTHER_CODE, optionTable, pickByCodes, codesOf } from "./option-values.ts";
 import { checkLook } from "./overlay-check.ts";
 import { buildOverlaySheet, inkDateParts, inkPhoneParts, partItems, westernYear, type PlaceCtx } from "./overlay-sheet.ts";
 import type { PageImage } from "./page-images.ts";
 import { seedRows } from "./print-harness.ts";
 import { mappedSubject, ruleReview } from "./review.ts";
 import { splitParts } from "./split-parts.ts";
+
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh() {}, push() {} }) }));
 
 const OPTS = { today: "2026-11-05", officeName: "デモ事業所" };
 const IMAGE = { x: 0, y: 0, w: 210, h: 297 };
@@ -289,6 +294,21 @@ describe("選択肢の AI の当て（偽の client）", () => {
     const bad = await readForm([jpeg.file], ctxWith((p) => (JSON.stringify(p.system).includes(OPTION_AI_SYSTEM.slice(0, 30)) ? { nope: 1 } : page)));
     expect(bad.mapping.fields).toHaveLength(2);
     expect(bad.mapping.fields[1].optionValues).toBeUndefined();
+  });
+});
+
+describe("確かめの画面の選択肢の当て", () => {
+  it("選ぶ欄の選択肢ごとに当てた値（AI の当ては AI の印）。人が直すと AI の印が外れ、表と同じに戻すと残さない", () => {
+    const f = { ...choice("玄関まで", "care.walking", ["自力でできる", "家族と一緒ならできる"]), id: "f1", optionValues: { item: "care.walking" as const, values: [null, ["some"]], ai: [1] } };
+    const html = renderToStaticMarkup(createElement(MappingEditor, { id: "fm-1", version: 1, status: "draft", initial: mapping([f]) }));
+    expect(html).toContain('data-option-values="f1"');
+    expect(html).toContain("家族と一緒ならできる 値");
+    expect(html).toContain("AI の当て");
+    const edited = editOptionValue(f, 1, ["hard"])!;
+    expect(edited).toEqual({ item: "care.walking", values: [null, ["hard"]], ai: [] });
+    expect(editOptionValue({ ...f, optionValues: edited }, 1, null)).toBeUndefined();
+    // 言い換えの表で当たる選択肢も人が直せる（直した物が先）
+    expect(optionTable({ ...f, optionValues: editOptionValue(f, 0, []) })).toEqual([[], ["some"]]);
   });
 });
 

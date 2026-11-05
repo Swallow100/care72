@@ -24,7 +24,7 @@ import type { MappedSheet } from "./mapped-sheet.ts";
 import type { FieldBox, FieldShape } from "./mapping.ts";
 import { MATSUYAMA_FIELDS, type Cell, type MatsuyamaKey, type MatsuyamaSheet } from "./matsuyama.ts";
 import { MEDICAL_FIELDS, type MedicalKey, type MedicalSummary } from "./medical-summary.ts";
-import { ANNEX_MARK, cellLines, FONT_MIN_PT, textEm, type OverlayItem, type OverlaySheet } from "./overlay-sheet.ts";
+import { ANNEX_MARK, cellLines, FONT_MIN_PT, textEm, UNPLACED_REASON_LABELS, type OverlayItem, type OverlaySheet } from "./overlay-sheet.ts";
 import { matsuyamaFieldName } from "./unconfirmed.ts";
 import { MATSUYAMA_FRAME } from "./frame-matsuyama.ts";
 import { KIROKU_FRAME } from "./frame-kiroku.ts";
@@ -382,7 +382,9 @@ export function ruleReview(s: ReviewSubject): ReviewFinding[] {
     const f = byId.get(s.fieldOf(id) ?? "");
     if (!f || carried.has(f.id)) continue;
     carried.add(f.id);
-    push("carried", f, "台帳に値あり・紙は空");
+    // 置けなかった訳（T140）: 選択肢に無い値は紙の上で選ぶ、空きに収まらない値は手で書くか別紙
+    const why = s.sheet.unplacedWhy?.[id];
+    push("carried", f, why ? `台帳に値あり・${UNPLACED_REASON_LABELS[why]}` : "台帳に値あり・紙は空");
   }
   // 空欄（帯の未確認と同じ欄。色付けの黄の塗りの「台帳に無い」〔ask〕）。置けなかった欄は上の取込漏れで、空欄に重ねない
   for (const page of s.sheet.pages) {
