@@ -442,20 +442,22 @@ describe("役と事業所の壁（API）", () => {
       expect((await startPost(db, other(role), post({ scenario: "heavy_rain" }), START)).status).toBe(403);
       expect((await listGet(db, other(role))).status).toBe(403);
     }
-    const started = await read(await startPost(db, judge(), post({ scenario: "short" }), START));
+    // 10 分版は T124 で外した（開始は 400。前からある記録は読める: lib/drill/t124.test.ts）
+    expect((await startPost(db, judge(), post({ scenario: "short" }), START)).status).toBe(400);
+    const started = await read(await startPost(db, judge(), post({ scenario: "heavy_rain" }), START));
     expect(started.status).toBe(200);
     const id = started.body.id as string;
     // 書き手は審査員
     expect((await loadDrillRow(db, "office-demo", id))!.started_by).toBe("acct-judge");
     expect((await stepPost(db, other("medical"), id, { step: 0 }, START)).status).toBe(403);
     expect((await stepPost(db, null, id, { step: 0 }, START)).status).toBe(401);
-    expect((await read(await stepPost(db, careManager(), id, { step: 0 }, START))).body).toEqual({ ok: true, step: 1, hour: 3, status: "running" });
+    expect((await read(await stepPost(db, careManager(), id, { step: 0 }, START))).body).toEqual({ ok: true, step: 1, hour: 1, status: "running" });
     expect((await stepPost(db, careManager(), id, { step: 0 }, START)).status).toBe(409);
     expect((await stepPost(db, careManager(), id, { step: "1" }, START)).status).toBe(400);
     expect((await startPost(db, careManager(), { scenario: "fire" }, START)).status).toBe(400);
     expect((await startPost(db, careManager(), { scenario: "earthquake" }, START)).status).toBe(409);
     const list = await read(await listGet(db, careManager()));
-    expect(list.body.drills).toMatchObject([{ id, scenario: "short", status: "running", step: 1, hour: 3, last: 72 }]);
+    expect(list.body.drills).toMatchObject([{ id, scenario: "heavy_rain", status: "running", step: 1, hour: 1, last: 72 }]);
     const replay = await read(await replayGet(db, careManager(), id, "0"));
     expect(replay.body).toMatchObject({ ok: true, shown: 0, hour: 0 });
     expect((await replayGet(db, careManager(), id, "x")).status).toBe(400);

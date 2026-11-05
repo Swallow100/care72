@@ -513,7 +513,7 @@ const FlyTitle: React.FC<{ title: string; local: number }> = ({ title, local }) 
 const TOOL_SCENES: Record<string, { title: string; state: string; hours: (t: number) => number | null }> = {
   S4: { title: "計画", state: "平時", hours: () => 0 },
   // 訓練の画面には訓練の経過の棒がある（絵は時刻の順でもない）ので、上の 72 時間の線は出さない（画面の「経過 3 時間」と食い違わせない）
-  S5: { title: "訓練", state: "10 分版", hours: () => null },
+  S5: { title: "訓練", state: "大雨想定", hours: () => null },
   // 発災時の録画は切り替えて数分（画面は「発災 1 分」〜「9 分」）。線は 0 の近くに置く
   S6: { title: "発災時", state: "大雨", hours: () => 0.15 },
   S7: { title: "使い分け", state: "Claude Code", hours: () => null },
