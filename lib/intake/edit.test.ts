@@ -194,7 +194,7 @@ describe("入れる欄の画面（components/person/Intake.tsx、T45）", () => 
     expect(h).toContain('data-intake="question"');
   });
 
-  it("会話の流れ: AI の言った事は AI の印、数は区分ごと。保存と問いの答えも流れに残る", () => {
+  it("会話の流れ: AI の言った事は AI の印、数は区分ごと。保存は吹き出しの中の「保存済」で、保存の行は作らない（T138）", () => {
     const items = [
       { section: "medical", change: { t: "note", value: "x" } },
       { section: "medical", change: { t: "note", value: "y" } },
@@ -211,11 +211,16 @@ describe("入れる欄の画面（components/person/Intake.tsx、T45）", () => 
     const split = render({ id: "1", who: "ai", kind: "split", say: splitSay(items), proposal: { model: "claude-sonnet-5-5", dropped: 0, rows: [] }, state: "saved" });
     expect(split).toContain('data-ai=""');
     expect(split).toContain("3 項目を見つけました（医療 2・避難 1）");
+    expect(split).toMatch(/data-intake="state"[^>]*>保存済</);
     const q = props.queue[0];
     const asked = render({ id: "2", who: "ask", q });
-    expect(asked).toContain(q.why);
+    expect(asked).toContain(q.text);
     expect(asked).not.toContain('data-ai=""'); // 問いは定型（Claude の出力でない）
-    expect(render({ id: "3", who: "app", text: "1 件を保存しました", tone: "ok" })).toContain("1 件を保存しました");
+    // 問いの答えの保存も、答えの吹き出しの中の小さな状態
+    const answered = render({ id: "3", who: "you", text: "1 回 1 錠", state: "saved" });
+    expect(answered).toContain("1 回 1 錠");
+    expect(answered).toMatch(/data-intake="state"[^>]*>保存済</);
+    expect(answered).not.toContain("件を保存しました");
   });
 });
 
