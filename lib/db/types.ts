@@ -675,7 +675,7 @@ export type PersonListMark = { unlisted_at: string | null };
 export type PersonPhoneLink = { phone_link_generation: number; phone_link_issued_at: string | null };
 
 /**
- * 本人・家族のスマホの ID とパスワード（T149、migrations/0036）。本人用は contact_id が NULL。
+ * 本人・家族のスマホの ID とパスワード（T149、migrations/0037）。本人用は contact_id が NULL。
  * link_generation・link_issued_at は作った時のスマホ入口の版と時刻（今の版と同じときだけ通す。lib/phone/account.ts）
  */
 export type PhoneAccountRow = {
@@ -690,7 +690,7 @@ export type PhoneAccountRow = {
   updated_at: string;
 };
 
-/** Web Push の購読（T149、migrations/0036）。審査員の本人・家族の役の購読は link_generation・link_issued_at が NULL */
+/** Web Push の購読（T149、migrations/0037）。審査員の本人・家族の役の購読は link_generation・link_issued_at が NULL */
 export type PushSubscriptionRow = {
   id: string;
   person_id: string;

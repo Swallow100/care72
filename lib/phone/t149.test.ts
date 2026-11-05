@@ -1,7 +1,7 @@
 // T149: 本人・家族のスマホの入口。ID とパスワード（lib/phone/account.ts）とその決まり、ログインとセッション（lib/auth の phone の形）と壁、
 // 同意の決まり（lib/phone/consent.ts）、本人のページのスマホの面（lib/phone/summary.ts）、準備の欄の決まり（lib/phone/setup.ts）、
 // 通知の購読と送る時（lib/push/http.ts。偽の送り先）、災害モードに入った時（lib/disaster/http.ts の modePostEntered）、
-// Service Worker の通知の決まり（lib/offline/sw-core.js）、migration 0036。D1 は node:sqlite に種の 10 人。鍵はテストの中で作る。Claude は呼ばない。
+// Service Worker の通知の決まり（lib/offline/sw-core.js）、migration 0037。D1 は node:sqlite に種の 10 人。鍵はテストの中で作る。Claude は呼ばない。
 
 import type { DatabaseSync } from "node:sqlite";
 import { readFileSync } from "node:fs";
@@ -527,7 +527,7 @@ describe("Service Worker の通知（lib/offline/sw-core.js）", () => {
   });
 });
 
-describe("migration 0036", () => {
+describe("migration 0037", () => {
   it("本人用の ID は 1 本人に 1 つ（連絡先なしの重なりも断る）。購読の endpoint は 1 行", () => {
     const ins = (id: string, login: string, contact: string | null) =>
       sqlite

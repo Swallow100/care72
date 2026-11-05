@@ -1,4 +1,4 @@
-// Web Push の購読を D1 で持つ（migrations/0036 の push_subscriptions、T149）。D1 を引数で受ける（テストで node:sqlite を渡す）。
+// Web Push の購読を D1 で持つ（migrations/0037 の push_subscriptions、T149）。D1 を引数で受ける（テストで node:sqlite を渡す）。
 // 送る先として数えるのは、今も通る購読だけ:
 // - 本人が一覧にいる（people.unlisted_at IS NULL）
 // - 家族用なら、連絡先の行がその本人の物で、答えられる種類（家族・支援者・民生委員。lib/signals/labels.ts の SIGNAL_WRITER_KINDS）
