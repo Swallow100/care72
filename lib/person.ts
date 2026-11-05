@@ -35,6 +35,7 @@ import {
   type ThirdPartyProvisionRow,
   type TimelineEntryRow,
   type TimelineKind,
+  type IntakeDiffSection,
 } from "./db/types.ts";
 import {
   ABILITY_ITEM_LABELS,
@@ -94,6 +95,7 @@ import { withCustodyEntry } from "./custody/timeline.ts";
 import { shortJst } from "./disaster/state.ts";
 import { RETRACT_LABELS } from "./timeline/labels.ts";
 import { canRetract, type Retracter } from "./timeline/retract.ts";
+import { consentLine, historyLine, isHistoryRow, type HistoryOf } from "./timeline/history.ts";
 import { PROVISION_BASIS_LABELS, PROVISION_SECTION_LABELS, PROVISION_TIMELINE_LABEL } from "./consent/labels.ts";
 import { aboutLine, DOCUMENT_CATALOG } from "./forms/catalog.ts";
 import { wareki } from "./forms/wareki.ts";
@@ -340,6 +342,11 @@ export type TimelineItem = {
   retracted?: { who: string; when: string; note: string | null };
   /** 見ている人が撤回できる行（lib/timeline/retract.ts の canRetract。押せるかはサーバーがもう一度決める） */
   retractable?: true;
+  /**
+   * 台帳を直した跡の行（T143、lib/timeline/history.ts の isHistoryRow）。本人のページは経過から外し、下の「変更履歴」に分かる 1 行で出す。
+   * diff は欄ごとの前と後（見る人の範囲で絞った後。scopedBlocks の diffVisible）
+   */
+  history?: HistoryOf;
 };
 
 export type Block =
@@ -1164,6 +1171,7 @@ export function timelineItems(rows: PersonPageRows, viewer: Retracter | null = n
       kind: DERIVED_TIMELINE_LABELS.created,
       tone: null,
       body: "台帳作成",
+      history: { line: "台帳作成", diff: null },
       who:
         p.origin === "on_site"
           ? AUTHOR_ROLE_LABELS.medical
@@ -1198,6 +1206,7 @@ export function timelineItems(rows: PersonPageRows, viewer: Retracter | null = n
       who: who(accountRoleLabel(first.recorded_by_role), first.recorded_by_name),
       derived: true,
       consent: true,
+      history: { line: consentLine(ordered), diff: null },
     });
   }
 
@@ -1208,7 +1217,7 @@ export function timelineItems(rows: PersonPageRows, viewer: Retracter | null = n
   const grouped = [
     ...derived.map((item) => ({ item, g: 0 })),
     ...stored.map((item, i) => ({
-      item: withCustodyEntry(withOfficeEntry(withQrView(item, rows.timeline[i]), rows.timeline[i]), rows.timeline[i]),
+      item: withHistory(withCustodyEntry(withOfficeEntry(withQrView(item, rows.timeline[i]), rows.timeline[i]), rows.timeline[i]), rows.timeline[i]),
       g: 1,
     })),
     ...provided.map((item) => ({ item, g: 2 })),
@@ -1217,6 +1226,11 @@ export function timelineItems(rows: PersonPageRows, viewer: Retracter | null = n
     .map((x, i) => ({ ...x, i, t: Date.parse(x.item.at) }))
     .sort((a, b) => a.t - b.t || a.g - b.g || a.i - b.i)
     .map((x) => x.item);
+}
+
+/** 台帳を直した跡の行（T143）に分かる 1 行と前と後を足す。種類の言葉は事業所の操作などに直した後の物 */
+function withHistory(item: TimelineItem, row: PersonPageRows["timeline"][number]): TimelineItem {
+  return isHistoryRow(row) ? { ...item, history: historyLine(row, item.kind) } : item;
 }
 
 // ---------- pending を欄に付ける ----------
@@ -1382,6 +1396,24 @@ function sectionVisible(id: SectionId, scope: ViewScope): boolean {
   }
 }
 
+/**
+ * 変更履歴の前と後の欄が見る人の範囲か（T143）。区分の出し方（sectionVisible・scopedBlocks）と同じ: 人は全部を見る人だけ
+ * （人の一部の医療班・行政には出さない）、住所は基本か住所の範囲
+ */
+export function diffVisible(section: IntakeDiffSection, scope: Pick<ViewScope, "items">): boolean {
+  switch (section) {
+    case "medical":
+    case "evacuation":
+    case "basic":
+    case "consent":
+      return scopeHas(scope, section);
+    case "people":
+      return peopleMode(scope) === "all";
+    case "address":
+      return scopeHas(scope, "basic") || scopeHas(scope, "address");
+  }
+}
+
 /** 範囲で区分の中を絞る（人の一部・住所だけの基本・医療班の書いた行だけの経過） */
 function scopedBlocks(id: SectionId, blocks: Block[], scope: ViewScope, contacts: Contact[]): Block[] {
   if (id === "people" && peopleMode(scope) === "partial") return partialPeopleBlocks(blocks, contacts);
@@ -1391,7 +1423,10 @@ function scopedBlocks(id: SectionId, blocks: Block[], scope: ViewScope, contacts
   if (id === "timeline") {
     // 本人確認だけなら医療班・行政の書いた行と提供の行だけ。同意の区分が範囲の外なら同意の行も出さない
     const keep = (t: TimelineItem) => (scope.timeline !== "staff" || t.staff === true) && (scopeHas(scope, "consent") || !t.consent);
-    return blocks.map((b) => (b.type === "timeline" ? { ...b, items: b.items.filter(keep) } : b));
+    // 変更履歴の前と後（T143）は、範囲の外の区分の欄を出さない（医療班・行政に住所・人の全部・基本・同意の前後を渡さない）
+    const withDiff = (t: TimelineItem): TimelineItem =>
+      t.history?.diff ? { ...t, history: { ...t.history, diff: t.history.diff.filter((d) => diffVisible(d.section, scope)) } } : t;
+    return blocks.map((b) => (b.type === "timeline" ? { ...b, items: b.items.filter(keep).map(withDiff) } : b));
   }
   return blocks;
 }

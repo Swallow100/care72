@@ -691,13 +691,19 @@ describe("保存（lib/intake/save.ts）", () => {
     expect(timelineBody(false, [], [{ field: "medical.medications.0.amount", status: "unknown" }])).toBe("手入力: 薬（不明）");
   });
 
-  it("経過の payload は場所だけで、薬の名前を残さない", async () => {
+  // T143 で決めを変えた: 前は payload に値を残さなかった。変更履歴で何をどう直したかを見せるため、欄ごとの前と後（diff）だけは値を持つ。
+  // 場所の一覧（fields）は今どおり薬を名前で指さない。本文（画面の 1 行の元）にも値を書かない。前と後は見る人の範囲で絞って出す（lib/timeline/t143.test.ts）
+  it("経過の場所の一覧と本文は薬の名前を持たず、前と後（diff）だけが値を持つ（T143）", async () => {
     const r = await saveIntake(db, cm, req([{ t: "medication", index: 0, value: { name: "抗認知症薬", category: "other", amount: "1 錠" } }]), NOW);
     expect(r.ok).toBe(true);
     const tl = sqlite.prepare("SELECT body, payload FROM timeline_entries").get() as { body: string; payload: string };
-    expect(JSON.parse(tl.payload).fields).toEqual(["medical.medications.0.amount"]);
-    expect(tl.payload).not.toContain("抗認知症薬");
+    const p = JSON.parse(tl.payload);
+    expect(p.fields).toEqual(["medical.medications.0.amount"]);
+    expect(p.fields.join(" ")).not.toContain("抗認知症薬");
     expect(tl.body).not.toContain("抗認知症薬");
+    expect(p.diff).toEqual([
+      { key: "medical.medications.抗認知症薬", section: "medical", label: "薬 抗認知症薬", before: "その他 1 日 1 回", after: "その他 1 日 1 回 用量 1 錠" },
+    ]);
   });
 
   it("分からない・次回の答えだけでも保存され、経過に理由が出る", async () => {

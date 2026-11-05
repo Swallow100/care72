@@ -4,6 +4,8 @@
 // 区分は面の幅に合わせて 1〜3 段に流す（container query）。区分の順は lib/person.ts の sectionOrder（発災時は経過が一番上）。
 // 入れる欄（T03）はここに置かない。経過の書き足し（T24）は経過の区分の上（書ける種類があるときだけ）。
 // 見える区分と欄は lib/person.ts の toPersonView が見る人の範囲（lib/consent/scope.ts）で決める。ここは来た物を描くだけ。
+// 経過（T143）: 人が書き足す記録だけを経過の区分に。平時は畳んで「経過 3 件」と最後の 1 行、発災時に記録があれば開いた形（今どおり上）。
+// 台帳を直した跡（入力・同意・台帳作成など。item.history）は区分の並びの下に「変更履歴」として畳んで置く（components/person/ChangeHistory）。
 
 import { RouteMapPanel } from "@/components/map/RouteMap";
 import { ButtonLink } from "@/components/ui/Button";
@@ -16,8 +18,12 @@ import { PendingMark, RowItem, type Level } from "./parts";
 import { ClockLines } from "./ClockLines";
 import { SectionEdit } from "./SectionEdit";
 import { PersonHead } from "./PersonHead";
-import { Timeline } from "./Timeline";
+import { Timeline, TimelineSummary, recordItems } from "./Timeline";
 import { TimelineComposer } from "./TimelineComposer";
+import { ChangeHistory } from "./ChangeHistory";
+import { Fold } from "./Fold";
+import { FOLD_LABELS } from "@/lib/timeline/labels";
+import type { PageMode, TimelineItem } from "@/lib/person";
 
 /**
  * edit はケアマネの役で開いたときだけ（入れる欄と同じ）。渡すと面の右上に「編集」（T45、components/person/SectionEdit.tsx）。
@@ -29,22 +35,99 @@ export function PersonView({ view, level, edit = null }: { view: View; level: Le
     <div className="@container space-y-2" data-mode={view.mode}>
       <PersonHead head={view.head} level={level} titleId={`${base}-title`} />
       <div className="gap-x-2 @[40rem]:columns-2 @5xl:columns-3">
-        {view.sections.map((s) => (
-          <SectionPanel
-            key={s.id}
-            section={s}
-            level={level}
-            titleId={`${base}-${s.id}`}
-            edit={edit}
-            // 避難経路の地図（T102）。ケアマネの役で開いたときだけ、避難の面の下に（位置を扱うので面の編集と同じ人だけ）
-            after={s.id === "evacuation" && edit ? <RouteMapPanel data={edit} /> : null}
-          >
-            {/* 経過の書き足し（T24）。書ける種類（役と同意。lib/consent/scope.ts）があるときだけ、経過の上に */}
-            {s.id === "timeline" && view.writes.length > 0 && <TimelineComposer personId={view.head.id} kinds={view.writes} />}
-          </SectionPanel>
-        ))}
+        {view.sections.map((s) =>
+          s.id === "timeline" ? (
+            <TimelinePanel
+              key={s.id}
+              section={s}
+              level={level}
+              titleId={`${base}-${s.id}`}
+              mode={view.mode}
+              composer={view.writes.length > 0 ? <TimelineComposer personId={view.head.id} kinds={view.writes} /> : null}
+            />
+          ) : (
+            <SectionPanel
+              key={s.id}
+              section={s}
+              level={level}
+              titleId={`${base}-${s.id}`}
+              edit={edit}
+              // 避難経路の地図（T102）。ケアマネの役で開いたときだけ、避難の面の下に（位置を扱うので面の編集と同じ人だけ）
+              after={s.id === "evacuation" && edit ? <RouteMapPanel data={edit} /> : null}
+            />
+          ),
+        )}
       </div>
+      {/* 台帳を直した跡（T143）。区分の並びの下に、ページの幅で畳んで */}
+      <ChangeHistory items={historyItems(view.sections)} idBase={base} level={level} />
     </div>
+  );
+}
+
+/** 経過の区分の行 */
+function timelineOf(section: Section): TimelineItem[] {
+  return section.blocks.flatMap((b) => (b.type === "timeline" ? b.items : []));
+}
+
+/** 変更履歴の行（経過の区分の行のうち台帳を直した跡。見る人の範囲で絞った後の物） */
+function historyItems(sections: readonly Section[]): TimelineItem[] {
+  const s = sections.find((x) => x.id === "timeline");
+  return s ? timelineOf(s).filter((t) => t.history) : [];
+}
+
+/**
+ * 経過の区分（T24・T63・T79・T143）。書き足しの欄はいつも見出しの下に（書ける種類があるときだけ）。
+ * 行が無ければ「記録なし」の一言。平時は畳み、発災時は開く（記録があるときだけ。無ければ一言なので畳む物が無い）
+ */
+function TimelinePanel({
+  section,
+  level,
+  titleId,
+  mode,
+  composer,
+}: {
+  section: Section;
+  level: Level;
+  titleId: string;
+  mode: PageMode;
+  composer: React.ReactNode;
+}) {
+  const H = level === 1 ? "h2" : "h3";
+  const items = recordItems(timelineOf(section));
+  const head = (
+    <H id={titleId} className="text-[1rem] leading-6 font-bold">
+      {section.label}
+    </H>
+  );
+  const between = composer ? <div className="mt-1.5">{composer}</div> : null;
+  return (
+    <section aria-labelledby={titleId} className="mb-2 break-inside-avoid rounded-lg bg-panel px-3 py-2.5 text-sm" data-section="timeline">
+      {items.length === 0 ? (
+        <>
+          <div className="flex items-baseline gap-2">
+            {head}
+            <span className="text-xs text-muted" data-timeline-empty>
+              {FOLD_LABELS.empty}
+            </span>
+          </div>
+          {between}
+        </>
+      ) : (
+        <Fold
+          // 災害モードに切り替わったら開き直す（平時の畳みを持ち越さない）
+          key={mode}
+          id={`${titleId}-list`}
+          name="timeline"
+          head={head}
+          count={items.length}
+          between={between}
+          defaultOpen={mode === "disaster"}
+          summary={<TimelineSummary item={items[items.length - 1]} />}
+        >
+          <Timeline items={items} />
+        </Fold>
+      )}
+    </section>
   );
 }
 
@@ -107,6 +190,7 @@ function SectionPanel({
 
 /** 欄の行は 1 つの dl に、経過はそのまま。行の詳細の「全部」（T132、components/list/FullDetail.tsx）も同じこれで面を描く */
 export function Blocks({ blocks }: { blocks: readonly Block[] }) {
+  // 経過は人が書き足す記録だけ（台帳を直した跡は Timeline が外す。T143）
   const timeline = blocks.find((b) => b.type === "timeline");
   if (timeline?.type === "timeline") return <Timeline items={timeline.items} />;
   return (
