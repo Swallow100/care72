@@ -75,6 +75,7 @@ import { castFactsMap } from "./cast-facts.ts";
 import { loadPersonaSources } from "./persona.ts";
 import { FREE_TEXT_MAX, isCatalogAction, isOwnEffect } from "./action-catalog.ts";
 import { dialogueFields, pushAsks, type TalkLine } from "./dialogue.ts";
+import { pushTold } from "./person-facts.ts";
 import { DRILL_END_MINUTE, nextEventMinute, type ClockMark, type ClockTo } from "./clock.ts";
 import { CLOCK_END_LABEL, clockOver, isFreeWay } from "./action-terms.ts";
 
@@ -1402,6 +1403,8 @@ export function replayState(
 export function applyCallTalk(state: DrillState, person: string, talk: ReadonlyArray<TalkLine>): DrillState {
   let world = state.world;
   for (const l of talk) if (l.who === "them" && l.asks) world = pushAsks(world, person, l.asks, l.minute);
+  // ケアマネに言われた事（T130 の帳面。往復を足す口と同じ）
+  world = pushTold(world, person, talk);
   const minute = clampClock(state, Math.max(state.minute, ...talk.map((l) => l.minute)));
   return { ...state, world, minute };
 }

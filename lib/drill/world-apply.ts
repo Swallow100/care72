@@ -145,6 +145,11 @@ export type ApplyContext = {
    * 実在の人の仮名に結末を付けないため。無ければ当てる（デモ事業所）
    */
   endings?: boolean;
+  /**
+   * 業者の巡回（届く物）を当ててよいか（T130、lib/drill/person-facts.ts の supplyAllowed: その人への手か計画の業者の約束）。
+   * 無ければ前と同じ（当てる）
+   */
+  supplyOk?: (person: string) => boolean;
 };
 
 // ---------- 値を読む ----------
@@ -366,6 +371,8 @@ function buildEvent(e: WorldStep["events"][number], ctx: ApplyContext): Built[] 
       const p = e.target.trim() ? personOfAlias(e.target, ctx.key) : null;
       const f = p ? ctx.facts.get(p) : undefined;
       if (!p || !f || ctx.ended.has(p) || !(f.categories.includes("oxygen") || f.categories.includes("ventilator"))) return [];
+      // 手も計画も無い人に、業者が自然に来て酸素・電池が届く形にしない（T130。評価の 3 回目の審査役の根拠）
+      if (ctx.supplyOk && !ctx.supplyOk(p)) return [];
       const raw = e.value.replace(/[^\d.]/g, "");
       const after = afterOf(EVENT_CATALOG.vendor_round, raw ? Number(raw) : undefined);
       if (after == null) return [];
