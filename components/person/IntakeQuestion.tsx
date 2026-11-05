@@ -4,13 +4,15 @@
 // 1 問で分かるように、何を聞くか（大きく）・なぜ要るか・答えの例（小さく）を並べる（T45）。
 // 答えは選択肢・数字・文字で、そのまま保存する（手の入力）。決まった形の無い問いは文で答えて抽出（AI）。
 // 「不明」「無回答」は空欄の理由として残し、「次回」はこの回は飛ばして未聴取として残す（どれも計画に「未確認」）。
+// 選ぶ問い（1 つ・いくつでも・夜間支援）には補足の文字の欄（T150）。保存するボタンのすぐ上に置き、選んだ値と一緒に保存する
+// （1 つ選ぶ問いは今どおり押すとすぐ保存なので、欄は選択肢の上。打ってから押す）。補足だけでは保存しない。行き先は lib/intake/answer.ts の noteChange。
 
 import { useState } from "react";
 import { DeclinedIcon, LaterIcon, SaveIcon, UnknownIcon } from "@/components/ui/Icon";
 import { SplitIcon } from "./icons";
 import type { PendingStatus } from "@/lib/db/types";
 import { CLOCK_UNIT_LABELS, INTAKE_LABELS, PENDING_STATUS_LABELS, SECTION_LABELS } from "@/lib/labels";
-import { answerChanges, type AnswerInput } from "@/lib/intake/answer";
+import { answerChanges, NOTE_MAX, type AnswerInput } from "@/lib/intake/answer";
 import { intakeField } from "@/lib/intake/fields";
 import type { Question } from "@/lib/intake/ask";
 import type { IntakeChange } from "@/lib/intake/changes";
@@ -53,6 +55,8 @@ function QuestionBody({ q, left, busy, aiReady, onAnswer, onSkip, onFree }: Omit
   // 初めの値は経路地図の見込みの分（T117。人が確かめて保存する）
   const [value, setValue] = useState(q.answer.kind === "int" && q.answer.suggest != null ? String(q.answer.suggest) : "");
   const [picked, setPicked] = useState<string[]>([]);
+  // 選ぶ問いの補足（T150）
+  const [note, setNote] = useState("");
   const [bad, setBad] = useState(false);
   const submit = (input: AnswerInput) => {
     const changes = answerChanges(q, input);
@@ -95,18 +99,30 @@ function QuestionBody({ q, left, busy, aiReady, onAnswer, onSkip, onFree }: Omit
                 </label>
               ))}
             </div>
-            <button type="button" className={BTN_MAIN} data-press="overlay" disabled={busy || picked.length === 0} onClick={() => submit({ kind: "choice", values: picked })}>
+            <NoteInput label={q.label} value={note} onChange={setNote} disabled={busy} />
+            <button type="button" className={BTN_MAIN} data-press="overlay" disabled={busy || picked.length === 0} onClick={() => submit({ kind: "choice", values: picked, note })}>
               <SaveIcon aria-hidden className="size-3.5 shrink-0" />
               {INTAKE_LABELS.save}
             </button>
           </div>
         ) : (
-          <div className="flex flex-wrap gap-1">
-            {a.options.map((o) => (
-              <button key={o.value} type="button" className={`${BTN} text-sm`} data-press disabled={busy} onClick={() => submit({ kind: "choice", values: [o.value] })}>
-                {o.label}
-              </button>
-            ))}
+          <div className="space-y-1">
+            <NoteInput label={q.label} value={note} onChange={setNote} disabled={busy} />
+            <div className="flex flex-wrap gap-1">
+              {a.options.map((o) => (
+                <button
+                  key={o.value}
+                  type="button"
+                  className={`${BTN} text-sm`}
+                  data-press
+                  data-choice={o.value}
+                  disabled={busy}
+                  onClick={() => submit({ kind: "choice", values: [o.value], note })}
+                >
+                  {o.label}
+                </button>
+              ))}
+            </div>
           </div>
         ))}
 
@@ -151,13 +167,14 @@ function QuestionBody({ q, left, busy, aiReady, onAnswer, onSkip, onFree }: Omit
               ))}
             </div>
           )}
+          <NoteInput label={q.label} value={note} onChange={setNote} disabled={busy} />
           <div className="flex gap-1">
-            <button type="button" className={BTN_MAIN} data-press="overlay" disabled={busy || picked.length === 0} onClick={() => submit({ kind: "night", contactIds: picked })}>
+            <button type="button" className={BTN_MAIN} data-press="overlay" disabled={busy || picked.length === 0} onClick={() => submit({ kind: "night", contactIds: picked, note })}>
               <SaveIcon aria-hidden className="size-3.5 shrink-0" />
               {INTAKE_LABELS.save}
             </button>
             {a.contacts.length > 0 && (
-              <button type="button" className={`${BTN} text-sm`} data-press disabled={busy} onClick={() => submit({ kind: "night", contactIds: [] })}>
+              <button type="button" className={`${BTN} text-sm`} data-press disabled={busy} onClick={() => submit({ kind: "night", contactIds: [], note })}>
                 なし
               </button>
             )}
@@ -198,5 +215,28 @@ function QuestionBody({ q, left, busy, aiReady, onAnswer, onSkip, onFree }: Omit
         </button>
       </div>
     </div>
+  );
+}
+
+/**
+ * 選ぶ問いの補足の文字の欄（T150）。1 行で、欄の名前は読み上げにも渡す。Enter では保存しない（選ぶのはボタン）。
+ * 打った文は選んだ値と一緒に保存され、手段・支援内容・世帯は書き足しの欄へ、ほかは特記へ（lib/intake/answer.ts）
+ */
+function NoteInput({ label, value, onChange, disabled }: { label: string; value: string; onChange: (v: string) => void; disabled: boolean }) {
+  return (
+    <label className="flex items-center gap-1.5" data-intake="note">
+      <span className="shrink-0 text-xs text-muted">{INTAKE_LABELS.supplement}</span>
+      <input
+        className={INPUT}
+        value={value}
+        maxLength={NOTE_MAX}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") e.preventDefault();
+        }}
+        disabled={disabled}
+        aria-label={`${label} ${INTAKE_LABELS.supplement}`}
+      />
+    </label>
   );
 }

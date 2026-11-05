@@ -20,8 +20,11 @@ export type QuestionGroup = "medical" | "night" | "other" | "form";
 export type { ContactPart };
 
 export type QuestionAnswer =
-  /** 選択肢（enum・はい／いいえ）。multi は支援の内容のような複数 */
-  | { kind: "choice"; field: string; options: ReadonlyArray<{ value: string; label: string }>; multi: boolean }
+  /**
+   * 選択肢（enum・はい／いいえ）。multi は支援の内容のような複数。
+   * note は補足の文字の入る書き足しの欄（T150。手段 → 手段補記など、その欄が空のときだけ）。null なら補足は特記へ
+   */
+  | { kind: "choice"; field: string; options: ReadonlyArray<{ value: string; label: string }>; multi: boolean; note: string | null }
   | { kind: "text"; field: string }
   | { kind: "list"; field: string }
   /** suggest は入力の初めの値（経路地図の見込みの分。T117）。人が確かめて保存する */
@@ -382,14 +385,16 @@ const BOOL_OPTIONS = [
   { value: "false", label: "なし" },
 ] as const;
 
-function fieldAnswer(f: IntakeField): QuestionAnswer {
+function fieldAnswer(f: IntakeField, ledger: Ledger): QuestionAnswer {
+  // 補足の入る書き足しの欄（T150）。もう埋まっていれば上書きしないので、補足は特記へ
+  const note = f.note && !isFilled(ledgerValue(ledger, f.note)) ? f.note : null;
   switch (f.shape.type) {
     case "enum":
-      return { kind: "choice", field: f.key, options: f.shape.options, multi: false };
+      return { kind: "choice", field: f.key, options: f.shape.options, multi: false, note };
     case "enumList":
-      return { kind: "choice", field: f.key, options: f.shape.options, multi: true };
+      return { kind: "choice", field: f.key, options: f.shape.options, multi: true, note };
     case "bool":
-      return { kind: "choice", field: f.key, options: BOOL_OPTIONS, multi: false };
+      return { kind: "choice", field: f.key, options: BOOL_OPTIONS, multi: false, note };
     case "int":
       return { kind: "int", field: f.key, unit: f.shape.unit };
     case "text":
@@ -539,7 +544,7 @@ export function questionQueue(rows: PersonPageRows): Question[] {
         // 表に無い欄（足したのに文を書き忘れた欄）は欄の名前だけ。テストで止める
         ...(FIELD_QUESTIONS[f.key] ?? { text: f.label, why: "", example: "" }),
         focus: f.label,
-        answer: fieldAnswer(f),
+        answer: fieldAnswer(f, ledger),
       });
     }
   }
@@ -620,7 +625,7 @@ function formQuestions(ledger: Ledger, contacts: ReadonlyArray<Contact>): Questi
   for (const key of FORM_FIELD_ORDER) {
     const f = intakeField(key);
     if (!f || !when[key] || isFilled(ledgerValue(ledger, key)) || answered(ledger, (x) => x === key)) continue;
-    const answer = fieldAnswer(f);
+    const answer = fieldAnswer(f, ledger);
     const suggest = key === "evacuation.destination1Minutes" ? routeMinutes(ledger, 1) : key === "evacuation.destination2Minutes" ? routeMinutes(ledger, 2) : null;
     out.push({
       key,

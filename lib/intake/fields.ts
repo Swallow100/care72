@@ -66,6 +66,11 @@ export type IntakeField = {
    * 様式の欄のために置き場を作った欄（T117）。問いは今の決まり（医療 → 夜間 → その他）の後ろに、様式の欄の順で出す（lib/intake/ask.ts）
    */
   form?: true;
+  /**
+   * この欄の書き足しの欄（T150）。選ぶ問いに打った補足は、ここが空ならここへ、埋まっていれば特記（ledger.notes）へ入る（lib/intake/answer.ts）。
+   * 無い欄の補足は特記へ、欄の名前を頭に付けて
+   */
+  note?: string;
 };
 
 const opts = <T extends string>(values: readonly T[], labels: Record<T, string>): Options =>
@@ -103,6 +108,7 @@ export const INTAKE_FIELDS: readonly IntakeField[] = [
     section: "evacuation",
     label: "手段",
     shape: { type: "enum", options: opts(TRANSPORT_KINDS, TRANSPORT_KIND_LABELS) },
+    note: "evacuation.transport",
     hint: "避難の手段。foot 徒歩・wheelchair 車いす・family_car 家族の車・pickup 送迎（事業所・施設の車）・other その他。移動手段が書かれていればいつもこれを選ぶ。選べない書き方（誰と何で、など）は other",
   },
   {
@@ -117,6 +123,7 @@ export const INTAKE_FIELDS: readonly IntakeField[] = [
     section: "evacuation",
     label: "支援内容",
     shape: { type: "enumList", options: opts(SUPPORT_KINDS, SUPPORT_KIND_LABELS) },
+    note: "evacuation.supportNote",
     hint: "支援者がすること。call 声掛け・guide 誘導・assist 移動介助・other その他",
   },
   { key: "evacuation.supportNote", section: "evacuation", label: "支援補記", shape: { type: "text" }, hint: "支援の内容の書き足し" },
@@ -212,7 +219,7 @@ export const INTAKE_FIELDS: readonly IntakeField[] = [
   { key: "local.orgPhone", section: "people", label: "組織電話", shape: { type: "text", max: 20 }, ai: false, tel: true, form: true },
   // 基本
   { key: "basic.sex", section: "basic", label: "性別", shape: { type: "enum", options: opts(SEXES, SEX_LABELS) } },
-  { key: "basic.household", section: "basic", label: "世帯", shape: { type: "enum", options: opts(HOUSEHOLDS, HOUSEHOLD_LABELS) } },
+  { key: "basic.household", section: "basic", label: "世帯", shape: { type: "enum", options: opts(HOUSEHOLDS, HOUSEHOLD_LABELS) }, note: "basic.householdNote" },
   {
     key: "basic.householdNote",
     section: "basic",

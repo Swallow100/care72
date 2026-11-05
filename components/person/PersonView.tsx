@@ -8,14 +8,13 @@
 // 台帳を直した跡（入力・同意・台帳作成など。item.history）は区分の並びの下に「変更履歴」として畳んで置く（components/person/ChangeHistory）。
 
 import { RouteMapPanel } from "@/components/map/RouteMap";
-import { ButtonLink } from "@/components/ui/Button";
-import { PaperIcon, PrintIcon } from "@/components/ui/Icon";
 import { StateText } from "@/components/ui/Tag";
-import type { Block, ClockView, DocumentView, PersonView as View, Section } from "@/lib/person";
+import type { Block, ClockView, PersonView as View, Section } from "@/lib/person";
 import { BLANK_LABELS } from "@/lib/labels";
 import { isEditSection, type EditData } from "@/lib/intake/edit";
 import { PendingMark, RowItem, type Level } from "./parts";
 import { ClockLines } from "./ClockLines";
+import { DocumentSection } from "./DocumentSection";
 import { SectionEdit } from "./SectionEdit";
 import { PersonHead } from "./PersonHead";
 import { Timeline, TimelineSummary, recordItems } from "./Timeline";
@@ -221,7 +220,8 @@ export function Blocks({ blocks }: { blocks: readonly Block[] }) {
           case "clocks":
             return <ClocksRow key="clocks" label={b.label} clocks={b.clocks} quiet={b.quiet === true} />;
           case "documents":
-            return b.documents.map((d) => <DocumentRow key={d.key} doc={d} />);
+            // 書類の段は計画書・医療要約・本人の 1 枚を先に、ほかと説明は畳む（T150、components/person/DocumentSection）
+            return <DocumentSection key="documents" documents={b.documents} />;
           case "timeline":
             return <Timeline key={i} items={b.items} />;
         }
@@ -231,43 +231,6 @@ export function Blocks({ blocks }: { blocks: readonly Block[] }) {
 }
 
 const LABEL_COL = "grid grid-cols-[4.5rem_minmax(0,1fr)] gap-x-2";
-
-/** 印刷の行き先。紙面の画面を ?print=1 で開くと、開いてすぐ印刷の画面が出る（components/ui/PrintButton の auto） */
-function printHref(href: string): string {
-  return `${href}${href.includes("?") ? "&" : "?"}print=1`;
-}
-
-/**
- * 書類の行。紙面ができた書類（href あり）は「表示」と「印刷」を並べ、1 押しで印刷の画面まで行ける。
- * まだの物は「準備中」
- */
-function DocumentRow({ doc }: { doc: DocumentView }) {
-  return (
-    <div className={`${LABEL_COL} items-center`} data-field={`documents.${doc.key}`}>
-      <dt className="text-xs text-muted">{doc.label}</dt>
-      <dd className={doc.href ? "flex flex-wrap gap-1" : "text-xs text-muted"}>
-        {doc.href ? (
-          <>
-            <ButtonLink href={doc.href} kind="plain" size="sm" icon={PaperIcon}>
-              {doc.status}
-            </ButtonLink>
-            <ButtonLink href={printHref(doc.href)} kind="plain" size="sm" icon={PrintIcon} data-print-link={doc.key}>
-              印刷
-            </ButtonLink>
-          </>
-        ) : (
-          doc.status
-        )}
-      </dd>
-      {/* 何の書類か（正式な名前・誰が誰に出す・版。lib/forms/catalog.ts） */}
-      {doc.about && (
-        <dd className="col-start-2 text-xs text-muted" data-document-about={doc.key}>
-          {doc.about}
-        </dd>
-      )}
-    </div>
-  );
-}
 
 /**
  * 時計。区分（機器・物品・薬・状態）の見出しで束ね、1 つの時計を 2 行で: 物の名前ときっかけから長さ（「停電から 2 時間」）、
