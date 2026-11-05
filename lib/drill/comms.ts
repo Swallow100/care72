@@ -32,6 +32,9 @@ export type Home = {
 };
 export type Homes = Readonly<Record<string, Home>>;
 
+/** 事業所の区域 1 つ（offices.hazards の写し。T125）。深さは洪水の区域だけ（無ければ null） */
+export type OfficeZone = { kind: HazardKind; depthM: number | null };
+
 /** 台帳から家を写す。連絡手段が何も書かれていなければ固定電話あり・携帯なし（前からの台帳の多く） */
 export function homeOf(ledger: Pick<Ledger, "basic" | "evacuation">): Home {
   const m = ledger.basic.contactMeans ?? {};

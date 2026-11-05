@@ -4,7 +4,7 @@
 // Claude を呼ばない。色と連絡順（lib/triage）には使わない。
 
 import type { HazardKind } from "../db/types.ts";
-import { homeInOutage, type Homes } from "./comms.ts";
+import { homeInOutage, type Homes, type OfficeZone } from "./comms.ts";
 import type { DrillIncident } from "./incident-types.ts";
 import type { WorldState } from "./scenarios.ts";
 
@@ -14,7 +14,7 @@ export type IncidentTargets = { persons: string[]; office: boolean };
 export type TargetContext = {
   participants: ReadonlyArray<string>;
   homes?: Homes;
-  officeZones?: ReadonlyArray<HazardKind>;
+  officeZones?: ReadonlyArray<OfficeZone>;
   /** 出来事を当てる前の世界（停電の復旧は前の停電の範囲で見る） */
   world?: Pick<WorldState, "outage">;
 };
@@ -27,7 +27,7 @@ export const FLOOD_DEPTH_M = 3;
 /** 区域（台帳のハザードの種類）にいる参加者と、事業所がその区域か */
 function inZones(ctx: TargetContext, zones: ReadonlyArray<HazardKind>): IncidentTargets {
   const persons = ctx.participants.filter((p) => (ctx.homes?.[p]?.zones ?? []).some((z) => zones.includes(z.kind)));
-  return { persons, office: (ctx.officeZones ?? []).some((z) => zones.includes(z)) };
+  return { persons, office: (ctx.officeZones ?? []).some((z) => zones.includes(z.kind)) };
 }
 
 const everyone = (ctx: TargetContext): IncidentTargets => ({ persons: [...ctx.participants], office: true });
@@ -51,7 +51,7 @@ export function targetsOf(e: Pick<DrillIncident, "change" | "person">, ctx: Targ
     case "flood": {
       // 川の氾濫は洪水の区域の深い所（想定の表の文「浸水 3 m の地区で浸水」と停電の地区と同じ線。lib/drill/area-targets.ts の FLOOD_TARGET_DEPTH_M）
       const persons = ctx.participants.filter((p) => (ctx.homes?.[p]?.zones ?? []).some((z) => z.kind === "flood" && (z.depthM ?? 0) >= FLOOD_DEPTH_M));
-      return { persons, office: (ctx.officeZones ?? []).includes("flood") };
+      return { persons, office: (ctx.officeZones ?? []).some((z) => z.kind === "flood" && (z.depthM ?? 0) >= FLOOD_DEPTH_M) };
     }
     case "note":
       // 土砂の警戒は土砂の区域（と、差し込みが指した人）。ほかの話題（給水所・情報の混乱・自分の身の回り）は全体

@@ -11,7 +11,7 @@
 // 色と順位はここで決めない（lib/triage だけ）。
 
 import type { DrillScenario, DrillStatus, HazardKind, Ledger } from "../db/types.ts";
-import type { Homes } from "./comms.ts";
+import type { Homes, OfficeZone } from "./comms.ts";
 import type { DisasterSituation } from "../disaster/state.ts";
 import {
   applyEvent,
@@ -181,7 +181,7 @@ export type DrillState = {
    */
   homes?: Homes;
   /** 事業所の区域（T125。offices.hazards の写し）。区域の出来事の間の職員の退避に使う。無ければ区域なし */
-  officeZones?: HazardKind[];
+  officeZones?: OfficeZone[];
 };
 
 /** 1 刻みで起きた事。保存（lib/drill/db.ts）はこれを drill_events と signals に書く */
@@ -406,7 +406,8 @@ export function initialState(
     ...(Object.keys(opts).length > 0 ? { options: opts } : {}),
     ...(Object.keys(cast).length > 0 ? { cast: { ...cast } } : {}),
     ...(place.homes && Object.keys(place.homes).length > 0 ? { homes: place.homes } : {}),
-    ...(place.officeZones && place.officeZones.length > 0 ? { officeZones: [...place.officeZones] } : {}),
+    // 事業所の区域は分かっていれば空でも持つ（区域なしと「分からない」を分ける。T128 の「事業所 対象外」）
+    ...(place.officeZones ? { officeZones: place.officeZones.map((z) => ({ ...z })) } : {}),
   };
 }
 

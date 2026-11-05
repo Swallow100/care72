@@ -21,6 +21,7 @@ import {
 import { hourSpanText, hourText } from "@/lib/drill/time-text";
 import { arrivalPublic, MARK_REACH, scheduledPublic } from "@/lib/drill/timeline";
 import { areaTargetOf, familyName, TARGET_LABELS, type AreaPerson, type AreaTarget } from "@/lib/drill/area-targets";
+import type { OfficeZone } from "@/lib/drill/comms";
 
 const BAD = "font-bold tone-check";
 
@@ -31,6 +32,7 @@ export function DamagePanel({
   names,
   hidePrivate = false,
   people,
+  office = null,
 }: {
   kind: DrillKind;
   world: WorldState;
@@ -41,9 +43,11 @@ export function DamagePanel({
   hidePrivate?: boolean;
   /** 参加者の台帳のハザードと町（T128。区域の出来事の対象）。無ければ対象を出さない */
   people?: ReadonlyArray<AreaPerson>;
+  /** 事業所の区域（T125。offices.hazards の写し）。区域の出来事で「事業所 対象・対象外」。無ければ全域の停電のほか出さない */
+  office?: ReadonlyArray<OfficeZone> | null;
 }) {
   const o = world.outage;
-  const target = (c: WorldChange) => (people ? <Targets t={areaTargetOf(c, people)} names={names} total={people.length} /> : null);
+  const target = (c: WorldChange) => (people ? <Targets t={areaTargetOf(c, people, office)} names={names} total={people.length} /> : null);
   const scheduled = [...(world.scheduled ?? [])].filter((x) => !hidePrivate || scheduledPublic(x)).sort((a, b) => a.at - b.at);
   const coming = (world.arrivals ?? [])
     .filter((a) => !a.arrived && (!hidePrivate || arrivalPublic(a)))
