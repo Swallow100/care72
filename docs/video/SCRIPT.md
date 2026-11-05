@@ -34,7 +34,7 @@
 | N16 | 1:20.2–1:24.6 | 台帳を読み、本人や家族になりきって動きます。 | Each one reads the record and plays the client or a family member. |
 | N17 | 1:24.8–1:28.0 | 72 時間を早送りで進めると、 | Fast-forward through the 72 hours, and... |
 | N18 | 1:33.2–1:38.8 | ケアマネージャーは本番と同じ画面で、電話、出向く、避難所に頼む。 | The care manager responds on the same screen used in a real disaster: call, visit, ask a shelter. |
-| N19 | 1:39.0–1:47.6 | 終わると Opus が対応の順を採点。透析先の確認が後回しだったと、出典つきで指摘しました。 | At the end, Opus scores the order of response. It pointed out, with sources, that checking the dialysis clinic came too late. |
+| N19 | 1:39.0–1:47.6 | 終わると Opus が対応の順を採点。山田さんの酸素の電池が切れるまでに手が届かなかったと、出典つきで指摘しました。 | At the end, Opus scores the order of response. Citing sources, it pointed out that help did not reach Ms. Yamada before her oxygen battery ran out. |
 | N20 | 1:48.3–1:52.3 | そして本番。大雨で、災害モードに入りました。 | Then the real thing. Heavy rain, and disaster mode is on. |
 | N21 | 1:52.5–1:56.0 | 娘さんのスマホには、赤と緑の 2 つだけ。 | Her daughter's phone shows just two buttons: red and green. |
 | N22 | 2:01.2–2:06.0 | 本人の答えが止まると、声で問いかけ、周りの音ごと録音します。 | If she stops answering, the app asks out loud and records the sound around her. |
