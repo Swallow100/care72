@@ -10,8 +10,8 @@ import type { EditSection } from "../intake/edit.ts";
 import type { ContactPart } from "../intake/contact-parts.ts";
 import type { MatsuyamaKey } from "./matsuyama.ts";
 
-/** 計画書の連絡先の欄の人（近親者＝緊急連絡先 1、避難支援等実施者 1・2） */
-export type FormContactRole = "kin" | "supporter1" | "supporter2";
+/** 計画書の連絡先の欄の人（近親者＝緊急連絡先 1、避難支援等実施者 1・2）。kin2 は緊急連絡先 2（添付の様式の欄、T135） */
+export type FormContactRole = "kin" | "kin2" | "supporter1" | "supporter2";
 
 /**
  * 欄の値の元の 1 つ。
@@ -114,8 +114,8 @@ export function formContactOf<C extends { id: string; kind: string; emergency_or
   role: FormContactRole,
 ): C | null {
   const hit =
-    role === "kin"
-      ? contacts.find((x) => x.emergency_order === 1)
+    role === "kin" || role === "kin2"
+      ? contacts.find((x) => x.emergency_order === (role === "kin" ? 1 : 2))
       : contacts.find((x) => x.supporter_order === (role === "supporter1" ? 1 : 2));
   return hit && hit.kind !== "self" ? hit : null;
 }
@@ -152,8 +152,17 @@ export function matsuyamaAskable(
   questionKeys: readonly string[],
   contacts: ReadonlyArray<Parameters<typeof formContactOf>[0][number]>,
 ): Set<MatsuyamaKey> {
-  const out = new Set<MatsuyamaKey>();
-  for (const [key, inputs] of Object.entries(MATSUYAMA_INPUTS) as Array<[MatsuyamaKey, readonly FormInput[]]>) {
+  return askableOf(MATSUYAMA_INPUTS, questionKeys, contacts);
+}
+
+/** 欄の元の表（欄の鍵 → 元）のうち、問いの列のどれかが元に当たる欄の鍵（計画書と添付の様式で同じ数え方。T135） */
+export function askableOf<K extends string>(
+  table: Partial<Record<K, readonly FormInput[]>>,
+  questionKeys: readonly string[],
+  contacts: ReadonlyArray<Parameters<typeof formContactOf>[0][number]>,
+): Set<K> {
+  const out = new Set<K>();
+  for (const [key, inputs] of Object.entries(table) as Array<[K, readonly FormInput[]]>) {
     if (inputs.some((input) => questionKeys.some((q) => inputAsks(input, q, contacts)))) out.add(key);
   }
   return out;

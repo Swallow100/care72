@@ -15,6 +15,7 @@ import { INPUT } from "@/components/person/intake-ui";
 import { Button, buttonClass } from "@/components/ui/Button";
 import { CloseIcon, EditIcon, SaveIcon } from "@/components/ui/Icon";
 import { intakeField } from "@/lib/intake/fields";
+import type { IntakeChange } from "@/lib/intake/changes";
 import { INTAKE_LABELS } from "@/lib/labels";
 import { draftKey, paperChanges, type PaperEditData, type PaperTarget } from "@/lib/forms/paper-edit";
 
@@ -76,8 +77,21 @@ function targetOf(n: HTMLElement, byKey: ReadonlyMap<string, PaperTarget>): Pape
   return null;
 }
 
-/** 欄の入力の窓。保存で台帳に入り、紙を読み直す */
-function EditWindow({ data, target, onClose }: { data: PaperEditData; target: PaperTarget; onClose: () => void }) {
+/**
+ * 欄の入力の窓。保存で台帳に入り、紙を読み直す。submit を渡せば保存はそちら（紙の上でその場で入れる画面の窓。T135。誰がいつの印も残す）。
+ * submit は失敗の言葉か null を返す
+ */
+export function EditWindow({
+  data,
+  target,
+  onClose,
+  submit,
+}: {
+  data: Pick<PaperEditData, "personId" | "version">;
+  target: PaperTarget;
+  onClose: () => void;
+  submit?: (changes: IntakeChange[]) => Promise<string | null>;
+}) {
   const router = useRouter();
   const ref = useRef<HTMLDialogElement>(null);
   const [draft, setDraft] = useState<Record<string, unknown>>(() =>
@@ -105,6 +119,16 @@ function EditWindow({ data, target, onClose }: { data: PaperEditData; target: Pa
     }
     setBusy(true);
     setError(null);
+    if (submit) {
+      const failed = await submit(changes);
+      setBusy(false);
+      if (failed) {
+        setError(failed);
+        return;
+      }
+      onClose();
+      return;
+    }
     const r = await postJson<{ ok: true; changed: number }>("/api/intake/save", {
       personId: data.personId,
       version: data.version,

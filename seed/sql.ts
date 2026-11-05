@@ -53,6 +53,9 @@ export const CLEAR_ORDER = [
   "third_party_provisions",
   "custody",
   "form9_rank_edits",
+  // 紙の手入れと事業所の画像（T135）。本人・事業所を指す
+  "form_entries",
+  "form_assets",
   "form_mappings",
   "disaster_state",
   "ai_calls",

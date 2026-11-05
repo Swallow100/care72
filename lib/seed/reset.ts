@@ -75,6 +75,9 @@ export const DEMO_CLEAR: Readonly<Record<Table, string | null>> = {
   third_party_provisions: `person_id IN (${PEOPLE})`,
   custody: `person_id IN (${PEOPLE})`,
   form9_rank_edits: `office_id = ${OFFICE} OR person_id IN (${PEOPLE})`,
+  // 紙の手入れと事業所の画像（T135）。画像の本体は R2 の forms/<事業所>/assets/（clearDemoFormPages が消す）
+  form_entries: `office_id = ${OFFICE} OR person_id IN (${PEOPLE})`,
+  form_assets: `office_id = ${OFFICE}`,
   form_mappings: `office_id = ${OFFICE}`,
   disaster_state: `office_id = ${OFFICE}`,
   ai_calls: null,

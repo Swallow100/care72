@@ -247,8 +247,11 @@ describe("migration 0025 は前からある審査員の追加・再発行に印�
     const old = new DatabaseSync(":memory:");
     old.exec("PRAGMA foreign_keys = ON;");
     for (const n of names.filter((x) => x < "0025_")) old.exec(readFileSync(new URL(n, dir), "utf8"));
+    const has = (t: string) => old.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(t) !== undefined;
     for (const s of seedStatements()) {
-      // 種は 0025 の前の形でも入る（judge_made の列を書かない）
+      // 種は 0025 の前の形でも入る（judge_made の列を書かない）。あとの migration で足した表（0031 の紙の手入れ、T135）を消す文は流さない
+      const del = /^DELETE FROM (\w+);$/.exec(s);
+      if (del && !has(del[1])) continue;
       old.exec(s);
     }
     const add = (id: string, by: string, kind: string, change: string | null) => {
