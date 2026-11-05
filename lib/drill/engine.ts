@@ -536,8 +536,12 @@ export async function step(
   };
   if (isVirtual(state.scenario)) return virtualStep(state, hooks, { index, hour, last, world, fixed, members, directorInput });
 
-  // 監督（Opus、T19）の差し込み。1 刻みに 1 回。無ければ・失敗したら差し込みなし（表の固定の状況だけで進む）
-  const out: DirectorEvent[] | DirectorResult = hooks.director
+  // 監督（Opus、T19）の差し込み。1 刻みに 1 回。無ければ・失敗したら差し込みなし（表の固定の状況だけで進む）。
+  // 最後の刻み（72 時間）は、手の返事の言い換えを頼むときだけ呼ぶ（T123。72 時間の新しい出来事には誰も応えられず、評価の 2 回目の審査役も
+  // 「遅すぎる」と挙げた。10 分版の最後の進めの待ちも監督の分だけ縮む）
+  const wantDirector = !!hooks.director && (index < last || replies.length > 0);
+  // 10 分版は監督 → 本人役の順のまま（T89。0・3・12・72 時間の 4 刻みなので、並べると 12 時間の差し込みに 72 時間で初めて応えることになる）
+  const out: DirectorEvent[] | DirectorResult = wantDirector
     ? await safely(
         () =>
           hooks.director!({
@@ -555,12 +559,22 @@ export async function step(
         [] as DirectorEvent[],
       )
     : [];
-  const inserted = directorIncidents(Array.isArray(out) ? out : (out?.events ?? []), members, hour);
+  // 監督の差し込みも変わり方の決まり（T121、lib/drill/state-rules.ts）で見る（T123。10 分版と前からある訓練の道は決まりの外だった）
+  const raw = directorIncidents(Array.isArray(out) ? out : (out?.events ?? []), members, hour);
+  const table = tableOf(state);
+  // 刻みの道は予定の出来事を時刻で起こさない（fireScheduled は連続の時計だけ）ので、早すぎる再開は後ろに回さず捨てる
+  const screened = screenIncidents(world, raw, {
+    origin: "ai",
+    minute: Math.round(hour * 60),
+    ahead: tableAheadOf(table.events, Math.round(hour * 60), table.rows),
+    noDefer: true,
+  });
+  const inserted = screened.kept;
+  world = screened.world;
   const asked = new Set(replies.map((r) => r.id));
   const words = (Array.isArray(out) ? [] : (out?.words ?? [])).filter(
     (w): w is ReplyWords => typeof w?.id === "string" && asked.has(w.id) && typeof w.text === "string" && w.text.trim() !== "",
   );
-  world = inserted.reduce((w, e) => applyEvent(w, e, e.at), world);
   const incidents = [...fixed, ...inserted];
 
   // 本人ごとの 1 刻み。ペルソナ（T18）が無ければ表の固定の安否。ペルソナが投げたら連絡なし
@@ -742,7 +756,10 @@ export async function advance(
   const to = Math.min(Math.round(toMinute), DRILL_END_MINUTE);
   // 手の分（T110）は今の時計まで（AI を動かした最後の区切りより後のときだけ）。ほかは今の時計より後
   const closing = opts.acts === true && !first && to === Math.round(state.minute) && to > aiAtOf(state);
-  if (first ? to !== 0 : to <= state.minute && !closing) throw new RangeError(`進める時刻が違う: ${toMinute}`);
+  // 72 時間の区切り（T123）。手と通話の往復の所要で時計が先に 72 時間に着いても、どの進め方でも 72 時間の区切りを作って終わる
+  // （評価の 2 回目で、時計が 72 時間・区切りがその手前のまま、進める・手が全部「進める時刻が違う」で断られ終わらなかった）
+  const ending = !first && to === DRILL_END_MINUTE && lastCutOf(state) < DRILL_END_MINUTE;
+  if (first ? to !== 0 : to <= state.minute && !closing && !ending) throw new RangeError(`進める時刻が違う: ${toMinute}`);
   const silent = opts.policy === "silent";
   const from = lastCutOf(state);
   const index = state.step + 1;
@@ -764,7 +781,8 @@ export async function advance(
   // 変わり方の決まり（T121、lib/drill/state-rules.ts）。表の出来事は「もう起きている」の門だけ、予定の出来事は時刻が来たときの門。
   // 外した物は区切りに残さない（保存した区切りから作り直しても同じ世界）
   const dueSet = new Set<DrillIncident>(due);
-  const ahead = tableAheadOf(table.events, to);
+  // 表の行がこのあといる所を決める人も（T123）
+  const ahead = tableAheadOf(table.events, to, table.rows);
   const screened = screenIncidents(settleWorld(book, to), sorted, { origin: "table", originOf: (e) => (dueSet.has(e) ? "scheduled" : "table") });
   const happened = screened.kept;
   let world = screened.world;
@@ -797,8 +815,13 @@ export async function advance(
   // 2. 監督（仮想は世界）
   const soft = softReached(counts);
   const gap = state.directorAt === undefined ? Infinity : to - state.directorAt;
+  // 固定の筋の 72 時間の区切りは監督を呼ばない（T123。10 分版の最後の刻みと同じ。仮想の世界は結末を決めるので呼ぶ）
+  const finalCut = to >= DRILL_END_MINUTE && !virtual;
   const wantDirector =
-    !capped && counts.director < DIRECTOR_DRILL_MAX && (happened.length > 0 || (!soft && (gap >= DIRECTOR_GAP_MINUTES || opts.next === true)));
+    !capped &&
+    !finalCut &&
+    counts.director < DIRECTOR_DRILL_MAX &&
+    (happened.length > 0 || (!soft && (gap >= DIRECTOR_GAP_MINUTES || opts.next === true)));
   const budget = Math.min(budgetOf(from, to), DIRECTOR_MAX);
   const actions = withoutMemo(state.actions);
   const directorInput: DirectorInput = {
@@ -883,7 +906,8 @@ export async function advance(
       if (a.person && a.result && a.result.atMinute > since(a.person) && a.result.atMinute <= to && actionReaches(a)) give(a.person, "action");
     }
     for (const a of [...(world.arrivals ?? []), ...(world.dispatched ?? [])]) {
-      if (a.arrive > since(a.person) && a.arrive <= to) give(a.person, "action");
+      // 着いた人だけ（T123。家の前の道が通れず待っている人は、着いた区切りで）
+      if (a.arrived && a.arrive > since(a.person) && a.arrive <= to) give(a.person, "action");
     }
     for (const e of incidents) for (const p of incidentPersons(e)) give(p, "incident");
     for (const p of Object.keys(touched)) if (!reasons.has(p)) give(p, "incident");

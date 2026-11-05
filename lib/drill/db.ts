@@ -75,7 +75,7 @@ import { loadPersonaSources } from "./persona.ts";
 import { FREE_TEXT_MAX, isCatalogAction } from "./action-catalog.ts";
 import { dialogueFields } from "./dialogue.ts";
 import { DRILL_END_MINUTE, nextEventMinute, type ClockMark, type ClockTo } from "./clock.ts";
-import { isFreeWay } from "./action-terms.ts";
+import { CLOCK_END_LABEL, clockOver, isFreeWay } from "./action-terms.ts";
 
 /** 訓練を開ける範囲。ケアマネの役だけ（審査員のケアマネの役も）。事業所と担当一覧の持ち主 */
 export type DrillScope = { officeId: string; careManagerId: string; accountId: string | null };
@@ -874,7 +874,9 @@ export type FreeReadRequest = { person: string | null; text: string };
 
 export type FreeReadResult =
   | { ok: true; plan: FreePlan }
-  | { ok: false; error: "not_found" | "conflict" | "ended" | "invalid" };
+  | { ok: false; error: "not_found" | "conflict" | "ended" | "invalid" }
+  /** 連続の時計が 72 時間に着いた後（T123。label は理由） */
+  | { ok: false; error: "blocked"; label: string };
 
 /**
  * 自由対応を打つ前に読み替える（T110。POST /api/drill/[id]/free）。読み替え（plan。Claude を呼ぶのはここの 1 回）を drills.world の上の段に
@@ -898,6 +900,8 @@ export async function readFreeDraft(
   if (req.person !== null && !before.participants.includes(req.person)) return { ok: false, error: "invalid" };
   const text = req.text.trim();
   if (text === "" || [...text].length > FREE_TEXT_MAX) return { ok: false, error: "invalid" };
+  // 72 時間に着いた後は読み替えない（T123。打てない手のために Claude を呼ばない）
+  if (clockOver(before)) return { ok: false, error: "blocked", label: CLOCK_END_LABEL };
   const made = await plan(before, { text, person: req.person, contacts: await freeContacts(db, scope.officeId, req.person) });
   const next: DrillState = {
     ...before,

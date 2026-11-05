@@ -16,7 +16,7 @@ import type { ClockForDetail, ContactForDetail, SignalForDetail } from "../list/
 import type { TriageSignal } from "../triage/index.ts";
 import { clockOfRow, heardSignalId, loadDrillRow, loadTicks, participantsOf, replayState, undoableAct, type DrillScope } from "./db.ts";
 import { callsLeft } from "./clock.ts";
-import { termsFor, type ActionTerm } from "./action-terms.ts";
+import { clockOver, termsFor, type ActionTerm } from "./action-terms.ts";
 import { busyOf, type BusyView } from "./busy.ts";
 import { drillClocks } from "./director.ts";
 import { drillSituation, nowHour, simAt, type ActionRecord, type DrillState, type HeardSignal, type Tick } from "./engine.ts";
@@ -249,7 +249,8 @@ export async function loadDrillScreen(
     fiction: fictionKindOf(scope.officeId),
     busy: busyOf(state, { on: clock.clock, aiAt: clock.aiAt }),
     terms:
-      row.status === "running" && shown === row.step && state.options?.terms === true
+      // 72 時間に着いた後（T123）は決まりを選ばない訓練も、どの手も押せない印を出す
+      row.status === "running" && shown === row.step && (state.options?.terms === true || clockOver(state))
         ? Object.fromEntries(["", ...participants].map((p) => [p, termsFor(state, p || null)]))
         : null,
   };

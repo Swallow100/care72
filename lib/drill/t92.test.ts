@@ -631,29 +631,24 @@ describe("監督を通しで（偽の Opus・地震想定）", () => {
       s = r.state;
       ticks.push(r.tick);
     }
-    // 0 時間の刻み（全域の停電の直後）: 差し込める数 2（engine は今の 3 引数）で、全体 1 つ・本人 1 つ。3 つ目は次の刻みへ
+    // 0 時間の刻み（全域の停電の直後）: 差し込める数 2（engine は今の 3 引数）で、全体 1 つ・本人 1 つ。3 つ目は次の刻みへ。
+    // T123: この道（step）も変わり方の決まりで見る。地震想定の表はこのあと停電を復旧するので、監督の復旧の見込みは使われない（表が先）
     const ai = (i: number) => ticks[i].incidents.filter((e) => e.ai);
-    expect(ai(0).map((e) => [e.inject, e.person ?? null, e.change.kind, e.text])).toEqual([
-      ["outage_eta", null, "schedule", "停電 復旧見込 5 時間後"],
-      ["vendor_round", "p-01", "schedule", "酸素業者 巡回予定 2 時間後"],
-    ]);
-    expect(ai(0)[0].basis).toBe("mhlw-bcp-2020");
-    expect(ai(0)[1].basis).toBe("jrs-respiratory-2012");
-    // 1 時間の刻み: 見込みはもう積んであり、業者も向かっているので、同じ返事のうち外へ出た本人だけが当たる
-    expect(ai(1).map((e) => [e.inject, e.person ?? null, e.change])).toEqual([["wandering", "p-04", { kind: "mark", mark: "wandering" }]]);
-    expect(s.world.scheduled).toEqual([{ at: 300, change: { kind: "outage_restored" }, text: "停電 復旧", basis: "mhlw-bcp-2020", by: "director" }]);
+    expect(ai(0).map((e) => [e.inject, e.person ?? null, e.change.kind, e.text])).toEqual([["vendor_round", "p-01", "schedule", "酸素業者 巡回予定 2 時間後"]]);
+    expect(ai(0)[0].basis).toBe("jrs-respiratory-2012");
+    // 1 時間の刻み: 業者は向かっているので当たらない。外へ出た本人も、表の 9 時間の行が「家にいる」と決めるので当たらない（T123 の表が先）
+    expect(ai(1)).toEqual([]);
+    expect(s.world.scheduled ?? []).toEqual([]);
     expect(s.world.arrivals).toEqual([{ person: "p-01", role: "vendor", arrive: 120, back: null, arrived: false, from: "director" }]);
-    expect(s.world.marks["p-04"]).toEqual({ wandering: 1 });
+    expect(s.world.marks["p-04"]).toBeUndefined();
     // 送った物: 差し込める数・全体に差し込める種類（停電中なので見込みが入る）
     const sent = (i: number) => JSON.parse(calls[i].messages[0].content as string) as Record<string, { text: string }>;
     expect(sent(0)["想定"].text).toContain("差し込める数: 2");
     expect(sent(0)["弱点"].text).toMatch(/全体に差し込める種類: .*outage_eta/);
     expect(sent(0)["弱点"].text).toContain("aftershock");
     // 2 回目: 積んだ予定と向かっている人が出て、見込みはもう差し込める種類に無い
-    expect(sent(1)["想定"].text).toContain("予定: 停電 復旧（5 時間）");
     expect(sent(1)["弱点"].text).toContain(`${aliasOf("p-01")}:`);
     expect(sent(1)["弱点"].text).toContain("向かっている人: 業者（2 時間ごろ）");
-    expect(sent(1)["弱点"].text).not.toMatch(/全体に差し込める種類: .*outage_eta/);
     expect(weaknessText([], s.world, 3, [])).toContain("全体に差し込める種類: なし");
   });
 });

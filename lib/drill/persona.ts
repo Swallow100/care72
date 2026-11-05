@@ -81,7 +81,7 @@ import {
   type PseudonymKey,
 } from "../pseudonym/index.ts";
 import { officePlaces } from "./area.ts";
-import { extraWorldWords } from "./event-catalog.ts";
+import { arrivalRoleWords, extraWorldWords } from "./event-catalog.ts";
 import type { ActionRecord, DrillIncident, DrillTurn, HeardSignal, PersonaBatchHook, PersonaHook, PersonaInput, PersonState, StopLog } from "./engine.ts";
 import { CALL_STATUS_TEXTS, clockLabel, PHONE_LABELS, SHELTER_LABELS, TSUNAMI_LABELS, WATER_LABELS } from "./labels.ts";
 import { nightLine } from "./night.ts";
@@ -361,18 +361,6 @@ function nowMinuteOf(input: Pick<PersonaInput, "hour" | "toMinute">): number {
   return input.toMinute ?? Math.round(input.hour * 60);
 }
 
-/** 向かっている人・来た人の言い方（呼ばれた理由の 1 行。lib/drill/event-catalog.ts の言い方と同じ） */
-const ARRIVAL_WORDS: Readonly<Record<string, string>> = {
-  staff: "事業所の職員",
-  nurse: "訪問看護",
-  supporter: "支援者",
-  family: "家族",
-  vendor: "酸素業者",
-  transport: "移送の車",
-  power: "電源を届ける人",
-  medicine: "薬の配達",
-};
-
 /**
  * 呼ばれた理由（T90 の reasons）の 1 行「この区切りで起きた事: …」。table は書かない。
  * incident は状況の文、action はケアマネの手の結果と着いた人、clock は持ちこたえる時間、round は前の連絡からの時間
@@ -390,10 +378,10 @@ function reasonLine(input: PersonaInput, incidents: ReadonlyArray<DrillIncident>
       const last = acts.at(-1);
       if (last) out.push(`ケアマネが${catalogWordsOf(last)} → ${resultWords(last)}`);
       for (const a of input.world.arrivals ?? []) {
-        if (a.person === input.person && a.arrived && a.arrive > since && a.arrive <= now) out.push(`${ARRIVAL_WORDS[a.role] ?? a.role}が来た`);
+        if (a.person === input.person && a.arrived && a.arrive > since && a.arrive <= now) out.push(`${arrivalRoleWords(a)}が来た`);
       }
       for (const d of input.world.dispatched ?? []) {
-        if (d.person === input.person && d.arrive > since && d.arrive <= now) out.push("頼んだ人が来た");
+        if (d.person === input.person && d.arrived && d.arrive > since && d.arrive <= now) out.push("頼んだ人が来た");
       }
     } else if (r === "clock") {
       out.push("持ちこたえる時間が半分を過ぎた（または切れた）");
@@ -1007,11 +995,19 @@ function tellWords(t: NonNullable<PersonaCall["tell"]>): string {
   return t.whereNow ? `${COLOR_WORDS.green}。いる所 ${WHERE_WORDS[t.whereNow]}` : COLOR_WORDS.green;
 }
 
+/**
+ * 通話・往復・訪問の決まり（T123）。刻みの決まり 10 と同じ筋を、通話と訪問の道にも。評価の 2 回目で、通話の道だけ時計の段とこの決まりが無く、
+ * 切れたあとも同じ調子で話す・前に動けないと言った本人が手も人も無いまま動けると言う、が残った
+ */
+export const PATH_RULE =
+  "「今の様子」「持ちこたえる時間の今」「前の連絡」と食い違う事を言わない（来た人・届いた物・復旧した物を、まだと言わない。切れた分を、まだ残ると言わない。前の連絡で動けない・けがと言った本人が、人が来た・手が届いたのでなければ、急に動ける・無事と言わない）。";
+
 export const CALL_SYSTEM = [
   "災害の訓練で、ケアマネからの電話に出た人を演じる。人は全部架空。",
   "入力は JSON。「本人役」は本人と周りの人の説明、「電話」は今の時刻・状況・前の連絡・電話に出た人。",
   "電話に出た人が言う事を speech に 1〜3 文で返す。ケアマネは「大丈夫ですか。今どこにいますか」と聞いている。",
   "「伝える様子」があれば、その様子と食い違わない事を言う（無事なのにけがをしたと言わない、けがなのに無事と言わない）。",
+  PATH_RULE,
   "本人はやさしい短い話し言葉。認知症の本人は話が噛み合わないことがある。家族・支援者はその人の口調。",
   "名前・住所・電話番号を言わない。「A さん」とも言わない。「診断」「判定」「重症」「死亡」と言わない。病名を言い切らない。薬の量を言わない。助言をしない。",
 ].join("\n");
@@ -1029,10 +1025,13 @@ function calleeCalls(persona: Persona, callee: string): string {
 }
 
 export function callText(call: PersonaCall, persona: Persona): string {
+  const now = Math.round(call.hour * 60);
   return [
-    `時刻: 発災から ${clockLabel(Math.round(call.hour * 60))}`,
+    `時刻: 発災から ${clockLabel(now)}`,
     ...(call.night ? [nightLine(call.hour)] : []),
     ["今の様子:", ...[...worldWords(call.world, call.person, persona), ...advisedWords(call.world, call.person)].map((x) => `- ${x}`)].join("\n"),
+    // T123: 通話（最初の言葉・往復）にも持ちこたえる時間の今。評価の 2 回目で、通話の道だけ時計の段が無く、切れたあとも同じ調子で話した
+    ...clockLines(persona, call.world, call.person, now),
     `この刻みの状況: ${ownIncidents(call.incidents, call.person).map((e) => e.text).join("、") || "新しい事はない"}`,
     `前の連絡: ${stateWords(call.state)}`,
     `電話に出た人: ${call.callee}${calleeCalls(persona, call.callee)}`,
@@ -1089,6 +1088,7 @@ export const TALK_SYSTEM = [
   "- speech: 電話に出た人が言う事。1〜3 文。それまでの話と食い違わない。",
   `- asks: 頼み事。次の一覧から 0〜${TALK_ASKS_MAX} つの英字。${ASK_LIST}。言葉で頼んだ事と合わせる。無ければ空の配列。`,
   "「伝える様子」があれば、その様子と食い違わない事を言う（無事なのにけがをしたと言わない、けがなのに無事と言わない）。",
+  PATH_RULE,
   "119 に電話するよう勧められたら、かけるか・かけないかを言葉で言う（どちらにするかは自分で決める）。救急が来た先の事は言わない。",
   "頼んだ事が済んでいなければ、また頼んでよい。ケアマネが後で電話すると言ったら、短く返して終える。",
   "本人はやさしい短い話し言葉。認知症の本人は話が噛み合わないことがある。家族・支援者はその人の口調。",
@@ -1149,6 +1149,7 @@ export const VISIT_SYSTEM = [
   "- location: 本人がいる所。home（家）・shelter（避難所）・other（その他）・unknown のどれか 1 つの英字。",
   `- asks: 本人か家族の頼み事。次の一覧から 0〜${VISIT_ASKS_MAX} つの英字。${ASK_LIST}。無ければ空の配列。`,
   "- speech: 本人か家族がケアマネに言う事。1〜2 文。",
+  PATH_RULE,
   "本人はやさしい短い話し言葉。認知症の本人は話が噛み合わないことがある。家族・支援者はその人の口調。",
   "名前・住所・電話番号を言わない。「A さん」とも言わない。「診断」「判定」「重症」「死亡」と言わない。病名を言い切らない。薬の量を言わない。助言をしない。",
 ].join("\n");
@@ -1159,10 +1160,13 @@ export const VisitSchema = z.object({ condition: z.string(), location: z.string(
 export type PersonaVisit = Pick<PersonaInput, "person" | "hour" | "world" | "incidents" | "state" | "night">;
 
 export function visitText(v: PersonaVisit, persona: Persona): string {
+  const now = Math.round(v.hour * 60);
   return [
-    `時刻: 発災から ${clockLabel(Math.round(v.hour * 60))}`,
+    `時刻: 発災から ${clockLabel(now)}`,
     ...(v.night ? [nightLine(v.hour)] : []),
     ["今の様子:", ...[...worldWords(v.world, v.person, persona), ...advisedWords(v.world, v.person)].map((x) => `- ${x}`)].join("\n"),
+    // T123: 訪問にも持ちこたえる時間の今（通話と同じ）
+    ...clockLines(persona, v.world, v.person, now),
     `この刻みの状況: ${ownIncidents(v.incidents, v.person).map((e) => e.text).join("、") || "新しい事はない"}`,
     `前の連絡: ${stateWords(v.state)}`,
     "ケアマネが家に着いた。",

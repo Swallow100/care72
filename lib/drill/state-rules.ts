@@ -9,6 +9,7 @@
 // - 予定の出来事（監督の見込み・後ろに回した物）は、時刻が来たときに「もう起きている」「戻る向きなのに今の方が良い」を見る
 // - 型を決めて出来事を減らすのではなく、筋の通らない物だけを外す。どの種類も、筋が通る時刻なら起きてよい
 
+import { arrivalRoleWords } from "./event-catalog.ts";
 import type { DrillIncident } from "./incident-types.ts";
 import { applyEvent, type PersonMarks, type PhoneState, type WorldChange, type WorldState } from "./scenarios.ts";
 import { minuteText } from "./time-text.ts";
@@ -56,7 +57,7 @@ export const STATE_RULES = [
   { id: "dwell:outage", kind: "dwell", words: `停電が復旧したら、${DWELL_MINUTES.outage / 60} 時間たつまでもう一度の停電にしない` },
   { id: "dwell:shelter", kind: "dwell", words: `避難所の状態は、前に変わってから ${DWELL_MINUTES.shelter / 60} 時間たつまで変わらない` },
   { id: "dwell:weather", kind: "dwell", words: `天候は、前に変わってから ${DWELL_MINUTES.weather / 60} 時間たつまで変わらない` },
-  { id: "table_first", kind: "table", words: "想定の表がこのあと変える状態（停電の復旧・電話・その道や施設）は、表より先に変えない" },
+  { id: "table_first", kind: "table", words: "想定の表がこのあと変える状態（停電の復旧・電話・その道や施設・その人のいる所）は、表より先に変えない" },
 ] as const;
 export type StateRuleId = (typeof STATE_RULES)[number]["id"];
 
@@ -85,15 +86,44 @@ export function tableKeysOf(change: WorldChange): string[] {
   }
 }
 
-/** 表の出来事（時刻つき）から、このあと変える状態の一覧を作る。after より後の物だけ */
-export function tableAheadOf(events: ReadonlyArray<{ event: Pick<DrillIncident, "change">; minute: number }>, after: number): TableAhead {
+/** 表の行がこのあと決める、その人のいる所の鍵（T123。where:<本人>） */
+export const whereKey = (person: string) => `where:${person}`;
+
+/**
+ * 表の出来事（時刻つき）から、このあと変える状態の一覧を作る。after より後の物だけ。
+ * rows（表の本人の行）は、いる所（whereNow）を書いた行の人を where:<本人> に（T123。評価の 2 回目で、監督が「本人が家の外へ出て行き先が
+ * 分からない」を差し込んだ人に、表の 6 時間の行が「家にいます」と言った）
+ */
+export function tableAheadOf(
+  events: ReadonlyArray<{ event: Pick<DrillIncident, "change">; minute: number }>,
+  after: number,
+  rows: ReadonlyArray<{ row: { person: string; whereNow?: string | null }; minute: number }> = [],
+): TableAhead {
   const out = new Map<string, number[]>();
   for (const { event, minute } of events) {
     if (minute <= after) continue;
     for (const k of tableKeysOf(event.change)) out.set(k, [...(out.get(k) ?? []), minute]);
   }
+  for (const { row, minute } of rows) {
+    if (minute <= after || !row.whereNow) continue;
+    const k = whereKey(row.person);
+    out.set(k, [...(out.get(k) ?? []), minute]);
+  }
   return out;
 }
+
+/**
+ * 表の行がいる所を決める時刻までこの分より近い人には、いる所を変える印を AI が先に付けない（T123）。遠い先の行までは戻ってくる間がある
+ * （行がある人を全部止めると、表に行のある人に「外へ出た」が起きなくなり型にはまる）
+ */
+export const WHERE_AHEAD_MINUTES = 720;
+
+/** 表の行がこの先 WHERE_AHEAD_MINUTES のうちに、その人のいる所を決めるか */
+const rowFixesWhere = (ctx: ScreenContext, person: string): boolean =>
+  (ctx.ahead?.get(whereKey(person)) ?? []).some((m) => m > ctx.minute && m - ctx.minute <= WHERE_AHEAD_MINUTES);
+
+/** その人のいる所を変える印（家の外へ出た・車中泊）。表の行がこのあといる所を決める人には、AI が先に付けない（T123） */
+const WHERE_MARKS: ReadonlySet<keyof PersonMarks> = new Set<keyof PersonMarks>(["wandering", "carSleep"]);
 
 export type ScreenContext = {
   /** 今の時刻（発災からの分）。出来事の起きる時刻（区切りの終わり） */
@@ -244,9 +274,11 @@ export function screenIncident(world: WorldState, e: DrillIncident, ctx: ScreenC
     case "nurse_away":
       return marked(world, person, "nurseAway") ? { keep: false, rule: "once:mark" } : { keep: true };
     case "going_home":
-      return marked(world, person, "goingHome") ? { keep: false, rule: "once:mark" } : { keep: true };
+      if (marked(world, person, "goingHome")) return { keep: false, rule: "once:mark" };
+      return ai && person && rowFixesWhere(ctx, person) ? { keep: false, rule: "table_first" } : { keep: true };
     case "mark":
-      return marked(world, person, c.mark) ? { keep: false, rule: "once:mark" } : { keep: true };
+      if (marked(world, person, c.mark)) return { keep: false, rule: "once:mark" };
+      return ai && person && WHERE_MARKS.has(c.mark) && rowFixesWhere(ctx, person) ? { keep: false, rule: "table_first" } : { keep: true };
     case "note":
       return world.notes?.[c.topic] !== undefined ? { keep: false, rule: "once:note" } : { keep: true };
     case "schedule": {
@@ -300,7 +332,15 @@ export type Screened = {
 export function screenIncidents(
   world: WorldState,
   incidents: ReadonlyArray<DrillIncident>,
-  ctx: Omit<ScreenContext, "minute"> & { minute?: number; originOf?: (e: DrillIncident) => Origin },
+  ctx: Omit<ScreenContext, "minute"> & {
+    minute?: number;
+    originOf?: (e: DrillIncident) => Origin;
+    /**
+     * 後ろに回さずに捨てる（T123）。刻みの道（10 分版・前からある訓練の step）は予定の出来事を時刻で起こさないので、後ろに回すと
+     * 起きないまま残る（通行止の道が 72 時間まで戻らない）
+     */
+    noDefer?: boolean;
+  },
 ): Screened {
   let w = world;
   const kept: DrillIncident[] = [];
@@ -308,7 +348,7 @@ export function screenIncidents(
   for (const e of incidents) {
     const minute = ctx.minute ?? Math.round(e.at * 60);
     const v = screenIncident(w, e, { minute, origin: ctx.originOf?.(e) ?? ctx.origin, ...(ctx.ahead ? { ahead: ctx.ahead } : {}) });
-    if (v.keep === false) {
+    if (v.keep === false || (v.keep === "defer" && ctx.noDefer)) {
       ruled.push({ rule: v.rule, kind: e.change.kind, deferred: false });
       continue;
     }
@@ -373,7 +413,7 @@ export function stateLines(world: WorldState, now: number, who: (person: string 
   for (const a of world.arrivals ?? []) {
     if (!a.arrived) continue;
     const by = who(a.person);
-    if (by) out.push(`${by}: ${ARRIVAL_WORDS[a.role] ?? a.role}が着いた（${minuteText(a.arrive)}）`);
+    if (by) out.push(`${by}: ${a.role === "vendor" ? arrivalRoleWords(a) : (ARRIVAL_WORDS[a.role] ?? a.role)}が着いた（${minuteText(a.arrive)}）`);
   }
   return out;
 }
