@@ -284,10 +284,10 @@ describe("再考（対応表の紙）", () => {
     const view = await paperReviewProps(db, { personId: "p-01", formKey: form, subject: after.subject, sheet: after.sheet, consents: after.rows.consents, fixes: after.mapped!.fixes });
     expect(view.fixes.map((f) => f.field)).toEqual([field.id]);
 
-    // 2 回目の照合（直した紙）で残りが無ければ再考しない。記録は回ごとに残る
+    // 2 回目の照合（直した紙）で残りが無ければ再考しない。記録は回ごとに残る（回の番号はブラウザの言う数でなく記録から）
     replyReview = () => ({ findings: [] });
     const second = await plan("p-01", form);
-    const ran2 = await reviewPost(deps(), principal, runRequest({ person: "p-01", form, hash: second.hash, run: r.run, round: 2, paints: second.plan.pages.map((x) => x.paints.length) }, second.plan.pages.map(() => CLEAN)));
+    const ran2 = await reviewPost(deps(), principal, runRequest({ person: "p-01", form, hash: second.hash, run: r.run, round: 1, paints: second.plan.pages.map((x) => x.paints.length) }, second.plan.pages.map(() => CLEAN)));
     const r2 = (await ran2.json()) as { redo: unknown[] };
     expect(r2.redo).toEqual([]);
     const state = await loadReviewState(db, "p-01", form, second.hash);

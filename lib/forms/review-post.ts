@@ -122,7 +122,12 @@ export async function reviewPost(deps: ReviewDeps, principal: Principal | null, 
 
   if (op === "run" && form) {
     if (body.hash !== paper.hash) return mappingError("conflict");
-    const round = typeof body.round === "number" && Number.isInteger(body.round) && body.round >= 1 && body.round <= REDO_ROUNDS_MAX + 1 ? body.round : 1;
+    // 回の番号はブラウザの言う数でなく、記録に残した回の数から（前と後の記録を回の番号で並べる）
+    const runId = typeof body.run === "string" ? body.run : null;
+    const prev = runId ? await readRun(deps.db, runId, personId, formKey) : null;
+    if (runId && !prev) return mappingError("not_found");
+    const round = (prev?.rounds.length ?? 0) + 1;
+    if (round > REDO_ROUNDS_MAX + 1) return mappingError("conflict");
     const { key, painted, plan, rule } = planOf(paper, deps.today);
     const need = paintCounts(plan);
     const paints = Array.isArray(body.paints) ? body.paints : [];
@@ -150,8 +155,6 @@ export async function reviewPost(deps: ReviewDeps, principal: Principal | null, 
     }
     const found = [...rule, ...ai];
     const roundRec = { round, found: found.filter((f) => f.level !== "note").map(brief), redo: [], fixed: [] };
-    const runId = typeof body.run === "string" ? body.run : null;
-    const prev = runId ? await readRun(deps.db, runId, personId, formKey) : null;
     const runBody: RunBody = {
       rounds: [...(prev?.rounds ?? []), roundRec],
       findings: ai,

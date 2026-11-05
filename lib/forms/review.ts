@@ -505,6 +505,13 @@ function markedOption(f: ReviewField, it: OverlayItem): string | null {
 /** 再考（その欄だけの読み直し）で直せそうな種類。対応表の紙の欄の場所と項目の読み違いから来る物 */
 export const REDO_KINDS: ReadonlySet<ReviewKind> = new Set<ReviewKind>(["unplaced", "carried", "overlap", "overflow", "date", "signature", "misplaced", "mismatch", "unreadable"]);
 
+/**
+ * 紙の上の欄へ送る口（T135 の紙の上で入れる所が受ける窓の出来事）。見直しの一覧の行を押すと出す。
+ * field は欄の id（対応表の欄の id・原本の枠の欄の key）、items は紙の上の物の data-field
+ */
+export const PAPER_FIELD_EVENT = "care72:paper-field";
+export type PaperFieldDetail = { field: string; items: string[]; page: number | null; box: FieldBox | null };
+
 /** 帯の「見直し N」の数（要修正と要確認） */
 export const reviewCount = (fs: readonly ReviewFinding[]) => fs.filter((f) => f.level !== "note").length;
 

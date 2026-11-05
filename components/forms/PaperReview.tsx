@@ -16,7 +16,7 @@ import { Button } from "@/components/ui/Button";
 import { OpenIcon, RestoreIcon, ReviewIcon, SaveIcon } from "@/components/ui/Icon";
 import { StateTag } from "@/components/ui/Tag";
 import type { FieldBox } from "@/lib/forms/mapping";
-import { REVIEW_LABELS, REVIEW_LEVEL_LABELS, reviewCount, type ReviewFinding, type ReviewLevel } from "@/lib/forms/review";
+import { PAPER_FIELD_EVENT, REVIEW_LABELS, REVIEW_LEVEL_LABELS, reviewCount, type PaperFieldDetail, type ReviewFinding, type ReviewLevel } from "@/lib/forms/review";
 import type { ComposePlan } from "@/lib/forms/review-ai";
 import type { PaperReviewProps } from "@/lib/forms/review-view";
 
@@ -37,10 +37,6 @@ export const REVIEW_UI = {
 } as const;
 
 type Phase = { kind: "idle" } | { kind: "busy"; label: string } | { kind: "error"; label: string };
-
-/** 紙の上の欄へ送る口（T135 の紙の上で入れる所が受ける） */
-export const PAPER_FIELD_EVENT = "care72:paper-field";
-export type PaperFieldDetail = { field: string; items: string[]; page: number | null; box: FieldBox | null };
 
 const pct = (n: number) => `${(n * 100).toFixed(3)}%`;
 
@@ -97,6 +93,8 @@ export function PaperReview(props: PaperReviewProps) {
     const target =
       document.querySelector(`[data-paper-root] .rv-focus`) ??
       (f.items[0] ? document.querySelector(`[data-paper-root] [data-field="${CSS.escape(f.items[0])}"]`) : null) ??
+      // 場所の無い欄（未配置・別紙送）は別紙の頁の行（data-field は欄の id）
+      document.querySelector(`[data-paper-root] [data-annex] [data-field="${CSS.escape(f.field)}"], [data-paper-root] [data-annex] [data-field^="${CSS.escape(f.field)}:"]`) ??
       (f.page !== null ? document.querySelector(`[data-paper-root] section[data-page="${f.page}"]`) : null);
     target?.scrollIntoView({ block: "center", behavior: "smooth" });
     window.dispatchEvent(new CustomEvent<PaperFieldDetail>(PAPER_FIELD_EVENT, { detail: { field: f.field, items: f.items, page: f.page, box: f.box } }));
