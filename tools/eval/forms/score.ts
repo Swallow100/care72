@@ -16,6 +16,7 @@ import { cellLines, type OverlaySheet } from "../../../lib/forms/overlay-sheet.t
 import { isUnconfirmedCell } from "../../../lib/forms/unconfirmed.ts";
 import type { DiffItem } from "../../../lib/intake/diff.ts";
 import type { IntakeChange } from "../../../lib/intake/changes.ts";
+import { hasAnyMark } from "../../../lib/pseudonym/index.ts";
 import type { GoldField, GoldForm } from "./gold.ts";
 
 export type Judgement = {
@@ -209,7 +210,8 @@ export function scoreIntake(input: string, expected: readonly DiffItem[], actual
   const score = emptyIntakeScore();
   const judgements: Judgement[] = [];
   const exp = expected.map((d) => (d.change ? canonical(d.change) : null)).filter((x): x is { id: string; value: string } => x !== null);
-  const act = actual.map((d) => ({ c: d.change ? canonical(d.change) : null, masked: d.masked })).filter((x) => x.c !== null) as Array<{ c: { id: string; value: string }; masked: boolean }>;
+  // 伏せ字の残り: 画面の印（masked）のほか、値に伏せ字の形（崩れた形も。T122）が残る物
+  const act = actual.map((d) => ({ c: d.change ? canonical(d.change) : null, masked: d.masked || hasAnyMark(d.next) })).filter((x) => x.c !== null) as Array<{ c: { id: string; value: string }; masked: boolean }>;
   score.expected = exp.length;
   score.actual = act.length;
   score.dropped = dropped;
