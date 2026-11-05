@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { seedStatements } from "../../seed/sql.ts";
 import type { Principal } from "../auth/principal.ts";
 import { personInScope } from "../auth/scope.ts";
+import { DEMO_OFFICE_ID } from "../auth/demo.ts";
 import { demoPersonSql, isWalled } from "../auth/wall.ts";
 import { d1FromSqlite, migratedSqlite } from "../db/test-d1.ts";
 import { officeActor } from "../office/scope.ts";
@@ -114,7 +115,7 @@ describe("壁の中の人", () => {
   it("デモの人: デモ事業所の 10 人と、デモのアカウントがその場で登録した所属なしの人。協力事業所の人・ほかの医療班が登録した人は外", async () => {
     await registerOnSite(db, actor(), onSite("架空 一", "カクウ イチ"), AT, { personId: "p-onsite-judge" });
     await registerOnSite(db, actor(medical2()), onSite("架空 二", "カクウ ニ"), AT, { personId: "p-onsite-other" });
-    const demo = (sqlite.prepare(`SELECT p.id FROM people p WHERE ${demoPersonSql("p")} ORDER BY p.id`).all() as Array<{ id: string }>).map(
+    const demo = (sqlite.prepare(`SELECT p.id FROM people p WHERE ${demoPersonSql("p", DEMO_OFFICE_ID)} ORDER BY p.id`).all() as Array<{ id: string }>).map(
       (r) => r.id,
     );
     expect(demo).toContain("p-01");

@@ -36,13 +36,13 @@ describe("評価の台のブラウザの段の Excel・Word（T119）", () => {
     expect(r).toMatchObject({ ok: false, error: "legacy" });
   });
 
-  it.skipIf(!hasCanvas)("Excel は頁の画像にして送る。4 頁以上は記入例を外した頭の 3 頁、番号は 1 から", async () => {
+  it.skipIf(!hasCanvas)("Excel は頁の画像にして送る。記入例を外した頭から上限（T146 で 10）の頁、番号は 1 から", async () => {
     const r = await browserStage(book(["記入例", "様式1", "様式2", "様式3", "様式4"]), []);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.source).toBe("excel");
     expect(r.totalPages).toBe(5);
-    expect(r.pages.map((p) => p.meta)).toEqual([1, 2, 3].map((page) => ({ source: "excel", page, redacted: 0 })));
+    expect(r.pages.map((p) => p.meta)).toEqual([1, 2, 3, 4].map((page) => ({ source: "excel", page, redacted: 0 })));
     expect(r.pages.every((p) => p.bare && p.bytes[0] === 0xff && p.bytes[1] === 0xd8)).toBe(true);
   });
 });

@@ -369,10 +369,10 @@ describe("読む側: 見せる所（本人のページ）", () => {
     expect(panel.find((t) => t.id === note)!.retracted).toBeDefined();
   });
 
-  it("理由なしの撤回は「撤回 名前 時刻」だけ。審査員の撤回は「審査員」", async () => {
+  it("理由なしの撤回は「撤回 名前 時刻」だけ。審査員の撤回は「審査員 1」（T144 から審査員は 3 つで番号付き）", async () => {
     const id = await write(yamamoto(), "safety_check");
     await retract(judgeCm(), { id });
-    expect((await timelineOf(yamamoto())).find((t) => t.id === id)!.retracted).toEqual({ who: "審査員", when: "11/3 22:10", note: null });
+    expect((await timelineOf(yamamoto())).find((t) => t.id === id)!.retracted).toEqual({ who: "審査員 1", when: "11/3 22:10", note: null });
   });
 
   it("医療班の画面では医療班の自分の行だけ撤回でき、ケアマネの行は撤回できない", async () => {

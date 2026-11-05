@@ -1,10 +1,11 @@
 // 毎日 4 時（日本の時刻）にデモ事業所を種に戻す（docs/tasks/T26.md）。Workers の cron（wrangler.jsonc の triggers）から
 // worker.ts の scheduled が呼ぶ。D1 と R2 は env から引数で受ける（scheduled には Next の文脈が無い。テストは node:sqlite と偽の R2）。
-// 戻すのはデモ事業所だけ（lib/seed/reset.ts）。協力事業所など別の事業所の行には触らない。
-// 同じ時刻に、審査員の試用事業所（T115）を丸ごと消す（lib/seed/sandbox.ts）。片方が落ちてももう片方は流し、終わってから最初の失敗を投げる。
+// 戻すのはデモ事業所と確認用の事業所（T144）だけ（lib/seed/reset.ts）。協力事業所など別の事業所の行には触らない。
+// 同じ時刻に、審査員の試用事業所（T115）を丸ごと消す（lib/seed/sandbox.ts）。デモ → 確認用 → 試用事業所の順で、どれかが落ちても残りは流し、
+// 終わってから最初の失敗を投げる。
 
 import type { D1Database } from "@cloudflare/workers-types";
-import { resetDemoOffice, type ResetResult, type SeedBucket } from "./reset.ts";
+import { resetCheckOffice, resetDemoOffice, type ResetResult, type SeedBucket } from "./reset.ts";
 import { clearSandboxes, type SandboxCleanResult } from "./sandbox.ts";
 
 /** 毎日 19:00 UTC（4:00 JST）。wrangler.jsonc の triggers.crons と同じ文字にする（テストが見る） */
@@ -12,7 +13,7 @@ export const DAILY_RESET_CRON = "0 19 * * *";
 
 export type ScheduledEnv = { DB: D1Database; RECORDINGS: SeedBucket };
 
-export type ScheduledResult = ResetResult & { sandboxes: SandboxCleanResult };
+export type ScheduledResult = ResetResult & { check: ResetResult; sandboxes: SandboxCleanResult };
 
 /** cron の 1 回。毎日 4 時の物でなければ何もしない（null）。now は予定の時刻 */
 export async function scheduledReset(env: ScheduledEnv, cron: string, scheduledTime: number): Promise<ScheduledResult | null> {
@@ -27,6 +28,14 @@ export async function scheduledReset(env: ScheduledEnv, cron: string, scheduledT
     failure = e;
     console.error("デモ事業所を戻せない", now, e instanceof Error ? e.name : typeof e);
   }
+  let check: ResetResult | null = null;
+  try {
+    check = await resetCheckOffice(env.DB, env.RECORDINGS, now);
+    console.log("確認用の事業所を種に戻した", now, `録音 ${check.removedRecordings} 件消去`);
+  } catch (e) {
+    failure ??= e;
+    console.error("確認用の事業所を戻せない", now, e instanceof Error ? e.name : typeof e);
+  }
   let sandboxes: SandboxCleanResult | null = null;
   try {
     sandboxes = await clearSandboxes(env.DB, env.RECORDINGS);
@@ -35,6 +44,6 @@ export async function scheduledReset(env: ScheduledEnv, cron: string, scheduledT
     failure ??= e;
     console.error("試用事業所を消せない", now, e instanceof Error ? e.name : typeof e);
   }
-  if (failure !== null || !result || !sandboxes) throw failure;
-  return { ...result, sandboxes };
+  if (failure !== null || !result || !check || !sandboxes) throw failure;
+  return { ...result, check, sandboxes };
 }

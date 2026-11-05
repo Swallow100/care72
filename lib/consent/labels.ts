@@ -25,15 +25,27 @@ export const PROVISION_TIMELINE_LABEL = "提供";
 
 /** 経過の書き足しの欄 */
 export const COMPOSER_LABELS = {
-  /** 欄の名前（aria） */
+  /** 欄の見出し（T143 から見える見出し。平時の経過の畳みを開くボタンの言葉も） */
   title: "追記",
-  /** 定型の選び（aria） */
-  preset: "定型",
+  /** 書く種類の選び（T143 から見える小さな見出し。前は aria の「定型」だけで、何のボタンか分からなかった） */
+  preset: "種類",
   /** 自由文の欄の名前と placeholder */
   text: "自由文",
   /** 送る。経過の種類の「記録」（自由文だけの行）と分ける */
   send: "追記",
   sending: "送信中",
+} as const;
+
+/**
+ * 書き足しの文の欄の例（T143。placeholder に「例 …」で出す。選んだ種類ごと）。人と場所は架空の言い方
+ */
+export const COMPOSER_EXAMPLES = {
+  note: "例 13 時 娘から電話 本人は 2 階に避難",
+  safety_check: "例 電話で本人の声を確認",
+  examined: "例 救護所で診察",
+  medication_given: "例 お薬手帳の薬を渡した",
+  transported: "例 行き先 県立病院",
+  arrived_shelter: "例 避難所 かわなぎ小学校",
 } as const;
 
 /** 書き足しの断り（API の error と、画面に出す言葉） */

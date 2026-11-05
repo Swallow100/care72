@@ -82,7 +82,7 @@ describe("誰が・いつ・どの役", () => {
 
     for (const p of [judgeCm(), yamamoto(), medical()]) {
       const item = (await timelineOf(p, "p-01")).find((t) => t.at === EXAMINED_AT)!;
-      expect(item).toMatchObject({ kind: "診察", who: "医療班 審査員", body: "呼吸 落ち着いている", staff: true });
+      expect(item).toMatchObject({ kind: "診察", who: "医療班 審査員 1", body: "呼吸 落ち着いている", staff: true });
       expect(item.when).toBe("2026-11-03 11:40");
     }
   });

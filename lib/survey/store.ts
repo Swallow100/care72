@@ -4,6 +4,7 @@
 // 時刻は UTC の ISO 8601（toISOString の形）。同じ形なので文字のまま比べられる。
 
 import type { D1Database } from "@cloudflare/workers-types";
+import { CHECK_OFFICE_ID, DEMO_OFFICE_ID } from "../auth/demo.ts";
 import type { SurveyCreatorRole, SurveyResponseRow, SurveyShareRow } from "../db/types.ts";
 import { answerId, answersOfRow, type SurveyAnswers } from "./answer.ts";
 import { jstDayStartIso, shareExpiresAt, shareState, SURVEY_MAX_ANSWERS, SURVEY_SHARES_PER_DAY, type ShareState } from "./share.ts";
@@ -22,6 +23,16 @@ export type NewShare = {
  */
 export function judgeShareSql(alias = "s"): string {
   return `(${alias}.created_role = 'judge' OR ${alias}.created_by IN (SELECT ja.id FROM accounts ja WHERE ja.judge_made = 1))`;
+}
+
+/**
+ * アンケートのリンクと答えを置く事業所（T144）。確認用の事業所（山本のログイン）はデモ事業所の行を見る・作る。
+ * 山本が前から作った本物のリンクと答えはデモ事業所の行にあるので、山本のログインを確認用の事業所に移しても今どおり見られる・写せるように
+ * （行は動かさない）。審査員は壁の中で試しだけ（loadSurveyOverview の walled）、毎朝の戻しは試しだけを消す（lib/seed/reset.ts）。
+ * ほかの事業所はその事業所のまま
+ */
+export function surveyOfficeOf(officeId: string): string {
+  return officeId === CHECK_OFFICE_ID ? DEMO_OFFICE_ID : officeId;
 }
 
 export type CreateShareResult = { ok: true; token: string; expiresAt: string; maxAnswers: number } | { ok: false; error: "limited" };

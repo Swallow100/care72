@@ -15,6 +15,7 @@ import { ReceivedPerson } from "../../components/staff/ReceivedPerson.tsx";
 import { StaffIntake } from "../../components/staff/StaffIntake.tsx";
 import { StaffTable } from "../../components/staff/StaffTable.tsx";
 import { tokenOfCodes, detectorOf } from "../../components/staff/QrCamera.tsx";
+import { CHECK_CARE_MANAGER_ID, CHECK_OFFICE_ID, checkSeedId } from "../auth/demo.ts";
 import type { Principal } from "../auth/principal.ts";
 import { scopeOfRows } from "../consent/scope.ts";
 import { d1FromSqlite, migratedSqlite } from "../db/test-d1.ts";
@@ -47,10 +48,10 @@ const NOW_SEC = Math.floor(Date.parse(SEED_AT) / 1000) + 86_400;
 beforeEach(() => {
   sqlite = migratedSqlite();
   for (const s of seedStatements()) sqlite.exec(s);
-  // 種のデモ事業所の 10 人は QR を作った形（lib/seed/demo.ts の DEMO_QR と同じ）
+  // 種の事業所（デモ・確認用）の 10 人は QR を作った形（lib/seed/demo.ts の DEMO_QR と同じ）
   sqlite
-    .prepare("UPDATE people SET qr_generation = ?, qr_issued_at = ?, qr_ttl_days = ? WHERE office_id = 'office-demo'")
-    .run(DEMO_QR.generation, DEMO_QR.issuedAt, DEMO_QR.ttlDays);
+    .prepare("UPDATE people SET qr_generation = ?, qr_issued_at = ?, qr_ttl_days = ? WHERE office_id IN (?, ?)")
+    .run(DEMO_QR.generation, DEMO_QR.issuedAt, DEMO_QR.ttlDays, "office-demo", CHECK_OFFICE_ID);
   sqlite.prepare(`INSERT INTO accounts (id, office_id, role, display_name) VALUES ('acct-med-2', NULL, 'medical', '医療班 2')`).run();
   db = d1FromSqlite(sqlite);
 });
@@ -205,13 +206,22 @@ describe("見本の QR", () => {
     expect((await qrSamples(db, judgeMedical(), SECRET, NOW_SEC)).map((s) => s.personId)).toEqual(["p-02", "p-03", "p-04"]);
   });
 
-  it("壁の外の医療班・ケアマネ・ログインなし・デモでない事業所には出さない", async () => {
+  it("壁の外の医療班・ケアマネ・ログインなしには出さない。役を替えた見本のケアマネは確認用の事業所の人（T144 の壁の事業所）", async () => {
     expect(await qrSamples(db, medical2(), SECRET, NOW_SEC)).toEqual([]);
     expect(await qrSamples(db, yamamoto(), SECRET, NOW_SEC)).toEqual([]);
     expect(await qrSamples(db, null, SECRET, NOW_SEC)).toEqual([]);
-    expect(await qrSamples(db, judgeMedical({ office: { id: "office-partner", name: "協力事業所", kind: "regular" } }), SECRET, NOW_SEC)).toEqual([]);
-    // 役を替えた見本のケアマネ（壁の中）は出す
-    expect(await qrSamples(db, judgeMedical({ judge: false, switched: true, accountId: "acct-yamamoto" } as Partial<Principal>), SECRET, NOW_SEC)).toHaveLength(QR_SAMPLE_MAX);
+    const switched = judgeMedical({
+      judge: false,
+      switched: true,
+      accountId: CHECK_CARE_MANAGER_ID,
+      office: { id: CHECK_OFFICE_ID, name: "デモ事業所（確認用）", kind: "demo" },
+    });
+    const own = await qrSamples(db, switched, SECRET, NOW_SEC);
+    expect(own.map((s) => s.personId)).toEqual(["p-01", "p-02", "p-03"].map(checkSeedId));
+    // 確認用の山本の見本は QR の頁の受入でも通る（壁の事業所が同じ）。審査員の見本にはデモ事業所の人だけ
+    const out = await qrReceivePost(db, switched, form({ token: own[0].token, shelter: SHELTER }), { secret: SECRET, nowSec: NOW_SEC, at: AT });
+    expect("location" in out && out.location.startsWith("/staff?received=")).toBe(true);
+    expect((await qrSamples(db, judgeMedical(), SECRET, NOW_SEC)).map((s) => s.personId)).toEqual(["p-01", "p-02", "p-03"]);
   });
 
   it("期限の切れた QR・作っていない人は出さない", async () => {

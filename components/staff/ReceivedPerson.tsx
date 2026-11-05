@@ -3,9 +3,12 @@
 // 中身は本人のページの組み立て（見る人の範囲を通した物）を並べ替えるだけ（lib/custody/received.ts の receivedLayout）。
 // 医療が範囲の外の人（医療班への提供に同意なし・未確認）は、要約の所に同意の状態だけ（医療要約の書類の頁と同じ言葉）。
 // 経過の書き足し（components/person/TimelineComposer）は書ける種類があるときだけ、経過の見出しのすぐ下に。
+// 経過の行は人が書き足す記録だけ（components/person/Timeline が台帳を直した跡を外す。T143）。台帳を直した跡は本人のページと同じく
+// いちばん下の「変更履歴」（components/person/ChangeHistory、畳み）。
 // 状態を持たない（Server Component のまま、テストで renderToStaticMarkup できる）。
 
 import { WITHHELD_LABELS } from "@/components/forms/MedicalWithheld";
+import { ChangeHistory } from "@/components/person/ChangeHistory";
 import { Blocks } from "@/components/person/PersonView";
 import { FieldValue, REASON_TEXT, StateTag, TONE_TEXT } from "@/components/person/parts";
 import { TimelineComposer } from "@/components/person/TimelineComposer";
@@ -63,6 +66,8 @@ export function ReceivedPerson({
   const p = head.priority;
   // 優先: 医療が範囲にあれば骨格の段か色と理由。範囲の外でも発災時の色と言葉は出す（理由は空。本人のページの上と同じ）
   const priority = head.show.medical || p.kind === "triage";
+  // 台帳を直した跡（T143 の history。見る人の範囲で絞った後の経過の行から）
+  const history = (layout.timeline?.blocks ?? []).flatMap((b) => (b.type === "timeline" ? b.items : [])).filter((t) => t.history);
   return (
     <div className="@container space-y-2" data-received={head.id}>
       <section aria-labelledby={titleId} className="overflow-hidden rounded-lg bg-panel" data-received-head>
@@ -203,6 +208,8 @@ export function ReceivedPerson({
           ))}
         </div>
       )}
+
+      <ChangeHistory items={history} idBase={`received-${head.id}`} level={1} />
     </div>
   );
 }
