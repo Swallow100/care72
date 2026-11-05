@@ -325,18 +325,22 @@ export const SCENES: Scene[] = [
     at: 74,
     end: 108,
     shots: [
-      // 秒は R07-4・R08-5・R09-5（11/5 昼に手元の dev で撮った訓練の大雨想定。10 分版はアプリから外した）の markers.json と calls.json から
-      // 6.1 秒に訓練の画面が開き、すぐ高橋 ユキの家族の着信が鳴る
-      { at: 74, end: 80, kind: "footage", footage: "R07", from: 6.3, label: "訓練の大雨想定。10 人の表と、家族からの最初の着信", chip: "Claude Haiku 5.5 × 10" },
-      // 本人役・家族役の言葉: 3 時間の刻みの高橋 ユキの家族の電話（R07-4 の 70.4 秒に着信、出ると「母は避難所に着きました。今は落ち着いています。」が AI の印つきで出る）
-      { at: 80, end: 85, kind: "footage", footage: "R07", from: 72.4, label: "本人役・家族役の言葉（高橋 ユキの家族の電話）", zoom: [{ x: 0.265, y: 0.115, w: 0.48 }, { x: 0.275, y: 0.12, w: 0.46 }] },
-      // 早送り（「次まで」を繰り返す）: 経過 37 時間 → 43 時間（R07-4 の 302.5 秒から 4 倍。着信の窓の無い所）
-      { at: 85, end: 88, kind: "footage", footage: "R07", from: 302.5, rate: 4, label: "72 時間を早送り" },
-      // 強調の着信は小林 トシの夫（訪問看護が来た・停電で呼吸器が電池に・残り 50 分）。1.6 秒から: 鳴る → 3.0 秒に出る → 声（video/scripts/app-audio.mjs が R08 の音を作る）
-      { at: 88, end: 93, kind: "footage", footage: "R08", from: 1.6, emphasis: true, label: "強調: 着信 小林 トシの夫（呼吸器の電池）", zoom: [{ x: 0.2, y: 0.08, w: 0.6 }, { x: 0.265, y: 0.115, w: 0.48 }] },
-      // 手: 39.6 秒に小林 トシ、40.5 秒に訪問依頼、41.5 秒に実行、46 秒ごろに「手配済 向かってもらえる」（R07-4 の押した所）。対応の欄を上から下へ追う
-      { at: 93, end: 99, kind: "footage", footage: "R07", from: 40.6, label: "手: 小林 トシに訪問依頼", zoom: [{ x: 0.25, y: 0.08, w: 0.6 }, { x: 0.25, y: 0.4, w: 0.6 }] },
-      // 採点（N19 の「対応の順を採点」「透析先の確認が後回し」）: 右の列の採点と条件到達に寄る。田中の透析先 未確認の行に囲み
+      // 秒は R07-6・R08-7・R09-6（11/5 夜、訓練の画面の直し〔上の操作は次までと自動進行だけ・出来事の段・着信で返す〕のあとに手元の dev で撮った大雨想定）の
+      // markers.json と calls.json から。6.1 秒に訓練の画面が開き、すぐ高橋 ユキの家族の着信が鳴る
+      { at: 74, end: 80, kind: "footage", footage: "R07", from: 6.4, label: "訓練の大雨想定。10 人の表と、家族からの最初の着信", chip: "Claude Haiku 5.5 × 10" },
+      // 本人役・家族役の言葉: 3 時間の高橋 ユキの家族の電話（R07-6 の 120.8 秒に着信、123.3 秒に出ると「避難所に着きました。母は横になっています。様子は見ています。」が AI の印つきで出る）。
+      // 通話の窓は返す言葉の候補の分だけ大きくなったので、少し引いて寄る
+      { at: 80, end: 85, kind: "footage", footage: "R07", from: 122.9, label: "本人役・家族役の言葉（高橋 ユキの家族の電話）", zoom: [{ x: 0.26, y: 0.08, w: 0.5 }, { x: 0.27, y: 0.09, w: 0.48 }] },
+      // 早送り（自動進行で「次まで」を繰り返す）: 経過 24 時間 → 27 時間、上に出来事の段（R07-6 の 290 秒から 4 倍。着信の窓の無い所）
+      { at: 85, end: 88, kind: "footage", footage: "R07", from: 290, rate: 4, label: "72 時間を早送り" },
+      // 強調の着信は小林 トシの夫（「停電して、呼吸器が電池に切り替わりました。電池は3時間しかもたないようです。」）。
+      // 1.6 秒から: 鳴る → 3.0 秒に出る → 声（video/scripts/app-audio.mjs が R08 の音を作る）
+      { at: 88, end: 93, kind: "footage", footage: "R08", from: 1.6, emphasis: true, label: "強調: 着信 小林 トシの夫（呼吸器の電池）", zoom: [{ x: 0.2, y: 0.05, w: 0.6 }, { x: 0.26, y: 0.07, w: 0.5 }] },
+      // 手: 36.9 秒に小林 トシ、37.9 秒に訪問依頼、38.9 秒に実行、44.0 秒に「手配済 向かってもらえる」（R07-6 の押した所）。
+      // 実行を押す所から、結果が出るまで（44.9 秒からは撮る道具が次の手のために画面を上へ送るので、その前で終える）。対応の欄を上から下へ追う
+      { at: 93, end: 99, kind: "footage", footage: "R07", from: 38.9, label: "手: 小林 トシに訪問依頼", zoom: [{ x: 0.25, y: 0.2, w: 0.6 }, { x: 0.25, y: 0.4, w: 0.6 }] },
+      // 採点（N19 の「対応の順を採点」「山田さんの酸素の電池が切れるまでに手が届かなかった」）: 真ん中の列の採点（終わった訓練は対応の所に出る）に寄り、
+      // 条件到達の山田 ハナ（酸素 内蔵電池 2 時間を超過）の行に囲み
       {
         at: 99,
         end: 104.5,
@@ -345,12 +349,11 @@ export const SCENES: Scene[] = [
         from: 2.0,
         label: "採点（順番・報告・空欄・条件到達）",
         chip: "Claude Opus 5.5",
-        // 囲みの名前が窓の下の端で切れないよう、少し下に寄る（上の「採点」の見出しは切れてよい）
-        zoom: [{ x: 0.6, y: 0.17, w: 0.4 }, { x: 0.6, y: 0.18, w: 0.4 }],
-        // R09-5 の 2〜8 秒（採点の欄で止まっている間）の田中 茂の行（2 行に折れる）
-        callouts: [{ at: 3.0, box: { x: 0.751, y: 0.469, w: 0.232, h: 0.055 }, label: "透析先 未確認", tone: "urgent", place: "below" }],
+        zoom: [{ x: 0.34, y: 0.11, w: 0.4 }, { x: 0.34, y: 0.12, w: 0.4 }],
+        // R09-6 の 2〜8 秒（採点の欄で止まっている間）の山田 ハナの行
+        callouts: [{ at: 3.0, box: { x: 0.357, y: 0.406, w: 0.257, h: 0.031 }, label: "電池 超過", tone: "urgent", place: "below" }],
       },
-      // 講評と出典（N19 の「出典つきで指摘しました」）: 8.1 秒に講評へ送ったあと（13 秒まで止まっている）。順番の指摘（田中 茂さんが先）の出典の行に囲み
+      // 講評と出典（N19 の「出典つきで指摘しました」）: 8.0 秒に講評へ送ったあと（13 秒まで止まっている）。山田 ハナの条件の指摘の出典の行に囲み
       {
         at: 104.5,
         end: 108,
@@ -359,8 +362,8 @@ export const SCENES: Scene[] = [
         from: 9.0,
         label: "講評と出典",
         chip: "Claude Opus 5.5",
-        zoom: [{ x: 0.6, y: 0.4, w: 0.4 }, { x: 0.6, y: 0.42, w: 0.4 }],
-        callouts: [{ at: 0.3, box: { x: 0.757, y: 0.562, w: 0.165, h: 0.026 }, label: "出典", place: "below" }],
+        zoom: [{ x: 0.34, y: 0.16, w: 0.4 }, { x: 0.34, y: 0.18, w: 0.4 }],
+        callouts: [{ at: 0.3, box: { x: 0.364, y: 0.482, w: 0.342, h: 0.049 }, label: "出典", place: "below" }],
       },
     ],
   },
@@ -540,7 +543,7 @@ export const LINES: Line[] = [
   { id: "N16", at: 80.2, end: 84.6, ja: "台帳を読み、本人や家族になりきって動きます。", en: "Each one reads the record and plays the client or a family member." },
   { id: "N17", at: 84.8, end: 88.0, ja: "72 時間を早送りで進めると、", en: "Fast-forward through the 72 hours, and..." },
   { id: "N18", at: 93.2, end: 98.8, ja: "ケアマネージャーは本番と同じ画面で、電話、出向く、避難所に頼む。", en: "The care manager responds on the same screen used in a real disaster: call, visit, ask a shelter." },
-  { id: "N19", at: 99.0, end: 107.6, ja: "終わると Opus が対応の順を採点。透析先の確認が後回しだったと、出典つきで指摘しました。", en: "At the end, Opus scores the order of response. It pointed out, with sources, that checking the dialysis clinic came too late." },
+  { id: "N19", at: 99.0, end: 107.6, ja: "終わると Opus が対応の順を採点。山田さんの酸素の電池が切れるまでに手が届かなかったと、出典つきで指摘しました。", en: "At the end, Opus scores the order of response. Citing sources, it pointed out that help did not reach Ms. Yamada before her oxygen battery ran out." },
   { id: "N20", at: 108.3, end: 112.3, ja: "そして本番。大雨で、災害モードに入りました。", en: "Then the real thing. Heavy rain, and disaster mode is on." },
   { id: "N21", at: 112.5, end: 116.0, ja: "娘さんのスマホには、赤と緑の 2 つだけ。", en: "Her daughter's phone shows just two buttons: red and green." },
   { id: "N22", at: 121.2, end: 126.0, ja: "本人の答えが止まると、声で問いかけ、周りの音ごと録音します。", en: "If she stops answering, the app asks out loud and records the sound around her." },
