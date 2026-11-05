@@ -18,7 +18,7 @@ import type { DrillAction } from "../db/types.ts";
 import { d1UsageStore } from "../claude/usage.ts";
 import { findLeaks, pseudonymize, type PseudonymInput } from "../pseudonym/index.ts";
 import { buildActLog } from "./act-log.ts";
-import { FREE_LABELS, FREE_IDLE_MINUTES } from "./action-catalog.ts";
+import { actionWords, CATALOG_WORDS, FREE_LABELS, FREE_IDLE_MINUTES } from "./action-catalog.ts";
 import { TERM_LABELS } from "./action-terms.ts";
 import { act, type ActTarget } from "./actions.ts";
 import { drillScope, loadDrillRow, startDrill, stateOfRow } from "./db.ts";
@@ -489,6 +489,8 @@ describe("そのままの手は状況に合わせて結果が決まり、世界�
     expect(r.record).toMatchObject({ kind: "free", idle: true, minutes: FREE_IDLE_MINUTES });
     expect(r.record.result).toMatchObject({ ok: true, status: "unchanged" });
     expect(r.state.world.arrivals ?? []).toEqual(s.world.arrivals ?? []);
+    // 本人役・監督・世界・講評には、何かをしたと読ませない（記録だけ）
+    expect(actionWords(r.record)).toBe(CATALOG_WORDS.note);
     const html = renderToStaticMarkup(createElement(ActionItem, { a: r.record, names: {} }));
     expect(html.split(FREE_LABELS.idle).length - 1).toBe(1);
     expect(html).not.toContain(FREE_LABELS.as);

@@ -413,7 +413,7 @@ describe("72 時間の筋（連続の時計と 18 の手）", () => {
     expect(line("3 時間", "訪問")).toMatch(/E さん（.*）［事実: 電話 不安定・道 通行止・.*］ → 通行止（川沿いの市道 通行止）・空振り$/);
     expect(line("13 時間", "透析調整")).toContain("透析先 休止");
     expect(line("13 時間", "透析調整")).toContain("→ 休止（透析施設 休止）・空振り");
-    expect(line("0 時間 5 分", "自由対応（読み替え: 薬手配）")).toContain("→ 手配済（着く 2 時間 15 分）");
+    expect(line("0 時間 5 分", "自由対応（扱い: 薬手配）")).toContain("→ 手配済（着く 2 時間 15 分）");
     expect(line("0 時間", "見守依頼")).toContain("（着く 0 時間 35 分）");
     expect(line("0 時間 20 分", "本人電話")).toContain("前の手から 5 分");
     expect(line("0 時間 20 分", "本人電話")).toMatch(/・重複$/);

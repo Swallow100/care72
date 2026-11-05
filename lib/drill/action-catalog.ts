@@ -498,7 +498,9 @@ export function effectiveKind(a: { kind: DrillAction; as?: DrillAction | null })
  * 打った手の言い方（自由対応は読み替えた手の言い方。ケアマネの文は渡さない）。
  * 表の手に当たらなかった自由対応（T110 のそのままの手）は、AI が伏せた文から作った 1 文（words。名前・町名なし）
  */
-export function actionWords(a: { kind: DrillAction; as?: DrillAction | null; words?: string | null }): string {
+export function actionWords(a: { kind: DrillAction; as?: DrillAction | null; words?: string | null; idle?: boolean }): string {
+  // 何も起きない自由対応（T129「変化なし」）は、何かをしたと読ませない（記録だけ）
+  if (a.kind === "free" && !a.as && a.idle) return CATALOG_WORDS.note;
   if (a.kind === "free" && !a.as && a.words) return a.words;
   return CATALOG_WORDS[effectiveKind(a)];
 }
