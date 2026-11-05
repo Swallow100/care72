@@ -10,19 +10,18 @@
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { LocationField } from "@/components/person/LocationPick";
 import { Panel, PanelHead } from "@/components/ui/Panel";
-import { Select } from "@/components/ui/Select";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { CHOICE_INPUT, CHOICE_LABEL } from "@/components/ui/choice";
 import { HAZARD_LABELS, PLACE_LABELS } from "@/lib/labels";
 import { DEFAULT_CENTER } from "@/lib/map/center";
 import { CITY_MAX, OFFICE_PLACE_ANCHOR, OFFICE_PLACE_PATH } from "@/lib/office/place";
 import { FLOOD_DEPTHS, loadOfficeRegion, OFFICE_ZONE_KINDS, REGION_KMS, type OfficeRegion } from "@/lib/office/region";
+import { DepthSelect, ExtentSelect } from "./RegionSelects";
 
 const ROW = "grid grid-cols-[4.5rem_minmax(0,1fr)] items-center gap-x-2";
 const ROW_TOP = "grid grid-cols-[4.5rem_minmax(0,1fr)] items-start gap-x-2";
 const INPUT =
   "w-full min-w-0 rounded bg-panel2 px-2 py-1 text-sm outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-accent";
-const SELECT = "h-8 min-w-0 rounded bg-panel2 px-2 text-sm text-ink outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-accent";
 
 export async function OfficePlace({ officeId, admin, error }: { officeId: string; admin: boolean; error?: boolean }) {
   let region: OfficeRegion | null;
@@ -66,18 +65,10 @@ export async function OfficePlace({ officeId, admin, error }: { officeId: string
                   <span className="text-xs text-muted">{PLACE_LABELS.otherCities}</span>
                   <input name="region_city" className={INPUT} defaultValue={region.others.join("・")} autoComplete="off" data-office-region-others />
                 </label>
-                <label className={ROW}>
+                <div className={ROW}>
                   <span className="text-xs text-muted">{PLACE_LABELS.extent}</span>
-                  <Select name="region_km" defaultValue={region.km === null ? "auto" : String(region.km)} className={SELECT} aria-label={PLACE_LABELS.extent}>
-                    {/* 項目の字は 1 つの文字列で渡す（選ぶ部品が server と client で同じ字を読むように） */}
-                    <option value="auto">{`${PLACE_LABELS.auto} ${region.kmUsed} km`}</option>
-                    {REGION_KMS.map((k) => (
-                      <option key={k} value={String(k)}>
-                        {`${k} km`}
-                      </option>
-                    ))}
-                  </Select>
-                </label>
+                  <ExtentSelect kms={REGION_KMS} value={region.km} autoKm={region.kmUsed} />
+                </div>
                 <fieldset className={ROW_TOP}>
                   <legend className="sr-only">{PLACE_LABELS.zones}</legend>
                   <span aria-hidden className="pt-2 text-xs text-muted">
@@ -90,14 +81,7 @@ export async function OfficePlace({ officeId, admin, error }: { officeId: string
                         {HAZARD_LABELS[k]}
                       </label>
                     ))}
-                    <Select name="flood_depth" defaultValue={flood?.depthM != null ? String(flood.depthM) : "none"} className={SELECT} aria-label={PLACE_LABELS.floodDepth}>
-                      <option value="none">{`${PLACE_LABELS.floodDepth} —`}</option>
-                      {FLOOD_DEPTHS.map((d) => (
-                        <option key={d} value={String(d)}>
-                          {`${PLACE_LABELS.floodDepth} ${d} m`}
-                        </option>
-                      ))}
-                    </Select>
+                    <DepthSelect depths={FLOOD_DEPTHS} value={flood?.depthM ?? null} />
                   </div>
                 </fieldset>
               </>
