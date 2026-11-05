@@ -17,7 +17,7 @@ function lastIndex(chars: ReadonlyArray<string>, re: RegExp, from: number): numb
 
 /**
  * 上限（字）を超えた言葉を文の切れ目で切る。上限の中に収まる言葉はそのまま。
- * 1. 上限の中の最後の文の終わり（上限の 3 分の 1 より後）まで
+ * 1. 上限の中の最後の文の終わり（上限の 4 分の 1 より後）まで
  * 2. 無ければ最後の読点（同じく 3 分の 1 より後）の前まで ＋「…」
  * 3. 無ければ短くても最初の文の終わりまで
  * 4. どれも無ければ上限の 1 字手前まで ＋「…」
@@ -27,7 +27,8 @@ export function clipWords(text: string, max: number): string {
   if (chars.length <= max) return text;
   const head = chars.slice(0, max);
   const floor = Math.floor(max / 3);
-  const end = lastIndex(head, END, floor);
+  // 文の終わりは読点より先に選ぶ（言いさしより、短くても言い切った文）。ただし短すぎる文（「はい。」）だけにはしない
+  const end = lastIndex(head, END, Math.floor(max / 4));
   if (end >= 0) return head.slice(0, end + 1).join("").trim();
   const comma = lastIndex(head.slice(0, max - 1), COMMA, floor);
   if (comma >= 0) return `${head.slice(0, comma).join("").trim()}${CLIP_MARK}`;
