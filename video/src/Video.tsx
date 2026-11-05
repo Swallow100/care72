@@ -369,7 +369,7 @@ const ShotView: React.FC<{ shot: Shot; assets: Assets; entryDelay?: number; next
       body = (
         <>
           <Backdrop shot={shot} assets={assets} duration={duration} />
-          <Quote text={shot.lines?.[0] ?? ""} sub={shot.sub}>
+          <Quote text={shot.lines?.[0] ?? ""} sub={shot.sub} by={shot.by}>
             {shot.cues?.length ? <Kinetic words={kineticWords(shot, assets)} align="center" marker={shot.marker} duration={duration} exit /> : undefined}
           </Quote>
         </>
