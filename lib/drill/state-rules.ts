@@ -332,7 +332,15 @@ export type Screened = {
 export function screenIncidents(
   world: WorldState,
   incidents: ReadonlyArray<DrillIncident>,
-  ctx: Omit<ScreenContext, "minute"> & { minute?: number; originOf?: (e: DrillIncident) => Origin },
+  ctx: Omit<ScreenContext, "minute"> & {
+    minute?: number;
+    originOf?: (e: DrillIncident) => Origin;
+    /**
+     * 後ろに回さずに捨てる（T123）。刻みの道（10 分版・前からある訓練の step）は予定の出来事を時刻で起こさないので、後ろに回すと
+     * 起きないまま残る（通行止の道が 72 時間まで戻らない）
+     */
+    noDefer?: boolean;
+  },
 ): Screened {
   let w = world;
   const kept: DrillIncident[] = [];
@@ -340,7 +348,7 @@ export function screenIncidents(
   for (const e of incidents) {
     const minute = ctx.minute ?? Math.round(e.at * 60);
     const v = screenIncident(w, e, { minute, origin: ctx.originOf?.(e) ?? ctx.origin, ...(ctx.ahead ? { ahead: ctx.ahead } : {}) });
-    if (v.keep === false) {
+    if (v.keep === false || (v.keep === "defer" && ctx.noDefer)) {
       ruled.push({ rule: v.rule, kind: e.change.kind, deferred: false });
       continue;
     }

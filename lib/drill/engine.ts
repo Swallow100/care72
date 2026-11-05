@@ -562,7 +562,13 @@ export async function step(
   // 監督の差し込みも変わり方の決まり（T121、lib/drill/state-rules.ts）で見る（T123。10 分版と前からある訓練の道は決まりの外だった）
   const raw = directorIncidents(Array.isArray(out) ? out : (out?.events ?? []), members, hour);
   const table = tableOf(state);
-  const screened = screenIncidents(world, raw, { origin: "ai", minute: Math.round(hour * 60), ahead: tableAheadOf(table.events, Math.round(hour * 60), table.rows) });
+  // 刻みの道は予定の出来事を時刻で起こさない（fireScheduled は連続の時計だけ）ので、早すぎる再開は後ろに回さず捨てる
+  const screened = screenIncidents(world, raw, {
+    origin: "ai",
+    minute: Math.round(hour * 60),
+    ahead: tableAheadOf(table.events, Math.round(hour * 60), table.rows),
+    noDefer: true,
+  });
   const inserted = screened.kept;
   world = screened.world;
   const asked = new Set(replies.map((r) => r.id));

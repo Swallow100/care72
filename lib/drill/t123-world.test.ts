@@ -131,6 +131,22 @@ describe("10 分版（刻みの道）も監督の差し込みを決まりで見�
     expect(inserted.filter((e) => e.change.kind === "road")).toHaveLength(1);
   });
 
+  it("早すぎる通行再開は、刻みの道では予定に回さず捨てる（予定は刻みの道で起きないので）。間があけば当たる", async () => {
+    let s = initialState("short", TEN, START);
+    const director: Dir = async (input) =>
+      input.step === 0
+        ? [{ inject: "road_blocked", person: "p-01", text: "家の前の道が冠水", ai: true }]
+        : input.step === 1 || input.step === 2
+          ? [{ inject: "road_reopen", person: "p-01", text: "通れるようになった", ai: true }]
+          : [];
+    s = (await step(s, { director })).state; // 0 時間に通行止
+    s = (await step(s, { director })).state; // 3 時間の再開は通行止から 3 時間で早すぎる
+    expect(s.world.roads.find((r) => r.person === "p-01")?.open).toBe(false);
+    expect(s.world.scheduled ?? []).toEqual([]);
+    s = (await step(s, { director })).state; // 12 時間の再開は 12 時間あいたので当たる
+    expect(s.world.roads.find((r) => r.person === "p-01")?.open).toBe(true);
+  });
+
   it("10 分版: 最後の刻み（72 時間）は監督を呼ばない（手の返事の言い換えが無ければ）", async () => {
     let s = initialState("short", TEN, START);
     const steps: number[] = [];

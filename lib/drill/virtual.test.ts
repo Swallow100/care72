@@ -134,7 +134,9 @@ const STEP: WorldStep = {
 
 // ---------- 偽の部屋 ----------
 
-function fakeRoom(answer: (text: string, n: number) => WorldStep | "fail" | "silent" | "late" | "landed_throw" = () => STEP, opts: { noIds?: boolean; idleFirst?: boolean } = {}) {
+function fakeRoom(answer: (text: string, n: number) => WorldStep | "fail" | "silent" | "late" | "landed_throw" = () => STEP, opts: { noIds?: boolean; idleFirst?: boolean; slow?: boolean } = {}) {
+  /** 遅い部屋（T123）: 呼び出しは送ったあとの 2 回目の読みで出る */
+  const slow: RoomEvent[] = [];
   const events: RoomEvent[] = [];
   const texts: string[] = [];
   const made = { agents: 0, environments: 0, sessions: 0, updates: 0 };
@@ -192,7 +194,7 @@ function fakeRoom(answer: (text: string, n: number) => WorldStep | "fail" | "sil
             else if (a === "landed_throw") {
               events.push({ id: `ev_${++n}`, type: "agent.custom_tool_use", name: WORLD_TOOL, input: STEP });
               thrown = true;
-            } else if (a !== "silent") events.push({ id: `ev_${++n}`, type: "agent.custom_tool_use", name: WORLD_TOOL, input: a });
+            } else if (a !== "silent") (opts.slow ? slow : events).push({ id: `ev_${++n}`, type: "agent.custom_tool_use", name: WORLD_TOOL, input: a });
           } else if (e.type === "user.custom_tool_result") {
             events.push({ id: `ev_${++n}`, type: "session.status_idle", stop_reason: { type: "end_turn" } });
           }
@@ -201,7 +203,11 @@ function fakeRoom(answer: (text: string, n: number) => WorldStep | "fail" | "sil
         // 送りの返事に出来事の id が無い形（T123。本物の返事の data は省略できる）
         return { ids: opts.noIds ? [] : ids };
       },
-      list: async () => [...events],
+      list: async () => {
+        const out = [...events];
+        events.push(...slow.splice(0));
+        return out;
+      },
     },
   };
   return { client, texts, made, sessionParams };
@@ -603,6 +609,18 @@ describe("仮想の筋（偽の部屋・偽の Haiku）", () => {
     expect(room.texts).toHaveLength(12);
     const screen = (await loadDrillScreen(db, drillScope(careManager())!, "drill-v", null))!;
     expect(screen.ticks.flatMap((tk) => tk.incidents).some((e) => e.change.kind === "world_note")).toBe(false);
+    const said = screen.ticks.map((tk) => (tk.incidents.find((e) => e.change.kind === "narration")?.change as { room?: string } | undefined)?.room ?? "");
+    expect(said).toEqual(said.map((_, i) => `甲地区で白波川が増水している（${i + 1} 回目）`));
+  });
+
+  it("答えが 2 回目の読みで出る部屋でも、読むたびに自分の文から数え、前の刻みの呼び出し・idle を読まない（T123）", async () => {
+    // 評価の 2 回目の代替の形と見られる物: 前は 1 回目の読みで自分の文を見つけたら、2 回目からは窓の頭から読み、前の刻みの物を自分の物にした
+    const room = fakeRoom((_text, n) => ({ ...STEP, narration: `甲地区で白波川が増水している（${n} 回目）` }), { slow: true });
+    const { client } = fakeClaude();
+    const hooks = drillHooks({ DB: db, ANTHROPIC_API_KEY: "dummy" }, careManager(), { claude: client, now: () => new Date(START), room: room.client, roomTime: fastClock() })!;
+    await runVirtual(hooks);
+    expect(aiRows().filter((r) => r.purpose === "director" && r.status === "failed")).toHaveLength(0);
+    const screen = (await loadDrillScreen(db, drillScope(careManager())!, "drill-v", null))!;
     const said = screen.ticks.map((tk) => (tk.incidents.find((e) => e.change.kind === "narration")?.change as { room?: string } | undefined)?.room ?? "");
     expect(said).toEqual(said.map((_, i) => `甲地区で白波川が増水している（${i + 1} 回目）`));
   });

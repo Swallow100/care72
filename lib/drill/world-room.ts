@@ -287,10 +287,10 @@ export async function roomStep(
   const deadline = clock() + timeout;
   const handled = new Set<string>();
   let answer: WorldStep | null = null;
-  // この刻みの文より後の出来事だけを読む（T123）。送りの返事に id が無ければ、文の中身で自分の user.message を探す。
-  // 前は id が無いと全部を自分の物として読み、読みの窓（送る 5 秒前から）に入った前の刻みの idle（end_turn）で「world_step なしで止まった」と
-  // すぐ落ちて 1 回呼びに代わり、部屋はその刻みを続けて答え（答えていない呼び出しが残り）、次の刻みの送りが 400 になっていた
-  let mine = false;
+  // この刻みの文より後の出来事だけを読む（T123）。読むたびに自分の user.message から数え直す。前は 1 回目の読みで自分の文を見つけたら、
+  // 2 回目からの読みを窓（送る 5 秒前から）の頭から自分の物として読み、窓に入った前の刻みの idle（end_turn）で「world_step なしで
+  // 止まった」と落ちて 1 回呼びに代わり、部屋はその刻みを続けて答え（答えていない呼び出しが残り）、次の刻みの送りが 400 になっていた。
+  // 送りの返事に id が無ければ、文の中身で自分の user.message を探す（見つからなければ窓の中の最後の user.message。送りは 1 つずつ）
   // 自分の文のあとに部屋が動いたか（agent.* の出来事）。動く前の end_turn は前の刻みの物として読まない
   let active = false;
   while (clock() < deadline) {
@@ -301,9 +301,16 @@ export async function roomStep(
     } catch {
       continue; // 読みの一時の失敗は次の読みで取り直す（id で揃える）
     }
+    const anchor =
+      sent.length > 0
+        ? null
+        : ([...events].reverse().find((e) => e.type === "user.message" && (e.content ?? []).some((c) => c.text === text)) ??
+            [...events].reverse().find((e) => e.type === "user.message") ??
+            null);
+    let mine = false;
     for (const e of events) {
       if (!mine) {
-        if (sent.length > 0 ? sent.includes(e.id) : e.type === "user.message" && (e.content ?? []).some((c) => c.text === text)) mine = true;
+        if (sent.length > 0 ? sent.includes(e.id) : e.id === anchor?.id) mine = true;
         continue;
       }
       if (handled.has(e.id)) continue;
