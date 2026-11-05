@@ -2,6 +2,7 @@
 // 埋めた紙の一覧（filled/index.html）を作る。md には数だけを書く（中身の写し・原本・名前は書かない）。
 
 import { mkdirSync, writeFileSync } from "node:fs";
+import { reviewTotals } from "./review.ts";
 import { join } from "node:path";
 import { INPUT_KIND_LABELS, type InputKind } from "./inputs.ts";
 import { PRICES_AS_OF } from "./record.ts";
@@ -117,6 +118,12 @@ export const METRICS: Metric[] = [
   { label: "入力トークン", get: (r) => r.calls.inputTokens },
   { label: "出力トークン", get: (r) => r.calls.outputTokens },
   { label: "費用の見積もり（USD）", get: (r) => Math.round(r.calls.costUsd * 10000) / 10000, digits: 4 },
+  // T136: 紙の見直し（決まりの見直しの要修正・要確認の数、AI の照合で使った所の数と失敗）
+  { label: "見直し 要修正（決まり）", get: (r) => (r.papers.some((p) => p.review) ? reviewTotals(r.papers).fix : null) },
+  { label: "見直し 要確認（決まり）", get: (r) => (r.papers.some((p) => p.review) ? reviewTotals(r.papers).check : null) },
+  { label: "見直し AI の照合の紙", get: (r) => (r.papers.some((p) => p.review) ? reviewTotals(r.papers).ai : null) },
+  { label: "見直し AI の所（使った物）", get: (r) => (r.papers.some((p) => p.review) ? reviewTotals(r.papers).aiFound : null) },
+  { label: "見直し AI の照合の失敗", get: (r) => (r.papers.some((p) => p.review) ? reviewTotals(r.papers).aiFailed : null) },
 ];
 
 const fmt = (v: number | null, m?: Metric) => (v === null ? "-" : `${m?.digits ? v.toFixed(m.digits) : v}${m?.unit ?? ""}`);
@@ -139,6 +146,7 @@ export function oneLine(r: RunResult, prev: RunResult | null): string {
     `入力 当${t.intake.hit}/${t.intake.expected}${d(t.intake.hit, p?.intake.hit)} 外${t.intake.wrong} 漏${t.intake.miss}`,
     `紙 当${t.paper.hit}/${t.paper.filled}${d(t.paper.hit, p?.paper.hit)} 置違${paperWrong}${d(paperWrong, p ? p.paper.wrong + p.paper.extra : undefined)} 別紙${t.paper.annexOverflow + t.paper.annexUnplaced}`,
     `見 重${t.look.overlap}${d(t.look.overlap, p?.look.overlap)} 出${t.look.outside} 隣${t.look.neighbor} 空${t.look.blanks}${d(t.look.blanks, p?.look.blanks)} 置けず${t.look.unplaced} 伏${t.look.masks}`,
+    ...(r.papers.some((p) => p.review) ? [`見直し 修${reviewTotals(r.papers).fix} 確${reviewTotals(r.papers).check} AI${reviewTotals(r.papers).aiFound}`] : []),
     `漏洩 ${r.leaks.strongHits}`,
     `失敗 ${t.inputsFailed}`,
     `呼出 ${r.calls.calls}回 ${Math.round(r.calls.durationMs / 1000)}秒 $${r.calls.costUsd.toFixed(3)}`,

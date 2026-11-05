@@ -1,0 +1,38 @@
+/*
+  書類の紙の見直し（T136、components/forms/PaperReview.tsx）の紙の上の印。画面だけで、印刷では消す。
+  rv-redo: 再考中の欄（読み直している欄）。注意の黄の枠と、左上に「再考中」の小さな塗りの印。
+  rv-focus: 一覧で押した欄。選択の枠（操作の色）。
+  紙は画面のテーマによらず白なので、色は固定の値（overlay-paper.css の色付けと同じ黄）。
+*/
+@media screen {
+  [data-paper-root] .paper.overlay .rv-redo,
+  [data-paper-root] .paper.overlay .rv-focus {
+    position: absolute;
+    pointer-events: none;
+    box-sizing: border-box;
+  }
+  [data-paper-root] .paper.overlay .rv-redo {
+    outline: 2px solid #f2b125;
+  }
+  [data-paper-root] .paper.overlay .rv-redo::after {
+    content: attr(data-label);
+    position: absolute;
+    left: -2px;
+    bottom: 100%;
+    padding: 0 2px;
+    background: #f2b125;
+    color: #1d1d1d;
+    font: 700 7pt/1.3 var(--font-gothic);
+    white-space: nowrap;
+  }
+  [data-paper-root] .paper.overlay .rv-focus {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+}
+@media print {
+  [data-paper-root] .rv-redo,
+  [data-paper-root] .rv-focus {
+    display: none;
+  }
+}

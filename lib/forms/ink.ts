@@ -263,3 +263,10 @@ export function unpackInk(v: unknown): InkBlob[] | null {
 export function checkPackedInk(v: unknown): number[] | null {
   return unpackInk(v) ? (v as number[]) : null;
 }
+
+/**
+ * 頁の画像の印刷の字の位置を、紙の見直し（lib/forms/review.ts の PrintedText）の形に（T133。字と □ のかたまり。罫線は除く）
+ */
+export function printedOf(images: ReadonlyArray<{ page: number; ink?: number[] }>): Array<{ page: number; box: { x: number; y: number; w: number; h: number } }> {
+  return images.flatMap((img) => (unpackInk(img.ink) ?? []).filter((b) => !b.line).map((b) => ({ page: img.page, box: { x: b.x, y: b.y, w: b.w, h: b.h } })));
+}

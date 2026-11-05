@@ -5,14 +5,16 @@
 // Fill・Choice・Emergency・QuestionBody は家族・支援者のスマホ（FamilyView.tsx、T11）も使う。
 // 赤のあとの問い（T49）は lib/signals/questions.ts の表から 1 画面 1 問。選択肢（わからない を含む）と「とばす」。
 // 選択肢が 5 つ以上の問い（部位・部屋など）は 2 列に並べる。選択肢は面を塗らず灰の枠、印のある答えは左の帯（T69b。見た目だけで表に渡さない）。声の問い（20 秒押さないとき）は「AI が きいています」を上に出し、押してもよい。
+// 声の聞き取りの会話（T137）: 読んだ 1 文を大きく出す（聞こえにくい人のため）。AI が作った文には「AI」の印（ふりがなは辞書の分だけ）、
+// 決まった文はやさしい日本語のまま。「送る」で締める。聞き取れないときのボタンの答え方は、はい（緑の面）・いいえ（赤の面）・とばす。
 
 import type { ReactNode } from "react";
 import { EasyWords } from "@/components/forms/EasyText";
 import { Loader72 } from "@/components/ui/Loader72";
-import { easy } from "@/lib/forms/easy-words";
+import { easy, yomi } from "@/lib/forms/easy-words";
 import type { WhereNow } from "@/lib/db/types";
 import type { PhoneState } from "@/lib/signals/phone";
-import { AI_NOTICE, emergencyWords, PHONE_PHRASES, WHERE_PHRASES } from "@/lib/signals/phrases";
+import { AI_NOTICE, emergencyWords, PHONE_PHRASES, TALK_PHRASES, WHERE_PHRASES } from "@/lib/signals/phrases";
 import { choicesFor, questionOf, type QuestionId, type ShelterOption } from "@/lib/signals/questions";
 
 export type PhoneActions = {
@@ -21,6 +23,8 @@ export type PhoneActions = {
   where(w: WhereNow): void;
   answer(choice: string): void;
   skip(): void;
+  /** ボタンの答え方（T137）: はい（true）・いいえ（false）。前からの部品の描き方（テスト）は無くてもよい */
+  yesNo?(yes: boolean): void;
   /** いまの 場所を おくりますか（T69b） */
   locate(send: boolean): void;
   extend(): void;
@@ -246,6 +250,91 @@ export function PhoneView({
               <Words m={PHONE_PHRASES.no} />
             </Choice>
           </div>
+          <Emergency />
+        </Fill>
+      );
+    case "talk":
+      // 声の聞き取りの会話（T137）。読んだ 1 文を大きく。最初の問いは定型文（AI の告知つき）
+      return (
+        <Fill step="talk">
+          {state.first && <AiNotice />}
+          {state.voice !== "speaking" && <AiListening />}
+          {state.first ? (
+            <Prompt />
+          ) : (
+            <div className="rounded-xl bg-panel px-4 py-4 text-center text-[1.75rem] font-bold" data-talk-line={state.by}>
+              {state.by === "ai" && (
+                <>
+                  <span className="phone-ai">AI</span>{" "}
+                </>
+              )}
+              {state.easy ? <Words m={state.easy} /> : <EasyWords words={yomi(state.line).words} />}
+            </div>
+          )}
+          <div className="flex-1" />
+          <Choice onClick={on.finish} value="send">
+            <Words m={PHONE_PHRASES.send} />
+          </Choice>
+          <Emergency />
+        </Fill>
+      );
+    case "yesno": {
+      // 聞き取れないが続いたとき（T137）: はいなら緑・いいえなら赤（赤緑は面で塗る）。とばす もある
+      const q = questionOf(state.id);
+      return (
+        <Fill step={`yesno-${state.id}`}>
+          <h1 className="px-1 pt-2 text-center text-[2rem] font-bold" role="status" data-question-id={state.id}>
+            <Words m={q.easy} />
+          </h1>
+          <p className="text-center text-xl" data-yesno-hint>
+            <Words m={TALK_PHRASES.yesNoHint} />
+          </p>
+          <div className="flex flex-1 flex-col gap-3">
+            <button
+              type="button"
+              onClick={() => on.yesNo?.(true)}
+              className={`${BIG} phone-fill-ok text-[2.75rem]`}
+              data-press="overlay"
+              data-choice="yes"
+            >
+              <span>
+                <Words m={PHONE_PHRASES.yes} />
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => on.yesNo?.(false)}
+              className={`${BIG} phone-fill-urgent text-[2.75rem]`}
+              data-press="overlay"
+              data-choice="no"
+            >
+              <span>
+                <Words m={PHONE_PHRASES.no} />
+              </span>
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={on.skip}
+            className="w-full rounded-xl bg-panel px-4 py-3 text-center text-2xl text-muted"
+            data-press
+            data-choice="skip"
+          >
+            <Words m={PHONE_PHRASES.skip} />
+          </button>
+          <Emergency />
+        </Fill>
+      );
+    }
+    case "closing":
+      // 会話の締め（T137）。読む文は 119 の文で終わる（画面の 119 の 1 行はいつもどおり下に）
+      return (
+        <Fill step="closing">
+          <p className="flex flex-1 items-center justify-center text-center text-[2rem] font-bold" role="status" data-closing={state.danger ? "danger" : ""}>
+            <span>
+              <Words m={state.easy} />
+            </span>
+          </p>
           <Emergency />
         </Fill>
       );

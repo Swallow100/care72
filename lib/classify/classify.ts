@@ -15,6 +15,7 @@ import { ANSWER_LABELS } from "../signals/labels.ts";
 import { RED_QUESTIONS } from "../signals/phrases.ts";
 import { QUESTION_NAMES } from "./labels.ts";
 import { HEARING_FIELDS, type HearingField } from "../signals/questions.ts";
+import { talkDialogText, type TalkLog } from "../signals/talk.ts";
 import { CLASSIFY_SYSTEM, ClassifySchema, CONFIDENCE_MIN, MEMO_MAX, QUOTE_MAX, type ClassifyAnswer } from "./prompt.ts";
 
 /** 音の特徴（端末の MediaRecorder から取れれば）。無音の割合は 0〜1 */
@@ -27,6 +28,8 @@ export type ClassifySource = {
   /** 赤の 4 問の答え。答えの無い信号（家族の自由文など）は null */
   answers: RedAnswers | null;
   audio: AudioFeatures | null;
+  /** 声の聞き取りの会話（T137）。あれば問いと答えの組を分類の手がかりに渡す（「はい」が何への答えか分かるように）。分けるのは本人の言葉だけ */
+  talk?: TalkLog | null;
 };
 
 /** Claude に渡す形。どちらも lib/pseudonym の伏せ方を通した文（印の無い文は型で通らない） */
@@ -35,6 +38,8 @@ export type ClassifyInput = {
   text: ForClaude<{ text: string }> | null;
   /** 答えと音の特徴（コードの決まった言葉の文。同じ伏せ方を通す） */
   facts: ForClaude<{ text: string }>;
+  /** 声の聞き取りの会話（T137）の問いと答え（同じ伏せ方を通す）。会話をしなかった録音は無い */
+  dialog?: ForClaude<{ text: string }> | null;
 };
 
 /** 分類の結果。categories は 6 つの値で 1 つ以上、不明はほかと一緒にしない */
@@ -78,6 +83,7 @@ export function sealClassifyInput(src: ClassifySource, key: PseudonymKey): Class
   return {
     text: t ? pseudonymizeText(t, key) : null,
     facts: pseudonymizeText(factsText(src.answers, src.audio), key),
+    ...(src.talk && src.talk.turns.length > 0 ? { dialog: pseudonymizeText(talkDialogText(src.talk), key) } : {}),
   };
 }
 
@@ -85,11 +91,12 @@ export function sealClassifyInput(src: ClassifySource, key: PseudonymKey): Class
 export function buildClassifyRequest(input: {
   text: ForClaude<{ text: string }>;
   facts: ForClaude<{ text: string }>;
+  dialog?: ForClaude<{ text: string }> | null;
 }): AskJsonRequest<typeof ClassifySchema> {
   return {
     purpose: "classify",
     system: CLASSIFY_SYSTEM,
-    input: { 文字起こし: input.text, 答えと音: input.facts },
+    input: { 文字起こし: input.text, 答えと音: input.facts, ...(input.dialog ? { 会話: input.dialog } : {}) },
     schema: ClassifySchema,
   };
 }
@@ -146,7 +153,7 @@ export function classifyErrorOf(e: unknown): ClassifyError | null {
 export async function classify(input: ClassifyInput, ctx: AskJsonContext): Promise<ClassifyResult> {
   if (!input.text || !input.text.text.trim()) return { ok: false, error: "no_text" };
   try {
-    const r = await askJson(buildClassifyRequest({ text: input.text, facts: input.facts }), ctx);
+    const r = await askJson(buildClassifyRequest({ text: input.text, facts: input.facts, dialog: input.dialog ?? null }), ctx);
     return { ok: true, model: r.model, value: normalizeClassification(r.value, input.text.text) };
   } catch (e) {
     const error = classifyErrorOf(e);

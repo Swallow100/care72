@@ -276,6 +276,8 @@ export type OverlaySheet = {
   unconfirmed: string[];
   /** 台帳に値があるのに置けなかった欄（T133。欄の名前。紙に字を置かず、色付けの版で「未配置」の印） */
   unplaced?: string[];
+  /** 同じ欄の id（T136 の見直しの取込漏れに渡す） */
+  unplacedIds?: string[];
   unmapped: string[];
   withheld: ConsentKind[];
   /** 一覧の形の様式（T131、差し込みの紙面の list のまま）。一括印刷で行ごとに 1 人を置く（lib/forms/list-sheet.ts） */
@@ -457,7 +459,7 @@ export function buildOverlaySheet(mapped: MappedSheet, images: readonly PageImag
     pages,
     annex,
     unconfirmed: mapped.unconfirmed,
-    ...(unplaced.size > 0 ? { unplaced: [...unplaced.values()].map(nameOf) } : {}),
+    ...(unplaced.size > 0 ? { unplaced: [...unplaced.values()].map(nameOf), unplacedIds: [...unplaced.keys()] } : {}),
     unmapped: mapped.unmapped,
     withheld: mapped.withheld,
     ...(mapped.list ? { list: mapped.list } : {}),

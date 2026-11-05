@@ -43,6 +43,7 @@ import { loadReplay, replayClient } from "./replay.ts";
 import { lookOfPaper, type LookScore } from "./look.ts";
 import { costUsd, jsonl, realClient, recorder, type CallRecord, type Jsonl } from "./record.ts";
 import { heicBytes, launchRenderer, withExif, type Ratio, type Renderer } from "./render.ts";
+import { reviewPaper, type PaperReview } from "./review.ts";
 import { cellOfSheet, scoreIntake, scorePaper, scoreRead, type IntakeScore, type Judgement, type PaperScore, type ReadScore } from "./score.ts";
 
 export const REPO_ROOT = resolve(fileURLToPath(new URL("../../../", import.meta.url)));
@@ -84,6 +85,8 @@ export type EvalOptions = {
   /** テストの差し替え: 様式の頁の画像（id → JPEG の頁）と、入力の絵（id → 選んだファイルと伏せる所） */
   formPages?: Record<string, Uint8Array[]>;
   inputFiles?: Record<string, { bytes: Uint8Array; secrets: Ratio[][] }>;
+  /** 紙の AI の照合（T136）。既定は回さない（cli は偽の回で回し、本物の回は --review のときだけ。決まりの見直しの数はいつも） */
+  review?: boolean;
   /** 本物の回の費用の見積もりの上限（ドル）。超えたら次の様式・入力を始めない（飛ばした物は「上限」と数える） */
   maxUsd?: number | null;
   log?: (line: string) => void;
@@ -133,6 +136,8 @@ export type PaperResult = {
   /** 紙の見た目の数（T133。元の様式の上の紙だけ。正解の表の無い様式も） */
   look?: LookScore;
   files: { pdf?: string; fillPdf?: string; png?: string; fillPng?: string };
+  /** 紙の見直し（T136。元の様式の上の紙だけ） */
+  review?: PaperReview | null;
 };
 
 /** aiCalls は手元の D1 の ai_calls の行から数えた物（費用の見積もりの元） */
@@ -594,10 +599,27 @@ export async function runEval(opts: EvalOptions): Promise<RunResult> {
             ),
           });
         }
+        // 紙の見直し（T136）。決まりの見直しの数と、AI の照合（偽の回は台が決めた答え）
+        rec.scope(`${f.id}:${spec.id}`, "form_review");
+        const review = await reviewPaper({
+          sheets: actual,
+          rows: rows.actual,
+          today,
+          review: opts.review ?? false,
+          ctx: evalCtx,
+          fake,
+          fakeStyle: opts.fakeStyle,
+          seed: `review:${f.id}:${spec.id}`,
+          pageHref: imgSrc,
+          blankPage: (page) => bucket.objects.get(pageImageKey(OFFICE, `fm-${f.id}`, page)) ?? null,
+          renderer,
+        });
+        rec.flush();
+        if (review) step({ stage: "paper.review", form: f.id, input: spec.id, ...review });
         // 正解の表の無い様式は、既定で台帳そのままの 1 人だけ刷る（置き場の様式は数が多い）
         const draw = !!f.form || opts.paperAllForms || spec.id === sampleInput;
         const files = draw ? await renderPaper(actual, imgSrc, { renderer, mode: opts.paper, dir, form: f.id, input: spec.id, today }) : {};
-        papers.push({ form: f.id, input: spec.id, kind: spec.kind, score, ...(look ? { look: look.score } : {}), files });
+        papers.push({ form: f.id, input: spec.id, kind: spec.kind, score, ...(look ? { look: look.score } : {}), files, review });
       }
     }
 
