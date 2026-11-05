@@ -7,11 +7,13 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { PhoneSheet, phoneBlocks } from "../../components/phone/PhoneSheet.tsx";
 import { PhoneView, type PhoneActions } from "../../components/phone/PhoneView.tsx";
-import { SEED_AT, SEED_PEOPLE, seedConsents } from "../../seed/people.ts";
+import { SEED_AT, seedConsents } from "../../seed/people.ts";
 import { buildOwnSheet, EMERGENCY_TEXT, lineText } from "../forms/own-sheet.ts";
 import type { PersonPageRows } from "../person.ts";
 import { createPhone, type PhoneState } from "./phone.ts";
 import { choicesFor, QUESTIONS, type QuestionId } from "./questions.ts";
+// T142 で種の台帳を埋めた。このテストは空いた欄を前提にするので、T142 より前の空きの多い形（seed/sparse.ts）を使う
+import { SPARSE_PEOPLE } from "../../seed/sparse.ts";
 
 const noop: PhoneActions = {
   green() {},
@@ -234,7 +236,7 @@ describe("119 の 1 行（T48）", () => {
 });
 
 describe("平時の画面", () => {
-  const p = SEED_PEOPLE.find((x) => x.person.id === "p-01")!;
+  const p = SPARSE_PEOPLE.find((x) => x.person.id === "p-01")!;
   const rows: PersonPageRows = {
     person: { ...p.person, ledger: JSON.stringify(p.ledger), created_at: SEED_AT, updated_at: SEED_AT },
     careManagerName: "山本",

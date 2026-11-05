@@ -6,7 +6,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { MatsuyamaSheet } from "../../components/forms/MatsuyamaSheet.tsx";
 import { OverlaySheet } from "../../components/forms/OverlaySheet.tsx";
-import { SEED_PEOPLE, type SeedContact, type SeedPerson } from "../../seed/people.ts";
+import { type SeedContact, type SeedPerson } from "../../seed/people.ts";
 import type { Ledger } from "../db/types.ts";
 import { matsuyamaFrameSheet } from "./frame-build.ts";
 import { buildMappedSheet } from "./mapped-sheet.ts";
@@ -17,6 +17,8 @@ import { buildOverlaySheet, cellLines, isNoneOnly, type OverlaySheet as Overlay 
 import type { PageImage } from "./page-images.ts";
 import { seedRows } from "./print-harness.ts";
 import { isUnconfirmedCell, matsuyamaUnconfirmed } from "./unconfirmed.ts";
+// T142 で種の台帳を埋めた。このテストは空いた欄を前提にするので、T142 より前の空きの多い形（seed/sparse.ts）を使う
+import { SPARSE_PEOPLE } from "../../seed/sparse.ts";
 
 const OPTS = { today: "2026-11-05", officeName: "デモ事業所" };
 const MANIFEST: OriginalManifest = {
@@ -26,7 +28,7 @@ const MANIFEST: OriginalManifest = {
   importedAt: "2026-11-05T00:00:00.000Z",
 };
 
-const seed = (id: string) => SEED_PEOPLE.find((p) => p.person.id === id)!;
+const seed = (id: string) => SPARSE_PEOPLE.find((p) => p.person.id === id)!;
 
 /** 連絡先（種と同じ既定） */
 const contact = (c: Partial<SeedContact> & Pick<SeedContact, "id" | "kind">): SeedContact => ({
@@ -209,7 +211,7 @@ describe("「なし」だけの値・空の値は別紙に回さない", () => {
   it("種の 10 人: 別紙に「なし」だけの行は無く、別紙の行は前（T106）より増えない", () => {
     // 前は実施者 1・2 のフリガナの「なし」が別紙に回っていた（p-04・p-05・p-08・p-09・p-10）
     const before: Record<string, number> = BEFORE_ANNEX;
-    for (const p of SEED_PEOPLE) {
+    for (const p of SPARSE_PEOPLE) {
       const s = frameOf(p);
       for (const r of s.annex) expect(isNoneOnly(r.lines), `${p.person.id} ${r.fieldId}`).toBe(false);
       expect(s.annex.length, p.person.id).toBeLessThanOrEqual(before[p.person.id]);
@@ -231,7 +233,7 @@ describe("帯の別紙と未確認の数は紙と同じ数え方", () => {
     ["支援者 0 人", fresh(0)],
     ["支援者 1 人", fresh(1)],
     ["支援者 2 人", fresh(2)],
-    ...SEED_PEOPLE.map((p): [string, SeedPerson] => [p.person.id, p]),
+    ...SPARSE_PEOPLE.map((p): [string, SeedPerson] => [p.person.id, p]),
   ];
 
   it.each(people)("%s: 帯の未確認の欄 = 色付けで塗る欄、帯の別紙の数 = 紙の別紙の行", (_, p) => {
