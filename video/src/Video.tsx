@@ -11,7 +11,7 @@ import { BigNumber, Compare, EndCard, Flow, Memo, Models, Quote, Ring72, Plate, 
 import { Carousel } from "./parts/Carousel";
 import { Kinetic, type KineticWord } from "./parts/Kinetic";
 import { Marker } from "./parts/Marker";
-import { CROSS, STAGGER, mix, progress, rise } from "./parts/motion";
+import { CROSS, EASE_IN_OUT, STAGGER, progress, rise } from "./parts/motion";
 import { Caption, Header, Subtitle } from "./parts/Overlay";
 import { COLOR, FONT, LAYOUT, TYPE, palette } from "./theme";
 import { FPS, LINES, SCENES, type Cue, type Scene, type Shot } from "./timeline";
@@ -207,7 +207,7 @@ const Backdrop: React.FC<{ shot: Shot; assets: Assets; duration: number }> = ({ 
   return null;
 };
 
-const ShotView: React.FC<{ shot: Shot; assets: Assets }> = ({ shot, assets }) => {
+const ShotView: React.FC<{ shot: Shot; assets: Assets; entryDelay?: number }> = ({ shot, assets, entryDelay = 0 }) => {
   const duration = f(shot.end) - f(shot.at);
   const S = LAYOUT.stage;
   let body: React.ReactNode = null;
@@ -228,6 +228,8 @@ const ShotView: React.FC<{ shot: Shot; assets: Assets }> = ({ shot, assets }) =>
             chip={shot.chip}
             callouts={shot.callouts}
             screen={shot.screen}
+            delay={entryDelay}
+            hold={entryDelay}
           />
         </Stage>
       );
@@ -404,13 +406,24 @@ const AppAudio: React.FC<{ shot: Shot; assets: Assets }> = ({ shot, assets }) =>
   return <Audio src={staticFile(path)} trimBefore={f(shot.from ?? 0)} volume={0.9} />;
 };
 
-/** 絵 1 つ。前後の CROSS コマで薄くなる・濃くなる */
-const Faded: React.FC<{ length: number; fadeIn: boolean; fadeOut: boolean; children: React.ReactNode }> = ({ length, fadeIn, fadeOut, children }) => {
+/**
+ * 絵 1 つ。前後の CROSS コマで薄くなる・濃くなる。
+ * 地が替わる所（wipeIn・wipeOut）は薄くせず、地の幕の境目で切る（新しい段の絵は境目より下、前の段の絵は境目より上だけ）
+ */
+const Faded: React.FC<{ length: number; fadeIn: boolean; fadeOut: boolean; wipeIn?: boolean; wipeOut?: boolean; children: React.ReactNode }> = ({
+  length,
+  fadeIn,
+  fadeOut,
+  wipeIn = false,
+  wipeOut = false,
+  children,
+}) => {
   const frame = useCurrentFrame();
   // 前の絵は重なりの頭の 6 コマで消え、次の絵は 2 コマ遅れて 8 コマで出る（2 つの絵が半分ずつ重なって二重に見える間を短く）
-  const a = fadeIn ? progress(frame, 2, CROSS - 2) : 1;
-  const b = fadeOut ? 1 - progress(frame, length - CROSS, 6) : 1;
-  return <AbsoluteFill style={{ opacity: Math.min(a, b) }}>{children}</AbsoluteFill>;
+  const a = fadeIn && !wipeIn ? progress(frame, 2, CROSS - 2) : 1;
+  const b = fadeOut && !wipeOut ? 1 - progress(frame, length - CROSS, 6) : 1;
+  const clipPath = wipeIn && frame < WIPE ? wipeBelow(frame) : wipeOut && frame >= length - WIPE ? wipeAbove(frame - (length - WIPE)) : undefined;
+  return <AbsoluteFill style={{ opacity: Math.min(a, b), clipPath }}>{children}</AbsoluteFill>;
 };
 
 /** 地の色。場面の頭で前の場面と地が違えば CROSS コマで混ぜる */
@@ -421,8 +434,79 @@ const GroundLayer: React.FC = () => {
   const prev = SCENES[i - 1];
   const now = palette(scene.ground).bg;
   if (!prev || prev.ground === scene.ground) return <AbsoluteFill style={{ background: now }} />;
-  const t = progress(frame - f(scene.at), 0, CROSS);
-  return <AbsoluteFill style={{ background: mix(palette(prev.ground).bg, now, t) }} />;
+  return (
+    <AbsoluteFill style={{ background: palette(prev.ground).bg }}>
+      <AbsoluteFill style={{ background: now, clipPath: wipeBelow(frame - f(scene.at)) }} />
+    </AbsoluteFill>
+  );
+};
+
+/**
+ * 地の色が替わる所（青 → 白の S4、白 → 青の S8）の幕。新しい地が下から上へ差し込む（WIPE コマ、ease-in-out。
+ * 境目は真っ直ぐで、ぼかさない・色を混ぜない）。新しい段の物（絵・見出しの帯・大きな名前）は境目より下だけ、
+ * 前の段の物は境目より上だけ見せる（幕が前の段を覆い、次の段を連れて上がる）
+ */
+const WIPE = 16;
+const wipeT = (local: number) => progress(local, 0, WIPE, EASE_IN_OUT);
+const wipeBelow = (local: number) => `inset(${((1 - wipeT(local)) * 100).toFixed(2)}% 0 0 0)`;
+const wipeAbove = (local: number) => `inset(0 0 ${(wipeT(local) * 100).toFixed(2)}% 0)`;
+
+/** その段の頭で地が替わるか */
+const groundChanges = (scene: Scene): boolean => {
+  const i = SCENES.indexOf(scene);
+  return i > 0 && SCENES[i - 1].ground !== scene.ground;
+};
+
+/**
+ * 計画・訓練・発災時（S4〜S6）の頭: 段の名前が舞台の真ん中に大きく出て、上の帯の名前の所へ縮んで収まる。
+ * 出る 10 コマ → 止まる 6 コマ → 縮んで動く 14 コマ（ease-in-out、行き過ぎない）。収まったら帯の名前に替わる。
+ * 名前は前の絵が消えてから出る（地が替わる S4 は幕が名前の所を過ぎてから）。
+ * その段の最初の録画は、名前が帯の近くまで縮んでから上がる（大きな名前と録画を重ねない）
+ */
+const FLY_SCENES = new Set(["S4", "S5", "S6"]);
+const FLY = { in: 10, hold: 6, fly: 14 };
+const FLY_END = FLY.in + FLY.hold + FLY.fly;
+const titleStart = (scene: Scene): number => (groundChanges(scene) ? 8 : 4);
+const entryDelay = (scene: Scene): number => titleStart(scene) + FLY_END - 3;
+
+const FlyTitle: React.FC<{ title: string; local: number }> = ({ title, local }) => {
+  const p = usePalette();
+  const H = LAYOUT.header;
+  const size = TYPE.display;
+  const lineH = size * 1.2;
+  // 字の幅は日本語の字 1 つで 1em（題名は漢字とかなだけ）
+  const width = size * [...title].length;
+  const S = LAYOUT.stage;
+  const left0 = S.left + S.width / 2 - width / 2;
+  const top0 = S.top + S.height / 2 - lineH / 2;
+  const scale1 = 30 / size;
+  const left1 = H.left;
+  const top1 = H.top + (H.height - lineH * scale1) / 2;
+  const enter = progress(local, 0, FLY.in);
+  const move = progress(local, FLY.in + FLY.hold, FLY.fly, EASE_IN_OUT);
+  const left = left0 + (left1 - left0) * move;
+  const top = top0 + (top1 - top0) * move + (1 - enter) * 24;
+  const scale = 1 + (scale1 - 1) * move;
+  return (
+    <div
+      style={{
+        position: "absolute",
+        left,
+        top,
+        fontFamily: FONT.main,
+        fontSize: size,
+        fontWeight: 600,
+        lineHeight: 1.2,
+        whiteSpace: "nowrap",
+        color: p.fg,
+        opacity: enter,
+        transformOrigin: "0 0",
+        transform: `scale(${scale.toFixed(4)})`,
+      }}
+    >
+      {title}
+    </div>
+  );
 };
 
 /** 道具の段（S4〜S7）の見出しの帯。段の名前と 72 時間の線 */
@@ -435,17 +519,33 @@ const TOOL_SCENES: Record<string, { title: string; state: string; hours: (t: num
   S7: { title: "使い分け", state: "Claude Code", hours: () => null },
 };
 
+const TOOLS = SCENES.filter((s) => TOOL_SCENES[s.id]);
+/** 道具の段の次の段（S8）の頭で地が替わるなら、帯はその幕に覆われるまで残す */
+const TOOLS_TAIL = (() => {
+  const next = SCENES[SCENES.indexOf(TOOLS[TOOLS.length - 1]) + 1];
+  return next && groundChanges(next) ? WIPE : 0;
+})();
+
 const ToolHeader: React.FC = () => {
   const frame = useCurrentFrame();
-  const start = f(SCENES.find((s) => s.id === "S4")?.at ?? 0);
-  const abs = frame + start;
-  const scene = SCENES.find((s) => abs >= f(s.at) && abs < f(s.end));
+  const first = TOOLS[0];
+  const lastTool = TOOLS[TOOLS.length - 1];
+  const abs = frame + f(first.at);
+  const tail = abs >= f(lastTool.end);
+  const scene = tail ? lastTool : SCENES.find((s) => abs >= f(s.at) && abs < f(s.end));
   const info = scene ? TOOL_SCENES[scene.id] : undefined;
   if (!scene || !info) return null;
-  const t = (abs - f(scene.at)) / Math.max(1, f(scene.end) - f(scene.at));
+  const t = Math.min(1, (abs - f(scene.at)) / Math.max(1, f(scene.end) - f(scene.at)));
+  const local = abs - f(scene.at);
+  const start = titleStart(scene);
+  const flying = FLY_SCENES.has(scene.id) && local < start + FLY_END;
+  const clipPath = tail ? wipeAbove(abs - f(lastTool.end)) : groundChanges(scene) && local < WIPE ? wipeBelow(local) : undefined;
   return (
     <GroundProvider ground={scene.ground}>
-      <Header title={info.title} state={info.state} hours={info.hours(t)} />
+      <AbsoluteFill style={{ clipPath }}>
+        <Header title={info.title} state={info.state} hours={info.hours(t)} titleOpacity={flying ? 0 : 1} />
+        {flying ? <FlyTitle title={info.title} local={local - start} /> : null}
+      </AbsoluteFill>
     </GroundProvider>
   );
 };
@@ -464,28 +564,30 @@ export const Care72Video: React.FC<{ showEn: boolean }> = ({ showEn }) => {
   const assets = useAssets();
   const music = audioPath(assets, "audio/music/bed");
   const shots = SCENES.flatMap((scene) => scene.shots.map((shot) => ({ scene, shot })));
-  const tools = SCENES.filter((s) => TOOL_SCENES[s.id]);
-  const toolFrom = f(tools[0]?.at ?? 0);
-  const toolTo = f(tools[tools.length - 1]?.end ?? 0);
+  // 段の最初の絵で、前の段と地が違う（幕で入れ替わる）
+  const wipeIn = (k: number) => k > 0 && k < shots.length && shots[k].shot === shots[k].scene.shots[0] && groundChanges(shots[k].scene);
+  const toolFrom = f(TOOLS[0]?.at ?? 0);
+  const toolTo = f(TOOLS[TOOLS.length - 1]?.end ?? 0);
   return (
     <AbsoluteFill style={{ background: COLOR.blue, fontFamily: FONT.main }}>
       <GroundLayer />
       {shots.map(({ scene, shot }, k) => {
         const length = f(shot.end) - f(shot.at);
         const last = k === shots.length - 1;
-        const extended = length + (last ? 0 : CROSS);
+        // 次の段へ幕で替わる絵は、幕が覆い終わるまで残す
+        const extended = length + (last ? 0 : wipeIn(k + 1) ? WIPE : CROSS);
         return (
           <Sequence key={`${shot.at}`} from={f(shot.at)} durationInFrames={extended} name={`${scene.id} ${shot.label}`}>
             <GroundProvider ground={scene.ground}>
-              <Faded length={extended} fadeIn={k > 0} fadeOut={!last}>
-                <ShotView shot={shot} assets={assets} />
+              <Faded length={extended} fadeIn={k > 0} fadeOut={!last} wipeIn={wipeIn(k)} wipeOut={!last && wipeIn(k + 1)}>
+                <ShotView shot={shot} assets={assets} entryDelay={FLY_SCENES.has(scene.id) && shot === scene.shots[0] ? entryDelay(scene) : 0} />
               </Faded>
             </GroundProvider>
           </Sequence>
         );
       })}
       {toolTo > toolFrom ? (
-        <Sequence from={toolFrom} durationInFrames={toolTo - toolFrom} name="見出しの帯">
+        <Sequence from={toolFrom} durationInFrames={toolTo - toolFrom + TOOLS_TAIL} name="見出しの帯">
           <ToolHeader />
         </Sequence>
       ) : null}
