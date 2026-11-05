@@ -45,6 +45,80 @@ export function callsOf<T extends PhoneShape & Pick<DrillTurn, "person" | "at">>
   return callIndexes(turns).map((i) => turns[i]);
 }
 
+/**
+ * 不在着信（T127）: 電話の形の連絡のうち鳴らさなかった物（1 刻み 2 件を超えた分と、同じ人の 2 件目）の添字。時刻の早い順。
+ * 着信の記録（drill_events の call_in）には入れない（採点の着信の数・未応答の意味を変えない）。画面と経過が turns から出す
+ */
+export function missedIndexes(turns: ReadonlyArray<PhoneShape & Pick<DrillTurn, "person" | "at">>): number[] {
+  const rung = new Set(callIndexes(turns));
+  return turns
+    .map((t, i) => ({ t, i }))
+    .filter(({ t, i }) => isPhoneTurn(t) && !rung.has(i))
+    .sort((a, b) => a.t.at - b.t.at || a.i - b.i)
+    .map(({ i }) => i);
+}
+
+/**
+ * 安否がケアマネにどう届いたか（T127。経過の把握の行の印）。call 着信（鳴らした電話）・missed 不在（鳴らさなかった電話）・
+ * button 安否のボタン（本人の連絡と、赤の 4 問に答えた物・言う事の無い物）。
+ * 経路は今は出どころと電話の形（isPhoneTurn）から出す。世界の状態の側で経路を決める作業（T125）が安否に経路を付けたら、
+ * ここだけをそれに合わせる
+ */
+export type TurnRoute = "call" | "missed" | "button";
+
+export function turnRoute(t: PhoneShape, rung: boolean): TurnRoute {
+  if (!isPhoneTurn(t)) return "button";
+  return rung ? "call" : "missed";
+}
+
+/** 不在着信の一覧の言葉（2〜4 字） */
+export const MISSED_LABELS = {
+  title: "不在着信",
+  callback: "折返",
+  calling: "発信中",
+  /** 出しきれない分（「他 3 件」） */
+  more: "他",
+  count: "件",
+} as const;
+
+/** 一覧に出す数（新しい物から） */
+export const MISSED_SHOWN = 4;
+
+/** 不在着信の 1 件（T127。画面の対応の欄の上の一覧） */
+export type MissedCall<T> = { turn: T; step: number; minute: number };
+
+/** 折返に数える手（その人に電話した・会いに行った） */
+const CALLBACK_KINDS: ReadonlySet<string> = new Set(["call_person", "call_contact", "visit"]);
+
+/**
+ * まだ折返していない不在着信（新しい順）。不在の時刻より後（同じ分を含む）に、その人へ本人電話・連絡先電話・訪問を打った物と、
+ * その人からの着信に応答した物は外す。色と順には使わない（画面の一覧だけ）
+ */
+export function openMissedCalls<T extends PhoneShape & Pick<DrillTurn, "person" | "at">>(
+  ticks: ReadonlyArray<{ step: number; turns: ReadonlyArray<T> }>,
+  acts: ReadonlyArray<{ person: string | null; kind: string; atMinute: number }>,
+  answered: ReadonlyArray<{ person: string; minute: number; response: string | null }> = [],
+): Array<MissedCall<T>> {
+  const out: Array<MissedCall<T>> = [];
+  for (const t of ticks) {
+    for (const i of missedIndexes(t.turns)) {
+      const turn = t.turns[i];
+      const minute = Math.round(turn.at * 60);
+      const done =
+        acts.some((a) => a.person === turn.person && CALLBACK_KINDS.has(a.kind) && a.atMinute >= minute) ||
+        answered.some((c) => c.person === turn.person && c.response === "answer" && c.minute >= minute);
+      if (!done) out.push({ turn, step: t.step, minute });
+    }
+  }
+  return out.sort((a, b) => b.minute - a.minute);
+}
+
+/** 刻みの安否ごとの経路（turns と同じ並び） */
+export function turnRoutes(turns: ReadonlyArray<PhoneShape & Pick<DrillTurn, "person" | "at">>): TurnRoute[] {
+  const rung = new Set(callIndexes(turns));
+  return turns.map((t, i) => turnRoute(t, rung.has(i)));
+}
+
 /** 連絡先の言い方（lib/drill/view.ts の DrillContact と同じ形の一部） */
 export type CallerContact = { kind: ContactKind; label: string };
 
@@ -61,4 +135,20 @@ export function callerLabel(source: DrillTurn["source"], contacts: ReadonlyArray
   const own = contacts.filter((c) => kinds.includes(c.kind));
   if (own.length === 1) return own[0].label;
   return source === "family" ? CONTACT_KIND_LABELS.family : CONTACT_KIND_LABELS.supporter;
+}
+
+/**
+ * 掛けてきた人の連絡先（T127）。着信の往復の本人役の話し手・往復の声・不在着信の折返の相手が、全部ここを読んで同じ人になる。
+ * その区分（家族、または支援者と民生委員）が 1 人ならその人、何人かならスマホのある最初の人（安否を送れる人。声の
+ * lib/drill/voice.ts の familyRelation と同じ）、次に電話のある最初の人、無ければ最初の人。区分の人がいなければ null。
+ * 本人（agent）の連絡は電話の形にならないので null
+ */
+export type CallerTarget = { id: string; kind: ContactKind; label: string; hasPhone: boolean; smartphone?: boolean };
+
+export function callerContact<T extends CallerTarget>(source: DrillTurn["source"], contacts: ReadonlyArray<T>): T | null {
+  if (source === "agent") return null;
+  const kinds = source === "family" ? FAMILY : SUPPORTERS;
+  const own = contacts.filter((c) => kinds.includes(c.kind));
+  if (own.length <= 1) return own[0] ?? null;
+  return own.find((c) => c.smartphone === true) ?? own.find((c) => c.hasPhone) ?? own[0];
 }

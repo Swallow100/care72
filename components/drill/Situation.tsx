@@ -109,6 +109,7 @@ export function IncidentItem({
   fallback = false,
   fiction,
   extra,
+  lead,
 }: {
   e: DrillIncident;
   name: string | undefined;
@@ -117,6 +118,8 @@ export function IncidentItem({
   fiction?: FictionKind;
   /** 行の終わりに添える物（経過の発生のタブの遅れ・未把握の印、T105） */
   extra?: React.ReactNode;
+  /** 行の頭に置く物（経過の把握のタブの経路の印、T127） */
+  lead?: React.ReactNode;
 }) {
   const basis = e.basis && isSourceId(e.basis) ? sourceById(e.basis) : null;
   return (
@@ -126,6 +129,7 @@ export function IncidentItem({
       data-actor={e.actor}
       {...(e.inject ? { "data-inject": e.inject } : {})}
     >
+      {lead}
       <span className="rounded bg-panel px-1 py-px text-xs text-muted">{incidentLabel(e) ?? EVENT_KIND_LABELS[e.change.kind]}</span>
       {e.ai && <AiMark small />}
       {fallback && (
@@ -167,6 +171,7 @@ export function TurnItem({
   callIn,
   fiction,
   doing = true,
+  lead,
 }: {
   t: DrillTurn;
   name: string;
@@ -174,10 +179,12 @@ export function TurnItem({
   callIn: boolean;
   fiction?: FictionKind;
   doing?: boolean;
+  /** 行の頭に置く物（経過の把握のタブの経路の印、T127）。渡すと着信の印の代わりに置く */
+  lead?: React.ReactNode;
 }) {
   return (
     <li className="flex flex-wrap items-baseline gap-x-1.5" data-turn={t.person} data-color={t.color} data-call-in={callIn ? "" : undefined}>
-      {callIn && <CallInMark />}
+      {lead ?? (callIn && <CallInMark />)}
       <span className="font-bold">
         {name}
         <FictionalMark kind={fiction} />

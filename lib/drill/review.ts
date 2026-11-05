@@ -355,7 +355,9 @@ export function reviewText(ctx: ReviewContext, aliasOf: ReadonlyMap<string, stri
   ctx.calls.forEach((x, i) => {
     const res = x.response === "answer" ? "出た" : x.response === "decline" ? "出なかった" : "未応答";
     const color = x.color === "red" ? "赤" : x.color === "green" ? "緑" : "安否不明";
-    hist.push({ at: x.minute, order: i * 2 + 1, text: `${minuteText(x.minute)} 着信 ${who(x.person)}（${color}）→ ${res}` });
+    // 着信の往復（T127）は数だけ（ケアマネの文と相手の言葉は講評に渡さない）
+    const rounds = (x.talk ?? []).filter((l) => l.who === "cm").length;
+    hist.push({ at: x.minute, order: i * 2 + 1, text: `${minuteText(x.minute)} 着信 ${who(x.person)}（${color}）→ ${res}${rounds > 0 ? `・${rounds} 往復話した` : ""}` });
   });
   hist.sort((a, b) => a.at - b.at || a.order - b.order);
   if (hist.length === 0) lines.push("- なし");

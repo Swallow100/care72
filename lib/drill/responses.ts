@@ -9,7 +9,9 @@
 
 import type { D1Database } from "@cloudflare/workers-types";
 import type { DrillEventRow, SignalColor } from "../db/types.ts";
+import type { ContactKind } from "../db/types.ts";
 import { loadDrillRow, stateOfRow, type DrillScope } from "./db.ts";
+import { dialogueFields, type TalkLine } from "./dialogue.ts";
 import type { DrillTurn } from "./engine.ts";
 
 export const CALL_RESPONSES = ["answer", "decline"] as const;
@@ -36,7 +38,24 @@ export type CallResponsePayload = {
   callMinute: number;
   /** 応答・拒否した時刻（ケアマネの時計、発災からの分） */
   minute: number;
+  /**
+   * 応答した着信の往復（T127、lib/drill/incoming-talk.ts が足す。3 往復まで）。ケアマネの問いと掛けてきた人の言葉。
+   * 頼み事は drills.world の asks にも積む（作り直しは lib/drill/db.ts の replayState が同じ所を通す）
+   */
+  talk?: TalkLine[];
+  /** 往復を切った時刻（発災からの分）。切っていなければ無し */
+  talkEnd?: number;
+  /** 往復の話し手（掛けてきた人の連絡先。lib/drill/calls.ts の callerContact）。名前と番号は持たない */
+  callee?: CallCallee;
+  /**
+   * 応答・拒否した時の手の数（T127）。往復は、応答のあとに手を打っていない間だけ続けられる
+   * （作り直しが往復を応答の記録の位置で当てるので、手のあとに往復を足すと順が食い違うため）。T127 より前の記録には無い
+   */
+  actions?: number;
 };
+
+/** 着信の往復の話し手（連絡先の id・区分・言い方）。連絡先の無い人は id null */
+export type CallCallee = { id: string | null; kind: ContactKind; label: string };
 
 export const callResponseId = (signal: string) => `${signal}-p`;
 
@@ -71,7 +90,8 @@ export async function respondCall(
   } catch {
     // 形の崩れた着信は色・出どころを不明で残す
   }
-  const minute = stateOfRow(row).minute;
+  const state = stateOfRow(row);
+  const minute = state.minute;
   const payload: CallResponsePayload = {
     signal,
     response,
@@ -79,6 +99,7 @@ export async function respondCall(
     source: p.source ?? "family",
     callMinute: Math.round(call.sim_hour * 60),
     minute,
+    actions: state.actions.length,
   };
   const id = callResponseId(signal);
   const r = await db
@@ -105,6 +126,14 @@ export type CallRecord = {
   response: CallResponse | null;
   /** 応答・拒否した時刻（ケアマネの時計） */
   respondedAt: number | null;
+  /** 着信の言う事（call_in の写し。T127 の紙と経過）。無ければ null */
+  saying?: string | null;
+  /** 言う事が本人役（Claude）の物 */
+  ai?: boolean;
+  /** 応答した着信の往復（T127）。無ければ空 */
+  talk?: TalkLine[];
+  talkEnd?: number | null;
+  callee?: CallCallee | null;
 };
 
 /** この訓練の着信（call_in）と応答・拒否を読む */
@@ -117,7 +146,7 @@ export async function loadCallRecords(db: D1Database, drillId: string): Promise<
     .bind(drillId)
     .all<Pick<DrillEventRow, "step" | "sim_hour" | "person_id" | "kind" | "payload">>();
   const calls: CallRecord[] = [];
-  const responses = new Map<string, { response: CallResponse; minute: number }>();
+  const responses = new Map<string, { response: CallResponse; minute: number; talk: TalkLine[]; talkEnd: number | null; callee: CallCallee | null }>();
   for (const r of res.results) {
     let p: Record<string, unknown>;
     try {
@@ -137,16 +166,30 @@ export async function loadCallRecords(db: D1Database, drillId: string): Promise<
         step: r.step,
         response: null,
         respondedAt: null,
+        saying: typeof p.saying === "string" && p.saying.trim() ? p.saying : null,
+        ai: p.ai === true,
       });
     } else if (!responses.has(signal)) {
+      const d = dialogueFields(p);
       responses.set(signal, {
         response: r.kind === "call_answer" ? "answer" : "decline",
         minute: typeof p.minute === "number" ? p.minute : Math.round(r.sim_hour * 60),
+        talk: d.talk ?? [],
+        talkEnd: d.talkEnd ?? null,
+        callee: calleeOf(p.callee),
       });
     }
   }
   return calls.map((c) => {
     const x = responses.get(c.signal);
-    return x ? { ...c, response: x.response, respondedAt: x.minute } : c;
+    return x ? { ...c, response: x.response, respondedAt: x.minute, talk: x.talk, talkEnd: x.talkEnd, callee: x.callee } : c;
   });
+}
+
+/** 往復の話し手の形（形が違えば null） */
+export function calleeOf(v: unknown): CallCallee | null {
+  if (!v || typeof v !== "object") return null;
+  const c = v as Partial<CallCallee>;
+  if (typeof c.kind !== "string" || typeof c.label !== "string") return null;
+  return { id: typeof c.id === "string" ? c.id : null, kind: c.kind, label: c.label };
 }
