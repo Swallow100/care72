@@ -15,7 +15,9 @@ import { CALL_OUT_ASKS } from "../../../lib/drill/dialogue.ts";
 import { drillFreeHook } from "../../../lib/drill/free-action.ts";
 import { drillStepHooks, drillTalkHook } from "../../../lib/drill/hooks.ts";
 import { actionPost, replayGet, startPost, stepPost } from "../../../lib/drill/http.ts";
-import { reviewPost } from "../../../lib/drill/record-http.ts";
+import { callPost, reviewPost } from "../../../lib/drill/record-http.ts";
+import { callTalkPost } from "../../../lib/drill/incoming-talk.ts";
+import { callsOf } from "../../../lib/drill/calls.ts";
 import { warekiText } from "../../../lib/forms/wareki.ts";
 import { talkPost } from "../../../lib/drill/talk.ts";
 import { loadDrillScreen } from "../../../lib/drill/view.ts";
@@ -136,6 +138,8 @@ export type DriveDeps = {
    * 無ければ送る（false で送らない。決まりの無い前の回と比べるとき）
    */
   terms?: boolean;
+  /** 着信に出て往復する（T127。--answer-calls。進めたあと、今の刻みの電話の着信に talkRate の割合で 1 つ出て 1〜2 往復して切る） */
+  answerCalls?: boolean;
   /**
    * 前の回で作った世界の部屋の Agent と Environment。回ごとに新しい DB なので、渡さないと本物の部屋は回ごとに Agent と Environment を作る
    * （消さずに残る）。渡せば DB の ai_agents に入れてから始める
@@ -190,6 +194,8 @@ const FREE_TEXTS = [
   "移送の車を手配する",
   "今の様子を記録に残す",
 ];
+/** 着信で聞く・伝える決まった問い（T127 の TALK_ASKS の着信向き） */
+const INCOMING_ASKS = ["safe", "can_move", "shelter", "stay", "where", "injured", "device_medicine"] as const;
 const TALK_TEXTS = ["今どこにいますか", "けがはありませんか", "薬は足りていますか", "近くに誰かいますか", "停電は続いていますか", "あとでまた電話します"];
 
 /** 手の表の重み（表に無い手・増えた手は 1） */
@@ -391,6 +397,32 @@ export async function runDrill(plan: RunPlan, deps: DriveDeps): Promise<RunOutco
       await call("advance", sb, () => stepPost(db, p, drillId, sb, now(), stepHooks));
       advances += 1;
       replay = await read(drillId);
+      // 着信に出て往復（T127。--answer-calls のときだけ）。今の刻みの電話の着信から 1 つ
+      if (deps.answerCalls && replay.drill.status === "running") {
+        const tick = replay.ticks.find((t) => t.step === replay.drill.step);
+        // 鳴らす着信は画面と同じ選び方（lib/drill/calls.ts の callsOf。電話の形の安否から 1 刻み 2 件まで）
+        const ring = callsOf((tick?.turns ?? []) as unknown as Parameters<typeof callsOf>[0])
+          .map((u) => (u as { signal?: unknown }).signal)
+          .filter((s): s is string => typeof s === "string");
+        if (ring.length > 0 && rng.chance(plan.talkRate)) {
+          const signal = rng.pick(ring);
+          const ab = { signal, response: "answer" };
+          const answered = await call("answer", ab, () => callPost(db, p, drillId, ab));
+          replay = await read(drillId);
+          if (answered.status === 200) {
+            const rounds = rng.int(1, 2);
+            for (let k = 0; k < rounds && replay.drill.status === "running"; k++) {
+              const ask = rng.chance(0.6) ? { ask: rng.pick(INCOMING_ASKS) } : { text: rng.pick(TALK_TEXTS) };
+              const tb = { step: replay.drill.step, actions: replay.actions.length, signal, ...ask };
+              await call("incoming_talk", tb, () => callTalkPost(db, p, drillId, tb, { hook: talk }));
+              replay = await read(drillId);
+            }
+            const eb = { step: replay.drill.step, actions: replay.actions.length, signal, end: true };
+            await call("incoming_end", eb, () => callTalkPost(db, p, drillId, eb, { hook: talk }));
+            replay = await read(drillId);
+          }
+        }
+      }
     }
 
     if (deps.review && replay.drill.status === "finished") {
