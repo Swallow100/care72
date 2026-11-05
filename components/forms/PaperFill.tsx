@@ -494,8 +494,9 @@ function PageLayer(p: LayerProps) {
   const layerRef = useRef<HTMLDivElement>(null);
   return (
     <div ref={layerRef} className="pf-layer" data-page-layer={p.page}>
-      {p.slots.map((s) => (
-        <SlotView key={s.key} slot={s} {...p} />
+      {/* 1 つの欄が何か所かの矩形に分かれる様式（計画書の地域の支援者の行など）があるので、描く鍵は並びの番号も */}
+      {p.slots.map((s, i) => (
+        <SlotView key={`${s.key}-${i}`} slot={s} {...p} />
       ))}
       {p.free.map((e) => (
         <FreeView key={e.id} entry={e} layer={layerRef} {...p} />
@@ -736,9 +737,13 @@ function FreeView({ entry, layer, ...p }: LayerProps & { entry: FormEntry; layer
       onPointerUp={up}
       onClick={(e) => {
         e.stopPropagation();
-        p.setSelected(entry.id);
         if (dragged.current) {
           dragged.current = false;
+          return;
+        }
+        // 1 回目は選ぶだけ（上の縁を引いて動かす・右下で大きさ・削除）。選んだ枠をもう一度押すと字を書く
+        if (!sel) {
+          p.setSelected(entry.id);
           return;
         }
         if (entry.kind === "text" && !writing && !p.busy) p.setFreeEdit({ id: entry.id, text: entry.value, fresh: false });
