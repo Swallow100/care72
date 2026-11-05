@@ -86,7 +86,15 @@ export function Form9Fill({ slots, children }: { slots: Form9Slot[]; children: R
     [router],
   );
 
+  // 書いている欄（確定を 1 回だけにする。Enter のあと欄が消えるときの blur で 2 回送らない）
+  const open = useRef<string | null>(null);
+  const start = (key: string, text: string) => {
+    open.current = key;
+    setEditing({ key, text });
+  };
   const commit = (slot: Form9Slot, text: string) => {
+    if (open.current !== keyOf(slot)) return;
+    open.current = null;
     setEditing(null);
     void save(slot, text);
   };
@@ -146,7 +154,10 @@ export function Form9Fill({ slots, children }: { slots: Form9Slot[]; children: R
                       onChange={(e) => setEditing({ key, text: e.target.value })}
                       onBlur={() => commit(s, editing.text)}
                       onKeyDown={(e) => {
-                        if (e.key === "Escape") setEditing(null);
+                        if (e.key === "Escape") {
+                          open.current = null;
+                          setEditing(null);
+                        }
                         else if (e.key === "Enter") {
                           e.preventDefault();
                           commit(s, editing.text);
@@ -172,11 +183,11 @@ export function Form9Fill({ slots, children }: { slots: Form9Slot[]; children: R
                   title={s.hand ? `${L.form} ${s.hand.by ?? ""}` : s.name}
                   data-form9-cell={key}
                   data-hand={s.hand ? "form" : undefined}
-                  onClick={() => setEditing({ key, text: s.value })}
+                  onClick={() => start(key, s.value)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" || e.key === " ") {
                       e.preventDefault();
-                      setEditing({ key, text: s.value });
+                      start(key, s.value);
                     }
                   }}
                 >
