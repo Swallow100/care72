@@ -14,6 +14,7 @@ import { unconfirmedConsents } from "../consent/unconfirmed.ts";
 import type { PersonInput } from "./forms.ts";
 import type { OfficeActor } from "./scope.ts";
 import { officePayload, type OfficeAction } from "./timeline.ts";
+import { lastDrillDays } from "../drill/last.ts";
 
 export type CareManagerItem = {
   id: string;
@@ -79,6 +80,8 @@ export type OfficePersonItem = {
   kana: string;
   age: number | null;
   plan: PlanStatus;
+  /** 最後に出た終わった訓練の日（JST の YYYY-MM-DD、lib/drill/last.ts）。無ければ null（T146） */
+  drill: string | null;
   careManagerId: string | null;
   /** 一覧から外した時刻。一覧にいれば null */
   unlistedAt: string | null;
@@ -89,6 +92,7 @@ export type OfficePersonItem = {
 
 /** 事業所の利用者（担当の割当の表）。カナの順。外した人も含む（unlistedAt で分ける） */
 export async function listOfficePeople(db: D1Database, officeId: string, today: string): Promise<OfficePersonItem[]> {
+  const drills = await lastDrillDays(db, officeId);
   const res = await db
     .prepare(
       `SELECT id, name, kana, birth_date, plan_status, care_manager_id, unlisted_at, reported_age, created_at, updated_at FROM people
@@ -108,6 +112,7 @@ export async function listOfficePeople(db: D1Database, officeId: string, today: 
     // 生年月日が無ければ申告の年齢（医療班・行政がその場で登録して引き受けた人、T23）
     age: r.birth_date ? ageOn(r.birth_date, today) : r.reported_age,
     plan: r.plan_status,
+    drill: drills.get(r.id) ?? null,
     careManagerId: r.care_manager_id,
     unlistedAt: r.unlisted_at,
     createdAt: r.created_at,

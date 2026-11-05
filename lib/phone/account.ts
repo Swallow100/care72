@@ -1,4 +1,4 @@
-// 本人・家族のスマホの ID とパスワード（migrations/0035 の phone_accounts、T149）。D1 を引数で受ける（テストで node:sqlite を渡す）。
+// 本人・家族のスマホの ID とパスワード（migrations/0036 の phone_accounts、T149）。D1 を引数で受ける（テストで node:sqlite を渡す）。
 // Claude は呼ばない。
 //
 // 作る: スマホ入口のリンクで開いたセッション（Principal の phoneEntry が link）からだけ。リンクを持つ人が本人・家族その人だから。

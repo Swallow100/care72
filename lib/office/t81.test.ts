@@ -247,7 +247,7 @@ describe("migration 0025 は前からある審査員の追加・再発行に印�
     const old = new DatabaseSync(":memory:");
     old.exec("PRAGMA foreign_keys = ON;");
     // 種は書類の見直しの表（0032、T136）と紙の手入れの表（0033、T135）も空にするので 0032・0033 も先に（新しい表を作るだけで accounts・経過に触れない）
-    for (const n of names.filter((x) => x < "0025_" || x.startsWith("0032_") || x.startsWith("0033_") || x.startsWith("0035_"))) old.exec(readFileSync(new URL(n, dir), "utf8"));
+    for (const n of names.filter((x) => x < "0025_" || x.startsWith("0032_") || x.startsWith("0033_") || x.startsWith("0036_"))) old.exec(readFileSync(new URL(n, dir), "utf8"));
     for (const s of seedStatements()) {
       // 種は 0025 の前の形でも入る（judge_made の列を書かない）
       old.exec(s);

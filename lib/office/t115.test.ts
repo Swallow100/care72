@@ -11,7 +11,7 @@ import { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { seedStatements, CLEAR_ORDER } from "../../seed/sql.ts";
 import { roleChoicesFor, currentChoice } from "../auth/choices.ts";
-import { DEMO_CARE_MANAGER_ID, DEMO_OFFICE_ID, DEMO_SELF_PERSON_ID, UNAFFILIATED_OFFICE_ID } from "../auth/demo.ts";
+import { DEMO_CARE_MANAGER_ID, DEMO_OFFICE_ID, DEMO_SELF_PERSON_ID, LOGIN_CARE_MANAGER_ID, UNAFFILIATED_OFFICE_ID } from "../auth/demo.ts";
 import { hashPassword } from "../auth/password.ts";
 import { changeOwnPassword } from "../auth/password-change.ts";
 import { chooseRole, chooseSandbox, login, resolvePrincipal, type Principal } from "../auth/principal.ts";
@@ -69,7 +69,7 @@ const env = () => ({ JUDGE_PASSWORD_HASH: judgeHash });
 
 /** 種と、本物の事業所の行（協力事業所の本人・ケアマネのログイン・医療班・所属なしの人） */
 function fixtures(s: DatabaseSync) {
-  for (const x of seedStatements({ passwordHashes: { [DEMO_CARE_MANAGER_ID]: cmHash } })) s.exec(x);
+  for (const x of seedStatements({ passwordHashes: { [LOGIN_CARE_MANAGER_ID]: cmHash } })) s.exec(x);
   s.prepare("UPDATE accounts SET login_id = 'partner1', password_hash = ? WHERE id = 'acct-partner-cm'").run(otherHash);
   s.prepare(
     `INSERT INTO people (id, office_id, care_manager_id, name, kana, birth_date, ledger)
@@ -595,16 +595,16 @@ describe("作り直しの守り（tools/deploy/guard.ts）", () => {
     const d = await runGuard(wrangler(sqlite), {});
     expect(d.lines).toContain("  試用事業所（数えない。消える） 1");
     expect(d.lines).toContain("  事業所（種の外） 0");
-    expect(d.lines).toContain("  訓練（デモ事業所の外） 0");
+    expect(d.lines).toContain("  訓練（種の事業所の外） 0");
     expect(d.lines).toContain("  アカウント（種の外） 1"); // 医療班の 1 人だけ
-    expect(d.lines).toContain(`  利用者（デモ事業所の外） 3`); // 協力事業所 1・所属なし 2
+    expect(d.lines).toContain(`  利用者（種の事業所の外） 3`); // 協力事業所 1・所属なし 2
   });
 
   it("0027 の前の D1（列が無い）でも数えられ、前と同じ数え方", async () => {
     const old = new DatabaseSync(":memory:");
     const dir = new URL("../../migrations/", import.meta.url);
     // 種は書類の見直しの表（0032、T136）と紙の手入れの表（0033、T135）も空にするので、その表を作る 0032・0033 だけは当てる（新しい表を作るだけで数え方の列に触れない）
-    for (const name of readdirSync(dir).filter((n) => n.endsWith(".sql") && (n < "0027" || n.startsWith("0032_") || n.startsWith("0033_") || n.startsWith("0035_"))).sort()) old.exec(readFileSync(new URL(name, dir), "utf8"));
+    for (const name of readdirSync(dir).filter((n) => n.endsWith(".sql") && (n < "0027" || n.startsWith("0032_") || n.startsWith("0033_") || n.startsWith("0036_"))).sort()) old.exec(readFileSync(new URL(name, dir), "utf8"));
     fixtures(old);
     const seen: string[] = [];
     const d = await runGuard((sql) => {

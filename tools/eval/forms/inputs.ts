@@ -2,7 +2,7 @@
 // （完全に読めたときに Claude が返す形 ExtractOutput。仮名化の前の言葉）を作る。
 //
 // - 入れ方: 自由文（文章・箇条書き・メモの 3 つの書き方を人ごとに回す）・声の書き起こし風・長すぎる書き起こし・手書き風の写真・
-//   スマホの写真風（大きい JPEG・傾き・端末の付け足し）・HEIC・複数頁の PDF（読む頁の上限 PDF_PAGES_MAX を超える 4 頁）・台帳そのまま
+//   スマホの写真風（大きい JPEG・傾き・端末の付け足し）・HEIC・複数頁の PDF（4 頁。読む頁の上限 PDF_PAGES_MAX は T146 で 3 から 10 にしたので全部の頁を読む）・台帳そのまま
 // - 文は「事実」の並びから作る。事実ごとに言い方（書き方ごと）と正解の分け方の切れ端を持つので、入力の正解は入れた事実の切れ端を足した物
 // - 氏名・カナ・生年月日・住所・電話は「伏せる所」として持つ。文の入力ではそのまま書き（仮名化の門が伏せるのを確かめる）、
 //   絵の入力ではその場所を覚えて、ブラウザの黒塗りと同じ塗り方で塗ってから送る（tools/eval/forms/browser.ts）
@@ -363,7 +363,7 @@ export function buildInputs(people: readonly SeedPerson[] = SEED_PEOPLE): InputS
       oracle: [all],
       facts: ids,
     });
-    // 複数頁の PDF（3 人）: 本人・介護 / 医療 / 避難 / 連絡先・特記 の 4 頁。読むのは頭の PDF_PAGES_MAX 頁
+    // 複数頁の PDF（3 人）: 本人・介護 / 医療 / 避難 / 連絡先・特記 の 4 頁。読むのは頭の PDF_PAGES_MAX 頁（T146 から 10。4 頁とも読む）
     if (i % 4 === 0) {
       const groups: FactGroup[][] = [["本人", "介護"], ["医療"], ["避難"], ["連絡先", "特記"]];
       const pageFacts = groups.map((g) => facts.filter((f) => g.includes(f.group)));

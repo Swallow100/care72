@@ -390,9 +390,9 @@ describe("描く所（T119）", () => {
 // ---------------------------------------------------------------- 送る形・画面
 
 describe("送る形と頁の選び方（T119）", () => {
-  it("Excel・Word の頁は PDF と同じく 3 頁まで、経過の頭は元の形の名前", () => {
-    expect(parseReadMeta({ source: "excel", page: "3", redacted: "0", bare: "1" })).toEqual({ source: "excel", page: 3, redacted: 0 });
-    expect(parseReadMeta({ source: "word", page: "4", redacted: "1", bare: null })).toBeNull();
+  it("Excel・Word の頁は PDF と同じく 10 頁まで（T146）、経過の頭は元の形の名前", () => {
+    expect(parseReadMeta({ source: "excel", page: "10", redacted: "0", bare: "1" })).toEqual({ source: "excel", page: 10, redacted: 0 });
+    expect(parseReadMeta({ source: "word", page: "11", redacted: "1", bare: null })).toBeNull();
     expect(parseReadMeta({ source: "photo", page: "2", redacted: "1", bare: null })).toBeNull();
     expect(readTimelineHead({ source: "excel", page: 2, redacted: 1 })).toBe("Excel を読んだ（2 頁目・隠した所 1 か所）");
     expect(readTimelineHead({ source: "word", page: 1, redacted: 0 })).toBe("Word を読んだ（1 頁目・隠した所 0 か所）");
@@ -405,7 +405,7 @@ describe("送る形と頁の選び方（T119）", () => {
     expect(got.ok && got.pages.map((p) => p.meta.source)).toEqual(["excel", "excel"]);
   });
 
-  it("4 頁以上の既定: 記入例のシートを外して頭の 3 頁", () => {
+  it("既定: 記入例のシートを外して頭から上限の頁（T146 で 10 頁。上限より少ない頁でも記入例は外す）", () => {
     const pages = [
       { id: "a", example: true },
       { id: "b", example: true },
@@ -414,9 +414,15 @@ describe("送る形と頁の選び方（T119）", () => {
       { id: "e", example: false },
       { id: "f", example: false },
     ];
-    expect([...defaultExcluded(pages)].sort()).toEqual(["a", "b", "f"]);
-    expect([...defaultExcluded(pages.slice(0, 3))]).toEqual([]);
-    expect([...defaultExcluded(pages.map((p) => ({ ...p, example: true })))].sort()).toEqual(["d", "e", "f"]);
+    expect([...defaultExcluded(pages)].sort()).toEqual(["a", "b"]);
+    expect([...defaultExcluded(pages.slice(0, 3))].sort()).toEqual(["a", "b"]);
+    expect([...defaultExcluded(pages.slice(2))]).toEqual([]);
+    expect([...defaultExcluded(pages.map((p) => ({ ...p, example: true })))]).toEqual([]);
+    // 上限の頁で切る（前の上限 3 なら頭の 3 頁、上限 10 なら 12 頁のうち頭の 10 頁）
+    expect([...defaultExcluded(pages, 3)].sort()).toEqual(["a", "b", "f"]);
+    expect([...defaultExcluded(pages.map((p) => ({ ...p, example: true })), 3)].sort()).toEqual(["d", "e", "f"]);
+    const twelve = Array.from({ length: 12 }, (_, i) => ({ id: String(i + 1), example: false }));
+    expect([...defaultExcluded(twelve)].sort()).toEqual(["11", "12"]);
   });
 
   it("画面の言葉は短い（PDF 保存で正確・旧形式）", () => {

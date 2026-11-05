@@ -11,7 +11,9 @@
 //
 // T120（評価の 1 回目で実在の様式の PDF 14 件のうち 12 件が読めなかった。2 頁を 1 回で読み、61〜82 欄の答えが出力の上限 16,000 で
 // 切れるか、180 秒の待ちを 2 回続けて越えた。docs/progress/eval-r1-findings.md の 1・13）:
-// - 1 頁 1 回で読み、頁を並べて呼ぶ（readForm の concurrency。Workers の 1 要求の外への接続は 6 本までで、頁は 3 まで）。
+// - 1 頁 1 回で読み、頁を並べて呼ぶ（readForm の concurrency）。T146 で頁を 10 までにしたので、同時に呼ぶのは FORM_READ_CONCURRENCY（5）まで
+//   （Workers の 1 要求の外への接続は同時に 6 本までで、7 本目からは前が終わるまで待つ。SDK の待ち 180 秒は並ぶ前から数えるので、
+//   10 本を一度に出すと後の頁が待ちの分だけ切れやすい。5 本ずつなら 10 頁は 2 回分の待ち）。
 //   1 頁の答えは 30〜40 欄で、待ちは 1 頁の分だけ。読めなかった頁があっても、読めた頁の欄で対応表にする（unread に頁の番号）
 // - 答えの形を短くした（PageReadSchema）: 頁の番号・位置の説明を返させず、段の見出しは段ごとに 1 回、場所は [x, y, w, h] の数の並び。
 //   評価の 1 回目の本物の答え（65〜71 欄）をこの形に直すと 18〜22% 短い（欄 1 つ 125〜135 token → 100 token ほどの見積もり）
@@ -356,9 +358,12 @@ export type FormReadResult = CheckedRead & {
   continued: number[];
 };
 
+/** 同時に読む頁の数の既定（T146）。外への接続 6 本のうち 1 本を選択肢の当て・ほかの読み書きに空ける */
+export const FORM_READ_CONCURRENCY = 5;
+
 export type ReadFormOptions = {
   /**
-   * 同時に読む頁の数。既定は全部（頁は 3 まで）。評価の台（tools/eval/forms）は 1（呼び出しの記録を順に結ぶため）
+   * 同時に読む頁の数。既定は FORM_READ_CONCURRENCY（5）。評価の台（tools/eval/forms）は 1（呼び出しの記録を順に結ぶため）
    */
   concurrency?: number;
   /** 読む頁の番号（files と同じ順。無ければ 1 から）。読めなかった頁を読み直すとき */
@@ -380,7 +385,7 @@ export async function readForm(file: FormFile | ReadonlyArray<FormFile>, ctx: As
   const files: ReadonlyArray<FormFile> = Array.isArray(file) ? file : [file as FormFile];
   const pageNos = opts.pageNumbers ?? files.map((_, i) => i + 1);
   const pages = opts.pages ?? files.length;
-  const outcomes = await pool(files, opts.concurrency ?? files.length, (f, i) => readPage(f, pageNos[i], pages, ctx));
+  const outcomes = await pool(files, opts.concurrency ?? FORM_READ_CONCURRENCY, (f, i) => readPage(f, pageNos[i], pages, ctx));
   const good = outcomes.filter((o): o is Extract<PageOutcome, { ok: true }> => o.ok);
   const bad = outcomes.filter((o): o is Extract<PageOutcome, { ok: false }> => !o.ok);
   // 鍵が無い・読めた頁が無いときは、前と同じく失敗を投げる

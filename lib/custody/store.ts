@@ -9,6 +9,7 @@
 
 import type { D1Database } from "@cloudflare/workers-types";
 import { JUDGE_LABEL } from "../auth/roles.ts";
+import { DEMO_OFFICE_ID } from "../auth/demo.ts";
 import { demoPersonSql } from "../auth/wall.ts";
 import { unconfirmedConsents } from "../consent/unconfirmed.ts";
 import type { ConsentStatus, CustodyVia, Ledger, PersonOrigin, ReleaseKind } from "../db/types.ts";
@@ -38,7 +39,7 @@ export async function receive(
               (SELECT c.status FROM consents c WHERE c.person_id = p.id AND c.kind = 'medical') AS medical,
               (SELECT c.scope FROM consents c WHERE c.person_id = p.id AND c.kind = 'medical') AS medical_scope,
               (SELECT cu.id FROM custody cu WHERE cu.person_id = p.id AND cu.holder_id = ?2 AND cu.released_at IS NULL) AS open_id
-         FROM people p WHERE p.id = ?1${actor.walled ? ` AND ${demoPersonSql("p")}` : ""}`,
+         FROM people p WHERE p.id = ?1${actor.walled ? ` AND ${demoPersonSql("p", actor.wallOffice ?? DEMO_OFFICE_ID)}` : ""}`,
     )
     .bind(input.personId, actor.accountId)
     .first<{ id: string; origin: PersonOrigin; medical: ConsentStatus | null; medical_scope: string | null; open_id: string | null }>();

@@ -19,7 +19,7 @@ export type OfficeKind = (typeof OFFICE_KINDS)[number];
 export const ACCOUNT_ROLES = ["care_manager", "government", "medical", "judge"] as const;
 export type AccountRole = (typeof ACCOUNT_ROLES)[number];
 
-/** 計画の状態: 未作成・下書き・同意済・訓練済 */
+/** 計画の状態（DB の値）: 未作成・下書き・同意済・訓練済。画面と紙は 3 つの段階（同意済・訓練済は作成済）と別の訓練の日で出す（lib/plan-status.ts、T146） */
 export const PLAN_STATUSES = ["none", "draft", "consented", "trained"] as const;
 export type PlanStatus = (typeof PLAN_STATUSES)[number];
 
@@ -650,7 +650,7 @@ export type PersonListMark = { unlisted_at: string | null };
 export type PersonPhoneLink = { phone_link_generation: number; phone_link_issued_at: string | null };
 
 /**
- * 本人・家族のスマホの ID とパスワード（T149、migrations/0035）。本人用は contact_id が NULL。
+ * 本人・家族のスマホの ID とパスワード（T149、migrations/0036）。本人用は contact_id が NULL。
  * link_generation・link_issued_at は作った時のスマホ入口の版と時刻（今の版と同じときだけ通す。lib/phone/account.ts）
  */
 export type PhoneAccountRow = {
@@ -665,7 +665,7 @@ export type PhoneAccountRow = {
   updated_at: string;
 };
 
-/** Web Push の購読（T149、migrations/0035）。審査員の本人・家族の役の購読は link_generation・link_issued_at が NULL */
+/** Web Push の購読（T149、migrations/0036）。審査員の本人・家族の役の購読は link_generation・link_issued_at が NULL */
 export type PushSubscriptionRow = {
   id: string;
   person_id: string;
