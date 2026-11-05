@@ -115,11 +115,16 @@ export function PhoneDisaster({
       speak: synth && Utterance ? (text) => player.say(text) : undefined,
       // 声の聞き取りの会話（T137）: 20 秒押さない人に、問いの表を読む代わりに短い会話。次の手はサーバー（Claude は次の 1 文だけ）
       talk: (signalId, log) => fetchTalk(signalId, log),
-      // 会話の 1 文は Gemini の声（決まった文はサーバーの表から、AI の文は会話の API が作って置いた物）。鳴らなければ端末の読み上げ
-      say: synth && Utterance ? (text, voice) => player.line(text, voice ?? null) : undefined,
+      // 会話の 1 文は Gemini の声（決まった文は作り置き、AI の文は会話の API が作って置いた物。最初の定型文と同じ声）。
+      // 作れなかった時だけ端末の読み上げ
+      say: (text, voice) => player.line(text, voice ?? null),
+      // 読む間に本人が話し始めたら声を止める（T137b）
+      hush: () => player.stop(),
       prime: () => {
         player.prime();
         mic = primeMicrophone({ getUserMedia, queryPermission });
+        // 会話の決まった文の声を作り置く（T137b。置いてある物は作らない。待たない）
+        void fetch(VOICE_PATH, { method: "POST", credentials: "same-origin" }).catch(() => undefined);
       },
       micReady: () => mic ?? Promise.resolve(getUserMedia !== null),
       playPrompt: () => player.play(),

@@ -153,7 +153,7 @@ describe("選択肢の枠と色分け（1）", () => {
     expect(JSON.stringify(parsed)).not.toContain("tone");
   });
 
-  it("本人・家族の画面: 選択肢は全部灰の枠、印のある答えだけ data-tone。言葉はそのまま", () => {
+  it("本人・家族の画面: 印のある答えだけ data-tone で面を塗り（T137b）、印の無い答えは灰の枠。言葉はそのまま", () => {
     const html = renderToStaticMarkup(
       createElement(PhoneView, {
         state: { step: "question", id: "injured", answers: {}, first: true, voice: null },
@@ -164,7 +164,9 @@ describe("選択肢の枠と色分け（1）", () => {
     expect(html).toMatch(/data-choice="yes" data-tone="urgent"/);
     expect(html).toMatch(/data-choice="no" data-tone="ok"/);
     expect(html).toMatch(/data-choice="unknown"(?! data-tone)/);
-    expect(html.match(/phone-choice/g)).toHaveLength(3);
+    expect(html.match(/phone-choice/g)).toHaveLength(1);
+    expect(html).toMatch(/phone-fill-urgent[^"]*" data-press="overlay" data-choice="yes"/);
+    expect(html).toMatch(/phone-fill-ok[^"]*" data-press="overlay" data-choice="no"/);
     // 体の訴え（息が くるしい など）には色を付けない
     const body = renderToStaticMarkup(
       createElement(PhoneView, { state: { step: "question", id: "body", answers: {}, first: false, voice: null }, nowMs: 0, on: noop }),
@@ -195,13 +197,13 @@ describe("選択肢の枠と色分け（1）", () => {
     expect(fam).toMatch(/data-choice="yes" data-tone="ok"/);
   });
 
-  it("phone.css に帯の決まり（状態の色の変数だけ。薄い下地は使わない）", () => {
+  it("phone.css の決まり（T137b）: 印のある答えは状態の色で面を塗る。端だけの色の線（inset の影）と薄い下地は使わない", () => {
     const css = readFileSync(join(ROOT, "components/phone/phone.css"), "utf8");
     expect(css).toMatch(/\.phone-choice\s*\{\s*border: 1\.5px solid/);
-    expect(css).toContain('[data-tone="urgent"]');
-    expect(css).toContain("var(--state-urgent)");
-    expect(css).toContain("var(--state-check)");
-    expect(css).toContain("var(--state-ok)");
+    expect(css).toMatch(/\.phone-fill-urgent\s*\{\s*background-color: var\(--state-urgent\)/);
+    expect(css).toMatch(/\.phone-fill-ok\s*\{\s*background-color: var\(--state-ok\)/);
+    expect(css).toMatch(/\.phone-fill-check\s*\{\s*background-color: var\(--state-check-fill\);\s*color: var\(--on-state-check\)/);
+    expect(css).not.toContain("inset");
     expect(css).not.toContain("color-mix");
   });
 

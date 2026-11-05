@@ -22,25 +22,26 @@ import {
   TALK_MAX_TURNS,
   TALK_QUESTION_MAX,
   TALK_PREFACE_MAX,
-  TALK_TOPIC_SPECS,
-  TALK_TOPICS,
+  TALK_ITEM_IDS,
   askedTurns,
+  itemOf,
+  squashTalk,
   type TalkContext,
   type TalkEnd,
   type TalkLine,
   type TalkLog,
   type TalkPlan,
-  type TalkTopic,
 } from "./talk.ts";
 
 export const TALK_SYSTEM = [
   "災害のあと、本人のスマホで本人と短い会話をしている。本人は高齢で、在宅で介護を受けている。次に本人に聞く 1 文を決める。聞くのは事実だけ。",
-  "入力は JSON。「会話」はこれまでの問いと本人の答え（聞き取れなかった回は（無音）（不明瞭））。「状況」は聞ける話題と、話題ごとの決まった問い、残りの回数、本人が押した答え。",
-  "返すのは topic・preface・question・done の 4 つだけ。",
+  "入力は JSON。「会話」はこれまでの問いと本人の答え（聞き取れなかった回は（無音）（不明瞭））。「状況」は聞ける問いの表（id・何を聞くか・決まった問い。深く聞く問いは何のあとか）、残りの回数、本人が押した答え。",
+  "返すのは ask・preface・question・done の 4 つだけ。",
   "",
-  "- topic: 次に聞く話題。状況の「聞ける話題」の id から 1 つ。",
-  `- question: 本人に聞く問い 1 つ。はい・いいえで答えられる形で、「か」か「？」で終わる。${TALK_QUESTION_MAX} 字まで。ひらがなを多く、短い言葉で、ゆっくり読める文。`,
-  "  話題を初めて聞くときは、状況の「決まった問い」の文をそのまま使う。答えが噛み合わない・聞き取れない・違う話をしたときだけ、同じ話題をもっと易しい言葉で言い換える。",
+  "- ask: 次に聞く問いの id。状況の「聞ける問い」の id から 1 つ。新しい問いを作らない。",
+  "  本人の答えに合わせて 1 段深く聞く（けがが ある → どこか・血が出ているか・動かせるか、動けない → 何かに挟まれているか・近くの人を呼べるか、機器 → 電池の残り・予備）。答えに合わない深い問いは選ばない。",
+  "  本人が状況を説明できないときは、はい・いいえで答えられる問いを 1 つずつ。",
+  `- question: その問いの言い方。初めて聞くときは「決まった問い」の文をそのまま使う。答えが噛み合わない・聞き取れない・違う話をしたときだけ、同じ問いをもっと易しい言葉で言い換える（中身を変えない）。「か」か「？」で終わる 1 つの問い。${TALK_QUESTION_MAX} 字まで。ひらがなを多く、短い言葉で。`,
   `- preface: 問いの前に言う受け止めの一言（${TALK_PREFACE_MAX} 字まで。無ければ空文字）。本人の言葉をそのままくり返す程度（「あしが いたいのですね」）。`,
   "- done: 聞ける話題の大事な物が聞けて状況がつかめた、または本人がもう答えられないなら true。",
   "",
@@ -53,7 +54,7 @@ export const TALK_SYSTEM = [
 ].join("\n");
 
 export const TalkSchema = z.object({
-  topic: z.enum(TALK_TOPICS),
+  ask: z.enum(TALK_ITEM_IDS),
   preface: z.string(),
   question: z.string(),
   done: z.boolean(),
@@ -75,7 +76,13 @@ export function dialogForAi(log: TalkLog): string {
 
 /** 状況の文（決まった言葉だけ。名前・住所を入れない） */
 export function situationForAi(log: TalkLog, plan: Extract<TalkPlan, { kind: "ask" }>, ctx: TalkContext): string {
-  const topics = plan.topics.map((t) => `${t}（${TALK_TOPIC_SPECS[t].label}。決まった問い「${TALK_TOPIC_SPECS[t].text}」）`).join("、");
+  const items = plan.items
+    .map((id) => {
+      const i = itemOf(id)!;
+      const after = i.parents.length > 0 ? `。${i.parents.map((x) => itemOf(x)?.label ?? x).join("・")}のあと` : "";
+      return `${id}（${i.label}${after}。決まった問い「${i.text}」）`;
+    })
+    .join("、");
   const pressed = Object.entries(ctx.answers)
     .map(([id, a]) => {
       const q = questionOf(id as Parameters<typeof questionOf>[0]);
@@ -84,7 +91,7 @@ export function situationForAi(log: TalkLog, plan: Extract<TalkPlan, { kind: "as
     .join("・");
   const missing = missingRequired(log, ctx);
   return [
-    `聞ける話題: ${topics}`,
+    `聞ける問い: ${items}`,
     `まだ聞いていない大事な話題: ${missing.length > 0 ? missing.join("、") : "なし"}`,
     `本人が押した答え: ${pressed || "なし"}`,
     `残りの回数: ${Math.max(TALK_MAX_TURNS - askedTurns(log), 0)}`,
@@ -162,10 +169,18 @@ export async function nextTalk(
     // 表の 2 問を聞くまでは終えない（決まった問いで聞く）
     return { kind: "ask", line: fixedLine(missing[0]), called: true };
   }
-  if (!plan.topics.includes(answer.topic as TalkTopic)) return fallback("topic", true);
+  // 問いの表の外・聞けない問い（元をまだ聞いていない深い問い・押して答えた問い）は決まった問い
+  const item = itemOf(answer.ask);
+  if (!item || !plan.items.includes(item.id)) return fallback("topic", true);
   const g = gateLine(answer);
-  if (!g.ok) return { kind: "ask", line: fixedLine(answer.topic), called: true, error: "gate", gate: g.reason };
+  if (!g.ok) return { kind: "ask", line: fixedLine(item.id), called: true, error: "gate", gate: g.reason };
   // 読む文に元の氏名・電話などが残っていないか（Claude は伏せた文しか見ていないが、念のため）
-  if (findLeaks(g.text, ai.key).length > 0) return { kind: "ask", line: fixedLine(answer.topic), called: true, error: "leak" };
-  return { kind: "ask", line: { text: g.text, question: g.question, easy: null, by: "ai", topic: answer.topic }, called: true };
+  if (findLeaks(g.text, ai.key).length > 0) return { kind: "ask", line: fixedLine(item.id), called: true, error: "leak" };
+  // 決まった問いの文のままなら、決まった問いとして読む（作り置きの声・画面のふりがな。答えは言葉の一致で取る）
+  if (!g.preface && squashTalk(g.question) === squashTalk(item.text)) return { kind: "ask", line: fixedLine(item.id), called: true };
+  return {
+    kind: "ask",
+    line: { text: g.text, question: g.question, easy: null, by: "ai", topic: item.topic, ...(item.id !== item.topic ? { item: item.id } : {}) },
+    called: true,
+  };
 }

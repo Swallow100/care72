@@ -2,7 +2,7 @@
 // 送れない・断られた・形の違う返事は null（端末は決まった問いで続ける。会話の記録は録音を添えるときにも送る）。
 // 端末に残して送り直すことはしない（本人が答えを待っているので、遅れて届いた次の手は使わない）。
 
-import { DANGER_KINDS, isTalkTopic, TALK_ENDS, TALK_VOICE_PATH } from "./talk.ts";
+import { DANGER_KINDS, isTalkItem, isTalkTopic, itemOf, TALK_ENDS, TALK_VOICE_PATH } from "./talk.ts";
 import type { TalkLine, TalkLog } from "./talk.ts";
 import type { TalkReply } from "./talk-ai.ts";
 
@@ -27,6 +27,11 @@ export function readTalkReply(v: unknown): TalkReply | null {
   if (l.topic !== "open" && !isTalkTopic(l.topic)) return null;
   if (l.easy !== null && typeof l.easy !== "string") return null;
   const line: TalkLine = { text: l.text, question: l.question, easy: (l.easy as string | null) ?? null, by: l.by, topic: l.topic as TalkLine["topic"] };
+  // 問いの表の id（T137b。深く聞く問い）は表にあって話題の合う物だけ
+  if (l.item !== undefined) {
+    if (!isTalkItem(l.item) || itemOf(l.item)?.topic !== l.topic) return null;
+    line.item = l.item;
+  }
   // 声の URL は決まった形だけ（ほかの所を鳴らさない）
   if (typeof l.voice === "string" && TALK_VOICE_PATH.test(l.voice)) line.voice = l.voice;
   return { kind: "ask", called, line };

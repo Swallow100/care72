@@ -26,7 +26,8 @@ import {
   missingRequired,
   newTalkLog,
   TALK_OPENING,
-  TALK_TOPICS,
+  TALK_ITEM_IDS,
+  itemOf,
   type TalkLine,
   type TalkLog,
 } from "../../../lib/signals/talk.ts";
@@ -74,12 +75,12 @@ export function fakeTalkClient(noise = 0, rnd: () => number = Math.random): Clau
       messages: {
         create: async (params: Params) => {
           const text = JSON.stringify(params.messages);
-          const topics = TALK_TOPICS.filter((t) => text.includes(`${t}（`));
+          const topics = TALK_ITEM_IDS.filter((t) => text.includes(`${t}（`));
           const topic = topics[0] ?? "injured";
           const answer =
             rnd() < noise
-              ? { topic, ...bad[Math.floor(rnd() * bad.length)], done: false }
-              : { topic, preface: "", question: `${topic === "nearby" ? "そばに だれか" : "それは"} いますか`, done: topics.length <= 2 };
+              ? { ask: topic, ...bad[Math.floor(rnd() * bad.length)], done: false }
+              : { ask: topic, preface: "", question: itemOf(topic)?.text ?? "けがはありますか", done: topics.length <= 2 };
           return {
             id: "msg_fake",
             type: "message",

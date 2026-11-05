@@ -21,8 +21,21 @@ import { disasterScope } from "../disaster/scope.ts";
 import { classifySignal } from "../classify/store.ts";
 import { NO_ANSWERS } from "./body.ts";
 import { recordingPost, type FormLike } from "./http.ts";
-import { saveSignal, signalScope } from "./save.ts";
-import { fixedLine, heardTurn, newTalkLog, readTalkLog, TALK_OPENING, type TalkLine, type TalkLog } from "./talk.ts";
+import { MAX_RECORDING_SEC, MAX_TRANSCRIPT_LENGTH, saveSignal, signalScope } from "./save.ts";
+import {
+  fixedLine,
+  heardTurn,
+  newTalkLog,
+  readTalkLog,
+  TALK_MAX_TURNS,
+  TALK_OPENING,
+  TALK_RECORDING_SEC_MAX,
+  TALK_TEXT_MAX,
+  TALK_TRANSCRIPT_MAX,
+  talkReplies,
+  type TalkLine,
+  type TalkLog,
+} from "./talk.ts";
 import { talkPost } from "./talk-http.ts";
 
 type Params = Anthropic.Beta.Messages.MessageCreateParamsNonStreaming;
@@ -148,7 +161,7 @@ describe("会話の API（talkPost）", () => {
   it("記録を信号に書き（後勝ち。往復の少ない古い送りで上書きしない）、次の 1 文を Claude（Haiku・分類の数え）で返す。名前は伏せて渡す", async () => {
     await quake();
     await signal(1);
-    const f = fake(() => ({ topic: "canMove", preface: "あしが いたいのですね", question: "じぶんで たてますか", done: false }));
+    const f = fake(() => ({ ask: "canMove", preface: "あしが いたいのですね", question: "じぶんで たてますか", done: false }));
     const one = logOf([[TALK_OPENING, "山田 ハナです。あしが いたい"]]);
     const r = await post(selfP, sid(1), one, f.client);
     expect(r.status).toBe(200);
@@ -172,7 +185,7 @@ describe("会話の API（talkPost）", () => {
   it("AI の 1 文には声の URL を添える（間に合ったときだけ）。決まった文には添えない（端末が id で頼む）", async () => {
     await quake();
     await signal(1);
-    const f = fake(() => ({ topic: "canMove", preface: "", question: "じぶんで たてますか", done: false }));
+    const f = fake(() => ({ ask: "canMove", preface: "", question: "じぶんで たてますか", done: false }));
     const seen: string[] = [];
     const voice = async (text: string) => {
       seen.push(text);
@@ -282,5 +295,31 @@ describe("ケアマネの行の詳細の会話の欄", () => {
     const after = await yamada();
     expect(JSON.stringify(after.triage)).toBe(JSON.stringify(before.triage));
     expect(after.detail?.signals.find((s) => s.id === sid(1))?.talk).toMatchObject({ unclear: true, end: "unclear" });
+  });
+});
+
+describe("長い会話でも録音と会話の記録を捨てない（T137b）", () => {
+  it("上限は録音の API と同じ。5 分・10 往復で 1 回 400 字を超えて話し続けても、切った記録と文字起こしで 200", async () => {
+    expect(TALK_TRANSCRIPT_MAX).toBe(MAX_TRANSCRIPT_LENGTH);
+    expect(TALK_RECORDING_SEC_MAX).toBe(MAX_RECORDING_SEC);
+    await quake();
+    await signal(1);
+    const long = "あしが いたくて ".repeat(80);
+    const pairs: Array<[TalkLine, string | null]> = [[TALK_OPENING, long]];
+    for (let i = 1; i < TALK_MAX_TURNS; i++) pairs.push([fixedLine("callee"), long]);
+    const log = { ...logOf(pairs), end: "cap" as const };
+    expect(log.turns.every((t) => (t.reply ?? "").length <= TALK_TEXT_MAX)).toBe(true);
+    const transcript = talkReplies(log)!;
+    expect(transcript.length).toBeLessThanOrEqual(MAX_TRANSCRIPT_LENGTH);
+    const res = await recordingPost(
+      db,
+      { put: async () => undefined } as never,
+      selfP,
+      form({ signal: sid(1), recordedAt: atH(1.1), sentAt: atH(1.1), transcript, durationSec: String(300), talk: JSON.stringify(log) }),
+      atH(1.1),
+    );
+    expect(res.status).toBe(200);
+    expect(readTalkLog(row(sid(1)).talk)?.turns).toHaveLength(TALK_MAX_TURNS);
+    expect(heardTurn(fixedLine("callee"), long, atH(1)).reply!.length).toBe(TALK_TEXT_MAX);
   });
 });
