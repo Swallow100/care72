@@ -6,6 +6,8 @@
 // 白紙の様式は塗らずに「送信」（確かめの窓「塗り無し」で人が選ぶ）、記入済みなら書いた値を塗ってから。送るのは塗った後の頁の画像だけ。
 // Excel・Word（T119）も選べる。黒塗りの画面がブラウザの中で印刷の頁に描き、ほかと同じく塗った後の頁の画像だけを送る。
 // 古い形（.xls・.doc）は読まずに「旧形式・PDF 保存で取込」。
+// T134: 地域選択（MunicipalPicker）で一覧の公式の様式を選ぶと、サーバーが公式の URL から取ったファイルを同じ黒塗りの画面に渡し、
+// 送るときに様式の id と元の頁の番号を添える（サーバーが共有の対応表を引く。lib/forms/read-post.ts）。
 
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
@@ -14,6 +16,7 @@ import type { RedactedPage } from "@/components/person/RedactSheet";
 import { BTN_MAIN, BTN_SIDE, INPUT } from "@/components/person/intake-ui";
 import { AddIcon, PaperIcon, ReadIcon } from "@/components/ui/Icon";
 import { Loader72 } from "@/components/ui/Loader72";
+import { MunicipalPicker, type MunicipalPickerProps } from "./MunicipalPicker";
 import { LIMITS, MAPPING_LABELS as L } from "@/lib/forms/mapping";
 import { buildFormReadForm, FORM_READ_PAGES_MAX } from "@/lib/forms/read-upload";
 import { shrinkImage } from "@/lib/forms/shrink-image";
@@ -40,7 +43,7 @@ async function post(url: string, body: BodyInit, json = false): Promise<{ ok: tr
   }
 }
 
-export function FormReadPanel({ aiReady }: { aiReady: boolean }) {
+export function FormReadPanel({ aiReady, municipal }: { aiReady: boolean; municipal?: Pick<MunicipalPickerProps, "shared" | "own" | "defaultCity"> }) {
   const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState<"read" | "manual" | null>(null);
@@ -48,6 +51,8 @@ export function FormReadPanel({ aiReady }: { aiReady: boolean }) {
   const [title, setTitle] = useState("");
   const [seconds, setSeconds] = useState(0);
   const [redacting, setRedacting] = useState<File[] | null>(null);
+  // 黒塗りの画面に渡したのが一覧の公式の様式なら、その id（T134）
+  const [picked, setPicked] = useState<string | null>(null);
 
   useEffect(() => {
     if (busy !== "read") return;
@@ -70,6 +75,7 @@ export function FormReadPanel({ aiReady }: { aiReady: boolean }) {
         setFail({ label: L.fileLarge });
         return;
       }
+      setPicked(null);
       setRedacting([file]);
       return;
     }
@@ -78,6 +84,7 @@ export function FormReadPanel({ aiReady }: { aiReady: boolean }) {
       setFail({ label: shrunk.error === "type" ? PLACE_LABELS.fileKinds : shrunk.error === "heic" ? PLACE_LABELS.heic : L.fileLarge });
       return;
     }
+    setPicked(null);
     setRedacting([shrunk.file]);
   };
 
@@ -86,13 +93,18 @@ export function FormReadPanel({ aiReady }: { aiReady: boolean }) {
     setRedacting(null);
     setBusy("read");
     setFail(null);
-    const r = await post("/api/forms/read", buildFormReadForm(pages.slice(0, FORM_READ_PAGES_MAX)));
+    const r = await post("/api/forms/read", buildFormReadForm(pages.slice(0, FORM_READ_PAGES_MAX), picked ? { municipal: picked } : {}));
     if (r.ok) {
       router.push(`/forms/mapping/${encodeURIComponent(r.id)}`);
       return;
     }
     setFail({ label: r.label });
     setBusy(null);
+  };
+
+  const cancelRedact = () => {
+    setRedacting(null);
+    setPicked(null);
   };
 
   const manual = async () => {
@@ -111,6 +123,21 @@ export function FormReadPanel({ aiReady }: { aiReady: boolean }) {
 
   return (
     <div className="grid gap-3 md:grid-cols-2">
+      {municipal && (
+        <div className="md:col-span-2">
+          <MunicipalPicker
+            {...municipal}
+            aiReady={aiReady}
+            busy={busy !== null || redacting !== null}
+            onPicked={(f, id) => {
+              setFail(null);
+              setPicked(id);
+              setRedacting([f]);
+            }}
+          />
+        </div>
+      )}
+
       <section aria-labelledby="read-title" className="rounded-lg bg-panel p-3">
         <h2 id="read-title" className="flex items-baseline gap-2 font-bold">
           {L.read}
@@ -179,7 +206,7 @@ export function FormReadPanel({ aiReady }: { aiReady: boolean }) {
         </p>
       )}
 
-      {redacting && <RedactSheet files={redacting} onCancel={() => setRedacting(null)} onSend={(pages) => void send(pages)} />}
+      {redacting && <RedactSheet files={redacting} onCancel={cancelRedact} onSend={(pages) => void send(pages)} />}
     </div>
   );
 }
