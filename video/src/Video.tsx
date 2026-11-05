@@ -208,6 +208,43 @@ const Backdrop: React.FC<{ shot: Shot; assets: Assets; duration: number }> = ({ 
   return null;
 };
 
+/**
+ * 録画の右下に重ねる数の面（声は足さず、字だけ。S6 の医療班の所のアンケートの問 7）。面の色は地の上で目立つ色（白地では青）、字はその逆。
+ * 出るときは下から上がり、出たら止まる（跳ねない）。録画の大事な所（左の紙面）を隠さないよう右下に置く
+ */
+const StatNote: React.FC<{ stat: NonNullable<Shot["stat"]>; inset: { width: number; height: number } }> = ({ stat, inset }) => {
+  const frame = useCurrentFrame();
+  const p = usePalette();
+  const S = LAYOUT.stage;
+  return (
+    <div
+      style={{
+        // 舞台（Stage）の中の位置。録画の窓（舞台の真ん中）の右下の角から 28px 内に重ねる
+        position: "absolute",
+        right: (S.width - inset.width) / 2 + 28,
+        bottom: (S.height - inset.height) / 2 + 28,
+        width: 600,
+        boxSizing: "border-box",
+        padding: "26px 32px",
+        borderRadius: 10,
+        background: p.strong,
+        color: p.onStrong,
+        fontFamily: FONT.main,
+        ...rise(frame, f(stat.at), 18, 14),
+      }}
+    >
+      <div style={{ fontSize: TYPE.caption, opacity: 0.85 }}>{stat.label}</div>
+      {/* 文の中の「／」で改行する（語の途中で折らない） */}
+      <div style={{ fontSize: TYPE.body, fontWeight: 600, marginTop: 8, lineHeight: 1.35, whiteSpace: "nowrap" }}>
+        {stat.text.split("／").map((r) => (
+          <div key={r}>{r}</div>
+        ))}
+      </div>
+      <div style={{ fontSize: TYPE.h1, fontWeight: 600, lineHeight: 1.1, marginTop: 6 }}>{stat.value}</div>
+    </div>
+  );
+};
+
 const ShotView: React.FC<{ shot: Shot; assets: Assets; entryDelay?: number; next?: Shot }> = ({ shot, assets, entryDelay = 0, next }) => {
   const duration = f(shot.end) - f(shot.at);
   const S = LAYOUT.stage;
@@ -232,6 +269,7 @@ const ShotView: React.FC<{ shot: Shot; assets: Assets; entryDelay?: number; next
             delay={entryDelay}
             hold={entryDelay}
           />
+          {shot.stat ? <StatNote stat={shot.stat} inset={framedSize(shot.footage ?? "", S.width, S.height)} /> : null}
         </Stage>
       );
       break;
