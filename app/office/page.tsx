@@ -25,7 +25,7 @@ import { StateTag, StateText, TONE_TEXT } from "@/components/ui/Tag";
 import { todayJst } from "@/lib/age";
 import { wantsOwnPassword } from "@/lib/auth/password-change";
 import { requirePage } from "@/lib/auth/server";
-import { PLAN_TONES } from "@/lib/caseload";
+import { PlanDrill, PlanStage, PlanState } from "@/components/list/PlanState";
 import { ALERT_LEVELS, DISASTER_KINDS, OUTAGE_SCOPES, type DisasterKind, type GeoPoint } from "@/lib/db/types";
 import { loadDisasterState, loadOfficeLog, loadOfficeTowns, type OfficeLogItem, type TownCount } from "@/lib/disaster/db";
 import { OFFICE_INFO_PATH, OFFICE_MODE_PATH, OFFICE_PATH, parseConfirm, parseFormError } from "@/lib/disaster/http";
@@ -51,7 +51,6 @@ import {
 import { colorCounts, NORMAL_ORDER_LABELS } from "@/lib/forms/form9";
 import { form9Scope, loadForm9 } from "@/lib/forms/form9-db";
 import { FORM9_CSV_PATH, FORM9_PATH } from "@/lib/forms/form9-href";
-import { PLAN_STATUS_LABELS } from "@/lib/labels";
 import { parseAssignedMany, parsePeopleError } from "@/lib/office/http";
 import { ASSIGN_ANCHOR, CARE_MANAGERS_ANCHOR, NEW_PERSON_PATH, OFFICE_PEOPLE_PATH } from "@/lib/office/http-paths";
 import { assignManyText, OFFICE_ERROR_LABELS, OFFICE_LABELS, type PeopleActionError } from "@/lib/office/labels";
@@ -568,12 +567,14 @@ function AssignSection({
                           <span className="text-muted tabular-nums">
                             {OFFICE_LABELS.age} {p.age ?? "—"}
                           </span>
-                          <StateText tone={PLAN_TONES[p.plan]}>{PLAN_STATUS_LABELS[p.plan]}</StateText>
+                          <PlanStage plan={p.plan} />
+                          <PlanDrill plan={p.plan} drill={p.drill} inline />
                         </span>
                       </td>
                       <td className={`${TD} hidden align-middle whitespace-nowrap sm:table-cell`}>{p.age ?? "—"}</td>
                       <td className={`${TD} hidden align-middle whitespace-nowrap sm:table-cell`}>
-                        <StateText tone={PLAN_TONES[p.plan]}>{PLAN_STATUS_LABELS[p.plan]}</StateText>
+                        {/* 計画の段階と、別に最後に出た訓練の日（T146） */}
+                        <PlanState plan={p.plan} drill={p.drill} />
                       </td>
                       <td className={`${TD} align-middle`}>
                         <AssignForm personId={p.id} personName={p.name} careManagerId={p.careManagerId} careManagers={rowCms(p.careManagerId)} />
