@@ -19,7 +19,7 @@ export type OfficeKind = (typeof OFFICE_KINDS)[number];
 export const ACCOUNT_ROLES = ["care_manager", "government", "medical", "judge"] as const;
 export type AccountRole = (typeof ACCOUNT_ROLES)[number];
 
-/** 計画の状態: 未作成・下書き・同意済・訓練済 */
+/** 計画の状態（DB の値）: 未作成・下書き・同意済・訓練済。画面と紙は 3 つの段階（同意済・訓練済は作成済）と別の訓練の日で出す（lib/plan-status.ts、T146） */
 export const PLAN_STATUSES = ["none", "draft", "consented", "trained"] as const;
 export type PlanStatus = (typeof PLAN_STATUSES)[number];
 

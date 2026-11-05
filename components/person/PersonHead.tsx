@@ -5,8 +5,8 @@
 // 見る人の範囲（head.show、lib/consent/scope.ts）の外の物は欄ごと出さない（医療班・行政に同意の無い人は名前・カナ・年齢と状態の色だけ）。
 
 import type { PersonHead as Head } from "@/lib/person";
-import { BLANK_LABELS, HEAD_LABELS } from "@/lib/labels";
-import { Mark } from "@/components/ui/Tag";
+import { BLANK_LABELS, HEAD_LABELS, PLAN_DRILL_LABELS } from "@/lib/labels";
+import { Mark, StateText } from "@/components/ui/Tag";
 import { LineText, REASON_TEXT, StateTag, TONE_TEXT, type Level } from "./parts";
 
 function Fact({ label, children }: { label: string; children: React.ReactNode }) {
@@ -58,7 +58,19 @@ export function PersonHead({ head, level, titleId }: { head: Head; level: Level;
             {show.medical && (
               <Fact label={HEAD_LABELS.careLevel}>{head.careLevel ?? <span className="text-muted">{BLANK_LABELS.blank}</span>}</Fact>
             )}
-            {show.plan && <Fact label={HEAD_LABELS.plan}>{head.plan}</Fact>}
+            {/* 計画の段階（未作成・下書き・作成済、意味色の文字）と、別に最後に出た訓練の日（T146。訓練は色を付けない） */}
+            {show.plan && (
+              <Fact label={HEAD_LABELS.plan}>
+                <StateText tone={head.planTone}>{head.plan}</StateText>
+              </Fact>
+            )}
+            {show.plan && (
+              <Fact label={PLAN_DRILL_LABELS.head}>
+                <span className={head.drill === PLAN_DRILL_LABELS.none ? "text-muted" : "tabular-nums"} data-head-drill>
+                  {head.drill}
+                </span>
+              </Fact>
+            )}
             {show.plan && (
               <Fact label={HEAD_LABELS.unconfirmed}>
                 <span

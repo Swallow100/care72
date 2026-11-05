@@ -107,6 +107,8 @@ import {
   type ViewScope,
   type WritableKind,
 } from "./consent/scope.ts";
+import { lastDrillDayOf, lastDrillDayStatement } from "./drill/last.ts";
+import { drillMark, PLAN_TONES } from "./plan-status.ts";
 
 // ---------- 区分と並び ----------
 
@@ -373,7 +375,12 @@ export type PersonHead = {
   /** 医療の印と、その時計の色・いちばん短い残り */
   marks: MarkItem[];
   priority: Priority;
+  /** 計画の段階（未作成・下書き・作成済。lib/plan-status.ts、T146） */
   plan: string;
+  /** 計画の段階の色（意味色） */
+  planTone: StateTone;
+  /** 最後に出た訓練（「11/5」「済」「未実施」。計画の段階と別に並べる。T146） */
+  drill: string;
   /** 台帳の pending の数（担当一覧の「未確認 N」と同じ） */
   unconfirmed: number;
   /** 走る時計の残り（平時は全部の長さ、災害モードは今の残り）。短い順、値の無い物は後ろ。上に大きく出す。note は「停電で開始」 */
@@ -433,6 +440,8 @@ export type PersonPageRows = {
   >;
   /** 第三者提供の記録（T23）。経過に「提供 医療班 医療・避難・人の一部」の 1 行で出す。D1 から読んだときだけ */
   provisions?: ReadonlyArray<ProvisionForTimeline>;
+  /** 最後に出た終わった訓練の日（JST の YYYY-MM-DD、lib/drill/last.ts。T146）。D1 から読んだときだけ */
+  lastDrill?: string | null;
 };
 
 /** 経過に出す第三者提供の記録の列 */
@@ -1438,6 +1447,8 @@ export function toPersonView(rows: PersonPageRows, opts: ViewOptions): PersonVie
     // 医療が範囲の外なら、状態の色と言葉だけ（理由は時計・薬の名前が入るので空にする。骨格の段は画面に出さない）
     priority: show.medical || priority.kind === "tier" ? priority : { ...priority, reason: "" },
     plan: PLAN_STATUS_LABELS[person.plan_status],
+    planTone: PLAN_TONES[person.plan_status],
+    drill: drillMark(rows.lastDrill ?? null, person.plan_status, opts.today).text,
     unconfirmed: show.plan ? ledger.pending.length : 0,
     clocks: show.medical ? headClocks(clocks, own) : [],
     emergency: show.people ? headEmergency(contacts) : [],
@@ -1486,7 +1497,7 @@ export async function loadPersonPage(db: D1Database, principal: Principal, perso
  * そこでは署名と版を確かめたトークンが壁の代わり
  */
 export async function loadPersonRows(db: D1Database, brief: PersonBrief): Promise<PersonPageRows | null> {
-  const [extra, contacts, consents, clocks, timeline, provisions] = await db.batch([
+  const [extra, contacts, consents, clocks, timeline, provisions, drill] = await db.batch([
     db
       .prepare(
         `SELECT p.origin, p.self_report_unreliable, p.created_at, p.updated_at, p.version, p.reported_age,
@@ -1529,6 +1540,8 @@ export async function loadPersonRows(db: D1Database, brief: PersonBrief): Promis
            FROM third_party_provisions WHERE person_id = ?1 ORDER BY provided_at, id`,
       )
       .bind(brief.id),
+    // 最後に出た訓練の日（T146。頭の計画の横の「訓練 11/5」）
+    lastDrillDayStatement(db, brief.office_id, brief.id),
   ]);
   const e = extra.results[0] as
     | Pick<PersonRow, "origin" | "self_report_unreliable" | "created_at" | "updated_at" | "version"> &
@@ -1561,5 +1574,6 @@ export async function loadPersonRows(db: D1Database, brief: PersonBrief): Promis
     clocks: clocks.results as unknown as PersonPageRows["clocks"],
     timeline: timeline.results as unknown as PersonPageRows["timeline"],
     provisions: provisions.results as unknown as ProvisionForTimeline[],
+    lastDrill: lastDrillDayOf(drill.results as Array<{ day?: unknown }>),
   };
 }
