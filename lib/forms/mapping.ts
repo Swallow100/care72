@@ -310,6 +310,10 @@ export type MappingField = {
    * options に区切りの字（["年","月","日"]）、optionBoxes に空きごとの場所（lib/forms/split-parts.ts）
    */
   optionBoxes?: Array<FieldBox | null>;
+  /**
+   * 人が確かめの画面で「確認」した・直した要確認の欄（T122、lib/forms/field-risk.ts）。holdRisky のとき、確認するまで紙に使わない
+   */
+  confirmed?: boolean;
 };
 
 export type FormMapping = {
@@ -323,6 +327,11 @@ export type FormMapping = {
   typeface?: Typeface;
   /** 読み取りに失敗した頁（T120。読めた頁の欄だけで対応表にした。無ければ全部の頁を読めた） */
   unread?: number[];
+  /**
+   * 要確認の欄（自信の低い欄・読み違いの多い種類の欄。lib/forms/field-risk.ts）を、人が確認するまで紙に使わない（T122）。
+   * ケアマネが確かめの画面で選ぶ。無ければ今まで通り（確認保存した対応表の欄を全部使う）
+   */
+  holdRisky?: boolean;
 };
 
 /** 区切りの空きを持てる欄の形（T120。選ぶ欄は選択肢の □） */
@@ -385,6 +394,16 @@ export const MAPPING_LABELS = {
   unread: "未読",
   /** 台帳の項目なしで、人が選ぶ欄（同意など） */
   pick: "要選択",
+  // ---- T122 ----
+  /** 自信の低い欄・読み違いの多い種類の欄（lib/forms/field-risk.ts）。人が「確認」すると外れる */
+  risk: "要確認",
+  confirm: "確認",
+  confirmed: "確認済",
+  /** 要確認の欄を確認するまで紙に使わない（押すと切り替え） */
+  hold: "保留",
+  /** 表の並び: 要確認を先に・様式の順 */
+  riskOrder: "要確認順",
+  formOrder: "様式順",
   /** AI の挙げた候補の項目 */
   candidate: "候補",
   /** 候補をそのまま使う */
@@ -590,6 +609,7 @@ export function parseMappingInput(v: unknown): { ok: true; mapping: FormMapping 
       removed: f.removed === true,
       ai,
       ...(f.box !== undefined ? { box: clampBox(f.box) } : {}),
+      ...(f.confirmed === true ? { confirmed: true } : {}),
     });
   }
   return {
@@ -601,6 +621,7 @@ export function parseMappingInput(v: unknown): { ok: true; mapping: FormMapping 
       fields,
       ...(o.typeface !== undefined ? { typeface: typefaceOf(o.typeface) } : {}),
       ...unreadOf(o.unread, pages),
+      ...(o.holdRisky === true ? { holdRisky: true } : {}),
     },
   };
 }

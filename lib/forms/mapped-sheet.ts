@@ -54,6 +54,7 @@ import {
   type Piece,
   type PieceLine,
 } from "./matsuyama.ts";
+import { heldFields } from "./field-risk.ts";
 import { ledgerItem, type FormMapping, type LedgerItemKey, type MappingField } from "./mapping.ts";
 import { warekiText } from "./wareki.ts";
 import { transportText } from "../map/transport.ts";
@@ -613,10 +614,12 @@ export function buildMappedSheet(rows: PersonPageRows, mapping: FormMapping, opt
   const unmapped: string[] = [];
   const withheld = new Set<ConsentKind>();
   let count = 0;
+  // 要確認の欄を確認するまで紙に使わない形（T122）: 確認していない要確認の欄は対応なしと同じ（未確認）
+  const held = heldFields(mapping);
   for (const field of mapping.fields) {
     if (field.removed) continue;
     count += 1;
-    const cell = mappedCell(field, ctx);
+    const cell = mappedCell(held.has(field.id) ? { ...field, item: null } : field, ctx);
     const name = field.section ? `${field.section} ${field.label}` : field.label;
     if (cell.kind === "withheld") withheld.add(cell.consent);
     else if (isUnconfirmed(cell)) unconfirmedLabels.push(name);

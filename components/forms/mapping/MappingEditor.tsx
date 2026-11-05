@@ -8,6 +8,8 @@
 // 行を選ぶ（行の欄に触る・位置を押す）とその欄の枠が選ばれ、枠を押すと行が選ばれる。書体（ゴシック・明朝）もここで直す。
 // T120: 台帳の項目なしで人が選ぶ欄（AI の候補がある欄・同意の欄）は「要選択」（黄の印）と候補の「採用」。読めなかった頁は「未読」と「再読」。
 // 日付・電話の欄は区切りの字（年・月・日）を直せる（区切りの空きの場所は頁の画像の上で）。
+// T122: 自信の低い欄・台帳の項目なしの欄・読み違いの多い種類の欄（複数選択の一部・種類の □・元号。lib/forms/field-risk.ts）は「要確認」（黄の帯と印）。
+// 下書きでは要確認順（要確認を先に）で並べ、「確認」で外す（項目を直しても確認に）。「保留」を選ぶと、確認していない要確認の欄を紙に使わない。
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -16,6 +18,7 @@ import { INPUT } from "@/components/person/intake-ui";
 import { Button } from "@/components/ui/Button";
 import { AddIcon, RemoveIcon, RestoreIcon, RetryIcon, SaveIcon } from "@/components/ui/Icon";
 import { PageBoxes, type PageImageView } from "./PageBoxes";
+import { FIELD_RISK_LABELS, fieldRisks, openRisks, riskOrder, type FieldRisk } from "@/lib/forms/field-risk";
 import { FIELD_TARGET, realignOptionBoxes, withBox, type BoxTarget } from "@/lib/forms/box-edit";
 import type { FormMappingStatus } from "@/lib/db/types";
 import { Select } from "@/components/ui/Select";
@@ -82,6 +85,11 @@ export function MappingEditor({
 
   const stats = mappingStats(m);
   const picks = m.fields.filter(needsPick).length;
+  // 要確認（T122）。並びは下書きで要確認があれば要確認順
+  const risks = fieldRisks(m.fields);
+  const open = openRisks(m);
+  const [order, setOrder] = useState<"risk" | "form">(initialStatus === "draft" && openRisks(initial) > 0 ? "risk" : "form");
+  const rows = order === "risk" ? riskOrder(m.fields) : m.fields;
   const unread = m.unread ?? [];
   const [rereading, setRereading] = useState(false);
   const emptyLabels = m.fields.filter((f) => !f.removed && !f.label.trim()).map((f) => f.id);
@@ -212,6 +220,34 @@ export function MappingEditor({
         <Stat label={L.changed} value={stats.changed} />
         <Stat label={L.added} value={stats.added} />
         <Stat label="対応" value={stats.mapped} />
+        {risks.size > 0 && (
+          <span className="flex flex-wrap items-baseline gap-1.5" data-risks={open}>
+            <StateTag tone="check">{L.risk}</StateTag>
+            <span className="font-bold tabular-nums">{open}</span>
+            <Button
+              size="sm"
+              aria-pressed={m.holdRisky === true}
+              className={m.holdRisky ? "underline decoration-2 underline-offset-[6px]" : "font-normal text-muted"}
+              onClick={() => edit({ holdRisky: !m.holdRisky })}
+              data-hold={m.holdRisky ? "1" : "0"}
+            >
+              {L.hold}
+            </Button>
+            {(["risk", "form"] as const).map((o) => (
+              <Button
+                key={o}
+                size="sm"
+                kind="quiet"
+                aria-pressed={order === o}
+                className={order === o ? "underline decoration-2 underline-offset-[6px]" : "font-normal text-muted"}
+                onClick={() => setOrder(o)}
+                data-order={o}
+              >
+                {o === "risk" ? L.riskOrder : L.formOrder}
+              </Button>
+            ))}
+          </span>
+        )}
         {picks > 0 && (
           <span className="tabular-nums" data-picks={picks}>
             <StateTag tone="check">{L.pick}</StateTag> <span className="font-bold">{picks}</span>
@@ -277,10 +313,12 @@ export function MappingEditor({
             </tr>
           </thead>
           <tbody>
-            {m.fields.map((f) => (
+            {rows.map((f) => (
               <FieldRow
                 key={f.id}
                 f={f}
+                risk={risks.get(f.id) ?? null}
+                hold={m.holdRisky === true}
                 pages={m.pages}
                 empty={emptyLabels.includes(f.id)}
                 onChange={(p) => editField(f.id, p)}
@@ -313,6 +351,8 @@ function Stat({ label, value }: { label: string; value: number | string }) {
 
 function FieldRow({
   f,
+  risk,
+  hold,
   pages,
   empty,
   onChange,
@@ -320,6 +360,10 @@ function FieldRow({
   place,
 }: {
   f: MappingField;
+  /** 要確認の訳（T122。要確認でなければ null） */
+  risk: FieldRisk | null;
+  /** 要確認の欄を確認するまで紙に使わない */
+  hold: boolean;
   pages: number;
   empty: boolean;
   onChange: (p: Partial<MappingField>) => void;
@@ -329,10 +373,14 @@ function FieldRow({
 }) {
   const off = f.removed;
   const low = f.ai !== null && (f.ai.confidence === "low" || f.ai.rejected !== undefined);
+  // 確認していない要確認の欄（T122）は左の黄の帯
+  const open = risk !== null && !f.confirmed && !off;
   return (
     <tr
-      // 選んだ行は左の操作の色の帯（下地は敷かない）
-      className={`bg-panel ${off ? "text-muted" : ""} ${place?.selected ? "shadow-[inset_3px_0_0_var(--accent)]" : ""}`}
+      // 選んだ行は左の操作の色の帯、要確認は黄の帯（下地は敷かない）
+      className={`bg-panel ${off ? "text-muted" : ""} ${place?.selected ? "shadow-[inset_3px_0_0_var(--accent)]" : open ? "shadow-[inset_3px_0_0_var(--state-check)]" : ""}`}
+      data-risk={risk ?? undefined}
+      data-open={open ? "1" : undefined}
       data-field={f.id}
       data-removed={off ? "1" : undefined}
       data-selected={place?.selected ? "1" : undefined}
@@ -413,7 +461,8 @@ function FieldRow({
           className={`${IN} ${f.item === null && f.shape !== "handwrite" && !off ? "text-muted" : ""}`}
           value={f.item ?? ""}
           disabled={off || f.shape === "handwrite"}
-          onChange={(e) => onChange({ item: (e.target.value || null) as LedgerItemKey | null })}
+          // 項目を直したら確認した欄に（T122）
+          onChange={(e) => onChange({ item: (e.target.value || null) as LedgerItemKey | null, confirmed: true })}
         >
           <option value="">{f.shape === "handwrite" ? "手書き" : needsPick(f) ? L.pick : L.noItem}</option>
           {GROUPED.map((g) => (
@@ -431,7 +480,7 @@ function FieldRow({
           <div className="mt-0.5 flex flex-wrap items-center gap-1 text-xs" data-pick={f.id}>
             <StateTag tone="check">{L.pick}</StateTag>
             {f.ai?.candidate && (
-              <Button size="sm" onClick={() => onChange({ item: f.ai!.candidate! })}>
+              <Button size="sm" onClick={() => onChange({ item: f.ai!.candidate!, confirmed: true })}>
                 {L.candidate} {ledgerItem(f.ai.candidate).label} {L.adopt}
               </Button>
             )}
@@ -439,6 +488,22 @@ function FieldRow({
         )}
       </td>
       <td className={CELL}>
+        {risk !== null && !off && (
+          // 要確認の訳と確認（T122）。保留のとき、確認していない項目ありの欄は紙に使わない
+          <div className="mb-0.5 flex flex-wrap items-center gap-1 text-xs" data-risk-tag={f.id}>
+            {f.confirmed ? (
+              <span className="text-muted">{L.confirmed}</span>
+            ) : (
+              <>
+                <StateTag tone="check">{FIELD_RISK_LABELS[risk]}</StateTag>
+                {hold && f.item !== null && <span className="font-bold">{L.hold}</span>}
+                <Button size="sm" onClick={() => onChange({ confirmed: true })} data-confirm={f.id}>
+                  {L.confirm}
+                </Button>
+              </>
+            )}
+          </div>
+        )}
         {f.ai ? (
           <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-xs">
             <AiMark small title="AI の読取。人が確認" />
