@@ -364,7 +364,12 @@ describe("講評（Opus 1 回）", () => {
 
   it("返事の検査（reviewBody）: 指摘は 8 つまで、文の長さで切る", () => {
     const { key } = pseudonymize(SEED_PEOPLE.slice(0, 2).map(seedInput), { on: "2026-11-05" });
-    const many = { summary: "あ".repeat(400), findings: Array.from({ length: 12 }, () => ({ person: "A さん", kind: "order", text: "い".repeat(300), basis: "根拠なし" })) };
+    // 同じ人・同じ種類で同じ言い回しの指摘は重ねない（T130）ので、人と種類を変えた 12 個
+    const kinds = ["order", "report", "blank", "reached", "call", "choice"];
+    const many = {
+      summary: "あ".repeat(400),
+      findings: Array.from({ length: 12 }, (_, i) => ({ person: i % 2 === 0 ? "A さん" : "B さん", kind: kinds[Math.floor(i / 2)], text: "い".repeat(300), basis: "根拠なし" })),
+    };
     const b = reviewBody(many, { key, members: new Set(["p-01", "p-02"]) });
     expect(b.findings).toHaveLength(8);
     expect(Array.from(b.findings[0].text)).toHaveLength(120);
