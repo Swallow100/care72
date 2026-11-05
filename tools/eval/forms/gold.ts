@@ -12,7 +12,8 @@
 import { KIROKU_FRAME } from "../../../lib/forms/frame-kiroku.ts";
 import { MATSUYAMA_FRAME } from "../../../lib/forms/frame-matsuyama.ts";
 import type { Frame } from "../../../lib/forms/frame-sheet.ts";
-import { FORM9_PAGE_MM, FORM9_ROWS_PER_PAGE, form9Cell } from "../../../lib/forms/frame-form9.ts";
+import { FORM9_COL_CHARS, FORM9_MARGIN_MM, FORM9_PAGE_MM, FORM9_PRINT_SCALE, FORM9_ROWS_PER_PAGE, form9Cell } from "../../../lib/forms/frame-form9.ts";
+import { digitEmOf } from "../../../lib/ooxml/fonts.ts";
 import { KOMOREBI_ISSUER, KOMOREBI_LAYOUT, KOMOREBI_TITLE, komorebiBlankHtml, type KomorebiField } from "../../../lib/forms/komorebi-form.fixture.ts";
 import { isLedgerItemKey, listShapeOf, type FieldBox, type FieldShape, type FormMapping, type LedgerItemKey, type ReadResult, type Typeface } from "../../../lib/forms/mapping.ts";
 import { MATSUYAMA_FIELDS, MATSUYAMA_FORM_URL, type MatsuyamaKey } from "../../../lib/forms/matsuyama.ts";
@@ -205,7 +206,8 @@ export const AOZORA_LAYOUT: KomorebiField[] = [
   row(1, "避難", "避難場所", "evacuation.destination1", 0.71),
   row(1, "避難", "避難時の配慮事項", "care.issues", 0.742, { shape: "lines", h: 0.06 }),
   check(1, "", "情報の提供に同意する", null, 0.06, 0.82, 0.3),
-  row(1, "", "担当ケアマネ", "plan.author", 0.86),
+  // 担当ケアマネの欄は担当ケアマネの項目（T140。T131 で足した項目。前の計画作成者〔事業所名と担当を 1 つに〕は別解）
+  row(1, "", "担当ケアマネ", "plan.careManager", 0.86),
   row(1, "", "受付番号（市記入）", null, 0.91, { x: [0.56, 0.74, 0.94] }),
 ];
 
@@ -420,7 +422,10 @@ const KIROKU_ITEMS: Partial<Record<MedicalKey, string | null>> = {
   "patient.house": null,
   "shelter.first": "evacuation.destination1",
   "shelter.second": "evacuation.destination2",
-  "contact.kinds": null,
+  // 連絡先の種類の □（家族・知人・その他・連絡先なし）は緊急連絡先 1 の関係（T140。台帳の連絡先の種類と照らして □ に印。
+  // lib/forms/option-values.ts の関係の値の表。専用の紙 lib/forms/medical-summary.ts と同じ印）。前の正解は項目なし（紙は空）で、
+  // AI の当てた関係の欄の印を「余分」と数えていた（評価の 4 回目の 3）
+  "contact.kinds": "emergency1.relation",
   "contra.allergy": "medical.allergies",
   "contra.food": null,
   // 薬の区分の □（T131）: 専用の紙（lib/forms/medical-summary.ts）は区分の薬があれば印。読み取りの決まり 12 の例外（□ ごとに常用薬）と
@@ -445,7 +450,7 @@ const KIROKU_ITEMS: Partial<Record<MedicalKey, string | null>> = {
 const KIROKU_ACCEPT: Partial<Record<MedicalKey, ReadonlyArray<string | null>>> = {
   "patient.birth": ["person.age"],
   "patient.phone": ["self.phone"],
-  "contact.kinds": ["emergency1.relation", "emergency1.name"],
+  "contact.kinds": [null, "emergency1.name"],
   "drug.antiplatelet": [null],
   "drug.anticoagulant": [null],
   "drug.diabetes": [null],
@@ -457,6 +462,7 @@ const KIROKU_ACCEPT: Partial<Record<MedicalKey, ReadonlyArray<string | null>>> =
 };
 const KIROKU_SHAPES: Partial<Record<MedicalKey, FieldShape>> = {
   "patient.sex": "choice",
+  "contact.kinds": "choice",
   "patient.birth": "date",
   "patient.phone": "phone",
   "drug.antiplatelet": "check",
@@ -473,16 +479,49 @@ const KIROKU_SHAPES: Partial<Record<MedicalKey, FieldShape>> = {
   "doctor.triage": "handwrite",
 };
 
+/**
+ * 選択肢を持たせる欄（T140）: 連絡先の種類の □。書く所は □ の並びと連絡先の人の書く所を合わせた行（様式の「連絡先」の行。AI もこの行を読む）
+ */
+const KIROKU_OPTIONS: Partial<Record<MedicalKey, { options: string[]; with?: MedicalKey }>> = {
+  "contact.kinds": { options: ["家族", "知人", "その他", "連絡先なし"], with: "contact.people" },
+};
+
+/** 原本の枠の □ の場所（頁の比） */
+function frameMarks<K extends string>(frame: Frame<K>, k: K, page: number, options: readonly string[]): FieldBox[] | undefined {
+  const size = frame.pages.find((p) => p.page === page);
+  if (!size) return undefined;
+  const r = (n: number) => Math.round(n * 10000) / 10000;
+  const out: FieldBox[] = [];
+  for (const o of options) {
+    const m = frame.slots.find((s) => s.page === page && s.kind === "mark" && s.key === k && s.option === o);
+    if (!m) return undefined;
+    out.push({ x: r(m.box.x / size.w), y: r(m.box.y / size.h), w: r(m.box.w / size.w), h: r(m.box.h / size.h) });
+  }
+  return out;
+}
+
+const unionBox = (a: FieldBox, b: FieldBox): FieldBox => {
+  const x0 = Math.min(a.x, b.x);
+  const y0 = Math.min(a.y, b.y);
+  const r = (n: number) => Math.round(n * 10000) / 10000;
+  return { x: r(x0), y: r(y0), w: r(Math.max(a.x + a.w, b.x + b.w) - x0), h: r(Math.max(a.y + a.h, b.y + b.h) - y0) };
+};
+
 function kirokuGold(): GoldField[] {
   return MEDICAL_FIELDS.filter((f) => f.key in KIROKU_ITEMS).map((f) => {
     const k = f.key as MedicalKey;
-    const box = frameBox(KIROKU_FRAME, k, f.page);
+    const opt = KIROKU_OPTIONS[k];
+    const own = frameBox(KIROKU_FRAME, k, f.page);
+    const more = opt?.with ? frameBox(KIROKU_FRAME, opt.with, f.page) : undefined;
+    const box = own && more ? unionBox(own, more) : own;
+    const optionBoxes = opt ? frameMarks(KIROKU_FRAME, k, f.page, opt.options) : undefined;
     return {
       page: f.page,
       section: "",
       label: f.label,
       shape: KIROKU_SHAPES[k] ?? "text",
-      options: [],
+      options: opt?.options ?? [],
+      ...(optionBoxes ? { optionBoxes } : {}),
       item: key(KIROKU_ITEMS[k] ?? null),
       ...(KIROKU_ACCEPT[k] ? { accept: KIROKU_ACCEPT[k]!.map(key) } : {}),
       ...(box ? { box } : {}),
@@ -515,11 +554,24 @@ const FORM9_GOLD: readonly Form9Gold[] = [
   { cell: "M7", section: "", label: "安否確認できた日", item: null, shape: "date" },
 ];
 
-/** 原本の枠（mm）から頁の比の矩形 */
+/**
+ * 評価の台が AI に見せる様式 9 の頁は、ブックを lib/ooxml で描いた絵（tools/eval/forms/browser.ts）。その描き方の列の幅は
+ * 「列幅の文字数 × 既定の書体〔Yu Gothic 11pt〕の数字の幅（pt、画素に丸めない）× 印刷の倍率」（lib/ooxml/xlsx.ts の makeGrid）で、
+ * 原本の枠（frame-form9.ts。画面の画素の式）より 1 割ほど狭い。T140: 前の正解の表は原本の枠の列の場所で、描いた頁の右の列ほどずれ、
+ * 担当ケアマネの列が 1 列右に数えられていた（評価の 4 回目の 3）。列の左右は描き方と同じ式から出す（行は同じ）
+ */
+const FORM9_DIGIT_MM = digitEmOf("Yu Gothic") * 11 * (25.4 / 72) * FORM9_PRINT_SCALE;
+const FORM9_RENDER_X: readonly number[] = FORM9_COL_CHARS.reduce<number[]>((xs, c) => [...xs, xs[xs.length - 1] + c * FORM9_DIGIT_MM], [FORM9_MARGIN_MM.left]);
+const FORM9_COLS = "ABCDEFGHIJKLMN";
+
+/** セルの参照（"L7"・"C4:J4"）から頁の比の矩形。縦は原本の枠、横は描き方の列 */
 function form9Box(ref: string): FieldBox {
   const c = form9Cell(ref);
+  const [a, b = a] = ref.split(":");
+  const x0 = FORM9_RENDER_X[FORM9_COLS.indexOf(a[0])];
+  const x1 = FORM9_RENDER_X[FORM9_COLS.indexOf(b[0]) + 1];
   const r = (v: number) => Math.round(v * 10000) / 10000;
-  return { x: r(c.x / FORM9_PAGE_MM.w), y: r(c.y / FORM9_PAGE_MM.h), w: r(c.w / FORM9_PAGE_MM.w), h: r(c.h / FORM9_PAGE_MM.h) };
+  return { x: r(x0 / FORM9_PAGE_MM.w), y: r(c.y / FORM9_PAGE_MM.h), w: r((x1 - x0) / FORM9_PAGE_MM.w), h: r(c.h / FORM9_PAGE_MM.h) };
 }
 
 function form9Gold(): GoldField[] {
@@ -565,7 +617,7 @@ export const GOLD_FORMS: readonly GoldForm[] = [
     },
     typeface: "gothic",
     pages: [1],
-    fields: layoutGold(AOZORA_LAYOUT, { "避難|避難時の配慮事項": ["notes.other"] }),
+    fields: layoutGold(AOZORA_LAYOUT, { "避難|避難時の配慮事項": ["notes.other"], "|担当ケアマネ": ["plan.author"] }),
   },
   {
     id: "shiokaze",

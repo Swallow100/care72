@@ -331,7 +331,7 @@ export async function runEval(opts: EvalOptions): Promise<RunResult> {
       title: string;
       original: () => Promise<{ bytes: Uint8Array } | { pages: Uint8Array[] } | null>;
       /** 一覧の様式（T134）。読み取りは一覧の道（取った記録の版と元の頁の番号で共有の対応表を引く） */
-      municipal?: { entry: MunicipalEntry; from: () => "corpus" | "cache" | "fetch" | "pages" };
+      municipal?: { entry: MunicipalEntry; from: () => "corpus" | "cache" | "fetch" | "pages"; failed: () => string | null };
     };
     const jobs: FormJob[] = [];
     for (const g of GOLD_FORMS) {
@@ -375,11 +375,13 @@ export async function runEval(opts: EvalOptions): Promise<RunResult> {
       const id = `cat-${entry.form.id}`;
       if (!wantCatalog(id) || !availability(entry).ok) continue;
       let from: "corpus" | "cache" | "fetch" | "pages" = "corpus";
+      // 一覧の URL から取りに行って取れなかった訳（T140。前は「--catalog-fetch なし」と出た）
+      let failed: string | null = null;
       jobs.push({
         id,
         gold: null,
         title: `${entry.city.pref}${entry.city.name} ${entry.form.name}`,
-        municipal: { entry, from: () => from },
+        municipal: { entry, from: () => from, failed: () => failed },
         original: async () => {
           if (opts.formPages?.[id]) {
             from = "pages";
@@ -393,8 +395,15 @@ export async function runEval(opts: EvalOptions): Promise<RunResult> {
             return { bytes: new Uint8Array(readFileSync(cached)) };
           }
           if (!opts.catalogFetch) return null;
-          const got = await fetchOfficial(opts.catalogFetch, entry.form.url).catch(() => null);
-          if (!got) return null;
+          const got = await fetchOfficial(opts.catalogFetch, entry.form.url).catch((e: unknown) => {
+            const cause = (e as { cause?: { code?: string } } | null)?.cause?.code;
+            failed = `接続の失敗${cause ? ` ${cause}` : e instanceof Error ? ` ${e.name}` : ""}`;
+            return null;
+          });
+          if (!got) {
+            failed ??= "応答が様式でない（転送の先・状態・大きさ）";
+            return null;
+          }
           from = "fetch";
           // 写しは版が一覧と同じ物だけ置く（版違いは回の中だけで使う）
           if ((await sha256Hex(got)) === entry.form.sha256) {
@@ -417,7 +426,19 @@ export async function runEval(opts: EvalOptions): Promise<RunResult> {
       if (!orig) {
         const reason = job.municipal ? "原本なし" : "Chrome なし";
         forms.push({ id: job.id, title: job.title, gold: !!job.gold, status: "skipped", reason, pages: 0, read: null, overlay: false });
-        step({ stage: "form", form: job.id, ok: false, reason: job.municipal ? "原本なし（置き場・取った写しに無く、--catalog-fetch なし）" : "Chrome が無く白紙を作れない" });
+        const why = job.municipal?.failed();
+        step({
+          stage: "form",
+          form: job.id,
+          ok: false,
+          reason: job.municipal
+            ? why
+              ? `原本なし（一覧の URL から取れず: ${why}）`
+              : opts.catalogFetch
+                ? "原本なし（置き場・取った写しに無い）"
+                : "原本なし（置き場・取った写しに無く、--catalog-fetch なし）"
+            : "Chrome が無く白紙を作れない",
+        });
         continue;
       }
       // 一覧の様式（T134）: サーバーが公式の URL から取ったときと同じ記録（版）を、この回の R2 に置く（2 つの事業所の分）
@@ -449,7 +470,12 @@ export async function runEval(opts: EvalOptions): Promise<RunResult> {
         pages.map((p) => ({ blob: new Blob([p.bytes as BlobPart], { type: "image/jpeg" }), meta: { source: pages[0].source, page: p.page, redacted: 0 }, bare: true, origin: p.origin, ink: p.ink ?? null }));
       const form = buildFormReadForm(pagesOf(), job.municipal ? { municipal: job.municipal.entry.form.id } : {});
       // 頁は 1 つずつ読む（呼び出しの記録を順に結ぶため。アプリは並べて読む）
-      const res = await formReadPost({ db, bucket, aiContext: async () => evalCtx, newId: () => `fm-${job.id}`, readConcurrency: 1 }, { officeId: OFFICE, accountId: ACCOUNT }, form);
+      // 選択肢と台帳の値の AI の当て（T140）は本物の回と、前の回の記録にその呼び出しがある数え直しだけ（偽の回・前の回に無い呼び出しは当てない）
+      const res = await formReadPost(
+        { db, bucket, aiContext: async () => evalCtx, newId: () => `fm-${job.id}`, readConcurrency: 1, optionAi: opts.mode === "real" || (replay?.hasOptions() ?? false) },
+        { officeId: OFFICE, accountId: ACCOUNT },
+        form,
+      );
       rec.flush();
       fake?.drain();
       const body = (await res.json()) as { ok: boolean; id?: string; error?: string; rejected?: number; unread?: number[]; partial?: number[] };
@@ -685,6 +711,8 @@ export async function runEval(opts: EvalOptions): Promise<RunResult> {
             blanks: look.blanks.map((b) => ({ field: b.field, label: b.label, item: b.item })),
             masks: look.masks,
             unplaced: actual.overlay?.unplaced ?? [],
+            // 置けなかった訳（T140。欄の名前 → 訳）
+            unplacedWhy: Object.fromEntries(Object.entries(actual.overlay?.unplacedWhy ?? {}).map(([id, r]) => [label(id), r])),
             // 欄の枠の中でずらした字（目で確かめるため。欄と置いた所だけで、字は書かない）
             shifted: (actual.overlay?.pages ?? []).flatMap((pg) =>
               pg.items.flatMap((it) => (it.kind === "text" && it.shifted ? [{ page: pg.page, field: it.fieldId, label: label(it.fieldId), box: it.box }] : [])),

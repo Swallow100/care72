@@ -91,6 +91,10 @@ export const METRICS: Metric[] = [
   { label: "見た目 隣の欄の枠に掛かる", get: (r) => totals(r).look.neighbor },
   { label: "見た目 ずらした字（欄の枠の中）", get: (r) => totals(r).look.shifted },
   { label: "見た目 置けなかった欄", get: (r) => totals(r).look.unplaced },
+  // T140: 置けなかった訳
+  { label: "見た目 置けなかった欄 うち選択肢に無い", get: (r) => totals(r).look.unplacedOption ?? 0 },
+  { label: "見た目 置けなかった欄 うち空きに収まらない", get: (r) => totals(r).look.unplacedRoom ?? 0 },
+  { label: "見た目 置けなかった欄 うち□の場所なし", get: (r) => totals(r).look.unplacedBox ?? 0 },
   { label: "見た目 台帳あり空欄", get: (r) => totals(r).look.blanks },
   { label: "見た目 台帳あり空欄 うち選択肢に合わない値", get: (r) => totals(r).look.blanksChoice },
   { label: "見た目 伏字・仮の言い方", get: (r) => totals(r).look.masks },
