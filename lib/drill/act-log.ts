@@ -7,6 +7,7 @@
 // - AI の判断の理由: 自由対応は読み替えの理由（AI。氏名に戻した物でサーバーと訓練記録の中だけ）、AI が作った出来事は根拠や理由の 1 行
 // - 色と連絡順（lib/triage）は読まない・書かない。Claude を呼ばない
 
+import { FREE_LABELS } from "./action-catalog.ts";
 import { FREE_WAY_LABELS } from "./action-terms.ts";
 import { ACTION_STATUS_LABELS } from "./actions.ts";
 import type { ActionRecord, DrillIncident, Tick } from "./engine.ts";
@@ -45,7 +46,7 @@ export type ActLogRow = {
   end: number | null;
   /** 所要（分）。出来事は 0 */
   minutes: number;
-  /** 手の名前（自由対応は「自由対応 読替 薬手配」「自由対応 電話」）か出来事の印 */
+  /** 手の名前（自由対応は「自由対応 扱い 薬手配」「自由対応 扱い 電話」、何も起きない文は「自由対応」と結果「変化なし」）か出来事の印 */
   what: string;
   /** 自由対応の文・出来事の文。手のメモ（T59）は「メモ …」で足す */
   detail: string;
@@ -68,11 +69,11 @@ const REASON_MAX = 60;
 
 const cut = (s: string, n: number) => Array.from(s).slice(0, n).join("");
 
-/** 手の名前（自由対応は読み替えた手か、そのままの手のやり方） */
+/** 手の名前（自由対応は何として扱ったか。表の手か、そのままの手のやり方。T129 で「読替」から「扱い」に） */
 function actionWhat(a: ActionRecord): string {
   if (a.kind !== "free") return ACTION_LABELS[a.kind];
-  if (a.as) return `${ACTION_LABELS.free} 読替 ${ACTION_LABELS[a.as]}`;
-  return a.way ? `${ACTION_LABELS.free} ${FREE_WAY_LABELS[a.way]}` : ACTION_LABELS.free;
+  if (a.as) return `${ACTION_LABELS.free} ${FREE_LABELS.as} ${ACTION_LABELS[a.as]}`;
+  return a.way && !a.idle ? `${ACTION_LABELS.free} ${FREE_LABELS.as} ${FREE_WAY_LABELS[a.way]}` : ACTION_LABELS.free;
 }
 
 /** 手の内容（自由対応はケアマネの文。メモがあれば足す） */
