@@ -21,7 +21,7 @@
 | N01 | 0:00.3–0:03.9 | 突然ですが、『個別避難計画』を知っていますか。 | Have you heard of an "individual evacuation plan"? |
 | N02 | 0:04.1–0:12.9 | 災害のとき、在宅の高齢者を誰がどう助けるかを決めておく計画です。でも、できているのは対象者の 15.1% だけ。 | It sets out who will help an older person living at home in a disaster, and how. But only 15.1% of the people who need one have one. |
 | N03 | 0:13.1–0:21.3 | 私の家族はケアマネージャーで、その理由を家で見てきました。利用者のことは知っているのに、書く時間がないんです。 | My family member is a care manager, and I've seen why at home. They know their clients well, but there's no time to write it down. |
-| N05 | 0:21.5–0:25.2 | アンケートでも、［N］人中［N］人が『書く時間が無い』と答えました。 | In our survey too, [N] of [N] said they have no time to write plans. |
+| N05 | 0:21.5–0:25.2 | アンケートでも、4 人全員が『市町村に出して終わり』と答えました。 | In our survey, all 4 said their plans were just handed to the city and that was it. |
 | N06 | 0:25.4–0:32.4 | そこで考えました。楽に作れて、実際の災害でも役立つ計画なら、作る意味も大きくなる。 | So I thought: if a plan were easy to make and actually useful in a real disaster, making it would mean much more. |
 | N07 | 0:32.6–0:37.9 | それがケア72。72 は、助けが届きにくい災害直後の 72 時間です。 | That's Care72. The 72 stands for the first 72 hours after a disaster, when help is slow to arrive. |
 | N08 | 0:38.1–0:45.8 | 話すだけで計画ができ、訓練もでき、災害時は安否と大事な情報をまとめて、医療班と共有します。 | Talk, and the plan is made. Run drills with it. In a disaster, it gathers who is safe and what matters, and shares it with the medical team. |
@@ -44,7 +44,7 @@
 | N26 | 2:30.3–2:36.0 | 作ったのは Claude Code。設計と実装を分け、並行で進めました。 | It was built with Claude Code, with design and implementation split and run in parallel. |
 | N27 | 2:36.3–2:42.7 | フックで鍵と配信を守り、本名を見ない MCP と見直し役で確かめています。 | Hooks guard the keys and deploys. An MCP server that never sees real names, and reviewer agents, check the work. |
 | N28 | 2:43.3–2:49.0 | 協力してくれたケアマネージャーの計画 1 件は、ふだん［X 時間］、ケア72 で［Y 分］。 | For the care manager who helped us, one plan usually takes [X hours]. With Care72, [Y minutes]. |
-| N29 | 2:49.2–2:52.3 | ［協力ケアマネージャーの一言、または T34 のアンケートの結果 1 文］ | [A word from the partner care manager, or one line from the T34 survey] |
+| N29 | 2:49.2–2:52.3 | AI の下書きなら作る気になる人は、4 人中 3 人。 | With an AI draft, 3 of 4 said they would be willing to make plans. |
 | N30 | 2:52.6–2:59.9 | 実用化の課題は山積みです。それでも、まずは一部から、本当に使える形にしていきます。 | Getting this into real use still faces many hurdles. But we'll keep working to make it truly usable, starting with one part. |
 
 声の無い所（アプリの音と強調の間）: 1:28–1:33（着信と娘役の声）、1:56–2:01（赤を押して一覧が並び替わる）、2:06–2:10（問いかけの声と録音）。
