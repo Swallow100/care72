@@ -229,6 +229,7 @@ const ShotView: React.FC<{ shot: Shot; assets: Assets; entryDelay?: number }> = 
             callouts={shot.callouts}
             screen={shot.screen}
             delay={entryDelay}
+            hold={entryDelay}
           />
         </Stage>
       );
