@@ -9,11 +9,12 @@
 // - kind 種類欄: 機器・薬の種類の □ を項目なしにした（在宅酸素療法の □）
 // - era 元号: 元号の選択肢だけの欄（日付の欄と別に読んだ。生年月日の欄の取りこぼしになった）
 // - low 自信低: 項目を当てたが自信 low
-// - none 項目なし: 台帳の項目なし（手書きの欄・外した欄は除く）
+// - none 項目なし: 台帳の項目なしで、欄の名前が台帳の項目の名前に近い（避難先1・別紙・連絡先・携帯番号…）。医師・市が書く欄のように
+//   台帳の項目の名前の無い欄は要確認にしない（評価の 2 回目の本物の答えで、項目なしの欄を全部数えると 1,171 欄のうち 6 割を超えた）
 // 色と順（lib/triage）とは関係ない。紙の差し込み（lib/forms/mapped-sheet.ts）が holdRisky のとき、確認していない要確認の欄を対応なしとして扱う。
 
 import { DEVICE_LABELS, MEDICATION_CATEGORY_LABELS } from "../labels.ts";
-import { needsPick, type FormMapping, type LedgerItemKey, type MappingField } from "./mapping.ts";
+import { LEDGER_ITEMS, needsPick, type FormMapping, type LedgerItemKey, type MappingField } from "./mapping.ts";
 
 export const FIELD_RISKS = ["rejected", "pick", "multi", "kind", "era", "low", "none"] as const;
 export type FieldRisk = (typeof FIELD_RISKS)[number];
@@ -44,6 +45,16 @@ const KIND_WORDS = [...Object.values(DEVICE_LABELS), ...Object.values(MEDICATION
 const norm = (s: string) => s.normalize("NFKC").replace(/[\s（）()]/g, "");
 const sameBlock = (a: MappingField, b: MappingField) => a.page === b.page && a.section === b.section;
 
+/** 台帳の項目の名前の言葉（2 字以上。どの欄にも出る言葉は除く） */
+const GENERIC = new Set(["本人", "固定", "関係", "マイ", "理解", "判断", "その他"]);
+const ITEM_WORDS = [...new Set(LEDGER_ITEMS.flatMap((i) => i.label.split(/[\s・（）()　]+/)))].map(norm).filter((w) => w.length >= 2 && !GENERIC.has(w));
+
+/** 欄の名前が台帳の項目の名前に近いか（片方がもう片方を含む） */
+export function nearItem(label: string): boolean {
+  const l = norm(label);
+  return l.length >= 2 && ITEM_WORDS.some((w) => l.includes(w) || w.includes(l));
+}
+
 /** 欄の要確認の訳（要確認でなければ null）。fields は同じ対応表の欄の全部（複数選択の並びを見る） */
 export function fieldRisk(f: MappingField, fields: readonly MappingField[]): FieldRisk | null {
   if (f.removed || f.shape === "handwrite") return null;
@@ -57,7 +68,7 @@ export function fieldRisk(f: MappingField, fields: readonly MappingField[]): Fie
   }
   if (f.shape === "choice" && f.options.filter((o) => ERAS.some((e) => o.includes(e))).length >= 2) return "era";
   if (f.item !== null && f.ai?.confidence === "low") return "low";
-  if (f.item === null) return "none";
+  if (f.item === null && nearItem(f.label)) return "none";
   return null;
 }
 

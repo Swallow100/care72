@@ -32,21 +32,23 @@ const read: ReadResult = {
     // 機器の種類の □ を項目なし
     f({ section: "特記事項", label: "在宅酸素療法（HOT）", shape: "check", confidence: "low" }),
     f({ label: "住居 種別", shape: "choice", options: ["戸建", "集合"], item: "basic.housing.type", confidence: "low" }),
-    f({ label: "受付番号", confidence: "high", reason: "市が書く" }),
+    // 台帳の項目の名前に近い項目なしの欄は要確認、市が書く欄（台帳の項目の名前が無い）は要確認でない
+    f({ label: "避難先２", confidence: "low", reason: "決められない" }),
     f({ label: "本人：氏名（自署）", shape: "handwrite" }),
+    f({ label: "受付番号", confidence: "high", reason: "市が書く" }),
   ],
 };
 const mapping = () => checkReadResult(read).mapping;
 
 describe("要確認の欄（T122）", () => {
-  it("訳: 元号・複数選択・種類欄・自信低・項目なし。手書きと自信の高い項目ありは要確認でない", () => {
+  it("訳: 元号・複数選択・種類欄・自信低・項目なし。手書き・自信の高い項目あり・台帳の項目の名前の無い項目なしは要確認でない", () => {
     const r = fieldRisks(mapping().fields);
     expect(Object.fromEntries(r)).toEqual({ f2: "era", f4: "multi", f5: "multi", f6: "kind", f7: "low", f8: "none" });
   });
 
   it("要確認順: 重い訳から、同じ訳は様式の順、要確認でない欄は後ろ。確認した欄も後ろ", () => {
     const m = mapping();
-    expect(riskOrder(m.fields).map((x) => x.id)).toEqual(["f4", "f5", "f6", "f2", "f7", "f8", "f1", "f3", "f9"]);
+    expect(riskOrder(m.fields).map((x) => x.id)).toEqual(["f4", "f5", "f6", "f2", "f7", "f8", "f1", "f3", "f9", "f10"]);
     const done = m.fields.map((x) => (x.id === "f4" ? { ...x, confirmed: true } : x));
     expect(riskOrder(done).map((x) => x.id).slice(0, 2)).toEqual(["f5", "f6"]);
     expect(openRisks({ fields: done })).toBe(5);
