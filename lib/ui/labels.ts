@@ -16,6 +16,12 @@ export function detailsMoreLabel(n: number): string {
   return `ほか ${n} 件`;
 }
 
+/** 「PC 推奨」（T124 の追加。ログインの画面の 1 語と、狭い幅の表の画面の 1 行 components/PcHint.tsx） */
+export const PC_HINT_LABELS = {
+  hint: "PC 推奨",
+  close: DIALOG_LABELS.close,
+} as const;
+
 /** 呼ぶ側の確認の窓（題・決める方のボタン）。本文は各画面の既存の言葉 */
 export const CONFIRM_LABELS = {
   resetTitle: "初期化",

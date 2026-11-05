@@ -5,12 +5,13 @@
 //   node --env-file=<鍵のファイル> tools/eval/drill/run.ts --real --runs 2 --max-usd 10   本物（作者だけが回す）
 //
 // 引数: --runs N（4）・--seed S（無ければ新しく作って記録）・--real・--world session|messages|off（session）・
-//       --scenario short,virtual,heavy_rain,earthquake（全部）・--judge K（審査役に読ませる回の数、2）・--review（講評も作る）・
+//       --scenario heavy_rain,earthquake,virtual（全部。10 分版は T124 で外した）・--people all|vary（人の組。既定 all＝種の 10 人全員、vary は回ごとに 3 人〜全員）・--judge K（審査役に読ませる回の数、2）・--review（講評も作る）・
 //       --max-advances N（1 回の進める回数の上限、400）・--out <dir>（記録の置き場。既定はリポジトリの隣の care72-qa/eval/drill）・
 //       --md <dir>（差の表。既定 docs/progress）・--no-md・--noise P（偽の client に決まりを破る言葉を混ぜる割合、0）・
 //       --latency S（偽の client の待ちの縮尺。役ごとの本物の待ちの目安に掛ける。0.01 で 100 分の 1、0 は待たない。T123）・
 //       --max-usd X（本物の見積もりの上限。超えたら次の回を始めない。本物の既定 10）・
-//       --terms on|off（連続の時計の訓練の開始に手の決まり〔T110 の terms〕を送るか。既定 on、開始の画面と同じ。T121）
+//       --terms on|off（連続の時計の訓練の開始に手の決まり〔T110 の terms〕を送るか。既定 on、開始の画面と同じ。T121）・
+//       --all-people（参加する人を担当の全員に。ほかの選び方は同じ種のまま）
 //
 // 記録: <out>/<日時>-<fake|real>/run-NN.jsonl（1 回の訓練の起きた順。AI の呼び出しは送った中身の全文と返った中身の全文つき）と
 // summary.json。架空の人の台詞が入るのでリポジトリに入れない。md は数だけ。
@@ -31,7 +32,7 @@ import { diversityOf } from "./diversity.ts";
 import { caseloadOf, runDrill, seededSqlite, type RunOutcome } from "./drive.ts";
 import { fakeClaude, fakeRoom } from "./fake.ts";
 import { judgeRun, type JudgeScore } from "./judge.ts";
-import { isEvalScenario, planRun, SCENARIOS, type EvalScenario } from "./plan.ts";
+import { isEvalScenario, isPeopleMode, planRun, SCENARIOS, type EvalScenario, type PeopleMode } from "./plan.ts";
 import { ROOM_BUDGET_USD } from "./prices.ts";
 import { recordClaude, recordRoom, runLog } from "./record.ts";
 import { diffLine, findPrevious, judgeMeanOf, markdown, totalsOf, type RunSummary, type Summary } from "./report.ts";
@@ -50,6 +51,8 @@ export type EvalConfig = {
   key: string;
   world: WorldMode;
   scenarios: ReadonlyArray<EvalScenario>;
+  /** 人の組（T124。既定 all＝種の 10 人全員。vary は回ごとに部分集合） */
+  people?: PeopleMode;
   judge: number;
   review: boolean;
   maxAdvances: number;
@@ -61,6 +64,8 @@ export type EvalConfig = {
   maxUsd: number | null;
   /** 手の決まり（T110 の terms）を送るか（T121。既定は送る。--terms off で送らない） */
   terms: boolean;
+  /** 参加する人を担当の全員にする（--all-people） */
+  allPeople?: boolean;
   /** 記録の名前の日時（テストで固定） */
   stamp?: string;
   /** 途中の知らせ（既定は標準出力） */
@@ -121,7 +126,7 @@ export async function runEval(cfg: EvalConfig): Promise<{ summary: Summary; dir:
       notes.push(`見積もりの上限 $${cfg.maxUsd} に達したので ${i - 1} 回で止めた`);
       break;
     }
-    const plan = planRun(cfg.seed, i, caseload, cfg.scenarios);
+    const plan = planRun(cfg.seed, i, caseload, cfg.scenarios, cfg.allPeople ? "all" : (cfg.people ?? "all"));
     const log = runLog(join(dir, `run-${pad(i)}.jsonl`));
     const inner: ClaudeClient = cfg.real
       ? (new Anthropic({ apiKey: cfg.key, maxRetries: 0 }) as unknown as ClaudeClient)
@@ -155,7 +160,7 @@ export async function runEval(cfg: EvalConfig): Promise<{ summary: Summary; dir:
     client,
     seed: cfg.seed,
     world: cfg.world,
-    args: { runs: cfg.runs, scenarios: cfg.scenarios, judge: cfg.judge, review: cfg.review, maxAdvances: cfg.maxAdvances, noise: cfg.noise, maxUsd: cfg.maxUsd, terms: cfg.terms },
+    args: { runs: cfg.runs, scenarios: cfg.scenarios, people: cfg.people ?? "all", judge: cfg.judge, review: cfg.review, maxAdvances: cfg.maxAdvances, noise: cfg.noise, maxUsd: cfg.maxUsd, terms: cfg.terms, allPeople: cfg.allPeople ?? false },
     runs,
     totals: totalsOf(runs),
     diversity: diversityOf(outcomes),
@@ -199,6 +204,8 @@ export function parseArgs(argv: ReadonlyArray<string>, env: Readonly<Record<stri
   if (scenarios.length === 0 || !scenarios.every(isEvalScenario)) return { error: `--scenario は ${SCENARIOS.join("・")} の並び` };
   const world = get("world");
   if (world !== undefined && !["session", "messages", "off"].includes(world)) return { error: "--world は session・messages・off" };
+  const people = get("people") ?? "all";
+  if (!isPeopleMode(people)) return { error: "--people は all・vary" };
   const terms = get("terms");
   if (terms !== undefined && terms !== "on" && terms !== "off") return { error: "--terms は on・off" };
   const runs = num("runs", 4);
@@ -219,6 +226,7 @@ export function parseArgs(argv: ReadonlyArray<string>, env: Readonly<Record<stri
     key: real ? key : "fake-key-not-used",
     world: worldModeOf(world),
     scenarios: scenarios as EvalScenario[],
+    people,
     judge: Math.max(0, Math.floor(judge)),
     review: has("review"),
     maxAdvances: Math.max(1, Math.floor(maxAdvances)),
@@ -228,6 +236,7 @@ export function parseArgs(argv: ReadonlyArray<string>, env: Readonly<Record<stri
     latency,
     maxUsd,
     terms: terms !== "off",
+    allPeople: has("all-people"),
   };
 }
 

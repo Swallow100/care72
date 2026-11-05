@@ -60,7 +60,7 @@ async function doAct(kind: "visit" | "call_person", person: string, memo?: strin
 }
 
 describe("開始の設定", () => {
-  it("閉じたまま（既定）: 設定のボタンだけで、参加者・職員・夜間発災の欄は無い。想定のボタンは今と同じ並び", () => {
+  it("閉じたまま（既定）: 設定のボタンだけで、参加者・職員・夜間発災の欄は無い。想定のボタンは大雨・地震・仮想の並び（10 分版は T124 で外した）", () => {
     const html = renderToStaticMarkup(
       createElement(StartButtons, { scenarios: SCENARIO_ORDER, disabled: false, people: [{ id: "p-01", name: "山田 太郎" }] }),
     );
@@ -68,7 +68,8 @@ describe("開始の設定", () => {
     expect(html).toContain('aria-expanded="false"');
     expect(html).not.toContain("data-start-options");
     expect(html).not.toContain("<details");
-    expect(html.indexOf('data-scenario="short"')).toBeLessThan(html.indexOf('data-scenario="heavy_rain"'));
+    expect(html).not.toContain('data-scenario="short"');
+    expect([...html.matchAll(/data-scenario="([a-z_]+)"/g)].map((m) => m[1])).toEqual(["heavy_rain", "earthquake", "virtual"]);
   });
 });
 
@@ -79,11 +80,10 @@ describe("早送りの間とメモの欄", () => {
     expect(html).toContain("2.5 秒");
   });
 
-  it("対応の欄にメモ（100 字まで）。焦点の枠つき", () => {
+  it("対応の欄にメモの入力は出さない（T126。自由対応と記録の手で足りる。API の memo と前の訓練のメモの表示は残す）", () => {
     const html = renderToStaticMarkup(createElement(ActionPanel, { drillId: ID, step: 0, actions: 0, people: [], contacts: {} }));
-    expect(html).toContain("data-act-memo-input");
-    expect(html).toContain('maxLength="100"');
-    expect(html).toContain("focus-visible:outline-solid");
+    expect(html).not.toContain("data-act-memo");
+    expect(html).not.toContain('maxLength="100"');
   });
 });
 

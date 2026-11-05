@@ -116,6 +116,7 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
           recordings={recordings}
           ended={endedOf(s, r.id)}
           asks={s.state.world.asks?.[r.id] ?? []}
+          hints={s.hints?.[r.id] ?? null}
         />
       ) : null,
     // 仮想モード（T50）: 結末の人の行に印と 1 文
@@ -249,6 +250,7 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
                     contacts={s.contacts}
                     fiction={fiction}
                     terms={s.terms}
+                    hints={s.hints}
                     status={<BusyLine busy={s.busy} />}
                   />
                 )}

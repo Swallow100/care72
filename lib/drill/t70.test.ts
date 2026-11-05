@@ -404,9 +404,9 @@ describe("押せる人なしと見込み（T70 の 2・5）", () => {
       ["n-4", false],
       ["n-5", true],
     ]);
-    // 押せる人のいない人は、表の行が当たりうる想定だけ（仮想は表が無いので呼ばない）
-    expect(five.find((p) => p.id === "n-4")!.callable).toEqual(["heavy_rain", "earthquake", "short"]);
-    expect(five.find((p) => p.id === "n-1")!.callable).toEqual(["heavy_rain", "earthquake", "short", "virtual"]);
+    // 押せる人のいない人は、表の行が当たりうる想定だけ（仮想は表が無いので呼ばない）。始められる想定だけを並べる（10 分版は T124 で外した）
+    expect(five.find((p) => p.id === "n-4")!.callable).toEqual(["heavy_rain", "earthquake"]);
+    expect(five.find((p) => p.id === "n-1")!.callable).toEqual(["heavy_rain", "earthquake", "virtual"]);
   });
 
   it("見込み = 刻み ×（監督 1 + 本人役）+ 講評 1 + 声（本人役 × 刻み の半分）。残りを超えたら上限不足", () => {
@@ -422,14 +422,14 @@ describe("押せる人なしと見込み（T70 の 2・5）", () => {
 
   it("開始の設定: 押せる人なしは灰の文字と本人のページへの名前、見込みと残り、超える想定に上限不足（開始は止めない）", () => {
     const people = [
-      { id: "n-1", name: "架空 一", canPress: true, callable: ["heavy_rain", "earthquake", "short", "virtual"] as DrillScenario[] },
-      { id: "n-4", name: "架空 四", canPress: false, callable: ["heavy_rain", "earthquake", "short"] as DrillScenario[] },
+      { id: "n-1", name: "架空 一", canPress: true, callable: ["heavy_rain", "earthquake", "virtual"] as DrillScenario[] },
+      { id: "n-4", name: "架空 四", canPress: false, callable: ["heavy_rain", "earthquake"] as DrillScenario[] },
     ];
     const html = renderToStaticMarkup(createElement(StartButtons, { scenarios: SCENARIO_ORDER, disabled: false, people, ai: { kind: "ready", remaining: 30, limit: 200 } }));
     expect(html).toContain('data-no-presser-count="1"');
     expect(html).toContain("押せる人なし 1 人");
-    // 10 分版: 4 ×（1 + 2）+ 1 + 4 = 17。大雨（T90 から連続の時計の式）: 監督 20 + 本人役 2 × 9 + 講評 1 + 声 9 = 48 は残り 30 を超える
-    expect(html).toContain('data-estimate-scenario="short" data-estimate-calls="17"');
+    // 大雨（T90 から連続の時計の式）: 監督 20 + 本人役 2 × 9 + 講評 1 + 声 9 = 48 は残り 30 を超える。10 分版の見込みは出さない（T124）
+    expect(html).not.toContain('data-estimate-scenario="short"');
     expect(html).toMatch(/data-estimate-scenario="heavy_rain" data-estimate-calls="48" data-over=""/);
     expect(html).toContain("上限不足");
     expect(html).not.toMatch(/data-scenario="heavy_rain"[^>]*disabled/);

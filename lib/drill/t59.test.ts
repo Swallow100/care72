@@ -239,10 +239,10 @@ describe("開始の前の選択（選ばなければ今と同じ）", () => {
     expect(parseStartOptions([1])).toBeNull();
 
     const p = careManager();
-    expect((await startPost(db, p, { scenario: "short", options: { participants: [] } }, START)).status).toBe(400);
-    expect((await startPost(db, p, { scenario: "short", options: { participants: ["p-99"] } }, START)).status).toBe(400);
-    expect((await startPost(db, p, { scenario: "short", options: { staff: 10 } }, START)).status).toBe(400);
-    const ok = await startPost(db, p, { scenario: "short", options: { participants: [KANA_ORDER[1]], staff: 1, night: true } }, START);
+    expect((await startPost(db, p, { scenario: "heavy_rain", options: { participants: [] } }, START)).status).toBe(400);
+    expect((await startPost(db, p, { scenario: "heavy_rain", options: { participants: ["p-99"] } }, START)).status).toBe(400);
+    expect((await startPost(db, p, { scenario: "heavy_rain", options: { staff: 10 } }, START)).status).toBe(400);
+    const ok = await startPost(db, p, { scenario: "heavy_rain", options: { participants: [KANA_ORDER[1]], staff: 1, night: true } }, START);
     expect(ok.status).toBe(200);
     const { id } = (await ok.json()) as { id: string };
     const s = stateOfRow((await loadDrillRow(db, DEMO.id, id))!);

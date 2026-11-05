@@ -176,7 +176,7 @@ describe("開始の欄（components/drill/StartButtons）", () => {
     expect(h).not.toContain("AI 本日残り");
     expect(h).not.toContain("data-estimate-calls");
     expect(h).not.toContain("上限不足");
-    expect(h).toMatch(/data-estimate-scenario="short" data-ai-effect="fixed"[\s\S]*?想定のみ/);
+    expect(h).toMatch(/data-estimate-scenario="heavy_rain" data-ai-effect="fixed"[\s\S]*?想定のみ/);
     expect(h).toMatch(/data-estimate-scenario="virtual" data-ai-effect="virtual"[\s\S]*?世界停止/);
     expect(h).not.toMatch(/data-scenario="[a-z_]+"[^>]*disabled/);
     // 中立の印（黄の塗りでない）

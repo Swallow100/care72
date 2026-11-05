@@ -91,6 +91,13 @@ export const T59_LABELS = {
   oclock: "時",
 } as const;
 
+/** 開始の画面の進め方の 1 行（T124。10 分版を外したあと、短く一通り試す道を見せる）。進め方の名前は lib/drill/clock.ts の CLOCK_LABELS */
+export const T124_LABELS = {
+  pace: "進め方",
+  /** 72 時間を最後まで一通り（早送り＝次までの繰り返し）。次までと対にする */
+  toEnd: "最後まで",
+} as const;
+
 /** 訓練を本物の事業所で（T70）の言葉。開始の前の押せる人なし・見込み、刻みの停止の印、自動中断 */
 export const T70_LABELS = {
   /** 本人も家族・支援者もスマホで赤緑を押せない人（灰の文字） */

@@ -13,7 +13,7 @@ import { disasterMark, type DisasterMark } from "@/lib/disaster/state";
 import type { Principal } from "@/lib/auth/principal";
 import { currentChoice, roleChoicesFor } from "@/lib/auth/choices";
 import { initialPasswordHref } from "@/lib/auth/password-change";
-import { ADMIN_LABEL, canViewPage, homePath, JUDGE_LABEL, LOGIN_PATH, ROLE_LABELS, ROLE_SELECT_PATH, showsLogout } from "@/lib/auth/roles";
+import { ADMIN_LABEL, canViewPage, homePath, JUDGE_LABEL, LOGIN_PATH, ROLE_LABELS, ROLE_SELECT_PATH, showsLogout, showsPcHint } from "@/lib/auth/roles";
 import { getPrincipal } from "@/lib/auth/server";
 import { SessionSecretMissing } from "@/lib/auth/session";
 import { canChooseRole } from "@/lib/auth/wall";
@@ -21,6 +21,7 @@ import { HeaderMarkSlot } from "./HeaderMarkSlot";
 import { InitialPasswordBand } from "./InitialPasswordBand";
 import { LogoutButton } from "./LogoutButton";
 import { NavLinks } from "./NavLinks";
+import { PcHint } from "./PcHint";
 
 // 全部の画面の上の帯。
 // 左: 印と名前（印は components/brand/BrandMark の 1 か所から。動かない満ちた形。T66）と画面の切替（担当一覧・訓練・事業所・様式）、その右に事業所の状態（大雨 レベル 4 停電 3 時間。押すと事業所の画面）。
@@ -28,6 +29,7 @@ import { NavLinks } from "./NavLinks";
 // 事業所の状態を左に置くのは、右を「自分は誰か・出る」だけにして、事業所名と災害の状態が並んで読み違えないため。
 // ログインしていなければ名前だけ（ログインの画面にいる）。押せる高さは 32px 以上、押してから移るまで灰色を残す。
 // 初期パスワードのまま入った人だけ、2 段目の右に「初期パスワード」の印と「変更」（T114。components/InitialPasswordBand.tsx）。
+// 表の画面を使う役（ケアマネ・行政・医療班）は、768px 未満の幅でだけ一番下に「PC 推奨」の 1 行（閉じられる。components/PcHint.tsx。T124 の追加）。
 export async function AppHeader() {
   let p: Principal | null = null;
   try {
@@ -66,6 +68,8 @@ export async function AppHeader() {
       </div>
       {/* 初期パスワードのまま入った人の印と変更の入口（T114）。右の並びに割り込まず 2 段目に */}
       {initialHref && <InitialPasswordBand href={initialHref} />}
+      {/* 狭い幅でだけ「PC 推奨」（本人・家族のスマホの頁には出さない） */}
+      {p && showsPcHint(p.role) && <PcHint />}
       {/* 災害モードの間は 1 分ごとに読み直す（担当一覧・本人のページ・様式 9 の色と並びが今の時刻で変わる） */}
       {mark?.kind === "disaster" && <AutoRefresh seconds={60} />}
     </header>
