@@ -184,7 +184,7 @@ function render() {
   document.getElementById("meta").replaceChildren(
     el("span", { text: `書出 ${hhmm(DATA.made)}` }),
     el("span", { text: `task/t43 ${DATA.commit}` }),
-    el("span", { text: "手元の録画は 11/4 夜の画面（3 回目）。本番で撮る所は撮影待ち" }),
+    el("span", { text: "録画は手元の dev（11/4 夜の 3 回目、11/5 の Claude の場面と訓練の大雨想定）。端末の R21〜R23 は撮影待ち" }),
   );
   const count = (n, label) => el("span", {}, el("b", { text: String(n) }), ` ${label}`);
   document.getElementById("counts").replaceChildren(count(all.length, "絵"), count(done, "録画済"), count(wait, "撮影待ち"), count(fig, "図"), count(num, "数字待ち"));
