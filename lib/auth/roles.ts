@@ -113,6 +113,14 @@ export function showsLogout(role: Role): boolean {
   return role !== "self" && role !== "family";
 }
 
+/**
+ * 狭い幅で「PC 推奨」の 1 行（components/PcHint.tsx）を出す役。表の画面を使う役（ケアマネ・事業所の管理者・行政・医療班）だけ。
+ * 本人・家族のスマホの頁と、役を選ぶ前には出さない（T124 の追加。審査員には PC で触ってもらう）
+ */
+export function showsPcHint(role: Role): boolean {
+  return role === "care_manager" || role === "government" || role === "medical";
+}
+
 /** 役の入口。ログインのあと・開けない画面を開いたときにここへ送る */
 export function homePath(role: Role): string {
   switch (role) {

@@ -52,6 +52,7 @@ function site(over: Record<string, Route> = {}): { fetch: Fetch; calls: Call[] }
       drillStep++;
       return json({ ok: true, step: drillStep, status: drillStep >= 3 ? "finished" : "running" });
     },
+    "/api/drill/drill-x/abandon": () => json({ ok: true }),
     "/office/reset": () => redirect("/office?reset=done", 303),
     [`https://${WORKERS_HOST}/api/health`]: () => new Response("error code: 1042", { status: 404 }),
     ...over,
@@ -155,21 +156,30 @@ describe("workers.dev", () => {
 describe("ログインあり（偽の配信で。本物には流さない）", () => {
   const env: CheckEnv = { CHECK_LOGIN_ID: "judge", CHECK_LOGIN_PASSWORD: TEST_PASSWORD };
 
-  it("審査員: ログイン → 役選択 → 担当一覧・本人のスマホ → 訓練 10 分版 → 最初に戻す が PASS。パスワードは出力に無く、ログインの要求にだけ載る", async () => {
+  it("審査員: ログイン → 役選択 → 担当一覧・本人のスマホ → 訓練 大雨想定（2 回進めて中断）→ 最初に戻す が PASS。パスワードは出力に無く、ログインの要求にだけ載る", async () => {
     const { fetch, calls } = site();
     const r = await runChecks(BASE, env, fetch);
-    for (const n of ["ログイン", "役選択 ケアマネ", "担当一覧", "本人のスマホ", "訓練 10 分版", "最初に戻す"]) {
+    for (const n of ["ログイン", "役選択 ケアマネ", "担当一覧", "本人のスマホ", "訓練 大雨想定", "最初に戻す"]) {
       expect(statusOf(r, n), n).toBe("PASS");
     }
-    expect(byName(r, "訓練 10 分版")?.detail).toBe("3 刻みで終了");
+    expect(byName(r, "訓練 大雨想定")?.detail).toBe("2 回進めて中断");
+    expect(r.some((x) => x.name.includes("10 分版"))).toBe(false);
     expect(summarize(r).ok).toBe(true);
     expect(formatResults(r).join("\n")).not.toContain(TEST_PASSWORD);
     const withPw = calls.filter((c) => c.body.includes(TEST_PASSWORD));
     expect(withPw.map((c) => new URL(c.url).pathname)).toEqual(["/api/auth/login"]);
-    // 訓練は 10 分版、最初に戻すは確認の欄を通った形、どちらもケアマネの役の cookie
+    // 訓練は開始の画面と同じ大雨想定（連続の時計・手の決まり。10 分版は T124 で外した）を「次まで」で進めて中断、
+    // 最初に戻すは確認の欄を通った形、どれもケアマネの役の cookie
     const start = calls.find((c) => c.url.endsWith("/api/drill") && c.method === "POST")!;
-    expect(JSON.parse(start.body)).toEqual({ scenario: "short" });
+    expect(JSON.parse(start.body)).toEqual({ scenario: "heavy_rain", options: { clock: true, terms: true } });
     expect(start.cookie).toBe("care72_session=judge-cm");
+    const steps = calls.filter((c) => c.url.endsWith("/api/drill/drill-x/step"));
+    expect(steps.map((c) => JSON.parse(c.body))).toEqual([
+      { step: 0, next: true },
+      { step: 1, next: true },
+    ]);
+    const abandon = calls.filter((c) => c.url.endsWith("/api/drill/drill-x/abandon"));
+    expect(abandon.map((c) => c.cookie)).toEqual(["care72_session=judge-cm"]);
     const reset = calls.find((c) => c.url.endsWith("/office/reset"))!;
     expect(reset.body).toBe("confirm=1");
     expect(reset.cookie).toBe("care72_session=judge-cm");
@@ -190,7 +200,7 @@ describe("ログインあり（偽の配信で。本物には流さない）", (
   it("進行中の訓練があり開始が 409 なら 訓練 FAIL（最初に戻すは流す）", async () => {
     const { fetch } = site({ "/api/drill": (c) => (c.method === "GET" ? json({}, 401) : json({ ok: false, error: "running" }, 409)) });
     const r = await runChecks(BASE, env, fetch);
-    expect(byName(r, "訓練 10 分版")).toEqual({ name: "訓練 10 分版", status: "FAIL", detail: "開始 HTTP 409 running" });
+    expect(byName(r, "訓練 大雨想定")).toEqual({ name: "訓練 大雨想定", status: "FAIL", detail: "開始 HTTP 409 running" });
     expect(statusOf(r, "最初に戻す")).toBe("PASS");
   });
 

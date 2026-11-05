@@ -9,8 +9,10 @@ import { join } from "node:path";
 import { ROOT } from "./lib.mjs";
 
 const CLIPS = [
-  // 強調の着信（小林 トシの夫）。3.06 秒に「出る」を押し、3.2 秒から声。声の 3 つの文のうち 2 つ（3.46 秒の間で切る）。3 つ目は通話の窓の字で読める
-  { id: "R08", take: "R08-3", file: "voice.wav", at: 3.2, length: 3.6, fade: 0.12 },
+  // 強調の着信（小林 トシの夫、11/5 昼の大雨想定 R08-5）。3.0 秒に「出る」を押す。声は 8.3 秒で 3 つの文
+  // （訪問看護の方が来てくれました。／停電して、呼吸器は電池に切り替わりました。／電池は残り50分ほどです。）。絵は 5 秒なので、
+  // 真ん中の文（声の 2.8〜5.75 秒）を 3.2 秒から置く。ほかの 2 つの文は通話の窓の字で読める
+  { id: "R08", take: "R08-5", file: "voice.wav", at: 3.2, skip: 2.8, length: 2.95, fade: 0.12 },
 ];
 
 /** 16bit の PCM の WAV を読む（fmt と data の塊だけ見る） */
@@ -62,15 +64,19 @@ for (const c of CLIPS) {
   }
   const w = readWav(src);
   const frames = w.data.length / 2 / w.channels;
-  const use = Math.min(frames, Math.round(c.length * w.rate));
+  // skip は声の頭から飛ばす秒（文の途中の 1 つだけを使うとき）。頭と終わりは fade で短く薄くする（切った所で音が跳ねないように）
+  const skip = Math.round((c.skip ?? 0) * w.rate);
+  const use = Math.max(0, Math.min(frames - skip, Math.round(c.length * w.rate)));
   const fade = Math.round((c.fade ?? 0) * w.rate);
   const lead = Math.round(c.at * w.rate);
   const samples = new Array((lead + use) * w.channels).fill(0);
   for (let i = 0; i < use; i++) {
-    const g = fade > 0 && i > use - fade ? (use - i) / fade : 1;
-    for (let ch = 0; ch < w.channels; ch++) samples[(lead + i) * w.channels + ch] = w.data.readInt16LE((i * w.channels + ch) * 2) * g;
+    const tail = fade > 0 && i > use - fade ? (use - i) / fade : 1;
+    const head = fade > 0 && skip > 0 && i < fade ? i / fade : 1;
+    const g = Math.min(tail, head);
+    for (let ch = 0; ch < w.channels; ch++) samples[(lead + i) * w.channels + ch] = w.data.readInt16LE(((skip + i) * w.channels + ch) * 2) * g;
   }
   writeWav(join(out, `${c.id}.wav`), w, samples);
-  console.log(`${c.id}: ${c.take}/${c.file} の頭から ${c.length} 秒を、録画の ${c.at} 秒に置いた → public/audio/app/${c.id}.wav`);
+  console.log(`${c.id}: ${c.take}/${c.file} の ${c.skip ?? 0} 秒から ${c.length} 秒を、録画の ${c.at} 秒に置いた → public/audio/app/${c.id}.wav`);
 }
 console.log("次: node scripts/scan.mjs（public/assets.json の音の一覧に入れる）");
