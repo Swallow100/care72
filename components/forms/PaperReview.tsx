@@ -65,6 +65,9 @@ async function postJson<T>(body: Record<string, unknown>): Promise<T & { ok?: bo
   return (await res.json().catch(() => ({ ok: false, error: "invalid" }))) as T & { ok?: boolean; error?: string; label?: string };
 }
 
+/** 応答の中身を読まない操作（確認済・戻す） */
+type Done = Record<string, unknown>;
+
 const LEVELS: ReviewLevel[] = ["fix", "check", "note"];
 
 export function PaperReview(props: PaperReviewProps) {
@@ -152,13 +155,13 @@ export function PaperReview(props: PaperReviewProps) {
   }
 
   async function confirm() {
-    const r = await postJson<object>({ op: "confirm", person: props.person, form: props.form, hash: props.hash, seen: all.map((f) => f.id) });
+    const r = await postJson<Done>({ op: "confirm", person: props.person, form: props.form, hash: props.hash, seen: all.map((f) => f.id) });
     if (!r.ok) setPhase({ kind: "error", label: r.label ?? REVIEW_UI.failed });
     router.refresh();
   }
 
   async function undo(field: string) {
-    const r = await postJson<object>({ op: "undo", person: props.person, form: props.form, field });
+    const r = await postJson<Done>({ op: "undo", person: props.person, form: props.form, field });
     if (!r.ok) setPhase({ kind: "error", label: r.label ?? REVIEW_UI.failed });
     router.refresh();
   }
