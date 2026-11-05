@@ -489,13 +489,14 @@ describe("避難所の一覧（既に受け入れられた人）", () => {
 });
 
 describe("QR からの受け入れ", () => {
-  it("トークンを引き直して受け入れ、/staff へ。本人の id はフォームに要らない", async () => {
+  it("トークンを引き直して受け入れ、/staff の受け入れた人の行へ（?received=、T152）。本人の id はフォームに要らない", async () => {
     const row = (await issueQr(db, "p-01", AT))!;
     const token = (await currentQrToken("p-01", row, SECRET))!;
     const nowSec = Math.floor(Date.parse(AT) / 1000) + 60;
     const out = await qrReceivePost(db, medical(), form({ token, shelter: SHELTER }), { secret: SECRET, nowSec, at: LATER });
-    expect(out).toEqual({ status: 303, location: "/staff" });
-    expect(sqlite.prepare("SELECT person_id, via FROM custody").get()).toEqual({ person_id: "p-01", via: "qr" });
+    const cu = sqlite.prepare("SELECT id, person_id, via FROM custody").get() as { id: string; person_id: string; via: string };
+    expect(out).toEqual({ status: 303, location: `/staff?received=${cu.id}` });
+    expect({ person_id: cu.person_id, via: cu.via }).toEqual({ person_id: "p-01", via: "qr" });
     // 2 回目も /staff（受入済は誤りにしない）
     expect(await qrReceivePost(db, medical(), form({ token, shelter: SHELTER }), { secret: SECRET, nowSec, at: NOW })).toEqual({ status: 303, location: "/staff" });
     // 無効のトークン・避難所なし・ケアマネ

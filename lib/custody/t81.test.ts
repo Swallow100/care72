@@ -164,10 +164,9 @@ describe("審査員の検索・避難所・受入はデモの人だけ（医療�
 
     const demo = (await issueQr(db, "p-01", AT))!;
     const demoToken = (await currentQrToken("p-01", demo, SECRET))!;
-    expect(await qrReceivePost(db, judgeMedical(), form({ token: demoToken, shelter: SHELTER }), { secret: SECRET, nowSec, at: LATER })).toEqual({
-      status: 303,
-      location: "/staff",
-    });
+    const demoOut = await qrReceivePost(db, judgeMedical(), form({ token: demoToken, shelter: SHELTER }), { secret: SECRET, nowSec, at: LATER });
+    const cu = sqlite.prepare("SELECT id FROM custody").get() as { id: string };
+    expect(demoOut).toEqual({ status: 303, location: `/staff?received=${cu.id}` });
     expect(sqlite.prepare("SELECT person_id, holder_id, via FROM custody").all()).toEqual([{ person_id: "p-01", holder_id: "acct-judge", via: "qr" }]);
   });
 
