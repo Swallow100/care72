@@ -3,12 +3,16 @@
 // 雨雲（降水ナウキャスト）のタイルを地図に加工せず重ねる（T72 の 4）。CaseMap が、旗 JMA_NOWCAST が on のとき（デモ事業所も。訓練の画面は置かない。T103）だけ置く。
 // - 時刻は Workers の route（/api/jma/nowc/times）から一番新しい実況の 1 つだけ（5 分ごとに読み直す）。補間・延長・動画にしない
 // - タイルも Workers の route から（ブラウザは気象庁を直接読まない）。不透明度も色も変えない（雨の無い所は透明の PNG のまま）
-// - 右下に気象庁の凡例の画像（そのまま。読めなければ隠す）・画像の時刻・出典
+// - 右下に小さな凡例（降水量の 8 段の色の帯と境の値と「02:20 時点」。components/map/RainScaleLegend.tsx。訓練の雨と同じ部品）。
+//   出典は地図の下の出典の行（CaseMap の MapSource、NOWC_SOURCE の文のまま）。T151 で、気象庁の凡例の画像と出典の長い 1 文の白い四角
+//   （小さな地図の半分ほどを隠した）から替えた
 // 中身の決まりは lib/jma/nowcast.ts。
 
 import { useEffect, useState, type SyntheticEvent } from "react";
 import { tilesFor, type Size, type View } from "@/lib/map/geo";
-import { isNowcTime, NOWC_LEGEND_URL, NOWC_SOURCE, NOWC_TIMES_PATH, NOWC_ZOOM, nowcTilePath, stampHm, type NowcTime } from "@/lib/jma/nowcast";
+import { nowcastLegendLabel } from "@/lib/map/rain-scale";
+import { isNowcTime, NOWC_TIMES_PATH, NOWC_ZOOM, nowcTilePath, stampHm, type NowcTime } from "@/lib/jma/nowcast";
+import { RainScaleLegend } from "./RainScaleLegend";
 
 /** 時刻を読み直す間（ミリ秒） */
 const RELOAD_MS = 5 * 60_000;
@@ -42,8 +46,9 @@ export function useNowcastTime(enabled: boolean): NowcTime | null {
   return enabled ? time : null;
 }
 
-/** 雨雲のタイル（地図の枠の中、ピンの下）と右下の凡例・時刻・出典 */
+/** 雨雲のタイル（地図の枠の中、ピンの下）と右下の小さな凡例（時刻つき） */
 export function NowcastLayer({ time, view, size }: { time: NowcTime; view: View; size: Size }) {
+  const hm = stampHm(time.validtime);
   return (
     <>
       {tilesFor(view, size, { range: NOWC_ZOOM }).map((t) => (
@@ -55,27 +60,12 @@ export function NowcastLayer({ time, view, size }: { time: NowcTime; view: View;
           loading="lazy"
           decoding="async"
           onError={hide}
-          className="absolute max-w-none select-none"
+          className="pointer-events-none absolute max-w-none select-none"
           style={{ left: `${t.left}%`, top: `${t.top}%`, width: `${t.width}%`, height: `${t.height}%` }}
           data-layer="nowcast"
         />
       ))}
-      <div
-        className="pointer-events-none absolute right-1 bottom-1 z-30 grid max-w-[60%] justify-items-end gap-0.5 rounded bg-panel px-1.5 py-1 text-[10px] leading-3 text-ink"
-        data-nowcast-legend
-      >
-        <img src={NOWC_LEGEND_URL} alt="雨雲の凡例（気象庁）" onError={hide} className="max-h-24 max-w-full" />
-        <span className="tabular-nums">{stampHm(time.validtime)} 時点</span>
-        <a
-          href={NOWC_SOURCE.href}
-          target="_blank"
-          rel="noreferrer"
-          data-press
-          className="pointer-events-auto text-right text-muted underline underline-offset-2 outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-accent"
-        >
-          {NOWC_SOURCE.text}
-        </a>
-      </div>
+      <RainScaleLegend kind="nowcast" head={`${hm} 時点`} label={nowcastLegendLabel(hm)} />
     </>
   );
 }

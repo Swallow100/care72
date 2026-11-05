@@ -6,6 +6,8 @@
 //   押したときだけ外へ要求する。本当の家から線の始まりまでは点線、枠の左上に「経路 目安」（lib/map/route-image.ts）。
 //   鍵が無い・失敗したときは、家 → 経由点 → 避難先を直線で結んだ線（手入力）のまま。
 //   範囲は 左・右・上・下・拡大・縮小・全体（様式の欄の位置の直し T86 と同じ言葉）。紙はこの範囲を刷る（lib/map/route-image.ts）。
+//   T151: 地図はマウスのドラッグと指でも動かす（全部の地図と同じ部品 components/map/useMapDrag.ts）。少しでも動かしたら押したことにしない
+//   （避難先・経由点を置かない）。ホイールと 2 本の指の拡大・縮小は段（整数）ごと。ホイールは Ctrl（⌘）か地図を押した後だけ（窓の中が送れるので）
 //   「保存」で避難先の位置・経路地図・範囲を台帳に（/api/intake/save の edit、経過に「ケアマネが直した: 経路地図」）
 // T112:
 //   「候補」は国土地理院の指定緊急避難場所・指定避難所を、押したときだけブラウザが読む（lib/map/shelters.ts。外へ出るのは層とタイルの z/x/y だけ）。
@@ -14,7 +16,7 @@
 // 担当一覧の地図（CaseMap）の雨と状態の層とは別の部品。位置は Claude に渡さない。ケアマネの役で開いたときだけ出す（PersonView）。
 
 import { useRouter } from "next/navigation";
-import { useEffect, useId, useRef, useState, type MouseEvent } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
 import { Button, buttonClass } from "@/components/ui/Button";
 import {
   CloseIcon,
@@ -35,7 +37,9 @@ import { isError, postJson } from "@/components/person/intake-api";
 import type { GeoPoint, RouteMode } from "@/lib/db/types";
 import type { EditData } from "@/lib/intake/edit";
 import { PLACE_LABELS, ROUTE_LABELS as L } from "@/lib/labels";
+import { keyAction } from "@/lib/map/camera";
 import { pickCenter } from "@/lib/map/center";
+import { wheelSteps } from "@/lib/map/drag";
 import { isGeoPoint } from "@/lib/map/geo";
 import { BASE_LAYER } from "@/lib/map/layers";
 import { ORS_ATTRIBUTION, type RouteResult } from "@/lib/map/route";
@@ -56,18 +60,22 @@ import {
   pickCandidate,
   fitRoute,
   panRoute,
+  panRouteBy,
   pickPoint,
   pointInFrame,
   routeChange,
   routeDraft,
   routeSummary,
   zoomRoute,
+  zoomRouteAt,
   ROUTE_VIA_MAX,
   type PanDir,
   type RouteDraft,
 } from "@/lib/map/route-edit";
 import { markPath, ROUTE_FRAME, ROUTE_ZOOM, routeScene, routeSceneOf } from "@/lib/map/route-image";
 import { RouteSceneSvg } from "./RouteSceneSvg";
+import { useMapDrag } from "./useMapDrag";
+import { WheelHint } from "./WheelHint";
 
 const LABEL_COL = "grid grid-cols-[4.5rem_minmax(0,1fr)] gap-x-2";
 const FOCUS = "outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-accent";
@@ -197,6 +205,47 @@ export function RouteEditor({ data, onClose }: { data: EditData; onClose: (why?:
   const set = (next: RouteDraft) => {
     setD(next);
     setError(null);
+  };
+
+  // ドラッグ・指・ホイール（T151）。動かすのは一続きの始めの範囲に始めからの量を当てる（lib/map/route-edit.ts の panRouteBy）。
+  // 拡大・縮小は段ごと（ホイール・2 本の指の量をためて 1 段ずつ）
+  const dragBase = useRef<RouteDraft["view"] | null>(null);
+  const zoomAcc = useRef(0);
+  const frameSize = useCallback(() => ROUTE_FRAME, []);
+  const zoomBy = (dz: number, at?: { x: number; y: number }) => {
+    const r = wheelSteps(zoomAcc.current, dz);
+    zoomAcc.current = r.acc;
+    if (r.steps !== 0) setD((cur) => ({ ...cur, view: zoomRouteAt(cur.view, r.steps, at) }));
+  };
+  const gestures = useMapDrag({
+    box: frame,
+    frame: frameSize,
+    gated: true,
+    onPan: (p) => {
+      if (p.fresh || !dragBase.current) dragBase.current = d.view;
+      const base = dragBase.current;
+      setD((cur) => ({ ...cur, view: panRouteBy(base.z === cur.view.z ? base : cur.view, p.total.x, p.total.y) }));
+    },
+    onPinch: (before, after) => {
+      dragBase.current = null;
+      const d0 = Math.hypot(before[0].x - before[1].x, before[0].y - before[1].y);
+      const d1 = Math.hypot(after[0].x - after[1].x, after[0].y - after[1].y);
+      const mid = (a: { x: number; y: number }, b: { x: number; y: number }) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+      const m0 = mid(before[0], before[1]);
+      const m1 = mid(after[0], after[1]);
+      setD((cur) => ({ ...cur, view: panRouteBy(cur.view, m1.x - m0.x, m1.y - m0.y) }));
+      if (d0 > 0 && d1 > 0) zoomBy(Math.log2(d1 / d0), m1);
+    },
+    onWheel: (dz, at) => zoomBy(dz, at),
+  });
+  /** 焦点があるときの矢印（動かす）と＋−（拡大・縮小）。Enter・Space はボタンの押し（置く）のまま */
+  const onMapKey = (ev: KeyboardEvent) => {
+    if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
+    const a = keyAction(ev.key);
+    if (!a) return;
+    ev.preventDefault();
+    if (a.type === "pan") setD((cur) => ({ ...cur, view: panRouteBy(cur.view, a.dx, a.dy) }));
+    else setD((cur) => ({ ...cur, view: zoomRoute(cur.view, a.dz) }));
   };
   const list = cands.state === "ok" ? cands.list : [];
   const walk = walkSpeedOf(data.ledger);
@@ -345,7 +394,15 @@ export function RouteEditor({ data, onClose }: { data: EditData; onClose: (why?:
           </Choice>
         </div>
 
-        <div ref={frame} className="relative overflow-hidden rounded bg-panel2" style={{ aspectRatio: `${ROUTE_FRAME.w} / ${ROUTE_FRAME.h}` }}>
+        <div
+          ref={frame}
+          className={`relative overflow-hidden rounded bg-panel2 select-none ${gestures.touch}`}
+          style={{ aspectRatio: `${ROUTE_FRAME.w} / ${ROUTE_FRAME.h}` }}
+          {...gestures.handlers}
+          onKeyDown={onMapKey}
+          data-armed={gestures.armed ? "" : undefined}
+          data-route-map
+        >
           <RouteSceneSvg scene={scene} label={L.title} px={px} />
           {/* 地図の面そのものが押す所（置く物を置く） */}
           <button
@@ -353,10 +410,11 @@ export function RouteEditor({ data, onClose }: { data: EditData; onClose: (why?:
             aria-label={`${d.tool === "dest" ? `${L.dest}${d.to}` : L.via} ${L.tool}`}
             onClick={onPick}
             disabled={d.tool === "via" && d.via.length >= ROUTE_VIA_MAX}
-            className={`absolute inset-0 size-full cursor-crosshair ${FOCUS} focus-visible:-outline-offset-2`}
+            className={`absolute inset-0 size-full ${gestures.moving ? "cursor-grabbing" : "cursor-crosshair"} ${FOCUS} focus-visible:-outline-offset-2`}
             data-no-press
             data-route-surface
           />
+          {gestures.hint && <WheelHint />}
           {/* 候補の印（白抜きの旗。旗の竿の根元が位置）。押すと今の避難先に。選んだ避難先と同じ所の候補は塗った旗が出ているので出さない */}
           {list.map((c) => {
             const { fx, fy } = frameOf(d.view, c.at);

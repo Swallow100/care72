@@ -1,6 +1,6 @@
 // 地図の雨の色の段（T116）。1 時間の降水量（mm/h）の 8 段と色。気象庁の降水ナウキャスト（雨雲の動き）の凡例と同じ段と色で、
 // 平時の地図に重ねる本物の雨雲（旗 JMA_NOWCAST、components/map/NowcastLayer.tsx）と訓練の筋書きの雨（lib/map/drill-rain.ts）を
-// 同じ読み方にする。本物の雨雲は気象庁の画像と凡例をそのまま重ねるので、この表は読まない（訓練の雨と凡例だけが使う）。
+// 同じ読み方にする。本物の雨雲は気象庁の画像をそのまま重ね、凡例だけこの表で描く（T151。前は気象庁の凡例の画像で、地図を大きく隠した）。
 // 出典は登録簿の jma-nowc-legend（色の値は気象情報の配色の指針の降水量の段の値。作者が凡例と並べて確かめる）。
 // 雨は色と連絡順に使わない（lib/triage はこの表を読まない）。地点ごとの雨量は作らない（絵と凡例だけ）。
 
@@ -17,7 +17,7 @@ export type RainStep = {
   label: string;
 };
 
-/** 8 段（弱い方から）。凡例は上ほど強い順に並べる */
+/** 8 段（弱い方から）。凡例は横の帯で、左が弱い（components/map/RainScaleLegend.tsx。T151） */
 export const RAIN_STEPS = [
   { min: 0, max: 1, color: "#f2f2ff", label: "1 未満" },
   { min: 1, max: 5, color: "#a0d2ff", label: "1〜5" },
@@ -54,8 +54,13 @@ export function rainColor(min: RainMin): string {
   return RAIN_STEPS.find((s) => s.min === min)!.color;
 }
 
-/** 凡例の読み上げ（上ほど強い順） */
-export const RAIN_LEGEND_LABEL = `想定の雨 1 時間の降水量 mm/h: ${[...RAIN_STEPS]
-  .reverse()
-  .map((s) => s.label)
-  .join("、")}`;
+/** 凡例の読み上げの段（弱い方から。凡例の帯は左が弱い。T151） */
+const STEP_WORDS = RAIN_STEPS.map((s) => s.label).join("、");
+
+/** 訓練の雨の凡例の読み上げ */
+export const RAIN_LEGEND_LABEL = `想定の雨 1 時間の降水量 mm/h: ${STEP_WORDS}`;
+
+/** 本物の雨雲の凡例の読み上げ（hm は画像の時刻「02:20」） */
+export function nowcastLegendLabel(hm: string): string {
+  return `雨雲 ${hm} 時点 1 時間の降水量 mm/h: ${STEP_WORDS}`;
+}
