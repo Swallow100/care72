@@ -493,8 +493,9 @@ function kirokuGold(): GoldField[] {
  */
 type Form9Gold = { cell: string; section: string; label: string; item: string | null; accept?: ReadonlyArray<string | null>; shape?: FieldShape };
 const FORM9_GOLD: readonly Form9Gold[] = [
-  { cell: "C4:K4", section: "", label: "事業所名", item: "plan.office", accept: ["plan.author"] },
-  { cell: "L4:M4", section: "", label: "作成", item: "plan.date", shape: "date" },
+  // 4 行目の「事業所名：」「作成：　年　月　日」。ブックを頁に描いた画像では、事業所名の書く所は C〜J、作成は K〜M（評価の 3 回目の本物の答えの場所）
+  { cell: "C4:J4", section: "", label: "事業所名", item: "plan.office", accept: ["plan.author"] },
+  { cell: "K4:M4", section: "", label: "作成", item: "plan.date", shape: "date" },
   { cell: "B7", section: "", label: "No", item: null },
   { cell: "C7", section: "優先順位", label: "医療・介護", item: null },
   { cell: "D7", section: "優先順位", label: "環境", item: null },
