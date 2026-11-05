@@ -14,6 +14,7 @@
 
 import type { ContactKind, DependsOn, DrillAction } from "../db/types.ts";
 import { actionRow, ACTION_CATALOG } from "./action-catalog.ts";
+import { DRILL_END_MINUTE } from "./clock.ts";
 import type { PersonMarks, PhoneState, WorldState } from "./scenarios.ts";
 
 // ---------- 手のやり方 ----------
@@ -137,8 +138,21 @@ export type TermSource = {
     WorldState,
     "phone" | "marks" | "roads" | "flood" | "alertLevel" | "tsunami" | "staff" | "facilities" | "outage" | "notes"
   >;
-  options?: { night?: boolean; terms?: boolean } | undefined;
+  options?: { night?: boolean; terms?: boolean; clock?: boolean } | undefined;
 };
+
+// ---------- 72 時間の終わり（T123） ----------
+
+/**
+ * 連続の時計の訓練で、ケアマネの時計が 72 時間に着いた後の手の断り（2〜4 字）。手と通話の往復の所要で時計が 72 時間に着いても、
+ * 72 時間の区切りは「進める」が作る（評価の 2 回目で、区切りの無いまま進めると手が全部断られて終わらなかった）。その間に打つ手は無い
+ */
+export const CLOCK_END_LABEL = "時間満了";
+
+/** 連続の時計の訓練で、ケアマネの時計が 72 時間に着いたか（決まりを選んだかによらない。10 分版は刻みの道なので見ない） */
+export function clockOver(s: { minute: number; options?: { clock?: boolean } | null | undefined }): boolean {
+  return s.options?.clock === true && s.minute >= DRILL_END_MINUTE;
+}
 
 /** 本人（null は全体の手）について、今の事実を読む */
 export function termFactsOf(s: TermSource, person: string | null, minute: number = s.minute): TermFacts {
@@ -287,5 +301,12 @@ export function blockOf(term: ActionTerm, callee: TermCallee | null): string | n
 export function termsFor(s: TermSource, person: string | null): Record<DrillAction, ActionTerm> {
   const facts = termFactsOf(s, person);
   const on = s.options?.terms === true;
-  return Object.fromEntries(ACTION_CATALOG.map((r) => [r.id, actionTerm(r.id, facts, { on })])) as Record<DrillAction, ActionTerm>;
+  const over = clockOver(s);
+  return Object.fromEntries(
+    ACTION_CATALOG.map((r) => {
+      const term = actionTerm(r.id, facts, { on });
+      // 72 時間に着いた後は、どの手も押せない（T123。決まりを選ばない訓練も）
+      return [r.id, over ? { ...term, block: CLOCK_END_LABEL } : term];
+    }),
+  ) as Record<DrillAction, ActionTerm>;
 }

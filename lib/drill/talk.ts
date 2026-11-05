@@ -16,6 +16,8 @@ import type { D1Database } from "@cloudflare/workers-types";
 import type { Principal } from "../auth/principal.ts";
 import { PseudonymLeakError } from "../pseudonym/index.ts";
 import { FREE_LABELS } from "./action-catalog.ts";
+import { clockOver } from "./action-terms.ts";
+import { clampClock } from "./actions.ts";
 import { capReached, ZERO_COUNTS } from "./clock.ts";
 import { drillScope, loadDrillRow, stateOfRow, type DrillScope } from "./db.ts";
 import {
@@ -63,6 +65,8 @@ export async function talkDrill(
   if (!rec || rec.id !== req.action) return { ok: false, error: "conflict" };
   const r = rec.result;
   if (!rec.person || !rec.callee || !r || !canTalk(r)) return { ok: false, error: "closed" };
+  // 連続の時計が 72 時間に着いた後は往復を足さない（T123。切るのはよい。区切りは「進める」が作って終わる）
+  if (!("end" in req) && clockOver(before)) return { ok: false, error: "closed" };
   const person = rec.person;
 
   let result: ActionResult;
@@ -107,7 +111,8 @@ export async function talkDrill(
       const c = { ...ZERO_COUNTS, ...(world.counts ?? {}) };
       world = { ...world, counts: { ...c, call: c.call + 1 } };
     }
-    minute = Math.max(minute, replyAt);
+    // 連続の時計は 72 時間で止める（T123）
+    minute = clampClock(before, Math.max(minute, replyAt));
   }
 
   const actions = [...before.actions.slice(0, -1), { ...rec, result }];

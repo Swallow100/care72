@@ -742,7 +742,10 @@ export async function advance(
   const to = Math.min(Math.round(toMinute), DRILL_END_MINUTE);
   // 手の分（T110）は今の時計まで（AI を動かした最後の区切りより後のときだけ）。ほかは今の時計より後
   const closing = opts.acts === true && !first && to === Math.round(state.minute) && to > aiAtOf(state);
-  if (first ? to !== 0 : to <= state.minute && !closing) throw new RangeError(`進める時刻が違う: ${toMinute}`);
+  // 72 時間の区切り（T123）。手と通話の往復の所要で時計が先に 72 時間に着いても、どの進め方でも 72 時間の区切りを作って終わる
+  // （評価の 2 回目で、時計が 72 時間・区切りがその手前のまま、進める・手が全部「進める時刻が違う」で断られ終わらなかった）
+  const ending = !first && to === DRILL_END_MINUTE && lastCutOf(state) < DRILL_END_MINUTE;
+  if (first ? to !== 0 : to <= state.minute && !closing && !ending) throw new RangeError(`進める時刻が違う: ${toMinute}`);
   const silent = opts.policy === "silent";
   const from = lastCutOf(state);
   const index = state.step + 1;

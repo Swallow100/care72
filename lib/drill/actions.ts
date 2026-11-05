@@ -48,7 +48,7 @@ import {
   type Tick,
 } from "./engine.ts";
 import { countFree, freeText, planFree, type FreeHook } from "./free-action.ts";
-import { actionTerm, blockOf, termFactsOf } from "./action-terms.ts";
+import { actionTerm, blockOf, CLOCK_END_LABEL, clockOver, termFactsOf } from "./action-terms.ts";
 import type { FreePlan } from "./action-types.ts";
 import { talkEnd, withResultAsks, type VisitHook } from "./dialogue.ts";
 import { CALL_FIXED_SPEECH, CALL_STATUS_LABELS, CALL_STATUS_TEXTS } from "./labels.ts";
@@ -127,6 +127,11 @@ export class ActionBlocked extends Error {
     this.label = label;
     this.counted = counted;
   }
+}
+
+/** 連続の時計の訓練のケアマネの時計を 72 時間で止める（T123）。10 分版・前からある訓練はそのまま */
+export function clampClock(s: Pick<DrillState, "options">, minute: number): number {
+  return s.options?.clock === true ? Math.min(minute, DRILL_END_MINUTE) : minute;
 }
 
 /** 決まりの表を当てる訓練か（T110。開始で選んだ訓練だけ） */
@@ -405,7 +410,8 @@ export function applyResult(state: DrillState, id: string, result: ActionResult)
   if (result.ok) world = applyEffects(world, rec, result, actionRow(effectiveKind(rec)));
   // T93: 往復と訪問の頼み事を積み、時計は往復の終わりまで（作り直しでも同じ）
   world = withResultAsks(world, rec.person, result);
-  const minute = Math.max(state.minute, result.atMinute, talkEnd(result));
+  // 連続の時計は 72 時間で止める（T123。手が 72 時間をまたいで終わっても時計は 72 時間。10 分版は刻みの道で時計を見ない）
+  const minute = clampClock(state, Math.max(state.minute, result.atMinute, talkEnd(result)));
   const actions = [...state.actions];
   actions[i] = { ...rec, result };
   world = settleAsks(settleWorld(world, minute), actions);
@@ -432,6 +438,8 @@ export async function act(
   extra: Pick<ActionBefore, "triage" | "ranking"> = {},
 ): Promise<ActOutcome> {
   if (state.status !== "running") throw new DrillEnded();
+  // 連続の時計が 72 時間に着いた後の手は打たない（T123。自由対応の読み替えも呼ばない。区切りは「進める」が作って終わる）
+  if (clockOver(state)) throw new ActionBlocked(CLOCK_END_LABEL);
   // 自由対応の確かめ（T110）は打つ前だけの物。手を打ったあとの状態には残さない
   const { draft, ...clean } = state;
   let start: DrillState = clean;

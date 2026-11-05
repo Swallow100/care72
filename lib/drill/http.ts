@@ -286,7 +286,7 @@ export async function freePost(
     }
     throw e;
   }
-  if (!r.ok) return drillError(r.error);
+  if (!r.ok) return r.error === "blocked" ? blockedError(r.label) : drillError(r.error);
   return Response.json({ ok: true, plan: planView(r.plan) }, { headers: NO_STORE });
 }
 
