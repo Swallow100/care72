@@ -94,6 +94,9 @@ export const METRICS: Metric[] = [
   { label: "入力の生のファイルが 5 MB 超", get: (r) => totals(r).rawOverLimit },
   { label: "AI の呼び出し", get: (r) => r.calls.calls },
   { label: "AI の失敗", get: (r) => r.calls.failed },
+  // T131: 出力の上限で切れた呼び出し（失敗に数える。様式の読み取りは拾えた欄を残して続きを頼む）と、様式の読み取りの 1 回の出力の最大
+  { label: "AI の失敗 うち出力の上限で切れた", get: (r) => r.calls.truncated ?? null },
+  { label: "様式の読み取り 1 回の出力の最大（token）", get: (r) => r.calls.formReadMaxOutput ?? null },
   { label: "AI の送り直しのあった呼び出し", get: (r) => r.calls.retried },
   { label: "AI の時間（秒）", get: (r) => Math.round(r.calls.durationMs / 100) / 10 },
   { label: "入力トークン", get: (r) => r.calls.inputTokens },

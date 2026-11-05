@@ -196,7 +196,8 @@ export function canonical(c: IntakeChange): { id: string; value: string } | null
     case "hazard":
       return { id: `ハザード ${c.value.kind}`, value: String(c.value.depthM ?? "") };
     case "note":
-      return { id: `特記 ${n(c.value)}`, value: "" };
+      // 終わりの句点の有無は同じ特記（T131。評価の 3 回目の 9: 「薬は2階の箪笥」と「薬は2階の箪笥。」を取りこぼしと余分に数えていた）
+      return { id: `特記 ${n(c.value).replace(/[。．.]+$/u, "")}`, value: "" };
     case "pending":
       return { id: `不明 ${c.field}`, value: c.status };
     case "contact":
@@ -334,7 +335,20 @@ export function scorePaper(o: {
     const aid = o.pairs.get(gi);
     const af = aid ? o.aiMapping.fields.find((f) => f.id === aid) : undefined;
     const actCell = af ? o.actualCell(af) : null;
-    const act = af && actCell ? paperText(af, actCell) : "";
+    let act = af && actCell ? paperText(af, actCell) : "";
+    // 合わせた欄が空でも、正解の表に合わない AI の欄（余分な欄）がこの欄の場所に正解の字を置いていれば、紙は当たり（T131。評価の 3 回目の
+    // 災害診療記録の避難先: AI は種類の □ の 1 つ目を「避難先1」の欄に、名前を書く所を「避難所名」の欄に読み、紙には正しい所に避難先が出た）。
+    // 読み取りの段の判定（取りこぼし）はそのまま
+    if (act === "" && exp !== "" && o.actual.overlay && g.box) {
+      const paired = new Set(o.pairs.values());
+      const other = o.aiMapping.fields.find(
+        (f) => !f.removed && !paired.has(f.id) && f.page === g.page && f.box && boxInside(f.box, g.box!) && norm(paperText(f, o.actualCell(f))) === norm(exp),
+      );
+      if (other) {
+        act = paperText(other, o.actualCell(other));
+        j(name, "当たり（同じ場所の別の欄）", `正解の表に無い AI の欄「${other.label}」が同じ場所に正解の字を置いた`, exp, act);
+      }
+    }
     score.judged += 1;
     if (exp !== "") score.filled += 1;
     const expU = isUnconfirmedCell(expCell);

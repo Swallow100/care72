@@ -80,7 +80,7 @@ export const FORM_READ_SYSTEM = [
   "入力の画像・PDF は、日本の市町村などの個別避難計画・名簿登録の様式（空の書式）の 1 頁。入力の JSON の「頁」は全部の頁の数（of）とこの頁の番号（no）。「items」はケア72 の台帳の項目表（key と名前と説明だけで、値は無い）。",
   "1. この頁の記入欄を、上から下、左から右の順に全部挙げる。見出しだけの行・注意書き・説明文は欄にしない。",
   "   欄は段ごとにまとめる。sections の name は段の見出し（例「緊急時の連絡先①」）、見出しの無い所は空文字。同じ見出しの段を 2 つに分けない。",
-  "   罫線で分かれた欄の名前の違う 2 つの枠（例「かかりつけ医・薬局」と「医薬品情報」）は 1 つの欄にまとめず、別々の欄にする。",
+  "   欄の名前の違う 2 つの枠は 1 つの欄にまとめず、別々の欄にする。書く所が 1 つの枠に欄の名前が 2 つ付く所（名前の列に「主治医」と「服薬の情報」のように 2 つの名前が並び、書く所は 1 つ）も、名前ごとに別々の欄にし、どちらの box も同じ書く所にする（中身が別の項目に当たるので、1 つの欄にまとめない）。",
   "2. □ の選択肢が並び 1 つを選ぶ欄は 1 欄（shape choice）にし、選択肢を様式の順に options に入れる。",
   "   「複数選択可」「あてはまるものすべて」の □ の並びでも、選択肢が台帳の 1 つの項目の種類（自宅のリスクの土砂災害・洪水・津波、支援の内容の声掛け・誘導・移動介助、既往症、予防接種、アレルギー）なら、1 欄（shape choice）にまとめて options に選択肢を並べ、その項目を当てる（□ ごとに分けると、2 つ目からの □ に項目が当たらない）。",
   "   □ ごとに別々の項目に当たる並び（独居・要介護・障害者手帳・難病のように中身の違う □）は、□ ごとに 1 欄（shape check）にする。",
@@ -100,7 +100,11 @@ export const FORM_READ_SYSTEM = [
   "14. 欄の中に「年」「月」「日」「歳」の字が刷ってあり、値をその字の前の空きに分けて書く欄（例「　年　月　日」「（　）年　月　日生」「（　歳）」）は、options にその字を左から並べ（例 [\"年\",\"月\",\"日\"]）、option_boxes にそれぞれの字の前の空き（数字を書く所）の場所を同じ順に入れる。年の前に元号（令和・昭和など）が刷ってあれば、options の 1 つ目を「令和年」のように元号を付けて書く。",
   "    電話番号の欄で「−」「（　）」が刷ってあり番号を空きに分けて書く欄（例「　−　−　」）は、options を [\"局番\",\"市内\",\"番号\"] にし、option_boxes に区切りの間の空きを左から入れる。空きに分けない欄の options と option_boxes は空の配列。",
   "15. 日付の前に元号の選択肢（大正・昭和・平成・令和を ○ で囲む・□）が刷ってある欄は、元号だけの欄を別に挙げない。元号から日までを 1 つの日付の欄（shape date）にし、box は元号から日までを囲む。",
-  "16. 1 つの枠の中に種類の □（避難所・親族宅・車中泊など）と名前を書く所がある欄は、名前を書く所を様式の欄の名前のままの 1 欄（shape text）にして項目を当て、種類の □ は「〇〇 種類」の名前で別の欄（shape choice。合う項目が無ければ null）にする。",
+  "16. 1 つの枠の中に種類の □（避難所・親族宅・車中泊など）と名前を書く所がある欄は、名前を書く所を、その行の欄の名前（左の名前の列の字。例「避難先１」）の 1 欄（shape text）にして項目を当てる。書く所のそばの小さな字（「名称」「施設名」など）を label にしない。種類の □ は「〇〇 種類」の名前の 1 欄（shape choice、options に □ の選択肢を全部。合う項目が無ければ null）にし、□ を 1 つずつ別の欄（check）に挙げない。",
+  "17. 1 人 1 行の空の行が見出しの行の下に何行も並ぶ一覧の表（利用者の一覧・名簿・安否確認の表など）は、列ごとに 1 欄を挙げる。label はその列の見出しの字のまま、sections の name は 2 段の見出しの上の段の字（無ければ空文字）。行の番号（1・2・3）を段や欄の名前にしない。box は 1 行目（見出しのすぐ下の行）のその列の枠。番号が刷ってある列（No・番号）も欄に挙げ、item は null。表の外の欄（事業所名・作成日など）は今までどおり挙げる。",
+  "    list には、その表の人を書く行の数（rows）と、1 行目の帯（first）と最後の行の帯（last）の場所を [x, y, w, h] で入れる。一覧の表の無い頁は list を null。",
+  "18. 医師・看護師など医療の人や市の職員が書く欄が 1 つの段に何個も並ぶ所（診察・処置・症候の □ の並び、傷病名の行の繰り返しなど）は、□ や行ごとに挙げず、段ごとに 1 欄（label は段の見出しの字、shape handwrite、item null、box は段全体）にまとめる。台帳の項目に当たる欄（既往症・予防接種・アレルギー・常用薬など）が入っている段はまとめない。決まり 10 の欄が 1 つ 2 つなら、今までどおり欄ごとに挙げる。",
+  "19. 避難場所が何行か並び、行ごとに【手段】【時間】の欄がある所は、その行の避難場所の手段・時間の項目を当てる（避難先1〔市の指定避難所など〕は「移動手段」「避難先1までの時間」、避難先2〔事前に行く所〕は「避難先2への手段」「避難先2までの時間」、最寄りの避難場所は「最寄りの避難場所への手段」「最寄りの避難場所までの時間」）。",
   "title は様式の題名、issuer は様式を出した所（この頁に無ければ空文字）。typeface は様式に印刷された字の書体（明朝なら mincho、ゴシックなら gothic）。",
   "入力に「読み済み」があれば、それはこの頁の頭から読み済みの欄（段と欄の名前、順のとおり）。読み済みの最後の欄の次の欄から、この頁の終わりまでを挙げる。読み済みの欄は挙げない。",
 ].join("\n");
@@ -130,6 +134,8 @@ export const PageReadSchema = z.object({
   issuer: z.string(),
   typeface: z.enum(TYPEFACES),
   sections: z.array(z.object({ name: z.string(), fields: z.array(WireField) })),
+  /** 一覧の表（T131。決まり 17）。人を書く行の数と、1 行目と最後の行の帯。表の無い頁は null */
+  list: z.object({ rows: z.number(), first: WireBox, last: WireBox }).nullable(),
 });
 export type PageRead = z.output<typeof PageReadSchema>;
 
@@ -206,7 +212,8 @@ export function toPageRead(r: ReadResult, page: number): PageRead {
     if (last && last.name === f.section) last.fields.push(field);
     else sections.push({ name: f.section, fields: [field] });
   }
-  return { title: page === 1 ? r.title : "", issuer: page === 1 ? r.issuer : "", typeface: r.typeface ?? "gothic", sections };
+  const list = r.list && r.list.page === page && r.list.first && r.list.last ? { rows: r.list.rows, first: wireOfBox(r.list.first)!, last: wireOfBox(r.list.last)! } : null;
+  return { title: page === 1 ? r.title : "", issuer: page === 1 ? r.issuer : "", typeface: r.typeface ?? "gothic", sections, list };
 }
 
 // ---------- 切れた答えから読めた欄を拾う ----------
@@ -263,7 +270,8 @@ export function salvagePageRead(text: string): PageRead | null {
       if (fields.length > 0) sections.push({ name: sec.name, fields });
     }
     if (sections.length === 0) return null;
-    return { title: head.data.title ?? "", issuer: head.data.issuer ?? "", typeface: head.data.typeface ?? "gothic", sections };
+    // 一覧の表（list）は答えの最後にあるので、切れた答えからは拾わない（続きの答えから）
+    return { title: head.data.title ?? "", issuer: head.data.issuer ?? "", typeface: head.data.typeface ?? "gothic", sections, list: null };
   }
   return null;
 }
@@ -282,7 +290,7 @@ export function joinPageReads(head: PageRead, more: PageRead): PageRead {
     if (last && last.name === s.name) last.fields.push(...fields);
     else sections.push({ name: s.name, fields });
   }
-  return { title: head.title || more.title, issuer: head.issuer || more.issuer, typeface: head.typeface, sections };
+  return { title: head.title || more.title, issuer: head.issuer || more.issuer, typeface: head.typeface, sections, list: head.list ?? more.list };
 }
 
 // ---------- 読む ----------
@@ -308,6 +316,14 @@ async function readPage(file: FormFile, page: number, pages: number, ctx: AskJso
       return { page, ok: true, read: tail ? joinPageReads(got, tail) : got, model: e.model, continued: true, partial: true };
     }
   }
+}
+
+/** 一覧の表（T131）: 表のある最初の頁の行の数と帯。形の確かめは checkReadResult（listShapeOf） */
+function listOfPages(good: ReadonlyArray<{ page: number; read: PageRead }>): Pick<ReadResult, "list"> {
+  const hit = good.find((o) => o.read.list !== null);
+  if (!hit || !hit.read.list) return {};
+  const { rows, first, last } = hit.read.list;
+  return { list: { page: hit.page, rows, first: boxOfWire(first), last: boxOfWire(last) } };
 }
 
 /** 並べて回す（同時に limit 個まで）。順は入力のまま */
@@ -369,6 +385,7 @@ export async function readForm(file: FormFile | ReadonlyArray<FormFile>, ctx: As
     typeface,
     fields: good.flatMap((o) => fieldsOfPage(o.read, o.page)),
     ...(bad.length > 0 ? { unread: bad.map((o) => o.page) } : {}),
+    ...listOfPages(good),
   };
   const checked = checkReadResult(read);
   return {
