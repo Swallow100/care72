@@ -25,8 +25,10 @@ export type AiReviewResult = {
   /** 送った絵: composed（塗った後の絵）・blank（空の頁。Chrome が無い） */
   images: "composed" | "blank";
   error?: string;
+  /** 照合で使った所の 1 つずつ（欄・種類・重さ・再考で直せそうか）。台の記録用 */
+  detail?: Array<Pick<ReviewFinding, "id" | "field" | "label" | "kind" | "level" | "page" | "redo">>;
 };
-export type PaperReview = { rule: RuleCounts; ai: AiReviewResult | null };
+export type PaperReview = { rule: RuleCounts; ai: AiReviewResult | null; /** 照合の所（再考の頼みに使う。記録には detail だけ） */ findings?: ReviewFinding[] };
 
 function countKinds(fs: readonly ReviewFinding[]): Record<string, number> {
   const out: Record<string, number> = {};
@@ -90,7 +92,8 @@ export async function reviewPaper(args: {
   args.fake?.expect({ kind: "review", answer: fakeReviewAnswer(list, args.fakeStyle) }, args.seed);
   try {
     const { findings } = await runAiReview(args.ctx, { subject, rows: list, images, key });
-    return { rule, ai: { status: "ok", found: findings.length, kinds: countKinds(findings), ...base } };
+    const detail = findings.map((f) => ({ id: f.id, field: f.field, label: f.label, kind: f.kind, level: f.level, page: f.page, ...(f.redo ? { redo: true } : {}) }));
+    return { rule, ai: { status: "ok", found: findings.length, kinds: countKinds(findings), ...base, detail }, findings };
   } catch (e) {
     args.fake?.drain();
     return { rule, ai: { status: "failed", found: 0, kinds: {}, ...base, error: e instanceof Error ? e.name : "error" } };

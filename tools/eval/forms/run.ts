@@ -47,6 +47,7 @@ import { lookOfPaper, type LookScore } from "./look.ts";
 import { costUsd, jsonl, realClient, recorder, type CallRecord, type Jsonl } from "./record.ts";
 import { heicBytes, launchRenderer, withExif, type Ratio, type Renderer } from "./render.ts";
 import { reviewPaper, type PaperReview } from "./review.ts";
+import { jpegAttachment, redoTargets, rereadFields } from "../../../lib/forms/review-ai.ts";
 import { cellOfSheet, scoreIntake, scorePaper, scoreRead, type IntakeScore, type Judgement, type PaperScore, type ReadScore } from "./score.ts";
 
 export const REPO_ROOT = resolve(fileURLToPath(new URL("../../../", import.meta.url)));
@@ -93,6 +94,10 @@ export type EvalOptions = {
   inputFiles?: Record<string, { bytes: Uint8Array; secrets: Ratio[][] }>;
   /** 紙の AI の照合（T136）。既定は回さない（cli は偽の回で回し、本物の回は --review のときだけ。決まりの見直しの数はいつも） */
   review?: boolean;
+  /** AI の照合を回す紙を絞る（<様式の id>:<入力の id>。無ければ review のとき全部の紙） */
+  reviewOnly?: string[];
+  /** 照合で直せそうと出た欄を再考（Opus、頁ごとに 1 回）する紙の数の上限（既定 0＝しない。紙は直さず、直しの前と後を記録する） */
+  rereadMax?: number;
   /** 本物の回の費用の見積もりの上限（ドル）。超えたら次の様式・入力を始めない（飛ばした物は「上限」と数える） */
   maxUsd?: number | null;
   /**
@@ -636,6 +641,7 @@ export async function runEval(opts: EvalOptions): Promise<RunResult> {
 
     // ---------- 紙 ----------
     const papers: PaperResult[] = [];
+    let rereadDone = 0;
     const sampleInput = specs.find((s) => s.kind === "ledger")?.id ?? null;
     for (const f of ready) {
       const imgSrc = pageSources(f.id, f.images, bucket.objects);
@@ -691,7 +697,7 @@ export async function runEval(opts: EvalOptions): Promise<RunResult> {
           sheets: actual,
           rows: rows.actual,
           today,
-          review: opts.review ?? false,
+          review: (opts.review ?? false) && (!opts.reviewOnly || opts.reviewOnly.includes(`${f.id}:${spec.id}`)),
           ctx: evalCtx,
           fake,
           fakeStyle: opts.fakeStyle,
@@ -701,7 +707,27 @@ export async function runEval(opts: EvalOptions): Promise<RunResult> {
           renderer,
         });
         rec.flush();
-        if (review) step({ stage: "paper.review", form: f.id, input: spec.id, ...review });
+        if (review) {
+          const { findings: found, ...shown } = review;
+          step({ stage: "paper.review", form: f.id, input: spec.id, ...shown });
+          // 再考（T136）: 直せそうと出た欄を、元の様式の空の頁から読み直す（紙は直さない。前と後を記録する）
+          const targets = found ? redoTargets(found.filter((x) => x.redo), f.mapping.fields) : [];
+          if (targets.length > 0 && rereadDone < (opts.rereadMax ?? 0)) {
+            rereadDone += 1;
+            for (const page of [...new Set(targets.map((t) => t.field.page))]) {
+              const blank = bucket.objects.get(pageImageKey(OFFICE, `fm-${f.id}`, page));
+              if (!blank) continue;
+              rec.scope(`${f.id}:${spec.id}`, "form_reread");
+              try {
+                const fixes = await rereadFields(evalCtx, { page, pages: f.mapping.pages, image: jpegAttachment(blank), targets: targets.filter((t) => t.field.page === page), round: 1 });
+                step({ stage: "paper.reread", form: f.id, input: spec.id, page, targets: targets.filter((t) => t.field.page === page).map((t) => ({ field: t.field.id, label: t.field.label, kinds: t.kinds })), fixes });
+              } catch (e) {
+                step({ stage: "paper.reread", form: f.id, input: spec.id, page, ok: false, error: e instanceof Error ? e.name : "error" });
+              }
+              rec.flush();
+            }
+          }
+        }
         // 正解の表の無い様式は、既定で台帳そのままの 1 人だけ刷る（置き場の様式は数が多い）
         const draw = !!f.form || opts.paperAllForms || spec.id === sampleInput;
         const files = draw ? await renderPaper(actual, imgSrc, { renderer, mode: opts.paper, dir, form: f.id, input: spec.id, today }) : {};

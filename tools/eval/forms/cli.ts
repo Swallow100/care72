@@ -4,7 +4,7 @@
 //                                [--people=p-01,p-02] [--paper-all-forms] [--out=<回の置き場>] [--corpus=<様式の置き場>] [--no-corpus] [--no-progress] [--max-usd=10]
 //                                [--replay=<前の本物の回のフォルダ> --run=<回の名前>]
 //                                [--forms=catalog | --forms=cat-sapporo-1,cat-kumamoto-2] [--catalog-fetch]
-//                                [--review] [--no-review]
+//                                [--review] [--no-review] [--review-only=<様式>:<入力>,...] [--reread-max=N]
 //
 // - 既定は偽の client（本物の API を呼ばない）。--gold は崩さない偽（台の数え方の確かめ）
 // - 紙の AI の照合（T136）は偽の回は既定で回す（--no-review で止める）。本物の回は --review のときだけ（紙 1 枚 1 回の Sonnet）
@@ -72,6 +72,9 @@ const result = await runEval({
   // 一覧の URL から取る（転送は自分でたどる。lib/forms/municipal-http.ts の fetchOfficial が一覧のホストの中だけに絞る）
   catalogFetch: flag("catalog-fetch") ? (url: string) => fetch(url, { redirect: "manual" }) : null,
   review: flag("review") || (!real && !flag("no-review")),
+  // 照合を回す紙を絞る（本物の回の費用のため）と、再考する紙の数の上限
+  ...(list("review-only") ? { reviewOnly: list("review-only") } : {}),
+  ...(value("reread-max") ? { rereadMax: Math.max(0, Math.floor(Number(value("reread-max")) || 0)) } : {}),
   log: (line) => process.stderr.write(`${line}\n`),
 });
 const prev = previousRun(outRoot, result);
