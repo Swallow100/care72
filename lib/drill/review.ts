@@ -36,6 +36,7 @@ import { ACTION_LABELS, SCENARIO_LABELS, STATUS_LABELS } from "./labels.ts";
 import type { CallRecord } from "./responses.ts";
 import { scenarioOf, type Ask } from "./scenarios.ts";
 import { askWords, factWords, FORM9_PLAN_LABELS, minuteText, personWords, reachedText } from "./score-labels.ts";
+import { PLAN_ACT_WORDS, PLAN_NEED_WORDS, sameWording } from "./person-facts.ts";
 import {
   extrasCount,
   gapBefore,
@@ -109,14 +110,17 @@ export const REVIEW_SYSTEM = [
   `手の言葉（表の手の名前。これのほかの手を書かない）: ${REVIEW_ACTION_LABELS.join("・")}`,
   "",
   "事実で結果の決まる手（世界の返事の決まり）:",
-  `- 電話 ${NO_CALL}: ${labelsWhere((r) => r.decide.type !== "record" && r.decide.type !== "visit")}は届かない（家の電話だけが${NO_CALL}なら、本人電話のほかの電話はかけられる）`,
+  // 通信の段（T125、lib/drill/comms.ts）。通話の規制は全部を止めない
+  `- 家の電話 ${NO_CALL}: 本人電話・本人への 119勧奨は届かない（停電の家の固定電話・家の電話の印。携帯のある人と、ほかの相手の電話はかけられる）`,
+  "- 電話 規制: 電話の手はかけ直せば時々つながる（全部は止まらない。事業所の職員への訪問依頼は電話が要らない）",
+  "- 携帯 電波不通: 家族・支援者・業者の携帯にかからず、メッセージも届かない（事業所の職員・市役所への手は届く）",
   `- 道 通行止: ${labelsWhere(ROAD_BOUND)}は届かない`,
   "- 職員 0: 事業所の職員への訪問依頼は出せない（訪問看護への訪問依頼は別）",
   "- 透析先 休止: その透析施設への透析調整・電話は受けられない",
   "",
   "返す JSON:",
   `- summary: 全体の講評（${SUMMARY_MAX - 40} 字まで）。次の訓練で試す事を 1〜2 つ。`,
-  `- findings: 指摘の配列。0〜${FINDINGS_MAX} 個。`,
+  `- findings: 指摘の配列。記録の中身で見つかった分だけ（数をそろえない・埋めない。指摘する事が無ければ空の配列。多くて「指摘の候補の数」まで、${FINDINGS_MAX} 個まで）。1 つの事に 1 つ。同じ人・同じ種類の指摘を重ねない。`,
   "  - person: 本人の仮名（「A さん」）。全体のことは「全体」。",
   "  - kind: order（対応の順番）・report（市役所への報告）・blank（様式 9 の空欄）・reached（時計が切れるまで手が届かなかった）・call（着信への応答）・choice（手の選び方。空振り・重複・頼み事への対応）・other のどれか。",
   `  - text: 行動についての 1〜2 文（${FINDING_TEXT_MAX - 20} 字まで）。いつ・誰に・どの手を打てばよかったかを、上の手の言葉で書く。`,
@@ -132,6 +136,7 @@ export const REVIEW_SYSTEM = [
   "6. 責める書き方をしない。次の訓練で試す形で書く。",
   "7. 手の選び方は、その時に分かっていた事実（手の履歴の［事実］）と、表にある別の手の名前で書く（例: 道が通行止と分かっていたので、訪問でなく見守依頼か連絡先電話）。無かった手を作らない。",
   "8. 頼み事に応えなかった事は、その頼み事と、応えられた手の名前で書く（例: 薬の頼み事には薬手配）。",
+  "9. 「計画で動けた人」「計画が無く手が要った人」は、計画を作る・見直す話として書いてよい（計画の中身の名前・場所は書かない）。",
 ].join("\n");
 
 export const ReviewSchema = z.object({
@@ -217,7 +222,7 @@ export const RESULT_WORDS: Readonly<Record<string, string>> = {
 
 /** 空振りの理由の言い方（講評の入力。手の履歴の事実と同じ言葉） */
 export const WASTE_WORDS: Readonly<Record<WasteWhy, string>> = {
-  phone: `電話 ${NO_CALL}`,
+  phone: `家の電話 ${NO_CALL}`,
   road: "道 通行止",
   staff: "職員 0",
   closed: "頼り先の施設 休止",
@@ -300,6 +305,17 @@ export function reviewText(ctx: ReviewContext, aliasOf: ReadonlyMap<string, stri
   lines.push(`- 頼み事の未対応（訓練の終わりまでに済まなかった頼み事）: ${n.asksOpen}`);
   for (const r of s.asks?.rows ?? []) lines.push(`  - ${who(r.person)}: ${askWords(r.kinds)}`);
   lines.push(`- 通話の往復: ${n.talks}${s.talks && s.talks.calls > 0 ? `（${s.talks.calls} 件の通話）` : ""}`);
+  // 計画で動けた人と、計画が無く手が要った人（T130。台帳の計画の中身の名前は書かない）
+  if (s.plans) {
+    const acted = s.plans.rows.filter((r) => r.acted.length > 0);
+    const needed = s.plans.rows.filter((r) => r.needed.length > 0);
+    lines.push(`- 計画で動けた人（台帳の計画どおり、連絡が取れなくても動いた）: ${acted.length}`);
+    for (const r of acted) lines.push(`  - ${who(r.person)}: ${r.acted.map((a) => PLAN_ACT_WORDS[a]).join("・")}`);
+    lines.push(`- 計画が無く手が要った人（計画に無く、ケアマネの手が要った事）: ${needed.length}`);
+    for (const r of needed) lines.push(`  - ${who(r.person)}: ${r.needed.map((a) => PLAN_NEED_WORDS[a]).join("・")}`);
+  }
+  // 指摘の候補の数（T130。評価の 3 回目で指摘がいつも 8 件だった。数を中身に合わせる）
+  lines.push(`- 指摘の候補の数（上の機械の数の中身の数。これより多く書かない。0 なら指摘なし）: ${findingRoom(s)}`);
   // 前回
   const p = ctx.previous;
   lines.push(
@@ -372,6 +388,26 @@ export function reviewText(ctx: ReviewContext, aliasOf: ReadonlyMap<string, stri
   return lines.join("\n");
 }
 
+/**
+ * 指摘にしてよい数（T130）。機械で数えた中身のうち、直す所の数（人ごと・全体ごと）。順番の外れ・未報告・様式 9 の空欄の人・条件に達した人・
+ * 赤の着信に出なかった・未応答・空振りと重複の人・頼み事の未対応の人・計画が無く手が要った人。何かあれば手の選び方の 1 つを足す。
+ * 何も無ければ 0（指摘なし）。FINDINGS_MAX を超えない
+ */
+export function findingRoom(s: DrillScore): number {
+  const people = (rows: ReadonlyArray<{ person: string | null }> | undefined) => new Set((rows ?? []).map((r) => r.person ?? "全体")).size;
+  const n =
+    s.order.misses.length +
+    (s.report.minute === null ? 1 : 0) +
+    s.form9.rows.length +
+    s.reached.length +
+    (s.calls.redDeclined + s.calls.open > 0 ? 1 : 0) +
+    people(s.wasted?.rows) +
+    people(s.repeat?.rows) +
+    (s.asks?.rows.length ?? 0) +
+    (s.plans?.needed ?? 0);
+  return Math.min(FINDINGS_MAX, n > 0 ? n + 1 : 0);
+}
+
 // ---------- 返事の検査 ----------
 
 /**
@@ -417,10 +453,12 @@ const isReviewKind = (v: string): v is ReviewKind => (REVIEW_KINDS as readonly s
  * 返事を講評にする。知らない仮名・登録簿に無い根拠・検査に掛かった文の指摘は捨てる。kind が一覧の外なら other。
  * members は参加者（仮名を戻す先）。summary が検査に掛かれば空
  */
-export function reviewBody(answer: ReviewAnswer, ctx: { key: PseudonymKey; members: ReadonlySet<string> }): ReviewBody {
+export function reviewBody(answer: ReviewAnswer, ctx: { key: PseudonymKey; members: ReadonlySet<string>; max?: number }): ReviewBody {
   const findings: ReviewFinding[] = [];
+  // 指摘の数は中身に合わせる（T130。findingRoom。無ければ FINDINGS_MAX まで）
+  const max = Math.min(FINDINGS_MAX, ctx.max ?? FINDINGS_MAX);
   for (const f of answer.findings) {
-    if (findings.length >= FINDINGS_MAX) break;
+    if (findings.length >= max) break;
     const target = f.person.trim();
     let person: string | null = null;
     if (target !== "全体" && target !== "") {
@@ -436,7 +474,10 @@ export function reviewBody(answer: ReviewAnswer, ctx: { key: PseudonymKey; membe
     const text = reviewWords(f.text, ctx.key, FINDING_TEXT_MAX);
     if (!text) continue;
     const k = f.kind.trim();
-    findings.push({ person, kind: isReviewKind(k) ? k : "other", text, basis });
+    const kind: ReviewKind = isReviewKind(k) ? k : "other";
+    // 同じ人・同じ種類で同じ言い回しの指摘を重ねない（T130。数を埋めた形）
+    if (findings.some((x) => x.person === person && x.kind === kind && sameWording(x.text, text))) continue;
+    findings.push({ person, kind, text, basis });
   }
   return { summary: reviewWords(answer.summary, ctx.key, SUMMARY_MAX) ?? "", findings };
 }
@@ -477,7 +518,7 @@ export async function createReview(deps: ReviewDeps, ctx: ReviewContext): Promis
     const aliasOf = new Map(key.people.map((p) => [p.personId, p.alias]));
     const record = pseudonymizeText(reviewText(ctx, aliasOf), key);
     const r = await askJson(buildReviewRequest(record), deps.ai);
-    const body = reviewBody(r.value, { key, members: new Set(members) });
+    const body = reviewBody(r.value, { key, members: new Set(members), max: findingRoom(ctx.score) });
     if (!body.summary && body.findings.length === 0) return { ok: false, error: "bad_output" };
     return { ok: true, body, model: r.model };
   } catch (e) {

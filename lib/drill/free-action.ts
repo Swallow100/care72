@@ -77,6 +77,8 @@ import { drillScope } from "./db.ts";
 import { SPEECH_RULES } from "./dialogue.ts";
 import { atHomeOf, situationText, whereOf, type CmWhere, type SituationSource } from "./free-situation.ts";
 import { cleanWords, isPersonaFailure, loadPersonaSources, personaPlaces } from "./persona.ts";
+import { fitKindOf, profileOf } from "./fit.ts";
+import { gateWords, nameIds } from "./gate.ts";
 import type { DrillCounts, WorldState } from "./scenarios.ts";
 
 // ---------- 言葉と上限 ----------
@@ -115,32 +117,13 @@ const IDLE_KINDS: ReadonlySet<string> = new Set(["none", "note", ""]);
 
 // ---------- 内部の名前（T129） ----------
 
-/** 手・相手・やり方・効き目の内部の名前 → 画面の言葉。長い名前から当てる（advise_119 を先に） */
-const INNER_NAMES: ReadonlyMap<string, string> = new Map(
-  [
-    ...ACTION_CATALOG.map((r): [string, string] => [r.id, CATALOG_LABELS[r.id]]),
-    ...Object.entries(CONTACT_KIND_LABELS),
-    ...Object.entries(FIXED_CALLEE_LABELS),
-    ...FREE_WAYS.map((w): [string, string] => [w, FREE_WAY_LABELS[w]]),
-    ["home", "家"] as [string, string],
-    ["move", "避難"] as [string, string],
-    ["none", FREE_LABELS.idle] as [string, string],
-    ["reach", "到達"] as [string, string],
-    ["arrival", "到着"] as [string, string],
-  ].sort((a, b) => b[0].length - a[0].length),
-);
-const INNER_RE = new RegExp(`(?<![A-Za-z0-9_])(?:${[...INNER_NAMES.keys()].join("|")})(?![A-Za-z0-9_])`, "g");
-
 /**
- * 画面に出す AI の文から、手の内部の名前（英字の id）を手の名前・相手の言い方に置き換える。置き換えたあとに英字の id らしい語
- * （「_」を含む語、小文字を含む 3 字以上の語）が残れば null（出さない）。大文字だけの略語（AED）と 2 字までの単位（km）は残す
+ * 画面に出す AI の文から、手の内部の名前（英字の id）を手の名前・相手の言い方に置き換える。置き換えたあとに英字の id らしい語が残れば null
+ * （出さない）。置き換えの表と決まりは AI の出力の 1 つの門（T125、lib/drill/gate.ts の nameIds）の物を使う（自由対応の口はそれを呼ぶだけ）
  */
 export function plainWords(text: string | null | undefined): string | null {
   if (!text) return null;
-  const out = text.replace(INNER_RE, (m) => INNER_NAMES.get(m) ?? m);
-  const tokens = out.match(/[A-Za-z0-9_]+/g) ?? [];
-  const inner = tokens.some((t) => t.includes("_") || (/[a-z]/.test(t) && t.replace(/[0-9]/g, "").length >= 3));
-  return inner ? null : out;
+  return nameIds(text);
 }
 
 // ---------- その本人に使える手 ----------
@@ -665,6 +648,14 @@ export function fallbackAlt(block: string, where: CmWhere, person: string | null
     case TERM_LABELS.noCall:
       if (here) return "その場で近所の人に消防署・役所へ知らせに走ってもらう";
       return roadOpen ? "訪問して直接様子を確かめる" : "近くの人に様子を見てもらう";
+    // 通信の段（T125）: 携帯の電波不通・携帯なしは、固定電話・メッセージ・人が行く道
+    case TERM_LABELS.noRadio:
+      if (here) return "その場で近所の人に消防署・役所へ知らせに走ってもらう";
+      return roadOpen ? "訪問して直接様子を確かめる" : "職員に訪問を頼む";
+    case TERM_LABELS.noMobile:
+      return "固定電話か訪問で確かめる";
+    case TERM_LABELS.evac:
+      return "避難先から電話で確かめる";
     case TERM_LABELS.road:
       return s.world.phone === "down" ? "近くの人に様子を見てもらう" : "電話で様子を確かめる";
     case TERM_LABELS.noStaff:
@@ -734,7 +725,20 @@ export async function planFree(s: FreeSource, input: FreeIn, hook: FreeHook | un
   } else {
     const own = r.own;
     const term = actionTerm("free", facts, { on, way: own.way, minutes: own.minutes });
-    const codeBlock = own.idle ? null : blockOf(term, termCallee(r.target, own.fixed !== null));
+    // 通信の段（T125）: 相手の区分を決めない電話（近所の人など）と家族・支援者の電話は携帯として、全域の電波不通で届かない。
+    // 本人の家への電話は、固定電話も携帯も使えない家で届かない（決まりの表と世界の返事 actions.ts の decideOwn と同じ）
+    const toMobile = own.way === "phone" && own.fixed === null && (own.callee === null || own.callee === "family" || own.callee === "supporter" || own.callee === "welfare_commissioner");
+    const commsBlock =
+      own.way !== "phone" || !on
+        ? null
+        : own.callee === "self" && facts.selfLine !== "ok"
+          ? facts.selfLine === "noRadio"
+            ? TERM_LABELS.noRadio
+            : TERM_LABELS.noCall
+          : toMobile && facts.radioAll
+            ? TERM_LABELS.noRadio
+            : null;
+    const codeBlock = own.idle ? null : (blockOf(term, termCallee(r.target, own.fixed !== null)) ?? commsBlock);
     const aiBlock = !own.idle && reading?.can === false ? (plainWords(reading.whyNot) ?? FREE_BLOCK_WORD) : null;
     plan = {
       as: null,
@@ -791,7 +795,20 @@ export async function planFree(s: FreeSource, input: FreeIn, hook: FreeHook | un
     },
     called: r.called,
   };
-  return { ...plan, alt, altAi: aiAlt !== null, judge };
+  // 画面に出る文（1 文・起きたこと・理由・AI のできない理由）を想定の門に（T125。想定に合わない文と内部の名前の残る文を落とす）
+  const fit = profileOf(fitKindOf({ scenario: s.scenario ?? "heavy_rain", options: { scale: s.options?.scale ?? null } }, s.world as WorldState));
+  const gated: string[] = [];
+  const gate = (t: string | null): string | null => {
+    const g = gateWords(t, fit, s.world as WorldState);
+    gated.push(...g.dropped);
+    return g.text;
+  };
+  const words = gate(plan.words);
+  const outcome = gate(plan.outcome);
+  const reason = gate(plan.reason);
+  const block = plan.blockAi && plan.block ? (gate(plan.block) ?? FREE_BLOCK_WORD) : plan.block;
+  const altGated = gate(alt);
+  return { ...plan, words, outcome, reason, block, alt: altGated, altAi: aiAlt !== null && altGated !== null, judge, ...(gated.length > 0 ? { gated } : {}) };
 }
 
 /** AI ができないと答えて理由が無いときの言葉 */

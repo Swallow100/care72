@@ -16,6 +16,7 @@ import { INJECT_TEXTS, injectChange, ROAD_BOUND_ROLES, type InjectKind } from ".
 import { hourText } from "./time-text.ts";
 import type { SourceId } from "../sources/index.ts";
 import type { CastPick } from "./cast.ts";
+import type { RadioState } from "./comms.ts";
 
 /** 12 の刻み（発災からの時間） */
 export const DRILL_HOURS = [0, 1, 3, 6, 9, 12, 18, 24, 36, 48, 60, 72] as const;
@@ -124,6 +125,11 @@ export type WorldState = {
   /** 停電。始まり・復旧は発災からの時間 */
   outage: { area: OutageArea; since: number; restoredAt: number | null } | null;
   phone: PhoneState;
+  /**
+   * 電波（携帯の基地局、T125）。down は監督の差し込みの全域の不通。停電が長引いた区域の家の不通は lib/drill/comms.ts の radioDownAt が
+   * 停電と想定の表から決める（ここには書かない）。無ければ通常
+   */
+  radio?: RadioState;
   /** 断水 */
   water: WaterState;
   roads: Road[];
@@ -183,6 +189,19 @@ export type WorldState = {
    * 変わるのに時間が要る状態の決まり（lib/drill/state-rules.ts）と、本人役・監督に渡す「いつから」の元
    */
   stamps?: Record<string, number>;
+  /**
+   * 門で落とした・直した数（1 つの数え。評価の台が数える）。AI の出力の門（T125、lib/drill/gate.ts）は「出どころ:決まり」の鍵
+   * （director:fit:alert・persona:fit:quake_word・world:dwell:road など）、人ごとの事実の帳面（T130、lib/drill/person-facts.ts）の門は
+   * 決まりの名前の鍵。世界を変えない。帳面そのものは保存しない（前の連絡・手・到着・台帳から毎回引く）
+   */
+  gated?: Record<string, number>;
+  /** 監督・世界が出した人ごとの出来事（T130。同じ種類・同じ言い回しを別の人にくり返さないために覚える。新しい 40 件まで） */
+  issued?: Array<{ kind: string; person: string | null; text: string; at: number }>;
+  /**
+   * 掛かってきた電話の往復でケアマネが言った事（T130、lib/drill/person-facts.ts の pushTold。台帳の id → 行。人ごとに新しい 8 つまで）。
+   * 本人役の帳面の「ケアマネに言われた事」に入る（外へ掛けた電話の往復は手の返事の talk から引く）
+   */
+  told?: Record<string, Array<{ minute: number; text: string; ask?: string }>>;
 };
 
 /** 向かっている人の役。staff 事業所の職員・nurse 訪問看護・supporter 支援者・family 家族・vendor 業者・transport 移送・power 電源・medicine 薬 */
@@ -275,6 +294,8 @@ export type WorldChange =
   | { kind: "outage"; area: OutageArea }
   | { kind: "outage_restored" }
   | { kind: "phone"; state: PhoneState }
+  // 電波（T125）。監督の「携帯の基地局の停止」と、その見込みの回復
+  | { kind: "radio"; state: RadioState }
   | { kind: "water"; out: boolean }
   | { kind: "road"; id: string; label: string; open: boolean }
   | { kind: "shelter"; id: string; label: string; state: ShelterState }
@@ -575,7 +596,8 @@ const EARTHQUAKE: Scenario = {
         { change: { kind: "quake", intensity: "6強" }, text: "南海トラフ 震度 6強" },
         { change: { kind: "tsunami", state: "evacuate" }, text: "津波警報、沿岸に避難指示" },
         { change: { kind: "outage", area: { scope: "office" } }, text: "停電 全域" },
-        { change: { kind: "phone", state: "down" }, text: "電話 通話不可" },
+        // 通話は規制（かけ直せば時々つながる。T125 で「通話不可」から。全部は止めない）。固定電話は停電の家で使えない（lib/drill/comms.ts）
+        { change: { kind: "phone", state: "down" }, text: "電話 規制 つながりにくい" },
       ],
       turns: [{ person: "p-07", who: WHO.any, color: "green", source: "agent", whereNow: "home", saying: "家は大丈夫" }],
     },
@@ -775,6 +797,7 @@ export function applyEvent(world: WorldState, e: WorldEvent, hour: number): Worl
 function stateValues(w: WorldState): Map<string, string> {
   const out = new Map<string, string>([
     ["phone", w.phone],
+    ["radio", w.radio ?? "ok"],
     ["outage", w.outage ? `${w.outage.since}|${w.outage.restoredAt ?? ""}` : ""],
     ["water", w.water],
     ["weather", w.weather ?? ""],
@@ -830,6 +853,8 @@ function applyChange(world: WorldState, e: WorldEvent, hour: number): WorldState
       return world.outage ? { ...world, outage: { ...world.outage, restoredAt: hour } } : world;
     case "phone":
       return { ...world, phone: c.state };
+    case "radio":
+      return c.state === "down" ? { ...world, radio: "down" } : (({ radio: _r, ...rest }) => rest)(world);
     case "water":
       return { ...world, water: c.out ? "out" : world.water === "out" ? "restored" : world.water };
     case "road":

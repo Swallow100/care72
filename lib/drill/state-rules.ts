@@ -10,6 +10,8 @@
 // - 型を決めて出来事を減らすのではなく、筋の通らない物だけを外す。どの種類も、筋が通る時刻なら起きてよい
 
 import { arrivalRoleWords } from "./event-catalog.ts";
+import { changeMisfit, wordMisfit, type FitProfile } from "./fit.ts";
+import { nameIds } from "./gate.ts";
 import type { DrillIncident } from "./incident-types.ts";
 import { applyEvent, type PersonMarks, type PhoneState, type WorldChange, type WorldState } from "./scenarios.ts";
 import { minuteText } from "./time-text.ts";
@@ -35,6 +37,8 @@ export const DWELL_MINUTES = {
   shelter: 360,
   /** 天候（大雨・止む） */
   weather: 180,
+  /** 電波（携帯の基地局）の不通と回復（T125） */
+  radio: 360,
 } as const;
 
 /** 同じ人に同じ役の人が着いたあと、また同じ役が来る予定を受けるまでの分（業者の巡回・電源・薬） */
@@ -57,6 +61,7 @@ export const STATE_RULES = [
   { id: "dwell:outage", kind: "dwell", words: `停電が復旧したら、${DWELL_MINUTES.outage / 60} 時間たつまでもう一度の停電にしない` },
   { id: "dwell:shelter", kind: "dwell", words: `避難所の状態は、前に変わってから ${DWELL_MINUTES.shelter / 60} 時間たつまで変わらない` },
   { id: "dwell:weather", kind: "dwell", words: `天候は、前に変わってから ${DWELL_MINUTES.weather / 60} 時間たつまで変わらない` },
+  { id: "dwell:radio", kind: "dwell", words: `携帯の電波は、前に変わってから ${DWELL_MINUTES.radio / 60} 時間たつまで変わらない` },
   { id: "table_first", kind: "table", words: "想定の表がこのあと変える状態（停電の復旧・電話・その道や施設・その人のいる所）は、表より先に変えない" },
 ] as const;
 export type StateRuleId = (typeof STATE_RULES)[number]["id"];
@@ -229,6 +234,14 @@ export function screenIncident(world: WorldState, e: DrillIncident, ctx: ScreenC
       }
       return tooSoon(world, "phone", ctx.minute, DWELL_MINUTES.phone) !== null ? { keep: false, rule: "dwell:phone" } : { keep: true };
     }
+    case "radio": {
+      const now = world.radio ?? "ok";
+      if (c.state === now) return { keep: false, rule: "same" };
+      if (ctx.origin === "table") return { keep: true };
+      // 予定の回復（監督の見込み）は時刻が来たら起こす
+      if (ctx.origin === "scheduled") return { keep: true };
+      return tooSoon(world, "radio", ctx.minute, DWELL_MINUTES.radio) !== null ? { keep: false, rule: "dwell:radio" } : { keep: true };
+    }
     case "water": {
       const next = c.out ? "out" : world.water === "out" ? "restored" : world.water;
       if (next === world.water) return { keep: false, rule: "same" };
@@ -321,8 +334,8 @@ export type Screened = {
   kept: DrillIncident[];
   /** 当てたあとの世界 */
   world: WorldState;
-  /** 捨てた・後ろに回した物の決まり（ログと数え。中身は書かない） */
-  ruled: Array<{ rule: StateRuleId; kind: WorldChange["kind"]; deferred: boolean }>;
+  /** 捨てた・後ろに回した物の決まり（ログと数え。中身は書かない）。想定に合わない物は「fit:…」、内部の名前は internal_id（T125） */
+  ruled: Array<{ rule: StateRuleId | string; kind: WorldChange["kind"]; deferred: boolean }>;
 };
 
 /**
@@ -340,6 +353,12 @@ export function screenIncidents(
      * 起きないまま残る（通行止の道が 72 時間まで戻らない）
      */
     noDefer?: boolean;
+    /**
+     * 想定の表（T125、lib/drill/fit.ts）。あれば、表の外（AI・予定）の出来事を先に想定で見る: 合わない変化と、AI の文の合わない言葉・
+     * 内部の名前が残る文は捨てる（手の id は画面の名前に置き換える）。null は未決の想定（変化は全部合う。内部の名前だけ見る）。
+     * 無ければ前と同じ（想定を見ない）
+     */
+    fit?: FitProfile | null;
   },
 ): Screened {
   let w = world;
@@ -347,12 +366,23 @@ export function screenIncidents(
   const ruled: Screened["ruled"] = [];
   for (const e of incidents) {
     const minute = ctx.minute ?? Math.round(e.at * 60);
-    const v = screenIncident(w, e, { minute, origin: ctx.originOf?.(e) ?? ctx.origin, ...(ctx.ahead ? { ahead: ctx.ahead } : {}) });
+    const origin = ctx.originOf?.(e) ?? ctx.origin;
+    let x0 = e;
+    if (ctx.fit !== undefined && origin !== "table") {
+      const fitRule = changeMisfit(ctx.fit, e.change, w) ?? (e.ai ? wordMisfit(ctx.fit, e.text, w) : null);
+      const named = e.ai ? nameIds(e.text) : e.text;
+      if (fitRule || named === null) {
+        ruled.push({ rule: fitRule ?? "internal_id", kind: e.change.kind, deferred: false });
+        continue;
+      }
+      if (named !== e.text) x0 = { ...e, text: named };
+    }
+    const v = screenIncident(w, x0, { minute, origin, ...(ctx.ahead ? { ahead: ctx.ahead } : {}) });
     if (v.keep === false || (v.keep === "defer" && ctx.noDefer)) {
       ruled.push({ rule: v.rule, kind: e.change.kind, deferred: false });
       continue;
     }
-    const x = v.keep === "defer" ? deferred(e, minute, v.at) : e;
+    const x = v.keep === "defer" ? deferred(x0, minute, v.at) : x0;
     if (v.keep === "defer") ruled.push({ rule: v.rule, kind: e.change.kind, deferred: true });
     kept.push(x);
     w = applyEvent(w, x, x.at);
@@ -390,6 +420,7 @@ export function stateLines(world: WorldState, now: number, who: (person: string 
     );
   }
   out.push(`電話: ${PHONE_WORDS[world.phone]}${sinceWords(world, "phone")}${holdWords(world, "phone", now, DWELL_MINUTES.phone)}`);
+  if (world.radio === "down") out.push(`携帯の電波: 不通${sinceWords(world, "radio")}${holdWords(world, "radio", now, DWELL_MINUTES.radio)}`);
   if (world.water !== "none") out.push(`断水: ${world.water === "out" ? "断水中" : "解消"}${sinceWords(world, "water")}${holdWords(world, "water", now, DWELL_MINUTES.water)}`);
   // 同じ名前・同じ状態・同じ時刻の道と施設（仮想の町の道は人ごとの id）は 1 行にまとめ、人を並べる
   const grouped = new Map<string, { head: string; tail: string; who: string[] }>();
@@ -418,7 +449,7 @@ export function stateLines(world: WorldState, now: number, who: (person: string 
   return out;
 }
 
-const PHONE_WORDS: Readonly<Record<PhoneState, string>> = { ok: "通常", busy: "不安定", down: "通話不可" };
+const PHONE_WORDS: Readonly<Record<PhoneState, string>> = { ok: "通常", busy: "不安定（つながりにくい）", down: "規制（かけ直せば時々つながる）" };
 const ARRIVAL_WORDS: Readonly<Record<string, string>> = {
   staff: "事業所の職員",
   nurse: "訪問看護",

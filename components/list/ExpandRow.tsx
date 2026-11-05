@@ -34,6 +34,8 @@ export function ExpandRow({
   return (
     <>
       <tr
+        // 行への錨（T128。訓練の被害状況の対象の人を押すとこの行へ。#row-<id>）
+        id={`row-${id}`}
         data-row={id}
         data-open={open ? "" : undefined}
         onClick={(e) => {

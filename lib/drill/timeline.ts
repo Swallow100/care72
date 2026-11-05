@@ -69,6 +69,7 @@ export const INCIDENT_REACH: Readonly<Record<WorldEventKind, Reach>> = {
   outage: "public",
   outage_restored: "public",
   phone: "public",
+  radio: "public",
   water: "public",
   road: "public",
   shelter: "public",
@@ -162,6 +163,8 @@ export const ROUTE_LABELS: Readonly<Record<KnowRoute, string>> = {
   call: "着信",
   missed: "不在",
   button: "ボタン",
+  // 通話の規制の間の家族・支援者のメッセージ（T125）
+  message: "伝言",
   out: "発信",
   visit: "訪問",
   result: "結果",

@@ -85,10 +85,27 @@ import { arrivalRoleWords, extraWorldWords } from "./event-catalog.ts";
 import type { ActionRecord, DrillIncident, DrillTurn, HeardSignal, PersonaBatchHook, PersonaHook, PersonaInput, PersonState, StopLog } from "./engine.ts";
 import { CALL_STATUS_TEXTS, clockLabel, PHONE_LABELS, SHELTER_LABELS, TSUNAMI_LABELS, WATER_LABELS } from "./labels.ts";
 import { nightLine } from "./night.ts";
-import { ASK_KINDS, eventHour, type AskKind, type FixedTurn, type OutageArea, type PhoneState, type WorldState } from "./scenarios.ts";
+import { ASK_KINDS, eventHour, type AskKind, type DrillKind, type FixedTurn, type OutageArea, type PhoneState, type WorldState } from "./scenarios.ts";
+import { fitLedgerHazards, profileOf } from "./fit.ts";
+import { homeComms, homeOf, type Home } from "./comms.ts";
 import { clockRemaining, formatHours, type Situation, type TriageClock } from "../triage/index.ts";
 import { callsFor, speakerSlip, speakersLine, speakersOf, type Speaker, type Speakers } from "./speaker.ts";
 import { minuteText } from "./time-text.ts";
+import {
+  dropFactSlips,
+  factsBlock,
+  factsOf,
+  housemates,
+  placeOfState,
+  planOf,
+  screenAsks,
+  screenTurn,
+  slipContextOf,
+  type Facts,
+  type GateLog,
+  type GateRule,
+  type Plan,
+} from "./person-facts.ts";
 
 // ---------- 本人役 ----------
 
@@ -120,6 +137,21 @@ export type Persona = {
   clocks?: ReadonlyArray<ClaudeClock>;
   /** 本人の性別（通話の相手の本人の呼び方、T121） */
   sex?: ClaudePerson["sex"];
+  /** 家の区域と通信（T125、lib/drill/comms.ts。固定電話・携帯）。Claude に渡さない（今の様子の行に「固定電話は停電で使えない」などを書く元） */
+  home?: Home;
+  /** 訓練の災害の種類（T125。電波不通の区域の表を引く） */
+  fit?: DrillKind | null;
+  /** 計画（台帳の停電のときの予備・避難先と手段・在宅避難・業者の約束。T130、lib/drill/person-facts.ts の planOf）。Claude に名前は渡さない */
+  plan?: Plan;
+  /** 同居の人の役割名（T130。あとから「来た」と言わない） */
+  together?: ReadonlyArray<string>;
+  /** 本人の周りの家族の続柄（T130。いない家族を出さない）。世帯が「家族と」「その他」なら null（見ない） */
+  kin?: ReadonlyArray<string> | null;
+  /**
+   * ケアマネの自由の言葉を Claude に渡せる形に伏せる口（T130。呼び口が事業所の全員の鍵で作る。伏せきれなければ null）。
+   * 無ければ帳面の「ケアマネに言われた事」は決まった指示の言葉だけ
+   */
+  mask?: (text: string) => string | null;
 };
 
 /** 連絡しうる人の区分 → 安否の出どころ。訪問看護・施設などの事業所は連絡しない（監督 T19・対応 T20 の相手） */
@@ -242,9 +274,11 @@ export function profileText(
  * 台帳（仮名化の前）から本人役を作る。説明の文は仮名化の層を通し、氏名・町名・電話が残れば PseudonymLeakError（送らない）。
  * places（事業所の町名 → 地区の別名、lib/drill/area.ts の officePlaces）があれば、説明にも刻みの文にも町名は別名で渡る（T88）
  */
-export function buildPersona(source: PseudonymInput, opts: { on?: string; places?: ReadonlyArray<Place> } = {}): Persona {
+export function buildPersona(source: PseudonymInput, opts: { on?: string; places?: ReadonlyArray<Place>; fit?: DrillKind | null } = {}): Persona {
   const { payload, key } = pseudonymize([source], { ...(opts.on ? { on: opts.on } : {}), ...(opts.places ? { places: opts.places } : {}) });
-  const p = payload[0];
+  // 本人役の説明のハザードは想定に効く区域だけ（T125。地震の訓練に河川の浸水の想定を渡さない）。未決・無ければ全部
+  const fitProfile = opts.fit ? profileOf(opts.fit) : null;
+  const p = fitProfile ? { ...payload[0], evacuation: { ...payload[0].evacuation, hazards: fitLedgerHazards(fitProfile, payload[0].evacuation.hazards as Array<{ kind: HazardKind; depthM: number | null; note: string | null }>) } } : payload[0];
   const reporters = reportersOf(source);
   const means = source.ledger.basic.contactMeans ?? {};
   const roles = contactRoles(source.contacts);
@@ -262,6 +296,46 @@ export function buildPersona(source: PseudonymInput, opts: { on?: string; places
     speakers,
     clocks: p.clocks,
     sex: p.sex,
+    home: homeOf(source.ledger),
+    fit: opts.fit ?? null,
+    plan: planOf(source),
+    ...housemates(source, roles, p.sex),
+  };
+}
+
+/** 本人役の帳面（T130）。actions はこの人への手（メモを落とした物）。停電の地区は本人の町名とハザードで見る */
+export function personaFacts(
+  persona: Pick<Persona, "plan" | "together" | "kin" | "hazards" | "town" | "mask">,
+  x: { person: string; world: WorldState; state: PersonState | null; actions?: ReadonlyArray<ActionRecord>; now: number },
+): Facts {
+  const o = x.world.outage;
+  return factsOf({
+    person: x.person,
+    world: x.world,
+    state: x.state,
+    actions: x.actions ?? [],
+    now: x.now,
+    plan: persona.plan ?? null,
+    inOutage: o !== null && inOutageArea(o.area, persona.hazards, persona.town ?? null),
+    together: persona.together ?? [],
+    kin: persona.kin ?? null,
+    ...(persona.mask ? { mask: persona.mask } : {}),
+  });
+}
+
+/**
+ * ケアマネの自由の言葉を伏せる口（T130）。本人を先頭に事業所の全員の鍵で pseudonymizeText を通す（往復の口 createTalkHook と同じ鍵の作り方）。
+ * 伏せきれなければ null（その言葉は渡さない）
+ */
+export function maskWith(source: PseudonymInput, sources: ReadonlyMap<string, PseudonymInput>, opts: { on?: string; places?: ReadonlyArray<Place> } = {}): (text: string) => string | null {
+  let key: PseudonymKey | null = null;
+  return (text) => {
+    try {
+      key ??= pseudonymize([source, ...[...sources.values()].filter((s) => s !== source)], opts).key;
+      return pseudonymizeText(text, key).text;
+    } catch {
+      return null;
+    }
   };
 }
 
@@ -442,8 +516,19 @@ export function clockWords(persona: Pick<Persona, "clocks" | "hazards" | "town">
   });
 }
 
+/** この家の通信の今（固定電話・携帯の電波・通話の規制）。家の分からない本人役（前からのテスト）は書かない */
+export function commsWords(world: WorldState, person: string, persona: Pick<Persona, "home" | "fit">, now: number): string[] {
+  if (!persona.home) return [];
+  const c = homeComms(world, profileOf(persona.fit ?? null), person, persona.home, now);
+  const out: string[] = [];
+  if (c.landline === "out" && world.marks?.[person]?.lineDown === undefined) out.push("この家の固定電話は停電で使えない");
+  if (c.mobile === "down") out.push("携帯の電波が不通（メッセージ・安否のボタンも届かない）");
+  else if (world.phone === "down") out.push(c.mobile === "ok" ? "電話は規制でつながりにくい（メッセージ・安否のボタンは届く）" : "電話は規制でつながりにくい");
+  return out;
+}
+
 /** 世界の今の様子のうち、この人に関わる物 */
-function worldWords(world: WorldState, person: string, persona: Persona): string[] {
+function worldWords(world: WorldState, person: string, persona: Persona, now: number): string[] {
   const out: string[] = [];
   if (world.alertLevel) out.push(`警戒レベル ${world.alertLevel}`);
   if (world.quake) out.push(`地震 震度 ${world.quake}`);
@@ -456,6 +541,8 @@ function worldWords(world: WorldState, person: string, persona: Persona): string
   }
   // T121: 道・電話・施設はいつからその状態か（world.stamps）。短い間に入れ替わったように言わないため
   out.push(`電話 ${PHONE_LABELS[world.phone]}${sinceWords(world, "phone")}`);
+  // 通信の段（T125、lib/drill/comms.ts）。本人役が通じない道で連絡したと言わないため
+  out.push(...commsWords(world, person, persona, now));
   if (world.water !== "none") out.push(`断水 ${WATER_LABELS[world.water]}`);
   for (const r of world.roads.filter((x) => !x.person || x.person === person)) {
     out.push(`${r.label} ${r.open ? "通行可" : "通行止"}${r.person === person ? "（家の近くの道）" : ""}${sinceWords(world, `road:${r.id}`)}`);
@@ -507,9 +594,11 @@ export function tickText(input: PersonaInput, persona: Persona): string {
     ...(input.night ? [nightLine(input.hour)] : []),
     ...(reason ? [reason] : []),
     incidents.length > 0 ? ["この刻みの状況:", ...incidents.map((e) => `- ${e.text}`)].join("\n") : "この刻みの状況: 新しい事はない",
-    ["今の様子:", ...[...worldWords(input.world, input.person, persona), ...advisedWords(input.world, input.person)].map((x) => `- ${x}`)].join("\n"),
+    ["今の様子:", ...[...worldWords(input.world, input.person, persona, now), ...advisedWords(input.world, input.person)].map((x) => `- ${x}`)].join("\n"),
     // T121: 持ちこたえる時間の今（コードの計算）。言葉はこれと食い違わない
     ...clockLines(persona, input.world, input.person, now),
+    // T130: 人ごとの事実の帳面と計画（コードが引く。いる所・前に言った事・来た人・声・同居・電気と予備）
+    factsBlock(personaFacts(persona, { person: input.person, world: input.world, state: input.state, actions: input.actions ?? [], now })),
     `前の連絡: ${stateWords(input.state)}`,
     acts.length > 0 ? ["ケアマネがした事:", ...acts.map((a) => `- ${actionWords(a, persona)}`)].join("\n") : "ケアマネがした事: なし",
     input.fixed.length > 0
@@ -546,6 +635,8 @@ export const PERSONA_SYSTEM = [
   "8. ケアマネの手が届いたあとの最初の連絡は、その手の結果を受けた様子を言う（来た人がいる・物が届いた・移った）。頼んだ事が済んでいなければ、また頼んでよい。",
   "9. 119 を勧められたら、かけるか・かけないかを言葉で言う（かけたかどうかは自分で決める）。救急が来た先の事は言わない。「死亡」と言わない。",
   "10. 「今の様子」「持ちこたえる時間の今」と食い違う事を言わない（来た人・届いた物・復旧した物を、まだと言わない。切れた分を、まだ残ると言わない。いつからの状態かも合わせる）。",
+  "11. 「人ごとの事実」と食い違う事を言わない（いる所、前に言った動けない・けが、同居の人、声が無いと伝えた事、電気と予備）。「計画」にある事は連絡が取れなくても計画どおりにする（予備に替える・決めた避難先へ移る）。計画に無い事で、手も人も無いのに良くならない。",
+  "12. 「ケアマネに言われた事」は覚えて従う（待つと言われたら待つ・119 を勧められたらかけるか決める）。従えない時は理由を言う（道が通れない・動けない など）。",
 ].join("\n");
 
 /**
@@ -728,19 +819,32 @@ export function fixedTurns(input: Pick<PersonaInput, "fixed" | "hour">): DrillTu
  * - 想定の表の行がある: 行ごとに 1 つ。形は表のまま、いちばん遅い行の言う事・する事を Haiku の言葉に（使えなければ表の言葉、ai: false）
  * - 表の行が無い: 連絡するときだけ 1 つ。押す人が「押せる人」でなければ連絡なし。赤は 4 問、緑はいる所、いる所が分からなければ安否不明
  */
-export function personaTurns(input: PersonaInput, persona: Persona, answer: PersonaAnswer): DrillTurn[] {
+export function personaTurns(input: PersonaInput, persona: Persona, answer: PersonaAnswer, onDrop?: (rule: GateRule) => void): DrillTurn[] {
+  // T130: 帳面（前の連絡・手・到着・台帳の計画から引く）。帳面と食い違う文を落とし、表の行の無い答えは帳面の門を通す
+  const facts = personaFacts(persona, { person: input.person, world: input.world, state: input.state, actions: input.actions ?? [], now: nowMinuteOf(input) });
+  // 家族の話し手は自分の家族のことも話すので、いない家族の確かめは本人と支援者の言葉だけ
+  const slipCtx = (source: FixedTurn["source"], place: WhereNow | null) => ({ ...slipContextOf(facts, place), ...(source === "family" ? { kin: null } : {}) });
+  const factText = (raw: string | null, source: FixedTurn["source"], place: WhereNow | null): string | null => {
+    if (!raw) return raw;
+    const t = dropFactSlips(raw, slipCtx(source, place), onDrop).trim();
+    return t ? t : null;
+  };
   const doing = doingOf(answer, persona.key);
   // 話し手に合わない文（夫・妻が本人を「母」と呼ぶ、話し手でない続柄で名乗る）を落としてから掃除する（T121）
   const speechBy = (source: FixedTurn["source"]) => cleanPersonaWords(dropSlips(answer.speech, speakerOf(persona, source), persona), persona.key, SPEECH_MAX);
 
   if (input.fixed.length > 0) {
     const fixed = [...input.fixed].sort((a, b) => eventHour(a, input.hour) - eventHour(b, input.hour));
-    const speech = speechBy(fixed[fixed.length - 1].source);
+    const lastRow = fixed[fixed.length - 1];
+    // 表の行は骨（色・4 問・いる所は表のまま）。言葉だけ帳面と表の行のいる所で見る
+    const rowPlace = placeOfState({ color: lastRow.color, whereNow: lastRow.whereNow ?? null, atHome: lastRow.atHome ?? null }) ?? facts.place?.where ?? null;
+    const speech = factText(speechBy(lastRow.source), lastRow.source, rowPlace);
+    const doingOk = factText(doing, lastRow.source, rowPlace);
     return fixed.map((f, i) => {
       const last = i === fixed.length - 1;
       const aiSaying = last ? speech : null;
       // 表のする事（「4 問の途中で止まった」「避難を渋る」）は骨なので残し、表に無ければ Haiku のする事
-      const aiDoing = last && f.doing == null ? doing : null;
+      const aiDoing = last && f.doing == null ? doingOk : null;
       return {
         ...turnOfFixed(f, input.hour),
         saying: aiSaying ?? f.saying ?? null,
@@ -759,7 +863,7 @@ export function personaTurns(input: PersonaInput, persona: Persona, answer: Pers
   const color: SignalColor = red ? "red" : where ? "green" : "unknown";
   const a = red ? answer.redAnswers : null;
   const speech = speechBy(reporter.source);
-  return [
+  const turn = screenTurn(
     {
       person: input.person,
       color,
@@ -774,7 +878,12 @@ export function personaTurns(input: PersonaInput, persona: Persona, answer: Pers
       ai: true,
       at: input.hour,
     },
-  ];
+    facts,
+    onDrop,
+  );
+  if (!turn) return [];
+  const place = placeOfState({ color: turn.color, whereNow: turn.whereNow, atHome: turn.atHome });
+  return [{ ...turn, saying: factText(turn.saying, turn.source, place), doing: factText(turn.doing, turn.source, place) }];
 }
 
 /** 本人役の失敗のうち「連絡なし」にする物（AI の層の失敗と伏せきれない）。知らない例外は false で、投げ直す */
@@ -855,6 +964,8 @@ export type PersonaDeps = {
   on?: string;
   /** 上限で落ちたときに「本人役 停止」を書き留める所（T70）。返す物は変わらない（表の固定の安否か連絡なし） */
   stops?: StopLog;
+  /** 帳面の門で落とした・直した物を書き留める所（T130。engine が世界の gated に足す） */
+  gates?: GateLog;
 };
 
 /**
@@ -870,11 +981,13 @@ export function createPersonaHook(deps: PersonaDeps): PersonaHook {
       const sources = await (loaded ??= deps.load());
       const source = sources.get(input.person);
       if (!source) return fixedTurns(input);
-      const persona = buildPersona(source, { ...(deps.on ? { on: deps.on } : {}), places: personaPlaces(deps.ai, sources) });
+      const opts = { ...(deps.on ? { on: deps.on } : {}), places: personaPlaces(deps.ai, sources) };
+      // T130: ケアマネに言われた事の自由の言葉は事業所の全員の鍵で伏せてから帳面に。T125: 想定に効くハザードと通信の段
+      const persona: Persona = { ...buildPersona(source, { ...opts, fit: input.fit }), mask: maskWith(source, sources, opts) };
       if (input.fixed.length === 0 && !persona.reporters.some((r) => r.canPress)) return [];
       const tick = pseudonymizeText(tickText(input, persona), persona.key);
       const r = await askJson(buildPersonaRequest(persona.profile, tick, input.virtual === true), deps.ai);
-      return personaTurns(input, persona, r.value);
+      return personaTurns(input, persona, r.value, deps.gates?.hit);
     } catch (e) {
       if (e instanceof AiLimitReached) deps.stops?.hit("persona");
       // AI の層の失敗と伏せきれないは想定どおり。それ以外（台帳を読めないなど）は名前だけログに残す（中身は書かない）
@@ -928,7 +1041,9 @@ export function createPersonaBatchHook(deps: PersonaDeps): PersonaBatchHook {
           return;
         }
         try {
-          const persona = buildPersona(source, { ...(deps.on ? { on: deps.on } : {}), places });
+          const opts = { ...(deps.on ? { on: deps.on } : {}), places };
+          // T130: ケアマネに言われた事の自由の言葉は事業所の全員の鍵で伏せてから帳面に
+          const persona: Persona = { ...buildPersona(source, { ...opts, fit: input.fit }), mask: maskWith(source, sources, opts) };
           if (input.fixed.length === 0 && !persona.reporters.some((r) => r.canPress)) return;
           const text = pseudonymizeText(`本人役:\n${persona.profile.text}\n\nこの刻み:\n${tickText(input, persona)}`, persona.key);
           asked.push({ i, id: String(asked.length + 1), persona, text });
@@ -943,7 +1058,7 @@ export function createPersonaBatchHook(deps: PersonaDeps): PersonaBatchHook {
       const byId = new Map(r.value.answers.map((a) => [a.id.trim(), a] as const));
       for (const x of asked) {
         const a = byId.get(x.id);
-        out[x.i] = a ? personaTurns(inputs[x.i], x.persona, a) : fixedTurns(inputs[x.i]);
+        out[x.i] = a ? personaTurns(inputs[x.i], x.persona, a, deps.gates?.hit) : fixedTurns(inputs[x.i]);
       }
       return out;
     } catch (e) {
@@ -967,8 +1082,12 @@ export type CallPickup = (typeof CALL_PICKUPS)[number];
 export const CALL_PICKUP_ODDS: Readonly<Record<PhoneState, { answers: number; background: number }>> = {
   ok: { answers: 0.85, background: 0.05 },
   busy: { answers: 0.5, background: 0.2 },
-  down: { answers: 0, background: 0 },
+  // 規制（T125）: かけ直せば時々つながる。全部は止めない
+  down: { answers: 0.3, background: 0.1 },
 };
+
+/** メッセージ（T125）の返信・既読の割合（通話の様子によらない。電波不通・携帯なしは届かない） */
+export const MESSAGE_READ_ODDS = { replied: 0.5, read: 0.25 } as const;
 
 /** 出るか。roll は 0 以上 1 未満（Math.random など）。電話の手段が無ければ出ない */
 export function decideCallPickup(phone: PhoneState, roll: number, reachable = true): CallPickup {
@@ -1000,7 +1119,7 @@ function tellWords(t: NonNullable<PersonaCall["tell"]>): string {
  * 切れたあとも同じ調子で話す・前に動けないと言った本人が手も人も無いまま動けると言う、が残った
  */
 export const PATH_RULE =
-  "「今の様子」「持ちこたえる時間の今」「前の連絡」と食い違う事を言わない（来た人・届いた物・復旧した物を、まだと言わない。切れた分を、まだ残ると言わない。前の連絡で動けない・けがと言った本人が、人が来た・手が届いたのでなければ、急に動ける・無事と言わない）。";
+  "「今の様子」「持ちこたえる時間の今」「前の連絡」と食い違う事を言わない（来た人・届いた物・復旧した物を、まだと言わない。切れた分を、まだ残ると言わない。前の連絡で動けない・けがと言った本人が、人が来た・手が届いたのでなければ、急に動ける・無事と言わない）。「人ごとの事実」（いる所・同居の人・声・電気と予備）と「計画」とも食い違わない。「ケアマネに言われた事」は覚えて従い、従えない時は理由を言う。";
 
 export const CALL_SYSTEM = [
   "災害の訓練で、ケアマネからの電話に出た人を演じる。人は全部架空。",
@@ -1029,9 +1148,11 @@ export function callText(call: PersonaCall, persona: Persona): string {
   return [
     `時刻: 発災から ${clockLabel(now)}`,
     ...(call.night ? [nightLine(call.hour)] : []),
-    ["今の様子:", ...[...worldWords(call.world, call.person, persona), ...advisedWords(call.world, call.person)].map((x) => `- ${x}`)].join("\n"),
+    ["今の様子:", ...[...worldWords(call.world, call.person, persona, now), ...advisedWords(call.world, call.person)].map((x) => `- ${x}`)].join("\n"),
     // T123: 通話（最初の言葉・往復）にも持ちこたえる時間の今。評価の 2 回目で、通話の道だけ時計の段が無く、切れたあとも同じ調子で話した
     ...clockLines(persona, call.world, call.person, now),
+    // T130: 帳面と計画（刻みの道と同じ）
+    factsBlock(personaFacts(persona, { person: call.person, world: call.world, state: call.state, now })),
     `この刻みの状況: ${ownIncidents(call.incidents, call.person).map((e) => e.text).join("、") || "新しい事はない"}`,
     `前の連絡: ${stateWords(call.state)}`,
     `電話に出た人: ${call.callee}${calleeCalls(persona, call.callee)}`,
@@ -1060,11 +1181,15 @@ export async function personaCallReply(
 ): Promise<CallReply> {
   if (pickup !== "answers") return { pickup, speech: null, ai: false };
   if (!persona.reporters.some((r) => r.role === call.callee)) return { pickup: "no_answer", speech: null, ai: false };
+  // T130: 家族・支援者が本人の声が無いと伝えたあと、人が来るまで本人は電話で話さない（物音だけ。Claude を呼ばない）
+  const facts = personaFacts(persona, { person: call.person, world: call.world, state: call.state, now: Math.round(call.hour * 60) });
+  if (call.callee === "本人" && facts.voiceLost) return { pickup: "background_only", speech: null, ai: false };
   try {
     const text = pseudonymizeText(callText(call, persona), persona.key);
     const r = await askJson(buildPersonaCallRequest(persona.profile, text), ctx);
-    // 電話に出た人の続柄に合わない文を落とす（T121）
-    const said = dropSlips(r.value.speech, calleeSpeaker(persona, call.callee, persona.sex ?? null), persona);
+    // 電話に出た人の続柄に合わない文を落とす（T121）。帳面と食い違う文も（T130）
+    const speaker = calleeSpeaker(persona, call.callee, persona.sex ?? null);
+    const said = dropFactSlips(dropSlips(r.value.speech, speaker, persona), { ...slipContextOf(facts), ...(speaker?.source === "family" ? { kin: null } : {}) });
     const speech = cleanPersonaWords(said, persona.key, SPEECH_MAX);
     return { pickup, speech, ai: speech !== null };
   } catch (e) {
@@ -1133,11 +1258,15 @@ export async function personaTalkReply(
   talk: ForClaude<{ text: string }>,
   key: PseudonymKey,
   ctx: AskJsonContext,
+  /** 帳面（T130）。あれば帳面と食い違う文と、電気が戻ったあとの電池・電源の頼み事を落とす */
+  facts?: Facts,
 ): Promise<TalkReplyWords> {
   try {
     const r = await askJson(buildPersonaTalkRequest(persona.profile, talk), ctx);
-    const speech = cleanPersonaWords(r.value.speech, key, SPEECH_MAX);
-    return speech === null ? { speech: null, asks: [], ai: false } : { speech, asks: asksOf(r.value.asks, TALK_ASKS_MAX), ai: true };
+    const raw = facts ? dropFactSlips(r.value.speech, { ...slipContextOf(facts), kin: null }) : r.value.speech;
+    const speech = cleanPersonaWords(raw, key, SPEECH_MAX);
+    const asks = asksOf(r.value.asks, TALK_ASKS_MAX);
+    return speech === null ? { speech: null, asks: [], ai: false } : { speech, asks: facts ? screenAsks(asks, facts) : asks, ai: true };
   } catch (e) {
     if (isPersonaFailure(e)) return { speech: null, asks: [], ai: false };
     throw e;
@@ -1169,9 +1298,11 @@ export function visitText(v: PersonaVisit, persona: Persona): string {
   return [
     `時刻: 発災から ${clockLabel(now)}`,
     ...(v.night ? [nightLine(v.hour)] : []),
-    ["今の様子:", ...[...worldWords(v.world, v.person, persona), ...advisedWords(v.world, v.person)].map((x) => `- ${x}`)].join("\n"),
+    ["今の様子:", ...[...worldWords(v.world, v.person, persona, now), ...advisedWords(v.world, v.person)].map((x) => `- ${x}`)].join("\n"),
     // T123: 訪問にも持ちこたえる時間の今（通話と同じ）
     ...clockLines(persona, v.world, v.person, now),
+    // T130: 帳面と計画（刻みの道と同じ）
+    factsBlock(personaFacts(persona, { person: v.person, world: v.world, state: v.state, now })),
     `この刻みの状況: ${ownIncidents(v.incidents, v.person).map((e) => e.text).join("、") || "新しい事はない"}`,
     `前の連絡: ${stateWords(v.state)}`,
     "ケアマネが家に着いた。",
@@ -1193,9 +1324,12 @@ export async function personaVisitReport(persona: Persona, visit: PersonaVisit, 
   try {
     const text = pseudonymizeText(visitText(visit, persona), persona.key);
     const r = await askJson(buildPersonaVisitRequest(persona.profile, text), ctx);
-    const condition = cleanPersonaWords(r.value.condition, persona.key, VISIT_CONDITION_MAX, CONDITION_BANNED);
-    const speech = cleanPersonaWords(r.value.speech, persona.key, SPEECH_MAX);
-    const asks = asksOf(r.value.asks, VISIT_ASKS_MAX);
+    // T130: 帳面と食い違う文と、電気が戻ったあとの電池・電源の頼み事を落とす（訪問で着いたので、いる所は家）
+    const facts = personaFacts(persona, { person: visit.person, world: visit.world, state: visit.state, now: Math.round(visit.hour * 60) });
+    const slip = { ...slipContextOf(facts, "home"), kin: null };
+    const condition = cleanPersonaWords(dropFactSlips(r.value.condition, slip), persona.key, VISIT_CONDITION_MAX, CONDITION_BANNED);
+    const speech = cleanPersonaWords(dropFactSlips(r.value.speech, slip), persona.key, SPEECH_MAX);
+    const asks = screenAsks(asksOf(r.value.asks, VISIT_ASKS_MAX), facts);
     if (condition === null && speech === null && asks.length === 0) return null;
     return { condition, asks, speech, ai: true };
   } catch (e) {

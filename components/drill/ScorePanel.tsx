@@ -127,8 +127,9 @@ export function ScorePanel({
             {view.extra.repeat.map((r) => (
               <li key={r.action} data-action={r.action}>
                 <span className="font-bold">{r.name}</span> {r.act}
+                {/* 打った時刻と間隔を分ける（T128。「30 分・1 時間 5 分」と並べると読み違える） */}
                 <span className="ml-1.5 text-xs text-muted tabular-nums">
-                  {SCORE_LABELS.gap} {r.gap} 分・{r.at}
+                  <span className="text-ink">{r.at}</span> {SCORE_LABELS.gap} {r.gap} 分
                 </span>
               </li>
             ))}
