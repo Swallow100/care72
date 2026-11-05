@@ -365,6 +365,9 @@ describe("日付と電話の部品", () => {
     // 局番が括弧の中
     expect(p3[0].box.x).toBeGreaterThan(0.1 + 2 * W);
     expect(p3[0].box.x + p3[0].box.w).toBeLessThanOrEqual(0.1 + 18 * W + 1e-9);
+    // 行の終わりの添え（携帯）は外して分ける
+    const mob = inkPhoneParts(f, ["090-0000-0001 携帯"], pc([dash(20), dash(45)])) as Exclude<ReturnType<typeof inkPhoneParts>, null | "fail">;
+    expect(mob.flatMap((i) => (i.kind === "text" ? i.lines : []))).toEqual(["090", "0000", "0001"]);
     // 区切りが刷ってなければ分けない
     expect(inkPhoneParts(f, ["089-000-0001"], pc([]))).toBeNull();
     // 電話の 2 つの空き（局番と残り）を郵便番号に取らない

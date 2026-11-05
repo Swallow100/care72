@@ -1061,7 +1061,12 @@ const PHONE_VALUE = /^[（(]?\s*(\d{2,5})\s*[）)]?\s*[-‐－−ー―]?\s*(\d{
 export function inkPhoneParts(field: MappingField, lines: readonly string[], pc: PlaceCtx): OverlayItem[] | null | "fail" {
   const box = field.box;
   if (!box || !pc.ink || field.shape !== "phone" || (field.optionBoxes ?? []).some(Boolean) || lines.length !== 1) return null;
-  const m = lines[0].normalize("NFKC").trim().match(PHONE_VALUE);
+  // 行の終わりの添え（携帯・固定）は外して照らす（携帯だけの連絡先の行は「090-… 携帯」）
+  const m = lines[0]
+    .normalize("NFKC")
+    .trim()
+    .replace(/\s*(携帯|固定|自宅|電話)$/, "")
+    .match(PHONE_VALUE);
   if (!m) return null;
   const image = pc.page.image;
   const glyphs = inkIn(box, pc.ink).filter((b) => !b.line && !b.box);
