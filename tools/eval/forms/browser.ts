@@ -54,6 +54,8 @@ export type BrowserPage = {
   height: number;
   /** 何番目の質で収まったか（86・75・60・45） */
   quality: number;
+  /** 元のファイルの頁の番号（選んで振り直す前。一覧の様式の共有の対応表の鍵、T134） */
+  origin: number;
 };
 
 /** legacy は古い形（.xls・.doc）、office は Excel・Word を描けなかった */
@@ -159,7 +161,7 @@ async function officeStage(mod: CanvasModule, bytes: Uint8Array, secrets: Readon
     if (!enc) return { ok: false, error: "too_large", rawBytes };
     const redactOk = await redactedDark(mod, enc.bytes, enc.w, enc.h, enc.rects);
     const n = enc.rects.length;
-    pages.push({ bytes: enc.bytes, meta: { source: rendered.kind, page: i + 1, redacted: n }, bare: n === 0, redactOk, width: enc.w, height: enc.h, quality: enc.quality });
+    pages.push({ bytes: enc.bytes, meta: { source: rendered.kind, page: i + 1, redacted: n }, bare: n === 0, redactOk, width: enc.w, height: enc.h, quality: enc.quality, origin: Number(c.id) + 1 });
   }
   return { ok: true, source: rendered.kind, pages, totalPages: rendered.pages.length, rawBytes };
 }
@@ -194,7 +196,7 @@ export async function browserStage(bytes: Uint8Array, secrets: ReadonlyArray<rea
       source: "photo",
       totalPages: 1,
       rawBytes,
-      pages: [{ bytes: enc.bytes, meta: { source: "photo", page: 1, redacted: n }, bare: n === 0, redactOk, width: enc.w, height: enc.h, quality: enc.quality }],
+      pages: [{ bytes: enc.bytes, meta: { source: "photo", page: 1, redacted: n }, bare: n === 0, redactOk, width: enc.w, height: enc.h, quality: enc.quality, origin: 1 }],
     };
   }
 
@@ -226,7 +228,7 @@ export async function browserStage(bytes: Uint8Array, secrets: ReadonlyArray<rea
       if (!enc) return { ok: false, error: "too_large", rawBytes };
       const redactOk = await redactedDark(mod, enc.bytes, enc.w, enc.h, enc.rects);
       const k = enc.rects.length;
-      pages.push({ bytes: enc.bytes, meta: { source: "pdf", page: n, redacted: k }, bare: k === 0, redactOk, width: enc.w, height: enc.h, quality: enc.quality });
+      pages.push({ bytes: enc.bytes, meta: { source: "pdf", page: n, redacted: k }, bare: k === 0, redactOk, width: enc.w, height: enc.h, quality: enc.quality, origin: n });
     }
     return { ok: true, source: "pdf", pages, totalPages: total, rawBytes };
   } finally {
