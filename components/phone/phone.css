@@ -15,40 +15,35 @@
 }
 
 /*
-  選択肢（T69b）。面は塗らず灰の枠（1.5px）。印のある答えだけ、左に状態の色の細い帯（6px）。
-  帯は tone-check と同じく --state-*（黄は地の上で 3:1 に届く琥珀。文字には使わない）。言葉と文字の色は変えない。
+  選択肢。印の無い答え（わからない・ほか・場所・部位・体の訴え・そばの人・頼みたいこと）は面を塗らず灰の枠（1.5px）。
+  印のある答え（T137b）は面そのものを状態の色で塗る（端だけの色の線はやめた。高齢の本人に分かるように面で）。
+  赤は表が至急にする答え（けが ある・動けない）、黄はケアマネが見に行く手がかりの答え、緑は同じ問いの問題なしの側。
   色は本人が押す答えの見た目の印で、ルールの表の入力ではない（lib/signals/questions.ts の tone）
 */
 .phone-choice {
   border: 1.5px solid var(--phone-choice-border);
 }
 
-.phone-choice[data-tone] {
-  box-shadow: inset 6px 0 0 0 var(--phone-tone);
-  print-color-adjust: exact;
-  -webkit-print-color-adjust: exact;
-}
-
-.phone-choice[data-tone="urgent"] {
-  --phone-tone: var(--state-urgent);
-}
-
-.phone-choice[data-tone="check"] {
-  --phone-tone: var(--state-check);
-}
-
-.phone-choice[data-tone="ok"] {
-  --phone-tone: var(--state-ok);
-}
-
 .phone-fill-ok {
   background-color: var(--state-ok);
   color: var(--phone-on-state);
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
 }
 
 .phone-fill-urgent {
   background-color: var(--state-urgent);
   color: var(--phone-on-state);
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}
+
+/* 黄の面（T137b）。黄の塗りの印（--state-check-fill）と同じ色に濃い文字（黄は文字の色に使わない） */
+.phone-fill-check {
+  background-color: var(--state-check-fill);
+  color: var(--on-state-check);
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
 }
 
 /*

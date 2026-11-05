@@ -19,7 +19,7 @@
 import { EMERGENCY_TEXT } from "../forms/own-sheet.ts";
 import { easy, plainText } from "../forms/easy-words.ts";
 import { TALK_PHRASES, VOICE_PROMPT_TEXT } from "./phrases.ts";
-import { matchVoiceAnswer, questionOf, type Answers, type QuestionId } from "./questions.ts";
+import { answeredOutside, matchVoiceAnswer, questionOf, type Answers, type QuestionId } from "./questions.ts";
 
 // ---------- 上限（案。docs/DECISIONS.md「声の聞き取りの会話」） ----------
 
@@ -84,6 +84,83 @@ export function topicsFor(hasDevice: boolean): TalkTopic[] {
   return TALK_TOPICS.filter((t) => hasDevice || !TALK_TOPIC_SPECS[t].needsDevice);
 }
 
+// ---------- 問いの表（T137b。話題ごとの最初の問いと、答えに合わせて 1 段深く聞く問い） ----------
+//
+// 決まった言い方の表。AI はこの中から問いを選び、言い換えるだけ（新しい問いを作らない）。最初の問いの id は話題と同じ。
+// 1 段深く聞く問いは、元の問い（parents）を聞いたあとだけ聞ける。Claude が呼べない時（決まった問いで続ける時）は、
+// 取れた答え（when）で深く聞くかを決める。聞くのは事実だけで、はい・いいえで答えられる形を中心に（言葉の出にくい人でも進む）。
+// 診断・重さ・点数は聞かない。
+
+export type TalkItem = {
+  /** 問いの id（最初の問いは話題と同じ） */
+  id: string;
+  topic: TalkTopic;
+  /** 1 段深く聞く問いの元（どれかを聞いたあとに聞ける）。最初の問いは空 */
+  parents: readonly string[];
+  /** 決まった問いで続けるとき、取れた答えからこの問いを聞くか（1 段深く聞く問いだけ） */
+  when?: (answers: Answers) => boolean;
+} & TopicSpec;
+
+const said = (a: Answers, id: QuestionId, ...choices: string[]) => {
+  const c = a[id]?.choice;
+  return c !== undefined && choices.includes(c);
+};
+
+/** 1 段深く聞く問い。question があれば問いの表の文（答えを言葉の一致で取る）、無ければ markup が決まった文 */
+function follow(
+  id: string,
+  topic: TalkTopic,
+  parents: readonly string[],
+  when: TalkItem["when"],
+  label: string,
+  from: { question: QuestionId } | { markup: string },
+  extra: Partial<TopicSpec> = {},
+): TalkItem {
+  const spec: TopicSpec =
+    "question" in from ? fromQuestion(from.question, label, extra) : { question: null, text: voiceOf(from.markup), easy: from.markup, label, ...extra };
+  return { id, topic, parents, ...(when ? { when } : {}), ...spec };
+}
+
+export const TALK_ITEMS: readonly TalkItem[] = [
+  ...TALK_TOPICS.map((t): TalkItem => ({ id: t, topic: t, parents: [], ...TALK_TOPIC_SPECS[t] })),
+  // けが ある → どこか・血が出ているか・動かせるか
+  follow("injuryPart", "injured", ["injured"], (a) => said(a, "injured", "yes"), "部位", { question: "injuryPart" }),
+  follow("bleeding", "injured", ["injured"], (a) => said(a, "injured", "yes"), "出血", { question: "bleeding" }),
+  follow("injuryMove", "injured", ["injured"], (a) => said(a, "injured", "yes"), "動かせるか", { markup: TALK_PHRASES.injuryMove }),
+  // 動けない → 何かに挟まれているか・誰か呼べるか。動ける → 外に出られるか
+  follow("pinned", "canMove", ["canMove"], (a) => said(a, "canMove", "no"), "挟まれ", { markup: TALK_PHRASES.pinned }),
+  follow("callHelp", "nearby", ["canMove", "nearby"], (a) => said(a, "canMove", "no") || said(a, "nearby", "alone"), "呼べるか", {
+    markup: TALK_PHRASES.callHelp,
+  }),
+  follow("exit", "canMove", ["canMove"], (a) => said(a, "canMove", "yes") && !answeredOutside(a), "外へ", { question: "exit" }),
+  // 家 → 家のどこ。家でない → どこ
+  follow("floor", "place", ["place"], (a) => said(a, "atHome", "yes"), "階", { question: "floor" }),
+  follow("where", "place", ["place"], (a) => said(a, "atHome", "no"), "場所", { question: "place" }),
+  // 機器 → 電池の残り・予備
+  follow("battery", "device", ["device"], (a) => a.device !== undefined, "電池", { markup: TALK_PHRASES.battery }, { needsDevice: true }),
+  follow("spare", "device", ["device"], (a) => said(a, "device", "stopped"), "予備", { markup: TALK_PHRASES.spare }, { needsDevice: true }),
+  // 薬 ある → 何日分か（はい・いいえで）
+  follow("medDays", "hasMedicine", ["hasMedicine"], (a) => said(a, "hasMedicine", "yes"), "日数", { markup: TALK_PHRASES.medDays }),
+  // 連絡してほしい人 → 家族か
+  follow("calleeFamily", "callee", ["callee"], undefined, "家族へ", { markup: TALK_PHRASES.calleeFamily }),
+];
+
+const ITEMS = new Map(TALK_ITEMS.map((i) => [i.id, i]));
+export const TALK_ITEM_IDS = TALK_ITEMS.map((i) => i.id) as [string, ...string[]];
+
+export function itemOf(id: string): TalkItem | undefined {
+  return ITEMS.get(id);
+}
+
+export function isTalkItem(v: unknown): v is string {
+  return typeof v === "string" && ITEMS.has(v);
+}
+
+/** この人に聞ける問い（機器は台帳に機器がある人だけ） */
+export function itemsFor(hasDevice: boolean): TalkItem[] {
+  return TALK_ITEMS.filter((i) => hasDevice || !i.needsDevice);
+}
+
 // ---------- 会話の記録の形 ----------
 
 /**
@@ -111,6 +188,8 @@ export type TalkTurn = {
   by: TalkBy;
   /** 話題。open は最初の問い（定型文） */
   topic: TalkTopic | "open";
+  /** 問いの表の id（T137b。1 段深く聞く問い。無ければ話題の最初の問い） */
+  item?: string;
   /** 本人の言葉（その回の文字起こし、言い換えない）。無ければ null */
   reply: string | null;
   heard: TalkHeard;
@@ -152,6 +231,8 @@ export type TalkLine = {
   easy: string | null;
   by: TalkBy;
   topic: TalkTopic | "open";
+  /** 問いの表の id（T137b）。無ければ話題の最初の問い */
+  item?: string;
   /** 声の URL（Gemini TTS。app/api/signals/voice）。無ければ端末の読み上げ。最初の問いは定型文の声（playPrompt） */
   voice?: string | null;
 };
@@ -160,7 +241,7 @@ export type TalkLine = {
 export const talkFixedVoicePath = (id: string) => `/api/signals/voice?fixed=${encodeURIComponent(id)}`;
 export const talkVoicePath = (hash: string) => `/api/signals/voice?talk=${hash}`;
 /** 声の URL として受ける形（サーバーの返事の確かめ） */
-export const TALK_VOICE_PATH = /^\/api\/signals\/voice\?(fixed=(topic|button|close)-[A-Za-z_]{1,24}|talk=[0-9a-f]{32})$/;
+export const TALK_VOICE_PATH = /^\/api\/signals\/voice\?(fixed=(topic|button|close|filler)-[A-Za-z_]{1,24}|talk=[0-9a-f]{32})$/;
 
 function voiceOf(markup: string): string {
   return plainText(easy(markup)).replace(/ /g, "");
@@ -169,11 +250,18 @@ function voiceOf(markup: string): string {
 /** 最初の問い（定型文。AI の告知から） */
 export const TALK_OPENING: TalkLine = { text: VOICE_PROMPT_TEXT, question: VOICE_PROMPT_TEXT, easy: null, by: "fixed", topic: "open" };
 
-/** 話題の決まった問い */
-export function fixedLine(topic: TalkTopic): TalkLine {
-  const s = TALK_TOPIC_SPECS[topic];
-  return { text: s.text, question: s.text, easy: s.easy, by: "fixed", topic, voice: talkFixedVoicePath(`topic-${topic}`) };
+/** 問いの表の決まった問い（話題の最初の問いは話題の id） */
+export function fixedLine(id: string): TalkLine {
+  const s = itemOf(id);
+  if (!s) throw new Error(`問いの表に無い: ${id}`);
+  return { text: s.text, question: s.text, easy: s.easy, by: "fixed", topic: s.topic, item: s.id, voice: talkFixedVoicePath(`topic-${s.id}`) };
 }
+
+/** 次の 1 文を待つ間の相づち（T137b。作り置きの声）。heard は本人が話したあと、wait は聞き取れなかったあと */
+export const TALK_FILLERS = { heard: TALK_PHRASES.fillerHeard, wait: TALK_PHRASES.fillerWait } as const;
+export type TalkFiller = keyof typeof TALK_FILLERS;
+export const fillerText = (f: TalkFiller) => voiceOf(TALK_FILLERS[f]);
+export const fillerVoice = (f: TalkFiller) => talkFixedVoicePath(`filler-${f}`);
 
 /** ボタンの答え方の 1 問（問いのあとに「はいなら みどり…」） */
 export function buttonLine(id: QuestionId): string {
@@ -216,6 +304,59 @@ export function heardOf(reply: string | null): Extract<TalkHeard, "text" | "uncl
   rest = rest.replace(FILLER_CHARS, "");
   if (!rest || s.length <= 1) return "unclear";
   return "text";
+}
+
+// ---------- 読んだ文の声の拾い（T137b。読む間も聞き続けるので、端末のマイクが自分の声を拾うことがある） ----------
+
+const poolOf = (spoken: string) => {
+  const pool = new Map<string, number>();
+  for (const c of Array.from(squashTalk(spoken))) pool.set(c, (pool.get(c) ?? 0) + 1);
+  return pool;
+};
+
+/** 拾った言葉の字のうち、読んだ文にある字の割合（字の数で。順は見ない） */
+export function echoOverlap(heard: string, spoken: string): number {
+  const h = Array.from(squashTalk(heard));
+  if (h.length === 0) return 0;
+  const pool = poolOf(spoken);
+  let hit = 0;
+  for (const c of h) {
+    const n = pool.get(c) ?? 0;
+    if (n > 0) {
+      hit++;
+      pool.set(c, n - 1);
+    }
+  }
+  return hit / h.length;
+}
+
+/** 読んだ文の声らしい（字の 75% 以上が読んだ文にある）。読む間の話し始めの見分けに使う（短い答えも含めて声を止めない側に倒す） */
+export const echoLike = (heard: string, spoken: string) => echoOverlap(heard, spoken) >= 0.75;
+
+/**
+ * 答えから読んだ文の声の拾いを外す。区切り（改行）ごとに、頭から読んだ文の字で続く所が長い（5 字以上かつ読んだ文の半分以上）なら外し、
+ * 漢字とかなの違いで続かなくても、区切り全体が読んだ文の声らしく長ければ外す。短い答え（「はい」「あります」）は残す
+ */
+export function stripEcho(text: string, spoken: string): string {
+  const spokenLen = Array.from(squashTalk(spoken)).length;
+  const min = Math.max(5, Math.ceil(spokenLen * 0.5));
+  return text
+    .split(/\n+/)
+    .map((seg) => {
+      const chars = Array.from(squashTalk(seg));
+      const pool = poolOf(spoken);
+      let p = 0;
+      for (; p < chars.length; p++) {
+        const n = pool.get(chars[p]) ?? 0;
+        if (n === 0) break;
+        pool.set(chars[p], n - 1);
+      }
+      if (p >= min) return chars.slice(p).join("");
+      if (chars.length >= min && echoLike(seg, spoken)) return "";
+      return seg.trim();
+    })
+    .filter(Boolean)
+    .join("\n");
 }
 
 /** 命に関わる言葉（コードの一覧）。打ち消し（「ない」「ません」）が続く所は数えない */
@@ -267,9 +408,10 @@ export function wantsEnd(reply: string | null): boolean {
  * 決まった問いのまま聞いた回の答え（言葉の一致。T49 の matchVoiceAnswer と同じで Claude は使わない）。
  * AI が言い換えた問い・問いの表に無い話題・最初の問いは取らない
  */
-export function answerOf(line: Pick<TalkLine, "question" | "topic">, reply: string | null): TalkTurn["answer"] | undefined {
+export function answerOf(line: Pick<TalkLine, "question" | "topic" | "item">, reply: string | null): TalkTurn["answer"] | undefined {
   if (line.topic === "open") return undefined;
-  const spec = TALK_TOPIC_SPECS[line.topic];
+  const spec = itemOf(line.item ?? line.topic);
+  if (!spec) return undefined;
   if (!spec.question || squashTalk(line.question) !== squashTalk(spec.text)) return undefined;
   const choice = matchVoiceAnswer(reply, spec.question);
   return choice ? { id: spec.question, choice } : undefined;
@@ -279,7 +421,8 @@ export function answerOf(line: Pick<TalkLine, "question" | "topic">, reply: stri
 export function heardTurn(line: TalkLine, reply: string | null, at: string): TalkTurn {
   const r = reply?.trim() || null;
   const answer = answerOf(line, r);
-  return { ask: line.text, by: line.by, topic: line.topic, reply: r, heard: heardOf(r), ...(answer ? { answer } : {}), at };
+  const item = line.topic !== "open" && line.item && line.item !== line.topic ? { item: line.item } : {};
+  return { ask: line.text, by: line.by, topic: line.topic, ...item, reply: r, heard: heardOf(r), ...(answer ? { answer } : {}), at };
 }
 
 // ---------- 次の手 ----------
@@ -296,8 +439,8 @@ export type TalkPlan =
   | { kind: "danger"; danger: DangerKind }
   | { kind: "close"; end: TalkEnd }
   | { kind: "buttons" }
-  /** 次の 1 文。topics は聞ける話題（AI はこの中から選ぶ）、fallback は決まった問いで聞く話題 */
-  | { kind: "ask"; topics: TalkTopic[]; fallback: TalkTopic };
+  /** 次の 1 文。items は聞ける問いの表の id（AI はこの中から選ぶ）、fallback は決まった問いで聞く問い */
+  | { kind: "ask"; items: string[]; fallback: string };
 
 /** 問いの数（最初の問いを含む。ボタンの答え方の回は数えない） */
 export const askedTurns = (log: TalkLog) => log.turns.filter((t) => t.heard !== "press" && t.heard !== "skip").length;
@@ -311,29 +454,53 @@ export function unclearRun(log: TalkLog): number {
   return n;
 }
 
-/** 話題を聞いた回数 */
-const asksOf = (log: TalkLog, topic: TalkTopic) => log.turns.filter((t) => t.topic === topic).length;
+/** 往復の問いの id（1 段深く聞く問いは item、ほかは話題） */
+export const turnItem = (t: Pick<TalkTurn, "topic" | "item">) => t.item ?? t.topic;
+
+/** 問いを聞いた回数 */
+const asksOf = (log: TalkLog, id: string) => log.turns.filter((t) => turnItem(t) === id).length;
+
+/** 会話の中で取れた答えと押した答えを合わせた物（深く聞くかの when に使う） */
+const knownAnswers = (log: TalkLog, answers: Answers): Answers => ({ ...talkAnswers(log), ...answers });
 
 /**
- * 話題が済んだか: 押した答えがある・言葉で答えた・聞き直しても聞き取れなかった（TALK_TOPIC_MAX_ASKS）。
+ * 問いが済んだか: 押した答えがある・言葉で答えた・聞き直しても聞き取れなかった（TALK_TOPIC_MAX_ASKS）。
  * 決まった問いで取れた答え（answer）も済み
  */
-export function topicDone(log: TalkLog, topic: TalkTopic, answers: Answers): boolean {
-  const q = TALK_TOPIC_SPECS[topic].question;
+export function itemDone(log: TalkLog, id: string, answers: Answers): boolean {
+  const q = itemOf(id)?.question;
   if (q && answers[q]) return true;
-  const turns = log.turns.filter((t) => t.topic === topic);
+  const turns = log.turns.filter((t) => turnItem(t) === id);
   return turns.some((t) => t.heard === "text" || t.answer !== undefined) || turns.length >= TALK_TOPIC_MAX_ASKS;
 }
 
-/** まだ済んでいない話題（表の 2 問を先に、ほかは話題の順） */
+/** 話題の最初の問いが済んだか（前からの名前） */
+export const topicDone = (log: TalkLog, topic: TalkTopic, answers: Answers) => itemDone(log, topic, answers);
+
+/** 1 段深く聞く問いの元を聞いたか */
+const parentAsked = (log: TalkLog, item: TalkItem) => item.parents.length === 0 || item.parents.some((p) => asksOf(log, p) > 0);
+
+/**
+ * まだ済んでいない問い。決まった問いで続けるときの順: 表の 2 問 → 取れた答えで深く聞く問い（when）→ ほかの話題の最初の問い。
+ * 深く聞く問いは、元を聞いて when が当たる物だけ（Claude が呼べない時は答えで決める）
+ */
+export function openItems(log: TalkLog, ctx: Pick<TalkContext, "hasDevice" | "answers">): string[] {
+  const known = knownAnswers(log, ctx.answers);
+  const avail = itemsFor(ctx.hasDevice).filter((i) => !itemDone(log, i.id, ctx.answers));
+  const tops = avail.filter((i) => i.parents.length === 0).map((i) => i.id);
+  const deeper = avail.filter((i) => i.parents.length > 0 && parentAsked(log, i) && i.when?.(known)).map((i) => i.id);
+  const required = tops.filter((t) => (TALK_REQUIRED as readonly string[]).includes(t));
+  return [...required, ...deeper, ...tops.filter((t) => !required.includes(t))];
+}
+
+/** まだ済んでいない話題（前からの名前。話題の最初の問いだけ） */
 export function openTopics(log: TalkLog, ctx: Pick<TalkContext, "hasDevice" | "answers">): TalkTopic[] {
-  const all = topicsFor(ctx.hasDevice).filter((t) => !topicDone(log, t, ctx.answers));
-  return [...all.filter((t) => TALK_REQUIRED.includes(t)), ...all.filter((t) => !TALK_REQUIRED.includes(t))];
+  return openItems(log, ctx).filter((id): id is TalkTopic => isTalkTopic(id));
 }
 
 /** 表の 2 問で、まだ聞いていない（済んでいない）物 */
 export function missingRequired(log: TalkLog, ctx: Pick<TalkContext, "hasDevice" | "answers">): TalkTopic[] {
-  return TALK_REQUIRED.filter((t) => !topicDone(log, t, ctx.answers));
+  return TALK_REQUIRED.filter((t) => !itemDone(log, t, ctx.answers));
 }
 
 /**
@@ -352,22 +519,28 @@ export function planTalk(log: TalkLog, ctx: TalkContext): TalkPlan {
   if (askedTurns(log) >= TALK_MAX_TURNS || (Number.isFinite(elapsed) && elapsed >= TALK_MAX_MS - TALK_TURN_RESERVE_MS)) {
     return { kind: "close", end: "cap" };
   }
-  const open = openTopics(log, ctx);
+  const open = openItems(log, ctx);
   if (open.length === 0) return { kind: "close", end: "grasped" };
-  // AI が選べる話題: 済んでいない話題と、言葉で答えたがもう 1 回聞き直せる話題（噛み合わない答えの言い換え）
-  const topics = topicsFor(ctx.hasDevice).filter(
-    (t) => open.includes(t) || (asksOf(log, t) < TALK_TOPIC_MAX_ASKS && !answeredByPress(t, ctx.answers) && !answeredInTalk(log, t)),
-  );
-  return { kind: "ask", topics, fallback: open[0] };
+  // AI が選べる問い: 済んでいない話題の最初の問いと、元を聞いた深く聞く問い（答えに合わせて AI が選ぶ。when は見ない）、
+  // 言葉で答えたがもう 1 回聞き直せる問い（噛み合わない答えの言い換え）
+  const items = itemsFor(ctx.hasDevice)
+    .filter((i) => parentAsked(log, i))
+    .filter(
+      (i) =>
+        open.includes(i.id) ||
+        (!itemDone(log, i.id, ctx.answers) && i.parents.length > 0) ||
+        (asksOf(log, i.id) > 0 && asksOf(log, i.id) < TALK_TOPIC_MAX_ASKS && !answeredByPress(i, ctx.answers) && !answeredInTalk(log, i.id)),
+    )
+    .map((i) => i.id);
+  return { kind: "ask", items, fallback: open[0] };
 }
 
-function answeredByPress(t: TalkTopic, answers: Answers): boolean {
-  const q = TALK_TOPIC_SPECS[t].question;
-  return q !== null && answers[q] !== undefined;
+function answeredByPress(i: TalkItem, answers: Answers): boolean {
+  return i.question !== null && answers[i.question] !== undefined;
 }
 
-function answeredInTalk(log: TalkLog, t: TalkTopic): boolean {
-  return log.turns.some((x) => x.topic === t && x.answer !== undefined);
+function answeredInTalk(log: TalkLog, id: string): boolean {
+  return log.turns.some((x) => turnItem(x) === id && x.answer !== undefined);
 }
 
 /** ボタンの答え方で聞く問い（表の 4 列の問い。押した・取れた答えのある物は聞かない） */
@@ -482,6 +655,7 @@ export function parseTalkLog(v: unknown): TalkLog | null {
     const t = raw as Record<string, unknown>;
     if (!shortText(t.ask) || (t.by !== "ai" && t.by !== "fixed")) return null;
     if (t.topic !== "open" && !isTalkTopic(t.topic)) return null;
+    if (t.item !== undefined && (!isTalkItem(t.item) || itemOf(t.item)?.topic !== t.topic)) return null;
     if (t.reply !== null && !shortText(t.reply)) return null;
     if (!(TALK_HEARD as readonly unknown[]).includes(t.heard) || !isIso(t.at)) return null;
     let answer: TalkTurn["answer"];
@@ -502,6 +676,7 @@ export function parseTalkLog(v: unknown): TalkLog | null {
       ask: t.ask,
       by: t.by,
       topic: t.topic as TalkTurn["topic"],
+      ...(typeof t.item === "string" ? { item: t.item } : {}),
       reply: (t.reply as string | null) ?? null,
       heard: t.heard as TalkHeard,
       ...(answer ? { answer } : {}),

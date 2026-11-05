@@ -7,7 +7,7 @@ import { EMERGENCY_TEXT } from "../forms/own-sheet.ts";
 import { createPromptPlayer, LINE_START_MS, type AudioLike, type UtteranceLike } from "./media.ts";
 import { closingVoice, fixedLine, TALK_TOPIC_SPECS, TALK_VOICE_PATH, talkVoicePath } from "./talk.ts";
 import { readTalkReply } from "./talk-client.ts";
-import { isTalkFixedId, talkFixedTexts, talkFixedVoice, talkLineVoice, talkTextHash, talkVoiceByHash, talkVoiceKey } from "./voice.ts";
+import { isTalkFixedId, talkFixedTexts, talkFixedVoice, talkLineVoice, talkTextHash, talkVoiceByHash, talkVoiceKey, warmTalkVoices } from "./voice.ts";
 
 const NO_KEY = { people: [], contacts: [], rules: [], secrets: [] };
 
@@ -79,6 +79,29 @@ describe("会話の声（サーバー）", () => {
   });
 });
 
+describe("作り置き（T137b）", () => {
+  it("決まった文は全部 id を持つ（深く聞く問い・相づちも）。赤を押した時に無い物だけ作り、置いてある物は作らない", async () => {
+    const texts = talkFixedTexts();
+    for (const id of ["topic-bleeding", "topic-pinned", "topic-battery", "topic-calleeFamily", "filler-heard", "filler-wait", "button-canMove", "close-cap"]) {
+      expect(isTalkFixedId(id)).toBe(true);
+    }
+    expect(texts["filler-heard"]).toBe("わかりました");
+    const bucket = new FakeBucket();
+    const seen = { inputs: [] as string[] };
+    const n = Object.keys(texts).length;
+    expect(await warmTalkVoices(bucket, ctx(seen))).toBe(new Set(Object.values(texts)).size);
+    expect(seen.inputs.length).toBeLessThanOrEqual(n);
+    // 2 回目は何も作らない
+    expect(await warmTalkVoices(bucket, ctx(seen))).toBe(0);
+    // 作った声は GET の id で読める（作り直さない）
+    const before = seen.inputs.length;
+    expect(await talkFixedVoice(bucket, "topic-bleeding", ctx(seen))).not.toBeNull();
+    expect(seen.inputs.length).toBe(before);
+    // 鍵が無ければ何もしない
+    expect(await warmTalkVoices(new FakeBucket(), { ...ctx(seen), tts: undefined })).toBe(0);
+  });
+});
+
 describe("会話の声（端末）", () => {
   function player(behavior: "plays" | "fails" | "hangs") {
     const spoken: string[] = [];
@@ -125,6 +148,24 @@ describe("会話の声（端末）", () => {
 
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
+
+  it("止める（T137b）: 鳴っている声を止め、止めた声は読み上げで読み直さない。あとの声が始まったら前の声の失敗で止めない", async () => {
+    const slow = player("hangs");
+    const r = slow.p.line("じぶんで たてますか", "/api/signals/voice?fixed=topic-canMove");
+    await vi.advanceTimersByTimeAsync(100);
+    slow.p.stop();
+    await vi.advanceTimersByTimeAsync(LINE_START_MS + 50);
+    expect(await r).toBe("none");
+    expect(slow.spoken).toEqual([]);
+    // 相づち（鳴り始めない）のあとに問いを始めた: 相づちの失敗で問いを止めず、相づちを読み上げない
+    const both = player("hangs");
+    const filler = both.p.line("わかりました", "/api/signals/voice?fixed=filler-heard");
+    await vi.advanceTimersByTimeAsync(100);
+    void both.p.line("うごけますか", null);
+    await vi.advanceTimersByTimeAsync(LINE_START_MS + 50);
+    expect(await filler).toBe("none");
+    expect(both.spoken).toEqual(["うごけますか"]);
+  });
 
   it("声の URL があれば鳴らす。鳴らない・鳴り始めない（4 秒）ときは同じ文を読み上げる。URL が無ければ読み上げ", async () => {
     const ok = player("plays");

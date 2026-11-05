@@ -148,7 +148,7 @@ describe("会話の API（talkPost）", () => {
   it("記録を信号に書き（後勝ち。往復の少ない古い送りで上書きしない）、次の 1 文を Claude（Haiku・分類の数え）で返す。名前は伏せて渡す", async () => {
     await quake();
     await signal(1);
-    const f = fake(() => ({ topic: "canMove", preface: "あしが いたいのですね", question: "じぶんで たてますか", done: false }));
+    const f = fake(() => ({ ask: "canMove", preface: "あしが いたいのですね", question: "じぶんで たてますか", done: false }));
     const one = logOf([[TALK_OPENING, "山田 ハナです。あしが いたい"]]);
     const r = await post(selfP, sid(1), one, f.client);
     expect(r.status).toBe(200);
@@ -172,7 +172,7 @@ describe("会話の API（talkPost）", () => {
   it("AI の 1 文には声の URL を添える（間に合ったときだけ）。決まった文には添えない（端末が id で頼む）", async () => {
     await quake();
     await signal(1);
-    const f = fake(() => ({ topic: "canMove", preface: "", question: "じぶんで たてますか", done: false }));
+    const f = fake(() => ({ ask: "canMove", preface: "", question: "じぶんで たてますか", done: false }));
     const seen: string[] = [];
     const voice = async (text: string) => {
       seen.push(text);

@@ -15,7 +15,7 @@ import { easy, yomi } from "@/lib/forms/easy-words";
 import type { WhereNow } from "@/lib/db/types";
 import type { PhoneState } from "@/lib/signals/phone";
 import { AI_NOTICE, emergencyWords, PHONE_PHRASES, TALK_PHRASES, WHERE_PHRASES } from "@/lib/signals/phrases";
-import { choicesFor, questionOf, type QuestionId, type ShelterOption } from "@/lib/signals/questions";
+import { choicesFor, questionOf, type ChoiceTone, type QuestionId, type ShelterOption } from "@/lib/signals/questions";
 
 export type PhoneActions = {
   green(): void;
@@ -45,8 +45,13 @@ export function Fill({ children, step }: { children: ReactNode; step: string }) 
 
 export const BIG = "flex w-full flex-1 items-center justify-center rounded-xl px-4 py-6 text-center font-bold";
 
-/** 選択肢の面（T69b）: 面は塗らず灰の枠。tone があれば左の帯（phone.css の [data-tone]）。押したときは灰色だけ */
+/** 選択肢の面（T69b）: 印の無い答えは面を塗らず灰の枠。押したときは灰色だけ */
 export const CHOICE = "phone-choice bg-panel text-ink";
+
+/** 印のある答えの面（T137b）: 面そのものを状態の色で塗る（端だけの色の線はやめた）。印の無い答えは灰の枠のまま */
+export const TONE_FILL: Record<ChoiceTone, string> = { urgent: "phone-fill-urgent", check: "phone-fill-check", ok: "phone-fill-ok" };
+
+const choiceFace = (tone: ChoiceTone | undefined) => (tone ? TONE_FILL[tone] : CHOICE);
 
 export function Choice({ onClick, children, value }: { onClick: () => void; children: ReactNode; value: string }) {
   return (
@@ -105,8 +110,11 @@ export function QuestionBody({
             key={c.id}
             type="button"
             onClick={() => onChoice(c.id)}
-            className={`${grid ? BIG_GRID : BIG} ${CHOICE} ${grid ? "text-[1.75rem]" : "text-[2.25rem]"}`}
-            data-press
+            // 印のある答え（はい・いいえの側）は面で塗って大きく。印の無い答え（わからない など）は灰の枠で小さく（T137b）
+            className={`${grid ? BIG_GRID : BIG} ${choiceFace(c.tone)} ${
+              grid ? "text-[1.75rem]" : c.tone ? "flex-[2] text-[2.5rem]" : "text-[2rem]"
+            }`}
+            data-press={c.tone ? "overlay" : ""}
             data-choice={c.id}
             data-tone={c.tone}
           >
@@ -254,27 +262,28 @@ export function PhoneView({
         </Fill>
       );
     case "talk":
-      // 声の聞き取りの会話（T137）。読んだ 1 文を大きく。最初の問いは定型文（AI の告知つき）
+      // 声の聞き取りの会話（T137）。読んだ 1 文を大きく。最初の問いは定型文（AI の告知つき）。
+      // 読む間・考える間も聞いているので「AI が きいています」はいつも出す。答えは自動で送る（「送る」のボタンは置かない。T137b）
       return (
         <Fill step="talk">
           {state.first && <AiNotice />}
-          {state.voice !== "speaking" && <AiListening />}
-          {state.first ? (
-            <Prompt />
-          ) : (
-            <div className="rounded-xl bg-panel px-4 py-4 text-center text-[1.75rem] font-bold" data-talk-line={state.by}>
-              {state.by === "ai" && (
-                <>
-                  <span className="phone-ai">AI</span>{" "}
-                </>
-              )}
-              {state.easy ? <Words m={state.easy} /> : <EasyWords words={yomi(state.line).words} />}
-            </div>
-          )}
-          <div className="flex-1" />
-          <Choice onClick={on.finish} value="send">
-            <Words m={PHONE_PHRASES.send} />
-          </Choice>
+          <AiListening />
+          <div className="flex flex-1 items-center">
+            {state.first ? (
+              <div className="w-full">
+                <Prompt />
+              </div>
+            ) : (
+              <div className="w-full rounded-xl bg-panel px-4 py-6 text-center text-[2rem] font-bold" data-talk-line={state.by}>
+                {state.by === "ai" && (
+                  <>
+                    <span className="phone-ai">AI</span>{" "}
+                  </>
+                )}
+                {state.easy ? <Words m={state.easy} /> : <EasyWords words={yomi(state.line).words} />}
+              </div>
+            )}
+          </div>
           <Emergency />
         </Fill>
       );
