@@ -11,6 +11,9 @@
 // - 見直しの一覧（T136、components/forms/PaperReview.tsx）の行から送られた欄（窓の出来事 care72:paper-field）をその場の入力か窓で開く
 // 保存は /api/forms/entries（台帳は lib/intake/save.ts の saveIntake を通る）。Claude は通らない。紙の部品は状態を持たないまま（サーバーの描画）。
 // 印刷では層も帯も出ない（paper-fill.css）。
+// T147: 台帳の 1 か所に書けない字の欄（pageLink）も窓でなくその場で打ち、様式のみの値に。書いている間は欄の下に行き先（台帳保存・様式のみ）。
+// 帯に「保存」と保存の状態（保存済・保存中・未保存・保存失敗）。確定のたびに残すのは今のまま、「保存」は書きかけを確定し、残らなかった物を送り直す。
+// 未保存のまま頁を離れる時は確かめる。質問の面は聞く問いがあれば開いて出す。文字の枠と画像は components/forms/PaperFillFree.tsx
 
 import "./paper-fill.css";
 import { useRouter } from "next/navigation";
@@ -19,32 +22,28 @@ import { createPortal } from "react-dom";
 import { postJson, isError, postForm } from "@/components/person/intake-api";
 import { IntakeQuestion } from "@/components/person/IntakeQuestion";
 import { Button } from "@/components/ui/Button";
-import { AddIcon, AskIcon, CloseIcon, ImageIcon, MarkIcon, RedoIcon, RemoveIcon, TextBoxIcon, UndoIcon } from "@/components/ui/Icon";
+import { AskIcon, CloseIcon, ImageIcon, MarkIcon, RedoIcon, SaveIcon, TextBoxIcon, UndoIcon } from "@/components/ui/Icon";
 import { EditWindow } from "./PaperEdit";
+import { AssetPicker, FreeView } from "./PaperFillFree";
+import { useLeaveGuard, type LeaveState } from "./leave-guard";
 import type { IntakeChange } from "@/lib/intake/changes";
 import type { Question } from "@/lib/intake/ask";
-import { freeText, type FormEntry } from "@/lib/forms/form-entries";
+import type { FormEntry } from "@/lib/forms/form-entries";
 import type { FieldBox } from "@/lib/forms/mapping";
 import {
-  ASSET_KIND_LABELS,
-  ASSET_KINDS,
-  boxMm,
   FILL_LABELS as L,
   joinParts,
-  liveFont,
   livePlace,
   partsOf,
   slotChanges,
   slotForField,
   toggleOption,
   type AssetInfo,
-  type AssetKind,
   type PaperFillData,
   type PaperSlot,
   type SlotValue,
 } from "@/lib/forms/paper-fill";
 import { PAPER_FIELD_EVENT, type PaperFieldDetail } from "@/lib/forms/review";
-import { shrinkImage } from "@/lib/forms/shrink-image";
 
 type Op =
   /** 欄の値（台帳か様式だけ） */
@@ -72,6 +71,10 @@ const caretToEnd = (e: { currentTarget: HTMLTextAreaElement }) => {
   e.currentTarget.setSelectionRange(n, n);
 };
 
+/** 保存の状態（帯の右に出す） */
+export type SaveState = "saved" | "saving" | "unsaved" | "failed";
+export const SAVE_STATE_LABELS: Record<SaveState, string> = { saved: L.saved, saving: L.saving, unsaved: L.unsaved, failed: L.failed };
+
 /** 欄の印の文字（台帳・様式）と、誰がいつ */
 const handTitle = (s: PaperSlot) => `${s.dest === "ledger" ? L.ledger : L.form}${s.hand ? ` ${s.hand.by ?? ""} ${when(s.hand.at)}` : ""}`.trim();
 
@@ -93,10 +96,28 @@ export function PaperFill({ data, children }: { data: PaperFillData; children: R
   const [freeEdit, setFreeEdit] = useState<{ id: string; text: string; fresh: boolean } | null>(null);
   const [placing, setPlacing] = useState<null | { kind: "text" } | { kind: "image"; asset: AssetInfo }>(null);
   const [picker, setPicker] = useState(false);
-  const [asking, setAsking] = useState(false);
+  // 聞く問いがあれば質問の面を開いて出す（閉じられる。T147）。開いた直後は紙を送らない（人が押してから送る）
+  const [asking, setAsking] = useState(() => data.questions.length > 0);
+  const askScroll = useRef(false);
   const [skip, setSkip] = useState<string[]>([]);
   const [assets, setAssets] = useState<Record<string, { name: string; src: string }>>(data.assets);
   const busy = saving || refreshing;
+  // 保存の状態（T147）: 送っている数・残らなかった物（「保存」で送り直す）
+  const pending = useRef(0);
+  const retry = useRef<(() => Promise<boolean>) | null>(null);
+  const [failed, setFailed] = useState(false);
+  const saveState: SaveState = saving ? "saving" : failed ? "failed" : editing || freeEdit ? "unsaved" : "saved";
+  /** 送った結果を保存の状態に（残らなければ again を「保存」で送り直す） */
+  const settle = useCallback((ok: boolean, again: () => Promise<boolean>) => {
+    if (ok) {
+      retry.current = null;
+      setFailed(false);
+    } else {
+      retry.current = again;
+      setFailed(true);
+    }
+    return ok;
+  }, []);
 
   useEffect(() => {
     version.current = Math.max(version.current, data.version);
@@ -125,9 +146,11 @@ export function PaperFill({ data, children }: { data: PaperFillData; children: R
 
   const post = useCallback(
     async (body: Record<string, unknown>): Promise<Saved | null> => {
+      pending.current += 1;
       setSaving(true);
       const r = await postJson<Saved>("/api/forms/entries", { personId: data.personId, formId: data.formId, ...body });
-      setSaving(false);
+      pending.current -= 1;
+      if (pending.current === 0) setSaving(false);
       if (isError(r)) {
         setStatus({ tone: "danger", text: `${L.failed} ${r.label}` });
         if (r.error === "conflict") refresh();
@@ -151,6 +174,9 @@ export function PaperFill({ data, children }: { data: PaperFillData; children: R
     },
     [post, refresh],
   );
+
+  const saveValueRef = useRef<(slot: PaperSlot, next: SlotValue, record?: boolean) => Promise<boolean>>(async () => false);
+  const saveEntryRef = useRef<(before: FormEntry | null, after: FormEntry | null, record?: boolean) => Promise<boolean>>(async () => false);
 
   /** 欄の値を入れる（台帳か様式だけ）。record は取消の列に積むか */
   const saveValue = useCallback(
@@ -177,24 +203,30 @@ export function PaperFill({ data, children }: { data: PaperFillData; children: R
           refresh();
         }
       }
+      settle(ok, () => saveValueRef.current(slot, next, record));
       if (ok && record) {
         setUndo((u) => [...u, { t: "value", key: slot.key, before: slot.value, after: next }]);
         setRedo([]);
       }
       return ok;
     },
-    [post, refresh, saveLedger],
+    [post, refresh, saveLedger, settle],
   );
+  saveValueRef.current = saveValue;
 
   /** 文字の枠・画像を入れる（after が null は取り消す） */
   const saveEntry = useCallback(
     async (before: FormEntry | null, after: FormEntry | null, record = true): Promise<boolean> => {
+      if (!before && !after) return true;
       const r = after
-        ? await post({ op: "put", entry: { id: after.id, kind: after.kind, fieldKey: null, page: after.page, box: after.box, value: after.value } })
+        ? await post({
+            op: "put",
+            entry: { id: after.id, kind: after.kind, fieldKey: null, page: after.page, box: after.box, value: after.value, ...(after.kind === "text" ? { pt: after.pt ?? null } : {}) },
+          })
         : before
           ? await post({ op: "remove", id: before.id })
           : null;
-      if (!r) return false;
+      if (!settle(r !== null, () => saveEntryRef.current(before, after, record))) return false;
       setFree((list) => (after ? [...list.filter((e) => e.id !== after.id), after] : list.filter((e) => e.id !== before?.id)));
       if (record) {
         setUndo((u) => [...u, { t: "entry", before, after }]);
@@ -204,8 +236,9 @@ export function PaperFill({ data, children }: { data: PaperFillData; children: R
       refresh();
       return true;
     },
-    [post, refresh],
+    [post, refresh, settle],
   );
+  saveEntryRef.current = saveEntry;
 
   // ---------- 取消・再実行 ----------
 
@@ -267,6 +300,23 @@ export function PaperFill({ data, children }: { data: PaperFillData; children: R
     return () => window.removeEventListener("keydown", onKey);
   }, [doRedo, doUndo, free, saveEntry, selected]);
 
+  // ---------- 保存のボタンと、未保存のまま離れるとき（T147） ----------
+
+  /** 書きかけの欄・文字の枠を確定し（焦点を外すと確定する）、残らなかった物を送り直す */
+  const saveNow = useCallback(async () => {
+    const el = document.activeElement as HTMLElement | null;
+    if (el && root.current?.contains(el)) el.blur();
+    // 確定の保存が走り終わるのを待つ
+    await new Promise((r) => setTimeout(r, 0));
+    const again = retry.current;
+    if (again) await again();
+  }, []);
+
+  // 未保存のまま頁を離れるときの確かめ（components/forms/leave-guard.ts）
+  const leaveRef = useRef<LeaveState>({ unsaved: false, pending: 0 });
+  leaveRef.current = { unsaved: failed || editing !== null || freeEdit !== null, pending: pending.current };
+  useLeaveGuard(leaveRef, root);
+
   // ---------- 書いている欄の紙の字を隠す（入力と重ねない） ----------
 
   useEffect(() => {
@@ -295,7 +345,7 @@ export function PaperFill({ data, children }: { data: PaperFillData; children: R
   const question = questions[0] ?? null;
   const askedSlot = question ? data.slots.find((s) => s.asks?.includes(question.key)) : undefined;
   useEffect(() => {
-    if (!asking || !askedSlot) return;
+    if (!asking || !askedSlot || !askScroll.current) return;
     root.current?.querySelector<HTMLElement>(`[data-slot="${CSS.escape(askedSlot.key)}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" });
   }, [asking, askedSlot]);
 
@@ -315,11 +365,11 @@ export function PaperFill({ data, children }: { data: PaperFillData; children: R
     await saveValue(slot, slot.input.multiline ? next.replace(/\r\n/g, "\n") : next.replace(/\s*\n\s*/g, " "));
   };
   /**
-   * 空いた欄の 2 つの区別（T133 の黄の塗り）: 台帳に無い（ask）欄で問いがあれば、質問の面でその問いを先に聞く（質問で埋める）。
-   * 置けなかった（fix）欄と問いの無い欄は、その場で入れる。問いを開いたら true
+   * 空いた欄の 2 つの区別（T133 の黄の塗り）: 台帳に無い（ask）欄で問いがあれば、質問の面でその問いを先に出す（質問でも埋められる）。
+   * T147: 押した欄はその場で打てる（質問は並べて出すだけで、打つのを止めない）。台帳の 1 か所に書けない欄（pageLink）も同じ
    */
   const askFor = (slot: PaperSlot): boolean => {
-    if (slot.gap !== "ask" || slot.dest !== "ledger") return false;
+    if (slot.gap !== "ask" || (slot.dest !== "ledger" && !slot.pageLink)) return false;
     const q = left.find((x) => slot.asks?.includes(x.key));
     if (!q) return false;
     setAskFirst(q.key);
@@ -328,7 +378,7 @@ export function PaperFill({ data, children }: { data: PaperFillData; children: R
   };
   const pressSlot = (slot: PaperSlot) => {
     if (busy) return;
-    if (askFor(slot)) return;
+    askFor(slot);
     if (slot.input.kind === "window") setWindowSlot(slot);
     else if (slot.input.kind === "check") void saveValue(slot, slot.value !== true);
     else if (slot.input.kind === "text") startText(slot);
@@ -346,7 +396,7 @@ export function PaperFill({ data, children }: { data: PaperFillData; children: R
       setReviewKey(slot.key);
       root.current?.querySelector<HTMLElement>(`[data-slot="${CSS.escape(slot.key)}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" });
       if (busy || placing) return;
-      if (askFor(slot)) return;
+      askFor(slot);
       if (slot.input.kind === "text") startText(slot);
       else if (slot.input.kind === "window") setWindowSlot(slot);
     };
@@ -365,11 +415,11 @@ export function PaperFill({ data, children }: { data: PaperFillData; children: R
   return (
     <div ref={root} data-paper-fill data-marks={marks ? "1" : undefined} data-placing={placing ? placing.kind : undefined}>
       <div className="screen-only sticky top-0 z-20 mx-auto mb-2 flex max-w-[calc(210mm+2rem)] flex-wrap items-center gap-2 bg-base px-4 py-1.5" data-fill-bar>
-        <Button size="sm" icon={TextBoxIcon} aria-pressed={placing?.kind === "text"} onClick={() => setPlacing((p) => (p?.kind === "text" ? null : { kind: "text" }))} disabled={busy}>
-          {L.textBox}
+        <Button size="sm" icon={TextBoxIcon} aria-pressed={placing?.kind === "text"} onClick={() => setPlacing((p) => (p?.kind === "text" ? null : { kind: "text" }))} disabled={busy} data-fill-add-text>
+          {L.addText}
         </Button>
-        <Button size="sm" icon={ImageIcon} aria-pressed={placing?.kind === "image" || picker} onClick={() => setPicker(true)} disabled={busy}>
-          {L.image}
+        <Button size="sm" icon={ImageIcon} aria-pressed={placing?.kind === "image" || picker} onClick={() => setPicker(true)} disabled={busy} data-fill-add-image>
+          {L.addImage}
         </Button>
         <Button size="sm" icon={UndoIcon} onClick={() => void doUndo()} disabled={busy || undo.length === 0} data-fill-undo>
           {L.undo}
@@ -377,18 +427,40 @@ export function PaperFill({ data, children }: { data: PaperFillData; children: R
         <Button size="sm" icon={RedoIcon} onClick={() => void doRedo()} disabled={busy || redo.length === 0} data-fill-redo>
           {L.redo}
         </Button>
-        <Button size="sm" icon={MarkIcon} aria-pressed={marks} onClick={() => setMarks((m) => !m)}>
+        <Button size="sm" icon={MarkIcon} aria-pressed={marks} onClick={() => setMarks((m) => !m)} data-fill-marks>
           {L.marks}
         </Button>
-        <Button size="sm" icon={AskIcon} aria-pressed={asking} onClick={() => setAsking((a) => !a)} data-fill-ask>
+        <Button
+          size="sm"
+          icon={AskIcon}
+          aria-pressed={asking}
+          onClick={() => {
+            askScroll.current = true;
+            setAsking((a) => !a);
+          }}
+          data-fill-ask
+        >
           {L.ask} <span className="tabular-nums">{questions.length}</span>
         </Button>
         {placing && <span className="text-xs text-muted">{L.place}</span>}
-        {status && (
-          <span className={`ml-auto text-xs font-bold ${status.tone === "danger" ? "text-danger" : "text-muted"}`} role="status" data-fill-status={status.tone}>
-            {status.text}
+        <span className="ml-auto flex items-center gap-2">
+          {status && status.tone === "danger" && (
+            <span className="text-xs font-bold text-danger" role="alert" data-fill-status={status.tone}>
+              {status.text}
+            </span>
+          )}
+          {/* 保存の状態（T147）。確定のたびに残し、「保存」は書きかけを確定して残らなかった物を送り直す */}
+          <span
+            className={`text-xs font-bold ${saveState === "failed" ? "text-danger" : saveState === "saved" ? "text-muted" : "text-ink"}`}
+            role="status"
+            data-save-state={saveState}
+          >
+            {saveState === "saved" && status?.tone === "ok" ? status.text : SAVE_STATE_LABELS[saveState]}
           </span>
-        )}
+          <Button size="sm" kind="main" icon={SaveIcon} onClick={() => void saveNow()} disabled={saving} data-fill-save>
+            {L.save}
+          </Button>
+        </span>
       </div>
 
       {children}
@@ -449,6 +521,11 @@ export function PaperFill({ data, children }: { data: PaperFillData; children: R
           data={{ personId: data.personId, version: version.current }}
           target={windowSlot.target}
           onClose={() => setWindowSlot(null)}
+          formId={data.formId}
+          onFormSaved={() => {
+            setStatus({ tone: "ok", text: `${L.form} ${L.saved}` });
+            refresh();
+          }}
           submit={async (changes) => {
             const r = await post({ op: "ledger", fieldKeys: [windowSlot.key], version: version.current, edit: true, changes });
             if (!r) return L.failed;
@@ -546,7 +623,21 @@ function PageLayer(p: LayerProps) {
         <SlotView key={`${s.key}-${i}`} slot={s} {...p} />
       ))}
       {p.free.map((e) => (
-        <FreeView key={e.id} entry={e} layer={layerRef} {...p} />
+        <FreeView
+          key={e.id}
+          entry={e}
+          layer={layerRef}
+          mm={p.mm}
+          maxPt={p.maxPt}
+          assets={p.assets}
+          selected={p.selected === e.id}
+          setSelected={p.setSelected}
+          writing={p.freeEdit?.id === e.id ? p.freeEdit : null}
+          setFreeEdit={p.setFreeEdit}
+          setFree={p.setFree}
+          onSaveEntry={p.onSaveEntry}
+          busy={p.busy}
+        />
       ))}
       {p.placing && (
         <div
@@ -565,6 +656,33 @@ function PageLayer(p: LayerProps) {
         />
       )}
     </div>
+  );
+}
+
+/**
+ * 書いている欄の下の行き先（T147）: 台帳に入る欄は「台帳保存」（ほかの様式にも効く）、この人のこの様式だけの値は「様式のみ」。
+ * 台帳の 1 か所に書けない欄は、台帳を直す道（本人のページ、別のタブ）も添える
+ */
+function DestLabel({ slot, overflow = false, unit }: { slot: PaperSlot; overflow?: boolean; unit?: string }) {
+  return (
+    <span className="pf-dest" style={{ left: pct(slot.box.x), top: pct(slot.box.y + slot.box.h) }} data-dest-label={slot.dest}>
+      {slot.dest === "ledger" ? L.toLedger : L.toForm}
+      {overflow && <span className="pf-over"> {L.annex}</span>}
+      {unit ? ` ${unit}` : ""}
+      {slot.pageLink && (
+        <a
+          href={slot.pageLink.href}
+          target="_blank"
+          rel="noreferrer"
+          className="pf-dest-link"
+          title={slot.pageLink.label}
+          onMouseDown={(e) => e.preventDefault()}
+          data-dest-page
+        >
+          {L.page}
+        </a>
+      )}
+    </span>
   );
 }
 
@@ -628,6 +746,7 @@ function SlotView({ slot, ...p }: LayerProps & { slot: PaperSlot }) {
             if (!e.currentTarget.contains(e.relatedTarget as Node | null)) commit(editing.parts);
           }}
         >
+          <DestLabel slot={slot} />
           {parts.map((part, i) => {
             const font = livePlace(slot, editing.parts[i] ?? "", part.box, p.mm, slot.box);
             return (
@@ -678,11 +797,7 @@ function SlotView({ slot, ...p }: LayerProps & { slot: PaperSlot }) {
             }
           }}
         />
-        <span className="pf-dest" style={{ left: pct(slot.box.x), top: pct(slot.box.y + slot.box.h) }} data-dest-label={slot.dest}>
-          {slot.dest === "ledger" ? L.ledger : L.form}
-          {font.overflow && <span className="pf-over"> {L.annex}</span>}
-          {input.unit ? ` ${input.unit}` : ""}
-        </span>
+        <DestLabel slot={slot} overflow={font.overflow} unit={input.unit} />
       </>
     );
   }
@@ -709,305 +824,4 @@ function SlotView({ slot, ...p }: LayerProps & { slot: PaperSlot }) {
       {tag}
     </div>
   );
-}
-
-/** 置いた文字の枠と画像。押すと選び、文字の枠は字を書く。上の縁を引いて動かし、右下の角で大きさを変える */
-function FreeView({ entry, layer, ...p }: LayerProps & { entry: FormEntry; layer: React.RefObject<HTMLDivElement | null> }) {
-  const sel = p.selected === entry.id;
-  const writing = p.freeEdit?.id === entry.id ? p.freeEdit : null;
-  const box = entry.box!;
-  const drag = useRef<{ mode: "move" | "size"; x: number; y: number; start: FieldBox; w: number; h: number; moved: boolean } | null>(null);
-  /** 引いて離した直後の押した扱いを受けない */
-  const dragged = useRef(false);
-  const mm = boxMm(box, p.mm);
-
-  const down = (mode: "move" | "size") => (e: ReactPointerEvent<HTMLElement>) => {
-    if (p.busy || writing) return;
-    const r = layer.current?.getBoundingClientRect();
-    if (!r) return;
-    e.preventDefault();
-    e.stopPropagation();
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-    drag.current = { mode, x: e.clientX, y: e.clientY, start: { ...box }, w: r.width, h: r.height, moved: false };
-    p.setSelected(entry.id);
-  };
-  const move = (e: ReactPointerEvent<HTMLElement>) => {
-    const d = drag.current;
-    if (!d) return;
-    const dx = (e.clientX - d.x) / d.w;
-    const dy = (e.clientY - d.y) / d.h;
-    if (Math.abs(dx) + Math.abs(dy) > 0.002) d.moved = true;
-    let next: FieldBox;
-    if (d.mode === "move") {
-      next = { ...d.start, x: clamp01(Math.min(d.start.x + dx, 1 - d.start.w)), y: clamp01(Math.min(d.start.y + dy, 1 - d.start.h)) };
-    } else {
-      const w = Math.min(Math.max(d.start.w + dx, 8 / p.mm.w), 1 - d.start.x);
-      // 画像は縦横の比のまま
-      const h = entry.kind === "image" ? Math.min((d.start.h * w) / d.start.w, 1 - d.start.y) : Math.min(Math.max(d.start.h + dy, 4 / p.mm.h), 1 - d.start.y);
-      next = { ...d.start, w, h };
-    }
-    p.setFree((list) => list.map((x) => (x.id === entry.id ? { ...x, box: next } : x)));
-  };
-  const up = () => {
-    const d = drag.current;
-    drag.current = null;
-    if (!d || !d.moved) return;
-    dragged.current = true;
-    void p.onSaveEntry({ ...entry, box: d.start }, entry);
-  };
-
-  const commitText = () => {
-    if (!writing) return;
-    p.setFreeEdit(null);
-    const text = writing.text.replace(/\r\n/g, "\n");
-    if (text.trim() === "") {
-      // 書かずに離れた新しい枠は置かない。前からの枠を空にしたら消す
-      if (writing.fresh) p.setFree((list) => list.filter((x) => x.id !== entry.id));
-      else void p.onSaveEntry(entry, null);
-      return;
-    }
-    if (!writing.fresh && text === entry.value) return;
-    void p.onSaveEntry(writing.fresh ? null : entry, { ...entry, value: text });
-  };
-
-  const placed = entry.kind === "text" ? freeText(writing ? writing.text || " " : entry.value, mm.w, mm.h, p.maxPt) : null;
-  const font = writing ? liveFont(writing.text, mm, p.maxPt) : null;
-  const asset = entry.kind === "image" ? p.assets[entry.value] : undefined;
-
-  return (
-    <div
-      className="pf-free"
-      style={at(box)}
-      data-free-box={entry.id}
-      data-kind={entry.kind}
-      data-selected={sel ? "1" : undefined}
-      onPointerDown={entry.kind === "image" ? down("move") : undefined}
-      onPointerMove={move}
-      onPointerUp={up}
-      onClick={(e) => {
-        e.stopPropagation();
-        if (dragged.current) {
-          dragged.current = false;
-          return;
-        }
-        // 1 回目は選ぶだけ（上の縁を引いて動かす・右下で大きさ・削除）。選んだ枠をもう一度押すと字を書く
-        if (!sel) {
-          p.setSelected(entry.id);
-          return;
-        }
-        if (entry.kind === "text" && !writing && !p.busy) p.setFreeEdit({ id: entry.id, text: entry.value, fresh: false });
-      }}
-    >
-      {entry.kind === "image" ? (
-        // eslint-disable-next-line @next/next/no-img-element -- 事業所の画像（R2 の物を API から）
-        <img className="pf-img" src={asset?.src} alt={asset?.name ?? ""} draggable={false} />
-      ) : writing ? (
-        <textarea
-          className="pf-input pf-free-input"
-          style={{ fontSize: `${font?.fontPt ?? p.maxPt}pt` }}
-          value={writing.text}
-          aria-label={L.textBox}
-          maxLength={400}
-          autoFocus
-          onFocus={caretToEnd}
-          onChange={(e) => p.setFreeEdit({ ...writing, text: e.target.value })}
-          onBlur={commitText}
-          onKeyDown={(e) => {
-            if (e.key === "Escape") {
-              p.setFreeEdit(null);
-              if (writing.fresh) p.setFree((list) => list.filter((x) => x.id !== entry.id));
-            } else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-              e.preventDefault();
-              commitText();
-            }
-          }}
-        />
-      ) : (
-        <div className="pf-free-text" style={{ fontSize: `${placed?.fontPt ?? p.maxPt}pt` }}>
-          {(placed?.lines ?? []).map((l, i) => (
-            <span key={i} className="pf-ln">
-              {l}
-            </span>
-          ))}
-        </div>
-      )}
-      <span className="pf-tag" title={`${entry.kind === "image" ? L.image : L.textBox} ${entry.by ?? ""} ${when(entry.at)}`.trim()}>
-        {entry.kind === "image" ? L.image : L.textBox}
-      </span>
-      {sel && (
-        <>
-          <span className="pf-grip" onPointerDown={down("move")} onPointerMove={move} onPointerUp={up} aria-label={L.move} role="button" tabIndex={-1} />
-          <span className="pf-size" onPointerDown={down("size")} onPointerMove={move} onPointerUp={up} aria-hidden />
-          <button
-            type="button"
-            className="pf-remove"
-            aria-label={`${entry.kind === "image" ? L.image : L.textBox} ${L.remove}`}
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={(e) => {
-              e.stopPropagation();
-              p.setSelected(null);
-              p.setFreeEdit(null);
-              if (writing?.fresh) p.setFree((list) => list.filter((x) => x.id !== entry.id));
-              else void p.onSaveEntry(entry, null);
-            }}
-          >
-            <RemoveIcon aria-hidden className="size-3.5" />
-            {L.remove}
-          </button>
-        </>
-      )}
-    </div>
-  );
-}
-
-// ---------- 画像の選択と取り込み ----------
-
-function AssetPicker({ onClose, onChoose }: { onClose: () => void; onChoose: (a: AssetInfo) => void }) {
-  const ref = useRef<HTMLDialogElement>(null);
-  const [list, setList] = useState<AssetInfo[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [file, setFile] = useState<File | null>(null);
-  const [name, setName] = useState("");
-  const [kind, setKind] = useState<AssetKind>("map");
-  const [busy, setBusy] = useState(false);
-
-  useLayoutEffect(() => {
-    const el = ref.current;
-    if (el && !el.open) el.showModal();
-  }, []);
-  useEffect(() => {
-    let alive = true;
-    void fetch("/api/forms/assets")
-      .then((r) => r.json() as Promise<{ ok: boolean; assets?: AssetInfo[]; label?: string }>)
-      .then((r) => {
-        if (!alive) return;
-        if (r.ok && r.assets) setList(r.assets);
-        else setError(r.label ?? L.failed);
-      })
-      .catch(() => alive && setError(L.failed));
-    return () => {
-      alive = false;
-    };
-  }, []);
-
-  async function upload() {
-    if (!file || !name.trim()) return;
-    setBusy(true);
-    setError(null);
-    // 長い辺 2000px までの JPEG に縮める（様式の読み取りと同じ縮め方。ここで縮めた画像は紙に置くだけで、Claude には送らない）
-    const shrunk = await shrinkImage(file);
-    if (!shrunk.ok || shrunk.kind !== "image") {
-      setBusy(false);
-      setError(L.failed);
-      return;
-    }
-    const size = await imageSize(shrunk.file);
-    const form = new FormData();
-    form.set("file", shrunk.file);
-    form.set("name", name.trim().slice(0, 40));
-    form.set("kind", kind);
-    form.set("width", String(size.w));
-    form.set("height", String(size.h));
-    const r = await postForm<{ ok: true; asset: AssetInfo }>("/api/forms/assets", form);
-    setBusy(false);
-    if (isError(r)) {
-      setError(r.label);
-      return;
-    }
-    onChoose(r.asset);
-  }
-
-  return (
-    <dialog
-      ref={ref}
-      aria-labelledby="pf-picker-title"
-      className="m-auto w-[calc(100%-2rem)] max-w-xl rounded-lg bg-panel p-0 text-ink backdrop:bg-black/40"
-      onCancel={(e) => {
-        e.preventDefault();
-        onClose();
-      }}
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-      data-fill-picker
-    >
-      <div className="space-y-3 p-4">
-        <h2 id="pf-picker-title" className="flex items-center gap-1.5 text-[1rem] font-bold">
-          <ImageIcon aria-hidden className="size-4 shrink-0 text-muted" />
-          {L.image}
-        </h2>
-        {list === null && !error && <p className="text-xs text-muted">…</p>}
-        {list && list.length > 0 && (
-          <ul className="grid grid-cols-3 gap-2" data-fill-assets>
-            {list.map((a) => (
-              <li key={a.id}>
-                <button type="button" className="block w-full rounded bg-panel2 p-1.5 text-left" data-press onClick={() => onChoose(a)} data-asset={a.id}>
-                  {/* eslint-disable-next-line @next/next/no-img-element -- 事業所の画像（R2 の物を API から） */}
-                  <img src={a.src} alt="" className="h-20 w-full object-contain" />
-                  <span className="mt-1 block truncate text-xs">
-                    <span className="text-muted">{ASSET_KIND_LABELS[a.kind]}</span> {a.name}
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-        <form
-          className="grid grid-cols-[4rem_minmax(0,1fr)] items-center gap-x-2 gap-y-1.5 rounded bg-panel2 p-2"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (!busy) void upload();
-          }}
-        >
-          <span className="text-xs text-muted">{L.upload}</span>
-          <input
-            type="file"
-            accept="image/jpeg,image/png"
-            className="text-xs"
-            aria-label={L.upload}
-            onChange={(e) => {
-              const f = e.target.files?.[0] ?? null;
-              setFile(f);
-              if (f && !name) setName(f.name.replace(/\.[^.]+$/, "").slice(0, 40));
-            }}
-          />
-          <span className="text-xs text-muted">{L.name}</span>
-          <input className="rounded bg-panel px-2 py-1 text-sm" value={name} maxLength={40} onChange={(e) => setName(e.target.value)} aria-label={L.name} />
-          <span className="text-xs text-muted">種類</span>
-          <div className="flex gap-3 text-sm">
-            {ASSET_KINDS.map((k) => (
-              <label key={k} className="inline-flex items-center gap-1">
-                <input type="radio" name="pf-kind" checked={kind === k} onChange={() => setKind(k)} className="accent-accent" />
-                {ASSET_KIND_LABELS[k]}
-              </label>
-            ))}
-          </div>
-          <span />
-          <div>
-            <Button type="submit" kind="add" size="sm" icon={AddIcon} disabled={busy || !file || !name.trim()}>
-              {L.upload}
-            </Button>
-          </div>
-        </form>
-        {error && <p className="text-xs font-bold text-danger">{error}</p>}
-        <div className="flex justify-end">
-          <Button kind="quiet" icon={CloseIcon} onClick={onClose}>
-            {L.done}
-          </Button>
-        </div>
-      </div>
-    </dialog>
-  );
-}
-
-async function imageSize(file: File): Promise<{ w: number; h: number }> {
-  const url = URL.createObjectURL(file);
-  try {
-    const img = new Image();
-    img.src = url;
-    await img.decode();
-    return { w: img.naturalWidth, h: img.naturalHeight };
-  } finally {
-    URL.revokeObjectURL(url);
-  }
 }

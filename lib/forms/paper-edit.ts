@@ -12,8 +12,10 @@ import { contactPartValue, type ContactPart } from "../intake/contact-parts.ts";
 import { editValueOf, fieldEditChanges } from "../intake/edit.ts";
 import { intakeField, normalizeValue, withLedgerValue } from "../intake/fields.ts";
 import type { PersonPageRows } from "../person.ts";
-import { formContactOf, MATSUYAMA_INPUTS, type FormContactRole, type FormInput } from "./form-inputs.ts";
-import { MATSUYAMA_FIELDS, type MatsuyamaKey } from "./matsuyama.ts";
+import { formContactOf, MATSUYAMA_INPUTS, MATSUYAMA_TEXT_SHAPES, type FormContactRole, type FormInput } from "./form-inputs.ts";
+import type { FormEntry } from "./form-entries.ts";
+import { MATSUYAMA_FIELDS, type Cell, type MatsuyamaKey } from "./matsuyama.ts";
+import { cellLines } from "./overlay-sheet.ts";
 import { matsuyamaFieldName } from "./unconfirmed.ts";
 
 /** 窓の 1 つの入力。field は欄の表の欄、contact は連絡先の所、page は本人のページの面へ */
@@ -22,19 +24,34 @@ export type PaperInput =
   | { kind: "contact"; contactId: string; contactKind: ContactKind; part: ContactPart | "phone"; label: string; value: string }
   | { kind: "page"; label: string; href: string };
 
-/** 押せる欄 1 つ（key は計画書の欄の鍵、label は帯と同じ欄の名前） */
-export type PaperTarget = { key: MatsuyamaKey; label: string; inputs: PaperInput[] };
+/**
+ * 押せる欄 1 つ（key は計画書の欄の鍵、label は帯と同じ欄の名前）。
+ * text は台帳の 1 か所に書けない字の欄（元が本人のページの面への道だけ。T147）の今の紙の字で、窓の中で打って様式のみの値として残す。
+ * entryId はその欄の様式のみの値の手入れの id（消すとき）
+ */
+export type PaperTarget = { key: MatsuyamaKey; label: string; inputs: PaperInput[]; text?: string; entryId?: string };
 
 export type PaperEditData = { personId: string; version: number; targets: PaperTarget[] };
 
 const ROLE_LABELS: Record<FormContactRole, string> = { kin: "近親者", kin2: "緊急連絡先2", supporter1: "支援者1", supporter2: "支援者2" };
 
-/** 欄ごとの入力と今の値（サーバーで作る。ケアマネの役の画面にだけ渡す） */
-export function paperEditData(rows: PersonPageRows): PaperEditData {
+/**
+ * 欄ごとの入力と今の値（サーバーで作る。ケアマネの役の画面にだけ渡す）。
+ * paper は紙面の今の値（様式のみの値を効かせた後）と様式のみの値の手入れ。渡せば、台帳の 1 か所に書けない字の欄に text（T147）
+ */
+export function paperEditData(rows: PersonPageRows, paper?: { cells: Partial<Record<MatsuyamaKey, Cell>>; entries: readonly FormEntry[] }): PaperEditData {
   const targets: PaperTarget[] = [];
   for (const def of MATSUYAMA_FIELDS) {
     const out = resolveInputs(rows, MATSUYAMA_INPUTS[def.key]);
-    if (out.length > 0) targets.push({ key: def.key, label: matsuyamaFieldName(def), inputs: out });
+    if (out.length === 0) continue;
+    const t: PaperTarget = { key: def.key, label: matsuyamaFieldName(def), inputs: out };
+    const cell = paper?.cells[def.key];
+    if (paper && out.every((i) => i.kind === "page") && MATSUYAMA_TEXT_SHAPES.has(def.shape) && cell && cell.kind !== "withheld" && cell.kind !== "handwrite") {
+      t.text = cellLines(cell).join(def.shape === "lines" ? "\n" : " ");
+      const entry = paper.entries.find((e) => e.kind === "field" && e.fieldKey === def.key);
+      if (entry) t.entryId = entry.id;
+    }
+    targets.push(t);
   }
   return { personId: rows.person.id, version: rows.person.version ?? 1, targets };
 }

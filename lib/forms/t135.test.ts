@@ -168,8 +168,8 @@ describe("紙の欄の一覧（mappedSlots）", () => {
     const sex = slotOf(s, fieldId("性別"));
     expect(sex.input.kind).toBe("choice");
     if (sex.input.kind === "choice") expect(sex.input.options.map((o) => o.value).sort()).toEqual(["female", "male"]);
-    // 氏名・電話（電話と携帯の 2 つ）・同意は窓
-    expect(slotOf(s, fieldId("氏名", "本人")).input.kind).toBe("window");
+    // 電話（電話と携帯の 2 つ）は窓。氏名（本人のページの面の値）は T147 からその場で、様式のみ（台帳は変えない。本人のページへの道を添える）
+    expect(slotOf(s, fieldId("氏名", "本人"))).toMatchObject({ dest: "form", input: { kind: "text" }, pageLink: { href: "/people/p-01" } });
     expect(slotOf(s, fieldId("電話", "緊急連絡先")).input.kind).toBe("window");
     // 様式だけの欄
     expect(slotOf(s, "f101")).toMatchObject({ dest: "form", input: { kind: "text" }, empty: true });
@@ -481,7 +481,7 @@ describe("紙から質問", () => {
     const qs = p.fill!.questions;
     expect(qs.length).toBeGreaterThan(0);
     expect(qs.length).toBeLessThan(all.length);
-    const keys = new Set(p.fill!.slots.filter((s) => s.gap === "ask" && s.dest === "ledger").flatMap((s) => s.asks ?? []));
+    const keys = new Set(p.fill!.slots.filter((s) => s.gap === "ask" && (s.dest === "ledger" || s.pageLink)).flatMap((s) => s.asks ?? []));
     for (const q of qs) {
       expect(keys.has(q.key), q.key).toBe(true);
       expect(q.answer.kind).not.toBe("free");
@@ -490,7 +490,7 @@ describe("紙から質問", () => {
     const order = all.map((q) => q.key);
     expect(qs.map((q) => order.indexOf(q.key))).toEqual([...qs.map((q) => order.indexOf(q.key))].sort((a, b) => a - b));
     // 様式だけの欄（台帳に項目が無い）は問いにならない
-    expect(paperQuestions(all, p.fill!.slots.filter((s) => s.dest === "form"))).toEqual([]);
+    expect(paperQuestions(all, p.fill!.slots.filter((s) => s.dest === "form" && !s.pageLink))).toEqual([]);
   });
 
   it("「不明」「次回」は今の決まりのまま残り、問いから外れる", async () => {
@@ -584,7 +584,7 @@ describe("T133 の置き方と黄の塗り 2 つにそろえる", () => {
     expect(route.gap).toBe("ask");
     expect(route.asks?.length).toBeGreaterThan(0);
     // 質問は台帳に無い欄の物だけ（置けなかった欄の歩行は聞かない）
-    const keys = new Set(p.fill!.slots.filter((s) => s.gap === "ask" && s.dest === "ledger").flatMap((s) => s.asks ?? []));
+    const keys = new Set(p.fill!.slots.filter((s) => s.gap === "ask" && (s.dest === "ledger" || s.pageLink)).flatMap((s) => s.asks ?? []));
     for (const q of p.fill!.questions) expect(keys.has(q.key), q.key).toBe(true);
     expect(p.fill!.questions.some((q) => q.key === "care.walking")).toBe(false);
 

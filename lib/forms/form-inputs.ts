@@ -24,6 +24,9 @@ export type FormInput =
   | { kind: "contact"; role: FormContactRole; part: ContactPart | "phone" }
   | { kind: "page"; section: EditSection; asks?: readonly string[] };
 
+/** 様式のみの値をその場で打てる計画書の欄の形（字の欄。選ぶ欄・同意・手書きは除く。T147） */
+export const MATSUYAMA_TEXT_SHAPES: ReadonlySet<string> = new Set(["text", "lines", "phone", "date"]);
+
 const f = (...keys: string[]): FormInput[] => keys.map((key) => ({ kind: "field" as const, key }));
 const c = (role: FormContactRole, part: ContactPart | "phone"): FormInput => ({ kind: "contact", role, part });
 const page = (section: EditSection, ...asks: string[]): FormInput => (asks.length > 0 ? { kind: "page", section, asks } : { kind: "page", section });
