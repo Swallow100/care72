@@ -11,7 +11,8 @@
 //
 // Claude と声の場面（11/5。手元の dev に作者の鍵を入れて撮る。本番には入らない。ファイルの下の「Claude と声の場面」）:
 //   ai-intake（R02 入れる欄: 話す → Sonnet が欄に分ける → 保存 → 問い返し）、ai-form（R06 様式の読み取り: 架空の様式の画像 → Opus → 対応表 → 差込）、
-//   ai-drill（R07 訓練の 10 分版・R08 着信〔R07 から切り出す〕・R09 採点と講評）、ai-voice（R12 本人のスマホ: 赤 → けが → 動けない → 定型文 → 録音、
+//   ai-drill（R07 訓練の大雨想定〔連続の時計〕・R08 着信〔R07 から切り出す〕・R09 採点と講評）、ai-finish（いちばん新しい訓練を終わりまで進めて R09 だけ）、
+//   ai-voice（R12 本人のスマホ: 赤 → けが → 動けない → 定型文 → 録音、
 //   R10-voice ケアマネの一覧: 文字起こしと分類。R10-voice は scan が拾わない名前）。
 //   声は偽のマイク（Windows の読み上げの架空の文）。ログインは山本だけで、本人のスマホはスマホ入口のリンクで入る。
 import { copyFileSync, writeFileSync } from "node:fs";
@@ -306,7 +307,7 @@ async function staff(browser) {
 
 // ---------- Claude と声の場面（11/5） ----------
 // 作者の鍵（.dev.vars の ANTHROPIC_API_KEY・GEMINI_API_KEY）を入れた手元の dev で撮る。鍵が無ければ AI の手前まで撮って止める（鍵待ち）。
-// 1 場面 1 回の成功が目標（訓練は 10 分版。Claude と声を合わせて 60 回ほど）。AI の言葉は毎回違うので、撮ったら sheet.mjs で
+// 1 場面 1 回の成功が目標（訓練は大雨想定。10 分版はアプリから外した〔T124〕。Claude と声を合わせて 150 回ほど）。AI の言葉は毎回違うので、撮ったら sheet.mjs で
 // 「診断」「判定」「重症」・実名が無いかを見る。待つだけの所（AI が考える間）は録画を一時止めにして詰め、止めた所は markers.json の印で分かる
 
 /** 偽のマイクの声と、様式の読み取りに上げる画像の置き場（commit しない。video/assets は .gitignore） */
@@ -671,7 +672,8 @@ function quietRecorder(name) {
 async function drillAt(page) {
   return page.evaluate(() => {
     const m = document.querySelector("main[data-drill]");
-    return { step: Number(m?.getAttribute("data-step") ?? -1), status: m?.getAttribute("data-status") ?? "" };
+    const hour = document.querySelector("[data-now-hour]")?.getAttribute("data-now-hour");
+    return { step: Number(m?.getAttribute("data-step") ?? -1), status: m?.getAttribute("data-status") ?? "", hour: hour == null ? -1 : Number(hour) };
   });
 }
 
@@ -719,7 +721,8 @@ async function act(page, rec, person, kind) {
   await sleep(800);
   await clickSel(page, `[data-act-person="${person}"]`);
   await sleep(900);
-  await clickSel(page, `[data-act-kind="${kind}"]`);
+  // 手の記録の行にも data-act-kind があるので、手の欄の中だけ
+  await clickSel(page, `[data-action-panel] [data-act-kind="${kind}"]`);
   await sleep(900);
   // 相手の要る手で選んでいなければ、出ている最初の相手
   const disabled = await page.$eval('[data-action="act"]', (b) => b.disabled).catch(() => true);
@@ -734,12 +737,16 @@ async function act(page, rec, person, kind) {
   await sleep(2500);
 }
 
-/** 進める（1 刻み）。本人役（Haiku × 10）と監督が考える間は詰める。刻みが進んだら着信に出る */
-async function advance(page, rec, calls, label, hits = []) {
+/**
+ * 進める（1 刻み）。本人役（Haiku × 10）と監督が考える間は詰める。刻みが進んだら着信に出る。
+ * 連続の時計の訓練（大雨想定。T90）は how で「次まで」（"next"）か分（180 など）のボタンを押す。先頭の「手の分」は押さない
+ */
+async function advance(page, rec, calls, label, hits = [], how = "next") {
   const before = await drillAt(page);
   await scrollToSel(rec, page, "main[data-drill]", 1.2, 0);
   rec.mark(label);
-  await clickSel(page, '[data-action="advance"]');
+  const clock = await page.$('[data-controls="clock"]');
+  await clickSel(page, clock ? (how === "next" ? '[data-action="advance"][data-next]' : `[data-action="advance"][data-minutes="${how}"]`) : '[data-action="advance"]');
   await waitCut(rec, page, (s) => Number(document.querySelector("main[data-drill]")?.getAttribute("data-step") ?? -1) > s || document.querySelector("main[data-drill]")?.getAttribute("data-status") !== "running", {
     keep: 3,
     timeout: 240_000,
@@ -756,8 +763,9 @@ async function advance(page, rec, calls, label, hits = []) {
 }
 
 /**
- * R07 訓練の 10 分版（大雨）・R08 着信（R07 から切り出す）・R09 採点と講評（ケアマネ）。
- * 手は docs/video/SHOOTING.md のとおり: 0 時間に小林へ訪問依頼、田中の透析調整はわざと 12 時間の刻みで（採点で後回しを見せるため）。最後は早送り
+ * R07 訓練の大雨想定（連続の時計。10 分版は T124 でアプリから外した）・R08 着信（R07 から切り出す）・R09 採点と講評（ケアマネ）。
+ * 手は docs/video/SHOOTING.md のとおり: 0 時間に小林へ訪問依頼、田中の透析調整はわざと 12 時間を過ぎてから（採点で後回しを見せるため）。
+ * 12 時間までは「3 時間」で進め、残りは早送り（「次まで」を間を置いて繰り返す。72 時間で必ず終わる〔T123〕）
  */
 async function aiDrill(browser, { scoreOnly = false } = {}) {
   const cm = await newPage(browser, PC);
@@ -784,8 +792,11 @@ async function aiDrill(browser, { scoreOnly = false } = {}) {
   const r7 = scoreOnly ? quietRecorder("R07") : new Recorder(cm, "R07");
   await r7.start();
   await sleep(2500);
-  r7.mark("10 分版");
-  await clickSel(cm, '[data-scenario="short"]');
+  r7.mark("大雨想定");
+  // 開始の画面の見込み（AI の回数）を残す（費用の上限を見るため）
+  const estimate = await cm.$eval('[data-estimate-scenario="heavy_rain"][data-estimate-calls]', (e) => e.getAttribute("data-estimate-calls")).catch(() => null);
+  console.log(`  見込み（大雨想定）: AI ${estimate ?? "?"} 回`);
+  await clickSel(cm, '[data-scenario="heavy_rain"]');
   const opened = await waitCut(r7, cm, () => !!document.querySelector("main[data-drill]"), { keep: 3, timeout: 240_000, label: "開始" });
   if (!opened) throw new Error("訓練の画面が開かない");
   await settle(cm);
@@ -797,8 +808,8 @@ async function aiDrill(browser, { scoreOnly = false } = {}) {
   r7.mark("手 小林 訪問依頼");
   await act(cm, r7, "p-02", "dispatch");
   await checkWords(cm, "手 小林", hits);
-  let at = await advance(cm, r7, calls, "進める 3 時間", hits);
-  if (at.status === "running") at = await advance(cm, r7, calls, "進める 12 時間", hits);
+  let at = await advance(cm, r7, calls, "進める 3 時間", hits, 180);
+  for (let k = 0; k < 5 && at.status === "running" && at.hour >= 0 && at.hour < 12; k++) at = await advance(cm, r7, calls, "進める 3 時間", hits, 180);
   // 12 時間: 田中（透析）の透析調整（わざと遅く）
   if (at.status === "running") {
     r7.mark("手 田中 透析調整");
@@ -806,8 +817,9 @@ async function aiDrill(browser, { scoreOnly = false } = {}) {
     await checkWords(cm, "手 田中", hits);
     await answerCalls(cm, r7, calls, hits);
   }
-  // 残りは早送り（72 時間まで。着信が鳴ると止まるので、出てからもう一度）
-  for (let k = 0; k < 4; k++) {
+  // 残りは早送り（72 時間まで。大雨想定は「次まで」を繰り返す。着信が鳴ると止まるので、出てからもう一度）。
+  // 大雨想定は 12 時間から 72 時間まで 20 刻みほど（11/5 の 4 回目は 16 回で 57 時間ほどに留まり、ai-finish で続けた）
+  for (let k = 0; k < 40; k++) {
     at = await drillAt(cm);
     if (at.status !== "running") break;
     await scrollToSel(r7, cm, "main[data-drill]", 1.2, 0);
@@ -890,6 +902,75 @@ async function aiDrill(browser, { scoreOnly = false } = {}) {
     writeFileSync(join(recDir("R08"), "call.json"), JSON.stringify(pick, null, 2) + "\n");
     writeWords(recDir("R08"), hits.filter((h) => h.where === pick.label));
   } else console.log("  着信が無いので R08 は切り出さない");
+}
+
+/**
+ * 訓練を終わりまで進めて R09（採点と講評）だけを撮る（ai-finish。ai-drill の早送りが 72 時間の前で終わったときの続き）。
+ * いちばん新しい訓練を開き、進行中なら着信に出ながら「次まで」で終わりまで進める（録らない）。講評（Opus）が保存されるのを待って
+ * 頁を読み直し、採点 → 講評 → 出典を撮る。訓練を始め直さないので、AI は残りの刻みと講評の分だけ
+ */
+async function aiFinish(browser) {
+  const cm = await newPage(browser, PC);
+  await login(cm, base, "yamamoto", cmPw);
+  const keys = await aiKeys(cm);
+  const reviewDone = new Promise((resolve) => {
+    const on = (r) => {
+      if (r.request().method() === "POST" && /\/api\/drill\/[^/]+\/review$/.test(new URL(r.url()).pathname)) {
+        cm.off("response", on);
+        resolve(r.status());
+      }
+    };
+    cm.on("response", on);
+  });
+  await open(cm, base, "/drill");
+  // 進行中の訓練が先、無ければ記録の一番上
+  const id =
+    (await cm.$eval('tr[data-drill][data-status="running"]', (e) => e.getAttribute("data-drill")).catch(() => null)) ??
+    (await cm.$eval("tr[data-drill]", (e) => e.getAttribute("data-drill")).catch(() => null));
+  if (!id) throw new Error("訓練の記録が無い");
+  await open(cm, base, `/drill/${id}`);
+  const quiet = quietRecorder("R07");
+  const calls = [];
+  for (let k = 0; k < 40; k++) {
+    const at = await drillAt(cm);
+    console.log(`  刻み ${at.step}・${at.status}`);
+    if (at.status !== "running") break;
+    await answerCalls(cm, quiet, calls, []);
+    await advance(cm, quiet, calls, "次まで", [], "next");
+  }
+  // 講評が無ければ、この頁の採点の欄が 1 回作る（Opus）。保存の返事を待ってから読み直す（ai-drill と同じ理由。8 分まで）
+  if (keys.anthropic && !(await cm.$('[data-review="done"]'))) {
+    const t0 = Date.now();
+    const status = await Promise.race([reviewDone, sleep(480_000).then(() => null)]);
+    console.log(`  講評の保存の返事: ${status ?? "来ない"}（${((Date.now() - t0) / 1000).toFixed(0)} 秒待った）`);
+  }
+  await cm.reload({ waitUntil: "networkidle0", timeout: 180_000 }).catch(() => undefined);
+  await settle(cm);
+  await sleep(1500);
+  const r9 = new Recorder(cm, "R09");
+  await r9.start();
+  await scrollToSel(r9, cm, '[data-panel="score"]', 2, 70);
+  r9.mark("採点");
+  await sleep(4000);
+  const hits9 = [];
+  if (await cm.$('[data-review="done"]')) {
+    await scrollToSel(r9, cm, "[data-review]", 2, 90);
+    r9.mark("講評");
+    await checkWords(cm, "講評", hits9);
+    await sleep(5000);
+    if (await cm.$("[data-basis]")) {
+      await scrollToSel(r9, cm, "[data-basis]", 2.5, 300);
+      r9.mark("出典");
+      await sleep(4000);
+    }
+  } else {
+    console.log(`  講評が出ない（${await cm.$eval("[data-review]", (e) => e.getAttribute("data-review")).catch(() => "欄なし")}）`);
+    await sleep(2000);
+  }
+  await r9.stop(recDir("R09"));
+  writeWords(recDir("R09"), hits9);
+  const review = await cm.$eval('[data-panel="score"]', (e) => e.innerText).catch(() => "");
+  if (review) writeFileSync(join(recDir("R09"), "score.txt"), review.replace(/\r\n/g, "\n") + "\n");
 }
 
 /** 平時 → 大雨（警戒レベル 4・停電 地区 かわなぎ町）。撮らない（disaster の R10 の頭と同じ操作） */
@@ -1068,6 +1149,8 @@ try {
     await aiDrill(browser);
   } else if (scene === "ai-score") {
     await aiDrill(browser, { scoreOnly: true });
+  } else if (scene === "ai-finish") {
+    await aiFinish(browser);
   } else if (scene === "ai-voice") {
     await aiVoice();
   } else {
