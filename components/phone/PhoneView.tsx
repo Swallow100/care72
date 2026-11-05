@@ -277,7 +277,9 @@ export function PhoneView({
               <div className="w-full rounded-xl bg-panel px-4 py-6 text-center text-[2rem] font-bold" data-talk-line={state.by}>
                 {state.by === "ai" && (
                   <>
-                    <span className="phone-ai">AI</span>{" "}
+                    <span className="phone-ai" data-on="panel">
+                      AI
+                    </span>{" "}
                   </>
                 )}
                 {state.easy ? <Words m={state.easy} /> : <EasyWords words={yomi(state.line).words} />}

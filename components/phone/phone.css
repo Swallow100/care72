@@ -71,3 +71,8 @@
   margin-right: 0.15em;
   font-weight: 700;
 }
+
+/* 面（白）の上に置く AI の印（T137b。会話の 1 文の面の中）。地の色にして面と分ける */
+.phone-ai[data-on="panel"] {
+  background-color: var(--base);
+}
