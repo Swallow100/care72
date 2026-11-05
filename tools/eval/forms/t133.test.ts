@@ -8,10 +8,11 @@ import type { FormMapping, MappingField } from "../../../lib/forms/mapping.ts";
 import { buildOverlaySheet } from "../../../lib/forms/overlay-sheet.ts";
 import type { PageImage } from "../../../lib/forms/page-images.ts";
 import { seedRows } from "../../../lib/forms/print-harness.ts";
-import { SEED_PEOPLE } from "../../../seed/people.ts";
 import { lookOfPaper, MASK_WORDS } from "./look.ts";
 import type { CallRecord } from "./record.ts";
 import { replayClient, replayText } from "./replay.ts";
+// T142 で種の台帳を埋めた。このテストは空いた欄を前提にするので、T142 より前の空きの多い形（seed/sparse.ts）を使う
+import { SPARSE_PEOPLE } from "../../../seed/sparse.ts";
 
 const OPTS = { today: "2026-11-05", officeName: "デモ事業所" };
 
@@ -39,7 +40,7 @@ describe("数え直しの道（T133）", () => {
 });
 
 describe("紙の見た目の数（T133）", () => {
-  const rows = seedRows(SEED_PEOPLE.find((p) => p.person.id === "p-01")!);
+  const rows = seedRows(SPARSE_PEOPLE.find((p) => p.person.id === "p-01")!);
   let n = 0;
   const field = (over: Partial<MappingField>): MappingField => ({ id: `f${++n}`, page: 1, section: "", label: "欄", position: "", shape: "text", options: [], item: null, removed: false, ai: null, ...over });
 

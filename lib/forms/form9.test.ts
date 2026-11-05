@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SEED_PEOPLE, SEED_ACCOUNTS } from "../../seed/people.ts";
+import { SEED_ACCOUNTS } from "../../seed/people.ts";
 import { toTriagePerson } from "../triage/from-ledger.ts";
 import { rank, type Situation, type TriageSignal } from "../triage/index.ts";
 import {
@@ -18,10 +18,12 @@ import {
 import { CSV_BOM, csvCell, csvFileNames, form9Csv, mappedCsv } from "./form9-csv.ts";
 import { form9Href, parseEdit, parseError, parseSort, sortRows } from "./form9-href.ts";
 import { form9Report, tally } from "./form9-report.ts";
+// T142 で種の台帳を埋めた。このテストは空いた欄を前提にするので、T142 より前の空きの多い形（seed/sparse.ts）を使う
+import { SPARSE_PEOPLE } from "../../seed/sparse.ts";
 
 const TODAY = "2026-11-02";
 const cmName = SEED_ACCOUNTS.find((a) => a.id === "acct-yamamoto")!.display_name;
-const people: Form9PersonInput[] = SEED_PEOPLE.map((p) => ({
+const people: Form9PersonInput[] = SPARSE_PEOPLE.map((p) => ({
   person: { ...p.person, ledger: JSON.stringify(p.ledger) },
   careManager: cmName,
   contacts: p.contacts,
@@ -64,7 +66,7 @@ const REPORTS = new Map<string, Form9Reports>([
   ["p-10", { signals: [{ color: "green", source: "family", whereNow: "home", injured: null, canMove: null, at: "2026-11-03T04:10:00.000Z" }], entries: [] }],
 ]);
 const triage = rank(
-  SEED_PEOPLE.map((p) => ({
+  SPARSE_PEOPLE.map((p) => ({
     person: toTriagePerson({ person: p.person, ledger: p.ledger, contacts: p.contacts, clocks: p.clocks }),
     signals: SIGNALS[p.person.id] ?? [],
   })),
@@ -431,7 +433,7 @@ describe("市町村への報告の下書き", () => {
   });
 
   it("氏名・電話を出さず、「危険」「重症」「判定」「診断」を使わない", () => {
-    for (const p of SEED_PEOPLE) expect(text).not.toContain(p.person.name);
+    for (const p of SPARSE_PEOPLE) expect(text).not.toContain(p.person.name);
     expect(text).not.toMatch(/090-/);
     expect(text).not.toMatch(/危険|重症|判定|診断/);
   });
