@@ -6,7 +6,7 @@
 //   CHECK_WORKERS_DEV_HOST  workers.dev のホスト名。あれば閉じているか（404 か 1042）を見る。無ければ飛ばす
 //   CHECK_LOGIN_ID          ログインが要る確かめの ID（審査員か山本）
 //   CHECK_LOGIN_PASSWORD    そのパスワード。ID と両方あるときだけ、ログイン → 役選択 → 担当一覧・本人のスマホ →
-//                           訓練 10 分版を 1 回（AI を使う）→ 最初に戻す（デモ事業所を種に戻す）。作者が自分の端末で流す
+//                           訓練 大雨想定を 2 回進めて中断（AI を少し使う）→ 最初に戻す（デモ事業所を種に戻す）。作者が自分の端末で流す
 //
 // 手元（http://localhost:<port>）では、鍵の無い ai は SKIP、workers.dev は CHECK_WORKERS_DEV_HOST が無ければ SKIP。
 
@@ -29,7 +29,7 @@ const env = {
 
 console.log(`== check ${base}`);
 if (env.CHECK_LOGIN_ID && env.CHECK_LOGIN_PASSWORD) {
-  console.log("ログインありの確かめも流す（訓練 10 分版で AI を使い、最後にデモ事業所を最初に戻す）");
+  console.log("ログインありの確かめも流す（訓練 大雨想定を 2 回進めて AI を少し使い、最後にデモ事業所を最初に戻す）");
 }
 const results = await runChecks(base, env, (input, init) => fetch(input, init));
 for (const line of formatResults(results)) console.log(line);

@@ -1,7 +1,7 @@
 // 訓練の API（app/api/drill/）の中身。route は同じ所からの POST かを見て、ここの応答を返すだけ。
 // D1 と Principal を引数で受け取る（テストで node:sqlite を渡す）。
 // 断り方: ログインしていなければ 401、ケアマネの役でなければ 403（行政・医療班・本人・家族・役を選ぶ前の審査員）、
-// 形が違う 400、事業所の外・無い訓練 404、同じケアマネの進行中があるのに開始 409（T70。24 時間たった進行中は先に中断）、読んだ刻みと違う 409、終わった訓練を進める 409。
+// 形が違う 400（開始の 10 分版も。T124）、事業所の外・無い訓練 404、同じケアマネの進行中があるのに開始 409（T70。24 時間たった進行中は先に中断）、読んだ刻みと違う 409、終わった訓練を進める 409。
 // 1 要求で進めるのは 1 刻みだけ（早送りもブラウザから 1 刻みずつ呼ぶ）。
 
 import type { D1Database } from "@cloudflare/workers-types";
@@ -35,7 +35,7 @@ import { csvResponse } from "../forms/csv-response.ts";
 import { csvFileNames } from "../forms/form9-csv.ts";
 import { FREE_WAY_LABELS } from "./action-terms.ts";
 import type { FreePlan } from "./action-types.ts";
-import { lastHour, scenarioOf } from "./scenarios.ts";
+import { isStartScenario, lastHour, scenarioOf } from "./scenarios.ts";
 import { isClockStep, type ClockTo } from "./clock.ts";
 import { cleanScale, type DrillScale } from "./scale.ts";
 import { HOME_TOWN_MAX } from "./self.ts";
@@ -96,7 +96,7 @@ export function parseStartOptions(v: unknown): StartOptions | null {
     if (typeof o.night !== "boolean") return null;
     if (o.night) out.night = true;
   }
-  // 連続の時計（T90。開始の画面が大雨・地震・仮想に付ける）。10 分版に来たら startDrill が捨てる
+  // 連続の時計（T90。開始の画面が大雨・地震・仮想に付ける）。刻みの道の訓練（前からある 10 分版）では startDrill が捨てる
   if (o.clock !== undefined) {
     if (typeof o.clock !== "boolean") return null;
     if (o.clock) out.clock = true;
@@ -121,14 +121,15 @@ export function parseStartOptions(v: unknown): StartOptions | null {
 }
 
 /**
- * 開始の POST（JSON）。{ scenario: heavy_rain・earthquake・short・virtual, options?: { participants?, staff?, night? } }（options は T59。
- * 無ければ担当一覧の全員・想定の表の職員・昼の発災で今と同じ）
+ * 開始の POST（JSON）。{ scenario: heavy_rain・earthquake・virtual, options?: { participants?, staff?, night?, clock?, terms?, scale?, home? } }
+ * （options は T59 から。無ければ担当一覧の全員・想定の表の職員・昼の発災）。
+ * 10 分版（short）は T124 で外したので 400（入力不正）。前からある 10 分版の記録は一覧・再生・紙で今までどおり読める
  */
 export async function startPost(db: D1Database, p: Principal | null, json: unknown, now: string, hooks?: StepHooks): Promise<Response> {
   const scope = gate(p);
   if (scope instanceof Response) return scope;
   const b = obj(json);
-  if (!b || !isDrillScenario(b.scenario)) return drillError("invalid");
+  if (!b || !isDrillScenario(b.scenario) || !isStartScenario(b.scenario)) return drillError("invalid");
   const options = parseStartOptions(b.options);
   if (!options) return drillError("invalid");
   const r = await startDrill(db, scope, b.scenario, now, hooks, undefined, options);
