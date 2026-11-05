@@ -61,7 +61,8 @@ describe("様式の読み取りの指示（T89）", () => {
   });
 
   it("場所（矩形）を返す（T86）。T120 から 1 頁の短い形（段ごと、頁・位置の説明は返させない、候補）", () => {
-    expect(Object.keys(PageReadSchema.shape)).toEqual(["title", "issuer", "typeface", "sections"]);
+    // T131: 一覧の表の行の数と帯（list。表の無い頁は null）
+    expect(Object.keys(PageReadSchema.shape)).toEqual(["title", "issuer", "typeface", "sections", "list"]);
     expect(Object.keys(PageReadSchema.shape.sections.element.shape.fields.element.shape)).toEqual([
       "label",
       "shape",

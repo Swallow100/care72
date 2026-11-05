@@ -146,5 +146,7 @@ export function mergeReread(cur: FormMapping, read: FormMapping, stillUnread: re
     issuer: cur.issuer || read.issuer,
     fields,
     ...(stillUnread.length > 0 ? { unread: [...stillUnread] } : {}),
+    // 一覧の表（T131）が読み直した頁にあれば足す（前の表はそのまま）
+    ...(!cur.list && read.list ? { list: read.list } : {}),
   };
 }

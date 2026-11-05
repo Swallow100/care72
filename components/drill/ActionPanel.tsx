@@ -7,14 +7,19 @@
 // 終わったら画面を読み直す（router.refresh）。結果と履歴はサーバーが描く（ActionLog）。断られたら理由を 1 行。
 // 選んだ印は枠（ring）と太字。テーマ色の下地は敷かない。押したときは灰色だけ（data-press）。主の操作（実行）だけ操作の色。
 // この画面で正解・不正解を出さない（採点は T22）。
-// メモ（T59）: 100 字まで、任意。手と一緒に送り、履歴と訓練記録に出す（Claude には渡さない）。
 // T110: 上に時間を使う手の 1 行（status。使用・職員の空き・外出・次空）。決まりを選んだ訓練は、手の所要を決まりの表の値で（夜・浸水などで
 // 伸びた分は太字）、押せない手と相手は灰で理由の 2〜4 字（「通行止」「通話不可」。lib/drill/action-terms.ts）。
 // 自由対応は 200 字。「読替」で監督役が読み替え（POST /api/drill/<id>/free、10〜13 秒）、読み替えた手（表の手か「自由」とやり方）・相手・所要・
 // 押せない理由を見せ、確かめてから実行（同じ文と本人なら Claude をもう 1 回呼ばない）。文か対象を直したら読み替え直し。
+// T126: 押せない手（決まりの表の理由・相手の連絡先が台帳に無い「相手なし」）は薄く（地を外し字を弱く。理由の字は読める濃さ）、区分の段の中で
+// 押せる手を先に（手の表の順は保つ）。本人を選ぶ前の本人の要る手は今の見た目のまま。本人を選ぶと手の段の上に打てる手の候補
+// （lib/drill/action-hints.ts。分かった事・頼み事・時計から、電話の手が全部押せない時は代替）。本人の詳細の候補を押すと、ここでその本人と手を選ぶ。
+// 訪問は「自分 40 分」、訪問依頼は「自分 10 分 職員 40 分」（自分が出る訪問の間は手が止まり、職員に行ってもらう手は自分の時間が短い）。
+// メモの入力と記録の手（note）は外した（打った手・着信・分かった事は経過と紙面に自動で残り、書きたい事は自由対応。
+// API・保存の形・前の訓練のメモと記録の手の表示は今のまま。出さない手は lib/drill/action-hints.ts の PANEL_HIDDEN）。
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AiMark } from "@/components/person/parts";
 import { Button } from "@/components/ui/Button";
 import { PlayIcon, ReadIcon } from "@/components/ui/Icon";
@@ -25,17 +30,18 @@ import {
   ACTION_GROUP_LABELS,
   ACTION_GROUPS,
   actionRow,
-  actionsOfGroup,
   FIXED_CALLEE_LABELS,
   FREE_LABELS,
   FREE_TEXT_MAX,
 } from "@/lib/drill/action-catalog";
+import { actAvail, HINT_LABELS, panelActionsOf, timeParts, usableFirst, type ActionHints } from "@/lib/drill/action-hints";
 import type { ActionTerm, TermCallee } from "@/lib/drill/action-terms";
-import { ACTION_MINUTES, needsPerson, needsTarget, picksTarget, targetKinds } from "@/lib/drill/action-table";
+import { ACTION_MINUTES, needsTarget, picksTarget, targetKinds } from "@/lib/drill/action-table";
 import type { FreePlanView } from "@/lib/drill/http";
-import { ACTION_LABELS, ACTION_UI, CALL_STATUS_LABELS, DRILL_LABELS, T59_LABELS } from "@/lib/drill/labels";
+import { ACTION_LABELS, ACTION_UI, CALL_STATUS_LABELS, DRILL_LABELS } from "@/lib/drill/labels";
 import type { DrillContact } from "@/lib/drill/view";
 import type { FictionKind } from "@/lib/drill/fiction";
+import { ActionHintRows, ActTime, DRILL_PICK_EVENT, FADED, GROUP_ROW, PICKED, type DrillPick } from "./ActionHints";
 import { FictionalMark } from "./Fictional";
 import { ACTION_ICONS } from "./icons";
 
@@ -51,19 +57,17 @@ const FIXED = "__fixed__";
 
 /** 選ぶボタン（components/ui の plain を左寄せで欄いっぱいに）。選んでいない物は細字、選んだ物は太字と枠（ring）。下地は変えない */
 const TOGGLE = "w-full min-w-0 justify-start! px-2! font-normal!";
-const PICKED = "font-bold! ring-2 ring-inset ring-accent";
 /** 選ぶボタンの並び（幅に合わせて段を折る。横に送らない） */
 const GRID = "grid grid-cols-[repeat(auto-fill,minmax(8.5rem,1fr))] gap-1";
-/** 手の区分の段（左に区分の名前 2 字、右に手のボタン） */
-const GROUP_ROW = "grid grid-cols-[2rem_minmax(0,1fr)] items-start gap-x-1.5";
-/** メモの欄（面の中の色、枠線なし。焦点は操作の色の枠） */
-const MEMO_FIELD =
-  "h-8 w-full min-w-0 rounded bg-panel2 px-2 text-sm outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-accent";
-/** 自由対応の文の欄（メモの欄と同じ面の中の色。3 行） */
+/**
+ * 手の並び（T126）。手の名前と押せない理由・時間を切らない幅（9.5rem）で、狭い画面でも 2 列。
+ * 訪問と訪問依頼は「自分 40 分」「自分 10 分 職員 40 分」を並べて見比べるので 2 枠の幅
+ */
+const ACT_GRID = "grid grid-cols-[repeat(auto-fill,minmax(min(9.5rem,calc(50%_-_0.125rem)),1fr))] gap-1";
+const WIDE = "col-span-2";
+/** 自由対応の文の欄（面の中の色、枠線なし。焦点は操作の色の枠。3 行） */
 const FREE_FIELD =
   "block min-h-16 w-full min-w-0 resize-y rounded bg-panel2 px-2 py-1.5 text-sm outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-accent";
-/** メモの長さの上限（lib/drill/db.ts の MEMO_MAX と同じ） */
-const MEMO_MAX = 100;
 
 export function ActionPanel({
   drillId,
@@ -74,6 +78,7 @@ export function ActionPanel({
   fiction,
   terms = null,
   status = null,
+  hints = null,
 }: {
   drillId: string;
   step: number;
@@ -88,12 +93,14 @@ export function ActionPanel({
   terms?: Readonly<Record<string, Readonly<Record<DrillAction, ActionTerm>>>> | null;
   /** 時間を使う手の 1 行（T110、サーバーで描いた BusyLine） */
   status?: React.ReactNode;
+  /** 打てる手の候補（T126。本人の id → 候補、lib/drill/action-hints.ts）。無ければ出さない */
+  hints?: Readonly<Record<string, ActionHints>> | null;
 }) {
   const router = useRouter();
+  const root = useRef<HTMLDivElement>(null);
   const [person, setPerson] = useState<string | null>(null);
   const [kind, setKind] = useState<DrillAction | null>(null);
   const [target, setTarget] = useState<string | null>(null);
-  const [memo, setMemo] = useState("");
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -111,22 +118,9 @@ export function ActionPanel({
     const t = termOf(k);
     return t ? (t.block ?? t.targets[key] ?? null) : null;
   };
-  /** 手全体が押せない理由（相手を選ぶ手は、選べる相手が全部押せないとき） */
-  const blockOf = (k: DrillAction): string | null => {
-    const t = termOf(k);
-    if (!t) return null;
-    if (t.block) return t.block;
-    if (person && picksTarget(k)) {
-      const keys: TermCallee[] = [...(fixedOf(k) ? (["fixed"] as TermCallee[]) : []), ...choices(k).map((c) => c.kind)];
-      if (keys.length > 0 && keys.every((x) => t.targets[x])) return t.targets[keys[0]] ?? null;
-    }
-    return null;
-  };
-  const usable = (k: DrillAction) => {
-    if (needsPerson(k) && !person) return false;
-    if (needsTarget(k) && choices(k).length === 0) return false;
-    return blockOf(k) === null;
-  };
+  /** 手の見え方（T126、lib/drill/action-hints.ts の actAvail。候補と同じ所）。押せない理由は決まりの表の理由か「相手なし」 */
+  const availOf = (k: DrillAction) => actAvail(k, { person, term: termOf(k), contacts: own });
+  const usable = (k: DrillAction) => availOf(k).state === "ok";
   /** 選んだ相手の決まりの区分（固定の相手は fixed、本人電話は本人） */
   const targetKey = (k: DrillAction): TermCallee | null => {
     if (k === "call_person") return "self";
@@ -168,6 +162,28 @@ export function ActionPanel({
     setTarget(picksTarget(k) && fixedOf(k) ? FIXED : null);
     setError(null);
   };
+  /** 候補から選ぶ（T126）。選び直しで外さない */
+  const pickKind = (k: DrillAction) => {
+    setKind(k);
+    setTarget(picksTarget(k) && fixedOf(k) ? FIXED : null);
+    setError(null);
+  };
+
+  // 本人の詳細の候補を押したとき（T126）: その本人とその手を選び、この欄を見える所へ
+  useEffect(() => {
+    const on = (e: Event) => {
+      const d = (e as CustomEvent<DrillPick>).detail;
+      if (!d || !people.some((p) => p.id === d.person)) return;
+      setPerson(d.person);
+      setKind(d.kind);
+      setTarget(picksTarget(d.kind) && actionRow(d.kind).fixed ? FIXED : null);
+      setError(null);
+      root.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    };
+    window.addEventListener(DRILL_PICK_EVENT, on);
+    return () => window.removeEventListener(DRILL_PICK_EVENT, on);
+  }, [people]);
+  const hintsNow = person ? (hints?.[person] ?? null) : null;
 
   const run = async () => {
     if (!ready || !kind) return;
@@ -183,7 +199,6 @@ export function ActionPanel({
           kind,
           person: kind === "evacuate_self" ? null : person,
           target: target === FIXED ? null : target,
-          ...(memo.trim() ? { memo: memo.trim() } : {}),
           ...(isFree ? { text: text.trim() } : {}),
         }),
       });
@@ -193,7 +208,6 @@ export function ActionPanel({
       } else {
         setKind(null);
         setTarget(null);
-        setMemo("");
         setText("");
         setPlan(null);
       }
@@ -233,7 +247,7 @@ export function ActionPanel({
   };
 
   return (
-    <div className="space-y-2.5" data-action-panel>
+    <div ref={root} className="scroll-mt-4 space-y-2.5" data-action-panel>
       {status}
       <section aria-labelledby="act-person">
         <h3 id="act-person" className={`mb-1 ${LABEL}`}>
@@ -258,39 +272,47 @@ export function ActionPanel({
         </div>
       </section>
 
+      {person && hintsNow && (
+        <section aria-labelledby="act-hints" className={GROUP_ROW} data-act-hints>
+          <h3 id="act-hints" className={`${LABEL} leading-7`}>
+            {HINT_LABELS.head}
+          </h3>
+          <ActionHintRows person={person} hints={hintsNow} picked={kind} onPick={pickKind} disabled={busy} inPanel />
+        </section>
+      )}
+
       <section aria-label={DRILL_LABELS.actions} className="space-y-1" data-act-kinds>
         {ACTION_GROUPS.map((g) => (
           <div key={g} role="group" aria-labelledby={`act-group-${g}`} className={GROUP_ROW} data-act-group={g}>
             <h3 id={`act-group-${g}`} className={`${LABEL} leading-8`}>
               {ACTION_GROUP_LABELS[g]}
             </h3>
-            <div className={GRID}>
-              {actionsOfGroup(g).map(({ id: k }) => {
-                const block = blockOf(k);
+            <div className={ACT_GRID}>
+              {/* 押せる手を先、押せない手をあと（同じ状態の中は手の表の順。本人を選ぶ前の本人の要る手は押せる側に数える） */}
+              {usableFirst(panelActionsOf(g).map((k) => ({ k, ...availOf(k) }))).map(({ k, state, why }) => {
+                const block = state === "block";
                 const longer = (termOf(k)?.adds.length ?? 0) > 0;
+                const wide = timeParts(k, minutesOf(k)).some((p) => p.who !== null);
                 return (
                   <Button
                     key={k}
                     icon={ACTION_ICONS[k]}
                     aria-pressed={kind === k}
-                    disabled={!usable(k) || busy}
+                    disabled={state !== "ok" || busy}
                     onClick={() => chooseKind(k)}
-                    className={`${TOGGLE} ${kind === k ? PICKED : ""}`}
+                    className={`${TOGGLE} ${wide ? WIDE : ""} ${block ? FADED : ""} ${kind === k ? PICKED : ""}`}
                     data-act-kind={k}
-                    data-act-block={block ?? undefined}
+                    data-act-state={state}
+                    data-act-block={block ? (why ?? undefined) : undefined}
                     data-act-minutes={minutesOf(k)}
                   >
                     <span className="min-w-0 flex-1 truncate text-left">{ACTION_LABELS[k]}</span>
                     {block ? (
                       <span className="text-xs font-normal text-muted" data-act-why>
-                        {block}
+                        {why}
                       </span>
                     ) : (
-                      minutesOf(k) > 0 && (
-                        <span className={`text-xs tabular-nums ${longer ? "font-bold text-ink" : "font-normal text-muted"}`}>
-                          {minutesOf(k)} {ACTION_UI.minutes}
-                        </span>
-                      )
+                      <ActTime kind={k} minutes={minutesOf(k)} longer={longer} />
                     )}
                   </Button>
                 );
@@ -311,7 +333,7 @@ export function ActionPanel({
                 aria-pressed={target === FIXED}
                 onClick={() => setTarget(FIXED)}
                 disabled={targetBlock(kind, "fixed") !== null}
-                className={`${TOGGLE} ${target === FIXED ? PICKED : ""}`}
+                className={`${TOGGLE} ${targetBlock(kind, "fixed") !== null ? FADED : ""} ${target === FIXED ? PICKED : ""}`}
                 data-act-target={fixedOf(kind)!}
               >
                 <span className="min-w-0 flex-1 truncate text-left">{FIXED_CALLEE_LABELS[fixedOf(kind)!]}</span>
@@ -326,7 +348,7 @@ export function ActionPanel({
                   aria-pressed={target === c.id}
                   onClick={() => setTarget(c.id)}
                   disabled={why !== null}
-                  className={`${TOGGLE} ${target === c.id ? PICKED : ""}`}
+                  className={`${TOGGLE} ${why !== null ? FADED : ""} ${target === c.id ? PICKED : ""}`}
                   data-act-target={c.id}
                   data-act-target-block={why ?? undefined}
                 >
@@ -380,24 +402,6 @@ export function ActionPanel({
         </div>
       )}
 
-      <label className="block" data-act-memo>
-        <span className={`mb-1 flex items-baseline gap-2 ${LABEL}`}>
-          {T59_LABELS.memo}
-          <span className="tabular-nums">
-            {[...memo].length} / {MEMO_MAX}
-          </span>
-        </span>
-        <input
-          type="text"
-          value={memo}
-          maxLength={MEMO_MAX}
-          onChange={(e) => setMemo(e.target.value)}
-          disabled={busy}
-          className={MEMO_FIELD}
-          data-act-memo-input
-        />
-      </label>
-
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <Button kind="main" icon={PlayIcon} onClick={() => void run()} disabled={!ready || busy || reading} data-action="act">
           {ACTION_UI.execute}
@@ -408,9 +412,9 @@ export function ActionPanel({
             {kind !== "evacuate_self" && name ? ` ${name}` : ""}
             {targetLabel ? ` ${targetLabel}` : ""}
             {minutesOf(kind) > 0 && (
-              <span className="ml-1.5 text-xs text-muted tabular-nums">
-                {minutesOf(kind)} {ACTION_UI.minutes}
-                {(termOf(kind)?.adds.length ?? 0) > 0 && ` ${termOf(kind)!.adds.join("・")}`}
+              <span className="ml-1.5 inline-flex gap-1 text-xs text-muted tabular-nums">
+                <ActTime kind={kind} minutes={minutesOf(kind)} />
+                {(termOf(kind)?.adds.length ?? 0) > 0 && termOf(kind)!.adds.join("・")}
               </span>
             )}
             {chosenBlock && <span className="ml-1.5 text-xs font-bold text-danger">{chosenBlock}</span>}

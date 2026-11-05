@@ -81,11 +81,10 @@ describe("早送りの間とメモの欄", () => {
     expect(html).toMatch(/title="進める 2\.5 秒ごと"/);
   });
 
-  it("対応の欄にメモ（100 字まで）。焦点の枠つき", () => {
+  it("対応の欄にメモの入力は出さない（T126。自由対応と記録の手で足りる。API の memo と前の訓練のメモの表示は残す）", () => {
     const html = renderToStaticMarkup(createElement(ActionPanel, { drillId: ID, step: 0, actions: 0, people: [], contacts: {} }));
-    expect(html).toContain("data-act-memo-input");
-    expect(html).toContain('maxLength="100"');
-    expect(html).toContain("focus-visible:outline-solid");
+    expect(html).not.toContain("data-act-memo");
+    expect(html).not.toContain('maxLength="100"');
   });
 });
 

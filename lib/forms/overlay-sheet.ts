@@ -18,6 +18,7 @@
 import type { ConsentKind } from "../db/types.ts";
 import type { MappedSheet } from "./mapped-sheet.ts";
 import { PART_SHAPES, type FieldBox, type MappingField, type Typeface } from "./mapping.ts";
+import type { MappedRow } from "./mapped-sheet.ts";
 import { BLANK, type Cell, type Choice, type Piece } from "./matsuyama.ts";
 import type { PageImage } from "./page-images.ts";
 import { paperText } from "./paper-text.ts";
@@ -241,6 +242,8 @@ export type OverlaySheet = {
   unconfirmed: string[];
   unmapped: string[];
   withheld: ConsentKind[];
+  /** 一覧の形の様式（T131、差し込みの紙面の list のまま）。一括印刷で行ごとに 1 人を置く（lib/forms/list-sheet.ts） */
+  list?: MappedSheet["list"];
 };
 
 /** 頁の画像を A4 に収める箱（mm） */
@@ -273,6 +276,13 @@ export function buildOverlaySheet(mapped: MappedSheet, images: readonly PageImag
     return { page: img.page, landscape, image, items: [], fills: [] };
   });
   const annex: AnnexRow[] = [];
+  const all = mapped.pages.flatMap((p) => p.sections.flatMap((s) => s.rows));
+  // 名前と電話の列（T131）: 名前の欄の値の電話を、同じ行の右の電話の列（項目なし）に分けて置く
+  const tels = telColumns(all);
+  /** 電話を分けて置いた電話の列（未記入の色付けをしない） */
+  const telFilled = new Set<string>();
+  /** 字を置く欄（同じ書く所に 2 つの欄があれば重ねて置くので、あとでまとめて置く） */
+  const texts: Array<{ field: MappingField; page: OverlayPage; box: FieldBox; lines: string[] }> = [];
   for (const p of mapped.pages) {
     for (const s of p.sections) {
       for (const { field, cell } of s.rows) {
@@ -315,21 +325,39 @@ export function buildOverlaySheet(mapped: MappedSheet, images: readonly PageImag
           page.items.push(...parts);
           continue;
         }
-        const wMm = box.w * page.image.w;
-        const hMm = box.h * page.image.h;
-        const fitted = fitText(lines, wMm, hMm);
-        if (fitted) {
-          page.items.push({ kind: "text", fieldId: field.id, box, ...fitted });
+        // 名前と電話を別の列に分けて置く（T131）。どちらかが収まらなければ今までどおり欄全体に
+        const tel = tels.get(field.id);
+        const split = tel?.field.box ? splitTelItems(field, cell, tel.field, page.image) : null;
+        if (split && tel) {
+          page.items.push(...split);
+          telFilled.add(tel.field.id);
           continue;
         }
-        // 「なし」だけの値は別紙に回さず欄を空ける（T111）
-        if (isNoneOnly(lines)) continue;
-        annex.push({ fieldId: field.id, label: nameOf(field), lines, reason: "overflow" });
-        const mark = fitText([ANNEX_MARK], wMm, hMm);
-        page.items.push({ kind: "text", fieldId: field.id, box, lines: [ANNEX_MARK], fontPt: mark?.fontPt ?? FONT_MIN_PT, top: mark?.top ?? false });
+        texts.push({ field, page, box, lines });
       }
     }
   }
+  for (const all of sharedBoxes(texts)) {
+    const { page, box } = all[0];
+    const wMm = box.w * page.image.w;
+    const hMm = box.h * page.image.h;
+    // 同じ書く所の欄が全部入らなければ、「なし」だけの欄を外して試す（T111 の「なし」を刷りすぎない）
+    const valued = all.filter((g) => !isNoneOnly(g.lines));
+    const group = fitText(all.flatMap((g) => g.lines), wMm, hMm) || valued.length === 0 ? all : valued;
+    const lines = group.flatMap((g) => g.lines);
+    const fitted = fitText(lines, wMm, hMm);
+    if (fitted) {
+      page.items.push({ kind: "text", fieldId: group[0].field.id, box, ...fitted });
+      continue;
+    }
+    // 「なし」だけの値は別紙に回さず欄を空ける（T111）
+    if (isNoneOnly(lines)) continue;
+    for (const g of group) annex.push({ fieldId: g.field.id, label: nameOf(g.field), lines: g.lines, reason: "overflow" });
+    const mark = fitText([ANNEX_MARK], wMm, hMm);
+    page.items.push({ kind: "text", fieldId: group[0].field.id, box, lines: [ANNEX_MARK], fontPt: mark?.fontPt ?? FONT_MIN_PT, top: mark?.top ?? false });
+  }
+  // 電話を置いた電話の列は未記入でない
+  for (const page of pages) page.fills = page.fills.filter((f) => !f.keys.some((k) => telFilled.has(k)));
   return {
     personId: mapped.personId,
     name: mapped.name,
@@ -341,7 +369,108 @@ export function buildOverlaySheet(mapped: MappedSheet, images: readonly PageImag
     unconfirmed: mapped.unconfirmed,
     unmapped: mapped.unmapped,
     withheld: mapped.withheld,
+    ...(mapped.list ? { list: mapped.list } : {}),
   };
+}
+
+// ---------- 名前と電話の列・同じ書く所の欄（T131） ----------
+
+/** 縦に重なる割合（低い方の高さに対して） */
+function verticalOverlap(a: FieldBox, b: FieldBox): number {
+  const top = Math.max(a.y, b.y);
+  const bottom = Math.min(a.y + a.h, b.y + b.h);
+  return Math.max(0, bottom - top) / Math.min(a.h, b.h);
+}
+
+/** 値の行が全部「名前 … TEL 番号」の形か（関係先の行。lib/forms/matsuyama.ts の contactLine） */
+function telLines(cell: Cell): Array<{ name: Piece[]; tel: Piece[] }> | null {
+  if (cell.kind !== "value" || cell.lines.length === 0) return null;
+  const out: Array<{ name: Piece[]; tel: Piece[] }> = [];
+  for (const line of cell.lines) {
+    const at = line.findIndex((p) => p.sub && p.text === "TEL");
+    if (at < 0) return null;
+    // 電話の後ろの添え（備考）は名前の側に残す
+    const tail = line.slice(at + 1);
+    const telEnd = tail.findIndex((p) => p.sub);
+    out.push({ name: [...line.slice(0, at), ...(telEnd >= 0 ? tail.slice(telEnd) : [])], tel: telEnd >= 0 ? tail.slice(0, telEnd) : tail });
+  }
+  return out;
+}
+
+/**
+ * 名前の欄 → 同じ行の右の電話の列（T131）。様式の名前の列と電話の列が別にあり（民生委員・事業所等の「氏名」「TEL」）、電話の列に
+ * 台帳の項目が無い（電話だけの項目が無い連絡先）とき。電話の列は 1 つの名前の欄にだけ使う（いちばん近い物）
+ */
+export function telColumns(rows: readonly MappedRow[]): Map<string, MappedRow> {
+  const out = new Map<string, MappedRow>();
+  const used = new Set<string>();
+  for (const r of rows) {
+    const b = r.field.box;
+    if (!b || r.field.removed || r.field.item === null || (r.field.shape !== "text" && r.field.shape !== "lines") || !telLines(r.cell)) continue;
+    const near = rows
+      .filter((c) => {
+        const cb = c.field.box;
+        return (
+          cb &&
+          !used.has(c.field.id) &&
+          !c.field.removed &&
+          c.field.page === r.field.page &&
+          c.field.shape === "phone" &&
+          c.field.item === null &&
+          cb.x >= b.x + b.w * 0.5 &&
+          verticalOverlap(cb, b) >= 0.5
+        );
+      })
+      .sort((x, y) => x.field.box!.x - y.field.box!.x)[0];
+    if (near) {
+      out.set(r.field.id, near);
+      used.add(near.field.id);
+    }
+  }
+  return out;
+}
+
+/** 名前を名前の欄に、電話を電話の列に置く字。どちらかが収まらなければ null（欄全体に置く） */
+function splitTelItems(field: MappingField, cell: Cell, tel: MappingField, image: { w: number; h: number }): OverlayItem[] | null {
+  const parts = telLines(cell);
+  if (!parts || !field.box || !tel.box) return null;
+  const names = parts.map((p) => lineText(p.name)).filter((l) => l !== "");
+  const tels = parts.map((p) => lineText(p.tel)).filter((l) => l !== "");
+  const out: OverlayItem[] = [];
+  for (const [f, lines] of [
+    [field, names],
+    [tel, tels],
+  ] as const) {
+    if (lines.length === 0) continue;
+    const fitted = fitText(lines, f.box!.w * image.w, f.box!.h * image.h);
+    if (!fitted) return null;
+    out.push({ kind: "text", fieldId: f.id, box: f.box!, ...fitted });
+  }
+  return out;
+}
+
+/** 書く所がほぼ同じ（重なりが 9 割）か */
+function sameArea(a: FieldBox, b: FieldBox): boolean {
+  const x0 = Math.max(a.x, b.x);
+  const y0 = Math.max(a.y, b.y);
+  const x1 = Math.min(a.x + a.w, b.x + b.w);
+  const y1 = Math.min(a.y + a.h, b.y + b.h);
+  const inter = Math.max(0, x1 - x0) * Math.max(0, y1 - y0);
+  return inter >= 0.9 * Math.max(a.w * a.h, b.w * b.h);
+}
+
+/**
+ * 同じ書く所の欄をまとめる（T131）。1 つの書く所に欄の名前が 2 つ付く様式（「主治医」と「服薬の情報」の名前が 2 段で、書く所が 1 つ）は、
+ * 欄ごとに別の項目を当て、box は同じ所になる。別々に置くと字が重なるので、欄の順に行を重ねて 1 つに置く
+ */
+function sharedBoxes<T extends { field: MappingField; page: OverlayPage; box: FieldBox }>(texts: readonly T[]): T[][] {
+  const groups: T[][] = [];
+  for (const t of texts) {
+    const g = groups.find((x) => x[0].page === t.page && sameArea(x[0].box, t.box));
+    if (g) g.push(t);
+    else groups.push([t]);
+  }
+  return groups;
 }
 
 /**
