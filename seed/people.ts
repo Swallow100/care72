@@ -21,7 +21,12 @@ export const SEED_AT = "2026-11-02T03:00:00.000Z";
 export const CITY = "松山市";
 
 /** 試用事業所の印（judge_sandbox、T115）は種に持たない（0） */
-export type SeedOffice = Omit<OfficeRow, "created_at" | "judge_sandbox">;
+export type SeedOffice = Omit<OfficeRow, "created_at" | "judge_sandbox" | SeedOfficeProfileKey> & Partial<Pick<OfficeRow, SeedOfficeProfileKey>>;
+/**
+ * 事業所の情報と地域の周りの市・広さ（migration 0035、T148）。種ではデモ事業所だけが持つ（架空の所在地と電話、周りの市）。
+ * 協力事業所・所属なしの行には書かない（NULL のまま。種の文を 0035 の前の D1 に流すテストの行を増やさないため）
+ */
+type SeedOfficeProfileKey = "address" | "phone" | "fax" | "office_number" | "region_cities" | "region_km";
 /**
  * 停止の印（disabled_at）と審査員が足した印（judge_made、T81）は種に持たない（NULL と 0。種の戻しも戻す）。
  * 初期パスワードの印（password_initial、T114）も持たない（表の既定。種のアカウントは固定で、印は出さない）
@@ -50,7 +55,23 @@ export type SeedPerson = {
 export const SEED_OFFICES: SeedOffice[] = [
   // ハザード（offices.hazards、T125）は持たない（NULL = 区域なし。架空の街の高台で、訓練の区域の出来事は事業所に効かない）。
   // 種の行に列を足すと migration 0030 の前の D1 に種を入れられなくなる
-  { id: "office-demo", name: "デモ事業所", kind: "demo", city: CITY, plan_form: "matsuyama", center_lat: 33.84, center_lng: 132.765 },
+  // 事業所の情報と地域（T148）は架空の値: 所在地は架空の町名（番地なし）、電話は 090-0000-00NN の形、周りの市は 1 つ、広さは自動。
+  // 事業所番号・FAX は持たない（本物の番号と重ならないように）
+  {
+    id: "office-demo",
+    name: "デモ事業所",
+    kind: "demo",
+    city: CITY,
+    plan_form: "matsuyama",
+    center_lat: 33.84,
+    center_lng: 132.765,
+    address: `愛媛県${CITY}みずほし町`,
+    phone: phone(90),
+    fax: null,
+    office_number: null,
+    region_cities: JSON.stringify(["東温市"]),
+    region_km: null,
+  },
   { id: "office-partner", name: "協力事業所", kind: "regular", city: CITY, plan_form: "matsuyama", center_lat: null, center_lng: null },
   // 所属なし（T23）。医療班・行政がその場で作った人の置き場。ケアマネはいない。ケアマネが引き受けると自分の事業所へ移る
   { id: "office-unaffiliated", name: "所属なし", kind: "unaffiliated", city: CITY, plan_form: "matsuyama", center_lat: null, center_lng: null },

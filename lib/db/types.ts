@@ -528,6 +528,17 @@ export type OfficeRow = {
    * NULL は「まだ無い」（区域なし）。前からのテストの行には無い
    */
   hazards?: string | null;
+  /** 所在地（migration 0035、T148）。NULL は未入力 */
+  address: string | null;
+  /** 電話・FAX（migration 0035、T148） */
+  phone: string | null;
+  fax: string | null;
+  /** 介護保険の事業所番号（数字 10 桁。migration 0035、T148） */
+  office_number: string | null;
+  /** 地域の周りの市の JSON の配列（migration 0035、T148。主な市は city）。NULL は周りの市なし */
+  region_cities: string | null;
+  /** 地図の広さ（中心からの km。5・10・20・40。migration 0035、T148）。NULL は自動 */
+  region_km: number | null;
   created_at: string;
 };
 
