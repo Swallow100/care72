@@ -49,7 +49,7 @@ export const INJECT_KINDS = [
   // T92
   "outage_eta", // 停電の復旧の見込み
   "outage_spread", // 停電が全域に
-  "mobile_down", // 携帯も通話不可
+  "mobile_down", // 携帯の基地局の停止（電波不通。T125 で「携帯も通話不可」から）
   "road_reopen", // 家の前の道が通れるように
   "welfare_shelter_open", // 福祉避難所の開設
   "shelter_full", // 避難所が満員
@@ -311,21 +311,21 @@ const ROWS: ReadonlyArray<EventRow> = [
   },
   {
     kind: "mobile_down",
-    label: "携帯不可",
+    label: "電波不通",
     scope: "area",
-    words: "携帯電話も含めて通話できなくなる（電話が通じている間。after に何時間後に一部回復するか）",
-    eligible: (_s, _p, w) => w.phone !== "down",
+    words: "携帯の基地局の予備電源が尽き、携帯の電話・メッセージ・安否のボタンが届かなくなる（電波不通。固定電話は停電でなければ使える。after に何時間後に一部回復するか）",
+    eligible: (_s, _p, w) => w.radio !== "down",
     build: (_t, hour, after) => {
       const n = after ?? 3;
       return [
-        { change: { kind: "phone", state: "down" }, text: `携帯電話も${NO_CALL}` },
+        { change: { kind: "radio", state: "down" }, text: "携帯 電波不通" },
         {
-          change: { kind: "schedule", at: atMinute(hour, n), by: "director", then: { kind: "event", change: { kind: "phone", state: "busy" }, text: "電話 一部回復" } },
-          text: `電話 一部回復見込 ${n} 時間後`,
+          change: { kind: "schedule", at: atMinute(hour, n), by: "director", then: { kind: "event", change: { kind: "radio", state: "ok" }, text: "携帯 電波 一部回復" } },
+          text: `携帯 電波 回復見込 ${n} 時間後`,
         },
       ];
     },
-    text: () => `携帯電話も${NO_CALL}`,
+    text: () => "携帯 電波不通",
     ownText: true,
     // T104: 停電が長引くと基地局の予備電源が尽きる（北海道の地震・基地局の停電対策）。監督が選ぶ
     basis: { by: "director", ids: ["soumu-iburi-2019", "soumu-tsushin-2026"] },

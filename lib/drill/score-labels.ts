@@ -127,8 +127,10 @@ export const askWords = (kinds: ReadonlyArray<AskKind>): string => kinds.map((k)
  */
 export function factWords(k: Known, kind: DrillAction): string[] {
   const out: string[] = [];
-  if (k.line === "down") out.push(`電話 ${NO_CALL}`);
-  else if (k.homeLine === "down") out.push(`家の電話 ${NO_CALL}`);
+  // 通信の段（T125）: 世界の電話の down は規制（全部は止まらない）。家の電話の印は家の電話の通話不可
+  if (k.homeDown) out.push(`家の電話 ${NO_CALL}`);
+  if (k.line === "down") out.push("電話 規制");
+  else if (!k.homeDown && k.homeLine === "down") out.push("電話 規制");
   else if ((k.line ?? k.homeLine) === "busy") out.push("電話 不安定");
   if (k.roadClosed) out.push("道 通行止");
   if (kind === "dispatch" || kind === "request_backup") out.push(`職員 ${k.staff}`);

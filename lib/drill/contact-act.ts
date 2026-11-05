@@ -20,7 +20,8 @@ export type ContactAct = {
 
 /** 連絡の手のうち、相手にその区分を取る手（手の表の順） */
 function contactActions(kind: ContactKind) {
-  return ACTION_CATALOG.filter((r) => r.group === "contact" && r.needsPerson && r.targetKinds.includes(kind));
+  // メッセージ（伝言。T125）は電話の行の手ではない（データの道。電話が押せない時に代わりにならない: 電波不通なら両方とも届かない）
+  return ACTION_CATALOG.filter((r) => r.group === "contact" && r.needsPerson && r.targetKinds.includes(kind) && r.id !== "message");
 }
 
 /** 連絡先の行から選ぶ手。terms はその本人の手の可否（無ければ全部押せる） */

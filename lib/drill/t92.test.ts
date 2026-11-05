@@ -230,14 +230,17 @@ describe("表の行（種の 10 人）", () => {
     expect(again.outage).toEqual({ area: { scope: "office" }, since: 30, restoredAt: null });
   });
 
-  it("mobile_down: 電話が通じている間だけ。不通と、N 時間後に一部回復の予定の 2 行", () => {
+  it("mobile_down: 携帯の電波が通じている間だけ。電波不通と、N 時間後に一部回復の予定の 2 行（T125 で電話の不通から電波不通に）", () => {
     expect(ok("mobile_down", "p-01")).toBe(true);
-    expect(ok("mobile_down", "p-01", { ...W, phone: "down" })).toBe(false);
+    // 通話の規制の間も起きる（電波は別の段）。もう電波不通なら起きない
+    expect(ok("mobile_down", "p-01", { ...W, phone: "down" })).toBe(true);
+    expect(ok("mobile_down", "p-01", { ...W, radio: "down" })).toBe(false);
     const parts = EVENT_CATALOG.mobile_down.build({ person: null }, 12, 2);
-    expect(parts.map((p) => p.text)).toEqual(["携帯電話も通話不可", "電話 一部回復見込 2 時間後"]);
+    expect(parts.map((p) => p.text)).toEqual(["携帯 電波不通", "携帯 電波 回復見込 2 時間後"]);
     const w = apply(W, "mobile_down", null, 12, 2);
-    expect(w.phone).toBe("down");
-    expect(w.scheduled).toEqual([{ at: 840, change: { kind: "phone", state: "busy" }, text: "電話 一部回復", by: "director" }]);
+    expect(w.radio).toBe("down");
+    expect(w.phone).toBe("ok");
+    expect(w.scheduled).toEqual([{ at: 840, change: { kind: "radio", state: "ok" }, text: "携帯 電波 一部回復", by: "director" }]);
   });
 
   it("road_reopen: 家の前の道が通行止めの人だけ。通れるように", () => {
@@ -618,7 +621,8 @@ describe("監督を通しで（偽の Opus・地震想定）", () => {
       reply({
         events: [
           { target: "全体", kind: "outage_eta", text: "復旧の見込み", reason: "停電が続く", basis: "mhlw-bcp-2020", after: 5 },
-          { target: aliasOf("p-01"), kind: "vendor_round", text: "業者", reason: "酸素の残り", basis: NO_BASIS, after: 2 },
+          // T130: 業者の巡回は手か計画（台帳の業者の連絡先）がある人だけ。p-02 は医療機器業者の連絡先がある（p-01 には無いので差し込めない）
+          { target: aliasOf("p-02"), kind: "vendor_round", text: "業者", reason: "電池の残り", basis: NO_BASIS, after: 2 },
           { target: aliasOf("p-04"), kind: "wandering", text: "本人が外へ", reason: "認知症", basis: NO_BASIS },
         ],
       }),
@@ -634,20 +638,24 @@ describe("監督を通しで（偽の Opus・地震想定）", () => {
     // 0 時間の刻み（全域の停電の直後）: 差し込める数 2（engine は今の 3 引数）で、全体 1 つ・本人 1 つ。3 つ目は次の刻みへ。
     // T123: この道（step）も変わり方の決まりで見る。地震想定の表はこのあと停電を復旧するので、監督の復旧の見込みは使われない（表が先）
     const ai = (i: number) => ticks[i].incidents.filter((e) => e.ai);
-    expect(ai(0).map((e) => [e.inject, e.person ?? null, e.change.kind, e.text])).toEqual([["vendor_round", "p-01", "schedule", "酸素業者 巡回予定 2 時間後"]]);
-    expect(ai(0)[0].basis).toBe("jrs-respiratory-2012");
+    expect(ai(0).map((e) => [e.inject, e.person ?? null, e.change.kind, e.text])).toEqual([["vendor_round", "p-02", "schedule", "医療機器業者 巡回予定 2 時間後"]]);
+    expect(ai(0)[0].basis).toBe("nanbyo-shishin-2017");
     // 1 時間の刻み: 業者は向かっているので当たらない。外へ出た本人も、表の 9 時間の行が「家にいる」と決めるので当たらない（T123 の表が先）
     expect(ai(1)).toEqual([]);
     expect(s.world.scheduled ?? []).toEqual([]);
-    expect(s.world.arrivals).toEqual([{ person: "p-01", role: "vendor", arrive: 120, back: null, arrived: false, from: "director" }]);
+    expect(s.world.arrivals).toEqual([{ person: "p-02", role: "vendor", arrive: 120, back: null, arrived: false, from: "director", supply: "power" }]);
     expect(s.world.marks["p-04"]).toBeUndefined();
     // 送った物: 差し込める数・全体に差し込める種類（停電中なので見込みが入る）
     const sent = (i: number) => JSON.parse(calls[i].messages[0].content as string) as Record<string, { text: string }>;
     expect(sent(0)["想定"].text).toContain("差し込める数: 2");
     expect(sent(0)["弱点"].text).toMatch(/全体に差し込める種類: .*outage_eta/);
     expect(sent(0)["弱点"].text).toContain("aftershock");
+    // T130: 業者の連絡先も手も無い p-01 には業者の巡回を見せない。連絡先のある p-02 には見せる
+    const kindsOf = (text: string, id: string) => text.split(`- ${aliasOf(id)}:`)[1]?.split("差し込める種類: ")[1]?.split("\n")[0] ?? "";
+    expect(kindsOf(sent(0)["弱点"].text, "p-01")).not.toContain("vendor_round");
+    expect(kindsOf(sent(0)["弱点"].text, "p-02")).toContain("vendor_round");
     // 2 回目: 積んだ予定と向かっている人が出て、見込みはもう差し込める種類に無い
-    expect(sent(1)["弱点"].text).toContain(`${aliasOf("p-01")}:`);
+    expect(sent(1)["弱点"].text).toContain(`${aliasOf("p-02")}:`);
     expect(sent(1)["弱点"].text).toContain("向かっている人: 業者（2 時間ごろ）");
     expect(weaknessText([], s.world, 3, [])).toContain("全体に差し込める種類: なし");
   });

@@ -508,7 +508,9 @@ describe("通話の相手", () => {
     expect(decideCallPickup("ok", CALL_PICKUP_ODDS.ok.answers)).toBe("background_only");
     expect(decideCallPickup("ok", 0.99)).toBe("no_answer");
     expect(decideCallPickup("busy", 0.6)).toBe("background_only");
-    expect(decideCallPickup("down", 0)).toBe("no_answer");
+    // 規制（T125）はかけ直せば時々つながる
+    expect(decideCallPickup("down", 0)).toBe("answers");
+    expect(decideCallPickup("down", 0.99)).toBe("no_answer");
     expect(decideCallPickup("ok", 0, false)).toBe("no_answer");
   });
 

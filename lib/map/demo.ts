@@ -9,6 +9,7 @@
 
 import type { GeoPoint, HazardKind } from "../db/types.ts";
 import type { RainTrack } from "../drill/rain.ts";
+import { FIT_PROFILES } from "../drill/fit.ts";
 import { checkMark, sourceById, type CheckMark } from "../sources/index.ts";
 import { drillRain, type RainBand } from "./drill-rain.ts";
 
@@ -60,7 +61,8 @@ export function demoOverlay(scene: DemoScene): DemoOverlay {
       title: scene.level !== null ? `大雨 レベル ${scene.level}` : "大雨",
       rain,
       quake: null,
-      layers: ["flood", "landslide"],
+      // 既定の層は想定ごとの表から（T125、lib/drill/fit.ts）
+      layers: [...FIT_PROFILES.heavy_rain.layers],
       basis: src ? { label: src.title.split("（")[0], href: src.url, mark: checkMark(src.id) } : null,
     };
   }
@@ -68,7 +70,7 @@ export function demoOverlay(scene: DemoScene): DemoOverlay {
     title: "地震 南海トラフ",
     rain: [],
     quake: { intensity: "6強", area: "松山市" },
-    layers: ["tsunami", "landslide"],
+    layers: [...FIT_PROFILES.earthquake.layers],
     basis: null,
   };
 }

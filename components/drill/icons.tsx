@@ -10,6 +10,7 @@ import {
   BuildingLibraryIcon,
   BuildingOffice2Icon,
   CalendarDaysIcon,
+  EnvelopeIcon,
   ChatBubbleBottomCenterTextIcon,
   EyeIcon,
   HomeIcon,
@@ -33,6 +34,8 @@ type IconType = ComponentType<SVGProps<SVGSVGElement>>;
 export const ACTION_ICONS: Record<DrillAction, IconType> = {
   call_person: PhoneIcon,
   call_contact: PhoneArrowUpRightIcon,
+  // メッセージ（T125）
+  message: EnvelopeIcon,
   visit: MapPinIcon,
   dispatch: TruckIcon,
   request_welfare_shelter: HomeIcon,

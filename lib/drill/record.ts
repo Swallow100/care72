@@ -18,6 +18,7 @@ import { drillClocks } from "./director.ts";
 import { withoutMemo } from "./engine.ts";
 import { endingsAllowed } from "./fiction.ts";
 import { outageForRuns } from "./outcome.ts";
+import { inOutageOf, planOf, scorePlans } from "./person-facts.ts";
 import { REVIEW_KINDS, type ReviewBody, type ReviewContext, type ReviewError, type ReviewFinding, type ReviewIncident } from "./review.ts";
 import { loadCallRecords, type CallRecord } from "./responses.ts";
 import { isVirtual, scenarioOf } from "./scenarios.ts";
@@ -212,6 +213,25 @@ export async function computeScore(
   const outage = outageForRuns(world, [...ledgers.values()]);
   const towns = new Map([...ledgers].map(([id, l]) => [id, l.basic.address?.town ?? null]));
   const runs = clockRuns(drillClocks(clockRows, world), towns, outage);
+  // 計画で動けた人と、計画が無く手が要った人（T130。台帳の計画と、訓練の世界・終わりの前の連絡から。Claude を呼ばない）
+  const plans = new Map(
+    peopleRows.map((p) => [
+      p.id,
+      planOf({ ledger: ledgers.get(p.id)!, clocks: clockRows.filter((c) => c.person_id === p.id), contacts: contactRows.filter((c) => c.person_id === p.id) }),
+    ]),
+  );
+  const planScore = scorePlans({
+    participants,
+    plans,
+    world,
+    people: screen.state.people,
+    actions: screen.state.actions,
+    endMinute: endMinuteOf(screen),
+    inOutage: (id) => {
+      const l = ledgers.get(id);
+      return !!world.outage && !!l && inOutageOf(world.outage.area, l.evacuation.hazards, l.basic.address?.town ?? null);
+    },
+  });
 
   return scoreDrill({
     participants,
@@ -223,6 +243,7 @@ export async function computeScore(
     ...extrasSourceOf(screen),
     // 結末（AI の筋書き）はデモ事業所の仮想の訓練だけ（T70 の続き。デモ以外は実在の人の仮名に結末を付けない。条件に達した人の数は出す）
     ...(isVirtual(screen.drill.scenario) && endingsAllowed(scope.officeId) ? { ended: endedOf(screen) } : {}),
+    plans: planScore,
   });
 }
 

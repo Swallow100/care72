@@ -45,6 +45,7 @@ import {
 import { drillEnded, isNight, type DrillTurn } from "./engine.ts";
 import { drillError, isDrillId } from "./http.ts";
 import { calleeOf, callResponseId, respondCall, type CallCallee } from "./responses.ts";
+import { pushTold } from "./person-facts.ts";
 
 /** 往復の要求。ask（決まった問い）・text（自由の 1 文）・end（切る）のどれか 1 つ */
 export type CallTalkRequest = { signal: string } & ({ ask: TalkAsk } | { text: string } | { end: true });
@@ -194,6 +195,8 @@ export async function callTalkDrill(
   };
   const next = [...lines, cm, them];
   world = pushAsks(world, person, them.asks ?? [], replyAt);
+  // ケアマネに言われた事（T130 の帳面）。次の区切りの本人役が覚えて従う
+  world = pushTold(world, person, [cm]);
   if (reply?.called) {
     const c = { ...ZERO_COUNTS, ...(world.counts ?? {}) };
     world = { ...world, counts: { ...c, call: c.call + 1 } };
