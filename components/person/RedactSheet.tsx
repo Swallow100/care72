@@ -5,7 +5,7 @@
 // - 写真は 1 枚 1 頁、PDF は頭から 3 頁まで（lib/redact/browser.ts）。1 頁ずつ出し、「前頁」「次頁」で移る
 // - Excel・Word（T119）は印刷の頁に描いた画像。4 頁以上あれば頁ごとに「対象」「除外」を選び、送るのは 3 頁まで
 //   （既定は記入例・記載例のシートを外した頭の 3 頁）。描いた頁は元の印刷と少しずれるので「PDF 保存で正確」を 1 行出す。
-//   T122: シートが 2 つ以上のブックはシートの一覧（選ぶとそのシートの頭の頁へ）。既定で送る頁は様式の本体らしいシート
+//   T122: シートが 2 つ以上のブックは「シート」でシートの一覧を窓の中に開く（押すとそのシートの頭の頁へ）。既定で送る頁は様式の本体らしいシート
 //   （lib/ooxml/pick.ts。表紙・目次・説明・記入例は後ろ）。頁の画像は見る頁と送る頁だけ描く（描くまで「描画中」）
 //   古い形（.xls・.doc）は読まずに「旧形式」と名前を出す
 // - 塗る: 指・マウスで引くと黒い四角。押した四角は選ばれ（操作の色の枠）、「外す」で外す。「一手戻す」「全解除」（この頁）
@@ -18,13 +18,12 @@
 
 import { useEffect, useId, useLayoutEffect, useReducer, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { Button, buttonClass } from "@/components/ui/Button";
-import { AddIcon, BackIcon, CloseIcon, FitIcon, RemoveIcon, SendIcon, ZoomInIcon, ZoomOutIcon } from "@/components/ui/Icon";
+import { AddIcon, BackIcon, CloseIcon, FitIcon, OpenIcon, RemoveIcon, SendIcon, ZoomInIcon, ZoomOutIcon } from "@/components/ui/Icon";
 import { Loader72 } from "@/components/ui/Loader72";
 import { REDACT_LABELS as L } from "@/lib/labels";
 import { PDF_PAGES_MAX, type ReadMeta } from "@/lib/intake/read-form";
 import { defaultExcluded } from "@/lib/ooxml/pick";
 import { drawRedactPage, encodeRedacted, loadPages, metaOf, releasePages, type RedactPage } from "@/lib/redact/browser";
-import { Select } from "@/components/ui/Select";
 import { hitRect, initialRedact, rectFromDrag, redactReducer, totalHidden, unpainted, type Rect } from "@/lib/redact/rects";
 import { fitView, panView, pinchView, refitView, viewToImage, zoomAt, ZOOM_MAX, ZOOM_STEP, type Frame, type Pt, type View } from "@/lib/redact/view";
 import { appChoice } from "@/lib/ui/dialog";
@@ -58,6 +57,9 @@ export function RedactSheet({ files, onSend, onCancel }: { files: readonly File[
   const [draft, setDraft] = useState<Rect | null>(null);
   const [encoding, setEncoding] = useState(false);
   const [encodeFailed, setEncodeFailed] = useState(false);
+  // シートの一覧を開いているか（T122）
+  const [sheetList, setSheetList] = useState(false);
+  const sheetListId = useId();
   const page = pages?.[at] ?? null;
   const rects = page ? (state.rects[page.id] ?? []) : [];
 
@@ -90,7 +92,10 @@ export function RedactSheet({ files, onSend, onCancel }: { files: readonly File[
       setPages(r.pages);
       setFailed(r.failed);
       setLegacy(r.legacy);
-      setExcluded(defaultExcluded(r.pages.map((p) => ({ id: p.id, example: p.example, ...p.pick }))));
+      const skip = defaultExcluded(r.pages.map((p) => ({ id: p.id, example: p.example, ...p.pick })));
+      setExcluded(skip);
+      // 送る頁の頭から見せる（T122: 様式の本体のシートがブックの後ろにあるとき、表紙を開かない）
+      setAt(Math.max(0, r.pages.findIndex((p) => !skip.has(p.id))));
     });
     return () => {
       live = false;
@@ -429,26 +434,18 @@ export function RedactSheet({ files, onSend, onCancel }: { files: readonly File[
               )}
               <span className="min-w-0 truncate">{L.pageName(page.fileName, page.page, page.pages)}</span>
               {sheets.length >= 2 && page.sheet ? (
-                <label className="flex min-w-0 items-center gap-1">
-                  <span className="text-muted">{L.sheet}</span>
-                  <Select
-                    aria-label={L.sheet}
-                    className="min-w-0 max-w-[16rem] text-xs"
-                    value={page.sheet}
-                    disabled={busy}
-                    onChange={(e) => {
-                      const s = sheets.find((x) => x.name === e.target.value);
-                      if (s) goto(s.first);
-                    }}
-                    data-redact="sheets"
-                  >
-                    {sheets.map((s) => (
-                      <option key={s.name} value={s.name}>
-                        {L.sheetOption(s.name, s.pages, s.picked)}
-                      </option>
-                    ))}
-                  </Select>
-                </label>
+                // シートの一覧を開く（T122）。一覧は窓の中に出す（共通の選ぶ部品は窓の外の body に出すので、全画面の窓の後ろに隠れる）
+                <Button
+                  size="sm"
+                  icon={OpenIcon}
+                  aria-expanded={sheetList}
+                  aria-controls={sheetListId}
+                  disabled={busy}
+                  onClick={() => setSheetList((v) => !v)}
+                  data-redact="sheets"
+                >
+                  {L.sheet} {page.sheet}
+                </Button>
               ) : (
                 page.sheet && <span className="min-w-0 truncate text-muted" data-redact="sheet-name">{page.sheet}</span>
               )}
@@ -483,6 +480,28 @@ export function RedactSheet({ files, onSend, onCancel }: { files: readonly File[
                   {L.onPage} {rects.length}
                 </span>
               )}
+            </div>
+          )}
+          {sheetList && sheets.length >= 2 && page && (
+            // シートの一覧: 押すとそのシートの頭の頁へ。送る頁のあるシートは太字と下線、今のシートは操作の色の文字
+            <div id={sheetListId} role="list" aria-label={L.sheet} className="flex flex-wrap gap-1 text-xs" data-redact="sheet-list">
+              {sheets.map((sh) => (
+                <button
+                  key={sh.name}
+                  type="button"
+                  role="listitem"
+                  aria-current={sh.name === page.sheet ? "page" : undefined}
+                  className={`${buttonClass("quiet", "sm")} ${sh.picked ? "font-bold underline decoration-2 underline-offset-[6px]" : "font-normal"} ${sh.name === page.sheet ? "text-accent" : ""}`}
+                  data-press=""
+                  data-sheet={sh.name}
+                  onClick={() => {
+                    goto(sh.first);
+                    setSheetList(false);
+                  }}
+                >
+                  {L.sheetOption(sh.name, sh.pages, sh.picked)}
+                </button>
+              ))}
             </div>
           )}
           {office && (
