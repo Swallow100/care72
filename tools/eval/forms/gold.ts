@@ -260,7 +260,11 @@ function frameBox<K extends string>(frame: Frame<K>, k: K, page: number): FieldB
   return { x: r(x0 / size.w), y: r(y0 / size.h), w: r((x1 - x0) / size.w), h: r((y1 - y0) / size.h) };
 }
 
-/** 松山市の計画書の欄 → 項目。無い欄は正解に入れない（特記事項の中の段・様式に無い欄は下で 1 つにまとめる） */
+/**
+ * 松山市の計画書の欄 → 項目。無い欄は正解に入れない（特記事項の中の段・様式に無い欄は下で 1 つにまとめる）。
+ * T122: T117 で台帳に置き場ができた欄（近親者・実施者のフリガナ、実施組織、避難場所の時間、最寄りの避難場所、住居の種別）を
+ * 対応なしから項目ありに（評価の 2 回目で、AI がこの項目を当てた欄を外れと数えていた。findings の 7）
+ */
 const MATSUYAMA_ITEMS: Partial<Record<MatsuyamaKey, string | null>> = {
   "head.number": null,
   "head.date": "plan.date",
@@ -283,28 +287,28 @@ const MATSUYAMA_ITEMS: Partial<Record<MatsuyamaKey, string | null>> = {
   "consent.planShare": null,
   "sign.self": null,
   "sign.proxy": null,
-  "kin.kana": null,
+  "kin.kana": "emergency1.kana",
   "kin.name": "emergency1.name",
   "kin.relation": "emergency1.relation",
   "kin.phone": "emergency1.phone",
   "kin.mobile": null,
   "kin.address": "emergency1.address",
-  "supporter1.kana": null,
+  "supporter1.kana": "supporter1.kana",
   "supporter1.name": "supporter1.name",
   "supporter1.address": "supporter1.address",
   "supporter1.phone": "supporter1.phone",
   "supporter1.mobile": null,
   "supporter1.relation": "supporter1.relation",
   "supporter1.consent": null,
-  "supporter2.kana": null,
+  "supporter2.kana": "supporter2.kana",
   "supporter2.name": "supporter2.name",
   "supporter2.address": "supporter2.address",
   "supporter2.phone": "supporter2.phone",
   "supporter2.mobile": null,
   "supporter2.relation": "supporter2.relation",
   "supporter2.consent": null,
-  "org.name": null,
-  "org.phone": null,
+  "org.name": "org.name",
+  "org.phone": "org.phone",
   "org.consent": null,
   "plan.author": "plan.author",
   "medical.doctor": "medical.doctor",
@@ -314,14 +318,14 @@ const MATSUYAMA_ITEMS: Partial<Record<MatsuyamaKey, string | null>> = {
   "risk.issues": "care.issues",
   "shelter.pre.place": "evacuation.destination2",
   "shelter.pre.means": null,
-  "shelter.pre.minutes": null,
-  "shelter.near.place": null,
+  "shelter.pre.minutes": "evacuation.destination2Minutes",
+  "shelter.near.place": "evacuation.nearest",
   "shelter.near.means": null,
   "shelter.near.minutes": null,
   "shelter.city.place": "evacuation.destination1",
   "shelter.city.means": "evacuation.transport",
-  "shelter.city.minutes": null,
-  "housing.type": null,
+  "shelter.city.minutes": "evacuation.destination1Minutes",
+  "housing.type": "basic.housing.type",
   "housing.structure": "basic.housing.structure",
   "housing.floors": "basic.housing.floors",
   "housing.room": "basic.housing.floor",
@@ -338,6 +342,9 @@ const MATSUYAMA_ACCEPT: Partial<Record<MatsuyamaKey, ReadonlyArray<string | null
   "local.other": ["people.offices"],
   "housing.room": ["basic.housing.bedroom"],
   "shelter.city.means": [null],
+  // 移動手段は台帳に 1 つで、様式は避難場所ごとに【手段】がある。どの避難場所の欄に当てても別解（T122）
+  "shelter.pre.means": ["evacuation.transport"],
+  "shelter.near.means": ["evacuation.transport"],
 };
 
 function matsuyamaGold(): GoldField[] {
