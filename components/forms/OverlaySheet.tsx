@@ -17,7 +17,13 @@ const cols: CSSProperties = { gridTemplateColumns: "50mm minmax(0, 1fr)" };
 function Item({ it }: { it: OverlayItem }) {
   if (it.kind === "text") {
     return (
-      <div className={it.top ? "ov-text ov-top" : "ov-text"} style={{ ...at(it.box), fontSize: `${it.fontPt}pt` }} data-field={it.fieldId} data-font={it.fontPt}>
+      <div
+        className={`ov-text${it.top ? " ov-top" : ""}${it.tight ? " ov-tight" : ""}`}
+        style={{ ...at(it.box), fontSize: `${it.fontPt}pt` }}
+        data-field={it.fieldId}
+        data-font={it.fontPt}
+        data-shifted={it.shifted ? "1" : undefined}
+      >
         {it.lines.map((l, i) => (
           <span key={i} className="ov-ln">
             {l}
@@ -79,10 +85,20 @@ export function OverlaySheet({
             <div className="ov-img" style={{ left: mm(p.image.x), top: mm(p.image.y), width: mm(p.image.w), height: mm(p.image.h) }}>
               {/* eslint-disable-next-line @next/next/no-img-element -- 元の様式の頁の画像（R2 の物を API から）。印刷に出すので <img> */}
               <img className="ov-bg" src={imageSrc(p.page)} alt={`${sheet.title} ${p.page}頁`} />
-              {/* 未記入の色付け（帯の未確認と同じ欄）。字と印の下、元の様式の頁の上に重ねて掛け合わせる（罫線と刷ってある字は黒のまま） */}
+              {/*
+                未記入の色付け。字と印の下、元の様式の頁の上に重ねて掛け合わせる（罫線と刷ってある字は黒のまま）。
+                台帳に無い欄（帯の未確認と同じ。ケアマネが聞いて足す）は黄の塗り、台帳に値があるのに置けなかった欄（アプリの直す所。T133）は黄の塗りに破線の縁
+              */}
               {fill &&
                 p.fills.map((f) => (
-                  <div key={f.keys.join(" ")} className="ov-fill" style={at(f.box)} data-fill-keys={f.keys.join(" ")} aria-hidden />
+                  <div
+                    key={f.keys.join(" ")}
+                    className={f.kind === "fix" ? "ov-fill ov-fix" : "ov-fill"}
+                    style={at(f.box)}
+                    data-fill-keys={f.keys.join(" ")}
+                    data-fill-kind={f.kind ?? "ask"}
+                    aria-hidden
+                  />
                 ))}
               {p.items.map((it) => (
                 <Item key={`${it.fieldId}-${it.kind}${it.kind === "text" && it.part !== undefined ? `-${it.part}` : ""}`} it={it} />

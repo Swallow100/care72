@@ -121,6 +121,15 @@ export default async function MappedFormPage({ params, searchParams }: Props) {
             {L.withheld} {CONSENT_KIND_LABELS[k]}
           </StateTag>
         ))}
+        {/* 台帳に値があるのに置けなかった欄（T133。色付けの版で破線の縁）。直すのはアプリの側 */}
+        {overlay && (overlay.unplaced?.length ?? 0) > 0 && (
+          <span className="text-sm" data-unplaced-count={overlay.unplaced!.length}>
+            <StateTag tone="check">
+              {L.unplaced} <span className="tabular-nums">{overlay.unplaced!.length}</span>
+            </StateTag>{" "}
+            <span className="text-xs text-muted">{overlay.unplaced!.join("・")}</span>
+          </span>
+        )}
         {overlay && overlay.annex.length > 0 && (
           <span className="text-sm" data-annex-count={overlay.annex.length}>
             <span className="text-muted">{L.annex}</span> <span className="font-bold tabular-nums">{overlay.annex.length}</span>{" "}

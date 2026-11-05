@@ -293,20 +293,20 @@ const MATSUYAMA_ITEMS: Partial<Record<MatsuyamaKey, string | null>> = {
   "kin.name": "emergency1.name",
   "kin.relation": "emergency1.relation",
   "kin.phone": "emergency1.phone",
-  "kin.mobile": null,
+  "kin.mobile": "emergency1.phone",
   "kin.address": "emergency1.address",
   "supporter1.kana": "supporter1.kana",
   "supporter1.name": "supporter1.name",
   "supporter1.address": "supporter1.address",
   "supporter1.phone": "supporter1.phone",
-  "supporter1.mobile": null,
+  "supporter1.mobile": "supporter1.phone",
   "supporter1.relation": "supporter1.relation",
   "supporter1.consent": null,
   "supporter2.kana": "supporter2.kana",
   "supporter2.name": "supporter2.name",
   "supporter2.address": "supporter2.address",
   "supporter2.phone": "supporter2.phone",
-  "supporter2.mobile": null,
+  "supporter2.mobile": "supporter2.phone",
   "supporter2.relation": "supporter2.relation",
   "supporter2.consent": null,
   "org.name": "org.name",
@@ -344,6 +344,11 @@ const MATSUYAMA_ACCEPT: Partial<Record<MatsuyamaKey, ReadonlyArray<string | null
   "local.other": ["people.offices"],
   "housing.room": ["basic.housing.bedroom"],
   "shelter.city.means": [null],
+  // 携帯番号の欄（T133）: 連絡先の電話の項目は電話と携帯の 2 つを持ち、紙は欄の名前で携帯の行だけを出す（lib/forms/mapped-sheet.ts の phoneRole）。
+  // 正解は同じ段の電話の項目（読み取りの補い lib/forms/item-hints.ts の携帯も同じ物を当てる）。前の決まり 12 の項目なしは別解
+  "kin.mobile": [null],
+  "supporter1.mobile": [null],
+  "supporter2.mobile": [null],
   // 避難場所ごとの【手段】【時間】は T131 から台帳の項目が避難場所ごとにある（T117 の destination2Means・nearestMeans・nearestMinutes）。
   // T122 の「どの避難場所の欄に当てても別解」は外した（移動手段を別の避難場所の欄に置くと、紙で違う避難場所の手段になる。評価の 3 回目の 4）
 };

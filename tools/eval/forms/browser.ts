@@ -8,6 +8,7 @@
 // 記入例のシートを外した頭の 3 頁を送る（T122: シートが 2 つ以上のブックは様式の本体らしいシート）。古い形（.xls・.doc）は legacy で断る（画面は「旧形式・PDF 保存で取込」）。
 // 送ったあとに塗った所が本当に黒いかを測る（redactOk）。塗れていない頁は送らない（Claude に人の値の写る絵を渡さない）。
 
+import { grayOf, inkBlobs, packInk } from "../../../lib/forms/ink.ts";
 import { FORM_FILE_MAX_BYTES } from "../../../lib/forms/mapping.ts";
 import { PDF_PAGES_MAX, type ReadMeta, type ReadSource } from "../../../lib/intake/read-form.ts";
 import { isHeic } from "../../../lib/forms/shrink-image.ts";
@@ -54,7 +55,18 @@ export type BrowserPage = {
   height: number;
   /** 何番目の質で収まったか（86・75・60・45） */
   quality: number;
+  /** 頁の印刷の字の位置（T133。ブラウザの lib/forms/ink-browser.ts と同じく、送る JPEG を読み直して作る。様式の頁だけ） */
+  ink?: number[];
 };
+
+/** 送る JPEG を読み直して印刷の字の位置を作る（ブラウザの inkOfBlob と同じ） */
+async function inkOf(mod: CanvasModule, bytes: Uint8Array, w: number, h: number): Promise<number[]> {
+  const img = await mod.loadImage(bytes);
+  const canvas = mod.createCanvas(w, h);
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(img, 0, 0, w, h);
+  return packInk(inkBlobs(grayOf(ctx.getImageData(0, 0, w, h).data, w, h)));
+}
 
 /** legacy は古い形（.xls・.doc）、office は Excel・Word を描けなかった */
 export type BrowserError = "type" | "heic" | "decode" | "too_large" | "no_canvas" | "legacy" | "office";
@@ -123,7 +135,7 @@ async function redactedDark(mod: CanvasModule, bytes: Uint8Array, w: number, h: 
 }
 
 /** Excel・Word の頁（ブラウザの lib/ooxml/browser.ts と同じく、描いて頁の画像にしてから塗る） */
-async function officeStage(mod: CanvasModule, bytes: Uint8Array, secrets: ReadonlyArray<readonly Ratio[]>, rawBytes: number): Promise<BrowserResult> {
+async function officeStage(mod: CanvasModule, bytes: Uint8Array, secrets: ReadonlyArray<readonly Ratio[]>, rawBytes: number, withInk: boolean): Promise<BrowserResult> {
   const mctx = mod.createCanvas(10, 10).getContext("2d") as unknown as { font: string; measureText(t: string): { width: number } };
   const measure = (t: string, f: Parameters<typeof cssFont>[0]) => {
     mctx.font = cssFont(f, 100);
@@ -159,7 +171,7 @@ async function officeStage(mod: CanvasModule, bytes: Uint8Array, secrets: Readon
     if (!enc) return { ok: false, error: "too_large", rawBytes };
     const redactOk = await redactedDark(mod, enc.bytes, enc.w, enc.h, enc.rects);
     const n = enc.rects.length;
-    pages.push({ bytes: enc.bytes, meta: { source: rendered.kind, page: i + 1, redacted: n }, bare: n === 0, redactOk, width: enc.w, height: enc.h, quality: enc.quality });
+    pages.push({ bytes: enc.bytes, meta: { source: rendered.kind, page: i + 1, redacted: n }, bare: n === 0, redactOk, width: enc.w, height: enc.h, quality: enc.quality, ...(withInk ? { ink: await inkOf(mod, enc.bytes, enc.w, enc.h) } : {}) });
   }
   return { ok: true, source: rendered.kind, pages, totalPages: rendered.pages.length, rawBytes };
 }
@@ -167,7 +179,8 @@ async function officeStage(mod: CanvasModule, bytes: Uint8Array, secrets: Readon
 /**
  * 選んだファイル 1 つを送る頁にする。secrets は頁ごとの伏せる所（頁の比）。様式の白紙は伏せる所が無く bare（人が「送信」を選んだ形）
  */
-export async function browserStage(bytes: Uint8Array, secrets: ReadonlyArray<readonly Ratio[]>): Promise<BrowserResult> {
+export async function browserStage(bytes: Uint8Array, secrets: ReadonlyArray<readonly Ratio[]>, opts: { ink?: boolean } = {}): Promise<BrowserResult> {
+  const withInk = opts.ink === true;
   const rawBytes = bytes.length;
   const kind = bytes.length > 0 ? kindOf(bytes) : null;
   if (!kind) return { ok: false, error: "type", rawBytes };
@@ -175,7 +188,7 @@ export async function browserStage(bytes: Uint8Array, secrets: ReadonlyArray<rea
   const mod = await loadCanvas();
   if (!mod) return { ok: false, error: "no_canvas", rawBytes };
 
-  if (kind === "office") return officeStage(mod, bytes, secrets, rawBytes);
+  if (kind === "office") return officeStage(mod, bytes, secrets, rawBytes, withInk);
 
   if (kind === "image" || kind === "heic") {
     let img: { width: number; height: number };
@@ -194,7 +207,7 @@ export async function browserStage(bytes: Uint8Array, secrets: ReadonlyArray<rea
       source: "photo",
       totalPages: 1,
       rawBytes,
-      pages: [{ bytes: enc.bytes, meta: { source: "photo", page: 1, redacted: n }, bare: n === 0, redactOk, width: enc.w, height: enc.h, quality: enc.quality }],
+      pages: [{ bytes: enc.bytes, meta: { source: "photo", page: 1, redacted: n }, bare: n === 0, redactOk, width: enc.w, height: enc.h, quality: enc.quality, ...(withInk ? { ink: await inkOf(mod, enc.bytes, enc.w, enc.h) } : {}) }],
     };
   }
 
@@ -226,7 +239,7 @@ export async function browserStage(bytes: Uint8Array, secrets: ReadonlyArray<rea
       if (!enc) return { ok: false, error: "too_large", rawBytes };
       const redactOk = await redactedDark(mod, enc.bytes, enc.w, enc.h, enc.rects);
       const k = enc.rects.length;
-      pages.push({ bytes: enc.bytes, meta: { source: "pdf", page: n, redacted: k }, bare: k === 0, redactOk, width: enc.w, height: enc.h, quality: enc.quality });
+      pages.push({ bytes: enc.bytes, meta: { source: "pdf", page: n, redacted: k }, bare: k === 0, redactOk, width: enc.w, height: enc.h, quality: enc.quality, ...(withInk ? { ink: await inkOf(mod, enc.bytes, enc.w, enc.h) } : {}) });
     }
     return { ok: true, source: "pdf", pages, totalPages: total, rawBytes };
   } finally {

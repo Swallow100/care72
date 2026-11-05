@@ -22,7 +22,7 @@ import { fitPages, nextFieldId, type FormMapping } from "./mapping.ts";
 import { findMappingByHash, getMapping, insertReadMapping, updateReadMapping, type FormsScope } from "./mapping-db.ts";
 import { mappingError, mappingErrorOf, NO_STORE } from "./mapping-http.ts";
 import { pageImageKey, storePageImages, type PageImageBucket } from "./page-images.ts";
-import { formReadPagesOf } from "./read-upload.ts";
+import { formReadInksOf, formReadPagesOf } from "./read-upload.ts";
 
 export type FormReadDeps = {
   db: D1Database;
@@ -38,6 +38,8 @@ export type FormReadDeps = {
 export async function formReadPost(deps: FormReadDeps, scope: FormsScope, form: FormData): Promise<Response> {
   const got = formReadPagesOf(form);
   if (!got.ok) return mappingError(got.error);
+  // 頁の印刷の字の位置（T133）。Claude には渡さず、頁の画像と一緒に置くだけ
+  const inks = formReadInksOf(form, got.pages.length);
 
   const files: FormFile[] = [];
   const parts: Uint8Array[] = [];
@@ -60,7 +62,7 @@ export async function formReadPost(deps: FormReadDeps, scope: FormsScope, form: 
   const known = await findMappingByHash(deps.db, scope.officeId, hash);
   if (known) {
     // 同じ頁の画像。T86 の前に読んだ物で画像が無ければ置く（場所を人が足せば、元の様式の上の紙にできる）
-    if (known.page_images === null) await storePageImages(deps.db, deps.bucket, { officeId: scope.officeId, mappingId: known.id, images: parts });
+    if (known.page_images === null) await storePageImages(deps.db, deps.bucket, { officeId: scope.officeId, mappingId: known.id, images: parts, inks });
     return Response.json({ ok: true, id: known.id, reused: true }, { headers: NO_STORE });
   }
 
@@ -80,7 +82,7 @@ export async function formReadPost(deps: FormReadDeps, scope: FormsScope, form: 
       by: scope.accountId,
       at: deps.now?.() ?? new Date().toISOString(),
     });
-    if (!saved.reused) await storePageImages(deps.db, deps.bucket, { officeId: scope.officeId, mappingId: saved.id, images: parts });
+    if (!saved.reused) await storePageImages(deps.db, deps.bucket, { officeId: scope.officeId, mappingId: saved.id, images: parts, inks });
     return Response.json(
       { ok: true, id: saved.id, reused: saved.reused, rejected: read.rejected.length, unread: read.unread, partial: read.partial },
       { headers: NO_STORE },

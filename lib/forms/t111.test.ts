@@ -292,14 +292,16 @@ describe("対応表の紙も同じ答え", () => {
     expect(m.unconfirmed).toEqual([]);
   });
 
-  it("「なし」だけの値は小さな欄に収まらなくても別紙に回さない。ほかの値は今のまま別紙へ", () => {
+  it("「なし」だけの値は小さな欄に収まらなくても別紙に回さない。ほかの短い値は別紙にせず置けなかった欄に（T133）", () => {
     const rows = seedRows(fresh(0));
     // 高さ 1mm ほどの欄（どの大きさでも収まらない）
     const tiny = { x: 0.1, y: 0.1, w: 0.3, h: 0.0035 };
     const m = buildMappedSheet(rows, mapping([field("a", "supporter1.name", tiny), field("b", "person.name", tiny)]), OPTS);
     const s = buildOverlaySheet(m, IMAGES);
-    expect(s.annex.map((r) => r.fieldId)).toEqual(["b"]);
-    expect(s.pages[0].items.filter((i) => i.fieldId === "a")).toEqual([]);
+    expect(s.annex).toEqual([]);
+    expect(s.unplaced).toEqual(["避難支援者 b"]);
+    expect(s.pages[0].items.filter((i) => i.fieldId === "a" || i.fieldId === "b")).toEqual([]);
+    expect(s.pages[0].fills.find((f) => f.keys.includes("b"))?.kind).toBe("fix");
   });
 });
 

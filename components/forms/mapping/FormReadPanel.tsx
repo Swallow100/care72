@@ -15,6 +15,7 @@ import { BTN_MAIN, BTN_SIDE, INPUT } from "@/components/person/intake-ui";
 import { AddIcon, PaperIcon, ReadIcon } from "@/components/ui/Icon";
 import { Loader72 } from "@/components/ui/Loader72";
 import { LIMITS, MAPPING_LABELS as L } from "@/lib/forms/mapping";
+import { inkOfBlob } from "@/lib/forms/ink-browser";
 import { buildFormReadForm, FORM_READ_PAGES_MAX } from "@/lib/forms/read-upload";
 import { shrinkImage } from "@/lib/forms/shrink-image";
 import { PLACE_LABELS, REDACT_LABELS } from "@/lib/labels";
@@ -86,7 +87,10 @@ export function FormReadPanel({ aiReady }: { aiReady: boolean }) {
     setRedacting(null);
     setBusy("read");
     setFail(null);
-    const r = await post("/api/forms/read", buildFormReadForm(pages.slice(0, FORM_READ_PAGES_MAX)));
+    // 頁の印刷の字の位置（T133）。紙に値を置くとき印刷の字と重ねないために、頁の画像と一緒に置く（Claude には渡さない）
+    const chosen = pages.slice(0, FORM_READ_PAGES_MAX);
+    const inks = await Promise.all(chosen.map((p) => inkOfBlob(p.blob)));
+    const r = await post("/api/forms/read", buildFormReadForm(chosen.map((p, i) => ({ ...p, ink: inks[i] }))));
     if (r.ok) {
       router.push(`/forms/mapping/${encodeURIComponent(r.id)}`);
       return;

@@ -7,12 +7,18 @@
 // 前の形（file の欄に生の写真・PDF）は「未加工」で断る。1 要求で全部の頁を受け、Claude の呼び出しは今までどおり 1 回（頁を並べて渡す）。
 
 import { BARE_MARK, parseReadMeta, PDF_PAGES_MAX, RAW_FILE_FIELD, READ_FORM, type ReadMeta } from "../intake/read-form.ts";
+import { checkPackedInk } from "./ink.ts";
+
+/** 頁の印刷の字の位置（T133、lib/forms/ink.ts の保存の形の JSON）の欄。頁ごとに 1 つ（作れなかった頁は空の文字） */
+export const INK_FIELD = "ink";
+/** 印刷の字の位置の JSON 1 頁の上限（字の数） */
+const INK_MAX_CHARS = 200_000;
 
 /** 1 要求で送れる頁の数（PDF は頭から 3 頁まで。様式は 2 頁） */
 export const FORM_READ_PAGES_MAX = PDF_PAGES_MAX;
 
 /** ブラウザから送る 1 頁（RedactSheet の RedactedPage と同じ形の所だけ） */
-export type FormReadPage = { blob: Blob; meta: ReadMeta; bare: boolean };
+export type FormReadPage = { blob: Blob; meta: ReadMeta; bare: boolean; /** 頁の印刷の字の位置（T133。無ければ送らない） */ ink?: number[] | null };
 
 /** 送る形を作る。頁の順に、印と画像を同じ欄の名前で並べる（受ける側は getAll で同じ順に読む） */
 export function buildFormReadForm(pages: ReadonlyArray<FormReadPage>): FormData {
@@ -24,7 +30,23 @@ export function buildFormReadForm(pages: ReadonlyArray<FormReadPage>): FormData 
     form.append(READ_FORM.bare, p.bare && p.meta.redacted === 0 ? BARE_MARK : "0");
     form.append(READ_FORM.image, p.blob, `redacted-${p.meta.page}.jpg`);
   }
+  // 印刷の字の位置（T133）は全部の頁に 1 つずつ（無い頁は空の文字）。1 頁も無ければ欄を付けない
+  if (pages.some((p) => p.ink)) for (const p of pages) form.append(INK_FIELD, p.ink ? JSON.stringify(p.ink) : "");
   return form;
+}
+
+/** 受けた印刷の字の位置（頁の順）。欄が無い・数が合わなければ全部 null（位置なしで置く。読み取りは止めない） */
+export function formReadInksOf(form: FormData, pages: number): Array<number[] | null> {
+  const raw = form.getAll(INK_FIELD);
+  if (raw.length !== pages) return Array.from({ length: pages }, () => null);
+  return raw.map((v) => {
+    if (typeof v !== "string" || v === "" || v.length > INK_MAX_CHARS) return null;
+    try {
+      return checkPackedInk(JSON.parse(v));
+    } catch {
+      return null;
+    }
+  });
 }
 
 export type FormReadPagesError = "invalid" | "not_redacted";

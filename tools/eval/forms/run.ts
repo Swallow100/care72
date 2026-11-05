@@ -17,7 +17,7 @@ import { d1UsageStore, type UsageStore } from "../../../lib/claude/usage.ts";
 import type { Ledger } from "../../../lib/db/types.ts";
 import { d1FromSqlite, migratedSqlite } from "../../../lib/db/test-d1.ts";
 import { getMapping } from "../../../lib/forms/mapping-db.ts";
-import { FORM_FILE_MAX_BYTES, type FormMapping } from "../../../lib/forms/mapping.ts";
+import { FORM_FILE_MAX_BYTES, type FormMapping, type LedgerItemKey } from "../../../lib/forms/mapping.ts";
 import { pageImageKey, parsePageImages, type PageImage, type PageImageBucket } from "../../../lib/forms/page-images.ts";
 import { formReadPost } from "../../../lib/forms/read-post.ts";
 import { buildFormReadForm } from "../../../lib/forms/read-upload.ts";
@@ -40,6 +40,7 @@ import { GOLD_FORMS, goldMapping, goldReading, type GoldForm } from "./gold.ts";
 import { buildInputs, handwriteHtml, hashSeed, pdfHtml, photoHtml, type InputKind, type InputSpec } from "./inputs.ts";
 import { buildSheets, sheetHtml, type Sheets } from "./paper.ts";
 import { loadReplay, replayClient } from "./replay.ts";
+import { lookOfPaper, type LookScore } from "./look.ts";
 import { costUsd, jsonl, realClient, recorder, type CallRecord, type Jsonl } from "./record.ts";
 import { heicBytes, launchRenderer, withExif, type Ratio, type Renderer } from "./render.ts";
 import { cellOfSheet, scoreIntake, scorePaper, scoreRead, type IntakeScore, type Judgement, type PaperScore, type ReadScore } from "./score.ts";
@@ -124,7 +125,15 @@ export type InputResult = {
   carryLoss: number;
 };
 
-export type PaperResult = { form: string; input: string; kind: InputKind; score: PaperScore | null; files: { pdf?: string; fillPdf?: string; png?: string; fillPng?: string } };
+export type PaperResult = {
+  form: string;
+  input: string;
+  kind: InputKind;
+  score: PaperScore | null;
+  /** 紙の見た目の数（T133。元の様式の上の紙だけ。正解の表の無い様式も） */
+  look?: LookScore;
+  files: { pdf?: string; fillPdf?: string; png?: string; fillPng?: string };
+};
 
 /** aiCalls は手元の D1 の ai_calls の行から数えた物（費用の見積もりの元） */
 export type CallSummary = {
@@ -341,22 +350,23 @@ export async function runEval(opts: EvalOptions): Promise<RunResult> {
         step({ stage: "form", form: job.id, ok: false, reason: "Chrome が無く白紙を作れない" });
         continue;
       }
-      let pages: Array<{ bytes: Uint8Array; source: ReadSource; page: number }>;
+      let pages: Array<{ bytes: Uint8Array; source: ReadSource; page: number; ink?: number[] }>;
       if ("pages" in orig) pages = orig.pages.map((b, i) => ({ bytes: b, source: "pdf" as const, page: i + 1 }));
       else {
-        const br: BrowserResult = await browserStage(orig.bytes, []);
+        // 様式の頁は印刷の字の位置も作る（T133。アプリの様式の読取と同じ）
+        const br: BrowserResult = await browserStage(orig.bytes, [], { ink: true });
         step({ stage: "form.receive", form: job.id, ok: br.ok, rawBytes: br.rawBytes, ...(br.ok ? { totalPages: br.totalPages, pages: br.pages.map((p) => ({ bytes: p.bytes.length, w: p.width, h: p.height, q: p.quality })) } : { error: br.error }) });
         if (!br.ok) {
           forms.push({ id: job.id, title: job.title, gold: !!job.gold, status: "failed", reason: br.error, pages: 0, read: null, overlay: false });
           continue;
         }
-        pages = br.pages.map((p) => ({ bytes: p.bytes, source: p.meta.source, page: p.meta.page }));
+        pages = br.pages.map((p) => ({ bytes: p.bytes, source: p.meta.source, page: p.meta.page, ink: p.ink }));
       }
       const answer = job.gold ? goldReading(job.gold, pages.length) : { title: job.title, issuer: "", pages: pages.length, typeface: "gothic" as const, fields: [] };
       // 様式の読み取りは 1 頁 1 回（T120）。頁の数だけ正解を積む（崩し方の種は様式で 1 つ。偽の client が頼まれた頁の分を返す）
       for (let i = 0; i < pages.length; i++) fake?.expect(job.gold ? { kind: "read", answer } : { kind: "read", answer, noise: false }, job.id);
       rec.scope(job.id, "form_read");
-      const form = buildFormReadForm(pages.map((p) => ({ blob: new Blob([p.bytes as BlobPart], { type: "image/jpeg" }), meta: { source: pages[0].source, page: p.page, redacted: 0 }, bare: true })));
+      const form = buildFormReadForm(pages.map((p) => ({ blob: new Blob([p.bytes as BlobPart], { type: "image/jpeg" }), meta: { source: pages[0].source, page: p.page, redacted: 0 }, bare: true, ink: p.ink ?? null })));
       // 頁は 1 つずつ読む（呼び出しの記録を順に結ぶため。アプリは並べて読む）
       const res = await formReadPost({ db, bucket, aiContext: async () => evalCtx, newId: () => `fm-${job.id}`, readConcurrency: 1 }, { officeId: OFFICE, accountId: ACCOUNT }, form);
       rec.flush();
@@ -539,6 +549,9 @@ export async function runEval(opts: EvalOptions): Promise<RunResult> {
     for (const f of ready) {
       const imgSrc = pageSources(f.id, f.images, bucket.objects);
       const gm = f.form ? goldMapping(f.form, f.mapping.pages) : null;
+      // 正解の表のある様式の、AI の欄 → 正解の項目と別解（紙の見た目の数の台帳あり空欄。T133）
+      const goldItems = new Map<string, { item: LedgerItemKey | null; accept: ReadonlyArray<LedgerItemKey | null> }>();
+      if (f.form) for (const [gi, aid] of f.pairs) goldItems.set(aid, { item: f.form.fields[gi].item, accept: f.form.fields[gi].accept ?? [] });
       for (const spec of specs) {
         const rows = rowsOf.get(spec.id);
         if (!rows) continue;
@@ -562,10 +575,25 @@ export async function runEval(opts: EvalOptions): Promise<RunResult> {
           judge(s.judgements);
           step({ stage: "paper", form: f.id, input: spec.id, overlay: !!actual.overlay, score, rows: s.rows, annex: actual.overlay?.annex.map((a) => ({ field: a.label, reason: a.reason })) ?? [], unconfirmed: actual.mapped.unconfirmed });
         } else step({ stage: "paper", form: f.id, input: spec.id, overlay: !!actual.overlay, annex: actual.overlay?.annex.length ?? 0, unconfirmed: actual.mapped.unconfirmed.length });
+        // 紙の見た目の数（T133）: 重なり・はみ出し・隣の欄・ずらした所・置けなかった欄・台帳あり空欄・伏字
+        const look = actual.overlay && f.images ? lookOfPaper({ rows: rows.actual, mapping: f.mapping, images: f.images, overlay: actual.overlay, today, ...(f.form ? { goldItems } : {}) }) : null;
+        if (look) {
+          const label = (id: string) => f.mapping.fields.find((x) => x.id === id)?.label ?? id;
+          step({
+            stage: "paper.look",
+            form: f.id,
+            input: spec.id,
+            look: look.score,
+            issues: look.check.issues.map((x) => ({ page: x.page, field: x.fieldId, label: label(x.fieldId), kind: x.kind })),
+            blanks: look.blanks.map((b) => ({ field: b.field, label: b.label, item: b.item })),
+            masks: look.masks,
+            unplaced: actual.overlay?.unplaced ?? [],
+          });
+        }
         // 正解の表の無い様式は、既定で台帳そのままの 1 人だけ刷る（置き場の様式は数が多い）
         const draw = !!f.form || opts.paperAllForms || spec.id === sampleInput;
         const files = draw ? await renderPaper(actual, imgSrc, { renderer, mode: opts.paper, dir, form: f.id, input: spec.id, today }) : {};
-        papers.push({ form: f.id, input: spec.id, kind: spec.kind, score, files });
+        papers.push({ form: f.id, input: spec.id, kind: spec.kind, score, ...(look ? { look: look.score } : {}), files });
       }
     }
 

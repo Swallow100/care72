@@ -57,6 +57,10 @@
 .paper.overlay .ov-text.ov-top {
   justify-content: flex-start;
 }
+/* 低い枠（括弧の中・区切りの空き）で、下限の字でも普通の空きに入らないときだけの狭い空き（T133。lib/forms/overlay-sheet.ts の TIGHT_PAD_*） */
+.paper.overlay .ov-text.ov-tight {
+  padding: 0.1mm 0.3mm;
+}
 .paper.overlay .ov-ln {
   display: block;
   white-space: pre;
@@ -73,6 +77,14 @@
   mix-blend-mode: multiply;
   print-color-adjust: exact;
   -webkit-print-color-adjust: exact;
+}
+
+/*
+  台帳に値があるのに置けなかった欄（T133。アプリの直す所）。台帳に無い欄（上の塗り）と分けるため、同じ黄の塗りに破線の縁を足す
+*/
+.paper.overlay .ov-fill.ov-fix {
+  box-sizing: border-box;
+  border: 0.45mm dashed #f2b125;
 }
 
 /*
