@@ -73,7 +73,7 @@ describe("作り直しの守り: 問い（node:sqlite に migrations と種）",
     const { query, seen } = fakeWrangler(seeded());
     const d = await runGuard(query, {});
     expect(d.ok).toBe(true);
-    expect(d.lines).toEqual(["本物データなし", "  利用者（デモ事業所の外） 0", "  アカウント（種の外） 0", "  事業所（種の外） 0", "  訓練（デモ事業所の外） 0"]);
+    expect(d.lines).toEqual(["本物データなし", "  利用者（種の事業所の外） 0", "  アカウント（種の外） 0", "  事業所（種の外） 0", "  訓練（種の事業所の外） 0"]);
     expect(seen[0]).toBe(TABLES_SQL);
   });
 
@@ -84,10 +84,10 @@ describe("作り直しの守り: 問い（node:sqlite に migrations と種）",
     expect(stop.ok).toBe(false);
     expect(stop.lines.slice(0, 5)).toEqual([
       "本物データあり 停止",
-      "  利用者（デモ事業所の外） 1",
+      "  利用者（種の事業所の外） 1",
       "  アカウント（種の外） 1",
       "  事業所（種の外） 1",
-      "  訓練（デモ事業所の外） 1",
+      "  訓練（種の事業所の外） 1",
     ]);
     expect((await runGuard(fakeWrangler(db).query, { ALLOW_DATA_LOSS: "true" })).ok).toBe(false);
     expect((await runGuard(fakeWrangler(db).query, { ALLOW_DATA_LOSS: "1" })).ok).toBe(true);
@@ -105,7 +105,7 @@ describe("作り直しの守り: 問い（node:sqlite に migrations と種）",
     db.exec(`INSERT INTO people (id, office_id, name, kana) VALUES ('p-site', 'office-unaffiliated', '架空 次郎', 'カクウ ジロウ');`);
     const d = await runGuard(fakeWrangler(db).query, {});
     expect(d.ok).toBe(false);
-    expect(d.lines).toContain("  利用者（デモ事業所の外） 1");
+    expect(d.lines).toContain("  利用者（種の事業所の外） 1");
   });
 
   it("表がまだ無い D1 は 0 と数えて続ける。表が一部だけでも読める", async () => {

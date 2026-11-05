@@ -17,6 +17,8 @@ export type UseDictation = {
   stop: () => void;
   /** 何も知らせずにやめる */
   abort: () => void;
+  /** 聞いている間に人が欄を直した（T143。直した所を次の音声の文字で上書きしない） */
+  edit: (value: string) => void;
 };
 
 export function useDictation(opts: {
@@ -62,5 +64,6 @@ export function useDictation(opts: {
   }, []);
   const stop = useCallback(() => dictation.current?.stop(), []);
   const abort = useCallback(() => dictation.current?.abort(), []);
-  return { supported, state, error, start, stop, abort };
+  const edit = useCallback((value: string) => dictation.current?.edit(value), []);
+  return { supported, state, error, start, stop, abort, edit };
 }

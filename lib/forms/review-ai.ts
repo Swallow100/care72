@@ -174,6 +174,7 @@ export function listText(rows: readonly ReviewListRow[]): string {
 export const FORM_REVIEW_SYSTEM = [
   "入力の画像は、日本の市町村などの様式（個別避難計画など）の頁に、ケア72 が台帳の値を置いた紙。刷る前の見直し。",
   "入力の「一覧」は紙に置いた欄の一覧で、1 行 1 欄（id｜頁｜欄の名前｜置いた値｜場所 [左 %,上 %,幅 %,高さ %]）。値の「（塗り）」の欄は、名前・住所・電話などを隠すために画像の上で黒く塗った欄。",
+  "入力に「頁」があるときは、紙の一部の頁だけを見ている。画像はその頁の番号の順で、一覧はその頁の欄だけ。",
   "画像と一覧を見比べて、次の 4 つだけを挙げる。",
   "  misplaced: 値が欄の名前と違う欄・違う行・違う段に入っている（隣の欄にずれた、別の行の書く所に入った）",
   "  unreadable: 値が様式に刷ってある字・線・□ と重なって読めない、小さすぎて読めない、枠で切れている",
@@ -245,23 +246,56 @@ function base64(bytes: Uint8Array): string {
   return btoa(s);
 }
 
-/** AI の見直しを 1 回（Sonnet、紙の頁を全部並べて 1 回）。塗った絵と仮名の一覧だけを渡す */
+/**
+ * 1 回の見直しの呼び出しに付ける頁の数（T146）。頁の上限を 10 にしたが、1 回に付ける頁は前の上限（4）のままにする:
+ * 1 回の要求の大きさ（Claude の 1 要求 32 MB。絵 1 枚 5 MB まで × 4 枚の base64 で 27 MB）・答えの長さ（指摘 20 件ほど、上限 8000）・
+ * 待ち（120 秒）を前と同じに保つ。5 頁からは 4 頁ずつに分けて並べて呼び、指摘を結ぶ（10 頁で 3 回、待ちは 1 回分）
+ */
+export const REVIEW_PAGES_PER_CALL = 4;
+
+/** 頁の並び（0 から）を REVIEW_PAGES_PER_CALL ずつに分ける */
+export function reviewGroups(count: number, per: number = REVIEW_PAGES_PER_CALL): number[][] {
+  const out: number[][] = [];
+  for (let i = 0; i < count; i += per) out.push(Array.from({ length: Math.min(per, count - i) }, (_, j) => i + j));
+  return out;
+}
+
+/**
+ * AI の見直し（Sonnet）。紙の頁を 4 頁までなら 1 回、5 頁からは 4 頁ずつ（reviewGroups）に分けて並べて呼ぶ。
+ * 塗った絵と仮名の一覧だけを渡す（分けたときは、その頁の欄の行だけと頁の番号）。どれかの回が失敗したら全体を失敗にする（人が押し直す）。
+ * calls は呼んだ回数（記録の calls と ai_calls に同じ数）
+ */
 export async function runAiReview(
   ctx: AskJsonContext,
   args: { subject: ReviewSubject; rows: readonly ReviewListRow[]; images: readonly Uint8Array[]; key: PseudonymKey },
-): Promise<{ findings: ReviewFinding[]; model: string }> {
-  const res = await askJson(
-    {
-      purpose: "form_read",
-      spec: FORM_REVIEW,
-      system: FORM_REVIEW_SYSTEM,
-      input: { 一覧: pseudonymizeText(listText(args.rows), args.key) },
-      attachments: args.images.map(jpegAttachment),
-      schema: ReviewReplySchema,
-    },
-    ctx,
+): Promise<{ findings: ReviewFinding[]; model: string; calls: number }> {
+  const sheetPages = args.subject.sheet.pages.map((p) => p.page);
+  // 絵の順は紙の頁の順（composePlan）。数が合わなければ 1 から数える
+  const pageOf = (i: number) => (sheetPages.length === args.images.length ? sheetPages[i] : i + 1);
+  const groups = reviewGroups(args.images.length);
+  const split = groups.length > 1;
+  const results = await Promise.all(
+    groups.map(async (g) => {
+      const pages = g.map(pageOf);
+      const rows = split ? args.rows.filter((r) => pages.includes(r.page)) : args.rows;
+      const res = await askJson(
+        {
+          purpose: "form_read",
+          spec: FORM_REVIEW,
+          system: FORM_REVIEW_SYSTEM,
+          // 頁の番号は数だけ（人の値は無い）。台帳の項目表と同じ門（sealItemCatalog。電話番号らしい並びで止まる）を通す
+          input: { ...(split ? { 頁: sealItemCatalog(pages) } : {}), 一覧: pseudonymizeText(listText(rows), args.key) },
+          attachments: g.map((i) => jpegAttachment(args.images[i])),
+          schema: ReviewReplySchema,
+        },
+        ctx,
+      );
+      return { findings: aiFindings(res.value, rows, args.subject, args.key), model: res.model };
+    }),
   );
-  return { findings: aiFindings(res.value, args.rows, args.subject, args.key), model: res.model };
+  const findings: ReviewFinding[] = [];
+  for (const r of results) for (const f of r.findings) if (!findings.some((x) => x.id === f.id)) findings.push(f);
+  return { findings, model: results[0]?.model ?? "", calls: groups.length };
 }
 
 // ---------- 再考（その欄だけの読み直し） ----------

@@ -1,5 +1,5 @@
 // 手元の npm run db:reset が入れる種の全部（node で使う。Worker からは使わない）。
-// 全部の表を空にして事業所・アカウント・10 人（seed/sql.ts）→ デモ事業所の災害モードと山田の赤（lib/seed/demo.ts）
+// 全部の表を空にして事業所・アカウント・10 人と確認用の事業所の写し（seed/sql.ts）→ デモ事業所と確認用の事業所の災害モードと山田の赤（lib/seed/demo.ts）
 // → 終わった訓練（lib/seed/drill.ts）。訓練は node:sqlite に本物の startDrill・advanceDrill を回し、できた行を INSERT の文に起こす。
 // Worker の「最初に戻す」（lib/seed/reset.ts）と同じ所から作るので、同じ now なら同じ中身になる。
 
@@ -9,12 +9,13 @@ import { d1FromSqlite, migratedSqlite } from "../lib/db/test-d1.ts";
 import {
   SEED_RECORDING_KEYS,
   SEED_RECORDING_TYPES,
+  checkExtraStatements,
   demoExtraStatements,
   type SeedRecording,
   type SeedRecordingExt,
 } from "../lib/seed/demo.ts";
-import { dumpDrillStatements, SEED_DRILL_ID, seedDrill } from "../lib/seed/drill.ts";
-import { DEMO_SELF_PERSON_ID } from "../lib/auth/demo.ts";
+import { CHECK_SEED_DRILL_ID, dumpDrillStatements, SEED_DRILL_ID, seedDrill } from "../lib/seed/drill.ts";
+import { CHECK_TARGETS, DEMO_SELF_PERSON_ID } from "../lib/auth/demo.ts";
 import { seedStatements, type SeedOptions } from "./sql.ts";
 
 /** 作者が置く種の録音のファイル（seed/recordings/p-01.webm か p-01.m4a）。無ければ null。中は読まない */
@@ -32,15 +33,17 @@ export type FullSeedOptions = SeedOptions & {
   recording?: SeedRecording;
 };
 
-/** 種の全部の文（wrangler d1 execute --file で流す順） */
+/** 種の全部の文（wrangler d1 execute --file で流す順）。確認用の事業所（T144）の災害モード・山田の赤・終わった訓練も同じ作りで */
 export async function fullSeedStatements(opts: FullSeedOptions): Promise<string[]> {
-  const base = [...seedStatements(opts), ...demoExtraStatements(opts.now, opts.recording ?? null)];
+  const recording = opts.recording ?? null;
+  const base = [...seedStatements(opts), ...demoExtraStatements(opts.now, recording), ...checkExtraStatements(opts.now, recording)];
   const sqlite = migratedSqlite();
   try {
     for (const s of base) sqlite.exec(s);
     const db = d1FromSqlite(sqlite);
     await seedDrill(db, opts.now);
-    return [...base, ...(await dumpDrillStatements(db, SEED_DRILL_ID))];
+    await seedDrill(db, opts.now, CHECK_TARGETS);
+    return [...base, ...(await dumpDrillStatements(db, SEED_DRILL_ID)), ...(await dumpDrillStatements(db, CHECK_SEED_DRILL_ID))];
   } finally {
     sqlite.close();
   }

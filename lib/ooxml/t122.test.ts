@@ -81,15 +81,19 @@ describe("複数のシートのブックの既定のシート（T122）", () => 
     ]);
   });
 
-  it("本体らしいシートが無いブック（言葉が少ない）は T119 のまま（記入例を外した頭の 3 頁）", () => {
+  it("本体らしいシートが無いブック（言葉が少ない）は T119 のまま（記入例を外した頭から上限の頁。T146 で上限は 10）", () => {
     const pages: PickPage[] = ["記入例", "様式1", "様式2", "様式3", "様式4"].map((sheet, i) => ({ id: String(i), example: sheet === "記入例", sheet, words: 1 }));
-    expect([...defaultExcluded(pages)].sort()).toEqual(["0", "4"]);
+    expect([...defaultExcluded(pages)].sort()).toEqual(["0"]);
+    expect([...defaultExcluded(pages, 3)].sort()).toEqual(["0", "4"]);
     expect(formSheets(pages)).toBeNull();
   });
 
-  it("シートが 1 つ・Word は今まで通り", () => {
+  it("シートが 1 つ・Word は今まで通り（上限までは全部、上限を超えた頁は外す）", () => {
     const one: PickPage[] = [1, 2, 3, 4].map((n) => ({ id: String(n), example: false, sheet: "様式", words: 12 }));
-    expect([...defaultExcluded(one)]).toEqual(["4"]);
+    expect([...defaultExcluded(one)]).toEqual([]);
+    expect([...defaultExcluded(one, 3)]).toEqual(["4"]);
+    const long: PickPage[] = Array.from({ length: 14 }, (_, i) => ({ id: String(i + 1), example: false, sheet: "様式", words: 12 }));
+    expect([...defaultExcluded(long)].sort((a, b) => Number(a) - Number(b))).toEqual(["11", "12", "13", "14"]);
     const word: PickPage[] = [1, 2].map((n) => ({ id: String(n), example: false, sheet: null }));
     expect([...defaultExcluded(word)]).toEqual([]);
   });

@@ -31,6 +31,7 @@ import type { DictationError } from "@/lib/speech/dictation";
 import { useDictation } from "@/lib/speech/use-dictation";
 import type { Question } from "@/lib/intake/ask";
 import { changeText, type IntakeChange } from "@/lib/intake/changes";
+import { savedLines } from "@/lib/intake/saved-say";
 import type { DiffItem } from "@/lib/intake/diff";
 import { INTAKE_SECTIONS } from "@/lib/intake/fields";
 import type { IntakeProps } from "@/lib/intake/props";
@@ -84,6 +85,11 @@ export type LogEntry =
       focus?: string | null;
       /** 保存で変わった数（0 なら「変更なし」） */
       changed?: number;
+      /**
+       * 保存した中身（T143、lib/intake/saved-say.ts）。保存のあとは数（say）でなく 1 件 1 行の「区分 欄 値」を 5 件まで、残りは「他 N 件」。
+       * head は写真・PDF の「〇〇 を読みました」（say の頭）
+       */
+      saved?: { lines: string[]; more: number; head: string | null };
       /** 保存の失敗（変更点は開いたまま、もう一度保存できる） */
       error?: string;
       /** 黒塗りして読んだ写真・PDF の頁（保存すると経過に「写真を読んだ（隠した所 N か所）」） */
@@ -172,7 +178,8 @@ export function Intake(props: IntakeProps & { level: Level }) {
     setLog((l) => l.map((e) => (e.id === id && e.who === "ai" && e.kind === "split" ? { ...e, ...p } : e)));
   const patchYou = (id: string, p: Partial<YouEntry>) => setLog((l) => l.map((e) => (e.id === id && e.who === "you" ? { ...e, ...p } : e)));
 
-  // 話す: 認識の結果は欄に流れ、もう一度押して止めると欄に残る（直してから「入力」）
+  // 話す: 認識の結果は欄に流れ、もう一度押して止めると欄に残る（直してから「入力」）。
+  // 聞いている間も欄を直せ、直した所は次の音声の文字で上書きしない（T143、lib/speech/dictation.ts の edit）
   const speech = useDictation({ maxLength: TEXT_MAX, onText: setText, onDone: (spoken) => setText(spoken) });
   const listening = speech.state !== "idle";
 
@@ -295,6 +302,8 @@ export function Intake(props: IntakeProps & { level: Level }) {
         data-intake="text"
         onSubmit={(e) => {
           e.preventDefault();
+          // 聞いている間に「入力」を押したら、聞くのをやめて今の欄の文を送る（T143。直してから入力できる）
+          if (listening) speech.abort();
           if (text.trim()) void split(text, null);
         }}
       >
@@ -305,10 +314,12 @@ export function Intake(props: IntakeProps & { level: Level }) {
           placeholder={INTAKE_LABELS.placeholder}
           aria-label={INTAKE_LABELS.title}
           value={text}
-          // 聞いている間は認識の結果だけが入る（止めたら直せる）
-          readOnly={listening}
+          // 聞いている間も直せる（T143）。直した文のあとに次の確定した区切りがつながる
           aria-busy={listening}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => {
+            setText(e.target.value);
+            if (listening) speech.edit(e.target.value);
+          }}
         />
         <div className="flex flex-wrap items-center gap-1.5">
           <input
@@ -351,7 +362,7 @@ export function Intake(props: IntakeProps & { level: Level }) {
           <span className="text-xs text-muted tabular-nums">
             {text.length}/{TEXT_MAX}
           </span>
-          <Button type="submit" kind="main" size="sm" icon={SplitIcon} className="ml-auto" disabled={working || listening || !aiReady || text.trim() === ""} data-intake="split">
+          <Button type="submit" kind="main" size="sm" icon={SplitIcon} className="ml-auto" disabled={working || !aiReady || text.trim() === ""} data-intake="split">
             {INTAKE_LABELS.split}
           </Button>
         </div>
@@ -420,7 +431,9 @@ export function Intake(props: IntakeProps & { level: Level }) {
                     if (e.who !== "ai" || e.kind !== "split") return;
                     const r = await save(changes, { model: e.proposal.model }, e.read);
                     if (!r.ok) return patch(e.id, { error: r.label });
-                    patch(e.id, { state: "saved", changed: r.changed, error: undefined });
+                    // 吹き出しは保存した中身に（T143）。写真・PDF は「〇〇 を読みました」を頭に残す
+                    const head = e.read ? (e.say.split("。")[0] ?? null) : null;
+                    patch(e.id, { state: "saved", changed: r.changed, error: undefined, saved: { ...savedLines(changes), head } });
                     if (e.fromText) setText("");
                     const focus = e.focus;
                     if (focus) setDone((d) => [...d, focus]);
@@ -571,6 +584,37 @@ export function LogBubble({ entry: e, props, busy, aiReady, onRows, onSave, onDi
       }
       // AI の言った事（数）の吹き出しと、その下に変更点（面の上。外す・直す・保存・取消はそのまま）。
       // 保存・取消のあとは変更点を畳み、吹き出しの中の小さな状態だけを残す
+      // 保存したあとは保存した中身を 1 件 1 行で（T143）。変わらなかった・取消は数の言葉のまま
+      if (e.state === "saved" && e.saved && (e.changed ?? 0) > 0 && e.saved.lines.length > 0) {
+        return (
+          <div className="space-y-1.5" data-intake="split" data-state={e.state}>
+            <Bubble who="ai">
+              <div className="flex items-baseline gap-x-1.5">
+                <AiMark />
+                <div className="min-w-0 space-y-0.5" data-intake="saved">
+                  {e.saved.head && <p className="text-xs text-muted">{e.saved.head}</p>}
+                  <ul className="space-y-0.5 font-bold">
+                    {e.saved.lines.map((line, i) => (
+                      <li key={i} data-intake="saved-line">
+                        {line}
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="flex flex-wrap items-baseline gap-x-1.5">
+                    {e.saved.more > 0 && (
+                      <span className="text-xs text-muted tabular-nums" data-intake="saved-more">
+                        {INTAKE_LABELS.savedMore(e.saved.more)}
+                      </span>
+                    )}
+                    <SmallState>{INTAKE_LABELS.saved}</SmallState>
+                  </p>
+                </div>
+              </div>
+              {e.error && <SmallError>{e.error}</SmallError>}
+            </Bubble>
+          </div>
+        );
+      }
       return (
         <div className="space-y-1.5" data-intake="split" data-state={e.state}>
           <Bubble who="ai">

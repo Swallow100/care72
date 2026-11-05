@@ -91,13 +91,14 @@ describe("種のデータ（架空の 10 人）", () => {
     const db = migratedSqlite();
     for (const s of seedStatements()) db.exec(s);
     const count = (t: string) => (db.prepare(`SELECT count(*) AS n FROM ${t}`).get() as { n: number }).n;
-    expect(count("people")).toBe(10);
-    expect(count("consents")).toBe(50);
-    expect(count("contacts")).toBe(SEED_PEOPLE.reduce((n, p) => n + p.contacts.length, 0));
-    expect(count("clocks")).toBe(SEED_PEOPLE.reduce((n, p) => n + p.clocks.length, 0));
+    // デモ事業所の 10 人と、確認用の事業所（T144）の写しの 10 人
+    expect(count("people")).toBe(20);
+    expect(count("consents")).toBe(100);
+    expect(count("contacts")).toBe(2 * SEED_PEOPLE.reduce((n, p) => n + p.contacts.length, 0));
+    expect(count("clocks")).toBe(2 * SEED_PEOPLE.reduce((n, p) => n + p.clocks.length, 0));
     // 2 回流しても同じ（最初に空にする）
     for (const s of seedStatements()) db.exec(s);
-    expect(count("people")).toBe(10);
+    expect(count("people")).toBe(20);
     db.close();
   });
 });
@@ -158,7 +159,7 @@ describe("種の入れ直し（npm run db:reset）", () => {
     for (const t of ["ai_calls", "disaster_state", "office_timeline_entries", "form9_rank_edits", "signals", "timeline_entries"]) {
       expect(count(t), t).toBe(0);
     }
-    expect(count("people")).toBe(10);
+    expect(count("people")).toBe(20);
     // QR は未作成に戻る（版 0）
     expect(db.prepare(`SELECT qr_generation AS g, qr_issued_at AS t FROM people WHERE id = 'p-01'`).get()).toEqual({ g: 0, t: null });
     db.close();

@@ -1,14 +1,17 @@
 // Excel・Word の頁のうち、既定で送る頁（T119・T122）。黒塗りの画面（components/person/RedactSheet.tsx）と評価の台（tools/eval/forms）が同じ決まりを使う。
-// 送れるのは 3 頁まで（PDF と同じ上限）。
+// 送れるのは PDF_PAGES_MAX 頁まで（PDF と同じ上限。T146 で 3 から 10 に）。
 //
-// T119: 4 頁以上あれば、記入例・記載例のシートを外して頭から 3 頁。全部が記入例なら頭から 3 頁。
+// T119: 記入例・記載例のシートを外して頭から上限の頁まで。全部が記入例なら頭から上限の頁まで。
+// T146: 上限を 10 にしたので、上限より少ない頁のブックでも記入例は外す（前は上限の 3 を超えるブックだけで外していた。
+// 記入例のあるブックはシートが 2 つ以上なので、送る頁を選ぶ画面で人が戻せる）。全部の頁を送らない。
 // T122: シートが 2 つ以上のブックは、様式の本体らしいシートを選ぶ（評価の 2 回目で、厚労省の BCP のひな形のブック〔23 シート・45 頁〕の
 // 様式 9 のシートが最後にあり、頭の 3 頁〔表紙・目次〕を読んで様式 9 の欄が 0/12 だった。docs/progress/eval-r2-forms-findings.md の 1）:
 // - シートの中の字に、個別避難計画・利用者の一覧の欄の言葉（氏名・住所・避難・支援・緊急・同意…）がいくつあるか（formWordCount）。
 //   印刷範囲が決めてあるシートは 1 つ足す
 // - 表紙・目次・本文・補足・説明・手引きなどの名前のシート（explanationSheet）と記入例のシートは後ろ（本体の候補にしない）
 // - いちばん言葉の多いシートを選び、その前後に続くシートも本体らしければ（言葉が 3 つ以上で、いちばんの 4 分の 1 以上）足す
-//   （表面・裏面、その１・その２ のように 1 つの様式が続くシートに分かれている物）。3 頁まで。送る順はブックの順
+//   （表面・裏面、その１・その２ のように 1 つの様式が続くシートに分かれている物）。上限の頁まで。送る順はブックの順。
+//   続くシートは本体らしい物だけなので、上限を 10 にしても本体らしくないシート（言葉の少ない・説明・記入例）は足さない
 // - 本体らしいシートが無い（言葉が 3 つ未満）・シートが 1 つ・Word は、T119 のまま
 
 import { PDF_PAGES_MAX } from "../intake/read-form.ts";
@@ -156,7 +159,7 @@ export function formSheets(pages: ReadonlyArray<PickPage>, max = PDF_PAGES_MAX):
 export function defaultExcluded(pages: ReadonlyArray<PickPage>, max = PDF_PAGES_MAX): Set<string> {
   const sheets = formSheets(pages, max);
   if (sheets) {
-    // 選んだシートの頁をブックの順に、頭から 3 頁まで
+    // 選んだシートの頁をブックの順に、頭から上限の頁まで
     const keep = new Set(
       pages
         .filter((p) => sheets.includes(p.sheet ?? ""))
@@ -165,8 +168,8 @@ export function defaultExcluded(pages: ReadonlyArray<PickPage>, max = PDF_PAGES_
     );
     return new Set(pages.filter((p) => !keep.has(p.id)).map((p) => p.id));
   }
-  if (pages.length <= max) return new Set();
   const plain = pages.filter((p) => !p.example);
+  if (pages.length <= max && (plain.length === 0 || plain.length === pages.length)) return new Set();
   const keep = new Set((plain.length > 0 ? plain : pages).slice(0, max).map((p) => p.id));
   return new Set(pages.filter((p) => !keep.has(p.id)).map((p) => p.id));
 }

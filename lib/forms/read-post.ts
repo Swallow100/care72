@@ -1,6 +1,6 @@
 // 様式の読み取りの受け口の中身（app/api/forms/read。T83 の受け口から T86 で移した。サーバーだけ）。
 //
-// 黒塗りの画面（components/person/RedactSheet.tsx）を通した頁の画像（JPEG、付け足しなし）を頁の順に 1〜3 枚受け取り、
+// 黒塗りの画面（components/person/RedactSheet.tsx）を通した頁の画像（JPEG、付け足しなし）を頁の順に 1〜10 枚受け取り（T146）、
 // Opus に欄と台帳の項目の対応表（T86 から欄ごとの値の場所と書体も）を出させ、下書きで保存する。
 // 白紙の様式は塗らずに送れる（人が確かめの窓で「送信」を選んだ印 bare）、記入済みなら値を塗ってから。
 // 生の写真・PDF（前の file の欄・PDF・PNG・EXIF の付いた JPEG）・印の無い物は「未加工」（415）で断り、Claude は呼ばない。
@@ -38,7 +38,7 @@ export type FormReadDeps = {
   aiContext: (officeId: string) => Promise<AskJsonContext>;
   now?: () => string;
   newId?: () => string;
-  /** 同時に読む頁の数（無ければ全部。評価の台は 1） */
+  /** 同時に読む頁の数（無ければ lib/forms/form-read.ts の FORM_READ_CONCURRENCY。評価の台は 1） */
   readConcurrency?: number;
   /** 選択肢と台帳の値の当てを AI でするか（T140。既定は当てる。評価の台の数え直し・偽の回は当てない） */
   optionAi?: boolean;
