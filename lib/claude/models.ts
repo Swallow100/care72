@@ -93,6 +93,12 @@ export const TALK_SPEC: PurposeSpec = { model: HAIKU, effort: "low", maxTokens: 
 export const FORM_REVIEW: PurposeSpec = { model: SONNET, effort: "medium", maxTokens: 8000, timeoutMs: 120_000 };
 
 /**
+ * 選ぶ欄の選択肢と台帳の値の当て（T140、lib/forms/option-ai.ts）の呼び方。用途は form_read（様式の読み取りの続きとして数える）。
+ * 言い換えの表で当たらない選択肢の字と、台帳の項目の値の名前の対応だけ（絵は送らない）。1 つの様式に 1 回、Sonnet・low・短い答え
+ */
+export const FORM_OPTIONS: PurposeSpec = { model: SONNET, effort: "low", maxTokens: 4000, timeoutMs: 60_000 };
+
+/**
  * 再考の読み直し（T136）。見直しで直せそうな欄だけを、元の様式の空の頁から読み直す（欄の場所・項目・区切り）。
  * 様式の読み取り（form_read）と同じ Opus・high（同じ決まりで読む）。欄が数個なので上限 12000・待ち 150 秒
  */

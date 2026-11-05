@@ -28,6 +28,7 @@ import * as z from "zod";
 import { askJson, type AiMark, type AskJsonContext, type AskJsonRequest, type ClaudeAttachment } from "../claude/call.ts";
 import { AiNotConfigured, AiTruncated } from "../claude/errors.ts";
 import { sealItemCatalog } from "../pseudonym/index.ts";
+import { assignOptionValues } from "./option-ai.ts";
 import {
   CONFIDENCES,
   FIELD_SHAPES,
@@ -364,6 +365,11 @@ export type ReadFormOptions = {
   pageNumbers?: readonly number[];
   /** 全部の頁の数（無ければ files の数） */
   pages?: number;
+  /**
+   * 選ぶ欄の選択肢のうち言い換えの表で台帳の値に当たらない物を、読んだあとに AI に当てさせるか（T140、lib/forms/option-ai.ts）。既定は当てる。
+   * 評価の台の数え直し（前の回の答えを返す）と偽の client の回は当てない（前の回に無い呼び出し）
+   */
+  optionAi?: boolean;
 };
 
 /**
@@ -393,6 +399,14 @@ export async function readForm(file: FormFile | ReadonlyArray<FormFile>, ctx: As
     ...listOfPages(good),
   };
   const checked = checkReadResult(read);
+  // 選択肢と台帳の値の当て（T140）。失敗しても読み取りは止めない（言い換えの表だけで続け、当たらない選択肢は紙の上で人が選ぶ）
+  if (opts.optionAi !== false) {
+    try {
+      checked.mapping = { ...checked.mapping, fields: await assignOptionValues(checked.mapping.fields, ctx) };
+    } catch {
+      // 当てられなかった選択肢は null のまま
+    }
+  }
   return {
     ...checked,
     mark: { ai: true, model: good[0].model, purpose: "form_read" },

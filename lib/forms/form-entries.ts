@@ -39,7 +39,7 @@ export const ENTRY_LIMITS = {
   /** 1 人 1 様式の文字の枠と画像の数 */
   free: 40,
   /** 選択肢の数 */
-  options: 16,
+  options: 40,
 } as const;
 
 /** 手入れの id（画面が作る。英数と - _） */

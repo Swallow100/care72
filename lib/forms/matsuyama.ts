@@ -565,7 +565,11 @@ export type Choice = { label: string; on: boolean; detail?: string; sub?: Choice
  */
 export type Cell =
   | { kind: "value"; lines: PieceLine[] }
-  | { kind: "choice"; options: Choice[]; after?: Piece[]; unconfirmed?: { reason?: PendingStatus } }
+  /**
+   * range（T140）: 台帳の値が様式の選択肢の範囲の外（要介護 1 の人の「要介護 3〜5」の □）。空くのが答えで、未記入にも置けなかったにも数えない。
+   * ambiguous（T140）: 台帳の値に当たる選択肢が 2 つ以上（1 つを選ぶ欄）。選ばず、その他にも書かない（置けなかった・選択肢に無い）
+   */
+  | { kind: "choice"; options: Choice[]; after?: Piece[]; unconfirmed?: { reason?: PendingStatus }; range?: true; ambiguous?: true }
   | { kind: "unconfirmed"; reason?: PendingStatus }
   | { kind: "none" }
   | { kind: "empty" }

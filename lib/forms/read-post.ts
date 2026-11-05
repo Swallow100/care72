@@ -40,6 +40,8 @@ export type FormReadDeps = {
   newId?: () => string;
   /** 同時に読む頁の数（無ければ全部。評価の台は 1） */
   readConcurrency?: number;
+  /** 選択肢と台帳の値の当てを AI でするか（T140。既定は当てる。評価の台の数え直し・偽の回は当てない） */
+  optionAi?: boolean;
 };
 
 export async function formReadPost(deps: FormReadDeps, scope: FormsScope, form: FormData): Promise<Response> {
@@ -117,7 +119,7 @@ export async function formReadPost(deps: FormReadDeps, scope: FormsScope, form: 
 
   try {
     const ctx = await deps.aiContext(scope.officeId);
-    const read = await readForm(files, ctx, { concurrency: deps.readConcurrency });
+    const read = await readForm(files, ctx, { concurrency: deps.readConcurrency, optionAi: deps.optionAi });
     // 頁の番号は受けた画像の順（下に敷く画像と合わせる）
     const mapping = fitPages(read.mapping, files.length);
     const saved = await insertReadMapping(deps.db, {
@@ -181,7 +183,7 @@ export async function formRereadPost(deps: FormReadDeps, scope: FormsScope, id: 
 
   try {
     const ctx = await deps.aiContext(scope.officeId);
-    const read = await readForm(files, ctx, { concurrency: deps.readConcurrency, pageNumbers, pages: stored.mapping.pages });
+    const read = await readForm(files, ctx, { concurrency: deps.readConcurrency, pageNumbers, pages: stored.mapping.pages, optionAi: deps.optionAi });
     const mapping = mergeReread(stored.mapping, read.mapping, read.unread);
     const saved = await updateReadMapping(deps.db, { officeId: scope.officeId, id, version, mapping, at: deps.now?.() ?? new Date().toISOString() });
     if (!saved.ok) return mappingError(saved.error);
