@@ -119,7 +119,7 @@ export function commsOf(w: CommsWorld, profile: FitProfile | null, homes: Homes 
 
 /**
  * 安否 1 件がどの経路で届いたか。call 着信（家族・支援者の電話）・button 安否のボタン（本人・家族のスマホ）・message 伝言（家族・支援者の
- * メッセージ。通話が規制の間）。届かない（電波不通・通信の道が無い）連絡は安否にしない（届かなかった数は世界の gated の comms:*）
+ * メッセージ。通話が規制の間。電波不通の間の表の固定の行は災害用伝言ダイヤルの形）。届かない（電波不通・通信の道が無い）連絡は安否にしない（届かなかった数は世界の gated の comms:*）
  */
 export const VIAS = ["call", "button", "message"] as const;
 export type Via = (typeof VIAS)[number];
@@ -163,7 +163,10 @@ export function viaOf(
   // 本人の連絡は赤緑のボタン（発災時の本人の画面と同じ）。表の固定の行はいつもボタン
   if (t.source === "agent") return dataOk(c) || opts.fixed ? "button" : null;
   const nearRadio = opts.together ? c.mobile !== "down" : w.radio !== "down";
-  if (!nearRadio && !opts.fixed) return null;
+  if (!nearRadio) {
+    // 電波不通の間の表の固定の行は伝言（災害用伝言ダイヤルの形。固定電話の道）で届く。着信にしない
+    return opts.fixed ? "message" : null;
+  }
   if (!t.saying?.trim()) return "button";
   return w.phone === "down" ? "message" : "call";
 }

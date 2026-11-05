@@ -14,7 +14,7 @@ import { toTriageSignal } from "../disaster/triage.ts";
 import { callTargetText } from "../list/calls.ts";
 import type { ClockForDetail, ContactForDetail, SignalForDetail } from "../list/detail.ts";
 import type { TriageSignal } from "../triage/index.ts";
-import { clockOfRow, heardSignalId, loadDrillRow, loadTicks, participantsOf, replayState, undoableAct, type DrillScope } from "./db.ts";
+import { clockOfRow, gatedOfRow, heardSignalId, loadDrillRow, loadTicks, participantsOf, replayState, undoableAct, type DrillScope } from "./db.ts";
 import { callsLeft } from "./clock.ts";
 import { clockOver, termsFor, type ActionTerm } from "./action-terms.ts";
 import { busyOf, type BusyView } from "./busy.ts";
@@ -197,7 +197,11 @@ export async function loadDrillScreen(
 
   const peopleRows = people.results as PersonForDrill[];
   const ledgers = peopleRows.map((p) => parseLedger(p.ledger));
-  const { state, ticks } = replayState(row, participants, await loadTicks(db, id, hours, shown, clock.clock ? lastHour(scenario) : undefined), shown);
+  const replayed = replayState(row, participants, await loadTicks(db, id, hours, shown, clock.clock ? lastHour(scenario) : undefined), shown);
+  const { ticks } = replayed;
+  // 門が捨てた数（T125）は作り直した世界に残らないので、今の刻みを見るときは写しから（評価の台が読む）
+  const gated = shown === row.step ? gatedOfRow(row) : null;
+  const state = gated ? { ...replayed.state, world: { ...replayed.state.world, gated } } : replayed.state;
   const situation = drillSituation(state, ledgers);
 
   const signalRows = signals.results as SignalForDetail[];

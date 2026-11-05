@@ -276,6 +276,15 @@ export function stateOfRow(row: DrillRow): DrillState {
  * 連続の時計の訓練（T90）か、と区切りの時刻（時間）・この訓練の AI の呼び出しの数（drills.world の写しから）。
  * clock の無い訓練は clock false・cuts 空
  */
+/**
+ * AI の出力の門（T125、lib/drill/gate.ts）が捨てた・直した数（drills.world の写しの world.gated）。保存した刻みから作り直す世界には
+ * 残らない（状況を当て直すだけなので）ので、今の刻みを見るときに写しから読む。無ければ null
+ */
+export function gatedOfRow(row: Pick<DrillRow, "world">): Record<string, number> | null {
+  const g = parseStoredWorld(row.world).world.gated;
+  return g && Object.keys(g).length > 0 ? g : null;
+}
+
 export function clockOfRow(row: Pick<DrillRow, "world">): {
   clock: boolean;
   hours: number[];

@@ -232,3 +232,37 @@ describe("上の帯・帯・地図", () => {
     expect(actionTerm("visit", termFactsOf(s, "p-03"), { on: true }).minutes).toBe(40);
   });
 });
+
+describe("評価の台が読む門の数", () => {
+  it("訓練の画面（読み戻し）の今の刻みの世界に、門が捨てた数（drills.world の写し）が出る", async () => {
+    const { migratedSqlite, d1FromSqlite } = await import("../db/test-d1.ts");
+    const { seedStatements } = await import("../../seed/sql.ts");
+    const { startDrill, drillScope } = await import("./db.ts");
+    const { loadDrillScreen } = await import("./view.ts");
+    const sqlite = migratedSqlite();
+    for (const st of seedStatements()) sqlite.exec(st);
+    const db = d1FromSqlite(sqlite);
+    const principal = {
+      role: "care_manager" as const,
+      judge: false,
+      admin: true,
+      accountId: "acct-yamamoto",
+      displayName: "山本",
+      office: { id: "office-demo", name: "デモ事業所", kind: "demo" as const },
+      caseloadOf: "acct-yamamoto",
+      personId: null,
+      contactId: null,
+    };
+    const scope = drillScope(principal as never)!;
+    const persona = async (input: { person: string; hour: number }) => [
+      { person: input.person, color: "green" as const, source: "agent" as const, whereNow: "home" as const, injured: null, atHome: true, canMove: null, hasMedicine: null, saying: "大雨で川が増水しています。家にいます", doing: null, ai: true, at: input.hour },
+    ];
+    expect(await startDrill(db, scope, "earthquake", START, { persona }, () => "drill-g", { clock: true })).toEqual({ ok: true, id: "drill-g" });
+    const screen = (await loadDrillScreen(db, scope, "drill-g", null))!;
+    expect(Object.keys(screen.state.world.gated ?? {}).some((k) => k.startsWith("persona:fit:rain_word"))).toBe(true);
+    // 開始の時の家の写し（区域と通信）と事業所の区域（デモは区域なし）
+    expect(screen.state.homes?.["p-08"]).toMatchObject({ zones: [{ kind: "tsunami", depthM: null }], mobile: true });
+    expect(screen.state.officeZones).toBeUndefined();
+    sqlite.close();
+  });
+});
