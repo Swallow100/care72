@@ -150,7 +150,10 @@ export function directorIncidents(
       continue;
     }
     const persons = Array.isArray(e.persons) ? e.persons.filter((p): p is string => typeof p === "string" && members.has(p)) : [];
-    const facts = e.facts && typeof e.facts === "object" ? { dialysis: e.facts.dialysis === true } : undefined;
+    const facts =
+      e.facts && typeof e.facts === "object"
+        ? { dialysis: e.facts.dialysis === true, ...(typeof e.facts.oxygen === "boolean" ? { oxygen: e.facts.oxygen } : {}) }
+        : undefined;
     const parts = row.build({ person, persons, place: placeOf(e.place), ...(facts ? { facts } : {}) }, hour, after);
     if (parts.length === 0) continue;
     n += 1;

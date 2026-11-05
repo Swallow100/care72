@@ -15,7 +15,7 @@ import { maskReply, restoreText, type PseudonymKey } from "../pseudonym/index.ts
 import { aliasOfTown, AREA_ROADS, DEMO_AREA, facilityOf, roadOf, restoreTowns, shelterOf, townOfAlias, type Area } from "./area.ts";
 import { personOfAlias } from "./director.ts";
 import type { DrillIncident } from "./engine.ts";
-import { afterOf, EVENT_CATALOG } from "./event-catalog.ts";
+import { afterOf, EVENT_CATALOG, vendorText } from "./event-catalog.ts";
 import { PHONE_LABELS, SHELTER_LABELS } from "./labels.ts";
 import type { PhoneState, ShelterState, Weather, WorldChange, WorldVia } from "./scenarios.ts";
 
@@ -369,10 +369,17 @@ function buildEvent(e: WorldStep["events"][number], ctx: ApplyContext): Built[] 
       const raw = e.value.replace(/[^\d.]/g, "");
       const after = afterOf(EVENT_CATALOG.vendor_round, raw ? Number(raw) : undefined);
       if (after == null) return [];
+      // 呼吸器だけの人は医療機器の業者で、届くのは電源（予備の電池。T123）
+      const oxygen = f.categories.includes("oxygen");
       return [
         {
-          change: { kind: "schedule", at: Math.round((ctx.hour + after) * 60), by: "world", then: { kind: "arrival", role: "vendor" } },
-          text: `酸素業者 巡回予定 ${after} 時間後`,
+          change: {
+            kind: "schedule",
+            at: Math.round((ctx.hour + after) * 60),
+            by: "world",
+            then: { kind: "arrival", role: "vendor", ...(oxygen ? {} : { supply: "power" as const }) },
+          },
+          text: vendorText(oxygen, after),
           person: p,
         },
       ];
