@@ -13,10 +13,12 @@ import type { DisasterSituation } from "../disaster/state.ts";
 import { toTriageSignal } from "../disaster/triage.ts";
 import { callTargetText } from "../list/calls.ts";
 import type { ClockForDetail, ContactForDetail, SignalForDetail } from "../list/detail.ts";
-import type { TriageSignal } from "../triage/index.ts";
+import { clockRemaining, type TriageSignal } from "../triage/index.ts";
+import { personSituation } from "../disaster/state.ts";
 import { clockOfRow, heardSignalId, loadDrillRow, loadTicks, participantsOf, replayState, undoableAct, type DrillScope } from "./db.ts";
 import { callsLeft } from "./clock.ts";
 import { clockOver, termsFor, type ActionTerm } from "./action-terms.ts";
+import { hintsOf, type ActionHints, type HintClock } from "./action-hints.ts";
 import { busyOf, type BusyView } from "./busy.ts";
 import { drillClocks } from "./director.ts";
 import { drillSituation, nowHour, simAt, type ActionRecord, type DrillState, type HeardSignal, type Tick } from "./engine.ts";
@@ -79,6 +81,11 @@ export type DrillScreen = {
    * 決まりを選ばなかった訓練（10 分版・前からある訓練）と再生は null（表の分のまま）
    */
   terms: Record<string, Record<DrillAction, ActionTerm>> | null;
+  /**
+   * 打てる手の候補（T126、lib/drill/action-hints.ts）。本人の id → 候補（無い人は入れない）。分かった事・頼み事・本人の時計から引き、
+   * 可否は上の terms（無ければ連絡先の有無だけ）。色と連絡順には使わない。進行中の今の区切りだけで、再生は null
+   */
+  hints: Record<string, ActionHints> | null;
 };
 
 export type DrillContact = { id: string; kind: ContactRow["kind"]; label: string; hasPhone: boolean };
@@ -218,6 +225,14 @@ export async function loadDrillScreen(
     },
   });
 
+  const live = row.status === "running" && shown === row.step;
+  const terms =
+    // 72 時間に着いた後（T123）は決まりを選ばない訓練も、どの手も押せない印を出す
+    live && (state.options?.terms === true || clockOver(state))
+      ? Object.fromEntries(["", ...participants].map((p) => [p, termsFor(state, p || null)]))
+      : null;
+  const contactMap = contactsByPerson(contactRows);
+
   return {
     drill: {
       id: row.id,
@@ -244,16 +259,68 @@ export async function loadDrillScreen(
       .filter((x): x is string => typeof x === "string"),
     heard,
     refused: refusedOf(id, state.actions, pass.refused),
-    contacts: contactsByPerson(contactRows),
+    contacts: contactMap,
     undoable: undoableAct(row),
     fiction: fictionKindOf(scope.officeId),
     busy: busyOf(state, { on: clock.clock, aiAt: clock.aiAt }),
-    terms:
-      // 72 時間に着いた後（T123）は決まりを選ばない訓練も、どの手も押せない印を出す
-      row.status === "running" && shown === row.step && (state.options?.terms === true || clockOver(state))
-        ? Object.fromEntries(["", ...participants].map((p) => [p, termsFor(state, p || null)]))
-        : null,
+    terms,
+    hints: live
+      ? hintsByPerson({ state, people: peopleRows, ledgers, clockRows, rows, situation, terms, contacts: contactMap, last: lastHour(scenario) })
+      : null,
   };
+}
+
+/**
+ * 本人ごとの打てる手の候補（T126）。時計は本人の地区の停電で走り出しを決め（担当一覧と同じ personSituation）、残りは lib/triage の
+ * clockRemaining（読むだけ。色と順は変えない）。残りの言葉と色は行の詳細の時計と同じ物。仮想モードの結末の人は出さない
+ */
+function hintsByPerson(x: {
+  state: DrillState;
+  people: ReadonlyArray<PersonForDrill>;
+  ledgers: ReadonlyArray<ReturnType<typeof parseLedger>>;
+  clockRows: ReadonlyArray<ClockRow>;
+  rows: ReadonlyArray<CaseloadRow>;
+  situation: DisasterSituation;
+  terms: Record<string, Record<DrillAction, ActionTerm>> | null;
+  contacts: Record<string, DrillContact[]>;
+  last: number;
+}): Record<string, ActionHints> {
+  const out: Record<string, ActionHints> = {};
+  const w = x.state.world;
+  const hoursLeft = Math.max(0, x.last - nowHour(x.state));
+  x.people.forEach((p, i) => {
+    if (w.ended?.[p.id]) return;
+    const own = personSituation(x.situation, x.ledgers[i]?.basic.address?.town ?? null);
+    const shown = new Map((x.rows.find((r) => r.id === p.id)?.detail?.clocks ?? []).map((k) => [k.id, k]));
+    const clocks: HintClock[] = x.clockRows
+      .filter((k) => k.person_id === p.id)
+      .map((k) => {
+        const r = clockRemaining(k, own);
+        const d = shown.get(k.id);
+        return {
+          id: k.id,
+          category: k.category,
+          label: k.label,
+          running: r?.running ?? false,
+          left: r ? r.remaining : null,
+          remaining: d?.remaining ?? null,
+          tone: d?.tone ?? null,
+          depends_on: k.depends_on,
+          depends_check: k.depends_check,
+        };
+      });
+    const hints = hintsOf({
+      person: p.id,
+      asks: w.asks?.[p.id] ?? [],
+      clocks,
+      world: w,
+      terms: x.terms?.[p.id] ?? null,
+      contacts: x.contacts[p.id] ?? [],
+      hoursLeft,
+    });
+    if (hints) out[p.id] = hints;
+  });
+  return out;
 }
 
 /** ケアマネが通話・訪問で聞いた安否の signals の id → 通話か訪問か（手の返事から。lib/drill/db.ts の heardSignalId） */
