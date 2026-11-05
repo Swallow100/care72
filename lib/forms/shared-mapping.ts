@@ -1,4 +1,4 @@
-// 様式の対応表の共有（T134、migration 0031 の form_shared_mappings）。サーバーだけ。
+// 様式の対応表の共有（T134、migration 0034 の form_shared_mappings）。サーバーだけ。
 //
 // 一覧（lib/forms/municipal-forms.ts）の公式の様式は、版（サーバーが公式の URL から取ったファイルの SHA-256）と送った頁の組
 // （元のファイルの頁の番号）が同じなら、欄の位置（頁の画像の比 0〜1）と台帳の項目の当てが事業所をまたいで同じになる。

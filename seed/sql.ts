@@ -54,7 +54,7 @@ export const CLEAR_ORDER = [
   "custody",
   "form9_rank_edits",
   "form_mappings",
-  // 様式の対応表の共有（T134、migration 0031）。事業所のデータでないので種では消さない（KEEP_ON_SEED。配信の種の入れ直しでも残す）
+  // 様式の対応表の共有（T134、migration 0034）。事業所のデータでないので種では消さない（KEEP_ON_SEED。配信の種の入れ直しでも残す）
   "form_shared_mappings",
   "disaster_state",
   "ai_calls",
