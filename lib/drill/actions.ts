@@ -610,9 +610,10 @@ export async function act(
     callReply = reply;
     // 結末の人（仮想モード、T50）は電話に出ない（鍵が無く本人役のいないときも）
     if (reply?.pickup === "no_answer" || s.world.ended?.[input.person] !== undefined) {
-      status = "noAnswer";
+      // メッセージ（T125）は「未読」
+      status = input.kind === "message" ? "unread" : "noAnswer";
       ok = false;
-      text = ACTION_STATUS_TEXTS.noAnswer;
+      text = ACTION_STATUS_TEXTS[status];
       pickup = "no_answer";
     } else {
       speech = reply?.speech ?? fixedSpeech(own, input.target.kind);

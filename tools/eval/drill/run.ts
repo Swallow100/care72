@@ -23,6 +23,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import type { ClaudeClient } from "../../../lib/claude/client.ts";
 import { officePlaces } from "../../../lib/drill/area.ts";
 import { roomClientOf, worldModeOf, type WorldMode } from "../../../lib/drill/world-room.ts";
+import { homeOf } from "../../../lib/drill/comms.ts";
 import { pseudonymize, type PseudonymInput } from "../../../lib/pseudonym/index.ts";
 import { SEED_PEOPLE } from "../../../seed/people.ts";
 import { checkRun, type CheckContext } from "./checks.ts";
@@ -85,7 +86,8 @@ export function checkContext(): CheckContext {
   const births = SEED_SOURCES.flatMap((s) => (s.person.birth_date ? [{ iso: s.person.birth_date, what: "生年月日（台の表）" }] : []));
   // 本人ごとの台帳のハザード（T125。想定に合わない「浸水」の検査）
   const hazards = Object.fromEntries(SEED_SOURCES.map((s) => [s.person.id, s.ledger.evacuation.hazards.map((h) => h.kind)]));
-  return { key, extra, births, hazards };
+  const mobile = Object.fromEntries(SEED_SOURCES.map((s) => [s.person.id, homeOf(s.ledger).mobile]));
+  return { key, extra, births, hazards, mobile };
 }
 
 const pad = (n: number) => String(n).padStart(2, "0");

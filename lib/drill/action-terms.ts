@@ -286,8 +286,16 @@ export const TERM_RULES: ReadonlyArray<TermRule> = [
   { id: "flood_visit", label: TERM_LABELS.flood, when: (f) => f.flood, ways: ["visit"], add: 20 },
   { id: "late_visit", label: TERM_LABELS.late, when: (f) => f.late, ways: ["visit"], add: 20 },
   { id: "phone_busy", label: TERM_LABELS.busy, when: (f) => f.phone === "busy", ways: ["phone", "home"], add: 5 },
-  // 通話規制（T125）: かけ直しの分。事業所の職員への訪問依頼（電話の要らない頼み）には足さない
-  { id: "phone_down", label: TERM_LABELS.restrict, when: (f) => f.phone === "down", ways: ["phone", "home"], add: 10 },
+  // 通話規制（T125）: かけ直しの分。訪問依頼（事業所の職員は事務所で頼むので電話が要らない）には足さない
+  { id: "phone_down", label: TERM_LABELS.restrict, when: (f) => f.phone === "down", ways: ["phone"], add: 10 },
+  {
+    id: "phone_down_home",
+    label: TERM_LABELS.restrict,
+    when: (f) => f.phone === "down",
+    ways: ["home"],
+    actions: ["arrange_medicine", "arrange_transport", "arrange_power", "call_vendor"],
+    add: 10,
+  },
   { id: "battery", label: TERM_LABELS.battery, when: (f) => f.battery, ways: ["phone", "home"], add: 10 },
   // ---- 電話に出にくい（所要は同じ。出る割合だけ） ----
   {

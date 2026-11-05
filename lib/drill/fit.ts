@@ -154,7 +154,8 @@ export const FIT_PROFILES: Readonly<Record<DrillKind, FitProfile>> = {
     situations: ["outage", "water", "phone", "radio", "road", "shelter", "facility", "quake", "aftershock", "tsunami_warning"],
     // 透析施設の「浸水で休止」は河川の浸水の文なので差し込ませない（施設の休止は病院の休止の種類で起きる）
     injects: { banned: ["dialysis_flooded"], words: { road_blocked: "家の前の道が通れない（倒壊・落下物・土砂・段差）" } },
-    worldKinds: { banned: ["weather"], only: { flood: "津波の浸水だけ（津波警報のあと、海に近い地区）" } },
+    // 世界の部屋は津波警報を出せない（WORLD_KINDS に無い）ので、仮想の地震では浸水を使わせない（変化の門は津波警報のあとの浸水を通す）
+    worldKinds: { banned: ["weather", "flood"], only: {} },
     changes: [
       { id: "alert", kinds: ["alert"], words: "大雨の警戒レベル" },
       { id: "river_flood", kinds: ["flood"], words: "川の氾濫" },

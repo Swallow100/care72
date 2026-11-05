@@ -224,7 +224,9 @@ describe("時間と状況で変わる手（lib/drill/action-terms.ts）", () => 
     for (const r of ACTION_CATALOG) {
       const way = ACTION_WAYS[r.id];
       expect(actionTerm(r.id, down, on).block).toBeNull();
-      if (way === "phone" || way === "home") expect(actionTerm(r.id, down, on).adds).toContain(TERM_LABELS.restrict);
+      if (way === "phone" || (way === "home" && r.id !== "dispatch")) expect(actionTerm(r.id, down, on).adds).toContain(TERM_LABELS.restrict);
+      // 訪問依頼は電話の要らない頼み（事業所の職員）なので足さない
+      if (r.id === "dispatch") expect(actionTerm(r.id, down, on).adds).not.toContain(TERM_LABELS.restrict);
     }
     // 家の電話（固定電話も携帯も使えない家）: 本人電話は押せない。119勧奨は相手が本人のときだけ
     const line = { ...BASE_FACTS, lineDown: true, selfLine: "noCall" as const };

@@ -189,6 +189,8 @@ export type CheckContext = {
   births?: ReadonlyArray<{ iso: string; what: string }>;
   /** 本人ごとの台帳のハザード（区域の種類。T125 の想定に合わない物の検査） */
   hazards?: Readonly<Record<string, ReadonlyArray<HazardKind>>>;
+  /** 本人ごとの携帯（スマホを含む）の有無（T125。家の電話の印でも携帯でかけられる） */
+  mobile?: Readonly<Record<string, boolean>>;
 };
 
 /** 1. 本人役の禁じる中身（生の返事と、画面に出た物）。世界・監督の文の禁じる語も */
@@ -359,7 +361,7 @@ type LooseBefore = { phone?: PhoneState; roadClosed?: boolean; staff?: number; m
  * TERM_RULES で見直す）と、夜の訪問の所要が夜の足し分を含むか。開始に決まりを送った訓練では 0 のはず。送らない訓練は、送っていれば
  * 押せなかった手の数（比べるため）。浸水・施設の休止・出勤遅れ・電池は打つ前の記録に無いので見ない
  */
-export function termHits(outcome: RunOutcome): CheckHit[] {
+export function termHits(outcome: RunOutcome, ctx: Pick<CheckContext, "mobile"> = {}): CheckHit[] {
   const hits: CheckHit[] = [];
   const startedAt = new Date(DRILL_START).toISOString();
   for (const a of outcome.replay?.actions ?? []) {
@@ -373,8 +375,8 @@ export function termHits(outcome: RunOutcome): CheckHit[] {
       // 世界の電話が分からないので、家の電話の決まり（line_down）だけで見る
       phone: marks.lineDown !== undefined ? "ok" : (b.phone ?? "ok"),
       lineDown: marks.lineDown !== undefined,
-      // 本人の家の通信（T125）: 打つ前の記録には家の電話の印だけ（停電の家の固定電話・電波は見ない）
-      selfLine: marks.lineDown !== undefined ? "noCall" : "ok",
+      // 本人の家の通信（T125）: 打つ前の記録には家の電話の印だけ（停電の家の固定電話・電波は見ない）。携帯のある人は家の電話の印でもかけられる
+      selfLine: marks.lineDown !== undefined && !(a.person && ctx.mobile?.[a.person]) ? "noCall" : "ok",
       selfMobile: "ok",
       radioAll: false,
       officeEvac: false,
@@ -590,7 +592,7 @@ export function checkRun(records: ReadonlyArray<LogRecord>, outcome: RunOutcome,
   const odds = timeOddsOf(outcome);
   const contra = contradictionHits(outcome);
   const stops = stopHits(outcome);
-  const terms = termHits(outcome);
+  const terms = termHits(outcome, ctx);
   const fit = fitHits(outcome, ctx);
   const ai = records.filter((r): r is AiRecord => r.type === "ai" && (r as AiRecord).role !== "judge");
   // 1 訓練の数え（画面の「AI 残」から。10 分版は数えないので本人役と監督の呼び出しの数）
