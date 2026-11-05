@@ -26,6 +26,7 @@ import { stateLines } from "./state-rules.ts";
 import { fitKindOf, fitText, profileOf } from "./fit.ts";
 import { EVENT_LABELS } from "./event-catalog.ts";
 import { reportersOf } from "./persona.ts";
+import { factLines, factsOf, issuedBlock, planLines, planOf, supplyAllowed, type Plan } from "./person-facts.ts";
 import type { WorldState, WorldVia } from "./scenarios.ts";
 import {
   FAREWELL_MAX,
@@ -144,6 +145,8 @@ export type WorldCast = {
    * false なら入力に「結末: 決めない」と書き、返ってきた結末は捨てる（world-apply.ts の ApplyContext.endings）
    */
   endings: boolean;
+  /** 本人ごとの計画（T130、lib/drill/person-facts.ts の planOf）。最初の刻みの本人たちの欄と、業者の巡回の門に使う */
+  plans?: Map<string, Plan>;
 };
 
 /**
@@ -168,9 +171,12 @@ export function buildCast(
   // 町名は地区の別名で渡す（T88。本人たちの欄・これまでの世界・刻みの文に町名が入っても、地理と同じ別名に）
   const { payload, key } = pseudonymize(list, { ...(on ? { on } : {}), places: placesOf(area, list.map((x) => x.ledger)) });
   const facts = new Map<string, PersonFacts>();
+  const plans = new Map<string, Plan>();
   const lines: string[] = [];
   members.forEach((p, i) => {
     const src = list[i];
+    const plan = planOf(src);
+    plans.set(p, plan);
     facts.set(p, {
       town: townOfLedger(src.ledger, area),
       depends: dependsOf(p),
@@ -199,10 +205,12 @@ export function buildCast(
         `  医療機器: ${devices.length > 0 ? devices.join("、") : "なし"}`,
         `  持ちこたえる時間: ${runs.length > 0 ? runs.join("、") : "なし"}`,
         `  支援者: ${supporters > 0 ? `${supporters} 人` : "なし"}。スマホで連絡できる人: ${pressers.length > 0 ? pressers.join("、") : "いない"}`,
+        // T130: 計画（停電のときの予備・避難先の種類と手段・在宅避難・業者の約束）。連絡が取れなくても計画どおりに動く。場所の名前は書かない
+        `  計画: ${planLines(plan).join("／")}`,
       ].join("\n"),
     );
   });
-  return { key, facts, people: ["本人たち（仮名。どこに住むかは書かない）:", ...lines].join("\n"), area, endings: endingsAllowed(officeId) };
+  return { key, facts, plans, people: ["本人たち（仮名。どこに住むかは書かない）:", ...lines].join("\n"), area, endings: endingsAllowed(officeId) };
 }
 
 const ACTION_WORDS: Readonly<Record<ActionRecord["kind"], string>> = CATALOG_WORDS;
@@ -276,7 +284,7 @@ export function worldNow(w: WorldState, area: Area = DEMO_AREA): string[] {
 }
 
 /** 刻みの文（部屋には毎刻みこれだけ。最初の刻みは地理と本人たちを先に足す） */
-export function tickText(input: WorldInput, cast: Pick<WorldCast, "key"> & Partial<Pick<WorldCast, "endings">>, prevHour: number, last: number): string {
+export function tickText(input: WorldInput, cast: Pick<WorldCast, "key"> & Partial<Pick<WorldCast, "endings" | "facts" | "plans">>, prevHour: number, last: number): string {
   const endings = cast.endings !== false;
   const aliasOf = new Map(cast.key.people.map((p) => [p.personId, p.alias]));
   // 連続の時計の訓練（T90）は前の区切りの時刻（分）から。刻みの道は前の刻みの時刻
@@ -311,12 +319,48 @@ export function tickText(input: WorldInput, cast: Pick<WorldCast, "key"> & Parti
     acts.length > 0 ? ["前の刻みからケアマネがした事:", ...acts].join("\n") : "前の刻みからケアマネがした事: なし",
     contacts.length > 0 ? ["前の刻みからの本人たちの連絡:", ...contacts].join("\n") : "前の刻みからの本人たちの連絡: なし",
     seen.length > 0 ? ["本人たちの最後の様子:", ...seen].join("\n") : "本人たちの最後の様子: なし",
+    // T130: 人ごとの事実の帳面（コードが引く。いる所・前に言った事・来た人・声・電気と予備）。街の出来事も結末もこれと食い違わない
+    ...personFactBlock(input, cast, aliasOf),
+    // もう出した出来事（T130。同じ言い回しを別の人に使わない）
+    ...issuedBlock(input.world, (k) => EVENT_LABELS[k as keyof typeof EVENT_LABELS] ?? k, (p) => (p && aliasOf.has(p) ? aliasOf.get(p)! : null)),
     hints.length > 0
       ? [endings ? "時計の目安（コードの計算。結末を迎えるかはあなたが決める）:" : "時計の目安（コードの計算。街の流れの参考）:", ...hints].join("\n")
       : "時計の目安: 走っている時計なし",
     // デモ以外の事業所（T70 の続き）は結末を求めない。デモ事業所の文は前と同じ
     endings ? `もう結末を迎えた人（挙げない）: ${ended.length > 0 ? ended.join("・") : "なし"}` : "結末: 決めない（この訓練では farewells はいつも空の配列）",
+    // T130: 結末の理由に医療の言い方を入れない（評価の 3 回目で、機器の名前と状態が理由に入った。世界の指示は変えずに刻みの文で）
+    ...(endings ? [REASON_RULE_LINE] : []),
   ].join("\n");
+}
+
+/** 結末の理由の決まりの 1 行（刻みの文。WORLD_SYSTEM は変えない） */
+export const REASON_RULE_LINE =
+  "結末の reason は停電・道・届いた手の事実だけで書く（機器・体・薬の名前と、その状態を書かない。「停電が続き、電源も人も届かなかった」の形）";
+
+/**
+ * 本人ごとの帳面の行（T130。仮名で。計画は最初の刻みの本人たちの欄にあるので、ここは今の事実だけ）。停電の地区は本人の町で見る
+ */
+function personFactBlock(input: WorldInput, cast: Pick<WorldCast, "key"> & Partial<Pick<WorldCast, "facts" | "plans">>, aliasOf: ReadonlyMap<string, string>): string[] {
+  const ended = input.world.ended ?? {};
+  const o = input.world.outage;
+  const lines = [...aliasOf]
+    .filter(([p]) => !ended[p])
+    .flatMap(([p, alias]) => {
+      const town = cast.facts?.get(p)?.town ?? null;
+      const inOutage = !!o && (o.area.scope === "office" || (o.area.scope === "towns" && (!town || o.area.towns.includes(town))));
+      const f = factsOf({
+        person: p,
+        world: input.world,
+        state: input.people[p] ?? null,
+        actions: input.actions.filter((a) => a.person === p),
+        now: Math.round(input.hour * 60),
+        plan: cast.plans?.get(p) ?? null,
+        inOutage,
+      });
+      const xs = factLines(f).filter((x) => !x.startsWith("来た人・届いた物: まだ無い"));
+      return xs.length > 0 ? [`- ${alias}: ${xs.join("／")}`] : [];
+    });
+  return lines.length > 0 ? [["人ごとの事実（コードの記録。出来事・結末はこれと食い違わない）:", ...lines].join("\n")] : [];
 }
 
 /** 最初の刻みの文（地理・本人たち・刻みの文） */
@@ -372,5 +416,7 @@ export function applyContext(input: WorldInput, cast: WorldCast, via: WorldVia):
     via,
     area: cast.area,
     endings: cast.endings,
+    // T130: 業者の巡回（届く物）は、その人への手か計画（業者の約束）があるときだけ
+    supplyOk: (person: string) => supplyAllowed(person, input.actions, cast.plans?.get(person) ?? null),
   };
 }

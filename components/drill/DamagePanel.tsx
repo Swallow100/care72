@@ -4,9 +4,11 @@
 // 予定の出来事・向かっている人・届いた物（T92。監督の見込み・業者の巡回・ケアマネの手配）は灰の文字で、あるときだけ行を出す。
 // T105: 訓練の途中（hidePrivate）は、本人に起きたこと（個別の印のうち非公表の物・本人の付いた予定・監督と世界の巡回）を出さない。
 // 公表かは経過のタブと同じ表（lib/drill/timeline.ts の MARK_REACH・scheduledPublic・arrivalPublic）。終わった訓練は全部出す。
+// T128: 区域の出来事（津波の避難・警戒レベル・浸水・停電の地区）は、行に対象を添える（「対象 3 人 伊藤・田中・加藤 事業所 対象外」。
+// 決まりは lib/drill/area-targets.ts）。人を押すと左の表のその人の行へ（#row-<id>）。事業所が分からなければ事業所の部分を出さない。
 
 import { ARRIVAL_ROLE_LABELS, DAMAGE_EXTRA_LABELS, SUPPLY_LABELS } from "@/lib/drill/event-catalog";
-import type { DrillKind, PersonMarks, SupplyKind, WorldState } from "@/lib/drill/scenarios";
+import type { DrillKind, PersonMarks, SupplyKind, WorldChange, WorldState } from "@/lib/drill/scenarios";
 import {
   clockLabel,
   MARK_LABELS,
@@ -18,6 +20,7 @@ import {
 } from "@/lib/drill/labels";
 import { hourSpanText, hourText } from "@/lib/drill/time-text";
 import { arrivalPublic, MARK_REACH, scheduledPublic } from "@/lib/drill/timeline";
+import { areaTargetOf, familyName, TARGET_LABELS, type AreaPerson, type AreaTarget } from "@/lib/drill/area-targets";
 
 const BAD = "font-bold tone-check";
 
@@ -27,6 +30,7 @@ export function DamagePanel({
   now,
   names,
   hidePrivate = false,
+  people,
 }: {
   kind: DrillKind;
   world: WorldState;
@@ -35,8 +39,11 @@ export function DamagePanel({
   names: Readonly<Record<string, string>>;
   /** 訓練の途中は本人に起きたこと（非公表）を出さない（T105） */
   hidePrivate?: boolean;
+  /** 参加者の台帳のハザードと町（T128。区域の出来事の対象）。無ければ対象を出さない */
+  people?: ReadonlyArray<AreaPerson>;
 }) {
   const o = world.outage;
+  const target = (c: WorldChange) => (people ? <Targets t={areaTargetOf(c, people)} names={names} total={people.length} /> : null);
   const scheduled = [...(world.scheduled ?? [])].filter((x) => !hidePrivate || scheduledPublic(x)).sort((a, b) => a.at - b.at);
   const coming = (world.arrivals ?? [])
     .filter((a) => !a.arrived && (!hidePrivate || arrivalPublic(a)))
@@ -56,9 +63,11 @@ export function DamagePanel({
             ) : (
               <span className={world.alertLevel >= 4 ? BAD : "font-bold"}>{world.alertLevel}</span>
             )}
+            {world.alertLevel !== null && target({ kind: "alert", level: world.alertLevel })}
           </Item>
           <Item label={WORLD_LABELS.flood} k="flood">
             {world.flood ? <span className={BAD}>{WORLD_LABELS.yes}</span> : <span className="text-muted">{WORLD_LABELS.no}</span>}
+            {world.flood && target({ kind: "flood" })}
           </Item>
         </>
       ) : (
@@ -68,6 +77,7 @@ export function DamagePanel({
           </Item>
           <Item label={WORLD_LABELS.tsunami} k="tsunami">
             <span className={world.tsunami === "evacuate" ? BAD : "text-muted"}>{TSUNAMI_LABELS[world.tsunami]}</span>
+            {world.tsunami === "evacuate" && target({ kind: "tsunami", state: "evacuate" })}
           </Item>
         </>
       )}
@@ -88,6 +98,7 @@ export function DamagePanel({
               {hourText(now - o.since)}
             </span>
             <span className="ml-1.5 text-xs text-muted">{o.area.scope === "office" ? WORLD_LABELS.office : o.area.scope === "towns" ? o.area.towns.join("・") : WORLD_LABELS.area}</span>
+            {target({ kind: "outage", area: o.area })}
           </span>
         )}
       </Item>
@@ -177,6 +188,44 @@ export function DamagePanel({
         </Item>
       )}
     </dl>
+  );
+}
+
+/**
+ * 区域の対象（T128）。「対象 3 人 伊藤・田中・加藤 事業所 対象外」。人は押すと左の表のその人の行へ。多いときは 3 人と「他 N 人」、
+ * 参加者の全員なら「全員」。事業所が分からなければ事業所を出さない
+ */
+function Targets({ t, names, total }: { t: AreaTarget | null; names: Readonly<Record<string, string>>; total: number }) {
+  if (!t) return null;
+  const n = t.persons.length;
+  const all = n > 0 && n === total && total > 3;
+  const max = 3;
+  return (
+    <span className="ml-1.5 inline-flex flex-wrap items-baseline gap-x-1 text-xs" data-targets={n} data-targets-office={t.office === null ? undefined : String(t.office)}>
+      <span className="text-muted">{TARGET_LABELS.target}</span>
+      <span className="font-bold tabular-nums">
+        {n} {TARGET_LABELS.people}
+      </span>
+      {all ? (
+        <span>{TARGET_LABELS.all}</span>
+      ) : (
+        t.persons.slice(0, max).map((p) => (
+          <a key={p} href={`#row-${p}`} className="-mx-0.5 rounded px-0.5 underline decoration-muted underline-offset-2" data-press data-target-person={p}>
+            {familyName(names[p] ?? p)}
+          </a>
+        ))
+      )}
+      {!all && n > max && (
+        <span className="text-muted">
+          {TARGET_LABELS.more} {n - max} {TARGET_LABELS.people}
+        </span>
+      )}
+      {t.office !== null && (
+        <span>
+          <span className="text-muted">{TARGET_LABELS.office}</span> <span className="font-bold">{t.office ? TARGET_LABELS.officeIn : TARGET_LABELS.officeOut}</span>
+        </span>
+      )}
+    </span>
   );
 }
 

@@ -848,6 +848,12 @@ function PinLabel({ pin, extra }: { pin: MapPin; extra?: React.ReactNode }) {
     <span className={`flex items-baseline overflow-hidden rounded text-[11px] leading-4 font-bold whitespace-nowrap ${PIN_EDGE}`}>
       {pin.tone && pin.state && <span className={`px-1 ${PIN_TAG[pin.tone]}`}>{pin.state}</span>}
       <span className="bg-panel px-1 text-ink">{pin.label}</span>
+      {/* T128: 区域の出来事の対象（訓練。「避難」）。色は付けず、名前の横の灰の小さな言葉 */}
+      {pin.note && (
+        <span className="border-l border-muted/40 bg-panel px-1 font-normal text-muted" data-pin-note>
+          {pin.note}
+        </span>
+      )}
       {extra}
     </span>
   );

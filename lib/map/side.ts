@@ -82,6 +82,8 @@ export type MapPin = {
   state: string | null;
   /** 描く順。後ろほど上に重なる（発災時は連絡の順が先の人を上に） */
   layer: number;
+  /** 名前の印の横の小さな言葉（T128。訓練で区域の出来事の対象の人に「避難」）。無ければ出さない */
+  note?: string | null;
 };
 
 export type HazardCount = {

@@ -193,7 +193,8 @@ describe("区域の出来事の対象（T128 が読む）", () => {
   });
   it("警戒レベルは洪水・土砂の区域、氾濫は洪水の区域、地震は全員と事業所、本人の出来事はその人", () => {
     expect(targetsOf({ change: { kind: "alert", level: 4 } }, ctx).persons).toEqual(["p-01", "p-02", "p-03", "p-04", "p-05", "p-06", "p-07"]);
-    expect(targetsOf({ change: { kind: "flood" } }, ctx).persons).toEqual(["p-01", "p-02", "p-03", "p-05", "p-06"]);
+    // 川の氾濫は洪水 3 m 以上の区域（想定の表の文と停電の地区と同じ線）
+    expect(targetsOf({ change: { kind: "flood" } }, ctx).persons).toEqual(["p-01", "p-02"]);
     expect(targetsOf({ change: { kind: "quake", intensity: "6強" } }, ctx)).toEqual({ persons: ALL, office: true });
     expect(targetsOf({ change: { kind: "line_down" }, person: "p-03" }, ctx)).toEqual({ persons: ["p-03"], office: false });
     expect(targetsOf({ change: { kind: "outage", area: { scope: "hazard", hazard: "flood", minDepthM: 3 } } }, ctx).persons).toEqual(["p-01", "p-02"]);

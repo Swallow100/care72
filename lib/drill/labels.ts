@@ -40,7 +40,10 @@ export const DRILL_LABELS = {
   scenario: "想定",
   start: "開始",
   advance: "進める",
-  fastForward: "早送り",
+  /** 前の「早送り」（T128）。次まで（刻みの道は進める）を決まった間でくり返す */
+  fastForward: "自動進行",
+  /** 自動進行の title の終わり（「次まで 2.5 秒ごと」） */
+  autoEvery: "ごと",
   abandon: "中断",
   resume: "再開",
   replay: "再生",
@@ -208,6 +211,8 @@ export const BASIS_LABEL = "出典";
 export const LOG_LABELS = {
   panel: "経過",
   tabs: "経過切替",
+  /** 対応（採点）と経過の切替（T128。1536px 未満） */
+  panes: "対応切替",
   occur: "発生",
   know: "把握",
   act: "対応",

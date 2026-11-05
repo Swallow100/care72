@@ -190,10 +190,18 @@ export type WorldState = {
    */
   stamps?: Record<string, number>;
   /**
-   * AI の出力の門（T125、lib/drill/gate.ts）が捨てた・直した数（鍵は「出どころ:決まり」。director:fit:alert・persona:fit:quake_word・
-   * world:dwell:road など）。世界を変えない。評価の台が数える
+   * 門で落とした・直した数（1 つの数え。評価の台が数える）。AI の出力の門（T125、lib/drill/gate.ts）は「出どころ:決まり」の鍵
+   * （director:fit:alert・persona:fit:quake_word・world:dwell:road など）、人ごとの事実の帳面（T130、lib/drill/person-facts.ts）の門は
+   * 決まりの名前の鍵。世界を変えない。帳面そのものは保存しない（前の連絡・手・到着・台帳から毎回引く）
    */
   gated?: Record<string, number>;
+  /** 監督・世界が出した人ごとの出来事（T130。同じ種類・同じ言い回しを別の人にくり返さないために覚える。新しい 40 件まで） */
+  issued?: Array<{ kind: string; person: string | null; text: string; at: number }>;
+  /**
+   * 掛かってきた電話の往復でケアマネが言った事（T130、lib/drill/person-facts.ts の pushTold。台帳の id → 行。人ごとに新しい 8 つまで）。
+   * 本人役の帳面の「ケアマネに言われた事」に入る（外へ掛けた電話の往復は手の返事の talk から引く）
+   */
+  told?: Record<string, Array<{ minute: number; text: string; ask?: string }>>;
 };
 
 /** 向かっている人の役。staff 事業所の職員・nurse 訪問看護・supporter 支援者・family 家族・vendor 業者・transport 移送・power 電源・medicine 薬 */

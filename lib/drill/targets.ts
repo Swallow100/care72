@@ -21,6 +21,9 @@ export type TargetContext = {
 
 const NONE: IncidentTargets = { persons: [], office: false };
 
+/** 川の氾濫の浸水の地区（m）。想定の表の文と停電の地区（FLOOD_AREA）と同じ */
+export const FLOOD_DEPTH_M = 3;
+
 /** 区域（台帳のハザードの種類）にいる参加者と、事業所がその区域か */
 function inZones(ctx: TargetContext, zones: ReadonlyArray<HazardKind>): IncidentTargets {
   const persons = ctx.participants.filter((p) => (ctx.homes?.[p]?.zones ?? []).some((z) => zones.includes(z.kind)));
@@ -45,9 +48,11 @@ export function targetsOf(e: Pick<DrillIncident, "change" | "person">, ctx: Targ
     case "alert":
       // 大雨の警戒レベル（避難指示など）は洪水・土砂の区域。解除（null）は誰にも新しく効かない
       return c.level === null ? NONE : inZones(ctx, ["flood", "landslide"]);
-    case "flood":
-      // 川の氾濫は洪水の区域
-      return inZones(ctx, ["flood"]);
+    case "flood": {
+      // 川の氾濫は洪水の区域の深い所（想定の表の文「浸水 3 m の地区で浸水」と停電の地区と同じ線。lib/drill/area-targets.ts の FLOOD_TARGET_DEPTH_M）
+      const persons = ctx.participants.filter((p) => (ctx.homes?.[p]?.zones ?? []).some((z) => z.kind === "flood" && (z.depthM ?? 0) >= FLOOD_DEPTH_M));
+      return { persons, office: (ctx.officeZones ?? []).includes("flood") };
+    }
     case "note":
       // 土砂の警戒は土砂の区域（と、差し込みが指した人）。ほかの話題（給水所・情報の混乱・自分の身の回り）は全体
       if (c.topic === "landslide_warn") {

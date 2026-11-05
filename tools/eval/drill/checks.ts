@@ -21,6 +21,7 @@ import { FORBIDDEN_WORDS, REASON_MEDICAL_WORDS } from "../../../lib/drill/world-
 import { findLeaks, type PseudonymKey } from "../../../lib/pseudonym/index.ts";
 import { birthIn } from "../shapes.ts";
 import { DRILL_START, type LooseAction, type LooseTurn, type RunOutcome } from "./drive.ts";
+import { factHits, type FactPerson } from "./facts-check.ts";
 import type { AiRecord, LogRecord } from "./record.ts";
 import { PERSONA_ROLES, type Role } from "./roles.ts";
 
@@ -79,7 +80,7 @@ export function hurtIn(text: string): boolean {
 // ---------- 引っかかった所 ----------
 
 export type CheckHit = {
-  check: "banned" | "shape" | "leak" | "contradiction" | "time_odds" | "stop" | "op_failed" | "budget" | "terms" | "fit" | "free";
+  check: "banned" | "shape" | "leak" | "contradiction" | "time_odds" | "stop" | "op_failed" | "budget" | "terms" | "fit" | "free" | "facts";
   rule: string;
   /** banned: raw（モデルの生の返事）か shown（画面に出た物） */
   where?: "raw" | "shown" | "sent";
@@ -191,6 +192,8 @@ export type CheckContext = {
   hazards?: Readonly<Record<string, ReadonlyArray<HazardKind>>>;
   /** 本人ごとの携帯（スマホを含む）の有無（T125。家の電話の印でも携帯でかけられる） */
   mobile?: Readonly<Record<string, boolean>>;
+  /** 本人ごとの計画・同居・家族・ハザード（T130 の帳面の検査。無ければ帳面の検査をしない） */
+  facts?: Readonly<Record<string, FactPerson>>;
 };
 
 /** 1. 本人役の禁じる中身（生の返事と、画面に出た物）。世界・監督の文の禁じる語も */
@@ -304,8 +307,11 @@ function helped(person: string, from: number, to: number, actions: ReadonlyArray
   );
 }
 
-/** 5. 矛盾（けが → 手も到着も無いまま無事、結末のあとの連絡、言葉と色の食い違い） */
-export function contradictionHits(outcome: RunOutcome): CheckHit[] {
+/**
+ * 5. 矛盾（けが → 手も到着も無いまま無事、結末のあとの連絡、言葉と色の食い違い）。facts（T130）があれば、計画で移った
+ * （避難先と手段・手伝う人があり、緑の家の外）も手と同じに見る（本人役の門と同じ。lib/drill/person-facts.ts の screenTurn）
+ */
+export function contradictionHits(outcome: RunOutcome, facts?: Readonly<Record<string, FactPerson>>): CheckHit[] {
   const hits: CheckHit[] = [];
   const r = outcome.replay;
   if (!r) return hits;
@@ -325,7 +331,9 @@ export function contradictionHits(outcome: RunOutcome): CheckHit[] {
       const next = turns[i + 1];
       if (next && u.color === "red" && (u.injured === true || u.canMove === false) && next.color === "green") {
         const to = Math.round(next.at * 60);
-        if (!helped(person, minute, to, r.actions, arrivals)) {
+        const plan = facts?.[person]?.plan;
+        const planMoved = !!plan?.move && plan.helper && (next.whereNow === "shelter" || next.whereNow === "other");
+        if (!helped(person, minute, to, r.actions, arrivals) && !planMoved) {
           hits.push({ check: "contradiction", rule: "hurt_to_safe", person, minute: to, evidence: `${minute} 分に赤（${u.injured === true ? "けが" : "動けない"}）→ ${to} 分に緑、間に手・到着なし` });
         }
       }
@@ -674,6 +682,11 @@ export type RunNumbers = {
    * dropped は表の手に当てたのに変化なしに落ちた数（0 のはず）、canMismatch は不可の手を「できる」と答えた数（生の返事）
    */
   free?: { acts: number; innerShown: number; innerRaw: number; dropped: number; canMismatch: number };
+  /**
+   * 人ごとの事実の帳面との矛盾（T130、facts-check.ts）。checked は見た数、hits は矛盾の数（門が効いていれば 0 のはず）、byRule は決まりごと、
+   * gated は門が落とした・直した数（drills.world の gated。決まりごと）
+   */
+  facts?: { checked: number; hits: number; byRule: Record<string, number>; gated: Record<string, number> };
   timing: { advanceP50: number | null; advanceP95: number | null; advanceMax: number | null; actP50: number | null; actP95: number | null };
   cost: { usd: number; inputTokens: number; outputTokens: number; roomSteps: number; unpricedCalls: number };
 };
@@ -693,11 +706,12 @@ export function checkRun(records: ReadonlyArray<LogRecord>, outcome: RunOutcome,
   const leaks = leakSentHits(records, ctx);
   const shape = shapeHits(records);
   const odds = timeOddsOf(outcome);
-  const contra = contradictionHits(outcome);
+  const contra = contradictionHits(outcome, ctx.facts);
   const stops = stopHits(outcome);
   const terms = termHits(outcome, ctx);
   const fit = fitHits(outcome, ctx);
   const free = freeHits(records, outcome);
+  const facts = ctx.facts ? factHits(outcome, ctx.facts) : { checked: 0, hits: [] as CheckHit[] };
   const ai = records.filter((r): r is AiRecord => r.type === "ai" && (r as AiRecord).role !== "judge");
   // 1 訓練の数え（画面の「AI 残」から。10 分版は数えないので本人役と監督の呼び出しの数）
   const drillCounted = outcome.callsLeft !== null ? DRILL_CAP - outcome.callsLeft : ai.filter((a) => a.role === "persona" || a.role === "director" || a.role === "world" || a.role === "world_room").length;
@@ -757,6 +771,7 @@ export function checkRun(records: ReadonlyArray<LogRecord>, outcome: RunOutcome,
       dropped: free.filter((h) => h.rule === "dropped").length,
       canMismatch: free.filter((h) => h.rule === "can_mismatch").length,
     },
+    facts: { checked: facts.checked, hits: facts.hits.length, byRule: tally(facts.hits.map((h) => h.rule)), gated: { ...(outcome.gated ?? {}) } },
     timing: {
       advanceP50: quantile(ms("advance"), 0.5),
       advanceP95: quantile(ms("advance"), 0.95),
@@ -772,5 +787,5 @@ export function checkRun(records: ReadonlyArray<LogRecord>, outcome: RunOutcome,
       unpricedCalls: ai.filter((a) => a.costUsd === null && a.role !== "world_room").length,
     },
   };
-  return { hits: [...banned, ...leaks, ...shape, ...odds.hits, ...contra, ...stops, ...terms, ...fit.hits, ...free, ...budgetHits], numbers };
+  return { hits: [...banned, ...leaks, ...shape, ...odds.hits, ...contra, ...stops, ...terms, ...fit.hits, ...free, ...facts.hits, ...budgetHits], numbers };
 }
