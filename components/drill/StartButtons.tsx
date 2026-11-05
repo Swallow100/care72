@@ -1,9 +1,10 @@
 "use client";
 
-// 訓練の開始（大雨想定・地震想定・10 分版）。押すと 0 時間まで当てて保存し、訓練の画面へ。
+// 訓練の開始（大雨想定・地震想定・仮想）。押すと 0 時間まで当てて保存し、訓練の画面へ。
 // 事業所に進行中があれば断られる（実施中あり）。そのときは一覧の進行中から再開か中断。
-// 主の操作の色は 10 分版（審査員がまず押す方）だけで、先頭に並べる（並びは lib/drill の
-// SCENARIO_ORDER を変えずにここで前へ出す）。大雨・地震の想定は無色。押してから画面が移るまで、押したボタンに灰色を残す（data-pending）。
+// 並びは lib/drill の SCENARIO_ORDER のまま。主の操作の色は先頭（大雨想定）だけで、ほかは無色。押してから画面が移るまで、押したボタンに灰色を残す（data-pending）。
+// T124: 10 分版を外した（前からある 10 分版の記録は一覧・再生・紙で読める）。想定のボタンの下に進め方の 1 行
+// （訓練の画面の並びと同じ 手の分・30 分・1 時間・3 時間・次まで、主の操作は次まで。通しは早送り＝次までの繰り返し）。
 //
 // 設定（T59）: 想定のボタンの前に畳んだ「設定」。開くと参加者（担当一覧の人のチェック。既定は全員）・職員（既定は想定の表の値）・夜間発災。
 // 閉じたまま・何も変えずに想定を押せば、送る物は前と同じ { scenario } だけ（選んだ物だけ options に入れる）。
@@ -17,7 +18,7 @@
 // （T70 の案 6 の「重ねない」から変えた）。AI が使えない（未設定）ときは回数でなく想定ごとの進み方（固定の筋は「想定のみ」、仮想は「世界停止」）。
 // 未設定の印は中立の地の印（components/ui/AiStatus。状態の 4 色を使わない）。開始は止めない
 // T90: 大雨想定・地震想定・仮想は連続の時計（30 分・1 時間・3 時間・次まで）で始める（選ばせない）。送る物の options に clock を足し、
-// 見込みは連続の時計の式（lib/drill/estimate.ts の estimateClockCalls）。10 分版は前のまま（送る物も見込みも）
+// 見込みは連続の時計の式（lib/drill/estimate.ts の estimateClockCalls）
 // T104: 設定に「仮想規模」（既定おまかせ。仮想だけに効く。lib/drill/scale.ts）と「自宅」（既定 事業所付近。大雨想定・地震想定の監督が
 // 訓練する人の身の回りの出来事に使う。lib/drill/self.ts）。どちらも既定のままなら送る物は前と同じ
 
@@ -32,20 +33,23 @@ import { LABEL } from "@/components/ui/Panel";
 import { Select } from "@/components/ui/Select";
 import { AiStatusMark } from "@/components/ui/AiStatus";
 import { aiRemaining, aiUsable, type AiStatus } from "@/lib/claude/status";
-import { estimateClockCalls, estimateDrillCalls, overLimit } from "@/lib/drill/estimate";
-import { AI_STOP_UI, DRILL_LABELS, SCENARIO_LABELS, T59_LABELS, T70_LABELS } from "@/lib/drill/labels";
+import { CLOCK_LABELS, CLOCK_STEP_LABELS, CLOCK_STEPS } from "@/lib/drill/clock";
+import { estimateClockCalls, overLimit } from "@/lib/drill/estimate";
+import { AI_STOP_UI, DRILL_LABELS, SCENARIO_LABELS, T124_LABELS, T59_LABELS, T70_LABELS } from "@/lib/drill/labels";
 import { isVirtual } from "@/lib/drill/scenarios";
 import { STAFF_MAX, T104_LABELS } from "@/lib/drill/options";
 import { SCALE_CHOICES, scaleKey, scaleLabel, scaleOfKey, type DrillScale } from "@/lib/drill/scale";
 
-/** 主の操作の色にする想定 */
-const MAIN_SCENARIO: DrillScenario = "short";
+/** 進め方（訓練の画面の DrillControls と同じ並び。最後の次までが主の操作） */
+const PACES: ReadonlyArray<string> = [CLOCK_LABELS.acts, ...CLOCK_STEPS.map((m) => CLOCK_STEP_LABELS[m]), CLOCK_LABELS.next];
 
-/** 連続の時計（T90）で始める想定か。10 分版は刻みの道のまま */
-const usesClock = (s: DrillScenario) => s !== "short";
-
-/** 想定 1 回の見込み（連続の時計の想定はその式） */
-const estimateOf = (s: DrillScenario, picked: ReadonlyArray<StartPerson>) => (usesClock(s) ? estimateClockCalls(s, picked) : estimateDrillCalls(s, picked));
+/**
+ * 開始の POST の中身（T124）。どの想定も連続の時計（T90）と、時間と状況で変わる手（T110）で始める。
+ * chosen は設定で選んだ物だけ（何も変えなければ undefined）。clock と terms は設定の「変更あり」の印には数えない
+ */
+export function startBody(scenario: DrillScenario, chosen?: Record<string, unknown>): { scenario: DrillScenario; options: Record<string, unknown> } {
+  return { scenario, options: { ...(chosen ?? {}), clock: true, terms: true } };
+}
 
 /**
  * 担当一覧の人（参加者の選択）。canPress が false の人に「押せる人なし」（無ければ印なし）、callable は本人役を呼びうる想定
@@ -96,7 +100,8 @@ export function StartButtons({
   const picked = people.filter((p) => chosen.has(p.id));
   // 押せる人なし（選んだ参加者のうち）
   const noPresser = picked.filter((p) => p.canPress === false).length;
-  const ordered = [...scenarios].sort((a, b) => Number(b === MAIN_SCENARIO) - Number(a === MAIN_SCENARIO));
+  // 主の操作の色は先頭の想定（SCENARIO_ORDER の大雨想定）だけ
+  const main = scenarios[0] ?? null;
 
   /** 選んだ物だけ（何も変えなければ undefined。送る物は前と同じ） */
   const options = () => {
@@ -122,14 +127,10 @@ export function StartButtons({
     setBusy(scenario);
     setError(null);
     try {
-      // 連続の時計は送るときだけ足す（設定の「変更あり」の印には数えない）
-      const chosen = options();
-      // 時間と状況で変わる手（T110）も連続の時計の訓練に付ける（10 分版には付けない）
-      const o = usesClock(scenario) ? { ...(chosen ?? {}), clock: true, terms: true } : chosen;
       const res = await fetch("/api/drill", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(o ? { scenario, options: o } : { scenario }),
+        body: JSON.stringify(startBody(scenario, options())),
       });
       const body = (await res.json().catch(() => null)) as { ok?: boolean; id?: string; label?: string } | null;
       if (!res.ok || !body?.ok || !body.id) {
@@ -170,10 +171,10 @@ export function StartButtons({
           <span className="text-xs font-normal text-muted">{settingsSummary(people.length, chosen.size, staff, night, scale, home)}</span>
         )}
       </Button>
-      {ordered.map((s) => (
+      {scenarios.map((s) => (
         <Button
           key={s}
-          kind={s === MAIN_SCENARIO ? "main" : "plain"}
+          kind={s === main ? "main" : "plain"}
           icon={PlayIcon}
           onClick={() => void start(s)}
           disabled={disabled || busy !== null || none}
@@ -188,14 +189,23 @@ export function StartButtons({
           {error}
         </span>
       )}
+      {/* T124: 進め方（訓練の画面と同じ並び。主の次までと、通しの早送りを本文色で） */}
+      <p className="flex w-full flex-wrap items-baseline gap-x-3 gap-y-0.5 text-xs text-muted" data-start-pace>
+        <span>
+          {T124_LABELS.pace} {PACES.slice(0, -1).join("・")}・<span className="font-bold text-ink">{CLOCK_LABELS.next}</span>
+        </span>
+        <span>
+          {T124_LABELS.through} <span className="font-bold text-ink">{DRILL_LABELS.fastForward}</span>
+        </span>
+      </p>
       {(estimates || (ai !== null && !(ai.kind === "ready" && ai.remaining === null))) && (
         <p className="flex w-full flex-wrap items-baseline gap-x-3 gap-y-0.5 text-xs text-muted tabular-nums" data-estimate>
           {/* 今日の残り（か未設定）を見込みの頭に並べる（T76） */}
           {ai && <AiStatusMark status={ai} />}
           {estimates && usable && <span>{T70_LABELS.estimate}</span>}
           {estimates &&
-            ordered.map((s) => {
-              const n = estimateOf(s, picked);
+            scenarios.map((s) => {
+              const n = estimateClockCalls(s, picked);
               const over = overLimit(n, remaining);
               const effect = isVirtual(s) ? AI_STOP_UI.virtual : AI_STOP_UI.fixed;
               const effectTitle = isVirtual(s) ? AI_STOP_UI.virtualTitle : AI_STOP_UI.fixedTitle;
