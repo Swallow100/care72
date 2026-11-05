@@ -11,6 +11,7 @@ import { FormChoice } from "@/components/office/FormChoice";
 import { MoreFold } from "@/components/office/MoreFold";
 import { JmaAlerts } from "@/components/office/JmaAlerts";
 import { OfficePlace } from "@/components/office/OfficePlace";
+import { OfficeProfile } from "@/components/office/OfficeProfile";
 import { SetupPanel } from "@/components/office/SetupPanel";
 import { UnlistedFold } from "@/components/office/UnlistedFold";
 import { UnlistedRows } from "@/components/office/UnlistedRows";
@@ -57,6 +58,8 @@ import { ASSIGN_ANCHOR, CARE_MANAGERS_ANCHOR, NEW_PERSON_PATH, OFFICE_PEOPLE_PAT
 import { assignManyText, OFFICE_ERROR_LABELS, OFFICE_LABELS, type PeopleActionError } from "@/lib/office/labels";
 import { activeCareManagers, listCareManagers, listOfficePeople, type CareManagerItem, type OfficePersonItem } from "@/lib/office/people";
 import { officeActor } from "@/lib/office/scope";
+import { loadOfficeProfile, parseProfileError } from "@/lib/office/profile";
+import { loadRegionWarnings, NO_REGION_WARNINGS, type RegionWarnings } from "@/lib/jma/alerts";
 import { canSeeSetup, isSetupLater, loadOfficeCenter, SETUP_LATER_COOKIE, setupItems, setupLaterCookie, type SetupItem } from "@/lib/office/setup";
 import { CUSTODY_LABELS } from "@/lib/custody/labels";
 import { OFFICE_TAKE_PATH, UNAFFILIATED_ANCHOR } from "@/lib/custody/paths";
@@ -82,6 +85,8 @@ type Props = {
     skipped?: string | string[];
     /** ヘッダーの「初期パスワード」の「変更」から（自分の行の変更の欄を開いて出す。T114） */
     password?: string | string[];
+    /** 事業所の情報の保存を断った欄（T148） */
+    profile_error?: string | string[];
   }>;
 };
 
@@ -110,10 +115,13 @@ export default async function OfficePage({ searchParams }: Props) {
   let people = 0;
   // 準備の欄（T98）。管理者だけ（審査員のケアマネの役は管理者でないので出ない）
   let setup: SetupItem[] = [];
+  // 地域の市と利用者の市の気象庁の警報の数（T148。上の帯と同じ。頭の状態の印に添える。表示だけ）
+  let warnings: RegionWarnings = NO_REGION_WARNINGS;
   try {
     const { env } = await getCloudflareContext({ async: true });
     let center: GeoPoint | null;
-    [state, log, towns, careManagers, officePeople, unaffiliated, survey, center] = await Promise.all([
+    let address: string | null = null;
+    [state, log, towns, careManagers, officePeople, unaffiliated, survey, center, address, warnings] = await Promise.all([
       loadDisasterState(env.DB, scope.officeId),
       loadOfficeLog(env.DB, scope.officeId),
       loadOfficeTowns(env.DB, scope.officeId),
@@ -125,9 +133,16 @@ export default async function OfficePage({ searchParams }: Props) {
       loadSurveyOverview(env.DB, actor.officeId, { walled: actor.walled === true, admin: principal.admin, accountId: principal.accountId }, now),
       // 準備の欄の地域（事業所の中心）。管理者のときだけ読む
       canSeeSetup(principal) ? loadOfficeCenter(env.DB, scope.officeId) : Promise.resolve(null),
+      // 準備の欄の事業所（所在地。T148）。管理者のときだけ読む
+      canSeeSetup(principal) ? loadOfficeProfile(env.DB, scope.officeId).then((p) => p?.address ?? null) : Promise.resolve(null),
+      loadRegionWarnings(env.DB, scope.officeId).catch((e: unknown) => {
+        console.error("地域の警報を読めない", e);
+        return NO_REGION_WARNINGS;
+      }),
     ]);
     if (canSeeSetup(principal)) {
       setup = setupItems({
+        profileMissing: address === null,
         center,
         careManagers,
         people: officePeople,
@@ -161,7 +176,7 @@ export default async function OfficePage({ searchParams }: Props) {
         sub={
           <>
             <span className="text-sm text-muted">{principal.office.name}</span>
-            <DisasterBadge mark={disasterMark(state, now)} link={false} />
+            <DisasterBadge mark={disasterMark(state, now)} link={false} warnings={warnings} />
             <span className="text-xs text-muted">{shortJst(now)} 時点</span>
           </>
         }
@@ -188,6 +203,8 @@ export default async function OfficePage({ searchParams }: Props) {
       <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="grid min-w-0 content-start gap-3">
           <ModeSection state={state} now={now} confirm={confirm} officeId={scope.officeId} />
+          {/* 事業所の情報（T148）と地域（T68・T148）。書けるのは管理者と試用事業所の審査員（placeEdit） */}
+          <OfficeProfile officeId={scope.officeId} admin={actor.placeEdit} error={parseProfileError(q.profile_error)} />
           <OfficePlace officeId={scope.officeId} admin={actor.placeEdit} error={q.form_error === "place"} />
           {disaster && <InfoSection state={state} towns={towns} />}
           {/* 所属なし（T23）は引き受ける人がいるときだけ。担当の長い表の前に置く */}
