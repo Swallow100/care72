@@ -73,10 +73,11 @@ describe("開始の設定", () => {
 });
 
 describe("早送りの間とメモの欄", () => {
-  it("早送りの横に間の選択（既定 2.5 秒）", () => {
+  it("早送り（T128 から自動進行）の間は決まった 2.5 秒。間の選択は外し、何をくり返すかと間は title に", () => {
     const html = renderToStaticMarkup(createElement(DrillControls, { id: ID, step: 0, done: false }));
-    expect(html).toContain('data-action="fast-interval"');
-    expect(html).toContain("2.5 秒");
+    expect(html).not.toContain('data-action="fast-interval"');
+    expect(html).toContain('data-action="fast"');
+    expect(html).toMatch(/title="進める 2\.5 秒ごと"/);
   });
 
   it("対応の欄にメモ（100 字まで）。焦点の枠つき", () => {

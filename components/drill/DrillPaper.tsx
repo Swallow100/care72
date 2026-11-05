@@ -43,6 +43,7 @@ import { askWords, factWords, REVIEW_ERROR_LABELS, REVIEW_KIND_LABELS, REVIEW_UI
 import { extraText, scoreView } from "@/lib/drill/score-view";
 import { isVirtual, lastHour, scenarioOf } from "@/lib/drill/scenarios";
 import { hourSpanText, hourText } from "@/lib/drill/time-text";
+import { actSpanText, clockText, needText, needWhyText, timeBaseOf } from "@/lib/drill/act-time";
 import { cssString } from "@/components/forms/Form9Paper";
 import { paperText } from "@/lib/forms/paper-text";
 import { warekiText } from "@/lib/forms/wareki";
@@ -95,7 +96,9 @@ export function DrillPaper({ record, office, today, ai = null }: { record: Drill
   const { screen, score, review, calls, previous } = record;
   const names = screen.names;
   const name = (p: string | null) => (p ? (names[p] ?? p) : ACTION_UI.whole);
-  const view = scoreView(score, names, previous);
+  // 手の時刻は訓練の中の時刻（T128。lib/drill/act-time.ts）
+  const base = timeBaseOf(screen.drill.started_at, screen.state.options?.night);
+  const view = scoreView(score, names, previous, base);
   const wastedIds = new Set(view.extra.wasted.map((w) => w.action));
   const repeatIds = new Set(view.extra.repeat.map((r) => r.action));
   // 空振りと重複の表は手を打った順に（同じ手が両方なら空振りを先に）
@@ -572,7 +575,7 @@ export function DrillPaper({ record, office, today, ai = null }: { record: Drill
                 if (r.kind === "call") {
                   return (
                     <tr key={r.c.signal} data-call={r.c.response ?? "open"}>
-                      <td className="nowrap">{t(clockLabel(r.c.minute))}</td>
+                      <td className="nowrap">{t(clockText(base, r.c.minute))}</td>
                       <td>{SCORE_LABELS.calls}</td>
                       <td>{name(r.c.person)}</td>
                       <td>{callerLabel(r.c.source, screen.contacts[r.c.person] ?? [])}</td>
@@ -593,11 +596,12 @@ export function DrillPaper({ record, office, today, ai = null }: { record: Drill
                   <Fragment key={a.id}>
                     <tr data-action={a.kind}>
                       <td data-span={`${a.atMinute}-${a.endMinute}`}>
-                        <span className="nowrap">{t(clockLabel(a.atMinute))}</span>
+                        {/* 時刻の範囲と所要を分ける（T128）。理由は所要とは別の小さな文字で */}
+                        <span className="nowrap">{t(actSpanText(base, a.atMinute, a.result ? Math.max(a.endMinute, a.result.atMinute) : a.atMinute))}</span>
                         <span className="p-sub">
                           {" "}
-                          {t(`〜${a.result ? clockLabel(Math.max(a.endMinute, a.result.atMinute)) : ""}（${a.minutes} 分）`)}
-                          {a.adds && a.adds.length > 0 && ` ${a.adds.join("・")}`}
+                          {t(needText(a.minutes))}
+                          {needWhyText(a.adds) && `（${needWhyText(a.adds)}）`}
                         </span>
                       </td>
                       <td>

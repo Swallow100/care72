@@ -80,13 +80,4 @@ export const BUSY_LABELS = {
   next: "次空",
 } as const;
 
-/**
- * 手の打った時刻と終わる時刻（発災からの分）。同じ時間の中なら終わりは分だけ（「1 時間 5 分〜10 分」）、
- * 時間をまたげば両方（「0 時間 50 分〜1 時間 30 分」）
- */
-export function spanLabel(at: number, end: number, minuteText: (m: number) => string): string {
-  const a = Math.max(0, Math.round(at));
-  const b = Math.max(a, Math.round(end));
-  if (Math.floor(a / 60) === Math.floor(b / 60) && b % 60 !== 0 && a !== b) return `${minuteText(a)}〜${b % 60} 分`;
-  return a === b ? minuteText(a) : `${minuteText(a)}〜${minuteText(b)}`;
-}
+// 手の打った時刻と終わる時刻と所要の書き方は lib/drill/act-time.ts（T128。前の spanLabel は「1 時間 5 分〜10 分」と終わりを略し、読み違えた）

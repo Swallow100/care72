@@ -6,6 +6,8 @@
 // 行の分け方は lib/drill/timeline.ts の表 1 か所。発生と把握は同じ分の行を 1 つの見出し（経過と時刻、手の途中なら「対応中 訪問 伊藤 フミ」）に
 // まとめ、新しい順。対応は手ごとに時刻を持つので見出しなし。色は安否の色だけ（遅れ・未把握は太字の文字で、状態の 4 色を使わない）。
 // AI の言葉（監督・本人役・世界）は AI の印。サーバーで描く（状態を持たない）。切替だけ components/drill/LogTabs（ブラウザ）。
+// T128: 行の前に錨（id は lib/drill/news.ts の logAnchorId。上の帯の印と新着が飛ぶ先。行の中の部品は触らず、前に高さの無い li を置く）。
+// まとまりの見出しに新着の印（隠しておき、components/drill/NewsBar が新着の鍵の CSS で出す）。対応の時刻は訓練の中の時刻（lib/drill/act-time.ts）。
 
 import { AiMark, StateTag } from "@/components/person/parts";
 import type { ActionRecord, DrillTurn, Tick } from "@/lib/drill/engine";
@@ -13,6 +15,8 @@ import { ACTION_STATUS_LABELS } from "@/lib/drill/actions";
 import { ACTION_LABELS, ACTION_UI, CALL_UI, calleeText, DRILL_LABELS, elapsedLabel, LOG_LABELS } from "@/lib/drill/labels";
 import type { FictionKind } from "@/lib/drill/fiction";
 import { buildDrillLog, type Awareness, type DrillLog as Log, type LogRow, type LogTab } from "@/lib/drill/timeline";
+import { timeBaseOf, type TimeBase } from "@/lib/drill/act-time";
+import { logAnchorId, NEWS_LABELS } from "@/lib/drill/news";
 import { minuteText, simTimeText } from "@/lib/drill/time-text";
 import { COLOR_LABELS, CONTACT_KIND_LABELS } from "@/lib/labels";
 import type { StateTone } from "@/lib/person";
@@ -22,6 +26,7 @@ import { FictionalMark } from "./Fictional";
 import { ActionIcon } from "./icons";
 import { LogTabs } from "./LogTabs";
 import { IncidentItem, TurnItem } from "./Situation";
+import { Fragment } from "react";
 
 type Names = Readonly<Record<string, string>>;
 
@@ -41,6 +46,7 @@ export function DrillLog({
   refused,
   voiceOf,
   undo,
+  night = false,
 }: {
   ticks: ReadonlyArray<Tick>;
   actions: ReadonlyArray<ActionRecord>;
@@ -57,8 +63,11 @@ export function DrillLog({
   voiceOf?: VoiceOf;
   /** 進行中の最後の手の取消（T59）。再生では渡さない */
   undo?: UndoSlot;
+  /** 夜間発災（T59）。対応の時刻を訓練の中の時刻で書く（T128） */
+  night?: boolean;
 }) {
   const log = buildDrillLog(ticks, actions, { finished });
+  const base = timeBaseOf(startedAt, night);
   const c: Common = { names, fiction, refused, voiceOf };
   return (
     <LogTabs
@@ -88,7 +97,7 @@ export function DrillLog({
           </Groups>
         ),
         // 取消は打った順の最後の手だけ（前の履歴と同じ）
-        act: <ActList log={log} c={c} undo={undo} last={actions.at(-1)?.id ?? null} />,
+        act: <ActList log={log} c={c} undo={undo} last={actions.at(-1)?.id ?? null} base={base} />,
       }}
     />
   );
@@ -132,13 +141,32 @@ function Groups({
                   {ACTION_UI.during} {during}
                 </span>
               )}
+              {/* 新着の印（T128。隠しておき、NewsBar が新着の行の鍵で出す） */}
+              <span className="hidden rounded bg-panel px-1 text-xs font-bold" data-new-for={g.rows.map((r) => r.key).join(" ")}>
+                {NEWS_LABELS.title}
+              </span>
             </h3>
-            <ul className="mt-1 space-y-1 text-sm">{g.rows.map((r) => children(r))}</ul>
+            <ul className="relative mt-1 space-y-1 text-sm">
+              {g.rows.map((r) => (
+                <Fragment key={r.key}>
+                  <Anchor id={logAnchorId(tab, r.key)} k={r.key} />
+                  {children(r)}
+                </Fragment>
+              ))}
+            </ul>
           </li>
         );
       })}
     </ol>
   );
+}
+
+/**
+ * 行の前の錨（T128）。高さの無い li（流れから外し、space-y の間も取らない）。上の帯の印と新着がこの id へ飛び、:target のすぐ次の行に印
+ * （drill.css）。読み上げには出さない
+ */
+function Anchor({ id, k }: { id: string; k: string }) {
+  return <li id={id} aria-hidden="true" className="pointer-events-none absolute h-0 w-0 scroll-mt-28" data-anchor={k} />;
 }
 
 /** その分にケアマネが手の途中だった手の言い方（「訪問 伊藤 フミ」）。無ければ null */
@@ -254,22 +282,25 @@ function HeardItem({ a, c }: { a: ActionRecord; c: Common }) {
 }
 
 /** 対応: 手と結果（新しい順。前の履歴の行と同じ） */
-function ActList({ log, c, undo, last }: { log: Log; c: Common; undo?: UndoSlot; last: string | null }) {
+function ActList({ log, c, undo, last, base }: { log: Log; c: Common; undo?: UndoSlot; last: string | null; base: TimeBase }) {
   if (log.act.length === 0) return <p className="text-sm text-muted">{DRILL_LABELS.none}</p>;
   const rows = [...log.act].reverse();
   return (
-    <ol className="space-y-1" data-action-log data-log-list="act">
+    <ol className="relative space-y-1" data-action-log data-log-list="act">
       {rows.map((r) =>
         r.source === "action" ? (
-          <ActionItem
-            key={r.key}
-            a={r.a}
-            names={c.names}
-            voiceOf={c.voiceOf}
-            fiction={c.fiction}
-            refused={c.refused}
-            {...(undo && r.a.id === last ? { undo } : {})}
-          />
+          <Fragment key={r.key}>
+            <Anchor id={logAnchorId("act", r.key)} k={r.key} />
+            <ActionItem
+              a={r.a}
+              names={c.names}
+              voiceOf={c.voiceOf}
+              fiction={c.fiction}
+              refused={c.refused}
+              base={base}
+              {...(undo && r.a.id === last ? { undo } : {})}
+            />
+          </Fragment>
         ) : null,
       )}
     </ol>

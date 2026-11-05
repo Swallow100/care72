@@ -4,30 +4,26 @@
 // 早送りは、前の刻みの保存が終わってから次の刻みを呼ぶ（ブラウザから 1 刻みずつ）。最後の刻みか、中断・失敗で止まる。
 // 進めたら画面を読み直す（router.refresh）。保存は刻みごとなので、閉じても次に開けば続きから。
 // 断られたら理由を 1 行（競合 再読込・終了済など）。押したときは灰色だけ（data-press）。
-// 早送りの間（T59）は早送りの横で 1・2.5・5 秒から選ぶ（端末の中だけ。保存しない。既定 2.5 秒）。
-// 連続の時計の訓練（T90）は「進める」の代わりに 30 分・1 時間・3 時間・次まで（主の操作は次まで）。早送りは「次まで」を間を置いて繰り返す。
-// 横に 1 訓練の AI の残り回数（lib/drill/clock.ts。上限に達したら「AI 停止 訓練上限」の帯）。10 分版は今の「進める」のまま。
-// T110: 連続の時計の訓練は先頭に「手の分」（時計は進めず、手に使った時間を AI も動かして閉じる。使った分があるときだけ押せる）。
+// 連続の時計の訓練（T90）は「進める」の代わりに「次まで」。横に 1 訓練の AI の残り回数（lib/drill/clock.ts。上限に達したら「AI 停止 訓練上限」の帯）。
+// T128: 時間を進めるのは「次まで」だけにした（前は 30 分・1 時間・3 時間と、手に使った時間を閉じる「手の分」も並べていた）。
+// 「次まで」は前の区切りから進めるので、手に使った時間も閉じる（lib/drill/t128.test.ts で確かめた）。API の口（minutes・acts）は
+// テストと評価の台が使うので残す。早送りは「自動進行」の名で残し、「次まで」（刻みの道は「進める」）を決まった間（2.5 秒）でくり返す。
+// 間の選択（T59 の 1・2.5・5 秒）は外した。中断は今のまま。
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { CHOICE_INPUT } from "@/components/ui/choice";
 import { Loader72 } from "@/components/ui/Loader72";
-import { Select } from "@/components/ui/Select";
-import { CLOCK_LABELS, CLOCK_STEP_LABELS, CLOCK_STEPS, type ClockStep } from "@/lib/drill/clock";
-import { ACTION_UI, DRILL_LABELS, T59_LABELS } from "@/lib/drill/labels";
-import { DEFAULT_FAST_MS, FAST_INTERVALS, intervalLabel, parseInterval } from "@/lib/drill/speed";
+import { CLOCK_LABELS } from "@/lib/drill/clock";
+import { DRILL_LABELS, T59_LABELS } from "@/lib/drill/labels";
+import { DEFAULT_FAST_MS, intervalLabel } from "@/lib/drill/speed";
 import { appConfirm } from "@/lib/ui/dialog";
 import { CONFIRM_LABELS, WAIT_LABELS } from "@/lib/ui/labels";
 import { RINGING_EVENT } from "./IncomingCall";
 
-/** 早送りの間を選ぶ欄 */
-const SELECT =
-  "h-8 min-w-0 rounded bg-panel2 px-2 text-sm text-ink outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-accent";
-
-/** 進め方（連続の時計の訓練）。無ければ刻みの道（1 刻み） */
-type Move = { minutes: ClockStep } | { next: true } | { acts: true } | null;
+/** 進め方（連続の時計の訓練は次まで）。無ければ刻みの道（1 刻み） */
+type Move = { next: true } | null;
 
 export function DrillControls({
   id,
@@ -35,7 +31,6 @@ export function DrillControls({
   done,
   clock = false,
   left = null,
-  used = null,
 }: {
   id: string;
   step: number;
@@ -44,16 +39,12 @@ export function DrillControls({
   clock?: boolean;
   /** 1 訓練の AI の残り回数（連続の時計の訓練だけ） */
   left?: number | null;
-  /** 手に使った時間（分、T110。AI を動かした最後の区切りから。連続の時計の訓練だけ） */
-  used?: number | null;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   /** 1 刻みを進めている間（本人役・家族役が考える。AI の待ちの印を出す） */
   const [stepping, setStepping] = useState(false);
   const [fast, setFast] = useState(false);
-  /** 早送りの 1 刻みの間（画面の色が変わるのを見られるように。T59 で選べる） */
-  const [interval, setInterval_] = useState(DEFAULT_FAST_MS);
   const [error, setError] = useState<string | null>(null);
   const stepRef = useRef(step);
   stepRef.current = step;
@@ -67,7 +58,7 @@ export function DrillControls({
     setBusy(true);
     setStepping(true);
     setError(null);
-    setMoving(move ? ("next" in move ? "next" : "acts" in move ? "acts" : String(move.minutes)) : null);
+    setMoving(move ? "next" : null);
     sentRef.current = stepRef.current;
     try {
       const res = await fetch(`/api/drill/${encodeURIComponent(id)}/step`, {
@@ -101,9 +92,9 @@ export function DrillControls({
       // 連続の時計の訓練は「次まで」を繰り返す
       const more = await advance(clock ? { next: true } : null);
       if (!more) setFast(false);
-    }, interval);
+    }, DEFAULT_FAST_MS);
     return () => clearTimeout(t);
-  }, [fast, done, busy, step, advance, interval, clock]);
+  }, [fast, done, busy, step, advance, clock]);
 
   useEffect(() => {
     if (done) setFast(false);
@@ -136,64 +127,30 @@ export function DrillControls({
   return (
     <div className="flex flex-wrap items-center gap-2" data-controls={clock ? "clock" : ""}>
       {clock ? (
-        <>
-          <Button
-            kind="plain"
-            onClick={() => void advance({ acts: true })}
-            disabled={busy || fast || !used || used <= 0}
-            data-action="advance"
-            data-acts={used ?? 0}
-            data-pending={busy && !fast && moving === "acts" ? "" : undefined}
-          >
-            {CLOCK_LABELS.acts}
-            {used !== null && used > 0 && <span className="text-xs font-normal tabular-nums">{used} {ACTION_UI.minutes}</span>}
-          </Button>
-          {CLOCK_STEPS.map((m) => (
-            <Button
-              key={m}
-              kind="plain"
-              onClick={() => void advance({ minutes: m })}
-              disabled={busy || fast}
-              data-action="advance"
-              data-minutes={m}
-              data-pending={busy && !fast && moving === String(m) ? "" : undefined}
-            >
-              {CLOCK_STEP_LABELS[m]}
-            </Button>
-          ))}
-          <Button
-            kind="main"
-            onClick={() => void advance({ next: true })}
-            disabled={busy || fast}
-            data-action="advance"
-            data-next=""
-            data-pending={busy && !fast && moving === "next" ? "" : undefined}
-          >
-            {CLOCK_LABELS.next}
-          </Button>
-        </>
+        <Button
+          kind="main"
+          onClick={() => void advance({ next: true })}
+          disabled={busy || fast}
+          data-action="advance"
+          data-next=""
+          data-pending={busy && !fast && moving === "next" ? "" : undefined}
+        >
+          {CLOCK_LABELS.next}
+        </Button>
       ) : (
         <Button kind="main" onClick={() => void advance()} disabled={busy || fast} data-action="advance" data-pending={busy && !fast ? "" : undefined}>
           {DRILL_LABELS.advance}
         </Button>
       )}
-      <label className="flex h-8 items-center gap-1.5 rounded px-2 text-sm" data-press>
+      {/* 自動進行（前の早送り）: 次まで（刻みの道は進める）を決まった間でくり返す。title に何をくり返すかと間 */}
+      <label
+        className="flex h-8 items-center gap-1.5 rounded px-2 text-sm"
+        title={`${clock ? CLOCK_LABELS.next : DRILL_LABELS.advance} ${intervalLabel(DEFAULT_FAST_MS, T59_LABELS.seconds)}${DRILL_LABELS.autoEvery}`}
+        data-press
+      >
         <input type="checkbox" checked={fast} onChange={(e) => setFast(e.target.checked)} className={CHOICE_INPUT} data-action="fast" />
         {DRILL_LABELS.fastForward}
       </label>
-      <Select
-        value={String(interval)}
-        onChange={(e) => setInterval_(parseInterval(e.target.value))}
-        className={SELECT}
-        aria-label={`${DRILL_LABELS.fastForward} ${T59_LABELS.interval}`}
-        data-action="fast-interval"
-      >
-        {FAST_INTERVALS.map((ms) => (
-          <option key={ms} value={String(ms)}>
-            {intervalLabel(ms, T59_LABELS.seconds)}
-          </option>
-        ))}
-      </Select>
       {/* 中断はアプリ内の確認の窓で決めてから（T44）。最初の焦点は取消 */}
       <Button
         kind="danger"

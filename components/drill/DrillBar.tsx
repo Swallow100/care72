@@ -3,6 +3,8 @@
 // 再生では刻みの印を押すとその時刻を見る。進行中は印を押せない（進めるのは「進める」だけ）。
 // 色: 帯は要確認の色（担当一覧の上の停電の経過と同じ）。今の印は文字の色。面を塗らない。
 // 夜間発災（T59）の訓練は、下に時刻の行（発災 2 時・今 何時）。開始の時刻（started_at）はずらさないので、上の日時とは別の訓練の中の時刻。
+// T128: 訓練の画面は strip（components/drill/StripRows。種類の段の出来事の一覧）を渡す。渡すと列は 名前・今の様子（1024px 以上）・軸 の 3 つになり、
+// 帯の行（停電・断水・電話）は strip の段が描く（帯の棒は下の BandBar を同じに使う）。渡さなければ前のまま（帯の行をここで描く）。
 
 import Link from "next/link";
 import { BAND_LABELS, DRILL_LABELS, elapsedLabel, T59_LABELS } from "@/lib/drill/labels";
@@ -20,6 +22,7 @@ export function DrillBar({
   reached,
   night = false,
   clock = false,
+  strip,
 }: {
   hours: readonly number[];
   /** 棒の右端（72） */
@@ -35,11 +38,21 @@ export function DrillBar({
   night?: boolean;
   /** 連続の時計の訓練（T90）。hours は保存した区切りの時刻 */
   clock?: boolean;
+  /** 種類の段の行（T128、StripRows）。渡すと帯の行はここで描かない */
+  strip?: React.ReactNode;
 }) {
   const kinds = (["outage", "water", "phone"] as const).filter((k) => bands.some((b) => b.kind === k));
+  const wide = strip !== undefined;
+  /** 今の様子の列（strip のときだけ。1024px 未満は出さない） */
+  const stateCell = wide ? <span className="hidden lg:block" /> : null;
   return (
-    <div className="grid grid-cols-[3rem_minmax(0,1fr)] items-center gap-x-2 gap-y-1" data-bar>
+    <div
+      className={`grid items-center gap-x-2 ${wide ? "gap-y-0.5 grid-cols-[3.5rem_minmax(0,1fr)] lg:grid-cols-[4rem_13rem_minmax(0,1fr)]" : "gap-y-1 grid-cols-[3rem_minmax(0,1fr)]"}`}
+      data-bar
+      data-strip={wide ? "" : undefined}
+    >
       <span className="text-xs text-muted">{DRILL_LABELS.elapsed}</span>
+      {stateCell}
       <div className="relative h-7">
         {/* 棒 */}
         <div className="absolute inset-x-0 top-1.5 h-2 rounded-sm bg-panel2" />
@@ -86,12 +99,13 @@ export function DrillBar({
           data-bar-now={now}
         />
       </div>
-      {kinds.map((k) => (
-        <BandRow key={k} label={BAND_LABELS[k]} bands={bands.filter((b) => b.kind === k)} last={last} now={now} kind={k} />
-      ))}
+      {wide
+        ? strip
+        : kinds.map((k) => <BandRow key={k} label={BAND_LABELS[k]} bands={bands.filter((b) => b.kind === k)} last={last} now={now} kind={k} />)}
       {night && (
         <>
           <span className="text-xs text-muted">{T59_LABELS.clock}</span>
+          {stateCell}
           <span className="flex flex-wrap gap-x-3 text-xs tabular-nums" data-night-clock={nightClock(now)}>
             <span>
               <span className="text-muted">{T59_LABELS.night}</span> {NIGHT_START_HOUR}
@@ -182,21 +196,28 @@ function BandRow({ label, bands, last, now, kind }: { label: string; bands: Band
   return (
     <>
       <span className="text-xs text-muted">{label}</span>
-      <div className="relative h-1.5" data-band={kind}>
-        {bands.map((b) => {
-          const to = Math.min(b.to ?? now, now);
-          if (to < b.from) return null;
-          return (
-            <span
-              key={`${b.from}`}
-              className="absolute top-0 h-1.5 min-w-1 rounded-sm bg-state-check-fill"
-              style={{ left: pct(b.from, last), width: `calc(${pct(to, last)} - ${pct(b.from, last)})` }}
-              data-band-from={b.from}
-              data-band-to={b.to ?? ""}
-            />
-          );
-        })}
-      </div>
+      <BandBar bands={bands} last={last} now={now} kind={kind} />
     </>
+  );
+}
+
+/** 帯の棒 1 本（停電・断水・電話。見ている時刻まで）。種類の段の行（StripRows）も同じ棒を使う。className は外の高さ・位置 */
+export function BandBar({ bands, last, now, kind, className = "relative h-1.5" }: { bands: Band[]; last: number; now: number; kind: Band["kind"]; className?: string }) {
+  return (
+    <div className={className} data-band={kind}>
+      {bands.map((b) => {
+        const to = Math.min(b.to ?? now, now);
+        if (to < b.from) return null;
+        return (
+          <span
+            key={`${b.from}`}
+            className="absolute top-0 h-1.5 min-w-1 rounded-sm bg-state-check-fill"
+            style={{ left: pct(b.from, last), width: `calc(${pct(to, last)} - ${pct(b.from, last)})` }}
+            data-band-from={b.from}
+            data-band-to={b.to ?? ""}
+          />
+        );
+      })}
+    </div>
   );
 }

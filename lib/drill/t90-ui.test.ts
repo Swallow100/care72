@@ -14,11 +14,12 @@ import { DRILL_LABELS } from "./labels.ts";
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: () => {}, push: () => {} }) }));
 
 describe("進める操作", () => {
-  it("連続の時計の訓練は 30 分・1 時間・3 時間・次まで（主の操作は次まで）と AI の残り", () => {
+  it("連続の時計の訓練は次まで（主の操作）と AI の残り。30 分・1 時間・3 時間は T128 で画面から外した（API の口は残す）", () => {
     const html = renderToStaticMarkup(createElement(DrillControls, { id: "d1", step: 3, done: false, clock: true, left: 87 }));
     expect(html).toContain('data-controls="clock"');
-    for (const m of [30, 60, 180]) expect(html).toContain(`data-minutes="${m}"`);
-    for (const w of [CLOCK_LABELS.m30, CLOCK_LABELS.h1, CLOCK_LABELS.h3, CLOCK_LABELS.next]) expect(html).toContain(w);
+    for (const m of [30, 60, 180]) expect(html).not.toContain(`data-minutes="${m}"`);
+    for (const w of [CLOCK_LABELS.m30, CLOCK_LABELS.h1, CLOCK_LABELS.h3]) expect(html).not.toContain(`>${w}<`);
+    expect(html).toContain(CLOCK_LABELS.next);
     expect(html).not.toContain(`>${DRILL_LABELS.advance}<`);
     // 主の操作の色は次までだけ
     expect((html.match(/bg-accent-fill/g) ?? []).length).toBe(1);

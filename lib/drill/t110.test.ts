@@ -33,13 +33,13 @@ import {
   type TermFacts,
 } from "./action-terms.ts";
 import { act, ActionBlocked, decideAction, type ActTarget, type ActionHooks } from "./actions.ts";
-import { busyOf, spanLabel, staffOf } from "./busy.ts";
+import { busyOf, staffOf } from "./busy.ts";
+import { actSpanText } from "./act-time.ts";
 import { actDrill, drillScope, loadDrillRow, loadJudgeLog, loadTicks, participantsOf, replayState, startDrill, stateOfRow } from "./db.ts";
 import { advance, aiAtOf, initialState, withoutMemo, type ActionRecord, type DrillState } from "./engine.ts";
 import { NO_CALL } from "./event-catalog.ts";
 import { drillFreeHook, FREE_SYSTEM, planFree, type FreeHook } from "./free-action.ts";
 import { abandonPost, actionPost, freePost, logGet, stepPost } from "./http.ts";
-import { minuteText } from "./time-text.ts";
 import { reviewText, type ReviewContext } from "./review.ts";
 import { EMPTY_WORLD, type WorldState } from "./scenarios.ts";
 import { isPersonAction, scoreDrill, scoreOrder } from "./score.ts";
@@ -303,10 +303,10 @@ describe("時間を使う手（重ねる・所要・職員）", () => {
     expect(s.minute).toBe(55);
     const busy = busyOf(s, { on: true, aiAt: aiAtOf(s) });
     expect(busy).toMatchObject({ minute: 55, aiAt: 0, used: 55, acts: 4 });
-    // 手の行の時刻の言い方
-    expect(spanLabel(65, 70, minuteText)).toBe("1 時間 5 分〜10 分");
-    expect(spanLabel(50, 90, minuteText)).toBe("0 時間 50 分〜1 時間 30 分");
-    expect(spanLabel(60, 120, minuteText)).toBe("1 時間〜2 時間");
+    // 手の行の時刻の言い方（T128。訓練の中の時刻は lib/drill/t128.test.ts。元が無ければ経過で両端を略さない）
+    expect(actSpanText(null, 65, 70)).toBe("1 時間 5 分〜1 時間 10 分");
+    expect(actSpanText(null, 50, 90)).toBe("0 時間 50 分〜1 時間 30 分");
+    expect(actSpanText(null, 60, 120)).toBe("1 時間〜2 時間");
     // 刻みの道（10 分版）は使用を出さない
     expect(busyOf(s, { on: false, aiAt: 0 }).used).toBeNull();
   });
@@ -799,7 +799,7 @@ describe("画面（対応の欄・使用の 1 行・手の分・読み替えの 
     expect(html).not.toMatch(/rounded-full|bg-black|tracking-/);
   });
 
-  it("使用・職員の空き・外出・次空の 1 行。手の分のボタンは使った時間があるときだけ押せる", () => {
+  it("使用・職員の空き・外出・次空の 1 行。手の分のボタンは画面から外した（T128。次までが手に使った時間も閉じる）", () => {
     const html = renderToStaticMarkup(
       createElement(BusyLine, { busy: { minute: 55, aiAt: 0, used: 55, acts: 4, staffFree: 2, staffOut: 1, nextFree: 130 } }),
     );
@@ -808,12 +808,10 @@ describe("画面（対応の欄・使用の 1 行・手の分・読み替えの 
     expect(html).toContain("外出");
     expect(html).toContain("次空");
     expect(html).toContain("2 時間 10 分");
-    const on = renderToStaticMarkup(createElement(DrillControls, { id: "d1", step: 1, done: false, clock: true, left: 100, used: 55 }));
-    expect(on).toMatch(/data-acts="55"/);
-    expect(on).not.toMatch(/disabled=""[^>]*data-acts="55"/);
-    const off = renderToStaticMarkup(createElement(DrillControls, { id: "d1", step: 1, done: false, clock: true, left: 100, used: 0 }));
-    expect(off).toMatch(/disabled=""[^>]*data-acts="0"|data-acts="0"[^>]*disabled=""/);
-    // 10 分版には手の分が無い
+    // T128: 手の分は画面から外した（API の口は残す。lib/drill/t128.test.ts で次までが手の時間も閉じることを確かめる）
+    const on = renderToStaticMarkup(createElement(DrillControls, { id: "d1", step: 1, done: false, clock: true, left: 100 }));
+    expect(on).not.toContain("data-acts");
+    expect(on).toContain("data-next");
     expect(renderToStaticMarkup(createElement(DrillControls, { id: "d1", step: 1, done: false }))).not.toContain("data-acts");
   });
 

@@ -17,6 +17,7 @@ import type { TriageSignal } from "../triage/index.ts";
 import { clockOfRow, heardSignalId, loadDrillRow, loadTicks, participantsOf, replayState, undoableAct, type DrillScope } from "./db.ts";
 import { callsLeft } from "./clock.ts";
 import { clockOver, termsFor, type ActionTerm } from "./action-terms.ts";
+import type { AreaPerson } from "./area-targets.ts";
 import { busyOf, type BusyView } from "./busy.ts";
 import { drillClocks } from "./director.ts";
 import { drillSituation, nowHour, simAt, type ActionRecord, type DrillState, type HeardSignal, type Tick } from "./engine.ts";
@@ -79,6 +80,11 @@ export type DrillScreen = {
    * 決まりを選ばなかった訓練（10 分版・前からある訓練）と再生は null（表の分のまま）
    */
   terms: Record<string, Record<DrillAction, ActionTerm>> | null;
+  /**
+   * 参加者の台帳のハザードと町（T128。区域の出来事の対象を被害状況・上の帯・地図に出す。lib/drill/area-targets.ts）。
+   * 台帳の並び（kana）。氏名・住所は持たない
+   */
+  area: AreaPerson[];
 };
 
 export type DrillContact = { id: string; kind: ContactRow["kind"]; label: string; hasPhone: boolean };
@@ -247,6 +253,11 @@ export async function loadDrillScreen(
     contacts: contactsByPerson(contactRows),
     undoable: undoableAct(row),
     fiction: fictionKindOf(scope.officeId),
+    area: peopleRows.map((p, i) => ({
+      id: p.id,
+      hazards: ledgers[i].evacuation.hazards.map((h) => ({ kind: h.kind, depthM: h.depthM ?? null })),
+      town: ledgers[i].basic.address?.town?.trim() || null,
+    })),
     busy: busyOf(state, { on: clock.clock, aiAt: clock.aiAt }),
     terms:
       // 72 時間に着いた後（T123）は決まりを選ばない訓練も、どの手も押せない印を出す

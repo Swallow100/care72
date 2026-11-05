@@ -260,7 +260,8 @@ describe("3 つのタブの描き", () => {
     const html = renderLog(false);
     expect(html).toContain('role="tablist"');
     expect(html).toContain(`aria-label="${LOG_LABELS.tabs}"`);
-    const tabs = [...html.matchAll(/data-log-tab="(\w+)"[^>]*>([^<]+)<span[^>]*>(\d+)</g)].map((m) => [m[1], m[2], Number(m[3])]);
+    // T128: 名前と数の間は空白 1 つ（下の線を 1 本にするため。components/ui/Tabs の TabText）
+    const tabs = [...html.matchAll(/data-log-tab="(\w+)"[^>]*>([^<]+?) ?<span[^>]*>(\d+)</g)].map((m) => [m[1], m[2], Number(m[3])]);
     expect(tabs).toEqual([
       ["occur", "発生", 2],
       ["know", "把握", 8],

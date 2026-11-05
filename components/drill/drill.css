@@ -1,7 +1,7 @@
 /*
   訓練の左の表（担当一覧の発災時の表 DisasterTable）の圧縮。状態・優先・氏名（理由）・残りの 4 列だけにする。
   表の部品は変えず、外の枠の印（data-drill-table）で列を隠す。行の下の詳細の行（td が 1 つ）は隠さない。
-  auto は 1536px 未満で圧縮（全部の列に約 64rem 要り、真ん中と右が並ばない）、1536px 以上で全部の列。
+  T128: auto はどの幅でも圧縮（前は 1536px 以上で全部の列。全部の列に約 64rem 要り、経過を列にすると並ばない）。全部の列は「展開」。
 */
 [data-drill-table="compact"] table {
   min-width: 0;
@@ -12,13 +12,30 @@
   display: none;
 }
 
-@media (max-width: 1535.98px) {
-  [data-drill-table="auto"] table {
-    min-width: 0;
-  }
+[data-drill-table="auto"] table {
+  min-width: 0;
+}
 
-  [data-drill-table="auto"] thead th:nth-child(n + 5),
-  [data-drill-table="auto"] tr[data-row] > td:nth-child(n + 5) {
-    display: none;
-  }
+[data-drill-table="auto"] thead th:nth-child(n + 5),
+[data-drill-table="auto"] tr[data-row] > td:nth-child(n + 5) {
+  display: none;
+}
+
+/*
+  T128: 上の帯の印・新着から飛んだ経過の行（行の前の錨 [data-anchor] の次の li）と、被害状況の対象の人から飛んだ表の行に印。
+  選んだ物と同じ本文色の線（下地は敷かない）。上の見出しの下に隠れないよう送る位置を下げる
+*/
+[data-anchor]:target + li {
+  outline: 2px solid var(--color-ink);
+  outline-offset: 2px;
+  border-radius: 0.25rem;
+}
+
+[data-drill-table] tr[data-row] {
+  scroll-margin-top: 6rem;
+}
+
+[data-drill-table] tr[data-row]:target {
+  outline: 2px solid var(--color-ink);
+  outline-offset: -2px;
 }
