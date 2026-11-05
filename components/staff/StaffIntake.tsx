@@ -1,47 +1,68 @@
 "use client";
 
-// 受入の入口（/staff の右の面、docs/tasks/T23.md）。3 つ: 検索（氏名・カナ・生年月日、事業所をまたぐ）・避難所（既に誰かが受け入れた人）・
-// 新規登録（台帳に無い人を最小の項目で）。QR は本人の 1 枚の裏から /q/<token> を開き、その頁の「受入」から。
-// 受け入れる避難所は上の 1 つの欄（既定は自分がいちばん最近に受け入れた所）。
+// 受入の入口（/staff の上、docs/tasks/T23.md・T152.md）。受入一覧の最初に、避難所の欄（3 つに共通）と入り方の 3 つを並べる:
+//   QR 読取（本人の 1 枚の裏の QR。端末のカメラ・URL の貼り付け・審査員は見本の QR）→ QR の頁（/q/<token>）の「受入」
+//   氏名検索（氏名・カナ・生年月日、事業所をまたぐ）→ ヒットの行の「受入」
+//   新規登録（台帳に無い人を最小の項目で）→「新規登録」で受入まで
+// どれも受け入れたら受入一覧（?received=<受け持ちの id>）に戻り、その人の行が表の上に出る（components/staff/StaffTable.tsx）。
+// 前の「避難所」の切替（既に誰かが受け入れた人を避難所で探す）は 3 つの後ろに「避難所別」で残す。
+// 受け入れる避難所の既定は自分がいちばん最近に受け入れた所。QR の頁へは今の欄の値を渡す（?shelter=）。
 // ヒットはカナ・生年月日・年齢だけ（サーバーが住所・電話・漢字の氏名を返さない）。受け入れて初めて本人のページを開ける。
-// 検索の言葉は本文（JSON）で送り、URL に載せない。受け入れたら表を読み直す（router.refresh）。
-// 避難所の欄が空のまま受入・新規登録を押すと、送らずに欄へ送って焦点を置き、欄に注意の枠と「未入力」（T78。前は下に文字だけで、
-// ボタンも押せなかった）。受入一覧が空のときの入口（components/staff/StaffTable）は検索の欄（INTAKE_SEARCH_ID）へ送る。
+// 検索の言葉は本文（JSON）で送り、URL に載せない。
+// 避難所の欄が空のまま受入・新規登録を押すと、送らずに欄へ送って焦点を置き、欄に注意の枠と「未入力」（T78）。
+// 受入一覧が空のときの入口（components/staff/StaffTable）は入り方の最初のボタン（INTAKE_ENTRY_ID）へ送る。
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createContext, useContext, useRef, useState } from "react";
 import type { PersonHit } from "@/lib/custody/search";
+import { ENTRY_KINDS, qrTokenFrom, type EntryKind } from "@/lib/custody/entry";
 import { DEVICE_NAME_MAX, MED_MAX, NOTE_MAX, SHELTER_MAX } from "@/lib/custody/forms";
-import { CUSTODY_ERROR_LABELS, CUSTODY_LABELS } from "@/lib/custody/labels";
-import { CUSTODY_RECEIVE_API, CUSTODY_REGISTER_API, CUSTODY_SEARCH_API, CUSTODY_SHELTER_API } from "@/lib/custody/paths";
+import { CUSTODY_ERROR_LABELS, CUSTODY_LABELS, ENTRY_LABELS } from "@/lib/custody/labels";
+import {
+  CUSTODY_RECEIVE_API,
+  CUSTODY_REGISTER_API,
+  CUSTODY_SEARCH_API,
+  CUSTODY_SHELTER_API,
+  qrPagePath,
+  receivedHref,
+} from "@/lib/custody/paths";
 import { DEVICE_KINDS, type DeviceKind } from "@/lib/db/types";
 import { DEVICE_LABELS, INTAKE_LABELS } from "@/lib/labels";
 import { KANA_MAX, NAME_MAX } from "@/lib/office/forms";
-import { Button } from "@/components/ui/Button";
-import { AddPersonIcon, SearchIcon } from "@/components/ui/Icon";
+import { Button, ButtonLink } from "@/components/ui/Button";
+import { AddPersonIcon, CloseIcon, NextIcon, QrIcon, SearchIcon, ShelterIcon } from "@/components/ui/Icon";
 import { LinkPending } from "@/components/ui/LinkPending";
 import { Panel, PanelHead } from "@/components/ui/Panel";
 import { TABLE, TABLE_BOX, TD } from "@/components/ui/table";
+import { QrCamera } from "./QrCamera";
 
-const TABS = ["search", "shelter", "register"] as const;
-type Tab = (typeof TABS)[number];
-const TAB_LABELS: Record<Tab, string> = {
-  search: CUSTODY_LABELS.search,
-  shelter: CUSTODY_LABELS.shelterList,
-  register: CUSTODY_LABELS.register,
+type Tab = EntryKind | "shelter";
+
+const ENTRY: Record<EntryKind, { icon: typeof QrIcon; label: string; sub: string }> = {
+  qr: { icon: QrIcon, label: ENTRY_LABELS.qr, sub: ENTRY_LABELS.qrSub },
+  search: { icon: SearchIcon, label: ENTRY_LABELS.search, sub: ENTRY_LABELS.searchSub },
+  register: { icon: AddPersonIcon, label: ENTRY_LABELS.register, sub: ENTRY_LABELS.registerSub },
 };
 
 const INPUT =
   "w-full min-w-0 rounded-md bg-panel2 px-2 py-1.5 text-sm text-ink outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-accent";
 
+/** 流れの中の小さな見出し（欄の名前と同じ 12px の薄い本文色） */
+const STEP = "text-xs font-bold text-muted";
+
 /** 検索の結果の表の見出し（右の面は狭いので、見出しを詰める） */
 const HIT_TH = "bg-panel2 px-2 py-1 text-left text-xs font-bold whitespace-nowrap text-muted";
 
-type Json = { ok?: boolean; label?: string; hits?: PersonHit[]; more?: boolean; personId?: string };
+type Json = { ok?: boolean; label?: string; hits?: PersonHit[]; more?: boolean; personId?: string; custodyId?: string };
 
-/** 受入の面の検索の欄の id（受入一覧が空のときの入口が焦点を送る。T78） */
-export const INTAKE_SEARCH_ID = "staff-intake-search";
+/** 見本の QR（審査員の壁の中だけ。lib/custody/samples.ts）。qr は本人の 1 枚と同じ URL の点の並び（サーバーが作る） */
+export type QrSampleView = { personId: string; kana: string; token: string; qr: { size: number; d: string } };
+
+/** 入り方の最初のボタンの id（受入一覧が空のときの入口が焦点を送る。T78・T152） */
+export const INTAKE_ENTRY_ID = "staff-intake-entry";
+/** 受入の面の見出しの id */
+export const INTAKE_TITLE_ID = "intake-title";
 
 /** 避難所の欄が空のまま押したときに、欄へ送って印を付ける（StaffIntake が渡す） */
 const ShelterMissing = createContext<() => void>(() => {});
@@ -55,8 +76,19 @@ async function post(url: string, body: unknown): Promise<Json> {
   }
 }
 
-export function StaffIntake({ shelters, defaultShelter }: { shelters: Array<{ shelter: string; people: number }>; defaultShelter: string | null }) {
-  const [tab, setTab] = useState<Tab>("search");
+export function StaffIntake({
+  shelters,
+  defaultShelter,
+  samples = [],
+  initialTab = null,
+}: {
+  shelters: Array<{ shelter: string; people: number }>;
+  defaultShelter: string | null;
+  samples?: QrSampleView[];
+  /** 開いたときに開いている入り方（テストと絵のため。既定は閉じた形） */
+  initialTab?: Tab | null;
+}) {
+  const [tab, setTab] = useState<Tab | null>(initialTab);
   const [shelter, setShelter] = useState(defaultShelter ?? "");
   // 空のまま受入・新規登録を押した（入れるまで欄に印）
   const [missing, setMissing] = useState(false);
@@ -67,60 +99,187 @@ export function StaffIntake({ shelters, defaultShelter }: { shelters: Array<{ sh
     field.current?.scrollIntoView({ block: "center" });
     field.current?.focus({ preventScroll: true });
   };
+  const pick = (t: Tab) => setTab((cur) => (cur === t ? null : t));
   return (
-    <Panel aria-labelledby="intake-title">
-      <PanelHead id="intake-title" title={CUSTODY_LABELS.receive} />
-      <label className="mt-2 flex flex-col gap-0.5 text-sm">
-        <span className="flex items-baseline gap-2">
-          <span className="text-muted">{CUSTODY_LABELS.shelter}</span>
-          {flagged && (
-            <span className="text-xs font-bold tone-check" data-shelter-missing>
-              {CUSTODY_LABELS.missing}
-            </span>
-          )}
-        </span>
-        <input
-          ref={field}
-          type="text"
-          value={shelter}
-          onChange={(e) => setShelter(e.target.value)}
-          maxLength={SHELTER_MAX}
-          list="staff-shelters"
-          aria-invalid={flagged || undefined}
-          // 焦点のある間も注意の枠のまま（焦点の枠の色に替えない）
-          className={`${INPUT}${flagged ? " outline-2 outline-solid outline-state-check focus-visible:outline-state-check" : ""}`}
-          data-field="shelter"
-        />
-        <datalist id="staff-shelters">
-          {shelters.map((s) => (
-            <option key={s.shelter} value={s.shelter} />
-          ))}
-        </datalist>
-      </label>
+    <Panel aria-labelledby={INTAKE_TITLE_ID} data-intake>
+      {/* 見出しと避難所の欄を 1 行に（欄の名前は欄の左） */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <PanelHead id={INTAKE_TITLE_ID} title={CUSTODY_LABELS.receive} />
+        <label className="flex w-full max-w-sm min-w-0 items-center gap-2 text-sm">
+          <span className="flex shrink-0 flex-col leading-tight">
+            <span className="text-muted">{CUSTODY_LABELS.shelter}</span>
+            {flagged && (
+              <span className="text-xs font-bold tone-check" data-shelter-missing>
+                {CUSTODY_LABELS.missing}
+              </span>
+            )}
+          </span>
+          <input
+            ref={field}
+            type="text"
+            value={shelter}
+            onChange={(e) => setShelter(e.target.value)}
+            maxLength={SHELTER_MAX}
+            list="staff-shelters"
+            aria-invalid={flagged || undefined}
+            // 焦点のある間も注意の枠のまま（焦点の枠の色に替えない）
+            className={`${INPUT}${flagged ? " outline-2 outline-solid outline-state-check focus-visible:outline-state-check" : ""}`}
+            data-field="shelter"
+          />
+          <datalist id="staff-shelters">
+            {shelters.map((s) => (
+              <option key={s.shelter} value={s.shelter} />
+            ))}
+          </datalist>
+        </label>
+      </div>
 
-      <div role="tablist" aria-label={CUSTODY_LABELS.receive} className="mt-3 flex gap-1 text-sm">
-        {TABS.map((t) => (
-          <button
-            key={t}
-            type="button"
-            role="tab"
-            aria-selected={tab === t}
-            onClick={() => setTab(t)}
-            className={`rounded px-2 py-1 ${tab === t ? "font-bold text-ink underline decoration-2 underline-offset-[6px]" : "text-muted"}`}
-            data-press
-          >
-            {TAB_LABELS[t]}
-          </button>
-        ))}
+      {/* 入り方の 3 つ。選んだ物は操作の色の枠（選択の印。薄い下地は敷かない） */}
+      {/* 前の「避難所」の切替（避難所別）は 3 つの後ろに小さく、同じ行の右の端に */}
+      <div role="group" aria-label={CUSTODY_LABELS.receive} className="mt-3 grid gap-2 sm:grid-cols-[repeat(3,minmax(0,1fr))_auto]" data-entries>
+        {ENTRY_KINDS.map((k, i) => {
+          const e = ENTRY[k];
+          const on = tab === k;
+          return (
+            <button
+              key={k}
+              id={i === 0 ? INTAKE_ENTRY_ID : undefined}
+              type="button"
+              aria-pressed={on}
+              aria-controls={on ? "intake-flow" : undefined}
+              onClick={() => pick(k)}
+              className={`flex min-h-14 items-center gap-3 rounded-lg bg-panel2 px-3 py-2 text-left outline-offset-0 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-accent ${on ? "outline-2 outline-solid outline-accent" : ""}`}
+              data-press
+              data-entry={k}
+            >
+              <e.icon aria-hidden className="size-6 shrink-0" />
+              <span className="min-w-0">
+                <span className="block text-[0.9375rem] leading-6 font-bold">{e.label}</span>
+                <span className="block text-xs text-muted">{e.sub}</span>
+              </span>
+            </button>
+          );
+        })}
+        <Button
+          kind="quiet"
+          size="sm"
+          icon={ShelterIcon}
+          aria-pressed={tab === "shelter"}
+          aria-controls={tab === "shelter" ? "intake-flow" : undefined}
+          onClick={() => pick("shelter")}
+          className={`self-center justify-self-end ${tab === "shelter" ? "underline decoration-2 underline-offset-4" : "font-normal text-muted"}`}
+          data-entry="shelter"
+        >
+          {ENTRY_LABELS.shelterList}
+        </Button>
       </div>
-      <div className="mt-2" role="tabpanel">
-        <ShelterMissing value={markShelter}>
-          {tab === "search" && <SearchPanel shelter={shelter} />}
-          {tab === "shelter" && <ShelterPanel shelter={shelter} shelters={shelters} />}
-          {tab === "register" && <RegisterPanel shelter={shelter} />}
-        </ShelterMissing>
-      </div>
+
+      {tab && (
+        <div id="intake-flow" className="mt-3" data-flow={tab}>
+          <ShelterMissing value={markShelter}>
+            {tab === "qr" && <QrPanel shelter={shelter} samples={samples} />}
+            {tab === "search" && <SearchPanel shelter={shelter} />}
+            {tab === "shelter" && <ShelterPanel shelter={shelter} shelters={shelters} />}
+            {tab === "register" && <RegisterPanel shelter={shelter} />}
+          </ShelterMissing>
+        </div>
+      )}
     </Panel>
+  );
+}
+
+/**
+ * QR 読取。端末のカメラ（アプリの中で読める端末だけ）・読んだ URL の貼り付け・見本の QR（審査員の壁の中だけ）の
+ * どれからも、トークンを取り出して QR の頁へ移る。受入はその頁で（同意の無い人は要約を出さず「同意なし」「未確認」のまま）
+ */
+function QrPanel({ shelter, samples }: { shelter: string; samples: QrSampleView[] }) {
+  const router = useRouter();
+  const [text, setText] = useState("");
+  const [bad, setBad] = useState(false);
+  const [shown, setShown] = useState<string | null>(null);
+  const go = (token: string) => router.push(qrPagePath(token, shelter.trim() || null));
+
+  function open(e: React.FormEvent) {
+    e.preventDefault();
+    const token = qrTokenFrom(text);
+    if (!token) return setBad(true);
+    setBad(false);
+    go(token);
+  }
+
+  return (
+    <div className="grid gap-x-6 gap-y-3 text-sm md:grid-cols-2">
+      <div className="space-y-3">
+        <section className="space-y-1">
+          <h3 className={STEP}>{ENTRY_LABELS.camera}</h3>
+          <QrCamera onToken={go} />
+        </section>
+        <form onSubmit={open} className="space-y-1" data-form="qr-url">
+          <label htmlFor="intake-qr-url" className={`block ${STEP}`}>
+            {ENTRY_LABELS.url}
+          </label>
+          <div className="flex items-center gap-2">
+            <input
+              id="intake-qr-url"
+              type="url"
+              inputMode="url"
+              value={text}
+              onChange={(e) => {
+                setText(e.target.value);
+                setBad(false);
+              }}
+              autoComplete="off"
+              aria-invalid={bad || undefined}
+              className={`${INPUT} tabular-nums`}
+            />
+            <Button type="submit" icon={NextIcon} disabled={!text.trim()}>
+              {ENTRY_LABELS.open}
+            </Button>
+          </div>
+          {bad && (
+            <p role="alert" className="text-xs font-bold text-danger">
+              {ENTRY_LABELS.urlBad}
+            </p>
+          )}
+        </form>
+      </div>
+      {samples.length > 0 && (
+        <section className="space-y-1" data-samples={samples.length}>
+          <h3 className={STEP}>{ENTRY_LABELS.sample}</h3>
+          <ul className="space-y-1.5">
+            {samples.map((s) => {
+              const open = shown === s.personId;
+              return (
+                <li key={s.personId} className="rounded-md bg-panel2 px-2 py-1.5" data-sample={s.personId}>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="min-w-0 flex-1 font-bold">{s.kana}</span>
+                    <Button size="sm" kind="plainIn" icon={open ? CloseIcon : QrIcon} onClick={() => setShown(open ? null : s.personId)} aria-expanded={open}>
+                      {open ? ENTRY_LABELS.hideQr : ENTRY_LABELS.showQr}
+                    </Button>
+                    <ButtonLink href={qrPagePath(s.token, shelter.trim() || null)} size="sm" kind="main" icon={NextIcon} data-sample-open>
+                      {ENTRY_LABELS.open}
+                    </ButtonLink>
+                  </div>
+                  {/* ほかの端末のカメラで読む用（白地に黒。ライト・ダークで反転させない） */}
+                  {open && (
+                    <svg
+                      viewBox={`0 0 ${s.qr.size} ${s.qr.size}`}
+                      className="mt-1.5 size-40 rounded bg-white"
+                      role="img"
+                      aria-label={`${ENTRY_LABELS.sample} ${s.kana}`}
+                      shapeRendering="crispEdges"
+                      data-sample-qr
+                    >
+                      <path d={s.qr.d} fill="#000" />
+                    </svg>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
+    </div>
   );
 }
 
@@ -145,17 +304,17 @@ function SearchPanel({ shelter }: { shelter: string }) {
   }
 
   return (
-    <div>
+    <div className="max-w-2xl">
       <form onSubmit={search} className="grid grid-cols-[minmax(0,1fr)_9.5rem] gap-2 text-sm" data-form="search">
         <label className="flex flex-col gap-0.5">
           <span className="text-muted">{CUSTODY_LABELS.nameKana}</span>
           <input
-            id={INTAKE_SEARCH_ID}
             type="search"
             value={text}
             onChange={(e) => setText(e.target.value)}
             maxLength={NAME_MAX}
             autoComplete="off"
+            autoFocus
             className={INPUT}
           />
         </label>
@@ -174,7 +333,7 @@ function SearchPanel({ shelter }: { shelter: string }) {
           )}
         </div>
       </form>
-      {result && <Hits hits={result.hits} more={result.more} shelter={shelter} via="search" onReceived={() => search()} />}
+      {result && <Hits hits={result.hits} more={result.more} shelter={shelter} via="search" />}
     </div>
   );
 }
@@ -199,7 +358,7 @@ function ShelterPanel({ shelter, shelters }: { shelter: string; shelters: Array<
   }
 
   return (
-    <div className="text-sm">
+    <div className="max-w-2xl text-sm">
       {shelters.length === 0 ? (
         <p className="text-muted">{CUSTODY_LABELS.none}</p>
       ) : (
@@ -225,25 +384,13 @@ function ShelterPanel({ shelter, shelters }: { shelter: string; shelters: Array<
           {error}
         </p>
       )}
-      {hits && picked && <Hits hits={hits} more={false} shelter={shelter || picked} via="shelter" onReceived={() => load(picked)} />}
+      {hits && picked && <Hits hits={hits} more={false} shelter={shelter || picked} via="shelter" />}
     </div>
   );
 }
 
-/** ヒットの表。カナ・生年月日・年齢と「受入」（受入済は「開く」） */
-function Hits({
-  hits,
-  more,
-  shelter,
-  via,
-  onReceived,
-}: {
-  hits: PersonHit[];
-  more: boolean;
-  shelter: string;
-  via: "search" | "shelter";
-  onReceived: () => void;
-}) {
+/** ヒットの表。カナ・生年月日・年齢と「受入」（受入済は「開く」）。受け入れたら受入一覧へ（その人の行が上に出る） */
+function Hits({ hits, more, shelter, via }: { hits: PersonHit[]; more: boolean; shelter: string; via: "search" | "shelter" }) {
   const router = useRouter();
   const markShelter = useContext(ShelterMissing);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -258,11 +405,12 @@ function Hits({
     setBusyId(id);
     setError(null);
     const data = await post(CUSTODY_RECEIVE_API, { personId: id, shelter, via });
+    if (data.ok && data.custodyId) {
+      router.push(receivedHref(data.custodyId));
+      return;
+    }
     setBusyId(null);
-    if (data.ok) {
-      router.refresh();
-      onReceived();
-    } else setError(data.label ?? "送信失敗");
+    setError(data.label ?? "送信失敗");
   }
 
   if (hits.length === 0) return <p className="mt-2 text-sm text-muted">{CUSTODY_LABELS.noHits}</p>;
@@ -301,9 +449,10 @@ function Hits({
                       <LinkPending />
                     </Link>
                   ) : (
-                    // 行ごとの受入は無色（主の操作の色は検索・新規登録の 1 つ）
+                    // 行ごとの受入は流れの最後の 1 押しなので主の操作の色
                     <Button
                       size="sm"
+                      kind="main"
                       icon={AddPersonIcon}
                       disabled={busyId !== null}
                       onClick={() => receive(h.id)}
@@ -324,7 +473,7 @@ function Hits({
   );
 }
 
-/** 台帳に無い人をその場で登録する。氏名・カナ・年齢か生年月日・薬・機器（その他は名前。T64）・連絡先 */
+/** 台帳に無い人をその場で登録する。氏名・カナ・年齢か生年月日・薬・機器（その他は名前。T64）・連絡先。登録で受入まで */
 function RegisterPanel({ shelter }: { shelter: string }) {
   const router = useRouter();
   const [name, setName] = useState("");
@@ -361,11 +510,11 @@ function RegisterPanel({ shelter }: { shelter: string }) {
       contact: { relation, name: contactName, phone },
       shelter,
     });
-    setBusy(false);
-    if (data.ok && data.personId) {
-      router.push(`/people/${encodeURIComponent(data.personId)}`);
+    if (data.ok && data.custodyId) {
+      router.push(receivedHref(data.custodyId));
       return;
     }
+    setBusy(false);
     setError(data.label ?? "送信失敗");
   }
 
@@ -375,10 +524,10 @@ function RegisterPanel({ shelter }: { shelter: string }) {
   const deviceNameMissing = otherOn && deviceName.trim() === "";
 
   return (
-    <form onSubmit={submit} className="grid grid-cols-2 gap-2 text-sm" data-form="register">
+    <form onSubmit={submit} className="grid max-w-2xl grid-cols-2 gap-2 text-sm" data-form="register">
       <label className="flex flex-col gap-0.5">
         <span className="text-muted">{CUSTODY_LABELS.name}</span>
-        <input type="text" required value={name} onChange={(e) => setName(e.target.value)} maxLength={NAME_MAX} className={INPUT} data-field="name" />
+        <input type="text" required value={name} onChange={(e) => setName(e.target.value)} maxLength={NAME_MAX} className={INPUT} autoFocus data-field="name" />
       </label>
       <label className="flex flex-col gap-0.5">
         <span className="text-muted">{CUSTODY_LABELS.kana}</span>

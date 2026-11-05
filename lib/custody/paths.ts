@@ -17,3 +17,19 @@ export const UNAFFILIATED_ANCHOR = "unaffiliated";
 export function staffHref(error: string | null = null): string {
   return error ? `${STAFF_PATH}?error=${encodeURIComponent(error)}` : STAFF_PATH;
 }
+
+/**
+ * 受け入れたあとの行き先（T152）。3 つの入り方（QR 読取・氏名検索・新規登録）とも受入一覧へ戻し、受け入れた人を表の上に出す。
+ * 載せるのは受け持ちの行の id だけ（名前・カナは載せない）。表の並びの番号は変えない（lib/custody/entry.ts の pinReceived）
+ */
+export const RECEIVED_PARAM = "received";
+
+export function receivedHref(custodyId: string): string {
+  return `${STAFF_PATH}?${RECEIVED_PARAM}=${encodeURIComponent(custodyId)}`;
+}
+
+/** QR の頁（/q/<token>）。受入一覧の避難所の欄の値を受入の既定に渡す（避難所の名前だけ。人の物は載せない） */
+export function qrPagePath(token: string, shelter: string | null = null): string {
+  const s = shelter?.trim();
+  return `/q/${encodeURIComponent(token)}${s ? `?shelter=${encodeURIComponent(s)}` : ""}`;
+}

@@ -17,14 +17,16 @@ import { useEffect, useMemo, useState } from "react";
 import { MedicalMarkList, NarrowMarks } from "@/components/list/NarrowMarks";
 import { StateFilter } from "@/components/list/StateFilter";
 import { REASON_TEXT, StateTag, TONE_TEXT } from "@/components/person/parts";
-import { Button } from "@/components/ui/Button";
-import { AddPersonIcon, CloseIcon, OpenIcon, SortIcon, UnlistIcon } from "@/components/ui/Icon";
-import { INTAKE_SEARCH_ID } from "./StaffIntake";
+import { Button, ButtonLink } from "@/components/ui/Button";
+import { AddPersonIcon, CloseIcon, NextIcon, OpenIcon, SortIcon, UnlistIcon } from "@/components/ui/Icon";
+import { INTAKE_ENTRY_ID, INTAKE_TITLE_ID } from "./StaffIntake";
 import { LinkPending } from "@/components/ui/LinkPending";
 import { SORT_ICON, TABLE, TABLE_BOX, TH } from "@/components/ui/table";
 import type { StaffRow } from "@/lib/custody/board";
 import { NOTE_MAX } from "@/lib/custody/forms";
-import { CUSTODY_LABELS, CUSTODY_VIA_LABELS, RELEASE_LABELS } from "@/lib/custody/labels";
+import { pinReceived } from "@/lib/custody/entry";
+import { CUSTODY_LABELS, CUSTODY_VIA_LABELS, ENTRY_LABELS, RELEASE_LABELS } from "@/lib/custody/labels";
+import { Mark } from "@/components/ui/Tag";
 import { CUSTODY_RELEASE_API } from "@/lib/custody/paths";
 import { RELEASE_KINDS, type ReleaseKind } from "@/lib/db/types";
 import { DOCUMENT_LABELS, stateLabel } from "@/lib/labels";
@@ -72,11 +74,17 @@ export function StaffTable({
   rows,
   shelters,
   view = NO_STAFF_VIEW,
+  received = null,
 }: {
   rows: StaffRow[];
   shelters: string[];
   /** URL の絞込と並び（開いたときの値。lib/custody/staff-view.ts の parseStaffView） */
   view?: StaffView;
+  /**
+   * 受け入れたばかりの人の受け持ちの id（URL の ?received=、T152）。その人の行を表の先頭に出し「新着」と「開く」。
+   * 並びの番号はルールの表のまま、CSV の行の順も変えない（画面だけ。lib/custody/entry.ts の pinReceived）
+   */
+  received?: string | null;
 }) {
   const [picked, setShelter] = useState(view.shelter);
   const [color, setColor] = useState<Color | "">(view.color);
@@ -88,8 +96,8 @@ export function StaffTable({
 
   const current: StaffView = { shelter, color, q: text.trim().slice(0, MAX_STAFF_TEXT), sort };
   const shown = useMemo(
-    () => staffViewRows(rows, shelters, { shelter, color, q: text.trim().slice(0, MAX_STAFF_TEXT), sort }),
-    [rows, shelters, shelter, color, text, sort],
+    () => pinReceived(staffViewRows(rows, shelters, { shelter, color, q: text.trim().slice(0, MAX_STAFF_TEXT), sort }), received),
+    [rows, shelters, shelter, color, text, sort, received],
   );
   // 絞込と並びを URL に（CSV出力のリンク〔StaffCsvLink〕がこれを読む。読み直しても残る）
   // 状態の切替の人数は、避難所と氏名の絞込のあとの人（状態の絞込の前）
@@ -173,7 +181,13 @@ export function StaffTable({
               </tr>
             )}
             {shown.map((r) => (
-              <Row key={r.custodyId} row={r} open={open === r.custodyId} onToggle={() => setOpen(open === r.custodyId ? null : r.custodyId)} />
+              <Row
+                key={r.custodyId}
+                row={r}
+                fresh={r.custodyId === received}
+                open={open === r.custodyId}
+                onToggle={() => setOpen(open === r.custodyId ? null : r.custodyId)}
+              />
             ))}
           </tbody>
         </table>
@@ -182,13 +196,10 @@ export function StaffTable({
   );
 }
 
-/** 受入の面の検索の欄へ送って焦点を置く（受入一覧が空のときの入口、T78） */
+/** 受入の面（一覧の上の入り方の 3 つ）へ送って最初のボタンに焦点を置く（受入一覧が空のときの入口、T78・T152） */
 function toIntake() {
-  const field = document.getElementById(INTAKE_SEARCH_ID);
-  // 検索のほかの切替（避難所・新規登録）を開いていれば、面の見出しへ送るだけ
-  if (!field) return document.getElementById("intake-title")?.scrollIntoView({ block: "start" });
-  field.scrollIntoView({ block: "center" });
-  field.focus({ preventScroll: true });
+  document.getElementById(INTAKE_TITLE_ID)?.scrollIntoView({ block: "start" });
+  document.getElementById(INTAKE_ENTRY_ID)?.focus({ preventScroll: true });
 }
 
 /** 並べ替えの見出し。押せる見出しには並べ替えの印（押していない列は上下の印、押している列は下線と向きの印）。押せない見出し（状態・医療）は印なし（T66） */
@@ -227,7 +238,7 @@ function Header({
   );
 }
 
-function Row({ row: r, open, onToggle }: { row: StaffRow; open: boolean; onToggle: () => void }) {
+function Row({ row: r, fresh = false, open, onToggle }: { row: StaffRow; fresh?: boolean; open: boolean; onToggle: () => void }) {
   // 医療の印は時計から（担当一覧と同じ）。時計の無い人（その場で登録した人）は台帳の機器
   const hasMarks = r.markItems.length > 0 || r.devices.length > 0;
   // 解除（開くと取消）。640px 以上は行の末尾の列、未満は氏名の下に同じ物
@@ -238,7 +249,7 @@ function Row({ row: r, open, onToggle }: { row: StaffRow; open: boolean; onToggl
   );
   return (
     <>
-      <tr data-person={r.personId} data-color={r.color}>
+      <tr data-person={r.personId} data-color={r.color} data-fresh={fresh || undefined}>
         <td className={`${CELL} text-center`}>
           <StateTag tone={r.tone} size="fit">
             {stateLabel(r)}
@@ -248,6 +259,15 @@ function Row({ row: r, open, onToggle }: { row: StaffRow; open: boolean; onToggl
           <span className="font-bold tabular-nums">{r.rank}</span>
         </td>
         <td className={`${CELL} min-w-[7rem] sm:min-w-[9rem] md:min-w-[7rem] lg:min-w-[9rem]`}>
+          {/* 受け入れたばかりの人（T152）: 「新着」と、受け入れた人の画面（要約・経過）へ進む「開く」 */}
+          {fresh && (
+            <div className="mb-1 flex flex-wrap items-center gap-1.5" data-fresh-head>
+              <Mark>{ENTRY_LABELS.fresh}</Mark>
+              <ButtonLink href={`/people/${encodeURIComponent(r.personId)}`} kind="main" size="sm" icon={NextIcon} data-fresh-open>
+                {ENTRY_LABELS.open}
+              </ButtonLink>
+            </div>
+          )}
           <Link href={`/people/${encodeURIComponent(r.personId)}`} className="relative -mx-1 rounded px-1 font-bold" data-press>
             {r.name}
             <LinkPending />

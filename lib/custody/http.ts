@@ -14,7 +14,7 @@ import { resolveQrToken } from "../qr/store.ts";
 import { staffActor, type StaffActor } from "./actor.ts";
 import { isId, parseOnSite, parseRelease, parseSearch, parseShelter } from "./forms.ts";
 import { CUSTODY_ERROR_LABELS, CUSTODY_ERROR_STATUS, type CustodyError } from "./labels.ts";
-import { staffHref, UNAFFILIATED_ANCHOR } from "./paths.ts";
+import { receivedHref, staffHref, UNAFFILIATED_ANCHOR } from "./paths.ts";
 import { searchPeople, shelterPeople } from "./search.ts";
 import { receive, registerOnSite, release } from "./store.ts";
 import { takeOver } from "./takeover.ts";
@@ -100,7 +100,8 @@ const str = (v: FormDataEntryValue | null | undefined): string | null => (typeof
 
 /**
  * QR の頁の「受入」（フォームの POST: token・shelter）。本人の id はフォームに載せず、サーバーがトークンを引き直す
- * （署名・期限・今の版。lib/qr/store.ts）。受け入れたら /staff へ、誤りは /staff?error=<種類>
+ * （署名・期限・今の版。lib/qr/store.ts）。受け入れたら受入一覧のその人の行を上に（/staff?received=<受け持ちの id>、T152）、
+ * もう受け入れている人は /staff、誤りは /staff?error=<種類>
  */
 export async function qrReceivePost(
   db: D1Database,
@@ -117,8 +118,8 @@ export async function qrReceivePost(
   if (!shelter.ok) return { status: 303, location: staffHref(shelter.error) };
   const r = await receive(db, actor, { personId: hit.p, shelter: shelter.value, via: "qr" }, opts.at);
   // もう受け入れている人は受け持ちの一覧へ（誤りにしない）
-  if (!r.ok && r.error !== "already") return { status: 303, location: staffHref(r.error) };
-  return { status: 303, location: staffHref() };
+  if (!r.ok) return { status: 303, location: r.error === "already" ? staffHref() : staffHref(r.error) };
+  return { status: 303, location: receivedHref(r.custodyId) };
 }
 
 export function takeBackHref(error: string | null = null): string {

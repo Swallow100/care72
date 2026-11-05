@@ -102,8 +102,9 @@ export function QrSummary({ sheet: s, expiresAt }: { sheet: QrSheet; expiresAt: 
         </div>
       </header>
 
-      {s.blocks.map((b) => (
-        <section key={b.block} className="rounded-lg bg-panel px-4 py-2" data-block={b.block}>
+      {/* 医師記入の段は様式の上と下の 2 か所にあるので、key は段の名前と並びの番号（T152。同じ key の警告が出ていた） */}
+      {s.blocks.map((b, i) => (
+        <section key={`${b.block}-${i}`} className="rounded-lg bg-panel px-4 py-2" data-block={b.block}>
           <h2 className="pt-1 text-[0.9375rem] font-bold">{b.label}</h2>
           {b.block === "meds" && s.medications.length > 0 && (
             <ul className="mt-1 space-y-1.5" data-field="meds.list">

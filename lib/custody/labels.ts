@@ -133,3 +133,49 @@ export const CUSTODY_ERROR_STATUS: Record<CustodyError, number> = {
   released: 409,
   conflict: 409,
 };
+
+/**
+ * 受入の入り方（T152）。受入一覧の最初に 3 つ並べる。sub は何の人かの 2〜5 字（説明の文にしない）。
+ * 画面には「台帳」と書かない（本人のページの登録の有無で言う）
+ */
+export const ENTRY_LABELS = {
+  qr: "QR読取",
+  qrSub: "本人の1枚",
+  search: "氏名検索",
+  searchSub: "登録済",
+  register: "新規登録",
+  registerSub: "未登録",
+  /** 既に誰かが受け入れた人を避難所で探す（前の「避難所」の切替。3 つの後ろに小さく） */
+  shelterList: "避難所別",
+  /** 審査員の壁の中だけ: デモの人の本人の 1 枚の QR */
+  sample: "見本QR",
+  showQr: "QR表示",
+  hideQr: "閉じる",
+  open: "開く",
+  /** 読んだ QR の URL を貼る欄 */
+  url: "URL入力",
+  urlBad: "読取不可",
+  /** 端末のカメラ（BarcodeDetector の使える端末だけ、アプリの中で読む） */
+  camera: "端末カメラ",
+  cameraStart: "カメラ起動",
+  cameraStop: "停止",
+  cameraFail: "カメラ不可",
+  /** アプリの中で読めない端末: 端末のカメラで QR を写すと受入の頁が開く */
+  cameraOs: "写すと受入頁",
+  /** 受け入れたばかりの人の行の印（表の上に出す） */
+  fresh: "新着",
+} as const;
+
+/** 受け入れた人の画面（T152。医療班・行政の役の本人のページ） */
+export const RECEIVED_LABELS = {
+  /** 戻る先 */
+  back: "受入一覧",
+  /** 医療班の要約（薬・機器・アレルギー・連絡先） */
+  summary: "要約",
+  timeline: "経過",
+  /** 受け入れた避難所と時刻の行の見出し */
+  received: "受入",
+  /** 医療要約の書類（紙面）を開く・印刷 */
+  full: "全文",
+  print: "印刷",
+} as const;
