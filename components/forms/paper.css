@@ -690,6 +690,7 @@ html[data-print-preview] body > *:not(main):not(:has([data-paper-root])):not(.pr
 html[data-print-preview] header:not(:has([data-paper-root])),
 html[data-print-preview] nav:not(:has([data-paper-root])),
 html[data-print-preview] .screen-only,
+html[data-print-preview] .qr-screen-only,
 html[data-print-preview] main:has(> [data-paper-print]) > :not([data-paper-print]),
 html[data-print-preview] .ov-layer,
 html[data-print-preview] .pf-layer,
