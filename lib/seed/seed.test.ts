@@ -451,7 +451,7 @@ describe("最初に戻す（デモ事業所だけ）", () => {
         p.contacts.map((c) => ({ id: c.id, kind: c.kind, name: c.name, kana: c.kana ?? null, address: c.address ?? null, phone: c.phone, mobile: c.mobile ?? null, night_ok: c.night_ok })),
       );
     }
-    expect(withoutOthers(db)).toEqual(dump(fresh, ["ai_calls"]));
+    expect(withoutOthers(db)).toEqual(dump(stripCheck(fresh), ["ai_calls"]));
   });
 
   it("2 回戻しても同じ", async () => {
