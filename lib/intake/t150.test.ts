@@ -40,7 +40,12 @@ function emptied(over: (l: Ledger) => void = () => undefined): Ledger {
   return l;
 }
 
-const ask = (ledger: Ledger, key: string, p = seed("p-04")): Question => {
+/** 夜間支援の問いを出すため、佐藤の連絡先の夜間を未確認に戻した種（T142 で種に夜間可が入ったので） */
+function noNight(p: ReturnType<typeof seed>): ReturnType<typeof seed> {
+  return { ...p, contacts: p.contacts.map((c) => ({ ...c, night_ok: null })) };
+}
+
+const ask = (ledger: Ledger, key: string, p = noNight(seed("p-04"))): Question => {
   const q = questionQueue(rowsOf(p, ledger)).find((x) => x.key === key || (x.answer.kind === "choice" && x.answer.field === key));
   if (!q) throw new Error(`問いが無い: ${key}`);
   return q;
