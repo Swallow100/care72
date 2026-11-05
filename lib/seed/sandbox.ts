@@ -44,6 +44,8 @@ export const SANDBOX_CLEAR: Readonly<Record<Table, string | null>> = {
   custody: `person_id IN (${PEOPLE})`,
   form9_rank_edits: `office_id IN (${SB}) OR person_id IN (${PEOPLE})`,
   form_reviews: `office_id IN (${SB}) OR person_id IN (${PEOPLE})`,
+  form_entries: `office_id IN (${SB}) OR person_id IN (${PEOPLE})`,
+  form_assets: `office_id IN (${SB})`,
   form_mappings: `office_id IN (${SB})`,
   disaster_state: `office_id IN (${SB})`,
   ai_calls: `office_id IN (${SB})`,

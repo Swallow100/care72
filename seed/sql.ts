@@ -55,6 +55,9 @@ export const CLEAR_ORDER = [
   "form9_rank_edits",
   // 書類の紙の見直し（T136）。人・事業所・アカウントを指すので先に
   "form_reviews",
+  // 紙の手入れと事業所の画像（T135）。本人・事業所を指す
+  "form_entries",
+  "form_assets",
   "form_mappings",
   "disaster_state",
   "ai_calls",

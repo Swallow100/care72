@@ -27,52 +27,61 @@ export type PaperTarget = { key: MatsuyamaKey; label: string; inputs: PaperInput
 
 export type PaperEditData = { personId: string; version: number; targets: PaperTarget[] };
 
-const ROLE_LABELS: Record<FormContactRole, string> = { kin: "近親者", supporter1: "支援者1", supporter2: "支援者2" };
+const ROLE_LABELS: Record<FormContactRole, string> = { kin: "近親者", kin2: "緊急連絡先2", supporter1: "支援者1", supporter2: "支援者2" };
 
 /** 欄ごとの入力と今の値（サーバーで作る。ケアマネの役の画面にだけ渡す） */
 export function paperEditData(rows: PersonPageRows): PaperEditData {
-  const ledger: Ledger = parseLedger(rows.person.ledger);
-  const href = `/people/${encodeURIComponent(rows.person.id)}`;
   const targets: PaperTarget[] = [];
   for (const def of MATSUYAMA_FIELDS) {
-    const inputs = MATSUYAMA_INPUTS[def.key];
-    if (!inputs) continue;
-    const out: PaperInput[] = [];
-    const pageOnce = (label: string) => {
-      if (!out.some((x) => x.kind === "page" && x.label === label)) out.push({ kind: "page", label, href });
-    };
-    for (const input of inputs) resolve(input);
+    const out = resolveInputs(rows, MATSUYAMA_INPUTS[def.key]);
     if (out.length > 0) targets.push({ key: def.key, label: matsuyamaFieldName(def), inputs: out });
-
-    function resolve(input: FormInput) {
-      switch (input.kind) {
-        case "field": {
-          const f = intakeField(input.key);
-          if (f) out.push({ kind: "field", key: input.key, label: f.label, value: editValueOf(ledger, input.key) ?? null });
-          return;
-        }
-        case "contact": {
-          const who = formContactOf(rows.contacts, input.role);
-          // 人がいなければ書けない（連絡先を足すのは本人のページの関係者の面）
-          if (!who) return pageOnce(`${SECTION_LABELS.people}（${ROLE_LABELS[input.role]} なし）`);
-          const name = who.relation ?? CONTACT_KIND_LABELS[who.kind];
-          const raw = input.part === "phone" ? who.phone : who[input.part];
-          out.push({
-            kind: "contact",
-            contactId: who.id,
-            contactKind: who.kind,
-            part: input.part,
-            label: `${name} ${CONTACT_PART_LABELS[input.part]}`,
-            value: raw ?? "",
-          });
-          return;
-        }
-        case "page":
-          return pageOnce(SECTION_LABELS[input.section]);
-      }
-    }
   }
   return { personId: rows.person.id, version: rows.person.version ?? 1, targets };
+}
+
+/**
+ * 欄の元（lib/forms/form-inputs.ts の FormInput）を、窓とその場の入力（T135）の入力と今の値に。連絡先の人がいなければ本人のページへの道。
+ * 計画書（MATSUYAMA_INPUTS）と添付の様式（lib/forms/item-inputs.ts の ITEM_INPUTS）で同じ
+ */
+export function resolveInputs(rows: PersonPageRows, inputs: readonly FormInput[] | undefined): PaperInput[] {
+  const ledger: Ledger = parseLedger(rows.person.ledger);
+  const href = `/people/${encodeURIComponent(rows.person.id)}`;
+  const out: PaperInput[] = [];
+  const pageOnce = (label: string) => {
+    if (!out.some((x) => x.kind === "page" && x.label === label)) out.push({ kind: "page", label, href });
+  };
+  for (const input of inputs ?? []) {
+    switch (input.kind) {
+      case "field": {
+        const f = intakeField(input.key);
+        if (f) out.push({ kind: "field", key: input.key, label: f.label, value: editValueOf(ledger, input.key) ?? null });
+        break;
+      }
+      case "contact": {
+        const who = formContactOf(rows.contacts, input.role);
+        // 人がいなければ書けない（連絡先を足すのは本人のページの関係者の面）
+        if (!who) {
+          pageOnce(`${SECTION_LABELS.people}（${ROLE_LABELS[input.role]} なし）`);
+          break;
+        }
+        const name = who.relation ?? CONTACT_KIND_LABELS[who.kind];
+        const raw = input.part === "phone" ? who.phone : who[input.part];
+        out.push({
+          kind: "contact",
+          contactId: who.id,
+          contactKind: who.kind,
+          part: input.part,
+          label: `${name} ${CONTACT_PART_LABELS[input.part]}`,
+          value: raw ?? "",
+        });
+        break;
+      }
+      case "page":
+        pageOnce(SECTION_LABELS[input.section]);
+        break;
+    }
+  }
+  return out;
 }
 
 /** 電話の形（lib/intake/save.ts の連絡先の phone と同じ） */
