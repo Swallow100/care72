@@ -12,9 +12,9 @@
 import { KIROKU_FRAME } from "../../../lib/forms/frame-kiroku.ts";
 import { MATSUYAMA_FRAME } from "../../../lib/forms/frame-matsuyama.ts";
 import type { Frame } from "../../../lib/forms/frame-sheet.ts";
-import { FORM9_COLUMNS, type Form9ColumnId } from "../../../lib/forms/form9.ts";
+import { FORM9_PAGE_MM, FORM9_ROWS_PER_PAGE, form9Cell } from "../../../lib/forms/frame-form9.ts";
 import { KOMOREBI_ISSUER, KOMOREBI_LAYOUT, KOMOREBI_TITLE, komorebiBlankHtml, type KomorebiField } from "../../../lib/forms/komorebi-form.fixture.ts";
-import { isLedgerItemKey, type FieldBox, type FieldShape, type FormMapping, type LedgerItemKey, type ReadResult, type Typeface } from "../../../lib/forms/mapping.ts";
+import { isLedgerItemKey, listShapeOf, type FieldBox, type FieldShape, type FormMapping, type LedgerItemKey, type ReadResult, type Typeface } from "../../../lib/forms/mapping.ts";
 import { MATSUYAMA_FIELDS, MATSUYAMA_FORM_URL, type MatsuyamaKey } from "../../../lib/forms/matsuyama.ts";
 import { MEDICAL_FIELDS, type MedicalKey } from "../../../lib/forms/medical-summary.ts";
 import { ORIGINALS } from "../../../lib/forms/originals.ts";
@@ -50,6 +50,8 @@ export type GoldForm = {
   /** 正解を数える頁（原本の頁が多いとき、正解を作った頁だけ） */
   pages: number[];
   fields: GoldField[];
+  /** 一覧の表（T131。様式 9）。人を書く行の数と 1 行目・最後の行の帯 */
+  list?: NonNullable<ReadResult["list"]>;
 };
 
 const key = (k: string | null): LedgerItemKey | null => {
@@ -317,11 +319,11 @@ const MATSUYAMA_ITEMS: Partial<Record<MatsuyamaKey, string | null>> = {
   "risk.timing": null,
   "risk.issues": "care.issues",
   "shelter.pre.place": "evacuation.destination2",
-  "shelter.pre.means": null,
+  "shelter.pre.means": "evacuation.destination2Means",
   "shelter.pre.minutes": "evacuation.destination2Minutes",
   "shelter.near.place": "evacuation.nearest",
-  "shelter.near.means": null,
-  "shelter.near.minutes": null,
+  "shelter.near.means": "evacuation.nearestMeans",
+  "shelter.near.minutes": "evacuation.nearestMinutes",
   "shelter.city.place": "evacuation.destination1",
   "shelter.city.means": "evacuation.transport",
   "shelter.city.minutes": "evacuation.destination1Minutes",
@@ -342,9 +344,8 @@ const MATSUYAMA_ACCEPT: Partial<Record<MatsuyamaKey, ReadonlyArray<string | null
   "local.other": ["people.offices"],
   "housing.room": ["basic.housing.bedroom"],
   "shelter.city.means": [null],
-  // 移動手段は台帳に 1 つで、様式は避難場所ごとに【手段】がある。どの避難場所の欄に当てても別解（T122）
-  "shelter.pre.means": ["evacuation.transport"],
-  "shelter.near.means": ["evacuation.transport"],
+  // 避難場所ごとの【手段】【時間】は T131 から台帳の項目が避難場所ごとにある（T117 の destination2Means・nearestMeans・nearestMinutes）。
+  // T122 の「どの避難場所の欄に当てても別解」は外した（移動手段を別の避難場所の欄に置くと、紙で違う避難場所の手段になる。評価の 3 回目の 4）
 };
 
 function matsuyamaGold(): GoldField[] {
@@ -417,12 +418,15 @@ const KIROKU_ITEMS: Partial<Record<MedicalKey, string | null>> = {
   "contact.kinds": null,
   "contra.allergy": "medical.allergies",
   "contra.food": null,
-  "drug.antiplatelet": null,
-  "drug.anticoagulant": null,
-  "drug.diabetes": null,
-  "drug.steroid": null,
-  "drug.antiepileptic": null,
-  "drug.other": null,
+  // 薬の区分の □（T131）: 専用の紙（lib/forms/medical-summary.ts）は区分の薬があれば印。読み取りの決まり 12 の例外（□ ごとに常用薬）と
+  // 紙の種類ごとの印（lib/forms/mapped-sheet.ts の MEDICATION_KIND_WORDS）で同じ印になる。前の正解は項目なし（紙は空）で、
+  // 区分の薬がある人の印を「余分」と数えていた（評価の 3 回目の 4）。項目なしは別解に残す（紙は空く）
+  "drug.antiplatelet": "medical.medications",
+  "drug.anticoagulant": "medical.medications",
+  "drug.diabetes": "medical.medications",
+  "drug.steroid": "medical.medications",
+  "drug.antiepileptic": "medical.medications",
+  "drug.other": "medical.medications",
   "drug.dialysis": "medical.dialysis",
   "drug.hot": "medical.devices",
   "care.vulnerable": null,
@@ -437,12 +441,12 @@ const KIROKU_ACCEPT: Partial<Record<MedicalKey, ReadonlyArray<string | null>>> =
   "patient.birth": ["person.age"],
   "patient.phone": ["self.phone"],
   "contact.kinds": ["emergency1.relation", "emergency1.name"],
-  "drug.antiplatelet": ["medical.medications"],
-  "drug.anticoagulant": ["medical.medications"],
-  "drug.diabetes": ["medical.medications"],
-  "drug.steroid": ["medical.medications"],
-  "drug.antiepileptic": ["medical.medications"],
-  "drug.other": ["medical.medications"],
+  "drug.antiplatelet": [null],
+  "drug.anticoagulant": [null],
+  "drug.diabetes": [null],
+  "drug.steroid": [null],
+  "drug.antiepileptic": [null],
+  "drug.other": [null],
   "drug.dialysis": ["medical.devices"],
   "care.vulnerable": ["care.careLevel"],
 };
@@ -481,39 +485,54 @@ function kirokuGold(): GoldField[] {
   });
 }
 
-/** 様式 9 の列（ひな形の列だけ）→ 項目。1 行目の欄として数える */
-const FORM9_ITEMS: Partial<Record<Form9ColumnId, string | null>> = {
-  no: null,
-  medicalCare: null,
-  environment: null,
-  evacuation: null,
-  area: "basic.town",
-  nameAge: "person.name",
-  address: "basic.address",
-  shelter: "evacuation.destination1",
-  facility: null,
-  notes: "notes.other",
-  careManager: "plan.author",
-  checkedAt: null,
-};
-const FORM9_ACCEPT: Partial<Record<Form9ColumnId, ReadonlyArray<string | null>>> = {
-  area: ["basic.address"],
-  nameAge: ["person.age"],
-  facility: ["evacuation.destination2"],
-  notes: ["medical.notes", "notes.words"],
-  careManager: [null],
-};
+/**
+ * 様式 9 の列 → 項目。一覧の表（T131 の決まり 17）なので、表の列の欄は 1 行目（7 行目）の枠で数える。
+ * T131 で直した所（評価の 3 回目の 3・9）: 欄の名前と段をひな形の見出しの字（FORM9_HEADS。前は CSV の見出しから作り「想定される避難所」の
+ * ような原本に無い名前だった）、場所を原本の枠（frame-form9.ts）から、表の外の「事業所名」「作成」の欄を足し、担当ケアマネは T131 の
+ * plan.careManager（前の plan.author と項目なしは別解から外す。項目なしだと全部の紙で空く）
+ */
+type Form9Gold = { cell: string; section: string; label: string; item: string | null; accept?: ReadonlyArray<string | null>; shape?: FieldShape };
+const FORM9_GOLD: readonly Form9Gold[] = [
+  // 4 行目の「事業所名：」「作成：　年　月　日」。ブックを頁に描いた画像では、事業所名の書く所は C〜J、作成は K〜M（評価の 3 回目の本物の答えの場所）
+  { cell: "C4:J4", section: "", label: "事業所名", item: "plan.office", accept: ["plan.author"] },
+  { cell: "K4:M4", section: "", label: "作成", item: "plan.date", shape: "date" },
+  { cell: "B7", section: "", label: "No", item: null },
+  { cell: "C7", section: "優先順位", label: "医療・介護", item: null },
+  { cell: "D7", section: "優先順位", label: "環境", item: null },
+  { cell: "E7", section: "優先順位", label: "避難", item: null },
+  { cell: "F7", section: "", label: "地域区分", item: "basic.town", accept: ["basic.address"] },
+  { cell: "G7", section: "", label: "氏名（年齢）", item: "person.name", accept: ["person.age"] },
+  { cell: "H7", section: "", label: "住所（自治会）", item: "basic.address" },
+  { cell: "I7", section: "想定される避難場所", label: "避難所", item: "evacuation.destination1" },
+  { cell: "J7", section: "想定される避難場所", label: "介護・医療機関", item: null, accept: ["evacuation.destination2"] },
+  { cell: "K7", section: "", label: "特記", item: "notes.other", accept: ["medical.notes", "notes.words"] },
+  { cell: "L7", section: "", label: "担当ケアマネ", item: "plan.careManager", accept: ["plan.author"] },
+  { cell: "M7", section: "", label: "安否確認できた日", item: null, shape: "date" },
+];
+
+/** 原本の枠（mm）から頁の比の矩形 */
+function form9Box(ref: string): FieldBox {
+  const c = form9Cell(ref);
+  const r = (v: number) => Math.round(v * 10000) / 10000;
+  return { x: r(c.x / FORM9_PAGE_MM.w), y: r(c.y / FORM9_PAGE_MM.h), w: r(c.w / FORM9_PAGE_MM.w), h: r(c.h / FORM9_PAGE_MM.h) };
+}
 
 function form9Gold(): GoldField[] {
-  return FORM9_COLUMNS.filter((c) => c.origin === "mhlw").map((c) => ({
+  return FORM9_GOLD.map((g) => ({
     page: 1,
-    section: c.group ?? "",
-    label: c.group ? c.csv.replace(`${c.group}（`, "").replace(/）$/, "") : c.csv,
-    shape: "text" as const,
+    section: g.section,
+    label: g.label,
+    shape: g.shape ?? "text",
     options: [],
-    item: key(FORM9_ITEMS[c.id] ?? null),
-    ...(FORM9_ACCEPT[c.id] ? { accept: FORM9_ACCEPT[c.id]!.map(key) } : {}),
+    item: key(g.item),
+    ...(g.accept ? { accept: g.accept.map(key) } : {}),
+    box: form9Box(g.cell),
   }));
+}
+
+/** 様式 9 の一覧の表の形（T131）: 人を書く 20 行（7〜26 行目）、1 行目の帯は B7:M7 */
+export function form9GoldList(): NonNullable<ReadResult["list"]> {
+  return { page: 1, rows: FORM9_ROWS_PER_PAGE, first: form9Box("B7:M7"), last: form9Box(`B${6 + FORM9_ROWS_PER_PAGE}:M${6 + FORM9_ROWS_PER_PAGE}`) };
 }
 
 // ---------- 一覧 ----------
@@ -586,6 +605,7 @@ export const GOLD_FORMS: readonly GoldForm[] = [
     typeface: "gothic",
     pages: [1],
     fields: form9Gold(),
+    list: form9GoldList(),
   },
 ];
 
@@ -613,6 +633,7 @@ export function goldReading(form: GoldForm, pages: number): ReadResult {
         box: f.box ?? null,
         option_boxes: f.shape === "choice" ? (f.optionBoxes ?? []) : [],
       })),
+    ...(form.list && form.list.page <= pages ? { list: form.list } : {}),
   };
 }
 
@@ -639,5 +660,9 @@ export function goldMapping(form: GoldForm, pages: number): FormMapping {
         box: f.box ?? null,
         ...(f.optionBoxes ? { optionBoxes: f.optionBoxes } : {}),
       })),
+    ...((): Pick<FormMapping, "list"> => {
+      const list = listShapeOf(form.list, pages);
+      return list ? { list } : {};
+    })(),
   };
 }

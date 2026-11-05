@@ -123,7 +123,12 @@ export const LEDGER_ITEMS = [
   { key: "evacuation.hazards", group: "evacuation", label: "自宅のリスク", hint: "浸水（深さ）・土砂・津波。「自宅のリスク（複数選択可）」の □ の並びは 1 つの欄" },
   { key: "evacuation.destination1", group: "evacuation", label: "避難先1", hint: "市の指定避難所など。名称だけ（住所は持たない）" },
   { key: "evacuation.destination2", group: "evacuation", label: "避難先2", hint: "事前に行く所（親族の家など）" },
-  { key: "evacuation.transport", group: "evacuation", label: "移動手段", hint: "徒歩・車いす・家族の車など" },
+  {
+    key: "evacuation.transport",
+    group: "evacuation",
+    label: "移動手段",
+    hint: "避難先1（市の指定避難所など）へ移る手段。徒歩・車いす・家族の車など。避難場所ごとに手段の欄が並ぶ様式では、その避難場所の手段の項目",
+  },
   { key: "evacuation.route", group: "evacuation", label: "避難経路" },
   { key: "evacuation.barriers", group: "evacuation", label: "段差・エレベーター" },
   { key: "evacuation.support", group: "evacuation", label: "支援の内容", hint: "声掛け・誘導・移動介助と書き足し。複数選択の □ の並びは 1 つの欄" },
@@ -134,6 +139,10 @@ export const LEDGER_ITEMS = [
   { key: "evacuation.destination1Minutes", group: "evacuation", label: "避難先1までの時間", hint: "分" },
   { key: "evacuation.destination2Minutes", group: "evacuation", label: "避難先2までの時間", hint: "分" },
   { key: "evacuation.nearest", group: "evacuation", label: "最寄りの避難場所", hint: "指定緊急避難場所など。名称だけ" },
+  // 避難場所ごとの手段・時間（T131。台帳は T117 から持つ。様式の【手段】【時間】が避難場所ごとに並ぶ）
+  { key: "evacuation.destination2Means", group: "evacuation", label: "避難先2への手段", hint: "事前に行く所へ移る手段" },
+  { key: "evacuation.nearestMeans", group: "evacuation", label: "最寄りの避難場所への手段" },
+  { key: "evacuation.nearestMinutes", group: "evacuation", label: "最寄りの避難場所までの時間", hint: "分" },
 
   // ---- 住まい ----
   { key: "basic.housing.structure", group: "housing", label: "構造・築年", hint: "木造・鉄骨・鉄筋など" },
@@ -163,7 +172,10 @@ export const LEDGER_ITEMS = [
 
   // ---- 計画・特記 ----
   { key: "plan.date", group: "plan", label: "作成日" },
-  { key: "plan.author", group: "plan", label: "計画作成者", hint: "事業所名と担当のケアマネ" },
+  { key: "plan.author", group: "plan", label: "計画作成者", hint: "事業所名と担当のケアマネを 1 つの欄に書く欄。事業所名と担当ケアマネの欄が別々なら plan.office と plan.careManager" },
+  // 事業所名と担当ケアマネを別々の欄に書く様式（T131。様式 9 の「事業所名」と「担当ケアマネ」の列）
+  { key: "plan.office", group: "plan", label: "事業所名", hint: "計画を作った事業所の名前だけ" },
+  { key: "plan.careManager", group: "plan", label: "担当ケアマネ", hint: "担当のケアマネの名前だけ" },
   { key: "notes.words", group: "plan", label: "本人の言葉", hint: "特記。言い換えない" },
   { key: "notes.other", group: "plan", label: "その他の特記", hint: "持出品・ペット・連絡手段・様式に載らない連絡先など" },
 ] as const satisfies readonly LedgerItemDef[];
@@ -316,6 +328,13 @@ export type MappingField = {
   confirmed?: boolean;
 };
 
+/**
+ * 一覧の形の様式（T131）: 見出しの行の下に 1 人 1 行の空の行が rows 行並ぶ表（利用者の一覧・名簿・安否確認の表）。
+ * 表の列の欄の box は 1 行目の枠で、k 行目（0 から）は step だけ下。first は 1 行目の帯（表の列の欄を見分ける）。
+ * 1 人ずつの紙は 1 行目に、何人かをまとめた紙（一括印刷）は行ごとに 1 人を置く（lib/forms/list-sheet.ts）
+ */
+export type ListShape = { page: number; rows: number; first: FieldBox; step: number };
+
 export type FormMapping = {
   /** 様式の題名 */
   title: string;
@@ -332,6 +351,8 @@ export type FormMapping = {
    * ケアマネが確かめの画面で選ぶ。無ければ今まで通り（確認保存した対応表の欄を全部使う）
    */
   holdRisky?: boolean;
+  /** 一覧の形の様式（T131）。無ければ 1 人 1 枚の様式 */
+  list?: ListShape;
 };
 
 /** 区切りの空きを持てる欄の形（T120。選ぶ欄は選択肢の □） */
@@ -410,6 +431,11 @@ export const MAPPING_LABELS = {
   adopt: "採用",
   /** 区切りの字（年 月 日・− −） */
   parts: "区切り",
+  // ---- T131 ----
+  /** 一覧の形の様式（1 人 1 行の表）。値は行の数 */
+  list: "一覧",
+  /** 様式 9 の専用の紙（lib/forms/frame-form9.ts）へ */
+  form9Paper: "専用紙",
 } as const;
 
 // ---------- 長さの上限（画面・保存・AI の返事で同じ） ----------
@@ -417,7 +443,7 @@ export const MAPPING_LABELS = {
 /** 読む写真・PDF 1 つの上限。写真は API の上限（5 MB）、PDF も同じにそろえる（様式は数頁なので足りる） */
 export const FORM_FILE_MAX_BYTES = 5 * 1024 * 1024;
 
-export const LIMITS = { title: 80, issuer: 40, section: 40, label: 80, position: 60, reason: 120, option: 30, options: 16, fields: 200, pages: 20 } as const;
+export const LIMITS = { title: 80, issuer: 40, section: 40, label: 80, position: 60, reason: 120, option: 30, options: 16, fields: 200, pages: 20, listRows: 100 } as const;
 
 const clip = (s: string, n: number) => s.trim().slice(0, n);
 
@@ -458,6 +484,8 @@ export type ReadResult = {
   typeface?: Typeface;
   /** 読めなかった頁（T120） */
   unread?: number[];
+  /** 一覧の表（T131）。行の数と、1 行目と最後の行の帯 */
+  list?: { page: number; rows: number; first: FieldBox | null; last: FieldBox | null };
 };
 
 /**
@@ -549,9 +577,51 @@ export function checkReadResult(r: ReadResult): CheckedRead {
       fields,
       ...(r.typeface !== undefined ? { typeface: typefaceOf(r.typeface) } : {}),
       ...unreadOf(r.unread, pages),
+      ...((): { list?: ListShape } => {
+        const list = listShapeOf(r.list, pages);
+        return list ? { list } : {};
+      })(),
     },
     rejected,
   };
+}
+
+/**
+ * 一覧の表の形（T131）。行は 2〜LIMITS.listRows、帯は頁の中、最後の行が 1 行目より下にあり、行の間が帯の高さの半分〜2 倍のときだけ。
+ * 合わなければ一覧の形にしない（1 人 1 枚の様式のまま。欄の box は 1 行目のまま使える）
+ */
+export function listShapeOf(raw: { page: number; rows: number; first: FieldBox | null; last: FieldBox | null } | undefined, pages: number): ListShape | null {
+  if (!raw) return null;
+  const rows = Math.trunc(raw.rows);
+  const first = clampBox(raw.first);
+  const last = clampBox(raw.last);
+  if (!Number.isFinite(rows) || rows < 2 || rows > LIMITS.listRows || !first || !last) return null;
+  const step = (last.y - first.y) / (rows - 1);
+  if (!(step > 0) || step < first.h * 0.5 || step > first.h * 2) return null;
+  const page = Math.min(Math.max(1, Math.trunc(raw.page) || 1), pages);
+  return { page, rows, first, step: round4(step) };
+}
+
+/** 一覧の表の列の欄（T131）: 表の頁の、box の真ん中が 1 行目の帯の中にある欄（外した欄を除く） */
+export function listFieldIds(fields: readonly MappingField[], list: ListShape): string[] {
+  return fields
+    .filter((f) => {
+      if (f.removed || f.page !== list.page || !f.box) return false;
+      const cy = f.box.y + f.box.h / 2;
+      return cy >= list.first.y - 0.002 && cy <= list.first.y + list.first.h + 0.002;
+    })
+    .map((f) => f.id);
+}
+
+/** 保存した・画面から来た一覧の形（listShapeOf と同じ確かめ。step から最後の行の帯を戻して照らす） */
+function savedListOf(v: unknown, pages: number): { list?: ListShape } {
+  if (!v || typeof v !== "object") return {};
+  const o = v as Record<string, unknown>;
+  const first = clampBox(o.first);
+  if (!first || typeof o.rows !== "number" || typeof o.step !== "number" || typeof o.page !== "number") return {};
+  const last = { ...first, y: first.y + o.step * (Math.trunc(o.rows) - 1) };
+  const list = listShapeOf({ page: o.page, rows: o.rows, first, last: last.y < 1 ? last : null }, pages);
+  return list ? { list } : {};
 }
 
 /** 読めなかった頁の並び（1〜頁の数、重ねない、昇順）。無ければ欄ごと付けない */
@@ -622,6 +692,7 @@ export function parseMappingInput(v: unknown): { ok: true; mapping: FormMapping 
       ...(o.typeface !== undefined ? { typeface: typefaceOf(o.typeface) } : {}),
       ...unreadOf(o.unread, pages),
       ...(o.holdRisky === true ? { holdRisky: true } : {}),
+      ...savedListOf(o.list, pages),
     },
   };
 }

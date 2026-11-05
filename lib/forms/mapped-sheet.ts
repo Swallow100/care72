@@ -12,7 +12,7 @@
 
 import { ageOn } from "../age.ts";
 import { parseLedger } from "../db/ledger.ts";
-import type { ConsentKind, ConsentStatus, Ledger, PendingStatus } from "../db/types.ts";
+import type { ConsentKind, ConsentStatus, Ledger, PendingStatus, TransportKind } from "../db/types.ts";
 import {
   ABILITY_LABELS,
   CARE_LEVEL_LABELS,
@@ -31,6 +31,7 @@ import {
   SMARTPHONE_LABELS,
   STRUCTURE_LABELS,
   SUPPORT_KIND_LABELS,
+  TRANSPORT_KIND_LABELS,
 } from "../labels.ts";
 import { formatJst, type PersonPageRows } from "../person.ts";
 import {
@@ -55,7 +56,7 @@ import {
   type PieceLine,
 } from "./matsuyama.ts";
 import { heldFields } from "./field-risk.ts";
-import { ledgerItem, type FormMapping, type LedgerItemKey, type MappingField } from "./mapping.ts";
+import { ledgerItem, listFieldIds, type FormMapping, type LedgerItemKey, type ListShape, type MappingField } from "./mapping.ts";
 import { warekiText } from "./wareki.ts";
 import { transportText } from "../map/transport.ts";
 
@@ -77,6 +78,8 @@ type Ctx = {
   contacts: Contact[];
   consent: Record<ConsentKind, ConsentStatus>;
   today: string;
+  /** 計画を作った事業所の名前（T131 の plan.office） */
+  officeName: string | null;
 };
 
 const under = (prefix: string) => (field: string) => field === prefix || field.startsWith(`${prefix}.`);
@@ -121,11 +124,36 @@ const HAZARD_WORDS: Record<keyof typeof HAZARD_LABELS, readonly string[]> = {
   other: ["その他"],
 };
 const DEVICE_KINDS = Object.values(DEVICE_LABELS).filter((l) => l !== "その他");
-const MEDICATION_KINDS = Object.values(MEDICATION_CATEGORY_LABELS).filter((l) => l !== "その他");
+
+/**
+ * 薬の種類の □ の名前（T131）。様式の □ は台帳の区分の名前と違う言い方をする（災害診療記録の「糖尿病治療薬」〔インスリン・経口薬〕・
+ * 「ワーファリン」・「その他」）。前は区分の名前（経口糖尿病薬など）だけを種類にしていたので、「糖尿病治療薬」「その他」の □ が
+ * 種類の □ と見なされず、薬が 1 つでもあれば印が付いた（評価の 3 回目の 4）。区分ごとに □ の言い方を持ち、その区分の薬があるときだけ印。
+ * ワーファリンは区分でなく薬の名前（専用の紙 lib/forms/medical-summary.ts と同じ）
+ */
+const MEDICATION_KIND_WORDS: Record<keyof typeof MEDICATION_CATEGORY_LABELS, readonly string[]> = {
+  antiplatelet: ["抗血小板薬"],
+  anticoagulant: ["抗凝固薬"],
+  insulin: ["インスリン", "糖尿病治療薬", "糖尿病薬"],
+  oral_diabetes: ["経口糖尿病薬", "経口薬", "糖尿病治療薬", "糖尿病薬"],
+  steroid: ["ステロイド"],
+  antiepileptic: ["抗てんかん薬"],
+  other: ["その他"],
+};
+const WARFARIN_WORDS = ["ワーファリン", "ワルファリン"] as const;
+const WARFARIN = /ワーファリン|ワルファリン|warfarin/i;
+const MEDICATION_KINDS = [...new Set([...Object.values(MEDICATION_KIND_WORDS).flat(), ...WARFARIN_WORDS])];
 
 function bool(v: boolean | undefined, reason?: PendingStatus): ItemValue {
   if (v === undefined) return { cell: unconfirmed(reason), flag: null };
   return { cell: withPending(value([t(v ? "あり" : "なし")]), reason), flag: v, words: [v ? "あり" : "なし", v ? "有" : "無"] };
+}
+
+/** 避難場所ごとの手段（T131）: 避難場所が無ければ空き枠、手段が無ければ未確認。選ぶ欄は手段の言葉と照らす */
+function meansItem(kind: TransportKind | undefined, place: string | undefined, reason?: PendingStatus): ItemValue {
+  if (!place?.trim()) return { cell: withPending(EMPTY, reason) };
+  if (!kind) return { cell: unconfirmed(reason) };
+  return { cell: withPending(value([t(TRANSPORT_KIND_LABELS[kind])]), reason), words: [TRANSPORT_KIND_LABELS[kind]] };
 }
 
 const fromSheet = (key: MatsuyamaKey) => (c: Ctx): ItemValue => ({ cell: c.sheet.cells[key] });
@@ -354,7 +382,18 @@ export const ITEM_VALUES: Record<LedgerItemKey, Resolver> = {
   },
   "medical.medications": (c) => {
     const meds = c.ledger.medical.medications;
-    const words = [...new Set(meds.flatMap((m) => [m.name, ...(m.category !== "other" ? [MEDICATION_CATEGORY_LABELS[m.category]] : [])])), "あり"];
+    // 種類の □ に合わせる言葉は区分の □ の言い方（T131）。その他の区分は名前を添えない「その他」の □ だけ
+    const words = [
+      ...new Set(
+        meds.flatMap((m) => [
+          m.name,
+          ...(m.category !== "other" ? [MEDICATION_CATEGORY_LABELS[m.category]] : []),
+          ...MEDICATION_KIND_WORDS[m.category],
+          ...(WARFARIN.test(m.name) ? WARFARIN_WORDS : []),
+        ]),
+      ),
+      "あり",
+    ];
     const reason = pendingOf(c.ledger, "medical.medications");
     const flag = meds.length > 0 ? true : reason ? null : false;
     return { cell: c.sheet.cells["medical.drugs"], flag, words: meds.length > 0 ? words : ["なし"], multi: true, kinds: MEDICATION_KINDS };
@@ -386,7 +425,14 @@ export const ITEM_VALUES: Record<LedgerItemKey, Resolver> = {
   },
   "evacuation.destination1": fromSheet("shelter.city.place"),
   "evacuation.destination2": fromSheet("shelter.pre.place"),
-  "evacuation.transport": (c) => ({ cell: text(transportText(c.ledger.evacuation), pendingOf(c.ledger, "evacuation.transport")) }),
+  "evacuation.transport": (c) => {
+    const e = c.ledger.evacuation;
+    // 選ぶ欄（【手段】の □）は選んだ手段の言葉と照らす（T131）。補記（「徒歩（杖をついて）」の括弧の中）のある人は照らさず、
+    // 前のまま選択肢を □ のまま並べて値を後ろに添える（印だけにすると補記が紙から落ちる）
+    const kind = e.transportKind ? TRANSPORT_KIND_LABELS[e.transportKind] : undefined;
+    const shown = transportText(e);
+    return { cell: text(shown, pendingOf(c.ledger, "evacuation.transport")), ...(kind && shown === kind ? { words: [kind] } : {}) };
+  },
   "evacuation.route": fromSheet("route.text"),
   "evacuation.barriers": (c) => ({ cell: text(c.ledger.evacuation.barriers, pendingOf(c.ledger, "evacuation.barriers")) }),
   "evacuation.support": (c) => {
@@ -407,6 +453,10 @@ export const ITEM_VALUES: Record<LedgerItemKey, Resolver> = {
   "evacuation.destination1Minutes": fromSheet("shelter.city.minutes"),
   "evacuation.destination2Minutes": fromSheet("shelter.pre.minutes"),
   "evacuation.nearest": fromSheet("shelter.near.place"),
+  // 避難場所ごとの手段・時間（T131）。避難場所の無い人の欄は空き枠（松山市の様式と同じ）
+  "evacuation.destination2Means": (c) => meansItem(c.ledger.evacuation.destination2Means, c.ledger.evacuation.destination2, pendingOf(c.ledger, "evacuation.destination2Means")),
+  "evacuation.nearestMeans": (c) => meansItem(c.ledger.evacuation.nearestMeans, c.ledger.evacuation.nearest, pendingOf(c.ledger, "evacuation.nearestMeans")),
+  "evacuation.nearestMinutes": fromSheet("shelter.near.minutes"),
   "evacuation.myTimeline": (c) => {
     const v = c.ledger.evacuation.myTimeline;
     const reason = pendingOf(c.ledger, "evacuation.myTimeline");
@@ -476,6 +526,9 @@ export const ITEM_VALUES: Record<LedgerItemKey, Resolver> = {
   // ---- 計画・特記 ----
   "plan.date": fromSheet("head.date"),
   "plan.author": fromSheet("plan.author"),
+  // 事業所名と担当ケアマネを別々の欄に書く様式（T131）
+  "plan.office": (c) => ({ cell: text(c.officeName) }),
+  "plan.careManager": (c) => ({ cell: text(c.rows.careManagerName) }),
   "notes.words": fromSheet("notes.words"),
   "notes.other": fromSheet("notes.other"),
 };
@@ -580,6 +633,8 @@ export type MappedSheet = {
   unmapped: string[];
   /** 同意が無くて省略した範囲 */
   withheld: ConsentKind[];
+  /** 一覧の形の様式（T131）。表の列の欄の id。一括印刷で行ごとに 1 人を置く（lib/forms/list-sheet.ts） */
+  list?: ListShape & { fieldIds: string[] };
 };
 
 /** 欄 1 つの値 */
@@ -607,6 +662,7 @@ export function buildMappedSheet(rows: PersonPageRows, mapping: FormMapping, opt
     contacts: [...rows.contacts].sort((a, b) => a.sort - b.sort || (a.id < b.id ? -1 : 1)),
     consent: { registry: get("registry"), plan_share: get("plan_share"), supporters: get("supporters"), medical: get("medical"), ai_overseas: get("ai_overseas") },
     today: opts.today,
+    officeName: opts.officeName,
   };
 
   const pages: MappedPage[] = [];
@@ -644,5 +700,6 @@ export function buildMappedSheet(rows: PersonPageRows, mapping: FormMapping, opt
     unconfirmed: unconfirmedLabels,
     unmapped,
     withheld: [...withheld],
+    ...(mapping.list ? { list: { ...mapping.list, fieldIds: listFieldIds(mapping.fields, mapping.list) } } : {}),
   };
 }
