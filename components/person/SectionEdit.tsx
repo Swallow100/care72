@@ -672,8 +672,8 @@ export function SectionForm({ section, data, draft, set, active = null, onActive
         return node === undefined ? [] : [<Fragment key={k}>{node}</Fragment>];
       });
       const contacts = contactsOf.get(g.id) ?? [];
-      // 連絡先の行を先に、組の欄（みまもり員・支援組織など）をそのあとに
-      return { g, body: [...contacts, ...nodes] };
+      // 組の欄（地域のみまもり員・支援組織など）を先に、連絡先の行と「連絡先追加」をそのあとに（追加はどの組でも箱の下の端）
+      return { g, body: [...nodes, ...contacts] };
     })
     .filter((x) => x.body.length > 0);
   const anchor = (id: string) => `edit-${data.personId}-${id}`;
