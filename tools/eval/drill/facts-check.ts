@@ -238,6 +238,8 @@ export function factHits(outcome: RunOutcome, people: Readonly<Record<string, Fa
       if (!isInjectKind(e.inject) || EVENT_CATALOG[e.inject].scope === "person") continue;
       const minute = Math.round((e.at ?? t2.hour) * 60);
       const prev = areaSeen.get(e.inject) ?? [];
+      // 1 つの出来事の 2 行目（同じ種類・同じ時刻。家族と連絡がつかないと、その見込み）は数えない
+      if (prev.some((x) => x.minute === minute)) continue;
       if (prev.length > 0) {
         checked += 1;
         const last = prev[prev.length - 1];
