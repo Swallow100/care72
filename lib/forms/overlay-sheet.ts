@@ -596,7 +596,10 @@ export function placeText(fieldId: string, lines: readonly string[], area: Field
     const a = r.w * r.h;
     // 同じ字の大きさなら、左右を印刷の字に挟まれた空き（括弧の中・区切りの字の間）を先に、次に広い所
     const enc = enclosed(r, obstacles, image);
-    if (!best || item.fontPt > best.fontPt + 1e-9 || (Math.abs(item.fontPt - best.fontPt) < 1e-9 && (enc > bestEnc || (enc === bestEnc && a > bestArea)))) {
+    // 字・挟まれ方が同じで広さも 1 割の差までなら、読む順（上から、左から）に先の所（表の空いた行の 1 つ目）
+    const sameFont = best !== null && Math.abs(item.fontPt - best.fontPt) < 1e-9;
+    const nearArea = sameFont && enc === bestEnc && Math.abs(a - bestArea) <= 0.1 * Math.max(a, bestArea);
+    if (!best || item.fontPt > best.fontPt + 1e-9 || (sameFont && (enc > bestEnc || (enc === bestEnc && (nearArea ? readingOrder(r, best.box) < 0 : a > bestArea))))) {
       best = item;
       bestArea = a;
       bestEnc = enc;
@@ -605,10 +608,13 @@ export function placeText(fieldId: string, lines: readonly string[], area: Field
   return best;
 }
 
-/** 空きの左右のすぐ外（1.5mm まで）に印刷の字があるか（両側 2・片側 1・無し 0） */
+/**
+ * 空きの左右のすぐ外（1.5mm まで）に細い印刷の字（括弧・数字のように幅が高さの 6 割まで）があるか（両側 2・片側 1・無し 0）。
+ * 「（　）」の中を、表の行で刷ってある言葉（「個別避難計画」）の続きの空きより先にする
+ */
 function enclosed(r: FieldBox, obstacles: readonly InkBlob[], image: { w: number; h: number }): number {
   const reach = 1.5 / image.w;
-  const row = (o: InkBlob) => o.y < r.y + r.h && r.y < o.y + o.h && !o.line;
+  const row = (o: InkBlob) => o.y < r.y + r.h && r.y < o.y + o.h && !o.line && !o.field && (o.w * image.w) / (o.h * image.h) <= 0.6;
   const left = obstacles.some((o) => row(o) && o.x + o.w <= r.x + 1e-6 && o.x + o.w >= r.x - reach);
   const right = obstacles.some((o) => row(o) && o.x >= r.x + r.w - 1e-6 && o.x <= r.x + r.w + reach);
   return Number(left) + Number(right);
