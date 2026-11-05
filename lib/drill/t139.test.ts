@@ -142,8 +142,21 @@ describe("帳面: いる所（移送の到着・向かうと言った後）", ()
     expect(factLines(stuck).join("\n")).toContain("計画に移る手段が無い");
   });
 
-  it("「行かん」「向かえない」は向かうと言った事にしない", () => {
-    for (const saying of ["避難所には行かん", "避難所へ向かえないです。"]) {
+  it("道が通れない・家の辺りが浸水の間は、計画に手段があっても移らない（向かえていない理由を言う）", () => {
+    const said = state({ whereNow: "home", at: 2, saying: "これから避難所へ向かいます。" });
+    const road: WorldState = { ...EMPTY_WORLD, roads: [{ id: "rd-1", label: "川沿いの市道", open: false, person: null }] };
+    const f = factsOf({ person: "p-01", world: road, state: said, actions: [], now: 400, plan, inOutage: false });
+    expect(f.place?.where).toBe("home");
+    expect(factLines(f).join("\n")).toContain("道が通れない");
+    const flooded: WorldState = { ...EMPTY_WORLD, marks: { "p-01": { flooded: 1 } } };
+    expect(factsOf({ person: "p-01", world: flooded, state: said, actions: [], now: 400, plan, inOutage: false }).place?.where).toBe("home");
+    // ほかの人の家の近くの道の通行止は効かない
+    const other: WorldState = { ...EMPTY_WORLD, roads: [{ id: "rd-2", label: "山すその道", open: false, person: "p-07" }] };
+    expect(factsOf({ person: "p-01", world: other, state: said, actions: [], now: 400, plan, inOutage: false }).place?.where).toBe("shelter");
+  });
+
+  it("「行かん」「向かえない」「行きたいが行けない」は向かうと言った事にしない", () => {
+    for (const saying of ["避難所には行かん", "避難所へ向かえないです。", "避難所に行きたいが、道が通れず行けない。"]) {
       const f = factsOf({ person: "p-01", world: EMPTY_WORLD, state: state({ saying, at: 1 }), actions: [], now: 400, plan, inOutage: false });
       expect(f.going).toBeNull();
     }

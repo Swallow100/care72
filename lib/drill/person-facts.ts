@@ -308,6 +308,8 @@ export type Facts = {
 /** 避難先へ向かうと言った言い方（打ち消し・「行かん」は見ない。T139） */
 const GO_INTENT =
   /(?:避難所|避難先|病院|集会所|公民館|学校|高台)(?:へ|に)(?:向か(?!え)|行き(?!ませ)|行く|行こう|移り(?!ませ)|移る|移ろう|移動し(?!な|ませ)|連れて行(?!け))|避難(?:します|する|しよう|しています|を始め)/;
+/** 向かえない・迷っている言い方（「行きたいが道が通れず行けない」）。向かうと言った事にしない */
+const GO_NOT = /行け(?:ない|ません|ず|なく)|向かえ(?:ない|ません|ず)|移れ(?:ない|ません|ず)|たいけど|たいが|たいのですが|か(?:迷|悩)/;
 /** 向かうと言ってから、計画の手段で着いたと見るまでの分 */
 export const GO_MINUTES = 60;
 /** 家族・支援者が本人の所にいる・見に行ったと伝えた言い方（T139） */
@@ -373,7 +375,10 @@ export function factsOf(input: FactsInput): Facts {
   const carried = (world.arrivals ?? []).filter((a) => a.person === person && a.role === "transport" && a.arrived && a.arrive > prevAt && a.arrive <= now).at(-1);
   // 避難先へ向かうと言った（家族・本人。打ち消しは見ない）。計画に手段があれば GO_MINUTES で着いたと見る（T139）
   const said = state?.saying?.normalize("NFKC") ?? "";
-  const going = state && GO_INTENT.test(said) && !RETURNED.test(said) ? { at: prevAt, can: !!plan?.move && (!hurt || plan.helper) } : null;
+  // 道が通れない（この人の家の近くの道か全体の道の通行止）・家の辺りが浸水の間は、計画に手段があっても移れない（本人役の今の様子の道と同じ見方）
+  const blocked = world.roads.some((r) => (!r.person || r.person === person) && !r.open) || world.marks?.[person]?.flooded !== undefined;
+  const going =
+    state && GO_INTENT.test(said) && !RETURNED.test(said) && !GO_NOT.test(said) ? { at: prevAt, can: !!plan?.move && (!hurt || plan.helper) && !blocked } : null;
   const place: Facts["place"] = carried
     ? { where: dest, at: carried.arrive, by: "transport" }
     : going?.can && now >= going.at + GO_MINUTES
@@ -441,7 +446,7 @@ export function factLines(f: Facts): string[] {
     out.push(
       f.going.can
         ? `移動: ${minuteText(f.going.at)}に避難先へ向かうと言った（計画の手段で ${minuteText(f.going.at + GO_MINUTES)}ごろ着く）`
-        : `移動: ${minuteText(f.going.at)}に避難先へ向かうと言ったが、計画に移る手段が無い（まだ家。向かえていない理由を言う）`,
+        : `移動: ${minuteText(f.going.at)}に避難先へ向かうと言ったが、計画に移る手段が無いか道が通れない（まだ家。向かえていない理由を言う）`,
     );
   }
   if (f.withPerson) out.push(`そばの人: ${f.withPerson.by === "family" ? "家族" : "支援者"}が本人の所にいる・見たと伝えた（${minuteText(f.withPerson.at)}）。様子が分からないとは言わない`);
