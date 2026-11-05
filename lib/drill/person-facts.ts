@@ -13,6 +13,7 @@
 
 import type { ContactKind, ContactReach, Ledger, Sex, WhereNow } from "../db/types.ts";
 import { isSpouse, relationOf } from "./speaker.ts";
+import { TALK_ASK_WORDS, type TalkAsk } from "./dialogue.ts";
 import type { ActionRecord } from "./action-types.ts";
 import type { DrillTurn, PersonState } from "./persona-types.ts";
 import type { AskKind, WorldState } from "./scenarios.ts";
@@ -161,6 +162,51 @@ export function housemates(
 
 // ---------- 帳面（今ある物から引く） ----------
 
+/** ケアマネの行 1 つ（外へ掛けた電話・掛かってきた電話の往復）。text は保存した言葉（自由の言葉は名前に戻してある。Claude に渡すときは伏せる） */
+export type ToldLine = { minute: number; text: string; ask?: string };
+
+/** 帳面に書くケアマネに言われた事 1 つ */
+export type Told = { at: number; words: string; via: "out" | "in" };
+
+/** 帳面に書くケアマネに言われた事の数（新しい物から） */
+export const TOLD_MAX = 4;
+
+/**
+ * 決まった問いのうち、言われた事として覚える物（指示と、後で連絡の約束。安否・けが・所在などの問いは聞いただけなので覚えない）。
+ * 掛かってきた電話の待機（T127 の stay）も、名前があれば同じに読む
+ */
+const TOLD_ASKS: ReadonlySet<string> = new Set(["advise_119", "will_call_back", "stay", "shelter", "can_evacuate", "contact_family"]);
+
+/**
+ * 掛かってきた電話の往復のケアマネの行を世界に積む（T127 の着信の往復。往復を足す口と、作り直しの applyCallTalk の両方が呼ぶ）。
+ * ケアマネの行だけ、人ごとに新しい 8 つまで
+ */
+export function pushTold(world: WorldState, person: string, lines: ReadonlyArray<{ who: string; text: string; minute: number; ask?: string }>): WorldState {
+  const add = lines.filter((l) => l.who === "cm" && l.text.trim()).map((l): ToldLine => ({ minute: l.minute, text: l.text, ...(l.ask ? { ask: l.ask } : {}) }));
+  if (add.length === 0) return world;
+  const told = { ...(world.told ?? {}) };
+  told[person] = [...(told[person] ?? []), ...add].slice(-8);
+  return { ...world, told };
+}
+
+/** ケアマネに言われた事を引く（外へ掛けた電話の往復と、世界に積んだ掛かってきた電話の往復）。自由の言葉は mask で伏せた物だけ */
+function toldOf(input: FactsInput): Told[] {
+  const lines: Array<ToldLine & { via: Told["via"] }> = [];
+  for (const a of input.actions) {
+    if (a.person !== input.person) continue;
+    for (const l of a.result?.talk ?? []) if (l.who === "cm") lines.push({ minute: l.minute, text: l.text, ...(l.ask ? { ask: l.ask } : {}), via: "out" });
+  }
+  for (const l of input.world.told?.[input.person] ?? []) lines.push({ ...l, via: "in" });
+  const out: Told[] = [];
+  for (const l of lines.filter((x) => x.minute <= input.now).sort((a, b) => a.minute - b.minute)) {
+    let words: string | null = null;
+    if (l.ask) words = TOLD_ASKS.has(l.ask) ? (TALK_ASK_WORDS[l.ask as TalkAsk] ?? null) : null;
+    else words = input.mask ? input.mask(l.text) : null;
+    if (words) out.push({ at: l.minute, words: Array.from(words).slice(0, 60).join(""), via: l.via });
+  }
+  return out.slice(-TOLD_MAX);
+}
+
 /** 帳面を引く元 */
 export type FactsInput = {
   person: string;
@@ -178,6 +224,11 @@ export type FactsInput = {
   together?: ReadonlyArray<string>;
   /** 本人の周りの家族の続柄（いない家族を出さない。null は見ない） */
   kin?: ReadonlyArray<string> | null;
+  /**
+   * ケアマネの自由の言葉を Claude に渡せる形に伏せる口（呼ぶ側が事業所の全員の鍵で。伏せきれなければ null で渡さない）。
+   * 無ければ自由の言葉は帳面の文に書かない（決まった問い・指示の言葉だけ）
+   */
+  mask?: (text: string) => string | null;
 };
 
 /** 来た人・届いた物・会えた手 1 つ（発災からの分） */
@@ -214,6 +265,11 @@ export type Facts = {
   devices: DeviceNow[];
   together: ReadonlyArray<string>;
   kin: ReadonlyArray<string> | null;
+  /**
+   * ケアマネに言われた事（外へ掛けた電話の往復〔T93、手の返事の talk〕と、掛かってきた電話の往復〔T127、world.told〕のケアマネの行）。
+   * 新しい物から TOLD_MAX まで、古い順。本人役は覚えて従い、従えない時は理由を言う
+   */
+  told: Told[];
   /** 印（家の外へ出た・車中泊・帰ろうとする）。いる所の変わり目に使う */
   away: boolean;
 };
@@ -301,6 +357,7 @@ export function factsOf(input: FactsInput): Facts {
     together: input.together ?? [],
     kin: input.kin ?? null,
     away: m.wandering !== undefined || m.carSleep !== undefined || m.goingHome !== undefined,
+    told: toldOf(input),
   };
 }
 
@@ -321,6 +378,9 @@ export function factLines(f: Facts): string[] {
   }
   out.push(`来た人・届いた物: ${f.got.length > 0 ? f.got.map((h) => `${h.what}（${minuteText(h.at)}）`).join("、") : "まだ無い"}`);
   if (f.voiceLost) out.push(`本人の声: 家族・支援者が「声が無い・返事が無い」と伝えた（${minuteText(f.voiceLost.at)}）。人が来るまで本人は話さない`);
+  if (f.told.length > 0) {
+    out.push(`ケアマネに言われた事（覚えて従う。従えない時は理由を言う）: ${f.told.map((t) => `${minuteText(t.at)}「${t.words}」`).join("、")}`);
+  }
   if (f.together.length > 0) out.push(`同居の人（もう家にいる。あとから「来た」と言わない）: ${f.together.join("・")}`);
   if (f.power.outage === "on") out.push(`電気: 停電中（${minuteText(f.power.since ?? 0)}から）${f.power.supplied !== null ? `。電源が届いた（${minuteText(f.power.supplied)}）` : ""}`);
   else if (f.power.outage === "restored") out.push(`電気: 戻った（${minuteText(f.power.restoredAt ?? 0)}）。電池・電源を頼まない`);

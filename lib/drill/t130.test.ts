@@ -18,6 +18,7 @@ import {
   kindSpent,
   noteIssued,
   planOf,
+  pushTold,
   sameWording,
   scorePlans,
   screenAsks,
@@ -26,7 +27,7 @@ import {
   supplyAllowed,
   wordingUsed,
 } from "./person-facts.ts";
-import { buildPersona, personaCallReply, personaFacts, personaTurns, tickText, type PersonaAnswer } from "./persona.ts";
+import { buildPersona, maskWith, PATH_RULE, PERSONA_SYSTEM, personaCallReply, personaFacts, personaTurns, tickText, type PersonaAnswer } from "./persona.ts";
 import { findingRoom, reviewBody } from "./review.ts";
 import { EMPTY_WORLD, type WorldState } from "./scenarios.ts";
 import type { DrillScore } from "./score.ts";
@@ -392,3 +393,65 @@ function memoryUsage(): UsageStore {
 function ctxOf(client: ClaudeClient): AskJsonContext {
   return { env: { ANTHROPIC_API_KEY: "dummy" }, usage: memoryUsage(), office: { id: "office-demo", kind: "demo" }, claude: client, now: () => new Date(START) };
 }
+
+// ---------- ケアマネに言われた事（往復の続き） ----------
+
+describe("ケアマネに言われた事（外へ掛けた電話・掛かってきた電話の往復）", () => {
+  const sources = new Map(SEED_PEOPLE.map((p) => [p.person.id, seedInput(p.person.id)]));
+  const other = SEED_PEOPLE.find((p) => p.person.id === "p-03")!.person.name;
+  const talkAction = (lines: Array<{ who: "cm" | "them"; text: string; minute: number; ask?: string }>): ActionRecord =>
+    ({
+      id: "a1",
+      kind: "call_person",
+      person: "p-01",
+      target: "c-01-0",
+      callee: "self",
+      calleeLabel: "本人",
+      at: 3,
+      atMinute: 180,
+      endMinute: 185,
+      minutes: 5,
+      step: 2,
+      before: {},
+      result: { status: "connected", because: null, text: "つながった", ai: false, ok: true, atMinute: 185, talk: lines.map((l) => ({ ai: false, ...l })) },
+    }) as unknown as ActionRecord;
+
+  it("外へ掛けた電話の往復の指示と自由の言葉を帳面に。自由の言葉はほかの人の名前を伏せてから", () => {
+    const src = seedInput("p-01");
+    const persona = { ...buildPersona(src, { on: "2026-11-05" }), mask: maskWith(src, sources) };
+    const act = talkAction([
+      { who: "cm", text: "具合が悪いなら 119 に電話してください", minute: 186, ask: "advise_119" },
+      { who: "them", text: "わかりました", minute: 186 },
+      { who: "cm", text: `${other}さんの家の前で娘さんを待ってください`, minute: 188 },
+      { who: "cm", text: "今どこにいますか", minute: 190, ask: "where" },
+    ]);
+    const t = tickText(personaInput("p-01", { actions: [act] }), persona);
+    expect(t).toContain("ケアマネに言われた事（覚えて従う。従えない時は理由を言う）");
+    expect(t).toContain("「具合が悪いなら 119 に電話してください」");
+    expect(t).toContain("家の前で娘さんを待ってください");
+    expect(t).not.toContain(other);
+    // 聞いただけの問い（所在）は覚えない
+    expect(t).not.toContain("今どこにいますか");
+  });
+
+  it("伏せる口が無ければ自由の言葉は渡さない（決まった指示だけ）", () => {
+    const persona = buildPersona(seedInput("p-01"), { on: "2026-11-05" });
+    const act = talkAction([{ who: "cm", text: "家で待っていてください", minute: 186 }]);
+    expect(tickText(personaInput("p-01", { actions: [act] }), persona)).not.toContain("ケアマネに言われた事");
+  });
+
+  it("掛かってきた電話の往復のケアマネの行は世界に積み（pushTold）、次の区切りの本人役に渡す", () => {
+    const world = pushTold(EMPTY_WORLD, "p-01", [
+      { who: "them", text: "停電です", minute: 200 },
+      { who: "cm", text: "また後で電話します", minute: 202, ask: "will_call_back" },
+    ]);
+    expect(world.told?.["p-01"]).toEqual([{ minute: 202, text: "また後で電話します", ask: "will_call_back" }]);
+    const t = tickText(personaInput("p-01", { world }), buildPersona(seedInput("p-01"), { on: "2026-11-05" }));
+    expect(t).toContain("3 時間 22 分「また後で電話します」");
+  });
+
+  it("本人役の決まりに「言われた事は覚えて従い、従えない時は理由を言う」", () => {
+    expect(PERSONA_SYSTEM).toMatch(/12\. 「ケアマネに言われた事」は覚えて従う/);
+    expect(PATH_RULE).toContain("従えない時は理由を言う");
+  });
+});

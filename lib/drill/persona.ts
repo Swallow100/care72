@@ -141,6 +141,11 @@ export type Persona = {
   together?: ReadonlyArray<string>;
   /** 本人の周りの家族の続柄（T130。いない家族を出さない）。世帯が「家族と」「その他」なら null（見ない） */
   kin?: ReadonlyArray<string> | null;
+  /**
+   * ケアマネの自由の言葉を Claude に渡せる形に伏せる口（T130。呼び口が事業所の全員の鍵で作る。伏せきれなければ null）。
+   * 無ければ帳面の「ケアマネに言われた事」は決まった指示の言葉だけ
+   */
+  mask?: (text: string) => string | null;
 };
 
 /** 連絡しうる人の区分 → 安否の出どころ。訪問看護・施設などの事業所は連絡しない（監督 T19・対応 T20 の相手） */
@@ -290,7 +295,7 @@ export function buildPersona(source: PseudonymInput, opts: { on?: string; places
 
 /** 本人役の帳面（T130）。actions はこの人への手（メモを落とした物）。停電の地区は本人の町名とハザードで見る */
 export function personaFacts(
-  persona: Pick<Persona, "plan" | "together" | "kin" | "hazards" | "town">,
+  persona: Pick<Persona, "plan" | "together" | "kin" | "hazards" | "town" | "mask">,
   x: { person: string; world: WorldState; state: PersonState | null; actions?: ReadonlyArray<ActionRecord>; now: number },
 ): Facts {
   const o = x.world.outage;
@@ -304,7 +309,24 @@ export function personaFacts(
     inOutage: o !== null && inOutageArea(o.area, persona.hazards, persona.town ?? null),
     together: persona.together ?? [],
     kin: persona.kin ?? null,
+    ...(persona.mask ? { mask: persona.mask } : {}),
   });
+}
+
+/**
+ * ケアマネの自由の言葉を伏せる口（T130）。本人を先頭に事業所の全員の鍵で pseudonymizeText を通す（往復の口 createTalkHook と同じ鍵の作り方）。
+ * 伏せきれなければ null（その言葉は渡さない）
+ */
+export function maskWith(source: PseudonymInput, sources: ReadonlyMap<string, PseudonymInput>, opts: { on?: string; places?: ReadonlyArray<Place> } = {}): (text: string) => string | null {
+  let key: PseudonymKey | null = null;
+  return (text) => {
+    try {
+      key ??= pseudonymize([source, ...[...sources.values()].filter((s) => s !== source)], opts).key;
+      return pseudonymizeText(text, key).text;
+    } catch {
+      return null;
+    }
+  };
 }
 
 // ---------- 刻みの文 ----------
@@ -591,6 +613,7 @@ export const PERSONA_SYSTEM = [
   "9. 119 を勧められたら、かけるか・かけないかを言葉で言う（かけたかどうかは自分で決める）。救急が来た先の事は言わない。「死亡」と言わない。",
   "10. 「今の様子」「持ちこたえる時間の今」と食い違う事を言わない（来た人・届いた物・復旧した物を、まだと言わない。切れた分を、まだ残ると言わない。いつからの状態かも合わせる）。",
   "11. 「人ごとの事実」と食い違う事を言わない（いる所、前に言った動けない・けが、同居の人、声が無いと伝えた事、電気と予備）。「計画」にある事は連絡が取れなくても計画どおりにする（予備に替える・決めた避難先へ移る）。計画に無い事で、手も人も無いのに良くならない。",
+  "12. 「ケアマネに言われた事」は覚えて従う（待つと言われたら待つ・119 を勧められたらかけるか決める）。従えない時は理由を言う（道が通れない・動けない など）。",
 ].join("\n");
 
 /**
@@ -935,7 +958,9 @@ export function createPersonaHook(deps: PersonaDeps): PersonaHook {
       const sources = await (loaded ??= deps.load());
       const source = sources.get(input.person);
       if (!source) return fixedTurns(input);
-      const persona = buildPersona(source, { ...(deps.on ? { on: deps.on } : {}), places: personaPlaces(deps.ai, sources) });
+      const opts = { ...(deps.on ? { on: deps.on } : {}), places: personaPlaces(deps.ai, sources) };
+      // T130: ケアマネに言われた事の自由の言葉は事業所の全員の鍵で伏せてから帳面に
+      const persona: Persona = { ...buildPersona(source, opts), mask: maskWith(source, sources, opts) };
       if (input.fixed.length === 0 && !persona.reporters.some((r) => r.canPress)) return [];
       const tick = pseudonymizeText(tickText(input, persona), persona.key);
       const r = await askJson(buildPersonaRequest(persona.profile, tick, input.virtual === true), deps.ai);
@@ -993,7 +1018,9 @@ export function createPersonaBatchHook(deps: PersonaDeps): PersonaBatchHook {
           return;
         }
         try {
-          const persona = buildPersona(source, { ...(deps.on ? { on: deps.on } : {}), places });
+          const opts = { ...(deps.on ? { on: deps.on } : {}), places };
+          // T130: ケアマネに言われた事の自由の言葉は事業所の全員の鍵で伏せてから帳面に
+          const persona: Persona = { ...buildPersona(source, opts), mask: maskWith(source, sources, opts) };
           if (input.fixed.length === 0 && !persona.reporters.some((r) => r.canPress)) return;
           const text = pseudonymizeText(`本人役:\n${persona.profile.text}\n\nこの刻み:\n${tickText(input, persona)}`, persona.key);
           asked.push({ i, id: String(asked.length + 1), persona, text });
@@ -1065,7 +1092,7 @@ function tellWords(t: NonNullable<PersonaCall["tell"]>): string {
  * 切れたあとも同じ調子で話す・前に動けないと言った本人が手も人も無いまま動けると言う、が残った
  */
 export const PATH_RULE =
-  "「今の様子」「持ちこたえる時間の今」「前の連絡」と食い違う事を言わない（来た人・届いた物・復旧した物を、まだと言わない。切れた分を、まだ残ると言わない。前の連絡で動けない・けがと言った本人が、人が来た・手が届いたのでなければ、急に動ける・無事と言わない）。「人ごとの事実」（いる所・同居の人・声・電気と予備）と「計画」とも食い違わない。";
+  "「今の様子」「持ちこたえる時間の今」「前の連絡」と食い違う事を言わない（来た人・届いた物・復旧した物を、まだと言わない。切れた分を、まだ残ると言わない。前の連絡で動けない・けがと言った本人が、人が来た・手が届いたのでなければ、急に動ける・無事と言わない）。「人ごとの事実」（いる所・同居の人・声・電気と予備）と「計画」とも食い違わない。「ケアマネに言われた事」は覚えて従い、従えない時は理由を言う。";
 
 export const CALL_SYSTEM = [
   "災害の訓練で、ケアマネからの電話に出た人を演じる。人は全部架空。",
