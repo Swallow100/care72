@@ -603,8 +603,9 @@ describe("作り直しの守り（tools/deploy/guard.ts）", () => {
   it("0027 の前の D1（列が無い）でも数えられ、前と同じ数え方", async () => {
     const old = new DatabaseSync(":memory:");
     const dir = new URL("../../migrations/", import.meta.url);
-    // 種は書類の見直しの表（0032、T136）と紙の手入れの表（0033、T135）も空にするので、その表を作る 0032・0033 だけは当てる（新しい表を作るだけで数え方の列に触れない）
-    for (const name of readdirSync(dir).filter((n) => n.endsWith(".sql") && (n < "0027" || n.startsWith("0032_") || n.startsWith("0033_"))).sort()) old.exec(readFileSync(new URL(name, dir), "utf8"));
+    // 種は書類の見直しの表（0032、T136）と紙の手入れの表（0033、T135）も空にするので、その表を作る 0032・0033 だけは当てる（新しい表を作るだけで数え方の列に触れない）。
+    // 種は連絡先のフリガナ・住所・携帯（0029、T117。T142 で種が書く）も書くので 0029 も当てる（contacts に列を足すだけ）
+    for (const name of readdirSync(dir).filter((n) => n.endsWith(".sql") && (n < "0027" || n.startsWith("0029_") || n.startsWith("0032_") || n.startsWith("0033_"))).sort()) old.exec(readFileSync(new URL(name, dir), "utf8"));
     fixtures(old);
     const seen: string[] = [];
     const d = await runGuard((sql) => {

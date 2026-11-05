@@ -2,6 +2,11 @@ import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { ageOn } from "../lib/age.ts";
 import { migratedSqlite } from "../lib/db/test-d1.ts";
+import { seedRows } from "../lib/forms/print-harness.ts";
+import { buildMatsuyamaSheet } from "../lib/forms/matsuyama.ts";
+import { matsuyamaUnconfirmed } from "../lib/forms/unconfirmed.ts";
+import { questionQueue } from "../lib/intake/ask.ts";
+import { INTAKE_FIELDS, isFilled, ledgerValue } from "../lib/intake/fields.ts";
 import { SEED_ACCOUNTS, SEED_OFFICES, SEED_PEOPLE, seedConsents } from "./people.ts";
 import { CLEAR_ORDER, seedStatements } from "./sql.ts";
 
@@ -28,13 +33,17 @@ describe("種のデータ（架空の 10 人）", () => {
     expect(ages).toEqual([84, 86, 79, 88, 89, 91, 78, 76, 82, 80]);
   });
 
-  it("電話は全部 090-0000-00NN で、重ならない", () => {
-    const phones = SEED_PEOPLE.flatMap((p) => p.contacts.map((c) => c.phone)).filter(
+  it("電話は全部 090-0000-00NN で、連絡先の電話と携帯は重ならない（地域の組織の電話も同じ形）", () => {
+    const phones = SEED_PEOPLE.flatMap((p) => p.contacts.flatMap((c) => [c.phone, c.mobile ?? null])).filter(
       (v): v is string => v !== null,
     );
     expect(phones.length).toBeGreaterThan(0);
     for (const ph of phones) expect(ph).toMatch(/^090-0000-00\d\d$/);
     expect(new Set(phones).size).toBe(phones.length);
+    // 地域の組織（自主防災会）は同じ地区の人で同じ電話。連絡先の番号とは重ならない
+    const orgPhones = SEED_PEOPLE.map((p) => p.ledger.local?.orgPhone);
+    for (const ph of orgPhones) expect(ph).toMatch(/^090-0000-00\d\d$/);
+    for (const ph of orgPhones) expect(phones).not.toContain(ph);
   });
 
   it("住所は町名までで、番地の数字を持たない", () => {
@@ -99,6 +108,117 @@ describe("種のデータ（架空の 10 人）", () => {
     for (const s of seedStatements()) db.exec(s);
     expect(count("people")).toBe(10);
     db.close();
+  });
+});
+
+describe("台帳の書き込み（T142）", () => {
+  const TODAY = "2026-11-05";
+  const ids = SEED_PEOPLE.map((p) => p.person.id);
+
+  // 空けた所の訳（docs/progress/t142.md）:
+  // - 質問で埋める流れの見本: 1 山田の pending 3 つ（避難先 2・夜間支援・ワーファリンの残り）と 7 加藤の夜間支援、山田の既往・予防接種・手帳
+  // - 計画は未作成（骨子）: 4 佐藤・5 伊藤・9 渡辺の避難先 1・2 と経路（訓練の採点 lib/drill/score.ts の様式 9 の空欄がこの 3 人を数える）
+  // - 紙の頁に余白が無い: 段差・ペット・避難先 2・既往・予防接種・寝たきりの印の一部（埋めると計画書・本人の 1 枚が 3 頁目にあふれる）
+  // - 決まり: 世帯の書き足しは施設・その他の世帯の欄。手帳・難病は無い人は空（「なし」と書くと紙の □ に印が付く）。手段の書き足しは選ぶ欄と同じ言葉なら書かない
+  it("台帳の項目（入れる欄の表）は、空けると決めた所のほかは埋まっている", () => {
+    const empty = Object.fromEntries(
+      SEED_PEOPLE.map((p) => [p.person.id, INTAKE_FIELDS.filter((f) => !isFilled(ledgerValue(p.ledger, f.key))).map((f) => f.key)]),
+    );
+    const d2 = ["evacuation.destination2Means", "evacuation.destination2Minutes"];
+    const tail = ["basic.householdNote", "care.handbook", "care.intractableDisease"];
+    expect(empty).toEqual({
+      "p-01": ["medical.history", "medical.vaccinations", "evacuation.destination2", "evacuation.barriers", "evacuation.pets", ...d2, ...tail],
+      "p-02": ["evacuation.destination2", "evacuation.barriers", "evacuation.pets", ...d2, "basic.householdNote", "care.intractableDisease"],
+      "p-03": ["medical.history", "medical.vaccinations", "evacuation.destination2", "evacuation.barriers", "evacuation.pets", ...d2, ...tail],
+      "p-04": ["evacuation.destination1", "evacuation.destination2", "evacuation.route", "evacuation.barriers", "evacuation.destination1Minutes", ...d2, ...tail],
+      "p-05": ["evacuation.destination1", "evacuation.destination2", "evacuation.route", "evacuation.destination1Minutes", ...d2, ...tail],
+      "p-06": ["evacuation.destination2", "evacuation.barriers", "evacuation.pets", ...d2, "basic.householdNote", "care.bedridden", "care.handbook", "care.intractableDisease"],
+      "p-07": tail,
+      "p-08": tail,
+      "p-09": ["evacuation.destination1", "evacuation.destination2", "evacuation.transport", "evacuation.route", "evacuation.destination1Minutes", ...d2, ...tail],
+      "p-10": tail,
+    });
+  });
+
+  it("わざと残す未確認（pending）は 1 山田の 3 つと 7 加藤の 1 つ。ほかの人に pending は無い", () => {
+    const pending = Object.fromEntries(SEED_PEOPLE.map((p) => [p.person.id, p.ledger.pending.map((x) => `${x.field}:${x.status}`)]));
+    expect(pending).toEqual({
+      "p-01": ["medical.medications.warfarin.remaining:unknown", "people.night_supporter:not_asked", "evacuation.destination2:unknown"],
+      "p-02": [],
+      "p-03": [],
+      "p-04": [],
+      "p-05": [],
+      "p-06": [],
+      "p-07": ["people.night_supporter:not_asked"],
+      "p-08": [],
+      "p-09": [],
+      "p-10": [],
+    });
+  });
+
+  it("連絡先は名前のある人にフリガナ（カタカナ）と住所（町名まで、番地なし）と電話。夜間に来られる人は 1 山田・7 加藤のほか全員分かっている", () => {
+    const comes = new Set(["family", "supporter", "welfare_commissioner", "visiting_nurse"]);
+    for (const p of SEED_PEOPLE) {
+      for (const c of p.contacts) {
+        if (c.kind === "self") continue;
+        expect(c.name, c.id).toBeTruthy();
+        expect(c.address, c.id).toMatch(/^\S+[都府県市] \S+$/);
+        expect(c.address, c.id).not.toMatch(/[0-9０-９]/);
+        expect(c.phone ?? c.mobile, c.id).toBeTruthy();
+        // 2 小林の訪問看護のフリガナは空ける（計画書の 1 頁目に余白が無い）
+        if (c.id === "c-02-2") expect(c.kana, c.id).toBeNull();
+        else expect(c.kana, c.id).toMatch(/^[ァ-ヶー]+( [ァ-ヶー]+)?$/);
+      }
+      const night = p.contacts.filter((c) => comes.has(c.kind)).map((c) => c.night_ok);
+      if (p.person.id === "p-01" || p.person.id === "p-07") expect(night.every((n) => n === null), p.person.id).toBe(true);
+      else expect(night.some((n) => n !== null), p.person.id).toBe(true);
+    }
+  });
+
+  it("かかりつけ医は 3 田中のほか全員、薬局は薬のある人（7 加藤は紙の余白で除く）。介護の事業所は誰にも無い（訓練の出来事の適格が変わらないように）", () => {
+    const has = (kind: string) => SEED_PEOPLE.filter((p) => p.contacts.some((c) => c.kind === kind)).map((p) => p.person.id);
+    expect(has("home_doctor")).toEqual(ids.filter((id) => id !== "p-03"));
+    expect(has("pharmacy")).toEqual(["p-01", "p-04", "p-05", "p-08", "p-09"]);
+    expect(has("care_service")).toEqual([]);
+  });
+
+  it("計画書（松山市）の紙の未確認の欄は、空けると決めた所だけ", () => {
+    const left = Object.fromEntries(
+      SEED_PEOPLE.map((p) => [p.person.id, matsuyamaUnconfirmed(buildMatsuyamaSheet(seedRows(p), { today: TODAY, officeName: "デモ事業所" })).fields.map((f) => f.name)]),
+    );
+    expect(left).toEqual({
+      // 本人の電話は 1 人 1 つ（T68）で、固定電話のある山田の携帯番号は置く所が無い。事業所等は介護の事業所を足さないので空く
+      "p-01": ["本人 携帯番号", "事業所等", "医薬品情報", "事前避難場所", "特記 医療", "夜間支援"],
+      // 吸引器の内蔵電池（時計を足すと色と連絡の順が変わり得るので足さない）
+      "p-02": ["実施者2 フリガナ", "事前避難場所", "特記 医療"],
+      "p-03": ["事業所等", "かかりつけ医・薬局", "事前避難場所", "特記 医療"],
+      // 用量（今の種に無いので足さない）と、時計の無い薬の残り。計画は未作成の 3 人は避難先と経路
+      "p-04": ["事業所等", "医薬品情報", "事前避難場所", "市指定避難所", "市指定避難所 手段", "避難経路"],
+      "p-05": ["事業所等", "医薬品情報", "事前避難場所", "市指定避難所", "市指定避難所 手段", "避難経路"],
+      "p-06": ["事業所等", "事前避難場所"],
+      "p-07": ["事業所等", "医薬品情報", "夜間支援"],
+      "p-08": ["事業所等", "医薬品情報"],
+      // 避難のタイミングはハザードから決まる（ハザードの無い 9 渡辺・10 中村は未確認）
+      "p-09": ["事業所等", "医薬品情報", "避難のタイミング", "事前避難場所", "市指定避難所", "市指定避難所 手段", "避難経路"],
+      "p-10": ["事業所等", "避難のタイミング"],
+    });
+  });
+
+  it("次の問いの列（質問で埋める流れ）は、空けると決めた所だけ", () => {
+    const queue = Object.fromEntries(SEED_PEOPLE.map((p) => [p.person.id, questionQueue(seedRows(p)).map((q) => q.label)]));
+    expect(Object.keys(queue)).toEqual(ids);
+    expect(queue).toEqual({
+      "p-01": ["ワーファリン 用量", "ワーファリン 保管", "夜間支援", "既往", "予防接種", "段差", "ペット", "手帳", "難病"],
+      "p-02": ["避難先2", "段差", "ペット", "難病", "訪問看護 フリガナ"],
+      "p-03": ["既往", "予防接種", "避難先2", "段差", "ペット", "手帳", "難病"],
+      "p-04": ["抗認知症薬 残り", "抗認知症薬 用量", "避難先1", "避難先2", "経路", "段差", "手帳", "難病"],
+      "p-05": ["ステロイド 用量", "支援者1", "避難先1", "避難先2", "経路", "手帳", "難病"],
+      "p-06": ["避難先2", "段差", "ペット", "寝たきり", "手帳", "難病"],
+      "p-07": ["抗凝固薬（DOAC） 用量", "夜間支援", "手帳", "難病"],
+      "p-08": ["インスリン 用量", "手帳", "難病"],
+      "p-09": ["降圧薬 用量", "避難先1", "避難先2", "経路", "手帳", "難病"],
+      "p-10": ["手帳", "難病"],
+    });
   });
 });
 
