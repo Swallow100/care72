@@ -19,7 +19,8 @@ export const NONE_CODE = "*none";
 /** 「その他」の選択肢（ほかの選択肢に当たらない値） */
 export const OTHER_CODE = "*other";
 
-export type CodeDef = { code: string; label: string; words: readonly string[] };
+/** not は含んでいても当てない言葉（「車」の言い換えに「自転車」「車いす」を当てない） */
+export type CodeDef = { code: string; label: string; words: readonly string[]; not?: readonly string[] };
 
 const ABILITY: readonly CodeDef[] = [
   { code: "ok", label: "問題なし", words: ["問題なし", "自力", "自立", "独歩", "ひとりで", "一人で", "介助なし", "介助不要", "支障なし"] },
@@ -30,7 +31,7 @@ const ABILITY: readonly CodeDef[] = [
 const TRANSPORT: readonly CodeDef[] = [
   { code: "foot", label: "徒歩", words: ["徒歩", "歩いて", "歩行で"] },
   { code: "wheelchair", label: "車いす", words: ["車いす", "車椅子", "車イス"] },
-  { code: "family_car", label: "家族の車", words: ["車", "自動車", "自家用車", "家族の車", "乗用車"] },
+  { code: "family_car", label: "家族の車", words: ["車", "自動車", "自家用車", "家族の車", "乗用車"], not: ["自転車", "車いす", "車椅子", "車イス", "電車", "救急車", "福祉車両"] },
   { code: "pickup", label: "送迎", words: ["送迎", "迎え", "福祉車両", "介護タクシー", "タクシー"] },
   { code: "other", label: "その他", words: [] },
 ];
@@ -198,6 +199,7 @@ function codesOfPart(part: string, defs: readonly CodeDef[]): string[] {
   let best = 0;
   let out: string[] = [];
   for (const d of defs) {
+    if (d.not?.some((x) => part.includes(norm(x)))) continue;
     for (const w of d.words) {
       const n = norm(w);
       if (n === "" || !part.includes(n)) continue;

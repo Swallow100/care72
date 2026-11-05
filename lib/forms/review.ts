@@ -28,7 +28,7 @@ import { ANNEX_MARK, cellLines, FONT_MIN_PT, textEm, type OverlayItem, type Over
 import { matsuyamaFieldName } from "./unconfirmed.ts";
 import { MATSUYAMA_FRAME } from "./frame-matsuyama.ts";
 import { KIROKU_FRAME } from "./frame-kiroku.ts";
-import { allowedTwice, extraItemFields } from "./form-shape.ts";
+import { extraItemFields, repeatOk } from "./form-shape.ts";
 
 // ---------- 形 ----------
 
@@ -485,7 +485,7 @@ export function ruleReview(s: ReviewSubject): ReviewFinding[] {
     if (v.length < 4 || TRIVIAL.test(v) || v === ANNEX_MARK || /^\d{1,4}$/.test(v)) continue;
     const before = seen.get(v) ?? [];
     seen.set(v, [...before, f]);
-    if (before.length === 0 || before.some((g) => allowedTwice(g, f))) continue;
+    if (before.length === 0 || repeatOk(before, f)) continue;
     const first = before[0];
     // 同じ名前の欄（近親者 氏名と実施者1 氏名）は、同じ人が 2 つの役のことがあるので見ない
     if (baseLabel(first) !== baseLabel(f)) push("duplicate", f, `${first.label}と同じ`);

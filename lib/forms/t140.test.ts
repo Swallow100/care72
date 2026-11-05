@@ -358,7 +358,9 @@ describe("頁ごとの同じ場所の重複", () => {
   it("写しの頁・頁の頭に繰り返す欄は同じ項目でよい。同じ頁の別の場所・電話と携帯", () => {
     expect(pageRepeat(sameItem(1), sameItem(2))).toBe(true);
     expect(pageRepeat(sameItem(1), sameItem(1, 0.5))).toBe(false);
-    expect(pageRepeat(sameItem(1), sameItem(2, 0.5))).toBe(false);
+    expect(pageRepeat(sameItem(1), { ...sameItem(2, 0.5), label: "本人氏名" })).toBe(false);
+    // 頁の頭の欄は場所がずれても名前が同じなら頁ごとに繰り返す欄
+    expect(pageRepeat(sameItem(1), sameItem(2, 0.5))).toBe(true);
     expect(phonePair({ ...sameItem(1), label: "電話", source: "emergency1.phone" }, { ...sameItem(1, 0.2), label: "携帯", source: "emergency1.phone" })).toBe(true);
     const extra = extraItemFields([sameItem(1), sameItem(2), sameItem(3), sameItem(1, 0.6)]);
     expect([...extra.keys()]).toEqual(["p1-0.6"]);

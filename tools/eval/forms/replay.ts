@@ -56,7 +56,8 @@ export function replayClient(records: readonly CallRecord[], scope: () => { inpu
     q.push(r);
     queues.set(k, q);
   }
-  const options = records.some((r) => r.request.system.some((t) => t.startsWith(OPTION_AI_SYSTEM.slice(0, 40))));
+  // 記録の形の古い回・テストの記録には頼みが無いことがある
+  const options = records.some((r) => (r.request as CallRecord["request"] | undefined)?.system?.some((t) => t.startsWith(OPTION_AI_SYSTEM.slice(0, 40))) ?? false);
   return {
     hasOptions: () => options,
     left: () => Object.fromEntries([...queues].filter(([, q]) => q.length > 0).map(([k, q]) => [k.replace("\u0000", " "), q.length])),

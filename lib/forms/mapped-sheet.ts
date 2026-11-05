@@ -690,7 +690,9 @@ export function shapeCell(field: MappingField, v: ItemValue): Cell {
           }),
         };
       }
-      if (pick.range) return { kind: "choice", options: field.options.map((label) => ({ label, on: false })), range: true };
+      // 範囲外で空けるのは、種類の並びの欄（機器・ハザード・持ち出し品などの「あてはまる物」）と要介護度の幅だけ。1 つを選ぶ分け方の欄
+      // （構造・性別・世帯）で値の選択肢が無いのは読み落としのことがあるので、選択肢に無い（置けなかった）として人に見せる
+      if (pick.range && (v.multi || field.item === "care.careLevel")) return { kind: "choice", options: field.options.map((label) => ({ label, on: false })), range: true };
       if (pick.ambiguous) return { kind: "choice", options: field.options.map((label) => ({ label, on: false })), after: pieces(cell), ambiguous: true };
     }
     // 複数選択の欄（T122）: 種類が並ぶ項目は、合う選択肢の全部に印
