@@ -16,12 +16,14 @@ import { PaperBar, wantsPrint } from "@/components/ui/PaperBar";
 import { todayJst } from "@/lib/age";
 import { canViewPage } from "@/lib/auth/roles";
 import { requirePage } from "@/lib/auth/server";
-import { buildMappedSheet } from "@/lib/forms/mapped-sheet";
 import { MAPPING_LABELS as L } from "@/lib/forms/mapping";
 import { CAO_ENTRY, mappingEntry } from "@/lib/forms/catalog";
 import { loadCheckedMapping } from "@/lib/forms/mapping-db";
 import { CAO_MAPPING_ID, caoMapping } from "@/lib/forms/plan-form";
-import { buildOverlaySheet, canOverlay } from "@/lib/forms/overlay-sheet";
+import { canOverlay } from "@/lib/forms/overlay-sheet";
+import { mappedPaper } from "@/lib/forms/paper-fill-server";
+import { formsScope } from "@/lib/forms/mapping-db";
+import { PaperFill } from "@/components/forms/PaperFill";
 import { pageImageHref } from "@/lib/forms/page-images";
 import { mappedUnconfirmed, unconfirmedView } from "@/lib/forms/unconfirmed";
 import { warekiText } from "@/lib/forms/wareki";
@@ -60,7 +62,7 @@ export default async function MappedFormPage({ params, searchParams }: Props) {
   const autoPrint = wantsPrint(sp.print);
   const listView = sp.view === "list";
   // 未記入の欄（帯の未確認と同じ欄）を塗った版（T101。元の様式の上の紙だけ）
-  const fill = wantsFill(sp.fill);
+  const fillOn = wantsFill(sp.fill);
   if (!/^[A-Za-z0-9_-]{1,64}$/.test(mappingId)) notFound();
   const { env } = await getCloudflareContext({ async: true });
   const opened = await loadPersonDocument(env.DB, principal, id, "mapped");
@@ -80,14 +82,24 @@ export default async function MappedFormPage({ params, searchParams }: Props) {
     : CAO_ENTRY;
 
   const today = todayJst();
-  const sheet = buildMappedSheet(rows, mapping, { today, officeName: office?.name ?? null });
   const checked = stored
     ? `${stored.checked_at ? formatJst(stored.checked_at).slice(0, 10) : ""} ${stored.checked_by_name ?? ""}`.trim()
     : "手作成・未確認";
   const editable = canViewPage(principal.role, "caseload") && stored !== null;
   const images = stored?.pageImages ?? null;
-  const overlay = !listView && stored !== null && canOverlay(mapping.fields, images) ? buildOverlaySheet(sheet, images!, mapping.typeface) : null;
-  // 見直し（T136）。元の様式の上の紙だけ、ケアマネの役で自分の事業所の人
+  // 紙の手入れ（T135）: 様式だけの欄の値・置いた文字の枠と画像を紙に効かせる。書けるのはケアマネの役で自分の事業所の人（保存も同じ壁）
+  const scope = formsScope(principal);
+  const { sheet, overlay, fill } = await mappedPaper(env.DB, {
+    rows,
+    officeId: rows.person.office_id,
+    mappingId,
+    mapping,
+    images,
+    opts: { today, officeName: office?.name ?? null },
+    overlay: !listView && stored !== null,
+    edit: principal.role === "care_manager" && scope !== null && scope.officeId === rows.person.office_id && stored !== null,
+  });
+  // 見直し（T136）。元の様式の上の紙だけ、ケアマネの役で自分の事業所の人。紙は手入れ（T135）を効かせた後の物
   const review =
     overlay && stored && canReview(principal, rows.person.office_id)
       ? await paperReviewProps(env.DB, { personId: id, formKey: mappedFormKey(stored.id), subject: mappedSubject(sheet, overlay, printedOf(images ?? [])), sheet: overlay, consents: rows.consents, fixes })
@@ -104,7 +116,7 @@ export default async function MappedFormPage({ params, searchParams }: Props) {
         actions={
           <>
             {review && <ReviewPrintNote confirmed={review.confirmed !== null} />}
-            {overlay && <FillToggle here={here} fill={fill} />}
+            {overlay && <FillToggle here={here} fill={fillOn} />}
             {/* 元の様式の上の紙と、欄名｜値の 2 列の紙の切替（T86） */}
             {overlay && (
               <ButtonLink href={`${here}?view=list`} kind="plain">
@@ -154,8 +166,12 @@ export default async function MappedFormPage({ params, searchParams }: Props) {
         )}
       </PaperBar>
       <FormAbout entry={entry} />
-      {overlay ? (
-        <OverlaySheet sheet={overlay} imageSrc={(page) => pageImageHref(stored!.id, page)} checked={checked} fill={fill} />
+      {overlay && fill ? (
+        <PaperFill data={fill}>
+          <OverlaySheet sheet={overlay} imageSrc={(page) => pageImageHref(stored!.id, page)} checked={checked} fill={fillOn} layer />
+        </PaperFill>
+      ) : overlay ? (
+        <OverlaySheet sheet={overlay} imageSrc={(page) => pageImageHref(stored!.id, page)} checked={checked} fill={fillOn} />
       ) : (
         <MappedSheet sheet={sheet} meta={{ date: warekiText(today), checked, office: office?.name ?? null, author: rows.careManagerName }} />
       )}

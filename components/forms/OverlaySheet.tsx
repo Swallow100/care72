@@ -23,6 +23,7 @@ function Item({ it }: { it: OverlayItem }) {
         data-field={it.fieldId}
         data-font={it.fontPt}
         data-shifted={it.shifted ? "1" : undefined}
+        data-free={it.free}
       >
         {it.lines.map((l, i) => (
           <span key={i} className="ov-ln">
@@ -30,6 +31,13 @@ function Item({ it }: { it: OverlayItem }) {
           </span>
         ))}
       </div>
+    );
+  }
+  if (it.kind === "picture") {
+    // 紙の上に置いた画像（T135）。事業所の画像を枠の中に縦横の比のまま
+    return (
+      // eslint-disable-next-line @next/next/no-img-element -- 事業所の画像（R2 の物を API から）。印刷に出すので <img>
+      <img className="ov-picture" style={at(it.box)} src={it.src} alt={it.alt} data-field={it.fieldId} data-free={it.free} />
     );
   }
   if (it.kind === "image") {
@@ -58,6 +66,7 @@ export function OverlaySheet({
   fill = false,
   kind = "overlay",
   edit = false,
+  layer = false,
 }: {
   sheet: Sheet;
   imageSrc: (page: number) => string;
@@ -71,6 +80,8 @@ export function OverlaySheet({
    * 紙に直接書く窓の押す所を描く（T117。components/forms/PaperEdit.tsx が押せる欄に印を付けて受ける）。画面だけで、印刷では消す（paper-edit.css）
    */
   edit?: boolean;
+  /** その場で入れる層の置き場を頁ごとに描く（T135。components/forms/PaperFill.tsx）。画面だけ */
+  layer?: boolean;
 }) {
   return (
     <div className="paper-scroll">
@@ -107,6 +118,8 @@ export function OverlaySheet({
                 (p.targets ?? []).map((t) => (
                   <div key={`edit-${t.keys.join(" ")}`} className="ov-edit" style={at(t.box)} data-edit-key={t.keys.join(" ")} />
                 ))}
+              {/* その場で入れる層（T135、components/forms/PaperFill.tsx が中に描く）。画面だけで、紙には刷らない */}
+              {layer && <div className="ov-layer" data-layer={p.page} />}
             </div>
           </section>
         ))}

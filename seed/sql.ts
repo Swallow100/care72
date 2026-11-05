@@ -55,7 +55,12 @@ export const CLEAR_ORDER = [
   "form9_rank_edits",
   // 書類の紙の見直し（T136）。人・事業所・アカウントを指すので先に
   "form_reviews",
+  // 紙の手入れと事業所の画像（T135）。本人・事業所を指す
+  "form_entries",
+  "form_assets",
   "form_mappings",
+  // 様式の対応表の共有（T134、migration 0034）。事業所のデータでないので種では消さない（KEEP_ON_SEED。配信の種の入れ直しでも残す）
+  "form_shared_mappings",
   "disaster_state",
   "ai_calls",
   // 仮想モードの世界の部屋（T50）の Agent・Environment の ID。事業所ごとでなく 1 回だけ作る物なので種では消さない（KEEP_ON_SEED）
@@ -101,7 +106,7 @@ export type SeedOptions = {
 
 /** 種で消さない表: 世界の部屋の ID（T50。消すと次の仮想の訓練で Agent を作り直し、前の Agent が残る）と、アンケートの Web 版（T42）。本物のケアマネの答えが入るので、配信の作り直し（tools/deploy/rebuild-remote.sh の seed）でも残す。
  *  事業所の行は消して入れ直す（事業所の id は種で同じ）。答えのリンクの office_id は 0021 から外部キーでない（T73a）。外部キーは取引の終わりまで後回しにする（PRAGMA defer_foreign_keys） */
-export const KEEP_ON_SEED: ReadonlySet<string> = new Set(["survey_responses", "survey_shares", "survey_answers", "survey_links", "survey_attempts", "ai_agents"]);
+export const KEEP_ON_SEED: ReadonlySet<string> = new Set(["survey_responses", "survey_shares", "survey_answers", "survey_links", "survey_attempts", "ai_agents", "form_shared_mappings"]);
 
 export function seedStatements(opts: SeedOptions = {}): string[] {
   const hashes = opts.passwordHashes ?? {};

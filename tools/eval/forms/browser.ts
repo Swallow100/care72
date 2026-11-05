@@ -57,6 +57,8 @@ export type BrowserPage = {
   quality: number;
   /** 頁の印刷の字の位置（T133。ブラウザの lib/forms/ink-browser.ts と同じく、送る JPEG を読み直して作る。様式の頁だけ） */
   ink?: number[];
+  /** 元のファイルの頁の番号（選んで振り直す前。一覧の様式の共有の対応表の鍵、T134） */
+  origin: number;
 };
 
 /** 送る JPEG を読み直して印刷の字の位置を作る（ブラウザの inkOfBlob と同じ） */
@@ -171,7 +173,7 @@ async function officeStage(mod: CanvasModule, bytes: Uint8Array, secrets: Readon
     if (!enc) return { ok: false, error: "too_large", rawBytes };
     const redactOk = await redactedDark(mod, enc.bytes, enc.w, enc.h, enc.rects);
     const n = enc.rects.length;
-    pages.push({ bytes: enc.bytes, meta: { source: rendered.kind, page: i + 1, redacted: n }, bare: n === 0, redactOk, width: enc.w, height: enc.h, quality: enc.quality, ...(withInk ? { ink: await inkOf(mod, enc.bytes, enc.w, enc.h) } : {}) });
+    pages.push({ bytes: enc.bytes, meta: { source: rendered.kind, page: i + 1, redacted: n }, bare: n === 0, redactOk, width: enc.w, height: enc.h, quality: enc.quality, origin: Number(c.id) + 1, ...(withInk ? { ink: await inkOf(mod, enc.bytes, enc.w, enc.h) } : {}) });
   }
   return { ok: true, source: rendered.kind, pages, totalPages: rendered.pages.length, rawBytes };
 }
@@ -207,7 +209,7 @@ export async function browserStage(bytes: Uint8Array, secrets: ReadonlyArray<rea
       source: "photo",
       totalPages: 1,
       rawBytes,
-      pages: [{ bytes: enc.bytes, meta: { source: "photo", page: 1, redacted: n }, bare: n === 0, redactOk, width: enc.w, height: enc.h, quality: enc.quality, ...(withInk ? { ink: await inkOf(mod, enc.bytes, enc.w, enc.h) } : {}) }],
+      pages: [{ bytes: enc.bytes, meta: { source: "photo", page: 1, redacted: n }, bare: n === 0, redactOk, width: enc.w, height: enc.h, quality: enc.quality, origin: 1, ...(withInk ? { ink: await inkOf(mod, enc.bytes, enc.w, enc.h) } : {}) }],
     };
   }
 
@@ -239,7 +241,7 @@ export async function browserStage(bytes: Uint8Array, secrets: ReadonlyArray<rea
       if (!enc) return { ok: false, error: "too_large", rawBytes };
       const redactOk = await redactedDark(mod, enc.bytes, enc.w, enc.h, enc.rects);
       const k = enc.rects.length;
-      pages.push({ bytes: enc.bytes, meta: { source: "pdf", page: n, redacted: k }, bare: k === 0, redactOk, width: enc.w, height: enc.h, quality: enc.quality, ...(withInk ? { ink: await inkOf(mod, enc.bytes, enc.w, enc.h) } : {}) });
+      pages.push({ bytes: enc.bytes, meta: { source: "pdf", page: n, redacted: k }, bare: k === 0, redactOk, width: enc.w, height: enc.h, quality: enc.quality, origin: n, ...(withInk ? { ink: await inkOf(mod, enc.bytes, enc.w, enc.h) } : {}) });
     }
     return { ok: true, source: "pdf", pages, totalPages: total, rawBytes };
   } finally {

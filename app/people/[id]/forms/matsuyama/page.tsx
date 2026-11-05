@@ -9,6 +9,8 @@ import { MatsuyamaSheet } from "@/components/forms/MatsuyamaSheet";
 import { OriginalImport } from "@/components/forms/OriginalImport";
 import { OverlaySheet } from "@/components/forms/OverlaySheet";
 import { PaperEdit } from "@/components/forms/PaperEdit";
+import { PaperFill } from "@/components/forms/PaperFill";
+import { matsuyamaPaper } from "@/lib/forms/paper-fill-server";
 import { paperEditData } from "@/lib/forms/paper-edit";
 import { UnconfirmedFold } from "@/components/forms/UnconfirmedFold";
 import { FormAbout } from "@/components/forms/FormAbout";
@@ -17,7 +19,7 @@ import { todayJst } from "@/lib/age";
 import { requirePage } from "@/lib/auth/server";
 import { DOCUMENT_CATALOG } from "@/lib/forms/catalog";
 import { parseLedger } from "@/lib/db/ledger";
-import { matsuyamaFrameSheet, routeMapFor } from "@/lib/forms/frame-build";
+import { routeMapFor } from "@/lib/forms/frame-build";
 import { buildMatsuyamaSheet } from "@/lib/forms/matsuyama";
 import { formsScope } from "@/lib/forms/mapping-db";
 import { originalPageHref } from "@/lib/forms/originals";
@@ -50,7 +52,7 @@ export default async function MatsuyamaFormPage({ params, searchParams }: Props)
   const { id } = await params;
   const sp = await searchParams;
   const autoPrint = wantsPrint(sp.print);
-  const fill = wantsFill(sp.fill);
+  const fillOn = wantsFill(sp.fill);
   const { env } = await getCloudflareContext({ async: true });
   const opened = await loadPersonDocument(env.DB, principal, id, "matsuyama");
   if (!opened) notFound();
@@ -61,25 +63,34 @@ export default async function MatsuyamaFormPage({ params, searchParams }: Props)
     env.DB.prepare("SELECT name FROM offices WHERE id = ?1").bind(rows.person.office_id).first<{ name: string }>(),
     scope && ownOffice ? loadOriginal({ get: (key) => env.RECORDINGS.get(key) }, scope.officeId, "matsuyama") : null,
   ]);
-  const sheet = buildMatsuyamaSheet(rows, { today: todayJst(), officeName: office?.name ?? null });
   // 紙面が「未確認」と刷る欄（台帳の pending の欄も入る。理由を添える）。帯だけで、紙には刷らない（T87）。原本の紙は同じ欄を空けて刷る
   // 未確認のうち問いで埋められる欄（T117。本人のページの「問い 残り N 問」と同じ問いの列から）
   const askable = matsuyamaAskableOf(rows);
-  const unconfirmed = unconfirmedView(matsuyamaUnconfirmed(sheet, askable));
   // 避難経路の地図（T106）。台帳の経路地図（T102）を欄の大きさで描く。経路地図か家の位置が無ければ欄を空ける
   const routeMap = routeMapFor(parseLedger(rows.person.ledger));
-  const framed = manifest ? matsuyamaFrameSheet(sheet, manifest, { routeMap }) : null;
-  // 見直し（T136）。原本の枠の紙だけ、ケアマネの役で自分の事業所の人
+  // 書けるのはケアマネの役（審査員を含む）で、自分の事業所の人だけ（保存も同じ壁。lib/intake/save.ts・lib/forms/form-entries-http.ts）
+  const canWrite = principal.role === "care_manager" && ownOffice;
+  // 紙の手入れ（T135）: 様式だけの欄の値・置いた文字の枠と画像を紙に効かせる。原本の枠の紙の書ける人には、その場で入れる画面の中身
+  const { sheet, framed, fill } = await matsuyamaPaper(env.DB, {
+    rows,
+    officeId: rows.person.office_id,
+    sheet: buildMatsuyamaSheet(rows, { today: todayJst(), officeName: office?.name ?? null }),
+    manifest,
+    routeMap,
+    edit: canWrite,
+  });
+  const unconfirmed = unconfirmedView(matsuyamaUnconfirmed(sheet, askable));
+  // 見直し（T136）。原本の枠の紙だけ、ケアマネの役で自分の事業所の人。紙は手入れ（T135）を効かせた後の物
   const review =
     framed && canReview(principal, rows.person.office_id)
       ? await paperReviewProps(env.DB, { personId: id, formKey: "matsuyama", subject: matsuyamaSubject(sheet, framed), sheet: framed, consents: rows.consents })
       : null;
   const here = `/people/${encodeURIComponent(id)}/forms/matsuyama`;
-  // 紙に直接書く窓の欄と今の値（T117）。書けるのはケアマネの役（審査員を含む）で、自分の事業所の人だけ（保存も同じ壁。lib/intake/save.ts）
-  const edit = principal.role === "care_manager" && ownOffice ? paperEditData(rows) : null;
+  // 紙に直接書く窓の欄と今の値（T117）。前からの紙面（原本を取り込む前）だけ。原本の枠の紙はその場で入れる（T135）
+  const edit = canWrite && !framed ? paperEditData(rows) : null;
 
   const paper = framed ? (
-    <OverlaySheet sheet={framed} imageSrc={(page) => originalPageHref("matsuyama", page)} checked="" fill={fill} kind="matsuyama" edit={edit !== null} />
+    <OverlaySheet sheet={framed} imageSrc={(page) => originalPageHref("matsuyama", page)} checked="" fill={fillOn} kind="matsuyama" layer={fill !== null} />
   ) : (
     <MatsuyamaSheet sheet={sheet} routeMap={routeMap} />
   );
@@ -94,7 +105,7 @@ export default async function MatsuyamaFormPage({ params, searchParams }: Props)
         actions={
           <>
             {review && <ReviewPrintNote confirmed={review.confirmed !== null} />}
-            {framed && <FillToggle here={here} fill={fill} />}
+            {framed && <FillToggle here={here} fill={fillOn} />}
           </>
         }
       >
@@ -109,7 +120,7 @@ export default async function MatsuyamaFormPage({ params, searchParams }: Props)
         {ownOffice && !manifest && <OriginalImport id="matsuyama" />}
       </PaperBar>
       <FormAbout entry={DOCUMENT_CATALOG.matsuyama} />
-      {edit ? <PaperEdit data={edit}>{paper}</PaperEdit> : paper}
+      {fill ? <PaperFill data={fill}>{paper}</PaperFill> : edit ? <PaperEdit data={edit}>{paper}</PaperEdit> : paper}
     </main>
   );
 }

@@ -111,3 +111,12 @@
   fill: none;
   stroke: #000;
 }
+
+/* 紙の上に置いた画像（T135、lib/forms/form-entries.ts の withFreeItems）。事業所の画像を枠の中に縦横の比のまま。印刷にも出る */
+.paper.overlay .ov-picture {
+  position: absolute;
+  display: block;
+  object-fit: contain;
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}

@@ -537,6 +537,11 @@ export const INTAKE_LABELS = {
    */
   handOnly: "手入力",
   handOnlyFields: "フリガナ・住所・電話",
+  // ---- T138: やり取りの並び（新しい組を上に、古い組は畳む） ----
+  /** 畳んだ古い組を開く（「以前 3 件」）と、開いた組を畳む */
+  earlier: "以前",
+  earlierUnit: "件",
+  fold: "畳む",
 } as const;
 
 /**
@@ -712,11 +717,7 @@ export const INTAKE_SAYS = {
   read: (name: string) => `${name} を読みました`,
   /** 黒塗りした画像を送った（入力の吹き出し。「お薬手帳.jpg（隠した所 3）」） */
   sent: (name: string, hidden: number) => `${name}（隠した所 ${hidden}）`,
-  saved: (n: number) => `${n} 件を保存しました`,
-  unchanged: "変わった所はありませんでした",
-  discarded: "変更点を取り消しました",
-  skipped: "次回に回しました",
-  pending: (status: string) => `「${status}」と記録しました`,
+  // 保存・取消・次回・不明は流れの行にせず、吹き出しの中の小さな状態（INTAKE_LABELS の saved・unchanged・discard）と答えの吹き出しにした（T138）
   done: "空欄はありません",
 } as const;
 

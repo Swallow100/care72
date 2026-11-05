@@ -17,6 +17,9 @@ import { d1UsageStore, type UsageStore } from "../../../lib/claude/usage.ts";
 import type { Ledger } from "../../../lib/db/types.ts";
 import { d1FromSqlite, migratedSqlite } from "../../../lib/db/test-d1.ts";
 import { getMapping } from "../../../lib/forms/mapping-db.ts";
+import { allMunicipalEntries, availability, type MunicipalEntry } from "../../../lib/forms/municipal-forms.ts";
+import { fetchOfficial, municipalFetchKey, type MunicipalFetch } from "../../../lib/forms/municipal-http.ts";
+import { sha256Hex } from "../../../lib/forms/originals.ts";
 import { FORM_FILE_MAX_BYTES, type FormMapping, type LedgerItemKey } from "../../../lib/forms/mapping.ts";
 import { pageImageKey, parsePageImages, type PageImage, type PageImageBucket } from "../../../lib/forms/page-images.ts";
 import { formReadPost } from "../../../lib/forms/read-post.ts";
@@ -53,6 +56,9 @@ export const GEN_VERSION = "g2";
 export const EVAL_TODAY = "2026-11-05";
 const OFFICE = "office-demo";
 const ACCOUNT = "acct-yamamoto";
+/** 一覧の様式の共有を確かめる 2 つ目の事業所（種の協力事業所） */
+const SECOND_OFFICE = "office-partner";
+const SECOND_ACCOUNT = "acct-partner-cm";
 
 export type PaperMode = "none" | "png" | "pdf" | "all";
 
@@ -89,6 +95,11 @@ export type EvalOptions = {
   review?: boolean;
   /** 本物の回の費用の見積もりの上限（ドル）。超えたら次の様式・入力を始めない（飛ばした物は「上限」と数える） */
   maxUsd?: number | null;
+  /**
+   * 一覧の様式（T134、--forms=catalog か cat-<様式の id>）で、置き場にも取った写し（<回の置き場の親>/_catalog/）にも無い物を
+   * 一覧の URL から取る道（--catalog-fetch。テストは偽物）。無ければ「原本なし」で飛ばす
+   */
+  catalogFetch?: MunicipalFetch | null;
   log?: (line: string) => void;
 };
 
@@ -110,6 +121,11 @@ export type FormResult = {
   /** 読めなかった頁・切れた答えから拾った欄だけの頁（T120。読めた頁の欄で対応表にした） */
   unread?: number[];
   partial?: number[];
+  /**
+   * 一覧の様式（T134）: 様式の id、版が一覧と同じか、原本をどこから取ったか、2 つ目の事業所が AI を呼ばずに共有の対応表を写せたか
+   * （本物の回でも 2 つ目は AI を呼ばない文脈で読む。写せなければ false）
+   */
+  catalog?: { id: string; version: "same" | "changed"; from: "corpus" | "cache" | "fetch" | "pages"; shared: boolean | null };
 };
 
 export type InputResult = {
@@ -304,7 +320,14 @@ export async function runEval(opts: EvalOptions): Promise<RunResult> {
     const corpus = readCorpus(opts.corpusRoot);
     const forms: FormResult[] = [];
     const ready: Array<{ form: GoldForm | null; id: string; title: string; mapping: FormMapping; images: PageImage[] | null; pages: Uint8Array[]; pairs: Map<number, string> }> = [];
-    type FormJob = { id: string; gold: GoldForm | null; title: string; original: () => Promise<{ bytes: Uint8Array } | { pages: Uint8Array[] } | null> };
+    type FormJob = {
+      id: string;
+      gold: GoldForm | null;
+      title: string;
+      original: () => Promise<{ bytes: Uint8Array } | { pages: Uint8Array[] } | null>;
+      /** 一覧の様式（T134）。読み取りは一覧の道（取った記録の版と元の頁の番号で共有の対応表を引く） */
+      municipal?: { entry: MunicipalEntry; from: () => "corpus" | "cache" | "fetch" | "pages" };
+    };
     const jobs: FormJob[] = [];
     for (const g of GOLD_FORMS) {
       if (!matchesAny(g.id, opts.forms) && !opts.forms?.includes("gold")) continue;
@@ -341,6 +364,42 @@ export async function runEval(opts: EvalOptions): Promise<RunResult> {
       if (!matchesAny(f.id, opts.forms) && !matchesAny(f.dir, opts.forms) && !opts.forms?.includes("corpus")) continue;
       jobs.push({ id: f.id, gold: null, title: `${f.city} ${f.formName ?? f.fileName}`, original: async () => ({ bytes: new Uint8Array(readFileSync(f.path)) }) });
     }
+    // 一覧の様式（T134）: 取り込める物を全部（--forms=catalog）か cat-<様式の id>。原本は置き場（版のハッシュが同じ物）→ 取った写し → 一覧の URL
+    const wantCatalog = (id: string) => !!opts.forms?.includes("catalog") || (!!opts.forms?.some((f) => f.startsWith("cat-")) && matchesAny(id, opts.forms));
+    for (const entry of allMunicipalEntries()) {
+      const id = `cat-${entry.form.id}`;
+      if (!wantCatalog(id) || !availability(entry).ok) continue;
+      let from: "corpus" | "cache" | "fetch" | "pages" = "corpus";
+      jobs.push({
+        id,
+        gold: null,
+        title: `${entry.city.pref}${entry.city.name} ${entry.form.name}`,
+        municipal: { entry, from: () => from },
+        original: async () => {
+          if (opts.formPages?.[id]) {
+            from = "pages";
+            return { pages: opts.formPages[id] };
+          }
+          const inCorpus = corpus.files.find((f) => f.sha256 === entry.form.sha256);
+          if (inCorpus) return { bytes: new Uint8Array(readFileSync(inCorpus.path)) };
+          const cached = join(opts.outRoot, "_catalog", `${entry.form.sha256}.${entry.form.format}`);
+          if (existsSync(cached)) {
+            from = "cache";
+            return { bytes: new Uint8Array(readFileSync(cached)) };
+          }
+          if (!opts.catalogFetch) return null;
+          const got = await fetchOfficial(opts.catalogFetch, entry.form.url).catch(() => null);
+          if (!got) return null;
+          from = "fetch";
+          // 写しは版が一覧と同じ物だけ置く（版違いは回の中だけで使う）
+          if ((await sha256Hex(got)) === entry.form.sha256) {
+            mkdirSync(join(opts.outRoot, "_catalog"), { recursive: true });
+            writeFileSync(cached, got);
+          }
+          return { bytes: got };
+        },
+      });
+    }
 
     for (const job of jobs) {
       say(`様式 ${job.id}`);
@@ -351,12 +410,22 @@ export async function runEval(opts: EvalOptions): Promise<RunResult> {
       }
       const orig = await job.original();
       if (!orig) {
-        forms.push({ id: job.id, title: job.title, gold: !!job.gold, status: "skipped", reason: "Chrome なし", pages: 0, read: null, overlay: false });
-        step({ stage: "form", form: job.id, ok: false, reason: "Chrome が無く白紙を作れない" });
+        const reason = job.municipal ? "原本なし" : "Chrome なし";
+        forms.push({ id: job.id, title: job.title, gold: !!job.gold, status: "skipped", reason, pages: 0, read: null, overlay: false });
+        step({ stage: "form", form: job.id, ok: false, reason: job.municipal ? "原本なし（置き場・取った写しに無く、--catalog-fetch なし）" : "Chrome が無く白紙を作れない" });
         continue;
       }
-      let pages: Array<{ bytes: Uint8Array; source: ReadSource; page: number; ink?: number[] }>;
-      if ("pages" in orig) pages = orig.pages.map((b, i) => ({ bytes: b, source: "pdf" as const, page: i + 1 }));
+      // 一覧の様式（T134）: サーバーが公式の URL から取ったときと同じ記録（版）を、この回の R2 に置く（2 つの事業所の分）
+      let catalogInfo: FormResult["catalog"] | undefined;
+      if (job.municipal) {
+        const e = job.municipal.entry;
+        const sha = "bytes" in orig ? await sha256Hex(orig.bytes) : e.form.sha256;
+        catalogInfo = { id: e.form.id, version: sha === e.form.sha256 ? "same" : "changed", from: job.municipal.from(), shared: null };
+        const record = { id: e.form.id, sha256: sha, bytes: "bytes" in orig ? orig.bytes.length : 1, at: new Date().toISOString(), matches: sha === e.form.sha256 };
+        for (const office of [OFFICE, SECOND_OFFICE]) await bucket.put(municipalFetchKey(office, e.form.id), new TextEncoder().encode(JSON.stringify(record)));
+      }
+      let pages: Array<{ bytes: Uint8Array; source: ReadSource; page: number; origin: number; ink?: number[] }>;
+      if ("pages" in orig) pages = orig.pages.map((b, i) => ({ bytes: b, source: "pdf" as const, page: i + 1, origin: i + 1 }));
       else {
         // 様式の頁は印刷の字の位置も作る（T133。アプリの様式の読取と同じ）
         const br: BrowserResult = await browserStage(orig.bytes, [], { ink: true });
@@ -365,13 +434,15 @@ export async function runEval(opts: EvalOptions): Promise<RunResult> {
           forms.push({ id: job.id, title: job.title, gold: !!job.gold, status: "failed", reason: br.error, pages: 0, read: null, overlay: false });
           continue;
         }
-        pages = br.pages.map((p) => ({ bytes: p.bytes, source: p.meta.source, page: p.meta.page, ink: p.ink }));
+        pages = br.pages.map((p) => ({ bytes: p.bytes, source: p.meta.source, page: p.meta.page, origin: p.origin, ink: p.ink }));
       }
       const answer = job.gold ? goldReading(job.gold, pages.length) : { title: job.title, issuer: "", pages: pages.length, typeface: "gothic" as const, fields: [] };
       // 様式の読み取りは 1 頁 1 回（T120）。頁の数だけ正解を積む（崩し方の種は様式で 1 つ。偽の client が頼まれた頁の分を返す）
       for (let i = 0; i < pages.length; i++) fake?.expect(job.gold ? { kind: "read", answer } : { kind: "read", answer, noise: false }, job.id);
       rec.scope(job.id, "form_read");
-      const form = buildFormReadForm(pages.map((p) => ({ blob: new Blob([p.bytes as BlobPart], { type: "image/jpeg" }), meta: { source: pages[0].source, page: p.page, redacted: 0 }, bare: true, ink: p.ink ?? null })));
+      const pagesOf = () =>
+        pages.map((p) => ({ blob: new Blob([p.bytes as BlobPart], { type: "image/jpeg" }), meta: { source: pages[0].source, page: p.page, redacted: 0 }, bare: true, origin: p.origin, ink: p.ink ?? null }));
+      const form = buildFormReadForm(pagesOf(), job.municipal ? { municipal: job.municipal.entry.form.id } : {});
       // 頁は 1 つずつ読む（呼び出しの記録を順に結ぶため。アプリは並べて読む）
       const res = await formReadPost({ db, bucket, aiContext: async () => evalCtx, newId: () => `fm-${job.id}`, readConcurrency: 1 }, { officeId: OFFICE, accountId: ACCOUNT }, form);
       rec.flush();
@@ -384,6 +455,20 @@ export async function runEval(opts: EvalOptions): Promise<RunResult> {
       }
       const stored = (await getMapping(db, OFFICE, body.id))!;
       const images = parsePageImages(stored.page_images);
+      // 一覧の様式（T134）: 2 つ目の事業所が同じ版・同じ頁を読むと、AI を呼ばずに共有の対応表を写せるか（AI を呼べない文脈で読む）
+      if (job.municipal && catalogInfo) {
+        const noAi = async (): Promise<AskJsonContext> => {
+          throw new AiNotConfigured("anthropic");
+        };
+        const again = await formReadPost(
+          { db, bucket, aiContext: noAi, newId: () => `fm2-${job.id}` },
+          { officeId: SECOND_OFFICE, accountId: SECOND_ACCOUNT },
+          buildFormReadForm(pagesOf(), { municipal: job.municipal.entry.form.id }),
+        );
+        const b2 = (await again.json()) as { ok: boolean; shared?: boolean; error?: string };
+        catalogInfo.shared = b2.ok && b2.shared === true;
+        step({ stage: "form.shared", form: job.id, ok: catalogInfo.shared, version: catalogInfo.version, from: catalogInfo.from, error: b2.error ?? null });
+      }
       let read: ReadScore | null = null;
       let pairs = new Map<number, string>();
       if (job.gold) {
@@ -423,6 +508,7 @@ export async function runEval(opts: EvalOptions): Promise<RunResult> {
         placed: stored.mapping.fields.filter((f) => (f.box ?? null) !== null).length,
         ...(body.unread?.length ? { unread: body.unread } : {}),
         ...(body.partial?.length ? { partial: body.partial } : {}),
+        ...(catalogInfo ? { catalog: catalogInfo } : {}),
       });
       ready.push({ form: job.gold, id: job.id, title: job.title, mapping: stored.mapping, images, pages: pages.map((p) => p.bytes), pairs });
     }

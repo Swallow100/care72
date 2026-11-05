@@ -1,6 +1,6 @@
 "use client";
 
-// 入れる欄（T03・T04・T45）。本人のページの右に常に開いている、AI の入力専用の欄。手で直すのは左の面の「編集」（SectionEdit）。
+// 入れる欄（T03・T04・T45・T138）。本人のページの右に常に開いている、AI の入力専用の欄。手で直すのは左の面の「編集」（SectionEdit）。
 // - 上に文字の欄（書く・貼る）。その下に「写真・PDF 読取」と小さなマイク（「話す」）、主のボタン「入力」（前は「分ける」。11/4）
 // - 入力: Claude（Sonnet）が文を台帳の欄に振り分け（/api/intake/extract）、今の値と並べた変更点を出す
 // - 写真・PDF 読取: ケアプラン・お薬手帳などを選ぶと、必ず黒塗りの画面（RedactSheet、T52）を通る。写った氏名・住所・電話・町名を
@@ -8,8 +8,11 @@
 //   保存すると経過に「写真を読んだ（隠した所 N か所）」（T45 の読む前の確認の窓「読取確認」はこの画面に置き換えた）
 // - 話す（T04）: ブラウザの Web Speech で文字の欄に流す。もう一度押して止めると欄に残り、直してから「入力」。
 //   対応していないブラウザ（Firefox など）はボタンを出さない
-// - 下に会話の流れ（やりとり）: 入れた物 → AI の言った事（「7 項目を見つけました（医療 3・避難 2）」と変更点）→ 保存 → 次の問い → 答え …
-//   問いは空欄が無くなるまで続き、「次回」で飛ばせる。流れは下へ伸びる（内側で送らない。送るのはページの縦 1 本）
+// - 今の問い（T138）: 入力の欄のすぐ下の決まった所に 1 問だけ置き、そこから動かさない。答える・「次回」にすると、保存の返事を待って
+//   ページを読み直す前に、同じ所が次の問いに替わる。問いは空欄が無くなるまで続く
+// - その下にやり取り（T138）: 会話の形で、AI と問いは左、ケアマネは右の吹き出し（地の色を分ける）。ひと続きのやり取りを 1 組にし、
+//   新しい組を上に並べる（組の中は起きた順。components/person/intake-log.ts）。古い組は「以前 N 件」に畳む。
+//   保存は毎回の行にせず、吹き出しの中の小さな状態（保存済）だけ。流れは下へ伸びる（内側で送らない。送るのはページの縦 1 本）
 // 保存は全部 /api/intake/save（版を確かめ、埋まった欄は上書きしない）。保存のあとはページを読み直す（流れはこの画面の間だけ残る）。
 
 import dynamic from "next/dynamic";
@@ -19,7 +22,7 @@ import { AiStatusMark } from "@/components/ui/AiStatus";
 import { Button, buttonClass } from "@/components/ui/Button";
 import { Mark } from "@/components/ui/Tag";
 import { aiStatusText, type AiStatus } from "@/lib/claude/status";
-import { AI_FAIL_REASON_LABELS, INTAKE_LABELS, INTAKE_SAYS, PENDING_STATUS_LABELS, PLACE_LABELS, SECTION_LABELS } from "@/lib/labels";
+import { AI_FAIL_REASON_LABELS, INTAKE_LABELS, INTAKE_SAYS, PLACE_LABELS, SECTION_LABELS } from "@/lib/labels";
 import { AI_CONSENT_REFUSED_LABEL } from "@/lib/consent/labels";
 import { shrinkImage } from "@/lib/forms/shrink-image";
 import { buildReadForm, READ_FILES_MAX, type ReadMeta } from "@/lib/intake/read-form";
@@ -33,10 +36,11 @@ import { INTAKE_SECTIONS } from "@/lib/intake/fields";
 import type { IntakeProps } from "@/lib/intake/props";
 import { Loader72 } from "@/components/ui/Loader72";
 import { WAIT_LABELS } from "@/lib/ui/labels";
-import { MicIcon, ReadFileIcon, RetryIcon, SplitIcon, StopIcon } from "./icons";
+import { FoldIcon, MicIcon, MoreIcon, ReadFileIcon, RetryIcon, SplitIcon, StopIcon } from "./icons";
 import { isError, postForm, postJson } from "./intake-api";
+import { currentAsk, logTurns, saveVersion, TURNS_SHOWN, visibleTurns } from "./intake-log";
 import { IntakeChanges, rowsOf, type ChangeRow } from "./IntakeChanges";
-import { IntakeQuestion, QuestionText } from "./IntakeQuestion";
+import { IntakeQuestion } from "./IntakeQuestion";
 import { INPUT } from "./intake-ui";
 import { AiMark, StateTag, type Level } from "./parts";
 import type { RedactedPage } from "./RedactSheet";
@@ -54,9 +58,20 @@ type Proposal = { model: string; dropped: number; rows: ChangeRow[]; masked?: nu
 /** 再試行できる失敗（AI の返事の失敗）。文は同じ文・同じ問いで、写真・PDF は塗った後の同じ画像で送り直す */
 type Retry = { kind: "text"; source: string; focus: string | null } | { kind: "file"; page: RedactedPage };
 
-/** 会話の流れの 1 つ */
+/**
+ * 会話の流れの 1 つ。you はケアマネ（右）、ai は Claude の出力（左、AI の印）、ask は定型の問い（左、印なし）、app は失敗の 1 行。
+ * 保存できたかは吹き出しの中の小さな状態（state・changed）で持ち、「N 件を保存しました」の行は作らない（T138）
+ */
 export type LogEntry =
-  | { id: string; who: "you"; text: string }
+  | {
+      id: string;
+      who: "you";
+      text: string;
+      /** 問いの答えを保存した（「保存済」。同じ値で変わらなければ「変更なし」） */
+      state?: "saved" | "unchanged";
+      /** 保存の失敗（「競合」「保存失敗」など） */
+      error?: string;
+    }
   | {
       id: string;
       who: "ai";
@@ -65,12 +80,21 @@ export type LogEntry =
       proposal: Proposal;
       state: "open" | "saved" | "discarded";
       fromText?: boolean;
+      /** 文で答えた問いの欄（保存したら今の問いを次に替える） */
+      focus?: string | null;
+      /** 保存で変わった数（0 なら「変更なし」） */
+      changed?: number;
+      /** 保存の失敗（変更点は開いたまま、もう一度保存できる） */
+      error?: string;
       /** 黒塗りして読んだ写真・PDF の頁（保存すると経過に「写真を読んだ（隠した所 N か所）」） */
       read?: ReadMeta;
     }
   | { id: string; who: "ai"; kind: "failed"; label: string; reason: AiFailReason | null; retry: Retry | null }
-  | { id: string; who: "app"; text: string; tone?: "ok" | "danger" }
-  | { id: string; who: "ask"; q: Pick<Question, "key" | "label" | "text" | "why" | "example"> };
+  | { id: string; who: "app"; text: string; tone?: "danger" }
+  | { id: string; who: "ask"; q: Pick<Question, "key" | "section" | "label" | "text" | "why" | "example"> };
+
+type SplitEntry = Extract<LogEntry, { kind: "split" }>;
+type YouEntry = Extract<LogEntry, { who: "you" }>;
 
 const SPEECH_ERROR_LABELS: Record<DictationError, string> = {
   mic: INTAKE_LABELS.micDenied,
@@ -100,8 +124,13 @@ function blockLabel(error: string, label: string): string {
 
 const echo = (s: string) => (s.length > ECHO_MAX ? `${s.slice(0, ECHO_MAX)}…` : s);
 
+/** まだ保存していない変更点のある組（古くても畳まない） */
+const hasOpen = (turn: readonly LogEntry[]) => turn.some((e) => e.who === "ai" && e.kind === "split" && e.state === "open");
+
 let seq = 0;
 const nextId = () => `log-${++seq}`;
+
+type Saved = { ok: true; changed: number } | { ok: false; label: string };
 
 export function Intake(props: IntakeProps & { level: Level }) {
   const router = useRouter();
@@ -114,22 +143,34 @@ export function Intake(props: IntakeProps & { level: Level }) {
   const [busy, setBusy] = useState<null | "split" | "read" | "save">(null);
   const [error, setError] = useState<string | null>(null);
   const [log, setLog] = useState<LogEntry[]>([]);
+  /** この回で「次回」にした欄 */
   const [skip, setSkip] = useState<string[]>([]);
+  /** この回で答えて保存できた欄（ページを読み直す前から、今の問いを次に替える） */
+  const [done, setDone] = useState<string[]>([]);
+  /** 今の問いの答えの保存の失敗（今の問いの所に出す） */
+  const [askError, setAskError] = useState<string | null>(null);
+  /** 畳んだ古い組を開いている */
+  const [all, setAll] = useState(false);
+  /** 自分の保存の返事の版（ページの読み直しが届く前に次の問いへ答えても、自分の保存で競合にしない） */
+  const [savedVersion, setSavedVersion] = useState(0);
   /** 黒塗りの画面に渡している写真・PDF（開いている間だけ） */
   const [redacting, setRedacting] = useState<File[] | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const aiReady = aiBlock === null;
   const H = props.level === 1 ? "h2" : "h3";
+  const H2 = props.level === 1 ? "h3" : "h4";
   const titleId = `intake-${props.personId}`;
   const fileId = `intake-file-${props.personId}`;
 
-  // 次の 1 問（lib/intake/ask.ts の nextQuestion と同じ。ブラウザに台帳の読み方を持ち込まないため、ここで引く）
-  const question = props.queue.find((q) => !skip.includes(q.key)) ?? null;
-  const left = props.queue.filter((q) => !skip.includes(q.key)).length;
+  // 今の 1 問（lib/intake/ask.ts の nextQuestion と同じ選び方。ブラウザに台帳の読み方を持ち込まないため、ここで引く）
+  const { question, left } = currentAsk(props.queue, [...skip, ...done]);
+  const turns = logTurns(log);
+  const { shown, folded } = visibleTurns(turns, all, hasOpen);
 
   const push = (...entries: Array<LogEntry>) => setLog((l) => [...l, ...entries]);
-  const patch = (id: string, p: Partial<Extract<LogEntry, { kind: "split" }>>) =>
+  const patch = (id: string, p: Partial<SplitEntry>) =>
     setLog((l) => l.map((e) => (e.id === id && e.who === "ai" && e.kind === "split" ? { ...e, ...p } : e)));
+  const patchYou = (id: string, p: Partial<YouEntry>) => setLog((l) => l.map((e) => (e.id === id && e.who === "you" ? { ...e, ...p } : e)));
 
   // 話す: 認識の結果は欄に流れ、もう一度押して止めると欄に残る（直してから「入力」）
   const speech = useDictation({ maxLength: TEXT_MAX, onText: setText, onDone: (spoken) => setText(spoken) });
@@ -138,13 +179,13 @@ export function Intake(props: IntakeProps & { level: Level }) {
   function failed(r: { error: string; label: string; reason?: AiFailReason }, retry: Retry | null) {
     // AI 提供が不同意の人（T74）は、この人の間は AI の操作を止める（上に「同意 拒否」）
     if (r.error === "ai_not_configured" || r.error === "ai_limit" || r.error === "consent_refused") setAiBlock(blockLabel(r.error, r.label));
-    // AI の返事の失敗（形が違う・断られた・時間切れ・API）は理由と「再試行」を流れに。ほかは上の状態の欄に
+    // AI の返事の失敗（形が違う・断られた・時間切れ・API）は理由と「再試行」を流れに。ほかは失敗の 1 行を同じ組に
     if (r.error === "ai_failed" || r.error === "ai_refused") push({ id: nextId(), who: "ai", kind: "failed", label: r.label, reason: r.reason ?? null, retry });
     else push({ id: nextId(), who: "app", text: r.label, tone: "danger" });
   }
 
   type Proposed = { ok: true; ai: { model: string }; items: DiffItem[]; dropped: number; masked?: number };
-  const proposalOf = (r: Proposed): LogEntry => ({
+  const proposalOf = (r: Proposed): SplitEntry => ({
     id: nextId(),
     who: "ai",
     kind: "split",
@@ -161,7 +202,7 @@ export function Intake(props: IntakeProps & { level: Level }) {
     setBusy(null);
     if (isError(r)) return failed(r, { kind: "text", source, focus });
     // 文の欄は保存できたら空にする（取り消したら直して送り直せるよう残す）
-    push({ ...proposalOf(r), fromText: focus === null } as LogEntry);
+    push({ ...proposalOf(r), fromText: focus === null, focus });
   }
 
   /** 塗った後の 1 頁を読ませる。送るのは塗った後の画像と黒塗りの画面の印だけ（元の写真・PDF は送らない） */
@@ -172,7 +213,7 @@ export function Intake(props: IntakeProps & { level: Level }) {
     const r = await postForm<Proposed>("/api/intake/read", buildReadForm(props.personId, page.blob, page.meta, { bare: page.bare }));
     setBusy(null);
     if (isError(r)) return failed(r, { kind: "file", page });
-    push({ ...proposalOf(r), say: `${INTAKE_SAYS.read(page.name)}。${splitSay(r.items)}`, read: page.meta } as LogEntry);
+    push({ ...proposalOf(r), say: `${INTAKE_SAYS.read(page.name)}。${splitSay(r.items)}`, read: page.meta });
   }
 
   /**
@@ -190,26 +231,25 @@ export function Intake(props: IntakeProps & { level: Level }) {
     if (ok.length > 0) setRedacting(ok);
   }
 
-  async function save(changes: IntakeChange[], ai: { model: string } | null, read?: ReadMeta): Promise<number | null> {
+  /** 保存。失敗の言葉は呼んだ所（吹き出し・今の問い）に出す。競合はほかの人の保存なので、読み直して今の台帳で選び直す */
+  async function save(changes: IntakeChange[], ai: { model: string } | null, read?: ReadMeta): Promise<Saved> {
     setBusy("save");
     setError(null);
-    const r = await postJson<{ ok: true; changed: number }>("/api/intake/save", {
+    const r = await postJson<{ ok: true; changed: number; version: number }>("/api/intake/save", {
       personId: props.personId,
-      version: props.version,
+      version: saveVersion(props.version, savedVersion),
       ai,
       changes,
       ...(read && ai ? { read } : {}),
     });
     setBusy(null);
     if (isError(r)) {
-      setError(r.label);
-      push({ id: nextId(), who: "app", text: r.label, tone: "danger" });
-      // 競合はほかの人の保存。読み直して、今の台帳で選び直す
       if (r.error === "conflict") router.refresh();
-      return null;
+      return { ok: false, label: r.label };
     }
+    setSavedVersion((v) => Math.max(v, r.version));
     router.refresh();
-    return r.changed;
+    return { ok: true, changed: r.changed };
   }
 
   const working = busy !== null;
@@ -317,72 +357,92 @@ export function Intake(props: IntakeProps & { level: Level }) {
         </div>
       </form>
 
-      {/* 会話の流れ。下へ伸びる（内側で送らない） */}
-      <ol aria-label={INTAKE_LABELS.log} className="space-y-2" data-intake="log">
-        {log.map((e) => (
-          <li key={e.id}>
-            <LogBubble
-              entry={e}
-              props={props}
-              busy={working}
-              aiReady={aiReady}
-              onRows={(rows) => e.who === "ai" && e.kind === "split" && patch(e.id, { proposal: { ...e.proposal, rows } })}
-              onDiscard={() => {
-                patch(e.id, { state: "discarded" });
-                push({ id: nextId(), who: "app", text: INTAKE_SAYS.discarded });
-              }}
-              onSave={async (changes) => {
-                if (e.who !== "ai" || e.kind !== "split") return;
-                const n = await save(changes, { model: e.proposal.model }, e.read);
-                if (n === null) return;
-                patch(e.id, { state: "saved" });
-                if (e.fromText) setText("");
-                push({ id: nextId(), who: "app", text: n > 0 ? INTAKE_SAYS.saved(changes.length) : INTAKE_SAYS.unchanged, tone: "ok" });
-              }}
-              onRetry={(retry) => (retry.kind === "text" ? void split(retry.source, retry.focus, false) : void readPage(retry.page, false))}
-            />
-          </li>
-        ))}
-        <li>
-          {question ? (
-            <Bubble who="ask">
-              <IntakeQuestion
-                question={question}
-                left={left}
-                busy={working}
-                aiReady={aiReady}
-                onAnswer={async (changes) => {
-                  const asked: LogEntry = { id: nextId(), who: "ask", q: question };
-                  const answer: LogEntry = { id: nextId(), who: "you", text: changes.map(changeText).join("・") };
-                  const n = await save(changes, null);
-                  if (n === null) return;
-                  const pending = changes.find((c) => c.t === "pending");
-                  push(asked, answer, {
-                    id: nextId(),
-                    who: "app",
-                    text: pending && pending.t === "pending" ? INTAKE_SAYS.pending(PENDING_STATUS_LABELS[pending.status]) : INTAKE_SAYS.saved(changes.length),
-                    tone: "ok",
-                  });
-                }}
-                onSkip={async (q: Question) => {
-                  // 次回: この回は飛ばし、未聴取として残す（計画に「未確認」）
-                  setSkip((s) => [...s, q.key]);
-                  push({ id: nextId(), who: "ask", q }, { id: nextId(), who: "app", text: INTAKE_SAYS.skipped });
-                  await save([{ t: "pending", field: q.key, status: "not_asked" }], null);
-                }}
-                onFree={(q, answer) => {
-                  push({ id: nextId(), who: "ask", q });
-                  void split(answer, q.key);
-                }}
-              />
-            </Bubble>
-          ) : (
-            <p className="text-xs text-muted" data-intake="done">
-              {INTAKE_SAYS.done}
-            </p>
-          )}
-        </li>
-      </ol>
+      {/* 今の問い。入力の欄のすぐ下の決まった所（やり取りが増えても動かない）。答えると同じ所が次の問いに替わる */}
+      <div className="rounded bg-panel2 px-2 py-1.5" data-intake="current" data-key={question?.key ?? ""}>
+        {question ? (
+          <IntakeQuestion
+            question={question}
+            left={left}
+            busy={working}
+            aiReady={aiReady}
+            onAnswer={async (changes) => {
+              const q = question;
+              setAskError(null);
+              const r = await save(changes, null);
+              if (!r.ok) return setAskError(r.label);
+              setDone((d) => [...d, q.key]);
+              push({ id: nextId(), who: "ask", q }, { id: nextId(), who: "you", text: changes.map(changeText).join("・"), state: r.changed > 0 ? "saved" : "unchanged" });
+            }}
+            onSkip={async (q: Question) => {
+              // 次回: この回は飛ばし、未聴取として残す（計画に「未確認」）。答えの吹き出しは「次回」
+              setAskError(null);
+              setSkip((s) => [...s, q.key]);
+              const you: LogEntry = { id: nextId(), who: "you", text: INTAKE_LABELS.next };
+              push({ id: nextId(), who: "ask", q }, you);
+              const r = await save([{ t: "pending", field: q.key, status: "not_asked" }], null);
+              if (!r.ok) patchYou(you.id, { error: r.label });
+            }}
+            onFree={(q, answer) => {
+              // 文で答える問い: AI が分けた変更点を保存したら、今の問いを次に替える（取り消したら同じ問いが残る）
+              setAskError(null);
+              push({ id: nextId(), who: "ask", q });
+              void split(answer, q.key);
+            }}
+          />
+        ) : (
+          <p className="text-xs text-muted" data-intake="done">
+            {INTAKE_SAYS.done}
+          </p>
+        )}
+        {askError && (
+          <p role="alert" className="mt-1 text-xs font-bold text-danger" data-intake="ask-error">
+            {askError}
+          </p>
+        )}
+      </div>
+
+      {/* やり取り。新しい組が上、組の中は起きた順。古い組は畳む */}
+      <div className="space-y-2">
+        {log.length > 0 && <H2 className="text-xs font-bold text-muted">{INTAKE_LABELS.log}</H2>}
+        <ol aria-label={INTAKE_LABELS.log} className="space-y-3" data-intake="log">
+          {shown.map((turn) => (
+            <li key={turn[0].id} className="space-y-1.5" data-intake="turn">
+              {turn.map((e) => (
+                <LogBubble
+                  key={e.id}
+                  entry={e}
+                  props={props}
+                  busy={working}
+                  aiReady={aiReady}
+                  onRows={(rows) => e.who === "ai" && e.kind === "split" && patch(e.id, { proposal: { ...e.proposal, rows } })}
+                  onDiscard={() => patch(e.id, { state: "discarded", error: undefined })}
+                  onSave={async (changes) => {
+                    if (e.who !== "ai" || e.kind !== "split") return;
+                    const r = await save(changes, { model: e.proposal.model }, e.read);
+                    if (!r.ok) return patch(e.id, { error: r.label });
+                    patch(e.id, { state: "saved", changed: r.changed, error: undefined });
+                    if (e.fromText) setText("");
+                    const focus = e.focus;
+                    if (focus) setDone((d) => [...d, focus]);
+                  }}
+                  onRetry={(retry) => (retry.kind === "text" ? void split(retry.source, retry.focus, false) : void readPage(retry.page, false))}
+                />
+              ))}
+            </li>
+          ))}
+        </ol>
+        {(folded > 0 || (all && turns.length > TURNS_SHOWN)) && (
+          <Button size="sm" kind="quiet" icon={all ? FoldIcon : MoreIcon} aria-expanded={all} data-intake="fold" onClick={() => setAll((a) => !a)}>
+            {all ? (
+              INTAKE_LABELS.fold
+            ) : (
+              <span className="tabular-nums">
+                {INTAKE_LABELS.earlier} {folded} {INTAKE_LABELS.earlierUnit}
+              </span>
+            )}
+          </Button>
+        )}
+      </div>
 
       {redacting && (
         <RedactSheet
@@ -400,17 +460,27 @@ export function Intake(props: IntakeProps & { level: Level }) {
   );
 }
 
-/** 吹き出し。AI（Claude の出力）は AI の印、問いは定型の文（Claude は作らない）、入力は右へ寄せる */
+/**
+ * 吹き出し。AI（Claude の出力）と問い（定型の文）は左、ケアマネは右。地の色で分ける（AI と問いは面の中の灰色、ケアマネはもう 1 段の灰色）。
+ * 枠線・影・塗りの色は使わない。AI の印は Claude の出力の吹き出しにだけ付け、問いには付けない（Claude は問いを作らない）
+ */
 function Bubble({ who, children }: { who: LogEntry["who"]; children: ReactNode }) {
-  if (who === "app") return <div className="px-1 text-xs">{children}</div>;
+  if (who === "app") {
+    return (
+      <div className="mr-auto px-1 text-xs" data-who="app" data-side="left">
+        {children}
+      </div>
+    );
+  }
+  const right = who === "you";
   return (
-    <div className={`rounded bg-panel2 px-2 py-1.5 ${who === "you" ? "ml-8" : ""}`} data-who={who}>
-      {who === "ai" && (
-        <div className="mb-1">
-          <AiMark />
-        </div>
-      )}
-      {who === "you" && <div className="mb-0.5 text-xs text-muted">{INTAKE_LABELS.you}</div>}
+    <div
+      className={`w-fit min-w-0 rounded-lg px-2 py-1.5 break-words ${right ? "ml-auto max-w-[85%] bg-panel3" : "mr-auto max-w-[94%] bg-panel2"}`}
+      data-who={who}
+      data-side={right ? "right" : "left"}
+    >
+      {/* 書き手は向きと地の色で示し、読み上げにだけ名前を渡す */}
+      <span className="sr-only">{right ? INTAKE_LABELS.you : who === "ask" ? INTAKE_LABELS.ask : "AI"}</span>
       {children}
     </div>
   );
@@ -427,25 +497,59 @@ type BubbleProps = {
   onRetry: (retry: Retry) => void;
 };
 
+/** 吹き出しの中の小さな状態（保存済・変更なし・取消）。行を足さず、言葉の後ろに添える */
+function SmallState({ children }: { children: ReactNode }) {
+  return (
+    <span className="text-xs whitespace-nowrap text-muted" data-intake="state">
+      {children}
+    </span>
+  );
+}
+
+function SmallError({ children }: { children: ReactNode }) {
+  return (
+    <p role="alert" className="mt-0.5 text-xs font-bold text-danger" data-intake="save-error">
+      {children}
+    </p>
+  );
+}
+
 export function LogBubble({ entry: e, props, busy, aiReady, onRows, onSave, onDiscard, onRetry }: BubbleProps) {
   switch (e.who) {
     case "you":
       return (
         <Bubble who="you">
-          <p className="break-words whitespace-pre-wrap">{e.text}</p>
+          <p className="whitespace-pre-wrap">
+            {e.text}
+            {e.state && (
+              <>
+                {" "}
+                <SmallState>{e.state === "saved" ? INTAKE_LABELS.saved : INTAKE_LABELS.unchanged}</SmallState>
+              </>
+            )}
+          </p>
+          {e.error && <SmallError>{e.error}</SmallError>}
         </Bubble>
       );
     case "app":
       return (
         <Bubble who="app">
-          <span className={e.tone === "danger" ? "font-bold text-danger" : e.tone === "ok" ? "font-bold" : "text-muted"}>{e.text}</span>
+          <span className={e.tone === "danger" ? "font-bold text-danger" : "text-muted"}>{e.text}</span>
         </Bubble>
       );
     case "ask":
+      // 答えた問い。何を聞いたかの文だけ（なぜ・例は今の問いの所で読んだ物）
       return (
         <Bubble who="ask">
-          <div className="mb-0.5 text-xs font-bold">{INTAKE_LABELS.ask}</div>
-          <QuestionText q={e.q} />
+          <p className="mb-0.5 flex flex-wrap items-baseline gap-x-1.5 text-xs">
+            <span className="font-bold">{INTAKE_LABELS.ask}</span>
+            {e.q.section && (
+              <span className="text-muted">
+                {SECTION_LABELS[e.q.section]} {e.q.label}
+              </span>
+            )}
+          </p>
+          <p className="leading-snug font-bold">{e.q.text}</p>
         </Bubble>
       );
     case "ai":
@@ -453,6 +557,7 @@ export function LogBubble({ entry: e, props, busy, aiReady, onRows, onSave, onDi
         return (
           <Bubble who="ai">
             <div role="alert" className="flex flex-wrap items-center gap-x-2 gap-y-1" data-intake="failed" data-reason={e.reason ?? ""}>
+              <AiMark />
               <span className="font-bold text-danger">{e.label}</span>
               {e.reason && <span className="text-xs font-bold">{AI_FAIL_REASON_LABELS[e.reason]}</span>}
               {e.retry && (
@@ -464,12 +569,19 @@ export function LogBubble({ entry: e, props, busy, aiReady, onRows, onSave, onDi
           </Bubble>
         );
       }
-      // AI の言った事（数）の吹き出しと、その下に変更点（面の上。外す・直す・保存はそのまま）
+      // AI の言った事（数）の吹き出しと、その下に変更点（面の上。外す・直す・保存・取消はそのまま）。
+      // 保存・取消のあとは変更点を畳み、吹き出しの中の小さな状態だけを残す
       return (
         <div className="space-y-1.5" data-intake="split" data-state={e.state}>
           <Bubble who="ai">
-            <p className="font-bold" data-intake="say">
-              {e.say}
+            <p className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
+              <AiMark />
+              <span className="font-bold" data-intake="say">
+                {e.say}
+              </span>
+              {e.state !== "open" && (
+                <SmallState>{e.state === "discarded" ? INTAKE_LABELS.discard : e.changed === 0 ? INTAKE_LABELS.unchanged : INTAKE_LABELS.saved}</SmallState>
+              )}
             </p>
             {(e.proposal.masked ?? 0) > 0 && (
               <p className="mt-0.5 text-xs text-muted tabular-nums" data-intake="masked">
@@ -482,19 +594,21 @@ export function LogBubble({ entry: e, props, busy, aiReady, onRows, onSave, onDi
                 {INTAKE_LABELS.handOnly} {INTAKE_LABELS.handOnlyFields}
               </p>
             )}
-            {e.state !== "open" && <p className="mt-0.5 text-xs text-muted">{e.state === "saved" ? INTAKE_LABELS.saved : INTAKE_LABELS.discard}</p>}
+            {e.error && <SmallError>{e.error}</SmallError>}
           </Bubble>
           {e.state === "open" && e.proposal.rows.length > 0 && (
-            <IntakeChanges
-              rows={e.proposal.rows}
-              dropped={e.proposal.dropped}
-              ledger={props.ledger}
-              clocks={props.clocks}
-              busy={busy}
-              onChange={onRows}
-              onDiscard={onDiscard}
-              onSave={(changes) => void onSave(changes)}
-            />
+            <div className="mr-4">
+              <IntakeChanges
+                rows={e.proposal.rows}
+                dropped={e.proposal.dropped}
+                ledger={props.ledger}
+                clocks={props.clocks}
+                busy={busy}
+                onChange={onRows}
+                onDiscard={onDiscard}
+                onSave={(changes) => void onSave(changes)}
+              />
+            </div>
           )}
         </div>
       );

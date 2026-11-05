@@ -3,6 +3,7 @@
 //   node tools/eval/forms/cli.ts [--real] [--gold] [--paper=all|pdf|png|none] [--forms=komorebi,aozora] [--inputs=text-,photo-p-01]
 //                                [--people=p-01,p-02] [--paper-all-forms] [--out=<回の置き場>] [--corpus=<様式の置き場>] [--no-corpus] [--no-progress] [--max-usd=10]
 //                                [--replay=<前の本物の回のフォルダ> --run=<回の名前>]
+//                                [--forms=catalog | --forms=cat-sapporo-1,cat-kumamoto-2] [--catalog-fetch]
 //                                [--review] [--no-review]
 //
 // - 既定は偽の client（本物の API を呼ばない）。--gold は崩さない偽（台の数え方の確かめ）
@@ -11,6 +12,9 @@
 // - 回のフォルダ（既定 ../care72-qa/eval/forms/<日時>-<fake|real>/）に calls.jsonl・steps.jsonl・judgements.jsonl・result.json・
 //   report.md・sent/（送った画像）・filled/（埋めた紙と index.html）。リポジトリの中を指すと止まる
 // - 前の回との差の md を docs/progress/eval-forms-<回>.md に（数だけ）。終わりに 1 行の要約
+// - 一覧の様式（T134、lib/forms/municipal-forms.ts）: --forms=catalog で取り込める物を全部、cat-<様式の id> で選んで。原本は置き場の
+//   版のハッシュが同じファイル → 回の置き場の親の _catalog/ の写し → --catalog-fetch のときだけ一覧の URL から取る（版が同じ物を写しに置く）。
+//   読み取りは一覧の道（共有の対応表）で、2 つ目の事業所が AI を呼ばずに写せたかを数える
 
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -65,6 +69,8 @@ const result = await runEval({
   inputs: list("inputs"),
   people: list("people"),
   maxUsd,
+  // 一覧の URL から取る（転送は自分でたどる。lib/forms/municipal-http.ts の fetchOfficial が一覧のホストの中だけに絞る）
+  catalogFetch: flag("catalog-fetch") ? (url: string) => fetch(url, { redirect: "manual" }) : null,
   review: flag("review") || (!real && !flag("no-review")),
   log: (line) => process.stderr.write(`${line}\n`),
 });

@@ -61,7 +61,7 @@ export function checkLook(sheet: OverlaySheet, fields: readonly MappingField[], 
     const tolY = TOL_MM / page.image.h;
     const others = fields.filter((f) => !f.removed && f.page === page.page && f.box && f.shape !== "handwrite");
     for (const it of page.items) {
-      if (it.kind === "image") continue;
+      if (it.kind === "image" || it.kind === "picture") continue;
       const field = byId.get(it.fieldId);
       const own = field?.box ?? null;
       if (it.kind === "mark") {

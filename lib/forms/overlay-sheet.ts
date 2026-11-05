@@ -222,7 +222,11 @@ export type OverlayItem =
       tight?: boolean;
       /** 欄の枠の中で、印刷の字を避けて空いた所へずらした（T133。数えるため） */
       shifted?: boolean;
+      /** 紙の上に置いた文字の枠（T135、lib/forms/form-entries.ts）の id */
+      free?: string;
     }
+  /** 紙の上に置いた画像（T135。事業所の画像。src は同じ origin の URL） */
+  | { kind: "picture"; fieldId: string; box: FieldBox; src: string; alt: string; free: string }
   /** □ の中のレ点（check）か、選択肢を丸で囲む（circle） */
   | { kind: "mark"; fieldId: string; box: FieldBox; mark: "check" | "circle" }
   /** 欄に置く画像（避難経路の地図。T101 の受け口、T106 がつなぐ）。svg は欄の箱の大きさで描いた SVG の文字列（欄の中にそのまま埋め込む） */

@@ -14,6 +14,8 @@ import { aiUsable, type AiStatus } from "@/lib/claude/status";
 import { FORMS_LIST_LABELS } from "@/lib/forms/document-list";
 import { MAPPING_LABELS as L } from "@/lib/forms/mapping";
 import { formsScope, listMappings, type MappingSummary } from "@/lib/forms/mapping-db";
+import { allMunicipalEntries, cityForOffice, municipalEntry } from "@/lib/forms/municipal-forms";
+import { officeCatalogMappings, sharedCatalogIds } from "@/lib/forms/shared-mapping";
 import { formatJst } from "@/lib/person";
 
 // D1 を毎回読む
@@ -22,6 +24,8 @@ export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: FORMS_LIST_LABELS.add };
 
 const SOURCE_LABELS = { image: "写真", pdf: "PDF", manual: "手作成" } as const;
+
+type Own = Record<string, { id: string; status: "draft" | "checked"; sha256: string }>;
 
 // 様式追加（docs/tasks/T08.md の様式対応。T87 でヘッダーの「書類」の下の名前を「様式追加」に。URL は同じ）。松山市以外の様式を写真・PDF から読み（Opus）、対応表を確かめてから差し込みに使う。
 // 開けるのはケアマネの役（管理者・審査員のケアマネの役を含む）。範囲は事業所の対応表。
@@ -33,16 +37,34 @@ export default async function FormMappingListPage() {
 
   let list: MappingSummary[];
   let ai: AiStatus;
+  let shared: Set<string>;
+  let own: Own;
+  let officeCity: string | null;
   try {
     const { env } = await getCloudflareContext({ async: true });
     ai = await aiStatusFor(scope.officeId);
-    list = await listMappings(env.DB, scope.officeId);
+    // 地域選択（T134）: 同じ版の共有の対応表がある様式と、この事業所が一覧の様式から作った対応表
+    [list, shared, own, officeCity] = await Promise.all([
+      listMappings(env.DB, scope.officeId),
+      sharedCatalogIds(
+        env.DB,
+        allMunicipalEntries().map((e) => ({ id: e.form.id, sha256: e.form.sha256 })),
+      ),
+      officeCatalogMappings(env.DB, scope.officeId),
+      // 事業所の市（T68 の地域）。地域選択の初めの市
+      env.DB.prepare("SELECT city FROM offices WHERE id = ?1")
+        .bind(scope.officeId)
+        .first<{ city: string }>()
+        .then((r) => r?.city ?? null),
+    ]);
   } catch (e) {
     console.error("様式対応を読めない", e);
     return <Message title="読込失敗" />;
   }
 
   const aiReady = aiUsable(ai);
+  // 一覧の様式から作った対応表は「元」に市の名前（T134）
+  const catalogOf = new Map(Object.entries(own).map(([cid, m]) => [m.id, municipalEntry(cid)]));
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-4">
@@ -58,7 +80,14 @@ export default async function FormMappingListPage() {
       </div>
 
       <div className="mt-3">
-        <FormReadPanel aiReady={aiReady} />
+        <FormReadPanel
+          aiReady={aiReady}
+          municipal={{
+            shared: [...shared],
+            own: Object.fromEntries(Object.entries(own).map(([cid, m]) => [cid, { id: m.id, status: m.status }])),
+            defaultCity: cityForOffice(officeCity)?.id ?? null,
+          }}
+        />
       </div>
 
       <Panel aria-labelledby="list-title" className="mt-3">
@@ -98,7 +127,10 @@ export default async function FormMappingListPage() {
                     <td className={TD}>
                       {m.status === "checked" ? <StateTag tone="ok">{L.checked}</StateTag> : <StateTag tone="check">{L.draft}</StateTag>}
                     </td>
-                    <td className={TD}>{SOURCE_LABELS[m.sourceKind]}</td>
+                    <td className={TD}>
+                      {SOURCE_LABELS[m.sourceKind]}
+                      {catalogOf.get(m.id) && <span className="block text-xs text-muted">公式 {catalogOf.get(m.id)!.city.name}</span>}
+                    </td>
                     <td className={`${TD} text-right tabular-nums`}>{m.stats.fields}</td>
                     <td className={`${TD} text-right tabular-nums`}>{m.stats.read > 0 ? `${m.stats.autoMapped}/${m.stats.read}` : "—"}</td>
                     <td className={`${TD} text-right tabular-nums`}>{m.stats.changed}</td>

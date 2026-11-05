@@ -16,6 +16,12 @@ export {
   ArrowDownTrayIcon as DownloadIcon, // CSV 出力
   ArrowRightEndOnRectangleIcon as LoginIcon, // ログイン（扉に入る矢印。ログアウトと対）
   ArrowUturnLeftIcon as RestoreIcon, // 外した物を戻す
+  ArrowUturnLeftIcon as UndoIcon, // 取消（直前の操作を戻す。紙の上の手入れ、T135。戻すので外した物を戻すと同じ形）
+  ArrowUturnRightIcon as RedoIcon, // 再実行（取消した操作をもう一度、T135）
+  Bars3BottomLeftIcon as TextBoxIcon, // 文字枠（紙の上に字の枠を置く、T135）
+  PhotoIcon as ImageIcon, // 画像（紙の上に地図・写真・図を置く、T135）
+  ChatBubbleLeftEllipsisIcon as AskIcon, // 質問（紙の空いた欄を問いで埋める、T135）
+  TagIcon as MarkIcon, // 印（紙の上の手で入れた所の印の表示、T135）
   ArrowRightStartOnRectangleIcon as LogoutIcon, // ログアウト（扉から出る矢印）
   ArrowTopRightOnSquareIcon as ExternalIcon, // 外のブラウザで開く（本人・家族のスマホの追加の案内）
   ArrowUpOnSquareIcon as ShareIcon, // iPhone の共有（追加の案内の手順）

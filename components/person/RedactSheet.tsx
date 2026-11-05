@@ -29,8 +29,11 @@ import { fitView, panView, pinchView, refitView, viewToImage, zoomAt, ZOOM_MAX, 
 import { appChoice } from "@/lib/ui/dialog";
 import { ClearIcon, MoveIcon, NextIcon, PaintIcon, UndoIcon } from "./icons";
 
-/** 送る 1 頁（塗った後の画像と、黒塗りの画面の印）。bare は隠した所 0 の頁を人が確かめの窓で「送信」と選んだ印 */
-export type RedactedPage = { name: string; blob: Blob; meta: ReadMeta; bare: boolean };
+/**
+ * 送る 1 頁（塗った後の画像と、黒塗りの画面の印）。bare は隠した所 0 の頁を人が確かめの窓で「送信」と選んだ印。
+ * origin は元のファイルの頁の番号（選んで頁の番号を振り直しても元の番号。一覧の公式の様式の共有の対応表の鍵、T134）
+ */
+export type RedactedPage = { name: string; blob: Blob; meta: ReadMeta; bare: boolean; origin: number };
 
 /** これより動かなければ「押した」（四角を選ぶ）。px */
 const TAP_SLOP = 6;
@@ -321,7 +324,7 @@ export function RedactSheet({ files, onSend, onCancel }: { files: readonly File[
         const r = state.rects[p.id] ?? [];
         // ここに来た隠した所 0 の頁は、上の窓で人が「送信」を選んだ物だけ。選んだ頁は頭から 1・2・3 と数え直す（受け口は頁の順を見る）
         const meta = metaOf(p, r);
-        out.push({ name: L.pageName(p.fileName, p.page, p.pages), blob: await encodeRedacted(p, r), meta: choosing ? { ...meta, page: i + 1 } : meta, bare: r.length === 0 });
+        out.push({ name: L.pageName(p.fileName, p.page, p.pages), blob: await encodeRedacted(p, r), meta: choosing ? { ...meta, page: i + 1 } : meta, bare: r.length === 0, origin: p.page });
       }
       onSend(out);
     } catch {
