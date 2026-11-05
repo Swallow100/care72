@@ -746,7 +746,9 @@ async function advance(page, rec, calls, label, hits = [], how = "next") {
   await scrollToSel(rec, page, "main[data-drill]", 1.2, 0);
   rec.mark(label);
   const clock = await page.$('[data-controls="clock"]');
-  await clickSel(page, clock ? (how === "next" ? '[data-action="advance"][data-next]' : `[data-action="advance"][data-minutes="${how}"]`) : '[data-action="advance"]');
+  // 分のボタン（30 分・1 時間・3 時間）は外す見込み（11/5 の作業中）。無ければ「次まで」
+  const minutes = clock && how !== "next" ? await page.$(`[data-action="advance"][data-minutes="${how}"]`) : null;
+  await clickSel(page, clock ? (minutes ? `[data-action="advance"][data-minutes="${how}"]` : '[data-action="advance"][data-next]') : '[data-action="advance"]');
   await waitCut(rec, page, (s) => Number(document.querySelector("main[data-drill]")?.getAttribute("data-step") ?? -1) > s || document.querySelector("main[data-drill]")?.getAttribute("data-status") !== "running", {
     keep: 3,
     timeout: 240_000,
