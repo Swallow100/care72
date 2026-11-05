@@ -3,7 +3,9 @@
 // 言葉はやさしい日本語（lib/qr/phone-labels.ts の PHONE_EASY）。状態を持たない。
 
 import { EasyWords } from "@/components/forms/EasyText";
+import { LoginIcon } from "@/components/ui/Icon";
 import { TONE_FILL } from "@/components/ui/Tag";
+import { LOGIN_PATH } from "@/lib/auth/roles";
 import { easy, yomi } from "@/lib/forms/easy-words";
 import { PHONE_EASY } from "@/lib/qr/phone-labels";
 
@@ -38,6 +40,16 @@ export function PhoneLinkInvalid() {
       <p className="mt-3 text-[1.75rem] font-bold">
         <EasyWords words={easy(PHONE_EASY.callCareManager)} />
       </p>
+      {/* ID とパスワードを作った人（T149）はリンクが切れてもログインで入れる。無色（面の中の灰色） */}
+      <a
+        href={LOGIN_PATH}
+        className="mt-4 flex min-h-14 items-center justify-center gap-2 rounded-xl bg-panel2 px-4 text-2xl font-bold text-ink focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-accent"
+        data-press
+        data-phone-login
+      >
+        <LoginIcon aria-hidden className="size-7 shrink-0" />
+        <EasyWords words={easy(PHONE_EASY.loginWithId)} />
+      </a>
     </section>
   );
 }

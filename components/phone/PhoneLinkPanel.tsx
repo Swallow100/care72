@@ -1,6 +1,8 @@
 // 本人のページの書類の「スマホ入口」（docs/tasks/T69a.md）。本人用と家族用のリンク（URL・コピー・QR の画像）と、発行・再発行。
 // 形は lib/qr/phone-link-view.ts が組み、ここは描くだけ（状態を持たない。コピーと確認の窓だけクライアントの部品）。
-// - 発行（版 0）・期限切れの再発行は操作の色。使えるリンクがあるときの再発行は赤で、確認の窓（前のリンクは全部無効）を通す
+// - 発行（版 0）・期限切れの再発行は操作の色。使えるリンクがあるときの再発行は赤で、確認の窓（前のリンクと ID は全部無効）を通す
+// - 同意の決まり（lib/phone/consent.ts）に合わない人は発行を押せず「同意なし」、URL と QR を出さない（T149）
+// - 行ごとに本人・家族が作った ID の有無と通知の端末の数（T149）
 // - URL は文字で出す（押して開くリンクにしない。ケアマネの端末で開くと、その端末が本人のセッションに替わるので）
 // - QR は lib/qr/image.ts の点の並びを白地に黒の画像（img）に。長押し・右クリックで保存して紙に貼れる。印刷の画面は作らない
 // 本人・家族の画面の印（平時の「ふだん」・無効の 1 画面）は軽く置くため components/phone/PhoneMarks.tsx に分けた。
@@ -17,6 +19,7 @@ import { qrMatrix, qrSvgPath, QR_QUIET } from "@/lib/qr/image";
 import { PHONE_LINK_CONFIRM, PHONE_LINK_LABELS, PHONE_LINK_STATUS_LABELS } from "@/lib/qr/phone-labels";
 import type { PhoneLinkStatus } from "@/lib/qr/phone-link-store";
 import type { PhoneLinkItem, PhoneLinkView } from "@/lib/qr/phone-link-view";
+import { PHONE_SECTION_LABELS } from "@/lib/phone/labels";
 
 const STATUS_TONES: Record<PhoneLinkStatus, Tone> = { none: "unknown", active: "ok", expired: "check" };
 
@@ -46,9 +49,16 @@ export function PhoneLinkStatusLine({ view }: { view: PhoneLinkView }) {
   );
 }
 
-/** 発行・再発行のフォーム（サーバーが 303 でこの画面に戻す）。一覧外の人には出さない */
+/** 発行・再発行のフォーム（サーバーが 303 でこの画面に戻す）。一覧外の人には出さない。同意の決まりに合わない人は押せず「同意なし」（T149） */
 export function PhoneLinkIssueForm({ view }: { view: PhoneLinkView }) {
   if (view.unlisted) return null;
+  if (!view.allowed) {
+    return (
+      <span data-phone-link-consent="none">
+        <StateTag tone="check">{PHONE_SECTION_LABELS.noConsent}</StateTag>
+      </span>
+    );
+  }
   const { status, generation } = view.state;
   const active = status === "active";
   return (
@@ -93,6 +103,17 @@ export function PhoneLinkRow({ item, status }: { item: PhoneLinkItem; status: Ph
           {item.relation && <span className="text-sm text-muted">{item.relation}</span>}
           <span className="font-bold">{item.name}</span>
           {item.smartphone && <Mark inPanel2>{item.smartphone}</Mark>}
+          {/* 本人・家族が作った ID と通知の端末（T149。ケアマネは見るだけ） */}
+          {item.account !== undefined && (
+            <span className={item.account ? "text-sm font-bold" : "text-sm text-muted"} data-phone-account={item.account ? "1" : "0"}>
+              {PHONE_SECTION_LABELS.account} {item.account ? PHONE_SECTION_LABELS.has : PHONE_SECTION_LABELS.none}
+            </span>
+          )}
+          {item.notify !== undefined && (
+            <span className={item.notify > 0 ? "text-sm font-bold" : "text-sm text-muted"} data-phone-notify={item.notify}>
+              {PHONE_SECTION_LABELS.notify} {item.notify > 0 ? item.notify : PHONE_SECTION_LABELS.none}
+            </span>
+          )}
         </div>
         {item.url ? (
           <>

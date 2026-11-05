@@ -3,10 +3,10 @@ import { getCloudflareContext } from "@opennextjs/cloudflare";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { AutoRefresh } from "@/components/disaster/AutoRefresh";
-import { InstallHint } from "@/components/phone/InstallHint";
 import { PhoneDisaster } from "@/components/phone/PhoneDisaster";
 import { PhoneNormalMark } from "@/components/phone/PhoneMarks";
 import { PhoneSheet } from "@/components/phone/PhoneSheet";
+import { PhoneLoginIdLine, PhoneSetup } from "@/components/phone/PhoneSetup";
 import { todayJst } from "@/lib/age";
 import { phoneGoneExit } from "@/lib/auth/phone-gate";
 import { requirePage } from "@/lib/auth/server";
@@ -14,6 +14,7 @@ import { loadDisasterState } from "@/lib/disaster/db";
 import { isDisaster } from "@/lib/disaster/state";
 import { buildOwnSheet } from "@/lib/forms/own-sheet";
 import { loadPersonPage } from "@/lib/person";
+import { phoneSetupProps } from "@/lib/phone/setup-props";
 import { personHasDevice, shelterOptionsOf } from "@/lib/signals/family";
 
 // 事業所の災害モードと本人の 1 枚を毎回読む
@@ -35,10 +36,13 @@ export default async function MePage() {
   const rows = await loadPersonPage(env.DB, principal, principal.personId);
   if (!rows) redirect(phoneGoneExit(principal));
   const disaster = await loadDisasterState(env.DB, rows.person.office_id);
+  // 準備の欄（T149）: ID・ホーム画面・通知。済むまで頁の上に出し続ける（災害モードは安否のボタンの上に 1 行）
+  const setup = await phoneSetupProps(env.DB, env, principal, rows.consents);
 
   if (isDisaster(disaster)) {
     return (
       <main className="mx-auto max-w-md font-ud">
+        <PhoneSetup {...setup} compact />
         {/* 新しい災害モードに入ったら、前の流れを持ち越さない */}
         <PhoneDisaster
           key={disaster.startedAt ?? "disaster"}
@@ -58,9 +62,10 @@ export default async function MePage() {
     <main className="mx-auto max-w-md px-3 py-4 font-ud">
       {/* 事業所名と平時の印「ふだん」（T69a。災害モードになると 30 秒の読み直しで 2 つのボタンに替わる） */}
       <PhoneNormalMark office={office?.name ?? null} />
-      {/* ホーム画面に追加の案内（T44。平時だけ、入れるまで） */}
-      <InstallHint />
+      {/* 準備の欄（T149。ID → ホーム画面に追加 → 通知の許可。前の追加の案内〔T44〕を含む） */}
+      <PhoneSetup {...setup} />
       <PhoneSheet sheet={sheet} />
+      {setup.account.kind === "done" && <PhoneLoginIdLine loginId={setup.account.loginId} />}
       <AutoRefresh seconds={NORMAL_REFRESH_SEC} />
     </main>
   );

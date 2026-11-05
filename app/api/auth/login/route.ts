@@ -23,7 +23,8 @@ export async function POST(request: Request) {
     { loginId: field("id"), password: field("password"), ip: requestIp(request.headers) },
     nowSec(),
   );
-  if (r.kind === "ok") return seeOther(request, r.path, sessionCookie(r.token, request.url));
+  // 本人・家族の ID（T149）は cookie も 180 日（セッションの期限と同じ）
+  if (r.kind === "ok") return seeOther(request, r.path, sessionCookie(r.token, request.url, r.maxAge));
   if (r.kind === "failed") return seeOther(request, "/login?e=1");
   if (wantsPage(request.headers)) return seeOther(request, `/login?e=locked&m=${r.minutes}`);
   return Response.json(

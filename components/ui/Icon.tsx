@@ -27,6 +27,8 @@ export {
   ArrowUpOnSquareIcon as ShareIcon, // iPhone の共有（追加の案内の手順）
   ArrowsPointingOutIcon as FullIcon, // 全画面（地図）
   ArrowsRightLeftIcon as AssignIcon, // 担当の割当・移す
+  BellAlertIcon as NotifyIcon, // 通知（本人・家族のスマホへ「大丈夫ですか」、通知の許可。T149）
+  DevicePhoneMobileIcon as SmartphoneIcon, // スマホ（本人のページのスマホの面、T149）
   ArrowPathIcon as RetryIcon, // 再作成・やり直す
   CheckCircleIcon as ChosenIcon, // 選んだ印（アンケートの選択肢、components/ui/Select の一覧）
   CheckIcon as SaveIcon, // 保存

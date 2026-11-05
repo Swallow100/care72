@@ -650,6 +650,37 @@ export type PersonListMark = { unlisted_at: string | null };
 export type PersonPhoneLink = { phone_link_generation: number; phone_link_issued_at: string | null };
 
 /**
+ * 本人・家族のスマホの ID とパスワード（T149、migrations/0035）。本人用は contact_id が NULL。
+ * link_generation・link_issued_at は作った時のスマホ入口の版と時刻（今の版と同じときだけ通す。lib/phone/account.ts）
+ */
+export type PhoneAccountRow = {
+  id: string;
+  person_id: string;
+  contact_id: string | null;
+  login_id: string;
+  password_hash: string;
+  link_generation: number;
+  link_issued_at: string;
+  created_at: string;
+  updated_at: string;
+};
+
+/** Web Push の購読（T149、migrations/0035）。審査員の本人・家族の役の購読は link_generation・link_issued_at が NULL */
+export type PushSubscriptionRow = {
+  id: string;
+  person_id: string;
+  contact_id: string | null;
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+  link_generation: number | null;
+  link_issued_at: string | null;
+  created_at: string;
+  updated_at: string;
+  last_sent_at: string | null;
+};
+
+/**
  * 申告の年齢（people.reported_age、T23）。医療班・行政がその場で作った人で、生年月日が分からないとき。作った日の年齢。
  * PersonRow に入れないのは unlisted_at と同じ理由（種と本人のページの型に波及させない）
  */

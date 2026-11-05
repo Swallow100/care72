@@ -102,7 +102,8 @@ export async function recordLoginAttempt(db: D1Database, key: AttemptKey, ok: bo
 }
 
 export type GuardedLogin =
-  | { kind: "ok"; token: string; path: string }
+  /** maxAge は cookie の Max-Age（秒）。無ければ既定（本人・家族の ID は 180 日。T149） */
+  | { kind: "ok"; token: string; path: string; maxAge?: number }
   | { kind: "failed" }
   | { kind: "locked"; retryAfterSec: number; minutes: number };
 
@@ -122,7 +123,7 @@ export async function guardedLogin(
   if (lock.locked) return { kind: "locked", retryAfterSec: lock.retryAfterSec, minutes: lock.minutes };
   const r = await login(db, env, secret, { loginId: input.loginId, password: input.password }, now);
   await recordLoginAttempt(db, key, r.ok, now);
-  if (r.ok) return { kind: "ok", token: r.token, path: r.path };
+  if (r.ok) return { kind: "ok", token: r.token, path: r.path, ...(r.maxAge ? { maxAge: r.maxAge } : {}) };
   const after = await loginLock(db, key, now);
   if (after.locked) return { kind: "locked", retryAfterSec: after.retryAfterSec, minutes: after.minutes };
   return { kind: "failed" };

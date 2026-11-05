@@ -38,3 +38,8 @@ export function cssAssetUrls(css: string, cssHref: string, origin: string): stri
 export function freshCopy(at: string | null | undefined, nowMs: number, minMs: number): boolean;
 export function copyExpired(at: string | null | undefined, nowMs: number): boolean;
 export function endsSession(res: FollowedLike | null | undefined, origin: string): boolean;
+
+export const NOTIFY_PATHS: readonly string[];
+export const NOTIFY_DEFAULT: { title: string; body: string; url: string; tag: string };
+export function notificationOf(text: string | null | undefined): { title: string; body: string; url: string; tag: string };
+export function notifyTarget(url: unknown): string;

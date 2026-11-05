@@ -33,7 +33,8 @@ export const PHONE_LINK_STATUS_LABELS: Record<PhoneLinkStatus, string> = { none:
 /** 再発行の確認の窓（lib/ui/dialog.ts の appConfirm。components/ui/SubmitButton の confirm） */
 export const PHONE_LINK_CONFIRM = {
   title: "再発行",
-  message: "前のリンクは全部無効",
+  /** 本人・家族が作った ID（T149）も作った時の版に結び付くので、一緒に通らなくなる */
+  message: "前のリンクと ID は全部無効",
   ok: "再発行",
 } as const;
 
@@ -47,4 +48,6 @@ export const PHONE_EASY = {
   /** 無効の頁 */
   invalid: "{無効|むこう}",
   callCareManager: "ケアマネに {連絡|れんらく}",
+  /** ID とパスワードを作った人（T149）はログインの画面から入れる */
+  loginWithId: "ID で ログイン",
 } as const;

@@ -5,6 +5,7 @@
 // 入れる欄（T03）はここに置かない。経過の書き足し（T24）は経過の区分の上（書ける種類があるときだけ）。
 // 見える区分と欄は lib/person.ts の toPersonView が見る人の範囲（lib/consent/scope.ts）で決める。ここは来た物を描くだけ。
 
+import { Fragment } from "react";
 import { RouteMapPanel } from "@/components/map/RouteMap";
 import { ButtonLink } from "@/components/ui/Button";
 import { PaperIcon, PrintIcon } from "@/components/ui/Icon";
@@ -23,26 +24,40 @@ import { TimelineComposer } from "./TimelineComposer";
  * edit はケアマネの役で開いたときだけ（入れる欄と同じ）。渡すと面の右上に「編集」（T45、components/person/SectionEdit.tsx）。
  * 書類と経過の面は編集しない
  */
-export function PersonView({ view, level, edit = null }: { view: View; level: Level; edit?: EditData | null }) {
+export function PersonView({
+  view,
+  level,
+  edit = null,
+  phone = null,
+}: {
+  view: View;
+  level: Level;
+  edit?: EditData | null;
+  /** スマホの面（T149、components/phone/PhoneSection.tsx）。ケアマネの役だけ。同意の面のすぐ後（同意の面が無ければ最後） */
+  phone?: React.ReactNode;
+}) {
   const base = `person-${view.head.id}`;
   return (
     <div className="@container space-y-2" data-mode={view.mode}>
       <PersonHead head={view.head} level={level} titleId={`${base}-title`} />
       <div className="gap-x-2 @[40rem]:columns-2 @5xl:columns-3">
         {view.sections.map((s) => (
-          <SectionPanel
-            key={s.id}
-            section={s}
-            level={level}
-            titleId={`${base}-${s.id}`}
-            edit={edit}
-            // 避難経路の地図（T102）。ケアマネの役で開いたときだけ、避難の面の下に（位置を扱うので面の編集と同じ人だけ）
-            after={s.id === "evacuation" && edit ? <RouteMapPanel data={edit} /> : null}
-          >
-            {/* 経過の書き足し（T24）。書ける種類（役と同意。lib/consent/scope.ts）があるときだけ、経過の上に */}
-            {s.id === "timeline" && view.writes.length > 0 && <TimelineComposer personId={view.head.id} kinds={view.writes} />}
-          </SectionPanel>
+          <Fragment key={s.id}>
+            <SectionPanel
+              section={s}
+              level={level}
+              titleId={`${base}-${s.id}`}
+              edit={edit}
+              // 避難経路の地図（T102）。ケアマネの役で開いたときだけ、避難の面の下に（位置を扱うので面の編集と同じ人だけ）
+              after={s.id === "evacuation" && edit ? <RouteMapPanel data={edit} /> : null}
+            >
+              {/* 経過の書き足し（T24）。書ける種類（役と同意。lib/consent/scope.ts）があるときだけ、経過の上に */}
+              {s.id === "timeline" && view.writes.length > 0 && <TimelineComposer personId={view.head.id} kinds={view.writes} />}
+            </SectionPanel>
+            {s.id === "consent" && phone}
+          </Fragment>
         ))}
+        {!view.sections.some((s) => s.id === "consent") && phone}
       </div>
     </div>
   );

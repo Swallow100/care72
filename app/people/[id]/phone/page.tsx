@@ -13,6 +13,9 @@ import { PHONE_LINK_LABELS } from "@/lib/qr/phone-labels";
 import { loadPhoneLinkRow } from "@/lib/qr/phone-link-store";
 import { buildPhoneLinkView } from "@/lib/qr/phone-link-view";
 import { originFromHeaders } from "@/lib/qr/url";
+import { livePhoneAccountKeys } from "@/lib/phone/account";
+import { phoneEntryAllowed } from "@/lib/phone/consent";
+import { liveSubscriptionCounts } from "@/lib/push/store";
 
 // D1 を毎回読む
 export const dynamic = "force-dynamic";
@@ -27,7 +30,7 @@ export const metadata: Metadata = {
 type Props = { params: Promise<{ id: string }> };
 
 // 本人のページの書類の「スマホ入口」（docs/tasks/T69a.md）。本人と家族が自分のスマホで開くリンク（/s/<token>）と QR を出し、
-// 発行・再発行（前のリンクは全部無効）する。紙に刷る・LINE で送るのはケアマネの手（アプリは送らない）。
+// 発行・再発行（前のリンクと本人・家族の ID は全部無効）する。同意の無い人は発行を押せない（T149）。紙に刷る・LINE で送るのはケアマネの手（アプリは送らない）。
 // ケアマネの役だけ（医療班・行政は範囲〔lib/consent/scope.ts の documents〕に無く 404）。壁は本人のページと同じ。Claude は呼ばない。
 export default async function PhoneLinkPage({ params }: Props) {
   const principal = await requirePage("person");
@@ -42,10 +45,13 @@ export default async function PhoneLinkPage({ params }: Props) {
     phone_link_issued_at: null,
     unlisted_at: null,
   };
+  // 同意の決まり・本人と家族が作った ID・通知の端末（T149）
+  const [accounts, notify] = await Promise.all([livePhoneAccountKeys(env.DB, rows.person.id), liveSubscriptionCounts(env.DB, rows.person.id)]);
   const view = await buildPhoneLinkView(rows, link, {
     now: nowSec(),
     origin: originFromHeaders(await headers()),
     secret: sessionSecret(env),
+    phone: { allowed: phoneEntryAllowed(rows.consents), accounts, notify },
   });
 
   return (
