@@ -102,10 +102,11 @@ export function StaffIntake({
   const pick = (t: Tab) => setTab((cur) => (cur === t ? null : t));
   return (
     <Panel aria-labelledby={INTAKE_TITLE_ID} data-intake>
-      <div className="flex flex-wrap items-end gap-x-4 gap-y-2">
+      {/* 見出しと避難所の欄を 1 行に（欄の名前は欄の左） */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <PanelHead id={INTAKE_TITLE_ID} title={CUSTODY_LABELS.receive} />
-        <label className="flex w-full max-w-xs min-w-0 flex-col gap-0.5 text-sm">
-          <span className="flex items-baseline gap-2">
+        <label className="flex w-full max-w-sm min-w-0 items-center gap-2 text-sm">
+          <span className="flex shrink-0 flex-col leading-tight">
             <span className="text-muted">{CUSTODY_LABELS.shelter}</span>
             {flagged && (
               <span className="text-xs font-bold tone-check" data-shelter-missing>
@@ -134,7 +135,8 @@ export function StaffIntake({
       </div>
 
       {/* 入り方の 3 つ。選んだ物は操作の色の枠（選択の印。薄い下地は敷かない） */}
-      <div role="group" aria-label={CUSTODY_LABELS.receive} className="mt-3 grid gap-2 sm:grid-cols-3" data-entries>
+      {/* 前の「避難所」の切替（避難所別）は 3 つの後ろに小さく、同じ行の右の端に */}
+      <div role="group" aria-label={CUSTODY_LABELS.receive} className="mt-3 grid gap-2 sm:grid-cols-[repeat(3,minmax(0,1fr))_auto]" data-entries>
         {ENTRY_KINDS.map((k, i) => {
           const e = ENTRY[k];
           const on = tab === k;
@@ -158,8 +160,6 @@ export function StaffIntake({
             </button>
           );
         })}
-      </div>
-      <div className="mt-1.5 flex justify-end">
         <Button
           kind="quiet"
           size="sm"
@@ -167,7 +167,7 @@ export function StaffIntake({
           aria-pressed={tab === "shelter"}
           aria-controls={tab === "shelter" ? "intake-flow" : undefined}
           onClick={() => pick("shelter")}
-          className={tab === "shelter" ? "underline decoration-2 underline-offset-4" : "font-normal text-muted"}
+          className={`self-center justify-self-end ${tab === "shelter" ? "underline decoration-2 underline-offset-4" : "font-normal text-muted"}`}
           data-entry="shelter"
         >
           {ENTRY_LABELS.shelterList}
@@ -175,7 +175,7 @@ export function StaffIntake({
       </div>
 
       {tab && (
-        <div id="intake-flow" className="mt-1" data-flow={tab}>
+        <div id="intake-flow" className="mt-3" data-flow={tab}>
           <ShelterMissing value={markShelter}>
             {tab === "qr" && <QrPanel shelter={shelter} samples={samples} />}
             {tab === "search" && <SearchPanel shelter={shelter} />}
