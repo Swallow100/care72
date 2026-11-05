@@ -550,14 +550,14 @@ export const Models: React.FC<{ children: React.ReactNode; counters?: string[] }
 };
 
 /** 協力ケアマネの一言（文字。顔は出さない） */
-export const Quote: React.FC<{ text: string; sub?: string; children?: React.ReactNode }> = ({ text, sub, children }) => {
+export const Quote: React.FC<{ text: string; sub?: string; by?: string; children?: React.ReactNode }> = ({ text, sub, by = "協力してくれたケアマネージャー", children }) => {
   const frame = useCurrentFrame();
   const p = usePalette();
   return (
     <Stage gap={28}>
       {/* 一言は声に合わせた言葉（children）があればそれ、無ければ 1 つの文で */}
       {children ?? <div style={{ fontSize: TYPE.h1, fontWeight: 600, maxWidth: 1400, textAlign: "center", lineHeight: 1.4, ...rise(frame, 0, 22, 16) }}>{text}</div>}
-      <div style={{ fontSize: TYPE.body, color: p.sub, ...rise(frame, 8) }}>協力してくれたケアマネージャー</div>
+      <div style={{ fontSize: TYPE.body, color: p.sub, ...rise(frame, 8) }}>{by}</div>
       {sub ? <div style={{ fontSize: TYPE.body, marginTop: 24, ...rise(frame, 16) }}>{sub}</div> : null}
     </Stage>
   );

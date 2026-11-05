@@ -95,6 +95,8 @@ export type Shot = {
   marker?: string;
   value?: string;
   sub?: string;
+  /** 一言の画面の、一言の下の名前（無ければ「協力してくれたケアマネージャー」） */
+  by?: string;
   /** 前の絵と重ねずに切り替える（前の絵の印がこの絵の同じ所へ縮んで収まる、続きの絵。72 時間の輪 → 3 本立ての円柱） */
   cutIn?: boolean;
 };
@@ -211,12 +213,12 @@ export const SCENES: Scene[] = [
         kind: "number",
         bg: "B02",
         bgFrom: 4,
-        label: "アンケート（T65 の問 4）",
-        marker: "書く時間が無い",
-        // 数は受付（11/5 23:59）が閉じてから。「何人中何人」の形（割合にしない）。入るまでは字だけ
-        value: "［N］人中［N］人",
-        lines: ["書く時間が無い"],
-        sub: "アンケート（ケアマネージャーと包括支援センター）",
+        label: "アンケート（問 6 作った計画のその後）",
+        marker: "市町村に出して終わり",
+        // 受付は 11/5 に閉じた（答えは 4 人、全員ケアマネージャー）。「何人中何人」の形（割合にしない）。生の答えは repo に入れない
+        value: "4 人中 4 人",
+        lines: ["市町村に出して終わり"],
+        sub: "アンケート（ケアマネージャー 4 人、11/4〜11/5）",
         beats: [2.6],
         cues: [{ text: "アンケートでも", line: "N05", size: "h2", slot: "lead" }],
       },
@@ -489,7 +491,18 @@ export const SCENES: Scene[] = [
         ],
       },
       // 背景の B07 は 1 本（14 秒）を 2 つの絵で続けて使う（前の絵が 6 秒）
-      { at: 169, end: 172.5, kind: "quote", label: "協力ケアマネージャーの一言と 2 つ目の数字", lines: ["［協力ケアマネージャーの一言］"], sub: "医療班の手元の割合 ［T34 か訓練の結果。無ければ未測定］", bg: "B07", bgFrom: 6 },
+      // アンケートの問 9（AI が下書きを作るなら作る気になるか）: なる 1・少しなる 2・ならない 1。一言は「なる」と答えた人の理由（引用可の人だけ。引用不可の人の文は使わない）
+      {
+        at: 169,
+        end: 172.5,
+        kind: "quote",
+        label: "アンケートの一言（問 9 の理由）",
+        lines: ["「作成時間が大幅に短くなると思われるから。」"],
+        by: "アンケートの答え（ケアマネージャー）",
+        sub: "AI の下書きなら作る気に　なる 1 人・少しなる 2 人・ならない 1 人（4 人中）",
+        bg: "B07",
+        bgFrom: 6,
+      },
     ],
   },
   {
@@ -528,7 +541,7 @@ export const LINES: Line[] = [
   { id: "N02", at: 4.1, end: 12.9, ja: "災害のとき、在宅の高齢者を誰がどう助けるかを決めておく計画です。でも、できているのは対象者の 15.1% だけ。", en: "It sets out who will help an older person living at home in a disaster, and how. But only 15.1% of the people who need one have one." },
   { id: "N03", at: 13.1, end: 21.3, ja: "私の家族はケアマネージャーで、その理由を家で見てきました。利用者のことは知っているのに、書く時間がないんです。", en: "My family member is a care manager, and I've seen why at home. They know their clients well, but there's no time to write it down." },
   // N04 は消した。ID は振り直さない（欠番）
-  { id: "N05", at: 21.5, end: 25.2, ja: "アンケートでも、［N］人中［N］人が『書く時間が無い』と答えました。", en: "In our survey too, [N] of [N] said they have no time to write plans." },
+  { id: "N05", at: 21.5, end: 25.2, ja: "アンケートでも、4 人全員が『市町村に出して終わり』と答えました。", en: "In our survey, all 4 said their plans were just handed to the city and that was it." },
   { id: "N06", at: 25.4, end: 32.4, ja: "そこで考えました。楽に作れて、実際の災害でも役立つ計画なら、作る意味も大きくなる。", en: "So I thought: if a plan were easy to make and actually useful in a real disaster, making it would mean much more." },
   { id: "N07", at: 32.6, end: 37.9, ja: "それがケア72。72 は、助けが届きにくい災害直後の 72 時間です。", en: "That's Care72. The 72 stands for the first 72 hours after a disaster, when help is slow to arrive." },
   // N08 は 3 本立ての文に使い直した（前の能登の関連死の文は 11/4 の冒頭の組み替えで外した）
@@ -553,7 +566,7 @@ export const LINES: Line[] = [
   { id: "N26", at: 150.3, end: 156.0, ja: "作ったのは Claude Code。設計と実装を分け、並行で進めました。", en: "It was built with Claude Code, with design and implementation split and run in parallel." },
   { id: "N27", at: 156.3, end: 162.7, ja: "フックで鍵と配信を守り、本名を見ない MCP と見直し役で確かめています。", en: "Hooks guard the keys and deploys. An MCP server that never sees real names, and reviewer agents, check the work." },
   { id: "N28", at: 163.3, end: 169, ja: "協力してくれたケアマネージャーの計画 1 件は、ふだん［X 時間］、ケア72 で［Y 分］。", en: "For the care manager who helped us, one plan usually takes [X hours]. With Care72, [Y minutes]." },
-  { id: "N29", at: 169.2, end: 172.3, ja: "［協力ケアマネージャーの一言、または T34 のアンケートの結果 1 文］", en: "[A word from the partner care manager, or one line from the T34 survey]" },
+  { id: "N29", at: 169.2, end: 172.3, ja: "AI の下書きなら作る気になる人は、4 人中 3 人。", en: "With an AI draft, 3 of 4 said they would be willing to make plans." },
   { id: "N30", at: 172.6, end: 179.9, ja: "実用化の課題は山積みです。それでも、まずは一部から、本当に使える形にしていきます。", en: "Getting this into real use still faces many hurdles. But we'll keep working to make it truly usable, starting with one part." },
 ];
 
