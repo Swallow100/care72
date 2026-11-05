@@ -69,13 +69,7 @@ const env = () => ({ JUDGE_PASSWORD_HASH: judgeHash });
 
 /** 種と、本物の事業所の行（協力事業所の本人・ケアマネのログイン・医療班・所属なしの人） */
 function fixtures(s: DatabaseSync) {
-  // 前の形の D1（0027 の前）には、あとの migration で足した表（0033 の紙の手入れ、T135）が無い。無い表を消す文は流さない
-  const has = (t: string) => s.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(t) !== undefined;
-  for (const x of seedStatements({ passwordHashes: { [DEMO_CARE_MANAGER_ID]: cmHash } })) {
-    const del = /^DELETE FROM (\w+);$/.exec(x);
-    if (del && !has(del[1])) continue;
-    s.exec(x);
-  }
+  for (const x of seedStatements({ passwordHashes: { [DEMO_CARE_MANAGER_ID]: cmHash } })) s.exec(x);
   s.prepare("UPDATE accounts SET login_id = 'partner1', password_hash = ? WHERE id = 'acct-partner-cm'").run(otherHash);
   s.prepare(
     `INSERT INTO people (id, office_id, care_manager_id, name, kana, birth_date, ledger)
@@ -609,7 +603,8 @@ describe("作り直しの守り（tools/deploy/guard.ts）", () => {
   it("0027 の前の D1（列が無い）でも数えられ、前と同じ数え方", async () => {
     const old = new DatabaseSync(":memory:");
     const dir = new URL("../../migrations/", import.meta.url);
-    for (const name of readdirSync(dir).filter((n) => n.endsWith(".sql") && n < "0027").sort()) old.exec(readFileSync(new URL(name, dir), "utf8"));
+    // 種は書類の見直しの表（0032、T136）と紙の手入れの表（0033、T135）も空にするので、その表を作る 0032・0033 だけは当てる（新しい表を作るだけで数え方の列に触れない）
+    for (const name of readdirSync(dir).filter((n) => n.endsWith(".sql") && (n < "0027" || n.startsWith("0032_") || n.startsWith("0033_"))).sort()) old.exec(readFileSync(new URL(name, dir), "utf8"));
     fixtures(old);
     const seen: string[] = [];
     const d = await runGuard((sql) => {

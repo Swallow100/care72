@@ -7,6 +7,7 @@
 // - 文字の枠と画像: 紙の上の好きな所に置き、動かす・大きさを変える。刷る PDF にも同じ位置（サーバーが紙に描く）
 // - 印（手で入れた所・置いた枠と画像）は画面だけ。取消・再実行
 // - 質問: この紙の空いた欄のうち台帳に項目のある欄の問い（定型）を順に聞く。答えは台帳に入り紙が埋まる
+// - 見直しの一覧（T136、components/forms/PaperReview.tsx）の行から送られた欄（窓の出来事 care72:paper-field）をその場の入力か窓で開く
 // 保存は /api/forms/entries（台帳は lib/intake/save.ts の saveIntake を通る）。Claude は通らない。紙の部品は状態を持たないまま（サーバーの描画）。
 // 印刷では層も帯も出ない（paper-fill.css）。
 
@@ -32,6 +33,7 @@ import {
   liveFont,
   partsOf,
   slotChanges,
+  slotForField,
   toggleOption,
   type AssetInfo,
   type AssetKind,
@@ -39,6 +41,7 @@ import {
   type PaperSlot,
   type SlotValue,
 } from "@/lib/forms/paper-fill";
+import { PAPER_FIELD_EVENT, type PaperFieldDetail } from "@/lib/forms/review";
 import { shrinkImage } from "@/lib/forms/shrink-image";
 
 type Op =
@@ -313,6 +316,31 @@ export function PaperFill({ data, children }: { data: PaperFillData; children: R
     else if (slot.input.kind === "text") startText(slot);
   };
 
+  // ---------- 見直しの一覧（T136）から送られた欄 ----------
+  // 一覧の行を押すと窓の出来事 care72:paper-field（欄の id・紙の上の物）が来る。その欄に枠を出して送り、字の欄はその場の入力、
+  // 何か所かにまたがる欄は窓を開く（□・選ぶ欄は枠だけで、□ を押して直す）。紙の上に無い欄（別紙だけの欄）は何もしない
+  const [reviewKey, setReviewKey] = useState<string | null>(null);
+  const fromReview = useRef<(d: PaperFieldDetail) => void>(() => undefined);
+  useEffect(() => {
+    fromReview.current = (d) => {
+      const slot = slotForField(data.slots, d);
+      if (!slot) return;
+      setReviewKey(slot.key);
+      root.current?.querySelector<HTMLElement>(`[data-slot="${CSS.escape(slot.key)}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" });
+      if (busy || placing) return;
+      if (slot.input.kind === "text") startText(slot);
+      else if (slot.input.kind === "window") setWindowSlot(slot);
+    };
+  });
+  useEffect(() => {
+    const on = (e: Event) => {
+      const d = (e as CustomEvent<PaperFieldDetail>).detail;
+      if (d && typeof d.field === "string" && Array.isArray(d.items)) fromReview.current(d);
+    };
+    window.addEventListener(PAPER_FIELD_EVENT, on);
+    return () => window.removeEventListener(PAPER_FIELD_EVENT, on);
+  }, []);
+
   const pagesWithLayer = Object.keys(layers).map(Number);
 
   return (
@@ -364,7 +392,7 @@ export function PaperFill({ data, children }: { data: PaperFillData; children: R
               if (slot.input.kind !== "choice") return;
               void saveValue(slot, toggleOption(slot.value, value, slot.input.multi));
             }}
-            askedKey={asking ? (askedSlot?.key ?? null) : null}
+            askedKey={asking ? (askedSlot?.key ?? null) : reviewKey}
             selected={selected}
             setSelected={setSelected}
             freeEdit={freeEdit}

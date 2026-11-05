@@ -1,5 +1,6 @@
 import "@/components/forms/paper.css";
 import "@/components/forms/overlay-paper.css";
+import "@/components/forms/review-paper.css";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
@@ -27,6 +28,10 @@ import { matsuyamaUnconfirmed, unconfirmedView } from "@/lib/forms/unconfirmed";
 import { matsuyamaAskableOf } from "@/lib/forms/form-asks";
 import { MAPPING_LABELS as L } from "@/lib/forms/mapping";
 import { loadPersonDocument } from "@/lib/consent/documents";
+import { PaperReview, ReviewPrintNote } from "@/components/forms/PaperReview";
+import { matsuyamaSubject } from "@/lib/forms/review";
+import { canReview } from "@/lib/forms/review-load";
+import { paperReviewProps } from "@/lib/forms/review-view";
 
 // D1 を毎回読む
 export const dynamic = "force-dynamic";
@@ -75,6 +80,11 @@ export default async function MatsuyamaFormPage({ params, searchParams }: Props)
     edit: canWrite,
   });
   const unconfirmed = unconfirmedView(matsuyamaUnconfirmed(sheet, askable));
+  // 見直し（T136）。原本の枠の紙だけ、ケアマネの役で自分の事業所の人。紙は手入れ（T135）を効かせた後の物
+  const review =
+    framed && canReview(principal, rows.person.office_id)
+      ? await paperReviewProps(env.DB, { personId: id, formKey: "matsuyama", subject: matsuyamaSubject(sheet, framed), sheet: framed, consents: rows.consents })
+      : null;
   const here = `/people/${encodeURIComponent(id)}/forms/matsuyama`;
   // 紙に直接書く窓の欄と今の値（T117）。前からの紙面（原本を取り込む前）だけ。原本の枠の紙はその場で入れる（T135）
   const edit = canWrite && !framed ? paperEditData(rows) : null;
@@ -92,9 +102,15 @@ export default async function MatsuyamaFormPage({ params, searchParams }: Props)
         title="計画書"
         name={sheet.name}
         autoPrint={autoPrint}
-        actions={framed && <FillToggle here={here} fill={fillOn} />}
+        actions={
+          <>
+            {review && <ReviewPrintNote confirmed={review.confirmed !== null} />}
+            {framed && <FillToggle here={here} fill={fillOn} />}
+          </>
+        }
       >
         <UnconfirmedFold view={unconfirmed} />
+        {review && <PaperReview {...review} />}
         {framed && framed.annex.length > 0 && (
           <span className="text-sm" data-annex-count={framed.annex.length}>
             <span className="text-muted">{L.annex}</span> <span className="font-bold tabular-nums">{framed.annex.length}</span>{" "}

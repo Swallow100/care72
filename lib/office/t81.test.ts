@@ -246,12 +246,10 @@ describe("migration 0025 は前からある審査員の追加・再発行に印�
     const names = readdirSync(dir).filter((n) => n.endsWith(".sql")).sort();
     const old = new DatabaseSync(":memory:");
     old.exec("PRAGMA foreign_keys = ON;");
-    for (const n of names.filter((x) => x < "0025_")) old.exec(readFileSync(new URL(n, dir), "utf8"));
-    const has = (t: string) => old.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(t) !== undefined;
+    // 種は書類の見直しの表（0032、T136）と紙の手入れの表（0033、T135）も空にするので 0032・0033 も先に（新しい表を作るだけで accounts・経過に触れない）
+    for (const n of names.filter((x) => x < "0025_" || x.startsWith("0032_") || x.startsWith("0033_"))) old.exec(readFileSync(new URL(n, dir), "utf8"));
     for (const s of seedStatements()) {
-      // 種は 0025 の前の形でも入る（judge_made の列を書かない）。あとの migration で足した表（0033 の紙の手入れ、T135）を消す文は流さない
-      const del = /^DELETE FROM (\w+);$/.exec(s);
-      if (del && !has(del[1])) continue;
+      // 種は 0025 の前の形でも入る（judge_made の列を書かない）
       old.exec(s);
     }
     const add = (id: string, by: string, kind: string, change: string | null) => {

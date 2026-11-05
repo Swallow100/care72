@@ -34,6 +34,7 @@ export {
   ChevronDownIcon as OpenIcon, // 開く・畳む
   ChevronLeftIcon as BackIcon, // 戻る
   ChevronUpDownIcon as SortIcon, // 並べ替えできる列の見出しの印（押していない列。押している列は向きの印。T66）
+  ClipboardDocumentCheckIcon as ReviewIcon, // 見直し（書類の紙の AI 照合、T136）
   ClipboardDocumentIcon as CopyIcon, // コピー
   DocumentArrowUpIcon as ReadIcon, // 様式の読取（写真・PDF を AI が読む）
   DocumentTextIcon as PaperIcon, // 紙面の表示

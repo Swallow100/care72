@@ -1,6 +1,7 @@
 import "@/components/forms/paper.css";
 import "@/components/forms/mapped-paper.css";
 import "@/components/forms/overlay-paper.css";
+import "@/components/forms/review-paper.css";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
@@ -29,6 +30,11 @@ import { warekiText } from "@/lib/forms/wareki";
 import { CONSENT_KIND_LABELS } from "@/lib/labels";
 import { loadPersonDocument } from "@/lib/consent/documents";
 import { formatJst } from "@/lib/person";
+import { PaperReview, ReviewPrintNote } from "@/components/forms/PaperReview";
+import { mappedSubject } from "@/lib/forms/review";
+import { applyFixes, loadFixes } from "@/lib/forms/review-db";
+import { canReview, mappedFormKey } from "@/lib/forms/review-load";
+import { paperReviewProps } from "@/lib/forms/review-view";
 
 // D1 を毎回読む
 export const dynamic = "force-dynamic";
@@ -67,7 +73,9 @@ export default async function MappedFormPage({ params, searchParams }: Props) {
     env.DB.prepare("SELECT name FROM offices WHERE id = ?1").bind(rows.person.office_id).first<{ name: string }>(),
   ]);
   if (!builtin && !stored) notFound();
-  const mapping = stored ? stored.mapping : caoMapping();
+  // 再考（T136）で読み直した欄の直しを当てる（同じ対応表の紙の全部に効く。見直しの一覧の「再考済」から戻せる）
+  const fixes = stored ? await loadFixes(env.DB, rows.person.office_id, mappedFormKey(stored.id), stored.version) : new Map();
+  const mapping = stored ? applyFixes(stored.mapping, fixes).mapping : caoMapping();
   const entry = stored
     ? mappingEntry({ id: stored.id, title: stored.title, issuer: stored.mapping.issuer, checkedAt: stored.checked_at })
     : CAO_ENTRY;
@@ -90,6 +98,11 @@ export default async function MappedFormPage({ params, searchParams }: Props) {
     overlay: !listView && stored !== null,
     edit: principal.role === "care_manager" && scope !== null && scope.officeId === rows.person.office_id && stored !== null,
   });
+  // 見直し（T136）。元の様式の上の紙だけ、ケアマネの役で自分の事業所の人。紙は手入れ（T135）を効かせた後の物
+  const review =
+    overlay && stored && canReview(principal, rows.person.office_id)
+      ? await paperReviewProps(env.DB, { personId: id, formKey: mappedFormKey(stored.id), subject: mappedSubject(sheet, overlay), sheet: overlay, consents: rows.consents, fixes })
+      : null;
   const here = `/people/${encodeURIComponent(id)}/forms/mapped/${encodeURIComponent(mappingId)}`;
 
   return (
@@ -101,6 +114,7 @@ export default async function MappedFormPage({ params, searchParams }: Props) {
         autoPrint={autoPrint}
         actions={
           <>
+            {review && <ReviewPrintNote confirmed={review.confirmed !== null} />}
             {overlay && <FillToggle here={here} fill={fillOn} />}
             {/* 元の様式の上の紙と、欄名｜値の 2 列の紙の切替（T86） */}
             {overlay && (
@@ -123,6 +137,7 @@ export default async function MappedFormPage({ params, searchParams }: Props) {
       >
         {/* 未確認の欄（元の様式の上の紙は空けて刷る欄）。押すと欄の一覧。帯だけで、紙には刷らない（T87） */}
         <UnconfirmedFold view={unconfirmedView(mappedUnconfirmed(sheet))} />
+        {review && <PaperReview {...review} />}
         {sheet.unmapped.length > 0 && (
           <span className="text-sm">
             <span className="text-muted">{L.unmapped}</span> <span className="font-bold tabular-nums">{sheet.unmapped.length}</span>

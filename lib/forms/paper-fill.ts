@@ -179,3 +179,18 @@ export function toggleOption(current: SlotValue, value: string, multi: boolean):
   if (on.includes(value)) return on.filter((v) => v !== value);
   return multi ? [...on, value] : [value];
 }
+
+// ---------- 見直しの一覧から送られた欄（T136） ----------
+
+/**
+ * 見直しの一覧（T136、lib/forms/review.ts の PAPER_FIELD_EVENT）の行から送られた欄に当たる紙の欄。
+ * field は欄の id（対応表の欄の id・原本の枠の欄の key）、items は紙の上の物の data-field（「key:部品」「key1+key2」の形もある）。
+ * 1 つの書く所に欄が 2 つの所（keys）も見る。当たらなければ null（別紙だけの欄など）
+ */
+export function slotForField(slots: readonly PaperSlot[], d: { field: string; items: readonly string[] }): PaperSlot | null {
+  const has = (s: PaperSlot, k: string) => s.key === k || (s.keys ?? []).includes(k);
+  const direct = slots.find((s) => has(s, d.field));
+  if (direct) return direct;
+  const ids = d.items.flatMap((i) => i.split(/[:+]/));
+  return slots.find((s) => ids.some((k) => has(s, k))) ?? null;
+}

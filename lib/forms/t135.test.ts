@@ -23,7 +23,8 @@ import { komorebiReadResult } from "./komorebi-form.fixture.ts";
 import { checkReadResult, LEDGER_ITEMS, type FieldBox, type FormMapping, type MappingField } from "./mapping.ts";
 import { fitText, FONT_MAX_PT, FONT_MIN_PT, textEm, type OverlaySheet as Sheet } from "./overlay-sheet.ts";
 import type { PageImage, PageImageBucket } from "./page-images.ts";
-import { joinParts, liveFont, partsOf, slotChanges, toggleOption, type PaperSlot } from "./paper-fill.ts";
+import { joinParts, liveFont, partsOf, slotChanges, slotForField, toggleOption, type PaperSlot } from "./paper-fill.ts";
+import { mappedSubject, matsuyamaSubject, ruleReview } from "./review.ts";
 import { mappedPaper, matsuyamaPaper } from "./paper-fill-server.ts";
 import { paperQuestions } from "./paper-slots.ts";
 import { paperCss, paperPage, readRepoFile } from "./print-harness.ts";
@@ -527,6 +528,45 @@ describe("計画書（原本の枠の紙）", () => {
     // 計画書の様式だけの欄でない欄は断る
     const bad = await handleEntries(db, cm, { op: "put", personId: "p-01", formId: "matsuyama", entry: { id: "fe-rmap-00002", kind: "field", fieldKey: "shelter.city.place", page: null, box: null, value: JSON.stringify("x") } }, NOW);
     expect(bad.status).toBe(400);
+  });
+});
+
+describe("見直しの一覧（T136）から紙の上で入れる所へ", () => {
+  it("一覧の空欄の行（欄の id と紙の上の物）が、紙の欄に当たる（添付の様式・計画書）", async () => {
+    const p = await paper();
+    const findings = ruleReview(mappedSubject(p.sheet, p.overlay!)).filter((f) => f.kind === "blank");
+    expect(findings.length).toBeGreaterThan(0);
+    for (const f of findings) {
+      const slot = slotForField(p.fill!.slots, f);
+      // 押せない欄（手書き・作成日など）のほかは、全部その欄に当たる
+      if (p.fill!.slots.some((s) => s.key === f.field)) expect(slot?.key, f.label).toBe(f.field);
+    }
+    expect(slotForField(p.fill!.slots, { field: "f101", items: [] })?.dest).toBe("form");
+    expect(slotForField(p.fill!.slots, { field: "f999", items: ["f999"] })).toBeNull();
+
+    const rows = await rowsOf();
+    const manifest: OriginalManifest = {
+      id: "matsuyama",
+      sha256: ORIGINALS.matsuyama.sha256,
+      pages: ORIGINALS.matsuyama.usePages.map((page) => ({ page, width: 3307, height: 4677, bytes: 1 })),
+      importedAt: "2026-11-05T00:00:00.000Z",
+    };
+    const m = await matsuyamaPaper(db, { rows, officeId: OFFICE, sheet: buildMatsuyamaSheet(rows, OPTS), manifest, routeMap: null, edit: true });
+    const mf = ruleReview(matsuyamaSubject(m.sheet, m.framed!));
+    const blanks = mf.filter((f) => f.kind === "blank" && m.fill!.slots.some((s) => s.key === f.field || s.keys?.includes(f.field)));
+    expect(blanks.length).toBeGreaterThan(0);
+    for (const f of blanks) expect(slotForField(m.fill!.slots, f), f.label).not.toBeNull();
+    // 1 つの書く所に 2 つの欄（医薬品情報）は、2 つ目の欄の id でも同じ窓
+    const drugs = slotForField(m.fill!.slots, { field: "medical.drugs", items: ["medical.doctor+medical.drugs"] });
+    expect(drugs?.input.kind).toBe("window");
+    // 部品の物（氏名の氏・名）は紙の上の物の data-field から
+    expect(slotForField(m.fill!.slots, { field: "x", items: ["shelter.city.place:"] })?.key).toBe("shelter.city.place");
+  });
+
+  it("画面は見直しの一覧の出来事を受ける", () => {
+    const src = readRepoFile("components/forms/PaperFill.tsx");
+    expect(src).toContain("PAPER_FIELD_EVENT");
+    expect(src).toContain("slotForField(data.slots, d)");
   });
 });
 
