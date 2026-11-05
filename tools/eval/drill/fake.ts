@@ -13,7 +13,7 @@ import { REVIEW_ACTION_LABELS, REVIEW_KINDS } from "../../../lib/drill/review.ts
 import { ASK_KINDS } from "../../../lib/drill/scenarios.ts";
 import { WORLD_TOOL, type RoomClient, type RoomEvent } from "../../../lib/drill/world-room.ts";
 import { NO_BASIS } from "../../../lib/sources/prompt.ts";
-import { isVirtualPersona, roleOfSystem, systemTexts, type Role } from "./roles.ts";
+import { isPersonaBatch, isVirtualPersona, roleOfSystem, systemTexts, type Role } from "./roles.ts";
 import type { Rng } from "./rng.ts";
 
 type Params = Anthropic.Beta.Messages.MessageCreateParamsNonStreaming;
@@ -23,7 +23,36 @@ export type FakeOptions = {
   rng: Rng;
   /** 決まりを破る言葉・壊れた JSON を混ぜる割合（0〜1）。既定 0 */
   noise?: number;
+  /**
+   * 返事の待ちの縮尺（T123）。役ごとの本物の待ちの目安（LATENCY_MS、評価の 2 回目の平均）にこの数を掛けて待つ（0.01 なら 100 分の 1）。
+   * 進める 1 回の待ちの形（監督と本人役が順か並びか・最後の刻みの監督）を偽の回で比べるため。既定 0（待たない）
+   */
+  latency?: number;
 };
+
+/** 役ごとの本物の待ちの目安（ミリ秒。評価の 2 回目の訓練の記録の平均。本人役のまとめ呼びは 1 人より長い） */
+export const LATENCY_MS: Readonly<Partial<Record<Role | "persona_batch" | "world_room", number>>> = {
+  director: 12000,
+  persona: 5000,
+  persona_batch: 8000,
+  persona_call: 4000,
+  persona_talk: 5000,
+  persona_visit: 5000,
+  world: 11000,
+  world_room: 7000,
+  free: 2600,
+  judge: 15000,
+  review: 15000,
+};
+
+const pause = (ms: number) => (ms > 0 ? new Promise<void>((r) => setTimeout(r, ms)) : Promise.resolve());
+
+/** 役の待ち（縮尺つき。揺れは 0.6〜1.8 倍で、本物と同じく遅い物がまれに出る） */
+function latencyOf(opts: FakeOptions, rng: Rng, role: keyof typeof LATENCY_MS): number {
+  if (!opts.latency) return 0;
+  const x = rng.next();
+  return Math.round((LATENCY_MS[role] ?? 3000) * opts.latency * (x < 0.85 ? 0.6 + x : 1.8));
+}
 
 // ---------- token の推し量り ----------
 
@@ -103,16 +132,29 @@ const CONDITIONS = ["横になっている", "椅子に座っている", "落ち
 const DOINGS = ["家の中で待つ", "懐中電灯を探す", "家族に電話する", "避難の支度をする", "近所の人と話す", "布団で休む", "水をくむ"];
 
 /** 決まりを破る言葉（noise）。検査が拾うかの確かめ */
-export const NOISE_WORDS = ["重症かもしれません", "薬を2錠多めに飲ませました", "もう死亡しているかもしれません", "090-1234-5678 に電話ください", "B さんにも伝えてください"];
+export const NOISE_WORDS = [
+  "重症かもしれません",
+  "薬を2錠多めに飲ませました",
+  "もう死亡しているかもしれません",
+  "090-1234-5678 に電話ください",
+  "B さんにも伝えてください",
+  // T118: 薬の量（単位・流量）・病名・医療の助言・人の生き死にの言い方
+  "インスリンは10単位打ちました",
+  "酸素は2L/分にしています",
+  "糖尿病があるので心配です",
+  "薬を飲んだほうがいいですよ",
+  "息を引き取ったかもしれない",
+];
 
 function situation(rng: Rng, text: string): string {
   const hits = SITUATIONS.filter(([re]) => re.test(text));
   return hits.length > 0 ? rng.pick(rng.pick(hits)[1]) : rng.pick(CALM);
 }
 
-function speechOf(rng: Rng, from: string, text: string, red: boolean): string {
+function speechOf(rng: Rng, from: string, text: string, red: boolean, call?: string | null): string {
   const self = from === "本人" || from === "";
-  const subject = self ? "" : rng.pick(SUBJECTS);
+  // 話す人の本人の呼び方（本人役の説明の「話す人」の行、T121）があればそれで。無ければ決まった言い方から
+  const subject = self ? "" : call ? `${call}は` : rng.pick(SUBJECTS);
   const need = red ? rng.pick(RED_NEEDS) : rng.pick(GREEN_NEEDS);
   return `${rng.pick(OPENINGS)}${subject}${situation(rng, text)}。${need}`;
 }
@@ -141,7 +183,9 @@ function personaAnswer(rng: Rng, input: Input, opts: FakeOptions, virtual: boole
   const from = !contacts ? "" : fixed ? (pressers[0] ?? "本人") : rng.pick(pressers);
   const red = contacts && rng.chance(bad ? 0.4 : 0.12);
   const origin = tick.match(/言う事の元「([^」]*)」/)?.[1];
-  const speech = !contacts ? "" : origin && rng.chance(0.5) ? `${rng.pick(OPENINGS)}${origin}` : speechOf(rng, from, tick, red);
+  const speaker = profile.match(/家族から連絡するのは (\S+?)（本人を「([^」]+)」/);
+  const call = speaker && speaker[1] === from ? speaker[2] : null;
+  const speech = !contacts ? "" : origin && rng.chance(0.5) ? `${rng.pick(OPENINGS)}${origin}` : speechOf(rng, from, tick, red, call);
   const location = speech.includes("避難所に着き") ? "shelter" : rng.weighted<string>([["home", 6], ["shelter", 2], ["other", 1], ["unknown", 1]]);
   const yn = () => rng.weighted<boolean | null>([[true, 3], [false, 4], [null, 2]]);
   return {
@@ -155,6 +199,22 @@ function personaAnswer(rng: Rng, input: Input, opts: FakeOptions, virtual: boole
     speech: speech ? withNoise(opts, rng, speech) : "",
   };
 }
+
+/** まとめて呼んだ本人役（T121）。番号ごとの文（「本人役:」と「この刻み:」）を分けて、1 人ずつ同じ作り方で答える */
+function personaBatchAnswer(rng: Rng, input: Input, opts: FakeOptions, virtual: boolean) {
+  const answers = Object.entries(input).map(([id, v]) => {
+    const text = textOf(v);
+    const at = text.indexOf(TICK_HEAD);
+    const profile = at >= 0 ? text.slice(0, at).replace(PROFILE_HEAD, "") : text;
+    const tick = at >= 0 ? text.slice(at + TICK_HEAD.length) : "";
+    return { id, ...personaAnswer(rng.fork(id), { 本人役: { text: profile }, この刻み: { text: tick } }, opts, virtual) };
+  });
+  return { answers };
+}
+
+/** まとめた本人役の 1 人の文の区切り（lib/drill/persona.ts の createPersonaBatchHook と同じ） */
+const TICK_HEAD = "\n\nこの刻み:\n";
+const PROFILE_HEAD = /^本人役:\n/;
 
 function callAnswer(rng: Rng, input: Input, opts: FakeOptions, talk: boolean) {
   const call = textOf(input["電話"]);
@@ -417,10 +477,12 @@ export function fakeClaude(opts: FakeOptions): ClaudeClient & { roles: Role[] } 
           const role = roleOfSystem(params.system);
           roles.push(role);
           const rng = opts.rng.fork(`${roles.length}:${role}`);
+          await pause(latencyOf(opts, rng.fork("wait"), role === "persona" && isPersonaBatch(params.system) ? "persona_batch" : role));
           if (opts.noise && role !== "judge" && rng.chance(opts.noise / 5)) return message(params, "{");
           const input = inputOf(params);
           let value: unknown;
-          if (role === "persona") value = personaAnswer(rng, input, opts, isVirtualPersona(params.system));
+          if (role === "persona" && isPersonaBatch(params.system)) value = personaBatchAnswer(rng, input, opts, isVirtualPersona(params.system));
+          else if (role === "persona") value = personaAnswer(rng, input, opts, isVirtualPersona(params.system));
           else if (role === "persona_call") value = callAnswer(rng, input, opts, false);
           else if (role === "persona_talk") value = callAnswer(rng, input, opts, true);
           else if (role === "persona_visit") value = visitAnswer(rng, input, opts);
@@ -464,6 +526,7 @@ export function fakeRoom(opts: FakeOptions): RoomClient {
             const text = ((e.content as Array<{ text?: string }>)[0]?.text ?? "") as string;
             geo = readGeography(text, geo);
             const rng = opts.rng.fork(`room:${n}`);
+            await pause(latencyOf(opts, rng.fork("wait"), "world_room"));
             if (opts.noise && rng.chance(opts.noise / 5)) events.push({ id: `ev_${++n}`, type: "session.error" });
             else events.push({ id: `ev_${++n}`, type: "agent.custom_tool_use", name: WORLD_TOOL, input: worldAnswer(rng, text, geo, opts) });
           } else if (e.type === "user.custom_tool_result") {

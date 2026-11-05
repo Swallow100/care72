@@ -6,7 +6,7 @@ import { buildParams } from "../claude/call.ts";
 import { OPUS } from "../claude/models.ts";
 import { checkRedactedImage } from "../intake/read-check.ts";
 import { BARE_MARK, READ_FORM, RAW_FILE_FIELD } from "../intake/read-form.ts";
-import { buildReadRequest, FORM_READ_SYSTEM } from "./form-read.ts";
+import { buildPageRequest, buildReadRequest, FORM_READ_SYSTEM } from "./form-read.ts";
 import { MAPPING_LABELS } from "./mapping.ts";
 import { mappingError } from "./mapping-http.ts";
 import { buildFormReadForm, FORM_READ_PAGES_MAX, formReadPagesOf, type FormReadPage } from "./read-upload.ts";
@@ -86,7 +86,7 @@ describe("受け口と画面", () => {
     const route = readFileSync(new URL("./read-post.ts", import.meta.url), "utf8");
     const pages = route.indexOf("formReadPagesOf(form)");
     const check = route.indexOf("checkRedactedImage(bytes)");
-    const ask = route.indexOf("readForm(files, ctx)");
+    const ask = route.indexOf("readForm(files, ctx");
     for (const at of [pages, check, ask]) expect(at).toBeGreaterThan(0);
     expect(pages).toBeLessThan(check);
     expect(check).toBeLessThan(ask);
@@ -102,16 +102,17 @@ describe("受け口と画面", () => {
     expect(panel).not.toMatch(/append\("file"/);
   });
 
-  it("Claude への頼み: 頁の画像を順に並べて 1 回。黒く塗った所を推し量らない", () => {
+  it("Claude への頼み: 頁の画像を 1 頁 1 回（T120）。黒く塗った所を推し量らない", () => {
     const a = { kind: "image" as const, attachment: { kind: "image" as const, mediaType: "image/jpeg" as const, data: "QQ==" }, bytes: 1 };
     const b = { ...a, attachment: { ...a.attachment, data: "Qg==" } };
-    const req = buildReadRequest([a, b]);
-    expect(req.attachments).toEqual([a.attachment, b.attachment]);
+    const req = buildPageRequest(b, 2, 2);
+    expect(req.attachments).toEqual([b.attachment]);
     expect(buildReadRequest(a).attachments).toEqual([a.attachment]);
-    const content = buildParams(req, OPUS).messages[0].content as Array<{ type: string; source?: { data: string } }>;
-    expect(content.map((c) => c.type)).toEqual(["image", "image", "text"]);
-    expect(content.slice(0, 2).map((c) => c.source?.data)).toEqual(["QQ==", "Qg=="]);
+    const content = buildParams(req, OPUS).messages[0].content as Array<{ type: string; source?: { data: string }; text?: string }>;
+    expect(content.map((c) => c.type)).toEqual(["image", "text"]);
+    expect(content[0].source?.data).toBe("Qg==");
+    expect(JSON.parse(content[1].text!).頁).toEqual({ no: 2, of: 2 });
     expect(FORM_READ_SYSTEM).toContain("黒く塗りつぶした四角は、ケアマネが隠した所。中身を推し量らない・出さない。");
-    expect(FORM_READ_SYSTEM).toContain("並びの順に 1 枚が 1 頁");
+    expect(FORM_READ_SYSTEM).toContain("の 1 頁");
   });
 });

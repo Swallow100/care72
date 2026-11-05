@@ -160,7 +160,7 @@ export function recordRoom(inner: RoomClient, log: RunLog, opts: { clock?: () =>
   const seen = new Set<string>();
   const base = agentParams().model as { id?: string; effort?: string } | undefined;
   let agent: { model: string | null; effort: string | null } = { model: base?.id ?? null, effort: base?.effort ?? null };
-  let open: { sent: string; session: string; t0: number; tools: unknown[]; replies: string[] } | null = null;
+  let open: { sent: string; session: string; t0: number; tools: unknown[]; replies: string[]; sendErrors: string[]; sentIds: number | null } | null = null;
   const close = (error: string | null, stop: string | null) => {
     if (!open) return;
     log.push({
@@ -181,6 +181,9 @@ export function recordRoom(inner: RoomClient, log: RunLog, opts: { clock?: () =>
       parsed: open.tools.length > 0 ? true : null,
       session: open.session,
       toolReplies: open.replies,
+      sendErrors: open.sendErrors,
+      // 送りの返事の出来事の id の数（T123。0 なら部屋の側が文の中身で自分の刻みを探す）
+      sentIds: open.sentIds,
     });
     open = null;
   };
@@ -210,14 +213,25 @@ export function recordRoom(inner: RoomClient, log: RunLog, opts: { clock?: () =>
       send: async (id, events) => {
         for (const e of events) {
           if (e.type === "user.message") {
-            close("no_answer", null);
             const text = ((e.content as Array<{ text?: string }> | undefined)?.[0]?.text ?? "") as string;
-            open = { sent: text, session: id, t0: clock(), tools: [], replies: [] };
+            // 送りが例外だった同じ文の送り直しは同じ 1 行のまま（T121。前は送り直しで前の行を no_answer で閉じていた）
+            if (open && open.sent === text && open.sendErrors.length > 0) continue;
+            close("no_answer", null);
+            open = { sent: text, session: id, t0: clock(), tools: [], replies: [], sendErrors: [], sentIds: null };
           } else if (e.type === "user.custom_tool_result" && open) {
             open.replies.push(((e.content as Array<{ text?: string }> | undefined)?.[0]?.text ?? "") as string);
           }
         }
-        return inner.sessions.send(id, events);
+        try {
+          const r = await inner.sessions.send(id, events);
+          if (open && events.some((e) => e.type === "user.message")) open.sentIds = r.ids.length;
+          return r;
+        } catch (err) {
+          // 送りの失敗の理由（名前と状態の数だけ。中身は書かない）。本物の回で代替の元が読めるように（T121）
+          const status = (err as { status?: unknown })?.status;
+          open?.sendErrors.push(`${err instanceof Error ? err.name : typeof err}${typeof status === "number" ? `:${status}` : ""}`);
+          throw err;
+        }
       },
       list: async (id, after) => {
         const out: RoomEvent[] = await inner.sessions.list(id, after);

@@ -63,6 +63,9 @@ export function intakePropsOf(rows: PersonPageRows, ai: boolean | AiStatus): Int
         reach: c.reach,
         has_smartphone: c.has_smartphone,
         has_car: c.has_car,
+        kana: c.kana ?? null,
+        address: c.address ?? null,
+        mobile: c.mobile ?? null,
       })),
       clocks: rows.clocks.map((k) => ({
         id: k.id,

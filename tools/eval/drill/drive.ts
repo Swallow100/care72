@@ -16,6 +16,7 @@ import { drillFreeHook } from "../../../lib/drill/free-action.ts";
 import { drillStepHooks, drillTalkHook } from "../../../lib/drill/hooks.ts";
 import { actionPost, replayGet, startPost, stepPost } from "../../../lib/drill/http.ts";
 import { reviewPost } from "../../../lib/drill/record-http.ts";
+import { warekiText } from "../../../lib/forms/wareki.ts";
 import { talkPost } from "../../../lib/drill/talk.ts";
 import { loadDrillScreen } from "../../../lib/drill/view.ts";
 import type { RoomClient, WorldMode } from "../../../lib/drill/world-room.ts";
@@ -106,6 +107,8 @@ export type RunOutcome = {
   names: Record<string, string>;
   /** 世界の部屋の Agent と Environment（ai_agents の行）。次の回に渡して作り直さない */
   worldAgent: WorldAgentRow | null;
+  /** 開始に手の決まり（T110 の terms）を送ったか（T121） */
+  terms?: boolean;
 };
 
 /** ai_agents の行（世界の部屋の Agent と Environment） */
@@ -124,6 +127,11 @@ export type DriveDeps = {
   maxAdvances: number;
   /** 終わったら講評（Opus 1 回）も作る */
   review: boolean;
+  /**
+   * 時間と状況で変わる手の決まり（T110 の DrillOptions.terms）を連続の時計の訓練の開始に送る（T121。開始の画面と同じ）。
+   * 無ければ送る（false で送らない。決まりの無い前の回と比べるとき）
+   */
+  terms?: boolean;
   /**
    * 前の回で作った世界の部屋の Agent と Environment。回ごとに新しい DB なので、渡さないと本物の部屋は回ごとに Agent と Environment を作る
    * （消さずに残る）。渡せば DB の ai_agents に入れてから始める
@@ -187,7 +195,7 @@ type Contact = { id: string; person_id: string; kind: string };
 
 type Request = { kind: string; person: string | null; target: string | null; text?: string; probe?: boolean };
 
-function chooseAct(rng: Rng, plan: RunPlan, replay: Replay, contacts: ReadonlyArray<Contact>, names: Record<string, string>): Request | null {
+function chooseAct(rng: Rng, plan: RunPlan, replay: Replay, contacts: ReadonlyArray<Contact>, names: Record<string, string>, births: Record<string, string> = {}): Request | null {
   const ended = new Set(Object.keys(replay.world.ended ?? {}));
   const live = plan.participants.filter((p) => !ended.has(p));
   if (live.length === 0) return null;
@@ -195,7 +203,8 @@ function chooseAct(rng: Rng, plan: RunPlan, replay: Replay, contacts: ReadonlyAr
   const person = ranked.length > 0 && rng.chance(plan.followRank) ? rng.pick(ranked.slice(0, 3)).person : rng.pick(live);
   if (rng.chance(plan.freeRate)) {
     const probe = rng.chance(plan.probeRate) && names[person];
-    const text = probe ? `${names[person]}さんの家に行って様子を見る` : rng.pick(FREE_TEXTS);
+    // 門の試し: 氏名と和暦の生年月日（T107 の書類の台の入力と同じ形「昭和17年4月18日生」。T118）を混ぜる
+    const text = probe ? `${names[person]}さん（${births[person] ? `${births[person]}生` : ""}）の家に行って様子を見る`.replace("（）", "") : rng.pick(FREE_TEXTS);
     return { kind: "free", person, target: null, text, ...(probe ? { probe: true } : {}) };
   }
   const rows = ACTION_CATALOG.filter((r) => r.id !== "free");
@@ -249,6 +258,12 @@ export async function runDrill(plan: RunPlan, deps: DriveDeps): Promise<RunOutco
   const names = Object.fromEntries(
     (sqlite.prepare("SELECT id, name FROM people").all() as Array<{ id: string; name: string }>).filter((r) => plan.participants.includes(r.id)).map((r) => [r.id, r.name]),
   );
+  // 門の試しの文に混ぜる和暦の生年月日（空きを抜いた warekiText。T107 の入力と同じ形。T118）
+  const births = Object.fromEntries(
+    (sqlite.prepare("SELECT id, birth_date FROM people").all() as Array<{ id: string; birth_date: string | null }>)
+      .filter((r) => plan.participants.includes(r.id) && r.birth_date)
+      .map((r) => [r.id, warekiText(r.birth_date!).replace(/ /g, "")]),
+  );
 
   const ops: OpStat[] = [];
   const errors: string[] = [];
@@ -272,7 +287,9 @@ export async function runDrill(plan: RunPlan, deps: DriveDeps): Promise<RunOutco
     const took = Date.now() - a;
     const ok = error === null && status === 200 && body?.ok === true;
     failsInRow = ok ? 0 : failsInRow + 1;
-    ops.push({ op, status, ok, took, error });
+    // 断られた要求の理由（body の error。決まりどおりの断り blocked を失敗と分ける、T121）
+    const refused = !ok && error === null && typeof body?.error === "string" ? body.error : null;
+    ops.push({ op, status, ok, took, error: error ?? refused });
     log.push({ type: "op", phase: "end", op, status, ok, took, body, error });
     return { status, body };
   };
@@ -310,6 +327,7 @@ export async function runDrill(plan: RunPlan, deps: DriveDeps): Promise<RunOutco
       ...(plan.night ? { night: true } : {}),
       ...(plan.staff !== null ? { staff: plan.staff } : {}),
       ...(plan.scenario !== "short" ? { clock: true } : {}),
+      ...(plan.scenario !== "short" && deps.terms !== false ? { terms: true } : {}),
       ...(plan.scale ? { scale: plan.scale } : {}),
     };
     const startReq = { scenario: plan.scenario, options };
@@ -325,7 +343,7 @@ export async function runDrill(plan: RunPlan, deps: DriveDeps): Promise<RunOutco
       if (rng.chance(plan.actRate)) {
         const n = rng.int(1, plan.actMax);
         for (let i = 0; i < n && replay.drill.status === "running"; i++) {
-          const req = chooseAct(rng, plan, replay, contacts, names);
+          const req = chooseAct(rng, plan, replay, contacts, names, births);
           if (!req) break;
           const body = {
             step: replay.drill.step,
@@ -373,7 +391,7 @@ export async function runDrill(plan: RunPlan, deps: DriveDeps): Promise<RunOutco
     }
     const callsLeft = (await loadDrillScreen(db, { officeId: DEMO.id }, drillId, null))?.left ?? null;
     log.push({ type: "end", status: replay.drill.status, step: replay.drill.step, minute: replay.minute, advances, callsLeft });
-    return { plan, drillId, status: replay.drill.status, advances, replay, ops, errors, aiCalls: aiCallsOf(sqlite), callsLeft, names, worldAgent: worldAgentOf(sqlite) };
+    return { plan, drillId, status: replay.drill.status, advances, replay, ops, errors, aiCalls: aiCallsOf(sqlite), callsLeft, names, worldAgent: worldAgentOf(sqlite), terms: options.terms === true };
   } finally {
     sqlite.close();
   }

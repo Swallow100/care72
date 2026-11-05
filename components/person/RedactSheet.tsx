@@ -3,6 +3,11 @@
 // 黒塗りの画面（T52）。入れる欄と様式の読み取り（T83）で写真・PDF を選ぶと必ずここを通り、写った氏名・住所・電話・町名・生年月日・保険者番号を人が四角で黒く塗ってから送る。
 // - 全画面の窓（<dialog> の showModal。後ろは押せず、Tab は窓の中を回る）。Escape・「取消」で何も送らずに閉じる
 // - 写真は 1 枚 1 頁、PDF は頭から 3 頁まで（lib/redact/browser.ts）。1 頁ずつ出し、「前頁」「次頁」で移る
+// - Excel・Word（T119）は印刷の頁に描いた画像。4 頁以上あれば頁ごとに「対象」「除外」を選び、送るのは 3 頁まで
+//   （既定は記入例・記載例のシートを外した頭の 3 頁）。描いた頁は元の印刷と少しずれるので「PDF 保存で正確」を 1 行出す。
+//   T122: シートが 2 つ以上のブックは「シート」でシートの一覧を窓の中に開く（押すとそのシートの頭の頁へ）。既定で送る頁は様式の本体らしいシート
+//   （lib/ooxml/pick.ts。表紙・目次・説明・記入例は後ろ）。頁の画像は見る頁と送る頁だけ描く（描くまで「描画中」）
+//   古い形（.xls・.doc）は読まずに「旧形式」と名前を出す
 // - 塗る: 指・マウスで引くと黒い四角。押した四角は選ばれ（操作の色の枠）、「外す」で外す。「一手戻す」「全解除」（この頁）
 // - 拡大: ボタン（拡大・縮小・全体）・ホイール・2 本の指。拡大中は「移動」で画像を送る（2 本の指はいつでも送れる）
 // - 画面の中にスクロールの箱を作らない。画像は枠に収め、拡大中だけ画像の中を動かす（窓は送らない）
@@ -13,11 +18,12 @@
 
 import { useEffect, useId, useLayoutEffect, useReducer, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { Button, buttonClass } from "@/components/ui/Button";
-import { BackIcon, CloseIcon, FitIcon, RemoveIcon, SendIcon, ZoomInIcon, ZoomOutIcon } from "@/components/ui/Icon";
+import { AddIcon, BackIcon, CloseIcon, FitIcon, OpenIcon, RemoveIcon, SendIcon, ZoomInIcon, ZoomOutIcon } from "@/components/ui/Icon";
 import { Loader72 } from "@/components/ui/Loader72";
 import { REDACT_LABELS as L } from "@/lib/labels";
-import type { ReadMeta } from "@/lib/intake/read-form";
-import { encodeRedacted, loadPages, metaOf, releasePages, type RedactPage } from "@/lib/redact/browser";
+import { PDF_PAGES_MAX, type ReadMeta } from "@/lib/intake/read-form";
+import { defaultExcluded } from "@/lib/ooxml/pick";
+import { drawRedactPage, encodeRedacted, loadPages, metaOf, releasePages, type RedactPage } from "@/lib/redact/browser";
 import { hitRect, initialRedact, rectFromDrag, redactReducer, totalHidden, unpainted, type Rect } from "@/lib/redact/rects";
 import { fitView, panView, pinchView, refitView, viewToImage, zoomAt, ZOOM_MAX, ZOOM_STEP, type Frame, type Pt, type View } from "@/lib/redact/view";
 import { appChoice } from "@/lib/ui/dialog";
@@ -29,6 +35,8 @@ export type RedactedPage = { name: string; blob: Blob; meta: ReadMeta; bare: boo
 /** これより動かなければ「押した」（四角を選ぶ）。px */
 const TAP_SLOP = 6;
 
+
+
 type Mode = "paint" | "move";
 
 export function RedactSheet({ files, onSend, onCancel }: { files: readonly File[]; onSend: (pages: RedactedPage[]) => void; onCancel: () => void }) {
@@ -37,6 +45,9 @@ export function RedactSheet({ files, onSend, onCancel }: { files: readonly File[
   const stage = useRef<HTMLDivElement>(null);
   const [pages, setPages] = useState<RedactPage[] | null>(null);
   const [failed, setFailed] = useState<string[]>([]);
+  const [legacy, setLegacy] = useState<string[]>([]);
+  // 送らない頁（Excel・Word で 4 頁以上のとき人が選ぶ）
+  const [excluded, setExcluded] = useState<ReadonlySet<string>>(new Set());
   const [at, setAt] = useState(0);
   const [state, dispatch] = useReducer(redactReducer, undefined, () => initialRedact([]));
   const [selected, setSelected] = useState(-1);
@@ -46,6 +57,9 @@ export function RedactSheet({ files, onSend, onCancel }: { files: readonly File[
   const [draft, setDraft] = useState<Rect | null>(null);
   const [encoding, setEncoding] = useState(false);
   const [encodeFailed, setEncodeFailed] = useState(false);
+  // シートの一覧を開いているか（T122）
+  const [sheetList, setSheetList] = useState(false);
+  const sheetListId = useId();
   const page = pages?.[at] ?? null;
   const rects = page ? (state.rects[page.id] ?? []) : [];
 
@@ -64,6 +78,10 @@ export function RedactSheet({ files, onSend, onCancel }: { files: readonly File[
     };
   }, []);
 
+  // 今の頁の並び（片付けで、描いた頁の画像も外す。T122）
+  const pagesRef = useRef<RedactPage[] | null>(null);
+  pagesRef.current = pages;
+
   // 写真・PDF を頁の画像に（ブラウザの中だけ）
   useEffect(() => {
     let live = true;
@@ -73,12 +91,37 @@ export function RedactSheet({ files, onSend, onCancel }: { files: readonly File[
       if (!live) return releasePages(r.pages);
       setPages(r.pages);
       setFailed(r.failed);
+      setLegacy(r.legacy);
+      const skip = defaultExcluded(r.pages.map((p) => ({ id: p.id, example: p.example, ...p.pick })));
+      setExcluded(skip);
+      // 送る頁の頭から見せる（T122: 様式の本体のシートがブックの後ろにあるとき、表紙を開かない）
+      setAt(Math.max(0, r.pages.findIndex((p) => !skip.has(p.id))));
     });
     return () => {
       live = false;
-      releasePages(loaded);
+      // 描いた頁の画像は state の写しにある（drawRedactPage）。今の頁の並びで片付ける
+      releasePages(pagesRef.current ?? loaded);
     };
   }, [files]);
+
+  // 見ている頁の画像がまだ無ければ描く（Excel・Word。T122）
+  const drawn = (p: RedactPage) => setPages((cur) => (cur ? cur.map((x) => (x.id === p.id ? p : x)) : cur));
+  useEffect(() => {
+    if (!page || page.url) return;
+    let live = true;
+    void drawRedactPage(page).then(
+      (p) => {
+        if (live) drawn(p);
+        else URL.revokeObjectURL(p.url);
+      },
+      () => {
+        if (live) setEncodeFailed(true);
+      },
+    );
+    return () => {
+      live = false;
+    };
+  }, [page?.id, page?.url]);
 
   // 枠の大きさを測る（向き・幅が変われば測り直し、倍率と真ん中を保つ）
   useLayoutEffect(() => {
@@ -223,11 +266,29 @@ export function RedactSheet({ files, onSend, onCancel }: { files: readonly File[
     setSelected(-1);
   };
 
+  // 送る頁（選ぶ頁が無ければ全部）
+  const chosen = pages ? pages.filter((p) => !excluded.has(p.id)) : [];
+  const office = !!pages && pages.some((p) => p.source === "excel" || p.source === "word");
+  // シートの一覧（T122。シートが 2 つ以上のブックだけ）。ブックの順に、頁の数と送る頁があるか
+  const sheets = pages
+    ? pages.reduce<Array<{ name: string; first: number; pages: number; picked: boolean }>>((acc, p, i) => {
+        if (!p.sheet) return acc;
+        const s = acc.find((x) => x.name === p.sheet);
+        if (s) {
+          s.pages += 1;
+          s.picked ||= !excluded.has(p.id);
+        } else acc.push({ name: p.sheet, first: i, pages: 1, picked: !excluded.has(p.id) });
+        return acc;
+      }, [])
+    : [];
+  // 送る頁を選ぶ: 4 頁以上か、シートが 2 つ以上のブック（既定で外した頁を戻せるように。T122）
+  const choosing = !!pages && (pages.length > PDF_PAGES_MAX || sheets.length >= 2);
+
   async function send() {
-    if (!pages || pages.length === 0 || encoding) return;
+    if (!pages || chosen.length === 0 || chosen.length > PDF_PAGES_MAX || encoding) return;
     const blank = unpainted(
       state,
-      pages.map((p) => p.id),
+      chosen.map((p) => p.id),
     );
     if (blank.length > 0) {
       const names = blank.map((id) => {
@@ -253,10 +314,14 @@ export function RedactSheet({ files, onSend, onCancel }: { files: readonly File[
     setEncodeFailed(false);
     try {
       const out: RedactedPage[] = [];
-      for (const p of pages) {
+      for (const [i, q] of chosen.entries()) {
+        // 送る頁で、まだ描いていない頁を描く（T122）
+        const p = q.url ? q : await drawRedactPage(q);
+        if (p !== q) drawn(p);
         const r = state.rects[p.id] ?? [];
-        // ここに来た隠した所 0 の頁は、上の窓で人が「送信」を選んだ物だけ
-        out.push({ name: L.pageName(p.fileName, p.page, p.pages), blob: await encodeRedacted(p, r), meta: metaOf(p, r), bare: r.length === 0 });
+        // ここに来た隠した所 0 の頁は、上の窓で人が「送信」を選んだ物だけ。選んだ頁は頭から 1・2・3 と数え直す（受け口は頁の順を見る）
+        const meta = metaOf(p, r);
+        out.push({ name: L.pageName(p.fileName, p.page, p.pages), blob: await encodeRedacted(p, r), meta: choosing ? { ...meta, page: i + 1 } : meta, bare: r.length === 0 });
       }
       onSend(out);
     } catch {
@@ -323,7 +388,7 @@ export function RedactSheet({ files, onSend, onCancel }: { files: readonly File[
               <Button kind="quiet" size="sm" icon={CloseIcon} disabled={encoding} onClick={onCancel} data-redact="cancel">
                 {L.cancel}
               </Button>
-              <Button kind="main" size="sm" icon={SendIcon} disabled={busy || !pages || pages.length === 0} onClick={() => void send()} data-redact="send">
+              <Button kind="main" size="sm" icon={SendIcon} disabled={busy || !pages || chosen.length === 0 || chosen.length > PDF_PAGES_MAX} onClick={() => void send()} data-redact="send">
                 {L.send}
               </Button>
             </div>
@@ -368,13 +433,86 @@ export function RedactSheet({ files, onSend, onCancel }: { files: readonly File[
                 </>
               )}
               <span className="min-w-0 truncate">{L.pageName(page.fileName, page.page, page.pages)}</span>
+              {sheets.length >= 2 && page.sheet ? (
+                // シートの一覧を開く（T122）。一覧は窓の中に出す（共通の選ぶ部品は窓の外の body に出すので、全画面の窓の後ろに隠れる）
+                <Button
+                  size="sm"
+                  icon={OpenIcon}
+                  aria-expanded={sheetList}
+                  aria-controls={sheetListId}
+                  disabled={busy}
+                  onClick={() => setSheetList((v) => !v)}
+                  data-redact="sheets"
+                >
+                  {L.sheet} {page.sheet}
+                </Button>
+              ) : (
+                page.sheet && <span className="min-w-0 truncate text-muted" data-redact="sheet-name">{page.sheet}</span>
+              )}
               {page.total > page.pages && <span className="text-muted">{L.pagesOf(page.pages, page.total)}</span>}
+              {choosing && (
+                <>
+                  <Button
+                    size="sm"
+                    icon={excluded.has(page.id) ? AddIcon : RemoveIcon}
+                    aria-pressed={!excluded.has(page.id)}
+                    disabled={busy}
+                    onClick={() =>
+                      setExcluded((s) => {
+                        const n = new Set(s);
+                        if (n.has(page.id)) n.delete(page.id);
+                        else n.add(page.id);
+                        return n;
+                      })
+                    }
+                    data-redact="pick"
+                  >
+                    {excluded.has(page.id) ? L.pick : L.skip}
+                  </Button>
+                  <span className={`font-bold tabular-nums ${chosen.length > PDF_PAGES_MAX ? "text-danger" : ""}`} data-redact="picked">
+                    {L.picked} {chosen.length}/{PDF_PAGES_MAX}
+                  </span>
+                </>
+              )}
+              {choosing && excluded.has(page.id) && <span className="font-bold">{L.skipped}</span>}
               {pages.length > 1 && (
                 <span className="tabular-nums text-muted">
                   {L.onPage} {rects.length}
                 </span>
               )}
             </div>
+          )}
+          {sheetList && sheets.length >= 2 && page && (
+            // シートの一覧: 押すとそのシートの頭の頁へ。送る頁のあるシートは太字と下線、今のシートは操作の色の文字
+            <div id={sheetListId} role="list" aria-label={L.sheet} className="flex flex-wrap gap-1 text-xs" data-redact="sheet-list">
+              {sheets.map((sh) => (
+                <button
+                  key={sh.name}
+                  type="button"
+                  role="listitem"
+                  aria-current={sh.name === page.sheet ? "page" : undefined}
+                  className={`${buttonClass("quiet", "sm")} ${sh.picked ? "font-bold underline decoration-2 underline-offset-[6px]" : "font-normal"} ${sh.name === page.sheet ? "text-accent" : ""}`}
+                  data-press=""
+                  data-sheet={sh.name}
+                  onClick={() => {
+                    goto(sh.first);
+                    setSheetList(false);
+                  }}
+                >
+                  {L.sheetOption(sh.name, sh.pages, sh.picked)}
+                </button>
+              ))}
+            </div>
+          )}
+          {office && (
+            <p className="text-xs text-muted" data-redact="office">
+              {L.officeHint}
+            </p>
+          )}
+          {legacy.length > 0 && (
+            <p className="text-xs font-bold text-danger" role="alert" data-redact="legacy">
+              {L.legacy} {legacy.join("・")}
+            </p>
           )}
           {failed.length > 0 && (
             <p className="text-xs font-bold text-danger" role="alert">
@@ -404,7 +542,12 @@ export function RedactSheet({ files, onSend, onCancel }: { files: readonly File[
               <Loader72 label={L.preparing} on="base" />
             </div>
           )}
-          {page && view && (
+          {page && !page.url && (
+            <div className="absolute inset-0 grid place-items-center">
+              <Loader72 label={L.drawing} on="base" />
+            </div>
+          )}
+          {page && page.url && view && (
             <div className="absolute" style={{ left: view.x, top: view.y, width: page.w * s, height: page.h * s }} data-redact="page-image">
               {/* ブラウザの中の blob: の画像（外へ出さない）なので next/image でなく img */}
               <img src={page.url} alt={L.pageName(page.fileName, page.page, page.pages)} draggable={false} className="absolute inset-0 size-full bg-panel" />

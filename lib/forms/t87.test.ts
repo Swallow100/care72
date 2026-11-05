@@ -83,11 +83,13 @@ describe("未確認の欄を数える（松山市の計画書）", () => {
     for (const n of names) expect(n).not.toMatch(/[【】※]|：$|（複数選択可）/);
   });
 
-  it("対応なし（台帳に項目の無い欄）と未入力を分ける。値の中の未確認は所の名前、pending の理由を添える", () => {
+  it("手書き（台帳に置き場の無い欄・手で印を付ける欄）と未入力を分ける。値の中の未確認は所の名前、pending の理由を添える", () => {
     const s = matsuyamaUnconfirmed(buildMatsuyamaSheet(rowsOf("p-01"), OPTS));
     const by = (n: string) => s.fields.find((f) => f.name === n)!;
-    expect(by("近親者 フリガナ").noSource).toBe(true);
-    expect(by("最寄りの避難場所").noSource).toBe(true);
+    // T117: 近親者のフリガナ・最寄りの避難場所は台帳に置き場ができた（未入力）。手書きは引用の印だけ
+    expect(by("近親者 フリガナ").noSource).toBe(false);
+    expect(by("最寄りの避難場所").noSource).toBe(false);
+    expect(s.hand?.map((f) => f.name)).toEqual(["まつやま総合防災マップからの引用"]);
     expect(by("かかりつけ医・薬局").noSource).toBe(false);
     // 薬の欄は値があり、中の用量・残りが未確認
     expect(by("医薬品情報").parts).toEqual(expect.arrayContaining(["用量", "残り"]));
@@ -97,8 +99,10 @@ describe("未確認の欄を数える（松山市の計画書）", () => {
     expect(reasoned.length).toBeGreaterThan(0);
     for (const f of reasoned) expect(unconfirmedText(f)).toMatch(/（(不明|未聴取|無回答)）$/);
     const v = unconfirmedView(s);
-    expect(v.count).toBe(v.blank.length + v.noSource.length);
-    expect(v.noSource).toContain("近親者 フリガナ");
+    // 未確認は台帳に置き場のある欄（問い ＋ 未入力）、手書きは別に数える（T117）
+    expect(v.count).toBe((v.ask ?? []).length + v.blank.length);
+    expect(v.blank).toContain("近親者 フリガナ");
+    expect(v.noSource).toEqual(["まつやま総合防災マップからの引用"]);
   });
 
   it("同意の無い範囲（省略）は数えない: 支援者提供の無い人は実施者の欄を数えない", () => {
@@ -232,7 +236,8 @@ describe("人ごとの行", () => {
     const cao = (await listPlanForms(db, "office-demo")).find((o) => o.id === "cao")!;
     const c = planRow(rowsOf("p-01"), CAO(cao), OPTS);
     expect(c.href).toBe("/people/p-01/forms/mapped/builtin-cao");
-    expect(c.unconfirmed!.count).toBe(buildMappedSheet(rowsOf("p-01"), caoMapping(), OPTS).unconfirmed.length);
+    // 帯の未確認は台帳に置き場のある欄。対応の無い欄は手書き（T117 の問い 4）として別に数える
+    expect(c.unconfirmed!.count + c.unconfirmed!.noSource.length).toBe(buildMappedSheet(rowsOf("p-01"), caoMapping(), OPTS).unconfirmed.length);
     expect(buildPlanSheet(rowsOf("p-01"), CAO(cao), OPTS).kind).toBe("mapped");
   });
 
@@ -264,7 +269,7 @@ describe("人ごとの行", () => {
 });
 
 describe("画面（renderToStaticMarkup）", () => {
-  it("帯の未確認: 数と、未入力・対応なしの欄の一覧（閉じている間は hidden）。帯は印刷で消える（screen-only）", () => {
+  it("帯の未確認: 数と、未入力・手書きの欄の一覧（閉じている間は hidden）。帯は印刷で消える（screen-only）", () => {
     const view = unconfirmedView(matsuyamaUnconfirmed(buildMatsuyamaSheet(rowsOf("p-01"), OPTS)));
     const bar = renderToStaticMarkup(
       createElement(PaperBar, { back: "/people/p-01", title: "計画書", children: createElement(UnconfirmedFold, { view }) }),
@@ -278,6 +283,7 @@ describe("画面（renderToStaticMarkup）", () => {
     expect(bar).toContain('data-unconfirmed-group="blank"');
     expect(bar).toContain('data-unconfirmed-group="noSource"');
     // 未確認の無い紙面では何も出さない
+    expect(bar).toContain(`data-unconfirmed-hand="${view.noSource.length}"`);
     expect(renderToStaticMarkup(createElement(UnconfirmedFold, { view: { count: 0, blank: [], noSource: [] } }))).toBe("");
     // 紙面（印刷する所）には数も欄の一覧も無い
     const paper = renderToStaticMarkup(createElement(MatsuyamaSheet, { sheet: buildMatsuyamaSheet(rowsOf("p-01"), OPTS) }));
@@ -288,7 +294,7 @@ describe("画面（renderToStaticMarkup）", () => {
   it("紙面の頁の帯は数える関数を使う（松山市・対応表）", () => {
     const m = readRepoFile("app/people/[id]/forms/matsuyama/page.tsx");
     expect(m).toContain("<UnconfirmedFold view={unconfirmed} />");
-    expect(m).toContain("matsuyamaUnconfirmed(sheet)");
+    expect(m).toContain("matsuyamaUnconfirmed(sheet, askable)");
     const p = readRepoFile("app/people/[id]/forms/mapped/[mappingId]/page.tsx");
     expect(p).toContain("<UnconfirmedFold view={unconfirmedView(mappedUnconfirmed(sheet))} />");
   });

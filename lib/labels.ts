@@ -18,6 +18,7 @@ import type {
   DeviceKind,
   HazardKind,
   Household,
+  HousingType,
   Ledger,
   MedicationCategory,
   MyTimeline,
@@ -138,7 +139,8 @@ export const TIER_LABELS: Record<Tier, string> = {
 export const SECTION_LABELS = {
   medical: "医療",
   evacuation: "避難",
-  people: "人",
+  // 家族・緊急連絡先・支援者・民生委員・みまもり員・夜間支援の面。「人」だけでは何の面か分かりにくかった（T113、11/5 の決め）
+  people: "関係者",
   basic: "基本",
   consent: "同意",
   documents: "書類",
@@ -201,6 +203,15 @@ export const STRUCTURE_LABELS: Record<Structure, string> = {
   concrete: "鉄筋",
   other: "その他",
 };
+
+/** 住居の種別（T117。松山市の様式の【種別】の字のまま） */
+export const HOUSING_TYPE_LABELS: Record<HousingType, string> = { detached: "戸建住宅", apartment: "共同住宅" };
+
+/**
+ * 連絡先のフリガナ・住所・携帯（T117、contacts.kana・address・mobile）。面の編集の欄の名前と、問い・紙に直接書く窓の欄の名前。
+ * 2 つ目の電話は「携帯」（1 つ目の「電話」と並べる）
+ */
+export const CONTACT_PART_LABELS = { kana: "フリガナ", address: "住所", phone: "電話", mobile: "携帯" } as const;
 
 export const DEVICE_LABELS: Record<DeviceKind, string> = {
   oxygen: "在宅酸素",
@@ -294,6 +305,12 @@ export const CONTACT_FLAG_LABELS = {
   nightUnknown: "夜間未確認",
   hasSmartphone: "スマホ",
 } as const;
+
+/**
+ * 関係者の面の連絡先の一覧（T113）。1 人 1 行で、役割（家族・緊急 1・支援 1・夜間可など）を印で並べる。
+ * 「緊急 1」「支援 1」は面の編集の欄（INTAKE_LABELS.emergency・supporter）と同じ言葉に順番を付けた物
+ */
+export const CONTACT_ROLE_LABELS = { list: "連絡先", emergency: "緊急", supporter: "支援" } as const;
 
 /** 薬・機器の行の中の小さな見出し */
 export const MED_PARTS = { amount: "用量", remaining: "残り", storage: "保管", battery: "電池" } as const;
@@ -481,6 +498,11 @@ export const INTAKE_LABELS = {
   clockSourceNote: "出典補記",
   /** 本人の電話（連絡先の kind self、T68）が 2 つ（1 人 1 つ） */
   selfTwice: "本人重複",
+  /**
+   * 写真・PDF の読み取りの結果に添える 1 行（T117 の問い 5）。フリガナ・住所・電話は AI で埋めず、問い・面の編集・紙に直接書く道で入れる
+   */
+  handOnly: "手入力",
+  handOnlyFields: "フリガナ・住所・電話",
 } as const;
 
 /**
@@ -501,6 +523,8 @@ export const PLACE_LABELS = {
   zoomOut: "縮小",
   /** 位置・中心がまだ無い */
   none: "未設定",
+  /** 位置・中心を置いてある（緯度経度の数字は出さない。T113） */
+  set: "設定済",
   /** スマホ・車の有無の選択（— / あり / なし） */
   smartphone: "スマホ",
   car: "車",
@@ -509,8 +533,10 @@ export const PLACE_LABELS = {
   unknown: "未確認",
   /** 事業所の地域の保存を断った（市が空・緯度経度の外・片方だけ） */
   bad: "保存不可",
-  /** 写真の縮小で読めない形（HEIC など）。受ける形を 1 行で */
+  /** 写真の縮小で読めない形。受ける形を 1 行で */
   fileKinds: "JPEG・PNG・PDF",
+  /** HEIC をこのブラウザが描けない（Safari は描ける。T120） */
+  heic: "HEIC 不可・JPEG で",
 } as const;
 
 /**
@@ -618,6 +644,22 @@ export const REDACT_LABELS = {
   noneText: "隠した所 0",
   noneOk: "送信",
   noneBack: "戻る",
+  /** Excel・Word（T119）: 送る頁を選ぶ（4 頁以上のとき）。押すと外す・戻す、今の頁が外れていれば「除外」、送る数「対象 3/3」 */
+  skip: "除外",
+  pick: "戻す",
+  skipped: "除外",
+  picked: "対象",
+  /**
+   * シートの選び（T122）: シートが 2 つ以上のブックはシートの一覧（選ぶとそのシートの頭の頁へ）。選択肢は「様式9・1頁・対象」。
+   * 頁の画像は見る頁だけ描くので、描くまで「描画中」
+   */
+  sheet: "シート",
+  sheetOption: (name: string, pages: number, picked: boolean) => `${name}・${pages}頁${picked ? "・対象" : ""}`,
+  drawing: "描画中",
+  /** Excel・Word を描いた頁は元の印刷と少しずれる。PDF に保存して取り込むと元のまま */
+  officeHint: "近似描画・PDF 保存で正確",
+  /** 古い形（.xls・.doc）は読まない */
+  legacy: "旧形式・PDF 保存で取込",
   /** 頁の呼び名（「お薬手帳.pdf 2 頁」）。1 頁の物はファイル名だけ */
   pageName: (file: string, page: number, pages: number) => (pages > 1 ? `${file} ${page} 頁` : file),
 } as const;

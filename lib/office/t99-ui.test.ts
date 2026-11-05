@@ -111,7 +111,10 @@ describe("自分のパスワードの欄（T61 と T99 で同じ部品）", () =
     // 受入一覧の画面が入口を置く（入口の可否はサーバーが principal から決める）
     const page = src("../../app/staff/page.tsx");
     expect(page).toContain("ownPasswordEntry(principal)");
-    expect(page).toMatch(/<StaffPassword entry=\{entry\} loginId=\{loginId\}>\s*<StaffCsvLink \/>\s*<\/StaffPassword>/);
+    // initialOpen はヘッダーの「初期パスワード」の「変更」から欄を開いて出す（T114）
+    expect(page).toMatch(
+      /<StaffPassword entry=\{entry\} loginId=\{loginId\}(?: initialOpen=\{wantsOwnPassword\(q\.password\)\})?>\s*<StaffCsvLink \/>\s*<\/StaffPassword>/,
+    );
   });
 
   it("ケアマネの行の自分の行は今までどおり「パスワード変更」（T61）", () => {

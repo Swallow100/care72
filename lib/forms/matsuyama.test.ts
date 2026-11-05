@@ -187,9 +187,11 @@ describe("種の 10 人から欄が埋まる", () => {
 
   it("空欄は「未確認」と出し、手で書く欄（番号・自署・代理人・市受付印）だけ空ける", () => {
     const s = sheetOf("p-01");
-    for (const k of ["local.watcher", "shelter.near.place", "housing.bedroom", "route.text", "org.name"] as const) {
+    for (const k of ["local.watcher", "shelter.near.place", "housing.bedroom", "route.text"] as const) {
       expect(text(s, k), k).toBe("未確認");
     }
+    // 実施組織は「※避難支援等実施者がいない場合」の欄。実施者のいる人は空き枠（T117）
+    expect(s.cells["org.name"].kind).toBe("empty");
     for (const k of ["head.number", "sign.self", "sign.proxy", "city.stamp"] as const) {
       expect(s.cells[k].kind, k).toBe("handwrite");
     }

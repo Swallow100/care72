@@ -29,7 +29,7 @@ import {
 import { castEvent, castTurn, eventKey, turnKey, type Cast } from "./cast.ts";
 import { NO_HINTS, type OutcomeHints, type OutcomeHook } from "./outcome.ts";
 import { isStaffCount } from "./options.ts";
-import type { ActionRecord } from "./action-types.ts";
+import type { ActionRecord, FreeDraft } from "./action-types.ts";
 import {
   DIRECTOR_MAX,
   directorIncidents,
@@ -42,10 +42,15 @@ import {
   type ReplyAsk,
   type ReplyWords,
 } from "./incident-types.ts";
-import type { DrillTurn, PersonaHook, PersonaReason, PersonState } from "./persona-types.ts";
+import type { DrillTurn, PersonaBatchHook, PersonaHook, PersonaInput, PersonaReason, PersonState } from "./persona-types.ts";
 import {
   budgetOf,
+  actionReaches,
   CAP_REASON,
+  changedSince,
+  GATHER_MINUTES,
+  QUIET_REASONS,
+  ROUND_QUIET_MINUTES,
   capReached,
   CLOCK_LABELS,
   crossedClocks,
@@ -53,6 +58,8 @@ import {
   DIRECTOR_GAP_MINUTES,
   DRILL_CALL_CAP,
   DRILL_END_MINUTE,
+  chunks,
+  PERSONA_BATCH_MAX,
   PERSONA_PER_CUT,
   REASON_ORDER,
   ROUND_MINUTES,
@@ -63,6 +70,8 @@ import {
   type ClockMark,
 } from "./clock.ts";
 import { fireScheduled } from "./schedule.ts";
+import { screenIncidents, tableAheadOf } from "./state-rules.ts";
+import { drillSeed } from "./time-odds.ts";
 import { cleanScale, fitToScale, scaleIncidents, type DrillScale } from "./scale.ts";
 import { HOME_TOWN_MAX } from "./self.ts";
 
@@ -73,7 +82,7 @@ const HOUR_MS = 3_600_000;
 
 // 型は 3 つのファイルに分けた（T90 の準備）。前からの import（"./engine.ts"）を壊さないよう、同じ名前をここからも出す:
 // 手（T91）は action-types.ts、状況と監督（T92）は incident-types.ts、本人役（T93）は persona-types.ts
-export type { ActionBefore, ActionRecord, ActionResult, ActionStatus, HeardSignal } from "./action-types.ts";
+export type { ActionBefore, ActionRecord, ActionResult, ActionStatus, FreeDraft, FreeJudge, FreePlan, HeardSignal } from "./action-types.ts";
 export type {
   DirectorEvent,
   DirectorHook,
@@ -84,7 +93,7 @@ export type {
   ReplyWords,
 } from "./incident-types.ts";
 export { aiStoppedOf, DIRECTOR_MAX, directorIncidents, stopIncidents } from "./incident-types.ts";
-export type { DrillTurn, PersonaHook, PersonaInput, PersonaReason, PersonState } from "./persona-types.ts";
+export type { DrillTurn, PersonaBatchHook, PersonaHook, PersonaInput, PersonaReason, PersonState } from "./persona-types.ts";
 
 /**
  * 開始の前に選んだ物（T59）。選ばなかった物は持たない（何も選ばなければ options ごと無い＝今までと同じ）。
@@ -112,6 +121,11 @@ export type DrillOptions = {
    * サーバーの中だけ。監督には地区の別名と地形の一言だけを渡す
    */
   home?: string;
+  /**
+   * 時間と状況で変わる手（T110、lib/drill/action-terms.ts）。夜・停電・浸水や通行止め・職員の数・自分の被災で手の可否と所要が変わる。
+   * 開始の画面が連続の時計の訓練に付ける（10 分版には付けない）。無ければ表の分のまま（前からある訓練と同じ）
+   */
+  terms?: true;
 };
 
 export type DrillState = {
@@ -149,6 +163,13 @@ export type DrillState = {
   cuts?: number[];
   /** 連続の時計の訓練で、監督（仮想は世界）を最後に呼んだ区切りの時刻（発災からの分）。まだなら無い */
   directorAt?: number;
+  /**
+   * 連続の時計の訓練で、AI も動かして進めた区切り（30 分・1 時間・3 時間・次まで・手の分）の最後の時刻（発災からの分、T110）。
+   * 手の途中の区切り（silent）では変わらない。ここからケアマネの時計までが「手の分」で閉じる時間。無ければ最後の区切り
+   */
+  aiAt?: number;
+  /** 自由対応の確かめ（T110、lib/drill/free-action.ts）。読み替えたあと打つ前だけ。サーバーの中だけで Claude の入力に渡さない */
+  draft?: FreeDraft;
 };
 
 /** 1 刻みで起きた事。保存（lib/drill/db.ts）はこれを drill_events と signals に書く */
@@ -191,6 +212,11 @@ export type WorldHook = (input: WorldInput) => Promise<WorldResult>;
  */
 export type StepHooks = {
   persona?: PersonaHook;
+  /**
+   * 本人役をまとめて呼ぶ口（T121、lib/drill/persona.ts の createPersonaBatchHook）。連続の時計の区切りで、呼ぶ人を
+   * PERSONA_BATCH_MAX 人ずつ 1 回の呼び出しにする。無ければ 1 人 1 回（persona）。10 分版（刻みの道）は使わない
+   */
+  personas?: PersonaBatchHook;
   director?: DirectorHook;
   world?: WorldHook;
   outcome?: OutcomeHook;
@@ -375,6 +401,7 @@ export function cleanOptions(o: DrillOptions | null | undefined): DrillOptions {
     ...(scale ? { scale } : {}),
     ...(scale && o?.scaleAuto === true ? { scaleAuto: true as const } : {}),
     ...(home && Array.from(home).length <= HOME_TOWN_MAX ? { home } : {}),
+    ...(o?.terms === true ? { terms: true as const } : {}),
   };
 }
 
@@ -397,6 +424,14 @@ export function openingIncidents(state: Pick<DrillState, "scenario" | "options">
 /** 連続の時計の訓練か（T90） */
 export const isClock = (s: Pick<DrillState, "options">): boolean => s.options?.clock === true;
 
+/**
+ * AI も動かして進めた最後の区切りの時刻（発災からの分、T110）。無ければ最後の区切り。
+ * ケアマネの時計がこれより先なら、その間は手に使った時間で、AI はまだ動いていない（「手の分」で閉じる）
+ */
+export function aiAtOf(s: Pick<DrillState, "step" | "hour" | "cuts" | "aiAt">): number {
+  return s.aiAt ?? lastCutOf(s);
+}
+
 /** 最後の区切りの時刻（発災からの分）。始める前は -1。clock の無い訓練は今の刻みの時刻 */
 export function lastCutOf(s: Pick<DrillState, "step" | "hour" | "cuts">): number {
   if (s.step < 0) return -1;
@@ -412,14 +447,14 @@ export function drillEnded(s: Pick<DrillState, "scenario" | "status" | "step" | 
 }
 
 /**
- * 手の記録からケアマネの書いた文を落とす（T59 のメモ、T90 の準備で自由に書く手〔T91〕の文 text と読み替えの理由 reason）。
+ * 手の記録からケアマネの書いた文を落とす（T59 のメモ、T90 の準備で自由に書く手〔T91〕の文 text と読み替えの理由 reason、T110 の AI の判断の記録 judge）。
  * 講評・監督・世界・本人役（Claude）の入力に渡す前に必ず通す。どれも無い手は同じ物を返す。
  * これらを Claude に渡したくなったら、仮名化の門（lib/pseudonym → askJson）を通す別の作業にする
  */
 export function withoutMemo<T extends ActionRecord>(actions: ReadonlyArray<T>): T[] {
   return actions.map((a) => {
-    if (a.memo === undefined && a.text === undefined && a.reason === undefined) return a;
-    const { memo: _memo, text: _text, reason: _reason, ...rest } = a;
+    if (a.memo === undefined && a.text === undefined && a.reason === undefined && a.judge === undefined) return a;
+    const { memo: _memo, text: _text, reason: _reason, judge: _judge, ...rest } = a;
     return rest as T;
   });
 }
@@ -501,8 +536,12 @@ export async function step(
   };
   if (isVirtual(state.scenario)) return virtualStep(state, hooks, { index, hour, last, world, fixed, members, directorInput });
 
-  // 監督（Opus、T19）の差し込み。1 刻みに 1 回。無ければ・失敗したら差し込みなし（表の固定の状況だけで進む）
-  const out: DirectorEvent[] | DirectorResult = hooks.director
+  // 監督（Opus、T19）の差し込み。1 刻みに 1 回。無ければ・失敗したら差し込みなし（表の固定の状況だけで進む）。
+  // 最後の刻み（72 時間）は、手の返事の言い換えを頼むときだけ呼ぶ（T123。72 時間の新しい出来事には誰も応えられず、評価の 2 回目の審査役も
+  // 「遅すぎる」と挙げた。10 分版の最後の進めの待ちも監督の分だけ縮む）
+  const wantDirector = !!hooks.director && (index < last || replies.length > 0);
+  // 10 分版は監督 → 本人役の順のまま（T89。0・3・12・72 時間の 4 刻みなので、並べると 12 時間の差し込みに 72 時間で初めて応えることになる）
+  const out: DirectorEvent[] | DirectorResult = wantDirector
     ? await safely(
         () =>
           hooks.director!({
@@ -520,12 +559,22 @@ export async function step(
         [] as DirectorEvent[],
       )
     : [];
-  const inserted = directorIncidents(Array.isArray(out) ? out : (out?.events ?? []), members, hour);
+  // 監督の差し込みも変わり方の決まり（T121、lib/drill/state-rules.ts）で見る（T123。10 分版と前からある訓練の道は決まりの外だった）
+  const raw = directorIncidents(Array.isArray(out) ? out : (out?.events ?? []), members, hour);
+  const table = tableOf(state);
+  // 刻みの道は予定の出来事を時刻で起こさない（fireScheduled は連続の時計だけ）ので、早すぎる再開は後ろに回さず捨てる
+  const screened = screenIncidents(world, raw, {
+    origin: "ai",
+    minute: Math.round(hour * 60),
+    ahead: tableAheadOf(table.events, Math.round(hour * 60), table.rows),
+    noDefer: true,
+  });
+  const inserted = screened.kept;
+  world = screened.world;
   const asked = new Set(replies.map((r) => r.id));
   const words = (Array.isArray(out) ? [] : (out?.words ?? [])).filter(
     (w): w is ReplyWords => typeof w?.id === "string" && asked.has(w.id) && typeof w.text === "string" && w.text.trim() !== "",
   );
-  world = inserted.reduce((w, e) => applyEvent(w, e, e.at), world);
   const incidents = [...fixed, ...inserted];
 
   // 本人ごとの 1 刻み。ペルソナ（T18）が無ければ表の固定の安否。ペルソナが投げたら連絡なし
@@ -648,9 +697,10 @@ export function lastStep(scenario: DrillScenario): number {
 
 /**
  * 進め方。clock は「30 分」「1 時間」「3 時間」「次まで」の進め（監督と本人役を下の決めで呼ぶ。next は「次まで」で進めた）。
- * silent は手の途中（lib/drill/actions.ts）の進め: 表の出来事と予定の出来事だけ当て、AI を呼ばない（理由のできた人は touched に積む）
+ * silent は手の途中（lib/drill/actions.ts）の進め: 表の出来事と予定の出来事だけ当て、AI を呼ばない（理由のできた人は touched に積む）。
+ * acts は「手の分」（T110）: 時計を進めず、手に使った時間（AI を動かした最後の区切り aiAt から今のケアマネの時計まで）を AI も動かして閉じる
  */
-export type AdvanceOptions = { policy: "clock" | "silent"; next?: boolean };
+export type AdvanceOptions = { policy: "clock" | "silent"; next?: boolean; acts?: boolean };
 
 /** 想定の表の行（配役を当てた物）と、その時刻（発災からの分） */
 type TableEvent = { event: DrillIncident; minute: number };
@@ -704,7 +754,12 @@ export async function advance(
   if (drillEnded(state)) throw new DrillEnded();
   const first = state.step < 0;
   const to = Math.min(Math.round(toMinute), DRILL_END_MINUTE);
-  if (first ? to !== 0 : to <= state.minute) throw new RangeError(`進める時刻が違う: ${toMinute}`);
+  // 手の分（T110）は今の時計まで（AI を動かした最後の区切りより後のときだけ）。ほかは今の時計より後
+  const closing = opts.acts === true && !first && to === Math.round(state.minute) && to > aiAtOf(state);
+  // 72 時間の区切り（T123）。手と通話の往復の所要で時計が先に 72 時間に着いても、どの進め方でも 72 時間の区切りを作って終わる
+  // （評価の 2 回目で、時計が 72 時間・区切りがその手前のまま、進める・手が全部「進める時刻が違う」で断られ終わらなかった）
+  const ending = !first && to === DRILL_END_MINUTE && lastCutOf(state) < DRILL_END_MINUTE;
+  if (first ? to !== 0 : to <= state.minute && !closing && !ending) throw new RangeError(`進める時刻が違う: ${toMinute}`);
   const silent = opts.policy === "silent";
   const from = lastCutOf(state);
   const index = state.step + 1;
@@ -720,10 +775,17 @@ export async function advance(
   const fixed = [...openingIncidents(state, first), ...table.events.filter((x) => x.minute > from && x.minute <= to).map((x) => x.event)];
   const fired = fireScheduled(state.world, to);
   const due = fired.incidents.filter((e) => !e.person || members.has(e.person));
-  const happened = [...fixed, ...due].map((e, i) => ({ e, i })).sort((a, b) => a.e.at - b.e.at || a.i - b.i).map((x) => x.e);
+  const sorted = [...fixed, ...due].map((e, i) => ({ e, i })).sort((a, b) => a.e.at - b.e.at || a.i - b.i).map((x) => x.e);
   // 世界の帳簿（予定の取り出し・本人役の呼んだ時刻・理由・数）。foldTick はここに状況を当て直す
   let book: WorldState = fired.world;
-  let world = happened.reduce((w, e) => applyEvent(w, e, e.at), settleWorld(book, to));
+  // 変わり方の決まり（T121、lib/drill/state-rules.ts）。表の出来事は「もう起きている」の門だけ、予定の出来事は時刻が来たときの門。
+  // 外した物は区切りに残さない（保存した区切りから作り直しても同じ世界）
+  const dueSet = new Set<DrillIncident>(due);
+  // 表の行がこのあといる所を決める人も（T123）
+  const ahead = tableAheadOf(table.events, to, table.rows);
+  const screened = screenIncidents(settleWorld(book, to), sorted, { origin: "table", originOf: (e) => (dueSet.has(e) ? "scheduled" : "table") });
+  const happened = screened.kept;
+  let world = screened.world;
   const counts = { ...ZERO_COUNTS, ...(book.counts ?? {}) };
   const lastCalled = { ...(book.lastCalled ?? {}) };
   const touched = { ...(book.touched ?? {}) };
@@ -753,8 +815,13 @@ export async function advance(
   // 2. 監督（仮想は世界）
   const soft = softReached(counts);
   const gap = state.directorAt === undefined ? Infinity : to - state.directorAt;
+  // 固定の筋の 72 時間の区切りは監督を呼ばない（T123。10 分版の最後の刻みと同じ。仮想の世界は結末を決めるので呼ぶ）
+  const finalCut = to >= DRILL_END_MINUTE && !virtual;
   const wantDirector =
-    !capped && counts.director < DIRECTOR_DRILL_MAX && (happened.length > 0 || (!soft && (gap >= DIRECTOR_GAP_MINUTES || opts.next === true)));
+    !capped &&
+    !finalCut &&
+    counts.director < DIRECTOR_DRILL_MAX &&
+    (happened.length > 0 || (!soft && (gap >= DIRECTOR_GAP_MINUTES || opts.next === true)));
   const budget = Math.min(budgetOf(from, to), DIRECTOR_MAX);
   const actions = withoutMemo(state.actions);
   const directorInput: DirectorInput = {
@@ -770,6 +837,8 @@ export async function advance(
     since: Math.max(0, from),
     budget,
     ...worldExtras(state),
+    // 訓練ごとの起きやすさの種（T121、lib/drill/time-odds.ts）。開始の時刻と想定から（再生で同じ）
+    seed: drillSeed(state),
   };
   let inserted: DrillIncident[] = [];
   let directorAt = state.directorAt;
@@ -797,14 +866,24 @@ export async function advance(
     } else {
       inserted = fallbackIncidents(hour, "off");
     }
-  } else if (wantDirector && hooks.director) {
-    const out = await safely(() => hooks.director!(directorInput), [] as DirectorEvent[]);
+  }
+  // 固定の筋（大雨・地震）の監督は本人役と並べて呼ぶ（T121。進める 1 回の待ちが「監督 ＋ 本人役」から長い方だけに）。
+  // 本人役はこの区切りの表と予定の出来事を当てた世界で答え、監督の差し込みは区切りの終わりに当てる。差し込みの指す人は
+  // touched に積み、次の区切りで呼ぶ（仮想の世界は結末を決めるので、本人役より先のまま）
+  let directorP: Promise<DrillIncident[]> | null = null;
+  if (!virtual && wantDirector && hooks.director) {
     counts.director += 1;
     directorAt = to;
-    inserted = directorIncidents(Array.isArray(out) ? out : (out?.events ?? []), members, hour).slice(0, budget);
+    // 差し込みの数（種類ごと）を budget で切る。行（部品）で切ると、2 行になる種類（携帯不可と回復見込・土砂警戒と道）の 2 行目が落ちる（T121）
+    directorP = safely(() => hooks.director!(directorInput), [] as DirectorEvent[]).then((out) =>
+      directorIncidents(Array.isArray(out) ? out : (out?.events ?? []), members, hour, budget),
+    );
   }
-  world = inserted.reduce((w, e) => applyEvent(w, e, e.at), world);
-  const incidents = [...happened, ...inserted];
+  // 監督・世界の出来事も変わり方の決まりで見る（T121）。表がこのあと変える状態を先に変えない・一度きり・変わるのに要る時間
+  const kept = screenIncidents(world, inserted, { origin: "ai", minute: to, ahead });
+  inserted = kept.kept;
+  world = kept.world;
+  let incidents = [...happened, ...inserted];
 
   // 3. 本人役
   const live = state.participants.filter((p) => !world.ended?.[p]);
@@ -821,11 +900,14 @@ export async function advance(
     };
     const since = (p: string) => lastCalled[p] ?? -1;
     for (const p of live) if (pending(p).length > 0) give(p, "table");
+    // 手の返事は、手の終わりに本人に届いた手で、本人がまだ話していない物だけ（T121、clock.ts の actionReaches。行政報告・記録・
+    // 電話で話した・訪問で会った手では呼ばない。着いたら届く手は下の到着で呼ぶ）
     for (const a of state.actions) {
-      if (a.person && a.result && a.result.atMinute > since(a.person) && a.result.atMinute <= to) give(a.person, "action");
+      if (a.person && a.result && a.result.atMinute > since(a.person) && a.result.atMinute <= to && actionReaches(a)) give(a.person, "action");
     }
     for (const a of [...(world.arrivals ?? []), ...(world.dispatched ?? [])]) {
-      if (a.arrive > since(a.person) && a.arrive <= to) give(a.person, "action");
+      // 着いた人だけ（T123。家の前の道が通れず待っている人は、着いた区切りで）
+      if (a.arrived && a.arrive > since(a.person) && a.arrive <= to) give(a.person, "action");
     }
     for (const e of incidents) for (const p of incidentPersons(e)) give(p, "incident");
     for (const p of Object.keys(touched)) if (!reasons.has(p)) give(p, "incident");
@@ -834,8 +916,14 @@ export async function advance(
     const press = hooks.clock?.pressable ? await safely(() => hooks.clock!.pressable!(), null) : null;
     const canPress = (p: string) => press === null || press.has(p);
     if (!soft) {
+      // 巡回は、前に呼んでから身の回りが変わった人だけ（T121。変化の無い人を呼ばない。時計は理由 clock で呼ぶ）。
+      // 何も変わらない人も ROUND_QUIET_MINUTES（24 時間）たてば呼ぶ（静かになりすぎないため）
+      const due = (p: string) => {
+        const gap = to - (lastCalled[p] ?? 0);
+        return gap >= ROUND_QUIET_MINUTES || (gap >= ROUND_MINUTES && changedSince(world, p, lastCalled[p] ?? 0));
+      };
       live
-        .filter((p) => !reasons.has(p) && canPress(p) && to - (lastCalled[p] ?? 0) >= ROUND_MINUTES)
+        .filter((p) => !reasons.has(p) && canPress(p) && due(p))
         .sort((a, b) => (lastCalled[a] ?? 0) - (lastCalled[b] ?? 0))
         .slice(0, ROUND_PER_CUT)
         .forEach((p) => give(p, "round"));
@@ -844,40 +932,62 @@ export async function advance(
     const rank = (p: string) => Math.min(...[...(reasons.get(p) ?? [])].map((r) => REASON_ORDER.indexOf(r)));
     const order = live.filter((p) => reasons.has(p) && (canPress(p) || pending(p).length > 0));
     for (const p of reasons.keys()) if (!order.includes(p)) delete touched[p];
+    // 短い区切り（1 時間未満）は、急がない理由（状況・時計・巡回）だけの人を持ち越してまとめる（T121。理由ができてから
+    // GATHER_MINUTES たてば呼ぶ）。表の行と手の返事の人はその区切りで呼ぶ
+    if (to - Math.max(0, from) < GATHER_MINUTES) {
+      for (const p of [...order]) {
+        const quiet = [...reasons.get(p)!].every((r) => QUIET_REASONS.includes(r));
+        if (quiet && to - (touched[p] ?? to) < GATHER_MINUTES) {
+          touched[p] = Math.min(touched[p] ?? to, to);
+          order.splice(order.indexOf(p), 1);
+        }
+      }
+    }
     order.sort((a, b) => rank(a) - rank(b) || (touched[a] ?? to) - (touched[b] ?? to) || live.indexOf(a) - live.indexOf(b));
     const room = Math.max(0, Math.min(PERSONA_PER_CUT, DRILL_CALL_CAP - totalCalls(counts)));
     const called = order.slice(0, room);
     for (const p of order.slice(room)) touched[p] = Math.min(touched[p] ?? to, to);
+    const inputOf = (person: string): PersonaInput => ({
+      step: index,
+      hour,
+      person,
+      world,
+      incidents,
+      state: state.people[person] ?? null,
+      lastAction: actionWithoutMemo([...state.actions].reverse().find((a) => a.person === person) ?? null),
+      actions: withoutMemo(state.actions.filter((a) => a.person === person)), // T93: 前の呼びからの手を全部
+      fixed: pending(person),
+      ...(virtual ? { virtual: true } : {}),
+      ...night,
+      since: Math.max(0, lastCalled[person] ?? 0),
+      reasons: REASON_ORDER.filter((r) => reasons.get(person)!.has(r)),
+      toMinute: to,
+    });
+    // まとめて呼ぶ口があれば PERSONA_BATCH_MAX 人ずつ 1 回（T121）。数えるのは呼び出しの数
+    const groups: string[][] = hooks.personas ? chunks(called, PERSONA_BATCH_MAX) : called.map((p) => [p]);
     const results = await Promise.all(
-      called.map((person) =>
-        safely(
-          () =>
-            hooks.persona!({
-              step: index,
-              hour,
-              person,
-              world,
-              incidents,
-              state: state.people[person] ?? null,
-              lastAction: actionWithoutMemo([...state.actions].reverse().find((a) => a.person === person) ?? null),
-              actions: withoutMemo(state.actions.filter((a) => a.person === person)), // T93: 前の呼びからの手を全部
-              fixed: pending(person),
-              ...(virtual ? { virtual: true } : {}),
-              ...night,
-              since: Math.max(0, lastCalled[person] ?? 0),
-              reasons: REASON_ORDER.filter((r) => reasons.get(person)!.has(r)),
-              toMinute: to,
-            }),
-          [] as DrillTurn[],
-        ),
+      groups.map((g) =>
+        hooks.personas
+          ? safely(() => hooks.personas!(g.map(inputOf)), g.map(() => [] as DrillTurn[]))
+          : safely(() => hooks.persona!(inputOf(g[0])), [] as DrillTurn[]).then((r) => [r]),
       ),
     );
-    results.forEach((r, i) => turns.push(...r.filter((t) => t.person === called[i])));
+    results.forEach((r, i) => groups[i].forEach((person, j) => turns.push(...(r[j] ?? []).filter((t) => t.person === person))));
     for (const p of called) {
       lastCalled[p] = to;
       delete touched[p];
     }
-    counts.persona += called.length;
+    counts.persona += groups.length;
+  }
+
+  // 監督の差し込み（並べて呼んだ物）を区切りの終わりに当てる。指す人は次の区切りで本人役を呼ぶ（T121）
+  if (directorP) {
+    const late = screenIncidents(world, await directorP, { origin: "ai", minute: to, ahead });
+    world = late.world;
+    incidents = [...incidents, ...late.kept];
+    if (hooks.persona && !capped) {
+      for (const e of late.kept) for (const p of incidentPersons(e)) if (members.has(p) && !world.ended?.[p]) touched[p] = Math.min(touched[p] ?? to, to);
+    }
   }
 
   // 4. 上限の印（上限に達したあとの区切り。帯の理由「訓練上限」）と、1 日の上限で止まった役の印
@@ -893,6 +1003,6 @@ export async function advance(
     world,
     finished: to >= DRILL_END_MINUTE,
   };
-  const base: DrillState = { ...state, world: book, ...(directorAt !== undefined ? { directorAt } : {}) };
+  const base: DrillState = { ...state, world: book, ...(directorAt !== undefined ? { directorAt } : {}), aiAt: to };
   return { state: foldTick(base, tick, lastStep(state.scenario)), tick, words: [] };
 }

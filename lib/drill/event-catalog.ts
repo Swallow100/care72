@@ -93,7 +93,7 @@ export type EventSource = Pick<PseudonymInput, "clocks" | "contacts"> & {
 export type EventPlace = { id: string; label: string };
 
 /** 変化を組むのに要る本人の事実（コードが台帳から付ける。監督は選ばない） */
-export type EventFacts = { dialysis?: boolean };
+export type EventFacts = { dialysis?: boolean; oxygen?: boolean };
 
 /** 出来事 1 つの相手。person は本人の種類の相手、persons は全体の種類で印の付く人（訪問看護ステーションの休止） */
 export type EventTarget = {
@@ -174,6 +174,10 @@ const devices = (s: EventSource) => s.ledger?.medical.devices ?? [];
 const medications = (s: EventSource) => s.ledger?.medical.medications ?? [];
 const oxygenUser = (s: EventSource) =>
   has(s, "oxygen") || has(s, "ventilator") || devices(s).some((d) => d.kind === "oxygen" || d.kind === "ventilator");
+/** 酸素の人か（呼吸器だけの人は false。業者の巡回の言い方と届く物、T123） */
+const oxygenDevice = (s: EventSource) => has(s, "oxygen") || devices(s).some((d) => d.kind === "oxygen");
+/** 業者の巡回の画面の 1 行（酸素の人は酸素業者、呼吸器だけの人は医療機器業者） */
+export const vendorText = (oxygen: boolean, after: number) => `${oxygen ? "酸素業者" : "医療機器業者"} 巡回予定 ${after} 時間後`;
 const coldMedicine = (s: EventSource) => has(s, "insulin") || medications(s).some((m) => m.needsRefrigeration === true);
 const dialysisUser = (s: EventSource) => has(s, "dialysis") || devices(s).some((d) => d.kind === "dialysis");
 const one = (change: WorldChange, text: string, person?: string | null): EventPart[] => [{ change, text, ...(person ? { person } : {}) }];
@@ -464,19 +468,22 @@ const ROWS: ReadonlyArray<EventRow> = [
     scope: "person",
     words: "酸素業者が巡回に来る予定が入る（酸素・呼吸器の人。after に何時間後に着くか）",
     eligible: (s, p, w) => oxygenUser(s) && !(w.arrivals ?? []).some((a) => a.person === p && a.role === "vendor" && !a.arrived),
-    // 着いたら settleWorld が supplies.oxygen を書く（T90 の準備の arrivals の道）
+    // 着いたら settleWorld が supplies.oxygen を書く（T90 の準備の arrivals の道）。呼吸器だけの人は医療機器の業者で、届くのは電源
+    // （予備の電池。T123。評価の 2 回目で、呼吸器の人に「酸素業者」が来て酸素が届いたと話した）
     build: (t, hour, after) => {
       const n = after ?? 4;
+      const oxygen = t.facts?.oxygen !== false;
       return one(
-        { kind: "schedule", at: atMinute(hour, n), by: "director", then: { kind: "arrival", role: "vendor" } },
-        `酸素業者 巡回予定 ${n} 時間後`,
+        { kind: "schedule", at: atMinute(hour, n), by: "director", then: { kind: "arrival", role: "vendor", ...(oxygen ? {} : { supply: "power" as const }) } },
+        vendorText(oxygen, n),
         t.person,
       );
     },
-    text: (after) => `酸素業者 巡回予定 ${after ?? 4} 時間後`,
+    text: (after) => vendorText(true, after ?? 4),
     ownText: true,
     basis: code("jrs-respiratory-2012", "nanbyo-shishin-2017"),
-    basisFor: (s) => (has(s, "oxygen") || devices(s).some((d) => d.kind === "oxygen") ? "jrs-respiratory-2012" : "nanbyo-shishin-2017"),
+    basisFor: (s) => (oxygenDevice(s) ? "jrs-respiratory-2012" : "nanbyo-shishin-2017"),
+    factsFor: (s) => ({ oxygen: oxygenDevice(s) }),
     touches: "person",
     after: { min: 2, max: 12, default: 4 },
   },
@@ -815,6 +822,14 @@ const ROLE_WORDS: Readonly<Record<ArrivalRole, string>> = {
   medicine: "薬の配達",
 };
 
+/** 家へ向かう役のうち、家の前の道が通行止めだと着けない役（T123。車で来る人。歩いて来られる家族・支援者は今までどおり） */
+export const ROAD_BOUND_ROLES: ReadonlySet<ArrivalRole> = new Set<ArrivalRole>(["staff", "nurse", "vendor", "transport", "power", "medicine"]);
+
+/** 向かっている人・来た人の言い方。業者の巡回で電源（予備の電池）を届けるのは医療機器の業者（T123。呼吸器だけの人） */
+export function arrivalRoleWords(a: { role: ArrivalRole; supply?: SupplyKind }): string {
+  return a.role === "vendor" && a.supply === "power" ? "医療機器の業者" : ROLE_WORDS[a.role];
+}
+
 const SUPPLY_WORDS: Readonly<Record<SupplyKind, string>> = { power: "電源", oxygen: "酸素", medicine: "薬", water: "水" };
 
 const ASK_WORDS: Readonly<Record<AskKind, string>> = {
@@ -847,7 +862,10 @@ export function extraWorldWords(world: WorldState, person: string): string[] {
   }
   for (const a of world.arrivals ?? []) {
     if (a.person !== person) continue;
-    out.push(a.arrived ? `${ROLE_WORDS[a.role]}が来た（${minuteWords(a.arrive)}）` : `${ROLE_WORDS[a.role]}が ${minuteWords(a.arrive)}ごろ来る予定`);
+    const who = arrivalRoleWords(a);
+    // 家の前の道が通れず着けない人（T123。道が通れるようになった時刻に着く）
+    const held = !a.arrived && ROAD_BOUND_ROLES.has(a.role) && world.roads.some((r) => r.person === person && !r.open);
+    out.push(a.arrived ? `${who}が来た（${minuteWords(a.arrive)}）` : held ? `${who}が向かっているが、家の前の道が通れず着けない` : `${who}が ${minuteWords(a.arrive)}ごろ来る予定`);
   }
   for (const [k, at] of Object.entries(world.supplies?.[person] ?? {}) as Array<[SupplyKind, number | undefined]>) {
     if (at !== undefined) out.push(`${SUPPLY_WORDS[k]}が届いた（${minuteWords(at)}）`);

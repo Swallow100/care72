@@ -25,6 +25,7 @@
     "deploy": "opennextjs-cloudflare build && wrangler deploy",
     "docs:triage": "node lib/triage/build-doc.ts",
     "docs:notices": "node tools/licenses/notices.mjs",
+    "eval:forms": "node tools/eval/forms/cli.ts",
     "hash-password": "node tools/hash-password.ts",
     "test": "vitest run",
     "test:watch": "vitest",

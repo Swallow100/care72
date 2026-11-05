@@ -9,7 +9,7 @@
 // - 返事の形は部屋の custom tool と同じ WorldStepSchema（lib/drill/world-apply.ts）
 
 import { askJson, type AskJsonContext, type AskJsonRequest } from "../claude/call.ts";
-import { CATALOG_WORDS } from "./action-catalog.ts";
+import { actionWords, CATALOG_WORDS } from "./action-catalog.ts";
 import { CARE_LEVEL_LABELS, CLOCK_START_LABELS, CLOCK_UNIT_LABELS, DEVICE_LABELS, HOUSEHOLD_LABELS } from "../labels.ts";
 import { pseudonymize, pseudonymizeText, type ForClaude, type PseudonymInput, type PseudonymKey } from "../pseudonym/index.ts";
 import { aliasOfTown, areaOf, DEMO_AREA, geographyText, placesOf, townOfLedger, type Area } from "./area.ts";
@@ -21,7 +21,9 @@ import { nightLine } from "./night.ts";
 import { hourText, minuteText } from "./time-text.ts";
 import type { OutcomeSource } from "./outcome.ts";
 import { scaleWords } from "./scale.ts";
-import { timelineText } from "./time-odds.ts";
+import { oddsText, timelineText } from "./time-odds.ts";
+import { stateLines } from "./state-rules.ts";
+import { EVENT_LABELS } from "./event-catalog.ts";
 import { reportersOf } from "./persona.ts";
 import type { WorldState, WorldVia } from "./scenarios.ts";
 import {
@@ -213,7 +215,7 @@ function actionLines(actions: ReadonlyArray<ActionRecord>, from: number, aliasOf
     .map((a) => {
       const who = a.person ? (aliasOf.get(a.person) ?? null) : null;
       const r = a.result ? (a.result.ok ? "届いた" : "届かなかった") : "途中";
-      return `- ${minuteText(a.atMinute)}: ${ACTION_WORDS[a.kind]}${who ? `（${who}）` : ""} → ${r}`;
+      return `- ${minuteText(a.atMinute)}: ${a.kind === "free" ? actionWords(a) : ACTION_WORDS[a.kind]}${who ? `（${who}）` : ""} → ${r}`;
     });
 }
 
@@ -291,6 +293,17 @@ export function tickText(input: WorldInput, cast: Pick<WorldCast, "key"> & Parti
     ...(input.scale ? [scaleWords(input.scale)] : []),
     // 発災からの時間の帯の目安（T104、lib/drill/time-odds.ts。世界には文だけ）
     timelineText(input.hour, { with: "world" }),
+    // 起きやすい物・起きにくい物と、この訓練の傾向（T121。出来事の表の印の言葉で。世界の部屋の指示は変えない）
+    ...(input.seed ? [oddsText(input.hour, input.seed, (k) => EVENT_LABELS[k])] : []),
+    // 今の状態のいつからと、まだ変わらない時刻（T121、lib/drill/state-rules.ts）。連続の時計の訓練だけ
+    ...(input.since !== undefined
+      ? [
+          [
+            "今の状態（いつから・まだ変わらない時刻。決まりに反する出来事は使われない）:",
+            ...stateLines(input.world, Math.round(input.hour * 60), (p) => (p && aliasOf.has(p) ? aliasOf.get(p)! : null)).map((x) => `- ${x}`),
+          ].join("\n"),
+        ]
+      : []),
     acts.length > 0 ? ["前の刻みからケアマネがした事:", ...acts].join("\n") : "前の刻みからケアマネがした事: なし",
     contacts.length > 0 ? ["前の刻みからの本人たちの連絡:", ...contacts].join("\n") : "前の刻みからの本人たちの連絡: なし",
     seen.length > 0 ? ["本人たちの最後の様子:", ...seen].join("\n") : "本人たちの最後の様子: なし",

@@ -104,6 +104,8 @@ export type CaseMapProps = {
   center?: GeoPoint;
   /** 気象庁の雨雲を重ねる（旗 JMA_NOWCAST が on のとき。デモ事業所も。訓練の画面は渡さない。サーバーが決める。T72・T103） */
   nowcast?: boolean;
+  /** ピンの位置が種の架空の位置（デモ事業所）。出典の行に「位置は架空」。本物の事業所は渡さない（T114） */
+  fictional?: boolean;
 };
 
 /** 層の切替（小さな地図と全画面で同じ物） */
@@ -116,7 +118,7 @@ type LayerChoice = {
   nowcast?: NowcTime | null;
 };
 
-export function CaseMap({ pins, layers, demo, unplaced, center, nowcast = false }: CaseMapProps) {
+export function CaseMap({ pins, layers, demo, unplaced, center, nowcast = false, fictional = false }: CaseMapProps) {
   const [on, setOn] = useState<ReadonlySet<HazardKind>>(() => new Set(layers));
   const [rainOn, setRainOn] = useState(true);
   // 気象庁の雨雲の一番新しい実況の時刻（旗が off・デモ事業所では読まない）
@@ -244,11 +246,11 @@ export function CaseMap({ pins, layers, demo, unplaced, center, nowcast = false 
           )}
         </div>
 
-        <MapSource shown={shown} />
+        <MapSource shown={shown} fictional={fictional} />
       </figure>
       {/* 全画面は押してから作る（閉じている間はタイルを要求しない）。<dialog> の showModal で一番上の層に出るので
           場所を取らない。figcaption を figure の最後に置くため、figure の外に置く */}
-      {full && <FullMap pins={pins} demo={demo} unplaced={unplaced} choice={choice} center={center} onClose={() => setFull(false)} />}
+      {full && <FullMap pins={pins} demo={demo} unplaced={unplaced} choice={choice} center={center} fictional={fictional} onClose={() => setFull(false)} />}
     </>
   );
 }
@@ -420,6 +422,8 @@ type FullMapProps = {
   choice: LayerChoice;
   /** ピンが無いときの真ん中（小さな地図と同じ。T72） */
   center?: GeoPoint;
+  /** 種の架空の位置（デモ事業所）。小さな地図と同じ（T114） */
+  fictional?: boolean;
   onClose: () => void;
   /** テスト用: 枠の大きさを測る前に使う大きさ（サーバーの描画では ResizeObserver が動かない） */
   initialSize?: Size;
@@ -428,7 +432,7 @@ type FullMapProps = {
 /** タイルの番号の鍵 */
 const tileKey = (t: Pick<TileSpot, "z" | "x" | "y">) => `${t.z}/${t.x}/${t.y}`;
 
-export function FullMap({ pins, demo, unplaced, choice, center, onClose, initialSize }: FullMapProps) {
+export function FullMap({ pins, demo, unplaced, choice, center, fictional = false, onClose, initialSize }: FullMapProps) {
   const titleId = useId();
   const dialog = useRef<HTMLDialogElement>(null);
   const box = useRef<HTMLDivElement>(null);
@@ -603,7 +607,7 @@ export function FullMap({ pins, demo, unplaced, choice, center, onClose, initial
           )}
         </div>
 
-        <MapSource shown={shown} />
+        <MapSource shown={shown} fictional={fictional} />
       </figure>
     </dialog>
   );
@@ -942,8 +946,8 @@ function LayerButton({
   );
 }
 
-/** 出典（地理院タイル、重ねた層があればハザードマップポータルサイトと層ごとの作成者）と「位置は架空」 */
-function MapSource({ shown }: { shown: readonly HazardLayer[] }) {
+/** 出典（地理院タイル、重ねた層があればハザードマップポータルサイトと層ごとの作成者）と、デモ事業所の種の位置なら「位置は架空」（T114） */
+function MapSource({ shown, fictional }: { shown: readonly HazardLayer[]; fictional: boolean }) {
   return (
     <figcaption className="text-[11px] leading-4 text-muted" data-attribution>
       <span>出典 </span>
@@ -955,7 +959,7 @@ function MapSource({ shown }: { shown: readonly HazardLayer[] }) {
           <span>（{shown.map((l) => `${l.data} ${l.origin}`).join("、")}）</span>
         </>
       )}
-      <span className="ml-1">位置は架空</span>
+      {fictional && <span className="ml-1">位置は架空</span>}
     </figcaption>
   );
 }

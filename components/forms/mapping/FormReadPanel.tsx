@@ -4,6 +4,8 @@
 // AI 未設定のときは読取を押せず、手作成の道だけ残す。読取は Opus で数十秒かかるので、待った秒を出す。
 // 写真・PDF は入れる欄と同じ黒塗りの画面（components/person/RedactSheet.tsx）を必ず通す（T83、見直しの安全 中 5）。
 // 白紙の様式は塗らずに「送信」（確かめの窓「塗り無し」で人が選ぶ）、記入済みなら書いた値を塗ってから。送るのは塗った後の頁の画像だけ。
+// Excel・Word（T119）も選べる。黒塗りの画面がブラウザの中で印刷の頁に描き、ほかと同じく塗った後の頁の画像だけを送る。
+// 古い形（.xls・.doc）は読まずに「旧形式・PDF 保存で取込」。
 
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
@@ -15,7 +17,8 @@ import { Loader72 } from "@/components/ui/Loader72";
 import { LIMITS, MAPPING_LABELS as L } from "@/lib/forms/mapping";
 import { buildFormReadForm, FORM_READ_PAGES_MAX } from "@/lib/forms/read-upload";
 import { shrinkImage } from "@/lib/forms/shrink-image";
-import { PLACE_LABELS } from "@/lib/labels";
+import { PLACE_LABELS, REDACT_LABELS } from "@/lib/labels";
+import { isLegacyOffice, isZip, OFFICE_ACCEPT, OFFICE_FILE_MAX_BYTES } from "@/lib/ooxml/sniff";
 
 // 黒塗りの画面は写真・PDF を選んで読取を押したときだけ読み込む（ブラウザだけ。pdf.js をサーバーの束に入れない）
 const RedactSheet = dynamic(() => import("@/components/person/RedactSheet").then((m) => m.RedactSheet), { ssr: false });
@@ -53,13 +56,26 @@ export function FormReadPanel({ aiReady }: { aiReady: boolean }) {
     return () => clearInterval(t);
   }, [busy]);
 
-  // 読取: 写真は端末で縮めて JPEG に（T68。順は 縮小 → 塗り → 送る）。PDF はそのまま黒塗りの画面へ。JPEG・PNG・PDF のほかは断る
+  // 読取: 写真は端末で縮めて JPEG に（T68。順は 縮小 → 塗り → 送る）。PDF・Excel・Word はそのまま黒塗りの画面へ。ほかは断る
   const read = async () => {
     if (!file) return;
     setFail(null);
+    const head = new Uint8Array(await file.slice(0, 8).arrayBuffer());
+    if (isLegacyOffice(head)) {
+      setFail({ label: REDACT_LABELS.legacy });
+      return;
+    }
+    if (isZip(head)) {
+      if (file.size > OFFICE_FILE_MAX_BYTES) {
+        setFail({ label: L.fileLarge });
+        return;
+      }
+      setRedacting([file]);
+      return;
+    }
     const shrunk = await shrinkImage(file, Number.POSITIVE_INFINITY);
     if (!shrunk.ok) {
-      setFail({ label: shrunk.error === "type" ? PLACE_LABELS.fileKinds : L.fileLarge });
+      setFail({ label: shrunk.error === "type" ? PLACE_LABELS.fileKinds : shrunk.error === "heic" ? PLACE_LABELS.heic : L.fileLarge });
       return;
     }
     setRedacting([shrunk.file]);
@@ -98,7 +114,7 @@ export function FormReadPanel({ aiReady }: { aiReady: boolean }) {
       <section aria-labelledby="read-title" className="rounded-lg bg-panel p-3">
         <h2 id="read-title" className="flex items-baseline gap-2 font-bold">
           {L.read}
-          <span className="text-xs font-normal text-muted">写真 JPEG・PNG／PDF {FORM_READ_PAGES_MAX} 頁まで</span>
+          <span className="text-xs font-normal text-muted">写真 JPEG・PNG／PDF・Excel・Word {FORM_READ_PAGES_MAX} 頁まで</span>
         </h2>
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <label className={`${BTN_SIDE} cursor-pointer`} data-press>
@@ -106,7 +122,7 @@ export function FormReadPanel({ aiReady }: { aiReady: boolean }) {
             選択
             <input
               type="file"
-              accept="image/jpeg,image/png,application/pdf"
+              accept={`image/jpeg,image/png,application/pdf,${OFFICE_ACCEPT}`}
               className="sr-only"
               disabled={busy !== null}
               onChange={(e) => {

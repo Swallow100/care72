@@ -197,3 +197,25 @@ export async function saveCheckedMapping(
   const exists = await db.prepare("SELECT version FROM form_mappings WHERE id = ?1 AND office_id = ?2").bind(s.id, s.officeId).first<{ version: number }>();
   return { ok: false, error: exists ? "conflict" : "not_found" };
 }
+
+/**
+ * 読み直した対応表を書く（T120。読めなかった頁を読み直したとき）。AI の読んだ欄が足されるので、確認済でも下書きに戻し
+ * （確かめた人と時を外す。差し込みに使うのは人が確かめた物だけ）、版を 1 つ上げる。
+ * 版が違えば conflict。範囲の外は not_found
+ */
+export async function updateReadMapping(
+  db: D1Database,
+  s: { officeId: string; id: string; version: number; mapping: FormMapping; at: string },
+): Promise<SaveResult> {
+  const r = await db
+    .prepare(
+      `UPDATE form_mappings
+          SET title = ?1, mapping = ?2, status = 'draft', checked_by = NULL, checked_at = NULL, version = version + 1, updated_at = ?3
+        WHERE id = ?4 AND office_id = ?5 AND version = ?6`,
+    )
+    .bind(s.mapping.title, JSON.stringify(s.mapping), s.at, s.id, s.officeId, s.version)
+    .run();
+  if ((r.meta.changes ?? 0) > 0) return { ok: true, version: s.version + 1 };
+  const exists = await db.prepare("SELECT version FROM form_mappings WHERE id = ?1 AND office_id = ?2").bind(s.id, s.officeId).first<{ version: number }>();
+  return { ok: false, error: exists ? "conflict" : "not_found" };
+}

@@ -8,7 +8,7 @@
 import type { D1Database } from "@cloudflare/workers-types";
 import { toCaseloadRows, type CaseloadRow } from "../caseload.ts";
 import { parseLedger } from "../db/ledger.ts";
-import type { ClockRow, ContactRow, DrillRow, PersonRow } from "../db/types.ts";
+import type { ClockRow, ContactRow, DrillAction, DrillRow, PersonRow } from "../db/types.ts";
 import type { DisasterSituation } from "../disaster/state.ts";
 import { toTriageSignal } from "../disaster/triage.ts";
 import { callTargetText } from "../list/calls.ts";
@@ -16,6 +16,8 @@ import type { ClockForDetail, ContactForDetail, SignalForDetail } from "../list/
 import type { TriageSignal } from "../triage/index.ts";
 import { clockOfRow, heardSignalId, loadDrillRow, loadTicks, participantsOf, replayState, undoableAct, type DrillScope } from "./db.ts";
 import { callsLeft } from "./clock.ts";
+import { clockOver, termsFor, type ActionTerm } from "./action-terms.ts";
+import { busyOf, type BusyView } from "./busy.ts";
 import { drillClocks } from "./director.ts";
 import { drillSituation, nowHour, simAt, type ActionRecord, type DrillState, type HeardSignal, type Tick } from "./engine.ts";
 import { fictionKindOf, type FictionKind } from "./fiction.ts";
@@ -70,6 +72,13 @@ export type DrillScreen = {
   undoable: string | null;
   /** 訓練の人の印（T70。デモ事業所は架空、ほかは本人役。lib/drill/fiction.ts）。無ければ架空 */
   fiction?: FictionKind;
+  /** 時間を使う手の見え方（T110、lib/drill/busy.ts）。手に使った時間・職員の空き・次に空く時刻 */
+  busy: BusyView;
+  /**
+   * 手の可否と所要（T110、lib/drill/action-terms.ts）。本人の id（全体の手は ""）→ 手 → 所要・押せない理由。
+   * 決まりを選ばなかった訓練（10 分版・前からある訓練）と再生は null（表の分のまま）
+   */
+  terms: Record<string, Record<DrillAction, ActionTerm>> | null;
 };
 
 export type DrillContact = { id: string; kind: ContactRow["kind"]; label: string; hasPhone: boolean };
@@ -238,6 +247,12 @@ export async function loadDrillScreen(
     contacts: contactsByPerson(contactRows),
     undoable: undoableAct(row),
     fiction: fictionKindOf(scope.officeId),
+    busy: busyOf(state, { on: clock.clock, aiAt: clock.aiAt }),
+    terms:
+      // 72 時間に着いた後（T123）は決まりを選ばない訓練も、どの手も押せない印を出す
+      row.status === "running" && shown === row.step && (state.options?.terms === true || clockOver(state))
+        ? Object.fromEntries(["", ...participants].map((p) => [p, termsFor(state, p || null)]))
+        : null,
   };
 }
 

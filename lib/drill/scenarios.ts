@@ -11,7 +11,7 @@
 // - 画面の言葉: 筋書き → 「想定」、出来事 → 「状況」、刻み → 画面に出さない（「経過 6 時間」）。言葉は lib/drill/labels.ts
 
 import type { CheckStatus, DependsOn, DrillScenario, HazardKind, SignalColor, SignalSource, WhereNow } from "../db/types.ts";
-import { INJECT_TEXTS, injectChange, type InjectKind } from "./event-catalog.ts";
+import { INJECT_TEXTS, injectChange, ROAD_BOUND_ROLES, type InjectKind } from "./event-catalog.ts";
 import { hourText } from "./time-text.ts";
 import type { SourceId } from "../sources/index.ts";
 import type { CastPick } from "./cast.ts";
@@ -176,6 +176,12 @@ export type WorldState = {
    * 起きた note の話題と最初の時刻（T92。発災からの時間）。note は世界の様子を変えないが、同じ話題を 2 度差し込まないために覚える
    */
   notes?: Partial<Record<NoteTopic, number>>;
+  /**
+   * 状態が最後に変わった時刻（T121。発災からの時間）。鍵は phone・outage・water・weather・road:<id>・facility:<id>・shelter:<id>。
+   * applyEvent が変わったときだけ書く（表の出来事も AI の出来事も同じ所を通るので、再生でも同じ値になる）。
+   * 変わるのに時間が要る状態の決まり（lib/drill/state-rules.ts）と、本人役・監督に渡す「いつから」の元
+   */
+  stamps?: Record<string, number>;
 };
 
 /** 向かっている人の役。staff 事業所の職員・nurse 訪問看護・supporter 支援者・family 家族・vendor 業者・transport 移送・power 電源・medicine 薬 */
@@ -193,6 +199,11 @@ export type Arrival = {
   back: number | null;
   arrived: boolean;
   from: string;
+  /**
+   * 着いたら届く物（無ければ役の物、ARRIVAL_SUPPLIES）。業者の巡回は、酸素の人は酸素、呼吸器だけの人は電源（医療機器の業者の予備の電池。T123。
+   * 評価の 2 回目で、呼吸器の人に「酸素業者」が来て酸素が届いたと話した）
+   */
+  supply?: SupplyKind;
 };
 
 /** 届く物の種類 */
@@ -302,7 +313,7 @@ export type WorldChange =
   | { kind: "schedule"; at: number; by: "director" | "world"; then: ScheduledThen };
 
 /** 予定の中身（T92）。event は時刻が来たら当てる変化と画面の文、arrival は向かってくる人の役 */
-export type ScheduledThen = { kind: "event"; change: WorldChange; text: string } | { kind: "arrival"; role: ArrivalRole };
+export type ScheduledThen = { kind: "event"; change: WorldChange; text: string } | { kind: "arrival"; role: ArrivalRole; supply?: SupplyKind };
 
 export type WorldEventKind = WorldChange["kind"];
 
@@ -317,7 +328,7 @@ export type WorldVia = "room" | "oneshot";
 // 種類・固定の文・世界の変化は出来事の表（lib/drill/event-catalog.ts）が持つ。前からの import を壊さないよう、ここからも出す。
 // event-catalog.ts はこのファイルを型だけ読む（HEAVY_RAIN を作るときに injectChange を呼ぶので、輪にしない）
 
-export { INJECT_KINDS, INJECT_TEXTS, injectChange, isInjectKind, type InjectKind } from "./event-catalog.ts";
+export { INJECT_KINDS, INJECT_TEXTS, injectChange, isInjectKind, ROAD_BOUND_ROLES, type InjectKind } from "./event-catalog.ts";
 
 /** 世界の出来事（状況）1 つ。text は画面の 1 行（氏名・町名・施設の名前を書かない） */
 export type WorldEvent = {
@@ -746,8 +757,39 @@ function mark(world: WorldState, person: string | null, key: keyof PersonMarks, 
   return { ...world, marks: { ...world.marks, [person]: { ...own, [key]: hour } } };
 }
 
-/** 出来事 1 つを世界に当てる（新しい世界を返す。元は変えない） */
+/** 出来事 1 つを世界に当てる（新しい世界を返す。元は変えない）。状態が変わったら変わった時刻を stamps に書く（T121） */
 export function applyEvent(world: WorldState, e: WorldEvent, hour: number): WorldState {
+  return stampChanges(world, applyChange(world, e, hour), hour);
+}
+
+/** 状態の鍵と今の値（stamps の比べ方）。道・施設・避難所は id ごと */
+function stateValues(w: WorldState): Map<string, string> {
+  const out = new Map<string, string>([
+    ["phone", w.phone],
+    ["outage", w.outage ? `${w.outage.since}|${w.outage.restoredAt ?? ""}` : ""],
+    ["water", w.water],
+    ["weather", w.weather ?? ""],
+  ]);
+  for (const r of w.roads) out.set(`road:${r.id}`, r.open ? "open" : "closed");
+  for (const f of w.facilities) out.set(`facility:${f.id}`, f.open ? "open" : "closed");
+  for (const s of w.shelters) out.set(`shelter:${s.id}`, s.state);
+  return out;
+}
+
+/** 前と後の世界を比べ、変わった状態の時刻を stamps に書く（変わらなければ後の世界をそのまま返す） */
+export function stampChanges(before: WorldState, after: WorldState, hour: number): WorldState {
+  if (before === after) return after;
+  const a = stateValues(before);
+  const b = stateValues(after);
+  const changed: string[] = [];
+  for (const [k, v] of b) if (a.get(k) !== v) changed.push(k);
+  if (changed.length === 0) return after;
+  const stamps = { ...(after.stamps ?? {}) };
+  for (const k of changed) stamps[k] = hour;
+  return { ...after, stamps };
+}
+
+function applyChange(world: WorldState, e: WorldEvent, hour: number): WorldState {
   const c = e.change;
   const person = e.person ?? null;
   switch (c.kind) {
@@ -856,7 +898,7 @@ export function applyEvent(world: WorldState, e: WorldEvent, hour: number): Worl
       const t = c.then;
       if (t.kind === "arrival") {
         if (!person) return world;
-        const a: Arrival = { person, role: t.role, arrive: c.at, back: null, arrived: false, from: c.by };
+        const a: Arrival = { person, role: t.role, arrive: c.at, back: null, arrived: false, from: c.by, ...(t.supply ? { supply: t.supply } : {}) };
         return { ...world, arrivals: [...(world.arrivals ?? []), a] };
       }
       const s: Scheduled = {
@@ -912,6 +954,38 @@ export function settleWorld(world: WorldState, minute: number): WorldState {
   return settleArrivals(settleDispatched(world, minute), minute);
 }
 
+/** 道の状態が最後に変わった時刻（分）。変わっていなければ null（始めからその状態） */
+function roadStampOf(world: WorldState, id: string): number | null {
+  const h = world.stamps?.[`road:${id}`];
+  return typeof h === "number" ? Math.round(h * 60) : null;
+}
+
+/**
+ * 家へ向かう人が、着く時刻（arrive）に家の前の道を通れなかったか（T123）。今通行止で、通行止になったのが着く時刻より前（変わった時刻が
+ * 無ければ始めから）。評価の 2 回目で、通行止の道の先に業者が着き物が届いた（世界の決まりの道の外だった）
+ */
+export function roadHeld(world: Pick<WorldState, "roads" | "stamps">, person: string, arrive: number): boolean {
+  return world.roads.some((r) => r.person === person && !r.open && (roadStampOf(world as WorldState, r.id) ?? 0) <= arrive);
+}
+
+/** 着く時刻より後に家の前の道が通れるようになっていれば、その時刻に着く（通行止で待っていた人） */
+function reachTime(world: WorldState, person: string, arrive: number): number {
+  let at = arrive;
+  for (const r of world.roads) {
+    if (r.person !== person || !r.open) continue;
+    const s = roadStampOf(world, r.id);
+    if (s !== null && s > at) at = s;
+  }
+  return at;
+}
+
+/** 着ける時刻（分）。道で待つ人は null（まだ着かない）。待っていた道が通れるようになれば、その時刻 */
+function landAt(world: WorldState, person: string, arrive: number, roadBound: boolean): number | null {
+  if (!roadBound) return arrive;
+  if (roadHeld(world, person, arrive)) return null;
+  return reachTime(world, person, arrive);
+}
+
 /** 出向いてもらった人（dispatched、T20） */
 function settleDispatched(world: WorldState, minute: number): WorldState {
   const list = world.dispatched ?? [];
@@ -920,9 +994,11 @@ function settleDispatched(world: WorldState, minute: number): WorldState {
   const rest: Dispatched[] = [];
   for (const d of list) {
     let x = d;
-    if (!x.arrived && x.arrive <= minute) {
+    // 事業所の職員は車で行く。家の前の道が通れない間は着かない（T123）
+    const at = !x.arrived && x.arrive <= minute ? landAt(w, x.person, x.arrive, true) : null;
+    if (at !== null && at <= minute) {
       w = clearMarks(w, x.person, CLEARED_ON_ARRIVAL).world;
-      x = { ...x, arrived: true };
+      x = { ...x, arrive: at, arrived: true };
     }
     if (x.back !== null && x.back <= minute) {
       w = { ...w, staff: w.staff + 1 };
@@ -943,11 +1019,13 @@ function settleArrivals(world: WorldState, minute: number): WorldState {
   let w: WorldState = world;
   const next = list.map((a) => {
     let x = a;
-    if (!x.arrived && x.arrive <= minute) {
+    // 車で来る役は、家の前の道が通れない間は着かず、通れるようになった時刻に着く（T123）
+    const at = !x.arrived && x.arrive <= minute ? landAt(w, x.person, x.arrive, ROAD_BOUND_ROLES.has(x.role)) : null;
+    if (at !== null && at <= minute) {
       w = clearMarks(w, x.person, CLEARED_ON_ARRIVAL).world;
-      const kind = ARRIVAL_SUPPLIES[x.role];
-      if (kind) w = supplied(w, x.person, kind, x.arrive);
-      x = { ...x, arrived: true };
+      const kind = x.supply ?? ARRIVAL_SUPPLIES[x.role];
+      if (kind) w = supplied(w, x.person, kind, at);
+      x = { ...x, arrive: at, arrived: true };
     }
     if (x.back !== null && x.back <= minute) {
       if (x.role === "staff") w = { ...w, staff: w.staff + 1 };

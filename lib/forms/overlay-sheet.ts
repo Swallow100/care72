@@ -12,13 +12,16 @@
 // - □ 1 つの欄は当てはまれば □ の中にレ点。選ぶ欄は選択肢の □ の場所があれば選んだ物の □ にレ点（□ でなく字の場所なら丸で囲む）、
 //   無ければ選んだ言葉を欄に書く
 // - 台帳に値の無い欄（未確認）・同意の無い欄（省略）・手書きの欄は空ける（市町村の紙に「未確認」を刷らない）。画面の上の帯にだけ出す
+// - T120: 欄の中に「年 月 日」「− −」が刷ってあり、区切りの空きの場所（optionBoxes）がある日付・電話・文字の欄は、値を空きごとに分けて置く
+//   （lib/forms/split-parts.ts）。分けられない・どこかの空きに収まらなければ、今までどおり欄全体に置く
 
 import type { ConsentKind } from "../db/types.ts";
 import type { MappedSheet } from "./mapped-sheet.ts";
-import type { FieldBox, MappingField, Typeface } from "./mapping.ts";
+import { PART_SHAPES, type FieldBox, type MappingField, type Typeface } from "./mapping.ts";
 import { BLANK, type Cell, type Choice, type Piece } from "./matsuyama.ts";
 import type { PageImage } from "./page-images.ts";
 import { paperText } from "./paper-text.ts";
+import { splitParts } from "./split-parts.ts";
 import { isUnconfirmedCell } from "./unconfirmed.ts";
 
 // ---------- 紙の寸法と字 ----------
@@ -187,7 +190,7 @@ export const isNoneOnly = (lines: readonly string[]): boolean => lines.length > 
 // ---------- 紙面 ----------
 
 export type OverlayItem =
-  | { kind: "text"; fieldId: string; box: FieldBox; lines: string[]; fontPt: number; top: boolean }
+  | { kind: "text"; fieldId: string; box: FieldBox; lines: string[]; fontPt: number; top: boolean; /** 区切りの空きの何番目か（T120） */ part?: number }
   /** □ の中のレ点（check）か、選択肢を丸で囲む（circle） */
   | { kind: "mark"; fieldId: string; box: FieldBox; mark: "check" | "circle" }
   /** 欄に置く画像（避難経路の地図。T101 の受け口、T106 がつなぐ）。svg は欄の箱の大きさで描いた SVG の文字列（欄の中にそのまま埋め込む） */
@@ -205,6 +208,11 @@ export type OverlayPage = {
   items: OverlayItem[];
   /** 未記入の色付けの版で塗る所（既定の版では描かない） */
   fills: OverlayFill[];
+  /**
+   * 紙に直接書く窓の押す所（T117。原本の枠の紙の欄の矩形。値の無い欄も押せるように）。画面だけで、紙には刷らない。
+   * 原本の枠の紙（lib/forms/frame-sheet.ts）だけが作る
+   */
+  targets?: OverlayFill[];
 };
 
 /** 色付けの塗りを罫線から離す幅（mm。罫線の太さの半分 0.15 と 0.3 の空き） */
@@ -287,17 +295,24 @@ export function buildOverlaySheet(mapped: MappedSheet, images: readonly PageImag
           continue;
         }
         // 選ぶ欄: 選んだ選択肢の □ の場所があれば印
+        // 複数選択の欄（T122）は選んだ選択肢の全部に印。どれかの □ の場所が無ければ、字で書く（下へ）
         if (field.shape === "choice" && cell.kind === "choice" && page) {
-          const hit = cell.options.findIndex((o) => o.on);
-          const optBox = hit >= 0 ? (field.optionBoxes?.[hit] ?? null) : null;
-          if (optBox) {
-            page.items.push({ kind: "mark", fieldId: field.id, box: optBox, mark: markOf(optBox, page.image) });
+          const hits = cell.options.flatMap((o, i) => (o.on ? [i] : []));
+          const optBoxes = hits.map((i) => field.optionBoxes?.[i] ?? null);
+          if (hits.length > 0 && optBoxes.every((b): b is FieldBox => b !== null)) {
+            for (const optBox of optBoxes) page.items.push({ kind: "mark", fieldId: field.id, box: optBox, mark: markOf(optBox, page.image) });
             continue;
           }
         }
         if (lines.length === 0) continue;
         if (!page || !box) {
           annex.push({ fieldId: field.id, label: nameOf(field), lines, reason: "unplaced" });
+          continue;
+        }
+        // 区切りの空きに分けて置く（T120）
+        const parts = partItems(field, lines, page.image);
+        if (parts) {
+          page.items.push(...parts);
           continue;
         }
         const wMm = box.w * page.image.w;
@@ -327,6 +342,26 @@ export function buildOverlaySheet(mapped: MappedSheet, images: readonly PageImag
     unmapped: mapped.unmapped,
     withheld: mapped.withheld,
   };
+}
+
+/**
+ * 区切りの空きごとの字（T120）。日付・電話・文字の欄で、区切りの字（options）と全部の空きの場所（optionBoxes）があり、
+ * 値が区切りに合わせて分けられ、どの空きにも収まるときだけ。ほかは null（欄全体に置く）
+ */
+export function partItems(field: MappingField, lines: readonly string[], image: { w: number; h: number }): OverlayItem[] | null {
+  if (!PART_SHAPES.includes(field.shape) || field.options.length === 0) return null;
+  const boxes = field.optionBoxes ?? [];
+  if (boxes.length !== field.options.length || boxes.some((b) => !b)) return null;
+  const parts = splitParts(lines.join(" "), field.options);
+  if (!parts || parts.length !== boxes.length) return null;
+  const out: OverlayItem[] = [];
+  for (const [i, part] of parts.entries()) {
+    const b = boxes[i]!;
+    const fitted = fitText([part], b.w * image.w, b.h * image.h);
+    if (!fitted) return null;
+    out.push({ kind: "text", fieldId: field.id, box: b, ...fitted, part: i });
+  }
+  return out;
 }
 
 /** 元の様式の上に置く紙にできるか（頁の画像があり、場所のある欄が 1 つ以上）。できなければ前からの 2 列の紙 */

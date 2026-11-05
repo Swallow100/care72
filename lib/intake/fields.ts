@@ -8,6 +8,7 @@ import {
   ABILITIES,
   CARE_LEVELS,
   HOUSEHOLDS,
+  HOUSING_TYPES,
   MY_TIMELINES,
   SEXES,
   SMARTPHONE_USE,
@@ -21,6 +22,7 @@ import {
   CARE_FLAG_LABELS,
   CARE_LEVEL_LABELS,
   HOUSEHOLD_LABELS,
+  HOUSING_TYPE_LABELS,
   MY_TIMELINE_LABELS,
   SEX_LABELS,
   SMARTPHONE_LABELS,
@@ -53,6 +55,17 @@ export type IntakeField = {
   shape: FieldShape;
   /** Claude に渡す説明（system の項目の一覧に出る） */
   hint?: string;
+  /**
+   * AI の分け方（書く・話す・写真と PDF の読み取り）で埋めない欄（T117 の問い 5）。電話は氏名・住所と同じ扱いで、
+   * Claude の欄の一覧（fieldGuide）・分け方の形（ExtractSchema）に出さず、AI の保存はサーバーが断る（save.ts）。問いと面の編集と紙に直接書く道で埋める
+   */
+  ai?: false;
+  /** 電話番号の欄（入力の inputMode を tel に） */
+  tel?: true;
+  /**
+   * 様式の欄のために置き場を作った欄（T117）。問いは今の決まり（医療 → 夜間 → その他）の後ろに、様式の欄の順で出す（lib/intake/ask.ts）
+   */
+  form?: true;
 };
 
 const opts = <T extends string>(values: readonly T[], labels: Record<T, string>): Options =>
@@ -90,9 +103,15 @@ export const INTAKE_FIELDS: readonly IntakeField[] = [
     section: "evacuation",
     label: "手段",
     shape: { type: "enum", options: opts(TRANSPORT_KINDS, TRANSPORT_KIND_LABELS) },
-    hint: "避難の手段。foot 徒歩・wheelchair 車いす・family_car 家族の車・pickup 送迎（事業所・施設の車）・other その他",
+    hint: "避難の手段。foot 徒歩・wheelchair 車いす・family_car 家族の車・pickup 送迎（事業所・施設の車）・other その他。移動手段が書かれていればいつもこれを選ぶ。選べない書き方（誰と何で、など）は other",
   },
-  { key: "evacuation.transport", section: "evacuation", label: "手段補記", shape: { type: "text" }, hint: "手段の書き足し（娘の車・杖・その他の中身など）" },
+  {
+    key: "evacuation.transport",
+    section: "evacuation",
+    label: "手段補記",
+    shape: { type: "text" },
+    hint: "書かれた移動手段の言葉のまま（娘の車・訪問看護と夫・杖をついて徒歩など）。evacuation.transportKind と両方に入れる。選んだ手段の言葉と同じ（「徒歩」だけ）なら入れない。連絡先の note に入れない",
+  },
   {
     key: "evacuation.support",
     section: "evacuation",
@@ -115,6 +134,63 @@ export const INTAKE_FIELDS: readonly IntakeField[] = [
   { key: "basic.housing.bedroom", section: "evacuation", label: "寝室", shape: { type: "text" }, hint: "寝室の場所（1 階 奥の和室 など）" },
   { key: "evacuation.carryItems", section: "evacuation", label: "持出品", shape: { type: "list" }, hint: "1 つずつ" },
   { key: "evacuation.pets", section: "evacuation", label: "ペット", shape: { type: "text" } },
+  // ---- 様式の欄のために置き場を作った欄（T117）。計画書の「私の避難場所」の【手段】【時間】・最寄りの避難場所・住居の【種別】 ----
+  {
+    key: "evacuation.destination1Minutes",
+    section: "evacuation",
+    label: "避難先1時間",
+    shape: { type: "int", unit: "分" },
+    hint: "避難先1（市の指定避難所）まで何分かかるか。入力に分の数が書かれているときだけ",
+    form: true,
+  },
+  {
+    key: "evacuation.destination2Means",
+    section: "evacuation",
+    label: "避難先2手段",
+    shape: { type: "enum", options: opts(TRANSPORT_KINDS, TRANSPORT_KIND_LABELS) },
+    hint: "避難先2（事前に行く所）へ移る手段。値は evacuation.transportKind と同じ",
+    form: true,
+  },
+  {
+    key: "evacuation.destination2Minutes",
+    section: "evacuation",
+    label: "避難先2時間",
+    shape: { type: "int", unit: "分" },
+    hint: "避難先2まで何分かかるか。入力に分の数が書かれているときだけ",
+    form: true,
+  },
+  {
+    key: "evacuation.nearest",
+    section: "evacuation",
+    label: "最寄避難場所",
+    shape: { type: "text" },
+    hint: "家からいちばん近い避難場所（指定緊急避難場所など）の名称",
+    form: true,
+  },
+  {
+    key: "evacuation.nearestMeans",
+    section: "evacuation",
+    label: "最寄手段",
+    shape: { type: "enum", options: opts(TRANSPORT_KINDS, TRANSPORT_KIND_LABELS) },
+    hint: "最寄りの避難場所へ移る手段。値は evacuation.transportKind と同じ",
+    form: true,
+  },
+  {
+    key: "evacuation.nearestMinutes",
+    section: "evacuation",
+    label: "最寄時間",
+    shape: { type: "int", unit: "分" },
+    hint: "最寄りの避難場所まで何分かかるか。入力に分の数が書かれているときだけ",
+    form: true,
+  },
+  {
+    key: "basic.housing.type",
+    section: "evacuation",
+    label: "住居種別",
+    shape: { type: "enum", options: opts(HOUSING_TYPES, HOUSING_TYPE_LABELS) },
+    hint: "detached 戸建住宅・apartment 共同住宅（アパート・マンション・団地）",
+    form: true,
+  },
   {
     key: "evacuation.myTimeline",
     section: "evacuation",
@@ -124,6 +200,16 @@ export const INTAKE_FIELDS: readonly IntakeField[] = [
   },
   // 人（連絡先は表の行。ここは台帳に持つ物だけ）
   { key: "local.watcher", section: "people", label: "みまもり員", shape: { type: "text" }, hint: "いれば「あり」と書き足しだけ（名前は伏せ字のまま）" },
+  // 避難支援等実施組織（T117。自主防災組織・町内会など。人ごとの台帳に持つ）。電話は AI で埋めない
+  {
+    key: "local.orgName",
+    section: "people",
+    label: "支援組織",
+    shape: { type: "text", max: 60 },
+    hint: "避難を支える地域の組織（自主防災組織・町内会など）の名称",
+    form: true,
+  },
+  { key: "local.orgPhone", section: "people", label: "組織電話", shape: { type: "text", max: 20 }, ai: false, tel: true, form: true },
   // 基本
   { key: "basic.sex", section: "basic", label: "性別", shape: { type: "enum", options: opts(SEXES, SEX_LABELS) } },
   { key: "basic.household", section: "basic", label: "世帯", shape: { type: "enum", options: opts(HOUSEHOLDS, HOUSEHOLD_LABELS) } },
@@ -150,13 +236,31 @@ export const INTAKE_FIELDS: readonly IntakeField[] = [
   ability("understanding"),
   ability("judgment"),
   ability("orientation"),
-  { key: "care.bedridden", section: "basic", label: CARE_FLAG_LABELS.bedridden, shape: { type: "bool" } },
+  {
+    key: "care.bedridden",
+    section: "basic",
+    label: CARE_FLAG_LABELS.bedridden,
+    shape: { type: "bool" },
+    hint: "寝たきり・「ほぼ寝たきり」・「寝たきりに近い」は true。寝たきりではないと書かれていれば false。notes に回さない",
+  },
   { key: "care.dementia", section: "basic", label: CARE_FLAG_LABELS.dementia, shape: { type: "bool" }, hint: "入力に認知症とはっきり書かれているときだけ" },
   { key: "care.handbook", section: "basic", label: "手帳", shape: { type: "text" }, hint: "障害者手帳の種類と等級" },
   { key: "care.intractableDisease", section: "basic", label: "難病", shape: { type: "text" } },
 ];
 
 export const INTAKE_KEYS = INTAKE_FIELDS.map((f) => f.key) as [string, ...string[]];
+
+/**
+ * AI の分け方で埋めてよい欄（T117 の問い 5。ai: false の欄〔電話〕を除く）。Claude の欄の一覧（lib/intake/extract.ts の fieldGuide）と
+ * 分け方の形（lib/intake/schema.ts の ExtractSchema の items）はこちらを使う。保存（save.ts）は全部の欄を受け、AI の保存だけ ai: false を断る
+ */
+export const AI_INTAKE_FIELDS: readonly IntakeField[] = INTAKE_FIELDS.filter((f) => f.ai !== false);
+export const AI_INTAKE_KEYS = AI_INTAKE_FIELDS.map((f) => f.key) as [string, ...string[]];
+
+/** AI の分け方で埋めない欄か（ai: false） */
+export function isHandOnlyKey(key: string): boolean {
+  return INTAKE_FIELDS.some((f) => f.key === key && f.ai === false);
+}
 
 /** 欄の表に無いが「分からない」を残せる場所（薬・機器・ハザードの有無、連絡先から出る欄） */
 export const EXTRA_PENDING_KEYS = [

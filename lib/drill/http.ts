@@ -16,6 +16,8 @@ import {
   abandonDrill,
   actDrill,
   advanceDrill,
+  loadJudgeLog,
+  readFreeDraft,
   drillScope,
   isDrillScenario,
   listDrills,
@@ -27,7 +29,12 @@ import {
 } from "./db.ts";
 import { isStaffCount } from "./engine.ts";
 import type { StepHooks } from "./engine.ts";
-import { DRILL_API_LABELS, type DrillApiError } from "./labels.ts";
+import { ACTION_LABELS, DRILL_API_LABELS, SCENARIO_LABELS, type DrillApiError } from "./labels.ts";
+import { ACT_LOG_CSV_NAMES, actLogCsv, buildActLog } from "./act-log.ts";
+import { csvResponse } from "../forms/csv-response.ts";
+import { csvFileNames } from "../forms/form9-csv.ts";
+import { FREE_WAY_LABELS } from "./action-terms.ts";
+import type { FreePlan } from "./action-types.ts";
 import { lastHour, scenarioOf } from "./scenarios.ts";
 import { isClockStep, type ClockTo } from "./clock.ts";
 import { cleanScale, type DrillScale } from "./scale.ts";
@@ -75,7 +82,7 @@ export function parseStartOptions(v: unknown): StartOptions | null {
   if (v === undefined || v === null) return {};
   const o = obj(v);
   if (!o) return null;
-  const out: { participants?: string[]; staff?: number; night?: boolean; clock?: true; scale?: DrillScale; home?: string } = {};
+  const out: { participants?: string[]; staff?: number; night?: boolean; clock?: true; terms?: true; scale?: DrillScale; home?: string } = {};
   if (o.participants !== undefined) {
     const ps = o.participants;
     if (!Array.isArray(ps) || ps.length === 0 || ps.length > PARTICIPANTS_MAX || !ps.every(isDrillId)) return null;
@@ -93,6 +100,11 @@ export function parseStartOptions(v: unknown): StartOptions | null {
   if (o.clock !== undefined) {
     if (typeof o.clock !== "boolean") return null;
     if (o.clock) out.clock = true;
+  }
+  // 時間と状況で変わる手（T110。開始の画面が連続の時計の訓練に付ける）。連続の時計でない訓練に来たら startDrill が捨てる
+  if (o.terms !== undefined) {
+    if (typeof o.terms !== "boolean") return null;
+    if (o.terms) out.terms = true;
   }
   // 仮想の規模（T104）。選ばなければおまかせ（startDrill が引く）。仮想でない想定に来たら startDrill が捨てる
   if (o.scale !== undefined) {
@@ -125,12 +137,14 @@ export async function startPost(db: D1Database, p: Principal | null, json: unkno
 }
 
 /**
- * 進め方（T90）の形を見る。{ minutes: 30・60・180 } か { next: true }。どちらも無ければ undefined、形が違えば null（400）。
- * 両方あれば次の出来事まで
+ * 進め方（T90）の形を見る。{ minutes: 30・60・180 } か { next: true } か { acts: true }（T110 の手の分）。どれも無ければ undefined、形が違えば null（400）。
+ * 両方あれば次の出来事まで（手の分は単独）
  */
 export function parseClockTo(b: Record<string, unknown>): ClockTo | undefined | null {
   if (b.next !== undefined && b.next !== true) return null;
   if (b.minutes !== undefined && !isClockStep(b.minutes)) return null;
+  if (b.acts !== undefined && (b.acts !== true || b.next !== undefined || b.minutes !== undefined)) return null;
+  if (b.acts === true) return { acts: true };
   if (b.next === true) return { next: true };
   return isClockStep(b.minutes) ? { minutes: b.minutes } : undefined;
 }
@@ -222,7 +236,7 @@ export async function actionPost(
     }
     throw e;
   }
-  if (!r.ok) return drillError(r.error);
+  if (!r.ok) return r.error === "blocked" ? blockedError(r.label) : drillError(r.error);
   return Response.json({ ok: true, id: r.record.id, step: r.step, hour: r.hour, minute: r.minute, status: r.status }, { headers: NO_STORE });
 }
 
@@ -238,6 +252,95 @@ export async function undoPost(db: D1Database, p: Principal | null, id: string, 
   const r = await undoDrill(db, scope, id, { step: b.step, actions: b.actions });
   if (!r.ok) return drillError(r.error);
   return Response.json({ ok: true, id: r.id, step: r.step, hour: r.hour, minute: r.minute }, { headers: NO_STORE });
+}
+
+/** 決まりの表（T110）で押せない手の断り（409。label は理由の 2〜4 字） */
+export function blockedError(label: string): Response {
+  return Response.json({ ok: false, error: "blocked", label }, { status: 409, headers: NO_STORE });
+}
+
+/**
+ * 自由対応の読み替えの POST（JSON、T110）。{ step: 読んだ今の刻み, actions: 読んだ手の数, person: 本人の id か null, text: 自由対応の文（200 字まで） }。
+ * 打つ前に、読み替えた手（表の手かそのままの手）・相手・所要・押せない理由を返す（起きたことは打ってから）。確かめは訓練に置き、
+ * 同じ文と本人で手の POST（kind free）を送ると Claude を呼ばずに打つ。伏せきれない文は 400「伏字不可」（Claude に送らない）。
+ * plan は読み替えの口（lib/drill/free-action.ts の planFree に hooks.free を渡した物）
+ */
+export async function freePost(
+  db: D1Database,
+  p: Principal | null,
+  id: string,
+  json: unknown,
+  plan: Parameters<typeof readFreeDraft>[5],
+): Promise<Response> {
+  const scope = gate(p);
+  if (scope instanceof Response) return scope;
+  const b = obj(json);
+  if (!isDrillId(id) || !b || !isStep(b.step) || !isCount(b.actions) || !isRef(b.person)) return drillError("invalid");
+  if (typeof b.text !== "string" || b.text.trim() === "" || [...b.text.trim()].length > FREE_TEXT_MAX) return drillError("invalid");
+  let r: Awaited<ReturnType<typeof readFreeDraft>>;
+  try {
+    r = await readFreeDraft(db, scope, id, { step: b.step, actions: b.actions }, { person: (b.person as string | null | undefined) ?? null, text: b.text.trim() }, plan);
+  } catch (e) {
+    if (e instanceof PseudonymLeakError) {
+      return Response.json({ ok: false, error: "invalid", label: FREE_LABELS.refused }, { status: STATUS.invalid, headers: NO_STORE });
+    }
+    throw e;
+  }
+  if (!r.ok) return r.error === "blocked" ? blockedError(r.label) : drillError(r.error);
+  return Response.json({ ok: true, plan: planView(r.plan) }, { headers: NO_STORE });
+}
+
+/**
+ * 画面に返す読み替え（T110）。打つ前に見せる物だけ（起きたこと・伏せた文・AI の判断の記録は返さない）。
+ * label は読み替えた手の名前（そのままの手は「自由」）、way はそのままの手のやり方の言葉
+ */
+export type FreePlanView = {
+  as: DrillAction | null;
+  label: string;
+  way: string | null;
+  callee: string | null;
+  minutes: number;
+  adds: string[];
+  block: string | null;
+  blockAi: boolean;
+  words: string | null;
+  reason: string | null;
+  ai: boolean;
+};
+
+export function planView(plan: FreePlan): FreePlanView {
+  return {
+    as: plan.as,
+    label: plan.as ? ACTION_LABELS[plan.as] : FREE_LABELS.own,
+    way: plan.way ? FREE_WAY_LABELS[plan.way] : null,
+    callee: plan.calleeLabel,
+    minutes: plan.minutes,
+    adds: plan.adds,
+    block: plan.block,
+    blockAi: plan.blockAi,
+    words: plan.words,
+    reason: plan.reason,
+    ai: plan.called,
+  };
+}
+
+/**
+ * 手と出来事のログ（T110）の GET。既定は CSV（lib/drill/act-log.ts。訓練記録の紙と同じ行）、?judge=1 は自由対応の AI の判断の記録の JSON
+ * （lib/drill/db.ts の loadJudgeLog。評価の台が読む。伏せた入力と出力の要約だけ）。断り方は再生の GET と同じ（401・403・400・404）
+ */
+export async function logGet(db: D1Database, p: Principal | null, id: string, url: URL, now: string): Promise<Response> {
+  const scope = gate(p);
+  if (scope instanceof Response) return scope;
+  if (!isDrillId(id)) return drillError("invalid");
+  const s = await loadDrillScreen(db, scope, id, null);
+  if (!s) return drillError("not_found");
+  if (url.searchParams.get("judge") === "1") {
+    return Response.json({ ok: true, drill: id, judges: await loadJudgeLog(db, scope.officeId, id) }, { headers: NO_STORE });
+  }
+  const office = (await db.prepare("SELECT name FROM offices WHERE id = ?1").bind(scope.officeId).first<{ name: string }>())?.name ?? "";
+  const rows = buildActLog({ actions: s.state.actions, ticks: s.ticks }, { finished: s.drill.status !== "running" });
+  const body = actLogCsv(rows, { names: s.names, officeName: office, scenario: SCENARIO_LABELS[s.drill.scenario], madeAt: now });
+  return csvResponse(body, csvFileNames(now, ACT_LOG_CSV_NAMES));
 }
 
 /** 中断の POST */

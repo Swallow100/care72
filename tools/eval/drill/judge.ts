@@ -8,7 +8,7 @@ import { askJson, type AskJsonContext } from "../../../lib/claude/call.ts";
 import type { ClaudeClient } from "../../../lib/claude/client.ts";
 import type { UsageStore } from "../../../lib/claude/usage.ts";
 import { officePlaces } from "../../../lib/drill/area.ts";
-import { pseudonymize, pseudonymizeText, type PseudonymInput } from "../../../lib/pseudonym/index.ts";
+import { contactRoles, pseudonymize, pseudonymizeText, type PseudonymInput } from "../../../lib/pseudonym/index.ts";
 import type { RunOutcome } from "./drive.ts";
 
 export const JUDGE_SYSTEM = [
@@ -48,9 +48,14 @@ const hm = (hour: number | undefined) => {
   return `${Math.floor(m / 60)}:${String(m % 60).padStart(2, "0")}`;
 };
 
-/** 1 回の流れの文（伏せる前。人は仮名に置き換え済み、町名は pseudonymizeText が別名にする） */
-export function storyText(o: RunOutcome, aliasOf: ReadonlyMap<string, string>): string {
+/**
+ * 1 回の流れの文（伏せる前。人は仮名に置き換え済み、町名は pseudonymizeText が別名にする）。
+ * roleOf は連絡先の id → 役割名（弟・民生委員・支援者 1。T123: 電話の相手を書く。評価の 2 回目で、民生委員と弟への電話の言葉を
+ * 審査役が「話し手の続柄が替わる」と読んだ。相手の書かれていない流れでは見分けられない）
+ */
+export function storyText(o: RunOutcome, aliasOf: ReadonlyMap<string, string>, roleOf: ReadonlyMap<string, string> = new Map()): string {
   const who = (p: unknown) => (typeof p === "string" ? (aliasOf.get(p) ?? "参加者の外") : null);
+  const role = (t: unknown) => (typeof t === "string" ? (roleOf.get(t) ?? null) : null);
   const lines: Array<{ at: number; text: string }> = [];
   for (const t of o.replay?.ticks ?? []) {
     for (const e of t.incidents) {
@@ -66,7 +71,7 @@ export function storyText(o: RunOutcome, aliasOf: ReadonlyMap<string, string>): 
     const r = a.result;
     lines.push({
       at,
-      text: `${hm(at)} ケアマネの手 ${a.as ?? a.kind ?? ""}${who(a.person) ? ` → ${who(a.person)}` : ""}: ${r?.status ?? "返事待ち"}${r?.speech ? ` 「${r.speech}」` : ""}`,
+      text: `${hm(at)} ケアマネの手 ${a.as ?? a.kind ?? ""}${who(a.person) ? ` → ${who(a.person)}` : ""}${role(a.target) ? `（相手 ${role(a.target)}）` : ""}: ${r?.status ?? "返事待ち"}${r?.speech ? ` 「${r.speech}」` : ""}`,
     });
   }
   lines.sort((x, y) => x.at - y.at);
@@ -103,7 +108,13 @@ export async function judgeRun(
     ...(deps.now ? { now: deps.now } : {}),
   };
   try {
-    const story = pseudonymizeText(storyText(o, aliasOf), key);
+    const roleOf = new Map(
+      sources.flatMap((s) => {
+        const roles = contactRoles(s.contacts);
+        return s.contacts.map((c, i) => [c.id, roles[i]] as const);
+      }),
+    );
+    const story = pseudonymizeText(storyText(o, aliasOf, roleOf), key);
     const r = await askJson({ purpose: "scoring", system: JUDGE_SYSTEM, input: { 訓練: story }, schema: JudgeSchema }, ctx);
     const v = r.value;
     return {

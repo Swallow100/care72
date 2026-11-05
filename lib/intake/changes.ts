@@ -34,7 +34,7 @@ import {
   PLACE_LABELS,
 } from "../labels.ts";
 import { evacMapText, type EvacMapValue } from "../map/route-edit.ts";
-import { NAME_MARK, PHONE_MARK, TOWN_MARK } from "../pseudonym/index.ts";
+import { hasMaskMark, MASK_MARKS as PSEUDONYM_MARKS } from "../pseudonym/index.ts";
 import { displayValue, intakeField } from "./fields.ts";
 
 export type Device = Ledger["medical"]["devices"][number];
@@ -75,6 +75,13 @@ export type ContactValue = {
    */
   hasSmartphone?: boolean | null;
   hasCar?: boolean | null;
+  /**
+   * フリガナ・住所（市町村と町名まで）・携帯番号（T117、contacts.kana・address・mobile）。問いの答え・面の編集・紙に直接書く道だけ。
+   * AI の分け方には無く、AI の保存に混ざるとサーバーが断る（save.ts の aiHandOnly。docs/progress/t117.md の問い 5）
+   */
+  kana?: string;
+  address?: string;
+  mobile?: string;
 };
 
 /** 本人の住所（市・町名。番地は持たない）。台帳の basic.address */
@@ -159,10 +166,13 @@ export function medicationText(m: Partial<MedicationValue>): string {
 export function contactText(c: Partial<ContactValue>): string {
   return join([
     c.name,
+    c.kana,
     c.relation,
     c.kind && CONTACT_KIND_LABELS[c.kind],
     c.reach ? CONTACT_REACH_LABELS[c.reach] : undefined,
+    c.address,
     c.phone,
+    c.mobile,
     c.nightOk === true ? "夜間可" : c.nightOk === false ? "夜間不可" : undefined,
     c.emergencyOrder != null ? `緊急 ${c.emergencyOrder}` : undefined,
     c.supporterOrder != null ? `支援 ${c.supporterOrder}` : undefined,
@@ -230,9 +240,18 @@ export function changeText(c: IntakeChange): string {
   }
 }
 
-/** 伏せ字（仮名化の置き換えの印）が残っているか。残っていれば人が直す */
-export const MASK_MARKS = [NAME_MARK, TOWN_MARK, PHONE_MARK] as const;
+/** 伏せ字（仮名化の置き換えの印。氏名・町名・電話・住所・郵便番号・メール・生年月日。T118 で全部に） */
+export const MASK_MARKS: readonly string[] = PSEUDONYM_MARKS;
 
+/** 伏せ字が残っているか（Claude の分け方では、残る値は出さず保存しない。T118） */
 export function hasMask(text: string): boolean {
-  return MASK_MARKS.some((m) => text.includes(m));
+  return hasMaskMark(text);
+}
+
+/** 変更の中の文字の値のどれかに伏せ字が残っているか（保存の検査。lib/intake/save.ts） */
+export function changeHasMask(change: unknown): boolean {
+  if (typeof change === "string") return hasMaskMark(change);
+  if (Array.isArray(change)) return change.some(changeHasMask);
+  if (change && typeof change === "object") return Object.values(change).some(changeHasMask);
+  return false;
 }

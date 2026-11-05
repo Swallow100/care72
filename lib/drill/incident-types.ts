@@ -51,6 +51,11 @@ export type DirectorInput = {
    * 無ければ監督は自分の出来事を差し込まない（10 分版・仮想・前からの訓練）
    */
   self?: SelfInput;
+  /**
+   * 訓練ごとの起きやすさの種（T121、lib/drill/time-odds.ts の drillSeed。開始の時刻と想定から）。監督と世界に「この時間帯に起きやすい物・
+   * 起きにくい物」とこの訓練の傾向を渡し、差し込める種類の並びも揺らす。無ければ揺らさない（前と同じ）
+   */
+  seed?: string;
 };
 
 /** 監督に言い換えを頼む世界の返事 1 つ。結果（status・because）は決まっていて、監督は文だけ返す */
@@ -145,7 +150,10 @@ export function directorIncidents(
       continue;
     }
     const persons = Array.isArray(e.persons) ? e.persons.filter((p): p is string => typeof p === "string" && members.has(p)) : [];
-    const facts = e.facts && typeof e.facts === "object" ? { dialysis: e.facts.dialysis === true } : undefined;
+    const facts =
+      e.facts && typeof e.facts === "object"
+        ? { dialysis: e.facts.dialysis === true, ...(typeof e.facts.oxygen === "boolean" ? { oxygen: e.facts.oxygen } : {}) }
+        : undefined;
     const parts = row.build({ person, persons, place: placeOf(e.place), ...(facts ? { facts } : {}) }, hour, after);
     if (parts.length === 0) continue;
     n += 1;

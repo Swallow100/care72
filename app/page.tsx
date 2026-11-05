@@ -107,13 +107,14 @@ export default async function CaseloadPage({ searchParams }: Props) {
   const now = new Date().toISOString();
   let data: Caseload | null;
   // 右の面の地図の真ん中（ピンが無いとき。事業所の中心、T68）と、気象庁の雨雲（旗 JMA_NOWCAST が on のとき。デモ事業所も。T72・T103）
-  let map: SideMapOptions = { center: null, nowcast: false };
+  // 「位置は架空」はデモ事業所（種の架空の位置）だけ。本物の事業所の地図には出さない（T114）
+  let map: SideMapOptions = { center: null, nowcast: false, fictional: false };
   try {
     const { env } = await getCloudflareContext({ async: true });
     data = scope ? await loadCaseload(env.DB, scope, todayJst(), now) : null;
     if (principal.office) {
       const place = await loadOfficePlace(env.DB, principal.office.id).catch(() => null);
-      map = { center: place?.center ?? null, nowcast: nowcastOn(env) };
+      map = { center: place?.center ?? null, fictional: principal.office.kind === "demo", nowcast: nowcastOn(env) };
     }
   } catch (e) {
     console.error("担当一覧を読めない", e);

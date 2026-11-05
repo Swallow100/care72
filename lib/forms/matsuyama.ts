@@ -15,6 +15,7 @@
 
 import { ageOn } from "../age.ts";
 import {
+  HOUSING_TYPES,
   SUPPORT_KINDS,
   type ClockRow,
   type ConsentKind,
@@ -24,6 +25,7 @@ import {
   type MedicationCategory,
   type PendingStatus,
   type SupportKind,
+  type TransportKind,
 } from "../db/types.ts";
 import { parseLedger } from "../db/ledger.ts";
 import {
@@ -41,6 +43,7 @@ import {
   DEPENDS_ON_LABELS,
   DEVICE_LABELS,
   HOUSEHOLD_LABELS,
+  HOUSING_TYPE_LABELS,
   hazardText,
   householdText,
   MEDICATION_CATEGORY_LABELS,
@@ -48,6 +51,7 @@ import {
   PENDING_STATUS_LABELS,
   SMARTPHONE_LABELS,
   STRUCTURE_LABELS,
+  TRANSPORT_KIND_LABELS,
 } from "../labels.ts";
 import { ROUTE_FRAME, routeSceneOf } from "../map/route-image.ts";
 import { formatJst, FIELDS as PAGE_FIELDS, type PersonPageRows } from "../person.ts";
@@ -155,11 +159,11 @@ function supporterFields(n: 1 | 2) {
   const block = `supporter${n}` as const;
   const src = SUPPORTER_SOURCE(n);
   return [
-    { key: `${block}.kana`, page: 1, block, label: "フリガナ", source: NO_SOURCE, shape: "text" },
+    { key: `${block}.kana`, page: 1, block, label: "フリガナ", source: `${src}.kana`, shape: "text" },
     { key: `${block}.name`, page: 1, block, label: "氏名", source: `${src}.name`, shape: "text" },
-    { key: `${block}.address`, page: 1, block, label: "住所", source: `${src}.reach（住所は持たない）`, shape: "text" },
+    { key: `${block}.address`, page: 1, block, label: "住所", source: `${src}.address（市町村・町名）・reach`, shape: "text" },
     { key: `${block}.phone`, page: 1, block, label: "電話番号", source: `${src}.phone`, shape: "phone" },
-    { key: `${block}.mobile`, page: 1, block, label: "携帯番号", source: `${src}.phone（備考が携帯）`, shape: "phone" },
+    { key: `${block}.mobile`, page: 1, block, label: "携帯番号", source: `${src}.mobile（前からの備考が携帯の phone も）`, shape: "phone" },
     {
       key: `${block}.relation`,
       page: 1,
@@ -180,12 +184,12 @@ function supporterFields(n: 1 | 2) {
   ] as const;
 }
 
-function shelterFields(id: "pre" | "near" | "city", label: string, source: string, means: string) {
+function shelterFields(id: "pre" | "near" | "city", label: string, source: string, means: string, minutes: string) {
   const block = "shelter" as const;
   return [
     { key: `shelter.${id}.place`, page: 2, block, label, source, shape: "text" },
     { key: `shelter.${id}.means`, page: 2, block, label: "【手段】", source: means, shape: "choice", options: ["徒歩", "その他"] },
-    { key: `shelter.${id}.minutes`, page: 2, block, label: "【時間】", source: NO_SOURCE, shape: "text" },
+    { key: `shelter.${id}.minutes`, page: 2, block, label: "【時間】", source: minutes, shape: "text" },
   ] as const;
 }
 
@@ -324,7 +328,7 @@ export const MATSUYAMA_FIELDS = [
     source: HANDWRITE,
     shape: "handwrite",
   },
-  { key: "kin.kana", page: 1, block: "kin", label: "フリガナ", source: NO_SOURCE, shape: "text" },
+  { key: "kin.kana", page: 1, block: "kin", label: "フリガナ", source: "contacts（緊急連絡先 1）.kana", shape: "text" },
   { key: "kin.name", page: 1, block: "kin", label: "氏名", source: "contacts（緊急連絡先 1）.name", shape: "text" },
   { key: "kin.relation", page: 1, block: "kin", label: "続柄", source: "contacts（緊急連絡先 1）.relation", shape: "text" },
   { key: "kin.phone", page: 1, block: "kin", label: "電話番号", source: "contacts（緊急連絡先 1）.phone", shape: "phone" },
@@ -333,7 +337,7 @@ export const MATSUYAMA_FIELDS = [
     page: 1,
     block: "kin",
     label: "携帯番号",
-    source: "contacts（緊急連絡先 1）.phone（備考が携帯）",
+    source: "contacts（緊急連絡先 1）.mobile（前からの備考が携帯の phone も）",
     shape: "phone",
   },
   {
@@ -341,13 +345,13 @@ export const MATSUYAMA_FIELDS = [
     page: 1,
     block: "kin",
     label: "住所",
-    source: "contacts（緊急連絡先 1）.reach（住所は持たない）",
+    source: "contacts（緊急連絡先 1）.address（市町村・町名）・reach",
     shape: "text",
   },
   ...supporterFields(1),
   ...supporterFields(2),
-  { key: "org.name", page: 1, block: "org", label: "組織・団体名称", source: NO_SOURCE, shape: "text" },
-  { key: "org.phone", page: 1, block: "org", label: "電話番号", source: NO_SOURCE, shape: "phone" },
+  { key: "org.name", page: 1, block: "org", label: "組織・団体名称", source: "ledger.local.orgName", shape: "text" },
+  { key: "org.phone", page: 1, block: "org", label: "電話番号", source: "ledger.local.orgPhone", shape: "phone" },
   {
     key: "org.consent",
     page: 1,
@@ -409,15 +413,33 @@ export const MATSUYAMA_FIELDS = [
     source: "ledger.care（6 項目・寝たきり・認知症）・ledger.evacuation.barriers",
     shape: "lines",
   },
-  ...shelterFields("pre", "事前避難場所", "ledger.evacuation.destination2", NO_SOURCE),
-  ...shelterFields("near", "最寄りの避難場所", NO_SOURCE, NO_SOURCE),
-  ...shelterFields("city", "市指定避難所", "ledger.evacuation.destination1", "ledger.evacuation.transport"),
+  ...shelterFields(
+    "pre",
+    "事前避難場所",
+    "ledger.evacuation.destination2",
+    "ledger.evacuation.destination2Means",
+    "ledger.evacuation.destination2Minutes",
+  ),
+  ...shelterFields(
+    "near",
+    "最寄りの避難場所",
+    "ledger.evacuation.nearest",
+    "ledger.evacuation.nearestMeans",
+    "ledger.evacuation.nearestMinutes",
+  ),
+  ...shelterFields(
+    "city",
+    "市指定避難所",
+    "ledger.evacuation.destination1",
+    "ledger.evacuation.transport",
+    "ledger.evacuation.destination1Minutes",
+  ),
   {
     key: "housing.type",
     page: 2,
     block: "housing",
     label: "【種別】",
-    source: NO_SOURCE,
+    source: "ledger.basic.housing.type",
     shape: "choice",
     options: ["戸建住宅", "共同住宅"],
   },
@@ -501,7 +523,8 @@ export const MATSUYAMA_FIELDS = [
     page: 2,
     block: "route",
     label: "まつやま総合防災マップからの引用",
-    source: NO_SOURCE,
+    // 引用したかは紙に地図を添えるケアマネが決める（ケア72 の経路地図は地理院タイルで、まつやま総合防災マップではない）。手で印を付ける（T117 の棚卸しの C）
+    source: HANDWRITE,
     shape: "choice",
     options: ["あり", "なし"],
   },
@@ -703,13 +726,27 @@ export function contactName(c: Contact): Piece[] {
   return out;
 }
 
-const isMobileNote = (c: Contact) => (c.note ?? "").includes("携帯");
+const isMobileNote = (c: Pick<Contact, "note">) => (c.note ?? "").includes("携帯");
 
-/** 連絡先の電話を 電話番号・携帯番号 に分ける（備考に「携帯」とあれば携帯番号） */
+/**
+ * 連絡先の電話番号と携帯番号（T117）。携帯の列（contacts.mobile）があれば携帯番号、phone は電話番号。
+ * 携帯の列が無く、前からの備考に「携帯」とある phone は携帯番号（前からの読み方。列へ移さない）
+ */
+export function contactPhones(c: Pick<Contact, "phone" | "mobile" | "note">): { phone: string | null; mobile: string | null } {
+  const phone = c.phone?.trim() || null;
+  const mobile = c.mobile?.trim() || null;
+  if (!mobile && phone && isMobileNote(c)) return { phone: null, mobile: phone };
+  return { phone, mobile };
+}
+
+/**
+ * 連絡先の電話を 電話番号・携帯番号 の欄に（T117）。どちらか 1 つあれば、もう 1 つの欄は空き枠（未確認に数えない。
+ * 連絡はつくので埋め残しでない。T111 の空き枠と同じ）。1 つも無ければ両方未確認（問いで携帯を聞く。lib/intake/ask.ts の contactPartMissing）
+ */
 function phoneCells(c: Contact): { phone: Cell; mobile: Cell } {
-  if (!c.phone) return { phone: unconfirmed(), mobile: unconfirmed() };
-  const v = value([t(c.phone)]);
-  return isMobileNote(c) ? { phone: unconfirmed(), mobile: v } : { phone: v, mobile: unconfirmed() };
+  const { phone, mobile } = contactPhones(c);
+  if (!phone && !mobile) return { phone: unconfirmed(), mobile: unconfirmed() };
+  return { phone: phone ? value([t(phone)]) : EMPTY, mobile: mobile ? value([t(mobile)]) : EMPTY };
 }
 
 /** 地域の支援者・関係先の 1 行: 名前・間柄・種類・電話 */
@@ -718,7 +755,8 @@ function contactLine(c: Contact, opts: { kind?: boolean; order?: boolean } = {})
   if (opts.kind) line.push(sub(CONTACT_KIND_LABELS[c.kind]));
   if (c.reach) line.push(sub(CONTACT_REACH_LABELS[c.reach]));
   if (opts.order && c.emergency_order != null) line.push(sub(`緊急連絡 ${c.emergency_order}`));
-  line.push(sub("TEL"), c.phone ? t(c.phone) : unconfirmedPiece());
+  const tel = c.phone || c.mobile;
+  line.push(sub("TEL"), tel ? t(tel) : unconfirmedPiece());
   if (c.note) line.push(sub(c.note));
   return line;
 }
@@ -727,10 +765,24 @@ function contactsCell(cs: Contact[], opts: { kind?: boolean; order?: boolean } =
   return cs.length > 0 ? value(...cs.map((c) => contactLine(c, opts))) : empty;
 }
 
-/** 住所の欄: 番地も町名も持たないので未確認。どこにいる人か（同居・近所・市内）を添える */
-function contactAddress(c: Contact): Cell {
+/**
+ * 住所の欄（T117）: 連絡先の住所（市町村と町名まで。番地は持たない）。無ければ未確認に、どこにいる人か（同居・近所・市内）を添える
+ */
+function contactAddress(c: Contact, reason?: PendingStatus): Cell {
+  const a = c.address?.trim();
+  if (a) return withPending(value([t(a)]), reason);
+  if (reason) return unconfirmed(reason);
   return c.reach ? { kind: "value", lines: [[unconfirmedPiece(), sub(CONTACT_REACH_LABELS[c.reach])]] } : unconfirmed();
 }
+
+/** フリガナの欄（T117）。無ければ未確認 */
+function contactKana(c: Contact, reason?: PendingStatus): Cell {
+  const k = c.kana?.trim();
+  return k ? withPending(value([t(k)]), reason) : unconfirmed(reason);
+}
+
+/** 連絡先の所（フリガナ・住所・携帯）の問いの pending（lib/intake/ask.ts の contactPartKey と同じ場所） */
+const contactPart = (c: Contact, part: "kana" | "address" | "mobile") => (field: string) => field === `contacts.${c.id}.${part}`;
 
 // ---------- 同意 ----------
 
@@ -1016,6 +1068,9 @@ export function buildMatsuyamaSheet(rows: PersonPageRows, opts: BuildOptions): M
       return { kana: EMPTY, name, address: EMPTY, phone: EMPTY, mobile: EMPTY, relation: EMPTY, consent: EMPTY };
     }
     place([c]);
+    const kanaReason = pool.take(`supporter${n}.kana`, contactPart(c, "kana"));
+    const addressReason = pool.take(`supporter${n}.address`, contactPart(c, "address"));
+    const mobileReason = pool.take(`supporter${n}.mobile`, contactPart(c, "mobile"));
     const consentC = consentCell(consent.supporters, MARK_OPTIONS, consentReason);
     if (!granted("supporters")) {
       const w: Cell = { kind: "withheld", consent: "supporters" };
@@ -1034,11 +1089,11 @@ export function buildMatsuyamaSheet(rows: PersonPageRows, opts: BuildOptions): M
     if (c.has_smartphone === 0) flags.push(sub(`${CONTACT_FLAG_LABELS.hasSmartphone}なし`));
     if (c.note) flags.push(sub(c.note));
     return {
-      kana: unconfirmed(),
+      kana: contactKana(c, kanaReason),
       name: withPending(value([strong(c.name ?? c.relation ?? CONTACT_KIND_LABELS[c.kind])]), nameReason),
-      address: contactAddress(c),
+      address: contactAddress(c, addressReason),
       phone: phones.phone,
-      mobile: phones.mobile,
+      mobile: withPending(phones.mobile, mobileReason),
       relation: value(relation, flags),
       consent: consentC,
     };
@@ -1058,6 +1113,9 @@ export function buildMatsuyamaSheet(rows: PersonPageRows, opts: BuildOptions): M
   // ---- 近親者 ----
   if (kin) place([kin]);
   const kinPhones = kin ? phoneCells(kin) : null;
+  const kinKanaReason = kin ? pool.take("kin.kana", contactPart(kin, "kana")) : undefined;
+  const kinAddressReason = kin ? pool.take("kin.address", contactPart(kin, "address")) : undefined;
+  const kinMobileReason = kin ? pool.take("kin.mobile", contactPart(kin, "mobile")) : undefined;
   const kinReason = pool.take("kin.name", (f) => under("people.emergency")(f) || under("people.family")(f));
 
   // ---- 医療 ----
@@ -1145,8 +1203,9 @@ export function buildMatsuyamaSheet(rows: PersonPageRows, opts: BuildOptions): M
   };
 
   const housing = basic.housing;
-  // 寝室は住居の下の場所なので、住居より先に取る
+  // 寝室・種別は住居の下の場所なので、住居より先に取る
   const bedroomReason = pool.take("housing.bedroom", under("basic.housing.bedroom"));
+  const housingTypeReason = pool.take("housing.type", under("basic.housing.type"));
   const housingReason = pool.take("housing.room", under("basic.housing"));
   // 入れる欄（T03）で足した欄: みまもり員・マイ・タイムライン・支援の内容
   const watcherReason = pool.take("local.watcher", under("local.watcher"));
@@ -1172,6 +1231,38 @@ export function buildMatsuyamaSheet(rows: PersonPageRows, opts: BuildOptions): M
   if (basic.contactMeans?.email) contactMeansLine.push(sub("メール"), t("あり"));
   if (contactMeansLine.length > 0) otherLines.push(contactMeansLine);
   if (person.self_report_unreliable === 1) otherLines.push([sub("本人報告"), strong("参考扱い")]);
+
+  // ---- 私の避難場所の手段と時間・最寄りの避難場所・実施組織（T117） ----
+  // 手段と時間は場所が入ってから（場所が未確認なら、手段と時間は空き枠。場所の未確認を先に埋める。問いも同じ順。lib/intake/ask.ts）
+  const preMeansReason = pool.take("shelter.pre.means", under("evacuation.destination2Means"));
+  const preMinutesReason = pool.take("shelter.pre.minutes", under("evacuation.destination2Minutes"));
+  const nearReason = pool.take("shelter.near.place", under("evacuation.nearest"));
+  const nearMeansReason = pool.take("shelter.near.means", under("evacuation.nearestMeans"));
+  const nearMinutesReason = pool.take("shelter.near.minutes", under("evacuation.nearestMinutes"));
+  const cityMinutesReason = pool.take("shelter.city.minutes", under("evacuation.destination1Minutes"));
+  const orgNameReason = pool.take("org.name", under("local.orgName"));
+  const orgPhoneReason = pool.take("org.phone", under("local.orgPhone"));
+  const kindMeans = (kind: TransportKind | undefined, placeSet: boolean, reason: PendingStatus | undefined): Cell =>
+    !placeSet ? withPending(EMPTY, reason) : kind ? means(TRANSPORT_KIND_LABELS[kind], reason) : unconfirmed(reason);
+  const minutesCell = (n: number | undefined, placeSet: boolean, reason: PendingStatus | undefined): Cell =>
+    !placeSet ? withPending(EMPTY, reason) : n != null ? withPending(value([t(String(n))]), reason) : unconfirmed(reason);
+  const filled = (v: string | undefined) => (v?.trim() ?? "") !== "";
+  // 実施組織は「※避難支援等実施者がいない場合」の欄。実施者がいれば空き枠（未確認に数えない。T111 の問い 2 の続き）。
+  // 電話は名称が入ってから（問いも同じ順）
+  const orgName = ledger.local?.orgName?.trim();
+  const orgPhone = ledger.local?.orgPhone?.trim();
+  const orgCells = (): { name: Cell; phone: Cell } => {
+    if (!granted("plan_share")) return { name: { kind: "withheld", consent: "plan_share" }, phone: { kind: "withheld", consent: "plan_share" } };
+    return {
+      name: orgName ? withPending(value([t(orgName)]), orgNameReason) : noSupporter ? unconfirmed(orgNameReason) : withPending(EMPTY, orgNameReason),
+      phone: orgPhone
+        ? withPending(value([t(orgPhone)]), orgPhoneReason)
+        : noSupporter && orgName
+          ? unconfirmed(orgPhoneReason)
+          : withPending(EMPTY, orgPhoneReason),
+    };
+  };
+  const org = orgCells();
 
   const route = evacuation.route;
   const routeReason = pool.take("route.text", under("evacuation.route"));
@@ -1255,17 +1346,17 @@ export function buildMatsuyamaSheet(rows: PersonPageRows, opts: BuildOptions): M
     "sign.self": { kind: "handwrite" },
     "sign.proxy": { kind: "handwrite" },
     // 近親者が居なければ氏名だけ「なし」、ほかの欄は空き枠（T111）
-    "kin.kana": kin ? unconfirmed() : EMPTY,
+    "kin.kana": kin ? contactKana(kin, kinKanaReason) : EMPTY,
     "kin.name": kin ? value([strong(kin.name ?? kin.relation ?? CONTACT_KIND_LABELS[kin.kind])]) : withPending(NONE, kinReason),
     "kin.relation": kin ? textCell(kin.relation ?? CONTACT_KIND_LABELS[kin.kind]) : EMPTY,
     "kin.phone": kinPhones?.phone ?? EMPTY,
-    "kin.mobile": kinPhones?.mobile ?? EMPTY,
-    "kin.address": kin ? contactAddress(kin) : EMPTY,
+    "kin.mobile": kinPhones ? withPending(kinPhones.mobile, kinMobileReason) : EMPTY,
+    "kin.address": kin ? contactAddress(kin, kinAddressReason) : EMPTY,
     ...supporterKeys(1, s1Cells),
     ...supporterKeys(2, s2Cells),
     "supporter.night": night,
-    "org.name": granted("plan_share") ? unconfirmed() : { kind: "withheld", consent: "plan_share" },
-    "org.phone": granted("plan_share") ? unconfirmed() : { kind: "withheld", consent: "plan_share" },
+    "org.name": org.name,
+    "org.phone": org.phone,
     "org.consent": consentCell(consent.plan_share, MARK_OPTIONS),
 
     "plan.author": opts.officeName || rows.careManagerName
@@ -1297,22 +1388,22 @@ export function buildMatsuyamaSheet(rows: PersonPageRows, opts: BuildOptions): M
           },
     "risk.issues": issues,
     "shelter.pre.place": withPending(textCell(evacuation.destination2, true), preReason),
-    "shelter.pre.means": unconfirmed(),
-    "shelter.pre.minutes": unconfirmed(),
-    "shelter.near.place": unconfirmed(),
-    "shelter.near.means": unconfirmed(),
-    "shelter.near.minutes": unconfirmed(),
+    "shelter.pre.means": kindMeans(evacuation.destination2Means, filled(evacuation.destination2), preMeansReason),
+    "shelter.pre.minutes": minutesCell(evacuation.destination2Minutes, filled(evacuation.destination2), preMinutesReason),
+    "shelter.near.place": withPending(textCell(evacuation.nearest, true), nearReason),
+    "shelter.near.means": kindMeans(evacuation.nearestMeans, filled(evacuation.nearest), nearMeansReason),
+    "shelter.near.minutes": minutesCell(evacuation.nearestMinutes, filled(evacuation.nearest), nearMinutesReason),
     "shelter.city.place": withPending(textCell(evacuation.destination1, true), cityReason),
     "shelter.city.means": evacuation.destination1 ? means(transportText(evacuation), transportReason) : unconfirmed(transportReason),
-    "shelter.city.minutes": unconfirmed(),
-    "housing.type": {
-      kind: "choice",
-      options: [
-        { label: "戸建住宅", on: false },
-        { label: "共同住宅", on: false },
-      ],
-      unconfirmed: {},
-    },
+    "shelter.city.minutes": minutesCell(evacuation.destination1Minutes, filled(evacuation.destination1), cityMinutesReason),
+    "housing.type": withPending(
+      {
+        kind: "choice",
+        options: HOUSING_TYPES.map((k) => ({ label: HOUSING_TYPE_LABELS[k], on: housing?.type === k })),
+        ...(housing?.type ? {} : { unconfirmed: {} }),
+      },
+      housingTypeReason,
+    ),
     "housing.structure": structure
       ? {
           kind: "choice",
@@ -1364,13 +1455,13 @@ export function buildMatsuyamaSheet(rows: PersonPageRows, opts: BuildOptions): M
     },
     // 様式の注は「地図上または箇条書き等で避難経路を記入」。経路地図（T102）を紙に置ける人は、文が無くても欄は埋まる（T106。未確認に数えない）
     "route.text": route ? value([t(route)]) : routeSceneOf(ledger, ROUTE_FRAME) ? { kind: "value", lines: [] } : unconfirmed(routeReason),
+    // 引用したかはケアマネが紙に手で印を付ける（T117 の棚卸しの C。未確認に数えず、帯の「手書き」に出す。lib/forms/unconfirmed.ts）
     "route.map": {
       kind: "choice",
       options: [
         { label: "あり", on: false },
         { label: "なし", on: false },
       ],
-      unconfirmed: {},
     },
     "city.stamp": { kind: "handwrite" },
   };

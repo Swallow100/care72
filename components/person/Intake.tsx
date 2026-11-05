@@ -44,8 +44,8 @@ import type { RedactedPage } from "./RedactSheet";
 // 黒塗りの画面は写真・PDF を選んだときだけ読み込む（ブラウザだけ。PDF を画像にする pdf.js をサーバーの束に入れない）
 const RedactSheet = dynamic(() => import("./RedactSheet").then((m) => m.RedactSheet), { ssr: false });
 
-/** 入力の文の長さの上限（lib/intake/extract.ts の INTAKE_TEXT_MAX と同じ） */
-const TEXT_MAX = 4000;
+/** 入力の文の長さの上限（lib/intake/extract.ts の INTAKE_TEXT_MAX と同じ。4,000 字を超える文はサーバーが分けて読む。T120） */
+const TEXT_MAX = 12000;
 /** 流れに出す入力の文の長さ（貼ったケアプランは頭だけ） */
 const ECHO_MAX = 140;
 
@@ -186,7 +186,7 @@ export function Intake(props: IntakeProps & { level: Level }) {
     setError(null);
     const shrunk = await Promise.all(picked.map((f) => shrinkImage(f, Number.POSITIVE_INFINITY)));
     const ok = shrunk.flatMap((r) => (r.ok ? [r.file] : []));
-    if (shrunk.some((r) => !r.ok)) setError(PLACE_LABELS.fileKinds);
+    if (shrunk.some((r) => !r.ok)) setError(shrunk.some((r) => !r.ok && r.error === "heic") ? PLACE_LABELS.heic : PLACE_LABELS.fileKinds);
     if (ok.length > 0) setRedacting(ok);
   }
 
@@ -474,6 +474,12 @@ export function LogBubble({ entry: e, props, busy, aiReady, onRows, onSave, onDi
             {(e.proposal.masked ?? 0) > 0 && (
               <p className="mt-0.5 text-xs text-muted tabular-nums" data-intake="masked">
                 {INTAKE_LABELS.masked} {e.proposal.masked}
+              </p>
+            )}
+            {/* 写真・PDF の読み取りは、塗って隠したフリガナ・住所・電話を AI で埋めない（T117 の問い 5）。手で入れる欄を 1 行で */}
+            {e.read && e.state === "open" && (
+              <p className="mt-0.5 text-xs text-muted" data-intake="hand-only">
+                {INTAKE_LABELS.handOnly} {INTAKE_LABELS.handOnlyFields}
               </p>
             )}
             {e.state !== "open" && <p className="mt-0.5 text-xs text-muted">{e.state === "saved" ? INTAKE_LABELS.saved : INTAKE_LABELS.discard}</p>}

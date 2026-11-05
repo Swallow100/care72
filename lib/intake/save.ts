@@ -40,16 +40,19 @@ import { PENDING_STATUS_LABELS } from "../labels.ts";
 import { clockCheckEntry, type MarkAuthor, type NewTimelineEntry } from "../ledger-marks.ts";
 import { applyEvacMap, EVAC_MAP_FIELDS, EvacMapSchema } from "../map/route-edit.ts";
 import { loadPersonPage, pendingClockId, type PersonPageRows } from "../person.ts";
-import type { IntakeChange } from "./changes.ts";
+import { changeHasMask, type IntakeChange } from "./changes.ts";
 import { labelOfKey } from "./diff.ts";
 import { ADDRESS_MAX } from "./edit.ts";
-import { INTAKE_KEYS } from "./fields.ts";
+import { INTAKE_KEYS, isHandOnlyKey } from "./fields.ts";
 import { DEVICE_CLOCKS, MEDICATION_CLOCKS, markClockIds, planMarkClocks, type MarkClock } from "./marks.ts";
 import { CONTACT_KINDS_FOR_EDIT } from "./schema.ts";
 import { PDF_PAGES_MAX, READ_SOURCES, REDACTED_MAX, readTimelineHead, type ReadMeta } from "./read-form.ts";
 
 const text = (max: number) => z.string().trim().max(max);
 const ID = /^[A-Za-z0-9_-]{1,64}$/;
+
+/** 連絡先のフリガナ・住所の長さの上限（字。T117）。住所は市町村と町名まで（番地は持たない） */
+export const CONTACT_PART_MAX = { kana: 40, address: 60 } as const;
 
 const ChangeSchema = z.discriminatedUnion("t", [
   z.object({ t: z.literal("field"), key: z.enum(INTAKE_KEYS), value: z.unknown(), overwrite: z.boolean().optional() }),
@@ -93,6 +96,10 @@ const ChangeSchema = z.discriminatedUnion("t", [
       // スマホ・車の有無（T68）。手で直すときだけ
       hasSmartphone: z.boolean().nullable().optional(),
       hasCar: z.boolean().nullable().optional(),
+      // フリガナ・住所（市町村と町名まで）・携帯（T117）。問いの答え・面の編集・紙に直接書く道だけ（AI の保存は aiHandOnly で断る）
+      kana: text(CONTACT_PART_MAX.kana).optional(),
+      address: text(CONTACT_PART_MAX.address).optional(),
+      mobile: z.string().trim().regex(/^[0-9+\-() ]{0,20}$/).optional(),
     }),
     overwrite: z.boolean().optional(),
   }),
@@ -169,7 +176,21 @@ export const SaveRequestSchema = z
   .refine((r) => r.read === undefined || r.ai !== null, { message: "read_without_ai" })
   .refine((r) => r.edit === true || !r.changes.some((c) => editOnly(c as IntakeChange)), {
     message: "edit_only",
-  });
+  })
+  // Claude の分け方の保存に、元に戻せなかった伏せ字（（氏名）（町名）（電話）（住所）（郵便番号）（メール）（生年月日））を残さない（T118）
+  .refine((r) => r.ai === null || !r.changes.some(changeHasMask), { message: "masked" })
+  // AI の分け方の保存にフリガナ・住所・電話を混ぜない（T117 の問い 5）
+  .refine((r) => r.ai === null || !r.changes.some((c) => aiHandOnly(c as IntakeChange)), { message: "ai_hand_only" });
+
+/**
+ * AI の分け方の保存に入れてはいけない変更（T117 の問い 5）: 連絡先のフリガナ・住所・携帯と、AI で埋めない欄（ai: false の電話）。
+ * これらは問いと面の編集と紙に直接書く道（どれも ai は null）だけで埋める。Claude の分け方の形にも無いので、混ざるのは作り替えた要求だけ
+ */
+export function aiHandOnly(c: IntakeChange): boolean {
+  if (c.t === "contact") return c.value.kana !== undefined || c.value.address !== undefined || c.value.mobile !== undefined;
+  if (c.t === "field") return isHandOnlyKey(c.key);
+  return false;
+}
 
 export type SaveRequest = z.output<typeof SaveRequestSchema>;
 
@@ -284,6 +305,8 @@ export async function saveIntake(db: D1Database, principal: Principal, req: Save
   const edit = req.edit === true;
   // 上書き・同意・頼り先の確認は手で直すときだけ。AI の分け方と一緒には送らない（SaveRequestSchema と同じ）
   if ((edit && req.ai !== null) || (!edit && (req.changes as IntakeChange[]).some(editOnly))) return { ok: false, error: "forbidden" };
+  // AI の分け方の保存にフリガナ・住所・電話は入れない（T117 の問い 5。SaveRequestSchema と同じ）
+  if (req.ai !== null && (req.changes as IntakeChange[]).some(aiHandOnly)) return { ok: false, error: "forbidden" };
   const rows = await loadPersonPage(db, principal, req.personId);
   if (!rows) return { ok: false, error: "not_found" };
   if (rows.person.version !== req.version) return { ok: false, error: "conflict" };
@@ -469,7 +492,7 @@ function planContacts(rows: PersonPageRows, changes: ReadonlyArray<IntakeChange>
       const cur = rows.contacts.find((c) => c.id === ch.id);
       if (!cur || (cur.kind === "self") !== (v.kind === "self")) continue;
       const set: Array<[string, string | number | null]> = [];
-      for (const col of cur.kind === "self" ? (["phone", "note"] as const) : (["relation", "name", "phone", "note"] as const)) {
+      for (const col of cur.kind === "self" ? (["phone", "note"] as const) : (["relation", "name", "phone", "note", "kana", "address", "mobile"] as const)) {
         if (!(col in v)) continue;
         const next = v[col]?.trim() || null;
         if (next !== (cur[col] ?? null)) set.push([col, next]);
@@ -510,6 +533,10 @@ function planContacts(rows: PersonPageRows, changes: ReadonlyArray<IntakeChange>
       if (v.name && !cur.name) set.push(["name", v.name]);
       if (v.phone && !cur.phone) set.push(["phone", v.phone]);
       if (v.note && !cur.note) set.push(["note", v.note]);
+      // フリガナ・住所・携帯（T117）。問いの答えの空いた所だけ
+      if (v.kana && !cur.kana) set.push(["kana", v.kana]);
+      if (v.address && !cur.address) set.push(["address", v.address]);
+      if (v.mobile && !cur.mobile) set.push(["mobile", v.mobile]);
       if (set.length === 0) continue;
       updates.push({ id: cur.id, set, overwrite: false });
       fields.push(`contacts.${cur.id}`);
@@ -538,8 +565,8 @@ function planContacts(rows: PersonPageRows, changes: ReadonlyArray<IntakeChange>
           db
             .prepare(
               `INSERT INTO contacts (id, person_id, kind, relation, name, phone, night_ok, note, sort, emergency_order, supporter_order, reach,
-                                     has_smartphone, has_car, created_at)
-               SELECT ?4, ?2, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?3 WHERE ${guard}`,
+                                     has_smartphone, has_car, kana, address, mobile, created_at)
+               SELECT ?4, ?2, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?3 WHERE ${guard}`,
             )
             .bind(
               ...guardArgs,
@@ -556,6 +583,9 @@ function planContacts(rows: PersonPageRows, changes: ReadonlyArray<IntakeChange>
               n.c.reach ?? null,
               n.c.hasSmartphone == null ? null : n.c.hasSmartphone ? 1 : 0,
               n.c.hasCar == null ? null : n.c.hasCar ? 1 : 0,
+              n.c.kana || null,
+              n.c.address || null,
+              n.c.mobile || null,
             ),
         ),
       ];

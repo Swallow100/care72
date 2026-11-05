@@ -15,6 +15,8 @@
 
 import type { D1Database } from "@cloudflare/workers-types";
 import type { AuthorRole } from "../db/types.ts";
+import { STAFF_PATH } from "../custody/paths.ts";
+import { CARE_MANAGERS_ANCHOR } from "../office/http-paths.ts";
 import { accountCredential, credentialVersion, verifyCredential } from "./credential.ts";
 import { isFixedAccount } from "./demo.ts";
 import { hashPassword, MAX_PASSWORD_LENGTH } from "./password.ts";
@@ -130,8 +132,9 @@ export async function changeOwnPassword(
   const hash = await hashPassword(next, opts.iterations ? { iterations: opts.iterations } : {});
   const at = new Date(now * 1000).toISOString();
   const [updated] = await db.batch([
+    // 本人が変えたので初期パスワードの印を外す（T114）
     db
-      .prepare("UPDATE accounts SET password_hash = ?1 WHERE id = ?2 AND password_hash = ?3 AND disabled_at IS NULL")
+      .prepare("UPDATE accounts SET password_hash = ?1, password_initial = 0 WHERE id = ?2 AND password_hash = ?3 AND disabled_at IS NULL")
       .bind(hash, a.id, a.password_hash),
     // 事業所の経過（事業所のあるアカウントだけ。書けたのは新しいハッシュになったときだけ）
     db
@@ -167,6 +170,32 @@ export function ownPasswordEntry(p: Pick<Principal, "role" | "judge" | "accountI
   if (!p || (p.role !== "medical" && p.role !== "government")) return null;
   if (p.judge || isFixedAccount(p.accountId)) return "fixed";
   return p.accountId ? "open" : null;
+}
+
+/** 変更の欄を開いた形で送る印（/office?password=1・/staff?password=1。T114） */
+export const OWN_PASSWORD_OPEN_PARAM = "password";
+/** 事業所の画面（lib/disaster/http.ts の OFFICE_PATH と同じ。あちらは D1 の処理を読むのでここでは読まない） */
+const OFFICE_PATH = "/office";
+
+/** URL の印（?password=1）があるか */
+export function wantsOwnPassword(v: string | string[] | undefined): boolean {
+  return (Array.isArray(v) ? v[0] : v) === "1";
+}
+
+/**
+ * 初期パスワードのまま入った人の、ヘッダーの下の印「初期パスワード」と「変更」の送り先（T114 の問い 1 の (b)）。
+ * ケアマネは事業所の画面の自分の行（ケアマネの区分、欄を開いて）、医療班・行政は受入一覧の見出しの行（欄を開いて）。
+ * 印が無い・審査員・役を替えた山本・審査員が足したアカウント・固定のアカウント・本人と家族は null（出さない）。
+ * 変えるまでほかの画面へ行けない、にはしない（審査員・種のアカウントは元から対象の外）
+ */
+export function initialPasswordHref(
+  p: Pick<Principal, "role" | "judge" | "accountId" | "initialPassword" | "switched" | "judgeMade"> | null,
+): string | null {
+  if (!p || p.initialPassword !== true || p.judge || p.switched || p.judgeMade || !p.accountId || isFixedAccount(p.accountId)) return null;
+  const open = `?${OWN_PASSWORD_OPEN_PARAM}=1`;
+  if (p.role === "care_manager") return `${OFFICE_PATH}${open}#${CARE_MANAGERS_ANCHOR}`;
+  if (p.role === "medical" || p.role === "government") return `${STAFF_PATH}${open}`;
+  return null;
 }
 
 /** 欄の隠した ID（パスワードの管理の道具が新しいパスワードを ID と組にできるように）。無い・停止した人は null */

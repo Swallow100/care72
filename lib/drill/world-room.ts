@@ -66,6 +66,8 @@ export type RoomEvent = {
   stop_reason?: { type: string } | null;
   /** user.custom_tool_result が答えた呼び出し */
   custom_tool_use_id?: string;
+  /** user.message の中身（届いたかを文で確かめる、T121） */
+  content?: ReadonlyArray<{ type?: string; text?: string }>;
 };
 
 /** world-room が使う所だけの形。テストは偽物を渡す（本物の API を呼ばない） */
@@ -267,11 +269,17 @@ export async function roomStep(
   try {
     sent = (await deps.client.sessions.send(room, message)).ids;
   } catch {
-    // 前の刻みが時間切れのあと、部屋が world_step の答えを待ったまま（requires_action）だと user.message は断られる。
-    // 答えていない呼び出しに「前の刻みの分」と返してから 1 回だけ送り直す
+    // 送りが例外でも、部屋には届いていることがある（返事の前に切れた・SDK の送り直しが断られた）。T121: 評価の 1 回目の代替は、
+    // 届いた刻みの文を「送れない」として 1 回呼びに落とし、部屋の答えを次の刻みで捨てていた。先に部屋の出来事を読んで、この文が
+    // 届いていれば待つ。届いていなければ、前の刻みの答えていない呼び出しに返してから（requires_action）、無ければ少し待ってから 1 回送り直す
     try {
-      if ((await settlePending(deps.client, room)) === 0) return fail("api_error", "送れない");
-      sent = (await deps.client.sessions.send(room, message)).ids;
+      const landed = await landedMessage(deps.client, room, since, text);
+      if (landed) {
+        sent = [landed];
+      } else {
+        if ((await settlePending(deps.client, room)) === 0) await sleep(POLL_MS);
+        sent = (await deps.client.sessions.send(room, message)).ids;
+      }
     } catch {
       return fail("api_error", "送れない");
     }
@@ -279,7 +287,12 @@ export async function roomStep(
   const deadline = clock() + timeout;
   const handled = new Set<string>();
   let answer: WorldStep | null = null;
-  let mine = sent.length === 0;
+  // この刻みの文より後の出来事だけを読む（T123）。読むたびに自分の user.message から数え直す。前は 1 回目の読みで自分の文を見つけたら、
+  // 2 回目からの読みを窓（送る 5 秒前から）の頭から自分の物として読み、窓に入った前の刻みの idle（end_turn）で「world_step なしで
+  // 止まった」と落ちて 1 回呼びに代わり、部屋はその刻みを続けて答え（答えていない呼び出しが残り）、次の刻みの送りが 400 になっていた。
+  // 送りの返事に id が無ければ、文の中身で自分の user.message を探す（見つからなければ窓の中の最後の user.message。送りは 1 つずつ）
+  // 自分の文のあとに部屋が動いたか（agent.* の出来事）。動く前の end_turn は前の刻みの物として読まない
+  let active = false;
   while (clock() < deadline) {
     await sleep(POLL_MS);
     let events: RoomEvent[];
@@ -288,13 +301,21 @@ export async function roomStep(
     } catch {
       continue; // 読みの一時の失敗は次の読みで取り直す（id で揃える）
     }
+    const anchor =
+      sent.length > 0
+        ? null
+        : ([...events].reverse().find((e) => e.type === "user.message" && (e.content ?? []).some((c) => c.text === text)) ??
+            [...events].reverse().find((e) => e.type === "user.message") ??
+            null);
+    let mine = false;
     for (const e of events) {
       if (!mine) {
-        if (sent.includes(e.id)) mine = true;
+        if (sent.length > 0 ? sent.includes(e.id) : e.id === anchor?.id) mine = true;
         continue;
       }
       if (handled.has(e.id)) continue;
       handled.add(e.id);
+      if (e.type.startsWith("agent.")) active = true;
       if (e.type === "agent.custom_tool_use") {
         const ok: ReturnType<typeof WorldStepSchema.safeParse> | null = e.name === WORLD_TOOL && answer === null ? WorldStepSchema.safeParse(e.input) : null;
         if (ok?.success) answer = ok.data;
@@ -307,6 +328,8 @@ export async function roomStep(
       } else if (e.type === "session.error" || e.type === "session.status_terminated") {
         return fail("api_error", e.type);
       } else if (e.type === "session.status_idle" && e.stop_reason && TERMINAL_IDLE.has(e.stop_reason.type)) {
+        // 部屋が動く前の end_turn は前の刻みの物（T123）。読み続ける（予算・再試行の尽きは今までどおりすぐ落とす）
+        if (!active && !answer && e.stop_reason.type === "end_turn") continue;
         if (answer) {
           await ticket.ok({ model: OPUS, inputTokens: null, outputTokens: null });
           return { session: room, step: answer, incidents: worldIncidents(answer, applyContext(input, cast, "room"), input.hints.reached) };
@@ -316,6 +339,13 @@ export async function roomStep(
     }
   }
   return fail("timeout", `${Math.round(timeout / 1000)} 秒で返らない`);
+}
+
+/** この刻みの文（user.message）が部屋に届いているか。届いていればその出来事の id（T121。送りの例外のあとに読む） */
+export async function landedMessage(client: RoomClient, room: string, since: string, text: string): Promise<string | null> {
+  const events = await client.sessions.list(room, since);
+  const hit = [...events].reverse().find((e) => e.type === "user.message" && (e.content ?? []).some((c) => c.text === text));
+  return hit ? hit.id : null;
 }
 
 /** 答えていない world_step の呼び出しに結果を返す（前の刻みの時間切れの後始末）。返した数 */
