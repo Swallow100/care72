@@ -31,6 +31,7 @@ import { fitKindOf, fitLedgerHazards, profileOf, type FitProfile } from "./fit.t
 import type { Homes } from "./comms.ts";
 import { hazardText } from "../labels.ts";
 import { simTimeText } from "./time-text.ts";
+import { lastDrillDaysStatement, lastDrillMap } from "./last.ts";
 
 /** 72 時間の棒の帯（停電・断水・電話）。始まりと終わりは発災からの時間。終わりが無ければ今まで続いている */
 /** 帯 1 本。radio は電波不通（T125。監督の全域の不通か、停電が想定の表の時間続いた区域の家。lib/drill/comms.ts） */
@@ -171,7 +172,7 @@ export async function loadDrillScreen(
   const ids = JSON.stringify(participants);
 
   const inDrill = "SELECT value FROM json_each(?2)";
-  const [people, clocks, contacts, signals, aiTurns] = await db.batch([
+  const [people, clocks, contacts, signals, aiTurns, drills] = await db.batch([
     db
       .prepare(
         `SELECT id, name, kana, birth_date, plan_status, self_report_unreliable, ledger FROM people
@@ -207,9 +208,12 @@ export async function loadDrillScreen(
           WHERE drill_id = ?1 AND kind = 'persona_turn' AND step <= ?2 AND json_extract(payload, '$.ai') = 1`,
       )
       .bind(id, shown),
+    // 計画の欄の「訓練 11/5」（担当一覧と同じ、最後に出た終わった訓練の日。T146）
+    lastDrillDaysStatement(db, scope.officeId),
   ]);
 
-  const peopleRows = people.results as PersonForDrill[];
+  const lastDrill = lastDrillMap(drills.results as Array<{ person_id: unknown; day: unknown }>);
+  const peopleRows = (people.results as PersonForDrill[]).map((p) => ({ ...p, last_drill: lastDrill.get(p.id) ?? null }));
   const ledgers = peopleRows.map((p) => parseLedger(p.ledger));
   const replayed = replayState(row, participants, await loadTicks(db, id, hours, shown, clock.clock ? lastHour(scenario) : undefined), shown);
   const { ticks } = replayed;

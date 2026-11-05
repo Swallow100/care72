@@ -14,12 +14,13 @@ import {
 } from "./credential.ts";
 import {
   DEMO_CARE_MANAGER_ID,
-  DEMO_FAMILY_CONTACT_ID,
   DEMO_JUDGE_ACCOUNT_ID,
   DEMO_OFFICE_ID,
-  DEMO_SELF_PERSON_ID,
   isFixedAccount,
-  JUDGE_LOGIN_ID,
+  isJudgeAccount,
+  isNoLoginAccount,
+  judgeAccountOfLogin,
+  seedTargets,
 } from "./demo.ts";
 import { issuedSec, linkTarget } from "../qr/phone-link-store.ts";
 import { MAX_PASSWORD_LENGTH, verifyPassword } from "./password.ts";
@@ -97,18 +98,21 @@ type DemoRole = Exclude<JudgeRole, "care_manager">;
 
 /**
  * 見本の事業所の医療班・本人・家族の役の形（審査員と、役を替えた山本で同じ。T95）。p は役を付ける前の形（書き手・名前・事業所）。
- * 医療班は p のまま（受け持ちは書き手のアカウントごと）、本人・家族は山田 ハナと山田の娘の行
+ * 医療班は p のまま（受け持ちは書き手のアカウントごと）、本人・家族は山田 ハナと山田の娘の行。
+ * 本人と家族の行は事業所ごと（T144。審査員はデモ事業所の p-01・c-01-1、確認用の事業所の山本はその写し）。種の事業所でなければ null
  */
-async function demoRolePrincipal(db: D1Database, office: OfficeRef, p: Principal, role: DemoRole): Promise<Principal> {
+async function demoRolePrincipal(db: D1Database, office: OfficeRef, p: Principal, role: DemoRole): Promise<Principal | null> {
+  const t = seedTargets(office.id);
+  if (!t) return null;
   switch (role) {
     case "medical":
       return { ...p, role };
     case "self": {
       const person = await db
         .prepare("SELECT name FROM people WHERE id = ?1 AND office_id = ?2")
-        .bind(DEMO_SELF_PERSON_ID, office.id)
+        .bind(t.selfPersonId, office.id)
         .first<{ name: string }>();
-      return { ...p, role, personId: DEMO_SELF_PERSON_ID, displayName: person?.name ?? null };
+      return { ...p, role, personId: t.selfPersonId, displayName: person?.name ?? null };
     }
     case "family": {
       const contact = await db
@@ -116,9 +120,9 @@ async function demoRolePrincipal(db: D1Database, office: OfficeRef, p: Principal
           `SELECT c.name FROM contacts c JOIN people pe ON pe.id = c.person_id
             WHERE c.id = ?1 AND pe.id = ?2 AND pe.office_id = ?3`,
         )
-        .bind(DEMO_FAMILY_CONTACT_ID, DEMO_SELF_PERSON_ID, office.id)
+        .bind(t.familyContactId, t.selfPersonId, office.id)
         .first<{ name: string | null }>();
-      return { ...p, role, personId: DEMO_SELF_PERSON_ID, contactId: DEMO_FAMILY_CONTACT_ID, displayName: contact?.name ?? null };
+      return { ...p, role, personId: t.selfPersonId, contactId: t.familyContactId, displayName: contact?.name ?? null };
     }
   }
 }
@@ -146,13 +150,20 @@ async function sandboxPrincipal(db: D1Database, sandboxId: string | undefined): 
 
 /**
  * 審査員の役ごとの形。役を選ぶ前は unselected（役選択の画面へ）。試用事業所（T115）は sandboxId の事業所の管理者で、
- * 消えていれば役を選ぶ前と同じ unselected（役選択の画面で「新規事業所」を押すと作り直す）
+ * 消えていれば役を選ぶ前と同じ unselected（役選択の画面で「新規事業所」を押すと作り直す）。
+ * judgeAccount は書き手（審査員 1〜3、T144）。3 つとも同じデモ事業所・同じ担当一覧・同じ役の入口で、書き手だけが違う
  */
-async function judgePrincipal(db: D1Database, role: JudgeSessionRole | null, sandboxId?: string): Promise<Principal | null> {
+async function judgePrincipal(
+  db: D1Database,
+  role: JudgeSessionRole | null,
+  sandboxId: string | undefined,
+  judgeAccount: string,
+): Promise<Principal | null> {
+  if (!isJudgeAccount(judgeAccount)) return null;
   const office = await demoOffice(db);
   if (!office) return null;
   const unselected = role === null || role === "sandbox";
-  const p: Principal = { ...NOBODY, role: unselected ? "unselected" : role, judge: true, accountId: DEMO_JUDGE_ACCOUNT_ID, office };
+  const p: Principal = { ...NOBODY, role: unselected ? "unselected" : role, judge: true, accountId: judgeAccount, office };
   switch (role) {
     case null:
       return p;
@@ -214,7 +225,8 @@ async function accountByLoginId(db: D1Database, loginId: string): Promise<Accoun
  * 停止した人（T61）も null: ログインは同じ失敗、今あるセッションも次の要求で切れる（停止ではパスワードの指紋 pv が変わらないので、ここで止める）
  */
 function accountPrincipal(a: AccountJoin): Principal | null {
-  if (a.role === "judge" || a.disabled_at !== null) return null;
+  // ログインに使わない固定のアカウント（T144。審査員の担当一覧の持ち主 acct-yamamoto など）は、前からのセッションも通さない
+  if (a.role === "judge" || a.disabled_at !== null || isNoLoginAccount(a.id)) return null;
   const office: OfficeRef | null =
     a.office_id && a.office_name !== null && a.office_kind !== null
       ? { id: a.office_id, name: a.office_name, kind: a.office_kind }
@@ -263,7 +275,7 @@ async function principalOf(db: D1Database, env: AuthEnv, secret: string, s: Sess
   if (s.k === "judge") {
     const c = judgeCredential(env);
     if (!c || (await credentialVersion(c, secret)) !== s.pv) return null;
-    return judgePrincipal(db, s.r, s.b);
+    return judgePrincipal(db, s.r, s.b, judgeAccountOf(s));
   }
   if (s.k === "link") return linkPrincipal(db, s);
   const a = await accountById(db, s.a);
@@ -287,11 +299,16 @@ export async function resolvePrincipal(
   return s ? principalOf(db, env, secret, s) : null;
 }
 
+/** 審査員のセッションの書き手（T144）。a が無いのは審査員 1 */
+function judgeAccountOf(s: Extract<SessionPayload, { k: "judge" }>): string {
+  return s.a ?? DEMO_JUDGE_ACCOUNT_ID;
+}
+
 export type LoginResult = { ok: true; token: string; principal: Principal; path: string } | { ok: false };
 const FAIL: LoginResult = { ok: false };
 
 /**
- * ID とパスワードで入る。審査員の ID なら env の JUDGE_PASSWORD_HASH か JUDGE_PASSWORD、
+ * ID とパスワードで入る。審査員の ID（3 つ、T144）なら env の JUDGE_PASSWORD_HASH か JUDGE_PASSWORD（3 つで同じ）、
  * 山本は env（ハッシュか平文）か種のハッシュ、ほかはアカウントの表の password_hash（lib/auth/credential.ts）。
  * どの失敗も同じ返事で、時間も同じだけかける（ID が有るかを分からせない）。
  */
@@ -309,13 +326,22 @@ export async function login(
     return FAIL;
   }
 
-  if (loginId === JUDGE_LOGIN_ID) {
+  const judgeAccount = judgeAccountOfLogin(loginId);
+  if (judgeAccount) {
     const c = judgeCredential(env);
     if (!(await verifyCredential(password, c)) || !c) return FAIL;
-    const principal = await judgePrincipal(db, null);
+    const principal = await judgePrincipal(db, null, undefined, judgeAccount);
     if (!principal) return FAIL;
     const token = await signSession(
-      { v: 1, k: "judge", r: null, pv: await credentialVersion(c, secret), ...sessionTimes(now) },
+      {
+        v: 1,
+        k: "judge",
+        r: null,
+        pv: await credentialVersion(c, secret),
+        // 審査員 1 は a を付けない（T144 の前の cookie と同じ形）
+        ...(judgeAccount === DEMO_JUDGE_ACCOUNT_ID ? {} : { a: judgeAccount }),
+        ...sessionTimes(now),
+      },
       secret,
     );
     return { ok: true, token, principal, path: homePath(principal.role) };
@@ -345,8 +371,8 @@ export async function chooseJudgeRole(
   const s = await verifySession(token, secret, now);
   if (!s || s.k !== "judge") return null;
   if (!(await principalOf(db, env, secret, s))) return null;
-  // 試用事業所の b（T115）は残す（「新規事業所」を選び直すと同じ事業所へ戻る）
-  const principal = await judgePrincipal(db, role, s.b);
+  // 試用事業所の b（T115）と書き手の a（T144）は残す（「新規事業所」を選び直すと同じ事業所へ戻る）
+  const principal = await judgePrincipal(db, role, s.b, judgeAccountOf(s));
   if (!principal) return null;
   const next = await signSession({ ...s, r: role, ...sessionTimes(now) }, secret);
   return { token: next, principal, path: homePath(role) };

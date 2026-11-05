@@ -3,7 +3,8 @@
 //
 // 作り直しは survey_ のほかの表を全部落として種から入れ直すので、本物の事業所が使い始めたあとに流すと、その事業所の利用者が全部消える。
 // drop の前に 4 つを数え、どれかが 0 でなければ「本物データあり 停止」で止める:
-//   利用者（people）のうちデモ事業所の外、アカウント（accounts）のうち種に無い行、事業所（offices）のうち種に無い行、訓練（drills）のうちデモ事業所の外。
+//   利用者（people）のうち種の事業所の外、アカウント（accounts）のうち種に無い行、事業所（offices）のうち種に無い行、訓練（drills）のうち種の事業所の外。
+// 種の事業所はデモ事業所と確認用の事業所（T144。どちらも毎朝 4 時に種へ戻す）。
 // ALLOW_DATA_LOSS=1 のときだけ、数を出したうえで続ける（作者が意図して消す形）。
 // 数が読めない（wrangler が落ちた・JSON が読めない）ときは、ALLOW_DATA_LOSS=1 でも止める（消える物の数を出せないまま進めない）。
 // 表がまだ無い D1（作ったばかり）は、無い表を 0 と数える（sqlite_master から先に表の名前を読む）。
@@ -12,7 +13,7 @@
 // 0027 の前の D1 には列が無いので、sqlite_master の offices の CREATE の文に列の名前があるときだけ除く（無い列を読むと数が読めず止まるため）。
 // 試用事業所があれば数を 1 行足す（作り直しで一緒に消える）。
 
-import { DEMO_OFFICE_ID } from "../../lib/auth/demo.ts";
+import { SEED_OFFICE_IDS } from "../../lib/auth/demo.ts";
 import { SEED_ACCOUNTS, SEED_OFFICES } from "../../seed/people.ts";
 import { lit } from "../../seed/sql.ts";
 
@@ -24,18 +25,18 @@ const list = (ids: readonly string[]) => ids.map((id) => lit(id)).join(", ");
 
 /** 表ごとの数え方（その表があるときだけ使う） */
 export const COUNT_SQL: Record<GuardTable, string> = {
-  people: `SELECT count(*) FROM people WHERE office_id <> ${lit(DEMO_OFFICE_ID)}`,
+  people: `SELECT count(*) FROM people WHERE office_id NOT IN (${list(SEED_OFFICE_IDS)})`,
   accounts: `SELECT count(*) FROM accounts WHERE id NOT IN (${list(SEED_ACCOUNTS.map((a) => a.id))})`,
   offices: `SELECT count(*) FROM offices WHERE id NOT IN (${list(SEED_OFFICES.map((o) => o.id))})`,
-  drills: `SELECT count(*) FROM drills WHERE office_id <> ${lit(DEMO_OFFICE_ID)}`,
+  drills: `SELECT count(*) FROM drills WHERE office_id NOT IN (${list(SEED_OFFICE_IDS)})`,
 };
 
 /** 画面に出す言葉（標準出力） */
 const LABELS: Record<GuardTable, string> = {
-  people: "利用者（デモ事業所の外）",
+  people: "利用者（種の事業所の外）",
   accounts: "アカウント（種の外）",
   offices: "事業所（種の外）",
-  drills: "訓練（デモ事業所の外）",
+  drills: "訓練（種の事業所の外）",
 };
 
 /** 試用事業所の id（T115） */

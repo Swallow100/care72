@@ -42,12 +42,19 @@ export const CARE_LEVEL_LABELS: Record<CareLevel, string> = {
   care5: "要介護5",
 };
 
+/**
+ * 計画の段階の言葉（T146）。DB の状態は 4 つのままで、画面と紙は 3 つ（同意済・訓練済はどちらも作成済）。
+ * 「訓練済」は計画の段階に見えて作成済と取り違えやすいので、訓練に出たことは PLAN_DRILL_LABELS で別に並べる（lib/plan-status.ts）
+ */
 export const PLAN_STATUS_LABELS: Record<PlanStatus, string> = {
   none: "未作成",
   draft: "下書き",
-  consented: "同意済",
-  trained: "訓練済",
+  consented: "作成済",
+  trained: "作成済",
 };
+
+/** 訓練の欄（T146）: 見出し・最後に出た訓練の無い人・日付の分からない訓練済（前からの種の値） */
+export const PLAN_DRILL_LABELS = { head: "訓練", none: "未実施", done: "済" } as const;
 
 /** 医療依存の短い印。並びは優先の骨格の順 */
 export const DEPENDENCE_MARKS: ReadonlyArray<[ClockCategory, string]> = [
@@ -398,7 +405,8 @@ export const PENDING_STATUS_LABELS: Record<PendingStatus, string> = {
  * 状態としての未確認（同意・時計の値）だけ。まだ誰も入れていない欄は blank「未入力」で、数えない（T79、点検の中 11:
  * 新しく足した人の上が「未確認 0」なのに欄がほぼ全部「未確認」だった）
  */
-export const BLANK_LABELS = { unconfirmed: "未確認", blank: "未入力", none: "なし" } as const;
+/** usual は見る方の画面で、行・区分の中が全部当たり前の値（lib/intake/fields.ts の USUAL_VALUES）だったとき（T143） */
+export const BLANK_LABELS = { unconfirmed: "未確認", blank: "未入力", none: "なし", usual: "特記なし" } as const;
 
 export const TIMELINE_KIND_LABELS: Record<TimelineKind, string> = {
   signal: "安否",
@@ -453,6 +461,8 @@ export const INTAKE_LABELS = {
   overwrite: "上書き",
   busy: "処理中",
   saved: "保存済",
+  /** AI の吹き出しの保存した中身の 6 件目から（T143、lib/intake/saved-say.ts） */
+  savedMore: (n: number) => `他 ${n} 件`,
   unchanged: "変更なし",
   aiNotConfigured: "AI 未設定",
   aiLimit: "上限到達",

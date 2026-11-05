@@ -9,7 +9,8 @@
 //
 // ここは D1・R2・node のファイルに触らない（手元の CLI の seed/build-sql.ts と、Worker の lib/seed/reset.ts の両方が読む）。
 
-import { DEMO_CARE_MANAGER_ID, DEMO_OFFICE_ID, DEMO_SELF_PERSON_ID } from "../auth/demo.ts";
+import { CHECK_OFFICE_ID, DEMO_CARE_MANAGER_ID, DEMO_OFFICE_ID, DEMO_SELF_PERSON_ID } from "../auth/demo.ts";
+import { checkIdMap, remapRow } from "./check.ts";
 import { aiClassLogBody } from "../classify/labels.ts";
 import { HAIKU } from "../claude/models.ts";
 import type { RecordingClass } from "../db/types.ts";
@@ -22,6 +23,8 @@ const HOUR_MS = 3_600_000;
 
 /** 山田の赤の信号の id。録音の再生（/api/recordings/<id>）は UUID の形しか通さないので、その形にする */
 export const SEED_RED_SIGNAL_ID = "5eed0000-0000-4000-8000-000000000001";
+/** 確認用の事業所（T144）の山田の赤の信号の id（同じ UUID の形で、デモ事業所の物と重ならない） */
+export const CHECK_RED_SIGNAL_ID = "5eed0000-0000-4000-8000-000000000002";
 
 /** 山田が言った言葉（訓練の大雨の想定の 3 時間の言う事と同じ） */
 export const SEED_RED_TRANSCRIPT = "いたい、うごけない";
@@ -255,8 +258,29 @@ export function demoExtraRows(now: string, recording: SeedRecording = null): See
  */
 export const DEMO_QR = { generation: 1, issuedAt: SEED_AT, ttlDays: 180 } as const;
 
-const DEMO_QR_SQL = `UPDATE people SET qr_generation = ${DEMO_QR.generation}, qr_issued_at = '${DEMO_QR.issuedAt}', qr_ttl_days = ${DEMO_QR.ttlDays} WHERE office_id = '${DEMO_OFFICE_ID}';`;
+/** QR を作った形にする文（種の事業所ごと） */
+function demoQrSql(officeId: string): string {
+  return `UPDATE people SET qr_generation = ${DEMO_QR.generation}, qr_issued_at = '${DEMO_QR.issuedAt}', qr_ttl_days = ${DEMO_QR.ttlDays} WHERE office_id = '${officeId}';`;
+}
 
 export function demoExtraStatements(now: string, recording: SeedRecording = null): string[] {
-  return [...demoExtraRows(now, recording).map((r) => insert(r.table, r.row)), DEMO_QR_SQL];
+  return [...demoExtraRows(now, recording).map((r) => insert(r.table, r.row)), demoQrSql(DEMO_OFFICE_ID)];
+}
+
+/**
+ * 確認用の事業所（T144）の、10 人に足す行。デモ事業所の行（災害モード・事業所の経過・山田の赤と経過）を id だけ替えて写す
+ * （lib/seed/check.ts）。録音の鍵は同じ種の録音を指す
+ */
+export function checkExtraRows(now: string, recording: SeedRecording = null): SeedRow[] {
+  const map = checkIdMap({ [SEED_RED_SIGNAL_ID]: CHECK_RED_SIGNAL_ID });
+  return demoExtraRows(now, recording).map((r) => ({ table: r.table, row: remapRow(r.row, map) }));
+}
+
+export function checkExtraStatements(now: string, recording: SeedRecording = null): string[] {
+  return [...checkExtraRows(now, recording).map((r) => insert(r.table, r.row)), demoQrSql(CHECK_OFFICE_ID)];
+}
+
+/** 種の事業所ごとの、10 人に足す文（lib/seed/reset.ts の戻し） */
+export function seedExtraStatements(officeId: string, now: string, recording: SeedRecording = null): string[] {
+  return officeId === CHECK_OFFICE_ID ? checkExtraStatements(now, recording) : demoExtraStatements(now, recording);
 }

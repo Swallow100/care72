@@ -266,6 +266,35 @@ export function isHandOnlyKey(key: string): boolean {
   return INTAKE_FIELDS.some((f) => f.key === key && f.ai === false);
 }
 
+/**
+ * 台帳の項目で「異常なし」に当たる値（T143。この表 1 か所）。本人のページの見る方の画面（lib/person.ts の toPersonView に reading）は、
+ * この値の項目を出さず、気を付ける所だけを出す（行の中が全部この値なら「特記なし」）。編集の画面・紙・CSV・医療班の要約は今どおり全部出す。
+ * 値の比べ方は JSON の形のまま（[] は「なし」と答えた空の配列。まだ入っていない undefined とは違う）。
+ * basic.selfReport は台帳の外（people.self_report_unreliable）の本人の報告の扱いで、0 が通常
+ */
+export const USUAL_VALUES: Readonly<Record<string, readonly unknown[]>> = {
+  "care.walking": ["ok"],
+  "care.hearing": ["ok"],
+  "care.vision": ["ok"],
+  "care.understanding": ["ok"],
+  "care.judgment": ["ok"],
+  "care.orientation": ["ok"],
+  "care.bedridden": [false],
+  "care.dementia": [false],
+  "medical.allergies": [[]],
+  "medical.history": [[]],
+  "basic.selfReport": [0],
+};
+
+/** 当たり前の値か（USUAL_VALUES）。表に無い項目と、値の無い項目は違う */
+export function isUsualValue(key: string, value: unknown): boolean {
+  if (value === undefined || value === null) return false;
+  const usual = USUAL_VALUES[key];
+  if (!usual) return false;
+  const v = JSON.stringify(value);
+  return usual.some((u) => JSON.stringify(u) === v);
+}
+
 /** 欄の表に無いが「分からない」を残せる場所（薬・機器・ハザードの有無、連絡先から出る欄） */
 export const EXTRA_PENDING_KEYS = [
   "medical.medications",

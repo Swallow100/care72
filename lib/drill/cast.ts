@@ -70,7 +70,16 @@ function rowsOf(s: Scenario): Row[] {
  * 想定の行ごとの配役。participants は担当一覧の順（よみ）。facts は事業所の人の台帳の事実（事業所にいるかもこれで見る）。
  * 代わりの人に配った行だけを返す（全部 person のままなら空）
  */
-export function castScenario(scenario: Scenario, participants: ReadonlyArray<string>, facts: ReadonlyMap<string, CastFacts>): Cast {
+export function castScenario(
+  scenario: Scenario,
+  participants: ReadonlyArray<string>,
+  facts: ReadonlyMap<string, CastFacts>,
+  /**
+   * 想定の表の人の写し（T144。確認用の事業所の chk-p-01… は lib/auth/demo.ts の checkSeedId）。写しが参加者にいれば who より先にその人へ配る
+   * （審査員の訓練と同じ人に同じ行が当たる）。写しが参加していない行は今までどおり who で選ぶ
+   */
+  twin?: (person: string) => string,
+): Cast {
   const rows = rowsOf(scenario);
   // 事業所にいない person ごとに、最初に who のある行の who
   const missing = new Map<string, CastPick | undefined>();
@@ -80,9 +89,19 @@ export function castScenario(scenario: Scenario, participants: ReadonlyArray<str
   }
   const members = new Set(participants);
   const dealt = new Set(rows.filter((r) => members.has(r.person)).map((r) => r.person));
+  const sub = new Map<string, string>();
+  // 写し（T144）を先に配る。写しが参加者にいない人は下の who で選ぶ
+  if (twin) {
+    for (const person of [...missing.keys()]) {
+      const t = twin(person);
+      if (!members.has(t) || !facts.has(t) || dealt.has(t)) continue;
+      sub.set(person, t);
+      dealt.add(t);
+      missing.delete(person);
+    }
+  }
   const open = [...missing].filter((g): g is [string, CastPick] => g[1] !== undefined);
   const candidates = (who: CastPick) => participants.filter((p) => !dealt.has(p) && facts.has(p) && matchesPick(facts.get(p)!, who));
-  const sub = new Map<string, string>();
   // 安否の行の数（出来事だけの人より、連絡してくる人を先に配る）
   const turns = new Map<string, number>();
   for (const r of rows) if (r.key.includes(":t")) turns.set(r.person, (turns.get(r.person) ?? 0) + 1);

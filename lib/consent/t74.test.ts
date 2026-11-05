@@ -182,11 +182,12 @@ describe("同意の行", () => {
   it("種の 10 人は AI 提供も「同意」（seedConsents が CONSENT_KINDS から作る）。ほかの 4 種類は前のまま", () => {
     expect(CONSENT_KINDS).toEqual(["registry", "plan_share", "supporters", "medical", "ai_overseas"]);
     for (const p of SEED_PEOPLE) expect(seedConsents(p).find((c) => c.kind === "ai_overseas")?.status, p.person.id).toBe("granted");
+    // 確認用の事業所（T144）の 10 人の写しも同じ
     const rows = sqlite.prepare("SELECT person_id, status FROM consents WHERE kind = 'ai_overseas' ORDER BY person_id").all() as Array<{ status: string }>;
-    expect(rows).toHaveLength(10);
+    expect(rows).toHaveLength(20);
     expect(rows.every((r) => r.status === "granted")).toBe(true);
     // 種の不同意（p-07 支援者・p-09 医療班）は前のまま
-    const refused = sqlite.prepare("SELECT person_id, kind FROM consents WHERE status = 'refused' ORDER BY person_id, kind").all();
+    const refused = sqlite.prepare("SELECT c.person_id, c.kind FROM consents c JOIN people p ON p.id = c.person_id WHERE c.status = 'refused' AND p.office_id = 'office-demo' ORDER BY c.person_id, c.kind").all();
     expect(refused).toEqual(
       SEED_PEOPLE.flatMap((p) => p.refusedConsents.map((r) => ({ person_id: p.person.id, kind: r.kind }))).sort((a, b) =>
         a.person_id === b.person_id ? (a.kind < b.kind ? -1 : 1) : a.person_id < b.person_id ? -1 : 1,

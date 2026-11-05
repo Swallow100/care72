@@ -32,7 +32,7 @@ import {
 } from "./demo.ts";
 import { SEED_DRILL_ID, seedDrillStartedAt } from "./drill.ts";
 import { canResetDemo, officeResetHref, resetPost } from "./http.ts";
-import { DEMO_CLEAR, resetDemoOffice, type SeedBucket } from "./reset.ts";
+import { CHECK_CLEAR, DEMO_CLEAR, resetDemoOffice, type SeedBucket } from "./reset.ts";
 
 /** 種を入れた時刻（2026-11-05 10:00 JST） */
 const NOW = "2026-11-05T01:00:00.000Z";
@@ -72,6 +72,20 @@ afterEach(() => {
   sqlite?.close();
   sqlite = undefined;
 });
+
+/**
+ * 確認用の事業所（T144）の中身（人・訓練・災害モードなど）を消す。デモ事業所だけの戻しの比べに入れない（確認用は前の種の時刻のまま）。
+ * 事業所とアカウントの行は残す（両方で同じ）
+ */
+function stripCheck(db: DatabaseSync): DatabaseSync {
+  db.exec("PRAGMA foreign_keys = OFF;");
+  for (const t of CLEAR_ORDER) {
+    const w = CHECK_CLEAR[t];
+    if (w !== null) db.exec(`DELETE FROM ${t} WHERE ${w};`);
+  }
+  db.exec("PRAGMA foreign_keys = ON;");
+  return db;
+}
 
 /** 全部の表を created_at を除いて並べた物（行の順は問わない） */
 function dump(db: DatabaseSync, skip: ReadonlyArray<string> = []): Record<string, string[]> {
@@ -166,7 +180,8 @@ describe("種（npm run db:reset）", () => {
 
   it("山田の赤: けが あり・文字起こし・Claude の分類の列（動けない・確信 0.9・引用・モデル名）。経過に信号・録音・分類の 3 行", async () => {
     sqlite = await seeded();
-    const sig = sqlite.prepare("SELECT * FROM signals WHERE drill_id IS NULL").all() as Array<Record<string, unknown>>;
+    // 確認用の事業所（T144）の写しは除く（lib/seed/t144.test.ts）
+    const sig = sqlite.prepare("SELECT * FROM signals WHERE drill_id IS NULL AND person_id NOT LIKE 'chk-%'").all() as Array<Record<string, unknown>>;
     expect(sig).toHaveLength(1);
     expect(sig[0]).toMatchObject({
       id: SEED_RED_SIGNAL_ID,
@@ -369,7 +384,7 @@ function withoutOthers(db: DatabaseSync): Record<string, string[]> {
   db.exec("DELETE FROM accounts WHERE id = 'acct-med-2'");
   db.exec("UPDATE accounts SET password_hash = NULL WHERE id = 'acct-yamamoto'");
   db.exec("PRAGMA foreign_keys = ON;");
-  return dump(db, ["ai_calls"]);
+  return dump(stripCheck(db), ["ai_calls"]);
 }
 
 describe("最初に戻す（デモ事業所だけ）", () => {
@@ -417,7 +432,7 @@ describe("最初に戻す（デモ事業所だけ）", () => {
       { kind: "released", body: "退所", author_role: "medical" },
     ]);
 
-    expect(withoutOthers(db)).toEqual(dump(fresh, ["ai_calls"]));
+    expect(withoutOthers(db)).toEqual(dump(stripCheck(fresh), ["ai_calls"]));
   });
 
   it("2 回戻しても同じ", async () => {
@@ -581,7 +596,7 @@ describe("毎日 4 時（cron）", () => {
     expect(DAILY_RESET_CRON).toBe("0 19 * * *");
   });
 
-  it("毎日 4 時の物ならデモ事業所だけを種に戻す。予定の時刻から種の時刻を数える。ほかの cron は何もしない", async () => {
+  it("毎日 4 時の物ならデモ事業所（と確認用の事業所、T144）を種に戻す。予定の時刻から種の時刻を数える。ほかの cron は何もしない", async () => {
     const { db, partnerDump } = await used();
     sqlite = db;
     const before = partnerDump();
@@ -596,6 +611,8 @@ describe("毎日 4 時（cron）", () => {
       recording: false,
       removedRecordings: 0,
       removedFormPages: 0,
+      // 確認用の事業所（T144）も同じ時刻に種へ
+      check: { recording: false, removedRecordings: 0, removedFormPages: 0 },
       // 審査員の試用事業所（T115）は無いので消す物なし
       sandboxes: { offices: 0, drills: 0, removedObjects: 0 },
     });
@@ -642,12 +659,25 @@ describe("上限での再生への切替", () => {
 });
 
 describe("種の決まり", () => {
-  it("種のアカウントはデモ事業所の 3 つ（山本・西村・審査員）と協力事業所の 1 つ", () => {
+  it("種のアカウントはデモ事業所の 5 つ（山本・西村・審査員 3 つ）、確認用の事業所の 2 つ（山本・西村、T144）と協力事業所の 1 つ", () => {
     expect(SEED_ACCOUNTS.map((a) => [a.id, a.office_id])).toEqual([
       ["acct-yamamoto", "office-demo"],
       ["acct-nishimura", "office-demo"],
       ["acct-judge", "office-demo"],
+      ["acct-judge-2", "office-demo"],
+      ["acct-judge-3", "office-demo"],
+      ["chk-acct-yamamoto", "office-demo-check"],
+      ["chk-acct-nishimura", "office-demo-check"],
       ["acct-partner-cm", "office-partner"],
     ]);
+    // ログインの ID を持つのは確認用の山本だけ（審査員の担当一覧の持ち主はログインしない）
+    expect(SEED_ACCOUNTS.filter((a) => a.login_id !== null).map((a) => a.id)).toEqual(["chk-acct-yamamoto"]);
+  });
+
+  it("確認用の事業所の消す範囲も CLEAR_ORDER の表を全部決め、残す表はデモ事業所と同じ", () => {
+    expect(Object.keys(CHECK_CLEAR).sort()).toEqual([...CLEAR_ORDER].sort());
+    const kept = (c: Record<string, string | null>) => Object.entries(c).filter(([, w]) => w === null).map(([t]) => t).sort();
+    expect(kept(CHECK_CLEAR)).toEqual(kept(DEMO_CLEAR));
+    for (const w of Object.values(CHECK_CLEAR)) if (w !== null) expect(w).not.toContain("'office-demo'");
   });
 });
