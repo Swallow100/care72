@@ -17,7 +17,9 @@ export type MappingErrorCode =
   | "not_redacted"
   | "not_found"
   | "forbidden"
-  | "conflict";
+  | "conflict"
+  // 一覧の様式（T134）: サーバーが取った記録が無い・古い（取り直してから読む）
+  | "source_stale";
 
 const LABELS: Record<MappingErrorCode, string> = {
   ai_not_configured: MAPPING_LABELS.aiNotConfigured,
@@ -33,6 +35,7 @@ const LABELS: Record<MappingErrorCode, string> = {
   not_found: MAPPING_LABELS.notFound,
   forbidden: MAPPING_LABELS.forbidden,
   conflict: MAPPING_LABELS.conflict,
+  source_stale: "再取得",
 };
 
 const STATUS: Record<MappingErrorCode, number> = {
@@ -49,6 +52,7 @@ const STATUS: Record<MappingErrorCode, number> = {
   not_found: 404,
   forbidden: 403,
   conflict: 409,
+  source_stale: 409,
 };
 
 export function mappingError(code: MappingErrorCode, at?: string): Response {

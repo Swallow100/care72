@@ -11,13 +11,22 @@ import { BARE_MARK, parseReadMeta, PDF_PAGES_MAX, RAW_FILE_FIELD, READ_FORM, typ
 /** 1 要求で送れる頁の数（PDF は頭から 3 頁まで。様式は 2 頁） */
 export const FORM_READ_PAGES_MAX = PDF_PAGES_MAX;
 
-/** ブラウザから送る 1 頁（RedactSheet の RedactedPage と同じ形の所だけ） */
-export type FormReadPage = { blob: Blob; meta: ReadMeta; bare: boolean };
+/** ブラウザから送る 1 頁（RedactSheet の RedactedPage と同じ形の所だけ）。origin は元のファイルの頁の番号（T134） */
+export type FormReadPage = { blob: Blob; meta: ReadMeta; bare: boolean; origin?: number };
+
+/**
+ * 一覧の公式の様式を読むときの欄（T134、lib/forms/municipal-forms.ts）。municipal は一覧の様式の id、origin は頁ごとの元の頁の番号
+ * （共有の対応表の鍵。全部の頁にあるときだけ送る）
+ */
+export const MUNICIPAL_FIELDS = { municipal: "municipal", origin: "origin" } as const;
 
 /** 送る形を作る。頁の順に、印と画像を同じ欄の名前で並べる（受ける側は getAll で同じ順に読む） */
-export function buildFormReadForm(pages: ReadonlyArray<FormReadPage>): FormData {
+export function buildFormReadForm(pages: ReadonlyArray<FormReadPage>, opts: { municipal?: string } = {}): FormData {
   const form = new FormData();
+  if (opts.municipal) form.set(MUNICIPAL_FIELDS.municipal, opts.municipal);
+  const origins = pages.every((p) => typeof p.origin === "number");
   for (const p of pages) {
+    if (origins) form.append(MUNICIPAL_FIELDS.origin, String(p.origin));
     form.append(READ_FORM.source, p.meta.source);
     form.append(READ_FORM.page, String(p.meta.page));
     form.append(READ_FORM.redacted, String(p.meta.redacted));
@@ -34,7 +43,9 @@ export type FormReadPagesError = "invalid" | "not_redacted";
  * - 生のファイルの欄（file）がある・印が無い・形が違う・隠した所 0 で人が選んだ印が無い → not_redacted
  * - 画像が無い・多すぎる・文字の欄・頁の並びが合わない（写真は 1 枚、PDF は 1・2・3 の順、元は 1 つ） → invalid
  */
-export function formReadPagesOf(form: FormData): { ok: true; pages: Array<{ image: File; meta: ReadMeta }> } | { ok: false; error: FormReadPagesError } {
+export function formReadPagesOf(
+  form: FormData,
+): { ok: true; pages: Array<{ image: File; meta: ReadMeta }>; origins: number[] | null; municipal: string | null } | { ok: false; error: FormReadPagesError } {
   if (form.has(RAW_FILE_FIELD)) return { ok: false, error: "not_redacted" };
   const images = form.getAll(READ_FORM.image);
   if (images.length === 0 || images.length > FORM_READ_PAGES_MAX) return { ok: false, error: "invalid" };
@@ -54,5 +65,18 @@ export function formReadPagesOf(form: FormData): { ok: true; pages: Array<{ imag
   if (pages.some((p) => p.meta.source !== source)) return { ok: false, error: "invalid" };
   if (source === "photo" && pages.length !== 1) return { ok: false, error: "invalid" };
   if (pages.some((p, i) => p.meta.page !== i + 1)) return { ok: false, error: "invalid" };
-  return { ok: true, pages };
+  // 一覧の様式（T134）: 様式の id と元の頁の番号（無ければ null。数が合わない・形が違えば invalid）
+  const rawOrigins = form.getAll(MUNICIPAL_FIELDS.origin);
+  let origins: number[] | null = null;
+  if (rawOrigins.length > 0) {
+    if (rawOrigins.length !== images.length) return { ok: false, error: "invalid" };
+    origins = [];
+    for (const o of rawOrigins) {
+      if (typeof o !== "string" || !/^[1-9]\d{0,2}$/.test(o) || Number(o) > 200) return { ok: false, error: "invalid" };
+      origins.push(Number(o));
+    }
+  }
+  const m = form.get(MUNICIPAL_FIELDS.municipal);
+  if (m !== null && (typeof m !== "string" || !/^[a-z0-9-]{1,40}$/.test(m))) return { ok: false, error: "invalid" };
+  return { ok: true, pages, origins, municipal: m };
 }

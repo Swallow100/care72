@@ -140,19 +140,21 @@ export type NewReadMapping = {
   model: string;
   by: string | null;
   at: string;
+  /** 一覧の公式の様式から作った物（T134。様式の id とサーバーが取った版） */
+  catalog?: { id: string; sha256: string } | null;
 };
 
 /**
- * AI が読んだ対応表を下書きで足す。同じ写真・PDF が同じ事業所に既にあれば足さずにその id を返す（同時に読んだときも 1 つ）
+ * AI が読んだ対応表を下書きで足す（T134: 一覧の様式の共有の対応表を写した物も）。同じ写真・PDF が同じ事業所に既にあれば足さずにその id を返す（同時に読んだときも 1 つ）
  */
 export async function insertReadMapping(db: D1Database, m: NewReadMapping): Promise<{ id: string; reused: boolean }> {
   const r = await db
     .prepare(
-      `INSERT INTO form_mappings (id, office_id, title, form_hash, source_kind, mapping, status, ai_model, created_by, created_at, version, updated_at)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'draft', ?7, ?8, ?9, 1, ?9)
+      `INSERT INTO form_mappings (id, office_id, title, form_hash, source_kind, mapping, status, ai_model, created_by, created_at, version, updated_at, catalog_id, catalog_sha256)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'draft', ?7, ?8, ?9, 1, ?9, ?10, ?11)
        ON CONFLICT (office_id, form_hash) DO NOTHING`,
     )
-    .bind(m.id, m.officeId, m.mapping.title, m.hash, m.kind, JSON.stringify(m.mapping), m.model, m.by, m.at)
+    .bind(m.id, m.officeId, m.mapping.title, m.hash, m.kind, JSON.stringify(m.mapping), m.model, m.by, m.at, m.catalog?.id ?? null, m.catalog?.sha256 ?? null)
     .run();
   if ((r.meta.changes ?? 0) > 0) return { id: m.id, reused: false };
   const found = await findMappingByHash(db, m.officeId, m.hash);
