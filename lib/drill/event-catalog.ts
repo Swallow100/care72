@@ -101,6 +101,8 @@ export type EventTarget = {
   persons?: ReadonlyArray<string>;
   place?: EventPlace | null;
   facts?: EventFacts;
+  /** 同じ種類の全体の出来事をこの訓練で前に出した数（T141。文をコードが書く種類〔余震〕の言い回しと震度を回ごとに変える） */
+  nth?: number;
 };
 
 /** 出来事 1 つが組む状況 1 行（1 つの出来事が 2 行以上になる種類がある: 携帯の通話不可と回復見込、土砂の警戒と道） */
@@ -133,6 +135,8 @@ export type EventRow = {
   text: (after: number | null) => string;
   /** 文をコードが書く（何時間後・震度・避難所の名前が入る物。Opus の文と食い違わないように） */
   ownText?: true;
+  /** 文と値を、この訓練で前に出した数（EventTarget の nth）で回ごとに変える（T141。余震） */
+  varies?: true;
   basis: EventBasis;
   /** 根拠が本人で変わる種類（透析の人は透析の文書）。無ければ ids の先頭 */
   basisFor?: (source: EventSource) => SourceId | null;
@@ -193,6 +197,23 @@ function fullable(world: WorldState): EventPlace | null {
 
 /** 余震の震度（コードが決める。発災から 1 日は 5弱、そのあとは 4） */
 export const aftershockIntensity = (hour: number) => (hour < 24 ? "5弱" : "4");
+
+/**
+ * n 回目（0 から）の余震の震度と文（T141。評価の 5 回目で「余震 震度 4」が同じ文で 3 時間おきに 3 回出た）。震度はコードが決め、
+ * 回を重ねると弱い側も出す（発災から 1 日は 5弱 か 4、そのあとは 4 か 3）。言い回しは回ごとに変える。0 回目は前と同じ「余震 震度 N」
+ */
+const AFTERSHOCK_STEPS: Readonly<Record<"early" | "late", ReadonlyArray<string>>> = { early: ["5弱", "4", "4", "5弱"], late: ["4", "3", "4", "3"] };
+const AFTERSHOCK_TEXTS: ReadonlyArray<(i: string) => string> = [
+  (i) => `余震 震度 ${i}`,
+  (i) => `また余震 震度 ${i}`,
+  (i) => `余震が続く 震度 ${i}`,
+  (i) => `余震 震度 ${i} を観測`,
+];
+export function aftershockOf(hour: number, nth = 0): { intensity: string; text: string } {
+  const steps = AFTERSHOCK_STEPS[hour < 24 ? "early" : "late"];
+  const intensity = steps[nth % steps.length];
+  return { intensity, text: AFTERSHOCK_TEXTS[nth % AFTERSHOCK_TEXTS.length](intensity) };
+}
 
 const NONE: EventBasis = { by: "code", ids: [] };
 const code = (...ids: SourceId[]): EventBasis => ({ by: "code", ids });
@@ -411,9 +432,13 @@ const ROWS: ReadonlyArray<EventRow> = [
     scope: "area",
     words: "余震（地震が起きている想定）",
     eligible: (_s, _p, w) => w.quake !== null,
-    build: (_t, hour) => one({ kind: "quake", intensity: aftershockIntensity(hour) }, `余震 震度 ${aftershockIntensity(hour)}`),
+    build: (t, hour) => {
+      const a = aftershockOf(hour, t.nth ?? 0);
+      return one({ kind: "quake", intensity: a.intensity }, a.text);
+    },
     text: () => "余震",
     ownText: true,
+    varies: true,
     basis: NONE,
     touches: "all",
   },
@@ -756,6 +781,7 @@ export const markLabels = {
   carSleep: "車中泊",
   neighborWatch: "近所声掛",
   wandering: "外出",
+  found: "発見",
 } as const satisfies Record<keyof PersonMarks, string>;
 
 /** 本人ごとの印の言い方（監督の指示の文。lib/drill/director.ts の MARK_WORDS はこれを読む） */
@@ -771,6 +797,7 @@ export const markWords: Readonly<Record<keyof PersonMarks, string>> = {
   carSleep: "車中泊",
   neighborWatch: "近所の人が様子を見に来た",
   wandering: "本人が家の外へ出た",
+  found: "行き先の分からなかった本人が見つかった",
 };
 
 /** 向かっている人の役の印（被害状況の「到着」） */
@@ -809,6 +836,7 @@ const EXTRA_MARK_WORDS: Readonly<Record<ExtraMark, (h: number) => string>> = {
   carSleep: (h) => `避難所に入れず、車の中で過ごしている（${hourText(h)}から）`,
   neighborWatch: (h) => `近所の人が様子を見に来た（${hourText(h)}）`,
   wandering: (h) => `本人が家の外へ出た。どこにいるか分からない（${hourText(h)}から）`,
+  found: (h) => `家の外へ出ていた本人が見つかり、家に戻った（${hourText(h)}）`,
 };
 
 const ROLE_WORDS: Readonly<Record<ArrivalRole, string>> = {
@@ -844,7 +872,7 @@ const ASK_WORDS: Readonly<Record<AskKind, string>> = {
   warmth: "寒さ・暑さの対策",
 };
 
-const EXTRA_MARKS_ORDER: ReadonlyArray<ExtraMark> = ["helperAway", "familyAway", "carSleep", "neighborWatch", "wandering"];
+const EXTRA_MARKS_ORDER: ReadonlyArray<ExtraMark> = ["helperAway", "familyAway", "carSleep", "neighborWatch", "wandering", "found"];
 
 /**
  * 本人役（Claude）に渡す、T92 の印・予定・向かっている人・届いた物・頼み事の言い方（この人に関わる物だけ）。
@@ -855,6 +883,8 @@ export function extraWorldWords(world: WorldState, person: string): string[] {
   const m = world.marks?.[person] ?? {};
   for (const k of EXTRA_MARKS_ORDER) {
     const h = m[k];
+    // 見つかったあとは「どこにいるか分からない」を書かない（T141）
+    if (k === "wandering" && h !== undefined && m.found !== undefined && m.found >= h) continue;
     if (h !== undefined) out.push(EXTRA_MARK_WORDS[k](h));
   }
   for (const s of world.scheduled ?? []) {

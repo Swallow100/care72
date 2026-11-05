@@ -97,6 +97,8 @@ export type DirectorEvent = {
   place?: EventPlace;
   /** 変化を組むのに要る本人の事実（病院の休止で透析の人か） */
   facts?: EventFacts;
+  /** 同じ種類の全体の出来事をこの訓練で前に出した数（T141。余震の言い回しと震度） */
+  nth?: number;
 };
 
 /** 監督の返す物。差し込みと、頼まれた世界の返事の言い換え */
@@ -154,7 +156,7 @@ export function directorIncidents(
       e.facts && typeof e.facts === "object"
         ? { dialysis: e.facts.dialysis === true, ...(typeof e.facts.oxygen === "boolean" ? { oxygen: e.facts.oxygen } : {}) }
         : undefined;
-    const parts = row.build({ person, persons, place: placeOf(e.place), ...(facts ? { facts } : {}) }, hour, after);
+    const parts = row.build({ person, persons, place: placeOf(e.place), ...(facts ? { facts } : {}), ...(typeof e.nth === "number" ? { nth: e.nth } : {}) }, hour, after);
     if (parts.length === 0) continue;
     n += 1;
     if (person) used.add(person);

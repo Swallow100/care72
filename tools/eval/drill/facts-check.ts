@@ -13,12 +13,15 @@ import { EVENT_CATALOG, isInjectKind } from "../../../lib/drill/event-catalog.ts
 import type { DrillScenario } from "../../../lib/db/types.ts";
 import { eventHour, scenarioOf } from "../../../lib/drill/scenarios.ts";
 import {
+  canLeaveHome,
   factsOf,
   KIND_REPEAT_MAX,
   placeFlipped,
   placeOfState,
   powerBack,
   sameWording,
+  batteryTopicNext,
+  sentenceFix,
   sentenceSlip,
   slipContextOf,
   supplyAllowed,
@@ -30,6 +33,8 @@ import type { ActionRecord } from "../../../lib/drill/action-types.ts";
 import type { PersonState } from "../../../lib/drill/persona-types.ts";
 import type { WorldState } from "../../../lib/drill/scenarios.ts";
 import { REASON_MEDICAL_WORDS } from "../../../lib/drill/world-apply.ts";
+import { LOST_MAX_MINUTES } from "../../../lib/drill/lost.ts";
+import { AREA_GAP_MINUTES } from "../../../lib/drill/time-odds.ts";
 import type { CheckHit } from "./checks.ts";
 import type { LooseAction, LooseTurn, RunOutcome } from "./drive.ts";
 
@@ -90,7 +95,7 @@ export function factHits(outcome: RunOutcome, people: Readonly<Record<string, Fa
   const world = r.world as unknown as WorldState;
   const actions = r.actions as unknown as ActionRecord[];
   let checked = 0;
-  const hit = (rule: GateRule, person: string | null, minute: number | null, evidence: string) => hits.push({ check: "facts", rule, person, minute, evidence });
+  const hit = (rule: GateRule | FactExtraRule, person: string | null, minute: number | null, evidence: string) => hits.push({ check: "facts", rule, person, minute, evidence });
   const factsAt = (person: string, prev: PersonState | null, minute: number) => {
     const p = people[person];
     return factsOf({
@@ -108,16 +113,24 @@ export function factHits(outcome: RunOutcome, people: Readonly<Record<string, Fa
 
   const table = tableTurns(outcome);
   // 家の外へ出た・車中泊・帰ろうとする印（その時の世界の印。終わりの世界では人が着くと消えているので、出来事から作る）
-  const awayMarks: Array<{ person: string; minute: number }> = [];
+  const awayMarks: Array<{ person: string; minute: number; kind: "wandering" | "other" }> = [];
+  const foundMarks: Array<{ person: string; minute: number }> = [];
   for (const t of r.ticks) {
     for (const e of t.incidents) {
       const k = e.change?.kind;
       const mark = k === "mark" ? (e.change as { mark?: unknown }).mark : null;
-      if (e.person && (k === "going_home" || mark === "wandering" || mark === "carSleep")) awayMarks.push({ person: e.person, minute: Math.round((e.at ?? t.hour) * 60) });
+      if (e.person && (k === "going_home" || mark === "wandering" || mark === "carSleep")) awayMarks.push({ person: e.person, minute: Math.round((e.at ?? t.hour) * 60), kind: mark === "wandering" ? "wandering" : "other" });
+      if (e.person && mark === "found") foundMarks.push({ person: e.person, minute: Math.round((e.at ?? t.hour) * 60) });
     }
   }
   const awayAt = (person: string, minute: number): boolean =>
-    awayMarks.some((m) => m.person === person && m.minute <= minute && !(world.arrivals ?? []).some((a) => a.person === person && a.arrived && a.arrive > m.minute && a.arrive <= minute));
+    awayMarks.some(
+      (m) =>
+        m.person === person &&
+        m.minute <= minute &&
+        !(world.arrivals ?? []).some((a) => a.person === person && a.arrived && a.arrive > m.minute && a.arrive <= minute) &&
+        !foundMarks.some((x) => x.person === person && x.minute > m.minute && x.minute <= minute),
+    );
   // 本人ごとの安否を時刻の順に（前の連絡からの帳面で、次の安否と言葉を見る）
   const byPerson = new Map<string, Array<LooseTurn & { at: number }>>();
   for (const t of r.ticks) for (const u of t.turns) if (u.person) byPerson.set(u.person, [...(byPerson.get(u.person) ?? []), { ...u, at: u.at ?? t.hour }]);
@@ -137,16 +150,13 @@ export function factHits(outcome: RunOutcome, people: Readonly<Record<string, Fa
         const prevPlace = f.place?.where ?? null;
         if (!row && prevPlace && place && placeFlipped(prevPlace, place) && !f.help && !awayAt(person, minute)) {
           const leaving = prevPlace === "home";
-          const ok = leaving ? !!f.plan?.move && (!f.hurt || f.plan.helper) : RETURNED.test(words.normalize("NFKC"));
+          const ok = leaving ? canLeaveHome(f) : RETURNED.test(words.normalize("NFKC"));
           if (!ok) hit("place_flip", person, minute, `${prevPlace} → ${place}`);
         }
         const ctx = { ...slipContextOf(f, place ?? f.place?.where ?? null), ...(u.source === "family" ? { kin: null } : {}) };
         for (const [field, text] of [["saying", u.saying], ["doing", u.doing]] as const) {
           if (!text) continue;
-          for (const s of text.split(/(?<=[。！？!?])/u)) {
-            const rule = sentenceSlip(s, ctx);
-            if (rule) hit(rule, person, minute, `${field}: ${cut(s)}`);
-          }
+          for (const r of sentenceHits(text, ctx)) hit(r.rule, person, minute, `${field}: ${cut(r.text)}`);
         }
       }
       prev = stateOf(u);
@@ -172,10 +182,7 @@ export function factHits(outcome: RunOutcome, people: Readonly<Record<string, Fa
       if (!text) continue;
       checked += 1;
       if (field === "call.speech" && a.callee === "self" && f.voiceLost) hit("voice_lost", person, minute, "本人への電話で話した");
-      for (const s of text.split(/(?<=[。！？!?])/u)) {
-        const rule = sentenceSlip(s, field.startsWith("visit") ? { ...ctx, place: "home" } : ctx);
-        if (rule) hit(rule, person, minute, `${field}: ${cut(s)}`);
-      }
+      for (const r of sentenceHits(text, field.startsWith("visit") ? { ...ctx, place: "home" } : ctx)) hit(r.rule, person, minute, `${field}: ${cut(r.text)}`);
     }
     const asks = [...((res.talk ?? []) as Array<{ ask?: unknown; asks?: unknown }>).flatMap((l) => (Array.isArray(l.asks) ? l.asks : [])), ...(res.visit?.asks ?? [])];
     if (powerBack(f) && asks.some((k) => k === "power" || k === "battery")) hit("ask_after_power", person, minute, "頼み事 電源・電池");
@@ -210,7 +217,56 @@ export function factHits(outcome: RunOutcome, people: Readonly<Record<string, Fa
       seen.push({ kind: e.inject, person, text: e.text });
     }
   }
+  // 行き先の分からない人があとで拾われない（T141）。家の外へ出た印から LOST_MAX_MINUTES ＋ 60 分のうちに、見つかった印・人の到着・訪問が無い
+  const end = Math.max(...r.ticks.map((x) => Math.round(x.hour * 60)), 0);
+  for (const lost of awayMarks.filter((m) => m.kind === "wandering")) {
+    checked += 1;
+    const until = Math.min(lost.minute + LOST_MAX_MINUTES + 60, end);
+    if (until <= lost.minute) continue;
+    const found = foundMarks.some((m) => m.person === lost.person && m.minute > lost.minute && m.minute <= until);
+    const came =
+      (world.arrivals ?? []).some((a) => a.person === lost.person && a.arrived && a.arrive > lost.minute && a.arrive <= until) ||
+      actions.some((a) => a.person === lost.person && a.result?.visit !== undefined && a.result.atMinute > lost.minute && a.result.atMinute <= until);
+    if (!found && !came && end >= lost.minute + LOST_MAX_MINUTES + 60) hit("lost_unresolved", lost.person, lost.minute, "家の外へ出た印のあと見つからない");
+  }
+  // 全体の出来事の同じ種類が、同じ文か短い間でくり返す（T141。lib/drill/time-odds.ts の areaRested の下限 0.75 倍より短い間）
+  const areaSeen = new Map<string, Array<{ minute: number; text: string }>>();
+  for (const t2 of ticks) {
+    for (const e of t2.incidents) {
+      if (!e.ai || typeof e.inject !== "string" || e.person || !e.text) continue;
+      if (!isInjectKind(e.inject) || EVENT_CATALOG[e.inject].scope === "person") continue;
+      const minute = Math.round((e.at ?? t2.hour) * 60);
+      const prev = areaSeen.get(e.inject) ?? [];
+      if (prev.length > 0) {
+        checked += 1;
+        const last = prev[prev.length - 1];
+        if (prev.some((x) => x.text === e.text) || minute - last.minute < AREA_GAP_MINUTES * prev.length * 0.75) hit("area_repeat", null, minute, `${e.inject}: ${cut(e.text)}`);
+      }
+      areaSeen.set(e.inject, [...prev, { minute, text: e.text }]);
+    }
+  }
   return { checked, hits };
+}
+
+/** 帳面の門の決まりのほかに、台が数える型（T141） */
+export type FactExtraRule = "lost_unresolved" | "area_repeat";
+
+/**
+ * 言葉の文ごとの帳面との食い違い（T141 で直せる物も数える: 前からの電池切れを新しい事のように言う・残りの数が帳面と違う）。
+ * 門（lib/drill/person-facts.ts の dropFactSlips）と同じ物差しで、電池の話は次の文にも続くと見る
+ */
+function sentenceHits(text: string, ctx: Parameters<typeof sentenceSlip>[1]): Array<{ rule: GateRule; text: string }> {
+  const out: Array<{ rule: GateRule; text: string }> = [];
+  let battery = false;
+  for (const s of text.split(/(?<=[。！？!?])/u)) {
+    if (!s.trim()) continue;
+    const fix = sentenceFix(s, ctx, battery);
+    battery = batteryTopicNext(s, battery);
+    for (const r of fix.rules) out.push({ rule: r, text: s });
+    const rule = fix.drop ?? sentenceSlip(fix.text, ctx);
+    if (rule) out.push({ rule, text: s });
+  }
+  return out;
 }
 
 /** その分より前の、その人のいちばん新しい安否 */

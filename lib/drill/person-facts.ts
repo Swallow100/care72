@@ -68,7 +68,14 @@ export type Plan = {
    * （赤 → 緑の門と台の検査が同じに見る）
    */
   immobile: boolean;
+  /** 台帳の浸水の想定の深さ（m。浸水の区域が無ければ null。T141 で、川の氾濫の間に家の辺りが水につかっているかを見る） */
+  floodM?: number | null;
+  /** 同居で車のある人がいる（その場にいる手伝う人と乗り物。T141 で、ふだん動けない人が計画の手段で移れるかを見る） */
+  carer?: boolean;
 };
+
+/** 川の氾濫（world.flood）で水につかる区域の深さ（m）。本人役の今の様子の「浸水 3 m の想定の地区で浸水」と同じ（lib/drill/persona.ts の worldWords） */
+export const FLOOD_AREA_M = 3;
 
 const HOURS_OF: Readonly<Record<string, number>> = { minute: 1 / 60, hour: 1, day: 24, week: 168 };
 const hoursOf = (value: number | null, unit: string | null): number | null =>
@@ -117,6 +124,7 @@ export function planOf(src: PlanSource): Plan {
   const helperCar = src.contacts.some((c) => (c.reach === "together" || c.reach === "nearby") && c.has_car === 1);
   const means = !!(e.transport?.trim() || e.transportKind);
   const walks = l.care?.walking === "ok" && l.care?.bedridden !== true;
+  const floods = (e.hazards ?? []).filter((h) => h.kind === "flood");
   return {
     devices,
     spares,
@@ -128,6 +136,8 @@ export function planOf(src: PlanSource): Plan {
     vendor: src.contacts.some((c) => c.kind === "oxygen_supplier"),
     zone: (e.hazards ?? []).length > 0,
     immobile: l.care?.bedridden === true || l.care?.walking === "hard",
+    floodM: floods.length > 0 ? Math.max(...floods.map((h) => h.depthM ?? 0)) : null,
+    carer: src.contacts.some((c) => c.reach === "together" && c.has_car === 1),
   };
 }
 
@@ -266,7 +276,25 @@ export type DeviceNow = {
   dueAt?: number | null;
   /** 今、止まっていて戻っていない（予備も無い・切れた、電気も電源も来ていない） */
   down: boolean;
+  /**
+   * 停電が戻った・電源が届いて、電気で動き出した時刻（T141）。まだなら null。評価の 5 回目で、停電が戻ったあとも帳面の文が
+   * 「予備も切れた」のままで、本人役が電池切れを言い続けた
+   */
+  backAt?: number | null;
+  /**
+   * 残り（分。T141）。internal 内蔵の残り・spare 予備の残り（替える前は予備の持つ時間）・total 合わせた残り。電池で動いていなければ null。
+   * 本人役の言う数はこれから決める（コードが決める）
+   */
+  remain?: { internal: number | null; spare: number | null; total: number | null } | null;
+  /** 切れたのが前の連絡より前（もう起きた事。新しい事のように「切れました」と言わない。T141） */
+  known?: boolean;
 };
+
+/** 計画の手段で向かえない訳（T141） */
+export type GoWhy = "plan" | "blocked" | "helper";
+
+/** いる所の出どころ（T139・T141） */
+export type PlaceBy = "turn" | "transport" | "plan" | "visit" | "wandering" | "found";
 
 export type Facts = {
   person: string;
@@ -274,11 +302,16 @@ export type Facts = {
   plan: Plan | null;
   /**
    * いる所と時刻（T139 で出どころを足した）。turn 前の連絡（緑はいる所、赤は「家にいるか」）・transport 移送の車が着いた（避難先の種類へ）・
-   * plan 避難先へ向かうと言い、計画の手段で移った
+   * plan 避難先へ向かうと言い、計画の手段で移った・visit ケアマネが家を訪ねて会えた（家。T141）・wandering 本人が家を出て行き先が分からない
+   * （T141）・found 行き先の分からなかった本人が見つかり家に戻った（T141）。前の連絡のあとの物ほど新しい物を使う
    */
-  place: { where: WhereNow; at: number; by?: "turn" | "transport" | "plan" } | null;
-  /** 避難先へ向かうと言った（時刻と、計画の手段で移れるか。T139） */
-  going: { at: number; can: boolean } | null;
+  place: { where: WhereNow; at: number; by?: PlaceBy } | null;
+  /** 前の連絡の時刻（発災からの分。まだ無ければ -1。T141） */
+  prevAt?: number;
+  /** 家の辺りが通れない（道の通行止・家の辺りの浸水。計画の手段でも移れない。T141 で川の氾濫の区域を足した） */
+  blocked?: boolean;
+  /** 避難先へ向かうと言った（時刻と、計画の手段で移れるか。T139）。移れなければ訳（T141） */
+  going: { at: number; can: boolean; why?: GoWhy } | null;
   /** 家族・支援者が本人の所にいる・見に行ったと伝えた（時刻と出どころ。WITH_MINUTES の間。T139） */
   withPerson: { at: number; by: "family" | "supporter" } | null;
   /** 想定の表のこの人の次の行（T139） */
@@ -360,6 +393,45 @@ export function helpsBetween(world: WorldState, actions: ReadonlyArray<ActionRec
   return out.sort((a, b) => a.at - b.at);
 }
 
+/**
+ * 家の辺りが通れないか（T139・T141）。この人の家の近くの道か全体の道の通行止、家の辺りの浸水（仮想の印）、
+ * 川の氾濫の間で家が浸水の区域（台帳の浸水の深さが FLOOD_AREA_M 以上）。計画の手段があっても移れない
+ */
+export function placeBlocked(world: WorldState, person: string, plan: Plan | null): boolean {
+  const roads = (world.roads ?? []).some((r) => (!r.person || r.person === person) && !r.open);
+  const flooded = world.marks?.[person]?.flooded !== undefined || (world.flood === true && (plan?.floodM ?? 0) >= FLOOD_AREA_M);
+  return roads || flooded;
+}
+
+/**
+ * 計画の手段で避難先へ移れた時刻（T139・T141。移れなければ null）。going は向かうと言った時刻。
+ * - 計画に避難先と手段が無い・家の辺りが通れない間は移れない
+ * - ふだん動けない人（寝たきり・歩行 困難）は、同居で車のある人がいる（その場に手伝う人と乗り物がある）か、手伝う人か乗り物が実際に
+ *   来た時（向かうと言ったあとの到着・訪問）だけ。台帳の手段の字（「訪問看護と…」）だけでは移らない（評価の 5 回目で、寝たきりで呼吸器の人が
+ *   浸水の中で向かうと言った 1 時間後に「家の外」になった）
+ * - けが・閉じ込めの人は、手伝う人か乗り物が計画にあるとき（T130 のまま）。ほかは向かうと言ってから GO_MINUTES
+ */
+export function planMoveAt(
+  x: { world: WorldState; actions: ReadonlyArray<ActionRecord>; person: string; plan: Plan | null; hurt: boolean; going: number; now: number },
+): number | null {
+  const plan = x.plan;
+  if (!plan?.move || placeBlocked(x.world, x.person, plan)) return null;
+  if (plan.immobile && !plan.carer) {
+    const came = helpsBetween(x.world, x.actions, x.person, x.going, x.now)[0];
+    return came ? came.at : null;
+  }
+  if (x.hurt && !plan.helper) return null;
+  return x.going + GO_MINUTES <= x.now ? x.going + GO_MINUTES : null;
+}
+
+/** 計画の手段で今移れる形か（いる所の門 screenTurn と台の検査が同じに見る。T141） */
+export function canLeaveHome(f: Pick<Facts, "plan" | "hurt" | "help" | "blocked">): boolean {
+  const plan = f.plan;
+  if (!plan?.move || f.blocked) return false;
+  if (plan.immobile && !plan.carer) return f.help !== null;
+  return !f.hurt || plan.helper;
+}
+
 /** 帳面を引く（コードの計算。Claude を呼ばない） */
 export function factsOf(input: FactsInput): Facts {
   const { person, world, state, actions, now, plan } = input;
@@ -371,21 +443,37 @@ export function factsOf(input: FactsInput): Facts {
       ? { at: prevAt, canMove: state.canMove ?? null, injured: state.injured ?? null }
       : null;
   const dest: WhereNow = plan?.destination === "shelter" ? "shelter" : "other";
+  const blocked = placeBlocked(world, person, plan);
   // 移送の車が前の連絡のあとに着いた（T139。移送は本人を避難先へ運ぶ手。着いたら帳面のいる所は避難先の種類）
   const carried = (world.arrivals ?? []).filter((a) => a.person === person && a.role === "transport" && a.arrived && a.arrive > prevAt && a.arrive <= now).at(-1);
-  // 避難先へ向かうと言った（家族・本人。打ち消しは見ない）。計画に手段があれば GO_MINUTES で着いたと見る（T139）
+  // 避難先へ向かうと言った（家族・本人。打ち消しは見ない）。計画の手段で移れた時刻は planMoveAt（T139・T141）
   const said = state?.saying?.normalize("NFKC") ?? "";
-  // 道が通れない（この人の家の近くの道か全体の道の通行止）・家の辺りが浸水の間は、計画に手段があっても移れない（本人役の今の様子の道と同じ見方）
-  const blocked = (world.roads ?? []).some((r) => (!r.person || r.person === person) && !r.open) || world.marks?.[person]?.flooded !== undefined;
-  const going =
-    state && GO_INTENT.test(said) && !RETURNED.test(said) && !GO_NOT.test(said) ? { at: prevAt, can: !!plan?.move && (!hurt || plan.helper) && !blocked } : null;
-  const place: Facts["place"] = carried
-    ? { where: dest, at: carried.arrive, by: "transport" }
-    : going?.can && now >= going.at + GO_MINUTES
-      ? { where: dest, at: going.at + GO_MINUTES, by: "plan" }
-      : where && state
-        ? { where, at: prevAt, by: "turn" }
-        : null;
+  const goingSaid = !!state && GO_INTENT.test(said) && !RETURNED.test(said) && !GO_NOT.test(said);
+  const movedAt = goingSaid ? planMoveAt({ world, actions, person, plan, hurt: hurt !== null, going: prevAt, now }) : null;
+  // 向かえない訳（T141）: plan 計画に避難先か手段が無い・blocked 道が通れない・浸水・helper ふだん動けない人に手伝う人・乗り物がまだ来ていない
+  const goWhy: GoWhy | null = !plan?.move ? "plan" : blocked ? "blocked" : (plan.immobile && !plan.carer && movedAt === null) || (hurt && !plan.helper) ? "helper" : null;
+  const going = goingSaid ? { at: prevAt, can: goWhy === null, ...(goWhy ? { why: goWhy } : {}) } : null;
+  // ケアマネが家を訪ねて会えた（T141。訪問の返事は家で会った様子。前の連絡のあとの物）
+  const visited = actions
+    .filter((a) => a.person === person && a.result && a.result.visit !== undefined && a.result.atMinute > prevAt && a.result.atMinute <= now)
+    .map((a) => a.result!.atMinute)
+    .sort((a, b) => a - b)
+    .at(-1);
+  // 本人が家を出て行き先が分からない・見つかった（T141。世界の印）
+  const m = world.marks?.[person] ?? {};
+  const lostAt = typeof m.wandering === "number" ? Math.round(m.wandering * 60) : null;
+  const foundAt = typeof m.found === "number" ? Math.round(m.found * 60) : null;
+  const lost = lostAt !== null && lostAt <= now && !(foundAt !== null && foundAt >= lostAt && foundAt <= now);
+  // いる所の候補（前の連絡のあとの物ほど新しい。同じ時刻は後に足した物）
+  const cands: Array<{ where: WhereNow; at: number; by: PlaceBy }> = [];
+  if (where && state) cands.push({ where, at: prevAt, by: "turn" });
+  if (carried) cands.push({ where: dest, at: carried.arrive, by: "transport" });
+  if (movedAt !== null && !carried) cands.push({ where: dest, at: movedAt, by: "plan" });
+  if (visited !== undefined) cands.push({ where: "home", at: visited, by: "visit" });
+  if (lost && lostAt! > prevAt) cands.push({ where: "other", at: lostAt!, by: "wandering" });
+  if (foundAt !== null && lostAt !== null && foundAt >= lostAt && foundAt > prevAt && foundAt <= now) cands.push({ where: "home", at: foundAt, by: "found" });
+  const latest = cands.reduce<(typeof cands)[number] | null>((acc, c) => (!acc || c.at >= acc.at ? c : acc), null);
+  const place: Facts["place"] = latest ? { where: latest.where, at: latest.at, by: latest.by } : null;
   const withPerson =
     state && state.source !== "agent" && WITH_WORDS.test(said) && now - prevAt <= WITH_MINUTES ? { at: prevAt, by: state.source as "family" | "supporter" } : null;
   const helps = helpsBetween(world, actions, person, prevAt, now);
@@ -403,17 +491,47 @@ export function factsOf(input: FactsInput): Facts {
     const raw = since !== null && d.hours !== null ? since + Math.round(d.hours * 60) : null;
     const outAt = raw !== null && raw <= now && (stop === null || stop > raw) ? raw : null;
     const s = plan?.spares.find((x) => x.category === d.category) ?? null;
-    const spare = outAt !== null && s ? { label: s.label, at: outAt, by, outAt: s.hours !== null ? outAt + Math.round(s.hours * 60) : null, assumed: s.assumed === true } : null;
-    const spareRunning = spare !== null && (spare.outAt === null || spare.outAt > now);
+    const spareHours = s?.hours != null ? Math.round(s.hours * 60) : null;
+    const spare = outAt !== null && s ? { label: s.label, at: outAt, by, outAt: spareHours !== null ? outAt + spareHours : null, assumed: s.assumed === true } : null;
+    // 電気が戻った・電源が届いた（停電の間だけ。予備が切れる前に戻れば予備は切れていない。T141）
+    const backAt = since !== null && stop !== null ? stop : null;
+    const spareCut = spare?.outAt != null && spare.outAt <= now && (backAt === null || backAt > spare.outAt) ? spare.outAt : null;
+    const spareRunning = spare !== null && backAt === null && (spare.outAt === null || spare.outAt > now);
     const due = raw !== null && outAt === null && stop === null && raw > now ? raw : null;
-    return { label: d.label, category: d.category, outAt, spare, dueAt: due, down: outAt !== null && stop === null && !spareRunning && !plan?.power };
+    const down = outAt !== null && backAt === null && !spareRunning && !plan?.power;
+    // 残り（分。T141）。替える前は内蔵の残りと予備の持つ時間、替えたあとは予備の残り、止まっていれば 0
+    const remain =
+      backAt !== null || since === null || (outAt !== null && plan?.power && !spareRunning)
+        ? null
+        : due !== null
+          ? { internal: due - now, spare: spareHours, total: spareHours !== null ? due - now + spareHours : s ? null : due - now }
+          : spareRunning
+            ? { internal: 0, spare: spare!.outAt !== null ? spare!.outAt - now : null, total: spare!.outAt !== null ? spare!.outAt - now : null }
+            : down
+              ? { internal: 0, spare: s ? 0 : null, total: 0 }
+              : null;
+    // 前の連絡より前に切れた（予備があれば予備の切れた時刻、無ければ内蔵の切れた時刻。T141）
+    const lastCut = s ? spareCut : outAt;
+    const known = lastCut !== null && backAt === null && lastCut < prevAt;
+    return {
+      label: d.label,
+      category: d.category,
+      outAt,
+      spare: spare ? { ...spare, outAt: spareCut ?? (spareRunning ? spare.outAt : null) } : null,
+      dueAt: due,
+      down,
+      backAt,
+      remain,
+      known,
+    };
   });
-  const m = world.marks?.[person] ?? {};
   return {
     person,
     now,
     plan,
     place,
+    prevAt,
+    blocked,
     going,
     withPerson,
     ahead: input.ahead ?? null,
@@ -425,7 +543,7 @@ export function factsOf(input: FactsInput): Facts {
     devices,
     together: input.together ?? [],
     kin: input.kin ?? null,
-    away: m.wandering !== undefined || m.carSleep !== undefined || m.goingHome !== undefined,
+    away: lost || m.carSleep !== undefined || m.goingHome !== undefined,
     told: toldOf(input),
   };
 }
@@ -433,20 +551,82 @@ export function factsOf(input: FactsInput): Facts {
 /** 電気が戻った・電源が届いた（電池・電源を頼まない） */
 export const powerBack = (f: Facts): boolean => f.power.outage === "restored" || f.power.supplied !== null;
 
-const WHERE_WORDS: Readonly<Record<WhereNow, string>> = { home: "家", shelter: "避難所", other: "家の外" };
-const PLACE_BY_WORDS: Readonly<Record<"turn" | "transport" | "plan", string>> = { turn: "の連絡", transport: "に移送の車で移った", plan: "に計画の手段で移った" };
+const WHERE_WORDS: Readonly<Record<WhereNow, string>> = { home: "家", shelter: "避難所", other: "家の外（避難所でない所）" };
+const PLACE_BY_WORDS: Readonly<Record<PlaceBy, string>> = {
+  turn: "の連絡",
+  transport: "に移送の車で移った",
+  plan: "に計画の手段で移った",
+  visit: "にケアマネが家を訪ねて会えた",
+  wandering: "に本人が家を出た",
+  found: "に見つかり家に戻った",
+};
+
+/**
+ * いる所の言葉（T141）。計画・移送で移った先は避難先の種類（病院・避難所・決めた所）で書き、「家の外」と書かない（評価の 5 回目で、
+ * 寝たきりの人の移った先の病院が「家の外」と渡り、本人役がそのまま「家の外にいる」と言った）。行き先の分からない人は家と書かない
+ */
+export function placeWords(f: Pick<Facts, "place" | "plan">): string | null {
+  const p = f.place;
+  if (!p) return null;
+  if (p.by === "wandering") return "行き先が分からない（家にいない）";
+  if ((p.by === "plan" || p.by === "transport") && p.where !== "home") return p.where === "shelter" ? "避難所" : f.plan?.destination ? PLACE_WORDS[f.plan.destination] : "避難先";
+  return WHERE_WORDS[p.where];
+}
+
+const GO_WHY_WORDS: Readonly<Record<GoWhy, string>> = {
+  plan: "計画に移る手段が無いか避難先が無い",
+  blocked: "道が通れないか家の辺りが水につかっている",
+  helper: "動けないので、手伝う人か乗り物が来るまで移れない",
+};
+
+/** 残りの時間の言い方（T141。コードが決める数。10 分・30 分・1 時間に丸める） */
+export function remainWords(minutes: number): string {
+  const m = Math.max(0, Math.round(minutes));
+  if (m < 60) return `約 ${Math.max(10, Math.round(m / 10) * 10)} 分`;
+  if (m < 180) {
+    const half = Math.round(m / 30) * 30;
+    const h = Math.floor(half / 60);
+    return half % 60 === 0 ? `約 ${h} 時間` : `約 ${h} 時間半`;
+  }
+  return `約 ${Math.round(m / 60)} 時間`;
+}
+
+/**
+ * 電池の残りを言う数（分。T141）。替える前は内蔵の残り、替えたあとは予備の残り。電池で動いていない（電気が戻った・止まった）なら null。
+ * 本人役の言う数はこれのまま（ほかの数を言わない）。食い違う数は門が直す
+ */
+export function sayMinutes(d: DeviceNow): number | null {
+  const r = d.remain;
+  if (!r || (r.total === 0 && r.internal === 0)) return null;
+  if (r.internal !== null && r.internal > 0) return r.internal;
+  return r.spare !== null && r.spare > 0 ? r.spare : null;
+}
+
+/** 言ってよい残りの数（分。T141）。内蔵・予備・合わせた残りのどれか */
+export function remainChoices(d: DeviceNow): number[] {
+  const r = d.remain;
+  if (!r) return [];
+  return [r.internal, r.spare, r.total].filter((x): x is number => x !== null && x > 0);
+}
 
 /**
  * 帳面の文（Claude に渡す前。呼ぶ側が仮名化の門を通す）。言った事は決まった印の言い方だけ（本人役の言葉そのものは書かない）
  */
 export function factLines(f: Facts): string[] {
   const out: string[] = [];
-  if (f.place) out.push(`いる所: ${WHERE_WORDS[f.place.where]}（${minuteText(f.place.at)}${PLACE_BY_WORDS[f.place.by ?? "turn"]}）`);
+  const where = placeWords(f);
+  if (f.place && where) {
+    out.push(
+      f.place.by === "wandering"
+        ? `いる所: ${where}（${minuteText(f.place.at)}${PLACE_BY_WORDS.wandering}。まだ見つかっていない。家にいるとは言わない）`
+        : `いる所: ${where}（${minuteText(f.place.at)}${PLACE_BY_WORDS[f.place.by ?? "turn"]}）${f.plan?.immobile && f.place.where === "home" ? "。ふだん自分で動けないので、手伝う人か乗り物が来るまで家にいる（家の外にいるとは言わない）" : ""}`,
+    );
+  }
   if (f.going && f.place?.by !== "plan" && f.place?.by !== "transport") {
     out.push(
       f.going.can
         ? `移動: ${minuteText(f.going.at)}に避難先へ向かうと言った（計画の手段で ${minuteText(f.going.at + GO_MINUTES)}ごろ着く）`
-        : `移動: ${minuteText(f.going.at)}に避難先へ向かうと言ったが、計画に移る手段が無いか道が通れない（まだ家。向かえていない理由を言う）`,
+        : `移動: ${minuteText(f.going.at)}に避難先へ向かうと言ったが、${GO_WHY_WORDS[f.going.why ?? "plan"]}（まだ家。向かえていない理由を言う）`,
     );
   }
   if (f.withPerson) out.push(`そばの人: ${f.withPerson.by === "family" ? "家族" : "支援者"}が本人の所にいる・見たと伝えた（${minuteText(f.withPerson.at)}）。様子が分からないとは言わない`);
@@ -463,16 +643,36 @@ export function factLines(f: Facts): string[] {
   if (f.power.outage === "on") out.push(`電気: 停電中（${minuteText(f.power.since ?? 0)}から）${f.power.supplied !== null ? `。電源が届いた（${minuteText(f.power.supplied)}）` : ""}`);
   else if (f.power.outage === "restored") out.push(`電気: 戻った（${minuteText(f.power.restoredAt ?? 0)}）。電池・電源を頼まない`);
   for (const d of f.devices) {
-    if (d.outAt === null && typeof d.dueAt === "number") out.push(`${d.label}: 停電で内蔵の電池で動いている。残り ${minuteText(d.dueAt - f.now)}（${minuteText(d.dueAt)}ごろ切れる）`);
-    if (d.outAt === null) continue;
-    if (d.spare) {
-      const spareOut = d.spare.outAt !== null && d.spare.outAt <= f.now;
+    // 電気が戻った・電源が届いた（T141）。停電の間に切れた事は済んだ事で、今は電気で動いている
+    if (typeof d.backAt === "number") {
+      const how = f.power.restoredAt === d.backAt ? "停電が戻り" : "電源が届き";
       out.push(
-        `${d.label}: ${minuteText(d.outAt)}に切れ、計画どおり${d.spare.label}に替えた（替えたのは ${d.spare.by}）${spareOut ? `。予備も ${minuteText(d.spare.outAt!)}に切れた` : d.spare.outAt !== null ? `。予備の残り ${minuteText(d.spare.outAt - f.now)}${d.spare.assumed ? "（見込み）" : ""}（${minuteText(d.spare.outAt)}ごろ切れる。それより長く使えるとは言わない）` : "。予備の残りは分からない"}`,
+        `${d.label}: ${minuteText(d.backAt)}に${how}、今は電気で動いている${d.outAt !== null ? `（停電の間に内蔵の電池が ${minuteText(d.outAt)}に切れた${d.spare ? "。予備に替えた" : ""}。済んだ事で、今は切れていない・止まっていない。「切れた」と言わない）` : ""}`,
       );
-    } else if (d.down) {
-      out.push(`${d.label}: ${minuteText(d.outAt)}に切れた。予備は無く、電源が届くか停電が戻るまで戻らない（落ち着いたままとは言わない）`);
+      continue;
     }
+    const say = sayMinutes(d);
+    if (d.outAt === null && typeof d.dueAt === "number") {
+      const r = d.remain;
+      const s = f.plan?.spares.find((x) => x.category === d.category) ?? null;
+      out.push(
+        `${d.label}: 停電で内蔵の電池で動いている。残り ${minuteText(d.dueAt - f.now)}（${minuteText(d.dueAt)}ごろ切れる）${s ? `。切れたら${s.label}に替える${r?.total != null ? `（合わせた残り ${minuteText(r.total)}${s.assumed ? "、見込み" : ""}）` : "（予備の時間は分からない）"}` : "。予備は無い"}`,
+      );
+    }
+    if (d.outAt !== null) {
+      if (d.spare) {
+        const spareOut = d.spare.outAt !== null && d.spare.outAt <= f.now;
+        out.push(
+          `${d.label}: ${minuteText(d.outAt)}に切れ、計画どおり${d.spare.label}に替えた（替えたのは ${d.spare.by}）${spareOut ? `。予備も ${minuteText(d.spare.outAt!)}に切れた` : d.spare.outAt !== null ? `。予備の残り ${minuteText(d.spare.outAt - f.now)}${d.spare.assumed ? "（見込み）" : ""}（${minuteText(d.spare.outAt)}ごろ切れる。それより長く使えるとは言わない）` : "。予備の残りは分からない"}`,
+        );
+      } else if (d.down) {
+        out.push(`${d.label}: ${minuteText(d.outAt)}に切れた。予備は無く、電源が届くか停電が戻るまで戻らない（落ち着いたままとは言わない）`);
+      }
+      // 一度起きた事（T141）。前の連絡より前に切れた物は、新しい事のように言わない
+      if (d.known) out.push(`${d.label}が切れたのは前の連絡より前（もう起きた事）。新しい事のように「切れました」と言わない。言うなら「切れたまま」`);
+    }
+    // 言う数（T141）。残りを言う時はこの数のまま（ほかの数・時刻を作らない）
+    if (say !== null) out.push(`${d.label}の残りを言う時の数: あと${remainWords(say)}${d.outAt !== null && d.spare ? "（予備）" : ""}。この数のまま言い、ほかの数を言わない`);
   }
   return out;
 }
@@ -506,6 +706,9 @@ export const GATE_RULES = [
   "repeat_kind", // 同じ種類の出来事を訓練の中で何度も
   "repeat_text", // 同じ言い回しの出来事を別の人に
   "reason_medical", // 結末の理由に医療の言い方
+  "out_after_power", // 電気が戻った・電源が届いたあとに電池が切れた・止まったと言う（T141）
+  "old_news", // 前の連絡より前に切れた電池を新しい事のように言う（「切れたまま」に直した。T141）
+  "remain_mismatch", // 電池・予備の残りの数が帳面と食い違う（コードの数に直した・落とした。T141）
 ] as const;
 export type GateRule = (typeof GATE_RULES)[number];
 
@@ -573,6 +776,15 @@ export type SlipContext = {
   down: boolean;
   /** 家族・支援者が本人の所にいる・見たと伝えた間（T139） */
   withPerson?: boolean;
+  /**
+   * 電池・予備の残りで言ってよい数（分。内蔵・予備・合わせた残り。T141）。無ければ数を見ない。空の配列は電池で動いていない
+   * （電気が戻った・止まった。残りの数を言わない）
+   */
+  remains?: ReadonlyArray<number> | null;
+  /** 言う数（分。T141）。食い違う数はこの数に直す。null なら直さず、その文を使わない */
+  say?: number | null;
+  /** 前の連絡より前に切れた電池がある（新しい事のように言わない。T141） */
+  oldOut?: boolean;
 };
 
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -588,7 +800,71 @@ export function slipContextOf(f: Facts, place: WhereNow | null = f.place?.where 
     noSpare: !!plan && plan.devices.length > 0 && plan.spares.length === 0 && !plan.power,
     down: f.devices.some((d) => d.down),
     withPerson: f.withPerson !== null,
+    // 電池の残りの数（T141）。停電の区域で停電で減る機器のある人だけ見る
+    ...(f.power.outage !== "none" && f.devices.length > 0
+      ? { remains: f.devices.flatMap(remainChoices), say: f.devices.map(sayMinutes).find((x) => x !== null) ?? null, oldOut: f.devices.some((d) => d.known === true) }
+      : {}),
   };
+}
+
+/** 家の外にいる言い方（T141。いる所が家の人は言わない。「家の外に出られない」は見ない） */
+const AWAY_TEXT = /(?:家の外|外|屋外)(?:に|で)(?:い|居)(?:ます|る|て(?!は))|家の外へ出(?:た|まし)/;
+/** 電池・機器の話（T141。残りの数・切れた言い方を見る文） */
+const BATTERY_TOPIC = /電池|バッテリー|予備|充電|ボンベ|呼吸器|濃縮器|吸引器/;
+/** 電池でない残りの話（薬・栄養剤・透析など。この文の数は電池の数と見ない） */
+const OTHER_TOPIC = /薬|栄養剤|透析|インスリン|水|食べ|ミルク|食事/;
+/** 電池・予備が切れた・止まった言い方（電気が戻ったあとは言わない。「切れる前に」「切れそう」は見ない） */
+const OUT_WORDS = /(?:電池|バッテリー|予備|ボンベ)(?:も|が|は)?[^。]{0,8}?(?:切れ(?!る前|そう|かけ|たら|れば|ない|ません)|止ま(?!る前|りそう|らない|りません)|尽き)|電池切れ/;
+/** 今は電気で動いている言い方（「停電の間に切れたが、今は電気で動いている」は切れたままの話ではない） */
+const RUNNING_NOW = /電気(?:が|で)?(?:戻|動|来|つ)|電源(?:が|で)(?:届|動|つな)/;
+/** 切れた事を新しい事のように言う言い方（T141。「切れたまま」に直す） */
+const OUT_NEW = /((?:電池|バッテリー|予備|ボンベ)(?:も|が|は)?[^。、]{0,6}?)切れ(?:ました|てしまいました|ちゃいました)/u;
+/** 残りの時間の数（「あと 3 時間」「残りは 50 分」「3 時間しかもたない」）。NUM は数字か漢数字 */
+const NUM = "(?:\\d+(?:\\.\\d+)?|[一二三四五六七八九十]+)";
+const AMOUNT = `(?:約|およそ)?\\s*${NUM}\\s*(?:時間|分)半?`;
+const REMAIN_RE = new RegExp(`(?:あと|残り(?:は|が)?|もう)\\s*(${AMOUNT})|(${AMOUNT})(?:ほど|くらい|ぐらい|程度)?(?:しか|で|は)?(?:もち|持ち|もた|持た|切れ|なくな|無くな|使え)`, "u");
+const KANJI_NUM: Readonly<Record<string, number>> = { 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 };
+
+/** 数の字（「3」「2.5」「十二」） → 数 */
+function numOf(s: string): number | null {
+  if (/^\d+(?:\.\d+)?$/.test(s)) return Number(s);
+  let total = 0;
+  let cur = 0;
+  for (const ch of s) {
+    if (ch === "十") {
+      total += (cur || 1) * 10;
+      cur = 0;
+    } else if (KANJI_NUM[ch] !== undefined) cur = KANJI_NUM[ch];
+    else return null;
+  }
+  return total + cur;
+}
+
+/** 残りの時間の字（「約 3 時間半」） → 分 */
+export function amountMinutes(s: string): number | null {
+  const m = s.match(new RegExp(`(${NUM})\\s*(時間|分)(半)?`, "u"));
+  if (!m) return null;
+  const n = numOf(m[1]);
+  if (n === null) return null;
+  return m[2] === "時間" ? Math.round(n * 60 + (m[3] ? 30 : 0)) : Math.round(n);
+}
+
+/** 言った残りの数が帳面のどれかに近いか（20 分か 4 分の 1 の幅） */
+const remainFits = (said: number, choices: ReadonlyArray<number>): boolean => choices.some((r) => Math.abs(said - r) <= Math.max(20, r * 0.25));
+
+/**
+ * 1 文の残りの数を帳面で見る（T141）。電池の話の文（前の文が電池の話で、この文がほかの話でない時も）の「あと N 時間」が、帳面の内蔵・予備・
+ * 合わせた残りのどれとも合わなければ、コードの数（say）に直す。say が無い（電池で動いていない）なら文を使わない（null）。合えばそのまま
+ */
+function remainFix(t: string, ctx: SlipContext, battery: boolean): { text: string | null; hit: boolean } {
+  if (!ctx.remains || !battery) return { text: t, hit: false };
+  const m = t.match(REMAIN_RE);
+  if (!m) return { text: t, hit: false };
+  const phrase = m[1] ?? m[2];
+  const said = phrase ? amountMinutes(phrase) : null;
+  if (said === null || remainFits(said, ctx.remains)) return { text: t, hit: false };
+  if (ctx.say == null) return { text: null, hit: true };
+  return { text: t.replace(phrase!, remainWords(ctx.say)), hit: true };
 }
 
 /** 1 文が帳面と食い違うか（食い違う決まりの名前。無ければ null） */
@@ -596,6 +872,8 @@ export function sentenceSlip(s: string, ctx: SlipContext): GateRule | null {
   const t = s.normalize("NFKC");
   if ((ctx.place === "shelter" || ctx.place === "other") && HOME_STAY.test(t) && !RETURNED.test(t)) return "place_text";
   if (ctx.place === "home" && AT_SHELTER.test(t)) return "place_text";
+  // 家にいる人の「家の外にいる」（T141。評価の 5 回目で、ふだん動けない人が家の外にいると言った）
+  if (ctx.place === "home" && AWAY_TEXT.test(t) && !RETURNED.test(t)) return "place_text";
   if (ctx.place === "shelter" && OUTSIDE_STUCK.test(t)) return "place_text";
   for (const r of ctx.together) {
     const rel = relOf(r);
@@ -610,24 +888,62 @@ export function sentenceSlip(s: string, ctx: SlipContext): GateRule | null {
     }
   }
   if (ctx.powerBack && ASK_POWER.test(t)) return "ask_after_power";
+  // 電気が戻った・電源が届いたあとに電池が切れた・止まったと言う（T141。今は電気で動いていると言う文は見ない）
+  if (ctx.powerBack && OUT_WORDS.test(t) && !RUNNING_NOW.test(t)) return "out_after_power";
   if (ctx.noSpare && SWAP.test(t)) return "spare_without_plan";
   if (ctx.down && BATTERY_BACK.test(t)) return "spare_without_plan";
   if (ctx.down && CALM.test(t)) return "calm_while_down";
   if (ctx.withPerson && UNKNOWN_STATE.test(t)) return "unknown_while_with";
+  // 残りの数が帳面と合わず、言う数も無い（電池で動いていない。T141）
+  if (BATTERY_TOPIC.test(t) && !OTHER_TOPIC.test(t) && remainFix(t, ctx, true).text === null) return "remain_mismatch";
   return null;
+}
+
+/**
+ * 1 文を帳面に合わせて直す（T141。落とさずに直せる物だけ）。前の連絡より前に切れた電池の「切れました」は「切れたままです」、
+ * 電池の残りの数はコードの数（say）。直した決まりを返す。battery は前の文から続く電池の話か
+ */
+export function sentenceFix(s: string, ctx: SlipContext, battery = false): { text: string; rules: GateRule[]; drop?: GateRule } {
+  let t = s.normalize("NFKC");
+  const rules: GateRule[] = [];
+  if (ctx.oldOut && !ctx.powerBack && OUT_NEW.test(t)) {
+    t = t.replace(OUT_NEW, "$1切れたままです");
+    rules.push("old_news");
+  }
+  const topic = (BATTERY_TOPIC.test(t) || battery) && !OTHER_TOPIC.test(t);
+  const r = remainFix(t, ctx, topic);
+  if (r.hit && r.text === null) return { text: s, rules, drop: "remain_mismatch" };
+  if (r.hit && r.text !== null) {
+    t = r.text;
+    rules.push("remain_mismatch");
+  }
+  return { text: rules.length > 0 ? t : s, rules };
+}
+
+/** 次の文に続く話が電池の話か（T141。この文が電池の話なら続く、ほかの話なら切れる、どちらでもなければ前のまま） */
+export function batteryTopicNext(s: string, before: boolean): boolean {
+  const n = s.normalize("NFKC");
+  return BATTERY_TOPIC.test(n) ? true : OTHER_TOPIC.test(n) ? false : before;
 }
 
 /** 文の区切り（句点・感嘆・疑問）。区切りの字は前の文に付ける */
 const sentencesOf = (t: string): string[] => t.split(/(?<=[。！？!?])/u).filter((x) => x.trim() !== "");
 
-/** 帳面と食い違う文を落とした言葉（全部落ちれば空文字）。落とした決まりを onDrop に */
+/**
+ * 帳面と食い違う文を落とした言葉（全部落ちれば空文字）。落とした・直した決まりを onDrop に。
+ * 直せる物（T141: 一度起きた事・残りの数）は直してから見る。電池の話は次の文にも続くと見る（「電池が切れました。あと 3 時間です」）
+ */
 export function dropFactSlips(raw: string, ctx: SlipContext, onDrop?: (rule: GateRule) => void): string {
   if (!raw.trim()) return raw;
   const kept: string[] = [];
-  for (const s of sentencesOf(raw.replace(/\s+/g, " ").trim())) {
-    const rule = sentenceSlip(s, ctx);
+  let battery = false;
+  for (const s0 of sentencesOf(raw.replace(/\s+/g, " ").trim())) {
+    const fixed = sentenceFix(s0, ctx, battery);
+    battery = batteryTopicNext(s0, battery);
+    const rule = fixed.drop ?? sentenceSlip(fixed.text, ctx);
+    for (const r of fixed.rules) onDrop?.(r);
     if (rule) onDrop?.(rule);
-    else kept.push(s);
+    else kept.push(fixed.text);
   }
   return kept.join("");
 }
@@ -654,7 +970,7 @@ export function screenTurn(turn: DrillTurn, f: Facts, onDrop?: (rule: GateRule) 
   const words = `${turn.saying ?? ""}${turn.doing ?? ""}`;
   const next = placeOfTurn(turn);
   // 計画で移った（避難先と手段。動けない人は手伝う人か乗り物）。移った先は家の外
-  const planMoved = !!f.plan?.move && (next === "shelter" || next === "other") && (!f.hurt || f.plan.helper);
+  const planMoved = (next === "shelter" || next === "other") && canLeaveHome(f);
   if (f.hurt && turn.color === "green" && !f.help && !planMoved) {
     onDrop?.("hurt_to_safe");
     return null;
@@ -677,7 +993,7 @@ export function screenTurn(turn: DrillTurn, f: Facts, onDrop?: (rule: GateRule) 
   if (prev && next && placeFlipped(prev, next) && (!f.help || settled) && !f.away) {
     const leaving = prev === "home";
     const back = RETURNED.test(words.normalize("NFKC"));
-    const ok = leaving ? !!f.plan?.move && (!f.hurt || f.plan.helper) : back;
+    const ok = leaving ? canLeaveHome(f) : back;
     if (!ok) {
       onDrop?.("place_flip");
       if (turn.color === "green") return { ...turn, whereNow: prev };
@@ -818,9 +1134,12 @@ export function scorePlans(input: {
     const acted: PlanAct[] = [];
     const needed: PlanNeed[] = [];
     if (f.devices.some((d) => d.spare !== null)) acted.push("spare");
-    const where = placeOfState(input.people[p] ?? null);
+    // いる所は帳面の物（T141。計画・移送・訪問・行き先不明を当てた後）。ふだん動けない人は、手伝う人か乗り物が来て計画の手段で移った時だけ
+    // （評価の 5 回目で、寝たきりの人が台帳の手段の字だけで「計画の避難先へ移った」に数えられた）
+    const where = f.place?.where ?? placeOfState(input.people[p] ?? null);
     const moved = (w.arrivals ?? []).some((a) => a.person === p && a.role === "transport" && a.arrived);
-    if (plan.move && (where === "shelter" || where === "other") && !moved) acted.push("evacuate");
+    const by = f.place?.by ?? "turn";
+    if (plan.move && (where === "shelter" || where === "other") && !moved && by !== "wandering" && (!plan.immobile || by === "plan")) acted.push("evacuate");
     if (plan.stayHome && where === "home") acted.push("stay");
     if (f.devices.some((d) => d.outAt !== null && d.spare === null) && !plan.power) needed.push("power");
     if (danger && plan.zone && !plan.move && !plan.stayHome) needed.push("move");

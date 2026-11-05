@@ -69,7 +69,7 @@ import {
 } from "./event-catalog.ts";
 import { scenarioOf, type AskKind, type PersonMarks, type WorldState } from "./scenarios.ts";
 import { homeFacts, homeWords } from "./self.ts";
-import { kindOnTime, oddsText, seededShuffle, timelineText } from "./time-odds.ts";
+import { areaRested, kindOnTime, oddsText, seededShuffle, timelineText } from "./time-odds.ts";
 import { homeComms, homeOf } from "./comms.ts";
 import { fitKindOf, fitText, injectFits, profileOf } from "./fit.ts";
 import { screenIncident, STATE_RULES_TEXT, stateLines } from "./state-rules.ts";
@@ -577,6 +577,8 @@ export function directorEvents(answer: DirectorAnswer, ctx: DirectorEventsContex
       ...(row.touches === "persons" ? { persons: [...(ctx.area?.get(kind) ?? [])] } : {}),
       ...(place ? { place } : {}),
       ...(row.factsFor && source ? { facts: row.factsFor(source) } : {}),
+      // 全体の種類はこの訓練で前に出した数（T141。文をコードが書く種類の言い回しと震度を回ごとに変える）
+      ...(!person && row.varies && ctx.world ? { nth: (ctx.world.issued ?? []).filter((x) => x.kind === kind && x.person === null).length } : {}),
     });
     if (!person) areaUsed = true;
   }
@@ -707,7 +709,14 @@ export function createDirectorHook(deps: DirectorDeps): DirectorHook {
         eligible.set(p, input.seed ? seededShuffle(kept, `${input.seed}|${p}|${minute}`) : kept);
       }
       for (const k of [...area.keys()]) {
-        if (!injectFits(profile, k) || !kindAllowed(k, null, input.world, input.hour, minute) || (!selfKinds.includes(k) && !kindOnTime(k, input.hour, input.seed, issued))) area.delete(k);
+        // 全体の同じ種類は間を空ける（T141、lib/drill/time-odds.ts の areaRested。余震が呼ぶたびに同じ形で出た）
+        if (
+          !injectFits(profile, k) ||
+          !kindAllowed(k, null, input.world, input.hour, minute) ||
+          (!selfKinds.includes(k) && !kindOnTime(k, input.hour, input.seed, issued)) ||
+          !areaRested(k, issued, minute, input.seed)
+        )
+          area.delete(k);
       }
       const asked = input.replies ?? [];
       const max = budgetOf(input);

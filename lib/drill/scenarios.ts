@@ -83,10 +83,15 @@ export type PersonMarks = {
   neighborWatch?: number;
   /** 本人が家の外へ出た（行き先が分からない） */
   wandering?: number;
+  /**
+   * 行き先の分からなかった本人が見つかり家に戻った（T141。家の外へ出た印のあと、世界が決まった時間のうちに付ける。lib/drill/lost.ts）。
+   * 家の外へ出た印より後の時刻なら、帳面のいる所は家
+   */
+  found?: number;
 };
 
 /** T92 の印（WorldChange の mark が付ける物。前からの印は種類ごとの WorldChange が付ける） */
-export const EXTRA_MARKS = ["helperAway", "familyAway", "carSleep", "neighborWatch", "wandering"] as const;
+export const EXTRA_MARKS = ["helperAway", "familyAway", "carSleep", "neighborWatch", "wandering", "found"] as const;
 export type ExtraMark = (typeof EXTRA_MARKS)[number];
 
 /**
