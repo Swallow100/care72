@@ -154,6 +154,10 @@ const BASE_FACTS: TermFacts = {
   dark: false,
   phone: "ok",
   lineDown: false,
+  selfLine: "ok",
+  selfMobile: "none",
+  radioAll: false,
+  officeEvac: false,
   roadClosed: false,
   flood: false,
   staff: 2,
@@ -188,9 +192,11 @@ describe("時間と状況で変わる手（lib/drill/action-terms.ts）", () => 
       outage: { area: { scope: "office" }, since: 1, restoredAt: null },
       notes: { self_late: 0.5 },
     };
-    const s = { startedAt: START, minute: 6 * 60 + 30, world, options: { terms: true } };
+    // 浸水は本人の家の区域で（T125。p-05 は洪水の区域、p-01 は区域の写しなし）
+    const homes = { "p-05": { zones: [{ kind: "flood" as const, depthM: 0.5 }], town: null, landline: true, mobile: false } };
+    const s = { startedAt: START, minute: 6 * 60 + 30, world, options: { terms: true }, homes };
     expect(termFactsOf(s, "p-05")).toMatchObject({ roadClosed: true, flood: true, battery: false, late: false });
-    expect(termFactsOf(s, "p-01")).toMatchObject({ lineDown: true, nurseAway: true, roadClosed: false });
+    expect(termFactsOf(s, "p-01")).toMatchObject({ lineDown: true, selfLine: "noCall", nurseAway: true, roadClosed: false, flood: false });
     expect(termFactsOf(s, "p-03").closed).toEqual(["dialysis_center"]);
     expect(termFactsOf({ ...s, minute: 7 * 60 }, null).battery).toBe(true);
     expect(termFactsOf({ ...s, minute: 60 }, null).late).toBe(true);
@@ -212,15 +218,16 @@ describe("時間と状況で変わる手（lib/drill/action-terms.ts）", () => 
       expect(actionTerm(k, road, on).block).toBe(TERM_LABELS.road);
     }
     for (const k of ["call_person", "ask_check", "request_hospital", "note"] as DrillAction[]) expect(actionTerm(k, road, on).block).toBeNull();
-    // 電話が通話不可: 電話で済む手と家へ向かう手配は押せない。訪問・記録・退避は押せる
+    // 電話の規制（T125）: 全部を止めない。電話で済む手と家へ向かう手配は所要が伸びる（かけ直しの分）
     const down = { ...BASE_FACTS, phone: "down" as const };
     expect(TERM_LABELS.noCall).toBe(NO_CALL);
     for (const r of ACTION_CATALOG) {
       const way = ACTION_WAYS[r.id];
-      expect(actionTerm(r.id, down, on).block).toBe(way === "phone" || way === "home" ? NO_CALL : null);
+      expect(actionTerm(r.id, down, on).block).toBeNull();
+      if (way === "phone" || way === "home") expect(actionTerm(r.id, down, on).adds).toContain(TERM_LABELS.restrict);
     }
-    // 家の電話: 本人電話は押せない。119勧奨は相手が本人のときだけ
-    const line = { ...BASE_FACTS, lineDown: true };
+    // 家の電話（固定電話も携帯も使えない家）: 本人電話は押せない。119勧奨は相手が本人のときだけ
+    const line = { ...BASE_FACTS, lineDown: true, selfLine: "noCall" as const };
     expect(actionTerm("call_person", line, on).block).toBe(NO_CALL);
     expect(actionTerm("advise_119", line, on)).toMatchObject({ block: null, targets: { self: NO_CALL } });
     // 職員なし・訪問看護が来られない・休止の透析施設は相手ごと
@@ -252,7 +259,9 @@ describe("時間と状況で変わる手（lib/drill/action-terms.ts）", () => 
   it("押せなくする手は、世界の返事が事実で外れと決める手と同じ（どの roll でも届かない）", () => {
     const facts: Array<{ name: string; world: WorldState; f: TermFacts }> = [
       { name: "電話", world: { ...EMPTY_WORLD, phone: "down" }, f: { ...BASE_FACTS, phone: "down" } },
-      { name: "家の電話", world: { ...EMPTY_WORLD, marks: { "p-03": { lineDown: 1 } } }, f: { ...BASE_FACTS, lineDown: true } },
+      { name: "家の電話", world: { ...EMPTY_WORLD, marks: { "p-03": { lineDown: 1 } } }, f: { ...BASE_FACTS, lineDown: true, selfLine: "noCall" } },
+      // T125: 電波不通（全域）・携帯なし（メッセージ）
+      { name: "電波", world: { ...EMPTY_WORLD, staff: 2, radio: "down" }, f: { ...BASE_FACTS, radioAll: true, selfMobile: "down" } },
       { name: "道", world: { ...EMPTY_WORLD, roads: [closedRoad("p-03")] }, f: { ...BASE_FACTS, roadClosed: true } },
       { name: "職員", world: { ...EMPTY_WORLD, staff: 0 }, f: { ...BASE_FACTS, staff: 0 } },
       { name: "看護", world: { ...EMPTY_WORLD, staff: 2, marks: { "p-03": { nurseAway: 1 } } }, f: { ...BASE_FACTS, nurseAway: true } },
@@ -273,7 +282,16 @@ describe("時間と状況で変わる手（lib/drill/action-terms.ts）", () => 
           if (!blockOf(term, callee)) continue;
           for (const roll of [0, 0.5, 0.99]) {
             const w = decideWorldReply(
-              { action: r.id, person: r.needsPerson ? "p-03" : null, callee: callee === "fixed" ? null : (callee as ContactKind | null), world, hour: 12 },
+              {
+                action: r.id,
+                person: r.needsPerson ? "p-03" : null,
+                callee: callee === "fixed" ? null : (callee as ContactKind | null),
+                world,
+                hour: 12,
+                // 本人の家の通信は決まりの表と同じ事実（T125。actions.ts の lineAt）
+                selfLine: f.selfLine,
+                selfMobile: f.selfMobile,
+              },
               roll,
             );
             expect(w.ok, `${name} ${r.id} ${callee} ${roll}`).toBe(false);
@@ -316,7 +334,8 @@ describe("時間を使う手（重ねる・所要・職員）", () => {
     s = { ...s, minute: 9 * 60 };
     const night = (await act(s, { kind: "visit", person: "p-06", target: null }, {}, () => 0)).record;
     expect(night).toMatchObject({ minutes: 60, adds: [TERM_LABELS.dark], atMinute: 540, endMinute: 600 });
-    const flooded = { ...s, world: { ...s.world, alertLevel: 4 as const } };
+    // 浸水は本人の家の区域で（T125。p-06 は洪水 1 m の区域）
+    const flooded = { ...s, world: { ...s.world, alertLevel: 4 as const }, homes: { "p-06": { zones: [{ kind: "flood" as const, depthM: 1 }], town: null, landline: true, mobile: false } } };
     const both = (await act(flooded, { kind: "visit", person: "p-06", target: null }, {}, () => 0)).record;
     expect(both).toMatchObject({ minutes: 80, adds: [TERM_LABELS.dark, TERM_LABELS.flood] });
     // 決まりの無い訓練（前からある訓練・10 分版）は表の 40 分のまま

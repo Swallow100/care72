@@ -324,6 +324,8 @@ export type TickWorld = { step: number; world: { phone: PhoneState; facilities: 
 export type Known = {
   /** 本人の家の電話（家の電話の不通の印を含む） */
   homeLine: PhoneState;
+  /** 本人の家の電話の印（家の電話 通話不可。T125） */
+  homeDown: boolean;
   /** 世界の電話（本人の家のほかへかける線）。分からなければ null（家の電話の不通の印があり、刻みの世界も無いとき） */
   line: PhoneState | null;
   roadClosed: boolean;
@@ -347,6 +349,7 @@ export function knownOf(a: Pick<ActionRecord, "person" | "step" | "before">, tic
   }
   return {
     homeLine: b.phone,
+    homeDown,
     line: tick ? tick.world.phone : homeDown ? null : b.phone,
     roadClosed: b.roadClosed,
     staff: b.staff,
@@ -383,8 +386,8 @@ export function wasteOf(a: ActionRecord, k: Known): WasteWhy | null {
   const callee: ContactKind | null = kind === "call_person" ? "self" : a.callee;
   switch (row.decide.type) {
     case "call": {
-      const line = callee === "self" || callee === null ? k.homeLine : k.line;
-      if (line === "down") return "phone";
+      // 事実で決まるのは本人の家の電話の印だけ（T125。世界の電話の規制は確率で、全部は止まらない）
+      if ((callee === "self" || callee === null) && k.homeDown && kind !== "message") return "phone";
       if (callee === "dialysis_center" && k.closed.includes("dialysis_center")) return "closed";
       return null;
     }
@@ -393,17 +396,15 @@ export function wasteOf(a: ActionRecord, k: Known): WasteWhy | null {
     case "dispatch":
       if (callee === "visiting_nurse" && k.nurseAway) return "nurse";
       if (callee !== "visiting_nurse" && k.staff <= 0) return "staff";
-      if (k.roadClosed) return "road";
-      return k.line === "down" ? "phone" : null;
+      return k.roadClosed ? "road" : null;
     case "arrange": {
       const by = row.decide.closedBy;
       if (by && callee === by && k.closed.includes(by)) return "closed";
-      if (k.line === "down") return "phone";
       return k.roadClosed && row.effects.some((e) => e.kind === "arrival") ? "road" : null;
     }
     case "accept":
     case "report":
-      return k.line === "down" ? "phone" : null;
+      return null;
     case "record":
       return null;
   }

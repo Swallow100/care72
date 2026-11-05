@@ -198,7 +198,11 @@ export type ActionStatus =
   | "done"
   | "noAnswer"
   | "silent"
-  | "noNumber";
+  | "noNumber"
+  // メッセージ（T125）: 返信・既読・未読
+  | "replied"
+  | "read"
+  | "unread";
 
 export type ActionResult = {
   ok: boolean;

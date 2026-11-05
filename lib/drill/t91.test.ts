@@ -163,7 +163,8 @@ const HOSPITAL_03 = target("c-03-5", "hospital", "病院");
 describe("手の表（18 の手）", () => {
   it("表の行は DRILL_ACTIONS と同じ 18。区分は 5 つ（見出し 2 字）、ボタンの言葉は 2〜5 字、使わない語を含まない", () => {
     expect(ACTION_CATALOG.map((r) => r.id).sort()).toEqual([...DRILL_ACTIONS].sort());
-    expect(ACTION_CATALOG).toHaveLength(18);
+    // T125 でメッセージ（伝言）を足して 19
+    expect(ACTION_CATALOG).toHaveLength(19);
     for (const g of ACTION_GROUPS) {
       expect(Array.from(ACTION_GROUP_LABELS[g])).toHaveLength(2);
       expect(ACTION_CATALOG.some((r) => r.group === g)).toBe(true);
@@ -250,7 +251,11 @@ describe("世界の返事（手配型・受入型・記録型）", () => {
   it("手配: 電話の様子ごとの確率。不通なら不通、家へ向かう手配は通行止なら届かない", () => {
     expect(decideWorldReply(ask("arrange_medicine", "pharmacy"), WORLD_ODDS.arrange.ok - 0.01)).toMatchObject({ ok: true, status: "dispatched" });
     expect(decideWorldReply(ask("arrange_medicine", "pharmacy"), WORLD_ODDS.arrange.ok)).toMatchObject({ ok: false, status: "noDispatch" });
-    expect(decideWorldReply(ask("arrange_medicine", "pharmacy", w({ phone: "down" })), 0)).toMatchObject({ status: "noLine", because: "電話 通話不可" });
+    // 通話の規制（T125）は全部を止めない: つながる分だけ手配できる。全域の電波不通なら外の相手の携帯にかからない
+    expect(decideWorldReply(ask("arrange_medicine", "pharmacy", w({ phone: "down" })), 0)).toMatchObject({ status: "dispatched" });
+    expect(decideWorldReply(ask("arrange_medicine", "pharmacy", w({ phone: "down" })), WORLD_ODDS.arrange.down)).toMatchObject({ status: "noDispatch" });
+    // 薬局は固定電話なので全域の電波不通でも頼める
+    expect(decideWorldReply(ask("arrange_medicine", "pharmacy", w({ radio: "down" })), 0)).toMatchObject({ status: "dispatched" });
     const road = w({ roads: [{ id: "r", label: "川沿いの市道", open: false, person: "p-03" }] });
     expect(decideWorldReply(ask("arrange_power", null, road), 0)).toMatchObject({ status: "blocked", because: "川沿いの市道 通行止" });
     // 透析調整は家へ向かわないので通行止でも調整できる

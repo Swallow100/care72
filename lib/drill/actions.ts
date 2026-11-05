@@ -26,7 +26,7 @@
 import type { ContactKind, DrillAction } from "../db/types.ts";
 import { actionRow, effectiveKind, FIXED_CALLEE_LABELS, type ActionEffect, type ActionRow } from "./action-catalog.ts";
 import { ACTION_MINUTES } from "./action-table.ts";
-import { callLine, decideWorldReply, WORLD_REPLY_LABELS, WORLD_REPLY_TEXTS, type WorldReplyStatus } from "./world-reply.ts";
+import { callLine, decideWorldReply, WORLD_REPLY_LABELS, WORLD_REPLY_TEXTS, type WorldAsk, type WorldReplyStatus } from "./world-reply.ts";
 import { DRILL_END_MINUTE, ZERO_COUNTS } from "./clock.ts";
 import {
   advance,
@@ -55,7 +55,7 @@ import { gateWords, tallyGate } from "./gate.ts";
 import { fitKindOf } from "./fit.ts";
 import { talkEnd, withResultAsks, type VisitHook } from "./dialogue.ts";
 import { CALL_FIXED_SPEECH, CALL_STATUS_LABELS, CALL_STATUS_TEXTS } from "./labels.ts";
-import { CALL_PICKUP_ODDS, decideCallPickup, type CallPickup } from "./persona.ts";
+import { CALL_PICKUP_ODDS, decideCallPickup, MESSAGE_READ_ODDS, type CallPickup } from "./persona.ts";
 import {
   clearMarks,
   phoneOf,
@@ -218,20 +218,43 @@ function fixed(status: ActionStatus, ok: boolean, because: string | null, pickup
  * 線がつながる（呼出）なら出るかを T18 の割合で決める（出る → 通話、出ない → 応答なし、背景の音だけ → 無言。本人が話せない も無言）。
  * 自由対応は読み替えた手（kind に読み替えた手を渡す）。pickupFactor は決まりの表の電話に出る割合に掛ける数（T110。1 は昼のまま）
  */
-export function decideAction(input: ActInput, world: WorldState, hour: number, roll: () => number, pickupFactor = 1): Decision {
+export function decideAction(
+  input: ActInput,
+  world: WorldState,
+  hour: number,
+  roll: () => number,
+  pickupFactor = 1,
+  /** 本人の家の通信（T125、lib/drill/comms.ts。termFactsOf から）。無ければ家の電話の印だけで見る */
+  line?: Pick<WorldAsk, "selfLine" | "selfMobile">,
+): Decision {
   const callee = calleeOf(input);
   if (isCall(input.kind) && (!input.target || !input.target.hasPhone)) return fixed("noNumber", false, null);
-  const w = decideWorldReply({ action: input.kind, person: input.person, callee, world, hour }, roll());
+  const w = decideWorldReply({ action: input.kind, person: input.person, callee, world, hour, ...(line ?? {}) }, roll());
   const d = fixed(w.status as WorldReplyStatus, w.ok, w.because);
   if (!isCall(input.kind) || w.status !== "ringing") return d;
-  const line = callLine(world, input.person, callee);
+  // メッセージ（T125）: 返信・既読・未読（通話の様子によらない。夜は返信が減る）。返信なら本人役の言葉と聞いた安否
+  if (input.kind === "message") {
+    const r = roll();
+    if (r < MESSAGE_READ_ODDS.replied * pickupFactor) return fixed("replied", true, null, "answers");
+    if (r < MESSAGE_READ_ODDS.replied + MESSAGE_READ_ODDS.read) return fixed("read", true, null, "background_only");
+    return fixed("unread", false, null, "no_answer");
+  }
+  // 本人の家にはつながる道のどれか（固定電話か携帯）でかけている（つながらない家は世界の返事が先に外れと決める）。出る割合は通話の様子で
+  const line0 = line?.selfLine !== undefined ? world.phone : callLine(world, input.person, callee);
   const r = roll();
-  let pickup = decideCallPickup(line, r, true);
+  let pickup = decideCallPickup(line0, r, true);
   // 夜は電話に出にくい（T110 の決まりの表の pickup。出る割合を下げた分は応答なし。roll の数は同じ）
-  if (pickup === "answers" && pickupFactor < 1 && r >= CALL_PICKUP_ODDS[line].answers * pickupFactor) pickup = "no_answer";
+  if (pickup === "answers" && pickupFactor < 1 && r >= CALL_PICKUP_ODDS[line0].answers * pickupFactor) pickup = "no_answer";
   if (pickup === "answers") return fixed("connected", true, null, pickup);
   if (pickup === "background_only") return fixed("silent", false, null, pickup);
   return fixed("noAnswer", false, null, pickup);
+}
+
+/** 本人の家の通信（T125。決まりの表 action-terms.ts の termFactsOf と同じ事実。世界の返事に渡す） */
+function lineAt(s: DrillState, person: string | null, hour: number): Pick<WorldAsk, "selfLine" | "selfMobile"> | undefined {
+  if (!person) return undefined;
+  const f = termFactsOf(s, person, Math.round(hour * 60));
+  return { selfLine: f.selfLine, selfMobile: f.selfMobile };
 }
 
 /** 監督に言い換えを頼める返事（世界が答える物）。本人・家族が出た・出ないは本人役の物なので頼まない */
@@ -523,7 +546,9 @@ export async function act(
   // そのままの手（T110）は世界の返事を確率で決めない。起きたこと（AI）か固定の文で「実施」。世界は変えない
   const pickupFactor = term?.pickup ?? 1;
   const decide = (world: WorldState, hour: number): Decision =>
-    own ? { ...fixed("done", true, null), text: own.outcome ?? ACTION_STATUS_TEXTS.done } : decideAction(input, world, hour, roll, pickupFactor);
+    own
+      ? { ...fixed("done", true, null), text: own.outcome ?? ACTION_STATUS_TEXTS.done }
+      : decideAction(input, world, hour, roll, pickupFactor, lineAt({ ...s, world }, input.person, hour));
   let words: ReplyWords[] = [];
   let incidents: ReadonlyArray<DrillIncident> = [];
   // 連続の時計の訓練（T90）: 手は区切りを起こさない。手の分の (始め, 終わり] に入る表の出来事と予定の出来事を AI を呼ばずに当て
@@ -563,7 +588,7 @@ export async function act(
   let pickup = d.pickup;
   let heard: HeardSignal | null = null;
   let callReply: Awaited<ReturnType<CallHook>> | null = null;
-  if (d.status === "connected" && input.person && input.target && PERSON_CALLEES.has(input.target.kind)) {
+  if ((d.status === "connected" || d.status === "replied") && input.person && input.target && PERSON_CALLEES.has(input.target.kind)) {
     const own = s.people[input.person] ?? null;
     const tell = heardOf(own, "call", endMinute / 60);
     const reply = hooks.call

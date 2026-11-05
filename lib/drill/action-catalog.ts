@@ -197,6 +197,23 @@ export const ACTION_CATALOG: ReadonlyArray<ActionRow> = [
     words: "電話で 119 への連絡を勧めた",
   },
   {
+    // メッセージ（T125）。データの道なので通話の規制でも届く。電波不通・携帯なしは届かない。返信・既読は確率、返信の言葉は本人役
+    id: "message",
+    label: "伝言",
+    group: "contact",
+    minutes: 2,
+    staff: 0,
+    needsPerson: true,
+    targetKinds: ["self", ...CALL_CONTACT],
+    needsTarget: true,
+    fixed: null,
+    decide: { type: "call" },
+    effects: [{ kind: "heard" }, { kind: "reach" }],
+    towardPerson: true,
+    reach: { statuses: ["replied", "read"], at: "end" },
+    words: "メッセージを送った",
+  },
+  {
     id: "ask_check",
     label: "見守依頼",
     group: "contact",

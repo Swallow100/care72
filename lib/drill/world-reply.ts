@@ -13,11 +13,12 @@ import { phoneOf, type PhoneState, type WorldState } from "./scenarios.ts";
 /** 確率の表 */
 export const WORLD_ODDS = {
   /** 事業所・市役所への電話がつながる（電話の様子ごと） */
-  connect: { ok: 0.9, busy: 0.5, down: 0 } satisfies Record<PhoneState, number>,
+  // 規制（down）は全部止めない（T125。かけ直せば時々つながる）
+  connect: { ok: 0.9, busy: 0.5, down: 0.25 } satisfies Record<PhoneState, number>,
   /** 自分が出向いて着ける。警戒の中（警戒レベル 4 以上・津波の避難・浸水）は下がる。家の前の道が通行止なら着けない */
   reach: { clear: 0.95, warning: 0.7 },
   /** 訪問看護・介護の人に出向いてもらえる（頼む電話の様子ごと）。職員の空きなし・訪問看護が来られない・通行止なら出せない */
-  dispatch: { ok: 0.8, busy: 0.5, down: 0 } satisfies Record<PhoneState, number>,
+  dispatch: { ok: 0.8, busy: 0.5, down: 0.25 } satisfies Record<PhoneState, number>,
   /** 福祉避難所・病院が受け入れる（発災からの時間ごと。始めは開いていないことが多い）。電話が通話不可なら頼めない */
   accept: [
     { until: 24, odds: 0.3 },
@@ -25,13 +26,13 @@ export const WORLD_ODDS = {
     { until: Infinity, odds: 0.8 },
   ],
   /** 市役所に報告できる（電話の様子ごと） */
-  report: { ok: 0.9, busy: 0.6, down: 0 } satisfies Record<PhoneState, number>,
+  report: { ok: 0.9, busy: 0.6, down: 0.3 } satisfies Record<PhoneState, number>,
   /** 薬・透析・移送・電源の手配を受けてもらえる（頼む電話の様子ごと。T91） */
-  arrange: { ok: 0.8, busy: 0.5, down: 0 } satisfies Record<PhoneState, number>,
+  arrange: { ok: 0.8, busy: 0.5, down: 0.25 } satisfies Record<PhoneState, number>,
   /** 業者（酸素・電力・その他）に来てもらえる（T91） */
-  vendor: { ok: 0.7, busy: 0.4, down: 0 } satisfies Record<PhoneState, number>,
+  vendor: { ok: 0.7, busy: 0.4, down: 0.2 } satisfies Record<PhoneState, number>,
   /** ほかの事業所が応援を出せる（T91） */
-  backup: { ok: 0.6, busy: 0.3, down: 0 } satisfies Record<PhoneState, number>,
+  backup: { ok: 0.6, busy: 0.3, down: 0.15 } satisfies Record<PhoneState, number>,
 } as const;
 
 /** 手配型の確率の行（表の decide.odds） */
@@ -96,6 +97,12 @@ export type WorldAsk = {
   world: WorldState;
   /** 手を打った時刻（発災からの時間） */
   hour: number;
+  /**
+   * 本人の家に電話がつながる道（T125、lib/drill/comms.ts の selfLineOf）。無ければ家の電話の印だけで見る（前からの呼び方）
+   */
+  selfLine?: "ok" | "noCall" | "noRadio";
+  /** 本人の携帯（メッセージの届く先。T125）。無ければ届く */
+  selfMobile?: "ok" | "down" | "none";
 };
 
 export type WorldReply = {
@@ -124,6 +131,9 @@ export function callLine(w: WorldState, person: string | null, callee: ContactKi
   return callee === "self" || callee == null ? phoneOf(w, person) : w.phone;
 }
 
+/** 返事の事実の電話の言い方（T125） */
+const PHONE_WORDS: Readonly<Record<PhoneState, string>> = { ok: "通常", busy: "不安定", down: "規制" };
+
 /** 福祉避難所・病院が受け入れる確率（時間ごと） */
 export function acceptOdds(hour: number): number {
   return WORLD_ODDS.accept.find((x) => hour < x.until)?.odds ?? 0;
@@ -141,10 +151,23 @@ export function decideWorldReply(ask: WorldAsk, roll: number): WorldReply {
   const decide = row.decide;
   switch (decide.type) {
     case "call": {
-      // 電話型（本人電話・連絡先電話・119勧奨・見守依頼）
-      const line = callLine(w, person, callee);
-      if (line === "down") return reply(action, false, "noLine", w.phone === "down" ? `電話 ${NO_CALL}` : `家の電話 ${NO_CALL}`);
+      // 電話型（本人電話・連絡先電話・119勧奨・見守依頼）とメッセージ（T125）
+      const self = callee === "self" || callee == null;
+      if (action === "message") {
+        // データの道。本人は携帯が無い・電波不通なら届かない。ほかの相手は全域の電波不通だけ
+        if (self && (ask.selfMobile ?? "ok") !== "ok") return reply(action, false, "noLine", ask.selfMobile === "none" ? "携帯なし" : "携帯 電波不通");
+        if (!self && w.radio === "down") return reply(action, false, "noLine", "携帯 電波不通");
+        return reply(action, true, "ringing");
+      }
+      // 本人の家: 固定電話も携帯も使えない家だけ外れ（停電の家の固定電話・家の電話の印・電波不通）。通話の規制は全部止めない
+      if (self && person) {
+        const line = ask.selfLine ?? (w.marks[person]?.lineDown !== undefined ? "noCall" : "ok");
+        if (line !== "ok") return reply(action, false, "noLine", line === "noRadio" ? "携帯 電波不通" : `家の電話 ${NO_CALL}`);
+      }
+      // 家族・支援者・民生委員の携帯は全域の電波不通で外れ（事業所は固定電話）
+      if (!self && callee && PERSON_CALLEES.has(callee) && w.radio === "down") return reply(action, false, "noLine", "携帯 電波不通");
       if (callee === null || PERSON_CALLEES.has(callee)) return reply(action, true, "ringing");
+      const line = w.phone;
       if (callee === "dialysis_center") {
         const f = closedFacility(w, person, "dialysis_center");
         if (f) return reply(action, false, "closed", `${f.label} 休止`);
@@ -165,7 +188,8 @@ export function decideWorldReply(ask: WorldAsk, roll: number): WorldReply {
       if (callee !== "visiting_nurse" && w.staff <= 0) return reply(action, false, "noDispatch", "職員の空き なし");
       const road = closedRoad(w, person);
       if (road) return reply(action, false, "blocked", `${road.label} 通行止`);
-      if (w.phone === "down") return reply(action, false, "noDispatch", `電話 ${NO_CALL}`);
+      // 事業所の職員（相手なし）は事務所で頼むので電話が要らない（T125）。外の相手（訪問看護・介護事業所）は頼む電話の様子で
+      if (callee == null) return roll < WORLD_ODDS.dispatch.ok ? reply(action, true, "dispatched") : reply(action, false, "noDispatch");
       return roll < WORLD_ODDS.dispatch[w.phone] ? reply(action, true, "dispatched") : reply(action, false, "noDispatch");
     }
     case "arrange": {
@@ -175,19 +199,18 @@ export function decideWorldReply(ask: WorldAsk, roll: number): WorldReply {
         const f = closedFacility(w, person, decide.closedBy);
         if (f) return reply(action, false, "closed", `${f.label} 休止`);
       }
-      if (w.phone === "down") return reply(action, false, "noLine", `電話 ${NO_CALL}`);
+      // 通話の規制は確率で（T125。手配の相手は事業所の固定電話）
       // 本人の家へ向かう手配（薬・移送・電源・業者）は、家の前の道が通行止なら届かない
       const road = row.effects.some((e) => e.kind === "arrival") ? closedRoad(w, person) : null;
       if (road) return reply(action, false, "blocked", `${road.label} 通行止`);
       return roll < ARRANGE_ODDS[decide.odds][w.phone] ? reply(action, true, decide.ok) : reply(action, false, failed);
     }
     case "accept": {
-      // 受入型（受入依頼・病院受入）
-      if (w.phone === "down") return reply(action, false, "noLine", `電話 ${NO_CALL}`);
+      // 受入型（受入依頼・病院受入）。通話の規制の間はつながる分だけ（T125）
+      if (w.phone === "down" && roll >= WORLD_ODDS.connect.down) return reply(action, false, "noLine", `電話 ${PHONE_WORDS.down}`);
       return roll < acceptOdds(ask.hour) ? reply(action, true, "accepted") : reply(action, false, "refused");
     }
     case "report": {
-      if (w.phone === "down") return reply(action, false, "noLine", `電話 ${NO_CALL}`);
       return roll < WORLD_ODDS.report[w.phone] ? reply(action, true, "reported") : reply(action, false, "noLine");
     }
     case "record":

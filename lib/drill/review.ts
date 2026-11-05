@@ -109,7 +109,10 @@ export const REVIEW_SYSTEM = [
   `手の言葉（表の手の名前。これのほかの手を書かない）: ${REVIEW_ACTION_LABELS.join("・")}`,
   "",
   "事実で結果の決まる手（世界の返事の決まり）:",
-  `- 電話 ${NO_CALL}: ${labelsWhere((r) => r.decide.type !== "record" && r.decide.type !== "visit")}は届かない（家の電話だけが${NO_CALL}なら、本人電話のほかの電話はかけられる）`,
+  // 通信の段（T125、lib/drill/comms.ts）。通話の規制は全部を止めない
+  `- 家の電話 ${NO_CALL}: 本人電話・本人への 119勧奨は届かない（停電の家の固定電話・家の電話の印。携帯のある人と、ほかの相手の電話はかけられる）`,
+  "- 電話 規制: 電話の手はかけ直せば時々つながる（全部は止まらない。事業所の職員への訪問依頼は電話が要らない）",
+  "- 携帯 電波不通: 家族・支援者・業者の携帯にかからず、メッセージも届かない（事業所の職員・市役所への手は届く）",
   `- 道 通行止: ${labelsWhere(ROAD_BOUND)}は届かない`,
   "- 職員 0: 事業所の職員への訪問依頼は出せない（訪問看護への訪問依頼は別）",
   "- 透析先 休止: その透析施設への透析調整・電話は受けられない",
@@ -216,7 +219,7 @@ export const RESULT_WORDS: Readonly<Record<string, string>> = {
 
 /** 空振りの理由の言い方（講評の入力。手の履歴の事実と同じ言葉） */
 export const WASTE_WORDS: Readonly<Record<WasteWhy, string>> = {
-  phone: `電話 ${NO_CALL}`,
+  phone: `家の電話 ${NO_CALL}`,
   road: "道 通行止",
   staff: "職員 0",
   closed: "頼り先の施設 休止",
