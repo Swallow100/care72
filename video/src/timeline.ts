@@ -95,6 +95,8 @@ export type Shot = {
   marker?: string;
   value?: string;
   sub?: string;
+  /** 録画の右下に重ねる数の面（字だけ。at は絵の頭からの秒） */
+  stat?: { at: number; label: string; text: string; value: string };
   /** 一言の画面の、一言の下の名前（無ければ「協力してくれたケアマネージャー」） */
   by?: string;
   /** 前の絵と重ねずに切り替える（前の絵の印がこの絵の同じ所へ縮んで収まる、続きの絵。72 時間の輪 → 3 本立ての円柱） */
@@ -441,6 +443,8 @@ export const SCENES: Scene[] = [
         from: 26.6,
         label: "医療班に届いた要約",
         screen: "医療要約",
+        // アンケートの問 7（作者の頼み 11/6）。声は足さず字だけ。すぐ伝えられる 0 人・一部は 3 人・伝えられない 1 人
+        stat: { at: 0.1, label: "アンケート（ケアマネージャー 4 人）", text: "災害のとき、薬や医療機器を／医療班にすぐ伝えられる", value: "4 人中 0 人" },
         zoom: [
           { x: 0.03, y: 0.16, w: 0.64 },
           { x: 0.05, y: 0.2, w: 0.58 },
