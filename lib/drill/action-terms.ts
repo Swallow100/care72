@@ -14,7 +14,7 @@
 
 import { CONTACT_KINDS, type ContactKind, type DependsOn, type DrillAction, type DrillScenario, type HazardKind } from "../db/types.ts";
 import type { DrillScale } from "./scale.ts";
-import { homeComms, selfLineOf, type Homes } from "./comms.ts";
+import { homeComms, selfLineOf, type Homes, type OfficeZone } from "./comms.ts";
 import { fitKindOf, profileOf, waterActive, zoneActive } from "./fit.ts";
 import { actionRow, ACTION_CATALOG } from "./action-catalog.ts";
 import { DRILL_END_MINUTE } from "./clock.ts";
@@ -164,7 +164,7 @@ export type TermSource = {
   /** 参加者の家の区域と通信（T125、開始の時の台帳の写し）。無ければ区域なし・固定電話あり・携帯なし */
   homes?: Homes;
   /** 事業所の区域（T125） */
-  officeZones?: ReadonlyArray<HazardKind>;
+  officeZones?: ReadonlyArray<OfficeZone>;
   startedAt: string;
   minute: number;
   world: Pick<
@@ -208,7 +208,8 @@ export function termFactsOf(s: TermSource, person: string | null, minute: number
     selfLine: person ? selfLineOf(comms) : "ok",
     selfMobile: comms.mobile,
     radioAll: w.radio === "down",
-    officeEvac: (s.officeZones ?? []).some((z) => zoneActive(profile, z, fw)),
+    // 職員の退避は津波の区域の事業所の津波警報の間だけ（洪水・土砂の区域の事業所は対象の印だけで、退避にしない）
+    officeEvac: (s.officeZones ?? []).some((z) => z.kind === "tsunami" && zoneActive(profile, "tsunami", fw)),
     roadClosed: person ? w.roads.some((r) => r.person === person && !r.open) : false,
     flood: (home !== null && waterActive(profile, home.zones.map((z) => z.kind), fw)) || marks.flooded !== undefined,
     staff: w.staff,

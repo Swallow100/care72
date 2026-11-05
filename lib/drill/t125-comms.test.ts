@@ -54,12 +54,12 @@ describe("区域の出来事は区域の人と事業所だけ（手の所要）"
   });
 
   it("事業所が津波の区域なら、警報の間は自分の訪問と職員の訪問依頼を出せない（避難中）。外の相手の訪問依頼は出せる", () => {
-    const s = src("earthquake", EQ_0H, 60, { officeZones: ["tsunami"] });
+    const s = src("earthquake", EQ_0H, 60, { officeZones: [{ kind: "tsunami", depthM: null }] });
     const t = termsFor(s, "p-09");
     expect(t.visit.block).toBe("避難中");
     expect(t.dispatch.targets.fixed).toBe("避難中");
     expect(t.dispatch.targets.visiting_nurse).toBeUndefined();
-    expect(termsFor(src("earthquake", { ...EQ_0H, tsunami: "lifted" }, 60, { officeZones: ["tsunami"] }), "p-09").visit.block).toBeNull();
+    expect(termsFor(src("earthquake", { ...EQ_0H, tsunami: "lifted" }, 60, { officeZones: [{ kind: "tsunami", depthM: null }] }), "p-09").visit.block).toBeNull();
   });
 });
 
@@ -186,7 +186,7 @@ describe("連絡の経路（着信は通話不可・電波不通の間に出さ�
 });
 
 describe("区域の出来事の対象（T128 が読む）", () => {
-  const ctx = { participants: ALL, homes: HOMES, officeZones: ["tsunami" as const] };
+  const ctx = { participants: ALL, homes: HOMES, officeZones: [{ kind: "tsunami" as const, depthM: null }] };
   it("津波警報は津波の区域の人と区域の事業所", () => {
     expect(targetsOf({ change: { kind: "tsunami", state: "evacuate" } }, ctx)).toEqual({ persons: ["p-08"], office: true });
     expect(targetsOf({ change: { kind: "tsunami", state: "evacuate" } }, { ...ctx, officeZones: [] }).office).toBe(false);
@@ -261,9 +261,9 @@ describe("評価の台が読む門の数", () => {
     expect(await startDrill(db, scope, "earthquake", START, { persona }, () => "drill-g", { clock: true })).toEqual({ ok: true, id: "drill-g" });
     const screen = (await loadDrillScreen(db, scope, "drill-g", null))!;
     expect(Object.keys(screen.state.world.gated ?? {}).some((k) => k.startsWith("persona:fit:rain_word"))).toBe(true);
-    // 開始の時の家の写し（区域と通信）と事業所の区域（デモは区域なし）
+    // 開始の時の家の写し（区域と通信）と事業所の区域（デモ事業所は架空の街の洪水 0.5 m。lib/drill/area.ts）
     expect(screen.state.homes?.["p-08"]).toMatchObject({ zones: [{ kind: "tsunami", depthM: null }], mobile: true });
-    expect(screen.state.officeZones).toBeUndefined();
+    expect(screen.state.officeZones).toEqual([{ kind: "flood", depthM: 0.5 }]);
     sqlite.close();
   });
 });
@@ -296,5 +296,46 @@ describe("自由対応の候補（T129）とメッセージの手", () => {
       expect(plainWords(t)).toBe(nameIds(t));
     }
     expect(nameIds("family に message")).toBe("家族 に 伝言");
+  });
+});
+
+describe("事業所の区域（T128 の被害状況・帯・新着が読む）", () => {
+  it("デモ事業所は架空の街の値（洪水 0.5 m）。区域の出来事で「事業所 対象・対象外」", async () => {
+    const { officeZonesOf } = await import("./db.ts");
+    const { areaTargetOf, targetText } = await import("./area-targets.ts");
+    const demo = officeZonesOf(null, "office-demo");
+    expect(demo).toEqual([{ kind: "flood", depthM: 0.5 }]);
+    expect(officeZonesOf(null, "office-x")).toEqual([]);
+    expect(officeZonesOf(`[{"kind":"tsunami"},{"kind":"flood","depthM":2}]`, "office-x")).toEqual([{ kind: "tsunami", depthM: null }, { kind: "flood", depthM: 2 }]);
+    const people = SEED_PEOPLE.map((p) => ({ id: p.person.id, hazards: p.ledger.evacuation.hazards, town: p.ledger.basic.address?.town ?? null }));
+    // 警戒レベル（避難指示）は洪水の区域の事業所も対象、深い所の川の氾濫・津波は対象外
+    expect(areaTargetOf({ kind: "alert", level: 4 }, people, demo)?.office).toBe(true);
+    expect(areaTargetOf({ kind: "flood" }, people, demo)?.office).toBe(false);
+    expect(areaTargetOf({ kind: "tsunami", state: "evacuate" }, people, demo)?.office).toBe(false);
+    // 区域を渡さなければ事業所は出さない（対象外と言い切らない）
+    expect(areaTargetOf({ kind: "tsunami", state: "evacuate" }, people)?.office).toBeNull();
+    const names = Object.fromEntries(SEED_PEOPLE.map((p) => [p.person.id, p.person.name]));
+    expect(targetText(areaTargetOf({ kind: "tsunami", state: "evacuate" }, people, demo)!, names, people.length)).toMatch(/事業所 対象外$/);
+    expect(targetText(areaTargetOf({ kind: "alert", level: 4 }, people, demo)!, names, people.length)).toMatch(/事業所 対象$/);
+  });
+
+  it("被害状況と帯の行に「事業所 対象・対象外」（区域を渡したとき）。洪水の区域の事業所は退避しない（退避は津波の区域だけ）", async () => {
+    const { renderToStaticMarkup } = await import("react-dom/server");
+    const { createElement } = await import("react");
+    const { DamagePanel } = await import("../../components/drill/DamagePanel.tsx");
+    const people = SEED_PEOPLE.map((p) => ({ id: p.person.id, hazards: p.ledger.evacuation.hazards, town: p.ledger.basic.address?.town ?? null }));
+    const names = Object.fromEntries(SEED_PEOPLE.map((p) => [p.person.id, p.person.name]));
+    const world = { ...EMPTY_WORLD, quake: "6強", tsunami: "evacuate" as const };
+    const html = renderToStaticMarkup(createElement(DamagePanel, { kind: "earthquake", world, now: 1, names, people, office: [{ kind: "flood", depthM: 0.5 }] }));
+    expect(html).toContain("事業所");
+    expect(html).toContain("対象外");
+    const { rowLine } = await import("../../components/drill/StripRows.tsx");
+    const line = rowLine(
+      { source: "incident", e: { actor: "world", at: 1, change: { kind: "alert", level: 4 }, text: "警戒レベル 4 避難指示", ai: false } } as never,
+      { names, people, base: null, office: [{ kind: "flood", depthM: 0.5 }] },
+    );
+    expect(line).toMatch(/事業所 対象/);
+    // 洪水の区域の事業所は警戒の間も退避しない
+    expect(termsFor(src("heavy_rain", { alertLevel: 4 }, 60, { officeZones: [{ kind: "flood", depthM: 0.5 }] }), "p-09").visit.block).toBeNull();
   });
 });

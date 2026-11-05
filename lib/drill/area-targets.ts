@@ -17,7 +17,7 @@
 
 import type { HazardKind } from "../db/types.ts";
 import type { WorldChange } from "./scenarios.ts";
-import type { Homes } from "./comms.ts";
+import type { Homes, OfficeZone } from "./comms.ts";
 import { FLOOD_DEPTH_M, targetsOf } from "./targets.ts";
 
 /** 対象を決めるのに読む本人の所（台帳のハザードと町名） */
@@ -61,7 +61,7 @@ function isAreaChange(c: WorldChange): boolean {
  * （lib/drill/targets.ts の targetsOf）を読む。office は事業所の区域（offices.hazards の写し DrillState.officeZones）を渡せば
  * 区域で決め、渡さなければ全域の停電だけ対象（ほかは null。対象外と言い切らない）
  */
-export function areaTargetOf(change: WorldChange, people: ReadonlyArray<AreaPerson>, office?: ReadonlyArray<HazardKind> | null): AreaTarget | null {
+export function areaTargetOf(change: WorldChange, people: ReadonlyArray<AreaPerson>, office?: ReadonlyArray<OfficeZone> | null): AreaTarget | null {
   if (!isAreaChange(change)) return null;
   const homes: Homes = Object.fromEntries(
     people.map((p) => [p.id, { zones: p.hazards.map((h) => ({ kind: h.kind, depthM: h.depthM ?? null })), town: p.town, landline: true, mobile: false }]),

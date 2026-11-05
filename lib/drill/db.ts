@@ -26,7 +26,9 @@ import {
   type DrillStatus,
   type HazardKind,
 } from "../db/types.ts";
-import { homeOf, VIAS, type Home, type Homes } from "./comms.ts";
+import { homeOf, VIAS, type Home, type Homes, type OfficeZone } from "./comms.ts";
+import { DEMO_OFFICE_ZONES } from "./area.ts";
+import { DEMO_OFFICE_ID } from "../auth/demo.ts";
 import { callTargetText } from "../list/calls.ts";
 import { isSourceId } from "../sources/index.ts";
 import {
@@ -140,7 +142,7 @@ type StoredWorld = {
   /** 参加者の家の区域と通信（T125、開始の時の台帳の写し）。前からの訓練には無い */
   homes?: Homes;
   /** 事業所の区域（T125、開始の時の offices.hazards の写し）。区域が無ければ鍵ごと無い */
-  officeZones?: HazardKind[];
+  officeZones?: OfficeZone[];
 };
 
 /** 手の前の状態の写し（取消で戻す物） */
@@ -164,7 +166,7 @@ function storeWorld(s: DrillState, undo?: UndoSnapshot): string {
     ...(s.aiAt !== undefined ? { aiAt: s.aiAt } : {}),
     ...(s.draft ? { draft: s.draft } : {}),
     ...(s.homes ? { homes: s.homes } : {}),
-    ...(s.officeZones && s.officeZones.length > 0 ? { officeZones: s.officeZones } : {}),
+    ...(s.officeZones ? { officeZones: s.officeZones } : {}),
   };
   return JSON.stringify(body);
 }
@@ -192,7 +194,7 @@ function parseStoredWorld(text: string): StoredWorld {
     ...(isNum(raw.aiAt) ? { aiAt: raw.aiAt } : {}),
     ...(isDraft(raw.draft) ? { draft: raw.draft } : {}),
     ...(homesOf(raw.homes) ? { homes: homesOf(raw.homes)! } : {}),
-    ...(Array.isArray(raw.officeZones) ? { officeZones: raw.officeZones.filter((z): z is HazardKind => (HAZARD_KINDS as readonly unknown[]).includes(z)) } : {}),
+    ...(Array.isArray(raw.officeZones) ? { officeZones: zonesOf(raw.officeZones) } : {}),
   };
 }
 
@@ -214,13 +216,27 @@ function homesOf(v: unknown): Homes | null {
   return Object.keys(out).length > 0 ? out : null;
 }
 
-/** 事業所の区域（offices.hazards の JSON）。読めなければ区域なし */
-export function officeZonesOf(text: string | null | undefined): HazardKind[] {
-  if (!text) return [];
+/** 区域の並びの JSON の形を整える（種類の分かる物だけ。種類ごとに 1 つ。深さは数のときだけ） */
+function zonesOf(v: unknown): OfficeZone[] {
+  if (!Array.isArray(v)) return [];
+  const out = new Map<HazardKind, OfficeZone>();
+  for (const h of v) {
+    if (typeof h === "string" && (HAZARD_KINDS as readonly unknown[]).includes(h)) out.set(h as HazardKind, { kind: h as HazardKind, depthM: null });
+    else if (h && typeof h === "object" && (HAZARD_KINDS as readonly unknown[]).includes((h as { kind?: unknown }).kind)) {
+      const z = h as { kind: HazardKind; depthM?: unknown };
+      if (!out.has(z.kind)) out.set(z.kind, { kind: z.kind, depthM: isNum(z.depthM) ? z.depthM : null });
+    }
+  }
+  return [...out.values()];
+}
+
+/**
+ * 事業所の区域（offices.hazards の JSON）。読めなければ区域なし。デモ事業所で NULL なら架空の街の値（lib/drill/area.ts の DEMO_OFFICE_ZONES）
+ */
+export function officeZonesOf(text: string | null | undefined, officeId?: string): OfficeZone[] {
+  if (!text) return officeId === DEMO_OFFICE_ID ? DEMO_OFFICE_ZONES.map((z) => ({ ...z })) : [];
   try {
-    const v = JSON.parse(text) as unknown;
-    if (!Array.isArray(v)) return [];
-    return [...new Set(v.flatMap((h) => (h && typeof h === "object" && (HAZARD_KINDS as readonly unknown[]).includes((h as { kind?: unknown }).kind) ? [(h as { kind: HazardKind }).kind] : [])))];
+    return zonesOf(JSON.parse(text) as unknown);
   } catch {
     return [];
   }
@@ -248,7 +264,7 @@ function extrasOf(w: Pick<StoredWorld, "options" | "undone" | "cast" | "homes" |
     ...(w.undone ? { undone: w.undone } : {}),
     ...(w.cast ? { cast: w.cast } : {}),
     ...(w.homes ? { homes: w.homes } : {}),
-    ...(w.officeZones && w.officeZones.length > 0 ? { officeZones: w.officeZones } : {}),
+    ...(w.officeZones ? { officeZones: w.officeZones } : {}),
   };
 }
 
@@ -547,7 +563,7 @@ export async function startDrill(
   const all = await loadSources();
   const homes = Object.fromEntries(participants.flatMap((p) => (all.has(p) ? [[p, homeOf(all.get(p)!.ledger)] as const] : [])));
   const officeRow = await db.prepare("SELECT hazards FROM offices WHERE id = ?1").bind(scope.officeId).first<{ hazards: string | null }>().catch(() => null);
-  const officeZones = officeZonesOf(officeRow?.hazards ?? null);
+  const officeZones = officeZonesOf(officeRow?.hazards ?? null, scope.officeId);
 
   const id = newId();
   // 仮想の規模（T104）。選ばなければおまかせ（幅の中から今 1 回引いて残す）。ほかの想定には付けない
