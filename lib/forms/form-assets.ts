@@ -1,4 +1,4 @@
-// 事業所が紙に置く画像（地図・写真・図。T135、migrations/0031_form_entries.sql の form_assets）。サーバーだけ。
+// 事業所が紙に置く画像（地図・写真・図。T135、migrations/0033_form_entries.sql の form_assets）。サーバーだけ。
 // - GET /api/forms/assets: 事業所の画像の一覧（外した物を除く、新しい順）
 // - POST /api/forms/assets: 取り込む（JPEG・PNG。ブラウザが長い辺 2000px まで縮めた物。中身の頭の字で形を確かめる）
 // - GET /api/forms/assets/<id>: 画像を返す（紙の <img> と印刷）

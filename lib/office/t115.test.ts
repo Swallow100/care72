@@ -69,7 +69,7 @@ const env = () => ({ JUDGE_PASSWORD_HASH: judgeHash });
 
 /** 種と、本物の事業所の行（協力事業所の本人・ケアマネのログイン・医療班・所属なしの人） */
 function fixtures(s: DatabaseSync) {
-  // 前の形の D1（0027 の前）には、あとの migration で足した表（0031 の紙の手入れ、T135）が無い。無い表を消す文は流さない
+  // 前の形の D1（0027 の前）には、あとの migration で足した表（0033 の紙の手入れ、T135）が無い。無い表を消す文は流さない
   const has = (t: string) => s.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(t) !== undefined;
   for (const x of seedStatements({ passwordHashes: { [DEMO_CARE_MANAGER_ID]: cmHash } })) {
     const del = /^DELETE FROM (\w+);$/.exec(x);

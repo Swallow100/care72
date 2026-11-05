@@ -530,7 +530,7 @@ describe("計画書（原本の枠の紙）", () => {
   });
 });
 
-describe("migration 0031 と戻し", () => {
+describe("migration 0033 と戻し", () => {
   it("デモ事業所の戻しで手入れと画像の行が消える", async () => {
     await call({ op: "put", entry: { id: "fe-num-000001", kind: "field", fieldKey: "f101", page: null, box: null, value: JSON.stringify("1") } });
     const { demoResetStatements } = await import("../seed/reset.ts");
