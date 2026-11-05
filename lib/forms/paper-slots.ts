@@ -261,8 +261,9 @@ export function frameSlots(
       out.push({ ...base, dest: "form", input: { kind: "choice", multi: false, options }, value: Array.isArray(v) ? v : typeof v === "string" && v ? [v] : [], ...(entry ? { entryId: entry.id } : {}) });
       continue;
     }
-    const shape = marks.length > 0 ? "choice" : one ? "text" : "window";
-    const raw = MATSUYAMA_INPUTS[key];
+    // 1 つの書く所に 2 つの欄（かかりつけ医・薬局と医薬品情報）は、両方の元を 1 つの窓に
+    const shape = keys.length > 1 ? "window" : marks.length > 0 ? "choice" : one ? "text" : "window";
+    const raw = keys.length > 1 ? keys.flatMap((k) => MATSUYAMA_INPUTS[k] ?? []) : MATSUYAMA_INPUTS[key];
     const slot =
       shape === "window"
         ? (() => {
