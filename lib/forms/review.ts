@@ -24,7 +24,7 @@ import type { MappedSheet } from "./mapped-sheet.ts";
 import type { FieldBox, FieldShape } from "./mapping.ts";
 import { MATSUYAMA_FIELDS, type Cell, type MatsuyamaKey, type MatsuyamaSheet } from "./matsuyama.ts";
 import { MEDICAL_FIELDS, type MedicalKey, type MedicalSummary } from "./medical-summary.ts";
-import { ANNEX_MARK, cellLines, FONT_MIN_PT, textEm, UNPLACED_REASON_LABELS, type OverlayItem, type OverlaySheet } from "./overlay-sheet.ts";
+import { ANNEX_MARK, annexGaps, cellLines, FONT_MIN_PT, textEm, UNPLACED_REASON_LABELS, type OverlayItem, type OverlaySheet } from "./overlay-sheet.ts";
 import { matsuyamaFieldName } from "./unconfirmed.ts";
 import { MATSUYAMA_FRAME } from "./frame-matsuyama.ts";
 import { KIROKU_FRAME } from "./frame-kiroku.ts";
@@ -476,6 +476,16 @@ export function ruleReview(s: ReviewSubject): ReviewFinding[] {
     const medical = f.marked.includes("あり");
     if (yesMarked && !hasAnnex) push("annex", f, medical ? "医療要約を添付" : "あり・別紙頁なし", medical ? { level: "note" } : {});
     else if (hasAnnex && anyMarked && !yesMarked) push("annex", f, "別紙頁あり・印なし");
+  }
+  // 収まらない値の別紙の行と、紙の「別紙」の字（T141）。行があるのに紙に印が無い・印があるのに行が無い
+  const gaps = annexGaps(s.sheet);
+  for (const id of gaps.noMark) {
+    const f = byId.get(s.fieldOf(id) ?? "");
+    if (f) push("annex", f, "別紙行あり・欄に印なし");
+  }
+  for (const id of gaps.noRow) {
+    const f = byId.get(s.fieldOf(id) ?? "");
+    if (f) push("annex", f, "欄に別紙・別紙行なし");
   }
 
   // 重複（同じ値が 2 つの欄に）。頁ごとの同じ場所の欄（同じ様式が何頁か並ぶ写し・頁の頭に繰り返す欄）と電話・携帯の欄は、同じ値でよい

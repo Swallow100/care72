@@ -26,6 +26,7 @@ import {
   type PseudonymKey,
 } from "../pseudonym/index.ts";
 import { buildDiff } from "./diff.ts";
+import { orderDestinations } from "./destination-order.ts";
 import { EXTRACT_RULES, pseudonymInputOf, type ExtractOptions, type IntakeProposal } from "./extract.ts";
 import { ExtractSchema, type ExtractOutput } from "./schema.ts";
 
@@ -85,7 +86,8 @@ export async function readIntake(rows: PersonPageRows, file: FormFile, ctx: AskJ
   const input = pseudonymInputOf(rows);
   const { payload, key } = pseudonymize([input], { on: opts.today });
   const r = await askJson(buildReadIntakeRequest(payload, file), ctx);
-  const sealed = sealReadOutput(r.value, key);
+  // 避難先の番号は書類の手がかりで（T141。写真・PDF は文が無いので、2 だけが返り台帳の 1 が空なら 1 に）
+  const sealed = orderDestinations(sealReadOutput(r.value, key), input.ledger, null);
   // 伏せた物を元に戻す元: 返事の元の文（伏せ直した所）と台帳の文（Claude が写した台帳の伏せ字）。T118
   // 返事の文は戻す元にするが、崩れた伏せ字（「(町名)」）を「元の文に書いてある」とは見ない（T122）
   const restore = sourceRestorer(inputTexts(input), key, { replies: stringsOf(r.value) });

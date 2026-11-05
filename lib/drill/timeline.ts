@@ -114,6 +114,7 @@ export const MARK_REACH: Readonly<Record<keyof PersonMarks, "public" | "private"
   carSleep: "private",
   neighborWatch: "private",
   wandering: "private",
+  found: "private",
 };
 
 /** 状況の届き方（public・private・none）。表の外の種類は private（隠す側に倒す） */

@@ -413,7 +413,7 @@ export function buildFrameSheet<K extends string>(input: FrameSheetInput<K>): Ov
   function placeText(pageNo: number, box: MmBox, lines: string[], fieldId: string, label: string) {
     const page = pageOf(pageNo);
     if (!page) {
-      annex.push({ fieldId, label, lines, reason: "unplaced" });
+      annex.push({ fieldId, label, lines, reason: "unplaced", page: pageNo });
       return;
     }
     const ratio = toRatio(box, sizeOf(pageNo));
@@ -424,7 +424,7 @@ export function buildFrameSheet<K extends string>(input: FrameSheetInput<K>): Ov
     }
     // 「なし」だけの値は別紙に回さず欄を空ける（T111。別紙の頁と「別紙（あり）」の印を「なし」だけで作らない）
     if (isNoneOnly(lines)) return;
-    annex.push({ fieldId, label, lines, reason: "overflow" });
+    annex.push({ fieldId, label, lines, reason: "overflow", page: pageNo, mark: fieldId });
     const mark = fitText([ANNEX_MARK], box.w, box.h, frame.maxPt);
     page.items.push({ kind: "text", fieldId, box: ratio, lines: [ANNEX_MARK], fontPt: mark?.fontPt ?? FONT_MIN_PT, top: mark?.top ?? false });
   }

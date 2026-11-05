@@ -127,9 +127,9 @@ describe("出来事の表の形", () => {
       expect(Array.from(INJECT_TEXTS[k]).length, k).toBeLessThanOrEqual(30);
     }
     for (const v of Object.values(markLabels)) expect(v).not.toMatch(BANNED);
-    // 被害状況の「個別」の印は表から（前の 6 つと T92 の 5 つ）
+    // 被害状況の「個別」の印は表から（前の 6 つと T92 の 5 つと T141 の発見）
     expect(MARK_LABELS).toBe(markLabels);
-    expect(Object.keys(MARK_LABELS)).toHaveLength(11);
+    expect(Object.keys(MARK_LABELS)).toHaveLength(12);
   });
 
   it("根拠は登録簿の id だけ。監督が選ぶ種類は DIRECTOR_SOURCES の中だけで、DIRECTOR_SOURCES は前からの 5 つと T104 の時間の目安の 5 つ", () => {

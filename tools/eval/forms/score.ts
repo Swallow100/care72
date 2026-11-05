@@ -10,7 +10,7 @@
 //    帯の未確認に入っているか）と、正解との未確認の差
 
 import type { FieldBox, FormMapping, MappingField } from "../../../lib/forms/mapping.ts";
-import { normalizeWord, type MappedSheet } from "../../../lib/forms/mapped-sheet.ts";
+import { normalizeWord, pairedItem, type MappedSheet } from "../../../lib/forms/mapped-sheet.ts";
 import type { Cell } from "../../../lib/forms/matsuyama.ts";
 import { cellLines, type OverlaySheet } from "../../../lib/forms/overlay-sheet.ts";
 import { isUnconfirmedCell } from "../../../lib/forms/unconfirmed.ts";
@@ -34,6 +34,8 @@ export type Judgement = {
 };
 
 const norm = (s: string) => normalizeWord(s).toLowerCase();
+/** 2 つの項目を持つ欄の字の比べ方（T141。空き・括弧・区切りの字を除く） */
+const pairNorm = (s: string) => norm(s).replace(/[\s（）()・／/、,]/g, "");
 
 // ---------- 1. 様式の読み取り ----------
 
@@ -347,6 +349,18 @@ export function scorePaper(o: {
       if (other) {
         act = paperText(other, o.actualCell(other));
         j(name, "当たり（同じ場所の別の欄）", `正解の表に無い AI の欄「${other.label}」が同じ場所に正解の字を置いた`, exp, act);
+      }
+    }
+    // 2 つの項目を持つ正解の欄（「生年月日・年齢」。T141）: AI が 2 つの欄に分けて読んだら、正解の欄の場所に置いた字を全部合わせて見る
+    // （評価の 5 回目で、紙には生年月日と年齢の両方が出ていたのに、年齢の欄だけと合わせて「置き間違い」と数えていた）
+    if (exp !== "" && norm(exp) !== norm(act) && g.box && pairedItem(gf)) {
+      const inBox = o.aiMapping.fields
+        .filter((f) => !f.removed && f.page === g.page && f.box && boxInside(f.box, g.box!))
+        .sort((a, b) => (Math.abs(a.box!.y - b.box!.y) < 0.01 ? a.box!.x - b.box!.x : a.box!.y - b.box!.y));
+      const union = inBox.map((f) => paperText(f, o.actualCell(f))).filter((x) => x !== "").join("");
+      if (union !== "" && pairNorm(union) === pairNorm(exp)) {
+        act = union;
+        j(name, "当たり（2 つの項目の欄）", "正解の欄の場所に、2 つの項目を別の欄で置いた", exp, act);
       }
     }
     score.judged += 1;

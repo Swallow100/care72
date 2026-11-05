@@ -262,7 +262,8 @@ describe("講評の指摘の数を種類ごとの中身に", () => {
   it("種類ごとの候補の数まで（候補の無い種類・数を超えた分は落とす）。中身が違えば数も内訳も違う", () => {
     const one = { ...EMPTY, reached: [{ person: "p-01" }] } as unknown as DrillScore;
     const rooms = findingRooms(one);
-    expect(rooms).toEqual({ report: 1, reached: 1, other: 1 });
+    // 報告は未報告か遅い時だけ候補（T141）。ほかの種類は直す所があるときの 1 つ
+    expect(rooms).toEqual({ reached: 1, other: 1 });
     const many = Array.from({ length: 10 }, (_, i) => ({ person: i % 2 ? "A さん" : "B さん", kind: ["reached", "call", "order", "reached", "other"][i % 5], text: `次は早めに本人電話 ${i}`, basis: "根拠なし" }));
     const body = reviewBody({ summary: "s", findings: many }, { key, members: new Set(["p-01", "p-02"]), max: findingRoom(one), rooms });
     const kinds = body.findings.map((f) => f.kind);
@@ -270,7 +271,8 @@ describe("講評の指摘の数を種類ごとの中身に", () => {
     expect(kinds).not.toContain("call");
     expect(kinds).not.toContain("order");
     const two = { ...one, order: { matched: 0, total: 2, misses: [{ person: "p-01" }, { person: "p-02" }] }, calls: { total: 2, answered: 0, declined: 0, open: 1, redDeclined: 0 } } as unknown as DrillScore;
-    expect(findingRooms(two)).toMatchObject({ order: 2, call: 1, reached: 1 });
+    // 同じ種類は 1 つにまとめる（T141。順番の外れが 2 人でも指摘は 1 つ）
+    expect(findingRooms(two)).toMatchObject({ order: 1, call: 1, reached: 1 });
     expect(findingRoom(two)).not.toBe(findingRoom(one));
     expect(FINDINGS_MAX).toBeGreaterThan(8);
   });

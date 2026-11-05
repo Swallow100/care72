@@ -630,11 +630,10 @@ describe("保存と講評と紙面（D1）", () => {
     for (const p of SEED_PEOPLE) expect(sent).not.toContain(p.person.name);
     const kept = parseStoredScore(stored())!;
     if (kept.review?.state !== "done") throw new Error("講評なし");
-    // 仮名は参加者の並びの順（E さんは 5 人目）。一覧の外の kind は other
-    expect(kept.review.ai.findings.map((x) => [x.person, x.kind])).toEqual([
-      [kept.score.participants[4], "choice"],
-      [null, "other"],
-    ]);
+    // 仮名は参加者の並びの順（E さんは 5 人目）。一覧の外の kind は other。重い種類で指摘の目安（T141 の REVIEW_LIMIT）まで埋まれば other は残らない
+    const kept2 = kept.review.ai.findings.map((x) => [x.person, x.kind]);
+    expect(kept2[0]).toEqual([kept.score.participants[4], "choice"]);
+    expect(kept2.slice(1).every(([, k]) => k === "other")).toBe(true);
   });
 
   it("画面の採点の欄と紙面: 内訳の数（空振り・重複・頼み事 未対応・通話 往復）と、対応履歴の事実の列", async () => {

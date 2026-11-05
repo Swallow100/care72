@@ -28,8 +28,8 @@ export type Renderer = {
   image(html: string, o: { width: number; height: number; quality: number }): Promise<{ bytes: Uint8Array; secrets: Ratio[] }>;
   /** 印刷の PDF。secrets は頁ごと */
   pdf(html: string): Promise<{ bytes: Uint8Array; secrets: Ratio[][] }>;
-  /** 紙の HTML を PDF と 1 頁目の PNG（png は無ければ作らない） */
-  paper(html: string, o: { png: boolean }): Promise<{ pdf: Uint8Array; png: Uint8Array | null }>;
+  /** 紙の HTML を PDF と 1 頁目の PNG（png は無ければ作らない）。別紙の頁があればその PNG も（T141。別紙の見た目を確かめる） */
+  paper(html: string, o: { png: boolean }): Promise<{ pdf: Uint8Array; png: Uint8Array | null; annexPng?: Uint8Array | null }>;
   /**
    * 紙の AI の照合（T136）に送る頁の絵。アプリと同じ描き方（lib/forms/review-compose.ts の composePage）をこの頁で動かす。
    * href は頁の画像の data: の URL。塗った後の JPEG（付け足しなし）と塗った数
@@ -92,11 +92,14 @@ export async function launchRenderer(): Promise<Renderer | null> {
       await settle(page);
       const pdf = new Uint8Array(await page.pdf({ preferCSSPageSize: true, printBackground: true, tagged: false }));
       let png: Uint8Array | null = null;
+      let annexPng: Uint8Array | null = null;
       if (o.png) {
         const first = await page.$("section.paper");
         if (first) png = new Uint8Array(await first.screenshot({ type: "png" }));
+        const annex = await page.$("section.paper[data-annex]");
+        if (annex) annexPng = new Uint8Array(await annex.screenshot({ type: "png" }));
       }
-      return { pdf, png };
+      return { pdf, png, annexPng };
     },
     async compose(plan, family) {
       await page.setViewport({ width: 800, height: 600, deviceScaleFactor: 1 });

@@ -71,6 +71,7 @@ import {
   type ClockMark,
 } from "./clock.ts";
 import { fireScheduled } from "./schedule.ts";
+import { lostFollowUps } from "./lost.ts";
 import { screenIncidents, tableAheadOf } from "./state-rules.ts";
 import { fitKindOf, profileOf, type FitProfile } from "./fit.ts";
 import { gateTurns, tallyGate } from "./gate.ts";
@@ -826,12 +827,14 @@ export async function advance(
   const fixed = [...openingIncidents(state, first), ...table.events.filter((x) => x.minute > from && x.minute <= to).map((x) => x.event)];
   const fired = fireScheduled(state.world, to);
   const due = fired.incidents.filter((e) => !e.person || members.has(e.person));
-  const sorted = [...fixed, ...due].map((e, i) => ({ e, i })).sort((a, b) => a.e.at - b.e.at || a.i - b.i).map((x) => x.e);
+  // 行き先の分からない人が見つかる（T141、lib/drill/lost.ts。世界の決まりの時刻。予定の出来事と同じ門を通す）
+  const found = lostFollowUps(state.world, from, to, members, drillSeed(state));
+  const sorted = [...fixed, ...due, ...found].map((e, i) => ({ e, i })).sort((a, b) => a.e.at - b.e.at || a.i - b.i).map((x) => x.e);
   // 世界の帳簿（予定の取り出し・本人役の呼んだ時刻・理由・数）。foldTick はここに状況を当て直す
   let book: WorldState = fired.world;
   // 変わり方の決まり（T121、lib/drill/state-rules.ts）。表の出来事は「もう起きている」の門だけ、予定の出来事は時刻が来たときの門。
   // 外した物は区切りに残さない（保存した区切りから作り直しても同じ世界）
-  const dueSet = new Set<DrillIncident>(due);
+  const dueSet = new Set<DrillIncident>([...due, ...found]);
   // 表の行がこのあといる所を決める人も（T123）
   const ahead = tableAheadOf(table.events, to, table.rows);
   const screened = screenIncidents(settleWorld(book, to), sorted, { origin: "table", originOf: (e) => (dueSet.has(e) ? "scheduled" : "table") });
