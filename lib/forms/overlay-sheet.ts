@@ -491,6 +491,8 @@ const INK_HIT_RATIO = 0.2;
 /** 字の箱が印刷の字のかたまりと重なるか（かたまりの面の 2 割より多く） */
 export function hitsInk(r: FieldBox, ink: readonly InkBlob[]): boolean {
   return ink.some((b) => {
+    // ほかの欄の枠は少しでも掛かれば
+    if (b.field) return Math.min(r.x + r.w, b.x + b.w) > Math.max(r.x, b.x) && Math.min(r.y + r.h, b.y + b.h) > Math.max(r.y, b.y);
     // 罫線は字の箱を横切るときだけ（字の箱の縁に触れるだけの線は数えない）
     if (b.line) {
       const horizontal = b.w >= b.h;
@@ -530,14 +532,19 @@ function obstaclesOf(fieldId: string, area: FieldBox, own: FieldBox, pc: PlaceCt
   const dx = NEIGHBOR_TOL_MM / image.w;
   const dy = NEIGHBOR_TOL_MM / image.h;
   for (const o of pc.others ?? []) {
-    if (o.id === fieldId || inside(own, o.box, dx, dy) || sameArea(own, o.box)) continue;
+    if (o.id === fieldId || containsMost(o.box, own) || sameArea(own, o.box)) continue;
     const b = { x: o.box.x + dx, y: o.box.y + dy, w: o.box.w - dx * 2, h: o.box.h - dy * 2 };
     if (b.w <= 0 || b.h <= 0) continue;
     const w = Math.min(b.x + b.w, area.x + area.w) - Math.max(b.x, area.x);
     const h = Math.min(b.y + b.h, area.y + area.h) - Math.max(b.y, area.y);
-    if (w > 0 && h > 0) out.push({ ...b, box: false });
+    if (w > 0 && h > 0) out.push({ ...b, box: false, field: true });
   }
   return out;
+}
+
+/** 外の欄か: b が a の面の 8 割より多くを持つ（AI の読む枠は少しずれるので、ぴったり中でなくても外の段・種類の欄と見なす） */
+export function containsMost(outer: FieldBox, a: FieldBox): boolean {
+  return coverOf(a, outer) >= 0.8;
 }
 
 /** 長い自由記入と見なす字の幅（字の数）。これより短い値は別紙に回さない */

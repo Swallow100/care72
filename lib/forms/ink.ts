@@ -14,7 +14,17 @@
 // 箱は頁の比を 1/10000 にした整数で、[x, y, w, h, 種類] の 5 つずつ並べる（種類 0 字・1 □・2 罫線）
 
 /** 1 つのかたまりの箱（頁の比 0〜1）。box は □（中の空いた四角） */
-export type InkBlob = { x: number; y: number; w: number; h: number; box: boolean; /** 罫線（長い横・縦の線。種類 2） */ line?: boolean };
+export type InkBlob = {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  box: boolean;
+  /** 罫線（長い横・縦の線。種類 2） */
+  line?: boolean;
+  /** ほかの欄の枠（置くときに避ける物として足す。保存しない。lib/forms/overlay-sheet.ts） */
+  field?: boolean;
+};
 
 /** 保存の形の単位（頁の比の 1/10000） */
 const UNIT = 10000;

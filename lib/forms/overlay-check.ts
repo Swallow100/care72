@@ -9,7 +9,7 @@
 
 import { unpackInk } from "./ink.ts";
 import type { FieldBox, MappingField } from "./mapping.ts";
-import { hitsInk, inside, textExtent, type OverlaySheet } from "./overlay-sheet.ts";
+import { containsMost, hitsInk, inside, textExtent, type OverlaySheet } from "./overlay-sheet.ts";
 import type { PageImage } from "./page-images.ts";
 
 /** 許す出入り（mm） */
@@ -87,7 +87,7 @@ export function checkLook(sheet: OverlaySheet, fields: readonly MappingField[], 
         const bad = others.some((g) => {
           if (g.id === it.fieldId || !g.box) return false;
           // その欄を中に持つ欄（外の段）・同じ書く所の欄は除く
-          if (inside(own, g.box, tolX, tolY) || sameArea(own, g.box)) return false;
+          if (containsMost(g.box, own) || sameArea(own, g.box)) return false;
           const i = inter(ext, g.box);
           return i.w > tolX && i.h > tolY;
         });
