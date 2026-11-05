@@ -16,16 +16,9 @@ import { d1FromSqlite, migratedSqlite } from "../db/test-d1.ts";
 import { officeActor } from "../office/scope.ts";
 import { linkReplacesLogin } from "../qr/phone-open.ts";
 import { PHONE_LINK_INVALID_PATH } from "../qr/phone-link.ts";
-import { resetDemoOffice, type SeedBucket } from "../seed/reset.ts";
-import { createSurveyShare, loadSurveyOverview } from "../survey/store.ts";
-import {
-  DEMO_CARE_MANAGER_ID,
-  DEMO_FAMILY_CONTACT_ID,
-  DEMO_OFFICE_ID,
-  DEMO_SELF_PERSON_ID,
-  JUDGE_LOGIN_ID,
-  ROLE_SWITCH_ACCOUNT_IDS,
-} from "./demo.ts";
+import { resetCheckOffice, type SeedBucket } from "../seed/reset.ts";
+import { createSurveyShare, loadSurveyOverview, surveyOfficeOf } from "../survey/store.ts";
+import { CHECK_OFFICE_ID, CHECK_TARGETS, JUDGE_LOGIN_ID, LOGIN_CARE_MANAGER_ID, ROLE_SWITCH_ACCOUNT_IDS } from "./demo.ts";
 import { hashPassword } from "./password.ts";
 import { pageExit, phoneGoneExit } from "./phone-gate.ts";
 import { chooseJudgeRole, chooseRole, login, resolvePrincipal, type Principal } from "./principal.ts";
@@ -33,6 +26,10 @@ import { caseloadScope, personInScope, personScope } from "./scope.ts";
 import { decodeSession, passwordVersion, sessionTimes, signSession } from "./session.ts";
 import type { JudgeRole } from "./roles.ts";
 import { canChooseRole, isWalled } from "./wall.ts";
+
+// T144: ログインの山本は確認用の事業所（審査員のデモ事業所と同じ種の写し）。役を替えた山本の本人・家族・壁もその事業所の中
+const YAMAMOTO = LOGIN_CARE_MANAGER_ID;
+const YAMAMOTO_OFFICE = CHECK_OFFICE_ID;
 
 // テストだけの値（本物のパスワード・鍵ではない）。回数を少なくして速くする
 const SECRET = "test-secret-t95-0123456789-0123456789-abcdef";
@@ -59,7 +56,7 @@ const env = () => ({ JUDGE_PASSWORD_HASH: judgeHash });
 
 beforeEach(() => {
   sqlite = migratedSqlite();
-  for (const s of seedStatements({ passwordHashes: { [DEMO_CARE_MANAGER_ID]: cmHash } })) sqlite.exec(s);
+  for (const s of seedStatements({ passwordHashes: { [LOGIN_CARE_MANAGER_ID]: cmHash } })) sqlite.exec(s);
   sqlite.prepare("UPDATE accounts SET login_id = 'partner1', password_hash = ? WHERE id = 'acct-partner-cm'").run(otherHash);
   sqlite
     .prepare(
@@ -109,7 +106,7 @@ const nullBucket: SeedBucket = {
 
 describe("山本の役変更", () => {
   it("役を選べるのは山本だけ（固定の一覧のうち、ログインの ID がある見本のケアマネ）", () => {
-    expect(ROLE_SWITCH_ACCOUNT_IDS).toEqual([DEMO_CARE_MANAGER_ID]);
+    expect(ROLE_SWITCH_ACCOUNT_IDS).toEqual([YAMAMOTO]);
   });
 
   it("ケアマネの役の山本は今までどおり（管理者・自分の担当一覧・壁の外）で、役を選べる", async () => {
@@ -118,10 +115,10 @@ describe("山本の役変更", () => {
       role: "care_manager",
       judge: false,
       admin: true,
-      accountId: DEMO_CARE_MANAGER_ID,
+      accountId: YAMAMOTO,
       displayName: "山本",
-      caseloadOf: DEMO_CARE_MANAGER_ID,
-      office: { id: DEMO_OFFICE_ID, kind: "demo" },
+      caseloadOf: YAMAMOTO,
+      office: { id: YAMAMOTO_OFFICE, kind: "demo" },
     });
     expect(principal.switched).toBeFalsy();
     expect(canChooseRole(principal)).toBe(true);
@@ -137,22 +134,22 @@ describe("山本の役変更", () => {
       judge: false,
       admin: false,
       switched: true,
-      accountId: DEMO_CARE_MANAGER_ID,
+      accountId: YAMAMOTO,
       displayName: "山本",
-      office: { id: DEMO_OFFICE_ID },
+      office: { id: YAMAMOTO_OFFICE },
       caseloadOf: null,
       personId: null,
     });
     const self = await asYamamoto("self");
     expect(self.path).toBe("/me");
-    expect(self.principal).toMatchObject({ role: "self", switched: true, personId: DEMO_SELF_PERSON_ID, displayName: "山田 ハナ" });
+    expect(self.principal).toMatchObject({ role: "self", switched: true, personId: CHECK_TARGETS.selfPersonId, displayName: "山田 ハナ" });
     const fam = await asYamamoto("family");
     expect(fam.path).toBe("/family");
     expect(fam.principal).toMatchObject({
       role: "family",
       switched: true,
-      personId: DEMO_SELF_PERSON_ID,
-      contactId: DEMO_FAMILY_CONTACT_ID,
+      personId: CHECK_TARGETS.selfPersonId,
+      contactId: CHECK_TARGETS.familyContactId,
       displayName: "森 恵子",
     });
     for (const r of [med, self, fam]) {
@@ -166,8 +163,8 @@ describe("山本の役変更", () => {
       expect(caseloadScope(r.principal)).toBeNull();
     }
     // 本人・家族は山田 ハナだけ
-    expect(await personInScope(db, self.principal, DEMO_SELF_PERSON_ID)).not.toBeNull();
-    expect(await personInScope(db, self.principal, "p-02")).toBeNull();
+    expect(await personInScope(db, self.principal, CHECK_TARGETS.selfPersonId)).not.toBeNull();
+    expect(await personInScope(db, self.principal, "chk-p-02")).toBeNull();
   });
 
   it("選び直せる（医療班 → 本人 → ケアマネ）。ケアマネに戻ると、ログインしたときと同じ形", async () => {
@@ -181,7 +178,7 @@ describe("山本の役変更", () => {
     expect(await again(back!.token, NOW + 40)).toEqual(fresh.principal);
     // cookie にケアマネの役の印は残さない（前の形と同じ）
     const payload = await decodeSession(back!.token, SECRET);
-    expect(payload).toMatchObject({ k: "account", a: DEMO_CARE_MANAGER_ID });
+    expect(payload).toMatchObject({ k: "account", a: YAMAMOTO });
     expect(payload && "r" in payload).toBe(false);
   });
 
@@ -192,14 +189,14 @@ describe("山本の役変更", () => {
 
   it("山本のパスワードが変わると、役を替えたセッションも切れる", async () => {
     const med = await asYamamoto("medical");
-    sqlite.prepare("UPDATE accounts SET password_hash = ? WHERE id = ?").run(otherHash, DEMO_CARE_MANAGER_ID);
+    sqlite.prepare("UPDATE accounts SET password_hash = ? WHERE id = ?").run(otherHash, YAMAMOTO);
     expect(await again(med.token)).toBeNull();
   });
 
   it("デモ事業所の kind が demo でなければ、山本は役を選べず、前に替えた役の cookie も使えない", async () => {
     const med = await asYamamoto("medical");
     const cm = await asYamamoto(null);
-    sqlite.prepare("UPDATE offices SET kind = 'regular' WHERE id = ?").run(DEMO_OFFICE_ID);
+    sqlite.prepare("UPDATE offices SET kind = 'regular' WHERE id = ?").run(YAMAMOTO_OFFICE);
     expect(await again(med.token)).toBeNull();
     const plain = await again(cm.token);
     expect(plain?.role).toBe("care_manager");
@@ -212,8 +209,8 @@ describe("替えた役の壁（審査員と同じ）", () => {
   it("医療班の山本は、ほかの事業所の人を探せず・受け入れられない（not_found）", async () => {
     const { principal } = await asYamamoto("medical");
     const actor = staffActor(principal)!;
-    expect(actor).toMatchObject({ accountId: DEMO_CARE_MANAGER_ID, role: "medical", name: "山本", judge: false, walled: true });
-    expect(personScope(principal)).toEqual({ kind: "custody", holderId: DEMO_CARE_MANAGER_ID, demoOnly: true });
+    expect(actor).toMatchObject({ accountId: YAMAMOTO, role: "medical", name: "山本", judge: false, walled: true });
+    expect(personScope(principal)).toEqual({ kind: "custody", holderId: YAMAMOTO, demoOnly: true, wallOffice: YAMAMOTO_OFFICE });
     expect((await searchPeople(db, actor, { text: "カクウ", birth: null }, TODAY)).hits).toEqual([]);
     expect(await receive(db, actor, { personId: PARTNER_PERSON, shelter: SHELTER, via: "search" }, AT)).toEqual({
       ok: false,
@@ -222,9 +219,9 @@ describe("替えた役の壁（審査員と同じ）", () => {
     expect(Number((sqlite.prepare("SELECT count(*) AS n FROM custody").get() as { n: number }).n)).toBe(0);
     // 見本の流れ（山田 ハナを探して受け入れ、本人のページを開ける）は審査員と同じ
     const hits = await searchPeople(db, actor, { text: "ヤマダ", birth: null }, TODAY);
-    expect(hits.hits.map((h) => h.id)).toEqual([DEMO_SELF_PERSON_ID]);
-    expect((await receive(db, actor, { personId: DEMO_SELF_PERSON_ID, shelter: SHELTER, via: "search" }, AT)).ok).toBe(true);
-    expect(await personInScope(db, principal, DEMO_SELF_PERSON_ID)).not.toBeNull();
+    expect(hits.hits.map((h) => h.id)).toEqual([CHECK_TARGETS.selfPersonId]);
+    expect((await receive(db, actor, { personId: CHECK_TARGETS.selfPersonId, shelter: SHELTER, via: "search" }, AT)).ok).toBe(true);
+    expect(await personInScope(db, principal, CHECK_TARGETS.selfPersonId)).not.toBeNull();
   });
 
   it("ほかの事業所の人の受け持ちが山本の名で開いていても、受け持ちの一覧・本人のページに出ない", async () => {
@@ -234,7 +231,7 @@ describe("替えた役の壁（審査員と同じ）", () => {
         `INSERT INTO custody (id, person_id, holder_id, holder_role, shelter, via, received_at)
          VALUES ('cu-legacy', ?, ?, 'medical', ?, 'search', ?)`,
       )
-      .run(PARTNER_PERSON, DEMO_CARE_MANAGER_ID, SHELTER, AT);
+      .run(PARTNER_PERSON, YAMAMOTO, SHELTER, AT);
     expect(await personInScope(db, principal, PARTNER_PERSON)).toBeNull();
     const board = await loadStaffBoard(db, staffActor(principal)!, TODAY, AT);
     expect(board.rows.map((r) => r.personId)).toEqual([]);
@@ -266,19 +263,19 @@ describe("アンケート（山本の本物）", () => {
   it("ケアマネの役の山本からは見え、役を替えている間は見えず（壁の中・事業所の画面に入れない）、ケアマネに戻るとまた見える", async () => {
     const real = await createSurveyShare(
       db,
-      { officeId: DEMO_OFFICE_ID, memo: "包括配布", createdBy: DEMO_CARE_MANAGER_ID, createdRole: "care_manager" },
+      { officeId: surveyOfficeOf(YAMAMOTO_OFFICE), memo: "包括配布", createdBy: YAMAMOTO, createdRole: "care_manager" },
       new Date(AT),
     );
     const trial = await createSurveyShare(
       db,
-      { officeId: DEMO_OFFICE_ID, memo: "試し", createdBy: "acct-judge", createdRole: "judge" },
+      { officeId: surveyOfficeOf(YAMAMOTO_OFFICE), memo: "試し", createdBy: "acct-judge", createdRole: "judge" },
       new Date(AT),
     );
     if (!real.ok || !trial.ok) throw new Error("リンクを作れない");
     const view = async (p: Principal) => {
       const a = officeActor(p);
       const viewer = { walled: a ? a.walled === true : isWalled(p), admin: p.admin, accountId: p.accountId };
-      return (await loadSurveyOverview(db, DEMO_OFFICE_ID, viewer, AT)).shares.map((s) => s.token).sort();
+      return (await loadSurveyOverview(db, surveyOfficeOf(YAMAMOTO_OFFICE), viewer, AT)).shares.map((s) => s.token).sort();
     };
     const cm = await asYamamoto(null);
     expect(await view(cm.principal)).toEqual([real.token, trial.token].sort());
@@ -339,17 +336,17 @@ describe("ほかの人は変わらない", () => {
 describe("毎朝 4 時の戻し", () => {
   it("医療班の山本が受け入れた見本の人の受け持ちは戻しで消え、山本のアカウントと本物のアンケートは残る", async () => {
     const { principal } = await asYamamoto("medical");
-    expect((await receive(db, staffActor(principal)!, { personId: DEMO_SELF_PERSON_ID, shelter: SHELTER, via: "search" }, AT)).ok).toBe(true);
+    expect((await receive(db, staffActor(principal)!, { personId: CHECK_TARGETS.selfPersonId, shelter: SHELTER, via: "search" }, AT)).ok).toBe(true);
     const real = await createSurveyShare(
       db,
-      { officeId: DEMO_OFFICE_ID, memo: "包括配布", createdBy: DEMO_CARE_MANAGER_ID, createdRole: "care_manager" },
+      { officeId: surveyOfficeOf(YAMAMOTO_OFFICE), memo: "包括配布", createdBy: YAMAMOTO, createdRole: "care_manager" },
       new Date(AT),
     );
     if (!real.ok) throw new Error("リンクを作れない");
-    await resetDemoOffice(db, nullBucket, "2026-11-04T19:00:00.000Z");
+    await resetCheckOffice(db, nullBucket, "2026-11-04T19:00:00.000Z");
     const n = (sql: string, ...args: string[]) => Number((sqlite.prepare(sql).get(...args) as { n: number }).n);
-    expect(n("SELECT count(*) AS n FROM custody WHERE holder_id = ? AND released_at IS NULL", DEMO_CARE_MANAGER_ID)).toBe(0);
-    expect(n("SELECT count(*) AS n FROM accounts WHERE id = ?", DEMO_CARE_MANAGER_ID)).toBe(1);
+    expect(n("SELECT count(*) AS n FROM custody WHERE holder_id = ? AND released_at IS NULL", YAMAMOTO)).toBe(0);
+    expect(n("SELECT count(*) AS n FROM accounts WHERE id = ?", YAMAMOTO)).toBe(1);
     expect(n("SELECT count(*) AS n FROM survey_shares WHERE token = ?", real.token)).toBe(1);
   });
 });
