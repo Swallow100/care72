@@ -103,7 +103,8 @@ export function Form9Fill({ slots, children }: { slots: Form9Slot[]; children: R
   for (const s of slots) bySheet.set(s.sheet, [...(bySheet.get(s.sheet) ?? []), s]);
 
   return (
-    <div ref={root} data-paper-fill data-form9-fill data-marks={marks ? "1" : undefined}>
+    // data-paper-print: 印刷と見本で main のほかの子（画面の表・見出し）を隠す規則（paper.css）が、この包みの中の紙を刷る物と見る
+    <div ref={root} data-paper-fill data-form9-fill data-paper-print data-marks={marks ? "1" : undefined}>
       <div className="screen-only sticky top-0 z-20 mx-auto mb-2 flex max-w-[297mm] flex-wrap items-center gap-2 bg-base py-1.5" data-fill-bar>
         <Button size="sm" icon={MarkIcon} aria-pressed={marks} onClick={() => setMarks((m) => !m)} data-fill-marks>
           {L.marks}

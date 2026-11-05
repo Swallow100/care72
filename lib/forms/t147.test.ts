@@ -421,5 +421,8 @@ describe("12. 様式 9 の紙の上で書く（行の人ごと）", () => {
     // 画面: 印刷見本に層を置き、書ける人は Form9Fill で包む。CSV も同じ値
     expect(read("../../app/office/form9/page.tsx")).toContain("<Form9Fill slots={form9Slots(sheet, entries)}>");
     expect(read("../../app/office/form9/csv/route.ts")).toContain("withForm9Entries(loaded.sheet");
+    // 包みも刷る物（main の直接の子）なので、印刷と見本で画面の表・見出しを隠す規則が効く
+    expect(read("../../components/forms/Form9Fill.tsx")).toMatch(/data-form9-fill data-paper-print/);
+    expect(read("../../components/forms/paper.css")).toContain("main:has(> [data-paper-print]) > :not([data-paper-print])");
   });
 });
