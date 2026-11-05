@@ -15,6 +15,7 @@ import { eventHour, scenarioOf } from "../../../lib/drill/scenarios.ts";
 import {
   canLeaveHome,
   factsOf,
+  helpedFlip,
   KIND_REPEAT_MAX,
   placeFlipped,
   placeOfState,
@@ -148,7 +149,7 @@ export function factHits(outcome: RunOutcome, people: Readonly<Record<string, Fa
         const row = table.has(`${person}|${minute}`);
         if (!row && f.voiceLost && u.source === "agent") hit("voice_lost", person, minute, `${Math.round(f.voiceLost.at)} 分に声なし → 本人`);
         const prevPlace = f.place?.where ?? null;
-        if (!row && prevPlace && place && placeFlipped(prevPlace, place) && !f.help && !awayAt(person, minute)) {
+        if (!row && prevPlace && place && placeFlipped(prevPlace, place) && !helpedFlip(f, prevPlace) && !awayAt(person, minute)) {
           const leaving = prevPlace === "home";
           const ok = leaving ? canLeaveHome(f) : RETURNED.test(words.normalize("NFKC"));
           if (!ok) hit("place_flip", person, minute, `${prevPlace} → ${place}`);

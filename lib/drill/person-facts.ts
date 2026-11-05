@@ -320,6 +320,8 @@ export type Facts = {
   hurt: { at: number; canMove: boolean | null; injured: boolean | null } | null;
   /** 前の連絡から今までに来た人・届いた物・会えた手（いちばん新しい物） */
   help: Help | null;
+  /** 前の連絡から今までに来た、本人を運べる人・乗り物（電源・薬・機器の業者のほか。いちばん新しい物。T141） */
+  mover?: Help | null;
   /** 届いた物・来た人の全部（帳面の文） */
   got: Help[];
   /** 家族・支援者が「本人の声が無い」と伝えた（時刻）。そのあと手も人も来ていない */
@@ -378,6 +380,19 @@ function placeOfTurn(t: Pick<DrillTurn, "color" | "whereNow" | "atHome">): Where
   return placeOfState({ color: t.color, whereNow: t.whereNow, atHome: t.atHome });
 }
 
+/** 本人を運べる人・乗り物か（電源・薬・機器の業者は物を届けるだけ。T141） */
+const NOT_MOVERS: ReadonlySet<string> = new Set([ARRIVAL_WORDS.power, ARRIVAL_WORDS.medicine, ARRIVAL_WORDS.vendor]);
+export const isMover = (h: Help): boolean => !NOT_MOVERS.has(h.what);
+
+/**
+ * いる所の入れ替わりを、前の連絡からの手で認めるか（T130・T141）。ふだん動けない人が家から出るのは、運べる人・乗り物が来た時だけ
+ * （電源や薬が届いただけでは家の外へ出ない）。ほかは前からの手で認める
+ */
+export function helpedFlip(f: Pick<Facts, "help" | "mover" | "plan">, prev: WhereNow): boolean {
+  if (prev === "home" && f.plan?.immobile) return (f.mover ?? null) !== null;
+  return f.help !== null;
+}
+
 /** (from, to] 分に来た人・届いた物・会えた手（到着・出向いてもらった人・訪問で着いた・近所の人の声掛） */
 export function helpsBetween(world: WorldState, actions: ReadonlyArray<ActionRecord>, person: string, from: number, to: number): Help[] {
   const out: Help[] = [];
@@ -417,7 +432,7 @@ export function planMoveAt(
   const plan = x.plan;
   if (!plan?.move || placeBlocked(x.world, x.person, plan)) return null;
   if (plan.immobile && !plan.carer) {
-    const came = helpsBetween(x.world, x.actions, x.person, x.going, x.now)[0];
+    const came = helpsBetween(x.world, x.actions, x.person, x.going, x.now).filter(isMover)[0];
     return came ? came.at : null;
   }
   if (x.hurt && !plan.helper) return null;
@@ -425,10 +440,10 @@ export function planMoveAt(
 }
 
 /** 計画の手段で今移れる形か（いる所の門 screenTurn と台の検査が同じに見る。T141） */
-export function canLeaveHome(f: Pick<Facts, "plan" | "hurt" | "help" | "blocked">): boolean {
+export function canLeaveHome(f: Pick<Facts, "plan" | "hurt" | "help" | "mover" | "blocked">): boolean {
   const plan = f.plan;
   if (!plan?.move || f.blocked) return false;
-  if (plan.immobile && !plan.carer) return f.help !== null;
+  if (plan.immobile && !plan.carer) return (f.mover ?? null) !== null;
   return !f.hurt || plan.helper;
 }
 
@@ -448,7 +463,8 @@ export function factsOf(input: FactsInput): Facts {
   const carried = (world.arrivals ?? []).filter((a) => a.person === person && a.role === "transport" && a.arrived && a.arrive > prevAt && a.arrive <= now).at(-1);
   // 避難先へ向かうと言った（家族・本人。打ち消しは見ない）。計画の手段で移れた時刻は planMoveAt（T139・T141）
   const said = state?.saying?.normalize("NFKC") ?? "";
-  const goingSaid = !!state && GO_INTENT.test(said) && !RETURNED.test(said) && !GO_NOT.test(said);
+  // 前の連絡でもう家の外にいる人（「避難所に移りました」）は向かう途中ではない（T141）
+  const goingSaid = !!state && where !== "shelter" && where !== "other" && GO_INTENT.test(said) && !RETURNED.test(said) && !GO_NOT.test(said);
   const movedAt = goingSaid ? planMoveAt({ world, actions, person, plan, hurt: hurt !== null, going: prevAt, now }) : null;
   // 向かえない訳（T141）: plan 計画に避難先か手段が無い・blocked 道が通れない・浸水・helper ふだん動けない人に手伝う人・乗り物がまだ来ていない
   const goWhy: GoWhy | null = !plan?.move ? "plan" : blocked ? "blocked" : (plan.immobile && !plan.carer && movedAt === null) || (hurt && !plan.helper) ? "helper" : null;
@@ -469,7 +485,8 @@ export function factsOf(input: FactsInput): Facts {
   if (where && state) cands.push({ where, at: prevAt, by: "turn" });
   if (carried) cands.push({ where: dest, at: carried.arrive, by: "transport" });
   if (movedAt !== null && !carried) cands.push({ where: dest, at: movedAt, by: "plan" });
-  if (visited !== undefined) cands.push({ where: "home", at: visited, by: "visit" });
+  // 訪問で会えた事は、コードが見込んだ移動（計画の手段）より確か。本人・家族の連絡と移送の到着は上書きしない（訪問の返事はどこでも「家で会えた」になるので）
+  if (visited !== undefined && cands.at(-1)?.by === "plan") cands.push({ where: "home", at: visited, by: "visit" });
   if (lost && lostAt! > prevAt) cands.push({ where: "other", at: lostAt!, by: "wandering" });
   if (foundAt !== null && lostAt !== null && foundAt >= lostAt && foundAt > prevAt && foundAt <= now) cands.push({ where: "home", at: foundAt, by: "found" });
   const latest = cands.reduce<(typeof cands)[number] | null>((acc, c) => (!acc || c.at >= acc.at ? c : acc), null);
@@ -537,6 +554,7 @@ export function factsOf(input: FactsInput): Facts {
     ahead: input.ahead ?? null,
     hurt,
     help: helps.at(-1) ?? null,
+    mover: helps.filter(isMover).at(-1) ?? null,
     got,
     voiceLost: voice,
     power: { outage: since === null ? "none" : restoredAt !== null && restoredAt <= now ? "restored" : "on", since, restoredAt, supplied },
@@ -990,7 +1008,7 @@ export function screenTurn(turn: DrillTurn, f: Facts, onDrop?: (rule: GateRule) 
   // 見るのは家と家の外の入れ替わりだけ（赤の「家にいない」は避難所とも食い違わない）
   // 移送・計画の手段で移った所は、手（その移送）があっても戻さない（T139。移送の車が来ても家にいると言い続けた）
   const settled = f.place?.by === "transport" || f.place?.by === "plan";
-  if (prev && next && placeFlipped(prev, next) && (!f.help || settled) && !f.away) {
+  if (prev && next && placeFlipped(prev, next) && (!helpedFlip(f, prev) || settled) && !f.away) {
     const leaving = prev === "home";
     const back = RETURNED.test(words.normalize("NFKC"));
     const ok = leaving ? canLeaveHome(f) : back;

@@ -93,11 +93,31 @@ describe("いる所: ふだん動けない人・浸水・訪問", () => {
     expect(factsOf({ person: "p-02", world: { ...EMPTY_WORLD, flood: true }, state: said("計画どおり病院へ移ります。"), actions: [], now: 600, plan: shallow, inOutage: false }).place?.by).toBe("plan");
   });
 
-  it("ケアマネが家を訪ねて会えたら、いる所は家（前の連絡のあとの一番新しい物）", () => {
-    const plan = planOf(noCarer);
-    const prev = state({ color: "green", whereNow: "other", at: 2 });
-    const f = factsOf({ person: "p-02", world: EMPTY_WORLD, state: prev, actions: [visit(300)], now: 400, plan, inOutage: false });
+  it("コードが見込んだ計画の移動のあとにケアマネが家で会えたら、いる所は家。本人・家族の連絡は訪問で上書きしない", () => {
+    const plan = planOf(base);
+    const f = factsOf({ person: "p-02", world: EMPTY_WORLD, state: said("計画どおり病院へ移ります。"), actions: [visit(300)], now: 400, plan, inOutage: false });
     expect(f.place).toMatchObject({ where: "home", by: "visit", at: 300 });
+    const away = state({ color: "green", whereNow: "shelter", at: 2 });
+    const g = factsOf({ person: "p-02", world: EMPTY_WORLD, state: away, actions: [visit(300)], now: 400, plan, inOutage: false });
+    expect(g.place).toMatchObject({ where: "shelter", by: "turn" });
+  });
+
+  it("もう家の外にいると伝えた人（「避難所に移りました」）は、向かう途中と見ない", () => {
+    const moved = state({ color: "red", whereNow: null, atHome: false, at: 2, saying: "避難所に移りました。" });
+    const f = factsOf({ person: "p-02", world: EMPTY_WORLD, state: moved, actions: [], now: 400, plan: planOf(base), inOutage: false });
+    expect(f.going).toBeNull();
+    expect(f.place).toMatchObject({ where: "other", by: "turn" });
+  });
+
+  it("ふだん動けない人は、電源や薬が届いただけでは家から出ない（運べる人が来た時だけ）", () => {
+    const persona = buildPersona(base, { on: "2026-11-05" });
+    const world: WorldState = { ...EMPTY_WORLD, flood: true, arrivals: [{ person: "p-02", role: "power", arrive: 300, back: null, arrived: true, from: "a1" }] };
+    const [t] = personaTurns(
+      personaInput("p-02", { world, state: state({ whereNow: "home", at: 3 }), toMinute: 400 }),
+      persona,
+      answer({ contactsCaremanager: true, from: "夫", location: "other", speech: "電源が届きました。" }),
+    );
+    expect(t.whereNow).toBe("home");
   });
 
   it("家にいる人の「家の外にいます」は使わない。「家の外に出られない」は使う", () => {
