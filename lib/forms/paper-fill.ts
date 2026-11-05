@@ -7,7 +7,8 @@ import type { Question } from "../intake/ask.ts";
 import type { IntakeChange } from "../intake/changes.ts";
 import type { FormEntry, FormId } from "./form-entries.ts";
 import type { FieldBox, Typeface } from "./mapping.ts";
-import { fitText, FONT_MIN_PT } from "./overlay-sheet.ts";
+import type { InkBlob } from "./ink.ts";
+import { fitText, FONT_MIN_PT, placeText, type OverlayPage } from "./overlay-sheet.ts";
 import { draftKey, paperChanges, type PaperInput, type PaperTarget } from "./paper-edit.ts";
 import { splitParts } from "./split-parts.ts";
 
@@ -44,6 +45,16 @@ export type PaperSlot = {
   maxPt: number;
   /** 空いた欄（未記入の色付けで塗る欄） */
   empty: boolean;
+  /**
+   * 空いた訳（T133 の黄の塗り 2 つ。lib/forms/overlay-sheet.ts の OverlayFill の kind）。ask は台帳に無い（質問で埋める）、
+   * fix は台帳に値があるのに紙に置けなかった（その場で、この様式の手入れとして入れる）。空いていなければ無し
+   */
+  gap?: "ask" | "fix";
+  /**
+   * 紙に置くときの避ける物（T133 の置き方 placeText に渡す物。この欄の枠の中の印刷の字と、枠に掛かるほかの欄の枠）。
+   * 画面の入力の字の大きさと位置を、紙に刷るときと同じ関数で決める。無ければ（原本の枠の紙）欄の矩形に fitText
+   */
+  place?: { ink: InkBlob[]; others: Array<{ id: string; box: FieldBox; free?: boolean }> };
   /** 行き先: 台帳（ほかの様式にも効く）か、この人のこの様式の手入れ */
   dest: "ledger" | "form";
   input: SlotInput;
@@ -126,6 +137,29 @@ export function liveFont(text: string, mm: { w: number; h: number }, maxPt: numb
   if (lines.length === 0) return { fontPt: maxPt, overflow: false, top: false };
   const fitted = fitText(lines, mm.w, mm.h, maxPt);
   return fitted ? { fontPt: fitted.fontPt, overflow: false, top: fitted.top } : { fontPt: FONT_MIN_PT, overflow: true, top: true };
+}
+
+/**
+ * その場の入力の字の置き場（T133 の置き方 placeText。紙に刷るときと同じ関数・同じ避ける物）。area は欄の枠か部品の枠、
+ * page は頁の画像の大きさ（mm）。置けなければ（どこにも入らない）欄の枠に下限の大きさで overflow（刷ると「未配置」か「別紙」）
+ */
+export function livePlace(
+  slot: Pick<PaperSlot, "key" | "maxPt" | "place">,
+  text: string,
+  area: FieldBox,
+  page: { w: number; h: number },
+  own?: FieldBox,
+): { box: FieldBox; fontPt: number; overflow: boolean; top: boolean } {
+  const lines = text.split(/\r?\n/).filter((l) => l.trim() !== "");
+  const mm = boxMm(area, page);
+  if (lines.length === 0) return { box: area, fontPt: slot.maxPt, overflow: false, top: false };
+  if (!slot.place) {
+    const f = liveFont(text, mm, slot.maxPt);
+    return { box: area, ...f };
+  }
+  const pg: OverlayPage = { page: 0, landscape: false, image: { x: 0, y: 0, w: page.w, h: page.h }, items: [], fills: [] };
+  const t = placeText(slot.key, lines, area, { page: pg, ink: slot.place.ink, others: slot.place.others }, own ? { own } : { units: true });
+  return t ? { box: t.box, fontPt: t.fontPt, overflow: false, top: t.top } : { box: area, fontPt: FONT_MIN_PT, overflow: true, top: true };
 }
 
 /** 比の矩形の大きさ（mm）。頁の画像の大きさで */

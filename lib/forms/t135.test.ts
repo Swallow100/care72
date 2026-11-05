@@ -23,7 +23,8 @@ import { komorebiReadResult } from "./komorebi-form.fixture.ts";
 import { checkReadResult, LEDGER_ITEMS, type FieldBox, type FormMapping, type MappingField } from "./mapping.ts";
 import { fitText, FONT_MAX_PT, FONT_MIN_PT, textEm, type OverlaySheet as Sheet } from "./overlay-sheet.ts";
 import type { PageImage, PageImageBucket } from "./page-images.ts";
-import { joinParts, liveFont, partsOf, slotChanges, slotForField, toggleOption, type PaperSlot } from "./paper-fill.ts";
+import { joinParts, liveFont, livePlace, partsOf, slotChanges, slotForField, toggleOption, type PaperSlot } from "./paper-fill.ts";
+import { packInk } from "./ink.ts";
 import { mappedSubject, matsuyamaSubject, ruleReview } from "./review.ts";
 import { mappedPaper, matsuyamaPaper } from "./paper-fill-server.ts";
 import { paperQuestions } from "./paper-slots.ts";
@@ -258,10 +259,11 @@ describe("押して入れた値の行き先", () => {
     expect(await loadFormEntries(db, OFFICE, "p-01", "matsuyama")).toEqual([]);
   });
 
-  it("様式だけの欄に台帳の欄の鍵・形の合わない値は断る", async () => {
+  it("様式の手入れに手書きの欄・同意の無い範囲の台帳の欄・形の合わない値は断る", async () => {
     const bad = (fieldKey: string, value: unknown) =>
       call({ op: "put", entry: { id: "fe-bad-000001", kind: "field", fieldKey, page: null, box: null, value: JSON.stringify(value) } });
-    expect((await bad(fieldId("避難先"), "x")).status).toBe(400);
+    sqlite.prepare("UPDATE consents SET status = 'refused' WHERE person_id = 'p-01' AND kind = 'plan_share'").run();
+    expect((await bad(fieldId("医療機器を使っている"), true)).status).toBe(400);
     expect((await bad("f103", ["ない選択肢"])).status).toBe(400);
     expect((await bad("f101", "")).status).toBe(400);
     expect((await bad(fieldId("本人署名"), "署名")).status).toBe(400);
@@ -479,7 +481,7 @@ describe("紙から質問", () => {
     const qs = p.fill!.questions;
     expect(qs.length).toBeGreaterThan(0);
     expect(qs.length).toBeLessThan(all.length);
-    const keys = new Set(p.fill!.slots.filter((s) => s.empty && s.dest === "ledger").flatMap((s) => s.asks ?? []));
+    const keys = new Set(p.fill!.slots.filter((s) => s.gap === "ask" && s.dest === "ledger").flatMap((s) => s.asks ?? []));
     for (const q of qs) {
       expect(keys.has(q.key), q.key).toBe(true);
       expect(q.answer.kind).not.toBe("free");
@@ -528,6 +530,109 @@ describe("計画書（原本の枠の紙）", () => {
     // 計画書の様式だけの欄でない欄は断る
     const bad = await handleEntries(db, cm, { op: "put", personId: "p-01", formId: "matsuyama", entry: { id: "fe-rmap-00002", kind: "field", fieldKey: "shelter.city.place", page: null, box: null, value: JSON.stringify("x") } }, NOW);
     expect(bad.status).toBe(400);
+  });
+});
+
+describe("T133 の置き方と黄の塗り 2 つにそろえる", () => {
+  /** 玄関まで（台帳の歩行の言葉と様式の選択肢が合わない。T133 で「置けなかった」）を足した対応表 */
+  const withEntrance = (): FormMapping => {
+    const m = mapping();
+    return {
+      ...m,
+      fields: [
+        ...m.fields,
+        field({
+          id: "f106",
+          page: 2,
+          label: "玄関まで",
+          shape: "choice",
+          item: "care.walking",
+          options: ["自力", "家族と", "支援者と", "わからない"],
+          box: { x: 0.3, y: 0.66, w: 0.62, h: 0.03 },
+          optionBoxes: [0, 1, 2, 3].map((i) => ({ x: 0.31 + i * 0.14, y: 0.67, w: 0.018, h: 0.013 })),
+        }),
+      ],
+    };
+  };
+  const reinsert = (m: FormMapping, images = IMAGES) => {
+    sqlite.prepare("DELETE FROM form_mappings WHERE id = ?").run(MAPPING_ID);
+    sqlite
+      .prepare(
+        `INSERT INTO form_mappings (id, office_id, title, form_hash, source_kind, mapping, status, created_at, checked_at, updated_at, page_images)
+         VALUES (?, ?, ?, NULL, 'manual', ?, 'checked', ?, ?, ?, ?)`,
+      )
+      .run(MAPPING_ID, OFFICE, m.title, JSON.stringify(m), NOW.toISOString(), NOW.toISOString(), NOW.toISOString(), JSON.stringify(images));
+  };
+  const paperOf = async (m: FormMapping, images = IMAGES) => {
+    const rows = await rowsOf();
+    return { rows, ...(await mappedPaper(db, { rows, officeId: OFFICE, mappingId: MAPPING_ID, mapping: m, images, opts: OPTS, overlay: true, edit: true })) };
+  };
+
+  it("空いた欄の印は紙の黄の塗りの 2 つ（台帳に無い＝質問、置けなかった＝この様式の手入れ）", async () => {
+    const m = withEntrance();
+    reinsert(m);
+    const p = await paperOf(m);
+    const fills = new Map(p.overlay!.pages.flatMap((pg) => pg.fills.flatMap((f) => f.keys.map((k) => [k, f.kind ?? "ask"] as const))));
+    expect(fills.get("f106")).toBe("fix");
+    // 欄の一覧の空いた訳は紙の塗りと同じ
+    for (const s of p.fill!.slots) if (fills.has(s.key)) expect(s.gap, s.label).toBe(fills.get(s.key));
+    const entrance = slotOf(p.fill!.slots, "f106");
+    expect(entrance).toMatchObject({ gap: "fix", dest: "form", input: { kind: "choice" } });
+    if (entrance.input.kind === "choice") expect(entrance.input.options.map((o) => o.label)).toEqual(["自力", "家族と", "支援者と", "わからない"]);
+    // 台帳に無い欄（避難経路）は質問で埋める欄
+    const route = slotOf(p.fill!.slots, fieldId("避難経路"));
+    expect(route.gap).toBe("ask");
+    expect(route.asks?.length).toBeGreaterThan(0);
+    // 質問は台帳に無い欄の物だけ（置けなかった欄の歩行は聞かない）
+    const keys = new Set(p.fill!.slots.filter((s) => s.gap === "ask" && s.dest === "ledger").flatMap((s) => s.asks ?? []));
+    for (const q of p.fill!.questions) expect(keys.has(q.key), q.key).toBe(true);
+    expect(p.fill!.questions.some((q) => q.key === "care.walking")).toBe(false);
+
+    // 置けなかった欄をその場で: この様式の手入れとして □ に印（台帳の歩行は変えない）
+    const ledger0 = p.rows.person.ledger;
+    expect((await call({ op: "put", entry: { id: "fe-entr-00001", kind: "field", fieldKey: "f106", page: null, box: null, value: JSON.stringify(["家族と"]) } })).status).toBe(200);
+    const p1 = await paperOf(m);
+    expect(p1.rows.person.ledger).toBe(ledger0);
+    const marks = p1.overlay!.pages[1].items.filter((i) => i.kind === "mark" && i.fieldId === "f106");
+    expect(marks).toHaveLength(1);
+    expect(marks[0].box).toEqual(m.fields.find((f) => f.id === "f106")!.optionBoxes![1]);
+    expect(p1.overlay!.pages.some((pg) => pg.fills.some((f) => f.keys.includes("f106")))).toBe(false);
+    expect(slotOf(p1.fill!.slots, "f106")).toMatchObject({ dest: "form", entryId: "fe-entr-00001", value: ["家族と"], hand: { by: "山本" } });
+  });
+
+  it("見直しの一覧も同じ区別: 置けなかった欄は取込漏れで空欄に重ねない、台帳に無い欄は空欄", async () => {
+    const m = withEntrance();
+    reinsert(m);
+    const p = await paperOf(m);
+    const findings = ruleReview(mappedSubject(p.sheet, p.overlay!));
+    expect(findings.filter((f) => f.field === "f106").map((f) => f.kind)).toEqual(["carried"]);
+    expect(findings.filter((f) => f.field === fieldId("避難経路")).map((f) => f.kind)).toEqual(["blank"]);
+    // 見直しの行から送ると、置けなかった欄はこの様式の手入れの欄、台帳に無い欄は問いのある台帳の欄
+    expect(slotForField(p.fill!.slots, { field: "f106", items: [] })).toMatchObject({ gap: "fix", dest: "form" });
+    expect(slotForField(p.fill!.slots, { field: fieldId("避難経路"), items: [] })).toMatchObject({ gap: "ask", dest: "ledger" });
+  });
+
+  it("その場の入力の字の置き場と大きさは、紙に刷るときと同じ関数（印刷の字を避けた所）", async () => {
+    const m = mapping();
+    // 2 頁の避難先の欄の左に印刷の字（「名称」のような刷ってある字）
+    const box = m.fields.find((f) => f.id === fieldId("避難先"))!.box!;
+    const ink = packInk([{ x: box.x + 0.005, y: box.y + 0.006, w: 0.1, h: box.h - 0.012, box: false }]);
+    const images: PageImage[] = [A4, { ...A4, page: 2, ink }];
+    reinsert(m, images);
+    const p0 = await paperOf(m, images);
+    const slot = slotOf(p0.fill!.slots, fieldId("避難先"));
+    expect(slot.place?.ink.length).toBe(1);
+    const value = "こもれび小学校";
+    await inline(slot, value, p0.rows.person.version!);
+    const p1 = await paperOf(m, images);
+    const printed = textsOf(p1.overlay!, slot.key);
+    expect(printed).toHaveLength(1);
+    // 紙は印刷の字を避けてずらした所
+    expect(printed[0].box.x).toBeGreaterThan(box.x + 0.1);
+    const live = livePlace(slot, value, slot.box, { w: p1.overlay!.pages[1].image.w, h: p1.overlay!.pages[1].image.h });
+    expect(live.box).toEqual(printed[0].box);
+    expect(live.fontPt).toBe(printed[0].fontPt);
+    expect(live.overflow).toBe(false);
   });
 });
 
