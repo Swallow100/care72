@@ -91,6 +91,7 @@ export const METRICS: Metric[] = [
   { label: "見た目 ずらした字（欄の枠の中）", get: (r) => totals(r).look.shifted },
   { label: "見た目 置けなかった欄", get: (r) => totals(r).look.unplaced },
   { label: "見た目 台帳あり空欄", get: (r) => totals(r).look.blanks },
+  { label: "見た目 台帳あり空欄 うち選択肢に合わない値", get: (r) => totals(r).look.blanksChoice },
   { label: "見た目 伏字・仮の言い方", get: (r) => totals(r).look.masks },
   { label: "見た目 印刷の字の位置のある頁", get: (r) => totals(r).look.inkPages },
   { label: "送った文の氏名・電話・町名", get: (r) => r.leaks.strongHits },

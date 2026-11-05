@@ -79,6 +79,8 @@ export type ItemValue = {
   details?: ReadonlyArray<{ words: readonly string[]; detail: string; kind?: keyof typeof HAZARD_LABELS }>;
   /** 選択肢・□ の名前が値に合うか（T133。無ければ words と照らす） */
   match?: (label: string) => boolean;
+  /** 選択肢の字が同じときだけ照らす言葉（T133） */
+  exact?: readonly string[];
 };
 
 type Ctx = {
@@ -257,12 +259,15 @@ function emergency2(cell: (c: Contact | null) => Cell): Resolver {
 
 /** 選ぶ欄の言葉の別名（様式の選択肢の書き方の揺れ） */
 const SEX_WORDS = { female: ["女", "女性"], male: ["男", "男性"], other: ["その他"] } as const;
+// T133: 同居の家族を問う □（「同居家族 □いる □いない」）と、夫婦・子との同居を「家族と同居」の □ に
 const HOUSEHOLD_WORDS: Record<string, readonly string[]> = {
   alone: ["ひとり暮らし", "独居", "単身", "一人暮らし"],
-  with_spouse: ["夫婦", "高齢者のみ"],
-  with_child: ["子と同居"],
+  with_spouse: ["夫婦", "高齢者のみ", "家族と同居"],
+  with_child: ["子と同居", "家族と同居"],
   with_family: ["家族と同居"],
 };
+/** 選択肢の字が同じときだけ照らす言葉（含む・含まれるでは照らさない。「いる」は「〜している」にも入る） */
+const HOUSEHOLD_EXACT: Record<string, readonly string[]> = { alone: ["いない"], with_spouse: ["いる"], with_child: ["いる"], with_family: ["いる"] };
 const CONSENT_WORDS: Record<Exclude<ConsentStatus, "unconfirmed">, readonly string[]> = {
   granted: ["同意", "同意する", "はい", "有"],
   refused: ["不同意", "同意しない", "いいえ", "無"],
@@ -346,7 +351,7 @@ export const ITEM_VALUES: Record<LedgerItemKey, Resolver> = {
   "basic.household": (c) => {
     const h = c.ledger.basic.household;
     return h
-      ? { cell: value([t(HOUSEHOLD_LABELS[h])]), words: [HOUSEHOLD_LABELS[h], ...(HOUSEHOLD_WORDS[h] ?? [])] }
+      ? { cell: value([t(HOUSEHOLD_LABELS[h])]), words: [HOUSEHOLD_LABELS[h], ...(HOUSEHOLD_WORDS[h] ?? [])], exact: HOUSEHOLD_EXACT[h] }
       : { cell: unconfirmed(pendingOf(c.ledger, "basic.household")) };
   },
   "people.together": (c) => {
@@ -646,7 +651,8 @@ export function shapeCell(field: MappingField, v: ItemValue): Cell {
           }),
         };
     }
-    const hit = v.words ? matchOption(field.options, v.words) : -1;
+    const exactHit = v.exact ? field.options.findIndex((o) => v.exact!.some((w) => normalizeWord(o) === normalizeWord(w))) : -1;
+    const hit = exactHit >= 0 ? exactHit : v.words ? matchOption(field.options, v.words) : -1;
     if (hit >= 0) return { kind: "choice", options: field.options.map((label, i) => ({ label, on: i === hit })) };
     // あり・なし の 2 つを選ぶ欄（「介護保険 □なし □あり」「医療的ケア □なし □あり」）に値があれば あり（T133。値の中身は別の欄）
     const yes = field.options.findIndex((o) => YES.test(normalizeWord(o)));

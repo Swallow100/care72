@@ -15,9 +15,10 @@ import type { PageImage } from "../../../lib/forms/page-images.ts";
 import type { Cell } from "../../../lib/forms/matsuyama.ts";
 import type { PersonPageRows } from "../../../lib/person.ts";
 
-export type LookScore = Omit<LookCheck, "issues"> & { blanks: number; masks: number };
+/** blanksChoice は台帳あり空欄のうち、選ぶ欄で値が選択肢に合わず「その他」の空きも無い欄（要介護 1 の人の「要介護 3〜5」の □ のように、空くのが答えの欄も入る） */
+export type LookScore = Omit<LookCheck, "issues"> & { blanks: number; blanksChoice: number; masks: number };
 
-export const emptyLookScore = (): LookScore => ({ texts: 0, marks: 0, overlap: 0, outside: 0, neighbor: 0, shifted: 0, unplaced: 0, inkPages: 0, blanks: 0, masks: 0 });
+export const emptyLookScore = (): LookScore => ({ texts: 0, marks: 0, overlap: 0, outside: 0, neighbor: 0, shifted: 0, unplaced: 0, inkPages: 0, blanks: 0, blanksChoice: 0, masks: 0 });
 
 /** 伏字の跡・仮の言い方（括弧の全角・半角どちらも） */
 export const MASK_WORDS = /[（(]\s*(氏名|町名|電話|住所|郵便番号|メール|生年月日|市内|近所|同居|県外|遠方)\s*[）)]/;
@@ -46,7 +47,7 @@ function drawn(field: MappingField, sheet: OverlaySheet): boolean {
   });
 }
 
-export type LookResult = { score: LookScore; check: LookCheck; blanks: Array<{ field: string; label: string; item: string }>; masks: Array<{ field: string; label: string }> };
+export type LookResult = { score: LookScore; check: LookCheck; blanks: Array<{ field: string; label: string; item: string; choice: boolean }>; masks: Array<{ field: string; label: string }> };
 
 /**
  * 1 枚の紙の見た目の数。goldItems は正解の表のある様式の、AI の欄の id → 正解の項目と別解（合わせた欄だけ）
@@ -77,7 +78,8 @@ export function lookOfPaper(o: {
         if (field.removed || field.shape === "handwrite" || !field.item) continue;
         if (!hasValue(field, cell)) continue;
         const actual = o.mapping.fields.find((f) => f.id === field.id)!;
-        if (!drawn(actual, o.overlay)) blanks.push({ field: field.id, label: nameOf(field), item: field.item });
+        const choice = cell.kind === "choice" && field.shape === "choice" && !cell.options.some((x) => x.on);
+        if (!drawn(actual, o.overlay)) blanks.push({ field: field.id, label: nameOf(field), item: field.item, choice });
       }
   const masks: LookResult["masks"] = [];
   for (const p of o.overlay.pages)
@@ -88,11 +90,11 @@ export function lookOfPaper(o: {
       }
   for (const a of o.overlay.annex) if (a.lines.some((l) => MASK_WORDS.test(l))) masks.push({ field: a.fieldId, label: a.label });
   const { issues: _i, ...rest } = check;
-  return { score: { ...rest, blanks: blanks.length, masks: masks.length }, check, blanks, masks };
+  return { score: { ...rest, blanks: blanks.length, blanksChoice: blanks.filter((b) => b.choice).length, masks: masks.length }, check, blanks, masks };
 }
 
 export function addLook(a: LookScore, b: LookScore): LookScore {
   const out = { ...a };
-  for (const k of Object.keys(b) as Array<keyof LookScore>) out[k] += b[k];
+  for (const k of Object.keys(b) as Array<keyof LookScore>) out[k] = (out[k] ?? 0) + (b[k] ?? 0);
   return out;
 }
