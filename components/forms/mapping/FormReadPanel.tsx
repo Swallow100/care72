@@ -19,7 +19,7 @@ import { Loader72 } from "@/components/ui/Loader72";
 import { MunicipalPicker, type MunicipalPickerProps } from "./MunicipalPicker";
 import { LIMITS, MAPPING_LABELS as L } from "@/lib/forms/mapping";
 import { inkOfBlob } from "@/lib/forms/ink-browser";
-import { buildFormReadForm, FORM_READ_PAGES_MAX } from "@/lib/forms/read-upload";
+import { buildFormReadForm, FORM_READ_PAGES_MAX, formReadPageBytes } from "@/lib/forms/read-upload";
 import { shrinkImage } from "@/lib/forms/shrink-image";
 import { PLACE_LABELS, REDACT_LABELS } from "@/lib/labels";
 import { isLegacyOffice, isZip, OFFICE_ACCEPT, OFFICE_FILE_MAX_BYTES } from "@/lib/ooxml/sniff";
@@ -210,7 +210,8 @@ export function FormReadPanel({ aiReady, municipal }: { aiReady: boolean; munici
         </p>
       )}
 
-      {redacting && <RedactSheet files={redacting} onCancel={cancelRedact} onSend={(pages) => void send(pages)} />}
+      {/* 1 要求に全部の頁を載せるので、頁の数で割った大きさに収めて JPEG にする（T146） */}
+      {redacting && <RedactSheet files={redacting} onCancel={cancelRedact} onSend={(pages) => void send(pages)} pageBytes={formReadPageBytes} />}
     </div>
   );
 }

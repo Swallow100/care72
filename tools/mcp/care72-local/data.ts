@@ -9,6 +9,7 @@
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { CHECK_OFFICE_ID } from "../../../lib/auth/demo.ts";
 import { parseLedger } from "../../../lib/db/ledger.ts";
 import { CLOCK_UNIT_LABELS } from "../../../lib/labels.ts";
 import type {
@@ -86,9 +87,12 @@ export type Roster = {
   key: PseudonymKey;
 };
 
-/** 手元の D1 の本人を全員読み、仮名化の層を通す。on は年齢を数える日（既定は今日） */
+/**
+ * 手元の D1 の本人を全員読み、仮名化の層を通す。on は年齢を数える日（既定は今日）。
+ * 確認用の事業所（T144）の 10 人はデモ事業所の 10 人の写しなので読まない（同じ氏名が 2 人ずつ並び、仮名がずれるため）
+ */
 export function loadRoster(db: DatabaseSync, on?: string): Roster {
-  const people = all(db, "SELECT id, office_id, name, kana, birth_date, ledger FROM people ORDER BY id");
+  const people = all(db, "SELECT id, office_id, name, kana, birth_date, ledger FROM people WHERE office_id <> ? ORDER BY id", CHECK_OFFICE_ID);
   const contacts = all(db, "SELECT * FROM contacts ORDER BY person_id, sort, id") as unknown as ContactRow[];
   const clocks = all(db, "SELECT * FROM clocks ORDER BY person_id, sort, id") as unknown as ClockRow[];
   const consents = all(db, "SELECT person_id, kind, status FROM consents") as Array<{

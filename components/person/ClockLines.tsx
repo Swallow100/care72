@@ -3,11 +3,13 @@
 // 1 行目は「物の名前 きっかけから長さ 残り」（「酸素 内蔵電池 停電から 2 時間 残り 30 分」）、
 // 2 行目に小さく「出典 説明書」「確認日 未確認」と頼り先・メモ。長さの未確認は「手元の量 未確認」と何の値かを前に置き、残りの所に置かない。
 // 色は残り（走っている時計の今の残り）か、平時の長さの色だけ（tone）。状態を持たない（Server Component のまま使える）。
+// quiet（本人のページの見る方の画面、T143）は 2 行目を出さず、出典・確認日・メモは名前に触れた時に出す（components/person/Hint）。
 
 import type { ClockText } from "@/lib/ledger-words";
 import { groupByKind } from "@/lib/ledger-words";
 import type { StateTone } from "@/lib/person";
 import { TONE_TEXT } from "@/components/ui/Tag";
+import { Hint } from "@/components/person/Hint";
 
 export type ClockLineItem = {
   id: string;
@@ -24,7 +26,7 @@ export type ClockLineItem = {
   note?: string | null;
 };
 
-export function ClockLines({ items, boxed = false }: { items: ReadonlyArray<ClockLineItem>; boxed?: boolean }) {
+export function ClockLines({ items, boxed = false, quiet = false }: { items: ReadonlyArray<ClockLineItem>; boxed?: boolean; quiet?: boolean }) {
   return (
     <div className="space-y-1.5" data-clock-lines>
       {groupByKind(items.map((i) => ({ ...i, kind: i.text.kind }))).map((g) => (
@@ -33,7 +35,7 @@ export function ClockLines({ items, boxed = false }: { items: ReadonlyArray<Cloc
           <ul className="mt-0.5 space-y-1">
             {g.items.map((k) => (
               <li key={k.id} className={boxed ? "rounded bg-panel2 px-2 py-1" : undefined} data-clock={k.id}>
-                <ClockLine item={k} />
+                <ClockLine item={k} quiet={quiet} />
               </li>
             ))}
           </ul>
@@ -43,13 +45,20 @@ export function ClockLines({ items, boxed = false }: { items: ReadonlyArray<Cloc
   );
 }
 
-function ClockLine({ item }: { item: ClockLineItem }) {
+function ClockLine({ item, quiet }: { item: ClockLineItem; quiet: boolean }) {
   const t = item.text;
+  const hint = [t.source, t.confirmed, item.note?.trim() || null].filter((x): x is string => !!x).join("　");
   const spanTone = item.toneOnSpan && item.tone && !t.missing ? `font-bold ${TONE_TEXT[item.tone]}` : "";
   return (
     <>
       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-        <span className="font-bold">{t.name}</span>
+        {quiet ? (
+          <Hint hint={hint} className="font-bold">
+            {t.name}
+          </Hint>
+        ) : (
+          <span className="font-bold">{t.name}</span>
+        )}
         {t.missing && t.what && item.missingMark ? (
           <>
             <span className="text-muted" data-clock-span="missing">
@@ -85,11 +94,13 @@ function ClockLine({ item }: { item: ClockLineItem }) {
           </span>
         )}
       </div>
-      <div className="flex flex-wrap gap-x-3 text-xs text-muted tabular-nums">
-        <span data-clock-source={t.sourceMissing ? "missing" : "set"}>{t.source}</span>
-        <span data-clock-confirmed={t.confirmedMissing ? "missing" : "set"}>{t.confirmed}</span>
-        {item.note && <span>{item.note}</span>}
-      </div>
+      {!quiet && (
+        <div className="flex flex-wrap gap-x-3 text-xs text-muted tabular-nums">
+          <span data-clock-source={t.sourceMissing ? "missing" : "set"}>{t.source}</span>
+          <span data-clock-confirmed={t.confirmedMissing ? "missing" : "set"}>{t.confirmed}</span>
+          {item.note && <span>{item.note}</span>}
+        </div>
+      )}
     </>
   );
 }

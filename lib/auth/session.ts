@@ -6,6 +6,7 @@
 // 期限はリンクの期限と同じ（最長 180 日。本人・家族はホーム画面に追加して何か月も開く）。版（g）とリンクを作った時刻（li）は毎回 D1 と比べ、作り直すと切れる。
 // account の r（T95）: 見本のケアマネ（山本）が役変更で選んだ役。審査員の r と同じ一覧で、ケアマネの役のときは付けない。
 // judge の r の sandbox と b（T115）: 審査員の試用事業所。account の r には無い（山本は試用事業所を作れない）。
+// judge の a（T144）: 審査員 2・3 の書き手のアカウント。審査員 1 は付けない（前の cookie と同じ形）。
 
 import { z } from "zod";
 import { PHONE_LINK_TTL_SEC } from "../qr/phone-link.ts";
@@ -45,6 +46,11 @@ const payloadSchema = z.discriminatedUnion("k", [
        * 同じ事業所へ戻る。毎朝 4 時に事業所ごと消えたら、次に選んだときに作り直す。署名の中なので、ほかの審査員の事業所は指せない
        */
       b: z.string().min(1).max(128).optional(),
+      /**
+       * 審査員の書き手のアカウント（T144、lib/auth/demo.ts の JUDGE_ACCOUNTS）。入ったログインの ID で決まり、署名の中なので替えられない。
+       * 無いのは審査員 1（T144 の前の cookie と、審査員 1 のログイン）
+       */
+      a: z.string().min(1).max(128).optional(),
     })
     .strict(),
   z

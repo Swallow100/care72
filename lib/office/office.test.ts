@@ -455,8 +455,11 @@ describe("種の入れ直し", () => {
     await addSato();
     await setUnlisted(db, officeActor(yamamoto())!, { personId: "p-05", unlisted: true }, AT);
     for (const s of seedStatements()) sqlite.exec(s);
-    expect(count("SELECT count(*) AS n FROM people")).toBe(10);
-    expect(count("SELECT count(*) AS n FROM accounts WHERE office_id = 'office-demo'")).toBe(3);
+    // 確認用の事業所（T144）の 10 人の写しも種
+    expect(count("SELECT count(*) AS n FROM people WHERE office_id = 'office-demo'")).toBe(10);
+    expect(count("SELECT count(*) AS n FROM people")).toBe(20);
+    // 山本・西村・審査員 3 つ（T144）
+    expect(count("SELECT count(*) AS n FROM accounts WHERE office_id = 'office-demo'")).toBe(5);
     expect(count("SELECT count(*) AS n FROM office_timeline_entries")).toBe(0);
     expect(count("SELECT count(*) AS n FROM people WHERE unlisted_at IS NOT NULL")).toBe(0);
   });

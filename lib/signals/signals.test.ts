@@ -288,7 +288,7 @@ describe("信号の保存", () => {
     await saveSignal(db, signalScope(self())!, red({ canMove: false }), at(1));
     const page = await loadPersonPage(db, careManager, "p-01");
     const item = timelineItems(page!).find((t) => t.kind === "安否")!;
-    expect(item).toMatchObject({ tone: "urgent", body: "無事じゃない 動けない・未回答 3", who: "本人 審査員" });
+    expect(item).toMatchObject({ tone: "urgent", body: "無事じゃない 動けない・未回答 3", who: "本人 審査員 1" });
   });
 });
 
