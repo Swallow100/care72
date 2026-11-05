@@ -37,6 +37,9 @@ export type Totals = {
   /** 手の決まりで押せないはずの手が打てた数・夜の訪問の所要が足りない数（T121。決まりを送った回は 0 のはず） */
   termsRan?: number;
   termsDark?: number;
+  /** 想定に合わない物（T125。直したあとは 0 のはず）と、1 つの門が捨てた・直した数 */
+  fitMisfit?: number;
+  fitGated?: number;
   advanceP50: number | null;
   advanceP95: number | null;
   usdPerRun: number | null;
@@ -94,6 +97,8 @@ export function totalsOf(runs: ReadonlyArray<RunSummary>): Totals {
     termsRefused: sum(n.map((x) => x.terms?.refused ?? 0)),
     termsRan: sum(n.map((x) => x.terms?.ran ?? 0)),
     termsDark: sum(n.map((x) => x.terms?.dark ?? 0)),
+    fitMisfit: sum(n.map((x) => x.fit?.misfit ?? 0)),
+    fitGated: sum(n.map((x) => x.fit?.gated ?? 0)),
     advanceP50: mean(n.map((x) => x.timing.advanceP50)),
     advanceP95: max(n.map((x) => x.timing.advanceP95)),
     usdPerRun: mean(n.map((x) => x.cost.usd)),
@@ -153,6 +158,8 @@ export const METRICS: ReadonlyArray<Metric> = [
   { label: "失敗した要求", get: (s) => s.totals.opFailed + s.totals.exceptions, format: int, lowerBetter: true },
   { label: "手の決まりで断った手（決まりどおり）", get: (s) => s.totals.termsRefused ?? 0, format: int },
   { label: "手の決まりで押せない手が打てた・夜の所要不足", get: (s) => (s.totals.termsRan ?? 0) + (s.totals.termsDark ?? 0), format: int, lowerBetter: true },
+  { label: "想定に合わない物（出来事・言葉・所要の理由・着信）", get: (s) => s.totals.fitMisfit ?? 0, format: int, lowerBetter: true },
+  { label: "1 つの門が捨てた・直した物", get: (s) => s.totals.fitGated ?? 0, format: int },
   { label: "AI の呼び出し/回（ai_calls）", get: (s) => s.totals.callsPerRun, format: two },
   { label: "1 訓練の上限 150 との比（最大）", get: (s) => s.totals.capRatioMax, format: pct },
   { label: "1 日の上限 200 との比（最大）", get: (s) => s.totals.dayRatioMax, format: pct },

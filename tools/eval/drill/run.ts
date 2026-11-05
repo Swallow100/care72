@@ -83,7 +83,9 @@ export function checkContext(): CheckContext {
   }
   // 生年月日（台の表で和暦・略記・漢数字の書き方も。T118）
   const births = SEED_SOURCES.flatMap((s) => (s.person.birth_date ? [{ iso: s.person.birth_date, what: "生年月日（台の表）" }] : []));
-  return { key, extra, births };
+  // 本人ごとの台帳のハザード（T125。想定に合わない「浸水」の検査）
+  const hazards = Object.fromEntries(SEED_SOURCES.map((s) => [s.person.id, s.ledger.evacuation.hazards.map((h) => h.kind)]));
+  return { key, extra, births, hazards };
 }
 
 const pad = (n: number) => String(n).padStart(2, "0");
