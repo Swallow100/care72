@@ -8,7 +8,7 @@ import { DrillRowDetail } from "../components/drill/DrillRowDetail.tsx";
 import { FullDetail } from "../components/list/FullDetail.tsx";
 import { RowDetail } from "../components/list/RowDetail.tsx";
 import { PersonView } from "../components/person/PersonView.tsx";
-import { SEED_PEOPLE, seedConsents, type SeedPerson } from "../seed/people.ts";
+import { seedConsents, type SeedPerson } from "../seed/people.ts";
 import { toCaseloadRows } from "./caseload.ts";
 import type { ContactRow, DrillAction } from "./db/types.ts";
 import type { DisasterSituation } from "./disaster/state.ts";
@@ -18,6 +18,8 @@ import { clockText } from "./ledger-words.ts";
 import type { ClockForDetail, ContactForDetail, RowDetail as Detail } from "./list/detail.ts";
 import { buildFullDetail, withoutPhones } from "./list/full.ts";
 import { toPersonView, type PersonPageRows } from "./person.ts";
+// T142 で種の台帳を埋めた。このテストは空いた欄を前提にするので、T142 より前の空きの多い形（seed/sparse.ts）を使う
+import { SPARSE_PEOPLE } from "../seed/sparse.ts";
 
 // 担当一覧の行の詳細の電話のボタン（CallButtons）が読む
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: () => {}, push: () => {} }) }));
@@ -31,7 +33,7 @@ const SIT: DisasterSituation = {
   outageTowns: null,
 };
 
-const seed = (id: string) => SEED_PEOPLE.find((p) => p.person.id === id)!;
+const seed = (id: string) => SPARSE_PEOPLE.find((p) => p.person.id === id)!;
 const contactsOf = (p: SeedPerson): ContactForDetail[] =>
   p.contacts.map((c, i) => ({ kana: null, address: null, mobile: null, ...c, person_id: p.person.id, sort: i }) as ContactForDetail);
 const clocksOf = (p: SeedPerson): Array<ClockForDetail & { person_id: string; sort: number }> =>
@@ -175,7 +177,7 @@ describe("「全部」（台帳の平時の情報）", () => {
   });
 
   it("担当一覧の右の面と同じ組み立てなので、種の 10 人で落ちない", () => {
-    for (const p of SEED_PEOPLE) {
+    for (const p of SPARSE_PEOPLE) {
       const full = buildFullDetail({ person: { ...p.person, ledger: JSON.stringify(p.ledger) }, contacts: contactsOf(p), clocks: clocksOf(p), today: TODAY });
       expect(full.sections.length).toBe(4);
       expect(full.contacts.every((c) => !["home_doctor", "pharmacy", "dialysis_center"].includes(c.kind))).toBe(true);

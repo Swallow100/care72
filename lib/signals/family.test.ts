@@ -34,13 +34,15 @@ import { familyLogBody } from "./labels.ts";
 import type { Delivery } from "./outbox.ts";
 import { allFamilyWords } from "./phrases.ts";
 import { saveSignal, signalScope } from "./save.ts";
+// T142 で種の台帳を埋めた。このテストは空いた欄を前提にするので、T142 より前の空きの多い形（seed/sparse.ts）を使う
+import { SPARSE_PEOPLE } from "../../seed/sparse.ts";
 
 let sqlite: DatabaseSync;
 let db: ReturnType<typeof d1FromSqlite>;
 
 beforeEach(() => {
   sqlite = migratedSqlite();
-  for (const s of seedStatements()) sqlite.exec(s);
+  for (const s of seedStatements({ people: SPARSE_PEOPLE })) sqlite.exec(s);
   db = d1FromSqlite(sqlite);
 });
 afterEach(() => sqlite.close());
