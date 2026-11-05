@@ -3,7 +3,8 @@
 // 打てる手の候補（docs/tasks/T126.md）。対応の欄（ActionPanel）の手の段の上と、本人の詳細（DrillRowDetail）に同じ形で出す。
 // 1 行 = 元（頼み事・公表の事実・時計。同じ手の並びの元はまとめた物）→ 手のボタン。電話の手が全部押せない時は「代替」の 1 行。
 // 中身は lib/drill/action-hints.ts（表と可否。色と連絡順には使わない）。候補は短い印で、何をすべきとは書かない。
-// 押せる候補を押すと、対応の欄でその本人とその手を選ぶ（対応の欄の中は onPick、本人の詳細からは window の出来事 DRILL_PICK_EVENT）。
+// 押せる候補を押すと、対応の欄でその本人とその手を選ぶ（対応の欄の中は onPick、本人の詳細からは対応の欄に渡す口 act-pick の pickAct。
+// 詳細の連絡先の行 T132 と同じ口）。
 // 押せない候補は薄く（地を外し字を弱く）、理由の 2〜4 字は読める濃さで残す。手配済は押せるまま印だけ。押したときは灰色だけ（Button）。
 
 import { TONE_TEXT } from "@/components/person/parts";
@@ -11,11 +12,8 @@ import { Button } from "@/components/ui/Button";
 import type { DrillAction } from "@/lib/db/types";
 import { ACTOR_LABELS, HINT_LABELS, timeParts, type ActionHints, type HintAct, type HintSource } from "@/lib/drill/action-hints";
 import { ACTION_LABELS, ACTION_UI } from "@/lib/drill/labels";
+import { pickAct } from "./act-pick";
 import { ACTION_ICONS } from "./icons";
-
-/** 本人の詳細の候補を押したとき、対応の欄へ送る出来事の名前（detail: { person, kind }） */
-export const DRILL_PICK_EVENT = "care72:drill-pick";
-export type DrillPick = { person: string; kind: DrillAction };
 
 /** 押せない手の見た目（地を外し、字とアイコンを薄く。理由の字は別に text-muted で残す） */
 export const FADED = "bg-transparent! text-muted/60! font-normal!";
@@ -90,7 +88,7 @@ function HintButton({
 }
 
 /**
- * 候補の行の並び。onPick が無ければ（本人の詳細）、押すと DRILL_PICK_EVENT を送る。inPanel は対応の欄の中（面の上の灰色のボタン）、
+ * 候補の行の並び。onPick が無ければ（本人の詳細）、押すと対応の欄に渡す口（act-pick の pickAct）で本人と手を送る。inPanel は対応の欄の中（面の上の灰色のボタン）、
  * 本人の詳細は面の中の上なので白のボタン
  */
 export function ActionHintRows({
@@ -111,7 +109,7 @@ export function ActionHintRows({
   const pick =
     onPick ??
     ((kind: DrillAction) => {
-      window.dispatchEvent(new CustomEvent<DrillPick>(DRILL_PICK_EVENT, { detail: { person, kind } }));
+      pickAct({ person, kind, target: null });
     });
   const row = (key: string, head: React.ReactNode, acts: ReadonlyArray<HintAct>, attr: Record<string, string>) => (
     <div key={key} className="flex flex-wrap items-center gap-x-1.5 gap-y-1" {...attr}>

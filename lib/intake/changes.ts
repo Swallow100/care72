@@ -33,6 +33,7 @@ import {
   PENDING_STATUS_LABELS,
   PLACE_LABELS,
 } from "../labels.ts";
+import { clockText } from "../ledger-words.ts";
 import { evacMapText, type EvacMapValue } from "../map/route-edit.ts";
 import { hasMaskMark, MASK_MARKS as PSEUDONYM_MARKS } from "../pseudonym/index.ts";
 import { displayValue, intakeField } from "./fields.ts";
@@ -228,7 +229,8 @@ export function changeText(c: IntakeChange): string {
     case "clockSeen":
       return "確認";
     case "clockAdd":
-      return join([c.value.label, c.value.value != null && c.value.unit ? `${c.value.value} ${CLOCK_UNIT_LABELS[c.value.unit]}` : "未確認", CLOCK_START_LABELS[c.value.startsOn]]);
+      // 行の詳細・本人のページと同じ時計の言葉（T132、lib/ledger-words.ts）: 「ワーファリン 手元の量 未確認（発災から数える）」
+      return clockText({ ...c.value, starts_on: c.value.startsOn, source_note: c.value.sourceNote ?? null }).line;
     case "clockStart":
       return CLOCK_START_LABELS[c.to];
     case "address":

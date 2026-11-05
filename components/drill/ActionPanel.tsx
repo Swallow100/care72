@@ -19,7 +19,7 @@
 // API・保存の形・前の訓練のメモと記録の手の表示は今のまま。出さない手は lib/drill/action-hints.ts の PANEL_HIDDEN）。
 
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { AiMark } from "@/components/person/parts";
 import { Button } from "@/components/ui/Button";
 import { PlayIcon, ReadIcon } from "@/components/ui/Icon";
@@ -41,7 +41,8 @@ import type { FreePlanView } from "@/lib/drill/http";
 import { ACTION_LABELS, ACTION_UI, CALL_STATUS_LABELS, DRILL_LABELS } from "@/lib/drill/labels";
 import type { DrillContact } from "@/lib/drill/view";
 import type { FictionKind } from "@/lib/drill/fiction";
-import { ActionHintRows, ActTime, DRILL_PICK_EVENT, FADED, GROUP_ROW, PICKED, type DrillPick } from "./ActionHints";
+import { useActPick } from "./act-pick";
+import { ActionHintRows, ActTime, FADED, GROUP_ROW, PICKED } from "./ActionHints";
 import { FictionalMark } from "./Fictional";
 import { ACTION_ICONS } from "./icons";
 
@@ -169,20 +170,16 @@ export function ActionPanel({
     setError(null);
   };
 
-  // 本人の詳細の候補を押したとき（T126）: その本人とその手を選び、この欄を見える所へ
-  useEffect(() => {
-    const on = (e: Event) => {
-      const d = (e as CustomEvent<DrillPick>).detail;
-      if (!d || !people.some((p) => p.id === d.person)) return;
-      setPerson(d.person);
-      setKind(d.kind);
-      setTarget(picksTarget(d.kind) && actionRow(d.kind).fixed ? FIXED : null);
-      setError(null);
-      root.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-    };
-    window.addEventListener(DRILL_PICK_EVENT, on);
-    return () => window.removeEventListener(DRILL_PICK_EVENT, on);
-  }, [people]);
+  // 本人の詳細から（1 つの口 components/drill/act-pick.ts）: 打てる手の候補（T126、本人と手）と連絡先の行（T132、本人と連絡の手と
+  // その連絡先）。その本人・手・相手を選び、この欄を見える所へ。相手が無ければ固定の相手のある手は固定の相手
+  useActPick((d) => {
+    if (!people.some((p) => p.id === d.person)) return;
+    setPerson(d.person);
+    setKind(d.kind);
+    setTarget(d.target ?? (picksTarget(d.kind) && actionRow(d.kind).fixed ? FIXED : null));
+    setError(null);
+    root.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  });
   const hintsNow = person ? (hints?.[person] ?? null) : null;
 
   const run = async () => {

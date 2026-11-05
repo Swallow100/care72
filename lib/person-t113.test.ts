@@ -72,9 +72,9 @@ describe("関係者の面（T113）", () => {
     expect(list?.label).toBe("連絡先");
     const lines = linesOf(list);
     expect(lines).toHaveLength(1);
-    expect(lineText(lines[0])).toBe("架空 一郎 長男 家族 緊急 1 支援 1 夜間可 市内 車 スマホ 090-0000-0091");
+    expect(lineText(lines[0])).toBe("架空 一郎 長男 家族 緊急 1 支援 1 夜間 来訪可 市内 車 スマホ 090-0000-0091");
     // 役割は色の無い印（状態の 4 色を使わない）
-    expect(lines[0].filter((s) => s.mark).map((s) => s.text)).toEqual(["家族", "緊急 1", "支援 1", "夜間可"]);
+    expect(lines[0].filter((s) => s.mark).map((s) => s.text)).toEqual(["家族", "緊急 1", "支援 1", "夜間 来訪可"]);
     expect(lines[0].some((s) => s.tone && s.tone !== "muted")).toBe(false);
     // 埋まった役割の行は出さない（家族・緊急連絡先・支援者1・夜間支援の 4 か所に同じ人を並べない）
     for (const key of ["people.family", "people.emergency", "people.supporter1", "people.night_supporter"]) {
@@ -100,7 +100,7 @@ describe("関係者の面（T113）", () => {
     const v = toPersonView(seedRows(onePerson({ supporter_order: null, night_ok: 0 })), { today: TODAY });
     expect(rowOf(v, "people.supporter1")?.field).toEqual({ kind: "none", tone: "check" });
     expect(rowOf(v, "people.night_supporter")?.field).toEqual({ kind: "none" });
-    expect(lineText(linesOf(rowOf(v, "people.contacts"))[0])).toContain("夜間不可");
+    expect(lineText(linesOf(rowOf(v, "people.contacts"))[0])).toContain("夜間 来訪不可");
   });
 
   it("連絡先の行は緊急の順 → 支援の順 → ほかの順。本人とかかりつけ・薬局・透析施設は出さない", () => {
