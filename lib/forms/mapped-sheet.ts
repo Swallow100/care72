@@ -20,9 +20,12 @@ import {
   CONTACT_FLAG_LABELS,
   CONTACT_KIND_LABELS,
   CONTACT_REACH_LABELS,
+  DEVICE_LABELS,
+  deviceText,
   HAZARD_LABELS,
   HOUSEHOLD_LABELS,
   HOUSING_TYPE_LABELS,
+  MEDICATION_CATEGORY_LABELS,
   MY_TIMELINE_LABELS,
   SEX_LABELS,
   SMARTPHONE_LABELS,
@@ -51,6 +54,7 @@ import {
   type Piece,
   type PieceLine,
 } from "./matsuyama.ts";
+import { heldFields } from "./field-risk.ts";
 import { ledgerItem, type FormMapping, type LedgerItemKey, type MappingField } from "./mapping.ts";
 import { warekiText } from "./wareki.ts";
 import { transportText } from "../map/transport.ts";
@@ -59,9 +63,12 @@ import { transportText } from "../map/transport.ts";
 
 /**
  * 項目の値。cell は欄に出す物。words は選ぶ欄で選択肢と照らす言葉（同意 → 同意・同意する）。
- * flag は □ 1 つの欄の「当てはまるか」（null は分からない → 未確認）
+ * flag は □ 1 つの欄の「当てはまるか」（null は分からない → 未確認）。
+ * T122: multi は種類が並ぶ項目（自宅のリスク・支援の内容・医療機器・常用薬・既往症など）で、複数選択の欄では words に合う選択肢の全部に印。
+ * kinds はその項目の種類の名前の全部（医療機器なら 在宅酸素・人工呼吸器…）。□ ごとに種類を問う欄（「在宅酸素療法（HOT）」の □）は、
+ * □ の名前が種類のどれかなら、その種類が台帳にあるときだけ印（前は機器が 1 つでもあれば全部の □ に印が付いた）
  */
-export type ItemValue = { cell: Cell; words?: readonly string[]; flag?: boolean | null };
+export type ItemValue = { cell: Cell; words?: readonly string[]; flag?: boolean | null; multi?: boolean; kinds?: readonly string[] };
 
 type Ctx = {
   rows: PersonPageRows;
@@ -99,12 +106,22 @@ function withPending(cell: Cell, reason: PendingStatus | undefined): Cell {
 const text = (v: string | null | undefined, reason?: PendingStatus, emphasize = false): Cell =>
   v == null || v.trim() === "" ? unconfirmed(reason) : withPending(value([emphasize ? strong(v) : t(v)]), reason);
 
-/** 配列の値。無ければ未確認、空ならなし */
+/** 配列の値。無ければ未確認、空ならなし。複数選択の欄では値の全部に印、「あり・なし」の欄はあり（T122） */
 function list(v: readonly string[] | undefined, reason?: PendingStatus): ItemValue {
   if (v === undefined) return { cell: unconfirmed(reason), flag: null };
-  if (v.length === 0) return { cell: withPending(NONE, reason), flag: false, words: ["なし"] };
-  return { cell: withPending(value([t(v.join("・"))]), reason), flag: true };
+  if (v.length === 0) return { cell: withPending(NONE, reason), flag: false, words: ["なし"], multi: true };
+  return { cell: withPending(value([t(v.join("・"))]), reason), flag: true, words: [...v, "あり"], multi: true };
 }
+
+/** 自宅のリスクの種類の言い方（様式の選択肢「洪水」「土砂災害」と台帳の「浸水」「土砂」を照らす。T122） */
+const HAZARD_WORDS: Record<keyof typeof HAZARD_LABELS, readonly string[]> = {
+  flood: ["浸水", "洪水", "水害"],
+  landslide: ["土砂", "土砂災害", "がけ崩れ"],
+  tsunami: ["津波"],
+  other: ["その他"],
+};
+const DEVICE_KINDS = Object.values(DEVICE_LABELS).filter((l) => l !== "その他");
+const MEDICATION_KINDS = Object.values(MEDICATION_CATEGORY_LABELS).filter((l) => l !== "その他");
 
 function bool(v: boolean | undefined, reason?: PendingStatus): ItemValue {
   if (v === undefined) return { cell: unconfirmed(reason), flag: null };
@@ -324,12 +341,24 @@ export const ITEM_VALUES: Record<LedgerItemKey, Resolver> = {
   "medical.devices": (c) => {
     const devices = c.ledger.medical.devices;
     const reason = pendingOf(c.ledger, "medical.devices");
-    if (devices.length === 0) return { cell: withPending(NONE, reason), flag: reason ? null : false };
+    if (devices.length === 0) return { cell: withPending(NONE, reason), flag: reason ? null : false, words: ["なし"], multi: true, kinds: DEVICE_KINDS };
     const used = new Set<string>();
     const clocks = [...c.rows.clocks].sort((a, b) => a.sort - b.sort || (a.id < b.id ? -1 : 1));
-    return { cell: withPending(value(...devices.map((d) => deviceLine(d, clocks, used))), reason), flag: true };
+    return {
+      cell: withPending(value(...devices.map((d) => deviceLine(d, clocks, used))), reason),
+      flag: true,
+      words: [...devices.map((d) => deviceText(d)), "あり"],
+      multi: true,
+      kinds: DEVICE_KINDS,
+    };
   },
-  "medical.medications": fromSheet("medical.drugs"),
+  "medical.medications": (c) => {
+    const meds = c.ledger.medical.medications;
+    const words = [...new Set(meds.flatMap((m) => [m.name, ...(m.category !== "other" ? [MEDICATION_CATEGORY_LABELS[m.category]] : [])])), "あり"];
+    const reason = pendingOf(c.ledger, "medical.medications");
+    const flag = meds.length > 0 ? true : reason ? null : false;
+    return { cell: c.sheet.cells["medical.drugs"], flag, words: meds.length > 0 ? words : ["なし"], multi: true, kinds: MEDICATION_KINDS };
+  },
   "medical.doctor": fromSheet("medical.doctor"),
   "medical.dialysis": (c) => {
     const centers = c.contacts.filter((x) => x.kind === "dialysis_center");
@@ -345,11 +374,14 @@ export const ITEM_VALUES: Record<LedgerItemKey, Resolver> = {
   "evacuation.hazards": (c) => {
     const hz = c.ledger.evacuation.hazards;
     const reason = pendingOf(c.ledger, "evacuation.hazards");
-    if (hz.length === 0) return { cell: withPending(NONE, reason), flag: reason ? null : false, words: ["なし"] };
+    const kinds = Object.values(HAZARD_WORDS).flat();
+    if (hz.length === 0) return { cell: withPending(NONE, reason), flag: reason ? null : false, words: ["なし"], multi: true, kinds };
     return {
       cell: withPending(value(hz.flatMap((h, i) => [...(i > 0 ? [sub("／")] : []), strong(HAZARD_LABELS[h.kind]), ...(h.depthM != null ? [sub(`${h.depthM} m`)] : []), ...(h.note?.trim() ? [sub(h.note.trim())] : [])])), reason),
       flag: true,
-      words: hz.map((h) => HAZARD_LABELS[h.kind]),
+      words: hz.flatMap((h) => HAZARD_WORDS[h.kind]),
+      multi: true,
+      kinds,
     };
   },
   "evacuation.destination1": fromSheet("shelter.city.place"),
@@ -365,6 +397,9 @@ export const ITEM_VALUES: Record<LedgerItemKey, Resolver> = {
     return {
       cell: withPending(value([t(s.map((k) => SUPPORT_KIND_LABELS[k]).join("・")), ...(note ? [sub(note)] : [])]), reason),
       words: s.map((k) => SUPPORT_KIND_LABELS[k]),
+      flag: s.length > 0,
+      multi: true,
+      kinds: Object.values(SUPPORT_KIND_LABELS),
     };
   },
   "evacuation.carryItems": (c) => list(c.ledger.evacuation.carryItems, pendingOf(c.ledger, "evacuation.carryItems")),
@@ -470,12 +505,38 @@ function pieces(cell: Cell): Piece[] {
 const CHECK_ON = { label: "", on: true } as const;
 const CHECK_OFF = { label: "", on: false } as const;
 
+/** 言葉どうしが合うか（同じか、片方がもう片方を含む。括弧・空白の揺れはそろえる） */
+export function wordMatches(label: string, words: readonly string[]): boolean {
+  const l = normalizeWord(label);
+  return (
+    l !== "" &&
+    words.some((w) => {
+      const x = normalizeWord(w);
+      return x !== "" && (l === x || l.includes(x) || x.includes(l));
+    })
+  );
+}
+
+/**
+ * □ ごとに種類を問う欄（T122）: □ の名前が項目の種類のどれかなら、その種類が台帳にあるかの印。
+ * 種類でない □（「医療機器の使用」）は undefined（今まで通り有無）
+ */
+export function kindFlag(field: Pick<MappingField, "label">, v: ItemValue): boolean | null | undefined {
+  if (!v.kinds || !wordMatches(field.label, v.kinds)) return undefined;
+  if (v.flag === null || v.flag === undefined) return v.flag;
+  return v.flag === true && wordMatches(field.label, v.words ?? []);
+}
+
 /** 項目の値を欄の形（□・選ぶ・手書き）に合わせる */
 export function shapeCell(field: MappingField, v: ItemValue): Cell {
   const cell = v.cell;
   if (cell.kind === "withheld" || cell.kind === "handwrite" || cell.kind === "empty") return cell;
   // □ 1 つの欄は、欄の名前を左の列に出すので ■・□ と値だけ（名前を繰り返さない）
   if (field.shape === "check") {
+    const kind = kindFlag(field, v);
+    // 種類の □ は印だけ（ほかの種類の値を横に並べない）
+    if (kind === true) return { kind: "choice", options: [CHECK_ON] };
+    if (kind === false) return { kind: "choice", options: [CHECK_OFF] };
     if (v.flag === true) return { kind: "choice", options: [CHECK_ON], after: pieces(cell) };
     if (v.flag === false) return { kind: "choice", options: [CHECK_OFF] };
     const reason = cell.kind === "unconfirmed" ? cell.reason : undefined;
@@ -484,6 +545,12 @@ export function shapeCell(field: MappingField, v: ItemValue): Cell {
   if (field.shape === "choice" && field.options.length > 0) {
     if (cell.kind === "unconfirmed") {
       return { kind: "choice", options: field.options.map((label) => ({ label, on: false })), unconfirmed: cell.reason ? { reason: cell.reason } : {} };
+    }
+    // 複数選択の欄（T122）: 種類が並ぶ項目は、合う選択肢の全部に印
+    if (v.multi && v.words) {
+      const words = v.words;
+      const on = field.options.map((o) => wordMatches(o, words));
+      if (on.some(Boolean)) return { kind: "choice", options: field.options.map((label, i) => ({ label, on: on[i] })) };
     }
     const hit = v.words ? matchOption(field.options, v.words) : -1;
     if (hit >= 0) return { kind: "choice", options: field.options.map((label, i) => ({ label, on: i === hit })) };
@@ -547,10 +614,12 @@ export function buildMappedSheet(rows: PersonPageRows, mapping: FormMapping, opt
   const unmapped: string[] = [];
   const withheld = new Set<ConsentKind>();
   let count = 0;
+  // 要確認の欄を確認するまで紙に使わない形（T122）: 確認していない要確認の欄は対応なしと同じ（未確認）
+  const held = heldFields(mapping);
   for (const field of mapping.fields) {
     if (field.removed) continue;
     count += 1;
-    const cell = mappedCell(field, ctx);
+    const cell = mappedCell(held.has(field.id) ? { ...field, item: null } : field, ctx);
     const name = field.section ? `${field.section} ${field.label}` : field.label;
     if (cell.kind === "withheld") withheld.add(cell.consent);
     else if (isUnconfirmed(cell)) unconfirmedLabels.push(name);

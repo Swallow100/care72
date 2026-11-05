@@ -16,6 +16,7 @@ import { cellLines, type OverlaySheet } from "../../../lib/forms/overlay-sheet.t
 import { isUnconfirmedCell } from "../../../lib/forms/unconfirmed.ts";
 import type { DiffItem } from "../../../lib/intake/diff.ts";
 import type { IntakeChange } from "../../../lib/intake/changes.ts";
+import { hasAnyMark } from "../../../lib/pseudonym/index.ts";
 import type { GoldField, GoldForm } from "./gold.ts";
 
 export type Judgement = {
@@ -94,16 +95,16 @@ const MATCH_MIN = 4;
 
 /** 正解の欄（index）→ AI の欄の id。合わなかった欄は無い */
 export function matchFields(gold: readonly GoldField[], ai: readonly MappingField[]): Map<number, string> {
-  const pairs: Array<{ g: number; a: string; s: number }> = [];
+  const pairs: Array<{ g: number; a: string; s: number; shape: boolean }> = [];
   gold.forEach((g, gi) => {
     for (const a of ai) {
       if (a.removed) continue;
       const s = matchScore(g, a);
-      if (s >= MATCH_MIN) pairs.push({ g: gi, a: a.id, s });
+      if (s >= MATCH_MIN) pairs.push({ g: gi, a: a.id, s, shape: a.shape === g.shape });
     }
   });
-  // 点の高い順、同点は正解の順・AI の順
-  pairs.sort((x, y) => y.s - x.s || x.g - y.g || Number(x.a.slice(1)) - Number(y.a.slice(1)));
+  // 点の高い順、同点は形の同じ欄（T122: 同じ名前の欄を元号の選ぶ欄と日付の欄に分けて読んだとき、日付の欄と合わせる）・正解の順・AI の順
+  pairs.sort((x, y) => y.s - x.s || Number(y.shape) - Number(x.shape) || x.g - y.g || Number(x.a.slice(1)) - Number(y.a.slice(1)));
   const out = new Map<number, string>();
   const used = new Set<string>();
   for (const p of pairs) {
@@ -209,7 +210,8 @@ export function scoreIntake(input: string, expected: readonly DiffItem[], actual
   const score = emptyIntakeScore();
   const judgements: Judgement[] = [];
   const exp = expected.map((d) => (d.change ? canonical(d.change) : null)).filter((x): x is { id: string; value: string } => x !== null);
-  const act = actual.map((d) => ({ c: d.change ? canonical(d.change) : null, masked: d.masked })).filter((x) => x.c !== null) as Array<{ c: { id: string; value: string }; masked: boolean }>;
+  // 伏せ字の残り: 画面の印（masked）のほか、値に伏せ字の形（崩れた形も。T122）が残る物
+  const act = actual.map((d) => ({ c: d.change ? canonical(d.change) : null, masked: d.masked || hasAnyMark(d.next) })).filter((x) => x.c !== null) as Array<{ c: { id: string; value: string }; masked: boolean }>;
   score.expected = exp.length;
   score.actual = act.length;
   score.dropped = dropped;

@@ -295,11 +295,12 @@ export function buildOverlaySheet(mapped: MappedSheet, images: readonly PageImag
           continue;
         }
         // 選ぶ欄: 選んだ選択肢の □ の場所があれば印
+        // 複数選択の欄（T122）は選んだ選択肢の全部に印。どれかの □ の場所が無ければ、字で書く（下へ）
         if (field.shape === "choice" && cell.kind === "choice" && page) {
-          const hit = cell.options.findIndex((o) => o.on);
-          const optBox = hit >= 0 ? (field.optionBoxes?.[hit] ?? null) : null;
-          if (optBox) {
-            page.items.push({ kind: "mark", fieldId: field.id, box: optBox, mark: markOf(optBox, page.image) });
+          const hits = cell.options.flatMap((o, i) => (o.on ? [i] : []));
+          const optBoxes = hits.map((i) => field.optionBoxes?.[i] ?? null);
+          if (hits.length > 0 && optBoxes.every((b): b is FieldBox => b !== null)) {
+            for (const optBox of optBoxes) page.items.push({ kind: "mark", fieldId: field.id, box: optBox, mark: markOf(optBox, page.image) });
             continue;
           }
         }

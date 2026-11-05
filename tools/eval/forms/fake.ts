@@ -77,9 +77,24 @@ export function noisyRead(r: ReadResult, seed: string): ReadResult {
   return { ...r, fields };
 }
 
+/**
+ * 伏せ字の括弧の崩し方（T122。評価の 2 回目で本物が半角の括弧の「(町名)」を返した）。ほかの崩しの種と別の種で、
+ * 値の中の全角の括弧の伏せ字の半分ほどを崩した形にする（文の道の正解は仮名化した文なので伏せ字を持つ）
+ */
+const BROKEN_MARKS: ReadonlyArray<(w: string) => string> = [(w) => `(${w})`, (w) => w, (w) => `【${w}】`, (w) => `（ ${w} ）`];
+export function breakMarks(value: string, rand: () => number): string {
+  return value.replace(/（(氏名|町名|電話|住所|郵便番号|メール|生年月日)）/g, (m, w: string) => {
+    if (rand() >= 0.5) return m;
+    // 括弧の無い形は町名だけ（ほかの言葉はふつうの言葉と区別できないので、本物も見ない）
+    const forms = w === "町名" ? BROKEN_MARKS : BROKEN_MARKS.filter((_, i) => i !== 1);
+    return forms[Math.floor(rand() * forms.length)](w);
+  });
+}
+
 /** 入れる欄の分け方の崩し方 */
 export function noisyExtract(o: ExtractOutput, seed: string): ExtractOutput {
   const rand = rng(hashSeed(`extract:${seed}`));
+  const marks = rng(hashSeed(`marks:${seed}`));
   const items = o.items
     .filter(() => rand() >= 0.1)
     .map((it) => {
@@ -88,7 +103,7 @@ export function noisyExtract(o: ExtractOutput, seed: string): ExtractOutput {
         const other = f.shape.options.find((x) => x.value !== it.value);
         if (other) return { ...it, value: other.value };
       }
-      return it;
+      return { ...it, value: breakMarks(it.value, marks) };
     });
   return {
     items,
