@@ -205,7 +205,8 @@ export function factHits(outcome: RunOutcome, people: Readonly<Record<string, Fa
       const minute = Math.round((e.at ?? t.hour) * 60);
       const own = isInjectKind(e.inject) && EVENT_CATALOG[e.inject].ownText === true;
       if (!own && seen.some((x) => x.person !== person && sameWording(x.text, e.text!))) hit("repeat_text", person, minute, `${e.inject}: ${cut(e.text)}`);
-      if (seen.filter((x) => x.kind === e.inject).length >= KIND_REPEAT_MAX) hit("repeat_kind", person, minute, String(e.inject));
+      const personKind = isInjectKind(e.inject) && EVENT_CATALOG[e.inject].scope === "person";
+      if (personKind && seen.filter((x) => x.kind === e.inject).length >= KIND_REPEAT_MAX) hit("repeat_kind", person, minute, String(e.inject));
       seen.push({ kind: e.inject, person, text: e.text });
     }
   }

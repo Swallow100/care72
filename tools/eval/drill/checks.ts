@@ -298,8 +298,11 @@ function helped(person: string, from: number, to: number, actions: ReadonlyArray
   );
 }
 
-/** 5. 矛盾（けが → 手も到着も無いまま無事、結末のあとの連絡、言葉と色の食い違い） */
-export function contradictionHits(outcome: RunOutcome): CheckHit[] {
+/**
+ * 5. 矛盾（けが → 手も到着も無いまま無事、結末のあとの連絡、言葉と色の食い違い）。facts（T130）があれば、計画で移った
+ * （避難先と手段・手伝う人があり、緑の家の外）も手と同じに見る（本人役の門と同じ。lib/drill/person-facts.ts の screenTurn）
+ */
+export function contradictionHits(outcome: RunOutcome, facts?: Readonly<Record<string, FactPerson>>): CheckHit[] {
   const hits: CheckHit[] = [];
   const r = outcome.replay;
   if (!r) return hits;
@@ -319,7 +322,9 @@ export function contradictionHits(outcome: RunOutcome): CheckHit[] {
       const next = turns[i + 1];
       if (next && u.color === "red" && (u.injured === true || u.canMove === false) && next.color === "green") {
         const to = Math.round(next.at * 60);
-        if (!helped(person, minute, to, r.actions, arrivals)) {
+        const plan = facts?.[person]?.plan;
+        const planMoved = !!plan?.move && plan.helper && (next.whereNow === "shelter" || next.whereNow === "other");
+        if (!helped(person, minute, to, r.actions, arrivals) && !planMoved) {
           hits.push({ check: "contradiction", rule: "hurt_to_safe", person, minute: to, evidence: `${minute} 分に赤（${u.injured === true ? "けが" : "動けない"}）→ ${to} 分に緑、間に手・到着なし` });
         }
       }
@@ -446,7 +451,7 @@ export function checkRun(records: ReadonlyArray<LogRecord>, outcome: RunOutcome,
   const leaks = leakSentHits(records, ctx);
   const shape = shapeHits(records);
   const odds = timeOddsOf(outcome);
-  const contra = contradictionHits(outcome);
+  const contra = contradictionHits(outcome, ctx.facts);
   const stops = stopHits(outcome);
   const terms = termHits(outcome);
   const facts = ctx.facts ? factHits(outcome, ctx.facts) : { checked: 0, hits: [] as CheckHit[] };

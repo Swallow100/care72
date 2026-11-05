@@ -201,6 +201,15 @@ describe("文の門（同居・いない家族・電気・予備・落ち着い�
     expect(sentenceSlip("予備のバッテリーに替えました。", { ...base, noSpare: true })).toBe("spare_without_plan");
     expect(sentenceSlip("落ち着いています。", { ...base, down: true })).toBe("calm_while_down");
     expect(sentenceSlip("大丈夫ですか。", { ...base, down: true })).toBeNull();
+    // 打ち消しの形（止まった機器の人の訴え・家にいて言う「避難所にいません」）は落とさない
+    expect(sentenceSlip("大丈夫じゃないんです。", { ...base, down: true })).toBeNull();
+    expect(sentenceSlip("落ち着いていません。", { ...base, down: true })).toBeNull();
+    expect(sentenceSlip("問題なのは電池です。", { ...base, down: true })).toBeNull();
+    expect(sentenceSlip("充電できないんです。", { ...base, down: true })).toBeNull();
+    expect(sentenceSlip("予備に替えられません。", { ...base, noSpare: true })).toBeNull();
+    expect(sentenceSlip("避難所にいません。", base)).toBeNull();
+    expect(sentenceSlip("家で過ごせません。", { ...base, place: "shelter" })).toBeNull();
+    expect(sentenceSlip("今夜は家で過ごします。", { ...base, place: "shelter" })).toBe("place_text");
     expect(dropFactSlips("停電です。落ち着いています。", { ...base, down: true })).toBe("停電です。");
   });
 

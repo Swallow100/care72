@@ -97,6 +97,18 @@ describe("帳面との矛盾（facts-check）", () => {
     expect(r).toEqual(expect.arrayContaining(["repeat_text", "reason_medical"]));
   });
 
+  it("赤（動けない）→ 緑の検査は、計画で移った（避難先と手段・手伝う人、家の外）を手と同じに見る（門と同じ）", () => {
+    const ticks = [
+      tick(0, 3, [turn("p-06", 3, "red", { canMove: false, atHome: true })]),
+      tick(1, 6, [turn("p-06", 6, "green", { whereNow: "shelter" })]),
+      tick(2, 9, [turn("p-03", 9, "red", { canMove: false, atHome: true })]),
+      tick(3, 12, [turn("p-03", 12, "green", { whereNow: "home" })]),
+    ];
+    const { numbers } = checkRun([], outcome(ticks), CTX);
+    // p-06 は娘の車で避難先へ（計画）、p-03 は家のまま緑（手なし）
+    expect(numbers.contradictions.byRule).toEqual({ hurt_to_safe: 1 });
+  });
+
   it("checkRun の数に帳面の矛盾と門の数（drills.world の gated）が入る", () => {
     const o = outcome([tick(0, 3, [turn("p-06", 3, "green", { whereNow: "shelter", saying: "避難所です。家で過ごします。" })])], [], {}, { gated: { hurt_to_safe: 2 } });
     const { numbers } = checkRun([], o, CTX);

@@ -681,7 +681,7 @@ export function createDirectorHook(deps: DirectorDeps): DirectorHook {
       // 差し込める種類の並びは訓練ごとの種で揺らす（並びの先頭ばかり選ばれないように）
       const minute = Math.round(input.hour * 60);
       // T130: 業者の巡回（届く物）は、その人への手（業者連絡・電源手配・薬手配）か計画（業者の約束）があるときだけ。
-      // 同じ種類は訓練に KIND_REPEAT_MAX 回まで（評価の 3 回目で、薬局の休止・帰宅困難が何人にも同じ形で出た）
+      // 人ごとの種類は訓練に KIND_REPEAT_MAX 回まで（評価の 3 回目で、薬局の休止・帰宅困難が何人にも同じ形で出た。全体の種類〔余震など〕は数えない）
       const plans = new Map(members.map((p) => [p, planOf(sources.get(p)!)]));
       for (const [p, ks] of eligible) {
         const kept = ks.filter(
@@ -692,7 +692,7 @@ export function createDirectorHook(deps: DirectorDeps): DirectorHook {
         );
         eligible.set(p, input.seed ? seededShuffle(kept, `${input.seed}|${p}|${minute}`) : kept);
       }
-      for (const k of [...area.keys()]) if (!kindAllowed(k, null, input.world, input.hour, minute) || kindSpent(input.world, k)) area.delete(k);
+      for (const k of [...area.keys()]) if (!kindAllowed(k, null, input.world, input.hour, minute)) area.delete(k);
       const asked = input.replies ?? [];
       const max = budgetOf(input);
       if ((max === 0 || (![...eligible.values()].some((k) => k.length > 0) && area.size === 0)) && asked.length === 0) return none;
