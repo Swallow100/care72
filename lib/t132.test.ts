@@ -34,7 +34,7 @@ const SIT: DisasterSituation = {
 const seed = (id: string) => SEED_PEOPLE.find((p) => p.person.id === id)!;
 const contactsOf = (p: SeedPerson): ContactForDetail[] =>
   p.contacts.map((c, i) => ({ kana: null, address: null, mobile: null, ...c, person_id: p.person.id, sort: i }) as ContactForDetail);
-const clocksOf = (p: SeedPerson): Array<ClockForDetail & { person_id: string }> =>
+const clocksOf = (p: SeedPerson): Array<ClockForDetail & { person_id: string; sort: number }> =>
   p.clocks.map((k, i) => ({ ...k, person_id: p.person.id, sort: i }));
 
 /** 種の人の発災時の行の詳細（担当一覧と訓練の左の表の行と同じ道: lib/caseload.ts の toCaseloadRows → buildRowDetail） */
