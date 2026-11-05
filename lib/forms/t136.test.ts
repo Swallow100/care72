@@ -172,3 +172,13 @@ describe("決まりの見直し（種の 10 人の原本の枠の紙）", () => 
     console.info("T136 種の 10 人の決まりの見直し", JSON.stringify(counts));
   });
 });
+
+describe("T133 の数を受ける口", () => {
+  it("印刷の字の位置（printed）と重なる字は重なり、台帳あり空欄（carried）は取込漏れ（再考の印）", () => {
+    const a = box(10, 10, 60, 6);
+    const s = subject([field("f1", "氏名", a), field("f2", "携帯", box(10, 30, 60, 6))], [text("f1", a, ["山田"])]);
+    expect(kinds({ ...s, printed: [{ page: 1, box: box(11, 11, 8, 4) }] })).toContain("overlap:f1");
+    const got = ruleReview({ ...s, carried: ["f2"] }).find((f) => f.kind === "carried")!;
+    expect(got).toMatchObject({ field: "f2", level: "check", redo: true });
+  });
+});

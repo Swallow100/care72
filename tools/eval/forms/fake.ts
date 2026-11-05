@@ -13,6 +13,7 @@ import { intakeField } from "../../../lib/intake/fields.ts";
 import type { ExtractOutput } from "../../../lib/intake/schema.ts";
 import { hashSeed, rng } from "./inputs.ts";
 import type { AttemptHolder } from "./record.ts";
+import type { ReviewReply } from "../../../lib/forms/review-ai.ts";
 
 type Params = Anthropic.Beta.Messages.MessageCreateParamsNonStreaming;
 type Message = Anthropic.Beta.Messages.BetaMessage;
@@ -20,7 +21,11 @@ type Message = Anthropic.Beta.Messages.BetaMessage;
 export type FakeStyle = "gold" | "noisy";
 
 /** noise: false は崩さない（正解の表の無い様式の空の返事） */
-export type Expected = { kind: "read"; answer: ReadResult; noise?: false } | { kind: "extract"; answer: ExtractOutput };
+export type Expected =
+  | { kind: "read"; answer: ReadResult; noise?: false }
+  | { kind: "extract"; answer: ExtractOutput }
+  /** 紙の AI の照合（T136）。答えは台が決めた形のまま返す（崩さない） */
+  | { kind: "review"; answer: ReviewReply };
 
 export type FakeClient = ClaudeClient & {
   /** 次の呼び出しの正解。seed は崩し方の種（入力の id と送る単位） */
@@ -142,6 +147,7 @@ export function fakeClient(style: FakeStyle, holder: AttemptHolder): FakeClient 
           // 形の違う返事（askJson が AiBadOutput の not_json にする）
           if (noisy && h % 17 === 0) return message(model, "読み取れませんでした", params);
           // 様式の読み取りは 1 頁 1 回（T120）。正解の表から頼まれた頁の分を 1 頁の返事の形に
+          if (e.kind === "review") return message(model, JSON.stringify(e.answer), params);
           if (e.kind === "read") return message(model, pageReadReply(noisy && e.noise !== false ? noisyRead(e.answer, seed) : e.answer, params), params);
           return message(model, JSON.stringify(noisy ? noisyExtract(e.answer, seed) : e.answer), params);
         },

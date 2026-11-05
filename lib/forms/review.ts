@@ -16,6 +16,7 @@
 // - 重複: 同じ値が 2 つの欄に入った
 // - 日付形式: 年・月・日の部品のある欄に 1 つの字で置いた、元号が欄の選択肢に無い、年月日の範囲の外
 // - 伏字: 紙に（氏名）（町名）（電話）などの伏字・仮の言い方が出ている
+// - 取込漏れ: 台帳に値があるのに紙で空いた欄（T133 の台帳あり空欄を受ける。carried）
 
 import { MASK_MARKS } from "../pseudonym/index.ts";
 import type { Frame, FrameField } from "./frame-sheet.ts";
@@ -30,7 +31,7 @@ import { KIROKU_FRAME } from "./frame-kiroku.ts";
 
 // ---------- 形 ----------
 
-export const RULE_KINDS = ["unplaced", "blank", "overlap", "overflow", "small", "annex", "signature", "self", "duplicate", "date", "masked", "spill"] as const;
+export const RULE_KINDS = ["unplaced", "blank", "overlap", "overflow", "small", "annex", "signature", "self", "duplicate", "date", "masked", "spill", "carried"] as const;
 export const AI_KINDS = ["misplaced", "unreadable", "mismatch", "masked"] as const;
 export type RuleKind = (typeof RULE_KINDS)[number];
 export type AiKind = (typeof AI_KINDS)[number];
@@ -50,6 +51,7 @@ export const REVIEW_LABELS: Record<ReviewKind, string> = {
   date: "日付形式",
   masked: "伏字",
   spill: "別紙送",
+  carried: "取込漏れ",
   misplaced: "欄違い",
   unreadable: "判読難",
   mismatch: "不一致",
@@ -72,6 +74,7 @@ const LEVEL: Record<RuleKind, ReviewLevel> = {
   date: "fix",
   masked: "fix",
   spill: "note",
+  carried: "check",
 };
 
 /** 見直しの 1 件 */
@@ -129,6 +132,10 @@ export type ReviewSubject = {
   /** 紙の上の物の fieldId から欄の id。分からなければ null */
   fieldOf: (itemFieldId: string) => string | null;
   printed?: readonly PrintedText[];
+  /**
+   * 台帳に値があるのに紙で空いた欄（T133 の「台帳あり空欄」。数え方は T133 が持つ）。渡されれば「取込漏れ」として挙げる
+   */
+  carried?: readonly string[];
   /** 対応表の紙（AI が読んだ欄の場所と項目。再考で読み直せる） */
   redoable: boolean;
 };
@@ -364,6 +371,11 @@ export function ruleReview(s: ReviewSubject): ReviewFinding[] {
     if (r.reason === "unplaced" && s.redoable) push("unplaced", f, "場所なし・別紙");
     else push("spill", f, r.reason === "overflow" ? "収まらず別紙" : "置き場なし・別紙");
   }
+  // 取込漏れ（T133 の台帳あり空欄）
+  for (const id of s.carried ?? []) {
+    const f = byId.get(s.fieldOf(id) ?? "");
+    if (f) push("carried", f, "台帳に値あり・紙は空");
+  }
   // 空欄（帯の未確認と同じ欄。色付けで塗る欄）
   for (const page of s.sheet.pages) {
     for (const fill of page.fills) {
@@ -491,7 +503,7 @@ function markedOption(f: ReviewField, it: OverlayItem): string | null {
 }
 
 /** 再考（その欄だけの読み直し）で直せそうな種類。対応表の紙の欄の場所と項目の読み違いから来る物 */
-export const REDO_KINDS: ReadonlySet<ReviewKind> = new Set<ReviewKind>(["unplaced", "overlap", "overflow", "date", "signature", "misplaced", "mismatch", "unreadable"]);
+export const REDO_KINDS: ReadonlySet<ReviewKind> = new Set<ReviewKind>(["unplaced", "carried", "overlap", "overflow", "date", "signature", "misplaced", "mismatch", "unreadable"]);
 
 /** 帯の「見直し N」の数（要修正と要確認） */
 export const reviewCount = (fs: readonly ReviewFinding[]) => fs.filter((f) => f.level !== "note").length;

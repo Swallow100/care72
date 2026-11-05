@@ -6,9 +6,9 @@
 // - 「AI照合」: サーバーの描く物（塗る所を除いた字と印）で頁の絵を描いて塗り、送る。直せそうな欄（対応表の紙の欄の場所・項目の読み違い）は
 //   紙の上に「再考中」の印を付け、その欄だけを読み直し（再考）、紙を描き直してもう一度照合する（回の上限はサーバー。lib/forms/review-ai.ts）。
 //   再考で直した欄は「再考済」に AI の印つきで並べ、戻せる
+// 紙の上の印の見た目は components/forms/review-paper.css（紙の画面が読み込む。overlay-paper.css と同じ）
 // - 「確認済」: 全部見た印（紙の版に付く。紙が変われば外れる）。確認済でないと、印刷の横に「見直し未確認」の一言（止めはしない。ReviewPrintNote）
 
-import "./review-paper.css";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AiMark } from "@/components/person/parts";

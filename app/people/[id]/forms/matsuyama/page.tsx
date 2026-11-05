@@ -1,5 +1,6 @@
 import "@/components/forms/paper.css";
 import "@/components/forms/overlay-paper.css";
+import "@/components/forms/review-paper.css";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";

@@ -98,7 +98,7 @@ export async function loadReviewState(db: D1Database, personId: string, formKey:
           `SELECT r.id, r.kind, r.sheet_hash, r.mapping_version, r.body, r.created_by, r.created_at, a.display_name AS by_name
              FROM form_reviews r LEFT JOIN accounts a ON a.id = r.created_by
             WHERE r.person_id = ?1 AND r.form_key = ?2 AND r.kind IN ('run', 'confirm')
-            ORDER BY r.created_at DESC, r.id DESC LIMIT 40`,
+            ORDER BY r.created_at DESC, r.rowid DESC LIMIT 40`,
         )
         .bind(personId, formKey)
         .all<Row>()
@@ -122,7 +122,7 @@ export async function loadFixes(db: D1Database, officeId: string, formKey: strin
         .prepare(
           `SELECT id, kind, sheet_hash, mapping_version, body, created_by, created_at FROM form_reviews
             WHERE office_id = ?1 AND form_key = ?2 AND kind = 'fix' AND mapping_version = ?3
-            ORDER BY created_at, id`,
+            ORDER BY created_at, rowid`,
         )
         .bind(officeId, formKey, mappingVersion)
         .all<Row>()
