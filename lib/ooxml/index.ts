@@ -46,8 +46,12 @@ export async function sniffOffice(bytes: Uint8Array): Promise<OfficeSniff> {
   }
 }
 
-/** 様式で読む頁の上限（シート・頁を選ぶ前に描く数。送るのは 3 頁まで） */
-export const OFFICE_PAGES_MAX = 12;
+/**
+ * 様式で頁の形にする上限（シート・頁を選ぶ前。送るのは 3 頁まで）。T122: 12 から 80 に。頁の形（線と字の並び）を作るのは軽く
+ * （評価の置き場の 45 頁のブックで 0.3 秒）、画像に描くのは選んだ頁と見ている頁だけ（lib/ooxml/browser.ts）。
+ * 12 のときは、様式 9 のシートが 45 頁のブックの最後にあり、頁の形にもならなかった（評価の 2 回目の 1）
+ */
+export const OFFICE_PAGES_MAX = 80;
 
 export type OfficeRender = {
   kind: OfficeKind;

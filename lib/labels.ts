@@ -649,6 +649,13 @@ export const REDACT_LABELS = {
   pick: "戻す",
   skipped: "除外",
   picked: "対象",
+  /**
+   * シートの選び（T122）: シートが 2 つ以上のブックはシートの一覧（選ぶとそのシートの頭の頁へ）。選択肢は「様式9・1頁・対象」。
+   * 頁の画像は見る頁だけ描くので、描くまで「描画中」
+   */
+  sheet: "シート",
+  sheetOption: (name: string, pages: number, picked: boolean) => `${name}・${pages}頁${picked ? "・対象" : ""}`,
+  drawing: "描画中",
   /** Excel・Word を描いた頁は元の印刷と少しずれる。PDF に保存して取り込むと元のまま */
   officeHint: "近似描画・PDF 保存で正確",
   /** 古い形（.xls・.doc）は読まない */

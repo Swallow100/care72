@@ -942,7 +942,7 @@ function layoutSheet(sheet: SheetData, styles: Styles, theme: Theme, measure: Me
         if (parts.c) items.push({ k: "text", text: parts.c, x: pageW / 2, y, font, color: "#000000", align: "center" });
         if (parts.r) items.push({ k: "text", text: parts.r, x: xr, y, font, color: "#000000", align: "right" });
       }
-      out.push({ w: pageW, h: pageH, items, sheet: sheet.name, page: n + 1 });
+      out.push({ w: pageW, h: pageH, items, sheet: sheet.name, page: n + 1, ...(sheet.printAreas.length > 0 ? { printArea: true } : {}) });
     });
   }
   return out;

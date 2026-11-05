@@ -5,7 +5,7 @@
 // - 長い辺を OUTPUT_MAX_SIDE に縮め、伏せる所を paintRects で黒く塗り、JPEG の質を 86→75→60→45 と下げて上限（5 MB）に収め、付け足しを外す
 // 描くのは @napi-rs/canvas（pdfjs-dist の任意の依存、MIT。tools/print/pdf-pages.ts と同じ）。無い端末では no_canvas。
 // Excel・Word（T119）は lib/ooxml で印刷の頁に描き（字の幅は @napi-rs/canvas の measureText）、ブラウザと同じ決まり（lib/ooxml/pick.ts）で
-// 記入例のシートを外した頭の 3 頁を送る。古い形（.xls・.doc）は legacy で断る（画面は「旧形式・PDF 保存で取込」）。
+// 記入例のシートを外した頭の 3 頁を送る（T122: シートが 2 つ以上のブックは様式の本体らしいシート）。古い形（.xls・.doc）は legacy で断る（画面は「旧形式・PDF 保存で取込」）。
 // 送ったあとに塗った所が本当に黒いかを測る（redactOk）。塗れていない頁は送らない（Claude に人の値の写る絵を渡さない）。
 
 import { FORM_FILE_MAX_BYTES } from "../../../lib/forms/mapping.ts";
@@ -14,8 +14,7 @@ import { isHeic } from "../../../lib/forms/shrink-image.ts";
 import { drawPage, pageSize, type Draw2d } from "../../../lib/ooxml/draw.ts";
 import { cssFont } from "../../../lib/ooxml/fonts.ts";
 import { OFFICE_PAGES_MAX, OfficeReadError, renderOffice } from "../../../lib/ooxml/index.ts";
-import { defaultExcluded } from "../../../lib/ooxml/pick.ts";
-import { isExampleSheet } from "../../../lib/ooxml/xlsx.ts";
+import { defaultExcluded, pickPageOf, sheetWordCounts } from "../../../lib/ooxml/pick.ts";
 import { stripJpegMetadata } from "../../../lib/redact/jpeg.ts";
 import { OUTPUT_MAX_SIDE, outputSize, paintRects } from "../../../lib/redact/paint.ts";
 import type { Ratio } from "./render.ts";
@@ -136,7 +135,9 @@ async function officeStage(mod: CanvasModule, bytes: Uint8Array, secrets: Readon
   } catch (e) {
     return { ok: false, error: e instanceof OfficeReadError && e.code === "legacy" ? "legacy" : "office", rawBytes };
   }
-  const all = rendered.pages.map((p, i) => ({ id: String(i), example: p.sheet ? isExampleSheet(p.sheet) : false, page: p }));
+  // 既定で送る頁はブラウザと同じ（T122: シートが 2 つ以上のブックは様式の本体らしいシート）
+  const words = sheetWordCounts(rendered.pages);
+  const all = rendered.pages.map((p, i) => ({ ...pickPageOf(p, String(i), words), page: p }));
   const skip = defaultExcluded(all);
   const chosen = all.filter((p) => !skip.has(p.id));
   const pages: BrowserPage[] = [];
