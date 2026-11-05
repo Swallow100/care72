@@ -14,4 +14,6 @@ export {
   ArrowUturnLeftIcon as UndoIcon, // 黒塗り: 一手戻す
   XCircleIcon as ClearIcon, // 黒塗り: この頁の四角を全部外す
   ChevronRightIcon as NextIcon, // 黒塗り: 次頁（前頁は共通の BackIcon）
+  ChevronDownIcon as MoreIcon, // やり取り: 畳んだ古い組を開く（T138）
+  ChevronUpIcon as FoldIcon, // やり取り: 古い組を畳む（T138）
 } from "@heroicons/react/20/solid";

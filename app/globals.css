@@ -36,6 +36,9 @@
   --base: #eceef1;
   --panel: #ffffff;
   --panel2: #f3f4f6;
+  /* 面の中のもう 1 つの地（T138）。AI 入力の欄で、ケアマネの吹き出しを AI の吹き出し（--panel2）と地の色で分ける。
+     対比は 本文 13.96・灰の文字 4.93（操作の色の文字は 4.37 なので、この地の上には置かない） */
+  --panel3: #e4e7eb;
   --ink: #161b21;
   --muted: #59636e;
   --press: rgb(0 0 0 / 0.08);
@@ -81,6 +84,8 @@
   --base: #0b0d10;
   --panel: #15181c;
   --panel2: #1e2228;
+  /* ケアマネの吹き出し（T138）。ダークでは --panel2 より明るくし、暗い面の上で沈まないように（本文 11.13・灰の文字 5.32） */
+  --panel3: #2a3038;
   --ink: #e8ebef;
   --muted: #9ba5b0;
   --press: rgb(255 255 255 / 0.09);
@@ -126,6 +131,7 @@
   --color-base: var(--base);
   --color-panel: var(--panel);
   --color-panel2: var(--panel2);
+  --color-panel3: var(--panel3);
   --color-ink: var(--ink);
   --color-muted: var(--muted);
   --color-press: var(--press);
