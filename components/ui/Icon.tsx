@@ -33,6 +33,8 @@ export {
   ClockIcon as LaterIcon, // 次回（入れる欄の問いを後に回す）
   ChevronDownIcon as OpenIcon, // 開く・畳む
   ChevronLeftIcon as BackIcon, // 戻る
+  ChevronRightIcon as NextIcon, // 次へ進む（受入の流れで QR の頁・受け入れた人の画面を開く、T152）
+  CameraIcon, // カメラ（端末のカメラで QR を読む、T152）
   ChevronUpDownIcon as SortIcon, // 並べ替えできる列の見出しの印（押していない列。押している列は向きの印。T66）
   ClipboardDocumentCheckIcon as ReviewIcon, // 見直し（書類の紙の AI 照合、T136）
   ClipboardDocumentIcon as CopyIcon, // コピー
