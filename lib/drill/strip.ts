@@ -43,6 +43,33 @@ export const STRIP_LABELS: Readonly<Record<StripLane, string>> = {
   act: "対応",
 };
 
+/**
+ * 軸の縮尺（T128）。発災のすぐあとに出来事が集まり、72 時間の同じ縮尺では始めの数時間が左の端に詰まって、右に空きが多い。
+ * はじめの 6 時間を幅の 25%、24 時間までを 55%、72 時間までを残りに置く（区切りの中は同じ縮尺。軸の目盛りの数字で時間を読む）。
+ * 72 時間でない想定は区切りを同じ割合で伸び縮みする
+ */
+export const AXIS_KNOTS: ReadonlyArray<readonly [hour: number, at: number]> = [
+  [0, 0],
+  [6, 0.25],
+  [24, 0.55],
+  [72, 1],
+];
+
+/** 発災からの時間 → 軸の位置（0〜1） */
+export function axisAt(hour: number, last = 72): number {
+  const k = last / 72;
+  const h = Math.min(Math.max(hour, 0), last);
+  for (let i = 1; i < AXIS_KNOTS.length; i++) {
+    const [h0, a0] = AXIS_KNOTS[i - 1];
+    const [h1, a1] = AXIS_KNOTS[i];
+    if (h <= h1 * k) return a0 + ((h - h0 * k) / ((h1 - h0) * k)) * (a1 - a0);
+  }
+  return 1;
+}
+
+/** 縮尺を変えた軸の目盛りの数字（3 時間ごとの線のうち、数字を添える時刻） */
+export const AXIS_LABEL_HOURS: ReadonlyArray<number> = [0, 3, 6, 12, 18, 24, 36, 48, 60, 72];
+
 /** 帯の段か */
 export function isBandLane(lane: StripLane): lane is BandLane {
   return Object.hasOwn(BAND_LABELS, lane);

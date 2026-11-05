@@ -9,9 +9,12 @@
 import Link from "next/link";
 import { BAND_LABELS, DRILL_LABELS, elapsedLabel, T59_LABELS } from "@/lib/drill/labels";
 import { NIGHT_START_HOUR, nightClock } from "@/lib/drill/night";
+import { AXIS_LABEL_HOURS, axisAt } from "@/lib/drill/strip";
 import type { Band } from "@/lib/drill/view";
 
-const pct = (h: number, last: number) => `${(Math.min(Math.max(h, 0), last) / last) * 100}%`;
+/** 軸の位置。warp は種類の段の帯（T128）の縮尺（lib/drill/strip.ts の axisAt。はじめの時間を広く）、無ければ同じ縮尺 */
+const pct = (h: number, last: number, warp = false) =>
+  warp ? `${axisAt(h, last) * 100}%` : `${(Math.min(Math.max(h, 0), last) / last) * 100}%`;
 
 export function DrillBar({
   hours,
@@ -56,10 +59,10 @@ export function DrillBar({
       <div className="relative h-7">
         {/* 棒 */}
         <div className="absolute inset-x-0 top-1.5 h-2 rounded-sm bg-panel2" />
-        <div className="absolute left-0 top-1.5 h-2 rounded-sm bg-[color-mix(in_srgb,var(--muted)_45%,var(--panel2))]" style={{ width: pct(now, last) }} data-bar-past />
+        <div className="absolute left-0 top-1.5 h-2 rounded-sm bg-[color-mix(in_srgb,var(--muted)_45%,var(--panel2))]" style={{ width: pct(now, last, wide) }} data-bar-past />
         {/* 連続の時計（T90）: 目盛りは 3 時間ごとの固定（数字は 12 時間ごと、広い画面は 6 時間ごとも）、区切りは棒の下の小さな印 */}
-        {clock && <ClockScale last={last} now={now} />}
-        {clock && <CutMarks hours={hours} last={last} now={now} reached={reached} {...(hrefOf ? { hrefOf } : {})} />}
+        {clock && <ClockScale last={last} now={now} warp={wide} />}
+        {clock && <CutMarks hours={hours} last={last} now={now} reached={reached} warp={wide} {...(hrefOf ? { hrefOf } : {})} />}
         {/* 刻みの印 */}
         {!clock && hours.map((h, i) => {
           const passed = h <= now;
@@ -71,7 +74,7 @@ export function DrillBar({
               </span>
             </>
           );
-          const style = { left: pct(h, last) };
+          const style = { left: pct(h, last, wide) };
           const cls = "absolute top-0 -translate-x-1/2 text-center";
           return hrefOf && i <= reached ? (
             <Link
@@ -95,7 +98,7 @@ export function DrillBar({
         {/* 今の印 */}
         <span
           className="pointer-events-none absolute top-0 h-5 w-0.5 -translate-x-1/2 rounded-sm bg-ink"
-          style={{ left: pct(now, last) }}
+          style={{ left: pct(now, last, wide) }}
           data-bar-now={now}
         />
       </div>
@@ -122,17 +125,17 @@ export function DrillBar({
   );
 }
 
-/** 連続の時計の目盛り（3 時間ごと。数字は 12 時間ごと、640px 以上は 6 時間ごとも） */
-function ClockScale({ last, now }: { last: number; now: number }) {
+/** 連続の時計の目盛り（3 時間ごと。数字は 12 時間ごと、640px 以上は 6 時間ごとも。縮尺を変えた軸〔warp〕は AXIS_LABEL_HOURS） */
+function ClockScale({ last, now, warp = false }: { last: number; now: number; warp?: boolean }) {
   const marks = Array.from({ length: Math.floor(last / 3) + 1 }, (_, i) => i * 3);
   return (
     <>
       {marks.map((h) => {
-        const big = h % 12 === 0;
-        const mid = !big && h % 6 === 0;
+        const big = warp ? AXIS_LABEL_HOURS.includes(h) : h % 12 === 0;
+        const mid = !warp && !big && h % 6 === 0;
         const passed = h <= now;
         return (
-          <span key={h} className="absolute top-0 -translate-x-1/2 text-center" style={{ left: pct(h, last) }} data-scale={h}>
+          <span key={h} className="absolute top-0 -translate-x-1/2 text-center" style={{ left: pct(h, last, warp) }} data-scale={h}>
             <span className={`mx-auto block w-px ${big ? "h-3.5" : "h-2.5"} ${passed ? "bg-ink" : "bg-muted"}`} />
             {(big || mid) && (
               <span
@@ -155,19 +158,21 @@ function CutMarks({
   now,
   reached,
   hrefOf,
+  warp = false,
 }: {
   hours: readonly number[];
   last: number;
   now: number;
   reached: number;
   hrefOf?: (i: number) => string;
+  warp?: boolean;
 }) {
   return (
     <>
       {hours.map((h, i) => {
         const here = Math.abs(h - now) < 1e-6;
         const dot = <span className={`block size-1.5 rounded-sm ${here ? "bg-ink" : "bg-muted"}`} />;
-        const style = { left: pct(h, last) };
+        const style = { left: pct(h, last, warp) };
         const cls = "absolute top-[0.1875rem] -translate-x-1/2";
         return hrefOf && i <= reached ? (
           <Link
@@ -202,7 +207,22 @@ function BandRow({ label, bands, last, now, kind }: { label: string; bands: Band
 }
 
 /** 帯の棒 1 本（停電・断水・電話。見ている時刻まで）。種類の段の行（StripRows）も同じ棒を使う。className は外の高さ・位置 */
-export function BandBar({ bands, last, now, kind, className = "relative h-1.5" }: { bands: Band[]; last: number; now: number; kind: Band["kind"]; className?: string }) {
+export function BandBar({
+  bands,
+  last,
+  now,
+  kind,
+  className = "relative h-1.5",
+  warp = false,
+}: {
+  bands: Band[];
+  last: number;
+  now: number;
+  kind: Band["kind"];
+  className?: string;
+  /** 種類の段の帯の縮尺（T128） */
+  warp?: boolean;
+}) {
   return (
     <div className={className} data-band={kind}>
       {bands.map((b) => {
@@ -212,7 +232,7 @@ export function BandBar({ bands, last, now, kind, className = "relative h-1.5" }
           <span
             key={`${b.from}`}
             className="absolute top-0 h-1.5 min-w-1 rounded-sm bg-state-check-fill"
-            style={{ left: pct(b.from, last), width: `calc(${pct(to, last)} - ${pct(b.from, last)})` }}
+            style={{ left: pct(b.from, last, warp), width: `calc(${pct(to, last, warp)} - ${pct(b.from, last, warp)})` }}
             data-band-from={b.from}
             data-band-to={b.to ?? ""}
           />

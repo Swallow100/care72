@@ -14,6 +14,7 @@ import { incidentLabel } from "@/lib/drill/event-catalog";
 import { ACTION_LABELS, CALL_UI, EVENT_KIND_LABELS, PHONE_LABELS, WATER_LABELS, WORLD_LABELS } from "@/lib/drill/labels";
 import type { WorldState } from "@/lib/drill/scenarios";
 import {
+  axisAt,
   clusterMarks,
   clusterTone,
   isBandLane,
@@ -34,7 +35,8 @@ import { BandBar } from "./DrillBar";
 
 type Names = Readonly<Record<string, string>>;
 
-const pctOf = (minute: number, last: number) => `${(Math.min(Math.max(minute, 0), last * 60) / (last * 60)) * 100}%`;
+/** 軸の位置（DrillBar の strip と同じ縮尺。lib/drill/strip.ts の axisAt） */
+const pctOf = (minute: number, last: number) => `${axisAt(minute / 60, last) * 100}%`;
 
 /** 印の形と色。状況は角の小さな四角、人の連絡は丸、帯の段の状況は細い縦の線 */
 const SHAPE: Record<MarkTone, string> = {
@@ -138,7 +140,7 @@ export function StripRows({
               {state.rest}
             </span>
             <div className="relative h-4" data-strip-axis={lane}>
-              {band && <BandBar bands={bands.filter((b) => b.kind === lane)} last={last} now={now} kind={lane} className="absolute inset-x-0 top-[5px] h-1.5" />}
+              {band && <BandBar bands={bands.filter((b) => b.kind === lane)} last={last} now={now} kind={lane} className="absolute inset-x-0 top-[5px] h-1.5" warp />}
               <span className="pointer-events-none absolute inset-y-0 w-px bg-muted/40" style={{ left: pctOf(now * 60, last) }} aria-hidden />
               {(lane === "act" ? marks.map((m) => ({ from: m.minute, to: m.minute, marks: [m] })) : clusterMarks(marks)).map((cl) => (
                 <MarkLink key={cl.marks[0].key} cluster={cl} last={last} band={band} c={c} />

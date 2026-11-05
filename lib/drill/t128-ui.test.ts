@@ -19,7 +19,20 @@ import { BAND_LABELS } from "./labels.ts";
 import { newsShown, NEWS_SHOW, parseSeen, splitNews, tabOfAnchor, type NewsItem } from "./news.ts";
 import { inOutageArea } from "./persona.ts";
 import { EMPTY_WORLD, type WorldChange, type WorldEventKind, type WorldState } from "./scenarios.ts";
-import { buildStrip, clusterMarks, clusterTone, INCIDENT_LANE, incidentLane, logAnchorId, markOf, STRIP_LABELS, STRIP_ORDER, worsened } from "./strip.ts";
+import { DrillBar } from "../../components/drill/DrillBar.tsx";
+import {
+  axisAt,
+  buildStrip,
+  clusterMarks,
+  clusterTone,
+  INCIDENT_LANE,
+  incidentLane,
+  logAnchorId,
+  markOf,
+  STRIP_LABELS,
+  STRIP_ORDER,
+  worsened,
+} from "./strip.ts";
 import { buildDrillLog } from "./timeline.ts";
 import { bandsOf } from "./view.ts";
 
@@ -174,6 +187,25 @@ describe("上の帯の段の表（lib/drill/strip.ts）", () => {
     expect(c[0].marks).toHaveLength(2);
     expect(clusterTone(c[0])).toBe("check");
     expect(clusterMarks([...disaster, { ...disaster[0], key: "x", minute: 200 }])).toHaveLength(2);
+  });
+
+  it("軸の縮尺: はじめの 6 時間を 25%、24 時間までを 55%、72 時間で端。区切りの中は同じ縮尺で、時間の順に並ぶ", () => {
+    expect(axisAt(0)).toBe(0);
+    expect(axisAt(3)).toBeCloseTo(0.125);
+    expect(axisAt(6)).toBeCloseTo(0.25);
+    expect(axisAt(24)).toBeCloseTo(0.55);
+    expect(axisAt(72)).toBe(1);
+    expect(axisAt(100)).toBe(1);
+    expect(axisAt(-1)).toBe(0);
+    for (let h = 0; h < 72; h += 0.5) expect(axisAt(h + 0.5)).toBeGreaterThan(axisAt(h));
+    // 帯の描きと 72 時間の棒が同じ縮尺（strip を渡した DrillBar の目盛り 6 時間は 25%）
+    const html = renderToStaticMarkup(
+      createElement(DrillBar, { hours: [0], last: 72, now: 1, bands: [], reached: 0, clock: true, strip: createElement("span", null, "s") }),
+    );
+    expect(html).toMatch(/style="left:25%"[^>]*data-scale="6"/);
+    // 渡さなければ前のまま（同じ縮尺）
+    const plain = renderToStaticMarkup(createElement(DrillBar, { hours: [0], last: 72, now: 1, bands: [], reached: 0, clock: true }));
+    expect(plain).toMatch(/style="left:8.333[0-9]*%"[^>]*data-scale="6"/);
   });
 
   it("錨の id とタブ（帯の印・新着の href と経過の行の前の錨が同じ）", () => {
