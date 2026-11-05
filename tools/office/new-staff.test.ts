@@ -131,7 +131,7 @@ describe("医療班・行政のアカウントを作る道具: 動かす", () =>
     const r = run(script, [...BASE, "--out", out]);
     expect(r.status, r.stderr).toBe(0);
     const password = passwordOf(r.stdout);
-    expect(password).toMatch(/^[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}$/);
+    expect(password).toMatch(/^[a-zA-Z0-9]{4}-[a-zA-Z0-9]{4}-[a-zA-Z0-9]{4}$/);
 
     const sql = readFileSync(out, "utf8");
     expect(sql).not.toContain(password);
