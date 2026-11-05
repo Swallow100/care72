@@ -36,7 +36,7 @@ export function DrillBar({
   /** 連続の時計の訓練（T90）。hours は保存した区切りの時刻 */
   clock?: boolean;
 }) {
-  const kinds = (["outage", "water", "phone"] as const).filter((k) => bands.some((b) => b.kind === k));
+  const kinds = (["outage", "water", "phone", "radio"] as const).filter((k) => bands.some((b) => b.kind === k));
   return (
     <div className="grid grid-cols-[3rem_minmax(0,1fr)] items-center gap-x-2 gap-y-1" data-bar>
       <span className="text-xs text-muted">{DRILL_LABELS.elapsed}</span>

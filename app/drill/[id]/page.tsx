@@ -6,6 +6,8 @@ import { countColors } from "@/components/disaster/ColorCounts";
 import { LatestResult } from "@/components/drill/ActionLog";
 import { ActionPanel, type PanelPerson } from "@/components/drill/ActionPanel";
 import { DamagePanel } from "@/components/drill/DamagePanel";
+import { DrillHeaderMark } from "@/components/drill/DrillHeaderMark";
+import { drillHeaderMark } from "@/lib/drill/header-mark";
 import { AiStopBand } from "@/components/drill/AiStopBand";
 import { DrillBar } from "@/components/drill/DrillBar";
 import { EndedNote } from "@/components/drill/Ended";
@@ -186,6 +188,8 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
           )}
         </div>
       </header>
+      {/* 上の帯に訓練の想定・規模・経過（T125。事業所の今の状態と混ぜない） */}
+      <DrillHeaderMark mark={drillHeaderMark({ scenario: s.drill.scenario, options: s.state.options ?? null, world: s.state.world, minute: s.state.minute })} />
       <FictionalNote kind={fiction} />
       <AiStopBand band={stopBand} />
 

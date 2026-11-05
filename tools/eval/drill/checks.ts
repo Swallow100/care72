@@ -12,6 +12,7 @@ import { ACTION_WAYS, actionTerm, blockOf, dayHourOf, isDark, type TermCallee, t
 import { isPhoneTurn } from "../../../lib/drill/calls.ts";
 import { CONDITION_BANNED, SPEECH_DANGER, SPEECH_DIAGNOSIS } from "../../../lib/drill/dialogue.ts";
 import type { InjectKind } from "../../../lib/drill/event-catalog.ts";
+import { drillHeaderMark, headerMarkText } from "../../../lib/drill/header-mark.ts";
 import { changeMisfit, FIT_PROFILES, fitKindOf, forbiddenFor, waterActive, wordMisfit, type FitWorld } from "../../../lib/drill/fit.ts";
 import type { DrillKind, PhoneState, WorldChange, WorldState } from "../../../lib/drill/scenarios.ts";
 import type { DrillScenario, HazardKind } from "../../../lib/db/types.ts";
@@ -372,6 +373,11 @@ export function termHits(outcome: RunOutcome): CheckHit[] {
       // 世界の電話が分からないので、家の電話の決まり（line_down）だけで見る
       phone: marks.lineDown !== undefined ? "ok" : (b.phone ?? "ok"),
       lineDown: marks.lineDown !== undefined,
+      // 本人の家の通信（T125）: 打つ前の記録には家の電話の印だけ（停電の家の固定電話・電波は見ない）
+      selfLine: marks.lineDown !== undefined ? "noCall" : "ok",
+      selfMobile: "ok",
+      radioAll: false,
+      officeEvac: false,
       roadClosed: b.roadClosed === true,
       flood: false,
       staff: typeof b.staff === "number" ? b.staff : 1,
@@ -480,6 +486,9 @@ export function fitHits(outcome: RunOutcome, ctx: Pick<CheckContext, "hazards">)
       w = foldFit(w, c);
       track.push({ minute, w });
     }
+    // 訓練の画面の上の帯（lib/drill/header-mark.ts。刻みの終わりの世界で）
+    const band = headerMarkText(drillHeaderMark({ scenario: outcome.plan.scenario as DrillScenario, options: { scale: outcome.plan.scale ?? null }, world: w, minute: Math.round(t.hour * 60) }));
+    wordHit(band, w, "band", null, Math.round(t.hour * 60), "header");
     for (const u of t.turns) {
       const minute = Math.round((u.at ?? t.hour) * 60);
       const at = worldAt(track, minute);

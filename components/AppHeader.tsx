@@ -17,6 +17,7 @@ import { ADMIN_LABEL, canViewPage, homePath, JUDGE_LABEL, LOGIN_PATH, ROLE_LABEL
 import { getPrincipal } from "@/lib/auth/server";
 import { SessionSecretMissing } from "@/lib/auth/session";
 import { canChooseRole } from "@/lib/auth/wall";
+import { HeaderMarkSlot } from "./HeaderMarkSlot";
 import { InitialPasswordBand } from "./InitialPasswordBand";
 import { LogoutButton } from "./LogoutButton";
 import { NavLinks } from "./NavLinks";
@@ -58,7 +59,8 @@ export async function AppHeader() {
             <LinkPending />
           </Link>
           {desk && <NavLinks />}
-          {mark && <DisasterBadge mark={mark} link />}
+          {/* 訓練の画面では事業所の状態の代わりに訓練の想定・規模・経過（T125、components/HeaderMarkSlot） */}
+          {desk && <HeaderMarkSlot>{mark && <DisasterBadge mark={mark} link />}</HeaderMarkSlot>}
         </div>
         {p && <Who p={p} choices={choices} />}
       </div>
