@@ -83,13 +83,16 @@ function markInstalled() {
   }
 }
 
-/** ホーム画面の段: 案内の形（null は済み・入れる必要の無い端末） */
-function readInstall(): InstallMode | null {
+/** ホーム画面の段: 案内の形。done は済み（ホーム画面から開いた・入れた印）、na は入れる必要の無い端末（PC。段を並べない） */
+type InstallState = InstallMode | "done" | "na";
+const isMode = (m: InstallState): m is InstallMode => m !== "done" && m !== "na";
+
+function readInstall(): InstallState {
   const w = window as InstallWindow;
   const nav = navigator as Navigator & { standalone?: boolean };
   if (standalone() || w.__care72Installed) {
     markInstalled();
-    return null;
+    return "done";
   }
   let marked = false;
   try {
@@ -97,8 +100,8 @@ function readInstall(): InstallMode | null {
   } catch {
     marked = false;
   }
-  if (marked) return null;
-  return installMode({
+  if (marked) return "done";
+  const mode = installMode({
     userAgent: nav.userAgent,
     standalone: false,
     installed: false,
@@ -106,9 +109,10 @@ function readInstall(): InstallMode | null {
     platform: nav.platform,
     maxTouchPoints: nav.maxTouchPoints,
   });
+  return mode ?? "na";
 }
 
-const isIos = (m: InstallMode | null) => m === "ios" || m === "ios-line" || m === "ios-inapp";
+const isIos = (m: InstallState) => m === "ios" || m === "ios-line" || m === "ios-inapp";
 
 async function swReady(): Promise<ServiceWorkerRegistration | null> {
   const sw = navigator.serviceWorker;
@@ -135,7 +139,7 @@ async function subscribe(vapidKey: string): Promise<boolean> {
 }
 
 /** 通知の今の様子（端末の許可・ブラウザの対応・鍵） */
-function readNotify(vapidKey: string | null, mode: InstallMode | null): NotifyState {
+function readNotify(vapidKey: string | null, mode: InstallState): NotifyState {
   if (!vapidKey) return "off";
   const has = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
   if (!has) return isIos(mode) && !standalone() ? "need-home" : "unsupported";
@@ -170,7 +174,7 @@ export function PhoneSetup({ vapidKey, account: initialAccount, compact = false 
   const [ready, setReady] = useState(false);
   const [closed, setClosed] = useState(false);
   const [account, setAccount] = useState(initialAccount);
-  const [mode, setMode] = useState<InstallMode | null>(null);
+  const [mode, setMode] = useState<InstallState>("na");
   const [notify, setNotify] = useState<NotifyState>("checking");
   const [skipped, setSkipped] = useState<SetupStep[]>([]);
   const [href, setHref] = useState("");
@@ -207,10 +211,11 @@ export function PhoneSetup({ vapidKey, account: initialAccount, compact = false 
   }, [vapidKey, resync]);
 
   if (!ready || closed) return null;
-  const input = { account: account.kind, installDone: mode === null, notify, skipped };
+  const input = { account: account.kind, installDone: !isMode(mode), notify, skipped };
   if (!setupVisible(input, compact)) return null;
-  const steps = setupSteps(input).filter((s) => !compact || s.step !== "account");
-  const current = compact ? (mode !== null ? "install" : "notify") : currentStep(input);
+  // PC（入れる必要の無い端末）はホーム画面の段を並べない。災害モードは ID の段を並べない
+  const steps = setupSteps(input).filter((s) => (!compact || s.step !== "account") && (s.step !== "install" || mode !== "na"));
+  const current = compact ? (isMode(mode) ? "install" : "notify") : currentStep(input);
 
   const allow = async () => {
     if (!vapidKey) return;
@@ -276,7 +281,7 @@ export function PhoneSetup({ vapidKey, account: initialAccount, compact = false 
         <AccountForm onDone={(loginId) => setAccount({ kind: "done", loginId })} onLater={() => setSkipped((s) => [...s, "account"])} />
       )}
 
-      {current === "install" && mode !== null && (
+      {current === "install" && isMode(mode) && (
         <div className="mt-3" data-install={mode}>
           <p className="font-bold">
             <Easy m={mode === "android-line" || mode === "ios-line" ? P.line : mode === "ios-inapp" ? P.inApp : P.lead} />

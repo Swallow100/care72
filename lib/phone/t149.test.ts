@@ -432,7 +432,7 @@ describe("通知の購読と送る時（偽の送り先）", () => {
     expect(await safetyPost(db, vapid, fn, principal, "p-01", NOW)).toEqual({ ok: false, error: "forbidden" });
     const medical = cm({ role: "medical", admin: false, caseloadOf: null, office: null });
     expect(await safetyPost(db, vapid, fn, medical, "p-01", NOW)).toEqual({ ok: false, error: "forbidden" });
-    const partner = cm({ office: { id: "office-partner", name: "協力事業所", kind: "partner" }, accountId: "acct-partner-cm", caseloadOf: "acct-partner-cm" });
+    const partner = cm({ office: { id: "office-partner", name: "協力事業所", kind: "regular" }, accountId: "acct-partner-cm", caseloadOf: "acct-partner-cm" });
     expect(await safetyPost(db, vapid, fn, partner, "p-01", NOW)).toEqual({ ok: false, error: "not_found" });
     const normal = await safetyPost(db, vapid, fn, cm(), "p-01", NOW);
     expect(normal).toEqual({ ok: false, error: "normal" });

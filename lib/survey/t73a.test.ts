@@ -41,7 +41,7 @@ function tx(db: DatabaseSync, sql: string): void {
 function beforeT73a(): DatabaseSync {
   const db = new DatabaseSync(":memory:");
   db.exec("PRAGMA foreign_keys = ON;");
-  for (const name of NAMES.filter((n) => n < T73A || n.startsWith("0024_") || n.startsWith("0032_") || n.startsWith("0033_"))) tx(db, sqlOf(name));
+  for (const name of NAMES.filter((n) => n < T73A || n.startsWith("0024_") || n.startsWith("0032_") || n.startsWith("0033_") || n.startsWith("0035_"))) tx(db, sqlOf(name));
   tx(db, seedStatements().join("\n"));
   return db;
 }
