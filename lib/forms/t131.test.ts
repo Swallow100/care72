@@ -9,7 +9,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { DatabaseSync } from "node:sqlite";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { MappingEditor } from "../../components/forms/mapping/MappingEditor.tsx";
 import { PaperBatch, groupListPapers, type BatchPaper } from "../../components/forms/PaperBatch.tsx";
 import { SEED_PEOPLE } from "../../seed/people.ts";
 import { seedStatements } from "../../seed/sql.ts";
@@ -31,6 +32,8 @@ import { buildMedicalSummary } from "./medical-summary.ts";
 import { buildOverlaySheet, telColumns, type OverlaySheet } from "./overlay-sheet.ts";
 import type { PageImage } from "./page-images.ts";
 import { seedRows } from "./print-harness.ts";
+
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh() {}, push() {} }) }));
 
 const P = (id: string) => SEED_PEOPLE.find((p) => p.person.id === id)!;
 const OPTS = { today: "2026-11-05", officeName: "デモ事業所" };
@@ -209,6 +212,14 @@ describe("一覧の形の様式（T131、評価の 3 回目の 3）", () => {
     expect(isForm9Like(m9)).toBe(true);
     expect(isForm9Like({ ...m9, list: undefined })).toBe(false);
     expect(isForm9Like(checkReadResult(listRead()).mapping)).toBe(false);
+    // 確かめの画面: 一覧の行の数と、様式 9 なら専用の紙へ
+    const html = renderToStaticMarkup(createElement(MappingEditor, { id: "fm-9", version: 1, status: "draft", initial: m9 }));
+    expect(html).toContain("一覧");
+    expect(html).toContain("20 行");
+    expect(html).toContain('href="/office/form9"');
+    expect(html).toContain("data-form9-paper");
+    const other = renderToStaticMarkup(createElement(MappingEditor, { id: "fm-1", version: 1, status: "draft", initial: checkReadResult(listRead()).mapping }));
+    expect(other).not.toContain("data-form9-paper");
   });
 
   it("事業所名と担当ケアマネは別々の項目（様式 9 の列）。計画作成者は両方を 1 つに", () => {
