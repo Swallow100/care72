@@ -462,7 +462,7 @@ describe("審査員の役選択", () => {
 
   it("役選択の画面の 4 つ（名前は種から）", async () => {
     expect(await judgeChoices(db)).toEqual([
-      { role: "care_manager", label: "ケアマネ", sub: "山本" },
+      { role: "care_manager", label: "ケアマネジャー", sub: "山本" },
       { role: "medical", label: "医療班", sub: "受入一覧" },
       { role: "self", label: "本人スマホ", sub: "山田 ハナ" },
       { role: "family", label: "家族スマホ", sub: "娘 森 恵子" },
