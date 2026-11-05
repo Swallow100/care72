@@ -37,6 +37,8 @@ export const DWELL_MINUTES = {
   shelter: 360,
   /** 天候（大雨・止む） */
   weather: 180,
+  /** 電波（携帯の基地局）の不通と回復（T125） */
+  radio: 360,
 } as const;
 
 /** 同じ人に同じ役の人が着いたあと、また同じ役が来る予定を受けるまでの分（業者の巡回・電源・薬） */
@@ -59,6 +61,7 @@ export const STATE_RULES = [
   { id: "dwell:outage", kind: "dwell", words: `停電が復旧したら、${DWELL_MINUTES.outage / 60} 時間たつまでもう一度の停電にしない` },
   { id: "dwell:shelter", kind: "dwell", words: `避難所の状態は、前に変わってから ${DWELL_MINUTES.shelter / 60} 時間たつまで変わらない` },
   { id: "dwell:weather", kind: "dwell", words: `天候は、前に変わってから ${DWELL_MINUTES.weather / 60} 時間たつまで変わらない` },
+  { id: "dwell:radio", kind: "dwell", words: `携帯の電波は、前に変わってから ${DWELL_MINUTES.radio / 60} 時間たつまで変わらない` },
   { id: "table_first", kind: "table", words: "想定の表がこのあと変える状態（停電の復旧・電話・その道や施設・その人のいる所）は、表より先に変えない" },
 ] as const;
 export type StateRuleId = (typeof STATE_RULES)[number]["id"];
@@ -230,6 +233,14 @@ export function screenIncident(world: WorldState, e: DrillIncident, ctx: ScreenC
         return { keep: false, rule: "table_first" };
       }
       return tooSoon(world, "phone", ctx.minute, DWELL_MINUTES.phone) !== null ? { keep: false, rule: "dwell:phone" } : { keep: true };
+    }
+    case "radio": {
+      const now = world.radio ?? "ok";
+      if (c.state === now) return { keep: false, rule: "same" };
+      if (ctx.origin === "table") return { keep: true };
+      // 予定の回復（監督の見込み）は時刻が来たら起こす
+      if (ctx.origin === "scheduled") return { keep: true };
+      return tooSoon(world, "radio", ctx.minute, DWELL_MINUTES.radio) !== null ? { keep: false, rule: "dwell:radio" } : { keep: true };
     }
     case "water": {
       const next = c.out ? "out" : world.water === "out" ? "restored" : world.water;
@@ -409,6 +420,7 @@ export function stateLines(world: WorldState, now: number, who: (person: string 
     );
   }
   out.push(`電話: ${PHONE_WORDS[world.phone]}${sinceWords(world, "phone")}${holdWords(world, "phone", now, DWELL_MINUTES.phone)}`);
+  if (world.radio === "down") out.push(`携帯の電波: 不通${sinceWords(world, "radio")}${holdWords(world, "radio", now, DWELL_MINUTES.radio)}`);
   if (world.water !== "none") out.push(`断水: ${world.water === "out" ? "断水中" : "解消"}${sinceWords(world, "water")}${holdWords(world, "water", now, DWELL_MINUTES.water)}`);
   // 同じ名前・同じ状態・同じ時刻の道と施設（仮想の町の道は人ごとの id）は 1 行にまとめ、人を並べる
   const grouped = new Map<string, { head: string; tail: string; who: string[] }>();
@@ -437,7 +449,7 @@ export function stateLines(world: WorldState, now: number, who: (person: string 
   return out;
 }
 
-const PHONE_WORDS: Readonly<Record<PhoneState, string>> = { ok: "通常", busy: "不安定", down: "通話不可" };
+const PHONE_WORDS: Readonly<Record<PhoneState, string>> = { ok: "通常", busy: "不安定（つながりにくい）", down: "規制（かけ直せば時々つながる）" };
 const ARRIVAL_WORDS: Readonly<Record<string, string>> = {
   staff: "事業所の職員",
   nurse: "訪問看護",

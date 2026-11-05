@@ -5,6 +5,7 @@ import type { SignalColor, WhereNow } from "../db/types.ts";
 import type { ActionRecord } from "./action-types.ts";
 import type { DrillIncident } from "./incident-types.ts";
 import type { DrillKind, FixedTurn, WorldState } from "./scenarios.ts";
+import type { Via } from "./comms.ts";
 
 /** 本人ごとの 1 刻みの結果（安否 1 つ）。表の固定の物も、ペルソナ（T18）の物も同じ形 */
 export type DrillTurn = {
@@ -26,6 +27,11 @@ export type DrillTurn = {
   at: number;
   /** 保存した安否の signals の id（保存した刻みから読み直したときだけ。着信の声と録音の再生に使う、T21） */
   signal?: string;
+  /**
+   * どの経路で届いたか（T125、lib/drill/comms.ts の Via: call 着信・button 安否のボタン・message 伝言）。engine が通信の状態から付ける。
+   * 前からの訓練の安否には無い（lib/drill/calls.ts の isPhoneTurn は無ければ前の見分け方）
+   */
+  via?: Via;
 };
 
 /** 本人ごとの今の様子（いちばん新しい 1 刻みの安否） */

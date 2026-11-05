@@ -63,6 +63,7 @@ export const INCIDENT_REACH: Readonly<Record<WorldEventKind, Reach>> = {
   outage: "public",
   outage_restored: "public",
   phone: "public",
+  radio: "public",
   water: "public",
   road: "public",
   shelter: "public",

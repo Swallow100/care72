@@ -87,6 +87,7 @@ import { CALL_STATUS_TEXTS, clockLabel, PHONE_LABELS, SHELTER_LABELS, TSUNAMI_LA
 import { nightLine } from "./night.ts";
 import { ASK_KINDS, eventHour, type AskKind, type DrillKind, type FixedTurn, type OutageArea, type PhoneState, type WorldState } from "./scenarios.ts";
 import { fitLedgerHazards, profileOf } from "./fit.ts";
+import { homeComms, homeOf, type Home } from "./comms.ts";
 import { clockRemaining, formatHours, type Situation, type TriageClock } from "../triage/index.ts";
 import { callsFor, speakerSlip, speakersLine, speakersOf, type Speaker, type Speakers } from "./speaker.ts";
 import { minuteText } from "./time-text.ts";
@@ -121,6 +122,10 @@ export type Persona = {
   clocks?: ReadonlyArray<ClaudeClock>;
   /** 本人の性別（通話の相手の本人の呼び方、T121） */
   sex?: ClaudePerson["sex"];
+  /** 家の区域と通信（T125、lib/drill/comms.ts。固定電話・携帯）。Claude に渡さない（今の様子の行に「固定電話は停電で使えない」などを書く元） */
+  home?: Home;
+  /** 訓練の災害の種類（T125。電波不通の区域の表を引く） */
+  fit?: DrillKind | null;
 };
 
 /** 連絡しうる人の区分 → 安否の出どころ。訪問看護・施設などの事業所は連絡しない（監督 T19・対応 T20 の相手） */
@@ -265,6 +270,8 @@ export function buildPersona(source: PseudonymInput, opts: { on?: string; places
     speakers,
     clocks: p.clocks,
     sex: p.sex,
+    home: homeOf(source.ledger),
+    fit: opts.fit ?? null,
   };
 }
 
@@ -445,8 +452,19 @@ export function clockWords(persona: Pick<Persona, "clocks" | "hazards" | "town">
   });
 }
 
+/** この家の通信の今（固定電話・携帯の電波・通話の規制）。家の分からない本人役（前からのテスト）は書かない */
+export function commsWords(world: WorldState, person: string, persona: Pick<Persona, "home" | "fit">, now: number): string[] {
+  if (!persona.home) return [];
+  const c = homeComms(world, profileOf(persona.fit ?? null), person, persona.home, now);
+  const out: string[] = [];
+  if (c.landline === "out" && world.marks?.[person]?.lineDown === undefined) out.push("この家の固定電話は停電で使えない");
+  if (c.mobile === "down") out.push("携帯の電波が不通（メッセージ・安否のボタンも届かない）");
+  else if (world.phone === "down") out.push(c.mobile === "ok" ? "電話は規制でつながりにくい（メッセージ・安否のボタンは届く）" : "電話は規制でつながりにくい");
+  return out;
+}
+
 /** 世界の今の様子のうち、この人に関わる物 */
-function worldWords(world: WorldState, person: string, persona: Persona): string[] {
+function worldWords(world: WorldState, person: string, persona: Persona, now: number): string[] {
   const out: string[] = [];
   if (world.alertLevel) out.push(`警戒レベル ${world.alertLevel}`);
   if (world.quake) out.push(`地震 震度 ${world.quake}`);
@@ -459,6 +477,8 @@ function worldWords(world: WorldState, person: string, persona: Persona): string
   }
   // T121: 道・電話・施設はいつからその状態か（world.stamps）。短い間に入れ替わったように言わないため
   out.push(`電話 ${PHONE_LABELS[world.phone]}${sinceWords(world, "phone")}`);
+  // 通信の段（T125、lib/drill/comms.ts）。本人役が通じない道で連絡したと言わないため
+  out.push(...commsWords(world, person, persona, now));
   if (world.water !== "none") out.push(`断水 ${WATER_LABELS[world.water]}`);
   for (const r of world.roads.filter((x) => !x.person || x.person === person)) {
     out.push(`${r.label} ${r.open ? "通行可" : "通行止"}${r.person === person ? "（家の近くの道）" : ""}${sinceWords(world, `road:${r.id}`)}`);
@@ -510,7 +530,7 @@ export function tickText(input: PersonaInput, persona: Persona): string {
     ...(input.night ? [nightLine(input.hour)] : []),
     ...(reason ? [reason] : []),
     incidents.length > 0 ? ["この刻みの状況:", ...incidents.map((e) => `- ${e.text}`)].join("\n") : "この刻みの状況: 新しい事はない",
-    ["今の様子:", ...[...worldWords(input.world, input.person, persona), ...advisedWords(input.world, input.person)].map((x) => `- ${x}`)].join("\n"),
+    ["今の様子:", ...[...worldWords(input.world, input.person, persona, now), ...advisedWords(input.world, input.person)].map((x) => `- ${x}`)].join("\n"),
     // T121: 持ちこたえる時間の今（コードの計算）。言葉はこれと食い違わない
     ...clockLines(persona, input.world, input.person, now),
     `前の連絡: ${stateWords(input.state)}`,
@@ -970,8 +990,12 @@ export type CallPickup = (typeof CALL_PICKUPS)[number];
 export const CALL_PICKUP_ODDS: Readonly<Record<PhoneState, { answers: number; background: number }>> = {
   ok: { answers: 0.85, background: 0.05 },
   busy: { answers: 0.5, background: 0.2 },
-  down: { answers: 0, background: 0 },
+  // 規制（T125）: かけ直せば時々つながる。全部は止めない
+  down: { answers: 0.3, background: 0.1 },
 };
+
+/** メッセージ（T125）の返信・既読の割合（通話の様子によらない。電波不通・携帯なしは届かない） */
+export const MESSAGE_READ_ODDS = { replied: 0.5, read: 0.25 } as const;
 
 /** 出るか。roll は 0 以上 1 未満（Math.random など）。電話の手段が無ければ出ない */
 export function decideCallPickup(phone: PhoneState, roll: number, reachable = true): CallPickup {
@@ -1032,7 +1056,7 @@ export function callText(call: PersonaCall, persona: Persona): string {
   return [
     `時刻: 発災から ${clockLabel(now)}`,
     ...(call.night ? [nightLine(call.hour)] : []),
-    ["今の様子:", ...[...worldWords(call.world, call.person, persona), ...advisedWords(call.world, call.person)].map((x) => `- ${x}`)].join("\n"),
+    ["今の様子:", ...[...worldWords(call.world, call.person, persona, now), ...advisedWords(call.world, call.person)].map((x) => `- ${x}`)].join("\n"),
     // T123: 通話（最初の言葉・往復）にも持ちこたえる時間の今。評価の 2 回目で、通話の道だけ時計の段が無く、切れたあとも同じ調子で話した
     ...clockLines(persona, call.world, call.person, now),
     `この刻みの状況: ${ownIncidents(call.incidents, call.person).map((e) => e.text).join("、") || "新しい事はない"}`,
@@ -1167,7 +1191,7 @@ export function visitText(v: PersonaVisit, persona: Persona): string {
   return [
     `時刻: 発災から ${clockLabel(now)}`,
     ...(v.night ? [nightLine(v.hour)] : []),
-    ["今の様子:", ...[...worldWords(v.world, v.person, persona), ...advisedWords(v.world, v.person)].map((x) => `- ${x}`)].join("\n"),
+    ["今の様子:", ...[...worldWords(v.world, v.person, persona, now), ...advisedWords(v.world, v.person)].map((x) => `- ${x}`)].join("\n"),
     // T123: 訪問にも持ちこたえる時間の今（通話と同じ）
     ...clockLines(persona, v.world, v.person, now),
     `この刻みの状況: ${ownIncidents(v.incidents, v.person).map((e) => e.text).join("、") || "新しい事はない"}`,

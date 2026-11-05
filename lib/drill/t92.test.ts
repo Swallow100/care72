@@ -230,14 +230,17 @@ describe("表の行（種の 10 人）", () => {
     expect(again.outage).toEqual({ area: { scope: "office" }, since: 30, restoredAt: null });
   });
 
-  it("mobile_down: 電話が通じている間だけ。不通と、N 時間後に一部回復の予定の 2 行", () => {
+  it("mobile_down: 携帯の電波が通じている間だけ。電波不通と、N 時間後に一部回復の予定の 2 行（T125 で電話の不通から電波不通に）", () => {
     expect(ok("mobile_down", "p-01")).toBe(true);
-    expect(ok("mobile_down", "p-01", { ...W, phone: "down" })).toBe(false);
+    // 通話の規制の間も起きる（電波は別の段）。もう電波不通なら起きない
+    expect(ok("mobile_down", "p-01", { ...W, phone: "down" })).toBe(true);
+    expect(ok("mobile_down", "p-01", { ...W, radio: "down" })).toBe(false);
     const parts = EVENT_CATALOG.mobile_down.build({ person: null }, 12, 2);
-    expect(parts.map((p) => p.text)).toEqual(["携帯電話も通話不可", "電話 一部回復見込 2 時間後"]);
+    expect(parts.map((p) => p.text)).toEqual(["携帯 電波不通", "携帯 電波 回復見込 2 時間後"]);
     const w = apply(W, "mobile_down", null, 12, 2);
-    expect(w.phone).toBe("down");
-    expect(w.scheduled).toEqual([{ at: 840, change: { kind: "phone", state: "busy" }, text: "電話 一部回復", by: "director" }]);
+    expect(w.radio).toBe("down");
+    expect(w.phone).toBe("ok");
+    expect(w.scheduled).toEqual([{ at: 840, change: { kind: "radio", state: "ok" }, text: "携帯 電波 一部回復", by: "director" }]);
   });
 
   it("road_reopen: 家の前の道が通行止めの人だけ。通れるように", () => {

@@ -101,6 +101,11 @@ export type FitProfile = {
   words: ReadonlyArray<WordBan>;
   /** 地図の既定の層（台帳のハザードの種類） */
   layers: ReadonlyArray<Exclude<HazardKind, "other">>;
+  /**
+   * 電波不通（携帯の基地局の予備電源が尽きる。lib/drill/comms.ts の radioDownAt）。停電が hours 時間続いた、zones の区域の家
+   * （all は全部の家）。目安は基地局の停電対策「少なくとも 24 時間」（soumu-tsushin-2026）
+   */
+  radio: { hours: number; zones: ReadonlyArray<Exclude<HazardKind, "other"> | "all"> };
 };
 
 const noHazard = { river_flood: null, tsunami_flood: null, landslide: null, shaking: null, collapse: null } as const;
@@ -132,6 +137,8 @@ export const FIT_PROFILES: Readonly<Record<DrillKind, FitProfile>> = {
     ],
     words: [{ id: "quake_word", re: QUAKE_WORDS }],
     layers: ["flood", "landslide"],
+    // 浸水・土砂の区域の基地局は停電が長引くと止まりやすい
+    radio: { hours: 24, zones: ["flood", "landslide"] },
   },
   earthquake: {
     kind: "earthquake",
@@ -159,6 +166,8 @@ export const FIT_PROFILES: Readonly<Record<DrillKind, FitProfile>> = {
       { id: "flood_word", re: FLOOD_WORDS, when: (w) => w.tsunami === "none" },
     ],
     layers: ["tsunami", "landslide"],
+    // 沿岸・山すその基地局は停電が長引くと止まりやすい
+    radio: { hours: 24, zones: ["tsunami", "landslide"] },
   },
 };
 

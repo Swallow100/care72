@@ -10,7 +10,8 @@
 // 読まない・変えない（本番の大雨の最中でも、訓練は訓練の状況で動く）。
 // 色と順位はここで決めない（lib/triage だけ）。
 
-import type { DrillScenario, DrillStatus, Ledger } from "../db/types.ts";
+import type { DrillScenario, DrillStatus, HazardKind, Ledger } from "../db/types.ts";
+import type { Homes } from "./comms.ts";
 import type { DisasterSituation } from "../disaster/state.ts";
 import {
   applyEvent,
@@ -73,6 +74,7 @@ import { fireScheduled } from "./schedule.ts";
 import { screenIncidents, tableAheadOf } from "./state-rules.ts";
 import { fitKindOf, profileOf, type FitProfile } from "./fit.ts";
 import { gateTurns, tallyGate } from "./gate.ts";
+import { routeTurns } from "./comms.ts";
 import { drillSeed } from "./time-odds.ts";
 import { cleanScale, fitToScale, scaleIncidents, type DrillScale } from "./scale.ts";
 import { HOME_TOWN_MAX } from "./self.ts";
@@ -172,6 +174,13 @@ export type DrillState = {
   aiAt?: number;
   /** 自由対応の確かめ（T110、lib/drill/free-action.ts）。読み替えたあと打つ前だけ。サーバーの中だけで Claude の入力に渡さない */
   draft?: FreeDraft;
+  /**
+   * 参加者の家の区域と通信（T125、lib/drill/comms.ts の Home）。開始の時に台帳から写す。手の可否・世界の返事・連絡の経路が読む。
+   * Claude に渡さない（町名を含む）。前からの訓練には無い（区域なし・固定電話あり・携帯なしと読む）
+   */
+  homes?: Homes;
+  /** 事業所の区域（T125。offices.hazards の写し）。区域の出来事の間の職員の退避に使う。無ければ区域なし */
+  officeZones?: HazardKind[];
 };
 
 /** 1 刻みで起きた事。保存（lib/drill/db.ts）はこれを drill_events と signals に書く */
@@ -373,6 +382,7 @@ export function initialState(
   startedAt: string,
   options: DrillOptions = {},
   cast: Cast = {},
+  place: Pick<DrillState, "homes" | "officeZones"> = {},
 ): DrillState {
   const opts = cleanOptions(options);
   return {
@@ -388,6 +398,8 @@ export function initialState(
     actions: [],
     ...(Object.keys(opts).length > 0 ? { options: opts } : {}),
     ...(Object.keys(cast).length > 0 ? { cast: { ...cast } } : {}),
+    ...(place.homes && Object.keys(place.homes).length > 0 ? { homes: place.homes } : {}),
+    ...(place.officeZones && place.officeZones.length > 0 ? { officeZones: [...place.officeZones] } : {}),
   };
 }
 
@@ -614,9 +626,11 @@ export async function step(
   }
   // 本人役の言葉も想定の門に（T125。言う事・する事の合わない文を落とす）
   const gt = gateTurns(turns, fitOf(state, world), world);
-  gatedWorld = tallyGate(gatedWorld, "persona", gt.dropped);
+  // 連絡の経路（T125、lib/drill/comms.ts）。届かない AI の安否は外す
+  const rt = routeTurns(gt.turns, world, fitOf(state, world), state.homes);
+  gatedWorld = tallyGate(tallyGate(gatedWorld, "persona", gt.dropped), "persona", rt.dropped);
 
-  const tick: Tick = { step: index, hour, incidents: [...incidents, ...stopIncidents(hooks.stops?.take() ?? [], hour)], turns: gt.turns, world, finished: index >= last };
+  const tick: Tick = { step: index, hour, incidents: [...incidents, ...stopIncidents(hooks.stops?.take() ?? [], hour)], turns: rt.turns, world, finished: index >= last };
   return { state: foldTick({ ...state, world: gatedWorld }, tick, last), tick, words };
 }
 
@@ -697,9 +711,10 @@ async function virtualStep(
     results.forEach((x, i) => turns.push(...x.filter((u) => u.person === live[i])));
   }
   const gt = gateTurns(turns, fitOf(state, world), world);
-  gatedWorld = tallyGate(gatedWorld, "persona", gt.dropped);
+  const rt = routeTurns(gt.turns, world, fitOf(state, world), state.homes);
+  gatedWorld = tallyGate(tallyGate(gatedWorld, "persona", gt.dropped), "persona", rt.dropped);
 
-  const tick: Tick = { step: index, hour, incidents: [...incidents, ...stopIncidents(hooks.stops?.take() ?? [], hour)], turns: gt.turns, world, finished: index >= last };
+  const tick: Tick = { step: index, hour, incidents: [...incidents, ...stopIncidents(hooks.stops?.take() ?? [], hour)], turns: rt.turns, world, finished: index >= last };
   // foldTick は前の世界に状況を当て直すので、部屋の ID は前の世界に先に写す
   const base = { ...state, world: r && r.session !== undefined ? { ...gatedWorld, session: r.session } : gatedWorld };
   return { state: foldTick(base, tick, last), tick, words: [] };
@@ -830,7 +845,8 @@ export async function advance(
     if (!hooks.persona) for (const p of state.participants) applyFixed(p);
     if (happened.length === 0 && turns.length === 0 && to < DRILL_END_MINUTE) return null;
     book = { ...book, touched, lastCalled };
-    const tick: Tick = { step: index, hour, incidents: happened, turns, world, finished: to >= DRILL_END_MINUTE };
+    // 表の固定の安否にも連絡の経路を付ける（T125。固定の行は外さない）
+    const tick: Tick = { step: index, hour, incidents: happened, turns: routeTurns(turns, world, fitOf(state, world), state.homes).turns, world, finished: to >= DRILL_END_MINUTE };
     return { state: foldTick({ ...state, world: book }, tick, lastStep(state.scenario)), tick, words: [] };
   }
 
@@ -1022,12 +1038,13 @@ export async function advance(
     : [];
   // 本人役の言葉も想定の門に（T125）
   const gt = gateTurns(turns, fitOf(state, world), world);
-  book = tallyGate({ ...book, counts, lastCalled, touched }, "persona", gt.dropped);
+  const rt = routeTurns(gt.turns, world, fitOf(state, world), state.homes);
+  book = tallyGate(tallyGate({ ...book, counts, lastCalled, touched }, "persona", gt.dropped), "persona", rt.dropped);
   const tick: Tick = {
     step: index,
     hour,
     incidents: [...incidents, ...stop, ...stopIncidents(hooks.stops?.take() ?? [], hour)],
-    turns: gt.turns,
+    turns: rt.turns,
     world,
     finished: to >= DRILL_END_MINUTE,
   };

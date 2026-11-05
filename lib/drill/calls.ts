@@ -13,10 +13,11 @@ import type { DrillTurn } from "./engine.ts";
 /** 1 刻みの着信の上限 */
 export const CALLS_PER_TICK = 2;
 
-type PhoneShape = Pick<DrillTurn, "source" | "saying" | "color" | "injured" | "atHome" | "canMove" | "hasMedicine">;
+type PhoneShape = Pick<DrillTurn, "source" | "saying" | "color" | "injured" | "atHome" | "canMove" | "hasMedicine"> & Partial<Pick<DrillTurn, "via">>;
 
-/** 電話の形の連絡か（家族・支援者の言う事のある連絡。本人と、赤の 4 問に答えた物はボタン） */
+/** 電話の形の連絡か（家族・支援者の言う事のある連絡。本人と、赤の 4 問に答えた物はボタン）。経路（T125）が着信でなければ電話でない */
 export function isPhoneTurn(t: PhoneShape): boolean {
+  if (t.via !== undefined && t.via !== "call") return false;
   if (t.source === "agent") return false;
   if (!t.saying?.trim()) return false;
   const answered = [t.injured, t.atHome, t.canMove, t.hasMedicine].some((v) => v === true || v === false);

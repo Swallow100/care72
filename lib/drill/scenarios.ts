@@ -15,6 +15,7 @@ import { INJECT_TEXTS, injectChange, ROAD_BOUND_ROLES, type InjectKind } from ".
 import { hourText } from "./time-text.ts";
 import type { SourceId } from "../sources/index.ts";
 import type { CastPick } from "./cast.ts";
+import type { RadioState } from "./comms.ts";
 
 /** 12 の刻み（発災からの時間） */
 export const DRILL_HOURS = [0, 1, 3, 6, 9, 12, 18, 24, 36, 48, 60, 72] as const;
@@ -123,6 +124,11 @@ export type WorldState = {
   /** 停電。始まり・復旧は発災からの時間 */
   outage: { area: OutageArea; since: number; restoredAt: number | null } | null;
   phone: PhoneState;
+  /**
+   * 電波（携帯の基地局、T125）。down は監督の差し込みの全域の不通。停電が長引いた区域の家の不通は lib/drill/comms.ts の radioDownAt が
+   * 停電と想定の表から決める（ここには書かない）。無ければ通常
+   */
+  radio?: RadioState;
   /** 断水 */
   water: WaterState;
   roads: Road[];
@@ -279,6 +285,8 @@ export type WorldChange =
   | { kind: "outage"; area: OutageArea }
   | { kind: "outage_restored" }
   | { kind: "phone"; state: PhoneState }
+  // 電波（T125）。監督の「携帯の基地局の停止」と、その見込みの回復
+  | { kind: "radio"; state: RadioState }
   | { kind: "water"; out: boolean }
   | { kind: "road"; id: string; label: string; open: boolean }
   | { kind: "shelter"; id: string; label: string; state: ShelterState }
@@ -579,7 +587,8 @@ const EARTHQUAKE: Scenario = {
         { change: { kind: "quake", intensity: "6強" }, text: "南海トラフ 震度 6強" },
         { change: { kind: "tsunami", state: "evacuate" }, text: "津波警報、沿岸に避難指示" },
         { change: { kind: "outage", area: { scope: "office" } }, text: "停電 全域" },
-        { change: { kind: "phone", state: "down" }, text: "電話 通話不可" },
+        // 通話は規制（かけ直せば時々つながる。T125 で「通話不可」から。全部は止めない）。固定電話は停電の家で使えない（lib/drill/comms.ts）
+        { change: { kind: "phone", state: "down" }, text: "電話 規制 つながりにくい" },
       ],
       turns: [{ person: "p-07", who: WHO.any, color: "green", source: "agent", whereNow: "home", saying: "家は大丈夫" }],
     },
@@ -771,6 +780,7 @@ export function applyEvent(world: WorldState, e: WorldEvent, hour: number): Worl
 function stateValues(w: WorldState): Map<string, string> {
   const out = new Map<string, string>([
     ["phone", w.phone],
+    ["radio", w.radio ?? "ok"],
     ["outage", w.outage ? `${w.outage.since}|${w.outage.restoredAt ?? ""}` : ""],
     ["water", w.water],
     ["weather", w.weather ?? ""],
@@ -826,6 +836,8 @@ function applyChange(world: WorldState, e: WorldEvent, hour: number): WorldState
       return world.outage ? { ...world, outage: { ...world.outage, restoredAt: hour } } : world;
     case "phone":
       return { ...world, phone: c.state };
+    case "radio":
+      return c.state === "down" ? { ...world, radio: "down" } : (({ radio: _r, ...rest }) => rest)(world);
     case "water":
       return { ...world, water: c.out ? "out" : world.water === "out" ? "restored" : world.water };
     case "road":
