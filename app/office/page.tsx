@@ -1,13 +1,11 @@
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import Link from "next/link";
-import { ColorCounts } from "@/components/disaster/ColorCounts";
 import { DisasterBadge } from "@/components/disaster/DisasterBadge";
 import { AddCareManager } from "@/components/office/AddCareManager";
 import { AssignForm } from "@/components/office/AssignForm";
 import { AssignMany, PickAll, PickBox } from "@/components/office/AssignMany";
 import { AssignRow } from "@/components/office/AssignRow";
 import { CareManagerRow } from "@/components/office/CareManagerRow";
-import { FormChoice } from "@/components/office/FormChoice";
 import { MoreFold } from "@/components/office/MoreFold";
 import { JmaAlerts } from "@/components/office/JmaAlerts";
 import { OfficePlace } from "@/components/office/OfficePlace";
@@ -15,7 +13,7 @@ import { SetupPanel } from "@/components/office/SetupPanel";
 import { UnlistedFold } from "@/components/office/UnlistedFold";
 import { UnlistedRows } from "@/components/office/UnlistedRows";
 import { ButtonLink, buttonClass } from "@/components/ui/Button";
-import { AddPersonIcon, CloseIcon, DownloadIcon, PaperIcon } from "@/components/ui/Icon";
+import { AddPersonIcon, CloseIcon } from "@/components/ui/Icon";
 import { LinkPending } from "@/components/ui/LinkPending";
 import { Page, PageHead, Panel, PanelHead } from "@/components/ui/Panel";
 import { SubmitButton } from "@/components/ui/SubmitButton";
@@ -45,12 +43,8 @@ import {
   OUTAGE_SCOPE_LABELS,
   shortJst,
   toLocalInput,
-  toSituation,
   type DisasterState,
 } from "@/lib/disaster/state";
-import { colorCounts, NORMAL_ORDER_LABELS } from "@/lib/forms/form9";
-import { form9Scope, loadForm9 } from "@/lib/forms/form9-db";
-import { FORM9_CSV_PATH, FORM9_PATH } from "@/lib/forms/form9-href";
 import { parseAssignedMany, parsePeopleError } from "@/lib/office/http";
 import { ASSIGN_ANCHOR, CARE_MANAGERS_ANCHOR, NEW_PERSON_PATH, OFFICE_PEOPLE_PATH } from "@/lib/office/http-paths";
 import { assignManyText, OFFICE_ERROR_LABELS, OFFICE_LABELS, type PeopleActionError } from "@/lib/office/labels";
@@ -105,8 +99,6 @@ export default async function OfficePage({ searchParams }: Props) {
   let officePeople: OfficePersonItem[];
   let unaffiliated: UnaffiliatedItem[];
   let survey: SurveyOverview;
-  let counts: ReturnType<typeof colorCounts> | null = null;
-  let people = 0;
   // 準備の欄（T98）。管理者だけ（審査員のケアマネの役は管理者でないので出ない）
   let setup: SetupItem[] = [];
   try {
@@ -132,13 +124,6 @@ export default async function OfficePage({ searchParams }: Props) {
         people: officePeople,
         careManagerLater: isSetupLater((await cookies()).get(SETUP_LATER_COOKIE)?.value, scope.officeId),
       });
-    }
-    const f9 = form9Scope(principal);
-    const situation = toSituation(state, now);
-    if (f9) {
-      const form9 = await loadForm9(env.DB, f9, { today, situation });
-      people = form9?.sheet.rows.length ?? 0;
-      counts = situation && form9 ? colorCounts(form9.sheet.rows) : null;
     }
   } catch (e) {
     console.error("事業所の画面を読めない", e);
@@ -196,8 +181,7 @@ export default async function OfficePage({ searchParams }: Props) {
           <SurveyPanel overview={survey} origin={await requestOrigin()} />
         </div>
         <div className="grid min-w-0 content-start gap-3">
-          <Form9Section people={people} counts={counts} />
-          <FormChoice officeId={scope.officeId} error={q.form_error === "bad"} />
+          {/* 様式9 と使用様式は書類の画面（/forms）にまとめた（T147） */}
           <Panel id={CARE_MANAGERS_ANCHOR} aria-labelledby="cm-title" className="scroll-mt-4">
             <AddCareManager count={careManagers.length} admin={actor.admin}>
               {/* 審査員のケアマネの役の書き手（acct-judge）はケアマネの一覧にいない。試用事業所（T115）では管理者の行が自分 */}
@@ -432,29 +416,6 @@ function InfoSection({ state, towns }: { state: DisasterState; towns: TownCount[
           </SubmitButton>
         </div>
       </form>
-    </Panel>
-  );
-}
-
-/** 様式 9 への入口。災害モードは色ごとの人数（ルールの表）、平時は並びの言い方 */
-function Form9Section({ people, counts }: { people: number; counts: ReturnType<typeof colorCounts> | null }) {
-  return (
-    <Panel aria-labelledby="form9-title">
-      <PanelHead id="form9-title" title="様式9" count={`${people} 人`} />
-      {counts ? (
-        <ColorCounts counts={counts} className="mt-1" />
-      ) : (
-        <p className="mt-1 text-xs text-muted">並び {NORMAL_ORDER_LABELS.join(" → ")}</p>
-      )}
-      <div className="mt-2 flex flex-wrap gap-1.5">
-        <ButtonLink href={FORM9_PATH} icon={PaperIcon}>
-          表示
-        </ButtonLink>
-        <a href={FORM9_CSV_PATH} download className={buttonClass("plain", "md")} data-press>
-          <DownloadIcon aria-hidden className="size-4 shrink-0" />
-          CSV出力
-        </a>
-      </div>
     </Panel>
   );
 }

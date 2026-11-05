@@ -104,16 +104,19 @@ export async function savePlanForm(db: D1Database, p: Principal | null, value: u
   return { ok: true };
 }
 
-// ---------- 事業所の画面のフォーム（app/office/form） ----------
+// ---------- 使用様式のフォーム（app/office/form。T147 から書類の一覧〔/forms〕の「既定設定」が送る） ----------
 
 export const OFFICE_FORM_PATH = "/office/form";
 
 export type FormPostOutcome = { status: 401 } | { status: 403 } | { status: 303; location: string };
 
-/** 「使用様式」の保存。戻り先は事業所の画面の欄（断られたら form_error） */
+/**
+ * 「使用様式」の保存。戻り先は書類の一覧のその様式（T147 で事業所の画面から書類の一覧へ移した）。断られたら form_error
+ */
 export async function planFormPost(db: D1Database, p: Principal | null, form: { get(name: string): unknown } | null): Promise<FormPostOutcome> {
   if (!p) return { status: 401 };
-  const r = await savePlanForm(db, p, form?.get("plan_form") ?? null);
+  const value = form?.get("plan_form") ?? null;
+  const r = await savePlanForm(db, p, value);
   if (!r.ok && r.error === "forbidden") return { status: 403 };
-  return { status: 303, location: r.ok ? "/office#plan-form" : "/office?form_error=bad#plan-form" };
+  return { status: 303, location: r.ok ? `/forms?form=${encodeURIComponent(String(value))}` : "/forms?form_error=bad" };
 }

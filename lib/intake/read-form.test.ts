@@ -109,7 +109,8 @@ describe("黒塗りの画面の印（source・page・redacted）", () => {
     const sheet = readFileSync(new URL("../../components/person/RedactSheet.tsx", import.meta.url), "utf8");
     const ask = sheet.indexOf("await appChoice(L.noneText");
     const back = sheet.indexOf('{ value: "back", label: L.noneBack');
-    const send = sheet.indexOf('{ value: "send", label: L.noneOk, icon: "SendIcon", danger: true }');
+    // 送る側の言葉は入れる欄は「送信」、様式の読み取りは「読込」（T147 の sendLabel）
+    const send = sheet.indexOf('{ value: "send", label: sendLabel === L.send ? L.noneOk : sendLabel, icon: "SendIcon", danger: true }');
     const bare = sheet.indexOf("bare: r.length === 0");
     for (const at of [ask, back, send, bare]) expect(at).toBeGreaterThan(0);
     expect(back).toBeLessThan(send);

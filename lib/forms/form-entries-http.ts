@@ -16,11 +16,13 @@ import { personInScope } from "../auth/scope.ts";
 import { saveIntake, SaveRequestSchema } from "../intake/save.ts";
 import { ENTRY_ID, ENTRY_LIMITS, fieldValueEmpty, formOnlyField, markLedgerEntry, parseFormId, putFormEntry, removeFormEntry, type FieldValue, type FormId } from "./form-entries.ts";
 import { KIROKU_FRAME } from "./frame-kiroku.ts";
+import { isForm9FillCol } from "./form9-fill.ts";
 import { MATSUYAMA_FRAME } from "./frame-matsuyama.ts";
 import { clampBox, ledgerItem, type FieldBox, type FormMapping } from "./mapping.ts";
 import { formsScope, loadCheckedMapping } from "./mapping-db.ts";
 import { MATSUYAMA_FIELDS } from "./matsuyama.ts";
 import { MATSUYAMA_FORM_ONLY } from "./paper-slots.ts";
+import { MATSUYAMA_INPUTS, MATSUYAMA_TEXT_SHAPES } from "./form-inputs.ts";
 
 const HEADERS = { "Cache-Control": "no-store" } as const;
 const ID = /^[A-Za-z0-9_-]{1,64}$/;
@@ -64,6 +66,8 @@ export const EntriesRequestSchema = z.discriminatedUnion("op", [
       page: z.number().int().min(1).max(20).nullable(),
       box: Box.nullable(),
       value: z.string().max(2000),
+      /** 文字の枠の字の大きさ（T147。6〜24pt、null は自動） */
+      pt: z.number().min(6).max(24).nullable().optional(),
     }),
   }),
   z.object({ op: z.literal("remove"), personId: z.string().regex(ID), formId: z.string().max(80), id: z.string().regex(ENTRY_ID) }),
@@ -90,12 +94,21 @@ async function formShape(db: D1Database, officeId: string, formId: FormId, perso
       pages: MATSUYAMA_FRAME.pages.length,
       fieldShape: (key) => {
         const def = MATSUYAMA_FIELDS.find((f) => f.key === key);
-        if (!def || !MATSUYAMA_FORM_ONLY.has(def.key)) return null;
-        return { shape: "choice", options: "options" in def ? (def.options as readonly string[]) : [] };
+        if (!def) return null;
+        if (MATSUYAMA_FORM_ONLY.has(def.key)) return { shape: "choice", options: "options" in def ? (def.options as readonly string[]) : [] };
+        // 字の欄の様式のみの値（T147。台帳の 1 か所に書けない欄を紙の上でその場で。台帳は変えない）。元が入れる欄の表の欄の欄（台帳に書ける）・
+        // 元の無い欄・同意・手書きは受けない。連絡先の所（人がいなければ本人のページへの道になる）は受ける
+        const inputs = MATSUYAMA_INPUTS[def.key];
+        if (inputs && MATSUYAMA_TEXT_SHAPES.has(def.shape) && inputs.every((i) => i.kind !== "field")) return { shape: "text", options: [] };
+        // 選ぶ欄は元が本人のページの面への道だけの欄（台帳の 1 か所に書けない欄）だけ
+        if (inputs && def.shape === "choice" && inputs.every((i) => i.kind === "page") && "options" in def) return { shape: "choice", options: def.options as readonly string[] };
+        return null;
       },
     };
   }
   if (formId === "kiroku") return { pages: KIROKU_FRAME.pages.length, fieldShape: () => null };
+  // 様式 9（T147）: 行の人のその列の字だけ（文字の枠・画像は置かない。一覧の紙で人ごとに置き場が無い）
+  if (formId === "form9") return { pages: 0, fieldShape: (key) => (isForm9FillCol(key) ? { shape: "text", options: [] } : null) };
   const stored = await loadCheckedMapping(db, officeId, formId.slice("mapped:".length));
   if (!stored) return null;
   const m: FormMapping = stored.mapping;
@@ -199,6 +212,6 @@ export async function handleEntries(db: D1Database, p: Principal | null, body: u
     .bind(req.personId, formId, e.id)
     .first<{ n: number }>();
   if ((count?.n ?? 0) >= ENTRY_LIMITS.free) return entriesError("too_many");
-  const ok = await putFormEntry(db, at, { id: e.id, kind: e.kind, fieldKey: null, page: e.page, box, value: e.value });
+  const ok = await putFormEntry(db, at, { id: e.id, kind: e.kind, fieldKey: null, page: e.page, box, value: e.value, pt: e.kind === "text" ? (e.pt ?? null) : null });
   return ok ? Response.json({ ok: true }, { headers: HEADERS }) : entriesError("conflict");
 }

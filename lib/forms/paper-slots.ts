@@ -6,9 +6,11 @@
 // - 台帳に項目の無い欄（様式だけの欄）は、その人のその様式の手入れ（lib/forms/form-entries.ts）。手書きの欄（署名・受付印・医師が書く欄）は押せない
 // - 同意が無くて省く欄・確かめていない要確認の欄（T122 の保留）・台帳の別の値から作る欄（作成日・年齢・計画作成者など）は押せない
 // - 選ぶ欄は、様式の選択肢と台帳の選択肢の言葉が合う物だけ押せる（合わなければ窓）
+// - 台帳の 1 か所に書けない欄（元が本人のページの面の入れ子の値だけ: 氏名・住所・連絡先の人など）で字を書く欄は、窓でなくその場で打ち、
+//   この人のこの様式の値（様式のみ。台帳は変えない）として残す（T147）。台帳を直す道は本人のページ（pageLink）。台帳に無い欄で問いがあれば質問を先に
 // 定型の計算で、Claude は呼ばない。
 
-import { inputAsks, MATSUYAMA_INPUTS, type FormInput } from "./form-inputs.ts";
+import { inputAsks, MATSUYAMA_INPUTS, MATSUYAMA_TEXT_SHAPES, type FormInput } from "./form-inputs.ts";
 import { formOnlyField, MATSUYAMA_FORM_ONLY, parseFieldValue, type FormEntry } from "./form-entries.ts";
 export { MATSUYAMA_FORM_ONLY };
 import { heldFields } from "./field-risk.ts";
@@ -112,6 +114,14 @@ function handOf(entries: readonly FormEntry[], key: string): PaperSlot["hand"] {
   return e ? { by: e.by, at: e.at } : undefined;
 }
 
+/** 欄の元が本人のページの面への道だけか（台帳の 1 か所に書けない欄。T147）。そうなら最初の面の道 */
+function pageOnlyOf(rows: PersonPageRows, raw: readonly FormInput[] | undefined): { label: string; href: string } | null {
+  const inputs = resolveInputs(rows, raw);
+  if (inputs.length === 0 || inputs.some((i) => i.kind !== "page")) return null;
+  const first = inputs[0] as Extract<PaperInput, { kind: "page" }>;
+  return { label: first.label, href: first.href };
+}
+
 /** 台帳の欄か窓の欄を作る（欄の元を解いて、その場か窓か） */
 function ledgerSlot(
   base: Omit<PaperSlot, "dest" | "input" | "value">,
@@ -181,25 +191,54 @@ export function mappedSlots(
       hand: handOf(entries, f.id),
     };
     const entry = entries.find((e) => e.kind === "field" && e.fieldKey === f.id);
+    // 台帳の 1 か所に書けない字の欄（T147）。窓でなくその場で、様式のみ
+    // 同意の欄は紙では選ばない（同意は本人のページで記録する。窓は本人のページの同意の面への道）
+    const pageLink = f.item !== null && !f.item.startsWith("consent.") ? pageOnlyOf(rows, ITEM_INPUTS[f.item]) : null;
+    // 今の紙の値（様式のみの値の初めの値。□ と選ぶ欄は紙に印のある選択肢）
+    const onLabels = cell.kind === "choice" ? cell.options.filter((o) => o.on).map((o) => o.label) : [];
     // 様式だけの欄と、台帳に値があるのに置けなかった欄（T133 の fix）・この様式の手入れのある欄は、この人のこの様式の手入れ
-    if (formOnlyField(f) || (f.item !== null && (gap === "fix" || entry))) {
+    if (formOnlyField(f) || (f.item !== null && (gap === "fix" || entry)) || pageLink) {
       const v = entry ? parseFieldValue(entry.value) : null;
       let input: SlotInput;
       let value: SlotValue;
       if (shape === "check") {
         input = { kind: "check" };
-        value = v === true;
+        value = v === true || (v === null && pageLink !== null && onLabels.length > 0);
       } else if (shape === "choice") {
         const options = f.options.map((label, i) => ({ label, value: label, box: f.optionBoxes?.[i] ?? null }));
         // □ の場所の無い選択肢があれば字で書く（選んだ言葉を欄に）
         input = options.every((o) => o.box) ? { kind: "choice", multi: /複数/.test(`${f.section}${f.label}`), options } : { kind: "text", multiline: false, tel: false, max: 60 };
-        value = input.kind === "choice" ? (Array.isArray(v) ? v : typeof v === "string" && v ? [v] : []) : typeof v === "string" ? v : Array.isArray(v) ? v.join("・") : "";
+        value =
+          input.kind === "choice"
+            ? Array.isArray(v)
+              ? v
+              : typeof v === "string" && v
+                ? [v]
+                : pageLink
+                  ? f.options.filter((o) => onLabels.some((l) => wordMatches(l, [o])))
+                  : []
+            : typeof v === "string"
+              ? v
+              : Array.isArray(v)
+                ? v.join("・")
+                : pageLink
+                  ? cellLines(cell).join(" ")
+                  : "";
       } else {
         input = { kind: "text", multiline: f.shape === "lines", tel: f.shape === "phone", max: 200, ...(parts ? { parts } : {}) };
         // 置けなかった値は、台帳の字を初めの値に（この様式に合う形に書き直す）
         value = typeof v === "string" ? v : f.item !== null ? cellLines(cell).join(" ") : "";
       }
-      out.push({ ...base, dest: "form", input, value, ...(entry ? { entryId: entry.id } : {}) });
+      const asks = pageLink && f.item !== null ? asksOf(ITEM_INPUTS[f.item], queue, rows) : [];
+      out.push({
+        ...base,
+        dest: "form",
+        input,
+        value,
+        ...(entry ? { entryId: entry.id } : {}),
+        ...(pageLink ? { pageLink } : {}),
+        ...(asks.length > 0 ? { asks } : {}),
+      });
       continue;
     }
     if (f.item === null) continue;
@@ -293,13 +332,59 @@ export function frameSlots(
     // 1 つの書く所に 2 つの欄（かかりつけ医・薬局と医薬品情報）は、両方の元を 1 つの窓に
     const shape = keys.length > 1 ? "window" : marks.length > 0 ? "choice" : one ? "text" : "window";
     const raw = keys.length > 1 ? keys.flatMap((k) => MATSUYAMA_INPUTS[k] ?? []) : MATSUYAMA_INPUTS[key];
+    // 台帳の 1 か所に書けない字の欄（氏名・生年月日・住所・連絡先の人など。T147）は、窓でなくその場で打ち、様式のみ。
+    // 分けて書く欄（氏と名・年月日）は欄の矩形の全体に打ち、紙は刷るときと同じ分け方（lib/forms/frame-sheet.ts の takeLines）
+    // 選ぶ欄（ハザードの種類など）も、元が本人のページの面への道だけなら □ を押して様式のみ
+    const choiceLink = keys.length === 1 && fieldDef?.shape === "choice" && marks.length > 0 ? pageOnlyOf(rows, raw) : null;
+    if (choiceLink && !(cell && cell.kind === "withheld")) {
+      const entry = entries.find((e) => e.kind === "field" && e.fieldKey === key);
+      const v = entry ? parseFieldValue(entry.value) : null;
+      const on = cell && cell.kind === "choice" ? cell.options.filter((o) => o.on).map((o) => o.label) : [];
+      out.push({
+        ...base,
+        dest: "form",
+        input: { kind: "choice", multi: true, options: marks.map((m) => ({ label: m.option, value: m.option, box: ratio(m.box, size) })) },
+        value: Array.isArray(v) ? v : typeof v === "string" && v ? [v] : on,
+        pageLink: choiceLink,
+        ...(entry ? { entryId: entry.id } : {}),
+      });
+      continue;
+    }
+    const pageLink = keys.length === 1 && MATSUYAMA_TEXT_SHAPES.has(fieldDef?.shape ?? "") ? pageOnlyOf(rows, raw) : null;
+    if (pageLink && !(cell && cell.kind === "withheld")) {
+      const entry = entries.find((e) => e.kind === "field" && e.fieldKey === key);
+      const v = entry ? parseFieldValue(entry.value) : null;
+      const multiline = fieldDef?.shape === "lines";
+      const asks = asksOf(raw, queue, rows);
+      out.push({
+        ...base,
+        box: one ? box : areaBox,
+        mm: one ? base.mm : { w: areaBox.w * size.w, h: areaBox.h * size.h },
+        dest: "form",
+        input: { kind: "text", multiline, tel: fieldDef?.shape === "phone", max: 200 },
+        value: typeof v === "string" ? v : cell ? cellLines(cell).join(multiline ? "\n" : " ") : "",
+        pageLink,
+        ...(entry ? { entryId: entry.id } : {}),
+        ...(asks.length > 0 ? { asks } : {}),
+      });
+      continue;
+    }
     const slot =
       shape === "window"
         ? (() => {
             const inputs = resolveInputs(rows, raw);
-            return inputs.length > 0
-              ? ({ ...base, dest: "ledger", input: { kind: "window" }, value: "", target: { key, label: base.label, inputs } } satisfies PaperSlot)
-              : null;
+            if (inputs.length === 0) return null;
+            // 窓の元が本人のページの面への道だけ（T147）なら、窓の中で打てる様式のみの字（先頭の欄の値として。台帳は変えない）
+            const pageOnly = inputs.every((i) => i.kind === "page") && MATSUYAMA_TEXT_SHAPES.has(fieldDef?.shape ?? "");
+            const entry = pageOnly ? entries.find((e) => e.kind === "field" && e.fieldKey === key) : undefined;
+            const text = pageOnly && cell && cell.kind !== "withheld" ? cellLines(cell).join(fieldDef?.shape === "lines" ? "\n" : " ") : undefined;
+            return {
+              ...base,
+              dest: "ledger",
+              input: { kind: "window" },
+              value: "",
+              target: { key, label: base.label, inputs, ...(text !== undefined ? { text } : {}), ...(entry ? { entryId: entry.id } : {}) },
+            } satisfies PaperSlot;
           })()
         : ledgerSlot(base, rows, raw, {
             shape,
@@ -323,6 +408,7 @@ export function frameSlots(
  */
 export function paperQuestions(queue: readonly Question[], slots: readonly PaperSlot[]): Question[] {
   // 台帳に無い（T133 の ask）欄だけ。置けなかった欄（fix）は台帳に値があるので聞かない（その場で、この様式の手入れとして入れる）
-  const keys = new Set(slots.filter((s) => s.gap === "ask" && s.dest === "ledger").flatMap((s) => s.asks ?? []));
+  // 台帳の 1 か所に書けない欄（T147 の様式のみ）でも、台帳に無い欄なら問いで台帳を埋められる
+  const keys = new Set(slots.filter((s) => s.gap === "ask" && (s.dest === "ledger" || s.pageLink)).flatMap((s) => s.asks ?? []));
   return queue.filter((q) => keys.has(q.key) && q.answer.kind !== "free");
 }

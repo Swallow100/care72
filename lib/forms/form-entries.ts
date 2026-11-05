@@ -16,7 +16,10 @@ import { isUnconfirmedCell } from "./unconfirmed.ts";
 export const FORM_ENTRY_KINDS = ["field", "ledger", "text", "image"] as const;
 export type FormEntryKind = (typeof FORM_ENTRY_KINDS)[number];
 
-/** 手入れ 1 つ（画面とサーバーで同じ形）。by は入れた人の名前、at は最後に変えた時刻（UTC の ISO） */
+/**
+ * 手入れ 1 つ（画面とサーバーで同じ形）。by は入れた人の名前、at は最後に変えた時刻（UTC の ISO）。
+ * pt は文字の枠の字の大きさの上限（T147。人が選んだ大きさ。無ければ紙の欄と同じ上限。入らなければ縮む・下限 6pt）。表には box の JSON の中に持つ
+ */
 export type FormEntry = {
   id: string;
   kind: FormEntryKind;
@@ -26,7 +29,20 @@ export type FormEntry = {
   value: string;
   by: string | null;
   at: string;
+  pt?: number | null;
 };
+
+/** 文字の枠の字の大きさ（pt）の選べる値（T147）。null は自動（紙の欄と同じ上限から縮める） */
+export const FREE_TEXT_PTS = [8, 9, 10, 11, 12, 14, 16, 18, 20, 24] as const;
+export const FREE_TEXT_PT_MIN = 6;
+export const FREE_TEXT_PT_MAX = 24;
+
+/** 表の box の JSON から、字の大きさ（無い・形が違えば null） */
+export function boxPt(raw: unknown): number | null {
+  if (!raw || typeof raw !== "object") return null;
+  const pt = (raw as { pt?: unknown }).pt;
+  return typeof pt === "number" && Number.isFinite(pt) && pt >= FREE_TEXT_PT_MIN && pt <= FREE_TEXT_PT_MAX ? Math.round(pt * 2) / 2 : null;
+}
 
 /** 様式だけの欄の値。文字・選んだ選択肢・□ の真偽 */
 export type FieldValue = string | string[] | boolean;
@@ -45,11 +61,11 @@ export const ENTRY_LIMITS = {
 /** 手入れの id（画面が作る。英数と - _） */
 export const ENTRY_ID = /^[A-Za-z0-9_-]{6,64}$/;
 
-/** 様式の id: 計画書（松山市の原本の枠の紙）・医療要約（災害診療記録2018）・添付の様式（対応表の id） */
-export type FormId = "matsuyama" | "kiroku" | `mapped:${string}`;
+/** 様式の id: 計画書（松山市の原本の枠の紙）・医療要約（災害診療記録2018）・添付の様式（対応表の id）・様式 9（行の人ごと。T147） */
+export type FormId = "matsuyama" | "kiroku" | "form9" | `mapped:${string}`;
 
 export function parseFormId(v: unknown): FormId | null {
-  if (v === "matsuyama" || v === "kiroku") return v;
+  if (v === "matsuyama" || v === "kiroku" || v === "form9") return v;
   if (typeof v === "string" && /^mapped:[A-Za-z0-9_-]{1,64}$/.test(v)) return v as FormId;
   return null;
 }
@@ -140,15 +156,25 @@ export function withMappedEntries(sheet: MappedSheet, entries: readonly FormEntr
 /** 計画書の様式だけの欄（台帳に置き場が無く、手で印を付ける欄。T117 の棚卸しの C のうち、押して印を付けられる物） */
 export const MATSUYAMA_FORM_ONLY: ReadonlySet<MatsuyamaKey> = new Set<MatsuyamaKey>(["route.map"]);
 
-/** 計画書の紙面に、様式だけの欄の手入れを効かせる（選んだ □ に印。帯の「手書き」から外れる） */
+/**
+ * 計画書の紙面に、様式だけの欄の手入れを効かせる（選んだ □ に印。帯の「手書き」から外れる）。
+ * T147: 字の欄の様式のみの値（台帳の 1 か所に書けない欄を紙の上で打った物）は、その欄の値にする（人が打ったまま。同意の無い欄・手書きの欄は効かせない）
+ */
 export function withMatsuyamaEntries<S extends Pick<MatsuyamaSheet, "cells">>(sheet: S, entries: readonly FormEntry[]): S {
   let cells = sheet.cells;
   for (const e of entries) {
-    if (e.kind !== "field" || !e.fieldKey || !MATSUYAMA_FORM_ONLY.has(e.fieldKey as MatsuyamaKey)) continue;
+    if (e.kind !== "field" || !e.fieldKey) continue;
     const key = e.fieldKey as MatsuyamaKey;
     const cur = cells[key];
     const v = parseFieldValue(e.value);
-    if (!cur || cur.kind !== "choice" || v === null) continue;
+    if (!cur || cur.kind === "withheld" || cur.kind === "handwrite") continue;
+    if (!MATSUYAMA_FORM_ONLY.has(key) && typeof v === "string") {
+      const cell = formValueCell({ shape: "lines", options: [] }, v);
+      if (cell) cells = { ...cells, [key]: cell };
+      continue;
+    }
+    // 選ぶ欄（様式だけの欄と、T147 の台帳の 1 か所に書けない選ぶ欄の様式のみの値）は選んだ □ に印
+    if (cur.kind !== "choice" || v === null) continue;
     const picked = Array.isArray(v) ? v : typeof v === "string" ? [v] : [];
     if (picked.length === 0) continue;
     cells = { ...cells, [key]: { ...cur, options: cur.options.map((o) => ({ ...o, on: picked.includes(o.label) })) } };
@@ -171,7 +197,7 @@ export function withFreeItems(sheet: OverlaySheet, entries: readonly FormEntry[]
     for (const e of free) {
       if (e.page !== p.page || !e.box) continue;
       if (e.kind === "text") {
-        const placed = freeText(e.value, e.box.w * p.image.w, e.box.h * p.image.h, maxPt);
+        const placed = freeText(e.value, e.box.w * p.image.w, e.box.h * p.image.h, e.pt ?? maxPt);
         if (placed) items.push({ kind: "text", fieldId: `free:${e.id}`, box: e.box, ...placed, free: e.id });
         continue;
       }
@@ -214,16 +240,21 @@ type EntryRow = {
   by_name: string | null;
 };
 
-const toEntry = (r: EntryRow): FormEntry => ({
-  id: r.id,
-  kind: r.kind,
-  fieldKey: r.field_key,
-  page: r.page,
-  box: r.box ? clampBox(safeJson(r.box)) : null,
-  value: r.value,
-  by: r.by_name,
-  at: r.updated_at,
-});
+const toEntry = (r: EntryRow): FormEntry => {
+  const raw = r.box ? safeJson(r.box) : null;
+  const pt = r.kind === "text" ? boxPt(raw) : null;
+  return {
+    id: r.id,
+    kind: r.kind,
+    fieldKey: r.field_key,
+    page: r.page,
+    box: raw ? clampBox(raw) : null,
+    value: r.value,
+    by: r.by_name,
+    at: r.updated_at,
+    ...(pt !== null ? { pt } : {}),
+  };
+};
 
 function safeJson(s: string): unknown {
   try {
@@ -254,6 +285,8 @@ export type PutEntry = {
   page: number | null;
   box: FieldBox | null;
   value: string;
+  /** 文字の枠の字の大きさ（T147）。box の JSON の中に持つ */
+  pt?: number | null;
 };
 
 /**
@@ -265,7 +298,8 @@ export async function putFormEntry(
   at: { officeId: string; personId: string; formId: FormId; accountId: string | null; now: string },
   e: PutEntry,
 ): Promise<boolean> {
-  const box = e.box ? JSON.stringify(e.box) : null;
+  const pt = e.kind === "text" ? boxPt({ pt: e.pt }) : null;
+  const box = e.box ? JSON.stringify(pt !== null ? { ...e.box, pt } : e.box) : null;
   const stmts = [
     db
       .prepare(

@@ -38,6 +38,15 @@ export const FORMS_LIST_LABELS = {
   open: "表示",
   print: "印刷",
   noPrint: "印刷不可",
+  /** 事業所が足した様式（確認済の対応表。T147） */
+  added: "追加済",
+  /** 足して確認保存の前の対応表（確かめの画面へ） */
+  draft: "下書き",
+  /** 選んだ様式を事業所の使用様式に（T147 で事業所の画面から移した） */
+  setDefault: "既定設定",
+  /** 使用様式の保存が断られた */
+  saveFailed: "保存不可",
+  csv: "CSV出力",
 } as const;
 
 /** 本人ごとの書類（計画書のほか。本人のページの書類の行と同じ順） */
@@ -74,24 +83,42 @@ export function listHref(sel: { doc: "plan"; id: PlanFormId } | { doc: PersonDoc
   return sel.doc === "plan" ? `${FORMS_LIST_PATH}?form=${encodeURIComponent(sel.id)}` : `${FORMS_LIST_PATH}?doc=${sel.doc}`;
 }
 
-/** 選ぶ欄の 1 行 */
-export type MenuItem = { key: string; label: string; note: string; href: string; current: boolean; isDefault: boolean };
+/** 選ぶ欄の 1 行。mark は足した様式の印（追加済・下書き。T147） */
+export type MenuItem = { key: string; label: string; note: string; href: string; current: boolean; isDefault: boolean; mark?: "added" | "draft" };
+
+/** 足して確認保存の前の対応表（書類の一覧の計画書の段に「下書き」で出し、確かめの画面へ。T147） */
+export type DraftForm = { id: string; title: string; issuer: string };
 
 /** 選ぶ欄（計画書の様式と、本人ごとの書類） */
 export function documentMenu(
   options: readonly PlanFormOption[],
   current: PlanFormId,
   sel: ListSelection,
+  drafts: readonly DraftForm[] = [],
 ): { plan: MenuItem[]; person: MenuItem[] } {
+  const item = (o: PlanFormOption): MenuItem => ({
+    key: o.id,
+    label: o.entry.short,
+    note: o.entry.version,
+    href: listHref({ doc: "plan", id: o.id }),
+    current: sel.doc === "plan" && sel.form.id === o.id,
+    isDefault: o.id === current,
+    ...(o.id.startsWith("mapping:") ? { mark: "added" as const } : {}),
+  });
+  // 事業所が足した様式（確認済の対応表、新しく直した順）と下書きを上に、元からある様式（松山市・内閣府）をその下に（T147）
+  const added = options.filter((o) => o.id.startsWith("mapping:")).map(item);
+  const builtIn = options.filter((o) => !o.id.startsWith("mapping:")).map(item);
+  const draftItems: MenuItem[] = drafts.map((d) => ({
+    key: `draft:${d.id}`,
+    label: d.title,
+    note: d.issuer,
+    href: `/forms/mapping/${encodeURIComponent(d.id)}`,
+    current: false,
+    isDefault: false,
+    mark: "draft",
+  }));
   return {
-    plan: options.map((o) => ({
-      key: o.id,
-      label: o.entry.short,
-      note: o.entry.version,
-      href: listHref({ doc: "plan", id: o.id }),
-      current: sel.doc === "plan" && sel.form.id === o.id,
-      isDefault: o.id === current,
-    })),
+    plan: [...added, ...draftItems, ...builtIn],
     person: PERSON_DOCS.map((d) => ({
       key: d,
       label: DOCUMENT_CATALOG[d].short,

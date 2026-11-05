@@ -12,7 +12,7 @@ import { AiStatusMark } from "@/components/ui/AiStatus";
 import { aiStatusFor } from "@/lib/claude/cloudflare";
 import { aiUsable, type AiStatus } from "@/lib/claude/status";
 import { FORMS_LIST_LABELS } from "@/lib/forms/document-list";
-import { MAPPING_LABELS as L } from "@/lib/forms/mapping";
+import { addedFormHref, MAPPING_LABELS as L } from "@/lib/forms/mapping";
 import { formsScope, listMappings, type MappingSummary } from "@/lib/forms/mapping-db";
 import { allMunicipalEntries, cityForOffice, municipalEntry } from "@/lib/forms/municipal-forms";
 import { officeCatalogMappings, sharedCatalogIds } from "@/lib/forms/shared-mapping";
@@ -126,6 +126,13 @@ export default async function FormMappingListPage() {
                     <td className={TD}>{m.issuer || <span className="text-muted">—</span>}</td>
                     <td className={TD}>
                       {m.status === "checked" ? <StateTag tone="ok">{L.checked}</StateTag> : <StateTag tone="check">{L.draft}</StateTag>}
+                      {/* 確認済は書類の一覧のその様式へ（T147） */}
+                      {m.status === "checked" && (
+                        <Link href={addedFormHref(m.id).replace("&added=1", "")} className="relative -mx-0.5 ml-2 rounded px-0.5 text-xs text-accent underline underline-offset-2" data-press data-to-forms={m.id}>
+                          {L.toForms}
+                          <LinkPending />
+                        </Link>
+                      )}
                     </td>
                     <td className={TD}>
                       {SOURCE_LABELS[m.sourceKind]}

@@ -71,7 +71,7 @@ export default async function MatsuyamaFormPage({ params, searchParams }: Props)
   // 書けるのはケアマネの役（審査員を含む）で、自分の事業所の人だけ（保存も同じ壁。lib/intake/save.ts・lib/forms/form-entries-http.ts）
   const canWrite = principal.role === "care_manager" && ownOffice;
   // 紙の手入れ（T135）: 様式だけの欄の値・置いた文字の枠と画像を紙に効かせる。原本の枠の紙の書ける人には、その場で入れる画面の中身
-  const { sheet, framed, fill } = await matsuyamaPaper(env.DB, {
+  const { sheet, framed, fill, entries } = await matsuyamaPaper(env.DB, {
     rows,
     officeId: rows.person.office_id,
     sheet: buildMatsuyamaSheet(rows, { today: todayJst(), officeName: office?.name ?? null }),
@@ -87,7 +87,8 @@ export default async function MatsuyamaFormPage({ params, searchParams }: Props)
       : null;
   const here = `/people/${encodeURIComponent(id)}/forms/matsuyama`;
   // 紙に直接書く窓の欄と今の値（T117）。前からの紙面（原本を取り込む前）だけ。原本の枠の紙はその場で入れる（T135）
-  const edit = canWrite && !framed ? paperEditData(rows) : null;
+  // T147: 台帳の 1 か所に書けない字の欄は、窓の中で打って様式のみの値に（今の紙の字と手入れの id を渡す）
+  const edit = canWrite && !framed ? paperEditData(rows, { cells: sheet.cells, entries }) : null;
 
   const paper = framed ? (
     <OverlaySheet sheet={framed} imageSrc={(page) => originalPageHref("matsuyama", page)} checked="" fill={fillOn} kind="matsuyama" layer={fill !== null} />

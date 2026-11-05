@@ -3,6 +3,8 @@
 // 選ぶ部品（T51 で書き直した）。OS の select の代わりで、書き方は select の要素と同じ（value・defaultValue・onChange・name、中は <option>・<optgroup>）。
 // 押すとボタンの下に一覧が開く（Menu と同じ。下から出る面ではない）。一覧は body の直下に描く（表の overflow-clip で切られない）。
 // 画面の中にスクロールの箱を作らない: 一覧は内側で送らず、長ければ画面全体が伸びる。下に入りきらず上が広ければ上に開く。
+// 例外（T147）: scrollList を付けた長い一覧（都道府県など）は、一覧の高さを画面の 6 割までにして一覧の中だけを送る。
+// 端に着いても周りの画面を送らない（overscroll-behavior: contain）。
 // キー: ↑↓・Home・End で移る（選べない物は飛ばす）、Enter・Space で選ぶ、Escape でボタンへ戻って閉じる、Tab と外を押すと閉じる。
 // 文字を打つとその文字で始まる項目へ（1 秒で打ち直し）。項目が 12 を超えるか searchable なら、一覧の上に検索の欄。
 // multiple で複数（押しても閉じない、ボタンの字は「a・b」か「N 件」、隠しの欄は同じ name で複数）。<option data-sub> で説明の行。
@@ -44,6 +46,8 @@ export type SelectProps = {
   multiple?: boolean;
   /** 項目が少なくても検索の欄を出す */
   searchable?: boolean;
+  /** 長い一覧を一覧の中だけで送る（画面は動かさない。T147） */
+  scrollList?: boolean;
   className?: string;
 } & Omit<ComponentProps<"button">, "value" | "defaultValue" | "onChange" | "children" | "type" | "name" | "multiple">;
 
@@ -62,6 +66,7 @@ export function Select({
   required,
   multiple = false,
   searchable,
+  scrollList = false,
   className = "",
   id,
   ...rest
@@ -326,6 +331,7 @@ export function Select({
             values={values}
             active={active}
             multiple={multiple}
+            scroll={scrollList}
             search={showSearch ? { query, onQuery: onQuery, onKeyDown: onSearchKey } : null}
             style={pos ? { top: pos.top, left: pos.left, minWidth: pos.minWidth } : { top: 0, left: 0, visibility: "hidden" }}
             onKeyDown={onListKey}
@@ -343,6 +349,8 @@ export function Select({
 
 const PANEL =
   "absolute z-50 max-w-[calc(100vw-1rem)] rounded-lg bg-panel p-1 text-sm text-ink shadow-[0_2px_8px_rgb(0_0_0/0.18)] outline-none dark:bg-panel2 dark:shadow-[0_2px_10px_rgb(0_0_0/0.6)]";
+/** 一覧の中だけを送る長い一覧（scrollList。T147）。高さは画面の 6 割まで、端で周りの画面を送らない */
+export const SCROLL_LIST = "max-h-[60vh] overflow-y-auto overscroll-contain";
 const ITEM =
   "flex min-h-8 cursor-default items-center gap-2 rounded px-2 py-1 outline-none select-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent focus-visible:outline-solid";
 
@@ -358,6 +366,7 @@ export function SelectList({
   values,
   active,
   multiple,
+  scroll = false,
   search,
   style,
   onKeyDown,
@@ -374,6 +383,7 @@ export function SelectList({
   values: string[];
   active: number;
   multiple: boolean;
+  scroll?: boolean;
   search: { query: string; onQuery: (q: string) => void; onKeyDown: (e: KeyboardEvent<HTMLInputElement>) => void } | null;
   style?: React.CSSProperties;
   onKeyDown?: (e: KeyboardEvent<HTMLDivElement>) => void;
@@ -435,13 +445,15 @@ export function SelectList({
       aria-labelledby={labelledBy}
       aria-multiselectable={multiple || undefined}
       tabIndex={-1}
-      className={PANEL}
+      className={scroll ? `${PANEL} ${SCROLL_LIST}` : PANEL}
       style={style}
       onKeyDown={onKeyDown}
       data-select-list=""
+      data-scroll={scroll ? "" : undefined}
     >
       {search && (
-        <div className="sticky top-0 z-10 -mx-1 -mt-1 mb-1 rounded-t-lg bg-panel px-1 pt-1 dark:bg-panel2">
+        // 一覧の中で送る一覧（scroll）は、上の余白（p-1）の分も覆って留める（送った項目が検索の欄の上に覗かない）
+        <div className={`sticky ${scroll ? "-top-1" : "top-0"} z-10 -mx-1 -mt-1 mb-1 rounded-t-lg bg-panel px-1 pt-1 dark:bg-panel2`}>
           <div className="relative">
             <SearchIcon aria-hidden className="pointer-events-none absolute top-1/2 left-2 size-4 -translate-y-1/2 text-muted" />
             <input

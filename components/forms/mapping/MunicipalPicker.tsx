@@ -109,6 +109,7 @@ export function MunicipalPicker({ shared, own, defaultCity, aiReady, busy, onPic
           }}
           className={`${SELECT} w-40`}
           aria-label={L.pref}
+          scrollList
           data-municipal-pref
         >
           <option value="" data-placeholder>
@@ -120,7 +121,7 @@ export function MunicipalPicker({ shared, own, defaultCity, aiReady, busy, onPic
             </option>
           ))}
         </Select>
-        <Select value={cityId} onChange={(ev) => setCityId(ev.target.value)} className={`${SELECT} w-44`} aria-label={L.city} disabled={!pref} data-municipal-city>
+        <Select value={cityId} onChange={(ev) => setCityId(ev.target.value)} className={`${SELECT} w-44`} aria-label={L.city} disabled={!pref} scrollList data-municipal-city>
           <option value="" data-placeholder>
             {L.city}
           </option>
