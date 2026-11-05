@@ -89,7 +89,7 @@ describe("保存と再利用", () => {
 
     const list = await listMappings(db, "office-demo");
     expect(list).toEqual([
-      expect.objectContaining({ id: "fm-1", status: "checked", issuer: "内閣府（様式例）", stats: expect.objectContaining({ read: 41, autoMapped: 34, changed: 1 }) }),
+      expect.objectContaining({ id: "fm-1", status: "checked", issuer: "内閣府（様式例）", stats: expect.objectContaining({ read: 41, autoMapped: 38, changed: 1 }) }),
     ]);
   });
 

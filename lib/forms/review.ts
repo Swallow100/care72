@@ -176,7 +176,9 @@ export function mappedSubject(mapped: MappedSheet, sheet: OverlaySheet, printed?
     ),
   );
   const ids = new Set(fields.map((f) => f.id));
-  return { sheet, fields, fieldOf: (id) => (ids.has(id) ? id : null), ...(printed ? { printed } : {}), redoable: true };
+  // 置けなかった欄（T133 の台帳あり空欄。紙を作るときに分かる）は取込漏れに
+  const carried = sheet.unplacedIds ?? [];
+  return { sheet, fields, fieldOf: (id) => (ids.has(id) ? id : null), ...(printed ? { printed } : {}), ...(carried.length > 0 ? { carried } : {}), redoable: true };
 }
 
 const ratio = (b: { x: number; y: number; w: number; h: number }, page: { w: number; h: number }): FieldBox => ({ x: b.x / page.w, y: b.y / page.h, w: b.w / page.w, h: b.h / page.h });
@@ -371,17 +373,22 @@ export function ruleReview(s: ReviewSubject): ReviewFinding[] {
     if (r.reason === "unplaced" && s.redoable) push("unplaced", f, "場所なし・別紙");
     else push("spill", f, r.reason === "overflow" ? "収まらず別紙" : "置き場なし・別紙");
   }
-  // 取込漏れ（T133 の台帳あり空欄）
-  for (const id of s.carried ?? []) {
+  // 取込漏れ（T133 の台帳あり空欄）。紙の黄の塗りの「置けなかった」（fix）と同じ欄も（紙と同じ区別を読む。T135）
+  const carried = new Set<string>();
+  const fixed = s.sheet.pages.flatMap((p) => p.fills.filter((fl) => fl.kind === "fix").flatMap((fl) => fl.keys));
+  for (const id of [...(s.carried ?? []), ...fixed]) {
     const f = byId.get(s.fieldOf(id) ?? "");
-    if (f) push("carried", f, "台帳に値あり・紙は空");
+    if (!f || carried.has(f.id)) continue;
+    carried.add(f.id);
+    push("carried", f, "台帳に値あり・紙は空");
   }
-  // 空欄（帯の未確認と同じ欄。色付けで塗る欄）
+  // 空欄（帯の未確認と同じ欄。色付けの黄の塗りの「台帳に無い」〔ask〕）。置けなかった欄は上の取込漏れで、空欄に重ねない
   for (const page of s.sheet.pages) {
     for (const fill of page.fills) {
+      if (fill.kind === "fix") continue;
       for (const k of fill.keys) {
         const f = byId.get(s.fieldOf(k) ?? "");
-        if (f) push("blank", f, f.source ? "台帳に値なし" : "台帳に項目なし");
+        if (f && !carried.has(f.id)) push("blank", f, f.source ? "台帳に値なし" : "台帳に項目なし");
       }
     }
   }

@@ -16,7 +16,9 @@ import { ITEM_INPUTS } from "./item-inputs.ts";
 import { PART_SHAPES, type FieldBox, type FormMapping, type MappingField } from "./mapping.ts";
 import { wordMatches, type MappedSheet } from "./mapped-sheet.ts";
 import { MATSUYAMA_FIELDS, type MatsuyamaKey, type MatsuyamaSheet } from "./matsuyama.ts";
-import { FONT_MAX_PT, insetBox, FILL_INSET_MM, type OverlaySheet } from "./overlay-sheet.ts";
+import { cellLines, FONT_MAX_PT, insetBox, FILL_INSET_MM, type OverlaySheet } from "./overlay-sheet.ts";
+import type { InkBlob } from "./ink.ts";
+import { inkIn } from "./place.ts";
 import { resolveInputs, type PaperInput } from "./paper-edit.ts";
 import type { PaperSlot, SlotInput, SlotOption, SlotValue } from "./paper-fill.ts";
 import { isUnconfirmedCell, matsuyamaFieldName } from "./unconfirmed.ts";
@@ -149,8 +151,12 @@ export function mappedSlots(
   mapped: MappedSheet,
   entries: readonly FormEntry[],
   queue: readonly Question[],
+  inks: ReadonlyMap<number, InkBlob[] | null> = new Map(),
 ): PaperSlot[] {
   const cells = new Map<string, Cell>(mapped.pages.flatMap((p) => p.sections.flatMap((s) => s.rows.map((r) => [r.field.id, r.cell] as const))));
+  // 空いた訳（T133 の黄の塗り 2 つ）。ask は台帳に無い、fix は台帳に値があるのに置けなかった
+  const gaps = new Map<string, "ask" | "fix">();
+  for (const pg of overlay.pages) for (const fill of pg.fills) for (const k of fill.keys) gaps.set(k, fill.kind ?? "ask");
   const held = heldFields(mapping);
   const out: PaperSlot[] = [];
   for (const f of mapping.fields) {
@@ -160,6 +166,8 @@ export function mappedSlots(
     const cell = cells.get(f.id);
     if (!cell || cell.kind === "withheld") continue;
     const parts = partsOfField(f);
+    const gap = gaps.get(f.id);
+    const shape = f.shape === "check" ? "check" : f.shape === "choice" && f.options.length > 0 ? "choice" : "text";
     const base = {
       key: f.id,
       label: nameOf(f),
@@ -167,12 +175,14 @@ export function mappedSlots(
       box: f.box,
       mm: { w: f.box.w * page.image.w, h: f.box.h * page.image.h },
       maxPt: FONT_MAX_PT,
-      empty: isUnconfirmedCell(cell),
+      empty: gap !== undefined || isUnconfirmedCell(cell),
+      ...(gap ? { gap } : {}),
+      ...(shape === "text" ? { place: placeOf(f, mapping.fields, inks.get(f.page) ?? null) } : {}),
       hand: handOf(entries, f.id),
     };
-    const shape = f.shape === "check" ? "check" : f.shape === "choice" && f.options.length > 0 ? "choice" : "text";
-    if (formOnlyField(f)) {
-      const entry = entries.find((e) => e.kind === "field" && e.fieldKey === f.id);
+    const entry = entries.find((e) => e.kind === "field" && e.fieldKey === f.id);
+    // 様式だけの欄と、台帳に値があるのに置けなかった欄（T133 の fix）・この様式の手入れのある欄は、この人のこの様式の手入れ
+    if (formOnlyField(f) || (f.item !== null && (gap === "fix" || entry))) {
       const v = entry ? parseFieldValue(entry.value) : null;
       let input: SlotInput;
       let value: SlotValue;
@@ -186,7 +196,8 @@ export function mappedSlots(
         value = input.kind === "choice" ? (Array.isArray(v) ? v : typeof v === "string" && v ? [v] : []) : typeof v === "string" ? v : Array.isArray(v) ? v.join("・") : "";
       } else {
         input = { kind: "text", multiline: f.shape === "lines", tel: f.shape === "phone", max: 200, ...(parts ? { parts } : {}) };
-        value = typeof v === "string" ? v : "";
+        // 置けなかった値は、台帳の字を初めの値に（この様式に合う形に書き直す）
+        value = typeof v === "string" ? v : f.item !== null ? cellLines(cell).join(" ") : "";
       }
       out.push({ ...base, dest: "form", input, value, ...(entry ? { entryId: entry.id } : {}) });
       continue;
@@ -206,6 +217,21 @@ export function mappedSlots(
     out.push(asks.length > 0 ? { ...slot, asks } : slot);
   }
   return out;
+}
+
+/**
+ * 紙に置くときの避ける物（T133 の placeText と同じ）: 欄の枠の中の印刷の字と、枠に掛かるほかの欄の枠。
+ * buildOverlaySheet が渡す物（頁の全部の印刷の字と全部の欄の枠）から、この欄の置き方に効く物だけを選ぶ
+ */
+function placeOf(f: MappingField, fields: readonly MappingField[], ink: readonly InkBlob[] | null): NonNullable<PaperSlot["place"]> {
+  const box = f.box!;
+  const hits = (b: FieldBox) => b.x < box.x + box.w && box.x < b.x + b.w && b.y < box.y + box.h && box.y < b.y + b.h;
+  return {
+    ink: ink ? inkIn(box, ink) : [],
+    others: fields
+      .filter((o) => !o.removed && o.box && o.page === f.page && hits(o.box))
+      .map((o) => ({ id: o.id, box: o.box!, free: o.item === null && (o.shape === "text" || o.shape === "lines") })),
+  };
 }
 
 // ---------- 計画書（松山市の原本の枠の紙、T101） ----------
@@ -252,6 +278,8 @@ export function frameSlots(
       mm: one ? { w: one.box.w, h: one.box.h } : { w: areaBox.w * size.w, h: areaBox.h * size.h },
       maxPt: frame.maxPt,
       empty: keys.some((k) => sheet.cells[k] && isUnconfirmedCell(sheet.cells[k])),
+      // 原本の枠の紙は印刷の字の位置を持たない（T133）ので、空いた欄は全部「台帳に無い」
+      ...(keys.some((k) => sheet.cells[k] && isUnconfirmedCell(sheet.cells[k])) ? { gap: "ask" as const } : {}),
       hand: handOf(entries, key),
     };
     if (MATSUYAMA_FORM_ONLY.has(key)) {
@@ -291,9 +319,10 @@ export function frameSlots(
 
 /**
  * 紙から聞く問い（T135）。問いの列（lib/intake/ask.ts の questionQueue。本人のページの「問い 残り N 問」と同じ物）のうち、
- * この紙の空いた欄で台帳に項目のある欄の元に当たる物だけ（列の順のまま）。文で答えて AI が分ける問い（free）は紙では聞かない
+ * この紙の台帳に無い欄（T133 の黄の塗りの ask）で台帳に項目のある欄の元に当たる物だけ（列の順のまま）。文で答えて AI が分ける問い（free）は紙では聞かない
  */
 export function paperQuestions(queue: readonly Question[], slots: readonly PaperSlot[]): Question[] {
-  const keys = new Set(slots.filter((s) => s.empty && s.dest === "ledger").flatMap((s) => s.asks ?? []));
+  // 台帳に無い（T133 の ask）欄だけ。置けなかった欄（fix）は台帳に値があるので聞かない（その場で、この様式の手入れとして入れる）
+  const keys = new Set(slots.filter((s) => s.gap === "ask" && s.dest === "ledger").flatMap((s) => s.asks ?? []));
   return queue.filter((q) => keys.has(q.key) && q.answer.kind !== "free");
 }

@@ -6,7 +6,7 @@ import { SEED_PEOPLE } from "../../seed/people.ts";
 import { FORM_READ_SYSTEM } from "./form-read.ts";
 import { checkReadResult, needsPick, parseMappingInput, type FormMapping, type MappingField, type ReadResult } from "./mapping.ts";
 import { buildMappedSheet } from "./mapped-sheet.ts";
-import { buildOverlaySheet, partItems } from "./overlay-sheet.ts";
+import { buildOverlaySheet, partItems, type OverlayItem } from "./overlay-sheet.ts";
 import type { PageImage } from "./page-images.ts";
 import { seedRows } from "./print-harness.ts";
 import { isUnitPart, splitParts } from "./split-parts.ts";
@@ -41,7 +41,8 @@ describe("値を区切りに合わせて分ける", () => {
 });
 
 describe("元の様式の上の紙で空きごとに置く", () => {
-  const IMG = { w: 210, h: 297 };
+  // 頁と印刷の字の位置（T133 から partItems は頁の文脈を受ける。印刷の字の位置なし）
+  const IMG = { page: { page: 1, landscape: false, image: { x: 0, y: 0, w: 210, h: 297 }, items: [], fills: [] }, ink: null };
   const date = (over: Partial<MappingField> = {}): MappingField => ({
     id: "f1",
     page: 1,
@@ -63,7 +64,7 @@ describe("元の様式の上の紙で空きごとに置く", () => {
   });
 
   it("空きごとに字を置く（同じ欄の id、何番目かの印）", () => {
-    const items = partItems(date(), ["昭和17年4月18日"], IMG)!;
+    const items = partItems(date(), ["昭和17年4月18日"], IMG) as OverlayItem[];
     expect(items.map((i) => (i.kind === "text" ? [i.lines.join(""), i.part, i.box.x] : null))).toEqual([
       ["昭和17", 0, 0.2],
       ["4", 1, 0.32],
@@ -72,11 +73,11 @@ describe("元の様式の上の紙で空きごとに置く", () => {
     expect(items.every((i) => i.fieldId === "f1")).toBe(true);
   });
 
-  it("空きの場所が欠ける・区切りの無い欄・分けられない値・空きに収まらない値は null（欄全体に置く）", () => {
+  it("空きの場所が欠ける・区切りの無い欄・分けられない値は null（欄全体に置く）。分けられたのに空きに収まらない値は fail（置かない。T133）", () => {
     expect(partItems(date({ optionBoxes: [{ x: 0.2, y: 0.1, w: 0.08, h: 0.02 }, null, null] }), ["昭和17年4月18日"], IMG)).toBeNull();
     expect(partItems(date({ options: [], optionBoxes: undefined }), ["昭和17年4月18日"], IMG)).toBeNull();
     expect(partItems(date(), ["不明"], IMG)).toBeNull();
-    expect(partItems(date({ optionBoxes: [{ x: 0.2, y: 0.1, w: 0.002, h: 0.002 }, { x: 0.3, y: 0.1, w: 0.04, h: 0.02 }, { x: 0.4, y: 0.1, w: 0.04, h: 0.02 }] }), ["昭和17年4月18日"], IMG)).toBeNull();
+    expect(partItems(date({ optionBoxes: [{ x: 0.2, y: 0.1, w: 0.002, h: 0.002 }, { x: 0.3, y: 0.1, w: 0.04, h: 0.02 }, { x: 0.4, y: 0.1, w: 0.04, h: 0.02 }] }), ["昭和17年4月18日"], IMG)).toBe("fail");
     expect(partItems(date({ shape: "choice" }), ["昭和17年4月18日"], IMG)).toBeNull();
   });
 

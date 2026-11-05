@@ -103,11 +103,12 @@ describe("AI の返事の検査", () => {
     expect(r.mapping.title).not.toMatch(/[0-9]{3}-/);
   });
 
-  it("内閣府の様式例（固定の返事）: 41 欄のうち 34 が自動で対応、弾いた名前なし", () => {
+  // T133: 読み取りの補い（lib/forms/item-hints.ts）が、同じ段の氏名の欄からフリガナの欄 4 つに項目を当てる（34 → 38）
+  it("内閣府の様式例（固定の返事）: 41 欄のうち 38 が自動で対応（フリガナ 4 つは読み取りの補い）、弾いた名前なし", () => {
     const r = checkReadResult(CAO_FORM_READ);
     expect(r.rejected).toEqual([]);
     expect(r.mapping).toMatchObject({ title: "個別避難計画", issuer: "内閣府（様式例）", pages: 2 });
-    expect(mappingStats(r.mapping)).toEqual({ fields: 41, read: 41, autoMapped: 34, kept: 34, changed: 0, added: 0, mapped: 34, placed: 0, boxMoved: 0 });
+    expect(mappingStats(r.mapping)).toEqual({ fields: 41, read: 41, autoMapped: 38, kept: 38, changed: 0, added: 0, mapped: 38, placed: 0, boxMoved: 0 });
   });
 });
 
@@ -124,7 +125,7 @@ describe("保存の検査", () => {
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) return;
     expect(added.id).toBe("f42");
-    expect(mappingStats(parsed.mapping)).toMatchObject({ fields: 41, read: 41, autoMapped: 34, kept: 33, changed: 2, added: 1, mapped: 34 });
+    expect(mappingStats(parsed.mapping)).toMatchObject({ fields: 41, read: 41, autoMapped: 38, kept: 37, changed: 2, added: 1, mapped: 38 });
   });
 
   it("台帳に無い項目名を弾く（欄の項目・AI の読んだ物のどちらでも）", () => {
@@ -193,14 +194,10 @@ describe("差し込み", () => {
     expect(cellOf(s, "特記事項")).toBe("薬は 2 階の箪笥");
     expect(cellOf(s, "避難支援時の留意事項")).toContain("歩行 一部");
 
-    // 未確認と対応なし（FAX・避難場所の住所・カナ 4 つ・その他の □）
+    // 未確認と対応なし（FAX・避難場所の住所・その他の □。カナ 4 つは T133 の読み取りの補いで項目あり）
     expect(s.unmapped).toEqual([
       "ＦＡＸ番号",
       "避難場所 住所",
-      "緊急時の連絡先① フリガナ",
-      "緊急時の連絡先② フリガナ",
-      "避難支援等実施者情報① フリガナ",
-      "避難支援等実施者情報② フリガナ",
       "避難時に配慮しなくてはならない事項 その他",
     ]);
     expect(s.unconfirmed).toEqual(expect.arrayContaining(["ＦＡＸ番号", "緊急時の連絡先① 住所"]));

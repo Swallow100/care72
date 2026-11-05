@@ -65,6 +65,8 @@ export function mergeListSheets(sheets: ReadonlyArray<OverlaySheet>): OverlayShe
       pages,
       annex: chunk.flatMap((s) => s.annex.map((a) => ({ ...a, label: `${s.name} ${a.label}` }))),
       unconfirmed: uniq(chunk.flatMap((s) => s.unconfirmed)),
+      // 置けなかった欄（T133）は人の名前を添えて
+      ...(chunk.some((s) => s.unplaced?.length) ? { unplaced: chunk.flatMap((s) => (s.unplaced ?? []).map((u) => `${s.name} ${u}`)) } : {}),
       unmapped: uniq(chunk.flatMap((s) => s.unmapped)),
       withheld: uniq(chunk.flatMap((s) => s.withheld)),
     });

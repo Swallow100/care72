@@ -69,7 +69,19 @@ import { transportText } from "../map/transport.ts";
  * kinds はその項目の種類の名前の全部（医療機器なら 在宅酸素・人工呼吸器…）。□ ごとに種類を問う欄（「在宅酸素療法（HOT）」の □）は、
  * □ の名前が種類のどれかなら、その種類が台帳にあるときだけ印（前は機器が 1 つでもあれば全部の □ に印が付いた）
  */
-export type ItemValue = { cell: Cell; words?: readonly string[]; flag?: boolean | null; multi?: boolean; kinds?: readonly string[] };
+export type ItemValue = {
+  cell: Cell;
+  words?: readonly string[];
+  flag?: boolean | null;
+  multi?: boolean;
+  kinds?: readonly string[];
+  /** 種類ごとの添え（T133。自宅のリスクの浸水の深さ）。複数選択の欄で、合う選択肢に添える（紙はその選択肢の所の空きに置く） */
+  details?: ReadonlyArray<{ words: readonly string[]; detail: string; kind?: keyof typeof HAZARD_LABELS }>;
+  /** 選択肢・□ の名前が値に合うか（T133。無ければ words と照らす） */
+  match?: (label: string) => boolean;
+  /** 選択肢の字が同じときだけ照らす言葉（T133） */
+  exact?: readonly string[];
+};
 
 type Ctx = {
   rows: PersonPageRows;
@@ -124,6 +136,19 @@ const HAZARD_WORDS: Record<keyof typeof HAZARD_LABELS, readonly string[]> = {
   other: ["その他"],
 };
 const DEVICE_KINDS = Object.values(DEVICE_LABELS).filter((l) => l !== "その他");
+
+/** 浸水の言葉を含んでも洪水でない区域（津波・高潮・内水〔雨水出水〕・土砂の区域の名前） */
+const OTHER_WATER = /津波|高潮|土砂|がけ|崖|雨水|内水|出水|ため池/;
+
+/**
+ * 自宅のリスクの種類が選択肢・□ の名前に合うか（T133）。「浸水」は洪水の言い方にも津波・高潮・雨水出水の区域の名前にも入るので、
+ * ほかの区域の言葉を含む名前（津波浸水想定区域・雨水出水浸水想定区域）は洪水に当てない（前は浸水の字で全部に印が付いた）
+ */
+export function hazardMatches(kind: keyof typeof HAZARD_LABELS, label: string): boolean {
+  const n = normalizeWord(label);
+  if (kind === "flood") return /洪水|水害/.test(n) || (n.includes("浸水") && !OTHER_WATER.test(n));
+  return HAZARD_WORDS[kind].some((w) => n.includes(normalizeWord(w)));
+}
 
 /**
  * 薬の種類の □ の名前（T131）。様式の □ は台帳の区分の名前と違う言い方をする（災害診療記録の「糖尿病治療薬」〔インスリン・経口薬〕・
@@ -234,12 +259,15 @@ function emergency2(cell: (c: Contact | null) => Cell): Resolver {
 
 /** 選ぶ欄の言葉の別名（様式の選択肢の書き方の揺れ） */
 const SEX_WORDS = { female: ["女", "女性"], male: ["男", "男性"], other: ["その他"] } as const;
+// T133: 同居の家族を問う □（「同居家族 □いる □いない」）と、夫婦・子との同居を「家族と同居」の □ に
 const HOUSEHOLD_WORDS: Record<string, readonly string[]> = {
   alone: ["ひとり暮らし", "独居", "単身", "一人暮らし"],
-  with_spouse: ["夫婦", "高齢者のみ"],
-  with_child: ["子と同居"],
+  with_spouse: ["夫婦", "高齢者のみ", "家族と同居"],
+  with_child: ["子と同居", "家族と同居"],
   with_family: ["家族と同居"],
 };
+/** 選択肢の字が同じときだけ照らす言葉（含む・含まれるでは照らさない。「いる」は「〜している」にも入る） */
+const HOUSEHOLD_EXACT: Record<string, readonly string[]> = { alone: ["いない"], with_spouse: ["いる"], with_child: ["いる"], with_family: ["いる"] };
 const CONSENT_WORDS: Record<Exclude<ConsentStatus, "unconfirmed">, readonly string[]> = {
   granted: ["同意", "同意する", "はい", "有"],
   refused: ["不同意", "同意しない", "いいえ", "無"],
@@ -323,7 +351,7 @@ export const ITEM_VALUES: Record<LedgerItemKey, Resolver> = {
   "basic.household": (c) => {
     const h = c.ledger.basic.household;
     return h
-      ? { cell: value([t(HOUSEHOLD_LABELS[h])]), words: [HOUSEHOLD_LABELS[h], ...(HOUSEHOLD_WORDS[h] ?? [])] }
+      ? { cell: value([t(HOUSEHOLD_LABELS[h])]), words: [HOUSEHOLD_LABELS[h], ...(HOUSEHOLD_WORDS[h] ?? [])], exact: HOUSEHOLD_EXACT[h] }
       : { cell: unconfirmed(pendingOf(c.ledger, "basic.household")) };
   },
   "people.together": (c) => {
@@ -421,6 +449,11 @@ export const ITEM_VALUES: Record<LedgerItemKey, Resolver> = {
       words: hz.flatMap((h) => HAZARD_WORDS[h.kind]),
       multi: true,
       kinds,
+      match: (label) => hz.some((h) => hazardMatches(h.kind, label)),
+      details: hz.flatMap((h) => {
+        const d = [h.depthM != null ? `${h.depthM} m` : "", h.note?.trim() ?? ""].filter(Boolean).join(" ");
+        return d ? [{ words: HAZARD_WORDS[h.kind], detail: d, kind: h.kind }] : [];
+      }),
     };
   },
   "evacuation.destination1": fromSheet("shelter.city.place"),
@@ -540,6 +573,11 @@ export function normalizeWord(s: string): string {
   return s.normalize("NFKC").replace(/[\s　]/g, "").replace(/[（）()【】「」]/g, "");
 }
 
+/** あり・なし の選択肢（T133） */
+const YES = /^(あり|有|有り|はい)$/;
+const NO = /^(なし|無|無し|いいえ)$/;
+const NONE_TEXT = "なし";
+
 /** 値の言葉に合う選択肢の番号。完全に同じ物が無ければ、片方がもう片方を含む物がちょうど 1 つのときだけ */
 export function matchOption(options: readonly string[], words: readonly string[]): number {
   const opts = options.map(normalizeWord);
@@ -577,7 +615,7 @@ export function wordMatches(label: string, words: readonly string[]): boolean {
 export function kindFlag(field: Pick<MappingField, "label">, v: ItemValue): boolean | null | undefined {
   if (!v.kinds || !wordMatches(field.label, v.kinds)) return undefined;
   if (v.flag === null || v.flag === undefined) return v.flag;
-  return v.flag === true && wordMatches(field.label, v.words ?? []);
+  return v.flag === true && (v.match ? v.match(field.label) : wordMatches(field.label, v.words ?? []));
 }
 
 /** 項目の値を欄の形（□・選ぶ・手書き）に合わせる */
@@ -602,11 +640,26 @@ export function shapeCell(field: MappingField, v: ItemValue): Cell {
     // 複数選択の欄（T122）: 種類が並ぶ項目は、合う選択肢の全部に印
     if (v.multi && v.words) {
       const words = v.words;
-      const on = field.options.map((o) => wordMatches(o, words));
-      if (on.some(Boolean)) return { kind: "choice", options: field.options.map((label, i) => ({ label, on: on[i] })) };
+      const on = field.options.map((o) => (v.match ? v.match(o) : wordMatches(o, words)));
+      const detailOf = (label: string) => v.details?.find((d) => (d.kind ? hazardMatches(d.kind, label) : wordMatches(label, d.words)))?.detail;
+      if (on.some(Boolean))
+        return {
+          kind: "choice",
+          options: field.options.map((label, i) => {
+            const detail = on[i] ? detailOf(label) : undefined;
+            return { label, on: on[i], ...(detail ? { detail } : {}) };
+          }),
+        };
     }
-    const hit = v.words ? matchOption(field.options, v.words) : -1;
+    const exactHit = v.exact ? field.options.findIndex((o) => v.exact!.some((w) => normalizeWord(o) === normalizeWord(w))) : -1;
+    const hit = exactHit >= 0 ? exactHit : v.words ? matchOption(field.options, v.words) : -1;
     if (hit >= 0) return { kind: "choice", options: field.options.map((label, i) => ({ label, on: i === hit })) };
+    // あり・なし の 2 つを選ぶ欄（「介護保険 □なし □あり」「医療的ケア □なし □あり」）に値があれば あり（T133。値の中身は別の欄）
+    const yes = field.options.findIndex((o) => YES.test(normalizeWord(o)));
+    const no = field.options.findIndex((o) => NO.test(normalizeWord(o)));
+    if (yes >= 0 && no >= 0 && field.options.length === 2 && cell.kind === "value" && cell.lines.some((l) => l.some((p) => !p.sub && !p.unconfirmed && p.text.trim() !== "" && p.text !== NONE_TEXT))) {
+      return { kind: "choice", options: field.options.map((label, i) => ({ label, on: i === yes })) };
+    }
     // 選択肢に合わない値は、選択肢を全部 □ のまま並べ、台帳の言葉を後ろに添える
     return { kind: "choice", options: field.options.map((label) => ({ label, on: false })), after: pieces(cell) };
   }
@@ -651,6 +704,24 @@ const isUnconfirmed = (cell: Cell) =>
   (cell.kind === "choice" && cell.unconfirmed !== undefined) ||
   (cell.kind === "value" && cell.lines.some((l) => l.some((p) => p.unconfirmed)));
 
+/** 連絡先の電話の項目（電話と携帯の 2 つを持つ） */
+const CONTACT_PHONE = /^(emergency|supporter)\d\.phone$/;
+const MOBILE_LABEL = /携帯/;
+
+/**
+ * 電話の欄の役（T133）: 連絡先の電話の項目は電話と携帯の 2 行を持つ。欄の名前に「携帯」があれば携帯の行だけ、同じ段に同じ項目の携帯の欄が
+ * あれば電話の行だけ（電話番号・携帯番号の 2 つの欄に同じ番号を 2 回書かない）。合う行が無ければ未確認
+ */
+export function phoneRole(cell: Cell, field: MappingField, fields: readonly MappingField[]): Cell {
+  if (cell.kind !== "value" || !field.item || !CONTACT_PHONE.test(field.item)) return cell;
+  const mobile = MOBILE_LABEL.test(field.label);
+  const pair = !mobile && fields.some((g) => g !== field && !g.removed && g.item === field.item && g.page === field.page && g.section === field.section && MOBILE_LABEL.test(g.label));
+  if (!mobile && !pair) return cell;
+  const isMobile = (l: PieceLine) => l.some((p) => p.sub && p.text === "携帯");
+  const lines = cell.lines.filter((l) => (mobile ? isMobile(l) : !isMobile(l)));
+  return lines.length > 0 ? { kind: "value", lines } : unconfirmed();
+}
+
 /** 確かめた対応表と台帳から、欄の順に値を並べた紙面を作る */
 export function buildMappedSheet(rows: PersonPageRows, mapping: FormMapping, opts: BuildOptions): MappedSheet {
   const ledger = parseLedger(rows.person.ledger);
@@ -675,7 +746,7 @@ export function buildMappedSheet(rows: PersonPageRows, mapping: FormMapping, opt
   for (const field of mapping.fields) {
     if (field.removed) continue;
     count += 1;
-    const cell = mappedCell(held.has(field.id) ? { ...field, item: null } : field, ctx);
+    const cell = phoneRole(mappedCell(held.has(field.id) ? { ...field, item: null } : field, ctx), field, mapping.fields);
     const name = field.section ? `${field.section} ${field.label}` : field.label;
     if (cell.kind === "withheld") withheld.add(cell.consent);
     else if (isUnconfirmed(cell)) unconfirmedLabels.push(name);

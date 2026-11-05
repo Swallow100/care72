@@ -8,6 +8,7 @@
 // - 欄ごとに AI の読んだ物（ai）を残し、人が直した所と分けて数える（mappingStats）。
 
 import type { ConsentKind } from "../db/types.ts";
+import { refineItems } from "./item-hints.ts";
 
 // ---------- 台帳の項目の一覧 ----------
 
@@ -436,6 +437,9 @@ export const MAPPING_LABELS = {
   list: "一覧",
   /** 様式 9 の専用の紙（lib/forms/frame-form9.ts）へ */
   form9Paper: "専用紙",
+  // ---- T133 ----
+  /** 台帳に値があるのに、元の様式の上の紙に置けなかった欄（印刷の字と重なる・枠に収まらない・置く所が確かでない） */
+  unplaced: "未配置",
 } as const;
 
 // ---------- 長さの上限（画面・保存・AI の返事で同じ） ----------
@@ -574,7 +578,8 @@ export function checkReadResult(r: ReadResult): CheckedRead {
       title: clean(r.title, LIMITS.title) || "様式",
       issuer: clean(r.issuer, LIMITS.issuer),
       pages,
-      fields,
+      // 読み取りの項目の当て方の補い（T133、lib/forms/item-hints.ts）。項目なしの欄と名前 2 つの書く所を、欄の名前と並びの一般の決まりで
+      fields: refineItems(fields).slice(0, LIMITS.fields),
       ...(r.typeface !== undefined ? { typeface: typefaceOf(r.typeface) } : {}),
       ...unreadOf(r.unread, pages),
       ...((): { list?: ListShape } => {

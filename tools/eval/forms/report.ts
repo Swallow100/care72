@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { INPUT_KIND_LABELS, type InputKind } from "./inputs.ts";
 import { PRICES_AS_OF } from "./record.ts";
 import type { RunResult } from "./run.ts";
+import { addLook, emptyLookScore, type LookScore } from "./look.ts";
 import { emptyIntakeScore, emptyPaperScore, emptyReadScore, type IntakeScore, type PaperScore, type ReadScore } from "./score.ts";
 
 const add = <T extends Record<string, number>>(a: T, b: T): T => Object.fromEntries(Object.keys(a).map((k) => [k, a[k] + (b[k] ?? 0)])) as T;
@@ -15,6 +16,8 @@ export type Totals = {
   read: ReadScore;
   intake: IntakeScore;
   paper: PaperScore;
+  /** 紙の見た目（T133。元の様式の上の紙の全部。正解の表の無い様式も） */
+  look: LookScore;
   failures: Record<string, number>;
   inputs: number;
   inputsFailed: number;
@@ -23,7 +26,7 @@ export type Totals = {
 };
 
 export function totals(r: RunResult, filter: { form?: string; kind?: InputKind } = {}): Totals {
-  const t: Totals = { read: emptyReadScore(), intake: emptyIntakeScore(), paper: emptyPaperScore(), failures: {}, inputs: 0, inputsFailed: 0, rawOverLimit: 0, carryLoss: 0 };
+  const t: Totals = { read: emptyReadScore(), intake: emptyIntakeScore(), paper: emptyPaperScore(), look: emptyLookScore(), failures: {}, inputs: 0, inputsFailed: 0, rawOverLimit: 0, carryLoss: 0 };
   for (const f of r.forms) if (f.read && (!filter.form || f.id === filter.form) && !filter.kind) t.read = add(t.read, f.read);
   for (const i of r.inputs) {
     if (filter.kind && i.kind !== filter.kind) continue;
@@ -36,9 +39,10 @@ export function totals(r: RunResult, filter: { form?: string; kind?: InputKind }
     for (const f of i.failures) t.failures[f] = (t.failures[f] ?? 0) + 1;
   }
   for (const p of r.papers) {
-    if (!p.score) continue;
     if (filter.form && p.form !== filter.form) continue;
     if (filter.kind && p.kind !== filter.kind) continue;
+    if (p.look) t.look = addLook(t.look, p.look);
+    if (!p.score) continue;
     t.paper = add(t.paper, p.score);
   }
   return t;
@@ -80,6 +84,17 @@ export const METRICS: Metric[] = [
   { label: "紙 別紙（場所なし）", get: (r) => totals(r).paper.annexUnplaced },
   { label: "紙 未確認の差（正解と）", get: (r) => totals(r).paper.unconfirmedDiff },
   { label: "紙 未記入の数え漏れ", get: (r) => totals(r).paper.uncountedBlank },
+  // T133: 紙の見た目（元の様式の上の紙の全部。正解の表の無い様式も、全部の入力）
+  { label: "見た目 置いた字", get: (r) => totals(r).look.texts },
+  { label: "見た目 重なり（印刷の字と）", get: (r) => totals(r).look.overlap },
+  { label: "見た目 はみ出し（欄の枠の外）", get: (r) => totals(r).look.outside },
+  { label: "見た目 隣の欄の枠に掛かる", get: (r) => totals(r).look.neighbor },
+  { label: "見た目 ずらした字（欄の枠の中）", get: (r) => totals(r).look.shifted },
+  { label: "見た目 置けなかった欄", get: (r) => totals(r).look.unplaced },
+  { label: "見た目 台帳あり空欄", get: (r) => totals(r).look.blanks },
+  { label: "見た目 台帳あり空欄 うち選択肢に合わない値", get: (r) => totals(r).look.blanksChoice },
+  { label: "見た目 伏字・仮の言い方", get: (r) => totals(r).look.masks },
+  { label: "見た目 印刷の字の位置のある頁", get: (r) => totals(r).look.inkPages },
   { label: "送った文の氏名・電話・町名", get: (r) => r.leaks.strongHits },
   { label: "送った文の生年月日", get: (r) => r.leaks.birthHits },
   { label: "送った文の姓・名だけ", get: (r) => r.leaks.weakHits },
@@ -130,6 +145,7 @@ export function oneLine(r: RunResult, prev: RunResult | null): string {
     `様式 当${readHit}/${t.read.goldFields}${d(readHit, p ? p.read.hit + p.read.alt : undefined)} 外${t.read.wrong}${d(t.read.wrong, p?.read.wrong)} 漏${t.read.missItem + t.read.missField}${d(t.read.missItem + t.read.missField, p ? p.read.missItem + p.read.missField : undefined)}`,
     `入力 当${t.intake.hit}/${t.intake.expected}${d(t.intake.hit, p?.intake.hit)} 外${t.intake.wrong} 漏${t.intake.miss}`,
     `紙 当${t.paper.hit}/${t.paper.filled}${d(t.paper.hit, p?.paper.hit)} 置違${paperWrong}${d(paperWrong, p ? p.paper.wrong + p.paper.extra : undefined)} 別紙${t.paper.annexOverflow + t.paper.annexUnplaced}`,
+    `見 重${t.look.overlap}${d(t.look.overlap, p?.look.overlap)} 出${t.look.outside} 隣${t.look.neighbor} 空${t.look.blanks}${d(t.look.blanks, p?.look.blanks)} 置けず${t.look.unplaced} 伏${t.look.masks}`,
     ...(r.papers.some((p) => p.review) ? [`見直し 修${reviewTotals(r.papers).fix} 確${reviewTotals(r.papers).check} AI${reviewTotals(r.papers).aiFound}`] : []),
     `漏洩 ${r.leaks.strongHits}`,
     `失敗 ${t.inputsFailed}`,
@@ -145,7 +161,7 @@ export function diffMarkdown(r: RunResult, prev: RunResult | null): string {
   lines.push("");
   lines.push(`T107 の台（npm run eval:forms）の 1 回の数。中身・原本・名前は書かない（記録と埋めた紙はリポジトリの外の回のフォルダ）。`);
   lines.push("");
-  lines.push(`- 回: ${r.run}（${r.mode === "fake" ? `偽の client ${r.fakeStyle}。数は台の確かめ用で AI の力ではない` : "本物の API"}）`);
+  lines.push(`- 回: ${r.run}（${r.mode === "fake" ? `偽の client ${r.fakeStyle}。数は台の確かめ用で AI の力ではない` : r.mode === "replay" ? `数え直し（${r.replayOf ?? ""} の本物の返事を今のコードで。API は呼ばない）` : "本物の API"}）`);
   lines.push(`- 前の回: ${prev ? prev.run : "なし"}`);
   lines.push(`- 入力の作り方の版: ${r.genVersion}、紙の日付: ${r.today}、Chrome: ${r.renderer ? "あり" : "なし"}、埋めた紙: ${r.paper === "none" ? "刷らない（数だけ）" : (r.paper ?? "all")}`);
   lines.push(`- 様式の置き場: ${r.corpus.missing ? "なし" : `様式本体 ${r.corpus.files} 件（${r.corpus.cities.length} 市町村）、記載例・手引きなど読まない物 ${r.corpus.excluded} 件`}`);
@@ -163,13 +179,13 @@ export function diffMarkdown(r: RunResult, prev: RunResult | null): string {
   lines.push("");
   lines.push("## 様式ごと");
   lines.push("");
-  lines.push("| 様式 | 状態 | 読めた欄 | 項目あり | 正解の欄 | 当たり | 外れ | 取りこぼし | 読み落とし | 余分 | 位置違い | 紙 当たり | 紙 取りこぼし | 紙 置き間違い | 別紙 |");
-  lines.push("| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |");
+  lines.push("| 様式 | 状態 | 読めた欄 | 項目あり | 正解の欄 | 当たり | 外れ | 取りこぼし | 読み落とし | 余分 | 位置違い | 紙 当たり | 紙 取りこぼし | 紙 置き間違い | 別紙 | 重なり | はみ出し | 隣の欄 | 台帳あり空欄 | 置けず |");
+  lines.push("| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |");
   for (const f of r.forms) {
     const t = totals(r, { form: f.id });
     const rd = f.read;
     lines.push(
-      `| ${f.id} | ${f.status === "ok" ? `済${f.unread?.length ? `（未読 ${f.unread.join("・")}頁）` : ""}${f.partial?.length ? `（一部 ${f.partial.join("・")}頁）` : ""}` : `${f.status === "skipped" ? "飛ばし" : "失敗"}（${f.reason ?? ""}）`} | ${f.fields ?? "-"} | ${f.mapped ?? "-"} | ${rd?.goldFields ?? "-"} | ${rd ? rd.hit + rd.alt : "-"} | ${rd?.wrong ?? "-"} | ${rd?.missItem ?? "-"} | ${rd?.missField ?? "-"} | ${rd?.extraField ?? "-"} | ${rd?.boxMiss ?? "-"} | ${t.paper.hit}/${t.paper.filled} | ${t.paper.miss} | ${t.paper.wrong + t.paper.extra} | ${t.paper.annexOverflow + t.paper.annexUnplaced} |`,
+      `| ${f.id} | ${f.status === "ok" ? `済${f.unread?.length ? `（未読 ${f.unread.join("・")}頁）` : ""}${f.partial?.length ? `（一部 ${f.partial.join("・")}頁）` : ""}` : `${f.status === "skipped" ? "飛ばし" : "失敗"}（${f.reason ?? ""}）`} | ${f.fields ?? "-"} | ${f.mapped ?? "-"} | ${rd?.goldFields ?? "-"} | ${rd ? rd.hit + rd.alt : "-"} | ${rd?.wrong ?? "-"} | ${rd?.missItem ?? "-"} | ${rd?.missField ?? "-"} | ${rd?.extraField ?? "-"} | ${rd?.boxMiss ?? "-"} | ${t.paper.hit}/${t.paper.filled} | ${t.paper.miss} | ${t.paper.wrong + t.paper.extra} | ${t.paper.annexOverflow + t.paper.annexUnplaced} | ${t.look.overlap} | ${t.look.outside} | ${t.look.neighbor} | ${t.look.blanks} | ${t.look.unplaced} |`,
     );
   }
   lines.push("");

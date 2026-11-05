@@ -2,6 +2,7 @@
 //
 //   node tools/eval/forms/cli.ts [--real] [--gold] [--paper=all|pdf|png|none] [--forms=komorebi,aozora] [--inputs=text-,photo-p-01]
 //                                [--people=p-01,p-02] [--paper-all-forms] [--out=<回の置き場>] [--corpus=<様式の置き場>] [--no-corpus] [--no-progress] [--max-usd=10]
+//                                [--replay=<前の本物の回のフォルダ> --run=<回の名前>]
 //                                [--forms=catalog | --forms=cat-sapporo-1,cat-kumamoto-2] [--catalog-fetch]
 //                                [--review] [--no-review]
 //
@@ -46,9 +47,17 @@ if (maxUsd !== null && !(Number.isFinite(maxUsd) && maxUsd > 0)) {
 const outRoot = value("out") ?? process.env.CARE72_EVAL_OUT ?? join(REPO_ROOT, "..", "care72-qa", "eval", "forms");
 const corpusRoot = flag("no-corpus") ? null : (value("corpus") ?? process.env.CARE72_EVAL_CORPUS ?? join(REPO_ROOT, "..", "care72-eval-corpus", "forms"));
 
+// 数え直し（T133）: 前の本物の回の返事で、今のコードの紙と数を出す（API を呼ばない。前の回のフォルダは読むだけ）
+const replayDir = value("replay");
+if (real && replayDir) {
+  console.error("--real と --replay は一緒に使えない");
+  process.exit(2);
+}
+
 const t0 = Date.now();
 const result = await runEval({
-  mode: real ? "real" : "fake",
+  mode: real ? "real" : replayDir ? "replay" : "fake",
+  ...(replayDir ? { replayDir, runId: value("run") } : {}),
   fakeStyle: flag("gold") ? "gold" : "noisy",
   apiKey,
   outRoot,

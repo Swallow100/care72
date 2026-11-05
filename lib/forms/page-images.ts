@@ -8,9 +8,14 @@
 // - ブラウザでも読む（場所の確かめの画面が頁の大きさと URL を使う）ので、サーバーだけの物は import しない。
 
 import { jpegSegments } from "../redact/jpeg.ts";
+import { checkPackedInk } from "./ink.ts";
 import { LIMITS } from "./mapping.ts";
 
-export type PageImage = { page: number; width: number; height: number; bytes: number };
+/**
+ * 頁の画像の大きさ。ink は頁の印刷の字・□ のかたまりの箱（T133、lib/forms/ink.ts の保存の形）。ブラウザが送る前に頁の画像から作った物で、
+ * 無ければ（T133 の前に読んだ様式・作れなかった頁）印刷の字の位置なしで置く
+ */
+export type PageImage = { page: number; width: number; height: number; bytes: number; ink?: number[] };
 
 /** 事業所の頁の画像の置き場の頭（デモ事業所の戻しで消す。lib/seed/reset.ts） */
 export function pageImagePrefix(officeId: string): string {
@@ -64,7 +69,8 @@ export function parsePageImages(json: string | null | undefined): PageImage[] | 
     if (!x || typeof x !== "object") return null;
     const p = x as Record<string, unknown>;
     if (p.page !== i + 1 || !posInt(p.width, 20000) || !posInt(p.height, 20000) || !posInt(p.bytes, 50 * 1024 * 1024)) return null;
-    out.push({ page: i + 1, width: p.width as number, height: p.height as number, bytes: p.bytes as number });
+    const ink = checkPackedInk(p.ink);
+    out.push({ page: i + 1, width: p.width as number, height: p.height as number, bytes: p.bytes as number, ...(ink ? { ink } : {}) });
   }
   return out;
 }
@@ -85,14 +91,15 @@ type Db = { prepare(sql: string): { bind(...v: unknown[]): { run(): Promise<unkn
 export async function storePageImages(
   db: Db,
   bucket: PageImageBucket,
-  s: { officeId: string; mappingId: string; images: ReadonlyArray<Uint8Array> },
+  s: { officeId: string; mappingId: string; images: ReadonlyArray<Uint8Array>; /** 頁ごとの印刷の字の位置（T133。無い頁は null） */ inks?: ReadonlyArray<number[] | null> },
 ): Promise<PageImage[] | null> {
   if (s.images.length === 0 || s.images.length > LIMITS.pages) return null;
   const pages: PageImage[] = [];
   for (const [i, bytes] of s.images.entries()) {
     const size = jpegSize(bytes);
     if (!size) return null;
-    pages.push({ page: i + 1, ...size, bytes: bytes.length });
+    const ink = checkPackedInk(s.inks?.[i]);
+    pages.push({ page: i + 1, ...size, bytes: bytes.length, ...(ink ? { ink } : {}) });
   }
   try {
     for (const [i, bytes] of s.images.entries()) {

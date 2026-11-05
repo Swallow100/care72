@@ -31,6 +31,7 @@ import { CONSENT_KIND_LABELS } from "@/lib/labels";
 import { loadPersonDocument } from "@/lib/consent/documents";
 import { formatJst } from "@/lib/person";
 import { PaperReview, ReviewPrintNote } from "@/components/forms/PaperReview";
+import { printedOf } from "@/lib/forms/ink";
 import { mappedSubject } from "@/lib/forms/review";
 import { applyFixes, loadFixes } from "@/lib/forms/review-db";
 import { canReview, mappedFormKey } from "@/lib/forms/review-load";
@@ -101,7 +102,7 @@ export default async function MappedFormPage({ params, searchParams }: Props) {
   // 見直し（T136）。元の様式の上の紙だけ、ケアマネの役で自分の事業所の人。紙は手入れ（T135）を効かせた後の物
   const review =
     overlay && stored && canReview(principal, rows.person.office_id)
-      ? await paperReviewProps(env.DB, { personId: id, formKey: mappedFormKey(stored.id), subject: mappedSubject(sheet, overlay), sheet: overlay, consents: rows.consents, fixes })
+      ? await paperReviewProps(env.DB, { personId: id, formKey: mappedFormKey(stored.id), subject: mappedSubject(sheet, overlay, printedOf(images ?? [])), sheet: overlay, consents: rows.consents, fixes })
       : null;
   const here = `/people/${encodeURIComponent(id)}/forms/mapped/${encodeURIComponent(mappingId)}`;
 
@@ -148,6 +149,15 @@ export default async function MappedFormPage({ params, searchParams }: Props) {
             {L.withheld} {CONSENT_KIND_LABELS[k]}
           </StateTag>
         ))}
+        {/* 台帳に値があるのに置けなかった欄（T133。色付けの版で破線の縁）。直すのはアプリの側 */}
+        {overlay && (overlay.unplaced?.length ?? 0) > 0 && (
+          <span className="text-sm" data-unplaced-count={overlay.unplaced!.length}>
+            <StateTag tone="check">
+              {L.unplaced} <span className="tabular-nums">{overlay.unplaced!.length}</span>
+            </StateTag>{" "}
+            <span className="text-xs text-muted">{overlay.unplaced!.join("・")}</span>
+          </span>
+        )}
         {overlay && overlay.annex.length > 0 && (
           <span className="text-sm" data-annex-count={overlay.annex.length}>
             <span className="text-muted">{L.annex}</span> <span className="font-bold tabular-nums">{overlay.annex.length}</span>{" "}

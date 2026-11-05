@@ -101,7 +101,8 @@ const nameOf = (f: MappingField) => (f.section ? `${f.section} ${f.label}` : f.l
 export const formOnlyField = (f: MappingField): boolean => !f.removed && f.item === null && f.shape !== "handwrite";
 
 /**
- * 差し込みの紙面（lib/forms/mapped-sheet.ts の buildMappedSheet）に、様式だけの欄の手入れを効かせる。
+ * 差し込みの紙面（lib/forms/mapped-sheet.ts の buildMappedSheet）に、様式だけの欄の手入れと、台帳の欄のこの様式だけの手入れ
+ * （T133 の置けなかった欄。台帳の値は変えない）を効かせる。
  * 入れた欄は値になり、帯の未確認・対応なしと未記入の色付けから外れる（紙の数え方と同じ元）
  */
 export function withMappedEntries(sheet: MappedSheet, entries: readonly FormEntry[]): MappedSheet {
@@ -119,7 +120,8 @@ export function withMappedEntries(sheet: MappedSheet, entries: readonly FormEntr
       ...s,
       rows: s.rows.map((r) => {
         const v = values.get(r.field.id);
-        if (v === undefined || !formOnlyField(r.field)) return r;
+        // 様式だけの欄と、台帳の欄のこの様式だけの手入れ（T133 の置けなかった欄を、この様式に合う形で書いた物）。同意の無い欄・手書きの欄は効かせない
+        if (v === undefined || r.field.removed || r.field.shape === "handwrite" || r.cell.kind === "withheld") return r;
         const cell = formValueCell(r.field, v);
         if (!cell) return r;
         if (isUnconfirmedCell(r.cell)) filled.add(nameOf(r.field));

@@ -1,7 +1,8 @@
 "use client";
 
 // 紙の上でその場で入れる（T135）。元の様式の上に値を置いた紙（OverlaySheet）を包み、頁ごとの層（.ov-layer）に重ねて描く:
-// - 欄: 押すと欄の上で入れる。字は紙に刷るときと同じ決まり（lib/forms/paper-fill.ts の liveFont → fitText）の大きさで、欄の矩形の中だけ。
+// - 欄: 押すと欄の上で入れる。字の置き場と大きさは紙に刷るときと同じ関数（lib/forms/paper-fill.ts の livePlace → T133 の placeText。
+//   印刷の字を避けて欄の枠の中の空いた所、下限 6pt）で、欄の枠の中だけ。空いた欄の 2 つの区別（T133）: 台帳に無い欄は質問で、置けなかった欄はその場で
 //   □ は押して印、部品つきの欄（年・月・日、− −）は部品ごと。元が台帳の何か所かにまたがる欄は入力の窓（T117 の EditWindow）
 // - 行き先: 台帳の項目に当たる欄は台帳（欄の脇に「台帳」）、様式だけの欄はその人のその様式の手入れ（「様式」）。どちらも誰がいつを残す
 // - 文字の枠と画像: 紙の上の好きな所に置き、動かす・大きさを変える。刷る PDF にも同じ位置（サーバーが紙に描く）
@@ -31,6 +32,7 @@ import {
   FILL_LABELS as L,
   joinParts,
   liveFont,
+  livePlace,
   partsOf,
   slotChanges,
   slotForField,
@@ -286,7 +288,10 @@ export function PaperFill({ data, children }: { data: PaperFillData; children: R
 
   // ---------- 質問 ----------
 
-  const questions = data.questions.filter((q) => !skip.includes(q.key));
+  // 台帳に無い欄（T133 の ask）を押す・見直しの一覧から送られたときは、その欄の問いを先に
+  const [askFirst, setAskFirst] = useState<string | null>(null);
+  const left = data.questions.filter((q) => !skip.includes(q.key));
+  const questions = askFirst && left.some((q) => q.key === askFirst) ? [...left.filter((q) => q.key === askFirst), ...left.filter((q) => q.key !== askFirst)] : left;
   const question = questions[0] ?? null;
   const askedSlot = question ? data.slots.find((s) => s.asks?.includes(question.key)) : undefined;
   useEffect(() => {
@@ -309,8 +314,21 @@ export function PaperFill({ data, children }: { data: PaperFillData; children: R
     const next = slot.input.parts ? joinParts(parts, slot.input.parts.map((p) => p.sep)) : parts[0];
     await saveValue(slot, slot.input.multiline ? next.replace(/\r\n/g, "\n") : next.replace(/\s*\n\s*/g, " "));
   };
+  /**
+   * 空いた欄の 2 つの区別（T133 の黄の塗り）: 台帳に無い（ask）欄で問いがあれば、質問の面でその問いを先に聞く（質問で埋める）。
+   * 置けなかった（fix）欄と問いの無い欄は、その場で入れる。問いを開いたら true
+   */
+  const askFor = (slot: PaperSlot): boolean => {
+    if (slot.gap !== "ask" || slot.dest !== "ledger") return false;
+    const q = left.find((x) => slot.asks?.includes(x.key));
+    if (!q) return false;
+    setAskFirst(q.key);
+    setAsking(true);
+    return true;
+  };
   const pressSlot = (slot: PaperSlot) => {
     if (busy) return;
+    if (askFor(slot)) return;
     if (slot.input.kind === "window") setWindowSlot(slot);
     else if (slot.input.kind === "check") void saveValue(slot, slot.value !== true);
     else if (slot.input.kind === "text") startText(slot);
@@ -328,6 +346,7 @@ export function PaperFill({ data, children }: { data: PaperFillData; children: R
       setReviewKey(slot.key);
       root.current?.querySelector<HTMLElement>(`[data-slot="${CSS.escape(slot.key)}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" });
       if (busy || placing) return;
+      if (askFor(slot)) return;
       if (slot.input.kind === "text") startText(slot);
       else if (slot.input.kind === "window") setWindowSlot(slot);
     };
@@ -561,6 +580,8 @@ function SlotView({ slot, ...p }: LayerProps & { slot: PaperSlot }) {
     "data-slot": slot.key,
     "data-dest": slot.dest,
     "data-empty": slot.empty ? "1" : undefined,
+    // 空いた訳（T133 の黄の塗り 2 つ）: ask は台帳に無い（押すと質問）、fix は置けなかった（押すとこの様式の手入れ）
+    "data-gap": slot.gap,
     "data-asked": p.askedKey === slot.key ? "1" : undefined,
     "data-hand": slot.hand ? slot.dest : undefined,
   };
@@ -608,13 +629,12 @@ function SlotView({ slot, ...p }: LayerProps & { slot: PaperSlot }) {
           }}
         >
           {parts.map((part, i) => {
-            const mm = boxMm(part.box, p.mm);
-            const font = liveFont(editing.parts[i] ?? "", mm, slot.maxPt);
+            const font = livePlace(slot, editing.parts[i] ?? "", part.box, p.mm, slot.box);
             return (
               <input
                 key={i}
                 className="pf-input"
-                style={{ ...at(part.box), fontSize: `${font.fontPt}pt` }}
+                style={{ ...at(font.box), fontSize: `${font.fontPt}pt` }}
                 value={editing.parts[i] ?? ""}
                 aria-label={`${slot.label} ${part.sep}`}
                 inputMode={input.tel ? "tel" : /[年月日歳]$/.test(part.sep) ? "numeric" : undefined}
@@ -633,12 +653,13 @@ function SlotView({ slot, ...p }: LayerProps & { slot: PaperSlot }) {
         </div>
       );
     }
-    const font = liveFont(editing.parts[0] ?? "", slot.mm, slot.maxPt);
+    // 書いている字の置き場と大きさは、紙に刷るときと同じ関数（T133 の placeText。印刷の字を避けて欄の枠の中の空いた所）
+    const font = livePlace(slot, editing.parts[0] ?? "", slot.box, p.mm);
     return (
       <>
         <textarea
           className="pf-input"
-          style={{ ...at(slot.box), fontSize: `${font.fontPt}pt` }}
+          style={{ ...at(font.box), fontSize: `${font.fontPt}pt` }}
           value={editing.parts[0] ?? ""}
           aria-label={slot.label}
           maxLength={input.max}

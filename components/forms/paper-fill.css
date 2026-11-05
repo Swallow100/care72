@@ -38,6 +38,10 @@
     cursor: default;
     pointer-events: none;
   }
+  /* 置けなかった欄（T133 の fix。台帳に値があるのに紙に置けなかった）は注意の破線（紙は白なので、ライトの要確認の線の色で固定） */
+  [data-paper-fill] .pf-area[data-gap="fix"] {
+    outline: 1px dashed #c17a00;
+  }
   [data-paper-fill][data-marks] [data-hand] {
     outline: 1px solid #5b6470;
   }
