@@ -406,9 +406,9 @@ export function termHits(outcome: RunOutcome, ctx: Pick<CheckContext, "mobile"> 
 export const INTERNAL_ID = /(?<![A-Za-z0-9])(?:[a-z][a-z0-9]*_[a-z0-9_]+|free|note)(?![A-Za-z0-9])/;
 
 /** 区切りの順に世界の要る所だけを当てた跡（発災からの分 → その時の状態）。電話・電波も */
-type FitTrack = Array<{ minute: number; w: FitWorld & { phone: string; radio: string } }>;
+type FitTrack = Array<{ minute: number; w: FitWorld & { phone: string; radio: string; flooded?: string[] } }>;
 
-const fitStart = (): FitWorld & { phone: string; radio: string } => ({
+const fitStart = (): FitWorld & { phone: string; radio: string; flooded?: string[] } => ({
   flood: false,
   alertLevel: null,
   quake: null,
@@ -420,8 +420,13 @@ const fitStart = (): FitWorld & { phone: string; radio: string } => ({
 });
 
 /** 状況 1 つを当てる（台の写し。世界の当て方 lib/drill/scenarios.ts の要る所だけ） */
-function foldFit(w: FitWorld & { phone: string; radio: string }, c: { kind?: string; [k: string]: unknown }): FitWorld & { phone: string; radio: string } {
+function foldFit(w: FitWorld & { phone: string; radio: string; flooded?: string[] }, c: { kind?: string; [k: string]: unknown }): FitWorld & { phone: string; radio: string; flooded?: string[] } {
   switch (c.kind) {
+    case "town_flood": {
+      // 町の浸水（仮想）の家の人は、家の辺りの浸水の印（手の所要の「浸水」の元）
+      const persons = Array.isArray(c.persons) ? c.persons.filter((p): p is string => typeof p === "string") : [];
+      return { ...w, flooded: [...new Set([...(w.flooded ?? []), ...persons])] };
+    }
     case "alert":
       return { ...w, alertLevel: (c.level as 3 | 4 | 5 | null) ?? null };
     case "quake":
@@ -520,14 +525,14 @@ export function fitHits(outcome: RunOutcome, ctx: Pick<CheckContext, "hazards">)
     if (adds.includes("浸水")) {
       checked += 1;
       const zones = a.person ? (ctx.hazards?.[a.person] ?? []) : [];
-      if (!waterActive(profile, zones, at)) hits.push({ check: "fit", rule: "terms:浸水", person: a.person ?? null, minute, evidence: `${a.kind ?? ""} ${a.minutes ?? ""} 分` });
+      if (!waterActive(profile, zones, at) && !(a.person && at.flooded?.includes(a.person))) hits.push({ check: "fit", rule: "terms:浸水", person: a.person ?? null, minute, evidence: `${a.kind ?? ""} ${a.minutes ?? ""} 分` });
     }
   }
   return { checked, hits };
 }
 
 /** 跡のうち、その分の時点の世界 */
-function worldAt(track: FitTrack, minute: number): FitWorld & { phone: string; radio: string } {
+function worldAt(track: FitTrack, minute: number): FitWorld & { phone: string; radio: string; flooded?: string[] } {
   let w = track[0].w;
   for (const x of track) if (x.minute <= minute) w = x.w;
   return w;
