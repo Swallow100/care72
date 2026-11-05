@@ -125,7 +125,12 @@ export type PaperResult = { form: string; input: string; kind: InputKind; score:
 /** aiCalls は手元の D1 の ai_calls の行から数えた物（費用の見積もりの元） */
 export type CallSummary = {
   aiCalls: { rows: number; ok: number; failed: number; inputTokens: number; outputTokens: number; costUsd: number; byPurpose: Record<string, number> };
-  calls: number; ok: number; failed: number; retried: number; attempts: number; durationMs: number; inputTokens: number; outputTokens: number; costUsd: number; byModel: Record<string, { calls: number; costUsd: number }> };
+  calls: number; ok: number; failed: number; retried: number; attempts: number; durationMs: number; inputTokens: number; outputTokens: number; costUsd: number; byModel: Record<string, { calls: number; costUsd: number }>;
+  /** 出力の上限で切れた呼び出し（T131。失敗に数えるが、様式の読み取りは拾えた欄を残して続きを頼む） */
+  truncated: number;
+  /** 様式の読み取りの 1 回の出力の最大（考える分を含む） */
+  formReadMaxOutput: number;
+};
 
 export type LeakSummary = { calls: number; textHits: number; strongHits: number; birthHits: number; weakHits: number; images: number; imagesRedacted: number; imagesNotRedacted: number };
 
@@ -377,6 +382,8 @@ export async function runEval(opts: EvalOptions): Promise<RunResult> {
         unread: body.unread ?? [],
         partial: body.partial ?? [],
         typeface: stored.mapping.typeface ?? null,
+        // 一覧の形の様式（T131）の行の数と行の間
+        list: stored.mapping.list ?? null,
         fieldsRead: stored.mapping.fields.map((f) => ({ id: f.id, page: f.page, section: f.section, label: f.label, shape: f.shape, item: f.item, confidence: f.ai?.confidence, reason: f.ai?.reason, rejected: f.ai?.rejected ?? null, box: f.box ?? null })),
         score: read,
       });
@@ -733,10 +740,12 @@ async function aiCallsSummary(db: ReturnType<typeof d1FromSqlite>): Promise<Call
 }
 
 function callSummary(records: readonly CallRecord[]): Omit<CallSummary, "aiCalls"> {
-  const s: Omit<CallSummary, "aiCalls"> = { calls: records.length, ok: 0, failed: 0, retried: 0, attempts: 0, durationMs: 0, inputTokens: 0, outputTokens: 0, costUsd: 0, byModel: {} };
+  const s: Omit<CallSummary, "aiCalls"> = { calls: records.length, ok: 0, failed: 0, retried: 0, attempts: 0, durationMs: 0, inputTokens: 0, outputTokens: 0, costUsd: 0, byModel: {}, truncated: 0, formReadMaxOutput: 0 };
   for (const r of records) {
     if (r.usage?.status === "ok") s.ok += 1;
     else s.failed += 1;
+    if (r.response?.stopReason === "max_tokens") s.truncated += 1;
+    if (r.purpose === "form_read") s.formReadMaxOutput = Math.max(s.formReadMaxOutput, r.usage?.outputTokens ?? 0);
     if (r.attempts.length > 1) s.retried += 1;
     s.attempts += r.attempts.length;
     s.durationMs += r.durationMs;

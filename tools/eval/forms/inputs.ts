@@ -170,7 +170,9 @@ export function factsOf(p: SeedPerson): Fact[] {
       id: `device.${i}`,
       group: "医療",
       say: says(`${name}${detail}を使っている${sched ? `。${d.schedule}` : ""}。`, `・機器：${name}${detail}${sched}`, `${name}${detail}${sched}`, `${name}を使ってて${detail}${sched}`),
-      piece: { devices: [{ kind: d.kind, detail: d.detail ?? "", schedule: d.schedule ?? "" }] },
+      // 正解の中身は種類の名前を重ねない（T120 の決まり。「胃ろう 経管栄養」の経管栄養は種類の名前）。前の正解は台帳の中身のままで、
+      // 決まりどおりの答えを外れと数えていた（評価の 2・3 回目、T131 で直した）
+      piece: { devices: [{ kind: d.kind, detail: deviceDetail(d.kind, d.detail), schedule: d.schedule ?? "" }] },
     });
   });
   m.medications.forEach((md, i) => {
@@ -235,6 +237,13 @@ export function factsOf(p: SeedPerson): Fact[] {
     out.push({ id: `pending.${pd.field}`, group: "特記", say: all(pd.status === "unknown" ? `${name}はまだ分からない。` : `${name}は答えたくないとのこと。`), piece: { unknowns: [{ field: pd.field, status: pd.status }] } });
   }
   return out;
+}
+
+/** 機器の中身から種類の名前を外した物（lib/intake/extract.ts の決まり「detail に種類の名前を重ねず」の答え） */
+export function deviceDetail(kind: keyof typeof DEVICE_LABELS, detail: string | null | undefined): string {
+  const d = detail?.trim() ?? "";
+  if (kind === "other" || d === "") return d;
+  return d.split(DEVICE_LABELS[kind]).join(" ").replace(/\s+/g, " ").trim();
 }
 
 const PENDING_WORDS: Record<string, string> = { "evacuation.destination2": "第二の避難先", "evacuation.transport": "避難の移動手段", "medical.medications": "薬" };

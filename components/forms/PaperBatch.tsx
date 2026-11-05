@@ -1,6 +1,7 @@
 // 書類の一括印刷の紙面（/forms/batch、T87）。1 人分の紙面の部品（計画書・差し込み・元の様式の上の紙・医療要約）を人数分、渡した順に並べる。
 // 紙面の部品は変えない。人の間の頁の割り方は paper-batch.css（読み込むのはページの側。本人の 1 枚の一括 own-batch.css と同じ規則）。
 // 原本を取り込んだ事業所の計画書・医療要約は、1 人ずつの紙と同じ原本の枠の紙（frame、T101・T106。1 人分は lib/forms/batch.ts が決める）。
+// 一覧の形の様式（T131、lib/forms/list-sheet.ts）は、同じ対応表の人ごとの紙を行ごとに 1 人の表にまとめる（行の数を超えたら枚を足す）。
 // 状態を持たない（Server Component のまま、テストで renderToStaticMarkup できる）。
 
 import type { RouteMapImage } from "@/lib/forms/frame-build";
@@ -8,6 +9,7 @@ import type { MappedSheet as Mapped } from "@/lib/forms/mapped-sheet";
 import type { MatsuyamaSheet as Matsuyama } from "@/lib/forms/matsuyama";
 import type { MedicalSummary } from "@/lib/forms/medical-summary";
 import { originalPageHref, type OriginalId } from "@/lib/forms/originals";
+import { isListSheet, mergeListSheets } from "@/lib/forms/list-sheet";
 import type { OverlaySheet as Overlay } from "@/lib/forms/overlay-sheet";
 import { MappedSheet, type MappedSheetMeta } from "./MappedSheet";
 import { MatsuyamaSheet } from "./MatsuyamaSheet";
@@ -39,10 +41,37 @@ function One({ p }: { p: BatchPaper }) {
   }
 }
 
+/**
+ * 一覧の形の様式の紙（T131）: 続いて並ぶ同じ対応表の「元の様式の上の紙」をまとめる。ほかの紙はそのまま
+ */
+export function groupListPapers(papers: ReadonlyArray<BatchPaper>): BatchPaper[] {
+  const out: BatchPaper[] = [];
+  for (let i = 0; i < papers.length; ) {
+    const p = papers[i];
+    if (p.kind !== "overlay" || !isListSheet(p.sheet)) {
+      out.push(p);
+      i += 1;
+      continue;
+    }
+    let j = i;
+    const run: Array<Extract<BatchPaper, { kind: "overlay" }>> = [];
+    while (j < papers.length) {
+      const q = papers[j];
+      if (q.kind !== "overlay" || q.mappingId !== p.mappingId || !isListSheet(q.sheet)) break;
+      run.push(q);
+      j += 1;
+    }
+    for (const sheet of mergeListSheets(run.map((r) => r.sheet))) out.push({ ...p, personId: sheet.personId, sheet });
+    i = j;
+  }
+  return out;
+}
+
 export function PaperBatch({ papers }: { papers: ReadonlyArray<BatchPaper> }) {
+  const shown = groupListPapers(papers);
   return (
     <div className="paper-batch" data-paper-batch={papers.length}>
-      {papers.map((p) => (
+      {shown.map((p) => (
         <One key={p.personId} p={p} />
       ))}
     </div>
