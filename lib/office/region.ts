@@ -14,7 +14,7 @@
 // 事業所の区域の読み方は訓練の lib/drill/db.ts の officeZonesOf と同じ（テストで照らす）。
 
 import type { D1Database } from "@cloudflare/workers-types";
-import { DEMO_OFFICE_ID } from "../auth/demo.ts";
+import { isSeedOfficeId } from "../auth/demo.ts";
 import { HAZARD_KINDS, type GeoPoint, type HazardKind } from "../db/types.ts";
 import { DEMO_OFFICE_ZONES } from "../drill/area.ts";
 import type { OfficeZone } from "../drill/comms.ts";
@@ -87,10 +87,10 @@ export function citySuggestions(region: readonly string[], people: readonly City
 
 /**
  * 事業所の区域（offices.hazards の JSON）を読む。訓練の lib/drill/db.ts の officeZonesOf と同じ読み方（種類の分かる物だけ・種類ごとに 1 つ・
- * 深さは数のときだけ。デモ事業所の NULL は架空の街の区域、ほかの NULL・読めない物は区域なし）
+ * 深さは数のときだけ。種の事業所〔デモ事業所と確認用の事業所、T144〕の NULL は架空の街の区域、ほかの NULL・読めない物は区域なし）
  */
 export function officeZonesFrom(text: string | null | undefined, officeId?: string): OfficeZone[] {
-  if (!text) return officeId === DEMO_OFFICE_ID ? DEMO_OFFICE_ZONES.map((z) => ({ ...z })) : [];
+  if (!text) return isSeedOfficeId(officeId) ? DEMO_OFFICE_ZONES.map((z) => ({ ...z })) : [];
   let v: unknown;
   try {
     v = JSON.parse(text);

@@ -145,11 +145,13 @@ describe("migration 0036（事業所の情報と地域）", () => {
     expect(SEED_OFFICES.filter((o) => "address" in o).map((o) => o.id)).toEqual([DEMO_OFFICE_ID, CHECK_OFFICE_ID]);
   });
 
-  it("デモ事業所の戻しは事業所の情報と地域も種に戻す", () => {
-    sqlite.exec(`UPDATE offices SET name = '変えた名前', address = '変えた所', phone = NULL, region_cities = NULL, region_km = 40 WHERE id = '${DEMO_OFFICE_ID}'`);
+  it("デモ事業所の戻しは事業所の情報と地域（区域も）を種に戻す", () => {
+    sqlite.exec(`UPDATE offices SET name = '変えた名前', address = '変えた所', phone = NULL, region_cities = NULL, region_km = 40, hazards = '["tsunami"]' WHERE id = '${DEMO_OFFICE_ID}'`);
     for (const s of demoResetStatements(AT)) sqlite.exec(s);
     expect(office()).toMatchObject({ name: "デモ事業所", address: "愛媛県松山市みずほし町", phone: "090-0000-0090", region_km: null });
     expect(JSON.parse(String(office().region_cities))).toEqual(["東温市"]);
+    // 区域は種に持たない（NULL = 架空の街の区域）
+    expect(office().hazards).toBeNull();
   });
 });
 
@@ -316,6 +318,7 @@ describe("地域（主な市＋周りの市・広さ・区域）", () => {
   it("事業所の区域は訓練（lib/drill/db.ts の officeZonesOf）と同じ読み方。デモ事業所の NULL は架空の街の区域", async () => {
     for (const t of [null, "", "[]", "壊れた", '["tsunami"]', '[{"kind":"flood","depthM":3},{"kind":"flood"},{"kind":"x"},{"kind":"landslide","depthM":"深い"}]']) {
       expect(officeZonesFrom(t, DEMO_OFFICE_ID), String(t)).toEqual(officeZonesOf(t, DEMO_OFFICE_ID));
+      expect(officeZonesFrom(t, CHECK_OFFICE_ID), String(t)).toEqual(officeZonesOf(t, CHECK_OFFICE_ID));
       expect(officeZonesFrom(t, "office-partner"), String(t)).toEqual(officeZonesOf(t, "office-partner"));
     }
     expect((await loadOfficeRegion(db, DEMO_OFFICE_ID))?.zones).toEqual([{ kind: "flood", depthM: 0.5 }]);
