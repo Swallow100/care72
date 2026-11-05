@@ -91,6 +91,7 @@ import { homeComms, homeOf, type Home } from "./comms.ts";
 import { clockRemaining, formatHours, type Situation, type TriageClock } from "../triage/index.ts";
 import { callsFor, speakerSlip, speakersLine, speakersOf, type Speaker, type Speakers } from "./speaker.ts";
 import { minuteText } from "./time-text.ts";
+import { clipWords } from "./clip.ts";
 import {
   dropFactSlips,
   factsBlock,
@@ -306,7 +307,7 @@ export function buildPersona(source: PseudonymInput, opts: { on?: string; places
 /** 本人役の帳面（T130）。actions はこの人への手（メモを落とした物）。停電の地区は本人の町名とハザードで見る */
 export function personaFacts(
   persona: Pick<Persona, "plan" | "together" | "kin" | "hazards" | "town" | "mask">,
-  x: { person: string; world: WorldState; state: PersonState | null; actions?: ReadonlyArray<ActionRecord>; now: number },
+  x: { person: string; world: WorldState; state: PersonState | null; actions?: ReadonlyArray<ActionRecord>; now: number; ahead?: PersonaInput["ahead"] },
 ): Facts {
   const o = x.world.outage;
   return factsOf({
@@ -319,6 +320,7 @@ export function personaFacts(
     inOutage: o !== null && inOutageArea(o.area, persona.hazards, persona.town ?? null),
     together: persona.together ?? [],
     kin: persona.kin ?? null,
+    ahead: x.ahead ?? null,
     ...(persona.mask ? { mask: persona.mask } : {}),
   });
 }
@@ -524,6 +526,8 @@ export function commsWords(world: WorldState, person: string, persona: Pick<Pers
   if (c.landline === "out" && world.marks?.[person]?.lineDown === undefined) out.push("この家の固定電話は停電で使えない");
   if (c.mobile === "down") out.push("携帯の電波が不通（メッセージ・安否のボタンも届かない）");
   else if (world.phone === "down") out.push(c.mobile === "ok" ? "電話は規制でつながりにくい（メッセージ・安否のボタンは届く）" : "電話は規制でつながりにくい");
+  // T139: 不安定の間も電話はつながりにくい（半分ほどはつながらず、メッセージで届く）
+  else if (world.phone === "busy") out.push(c.mobile === "ok" ? "電話は不安定でつながりにくい（つながらない時はメッセージ・安否のボタン）" : "電話は不安定でつながりにくい");
   return out;
 }
 
@@ -609,6 +613,14 @@ export function tickText(input: PersonaInput, persona: Persona): string {
 
 // ---------- 指示と返事の形 ----------
 
+/**
+ * 言う事の長さ（T139）。SPEECH_ASK は指示に書く字数（1〜2 文の話し言葉。声で 5〜10 秒ほど）、SPEECH_MAX は画面と記録に出す上限で、
+ * 超えた時は文の切れ目で切る（lib/drill/clip.ts）。評価の 4 回目で、上限 60 字のまま文の途中で切れた（生の返事は 88 字ほどまで）ので、
+ * 指示で短くさせ、上限は指示より広く取って切らずに済む形に
+ */
+export const SPEECH_ASK = 50;
+export const SPEECH_MAX = 80;
+
 export const PERSONA_SYSTEM = [
   "災害の訓練（発災から 72 時間）で、在宅で介護を受ける高齢者とその周りの人（家族・支援者）を演じる。人は全部架空。",
   "入力は JSON。「本人役」は本人と周りの人の説明、「この刻み」は今の時刻・状況・前の連絡・ケアマネがした事・想定の表の行。",
@@ -622,7 +634,7 @@ export const PERSONA_SYSTEM = [
   "- from: 押す人の呼び方。「押せる人」に書いた呼び方（本人・娘・夫・支援者 1 など）をそのまま。連絡しない時は空文字。",
   "- pressesRed: 赤（無事じゃない）を押すか。緑（無事）なら false。",
   "- redAnswers: 赤の時だけ、4 問（injured けが・atHome 家にいるか・canMove 動けるか・hasMedicine 薬があるか）の答え。答えない問いは null。赤でない時は null。",
-  "- speech: ケアマネに届く言葉（録音や書いた文に当たる）。連絡しない時は空文字。",
+  `- speech: ケアマネに届く言葉（録音や書いた文に当たる）。${SPEECH_ASK} 字まで（文の途中で終えない）。連絡しない時は空文字。`,
   "",
   "決まり:",
   "1. 想定の表の行がある時は、その行のとおりに連絡する（誰が・赤か緑か・4 問・いる所）。speech は行の「言う事の元」を、その人が言いそうな言い方に言い換える。元が無ければその人らしい短い言葉。",
@@ -686,8 +698,7 @@ export function buildPersonaRequest(
 
 // ---------- 返事 → 安否 ----------
 
-/** 言う事・する事の長さの上限（字） */
-export const SPEECH_MAX = 60;
+/** する事の長さの上限（字）。言う事は SPEECH_MAX（上の指示の所） */
 export const DOING_MAX = 40;
 
 /** 監督・自由文の読み替えの言葉に書かせない言葉（CLAUDE.md: 画面に「診断」「判定」「病気がわかる」「重症」と書かない） */
@@ -707,7 +718,7 @@ export function cleanWords(raw: string, key: PseudonymKey, max: number): string 
   const masked = maskReply(t, key);
   if (masked === null) return null;
   // 地区の別名（甲地区）は画面では町名に（T88。訓練の入力は町名を別名で渡す）
-  return Array.from(restorePlaces(masked, key)).slice(0, max).join("");
+  return clipWords(restorePlaces(masked, key), max);
 }
 
 /** 文の区切り（句点・感嘆・疑問）。区切りの字は前の文に付ける */
@@ -736,7 +747,7 @@ export function cleanPersonaWords(raw: string, key: PseudonymKey, max: number, e
   const joined = kept.join("").trim();
   if (!joined) return null;
   // 地区の別名（甲地区）は画面では町名に（T88。訓練の入力は町名を別名で渡す）
-  return Array.from(restorePlaces(joined, key)).slice(0, max).join("");
+  return clipWords(restorePlaces(joined, key), max);
 }
 
 /** 話した人の話し手（家族・支援者の話し手。本人は null） */
@@ -775,7 +786,7 @@ function doingOf(answer: PersonaAnswer, key: PseudonymKey): string | null {
   const action = cleanPersonaWords(answer.action, key, DOING_MAX);
   const condition = cleanPersonaWords(answer.condition, key, DOING_MAX, CONDITION_BANNED);
   const joined = [action, condition && condition !== action ? condition : null].filter(Boolean).join("。");
-  return joined ? Array.from(joined).slice(0, DOING_MAX).join("") : null;
+  return joined ? clipWords(joined, DOING_MAX) : null;
 }
 
 const WHERE_ALIASES: Readonly<Record<string, WhereNow>> = { 家: "home", 自宅: "home", 避難所: "shelter", その他: "other" };
@@ -821,7 +832,7 @@ export function fixedTurns(input: Pick<PersonaInput, "fixed" | "hour">): DrillTu
  */
 export function personaTurns(input: PersonaInput, persona: Persona, answer: PersonaAnswer, onDrop?: (rule: GateRule) => void): DrillTurn[] {
   // T130: 帳面（前の連絡・手・到着・台帳の計画から引く）。帳面と食い違う文を落とし、表の行の無い答えは帳面の門を通す
-  const facts = personaFacts(persona, { person: input.person, world: input.world, state: input.state, actions: input.actions ?? [], now: nowMinuteOf(input) });
+  const facts = personaFacts(persona, { person: input.person, world: input.world, state: input.state, actions: input.actions ?? [], now: nowMinuteOf(input), ahead: input.ahead ?? null });
   // 家族の話し手は自分の家族のことも話すので、いない家族の確かめは本人と支援者の言葉だけ
   const slipCtx = (source: FixedTurn["source"], place: WhereNow | null) => ({ ...slipContextOf(facts, place), ...(source === "family" ? { kin: null } : {}) });
   const factText = (raw: string | null, source: FixedTurn["source"], place: WhereNow | null): string | null => {
@@ -1124,7 +1135,7 @@ export const PATH_RULE =
 export const CALL_SYSTEM = [
   "災害の訓練で、ケアマネからの電話に出た人を演じる。人は全部架空。",
   "入力は JSON。「本人役」は本人と周りの人の説明、「電話」は今の時刻・状況・前の連絡・電話に出た人。",
-  "電話に出た人が言う事を speech に 1〜3 文で返す。ケアマネは「大丈夫ですか。今どこにいますか」と聞いている。",
+  `電話に出た人が言う事を speech に 1〜2 文・${SPEECH_ASK} 字までで返す（文の途中で終えない）。ケアマネは「大丈夫ですか。今どこにいますか」と聞いている。`,
   "「伝える様子」があれば、その様子と食い違わない事を言う（無事なのにけがをしたと言わない、けがなのに無事と言わない）。",
   PATH_RULE,
   "本人はやさしい短い話し言葉。認知症の本人は話が噛み合わないことがある。家族・支援者はその人の口調。",
@@ -1210,7 +1221,7 @@ export const TALK_SYSTEM = [
   "災害の訓練で、ケアマネからの電話に出た人を演じる。人は全部架空。電話の続きで、ケアマネの今の言葉に答える。",
   "入力は JSON。「本人役」は本人と周りの人の説明、「電話」は今の時刻・状況・前の連絡・電話に出た人・それまでの話・ケアマネの今の言葉。",
   "返す物:",
-  "- speech: 電話に出た人が言う事。1〜3 文。それまでの話と食い違わない。",
+  `- speech: 電話に出た人が言う事。1〜2 文・${SPEECH_ASK} 字まで（文の途中で終えない。電話の 1 回の返事なので短く）。それまでの話と食い違わない。`,
   `- asks: 頼み事。次の一覧から 0〜${TALK_ASKS_MAX} つの英字。${ASK_LIST}。言葉で頼んだ事と合わせる。無ければ空の配列。`,
   "「伝える様子」があれば、その様子と食い違わない事を言う（無事なのにけがをしたと言わない、けがなのに無事と言わない）。",
   PATH_RULE,
@@ -1282,7 +1293,7 @@ export const VISIT_SYSTEM = [
   `- condition: 着いたケアマネが見て分かる本人の様子（${VISIT_CONDITION_MAX} 字まで）。どこで何をしているか・部屋や周りの様子。体の具合や病名を言い切らない。`,
   "- location: 本人がいる所。home（家）・shelter（避難所）・other（その他）・unknown のどれか 1 つの英字。",
   `- asks: 本人か家族の頼み事。次の一覧から 0〜${VISIT_ASKS_MAX} つの英字。${ASK_LIST}。無ければ空の配列。`,
-  "- speech: 本人か家族がケアマネに言う事。1〜2 文。",
+  `- speech: 本人か家族がケアマネに言う事。1〜2 文・${SPEECH_ASK} 字まで（文の途中で終えない）。`,
   PATH_RULE,
   "本人はやさしい短い話し言葉。認知症の本人は話が噛み合わないことがある。家族・支援者はその人の口調。",
   "名前・住所・電話番号を言わない。「A さん」とも言わない。「診断」「判定」「重症」「死亡」と言わない。病名を言い切らない。薬の量を言わない。助言をしない。",

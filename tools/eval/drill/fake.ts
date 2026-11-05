@@ -151,12 +151,23 @@ function situation(rng: Rng, text: string): string {
   return hits.length > 0 ? rng.pick(rng.pick(hits)[1]) : rng.pick(CALM);
 }
 
+/**
+ * 長い言い足し（T139）。本物の本人役の返事は上限を超えることがあった（評価の 4 回目で 88 字ほど）。偽の返事にも時々足して、
+ * 上限で文の途中から切れないか（lib/drill/clip.ts）を台で数えられるように
+ */
+const LONG_TAILS = [
+  "電池の残りが少なくなってきているので業者さんか訪問看護の人に早めに来てもらえると本当に助かるのですがどうしたらいいでしょうか",
+  "道が通れるかどうかも分からないし家族とも連絡がつながりにくくて、このまま家で待っていればいいのか避難所に行った方がいいのか迷っています",
+  "さっきから何度も電話をかけているのですがなかなかつながらなくて、薬の残りも気になるので一度様子を見に来てもらえないでしょうか",
+];
+
 function speechOf(rng: Rng, from: string, text: string, red: boolean, call?: string | null): string {
   const self = from === "本人" || from === "";
   // 話す人の本人の呼び方（本人役の説明の「話す人」の行、T121）があればそれで。無ければ決まった言い方から
   const subject = self ? "" : call ? `${call}は` : rng.pick(SUBJECTS);
   const need = red ? rng.pick(RED_NEEDS) : rng.pick(GREEN_NEEDS);
-  return `${rng.pick(OPENINGS)}${subject}${situation(rng, text)}。${need}`;
+  const base = `${rng.pick(OPENINGS)}${subject}${situation(rng, text)}。${need}`;
+  return rng.chance(0.3) ? `${base}。${rng.pick(LONG_TAILS)}` : base;
 }
 
 function withNoise(opts: FakeOptions, rng: Rng, speech: string): string {

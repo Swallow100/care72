@@ -69,7 +69,8 @@ import {
 } from "./event-catalog.ts";
 import { scenarioOf, type AskKind, type PersonMarks, type WorldState } from "./scenarios.ts";
 import { homeFacts, homeWords } from "./self.ts";
-import { oddsText, seededShuffle, timelineText } from "./time-odds.ts";
+import { kindOnTime, oddsText, seededShuffle, timelineText } from "./time-odds.ts";
+import { homeComms, homeOf } from "./comms.ts";
 import { fitKindOf, fitText, injectFits, profileOf } from "./fit.ts";
 import { screenIncident, STATE_RULES_TEXT, stateLines } from "./state-rules.ts";
 import {
@@ -689,17 +690,25 @@ export function createDirectorHook(deps: DirectorDeps): DirectorHook {
       // T130: 業者の巡回（届く物）は、その人への手（業者連絡・電源手配・薬手配）か計画（業者の約束）があるときだけ。
       // 人ごとの種類は訓練に KIND_REPEAT_MAX 回まで（評価の 3 回目で、薬局の休止・帰宅困難が何人にも同じ形で出た。全体の種類〔余震など〕は数えない）
       const plans = new Map(members.map((p) => [p, planOf(sources.get(p)!)]));
+      // T139: この訓練の種で使わない種類と、帯の外の種類（この訓練で起きやすい物だけ 1 回まで）は差し込ませない（lib/drill/time-odds.ts の kindOnTime）。
+      // 家の電話の不通（line_down）は、通信の段（T125、lib/drill/comms.ts）で固定電話がもう使えない家（停電の区域・家の電話の印）と固定電話の無い家には差し込まない（二重にしない）
+      const issued = input.world.issued ?? [];
+      const lineUsable = (p: string) => homeComms(input.world, profile, p, homeOf(sources.get(p)!.ledger), minute).landline === "ok";
       for (const [p, ks] of eligible) {
         const kept = ks.filter(
           (k) =>
             injectFits(profile, k) &&
             kindAllowed(k, p, input.world, input.hour, minute, sources.get(p)) &&
             !kindSpent(input.world, k) &&
+            kindOnTime(k, input.hour, input.seed, issued) &&
+            (k !== "line_down" || lineUsable(p)) &&
             (k !== "vendor_round" || supplyAllowed(p, input.actions, plans.get(p) ?? null)),
         );
         eligible.set(p, input.seed ? seededShuffle(kept, `${input.seed}|${p}|${minute}`) : kept);
       }
-      for (const k of [...area.keys()]) if (!injectFits(profile, k) || !kindAllowed(k, null, input.world, input.hour, minute)) area.delete(k);
+      for (const k of [...area.keys()]) {
+        if (!injectFits(profile, k) || !kindAllowed(k, null, input.world, input.hour, minute) || (!selfKinds.includes(k) && !kindOnTime(k, input.hour, input.seed, issued))) area.delete(k);
+      }
       const asked = input.replies ?? [];
       const max = budgetOf(input);
       if ((max === 0 || (![...eligible.values()].some((k) => k.length > 0) && area.size === 0)) && asked.length === 0) return none;

@@ -245,6 +245,46 @@ export function drillLeanings(seed: string): { more: InjectKind[]; less: InjectK
   return { more: xs.slice(0, 3), less: xs.slice(3, 6) };
 }
 
+// ---------- 訓練ごとの出来事の候補と、帯の外の数（T139） ----------
+// 評価の 4 回目で、同じ想定の回どうしの出来事の種類の重なりが 0.82、帯の外が 23%（回線の不通・薬局の休止）に戻った。起きやすさの文
+// （oddsText）は目安を渡すだけで、差し込める種類は毎回同じだった。訓練の種から「この訓練で使わない種類」を決め（想定の表の範囲の中で）、
+// 帯の外の種類は「この訓練で起きやすい」種類だけを訓練に OFF_BAND_MAX 回まで差し込めるようにコードでも効かせる。
+
+/** 訓練ごとに使わない種類の数（LEANING_KINDS の中から。起きにくい側 3 つを含む） */
+export const POOL_DROP = 9;
+/** 帯の外の種類を 1 訓練に差し込める数（この訓練で起きやすい種類だけ） */
+export const OFF_BAND_MAX = 1;
+
+/** この訓練で使わない種類（種から。同じ訓練なら同じ、訓練ごとに違う）。起きにくい側（drillLeanings の less）を含む */
+export function drillDropped(seed: string): ReadonlySet<InjectKind> {
+  const lean = drillLeanings(seed);
+  const rest = seededShuffle(
+    LEANING_KINDS.filter((k) => !lean.more.includes(k) && !lean.less.includes(k)),
+    `${seed}|pool`,
+  );
+  return new Set([...lean.less, ...rest.slice(0, Math.max(0, POOL_DROP - lean.less.length))]);
+}
+
+/** 種類がこの帯の目安の外か（どの帯にも書いていない種類は外にしない） */
+export function offBand(kind: InjectKind, hour: number): boolean {
+  const bands = BANDS_OF.get(kind);
+  return bands !== undefined && !bands.includes(bandOf(hour).id);
+}
+
+/**
+ * この訓練・この時刻に差し込める種類か（T139）。種が無ければ（前からの訓練・テスト）見ない。
+ * - この訓練で使わない種類（drillDropped）は差し込まない
+ * - 帯の外の種類は、この訓練で起きやすい種類（drillLeanings の more）だけ、訓練に OFF_BAND_MAX 回まで（issued は出した出来事の種類と時刻の分）
+ */
+export function kindOnTime(kind: InjectKind, hour: number, seed: string | null | undefined, issued: ReadonlyArray<{ kind: string; at: number }> = []): boolean {
+  if (!seed) return true;
+  if (drillDropped(seed).has(kind)) return false;
+  if (!offBand(kind, hour)) return true;
+  if (!drillLeanings(seed).more.includes(kind)) return false;
+  const used = issued.filter((x) => (BANDS_OF.has(x.kind as InjectKind) ? offBand(x.kind as InjectKind, x.at / 60) : false)).length;
+  return used < OFF_BAND_MAX;
+}
+
 export type OddsLines = {
   /** この時間帯に起きやすい種類（帯の目安。と、この訓練で起きやすい種類） */
   likely: InjectKind[];

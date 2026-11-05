@@ -89,6 +89,8 @@ export type PersonaInput = {
   toMinute?: number;
   /** 訓練の災害の種類（T125、lib/drill/fit.ts）。本人役の説明のハザードを想定に効く物に絞る。未決・無ければ絞らない */
   fit?: DrillKind | null;
+  /** 想定の表のこの本人の次の行（この区切りより後。T139）。帳面の門が、表の次の緑と食い違うけが・閉じ込めを足さないために見る */
+  ahead?: { color: SignalColor; at: number } | null;
 };
 
 /** 本人 1 人の 1 刻み。空の配列は「連絡なし」。投げたら連絡なしとして進む */

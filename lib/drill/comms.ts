@@ -128,6 +128,27 @@ export const VIAS = ["call", "button", "message"] as const;
 export type Via = (typeof VIAS)[number];
 
 /**
+ * つながりにくい間（電話 不安定）に、家族・支援者の電話がつながる割合（T139。案）。ケアマネが掛けた電話に出る割合
+ * （lib/drill/persona.ts の CALL_PICKUP_ODDS.busy.answers）と同じ。つながらない電話はメッセージ（伝言）で届く。
+ * 評価の 4 回目で、つながりにくい間の電話の形の連絡が通常のときと同じほど出た（数字の出典は無く、決まりの目安）
+ */
+export const BUSY_CALL_RATE = 0.5;
+
+/** 種の文字から 0 以上 1 未満の数（FNV-1a。同じ人・同じ時刻なら同じ数で、再生しても経路が変わらない） */
+export function routeRoll(key: string): number {
+  let h = 0x811c9dc5;
+  for (const ch of key) {
+    h ^= ch.codePointAt(0) ?? 0;
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  // 下の桁の偏りを避けて混ぜる
+  h ^= h >>> 16;
+  h = Math.imul(h, 0x45d9f3b) >>> 0;
+  h ^= h >>> 16;
+  return (h >>> 0) / 4294967296;
+}
+
+/**
  * 安否 1 件の経路を決める。本人（agent）は安否のボタン。家族・支援者は言う事があれば電話（規制の間は伝言）、言う事が無ければボタン。
  * 同居の家族・本人のボタンは家の電波で、離れた家族・支援者の電話と伝言は全域の不通だけで止まる（どこにいるかは分からない）。
  * 届かなければ null。想定の表の固定の行（fixed）は止めない（デモの筋の行）
@@ -136,7 +157,7 @@ export function viaOfTurn(t: DrillTurn, w: CommsWorld, profile: FitProfile | nul
   // 家の写しの無い訓練（前からの訓練・テスト）は止めない（経路だけ付ける）
   if (!homes) return viaOf(t, w, homeComms(w, profile, t.person, null, Math.round(t.at * 60)), { fixed: true });
   const c = homeComms(w, profile, t.person, homes[t.person] ?? null, Math.round(t.at * 60));
-  return viaOf(t, w, c, { fixed: !t.ai || !homes[t.person] });
+  return viaOf(t, w, c, { fixed: !t.ai || !homes[t.person], roll: routeRoll(`${t.person}|${Math.round(t.at * 60)}`) });
 }
 
 /**
@@ -161,7 +182,8 @@ export function viaOf(
   t: Pick<DrillTurn, "source" | "saying">,
   w: CommsWorld,
   c: HomeComms,
-  opts: { together?: boolean; fixed?: boolean } = {},
+  /** roll はつながりにくい間の電話がつながるかの数（0 以上 1 未満、T139）。無ければ前と同じ（つながる） */
+  opts: { together?: boolean; fixed?: boolean; roll?: number } = {},
 ): Via | null {
   // 本人の連絡は赤緑のボタン（発災時の本人の画面と同じ）。表の固定の行はいつもボタン
   if (t.source === "agent") return dataOk(c) || opts.fixed ? "button" : null;
@@ -171,5 +193,8 @@ export function viaOf(
     return opts.fixed ? "message" : null;
   }
   if (!t.saying?.trim()) return "button";
-  return w.phone === "down" ? "message" : "call";
+  if (w.phone === "down") return "message";
+  // つながりにくい間（T139）: AI の電話は BUSY_CALL_RATE の割合だけつながり、ほかはメッセージで届く。表の固定の行（デモの筋）は変えない
+  if (w.phone === "busy" && !opts.fixed && opts.roll !== undefined && opts.roll >= BUSY_CALL_RATE) return "message";
+  return "call";
 }
