@@ -26,6 +26,7 @@ import {
   isPersonaFailure,
   loadPersonaSources,
   personaCallReply,
+  personaFacts,
   personaPlaces,
   personaTalkReply,
   personaVisitReport,
@@ -33,6 +34,7 @@ import {
 } from "./persona.ts";
 import { TALK_ASK_WORDS, type TalkHook, type TalkReply, type VisitHook } from "./dialogue.ts";
 import { createWorldHook, roomClientOf, worldModeOf, type RoomClient } from "./world-room.ts";
+import { gateLog } from "./person-facts.ts";
 
 /** DRILL_WORLD: 仮想モードの世界の道（session 既定 = Managed Agents の部屋・messages = 1 回呼び・off = 世界を動かさない） */
 export type DrillHookEnv = AiEnv & { DB: D1Database; DRILL_WORLD?: string };
@@ -69,12 +71,15 @@ export function drillHooks(
   const mode = worldModeOf(env.DRILL_WORLD);
   // 上限で止まった役を刻みの印にする（T70）
   const stops = stopLog();
+  // 帳面の門で落とした・直した数（T130、lib/drill/person-facts.ts）。engine が世界の gated に足す
+  const gates = gateLog();
   return {
     stops,
-    director: createDirectorHook({ load, ai, stops }),
-    persona: createPersonaHook({ load, ai, stops }),
+    gates,
+    director: createDirectorHook({ load, ai, stops, gates }),
+    persona: createPersonaHook({ load, ai, stops, gates }),
     // 連続の時計の区切りの本人役はまとめて呼ぶ（T121。10 分版の刻みの道は persona のまま）
-    personas: createPersonaBatchHook({ load, ai, stops }),
+    personas: createPersonaBatchHook({ load, ai, stops, gates }),
     call: createCallHook({ load, ai }),
     // 訪問で着いたときの様子と頼み事（T93、本人役 Haiku × 1 回）
     visit: createVisitHook({ load, ai }),
@@ -278,7 +283,8 @@ export function createTalkHook(deps: { load: () => Promise<ReadonlyMap<string, P
       if (!isPersonaFailure(e)) console.error("通話の往復の文に失敗", e instanceof Error ? e.name : typeof e);
       return { ...plain, said };
     }
-    const r = await personaTalkReply(persona, text, key, deps.ai);
+    // T130: 帳面と食い違う文と、電気が戻ったあとの電池・電源の頼み事を落とす
+    const r = await personaTalkReply(persona, text, key, deps.ai, personaFacts(persona, { person: t.person, world: t.world, state: t.state, now: t.minute }));
     return { said, speech: r.speech, asks: r.asks, ai: r.ai, called: true };
   };
 }

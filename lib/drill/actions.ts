@@ -580,6 +580,12 @@ export async function act(
       ok = false;
       text = ACTION_STATUS_TEXTS.noAnswer;
       pickup = "no_answer";
+    } else if (reply?.pickup === "background_only") {
+      // 本人の声が無いと家族・支援者が伝えたあと、人が来るまで本人は話さない（T130 の帳面。出たが物音だけ）
+      status = "silent";
+      ok = false;
+      text = ACTION_STATUS_TEXTS.silent;
+      pickup = "background_only";
     } else {
       speech = reply?.speech ?? fixedSpeech(own, input.target.kind);
       speechAi = reply?.speech != null && reply.ai;

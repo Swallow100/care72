@@ -77,6 +77,7 @@ import { HOME_TOWN_MAX } from "./self.ts";
 
 export { isStaffCount, STAFF_MAX } from "./options.ts";
 import { fallbackIncidents } from "./world-apply.ts";
+import { addGated, noteIssued, type GateLog } from "./person-facts.ts";
 
 const HOUR_MS = 3_600_000;
 
@@ -221,6 +222,8 @@ export type StepHooks = {
   world?: WorldHook;
   outcome?: OutcomeHook;
   stops?: StopLog;
+  /** 人ごとの事実の帳面の門で落とした・直した数（T130、lib/drill/person-facts.ts）。区切りの終わりに世界の gated に足す */
+  gates?: GateLog;
   /** 連続の時計（T90）だけが使う。時計の半分・切れの時刻と、押せる人（lib/drill/hooks.ts） */
   clock?: ClockHooks;
 };
@@ -344,7 +347,11 @@ export function foldTick(
   last: number,
 ): DrillState {
   // 刻みの時刻まで世界を進め（出向いてもらった人が着く・職員が戻る）、状況を当てる
-  const world = tick.incidents.reduce((w, e) => applyEvent(w, e, e.at), settleWorld(state.world, tick.hour * 60));
+  // 監督・世界が出した人ごとの出来事を覚える（T130。同じ種類・同じ言い回しを別の人にくり返さない。再生でも同じ物になる）
+  const world = noteIssued(
+    tick.incidents.reduce((w, e) => applyEvent(w, e, e.at), settleWorld(state.world, tick.hour * 60)),
+    tick.incidents,
+  );
   const people = { ...state.people };
   for (const t of [...tick.turns].sort((a, b) => a.at - b.at)) people[t.person] = personStateOf(t);
   const clock = isClock(state);
@@ -496,8 +503,9 @@ export async function step(
   if (state.status !== "running" || state.step >= last) throw new DrillEnded();
   const index = state.step + 1;
   const def = scenario.ticks[index];
-  // 前の刻み・通話の分の停止の印を捨てる（この刻みの分だけ数える）
+  // 前の刻み・通話の分の停止の印と門の数を捨てる（この刻みの分だけ数える）
   hooks.stops?.take();
+  hooks.gates?.take();
   const hour = def.hour;
   const members = new Set(state.participants);
   // 想定の表の配役（T70）。事業所にいない人の行は、開始のときに決めた代わりの人に当てる（無ければ表の person のまま）
@@ -608,7 +616,7 @@ export async function step(
   }
 
   const tick: Tick = { step: index, hour, incidents: [...incidents, ...stopIncidents(hooks.stops?.take() ?? [], hour)], turns, world, finished: index >= last };
-  return { state: foldTick(state, tick, last), tick, words };
+  return { state: foldTick({ ...state, world: addGated(state.world, hooks.gates?.take()) }, tick, last), tick, words };
 }
 
 // ---------- 仮想モード（T50）の 1 刻み ----------
@@ -684,7 +692,8 @@ async function virtualStep(
 
   const tick: Tick = { step: index, hour, incidents: [...incidents, ...stopIncidents(hooks.stops?.take() ?? [], hour)], turns, world, finished: index >= last };
   // foldTick は前の世界に状況を当て直すので、部屋の ID は前の世界に先に写す
-  const base = r && r.session !== undefined ? { ...state, world: { ...state.world, session: r.session } } : state;
+  const base0 = r && r.session !== undefined ? { ...state, world: { ...state.world, session: r.session } } : state;
+  const base = { ...base0, world: addGated(base0.world, hooks.gates?.take()) };
   return { state: foldTick(base, tick, last), tick, words: [] };
 }
 
@@ -767,7 +776,10 @@ export async function advance(
   const virtual = isVirtual(state.scenario);
   const members = new Set(state.participants);
   const night = isNight(state) ? { night: true } : {};
-  if (!silent) hooks.stops?.take();
+  if (!silent) {
+    hooks.stops?.take();
+    hooks.gates?.take();
+  }
 
   // 1. 表の出来事と予定の出来事（区切りの中の物を時刻の順に。同じ時刻は表が先）
   const table = tableOf(state);
@@ -994,7 +1006,8 @@ export async function advance(
   const stop: DrillIncident[] = capped
     ? [{ actor: "world", at: hour, change: { kind: "ai_stop", stopped: virtual ? ["persona", "world"] : ["persona", "director"] }, text: CLOCK_LABELS.cap, reason: CAP_REASON, ai: false }]
     : [];
-  book = { ...book, counts, lastCalled, touched };
+  // 帳面の門で落とした・直した数（T130）。本人役と監督の口が書き留めた分
+  book = addGated({ ...book, counts, lastCalled, touched }, hooks.gates?.take());
   const tick: Tick = {
     step: index,
     hour,
