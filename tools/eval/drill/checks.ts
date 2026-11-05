@@ -7,7 +7,7 @@
 // 層の物差しを借りると層の穴を見つけられないので、ここは層より広めに取る。
 // T118: 送った中身と画面の言葉の生年月日（和暦・略記・漢数字）と、1 訓練の数え（画面の AI 残）に入らない呼び出しも数える
 
-import { isCatalogAction } from "../../../lib/drill/action-catalog.ts";
+import { ACTION_CATALOG, isCatalogAction } from "../../../lib/drill/action-catalog.ts";
 import { ACTION_WAYS, actionTerm, blockOf, dayHourOf, isDark, type TermCallee, type TermFacts } from "../../../lib/drill/action-terms.ts";
 import { isPhoneTurn } from "../../../lib/drill/calls.ts";
 import { CONDITION_BANNED, SPEECH_DANGER, SPEECH_DIAGNOSIS } from "../../../lib/drill/dialogue.ts";
@@ -79,7 +79,7 @@ export function hurtIn(text: string): boolean {
 // ---------- 引っかかった所 ----------
 
 export type CheckHit = {
-  check: "banned" | "shape" | "leak" | "contradiction" | "time_odds" | "stop" | "op_failed" | "budget" | "terms" | "fit";
+  check: "banned" | "shape" | "leak" | "contradiction" | "time_odds" | "stop" | "op_failed" | "budget" | "terms" | "fit" | "free";
   rule: string;
   /** banned: raw（モデルの生の返事）か shown（画面に出た物） */
   where?: "raw" | "shown" | "sent";
@@ -538,6 +538,99 @@ function worldAt(track: FitTrack, minute: number): FitWorld & { phone: string; r
   return w;
 }
 
+// ---------- 自由対応（T129） ----------
+
+/**
+ * 手の内部の名前（英字の id）らしい語。「_」を含む語と、手・相手・やり方・効き目の id（lib/drill/free-action.ts の plainWords が置き換える物）。
+ * 大文字だけの略語（AED）と仮名（A さん）は当てない
+ */
+export const INNER_NAME = new RegExp(
+  `[A-Za-z0-9]*_[A-Za-z0-9_]*|(?<![A-Za-z])(?:${[
+    ...ACTION_CATALOG.map((r) => r.id),
+    "free",
+    "none",
+    "phone",
+    "visit",
+    "desk",
+    "home",
+    "move",
+    "reach",
+    "arrival",
+    "self",
+    "family",
+    "supporter",
+    "pharmacy",
+    "hospital",
+    "staff",
+    "city",
+    "shelter",
+    "office",
+  ].join("|")})(?![A-Za-z])`,
+);
+
+/** 何もしない（自由対応の答えの kind）。前の形の note も */
+const IDLE_KIND = new Set(["none", "note", ""]);
+
+type LooseJudge = { output?: { kind?: string; can?: boolean } | null; decided?: { as?: string | null; block?: string | null; idle?: boolean } };
+
+/** 送った候補の一覧と返事（自由対応の生の記録から。読めなければ null） */
+function freeRecordOf(a: AiRecord): { list: Array<{ id: string; 今?: string }>; out: Record<string, unknown> } | null {
+  try {
+    const user = a.sent.user;
+    const input = JSON.parse(user.slice(user.indexOf("{"), user.lastIndexOf("}") + 1)) as { 手?: { 一覧?: Array<{ id: string; 今?: string }> } };
+    const text = a.returned?.text ?? "";
+    const out = JSON.parse(text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1)) as Record<string, unknown>;
+    return { list: input.手?.一覧 ?? [], out };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 自由対応の検査（T129）。
+ * - inner_name:shown 画面に出た文（手の記録の理由・1 文・結果の文）に内部の名前が出た（0 のはず）
+ * - inner_name:raw Claude の生の返事の文に内部の名前があった（画面では置き換えるので数えるだけ）
+ * - dropped Claude が表の手に当てたのに、コードが「変化なし」に落とした（黙って落とさない。0 のはず）
+ * - can_mismatch 候補の一覧で「不可」の手に当てたのに、Claude が「できる」と答えた（生の返事。コードの決まりが先なので数えるだけ）
+ */
+export function freeHits(records: ReadonlyArray<LogRecord>, outcome: RunOutcome): CheckHit[] {
+  const hits: CheckHit[] = [];
+  for (const a of outcome.replay?.actions ?? []) {
+    if (a.kind !== "free") continue;
+    const shown: Array<[string, unknown]> = [
+      ["reason", a.reason],
+      ["words", a.words],
+      ["result", a.result?.text],
+    ];
+    for (const [field, v] of shown) {
+      const m = typeof v === "string" ? INNER_NAME.exec(v) : null;
+      if (m) hits.push({ check: "free", rule: "inner_name:shown", where: "shown", person: a.person ?? null, minute: a.atMinute ?? null, evidence: `${field}: ${m[0]}` });
+    }
+    const j = a.judge as LooseJudge | undefined;
+    const kind = j?.output?.kind ?? "";
+    if (j?.decided?.idle === true && isCatalogAction(kind) && kind !== "free" && kind !== "note") {
+      hits.push({ check: "free", rule: "dropped", person: a.person ?? null, minute: a.atMinute ?? null, evidence: `${kind} → 変化なし` });
+    }
+  }
+  for (const r of records) {
+    if (r.type !== "ai" || (r as AiRecord).role !== "free") continue;
+    const a = r as AiRecord;
+    const got = freeRecordOf(a);
+    if (!got) continue;
+    for (const field of ["text", "reason", "whyNot", "alt", "outcome"]) {
+      const v = got.out[field];
+      const m = typeof v === "string" ? INNER_NAME.exec(v) : null;
+      if (m) hits.push({ check: "free", rule: "inner_name:raw", where: "raw", role: a.role, seq: a.seq, evidence: `${field}: ${m[0]}` });
+    }
+    const kind = typeof got.out.kind === "string" ? got.out.kind : "";
+    const row = got.list.find((c) => c.id === kind);
+    if (!IDLE_KIND.has(kind) && row?.今?.startsWith("不可") && got.out.can !== false) {
+      hits.push({ check: "free", rule: "can_mismatch", where: "raw", role: a.role, seq: a.seq, evidence: `${kind} ${row.今}` });
+    }
+  }
+  return hits;
+}
+
 // ---------- 数 ----------
 
 const quantile = (xs: ReadonlyArray<number>, q: number): number | null => {
@@ -576,6 +669,11 @@ export type RunNumbers = {
    * gated は 1 つの門が捨てた・直した数（drills.world の gated。決まりごとの合計）
    */
   fit?: { checked: number; misfit: number; byRule: Record<string, number>; gated: number };
+  /**
+   * 自由対応（T129）。acts は打てた自由対応、innerShown は画面に出た内部の名前（0 のはず）、innerRaw は生の返事の内部の名前、
+   * dropped は表の手に当てたのに変化なしに落ちた数（0 のはず）、canMismatch は不可の手を「できる」と答えた数（生の返事）
+   */
+  free?: { acts: number; innerShown: number; innerRaw: number; dropped: number; canMismatch: number };
   timing: { advanceP50: number | null; advanceP95: number | null; advanceMax: number | null; actP50: number | null; actP95: number | null };
   cost: { usd: number; inputTokens: number; outputTokens: number; roomSteps: number; unpricedCalls: number };
 };
@@ -599,6 +697,7 @@ export function checkRun(records: ReadonlyArray<LogRecord>, outcome: RunOutcome,
   const stops = stopHits(outcome);
   const terms = termHits(outcome, ctx);
   const fit = fitHits(outcome, ctx);
+  const free = freeHits(records, outcome);
   const ai = records.filter((r): r is AiRecord => r.type === "ai" && (r as AiRecord).role !== "judge");
   // 1 訓練の数え（画面の「AI 残」から。10 分版は数えないので本人役と監督の呼び出しの数）
   const drillCounted = outcome.callsLeft !== null ? DRILL_CAP - outcome.callsLeft : ai.filter((a) => a.role === "persona" || a.role === "director" || a.role === "world" || a.role === "world_room").length;
@@ -651,6 +750,13 @@ export function checkRun(records: ReadonlyArray<LogRecord>, outcome: RunOutcome,
       byRule: tally(fit.hits.map((h) => h.rule)),
       gated: Object.values((outcome.replay?.world as { gated?: Record<string, number> } | undefined)?.gated ?? {}).reduce((x, n) => x + (typeof n === "number" ? n : 0), 0),
     },
+    free: {
+      acts: (outcome.replay?.actions ?? []).filter((a) => a.kind === "free").length,
+      innerShown: free.filter((h) => h.rule === "inner_name:shown").length,
+      innerRaw: free.filter((h) => h.rule === "inner_name:raw").length,
+      dropped: free.filter((h) => h.rule === "dropped").length,
+      canMismatch: free.filter((h) => h.rule === "can_mismatch").length,
+    },
     timing: {
       advanceP50: quantile(ms("advance"), 0.5),
       advanceP95: quantile(ms("advance"), 0.95),
@@ -666,5 +772,5 @@ export function checkRun(records: ReadonlyArray<LogRecord>, outcome: RunOutcome,
       unpricedCalls: ai.filter((a) => a.costUsd === null && a.role !== "world_room").length,
     },
   };
-  return { hits: [...banned, ...leaks, ...shape, ...odds.hits, ...contra, ...stops, ...terms, ...fit.hits, ...budgetHits], numbers };
+  return { hits: [...banned, ...leaks, ...shape, ...odds.hits, ...contra, ...stops, ...terms, ...fit.hits, ...free, ...budgetHits], numbers };
 }

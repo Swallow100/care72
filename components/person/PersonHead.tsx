@@ -117,7 +117,8 @@ export function PersonHead({ head, level, titleId }: { head: Head; level: Level;
                     {head.clocks.map((k) => (
                       <li key={k.id} className="flex flex-wrap items-baseline justify-between gap-x-2">
                         <span className="text-sm">{k.label}</span>
-                        {/* 災害モードは今の残り（「残り 1.5 時間」「超過 30 分」）、まだ走っていない時計は長さと小さく「停電で開始」 */}
+                        {/* 災害モードは今の残り（「残り 1.5 時間」「超過 30 分」）、まだ走っていない時計は長さ（「停電から 2 時間」）と小さく「未開始」。
+                            長さの未確認は何の値か（「手元の量 未確認」）。言葉は lib/ledger-words.ts（T132） */}
                         {k.value ? (
                           <span className="whitespace-nowrap">
                             {k.note && <span className="mr-1.5 text-xs text-muted">{k.note}</span>}
@@ -126,7 +127,7 @@ export function PersonHead({ head, level, titleId }: { head: Head; level: Level;
                             </span>
                           </span>
                         ) : (
-                          <span className="text-sm text-muted">{BLANK_LABELS.unconfirmed}</span>
+                          <span className="text-sm text-muted">{k.note ?? BLANK_LABELS.unconfirmed}</span>
                         )}
                       </li>
                     ))}

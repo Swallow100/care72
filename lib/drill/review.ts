@@ -212,6 +212,7 @@ export const RESULT_WORDS: Readonly<Record<string, string>> = {
   evacuated: "避難済",
   noted: "記録済",
   done: "実施",
+  unchanged: "変化なし",
   noAnswer: "応答なし",
   silent: "無言",
   noNumber: "番号なし",
@@ -227,12 +228,14 @@ export const WASTE_WORDS: Readonly<Record<WasteWhy, string>> = {
 };
 
 /**
- * 手の言葉。自由対応は「自由対応（読み替え: 薬手配）」（ケアマネの文は渡さない）。
+ * 手の言葉。自由対応は「自由対応（扱い: 薬手配）」（ケアマネの文は渡さない。T129 で「読み替え」から）。何も起きない文は「自由対応（変化なし）」。
  * そのままの手（T110）は「自由対応（電話 15 分: 近所の人に発電機の貸し出しを頼んだ）」（AI が伏せた文から作った 1 文。名前・町名なし）
  */
-function actionName(a: Pick<ActionRecord, "kind" | "as" | "way" | "words" | "minutes">): string {
+function actionName(a: Pick<ActionRecord, "kind" | "as" | "way" | "words" | "minutes" | "idle">): string {
   if (a.kind !== "free") return ACTION_LABELS[a.kind];
-  if (a.as) return `${ACTION_LABELS.free}（読み替え: ${ACTION_LABELS[a.as]}）`;
+  // 何も起きない文（T129。「変化なし」）は何かをしたと読ませない
+  if (a.idle) return `${ACTION_LABELS.free}（変化なし）`;
+  if (a.as) return `${ACTION_LABELS.free}（扱い: ${ACTION_LABELS[a.as]}）`;
   if (a.way) return `${ACTION_LABELS.free}（${FREE_WAY_LABELS[a.way]} ${a.minutes} 分${a.words ? `: ${a.words}` : ""}）`;
   return ACTION_LABELS.free;
 }
@@ -358,7 +361,9 @@ export function reviewText(ctx: ReviewContext, aliasOf: ReadonlyMap<string, stri
   ctx.calls.forEach((x, i) => {
     const res = x.response === "answer" ? "出た" : x.response === "decline" ? "出なかった" : "未応答";
     const color = x.color === "red" ? "赤" : x.color === "green" ? "緑" : "安否不明";
-    hist.push({ at: x.minute, order: i * 2 + 1, text: `${minuteText(x.minute)} 着信 ${who(x.person)}（${color}）→ ${res}` });
+    // 着信の往復（T127）は数だけ（ケアマネの文と相手の言葉は講評に渡さない）
+    const rounds = (x.talk ?? []).filter((l) => l.who === "cm").length;
+    hist.push({ at: x.minute, order: i * 2 + 1, text: `${minuteText(x.minute)} 着信 ${who(x.person)}（${color}）→ ${res}${rounds > 0 ? `・${rounds} 往復話した` : ""}` });
   });
   hist.sort((a, b) => a.at - b.at || a.order - b.order);
   if (hist.length === 0) lines.push("- なし");

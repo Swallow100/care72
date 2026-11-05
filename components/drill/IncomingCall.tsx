@@ -6,22 +6,29 @@
 //   着信音は端末で作る短い音で、約 10 秒で止める（鳴りっぱなしにしない）
 // - 応答: 声（Gemini TTS、サーバーが R2 に訓練ごとに置く）と文字。声が無い（鍵が未設定・生成の失敗）ときは文字だけ。
 //   声は鳴っている間に取り寄せておき、応答の押下で流す。終話で次の着信へ
-// - 応答・拒否はサーバーの訓練の記録に残す（POST /api/drill/<id>/call、T22 の採点が読む。1 つの着信に 1 回、結果は待たない）。
-//   この端末の sessionStorage にも覚え、画面を読み直しても鳴り直さない
-// - 鳴っている間は早送りを止める（window の care72:ringing。components/drill/DrillControls が聞く）
+// - 通話の中で返す（T127）: 問い・指示の候補（安否・けが・機器薬・移動・避難先・待機・119勧奨、lib/drill/dialogue.ts の CALL_IN_ASKS）と
+//   自由の 1 文（60 字まで）。押すと POST /api/drill/<id>/call/talk（読んだ刻みと手の数を送る。違えば競合）。返ってきた往復の全部を描く
+//   （読み直さない。読み直すと着信の並びが組み直されるため）。1 つの着信に 3 回まで、1 回でケアマネの時計が 2 分進む。
+//   相手の返事は声を作れれば流し、無ければ文字。終話で切った時刻を残し、画面を読み直す（時計・経過・頼み事）
+// - 応答・拒否はサーバーの訓練の記録に残す（POST /api/drill/<id>/call、T22 の採点が読む。1 つの着信に 1 回）。
+//   この端末の sessionStorage にも覚え、画面を読み直しても鳴り直さない。応答して切っていない着信は、読み直しても通話中のまま出る
+// - 鳴っている間・通話中は早送りを止める（window の care72:ringing。components/drill/DrillControls が聞く）
 // 色は安否の印（塗り）だけ。押したときは灰色だけ（Button の data-press）。
 
 import { PhoneXMarkIcon, SpeakerWaveIcon } from "@heroicons/react/20/solid";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AiMark } from "@/components/person/parts";
 import { Button } from "@/components/ui/Button";
-import { PhoneIcon } from "@/components/ui/Icon";
+import { PhoneIcon, SendIcon } from "@/components/ui/Icon";
 import { StateTag, type Tone } from "@/components/ui/Tag";
-import { CALL_UI, clockLabel } from "@/lib/drill/labels";
+import { CALL_IN_ASKS, TALK_LABELS, TALK_MAX, TALK_TEXT_MAX, TALK_UI, type TalkAsk, type TalkLine } from "@/lib/drill/dialogue";
+import { CALL_UI, clockLabel, DRILL_LABELS } from "@/lib/drill/labels";
 import { COLOR_LABELS } from "@/lib/labels";
 import type { FictionKind } from "@/lib/drill/fiction";
 import { FictionalMark } from "./Fictional";
 import { CallInIcon } from "./icons";
+import { TalkLines } from "./TalkBox";
 
 export type IncomingCallItem = {
   /** 安否の signals の id（声の clip と、鳴らした印の鍵） */
@@ -38,6 +45,10 @@ export type IncomingCallItem = {
   minute: number;
   /** 声の行き先（/api/drill/voice?…）。声を作れない（鍵が未設定）なら null で文字だけ */
   voice: string | null;
+  /** 応答して切っていない（読み直したあとも通話中で出す。T127） */
+  answered?: boolean;
+  /** それまでの往復（T127） */
+  lines?: TalkLine[];
 };
 
 /** 早送りを止める合図（DrillControls が聞く） */
@@ -45,6 +56,7 @@ export const RINGING_EVENT = "care72:ringing";
 
 const TONES: Record<IncomingCallItem["color"], Tone> = { green: "ok", red: "urgent", unknown: "unknown" };
 const TONE_WORDS: Record<IncomingCallItem["color"], string> = { green: COLOR_LABELS.green, red: COLOR_LABELS.red, unknown: COLOR_LABELS.gray };
+const FOCUS = "focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-accent";
 
 const seenKey = (drillId: string) => `care72:drill:${drillId}:calls`;
 
@@ -103,17 +115,34 @@ function ring(): () => void {
 }
 
 /**
- * 応答・拒否を訓練の記録に残す（lib/drill/responses.ts）。結果は待たない（同じ着信の 2 回目はサーバーが残さない）。
- * 送れなくても着信の画面は進める（採点で未応答に数えるだけ）
+ * 応答・拒否を訓練の記録に残す（lib/drill/responses.ts）。結果を待たずに進める（同じ着信の 2 回目はサーバーが残さない）。
+ * 送れなくても着信の画面は進める（採点で未応答に数えるだけ）。往復の口は応答の記録が無ければ応答として残すので、待たなくてよい
  */
-function sendResponse(drillId: string, signal: string, response: "answer" | "decline") {
-  void fetch(`/api/drill/${encodeURIComponent(drillId)}/call`, {
+function sendResponse(drillId: string, signal: string, response: "answer" | "decline"): Promise<void> {
+  return fetch(`/api/drill/${encodeURIComponent(drillId)}/call`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ signal, response }),
     keepalive: true,
-  }).catch(() => {});
+  }).then(
+    () => {},
+    () => {},
+  );
 }
+
+/** 声を取り寄せて端末の URL に（作れない・失敗は null） */
+async function fetchVoice(href: string): Promise<string | null> {
+  try {
+    const res = await fetch(href);
+    if (!res.ok || !(res.headers.get("content-type") ?? "").startsWith("audio/")) return null;
+    return URL.createObjectURL(await res.blob());
+  } catch {
+    return null;
+  }
+}
+
+/** 往復の行の声の行き先（着信の声に &line=N を足す。lib/drill/voice.ts の voiceHref と同じ形） */
+const lineVoice = (voice: string | null, line: number): string | null => (voice ? `${voice}&line=${line}` : null);
 
 type Voice = { state: "none" } | { state: "loading"; ready: Promise<string | null> } | { state: "ready"; url: string };
 
@@ -121,22 +150,35 @@ export function IncomingCall({
   drillId,
   calls,
   fiction,
+  step,
+  actions,
 }: {
   drillId: string;
   calls: ReadonlyArray<IncomingCallItem>;
   /** 名前のそばの印（T70。デモ以外は本人役） */
   fiction?: FictionKind;
+  /** 画面で読んだ今の刻みと手の数（通話の中で返すときの競合の門。T127）。無ければ返す欄を出さない */
+  step?: number;
+  actions?: number;
 }) {
+  const router = useRouter();
   /** まだ応答・拒否していない着信（読み込んだあとに sessionStorage から決める。最初の描画は空） */
   const [queue, setQueue] = useState<IncomingCallItem[]>([]);
   const [total, setTotal] = useState(0);
   const [phase, setPhase] = useState<"ringing" | "talking">("ringing");
   const [playing, setPlaying] = useState(false);
   const [voiceOk, setVoiceOk] = useState(true);
+  const [lines, setLines] = useState<TalkLine[]>([]);
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [closed, setClosed] = useState(false);
   const voiceRef = useRef<Voice>({ state: "none" });
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const boxRef = useRef<HTMLDivElement | null>(null);
   const urlsRef = useRef<string[]>([]);
+  const answerRef = useRef<Promise<void> | null>(null);
+  const talkedRef = useRef(false);
   const current = queue[0] ?? null;
   // 画面を読み直すたびに配列は新しくなるので、着信の id の並びが変わったときだけ並べ直す（通話中に読み直しても切らない）
   const callsRef = useRef(calls);
@@ -148,10 +190,22 @@ export function IncomingCall({
     const open = callsRef.current.filter((c) => !seen.has(c.signal));
     setQueue(open);
     setTotal(open.length);
-    setPhase("ringing");
   }, [drillId, ids]);
 
-  // 鳴っている間は早送りを止める。読み上げとキーボードは着信の画面へ（ボタンに枠を出さないよう面に置く）
+  // 着信が替わったら、通話中の着信（応答して切っていない）は通話中から、ほかは鳴る所から
+  const currentId = current?.signal ?? null;
+  useEffect(() => {
+    const c = callsRef.current.find((x) => x.signal === currentId);
+    setPhase(c?.answered ? "talking" : "ringing");
+    setLines(c?.lines ?? []);
+    setText("");
+    setError(null);
+    setClosed(false);
+    answerRef.current = null;
+    talkedRef.current = (c?.lines?.length ?? 0) > 0;
+  }, [currentId]);
+
+  // 鳴っている間・通話中は早送りを止める。読み上げとキーボードは着信の画面へ（ボタンに枠を出さないよう面に置く）
   useEffect(() => {
     window.dispatchEvent(new CustomEvent(RINGING_EVENT, { detail: current !== null }));
   }, [current]);
@@ -174,14 +228,10 @@ export function IncomingCall({
       return;
     }
     let alive = true;
-    const ready = fetch(current.voice)
-      .then(async (res) => {
-        if (!res.ok || !(res.headers.get("content-type") ?? "").startsWith("audio/")) return null;
-        const url = URL.createObjectURL(await res.blob());
-        urlsRef.current.push(url);
-        return url;
-      })
-      .catch(() => null);
+    const ready = fetchVoice(current.voice).then((url) => {
+      if (url) urlsRef.current.push(url);
+      return url;
+    });
     voiceRef.current = { state: "loading", ready };
     void ready.then((url) => {
       if (!alive) return;
@@ -202,9 +252,7 @@ export function IncomingCall({
     [],
   );
 
-  const play = useCallback(async () => {
-    const v = voiceRef.current;
-    const url = v.state === "ready" ? v.url : v.state === "loading" ? await v.ready : null;
+  const playUrl = useCallback(async (url: string | null) => {
     if (!url) {
       setVoiceOk(false);
       return;
@@ -224,37 +272,99 @@ export function IncomingCall({
     });
   }, []);
 
+  const play = useCallback(async () => {
+    const v = voiceRef.current;
+    await playUrl(v.state === "ready" ? v.url : v.state === "loading" ? await v.ready : null);
+  }, [playUrl]);
+
   const done = useCallback(() => {
     if (!current) return;
-    // 鳴っている間の終わりは拒否（通話中の終話は応答の時に残してある）
-    if (phase === "ringing") sendResponse(drillId, current.signal, "decline");
+    // 鳴っている間の終わりは拒否。通話中の終話は切った時刻を残し（往復を続けられないように）、画面を読み直す
+    if (phase === "ringing") void sendResponse(drillId, current.signal, "decline");
+    else if (step !== undefined && actions !== undefined) {
+      const answered = answerRef.current ?? Promise.resolve();
+      void answered.then(() =>
+        fetch(`/api/drill/${encodeURIComponent(drillId)}/call/talk`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ step, actions, signal: current.signal, end: true }),
+          keepalive: true,
+        }).catch(() => {}),
+      );
+    }
     audioRef.current?.pause();
     setPlaying(false);
     const seen = readSeen(drillId);
     seen.add(current.signal);
     writeSeen(drillId, seen);
+    // 往復で時計と経過が動いた着信は、切ったら画面を読み直す
+    if (phase === "talking" && talkedRef.current) router.refresh();
     setQueue((q) => q.slice(1));
-    setPhase("ringing");
-  }, [current, drillId, phase]);
+  }, [actions, current, drillId, phase, router, step]);
 
   const answer = () => {
-    if (current) sendResponse(drillId, current.signal, "answer");
+    if (current) answerRef.current = sendResponse(drillId, current.signal, "answer");
     setPhase("talking");
     void play();
   };
 
+  const send = async (body: { ask: TalkAsk } | { text: string }) => {
+    if (!current || step === undefined || actions === undefined) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await (answerRef.current ?? Promise.resolve());
+      const res = await fetch(`/api/drill/${encodeURIComponent(drillId)}/call/talk`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ step, actions, signal: current.signal, ...body }),
+      });
+      const json = (await res.json().catch(() => null)) as { ok?: boolean; label?: string; lines?: TalkLine[] } | null;
+      if (!res.ok || !json?.ok || !Array.isArray(json.lines)) {
+        setError(json?.label ?? String(res.status));
+        if (res.status === 409) setClosed(true);
+        return;
+      }
+      talkedRef.current = true;
+      if ("text" in body) setText("");
+      setLines(json.lines);
+      // 相手の返事の声（作れれば流す。無ければ文字だけ）
+      const last = json.lines.length - 1;
+      const href = json.lines[last]?.who === "them" ? lineVoice(current.voice, last) : null;
+      if (href) {
+        const url = await fetchVoice(href);
+        if (url) {
+          urlsRef.current.push(url);
+          await playUrl(url);
+        }
+      }
+    } catch {
+      setError(DRILL_LABELS.network);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   if (!current) return null;
   const index = total - queue.length + 1;
+  const rounds = lines.filter((l) => l.who === "cm").length;
+  const left = TALK_MAX - rounds;
+  const canReply = phase === "talking" && step !== undefined && actions !== undefined && !closed && left > 0;
+  const trimmed = text.trim();
   return (
     <div
       role="dialog"
       aria-modal="true"
       aria-labelledby="incoming-caller"
-      className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 px-4 pt-[12vh]"
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 px-4 py-[8vh]"
       data-incoming={current.signal}
       data-phase={phase}
     >
-      <div ref={boxRef} tabIndex={-1} className="w-full max-w-md rounded-lg bg-panel p-5 outline-none shadow-[0_2px_8px_rgb(0_0_0/0.18)] dark:shadow-[0_2px_10px_rgb(0_0_0/0.6)]">
+      <div
+        ref={boxRef}
+        tabIndex={-1}
+        className={`w-full rounded-lg bg-panel p-5 outline-none shadow-[0_2px_8px_rgb(0_0_0/0.18)] dark:shadow-[0_2px_10px_rgb(0_0_0/0.6)] ${phase === "talking" ? "max-w-lg" : "max-w-md"}`}
+      >
         <div className="flex items-center gap-2 text-sm">
           <CallInIcon aria-hidden className="size-4 shrink-0" />
           <span className="font-bold">{phase === "ringing" ? CALL_UI.incoming : CALL_UI.talking}</span>
@@ -289,7 +399,52 @@ export function IncomingCall({
                 <AiMark small title="AI の音声（Gemini TTS）" />
               </p>
             )}
+            <div data-incoming-talk>
+              <TalkLines lines={lines} speaker={current.caller} />
+            </div>
           </div>
+        )}
+
+        {canReply && (
+          <div className="mt-3 space-y-1.5" data-incoming-reply>
+            <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={TALK_UI.talk}>
+              {CALL_IN_ASKS.map((k) => (
+                <Button key={k} kind="plain" size="sm" className={FOCUS} disabled={busy} onClick={() => void send({ ask: k })} data-incoming-ask={k}>
+                  {TALK_LABELS[k]}
+                </Button>
+              ))}
+              <span className="ml-auto text-xs text-muted tabular-nums" data-incoming-left={left}>
+                {TALK_UI.left} {left}
+              </span>
+            </div>
+            <form
+              className="flex items-center gap-1.5"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (trimmed) void send({ text: trimmed });
+              }}
+            >
+              <input
+                type="text"
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                maxLength={TALK_TEXT_MAX}
+                aria-label={TALK_UI.free}
+                placeholder={TALK_UI.free}
+                disabled={busy}
+                className={`h-8 min-w-0 flex-1 rounded bg-panel2 px-2 text-sm text-ink outline-none ${FOCUS}`}
+                data-incoming-text
+              />
+              <Button kind="main" size="sm" icon={SendIcon} type="submit" className={FOCUS} disabled={busy || trimmed === ""} data-incoming-send>
+                {busy ? TALK_UI.sending : TALK_UI.send}
+              </Button>
+            </form>
+          </div>
+        )}
+        {error && (
+          <p role="alert" className="mt-1.5 text-xs font-bold text-danger" data-incoming-error>
+            {error}
+          </p>
         )}
 
         <div className="mt-5 flex gap-2">
@@ -309,7 +464,7 @@ export function IncomingCall({
                   {CALL_UI.play}
                 </Button>
               )}
-              <Button kind="danger" size="lg" icon={PhoneXMarkIcon} onClick={done} className="flex-1" data-incoming-action="hangup">
+              <Button kind="danger" size="lg" icon={PhoneXMarkIcon} onClick={done} disabled={busy} className="flex-1" data-incoming-action="hangup">
                 {CALL_UI.hangUp}
               </Button>
             </>

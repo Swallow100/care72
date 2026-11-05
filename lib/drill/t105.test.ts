@@ -138,8 +138,17 @@ const keysOf = (rows: ReadonlyArray<{ source: string; key: string }>) => rows.ma
 
 describe("行の分け方の表（記録の種類 → タブ）", () => {
   it("状況・する事は発生、安否・手の返事で届いた事は把握、手は対応。公表の状況は把握にも", () => {
-    expect(LOG_SOURCES).toEqual(["incident", "doing", "signal", "heard", "action"]);
-    expect(LOG_ROUTE).toEqual({ incident: ["occur"], doing: ["occur"], signal: ["know"], heard: ["know"], action: ["act"] });
+    // T127: 着信への応答・拒否（call）は対応、着信の往復で掛けてきた人の言った事（reply）は把握
+    expect(LOG_SOURCES).toEqual(["incident", "doing", "signal", "heard", "action", "call", "reply"]);
+    expect(LOG_ROUTE).toEqual({
+      incident: ["occur"],
+      doing: ["occur"],
+      signal: ["know"],
+      heard: ["know"],
+      action: ["act"],
+      call: ["act"],
+      reply: ["know"],
+    });
     expect(tabsOf("incident", "public")).toEqual(["occur", "know"]);
     expect(tabsOf("incident", "private")).toEqual(["occur"]);
     expect(tabsOf("doing")).toEqual(["occur"]);

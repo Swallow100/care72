@@ -23,8 +23,10 @@ import type { ContactKind, OfficeKind } from "../db/types.ts";
 import { DEFAULT_VOICE, speak, type TtsClient } from "../gemini/tts.ts";
 import { pseudonymize, pseudonymizeText, PseudonymLeakError } from "../pseudonym/index.ts";
 import { drillScope, loadDrillRow, stateOfRow } from "./db.ts";
+import { dialogueFields } from "./dialogue.ts";
 import { drillError, isDrillId } from "./http.ts";
 import { loadPersonaSources, personaPlaces } from "./persona.ts";
+import { calleeOf, callResponseId } from "./responses.ts";
 
 // ---------- 声の選び方 ----------
 
@@ -80,8 +82,14 @@ export function voiceEnabled(env: Pick<AiEnv, "GEMINI_API_KEY" | "GEMINI_TTS">):
 
 // ---------- clip ----------
 
-/** 声にする物。安否（signals の id）か、ケアマネの手の返事（手の番号 a1…） */
-export type VoiceClip = { signal: string } | { act: string };
+/**
+ * 声にする物。安否（signals の id）か、ケアマネの手の返事（手の番号 a1…）か、着信の往復の掛けてきた人の言葉
+ * （T127。着信の安否の id と往復の行の番号。応答の記録 call_answer の talk の them の行）
+ */
+export type VoiceClip = { signal: string; line?: number } | { act: string };
+
+/** 往復の行の番号（talk の配列の位置。3 往復で 0〜5） */
+const isLine = (v: number): boolean => Number.isInteger(v) && v >= 0 && v < 100;
 
 const SIGNAL_TAIL = /^\d{1,4}-s\d{1,4}$/;
 const ACT_ID = /^a\d{1,5}$/;
@@ -97,13 +105,17 @@ export function isActId(v: unknown): v is string {
 
 /** 画面の音声の要素の行き先 */
 export function voiceHref(drillId: string, clip: VoiceClip): string {
-  const q = "signal" in clip ? `signal=${encodeURIComponent(clip.signal)}` : `act=${encodeURIComponent(clip.act)}`;
+  const q =
+    "signal" in clip
+      ? `signal=${encodeURIComponent(clip.signal)}${clip.line !== undefined ? `&line=${clip.line}` : ""}`
+      : `act=${encodeURIComponent(clip.act)}`;
   return `/api/drill/voice?drill=${encodeURIComponent(drillId)}&${q}`;
 }
 
 /** R2 の鍵（id だけ。名前は入らない） */
 export function voiceKey(drillId: string, clip: VoiceClip): string {
-  return `drill/${drillId}/${"signal" in clip ? clip.signal : `act-${clip.act}`}.wav`;
+  if ("act" in clip) return `drill/${drillId}/act-${clip.act}.wav`;
+  return `drill/${drillId}/${clip.signal}${clip.line !== undefined ? `-t${clip.line}` : ""}.wav`;
 }
 
 // ---------- 作る・読む ----------
@@ -210,6 +222,33 @@ async function resolveAct(db: D1Database, officeId: string, drillId: string, act
   return null;
 }
 
+/** 着信の往復の掛けてきた人の言葉（T127）。話す人は往復の話し手（応答の記録の callee）の連絡先、無ければ区分 */
+async function resolveCallLine(db: D1Database, officeId: string, drillId: string, signal: string, line: number): Promise<ResolvedClip | null> {
+  const row = await db
+    .prepare(
+      `SELECT e.person_id, e.payload FROM drill_events e JOIN people p ON p.id = e.person_id
+        WHERE e.id = ?1 AND e.drill_id = ?2 AND e.kind = 'call_answer' AND p.office_id = ?3`,
+    )
+    .bind(callResponseId(signal), drillId, officeId)
+    .first<{ person_id: string; payload: string }>();
+  if (!row) return null;
+  let p: Record<string, unknown>;
+  try {
+    p = JSON.parse(row.payload) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+  const l = dialogueFields(p).talk?.[line];
+  const text = l?.who === "them" ? l.text.trim() : "";
+  if (!text) return null;
+  const callee = calleeOf(p.callee);
+  if (callee?.kind && SUPPORTER_KINDS.includes(callee.kind)) return { person: row.person_id, text, speaker: { kind: "supporter", relation: null, sex: null } };
+  const contacts = await contactsOf(db, row.person_id);
+  const contact = callee?.id ? contacts.find((c) => c.id === callee.id) : undefined;
+  const relation = contact ? contact.relation?.trim() || null : familyRelation(contacts);
+  return { person: row.person_id, text, speaker: { kind: "family", relation, sex: null } };
+}
+
 /**
  * 声を 1 つ返す。R2 にあればそれ（TTS を呼ばない）、無ければ Gemini TTS で作って R2 に置く。
  * 事業所の外の訓練・無い clip・本人役の出どころでない安否は not_found。Gemini の鍵が無ければ not_configured（画面は文字だけ）
@@ -217,11 +256,15 @@ async function resolveAct(db: D1Database, officeId: string, drillId: string, act
 export async function drillVoice(deps: VoiceDeps, scope: VoiceScope, drillId: string, clip: VoiceClip): Promise<VoiceResult> {
   const officeId = scope.office.id;
   if (!isDrillId(drillId)) return { ok: false, reason: "not_found" };
-  if ("signal" in clip ? !isDrillSignalId(drillId, clip.signal) : !isActId(clip.act)) return { ok: false, reason: "not_found" };
+  if ("signal" in clip ? !isDrillSignalId(drillId, clip.signal) || (clip.line !== undefined && !isLine(clip.line)) : !isActId(clip.act)) {
+    return { ok: false, reason: "not_found" };
+  }
   if (!(await loadDrillRow(deps.db, officeId, drillId))) return { ok: false, reason: "not_found" };
   const resolved =
     "signal" in clip
-      ? await resolveSignal(deps.db, officeId, drillId, clip.signal)
+      ? clip.line !== undefined
+        ? await resolveCallLine(deps.db, officeId, drillId, clip.signal, clip.line)
+        : await resolveSignal(deps.db, officeId, drillId, clip.signal)
       : await resolveAct(deps.db, officeId, drillId, clip.act);
   if (!resolved) return { ok: false, reason: "not_found" };
   const voice = voiceOf(resolved.speaker);
@@ -281,9 +324,16 @@ export function parseVoiceQuery(q: URLSearchParams): { drillId: string; clip: Vo
   const drillId = q.get("drill");
   const signal = q.get("signal");
   const act = q.get("act");
+  const line = q.get("line");
   if (!isDrillId(drillId)) return null;
-  if (signal !== null && act === null) return isDrillSignalId(drillId, signal) ? { drillId, clip: { signal } } : null;
-  if (act !== null && signal === null) return isActId(act) ? { drillId, clip: { act } } : null;
+  if (signal !== null && act === null) {
+    if (!isDrillSignalId(drillId, signal)) return null;
+    if (line === null) return { drillId, clip: { signal } };
+    // 着信の往復の行（T127）。数字だけ
+    const n = /^\d{1,2}$/.test(line) ? Number(line) : -1;
+    return isLine(n) ? { drillId, clip: { signal, line: n } } : null;
+  }
+  if (act !== null && signal === null && line === null) return isActId(act) ? { drillId, clip: { act } } : null;
   return null;
 }
 

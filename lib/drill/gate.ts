@@ -6,7 +6,8 @@
 
 import type { ContactKind } from "../db/types.ts";
 import { CONTACT_KIND_LABELS } from "../labels.ts";
-import { ACTION_CATALOG } from "./action-catalog.ts";
+import { ACTION_CATALOG, CATALOG_LABELS, FIXED_CALLEE_LABELS, FREE_LABELS } from "./action-catalog.ts";
+import { FREE_WAY_LABELS, FREE_WAYS } from "./action-terms.ts";
 import { wordMisfit, type FitProfile, type FitWorld } from "./fit.ts";
 import type { DrillTurn } from "./persona-types.ts";
 import type { WorldState } from "./scenarios.ts";
@@ -22,29 +23,35 @@ export function tallyGate(world: WorldState, by: GateBy, rules: ReadonlyArray<st
   return { ...world, gated };
 }
 
-// ---------- 内部の名前 ----------
+// ---------- 内部の名前（T125 の門。自由対応の口 T129 の plainWords もここを呼ぶ） ----------
 
-/** 手の id → 画面の名前（手の表から）。長い id を先に置き換える（free が free_xxx の一部を食わないように） */
-const ACTION_NAMES: ReadonlyArray<readonly [string, string]> = ACTION_CATALOG.map((r) => [r.id as string, r.label] as const).sort(
-  (a, b) => b[0].length - a[0].length,
+/**
+ * 手・相手・固定の相手・やり方・効き目の内部の名前 → 画面の言葉（T129 の言い方の表をここに 1 つ）。長い名前から当てる（advise_119 を先に）
+ */
+const INNER_NAMES: ReadonlyMap<string, string> = new Map(
+  [
+    ...ACTION_CATALOG.map((r): [string, string] => [r.id, CATALOG_LABELS[r.id]]),
+    ...(Object.entries(CONTACT_KIND_LABELS) as Array<[ContactKind, string]>),
+    ...(Object.entries(FIXED_CALLEE_LABELS) as Array<[string, string]>),
+    ...FREE_WAYS.map((w): [string, string] => [w, FREE_WAY_LABELS[w]]),
+    ["home", "家"] as [string, string],
+    ["move", "避難"] as [string, string],
+    ["none", FREE_LABELS.idle] as [string, string],
+    ["reach", "到達"] as [string, string],
+    ["arrival", "到着"] as [string, string],
+  ].sort((a, b) => b[0].length - a[0].length),
 );
-const CONTACT_NAMES: ReadonlyArray<readonly [string, string]> = (Object.entries(CONTACT_KIND_LABELS) as Array<[ContactKind, string]>).sort(
-  (a, b) => b[0].length - a[0].length,
-);
+const INNER_RE = new RegExp(`(?<![A-Za-z0-9_])(?:${[...INNER_NAMES.keys()].join("|")})(?![A-Za-z0-9_])`, "g");
 
-/** 英字の id らしい物（下線つきの英小文字・単語の free・note） */
-const LEFT_ID = /(?<![A-Za-z0-9])(?:[a-z][a-z0-9]*_[a-z0-9_]+|free|note)(?![A-Za-z0-9])/;
-
-const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
-/** 文の中の手の id・相手の区分の英字を画面の名前に。置き換えられない英字の id が残れば null */
+/**
+ * 文の中の内部の名前（英字の id）を画面の名前に置き換える。置き換えたあとに英字の id らしい語（「_」を含む語、小文字を含む 3 字以上の語）
+ * が残れば null（出さない）。大文字だけの略語（AED）と 2 字までの単位（km）は残す
+ */
 export function nameIds(text: string): string | null {
-  let t = text;
-  for (const [id, label] of [...ACTION_NAMES, ...CONTACT_NAMES]) {
-    if (!t.includes(id)) continue;
-    t = t.replace(new RegExp(`(?<![A-Za-z0-9_])${escape(id)}(?![A-Za-z0-9_])`, "g"), label);
-  }
-  return LEFT_ID.test(t) ? null : t;
+  const out = text.replace(INNER_RE, (m) => INNER_NAMES.get(m) ?? m);
+  const tokens = out.match(/[A-Za-z0-9_]+/g) ?? [];
+  const inner = tokens.some((t) => t.includes("_") || (/[a-z]/.test(t) && t.replace(/[0-9]/g, "").length >= 3));
+  return inner ? null : out;
 }
 
 // ---------- 文の門 ----------

@@ -2,12 +2,17 @@
 // 上に理由の 1 行（表の理由のまま）と上書きの状態。下は 3 列: 連絡先と電話 / 時計・避難先・支援者 / 最終連絡・信号・録音・分類・優先修正。
 // 分類と直す口（T12）は classification で受ける。無ければ信号に付いた分類を読むだけで出し、それも無ければ「分類なし」。
 // 録音のまとめ（T69b）は分類の上に、本人の言葉（文字起こし）と左右に並べる。直す口は summary で受ける（無ければ読むだけ）。
+// 時計は区分（機器・物品・薬）の見出しで束ね、「酸素 内蔵電池 停電から 2 時間 残り 30 分」と出典・確認日（components/person/ClockLines、T132）。
+// 下の「全部」（T132）で台帳の平時の情報の全部を開く（components/list/FullDetail。電話は tel: のリンク）。
 
-import { AiMark, REASON_TEXT, StateTag, TONE_TEXT } from "@/components/person/parts";
+import { ClockLines } from "@/components/person/ClockLines";
+import { AiMark, REASON_TEXT, StateTag } from "@/components/person/parts";
 import { COLOR_LABELS } from "@/lib/labels";
 import type { DetailSignal, RowDetail as Detail } from "@/lib/list/detail";
 import { CLASS_LABELS, DETAIL_LABELS } from "@/lib/list/labels";
 import { CallButtons } from "./CallButtons";
+import { FullDetail } from "./FullDetail";
+import { FullToggle } from "./FullToggle";
 import { Hearing } from "./Hearing";
 import { OverrideForm } from "./OverrideForm";
 import { Summary } from "./Summary";
@@ -97,37 +102,7 @@ export function RowDetail({
             {d.clocks.length === 0 ? (
               <p className="text-muted">{DETAIL_LABELS.none}</p>
             ) : (
-              <ul className="space-y-1">
-                {d.clocks.map((k) => (
-                  <li key={k.id} data-clock={k.id}>
-                    <div className="flex flex-wrap items-baseline gap-x-2">
-                      <span className="font-bold">{k.label}</span>
-                      {k.remaining ? (
-                        <span className={`font-bold tabular-nums ${k.tone ? TONE_TEXT[k.tone] : "text-muted"}`}>{k.remaining}</span>
-                      ) : (
-                        <span className="text-muted">{k.length ? null : DETAIL_LABELS.unconfirmed}</span>
-                      )}
-                    </div>
-                    <div className="flex flex-wrap gap-x-2 text-xs text-muted">
-                      <span>
-                        {k.kindLabel} {k.length ?? DETAIL_LABELS.unconfirmed} {k.start}
-                      </span>
-                      <span>
-                        {DETAIL_LABELS.source} {k.source ?? DETAIL_LABELS.unconfirmed}
-                        {k.sourceNote ? ` ${k.sourceNote}` : ""}
-                      </span>
-                      <span>
-                        {DETAIL_LABELS.confirmed} {k.confirmed ?? DETAIL_LABELS.unconfirmed}
-                      </span>
-                      {k.depends && (
-                        <span className={k.depends.unchecked ? "font-bold tone-check" : undefined}>
-                          {k.depends.on} {k.depends.check}
-                        </span>
-                      )}
-                    </div>
-                  </li>
-                ))}
-              </ul>
+              <ClockLines items={d.clocks.map((k) => ({ id: k.id, text: k.text, tone: k.tone }))} />
             )}
           </Part>
           <Part title={DETAIL_LABELS.destinations}>
@@ -186,6 +161,11 @@ export function RowDetail({
           </Part>
         </div>
       </div>
+      {d.full && (
+        <FullToggle id={d.personId}>
+          <FullDetail full={d.full} />
+        </FullToggle>
+      )}
     </div>
   );
 }

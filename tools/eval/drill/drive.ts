@@ -11,7 +11,7 @@ import type { Principal } from "../../../lib/auth/principal.ts";
 import type { ClaudeClient } from "../../../lib/claude/client.ts";
 import { d1FromSqlite, migratedSqlite } from "../../../lib/db/test-d1.ts";
 import { ACTION_CATALOG } from "../../../lib/drill/action-catalog.ts";
-import { TALK_ASKS } from "../../../lib/drill/dialogue.ts";
+import { CALL_OUT_ASKS } from "../../../lib/drill/dialogue.ts";
 import { drillFreeHook } from "../../../lib/drill/free-action.ts";
 import { drillStepHooks, drillTalkHook } from "../../../lib/drill/hooks.ts";
 import { actionPost, replayGet, startPost, stepPost } from "../../../lib/drill/http.ts";
@@ -364,7 +364,7 @@ export async function runDrill(plan: RunPlan, deps: DriveDeps): Promise<RunOutco
           if (done?.result?.pickup === "answers" && done.result.status === "connected" && talk && rng.chance(plan.talkRate) && replay.drill.status === "running") {
             const rounds = rng.int(1, 2);
             for (let k = 0; k < rounds; k++) {
-              const ask = rng.chance(0.6) ? { ask: rng.pick(TALK_ASKS) } : { text: rng.pick(TALK_TEXTS) };
+              const ask = rng.chance(0.6) ? { ask: rng.pick(CALL_OUT_ASKS) } : { text: rng.pick(TALK_TEXTS) };
               const tb = { step: replay.drill.step, actions: replay.actions.length, action: id, ...ask };
               await call("talk", tb, () => talkPost(db, p, drillId, tb, { hook: talk }));
               replay = await read(drillId);

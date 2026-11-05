@@ -58,8 +58,10 @@ export const WORLD_REPLY_LABELS = {
   reported: "報告済",
   evacuated: "避難済",
   noted: "記録済",
-  /** 自由対応のそのままの手（T110）。結果は AI の起きたこと（世界は変えない） */
+  /** 自由対応のそのままの手（T110）。結果は AI の起きたこと（世界の変化は閉じた効き目の一覧の中だけ。T129） */
   done: "実施",
+  /** 自由対応で何も起きない文（T129。前の「記録」） */
+  unchanged: "変化なし",
 } as const;
 export type WorldReplyStatus = keyof typeof WORLD_REPLY_LABELS;
 
@@ -80,6 +82,7 @@ export const WORLD_REPLY_TEXTS: Readonly<Record<WorldReplyStatus, string>> = {
   evacuated: "避難した",
   noted: "記録した",
   done: "対応した",
+  unchanged: "変化なし",
 };
 
 /** 本人・家族・支援者の区分（電話に出るかは本人役が決める相手） */

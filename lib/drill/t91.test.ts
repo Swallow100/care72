@@ -405,7 +405,7 @@ describe("左の表", () => {
     expect(r).toMatchObject({ ok: true, record: { kind: "arrange_dialysis", result: { status: "accepted" } } });
     expect((await triageOf("p-03"))?.reason ?? "").not.toContain("透析先");
 
-    // 自由対応（鍵なし → 記録）と応援依頼も打って、作り直しと比べる
+    // 自由対応（鍵なし → 変化なし。T129 で記録から）と応援依頼も打って、作り直しと比べる
     await actDrill(db, SCOPE, ID, { step: 0, actions: 1 }, { kind: "free", person: "p-03", target: null, text: "家族に連絡がつくか試す" }, START, {
       roll: () => 0,
     });
@@ -415,7 +415,7 @@ describe("左の表", () => {
     const live = stateOfRow(row);
     expect(live.actions.map((a) => [a.kind, a.as ?? null, a.result?.status])).toEqual([
       ["arrange_dialysis", null, "accepted"],
-      ["free", "note", "noted"],
+      ["free", null, "unchanged"],
       ["request_backup", null, "dispatched"],
       ["ask_check", null, "connected"],
     ]);
@@ -452,17 +452,17 @@ describe("自由対応", () => {
     expect(calls).toHaveLength(1);
     expect(systemOf(calls[0])).toContain(FREE_SYSTEM);
     expect(calls[0].model).toBe(OPUS);
-    // Claude に渡ったのは伏せた文だけ（氏名・電話・生年月日が無い）。手の一覧はこの本人に使える物だけ
+    // Claude に渡ったのは伏せた文だけ（氏名・電話・生年月日が無い）。手の一覧は全部の手で、今できない手は理由つき（T129）
     const sent = JSON.stringify(calls[0].messages);
     expect(findLeaks(sent, ALL_KEY)).toEqual([]);
     expect(sent).not.toContain(name);
     expect(sent).toContain("arrange_dialysis");
-    expect(sent).not.toContain("arrange_medicine"); // 田中は薬局・かかりつけが台帳に無い
+    expect(sent).toMatch(/arrange_medicine[^}]*不可（相手なし）/); // 田中は薬局・かかりつけが台帳に無い
 
     const s = await stored();
     const rec = s.actions[0];
     expect(rec).toMatchObject({ kind: "free", as: "arrange_dialysis", minutes: 15, callee: "hospital", target: "c-03-5", reason: "透析先が休止したので" });
-    expect(rec.text).toContain(name); // サーバーの中だけ（氏名に戻した文）
+    expect(rec.text).toBe(`${name}さんの透析先を病院に振り替えてもらう`); // サーバーの中だけ（打った文のまま。T129）
     expect(rec.result).toMatchObject({ ok: true, status: "accepted", text: "病院へ透析の振替を頼む", ai: true });
     expect(s.world.checks).toEqual({ "p-03": { dialysis_center: "confirmed" } });
     expect(s.world.counts).toEqual({ director: 0, persona: 0, call: 0, free: 1 });
@@ -474,17 +474,17 @@ describe("自由対応", () => {
     expect(forClaude).toMatchObject({ kind: "free", as: "arrange_dialysis" });
   });
 
-  it("表に無い手・その本人に使えない手・相手の区分が無い物は記録。119 に当たる文は 119勧奨（救急は来ない）", async () => {
+  it("表に無い手は変化なし、相手の無い手はその手のまま断る、相手の区分が違うだけなら台帳から（T129）。119 に当たる文は 119勧奨（救急は来ない）", async () => {
     await start();
-    const cases: Array<[unknown, string, string]> = [
-      [FREE_ANSWER("teleport"), "p-03", "note"],
-      [FREE_ANSWER("arrange_medicine", "pharmacy"), "p-03", "note"], // 薬局が台帳に無い
-      [FREE_ANSWER("free"), "p-03", "note"],
-      [FREE_ANSWER("call_contact", "pharmacy"), "p-03", "note"], // 相手の区分が台帳に無い
-      [FREE_ANSWER("call_contact", "hospital"), "p-03", "note"], // 連絡先電話の相手でない区分
+    // 表に無い手（所要なし）は変化なし。前の形の自由（所要なし）はそのままの手で既定の所要
+    const cases: Array<[unknown, string, { as?: string; idle?: true; way?: string; callee?: string }, string]> = [
+      [FREE_ANSWER("teleport"), "p-03", { idle: true }, "unchanged"],
+      [FREE_ANSWER("free"), "p-03", { way: "desk" }, "done"],
+      [FREE_ANSWER("call_contact", "pharmacy"), "p-03", { as: "call_contact", callee: "family" }, "connected"], // 相手の区分が台帳に無い → 台帳の家族
+      [FREE_ANSWER("call_contact", "hospital"), "p-03", { as: "call_contact", callee: "family" }, "connected"], // 連絡先電話の相手でない区分
     ];
     let n = 0;
-    for (const [answer, person, as] of cases) {
+    for (const [answer, person, want, status] of cases) {
       const { hooks } = freeHooks(() => answer);
       const res = await actionPost(db, careManager(), ID, body({ actions: n, kind: "free", person, text: "様子を見に行けるか考える" }), START, {
         hooks,
@@ -493,8 +493,17 @@ describe("自由対応", () => {
       expect(res.status).toBe(200);
       n++;
       const rec = (await stored()).actions.at(-1)!;
-      expect(rec.as).toBe(as);
-      expect(rec.result).toMatchObject({ status: "noted", ai: false });
+      expect(rec).toMatchObject(want);
+      if (!want.as) expect(rec.as).toBeUndefined();
+      expect(rec.result?.status).toBe(status);
+    }
+    // 薬局が台帳に無い本人への薬手配は、記録に落とさずその手のまま「相手なし」で断る（手を打たない）
+    {
+      const { hooks } = freeHooks(() => FREE_ANSWER("arrange_medicine", "pharmacy"));
+      const res = await actionPost(db, careManager(), ID, body({ actions: n, kind: "free", person: "p-03", text: "薬を届けてもらう" }), START, { hooks, roll: () => 0 });
+      expect(res.status).toBe(409);
+      expect(await res.json()).toMatchObject({ ok: false, error: "blocked", label: "相手なし" });
+      expect((await stored()).actions).toHaveLength(n);
     }
     // 119: Claude が本人電話と答えても 119勧奨。相手は Claude の区分（娘）で、勧めた時刻だけ残る
     const { hooks } = freeHooks(() => FREE_ANSWER("call_person", "family", "娘さんに救急車を呼ぶよう伝えた"));
@@ -527,7 +536,7 @@ describe("自由対応", () => {
     expect((await stored()).actions).toEqual([]);
   });
 
-  it("文が無い・200 字を超える自由対応は 400（T110 で 120 字から）。鍵が無ければ読み替えずに記録", async () => {
+  it("文が無い・200 字を超える自由対応は 400（T110 で 120 字から）。鍵が無ければ読み替えずに変化なし（T129 で記録から）", async () => {
     await start();
     expect((await actionPost(db, careManager(), ID, body({ kind: "free", person: null }), START)).status).toBe(400);
     expect((await actionPost(db, careManager(), ID, body({ kind: "free", person: null, text: " " }), START)).status).toBe(400);
@@ -536,10 +545,11 @@ describe("自由対応", () => {
     expect(drillFreeHook({ DB: db }, careManager())).toBeUndefined();
     const ok = await actionPost(db, careManager(), ID, body({ kind: "free", person: null, text: "事業所の発電機を確かめる" }), START, { roll: () => 0 });
     expect(ok.status).toBe(200);
-    expect((await stored()).actions[0]).toMatchObject({ kind: "free", as: "note", minutes: 2, text: "事業所の発電機を確かめる" });
+    expect((await stored()).actions[0]).toMatchObject({ kind: "free", idle: true, minutes: 2, text: "事業所の発電機を確かめる", result: { status: "unchanged" } });
+    expect((await stored()).actions[0].as).toBeUndefined();
   });
 
-  it("1 訓練 10 回まで。超えたら読み替えずに記録（Claude を呼ばない）", async () => {
+  it("1 訓練 10 回まで。超えたら読み替えずに変化なし（Claude を呼ばない）", async () => {
     let calls = 0;
     const spy: FreeHook = async (a) => {
       calls++;
@@ -551,32 +561,32 @@ describe("自由対応", () => {
     expect(tenth.record.as).toBe("visit");
     expect(tenth.state.world.counts?.free).toBe(FREE_MAX);
     const eleventh = await act(tenth.state, { kind: "free", person: "p-01", target: null, text: "家へ行く", contacts: [] }, { free: spy }, () => 0);
-    expect(eleventh.record.as).toBe("note");
+    expect(eleventh.record).toMatchObject({ kind: "free", idle: true });
+    expect(eleventh.record.as).toBeUndefined();
     expect(calls).toBe(1);
     // 1 訓練の上限（T90 の 150）に達していても呼ばない
     const capped = { ...s, world: { ...s.world, counts: { director: 20, persona: 120, call: 10, free: 0 } } };
-    expect((await act(capped, { kind: "free", person: "p-01", target: null, text: "家へ行く", contacts: [] }, { free: spy }, () => 0)).record.as).toBe(
-      "note",
-    );
+    expect((await act(capped, { kind: "free", person: "p-01", target: null, text: "家へ行く", contacts: [] }, { free: spy }, () => 0)).record.idle).toBe(true);
     expect(calls).toBe(1);
   });
 
   it("使える手の一覧と読み替えの決め（本人なし・相手の区分）", () => {
     const contacts = [SELF_01, DAUGHTER_01, SUPPORTER_01];
-    expect(freeChoices(null, []).map((c) => c.id)).toEqual(["request_backup", "report_city", "note", "evacuate_self"]);
+    // T129: 候補は全部の手（記録の手は外す）。今できない手は理由つき
+    expect(freeChoices(null, []).filter((c) => c.why === null).map((c) => c.id)).toEqual(["request_backup", "report_city", "evacuate_self"]);
     const mine = freeChoices("p-01", contacts);
-    expect(mine.map((c) => c.id)).toContain("ask_check");
-    expect(mine.map((c) => c.id)).not.toContain("arrange_medicine");
+    expect(mine.find((c) => c.id === "ask_check")?.why).toBeNull();
+    expect(mine.find((c) => c.id === "arrange_medicine")?.why).toBe("相手なし");
     expect(mine.find((c) => c.id === "advise_119")?.callees).toEqual(["self", "family", "supporter"]);
     const ctx = { text: "様子", person: "p-01", contacts };
     expect(resolveFree({ kind: "ask_check", callee: "supporter" }, ctx)).toEqual({ as: "ask_check", target: SUPPORTER_01 });
-    // 相手の要る手で区分が無い・台帳に無い区分は記録。本人電話は本人、固定の相手のある手は固定の相手
-    expect(resolveFree({ kind: "ask_check", callee: "" }, ctx)).toEqual({ as: "note", target: null });
-    expect(resolveFree({ kind: "ask_check", callee: "pharmacy" }, ctx)).toEqual({ as: "note", target: null });
+    // 相手の要る手で区分が無い・台帳に無い区分は、その手の相手の区分の順で台帳から（T129。前は記録）。本人電話は本人、固定の相手のある手は固定の相手
+    expect(resolveFree({ kind: "ask_check", callee: "" }, ctx)).toEqual({ as: "ask_check", target: DAUGHTER_01 });
+    expect(resolveFree({ kind: "ask_check", callee: "pharmacy" }, ctx)).toEqual({ as: "ask_check", target: DAUGHTER_01 });
     expect(resolveFree({ kind: "call_person", callee: "" }, ctx)).toEqual({ as: "call_person", target: SELF_01 });
     expect(resolveFree({ kind: "arrange_transport", callee: "" }, ctx)).toEqual({ as: "arrange_transport", target: null });
     expect(resolveFree({ kind: "evacuate_self", callee: "" }, ctx)).toEqual({ as: "evacuate_self", target: null });
-    expect(resolveFree(null, ctx)).toEqual({ as: "note", target: null });
+    expect(resolveFree(null, ctx)).toMatchObject({ as: null, own: { idle: true } });
     // 119 は相手の区分が無ければ本人から
     expect(resolveFree({ kind: "note", callee: "" }, { ...ctx, text: "救急車を呼ぶ" })).toEqual({ as: "advise_119", target: SELF_01 });
     expect(resolveFree({ kind: "note", callee: "" }, { ...ctx, text: "救急隊の要請" })).toEqual({ as: "advise_119", target: SELF_01 });
@@ -584,7 +594,8 @@ describe("自由対応", () => {
     expect(
       resolveFree({ kind: "request_hospital", callee: "hospital" }, { text: "救急病院に受け入れを頼む", person: "p-03", contacts: [HOSPITAL_03] }),
     ).toEqual({ as: "request_hospital", target: HOSPITAL_03 });
-    expect(resolveFree(null, { text: "119", person: null, contacts: [] })).toEqual({ as: "note", target: null });
+    // 本人を選ばない 119 は、記録に落とさず 119勧奨のまま「対象なし」（T129）
+    expect(resolveFree(null, { text: "119", person: null, contacts: [] })).toEqual({ as: "advise_119", target: null, block: "対象なし" });
   });
 
   it("口の作り: 台帳を伏せる人は事業所の全員（参加者が先）。Claude の 1 文の仮名・救急は使わない", async () => {

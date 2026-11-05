@@ -515,7 +515,9 @@ export function effectiveKind(a: { kind: DrillAction; as?: DrillAction | null })
  * 打った手の言い方（自由対応は読み替えた手の言い方。ケアマネの文は渡さない）。
  * 表の手に当たらなかった自由対応（T110 のそのままの手）は、AI が伏せた文から作った 1 文（words。名前・町名なし）
  */
-export function actionWords(a: { kind: DrillAction; as?: DrillAction | null; words?: string | null }): string {
+export function actionWords(a: { kind: DrillAction; as?: DrillAction | null; words?: string | null; idle?: boolean }): string {
+  // 何も起きない自由対応（T129「変化なし」）は、何かをしたと読ませない（記録だけ）
+  if (a.kind === "free" && !a.as && a.idle) return CATALOG_WORDS.note;
   if (a.kind === "free" && !a.as && a.words) return a.words;
   return CATALOG_WORDS[effectiveKind(a)];
 }
@@ -536,7 +538,10 @@ export const FREE_TEXT_MAX = 200;
 /** そのままの手の所要（分）の下限と上限（AI の値をこの中に。決まりの足し分はこのあと） */
 export const FREE_MINUTES = { min: 2, max: 120 } as const;
 
-/** 自由対応の画面の言葉（2〜4 字） */
+/**
+ * 自由対応の画面の言葉（2〜4 字）。T129: 何として扱ったかを「扱い 119勧奨」「扱い 電話」と出す（前の「読替」は初めて見て意味が取れなかった）。
+ * 打つ前の確かめのボタンは「扱い確認」、待ちは「確認中」、文を直したあとは「再確認」。何も起きない文は「変化なし」
+ */
 export const FREE_LABELS = {
   /** 伏せきれない文を断ったとき（API の 400 の label） */
   refused: "伏字不可",
@@ -544,21 +549,69 @@ export const FREE_LABELS = {
   text: "内容",
   /** 残りの字数 */
   left: "残り",
-  /** 読み替えの待ち（実行の横） */
-  reading: "読替中",
-  /** 読み替えを頼むボタン（T110。打つ前に相手と所要を見せる） */
-  read: "読替",
-  /** 表の手に当たらなかったとき（そのままの手） */
-  own: "自由",
+  /** 確かめの待ち（ボタンの横） */
+  reading: "確認中",
+  /** 打つ前に扱い・相手・所要・できるかを確かめるボタン（T110 の読み替え。T129 で言い方を変えた） */
+  read: "扱い確認",
+  /** 何として扱ったか（表の手の名前か、そのままの手のやり方の前。履歴・紙・CSV・確かめの 1 行） */
+  as: "扱い",
   /** 相手と所要の見出し */
   callee: "相手",
   minutes: "所要",
   /** 押せないとき */
   block: "不可",
-  /** 文を直したあと（読み替え直しが要る） */
-  stale: "再読替",
+  /** 文を直したあと（確かめ直しが要る） */
+  stale: "再確認",
   /** 読み替えの理由（AI。履歴・紙・CSV） */
   why: "理由",
+  /** 今できないときの、今できる別の道（T129） */
+  alt: "代案",
+  /** 何も起きない文（T129。前の「記録」） */
+  idle: "変化なし",
+  /** 本人を選ばずに名前を書いた文で決めた対象（T129） */
+  person: "対象",
+  /** 本人の要る手で、本人を選んでいない・文に名前が無い（T129） */
+  noPerson: "対象なし",
+  /** 相手の要る手で、台帳に相手の連絡先が無い（T129） */
+  noCallee: "相手なし",
 } as const;
-/** 自由対応の読み替え（Opus）の 1 訓練の回数の上限。超えたら読み替えずに記録 */
+/** 自由対応の読み替え（Opus）の 1 訓練の回数の上限。超えたら読み替えずに「変化なし」 */
 export const FREE_MAX = 10;
+
+/** 何も起きない自由対応（T129。「変化なし」）の所要（分。前の「記録」と同じ） */
+export const FREE_IDLE_MINUTES = 2;
+
+// ---------- そのままの自由対応の効き目（T129） ----------
+
+/**
+ * 表の手に当たらない自由対応（そのままの手）の効き目。上の閉じた一覧（ActionEffect）のうち、左の表（色と連絡順）に届かない物だけ。
+ * reach その人に届いた（その場で会えた・電話で話せた）、arrival 近くの人・家族がその人の所へ向かった（見守依頼と同じ 30〜60 分）。
+ * 聞いた安否（heard）・時計の頼り先の確認（check）・印を消す・職員の増減は持たせない
+ */
+export const OWN_EFFECTS = ["reach", "arrival"] as const;
+export type OwnEffect = (typeof OWN_EFFECTS)[number];
+export const isOwnEffect = (v: unknown): v is OwnEffect => typeof v === "string" && (OWN_EFFECTS as readonly string[]).includes(v);
+
+/** そのままの手の効き目の言葉（2〜4 字。履歴・紙） */
+export const OWN_EFFECT_LABELS: Readonly<Record<OwnEffect, string>> = { reach: "本人到達", arrival: "人手配" };
+
+/**
+ * そのままの手の働きの行（効き目があるとき。採点の「その人への手」「届いた」と、効き目を当てる所が読む）。
+ * 結果の状態は「実施」（done）だけを届いたに数える
+ */
+export function ownFreeRow(effect: OwnEffect): ActionRow {
+  const base = actionRow("free");
+  return effect === "reach"
+    ? { ...base, towardPerson: true, effects: [{ kind: "reach" }], reach: { statuses: ["done"], at: "end" } }
+    : {
+        ...base,
+        towardPerson: true,
+        effects: [{ kind: "arrival", role: "callee", arriveMin: [30, 60] }, { kind: "reach" }],
+        reach: { statuses: ["done"], at: "arrival" },
+      };
+}
+
+/** 打った手の働きの行（そのままの手で効き目があれば ownFreeRow、ほかは表の行） */
+export function workRow(a: { kind: DrillAction; as?: DrillAction | null; way?: string | null; effect?: OwnEffect | null }): ActionRow {
+  return isOwnFree(a) && a.effect ? ownFreeRow(a.effect) : actionRow(effectiveKind(a));
+}

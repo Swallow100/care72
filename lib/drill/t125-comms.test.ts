@@ -266,3 +266,34 @@ describe("評価の台が読む門の数", () => {
     sqlite.close();
   });
 });
+
+describe("自由対応の候補（T129）とメッセージの手", () => {
+  it("候補の一覧にメッセージ（伝言）が入り、可否は決まりの表のまま（携帯の無い本人は「携帯なし」、電波不通は「電波不通」）", async () => {
+    const { freeChoices } = await import("./free-action.ts");
+    const self = { id: "c-self", kind: "self" as const, label: "本人", hasPhone: true };
+    const noMobile = freeChoices("p-10", [self], (id) => termsFor(src("earthquake", EQ_0H, 10 * 60), "p-10")[id]);
+    expect(noMobile.find((c) => c.id === "message")).toMatchObject({ label: "伝言", why: "携帯なし" });
+    const ok = freeChoices("p-09", [self], (id) => termsFor(src("earthquake", EQ_0H, 10 * 60), "p-09")[id]);
+    expect(ok.find((c) => c.id === "message")?.why).toBeNull();
+    const radio = freeChoices("p-08", [self], (id) => termsFor(src("earthquake", EQ_0H, 30 * 60), "p-08")[id]);
+    expect(radio.find((c) => c.id === "message")?.why).toBe("電波不通");
+  });
+
+  it("経過の経路の印: 伝言の安否は不在着信にしない（T127 の turnRoute が T125 の経路を読む）", async () => {
+    const { turnRoute } = await import("./calls.ts");
+    const base = { source: "family" as const, saying: "家にいます", color: "green" as const, injured: null, atHome: null, canMove: null, hasMedicine: null };
+    expect(turnRoute({ ...base, via: "message" }, false)).toBe("message");
+    expect(turnRoute({ ...base, via: "call" }, false)).toBe("missed");
+    expect(turnRoute({ ...base, via: "call" }, true)).toBe("call");
+    expect(turnRoute({ ...base, via: "button" }, false)).toBe("button");
+  });
+
+  it("自由対応の口の内部の名前の置き換え（T129 の plainWords）は 1 つの門の nameIds を呼ぶ", async () => {
+    const { plainWords } = await import("./free-action.ts");
+    const { nameIds } = await import("./gate.ts");
+    for (const t of ["一覧にadvise_119が無いためfreeの電話とした", "family に message", "callTarget を使う", "AED の場所を 1 km 先で確かめる"]) {
+      expect(plainWords(t)).toBe(nameIds(t));
+    }
+    expect(nameIds("family に message")).toBe("家族 に 伝言");
+  });
+});

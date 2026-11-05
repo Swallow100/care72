@@ -33,7 +33,8 @@ import {
   T59_LABELS,
 } from "@/lib/drill/labels";
 import { incidentLabel } from "@/lib/drill/event-catalog";
-import { awareCounts, awareText, buildDrillLog, type Awareness, type LogRow } from "@/lib/drill/timeline";
+import { awareCounts, awareText, buildDrillLog, ROUTE_LABELS, type Awareness, type LogRow } from "@/lib/drill/timeline";
+import { TALK_UI } from "@/lib/drill/dialogue";
 import { FREE_LABELS } from "@/lib/drill/action-catalog";
 import { FREE_WAY_LABELS } from "@/lib/drill/action-terms";
 import type { DrillRecord, StoredReview } from "@/lib/drill/record";
@@ -131,11 +132,13 @@ export function DrillPaper({ record, office, today, ai = null }: { record: Drill
   // AI 停止は刻みごとに積まず、概要の 1 行（画面の帯と同じ。T76）
   const stop = aiStopBand(screen.ticks, { virtual: isVirtual(scenario), running: false, now: null });
   // 発生と把握の見比べ（T105）。終わった訓練なので非公表の物も出す
-  const log = buildDrillLog(screen.ticks, actions, { finished: true });
+  const log = buildDrillLog(screen.ticks, actions, { finished: true, calls });
   const aware = awareCounts(log);
   const viaOf = (w: Awareness): string => {
     if (w.via === "public") return LOG_LABELS.public;
     if (w.via === "signal") return LOG_LABELS.viaSignal;
+    // 着信の往復で掛けてきた人の言った事（T127）
+    if (w.from?.startsWith("r-")) return ROUTE_LABELS.call;
     const a = w.from ? actions.find((x) => `h-${x.id}` === w.from) : undefined;
     return a ? ACTION_LABELS[a.kind] : "";
   };
@@ -570,17 +573,38 @@ export function DrillPaper({ record, office, today, ai = null }: { record: Drill
               )}
               {rows.map((r) => {
                 if (r.kind === "call") {
+                  // 着信の往復（T127）: 数と、ケアマネの言葉と掛けてきた人の言葉の 1 行（本人役の言葉は AI の印）
+                  const talk = r.c.talk ?? [];
+                  const rounds = talk.filter((l) => l.who === "cm").length;
                   return (
-                    <tr key={r.c.signal} data-call={r.c.response ?? "open"}>
-                      <td className="nowrap">{t(clockLabel(r.c.minute))}</td>
-                      <td>{SCORE_LABELS.calls}</td>
-                      <td>{name(r.c.person)}</td>
-                      <td>{callerLabel(r.c.source, screen.contacts[r.c.person] ?? [])}</td>
-                      <td />
-                      <td>
-                        {r.c.response === "answer" ? SCORE_LABELS.answered : r.c.response === "decline" ? SCORE_LABELS.declined : SCORE_LABELS.open}
-                      </td>
-                    </tr>
+                    <Fragment key={r.c.signal}>
+                      <tr data-call={r.c.response ?? "open"}>
+                        <td className="nowrap">{t(clockLabel(r.c.minute))}</td>
+                        <td>{SCORE_LABELS.calls}</td>
+                        <td>{name(r.c.person)}</td>
+                        <td>{callerLabel(r.c.source, screen.contacts[r.c.person] ?? [])}</td>
+                        <td />
+                        <td>
+                          {r.c.response === "answer" ? SCORE_LABELS.answered : r.c.response === "decline" ? SCORE_LABELS.declined : SCORE_LABELS.open}
+                          {rounds > 0 && <span data-call-talk={rounds}>{t(`・${rounds} ${SCORE_LABELS.talks}`)}</span>}
+                        </td>
+                      </tr>
+                      {rounds > 0 && (
+                        <tr data-call-lines={r.c.signal}>
+                          <td />
+                          <td colSpan={5}>
+                            {talk.map((l, i) => (
+                              <Fragment key={i}>
+                                {i > 0 && "　"}
+                                {l.who === "cm" ? TALK_UI.me : (r.c.callee?.label ?? callerLabel(r.c.source, screen.contacts[r.c.person] ?? []))}
+                                {l.ai && <span className="drill-ai"> AI</span>}
+                                {t(`「${l.text}」`)}
+                              </Fragment>
+                            ))}
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
                   );
                 }
                 const a = r.a;
@@ -602,18 +626,18 @@ export function DrillPaper({ record, office, today, ai = null }: { record: Drill
                       </td>
                       <td>
                         {ACTION_LABELS[a.kind]}
-                        {/* 自由対応は読み替えた手（ケアマネの文は紙に出さない。T91） */}
+                        {/* 自由対応は何として扱ったか（「扱い 薬手配」。T129 で「読替」から） */}
                         {a.kind === "free" && a.as && (
                           <span className="p-sub" data-reading={a.as}>
                             {" "}
                             {SCORE_LABELS.reading} {ACTION_LABELS[a.as]}
                           </span>
                         )}
-                        {/* そのままの手（T110）はやり方。文は終わりの「手と出来事」に */}
-                        {a.kind === "free" && !a.as && a.way && (
+                        {/* そのままの手（T110）はやり方（「扱い 電話」）。何も起きない文は結果の「変化なし」だけ */}
+                        {a.kind === "free" && !a.as && a.way && !a.idle && (
                           <span className="p-sub" data-own-way={a.way}>
                             {" "}
-                            {FREE_WAY_LABELS[a.way]}
+                            {SCORE_LABELS.reading} {FREE_WAY_LABELS[a.way]}
                           </span>
                         )}
                       </td>

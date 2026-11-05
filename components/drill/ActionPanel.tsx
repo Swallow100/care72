@@ -9,8 +9,9 @@
 // この画面で正解・不正解を出さない（採点は T22）。
 // T110: 上に時間を使う手の 1 行（status。使用・職員の空き・外出・次空）。決まりを選んだ訓練は、手の所要を決まりの表の値で（夜・浸水などで
 // 伸びた分は太字）、押せない手と相手は灰で理由の 2〜4 字（「通行止」「通話不可」。lib/drill/action-terms.ts）。
-// 自由対応は 200 字。「読替」で監督役が読み替え（POST /api/drill/<id>/free、10〜13 秒）、読み替えた手（表の手か「自由」とやり方）・相手・所要・
-// 押せない理由を見せ、確かめてから実行（同じ文と本人なら Claude をもう 1 回呼ばない）。文か対象を直したら読み替え直し。
+// 自由対応は 200 字。「扱い確認」で監督役が今の状況に照らして読み替え（POST /api/drill/<id>/free、10〜13 秒）、扱い（表の手か、そのままの手のやり方。
+// 何も起きない文は「変化なし」）・相手・所要・押せない理由と今できる別の道（代案）を見せ、確かめてから実行（同じ文と本人なら Claude をもう 1 回
+// 呼ばない）。文か対象を直したら「再確認」。本人を選ばずに名前を書いた文は、決めた対象の名前を出す（T129）。
 // T126: 押せない手（決まりの表の理由・相手の連絡先が台帳に無い「相手なし」）は薄く（地を外し字を弱く。理由の字は読める濃さ）、区分の段の中で
 // 押せる手を先に（手の表の順は保つ）。本人を選ぶ前の本人の要る手は今の見た目のまま。本人を選ぶと手の段の上に打てる手の候補
 // （lib/drill/action-hints.ts。分かった事・頼み事・時計から、電話の手が全部押せない時は代替）。本人の詳細の候補を押すと、ここでその本人と手を選ぶ。
@@ -19,7 +20,7 @@
 // API・保存の形・前の訓練のメモと記録の手の表示は今のまま。出さない手は lib/drill/action-hints.ts の PANEL_HIDDEN）。
 
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { AiMark } from "@/components/person/parts";
 import { Button } from "@/components/ui/Button";
 import { PlayIcon, ReadIcon } from "@/components/ui/Icon";
@@ -41,7 +42,8 @@ import type { FreePlanView } from "@/lib/drill/http";
 import { ACTION_LABELS, ACTION_UI, CALL_STATUS_LABELS, DRILL_LABELS } from "@/lib/drill/labels";
 import type { DrillContact } from "@/lib/drill/view";
 import type { FictionKind } from "@/lib/drill/fiction";
-import { ActionHintRows, ActTime, DRILL_PICK_EVENT, FADED, GROUP_ROW, PICKED, type DrillPick } from "./ActionHints";
+import { useActPick } from "./act-pick";
+import { ActionHintRows, ActTime, FADED, GROUP_ROW, PICKED } from "./ActionHints";
 import { FictionalMark } from "./Fictional";
 import { ACTION_ICONS } from "./icons";
 
@@ -169,20 +171,16 @@ export function ActionPanel({
     setError(null);
   };
 
-  // 本人の詳細の候補を押したとき（T126）: その本人とその手を選び、この欄を見える所へ
-  useEffect(() => {
-    const on = (e: Event) => {
-      const d = (e as CustomEvent<DrillPick>).detail;
-      if (!d || !people.some((p) => p.id === d.person)) return;
-      setPerson(d.person);
-      setKind(d.kind);
-      setTarget(picksTarget(d.kind) && actionRow(d.kind).fixed ? FIXED : null);
-      setError(null);
-      root.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-    };
-    window.addEventListener(DRILL_PICK_EVENT, on);
-    return () => window.removeEventListener(DRILL_PICK_EVENT, on);
-  }, [people]);
+  // 本人の詳細から（1 つの口 components/drill/act-pick.ts）: 打てる手の候補（T126、本人と手）と連絡先の行（T132、本人と連絡の手と
+  // その連絡先）。その本人・手・相手を選び、この欄を見える所へ。相手が無ければ固定の相手のある手は固定の相手
+  useActPick((d) => {
+    if (!people.some((p) => p.id === d.person)) return;
+    setPerson(d.person);
+    setKind(d.kind);
+    setTarget(d.target ?? (picksTarget(d.kind) && actionRow(d.kind).fixed ? FIXED : null));
+    setError(null);
+    root.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  });
   const hintsNow = person ? (hints?.[person] ?? null) : null;
 
   const run = async () => {
@@ -398,7 +396,12 @@ export function ActionPanel({
             </Button>
             {reading && <Loader72 label={FREE_LABELS.reading} size={18} className="text-sm text-muted" />}
           </div>
-          {fresh && <FreePlanLine view={plan.view} />}
+          {fresh && (
+            <FreePlanLine
+              view={plan.view}
+              person={plan.view.person && plan.view.person !== person ? (people.find((p) => p.id === plan.view.person)?.name ?? null) : null}
+            />
+          )}
         </div>
       )}
 
@@ -430,19 +433,33 @@ export function ActionPanel({
   );
 }
 
-/** 自由対応の読み替え（T110）。読み替えた手（表の手か「自由」とやり方）・相手・所要（伸びた理由）・AI の 1 文と理由・押せない理由 */
-export function FreePlanLine({ view }: { view: FreePlanView }) {
+/**
+ * 自由対応の確かめの 1 行（T110・T129）。扱い（表の手か「扱い 電話」、何も起きない文は「変化なし」）・決めた対象（本人を選ばずに名前を書いた文）・
+ * 相手・所要（伸びた理由）・AI の印・押せない理由と今できる別の道（代案）・AI の 1 文と理由
+ */
+export function FreePlanLine({ view, person = null }: { view: FreePlanView; person?: string | null }) {
+  const alt = view.alt ?? null;
   return (
-    <div className="rounded bg-panel2 px-2 py-1.5 text-sm" data-free-plan-line data-free-as={view.as ?? "own"}>
+    <div
+      className="rounded bg-panel2 px-2 py-1.5 text-sm"
+      data-free-plan-line
+      data-free-as={view.idle ? "idle" : (view.as ?? "own")}
+    >
       <p className="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5 tabular-nums">
         <span>
-          <span className="text-xs text-muted">{view.as ? FREE_LABELS.read : FREE_LABELS.own}</span>{" "}
+          {!view.idle && <span className="text-xs text-muted">{FREE_LABELS.as} </span>}
           <span className="font-bold">{view.label}</span>
-          {view.way && <span className="ml-1">{view.way}</span>}
         </span>
-        <span>
-          <span className="text-xs text-muted">{FREE_LABELS.callee}</span> {view.callee ?? ACTION_UI.whole}
-        </span>
+        {person && (
+          <span data-free-person>
+            <span className="text-xs text-muted">{FREE_LABELS.person}</span> {person}
+          </span>
+        )}
+        {!view.idle && (
+          <span>
+            <span className="text-xs text-muted">{FREE_LABELS.callee}</span> {view.callee ?? ACTION_UI.whole}
+          </span>
+        )}
         <span data-free-minutes={view.minutes}>
           <span className="text-xs text-muted">{FREE_LABELS.minutes}</span> <span className="font-bold">{view.minutes}</span>{" "}
           {ACTION_UI.minutes}
@@ -456,6 +473,13 @@ export function FreePlanLine({ view }: { view: FreePlanView }) {
           </span>
         )}
       </p>
+      {alt && (
+        <p className="mt-0.5 flex items-baseline gap-1.5" data-free-alt>
+          <span className="shrink-0 text-xs text-muted">{FREE_LABELS.alt}</span>
+          {view.altAi && <AiMark small />}
+          <span className="min-w-0 break-words">{alt}</span>
+        </p>
+      )}
       {view.words && <p className="mt-0.5">{view.words}</p>}
       {view.reason && <p className="mt-0.5 text-xs text-muted">{view.reason}</p>}
     </div>

@@ -24,9 +24,11 @@
 // この画面で正解・不正解を出さない（採点は T22・T94）。手の前の状態（before）を残す。
 
 import type { ContactKind, DrillAction } from "../db/types.ts";
-import { actionRow, effectiveKind, FIXED_CALLEE_LABELS, type ActionEffect, type ActionRow } from "./action-catalog.ts";
+import { actionRow, effectiveKind, FIXED_CALLEE_LABELS, workRow, type ActionEffect, type ActionRow } from "./action-catalog.ts";
 import { ACTION_MINUTES } from "./action-table.ts";
-import { callLine, decideWorldReply, WORLD_REPLY_LABELS, WORLD_REPLY_TEXTS, type WorldAsk, type WorldReplyStatus } from "./world-reply.ts";
+import { callLine, decideWorldReply, WORLD_ODDS, WORLD_REPLY_LABELS, WORLD_REPLY_TEXTS, type WorldAsk, type WorldReplyStatus } from "./world-reply.ts";
+import { atHomeOf, whereOf } from "./free-situation.ts";
+import { NO_CALL } from "./event-catalog.ts";
 import { DRILL_END_MINUTE, ZERO_COUNTS } from "./clock.ts";
 import {
   advance,
@@ -164,6 +166,8 @@ export type ActInput = {
   memo?: string;
   text?: string;
   contacts?: ReadonlyArray<ActTarget>;
+  /** 自由対応で本人を選ばずに名前を書いた文の対象の連絡先を読む口（T129。保存の所が渡す） */
+  contactsOf?: (person: string) => Promise<ReadonlyArray<ActTarget>>;
 };
 
 /** 本人役の通話（T18 の personaCallReply）に渡す物。出ると決まったときだけ呼ぶ */
@@ -255,6 +259,41 @@ function lineAt(s: DrillState, person: string | null, hour: number): Pick<WorldA
   if (!person) return undefined;
   const f = termFactsOf(s, person, Math.round(hour * 60));
   return { selfLine: f.selfLine, selfMobile: f.selfMobile };
+}
+
+/**
+ * そのままの自由対応の返事（T129）。何も起きない文は「変化なし」。その本人の家にいて本人に向かう手・机上の手はできる（実施）。
+ * 電話は線の様子（通話不可なら届かない。ほかは事業所・市役所への電話と同じ確率）、訪問は家の前の道（通行止なら着けない。警戒の中は確率が下がる）。
+ * 文は起きたこと（AI）か固定の文
+ */
+function decideOwn(
+  own: Pick<FreePlan, "way" | "callee" | "outcome" | "idle">,
+  person: string | null,
+  world: WorldState,
+  here: boolean,
+  roll: () => number,
+  /** 本人の家の通信（T125。決まりの表と同じ事実） */
+  line?: Pick<WorldAsk, "selfLine" | "selfMobile">,
+): Decision {
+  if (own.idle) return fixed("unchanged", true, null);
+  const done: Decision = { ...fixed("done", true, null), text: own.outcome ?? ACTION_STATUS_TEXTS.done };
+  const toPerson = own.callee === null || own.callee === "self";
+  if (own.way === "desk" || (here && (own.way === "visit" || toPerson))) return done;
+  if (own.way === "phone") {
+    // 通信の段（T125、lib/drill/comms.ts）: 本人の家は固定電話も携帯も使えない家だけ届かない。家族・支援者の携帯は全域の電波不通で届かない。
+    // 世界の電話の規制は全部を止めない（つながる分だけ）
+    if (own.callee === "self") {
+      const sl = line?.selfLine ?? (callLine(world, person, "self") === "down" && world.phone !== "down" ? "noCall" : "ok");
+      if (sl !== "ok") return fixed("noLine", false, sl === "noRadio" ? "携帯 電波不通" : `家の電話 ${NO_CALL}`);
+    } else if (world.radio === "down" && (own.callee === null || own.callee === "family" || own.callee === "supporter" || own.callee === "welfare_commissioner")) {
+      return fixed("noLine", false, "携帯 電波不通");
+    }
+    return roll() < WORLD_ODDS.connect[world.phone] ? done : fixed("noLine", false, null);
+  }
+  const road = person ? world.roads.find((r) => r.person === person && !r.open) : undefined;
+  if (road) return fixed("blocked", false, `${road.label} 通行止`);
+  const warning = (world.alertLevel ?? 0) >= 4 || world.tsunami === "evacuate" || world.flood;
+  return roll() < (warning ? WORLD_ODDS.reach.warning : WORLD_ODDS.reach.clear) ? done : fixed("turnedBack", false, null);
 }
 
 /** 監督に言い換えを頼める返事（世界が答える物）。本人・家族が出た・出ないは本人役の物なので頼まない */
@@ -436,7 +475,7 @@ export function applyResult(state: DrillState, id: string, result: ActionResult)
   const rec = state.actions[i];
   let world = state.world;
   if (rec.person && result.cleared.length > 0) world = clearMarks(world, rec.person, result.cleared).world;
-  if (result.ok) world = applyEffects(world, rec, result, actionRow(effectiveKind(rec)));
+  if (result.ok) world = applyEffects(world, rec, result, workRow(rec));
   // T93: 往復と訪問の頼み事を積み、時計は往復の終わりまで（作り直しでも同じ）
   world = withResultAsks(world, rec.person, result);
   // 連続の時計は 72 時間で止める（T123。手が 72 時間をまたいで終わっても時計は 72 時間。10 分版は刻みの道で時計を見ない）
@@ -482,7 +521,7 @@ export async function act(
       ? draft.plan
       : await planFree(
           { ...clean, participants: state.participants },
-          { text, person: raw.person, contacts: raw.contacts ?? [] },
+          { text, person: raw.person, contacts: raw.contacts ?? [], ...(raw.contactsOf ? { contactsOf: raw.contactsOf } : {}) },
           hooks.free,
         );
     if (free.called && !fresh) start = { ...start, world: countFree(start.world) };
@@ -490,11 +529,13 @@ export async function act(
     if (free.gated?.length) start = { ...start, world: tallyGate(start.world, "free", free.gated) };
     if (free.block) throw new ActionBlocked(free.block, free.called && !fresh);
     const as = free.as ?? "free";
-    input = { ...raw, kind: as, person: as === "evacuate_self" ? null : raw.person, target: free.target };
+    // 本人を選ばずに名前を書いた文は、その人を対象に（T129）
+    input = { ...raw, kind: as, person: as === "evacuate_self" ? null : (free.person ?? raw.person), target: free.target };
   }
   const own = free !== null && free.as === null ? free : null;
   const kind = input.kind;
-  const row = actionRow(kind);
+  // そのままの手で効き目のある物は、その効き目の行（T129。届いた・人が向かう）
+  const row = own ? workRow({ kind: "free", way: own.way, effect: own.effect ?? null }) : actionRow(kind);
   const callee = own ? own.callee : calleeOf(input);
   // 時間と状況で変わる手（T110）: 決まりを選んだ訓練は、押せない手を断り、所要に足し分を足す（無ければ表の分のまま）
   const term = own
@@ -532,6 +573,8 @@ export async function act(
           ...(free.reason ? { reason: free.reason } : {}),
           ...(own?.way ? { way: own.way } : {}),
           ...(own?.words ? { words: own.words } : {}),
+          ...(own?.effect ? { effect: own.effect } : {}),
+          ...(own?.idle ? { idle: true as const } : {}),
           judge: free.judge,
         }
       : {}),
@@ -543,11 +586,13 @@ export async function act(
   const hours = scenarioOf(s.scenario).hours;
   const ticks: Tick[] = [];
   const held: { decided: Decision | null } = { decided: null };
-  // そのままの手（T110）は世界の返事を確率で決めない。起きたこと（AI）か固定の文で「実施」。世界は変えない
+  // そのままの手（T110）は、事実と確率で結果を決め（T129。電話は線の様子、訪問は家の前の道、その本人の家にいれば会える）、
+  // 起きたこと（AI）か固定の文で「実施」。何も起きない文は「変化なし」
   const pickupFactor = term?.pickup ?? 1;
+  const here = own ? atHomeOf(whereOf(start.actions), input.person) : false;
   const decide = (world: WorldState, hour: number): Decision =>
     own
-      ? { ...fixed("done", true, null), text: own.outcome ?? ACTION_STATUS_TEXTS.done }
+      ? decideOwn(own, input.person, world, here, roll, lineAt({ ...s, world }, input.person, hour))
       : decideAction(input, world, hour, roll, pickupFactor, lineAt({ ...s, world }, input.person, hour));
   let words: ReplyWords[] = [];
   let incidents: ReadonlyArray<DrillIncident> = [];
@@ -654,7 +699,8 @@ export async function act(
   const reworded = gate(words.find((w) => w.id === record.id)?.text.trim() ?? "") ?? "";
   if (dropped.length > 0) s = { ...s, world: tallyGate(s.world, "persona", dropped) };
   // 表の手に読み替えた自由対応は Claude の現場の言い方。そのままの手は起きたこと（AI）が返事の文
-  const said = own ? (own.outcome?.trim() ?? "") : (free?.words?.trim() ?? "");
+  // 届かなかったそのままの手は、起きたこと（届いた前の文）を使わない（T129）
+  const said = own ? (ok ? (own.outcome?.trim() ?? "") : "") : (free?.words?.trim() ?? "");
   const clears = ok && hasEffect(row, "clearMarks") && input.person;
   const keys = row.effects.flatMap((e) => (e.kind === "clearMarks" ? e.keys : []));
   const arriveAt = ok ? arriveAtOf(row, endMinute, roll) : undefined;

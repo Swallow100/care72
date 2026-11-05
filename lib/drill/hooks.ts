@@ -269,6 +269,7 @@ export function createTalkHook(deps: { load: () => Promise<ReadonlyMap<string, P
             first: t.first,
             lines: t.lines,
             said,
+            ...(t.incoming ? { incoming: true } : {}),
           },
           persona,
         ),
