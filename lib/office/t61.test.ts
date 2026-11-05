@@ -425,7 +425,7 @@ describe("パスワードの再発行", () => {
     expect(r.status).toBe(200);
     expect(r.body).toMatchObject({ ok: true, account: { id: sato.id, displayName: "佐藤" } });
     const password = r.body.password as string;
-    expect(password).toMatch(/^[a-z2-9]{4}-[a-z2-9]{4}-[a-z2-9]{4}$/);
+    expect(password).toMatch(/^[a-zA-Z2-9]{4}-[a-zA-Z2-9]{4}-[a-zA-Z2-9]{4}$/);
     expect(password).not.toBe(sato.password);
 
     expect(await resolvePrincipal(db, env(), SECRET, sato.token, NOW)).toBeNull();

@@ -116,12 +116,8 @@ export default async function CaseloadPage({ searchParams }: Props) {
     if (principal.office) {
       const place = await loadOfficePlace(env.DB, principal.office.id).catch(() => null);
       // 地域（中心と広さ、T148）: ピンが無いときの初めの表示と「地域」のボタン。ピンがあれば初めはピンが全部入る表示のまま
-      map = {
-        center: place?.center ?? null,
-        region: place ? mapRegionOf(place) : null,
-        fictional: principal.office.kind === "demo",
-        nowcast: nowcastOn(env),
-      };
+      const region = place ? mapRegionOf(place) : null;
+      map = { center: place?.center ?? null, region, fictional: principal.office.kind === "demo", nowcast: nowcastOn(env) };
     }
   } catch (e) {
     console.error("担当一覧を読めない", e);
