@@ -122,8 +122,9 @@ describe("保存と読み出し", () => {
   it("ケアマネの役だけ。行政・医療班は 403、ログインなしは 401、知らない値は画面へ戻して form_error", async () => {
     expect(await planFormPost(db, null, form("cao"))).toEqual({ status: 401 });
     expect(await planFormPost(db, principal({ role: "medical", office: null }), form("cao"))).toEqual({ status: 403 });
-    expect(await planFormPost(db, principal(), form("tokyo"))).toEqual({ status: 303, location: "/office?form_error=bad#plan-form" });
-    expect(await planFormPost(db, principal(), form("cao"))).toEqual({ status: 303, location: "/office#plan-form" });
+    // T147: 使用様式は書類の一覧で選ぶ。戻り先は書類の一覧のその様式
+    expect(await planFormPost(db, principal(), form("tokyo"))).toEqual({ status: 303, location: "/forms?form_error=bad" });
+    expect(await planFormPost(db, principal(), form("cao"))).toEqual({ status: 303, location: "/forms?form=cao" });
     expect((await loadPlanForm(db, OFFICE)).id).toBe("cao");
   });
 });

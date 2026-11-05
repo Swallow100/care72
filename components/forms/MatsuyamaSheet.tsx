@@ -273,11 +273,11 @@ function ShelterRow({ s, id, note }: { s: Sheet; id: "pre" | "near" | "city"; no
       </div>
       <F s={s} k={place} size="lg" bare />
       <F s={s} k={`shelter.${id}.means`} />
-      {/* 様式は「【時間】（　）分」 */}
+      {/* 様式は「【時間】（　）分」。値は括弧の中に 1 行で（FormCell の値の行は塊なので、括弧と分が別の行に割れて 3 行になっていた。T142） */}
       <div data-field={minutes}>
         <span className="f-l">{matsuyamaField(minutes).label}</span>
         <span className="f-v">
-          （<FormCell cell={s.cells[minutes]} />）分
+          （{s.cells[minutes].kind === "value" ? <span className="nowrap">{cellText(s.cells[minutes])}</span> : <FormCell cell={s.cells[minutes]} />}）分
         </span>
       </div>
     </>

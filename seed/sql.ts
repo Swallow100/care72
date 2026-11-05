@@ -115,6 +115,11 @@ export function checkPeopleStatements(): string[] {
 export type SeedOptions = {
   /** アカウントの id → パスワードのハッシュ（lib/auth/password.ts の形）。平文は受けない。無ければ null のまま（ログインできない） */
   passwordHashes?: Readonly<Record<string, string>>;
+  /**
+   * 入れる人（既定は種の 10 人 SEED_PEOPLE）。テストだけが T142 より前の空きの多い形（seed/sparse.ts の SPARSE_PEOPLE）を渡す。
+   * 配信の種（seed/build-sql.ts）と毎朝の戻し（lib/seed/reset.ts）はいつも SEED_PEOPLE
+   */
+  people?: readonly SeedPerson[];
 };
 
 /** 種で消さない表: 世界の部屋の ID（T50。消すと次の仮想の訓練で Agent を作り直し、前の Agent が残る）と、アンケートの Web 版（T42）。本物のケアマネの答えが入るので、配信の作り直し（tools/deploy/rebuild-remote.sh の seed）でも残す。
@@ -131,7 +136,7 @@ export function seedStatements(opts: SeedOptions = {}): string[] {
   for (const a of SEED_ACCOUNTS) {
     out.push(insert("accounts", { ...a, password_hash: hashes[a.id] ?? a.password_hash, created_at: SEED_AT }));
   }
-  for (const p of SEED_PEOPLE) out.push(...personStatements(p));
+  for (const p of opts.people ?? SEED_PEOPLE) out.push(...personStatements(p));
   // 確認用の事業所の 10 人（T144。デモ事業所の 10 人の写し）
   out.push(...checkPeopleStatements());
   return out;

@@ -1,7 +1,9 @@
 // ケアマネの追加（docs/tasks/T30.md）。事業所の管理者だけ。D1 と OfficeActor を引数で受け取る（テストで node:sqlite を渡す）。
 //
-// 初期パスワードはサーバーが作る（でたらめな 12 字＋区切り。見分けにくい 0・o・1・l・i を使わない）。
-// 表に入れるのは lib/auth/password.ts のハッシュだけ。平文はこの関数の返り値にだけあり、応答で画面に 1 回だけ出す。
+// 初期パスワードはサーバーが作る（でたらめな 12 字＋区切り。見分けにくい 0・o・1・l・i・I・L・O を使わない。大文字・小文字・区切りの記号を
+// 必ず含み、lib/auth/password-rule.ts の決まりを通る。T148）。管理者がパスワードを決めて足すこともできる（T148。決まりは同じ 1 か所）。
+// 表に入れるのは lib/auth/password.ts のハッシュだけ。作った平文はこの関数の返り値にだけあり、応答で画面に 1 回だけ出す。
+// 管理者が決めたパスワードは返さない（管理者はもう知っている。応答・画面・ログに平文を残さない）。どちらも初期パスワードの印（T114）は 1。
 // 平文は表・経過・ログ・URL に出さない。ファイルにも書かない。
 // 足したケアマネは管理者でない（is_office_admin 0）。ログインは ID と初期パスワード（lib/auth/principal.ts の login）。
 // 審査員（壁の中、lib/auth/wall.ts）が足した人には印（judge_made、T81）を付ける。その人で入っても審査員と同じ壁。
@@ -11,16 +13,27 @@
 import type { D1Database } from "@cloudflare/workers-types";
 import { isFixedAccount } from "../auth/demo.ts";
 import { hashPassword } from "../auth/password.ts";
+import { passwordProblems } from "../auth/password-rule.ts";
 import type { StaffInput } from "./forms.ts";
 import { careManagerName } from "./people.ts";
 import type { OfficeActor } from "./scope.ts";
 
-const ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789";
+const ALPHABET = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789";
 const GROUPS = 3;
 const GROUP_LEN = 4;
 
-/** 初期パスワード（例の形 abcd-efgh-jkmn）。一様に選ぶため、ALPHABET の長さの倍数を超えるバイトは捨てる */
+/**
+ * 初期パスワード（例の形 aBcd-eFgh-jkm2）。一様に選ぶため、ALPHABET の長さの倍数を超えるバイトは捨てる。
+ * 大文字か小文字が 1 字も無い物（12 字で千に 1 ほど）は作り直し、決まり（lib/auth/password-rule.ts）を必ず通す
+ */
 export function generateInitialPassword(): string {
+  for (;;) {
+    const p = randomPassword();
+    if (passwordProblems(p).length === 0) return p;
+  }
+}
+
+function randomPassword(): string {
   const limit = 256 - (256 % ALPHABET.length);
   const out: string[] = [];
   while (out.length < GROUPS * GROUP_LEN) {
@@ -33,8 +46,12 @@ export function generateInitialPassword(): string {
   return groups.join("-");
 }
 
+/**
+ * password は表に入れたパスワードの平文（作った物か、管理者が決めた物）。chosen は管理者が決めたか。
+ * 応答に載せるのは作った物だけ（lib/office/http.ts。決めた物は管理者が知っているので返さない）
+ */
 export type AddCareManagerResult =
-  | { ok: true; account: { id: string; displayName: string; loginId: string }; password: string }
+  | { ok: true; account: { id: string; displayName: string; loginId: string }; password: string; chosen: boolean }
   | { ok: false; error: "forbidden" | "login_taken" | "login_unavailable" };
 
 /** ID がもう使われているときの断り。同じ事業所なら login_taken、ほかの事業所（事業所なしの行も）なら login_unavailable。空いていれば null */
@@ -63,7 +80,9 @@ export async function addCareManager(
   const taken = await loginIdRefusal(db, actor.officeId, input.loginId);
   if (taken) return { ok: false, error: taken };
 
-  const password = generateInitialPassword();
+  // 決めたパスワードがあればそれ（parseStaffInput が決まりで確かめた値）、無ければ作る
+  const chosen = input.password ?? null;
+  const password = chosen ?? generateInitialPassword();
   const hash = await hashPassword(password, opts.iterations ? { iterations: opts.iterations } : {});
   const id = `acct-${crypto.randomUUID()}`;
   let inserted: number;
@@ -93,7 +112,7 @@ export async function addCareManager(
     throw e;
   }
   if (inserted === 0) return { ok: false, error: (await loginIdRefusal(db, actor.officeId, input.loginId)) ?? "login_taken" };
-  return { ok: true, account: { id, displayName: input.displayName, loginId: input.loginId }, password };
+  return { ok: true, account: { id, displayName: input.displayName, loginId: input.loginId }, password, chosen: chosen !== null };
 }
 
 // ---------- 名前の変更・管理者の付け外し・停止と再開・パスワードの再発行（T61） ----------
@@ -325,21 +344,23 @@ export async function setCareManagerDisabled(
   return ok ? { ok: true, changed: true } : { ok: false, error: "conflict" };
 }
 
+/** password は表に入れたパスワードの平文、chosen は管理者が決めたか（応答に載せるのは作った物だけ。lib/office/http.ts） */
 export type ResetPasswordResult =
-  | { ok: true; account: { id: string; displayName: string }; password: string }
+  | { ok: true; account: { id: string; displayName: string }; password: string; chosen: boolean }
   | { ok: false; error: StaffChangeError };
 
 /**
  * 初期パスワードを作り直す（忘れた人に）。ハッシュを入れ、平文はこの返り値にだけ（応答で 1 回だけ出す。表・経過・ログ・URL に出さない）。
  * パスワードの指紋（pv）が変わるので、その人の今のセッションは次の要求で切れる。自分は断る（自分のパスワードは変更の欄から）。
- * opts.iterations はテストだけ
+ * chosen は管理者が決めたパスワード（再設定、T148。決まりで確かめた値）。あればそれをハッシュにし、平文は返さない。
+ * 経過の言葉はどちらも「再発行」（平文は書かない）。opts.iterations はテストだけ
  */
 export async function resetCareManagerPassword(
   db: D1Database,
   actor: OfficeActor,
   accountId: string,
   at: string,
-  opts: { iterations?: number } = {},
+  opts: { iterations?: number; chosen?: string } = {},
 ): Promise<ResetPasswordResult> {
   const no = refuse(actor, accountId);
   if (no) return { ok: false, error: no };
@@ -347,7 +368,8 @@ export async function resetCareManagerPassword(
   if (!t) return { ok: false, error: "not_found" };
   if (outOfReach(actor, t)) return { ok: false, error: "fixed" };
   if (accountId === actor.authorId) return { ok: false, error: "self" };
-  const password = generateInitialPassword();
+  const chosen = opts.chosen ?? null;
+  const password = chosen ?? generateInitialPassword();
   const hash = await hashPassword(password, opts.iterations ? { iterations: opts.iterations } : {});
   const ok = await guardedChange(db, actor, {
     accountId,
@@ -360,5 +382,5 @@ export async function resetCareManagerPassword(
     at,
   });
   if (!ok) return { ok: false, error: "conflict" };
-  return { ok: true, account: { id: t.id, displayName: careManagerName(t.display_name) }, password };
+  return { ok: true, account: { id: t.id, displayName: careManagerName(t.display_name) }, password, chosen: chosen !== null };
 }

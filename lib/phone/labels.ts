@@ -1,7 +1,7 @@
 // 本人・家族のスマホの準備（ID・ホーム画面・通知）の言葉（T149）。本人・家族の画面はやさしい日本語（{漢字|よみ}。lib/forms/easy-words.ts の easy）。
 // ケアマネの画面（本人のページのスマホの面）は 2〜4 字の漢語（PHONE_SECTION_LABELS）。
 
-import { PASSWORD_RULE_MIN, type PasswordRuleProblem } from "../auth/password-rule.ts";
+import { PASSWORD_MIN, type PasswordPart } from "../auth/password-rule.ts";
 import type { PhoneAccountError } from "./account.ts";
 
 /** 本人・家族の頁の上の準備の欄 */
@@ -18,7 +18,7 @@ export const SETUP_EASY = {
   // ID の段
   accountLead: "ID と パスワードを {作|つく}ると {別|べつ}の スマホからも {入|はい}れます",
   loginId: "ID（{英字|えいじ}・{数字|すうじ}）",
-  password: `パスワード（${PASSWORD_RULE_MIN}{字|じ} {以上|いじょう}・{大文字|おおもじ}・{小文字|こもじ}・{記号|きごう}）`,
+  password: `パスワード（${PASSWORD_MIN}{字|じ} {以上|いじょう}・{大文字|おおもじ}・{小文字|こもじ}・{記号|きごう}）`,
   password2: "もう {一度|いちど}",
   create: "{作|つく}る",
   /** ID の段を後に回す（この表示の間だけ） */
@@ -52,15 +52,15 @@ const ACCOUNT_ERROR_EASY: Record<PhoneAccountError, string> = {
   mismatch: "2つの パスワードが {違|ちが}います",
 };
 
-const RULE_EASY: Record<PasswordRuleProblem, string> = {
-  length: `${PASSWORD_RULE_MIN}{字|じ} {以上|いじょう}`,
+const RULE_EASY: Record<PasswordPart, string> = {
+  length: `${PASSWORD_MIN}{字|じ} {以上|いじょう}`,
   upper: "{大文字|おおもじ}",
   lower: "{小文字|こもじ}",
   symbol: "{記号|きごう}",
 };
 
 /** 断りの理由の言葉（パスワードの足りない物は並べて足す） */
-export function phoneAccountErrorWords(error: PhoneAccountError, problems?: readonly PasswordRuleProblem[]): string {
+export function phoneAccountErrorWords(error: PhoneAccountError, problems?: readonly PasswordPart[]): string {
   const base = ACCOUNT_ERROR_EASY[error];
   if (error !== "password" || !problems || problems.length === 0) return base;
   return `${base}（${problems.map((p) => RULE_EASY[p]).join("・")}）`;

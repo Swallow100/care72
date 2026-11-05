@@ -58,8 +58,13 @@ describe("migration 0017（offices の地図の中心）", () => {
     const before = d.prepare("SELECT * FROM offices").all();
     for (const n of names().filter((n) => n >= "0017_")) d.exec(readFileSync(new URL(n, MIGRATIONS), "utf8"));
     const after = d.prepare("SELECT * FROM offices").all() as Array<Record<string, unknown>>;
-    // 0027（T115）の試用事業所の印も後から足す列（前からある行は 0）。0030（T125）の事業所の区域も後から足す列（前からある行は NULL）
-    expect(after.map(({ center_lat: _a, center_lng: _b, judge_sandbox: _c, hazards: _d, ...rest }) => rest)).toEqual(before);
+    // 0027（T115）の試用事業所の印も後から足す列（前からある行は 0）。0030（T125）の事業所の区域も後から足す列（前からある行は NULL）。
+    // 0036（T148）の事業所の情報と地域の列も後から足す列（前からある行は NULL。lib/office/t148.test.ts）
+    expect(
+      after.map(
+        ({ center_lat: _a, center_lng: _b, judge_sandbox: _c, hazards: _d, address: _e, phone: _f, fax: _g, office_number: _h, region_cities: _i, region_km: _j, ...rest }) => rest,
+      ),
+    ).toEqual(before);
     expect(after.map((r) => r.hazards)).toEqual([null]);
     expect(after.map((r) => [r.center_lat, r.center_lng])).toEqual([[null, null]]);
     expect(after.map((r) => r.judge_sandbox)).toEqual([0]);
@@ -171,7 +176,8 @@ describe("事業所の地域の保存（T68 の 4）", () => {
     expect(p?.center).toEqual(DEFAULT_CENTER);
     expect(p?.towns.length).toBeGreaterThan(0);
     expect(p?.towns.every((t) => t.trim() !== "")).toBe(true);
-    expect(await loadOfficePlace(db, "office-partner")).toEqual({ city: "松山市", center: null, towns: [] });
+    // 地域の市の並びと広さ（T148）も付く（周りの市が無ければ主な市だけ、広さは自動の null）
+    expect(await loadOfficePlace(db, "office-partner")).toEqual({ city: "松山市", center: null, towns: [], cities: ["松山市"], km: null });
     expect(await loadOfficePlace(db, "office-none")).toBeNull();
   });
 });

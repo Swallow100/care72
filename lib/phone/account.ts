@@ -7,7 +7,7 @@
 //   1 本人・1 連絡先に 1 つ。もうあれば ID とパスワードを作り直す（リンクを持つ人はもう本人として送れるので、作り直しで増える力は無い。
 //   忘れた人がリンクから入り直して作り直せる）。
 //   ID はケアマネの ID と同じ形（英小文字・数字・. _ -、3〜32 字。lib/office/forms.ts の LOGIN_ID_PATTERN）で、ケアマネの ID とも
-//   ほかの本人・家族の ID とも重ならない。パスワードはケアマネと同じ決まり（lib/auth/password-rule.ts）と、2 回の入力の一致。
+//   ほかの本人・家族の ID とも重ならない。パスワードはケアマネと同じ決まり（lib/auth/password-rule.ts。T148 の 1 か所）と、2 回の入力の一致。
 // 通る: 作った時のリンクの版と時刻が、本人の行の今の版と時刻と同じ間だけ（再発行・一覧から外すと通らない。リンクの期限の 180 日が
 //   過ぎても、版が同じなら通る）。家族用は連絡先の行がその本人の物で答えられる種類（lib/qr/phone-link-store.ts の linkTarget と同じ）。
 // 見られるのは、その本人（家族用はその連絡先として、その本人）だけ。役は本人スマホ・家族スマホのまま（lib/auth/principal.ts）。
@@ -17,7 +17,7 @@ import type { D1Database } from "@cloudflare/workers-types";
 import type { Principal } from "../auth/principal.ts";
 import { isReservedLoginId } from "../auth/demo.ts";
 import { hashPassword, MAX_PASSWORD_LENGTH } from "../auth/password.ts";
-import { passwordRuleProblems, type PasswordRuleProblem } from "../auth/password-rule.ts";
+import { passwordProblems, type PasswordPart } from "../auth/password-rule.ts";
 import type { ConsentKind, ConsentStatus, PhoneAccountRow } from "../db/types.ts";
 import { LOGIN_ID_PATTERN, normalizeLoginId } from "../office/forms.ts";
 import { issuedSec, linkTarget, type LinkTarget } from "../qr/phone-link-store.ts";
@@ -48,7 +48,7 @@ export const PHONE_ACCOUNT_STATUS: Record<PhoneAccountError, number> = {
 
 export type PhoneAccountResult =
   | { ok: true; loginId: string; created: boolean }
-  | { ok: false; error: PhoneAccountError; problems?: PasswordRuleProblem[] };
+  | { ok: false; error: PhoneAccountError; problems?: PasswordPart[] };
 
 /** ID の形（ケアマネの ID と同じ決まり）。違えば null */
 export function parsePhoneLoginId(raw: unknown): string | null {
@@ -140,7 +140,7 @@ export async function savePhoneAccount(
   if (!loginId) return { ok: false, error: "login_id" };
   const password = typeof input.password === "string" ? input.password : "";
   if (password.length > MAX_PASSWORD_LENGTH) return { ok: false, error: "password", problems: ["length"] };
-  const problems = passwordRuleProblems(password);
+  const problems = passwordProblems(password);
   if (problems.length > 0) return { ok: false, error: "password", problems };
   if (typeof input.password2 !== "string" || input.password2.normalize("NFC") !== password.normalize("NFC")) {
     return { ok: false, error: "mismatch" };

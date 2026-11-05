@@ -3,7 +3,8 @@
 // 未確認・不同意・行なしは作れない（新しい人は全部「未確認」で入る。T69a）。
 // 本人用と家族用で同じ決まり（家族の頁の経過は今どおり「支援者提供」の同意で出し分ける。lib/signals/family.ts）。
 // 画面（本人のページのスマホの面・スマホ入口の画面）はこれで押せなくし、理由「同意なし」。本人・家族の ID 作り（lib/phone/account.ts）もこれで断る。
-// 発行の API のサーバーの決まりは T147 が入れる（同じ関数を使うと揃う）。
+// 発行の API のサーバーの決まりは T147（lib/qr/phone-link-http.ts の PHONE_LINK_CONSENT、同じ「計画共有」）。同じ種類であることをテストで見る
+// （lib/phone/t149.test.ts。ここから phone-link-http を読むと lib/auth の読み込みが輪になるので、字で持つ）。
 
 import type { ConsentKind, ConsentStatus } from "../db/types.ts";
 

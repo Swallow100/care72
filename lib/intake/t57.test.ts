@@ -20,7 +20,6 @@ import { loadPersonPage, toPersonView } from "../person.ts";
 import { findLeaks, pseudonymize } from "../pseudonym/index.ts";
 import { isSignalWriterKind } from "../signals/labels.ts";
 import { toTriagePerson } from "../triage/from-ledger.ts";
-import { SEED_PEOPLE } from "../../seed/people.ts";
 import type { IntakeChange } from "./changes.ts";
 import { editBlockers, editChanges, editDraft, orderClash, removalNames } from "./edit.ts";
 import { INTAKE_FIELDS, normalizeValue } from "./fields.ts";
@@ -28,6 +27,8 @@ import { markClockIds } from "./marks.ts";
 import { intakePropsOf } from "./props.ts";
 import { CONTACT_KINDS_FOR_EDIT, CONTACT_KINDS_FOR_INTAKE, DEVICE_KINDS_FOR_INTAKE, HAZARD_KINDS_FOR_INTAKE } from "./schema.ts";
 import { contactOrderClash, saveIntake, SaveRequestSchema, type SaveRequest } from "./save.ts";
+// T142 で種の台帳を埋めた。このテストは空いた欄を前提にするので、T142 より前の空きの多い形（seed/sparse.ts）を使う
+import { SPARSE_PEOPLE } from "../../seed/sparse.ts";
 
 const cm: Principal = {
   role: "care_manager",
@@ -47,7 +48,7 @@ let db: D1Database;
 
 beforeEach(() => {
   sqlite = migratedSqlite();
-  for (const s of seedStatements()) sqlite.exec(s);
+  for (const s of seedStatements({ people: SPARSE_PEOPLE })) sqlite.exec(s);
   db = d1FromSqlite(sqlite);
 });
 
@@ -233,7 +234,7 @@ describe("連絡先の種類と距離・migration 0008（T57 の 2）", () => {
   });
 
   it("新しい種類は Claude に名前でない役割名で渡り、名前・電話・自由記入の名前は残らない（findLeaks）", () => {
-    const base = SEED_PEOPLE.find((p) => p.person.id === "p-05")!;
+    const base = SPARSE_PEOPLE.find((p) => p.person.id === "p-05")!;
     const blank = { reach: null, emergency_order: null, supporter_order: null, night_ok: null, has_car: null, has_smartphone: null };
     const extra = [
       { ...blank, id: "c-05-o", kind: "oxygen_supplier" as const, relation: null, name: "架空酸素", phone: "090-0000-0071", note: null },

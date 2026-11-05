@@ -34,13 +34,15 @@ import { familyLogBody } from "./labels.ts";
 import type { Delivery } from "./outbox.ts";
 import { allFamilyWords } from "./phrases.ts";
 import { saveSignal, signalScope } from "./save.ts";
+// T142 で種の台帳を埋めた。このテストは空いた欄を前提にするので、T142 より前の空きの多い形（seed/sparse.ts）を使う
+import { SPARSE_PEOPLE } from "../../seed/sparse.ts";
 
 let sqlite: DatabaseSync;
 let db: ReturnType<typeof d1FromSqlite>;
 
 beforeEach(() => {
   sqlite = migratedSqlite();
-  for (const s of seedStatements()) sqlite.exec(s);
+  for (const s of seedStatements({ people: SPARSE_PEOPLE })) sqlite.exec(s);
   db = d1FromSqlite(sqlite);
 });
 afterEach(() => sqlite.close());
@@ -524,7 +526,8 @@ describe("画面の静的な描画", () => {
     expect(text(view({ step: "question", id: "injured", answers: {} }, screen))).toContain("お母さんは けがを して いますか");
     const after = view({ step: "question", id: "water", answers: { body: { choice: "breath", via: "press" } } }, screen);
     expect(after.match(/data-emergency/g)).toHaveLength(1);
-    expect(after).not.toContain("phone-fill-");
+    // 答えで画面を赤くしない（T137b から印のある選択肢は面を塗るので、選択肢の塗りのほかに赤の面が無いことを見る。水の問いに赤の印は無い）
+    expect(after).not.toContain("phone-fill-urgent");
     // 山田さんの台帳には機器がある（酸素）
     expect(screen.hasDevice).toBe(true);
   });

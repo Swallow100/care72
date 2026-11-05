@@ -1,7 +1,7 @@
 import "@/components/forms/paper.css";
 import "@/components/forms/form9-paper.css";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
-import { CountLabel, countClass } from "@/components/ui/Tag";
+import { CountLabel, countClass, Mark } from "@/components/ui/Tag";
 import { FormAbout } from "@/components/forms/FormAbout";
 import { FillToggle, wantsFill } from "@/components/forms/FillToggle";
 import { Form9Paper, form9Blanks } from "@/components/forms/Form9Paper";
@@ -12,10 +12,12 @@ import { PrintButton } from "@/components/ui/PrintButton";
 import { FormsTabs } from "@/components/ui/Tabs";
 import { Form9Report } from "@/components/forms/Form9Report";
 import { Form9Table } from "@/components/forms/Form9Table";
+import { Form9Fill } from "@/components/forms/Form9Fill";
+import { form9Slots, loadForm9Entries, withForm9Entries } from "@/lib/forms/form9-fill";
 import { todayJst } from "@/lib/age";
 import { requirePage } from "@/lib/auth/server";
 import { DOCUMENT_CATALOG } from "@/lib/forms/catalog";
-import { colorCounts, DISASTER_ORDER_LABELS, FORM9_TITLE, NORMAL_ORDER_LABELS } from "@/lib/forms/form9";
+import { colorCounts, DISASTER_ORDER_LABELS, NORMAL_ORDER_LABELS } from "@/lib/forms/form9";
 import { form9Scope, loadForm9, loadSituation, type Form9Data } from "@/lib/forms/form9-db";
 import { FORM9_CSV_PATH, parseEdit, parseError, parseSort, sortRows } from "@/lib/forms/form9-href";
 import { form9Report, REPORT_COLORS, tally } from "@/lib/forms/form9-report";
@@ -25,6 +27,9 @@ import { COLOR_TONES, formatJst } from "@/lib/person";
 
 // D1 を毎回読む
 export const dynamic = "force-dynamic";
+
+/** 様式 9 の画面の見出し（T147。ひな形の題「災害時利用者一覧表（安否確認優先順位）」を 2 つに） */
+const FORM9_HEADING = { title: "災害時利用者一覧表", sub: "安否確認優先順位" } as const;
 
 type Props = {
   searchParams: Promise<{ sort?: string | string[]; edit?: string | string[]; error?: string | string[]; print?: string | string[]; fill?: string | string[] }>;
@@ -43,9 +48,15 @@ export default async function Form9Page({ searchParams }: Props) {
   const scope = form9Scope(principal);
 
   let data: Form9Data | null;
+  let entries: Awaited<ReturnType<typeof loadForm9Entries>> = new Map();
   try {
     const { env } = await getCloudflareContext({ async: true });
     data = scope ? await loadForm9(env.DB, scope, { today: todayJst(), situation: await loadSituation(env.DB, scope.officeId) }) : null;
+    // 紙の上で書いた行の欄（T147。その行の人の手入れ）を、表と紙の値に効かせる
+    if (data && scope) {
+      entries = await loadForm9Entries(env.DB, scope.officeId);
+      data = { ...data, sheet: withForm9Entries(data.sheet, entries) };
+    }
   } catch (e) {
     console.error("様式 9 を読めない", e);
     return <Message title="読込失敗" />;
@@ -53,6 +64,8 @@ export default async function Form9Page({ searchParams }: Props) {
   if (!data) return <Message title="事業所なし" />;
 
   const { sheet, situation } = data;
+  // 紙の上で書けるのはケアマネの役（様式 9 の画面に入れる人。保存の壁は本人のページと同じ）
+  const canWrite = principal.role === "care_manager";
   const disaster = sheet.mode === "disaster";
   const rows = sortRows(sheet.rows, sort);
   const edit = parseEdit(q.edit);
@@ -69,8 +82,12 @@ export default async function Form9Page({ searchParams }: Props) {
     <main className="mx-auto max-w-[120rem] px-4 py-4">
       <FormsTabs current="form9" />
       <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2">
-        <h1 className="text-xl leading-8 font-bold">様式9</h1>
-        <span className="text-sm text-muted">{FORM9_TITLE.replace(/^様式9：/, "")}</span>
+        {/* 何の紙か分かる見出し（T147）: 利用者の一覧表・安否確認の優先順位。様式の番号は小さな印 */}
+        <h1 className="text-xl leading-8 font-bold" data-form9-title>
+          {FORM9_HEADING.title}
+        </h1>
+        <span className="text-sm">{FORM9_HEADING.sub}</span>
+        <Mark>様式9</Mark>
         <span className="text-sm">{data.office.name}</span>
         <span className="text-sm">
           <span className="font-bold tabular-nums">{sheet.rows.length}</span> 人
@@ -124,7 +141,14 @@ export default async function Form9Page({ searchParams }: Props) {
           )}
         </section>
       </div>
-      <Form9Paper sheet={sheet} office={data.office.name} date={warekiText(todayJst())} order={order} report={report} fill={fill} />
+      {/* 刷る紙をそのまま画面にも（印刷見本。T147）。空欄の色付けの切り替えもここに出る */}
+      {canWrite ? (
+        <Form9Fill slots={form9Slots(sheet, entries)}>
+          <Form9Paper sheet={sheet} office={data.office.name} date={warekiText(todayJst())} order={order} report={report} fill={fill} onScreen layer />
+        </Form9Fill>
+      ) : (
+        <Form9Paper sheet={sheet} office={data.office.name} date={warekiText(todayJst())} order={order} report={report} fill={fill} onScreen />
+      )}
     </main>
   );
 }

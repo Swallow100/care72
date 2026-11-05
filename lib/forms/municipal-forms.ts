@@ -173,6 +173,18 @@ export function searchMunicipal(query: string, entries: readonly MunicipalEntry[
 }
 
 /** 事業所の市（offices.city）から一覧の市。同じ名前が 2 つあれば null */
+/**
+ * 地域の市の並び（主な市が先、次に周りの市。lib/office/region.ts の regionCitiesOf。T148）を順に見て、一覧にある（名前が 1 つに決まる）
+ * 最初の市。様式の一覧の「地域から選ぶ」の初めの市。無ければ null
+ */
+export function cityForRegion(cities: ReadonlyArray<string | null | undefined>): MunicipalCity | null {
+  for (const c of cities) {
+    const hit = cityForOffice(c);
+    if (hit) return hit;
+  }
+  return null;
+}
+
 export function cityForOffice(officeCity: string | null | undefined): MunicipalCity | null {
   const name = (officeCity ?? "").trim();
   if (!name) return null;
@@ -204,12 +216,13 @@ export const MUNICIPAL_LABELS = {
   version: "版",
   terms: "条件",
   state: "状態",
-  fetch: "取得",
+  /** 公式の様式を取って黒塗りの画面へ（その先で読込）。T147 で「取得」から「読込」に */
+  fetch: "読込",
   fetching: "取得中",
   versionChanged: "版違い",
-  retry: "再読",
+  retry: "再読込",
   shared: "共有済",
-  aiRead: "AI読取",
+  aiRead: "AI読込",
   imported: "取込済",
   open: "表示",
   officialPage: "公式頁",

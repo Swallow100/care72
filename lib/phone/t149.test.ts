@@ -10,7 +10,7 @@ import { seedStatements } from "../../seed/sql.ts";
 import { readCookie, SESSION_COOKIE } from "../auth/cookie.ts";
 import { DEMO_CARE_MANAGER_ID, JUDGE_LOGIN_ID } from "../auth/demo.ts";
 import { hashPassword } from "../auth/password.ts";
-import { PASSWORD_RULE_LABELS, passwordRuleProblems } from "../auth/password-rule.ts";
+import { PASSWORD_RULE_LABELS, passwordProblems } from "../auth/password-rule.ts";
 import { pageExit } from "../auth/phone-gate.ts";
 import { chooseJudgeRole, login, resolvePrincipal, type Principal } from "../auth/principal.ts";
 import { LOGIN_PATH } from "../auth/roles.ts";
@@ -36,7 +36,8 @@ import { openPhoneLink } from "../qr/phone-open.ts";
 import { buildPhoneLinkView } from "../qr/phone-link-view.ts";
 import { loadPhoneLinkRow } from "../qr/phone-link-store.ts";
 import { livePhoneAccountKeys, parsePhoneLoginId, savePhoneAccount } from "./account.ts";
-import { phoneEntryAllowed } from "./consent.ts";
+import { PHONE_ENTRY_CONSENT, phoneEntryAllowed } from "./consent.ts";
+import { PHONE_LINK_CONSENT } from "../qr/phone-link-http.ts";
 import { phoneAccountErrorWords } from "./labels.ts";
 import { currentStep, keyBytes, sameKey, setupSteps, setupVisible, type SetupInput } from "./setup.ts";
 import { setupAccountOf } from "./setup-props.ts";
@@ -101,16 +102,16 @@ const input = (loginId: string, password = GOOD_PW, password2 = password) => ({ 
 
 describe("パスワードの決まり（ケアマネと同じ。lib/auth/password-rule.ts）", () => {
   it("10 字以上・大文字・小文字・記号。足りない物を全部返す", () => {
-    expect(passwordRuleProblems(GOOD_PW)).toEqual([]);
-    expect(passwordRuleProblems("Aa!4567")).toEqual(["length"]);
-    expect(passwordRuleProblems("abcdefghij!")).toEqual(["upper"]);
-    expect(passwordRuleProblems("ABCDEFGHIJ!")).toEqual(["lower"]);
-    expect(passwordRuleProblems("Abcdefghijk")).toEqual(["symbol"]);
-    expect(passwordRuleProblems("")).toEqual(["length", "upper", "lower", "symbol"]);
-    expect(passwordRuleProblems(`Aa!${"x".repeat(62)}`)).toEqual(["length"]);
+    expect(passwordProblems(GOOD_PW)).toEqual([]);
+    expect(passwordProblems("Aa!4567")).toEqual(["length"]);
+    expect(passwordProblems("abcdefghij!")).toEqual(["upper"]);
+    expect(passwordProblems("ABCDEFGHIJ!")).toEqual(["lower"]);
+    expect(passwordProblems("Abcdefghijk")).toEqual(["symbol"]);
+    expect(passwordProblems("")).toEqual(["length", "upper", "lower", "symbol"]);
+    expect(passwordProblems(`Aa!${"x".repeat(62)}`)).toEqual(["length"]);
     // 全角の記号は記号に数えない（ASCII の記号だけ）
-    expect(passwordRuleProblems("Abcdefghij！")).toEqual(["symbol"]);
-    expect(Object.values(PASSWORD_RULE_LABELS)).toEqual(["10字以上", "大文字", "小文字", "記号"]);
+    expect(passwordProblems("Abcdefghij！")).toEqual(["symbol"]);
+    expect(PASSWORD_RULE_LABELS.rule).toBe("10字以上 大文字 小文字 記号");
   });
 
   it("ID はケアマネの ID と同じ形（小文字にそろえる・3〜32 字・審査員の ID は使えない）", () => {
@@ -295,6 +296,10 @@ describe("本人のページのスマホの面・スマホ入口の画面", () =
     expect(view.allowed).toBe(false);
     expect(view.self.url).toBeNull();
     expect(view.family.every((f) => f.url === null)).toBe(true);
+  });
+
+  it("画面の決まりと発行の API の決まり（T147）は同じ同意の種類", () => {
+    expect(PHONE_ENTRY_CONSENT).toBe(PHONE_LINK_CONSENT);
   });
 
   it("新しく足した人（同意は全部「未確認」）は作れない", () => {

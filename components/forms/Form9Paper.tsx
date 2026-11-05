@@ -25,6 +25,9 @@ import { ANNEX_MARK, fitText, FONT_MIN_PT } from "@/lib/forms/overlay-sheet";
 import { paperText } from "@/lib/forms/paper-text";
 import { KeepNumbers } from "./FormCell";
 
+/** 画面に出す刷る紙の見出し（T147） */
+export const FORM9_PREVIEW_LABEL = "印刷見本";
+
 /** 題名（ひな形のシートの題名 FORM9_TITLE を、紙の書き方の全角の括弧に） */
 export const FORM9_PAPER_TITLE = "様式9：災害時利用者一覧表（安否確認優先順位）";
 
@@ -77,7 +80,24 @@ export function form9Blanks(rows: readonly Form9Row[]): Array<{ id: string; col:
 const LABEL = new Map(FORM9_COLUMNS.map((c) => [c.id, c.csv]));
 
 /** ひな形の 1 枚（20 行）。first は 1 行目の No */
-function Sheet({ rows, first, office, date, title, fill }: { rows: Form9Row[]; first: number; office: string; date: string; title: string; fill: boolean }) {
+function Sheet({
+  rows,
+  first,
+  office,
+  date,
+  title,
+  fill,
+  layer = false,
+}: {
+  rows: Form9Row[];
+  first: number;
+  office: string;
+  date: string;
+  title: string;
+  fill: boolean;
+  /** その場で書く層の置き場（T147、components/forms/Form9Fill.tsx が中に描く）。画面だけ */
+  layer?: boolean;
+}) {
   const colW = (c: string) => form9Cell(`${c}7`).w;
   const left = ox(FORM9_COL_X[1]);
   const top = oy(FORM9_ROW_Y[4]);
@@ -176,6 +196,7 @@ function Sheet({ rows, first, office, date, title, fill }: { rows: Form9Row[]; f
           })}
         </tbody>
       </table>
+      {layer && <div className="f9-layer" data-f9-layer={Math.floor((first - 1) / FORM9_ROWS_PER_PAGE)} />}
     </section>
   );
 }
@@ -238,18 +259,31 @@ export type Form9PaperProps = {
   report: string | null;
   /** 未記入の色付けの版（T101）。既定は色なし */
   fill?: boolean;
+  /**
+   * 画面にも刷る紙をそのまま出す（T147 の印刷見本。様式 9 の画面の表の下）。既定は印刷のときだけ。
+   * 見出し「印刷見本」は画面だけで、紙には刷らない
+   */
+  onScreen?: boolean;
+  /** 紙の上でその場で書く層の置き場を枚ごとに描く（T147。画面の印刷見本で書ける人だけ） */
+  layer?: boolean;
 };
 
-export function Form9Paper({ sheet, office, date, order, report, fill = false }: Form9PaperProps) {
+export function Form9Paper({ sheet, office, date, order, report, fill = false, onScreen = false, layer = false }: Form9PaperProps) {
   const title = FORM9_PAPER_TITLE;
   const chunks: Form9Row[][] = [];
   for (let i = 0; i < Math.max(1, sheet.rows.length); i += FORM9_ROWS_PER_PAGE) chunks.push(sheet.rows.slice(i, i + FORM9_ROWS_PER_PAGE));
   return (
-    <div className="print-only" data-paper-print>
+    <div className={onScreen ? "form9-onscreen" : "print-only"} data-paper-print data-on-screen={onScreen ? "1" : undefined}>
+      {onScreen && (
+        <h2 className="screen-only mx-auto mt-4 mb-2 flex max-w-[297mm] items-baseline gap-2 text-[1rem] font-bold" data-form9-preview-head>
+          {FORM9_PREVIEW_LABEL}
+          <span className="text-xs font-normal text-muted">{fill ? "空欄着色" : "色なし"}</span>
+        </h2>
+      )}
       <style>{`@page form9 { @bottom-left { content: ${cssString(`${title} 別紙　${office}`)}; } }`}</style>
       <div data-paper-root data-sheet="form9" data-fill={fill ? "1" : undefined}>
         {chunks.map((rows, i) => (
-          <Sheet key={i} rows={rows} first={i * FORM9_ROWS_PER_PAGE + 1} office={office} date={date} title={title} fill={fill} />
+          <Sheet key={i} rows={rows} first={i * FORM9_ROWS_PER_PAGE + 1} office={office} date={date} title={title} fill={fill} layer={layer && onScreen} />
         ))}
         <section className="paper paper-flow form9-paper" aria-label={`${title} 別紙`} data-annex="sheet">
           <p className="f9-annex-h">

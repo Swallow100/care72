@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SEED_PEOPLE, seedConsents, type SeedPerson } from "../../seed/people.ts";
+import { seedConsents, type SeedPerson } from "../../seed/people.ts";
 import type { Ledger } from "../db/types.ts";
 import { RELATION_CALLS } from "../signals/phrases.ts";
 import {
@@ -20,6 +20,8 @@ import {
   type ClaudePerson,
   type PseudonymInput,
 } from "./index.ts";
+// T142 で種の台帳を埋めた。このテストは空いた欄を前提にするので、T142 より前の空きの多い形（seed/sparse.ts）を使う
+import { SPARSE_PEOPLE } from "../../seed/sparse.ts";
 
 const ON = "2026-11-02";
 
@@ -27,8 +29,8 @@ function input(p: SeedPerson): PseudonymInput {
   return { person: p.person, ledger: p.ledger, contacts: p.contacts, clocks: p.clocks, consents: seedConsents(p) };
 }
 
-const ALL = SEED_PEOPLE.map(input);
-const byId = (id: string) => input(SEED_PEOPLE.find((p) => p.person.id === id)!);
+const ALL = SPARSE_PEOPLE.map(input);
+const byId = (id: string) => input(SPARSE_PEOPLE.find((p) => p.person.id === id)!);
 
 /**
  * 人が付ける欄の名前（列の名前と、Claude に渡す形にしたときの名前）。
@@ -59,7 +61,7 @@ export type HumanOnlyKeysAbsent = [
 /** 種のデータにある、Claude に渡してはいけない文字列（2 字以上） */
 function forbiddenStrings(): string[] {
   const out = new Set<string>();
-  for (const p of SEED_PEOPLE) {
+  for (const p of SPARSE_PEOPLE) {
     for (const n of [p.person.name, p.person.kana]) {
       out.add(n);
       out.add(n.replace(/ /g, ""));
@@ -154,7 +156,7 @@ describe("pseudonymize", () => {
 
   it("人が付ける欄（時計の頼り先の確認・本人の報告を当てにしない印）は渡らない。入れる物に値があっても", () => {
     expect(byId("p-03").clocks[0]).toMatchObject({ depends_on: "dialysis_center", depends_check: "unconfirmed" });
-    expect(SEED_PEOPLE[3].person.self_report_unreliable).toBe(1);
+    expect(SPARSE_PEOPLE[3].person.self_report_unreliable).toBe(1);
     const json = JSON.stringify(payload);
     for (const k of HUMAN_ONLY_KEYS) expect(json).not.toContain(k);
     expect(Object.keys(payload[2].clocks[0]).sort()).toEqual(

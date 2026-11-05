@@ -10,7 +10,7 @@ import { hasGeminiKey } from "../claude/client.ts";
 import { pseudonymizeText, type PseudonymKey } from "../pseudonym/index.ts";
 import { DEFAULT_VOICE, speak, TTS_MODEL, type SpeakContext } from "../gemini/tts.ts";
 import { VOICE_PROMPT_TEXT } from "./phrases.ts";
-import { BUTTON_QUESTIONS, buttonLine, closingOf, TALK_ENDS, TALK_TOPIC_SPECS, TALK_TOPICS, talkVoicePath } from "./talk.ts";
+import { BUTTON_QUESTIONS, buttonLine, closingOf, fillerText, TALK_ENDS, TALK_FILLERS, TALK_ITEMS, talkVoicePath, type TalkFiller } from "./talk.ts";
 
 /** 文の版。文を変えたら上げる（R2 の古い声を使わない） */
 export const VOICE_PROMPT_VERSION = 2;
@@ -46,23 +46,25 @@ export async function promptVoice(bucket: VoiceBucket, ctx: SpeakContext): Promi
 
 // ---------- 声の聞き取りの会話の 1 文（T137） ----------
 //
-// 会話の決まった文（話題の決まった問い・ボタンの答え方の問い・締め）は id で頼まれ、文はここの表から引く（端末から文を受けない）。
-// 置いてあればそれ、無ければ作って置く（定型文と同じ）。AI の 1 文は、サーバーが会話の API の中で作り（待ちは短く）、文の hash で置く。
+// 会話の決まった文（問いの表の問い・ボタンの答え方の問い・締め・相づち）は id で頼まれ、文はここの表から引く（端末から文を受けない）。
+// 置いてあればそれ、無ければ作って置く（定型文と同じ）。赤を押した時に全部を作り置く（warmTalkVoices。T137b、同じ声で流すため）。
+// AI の 1 文は、サーバーが会話の API の中で作り、文の hash で置く。
 // GET は hash の物を読むだけ（作らない）。名前・住所は入らない（AI の文は Claude に伏せた文しか見せていない。読む前に仮名化の門も通す）。
 
 /** 会話の声の版。文の言い方を変えたら上げる */
 export const TALK_VOICE_VERSION = 1;
 
-/** 会話の決まった文の id と文（話題の決まった問い・ボタンの答え方の問い・締め） */
+/** 会話の決まった文の id と文（問いの表の問い・ボタンの答え方の問い・締め・相づち） */
 export function talkFixedTexts(): Record<string, string> {
   const out: Record<string, string> = {};
-  for (const t of TALK_TOPICS) out[`topic-${t}`] = TALK_TOPIC_SPECS[t].text;
+  for (const i of TALK_ITEMS) out[`topic-${i.id}`] = i.text;
+  for (const f of Object.keys(TALK_FILLERS) as TalkFiller[]) out[`filler-${f}`] = fillerText(f);
   for (const id of BUTTON_QUESTIONS) out[`button-${id}`] = buttonLine(id);
   for (const end of TALK_ENDS) out[`close-${end}`] = closingOf(end).text;
   return out;
 }
 
-const FIXED_ID = /^(topic|button|close)-[A-Za-z_]{1,24}$/;
+const FIXED_ID = /^(topic|button|close|filler)-[A-Za-z_]{1,24}$/;
 const HASH = /^[0-9a-f]{32}$/;
 
 export const isTalkFixedId = (v: string) => FIXED_ID.test(v) && v in talkFixedTexts();
@@ -108,8 +110,35 @@ export async function talkVoiceByHash(bucket: VoiceBucket, hash: string): Promis
   return cached ? new Uint8Array(await cached.arrayBuffer()) : null;
 }
 
-/** AI の文の声を待つ上限（会話の API の中。過ぎたら端末の読み上げ。作るのは続けて置く） */
-export const TALK_VOICE_WAIT_MS = 3_000;
+/**
+ * 作り置きの決まった文の声を全部そろえる（T137b。赤を押した時に端末が 1 回頼む。応答のあとに waitUntil で走らせる）。
+ * 置いてある物は作らない（R2 を見るだけ）。無い物を順に作って置く（1 つずつ。1 日の上限に数える。鍵が無ければ何もしない）。
+ * 作った数を返す
+ */
+export async function warmTalkVoices(bucket: VoiceBucket, ctx: SpeakContext, opts: { max?: number; parallel?: number } = {}): Promise<number> {
+  if (!ctx.tts && !hasGeminiKey(ctx.env)) return 0;
+  const missing: Array<{ key: string; text: string }> = [];
+  for (const text of Object.values(talkFixedTexts())) {
+    const key = talkVoiceKey(await talkTextHash(text));
+    if (!missing.some((m) => m.key === key) && !(await bucket.get(key))) missing.push({ key, text });
+  }
+  const todo = missing.slice(0, opts.max ?? missing.length);
+  // waitUntil の 30 秒に多く収めるため、4 つずつ並べて作る（問いの表の順。先に要る物から）。1 つでも作れなければ止める（上限・鍵の失敗）
+  const step = opts.parallel ?? 4;
+  let made = 0;
+  for (let i = 0; i < todo.length; i += step) {
+    const done = await Promise.all(todo.slice(i, i + step).map((m) => makeVoice(bucket, m.key, m.text, ctx, NO_PEOPLE)));
+    made += done.filter(Boolean).length;
+    if (done.some((d) => !d)) break;
+  }
+  return made;
+}
+
+/**
+ * AI の文の声を待つ上限（会話の API の中。T137b で 3 → 9 秒: 端末の読み上げに替えず同じ声で流すため。待つ間は端末が作り置きの相づちを流す）。
+ * 過ぎたら端末の読み上げ。作るのは続けて置く
+ */
+export const TALK_VOICE_WAIT_MS = 9_000;
 
 /**
  * AI の 1 文の声を用意して URL を返す（会話の API の中）。置いてあればすぐ。無ければ作り始め、TALK_VOICE_WAIT_MS で間に合えば URL、

@@ -6,7 +6,7 @@
 import { readFileSync } from "node:fs";
 import type { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { SEED_ACCOUNTS, SEED_AT } from "../../seed/people.ts";
+import { SEED_ACCOUNTS, SEED_AT, SEED_PEOPLE } from "../../seed/people.ts";
 import { fullSeedStatements } from "../../seed/full.ts";
 import { CLEAR_ORDER } from "../../seed/sql.ts";
 import type { Principal } from "../auth/principal.ts";
@@ -435,6 +435,25 @@ describe("最初に戻す（デモ事業所だけ）", () => {
     expect(withoutOthers(db)).toEqual(dump(stripCheck(fresh), ["ai_calls"]));
   });
 
+  it("書き込んだ台帳（T142）も戻る: 審査員が台帳と連絡先を消したり書き換えたりしても、戻すと種の台帳・連絡先のフリガナ・住所・携帯・足した連絡先になる", async () => {
+    const { db } = await used();
+    sqlite = db;
+    db.exec(`UPDATE people SET ledger = '{"basic":{},"care":{},"medical":{"devices":[],"medications":[]},"evacuation":{"hazards":[]},"notes":[],"pending":[]}' WHERE id = 'p-05'`);
+    db.exec(`UPDATE contacts SET kana = NULL, address = NULL, mobile = NULL WHERE person_id = 'p-03'`);
+    db.exec(`DELETE FROM contacts WHERE person_id = 'p-06' AND kind IN ('home_doctor', 'pharmacy', 'care_service')`);
+    const { bucket } = fakeBucket();
+    await resetDemoOffice(d1FromSqlite(db), bucket, NOW);
+    for (const p of SEED_PEOPLE) {
+      const row = db.prepare("SELECT ledger FROM people WHERE id = ?").get(p.person.id) as { ledger: string };
+      expect(JSON.parse(row.ledger), p.person.id).toEqual(p.ledger);
+      const contacts = db.prepare("SELECT id, kind, name, kana, address, phone, mobile, night_ok FROM contacts WHERE person_id = ? ORDER BY sort").all(p.person.id);
+      expect(contacts, p.person.id).toEqual(
+        p.contacts.map((c) => ({ id: c.id, kind: c.kind, name: c.name, kana: c.kana ?? null, address: c.address ?? null, phone: c.phone, mobile: c.mobile ?? null, night_ok: c.night_ok })),
+      );
+    }
+    expect(withoutOthers(db)).toEqual(dump(stripCheck(fresh), ["ai_calls"]));
+  });
+
   it("2 回戻しても同じ", async () => {
     const { db } = await used();
     sqlite = db;
@@ -624,6 +643,14 @@ describe("毎日 4 時（cron）", () => {
     expect(drills.map((d) => [d.id, d.status])).toEqual([[SEED_DRILL_ID, "finished"]]);
     // 4:00 JST に戻すと、訓練は前の日（11/5）の 14:00 JST
     expect(drills[0].started_at).toBe("2026-11-05T05:00:00.000Z");
+    // 書き込んだ台帳（T142）も種のまま入る
+    for (const p of SEED_PEOPLE) {
+      const row = db.prepare("SELECT ledger FROM people WHERE id = ?").get(p.person.id) as { ledger: string };
+      expect(JSON.parse(row.ledger), p.person.id).toEqual(p.ledger);
+    }
+    expect(count(db, "SELECT count(*) AS n FROM contacts WHERE person_id IN (SELECT id FROM people WHERE office_id = 'office-demo') AND kana IS NOT NULL")).toBe(
+      SEED_PEOPLE.reduce((n, p) => n + p.contacts.filter((c) => c.kana).length, 0),
+    );
   });
 });
 

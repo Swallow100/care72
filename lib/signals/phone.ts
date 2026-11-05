@@ -33,7 +33,9 @@
 //   定型文（AI の告知から）→ 聞く（話し終えて 3 秒静かになるまで。話さなければ 15 秒）→ 次の手（lib/signals/talk.ts の planTalk と
 //   サーバーの nextTalk。Claude は次の 1 文だけ）→ 読む → 聞く … → 締め（119 の文で終わる）→ 録音と会話の記録を添えて送る。
 //   命に関わる言葉・終えたい・上限は締め、聞き取れないが 2 回続いたらボタンの答え方（はいなら緑・いいえなら赤）に替えて応答不明瞭の印。
-//   サーバーに届かない・遅い（8 秒）ときは端末だけで決まった問いを続ける。決まった問いのまま取れた答えは押した答えと同じに送る（声の印）
+//   サーバーに届かない・遅い（16 秒）ときは端末だけで決まった問いを続ける。決まった問いのまま取れた答えは押した答えと同じに送る（声の印）。
+//   T137b: 聞き取りは会話の間ずっと 1 本（読む間・考える間も聞く。読む間に話し始めたら声を止める、考える間の言葉は前の答えに足して
+//   決め直す）。録音も読む間に止めない。声は決まった文も AI の 1 文も Gemini（待つ間は作り置きの相づち）。「送る」のボタンは無く自動で送る
 
 import { newSignalId, NO_ANSWERS, type PhoneColor, type SignalBody } from "./body.ts";
 import type { AnswersItem, AttachItem, Delivery, LocationItem, ReportedPosition } from "./outbox.ts";
@@ -44,11 +46,17 @@ import {
   buttonVoice,
   closingOf,
   closingVoice,
+  echoLike,
+  fillerText,
+  fillerVoice,
   fixedLine,
+  heardOf,
   heardTurn,
+  stripEcho,
   newTalkLog,
   planTalk,
   TALK_OPENING,
+  TALK_RECORDING_SEC_MAX,
   talkReplies,
   topicOfQuestion,
   yesNoChoice,
@@ -101,8 +109,13 @@ export const TALK_LISTEN_MS = 15_000;
 export const TALK_QUIET_MS = 3_000;
 /** 会話の 1 回の答えの長さの上限（話し続けても閉じる） */
 export const TALK_TURN_MAX_MS = 45_000;
-/** 会話の次の手をサーバーに聞いて待つ上限。過ぎたら端末だけで決まった問い */
-export const TALK_WAIT_MS = 8_000;
+/**
+ * 会話の次の手をサーバーに聞いて待つ上限。過ぎたら端末だけで決まった問い（T137b で 8 → 16 秒: サーバーが AI の 1 文の声も
+ * Gemini で作ってから返すため〔Claude 6 秒・声 9 秒まで〕。待つ間は作り置きの相づちを流す）
+ */
+export const TALK_WAIT_MS = 16_000;
+/** 次の 1 文がこれより遅いときは、作り置きの相づちを先に流す（T137b） */
+export const TALK_FILLER_MS = 1_500;
 /** 締めの文（119 の文まで）が終わらないときに待つ上限 */
 export const CLOSING_WAIT_MS = 25_000;
 
@@ -137,7 +150,12 @@ export type Recording = Stoppable<Blob | null> & { pause?(): void; resume?(): vo
  * 文字起こしの知らせ。onSilence は 1 字も取れないまま無音で止まったとき（渡さなければブラウザが続きから聞き直す。
  * 押せる人の録音は無音で閉じない。T77）、onText は文字が届いたとき（T69b。録音の自動の延長）
  */
-export type TranscriptEvents = { onSilence?(): void; onText?(text: string): void };
+export type TranscriptEvents = {
+  onSilence?(): void;
+  onText?(text: string): void;
+  /** ブラウザが止めても回数を限らず続きから聞き直す（T137b。会話の間ずっと聞く） */
+  keepAlive?: true;
+};
 
 export type PhoneDeps = {
   now?: () => number;
@@ -177,6 +195,8 @@ export type PhoneDeps = {
   talk?(signalId: string, log: TalkLog): Promise<TalkReply | null>;
   /** 会話の 1 文を読んで、終わるのを待つ。voice は Gemini の声の URL（無い・鳴らない時は端末の読み上げ）。無ければ speak */
   say?(text: string, voice?: string | null): Promise<unknown>;
+  /** 読んでいる声を止める（T137b。読む間に本人が話し始めたとき） */
+  hush?(): void;
   onChange(state: PhoneState): void;
 };
 
@@ -273,10 +293,28 @@ export function createPhone(deps: PhoneDeps): Phone {
   let talkLog: TalkLog | null = null;
   /** 今読んだ（聞いている）1 文 */
   let talkLine: TalkLine | null = null;
-  /** 今の 1 往復の聞き取り */
+  /** 会話の間ずっと開いている聞き取り（T137b。読む間・考える間も止めない） */
   let talkTranscript: Stoppable<string | null> | null = null;
-  /** 今の 1 往復を聞き始めた時刻 */
+  /** 会話の始めからの文字起こしの全部（届いた最新） */
+  let talkText = "";
+  /** 今の 1 往復の答えの始まり（talkText の位置。読み始めた所。読む間に話した言葉も答えに入る） */
+  let talkFrom = 0;
+  /** 今の段: 読む・聞く・考える・ボタン・締め */
+  let talkPhase: "speaking" | "listening" | "thinking" | "yesno" | "closing" | null = null;
+  /** 今の 1 往復を読み始めた時刻 */
   let talkTurnAt = 0;
+  /** 会話を始めた時刻（録音の長さ） */
+  let talkStartedAt = 0;
+  /** 前の 1 往復（考える間に届いた言葉を、その答えに足すため） */
+  let lastTurn: { line: TalkLine; from: number; at: string } | null = null;
+  /** 考える間に本人の言葉が届いた（次の手をもう 1 回決める） */
+  let lateWords = false;
+  /** 1 往復で次の手を決め直した回数（考える間の言葉で。1 回まで） */
+  let replans = 0;
+  /** 相づちを流した往復（会話の記録の往復の数。1 往復に 1 回） */
+  let fillerAt = -1;
+  /** 読んでいる声を本人の声で打ち切る（読む約束を早く終える。相づちと問いが重なっても全部） */
+  const talkHush = new Set<() => void>();
   /** 文字起こしが使えた（聞き取れないが続いたのを本人の答えとして数える。使えない端末は印を付けない） */
   let talkEars = false;
   /** ボタンの答え方で聞く残りの問い */
@@ -501,21 +539,93 @@ export function createPhone(deps: PhoneDeps): Phone {
     advance(nextAfter(id, choice));
   }
 
-  // ---------- 声の聞き取りの会話（T137） ----------
+  // ---------- 声の聞き取りの会話（T137・T137b） ----------
+  //
+  // 聞き取りは会話の間ずっと 1 本（読む間・考える間も止めない）。答えは「その問いを読み始めてから、次の問いを読み始めるまで」の言葉:
+  // - 読む間に本人が話し始めたら（自分の声の拾いでなければ）声を止めて聞く
+  // - 考える間に届いた言葉は前の答えに足し、届いたら次の手をもう 1 回決める（1 往復 1 回まで）
+  // - 読んだ文の声を端末が拾った物（stripEcho）は答えから外す（自分の問いの「ガスのにおい」を危ない言葉に取らない）
+  // 録音は会話の全部で 1 本（読む間も止めない。本人の声を逃さないため）
 
-  /** 1 文を読んで終わるのを待つ（終わらなければ打ち切る） */
-  const sayOnce = (text: string, waitMs: number, voice: string | null = null) =>
+  /** 1 文を読んで終わるのを待つ（終わらなければ打ち切る）。本人が話し始めたら打ち切る（hush） */
+  const sayOnce = (text: string, waitMs: number, voice: string | null = null) => hushable(
     Promise.race([
       Promise.resolve()
         .then(() => (deps.say ? deps.say(text, voice) : deps.speak?.(text)))
         .catch(() => undefined),
       new Promise((r) => setTimeout(r, waitMs)),
-    ]);
+    ]),
+  );
+
+  /** 本人が話し始めたら打ち切れる約束にする */
+  function hushable(p: Promise<unknown>): Promise<unknown> {
+    let stop: () => void = () => {};
+    const hushed = new Promise<void>((r) => (stop = r));
+    talkHush.add(stop);
+    return Promise.race([p, hushed]).finally(() => talkHush.delete(stop));
+  }
+
+  /** 今の答え（読み始めてからの言葉。読んだ文と相づちの声の拾いを外す） */
+  const replyFrom = (from: number, line: TalkLine | null) => {
+    let text = talkText.slice(Math.min(from, talkText.length)).trim();
+    if (line) text = stripEcho(text, line.text);
+    for (const f of ["heard", "wait"] as const) text = stripEcho(text, fillerText(f));
+    return text;
+  };
+
+  /** 聞き取りの言葉が届いた（全部の文）。段ごとに: 読む間は話し始め、聞く間は話し終え、考える間は前の答えに足す */
+  function onTalkWords(full: string) {
+    talkText = full;
+    if (talkPhase === "speaking" && talkLine) {
+      const delta = talkText.slice(talkFrom);
+      if (heardOf(delta) === "text" && !echoLike(delta, talkLine.text)) {
+        deps.hush?.();
+        for (const stop of [...talkHush]) stop();
+      }
+      return;
+    }
+    if (talkPhase === "listening") {
+      const my = ask;
+      if (now() - talkTurnAt >= TALK_TURN_MAX_MS) void talkHeard(my);
+      else after(TALK_QUIET_MS, () => void talkHeard(my));
+      return;
+    }
+    if (talkPhase === "thinking") refreshLastTurn();
+  }
+
+  /** 考える間に届いた言葉を前の答えに足す（同じ往復の言い直し）。取れた答えが増えれば送る */
+  function refreshLastTurn() {
+    const log = talkLog;
+    if (!log || !lastTurn || log.turns.length === 0) return;
+    const text = replyFrom(lastTurn.from, lastTurn.line);
+    const before = log.turns[log.turns.length - 1];
+    if ((before.reply ?? "") === text) return;
+    const turn = heardTurn(lastTurn.line, text || null, lastTurn.at);
+    log.turns[log.turns.length - 1] = turn;
+    lateWords = true;
+    if (turn.answer && (before.answer?.id !== turn.answer.id || before.answer.choice !== turn.answer.choice)) {
+      record(turn.answer.id, turn.answer.choice, "voice");
+    }
+  }
 
   function startTalk() {
+    const mine = run;
     talkLog = newTalkLog(iso(now()));
+    talkStartedAt = now();
     talkEars = false;
     buttonQueue = [];
+    talkText = "";
+    talkFrom = 0;
+    lastTurn = null;
+    fillerAt = -1;
+    talkTranscript =
+      deps.startTranscript?.({
+        keepAlive: true,
+        onText: (t) => {
+          if (mine === run) onTalkWords(t);
+        },
+      }) ?? null;
+    talkEars = talkTranscript !== null;
     void talkSay(TALK_OPENING);
   }
 
@@ -528,57 +638,45 @@ export function createPhone(deps: PhoneDeps): Phone {
     voice,
   });
 
-  /** 1 文を読む（最初の問いは定型文の声。録音は読む間だけ止める）→ 聞く */
+  /** 1 文を読む（最初の問いは定型文の声）→ 聞く。読み始めた所から答えに数える */
   async function talkSay(line: TalkLine) {
     const mine = run;
     const my = ++ask;
     talkLine = line;
+    talkFrom = talkText.length;
+    talkTurnAt = now();
+    talkPhase = "speaking";
     set(talkState(line, "speaking"));
-    pauseRecording();
-    if (line.topic === "open") await playPrompt();
-    else await sayOnce(line.text, SPEAK_WAIT_MS, line.voice ?? null);
+    if (line.topic === "open") {
+      await hushable(playPrompt());
+    } else await sayOnce(line.text, SPEAK_WAIT_MS, line.voice ?? null);
     if (mine !== run || my !== ask) return;
-    resumeRecording();
     talkListen(my);
   }
 
-  /** 聞く: 話し終えて静かになるまで（話さなければ TALK_LISTEN_MS、話し続けても TALK_TURN_MAX_MS） */
+  /** 聞く: 話し終えて静かになるまで（話さなければ TALK_LISTEN_MS。読む間にもう話していれば静かな間だけ） */
   function talkListen(my: number) {
     if (!talkLine) return;
-    const mine = run;
+    talkPhase = "listening";
     set(talkState(talkLine, "listening"));
     listeningAt = now();
-    talkTurnAt = listeningAt;
-    const live = () => mine === run && my === ask;
-    talkTranscript =
-      deps.startTranscript?.({
-        onSilence: () => {
-          if (live()) void talkHeard(my);
-        },
-        onText: () => {
-          if (!live()) return;
-          if (now() - talkTurnAt >= TALK_TURN_MAX_MS) void talkHeard(my);
-          else after(TALK_QUIET_MS, () => void talkHeard(my));
-        },
-      }) ?? null;
-    if (talkTranscript) talkEars = true;
-    after(TALK_LISTEN_MS, () => void talkHeard(my));
+    const spoken = replyFrom(talkFrom, talkLine);
+    after(heardOf(spoken) === "silent" ? TALK_LISTEN_MS : TALK_QUIET_MS, () => void talkHeard(my));
   }
 
   /** 1 往復を閉じて、本人の言葉を記録に足し、次の手へ */
   async function talkHeard(my: number) {
-    if (my !== ask || state.step !== "talk" || !talkLog || !talkLine) return;
+    if (my !== ask || talkPhase !== "listening" || !talkLog || !talkLine) return;
     clear();
-    const mine = run;
     const token = ++ask;
-    const t = talkTranscript;
-    talkTranscript = null;
     closeListening(now());
-    const text = (await t?.stop().catch(() => null))?.trim() ?? "";
-    if (mine !== run || token !== ask || !talkLog) return;
-    if (text) heard.push(text);
-    const turn = heardTurn(talkLine, text || null, iso(talkTurnAt));
+    const text = replyFrom(talkFrom, talkLine);
+    const at = iso(talkTurnAt);
+    const turn = heardTurn(talkLine, text || null, at);
     talkLog.turns.push(turn);
+    lastTurn = { line: talkLine, from: talkFrom, at };
+    lateWords = false;
+    replans = 0;
     // 決まった問いのまま取れた答えは、押した答えと同じに送る（声の印。ルールの表の 4 列にもなる）
     if (turn.answer) record(turn.answer.id, turn.answer.choice, "voice");
     await talkNext(token);
@@ -596,14 +694,31 @@ export function createPhone(deps: PhoneDeps): Phone {
     }
     if (plan.kind === "close") return talkClose(plan.end);
     if (plan.kind === "buttons") return toButtons();
+    talkPhase = "thinking";
     set(talkState(talkLine, "thinking"));
     let reply: TalkReply | null = null;
     if (deps.talk && signal) {
+      // 待ちが長いときは作り置きの相づちを先に（本人が話したあとは「わかりました」、聞き取れなかったあとは「しょうしょう…」）
+      const last = log.turns.at(-1);
+      const filler = setTimeout(() => {
+        // 1 往復に 1 回だけ（考える間の言葉で決め直しても、相づちは重ねない）
+        if (mine !== run || token !== ask || talkPhase !== "thinking" || fillerAt === log.turns.length) return;
+        fillerAt = log.turns.length;
+        const f = last && last.heard === "text" ? "heard" : "wait";
+        void sayOnce(fillerText(f), SPEAK_WAIT_MS, fillerVoice(f));
+      }, TALK_FILLER_MS);
       const asked = deps.talk(signal.id, structuredClone(log)).catch(() => null);
       reply = await Promise.race([asked, new Promise<null>((r) => setTimeout(() => r(null), TALK_WAIT_MS))]);
+      clearTimeout(filler);
     }
     if (mine !== run || token !== ask || !talkLog) return;
     if (reply?.called) log.aiCalls++;
+    // 考える間に言葉が届いた: その言葉も入れて決め直す（1 往復 1 回まで）
+    if (lateWords && replans < 1) {
+      lateWords = false;
+      replans++;
+      return talkNext(++ask);
+    }
     if (!reply) return talkSay(fixedLine(plan.fallback));
     if (reply.kind === "danger") {
       log.danger = reply.danger;
@@ -624,18 +739,17 @@ export function createPhone(deps: PhoneDeps): Phone {
     void buttonAsk();
   }
 
-  /** ボタンの答え方の次の 1 問を読む（はいなら みどり…）。20 秒押さなければ答えなしで次へ。全部終えたら締め */
+  /** ボタンの答え方の次の 1 問を読む（はいなら みどり…）。押せば自動で送る。20 秒押さなければ答えなしで次へ。全部終えたら締め */
   async function buttonAsk() {
     if (!talkLog) return;
     const id = buttonQueue.shift();
     if (!id) return talkClose(talkLog.unclear ? "unclear" : "grasped");
     const mine = run;
     const my = ++ask;
+    talkPhase = "yesno";
     set({ step: "yesno", id, answers, voice: "speaking" });
-    pauseRecording();
     await sayOnce(buttonLine(id), SPEAK_WAIT_MS, buttonVoice(id));
     if (mine !== run || my !== ask) return;
-    resumeRecording();
     set({ step: "yesno", id, answers, voice: null });
     after(IDLE_MS, () => {
       if (my !== ask || !talkLog) return;
@@ -652,41 +766,50 @@ export function createPhone(deps: PhoneDeps): Phone {
     clear();
     const mine = run;
     ++ask;
-    log.end = end;
-    const t = talkTranscript;
-    talkTranscript = null;
-    if (t) {
-      closeListening(now());
-      const text = (await t.stop().catch(() => null))?.trim() ?? "";
-      if (text && talkLine) log.turns.push(heardTurn(talkLine, text, iso(talkTurnAt)));
-      if (text) heard.push(text);
+    // 聞いていた往復は、その答えも入れて閉じる（「送る」・上限で閉じたとき）
+    if (talkPhase === "listening" && talkLine) {
+      const text = replyFrom(talkFrom, talkLine);
+      if (text) log.turns.push(heardTurn(talkLine, text, iso(talkTurnAt)));
     }
-    if (mine !== run) return;
+    talkPhase = "closing";
+    log.end = end;
     const c = closingOf(end);
     log.closing = c.text;
     set({ step: "closing", easy: c.easy, danger: end === "danger" });
-    pauseRecording();
     await sayOnce(c.text, CLOSING_WAIT_MS, closingVoice(end));
     if (mine !== run) return;
     await sendTalk();
   }
 
-  /** 録音を止めて、会話の記録と本人の言葉を添える */
+  /** 聞き取りと録音を止めて、会話の記録と本人の言葉を添える */
   async function sendTalk() {
     const log = talkLog;
     if (!log || !signal) return;
     const mine = run;
     const sig = signal;
+    talkPhase = null;
     set({ step: "sending", color: "red" });
     const endedAt = now();
     closeListening(endedAt);
-    const audio = await (recording?.stop().catch(() => null) ?? Promise.resolve(null));
+    const t = talkTranscript;
+    talkTranscript = null;
+    const [audio] = await Promise.all([
+      recording?.stop().catch(() => null) ?? Promise.resolve(null),
+      t?.stop().catch(() => null) ?? Promise.resolve(null),
+    ]);
     recording = null;
     const words = talkReplies(log);
     const delivery = await redDelivery();
     await deps
       .sendRecording(
-        { signalId: sig.id, transcript: words, durationSec: Math.round(listenedMs / 1000), recordedAt: iso(endedAt), talk: structuredClone(log) },
+        {
+          signalId: sig.id,
+          transcript: words,
+          // 会話の全部の長さ（サーバーの上限 600 秒まで。超えると断られて録音と会話の記録が捨てられる）
+          durationSec: Math.min(Math.round(Math.max(0, endedAt - talkStartedAt) / 1000), TALK_RECORDING_SEC_MAX),
+          recordedAt: iso(endedAt),
+          talk: structuredClone(log),
+        },
         audio,
       )
       .catch(() => "queued" as const);
@@ -883,6 +1006,9 @@ export function createPhone(deps: PhoneDeps): Phone {
       listeningAt = null;
       talkLog = null;
       talkLine = null;
+      talkPhase = null;
+      talkText = "";
+      lastTurn = null;
       buttonQueue = [];
       try {
         deps.prime?.();

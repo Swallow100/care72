@@ -125,7 +125,7 @@ function logOf(pairs: Array<[TalkLine, string | null]>, over: Partial<TalkLog> =
   return { ...log, ...over };
 }
 
-const ai = (topic: TalkAnswer["topic"], question: string, preface = "", done = false): TalkAnswer => ({ topic, preface, question, done });
+const ai = (ask: TalkAnswer["ask"], question: string, preface = "", done = false): TalkAnswer => ({ ask, preface, question, done });
 
 // ---------- 答えを見る ----------
 
@@ -209,21 +209,57 @@ describe("次の手（planTalk）", () => {
     expect(plan).toMatchObject({ kind: "ask", fallback: "injured" });
     const pressed = planTalk(logOf([[TALK_OPENING, "あしが いたい"]]), { ...CTX, answers: { injured: { choice: "no", via: "press" } } });
     expect(pressed).toMatchObject({ kind: "ask", fallback: "canMove" });
-    if (pressed.kind === "ask") expect(pressed.topics).not.toContain("injured");
+    if (pressed.kind === "ask") expect(pressed.items).not.toContain("injured");
     const noDevice = planTalk(logOf([[TALK_OPENING, "あしが いたい"]]), { ...CTX, hasDevice: false });
-    if (noDevice.kind === "ask") expect(noDevice.topics).not.toContain("device");
+    if (noDevice.kind === "ask") expect(noDevice.items).not.toContain("device");
   });
 
-  it("聞く話題が全部済んだら締める（つかめた）", () => {
-    const pairs: Array<[TalkLine, string | null]> = [[TALK_OPENING, "あしが いたい"]];
-    for (const t of ["injured", "canMove", "place", "water", "fireGas", "device", "hasMedicine", "nearby", "callee"] as const) {
-      pairs.push([fixedLine(t), "いいえ"]);
-    }
+  it("聞く問いが全部済んだら締める（つかめた）。深く聞く問いは取れた答えに合う物だけ（決まった問いで続けるとき）", () => {
+    // 押した答えで話題の最初の問いが全部済み、深く聞く問いの元の答えも「深く聞かない」側
+    const answers = {
+      injured: { choice: "no", via: "press" },
+      canMove: { choice: "yes", via: "press" },
+      exit: { choice: "yes", via: "press" },
+      atHome: { choice: "unknown", via: "press" },
+      water: { choice: "none", via: "press" },
+      fireGas: { choice: "no", via: "press" },
+      hasMedicine: { choice: "no", via: "press" },
+      nearby: { choice: "family", via: "press" },
+    } as const;
+    const log = logOf([[TALK_OPENING, "だいじょうぶ"], [fixedLine("callee"), "いない"]]);
+    expect(planTalk(log, { ...CTX, hasDevice: false, answers })).toEqual({ kind: "close", end: "grasped" });
     // 水「いいえ」は危なくない（打ち消し）
-    expect(planTalk(logOf(pairs.slice(0, 9)), CTX).kind).toBe("ask");
-    const log = logOf(pairs.slice(0, 9));
-    log.turns.push(heardTurn(fixedLine("callee"), "いいえ", iso(T0 + 200_000)));
-    expect(planTalk({ ...log }, { ...CTX, now: T0 + 200_000 })).toEqual({ kind: "close", end: "cap" });
+    expect(planTalk(logOf([[fixedLine("water"), "きて いない"]]), CTX).kind).toBe("ask");
+  });
+
+  it("答えに合わせて 1 段深く聞く: けが ある → どこか・血・動かせるか、動けない → 挟まれ・呼べるか、機器 → 電池・予備（決まった問いの表）", () => {
+    const hurt = logOf([[TALK_OPENING, "あしが いたい"], [fixedLine("injured"), "はい"], [fixedLine("canMove"), "うごけない"]]);
+    const p1 = planTalk(hurt, CTX);
+    expect(p1.kind).toBe("ask");
+    if (p1.kind === "ask") {
+      expect(p1.items).toEqual(expect.arrayContaining(["injuryPart", "bleeding", "injuryMove", "pinned", "callHelp"]));
+      // 決まった問いで続けるときは、取れた答えの深い問いを話題の最初の問いより先に
+      expect(["injuryPart", "bleeding", "injuryMove", "pinned", "callHelp"]).toContain(p1.fallback);
+      expect(p1.items).not.toContain("exit");
+    }
+    // けが ない・動ける: けがの深い問いは決まった問いでは聞かない（AI は元を聞いたあとなら選べる）
+    const fine = logOf([[TALK_OPENING, "だいじょうぶ"], [fixedLine("injured"), "ない"], [fixedLine("canMove"), "うごける"]]);
+    const p2 = planTalk(fine, CTX);
+    if (p2.kind === "ask") expect(["injuryPart", "bleeding", "injuryMove", "pinned"]).not.toContain(p2.fallback);
+    // 元をまだ聞いていない深い問いは選べない
+    const p3 = planTalk(logOf([[TALK_OPENING, "あしが いたい"]]), CTX);
+    if (p3.kind === "ask") expect(p3.items).not.toContain("bleeding");
+    // 機器: 電池・予備は台帳に機器がある人だけ、機器を聞いたあと
+    const dev = logOf([[TALK_OPENING, "でんきが こない"], [fixedLine("device"), "とまった"]]);
+    const p4 = planTalk(dev, CTX);
+    if (p4.kind === "ask") expect(p4.items).toEqual(expect.arrayContaining(["battery", "spare"]));
+    const p5 = planTalk(dev, { ...CTX, hasDevice: false });
+    if (p5.kind === "ask") expect(p5.items).not.toContain("battery");
+    // 深い問いの答えも決まった問いのままなら言葉の一致で取る（出血 → 問いの表の bleeding）
+    expect(heardTurn(fixedLine("bleeding"), "でてる", iso(T0)).answer).toEqual({ id: "bleeding", choice: "yes" });
+    expect(heardTurn(fixedLine("injuryPart"), "あし", iso(T0))).toMatchObject({ topic: "injured", item: "injuryPart", answer: { id: "injuryPart", choice: "leg" } });
+    // 表に無い深い問い（動かせるか）は答えを取らない（会話の記録と文字起こしに残る）
+    expect(heardTurn(fixedLine("injuryMove"), "うごかせない", iso(T0)).answer).toBeUndefined();
   });
 
   it("ボタンの答え方の問い: 表の 4 列の問いのうち、押した・取れた答えの無い物。はい・いいえを問いの表の選択肢に引く", () => {
@@ -370,6 +406,40 @@ describe("次の 1 文（nextTalk。偽の client）", () => {
     const f = fake(() => ai("device", "きかいは うごいて いますか"));
     const r = await nextTalk(logOf([[TALK_OPENING, "あしが いたい"]]), { ...CTX, hasDevice: false }, aiOf(f.client).ai);
     expect(r).toMatchObject({ kind: "ask", error: "topic", line: { by: "fixed", topic: "injured" } });
+  });
+});
+
+describe("1 段深く聞く問い（T137b。AI は問いの表から選び、言い換えるだけ）", () => {
+  const hurt = () => logOf([[TALK_OPENING, "あしが いたい"], [fixedLine("injured"), "はい"]]);
+
+  it("けが ある のあと: AI が「出血」を選び易しく言い換える（AI の印、深い問いの id）。言い換えた答えは表に渡さない", async () => {
+    const f = fake(() => ai("bleeding", "ちは でて いますか", "けがを したのですね"));
+    const r = await nextTalk(hurt(), CTX, aiOf(f.client).ai);
+    expect(r).toMatchObject({ kind: "ask", called: true, line: { by: "ai", topic: "injured", item: "bleeding", text: "けがを したのですね。ちは でて いますか" } });
+    // AI に渡す状況には深い問いの表（何のあとか・決まった問い）
+    expect(JSON.stringify(f.calls[0].messages)).toContain("bleeding（出血。けがのあと。決まった問い「血は出ていますか」）");
+    if (r.kind === "ask") expect(answerOf(r.line, "はい")).toBeUndefined();
+  });
+
+  it("決まった問いの文のまま選んだら決まった問いとして読む（作り置きの声、答えは言葉の一致で取る）", async () => {
+    const f = fake(() => ai("bleeding", "血は出ていますか"));
+    const r = await nextTalk(hurt(), CTX, aiOf(f.client).ai);
+    expect(r).toMatchObject({ kind: "ask", called: true, line: { by: "fixed", item: "bleeding", voice: "/api/signals/voice?fixed=topic-bleeding" } });
+    if (r.kind === "ask") expect(answerOf(r.line, "でてる")).toEqual({ id: "bleeding", choice: "yes" });
+  });
+
+  it("元をまだ聞いていない深い問い・表に無い問いを選んだら決まった問い", async () => {
+    const f = fake(() => ai("spare", "よびの でんちは ありますか"));
+    const r = await nextTalk(logOf([[TALK_OPENING, "あしが いたい"]]), CTX, aiOf(f.client).ai);
+    expect(r).toMatchObject({ kind: "ask", error: "topic", line: { by: "fixed", topic: "injured" } });
+    const g = fake(() => ({ ask: "bloodType", preface: "", question: "けつえきがたは なにですか", done: false }) as unknown as TalkAnswer);
+    expect(await nextTalk(logOf([[TALK_OPENING, "あしが いたい"]]), CTX, aiOf(g.client).ai)).toMatchObject({ kind: "ask", error: "bad_output" });
+  });
+
+  it("深い問いの言い換えでも助言・診断は門で外す（動けない → 挟まれ の問いに「うごかないで ください」）", async () => {
+    const f = fake(() => ai("pinned", "うごかないで くださいね？"));
+    const log = logOf([[TALK_OPENING, "うごけん"], [fixedLine("canMove"), "うごけない"]]);
+    expect(await nextTalk(log, CTX, aiOf(f.client).ai)).toMatchObject({ kind: "ask", error: "gate", gate: "advice", line: { by: "fixed", item: "pinned" } });
   });
 });
 

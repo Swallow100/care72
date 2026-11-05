@@ -6,7 +6,7 @@
 //   送信元は見ず、同じ ID の失敗が 15 分に 10 回で 15 分止める（locked、429）。止めている間は確かめない。通れば ID の失敗を消す
 // - 種のデモ事業所のアカウント（山本・審査員）は固定で断る。山本は env の確かめ方が表より先に効くので、表を変えても効かない。
 //   ほかでも、確かめ方が表のハッシュでなければ（env の値）断る
-// - 新しいパスワードは 8〜64 字（NFC）。今の物と同じは断る
+// - 新しいパスワードは lib/auth/password-rule.ts の決まり（10〜64 字・大文字・小文字・記号。T148 でケアマネ追加・再設定と 1 か所に）。今の物と同じは断る
 // - 書くのは古いハッシュのときだけ（同時に 2 つ変えても片方だけ勝つ）。事業所の経過に「佐藤 パスワード変更」（平文は書かない）
 // - 変えると指紋（pv）が変わり、ほかの端末のセッションは切れる。変えた端末は、新しいハッシュの指紋で署名した token を返し、
 //   route が cookie を付け直す（ログインしたまま）。login() を通すと PBKDF2 が 3 回になるので、ログインと同じ形の token を
@@ -20,13 +20,15 @@ import { CARE_MANAGERS_ANCHOR } from "../office/http-paths.ts";
 import { accountCredential, credentialVersion, verifyCredential } from "./credential.ts";
 import { isFixedAccount } from "./demo.ts";
 import { hashPassword, MAX_PASSWORD_LENGTH } from "./password.ts";
+import { checkPassword, PASSWORD_MAX, PASSWORD_MIN, PASSWORD_RULE_LABELS, passwordProblemLabel, passwordProblems } from "./password-rule.ts";
 import { attemptKey, loginLock, recordLoginAttempt } from "./lockout.ts";
 import type { AuthEnv, Principal } from "./principal.ts";
 import { ROLE_LABELS } from "./roles.ts";
 import { sessionTimes, signSession } from "./session.ts";
 
-export const NEW_PASSWORD_MIN = 8;
-export const NEW_PASSWORD_MAX = 64;
+/** 新しいパスワードの長さ（決まりは lib/auth/password-rule.ts の 1 か所。欄の minLength・maxLength とテストがここから読む） */
+export const NEW_PASSWORD_MIN = PASSWORD_MIN;
+export const NEW_PASSWORD_MAX = PASSWORD_MAX;
 
 export const PASSWORD_CHANGE_ERRORS = [
   "login_required",
@@ -47,7 +49,8 @@ export const PASSWORD_CHANGE_ERROR_LABELS: Record<PasswordChangeError, string> =
   forbidden: "権限なし",
   fixed: "固定",
   invalid: "入力不正",
-  password: `新規 ${NEW_PASSWORD_MIN}〜${NEW_PASSWORD_MAX}字`,
+  // 足りない物は応答で添える（passwordChangeRequest。「条件不足 大文字 記号」）
+  password: PASSWORD_RULE_LABELS.short,
   wrong_password: "現在 不一致",
   same: "同一 不可",
   locked: "回数超過 しばらく待機",
@@ -71,11 +74,10 @@ export type PasswordChangeResult =
   | { ok: false; error: Exclude<PasswordChangeError, "locked"> }
   | { ok: false; error: "locked"; retryAfterSec: number; minutes: number };
 
-/** 新しいパスワードの形。NFC にそろえ、8〜64 字。違えば null */
+/** 新しいパスワードの形（lib/auth/password-rule.ts の決まり）。NFC にそろえた値、違えば null */
 export function parseNewPassword(raw: unknown): string | null {
-  if (typeof raw !== "string") return null;
-  const v = raw.normalize("NFC");
-  return v.length >= NEW_PASSWORD_MIN && v.length <= NEW_PASSWORD_MAX ? v : null;
+  const c = checkPassword(raw);
+  return c.ok ? c.value : null;
 }
 
 type Row = { id: string; office_id: string | null; display_name: string; login_id: string | null; password_hash: string | null };
@@ -234,6 +236,8 @@ export async function passwordChangeRequest(
   const r = await changeOwnPassword(db, env, secret, principal, { current: o.current, next: o.next }, now, opts);
   if (!r.ok) {
     const out = fail(r.error);
+    // 決まりに合わないときは足りない物を添える（「条件不足 大文字 記号」）
+    if (r.error === "password") return { ...out, body: { ...out.body, label: passwordProblemLabel(passwordProblems(o.next)) } };
     return r.error === "locked" ? { ...out, body: { ...out.body, minutes: r.minutes }, retryAfterSec: r.retryAfterSec } : out;
   }
   return { status: 200, body: { ok: true }, token: r.token };

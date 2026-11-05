@@ -39,7 +39,7 @@ export const PHONE_LINK_CONFIRM = {
 } as const;
 
 /** 発行の API の断りの言葉 */
-export const PHONE_LINK_API_LABELS = { forbidden: "権限なし", notFound: "対象なし", unlisted: "一覧外" } as const;
+export const PHONE_LINK_API_LABELS = { forbidden: "権限なし", notFound: "対象なし", unlisted: "一覧外", noConsent: "同意なし" } as const;
 
 /** 本人・家族の画面の言葉（やさしい日本語の書き方） */
 export const PHONE_EASY = {

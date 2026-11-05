@@ -6,7 +6,7 @@
 // - 取れていなければ「未取得」と最後に取れた時刻。下に出典の 1 行
 
 import { GoToIcon } from "@/components/ui/Icon";
-import { JMA_LABELS, WARNING_SOURCE, intensityLabel, magnitudeLabel } from "@/lib/jma/labels";
+import { JMA_ANCHOR, JMA_LABELS, WARNING_SOURCE, intensityLabel, magnitudeLabel } from "@/lib/jma/labels";
 import type { JmaAlertsData } from "@/lib/jma/alerts";
 import { shortJst } from "@/lib/disaster/state";
 
@@ -33,7 +33,7 @@ export function JmaAlertsView({
 }) {
   const suggest = !disaster && data.rows.some((r) => r.warning);
   return (
-    <section aria-label={JMA_LABELS.title} className="mt-2 grid gap-1 rounded bg-panel2 px-3 py-2 text-sm" data-jma>
+    <section id={JMA_ANCHOR} aria-label={JMA_LABELS.title} className="mt-2 grid scroll-mt-20 gap-1 rounded bg-panel2 px-3 py-2 text-sm" data-jma>
       <div className="flex min-h-8 flex-wrap items-center gap-x-2">
         <span className="font-bold">{JMA_LABELS.title}</span>
         {data.fetch.ok ? (

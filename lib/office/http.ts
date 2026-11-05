@@ -2,7 +2,8 @@
 // ここは D1 と Principal を引数で受け取る（テストで node:sqlite を渡す）。
 //
 // - 利用者追加（JSON）: 作ったら本人のページ（担当一覧の右の面 /?open=<id>）の URL を返す。画面が開いて入れる欄で続きを入れる
-// - ケアマネ追加（JSON）: 管理者だけ。初期パスワードの平文は、この応答で 1 回だけ返す（URL・ログ・表には出さない。応答は no-store）
+// - ケアマネ追加（JSON）: 管理者だけ。作った初期パスワードの平文は、この応答で 1 回だけ返す（URL・ログ・表には出さない。応答は no-store）。
+//   管理者が決めたパスワード（T148）は返さない（password は null）
 // - 担当の割当・一括変更（T60）・外す・戻す（フォームの POST）: 303 で画面へ戻す。一括変更は戻り先に変更と飛ばしの人数（moved・skipped）。誤りは URL の people_error（言葉の種類だけ。名前は載せない）
 // 断り方: ログインしていなければ 401、ケアマネの役でなければ 403（lib/auth/guard.ts の denied と同じ形）。
 
@@ -11,6 +12,7 @@ import type { Principal } from "../auth/principal.ts";
 import { caseloadHref } from "../caseload.ts";
 import { OFFICE_PATH, type PostOutcome } from "../disaster/http.ts";
 import type { FormLike } from "../disaster/state.ts";
+import { checkPassword, passwordProblemLabel } from "../auth/password-rule.ts";
 import { parseDisplayName, parsePersonInput, parseStaffInput } from "./forms.ts";
 import { OFFICE_ERROR_LABELS, PEOPLE_ACTION_ERRORS, type OfficeApiError, type PeopleActionError } from "./labels.ts";
 import { ASSIGN_ANCHOR } from "./http-paths.ts";
@@ -37,6 +39,7 @@ const STATUS: Record<OfficeApiError, number> = {
   login_id: 400,
   login_taken: 409,
   login_unavailable: 409,
+  password: 400,
   invalid: 400,
   forbidden: 403,
   login_required: 401,
@@ -87,10 +90,11 @@ export async function addCareManagerRequest(
   const actor = officeActor(p);
   if (!actor || !actor.admin) return fail("forbidden");
   const parsed = parseStaffInput(raw);
-  if (!parsed.ok) return fail(parsed.error);
+  if (!parsed.ok) return parsed.error === "password" ? passwordFail(raw) : fail(parsed.error);
   const r = await addCareManager(db, actor, parsed.value, at, opts);
   if (!r.ok) return fail(r.error);
-  return { status: 200, body: { ok: true, account: r.account, password: r.password } };
+  // 作った初期パスワードだけ返す。管理者が決めたパスワードは返さない（null）
+  return { status: 200, body: { ok: true, account: r.account, password: r.chosen ? null : r.password } };
 }
 
 // ---------- ケアマネの変更（T61、JSON） ----------
@@ -103,10 +107,18 @@ type ParsedAction =
   | { action: "rename"; displayName: string }
   | { action: "admin"; admin: boolean }
   | { action: "disable"; disabled: boolean }
-  | { action: "reset_password" };
+  | { action: "reset_password"; password?: string };
 
-/** 形を読む。名前が違えば display_name、ほかの形の違いは invalid */
-function parseCareManagerAction(raw: unknown): ParsedAction | "invalid" | "display_name" {
+/** 決めたパスワードが決まりに合わない（「条件不足 大文字 記号」。足りない物を添える） */
+function passwordFail(raw: unknown): JsonOutcome {
+  const pw = typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>).password : undefined;
+  const c = checkPassword(pw);
+  const out = fail("password");
+  return c.ok ? out : { ...out, body: { ...out.body, label: passwordProblemLabel(c.missing) } };
+}
+
+/** 形を読む。名前が違えば display_name、決めたパスワードが決まりに合わなければ password、ほかの形の違いは invalid */
+function parseCareManagerAction(raw: unknown): ParsedAction | "invalid" | "display_name" | "password" {
   if (typeof raw !== "object" || raw === null) return "invalid";
   const o = raw as Record<string, unknown>;
   switch (o.action) {
@@ -118,8 +130,12 @@ function parseCareManagerAction(raw: unknown): ParsedAction | "invalid" | "displ
       return typeof o.admin === "boolean" ? { action: "admin", admin: o.admin } : "invalid";
     case "disable":
       return typeof o.disabled === "boolean" ? { action: "disable", disabled: o.disabled } : "invalid";
-    case "reset_password":
-      return { action: "reset_password" };
+    case "reset_password": {
+      // 再設定（T148）: password があれば管理者が決めたパスワード（決まりで確かめる）、無ければ今どおり作る
+      if (o.password === undefined || o.password === null || o.password === "") return { action: "reset_password" };
+      const pw = checkPassword(o.password);
+      return pw.ok ? { action: "reset_password", password: pw.value } : "password";
+    }
     default:
       return "invalid";
   }
@@ -142,11 +158,12 @@ export async function careManagerActionRequest(
   if (!actor || !actor.admin) return fail("forbidden");
   if (!ID.test(accountId)) return fail("not_found");
   const parsed = parseCareManagerAction(raw);
+  if (parsed === "password") return passwordFail(raw);
   if (typeof parsed === "string") return fail(parsed);
   if (parsed.action === "reset_password") {
-    const r = await resetCareManagerPassword(db, actor, accountId, at, opts);
+    const r = await resetCareManagerPassword(db, actor, accountId, at, { ...opts, chosen: parsed.password });
     if (!r.ok) return fail(r.error);
-    return { status: 200, body: { ok: true, account: r.account, password: r.password } };
+    return { status: 200, body: { ok: true, account: r.account, password: r.chosen ? null : r.password } };
   }
   let r: StaffChangeResult;
   if (parsed.action === "rename") r = await renameCareManager(db, actor, accountId, parsed.displayName, at);

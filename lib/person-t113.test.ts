@@ -6,10 +6,12 @@ import { describe, expect, it } from "vitest";
 import { LocationPick } from "../components/person/LocationPick.tsx";
 import { PersonView } from "../components/person/PersonView.tsx";
 import { SelectList } from "../components/ui/Select.tsx";
-import { SEED_AT, SEED_PEOPLE, seedConsents, type SeedContact, type SeedPerson } from "../seed/people.ts";
+import { SEED_AT, seedConsents, type SeedContact, type SeedPerson } from "../seed/people.ts";
 import { PLACE_LABELS, SECTION_LABELS } from "./labels.ts";
 import { birthText, toPersonView, type Block, type PersonPageRows, type PersonView as View, type Row, type Seg } from "./person.ts";
 import { readOptions, type SelectItem } from "./ui/select.ts";
+// T142 で種の台帳を埋めた。このテストは空いた欄を前提にするので、T142 より前の空きの多い形（seed/sparse.ts）を使う
+import { SPARSE_PEOPLE } from "../seed/sparse.ts";
 
 const TODAY = "2026-11-05";
 
@@ -24,7 +26,7 @@ function seedRows(p: SeedPerson): PersonPageRows {
   };
 }
 
-const seed = (id: string) => SEED_PEOPLE.find((p) => p.person.id === id)!;
+const seed = (id: string) => SPARSE_PEOPLE.find((p) => p.person.id === id)!;
 const rowsOf = (blocks: Block[]): Row[] => blocks.flatMap((b) => (b.type === "row" ? [b.row] : []));
 const section = (v: View, id: string) => v.sections.find((s) => s.id === id)!;
 const rowOf = (v: View, key: string): Row | undefined => v.sections.flatMap((s) => rowsOf(s.blocks)).find((r) => r.key === key);

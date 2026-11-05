@@ -676,3 +676,58 @@
   width: 100%;
   height: 100%;
 }
+
+/*
+  印刷の見本（T147、components/ui/PrintButton.tsx・lib/forms/print.ts の previewPrint）。<html data-print-preview> の間、
+  上の @media print と同じ物を画面でも隠し（帯・切替・操作・紙面を含まない物）、印刷だけの物（.print-only）を出す。
+  紙の上の画面だけの層（その場で入れる・紙に直接書く・見直しの印）も隠す。見本の上の帯（.print-preview-bar）だけは残す。
+  紙の外は灰色の机（紙の白と分ける）
+*/
+html[data-print-preview] body {
+  background: #d9dce0 !important;
+}
+html[data-print-preview] body > *:not(main):not(:has([data-paper-root])):not(.print-preview-bar),
+html[data-print-preview] header:not(:has([data-paper-root])),
+html[data-print-preview] nav:not(:has([data-paper-root])),
+html[data-print-preview] .screen-only,
+html[data-print-preview] .qr-screen-only,
+html[data-print-preview] main:has(> [data-paper-print]) > :not([data-paper-print]),
+html[data-print-preview] .ov-layer,
+html[data-print-preview] .pf-layer,
+html[data-print-preview] .ov-edit,
+html[data-print-preview] .rv-redo,
+html[data-print-preview] .rv-focus {
+  display: none !important;
+}
+html[data-print-preview] .print-only {
+  display: block !important;
+}
+html[data-print-preview] main:has([data-paper-root]) {
+  padding-top: 3rem !important;
+}
+.print-preview-bar {
+  position: fixed;
+  inset: 0 0 auto 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.4rem 1rem;
+  background: var(--panel, #fff);
+  color: var(--ink, #1d1d1d);
+  font-size: 0.875rem;
+  border-bottom: 1px solid #c9cdd2;
+}
+@media print {
+  .print-preview-bar {
+    display: none !important;
+  }
+}
+html[data-print-preview] [data-paper-edit] [data-editable] {
+  outline: none !important;
+  background: none !important;
+}
+/* 置いた文字の枠と画像は、画面では層が描き紙の物を隠している（paper-fill.css）。見本では紙の物を出す */
+html[data-print-preview] [data-paper-fill] .ov-img [data-free] {
+  visibility: visible !important;
+}

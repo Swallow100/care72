@@ -3,15 +3,23 @@ import { Mark, StateTag } from "@/components/ui/Tag";
 import { LinkPending } from "@/components/ui/LinkPending";
 import type { DisasterMark } from "@/lib/disaster/state";
 import { OFFICE_PATH } from "@/lib/disaster/http";
+import { JMA_ANCHOR, JMA_LABELS } from "@/lib/jma/labels";
 
 // ヘッダーの事業所の状態。平時は色の無い地の印「平時」で、押せない（T79。薄い文字のリンクだと担当一覧・訓練などのメニューの項目に見えた）。
 // 災害モードは要確認の黄の塗りの印「大雨」と、本文色の太字「レベル 4」「停電 3 時間」（黄は文字に使わない。印のすぐ横なので帯も付けない）。
 // 至急の赤は使わず、帯で塗らない（本物の警報と見間違えさせない）。災害モードは押すと事業所の画面（押せる高さ 32px）
-export function DisasterBadge({ mark, link }: { mark: DisasterMark; link: boolean }) {
+// 地域の警報（T148）: 事業所の地域の市と利用者の市に今出ている気象庁の警報の数を、本文色の太字「警報 2」で添える（種類の名前は title）。
+// 気象庁の欄（事業所の画面）と同じ数え方（lib/jma/alerts.ts の loadRegionWarnings）。表示だけで、災害モードを切り替えない・色を付けない。
+// 平時でも警報があれば、その「警報 2」だけ押せる（事業所の画面の気象庁の欄へ）。注意報は数えない
+export type BadgeWarnings = { count: number; kinds: readonly string[] };
+
+export function DisasterBadge({ mark, link, warnings = null }: { mark: DisasterMark; link: boolean; warnings?: BadgeWarnings | null }) {
+  const warn = warnings && warnings.count > 0 ? warnings : null;
   if (mark.kind === "normal") {
     return (
-      <span aria-label="事業所の状態" className="inline-flex items-center text-muted" data-disaster-mark="normal">
+      <span aria-label="事業所の状態" className="inline-flex items-center gap-x-1.5 text-muted" data-disaster-mark="normal">
         <Mark size="md">{mark.label}</Mark>
+        {warn && (link ? <WarningLink warnings={warn} /> : <WarningText warnings={warn} />)}
       </span>
     );
   }
@@ -25,6 +33,7 @@ export function DisasterBadge({ mark, link }: { mark: DisasterMark; link: boolea
           {d}
         </span>
       ))}
+      {warn && <WarningText warnings={warn} />}
     </span>
   );
   if (!link) return <span aria-label="事業所の状態">{body}</span>;
@@ -36,6 +45,30 @@ export function DisasterBadge({ mark, link }: { mark: DisasterMark; link: boolea
       data-press
     >
       {body}
+      <LinkPending />
+    </Link>
+  );
+}
+
+/** 「警報 2」（本文色の太字。種類の名前は title と読み上げ） */
+function WarningText({ warnings }: { warnings: BadgeWarnings }) {
+  return (
+    <span className="font-bold whitespace-nowrap text-ink tabular-nums" title={warnings.kinds.join("・")} data-region-warnings={warnings.count}>
+      {JMA_LABELS.warning} {warnings.count}
+      <span className="sr-only">（{warnings.kinds.join("・")}）</span>
+    </span>
+  );
+}
+
+/** 平時の「警報 2」は押すと事業所の画面の気象庁の欄へ（押せる高さ 32px） */
+function WarningLink({ warnings }: { warnings: BadgeWarnings }) {
+  return (
+    <Link
+      href={`${OFFICE_PATH}#${JMA_ANCHOR}`}
+      className="relative -mx-1 inline-flex min-h-8 items-center rounded px-1 text-sm outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-accent"
+      data-press
+    >
+      <WarningText warnings={warnings} />
       <LinkPending />
     </Link>
   );

@@ -18,7 +18,7 @@
 import Link from "next/link";
 import { Fragment, useCallback, useEffect, useId, useMemo, useRef, useState, type SyntheticEvent } from "react";
 import { Button } from "@/components/ui/Button";
-import { CloseIcon, FitIcon, FullIcon, ZoomInIcon, ZoomOutIcon } from "@/components/ui/Icon";
+import { CloseIcon, FitIcon, FullIcon, RouteMapIcon, ZoomInIcon, ZoomOutIcon } from "@/components/ui/Icon";
 import { CountLabel, countClass, StateTag, TONE_FILL } from "@/components/ui/Tag";
 import type { GeoPoint, HazardKind } from "@/lib/db/types";
 import { DRAG_SLOP, FULL_ZOOM, keyAction, MAP_LIMITS, pinchView, sameView, sideWheelTakes, stepZoom, toFrame, wheelZoom } from "@/lib/map/camera";
@@ -45,6 +45,7 @@ import {
   type View,
 } from "@/lib/map/geo";
 import { MAP_UI, othersLabel } from "@/lib/map/labels";
+import { initialView, regionView, type MapRegion } from "@/lib/map/region";
 import { BASE_LAYER, BASE_OPACITY, HAZARD_LAYERS, HAZARD_OPACITY, HAZARD_PORTAL, type Attribution, type HazardLayer } from "@/lib/map/layers";
 import type { MapPin } from "@/lib/map/side";
 import { COLOR_LABELS } from "@/lib/labels";
@@ -102,6 +103,11 @@ export type CaseMapProps = {
   unplaced: number;
   /** ピンが無いときの真ん中（事業所の中心、T68）。無ければ FALLBACK（松山市の市街）。T72 */
   center?: GeoPoint;
+  /**
+   * 事業所の地域（中心と広さ、T148。lib/map/region.ts）。ピンが無いときの初めの表示と「地域」のボタン（中心から km の四角が入る表示）。
+   * ピンがあるときの初めの表示はピンが全部入る表示のまま。雨雲はその表示に重なる。無ければ「地域」を出さない
+   */
+  region?: MapRegion | null;
   /** 気象庁の雨雲を重ねる（旗 JMA_NOWCAST が on のとき。デモ事業所も。訓練の画面は渡さない。サーバーが決める。T72・T103） */
   nowcast?: boolean;
   /** ピンの位置が種の架空の位置（デモ事業所）。出典の行に「位置は架空」。本物の事業所は渡さない（T114） */
@@ -118,7 +124,7 @@ type LayerChoice = {
   nowcast?: NowcTime | null;
 };
 
-export function CaseMap({ pins, layers, demo, unplaced, center, nowcast = false, fictional = false }: CaseMapProps) {
+export function CaseMap({ pins, layers, demo, unplaced, center, region = null, nowcast = false, fictional = false }: CaseMapProps) {
   const [on, setOn] = useState<ReadonlySet<HazardKind>>(() => new Set(layers));
   const [rainOn, setRainOn] = useState(true);
   // 気象庁の雨雲の一番新しい実況の時刻（旗が off・デモ事業所では読まない）
@@ -126,15 +132,21 @@ export function CaseMap({ pins, layers, demo, unplaced, center, nowcast = false,
   const [full, setFull] = useState(false);
   const box = useRef<HTMLDivElement>(null);
 
-  // ピンが全部入る表示（「全体」で戻る所）
+  // ピンが全部入る表示（「全体」で戻る所）。ピンが無く地域があれば地域の表示（T148）
   const fit: View = useMemo(
     () =>
-      fitView(
-        pins.map((p) => p.location),
-        { minZ: 11, maxZ: 15, fallback: center ?? FALLBACK },
+      initialView(
+        pins.length,
+        fitView(
+          pins.map((p) => p.location),
+          { minZ: 11, maxZ: 15, fallback: center ?? FALLBACK },
+        ),
+        region,
       ),
-    [pins, center],
+    [pins, center, region],
   );
+  // 地域の表示（「地域」のボタン、T148）
+  const regionFit: View | null = useMemo(() => (region ? regionView(region) : null), [region]);
   // 拡大・縮小・移動した表示（T66）。読み直し（災害モードは 1 分ごと）でピンの顔ぶれと位置が同じなら、動かした表示のまま残す
   const pinKey = pins.map((p) => `${p.id}@${p.location.lat},${p.location.lng}`).join("|");
   const [view, setView] = useState<View>(fit);
@@ -193,6 +205,11 @@ export function CaseMap({ pins, layers, demo, unplaced, center, nowcast = false,
         {/* 地図の操作は 1 行にまとめる: その場の拡大・縮小・全体と、全画面（T46 の入口。右端） */}
         <div className="flex flex-wrap items-center gap-1" data-map-tools>
           <ZoomButtons view={view} fitted={sameView(view, fit)} onZoom={(dz) => update((v, s) => zoomAt(v, s, stepZoom(v.z, dz)))} onFit={() => setView(fit)} />
+          {regionFit && (
+            <Button size="sm" icon={RouteMapIcon} className={FOCUS} disabled={sameView(view, regionFit)} onClick={() => setView(regionFit)} data-map-region>
+              {MAP_UI.region}
+            </Button>
+          )}
           <Button
             size="sm"
             icon={FullIcon}

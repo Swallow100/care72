@@ -6,7 +6,7 @@ import { OWN_QR_MM, OwnSheetFront, OwnSheetPaper, type OwnQr } from "../../compo
 import { QR_LABELS } from "../qr/labels.ts";
 import { qrTimes, signQrToken } from "../qr/token.ts";
 import { qrUrl } from "../qr/url.ts";
-import { SEED_AT, SEED_PEOPLE, seedConsents, type SeedPerson } from "../../seed/people.ts";
+import { SEED_AT, seedConsents, type SeedPerson } from "../../seed/people.ts";
 import type { ConsentStatus } from "../db/types.ts";
 import type { PersonPageRows } from "../person.ts";
 import { easy, hiragana, kanjiWithoutRuby, nameWithKana, plainText, yomi, YOMI } from "./easy-words.ts";
@@ -24,6 +24,8 @@ import {
   type OwnBlockId,
   type OwnSheet,
 } from "./own-sheet.ts";
+// T142 で種の台帳を埋めた。このテストは空いた欄を前提にするので、T142 より前の空きの多い形（seed/sparse.ts）を使う
+import { SPARSE_PEOPLE } from "../../seed/sparse.ts";
 
 const TODAY = "2026-11-02";
 const OPTS = { today: TODAY, officeName: "デモ事業所" };
@@ -40,7 +42,7 @@ function seedRows(p: SeedPerson): PersonPageRows {
   };
 }
 
-const seed = (id: string) => SEED_PEOPLE.find((p) => p.person.id === id)!;
+const seed = (id: string) => SPARSE_PEOPLE.find((p) => p.person.id === id)!;
 const rowsOf = (id: string) => seedRows(seed(id));
 const sheetOf = (id: string): OwnSheet => buildOwnSheet(rowsOf(id), OPTS);
 /** 種の 1 人の行を、1 つの同意だけ差し替えて作る */
@@ -60,7 +62,7 @@ const lineOf = (s: OwnSheet, key: string) => s.blocks.flatMap((b) => b.lines).fi
 /** 漢字だけ取り出す（ふりがなを落とした文字から、ruby の付いた字を数えるため） */
 const stripTags = (html: string) => html.replace(/<rt>[^<]*<\/rt>|<rp>[^<]*<\/rp>/g, "").replace(/<[^>]+>/g, "");
 
-const ALL_IDS = SEED_PEOPLE.map((p) => p.person.id);
+const ALL_IDS = SPARSE_PEOPLE.map((p) => p.person.id);
 
 describe("ふりがなの道具（lib/forms/easy-words.ts）", () => {
   it("決まった文の書き方 {漢字|よみ} を言葉にする", () => {

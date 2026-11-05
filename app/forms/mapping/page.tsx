@@ -12,9 +12,10 @@ import { AiStatusMark } from "@/components/ui/AiStatus";
 import { aiStatusFor } from "@/lib/claude/cloudflare";
 import { aiUsable, type AiStatus } from "@/lib/claude/status";
 import { FORMS_LIST_LABELS } from "@/lib/forms/document-list";
-import { MAPPING_LABELS as L } from "@/lib/forms/mapping";
+import { addedFormHref, MAPPING_LABELS as L } from "@/lib/forms/mapping";
 import { formsScope, listMappings, type MappingSummary } from "@/lib/forms/mapping-db";
-import { allMunicipalEntries, cityForOffice, municipalEntry } from "@/lib/forms/municipal-forms";
+import { allMunicipalEntries, cityForRegion, municipalEntry } from "@/lib/forms/municipal-forms";
+import { regionCitiesOf } from "@/lib/office/region";
 import { officeCatalogMappings, sharedCatalogIds } from "@/lib/forms/shared-mapping";
 import { formatJst } from "@/lib/person";
 
@@ -39,23 +40,23 @@ export default async function FormMappingListPage() {
   let ai: AiStatus;
   let shared: Set<string>;
   let own: Own;
-  let officeCity: string | null;
+  let regionCities: string[];
   try {
     const { env } = await getCloudflareContext({ async: true });
     ai = await aiStatusFor(scope.officeId);
     // 地域選択（T134）: 同じ版の共有の対応表がある様式と、この事業所が一覧の様式から作った対応表
-    [list, shared, own, officeCity] = await Promise.all([
+    [list, shared, own, regionCities] = await Promise.all([
       listMappings(env.DB, scope.officeId),
       sharedCatalogIds(
         env.DB,
         allMunicipalEntries().map((e) => ({ id: e.form.id, sha256: e.form.sha256 })),
       ),
       officeCatalogMappings(env.DB, scope.officeId),
-      // 事業所の市（T68 の地域）。地域選択の初めの市
-      env.DB.prepare("SELECT city FROM offices WHERE id = ?1")
+      // 事業所の地域の市（主な市 → 周りの市。T148）。地域選択の初めの市は、この順で一覧にある最初の市
+      env.DB.prepare("SELECT city, region_cities FROM offices WHERE id = ?1")
         .bind(scope.officeId)
-        .first<{ city: string }>()
-        .then((r) => r?.city ?? null),
+        .first<{ city: string; region_cities: string | null }>()
+        .then((r) => (r ? regionCitiesOf(r) : [])),
     ]);
   } catch (e) {
     console.error("様式対応を読めない", e);
@@ -85,7 +86,7 @@ export default async function FormMappingListPage() {
           municipal={{
             shared: [...shared],
             own: Object.fromEntries(Object.entries(own).map(([cid, m]) => [cid, { id: m.id, status: m.status }])),
-            defaultCity: cityForOffice(officeCity)?.id ?? null,
+            defaultCity: cityForRegion(regionCities)?.id ?? null,
           }}
         />
       </div>
@@ -126,6 +127,13 @@ export default async function FormMappingListPage() {
                     <td className={TD}>{m.issuer || <span className="text-muted">—</span>}</td>
                     <td className={TD}>
                       {m.status === "checked" ? <StateTag tone="ok">{L.checked}</StateTag> : <StateTag tone="check">{L.draft}</StateTag>}
+                      {/* 確認済は書類の一覧のその様式へ（T147） */}
+                      {m.status === "checked" && (
+                        <Link href={addedFormHref(m.id).replace("&added=1", "")} className="relative -mx-0.5 ml-2 rounded px-0.5 text-xs text-accent underline underline-offset-2" data-press data-to-forms={m.id}>
+                          {L.toForms}
+                          <LinkPending />
+                        </Link>
+                      )}
                     </td>
                     <td className={TD}>
                       {SOURCE_LABELS[m.sourceKind]}
