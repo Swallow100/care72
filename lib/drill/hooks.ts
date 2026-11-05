@@ -171,7 +171,7 @@ export function createCallHook(deps: { load: () => Promise<ReadonlyMap<string, P
       const source = sources.get(ask.person);
       if (!source) return { pickup: ask.pickup, speech: null, ai: false, called: false };
       // 町名は地区の別名で渡す（T88。本人役と同じ作り方）
-      const persona = buildPersona(source, { ...(deps.on ? { on: deps.on } : {}), places: personaPlaces(deps.ai, sources) });
+      const persona = buildPersona(source, { ...(deps.on ? { on: deps.on } : {}), places: personaPlaces(deps.ai, sources), fit: ask.fit });
       const callee = ask.target.kind === "self" ? "本人" : (persona.roles.get(ask.target.id) ?? null);
       if (!callee) return { pickup: ask.pickup, speech: null, ai: false, called: false };
       const r = await personaCallReply(
@@ -210,7 +210,7 @@ export function createVisitHook(deps: { load: () => Promise<ReadonlyMap<string, 
       const sources = await deps.load();
       const source = sources.get(v.person);
       if (!source) return { report: null, called: false };
-      const persona = buildPersona(source, { ...(deps.on ? { on: deps.on } : {}), places: personaPlaces(deps.ai, sources) });
+      const persona = buildPersona(source, { ...(deps.on ? { on: deps.on } : {}), places: personaPlaces(deps.ai, sources), fit: v.fit });
       const report = await personaVisitReport(
         persona,
         { person: v.person, hour: v.hour, world: v.world, incidents: v.incidents, state: v.state, ...(v.night ? { night: true } : {}) },
@@ -242,7 +242,7 @@ export function createTalkHook(deps: { load: () => Promise<ReadonlyMap<string, P
       const source = sources.get(t.person);
       if (!source) return plain;
       const opts = { ...(deps.on ? { on: deps.on } : {}), places: personaPlaces(deps.ai, sources) };
-      persona = buildPersona(source, opts);
+      persona = buildPersona(source, { ...opts, fit: t.fit });
       const others = [...sources.entries()].filter(([id]) => id !== t.person).map(([, s]) => s);
       key = pseudonymize([source, ...others], opts).key;
     } catch (e) {

@@ -4,7 +4,7 @@
 import type { SignalColor, WhereNow } from "../db/types.ts";
 import type { ActionRecord } from "./action-types.ts";
 import type { DrillIncident } from "./incident-types.ts";
-import type { FixedTurn, WorldState } from "./scenarios.ts";
+import type { DrillKind, FixedTurn, WorldState } from "./scenarios.ts";
 
 /** 本人ごとの 1 刻みの結果（安否 1 つ）。表の固定の物も、ペルソナ（T18）の物も同じ形 */
 export type DrillTurn = {
@@ -81,6 +81,8 @@ export type PersonaInput = {
   reasons?: ReadonlyArray<PersonaReason>;
   /** この区切りの終わりの時刻（発災からの分、T90）。無ければ hour の刻み */
   toMinute?: number;
+  /** 訓練の災害の種類（T125、lib/drill/fit.ts）。本人役の説明のハザードを想定に効く物に絞る。未決・無ければ絞らない */
+  fit?: DrillKind | null;
 };
 
 /** 本人 1 人の 1 刻み。空の配列は「連絡なし」。投げたら連絡なしとして進む */

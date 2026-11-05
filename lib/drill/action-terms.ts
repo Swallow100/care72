@@ -12,7 +12,8 @@
 //
 // D1・Claude を読まない純な計算（画面に出す物はサーバーが作って渡す）。scenarios.ts は型だけ読む。
 
-import type { ContactKind, DependsOn, DrillAction } from "../db/types.ts";
+import type { ContactKind, DependsOn, DrillAction, DrillScenario } from "../db/types.ts";
+import type { DrillScale } from "./scale.ts";
 import { actionRow, ACTION_CATALOG } from "./action-catalog.ts";
 import { DRILL_END_MINUTE } from "./clock.ts";
 import type { PersonMarks, PhoneState, WorldState } from "./scenarios.ts";
@@ -132,13 +133,15 @@ export const isDark = (hour: number): boolean => hour >= DARK_FROM || hour < DAR
 
 /** 手の可否と所要を読む元（訓練の状態の要る所だけ） */
 export type TermSource = {
+  /** 想定（T125。想定の表 lib/drill/fit.ts を引く。無ければ大雨） */
+  scenario?: DrillScenario;
   startedAt: string;
   minute: number;
   world: Pick<
     WorldState,
     "phone" | "marks" | "roads" | "flood" | "alertLevel" | "tsunami" | "staff" | "facilities" | "outage" | "notes"
   >;
-  options?: { night?: boolean; terms?: boolean; clock?: boolean } | undefined;
+  options?: { night?: boolean; terms?: boolean; clock?: boolean; scale?: DrillScale | null } | undefined;
 };
 
 // ---------- 72 時間の終わり（T123） ----------

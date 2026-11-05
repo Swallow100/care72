@@ -49,6 +49,8 @@ import type { ActTarget } from "./actions.ts";
 import { drillScope } from "./db.ts";
 import { clockLabel, PHONE_LABELS } from "./labels.ts";
 import { cleanWords, isPersonaFailure, loadPersonaSources, personaPlaces } from "./persona.ts";
+import { fitKindOf, profileOf } from "./fit.ts";
+import { gateWords } from "./gate.ts";
 import type { DrillCounts, WorldState } from "./scenarios.ts";
 
 // ---------- 言葉と上限 ----------
@@ -552,7 +554,19 @@ export async function planFree(
     decided: { as: plan.as, way: plan.way, minutes: plan.minutes, block: plan.block },
     called: r.called,
   };
-  return { ...plan, judge };
+  // 画面に出る文（1 文・起きたこと・理由・AI のできない理由）を想定の門に（T125。想定に合わない文と内部の名前の残る文を落とす）
+  const fit = profileOf(fitKindOf({ scenario: s.scenario ?? "heavy_rain", options: { scale: s.options?.scale ?? null } }, s.world as WorldState));
+  const gated: string[] = [];
+  const gate = (t: string | null): string | null => {
+    const g = gateWords(t, fit, s.world as WorldState);
+    gated.push(...g.dropped);
+    return g.text;
+  };
+  const words = gate(plan.words);
+  const outcome = gate(plan.outcome);
+  const reason = gate(plan.reason);
+  const block = plan.blockAi && plan.block ? (gate(plan.block) ?? FREE_BLOCK_WORD) : plan.block;
+  return { ...plan, words, outcome, reason, block, judge, ...(gated.length > 0 ? { gated } : {}) };
 }
 
 /** AI ができないと答えて理由が無いときの言葉 */

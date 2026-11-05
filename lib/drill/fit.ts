@@ -265,7 +265,10 @@ export function fitText(profile: FitProfile | null, opts: { with: "director" | "
     `この訓練の災害は${profile.label}。効くハザード: ${profile.hazards.map((h) => FIT_HAZARD_WORDS[h]).join("、")}`,
     `起きない事（この災害に合わない。出さない）: ${profile.changes.map((b) => b.words).join("、")}`,
   ];
-  if (opts.with === "director" && profile.injects.banned.length > 0) lines.push(`差し込まない種類: ${profile.injects.banned.join("、")}`);
+  if (opts.with === "director") {
+    if (profile.injects.banned.length > 0) lines.push(`差し込まない種類: ${profile.injects.banned.join("、")}`);
+    for (const [k, w] of Object.entries(profile.injects.words)) lines.push(`${k} はこの災害では: ${w}`);
+  }
   if (opts.with === "world") {
     if (profile.worldKinds.banned.length > 0) lines.push(`使わない種類: ${profile.worldKinds.banned.join("、")}`);
     for (const [k, w] of Object.entries(profile.worldKinds.only)) lines.push(`${k} は ${w}`);

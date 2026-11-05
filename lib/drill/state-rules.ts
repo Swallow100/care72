@@ -10,6 +10,8 @@
 // - 型を決めて出来事を減らすのではなく、筋の通らない物だけを外す。どの種類も、筋が通る時刻なら起きてよい
 
 import { arrivalRoleWords } from "./event-catalog.ts";
+import { changeMisfit, wordMisfit, type FitProfile } from "./fit.ts";
+import { nameIds } from "./gate.ts";
 import type { DrillIncident } from "./incident-types.ts";
 import { applyEvent, type PersonMarks, type PhoneState, type WorldChange, type WorldState } from "./scenarios.ts";
 import { minuteText } from "./time-text.ts";
@@ -321,8 +323,8 @@ export type Screened = {
   kept: DrillIncident[];
   /** 当てたあとの世界 */
   world: WorldState;
-  /** 捨てた・後ろに回した物の決まり（ログと数え。中身は書かない） */
-  ruled: Array<{ rule: StateRuleId; kind: WorldChange["kind"]; deferred: boolean }>;
+  /** 捨てた・後ろに回した物の決まり（ログと数え。中身は書かない）。想定に合わない物は「fit:…」、内部の名前は internal_id（T125） */
+  ruled: Array<{ rule: StateRuleId | string; kind: WorldChange["kind"]; deferred: boolean }>;
 };
 
 /**
@@ -340,6 +342,12 @@ export function screenIncidents(
      * 起きないまま残る（通行止の道が 72 時間まで戻らない）
      */
     noDefer?: boolean;
+    /**
+     * 想定の表（T125、lib/drill/fit.ts）。あれば、表の外（AI・予定）の出来事を先に想定で見る: 合わない変化と、AI の文の合わない言葉・
+     * 内部の名前が残る文は捨てる（手の id は画面の名前に置き換える）。null は未決の想定（変化は全部合う。内部の名前だけ見る）。
+     * 無ければ前と同じ（想定を見ない）
+     */
+    fit?: FitProfile | null;
   },
 ): Screened {
   let w = world;
@@ -347,12 +355,23 @@ export function screenIncidents(
   const ruled: Screened["ruled"] = [];
   for (const e of incidents) {
     const minute = ctx.minute ?? Math.round(e.at * 60);
-    const v = screenIncident(w, e, { minute, origin: ctx.originOf?.(e) ?? ctx.origin, ...(ctx.ahead ? { ahead: ctx.ahead } : {}) });
+    const origin = ctx.originOf?.(e) ?? ctx.origin;
+    let x0 = e;
+    if (ctx.fit !== undefined && origin !== "table") {
+      const fitRule = changeMisfit(ctx.fit, e.change, w) ?? (e.ai ? wordMisfit(ctx.fit, e.text, w) : null);
+      const named = e.ai ? nameIds(e.text) : e.text;
+      if (fitRule || named === null) {
+        ruled.push({ rule: fitRule ?? "internal_id", kind: e.change.kind, deferred: false });
+        continue;
+      }
+      if (named !== e.text) x0 = { ...e, text: named };
+    }
+    const v = screenIncident(w, x0, { minute, origin, ...(ctx.ahead ? { ahead: ctx.ahead } : {}) });
     if (v.keep === false || (v.keep === "defer" && ctx.noDefer)) {
       ruled.push({ rule: v.rule, kind: e.change.kind, deferred: false });
       continue;
     }
-    const x = v.keep === "defer" ? deferred(e, minute, v.at) : e;
+    const x = v.keep === "defer" ? deferred(x0, minute, v.at) : x0;
     if (v.keep === "defer") ruled.push({ rule: v.rule, kind: e.change.kind, deferred: true });
     kept.push(x);
     w = applyEvent(w, x, x.at);

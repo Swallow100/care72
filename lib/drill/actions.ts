@@ -31,6 +31,7 @@ import { DRILL_END_MINUTE, ZERO_COUNTS } from "./clock.ts";
 import {
   advance,
   DrillEnded,
+  fitOf,
   isClock,
   isNight,
   step,
@@ -50,6 +51,8 @@ import {
 import { countFree, freeText, planFree, type FreeHook } from "./free-action.ts";
 import { actionTerm, blockOf, CLOCK_END_LABEL, clockOver, termFactsOf } from "./action-terms.ts";
 import type { FreePlan } from "./action-types.ts";
+import { gateWords, tallyGate } from "./gate.ts";
+import { fitKindOf } from "./fit.ts";
 import { talkEnd, withResultAsks, type VisitHook } from "./dialogue.ts";
 import { CALL_FIXED_SPEECH, CALL_STATUS_LABELS, CALL_STATUS_TEXTS } from "./labels.ts";
 import { CALL_PICKUP_ODDS, decideCallPickup, type CallPickup } from "./persona.ts";
@@ -60,6 +63,7 @@ import {
   settleWorld,
   type Arrival,
   type ArrivalRole,
+  type DrillKind,
   type WorldState,
 } from "./scenarios.ts";
 
@@ -164,6 +168,8 @@ export type ActInput = {
 
 /** 本人役の通話（T18 の personaCallReply）に渡す物。出ると決まったときだけ呼ぶ */
 export type CallAsk = {
+  /** 訓練の災害の種類（T125。本人役の説明のハザードを絞る） */
+  fit?: DrillKind | null;
   person: string;
   target: ActTarget;
   pickup: CallPickup;
@@ -457,6 +463,8 @@ export async function act(
           hooks.free,
         );
     if (free.called && !fresh) start = { ...start, world: countFree(start.world) };
+    // 想定の門が落とした文（T125）を数える
+    if (free.gated?.length) start = { ...start, world: tallyGate(start.world, "free", free.gated) };
     if (free.block) throw new ActionBlocked(free.block, free.called && !fresh);
     const as = free.as ?? "free";
     input = { ...raw, kind: as, person: as === "evacuate_self" ? null : raw.person, target: free.target };
@@ -569,6 +577,7 @@ export async function act(
             incidents,
             state: own,
             tell,
+            fit: fitKindOf(s, s.world),
             ...(s.options?.night === true ? { night: true } : {}),
           })
           .catch(() => null)
@@ -593,12 +602,31 @@ export async function act(
   }
   // T93: 着いたら本人役が見て分かる様子と頼み事（Haiku × 1 回）。聞いた安否・色は変えない。頼み事は applyResult が積む
   const seen = heard?.via === "visit" && hooks.visit ? input.person : null;
-  const seenReply = seen ? await hooks.visit!({ person: seen, hour: endMinute / 60, world: s.world, incidents, state: s.people[seen] ?? null, ...(isNight(s) ? { night: true } : {}) }).catch(() => null) : null;
-  const visit = seenReply?.report ?? null;
+  const seenReply = seen ? await hooks.visit!({ person: seen, hour: endMinute / 60, world: s.world, incidents, state: s.people[seen] ?? null, fit: fitKindOf(s, s.world), ...(isNight(s) ? { night: true } : {}) }).catch(() => null) : null;
+  const visitRaw = seenReply?.report ?? null;
   // T118: 通話の最初の言葉と訪問の本人役も 1 訓練の数え（T90 の 150）に入れる（往復は talk.ts、自由文は countFree）
   if (callReply?.called || seenReply?.called) s = { ...s, world: countPersonaCalls(s.world, callReply?.called ? 1 : 0, seenReply?.called ? 1 : 0) };
 
-  const reworded = words.find((w) => w.id === record.id)?.text.trim() ?? "";
+  // 本人役の言葉・様子と監督の言い換えも想定の門に（T125。合わない文と内部の名前の残る文を落とす。全部落ちたら固定の言葉）
+  const fit = fitOf(s, s.world);
+  const dropped: string[] = [];
+  const gate = (t: string | null | undefined): string | null => {
+    const g = gateWords(t ?? null, fit, s.world);
+    dropped.push(...g.dropped);
+    return g.text;
+  };
+  if (speech !== null && speechAi) {
+    const kept = gate(speech);
+    if (kept === null && input.target) {
+      speech = fixedSpeech(s.people[input.person ?? ""] ?? null, input.target.kind);
+      speechAi = false;
+    } else speech = kept;
+  }
+  const visit = visitRaw
+    ? { ...visitRaw, speech: visitRaw.ai ? gate(visitRaw.speech) : visitRaw.speech, condition: visitRaw.ai ? gate(visitRaw.condition) : visitRaw.condition }
+    : null;
+  const reworded = gate(words.find((w) => w.id === record.id)?.text.trim() ?? "") ?? "";
+  if (dropped.length > 0) s = { ...s, world: tallyGate(s.world, "persona", dropped) };
   // 表の手に読み替えた自由対応は Claude の現場の言い方。そのままの手は起きたこと（AI）が返事の文
   const said = own ? (own.outcome?.trim() ?? "") : (free?.words?.trim() ?? "");
   const clears = ok && hasEffect(row, "clearMarks") && input.person;

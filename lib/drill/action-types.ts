@@ -161,6 +161,8 @@ export type FreePlan = {
   judge: FreeJudge;
   /** Claude を呼んだか（counts.free に数えた） */
   called: boolean;
+  /** 想定の門（T125、lib/drill/gate.ts）が落とした文の決まり（打った手で世界の gated に数える） */
+  gated?: string[];
 };
 
 /** 手の前の状態。本人の今の様子・印、職員の空き、電話の線、家の前の道。左の表の色と順位は保存の所が足す */

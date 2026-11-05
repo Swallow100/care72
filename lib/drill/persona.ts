@@ -85,7 +85,8 @@ import { arrivalRoleWords, extraWorldWords } from "./event-catalog.ts";
 import type { ActionRecord, DrillIncident, DrillTurn, HeardSignal, PersonaBatchHook, PersonaHook, PersonaInput, PersonState, StopLog } from "./engine.ts";
 import { CALL_STATUS_TEXTS, clockLabel, PHONE_LABELS, SHELTER_LABELS, TSUNAMI_LABELS, WATER_LABELS } from "./labels.ts";
 import { nightLine } from "./night.ts";
-import { ASK_KINDS, eventHour, type AskKind, type FixedTurn, type OutageArea, type PhoneState, type WorldState } from "./scenarios.ts";
+import { ASK_KINDS, eventHour, type AskKind, type DrillKind, type FixedTurn, type OutageArea, type PhoneState, type WorldState } from "./scenarios.ts";
+import { fitLedgerHazards, profileOf } from "./fit.ts";
 import { clockRemaining, formatHours, type Situation, type TriageClock } from "../triage/index.ts";
 import { callsFor, speakerSlip, speakersLine, speakersOf, type Speaker, type Speakers } from "./speaker.ts";
 import { minuteText } from "./time-text.ts";
@@ -242,9 +243,11 @@ export function profileText(
  * 台帳（仮名化の前）から本人役を作る。説明の文は仮名化の層を通し、氏名・町名・電話が残れば PseudonymLeakError（送らない）。
  * places（事業所の町名 → 地区の別名、lib/drill/area.ts の officePlaces）があれば、説明にも刻みの文にも町名は別名で渡る（T88）
  */
-export function buildPersona(source: PseudonymInput, opts: { on?: string; places?: ReadonlyArray<Place> } = {}): Persona {
+export function buildPersona(source: PseudonymInput, opts: { on?: string; places?: ReadonlyArray<Place>; fit?: DrillKind | null } = {}): Persona {
   const { payload, key } = pseudonymize([source], { ...(opts.on ? { on: opts.on } : {}), ...(opts.places ? { places: opts.places } : {}) });
-  const p = payload[0];
+  // 本人役の説明のハザードは想定に効く区域だけ（T125。地震の訓練に河川の浸水の想定を渡さない）。未決・無ければ全部
+  const fitProfile = opts.fit ? profileOf(opts.fit) : null;
+  const p = fitProfile ? { ...payload[0], evacuation: { ...payload[0].evacuation, hazards: fitLedgerHazards(fitProfile, payload[0].evacuation.hazards as Array<{ kind: HazardKind; depthM: number | null; note: string | null }>) } } : payload[0];
   const reporters = reportersOf(source);
   const means = source.ledger.basic.contactMeans ?? {};
   const roles = contactRoles(source.contacts);
@@ -870,7 +873,7 @@ export function createPersonaHook(deps: PersonaDeps): PersonaHook {
       const sources = await (loaded ??= deps.load());
       const source = sources.get(input.person);
       if (!source) return fixedTurns(input);
-      const persona = buildPersona(source, { ...(deps.on ? { on: deps.on } : {}), places: personaPlaces(deps.ai, sources) });
+      const persona = buildPersona(source, { ...(deps.on ? { on: deps.on } : {}), places: personaPlaces(deps.ai, sources), fit: input.fit });
       if (input.fixed.length === 0 && !persona.reporters.some((r) => r.canPress)) return [];
       const tick = pseudonymizeText(tickText(input, persona), persona.key);
       const r = await askJson(buildPersonaRequest(persona.profile, tick, input.virtual === true), deps.ai);
@@ -928,7 +931,7 @@ export function createPersonaBatchHook(deps: PersonaDeps): PersonaBatchHook {
           return;
         }
         try {
-          const persona = buildPersona(source, { ...(deps.on ? { on: deps.on } : {}), places });
+          const persona = buildPersona(source, { ...(deps.on ? { on: deps.on } : {}), places, fit: input.fit });
           if (input.fixed.length === 0 && !persona.reporters.some((r) => r.canPress)) return;
           const text = pseudonymizeText(`本人役:\n${persona.profile.text}\n\nこの刻み:\n${tickText(input, persona)}`, persona.key);
           asked.push({ i, id: String(asked.length + 1), persona, text });

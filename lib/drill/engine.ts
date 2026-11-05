@@ -71,6 +71,8 @@ import {
 } from "./clock.ts";
 import { fireScheduled } from "./schedule.ts";
 import { screenIncidents, tableAheadOf } from "./state-rules.ts";
+import { fitKindOf, profileOf, type FitProfile } from "./fit.ts";
+import { gateTurns, tallyGate } from "./gate.ts";
 import { drillSeed } from "./time-odds.ts";
 import { cleanScale, fitToScale, scaleIncidents, type DrillScale } from "./scale.ts";
 import { HOME_TOWN_MAX } from "./self.ts";
@@ -563,14 +565,17 @@ export async function step(
   const raw = directorIncidents(Array.isArray(out) ? out : (out?.events ?? []), members, hour);
   const table = tableOf(state);
   // 刻みの道は予定の出来事を時刻で起こさない（fireScheduled は連続の時計だけ）ので、早すぎる再開は後ろに回さず捨てる
+  // 想定の表（T125）も同じ門で見る（想定に合わない差し込みを捨てる）
   const screened = screenIncidents(world, raw, {
     origin: "ai",
     minute: Math.round(hour * 60),
     ahead: tableAheadOf(table.events, Math.round(hour * 60), table.rows),
     noDefer: true,
+    fit: fitOf(state, world),
   });
   const inserted = screened.kept;
   world = screened.world;
+  let gatedWorld = tallyGate(state.world, "director", screened.ruled.map((r) => r.rule));
   const asked = new Set(replies.map((r) => r.id));
   const words = (Array.isArray(out) ? [] : (out?.words ?? [])).filter(
     (w): w is ReplyWords => typeof w?.id === "string" && asked.has(w.id) && typeof w.text === "string" && w.text.trim() !== "",
@@ -596,6 +601,7 @@ export async function step(
               lastAction: actionWithoutMemo([...state.actions].reverse().find((a) => a.person === person) ?? null),
               actions: withoutMemo(state.actions.filter((a) => a.person === person)), // T93: 前の呼びからの手を全部
               fixed: own,
+              fit: fitKindOf(state, world),
               ...night,
             }),
           [] as DrillTurn[],
@@ -606,9 +612,12 @@ export async function step(
   } else {
     for (const { rows: own } of rows) turns.push(...own.map((f) => fixedToTurn(f, hour)));
   }
+  // 本人役の言葉も想定の門に（T125。言う事・する事の合わない文を落とす）
+  const gt = gateTurns(turns, fitOf(state, world), world);
+  gatedWorld = tallyGate(gatedWorld, "persona", gt.dropped);
 
-  const tick: Tick = { step: index, hour, incidents: [...incidents, ...stopIncidents(hooks.stops?.take() ?? [], hour)], turns, world, finished: index >= last };
-  return { state: foldTick(state, tick, last), tick, words };
+  const tick: Tick = { step: index, hour, incidents: [...incidents, ...stopIncidents(hooks.stops?.take() ?? [], hour)], turns: gt.turns, world, finished: index >= last };
+  return { state: foldTick({ ...state, world: gatedWorld }, tick, last), tick, words };
 }
 
 // ---------- 仮想モード（T50）の 1 刻み ----------
@@ -651,8 +660,13 @@ async function virtualStep(
       )
     : fallbackIncidents(hour, hooks.world ? "down" : "off");
   if (r && r.session !== undefined) world = { ...world, session: r.session };
-  world = inserted.reduce((w, e) => applyEvent(w, e, e.at), world);
-  const incidents = [...t.fixed, ...inserted];
+  // 世界の出来事も想定の表と変わり方の決まりの門に（T125。前は刻みの道の仮想は門の外だった）。刻みの道なので後ろに回さない
+  const fit = fitOf(state, world);
+  const kept = r ? screenIncidents(world, inserted, { origin: "ai", minute: Math.round(hour * 60), noDefer: true, fit }) : null;
+  const passed = kept ? kept.kept : inserted;
+  world = kept ? kept.world : inserted.reduce((w, e) => applyEvent(w, e, e.at), world);
+  const incidents = [...t.fixed, ...passed];
+  let gatedWorld = tallyGate(state.world, "world", kept ? kept.ruled.map((x) => x.rule) : []);
 
   // 本人役（Haiku）。結末の人は呼ばない（信号を出さない・着信も鳴らない）。本人役が無ければ連絡なし（仮想には表の行が無い）
   const turns: DrillTurn[] = [];
@@ -673,6 +687,7 @@ async function virtualStep(
               actions: withoutMemo(state.actions.filter((a) => a.person === person)), // T93: 前の呼びからの手を全部
               fixed: [],
               virtual: true,
+              fit: fitKindOf(state, world),
               ...(isNight(state) ? { night: true } : {}),
             }),
           [] as DrillTurn[],
@@ -681,11 +696,18 @@ async function virtualStep(
     );
     results.forEach((x, i) => turns.push(...x.filter((u) => u.person === live[i])));
   }
+  const gt = gateTurns(turns, fitOf(state, world), world);
+  gatedWorld = tallyGate(gatedWorld, "persona", gt.dropped);
 
-  const tick: Tick = { step: index, hour, incidents: [...incidents, ...stopIncidents(hooks.stops?.take() ?? [], hour)], turns, world, finished: index >= last };
+  const tick: Tick = { step: index, hour, incidents: [...incidents, ...stopIncidents(hooks.stops?.take() ?? [], hour)], turns: gt.turns, world, finished: index >= last };
   // foldTick は前の世界に状況を当て直すので、部屋の ID は前の世界に先に写す
-  const base = r && r.session !== undefined ? { ...state, world: { ...state.world, session: r.session } } : state;
+  const base = { ...state, world: r && r.session !== undefined ? { ...gatedWorld, session: r.session } : gatedWorld };
   return { state: foldTick(base, tick, last), tick, words: [] };
+}
+
+/** 訓練の想定の表（T125、lib/drill/fit.ts）。仮想は規模の災害、無ければ世界の出来事から。未決は null */
+export function fitOf(state: Pick<DrillState, "scenario" | "options">, world: WorldState): FitProfile | null {
+  return profileOf(fitKindOf(state, world));
 }
 
 /** 想定の最後の刻みの添字 */
@@ -880,9 +902,11 @@ export async function advance(
     );
   }
   // 監督・世界の出来事も変わり方の決まりで見る（T121）。表がこのあと変える状態を先に変えない・一度きり・変わるのに要る時間
-  const kept = screenIncidents(world, inserted, { origin: "ai", minute: to, ahead });
+  const kept = screenIncidents(world, inserted, { origin: "ai", minute: to, ahead, fit: fitOf(state, world) });
   inserted = kept.kept;
   world = kept.world;
+  // 門が捨てた数（T125。想定に合わない物・変わり方の決まり）を帳簿に
+  book = tallyGate(book, virtual ? "world" : "director", kept.ruled.map((r) => r.rule));
   let incidents = [...happened, ...inserted];
 
   // 3. 本人役
@@ -962,6 +986,7 @@ export async function advance(
       since: Math.max(0, lastCalled[person] ?? 0),
       reasons: REASON_ORDER.filter((r) => reasons.get(person)!.has(r)),
       toMinute: to,
+      fit: fitKindOf(state, world),
     });
     // まとめて呼ぶ口があれば PERSONA_BATCH_MAX 人ずつ 1 回（T121）。数えるのは呼び出しの数
     const groups: string[][] = hooks.personas ? chunks(called, PERSONA_BATCH_MAX) : called.map((p) => [p]);
@@ -982,8 +1007,9 @@ export async function advance(
 
   // 監督の差し込み（並べて呼んだ物）を区切りの終わりに当てる。指す人は次の区切りで本人役を呼ぶ（T121）
   if (directorP) {
-    const late = screenIncidents(world, await directorP, { origin: "ai", minute: to, ahead });
+    const late = screenIncidents(world, await directorP, { origin: "ai", minute: to, ahead, fit: fitOf(state, world) });
     world = late.world;
+    book = tallyGate(book, "director", late.ruled.map((r) => r.rule));
     incidents = [...incidents, ...late.kept];
     if (hooks.persona && !capped) {
       for (const e of late.kept) for (const p of incidentPersons(e)) if (members.has(p) && !world.ended?.[p]) touched[p] = Math.min(touched[p] ?? to, to);
@@ -994,12 +1020,14 @@ export async function advance(
   const stop: DrillIncident[] = capped
     ? [{ actor: "world", at: hour, change: { kind: "ai_stop", stopped: virtual ? ["persona", "world"] : ["persona", "director"] }, text: CLOCK_LABELS.cap, reason: CAP_REASON, ai: false }]
     : [];
-  book = { ...book, counts, lastCalled, touched };
+  // 本人役の言葉も想定の門に（T125）
+  const gt = gateTurns(turns, fitOf(state, world), world);
+  book = tallyGate({ ...book, counts, lastCalled, touched }, "persona", gt.dropped);
   const tick: Tick = {
     step: index,
     hour,
     incidents: [...incidents, ...stop, ...stopIncidents(hooks.stops?.take() ?? [], hour)],
-    turns,
+    turns: gt.turns,
     world,
     finished: to >= DRILL_END_MINUTE,
   };

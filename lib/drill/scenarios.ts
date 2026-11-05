@@ -182,6 +182,11 @@ export type WorldState = {
    * 変わるのに時間が要る状態の決まり（lib/drill/state-rules.ts）と、本人役・監督に渡す「いつから」の元
    */
   stamps?: Record<string, number>;
+  /**
+   * AI の出力の門（T125、lib/drill/gate.ts）が捨てた・直した数（鍵は「出どころ:決まり」。director:fit:alert・persona:fit:quake_word・
+   * world:dwell:road など）。世界を変えない。評価の台が数える
+   */
+  gated?: Record<string, number>;
 };
 
 /** 向かっている人の役。staff 事業所の職員・nurse 訪問看護・supporter 支援者・family 家族・vendor 業者・transport 移送・power 電源・medicine 薬 */
