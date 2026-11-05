@@ -3,6 +3,8 @@ import { principalFromRequest } from "@/lib/auth/server";
 import { aiContextFor } from "@/lib/claude/cloudflare";
 import { signalError } from "@/lib/signals/http";
 import { TALK_BODY_MAX, talkPost } from "@/lib/signals/talk-http";
+import { talkLineVoice } from "@/lib/signals/voice";
+import { getCloudflareContext } from "@opennextjs/cloudflare";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -21,5 +23,14 @@ export async function POST(request: Request, { params }: Ctx) {
   } catch {
     json = null;
   }
-  return talkPost(env.DB, principal, id, json, { ai: (officeId) => aiContextFor(officeId), now: () => Date.now() });
+  const { ctx } = await getCloudflareContext({ async: true });
+  const officeId = principal?.office?.id ?? null;
+  return talkPost(env.DB, principal, id, json, {
+    ai: (o) => aiContextFor(o),
+    now: () => Date.now(),
+    // AI の 1 文の声: 3 秒で間に合わなければ端末の読み上げ。作るのは応答のあとも続けて R2 に置く
+    voice: officeId
+      ? async (text, key) => talkLineVoice(env.RECORDINGS, text, await aiContextFor(officeId), key, { keep: (p) => ctx.waitUntil(p) })
+      : undefined,
+  });
 }

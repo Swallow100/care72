@@ -32,6 +32,11 @@ export type TalkApiDeps = {
   ai: (officeId: string) => Promise<AskJsonContext>;
   /** 今（ミリ秒） */
   now: () => number;
+  /**
+   * AI の 1 文の声（Gemini TTS）を用意して URL を返す（lib/signals/voice.ts の talkLineVoice）。間に合わなければ null（端末の読み上げ）。
+   * 無ければ声を作らない
+   */
+  voice?: (text: string, key: PseudonymKey) => Promise<string | null>;
 };
 
 /** 本人の台帳から、機器の有無と仮名化の鍵（台帳は Claude に渡さない） */
@@ -72,5 +77,10 @@ export async function talkPost(db: D1Database, p: Principal | null, signalId: st
     { hasDevice: person?.hasDevice ?? false, answers: readAnswers(row?.answers), now: deps.now() },
     person ? { ctx: () => deps.ai(officeId), key: person.key } : null,
   );
+  // AI の 1 文の声（決まった文の声は端末が id で頼む）
+  if (reply.kind === "ask" && reply.line.by === "ai" && person && deps.voice) {
+    const voice = await deps.voice(reply.line.text, person.key).catch(() => null);
+    if (voice) reply.line = { ...reply.line, voice };
+  }
   return Response.json({ ok: true, reply }, { headers: NO_STORE });
 }

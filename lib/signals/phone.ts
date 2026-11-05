@@ -41,7 +41,9 @@ import { AI_NOTICE_VOICE } from "./phrases.ts";
 import {
   buttonLine,
   buttonQuestions,
+  buttonVoice,
   closingOf,
+  closingVoice,
   fixedLine,
   heardTurn,
   newTalkLog,
@@ -173,8 +175,8 @@ export type PhoneDeps = {
    * 届かない・失敗は null（端末の決まりで決まった問いを続ける）。無ければ会話をせず、今までの声の問い（T49）
    */
   talk?(signalId: string, log: TalkLog): Promise<TalkReply | null>;
-  /** 会話の 1 文を読んで、終わるのを待つ（Gemini の声か端末の読み上げ）。無ければ speak */
-  say?(text: string): Promise<unknown>;
+  /** 会話の 1 文を読んで、終わるのを待つ。voice は Gemini の声の URL（無い・鳴らない時は端末の読み上げ）。無ければ speak */
+  say?(text: string, voice?: string | null): Promise<unknown>;
   onChange(state: PhoneState): void;
 };
 
@@ -502,10 +504,10 @@ export function createPhone(deps: PhoneDeps): Phone {
   // ---------- 声の聞き取りの会話（T137） ----------
 
   /** 1 文を読んで終わるのを待つ（終わらなければ打ち切る） */
-  const sayOnce = (text: string, waitMs: number) =>
+  const sayOnce = (text: string, waitMs: number, voice: string | null = null) =>
     Promise.race([
       Promise.resolve()
-        .then(() => (deps.say ?? deps.speak)?.(text))
+        .then(() => (deps.say ? deps.say(text, voice) : deps.speak?.(text)))
         .catch(() => undefined),
       new Promise((r) => setTimeout(r, waitMs)),
     ]);
@@ -534,7 +536,7 @@ export function createPhone(deps: PhoneDeps): Phone {
     set(talkState(line, "speaking"));
     pauseRecording();
     if (line.topic === "open") await playPrompt();
-    else await sayOnce(line.text, SPEAK_WAIT_MS);
+    else await sayOnce(line.text, SPEAK_WAIT_MS, line.voice ?? null);
     if (mine !== run || my !== ask) return;
     resumeRecording();
     talkListen(my);
@@ -631,7 +633,7 @@ export function createPhone(deps: PhoneDeps): Phone {
     const my = ++ask;
     set({ step: "yesno", id, answers, voice: "speaking" });
     pauseRecording();
-    await sayOnce(buttonLine(id), SPEAK_WAIT_MS);
+    await sayOnce(buttonLine(id), SPEAK_WAIT_MS, buttonVoice(id));
     if (mine !== run || my !== ask) return;
     resumeRecording();
     set({ step: "yesno", id, answers, voice: null });
@@ -664,7 +666,7 @@ export function createPhone(deps: PhoneDeps): Phone {
     log.closing = c.text;
     set({ step: "closing", easy: c.easy, danger: end === "danger" });
     pauseRecording();
-    await sayOnce(c.text, CLOSING_WAIT_MS);
+    await sayOnce(c.text, CLOSING_WAIT_MS, closingVoice(end));
     if (mine !== run) return;
     await sendTalk();
   }

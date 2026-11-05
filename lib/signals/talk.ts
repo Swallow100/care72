@@ -152,7 +152,15 @@ export type TalkLine = {
   easy: string | null;
   by: TalkBy;
   topic: TalkTopic | "open";
+  /** 声の URL（Gemini TTS。app/api/signals/voice）。無ければ端末の読み上げ。最初の問いは定型文の声（playPrompt） */
+  voice?: string | null;
 };
+
+/** 端末が読む声の URL（app/api/signals/voice）。決まった文は id（文はサーバーの表から引く）、AI の文は hash */
+export const talkFixedVoicePath = (id: string) => `/api/signals/voice?fixed=${encodeURIComponent(id)}`;
+export const talkVoicePath = (hash: string) => `/api/signals/voice?talk=${hash}`;
+/** 声の URL として受ける形（サーバーの返事の確かめ） */
+export const TALK_VOICE_PATH = /^\/api\/signals\/voice\?(fixed=(topic|button|close)-[A-Za-z_]{1,24}|talk=[0-9a-f]{32})$/;
 
 function voiceOf(markup: string): string {
   return plainText(easy(markup)).replace(/ /g, "");
@@ -164,13 +172,18 @@ export const TALK_OPENING: TalkLine = { text: VOICE_PROMPT_TEXT, question: VOICE
 /** 話題の決まった問い */
 export function fixedLine(topic: TalkTopic): TalkLine {
   const s = TALK_TOPIC_SPECS[topic];
-  return { text: s.text, question: s.text, easy: s.easy, by: "fixed", topic };
+  return { text: s.text, question: s.text, easy: s.easy, by: "fixed", topic, voice: talkFixedVoicePath(`topic-${topic}`) };
 }
 
 /** ボタンの答え方の 1 問（問いのあとに「はいなら みどり…」） */
 export function buttonLine(id: QuestionId): string {
   return `${questionOf(id).voice}。${voiceOf(TALK_PHRASES.yesNoHint)}`;
 }
+
+/** ボタンの答え方の 1 問の声 */
+export const buttonVoice = (id: QuestionId) => talkFixedVoicePath(`button-${id}`);
+/** 締めの文の声 */
+export const closingVoice = (end: TalkEnd) => talkFixedVoicePath(`close-${end}`);
 
 /** 締めの文（画面の文と読む文）。どの締めも 119 の文で終わる。危ない言葉のときは 119 の文を先に */
 export function closingOf(end: TalkEnd): { easy: string; text: string } {

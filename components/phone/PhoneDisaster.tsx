@@ -115,6 +115,8 @@ export function PhoneDisaster({
       speak: synth && Utterance ? (text) => player.say(text) : undefined,
       // 声の聞き取りの会話（T137）: 20 秒押さない人に、問いの表を読む代わりに短い会話。次の手はサーバー（Claude は次の 1 文だけ）
       talk: (signalId, log) => fetchTalk(signalId, log),
+      // 会話の 1 文は Gemini の声（決まった文はサーバーの表から、AI の文は会話の API が作って置いた物）。鳴らなければ端末の読み上げ
+      say: synth && Utterance ? (text, voice) => player.line(text, voice ?? null) : undefined,
       prime: () => {
         player.prime();
         mic = primeMicrophone({ getUserMedia, queryPermission });
