@@ -135,7 +135,8 @@ describe("着信の応答・拒否の記録", () => {
       ["call_decline", "care_manager", "p-06"],
       ["call_answer", "care_manager", "p-03"],
     ]);
-    expect(JSON.parse(rows[0].payload)).toEqual({ signal: calls[0].signal, response: "decline", color: "green", source: "family", callMinute: 0, minute: 5 });
+    // actions は応答・拒否した時の手の数（T127。着信の往復は応答のあとに手を打っていない間だけ）
+    expect(JSON.parse(rows[0].payload)).toEqual({ signal: calls[0].signal, response: "decline", color: "green", source: "family", callMinute: 0, minute: 5, actions: 1 });
   });
 
   it("この訓練の着信でなければ 404。終わった訓練でも残せる（最後の刻みの着信）", async () => {

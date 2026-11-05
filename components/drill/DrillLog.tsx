@@ -1,8 +1,9 @@
 // 訓練の経過（docs/tasks/T105.md）。前の「状況」と「対応の結果と履歴」を、時刻の順の 1 本の流れにして 3 つのタブで切り替える。
 // - 発生: 世界で起きたこと（想定の表の出来事・監督の差し込み・本人に起きたこと・本人のする事）。訓練の途中は公表の物だけで、
 //   本人に起きたこと（非公表）は終わってから出す。終わった訓練は、把握が遅れた物に「遅れ 2 時間 10 分」、届かなかった物に「未把握」
-// - 把握: ケアマネに届いたこと（公表の出来事・安否と着信・通話で聞いたこと・訪問で見た様子・手の返事で分かった事実）
-// - 対応: ケアマネの手と結果（前の履歴と同じ行。最後の手の取消・メモ・往復の畳み・訪問の様子）
+// - 把握: ケアマネに届いたこと（公表の出来事・安否と着信・通話で聞いたこと・訪問で見た様子・手の返事で分かった事実・着信の往復で
+//   掛けてきた人の言った事）。行の頭にどの経路で届いたかの印（T127: 着信・不在・ボタン・発信・訪問・結果・公表。lib/drill/timeline.ts の knowRouteOf）
+// - 対応: ケアマネの手と結果（前の履歴と同じ行。最後の手の取消・メモ・往復の畳み・訪問の様子）と、着信への応答・拒否と往復（T127）
 // 行の分け方は lib/drill/timeline.ts の表 1 か所。発生と把握は同じ分の行を 1 つの見出し（経過と時刻、手の途中なら「対応中 訪問 伊藤 フミ」）に
 // まとめ、新しい順。対応は手ごとに時刻を持つので見出しなし。色は安否の色だけ（遅れ・未把握は太字の文字で、状態の 4 色を使わない）。
 // AI の言葉（監督・本人役・世界）は AI の印。サーバーで描く（状態を持たない）。切替だけ components/drill/LogTabs（ブラウザ）。
@@ -10,16 +11,19 @@
 import { AiMark, StateTag } from "@/components/person/parts";
 import type { ActionRecord, DrillTurn, Tick } from "@/lib/drill/engine";
 import { ACTION_STATUS_LABELS } from "@/lib/drill/actions";
-import { ACTION_LABELS, ACTION_UI, CALL_UI, calleeText, DRILL_LABELS, elapsedLabel, LOG_LABELS } from "@/lib/drill/labels";
+import { ACTION_LABELS, ACTION_UI, CALL_UI, calleeText, clockLabel, DRILL_LABELS, elapsedLabel, LOG_LABELS } from "@/lib/drill/labels";
 import type { FictionKind } from "@/lib/drill/fiction";
-import { buildDrillLog, type Awareness, type DrillLog as Log, type LogRow, type LogTab } from "@/lib/drill/timeline";
+import { buildDrillLog, CALL_LOG_LABELS, knowRouteOf, ROUTE_LABELS, type Awareness, type DrillLog as Log, type KnowRoute, type LogRow, type LogTab } from "@/lib/drill/timeline";
+import type { CallRecord } from "@/lib/drill/responses";
+import { TALK_UI } from "@/lib/drill/dialogue";
+import { SOURCE_LABELS } from "@/lib/list/detail";
 import { minuteText, simTimeText } from "@/lib/drill/time-text";
 import { COLOR_LABELS, CONTACT_KIND_LABELS } from "@/lib/labels";
 import type { StateTone } from "@/lib/person";
-import { StateText } from "@/components/ui/Tag";
-import { ActionItem, Bubble, TalkFold, toneOf, VisitLine, type Refused, type UndoSlot, type VoiceOf } from "./ActionLog";
+import { Mark, StateText } from "@/components/ui/Tag";
+import { ActionItem, Bubble, CallInMark, TalkFold, toneOf, VisitLine, type Refused, type UndoSlot, type VoiceOf } from "./ActionLog";
 import { FictionalMark } from "./Fictional";
-import { ActionIcon } from "./icons";
+import { ActionIcon, CallInIcon } from "./icons";
 import { LogTabs } from "./LogTabs";
 import { IncidentItem, TurnItem } from "./Situation";
 
@@ -41,9 +45,12 @@ export function DrillLog({
   refused,
   voiceOf,
   undo,
+  calls,
 }: {
   ticks: ReadonlyArray<Tick>;
   actions: ReadonlyArray<ActionRecord>;
+  /** 着信の記録（応答・拒否と往復、T127。lib/drill/responses.ts の loadCallRecords）。無ければ着信の行を出さない */
+  calls?: ReadonlyArray<CallRecord>;
   names: Names;
   startedAt: string;
   /** 終わった・中断した訓練（発生に非公表の物も出し、遅れ・未把握の印を付ける） */
@@ -58,7 +65,7 @@ export function DrillLog({
   /** 進行中の最後の手の取消（T59）。再生では渡さない */
   undo?: UndoSlot;
 }) {
-  const log = buildDrillLog(ticks, actions, { finished });
+  const log = buildDrillLog(ticks, actions, { finished, ...(calls ? { calls } : {}) });
   const c: Common = { names, fiction, refused, voiceOf };
   return (
     <LogTabs
@@ -200,20 +207,88 @@ function AwareMark({ aware }: { aware: Awareness | undefined }) {
   );
 }
 
-/** 把握の 1 行（公表の状況・安否・手の返事で届いた事） */
+/** 経路の印（T127）。着信は前からの着信の印（電話のアイコン）、不在は太字、ほかは地の印 */
+function RouteMark({ route }: { route: KnowRoute | null }) {
+  if (!route) return null;
+  if (route === "call") {
+    return (
+      <span className="inline-flex self-center" data-route-mark={route}>
+        <CallInMark />
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex self-center" data-route-mark={route}>
+      <Mark inPanel2>
+        <span className={route === "missed" ? "font-bold" : undefined}>{ROUTE_LABELS[route]}</span>
+      </Mark>
+    </span>
+  );
+}
+
+/** 把握の 1 行（公表の状況・安否・手の返事で届いた事・着信の往復）。頭に経路の印 */
 function KnowItem({ r, c }: { r: LogRow; c: Common }) {
+  const lead = <RouteMark route={knowRouteOf(r)} />;
   if (r.source === "incident") {
-    return <IncidentItem e={r.e} name={r.e.person ? c.names[r.e.person] : undefined} tickHour={r.minute / 60} fallback={r.fallback} fiction={c.fiction} />;
+    return <IncidentItem e={r.e} name={r.e.person ? c.names[r.e.person] : undefined} tickHour={r.minute / 60} fallback={r.fallback} fiction={c.fiction} lead={lead} />;
   }
   if (r.source === "signal") {
-    return <TurnItem t={r.t} name={c.names[r.t.person] ?? r.t.person} tickHour={r.minute / 60} callIn={r.callIn} fiction={c.fiction} doing={false} />;
+    return <TurnItem t={r.t} name={c.names[r.t.person] ?? r.t.person} tickHour={r.minute / 60} callIn={r.callIn} fiction={c.fiction} doing={false} lead={lead} />;
   }
-  if (r.source === "heard") return <HeardItem a={r.a} c={c} />;
+  if (r.source === "heard") return <HeardItem a={r.a} c={c} lead={lead} />;
+  if (r.source === "reply") return <ReplyItem call={r.c} c={c} lead={lead} />;
   return null;
 }
 
+/** 着信の往復の話し手（往復の話し手の言い方、無ければ出どころの区分） */
+const callSpeaker = (call: CallRecord) => call.callee?.label ?? SOURCE_LABELS[call.source];
+
+/** 着信の往復で掛けてきた人の言った事（T127。往復の吹き出し、本人役の言葉に AI の印） */
+function ReplyItem({ call, c, lead }: { call: CallRecord; c: Common; lead: React.ReactNode }) {
+  const lines = call.talk ?? [];
+  return (
+    <li data-reply={call.signal}>
+      <div className="flex flex-wrap items-baseline gap-x-1.5">
+        {lead}
+        <span className="font-bold">
+          {c.names[call.person] ?? call.person}
+          <FictionalMark kind={c.fiction} />
+        </span>
+        <span className="text-xs text-muted">{callSpeaker(call)}</span>
+      </div>
+      <TalkFold lines={lines} speaker={callSpeaker(call)} />
+    </li>
+  );
+}
+
+/** 対応: 着信への応答・拒否と往復（T127） */
+function CallActItem({ call, c }: { call: CallRecord; c: Common }) {
+  const at = call.respondedAt ?? call.minute;
+  return (
+    <li className="rounded-md bg-panel2 px-2 py-1.5 text-sm" data-call-act={call.signal} data-call-response={call.response ?? undefined}>
+      <div className="flex flex-wrap items-baseline gap-x-1.5">
+        <span className="text-xs text-muted tabular-nums">{clockLabel(at)}</span>
+        <span className="flex items-center gap-1 self-center font-bold">
+          <CallInIcon aria-hidden className="size-3.5 shrink-0" />
+          {ROUTE_LABELS.call}
+        </span>
+        <span>
+          {c.names[call.person] ?? call.person}
+          <FictionalMark kind={c.fiction} />
+        </span>
+        <span className="text-xs text-muted">{callSpeaker(call)}</span>
+        <span className={call.response === "decline" ? "font-bold" : undefined}>
+          {call.response === "decline" ? CALL_LOG_LABELS.decline : CALL_LOG_LABELS.answer}
+        </span>
+        {call.talkEnd != null && <span className="text-xs text-muted">{TALK_UI.ended}</span>}
+      </div>
+      <TalkFold lines={call.talk ?? []} speaker={callSpeaker(call)} />
+    </li>
+  );
+}
+
 /** 手の返事で届いた事: 電話に出た人の言う事・往復・訪問の様子・聞いた安否・分かった事実（「家の前の道 通行止」） */
-function HeardItem({ a, c }: { a: ActionRecord; c: Common }) {
+function HeardItem({ a, c, lead }: { a: ActionRecord; c: Common; lead?: React.ReactNode }) {
   const r = a.result;
   if (!r) return null;
   const who = a.person ? (c.names[a.person] ?? a.person) : null;
@@ -221,6 +296,7 @@ function HeardItem({ a, c }: { a: ActionRecord; c: Common }) {
   return (
     <li data-heard={a.id} data-act-kind={a.kind}>
       <div className="flex flex-wrap items-baseline gap-x-1.5">
+        {lead}
         <span className="flex items-center gap-1 self-center font-bold">
           <ActionIcon kind={a.kind} className="size-3.5" />
           {ACTION_LABELS[a.kind]}
@@ -270,6 +346,8 @@ function ActList({ log, c, undo, last }: { log: Log; c: Common; undo?: UndoSlot;
             refused={c.refused}
             {...(undo && r.a.id === last ? { undo } : {})}
           />
+        ) : r.source === "call" ? (
+          <CallActItem key={r.key} call={r.c} c={c} />
         ) : null,
       )}
     </ol>

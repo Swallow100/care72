@@ -525,11 +525,21 @@ export function visitOf(a: Pick<ActionRecord, "result">): VisitRead | null {
 /** 通話の往復の数（往復の合計と、往復のあった通話の数） */
 export type TalkScore = { turns: number; calls: number };
 
-export function scoreTalks(actions: ReadonlyArray<ActionRecord>): TalkScore {
+/**
+ * 通話の往復の数。外へ掛けた電話（手の返事の talk）と、掛かってきた電話（T127。着信の記録の talk）の両方を数える
+ */
+export function scoreTalks(actions: ReadonlyArray<ActionRecord>, incoming: ReadonlyArray<Pick<CallRecord, "talk">> = []): TalkScore {
   let turns = 0;
   let calls = 0;
   for (const a of actions) {
     const n = talkTurns(a);
+    if (n > 0) {
+      turns += n;
+      calls += 1;
+    }
+  }
+  for (const c of incoming) {
+    const n = (c.talk ?? []).filter((l) => l.who === "cm").length;
     if (n > 0) {
       turns += n;
       calls += 1;
@@ -599,7 +609,7 @@ export function scoreExtras(input: Omit<ScoreInput, "runs" | "form9" | "ended" |
       dispatched: input.world?.dispatched,
     }),
     asks: scoreAsks(input.world?.asks, input.participants, input.endMinute),
-    talks: scoreTalks(input.actions),
+    talks: scoreTalks(input.actions, input.calls),
   };
 }
 

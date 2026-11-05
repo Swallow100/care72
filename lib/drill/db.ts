@@ -30,6 +30,7 @@ import {
   act,
   ActionBlocked,
   applyResult,
+  clampClock,
   needsPerson,
   needsTarget,
   pushAction,
@@ -73,7 +74,7 @@ import { castScenario, mayBeCalled, needsCast, type Cast } from "./cast.ts";
 import { castFactsMap } from "./cast-facts.ts";
 import { loadPersonaSources } from "./persona.ts";
 import { FREE_TEXT_MAX, isCatalogAction } from "./action-catalog.ts";
-import { dialogueFields } from "./dialogue.ts";
+import { dialogueFields, pushAsks, type TalkLine } from "./dialogue.ts";
 import { DRILL_END_MINUTE, nextEventMinute, type ClockMark, type ClockTo } from "./clock.ts";
 import { CLOCK_END_LABEL, clockOver, isFreeWay } from "./action-terms.ts";
 
@@ -1213,7 +1214,13 @@ function asIncident(row: Pick<DrillEventRow, "person_id" | "actor" | "sim_hour">
 }
 
 /** ケアマネの手と返事（drill_events の action と result）。刻みの状況・安否のあとに、保存した順に当てる */
-export type ActEvent = { kind: "action"; record: ActionRecord } | { kind: "result"; id: string; result: ActionResult };
+/**
+ * 刻みの間の出来事（保存した順）。手・手の返事と、着信の往復（T127。応答の記録 call_answer の talk。頼み事と時計を作り直しで当てる）
+ */
+export type ActEvent =
+  | { kind: "action"; record: ActionRecord }
+  | { kind: "result"; id: string; result: ActionResult }
+  | { kind: "call"; person: string; talk: TalkLine[] };
 
 /** 保存した刻みと、その刻みの間のケアマネの手（acts） */
 export type ReplayTick = Tick & { acts: ActEvent[] };
@@ -1340,6 +1347,10 @@ export async function loadTicks(db: D1Database, drillId: string, hours: readonly
     } else if (r.kind === "result") {
       const res = asResult(payload as Partial<ResultPayload>);
       if (res) t.acts.push({ kind: "result", ...res });
+    } else if (r.kind === "call_answer" && r.person_id) {
+      // 着信の往復（T127、lib/drill/incoming-talk.ts）。往復の無い応答は何も当てない
+      const talk = dialogueFields(payload).talk;
+      if (talk) t.acts.push({ kind: "call", person: r.person_id, talk });
     }
   }
   return ticks;
@@ -1365,11 +1376,23 @@ export function replayState(
     state = foldTick(state, t, last);
     out.push({ step: t.step, hour: t.hour, incidents: t.incidents, turns: t.turns, finished: t.finished, world: state.world });
     for (const a of t.acts ?? []) {
-      state = a.kind === "action" ? pushAction(state, a.record) : applyResult(state, a.id, a.result);
+      state =
+        a.kind === "action" ? pushAction(state, a.record) : a.kind === "result" ? applyResult(state, a.id, a.result) : applyCallTalk(state, a.person, a.talk);
     }
   }
   // 中断・終了した訓練の途中を見るときも、状態の言葉は訓練の状態のまま
   return { state: { ...state, status: row.status, ...(extras.undone ? { undone: extras.undone } : {}) }, ticks: out };
+}
+
+/**
+ * 着信の往復（T127）を状態に当てる: 掛けてきた人の言葉の頼み事を世界に積み、時計を往復の終わりまで（72 時間で止める）。
+ * 往復を足す口（lib/drill/incoming-talk.ts）が drills.world に書く物と同じ。色・聞いた安否は変えない
+ */
+export function applyCallTalk(state: DrillState, person: string, talk: ReadonlyArray<TalkLine>): DrillState {
+  let world = state.world;
+  for (const l of talk) if (l.who === "them" && l.asks) world = pushAsks(world, person, l.asks, l.minute);
+  const minute = clampClock(state, Math.max(state.minute, ...talk.map((l) => l.minute)));
+  return { ...state, world, minute };
 }
 
 /** 訓練の参加者（drills.world の写しから） */

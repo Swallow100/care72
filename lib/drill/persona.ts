@@ -1189,18 +1189,23 @@ export const TALK_SYSTEM = [
   PATH_RULE,
   "119 に電話するよう勧められたら、かけるか・かけないかを言葉で言う（どちらにするかは自分で決める）。救急が来た先の事は言わない。",
   "頼んだ事が済んでいなければ、また頼んでよい。ケアマネが後で電話すると言ったら、短く返して終える。",
+  "「電話の向き」が「相手から」のときは、電話に出た人がケアマネに掛けた電話の続き。最初に言った事は、その人が掛けて言った事。",
   "本人はやさしい短い話し言葉。認知症の本人は話が噛み合わないことがある。家族・支援者はその人の口調。",
   "名前・住所・電話番号を言わない。「A さん」とも言わない。「診断」「判定」「重症」「死亡」と言わない。病名を言い切らない。薬の量を言わない。助言をしない。",
 ].join("\n");
 
-/** 往復の 1 回に渡す物。first は最初の言葉、lines はそれまでの往復、said はケアマネの今の言葉（決まった問いの言葉か、伏せる前の自由の文） */
-export type PersonaTalk = PersonaCall & { first: string | null; lines: ReadonlyArray<TalkLine>; said: string };
+/**
+ * 往復の 1 回に渡す物。first は最初の言葉、lines はそれまでの往復、said はケアマネの今の言葉（決まった問いの言葉か、伏せる前の自由の文）。
+ * incoming は相手から掛けてきた電話（T127。着信の往復）
+ */
+export type PersonaTalk = PersonaCall & { first: string | null; lines: ReadonlyArray<TalkLine>; said: string; incoming?: boolean };
 
 /** 往復の文（Claude に渡す前。呼ぶ側が仮名化の門を通す） */
 export function talkText(talk: PersonaTalk, persona: Persona): string {
   const who = (l: TalkLine) => (l.who === "cm" ? "ケアマネ" : talk.callee);
   return [
     callText(talk, persona),
+    ...(talk.incoming ? ["電話の向き: 相手から（電話に出た人がケアマネに掛けた）"] : []),
     `最初に言った事: ${talk.first ? `「${talk.first}」` : "なし"}`,
     talk.lines.length > 0 ? ["それまでの話:", ...talk.lines.map((l) => `- ${who(l)}: 「${l.text}」`)].join("\n") : "それまでの話: なし",
     `ケアマネの今の言葉: 「${talk.said}」`,

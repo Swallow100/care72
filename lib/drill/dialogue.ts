@@ -30,9 +30,31 @@ export const VISIT_CONDITION_MAX = 30;
 
 // ---------- 形 ----------
 
-/** ケアマネの決まった問い（閉じた一覧） */
-export const TALK_ASKS = ["where", "injured", "device_medicine", "can_evacuate", "contact_family", "advise_119", "will_call_back"] as const;
+/**
+ * ケアマネの決まった問い（閉じた一覧）。外へ掛けた電話の欄（TalkBox）は CALL_OUT_ASKS、
+ * 掛かってきた電話の欄（T127、components/drill/IncomingCall）は CALL_IN_ASKS を出す。保存と検査はこの一覧の全部を読む
+ */
+export const TALK_ASKS = [
+  "where",
+  "injured",
+  "device_medicine",
+  "can_evacuate",
+  "contact_family",
+  "advise_119",
+  "will_call_back",
+  // T127: 掛かってきた電話で聞く・伝える物
+  "safe",
+  "can_move",
+  "shelter",
+  "stay",
+] as const;
 export type TalkAsk = (typeof TALK_ASKS)[number];
+
+/** 外へ掛けた電話の往復の問い（T93 の 7 つ） */
+export const CALL_OUT_ASKS: ReadonlyArray<TalkAsk> = ["where", "injured", "device_medicine", "can_evacuate", "contact_family", "advise_119", "will_call_back"];
+
+/** 掛かってきた電話の往復の問い・指示（T127。安否・けが・機器と薬・移動・避難先・待機・119 の勧め） */
+export const CALL_IN_ASKS: ReadonlyArray<TalkAsk> = ["safe", "injured", "device_medicine", "can_move", "shelter", "stay", "advise_119"];
 
 export const isTalkAsk = (v: unknown): v is TalkAsk => typeof v === "string" && (TALK_ASKS as readonly string[]).includes(v);
 export const isAskKind = (v: unknown): v is AskKind => typeof v === "string" && (ASK_KINDS as readonly string[]).includes(v);
@@ -82,6 +104,8 @@ export type TalkTurn = {
   lines: ReadonlyArray<TalkLine>;
   ask?: TalkAsk;
   text?: string;
+  /** 掛かってきた電話の往復（T127、lib/drill/incoming-talk.ts）。本人役に「相手から掛けてきた電話の続き」と渡す */
+  incoming?: boolean;
 };
 
 /** said はケアマネの行に残す文（決まった問いの言葉か、伏せて名前に戻した自由の文）。called は Claude を呼んだか（counts.call に数える） */
@@ -118,6 +142,10 @@ export const TALK_LABELS: Readonly<Record<TalkAsk, string>> = {
   contact_family: "家族連絡",
   advise_119: "119勧奨",
   will_call_back: "後で連絡",
+  safe: "安否",
+  can_move: "移動",
+  shelter: "避難先",
+  stay: "待機",
 };
 
 /** 頼み事の印 */
@@ -165,6 +193,10 @@ export const TALK_ASK_WORDS: Readonly<Record<TalkAsk, string>> = {
   contact_family: "ご家族と連絡は取れていますか",
   advise_119: "具合が悪いなら 119 に電話してください",
   will_call_back: "また後で電話します",
+  safe: "ご本人は無事ですか",
+  can_move: "ご本人は動けますか",
+  shelter: "避難するならどこに行きますか",
+  stay: "今いる所で待っていてください。また連絡します",
 };
 
 /** 頼み事の種類の意味（返事の asks の説明） */
