@@ -101,7 +101,7 @@ const TICKS = [0, 6, 12, 24, 36, 48, 60, 72];
  * 上の見出しの帯（道具の段 S4〜S7）。左に段の名前、真ん中に 72 時間の線（G4）。
  * progress は 0〜1（72 時間のうちどこか）。null なら線を出さない。アプリの 72 時間の棒と取り違えないよう、舞台の外の一番上に置く
  */
-export const Header: React.FC<{ title: string; hours: number | null; state: string }> = ({ title, hours, state }) => {
+export const Header: React.FC<{ title: string; hours: number | null; state: string; titleOpacity?: number }> = ({ title, hours, state, titleOpacity = 1 }) => {
   const frame = useCurrentFrame();
   const p = usePalette();
   const H = LAYOUT.header;
@@ -112,7 +112,8 @@ export const Header: React.FC<{ title: string; hours: number | null; state: stri
   return (
     <div style={{ position: "absolute", left: 0, top: 0, width: 1920, height: H.top + H.height, fontFamily: FONT.main, opacity: enter }}>
       <div style={{ position: "absolute", left: H.left, top: H.top, height: H.height, display: "flex", alignItems: "center", gap: 14 }}>
-        <span style={{ fontSize: 30, fontWeight: 600, color: p.fg }}>{title}</span>
+        {/* 段の頭で大きな名前が縮んでここへ収まるまでは隠す（Video.tsx の FlyTitle） */}
+        <span style={{ fontSize: 30, fontWeight: 600, color: p.fg, opacity: titleOpacity }}>{title}</span>
         <span style={{ fontSize: TYPE.caption, color: p.sub }}>{state}</span>
       </div>
       {hours === null ? null : (

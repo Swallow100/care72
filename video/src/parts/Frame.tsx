@@ -14,6 +14,8 @@ import { progress, rise } from "./motion";
 export const PHONES = new Set(["R11", "R12"]);
 const PHONE_RATIO = 375 / 812;
 const BEZEL = 14;
+/** 録画に寄る動きの大きさ（絵の間に 1.5%。窓の外の帯・字幕には届かない） */
+const PUSH = 0.015;
 
 export type FramedProps = {
   id: string;
@@ -32,6 +34,8 @@ export type FramedProps = {
   delay?: number;
   /** 窓の帯に出す画面の名前。無ければ録画の名前（1 本の録画の中で画面が替わるとき） */
   screen?: string;
+  /** 録画に寄る動き（既定は寄る。円柱の窓は円柱が動くので寄らない） */
+  push?: boolean;
 };
 
 /** 枠の大きさ（箱に収まる一番大きい物） */
@@ -50,11 +54,13 @@ export const Framed: React.FC<FramedProps> = (props) => {
   const { id, maxWidth, maxHeight, delay = 0 } = props;
   const size = framedSize(id, maxWidth, maxHeight);
   const t = progress(frame, delay, 16);
+  // 寄る所を決めていない録画（zoom の無い絵）は、絵の間に窓ごと PUSH だけ一定の速さで寄る。zoom のある絵は中身が動くので窓は動かさない
+  const push = props.zoom || props.push === false ? 1 : 1 + PUSH * Math.min(1, frame / Math.max(1, props.duration));
   const style: React.CSSProperties = {
     width: size.width,
     height: size.height,
     opacity: t,
-    transform: `translateY(${(1 - t) * 14}px) scale(${0.985 + 0.015 * t})`,
+    transform: `translateY(${(1 - t) * 14}px) scale(${((0.985 + 0.015 * t) * push).toFixed(4)})`,
     transformOrigin: "50% 60%",
   };
   return size.phone ? <PhoneFrame {...props} {...size} style={style} /> : <WindowFrame {...props} {...size} style={style} />;
