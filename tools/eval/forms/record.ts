@@ -185,6 +185,8 @@ export type Recorder = {
   usage(inner: UsageStore): UsageStore;
   /** 入力・段の名前（呼び出しの記録に付ける）。入力ごとに設定する */
   scope(input: string, stage: string): void;
+  /** 今の入力・段（数え直しの client が記録を引く。T133） */
+  current(): { input: string; stage: string };
   holder: AttemptHolder;
   /** 書き終えた呼び出し（finish まで済んだ物）を JSON Lines に出し、返す */
   flush(): CallRecord[];
@@ -205,6 +207,7 @@ export function recorder(o: { run: string; dir: string; log: Jsonl; now?: () => 
     scope(input, stage) {
       scope = { input, stage };
     },
+    current: () => scope,
     usage(inner) {
       return {
         async reserve(call: NewAiCall, limit: number) {

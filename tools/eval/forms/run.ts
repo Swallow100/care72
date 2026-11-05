@@ -39,6 +39,7 @@ import { fakeClient, type FakeClient, type FakeStyle } from "./fake.ts";
 import { GOLD_FORMS, goldMapping, goldReading, type GoldForm } from "./gold.ts";
 import { buildInputs, handwriteHtml, hashSeed, pdfHtml, photoHtml, type InputKind, type InputSpec } from "./inputs.ts";
 import { buildSheets, sheetHtml, type Sheets } from "./paper.ts";
+import { loadReplay, replayClient } from "./replay.ts";
 import { costUsd, jsonl, realClient, recorder, type CallRecord, type Jsonl } from "./record.ts";
 import { heicBytes, launchRenderer, withExif, type Ratio, type Renderer } from "./render.ts";
 import { cellOfSheet, scoreIntake, scorePaper, scoreRead, type IntakeScore, type Judgement, type PaperScore, type ReadScore } from "./score.ts";
@@ -54,7 +55,10 @@ const ACCOUNT = "acct-yamamoto";
 export type PaperMode = "none" | "png" | "pdf" | "all";
 
 export type EvalOptions = {
-  mode: "fake" | "real";
+  /** replay は前の本物の回の返事で数え直す（T133。API を呼ばない） */
+  mode: "fake" | "real" | "replay";
+  /** 数え直す回のフォルダ（mode が replay のとき。読むだけ） */
+  replayDir?: string;
   fakeStyle: FakeStyle;
   /** 本物の回の鍵（環境変数から。台はファイルを探さない） */
   apiKey?: string;
@@ -136,8 +140,10 @@ export type LeakSummary = { calls: number; textHits: number; strongHits: number;
 
 export type RunResult = {
   run: string;
-  mode: "fake" | "real";
+  mode: "fake" | "real" | "replay";
   fakeStyle: FakeStyle | null;
+  /** 数え直した前の回（T133） */
+  replayOf?: string;
   startedAt: string;
   finishedAt: string;
   today: string;
@@ -255,9 +261,11 @@ export async function runEval(opts: EvalOptions): Promise<RunResult> {
   // AI の client（記録で包む）
   const rec = recorder({ run, dir, log });
   const fake: FakeClient | null = opts.mode === "fake" ? fakeClient(opts.fakeStyle, rec.holder) : null;
-  const inner: ClaudeClient = fake ?? realClient(opts.apiKey!, rec.holder);
+  if (opts.mode === "replay" && !opts.replayDir) throw new Error("数え直しは前の回のフォルダが要る（--replay=<回のフォルダ>）");
+  const replay = opts.mode === "replay" ? replayClient(loadReplay(opts.replayDir!), rec.current, rec.holder) : null;
+  const inner: ClaudeClient = fake ?? replay ?? realClient(opts.apiKey!, rec.holder);
   const evalCtx: AskJsonContext = {
-    env: { ANTHROPIC_API_KEY: opts.mode === "real" ? opts.apiKey : "fake", AI_DAILY_LIMIT: "1000" },
+    env: { ANTHROPIC_API_KEY: opts.mode === "real" ? opts.apiKey : opts.mode, AI_DAILY_LIMIT: "1000" },
     usage: rec.usage(d1UsageStore(db)),
     office: { id: OFFICE, kind: "demo" },
     claude: rec.client(inner),
@@ -567,6 +575,7 @@ export async function runEval(opts: EvalOptions): Promise<RunResult> {
       run,
       mode: opts.mode,
       fakeStyle: opts.mode === "fake" ? opts.fakeStyle : null,
+      ...(opts.mode === "replay" ? { replayOf: opts.replayDir } : {}),
       startedAt: started.toISOString(),
       finishedAt: new Date().toISOString(),
       today,
