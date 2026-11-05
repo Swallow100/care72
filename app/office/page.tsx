@@ -65,7 +65,7 @@ import { canResetDemo, OFFICE_RESET_PATH, parseResetState, type ResetState } fro
 import { RESET_LABELS } from "@/lib/seed/labels";
 import { CONFIRM_LABELS } from "@/lib/ui/labels";
 import { SurveyPanel } from "@/components/office/SurveyPanel";
-import { loadSurveyOverview, type SurveyOverview } from "@/lib/survey/store";
+import { loadSurveyOverview, surveyOfficeOf, type SurveyOverview } from "@/lib/survey/store";
 import { cookies, headers } from "next/headers";
 
 // D1 を毎回読む
@@ -122,7 +122,7 @@ export default async function OfficePage({ searchParams }: Props) {
       // 所属なしの人。審査員の壁の中はデモのアカウントが登録した人だけ、外はそれ以外（T81）
       listUnaffiliated(env.DB, actor, today),
       // アンケート（T42）。審査員（と審査員が足したアカウント）は審査員が作った物だけ、本物は作った本人と壁の外の管理者だけ（T81）
-      loadSurveyOverview(env.DB, actor.officeId, { walled: actor.walled === true, admin: principal.admin, accountId: principal.accountId }, now),
+      loadSurveyOverview(env.DB, surveyOfficeOf(actor.officeId), { walled: actor.walled === true, admin: principal.admin, accountId: principal.accountId }, now),
       // 準備の欄の地域（事業所の中心）。管理者のときだけ読む
       canSeeSetup(principal) ? loadOfficeCenter(env.DB, scope.officeId) : Promise.resolve(null),
     ]);

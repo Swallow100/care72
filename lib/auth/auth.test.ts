@@ -7,7 +7,9 @@ import { loadCaseload } from "../caseload.ts";
 import { d1FromSqlite, migratedSqlite } from "../db/test-d1.ts";
 import { judgeChoices } from "./choices.ts";
 import {
+  CHECK_OFFICE_ID,
   DEMO_CARE_MANAGER_ID,
+  LOGIN_CARE_MANAGER_ID,
   DEMO_FAMILY_CONTACT_ID,
   DEMO_JUDGE_ACCOUNT_ID,
   DEMO_OFFICE_ID,
@@ -68,7 +70,7 @@ const env = () => ({ JUDGE_PASSWORD_HASH: judgeHash });
 /** 種に、協力事業所のケアマネのログインと、協力事業所の本人 1 人（テストだけ）と、医療班のアカウントを足す */
 beforeEach(() => {
   sqlite = migratedSqlite();
-  for (const s of seedStatements({ passwordHashes: { [DEMO_CARE_MANAGER_ID]: cmHash } })) sqlite.exec(s);
+  for (const s of seedStatements({ passwordHashes: { [LOGIN_CARE_MANAGER_ID]: cmHash } })) sqlite.exec(s);
   sqlite
     .prepare("UPDATE accounts SET login_id = 'partner1', password_hash = ? WHERE id = 'acct-partner-cm'")
     .run(partnerHash);
@@ -151,10 +153,11 @@ describe("ログイン", () => {
       role: "care_manager",
       admin: true,
       judge: false,
-      accountId: DEMO_CARE_MANAGER_ID,
+      accountId: LOGIN_CARE_MANAGER_ID,
       displayName: "山本",
-      office: { id: DEMO_OFFICE_ID, name: "デモ事業所", kind: "demo" },
-      caseloadOf: DEMO_CARE_MANAGER_ID,
+      // T144: 山本のログインは確認用の事業所
+      office: { id: CHECK_OFFICE_ID, name: "デモ事業所（確認用）", kind: "demo" },
+      caseloadOf: LOGIN_CARE_MANAGER_ID,
     });
   });
 
@@ -190,7 +193,7 @@ describe("ログイン", () => {
     await fail(JUDGE_LOGIN_ID, JUDGE_PW, {});
     await fail(JUDGE_LOGIN_ID, JUDGE_PW, { JUDGE_PASSWORD_HASH: "  " });
     // ハッシュの無いアカウント（種のままの山本）
-    sqlite.prepare("UPDATE accounts SET password_hash = NULL WHERE id = ?").run(DEMO_CARE_MANAGER_ID);
+    sqlite.prepare("UPDATE accounts SET password_hash = NULL WHERE id = ?").run(LOGIN_CARE_MANAGER_ID);
     await fail("yamamoto", CM_PW);
   });
 
@@ -263,13 +266,13 @@ describe("パスワードの受け口（ハッシュか、secret の平文）", 
   });
 
   it("山本: 種にハッシュが無くても env の平文で入り、次の要求でも切れない", async () => {
-    sqlite.prepare("UPDATE accounts SET password_hash = NULL WHERE id = ?").run(DEMO_CARE_MANAGER_ID);
+    sqlite.prepare("UPDATE accounts SET password_hash = NULL WHERE id = ?").run(LOGIN_CARE_MANAGER_ID);
     const e = { CAREMANAGER_DEMO_PASSWORD: CM_PLAIN };
     expect(await ok(e, "yamamoto", `${CM_PLAIN}x`)).toBe(false);
     expect(await ok({}, "yamamoto", CM_PLAIN)).toBe(false);
     const r = await login(db, e, SECRET, { loginId: "yamamoto", password: CM_PLAIN }, NOW);
     if (!r.ok) throw new Error("山本が平文で入れない");
-    expect(r.principal).toMatchObject({ role: "care_manager", accountId: DEMO_CARE_MANAGER_ID, admin: true });
+    expect(r.principal).toMatchObject({ role: "care_manager", accountId: LOGIN_CARE_MANAGER_ID, admin: true });
     expect((await resolvePrincipal(db, e, SECRET, r.token, NOW + 60))?.role).toBe("care_manager");
     // 平文を消す・変えると切れる
     expect(await resolvePrincipal(db, {}, SECRET, r.token, NOW + 60)).toBeNull();
@@ -312,13 +315,13 @@ describe("cookie からの役", () => {
     const { token } = await loginOk("yamamoto", CM_PW);
     expect(await resolvePrincipal(db, env(), SECRET, token, NOW + 60)).toMatchObject({
       role: "care_manager",
-      accountId: DEMO_CARE_MANAGER_ID,
+      accountId: LOGIN_CARE_MANAGER_ID,
     });
   });
 
   it("パスワードを変える・アカウントを消すと、前の cookie は使えない", async () => {
     const { token } = await loginOk("yamamoto", CM_PW);
-    sqlite.prepare("UPDATE accounts SET password_hash = ? WHERE id = ?").run(partnerHash, DEMO_CARE_MANAGER_ID);
+    sqlite.prepare("UPDATE accounts SET password_hash = ? WHERE id = ?").run(partnerHash, LOGIN_CARE_MANAGER_ID);
     expect(await resolvePrincipal(db, env(), SECRET, token, NOW)).toBeNull();
 
     const partner = await loginOk("partner1", PARTNER_PW);
@@ -363,13 +366,13 @@ describe("スマホ入口のセッション（link の形、T69a）", () => {
     const { token } = await loginOk("yamamoto", CM_PW);
     expect(await resolvePrincipal(db, env(), SECRET, token, NOW + 8 * DAY)).toBeNull();
     const eight = await signSession(
-      { v: 1, k: "account", a: DEMO_CARE_MANAGER_ID, pv: await passwordVersion(cmHash), iat: NOW, exp: NOW + 8 * DAY },
+      { v: 1, k: "account", a: LOGIN_CARE_MANAGER_ID, pv: await passwordVersion(cmHash), iat: NOW, exp: NOW + 8 * DAY },
       SECRET,
     );
     expect(await resolvePrincipal(db, env(), SECRET, eight, NOW + DAY)).toBeNull();
     // 同じ形で 7 日なら通る（上の null は長さで落ちている）
     const seven = await signSession(
-      { v: 1, k: "account", a: DEMO_CARE_MANAGER_ID, pv: await passwordVersion(cmHash), ...sessionTimes(NOW) },
+      { v: 1, k: "account", a: LOGIN_CARE_MANAGER_ID, pv: await passwordVersion(cmHash), ...sessionTimes(NOW) },
       SECRET,
     );
     expect((await resolvePrincipal(db, env(), SECRET, seven, NOW + DAY))?.role).toBe("care_manager");
@@ -541,7 +544,9 @@ describe("事業所の壁", () => {
     for (const p of who) {
       expect(await personInScope(db, p, PARTNER_PERSON), p.role).toBeNull();
       expect(await personInScope(db, p, "p-nothing"), p.role).toBeNull();
-      expect((await personInScope(db, p, "p-05"))?.name, p.role).toBe("伊藤 フミ");
+      // T144: 山本は確認用の事業所（10 人の写し chk-p-…）、審査員はデモ事業所
+      const own = p.office?.id === CHECK_OFFICE_ID ? "chk-p-05" : "p-05";
+      expect((await personInScope(db, p, own))?.name, p.role).toBe("伊藤 フミ");
     }
   });
 

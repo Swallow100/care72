@@ -10,7 +10,7 @@ import { isWalled } from "../auth/wall.ts";
 import { officeActor } from "../office/scope.ts";
 import { MEMO_MAX } from "./form.ts";
 import { surveyUrl } from "./paths.ts";
-import { createSurveyShare } from "./store.ts";
+import { createSurveyShare, surveyOfficeOf } from "./store.ts";
 import { SURVEY_OFFICE_LABELS } from "./text.ts";
 
 export type LinkOutcome = { status: number; body: Record<string, unknown> };
@@ -37,7 +37,8 @@ export async function createLinkRequest(
   if (memo === null) return { status: 400, body: { ok: false, error: "invalid", label: SURVEY_OFFICE_LABELS.failed } };
   const made = await createSurveyShare(
     db,
-    { officeId: actor.officeId, memo, createdBy: p.accountId, createdRole: isWalled(p) ? "judge" : "care_manager" },
+    // 確認用の事業所（T144）はデモ事業所の行に作る（surveyOfficeOf。山本の本物のリンクと同じ所）
+    { officeId: surveyOfficeOf(actor.officeId), memo, createdBy: p.accountId, createdRole: isWalled(p) ? "judge" : "care_manager" },
     now,
   );
   if (!made.ok) return { status: 429, body: { ok: false, error: "limited", label: SURVEY_OFFICE_LABELS.limited } };

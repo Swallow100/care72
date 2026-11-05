@@ -9,13 +9,20 @@
 // 開始者は山本。手の履歴（T20）と採点（T22）はまだ無いので空のまま。足すときはここで最後の刻みのあとに書く。
 
 import type { D1Database } from "@cloudflare/workers-types";
-import { DEMO_CARE_MANAGER_ID, DEMO_OFFICE_ID } from "../auth/demo.ts";
+import { CHECK_OFFICE_ID, checkSeedId, DEMO_TARGETS, type SeedOfficeTargets } from "../auth/demo.ts";
 import type { DrillScenario } from "../db/types.ts";
 import { advanceDrill, startDrill, type DrillScope } from "../drill/db.ts";
 import { lastStep } from "../drill/engine.ts";
 import { insert, type SqlValue } from "../../seed/sql.ts";
 
 export const SEED_DRILL_ID = "drill-seed-heavy-rain";
+/** 確認用の事業所（T144）の種の訓練の id */
+export const CHECK_SEED_DRILL_ID = checkSeedId(SEED_DRILL_ID);
+
+/** 種の事業所ごとの種の訓練の id */
+export function seedDrillId(officeId: string): string {
+  return officeId === CHECK_OFFICE_ID ? CHECK_SEED_DRILL_ID : SEED_DRILL_ID;
+}
 export const SEED_DRILL_SCENARIO: DrillScenario = "heavy_rain";
 
 const DAY_MS = 86_400_000;
@@ -36,18 +43,19 @@ export function seedDrillStepAt(now: string, i: number): string {
   return new Date(Date.parse(seedDrillStartedAt(now)) + i * STEP_MS).toISOString();
 }
 
-const SCOPE: DrillScope = { officeId: DEMO_OFFICE_ID, careManagerId: DEMO_CARE_MANAGER_ID, accountId: DEMO_CARE_MANAGER_ID };
-
 /**
- * 種の訓練を D1 に作る。デモ事業所に同じ id の訓練・進行中の訓練が無いこと（呼ぶ前に消してある）。
- * 開始で 0 時間、advanceDrill で 1 刻みずつ最後まで（大雨は 12 刻み）。途中で断られたら投げる
+ * 種の訓練を D1 に作る。その種の事業所に同じ id の訓練・進行中の訓練が無いこと（呼ぶ前に消してある）。
+ * 開始で 0 時間、advanceDrill で 1 刻みずつ最後まで（大雨は 12 刻み）。途中で断られたら投げる。
+ * targets は種の事業所（既定はデモ事業所。確認用の事業所 T144 は開始者がその山本で、想定の表の人はその写しに当たる）
  */
-export async function seedDrill(db: D1Database, now: string): Promise<void> {
-  const started = await startDrill(db, SCOPE, SEED_DRILL_SCENARIO, seedDrillStepAt(now, 0), {}, () => SEED_DRILL_ID);
+export async function seedDrill(db: D1Database, now: string, targets: SeedOfficeTargets = DEMO_TARGETS): Promise<void> {
+  const scope: DrillScope = { officeId: targets.officeId, careManagerId: targets.careManagerId, accountId: targets.careManagerId };
+  const id = seedDrillId(targets.officeId);
+  const started = await startDrill(db, scope, SEED_DRILL_SCENARIO, seedDrillStepAt(now, 0), {}, () => id);
   if (!started.ok) throw new Error(`種の訓練を始められない: ${started.error}`);
   const last = lastStep(SEED_DRILL_SCENARIO);
   for (let i = 0; i < last; i++) {
-    const r = await advanceDrill(db, SCOPE, SEED_DRILL_ID, i, seedDrillStepAt(now, i + 1));
+    const r = await advanceDrill(db, scope, id, i, seedDrillStepAt(now, i + 1));
     if (!r.ok) throw new Error(`種の訓練を進められない: ${r.error}（刻み ${i}）`);
   }
 }
