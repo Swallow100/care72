@@ -18,7 +18,7 @@ import type { ClaudeClient } from "../claude/client.ts";
 import { HAIKU } from "../claude/models.ts";
 import { d1FromSqlite, migratedSqlite } from "../db/test-d1.ts";
 import type { TtsClient, TtsParams } from "../gemini/tts.ts";
-import { findLeaks, pseudonymize, type PseudonymInput } from "../pseudonym/index.ts";
+import { findLeaks, pseudonymize, PseudonymLeakError, type PseudonymInput } from "../pseudonym/index.ts";
 import {
   CALLS_PER_TICK,
   callerContact,
@@ -277,18 +277,20 @@ describe("着信の往復（保存・上限・門）", () => {
     const sent = inputOf(calls[0])["電話"].text;
     expect(sent).not.toContain(other);
     expectNoPersonalData(sent);
-    // 電話番号は伏せきれない（lib/pseudonym の門）
+    // 電話番号の並びは「（電話）」に置き換えて渡す（lib/pseudonym の PHONE_MARK）
+    const masked = await talk(call.signal, { text: "090-0000-0001 に掛け直してください" }, hook);
+    expect(masked.status).toBe(200);
+    expectNoPersonalData(inputOf(calls[1])["電話"].text);
+    // 伏せきれない文は口が PseudonymLeakError を投げ、400（伏字不可）で何も書かない（外へ掛けた電話の往復と同じ口）
     const before = await stored();
-    const leak = await talk(call.signal, { text: "090-0000-0001 に掛け直してください" }, hook);
-    if (leak.status === 400) {
-      expect(await leak.json()).toMatchObject({ ok: false, label: "伏字不可" });
-      expect(calls).toHaveLength(1);
-      expect((await stored()).minute).toBe(before.minute);
-    } else {
-      // 番号を伏せて通す門なら、渡った文に番号が無い
-      expect(leak.status).toBe(200);
-      expectNoPersonalData(inputOf(calls[1])["電話"].text);
-    }
+    const leaking: typeof hook = async () => {
+      throw new PseudonymLeakError([]);
+    };
+    const refused = await talk(call.signal, { text: "もう一度" }, leaking);
+    expect(refused.status).toBe(400);
+    expect(await refused.json()).toMatchObject({ ok: false, label: "伏字不可" });
+    expect((await stored()).minute).toBe(before.minute);
+    expect((await loadCallRecords(db, ID)).find((c) => c.signal === call.signal)!.talk).toHaveLength(4);
   });
 
   it("鍵なし（口なし）は固定の言葉で往復を残す（AI の印なし、counts.call は増えない）。上限の 1 訓練 150 も同じ", async () => {
