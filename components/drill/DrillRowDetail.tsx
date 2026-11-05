@@ -6,8 +6,18 @@
 // 本人役の赤（本人の言う事つき）は、言う事を声にした物を「録音」として置く（発災時の録音と同じ場所。T21、声は AI の音声）。
 // 仮想モードの結末の人（T53）は、上に結末の 1 文と、世界が決めた理由（街と物の事実）を AI の印つきで出す。
 // 本人・家族の頼み事のうち未対応の物（T93、通話の往復と訪問で聞いた）は、理由の行の下に灰の文字の印で（色の印にしない。済ませるのは手）。
+// 時計は担当一覧と同じ部品（components/person/ClockLines。区分の見出し・きっかけから長さ・残り・出典・確認日。T132）。
+// 進行中は連絡先の行（今の詳細と「全部」）を押すと、対応の欄でその本人・連絡の手・その連絡先を選んだ形に（T132、ContactPick と act-pick の口）。
+// 手は連絡の区分の手を手の表の順に見て、手の可否の決まり（terms）で押せる最初の物（lib/drill/contact-act.ts）。押せなければ理由を出して押せない。
+// 「全部」（T132）は台帳の平時の情報の全部。番号は出さない（「電話あり」）。
 
-import { AiMark, REASON_TEXT, StateTag, TONE_TEXT } from "@/components/person/parts";
+import { ClockLines } from "@/components/person/ClockLines";
+import { AiMark, REASON_TEXT, StateTag } from "@/components/person/parts";
+import { FullDetail } from "@/components/list/FullDetail";
+import { FullToggle } from "@/components/list/FullToggle";
+import type { ContactKind, DrillAction } from "@/lib/db/types";
+import type { ActionTerm } from "@/lib/drill/action-terms";
+import { contactAct } from "@/lib/drill/contact-act";
 import { CALL_UI, VIRTUAL_LABELS } from "@/lib/drill/labels";
 import { minuteText } from "@/lib/drill/time-text";
 import { COLOR_LABELS } from "@/lib/labels";
@@ -16,6 +26,7 @@ import { DETAIL_LABELS } from "@/lib/list/labels";
 import { TALK_UI } from "@/lib/drill/dialogue";
 import type { Ask } from "@/lib/drill/scenarios";
 import { AskMarks } from "./TalkBox";
+import { ContactPick } from "./ContactPick";
 
 const MINUTE_MS = 60_000;
 
@@ -27,6 +38,8 @@ export function DrillRowDetail({
   recordings = {},
   ended = null,
   asks = [],
+  pick = false,
+  terms = null,
 }: {
   detail: RowDetail;
   startedAt: string;
@@ -39,7 +52,21 @@ export function DrillRowDetail({
   ended?: { text: string; reason: string | null; ai: boolean } | null;
   /** 本人・家族の頼み事（T93、world.asks のこの人の物）。未対応だけ出す */
   asks?: ReadonlyArray<Ask>;
+  /** 連絡先の行から対応の欄の手を選べる（進行中の今の区切りで、対応の欄があるときだけ。T132） */
+  pick?: boolean;
+  /** この本人の手の可否と所要（T110 の決まりの表の結果。lib/drill/view.ts の terms[本人]）。決まりを選ばなかった訓練は null */
+  terms?: Readonly<Partial<Record<DrillAction, ActionTerm>>> | null;
 }) {
+  /** 連絡先の行を手を選ぶ行に包む（押せる手が無い区分はそのまま） */
+  const pickRow = (c: { id: string; kind: ContactKind }, line: React.ReactNode) => {
+    const act = pick ? contactAct(c, terms) : null;
+    if (!act) return line;
+    return (
+      <ContactPick person={d.personId} kind={act.kind} target={act.target} label={act.label} block={act.block}>
+        {line}
+      </ContactPick>
+    );
+  };
   const open = [...new Set(asks.filter((a) => a.done === null).map((a) => a.kind))];
   const ai = new Set(aiSignals);
   // 安否の時刻は発災からの経過（「6 時間 10 分」。lib/drill/time-text.ts）
@@ -83,10 +110,15 @@ export function DrillRowDetail({
             ) : (
               <ul className="space-y-0.5">
                 {d.contacts.map((c) => (
-                  <li key={c.id} className="flex flex-wrap items-baseline gap-x-1.5">
-                    <span className="text-xs text-muted">{c.kindLabel}</span>
-                    {c.name && <span className="font-bold">{c.name}</span>}
-                    {c.relation && <span className="text-xs text-muted">{c.relation}</span>}
+                  <li key={c.id} data-contact={c.kind}>
+                    {pickRow(
+                      c,
+                      <span className="flex flex-wrap items-baseline gap-x-1.5">
+                        <span className="text-xs text-muted">{c.kindLabel}</span>
+                        {c.name && <span className="font-bold">{c.name}</span>}
+                        {c.relation && <span className="text-xs text-muted">{c.relation}</span>}
+                      </span>,
+                    )}
                   </li>
                 ))}
               </ul>
@@ -113,26 +145,7 @@ export function DrillRowDetail({
             {d.clocks.length === 0 ? (
               <p className="text-muted">{DETAIL_LABELS.none}</p>
             ) : (
-              <ul className="space-y-1">
-                {d.clocks.map((k) => (
-                  <li key={k.id} className="flex flex-wrap items-baseline gap-x-2" data-clock={k.id}>
-                    <span className="font-bold">{k.label}</span>
-                    {k.remaining ? (
-                      <span className={`font-bold tabular-nums ${k.tone ? TONE_TEXT[k.tone] : "text-muted"}`}>{k.remaining}</span>
-                    ) : (
-                      <span className="text-muted">{k.length ? null : DETAIL_LABELS.unconfirmed}</span>
-                    )}
-                    <span className="text-xs text-muted">
-                      {k.kindLabel} {k.length ?? DETAIL_LABELS.unconfirmed} {k.start}
-                    </span>
-                    {k.depends && (
-                      <span className={`text-xs ${k.depends.unchecked ? "font-bold tone-check" : "text-muted"}`}>
-                        {k.depends.on} {k.depends.check}
-                      </span>
-                    )}
-                  </li>
-                ))}
-              </ul>
+              <ClockLines items={d.clocks.map((k) => ({ id: k.id, text: k.text, tone: k.tone }))} />
             )}
           </Part>
           <Part title={DETAIL_LABELS.destinations}>
@@ -183,6 +196,11 @@ export function DrillRowDetail({
           )}
         </Part>
       </div>
+      {d.full && (
+        <FullToggle id={d.personId}>
+          <FullDetail full={d.full} drill contactSlot={pickRow} />
+        </FullToggle>
+      )}
     </div>
   );
 }

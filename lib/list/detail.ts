@@ -15,27 +15,17 @@ import type {
   SignalSource,
 } from "../db/types.ts";
 import { elapsedText, shortJst } from "../disaster/state.ts";
-import {
-  CHECK_STATUS_LABELS,
-  CLOCK_KIND_LABELS,
-  CLOCK_SOURCE_LABELS,
-  CLOCK_START_LABELS,
-  CLOCK_UNIT_LABELS,
-  COLOR_LABELS,
-  CONTACT_FLAG_LABELS,
-  CONTACT_KIND_LABELS,
-  CONTACT_REACH_LABELS,
-  DEPENDS_ON_LABELS,
-} from "../labels.ts";
-import { clockTone, COLOR_TONES, formatJst, telHref, type StateTone } from "../person.ts";
+import { COLOR_LABELS, CONTACT_FLAG_LABELS, CONTACT_KIND_LABELS, CONTACT_REACH_LABELS } from "../labels.ts";
+import { clockText, leftText, nightText, type ClockText } from "../ledger-words.ts";
+import { clockTone, COLOR_TONES, telHref, type StateTone } from "../person.ts";
 import { summaryOf, type SignalSummary } from "../classify/view.ts";
 import type { HearingPlace, HearingPosition } from "../signals/hearing.ts";
 import { signalLogBody } from "../signals/labels.ts";
-import { clockRemaining, formatHours, type Color, type Override, type Situation, type TriageResult } from "../triage/index.ts";
+import { clockRemaining, type Color, type Override, type Situation, type TriageResult } from "../triage/index.ts";
 import { callLogsOf, type CallEntryRow, type CallLog } from "./calls.ts";
-import { DETAIL_LABELS } from "./labels.ts";
 import { recordingHref } from "./recording.ts";
 import { transportText } from "../map/transport.ts";
+import { buildFullDetail, type FullDetail, type FullInput } from "./full.ts";
 
 export type ContactForDetail = Omit<ContactRow, "created_at">;
 export type ClockForDetail = Omit<ClockRow, "sort"> & { sort?: number };
@@ -123,23 +113,22 @@ export type DetailContact = {
   lastCall: { when: string; result: CallLog["result"]; heard: CallLog["heard"] } | null;
 };
 
+/**
+ * 時計 1 つ。言葉（物の名前・きっかけから長さ・残り・出典・確認日・頼り先）は lib/ledger-words.ts の clockText（T132）で、
+ * 本人のページの時計の欄と同じ物。区分（機器・物品・薬）は行に混ぜず、描く側が区分の見出しで束ねる
+ */
 export type DetailClock = {
   id: string;
+  kind: ClockForDetail["kind"];
   label: string;
-  kindLabel: string;
-  /** 「2 時間」。値が無ければ null（未確認） */
-  length: string | null;
-  start: string;
   running: boolean;
-  /** 「残り 30 分」「超過 1 時間」「停電で開始」。走らない時計は null */
+  /** 「残り 30 分」「超過 1 時間」（走っている時計だけ）。ほかは null */
   remaining: string | null;
   over: boolean;
   /** 残りの色（走っている時計だけ。lib/person の clockTone の境目） */
   tone: StateTone | null;
-  source: string | null;
-  sourceNote: string | null;
-  confirmed: string | null;
   depends: { on: string; check: string; unchecked: boolean } | null;
+  text: ClockText;
 };
 
 export type DetailSignal = {
@@ -207,6 +196,8 @@ export type RowDetail = {
   /** 電話の記録（新しい順、5 つまで） */
   calls: CallLog[];
   override: DetailOverride | null;
+  /** 「全部」（T132）: 台帳の平時の情報の全部（本人のページの面と、連絡先の全員）。本人の行を渡さなければ null */
+  full: FullDetail | null;
 };
 
 /** 最後の連絡（いちばん新しい信号）。一覧の列にも出す */
@@ -218,7 +209,7 @@ export type Remain = { label: string; text: string; hours: number; over: boolean
 type ClockLike = Pick<ClockRow, "kind" | "category" | "label" | "value" | "unit" | "starts_on" | "depends_on" | "depends_check">;
 
 function remainingText(r: { remaining: number; over: boolean }): string {
-  return r.over ? `${DETAIL_LABELS.over} ${formatHours(-r.remaining)}` : `${DETAIL_LABELS.left} ${formatHours(r.remaining)}`;
+  return leftText(r.remaining, r.over);
 }
 
 /** 走っている時計で残りのいちばん短い物。無ければ null */
@@ -343,41 +334,23 @@ function detailSupporters(contacts: ReadonlyArray<ContactForDetail>): RowDetail[
       if (c.kind !== "family" && c.kind !== "supporter") parts.push(CONTACT_KIND_LABELS[c.kind]);
       if (c.reach) parts.push(CONTACT_REACH_LABELS[c.reach]);
       if (c.has_car === 1) parts.push(CONTACT_FLAG_LABELS.hasCar);
-      parts.push(
-        c.night_ok === 1
-          ? CONTACT_FLAG_LABELS.nightOk
-          : c.night_ok === 0
-            ? CONTACT_FLAG_LABELS.nightNo
-            : CONTACT_FLAG_LABELS.nightUnknown,
-      );
+      parts.push(nightText(c.night_ok));
       return { order: c.supporter_order ?? 0, name: contactName(c), parts };
     });
 }
 
 function detailClock(k: ClockForDetail, s: Situation): DetailClock {
-  const r = clockRemaining(k, s);
-  const runs = k.starts_on !== "none";
+  const text = clockText(k, s);
   return {
     id: k.id,
+    kind: k.kind,
     label: k.label,
-    kindLabel: CLOCK_KIND_LABELS[k.kind],
-    length: k.value != null && k.unit != null ? `${k.value} ${CLOCK_UNIT_LABELS[k.unit]}` : null,
-    start: CLOCK_START_LABELS[k.starts_on],
-    running: r?.running ?? false,
-    remaining: !runs || !r ? null : r.running ? remainingText(r) : `${CLOCK_START_LABELS[k.starts_on]}${DETAIL_LABELS.startsOn}`,
-    over: r?.over ?? false,
-    tone: r?.running ? clockTone(r.remaining) : null,
-    source: k.source ? CLOCK_SOURCE_LABELS[k.source] : null,
-    sourceNote: k.source_note,
-    confirmed: k.confirmed_at ? formatJst(k.confirmed_at).slice(0, 10) : null,
-    depends:
-      k.depends_on && k.depends_check
-        ? {
-            on: DEPENDS_ON_LABELS[k.depends_on],
-            check: CHECK_STATUS_LABELS[k.depends_check],
-            unchecked: k.depends_check === "unconfirmed",
-          }
-        : null,
+    running: text.left !== null,
+    remaining: text.left?.text ?? null,
+    over: text.left?.over ?? false,
+    tone: text.left ? clockTone(text.left.hours) : null,
+    depends: text.depends ? { on: text.depends.on, check: text.depends.check, unchecked: text.depends.unchecked } : null,
+    text,
   };
 }
 
@@ -398,6 +371,9 @@ function detailOverride(o: (Override & { expired: boolean; byName?: string | nul
 export type DetailInput = {
   personId: string;
   ledger: Pick<Ledger, "evacuation">;
+  /** 本人の行（生年月日・本人の報告の印・台帳の JSON）と年齢を数える日。渡すと「全部」（T132）を作る */
+  person?: FullInput["person"];
+  today?: string;
   contacts: ReadonlyArray<ContactForDetail>;
   clocks: ReadonlyArray<ClockForDetail>;
   /** 発災から今までの信号（訓練でない物） */
@@ -441,6 +417,10 @@ export function buildRowDetail(x: DetailInput): RowDetail {
       .reverse(),
     calls: calls.slice(0, 5),
     override: detailOverride(x.triage.override),
+    full:
+      x.person && x.today
+        ? buildFullDetail({ person: x.person, contacts: x.contacts, clocks: x.clocks, today: x.today })
+        : null,
   };
 }
 

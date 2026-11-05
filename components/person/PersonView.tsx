@@ -10,9 +10,10 @@ import { ButtonLink } from "@/components/ui/Button";
 import { PaperIcon, PrintIcon } from "@/components/ui/Icon";
 import { StateText } from "@/components/ui/Tag";
 import type { Block, ClockView, DocumentView, PersonView as View, Section } from "@/lib/person";
-import { BLANK_LABELS, CLOCK_PARTS } from "@/lib/labels";
+import { BLANK_LABELS } from "@/lib/labels";
 import { isEditSection, type EditData } from "@/lib/intake/edit";
-import { Blank, PendingMark, RowItem, TONE_TEXT, type Level } from "./parts";
+import { PendingMark, RowItem, type Level } from "./parts";
+import { ClockLines } from "./ClockLines";
 import { SectionEdit } from "./SectionEdit";
 import { PersonHead } from "./PersonHead";
 import { Timeline } from "./Timeline";
@@ -104,8 +105,8 @@ function SectionPanel({
   );
 }
 
-/** 欄の行は 1 つの dl に、経過はそのまま */
-function Blocks({ blocks }: { blocks: readonly Block[] }) {
+/** 欄の行は 1 つの dl に、経過はそのまま。行の詳細の「全部」（T132、components/list/FullDetail.tsx）も同じこれで面を描く */
+export function Blocks({ blocks }: { blocks: readonly Block[] }) {
   const timeline = blocks.find((b) => b.type === "timeline");
   if (timeline?.type === "timeline") return <Timeline items={timeline.items} />;
   return (
@@ -165,7 +166,10 @@ function DocumentRow({ doc }: { doc: DocumentView }) {
   );
 }
 
-/** 時計（値・単位・出典・確認・頼り先）。1 つの時計を 2 行で: 名前と値、その下に小さく種類・起点・出典・確認 */
+/**
+ * 時計。区分（機器・物品・薬・状態）の見出しで束ね、1 つの時計を 2 行で: 物の名前ときっかけから長さ（「停電から 2 時間」）、
+ * その下に小さく出典・確認日・メモ。言葉は担当一覧・訓練の行の詳細と同じ所（lib/ledger-words.ts、components/person/ClockLines。T132）
+ */
 function ClocksRow({ label, clocks }: { label: string; clocks: readonly ClockView[] }) {
   return (
     <div className={LABEL_COL} data-field="clocks">
@@ -174,58 +178,25 @@ function ClocksRow({ label, clocks }: { label: string; clocks: readonly ClockVie
         {clocks.length === 0 ? (
           <span>{BLANK_LABELS.none}</span>
         ) : (
-          <ul className="space-y-1">
-            {clocks.map((k) => (
-              <li key={k.id} className="rounded bg-panel2 px-2 py-1" data-clock={k.id}>
-                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                  <span>{k.label}</span>
-                  <ClockValue clock={k} />
-                  {k.depends && (
-                    <StateText tone={k.depends.unchecked ? "check" : "ok"} className="text-xs">
-                      {k.depends.on} {k.depends.check}
-                    </StateText>
-                  )}
-                </div>
-                <div className="flex flex-wrap gap-x-2 text-xs text-muted">
-                  <span>{k.kind}</span>
-                  <span>
-                    {CLOCK_PARTS.start} {k.start}
-                  </span>
-                  <span>
-                    {CLOCK_PARTS.source} {k.source ?? BLANK_LABELS.unconfirmed}
-                    {k.sourceNote && ` ${k.sourceNote}`}
-                  </span>
-                  <span className="tabular-nums">
-                    {CLOCK_PARTS.confirmed} {k.confirmed ?? BLANK_LABELS.unconfirmed}
-                  </span>
-                  {k.note && <span>{k.note}</span>}
-                </div>
-              </li>
-            ))}
-          </ul>
+          <ClockLines
+            boxed
+            items={clocks.map((k) => ({
+              id: k.id,
+              text: k.text,
+              tone: k.tone,
+              toneOnSpan: true,
+              // 台帳の未確認（理由つき）は長さの所に。値があるのに未確認の印の付いた時計は長さの右に
+              ...(k.pending.length > 0
+                ? k.text.missing
+                  ? { missingMark: <PendingMark pending={k.pending} /> }
+                  : { after: <PendingMark pending={k.pending} /> }
+                : {}),
+              note: k.note,
+            }))}
+          />
         )}
       </dd>
     </div>
   );
 }
 
-function ClockValue({ clock }: { clock: ClockView }) {
-  if (clock.pending.length > 0) {
-    return (
-      <>
-        {clock.value && <span className="font-bold tabular-nums">{clock.value}</span>}
-        <PendingMark pending={clock.pending} />
-      </>
-    );
-  }
-  if (clock.value) {
-    return (
-      <span className={`tabular-nums ${clock.tone ? `font-bold ${TONE_TEXT[clock.tone]}` : ""}`} data-tone={clock.tone ?? undefined}>
-        {clock.value}
-      </span>
-    );
-  }
-  if (!clock.runs) return <span className="text-muted">—</span>;
-  // 値の無い時計はルールの表でも未確認（lib/triage の hoursOf が null）
-  return <Blank label={BLANK_LABELS.unconfirmed} />;
-}

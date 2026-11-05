@@ -36,6 +36,7 @@ import type { FreePlanView } from "@/lib/drill/http";
 import { ACTION_LABELS, ACTION_UI, CALL_STATUS_LABELS, DRILL_LABELS, T59_LABELS } from "@/lib/drill/labels";
 import type { DrillContact } from "@/lib/drill/view";
 import type { FictionKind } from "@/lib/drill/fiction";
+import { useActPick } from "./act-pick";
 import { FictionalMark } from "./Fictional";
 import { ACTION_ICONS } from "./icons";
 
@@ -100,6 +101,13 @@ export function ActionPanel({
   /** 自由対応の読み替え（T110）。読んだ文と本人。文か本人が変われば古い */
   const [plan, setPlan] = useState<{ text: string; person: string | null; view: FreePlanView } | null>(null);
   const [reading, setReading] = useState(false);
+  // 行の詳細の連絡先の行から（T132、components/drill/act-pick.ts の口）: 本人・手・相手を選んだ形にする
+  useActPick((p) => {
+    setPerson(p.person);
+    setKind(p.kind);
+    setTarget(p.target);
+    setError(null);
+  });
 
   const own = person ? (contacts[person] ?? []) : [];
   const choices = (k: DrillAction) => own.filter((c) => targetKinds(k).includes(c.kind));
