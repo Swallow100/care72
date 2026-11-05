@@ -4,10 +4,19 @@
 import { SCALE_CHOICES, type DrillScale } from "../../../lib/drill/scale.ts";
 import { rngOf } from "./rng.ts";
 
-export const SCENARIOS = ["short", "virtual", "heavy_rain", "earthquake"] as const;
+// 10 分版（short）は T124 でアプリから外したので、台の想定の組にも入れない（開始の API が断る）
+export const SCENARIOS = ["heavy_rain", "earthquake", "virtual"] as const;
 export type EvalScenario = (typeof SCENARIOS)[number];
 
 export const isEvalScenario = (v: string): v is EvalScenario => (SCENARIOS as readonly string[]).includes(v);
+
+/**
+ * 参加する人の組（T124）。all は担当一覧の全員（種の 10 人。既定）、vary は回ごとに 3 人〜全員の部分集合（--people vary）。
+ * どちらでも種から引く数は同じ（同じ種なら人の組のほかは同じ回になる）
+ */
+export const PEOPLE_MODES = ["all", "vary"] as const;
+export type PeopleMode = (typeof PEOPLE_MODES)[number];
+export const isPeopleMode = (v: string): v is PeopleMode => (PEOPLE_MODES as readonly string[]).includes(v);
 
 /** 進め方（連続の時計の訓練）。30 分・1 時間・3 時間・次まで の重み */
 export type Pace = { m30: number; h1: number; h3: number; next: number };
@@ -41,13 +50,20 @@ export type RunPlan = {
 /** 回の種（基の種と番号） */
 export const runSeed = (base: string, index: number) => `${base}-${index}`;
 
-/** 1 回の選び方。caseload は担当一覧の人の id（並びのまま）。scenarios は選んでよい想定 */
-export function planRun(base: string, index: number, caseload: ReadonlyArray<string>, scenarios: ReadonlyArray<EvalScenario> = SCENARIOS): RunPlan {
+/** 1 回の選び方。caseload は担当一覧の人の id（並びのまま）。scenarios は選んでよい想定、people は人の組（既定は全員） */
+export function planRun(
+  base: string,
+  index: number,
+  caseload: ReadonlyArray<string>,
+  scenarios: ReadonlyArray<EvalScenario> = SCENARIOS,
+  people: PeopleMode = "all",
+): RunPlan {
   const seed = runSeed(base, index);
   const rng = rngOf(`${seed}/plan`);
   const scenario = rng.pick(scenarios);
   const size = rng.int(Math.min(3, caseload.length), caseload.length);
-  const chosen = new Set(rng.shuffle(caseload).slice(0, size));
+  const subset = new Set(rng.shuffle(caseload).slice(0, size));
+  const chosen = people === "all" ? new Set(caseload) : subset;
   const pace: Pace = rng.pick<Pace>([
     { m30: 4, h1: 3, h3: 1, next: 2 },
     { m30: 1, h1: 2, h3: 3, next: 3 },
