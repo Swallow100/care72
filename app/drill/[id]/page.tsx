@@ -114,6 +114,7 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
           recordings={recordings}
           ended={endedOf(s, r.id)}
           asks={s.state.world.asks?.[r.id] ?? []}
+          hints={s.hints?.[r.id] ?? null}
           // 進行中は詳細の連絡先の行から対応の欄の手を選ぶ（T132）。可否は決まりの表の結果（terms）を読むだけ
           pick={running}
           terms={s.terms?.[r.id] ?? null}
@@ -248,6 +249,7 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
                     contacts={s.contacts}
                     fiction={fiction}
                     terms={s.terms}
+                    hints={s.hints}
                     status={<BusyLine busy={s.busy} />}
                   />
                 )}

@@ -6,6 +6,7 @@
 // 本人役の赤（本人の言う事つき）は、言う事を声にした物を「録音」として置く（発災時の録音と同じ場所。T21、声は AI の音声）。
 // 仮想モードの結末の人（T53）は、上に結末の 1 文と、世界が決めた理由（街と物の事実）を AI の印つきで出す。
 // 本人・家族の頼み事のうち未対応の物（T93、通話の往復と訪問で聞いた）は、理由の行の下に灰の文字の印で（色の印にしない。済ませるのは手）。
+// その下に打てる手の候補（T126、components/drill/ActionHints の DetailHints）。押すと対応の欄でこの本人とその手を選ぶ（連絡先の行と同じ口 act-pick）。
 // 時計は担当一覧と同じ部品（components/person/ClockLines。区分の見出し・きっかけから長さ・残り・出典・確認日。T132）。
 // 進行中は連絡先の行（今の詳細と「全部」）を押すと、対応の欄でその本人・連絡の手・その連絡先を選んだ形に（T132、ContactPick と act-pick の口）。
 // 手は連絡の区分の手を手の表の順に見て、手の可否の決まり（terms）で押せる最初の物（lib/drill/contact-act.ts）。押せなければ理由を出して押せない。
@@ -25,6 +26,8 @@ import type { RowDetail } from "@/lib/list/detail";
 import { DETAIL_LABELS } from "@/lib/list/labels";
 import { TALK_UI } from "@/lib/drill/dialogue";
 import type { Ask } from "@/lib/drill/scenarios";
+import type { ActionHints } from "@/lib/drill/action-hints";
+import { DetailHints } from "./ActionHints";
 import { AskMarks } from "./TalkBox";
 import { ContactPick } from "./ContactPick";
 
@@ -38,6 +41,7 @@ export function DrillRowDetail({
   recordings = {},
   ended = null,
   asks = [],
+  hints = null,
   pick = false,
   terms = null,
 }: {
@@ -52,6 +56,8 @@ export function DrillRowDetail({
   ended?: { text: string; reason: string | null; ai: boolean } | null;
   /** 本人・家族の頼み事（T93、world.asks のこの人の物）。未対応だけ出す */
   asks?: ReadonlyArray<Ask>;
+  /** 打てる手の候補（T126、進行中の今の区切りだけ）。押すと対応の欄でこの本人とその手を選ぶ */
+  hints?: ActionHints | null;
   /** 連絡先の行から対応の欄の手を選べる（進行中の今の区切りで、対応の欄があるときだけ。T132） */
   pick?: boolean;
   /** この本人の手の可否と所要（T110 の決まりの表の結果。lib/drill/view.ts の terms[本人]）。決まりを選ばなかった訓練は null */
@@ -101,6 +107,7 @@ export function DrillRowDetail({
           <AskMarks asks={open} />
         </div>
       )}
+      {hints && <DetailHints person={d.personId} hints={hints} />}
       {/* 表の幅で並べる（圧縮した表は 2 列、広げた表は 3 列） */}
       <div className="grid gap-2 @sm:grid-cols-2 @3xl:grid-cols-3">
         <div className="space-y-2">

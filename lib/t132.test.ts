@@ -238,4 +238,13 @@ describe("対応の欄に渡す口（act-pick）", () => {
     pickAct({ person: "p-02", kind: "call_person", target: null });
     expect(got).toEqual([{ person: "p-01", kind: "call_contact", target: "c-01-1" }]);
   });
+
+  it("打てる手の候補（T126）も同じ口: 相手の無い本人と手を送る", () => {
+    g.window = new EventTarget();
+    const got: ActPick[] = [];
+    const off = onActPick((p) => got.push(p));
+    pickAct({ person: "p-02", kind: "dispatch", target: null });
+    off();
+    expect(got).toEqual([{ person: "p-02", kind: "dispatch", target: null }]);
+  });
 });

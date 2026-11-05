@@ -605,14 +605,15 @@ describe("対応の欄", () => {
     expect(html.match(/data-act-group="/g)).toHaveLength(5);
     for (const g of ACTION_GROUPS) expect(html).toContain(`>${ACTION_GROUP_LABELS[g]}</h3>`);
     const kinds = [...html.matchAll(/data-act-kind="([a-z_0-9]+)"/g)].map((m) => m[1]);
-    expect(kinds).toEqual(ACTION_CATALOG.map((r) => r.id));
-    // 本人なしで押せるのは応援依頼・行政報告・記録・退避・自由対応だけ
+    // 記録（note）は T126 で手の一覧から外した（表の行と保存の形は残る）
+    expect(kinds).toEqual(ACTION_CATALOG.map((r) => r.id).filter((k) => k !== "note"));
+    // 本人なしで押せるのは応援依頼・行政報告・退避・自由対応だけ
     const enabled = html
       .split("<button")
       .map((tag) => tag.slice(0, tag.indexOf(">")))
       .filter((tag) => tag.includes("data-act-kind=") && !tag.includes(' disabled=""'))
       .map((tag) => /data-act-kind="([a-z_0-9]+)"/.exec(tag)![1]);
-    expect(enabled.sort()).toEqual(["evacuate_self", "free", "note", "report_city", "request_backup"]);
+    expect(enabled.sort()).toEqual(["evacuate_self", "free", "report_city", "request_backup"]);
     // 自由対応は分を出さない（読み替えた手の分）。文の欄は選ぶまで出さない
     expect(html).not.toContain("data-act-free-input");
     expect(html).not.toMatch(/ピル|rounded-full|tracking-/);
