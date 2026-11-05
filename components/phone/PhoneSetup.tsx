@@ -314,20 +314,19 @@ export function PhoneSetup({ vapidKey, account: initialAccount, compact = false 
         </div>
       )}
 
-      {current === "notify" && (
+      {/* 鍵の無い配信（off）は上の段の印「通知 未設定」だけ（同じ言葉を 2 度出さない） */}
+      {current === "notify" && notify !== "off" && (
         <div className="mt-3" data-notify={notify}>
           <p className="font-bold">
             <Easy
               m={
-                notify === "off"
-                  ? S.notConfigured
-                  : notify === "need-home"
-                    ? S.notifyFromHome
-                    : notify === "denied"
-                      ? S.denied
-                      : notify === "unsupported"
-                        ? S.unsupported
-                        : S.notifyLead
+                notify === "need-home"
+                  ? S.notifyFromHome
+                  : notify === "denied"
+                    ? S.denied
+                    : notify === "unsupported"
+                      ? S.unsupported
+                      : S.notifyLead
               }
             />
           </p>
