@@ -80,7 +80,8 @@ describe("計画（planOf）", () => {
     expect(p1.spares).toEqual([{ category: "oxygen", label: "酸素 予備ボンベ", hours: 8 }]);
     expect(p1).toMatchObject({ destination: "shelter", move: true, helper: true, vendor: false, zone: true });
     const p2 = planOf(seedInput("p-02"));
-    expect(p2.spares).toEqual([{ category: "ventilator", label: "バッテリー", hours: null }]);
+    // 持ち物の予備の時間は台帳に無いので、内蔵の電池と同じ時間の見込み（T139）
+    expect(p2.spares).toEqual([{ category: "ventilator", label: "バッテリー", hours: 3, assumed: true }]);
     expect(p2).toMatchObject({ destination: "hospital", move: true, vendor: true });
     expect(JSON.stringify(p2)).not.toContain("かわなぎ");
   });
@@ -109,8 +110,8 @@ describe("帳面の文（本人役の刻みの文）", () => {
 
   it("前に言った「動けない」と、そのあと誰も来ていない事を書く。同居の人も書く", () => {
     const persona = buildPersona(seedInput("p-02"), { on: "2026-11-05" });
-    const t = tickText(personaInput("p-02", { state: state({ color: "red", canMove: false, atHome: true, at: 2 }) }), persona);
-    expect(t).toContain("前に言った事: 動けない（2 時間）。そのあと誰も来ていない");
+    const t = tickText(personaInput("p-02", { state: state({ color: "red", injured: true, canMove: false, atHome: true, at: 2 }) }), persona);
+    expect(t).toContain("前に言った事: 動けない・けが（2 時間）。そのあと誰も来ていない");
     expect(t).toContain("同居の人（もう家にいる。あとから「来た」と言わない）: 夫");
   });
 });
@@ -118,7 +119,8 @@ describe("帳面の文（本人役の刻みの文）", () => {
 // ---------- 門（帳面に反する答えを使わない） ----------
 
 describe("赤（動けない）→ 緑の門", () => {
-  const red = state({ color: "red", source: "family", canMove: false, atHome: true, at: 2 });
+  // 台帳でふだん歩けない人（p-06 は歩行 困難）の「動けない」はけがと数えない（T139）ので、けがの赤で見る
+  const red = state({ color: "red", source: "family", injured: true, canMove: false, atHome: true, at: 2 });
   const green = answer({ contactsCaremanager: true, from: "娘", pressesRed: false, location: "home", speech: "落ち着きました。" });
 
   it("手も到着も無いまま緑は使わない（連絡なし）。門の数を書き留める", () => {

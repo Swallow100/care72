@@ -17,7 +17,7 @@ import { actionPost } from "./http.ts";
 import { loadDrillRecord, parseStoredScore, shownReview } from "./record.ts";
 import { callPost, reviewPost } from "./record-http.ts";
 import { loadCallRecords, respondCall } from "./responses.ts";
-import { REVIEW_BANNED, REVIEW_SOURCES, REVIEW_SYSTEM, reviewBody } from "./review.ts";
+import { FINDINGS_MAX, REVIEW_BANNED, REVIEW_SOURCES, REVIEW_SYSTEM, reviewBody } from "./review.ts";
 import { FORM9_PLAN_LABELS, MISS_LABELS, REVIEW_ERROR_LABELS, REVIEW_KIND_LABELS, REVIEW_UI, SCORE_LABELS } from "./score-labels.ts";
 import { scoreNumbers } from "./score.ts";
 
@@ -363,7 +363,7 @@ describe("講評（Opus 1 回）", () => {
     expect((await reviewPost(ENV(), partner, "d1", {})).status).toBe(404);
   });
 
-  it("返事の検査（reviewBody）: 指摘は 8 つまで、文の長さで切る", () => {
+  it("返事の検査（reviewBody）: 指摘は形の上限（FINDINGS_MAX）まで、文の長さで切る", () => {
     const { key } = pseudonymize(SEED_PEOPLE.slice(0, 2).map(seedInput), { on: "2026-11-05" });
     // 同じ人・同じ種類で同じ言い回しの指摘は重ねない（T130）ので、人と種類を変えた 12 個
     const kinds = ["order", "report", "blank", "reached", "call", "choice"];
@@ -372,7 +372,7 @@ describe("講評（Opus 1 回）", () => {
       findings: Array.from({ length: 12 }, (_, i) => ({ person: i % 2 === 0 ? "A さん" : "B さん", kind: kinds[Math.floor(i / 2)], text: "い".repeat(300), basis: "根拠なし" })),
     };
     const b = reviewBody(many, { key, members: new Set(["p-01", "p-02"]) });
-    expect(b.findings).toHaveLength(8);
+    expect(b.findings).toHaveLength(FINDINGS_MAX);
     expect(Array.from(b.findings[0].text)).toHaveLength(120);
     expect(Array.from(b.summary)).toHaveLength(240);
     expect(b.findings[0].person).toBe("p-01");

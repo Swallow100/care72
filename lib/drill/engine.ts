@@ -845,6 +845,11 @@ export async function advance(
   // 表の行。本人ごとに、前に呼んだ時刻（無ければ始め）より後の物（呼ばなかった人の行は残る）
   const pending = (p: string) =>
     table.rows.filter((r) => r.row.person === p && r.minute > (lastCalled[p] ?? -1) && r.minute <= to).map((r) => ({ ...r.row, at: eventHour(r.row, r.tickHour) }));
+  // 表のこの人の次の行（この区切りより後。T139。帳面の門が表の次の緑と食い違うけが・閉じ込めを足さない）
+  const aheadOf = (p: string): PersonaInput["ahead"] => {
+    const r = table.rows.filter((x) => x.row.person === p && x.minute > to).sort((x, y) => x.minute - y.minute)[0];
+    return r ? { color: r.row.color, at: r.minute } : null;
+  };
   const turns: DrillTurn[] = [];
   const applyFixed = (p: string) => {
     const own = pending(p);
@@ -1017,6 +1022,7 @@ export async function advance(
       reasons: REASON_ORDER.filter((r) => reasons.get(person)!.has(r)),
       toMinute: to,
       fit: fitKindOf(state, world),
+      ahead: aheadOf(person),
     });
     // まとめて呼ぶ口があれば PERSONA_BATCH_MAX 人ずつ 1 回（T121）。数えるのは呼び出しの数
     const groups: string[][] = hooks.personas ? chunks(called, PERSONA_BATCH_MAX) : called.map((p) => [p]);

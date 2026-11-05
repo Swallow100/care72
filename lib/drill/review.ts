@@ -87,7 +87,11 @@ export const REVIEW_SOURCES: ReadonlyArray<SourceId> = [
 ];
 
 /** 指摘の数・文の長さの上限 */
-export const FINDINGS_MAX = 8;
+/**
+ * 指摘の数の形の上限（返事が長すぎる時の安全の上限だけ。指示には書かない）。指摘の数は種類ごとの候補（findingRooms）で決まる（T139。
+ * 評価の 4 回目で、指示に「8 個まで」が残り、どの回もちょうど 8 件だった）
+ */
+export const FINDINGS_MAX = 12;
 export const FINDING_TEXT_MAX = 120;
 export const SUMMARY_MAX = 240;
 
@@ -120,7 +124,7 @@ export const REVIEW_SYSTEM = [
   "",
   "返す JSON:",
   `- summary: 全体の講評（${SUMMARY_MAX - 40} 字まで）。次の訓練で試す事を 1〜2 つ。`,
-  `- findings: 指摘の配列。記録の中身で見つかった分だけ（数をそろえない・埋めない。指摘する事が無ければ空の配列。多くて「指摘の候補の数」まで、${FINDINGS_MAX} 個まで）。1 つの事に 1 つ。同じ人・同じ種類の指摘を重ねない。`,
+  "- findings: 指摘の配列。記録の中身で見つかった分だけ（数をそろえない・埋めない。指摘する事が無ければ空の配列）。種類ごとに「指摘の候補（種類ごと）」の数まで。候補の無い種類は書かない。1 つの事に 1 つ。同じ人・同じ種類の指摘を重ねない。",
   "  - person: 本人の仮名（「A さん」）。全体のことは「全体」。",
   "  - kind: order（対応の順番）・report（市役所への報告）・blank（様式 9 の空欄）・reached（時計が切れるまで手が届かなかった）・call（着信への応答）・choice（手の選び方。空振り・重複・頼み事への対応）・other のどれか。",
   `  - text: 行動についての 1〜2 文（${FINDING_TEXT_MAX - 20} 字まで）。いつ・誰に・どの手を打てばよかったかを、上の手の言葉で書く。`,
@@ -314,8 +318,10 @@ export function reviewText(ctx: ReviewContext, aliasOf: ReadonlyMap<string, stri
     lines.push(`- 計画が無く手が要った人（計画に無く、ケアマネの手が要った事）: ${needed.length}`);
     for (const r of needed) lines.push(`  - ${who(r.person)}: ${r.needed.map((a) => PLAN_NEED_WORDS[a]).join("・")}`);
   }
-  // 指摘の候補の数（T130。評価の 3 回目で指摘がいつも 8 件だった。数を中身に合わせる）
-  lines.push(`- 指摘の候補の数（上の機械の数の中身の数。これより多く書かない。0 なら指摘なし）: ${findingRoom(s)}`);
+  // 指摘の候補（T130・T139。評価の 3・4 回目で指摘がいつも 8 件だった。種類ごとの数を中身に合わせる）
+  const rooms = findingRooms(s);
+  const roomWords = REVIEW_KINDS.filter((k) => (rooms[k] ?? 0) > 0).map((k) => `${k} ${rooms[k]}`);
+  lines.push(`- 指摘の候補（種類ごと。上の機械の数の中身の数。種類ごとにこれより多く書かない。無い種類は書かない）: ${roomWords.length > 0 ? roomWords.join("・") : "なし（指摘なし）"}`);
   // 前回
   const p = ctx.previous;
   lines.push(
@@ -389,23 +395,37 @@ export function reviewText(ctx: ReviewContext, aliasOf: ReadonlyMap<string, stri
 }
 
 /**
+ * 種類ごとの指摘の候補の数（T139）。機械で数えた中身から: order 順番の外れ・report 市役所への報告（未報告と報告の時刻。いつも 1）・
+ * blank 様式 9 の空欄の人・reached 条件に達した人・call 赤の着信に出ない／未応答・choice 空振りと重複の人・頼み事の未対応の人・計画が無く手が要った人・
+ * other ほかの種類に何かあれば 1（前の「中身の数 ＋ 1」の 1）。0 の種類は書かない
+ */
+export function findingRooms(s: DrillScore): Partial<Record<ReviewKind, number>> {
+  const people = (rows: ReadonlyArray<{ person: string | null }> | undefined) => new Set((rows ?? []).map((r) => r.person ?? "全体")).size;
+  const base = {
+    order: s.order.misses.length,
+    report: 1,
+    blank: s.form9.rows.length,
+    reached: s.reached.length,
+    call: s.calls.redDeclined + s.calls.open > 0 ? 1 : 0,
+  };
+  const choice = people(s.wasted?.rows) + people(s.repeat?.rows) + (s.asks?.rows.length ?? 0) + (s.plans?.needed ?? 0);
+  // 直す所（報告の 1 を除く）が何も無ければ 0 件（報告も other も候補にしない）
+  const found = base.order + (s.report.minute === null ? 1 : 0) + base.blank + base.reached + base.call + choice;
+  if (found === 0) return {};
+  const out: Partial<Record<ReviewKind, number>> = {};
+  for (const [k, n] of Object.entries({ ...base, choice, other: 1 }) as Array<[ReviewKind, number]>) if (n > 0) out[k] = n;
+  return out;
+}
+
+/**
  * 指摘にしてよい数（T130）。機械で数えた中身のうち、直す所の数（人ごと・全体ごと）。順番の外れ・未報告・様式 9 の空欄の人・条件に達した人・
  * 赤の着信に出なかった・未応答・空振りと重複の人・頼み事の未対応の人・計画が無く手が要った人。何かあれば手の選び方の 1 つを足す。
  * 何も無ければ 0（指摘なし）。FINDINGS_MAX を超えない
  */
 export function findingRoom(s: DrillScore): number {
-  const people = (rows: ReadonlyArray<{ person: string | null }> | undefined) => new Set((rows ?? []).map((r) => r.person ?? "全体")).size;
-  const n =
-    s.order.misses.length +
-    (s.report.minute === null ? 1 : 0) +
-    s.form9.rows.length +
-    s.reached.length +
-    (s.calls.redDeclined + s.calls.open > 0 ? 1 : 0) +
-    people(s.wasted?.rows) +
-    people(s.repeat?.rows) +
-    (s.asks?.rows.length ?? 0) +
-    (s.plans?.needed ?? 0);
-  return Math.min(FINDINGS_MAX, n > 0 ? n + 1 : 0);
+  // 種類ごとの候補の合計（T139。前の「中身の数 ＋ 1」は手の選び方の候補に入れた）
+  const n = Object.values(findingRooms(s)).reduce((x, k) => x + (k ?? 0), 0);
+  return Math.min(FINDINGS_MAX, n);
 }
 
 // ---------- 返事の検査 ----------
@@ -453,7 +473,10 @@ const isReviewKind = (v: string): v is ReviewKind => (REVIEW_KINDS as readonly s
  * 返事を講評にする。知らない仮名・登録簿に無い根拠・検査に掛かった文の指摘は捨てる。kind が一覧の外なら other。
  * members は参加者（仮名を戻す先）。summary が検査に掛かれば空
  */
-export function reviewBody(answer: ReviewAnswer, ctx: { key: PseudonymKey; members: ReadonlySet<string>; max?: number }): ReviewBody {
+export function reviewBody(
+  answer: ReviewAnswer,
+  ctx: { key: PseudonymKey; members: ReadonlySet<string>; max?: number; rooms?: Partial<Record<ReviewKind, number>> },
+): ReviewBody {
   const findings: ReviewFinding[] = [];
   // 指摘の数は中身に合わせる（T130。findingRoom。無ければ FINDINGS_MAX まで）
   const max = Math.min(FINDINGS_MAX, ctx.max ?? FINDINGS_MAX);
@@ -477,6 +500,8 @@ export function reviewBody(answer: ReviewAnswer, ctx: { key: PseudonymKey; membe
     const kind: ReviewKind = isReviewKind(k) ? k : "other";
     // 同じ人・同じ種類で同じ言い回しの指摘を重ねない（T130。数を埋めた形）
     if (findings.some((x) => x.person === person && x.kind === kind && sameWording(x.text, text))) continue;
+    // 種類ごとの候補の数まで（T139。rooms が無ければ見ない。other は候補に無いので rooms があれば使わない）
+    if (ctx.rooms && findings.filter((x) => x.kind === kind).length >= (ctx.rooms[kind] ?? 0)) continue;
     findings.push({ person, kind, text, basis });
   }
   return { summary: reviewWords(answer.summary, ctx.key, SUMMARY_MAX) ?? "", findings };
@@ -518,7 +543,7 @@ export async function createReview(deps: ReviewDeps, ctx: ReviewContext): Promis
     const aliasOf = new Map(key.people.map((p) => [p.personId, p.alias]));
     const record = pseudonymizeText(reviewText(ctx, aliasOf), key);
     const r = await askJson(buildReviewRequest(record), deps.ai);
-    const body = reviewBody(r.value, { key, members: new Set(members), max: findingRoom(ctx.score) });
+    const body = reviewBody(r.value, { key, members: new Set(members), max: findingRoom(ctx.score), rooms: findingRooms(ctx.score) });
     if (!body.summary && body.findings.length === 0) return { ok: false, error: "bad_output" };
     return { ok: true, body, model: r.model };
   } catch (e) {
