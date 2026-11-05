@@ -13,6 +13,10 @@
 //
 // T120: 頁ごとに読む（lib/forms/form-read.ts の readForm）。読めなかった頁があっても、読めた頁の欄で対応表にし（mapping.unread に頁）、
 // 応答に unread を返す。読めなかった頁は確かめの画面の「再読」（formRereadPost、app/api/forms/mappings/[id]/reread）で、置いた頁の画像から読み直す。
+//
+// T134: 一覧の公式の様式（municipal の欄に様式の id、origin の欄に頁ごとの元の頁の番号）は、サーバーが公式の URL から取ったときの
+// 記録（lib/forms/municipal-http.ts）の版で共有の対応表（lib/forms/shared-mapping.ts）を引く。あれば AI を呼ばずに写して事業所の下書きに、
+// 無ければいつもどおり読み、全部の頁を読めた答えを共有に入れる。黒塗りの画面の印と画像の確かめはどちらの道も同じに通す。
 
 import type { D1Database } from "@cloudflare/workers-types";
 import type { AskJsonContext } from "../claude/call.ts";
@@ -21,6 +25,9 @@ import { FORM_FILE_MAX_BYTES, formHash, readForm, type FormFile } from "./form-r
 import { fitPages, nextFieldId, type FormMapping } from "./mapping.ts";
 import { findMappingByHash, getMapping, insertReadMapping, updateReadMapping, type FormsScope } from "./mapping-db.ts";
 import { mappingError, mappingErrorOf, NO_STORE } from "./mapping-http.ts";
+import { availability, municipalEntry } from "./municipal-forms.ts";
+import { loadFetchRecord } from "./municipal-http.ts";
+import { copyShared, countSharedUse, getSharedMapping, pagesKeyOf, putSharedMapping } from "./shared-mapping.ts";
 import { pageImageKey, storePageImages, type PageImageBucket } from "./page-images.ts";
 import { formReadPagesOf } from "./read-upload.ts";
 
@@ -38,6 +45,18 @@ export type FormReadDeps = {
 export async function formReadPost(deps: FormReadDeps, scope: FormsScope, form: FormData): Promise<Response> {
   const got = formReadPagesOf(form);
   if (!got.ok) return mappingError(got.error);
+
+  // 一覧の公式の様式（T134）: 版はサーバーが公式の URL から取ったときの記録から（ブラウザの言う版を信じない）。
+  // 記録が無い・古ければ取り直してもらう。送った頁の組（元の頁の番号）と版が同じ共有の対応表があれば、AI を呼ばずに写す
+  let catalog: { id: string; sha256: string; pages: string | null } | null = null;
+  if (got.municipal !== null) {
+    const entry = municipalEntry(got.municipal);
+    if (!entry) return mappingError("invalid");
+    if (!availability(entry).ok) return mappingError("forbidden");
+    const record = await loadFetchRecord(deps.bucket, scope.officeId, entry.form.id, new Date(deps.now?.() ?? Date.now()));
+    if (!record) return mappingError("source_stale");
+    catalog = { id: entry.form.id, sha256: record.sha256, pages: got.origins ? pagesKeyOf(got.origins) : null };
+  }
 
   const files: FormFile[] = [];
   const parts: Uint8Array[] = [];
@@ -64,25 +83,63 @@ export async function formReadPost(deps: FormReadDeps, scope: FormsScope, form: 
     return Response.json({ ok: true, id: known.id, reused: true }, { headers: NO_STORE });
   }
 
+  // 元の形（写真か、頁の並ぶ文書か）。送られたのは頁の画像。Excel・Word（T119）は頁の並ぶ文書として PDF と同じ印
+  // （form_mappings.source_kind の CHECK は image・pdf・manual。表を作り直さないための決め。docs/progress/t119.md）
+  const kind = got.pages[0].meta.source === "photo" ? "image" : "pdf";
+  const stamp = deps.now?.() ?? new Date().toISOString();
+  const sharedKey = catalog?.pages ? { catalogId: catalog.id, sha256: catalog.sha256, pages: catalog.pages } : null;
+  const catalogMark = catalog ? { id: catalog.id, sha256: catalog.sha256 } : null;
+
+  // 共有の対応表を写す（T134。AI を呼ばない。事業所の下書きにして、確かめ・手直しは事業所ごと）
+  if (sharedKey) {
+    const shared = await getSharedMapping(deps.db, sharedKey);
+    if (shared) {
+      const saved = await insertReadMapping(deps.db, {
+        id: deps.newId?.() ?? crypto.randomUUID(),
+        officeId: scope.officeId,
+        hash,
+        kind,
+        mapping: copyShared(shared.mapping, files.length),
+        model: shared.aiModel,
+        by: scope.accountId,
+        at: stamp,
+        catalog: catalogMark,
+      });
+      if (!saved.reused) {
+        await storePageImages(deps.db, deps.bucket, { officeId: scope.officeId, mappingId: saved.id, images: parts });
+        await countSharedUse(deps.db, sharedKey);
+      }
+      return Response.json({ ok: true, id: saved.id, reused: saved.reused, shared: true, rejected: 0, unread: [], partial: [] }, { headers: NO_STORE });
+    }
+  }
+
   try {
     const ctx = await deps.aiContext(scope.officeId);
     const read = await readForm(files, ctx, { concurrency: deps.readConcurrency });
+    // 頁の番号は受けた画像の順（下に敷く画像と合わせる）
+    const mapping = fitPages(read.mapping, files.length);
     const saved = await insertReadMapping(deps.db, {
       id: deps.newId?.() ?? crypto.randomUUID(),
       officeId: scope.officeId,
       hash,
-      // 元の形（写真か、頁の並ぶ文書か）。送られたのは頁の画像。Excel・Word（T119）は頁の並ぶ文書として PDF と同じ印
-      // （form_mappings.source_kind の CHECK は image・pdf・manual。表を作り直さないための決め。docs/progress/t119.md）
-      kind: got.pages[0].meta.source === "photo" ? "image" : "pdf",
-      // 頁の番号は受けた画像の順（下に敷く画像と合わせる）
-      mapping: fitPages(read.mapping, files.length),
+      kind,
+      mapping,
       model: read.mark.model,
       by: scope.accountId,
-      at: deps.now?.() ?? new Date().toISOString(),
+      at: stamp,
+      catalog: catalogMark,
     });
     if (!saved.reused) await storePageImages(deps.db, deps.bucket, { officeId: scope.officeId, mappingId: saved.id, images: parts });
+    // 一覧の様式で、全部の頁を読めた AI の答えだけを共有に入れる（T134。入れられなくても読み取りは成り立つ）
+    if (sharedKey && !saved.reused && read.unread.length === 0 && read.partial.length === 0) {
+      try {
+        await putSharedMapping(deps.db, { ...sharedKey, mapping, aiModel: read.mark.model, sourceOffice: scope.officeId, at: stamp });
+      } catch (e) {
+        console.error("共有の対応表を入れられない", e instanceof Error ? e.name : typeof e);
+      }
+    }
     return Response.json(
-      { ok: true, id: saved.id, reused: saved.reused, rejected: read.rejected.length, unread: read.unread, partial: read.partial },
+      { ok: true, id: saved.id, reused: saved.reused, shared: false, rejected: read.rejected.length, unread: read.unread, partial: read.partial },
       { headers: NO_STORE },
     );
   } catch (e) {

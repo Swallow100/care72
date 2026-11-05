@@ -198,7 +198,8 @@ describe("入れる欄（components/person/Intake.tsx）は写真・PDF を黒�
     expect(src).not.toContain("FILE_NOTICE");
     // 黒塗りの画面は元のファイルを呼ぶ側へ返さない（返すのは塗った後の Blob と印）
     const sheet = readFileSync(new URL("../../components/person/RedactSheet.tsx", import.meta.url), "utf8");
-    expect(sheet).toContain("export type RedactedPage = { name: string; blob: Blob; meta: ReadMeta; bare: boolean }");
+    // origin は元の頁の番号（数だけ。T134 の共有の対応表の鍵）
+    expect(sheet).toContain("export type RedactedPage = { name: string; blob: Blob; meta: ReadMeta; bare: boolean; origin: number }");
     expect(sheet).toContain("encodeRedacted(p, r)");
   });
 });

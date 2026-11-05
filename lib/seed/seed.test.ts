@@ -435,6 +435,7 @@ describe("最初に戻す（デモ事業所だけ）", () => {
     expect(Object.entries(DEMO_CLEAR).filter(([, w]) => w === null).map(([t]) => t).sort()).toEqual([
       "ai_agents",
       "ai_calls",
+      "form_shared_mappings",
       "jma_entries",
       "jma_fetch_state",
       "jma_quake_points",

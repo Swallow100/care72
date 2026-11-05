@@ -80,6 +80,8 @@ export const DEMO_CLEAR: Readonly<Record<Table, string | null>> = {
   form_entries: `office_id = ${OFFICE} OR person_id IN (${PEOPLE})`,
   form_assets: `office_id = ${OFFICE}`,
   form_mappings: `office_id = ${OFFICE}`,
+  // 様式の対応表の共有（T134）。事業所のデータでない（人の値も入らない）ので消さない
+  form_shared_mappings: null,
   disaster_state: `office_id = ${OFFICE}`,
   ai_calls: null,
   // 世界の部屋（T50）の ID。事業所ごとでない
