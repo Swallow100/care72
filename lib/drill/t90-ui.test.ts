@@ -8,8 +8,9 @@ import { DrillBar } from "../../components/drill/DrillBar.tsx";
 import { DrillControls } from "../../components/drill/DrillControls.tsx";
 import { StartButtons } from "../../components/drill/StartButtons.tsx";
 import { CLOCK_LABELS } from "./clock.ts";
-import { estimateClockCalls, estimateDrillCalls } from "./estimate.ts";
+import { estimateClockCalls } from "./estimate.ts";
 import { DRILL_LABELS } from "./labels.ts";
+import { SCENARIO_ORDER } from "./scenarios.ts";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: () => {}, push: () => {} }) }));
 
@@ -58,12 +59,10 @@ describe("72 時間の棒（連続の時計）", () => {
 });
 
 describe("開始の見込み", () => {
-  it("大雨・地震・仮想は連続の時計の式、10 分版は前の式", () => {
+  it("大雨・地震・仮想は連続の時計の式（10 分版は T124 で開始から外した）", () => {
     const people = Array.from({ length: 10 }, (_, i) => ({ id: `p-${i}`, name: `人${i}` }));
-    const html = renderToStaticMarkup(
-      createElement(StartButtons, { scenarios: ["heavy_rain", "earthquake", "short", "virtual"], disabled: false, people, ai: null }),
-    );
-    expect(html).toContain(`data-estimate-calls="${estimateClockCalls("heavy_rain", people)}"`);
-    expect(html).toContain(`data-estimate-calls="${estimateDrillCalls("short", people)}"`);
+    const html = renderToStaticMarkup(createElement(StartButtons, { scenarios: SCENARIO_ORDER, disabled: false, people, ai: null }));
+    for (const s of SCENARIO_ORDER) expect(html).toContain(`data-estimate-scenario="${s}" data-estimate-calls="${estimateClockCalls(s, people)}"`);
+    expect(html).not.toContain('data-estimate-scenario="short"');
   });
 });
