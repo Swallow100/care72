@@ -182,6 +182,13 @@ export type WorldState = {
    * 変わるのに時間が要る状態の決まり（lib/drill/state-rules.ts）と、本人役・監督に渡す「いつから」の元
    */
   stamps?: Record<string, number>;
+  /**
+   * 人ごとの事実の帳面（T130、lib/drill/person-facts.ts）の門で落とした・直した数（決まりの名前 → 数）。帳面そのものは保存しない
+   * （前の連絡・手・到着・台帳から毎回引く）。評価の台が数える
+   */
+  gated?: Record<string, number>;
+  /** 監督・世界が出した人ごとの出来事（T130。同じ種類・同じ言い回しを別の人にくり返さないために覚える。新しい 40 件まで） */
+  issued?: Array<{ kind: string; person: string | null; text: string; at: number }>;
 };
 
 /** 向かっている人の役。staff 事業所の職員・nurse 訪問看護・supporter 支援者・family 家族・vendor 業者・transport 移送・power 電源・medicine 薬 */
