@@ -25,6 +25,7 @@ import { DRILL_CALL_CAP } from "./clock.ts";
 import { drillScope, loadDrillRow, startDrill, stateOfRow } from "./db.ts";
 import {
   ASK_LABELS,
+  CALL_OUT_ASKS,
   canTalk,
   dialogueFields,
   pushAsks,
@@ -456,7 +457,7 @@ describe("通話の往復", () => {
   });
 
   it("決まった問いは 7 つ（画面は 2〜4 字）、頼み事の印は 9 つ（1〜2 字）。使わない語を含まない", () => {
-    expect(TALK_ASKS).toHaveLength(7);
+    expect(CALL_OUT_ASKS).toHaveLength(7);
     for (const k of TALK_ASKS) {
       expect(Array.from(TALK_LABELS[k]).length).toBeGreaterThanOrEqual(2);
       expect(Array.from(TALK_LABELS[k]).length).toBeLessThanOrEqual(5);
@@ -599,7 +600,9 @@ describe("画面（TalkBox・LatestResult・履歴・行の詳細）", () => {
   it("往復の欄: 問いのボタン 7 つと自由の 1 文の欄と「切る」。吹き出しは往復ごと、本人役の言葉に AI の印。3 往復で問いが消える", () => {
     const talk = [line("cm", 185, { ask: "where" }), line("them", 187, { asks: ["medicine"] })];
     const html = renderToStaticMarkup(createElement(TalkBox, { drillId: ID, step: 1, actions: 1, action: talkRecord(talk), speaker: "本人" }));
-    for (const k of TALK_ASKS) expect(html).toContain(`data-talk-ask="${k}"`);
+    for (const k of CALL_OUT_ASKS) expect(html).toContain(`data-talk-ask="${k}"`);
+    // 掛かってきた電話だけの問い（T127）は外へ掛けた電話の欄に出さない
+    expect(html).not.toContain(`data-talk-ask="stay"`);
     expect(html).toContain(TALK_UI.hangUp);
     expect(html).toMatch(/maxlength="60"/i);
     expect(html.match(/data-talk-line=/g)).toHaveLength(2);
