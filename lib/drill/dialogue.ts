@@ -11,7 +11,7 @@ import type { ContactKind } from "../db/types.ts";
 import type { ActionResult, HeardSignal } from "./action-types.ts";
 import type { DrillIncident } from "./incident-types.ts";
 import type { PersonState } from "./persona-types.ts";
-import { ASK_KINDS, type AskKind, type WorldState } from "./scenarios.ts";
+import { ASK_KINDS, type AskKind, type DrillKind, type WorldState } from "./scenarios.ts";
 
 // ---------- 上限 ----------
 
@@ -90,6 +90,8 @@ export type VisitReport = {
  * text は自由の文（仮名化の前。口の中で伏せ、伏せきれなければ PseudonymLeakError を投げる）
  */
 export type TalkTurn = {
+  /** 訓練の災害の種類（T125。本人役の説明のハザードを絞る） */
+  fit?: DrillKind | null;
   person: string;
   callee: { kind: ContactKind; id: string | null };
   /** この往復の時刻（発災からの分。ケアマネが言った時刻） */
@@ -114,6 +116,8 @@ export type TalkHook = (t: TalkTurn) => Promise<TalkReply>;
 
 /** 訪問で着いたときに渡す物（手の所が作る）。hour は着いた時刻（発災からの時間） */
 export type VisitTurn = {
+  /** 訓練の災害の種類（T125。本人役の説明のハザードを絞る） */
+  fit?: DrillKind | null;
   person: string;
   hour: number;
   world: WorldState;

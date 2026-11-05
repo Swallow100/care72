@@ -54,8 +54,9 @@ describe("監督の差し込みを数で切る（行で切らない）", () => {
     const d = director((input) => (input.hour * 60 === 1500 ? [ev("mobile_down", { after: 3 })] : []));
     const r = (await advance(s, 1500, { director: d.hook }, { policy: "clock", next: true }))!;
     const rows = r.tick.incidents.filter((e) => e.inject === "mobile_down");
-    expect(rows.map((e) => e.change.kind)).toEqual(["phone", "schedule"]);
-    expect(r.state.world.scheduled?.some((x) => x.change.kind === "phone" && x.change.state === "busy")).toBe(true);
+    // T125: 携帯の基地局の停止（電波不通）と、回復の見込み
+    expect(rows.map((e) => e.change.kind)).toEqual(["radio", "schedule"]);
+    expect(r.state.world.scheduled?.some((x) => x.change.kind === "radio" && x.change.state === "ok")).toBe(true);
   });
 });
 

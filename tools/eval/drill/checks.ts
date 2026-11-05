@@ -9,8 +9,13 @@
 
 import { ACTION_CATALOG, isCatalogAction } from "../../../lib/drill/action-catalog.ts";
 import { ACTION_WAYS, actionTerm, blockOf, dayHourOf, isDark, type TermCallee, type TermFacts } from "../../../lib/drill/action-terms.ts";
+import { isPhoneTurn } from "../../../lib/drill/calls.ts";
 import { CONDITION_BANNED, SPEECH_DANGER, SPEECH_DIAGNOSIS } from "../../../lib/drill/dialogue.ts";
-import type { PhoneState } from "../../../lib/drill/scenarios.ts";
+import type { InjectKind } from "../../../lib/drill/event-catalog.ts";
+import { drillHeaderMark, headerMarkText } from "../../../lib/drill/header-mark.ts";
+import { changeMisfit, FIT_PROFILES, fitKindOf, forbiddenFor, waterActive, wordMisfit, type FitWorld } from "../../../lib/drill/fit.ts";
+import type { DrillKind, PhoneState, WorldChange, WorldState } from "../../../lib/drill/scenarios.ts";
+import type { DrillScenario, HazardKind } from "../../../lib/db/types.ts";
 import { bandOf, TIMELINE, type TimeBandId } from "../../../lib/drill/time-odds.ts";
 import { FORBIDDEN_WORDS, REASON_MEDICAL_WORDS } from "../../../lib/drill/world-apply.ts";
 import { findLeaks, type PseudonymKey } from "../../../lib/pseudonym/index.ts";
@@ -75,7 +80,7 @@ export function hurtIn(text: string): boolean {
 // ---------- 引っかかった所 ----------
 
 export type CheckHit = {
-  check: "banned" | "shape" | "leak" | "contradiction" | "time_odds" | "stop" | "op_failed" | "budget" | "terms" | "free" | "facts";
+  check: "banned" | "shape" | "leak" | "contradiction" | "time_odds" | "stop" | "op_failed" | "budget" | "terms" | "fit" | "free" | "facts";
   rule: string;
   /** banned: raw（モデルの生の返事）か shown（画面に出た物） */
   where?: "raw" | "shown" | "sent";
@@ -183,6 +188,10 @@ export type CheckContext = {
   extra: ReadonlyArray<{ value: string; what: string }>;
   /** 台帳の生年月日（台の表で和暦・略記・漢数字の書き方も見る。T118） */
   births?: ReadonlyArray<{ iso: string; what: string }>;
+  /** 本人ごとの台帳のハザード（区域の種類。T125 の想定に合わない物の検査） */
+  hazards?: Readonly<Record<string, ReadonlyArray<HazardKind>>>;
+  /** 本人ごとの携帯（スマホを含む）の有無（T125。家の電話の印でも携帯でかけられる） */
+  mobile?: Readonly<Record<string, boolean>>;
   /** 本人ごとの計画・同居・家族・ハザード（T130 の帳面の検査。無ければ帳面の検査をしない） */
   facts?: Readonly<Record<string, FactPerson>>;
 };
@@ -360,7 +369,7 @@ type LooseBefore = { phone?: PhoneState; roadClosed?: boolean; staff?: number; m
  * TERM_RULES で見直す）と、夜の訪問の所要が夜の足し分を含むか。開始に決まりを送った訓練では 0 のはず。送らない訓練は、送っていれば
  * 押せなかった手の数（比べるため）。浸水・施設の休止・出勤遅れ・電池は打つ前の記録に無いので見ない
  */
-export function termHits(outcome: RunOutcome): CheckHit[] {
+export function termHits(outcome: RunOutcome, ctx: Pick<CheckContext, "mobile"> = {}): CheckHit[] {
   const hits: CheckHit[] = [];
   const startedAt = new Date(DRILL_START).toISOString();
   for (const a of outcome.replay?.actions ?? []) {
@@ -374,6 +383,11 @@ export function termHits(outcome: RunOutcome): CheckHit[] {
       // 世界の電話が分からないので、家の電話の決まり（line_down）だけで見る
       phone: marks.lineDown !== undefined ? "ok" : (b.phone ?? "ok"),
       lineDown: marks.lineDown !== undefined,
+      // 本人の家の通信（T125）: 打つ前の記録には家の電話の印だけ（停電の家の固定電話・電波は見ない）。携帯のある人は家の電話の印でもかけられる
+      selfLine: marks.lineDown !== undefined && !(a.person && ctx.mobile?.[a.person]) ? "noCall" : "ok",
+      selfMobile: "ok",
+      radioAll: false,
+      officeEvac: false,
       roadClosed: b.roadClosed === true,
       flood: false,
       staff: typeof b.staff === "number" ? b.staff : 1,
@@ -392,6 +406,144 @@ export function termHits(outcome: RunOutcome): CheckHit[] {
     }
   }
   return hits;
+}
+
+// ---------- 想定に合わない物（T125） ----------
+
+/** 文に残った内部の名前（手の id・英字の決まりの名前。画面に出さない物）。台が足した目安 */
+export const INTERNAL_ID = /(?<![A-Za-z0-9])(?:[a-z][a-z0-9]*_[a-z0-9_]+|free|note)(?![A-Za-z0-9])/;
+
+/** 区切りの順に世界の要る所だけを当てた跡（発災からの分 → その時の状態）。電話・電波も */
+type FitTrack = Array<{ minute: number; w: FitWorld & { phone: string; radio: string; flooded?: string[] } }>;
+
+const fitStart = (): FitWorld & { phone: string; radio: string; flooded?: string[] } => ({
+  flood: false,
+  alertLevel: null,
+  quake: null,
+  tsunami: "none",
+  notes: {},
+  weather: null,
+  phone: "ok",
+  radio: "ok",
+});
+
+/** 状況 1 つを当てる（台の写し。世界の当て方 lib/drill/scenarios.ts の要る所だけ） */
+function foldFit(w: FitWorld & { phone: string; radio: string; flooded?: string[] }, c: { kind?: string; [k: string]: unknown }): FitWorld & { phone: string; radio: string; flooded?: string[] } {
+  switch (c.kind) {
+    case "town_flood": {
+      // 町の浸水（仮想）の家の人は、家の辺りの浸水の印（手の所要の「浸水」の元）
+      const persons = Array.isArray(c.persons) ? c.persons.filter((p): p is string => typeof p === "string") : [];
+      return { ...w, flooded: [...new Set([...(w.flooded ?? []), ...persons])] };
+    }
+    case "alert":
+      return { ...w, alertLevel: (c.level as 3 | 4 | 5 | null) ?? null };
+    case "quake":
+      return { ...w, quake: String(c.intensity ?? "") || w.quake };
+    case "tsunami":
+      return { ...w, tsunami: (c.state as FitWorld["tsunami"]) ?? w.tsunami };
+    case "flood":
+      return { ...w, flood: true };
+    case "phone":
+      return { ...w, phone: String(c.state ?? w.phone) };
+    case "radio":
+      return { ...w, radio: String(c.state ?? w.radio) };
+    case "weather":
+      return { ...w, weather: (c.state as FitWorld["weather"]) ?? null };
+    case "note":
+      return { ...w, notes: { ...(w.notes ?? {}), [String(c.topic)]: 0 } };
+    default:
+      return w;
+  }
+}
+
+/** 台の想定の種類（仮想は回の規模、lib/drill/fit.ts の fitKindOf と同じ） */
+function fitKindOfRun(outcome: RunOutcome): DrillKind | null {
+  const s = outcome.plan.scenario as DrillScenario;
+  return fitKindOf({ scenario: s, options: { scale: outcome.plan.scale ?? null } }, outcome.replay?.world as Partial<WorldState> | undefined);
+}
+
+/**
+ * 8. 想定に合わない物（T125）。「起きてはいけない物」の一覧は想定の表（lib/drill/fit.ts の forbiddenFor）から作り、全部の想定で効く:
+ * 出来事の種類と文（event・event_text・inject）、本人役の言葉（persona。画面に出た物）、自由対応の文と理由（free）、手の所要の理由
+ * （terms: 区域でない人の「浸水」）、電話が通話不可・電波不通の間の着信（call_down）、画面の文に残った内部の名前（internal_id）
+ */
+export function fitHits(outcome: RunOutcome, ctx: Pick<CheckContext, "hazards">): { checked: number; hits: CheckHit[] } {
+  const hits: CheckHit[] = [];
+  const r = outcome.replay;
+  if (!r) return { checked: 0, hits };
+  const kind = fitKindOfRun(outcome);
+  const profile = kind ? FIT_PROFILES[kind] : null;
+  const bans = kind ? forbiddenFor(kind) : null;
+  let checked = 0;
+  let w = fitStart();
+  const track: FitTrack = [{ minute: -1, w }];
+  const ticks = [...r.ticks].sort((a, b) => a.step - b.step);
+  const wordHit = (text: string | null | undefined, at: FitWorld, rule: string, person: string | null, minute: number | null, field: string) => {
+    if (!text) return;
+    checked += 1;
+    const m = wordMisfit(profile, text, at);
+    if (m) hits.push({ check: "fit", rule: `${rule}:${m}`, person, minute, evidence: `${field}: ${Array.from(text).slice(0, 40).join("")}` });
+    if (INTERNAL_ID.test(text.normalize("NFKC"))) hits.push({ check: "fit", rule: `${rule}:internal_id`, person, minute, evidence: `${field}: ${Array.from(text).slice(0, 40).join("")}` });
+  };
+  for (const t of ticks) {
+    const incidents = [...t.incidents].map((e, i) => ({ e, i })).sort((a, b) => (a.e.at ?? t.hour) - (b.e.at ?? t.hour) || a.i - b.i);
+    for (const { e } of incidents) {
+      const minute = Math.round((e.at ?? t.hour) * 60);
+      const c = e.change ?? {};
+      checked += 1;
+      if (bans && typeof e.inject === "string" && bans.injects.includes(e.inject as InjectKind)) {
+        hits.push({ check: "fit", rule: `inject:${e.inject}`, person: e.person ?? null, minute, evidence: e.text ?? "" });
+      }
+      const mis = changeMisfit(profile, c as WorldChange, w);
+      if (mis) hits.push({ check: "fit", rule: `event:${mis}`, person: e.person ?? null, minute, evidence: e.text ?? "" });
+      // 監督・世界の文（表の固定の文は表の試験で見る。AI の文だけ）
+      if (e.ai) wordHit(e.text, w, "event_text", e.person ?? null, minute, String(c.kind ?? ""));
+      w = foldFit(w, c);
+      track.push({ minute, w });
+    }
+    // 訓練の画面の上の帯（lib/drill/header-mark.ts。刻みの終わりの世界で）
+    const band = headerMarkText(drillHeaderMark({ scenario: outcome.plan.scenario as DrillScenario, options: { scale: outcome.plan.scale ?? null }, world: w, minute: Math.round(t.hour * 60) }));
+    wordHit(band, w, "band", null, Math.round(t.hour * 60), "header");
+    for (const u of t.turns) {
+      const minute = Math.round((u.at ?? t.hour) * 60);
+      const at = worldAt(track, minute);
+      wordHit(u.saying, at, "persona", u.person ?? null, minute, "saying");
+      wordHit(u.doing, at, "persona", u.person ?? null, minute, "doing");
+      // 通話不可・電波不通の間の着信（電話の形の連絡。lib/drill/calls.ts の isPhoneTurn）
+      if ((at.phone === "down" || at.radio === "down") && isPhoneTurn(u as Parameters<typeof isPhoneTurn>[0])) {
+        hits.push({ check: "fit", rule: `call_down:${at.radio === "down" ? "radio" : "phone"}`, person: u.person ?? null, minute, evidence: `${u.source ?? ""} ${u.color ?? ""}` });
+      }
+    }
+  }
+  for (const a of r.actions) {
+    const minute = typeof a.atMinute === "number" ? a.atMinute : null;
+    const at = worldAt(track, minute ?? 0);
+    const res = a.result;
+    if (res) {
+      wordHit(res.speech, at, "persona", a.person ?? null, minute, "call.speech");
+      for (const l of res.talk ?? []) if (l.who !== "cm") wordHit(l.text, at, "persona", a.person ?? null, minute, "talk");
+      wordHit(res.visit?.speech, at, "persona", a.person ?? null, minute, "visit.speech");
+      wordHit(res.visit?.condition, at, "persona", a.person ?? null, minute, "visit.condition");
+      const free = res as { text?: unknown; outcome?: unknown };
+      if (typeof free.outcome === "string") wordHit(free.outcome, at, "free", a.person ?? null, minute, "outcome");
+    }
+    if (typeof a.reason === "string") wordHit(a.reason, at, "free", a.person ?? null, minute, "reason");
+    // 手の所要の理由の「浸水」: 区域の浸水が、その人の区域で効いている時だけ（想定の表の条件）
+    const adds = Array.isArray(a.adds) ? (a.adds as unknown[]).filter((x): x is string => typeof x === "string") : [];
+    if (adds.includes("浸水")) {
+      checked += 1;
+      const zones = a.person ? (ctx.hazards?.[a.person] ?? []) : [];
+      if (!waterActive(profile, zones, at) && !(a.person && at.flooded?.includes(a.person))) hits.push({ check: "fit", rule: "terms:浸水", person: a.person ?? null, minute, evidence: `${a.kind ?? ""} ${a.minutes ?? ""} 分` });
+    }
+  }
+  return { checked, hits };
+}
+
+/** 跡のうち、その分の時点の世界 */
+function worldAt(track: FitTrack, minute: number): FitWorld & { phone: string; radio: string; flooded?: string[] } {
+  let w = track[0].w;
+  for (const x of track) if (x.minute <= minute) w = x.w;
+  return w;
 }
 
 // ---------- 自由対応（T129） ----------
@@ -521,6 +673,11 @@ export type RunNumbers = {
    */
   terms: { on: boolean; refused: number; ran: number; dark: number };
   /**
+   * 想定に合わない物（T125）。checked は見た数、misfit は合わない物の数（直したあとは 0 のはず）、byRule は決まりごと、
+   * gated は 1 つの門が捨てた・直した数（drills.world の gated。決まりごとの合計）
+   */
+  fit?: { checked: number; misfit: number; byRule: Record<string, number>; gated: number };
+  /**
    * 自由対応（T129）。acts は打てた自由対応、innerShown は画面に出た内部の名前（0 のはず）、innerRaw は生の返事の内部の名前、
    * dropped は表の手に当てたのに変化なしに落ちた数（0 のはず）、canMismatch は不可の手を「できる」と答えた数（生の返事）
    */
@@ -551,7 +708,8 @@ export function checkRun(records: ReadonlyArray<LogRecord>, outcome: RunOutcome,
   const odds = timeOddsOf(outcome);
   const contra = contradictionHits(outcome, ctx.facts);
   const stops = stopHits(outcome);
-  const terms = termHits(outcome);
+  const terms = termHits(outcome, ctx);
+  const fit = fitHits(outcome, ctx);
   const free = freeHits(records, outcome);
   const facts = ctx.facts ? factHits(outcome, ctx.facts) : { checked: 0, hits: [] as CheckHit[] };
   const ai = records.filter((r): r is AiRecord => r.type === "ai" && (r as AiRecord).role !== "judge");
@@ -600,6 +758,12 @@ export function checkRun(records: ReadonlyArray<LogRecord>, outcome: RunOutcome,
       ran: terms.filter((h) => h.rule.startsWith("ran:")).length,
       dark: terms.filter((h) => h.rule === "dark_minutes").length,
     },
+    fit: {
+      checked: fit.checked,
+      misfit: fit.hits.length,
+      byRule: tally(fit.hits.map((h) => h.rule)),
+      gated: Object.values((outcome.replay?.world as { gated?: Record<string, number> } | undefined)?.gated ?? {}).reduce((x, n) => x + (typeof n === "number" ? n : 0), 0),
+    },
     free: {
       acts: (outcome.replay?.actions ?? []).filter((a) => a.kind === "free").length,
       innerShown: free.filter((h) => h.rule === "inner_name:shown").length,
@@ -623,5 +787,5 @@ export function checkRun(records: ReadonlyArray<LogRecord>, outcome: RunOutcome,
       unpricedCalls: ai.filter((a) => a.costUsd === null && a.role !== "world_room").length,
     },
   };
-  return { hits: [...banned, ...leaks, ...shape, ...odds.hits, ...contra, ...stops, ...terms, ...free, ...facts.hits, ...budgetHits], numbers };
+  return { hits: [...banned, ...leaks, ...shape, ...odds.hits, ...contra, ...stops, ...terms, ...fit.hits, ...free, ...facts.hits, ...budgetHits], numbers };
 }

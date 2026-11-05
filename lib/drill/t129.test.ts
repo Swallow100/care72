@@ -240,7 +240,8 @@ describe("候補には全部の手を、今できるかと一緒に", () => {
 
   it("決まりの表の押せない理由を手ごと・相手ごとに（通話不可）", async () => {
     const s = await clockAt0();
-    const down = { ...s, world: { ...s.world, phone: "down" as const } };
+    // 通信の道が無い（T125: 通話の規制・全域の電波不通・本人の家の電話の不通）
+    const down = { ...s, world: { ...s.world, ...{ phone: "down" as const, radio: "down" as const, marks: { ...s.world.marks, "p-01": { lineDown: 0 } } } } };
     const plan = await planFree({ ...down, participants: down.participants }, { text: "119 に連絡", person: "p-01", contacts: ALL_01 }, async (ask) => {
       expect(ask.choices.find((c) => c.id === "advise_119")?.why).toBe(TERM_LABELS.noCall);
       expect(ask.choices.find((c) => c.id === "visit")?.why).toBeNull();
@@ -268,26 +269,28 @@ describe("候補には全部の手を、今できるかと一緒に", () => {
 });
 
 describe("同じ型の文で全部の手を、電話が使える時と使えない時で", () => {
-  const CASES: ReadonlyArray<{ text: string; as: DrillAction | null; idle?: true; blockedWhenDown: boolean }> = [
-    { text: "危険な状態なので 119", as: "advise_119", blockedWhenDown: true },
-    { text: "薬局に薬を届けてもらう", as: "arrange_medicine", blockedWhenDown: true },
-    { text: "電力会社に電源を頼む", as: "arrange_power", blockedWhenDown: true },
-    { text: "移送を頼む", as: "arrange_transport", blockedWhenDown: true },
-    { text: "自分も避難する", as: "evacuate_self", blockedWhenDown: false },
-    { text: "娘さんに電話する", as: "call_contact", blockedWhenDown: true },
-    { text: "経過を記録だけする", as: null, idle: true, blockedWhenDown: false },
-    { text: "今は何もしない", as: null, idle: true, blockedWhenDown: false },
+  // 「使えない時」は通信の道が無い時（T125: 通話の規制・全域の電波不通・本人の家の電話の不通）。事業所（薬局・電力会社・移送）は固定電話で
+  // 頼める（規制でつながる分だけ）ので押せる。本人は家の電話（通話不可）、家族は携帯（電波不通）で押せない
+  const CASES: ReadonlyArray<{ text: string; as: DrillAction | null; idle?: true; whenDown: string | null }> = [
+    { text: "危険な状態なので 119", as: "advise_119", whenDown: TERM_LABELS.noCall },
+    { text: "薬局に薬を届けてもらう", as: "arrange_medicine", whenDown: null },
+    { text: "電力会社に電源を頼む", as: "arrange_power", whenDown: null },
+    { text: "移送を頼む", as: "arrange_transport", whenDown: null },
+    { text: "自分も避難する", as: "evacuate_self", whenDown: null },
+    { text: "娘さんに電話する", as: "call_contact", whenDown: TERM_LABELS.noRadio },
+    { text: "経過を記録だけする", as: null, idle: true, whenDown: null },
+    { text: "今は何もしない", as: null, idle: true, whenDown: null },
   ];
   for (const phone of ["ok", "down"] as const) {
     for (const c of CASES) {
       it(`電話 ${phone}: ${c.text}`, async () => {
         const s = await clockAt0();
-        const st = { ...s, world: { ...s.world, phone } };
+        const st = { ...s, world: phone === "down" ? { ...s.world, ...{ phone: "down" as const, radio: "down" as const, marks: { ...s.world.marks, "p-01": { lineDown: 0 } } } } : { ...s.world, phone } };
         const plan = await planFree({ ...st, participants: st.participants }, { text: c.text, person: "p-01", contacts: ALL_01 }, situational);
         expect(plan.as).toBe(c.as);
         expect(plan.idle === true).toBe(c.idle === true);
-        const blocked = phone === "down" && c.blockedWhenDown;
-        expect(plan.block).toBe(blocked ? TERM_LABELS.noCall : null);
+        const blocked = phone === "down" && c.whenDown !== null;
+        expect(plan.block).toBe(blocked ? c.whenDown : null);
         // できない手はその手のまま「できない」と、今できる別の道を返す
         expect(plan.alt === null).toBe(!blocked);
         // 画面に出す物に内部の名前が出ない
@@ -300,7 +303,7 @@ describe("同じ型の文で全部の手を、電話が使える時と使えな�
 
   it("決まりの表で押せない手は、別の道が AI に無くても決まりの言葉で（訪問先にいれば、その場でできること）", async () => {
     let s = await clockAt0();
-    s = { ...s, world: { ...s.world, phone: "down" } };
+    s = { ...s, world: { ...s.world, ...{ phone: "down" as const, radio: "down" as const, marks: { ...s.world.marks, "p-01": { lineDown: 0 } } } } };
     const visitHome: ActionRecord = {
       ...({} as ActionRecord),
       id: "a1",
@@ -337,7 +340,8 @@ describe("AI に今の状況を渡す", () => {
     const world: WorldState = { ...s.world, phone: "down", outage: { area: { scope: "office" }, since: 0, restoredAt: null }, roads: [{ id: "r", label: "かわなぎ町の市道", open: false, person: "p-01" }] };
     const text = situationText({ ...s, world, minute: 600, actions: [{ kind: "visit", person: "p-01", result: { ok: true, status: "arrived" } } as ActionRecord] }, "p-01");
     expect(text).toContain("今いる所: 訪問先（対象の本人の家）");
-    expect(text).toContain("電話: 通話不可");
+    // 世界の電話の down は規制（T125。全部は止まらない）
+    expect(text).toContain("電話: 規制");
     expect(text).toContain("停電: 続いている（10 時間、事業所を含む）");
     expect(text).toContain("対象の本人の家の前の道: 通行止");
     expect(text).toContain("20 時台、夜で暗い");
@@ -377,7 +381,8 @@ describe("訪問先で本人を選ばずに名前と 119 を書いた文", () =>
     const visited = await actionPost(db, careManager(), ID, { step: 0, actions: 0, kind: "visit", person: "p-01", target: null }, START, { roll: () => 0 });
     expect(visited.status).toBe(200);
     expect((await stored()).actions[0].result?.status).toBe("arrived");
-    patchWorld((w) => ({ ...w, phone: "down" }));
+    // 通信の道が無い（T125: 通話の規制・全域の電波不通・本人の家の電話の不通）
+    patchWorld((w) => ({ ...w, phone: "down", radio: "down", marks: { ...w.marks, "p-01": { ...(w.marks["p-01"] ?? {}), lineDown: 0 } } }));
     const s = await stored();
     const { client, calls } = situationalClient();
     const free = drillFreeHook({ DB: db, ANTHROPIC_API_KEY: "dummy" }, careManager(), { claude: client, now: () => new Date(START) })!;
@@ -393,7 +398,8 @@ describe("訪問先で本人を選ばずに名前と 119 を書いた文", () =>
       );
       expect(read.status).toBe(200);
       const view = ((await read.json()) as { plan: ReturnType<typeof planView> }).plan;
-      expect(view).toMatchObject({ as: "advise_119", label: "119勧奨", person: "p-01", block: TERM_LABELS.noCall, idle: false });
+      // 種の p-01 はスマホを持つので、家の電話の不通と電波不通で本人の家に通じる道が無い（T125。理由は携帯の電波不通）
+      expect(view).toMatchObject({ as: "advise_119", label: "119勧奨", person: "p-01", block: TERM_LABELS.noRadio, idle: false });
       expect(view.alt).toBe("近所の人に消防署へ知らせに走ってもらう");
       expect(view.altAi).toBe(true);
       expect(view.reason ?? "").not.toMatch(INNER);
@@ -409,7 +415,8 @@ describe("訪問先で本人を選ばずに名前と 119 を書いた文", () =>
       expect(findLeaks(sent, ALL_KEY)).toEqual([]);
       expect(sent).not.toContain("山田");
       const input = sentOf(c);
-      expect(input.手.一覧.find((x) => x.id === "advise_119")?.今).toBe(`不可（${TERM_LABELS.noCall}）`);
+      // 種の p-01 はスマホを持つので、本人の家に通じる道が無い理由は携帯の電波不通（T125）
+      expect(input.手.一覧.find((x) => x.id === "advise_119")?.今).toBe(`不可（${TERM_LABELS.noRadio}）`);
       expect(input.事実.text).toContain("今いる所: 訪問先（対象の本人の家）");
     }
   });
@@ -476,7 +483,8 @@ describe("そのままの手は状況に合わせて結果が決まり、世界�
   it("決まりを選ばない訓練でも、電話が通話不可なら電話のそのままの手は届かない（起きたことの文を使わない）", async () => {
     const init = initialState("earthquake", PARTICIPANTS, START, { clock: true });
     const s0 = (await advance(init, 0, {}, { policy: "clock" }))!.state;
-    const s = { ...s0, world: { ...s0.world, phone: "down" as const } };
+    // 近所の人（支援者）の携帯は全域の電波不通で届かない（T125。通話の規制だけなら時々つながる）
+    const s = { ...s0, world: { ...s0.world, phone: "down" as const, radio: "down" as const } };
     const r = await act(s, { kind: "free", person: "p-01", target: null, text: "近所の人に電話", contacts: ALL_01 }, { free: own({ way: "phone", effect: "arrival" }) }, () => 0);
     expect(r.record.result).toMatchObject({ ok: false, status: "noLine" });
     expect(r.record.result?.text).not.toBe("近所の人が向かった");

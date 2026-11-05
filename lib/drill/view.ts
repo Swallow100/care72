@@ -15,7 +15,7 @@ import { callTargetText } from "../list/calls.ts";
 import type { ClockForDetail, ContactForDetail, SignalForDetail } from "../list/detail.ts";
 import { clockRemaining, type TriageSignal } from "../triage/index.ts";
 import { personSituation } from "../disaster/state.ts";
-import { clockOfRow, heardSignalId, loadDrillRow, loadTicks, participantsOf, replayState, undoableAct, type DrillScope } from "./db.ts";
+import { clockOfRow, gatedOfRow, heardSignalId, loadDrillRow, loadTicks, participantsOf, replayState, undoableAct, type DrillScope } from "./db.ts";
 import { callsLeft } from "./clock.ts";
 import { clockOver, termsFor, type ActionTerm } from "./action-terms.ts";
 import type { AreaPerson } from "./area-targets.ts";
@@ -27,10 +27,14 @@ import { fictionKindOf, type FictionKind } from "./fiction.ts";
 import { passHeard } from "./heard-keep.ts";
 import { nightTimeLabel } from "./night.ts";
 import { lastHour, scenarioOf } from "./scenarios.ts";
+import { fitKindOf, fitLedgerHazards, profileOf, type FitProfile } from "./fit.ts";
+import type { Homes } from "./comms.ts";
+import { hazardText } from "../labels.ts";
 import { simTimeText } from "./time-text.ts";
 
 /** 72 時間の棒の帯（停電・断水・電話）。始まりと終わりは発災からの時間。終わりが無ければ今まで続いている */
-export type Band = { kind: "outage" | "water" | "phone"; from: number; to: number | null };
+/** 帯 1 本。radio は電波不通（T125。監督の全域の不通か、停電が想定の表の時間続いた区域の家。lib/drill/comms.ts） */
+export type Band = { kind: "outage" | "water" | "phone" | "radio"; from: number; to: number | null };
 
 export type DrillScreen = {
   drill: Pick<DrillRow, "id" | "scenario" | "status" | "step" | "started_at" | "finished_at"> & { startedByName: string | null };
@@ -100,7 +104,11 @@ export type DrillContact = { id: string; kind: ContactRow["kind"]; label: string
 type PersonForDrill = Pick<PersonRow, "id" | "name" | "kana" | "birth_date" | "plan_status" | "self_report_unreliable" | "ledger">;
 
 /** 刻みの状況から帯を作る（見ている刻みまで。先の出来事は出さない） */
-export function bandsOf(ticks: ReadonlyArray<Tick>): Band[] {
+export function bandsOf(
+  ticks: ReadonlyArray<Tick>,
+  /** 区域の電波不通（T125）の元。想定の表と参加者の家（無ければ全域の不通の出来事だけ） */
+  radio?: { profile: FitProfile | null; homes: Homes | undefined },
+): Band[] {
   const out: Band[] = [];
   const open = new Map<Band["kind"], Band>();
   const begin = (kind: Band["kind"], at: number) => {
@@ -122,6 +130,17 @@ export function bandsOf(ticks: ReadonlyArray<Tick>): Band[] {
       else if (c.kind === "outage_restored") end("outage", e.at);
       else if (c.kind === "water") (c.out ? begin : end)("water", e.at);
       else if (c.kind === "phone") (c.state === "ok" ? end : begin)("phone", e.at);
+      else if (c.kind === "radio") (c.state === "ok" ? end : begin)("radio", e.at);
+    }
+  }
+  // 区域の電波不通（停電が想定の表の時間続いた、表の区域の家があるとき）: 停電の帯の始まり + 時間から、停電の終わりまで
+  const rule = radio?.profile?.radio;
+  const zoned = rule ? Object.values(radio?.homes ?? {}).some((h) => rule.zones.includes("all") || h.zones.some((z) => (rule.zones as ReadonlyArray<string>).includes(z.kind))) : false;
+  if (rule && zoned && !out.some((b) => b.kind === "radio")) {
+    const last = ticks.at(-1)?.hour ?? 0;
+    for (const b of out.filter((x) => x.kind === "outage")) {
+      const from = b.from + rule.hours;
+      if ((b.to ?? last) >= from) out.push({ kind: "radio", from, to: b.to });
     }
   }
   return out;
@@ -192,7 +211,11 @@ export async function loadDrillScreen(
 
   const peopleRows = people.results as PersonForDrill[];
   const ledgers = peopleRows.map((p) => parseLedger(p.ledger));
-  const { state, ticks } = replayState(row, participants, await loadTicks(db, id, hours, shown, clock.clock ? lastHour(scenario) : undefined), shown);
+  const replayed = replayState(row, participants, await loadTicks(db, id, hours, shown, clock.clock ? lastHour(scenario) : undefined), shown);
+  const { ticks } = replayed;
+  // 門が捨てた数（T125）は作り直した世界に残らないので、今の刻みを見るときは写しから（評価の台が読む）
+  const gated = shown === row.step ? gatedOfRow(row) : null;
+  const state = gated ? { ...replayed.state, world: { ...replayed.state.world, gated } } : replayed.state;
   const situation = drillSituation(state, ledgers);
 
   const signalRows = signals.results as SignalForDetail[];
@@ -221,7 +244,7 @@ export async function loadDrillScreen(
   });
   const heard = Object.fromEntries(Object.entries(heardAll).filter(([sid]) => !pass.refused.has(sid)));
 
-  const rows = toCaseloadRows(peopleRows, clockRows, contactRows, today, {
+  const allRows = toCaseloadRows(peopleRows, clockRows, contactRows, today, {
     situation,
     signals: pass.byPerson,
     detail: {
@@ -230,6 +253,14 @@ export async function loadDrillScreen(
       signals: pass.kept,
       calls: [],
     },
+  });
+  // 担当一覧のハザードの列（と右の面のハザードの数・並び）は訓練の想定に効く区域だけ（T125、lib/drill/fit.ts。地震の訓練に河川の浸水を出さない）。
+  // 平時・事業所の担当一覧は今のまま（ここは訓練の画面だけ）
+  const fit = profileOf(fitKindOf(state, state.world));
+  const zonesOf = new Map(peopleRows.map((p, i) => [p.id, fitLedgerHazards(fit, ledgers[i].evacuation.hazards)]));
+  const rows = allRows.map((r) => {
+    const z = zonesOf.get(r.id);
+    return z ? { ...r, hazards: z.map(hazardText), hazardKinds: z.map((h) => ({ kind: h.kind, depthM: h.depthM ?? null })) } : r;
   });
 
   const live = row.status === "running" && shown === row.step;
@@ -260,7 +291,7 @@ export async function loadDrillScreen(
     situation,
     rows,
     names: Object.fromEntries(peopleRows.map((p) => [p.id, p.name])),
-    bands: bandsOf(ticks),
+    bands: bandsOf(ticks, { profile: profileOf(fitKindOf(state, state.world)), homes: state.homes }),
     aiSignals: (aiTurns.results as Array<{ signal: unknown }>)
       .map((r) => r.signal)
       .filter((x): x is string => typeof x === "string"),

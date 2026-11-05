@@ -147,6 +147,7 @@ export type DrillEventKind = (typeof DRILL_EVENT_KINDS)[number];
 export const DRILL_ACTIONS = [
   "call_person", // 本人に電話
   "call_contact", // 家族・支援者に電話
+  "message", // 本人・家族・支援者にメッセージ（LINE・SMS・メールの形。T125。電波不通になるまで届く）
   "visit", // 自分が出向く
   "dispatch", // 訪問看護・介護の人に出向いてもらう
   "request_welfare_shelter", // 福祉避難所に依頼
@@ -522,6 +523,11 @@ export type OfficeRow = {
   center_lng: number | null;
   /** 審査員の試用事業所（migration 0027、T115）。1 なら毎朝 4 時に丸ごと消える（lib/seed/sandbox.ts） */
   judge_sandbox: 0 | 1;
+  /**
+   * 事業所のハザード（区域）の JSON の配列（migration 0030、T125。[{"kind":"tsunami"}]）。訓練の区域の出来事が事業所に効くか。
+   * NULL は「まだ無い」（区域なし）。前からのテストの行には無い
+   */
+  hazards?: string | null;
   created_at: string;
 };
 

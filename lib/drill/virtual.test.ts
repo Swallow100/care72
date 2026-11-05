@@ -126,8 +126,9 @@ function fakeClaude(world: (p: Params) => WorldStep = () => STEP) {
   return { client, calls };
 }
 
+// 世界の 1 文は大雨・地震のどちらの想定にも合う物（T125。仮想は規模のおまかせで地震にもなり、想定の門が大雨の言葉を落とす）
 const STEP: WorldStep = {
-  narration: "甲地区で白波川が増水している",
+  narration: "甲地区で停電が広がっている",
   events: [{ kind: "outage", town: "甲地区", target: "", name: "", value: "start" }],
   farewells: [],
 };
@@ -295,7 +296,7 @@ describe("world_step の形と捨て方", () => {
     const bad = worldIncidents({ ...STEP, narration: "避難所で亡くなった人がいる" }, ctx);
     expect(bad.some((e) => e.change.kind === "narration")).toBe(false);
     const good = worldIncidents(STEP, ctx);
-    expect(good[0]).toMatchObject({ change: { kind: "narration", room: "甲地区で白波川が増水している" }, text: "かわなぎ町で白波川が増水している" });
+    expect(good[0]).toMatchObject({ change: { kind: "narration", room: "甲地区で停電が広がっている" }, text: "かわなぎ町で停電が広がっている" });
     expect(restoreTowns("乙地区と己地区")).toBe("みずほし町とそらみ台");
     for (const w of ["死亡", "亡くなった", "死んだ", "関連死", "遺体", "息を引き取った"]) expect(FORBIDDEN_WORDS.test(w)).toBe(true);
   });
@@ -600,7 +601,7 @@ describe("仮想の筋（偽の部屋・偽の Haiku）", () => {
   it("送りの返事に id が無くても、読みに入った前の刻みの idle で止まらず、この刻みの答えを使う（T123）", async () => {
     // 評価の 2 回目の代替の形: 前は id が無いと全部を自分の物として読み、前の刻みの end_turn で「world_step なしで止まった」とすぐ 1 回呼びに落ちた
     // 刻みごとに違う答え。前の刻みの呼び出し・idle を自分の物として読むと、前の刻みの答えを使うか止まる
-    const room = fakeRoom((_text, n) => ({ ...STEP, narration: `甲地区で白波川が増水している（${n} 回目）` }), { noIds: true });
+    const room = fakeRoom((_text, n) => ({ ...STEP, narration: `甲地区で停電が広がっている（${n} 回目）` }), { noIds: true });
     const { client } = fakeClaude();
     const hooks = drillHooks({ DB: db, ANTHROPIC_API_KEY: "dummy" }, careManager(), { claude: client, now: () => new Date(START), room: room.client, roomTime: fastClock() })!;
     await runVirtual(hooks);
@@ -610,19 +611,19 @@ describe("仮想の筋（偽の部屋・偽の Haiku）", () => {
     const screen = (await loadDrillScreen(db, drillScope(careManager())!, "drill-v", null))!;
     expect(screen.ticks.flatMap((tk) => tk.incidents).some((e) => e.change.kind === "world_note")).toBe(false);
     const said = screen.ticks.map((tk) => (tk.incidents.find((e) => e.change.kind === "narration")?.change as { room?: string } | undefined)?.room ?? "");
-    expect(said).toEqual(said.map((_, i) => `甲地区で白波川が増水している（${i + 1} 回目）`));
+    expect(said).toEqual(said.map((_, i) => `甲地区で停電が広がっている（${i + 1} 回目）`));
   });
 
   it("答えが 2 回目の読みで出る部屋でも、読むたびに自分の文から数え、前の刻みの呼び出し・idle を読まない（T123）", async () => {
     // 評価の 2 回目の代替の形と見られる物: 前は 1 回目の読みで自分の文を見つけたら、2 回目からは窓の頭から読み、前の刻みの物を自分の物にした
-    const room = fakeRoom((_text, n) => ({ ...STEP, narration: `甲地区で白波川が増水している（${n} 回目）` }), { slow: true });
+    const room = fakeRoom((_text, n) => ({ ...STEP, narration: `甲地区で停電が広がっている（${n} 回目）` }), { slow: true });
     const { client } = fakeClaude();
     const hooks = drillHooks({ DB: db, ANTHROPIC_API_KEY: "dummy" }, careManager(), { claude: client, now: () => new Date(START), room: room.client, roomTime: fastClock() })!;
     await runVirtual(hooks);
     expect(aiRows().filter((r) => r.purpose === "director" && r.status === "failed")).toHaveLength(0);
     const screen = (await loadDrillScreen(db, drillScope(careManager())!, "drill-v", null))!;
     const said = screen.ticks.map((tk) => (tk.incidents.find((e) => e.change.kind === "narration")?.change as { room?: string } | undefined)?.room ?? "");
-    expect(said).toEqual(said.map((_, i) => `甲地区で白波川が増水している（${i + 1} 回目）`));
+    expect(said).toEqual(said.map((_, i) => `甲地区で停電が広がっている（${i + 1} 回目）`));
   });
 
   it("自分の文のあと部屋が動く前に並んだ end_turn では止まらない（T123）", async () => {
