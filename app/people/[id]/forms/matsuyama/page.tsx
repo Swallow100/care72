@@ -25,6 +25,10 @@ import { matsuyamaUnconfirmed, unconfirmedView } from "@/lib/forms/unconfirmed";
 import { matsuyamaAskableOf } from "@/lib/forms/form-asks";
 import { MAPPING_LABELS as L } from "@/lib/forms/mapping";
 import { loadPersonDocument } from "@/lib/consent/documents";
+import { PaperReview, ReviewPrintNote } from "@/components/forms/PaperReview";
+import { matsuyamaSubject } from "@/lib/forms/review";
+import { canReview } from "@/lib/forms/review-load";
+import { paperReviewProps } from "@/lib/forms/review-view";
 
 // D1 を毎回読む
 export const dynamic = "force-dynamic";
@@ -64,6 +68,11 @@ export default async function MatsuyamaFormPage({ params, searchParams }: Props)
   // 避難経路の地図（T106）。台帳の経路地図（T102）を欄の大きさで描く。経路地図か家の位置が無ければ欄を空ける
   const routeMap = routeMapFor(parseLedger(rows.person.ledger));
   const framed = manifest ? matsuyamaFrameSheet(sheet, manifest, { routeMap }) : null;
+  // 見直し（T136）。原本の枠の紙だけ、ケアマネの役で自分の事業所の人
+  const review =
+    framed && canReview(principal, rows.person.office_id)
+      ? await paperReviewProps(env.DB, { personId: id, formKey: "matsuyama", subject: matsuyamaSubject(sheet, framed), sheet: framed, consents: rows.consents })
+      : null;
   const here = `/people/${encodeURIComponent(id)}/forms/matsuyama`;
   // 紙に直接書く窓の欄と今の値（T117）。書けるのはケアマネの役（審査員を含む）で、自分の事業所の人だけ（保存も同じ壁。lib/intake/save.ts）
   const edit = principal.role === "care_manager" && ownOffice ? paperEditData(rows) : null;
@@ -81,9 +90,15 @@ export default async function MatsuyamaFormPage({ params, searchParams }: Props)
         title="計画書"
         name={sheet.name}
         autoPrint={autoPrint}
-        actions={framed && <FillToggle here={here} fill={fill} />}
+        actions={
+          <>
+            {review && <ReviewPrintNote confirmed={review.confirmed !== null} />}
+            {framed && <FillToggle here={here} fill={fill} />}
+          </>
+        }
       >
         <UnconfirmedFold view={unconfirmed} />
+        {review && <PaperReview {...review} />}
         {framed && framed.annex.length > 0 && (
           <span className="text-sm" data-annex-count={framed.annex.length}>
             <span className="text-muted">{L.annex}</span> <span className="font-bold tabular-nums">{framed.annex.length}</span>{" "}

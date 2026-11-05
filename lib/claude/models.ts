@@ -78,6 +78,20 @@ export const PURPOSES: Readonly<Record<ClaudePurpose, PurposeSpec>> = {
 export const RECORDING_SUMMARY: PurposeSpec = { model: HAIKU, effort: "high", maxTokens: 4000, timeoutMs: 20_000, maxRetries: 0 };
 
 /**
+ * 書類の紙の AI の見直し（T136）の呼び方。用途は form_read（書類の AI として数える。ai_calls の CHECK はそのまま、録音のまとめと同じ形）。
+ * 紙の頁の絵（塗った後）1〜3 枚と、置いた値の一覧（仮名）を見比べて、違う欄・読めない所・中身の合わない欄・伏字を挙げる。
+ * 欄の名前と字を見比べるだけで、欄を読み起こす様式の読み取りほど考えなくてよいので Sonnet・medium。答えは短い（多くて 20 件ほど）。
+ * 費用と待ちの見込みは docs/DECISIONS.md「書類」の案（T136）
+ */
+export const FORM_REVIEW: PurposeSpec = { model: SONNET, effort: "medium", maxTokens: 8000, timeoutMs: 120_000 };
+
+/**
+ * 再考の読み直し（T136）。見直しで直せそうな欄だけを、元の様式の空の頁から読み直す（欄の場所・項目・区切り）。
+ * 様式の読み取り（form_read）と同じ Opus・high（同じ決まりで読む）。欄が数個なので上限 12000・待ち 150 秒
+ */
+export const FORM_REREAD: PurposeSpec = { model: OPUS, effort: "high", maxTokens: 12000, timeoutMs: 150_000 };
+
+/**
  * 断られた（stop_reason が refusal）ときにサーバー側で別のモデルに回す設定を送るモデル。
  * Haiku 5.5 には回す先が無く、送っても断られたままなので送らない（skill claude-api）。
  */

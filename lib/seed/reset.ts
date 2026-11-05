@@ -75,6 +75,7 @@ export const DEMO_CLEAR: Readonly<Record<Table, string | null>> = {
   third_party_provisions: `person_id IN (${PEOPLE})`,
   custody: `person_id IN (${PEOPLE})`,
   form9_rank_edits: `office_id = ${OFFICE} OR person_id IN (${PEOPLE})`,
+  form_reviews: `office_id = ${OFFICE} OR person_id IN (${PEOPLE})`,
   form_mappings: `office_id = ${OFFICE}`,
   disaster_state: `office_id = ${OFFICE}`,
   ai_calls: null,

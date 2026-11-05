@@ -53,6 +53,8 @@ export const CLEAR_ORDER = [
   "third_party_provisions",
   "custody",
   "form9_rank_edits",
+  // 書類の紙の見直し（T136）。人・事業所・アカウントを指すので先に
+  "form_reviews",
   "form_mappings",
   "disaster_state",
   "ai_calls",

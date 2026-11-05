@@ -18,6 +18,10 @@ import { FormAbout } from "@/components/forms/FormAbout";
 import { PaperBar, wantsPrint } from "@/components/ui/PaperBar";
 import { todayJst } from "@/lib/age";
 import { requirePage } from "@/lib/auth/server";
+import { PaperReview, ReviewPrintNote } from "@/components/forms/PaperReview";
+import { kirokuSubject } from "@/lib/forms/review";
+import { canReview } from "@/lib/forms/review-load";
+import { paperReviewProps } from "@/lib/forms/review-view";
 import { loadPersonDocument, medicalSummaryView } from "@/lib/consent/documents";
 import { personDisaster } from "@/lib/disaster/person";
 import { DOCUMENT_CATALOG } from "@/lib/forms/catalog";
@@ -75,6 +79,11 @@ export default async function MedicalFormPage({ params, searchParams }: Props) {
   const ownOffice = forms !== null && forms.officeId === rows.person.office_id;
   const manifest = forms && ownOffice && sheet ? await loadOriginal({ get: (key) => env.RECORDINGS.get(key) }, forms.officeId, "kiroku") : null;
   const framed = sheet && manifest ? kirokuFrameSheet(sheet, manifest) : null;
+  // 見直し（T136）。原本の枠の紙だけ、ケアマネの役で自分の事業所の人
+  const review =
+    framed && sheet && canReview(principal, rows.person.office_id)
+      ? await paperReviewProps(env.DB, { personId: id, formKey: "kiroku", subject: kirokuSubject(sheet, framed), sheet: framed, consents: rows.consents })
+      : null;
   const here = `/people/${encodeURIComponent(id)}/forms/medical`;
 
   return (
@@ -86,10 +95,16 @@ export default async function MedicalFormPage({ params, searchParams }: Props) {
         name={rows.person.name}
         print={sheet !== null}
         autoPrint={autoPrint && sheet !== null}
-        actions={framed && <FillToggle here={here} fill={fill} />}
+        actions={
+          <>
+            {review && <ReviewPrintNote confirmed={review.confirmed !== null} />}
+            {framed && <FillToggle here={here} fill={fill} />}
+          </>
+        }
       >
         {/* 原本の枠の紙は、紙が空ける欄（色付けで塗る欄）を数える（T101）。前からの紙面は台帳の pending */}
         {framed && sheet && <UnconfirmedFold view={unconfirmedView(medicalUnconfirmed(sheet))} />}
+        {review && <PaperReview {...review} />}
         {framed && framed.annex.length > 0 && (
           <span className="text-sm" data-annex-count={framed.annex.length}>
             <span className="text-muted">{L.annex}</span> <span className="font-bold tabular-nums">{framed.annex.length}</span>{" "}
