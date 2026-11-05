@@ -91,13 +91,14 @@ export type MissedCall<T> = { turn: T; step: number; minute: number };
 const CALLBACK_KINDS: ReadonlySet<string> = new Set(["call_person", "call_contact", "visit"]);
 
 /**
- * まだ折返していない不在着信（新しい順）。不在の時刻より後（同じ分を含む）に、その人へ本人電話・連絡先電話・訪問を打った物と、
- * その人からの着信に応答した物は外す。色と順には使わない（画面の一覧だけ）
+ * まだ折返していない不在着信（新しい順）。不在の連絡が入った刻みから後（同じ刻みを含む。手の刻み step は手を打った時の刻みで、
+ * 不在の連絡はその刻みを当てた時に画面に出ている）に、その人へ本人電話・連絡先電話・訪問を打った物と、その人からの着信に応答した物は外す。
+ * 色と順には使わない（画面の一覧だけ）
  */
 export function openMissedCalls<T extends PhoneShape & Pick<DrillTurn, "person" | "at">>(
   ticks: ReadonlyArray<{ step: number; turns: ReadonlyArray<T> }>,
-  acts: ReadonlyArray<{ person: string | null; kind: string; atMinute: number }>,
-  answered: ReadonlyArray<{ person: string; minute: number; response: string | null }> = [],
+  acts: ReadonlyArray<{ person: string | null; kind: string; step: number }>,
+  answered: ReadonlyArray<{ person: string; step: number; response: string | null }> = [],
 ): Array<MissedCall<T>> {
   const out: Array<MissedCall<T>> = [];
   for (const t of ticks) {
@@ -105,8 +106,8 @@ export function openMissedCalls<T extends PhoneShape & Pick<DrillTurn, "person" 
       const turn = t.turns[i];
       const minute = Math.round(turn.at * 60);
       const done =
-        acts.some((a) => a.person === turn.person && CALLBACK_KINDS.has(a.kind) && a.atMinute >= minute) ||
-        answered.some((c) => c.person === turn.person && c.response === "answer" && c.minute >= minute);
+        acts.some((a) => a.person === turn.person && CALLBACK_KINDS.has(a.kind) && a.step >= t.step) ||
+        answered.some((c) => c.person === turn.person && c.response === "answer" && c.step >= t.step);
       if (!done) out.push({ turn, step: t.step, minute });
     }
   }

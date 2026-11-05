@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/Button";
 import { PhoneIcon } from "@/components/ui/Icon";
 import { MISSED_LABELS, MISSED_SHOWN } from "@/lib/drill/calls";
 import type { FictionKind } from "@/lib/drill/fiction";
-import { DRILL_LABELS, elapsedLabel } from "@/lib/drill/labels";
+import { clockLabel, DRILL_LABELS } from "@/lib/drill/labels";
 import { FictionalMark } from "./Fictional";
 
 export type MissedItem = {
@@ -82,34 +82,36 @@ export function MissedCalls({
       </h3>
       <ul className="mt-1 space-y-1">
         {shown.map((m) => (
-          <li key={m.key} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm" data-missed={m.person}>
-            <span className="text-xs text-muted tabular-nums">{elapsedLabel(m.minute / 60)}</span>
-            <span className="font-bold">
-              {m.name}
-              <FictionalMark kind={fiction} />
-            </span>
-            <span className="text-xs text-muted">{m.caller}</span>
-            {m.saying && (
-              <span className="min-w-0 flex-1 basis-40 truncate text-xs" title={m.saying}>
-                {m.ai && <AiMark small />}「{m.saying}」
+          <li key={m.key} className="flex items-center gap-2 text-sm" data-missed={m.person}>
+            <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2">
+              <span className="text-xs text-muted tabular-nums">{clockLabel(m.minute)}</span>
+              <span className="font-bold">
+                {m.name}
+                <FictionalMark kind={fiction} />
               </span>
-            )}
+              <span className="text-xs text-muted">{m.caller}</span>
+              {m.saying && (
+                <span className="min-w-0 max-w-full truncate text-xs" title={m.saying}>
+                  {m.ai && <AiMark small />}「{m.saying}」
+                </span>
+              )}
+              {error?.key === m.key && (
+                <span role="alert" className="basis-full text-xs font-bold text-danger" data-missed-error>
+                  {error.label}
+                </span>
+              )}
+            </div>
             <Button
               kind="plainIn"
               size="sm"
               icon={PhoneIcon}
-              className={`ml-auto ${FOCUS}`}
+              className={`shrink-0 ${FOCUS}`}
               disabled={busy !== null}
               onClick={() => void callback(m)}
               data-missed-callback={m.kind}
             >
               {busy === m.key ? MISSED_LABELS.calling : MISSED_LABELS.callback}
             </Button>
-            {error?.key === m.key && (
-              <span role="alert" className="basis-full text-xs font-bold text-danger" data-missed-error>
-                {error.label}
-              </span>
-            )}
           </li>
         ))}
       </ul>

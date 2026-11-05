@@ -11,7 +11,7 @@
 import { AiMark, StateTag } from "@/components/person/parts";
 import type { ActionRecord, DrillTurn, Tick } from "@/lib/drill/engine";
 import { ACTION_STATUS_LABELS } from "@/lib/drill/actions";
-import { ACTION_LABELS, ACTION_UI, CALL_UI, calleeText, DRILL_LABELS, elapsedLabel, LOG_LABELS } from "@/lib/drill/labels";
+import { ACTION_LABELS, ACTION_UI, CALL_UI, calleeText, clockLabel, DRILL_LABELS, elapsedLabel, LOG_LABELS } from "@/lib/drill/labels";
 import type { FictionKind } from "@/lib/drill/fiction";
 import { buildDrillLog, CALL_LOG_LABELS, knowRouteOf, ROUTE_LABELS, type Awareness, type DrillLog as Log, type KnowRoute, type LogRow, type LogTab } from "@/lib/drill/timeline";
 import type { CallRecord } from "@/lib/drill/responses";
@@ -267,7 +267,7 @@ function CallActItem({ call, c }: { call: CallRecord; c: Common }) {
   return (
     <li className="rounded-md bg-panel2 px-2 py-1.5 text-sm" data-call-act={call.signal} data-call-response={call.response ?? undefined}>
       <div className="flex flex-wrap items-baseline gap-x-1.5">
-        <span className="text-xs text-muted tabular-nums">{elapsedLabel(at / 60)}</span>
+        <span className="text-xs text-muted tabular-nums">{clockLabel(at)}</span>
         <span className="flex items-center gap-1 self-center font-bold">
           <CallInIcon aria-hidden className="size-3.5 shrink-0" />
           {ROUTE_LABELS.call}

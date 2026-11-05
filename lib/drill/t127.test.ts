@@ -441,7 +441,7 @@ describe("不在着信と経路", () => {
     expect(turnRoute(turn({ person: "p-06", color: "red", injured: true }), false)).toBe("button");
   });
 
-  it("まだ折返していない不在着信（新しい順）。その人への本人電話・連絡先電話・訪問か、その人の着信への応答で外れる", () => {
+  it("まだ折返していない不在着信（新しい順）。不在の刻みから後のその人への本人電話・連絡先電話・訪問か、その人の着信への応答で外れる", () => {
     const ticks = [
       { step: 1, turns: [turn({ person: "p-01" }), turn({ person: "p-02" }), turn({ person: "p-03", at: 1 })] },
       { step: 2, turns: [turn({ person: "p-01", at: 3 }), turn({ person: "p-02", at: 3 }), turn({ person: "p-04", at: 3 }), turn({ person: "p-05", at: 3 })] },
@@ -451,15 +451,16 @@ describe("不在着信と経路", () => {
       ["p-05", 180],
       ["p-03", 60],
     ]);
-    // 不在より前の手は数えない。後の手（同じ分も）は折返
+    // 不在の刻みより前の手は数えない。同じ刻み（不在が画面に出たあと）からの手は折返。ほかの手は数えない
     const acts = [
-      { person: "p-03", kind: "call_contact", atMinute: 30 },
-      { person: "p-04", kind: "visit", atMinute: 180 },
-      { person: "p-05", kind: "report_city", atMinute: 200 },
+      { person: "p-03", kind: "call_contact", step: 0 },
+      { person: "p-04", kind: "visit", step: 2 },
+      { person: "p-05", kind: "report_city", step: 2 },
     ];
     expect(openMissedCalls(ticks, acts).map((m) => m.turn.person)).toEqual(["p-05", "p-03"]);
-    expect(openMissedCalls(ticks, acts, [{ person: "p-03", minute: 120, response: "answer" }]).map((m) => m.turn.person)).toEqual(["p-05"]);
-    expect(openMissedCalls(ticks, acts, [{ person: "p-03", minute: 120, response: "decline" }]).map((m) => m.turn.person)).toEqual(["p-05", "p-03"]);
+    expect(openMissedCalls(ticks, [...acts, { person: "p-03", kind: "call_person", step: 1 }]).map((m) => m.turn.person)).toEqual(["p-05"]);
+    expect(openMissedCalls(ticks, acts, [{ person: "p-03", step: 2, response: "answer" }]).map((m) => m.turn.person)).toEqual(["p-05"]);
+    expect(openMissedCalls(ticks, acts, [{ person: "p-03", step: 2, response: "decline" }]).map((m) => m.turn.person)).toEqual(["p-05", "p-03"]);
   });
 
   it("掛けてきた人の連絡先: 1 人ならその人、何人かならスマホのある人、次に電話のある人。本人の連絡は無し", () => {
