@@ -244,6 +244,7 @@ export function frameSlots(
     const cell = sheet.cells[key];
     const base = {
       key,
+      ...(keys.length > 1 ? { keys: [...keys] } : {}),
       label: keys.length > 1 ? keys.map((k) => (def.get(k) ? matsuyamaFieldName(def.get(k)!) : k)).join("・") : fieldDef ? matsuyamaFieldName(fieldDef) : key,
       page: area.page,
       box,

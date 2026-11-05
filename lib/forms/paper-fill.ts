@@ -59,6 +59,8 @@ export type PaperSlot = {
   hand?: { by: string | null; at: string };
   /** この欄を埋める問いの鍵（lib/intake/ask.ts の Question の key） */
   asks?: string[];
+  /** 1 つの書く所に欄が 2 つ以上ある所（計画書のかかりつけ医・薬局と医薬品情報）の欄の鍵の全部。key は先頭 */
+  keys?: string[];
 };
 
 /** 置ける画像（事業所の物） */
