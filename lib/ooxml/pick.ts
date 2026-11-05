@@ -12,8 +12,11 @@
 // - 本体らしいシートが無い（言葉が 3 つ未満）・シートが 1 つ・Word は、T119 のまま
 
 import { PDF_PAGES_MAX } from "../intake/read-form.ts";
+// 黒塗りの画面（components/person/RedactSheet.tsx）が初めから読み込むので、Excel・Word を描く部品（xlsx.ts・zip.ts・xml.ts）を import しない
 import type { OfficePage } from "./page.ts";
-import { isExampleSheet } from "./xlsx.ts";
+
+/** 記入例・記載例・事例のシートか（既定で読まない候補） */
+export const isExampleSheet = (name: string) => /記入例|記載例|事例|見本|サンプル|例\s*[)）】]|^例/.test(name);
 
 /**
  * 様式の本体の欄に出る言葉（個別避難計画・名簿登録・利用者一覧の欄の名前）。シートの中の字にいくつあるかで、様式の本体らしさを見る。

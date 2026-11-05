@@ -14,6 +14,7 @@
 import { DEFAULT_THEME, drawingColor, excelColor, parseTheme, type Theme } from "./color.ts";
 import { autoRowFactorOf, cssFamily, digitEmOf, estimateWidth, isMonospaceJa, mdwOf } from "./fonts.ts";
 import { EMU_MM, INCH_MM, PT_MM, type Box, type FontSpec, type Measure, type OfficePage, type PageItem, type Stroke } from "./page.ts";
+import { isExampleSheet } from "./pick.ts";
 import type { ZipArchive } from "./zip.ts";
 import { alternate, attr, bool, descendants, kid, kids, num, parseXml, path, textOf, type XNode } from "./xml.ts";
 
@@ -626,8 +627,8 @@ export type XlsxSheetInfo = { index: number; name: string; hidden: boolean; page
 
 export type XlsxResult = { pages: OfficePage[]; sheets: XlsxSheetInfo[]; warnings: string[] };
 
-/** 記入例・記載例・事例のシートか（既定で読まない候補） */
-export const isExampleSheet = (name: string) => /記入例|記載例|事例|見本|サンプル|例\s*[)）】]|^例/.test(name);
+/** 記入例・記載例・事例のシートか（既定で読まない候補）。T122 から lib/ooxml/pick.ts に置く（黒塗りの画面が描く部品を先に読み込まないように） */
+export { isExampleSheet };
 
 export type XlsxOptions = { measure?: Measure; maxPages?: number };
 
