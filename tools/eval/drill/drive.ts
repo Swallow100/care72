@@ -150,6 +150,13 @@ export type DriveDeps = {
 /** 訓練の発災の時刻（決まった時刻から。本物の時計の経過を足す） */
 export const DRILL_START = Date.parse("2026-11-05T01:00:00.000Z");
 
+/**
+ * 回ごとの開始の時刻（T139）。DRILL_START から回の番号の日数だけ後（同じ時刻）。前はどの回も同じ開始の時刻で、訓練の種（lib/drill/time-odds.ts の
+ * drillSeed は想定と開始の時刻から）が同じ想定の回どうしで同じになり、本物の訓練（開始の時刻が回ごとに違う）より出来事が似た。
+ * 日数だけずらすので、昼夜・夜の所要（時刻だけを見る）は変わらず、同じ種・同じ番号なら同じ開始の時刻
+ */
+export const runStart = (index: number): number => DRILL_START + Math.max(0, index - 1) * 86_400_000;
+
 const DEMO = { id: "office-demo", name: "デモ事業所", kind: "demo" as const };
 
 export const careManager = (): Principal => ({
@@ -241,7 +248,8 @@ export async function runDrill(plan: RunPlan, deps: DriveDeps): Promise<RunOutco
   const rng = rngOf(`${plan.seed}/drive`);
   const roll = rngOf(`${plan.seed}/roll`);
   const t0 = Date.now();
-  const nowMs = () => DRILL_START + (Date.now() - t0);
+  const start = runStart(plan.index);
+  const nowMs = () => start + (Date.now() - t0);
   const now = () => new Date(nowMs()).toISOString();
   const sqlite = seededSqlite();
   if (deps.worldAgent) {
@@ -331,7 +339,7 @@ export async function runDrill(plan: RunPlan, deps: DriveDeps): Promise<RunOutco
   };
 
   try {
-    log.push({ type: "run", plan, participants: plan.participants, startedAt: new Date(DRILL_START).toISOString() });
+    log.push({ type: "run", plan, participants: plan.participants, startedAt: new Date(start).toISOString() });
     const options = {
       participants: plan.participants,
       ...(plan.night ? { night: true } : {}),
@@ -344,7 +352,7 @@ export async function runDrill(plan: RunPlan, deps: DriveDeps): Promise<RunOutco
     const startReq = { scenario: plan.scenario, options };
     // 開始の時刻は記録の startedAt と同じ DRILL_START にそろえる（訓練の種〔lib/drill/time-odds.ts の drillSeed〕が開始の時刻から作られ、
     // 壁の時計の数 ms のずれで同じ種の回の出来事が変わらないように。T124 で台の既定の組が全部連続の時計になった）
-    const started = await call("start", startReq, () => startPost(db, p, startReq, new Date(DRILL_START).toISOString(), stepHooks));
+    const started = await call("start", startReq, () => startPost(db, p, startReq, new Date(start).toISOString(), stepHooks));
     const drillId = typeof started.body?.id === "string" ? started.body.id : null;
     if (!drillId) return { plan, drillId: null, status: "not_started", advances: 0, replay: null, ops, errors, aiCalls: aiCallsOf(sqlite), callsLeft: null, names, worldAgent: worldAgentOf(sqlite) };
     let replay = await read(drillId);

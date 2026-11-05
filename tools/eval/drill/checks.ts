@@ -110,9 +110,20 @@ function ruleHits(text: string, rules: ReadonlyArray<Rule>): Array<{ rule: strin
 
 /** 仮名化の層の漏れの見張り（findLeaks）が返す「敬称つきの名前」 */
 const HONORIFIC_NAME = "敬称つきの名前";
+/** 仮名化の層の漏れの見張り（findLeaks）が返す「名前らしい並び」 */
+const NAME_LIKE = "名前らしい並び";
+/**
+ * 名前でないかなの言葉（行頭の言葉・続柄の「の」のあとの言葉。T139 の台の誤検知）。台が足した目安。かなの名前の形（続柄の「の」のあと・行頭の呼びかけ）に
+ * 当たる言葉だけを外す（外したあとも名前が残れば拾う）
+ */
+const NOT_NAME_KANA =
+  /(?:ひとまず|とりあえず|ここから|そこから|それから|これから|いまから|いま|まだ|もう|すこし|ちょっと|ゆっくり|しばらく|なんとか|やっと|ずっと|みんな|あの|その|えっと|ええと|あのう|はい|いいえ|うん|ところ|ほう|うち|そば|まわり|よう|ため|こと|もの|あたり|へん|かた)(?=[、，,！!：:のでがはもにへとをや]|$)/gu;
+/** 「様」が人の名前の敬称でない言葉（様子・同様・模様・様々。T139 の台の誤検知） */
+const NOT_NAME_SAMA = /様子|同様|模様|仕様|様々|様式|様態|お客様|皆様|皆さま|みなさま|ご家族様|奥様|旦那様|神様|仏様/gu;
+
 /** 役・続柄・商いの呼び名に付いた敬称（人の名前でない）。台が足した目安 */
 const ROLE_HONORIFIC =
-  /(?:ケアマネ|ヘルパー|看護師|看護婦|民生委員|お医者|医者|先生|職員|業者|配達|運転手|大家|管理人|消防|救急隊|役所|お隣|隣|近所|ご近所|娘|息子|嫁|孫|兄|姉|弟|妹|おばあ|おじい|お母|お父|叔母|叔父|伯母|伯父|おば|おじ|奥|旦那|(?:酸素|薬|電気|米|魚|八百|酒|肉|パン|花|布団|ガス|灯油|燃料|水道)屋)(?:さん|さま|様|ちゃん|くん)/gu;
+  /(?:ケアマネ|ヘルパー|看護師|看護婦|民生委員|お医者|医者|先生|職員|業者|配達|運転手|大家|管理人|消防|救急隊|役所|お隣|隣|近所|ご近所|娘|息子|嫁|孫|兄|姉|弟|妹|おばあ|おじい|お母|お父|叔母|叔父|伯母|伯父|おば|おじ|奥|旦那|(?:酸素|薬|電気|米|魚|八百|酒|肉|パン|花|布団|ガス|灯油|燃料|水道)屋|[\p{Script=Han}\p{Script=Katakana}ー]{1,8}(?:屋|店|会社|業者|事業所|センター|病院|医院|薬局|局))(?:さん|さま|様|ちゃん|くん)/gu;
 
 /**
  * 鍵の秘密（名前・カナ・町名・生年月日）と電話の形。町名を除くか（画面の文は町名に戻すので）。
@@ -126,8 +137,13 @@ function leakHits(
   let found = findLeaks(text, key).filter((w) => opts.towns || !/町名/.test(w));
   // 役の呼び名に付いた敬称（酸素屋さん・ケアマネさん・民生委員さん）は人の名前でない（T121。台の誤検知）。外して見直す
   if (found.includes(HONORIFIC_NAME)) {
-    const again = findLeaks(text.replace(ROLE_HONORIFIC, "　"), key);
+    const again = findLeaks(text.replace(ROLE_HONORIFIC, "　").replace(NOT_NAME_SAMA, "　"), key);
     if (!again.includes(HONORIFIC_NAME)) found = found.filter((w) => w !== HONORIFIC_NAME);
+  }
+  // 名前らしい並びの形が、行頭の言葉（「ひとまず、」「ここから、」）や続柄の「の」のあとの言葉（「母のところ」）を拾った（T139。台の誤検知）。外して見直す
+  if (found.includes(NAME_LIKE)) {
+    const again = findLeaks(text.replace(NOT_NAME_KANA, "　"), key);
+    if (!again.includes(NAME_LIKE)) found = found.filter((w) => w !== NAME_LIKE);
   }
   const out = found.map((what) => {
     const s = key.secrets.find((x) => x.what === what && text.includes(x.value));
@@ -329,7 +345,9 @@ export function contradictionHits(outcome: RunOutcome, facts?: Readonly<Record<s
       if (u.color === "green" && u.saying && hurtIn(u.saying)) hits.push({ check: "contradiction", rule: "green_but_hurt", person, minute, evidence: u.saying });
       if (u.color === "red" && u.saying && FINE.test(u.saying) && !hurtIn(u.saying)) hits.push({ check: "contradiction", rule: "red_but_fine", person, minute, evidence: u.saying });
       const next = turns[i + 1];
-      if (next && u.color === "red" && (u.injured === true || u.canMove === false) && next.color === "green") {
+      // ふだんから動けない人（寝たきり・歩行 困難）の「動けない」はけが・閉じ込めでないので見ない（T139。本人役の門 person-facts.ts の hurt と同じ）
+      const immobile = facts?.[person]?.plan.immobile === true;
+      if (next && u.color === "red" && (u.injured === true || (u.canMove === false && !immobile)) && next.color === "green") {
         const to = Math.round(next.at * 60);
         const plan = facts?.[person]?.plan;
         const planMoved = !!plan?.move && plan.helper && (next.whereNow === "shelter" || next.whereNow === "other");
@@ -340,6 +358,34 @@ export function contradictionHits(outcome: RunOutcome, facts?: Readonly<Record<s
     }
   }
   return hits;
+}
+
+/** 文の途中で終わったと見る長さ（字。これより短い言葉は句点が無くても切れたと見ない。T139） */
+export const CUT_MIN = 50;
+const SENTENCE_END = /[。！？!?」』）)…]$/u;
+
+/**
+ * 本人役の言葉が文の途中で終わった数（T139。評価の 4 回目で、上限 60 字で切れたまま画面に出た）。画面に出た言う事・する事・通話・往復・訪問の言葉のうち、
+ * CUT_MIN 字以上で文の終わり（句点・感嘆・疑問・閉じかっこ・「…」）で終わらない物
+ */
+export function cutHits(outcome: RunOutcome): { checked: number; hits: CheckHit[] } {
+  const hits: CheckHit[] = [];
+  let checked = 0;
+  const see = (text: string | null | undefined, person: string | null, minute: number | null, field: string) => {
+    if (!text) return;
+    checked += 1;
+    const s = text.trim();
+    if (Array.from(s).length >= CUT_MIN && !SENTENCE_END.test(s)) hits.push({ check: "shape", rule: "cut_mid", person, minute, evidence: `${field}: ${Array.from(s).length} 字` });
+  };
+  for (const t of outcome.replay?.ticks ?? []) for (const u of t.turns) if (u.ai) see(u.saying, u.person ?? null, Math.round((u.at ?? t.hour) * 60), "saying");
+  for (const a of outcome.replay?.actions ?? []) {
+    const r = a.result;
+    if (!r) continue;
+    see(r.speech, a.person ?? null, r.atMinute ?? null, "call.speech");
+    for (const l of r.talk ?? []) if (l.who !== "cm") see(l.text, a.person ?? null, r.atMinute ?? null, "talk");
+    see(r.visit?.speech, a.person ?? null, r.atMinute ?? null, "visit.speech");
+  }
+  return { checked, hits };
 }
 
 /** 6. 止まった・失敗した刻み（「停止」「代替」の印、要求の失敗） */
@@ -687,6 +733,8 @@ export type RunNumbers = {
    * gated は門が落とした・直した数（drills.world の gated。決まりごと）
    */
   facts?: { checked: number; hits: number; byRule: Record<string, number>; gated: Record<string, number> };
+  /** 本人役の言葉が文の途中で終わった数（T139、cutHits）。checked は見た言葉の数 */
+  cut?: { checked: number; hits: number };
   timing: { advanceP50: number | null; advanceP95: number | null; advanceMax: number | null; actP50: number | null; actP95: number | null };
   cost: { usd: number; inputTokens: number; outputTokens: number; roomSteps: number; unpricedCalls: number };
 };
@@ -712,6 +760,7 @@ export function checkRun(records: ReadonlyArray<LogRecord>, outcome: RunOutcome,
   const fit = fitHits(outcome, ctx);
   const free = freeHits(records, outcome);
   const facts = ctx.facts ? factHits(outcome, ctx.facts) : { checked: 0, hits: [] as CheckHit[] };
+  const cut = cutHits(outcome);
   const ai = records.filter((r): r is AiRecord => r.type === "ai" && (r as AiRecord).role !== "judge");
   // 1 訓練の数え（画面の「AI 残」から。10 分版は数えないので本人役と監督の呼び出しの数）
   const drillCounted = outcome.callsLeft !== null ? DRILL_CAP - outcome.callsLeft : ai.filter((a) => a.role === "persona" || a.role === "director" || a.role === "world" || a.role === "world_room").length;
@@ -772,6 +821,7 @@ export function checkRun(records: ReadonlyArray<LogRecord>, outcome: RunOutcome,
       canMismatch: free.filter((h) => h.rule === "can_mismatch").length,
     },
     facts: { checked: facts.checked, hits: facts.hits.length, byRule: tally(facts.hits.map((h) => h.rule)), gated: { ...(outcome.gated ?? {}) } },
+    cut: { checked: cut.checked, hits: cut.hits.length },
     timing: {
       advanceP50: quantile(ms("advance"), 0.5),
       advanceP95: quantile(ms("advance"), 0.95),
@@ -787,5 +837,5 @@ export function checkRun(records: ReadonlyArray<LogRecord>, outcome: RunOutcome,
       unpricedCalls: ai.filter((a) => a.costUsd === null && a.role !== "world_room").length,
     },
   };
-  return { hits: [...banned, ...leaks, ...shape, ...odds.hits, ...contra, ...stops, ...terms, ...fit.hits, ...free, ...facts.hits, ...budgetHits], numbers };
+  return { hits: [...banned, ...leaks, ...shape, ...odds.hits, ...contra, ...stops, ...terms, ...fit.hits, ...free, ...facts.hits, ...cut.hits, ...budgetHits], numbers };
 }
