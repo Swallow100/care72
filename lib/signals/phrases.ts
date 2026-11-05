@@ -77,6 +77,26 @@ export const AI_NOTICE_VOICE = plainText(easy(AI_NOTICE_TEXT)).replace(/ /g, "")
  */
 export const VOICE_PROMPT_TEXT = `${AI_NOTICE_VOICE}。大丈夫ですか。状況を説明してください`;
 
+// ---------- 声の聞き取りの会話（docs/tasks/T137.md） ----------
+
+/**
+ * 会話の決まった文（AI に作らせない）。最初の問いは上の定型文（VOICE_PROMPT_TEXT）、話題ごとの決まった問いは
+ * lib/signals/questions.ts の問いの表（lib/signals/talk.ts の TALK_TOPIC_SPECS）。ここは締め・危ない言葉のとき・ボタンの答え方の文。
+ * 119 の文は本人の 1 枚と画面の 1 行と同じ（EMERGENCY_TEXT）。どの締めにも付けるので、危ない言葉のときだけ出す文にはしない
+ */
+export const TALK_PHRASES = {
+  /** 締めの頭（どの締めも） */
+  thanks: "ありがとうございました。ケアマネジャーに とどけます",
+  /** 上限に近づいて締めるとき（10 往復・5 分ほど） */
+  later: "また あとで ききます",
+  /** 命に関わる言葉が出たとき（119 の文のあと） */
+  notify: "すぐ ケアマネジャーに しらせます",
+  /** ボタンの答え方に替えたとき、問いのあとに読む */
+  yesNoHint: "はいなら みどり、いいえなら あかを おして ください",
+  /** 話題「連絡してほしい人」の決まった問い（問いの表に無い話題） */
+  callee: "{連絡|れんらく}して ほしい {人|ひと}は いますか",
+} as const;
+
 // ---------- 家族・支援者のスマホ（docs/tasks/T11.md） ----------
 
 /** 家族・支援者の画面の決まった言葉。本人の画面と同じく、判定・助言の言葉は無い */
@@ -182,6 +202,7 @@ export function allPhoneWords(): Word[] {
     ...Object.values(WHERE_PHRASES),
     ...Object.values(RED_QUESTION_PHRASES).flatMap((p) => [p.q, p.yes, p.no]),
     ...allQuestionMarkups(),
+    ...Object.values(TALK_PHRASES),
     AI_NOTICE_TEXT,
   ];
   return [...marks.flatMap((m) => easy(m)), ...emergencyWords()];

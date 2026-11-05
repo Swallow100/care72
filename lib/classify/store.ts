@@ -16,6 +16,7 @@ import { RECORDING_CLASSES } from "../db/types.ts";
 import { pseudonymInputOf } from "../intake/extract.ts";
 import { loadPersonRows } from "../person.ts";
 import { pseudonymize, type PseudonymKey } from "../pseudonym/index.ts";
+import { readTalkLog } from "../signals/talk.ts";
 import { classify, classifyErrorOf, sealClassifyInput, type AudioFeatures, type ClassifyResult } from "./classify.ts";
 import { aiClassLogBody, classEditLogBody } from "./labels.ts";
 import { CLASSIFY_COLUMNS, classViewOf, parseClassList, type ClassView, type SignalClassFields } from "./view.ts";
@@ -52,7 +53,8 @@ export type ClassifySignalOutcome =
 type SignalForClassify = Pick<
   SignalRow,
   "id" | "person_id" | "transcript" | "injured" | "at_home" | "can_move" | "has_medicine" | "classified_by" | "ai_at"
->;
+> &
+  Partial<Pick<SignalRow, "talk">>;
 
 const bool = (v: 0 | 1 | null): boolean | null => (v === null ? null : v === 1);
 
@@ -93,6 +95,7 @@ async function runClassify(db: D1Database, t: ClassifyTarget, sig: SignalForClas
           hasMedicine: bool(sig.has_medicine),
         },
         audio: t.audio ?? null,
+        talk: readTalkLog(sig.talk),
       },
       key,
     );
@@ -117,7 +120,7 @@ async function readClassFields(db: D1Database, signalId: string): Promise<Signal
 export async function classifySignal(db: D1Database, t: ClassifyTarget, deps: ClassifyDeps): Promise<ClassifySignalOutcome> {
   const sig = await db
     .prepare(
-      `SELECT s.id, s.person_id, s.transcript, s.injured, s.at_home, s.can_move, s.has_medicine, s.classified_by, s.ai_at
+      `SELECT s.id, s.person_id, s.transcript, s.injured, s.at_home, s.can_move, s.has_medicine, s.classified_by, s.ai_at, s.talk
          FROM signals s JOIN people p ON p.id = s.person_id
         WHERE s.id = ?1 AND s.person_id = ?2 AND p.office_id = ?3 AND s.drill_id IS NULL`,
     )

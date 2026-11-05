@@ -75,6 +75,7 @@ export const DEMO_CLEAR: Readonly<Record<Table, string | null>> = {
   third_party_provisions: `person_id IN (${PEOPLE})`,
   custody: `person_id IN (${PEOPLE})`,
   form9_rank_edits: `office_id = ${OFFICE} OR person_id IN (${PEOPLE})`,
+  form_reviews: `office_id = ${OFFICE} OR person_id IN (${PEOPLE})`,
   form_mappings: `office_id = ${OFFICE}`,
   // 様式の対応表の共有（T134）。事業所のデータでない（人の値も入らない）ので消さない
   form_shared_mappings: null,

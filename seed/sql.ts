@@ -53,6 +53,8 @@ export const CLEAR_ORDER = [
   "third_party_provisions",
   "custody",
   "form9_rank_edits",
+  // 書類の紙の見直し（T136）。人・事業所・アカウントを指すので先に
+  "form_reviews",
   "form_mappings",
   // 様式の対応表の共有（T134、migration 0034）。事業所のデータでないので種では消さない（KEEP_ON_SEED。配信の種の入れ直しでも残す）
   "form_shared_mappings",

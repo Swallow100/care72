@@ -806,6 +806,11 @@ export type SignalRow = {
   ai_summary_error: ClassifyError | null;
   /** ケアマネが直したまとめ（T69b）。null は直していない。ルールの表に渡さない */
   summary: string | null;
+  /**
+   * 声の聞き取りの会話（T137、migration 0031）。lib/signals/talk.ts の TalkLog の JSON（問い・本人の言葉・AI の印・応答不明瞭）。
+   * 本人のスマホの赤の信号だけ。ルールの表に渡さない
+   */
+  talk: string | null;
   occurred_at: string;
   created_at: string;
   /**
