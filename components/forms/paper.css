@@ -726,3 +726,7 @@ html[data-print-preview] [data-paper-edit] [data-editable] {
   outline: none !important;
   background: none !important;
 }
+/* 置いた文字の枠と画像は、画面では層が描き紙の物を隠している（paper-fill.css）。見本では紙の物を出す */
+html[data-print-preview] [data-paper-fill] .ov-img [data-free] {
+  visibility: visible !important;
+}

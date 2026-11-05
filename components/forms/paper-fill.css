@@ -154,9 +154,13 @@
   [data-paper-fill] .pf-free[data-selected] {
     outline: 2px solid var(--accent);
   }
-  /* 枠の本体をつまんで動かす（T147。文字の枠も画像も） */
+  /* 枠の本体をつまんで動かす（T147。文字の枠も画像も）。引いている間に紙の字を選ばない */
   [data-paper-fill] .pf-free[data-selected] {
     cursor: move;
+  }
+  [data-paper-fill] .pf-free,
+  [data-paper-fill] .pf-free-text {
+    user-select: none;
   }
   [data-paper-fill] .pf-img {
     display: block;

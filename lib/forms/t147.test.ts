@@ -168,6 +168,8 @@ describe("3・4. 様式 9 の見出し・印刷の見本・空欄の色", () => 
     expect(css).toContain("html[data-print-preview] .print-only");
     expect(css).toContain(":not(.print-preview-bar)");
     expect(css).toContain("html[data-print-preview] .pf-layer");
+    // 層が隠れる見本では、紙の上に置いた文字の枠と画像（紙の物）を出す
+    expect(css).toContain("html[data-print-preview] [data-paper-fill] .ov-img [data-free]");
     const button = read("../../components/ui/PrintButton.tsx");
     expect(button).toContain("previewPrint(window)");
   });
