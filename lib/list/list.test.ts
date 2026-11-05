@@ -352,7 +352,9 @@ describe("行の詳細", () => {
     expect(d.contacts[0].kind).toBe("self");
     expect(d.contacts.every((c) => c.tel.startsWith("090"))).toBe(true);
     const oxygen = d.clocks.find((k) => k.label === "酸素 内蔵電池")!;
-    expect(oxygen).toMatchObject({ running: true, remaining: "残り 1 時間", tone: "urgent", start: "停電" });
+    expect(oxygen).toMatchObject({ running: true, remaining: "残り 1 時間", tone: "urgent", kind: "device" });
+    // 言葉は 1 か所（lib/ledger-words.ts、T132）: 物の名前・きっかけから長さ・残り
+    expect(oxygen.text.line).toBe("酸素 内蔵電池 停電から 2 時間（残り 1 時間）");
     expect(d.destinations.first).toBeTruthy();
     expect(d.supporters.map((s) => s.order)).toEqual([1, 2]);
     expect(d.override).toBeNull();

@@ -30,6 +30,7 @@ import {
   act,
   ActionBlocked,
   applyResult,
+  clampClock,
   needsPerson,
   needsTarget,
   pushAction,
@@ -72,8 +73,8 @@ import type { PseudonymInput } from "../pseudonym/index.ts";
 import { castScenario, mayBeCalled, needsCast, type Cast } from "./cast.ts";
 import { castFactsMap } from "./cast-facts.ts";
 import { loadPersonaSources } from "./persona.ts";
-import { FREE_TEXT_MAX, isCatalogAction } from "./action-catalog.ts";
-import { dialogueFields } from "./dialogue.ts";
+import { FREE_TEXT_MAX, isCatalogAction, isOwnEffect } from "./action-catalog.ts";
+import { dialogueFields, pushAsks, type TalkLine } from "./dialogue.ts";
 import { DRILL_END_MINUTE, nextEventMinute, type ClockMark, type ClockTo } from "./clock.ts";
 import { CLOCK_END_LABEL, clockOver, isFreeWay } from "./action-terms.ts";
 
@@ -732,7 +733,9 @@ export async function actDrill(
   // 自由対応（T91）: 文は要る。相手は読み替えた手で本人の台帳の連絡先から選ぶ（伏せきれない文は act が PseudonymLeakError を投げる）
   const text = req.kind === "free" ? (req.text?.trim() ?? "") : "";
   if (req.kind === "free" && (text === "" || [...text].length > FREE_TEXT_MAX)) return { ok: false, error: "invalid" };
-  const free = req.kind === "free" ? { text, contacts: await freeContacts(db, scope.officeId, person) } : {};
+  // T129: 本人を選ばずに名前を書いた文は、その人の連絡先を読む口（参加者だけ）
+  const contactsOf = (p: string) => (before.participants.includes(p) ? freeContacts(db, scope.officeId, p) : Promise.resolve([]));
+  const free = req.kind === "free" ? { text, contacts: await freeContacts(db, scope.officeId, person), contactsOf } : {};
   let acted: Awaited<ReturnType<typeof act>>;
   try {
     acted = await act(
@@ -757,6 +760,8 @@ export async function actDrill(
     throw e;
   }
   const { state, record, ticks } = acted;
+  // 自由対応で名前を書いた文から決めた対象（T129）は手の記録の本人。ほかの手は要求の本人と同じ
+  const who = record.person;
   const gate: Gate = { step: state.step, actions: state.actions.length };
   const { result: maybe, ...actionPayload } = record;
   // act は返事を当ててから返す（null は刻みを越える途中だけ）
@@ -791,7 +796,7 @@ export async function actDrill(
           `INSERT INTO drill_events (id, drill_id, seq, step, sim_hour, person_id, actor, kind, payload)
            SELECT ?1, ?2, ${SEQ}, ?3, ?4, ?5, 'care_manager', 'action', ?6 ${gateSql(gate, "?7", "?8")}`,
         )
-        .bind(`${id}-${record.id}`, id, record.step, record.at, person, JSON.stringify(actionPayload), gate.step, gate.actions!),
+        .bind(`${id}-${record.id}`, id, record.step, record.at, who, JSON.stringify(actionPayload), gate.step, gate.actions!),
       ...ticks.flatMap((tick) => tickStatements(db, id, tick, row.started_at, gate, record.id)),
       db
         .prepare(
@@ -803,13 +808,13 @@ export async function actDrill(
           id,
           state.step,
           result.atMinute / 60,
-          person,
+          who,
           result.speech !== null ? "persona" : "world",
           JSON.stringify({ id: record.id, ...result } satisfies ResultPayload),
           gate.step,
           gate.actions!,
         ),
-      ...heardStatements(db, id, record.id, person, result.heard ?? null, row.started_at, gate),
+      ...heardStatements(db, id, record.id, who, result.heard ?? null, row.started_at, gate),
     ]);
   } catch (e) {
     // ほかの要求が先に同じ手の番号・同じ刻みを書いた（id が重なった）。取引ごと戻っている
@@ -890,7 +895,10 @@ export async function readFreeDraft(
   id: string,
   expected: { step: number; actions: number },
   req: FreeReadRequest,
-  plan: (state: DrillState, input: { text: string; person: string | null; contacts: ReadonlyArray<ActTarget> }) => Promise<FreePlan>,
+  plan: (
+    state: DrillState,
+    input: { text: string; person: string | null; contacts: ReadonlyArray<ActTarget>; contactsOf?: (person: string) => Promise<ReadonlyArray<ActTarget>> },
+  ) => Promise<FreePlan>,
 ): Promise<FreeReadResult> {
   const row = await loadDrillRow(db, scope.officeId, id);
   if (!row) return { ok: false, error: "not_found" };
@@ -902,7 +910,8 @@ export async function readFreeDraft(
   if (text === "" || [...text].length > FREE_TEXT_MAX) return { ok: false, error: "invalid" };
   // 72 時間に着いた後は読み替えない（T123。打てない手のために Claude を呼ばない）
   if (clockOver(before)) return { ok: false, error: "blocked", label: CLOCK_END_LABEL };
-  const made = await plan(before, { text, person: req.person, contacts: await freeContacts(db, scope.officeId, req.person) });
+  const contactsOf = (p: string) => (before.participants.includes(p) ? freeContacts(db, scope.officeId, p) : Promise.resolve([]));
+  const made = await plan(before, { text, person: req.person, contacts: await freeContacts(db, scope.officeId, req.person), contactsOf });
   const next: DrillState = {
     ...before,
     world: made.called ? countFree(before.world) : before.world,
@@ -1213,7 +1222,13 @@ function asIncident(row: Pick<DrillEventRow, "person_id" | "actor" | "sim_hour">
 }
 
 /** ケアマネの手と返事（drill_events の action と result）。刻みの状況・安否のあとに、保存した順に当てる */
-export type ActEvent = { kind: "action"; record: ActionRecord } | { kind: "result"; id: string; result: ActionResult };
+/**
+ * 刻みの間の出来事（保存した順）。手・手の返事と、着信の往復（T127。応答の記録 call_answer の talk。頼み事と時計を作り直しで当てる）
+ */
+export type ActEvent =
+  | { kind: "action"; record: ActionRecord }
+  | { kind: "result"; id: string; result: ActionResult }
+  | { kind: "call"; person: string; talk: TalkLine[] };
 
 /** 保存した刻みと、その刻みの間のケアマネの手（acts） */
 export type ReplayTick = Tick & { acts: ActEvent[] };
@@ -1248,6 +1263,9 @@ function asAction(person: string | null, p: Partial<ActionPayload>): ActionRecor
     ...(typeof p.words === "string" && p.words.trim() ? { words: p.words } : {}),
     ...(Array.isArray(p.adds) && p.adds.length > 0 ? { adds: p.adds.filter((x): x is string => typeof x === "string") } : {}),
     ...(isJudge(p.judge) ? { judge: p.judge } : {}),
+    // T129: そのままの手の効き目（届いた・人が向かう）と、何も起きない文（変化なし）
+    ...(isOwnEffect(p.effect) ? { effect: p.effect } : {}),
+    ...(p.idle === true ? { idle: true as const } : {}),
   };
 }
 
@@ -1340,6 +1358,10 @@ export async function loadTicks(db: D1Database, drillId: string, hours: readonly
     } else if (r.kind === "result") {
       const res = asResult(payload as Partial<ResultPayload>);
       if (res) t.acts.push({ kind: "result", ...res });
+    } else if (r.kind === "call_answer" && r.person_id) {
+      // 着信の往復（T127、lib/drill/incoming-talk.ts）。往復の無い応答は何も当てない
+      const talk = dialogueFields(payload).talk;
+      if (talk) t.acts.push({ kind: "call", person: r.person_id, talk });
     }
   }
   return ticks;
@@ -1365,11 +1387,23 @@ export function replayState(
     state = foldTick(state, t, last);
     out.push({ step: t.step, hour: t.hour, incidents: t.incidents, turns: t.turns, finished: t.finished, world: state.world });
     for (const a of t.acts ?? []) {
-      state = a.kind === "action" ? pushAction(state, a.record) : applyResult(state, a.id, a.result);
+      state =
+        a.kind === "action" ? pushAction(state, a.record) : a.kind === "result" ? applyResult(state, a.id, a.result) : applyCallTalk(state, a.person, a.talk);
     }
   }
   // 中断・終了した訓練の途中を見るときも、状態の言葉は訓練の状態のまま
   return { state: { ...state, status: row.status, ...(extras.undone ? { undone: extras.undone } : {}) }, ticks: out };
+}
+
+/**
+ * 着信の往復（T127）を状態に当てる: 掛けてきた人の言葉の頼み事を世界に積み、時計を往復の終わりまで（72 時間で止める）。
+ * 往復を足す口（lib/drill/incoming-talk.ts）が drills.world に書く物と同じ。色・聞いた安否は変えない
+ */
+export function applyCallTalk(state: DrillState, person: string, talk: ReadonlyArray<TalkLine>): DrillState {
+  let world = state.world;
+  for (const l of talk) if (l.who === "them" && l.asks) world = pushAsks(world, person, l.asks, l.minute);
+  const minute = clampClock(state, Math.max(state.minute, ...talk.map((l) => l.minute)));
+  return { ...state, world, minute };
 }
 
 /** 訓練の参加者（drills.world の写しから） */

@@ -47,6 +47,7 @@ import {
   CLOCK_KIND_LABELS,
   CLOCK_SOURCE_LABELS,
   CLOCK_START_LABELS,
+  CLOCK_TEXT_LABELS,
   CLOCK_UNIT_LABELS,
   CLOCK_UNIT_SHORT,
   CONSENT_KIND_LABELS,
@@ -82,8 +83,9 @@ import {
   TIMELINE_KIND_LABELS,
 } from "./labels.ts";
 import { toTriagePerson } from "./triage/from-ledger.ts";
+import { clockText, nightText, type ClockText } from "./ledger-words.ts";
 import { transportKindOf } from "./map/transport.ts";
-import { clockRemaining, formatHours, tierOf, type Color, type Situation, type Tier, type TriageClock, type TriageResult } from "./triage/index.ts";
+import { clockRemaining, tierOf, type Color, type Situation, type Tier, type TriageClock, type TriageResult } from "./triage/index.ts";
 import { personSituation, type DisasterSituation } from "./disaster/state.ts";
 import type { PersonBrief } from "./auth/scope.ts";
 import { withQrView } from "./qr/timeline.ts";
@@ -288,6 +290,8 @@ export type ClockView = {
   depends: { on: string; check: string; unchecked: boolean } | null;
   note: string | null;
   pending: Pending[];
+  /** 時計の 1 行の言葉（T132、lib/ledger-words.ts の clockText。平時の形）。担当一覧・訓練の行の詳細と同じ言葉で描く */
+  text: ClockText;
 };
 
 /** 書類の入口。href があれば開ける（紙面ができた書類）。about は何の書類かの 1 行（lib/forms/catalog.ts） */
@@ -579,17 +583,8 @@ function contactLine(c: Contact, opts: { order?: number; kind?: boolean } = {}):
   if (opts.kind) segs.push(muted(CONTACT_KIND_LABELS[c.kind]));
   if (c.reach) segs.push(muted(CONTACT_REACH_LABELS[c.reach]));
   if (c.has_car === 1) segs.push(muted(CONTACT_FLAG_LABELS.hasCar));
-  if (COMES_KINDS.has(c.kind)) {
-    segs.push(
-      muted(
-        c.night_ok === 1
-          ? CONTACT_FLAG_LABELS.nightOk
-          : c.night_ok === 0
-            ? CONTACT_FLAG_LABELS.nightNo
-            : CONTACT_FLAG_LABELS.nightUnknown,
-      ),
-    );
-  }
+  // 夜間は何の印か分かる形（「夜間 来訪 未確認」。lib/ledger-words.ts の nightText、T132）
+  if (COMES_KINDS.has(c.kind)) segs.push(muted(nightText(c.night_ok)));
   if (c.has_smartphone === 1) segs.push(muted(CONTACT_FLAG_LABELS.hasSmartphone));
   if (c.phone) segs.push({ text: c.phone, tel: telHref(c.phone) });
   if (c.note) segs.push(muted(c.note));
@@ -624,6 +619,13 @@ function clockValueSeg(k: ClockRow): Seg {
   return tone ? { text: v, tone } : text(v);
 }
 
+/** 時計のきっかけから長さ（「停電から」＋色つきの「2 時間」）。値が無ければ何の値かと灰の「未確認」（lib/ledger-words.ts、T132） */
+function clockSpanSegs(k: ClockRow): Seg[] {
+  const t = clockText(k);
+  if (t.missing) return [...(t.what ? [muted(t.what)] : []), muted(BLANK_LABELS.unconfirmed)];
+  return [...(t.from ? [muted(t.from)] : []), clockValueSeg(k)];
+}
+
 // ---------- 区分ごとの行 ----------
 
 /** 電源で動く機器。時計（電池）が無ければ「電池 未確認」と出す */
@@ -646,7 +648,8 @@ function medicalBlocks(ledger: Ledger, contacts: Contact[], clocks: PersonPageRo
               text(m.schedule ?? ""),
               muted(MED_PARTS.amount),
               m.amount ? text(m.amount) : blank,
-              muted(MED_PARTS.remaining),
+              // 手元の量（薬の時計の長さ）。「残り」と書くと発災時の今の残りと取り違えるので、行の詳細と同じ言葉に（T132）
+              muted(CLOCK_TEXT_LABELS.missing.medication),
               clock ? clockValueSeg(clock) : blank,
               muted(MED_PARTS.storage),
               m.storage ? text(m.storage) : blank,
@@ -662,7 +665,8 @@ function medicalBlocks(ledger: Ledger, contacts: Contact[], clocks: PersonPageRo
       : lines(
           medical.devices.map((d) => {
             const mine = clocks.filter((k) => k.category === d.kind && k.kind !== "medication");
-            const clockSegs: Seg[] = mine.flatMap((k) => [muted(k.label), clockValueSeg(k)]);
+            // 時計は「酸素 内蔵電池 停電から 2 時間」（行の詳細・時計の欄と同じ言葉。T132）
+            const clockSegs: Seg[] = mine.flatMap((k) => [muted(k.label), ...clockSpanSegs(k)]);
             if (mine.length === 0 && POWERED_DEVICES.has(d.kind)) clockSegs.push(muted(MED_PARTS.battery), blank);
             // その他は「その他（電動ベッド）」の 1 語（受け持ちの表・担当一覧と同じ。T64）、ほかの種類は種類と中身を別の欄に
             const name = d.kind === "other" ? [text(deviceText(d))] : [text(DEVICE_LABELS[d.kind]), text(d.detail ?? "")];
@@ -718,6 +722,7 @@ function clockView(k: ClockRow): ClockView {
         : null,
     note: k.note,
     pending: [],
+    text: clockText(k),
   };
 }
 
@@ -827,8 +832,9 @@ function contactListLine(c: Contact): Line {
   if (c.kind !== "other" && kind !== label) segs.push(mark(kind));
   if (c.emergency_order != null) segs.push(mark(`${CONTACT_ROLE_LABELS.emergency} ${c.emergency_order}`));
   if (c.supporter_order != null) segs.push(mark(`${CONTACT_ROLE_LABELS.supporter} ${c.supporter_order}`));
-  if (c.night_ok === 1) segs.push(mark(CONTACT_FLAG_LABELS.nightOk));
-  else if (COMES_KINDS.has(c.kind)) segs.push(muted(c.night_ok === 0 ? CONTACT_FLAG_LABELS.nightNo : CONTACT_FLAG_LABELS.nightUnknown));
+  // 夜間は何の印か分かる形（「夜間 来訪可」「夜間 来訪 未確認」。lib/ledger-words.ts の nightText、T132）
+  if (c.night_ok === 1) segs.push(mark(nightText(1)));
+  else if (COMES_KINDS.has(c.kind)) segs.push(muted(nightText(c.night_ok)));
   if (c.reach) segs.push(muted(CONTACT_REACH_LABELS[c.reach]));
   if (c.has_car === 1) segs.push(muted(CONTACT_FLAG_LABELS.hasCar));
   if (c.has_smartphone === 1) segs.push(muted(CONTACT_FLAG_LABELS.hasSmartphone));
@@ -1287,19 +1293,12 @@ function headClocks(clocks: ReadonlyArray<ClockRow>, s: Situation | null = null)
     .map((k) => ({ k, left: hoursLeft(k, s) }))
     .sort((a, b) => (a.left?.hours ?? Infinity) - (b.left?.hours ?? Infinity))
     .map(({ k, left }) => {
-      const length = k.value != null && k.unit != null ? `${k.value} ${CLOCK_UNIT_LABELS[k.unit]}` : null;
-      if (!s || !left) return { id: k.id, label: k.label, value: length, tone: clockTone(left?.hours ?? null), note: null };
-      if (!left.running) {
-        const note = `${CLOCK_START_LABELS[k.starts_on]}${HEAD_LABELS.startsOn}`;
-        return { id: k.id, label: k.label, value: length, tone: clockTone(left.hours), note };
-      }
-      return {
-        id: k.id,
-        label: k.label,
-        value: left.over ? `${HEAD_LABELS.over} ${formatHours(-left.hours)}` : `${HEAD_LABELS.left} ${formatHours(left.hours)}`,
-        tone: clockTone(left.hours),
-        note: null,
-      };
+      // 言葉は行の詳細と同じ所（lib/ledger-words.ts の clockText、T132）: 長さは「停電から 2 時間」、未確認は「手元の量 未確認」を note に
+      const t = clockText(k, s);
+      if (t.missing) return { id: k.id, label: k.label, value: null, tone: clockTone(null), note: t.span };
+      if (!s || !left) return { id: k.id, label: k.label, value: t.span, tone: clockTone(left?.hours ?? null), note: null };
+      if (!left.running) return { id: k.id, label: k.label, value: t.span, tone: clockTone(left.hours), note: t.waiting };
+      return { id: k.id, label: k.label, value: t.left?.text ?? null, tone: clockTone(left.hours), note: null };
     });
 }
 

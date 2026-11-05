@@ -2,6 +2,7 @@
 // 手の打ち方は lib/drill/actions.ts、世界の返事は lib/drill/world-reply.ts。
 
 import type { ContactKind, DrillAction, SignalColor, WhereNow } from "../db/types.ts";
+import type { OwnEffect } from "./action-catalog.ts";
 import type { FreeWay } from "./action-terms.ts";
 import type { TalkLine, VisitReport } from "./dialogue.ts";
 import type { PersonState } from "./persona-types.ts";
@@ -81,6 +82,13 @@ export type ActionRecord = {
    * 本人役・監督・世界・講評は、この手をこの言い方で読む（ケアマネの文そのものは渡さない）
    */
   words?: string;
+  /**
+   * そのままの自由対応の効き目（T129。lib/drill/action-catalog.ts の OWN_EFFECTS。届いた・人が向かう）。左の表に届く物は持たない。
+   * 無ければ世界を変えない（T110 のまま）
+   */
+  effect?: OwnEffect;
+  /** 何も起きない自由対応（T129。「変化なし」、机上 2 分、世界を変えない）。前の訓練の「記録」（as note）はそのまま読む */
+  idle?: true;
   /** 所要を伸ばした決まり（T110、lib/drill/action-terms.ts の言葉。「夜間」「浸水」）。無ければ表の分のまま */
   adds?: string[];
   /**
@@ -112,9 +120,24 @@ export type FreeJudge = {
     text: string | null;
     outcome: string | null;
     reason: string | null;
+    /** 今できないときの今できる別の道（T129。省略は前の形） */
+    alt?: string | null;
+    /** そのままの手の効き目（T129。AI の答えのまま。省略は前の形） */
+    effect?: string | null;
   } | null;
-  /** コードが決めた物 */
-  decided: { as: DrillAction | null; way: FreeWay | null; minutes: number; block: string | null };
+  /**
+   * コードが決めた物。person は本人を選ばずに名前を書いた文で決めた対象（T129）、effect はそのままの手の効き目（決まりで絞ったあと）、
+   * idle は何も起きない文（どれも省略は前の形）
+   */
+  decided: {
+    as: DrillAction | null;
+    way: FreeWay | null;
+    minutes: number;
+    block: string | null;
+    person?: string | null;
+    effect?: OwnEffect | null;
+    idle?: boolean;
+  };
   /** Claude を呼んだか */
   called: boolean;
 };
@@ -161,6 +184,19 @@ export type FreePlan = {
   judge: FreeJudge;
   /** Claude を呼んだか（counts.free に数えた） */
   called: boolean;
+  /**
+   * 対象の本人（T129）。本人を選ばずに打った文に参加者の名前が 1 人だけあれば、その人（伏せた文の仮名から決める）。
+   * 省略は選んだ本人のまま（前の形）
+   */
+  person?: string | null;
+  /** 今できないときの今できる別の道（T129。AI の言葉か決まりの言葉。名前・内部の名前なし）。無ければ null */
+  alt?: string | null;
+  /** 別の道が AI の言葉 */
+  altAi?: boolean;
+  /** そのままの手の効き目（T129。決まりで絞ったあと） */
+  effect?: OwnEffect | null;
+  /** 何も起きない文（T129。「変化なし」） */
+  idle?: boolean;
 };
 
 /** 手の前の状態。本人の今の様子・印、職員の空き、電話の線、家の前の道。左の表の色と順位は保存の所が足す */
@@ -194,6 +230,7 @@ export type ActionStatus =
   | "evacuated"
   | "noted"
   | "done"
+  | "unchanged"
   | "noAnswer"
   | "silent"
   | "noNumber";

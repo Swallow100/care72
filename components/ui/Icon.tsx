@@ -52,6 +52,7 @@ export {
   PrinterIcon as PrintIcon, // 印刷
   QrCodeIcon as QrIcon, // QR の作成・再作成
   QuestionMarkCircleIcon as UnknownIcon, // 不明（入れる欄の問い）
+  QueueListIcon as AllIcon, // 全部（行の詳細から台帳の平時の情報を全部開く、T132）
   UserIcon as IdIcon, // ID の欄の印
   UserMinusIcon as UnlistIcon, // 一覧から外す
   UserPlusIcon as AddPersonIcon, // 利用者追加・ケアマネ追加

@@ -222,6 +222,9 @@ export function toCaseloadRows(
           ? buildRowDetail({
               personId: p.id,
               ledger,
+              // 「全部」（T132）: 本人のページと同じ面の組み立て
+              person: p,
+              today,
               contacts: src.contacts.filter((c) => c.person_id === p.id),
               clocks: src.clocks.filter((k) => k.person_id === p.id),
               signals: src.signals.filter((x) => x.person_id === p.id),

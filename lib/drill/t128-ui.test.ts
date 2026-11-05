@@ -355,6 +355,36 @@ describe("新着と経過の置き場所", () => {
     expect(news.some((x) => x.text.includes("持ち出し忘れ"))).toBe(false);
   });
 
+  it("着信への応答と往復（T127 の call・reply）は帯の印にしない（着信の安否の印に任せる）。往復の言った事は新着の候補に短い 1 行で", () => {
+    const call = {
+      signal: "sig-1",
+      person: "p-02",
+      color: "green" as const,
+      source: "family" as const,
+      minute: 120,
+      step: 2,
+      response: "answer" as const,
+      respondedAt: 121,
+      saying: "電池が心配",
+      ai: false,
+      talk: [
+        { who: "cm" as const, text: "今どこに", ai: false, minute: 122 },
+        { who: "them" as const, text: "家にいます", ai: true, minute: 123 },
+      ],
+      talkEnd: 124,
+      callee: null,
+    };
+    const log = buildDrillLog(QUAKE_TICKS, QUAKE_ACTIONS, { finished: false, calls: [call] });
+    const rows = [...log.occur, ...log.know, ...log.act].filter((r) => r.source === "call" || r.source === "reply");
+    expect(rows.length).toBeGreaterThan(0);
+    for (const r of rows) expect(markOf(r)).toBeNull();
+    const ctx = { names: NAMES, people: PEOPLE, base: BASE };
+    const reply = newsItemsOf(log, ctx).find((x) => x.key.startsWith("r-"));
+    if (reply) expect(reply.text).toContain("「家にいます」");
+    const callRow = log.act.find((r) => r.source === "call")!;
+    expect(rowLine(callRow, ctx)).toContain("出た");
+  });
+
   it("サーバーの描きでは新着を出さない（端末の見た記録で決める）", () => {
     expect(renderToStaticMarkup(createElement(NewsBar, { drillId: "d1", items }))).toBe("");
   });

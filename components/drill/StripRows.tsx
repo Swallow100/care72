@@ -30,6 +30,7 @@ import type { DrillLog, LogRow } from "@/lib/drill/timeline";
 import type { NewsItem } from "@/lib/drill/news";
 import { hourText, minuteText } from "@/lib/drill/time-text";
 import type { Band } from "@/lib/drill/view";
+import { SCORE_LABELS } from "@/lib/drill/score-labels";
 import { COLOR_LABELS } from "@/lib/labels";
 import { BandBar } from "./DrillBar";
 
@@ -73,6 +74,13 @@ export function rowLine(r: LogRow, c: LineCtx): string {
     case "heard": {
       const a = r.a;
       return [ACTION_LABELS[a.kind], name(a.person), a.result ? ACTION_STATUS_LABELS[a.result.status] : ""].filter(Boolean).join(" ");
+    }
+    // 着信への応答・拒否と、往復で掛けてきた人の言った事（T127）
+    case "call":
+      return [name(r.c.person), CALL_UI.incoming, r.c.response === "answer" ? SCORE_LABELS.answered : r.c.response === "decline" ? SCORE_LABELS.declined : SCORE_LABELS.open].join(" ");
+    case "reply": {
+      const said = [...(r.c.talk ?? [])].reverse().find((l) => l.who !== "cm");
+      return [name(r.c.person), CALL_UI.incoming, said ? `「${said.text}」` : ""].filter(Boolean).join(" ");
     }
   }
 }

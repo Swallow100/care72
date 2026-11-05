@@ -3,7 +3,8 @@
 // - 印は経過の行（lib/drill/timeline.ts の buildDrillLog）から作る。行の key がそのまま印と経過の行の結び付き（押すと経過のその行へ）。
 //   進行中の非公表の隠し方も経過の発生のタブと同じになる（ケアマネが知り得ない物を帯にも出さない）
 // - 段は表 1 つで決める: 状況（incident）は変化の種類 → 段（INCIDENT_LANE。全部の種類を持つ。足して行が無いと型で落ちる）、
-//   本人のする事（doing）は本人、安否（signal）は赤と着信の物だけ連絡、手（action）は対応。手の返事で届いた事（heard）は対応の印に任せて置かない
+//   本人のする事（doing）は本人、安否（signal）は赤と着信の物だけ連絡、手（action）は対応。手の返事で届いた事（heard）は対応の印に、
+//   着信への応答と往復（call・reply、T127）は連絡の段の着信の印に任せて置かない
 // - 停電・電話・断水の段は帯（lib/drill/view.ts の bandsOf の Band）を描き、その段の状況の印も同じ段に置く。帯の種類が増えれば段も増える
 //   （段の並びは BAND_LABELS の並び）
 // - 空の段は出さない。段の並びは STRIP_ORDER
@@ -197,6 +198,9 @@ export function markOf(r: LogRow): StripMark | null {
     case "action":
       return { ...base, lane: "act", tab: "act", tone: "plain", end: Math.max(r.a.atMinute, r.a.result?.atMinute ?? r.a.endMinute) };
     case "heard":
+    // 着信への応答・拒否と往復の言葉（T127）は、着信の安否の印（連絡の段）に任せて置かない
+    case "call":
+    case "reply":
       return null;
   }
 }

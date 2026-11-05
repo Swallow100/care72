@@ -13,7 +13,7 @@ import { useState } from "react";
 import { AiMark } from "@/components/person/parts";
 import { Button } from "@/components/ui/Button";
 import { SendIcon } from "@/components/ui/Icon";
-import { ASK_LABELS, canTalk, TALK_ASKS, TALK_LABELS, TALK_MAX, TALK_TEXT_MAX, TALK_UI, talkRounds, type TalkAsk, type TalkLine } from "@/lib/drill/dialogue";
+import { ASK_LABELS, CALL_OUT_ASKS, canTalk, TALK_LABELS, TALK_MAX, TALK_TEXT_MAX, TALK_UI, talkRounds, type TalkAsk, type TalkLine } from "@/lib/drill/dialogue";
 import type { ActionRecord } from "@/lib/drill/engine";
 import { DRILL_LABELS } from "@/lib/drill/labels";
 import type { AskKind } from "@/lib/drill/scenarios";
@@ -119,7 +119,7 @@ export function TalkBox({
       {open && (
         <div className="mt-2 space-y-1.5" data-talk-controls>
           <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={TALK_UI.talk}>
-            {TALK_ASKS.map((k) => (
+            {CALL_OUT_ASKS.map((k) => (
               <Button
                 key={k}
                 kind="plainIn"

@@ -13,6 +13,7 @@ import { DrillControls } from "@/components/drill/DrillControls";
 import { DrillRowDetail } from "@/components/drill/DrillRowDetail";
 import { FictionalMark, FictionalNote } from "@/components/drill/Fictional";
 import { IncomingCall, type IncomingCallItem } from "@/components/drill/IncomingCall";
+import { MissedCalls, type MissedItem } from "@/components/drill/MissedCalls";
 import { DrillLog } from "@/components/drill/DrillLog";
 import { DrillPanes } from "@/components/drill/DrillPanes";
 import { NewsBar } from "@/components/drill/NewsBar";
@@ -28,12 +29,12 @@ import { StateTag } from "@/components/ui/Tag";
 import { requirePage } from "@/lib/auth/server";
 import { sortCaseload, type SortKey } from "@/lib/caseload";
 import { elapsedText, shortJst } from "@/lib/disaster/state";
-import { callerLabel, callsOf } from "@/lib/drill/calls";
+import { callerContact, callerLabel, callsOf, openMissedCalls } from "@/lib/drill/calls";
 import { drillScope, type DrillScope } from "@/lib/drill/db";
 import { nowHour } from "@/lib/drill/engine";
 import { isDrillId } from "@/lib/drill/http";
 import { loadDrillRecord, type DrillRecord } from "@/lib/drill/record";
-import { loadCallRecords } from "@/lib/drill/responses";
+import { loadCallRecords, type CallRecord } from "@/lib/drill/responses";
 import { SCORE_LABELS } from "@/lib/drill/score-labels";
 import { scoreView } from "@/lib/drill/score-view";
 import { aiStatusFor } from "@/lib/claude/cloudflare";
@@ -127,6 +128,9 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
           ended={endedOf(s, r.id)}
           asks={s.state.world.asks?.[r.id] ?? []}
           hints={s.hints?.[r.id] ?? null}
+          // 進行中は詳細の連絡先の行から対応の欄の手を選ぶ（T132）。可否は決まりの表の結果（terms）を読むだけ
+          pick={running}
+          terms={s.terms?.[r.id] ?? null}
         />
       ) : null,
     // 仮想モード（T50）: 結末の人の行に印と 1 文
@@ -165,10 +169,13 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
       tag: r.triage ? <StateTag tone={COLOR_TONES[r.triage.color]}>{COLOR_LABELS[r.triage.color]}</StateTag> : null,
     }));
   const latest = [...actions].reverse().find((a) => a.result !== null) ?? null;
+  // 着信の記録（応答・拒否と往復、T127）。経過・着信の画面・不在着信の一覧が読む。読めなければ空
+  const callRecords = await callRecordsOf(id);
+  const missed = running ? missedOf(s, callRecords) : [];
   // 手の時刻の元（訓練の中の時刻。T128、lib/drill/act-time.ts）
   const base = timeBaseOf(s.drill.started_at, s.state.options?.night);
   // 上の帯の段と新着（T128）。経過と同じ行から（進行中は公表の物だけ）
-  const log = buildDrillLog(s.ticks, actions, { finished: !running });
+  const log = buildDrillLog(s.ticks, actions, { finished: !running, calls: callRecords });
   const strip = buildStrip(log, [...new Set(s.bands.map((b) => b.kind))]);
   const news = running ? newsItemsOf(log, { names: s.names, people: s.area, base }) : [];
 
@@ -271,6 +278,8 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
               // ケアマネの手（T20）: 対象・手・相手を選んで実行、結果
               <Panel title={DRILL_LABELS.actions} id="actions" head={paneHead}>
                 <div className="space-y-2.5">
+                  {/* 鳴らさなかった電話の形の連絡（T127）。折返で連絡先電話・本人電話を打つ */}
+                  {missed.length > 0 && <MissedCalls drillId={id} step={s.drill.step} actions={actions.length} items={missed} fiction={fiction} />}
                   <ActionPanel
                     drillId={id}
                     step={s.drill.step}
@@ -323,6 +332,7 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
                 fiction={fiction}
                 refused={s.refused}
                 voiceOf={voiceOf}
+                calls={callRecords}
                 {...(running ? { undo: { drillId: id, step: s.drill.step, actions: actions.length, act: s.undoable } } : {})}
               />
             </Panel>
@@ -352,7 +362,9 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
           </Panel>
         </div>
       </div>
-      {running && <IncomingCall drillId={id} calls={incomingOf(s, voiceOn, await respondedOf(id))} fiction={fiction} />}
+      {running && (
+        <IncomingCall drillId={id} calls={incomingOf(s, voiceOn, callRecords)} fiction={fiction} step={s.drill.step} actions={actions.length} />
+      )}
     </main>
   );
 }
@@ -367,13 +379,16 @@ function endedOf(s: DrillScreen, person: string): { text: string; reason: string
 
 /**
  * 進行中の今の刻みの着信（電話の形の安否、鳴らす順。lib/drill/calls.ts）。名前はケアマネの画面なので出す（声の生成には渡さない）。
- * 応答・拒否が訓練の記録にある着信は鳴らさない（別の端末で押した物も）
+ * 応答・拒否が訓練の記録にある着信は鳴らさない（別の端末で押した物も）。応答して切っていない着信（T127）は、通話中のまま往復と一緒に出す
  */
-function incomingOf(s: DrillScreen, voiceOn: boolean, responded: ReadonlySet<string>): IncomingCallItem[] {
+function incomingOf(s: DrillScreen, voiceOn: boolean, records: ReadonlyArray<CallRecord>): IncomingCallItem[] {
   const tick = s.ticks.find((t) => t.step === s.drill.step);
   if (!tick) return [];
-  return callsOf(tick.turns).flatMap((t) =>
-    t.signal && t.saying && !responded.has(t.signal)
+  const bySignal = new Map(records.map((c) => [c.signal, c]));
+  return callsOf(tick.turns).flatMap((t) => {
+    const rec = t.signal ? bySignal.get(t.signal) : undefined;
+    const talking = rec?.response === "answer" && (rec.talkEnd ?? null) === null;
+    return t.signal && t.saying && (!rec?.response || talking)
       ? [
           {
             signal: t.signal,
@@ -384,10 +399,32 @@ function incomingOf(s: DrillScreen, voiceOn: boolean, responded: ReadonlySet<str
             ai: t.ai,
             minute: Math.round(t.at * 60),
             voice: voiceOn ? voiceHref(s.drill.id, { signal: t.signal }) : null,
+            ...(talking ? { answered: true, lines: rec?.talk ?? [] } : {}),
           },
         ]
-      : [],
-  );
+      : [];
+  });
+}
+
+/**
+ * まだ折返していない不在着信（T127、lib/drill/calls.ts の openMissedCalls、新しい順）。折返は掛けてきた人の連絡先へ連絡先電話
+ * （lib/drill/calls.ts の callerContact。電話の無い人・連絡先の無い人は本人電話）
+ */
+function missedOf(s: DrillScreen, records: ReadonlyArray<CallRecord>): MissedItem[] {
+  return openMissedCalls(s.ticks, s.state.actions, records).map(({ turn, step, minute }) => {
+    const contacts = s.contacts[turn.person] ?? [];
+    const target = callerContact(turn.source, contacts);
+    return {
+      key: turn.signal ?? `${step}-${turn.person}-${minute}`,
+      person: turn.person,
+      name: s.names[turn.person] ?? turn.person,
+      caller: callerLabel(turn.source, contacts),
+      minute,
+      saying: turn.saying,
+      ai: turn.ai,
+      ...(target?.hasPhone ? { kind: "call_contact" as const, target: target.id } : { kind: "call_person" as const, target: null }),
+    };
+  });
 }
 
 /** 本人役の赤（本人の言う事つき）の「録音」（言う事の声。安否の id → 声の行き先） */
@@ -415,13 +452,13 @@ async function loadScore(scope: DrillScope, id: string, ai: AiStatus | null): Pr
   }
 }
 
-/** 応答・拒否を残した着信の安否の id（T22）。読めなければ空（端末の sessionStorage だけで鳴らし分ける） */
-async function respondedOf(id: string): Promise<Set<string>> {
+/** 着信の記録（応答・拒否と往復、T22・T127）。読めなければ空（端末の sessionStorage だけで鳴らし分け、経過に着信の行を出さない） */
+async function callRecordsOf(id: string): Promise<CallRecord[]> {
   try {
     const { env } = await getCloudflareContext({ async: true });
-    return new Set((await loadCallRecords(env.DB, id)).flatMap((c) => (c.response ? [c.signal] : [])));
+    return await loadCallRecords(env.DB, id);
   } catch {
-    return new Set();
+    return [];
   }
 }
 

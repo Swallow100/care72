@@ -17,7 +17,8 @@
 
 import type { ActionRecord, DrillIncident, DrillTurn, Tick } from "./engine.ts";
 import { isStopIncident } from "./ai-stop.ts";
-import { callIndexes } from "./calls.ts";
+import { turnRoutes, type TurnRoute } from "./calls.ts";
+import type { CallRecord } from "./responses.ts";
 import { LOG_LABELS } from "./labels.ts";
 import type { Arrival, PersonMarks, Scheduled, WorldEventKind } from "./scenarios.ts";
 
@@ -33,8 +34,11 @@ export function parseLogTab(v: unknown): LogTab {
   return typeof v === "string" && (LOG_TABS as readonly string[]).includes(v) ? (v as LogTab) : DEFAULT_LOG_TAB;
 }
 
-/** 記録の種類。incident 状況・doing 本人のする事・signal 安否・heard 手の返事で届いた事・action 手 */
-export const LOG_SOURCES = ["incident", "doing", "signal", "heard", "action"] as const;
+/**
+ * 記録の種類。incident 状況・doing 本人のする事・signal 安否・heard 手の返事で届いた事・action 手・
+ * call 着信への応答と拒否（T127）・reply 着信の往復で掛けてきた人の言った事（T127）
+ */
+export const LOG_SOURCES = ["incident", "doing", "signal", "heard", "action", "call", "reply"] as const;
 export type LogSource = (typeof LOG_SOURCES)[number];
 
 /**
@@ -47,6 +51,8 @@ export const LOG_ROUTE: Readonly<Record<LogSource, ReadonlyArray<LogTab>>> = {
   signal: ["know"],
   heard: ["know"],
   action: ["act"],
+  call: ["act"],
+  reply: ["know"],
 };
 
 /**
@@ -139,9 +145,54 @@ type RowBase = { key: string; minute: number; person: string | null };
 export type LogRow =
   | (RowBase & { source: "incident"; e: DrillIncident; step: number; reach: "public" | "private"; fallback: boolean })
   | (RowBase & { source: "doing"; t: DrillTurn; step: number })
-  | (RowBase & { source: "signal"; t: DrillTurn; step: number; callIn: boolean })
+  | (RowBase & { source: "signal"; t: DrillTurn; step: number; callIn: boolean; route: TurnRoute })
   | (RowBase & { source: "heard"; a: ActionRecord })
-  | (RowBase & { source: "action"; a: ActionRecord });
+  | (RowBase & { source: "action"; a: ActionRecord })
+  | (RowBase & { source: "call"; c: CallRecord })
+  | (RowBase & { source: "reply"; c: CallRecord });
+
+/**
+ * 把握の行がどの経路で届いたか（T127。行の印）。安否は着信・不在・ボタン（lib/drill/calls.ts の turnRoute）、
+ * 手の返事は発信（電話）・訪問・結果（世界の事実だけ）、着信の往復は着信、公表の状況は公表
+ */
+export type KnowRoute = TurnRoute | "out" | "visit" | "result" | "public";
+
+/** 経路の印の言葉（2〜4 字。「ボタン」は本人・家族の画面の安否のボタン） */
+export const ROUTE_LABELS: Readonly<Record<KnowRoute, string>> = {
+  call: "着信",
+  missed: "不在",
+  button: "ボタン",
+  out: "発信",
+  visit: "訪問",
+  result: "結果",
+  public: "公表",
+};
+
+/** 対応のタブの着信の行の言葉（T127） */
+export const CALL_LOG_LABELS = { answer: "応答", decline: "拒否" } as const;
+
+/** 訪問の形の手（着いて様子を見る） */
+const VISIT_KINDS: ReadonlySet<ActionRecord["kind"]> = new Set(["visit"]);
+
+export function knowRouteOf(r: LogRow): KnowRoute | null {
+  switch (r.source) {
+    case "signal":
+      return r.route;
+    case "reply":
+      return "call";
+    case "incident":
+      return "public";
+    case "heard": {
+      const res = r.a.result;
+      if (!res) return null;
+      if (res.heard?.via === "visit" || res.visit || VISIT_KINDS.has(r.a.kind)) return "visit";
+      if (res.pickup !== null || res.speech || (res.talk?.length ?? 0) > 0 || res.heard?.via === "call") return "out";
+      return "result";
+    }
+    default:
+      return null;
+  }
+}
 
 /** 把握の経路。public 公表・signal 安否の言う事・heard 通話や訪問 */
 export type AwareVia = "public" | "signal" | "heard";
@@ -190,7 +241,11 @@ const saidOf = (t: DrillTurn) => Boolean(t.saying?.trim());
  * 刻みと手から 3 つのタブの行を作る。finished は終わった・中断した訓練（非公表の行も発生に出す）。
  * 状況の欄と同じく、AI 停止の印（ai_stop・世界の止まり）は上の帯に任せて外し、世界の 1 文のある刻みの代替の印は 1 文に添える
  */
-export function buildDrillLog(ticks: ReadonlyArray<Tick>, actions: ReadonlyArray<ActionRecord>, opts: { finished: boolean }): DrillLog {
+export function buildDrillLog(
+  ticks: ReadonlyArray<Tick>,
+  actions: ReadonlyArray<ActionRecord>,
+  opts: { finished: boolean; calls?: ReadonlyArray<CallRecord> },
+): DrillLog {
   const all: LogRow[] = [];
   for (const t of ticks) {
     const fellBack = t.incidents.some((e) => e.change.kind === "world_note" && e.change.state === "down");
@@ -211,15 +266,23 @@ export function buildDrillLog(ticks: ReadonlyArray<Tick>, actions: ReadonlyArray
         fallback: fellBack && e.change.kind === "narration",
       });
     });
-    const calls = callIndexes(t.turns);
+    const routes = turnRoutes(t.turns);
     t.turns.forEach((x, n) => {
-      all.push({ source: "signal", key: `s-${t.step}-${n}`, minute: minuteOf(x.at), person: x.person, t: x, step: t.step, callIn: calls.includes(n) });
+      const route = routes[n];
+      all.push({ source: "signal", key: `s-${t.step}-${n}`, minute: minuteOf(x.at), person: x.person, t: x, step: t.step, callIn: route === "call", route });
       if (x.doing?.trim()) all.push({ source: "doing", key: `d-${t.step}-${n}`, minute: minuteOf(x.at), person: x.person, t: x, step: t.step });
     });
   }
   for (const a of actions) {
     all.push({ source: "action", key: `a-${a.id}`, minute: a.atMinute, person: a.person, a });
     if (a.result && heardOf(a)) all.push({ source: "heard", key: `h-${a.id}`, minute: a.result.atMinute, person: a.person, a });
+  }
+  // 着信への応答・拒否（対応）と、往復で掛けてきた人の言った事（把握。最初の返事の時刻）。T127
+  for (const c of opts.calls ?? []) {
+    if (!c.response) continue;
+    all.push({ source: "call", key: `c-${c.signal}`, minute: c.respondedAt ?? c.minute, person: c.person, c });
+    const said = (c.talk ?? []).find((l) => l.who === "them");
+    if (said) all.push({ source: "reply", key: `r-${c.signal}`, minute: said.minute, person: c.person, c });
   }
   // 古い順（同じ分は作った順）
   const sorted = all.map((r, i) => ({ r, i })).sort((x, y) => x.r.minute - y.r.minute || x.i - y.i).map((x) => x.r);
@@ -235,6 +298,10 @@ export function buildDrillLog(ticks: ReadonlyArray<Tick>, actions: ReadonlyArray
   const contacts = know.flatMap((r): Array<{ person: string; minute: number; via: AwareVia; key: string }> => {
     if (r.source === "signal" && saidOf(r.t)) return [{ person: r.t.person, minute: r.minute, via: "signal", key: r.key }];
     if (r.source === "heard" && r.person && contactOf(r.a)) return [{ person: r.person, minute: r.minute, via: "heard", key: r.key }];
+    // 着信の往復（T127）: 掛けてきた人の言葉ごと
+    if (r.source === "reply") {
+      return (r.c.talk ?? []).flatMap((l) => (l.who === "them" ? [{ person: r.c.person, minute: l.minute, via: "heard" as const, key: r.key }] : []));
+    }
     return [];
   });
   const aware: Record<string, Awareness> = {};
