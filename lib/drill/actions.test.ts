@@ -175,7 +175,8 @@ describe("7 つの手の表", () => {
   it("今までの 7 つの手の所要時間は表で固定のまま（出向く 40 分）。手の表 v2（T91）で 18 になった。ボタンの言葉は 2〜5 字", () => {
     expect(Object.keys(ACTION_MINUTES).sort()).toEqual([...DRILL_ACTIONS].sort());
     expect(Object.keys(ACTION_LABELS).sort()).toEqual([...DRILL_ACTIONS].sort());
-    expect(DRILL_ACTIONS).toHaveLength(18);
+    // T125 でメッセージ（伝言）を足して 19
+    expect(DRILL_ACTIONS).toHaveLength(19);
     expect(ACTION_MINUTES.visit).toBe(40);
     expect({
       call_person: ACTION_MINUTES.call_person,
@@ -410,10 +411,9 @@ describe("世界の返事", () => {
     expect(decideAction({ kind: "request_welfare_shelter", person: "p-05", target: null }, s.world, 3, () => 0.3).status).toBe("refused");
     expect(decideAction({ kind: "request_welfare_shelter", person: "p-05", target: null }, s.world, 48, () => 0.79).status).toBe("accepted");
     expect(decideAction({ kind: "evacuate_self", person: null, target: null }, s.world, 3, () => 0.99).status).toBe("evacuated");
-    expect(decideAction({ kind: "report_city", person: null, target: null }, { ...s.world, phone: "down" }, 3, () => 0)).toMatchObject({
-      status: "noLine",
-      because: "電話 通話不可",
-    });
+    // 通話の規制（T125）は全部を止めない: つながる分（WORLD_ODDS.report.down）だけ報告できる
+    expect(decideAction({ kind: "report_city", person: null, target: null }, { ...s.world, phone: "down" }, 3, () => 0)).toMatchObject({ status: "reported" });
+    expect(decideAction({ kind: "report_city", person: null, target: null }, { ...s.world, phone: "down" }, 3, () => 0.5)).toMatchObject({ status: "noLine" });
   });
 });
 

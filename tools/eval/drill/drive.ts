@@ -364,7 +364,8 @@ export async function runDrill(plan: RunPlan, deps: DriveDeps): Promise<RunOutco
           const id = typeof r.body?.id === "string" ? r.body.id : null;
           const done = id ? replay.actions.find((a) => a.id === id) : undefined;
           // 通話に出たら往復（決まった問いか自由の 1 文）。終わりに切る
-          if (done?.result?.pickup === "answers" && talk && rng.chance(plan.talkRate) && replay.drill.status === "running") {
+          // 往復は電話がつながった手だけ（メッセージの返信〔T125〕は往復しない。lib/drill/dialogue.ts の canTalk と同じ）
+          if (done?.result?.pickup === "answers" && done.result.status === "connected" && talk && rng.chance(plan.talkRate) && replay.drill.status === "running") {
             const rounds = rng.int(1, 2);
             for (let k = 0; k < rounds; k++) {
               const ask = rng.chance(0.6) ? { ask: rng.pick(CALL_OUT_ASKS) } : { text: rng.pick(TALK_TEXTS) };

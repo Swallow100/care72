@@ -170,6 +170,7 @@ export const EVENT_KIND_LABELS: Record<WorldEventKind, string> = {
   outage: "停電",
   outage_restored: "停電",
   phone: "電話",
+  radio: "電波",
   water: "断水",
   road: "道路",
   shelter: "避難所",
@@ -262,13 +263,16 @@ export const WORLD_LABELS = {
 } as const;
 
 /** 電話の様子（T105 で down を「不通」から「通話不可」に。lib/drill/event-catalog.ts の NO_CALL） */
-export const PHONE_LABELS: Record<PhoneState, string> = { ok: "通常", busy: "不安定", down: NO_CALL };
+/** 世界の電話（通話）。down は通話規制（T125。かけ直せば時々つながる。全部は止めない。家の固定電話の不通は NO_CALL） */
+export const PHONE_LABELS: Record<PhoneState, string> = { ok: "通常", busy: "不安定", down: "規制" };
+/** 電波（携帯の基地局。T125、lib/drill/comms.ts）。区域は停電が長引いた区域の家だけ */
+export const RADIO_LABELS = { ok: "通常", area: "区域不通", all: "不通" } as const;
 export const WATER_LABELS: Record<WaterState, string> = { none: "なし", out: "断水中", restored: "解消" };
 export const TSUNAMI_LABELS: Record<TsunamiState, string> = { none: "なし", evacuate: "避難", lifted: "解除" };
 export const SHELTER_LABELS: Record<ShelterState, string> = { open: "開設", crowded: "混雑", full: "満員", closed: "閉鎖" };
 
 /** 帯の名前（72 時間の棒） */
-export const BAND_LABELS = { outage: "停電", water: "断水", phone: "電話" } as const;
+export const BAND_LABELS = { outage: "停電", water: "断水", phone: "電話", radio: "電波" } as const;
 
 /** API の断り */
 export const DRILL_API_ERRORS = [
@@ -326,11 +330,15 @@ export const ACTION_UI = {
 } as const;
 
 /** 電話の返事のうち T19 の表に無い物（本人・家族が出ない・声がない、台帳に番号が無い） */
-export const CALL_STATUS_LABELS = { noAnswer: "応答なし", silent: "無言", noNumber: "番号なし" } as const;
+export const CALL_STATUS_LABELS = { noAnswer: "応答なし", silent: "無言", noNumber: "番号なし", replied: "返信", read: "既読", unread: "未読" } as const;
 export const CALL_STATUS_TEXTS: Record<keyof typeof CALL_STATUS_LABELS, string> = {
   noAnswer: "呼び出したが出ない",
   silent: "出たが声がない。物音だけ",
   noNumber: "電話番号が台帳にない",
+  // メッセージ（T125）
+  replied: "返信があった",
+  read: "既読になったが返信はない",
+  unread: "まだ読まれていない",
 };
 
 /** 着信の画面と声（T21）の言葉。出る・出ない・切るは電話の画面の言い方 */

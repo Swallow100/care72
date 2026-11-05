@@ -118,7 +118,11 @@ describe("同じ文を状況違い（事業所／訪問先 × 通話可／不可
     expect(rows).toHaveLength(PROBE_CASES.length * PROBE_TEXTS.length);
     expect(hits).toEqual([]);
     // 通話不可の 119 は、どの状況でも 119勧奨のまま不可と代案
-    for (const r of rows.filter((x) => x.text === PROBE_TEXTS[0] && x.phone === "down")) expect(r).toMatchObject({ label: "119勧奨", block: "通話不可" });
+    // 通信の道が無い（T125）: 本人の家は家の電話の不通、家族・近所の人は携帯の電波不通で不可
+    for (const r of rows.filter((x) => x.text === PROBE_TEXTS[0] && x.phone === "down")) {
+      expect(r.label).toBe("119勧奨");
+      expect(["通話不可", "電波不通"]).toContain(r.block);
+    }
     for (const r of rows.filter((x) => x.text === PROBE_TEXTS[0] && x.phone === "down")) expect(r.alt).not.toBeNull();
     // 電話が通じれば 119勧奨は打てる
     for (const r of rows.filter((x) => x.text === PROBE_TEXTS[0] && x.phone === "ok")) expect(r.block).toBeNull();

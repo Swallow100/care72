@@ -23,6 +23,7 @@ import type { OutcomeSource } from "./outcome.ts";
 import { scaleWords } from "./scale.ts";
 import { oddsText, timelineText } from "./time-odds.ts";
 import { stateLines } from "./state-rules.ts";
+import { fitKindOf, fitText, profileOf } from "./fit.ts";
 import { EVENT_LABELS } from "./event-catalog.ts";
 import { reportersOf } from "./persona.ts";
 import { factLines, factsOf, issuedBlock, planLines, planOf, supplyAllowed, type Plan } from "./person-facts.ts";
@@ -293,16 +294,19 @@ export function tickText(input: WorldInput, cast: Pick<WorldCast, "key"> & Parti
   const seen = lastLines(input, aliasOf);
   const hints = hintLines(input, aliasOf);
   const ended = Object.keys(input.world.ended ?? {}).flatMap((p) => (aliasOf.has(p) ? [aliasOf.get(p)!] : []));
+  const profile = profileOf(fitKindOf({ scenario: input.scenario, options: { scale: input.scale ?? null } }, input.world));
   return [
     `時刻: 発災から ${hourText(input.hour)}（${last} 時間まで）`,
     // 夜間発災（T59）だけ。時刻の 1 行
     ...(input.night ? [nightLine(input.hour)] : []),
     // 規模（T104、lib/drill/scale.ts）。開始の前に決めた災害と規模（おまかせも開始の時に決まる）。規模の無い前からの訓練は書かない
     ...(input.scale ? [scaleWords(input.scale)] : []),
+    // 想定に効くハザード・起きない事・使わない種類（T125、lib/drill/fit.ts の表から。WORLD_SYSTEM は変えない）。未決の想定は書かない
+    ...(profile ? [fitText(profile, { with: "world" })] : []),
     // 発災からの時間の帯の目安（T104、lib/drill/time-odds.ts。世界には文だけ）
     timelineText(input.hour, { with: "world" }),
     // 起きやすい物・起きにくい物と、この訓練の傾向（T121。出来事の表の印の言葉で。世界の部屋の指示は変えない）
-    ...(input.seed ? [oddsText(input.hour, input.seed, (k) => EVENT_LABELS[k])] : []),
+    ...(input.seed ? [oddsText(input.hour, input.seed, (k) => EVENT_LABELS[k], profile)] : []),
     // 今の状態のいつからと、まだ変わらない時刻（T121、lib/drill/state-rules.ts）。連続の時計の訓練だけ
     ...(input.since !== undefined
       ? [

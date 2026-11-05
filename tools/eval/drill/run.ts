@@ -26,6 +26,7 @@ import type { ClaudeClient } from "../../../lib/claude/client.ts";
 import { officePlaces } from "../../../lib/drill/area.ts";
 import { createFreeHook } from "../../../lib/drill/free-action.ts";
 import { roomClientOf, worldModeOf, type WorldMode } from "../../../lib/drill/world-room.ts";
+import { homeOf } from "../../../lib/drill/comms.ts";
 import { contactRoles, pseudonymize, type PseudonymInput } from "../../../lib/pseudonym/index.ts";
 import { housemates, planOf } from "../../../lib/drill/person-facts.ts";
 import type { FactPerson } from "./facts-check.ts";
@@ -95,6 +96,9 @@ export function checkContext(): CheckContext {
   }
   // 生年月日（台の表で和暦・略記・漢数字の書き方も。T118）
   const births = SEED_SOURCES.flatMap((s) => (s.person.birth_date ? [{ iso: s.person.birth_date, what: "生年月日（台の表）" }] : []));
+  // 本人ごとの台帳のハザード（T125。想定に合わない「浸水」の検査）
+  const hazards = Object.fromEntries(SEED_SOURCES.map((s) => [s.person.id, s.ledger.evacuation.hazards.map((h) => h.kind)]));
+  const mobile = Object.fromEntries(SEED_SOURCES.map((s) => [s.person.id, homeOf(s.ledger).mobile]));
   // 帳面の検査（T130）に要る本人ごとの計画・同居・家族・ハザード（本人役と同じ作り方）
   const facts: Record<string, FactPerson> = Object.fromEntries(
     SEED_SOURCES.map((s) => {
@@ -105,7 +109,7 @@ export function checkContext(): CheckContext {
       ];
     }),
   );
-  return { key, extra, births, facts };
+  return { key, extra, births, hazards, mobile, facts };
 }
 
 const pad = (n: number) => String(n).padStart(2, "0");

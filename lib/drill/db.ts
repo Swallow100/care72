@@ -15,6 +15,7 @@ import {
   DRILL_ACTIONS,
   DRILL_SCENARIOS,
   DRILL_STATUSES,
+  HAZARD_KINDS,
   SIGNAL_COLORS,
   WHERE_NOW,
   type ContactRow,
@@ -23,7 +24,9 @@ import {
   type DrillRow,
   type DrillScenario,
   type DrillStatus,
+  type HazardKind,
 } from "../db/types.ts";
+import { homeOf, VIAS, type Home, type Homes } from "./comms.ts";
 import { callTargetText } from "../list/calls.ts";
 import { isSourceId } from "../sources/index.ts";
 import {
@@ -134,6 +137,10 @@ type StoredWorld = {
   aiAt?: number;
   /** 自由対応の確かめ（T110。読み替えたあと打つ前だけ。手を打つと消える。Claude の入力に渡さない） */
   draft?: FreeDraft;
+  /** 参加者の家の区域と通信（T125、開始の時の台帳の写し）。前からの訓練には無い */
+  homes?: Homes;
+  /** 事業所の区域（T125、開始の時の offices.hazards の写し）。区域が無ければ鍵ごと無い */
+  officeZones?: HazardKind[];
 };
 
 /** 手の前の状態の写し（取消で戻す物） */
@@ -156,6 +163,8 @@ function storeWorld(s: DrillState, undo?: UndoSnapshot): string {
     ...(s.directorAt !== undefined ? { directorAt: s.directorAt } : {}),
     ...(s.aiAt !== undefined ? { aiAt: s.aiAt } : {}),
     ...(s.draft ? { draft: s.draft } : {}),
+    ...(s.homes ? { homes: s.homes } : {}),
+    ...(s.officeZones && s.officeZones.length > 0 ? { officeZones: s.officeZones } : {}),
   };
   return JSON.stringify(body);
 }
@@ -182,7 +191,39 @@ function parseStoredWorld(text: string): StoredWorld {
     ...(isNum(raw.directorAt) ? { directorAt: raw.directorAt } : {}),
     ...(isNum(raw.aiAt) ? { aiAt: raw.aiAt } : {}),
     ...(isDraft(raw.draft) ? { draft: raw.draft } : {}),
+    ...(homesOf(raw.homes) ? { homes: homesOf(raw.homes)! } : {}),
+    ...(Array.isArray(raw.officeZones) ? { officeZones: raw.officeZones.filter((z): z is HazardKind => (HAZARD_KINDS as readonly unknown[]).includes(z)) } : {}),
   };
+}
+
+/** 家の写しの JSON（T125）。形の違う家は外す。空なら無し */
+function homesOf(v: unknown): Homes | null {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return null;
+  const out: Record<string, Home> = {};
+  for (const [p, h] of Object.entries(v as Record<string, unknown>)) {
+    if (!h || typeof h !== "object") continue;
+    const x = h as Partial<Home>;
+    if (!Array.isArray(x.zones) || typeof x.landline !== "boolean" || typeof x.mobile !== "boolean") continue;
+    out[p] = {
+      zones: x.zones.filter((z) => z && (HAZARD_KINDS as readonly unknown[]).includes(z.kind)).map((z) => ({ kind: z.kind, depthM: isNum(z.depthM) ? z.depthM : null })),
+      town: typeof x.town === "string" ? x.town : null,
+      landline: x.landline,
+      mobile: x.mobile,
+    };
+  }
+  return Object.keys(out).length > 0 ? out : null;
+}
+
+/** 事業所の区域（offices.hazards の JSON）。読めなければ区域なし */
+export function officeZonesOf(text: string | null | undefined): HazardKind[] {
+  if (!text) return [];
+  try {
+    const v = JSON.parse(text) as unknown;
+    if (!Array.isArray(v)) return [];
+    return [...new Set(v.flatMap((h) => (h && typeof h === "object" && (HAZARD_KINDS as readonly unknown[]).includes((h as { kind?: unknown }).kind) ? [(h as { kind: HazardKind }).kind] : [])))];
+  } catch {
+    return [];
+  }
 }
 
 /** 自由対応の確かめの形（T110）。形が違えば無し（読み替え直し） */
@@ -201,8 +242,14 @@ function castOf(v: unknown): Cast | null {
 }
 
 /** 選んだ物と取消の数と配役（状態に足す。無ければ鍵ごと無い） */
-function extrasOf(w: Pick<StoredWorld, "options" | "undone" | "cast">): Pick<DrillState, "options" | "undone" | "cast"> {
-  return { ...(w.options ? { options: w.options } : {}), ...(w.undone ? { undone: w.undone } : {}), ...(w.cast ? { cast: w.cast } : {}) };
+function extrasOf(w: Pick<StoredWorld, "options" | "undone" | "cast" | "homes" | "officeZones">): Pick<DrillState, "options" | "undone" | "cast" | "homes" | "officeZones"> {
+  return {
+    ...(w.options ? { options: w.options } : {}),
+    ...(w.undone ? { undone: w.undone } : {}),
+    ...(w.cast ? { cast: w.cast } : {}),
+    ...(w.homes ? { homes: w.homes } : {}),
+    ...(w.officeZones && w.officeZones.length > 0 ? { officeZones: w.officeZones } : {}),
+  };
 }
 
 /** 表の行から今の状態（drills.world の写しから。再開に使う） */
@@ -231,6 +278,15 @@ export function stateOfRow(row: DrillRow): DrillState {
  * 連続の時計の訓練（T90）か、と区切りの時刻（時間）・この訓練の AI の呼び出しの数（drills.world の写しから）。
  * clock の無い訓練は clock false・cuts 空
  */
+/**
+ * AI の出力の門（T125、lib/drill/gate.ts）が捨てた・直した数（drills.world の写しの world.gated）。保存した刻みから作り直す世界には
+ * 残らない（状況を当て直すだけなので）ので、今の刻みを見るときに写しから読む。無ければ null
+ */
+export function gatedOfRow(row: Pick<DrillRow, "world">): Record<string, number> | null {
+  const g = parseStoredWorld(row.world).world.gated;
+  return g && Object.keys(g).length > 0 ? g : null;
+}
+
 export function clockOfRow(row: Pick<DrillRow, "world">): {
   clock: boolean;
   hours: number[];
@@ -487,6 +543,11 @@ export async function startDrill(
   // 想定の表の配役（T70）。事業所にいない人（デモの 10 人）の行があるときだけ台帳を読み、参加者の中の代わりの人を決める
   const def = scenarioOf(scenario);
   const cast = needsCast(def, participants) ? castScenario(def, participants, castFactsMap(await loadSources())) : {};
+  // 参加者の家の区域と通信、事業所の区域（T125）。開始の時に写す（訓練の途中で台帳を直しても変わらない）
+  const all = await loadSources();
+  const homes = Object.fromEntries(participants.flatMap((p) => (all.has(p) ? [[p, homeOf(all.get(p)!.ledger)] as const] : [])));
+  const officeRow = await db.prepare("SELECT hazards FROM offices WHERE id = ?1").bind(scope.officeId).first<{ hazards: string | null }>().catch(() => null);
+  const officeZones = officeZonesOf(officeRow?.hazards ?? null);
 
   const id = newId();
   // 仮想の規模（T104）。選ばなければおまかせ（幅の中から今 1 回引いて残す）。ほかの想定には付けない
@@ -509,6 +570,7 @@ export async function startDrill(
       ...(home !== undefined ? { home: home.trim() } : {}),
     },
     cast,
+    { homes, officeZones },
   );
   const { state, tick } = clock ? (await advance(init, 0, hooks, { policy: "clock" }))! : await step(init, hooks);
   const [inserted] = await db.batch([
@@ -1203,6 +1265,7 @@ function asTurn(person: string | null, p: Partial<TurnPayload>): DrillTurn | nul
     ai: p.ai === true,
     at: typeof p.at === "number" ? p.at : 0,
     ...(typeof p.signal === "string" ? { signal: p.signal } : {}),
+    ...((VIAS as readonly unknown[]).includes(p.via) ? { via: p.via! } : {}),
   };
 }
 
@@ -1381,7 +1444,7 @@ export function replayState(
   const last = lastStep(row.scenario);
   // 開始の前に選んだ物（職員・夜間発災）と取消の数は drills.world の写しから（T59。無ければ今までと同じ）
   const extras = row.world !== undefined ? extrasOf(parseStoredWorld(row.world)) : {};
-  let state = initialState(row.scenario, participants, row.started_at, extras.options, extras.cast);
+  let state = initialState(row.scenario, participants, row.started_at, extras.options, extras.cast, { homes: extras.homes, officeZones: extras.officeZones });
   const out: Tick[] = [];
   for (const t of ticks) {
     if (t.step > upTo) break;

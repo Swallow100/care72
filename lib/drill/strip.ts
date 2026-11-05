@@ -91,6 +91,8 @@ export const INCIDENT_LANE: Readonly<Record<WorldEventKind, StripLane | "note" |
   outage: "outage",
   outage_restored: "outage",
   phone: "phone",
+  // 電波（T125。携帯の基地局の止まり）
+  radio: "radio",
   water: "water",
   road: "infra",
   town_road: "infra",

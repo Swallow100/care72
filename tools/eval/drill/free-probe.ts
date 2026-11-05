@@ -2,7 +2,8 @@
 // 自由対応の口（lib/drill/free-action.ts の planFree）に通し、結果が状況に合うかを数える。訓練は回さない（エンジンの状態を作って読み替えだけ）。
 //
 // 見る所（どれも 0 のはず）:
-// - phone_down_ran: 電話が通話不可なのに、電話で済む手・電話で頼む手（表の手か、そのままの手の電話）が打てる形で返った
+// - phone_down_ran: 通信の道が無い（T125: 通話の規制・全域の電波不通・本人の家の電話の不通）のに、本人・家族・近所の人への電話で済む手・
+//   電話で頼む手（表の手か、そのままの手の電話）が打てる形で返った
 // - no_alt: 押せない手に、今できる別の道（代案）が無い
 // - dropped: 表の手に当たる文（119・家族への電話）が「変化なし」に落ちた
 // - inner_name: 画面に出す物（扱い・理由・1 文・代案・押せない理由）に内部の名前（英字の id）が出た
@@ -52,7 +53,9 @@ async function stateOf(c: ProbeCase): Promise<DrillState> {
     c.where === "home"
       ? [{ id: "a0", kind: "visit", person: PERSON, result: { ok: true, status: "arrived" } } as unknown as ActionRecord]
       : [];
-  return { ...s, actions: visited, world: { ...s.world, phone: c.phone } };
+  // 「不可」は通信の道が無い時（T125: 通話の規制・全域の電波不通・本人の家の電話の不通。通話の規制だけでは全部は止まらない）
+  const down = c.phone === "down" ? { phone: "down" as const, radio: "down" as const, marks: { ...s.world.marks, [PERSON]: { ...(s.world.marks[PERSON] ?? {}), lineDown: 0 } } } : {};
+  return { ...s, actions: visited, world: { ...s.world, ...down } };
 }
 
 /** 電話で済む・電話で頼む手か（決まりの表のやり方 phone・home、そのままの手の電話） */

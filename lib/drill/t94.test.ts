@@ -130,7 +130,8 @@ const R = ["p-01", "p-02", "p-03", "p-04", "p-05", "p-06", "p-07", "p-08", "p-09
 describe("その人への手と「届いた」は手の表の旗から", () => {
   it("その人への手は towardPerson の 13。前の 5 つを含み、記録・退避・行政報告・応援依頼・自由対応（読み替えなし）は入らない", () => {
     expect([...PERSON_ACTIONS].sort()).toEqual(ACTION_CATALOG.filter((r) => r.towardPerson).map((r) => r.id).sort());
-    expect(PERSON_ACTIONS).toHaveLength(13);
+    // T125 でメッセージ（伝言）を足して 14
+    expect(PERSON_ACTIONS).toHaveLength(14);
     for (const k of ["call_person", "call_contact", "visit", "dispatch", "request_welfare_shelter"] as const) expect(PERSON_ACTIONS).toContain(k);
     for (const k of ["note", "evacuate_self", "report_city", "request_backup", "free"] as const) expect(PERSON_ACTIONS).not.toContain(k);
     expect(isPersonAction(rec("a1", "free", "p-01", 0, { as: "arrange_medicine" }))).toBe(true);
@@ -179,12 +180,14 @@ describe("その人への手と「届いた」は手の表の旗から", () => {
 
 describe("空振り（打った時に分かっていた事実で結果の決まっていた手）", () => {
   const down = { phone: "down" as const };
-  it("電話の線が不通なのに電話・通行止なのに訪問・職員 0 なのに職員の訪問依頼・休止と分かっている透析施設へ透析調整", () => {
+  it("家の電話が不通なのに本人電話・通行止なのに訪問・職員 0 なのに職員の訪問依頼・休止と分かっている透析施設へ透析調整", () => {
     const tick = (closed: boolean): TickWorld[] => [
       { step: 0, world: { phone: "ok", facilities: closed ? [{ person: "p-03", open: false, depends: "dialysis_center" }] : [] } },
     ];
     const w = (a: ActionRecord, t?: TickWorld[]) => wasteOf(a, knownOf(a, t));
-    expect(w(rec("a1", "call_person", "p-01", 0, { ok: false, status: "noLine", before: down }))).toBe("phone");
+    // 世界の電話の規制（T125）は全部を止めないので、外れても空振りにしない。家の電話の印だけが事実で決まる
+    expect(w(rec("a1", "call_person", "p-01", 0, { ok: false, status: "noLine", before: down }))).toBeNull();
+    expect(w(rec("a1", "call_person", "p-01", 0, { ok: false, status: "noLine", before: { ...down, marks: { lineDown: 1 } } }))).toBe("phone");
     expect(w(rec("a1", "visit", "p-05", 0, { ok: false, status: "blocked", before: { roadClosed: true } }))).toBe("road");
     expect(w(rec("a1", "dispatch", "p-02", 0, { ok: false, status: "noDispatch", before: { staff: 0 } }))).toBe("staff");
     expect(w(rec("a1", "arrange_dialysis", "p-03", 0, { ok: false, status: "closed", callee: "dialysis_center" }), tick(true))).toBe("closed");
@@ -199,8 +202,8 @@ describe("空振り（打った時に分かっていた事実で結果の決ま�
     const w = (a: ActionRecord, t?: TickWorld[]) => wasteOf(a, knownOf(a, t));
     expect(w(rec("a1", "call_person", "p-01", 0, { ok: false, status: "noLine", before: home }))).toBe("phone");
     expect(w(rec("a1", "call_contact", "p-01", 0, { ok: false, status: "noAnswer", callee: "family", before: home }))).toBeNull();
-    // 刻みの世界の電話が不通なら家族への電話も空振り
-    expect(w(rec("a1", "call_contact", "p-01", 0, { ok: false, status: "noLine", callee: "family", before: home }), [{ step: 0, world: { phone: "down", facilities: [] } }])).toBe("phone");
+    // 刻みの世界の電話が規制でも、家族への電話は空振りにしない（T125。かけ直せば時々つながる）
+    expect(w(rec("a1", "call_contact", "p-01", 0, { ok: false, status: "noLine", callee: "family", before: home }), [{ step: 0, world: { phone: "down", facilities: [] } }])).toBeNull();
     // 手の途中で事実が変わって届いた手（ok）は空振りにしない
     expect(w(rec("a1", "visit", "p-05", 0, { ok: true, status: "arrived", before: { roadClosed: true } }))).toBeNull();
     // 事実の無い外れ（応答なし・到着不可）は空振りにしない
@@ -215,12 +218,14 @@ describe("空振り（打った時に分かっていた事実で結果の決ま�
       rec("a1", "visit", "p-05", 0, { ok: false, status: "blocked", before: { roadClosed: true } }),
       rec("a2", "report_city", null, 10, { ok: false, status: "noLine", before: down }),
       rec("a3", "call_person", "p-01", 20),
+      rec("a4", "call_person", "p-02", 30, { ok: false, status: "noLine", before: { ...down, marks: { lineDown: 1 } } }),
     ]);
+    // 市役所への報告は規制の間も時々つながるので空振りにしない（T125）
     expect(s).toEqual({
       total: 2,
       rows: [
         { action: "a1", kind: "visit", person: "p-05", atMinute: 0, why: "road" },
-        { action: "a2", kind: "report_city", person: null, atMinute: 10, why: "phone" },
+        { action: "a4", kind: "call_person", person: "p-02", atMinute: 30, why: "phone" },
       ],
     });
   });
@@ -430,7 +435,7 @@ describe("72 時間の筋（連続の時計と 18 の手）", () => {
 
 describe("講評の指示と禁じる語", () => {
   it("指示に表の手の名前が全部（自由対応のほか 17）、指摘の種類に choice、手の選び方と頼み事の決まり", () => {
-    expect(REVIEW_ACTION_LABELS).toHaveLength(17);
+    expect(REVIEW_ACTION_LABELS).toHaveLength(18);
     for (const r of ACTION_CATALOG) {
       if (r.id === "free") expect(REVIEW_SYSTEM).not.toContain(`・${r.label}・`);
       else expect(REVIEW_SYSTEM).toContain(r.label);

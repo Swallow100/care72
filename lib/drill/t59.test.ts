@@ -160,7 +160,8 @@ describe("開始の前の選択（選ばなければ今と同じ）", () => {
   it("options を渡さない開始は前と同じ JSON（options・undone・undo の鍵が無い）", async () => {
     await start();
     const w = await rawWorld();
-    expect(Object.keys(w).sort()).toEqual(["actions", "minute", "participants", "people", "v", "world"]);
+    // homes は選ぶ物でなく、開始の時の台帳の写し（T125。家の区域と通信）
+    expect(Object.keys(w).sort()).toEqual(["actions", "homes", "minute", "participants", "people", "v", "world"]);
     expect(participantsOf(await row())).toEqual(KANA_ORDER);
     const s = await stored();
     expect(s.options).toBeUndefined();

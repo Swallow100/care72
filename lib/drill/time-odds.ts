@@ -10,6 +10,7 @@
 
 import type { SourceId } from "../sources/index.ts";
 import type { InjectKind } from "./event-catalog.ts";
+import { injectFits, type FitProfile } from "./fit.ts";
 
 export const TIME_BANDS = [
   { id: "h0", from: 0, to: 3 },
@@ -144,11 +145,13 @@ export const TIMELINE_SOURCES: ReadonlyArray<SourceId> = [...new Set(Object.valu
  * 今の時刻の帯の目安の文。監督は種類と根拠の id を添え（with: "director"）、世界は文だけ（with: "world"。世界の部屋の
  * 種類は出来事の表と違い、根拠の一覧も渡していないため）
  */
-export function timelineText(hour: number, opts: { with: "director" | "world" }): string {
+export function timelineText(hour: number, opts: { with: "director" | "world"; profile?: FitProfile | null }): string {
   const b = bandOf(hour);
   const lines = TIMELINE[b.id].map((l) => {
     if (opts.with === "world") return `- ${l.text}`;
-    const kinds = l.kinds.length > 0 ? `種類: ${l.kinds.join("、")}。` : "";
+    // 想定に合わない種類（T125、lib/drill/fit.ts）は添えない
+    const fits = l.kinds.filter((k) => injectFits(opts.profile ?? null, k));
+    const kinds = fits.length > 0 ? `種類: ${fits.join("、")}。` : "";
     return `- ${l.text}（${kinds}出典: ${l.sources.join("、")}）`;
   });
   return [`この時間帯（${bandWords(b)}）に起きやすい事（公的な資料からの目安。決めつけない。時刻は前後してよい）:`, ...lines].join("\n");
@@ -250,7 +253,7 @@ export type OddsLines = {
 };
 
 /** 今の帯とこの訓練の種から、起きやすい・起きにくい種類（重ねない。起きやすい方が先） */
-export function oddsOf(hour: number, seed: string | null | undefined): OddsLines {
+export function oddsOf(hour: number, seed: string | null | undefined, profile: FitProfile | null = null): OddsLines {
   const band = bandOf(hour).id;
   const listed = [...BANDS_OF.entries()];
   const inBand = listed.filter(([, bs]) => bs.includes(band)).map(([k]) => k);
@@ -259,15 +262,17 @@ export function oddsOf(hour: number, seed: string | null | undefined): OddsLines
   // 訓練の傾向は帯の目安を越えない（帯の外の種類は、この訓練で起きやすくても起きにくい側のまま）
   const unlikely = [...new Set([...outBand, ...lean.less])];
   const likely = [...new Set([...inBand, ...lean.more])].filter((k) => !unlikely.includes(k));
-  return { likely, unlikely };
+  // 想定に合わない種類（T125）はどちらにも出さない（起きない物を「起きにくい」と渡さない）
+  const fits = (k: InjectKind) => injectFits(profile, k);
+  return { likely: likely.filter(fits), unlikely: unlikely.filter(fits) };
 }
 
 /**
  * 監督・世界に渡す起きやすさの文。監督は種類の英字、世界は words（種類 → 言葉。出来事の表の印）の言葉で。
  * 決めつけない（起きにくい物も、筋が通れば使ってよい。使うなら時刻をずらす）
  */
-export function oddsText(hour: number, seed: string | null | undefined, words?: (k: InjectKind) => string): string {
-  const o = oddsOf(hour, seed);
+export function oddsText(hour: number, seed: string | null | undefined, words?: (k: InjectKind) => string, profile: FitProfile | null = null): string {
+  const o = oddsOf(hour, seed, profile);
   const say = (ks: ReadonlyArray<InjectKind>) => (ks.length > 0 ? ks.map((k) => (words ? words(k) : k)).join("、") : "なし");
   return [
     "起きやすさ（目安。この時間帯と、この訓練の傾向。訓練ごとに変わる）:",

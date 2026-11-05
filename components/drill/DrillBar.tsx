@@ -44,7 +44,7 @@ export function DrillBar({
   /** 種類の段の行（T128、StripRows）。渡すと帯の行はここで描かない */
   strip?: React.ReactNode;
 }) {
-  const kinds = (["outage", "water", "phone"] as const).filter((k) => bands.some((b) => b.kind === k));
+  const kinds = (["outage", "water", "phone", "radio"] as const).filter((k) => bands.some((b) => b.kind === k));
   const wide = strip !== undefined;
   /** 今の様子の列（strip のときだけ。1024px 未満は出さない） */
   const stateCell = wide ? <span className="hidden lg:block" /> : null;
