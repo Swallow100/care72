@@ -6,15 +6,18 @@
 import { AiMark } from "@/components/person/parts";
 import { DANGER_LABELS, TALK_END_LABELS, TALK_LABELS } from "@/lib/signals/labels";
 import { questionOf } from "@/lib/signals/questions";
-import type { TalkLog, TalkTurn } from "@/lib/signals/talk";
+import { buttonLine, type TalkLog, type TalkTurn } from "@/lib/signals/talk";
+
+/** ボタンの答え方の問いの文の終わり（問いの文のあとの「はいなら みどり…」。どの問いでも同じ） */
+const YES_NO_HINT = buttonLine("injured").slice(buttonLine("injured").indexOf("。") + 1);
 
 function replyText(t: TalkTurn): string {
   if (t.reply) return t.reply;
   if (t.heard === "press") return TALK_LABELS.pressed;
   if (t.heard === "skip") return TALK_LABELS.skipped;
   if (t.heard === "unclear") return TALK_LABELS.mumble;
-  // ボタンの答え方の回で押さなかった物は「未押下」、聞いた回は「無音」
-  return t.ask.includes("はいならみどり") ? TALK_LABELS.noPress : TALK_LABELS.silent;
+  // ボタンの答え方の回（読んだ文が lib/signals/talk.ts の buttonLine。後ろに TALK_PHRASES.yesNoHint）で押さなかった物は「未押下」、聞いた回は「無音」
+  return t.ask.endsWith(YES_NO_HINT) ? TALK_LABELS.noPress : TALK_LABELS.silent;
 }
 
 function answerText(a: NonNullable<TalkTurn["answer"]>): string {

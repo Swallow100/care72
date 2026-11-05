@@ -169,6 +169,26 @@ describe("会話の API（talkPost）", () => {
     expect(row(sid(1))).toMatchObject({ injured: null, can_move: null, classes: null });
   });
 
+  it("AI の 1 文には声の URL を添える（間に合ったときだけ）。決まった文には添えない（端末が id で頼む）", async () => {
+    await quake();
+    await signal(1);
+    const f = fake(() => ({ topic: "canMove", preface: "", question: "じぶんで たてますか", done: false }));
+    const seen: string[] = [];
+    const voice = async (text: string) => {
+      seen.push(text);
+      return "/api/signals/voice?talk=0123456789abcdef0123456789abcdef";
+    };
+    const res = await talkPost(db, selfP, sid(1), { log: logOf([[TALK_OPENING, "あしが いたい"]]) }, { ...deps(f.client), voice });
+    expect(((await res.json()) as { reply: unknown }).reply).toMatchObject({
+      kind: "ask",
+      line: { by: "ai", voice: "/api/signals/voice?talk=0123456789abcdef0123456789abcdef" },
+    });
+    expect(seen).toEqual(["じぶんで たてますか"]);
+    const fixed = await talkPost(db, selfP, sid(1), { log: logOf([[TALK_OPENING, "あしが いたい"]]) }, { ...deps(), voice, ai: async () => ({ env: {}, usage: d1UsageStore(db), office: { id: DEMO.id, kind: DEMO.kind } }) });
+    expect(((await fixed.json()) as { reply: { line: { voice: string } } }).reply.line.voice).toBe("/api/signals/voice?fixed=topic-injured");
+    expect(seen).toHaveLength(1);
+  });
+
   it("鍵が無い事業所・危ない言葉は Claude を呼ばない（決まった問い・締め）", async () => {
     await quake();
     await signal(1);
