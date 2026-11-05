@@ -376,7 +376,7 @@ export function factsOf(input: FactsInput): Facts {
   // 避難先へ向かうと言った（家族・本人。打ち消しは見ない）。計画に手段があれば GO_MINUTES で着いたと見る（T139）
   const said = state?.saying?.normalize("NFKC") ?? "";
   // 道が通れない（この人の家の近くの道か全体の道の通行止）・家の辺りが浸水の間は、計画に手段があっても移れない（本人役の今の様子の道と同じ見方）
-  const blocked = world.roads.some((r) => (!r.person || r.person === person) && !r.open) || world.marks?.[person]?.flooded !== undefined;
+  const blocked = (world.roads ?? []).some((r) => (!r.person || r.person === person) && !r.open) || world.marks?.[person]?.flooded !== undefined;
   const going =
     state && GO_INTENT.test(said) && !RETURNED.test(said) && !GO_NOT.test(said) ? { at: prevAt, can: !!plan?.move && (!hurt || plan.helper) && !blocked } : null;
   const place: Facts["place"] = carried
