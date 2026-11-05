@@ -141,7 +141,7 @@ const params = (q: string) => new URLSearchParams(q);
 const caseload = async (): Promise<Caseload> =>
   (await loadCaseload(db, { officeId: "office-demo", careManagerId: "acct-yamamoto" }, TODAY, NOW))!;
 
-const NORMAL_HEADERS = ["組", "氏名", "カナ", "年齢", "介護度", "医療", "ハザード", "支援者", "避難計画", "未確認", "地区"];
+const NORMAL_HEADERS = ["組", "氏名", "カナ", "年齢", "介護度", "医療", "ハザード", "支援者", "避難計画", "訓練", "未確認", "地区"];
 
 describe("CSV の共通の道（様式 9 の csvText・csvFileNames）", () => {
   it("名前の頭を渡せる。渡さなければ様式 9 のまま", () => {
@@ -183,8 +183,13 @@ describe("担当一覧の CSV（/caseload/csv）", () => {
     const first = screen.rows[0];
     expect(body[0][0]).toBe(String(first.tier));
     expect(body[0][2]).toBe(first.kana);
-    expect(body[0][9]).toBe(String(first.pending));
-    expect(body[0][10]).toBe(first.town ?? "");
+    expect(body[0][10]).toBe(String(first.pending));
+    expect(body[0][11]).toBe(first.town ?? "");
+    // 避難計画は 3 つの段階（同意済・訓練済は作成済）、訓練は別の列（T146。種には終わった訓練が無いので、種の訓練済は「済」）
+    for (const r of body) {
+      expect(["未作成", "下書き", "作成済"]).toContain(r[8]);
+      expect(r[9]).toMatch(/^(未実施|済|\d{1,2}\/\d{1,2})$/);
+    }
   });
 
   it("絞込と並び: URL の query を担当一覧と同じ読み方で受け、今 画面に出ている行をその順で書く", async () => {
@@ -223,14 +228,15 @@ describe("担当一覧の CSV（/caseload/csv）", () => {
     expect(body.map((r) => r[4])).toEqual(screen.rows.map((r) => r.name));
     body.forEach((r, i) => {
       const s = screen.rows[i];
-      expect(r).toHaveLength(16);
+      // 平時の列に「訓練」を足した（T146）
+      expect(r).toHaveLength(17);
       // 連絡順は発災時の表の「連絡順」の列（DisasterTable の data-rank）と同じ rank
       expect(r[0]).toBe(String(s.rank));
       expect(r[1]).toBe(stateLabel(s.triage!));
       expect(r[2]).toBe(s.triage!.reason);
       expect(r[3]).toBe(String(s.tier));
-      expect(r[14]).toBe(s.remain ? `${s.remain.text} ${s.remain.label}` : "");
-      expect(r[15]).toBe(s.lastContact ? `${s.lastContact.when} ${s.lastContact.source}` : "連絡なし");
+      expect(r[15]).toBe(s.remain ? `${s.remain.text} ${s.remain.label}` : "");
+      expect(r[16]).toBe(s.lastContact ? `${s.lastContact.when} ${s.lastContact.source}` : "連絡なし");
     });
     // 既定の並びはルールの表の順（連絡順 1, 2, 3…）。山田 ハナは画面も CSV も 1
     expect(body.map((r) => Number(r[0]))).toEqual(body.map((_, i) => i + 1));

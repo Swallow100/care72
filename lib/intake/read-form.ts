@@ -13,8 +13,19 @@
 export const READ_SOURCES = ["photo", "pdf", "excel", "word"] as const;
 export type ReadSource = (typeof READ_SOURCES)[number];
 
-/** PDF から画像にする頁の上限（1 頁 1 要求 1 回。ai_calls の 1 日の上限を食いすぎない）。Excel・Word の頁も同じ */
-export const PDF_PAGES_MAX = 3;
+/**
+ * 1 回に送れる頁の上限（T146 で 3 から 10 に）。PDF は頭からこの頁までを画像にし、11 頁目からは描かない（画面に「10/N 頁」）。
+ * Excel・Word は人が選んだこの頁まで。受け口はこれより多い頁・この番号より後の頁を断る。
+ * 入れる欄の読み取りは 1 頁 1 要求 1 回、様式の読み取りは 1 要求で頁ごとに並べて 1 回ずつ（lib/forms/form-read.ts）。
+ * 10 頁で ai_calls の 1 日の上限（200 回）を 10 回ほど使う。費用と待ちの見込みは docs/DECISIONS.md「書類」の案（T146）
+ */
+export const PDF_PAGES_MAX = 10;
+
+/**
+ * 送る頁を選ぶ画面（黒塗りの画面の頁の印）を出す頁の数（T146）。上限を 10 にしたので、4 頁からは送る前に外せるようにする
+ * （前は上限の 3 を超えたときだけ出ていた。頁ごとに Opus を 1 回呼ぶので、要らない頁を外せば費用と待ちが減る）
+ */
+export const READ_CHOOSE_FROM = 4;
 
 /** 頁の並ぶ元（PDF・Excel・Word）か。写真は 1 枚 1 頁 */
 export const isPagedSource = (s: ReadSource) => s !== "photo";

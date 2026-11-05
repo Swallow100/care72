@@ -6,9 +6,10 @@
 import Link from "next/link";
 import { REASON_TEXT, StateTag } from "@/components/person/parts";
 import { StateText } from "@/components/ui/Tag";
+import { PlanState } from "./PlanState";
 import { TABLE } from "@/components/ui/table";
-import { PLAN_TONES, rowLink, type CaseloadFilter, type CaseloadRow, type ListView, type SortDir, type SortKey } from "@/lib/caseload";
-import { CARE_LEVEL_LABELS, COLOR_LABELS, PLAN_STATUS_LABELS, stateLabel, TIER_LABELS } from "@/lib/labels";
+import { rowLink, type CaseloadFilter, type CaseloadRow, type ListView, type SortDir, type SortKey } from "@/lib/caseload";
+import { CARE_LEVEL_LABELS, COLOR_LABELS, stateLabel, TIER_LABELS } from "@/lib/labels";
 import { DETAIL_LABELS } from "@/lib/list/labels";
 import { COLOR_TONES } from "@/lib/person";
 import { ExpandRow } from "./ExpandRow";
@@ -216,8 +217,8 @@ function Cells({
         {r.supporters > 0 ? <span>{r.supporters} 人</span> : <StateText tone="check">なし</StateText>}
       </td>
       <td className={`${CELL} ${MD} whitespace-nowrap`}>
-        {/* 避難計画は 2 番目の状態なので色の文字（塗りの印は安否の状態だけ） */}
-        <StateText tone={PLAN_TONES[r.plan]}>{PLAN_STATUS_LABELS[r.plan]}</StateText>
+        {/* 避難計画は 2 番目の状態なので色の文字（塗りの印は安否の状態だけ）。下に別に最後に出た訓練の日（T146） */}
+        <PlanState plan={r.plan} drill={r.drill} />
         {/* 未確認の数は言葉ごと黄の塗りの印（右の面・書類の紙面の帯と同じ形。前の黄の細い帯は何の印か伝わらなかった。T96） */}
         {r.pending > 0 && (
           <div className="mt-0.5" data-row-pending={r.pending}>

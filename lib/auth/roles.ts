@@ -50,7 +50,7 @@ export const JUDGE_LABEL = "審査員";
 
 /** 審査員の役を選ぶ画面の見出し */
 export const JUDGE_ROLE_LABELS: Record<JudgeRole, string> = {
-  care_manager: "ケアマネ",
+  care_manager: "ケアマネジャー",
   medical: "医療班",
   self: "本人スマホ",
   family: "家族スマホ",

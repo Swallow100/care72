@@ -138,7 +138,7 @@ describe("切替と事業所の経過", () => {
   it("審査員（ケアマネの役）が押すと書き手は審査員", async () => {
     const judge = disasterScope(principal({ admin: false, judge: true, accountId: "acct-judge" }))!;
     await switchDisasterMode(db, judge, { kind: "heavy_rain", version: 0, at: at(0) });
-    expect((await loadOfficeLog(db, "office-demo")).map(logLine)).toEqual(["災害モード 大雨 審査員 11/4 10:00"]);
+    expect((await loadOfficeLog(db, "office-demo")).map(logLine)).toEqual(["災害モード 大雨 審査員 1 11/4 10:00"]);
   });
 
   it("画面で読んだ版が古ければ競合（重なった切替は片方だけ）。同じ状態を押しても何も書かない", async () => {

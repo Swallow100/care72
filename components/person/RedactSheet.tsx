@@ -2,9 +2,9 @@
 
 // 黒塗りの画面（T52）。入れる欄と様式の読み取り（T83）で写真・PDF を選ぶと必ずここを通り、写った氏名・住所・電話・町名・生年月日・保険者番号を人が四角で黒く塗ってから送る。
 // - 全画面の窓（<dialog> の showModal。後ろは押せず、Tab は窓の中を回る）。Escape・「取消」で何も送らずに閉じる
-// - 写真は 1 枚 1 頁、PDF は頭から 3 頁まで（lib/redact/browser.ts）。1 頁ずつ出し、「前頁」「次頁」で移る
-// - Excel・Word（T119）は印刷の頁に描いた画像。4 頁以上あれば頁ごとに「対象」「除外」を選び、送るのは 3 頁まで
-//   （既定は記入例・記載例のシートを外した頭の 3 頁）。描いた頁は元の印刷と少しずれるので「PDF 保存で正確」を 1 行出す。
+// - 写真は 1 枚 1 頁、PDF は頭から 10 頁まで（lib/redact/browser.ts。T146 で 3 から 10 に）。1 頁ずつ出し、「前頁」「次頁」で移る
+// - 4 頁以上あれば（Excel・Word と、T146 から PDF も）頁ごとに「対象」「除外」を選び、送るのは 10 頁まで
+//   （Excel・Word の既定は記入例・記載例のシートを外した頭の 10 頁）。描いた頁は元の印刷と少しずれるので「PDF 保存で正確」を 1 行出す。
 //   T122: シートが 2 つ以上のブックは「シート」でシートの一覧を窓の中に開く（押すとそのシートの頭の頁へ）。既定で送る頁は様式の本体らしいシート
 //   （lib/ooxml/pick.ts。表紙・目次・説明・記入例は後ろ）。頁の画像は見る頁と送る頁だけ描く（描くまで「描画中」）
 //   古い形（.xls・.doc）は読まずに「旧形式」と名前を出す
@@ -21,7 +21,7 @@ import { Button, buttonClass } from "@/components/ui/Button";
 import { AddIcon, BackIcon, CloseIcon, FitIcon, OpenIcon, RemoveIcon, SendIcon, ZoomInIcon, ZoomOutIcon } from "@/components/ui/Icon";
 import { Loader72 } from "@/components/ui/Loader72";
 import { REDACT_LABELS as L } from "@/lib/labels";
-import { PDF_PAGES_MAX, type ReadMeta } from "@/lib/intake/read-form";
+import { PDF_PAGES_MAX, READ_CHOOSE_FROM, type ReadMeta } from "@/lib/intake/read-form";
 import { defaultExcluded } from "@/lib/ooxml/pick";
 import { drawRedactPage, encodeRedacted, loadPages, metaOf, releasePages, type RedactPage } from "@/lib/redact/browser";
 import { hitRect, initialRedact, rectFromDrag, redactReducer, totalHidden, unpainted, type Rect } from "@/lib/redact/rects";
@@ -42,7 +42,21 @@ const TAP_SLOP = 6;
 
 type Mode = "paint" | "move";
 
-export function RedactSheet({ files, onSend, onCancel }: { files: readonly File[]; onSend: (pages: RedactedPage[]) => void; onCancel: () => void }) {
+export function RedactSheet({
+  files,
+  onSend,
+  onCancel,
+  pageBytes,
+}: {
+  files: readonly File[];
+  onSend: (pages: RedactedPage[]) => void;
+  onCancel: () => void;
+  /**
+   * 送る頁の数から 1 頁の JPEG の上限を決める（T146）。様式の読み取りは 1 要求に全部の頁を載せるので、頁の画像の合計を上限に収める
+   * （lib/forms/read-upload.ts の formReadPageBytes）。入れる欄の読み取りは 1 頁 1 要求なので渡さない（1 枚の上限のまま）
+   */
+  pageBytes?: (pages: number) => number;
+}) {
   const titleId = useId();
   const dialog = useRef<HTMLDialogElement>(null);
   const stage = useRef<HTMLDivElement>(null);
@@ -284,8 +298,9 @@ export function RedactSheet({ files, onSend, onCancel }: { files: readonly File[
         return acc;
       }, [])
     : [];
-  // 送る頁を選ぶ: 4 頁以上か、シートが 2 つ以上のブック（既定で外した頁を戻せるように。T122）
-  const choosing = !!pages && (pages.length > PDF_PAGES_MAX || sheets.length >= 2);
+  // 送る頁を選ぶ: 4 頁以上か、シートが 2 つ以上のブック（既定で外した頁を戻せるように。T122）。
+  // 上限を 10 頁にしたので（T146）、上限を超えたときでなく 4 頁から選べるようにする（頁ごとに AI を呼ぶので、要らない頁を外せる）
+  const choosing = !!pages && (pages.length >= READ_CHOOSE_FROM || sheets.length >= 2);
 
   async function send() {
     if (!pages || chosen.length === 0 || chosen.length > PDF_PAGES_MAX || encoding) return;
@@ -324,7 +339,7 @@ export function RedactSheet({ files, onSend, onCancel }: { files: readonly File[
         const r = state.rects[p.id] ?? [];
         // ここに来た隠した所 0 の頁は、上の窓で人が「送信」を選んだ物だけ。選んだ頁は頭から 1・2・3 と数え直す（受け口は頁の順を見る）
         const meta = metaOf(p, r);
-        out.push({ name: L.pageName(p.fileName, p.page, p.pages), blob: await encodeRedacted(p, r), meta: choosing ? { ...meta, page: i + 1 } : meta, bare: r.length === 0, origin: p.page });
+        out.push({ name: L.pageName(p.fileName, p.page, p.pages), blob: await encodeRedacted(p, r, pageBytes?.(chosen.length)), meta: choosing ? { ...meta, page: i + 1 } : meta, bare: r.length === 0, origin: p.page });
       }
       onSend(out);
     } catch {

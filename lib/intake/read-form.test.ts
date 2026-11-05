@@ -200,6 +200,7 @@ describe("入れる欄（components/person/Intake.tsx）は写真・PDF を黒�
     const sheet = readFileSync(new URL("../../components/person/RedactSheet.tsx", import.meta.url), "utf8");
     // origin は元の頁の番号（数だけ。T134 の共有の対応表の鍵）
     expect(sheet).toContain("export type RedactedPage = { name: string; blob: Blob; meta: ReadMeta; bare: boolean; origin: number }");
-    expect(sheet).toContain("encodeRedacted(p, r)");
+    // 1 頁の大きさの上限は様式の読み取りだけが頁の数から渡す（T146）
+    expect(sheet).toContain("encodeRedacted(p, r, pageBytes?.(chosen.length))");
   });
 });

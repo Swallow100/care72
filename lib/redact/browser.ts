@@ -3,7 +3,7 @@
 //
 // - 写真（JPEG・PNG）: そのまま <img> で開く。向き（EXIF の回転）はブラウザが直した大きさで扱う（naturalWidth と drawImage は向きを直す）
 // - PDF: pdf.js（pdfjs-dist、Apache-2.0）で頭から PDF_PAGES_MAX 頁までを画像（PNG）にする。pdf.js は PDF を選んだときだけ読み込む
-// - Excel・Word（T119）: lib/ooxml で印刷の頁に描いて画像（PNG）にする（OFFICE_PAGES_MAX 頁まで。送るのは人が選んだ 3 頁まで）。
+// - Excel・Word（T119）: lib/ooxml で印刷の頁に描いて画像（PNG）にする（OFFICE_PAGES_MAX 頁まで。送るのは人が選んだ PDF_PAGES_MAX 頁まで）。
 //   T122: 頁の形は全部作り、画像は見る頁と送る頁だけ描く（drawRedactPage）。
 //   古い形（.xls・.doc）は読まずに legacy で返す（画面は「PDF 保存で取込」）。lib/ooxml は選んだときだけ読み込む
 // - 送る画像: canvas に描いて（長い辺を OUTPUT_MAX_SIDE に）、ピクセルを直に黒く塗り（paintRects）、JPEG にして、付け足しを外す。
@@ -195,10 +195,11 @@ export function releasePages(pages: readonly RedactPage[]): void {
 export const metaOf = (page: RedactPage, rects: readonly Rect[]): ReadMeta => ({ source: page.source, page: page.page, redacted: rects.length });
 
 /**
- * 塗った後の JPEG を作る。四角は画面の画像（w・h）の座標。上限の大きさに収まるまで質を下げる。
+ * 塗った後の JPEG を作る。四角は画面の画像（w・h）の座標。上限の大きさ（maxBytes、既定は 1 枚の上限）に収まるまで質を下げる。
+ * 様式の読み取りは 1 要求に全部の頁を載せるので、頁の数で割った大きさを渡す（T146、lib/forms/read-upload.ts の formReadPageBytes）。
  * 白い地に描く（PNG の透けた所を黒にしない）
  */
-export async function encodeRedacted(page: RedactPage, rects: readonly Rect[]): Promise<Blob> {
+export async function encodeRedacted(page: RedactPage, rects: readonly Rect[], maxBytes: number = FORM_FILE_MAX_BYTES): Promise<Blob> {
   const { w, h, ratio } = outputSize(page.w, page.h);
   const img = await imageOf(page.url);
   const canvas = document.createElement("canvas");
@@ -216,7 +217,7 @@ export async function encodeRedacted(page: RedactPage, rects: readonly Rect[]): 
     for (const quality of [0.86, 0.75, 0.6, 0.45]) {
       const raw = new Uint8Array(await (await canvasBlob(canvas, "image/jpeg", quality)).arrayBuffer());
       const clean = stripJpegMetadata(raw);
-      if (clean.length <= FORM_FILE_MAX_BYTES) return new Blob([clean as Uint8Array<ArrayBuffer>], { type: "image/jpeg" });
+      if (clean.length <= Math.min(maxBytes, FORM_FILE_MAX_BYTES)) return new Blob([clean as Uint8Array<ArrayBuffer>], { type: "image/jpeg" });
     }
     throw new Error("too_large");
   } finally {

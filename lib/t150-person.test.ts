@@ -28,12 +28,18 @@ function seedRows(p: SeedPerson, clocks = p.clocks): PersonPageRows {
 
 const headOf = (id: string) => toPersonView(seedRows(seed(id)), { today: TODAY }).head;
 
-/** 描いた HTML の見える文字（属性の title は外す） */
-const visible = (html: string) => html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ");
+/** 描いた HTML の見える文字（触れた時だけ出す添え〔components/person/Hint の data-hint-text〕は外す） */
+const visible = (html: string) =>
+  html
+    .replace(/<span[^>]*data-hint-text[^>]*>[^<]*<\/span>/g, " ")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/\s+/g, " ");
+/** 触れた時に出す添えの文字 */
+const hints = (html: string) => [...html.matchAll(/data-hint-text[^>]*>([^<]*)</g)].map((m) => m[1]);
 const renderHead = (head: ReturnType<typeof headOf>) => renderToStaticMarkup(createElement(PersonHead, { head, level: 2, titleId: "t" }));
 
 describe("上の段の医療（lib/person.ts の headMedical、components/person/PersonHead.tsx）", () => {
-  it("時計が 1 つの区分は印だけ（「呼吸器 3h」）。時計の 1 行は印に触れた時（title）で、見える文字には 2 回目を出さない", () => {
+  it("時計が 1 つの区分は印だけ（「呼吸器 3h」）。時計の 1 行は印に触れた時（Hint）で、見える文字には 2 回目を出さない", () => {
     const h = headOf("p-02");
     expect(h.medical).toEqual([
       { mark: { label: "呼吸器", tone: "urgent", remaining: "3h" }, waiting: false, others: [], lines: ["人工呼吸器 内蔵電池 停電から 3 時間"] },
@@ -43,7 +49,7 @@ describe("上の段の医療（lib/person.ts の headMedical、components/person
     expect(text).toContain("呼吸器 3h");
     expect(text).not.toContain("停電から 3 時間");
     expect(text).not.toContain("人工呼吸器 内蔵電池");
-    expect(html).toContain('title="人工呼吸器 内蔵電池 停電から 3 時間"');
+    expect(hints(html)).toEqual(["人工呼吸器 内蔵電池 停電から 3 時間"]);
     // 前の「時計」の欄は無い
     expect(text).not.toMatch(/ 時計 /);
   });

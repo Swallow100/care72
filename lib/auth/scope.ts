@@ -3,12 +3,13 @@
 // 本人・家族のスマホは自分の本人だけ。行政・医療班は受け持ちの範囲だけ（T23）: 自分のアカウントの開いた受け持ち
 // （custody の released_at が NULL）がある本人。事業所はまたぐ。受け入れの前と、搬送・退所で閉じたあとは開けない。
 // 審査員（壁の中、lib/auth/wall.ts）の受け持ちはデモの人だけ（T81。前から開いていたほかの事業所の人の受け持ちがあっても開けない）。
+// 役を替えた山本（確認用の事業所、T144）は確認用の事業所の人だけ。
 
 import type { D1Database } from "@cloudflare/workers-types";
 import type { PersonRow } from "../db/types.ts";
 import type { Principal } from "./principal.ts";
 import { canViewPage } from "./roles.ts";
-import { demoPersonSql, isWalled } from "./wall.ts";
+import { demoPersonSql, isWalled, wallOfficeOf } from "./wall.ts";
 
 export type CaseloadScope = { officeId: string; careManagerId: string };
 
@@ -21,7 +22,7 @@ export function caseloadScope(p: Principal): CaseloadScope | null {
 export type PersonScope =
   | { kind: "office"; officeId: string }
   | { kind: "own"; officeId: string; personId: string }
-  | { kind: "custody"; holderId: string; demoOnly: boolean }
+  | { kind: "custody"; holderId: string; demoOnly: boolean; wallOffice: string }
   | { kind: "none" };
 
 export function personScope(p: Principal): PersonScope {
@@ -33,7 +34,7 @@ export function personScope(p: Principal): PersonScope {
       return p.office && p.personId ? { kind: "own", officeId: p.office.id, personId: p.personId } : { kind: "none" };
     case "government":
     case "medical":
-      return p.accountId ? { kind: "custody", holderId: p.accountId, demoOnly: isWalled(p) } : { kind: "none" };
+      return p.accountId ? { kind: "custody", holderId: p.accountId, demoOnly: isWalled(p), wallOffice: wallOfficeOf(p) } : { kind: "none" };
     case "unselected":
       return { kind: "none" };
   }
@@ -56,7 +57,7 @@ export async function personInScope(db: D1Database, p: Principal, personId: stri
            FROM people p
           WHERE p.id = ?1
             AND EXISTS (SELECT 1 FROM custody c WHERE c.person_id = p.id AND c.holder_id = ?2 AND c.released_at IS NULL)${
-              s.demoOnly ? ` AND ${demoPersonSql("p")}` : ""
+              s.demoOnly ? ` AND ${demoPersonSql("p", s.wallOffice)}` : ""
             }`,
       )
       .bind(personId, s.holderId)

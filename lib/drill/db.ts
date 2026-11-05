@@ -28,7 +28,7 @@ import {
 } from "../db/types.ts";
 import { homeOf, VIAS, type Home, type Homes, type OfficeZone } from "./comms.ts";
 import { DEMO_OFFICE_ZONES } from "./area.ts";
-import { DEMO_OFFICE_ID } from "../auth/demo.ts";
+import { CHECK_OFFICE_ID, checkSeedId, isSeedOfficeId } from "../auth/demo.ts";
 import { callTargetText } from "../list/calls.ts";
 import { isSourceId } from "../sources/index.ts";
 import {
@@ -84,12 +84,22 @@ import { pushTold } from "./person-facts.ts";
 import { DRILL_END_MINUTE, nextEventMinute, type ClockMark, type ClockTo } from "./clock.ts";
 import { CLOCK_END_LABEL, clockOver, isFreeWay } from "./action-terms.ts";
 
-/** 訓練を開ける範囲。ケアマネの役だけ（審査員のケアマネの役も）。事業所と担当一覧の持ち主 */
-export type DrillScope = { officeId: string; careManagerId: string; accountId: string | null };
+/**
+ * 訓練を開ける範囲。ケアマネの役だけ（審査員のケアマネの役も）。事業所と担当一覧の持ち主。
+ * perAccount は進行中の訓練を開始者のアカウントごとに数える（T144。審査員 3 つは同じ担当一覧を使うので、担当一覧の人で数えると 1 つしか持てない）
+ */
+export type DrillScope = { officeId: string; careManagerId: string; accountId: string | null; perAccount?: boolean };
 
 export function drillScope(p: Principal | null): DrillScope | null {
   if (!p || p.role !== "care_manager" || !p.office || !p.caseloadOf) return null;
-  return { officeId: p.office.id, careManagerId: p.caseloadOf, accountId: p.accountId };
+  // 審査員のケアマネの役（試用事業所 T115 の管理者の役は除く。担当一覧は自分の物）
+  const perAccount = p.judge && p.sandbox !== true;
+  return { officeId: p.office.id, careManagerId: p.caseloadOf, accountId: p.accountId, ...(perAccount ? { perAccount: true } : {}) };
+}
+
+/** 進行中の訓練を数えるときの担当一覧の持ち主（mineRunningSql）。開始者ごとに数える範囲（perAccount）では null（担当一覧の人で数えない） */
+function runningCareManager(scope: Pick<DrillScope, "careManagerId" | "perAccount">): string | null {
+  return scope.perAccount === true ? null : scope.careManagerId;
 }
 
 export function isDrillScenario(v: unknown): v is DrillScenario {
@@ -231,10 +241,10 @@ function zonesOf(v: unknown): OfficeZone[] {
 }
 
 /**
- * 事業所の区域（offices.hazards の JSON）。読めなければ区域なし。デモ事業所で NULL なら架空の街の値（lib/drill/area.ts の DEMO_OFFICE_ZONES）
+ * 事業所の区域（offices.hazards の JSON）。読めなければ区域なし。種の事業所（デモ事業所・確認用、T144）で NULL なら架空の街の値（lib/drill/area.ts の DEMO_OFFICE_ZONES）
  */
 export function officeZonesOf(text: string | null | undefined, officeId?: string): OfficeZone[] {
-  if (!text) return officeId === DEMO_OFFICE_ID ? DEMO_OFFICE_ZONES.map((z) => ({ ...z })) : [];
+  if (!text) return isSeedOfficeId(officeId) ? DEMO_OFFICE_ZONES.map((z) => ({ ...z })) : [];
   try {
     return zonesOf(JSON.parse(text) as unknown);
   } catch {
@@ -558,7 +568,9 @@ export async function startDrill(
 
   // 想定の表の配役（T70）。事業所にいない人（デモの 10 人）の行があるときだけ台帳を読み、参加者の中の代わりの人を決める
   const def = scenarioOf(scenario);
-  const cast = needsCast(def, participants) ? castScenario(def, participants, castFactsMap(await loadSources())) : {};
+  // 確認用の事業所（T144）は想定の表の人（p-01…）をその写し（chk-p-01…）にそのまま当てる（審査員の訓練と同じ人に同じ行）
+  const twin = scope.officeId === CHECK_OFFICE_ID ? checkSeedId : undefined;
+  const cast = needsCast(def, participants) ? castScenario(def, participants, castFactsMap(await loadSources()), twin) : {};
   // 参加者の家の区域と通信、事業所の区域（T125）。開始の時に写す（訓練の途中で台帳を直しても変わらない）
   const all = await loadSources();
   const homes = Object.fromEntries(participants.flatMap((p) => (all.has(p) ? [[p, homeOf(all.get(p)!.ledger)] as const] : [])));
@@ -609,7 +621,7 @@ export async function startDrill(
         now,
         state.status === "finished" ? now : null,
         dbScenario(scenario).mode,
-        scope.careManagerId,
+        runningCareManager(scope),
       ),
     ...tickStatements(db, id, tick, now),
   ]);
@@ -1172,7 +1184,8 @@ export async function listDrills(db: D1Database, officeId: string, limit = 50, n
 
 /**
  * 同じケアマネの進行中（T70）を引く文。自分（開始者のアカウント）が始めた物か、自分の担当一覧の人が参加している物。
- * 審査員は同じアカウント（acct-judge）で山本の担当一覧を使うので、審査員どうしも山本とも 1 つを共有する（今までどおり）。
+ * 審査員（3 つのアカウント、T144）は山本の担当一覧を共有するので、担当一覧の人では数えず開始者ごと（careManager に NULL を渡す。
+ * runningCareManager）。審査員どうしは同時に別の訓練を持てる。山本は確認用の事業所（T144）なので審査員と数えが混ざらない。
  * 担当一覧の違うケアマネは別々に持てる。引数は SQL の番号（"?2" など）。
  * 開始者は = で比べる（IS だと accountId が null のとき開始者 NULL の訓練を自分の物と見ていた。T82）
  */
@@ -1190,13 +1203,13 @@ function mineRunningSql(office: string, account: string, careManager: string): s
 export async function runningDrillId(
   db: D1Database,
   officeId: string,
-  opts: { scope?: Pick<DrillScope, "accountId" | "careManagerId">; now?: string } = {},
+  opts: { scope?: Pick<DrillScope, "accountId" | "careManagerId" | "perAccount">; now?: string } = {},
 ): Promise<string | null> {
   if (opts.now) await expireStaleDrills(db, officeId, opts.now);
   const r = opts.scope
     ? await db
         .prepare(`${mineRunningSql("?1", "?2", "?3")} ORDER BY d.started_at DESC LIMIT 1`)
-        .bind(officeId, opts.scope.accountId, opts.scope.careManagerId)
+        .bind(officeId, opts.scope.accountId, runningCareManager(opts.scope))
         .first<{ id: string }>()
     : await db
         .prepare("SELECT id FROM drills WHERE office_id = ?1 AND status = 'running' ORDER BY started_at DESC LIMIT 1")

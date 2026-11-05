@@ -8,6 +8,7 @@
 
 import type { D1Database } from "@cloudflare/workers-types";
 import { ageOn } from "../age.ts";
+import { DEMO_OFFICE_ID } from "../auth/demo.ts";
 import { demoPersonSql } from "../auth/wall.ts";
 import type { StaffActor } from "./actor.ts";
 import type { SearchInput } from "./forms.ts";
@@ -57,8 +58,8 @@ const MINE = `EXISTS (SELECT 1 FROM custody c WHERE c.person_id = p.id AND c.hol
 const SQUASH = (col: string) => `replace(replace(${col}, ' ', ''), '　', '')`;
 
 /** 壁の中の人はデモの人だけ（alias は people の別名）。外の人は条件なし */
-function wallOf(actor: Pick<StaffActor, "walled">, alias = "p"): string {
-  return actor.walled ? ` AND ${demoPersonSql(alias)}` : "";
+function wallOf(actor: Pick<StaffActor, "walled" | "wallOffice">, alias = "p"): string {
+  return actor.walled ? ` AND ${demoPersonSql(alias, actor.wallOffice ?? DEMO_OFFICE_ID)}` : "";
 }
 
 export type SearchResult = { hits: PersonHit[]; more: boolean };
@@ -82,7 +83,7 @@ export async function searchPeople(db: D1Database, actor: StaffActor, q: SearchI
 export type ShelterCount = { shelter: string; people: number };
 
 /** 受け持ちの開いている避難所と人数（誰が受け入れたかを問わない）。名前の順。審査員はデモの人だけ数える（無ければ出ない） */
-export async function listShelters(db: D1Database, actor: Pick<StaffActor, "walled">): Promise<ShelterCount[]> {
+export async function listShelters(db: D1Database, actor: Pick<StaffActor, "walled" | "wallOffice">): Promise<ShelterCount[]> {
   const res = await db
     .prepare(
       `SELECT c.shelter AS shelter, count(DISTINCT c.person_id) AS people FROM custody c JOIN people p ON p.id = c.person_id

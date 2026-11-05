@@ -1,14 +1,15 @@
 // 本人のページの上。大事な物を大きく: 優先と理由、医療の印（時計の残りを添える）、避難先、緊急連絡先。印は、平時は時計の長さ、
 // 災害モードは今の残り（lib/person の markItems・headMedical に situation を渡したとき。超過は「酸素 超過」を赤）。
 // 医療の印と時計は 1 つの欄（T150。前は「医療」の印と「時計」の欄に同じ時計が並び、担当一覧の右の面の狭い幅では縦に 2 回出た）。
-// 印の数の元でない時計（同じ区分の 2 つ目・印の区分に入らない時計）だけを印の下に 1 行ずつ、時計の全部の 1 行は印に触れた時に（title）。
+// 印の数の元でない時計（同じ区分の 2 つ目・印の区分に入らない時計）だけを印の下に 1 行ずつ、時計の全部の 1 行は印に触れた時に（T143 の Hint）。
 // その上の 1 行に 名前・年齢・介護度・計画・未確認。
 // 優先は平時が骨格の段（色は時計の長さ。医療の印と同じ）、発災時（T09 で災害モードを入れたとき）は色と言葉と理由の 1 行。
 // 見る人の範囲（head.show、lib/consent/scope.ts）の外の物は欄ごと出さない（医療班・行政に同意の無い人は名前・カナ・年齢と状態の色だけ）。
 
 import type { HeadClock, HeadMedical, PersonHead as Head } from "@/lib/person";
-import { BLANK_LABELS, CLOCK_TEXT_LABELS, HEAD_LABELS } from "@/lib/labels";
-import { Mark } from "@/components/ui/Tag";
+import { BLANK_LABELS, CLOCK_TEXT_LABELS, HEAD_LABELS, PLAN_DRILL_LABELS } from "@/lib/labels";
+import { Mark, StateText } from "@/components/ui/Tag";
+import { Hint } from "./Hint";
 import { LineText, REASON_TEXT, StateTag, TONE_TEXT, type Level } from "./parts";
 
 function Fact({ label, children }: { label: string; children: React.ReactNode }) {
@@ -43,10 +44,9 @@ function MedicalCell({ items }: { items: readonly HeadMedical[] }) {
       {marked.length > 0 && (
         <span className="flex flex-wrap items-baseline gap-x-1 gap-y-1">
           {marked.map((x) => (
-            <span key={x.mark.label} className="inline-flex items-baseline gap-1" title={x.lines.join("\n") || undefined} data-head-mark={x.mark.label}>
-              <Mark inPanel2 size="md" tone={x.mark.tone ?? null}>
-                {x.mark.remaining ? `${x.mark.label} ${x.mark.remaining}` : x.mark.label}
-              </Mark>
+            <span key={x.mark.label} className="inline-flex items-baseline gap-1" data-head-mark={x.mark.label}>
+              {/* 時計の全部の 1 行は触れた時（T143 の components/person/Hint。PC はカーソル、狭い幅は押した時） */}
+              {x.lines.length > 0 ? <Hint hint={x.lines.join("　")}>{markOf(x.mark)}</Hint> : markOf(x.mark)}
               {x.waiting && <span className="text-xs text-muted">{CLOCK_TEXT_LABELS.waiting}</span>}
             </span>
           ))}
@@ -61,6 +61,15 @@ function MedicalCell({ items }: { items: readonly HeadMedical[] }) {
         </ul>
       )}
     </div>
+  );
+}
+
+/** 医療の印（担当一覧の列と同じ形と色） */
+function markOf(m: NonNullable<HeadMedical["mark"]>) {
+  return (
+    <Mark inPanel2 size="md" tone={m.tone ?? null}>
+      {m.remaining ? `${m.label} ${m.remaining}` : m.label}
+    </Mark>
   );
 }
 
@@ -133,7 +142,19 @@ export function PersonHead({ head, level, titleId }: { head: Head; level: Level;
             {show.medical && (
               <Fact label={HEAD_LABELS.careLevel}>{head.careLevel ?? <span className="text-muted">{BLANK_LABELS.blank}</span>}</Fact>
             )}
-            {show.plan && <Fact label={HEAD_LABELS.plan}>{head.plan}</Fact>}
+            {/* 計画の段階（未作成・下書き・作成済、意味色の文字）と、別に最後に出た訓練の日（T146。訓練は色を付けない） */}
+            {show.plan && (
+              <Fact label={HEAD_LABELS.plan}>
+                <StateText tone={head.planTone}>{head.plan}</StateText>
+              </Fact>
+            )}
+            {show.plan && (
+              <Fact label={PLAN_DRILL_LABELS.head}>
+                <span className={head.drill === PLAN_DRILL_LABELS.none ? "text-muted" : "tabular-nums"} data-head-drill>
+                  {head.drill}
+                </span>
+              </Fact>
+            )}
             {show.plan && (
               <Fact label={HEAD_LABELS.unconfirmed}>
                 <span

@@ -82,9 +82,10 @@ describe("migration 0017（offices の地図の中心）", () => {
 });
 
 describe("種と戻し（T68 の 4・6）", () => {
-  it("種の 3 事業所は様式 松山市。デモ事業所の中心は松山市の市街（既定の中心と同じ）、ほかは未設定", () => {
+  it("種の 4 事業所は様式 松山市。デモ事業所と確認用（T144）の中心は松山市の市街（既定の中心と同じ）、ほかは未設定", () => {
     expect(SEED_OFFICES.map((o) => [o.id, o.plan_form, o.center_lat, o.center_lng])).toEqual([
       ["office-demo", "matsuyama", DEFAULT_CENTER.lat, DEFAULT_CENTER.lng],
+      ["office-demo-check", "matsuyama", DEFAULT_CENTER.lat, DEFAULT_CENTER.lng],
       ["office-partner", "matsuyama", null, null],
       ["office-unaffiliated", "matsuyama", null, null],
     ]);
