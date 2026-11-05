@@ -29,7 +29,7 @@ import { availability, municipalEntry } from "./municipal-forms.ts";
 import { loadFetchRecord } from "./municipal-http.ts";
 import { copyShared, countSharedUse, getSharedMapping, pagesKeyOf, putSharedMapping } from "./shared-mapping.ts";
 import { pageImageKey, storePageImages, type PageImageBucket } from "./page-images.ts";
-import { formReadPagesOf } from "./read-upload.ts";
+import { formReadInksOf, formReadPagesOf } from "./read-upload.ts";
 
 export type FormReadDeps = {
   db: D1Database;
@@ -45,6 +45,8 @@ export type FormReadDeps = {
 export async function formReadPost(deps: FormReadDeps, scope: FormsScope, form: FormData): Promise<Response> {
   const got = formReadPagesOf(form);
   if (!got.ok) return mappingError(got.error);
+  // 頁の印刷の字の位置（T133）。Claude には渡さず、頁の画像と一緒に置くだけ
+  const inks = formReadInksOf(form, got.pages.length);
 
   // 一覧の公式の様式（T134）: 版はサーバーが公式の URL から取ったときの記録から（ブラウザの言う版を信じない）。
   // 記録が無い・古ければ取り直してもらう。送った頁の組（元の頁の番号）と版が同じ共有の対応表があれば、AI を呼ばずに写す
@@ -79,7 +81,7 @@ export async function formReadPost(deps: FormReadDeps, scope: FormsScope, form: 
   const known = await findMappingByHash(deps.db, scope.officeId, hash);
   if (known) {
     // 同じ頁の画像。T86 の前に読んだ物で画像が無ければ置く（場所を人が足せば、元の様式の上の紙にできる）
-    if (known.page_images === null) await storePageImages(deps.db, deps.bucket, { officeId: scope.officeId, mappingId: known.id, images: parts });
+    if (known.page_images === null) await storePageImages(deps.db, deps.bucket, { officeId: scope.officeId, mappingId: known.id, images: parts, inks });
     return Response.json({ ok: true, id: known.id, reused: true }, { headers: NO_STORE });
   }
 
@@ -106,7 +108,7 @@ export async function formReadPost(deps: FormReadDeps, scope: FormsScope, form: 
         catalog: catalogMark,
       });
       if (!saved.reused) {
-        await storePageImages(deps.db, deps.bucket, { officeId: scope.officeId, mappingId: saved.id, images: parts });
+        await storePageImages(deps.db, deps.bucket, { officeId: scope.officeId, mappingId: saved.id, images: parts, inks });
         await countSharedUse(deps.db, sharedKey);
       }
       return Response.json({ ok: true, id: saved.id, reused: saved.reused, shared: true, rejected: 0, unread: [], partial: [] }, { headers: NO_STORE });
@@ -129,7 +131,7 @@ export async function formReadPost(deps: FormReadDeps, scope: FormsScope, form: 
       at: stamp,
       catalog: catalogMark,
     });
-    if (!saved.reused) await storePageImages(deps.db, deps.bucket, { officeId: scope.officeId, mappingId: saved.id, images: parts });
+    if (!saved.reused) await storePageImages(deps.db, deps.bucket, { officeId: scope.officeId, mappingId: saved.id, images: parts, inks });
     // 一覧の様式で、全部の頁を読めた AI の答えだけを共有に入れる（T134。入れられなくても読み取りは成り立つ）
     if (sharedKey && !saved.reused && read.unread.length === 0 && read.partial.length === 0) {
       try {

@@ -62,7 +62,7 @@ export default async function FormMappingPage({ params }: Props) {
           version={stored.version}
           status={stored.status}
           initial={stored.mapping}
-          pageImages={stored.pageImages?.map((p) => ({ ...p, src: pageImageHref(stored.id, p.page) })) ?? null}
+          pageImages={stored.pageImages?.map((p) => ({ page: p.page, width: p.width, height: p.height, src: pageImageHref(stored.id, p.page) })) ?? null}
         />
         <FillSection m={stored} people={people} />
       </div>

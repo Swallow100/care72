@@ -241,8 +241,8 @@ describe("押して入れた値の行き先", () => {
     const p1 = await paper();
     expect(p1.rows.person.ledger).toBe(ledgerBefore);
     expect(textsOf(p1.overlay!, num.key).flatMap((t) => t.lines)).toEqual(["A-0012"]);
-    // 部品ごとの空きに置く（年・月・日）
-    expect(textsOf(p1.overlay!, "f102").map((t) => t.lines.join(""))).toEqual(["令和8", "11", "5"]);
+    // 部品ごとの空きに置く（年・月・日）。元号の □ が無く今の元号（令和）なら年の空きに数だけ（T133 の決め）
+    expect(textsOf(p1.overlay!, "f102").map((t) => t.lines.join(""))).toEqual(["8", "11", "5"]);
     // □ の欄は選んだ □ に印
     const marks = p1.overlay!.pages[1].items.filter((i) => i.kind === "mark" && i.fieldId === "f103");
     expect(marks).toHaveLength(1);

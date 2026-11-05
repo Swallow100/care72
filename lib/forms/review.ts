@@ -176,7 +176,9 @@ export function mappedSubject(mapped: MappedSheet, sheet: OverlaySheet, printed?
     ),
   );
   const ids = new Set(fields.map((f) => f.id));
-  return { sheet, fields, fieldOf: (id) => (ids.has(id) ? id : null), ...(printed ? { printed } : {}), redoable: true };
+  // 置けなかった欄（T133 の台帳あり空欄。紙を作るときに分かる）は取込漏れに
+  const carried = sheet.unplacedIds ?? [];
+  return { sheet, fields, fieldOf: (id) => (ids.has(id) ? id : null), ...(printed ? { printed } : {}), ...(carried.length > 0 ? { carried } : {}), redoable: true };
 }
 
 const ratio = (b: { x: number; y: number; w: number; h: number }, page: { w: number; h: number }): FieldBox => ({ x: b.x / page.w, y: b.y / page.h, w: b.w / page.w, h: b.h / page.h });
