@@ -1,14 +1,14 @@
 // パスワードの受け口。ログイン（login）とセッションの確かめ（principalOf）の両方がここを通る（2 か所で食い違わないように）。
 //
 // 審査員: env の JUDGE_PASSWORD_HASH（npm run hash-password の 1 行）。無ければ JUDGE_PASSWORD（平文）。
-// 山本（デモ事業所のケアマネ）: env の CAREMANAGER_DEMO_PASSWORD_HASH → CAREMANAGER_DEMO_PASSWORD（平文）→ 種の accounts.password_hash の順。
+// 山本（確認用の事業所のケアマネ、T144。前はデモ事業所の acct-yamamoto）: env の CAREMANAGER_DEMO_PASSWORD_HASH → CAREMANAGER_DEMO_PASSWORD（平文）→ 種の accounts.password_hash の順。
 //   env を先にするのは、作者がダッシュボードの Secrets に貼った値が必ず効くように（種にハッシュが残っていても）。
 // ほかのアカウント: accounts.password_hash だけ。
 //
 // 平文はスマホからダッシュボードの Secrets に貼れるようにするための道。平文は Cloudflare の secret（手元は .dev.vars）にだけあり、
 // DB・コード・ログ・画面・応答に出さない。env の値の前後の空白は落とす（貼ったときの改行）。打ったパスワードは落とさない。
 
-import { DEMO_CARE_MANAGER_ID } from "./demo.ts";
+import { LOGIN_CARE_MANAGER_ID } from "./demo.ts";
 import { verifyPassword, verifyPlainPassword } from "./password.ts";
 import { passwordVersion, plainPasswordVersion } from "./session.ts";
 
@@ -44,7 +44,7 @@ export function accountCredential(
   env: CredentialEnv,
   account: { id: string; password_hash: string | null },
 ): Credential | null {
-  if (account.id === DEMO_CARE_MANAGER_ID) {
+  if (account.id === LOGIN_CARE_MANAGER_ID) {
     const c = fromEnv(env.CAREMANAGER_DEMO_PASSWORD_HASH, env.CAREMANAGER_DEMO_PASSWORD);
     if (c) return c;
   }

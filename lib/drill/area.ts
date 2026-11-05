@@ -9,7 +9,7 @@
 // - 避難所・施設の名前も町名を含まない一般の言い方（「高台の小学校」）。台帳の避難先の名前は使わない
 // - 道路は通る地区、施設は頼る時計の区分（透析施設 → 透析の時計の人）で人に当てる（lib/drill/world-apply.ts）
 
-import { DEMO_OFFICE_ID } from "../auth/demo.ts";
+import { isSeedOfficeId } from "../auth/demo.ts";
 import type { DependsOn, Ledger } from "../db/types.ts";
 
 /** 町 1 つ。town は台帳の町名（画面の言葉）、alias は部屋に見せる別名 */
@@ -235,14 +235,14 @@ function terrainOf(floodM: number | null, flood: boolean, landslide: boolean, ts
 }
 
 /**
- * 事業所の地理。デモ事業所（DEMO_OFFICE_ID）は T50 の架空の街のまま（DEMO_AREA）。
+ * 事業所の地理。デモ事業所と確認用の事業所（種の事業所、T144）は T50 の架空の街のまま（DEMO_AREA）。
  * ほかの事業所は参加者の台帳の町名ごとに町を作る（町名の無い人は「町名なし」の 1 町）: 別名は町名の順に 甲地区・乙地区…、
  * 地形はその町の人のハザード（浸水の最大の深さ・土砂・津波）の一言、送電は 3 町ずつ。架空の町「高台」を 1 つ足し、
  * 避難所・福祉避難所・施設を置く。道は町ごとに 1 本（「甲地区の道」）と高台への坂道。施設は頼る人がいる物だけ
  * （透析先・冷蔵・配達の時計、訪問看護の連絡先）。部屋に見せるのは別名と地理の一言だけ（町名と本人の結び付きはコードだけが持つ）
  */
 export function areaOf(officeId: string, people: ReadonlyArray<AreaPerson>): Area {
-  if (officeId === DEMO_OFFICE_ID) return DEMO_AREA;
+  if (isSeedOfficeId(officeId)) return DEMO_AREA;
   const byTown = new Map<string, AreaPerson[]>();
   for (const p of people) {
     const t = p.ledger.basic.address?.town?.trim() || NO_TOWN;
