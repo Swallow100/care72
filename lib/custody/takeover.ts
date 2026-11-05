@@ -8,6 +8,7 @@
 // - 審査員の壁（T81、lib/auth/wall.ts）: 審査員と審査員が足したアカウント（どれもデモ事業所）は、デモのアカウント（審査員など）が登録した人だけを
 //   一覧・引受できる。デモ事業所の審査員でない人（山本）も同じ（デモ事業所に入った人は毎朝 4 時に消えるので、本物の登録を引き受けると消してしまう）。
 //   ほかの事業所はその逆で、デモのアカウントが登録した人を出さない・引き受けない（毎朝消える見本の人を本物の事業所へ入れない）
+// - 確認用の事業所（T144）も種の事業所で、自分の事業所のアカウントが登録した人だけ（審査員の登録と混ぜない）
 
 import type { D1Database } from "@cloudflare/workers-types";
 import { ageOn } from "../age.ts";
@@ -15,7 +16,7 @@ import { careManagerName } from "../office/people.ts";
 import type { OfficeActor } from "../office/scope.ts";
 import { officePayload } from "../office/timeline.ts";
 import { shortJst } from "../disaster/state.ts";
-import { DEMO_OFFICE_ID } from "../auth/demo.ts";
+import { DEMO_OFFICE_ID, isSeedOfficeId, SEED_OFFICE_IDS } from "../auth/demo.ts";
 import { demoRegisteredSql } from "../auth/wall.ts";
 import { UNAFFILIATED_OFFICE_ID } from "./actor.ts";
 
@@ -31,13 +32,17 @@ export type UnaffiliatedItem = {
   createdWhen: string;
 };
 
-/** 引き受ける人から見える所属なしの人（壁）。審査員の壁の中とデモ事業所はデモの登録だけ、ほかの事業所はそれ以外だけ */
+/**
+ * 引き受ける人から見える所属なしの人（壁）。種の事業所（デモ事業所・確認用の事業所、T144）は自分の事業所のアカウントの登録だけ、
+ * 審査員の壁の中でほかの事業所にいる人（試用事業所 T115）はデモ事業所の登録だけ、ほかの事業所はどの種の事業所の登録も出さない
+ */
 export type UnaffiliatedViewer = Pick<OfficeActor, "officeId" | "walled">;
 
 /** SQL の条件（alias は people の別名） */
 function registeredBy(viewer: UnaffiliatedViewer, alias = "p"): string {
-  const demo = viewer.walled === true || viewer.officeId === DEMO_OFFICE_ID;
-  return demo ? demoRegisteredSql(alias) : `NOT ${demoRegisteredSql(alias)}`;
+  if (isSeedOfficeId(viewer.officeId)) return demoRegisteredSql(alias, viewer.officeId);
+  if (viewer.walled === true) return demoRegisteredSql(alias, DEMO_OFFICE_ID);
+  return `NOT ${demoRegisteredSql(alias, SEED_OFFICE_IDS)}`;
 }
 
 /** 所属なしの人（その場で登録した人）。登録の新しい順。viewer は引き受ける人（officeActor。壁と事業所で出す人が変わる） */

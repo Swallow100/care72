@@ -12,6 +12,7 @@ import type { D1Database } from "@cloudflare/workers-types";
 import type { Principal } from "../auth/principal.ts";
 import type { AskJsonContext } from "../claude/call.ts";
 import { isAiConsentRefused } from "../intake/http.ts";
+import { PDF_PAGES_MAX } from "../intake/read-form.ts";
 import { pseudonymInputOf } from "../intake/extract.ts";
 import { checkRedactedImage } from "../intake/read-check.ts";
 import { pseudonymize, type PseudonymKey } from "../pseudonym/index.ts";
@@ -27,8 +28,14 @@ export type ReviewDeps = ReviewLoadDeps & {
   now?: () => string;
 };
 
-/** 1 回の見直しで受ける頁の数の上限（紙の頁。様式は 3 頁まで、原本の枠の紙は 2 頁） */
-export const REVIEW_PAGES_MAX = 4;
+/**
+ * 1 回の見直しで受ける頁の数の上限（紙の頁。様式は読み取りの上限の 10 頁まで、原本の枠の紙は 2 頁。T146 で 4 から 12 に、少し余裕を見る）。
+ * Claude には 4 頁ずつに分けて渡す（lib/forms/review-ai.ts の REVIEW_PAGES_PER_CALL）
+ */
+export const REVIEW_PAGES_MAX = PDF_PAGES_MAX + 2;
+
+/** 受ける絵の合計の上限（T146。紙の絵は 1568px の JPEG で 1 枚数百 KB。12 頁 × 2 MB） */
+export const REVIEW_TOTAL_MAX_BYTES = 24 * 1024 * 1024;
 
 const nowOf = (deps: ReviewDeps) => deps.now?.() ?? new Date().toISOString();
 
@@ -133,6 +140,7 @@ export async function reviewPost(deps: ReviewDeps, principal: Principal | null, 
     const paints = Array.isArray(body.paints) ? body.paints : [];
     const images = form.getAll("image");
     if (images.length !== plan.pages.length || images.length > REVIEW_PAGES_MAX) return mappingError("invalid");
+    if (images.reduce((n, img) => n + (typeof img === "string" ? 0 : img.size), 0) > REVIEW_TOTAL_MAX_BYTES) return mappingError("file_large");
     // 塗った数が描く物の塗る四角より少なければ断る（塗れていない頁を送らない）
     if (need.some((n, i) => typeof paints[i] !== "number" || (paints[i] as number) < n)) return mappingError("not_redacted");
     const bytes: Uint8Array[] = [];
@@ -144,9 +152,12 @@ export async function reviewPost(deps: ReviewDeps, principal: Principal | null, 
       bytes.push(b);
     }
     let ai: ReviewFinding[];
+    let calls = 1;
     try {
       const ctx = await deps.aiContext(paper.officeId);
-      ai = (await runAiReview(ctx, { subject: paper.subject, rows: reviewList(paper.subject, painted), images: bytes, key })).findings;
+      const got = await runAiReview(ctx, { subject: paper.subject, rows: reviewList(paper.subject, painted), images: bytes, key });
+      ai = got.findings;
+      calls = got.calls;
     } catch (e) {
       const res = mappingErrorOf(e);
       if (res) return res;
@@ -158,7 +169,7 @@ export async function reviewPost(deps: ReviewDeps, principal: Principal | null, 
     const runBody: RunBody = {
       rounds: [...(prev?.rounds ?? []), roundRec],
       findings: ai,
-      calls: (prev?.calls ?? 0) + 1,
+      calls: (prev?.calls ?? 0) + calls,
       finalHash: paper.hash,
     };
     let id = runId;

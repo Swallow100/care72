@@ -44,3 +44,20 @@ export const RETRACT_ERROR_STATUS: Record<RetractError, number> = {
 
 /** 送信の失敗（通信） */
 export const RETRACT_FAILED = "送信失敗";
+
+/**
+ * 本人のページの経過と変更履歴の畳み（T143）。経過は人が書き足す記録、変更履歴は台帳を直した跡（lib/timeline/history.ts）。
+ * 閉じた時は件数と最後の 1 行、押すと全部（畳む）
+ */
+export const FOLD_LABELS = {
+  history: "変更履歴",
+  /** 経過の行が無いとき（平時の多くの人） */
+  empty: "記録なし",
+  /** 閉じた畳みのボタン「3 件」（見出しと並んで「経過 3 件」） */
+  count: (n: number) => `${n} 件`,
+  close: "畳む",
+  /** 前と後の値の無い欄（位置・経路地図は数を見せない）の「避難先1 位置 変更」 */
+  changed: "変更",
+  /** 前か後が空の欄の言葉（足した物・外した物） */
+  none: "なし",
+} as const;

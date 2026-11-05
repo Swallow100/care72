@@ -127,7 +127,7 @@ describe("入力の束", () => {
     const inputs = buildInputs();
     const kinds = new Set(inputs.map((i) => i.kind));
     expect(kinds).toEqual(new Set(["text", "voice", "long", "handwrite", "photo", "heic", "pdf", "ledger"]));
-    // PDF は 4 頁（読む頁の上限 3 を超える）
+    // PDF は 4 頁（T146 で読む頁の上限を 10 にしたので、4 頁とも読む）
     expect(inputs.find((i) => i.kind === "pdf")!.oracle).toHaveLength(4);
     // 長すぎる書き起こしは上限を超える
     expect(inputs.find((i) => i.kind === "long")!.text!.length).toBeGreaterThan(4000);

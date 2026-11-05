@@ -5,7 +5,7 @@
 // - 長い辺を OUTPUT_MAX_SIDE に縮め、伏せる所を paintRects で黒く塗り、JPEG の質を 86→75→60→45 と下げて上限（5 MB）に収め、付け足しを外す
 // 描くのは @napi-rs/canvas（pdfjs-dist の任意の依存、MIT。tools/print/pdf-pages.ts と同じ）。無い端末では no_canvas。
 // Excel・Word（T119）は lib/ooxml で印刷の頁に描き（字の幅は @napi-rs/canvas の measureText）、ブラウザと同じ決まり（lib/ooxml/pick.ts）で
-// 記入例のシートを外した頭の 3 頁を送る（T122: シートが 2 つ以上のブックは様式の本体らしいシート）。古い形（.xls・.doc）は legacy で断る（画面は「旧形式・PDF 保存で取込」）。
+// 記入例のシートを外した頭から PDF_PAGES_MAX 頁（T146 で 10）を送る（T122: シートが 2 つ以上のブックは様式の本体らしいシート）。古い形（.xls・.doc）は legacy で断る（画面は「旧形式・PDF 保存で取込」）。
 // 送ったあとに塗った所が本当に黒いかを測る（redactOk）。塗れていない頁は送らない（Claude に人の値の写る絵を渡さない）。
 
 import { grayOf, inkBlobs, packInk } from "../../../lib/forms/ink.ts";

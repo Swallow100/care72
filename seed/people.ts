@@ -51,22 +51,27 @@ export const SEED_OFFICES: SeedOffice[] = [
   // ハザード（offices.hazards、T125）は持たない（NULL = 区域なし。架空の街の高台で、訓練の区域の出来事は事業所に効かない）。
   // 種の行に列を足すと migration 0030 の前の D1 に種を入れられなくなる
   { id: "office-demo", name: "デモ事業所", kind: "demo", city: CITY, plan_form: "matsuyama", center_lat: 33.84, center_lng: 132.765 },
+  // 確認用の事業所（T144）。見本のケアマネ（山本）のログインが入る、デモ事業所と同じ種の事業所（中の 10 人・災害モード・訓練は
+  // lib/seed/check.ts がデモ事業所の種から写す）。審査員は入らない。作者が山本で確かめた物が審査員のデモ事業所に効かないように
+  { id: "office-demo-check", name: "デモ事業所（確認用）", kind: "demo", city: CITY, plan_form: "matsuyama", center_lat: 33.84, center_lng: 132.765 },
   { id: "office-partner", name: "協力事業所", kind: "regular", city: CITY, plan_form: "matsuyama", center_lat: null, center_lng: null },
   // 所属なし（T23）。医療班・行政がその場で作った人の置き場。ケアマネはいない。ケアマネが引き受けると自分の事業所へ移る
   { id: "office-unaffiliated", name: "所属なし", kind: "unaffiliated", city: CITY, plan_form: "matsuyama", center_lat: null, center_lng: null },
 ];
 
-// パスワードのハッシュは種に書かない（null）。山本のハッシュは手元の鍵のファイルの
+// パスワードのハッシュは種に書かない（null）。山本（確認用の事業所の chk-acct-yamamoto）のハッシュは手元の鍵のファイルの
 // CAREMANAGER_DEMO_PASSWORD_HASH から seed/build-sql.ts が入れる（npm run hash-password で作る）。
-// 審査員は表の行でなく env の JUDGE_PASSWORD_HASH で入る。acct-judge は審査員が書いた物の書き手の行で、ログインには使わない。
+// 審査員は表の行でなく env の JUDGE_PASSWORD_HASH で入る（3 つの ID で同じパスワード、T144）。acct-judge・acct-judge-2・acct-judge-3 は
+// 審査員が書いた物の書き手の行で、ログインには使わない。
 export const SEED_ACCOUNTS: SeedAccount[] = [
+  // 審査員の担当一覧の持ち主（10 人の担当）。ログインの ID は持たない（T144。ログインの山本は確認用の事業所の chk-acct-yamamoto）
   {
     id: "acct-yamamoto",
     office_id: "office-demo",
     role: "care_manager",
     is_office_admin: 1,
     display_name: "山本",
-    login_id: "yamamoto",
+    login_id: null,
     password_hash: null,
   },
   // 2 人目のケアマネ（T79。架空、ログインの ID なし。担当 0 人）。審査員が担当の一括変更とケアマネの管理を試すときの相手。
@@ -80,12 +85,50 @@ export const SEED_ACCOUNTS: SeedAccount[] = [
     login_id: null,
     password_hash: null,
   },
+  // 審査員の書き手（T144 から 3 つ。経過の書き手で誰が書いたか分かる名前）
   {
     id: "acct-judge",
     office_id: "office-demo",
     role: "judge",
     is_office_admin: 0,
-    display_name: "審査員",
+    display_name: "審査員 1",
+    login_id: null,
+    password_hash: null,
+  },
+  {
+    id: "acct-judge-2",
+    office_id: "office-demo",
+    role: "judge",
+    is_office_admin: 0,
+    display_name: "審査員 2",
+    login_id: null,
+    password_hash: null,
+  },
+  {
+    id: "acct-judge-3",
+    office_id: "office-demo",
+    role: "judge",
+    is_office_admin: 0,
+    display_name: "審査員 3",
+    login_id: null,
+    password_hash: null,
+  },
+  // 確認用の事業所の山本（T144。ログインの ID はここ、管理者）と西村の写し（ログインの ID なし、担当 0 人）。どちらも変えられないアカウント
+  {
+    id: "chk-acct-yamamoto",
+    office_id: "office-demo-check",
+    role: "care_manager",
+    is_office_admin: 1,
+    display_name: "山本",
+    login_id: "yamamoto",
+    password_hash: null,
+  },
+  {
+    id: "chk-acct-nishimura",
+    office_id: "office-demo-check",
+    role: "care_manager",
+    is_office_admin: 0,
+    display_name: "西村",
     login_id: null,
     password_hash: null,
   },
