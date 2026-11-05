@@ -521,10 +521,12 @@ export function planTalk(log: TalkLog, ctx: TalkContext): TalkPlan {
   }
   const open = openItems(log, ctx);
   if (open.length === 0) return { kind: "close", end: "grasped" };
-  // AI が選べる問い: 済んでいない話題の最初の問いと、元を聞いた深く聞く問い（答えに合わせて AI が選ぶ。when は見ない）、
-  // 言葉で答えたがもう 1 回聞き直せる問い（噛み合わない答えの言い換え）
+  // AI が選べる問い: 済んでいない話題の最初の問いと、元を聞いた深く聞く問い（答えに合わせて AI が選ぶ。ただし元の答えが言葉の一致・押した答えで
+  // 分かっていて合わない物〔動けない のあとの 外に出られるか〕は外す）、言葉で答えたがもう 1 回聞き直せる問い（噛み合わない答えの言い換え）
+  const known = knownAnswers(log, ctx.answers);
   const items = itemsFor(ctx.hasDevice)
     .filter((i) => parentAsked(log, i))
+    .filter((i) => !(i.when && parentsAnswered(i, known) && !i.when(known)))
     .filter(
       (i) =>
         open.includes(i.id) ||
@@ -533,6 +535,14 @@ export function planTalk(log: TalkLog, ctx: TalkContext): TalkPlan {
     )
     .map((i) => i.id);
   return { kind: "ask", items, fallback: open[0] };
+}
+
+/** 深く聞く問いの元の答えが全部分かっている（言葉の一致・押した答え） */
+function parentsAnswered(i: TalkItem, known: Answers): boolean {
+  return i.parents.every((p) => {
+    const q = itemOf(p)?.question;
+    return q !== null && q !== undefined && known[q] !== undefined;
+  });
 }
 
 function answeredByPress(i: TalkItem, answers: Answers): boolean {

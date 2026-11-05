@@ -205,6 +205,10 @@ describe("会話の声（端末）", () => {
     const other = readTalkReply({ kind: "ask", called: true, line: { ...line, voice: "https://example.com/x.wav" } });
     expect(other?.kind === "ask" && other.line.voice).toBeFalsy();
     expect(readTalkReply({ kind: "ask", called: true, line: { ...line, text: "あ".repeat(81) } })).toBeNull();
+    // 深く聞く問いの id（T137b）は表にあって話題の合う物だけ
+    expect(readTalkReply({ kind: "ask", called: true, line: { ...line, topic: "injured", item: "bleeding" } })).toMatchObject({ line: { item: "bleeding" } });
+    expect(readTalkReply({ kind: "ask", called: true, line: { ...line, topic: "canMove", item: "bleeding" } })).toBeNull();
+    expect(readTalkReply({ kind: "ask", called: true, line: { ...line, item: "bloodType" } })).toBeNull();
     expect(readTalkReply({ kind: "ask", called: true, line: { ...line, topic: "weather" } })).toBeNull();
     expect(readTalkReply({ kind: "close", end: "grasped", called: true })).toEqual({ kind: "close", end: "grasped", called: true });
     expect(readTalkReply({ kind: "danger", danger: "fire" })).toEqual({ kind: "danger", danger: "fire", called: false });

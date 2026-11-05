@@ -310,6 +310,8 @@ export function createPhone(deps: PhoneDeps): Phone {
   let lateWords = false;
   /** 1 往復で次の手を決め直した回数（考える間の言葉で。1 回まで） */
   let replans = 0;
+  /** 相づちを流した往復（会話の記録の往復の数。1 往復に 1 回） */
+  let fillerAt = -1;
   /** 読んでいる声を本人の声で打ち切る（読む約束を早く終える。相づちと問いが重なっても全部） */
   const talkHush = new Set<() => void>();
   /** 文字起こしが使えた（聞き取れないが続いたのを本人の答えとして数える。使えない端末は印を付けない） */
@@ -562,10 +564,12 @@ export function createPhone(deps: PhoneDeps): Phone {
     return Promise.race([p, hushed]).finally(() => talkHush.delete(stop));
   }
 
-  /** 今の答え（読み始めてからの言葉。読んだ文の声の拾いを外す） */
+  /** 今の答え（読み始めてからの言葉。読んだ文と相づちの声の拾いを外す） */
   const replyFrom = (from: number, line: TalkLine | null) => {
-    const raw = talkText.slice(Math.min(from, talkText.length)).trim();
-    return line ? stripEcho(raw, line.text) : raw;
+    let text = talkText.slice(Math.min(from, talkText.length)).trim();
+    if (line) text = stripEcho(text, line.text);
+    for (const f of ["heard", "wait"] as const) text = stripEcho(text, fillerText(f));
+    return text;
   };
 
   /** 聞き取りの言葉が届いた（全部の文）。段ごとに: 読む間は話し始め、聞く間は話し終え、考える間は前の答えに足す */
@@ -612,6 +616,7 @@ export function createPhone(deps: PhoneDeps): Phone {
     talkText = "";
     talkFrom = 0;
     lastTurn = null;
+    fillerAt = -1;
     talkTranscript =
       deps.startTranscript?.({
         keepAlive: true,
@@ -695,7 +700,9 @@ export function createPhone(deps: PhoneDeps): Phone {
       // 待ちが長いときは作り置きの相づちを先に（本人が話したあとは「わかりました」、聞き取れなかったあとは「しょうしょう…」）
       const last = log.turns.at(-1);
       const filler = setTimeout(() => {
-        if (mine !== run || token !== ask || talkPhase !== "thinking") return;
+        // 1 往復に 1 回だけ（考える間の言葉で決め直しても、相づちは重ねない）
+        if (mine !== run || token !== ask || talkPhase !== "thinking" || fillerAt === log.turns.length) return;
+        fillerAt = log.turns.length;
         const f = last && last.heard === "text" ? "heard" : "wait";
         void sayOnce(fillerText(f), SPEAK_WAIT_MS, fillerVoice(f));
       }, TALK_FILLER_MS);
