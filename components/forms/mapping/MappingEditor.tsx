@@ -15,8 +15,9 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { AiMark, StateTag } from "@/components/person/parts";
 import { INPUT } from "@/components/person/intake-ui";
-import { Button } from "@/components/ui/Button";
-import { AddIcon, RemoveIcon, RestoreIcon, RetryIcon, SaveIcon } from "@/components/ui/Icon";
+import { Button, ButtonLink } from "@/components/ui/Button";
+import { AddIcon, PaperIcon, RemoveIcon, RestoreIcon, RetryIcon, SaveIcon } from "@/components/ui/Icon";
+import { FORM9_PAPER_PATH, isForm9Like } from "@/lib/forms/list-sheet";
 import { PageBoxes, type PageImageView } from "./PageBoxes";
 import { FIELD_RISK_LABELS, fieldRisks, openRisks, riskOrder, type FieldRisk } from "@/lib/forms/field-risk";
 import { FIELD_TARGET, realignOptionBoxes, withBox, type BoxTarget } from "@/lib/forms/box-edit";
@@ -247,6 +248,13 @@ export function MappingEditor({
               </Button>
             ))}
           </span>
+        )}
+        {/* 一覧の形の様式（T131）: 行の数。様式 9 は専用の紙へ */}
+        {m.list && <Stat label={L.list} value={`${m.list.rows} 行`} />}
+        {isForm9Like(m) && (
+          <ButtonLink size="sm" icon={PaperIcon} href={FORM9_PAPER_PATH} data-form9-paper>
+            {L.form9Paper}
+          </ButtonLink>
         )}
         {picks > 0 && (
           <span className="tabular-nums" data-picks={picks}>

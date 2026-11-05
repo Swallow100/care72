@@ -137,7 +137,8 @@ describe("読み取りの決まりと欄の説明（T122）", () => {
     expect(FORM_READ_SYSTEM).toContain("1 つの欄にまとめず、別々の欄にする");
     expect(FORM_READ_SYSTEM).toContain("□ ごとに同じ項目（医療機器・常用薬）を当てる");
     expect(FORM_READ_SYSTEM).toContain("元号だけの欄を別に挙げない");
-    expect(FORM_READ_SYSTEM).toContain("種類の □ は「〇〇 種類」の名前で別の欄");
+    // T131 で「〇〇 種類」の 1 欄に □ の選択肢を全部（□ を 1 つずつ check に挙げない）に書き直した
+    expect(FORM_READ_SYSTEM).toContain("種類の □ は「〇〇 種類」の名前の 1 欄");
   });
 
   it("欄の説明: 別紙・医薬品情報・複数選択の項目", () => {
