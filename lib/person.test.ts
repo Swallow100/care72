@@ -266,7 +266,7 @@ describe("意味の色", () => {
     expect(viewOf("p-10").head.priority).toMatchObject({ tier: 8, tone: null });
   });
 
-  it("災害モードは上の医療の印と時計の欄を今の残りに（超過は「超過」を赤、まだ走っていない時計は長さと「停電で開始」）", () => {
+  it("災害モードは上の医療の印と時計の欄を今の残りに（超過は「超過」を赤、まだ走っていない時計はきっかけから長さと「未開始」。T132）", () => {
     const now = "2026-11-03T06:00:00.000Z";
     const hoursAgo = (h: number) => new Date(Date.parse(now) - h * 3_600_000).toISOString();
     const inDisaster = (id: string, outageAt: string | null) =>
@@ -285,13 +285,14 @@ describe("意味の色", () => {
     expect(p01.clocks.map((k) => [k.value, k.tone, k.note])).toEqual([
       ["超過 1 時間", "urgent", null],
       ["残り 5 時間", "urgent", null],
-      [null, "check", null],
+      // 値の無い時計は何の値か（T132、lib/ledger-words.ts）
+      [null, "check", "手元の量 未確認"],
     ]);
 
     // 停電なし: 停電で走る時計はまだ走らず、長さのまま
     const calm = inDisaster("p-01", null);
     expect(calm.marks[0]).toEqual({ label: "酸素", tone: "urgent", remaining: "2h" });
-    expect(calm.clocks[0]).toMatchObject({ value: "2 時間", note: "停電で開始" });
+    expect(calm.clocks[0]).toMatchObject({ value: "停電から 2 時間", note: "未開始" });
 
     // 発災で走る透析（次の回まで 2 日）: 発災から 6 時間で残り 42 時間
     const p03 = inDisaster("p-03", null);
@@ -305,7 +306,7 @@ describe("意味の色", () => {
       situation: { now, disasterAt: hoursAgo(6), outageAt: hoursAgo(3), outageTowns: null },
     }).head;
     expect(normal.marks[0]).toEqual({ label: "酸素", tone: "urgent", remaining: "2h" });
-    expect(normal.clocks[0]).toMatchObject({ value: "2 時間", note: null });
+    expect(normal.clocks[0]).toMatchObject({ value: "停電から 2 時間", note: null });
   });
 
   it("描いた印は色と文字の両方を持つ（色だけの印にしない）", () => {
@@ -513,9 +514,9 @@ describe("情報を多く出す（CLAUDE.md「画面の決まり」）", () => {
   it("上に大きく: 時計の残り（短い順、値の無い物は後ろ）と緊急連絡先（順番・電話）", () => {
     const v = viewOf("p-01");
     expect(v.head.clocks).toEqual([
-      { id: "k-01-1", label: "酸素 内蔵電池", value: "2 時間", tone: "urgent", note: null },
-      { id: "k-01-2", label: "酸素 予備ボンベ", value: "8 時間", tone: "urgent", note: null },
-      { id: "k-01-3", label: "ワーファリン", value: null, tone: "check", note: null },
+      { id: "k-01-1", label: "酸素 内蔵電池", value: "停電から 2 時間", tone: "urgent", note: null },
+      { id: "k-01-2", label: "酸素 予備ボンベ", value: "停電から 8 時間", tone: "urgent", note: null },
+      { id: "k-01-3", label: "ワーファリン", value: null, tone: "check", note: "手元の量 未確認" },
     ]);
     expect(v.head.emergency.map((l) => l.map((s) => s.text).join(" "))).toEqual([
       "1 森 恵子 娘 090-0000-0011",
@@ -529,17 +530,17 @@ describe("情報を多く出す（CLAUDE.md「画面の決まり」）", () => {
       const f = rowOf(viewOf(id), "medical.medications")!.field;
       return f.kind === "lines" ? f.lines.map((l) => l.map((s) => s.text).join(" ")) : [];
     };
-    expect(meds("p-01")).toEqual(["ワーファリン 抗凝固薬 1 日 1 回 用量 未入力 残り 未確認 保管 未入力 中断注意"]);
-    expect(meds("p-05")).toEqual(["ステロイド ステロイド 1 日 1 回 用量 未入力 残り 5 日 保管 未入力 中断注意"]);
-    expect(meds("p-08")).toEqual(["インスリン インスリン 朝夕 用量 未入力 残り 4 日 保管 冷蔵庫 要冷蔵 中断注意"]);
-    expect(meds("p-07")[0]).toContain("残り 7 日");
+    expect(meds("p-01")).toEqual(["ワーファリン 抗凝固薬 1 日 1 回 用量 未入力 手元の量 未確認 保管 未入力 中断注意"]);
+    expect(meds("p-05")).toEqual(["ステロイド ステロイド 1 日 1 回 用量 未入力 手元の量 5 日 保管 未入力 中断注意"]);
+    expect(meds("p-08")).toEqual(["インスリン インスリン 朝夕 用量 未入力 手元の量 4 日 保管 冷蔵庫 要冷蔵 中断注意"]);
+    expect(meds("p-07")[0]).toContain("手元の量 7 日");
 
     const devices = (id: string) => {
       const f = rowOf(viewOf(id), "medical.devices")!.field;
       return f.kind === "lines" ? f.lines.map((l) => l.map((s) => s.text).join(" ")) : [];
     };
-    expect(devices("p-01")).toEqual(["在宅酸素 酸素濃縮器 1 L/分 酸素 内蔵電池 2 時間 酸素 予備ボンベ 8 時間"]);
-    expect(devices("p-02")).toEqual(["人工呼吸器 気管切開 人工呼吸器 内蔵電池 3 時間", "吸引 1 日 6 回 電池 未入力"]);
+    expect(devices("p-01")).toEqual(["在宅酸素 酸素濃縮器 1 L/分 酸素 内蔵電池 停電から 2 時間 酸素 予備ボンベ 停電から 8 時間"]);
+    expect(devices("p-02")).toEqual(["人工呼吸器 気管切開 人工呼吸器 内蔵電池 停電から 3 時間", "吸引 1 日 6 回 電池 未入力"]);
   });
 
   it("時計は 値・単位・起点・出典・確認の日", () => {
@@ -556,9 +557,10 @@ describe("情報を多く出す（CLAUDE.md「画面の決まり」）", () => {
   it("連絡先は 役割・名前・電話と来られる時間（夜間）", () => {
     const people = textOf(viewOf("p-03"), "people");
     // 1 人 1 行: 名前・間柄・役割の印・夜間・距離・車・スマホ・電話（T113）
-    expect(people).toContain("田中 和子 妻 家族 緊急 1 支援 1 夜間可 同居");
-    expect(people).toContain("田中 浩 長男 家族 緊急 2 支援 2 夜間未確認 市内 車 スマホ 090-0000-0016");
-    expect(textOf(viewOf("p-01"), "people")).toContain("森 恵子 娘 家族 緊急 1 支援 1 夜間未確認 市内 車 スマホ 090-0000-0011");
+    // 夜間は何の印か分かる形（T132、lib/ledger-words.ts の nightText）
+    expect(people).toContain("田中 和子 妻 家族 緊急 1 支援 1 夜間 来訪可 同居");
+    expect(people).toContain("田中 浩 長男 家族 緊急 2 支援 2 夜間 来訪 未確認 市内 車 スマホ 090-0000-0016");
+    expect(textOf(viewOf("p-01"), "people")).toContain("森 恵子 娘 家族 緊急 1 支援 1 夜間 来訪 未確認 市内 車 スマホ 090-0000-0011");
   });
 
   it("台帳の項目は空でも行を出す（細かい物は小さく）", () => {

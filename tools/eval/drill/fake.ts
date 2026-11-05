@@ -417,17 +417,48 @@ function worldAnswer(rng: Rng, text: string, geo: Geography, opts: FakeOptions) 
   return { narration: rng.pick(NARRATIONS[disaster]), events, farewells };
 }
 
+/**
+ * 自由対応の偽の答え（T129: 状況に合わせる）。候補の一覧の「今」を読んで、不可の手は can false・理由・別の道。
+ * 表の手に当たらない文はそのままの手で、事実（電話・今いる所）からできるかと効き目を決める。何もしない文は none
+ */
 function freeAnswer(rng: Rng, input: Input) {
   const text = textOf(input["文"]);
-  const list = (input["手"] as { 一覧?: Array<{ id: string; 名前: string; 中身: string; 相手: Array<{ 区分: string }> }> } | undefined)?.一覧 ?? [];
-  const words = ["電話", "訪問", "薬", "透析", "移送", "電源", "報告", "119", "避難所", "業者", "記録"];
+  const facts = textOf(input["事実"]);
+  type Row = { id: string; 名前: string; 中身: string; 今?: string; 相手: Array<{ 区分: string; 今?: string }> };
+  const list = (input["手"] as { 一覧?: Row[] } | undefined)?.一覧 ?? [];
+  const words = ["電話", "訪問", "薬", "透析", "移送", "電源", "報告", "119", "避難所", "業者"];
   const hit = list.find((c) => words.some((w) => text.includes(w) && (c.名前.includes(w) || c.中身.includes(w))));
-  const c = hit ?? (list.length > 0 ? rng.pick(list) : null);
+  const blank = { way: "", minutes: 0, outcome: "", effect: "none", alt: "", whyNot: "" };
+  if (!hit && /記録|何もしない/.test(text)) return { ...blank, kind: "none", callee: "", text: "", reason: "何もしない文", can: true };
+  if (!hit) {
+    const phoneDown = facts.includes("電話: 通話不可");
+    const here = facts.includes("今いる所: 訪問先（対象の本人の家）");
+    const way = here ? "desk" : rng.pick(["phone", "visit", "desk"] as const);
+    const can = !(way === "phone" && phoneDown);
+    return {
+      kind: "free",
+      callee: "",
+      way,
+      minutes: rng.int(5, 40),
+      can,
+      whyNot: can ? "" : "通話不可",
+      alt: can ? "" : "訪問して直接様子を確かめる",
+      effect: can && (here || way !== "desk") ? rng.pick(["reach", "arrival", "none"] as const) : "none",
+      text: "近くの人に声をかけた",
+      outcome: can ? "近くの人が様子を見に行くと言った" : "",
+      reason: "表の手に当たらないので",
+    };
+  }
+  const can = !(hit.今 ?? "可").startsWith("不可");
   return {
-    kind: c ? c.id : "note",
-    callee: c && c.相手.length > 0 ? rng.pick(c.相手).区分 : "",
-    text: c ? `${c.中身}`.slice(0, 20) : "",
-    reason: hit ? "文の中身が手に合う" : "近い手を選んだ",
+    ...blank,
+    kind: hit.id,
+    callee: hit.相手.length > 0 ? rng.pick(hit.相手).区分 : "",
+    text: `${hit.中身}`.slice(0, 20),
+    reason: "文の中身が手に合う",
+    can,
+    whyNot: can ? "" : (hit.今 ?? "").replace(/^不可（|）$/g, ""),
+    alt: can ? "" : "近くの人に様子を見てもらう",
   };
 }
 

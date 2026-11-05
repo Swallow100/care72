@@ -11,6 +11,7 @@
 //   訪問で着いた手は様子の 1 行（AI の印）と頼み事の印（灰の文字）。
 // T110: 手の行に打った時刻と終わる時刻（「1 時間 5 分〜10 分」）と所要（決まりの表で伸びた理由つき）。自由対応は読み替えた手かやり方、
 //   ケアマネの文（内容）と AI の読み替えの理由（短く、AI の印）を行の下に。
+// T129: 自由対応は何として扱ったかを「扱い 119勧奨」「扱い 電話」と（前の「読替」）。何も起きない文は「変化なし」。内容はケアマネが打った文のまま
 
 import { AiMark } from "@/components/person/parts";
 import { OpenIcon } from "@/components/ui/Icon";
@@ -68,9 +69,10 @@ function Head({ a, names, fiction, refused }: { a: ActionRecord; names: Names; f
         <ActionIcon kind={a.kind} className="size-3.5" />
         {ACTION_LABELS[a.kind]}
       </span>
-      {a.kind === "free" && (a.as || a.way) && (
+      {/* 何として扱ったか（T129。「扱い 119勧奨」「扱い 電話」。何も起きない文は結果の「変化なし」だけ） */}
+      {a.kind === "free" && !a.idle && (a.as || a.way) && (
         <span className="text-xs" data-free-as={a.as ?? a.way}>
-          {a.as ? `${FREE_LABELS.read} ${ACTION_LABELS[a.as]}` : `${FREE_LABELS.own} ${FREE_WAY_LABELS[a.way!]}`}
+          {`${FREE_LABELS.as} ${a.as ? ACTION_LABELS[a.as] : FREE_WAY_LABELS[a.way!]}`}
         </span>
       )}
       {who && (
@@ -90,7 +92,7 @@ function Head({ a, names, fiction, refused }: { a: ActionRecord; names: Names; f
             </span>
           )}
           {r.ai && <AiMark small />}
-          {r.speech === null && <span>{r.text}</span>}
+          {r.speech === null && r.text !== ACTION_STATUS_LABELS[r.status] && <span>{r.text}</span>}
           {r.because && <span className="text-xs text-muted">{r.because}</span>}
         </>
       ) : (

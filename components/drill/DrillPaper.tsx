@@ -626,18 +626,18 @@ export function DrillPaper({ record, office, today, ai = null }: { record: Drill
                       </td>
                       <td>
                         {ACTION_LABELS[a.kind]}
-                        {/* 自由対応は読み替えた手（ケアマネの文は紙に出さない。T91） */}
+                        {/* 自由対応は何として扱ったか（「扱い 薬手配」。T129 で「読替」から） */}
                         {a.kind === "free" && a.as && (
                           <span className="p-sub" data-reading={a.as}>
                             {" "}
                             {SCORE_LABELS.reading} {ACTION_LABELS[a.as]}
                           </span>
                         )}
-                        {/* そのままの手（T110）はやり方。文は終わりの「手と出来事」に */}
-                        {a.kind === "free" && !a.as && a.way && (
+                        {/* そのままの手（T110）はやり方（「扱い 電話」）。何も起きない文は結果の「変化なし」だけ */}
+                        {a.kind === "free" && !a.as && a.way && !a.idle && (
                           <span className="p-sub" data-own-way={a.way}>
                             {" "}
-                            {FREE_WAY_LABELS[a.way]}
+                            {SCORE_LABELS.reading} {FREE_WAY_LABELS[a.way]}
                           </span>
                         )}
                       </td>

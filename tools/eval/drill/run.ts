@@ -11,7 +11,8 @@
 //       --latency S（偽の client の待ちの縮尺。役ごとの本物の待ちの目安に掛ける。0.01 で 100 分の 1、0 は待たない。T123）・
 //       --max-usd X（本物の見積もりの上限。超えたら次の回を始めない。本物の既定 10）・
 //       --terms on|off（連続の時計の訓練の開始に手の決まり〔T110 の terms〕を送るか。既定 on、開始の画面と同じ。T121）・
-//       --all-people（参加する人を担当の全員に。ほかの選び方は同じ種のまま）
+//       --all-people（参加する人を担当の全員に。ほかの選び方は同じ種のまま）・
+//       --free-probe（自由対応の状況違いの試し〔T129、free-probe.ts〕も回す。文 3 つ × 状況 8 つで、本物なら Opus を 24 回）
 //
 // 記録: <out>/<日時>-<fake|real>/run-NN.jsonl（1 回の訓練の起きた順。AI の呼び出しは送った中身の全文と返った中身の全文つき）と
 // summary.json。架空の人の台詞が入るのでリポジトリに入れない。md は数だけ。
@@ -23,6 +24,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { ClaudeClient } from "../../../lib/claude/client.ts";
 import { officePlaces } from "../../../lib/drill/area.ts";
+import { createFreeHook } from "../../../lib/drill/free-action.ts";
 import { roomClientOf, worldModeOf, type WorldMode } from "../../../lib/drill/world-room.ts";
 import { contactRoles, pseudonymize, type PseudonymInput } from "../../../lib/pseudonym/index.ts";
 import { housemates, planOf } from "../../../lib/drill/person-facts.ts";
@@ -32,6 +34,7 @@ import { checkRun, type CheckContext } from "./checks.ts";
 import { diversityOf } from "./diversity.ts";
 import { caseloadOf, runDrill, seededSqlite, type RunOutcome } from "./drive.ts";
 import { fakeClaude, fakeRoom } from "./fake.ts";
+import { freeProbe } from "./free-probe.ts";
 import { judgeRun, type JudgeScore } from "./judge.ts";
 import { isEvalScenario, isPeopleMode, planRun, SCENARIOS, type EvalScenario, type PeopleMode } from "./plan.ts";
 import { ROOM_BUDGET_USD } from "./prices.ts";
@@ -67,6 +70,8 @@ export type EvalConfig = {
   terms: boolean;
   /** 参加する人を担当の全員にする（--all-people） */
   allPeople?: boolean;
+  /** 自由対応の状況違いの試しも回すか（T129。--free-probe） */
+  freeProbe?: boolean;
   /** 記録の名前の日時（テストで固定） */
   stamp?: string;
   /** 途中の知らせ（既定は標準出力） */
@@ -162,6 +167,29 @@ export async function runEval(cfg: EvalConfig): Promise<{ summary: Summary; dir:
     );
   }
 
+  // 自由対応の状況違いの試し（T129）。同じ文を事業所／訪問先・通話可／不可・昼／夜で読み替え、状況に合わない物を数える
+  if (cfg.freeProbe) {
+    const log = runLog(join(dir, "free-probe.jsonl"));
+    const inner: ClaudeClient = cfg.real
+      ? (new Anthropic({ apiKey: cfg.key, maxRetries: 0 }) as unknown as ClaudeClient)
+      : fakeClaude({ rng: rngOf(`${cfg.seed}/free-probe`), noise: cfg.noise });
+    const sources = new Map(SEED_SOURCES.map((x) => [x.person.id, x] as const));
+    const hook = createFreeHook({
+      load: async () => sources,
+      ai: {
+        env: { ANTHROPIC_API_KEY: cfg.key },
+        claude: recordClaude(inner, log),
+        usage: { reserve: async () => true, finish: async () => {}, countDay: async () => 0 },
+        office: { id: "office-demo", kind: "demo" },
+      },
+    });
+    const { rows, hits } = await freeProbe(hook);
+    for (const h of hits) log.push({ type: "check", ...h });
+    const byRule = [...new Set(hits.map((h) => h.rule))].map((r) => `${r} ${hits.filter((h) => h.rule === r).length}`).join("・");
+    notes.push(`自由対応の状況違い（T129）: ${rows.length} 件、状況に合わない物 ${hits.length}${byRule ? `（${byRule}）` : ""}`);
+    say(notes.at(-1)!);
+  }
+
   const summary: Summary = {
     version: 1,
     stamp,
@@ -245,6 +273,7 @@ export function parseArgs(argv: ReadonlyArray<string>, env: Readonly<Record<stri
     maxUsd,
     terms: terms !== "off",
     allPeople: has("all-people"),
+    ...(has("free-probe") ? { freeProbe: true } : {}),
   };
 }
 

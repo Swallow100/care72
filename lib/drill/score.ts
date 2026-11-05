@@ -27,7 +27,7 @@ import type { ClockRow, ContactKind, DependsOn, DrillAction } from "../db/types.
 import { inOutageArea } from "../disaster/state.ts";
 import type { Form9Row } from "../forms/form9.ts";
 import { clockHours } from "../triage/index.ts";
-import { ACTION_CATALOG, actionRow, effectiveKind, isCatalogAction, isOwnFree, type ActionRow } from "./action-catalog.ts";
+import { ACTION_CATALOG, actionRow, effectiveKind, isCatalogAction, isOwnFree, ownFreeRow, type ActionRow } from "./action-catalog.ts";
 import type { ActionRecord } from "./engine.ts";
 import type { PersonState } from "./persona-types.ts";
 import type { CallRecord } from "./responses.ts";
@@ -35,8 +35,12 @@ import { ASK_KINDS, type Arrival, type Ask, type AskKind, type Dispatched, type 
 
 // ---------- 手の表の旗 ----------
 
-/** 手の働きの行（自由対応は読み替えた手。読み替えの無い自由対応と表に無い手は null） */
-export function rowOf(a: Pick<ActionRecord, "kind" | "as">): ActionRow | null {
+/**
+ * 手の働きの行（自由対応は読み替えた手。読み替えの無い自由対応と表に無い手は null）。
+ * T129: そのままの手で効き目（届いた・人が向かう）のある物は、その効き目の行（その人への手、「実施」で届いた）
+ */
+export function rowOf(a: Pick<ActionRecord, "kind" | "as"> & Partial<Pick<ActionRecord, "way" | "effect">>): ActionRow | null {
+  if (isOwnFree(a) && a.effect) return ownFreeRow(a.effect);
   const k = effectiveKind(a);
   return isCatalogAction(k) && k !== "free" ? actionRow(k) : null;
 }
@@ -46,10 +50,10 @@ export const PERSON_ACTIONS: ReadonlyArray<DrillAction> = ACTION_CATALOG.filter(
 
 /**
  * その人への手か（自由対応は読み替えた手で）。自由対応のそのままの手（T110）は、本人を選び、電話か訪問のやり方の物を数える
- * （順番の一致に入る。世界を変えないので「届いた」には数えない）
+ * （順番の一致に入る。効き目の無い物は世界を変えないので「届いた」には数えない。T129 の効き目〔届いた・人が向かう〕のある物は数える）
  */
 export const isPersonAction = (
-  a: Pick<ActionRecord, "kind" | "person" | "as"> & Partial<Pick<ActionRecord, "way">>,
+  a: Pick<ActionRecord, "kind" | "person" | "as"> & Partial<Pick<ActionRecord, "way" | "effect">>,
 ): a is Pick<ActionRecord, "kind" | "as"> & { person: string } =>
   a.person !== null && (rowOf(a)?.towardPerson === true || (isOwnFree(a) && a.way !== "desk"));
 

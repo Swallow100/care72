@@ -246,12 +246,33 @@ export const MEDICATION_CATEGORY_LABELS: Record<MedicationCategory, string> = {
 export const MEDICATION_FLAG_LABELS = { interruptionRisk: "中断注意", needsRefrigeration: "要冷蔵" } as const;
 
 /** 時計の 4 つ: A 機器・B 物・C 薬・D 本人の状態 */
+/** 時計の 4 つの区分。行の詳細・本人のページでは行に混ぜず、区分ごとの見出しで束ねる（T132。物は 1 字で読めないので物品） */
 export const CLOCK_KIND_LABELS: Record<ClockKind, string> = {
   device: "機器",
-  supply: "物",
+  supply: "物品",
   medication: "薬",
   condition: "状態",
 };
+
+/** 時計の区分の並び（見出しの順） */
+export const CLOCK_KIND_ORDER: ReadonlyArray<ClockKind> = ["device", "supply", "medication", "condition"];
+
+/**
+ * 時計の 1 行の言葉（T132、lib/ledger-words.ts の clockText）。「酸素 内蔵電池 停電から 2 時間（残り 30 分）」
+ * 「ワーファリン 手元の量 未確認（発災から数える）」。長さの未確認は何の値かを前に置き、出典・確認日も名前を付けて並べる
+ */
+export const CLOCK_TEXT_LABELS = {
+  from: "から",
+  counts: "から数える",
+  left: "残り",
+  over: "超過",
+  waiting: "未開始",
+  source: "出典",
+  confirmed: "確認日",
+  unconfirmed: "未確認",
+  /** 長さが未確認のときの何の値か（機器は持つ時間、物品と薬は手元の量） */
+  missing: { device: "持つ時間", supply: "手元の量", medication: "手元の量", condition: "値" },
+} as const;
 
 export const CLOCK_UNIT_LABELS: Record<ClockUnit, string> = { minute: "分", hour: "時間", day: "日", week: "週" };
 
@@ -297,13 +318,26 @@ export const CONTACT_REACH_LABELS: Record<ContactReach, string> = {
   far: "遠方",
 };
 
-/** 連絡先の持ち物・来られる時間（夜間） */
+/** 連絡先の持ち物・来られる時間（夜間）。nightOk は紙（lib/forms）の言葉。画面の夜間は NIGHT_LABELS（T132） */
 export const CONTACT_FLAG_LABELS = {
   hasCar: "車",
   nightOk: "夜間可",
-  nightNo: "夜間不可",
-  nightUnknown: "夜間未確認",
   hasSmartphone: "スマホ",
+} as const;
+
+/** 画面の夜間の印（T132、lib/ledger-words.ts の nightText）。何の印か分かるよう「夜間 来訪」を頭に */
+export const NIGHT_LABELS = { ok: "夜間 来訪可", no: "夜間 来訪不可", unknown: "夜間 来訪 未確認" } as const;
+
+/** 行の詳細の「全部」（T132、lib/list/full.ts）の言葉 */
+export const FULL_LABELS = {
+  open: "全部",
+  close: "閉じる",
+  carYes: "車あり",
+  carNo: "車なし",
+  smartphoneYes: "スマホあり",
+  smartphoneNo: "スマホなし",
+  phoneYes: "電話あり",
+  phoneNo: "電話なし",
 } as const;
 
 /**
