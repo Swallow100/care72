@@ -3,7 +3,7 @@
 // 様式の読取（写真・PDF → 黒塗りの画面 → /api/forms/read）と手作成（/api/forms/mappings）。読めたら確かめる画面へ送る。
 // AI 未設定のときは読取を押せず、手作成の道だけ残す。読取は Opus で数十秒かかるので、待った秒を出す。
 // 写真・PDF は入れる欄と同じ黒塗りの画面（components/person/RedactSheet.tsx）を必ず通す（T83、見直しの安全 中 5）。
-// 白紙の様式は塗らずに「送信」（確かめの窓「塗り無し」で人が選ぶ）、記入済みなら書いた値を塗ってから。送るのは塗った後の頁の画像だけ。
+// 白紙の様式は塗らずに「読込」（確かめの窓「塗り無し」で人が選ぶ。T147 で送るボタンの言葉を様式では「読込」に）、記入済みなら書いた値を塗ってから。送るのは塗った後の頁の画像だけ。
 // Excel・Word（T119）も選べる。黒塗りの画面がブラウザの中で印刷の頁に描き、ほかと同じく塗った後の頁の画像だけを送る。
 // 古い形（.xls・.doc）は読まずに「旧形式・PDF 保存で取込」。
 // T134: 地域選択（MunicipalPicker）で一覧の公式の様式を選ぶと、サーバーが公式の URL から取ったファイルを同じ黒塗りの画面に渡し、
@@ -230,7 +230,7 @@ export function FormReadPanel({ aiReady, municipal }: { aiReady: boolean; munici
         </p>
       )}
 
-      {redacting && <RedactSheet files={redacting} onCancel={cancelRedact} onSend={(pages) => void send(pages)} />}
+      {redacting && <RedactSheet files={redacting} onCancel={cancelRedact} onSend={(pages) => void send(pages)} sendLabel={L.read} />}
     </div>
   );
 }
