@@ -819,7 +819,7 @@ function LabeledInput({
     <label className={`${box} flex items-center gap-1.5 focus-within:outline-2 focus-within:outline-solid focus-within:outline-accent ${className}`}>
       <span className={`shrink-0 text-xs ${danger ? "font-bold text-danger" : "text-muted"}`}>{label}</span>
       <input className={`min-w-0 flex-1 bg-transparent outline-none${digits ? " tabular-nums" : ""}`} {...input} />
-      {suffix && <span className="shrink-0 text-xs">{suffix}</span>}
+      {suffix && <span className="shrink-0 text-xs text-muted">{suffix}</span>}
     </label>
   );
 }
