@@ -82,28 +82,29 @@ describe("会話の声（サーバー）", () => {
 describe("会話の声（端末）", () => {
   function player(behavior: "plays" | "fails" | "hangs") {
     const spoken: string[] = [];
-    const audio: AudioLike & { srcs: string[] } = {
-      srcs: [],
-      _src: "",
+    class FakeAudio implements AudioLike {
+      srcs: string[] = [];
+      private now = "";
+      muted = false;
+      currentTime = 0;
+      onended: (() => void) | null = null;
+      onerror: (() => void) | null = null;
       get src() {
-        return (this as unknown as { _src: string })._src;
-      },
+        return this.now;
+      }
       set src(v: string) {
-        (this as unknown as { _src: string })._src = v;
+        this.now = v;
         this.srcs.push(v);
-      },
-      muted: false,
-      currentTime: 0,
+      }
       play() {
         if (behavior === "fails") return Promise.reject(new Error("no"));
         if (behavior === "hangs") return new Promise<void>(() => {});
         setTimeout(() => this.onended?.(), 100);
         return Promise.resolve();
-      },
-      pause() {},
-      onended: null,
-      onerror: null,
-    } as never;
+      }
+      pause() {}
+    }
+    const audio = new FakeAudio();
     class U implements UtteranceLike {
       lang = "";
       rate = 1;
