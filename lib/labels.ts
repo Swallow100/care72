@@ -362,6 +362,9 @@ export const HEAD_LABELS = {
   marks: "医療",
   clocks: "時計",
   emergency: "緊急連絡先",
+  /** 上の段の避難先（T150。前の「時計」の欄の所）。中の小さな見出しは担当一覧の行の詳細と同じ「1」「2」「手段」 */
+  evacuation: "避難先",
+  transport: "手段",
   /** 災害モードの時計の今の残り（「残り 1.5 時間」「超過 30 分」「停電で開始」。担当一覧の行の詳細と同じ言い方） */
   left: "残り",
   over: "超過",
@@ -464,6 +467,8 @@ export const INTAKE_LABELS = {
   invalid: "入力不備",
   masked: "伏せ字",
   next: "次回",
+  /** 選ぶ問いの補足の文字の欄（T150。「その他」の中身・「一部」の様子。選んだ値と両方保存） */
+  supplement: "補足",
   /** 話して入れる（T04、Web Speech）。「話す」は T04 の言葉のまま */
   speak: "話す",
   speakStop: "停止",
@@ -736,6 +741,12 @@ export const DIFF_STATE_LABELS = { add: "追加", same: "一致", filled: "既�
 /** 書類（T05〜T07 で作る）の入口 */
 export const DOCUMENT_LABELS = { matsuyama: "計画書", medical: "医療要約", own: "本人の1枚", qr: "QR", phone: "スマホ入口" } as const;
 export const DOCUMENT_STATUS_LABELS = { pending: "準備中", ready: "表示" } as const;
+
+/**
+ * 本人のページの書類の段の畳み（T150）。畳んだときは「他 2 件」（ほかの書類が無く説明の 1 行だけを畳んでいるときは「詳細」）、
+ * 開いたときは「畳む」。印刷のボタンは「印刷」
+ */
+export const DOCUMENT_FOLD_LABELS = { more: "他", unit: "件", detail: "詳細", close: "畳む", print: "印刷" } as const;
 
 /**
  * 赤のあとの聞き取りの欄（T49）。本人・家族が押した答えと、Claude の聞き取りメモ（文字起こしから写しただけ）を同じ欄で出す。

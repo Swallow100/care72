@@ -157,9 +157,11 @@ describe("「全部」（台帳の平時の情報）", () => {
 
     const html = renderToStaticMarkup(createElement(FullDetail, { full }));
     for (const id of ["people", "medical", "evacuation", "basic"]) expect(html).toContain(`data-full-section="${id}"`);
-    for (const word of ["森 恵子", "木村 ヨシ", "酸素濃縮器", "ワーファリン", "かわなぎ小学校", "娘の車", "独居", "薬は 2 階の箪笥", "停電から 8 時間", "夜間 来訪 未確認"]) {
+    // 予備ボンベは機器の行に（医療の面の「時計」の段は、行の詳細の上の「残り時間」と同じ時計なので出さない。T150）
+    for (const word of ["森 恵子", "木村 ヨシ", "酸素濃縮器", "ワーファリン", "かわなぎ小学校", "娘の車", "独居", "薬は 2 階の箪笥", "酸素 予備ボンベ", "夜間 来訪 未確認"]) {
       expect(plain(html)).toContain(word);
     }
+    expect(full.sections.find((s) => s.id === "medical")!.blocks.some((b) => b.type === "clocks")).toBe(false);
     // 担当一覧は電話のリンク
     expect(html).toContain('href="tel:09000000011"');
   });

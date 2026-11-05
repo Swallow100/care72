@@ -84,7 +84,7 @@ import {
 } from "./labels.ts";
 import { toTriagePerson } from "./triage/from-ledger.ts";
 import { clockText, nightText, type ClockText } from "./ledger-words.ts";
-import { transportKindOf } from "./map/transport.ts";
+import { transportKindOf, transportText } from "./map/transport.ts";
 import { clockRemaining, tierOf, type Color, type Situation, type Tier, type TriageClock, type TriageResult } from "./triage/index.ts";
 import { personSituation, type DisasterSituation } from "./disaster/state.ts";
 import type { PersonBrief } from "./auth/scope.ts";
@@ -378,6 +378,13 @@ export type PersonHead = {
   unconfirmed: number;
   /** 走る時計の残り（平時は全部の長さ、災害モードは今の残り）。短い順、値の無い物は後ろ。上に大きく出す。note は「停電で開始」 */
   clocks: Array<{ id: string; label: string; value: string | null; tone: StateTone | null; note: string | null }>;
+  /**
+   * 上の段の「医療」の欄（T150）。印と時計を 1 つの欄に、同じ中身を 2 回出さない（前は「医療」の印と「時計」の欄に同じ時計が並んだ）。
+   * 範囲の外なら空
+   */
+  medical: HeadMedical[];
+  /** 上の段の「避難先」（T150。避難先 1・2 と手段。前の「時計」の欄の所）。避難の区分が範囲の外なら null */
+  evacuation: { first: string | null; second: string | null; transport: string | null } | null;
   /** 緊急連絡先（順番つき、電話のリンク）。上に大きく出す */
   emergency: Line[];
   /**
@@ -504,6 +511,18 @@ const TONE_RANK: Record<StateTone, number> = { urgent: 3, check: 2, unknown: 1, 
 
 /** 医療の印 1 つ: 項目名・その区分の時計でいちばん強い色・いちばん短い残り（「4h」「超過」。無ければ null） */
 export type MarkItem = { label: string; tone: StateTone | null; remaining: string | null };
+
+/** 上の段の時計の 1 行（headClocks の 1 つ） */
+export type HeadClock = PersonHead["clocks"][number];
+
+/**
+ * 上の段の「医療」の欄の 1 つ（T150）。mark は担当一覧の列と同じ印（「酸素 2h」。数はその区分でいちばん短い時計）。
+ * waiting は印の数の元の時計が災害モードでまだ走っていない（「未開始」を添える）。
+ * others は印の数の元でない、値のある時計の 1 行（同じ区分に時計が 2 つ以上の時の「酸素 予備ボンベ 停電から 8 時間」）。
+ * 印の区分に入らない時計（その他）は mark が null で、others に全部（値の無い物も）。
+ * lines は印に触れた時に出す、その区分の時計の全部の 1 行（lib/ledger-words.ts の clockText の line）
+ */
+export type HeadMedical = { mark: MarkItem | null; waiting: boolean; others: HeadClock[]; lines: string[] };
 
 /** 時計 1 つの今の残り（時間）。災害モード（s あり）は走った分を引く（まだ走っていない時計は長さのまま）。値の無い時計は null */
 function hoursLeft(k: TriageClock, s: Situation | null): { hours: number; over: boolean; running: boolean } | null {
@@ -1302,6 +1321,40 @@ function headClocks(clocks: ReadonlyArray<ClockRow>, s: Situation | null = null)
     });
 }
 
+/**
+ * 上の段の「医療」の欄（T150）。印（markItems と同じ物・同じ順）ごとに、その区分の走る時計を束ねる。
+ * 印の数の元（いちばん短い、値のある時計）は印だけで出し、ほかの値のある時計を 1 行ずつ添える。値の無い時計は印の数が無いことで分かり、
+ * 何が未確認かは触れた時の 1 行とページの上の「未確認 N」で（見る方の画面で未入力の添えを常に出さない、T143 と同じ言い方）
+ */
+function headMedical(clocks: ReadonlyArray<ClockRow>, marks: ReadonlyArray<MarkItem>, s: Situation | null): HeadMedical[] {
+  const runs = clocks.filter((k) => k.starts_on !== "none");
+  const categoryOf = new Map(DEPENDENCE_MARKS.map(([category, label]) => [label, category]));
+  const lineOf = (k: ClockRow) => clockText(k, s).line;
+  const out: HeadMedical[] = marks.map((m) => {
+    const mine = runs.filter((k) => k.category === categoryOf.get(m.label));
+    const ordered = headClocks(mine, s);
+    const valued = ordered.filter((k) => k.value !== null);
+    const lead = valued[0] ? mine.find((k) => k.id === valued[0].id) : undefined;
+    const left = lead ? hoursLeft(lead, s) : null;
+    return {
+      mark: m,
+      waiting: s !== null && left !== null && !left.running,
+      others: valued.slice(1),
+      lines: ordered.map((h) => lineOf(mine.find((k) => k.id === h.id)!)),
+    };
+  });
+  const marked = new Set<string>(DEPENDENCE_MARKS.map(([category]) => category));
+  const rest = runs.filter((k) => !marked.has(k.category));
+  if (rest.length > 0) out.push({ mark: null, waiting: false, others: headClocks(rest, s), lines: rest.map(lineOf) });
+  return out;
+}
+
+/** 上の段の「避難先」（T150）: 避難先 1・2 と手段（担当一覧の行の詳細の「避難先」と同じ言葉。lib/map/transport.ts の transportText） */
+function headEvacuation(ledger: Ledger): NonNullable<PersonHead["evacuation"]> {
+  const e = ledger.evacuation;
+  return { first: e.destination1?.trim() || null, second: e.destination2?.trim() || null, transport: transportText(e)?.trim() || null };
+}
+
 /** 上に大きく出す緊急連絡先: 順番・名前・間柄・電話 */
 function headEmergency(contacts: ReadonlyArray<Contact>): Line[] {
   return contacts
@@ -1440,6 +1493,8 @@ export function toPersonView(rows: PersonPageRows, opts: ViewOptions): PersonVie
     plan: PLAN_STATUS_LABELS[person.plan_status],
     unconfirmed: show.plan ? ledger.pending.length : 0,
     clocks: show.medical ? headClocks(clocks, own) : [],
+    medical: show.medical ? headMedical(clocks, marks, own) : [],
+    evacuation: scopeHas(scope, "evacuation") ? headEvacuation(ledger) : null,
     emergency: show.people ? headEmergency(contacts) : [],
     show,
   };
