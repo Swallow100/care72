@@ -207,8 +207,8 @@ export class FakeSurface implements Surface {
                 // スマホ入口の「表示」は計画共有に同意のある種の人だけ（足したばかりの人には無い）
                 // 書類の行の「表示」「印刷」は書類の名前つき（本物の components/person/DocumentSection。T162）
                 ...(who.id.startsWith("chk-p-0") ? [{ role: "link", name: "スマホ入口 表示", on: () => `/people/${who.id}/phone` } satisfies FakeItem] : []),
-                { role: "link", name: "計画書 表示", on: () => `/people/${who.id}/forms/matsuyama` } satisfies FakeItem,
-                { role: "link", name: "計画書 印刷", on: () => `/people/${who.id}/forms/matsuyama?print=1` } satisfies FakeItem,
+                { role: "link", name: "計画書（松山市） 表示", on: () => `/people/${who.id}/forms/matsuyama` } satisfies FakeItem,
+                { role: "link", name: "計画書（松山市） 印刷", on: () => `/people/${who.id}/forms/matsuyama?print=1` } satisfies FakeItem,
               ]),
           // 経過の書き足し: 自由文に書くと「追記」が押せる（本物の本人のページと同じ）
           box("自由文"),
@@ -277,7 +277,7 @@ export class FakeSurface implements Surface {
             ? [
                 {
                   role: "button",
-                  name: "最初に戻す",
+                  name: "戻す",
                   zone: "窓:初期化",
                   on: (s: State) => {
                     const keep = { loggedIn: s.loggedIn, role: s.role };

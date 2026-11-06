@@ -169,10 +169,10 @@ describe("台: 決まった手・達成の印・画面の名前・守り", () =>
   const goal = (p: string, g: string) => all.find((x) => x.id === p)!.goals.find((x) => x.id === g)!;
 
   it("決まった手は今の画面の名前（書類の名前つきの表示・印刷、担当変更）。見本の間も上の帯から事業所へ", () => {
-    expect(goal("first", "plan").route).toEqual([{ click: "計画書 表示" }]);
-    expect(goal("veteran", "plan").route).toEqual([{ click: "計画書 表示" }]);
+    expect(goal("first", "plan").route).toEqual([{ click: "計画書（松山市） 表示" }]);
+    expect(goal("veteran", "plan").route).toEqual([{ click: "計画書（松山市） 表示" }]);
     expect(goal("admin", "assign").route.at(-1)).toEqual({ click: "伊藤 フミ 担当変更" });
-    expect(goal("admin", "reset").route[0]).toEqual({ click: "事業所" });
+    expect(goal("admin", "reset").route).toEqual([{ click: "事業所" }, { click: "最初に戻す" }, { click: "戻す" }]);
   });
 
   it("様式 9 の印刷の目標は様式 9 の画面で立った印刷の旗だけ（一括印刷の松山市の計画書を数えない）", () => {

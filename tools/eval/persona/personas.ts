@@ -111,15 +111,16 @@ export function personas(loginId: string = DEFAULT_LOGIN_ID): Persona[] {
         {
           id: "ledger",
           text: `${NEW_PERSON.name} の避難先に ${NEW_PERSON.place} を入れて保存する`,
-          done: { text: NEW_PERSON.place, path: "^/people/(?!new)[^/?]+" },
+          // 本人のページは担当一覧の中にも開く（/?open=<id>。T162 で印を合わせた）
+          done: { text: NEW_PERSON.place, path: "^/(people/(?!new)[^/?]+|\\?open=)" },
           route: [{ click: "編集", nth: 1 }, { type: "避難先1", text: NEW_PERSON.place }, { click: "保存" }],
         },
         {
           id: "plan",
           text: `${NEW_PERSON.name} の個別避難計画（計画書）を画面で見る`,
           done: { path: "^/people/[^/]+/forms/(matsuyama|cao|mapped)" },
-          // 本人のページの書類の行の「表示」は書類の名前つきで読む（T162）
-          route: [{ click: "計画書 表示" }],
+          // 本人のページの書類の行の「表示」は書類の名前（事業所の使用様式。種は松山市）つきで読む（T162）
+          route: [{ click: "計画書（松山市） 表示" }],
         },
         DRILL_GOAL,
         DISASTER_GOAL,
@@ -151,7 +152,7 @@ export function personas(loginId: string = DEFAULT_LOGIN_ID): Persona[] {
           id: "plan",
           text: "山田 ハナさんの計画書を画面で見る",
           done: { path: "^/people/[^/]*p-01/forms/(matsuyama|cao|mapped)" },
-          route: [{ click: "計画書 表示" }],
+          route: [{ click: "計画書（松山市） 表示" }],
         },
         DRILL_GOAL,
         DISASTER_GOAL,
@@ -191,7 +192,8 @@ export function personas(loginId: string = DEFAULT_LOGIN_ID): Persona[] {
           text: "事業所のデモのデータを最初の状態に戻す",
           done: { path: "reset=done" },
           // 印刷見本の間も上の帯は残る（T162）ので、見本を閉じずに「事業所」へ
-          route: [{ click: "事業所" }, { click: "最初に戻す" }, { click: "最初に戻す" }],
+          // 確認の窓の決める物は「戻す」（lib/ui/labels.ts の CONFIRM_LABELS.resetOk）
+          route: [{ click: "事業所" }, { click: "最初に戻す" }, { click: "戻す" }],
         },
       ],
     },

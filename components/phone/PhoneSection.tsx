@@ -67,8 +67,9 @@ export function PhoneSection({ summary, level }: { summary: PhoneSummary; level:
                 {L.expires} {formatJst(summary.expiresAt).slice(0, 10)}
               </span>
             )}
+            {/* 読み上げの名前は「スマホ入口 表示」（T162。書類の行の「表示」と同じ名前で、計画書のつもりで押された） */}
             {canOpen && (
-              <ButtonLink href={summary.href} kind="plain" size="sm" icon={SmartphoneIcon} data-phone-open>
+              <ButtonLink href={summary.href} kind="plain" size="sm" icon={SmartphoneIcon} aria-label={`${L.title}${L.entry} ${L.open}`} data-phone-open>
                 {L.open}
               </ButtonLink>
             )}
