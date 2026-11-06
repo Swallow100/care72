@@ -11,7 +11,7 @@
 // ここは純な計算だけ。読み取りの受け口（lib/forms/read-post.ts）が対応表を保存する前に通す。
 
 import type { InkBlob } from "./ink.ts";
-import { LIMITS, nextFieldId, type FieldBox, type LedgerItemKey, type MappingField } from "./mapping.ts";
+import { clean, LIMITS, nextFieldId, type FieldBox, type LedgerItemKey, type MappingField } from "./mapping.ts";
 
 /** 中身の言葉の並びを持つ項目 */
 const CONTENT_ITEMS: ReadonlySet<LedgerItemKey> = new Set<LedgerItemKey>(["medical.allergies", "medical.history", "medical.vaccinations"]);
@@ -115,7 +115,7 @@ export function addTrailingFields(fields: readonly MappingField[], pages: Readon
     out.push({
       ...f,
       id: nextFieldId([...fields, ...out]),
-      label: `${bareLabel(f.label)}（　）`,
+      label: `${clean(bareLabel(f.label), LIMITS.label - 3)}（　）`,
       shape: "text",
       options: [],
       box,
