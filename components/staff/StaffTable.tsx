@@ -55,6 +55,7 @@ const INPUT =
 /** 行の詳細（地が panel2）の中の欄は白にする（地と同じ灰色だと箱が見えない。T55 の問い 2） */
 const INPUT_IN = INPUT.replace("bg-panel2", "bg-panel");
 const COLS = 10;
+const NOT_RECEIVED: readonly string[] = [];
 /** 狭い画面で省く列（担当一覧の表と同じ。PC の画面と同じく横に送らない。T40） */
 const SM = "hidden sm:table-cell";
 const MD = "hidden md:table-cell";
@@ -74,17 +75,17 @@ export function StaffTable({
   rows,
   shelters,
   view = NO_STAFF_VIEW,
-  received = null,
+  received = NOT_RECEIVED,
 }: {
   rows: StaffRow[];
   shelters: string[];
   /** URL の絞込と並び（開いたときの値。lib/custody/staff-view.ts の parseStaffView） */
   view?: StaffView;
   /**
-   * 受け入れたばかりの人の受け持ちの id（URL の ?received=、T152）。その人の行を表の先頭に出し「新着」と「開く」。
+   * 受け入れたばかりの人の受け持ちの id（URL の ?received=、T152。一括受入は全員、T172）。その行を表の先頭に出し「新着」と「開く」。
    * 並びの番号はルールの表のまま、CSV の行の順も変えない（画面だけ。lib/custody/entry.ts の pinReceived）
    */
-  received?: string | null;
+  received?: readonly string[];
 }) {
   const [picked, setShelter] = useState(view.shelter);
   const [color, setColor] = useState<Color | "">(view.color);
@@ -184,7 +185,7 @@ export function StaffTable({
               <Row
                 key={r.custodyId}
                 row={r}
-                fresh={r.custodyId === received}
+                fresh={received.includes(r.custodyId)}
                 open={open === r.custodyId}
                 onToggle={() => setOpen(open === r.custodyId ? null : r.custodyId)}
               />

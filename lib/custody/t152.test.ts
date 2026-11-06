@@ -120,10 +120,10 @@ describe("入り方の 3 つと QR の文字", () => {
     expect(qrPagePath("abc.def", "  ")).toBe("/q/abc.def");
     expect(qrPagePath("abc.def")).toBe("/q/abc.def");
     expect(receivedHref("cu-1")).toBe("/staff?received=cu-1");
-    expect(parseReceived({ received: "cu-1" })).toBe("cu-1");
-    expect(parseReceived({ received: ["cu-1", "cu-2"] })).toBeNull();
-    expect(parseReceived({ received: "cu 1<script>" })).toBeNull();
-    expect(parseReceived({})).toBeNull();
+    expect(parseReceived({ received: "cu-1" })).toEqual(["cu-1"]);
+    expect(parseReceived({ received: ["cu-1", "cu-2"] })).toEqual([]);
+    expect(parseReceived({ received: "cu 1<script>" })).toEqual([]);
+    expect(parseReceived({})).toEqual([]);
   });
 
   it("受け入れたばかりの行を先頭に（並びの番号は変えない。絞込で見えない人は動かさない）", () => {
@@ -180,7 +180,7 @@ describe("受け入れたあとの行き先", () => {
     expect(a.ok && b.ok).toBe(true);
     const board = await loadStaffBoard(db, staffActor(judgeMedical())!, TODAY, LATER);
     const last = board.rows.find((r) => r.personId === "p-02")!;
-    const html = renderToStaticMarkup(createElement(StaffTable, { rows: board.rows, shelters: board.shelters, received: last.custodyId }));
+    const html = renderToStaticMarkup(createElement(StaffTable, { rows: board.rows, shelters: board.shelters, received: [last.custodyId] }));
     const order = [...html.matchAll(/<tr data-person="([^"]+)"/g)].map((m) => m[1]);
     expect(order[0]).toBe("p-02");
     expect(html).toContain('data-fresh="true"');
@@ -270,7 +270,7 @@ describe("受入の入口の描き方", () => {
 });
 
 describe("受け入れた人の画面", () => {
-  it("要約（薬・機器・アレルギー・連絡先）を先に、次に経過（書き足しの欄）、その下に残り。要約に出した行は残りに出さない", async () => {
+  it("要約（薬・機器・アレルギー・連絡先）を先に、次に経過、その下に残り。要約に出した行は残りに出さない。医療班に書き足しの欄は無い（T172）", async () => {
     await receive(db, staffActor(judgeMedical())!, { personId: "p-01", shelter: SHELTER, via: "qr" }, AT);
     const view = await staffView(judgeMedical(), "p-01");
     const layout = receivedLayout(view);
@@ -291,7 +291,7 @@ describe("受け入れた人の画面", () => {
     expect(at("data-received-summary")).toBeGreaterThan(at("data-received-head"));
     expect(at('data-section="timeline"')).toBeGreaterThan(at("data-received-summary"));
     expect(at("data-received-rest")).toBeGreaterThan(at('data-section="timeline"'));
-    expect(html).toContain('data-form="timeline"');
+    expect(html).not.toContain('data-form="timeline"');
     expect(html).toContain('data-summary="medications"');
     expect(html).toContain("ワーファリン");
     expect(html).toContain(SHELTER);
@@ -302,7 +302,7 @@ describe("受け入れた人の画面", () => {
     expect(html).not.toMatch(/data-field="basic\.(birth|sex|contactMeans)"/);
   });
 
-  it("医療班への提供に同意の無い人（p-09）: 要約は同意の状態だけ。薬・機器は出さない。経過の書き足しは今どおり", async () => {
+  it("医療班への提供に同意の無い人（p-09）: 要約は同意の状態だけ。薬・機器は出さない。書き足しの欄も無い（T172）", async () => {
     await receive(db, staffActor(judgeMedical())!, { personId: "p-09", shelter: SHELTER, via: "search" }, AT);
     const view = await staffView(judgeMedical(), "p-09");
     const layout = receivedLayout(view);
@@ -315,7 +315,7 @@ describe("受け入れた人の画面", () => {
     expect(html).toContain("同意なし");
     expect(html).not.toContain('data-summary="medications"');
     expect(html).not.toContain("data-summary-full");
-    expect(html).toContain('data-form="timeline"');
+    expect(html).not.toContain('data-form="timeline"');
   });
 
   it("その場で登録した人（11 人目）: 要約に薬・機器・連絡先。医療要約の書類は作らない（同意の行が未確認）", async () => {

@@ -223,7 +223,11 @@ describe("T163 画面", () => {
     expect(html).toContain(REQUEST_LABELS.list);
     expect(html).toContain(`>${REQUEST_LABELS.accept}<`);
     expect(html).toContain(`>${REQUEST_LABELS.decline}<`);
-    expect(html).not.toMatch(/<textarea|<input/);
+    // 文の欄は無い。入れられるのは選ぶ欄と、一括受入の避難所の 1 つだけ（T172）
+    expect(html).not.toContain("<textarea");
+    const inputs = [...html.matchAll(/<input[^>]*>/g)].map((m) => m[0]);
+    expect(inputs.filter((i) => !i.includes('type="checkbox"'))).toHaveLength(1);
+    expect(inputs.filter((i) => !i.includes('type="checkbox"'))[0]).toContain('data-field="bulk-shelter"');
     expect(html).not.toContain("山田");
     expect(renderToStaticMarkup(createElement(StaffRequests, { requests: [] }))).toBe("");
   });

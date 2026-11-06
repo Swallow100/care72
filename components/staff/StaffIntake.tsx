@@ -9,6 +9,7 @@
 // 受け入れる避難所の既定は自分がいちばん最近に受け入れた所。QR の頁へは今の欄の値を渡す（?shelter=）。
 // ヒットはカナ・生年月日・年齢だけ（サーバーが住所・電話・漢字の氏名を返さない）。受け入れて初めて本人のページを開ける。
 // 検索の言葉は本文（JSON）で送り、URL に載せない。
+// ヒットは選んでまとめて受け入れられる（一括受入、T172。避難所は上の欄の 1 回の入力、1 人ずつ今の受入を通す。lib/custody/bulk.ts）。
 // 避難所の欄が空のまま受入・新規登録を押すと、送らずに欄へ送って焦点を置き、欄に注意の枠と「未入力」（T78）。
 // 受入一覧が空のときの入口（components/staff/StaffTable）は入り方の最初のボタン（INTAKE_ENTRY_ID）へ送る。
 
@@ -18,7 +19,8 @@ import { createContext, useContext, useRef, useState } from "react";
 import type { PersonHit } from "@/lib/custody/search";
 import { ENTRY_KINDS, qrTokenFrom, type EntryKind } from "@/lib/custody/entry";
 import { DEVICE_NAME_MAX, MED_MAX, NOTE_MAX, SHELTER_MAX } from "@/lib/custody/forms";
-import { CUSTODY_ERROR_LABELS, CUSTODY_LABELS, ENTRY_LABELS } from "@/lib/custody/labels";
+import { BULK_MAX, togglePick, togglePickAll, type BulkSent, type BulkTarget } from "@/lib/custody/bulk";
+import { BULK_LABELS, CUSTODY_ERROR_LABELS, CUSTODY_LABELS, ENTRY_LABELS } from "@/lib/custody/labels";
 import {
   CUSTODY_RECEIVE_API,
   CUSTODY_REGISTER_API,
@@ -35,6 +37,7 @@ import { AddPersonIcon, CloseIcon, NextIcon, QrIcon, SearchIcon, ShelterIcon } f
 import { LinkPending } from "@/components/ui/LinkPending";
 import { Panel, PanelHead } from "@/components/ui/Panel";
 import { TABLE, TABLE_BOX, TD } from "@/components/ui/table";
+import { BulkButton, BulkCheck, BulkResult, useBulkRun } from "./BulkReceive";
 import { QrCamera } from "./QrCamera";
 
 type Tab = EntryKind | "shelter";
@@ -333,7 +336,7 @@ function SearchPanel({ shelter }: { shelter: string }) {
           )}
         </div>
       </form>
-      {result && <Hits hits={result.hits} more={result.more} shelter={shelter} via="search" />}
+      {result && <Hits key={result.hits.map((h) => h.id).join()} hits={result.hits} more={result.more} shelter={shelter} via="search" />}
     </div>
   );
 }
@@ -384,17 +387,48 @@ function ShelterPanel({ shelter, shelters }: { shelter: string; shelters: Array<
           {error}
         </p>
       )}
-      {hits && picked && <Hits hits={hits} more={false} shelter={shelter || picked} via="shelter" />}
+      {hits && picked && <Hits key={picked} hits={hits} more={false} shelter={shelter || picked} via="shelter" />}
     </div>
   );
 }
 
-/** ヒットの表。カナ・生年月日・年齢と「受入」（受入済は「開く」）。受け入れたら受入一覧へ（その人の行が上に出る） */
+/**
+ * ヒットの表。カナ・生年月日・年齢と「受入」（受入済は「開く」）。受け入れたら受入一覧へ（その人の行が上に出る）。
+ * 選ぶ欄で何人かを選び「一括受入」（T172）。出ているヒットの中だけで選ぶ（新しい人を引かない）。失敗した人は選んだまま理由を出す
+ */
 function Hits({ hits, more, shelter, via }: { hits: PersonHit[]; more: boolean; shelter: string; via: "search" | "shelter" }) {
   const router = useRouter();
   const markShelter = useContext(ShelterMissing);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const bulk = useBulkRun();
+  const [picked, setPicked] = useState<ReadonlySet<string>>(new Set());
+  // 一括受入で受け入れた人（このヒットの表では受入済と同じに）
+  const [taken, setTaken] = useState<ReadonlySet<string>>(new Set());
+  const open = hits.filter((h) => !h.mine && !taken.has(h.id));
+  const chosen = open.filter((h) => picked.has(h.id));
+  const live = new Set(chosen.map((h) => h.id));
+  const full = live.size >= BULK_MAX;
+  const locked = busyId !== null || bulk.busy;
+
+  async function receiveAll() {
+    // 避難所が空なら送らずに欄へ（1 人の受入と同じ）
+    if (!shelter.trim()) {
+      markShelter();
+      return;
+    }
+    setError(null);
+    const send = async (t: BulkTarget): Promise<BulkSent> => {
+      const data = await post(CUSTODY_RECEIVE_API, { personId: t.id, shelter, via });
+      return data.ok && data.custodyId ? { ok: true, custodyId: data.custodyId } : { ok: false, label: data.label ?? "送信失敗" };
+    };
+    const out = await bulk.run(
+      chosen.map((h) => ({ id: h.id, kana: h.kana })),
+      send,
+    );
+    setTaken((t) => new Set([...t, ...out.flatMap((o) => (o.ok ? [o.id] : []))]));
+    setPicked(new Set(out.flatMap((o) => (o.ok ? [] : [o.id]))));
+  }
 
   async function receive(id: string) {
     // 避難所が空なら送らずに欄へ（欄に印。サーバーも「避難所 未入力」で断る）
@@ -425,6 +459,17 @@ function Hits({ hits, more, shelter, via }: { hits: PersonHit[]; more: boolean; 
         <table className={TABLE} data-table="hits">
           <thead>
             <tr>
+              <th className={`${HIT_TH} w-px`}>
+                {open.length > 0 && (
+                  <BulkCheck
+                    label={BULK_LABELS.selectAll}
+                    checked={chosen.length === open.length}
+                    indeterminate={chosen.length > 0 && chosen.length < open.length}
+                    disabled={locked}
+                    onChange={() => setPicked(togglePickAll(live, open.map((h) => h.id)))}
+                  />
+                )}
+              </th>
               <th className={HIT_TH}>{CUSTODY_LABELS.kana}</th>
               <th className={HIT_TH}>{CUSTODY_LABELS.birth}</th>
               <th className={HIT_TH}>{CUSTODY_LABELS.age}</th>
@@ -436,6 +481,16 @@ function Hits({ hits, more, shelter, via }: { hits: PersonHit[]; more: boolean; 
           <tbody>
             {hits.map((h) => (
               <tr key={h.id} data-hit={h.id}>
+                <td className={`${TD} w-px align-middle`}>
+                  {!h.mine && !taken.has(h.id) && (
+                    <BulkCheck
+                      label={`${BULK_LABELS.select} ${h.kana}`}
+                      checked={picked.has(h.id)}
+                      disabled={locked || (full && !picked.has(h.id))}
+                      onChange={() => setPicked(togglePick(live, h.id))}
+                    />
+                  )}
+                </td>
                 <td className={`${TD} font-bold`}>{h.kana}</td>
                 <td className={`${TD} tabular-nums`}>{h.birthDate ?? "—"}</td>
                 <td className={`${TD} whitespace-nowrap tabular-nums`}>
@@ -443,7 +498,7 @@ function Hits({ hits, more, shelter, via }: { hits: PersonHit[]; more: boolean; 
                   {h.ageReported && <span className="ml-1 text-xs text-muted">{CUSTODY_LABELS.reportedAge}</span>}
                 </td>
                 <td className={`${TD} w-px py-1 text-right`}>
-                  {h.mine ? (
+                  {h.mine || taken.has(h.id) ? (
                     <Link href={`/people/${encodeURIComponent(h.id)}`} className="relative rounded px-1.5 py-0.5 font-bold underline underline-offset-2" data-press>
                       {CUSTODY_LABELS.open}
                       <LinkPending />
@@ -454,7 +509,7 @@ function Hits({ hits, more, shelter, via }: { hits: PersonHit[]; more: boolean; 
                       size="sm"
                       kind="main"
                       icon={AddPersonIcon}
-                      disabled={busyId !== null}
+                      disabled={locked}
                       onClick={() => receive(h.id)}
                       data-pending={busyId === h.id ? "" : undefined}
                     >
@@ -467,6 +522,12 @@ function Hits({ hits, more, shelter, via }: { hits: PersonHit[]; more: boolean; 
           </tbody>
         </table>
       </div>
+      {open.length > 0 && (
+        <div className="mt-1.5" data-bulk="hits">
+          <BulkButton count={chosen.length} bulk={bulk} onClick={receiveAll} />
+        </div>
+      )}
+      <BulkResult outcomes={bulk.outcomes} />
       {!shelter.trim() && <p className="mt-1 text-xs font-bold tone-check">{CUSTODY_ERROR_LABELS.shelter}</p>}
       {more && <p className="mt-1 text-xs text-muted">{CUSTODY_LABELS.more}</p>}
     </div>
