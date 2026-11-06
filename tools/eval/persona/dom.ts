@@ -134,7 +134,8 @@ export function readPageInBrowser(limits: ReadLimits): RawRead {
   const w = window as unknown as { __personaPrinted?: boolean };
   const whole = squeeze(plain(main as HTMLElement), limits.body);
   const top = document.querySelector("header") as HTMLElement | null;
-  const header = top ? squeeze(plain(top), 200) : "";
+  // 隠れた上の帯（印刷の見本の間など）は読まない（innerText が字の間の空きの無い textContent になり、見えない物を読む）
+  const header = top && visible(top) ? squeeze(plain(top), 200) : "";
   hideRuby.remove();
   return {
     url: location.href,

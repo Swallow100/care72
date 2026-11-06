@@ -186,7 +186,7 @@ export function personas(loginId: string = DEFAULT_LOGIN_ID): Persona[] {
           id: "reset",
           text: "事業所のデモのデータを最初の状態に戻す",
           done: { path: "reset=done" },
-          route: [{ click: "事業所" }, { click: "最初に戻す" }, { click: "最初に戻す" }],
+          route: [{ click: "閉じる", optional: true }, { click: "事業所" }, { click: "最初に戻す" }, { click: "最初に戻す" }],
         },
       ],
     },
