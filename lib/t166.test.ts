@@ -8,6 +8,9 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: () => {}, push: () => {} }), usePathname: () => "/" }));
 
 import { onActPick, pickAct } from "../components/drill/act-pick.ts";
+import { ActionHintRows } from "../components/drill/ActionHints.tsx";
+import { ActionItem } from "../components/drill/ActionLog.tsx";
+import type { ActionRecord } from "./drill/engine.ts";
 import { DrillControls } from "../components/drill/DrillControls.tsx";
 import { AskMarks } from "../components/drill/TalkLines.tsx";
 import { RequestSection } from "../components/person/RequestSection.tsx";
@@ -150,6 +153,31 @@ describe("3b. 頼み事の印", () => {
       expect(askPick(only, group(only, "ok")).to).toBe("act");
     }
     expect(askPick(many, group(many, "ok"))).toEqual({ to: "row", found: true });
+  });
+  it("案内された候補の行だけ枠で示す", () => {
+    const hints: ActionHints = {
+      alt: null,
+      groups: [
+        { sources: [{ from: "ask", ask: "transport", label: "移送" }], actions: [{ kind: "request_welfare_shelter", state: "ok", why: null, minutes: 5 }] },
+        { sources: [{ from: "ask", ask: "medicine", label: "薬" }], actions: [{ kind: "arrange_medicine", state: "ok", why: null, minutes: 5 }] },
+      ],
+    };
+    const html = renderToStaticMarkup(createElement(ActionHintRows, { person: "p-1", hints, focusAsk: "transport" }));
+    expect(html.match(/data-hint-focus/g)?.length).toBe(1);
+    expect(html.indexOf("data-hint-focus")).toBeLessThan(html.indexOf("data-hint-act=\"request_welfare_shelter\""));
+    expect(renderToStaticMarkup(createElement(ActionHintRows, { person: "p-1", hints }))).not.toContain("data-hint-focus");
+  });
+  it("経過の手の行は進行中だけ印を押せる", () => {
+    const a = {
+      id: "a-1", step: 0, kind: "call_person", person: "p-1", target: null, atMinute: 0, calleeLabel: "本人", memo: null,
+      result: { status: "reached", speech: "はい", speechAi: true, crossed: [], talk: [{ who: "them", text: "移送を", ai: true, asks: ["transport"] }], visit: { condition: "x", asks: ["water"], speech: null, ai: true } },
+    } as unknown as ActionRecord;
+    const live = renderToStaticMarkup(createElement(ActionItem, { a, names: { "p-1": "山田" }, live: true }));
+    expect(live).toContain('data-ask-pick="transport"');
+    expect(live).toContain('data-ask-pick="water"');
+    const read = renderToStaticMarkup(createElement(ActionItem, { a, names: { "p-1": "山田" } }));
+    expect(read).not.toContain("data-ask-pick");
+    expect(read).toContain('data-ask-mark="transport"');
   });
   it("本人を渡すと押せるボタン（アイコン＋文字）、渡さないと文字のまま。全部の種類", () => {
     for (const ask of every) {

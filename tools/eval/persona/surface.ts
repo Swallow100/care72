@@ -107,6 +107,8 @@ export class ChromeSurface implements Surface {
     }
     this.ctx = await this.browser.createBrowserContext();
     const page = await this.ctx.newPage();
+    // 手元の dev は頁の組み立てが SW の待ち（4 秒）を超え、発災のあとに平時の写しを読むので SW を通さない（T166。写しの道は SW のテストで見る）
+    await page.setBypassServiceWorker(true);
     await page.setViewport({ ...this.opts.viewport, deviceScaleFactor: 1 });
     await page.evaluateOnNewDocument(stubPrintInBrowser);
     page.on("response", (res) => {
