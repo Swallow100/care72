@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import type { ReactNode } from "react";
 import { LinkPending } from "@/components/ui/LinkPending";
 
 // ケアマネの机の画面の切替。今の画面は本文の色と下線で示す（下地は敷かない）。押してから移るまで灰色を残す。
@@ -15,7 +16,8 @@ const ITEMS = [
   { href: "/forms", label: "書類", match: (path: string) => path.startsWith("/office/form9") || path.startsWith("/forms") },
 ];
 
-export function NavLinks() {
+/** 切替の右に足す物（役を選べる人の医療班の入口。T173） */
+export function NavLinks({ children }: { children?: ReactNode }) {
   const path = usePathname() ?? "/";
   return (
     <nav aria-label="画面" className="flex items-center gap-0.5 text-sm">
@@ -36,6 +38,7 @@ export function NavLinks() {
           </Link>
         );
       })}
+      {children}
     </nav>
   );
 }

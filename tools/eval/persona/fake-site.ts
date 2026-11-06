@@ -103,6 +103,8 @@ export class FakeSurface implements Surface {
             { role: "link", name: "訓練", zone: "切替:画面", on: () => "/drill" },
             { role: "link", name: "事業所", zone: "切替:画面", on: () => "/office" },
             { role: "link", name: "書類", zone: "切替:画面", on: () => "/forms" },
+            // 役を選べる人の医療班の入口（components/ui/RoleMenu の StaffEntry。T173）
+            { role: "button", name: "医療班 受入一覧", zone: "切替:画面", on: (s) => ((s.role = "medical"), (s.roleMenu = false), "/staff") },
           ]
         : [];
     const menu: FakeItem[] = st.roleMenu
