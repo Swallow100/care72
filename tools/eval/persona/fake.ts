@@ -116,6 +116,9 @@ export function fakeActor(list: readonly Persona[], opts: FakeActorOptions = {})
       if ("type" in m) return move({ action: "type", ref: hit.ref, text: m.text, thought: `「${name}」に書く`, expect: "字が入る" });
       return move({ action: "select", ref: hit.ref, text: m.option, thought: `「${name}」で選ぶ`, expect: "選ばれる" });
     }
+    // 並びを終えた: 1 回目は済んだと言い、それでも同じ目標なら（台の印が立たない）あきらめる
+    if (pos.get(`${key}#done`) === 1) return move({ action: "give_up", thought: "済んだはずなのに進まない" });
+    pos.set(`${key}#done`, 1);
     return move({ action: "done", thought: "済んだと思う" });
   };
   const judge = (params: Params): JudgeOut => {

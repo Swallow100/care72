@@ -102,7 +102,8 @@ export function personas(loginId: string = DEFAULT_LOGIN_ID): Persona[] {
         {
           id: "add",
           text: `新しい利用者 ${NEW_PERSON.name} をアプリに足す`,
-          done: { text: NEW_PERSON.name, path: "^/people/(?!new)[^/?]+" },
+          // 作成のあとは担当一覧のその人の行が開く（/?open=<id>）
+          done: { text: NEW_PERSON.name, path: "^/(people/(?!new)[^/?]+|\\?open=)" },
           route: [{ click: "利用者追加" }, { type: "氏名", text: NEW_PERSON.name }, { type: "カナ", text: NEW_PERSON.kana }, { type: "生年月日", text: NEW_PERSON.birth }, { click: "女" }, { click: "作成" }],
         },
         {
