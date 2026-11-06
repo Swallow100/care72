@@ -3,6 +3,7 @@
 // D1 は node:sqlite（lib/db/test-d1.ts）に種。気象庁は fixtures の作った見本（本物には繋がない）。ハッシュの回数はテストだけ減らす。
 
 import type { D1Database } from "@cloudflare/workers-types";
+import { readdirSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -90,6 +91,22 @@ async function sandbox(): Promise<Principal> {
   if (!p) throw new Error("試用事業所");
   return p;
 }
+
+// ---------- migration ----------
+
+describe("migration 0038（事業所の団体コード）", () => {
+  it("番号は 0038 で 1 つだけ（取り込みで重なったら付け直す）", () => {
+    const names = readdirSync(new URL("../../migrations/", import.meta.url)).filter((n) => n.endsWith(".sql"));
+    expect(names.filter((n) => n.startsWith("0038_"))).toEqual(["0038_office_city_codes.sql"]);
+  });
+
+  it("形の違う団体コードは CHECK で断る", () => {
+    const bad = (set: string) => expect(() => sqlite.exec(`UPDATE offices SET ${set} WHERE id = '${DEMO_OFFICE_ID}'`), set).toThrow(/CHECK/);
+    bad("city_code = '38201'");
+    bad("city_code = '38201x'");
+    bad(`region_city_codes = '{"a":1}'`);
+  });
+});
 
 // ---------- 表 ----------
 
