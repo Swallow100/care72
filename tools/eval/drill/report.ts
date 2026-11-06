@@ -47,6 +47,8 @@ export type Totals = {
   /** 帳面との矛盾（T130。門が効いていれば 0）と、門が落とした・直した数 */
   factHits?: number;
   gated?: number;
+  /** 画面に出た（氏名）のうち元の語に名前が無かった数（T159。0 のはず） */
+  overmask?: number;
   advanceP50: number | null;
   advanceP95: number | null;
   usdPerRun: number | null;
@@ -111,6 +113,7 @@ export function totalsOf(runs: ReadonlyArray<RunSummary>): Totals {
     freeCanMismatch: sum(n.map((x) => x.free?.canMismatch ?? 0)),
     factHits: sum(n.map((x) => x.facts?.hits ?? 0)),
     gated: sum(n.map((x) => Object.values(x.facts?.gated ?? {}).reduce((a, b) => a + b, 0))),
+    overmask: sum(n.map((x) => x.overmask?.hits ?? 0)),
     advanceP50: mean(n.map((x) => x.timing.advanceP50)),
     advanceP95: max(n.map((x) => x.timing.advanceP95)),
     usdPerRun: mean(n.map((x) => x.cost.usd)),
@@ -159,6 +162,7 @@ export const METRICS: ReadonlyArray<Metric> = [
   { label: "終わった回", get: (s) => s.totals.finished, format: int },
   { label: "禁じた中身（本人役の生の返事）/回", get: (s) => per(s, s.totals.bannedRaw), format: two, lowerBetter: true },
   { label: "禁じた中身（画面に出た物）", get: (s) => s.totals.bannedShown, format: int, lowerBetter: true },
+  { label: "画面の（氏名）で元の語に名前が無い（T159）", get: (s) => s.totals.overmask ?? 0, format: int, lowerBetter: true },
   { label: "禁じた語（世界・監督の生の返事）/回", get: (s) => per(s, s.totals.otherRaw), format: two, lowerBetter: true },
   { label: "形の失敗・失敗した呼び出し", get: (s) => s.totals.shapeFailed, format: int, lowerBetter: true },
   { label: "再試行", get: (s) => s.totals.retries, format: int, lowerBetter: true },
