@@ -216,7 +216,7 @@ describe("偽の client と偽の画面で筋が通る", () => {
     expect(md).toContain("| 初めて触るケアマネ 迷いの数 |");
     expect(md).toContain("| 医療班 手の数 |");
     // 門の守り（persona-gate-none）は外れない
-    expect(r.shared.some((f) => f.cause.startsWith("guard:"))).toBe(false);
+    expect(r.shared.filter((f) => f.cause.startsWith("guard:")).map((f) => f.cause)).toEqual([]);
   });
 
   it("md（repo に置く表）は思ったことを持たない", async () => {

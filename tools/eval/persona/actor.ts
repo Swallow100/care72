@@ -18,7 +18,7 @@ export const ACTOR_SYSTEM = `あなたは介護の現場の人を演じ、手元
 - type: 番号の欄に text を書く（今の値は消える）
 - select: 番号の選ぶ欄で text の選択肢を選ぶ
 - back: ブラウザの戻る
-- done: 今の目標を果たしたと思う
+- done: 今の目標（goal）を果たしたと思う
 - give_up: 今の目標をあきらめる（何度探しても見つからない・先へ進めない）
 決まり:
 - 人物になりきる。知らない言葉は知らないと思ってよい。画面の言葉だけを頼りに探す
@@ -26,6 +26,7 @@ export const ACTOR_SYSTEM = `あなたは介護の現場の人を演じ、手元
 - expect は押したあとに起きると思うこと（40 字まで）
 - surprised は、前の手の結果が思っていたのと違ったら true
 - パスワードは {{password}} と書く（本当の値は知らない）。URL は打てない
+- goal は今の目標で、まだ果たしていない。reached は済んだ目標。前の目標が済んだだけでは done にしない。goals_left_after_this は今の目標のほかに残っている目標の数
 - 医療の判断はしない。画面の操作だけ
 - ref は click・type・select のとき番号、ほかは null。text は type・select のときだけ、ほかは null
 - 返事は JSON だけ`;
@@ -65,7 +66,8 @@ export function historyForActor(steps: readonly StepRecord[], limit = 8): Array<
     target: st.target?.name ?? null,
     text: st.move.action === "type" || st.move.action === "select" ? st.move.text : null,
     thought: st.move.thought,
-    result: st.result.ok ? (st.before.path === st.after.path ? (st.before.hash === st.after.hash ? "画面は変わらない" : "同じ道で画面が変わった") : `移った ${st.after.path}`) : `押せない ${st.result.error ?? ""}`,
+    // 果たしていないのに done と言った手は、未達と返す（画面が変わらないだけでは 3 回続けて言った。T173）
+    result: st.move.action === "done" && !st.reached.includes(st.goal) ? "目標は未達のまま" : st.result.ok ? (st.before.path === st.after.path ? (st.before.hash === st.after.hash ? "画面は変わらない" : "同じ道で画面が変わった") : `移った ${st.after.path}`) : `押せない ${st.result.error ?? ""}`,
   }));
 }
 

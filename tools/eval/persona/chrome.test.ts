@@ -33,6 +33,12 @@ const PAGES: Record<string, string> = {
   ),
   "/forms": page("書類", `<h1>書類</h1><a href="/people/p-01">山田 ハナ</a> <button onclick="window.print()">印刷</button>`),
   "/people/p-01": page("本人", `<h1>山田 ハナ</h1><a href="/forms">戻る</a>`),
+  // ブラウザの必須の案内（T173）。required の欄が空のまま送る。下は案内の出ない形（隠れた欄が必須）
+  "/new": page(
+    "利用者追加",
+    `<h1>利用者追加</h1><form action="/home"><label>氏名<input name="name" required></label><label>生年月日<input type="date" name="birth" required></label><fieldset><legend>性別</legend><label><input type="radio" name="sex" value="f" required>女</label></fieldset><button>作成</button></form>
+     <form action="/home"><input name="hidden" required style="display:none" aria-label="隠れた欄"><button>隠れ作成</button></form>`,
+  ),
 };
 
 let server: Server;
@@ -152,6 +158,43 @@ describe.skipIf(skip)("ChromeSurface（手元の HTTP の頁）", () => {
       expect(statSync(o.steps[0].shot!).size).toBeGreaterThan(1000);
       // AI に送った中身にパスワードの値が無い
       expect(JSON.stringify(log.records)).not.toContain(PASSWORD);
+    } finally {
+      await s.close();
+    }
+  }, 120_000);
+
+  it("ブラウザの必須の案内を読む（T173）: 最初の欄の案内を知らせに、次に押すと消える。案内の出ない欄はエラーに", async () => {
+    const s = new ChromeSurface({ base, viewport: VIEWPORTS["1280"], navTimeout: 20_000 });
+    const click = async (name: string) => {
+      const item = (await s.snapshot()).items.find((i) => i.name === name)!;
+      return s.act({ action: "click", ref: item.ref, text: null, thought: "", expect: "", surprised: false }, { password: PASSWORD });
+    };
+    const type = async (name: string, text: string) => {
+      const item = (await s.snapshot()).items.find((i) => i.name === name)!;
+      return s.act({ action: "type", ref: item.ref, text, thought: "", expect: "", surprised: false }, { password: PASSWORD });
+    };
+    try {
+      await s.open("/new");
+      let snap = await s.snapshot();
+      expect(snap.alerts).toEqual([]);
+      await click("作成");
+      snap = await s.snapshot();
+      expect(snap.path).toBe("/new");
+      expect(snap.alerts).toHaveLength(1);
+      expect(snap.alerts[0]).toMatch(/^必須案内 氏名 ./);
+      expect(snap.errors).toEqual([]);
+      // 読むと消える（押し直せば次の欄）
+      expect((await s.snapshot()).alerts).toEqual([]);
+      await type("氏名", "川辺 サクラ");
+      await click("作成");
+      snap = await s.snapshot();
+      expect(snap.alerts[0]).toMatch(/^必須案内 生年月日 ./);
+      expect(snap.items.find((i) => i.name === "生年月日")?.focused).toBe(true);
+      await click("隠れ作成");
+      snap = await s.snapshot();
+      // 隠れた欄が必須だとブラウザは何も言わず止まる（台はエラーに数える）
+      expect(snap.alerts).toEqual([]);
+      expect(snap.errors).toEqual(["必須案内なし 隠れた欄"]);
     } finally {
       await s.close();
     }

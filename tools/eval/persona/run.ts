@@ -253,6 +253,8 @@ export function scorecardOf(run: string, client: "fake" | "real", paths: readonl
     values[`persona.${p.persona}.reached`] = [p.goals.reached, p.goals.total];
     values[`persona.${p.persona}.steps`] = p.steps;
     values[`persona.${p.persona}.lost`] = LOST_KINDS.reduce((a, k) => a + p.lost[k], 0);
+    // 目標ごとの手（守りの数。T173）
+    for (const g of p.goals.list) values[`persona.goal.${p.persona}.${g.id}.steps`] = g.steps;
   }
   return { version: 1, bench: "persona", run, client, values };
 }

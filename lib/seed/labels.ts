@@ -7,7 +7,6 @@ export const RESET_LABELS = {
   reset: "最初に戻す",
   /** 確認の欄の 1 行（戻すと消える物） */
   confirm: "消す項目: 訓練記録・信号・経過・追加の利用者・録音",
-  cancel: "取消",
   /** 自動で戻す時刻 */
   daily: "毎日 4:00 自動",
   done: "初期化済",

@@ -7,10 +7,15 @@
 // 面の中は組（lib/intake/fields.ts の FIELD_GROUPS、T145）に分ける: 面の下を面の中の灰色にし、組ごとに白い箱と見出し。
 // 組が 3 つ以上なら上に目次（押すとその組へ送る）。入力の欄に入った組・目次で飛んだ組の見出しを強くする。
 // T166: 目次はリンク（読み上げは「避難先 移動」）で、押すとその組の最初の欄にカーソルを置く（前は組が見えていると押しても何も変わらず、入力を開く物と読まれて 4 回押された）。
-// 「保存」「取消」と「変更 N 件」は開いている間、画面の下に留める（欄の下の遠い所にあり、保存の場所が分からなかった）。保存のあとは面の頭に「保存済」
+// 「保存」「編集終了」と「変更 N 件」は開いている間、画面の下に留める（欄の下の遠い所にあり、保存の場所が分からなかった）。保存のあとは面の頭に「保存済」
+// T173: 全部の面に効く直し。
+// - 「編集」「保存」「編集終了」の読み上げの名前に面の名前（「避難 編集」。編集が画面に何個もあり、どの面の物か読めず 3 回押された）
+// - 保存の横の「取消」は帯の右の端の「編集終了」に。変更があれば破棄してよいか窓で確かめる（押し間違いで入力が消えた）
+// - 変更が無い間は「変更 0 件」でなく「未変更」（保存が押せない理由が読めなかった）。開いている間は面の頭に「編集中」
+// - 保存のあとは新しい値が読めてから面を閉じる（前は閉じた直後に古い値が出て、保存できなかったと読まれた）
 
 import { useRouter } from "next/navigation";
-import { Fragment, useEffect, useRef, useState, type ComponentProps, type FocusEvent, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, useTransition, type ComponentProps, type FocusEvent, type ReactNode } from "react";
 import { Button } from "@/components/ui/Button";
 import { Select } from "@/components/ui/Select";
 import { AddIcon, CloseIcon, RemoveIcon, RestoreIcon, SaveIcon } from "@/components/ui/Icon";
@@ -46,6 +51,7 @@ import {
   HAZARD_LABELS,
   INTAKE_LABELS,
   MED_PARTS,
+  SECTION_LABELS,
   MEDICATION_CATEGORY_LABELS,
   PLACE_LABELS,
 } from "@/lib/labels";
@@ -122,6 +128,10 @@ export function SectionEdit({ section, data, head, children, targets = null }: P
   const [active, setActive] = useState<string | null>(null);
   // 保存して閉じた（次に開くまで面の頭に「保存済」。T166）
   const [saved, setSaved] = useState(false);
+  // 保存のあとの読み直しの間（新しい値が読めるまで面を閉じない。T173）
+  const [refreshing, startRefresh] = useTransition();
+  const saving = busy || refreshing;
+  const sectionName = SECTION_LABELS[section];
   const changes = open ? editChanges(section, open.base, open.draft) : [];
   // 同じ緊急・支援の順を 2 人に付けたら保存しない（サーバーも断る）
   const clashed = open !== null && section === "people" && (() => {
@@ -143,8 +153,23 @@ export function SectionEdit({ section, data, head, children, targets = null }: P
       ?.focus({ preventScroll: true });
   }, [opened]);
 
+  /** 編集をやめる。変更があれば破棄してよいか確かめる（押し間違いで入力を消さない。T173） */
+  async function close() {
+    if (changes.length > 0) {
+      const ok = await appConfirm(`${INTAKE_LABELS.changeCount} ${changes.length} 件`, {
+        title: INTAKE_LABELS.closeTitle,
+        ok: INTAKE_LABELS.closeOk,
+        cancel: INTAKE_LABELS.closeKeep,
+        danger: true,
+      });
+      if (!ok) return;
+    }
+    setError(null);
+    setOpen(null);
+  }
+
   async function save() {
-    if (!open || changes.length === 0 || stopped) return;
+    if (!open || changes.length === 0 || stopped || saving) return;
     // 外す物があれば、保存の前に 1 回だけ確かめる（取消なら面は開いたまま）
     const drops = removalNames(changes, open.base);
     if (drops.length > 0) {
@@ -170,9 +195,12 @@ export function SectionEdit({ section, data, head, children, targets = null }: P
       }
       return;
     }
-    setOpen(null);
     setSaved(true);
-    router.refresh();
+    // 新しい値が届いたのと同じ時に面を閉じる
+    startRefresh(() => {
+      setOpen(null);
+      router.refresh();
+    });
   }
 
   return (
@@ -184,11 +212,17 @@ export function SectionEdit({ section, data, head, children, targets = null }: P
             {INTAKE_LABELS.saved}
           </span>
         )}
+        {open && (
+          <span role="status" className="ml-auto self-center text-xs font-bold" data-edit-state={section}>
+            {INTAKE_LABELS.editing}
+          </span>
+        )}
         {!open && (
           <Button
             size="sm"
             icon={EditIcon}
             className="ml-auto self-center"
+            aria-label={`${sectionName} ${INTAKE_LABELS.sectionEdit}`}
             data-edit-open={section}
             onClick={() => {
               setError(null);
@@ -219,14 +253,20 @@ export function SectionEdit({ section, data, head, children, targets = null }: P
         >
           <SectionForm section={section} data={open.base} draft={open.draft} set={set} active={active} onActive={setActive} targets={targets} />
           <div className="sticky bottom-0 z-10 -mx-1.5 -mb-1.5 flex flex-wrap items-center gap-2 rounded-b-lg bg-panel2 px-2.5 py-1.5" data-edit-bar={section}>
-            <Button type="submit" kind="main" size="sm" icon={SaveIcon} disabled={busy || changes.length === 0 || stopped} data-edit-save={section}>
+            <Button
+              type="submit"
+              kind="main"
+              size="sm"
+              icon={SaveIcon}
+              aria-label={`${sectionName} ${INTAKE_LABELS.save}`}
+              disabled={saving || changes.length === 0 || stopped}
+              data-pending={saving || undefined}
+              data-edit-save={section}
+            >
               {INTAKE_LABELS.save}
             </Button>
-            <Button kind="quiet" size="sm" icon={CloseIcon} disabled={busy} onClick={() => setOpen(null)}>
-              {INTAKE_LABELS.discard}
-            </Button>
             <span role="status" className="text-xs tabular-nums">
-              {busy ? (
+              {saving ? (
                 <span className="text-muted">{INTAKE_LABELS.busy}</span>
               ) : error ? (
                 <span className="font-bold text-danger">{error}</span>
@@ -236,10 +276,23 @@ export function SectionEdit({ section, data, head, children, targets = null }: P
                 </span>
               ) : (
                 <span className="text-muted" data-edit-count>
-                  {INTAKE_LABELS.changeCount} {changes.length} 件
+                  {changes.length === 0 ? INTAKE_LABELS.noChange : `${INTAKE_LABELS.changeCount} ${changes.length} 件`}
                 </span>
               )}
             </span>
+            {/* 保存から離して右の端に（押し間違いで入力が消えた。T173） */}
+            <Button
+              kind="quiet"
+              size="sm"
+              icon={CloseIcon}
+              className="ml-auto"
+              aria-label={`${sectionName} ${INTAKE_LABELS.closeEdit}`}
+              disabled={saving}
+              onClick={() => void close()}
+              data-edit-close={section}
+            >
+              {INTAKE_LABELS.closeEdit}
+            </Button>
           </div>
         </form>
       ) : (

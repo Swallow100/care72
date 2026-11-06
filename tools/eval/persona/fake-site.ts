@@ -103,6 +103,8 @@ export class FakeSurface implements Surface {
             { role: "link", name: "訓練", zone: "切替:画面", on: () => "/drill" },
             { role: "link", name: "事業所", zone: "切替:画面", on: () => "/office" },
             { role: "link", name: "書類", zone: "切替:画面", on: () => "/forms" },
+            // 役を選べる人の医療班の入口（components/ui/RoleMenu の StaffEntry。T173）
+            { role: "button", name: "医療班 受入一覧", zone: "切替:画面", on: (s) => ((s.role = "medical"), (s.roleMenu = false), "/staff") },
           ]
         : [];
     const menu: FakeItem[] = st.roleMenu
@@ -176,8 +178,13 @@ export class FakeSurface implements Surface {
             name: "作成",
             on: (s) => {
               const name = this.value("氏名");
+              // 本物はブラウザの必須の案内（読みの知らせ。tools/eval/persona/dom.ts、T173）
               if (!name) {
-                s.alert = "氏名 未入力";
+                s.alert = "必須案内 氏名 このフィールドを入力してください。";
+                return;
+              }
+              if (!this.value("生年月日")) {
+                s.alert = "必須案内 生年月日 このフィールドを入力してください。";
                 return;
               }
               const id = `chk-p-${String(s.people.length + 10).padStart(2, "0")}`;
@@ -205,10 +212,10 @@ export class FakeSurface implements Surface {
           ...(medical
             ? []
             : [
-                { role: "button", name: "編集", on: () => undefined } satisfies FakeItem,
-                { role: "button", name: "編集", on: (s: State) => void (s.editing = true) } satisfies FakeItem,
+                { role: "button", name: "医療 編集", on: () => undefined } satisfies FakeItem,
+                { role: "button", name: "避難 編集", on: (s: State) => void (s.editing = true) } satisfies FakeItem,
               ]),
-          ...(st.editing ? [box("避難先1"), { role: "button", name: "保存", on: (s: State) => void ((who.place = this.value("避難先1") || who.place), (s.editing = false)) } satisfies FakeItem] : []),
+          ...(st.editing ? [box("避難先1"), { role: "button", name: "避難 保存", on: (s: State) => void ((who.place = this.value("避難先1") || who.place), (s.editing = false)) } satisfies FakeItem, { role: "button", name: "避難 編集終了", on: (s: State) => void (s.editing = false) } satisfies FakeItem] : []),
           ...(medical
             ? []
             : [
@@ -289,7 +296,7 @@ export class FakeSurface implements Surface {
             ? [
                 {
                   role: "button",
-                  name: "戻す",
+                  name: "初期化",
                   zone: "窓:初期化",
                   on: (s: State) => {
                     const keep = { loggedIn: s.loggedIn, role: s.role };
@@ -343,7 +350,7 @@ export class FakeSurface implements Surface {
             : []),
           ...(rest
             ? [
-                { role: "checkbox", name: "全選択 デモ事業所（確認用）", checked: st.bulkPicked, on: (s: State) => void (s.bulkPicked = !s.bulkPicked) } satisfies FakeItem,
+                { role: "checkbox", name: st.bulkPicked ? "全解除 デモ事業所（確認用）" : "全選択 デモ事業所（確認用）", checked: st.bulkPicked, on: (s: State) => void (s.bulkPicked = !s.bulkPicked) } satisfies FakeItem,
                 { role: "button", name: st.bulkPicked ? "一括受入 2 人" : "一括受入 0 人", disabled: !st.bulkPicked, on: (s: State) => ((s.bulkDone = true), "/staff?received=cu-2,cu-3") } satisfies FakeItem,
               ]
             : []),

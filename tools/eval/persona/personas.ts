@@ -60,6 +60,11 @@ export type Persona = {
   goals: Goal[];
   /** この筋で出てはいけない物（出たら persona.forbidden に数える。T172）。path の画面に item の名前で始まる押せる物か、text の文があれば数える */
   forbid?: ReadonlyArray<{ path: string; item?: string; text?: string; why: string }>;
+  /**
+   * この筋で読みの頭になければならない物（T173）。path の画面（窓の開いていない時）で、item の名前で始まる押せる物が読みの within 番目までに無ければ
+   * persona.forbidden に数える。読みの順は Tab の順で、見える場所が頭でも後ろになることがある（最初に戻すが 115 個中 114 番目だった）
+   */
+  near?: ReadonlyArray<{ path: string; item: string; within: number; why: string }>;
   /** この筋の手の上限（無ければ全体の上限） */
   maxSteps?: number;
 };
@@ -119,7 +124,8 @@ export function personas(loginId: string = DEFAULT_LOGIN_ID): Persona[] {
           text: `${NEW_PERSON.name} の避難先に ${NEW_PERSON.place} を入れて保存する`,
           // 本人のページは担当一覧の中にも開く（/?open=<id>。T162 で印を合わせた）
           done: { text: NEW_PERSON.place, path: "^/(people/(?!new)[^/?]+|\\?open=)" },
-          route: [{ click: "編集", nth: 1 }, { type: "避難先1", text: NEW_PERSON.place }, { click: "保存" }],
+          // 面の編集・保存は面の名前つきで読む（T173）
+          route: [{ click: "避難 編集" }, { type: "避難先1", text: NEW_PERSON.place }, { click: "避難 保存" }],
         },
         {
           id: "plan",
@@ -198,10 +204,11 @@ export function personas(loginId: string = DEFAULT_LOGIN_ID): Persona[] {
           text: "事業所のデモのデータを最初の状態に戻す",
           done: { path: "reset=done" },
           // 印刷見本の間も上の帯は残る（T162）ので、見本を閉じずに「事業所」へ
-          // 確認の窓の決める物は「戻す」（lib/ui/labels.ts の CONFIRM_LABELS.resetOk）
-          route: [{ click: "事業所" }, { click: "最初に戻す" }, { click: "戻す" }],
+          // 確認の窓の決める物は「初期化」（lib/ui/labels.ts の CONFIRM_LABELS.resetOk。T173）
+          route: [{ click: "事業所" }, { click: "最初に戻す" }, { click: "初期化" }],
         },
       ],
+      near: [{ path: "^/office(\\?|$)", item: "最初に戻す", within: 15, why: "最初に戻すが読みの後ろ" }],
     },
     {
       id: "medical",
@@ -219,7 +226,8 @@ export function personas(loginId: string = DEFAULT_LOGIN_ID): Persona[] {
           id: "role",
           text: "医療班の立場で使い始める",
           done: { path: "^/staff" },
-          route: [{ click: "役変更" }, { click: "医療班" }],
+          // 画面の切替の右の入口（読み上げは「医療班 受入一覧」。T173）。役変更の一覧からでも着く
+          route: [{ click: "医療班" }],
         },
         {
           id: "receive",
@@ -247,6 +255,7 @@ export function personas(loginId: string = DEFAULT_LOGIN_ID): Persona[] {
         { path: "^/people/", item: "追記", why: "医療班の書き足しの欄" },
         { path: "^/staff", text: "写すと受入頁", why: "カメラ起動が出ない" },
       ],
+      near: [{ path: "^/(\\?|$)", item: "医療班", within: 12, why: "医療班の入口が読みの後ろ" }],
     },
     {
       id: "judge10",

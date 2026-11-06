@@ -249,12 +249,12 @@ describe("検索のヒットの一括受入", () => {
 describe("一括受入の画面の部品", () => {
   const bulk = { busy: false, step: null, outcomes: null, run: async () => [] };
   it("押せるのは選んだ時だけ、上限に達したら上限の言葉", () => {
-    const none = renderToStaticMarkup(createElement(BulkButton, { count: 0, bulk, onClick: () => {} }));
+    const none = renderToStaticMarkup(createElement(BulkButton, { count: 0, total: 2, bulk, onClick: () => {} }));
     expect(none).toMatch(/<button[^>]*disabled/);
-    const full = renderToStaticMarkup(createElement(BulkButton, { count: BULK_MAX, bulk, onClick: () => {} }));
+    const full = renderToStaticMarkup(createElement(BulkButton, { count: BULK_MAX, total: 30, bulk, onClick: () => {} }));
     expect(full).toContain("data-bulk-limit");
     expect(full).toContain("上限");
-    const going = renderToStaticMarkup(createElement(BulkButton, { count: 3, bulk: { ...bulk, busy: true, step: { done: 1, total: 3 } }, onClick: () => {} }));
+    const going = renderToStaticMarkup(createElement(BulkButton, { count: 3, total: 3, bulk: { ...bulk, busy: true, step: { done: 1, total: 3 } }, onClick: () => {} }));
     expect(going).toContain("1/3");
   });
   it("失敗した人はカナと理由の一覧に。全員成功なら人数だけ", () => {

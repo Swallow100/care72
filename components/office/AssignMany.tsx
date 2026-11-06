@@ -181,7 +181,7 @@ export function PickAll() {
         type="checkbox"
         checked={all}
         onChange={(e) => setAll(ids, e.target.checked)}
-        aria-label={OFFICE_LABELS.selectAll}
+        aria-label={all ? OFFICE_LABELS.clearAll : OFFICE_LABELS.selectAll}
         className={CHECK}
       />
     </label>
