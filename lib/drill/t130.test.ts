@@ -223,7 +223,8 @@ describe("文の門（同居・いない家族・電気・予備・落ち着い�
     const noPlan = buildPersona(withoutPlan(seedInput("p-01")), { on: "2026-11-05" });
     const input = personaInput("p-01", { world: OUTAGE });
     expect(personaTurns(input, withPlan, say)[0]?.saying).toBe("予備のボンベに替えました。");
-    expect(personaTurns(input, noPlan, say)[0]?.saying ?? null).toBeNull();
+    // 予備の無い人の「替えた」は落とす。止まったままなので連絡はコードの言葉で残す（T174）
+    expect(personaTurns(input, noPlan, say)[0]?.saying ?? "").not.toContain("予備");
   });
 
   it("停電が戻ったあとの頼み事の電池・電源を外す", () => {

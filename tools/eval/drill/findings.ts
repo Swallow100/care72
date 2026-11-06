@@ -107,6 +107,8 @@ export function metaOf(h: CheckHit): Meta | null {
       };
     }
     case "world_place":
+      // T174: 世界の返事で捨てた名前。1 回目は基準づくりなので守りを付けない
+      if (head(h.rule) === "dropped_name") return { cause: "drill:world_place:dropped_name", rule: "world_place:dropped_name", title: "世界の返事の名前が地理に無く捨てた", severity: "low", screen: "訓練 > 経過（出来事）", suspects: ["lib/drill/world-oneshot.ts", "lib/drill/world-apply.ts", "lib/drill/area.ts"] };
       return head(h.rule) === "retired"
         ? { cause: "drill:world_place:retired", rule: "world_place:retired", title: "世界の文にやめた架空の地名", severity: "high", screen: "訓練 > 経過（出来事）", suspects: ["lib/drill/area.ts", "lib/drill/area-demo.ts", "lib/drill/world-apply.ts", "lib/pseudonym/index.ts"], accept: zero("count:drill:world_place:retired") }
         : { cause: "drill:world_place:off_table", rule: "world_place:off_table", title: "世界の 1 文に地理に無い実在らしい名前", severity: "low", screen: "訓練 > 経過（出来事）", suspects: ["lib/drill/world-oneshot.ts", "lib/drill/world-apply.ts"] };
@@ -167,6 +169,9 @@ const FACT_TITLES: Readonly<Record<string, string>> = {
   left_remain: "家に置いてきた栄養剤の残りの時間を言う",
   power_said: "停電の戻りと家の電気が食い違う言葉（届いた電源を電気が戻ったと言う・戻ったあとにまだ停電と言う）",
   down_silent: "機器の予備が切れたあと長く本人・家族の連絡が無い",
+  down_green: "機器が止まったまま緑の連絡",
+  self_answer: "電話に出られない本人が電話で話した",
+  road_said: "道の開通と言葉の食い違い（閉じているのに通れた・開いたのに通れない・土砂の人が水を訳に挙げる）",
   place_text: "いる所と食い違う言葉",
   remain_mismatch: "電池・予備の残りの数が帳面と食い違う",
   old_news: "前に伝えた事を新しい事のように言う",

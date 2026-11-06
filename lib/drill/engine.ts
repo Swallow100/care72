@@ -83,7 +83,7 @@ import { HOME_TOWN_MAX } from "./self.ts";
 
 export { isStaffCount, STAFF_MAX } from "./options.ts";
 import { fallbackIncidents } from "./world-apply.ts";
-import { addGated, carryPlace, carryPromises, noteIssued, type GateLog } from "./person-facts.ts";
+import { addGated, carryPlace, carryPromises, dropRoadSlips, noteIssued, type GateLog } from "./person-facts.ts";
 import { startHourOf } from "./night.ts";
 
 const HOUR_MS = 3_600_000;
@@ -1075,6 +1075,14 @@ export async function advance(
     incidents = [...incidents, ...late.kept];
     if (hooks.persona && !capped) {
       for (const e of late.kept) for (const p of incidentPersons(e)) if (members.has(p) && !world.ended?.[p]) touched[p] = Math.min(touched[p] ?? to, to);
+    }
+    // 道の出来事が遅れて当たった人の、同じ区切りの言葉を合わせる（T174）。本人役は道が変わる前の世界で話している
+    const roadsMoved = new Set(late.kept.filter((e) => e.change.kind === "road" || e.change.kind === "town_road" || e.change.kind === "landslide").flatMap((e) => incidentPersons(e)));
+    if (roadsMoved.size > 0) {
+      turns.forEach((t, i) => {
+        if (!t.ai || !roadsMoved.has(t.person)) return;
+        turns[i] = { ...t, saying: dropRoadSlips(t.saying, world, t.person, hooks.gates?.hit), doing: dropRoadSlips(t.doing, world, t.person) };
+      });
     }
   }
 

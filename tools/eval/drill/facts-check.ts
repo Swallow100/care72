@@ -17,6 +17,7 @@ import {
   canLeaveHome,
   carryPlace,
   factsOf,
+  FLOOD_AREA_M,
   helpedFlip,
   KIND_REPEAT_MAX,
   placeFlipped,
@@ -50,6 +51,10 @@ export type FactPerson = {
   kin: ReadonlyArray<string> | null;
   hazards: ReadonlyArray<{ kind: string; depthM?: number | null }>;
   town: string | null;
+  /** 機器の見える所（本人か同居の人）にスマホで赤緑を押せる人がいるか（T174。いなければ連絡の無いのは筋の外。無ければ押せると見る） */
+  canPress?: boolean;
+  /** 本人が電話に出られるか（T174、selfCanAnswer。無ければ出られると見る） */
+  selfPhone?: boolean;
 };
 
 const RETURNED = /帰宅|(?:家|自宅|うち)に戻|帰って(?:き|来)|戻ってき/;
@@ -127,6 +132,40 @@ export function factHits(outcome: RunOutcome, people: Readonly<Record<string, Fa
   };
 
   const table = tableTurns(outcome);
+  // その時の道（T174。factsAt は終わりの世界なので、道の開け閉めは出来事から作る。同じ分の出来事は当たったあととして見る。engine の門と同じ）
+  const roadMoves: Array<{ minute: number; id: string; person: string | null; open: boolean; label: string }> = [];
+  for (const t of [...r.ticks].sort((a, b) => a.step - b.step)) {
+    for (const e of t.incidents) {
+      const c = e.change as { kind?: string; id?: string; road?: string; town?: string; label?: string; open?: boolean; persons?: string[] } | undefined;
+      const minute = Math.round((e.at ?? t.hour) * 60);
+      if (c?.kind === "road" && c.id) roadMoves.push({ minute, id: c.id, person: e.person ?? null, open: c.open === true, label: c.label ?? "" });
+      if (c?.kind === "town_road" && c.road) {
+        for (const p of c.persons ?? []) {
+          roadMoves.push({ minute, id: `rd-${c.road}-${p}`, person: p, open: c.open === true, label: c.label ?? "" });
+          if (c.open === true && c.road.startsWith("town-")) roadMoves.push({ minute, id: `ls-all-${p}`, person: p, open: true, label: "" });
+        }
+      }
+      if (c?.kind === "landslide") for (const p of c.persons ?? []) roadMoves.push({ minute, id: `rd-ls-${c.town}-${p}`, person: p, open: false, label: "土砂の道" });
+    }
+  }
+  const roadsAt = (person: string, minute: number): { closed: boolean; dry: boolean } => {
+    const open = new Map<string, boolean>();
+    let slid = false;
+    for (const m of roadMoves) {
+      if (m.minute > minute || (m.person !== null && m.person !== person)) continue;
+      if (m.id.startsWith("rd-ls-")) slid = true;
+      if (m.id.startsWith("ls-all-")) {
+        for (const k of open.keys()) if (k.startsWith("rd-ls-")) open.set(k, true);
+      } else open.set(m.id, m.open);
+    }
+    // 門の placeBlocked と同じ決め（水の印か、川の氾濫で浸水の区域）
+    const flood = world.marks?.[person]?.flooded !== undefined || (world.flood === true && (people[person]?.plan.floodM ?? 0) >= FLOOD_AREA_M);
+    return { closed: [...open.values()].some((x) => !x) || flood, dry: slid && !flood && world.flood !== true };
+  };
+  const roadCtx = (person: string, minute: number) => {
+    const x = roadsAt(person, minute);
+    return { roadClosed: x.closed, dryRoad: x.dry };
+  };
   // 家の外へ出た・車中泊・帰ろうとする印（その時の世界の印。終わりの世界では人が着くと消えているので、出来事から作る）
   const awayMarks: Array<{ person: string; minute: number; kind: "wandering" | "car" | "other" }> = [];
   const foundMarks: Array<{ person: string; minute: number }> = [];
@@ -180,7 +219,7 @@ export function factHits(outcome: RunOutcome, people: Readonly<Record<string, Fa
           const ok = leaving ? canLeaveHome(f) : RETURNED.test(words.normalize("NFKC"));
           if (!ok) hit("place_flip", person, minute, `${prevPlace} → ${place}`);
         }
-        const ctx = { ...slipContextOf(f, place ?? f.place?.where ?? null), ...(u.source === "family" ? { kin: null } : {}), ...(leftAt(person, minute) ? { leftBehind: true } : {}) };
+        const ctx = { ...slipContextOf(f, place ?? f.place?.where ?? null), ...roadCtx(person, minute), ...(u.source === "family" ? { kin: null } : {}), ...(leftAt(person, minute) ? { leftBehind: true } : {}) };
         // 表の行のする事（表のまま残した物）は画面の記録の言葉なので見ない（T165）。表に無く本人役が作ったする事は見る
         const tableDoing = table.get(`${person}|${minute}`) ?? null;
         for (const [field, text] of [["saying", u.saying], ["doing", tableDoing !== null && u.doing === tableDoing ? null : u.doing]] as const) {
@@ -200,7 +239,7 @@ export function factHits(outcome: RunOutcome, people: Readonly<Record<string, Fa
     const minute = res.atMinute;
     const prev = lastStateBefore(byPerson.get(person) ?? [], minute);
     const f = factsAt(person, prev, minute);
-    const ctx = { ...slipContextOf(f), kin: null, ...(leftAt(person, minute) ? { leftBehind: true } : {}) };
+    const ctx = { ...slipContextOf(f), ...roadCtx(person, minute), kin: null, ...(leftAt(person, minute) ? { leftBehind: true } : {}) };
     const texts: Array<[string, string | null | undefined]> = [
       ["call.speech", res.speech],
       ...(res.talk ?? []).filter((l) => l.who !== "cm").map((l): [string, string | undefined] => ["talk", l.text]),
@@ -211,6 +250,8 @@ export function factHits(outcome: RunOutcome, people: Readonly<Record<string, Fa
       if (!text) continue;
       checked += 1;
       if (field === "call.speech" && a.callee === "self" && f.voiceLost) hit("voice_lost", person, minute, "本人への電話で話した");
+      // 出られない人の電話に本人が出た（T174。代わりの人が出たなら answeredBy がある）
+      if (field === "call.speech" && a.callee === "self" && people[person]?.selfPhone === false && !res.answeredBy) hit("self_answer", person, minute, "出られない本人が電話で話した");
       // 訪問は本人のいる所へ（T167。門と同じ。帳面のいる所、分からなければ家）
       for (const r of sentenceHits(text, field.startsWith("visit") ? { ...ctx, place: ctx.place ?? "home" } : ctx)) hit(r.rule, person, minute, `${field}: ${cut(r.text)}`);
     }
@@ -223,7 +264,7 @@ export function factHits(outcome: RunOutcome, people: Readonly<Record<string, Fa
     if (!c.person) continue;
     const prev = lastStateBefore(byPerson.get(c.person) ?? [], c.minute);
     const f = factsAt(c.person, prev, c.minute);
-    const ctx = { ...slipContextOf(f), kin: null, ...(leftAt(c.person, c.minute) ? { leftBehind: true } : {}) };
+    const ctx = { ...slipContextOf(f), ...roadCtx(c.person, c.minute), kin: null, ...(leftAt(c.person, c.minute) ? { leftBehind: true } : {}) };
     for (const l of c.lines) {
       if (l.who === "cm" || !l.text || !l.ai) continue;
       checked += 1;
@@ -232,22 +273,32 @@ export function factHits(outcome: RunOutcome, people: Readonly<Record<string, Fa
   }
 
   // 機器の予備が切れたあと長く連絡が無い（T167。評価の 8 回目で、予備が切れてから 11 時間、本人役が呼ばれず、審査役が本当らしさに欠けると読んだ）。
-  // 切れた時刻の本人役の呼び出し（lib/drill/hooks.ts の spareCuts）が効いているかを見る。電気が戻った・電源が届いた人、結末の人は見ない
+  // 切れた時刻ちょうどの連絡は数えない（T174。評価の 9 回目で、切れた知らせのあと 13 時間誰からも連絡が無かった。見るのはそのあとの反応）。
+  // 電気が戻った・電源が届いた人、結末の人、家の外へ移った人、押せる人のいない人は見ない。予備も外の電源も無い機器は内蔵が切れた時刻から（T174）
+  // down_green: 機器が止まったまま家にいる間の緑（T174。本人役の緑も表の行の緑も門が赤にするので 0 のはず。AI の失敗で表の固定の安否に戻った物は見ない）
   {
     const o = world.outage;
     const end = Math.max(...r.ticks.map((x) => Math.round(x.hour * 60)), 0);
     for (const [person, p] of Object.entries(people)) {
-      if (!o || !inOutage(world, p) || !(outcome.plan.participants ?? [person]).includes(person)) continue;
+      if (!o || !inOutage(world, p) || !(outcome.plan.participants ?? [person]).includes(person) || p.canPress === false) continue;
+      const turns = byPerson.get(person) ?? [];
+      const carried = (world.arrivals ?? []).filter((a) => a.person === person && a.role === "transport" && a.arrived).map((a) => a.arrive);
+      const awayBy = (minute: number) => carried.some((x) => x <= minute) || turns.some((u) => Math.round(u.at * 60) <= minute && ["shelter", "other"].includes(placeOfState(stateOf(u)) ?? ""));
       for (const d of p.plan.devices) {
         const s = p.plan.spares.find((x) => x.category === d.category);
-        if (d.hours === null || s?.hours == null) continue;
-        const cutAt = Math.round((o.since + d.hours + s.hours) * 60);
+        if (d.hours === null || (s ? s.hours == null : p.plan.power)) continue;
+        const cutAt = Math.round((o.since + d.hours + (s?.hours ?? 0)) * 60);
         const until = cutAt + DOWN_SILENT_MINUTES;
         const back = [o.restoredAt != null ? Math.round(o.restoredAt * 60) : null, world.supplies?.[person]?.power ?? null].filter((x): x is number => typeof x === "number");
+        const backAt = back.length > 0 ? Math.min(...back) : Infinity;
+        for (const u of turns) {
+          const m = Math.round(u.at * 60);
+          if (u.ai && u.color === "green" && m >= cutAt && m < backAt && !awayBy(m)) hit("down_green", person, m, `${d.category} 止まったまま緑`);
+        }
         const endedAt = world.ended?.[person] ? end : null;
-        if (until > end || endedAt !== null || back.some((x) => x <= until)) continue;
+        if (until > end || endedAt !== null || back.some((x) => x <= until) || awayBy(until)) continue;
         checked += 1;
-        if (!(byPerson.get(person) ?? []).some((u) => Math.round(u.at * 60) > cutAt && Math.round(u.at * 60) <= until)) hit("down_silent", person, cutAt, `${d.category} 予備が切れた時刻から ${DOWN_SILENT_MINUTES} 分`);
+        if (!turns.some((u) => Math.round(u.at * 60) > cutAt && Math.round(u.at * 60) <= until)) hit("down_silent", person, cutAt, `${d.category} 予備が切れた時刻から ${DOWN_SILENT_MINUTES} 分`);
       }
     }
   }
@@ -327,7 +378,7 @@ export function factHits(outcome: RunOutcome, people: Readonly<Record<string, Fa
 }
 
 /** 帳面の門の決まりのほかに、台が数える型（T141。clock_drift は T158） */
-export type FactExtraRule = "lost_unresolved" | "area_repeat" | "clock_drift" | "down_silent";
+export type FactExtraRule = "lost_unresolved" | "area_repeat" | "clock_drift" | "down_silent" | "down_green" | "self_answer";
 
 /** 機器の予備が切れてから連絡が無いと見る間（分。T167） */
 export const DOWN_SILENT_MINUTES = 240;
