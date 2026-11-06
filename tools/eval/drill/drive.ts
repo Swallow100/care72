@@ -19,6 +19,7 @@ import { callPost, reviewPost } from "../../../lib/drill/record-http.ts";
 import { callTalkPost } from "../../../lib/drill/incoming-talk.ts";
 import { callsOf } from "../../../lib/drill/calls.ts";
 import { warekiText } from "../../../lib/forms/wareki.ts";
+import { closesCall } from "../../../lib/drill/talk-quick.ts";
 import { talkPost } from "../../../lib/drill/talk.ts";
 import { loadDrillScreen } from "../../../lib/drill/view.ts";
 import type { RoomClient, WorldMode } from "../../../lib/drill/world-room.ts";
@@ -413,6 +414,8 @@ export async function runDrill(plan: RunPlan, deps: DriveDeps): Promise<RunOutco
               const tb = { step: replay.drill.step, actions: replay.actions.length, action: id, ...ask };
               await call("talk", tb, () => talkPost(db, p, drillId, tb, { hook: talk }));
               replay = await read(drillId);
+              // 「また後で電話します」と言ったら切る（T167。言ったあとに話し続ける人はいない。8 往復の回で本人役の呼び出しを水増ししていた）
+              if (closesCall(ask)) break;
             }
             const eb = { step: replay.drill.step, actions: replay.actions.length, action: id, end: true };
             await call("talk_end", eb, () => talkPost(db, p, drillId, eb, { hook: talk }));
@@ -454,6 +457,7 @@ export async function runDrill(plan: RunPlan, deps: DriveDeps): Promise<RunOutco
               const r = await call("incoming_talk", tb, () => callTalkPost(db, p, drillId, tb, { hook: talk }));
               if (Array.isArray(r.body?.lines)) got.lines = r.body.lines as IncomingTalk["lines"];
               replay = await read(drillId);
+              if (closesCall(ask)) break;
             }
             if (got.lines.length > 0) incoming.push(got);
             const eb = { step: replay.drill.step, actions: replay.actions.length, signal, end: true };

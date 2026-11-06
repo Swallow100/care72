@@ -72,12 +72,15 @@ export function storyClock(o: Pick<RunOutcome, "plan">): ((hour: number) => stri
   };
 }
 
-type TalkLineLike = { who?: string; text?: string };
+type TalkLineLike = { who?: string; text?: string; ai?: boolean };
 
-/** 通話 1 つの往復の要約（T165）。電話に出た人の行を切って並べ、ケアマネの行は数だけ（ケアマネの文は名前に戻した物なので書かない） */
+/**
+ * 通話 1 つの往復の要約（T165）。電話に出た人の行を切って並べ、ケアマネの行は数だけ（ケアマネの文は名前に戻した物なので書かない）。
+ * コードの短い返事（相づち・待ちます。T167）と固定の言葉は本人役の言葉でないので並べない（行の上限を相づちで埋めない）
+ */
 export function talkSummary(ls: ReadonlyArray<TalkLineLike> | undefined): string {
   const all = ls ?? [];
-  const said = all.filter((l) => l.who !== "cm" && typeof l.text === "string" && l.text.trim() !== "");
+  const said = all.filter((l) => l.who !== "cm" && l.ai !== false && typeof l.text === "string" && l.text.trim() !== "");
   if (said.length === 0) return "";
   const cm = all.filter((l) => l.who === "cm").length;
   const shown = said.slice(0, TALK_LINES).map((l) => `「${cutText(l.text!)}」`);

@@ -116,8 +116,11 @@ export type TalkTurn = {
   actions?: ReadonlyArray<ActionRecord>;
 };
 
-/** said はケアマネの行に残す文（決まった問いの言葉か、伏せて名前に戻した自由の文）。called は Claude を呼んだか（counts.call に数える） */
-export type TalkReply = { said: string; speech: string | null; asks: AskKind[]; ai: boolean; called: boolean };
+/**
+ * said はケアマネの行に残す文（決まった問いの言葉か、伏せて名前に戻した自由の文）。called は Claude を呼んだか（counts.call に数える）。
+ * coded はコードの短い返事（T167、lib/drill/talk-quick.ts。speech をそのまま行に残し、AI の印を付けない）
+ */
+export type TalkReply = { said: string; speech: string | null; asks: AskKind[]; ai: boolean; called: boolean; coded?: true };
 export type TalkHook = (t: TalkTurn) => Promise<TalkReply>;
 
 /** 訪問で着いたときに渡す物（手の所が作る）。hour は着いた時刻（発災からの時間） */
