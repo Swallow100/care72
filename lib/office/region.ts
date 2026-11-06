@@ -13,7 +13,6 @@
 // ブラウザからも読まれうる（lib/office/setup.ts → place.ts → ここ）ので、重い物（lib/drill/db.ts・様式の一覧のデータ）は読まない。
 // 事業所の区域の読み方は訓練の lib/drill/db.ts の officeZonesOf と同じ（テストで照らす）。
 
-import type { D1Database } from "@cloudflare/workers-types";
 import { isSeedOfficeId } from "../auth/demo.ts";
 import { HAZARD_KINDS, type GeoPoint, type HazardKind } from "../db/types.ts";
 import { DEMO_OFFICE_ZONES } from "../drill/area.ts";
@@ -115,53 +114,4 @@ export function zonesJson(zones: readonly OfficeZone[]): string {
   return JSON.stringify(zones.map((z) => (z.kind === "flood" && z.depthM != null ? { kind: z.kind, depthM: z.depthM } : { kind: z.kind })));
 }
 
-export type OfficeRegion = {
-  city: string;
-  /** 周りの市（主な市は入れない） */
-  others: string[];
-  /** 地域の市の並び（主な市が先） */
-  cities: string[];
-  center: GeoPoint | null;
-  /** 置いた広さ（null は自動） */
-  km: RegionKm | null;
-  /** 地図に使う広さ（自動を当てた物） */
-  kmUsed: number;
-  /** 事業所の区域（デモ事業所の NULL は架空の街の区域） */
-  zones: OfficeZone[];
-  /** 利用者の住所の市で、地域に入っていない市（地域に追加の候補） */
-  suggestions: CityCount[];
-};
-
-/** 事業所の地域（区分の表示と保存の既定）。事業所が無ければ null */
-export async function loadOfficeRegion(db: D1Database, officeId: string): Promise<OfficeRegion | null> {
-  const [office, people] = await db.batch<Record<string, unknown>>([
-    db.prepare("SELECT city, center_lat, center_lng, region_cities, region_km, hazards FROM offices WHERE id = ?1").bind(officeId),
-    db
-      .prepare(
-        "SELECT json_extract(ledger, '$.basic.address.city') AS city, count(*) AS n FROM people WHERE office_id = ?1 AND unlisted_at IS NULL GROUP BY 1",
-      )
-      .bind(officeId),
-  ]);
-  const row = office.results[0] as
-    | { city: string | null; center_lat: number | null; center_lng: number | null; region_cities: string | null; region_km: number | null; hazards: string | null }
-    | undefined;
-  if (!row) return null;
-  const city = (row.city ?? "").trim();
-  const others = parseRegionCities(row.region_cities, city);
-  const cities = uniqueCities([city, ...others]);
-  const km = isRegionKm(row.region_km) ? row.region_km : null;
-  const counts = (people.results as Array<{ city: unknown; n: unknown }>).map((r) => ({
-    city: typeof r.city === "string" ? r.city : "",
-    count: Number(r.n ?? 0),
-  }));
-  return {
-    city,
-    others,
-    cities,
-    center: row.center_lat != null && row.center_lng != null ? { lat: row.center_lat, lng: row.center_lng } : null,
-    km,
-    kmUsed: regionKmOf(km, cities.length),
-    zones: officeZonesFrom(row.hazards, officeId).filter((z) => (OFFICE_ZONE_KINDS as readonly string[]).includes(z.kind)),
-    suggestions: citySuggestions(cities, counts),
-  };
-}
+// 事業所の地域の読み込み（loadOfficeRegion）は T154 で lib/office/area.ts へ移した（全国の市区町村の表で当てるため。ここは画面からも読まれるので表を読まない）。

@@ -14,8 +14,8 @@ import { aiUsable, type AiStatus } from "@/lib/claude/status";
 import { FORMS_LIST_LABELS } from "@/lib/forms/document-list";
 import { addedFormHref, MAPPING_LABELS as L } from "@/lib/forms/mapping";
 import { formsScope, listMappings, type MappingSummary } from "@/lib/forms/mapping-db";
-import { allMunicipalEntries, cityForRegion, municipalEntry } from "@/lib/forms/municipal-forms";
-import { regionCitiesOf } from "@/lib/office/region";
+import { allMunicipalEntries, municipalEntry } from "@/lib/forms/municipal-forms";
+import { OFFICE_AREA_COLUMNS, officeAreaOf, type OfficeAreaRow } from "@/lib/office/area";
 import { officeCatalogMappings, sharedCatalogIds } from "@/lib/forms/shared-mapping";
 import { formatJst } from "@/lib/person";
 
@@ -40,23 +40,24 @@ export default async function FormMappingListPage() {
   let ai: AiStatus;
   let shared: Set<string>;
   let own: Own;
-  let regionCities: string[];
+  let formsCityId: string | null;
   try {
     const { env } = await getCloudflareContext({ async: true });
     ai = await aiStatusFor(scope.officeId);
     // 地域選択（T134）: 同じ版の共有の対応表がある様式と、この事業所が一覧の様式から作った対応表
-    [list, shared, own, regionCities] = await Promise.all([
+    [list, shared, own, formsCityId] = await Promise.all([
       listMappings(env.DB, scope.officeId),
       sharedCatalogIds(
         env.DB,
         allMunicipalEntries().map((e) => ({ id: e.form.id, sha256: e.form.sha256 })),
       ),
       officeCatalogMappings(env.DB, scope.officeId),
-      // 事業所の地域の市（主な市 → 周りの市。T148）。地域選択の初めの市は、この順で一覧にある最初の市
-      env.DB.prepare("SELECT city, region_cities FROM offices WHERE id = ?1")
+      // 事業所の地域（主な市 → 周りの市。T148）。地域選択の初めの市は、この順で一覧にある最初の市（T154 から全国の市区町村の表で
+      // 都道府県と名前で当てる。lib/office/area.ts の officeAreaOf の formsCityId）
+      env.DB.prepare(`SELECT ${OFFICE_AREA_COLUMNS} FROM offices WHERE id = ?1`)
         .bind(scope.officeId)
-        .first<{ city: string; region_cities: string | null }>()
-        .then((r) => (r ? regionCitiesOf(r) : [])),
+        .first<OfficeAreaRow>()
+        .then((r) => (r ? officeAreaOf(r).formsCityId : null)),
     ]);
   } catch (e) {
     console.error("様式対応を読めない", e);
@@ -86,7 +87,7 @@ export default async function FormMappingListPage() {
           municipal={{
             shared: [...shared],
             own: Object.fromEntries(Object.entries(own).map(([cid, m]) => [cid, { id: m.id, status: m.status }])),
-            defaultCity: cityForRegion(regionCities)?.id ?? null,
+            defaultCity: formsCityId,
           }}
         />
       </div>

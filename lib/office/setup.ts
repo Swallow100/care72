@@ -14,7 +14,7 @@ import type { GeoPoint } from "../db/types.ts";
 import { ASSIGN_ANCHOR, CARE_MANAGERS_ANCHOR } from "./http-paths.ts";
 import { OFFICE_LABELS } from "./labels.ts";
 import type { CareManagerItem, OfficePersonItem } from "./people.ts";
-import { OFFICE_PLACE_ANCHOR } from "./place.ts";
+import { OFFICE_PLACE_ANCHOR } from "./http-paths.ts";
 import { OFFICE_PROFILE_ANCHOR } from "./profile.ts";
 
 /** 準備の行の種類（並びもこの順） */

@@ -4,6 +4,9 @@
 
 import type { D1Database, D1PreparedStatement } from "@cloudflare/workers-types";
 import type { JmaEntryRow, JmaFeed, JmaFetchStateRow, JmaQuakePointRow, JmaQuakeRow, JmaWarningRow } from "../db/types.ts";
+import { municipalityGeo } from "../municipality/geo.ts";
+import { matchCity, municipalityByCode } from "../municipality/names.ts";
+import { OFFICE_AREA_COLUMNS, officeAreaOf, type OfficeAreaRow } from "../office/area.ts";
 
 /** 電文を残す日数。取るたびにこれより古い電文（と子の行）を消す */
 export const RETAIN_DAYS = 7;
@@ -64,6 +67,29 @@ export async function relevantCities(db: D1Database): Promise<string[]> {
   ]);
   const all = [...offices.results, ...people.results].map((r) => (typeof r.city === "string" ? r.city.trim() : ""));
   return [...new Set(all.filter(Boolean))];
+}
+
+/**
+ * 写す市町村等のコード（T154）: 事業所の地域（主な市・周りの市の団体コード、前の形の文字は表で当てて。lib/office/area.ts）と、
+ * 一覧から外していない利用者の住所の市（その事業所の主な市の都道府県を手がかりに表で当てる）の、気象庁の市町村等のコード
+ */
+export async function relevantAreaCodes(db: D1Database): Promise<string[]> {
+  const [offices, people] = await db.batch<Record<string, unknown>>([
+    db.prepare(`SELECT ${OFFICE_AREA_COLUMNS} FROM offices`),
+    db.prepare(
+      `SELECT DISTINCT json_extract(p.ledger, '$.basic.address.city') AS city, o.city_code AS office_code, o.city AS office_city
+         FROM people p JOIN offices o ON o.id = p.office_id WHERE p.unlisted_at IS NULL`,
+    ),
+  ]);
+  const out = new Set<string>();
+  for (const o of offices.results as unknown as OfficeAreaRow[]) for (const c of officeAreaOf(o).jmaCodes) out.add(c);
+  for (const r of people.results as Array<{ city: unknown; office_code: string | null; office_city: string | null }>) {
+    if (typeof r.city !== "string") continue;
+    const pref = municipalityByCode(r.office_code)?.pref ?? matchCity(r.office_city)?.pref ?? null;
+    const m = matchCity(r.city, pref);
+    for (const c of m ? (municipalityGeo(m.code)?.jmaCodes ?? []) : []) out.add(c);
+  }
+  return [...out];
 }
 
 export async function loadFetchState(db: D1Database, feed: JmaFeed): Promise<JmaFetchStateRow | null> {
