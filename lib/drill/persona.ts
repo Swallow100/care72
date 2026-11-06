@@ -5,7 +5,7 @@
 // - Claude に渡すのは lib/pseudonym を通した物だけ。本人役の説明も刻みの文も pseudonymizeText で伏せ、印を付けてから入力に入れる
 //   （氏名・カナ・生年月日・住所・電話・町名を渡さない。本人は「A さん」、周りの人は役割名「娘」「支援者 1」）
 // - 色と順位を Haiku に出させない。Haiku が選ぶのは「赤か緑を押すか」と 4 問の答え（人がボタンを押すのと同じ）だけで、
-//   色と順位は安否を lib/triage の表に流して決まる
+//   色と順位は安否を lib/triage の表に流して決まる。機器が止まったまま家にいる間の押す色だけはコードが赤に決める（T174）
 // - 想定の表（lib/drill/scenarios.ts）の行がある刻みは、表が骨: 誰から・赤か緑か・4 問・どこに は表のまま、言う事とする事だけ Haiku の言葉
 //   （審査員の回でも形は同じで言葉だけ変わる）。表の行が無い刻みだけ、Haiku が連絡するかを決める
 // - スマホで赤緑を押せるのは、本人なら台帳の連絡手段が「使える」の人、家族・支援者ならスマホのある人だけ（表の行が無い刻み）
@@ -100,9 +100,12 @@ import {
   housemates,
   placeOfState,
   planOf,
+  downSaying,
+  phoneAnswerer,
   screenAsks,
   screenTurn,
   slipContextOf,
+  stuckDown,
   type Facts,
   type GateLog,
   type GateRule,
@@ -147,6 +150,8 @@ export type Persona = {
   plan?: Plan;
   /** 同居の人の役割名（T130。あとから「来た」と言わない） */
   together?: ReadonlyArray<string>;
+  /** 本人への電話に出る人（T174、lib/drill/person-facts.ts の phoneAnswerer）。「本人」か同居の人の役割名、誰も出なければ null。無ければ本人 */
+  phone?: string | null;
   /** 本人の周りの家族の続柄（T130。いない家族を出さない）。世帯が「家族と」「その他」なら null（見ない） */
   kin?: ReadonlyArray<string> | null;
   /**
@@ -285,7 +290,13 @@ export function buildPersona(source: PseudonymInput, opts: { on?: string; places
   const means = source.ledger.basic.contactMeans ?? {};
   const roles = contactRoles(source.contacts);
   const speakers = speakersOf(source.contacts, roles, p.sex);
-  const text = profileText(p, reporters, { landline: means.landline === true, mobile: means.mobile === true }, speakers);
+  const near = housemates(source, roles, p.sex);
+  // 本人への電話に出る人はコードが決める（T174）。電話の話し手になれるのは本人役の周りにいる同居の人だけ
+  const phone = phoneAnswerer(source.ledger, near.together.filter((x) => reporters.some((r) => r.role === x)));
+  const text = [
+    profileText(p, reporters, { landline: means.landline === true, mobile: means.mobile === true }, speakers),
+    ...(phone === "本人" ? [] : [phone ? `電話: 本人は出られない。本人への電話には同居の${phone}が出る` : "電話: 本人は出られない。本人への電話には誰も出ない"]),
+  ].join("\n");
   return {
     personId: source.person.id,
     key,
@@ -301,7 +312,8 @@ export function buildPersona(source: PseudonymInput, opts: { on?: string; places
     home: homeOf(source.ledger),
     fit: opts.fit ?? null,
     plan: planOf(source),
-    ...housemates(source, roles, p.sex),
+    phone,
+    ...near,
   };
 }
 
@@ -448,7 +460,7 @@ function nowMinuteOf(input: Pick<PersonaInput, "hour" | "toMinute">): number {
  * 呼ばれた理由（T90 の reasons）の 1 行「この区切りで起きた事: …」。table は書かない。
  * incident は状況の文、action はケアマネの手の結果と着いた人、clock は持ちこたえる時間、round は前の連絡からの時間
  */
-function reasonLine(input: PersonaInput, incidents: ReadonlyArray<DrillIncident>, acts: ReadonlyArray<ActionRecord>, now: number): string | null {
+function reasonLine(input: PersonaInput, incidents: ReadonlyArray<DrillIncident>, acts: ReadonlyArray<ActionRecord>, now: number, stillDown = false): string | null {
   const reasons = (input.reasons ?? []).filter((r) => r !== "table");
   if (reasons.length === 0) return null;
   const since = input.since ?? -1;
@@ -467,7 +479,8 @@ function reasonLine(input: PersonaInput, incidents: ReadonlyArray<DrillIncident>
         if (d.person === input.person && d.arrived && d.arrive > since && d.arrive <= now) out.push("頼んだ人が来た");
       }
     } else if (r === "clock") {
-      out.push("持ちこたえる時間が半分を過ぎた（または切れた）");
+      // 前の連絡より前に止まった人を呼んだ時（T174）。「切れた」と渡すと新しい事のように言う
+      out.push(stillDown ? "機器が止まったまま時間がたった" : "持ちこたえる時間が半分を過ぎた（または切れた）");
     } else if (r === "round") {
       const from = input.state ? Math.round(input.state.at * 60) : Math.max(0, since);
       out.push(`前の連絡から ${clockLabel(Math.max(0, now - from))}たった`);
@@ -602,12 +615,27 @@ function ownIncidents(incidents: ReadonlyArray<DrillIncident>, person: string): 
   return incidents.filter((e) => !e.person || e.person === person);
 }
 
+/**
+ * 想定の表の行のうち、機器が止まったまま家にいる人の緑を赤にする（T174。評価の 9 回目で、地震の想定の 6 時間の「予備に替えた」の緑の行と、予備が切れる時刻が重なり、
+ * 切れた知らせが緑で届いた）。表の言う事の元も使わない（まだ動いている前提の文なので）。ほかの行は表のまま。どちらもコードの決めで、AI は決めない
+ */
+function rowsFor(fixed: ReadonlyArray<FixedTurn>, facts: Facts): FixedTurn[] {
+  if (!stuckDown(facts)) return [...fixed];
+  return fixed.map((f): FixedTurn => {
+    if (f.color !== "green") return f;
+    const { whereNow, saying: _saying, ...rest } = f;
+    return { ...rest, color: "red", ...(whereNow === "home" ? { atHome: true } : {}) };
+  });
+}
+
 /** 刻みの文（時刻・呼ばれた理由・状況・世界・前の様子・ケアマネの手と結果・想定の表の行） */
 export function tickText(input: PersonaInput, persona: Persona): string {
   const incidents = ownIncidents(input.incidents, input.person);
   const now = nowMinuteOf(input);
   const acts = actionsSince(input);
-  const reason = reasonLine(input, incidents, acts, now);
+  const facts = personaFacts(persona, { person: input.person, world: input.world, state: input.state, actions: input.actions ?? [], now });
+  const reason = reasonLine(input, incidents, acts, now, stuckDown(facts) && facts.devices.some((d) => d.down && d.known === true));
+  const rows = rowsFor(input.fixed, facts);
   return [
     // 発災からの「N 時間 M 分」（連続の時計の時刻は小数になるので分まで。T93）
     `時刻: 発災から ${clockLabel(now)}`,
@@ -619,11 +647,11 @@ export function tickText(input: PersonaInput, persona: Persona): string {
     // T121: 持ちこたえる時間の今（コードの計算）。言葉はこれと食い違わない
     ...clockLines(persona, input.world, input.person, now),
     // T130: 人ごとの事実の帳面と計画（コードが引く。いる所・前に言った事・来た人・声・同居・電気と予備）
-    factsBlock(personaFacts(persona, { person: input.person, world: input.world, state: input.state, actions: input.actions ?? [], now })),
+    factsBlock(facts),
     `前の連絡: ${stateWords(input.state)}`,
     acts.length > 0 ? ["ケアマネがした事:", ...acts.map((a) => `- ${actionWords(a, persona)}`)].join("\n") : "ケアマネがした事: なし",
-    input.fixed.length > 0
-      ? ["想定の表のこの刻みの行（この通りに連絡する）:", ...input.fixed.map(fixedWords)].join("\n")
+    rows.length > 0
+      ? ["想定の表のこの刻みの行（この通りに連絡する）:", ...rows.map(fixedWords)].join("\n")
       : "想定の表のこの刻みの行: なし（連絡するかは自分で決める）",
   ].join("\n");
 }
@@ -655,7 +683,7 @@ export const PERSONA_SYSTEM = [
   "",
   "決まり:",
   "1. 想定の表の行がある時は、その行のとおりに連絡する（誰が・赤か緑か・4 問・いる所）。speech は行の「言う事の元」を、その人が言いそうな言い方に言い換える。元が無ければその人らしい短い言葉。",
-  "2. 想定の表の行が無い時は、状況と前の連絡から自分で決める。連絡するのは、状況が変わってケアマネに伝えたい事がある時だけ。前と同じなら連絡しない。",
+  "2. 想定の表の行が無い時は、状況と前の連絡から自分で決める。連絡するのは、状況が変わってケアマネに伝えたい事がある時だけ。前と同じなら連絡しない。ただし「人ごとの事実」で機器が止まったままの間は、前と同じでも赤で連絡し、何を待っているかを言う。",
   "3. 押せるのは「押せる人」に書いた人だけ。押せる人がいなければ連絡しない。遠くに住む家族は本人の様子が分からなければ押さない。",
   "4. 本人の言葉はやさしい短い話し言葉で 1〜2 文。認知症の本人は話が噛み合わないことがある。",
   "5. 家族・支援者から連絡するのは「話す人」に書いた人で、途中で替えない。家族はその続柄の口調、支援者は近所の人の口調。本人のことは「話す人」に書いた呼び方で言う。",
@@ -865,7 +893,9 @@ export function personaTurns(input: PersonaInput, persona: Persona, answer: Pers
   const speechBy = (source: FixedTurn["source"]) => fresh(cleanPersonaWords(dropSlips(answer.speech, speakerOf(persona, source), persona), persona.key, SPEECH_MAX));
 
   if (input.fixed.length > 0) {
-    const fixed = [...input.fixed].sort((a, b) => eventHour(a, input.hour) - eventHour(b, input.hour));
+    // 機器が止まったまま家にいる人の緑の行は赤に（T174）
+    if (stuckDown(facts) && input.fixed.some((f) => f.color === "green")) onDrop?.("calm_while_down");
+    const fixed = rowsFor(input.fixed, facts).sort((a, b) => eventHour(a, input.hour) - eventHour(b, input.hour));
     const lastRow = fixed[fixed.length - 1];
     // 表の行は骨（色・4 問・いる所は表のまま）。言葉だけ帳面と表の行のいる所で見る
     const rowPlace = placeOfState({ color: lastRow.color, whereNow: lastRow.whereNow ?? null, atHome: lastRow.atHome ?? null }) ?? facts.place?.where ?? null;
@@ -878,22 +908,28 @@ export function personaTurns(input: PersonaInput, persona: Persona, answer: Pers
       const aiDoing = last && f.doing == null ? doingOk : null;
       return {
         ...turnOfFixed(f, input.hour),
-        saying: aiSaying ?? f.saying ?? null,
+        saying: aiSaying ?? f.saying ?? (last && stuckDown(facts) ? downSaying(input.state?.saying, nowMinuteOf(input)) : null),
         doing: f.doing ?? aiDoing,
         ai: aiSaying !== null || aiDoing !== null,
       };
     });
   }
 
-  if (!answer.contactsCaremanager) return [];
+  // T174: 機器が止まったまま家にいる間の連絡は赤。本人役が連絡しないと答えても、切れたあとの呼び出しでは押せる人が連絡する（色の入力をコードが決める。色と順は今までどおり表）
+  const stuck = stuckDown(facts);
+  // コードの言葉で連絡するのは機器の見える人だけ（同居の人か本人。遠くの家族は見ていない機器を言い切らない）
+  const presser = persona.reporters.find((r) => r.canPress && r.source !== "agent" && (persona.together ?? []).includes(r.role)) ?? persona.reporters.find((r) => r.canPress && r.source === "agent") ?? null;
+  const mustTell = stuck && presser !== null && ((input.reasons ?? []).includes("clock") || nowMinuteOf(input) - (facts.prevAt ?? -1) >= DOWN_TELL_MINUTES);
   const from = fromRole(answer.from);
-  const reporter = persona.reporters.find((r) => r.role === from && r.canPress);
-  if (!reporter) return [];
-  const red = answer.pressesRed;
+  const named = answer.contactsCaremanager ? persona.reporters.find((r) => r.role === from && r.canPress) : undefined;
+  if (!named && !mustTell) return [];
+  const reporter = named ?? presser!;
   const where = whereOf(answer.location);
+  const red = answer.pressesRed || stuck;
+  if (stuck && named && !answer.pressesRed) onDrop?.("calm_while_down");
   const color: SignalColor = red ? "red" : where ? "green" : "unknown";
-  const a = red ? answer.redAnswers : null;
-  const speech = speechBy(reporter.source);
+  const a = answer.pressesRed ? answer.redAnswers : null;
+  const speech = named ? speechBy(reporter.source) : null;
   const turn = screenTurn(
     {
       person: input.person,
@@ -901,12 +937,13 @@ export function personaTurns(input: PersonaInput, persona: Persona, answer: Pers
       source: reporter.source,
       whereNow: color === "green" ? where : null,
       injured: a?.injured ?? null,
-      atHome: a?.atHome ?? null,
+      atHome: a?.atHome ?? (stuck && facts.place?.where === "home" ? true : null),
       canMove: a?.canMove ?? null,
       hasMedicine: a?.hasMedicine ?? null,
       saying: speech,
-      doing,
-      ai: true,
+      // 本人役が緑と書いたする事は押した色に合わせる（T174）
+      doing: !named ? null : stuck && !answer.pressesRed && doing ? doing.replace(/緑/gu, "赤") : doing,
+      ai: named !== undefined,
       at: input.hour,
     },
     facts,
@@ -915,8 +952,14 @@ export function personaTurns(input: PersonaInput, persona: Persona, answer: Pers
   if (!turn) return [];
   // いる所を言わない連絡（赤で家にいるかに答えない・色の分からない）は帳面のいる所で見る（T167。台の検査と同じ。前は門を抜け、避難所の人のする事に家にいる言い方が残った）
   const place = placeOfState({ color: turn.color, whereNow: turn.whereNow, atHome: turn.atHome }) ?? facts.place?.where ?? null;
-  return [{ ...turn, saying: factText(turn.saying, turn.source, place), doing: factText(turn.doing, turn.source, place) }];
+  const saying = factText(turn.saying, turn.source, place);
+  const doingKept = factText(turn.doing, turn.source, place);
+  // 言葉が全部落ちた・連絡しないと答えた時はコードの言葉（T174）。AI の物が何も残らなければ AI の印を付けない
+  return [{ ...turn, saying: saying ?? (stuck ? downSaying(input.state?.saying, nowMinuteOf(input)) : null), doing: doingKept, ai: turn.ai && (saying !== null || doingKept !== null || !stuck) }];
 }
+
+/** 機器が止まったまま連絡が途切れたら、ほかの理由の呼び出しでも連絡する間（分。T174。止まった時刻の呼び出しが 1 区切りの人数で持ち越された時） */
+const DOWN_TELL_MINUTES = 120;
 
 /** 本人役の失敗のうち「連絡なし」にする物（AI の層の失敗と伏せきれない）。知らない例外は false で、投げ直す */
 export function isPersonaFailure(e: unknown): boolean {
@@ -1140,6 +1183,8 @@ export type PersonaCall = Pick<PersonaInput, "person" | "hour" | "world" | "inci
   tell?: Pick<HeardSignal, "color" | "whereNow" | "injured" | "atHome" | "canMove" | "hasMedicine">;
   /** この人への手（メモを落とした物、T158）。あれば帳面を刻みの道と同じに引く（通話の往復が渡す） */
   actions?: ReadonlyArray<ActionRecord>;
+  /** 本人への電話に代わりの人が出た（T174。callee はその人の呼び方） */
+  standIn?: boolean;
 };
 
 /** 伝える様子の文（Claude に渡す文。画面の言葉ではない） */
@@ -1189,7 +1234,7 @@ export function callText(call: PersonaCall, persona: Persona): string {
     factsBlock(personaFacts(persona, { person: call.person, world: call.world, state: call.state, actions: call.actions ?? [], now })),
     `この刻みの状況: ${ownIncidents(call.incidents, call.person).map((e) => e.text).join("、") || "新しい事はない"}`,
     `前の連絡: ${stateWords(call.state)}`,
-    `電話に出た人: ${call.callee}${calleeCalls(persona, call.callee)}`,
+    `電話に出た人: ${call.callee}${calleeCalls(persona, call.callee)}${call.standIn ? "（本人への電話。本人は出られないので代わりに出た。本人の言葉として話さない）" : ""}`,
     ...(call.tell ? [`伝える様子: ${tellWords(call.tell)}`] : []),
   ].join("\n");
 }

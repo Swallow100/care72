@@ -256,6 +256,8 @@ export type ActionResult = {
   speechAi: boolean;
   /** 本人・家族・支援者への電話で、出たか（出る・出ない・背景の音だけ） */
   pickup: "answers" | "no_answer" | "background_only" | null;
+  /** 本人への電話に代わりに出た人の呼び方（T174。本人が出られない人。lib/drill/person-facts.ts の phoneAnswerer）。無ければ本人か相手本人 */
+  answeredBy?: string;
   /** この手で消えた本人の印（出向いてもらった人の分は着いた時刻に世界が消す） */
   cleared: Array<keyof PersonMarks>;
   /** 職員の空きの増減（事業所の職員に出向いてもらうと -1） */
