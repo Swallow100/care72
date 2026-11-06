@@ -148,8 +148,18 @@ export function scorecardMarkdown(columns: ReadonlyArray<Column>, opts: { extra?
         .map((l) => `${opLabel(l.op)} ${item.unit === "frac" ? comma(l.value) : formatCell(item, { value: l.value })}`)
         .filter((x, i, a) => a.indexOf(x) === i)
         .join("・");
-      lines.push(`| ${item.label}${item.seedOnly ? "（種だけ）" : ""} | ${item.better ? BETTER_LABELS[item.better] : "-"} | ${limits || "-"} | ${cells.join(" | ")} |`);
+      lines.push(`| ${item.label}${item.seedOnly ? "（種だけ）" : ""}${item.notes?.length ? "（注）" : ""} | ${item.better ? BETTER_LABELS[item.better] : "-"} | ${limits || "-"} | ${cells.join(" | ")} |`);
     }
+  }
+  // 数え方を変えた項目の注（T161。tools/eval/scorecard-items.ts の notes）。前の回と比べるときに混ざらないよう
+  const noted = items.filter((x) => x.notes?.length && columns.some((c) => c.cells[x.id] !== undefined));
+  if (noted.length > 0) {
+    lines.push("");
+    lines.push("## 注");
+    lines.push("");
+    lines.push("数え方を変えた項目。前の回の列は前の数え方の数のまま（数え直していない）。");
+    lines.push("");
+    for (const item of noted) for (const n of item.notes!) lines.push(`- ${BENCH_LABELS[item.bench]} ${item.label}: ${n}`);
   }
   lines.push("");
   return lines.join("\n");

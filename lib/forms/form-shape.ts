@@ -40,16 +40,31 @@ export function phonePair(a: ShapeField, b: ShapeField): boolean {
   return itemOf(a) === itemOf(b) && /\.phone$/.test(itemOf(a) ?? "") && MOBILE.test(a.label) !== MOBILE.test(b.label);
 }
 
-/** 同じ値・同じ項目でも重複と見ない組（頁ごとの同じ場所・電話と携帯） */
-export const allowedTwice = (a: ShapeField, b: ShapeField) => pageRepeat(a, b) || phonePair(a, b);
+/** 名前の後ろの空の括弧（「アレルギー（　）」の アレルギー） */
+const BRACKETED = /^(.+?)\(\)$/;
+const plain = (l: string) => l.normalize("NFKC").replace(/[\s　]/g, "");
 
 /**
- * 前の欄（同じ値・同じ項目の物）があっても f を重複と見ないか: 同じ頁の前の欄が電話と携帯の組だけで、ほかの頁の前の欄があれば
+ * □ と、その □ の中身を書く括弧の組（T161。「□アレルギー（　）」「要介護（　）」。読み取りの決まり 21 と読み取りの補いの括弧〔item-hints.ts の 1〕）。
+ * 同じ頁・同じ項目で、片方の名前がもう片方の名前に空の括弧を付けた物。□ に印、括弧の中に中身なので、同じ項目を 2 か所に当ててよい
+ */
+export function bracketPair(a: ShapeField, b: ShapeField): boolean {
+  if (a.page !== b.page || itemOf(a) === null || itemOf(a) !== itemOf(b)) return false;
+  const name = (x: ShapeField) => plain(x.label);
+  const m = (x: ShapeField) => name(x).match(BRACKETED)?.[1] ?? null;
+  return (m(a) !== null && m(a) === name(b)) || (m(b) !== null && m(b) === name(a));
+}
+
+/** 同じ値・同じ項目でも重複と見ない組（頁ごとの同じ場所・電話と携帯・□ と括弧） */
+export const allowedTwice = (a: ShapeField, b: ShapeField) => pageRepeat(a, b) || phonePair(a, b) || bracketPair(a, b);
+
+/**
+ * 前の欄（同じ値・同じ項目の物）があっても f を重複と見ないか: 同じ頁の前の欄が電話と携帯の組・□ と括弧の組だけで、ほかの頁の前の欄があれば
  * そのどれかと頁ごとに繰り返す欄の組（同じ頁の 2 か所目は、ほかの頁の欄と名前が同じでも重複）
  */
 export function repeatOk(before: readonly ShapeField[], f: ShapeField): boolean {
   const same = before.filter((g) => g.page === f.page);
-  if (same.some((g) => !phonePair(g, f))) return false;
+  if (same.some((g) => !phonePair(g, f) && !bracketPair(g, f))) return false;
   const other = before.filter((g) => g.page !== f.page);
   return other.length === 0 || other.some((g) => allowedTwice(g, f));
 }
