@@ -72,9 +72,9 @@ export type ListView = { dir?: SortDir; filter?: CaseloadFilter };
 
 /**
  * 担当一覧の URL。sort は並び（既定の優先は書かない）、dir は向き（列の既定なら書かない）、
- * color・area・mark・q は絞込（無ければ書かない）、open は右に開く本人
+ * color・area・mark・q は絞込（無ければ書かない）、open は右に開く本人、field は開いた本人のページで紫にする欄（T169）
  */
-export function caseloadHref(q: { sort?: SortKey; open?: string | null } & ListView): string {
+export function caseloadHref(q: { sort?: SortKey; open?: string | null; field?: string | null } & ListView): string {
   const params = new URLSearchParams();
   const sort = q.sort ?? "tier";
   if (sort !== "tier") params.set("sort", sort);
@@ -85,6 +85,7 @@ export function caseloadHref(q: { sort?: SortKey; open?: string | null } & ListV
   if (f?.mark) params.set("mark", f.mark);
   if (f?.q) params.set("q", f.q);
   if (q.open) params.set("open", q.open);
+  if (q.open && q.field) params.set("field", q.field);
   const s = params.toString();
   return s ? `/?${s}` : "/";
 }

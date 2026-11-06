@@ -210,6 +210,9 @@ export const GUARDS: ReadonlyArray<Guard> = [
   { id: "persona-admin-reset", bench: "persona", item: "count:persona:unreached:admin.reset", op: "<=", value: 0, since: "r9", task: "T166", label: "管理者が最初に戻すに着ける", suspects: ["app/office/page.tsx", "components/ui/PrintButton.tsx", "lib/ui/labels.ts"] },
   { id: "persona-drill-misread", bench: "persona", item: "count:persona:misread:/drill/[id]", op: "<=", value: 1, since: "r9", task: "T166", label: "訓練の画面の読み違いを 2 回目より増やさない（押せそうで押せない印を残さない）", suspects: ["components/drill/TalkLines.tsx", "components/drill/AskPick.tsx", "components/drill/ActionPanel.tsx"] },
   { id: "persona-form9-preview-misread", bench: "persona", item: "count:persona:misread:/office/form9", op: "<=", value: 0, since: "r9", task: "T166", label: "様式 9 の見本の帯をデータを戻す物と読まない", suspects: ["components/ui/PrintButton.tsx", "lib/ui/labels.ts"] },
+  // T169: 右の面の見直し・未確認と、飛んだ先の紫の案内。数は直した形の値で、本物の回はまだ（docs/progress/t169.md）。全部の未確認の欄で飛べることは lib/intake/t169.test.ts が見る
+  { id: "persona-veteran-person", bench: "persona", item: "count:persona:unreached:veteran.person", op: "<=", value: 0, since: "r9", task: "T169", label: "本人のページの未確認の項目に着ける", suspects: ["components/list/SidePane.tsx", "lib/map/side.ts", "lib/intake/targets.ts"] },
+  { id: "persona-list-dead-end", bench: "persona", item: "count:persona:dead_end:/", op: "<=", value: 0, since: "r9", task: "T169", label: "見直し・未確認の行と未確認の印から飛んで行き止まらない", suspects: ["components/person/TargetLink.tsx", "components/person/SectionEdit.tsx", "lib/intake/targets.ts"] },
   // T167: 評価の 8 回目で呼び出しが 91.4/回・上限との比 90.7%（run-01 の 137 回のうち本人役の通話 72）。相づち・聞き返し・同じ問いをコードの短い返事にした。
   // r8 の通話の並びに当てると 136 往復のうち本人役 51（切った分を除く 94 往復の 54%）、1 回の訓練は最大 85 回ほど。値は r7 の数を超えない形で守る
   { id: "drill-calls-per-run", bench: "drill", item: "drill.callsPerRun", op: "<=", value: 89.6, since: "r9", task: "T167", label: "AI の呼び出しを 7 回目より増やさない", suspects: ["lib/drill/talk-quick.ts", "lib/drill/hooks.ts", "tools/eval/drill/drive.ts"] },

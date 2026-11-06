@@ -16,12 +16,12 @@ import { personDisaster } from "@/lib/disaster/person";
 import { loadPlanForm, planFormView } from "@/lib/forms/plan-form";
 import { canChooseRole } from "@/lib/auth/wall";
 import { intakePropsOf } from "@/lib/intake/props";
-import { loadPersonPage, toPersonView } from "@/lib/person";
+import { loadPersonPage, parseFieldFocus, toPersonView } from "@/lib/person";
 
 // D1 を毎回読む
 export const dynamic = "force-dynamic";
 
-type Props = { params: Promise<{ id: string }> };
+type Props = { params: Promise<{ id: string }>; searchParams: Promise<{ field?: string | string[] }> };
 
 // 本人のページ（単独で開く形）。担当一覧の右の面（/?open=<id>）と同じ物を出す。
 // 事業所の壁: 範囲の外の id は、在っても無くても同じ 404（lib/auth/scope.ts の personInScope）。
@@ -29,9 +29,12 @@ type Props = { params: Promise<{ id: string }> };
 // 医療班・行政は見える区分が同意の範囲（T24、lib/consent/scope.ts）。経過の書き足しはケアマネ・医療班・行政。
 // 医療班・行政の役は「受け入れた人の画面」の並び（T152、components/staff/ReceivedPerson）: 受け入れた避難所と時刻、要約（薬・機器・
 // アレルギー・連絡先）、経過の書き足しと行、残りの区分。中身は同じ組み立て（範囲を通した物）を並べ替えるだけで、見える物は変えない。
-export default async function PersonPage({ params }: Props) {
+export default async function PersonPage({ params, searchParams }: Props) {
   const principal = await requirePage("person");
   const { id } = await params;
+  // 紫にする欄（T169。見直し・未確認と未確認の印から飛んだとき）。ケアマネの役だけ
+  const { field } = await searchParams;
+  const canJump = principal.role === "care_manager";
   const { env } = await getCloudflareContext({ async: true });
   const rows = await loadPersonPage(env.DB, principal, id);
   if (!rows) notFound();
@@ -44,7 +47,7 @@ export default async function PersonPage({ params }: Props) {
   const planForm = planFormView(await loadPlanForm(env.DB, rows.person.office_id));
   // 経過の撤回のボタン（T63）は見ている人が撤回できる行だけ（lib/timeline/retract.ts。押せるかはサーバーがもう一度決める）
   // reading: 見る方の画面（当たり前の値・未入力の添え・時計の重なりを出さない。T143）。面の編集（SectionEdit）は台帳の値を別に読む
-  const view = toPersonView(rows, { today: todayJst(), mode: d.mode, triage: d.triage, situation: d.situation, scope, planForm, viewer: principal, reading: true });
+  const view = toPersonView(rows, { today: todayJst(), mode: d.mode, triage: d.triage, situation: d.situation, scope, planForm, viewer: principal, reading: true, focus: canJump ? parseFieldFocus(field) : null, jump: canJump });
   // 入れる欄（T03）はケアマネの役だけ。AI が使えなければ「AI 未設定」「AI 上限到達」と手入力（AI の状態は lib/claude/status.ts の 1 か所。T76）
   const intake = principal.role === "care_manager" ? intakePropsOf(rows, await aiStatusFor(rows.person.office_id)) : null;
 

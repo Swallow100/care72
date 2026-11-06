@@ -351,6 +351,9 @@ describe("平時の右の面", () => {
   it("平時は計画が先で地図が後、デモの印は出さない", () => {
     const html = render(data);
     expect(html.indexOf('data-section="plan"')).toBeLessThan(html.indexOf('data-section="map"'));
+    // 避難計画 → 地図 → 見直しと未確認（T169）。未確認の面は見直しに入った
+    expect(html.indexOf('data-section="map"')).toBeLessThan(html.indexOf('data-section="review"'));
+    expect(html).not.toContain('data-section="pending"');
     expect(html).not.toContain('data-demo="label"');
     expect(html).not.toContain("デモ");
   });
