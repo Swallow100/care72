@@ -58,7 +58,8 @@ describe("通し（偽の client）", () => {
   it("回ごとに JSON Lines（起きた順）とまとめを外に書き、md は数だけ。同じ種でもう一度回すと差の 1 行が前回比になり、選び方が同じ", async () => {
     const first = await runEval(config({ stamp: "20261105-000000-fake" }));
     const files = readdirSync(first.dir).sort();
-    expect(files).toEqual(["run-01.jsonl", "run-02.jsonl", "run-03.jsonl", "summary.json"]);
+    // findings.json は指摘の共通の形（T157）
+    expect(files).toEqual(["findings.json", "run-01.jsonl", "run-02.jsonl", "run-03.jsonl", "summary.json"]);
     const recs = lines(join(first.dir, "run-01.jsonl"));
     expect(recs.map((r) => r.seq)).toEqual(recs.map((_, i) => i + 1));
     const types = new Set(recs.map((r) => r.type));

@@ -31,6 +31,8 @@
     "test:watch": "vitest",
     "eval:drill": "node tools/eval/drill/run.ts",
     "eval:talk": "node tools/eval/talk/run.ts",
+    "eval:scorecard": "node tools/eval/scorecard.ts",
+    "eval:drafts": "node tools/eval/drafts.ts",
     "eval:persona": "node tools/eval/persona/run.ts"
   },
   "dependencies": {
