@@ -27,11 +27,15 @@ import { recordClaude, runLog, type LogRecord } from "../drill/record.ts";
 import { ACTOR_SPEC } from "./actor.ts";
 import { fakeActor } from "./fake.ts";
 import { FakeSurface } from "./fake-site.ts";
-import { mechanicalFindings, screenOf, type Finding } from "./finding.ts";
+import { causeCounts, writeFindings, type Finding as SharedFinding } from "../findings.ts";
+import { guardFindings } from "../guards.ts";
+import type { GenericScorecard } from "../scorecard-items.ts";
+import { goalItem, mechanicalFindings, screenOf, sharedFinding, type PersonaFinding as Finding } from "./finding.ts";
 import { assertLocalBase } from "./guard.ts";
 import { JUDGE_SPEC, judgePath, type JudgeOut } from "./judge.ts";
 import { DEFAULT_LOGIN_ID, PERSONA_IDS, personas, type Persona, type PersonaId } from "./personas.ts";
 import { markdown, pathSummary, totalsOf, type PathSummary, type Summary } from "./report.ts";
+import { LOST_KINDS } from "./types.ts";
 import { suspectIndex } from "./suspects.ts";
 import { ChromeSurface, VIEWPORTS, type Surface } from "./surface.ts";
 import { DEFAULT_LIMITS, walkPersona, type WalkLimits, type WalkOutcome } from "./walk.ts";
@@ -92,7 +96,7 @@ export function stampOf(d: Date, client: "fake" | "real"): string {
   return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}-${client}`;
 }
 
-export async function runPersonaEval(cfg: PersonaConfig): Promise<{ summary: Summary; findings: Finding[]; outcomes: WalkOutcome[]; dir: string; mdPath: string | null }> {
+export async function runPersonaEval(cfg: PersonaConfig): Promise<{ summary: Summary; findings: Finding[]; shared: SharedFinding[]; scorecard: GenericScorecard; outcomes: WalkOutcome[]; dir: string; mdPath: string | null }> {
   const say = cfg.say ?? ((x: string) => console.log(x));
   const client: Summary["client"] = cfg.real ? "real" : "fake";
   const stamp = cfg.stamp ?? stampOf(new Date(), client);
@@ -176,6 +180,7 @@ export async function runPersonaEval(cfg: PersonaConfig): Promise<{ summary: Sum
         persona: p.id,
         goal: null,
         step: null,
+        count: 1,
       }));
       findings.push(...mech, ...fromJudge);
 
@@ -205,7 +210,19 @@ export async function runPersonaEval(cfg: PersonaConfig): Promise<{ summary: Sum
     notes,
   };
   writeFileSync(join(dir, "summary.json"), `${JSON.stringify(summary, null, 2)}\n`, "utf8");
-  writeFileSync(join(dir, "findings.json"), `${JSON.stringify(findings, null, 2)}\n`, "utf8");
+  // 点数の表の数（tools/eval/scorecard-items.ts の persona.〜）と、評価の台の共通の形の findings.json（T157）
+  const scorecard = scorecardOf(stamp, client, paths, outcomes);
+  writeFileSync(join(dir, "scorecard.json"), `${JSON.stringify(scorecard, null, 2)}\n`, "utf8");
+  const base = findings.map((f) => sharedFinding(f, stamp));
+  const guards = guardFindings({
+    bench: "persona",
+    run: stamp,
+    values: Object.fromEntries(Object.entries(scorecard.values).flatMap(([k, v]) => (v === null ? [] : [[k, Array.isArray(v) ? (v[1] > 0 ? v[0] / v[1] : 0) : v]]))),
+    counts: causeCounts(base),
+    repro: [`npm run eval:persona -- ${cfg.real ? "--real " : ""}--personas ${cfg.personas.join(",")}`],
+  });
+  const shared = [...base, ...guards];
+  writeFindings(dir, { bench: "persona", run: stamp, client, findings: shared }, { root: cfg.out });
   writeFileSync(join(dir, "report.md"), markdown({ summary, outcomes, judges, findings, thoughts: true }), "utf8");
   let mdPath: string | null = null;
   if (cfg.md) {
@@ -215,7 +232,29 @@ export async function runPersonaEval(cfg: PersonaConfig): Promise<{ summary: Sum
   }
   say(`目標 ${summary.totals.reached}/${summary.totals.goals}、指摘 高 ${summary.totals.findings["高"]}・中 ${summary.totals.findings["中"]}・低 ${summary.totals.findings["低"]}、費用 $${summary.totals.costUsd.toFixed(3)}`);
   say(`記録: ${dir}${mdPath ? `\n表: ${mdPath}` : ""}`);
-  return { summary, findings, outcomes, dir, mdPath };
+  return { summary, findings, shared, scorecard, outcomes, dir, mdPath };
+}
+
+/** 点数の表の数（scorecard.json）。比は [分子, 分母]。筋ごと・目標ごと（persona.goal.<筋>.<目標> は 1 か 0）も */
+export function scorecardOf(run: string, client: "fake" | "real", paths: readonly PathSummary[], outcomes: readonly WalkOutcome[]): GenericScorecard {
+  const values: GenericScorecard["values"] = {};
+  const sum = (f: (p: PathSummary) => number) => paths.reduce((a, p) => a + f(p), 0);
+  values["persona.reached"] = [sum((p) => p.goals.reached), sum((p) => p.goals.total)];
+  values["persona.extra"] = sum((p) => p.used - p.shortest);
+  values["persona.steps"] = sum((p) => p.steps);
+  values["persona.lost"] = sum((p) => LOST_KINDS.reduce((a, k) => a + p.lost[k], 0));
+  for (const k of LOST_KINDS) values[`persona.lost.${k}`] = sum((p) => p.lost[k]);
+  values["persona.gate"] = paths.filter((p) => p.stop === "gate").length;
+  const eases = paths.flatMap((p) => (p.ease === null ? [] : [p.ease]));
+  values["persona.ease"] = eases.length > 0 ? eases.reduce((a, b) => a + b, 0) / eases.length : null;
+  values["persona.usd"] = sum((p) => p.costUsd);
+  for (const p of paths) {
+    values[`persona.${p.persona}.reached`] = [p.goals.reached, p.goals.total];
+    values[`persona.${p.persona}.steps`] = p.steps;
+    values[`persona.${p.persona}.lost`] = LOST_KINDS.reduce((a, k) => a + p.lost[k], 0);
+  }
+  for (const o of outcomes) for (const g of o.goals) values[goalItem(o.persona, g.id)] = g.reached ? 1 : 0;
+  return { version: 1, bench: "persona", run, client, values };
 }
 
 // ---------- 引数 ----------

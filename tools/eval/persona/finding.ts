@@ -1,7 +1,7 @@
-// 指摘の形（docs/tasks/T156.md）。3 つの台（書類・訓練・使う側）の指摘と点を 1 つの表にまとめる作業（T157）に合わせ、
-// 「場所・重さ・再現の手順・疑うファイル・受け入れの確かめ」を持つ。T157 が tools/eval/ に共通の型を作ったら、そちらに寄せる
-// （この型は findings.json の 1 件の形。名前を変えるときは T157 の読み手と合わせる）。
+// 指摘（docs/tasks/T156.md）。台の中では「場所・重さ・再現の手順・疑うファイル・受け入れの確かめ（文）」を持つ PersonaFinding で数え、
+// 報告（report.md）に使う。回のフォルダの findings.json は評価の台の共通の形（tools/eval/findings.ts、T157）に写して書く（sharedFinding）。
 
+import { clipEvidence, findingId, type Finding as SharedFinding, type Severity } from "../findings.ts";
 import { routeText } from "./check.ts";
 import type { GoalResult } from "./judge.ts";
 import type { RouteMove } from "./personas.ts";
@@ -10,7 +10,7 @@ import { LOST_LABELS, type LostEvent, type LostKind, type StepRecord } from "./t
 export const WEIGHTS = ["高", "中", "低"] as const;
 export type Weight = (typeof WEIGHTS)[number];
 
-export type Finding = {
+export type PersonaFinding = {
   /** persona:<筋>:<番号> */
   id: string;
   /** どの台の指摘か */
@@ -30,6 +30,10 @@ export type Finding = {
   persona: string;
   goal: string | null;
   step: number | null;
+  /** まとめた迷いの数（届かない目標・審査役は 1） */
+  count: number;
+  /** 根拠（使う人の思ったこと。回のフォルダの findings.json の evidence だけ） */
+  thoughts?: string[];
 };
 
 /** 道の id の段を [id] に（/people/chk-p-01/forms/own → /people/[id]/forms/own）。query は落とす */
@@ -90,8 +94,8 @@ export type FindingContext = {
  * 台が数えた物からの指摘: 届かなかった目標 1 つに 1 件（高）と、迷いを（種類・画面・押した物）でまとめて 1 件。
  * 同じ所の迷いが 2 回以上なら 1 段重く（低 → 中）
  */
-export function mechanicalFindings(lost: readonly LostEvent[], ctx: FindingContext): Finding[] {
-  const out: Finding[] = [];
+export function mechanicalFindings(lost: readonly LostEvent[], ctx: FindingContext): PersonaFinding[] {
+  const out: PersonaFinding[] = [];
   let seq = 0;
   const id = () => `persona:${ctx.persona}:${String(++seq).padStart(2, "0")}`;
   for (const g of ctx.goals) {
@@ -112,6 +116,8 @@ export function mechanicalFindings(lost: readonly LostEvent[], ctx: FindingConte
       persona: ctx.persona,
       goal: g.id,
       step: last?.n ?? null,
+      count: 1,
+      thoughts: last?.move.thought ? [last.move.thought] : [],
     });
   }
   const groups = new Map<string, LostEvent[]>();
@@ -139,8 +145,54 @@ export function mechanicalFindings(lost: readonly LostEvent[], ctx: FindingConte
       persona: ctx.persona,
       goal: e.goal,
       step: e.step,
+      count: evs.length,
+      thoughts: evs.flatMap((x) => (x.thought ? [x.thought] : [])),
     });
   }
   const rank: Record<Weight, number> = { 高: 0, 中: 1, 低: 2 };
   return out.sort((a, b) => rank[a.weight] - rank[b.weight]);
+}
+
+const SEVERITY_OF: Readonly<Record<Weight, Severity>> = { 高: "high", 中: "mid", 低: "low" };
+
+/** 原因の鍵（persona:<種類>:<目標か画面>）。下書き（tools/eval/drafts.ts）はこれでまとめる */
+export function causeOf(f: PersonaFinding): string {
+  return f.kind === "unreached" ? `persona:unreached:${f.goal ?? ""}` : `persona:${f.kind}:${f.where.screen}`;
+}
+
+/** 届かない目標の点数の表の値の id（scorecard.json の values。1 は達した） */
+export const goalItem = (persona: string, goal: string) => `persona.goal.${persona}.${goal}`;
+
+/**
+ * 評価の台の共通の形（tools/eval/findings.ts）に写す。題は種類・画面・筋・数だけ（名前・思ったことを入れない）。
+ * 受け入れの確かめ: 届かない目標は点数の表の値 persona.goal.<筋>.<目標> ≧ 1、迷い・審査役の指摘は同じ原因の数 ≦ 0。文の確かめは再現の手順の終わりに
+ */
+export function sharedFinding(f: PersonaFinding, run: string): SharedFinding {
+  const cause = causeOf(f);
+  const accept = f.kind === "unreached" && f.goal ? { item: goalItem(f.persona, f.goal), op: ">=" as const, value: 1 } : { item: `count:${cause}`, op: "<=" as const, value: 0 };
+  const title =
+    f.kind === "unreached"
+      ? `目標 ${f.goal} に届かない（${f.persona}）`
+      : f.kind === "judge"
+        ? `審査役の指摘 ${f.where.screen}（${f.persona}）`
+        : `${LOST_LABELS[f.kind]} ${f.where.screen}（${f.persona}、${f.count} 回）`;
+  return {
+    id: findingId(cause, `${f.persona}${f.where.target ? `:${f.where.target}` : ""}`),
+    bench: "persona",
+    cause,
+    rule: f.kind,
+    title,
+    where: {
+      screen: `${f.where.screen}${f.where.target ? ` 「${f.where.target}」` : ""}`,
+      file: `${f.persona}/log.jsonl`,
+      ...(f.step !== null ? { refs: [`${f.persona}/log.jsonl 手 ${f.step}`] } : {}),
+    },
+    severity: SEVERITY_OF[f.weight],
+    count: f.count,
+    repro: [...f.repro, `確かめ: ${f.accept}`],
+    suspects: f.suspects,
+    accept,
+    firstSeen: run,
+    ...(f.thoughts && f.thoughts.length > 0 ? { evidence: clipEvidence(f.thoughts) } : {}),
+  };
 }

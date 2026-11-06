@@ -9,7 +9,10 @@ import { ACTOR_SYSTEM } from "./actor.ts";
 import { isDone } from "./check.ts";
 import { fakeActor, parseItemLine } from "./fake.ts";
 import { FakeSurface } from "./fake-site.ts";
-import { screenOf, type Finding } from "./finding.ts";
+import { readFindings } from "../findings.ts";
+import { readRunDir } from "../scorecard-shapes.ts";
+import { buildScorecard } from "../scorecard.ts";
+import { screenOf } from "./finding.ts";
 import { assertLocalBase, screenGate } from "./guard.ts";
 import { JUDGE_SYSTEM } from "./judge.ts";
 import { lostOf } from "./lost.ts";
@@ -74,7 +77,7 @@ describe("使う人と目標", () => {
   it("医療班の受入の筋は受入一覧の氏名検索から（訓練の受入依頼ではない）", () => {
     const m = list.find((p) => p.id === "medical")!;
     expect(m.goals.map((g) => g.id)).toEqual(["role", "receive", "summary", "note"]);
-    expect(m.goals[1].route[0]).toEqual({ click: "氏名検索" });
+    expect(m.goals[1].route).toContainEqual({ click: "氏名検索" });
   });
 });
 
@@ -109,17 +112,25 @@ describe("偽の client と偽の画面で筋が通る", () => {
     expect(p.lost.back).toBeGreaterThan(0);
     expect(p.lost.misread).toBeGreaterThan(0);
     expect(p.used).toBeGreaterThan(p.shortest);
-    const findings: Finding[] = JSON.parse(readFileSync(join(r.dir, "findings.json"), "utf8"));
+    // findings.json は評価の台の共通の形（tools/eval/findings.ts、T157）
+    const file = readFindings(join(r.dir, "findings.json"))!;
+    expect(file).toMatchObject({ version: 1, bench: "persona", run: "20261106-000000-fake", client: "fake" });
+    const findings = file.findings;
     expect(findings.length).toBeGreaterThan(0);
     for (const f of findings) {
-      expect(f.source).toBe("persona");
-      expect(f.where.screen.startsWith("/")).toBe(true);
-      expect(["高", "中", "低"]).toContain(f.weight);
+      expect(f.bench).toBe("persona");
+      expect(f.cause.startsWith("persona:")).toBe(true);
+      expect(f.where.screen?.startsWith("/")).toBe(true);
+      expect(["high", "mid", "low"]).toContain(f.severity);
       expect(f.repro.length).toBeGreaterThan(0);
+      expect(f.repro.at(-1)).toMatch(/^確かめ: /);
       expect(Array.isArray(f.suspects)).toBe(true);
-      expect(f.accept.length).toBeGreaterThan(0);
+      expect(f.accept.item.startsWith("count:persona:") || f.accept.item.startsWith("persona.goal.")).toBe(true);
+      // 題に思ったことを入れない（根拠は evidence だけ）
+      expect(f.title).not.toContain("かと思った");
     }
-    expect(findings.some((f) => f.kind === "back")).toBe(true);
+    expect(findings.some((f) => f.rule === "back")).toBe(true);
+    expect(findings.some((f) => (f.evidence ?? []).some((e) => e.includes("かと思った")))).toBe(true);
     // 疑うファイルは repo の中の道（画面の道から app の page.tsx）
     expect(findings.flatMap((f) => f.suspects).some((s) => s.startsWith("app/") && s.endsWith("page.tsx"))).toBe(true);
     // repo に置く表には思ったことを入れない
@@ -149,6 +160,27 @@ describe("偽の client と偽の画面で筋が通る", () => {
     expect(high).toHaveLength(1);
     expect(high[0].accept).toContain("「一括印刷」を押す");
     expect(high[0].goal).toBe("sheets");
+    // 共通の形では、受け入れは点数の表の目標の値 ≧ 1、点数の表の値は 0
+    const shared = r.shared.find((f) => f.cause === "persona:unreached:sheets")!;
+    expect(shared).toMatchObject({ severity: "high", accept: { item: "persona.goal.veteran.sheets", op: ">=", value: 1 } });
+    expect(r.scorecard.values["persona.goal.veteran.sheets"]).toBe(0);
+    expect(r.scorecard.values["persona.veteran.reached"]).toEqual([4, 5]);
+  });
+
+  it("scorecard.json を点数の表（T157）が読み、使う側の模擬の段に筋ごとの達成・手数・迷いを並べる", async () => {
+    const r = await runPersonaEval(cfg({ personas: ["first", "medical"], stray: true }));
+    const data = readRunDir(r.dir);
+    expect(data.map((d) => d.bench)).toEqual(["persona"]);
+    expect(r.scorecard.values["persona.reached"]).toEqual([11, 11]);
+    expect(r.scorecard.values["persona.gate"]).toBe(0);
+    expect(r.scorecard.values["persona.first.lost"]).toBeGreaterThan(0);
+    const { md } = buildScorecard({ runs: [{ label: "r6", dir: r.dir }], out: "", seed: false, print: true });
+    expect(md).toContain("## 使う側の模擬");
+    expect(md).toMatch(/\| 使う人 目標の達成 \|.*\| 11\/11 \|/);
+    expect(md).toContain("| 初めて触るケアマネ 迷いの数 |");
+    expect(md).toContain("| 医療班 手の数 |");
+    // 門の守り（persona-gate-none）は外れない
+    expect(r.shared.some((f) => f.cause.startsWith("guard:"))).toBe(false);
   });
 
   it("md（repo に置く表）は思ったことを持たない", async () => {

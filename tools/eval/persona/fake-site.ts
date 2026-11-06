@@ -313,17 +313,17 @@ export class FakeSurface implements Surface {
         headings: ["受入一覧", "受入"],
         text: `受入一覧 ${st.received ? 1 : 0} 人 避難所 ${st.shelter ?? "未入力"}`,
         items: [
+          box("避難所"),
           { role: "button", name: "氏名検索", on: (s) => void (s.search = true) },
           { role: "button", name: "新規登録" },
           ...(st.search ? [box("氏名・カナ"), { role: "button", name: "検索", on: (s: State) => void (s.found = this.value("氏名・カナ").length > 0) } satisfies FakeItem] : []),
-          { role: "button", name: "避難所", on: (s) => void (s.shelterOpen = true) },
-          ...(st.shelterOpen ? [{ role: "button", name: "かわなぎ小学校", on: (s: State) => void ((s.shelter = "かわなぎ小学校"), (s.shelterOpen = false)) } satisfies FakeItem] : []),
           ...(st.found
             ? [
                 {
                   role: "button",
                   name: "受入",
                   on: (s: State) => {
+                    s.shelter = this.value("避難所") || null;
                     if (!s.shelter) s.alert = "避難所 未入力";
                     else s.received = true;
                   },

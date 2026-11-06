@@ -3,7 +3,7 @@
 // - docs/progress の md（--md）: 数と場所と言葉だけ（使う人の AI の「思ったこと」の文は入れない。生の記録は repo の外）
 
 import { countByKind } from "./lost.ts";
-import type { Finding } from "./finding.ts";
+import type { PersonaFinding as Finding } from "./finding.ts";
 import { screenOf } from "./finding.ts";
 import type { JudgeOut } from "./judge.ts";
 import type { WalkOutcome } from "./walk.ts";

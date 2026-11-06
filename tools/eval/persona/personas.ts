@@ -83,7 +83,8 @@ const DRILL_GOAL: Goal = {
 const DISASTER_GOAL: Goal = {
   id: "disaster",
   text: "事業所の画面で発災時の状態に切り替える（デモの大雨の想定）",
-  done: { header: "大雨|台風|土砂|地震|津波", notHeader: "平時" },
+  // 上の帯の災害モードの語（「大雨 レベル 4 …」）。訓練の画面の「大雨想定」は数えない
+  done: { header: "(^|\\s)(大雨|台風|土砂|地震|津波|その他)(\\s|$)", notHeader: "平時" },
   route: [{ click: "事業所" }, { click: "発災開始" }, { click: "開始" }],
 };
 
@@ -139,8 +140,9 @@ export function personas(loginId: string = DEFAULT_LOGIN_ID): Persona[] {
         {
           id: "person",
           text: "山田 ハナさんの本人のページを開き、未確認の項目を見る",
-          done: { path: "^/people/[^/?]*p-01(\\?|$)" },
-          route: [{ click: "山田 ハナ" }, { click: "山田 ハナ" }],
+          // 名前を押すと担当一覧の中にその人の本人のページが開く（/?open=<id>）
+          done: { path: "^/(people/[^/?]*p-01(\\?|$)|\\?open=[^&]*p-01)" },
+          route: [{ click: "山田 ハナ" }],
         },
         {
           id: "plan",
@@ -205,7 +207,7 @@ export function personas(loginId: string = DEFAULT_LOGIN_ID): Persona[] {
           id: "receive",
           text: "山田 ハナさんを探して、この避難所で受け入れる",
           done: { text: "受入一覧\\s*[1-9]" },
-          route: [{ click: "氏名検索" }, { type: "氏名・カナ", text: "ヤマダ" }, { click: "検索" }, { click: "避難所" }, { click: "かわなぎ小学校" }, { click: "受入" }],
+          route: [{ type: "避難所", text: "かわなぎ小学校" }, { click: "氏名検索" }, { type: "氏名・カナ", text: "ヤマダ" }, { click: "検索" }, { click: "受入" }],
         },
         {
           id: "summary",
@@ -242,7 +244,7 @@ export function personas(loginId: string = DEFAULT_LOGIN_ID): Persona[] {
         {
           id: "red",
           text: "本人スマホの立場で赤の「無事じゃない」を押す",
-          done: { path: "^/me", text: "119" },
+          done: { path: "^/me", text: "命が危ない|AI が聞いて" },
           route: [{ click: "役変更" }, { click: "本人スマホ" }, { click: "無事じゃない" }],
         },
         {
