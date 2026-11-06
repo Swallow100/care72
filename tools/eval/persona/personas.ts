@@ -124,7 +124,8 @@ export function personas(loginId: string = DEFAULT_LOGIN_ID): Persona[] {
           text: `${NEW_PERSON.name} の避難先に ${NEW_PERSON.place} を入れて保存する`,
           // 本人のページは担当一覧の中にも開く（/?open=<id>。T162 で印を合わせた）
           done: { text: NEW_PERSON.place, path: "^/(people/(?!new)[^/?]+|\\?open=)" },
-          route: [{ click: "編集", nth: 1 }, { type: "避難先1", text: NEW_PERSON.place }, { click: "保存" }],
+          // 面の編集・保存は面の名前つきで読む（T173）
+          route: [{ click: "避難 編集" }, { type: "避難先1", text: NEW_PERSON.place }, { click: "避難 保存" }],
         },
         {
           id: "plan",

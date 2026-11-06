@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import { CONFIRM_LABELS } from "./ui/labels.ts";
 import { RESET_LABELS } from "./seed/labels.ts";
 import { REQUEST_LABELS } from "./custody/labels.ts";
+import { INTAKE_LABELS } from "./labels.ts";
 import { personaOf } from "../tools/eval/persona/personas.ts";
 import { forbiddenOf } from "../tools/eval/persona/walk.ts";
 import type { Item } from "../tools/eval/persona/types.ts";
@@ -62,5 +63,36 @@ describe("2. 医療班の入口", () => {
     const far = Array.from({ length: 114 }, (_, i) => `行 ${i}`);
     expect(forbiddenOf(admin, { path: "/office?started=1", text: "", items: items(...far, "最初に戻す") })).toEqual(["最初に戻すが読みの後ろ"]);
     expect(forbiddenOf(admin, { path: "/forms", text: "", items: items("書類") })).toEqual([]);
+  });
+});
+
+describe("3. 編集の面（全部の面）", () => {
+  const src = read("../components/person/SectionEdit.tsx");
+  it("編集・保存・編集終了の読み上げに面の名前（「編集」が何個もあった）", () => {
+    expect(src).toContain("aria-label={`${sectionName} ${INTAKE_LABELS.sectionEdit}`}");
+    expect(src).toContain("aria-label={`${sectionName} ${INTAKE_LABELS.save}`}");
+    expect(src).toContain("aria-label={`${sectionName} ${INTAKE_LABELS.closeEdit}`}");
+  });
+  it("保存の隣に取消を置かない。編集終了は帯の右の端で、変更があれば窓で確かめる", () => {
+    expect(src).not.toContain("{INTAKE_LABELS.discard}");
+    const bar = src.slice(src.indexOf("data-edit-bar"), src.indexOf("data-edit-close"));
+    expect(bar.indexOf("data-edit-save")).toBeLessThan(bar.indexOf('role="status"'));
+    expect(bar).toContain('className="ml-auto"');
+    expect(src).toMatch(/if \(changes\.length > 0\) \{\s+const ok = await appConfirm/);
+    expect(src).toContain("cancel: INTAKE_LABELS.closeKeep");
+    for (const l of [INTAKE_LABELS.closeEdit, INTAKE_LABELS.closeTitle, INTAKE_LABELS.closeOk, INTAKE_LABELS.closeKeep, INTAKE_LABELS.noChange, INTAKE_LABELS.editing]) expect(short(l), l).toBe(true);
+  });
+  it("変更の無い間は未変更（変更 0 件にしない）。開いている間は編集中", () => {
+    expect(src).toContain("changes.length === 0 ? INTAKE_LABELS.noChange");
+    expect(src).toContain("data-edit-state={section}");
+  });
+  it("保存のあとは新しい値が届くのと同じ時に閉じる（閉じた直後に古い値を出さない）。送信中の印で台も待つ", () => {
+    expect(src).toMatch(/startRefresh\(\(\) => \{\s+setOpen\(null\);\s+router\.refresh\(\);/);
+    expect(src).toContain("data-pending={saving || undefined}");
+  });
+  it("全部の面に効く（面ごとの分岐が無い）。筋の手は面の名前つき", () => {
+    expect(src).toContain("const sectionName = SECTION_LABELS[section]");
+    const first = personaOf("first")!;
+    expect(first.goals.find((g) => g.id === "ledger")!.route).toEqual([{ click: "避難 編集" }, { type: "避難先1", text: "みずほし公民館" }, { click: "避難 保存" }]);
   });
 });

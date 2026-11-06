@@ -207,10 +207,10 @@ export class FakeSurface implements Surface {
           ...(medical
             ? []
             : [
-                { role: "button", name: "編集", on: () => undefined } satisfies FakeItem,
-                { role: "button", name: "編集", on: (s: State) => void (s.editing = true) } satisfies FakeItem,
+                { role: "button", name: "医療 編集", on: () => undefined } satisfies FakeItem,
+                { role: "button", name: "避難 編集", on: (s: State) => void (s.editing = true) } satisfies FakeItem,
               ]),
-          ...(st.editing ? [box("避難先1"), { role: "button", name: "保存", on: (s: State) => void ((who.place = this.value("避難先1") || who.place), (s.editing = false)) } satisfies FakeItem] : []),
+          ...(st.editing ? [box("避難先1"), { role: "button", name: "避難 保存", on: (s: State) => void ((who.place = this.value("避難先1") || who.place), (s.editing = false)) } satisfies FakeItem, { role: "button", name: "避難 編集終了", on: (s: State) => void (s.editing = false) } satisfies FakeItem] : []),
           ...(medical
             ? []
             : [
