@@ -586,7 +586,7 @@ export function factsOf(input: FactsInput): Facts {
   // 赤の「家にいない」だけで、どこかが分からない（T158。帳面の文で「避難所でない所」と書かない）
   const loose = where === "other" && state?.color === "red";
   if (where && state) cands.push({ where, at: prevAt, by: "turn", ...(loose ? { loose: true as const } : {}) });
-  // もう避難所にいる人に移送の車が来ても、移った事にしない（T167。評価の 8 回目で「避難所へ移りました」のあとに迎えの車で着いた話になった）
+  // もう避難所にいる人に移送の車が来ても、移った事にしない（T167。評価の 8 回目で、避難所へ移ったと言ったあとに迎えの車で着いた話になった）
   const rideAfter = carried && where === "shelter" && dest === "shelter" ? carried.arrive : null;
   if (carried && rideAfter === null) cands.push({ where: dest, at: carried.arrive, by: "transport" });
   if (movedAt !== null && !carried) cands.push({ where: dest, at: movedAt, by: "plan" });
@@ -887,7 +887,7 @@ export function addGated(world: WorldState, add: Partial<Record<GateRule, number
 const HOME_STAY =
   /(?:家|自宅|うち)で(?:過ご(?!せ)|休ん|休み|待っ|待ち|待つ|寝て|様子を見|付き添|つきそ|横にな|横たわ|寝たまま|座っ|座り|話せ|話し(?!合)|動け|落ち着|元気|いつも|普段|変わり|受け答|答え)|(?:家|自宅|うち)で(?![はもの])[^。、]{0,14}?(?:できる|でき(?:ています|ます)|います|ている|ます)[。！!]?$|(?:家|自宅|うち)に(?:い|居)(?:ます|る|て)|家から出ていない|家に残っ|(?:家|自宅|うち)に(?:は)?[^。、置]{0,8}?(?:二人|ふたり|三人)(?:です|でい|だけ|きり)|(?:家|自宅|うち)(?:に|で)(?:は)?一緒に(?:い|居)/;
 /**
- * 病院へ移った・病院にいる言い方（T167。家にいる人は言わない）。評価の 8 回目で、ふだん動けない人の家族が手も人も無いまま「病院へ移りました」と言い、
+ * 病院へ移った・病院にいる言い方（T167。家にいる人は言わない）。評価の 8 回目で、ふだん動けない人の家族が手も人も無いまま病院へ移ったと言い、
  * 帳面は家のままで、次の連絡では家で業者を迎えた。これから移る言い方（「移ろうと思います」）は見ない
  */
 const AT_HOSPITAL = /病院(?:に|へ)(?:着(?!け)|移(?:りました|れました|った|動しました)|入(?:りました|院)|(?:い|居)(?:ます|る))|入院(?:しました|しています|中)/;
@@ -1168,7 +1168,7 @@ export function sentenceFix(s: string, ctx: SlipContext, battery = false): { tex
     t = t.replace(ARRIVE_NEWS, "避難所にいます");
     rules.push("old_news");
   }
-  // 停電は続いていて、届いた電源で動いている（T167。評価の 8 回目で、21 時間に業者の電源が届いた家が「電気が戻りました」と言い、世界の復旧は 48 時間で食い違った）
+  // 停電は続いていて、届いた電源で動いている（T167。評価の 8 回目で、業者の電源が届いた家が電気が戻ったと言い、世界の復旧の時刻と食い違った）
   if (ctx.suppliedOnly && (GRID_BACK.test(t) || /(?<!届いた)電気で動/u.test(t))) {
     t = t.replace(GRID_BACK, "届いた電源で動いています").replace(/(?<!届いた)電気で動/u, "届いた電源で動");
     rules.push("power_said");

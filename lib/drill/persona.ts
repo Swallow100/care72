@@ -909,7 +909,7 @@ export function personaTurns(input: PersonaInput, persona: Persona, answer: Pers
     onDrop,
   );
   if (!turn) return [];
-  // いる所を言わない連絡（赤で家にいるかに答えない・色の分からない）は帳面のいる所で見る（T167。台の検査と同じ。前は門を抜け、避難所の人の「家で受け答えできる」が残った）
+  // いる所を言わない連絡（赤で家にいるかに答えない・色の分からない）は帳面のいる所で見る（T167。台の検査と同じ。前は門を抜け、避難所の人のする事に家にいる言い方が残った）
   const place = placeOfState({ color: turn.color, whereNow: turn.whereNow, atHome: turn.atHome }) ?? facts.place?.where ?? null;
   return [{ ...turn, saying: factText(turn.saying, turn.source, place), doing: factText(turn.doing, turn.source, place) }];
 }
@@ -1372,8 +1372,7 @@ export function visitText(v: PersonaVisit, persona: Persona): string {
 }
 
 /**
- * 訪問で着いた所（T167）。帳面のいる所へ行く。評価の 8 回目で、避難所へ移った人の訪問がいつも「家に着いた」で、「家には妻だけ」のあとに「主人に会えた」と
- * 続いた。行き先の分からない人は家に着く（本人はいない）。名前を書かない
+ * 訪問で着いた所（T167）。帳面のいる所へ行く。評価の 8 回目で、避難所へ移った人の訪問がいつも「家に着いた」で、本人が家にいない様子のあとに会えた話が続いた。行き先の分からない人は家に着く（本人はいない）。名前を書かない
  */
 function visitPlaceWords(f: Facts): string {
   const p = f.place;

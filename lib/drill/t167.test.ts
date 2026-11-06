@@ -29,16 +29,16 @@ const them = (text: string, ai = true): TalkLine => ({ who: "them", text, ai, mi
 describe("移ったあとのいる所（門）", () => {
   it("避難所・その他にいる人の「家で〜」は動詞の一覧に無くても落とす。済んだ話・帰りたい話は残す", () => {
     const shelter: SlipContext = { ...ctxBase, place: "shelter" };
-    for (const s of ["家で受け答えできる", "家で受け答えできています。", "主人は家で眠っています。", "母は家でテレビを見ている"]) expect(sentenceSlip(s, shelter)).toBe("place_text");
+    for (const s of ["家で話を聞いて答えています。", "家で応対できる", "主人は家で眠っています。", "母は家でテレビを見ている"]) expect(sentenceSlip(s, shelter)).toBe("place_text");
     for (const s of ["家で転びました。", "家に帰りたがっています。", "家に置いてきました。", "家では使っていました。", "うちの人は避難所にいます。"]) expect(sentenceSlip(s, shelter)).toBeNull();
-    expect(placeSaid("家で受け答えできる")).toBe("home");
+    expect(placeSaid("家で応対できる")).toBe("home");
   });
 
   it("家にいる人の「病院へ移りました」は落とす。これから移る言い方と行けない言い方は残す", () => {
     const home: SlipContext = { ...ctxBase, place: "home" };
-    for (const s of ["妻は病院へ移りました。", "今は病院にいます。", "入院しました。"]) expect(sentenceSlip(s, home)).toBe("place_text");
+    for (const s of ["本人は病院へ移りました。", "今は病院にいます。", "入院しました。"]) expect(sentenceSlip(s, home)).toBe("place_text");
     for (const s of ["病院へ移ろうと思います。", "病院に行けません。", "病院は休みです。"]) expect(sentenceSlip(s, home)).toBeNull();
-    expect(sentenceSlip("妻は病院へ移りました。", { ...ctxBase, place: "other" })).toBeNull();
+    expect(sentenceSlip("本人は病院へ移りました。", { ...ctxBase, place: "other" })).toBeNull();
   });
 
   it("家の外から家へは、来た人や届いた物では戻らない（戻った言葉のときだけ）。ふだん動ける人が家から出るのは今までどおり手があれば", () => {
@@ -54,7 +54,7 @@ describe("移ったあとのいる所（門）", () => {
 
   it("本人役の連絡がいる所を言わないとき（赤で家にいるかに答えない）も帳面のいる所で言葉を見る", () => {
     const persona = buildPersona(seedInput("p-07"), { on: "2026-11-05" });
-    const answer: PersonaAnswer = { condition: "", location: "unknown", action: "家で受け答えできる", contactsCaremanager: true, from: persona.reporters.find((r) => r.canPress)!.role, pressesRed: true, redAnswers: { injured: null, atHome: null, canMove: null, hasMedicine: null }, speech: "連絡を待っています。" };
+    const answer: PersonaAnswer = { condition: "", location: "unknown", action: "家で応対できる", contactsCaremanager: true, from: persona.reporters.find((r) => r.canPress)!.role, pressesRed: true, redAnswers: { injured: null, atHome: null, canMove: null, hasMedicine: null }, speech: "連絡を待っています。" };
     const turns = personaTurns({ step: 3, hour: 60, person: "p-07", world: EMPTY_WORLD, incidents: [], state: state({ whereNow: "shelter", at: 40 }), fixed: [], actions: [], toMinute: 3600, since: 3000 } as never, persona, answer);
     expect(turns).toHaveLength(1);
     expect(turns[0].doing ?? "").not.toContain("家で");
@@ -100,7 +100,7 @@ describe("停電の戻りと家の電気", () => {
     expect(lines).toContain("電気が戻ったとは言わない");
     const ctx = slipContextOf(facts);
     expect(ctx.suppliedOnly).toBe(true);
-    const fixed = sentenceFix("業者さんが来て電気が戻りました。", ctx);
+    const fixed = sentenceFix("人が来て電気が戻りました。", ctx);
     expect(fixed.rules).toContain("power_said");
     expect(fixed.text).toContain("届いた電源で動いています");
     expect(fixed.text).not.toContain("電気が戻");
