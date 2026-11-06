@@ -16,8 +16,10 @@ import {
   factsOf,
   GATE_RULES,
   intentsSaid,
+  issuedBlock,
   placeSaid,
   planOf,
+  quietPeople,
   sentenceSlip,
   slipContextOf,
   voiceLostSaid,
@@ -153,6 +155,24 @@ describe("業者の巡回を着いたあとに重ねない（T165）", () => {
     expect(row.eligible(src, "p-02", arrived, null)).toBe(false);
     const coming: WorldState = { ...EMPTY_WORLD, arrivals: [{ person: "p-02", role: "vendor", arrive: 600, back: null, arrived: false, from: "director" }] } as WorldState;
     expect(row.eligible(src, "p-02", coming, null)).toBe(false);
+  });
+});
+
+describe("まだ出来事の無い人（T165）", () => {
+  it("監督・世界が出した出来事・道・施設・印のどれも無い人を並べる。結末を迎えた人は入れない", () => {
+    const world = {
+      ...EMPTY_WORLD,
+      issued: [{ kind: "pharmacy_closed", person: "p-08", text: "薬局 休止", at: 600 }],
+      roads: [{ id: "rd-ls-p-07", label: "山側の道", open: false, person: "p-07" }],
+      marks: { "p-04": { wandering: 3 } },
+      ended: { "p-09": { at: 20 } },
+    } as unknown as WorldState;
+    expect(quietPeople(world, ["p-01", "p-04", "p-07", "p-08", "p-09", "p-10"])).toEqual(["p-01", "p-10"]);
+    const who = (p: string | null) => (p === "p-01" ? "A さん" : p === "p-10" ? "B さん" : p ? "X さん" : null);
+    expect(issuedBlock(world, (k) => k, who, ["p-01", "p-10"]).at(-1)).toContain("まだ出来事の無い人");
+    expect(issuedBlock(world, (k) => k, who, ["p-01", "p-10"]).at(-1)).toContain("A さん・B さん");
+    // 人を渡さなければ前のまま
+    expect(issuedBlock(world, (k) => k, who).join("\n")).not.toContain("まだ出来事の無い人");
   });
 });
 
