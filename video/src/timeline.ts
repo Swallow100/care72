@@ -587,7 +587,7 @@ export const RECORDINGS: Record<string, string> = {
   R12: "本人のスマホ",
   R13: "医療班の受入",
   R14: "行の詳細（録音の分類）",
-  R15: "本人のページを下まで",
+  R15: "本人のページ",
   R20: "worktree と merge の線",
   R21: "見直し役",
   R22: "フックが配信を止める",
