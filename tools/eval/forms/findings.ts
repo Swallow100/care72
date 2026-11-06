@@ -4,7 +4,7 @@
 
 import { causeCounts, findingId, writeFindings, type Accept, type Finding, type Severity } from "../findings.ts";
 import { guardFindings } from "../guards.ts";
-import { valuesOf } from "../scorecard-items.ts";
+import { sharedMissOf, valuesOf } from "../scorecard-items.ts";
 import type { RunResult } from "./run.ts";
 
 export type FormsResultForFindings = Pick<RunResult, "run" | "mode" | "fakeStyle" | "forms" | "inputs" | "papers" | "calls" | "leaks">;
@@ -40,6 +40,17 @@ export const SPECS = {
   leakStrong: { cause: "forms:leak.strong", rule: "leak.strong", title: "送った文に氏名・電話・町名", severity: "high", screen: "（Claude に送る中身）", suspects: LEAK_FILES, refs: calls, accept: { item: "forms.leaks", op: "<=", value: 0 } },
   leakBirth: { cause: "forms:leak.birth", rule: "leak.birth", title: "送った文に生年月日", severity: "high", screen: "（Claude に送る中身）", suspects: ["lib/pseudonym/birth.ts", ...LEAK_FILES], refs: calls, accept: { item: "forms.birthLeaks", op: "<=", value: 0 } },
   leakImage: { cause: "forms:leak.image", rule: "leak.image", title: "送った画像の塗りが黒くない", severity: "high", screen: "（Claude に送る画像）", suspects: ["lib/intake/read.ts", "lib/forms/review-compose.ts"], refs: calls, accept: { item: "forms.imagesNotRedacted", op: "<=", value: 0 } },
+  // 一覧の様式で、2 つ目の事業所が共有の対応表を写せなかった（T161。1 つ目に読めない頁があり共有に入れなかった物は決めどおりなので数えない）
+  sharedMiss: {
+    cause: "forms:catalog.shared_miss",
+    rule: "catalog.shared_miss",
+    title: "一覧の様式の対応表を別の事業所が写せず AI を呼び直す",
+    severity: "mid",
+    screen: "書類 > 様式の読み取り（一覧の様式）",
+    suspects: ["lib/forms/read-post.ts", "lib/forms/shared-mapping.ts"],
+    refs: steps("form.shared"),
+    accept: { item: "forms.sharedMiss", op: "<=", value: 0 },
+  },
   truncated: { cause: "forms:calls.truncated", rule: "calls.truncated", title: "AI の返事が出力の上限で切れた", severity: "mid", screen: "書類 > 様式の読み取り", suspects: ["lib/forms/form-read.ts", "lib/claude/call.ts"], refs: calls },
 } satisfies Record<string, Spec>;
 
@@ -87,6 +98,7 @@ export function formsFindings(r: FormsResultForFindings): Finding[] {
     const reviews = ps.map((p) => p.review).filter((x): x is NonNullable<typeof x> => !!x);
     push(SPECS.reviewFix, sum(reviews.map((x) => x.rule.fix)), `様式 ${f.id}`, `${flags} --review`);
     push(SPECS.reviewAiFailed, reviews.filter((x) => x.ai?.status === "failed").length, `様式 ${f.id}`, `${flags} --review`);
+    if (sharedMissOf(f)) push(SPECS.sharedMiss, 1, `様式 ${f.id}（${f.catalog?.sharedWhy ?? "訳なし"}）`, flags);
   }
 
   // 入力の失敗は理由ごと、読み取りの外れは入れ方ごと（予算で飛ばした物は失敗に数えない）
