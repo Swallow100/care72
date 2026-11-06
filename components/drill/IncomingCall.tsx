@@ -17,6 +17,8 @@
 // - T162: 窓の右上に「後で」。窓を閉じて訓練の画面（上の帯・次まで・事業所への切替）を押せるようにし、画面の下の 1 行「着信 N 件」の
 //   「着信表示」で同じ着信（通話中なら通話中のまま）に戻る。応答・拒否は記録しない（次まで進めると、その刻みの着信は鳴らないまま過ぎる）。
 //   窓の上に「N / M」と「対応済 K」（切ったあとに次の着信が鳴ると、同じ窓のままに見えて切れていないと読まれた）
+// - T166: 鳴っている間は窓で画面を止めない（右下の面。上の帯・次まで・自動進行・事業所への入口が押せる。前は窓の外を押せず「押せない」と読まれた）。
+//   応答した通話の間だけ今までどおり画面の上に重ねる。「後で」は時間を進める物と読まれたので「保留」
 // 色は安否の印（塗り）だけ。押したときは灰色だけ（Button の data-press）。
 
 import { PhoneXMarkIcon, SpeakerWaveIcon } from "@heroicons/react/20/solid";
@@ -176,7 +178,7 @@ export function IncomingCall({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [closed, setClosed] = useState(false);
-  /** 「後で」で窓を閉じた（下の 1 行から戻る）。着信が替われば開き直す */
+  /** 「保留」で窓を畳んだ（下の 1 行から戻る）。着信が替われば開き直す */
   const [later, setLater] = useState(false);
   const voiceRef = useRef<Voice>({ state: "none" });
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -218,7 +220,7 @@ export function IncomingCall({
     if (!later) boxRef.current?.focus();
   }, [current, phase, later]);
 
-  // 着信音（鳴っている間だけ。後でにしたら止める）
+  // 着信音（鳴っている間だけ。保留にしたら止める）
   useEffect(() => {
     if (!current || phase !== "ringing" || later) return;
     return ring();
@@ -376,19 +378,24 @@ export function IncomingCall({
     );
   }
   const canReply = phase === "talking" && step !== undefined && actions !== undefined && !closed && callLeft(lines) > 0;
+  const talkingNow = phase === "talking";
   return (
     <div
       role="dialog"
-      aria-modal="true"
+      aria-modal={talkingNow ? "true" : undefined}
       aria-labelledby="incoming-caller"
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 px-4 py-[8vh]"
+      className={
+        talkingNow
+          ? "fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 px-4 py-[8vh]"
+          : "fixed right-4 bottom-4 z-50 w-[min(28rem,calc(100vw-2rem))] rounded-lg shadow-[0_2px_10px_rgb(0_0_0/0.28)]"
+      }
       data-incoming={current.signal}
       data-phase={phase}
     >
       <div
         ref={boxRef}
         tabIndex={-1}
-        className={`w-full rounded-lg bg-panel p-5 outline-none ${phase === "talking" ? "max-w-xl" : "max-w-md"}`}
+        className={`w-full rounded-lg bg-panel p-5 outline-none ${talkingNow ? "max-w-xl" : ""}`}
       >
         <div className="flex items-center gap-2 text-sm">
           <CallInIcon aria-hidden className="size-4 shrink-0" />

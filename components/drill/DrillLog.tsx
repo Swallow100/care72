@@ -81,7 +81,7 @@ export function DrillLog({
       label={LOG_LABELS.tabs}
       initial={initial}
       items={[
-        { tab: "occur", label: LOG_LABELS.occur, count: log.occur.length },
+        { tab: "occur", label: LOG_LABELS.occurTab, count: log.occur.length },
         { tab: "know", label: LOG_LABELS.know, count: log.know.length },
         { tab: "act", label: LOG_LABELS.act, count: log.act.length },
       ]}

@@ -43,6 +43,12 @@ export const VIEWPORTS: Readonly<Record<string, Viewport>> = {
 
 const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
+/**
+ * 送信中の印。部品の data-pending は "" か "true"。本人のページの未確認の数（data-pending="3"）や様式の未確認の理由は同じ名前の属性でも送信中ではない
+ * （T166。前は未確認のある人を開くたびに 60 秒待ち、医療班の筋が時間切れになった）
+ */
+export const BUSY_SELECTOR = '[data-pending=""],[data-pending="true"],[aria-busy="true"]';
+
 /** 押したあとに落ち着くまで（移るなら移り終わるまで、通信が 0.5 秒止むまで）。next dev の初めの道は組み立てに時間がかかる */
 async function settle(page: Page, navTimeout: number): Promise<void> {
   await wait(250);
@@ -51,7 +57,7 @@ async function settle(page: Page, navTimeout: number): Promise<void> {
   const until = Date.now() + Math.min(navTimeout, 60_000);
   while (Date.now() < until) {
     const busy = await page
-      .evaluate(() => document.querySelector("[data-pending]:not([data-pending=false]),[aria-busy=true]") !== null)
+      .evaluate((sel) => document.querySelector(sel) !== null, BUSY_SELECTOR)
       .catch(() => false);
     if (!busy) break;
     await wait(400);

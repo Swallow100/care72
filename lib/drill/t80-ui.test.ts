@@ -6,17 +6,15 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { DrillControls } from "../../components/drill/DrillControls.tsx";
-import { CHOICE_INPUT } from "../../components/ui/choice.ts";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: () => {}, push: () => {} }) }));
 
 describe("訓練のチェックの大きさ（T80）", () => {
-  it("早送りのチェックは 18px（事業所と同じ CHOICE_INPUT）", () => {
+  it("自動進行は押せるボタン（入り切りの switch。T166 でチェックの欄から替えた）", () => {
     const html = renderToStaticMarkup(createElement(DrillControls, { id: "d-1", step: 0, done: false }));
-    const input = html.match(/<input[^>]*data-action="fast"[^>]*>/)![0];
-    expect(input).toContain('type="checkbox"');
-    for (const c of CHOICE_INPUT.split(" ")) expect(input).toContain(c);
-    expect(input).not.toMatch(/\bsize-4\b/);
+    const button = html.match(/<button[^>]*data-action="fast"[^>]*>/)![0];
+    expect(button).toContain('role="switch"');
+    expect(button).toContain('aria-checked="false"');
   });
 
   it("開始の設定のチェック（参加者・夜間発災）も 18px", () => {

@@ -259,7 +259,7 @@ export class FakeSurface implements Surface {
               s.drill!.ringing = s.drill!.hours === 3;
             },
           },
-          { role: "checkbox", name: "自動進行", checked: d.auto, on: (s) => void ((s.drill!.auto = !s.drill!.auto), (s.drill!.hours += 6)) },
+          { role: "switch", name: "自動進行", checked: d.auto, on: (s) => void ((s.drill!.auto = !s.drill!.auto), (s.drill!.hours += 6)) },
         ],
       };
     }
