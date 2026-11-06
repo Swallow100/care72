@@ -15,6 +15,7 @@ import { drillScope } from "./db.ts";
 import { stopLog, type ClockHooks, type DrillState } from "./engine.ts";
 import { castFactsMap } from "./cast-facts.ts";
 import { capReached, clockMarksOf, type ClockMark } from "./clock.ts";
+import { quickKindOf, quickReply } from "./talk-quick.ts";
 import { drillClocks } from "./world-clocks.ts";
 import { clockRuns } from "./score.ts";
 import { createDirectorHook } from "./director.ts";
@@ -260,6 +261,9 @@ export function createTalkHook(deps: { load: () => Promise<ReadonlyMap<string, P
     const said = t.ask ? TALK_ASK_WORDS[t.ask] : restoreText(pseudonymizeText(raw, key).text, key);
     const callee = t.callee.kind === "self" ? "本人" : t.callee.id ? (persona.roles.get(t.callee.id) ?? null) : null;
     if (!callee) return { ...plain, said };
+    // T167: 相づち・待って・聞こえますか・同じ問いなどは Haiku を呼ばずコードの短い返事（lib/drill/talk-quick.ts）。中身のある文は本人役のまま
+    const quick = quickKindOf({ ...(t.ask ? { ask: t.ask } : {}), said }, t.lines);
+    if (quick) return { said, speech: quickReply(quick, t.lines, t.minute), asks: [], ai: false, called: false, coded: true };
     let text: ForClaude<{ text: string }>;
     try {
       text = pseudonymizeText(

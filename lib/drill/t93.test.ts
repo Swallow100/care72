@@ -299,7 +299,8 @@ describe("通話の往復", () => {
     const call = await callYamada();
     const { hook, calls } = talkHook();
     const before = await stored();
-    const asks = ["where", "device_medicine", "will_call_back", "injured", "can_evacuate", "contact_family", "where", "injured"] as const;
+    // 8 回とも本人役が答える問い（後で連絡・同じ問いはコードの短い返事で呼ばない。T167）
+    const asks = ["where", "device_medicine", "advise_119", "injured", "can_evacuate", "contact_family", "safe", "can_move"] as const;
     expect(asks).toHaveLength(TALK_MAX);
     let at = before.minute;
     for (const [i, ask] of asks.entries()) {
@@ -344,6 +345,26 @@ describe("通話の往復", () => {
     expect(await ninth.json()).toMatchObject({ ok: false, label: TALK_UI.ended });
     expect(calls).toHaveLength(TALK_MAX);
     expect(canTalk(r)).toBe(false);
+  });
+
+  it("T167: 相づち・後で連絡・同じ問いは Claude を呼ばずコードの短い返事（AI の印なし、数えない）。中身のある問いは本人役", async () => {
+    await start();
+    await callYamada();
+    const { hook, calls } = talkHook();
+    const lastThem = async (res: Response) => ((await res.json()) as { lines: TalkLine[] }).lines.at(-1)!;
+    const ack = await lastThem(await talk({ text: "はい" }, hook));
+    expect(ack).toMatchObject({ who: "them", ai: false });
+    expect(ack.text).not.toBe(TALK_FIXED_SPEECH);
+    expect(calls).toHaveLength(0);
+    expect((await stored()).world.counts?.call ?? 0).toBe(0);
+
+    expect(await lastThem(await talk({ ask: "where" }, hook))).toMatchObject({ ai: true });
+    expect(calls).toHaveLength(1);
+    // 同じ問いを文で聞いても呼ばない
+    expect(await lastThem(await talk({ text: "今どこにいますか" }, hook))).toMatchObject({ ai: false });
+    expect(await lastThem(await talk({ ask: "will_call_back" }, hook))).toMatchObject({ ai: false });
+    expect(calls).toHaveLength(1);
+    expect((await stored()).world.counts?.call).toBe(1);
   });
 
   it("画面は drill_events から作り直す: 往復・頼み事・時計が同じ。取消で手ごと戻すと往復と頼み事も消える", async () => {
