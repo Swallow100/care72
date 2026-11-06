@@ -1,6 +1,6 @@
 // 地図の場所の印（T170。仮想の訓練の世界の出来事）。人のピンと見分けるため四角の点で、人の状態の色を使わない。タイルの上では地の色の差が効かないので、ピンと同じ細い線で囲む。
 // 押せない（地図のドラッグを奪わない）。印はピンの点の下に置き、人の名前の印やほかの印に重なれば下へ送って細い線で元の所とつなぐ（lib/map/marks.ts の layoutMarks）。
-// 小さな地図で置けない印は描かず、右下に「他 N」（全画面と場所別の一覧に全部ある）。
+// 小さな地図で言葉を置けない印は四角の点だけにし、右下に「他 N」（全画面と場所別の一覧に全部ある）。
 // 出来事は訓練の想定なので、印があるときは地図の上に「デモ」の帯（MarkBand）。
 
 import { labelWidth } from "@/lib/map/cluster";
@@ -49,7 +49,10 @@ export function WorldMarks({
   const hidden = placed.filter((p) => drops[p.mark.id] === null).length;
   const shown = placed.flatMap(({ mark, text, left, top }) => {
     const drop = drops[mark.id];
-    if (drop === null || drop === undefined) return [];
+    // 言葉を置けない印も、場所は四角の点で示す
+    if (drop === null || drop === undefined) {
+      return [<span key={mark.id} title={mark.title} className="pointer-events-none absolute z-[5] size-2 -translate-x-1/2 -translate-y-1/2 bg-ink outline-1 outline-panel" style={{ left: `${left}%`, top: `${top}%` }} data-world-mark={mark.id} data-world-mark-dot aria-hidden />];
+    }
     return [(
       <span key={mark.id} className="pointer-events-none absolute z-[5]" style={{ left: `${left}%`, top: `${top}%` }} data-world-mark={mark.id} data-drop={drop}>
         {drop > 0 && <span className="absolute top-0 left-0 w-px bg-ink" style={{ height: drop }} aria-hidden />}

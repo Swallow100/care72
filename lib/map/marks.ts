@@ -31,7 +31,7 @@ const hit = (a: Box, b: Box) => a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y
 /**
  * 印を元の点の下に置き、ピンの名前の印やほかの印に重なれば下へ送る。印の id → 下へ送る長さ（px）。
  * 点と幅は枠の px。幅は字の数からの見積り（描く前に測らない）。
- * maxDrop（小さな地図）を超えて送る印と枠の下にはみ出す印は null（描かない。全画面と場所別の一覧に全部ある）
+ * maxDrop（小さな地図）を超えて送る印と枠の下にはみ出す印は null（言葉を置かない。全画面と場所別の一覧に全部ある）
  */
 export function layoutMarks(
   marks: ReadonlyArray<{ id: string; x: number; y: number; text: string }>,
