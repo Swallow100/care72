@@ -1,96 +1,81 @@
-// 仮想モード（docs/tasks/T50.md）の事業所の地理（コードの種。Claude を呼ばない）。デモ事業所は架空の街（DEMO_AREA）、
-// ほかの事業所は参加者の台帳の町名から作る（areaOf、T70）。
+// 仮想モード（docs/tasks/T50.md）の事業所の地理（コードの種。Claude を呼ばない）。人は架空のまま、地理は実の物（T170）。
 //
-// - デモの町は種の 10 人の台帳の町名（seed/people.ts。全部架空）と、架空の町を 2 つ。実在の地名は使わない
-// - 台帳から作る町は別名（甲地区…）と地形の一言（ハザードから）だけを部屋に見せ、町名は画面の言葉（restoreTowns）だけ
-// - Claude（世界の部屋・1 回呼び）には町名を渡さない。台帳の町名は仮名化の門（lib/pseudonym）が「（町名）」に伏せる物なので、
-//   部屋には町ごとの別名（甲地区・乙地区…）だけを見せる。別名 → 町名 → そこに住む本人の結び付きはコードだけが持つ
-//   （部屋が知るのは「甲地区は川沿いで洪水 3 m の想定」のような地理の事実と、本人の仮名と弱点。誰がどの地区かは知らない）
-// - 避難所・施設の名前も町名を含まない一般の言い方（「高台の小学校」）。台帳の避難先の名前は使わない
+// - デモ事業所は松山市の実の区画（lib/drill/area-demo.ts。川・標高・ハザードは地理院の注記と重ねるハザードマップで確かめた物）。
+//   人は台帳の町名（種の架空の町名）でなくピンの位置で区画に入る（townOfLedger）。台帳の町名は変えない
+// - ほかの事業所は参加者の台帳の町名から作る（areaOf、T70）。開始の時に読んだ公的なデータ（lib/drill/real-geo.ts）があれば実の川と避難所を足す
+// - Claude（世界の部屋・1 回呼び）には町名も区画の実の言葉も渡さない。部屋には区画ごとの別名（甲地区・乙地区…）と地理の事実だけを見せ、
+//   別名 → 区画 → そこに住む本人の結び付きはコードだけが持つ（部屋が知るのは「甲地区は標高 14〜18 m で洪水 3〜10 m の想定」のような地理の事実と、
+//   本人の仮名と弱点。誰がどの地区かは知らない）。門は lib/pseudonym の places（placesOf）
+// - 実の名前を渡すのは川・橋・指定避難所まで。透析先などの施設は種の架空の名前のまま
 // - 道路は通る地区、施設は頼る時計の区分（透析施設 → 透析の時計の人）で人に当てる（lib/drill/world-apply.ts）
 
 import { isSeedOfficeId } from "../auth/demo.ts";
-import type { DependsOn, Ledger } from "../db/types.ts";
+import type { DependsOn, GeoPoint, Ledger } from "../db/types.ts";
+import { DEMO_FACILITIES, DEMO_REGION, DEMO_RIVERS, DEMO_ROADS, DEMO_TOWNS, RETIRED_DEMO_NAMES } from "./area-demo.ts";
+import { applyRealGeo, type RealGeo } from "./real-geo-apply.ts";
 
-/** 町 1 つ。town は台帳の町名（画面の言葉）、alias は部屋に見せる別名 */
+export { RETIRED_DEMO_NAMES };
+
+/**
+ * 区画 1 つ。town は区画の鍵で画面の言葉（デモは実の地名「市坪・井門付近」、ほかの事業所は台帳の町名）。alias は部屋に見せる別名。
+ * Claude には alias だけ（town と homes は lib/pseudonym の places で別名に置き換わる）
+ */
 export type AreaTown = {
   town: string;
   alias: string;
-  /** 地形の一言（部屋に見せる） */
+  /** 地形の一言（部屋に見せる。確かめた事だけ） */
   terrain: string;
   /** 洪水の浸水の想定（m）。無ければ null */
   floodM: number | null;
   landslide: boolean;
   tsunami: boolean;
-  /** 送電の区分（停電はこの単位で起きやすい） */
-  grid: string;
+  /** ハザードの言い方（層で確かめた帯。部屋に見せる）。無ければ floodM などから作る */
+  hazardWords?: string;
+  /** この区画に落ちる台帳の町名（入力の伏せ字と停電の突き合わせ）。無ければ town と同じ */
+  homes?: ReadonlyArray<string>;
+  /** 区画の真ん中（地図の印。部屋に渡さない） */
+  at?: GeoPoint;
 };
 
-export type AreaRoad = { id: string; name: string; towns: string[] };
-export type AreaShelter = { id: string; name: string; town: string; welfare: boolean };
+export type AreaRoad = { id: string; name: string; towns: string[]; at?: GeoPoint };
+export type AreaShelter = { id: string; name: string; town: string; welfare: boolean; at?: GeoPoint };
 export type AreaFacility = { id: string; name: string; town: string; depends: DependsOn | null; kind: string };
 
-/** 川（部屋に見せる架空の名前） */
-export const AREA_RIVER = "白波川";
-
-export const AREA_TOWNS: ReadonlyArray<AreaTown> = [
-  { town: "かわなぎ町", alias: "甲地区", terrain: "白波川の堤防のすぐ内側の低い土地", floodM: 3, landslide: false, tsunami: false, grid: "東系統" },
-  { town: "みずほし町", alias: "乙地区", terrain: "白波川から少し離れた平地", floodM: 0.5, landslide: false, tsunami: false, grid: "東系統" },
-  { town: "あしなみ町", alias: "丙地区", terrain: "白波川の支流沿いの住宅地", floodM: 1, landslide: false, tsunami: false, grid: "東系統" },
-  { town: "くぬぎ谷町", alias: "丁地区", terrain: "山すその谷。裏に急な斜面", floodM: null, landslide: true, tsunami: false, grid: "山手系統" },
-  { town: "うみなり町", alias: "戊地区", terrain: "海に面した低い土地", floodM: null, landslide: false, tsunami: true, grid: "海側系統" },
-  { town: "そらみ台", alias: "己地区", terrain: "高台の住宅地", floodM: null, landslide: false, tsunami: false, grid: "山手系統" },
-  // 台帳に住む人のいない架空の町（施設と避難所がある）
-  { town: "ほたる坂町", alias: "庚地区", terrain: "高台へ上る坂の途中", floodM: null, landslide: false, tsunami: false, grid: "山手系統" },
-  { town: "しおかぜ町", alias: "辛地区", terrain: "白波川の河口近くの平地", floodM: 0.5, landslide: false, tsunami: true, grid: "海側系統" },
-];
-
-export const AREA_ROADS: ReadonlyArray<AreaRoad> = [
-  { id: "riverside", name: "川沿いの市道", towns: ["かわなぎ町", "みずほし町", "あしなみ町"] },
-  { id: "valley", name: "谷の県道", towns: ["くぬぎ谷町"] },
-  { id: "coast", name: "海沿いの国道", towns: ["うみなり町", "しおかぜ町"] },
-  { id: "slope", name: "高台への坂道", towns: ["そらみ台", "ほたる坂町"] },
-  { id: "bridge", name: "白波川の橋", towns: ["かわなぎ町", "しおかぜ町"] },
-];
-
-export const AREA_SHELTERS: ReadonlyArray<AreaShelter> = [
-  { id: "hill-school", name: "高台の小学校", town: "そらみ台", welfare: false },
-  { id: "valley-hall", name: "谷の集会所", town: "くぬぎ谷町", welfare: false },
-  { id: "slope-hall", name: "坂の公民館", town: "ほたる坂町", welfare: false },
-  { id: "welfare-home", name: "福祉避難所（特養）", town: "ほたる坂町", welfare: true },
-];
-
-export const AREA_FACILITIES: ReadonlyArray<AreaFacility> = [
-  { id: "dialysis", name: "河口の透析クリニック", town: "しおかぜ町", depends: "dialysis_center", kind: "透析施設" },
-  { id: "nurse", name: "訪問看護ステーション", town: "ほたる坂町", depends: null, kind: "訪問看護" },
-  { id: "pharmacy", name: "薬局の配達", town: "みずほし町", depends: "delivery", kind: "配達" },
-  { id: "hospital", name: "川沿いの病院", town: "かわなぎ町", depends: null, kind: "病院" },
-];
-
 /**
- * デモ事業所の区域（T125。offices.hazards が NULL のデモ事業所に訓練の開始の時に写す）。架空の街の乙地区（みずほし町、白波川から少し離れた平地）
- * にあり、洪水 0.5 m の区域。種の行に列を足さない（migration 0030 の前の D1 に種を入れられなくなるため）のでコードに持つ。
+ * デモ事業所の区域（T125。offices.hazards が NULL のデモ事業所に訓練の開始の時に写す）。事業所の真ん中（33.84, 132.765）は重ねるハザードマップの
+ * 洪水 0.5〜3 m の区域（T170 で確かめた）。種の行に列を足さない（migration 0030 の前の D1 に種を入れられなくなるため）のでコードに持つ。
  * 大雨の警戒レベル（避難指示）は事業所も対象、深い所（3 m 以上）の川の氾濫・津波・土砂は対象外。津波の区域ではないので職員の退避は起きない
  */
 export const DEMO_OFFICE_ZONES: ReadonlyArray<{ kind: "flood"; depthM: number }> = [{ kind: "flood", depthM: 0.5 }];
 
-/** 事業所の地理 1 つ（デモ事業所は架空の街、ほかの事業所は台帳の町名から作る。T70） */
+/** 事業所の地理 1 つ（デモ事業所は実の区画、ほかの事業所は台帳の町名から作る。T70・T170） */
 export type Area = {
-  /** 川（部屋に見せる架空の名前）。無ければ地理の文に川の行を書かない */
-  river: string | null;
+  /** 地域の名前（市。部屋に見せる）。無ければ地域の行を書かない */
+  region?: string;
+  /** 実の川の名前（部屋に見せる）。無ければ川の行を書かない */
+  rivers: ReadonlyArray<string>;
   towns: ReadonlyArray<AreaTown>;
   roads: ReadonlyArray<AreaRoad>;
   shelters: ReadonlyArray<AreaShelter>;
   facilities: ReadonlyArray<AreaFacility>;
+  /** 人をピンの位置で区画に入れる（デモ事業所。台帳の町名が架空なので）。無ければ台帳の町名で */
+  byPin?: true;
+  /** 実の避難所の名前を使っている（画面の出典を出す） */
+  realShelters?: true;
 };
 
-/** デモ事業所の地理（T50 の架空の街。仮想の訓練のテストと種はこれ） */
+/** デモ事業所の地理（松山市の実の区画。避難所は一般の言い方。開始の時に読めれば実の名前に。T170） */
 export const DEMO_AREA: Area = {
-  river: AREA_RIVER,
-  towns: AREA_TOWNS,
-  roads: AREA_ROADS,
-  shelters: AREA_SHELTERS,
-  facilities: AREA_FACILITIES,
+  region: DEMO_REGION,
+  rivers: DEMO_RIVERS,
+  towns: DEMO_TOWNS,
+  roads: DEMO_ROADS,
+  shelters: [
+    ...DEMO_TOWNS.map((t, i): AreaShelter => ({ id: `district-${i + 1}`, name: `${t.alias}の避難所`, town: t.town, welfare: false, ...(t.at ? { at: t.at } : {}) })),
+    { id: "welfare-home", name: "福祉避難所", town: DEMO_TOWNS[DEMO_TOWNS.length - 1].town, welfare: true },
+  ],
+  facilities: DEMO_FACILITIES,
+  byPin: true,
 };
 
 /** 別名の地区（「甲地区」「甲」）→ 地理の町。知らなければ null */
@@ -110,9 +95,35 @@ export function aliasOfTown(town: string | null | undefined, area: Area = DEMO_A
   return areaTown(town, area)?.alias ?? null;
 }
 
+/** 区画の言葉か台帳の町名 → 区画。無ければ null */
 export function areaTown(town: string | null | undefined, area: Area = DEMO_AREA): AreaTown | null {
   const v = town?.trim();
-  return v ? (area.towns.find((t) => t.town === v) ?? null) : null;
+  return v ? (area.towns.find((t) => t.town === v) ?? area.towns.find((t) => t.homes?.includes(v)) ?? null) : null;
+}
+
+/** ピンがこの長さ（km）より遠ければ、どの区画にも入れない（台帳の町名で引く） */
+export const DISTRICT_MAX_KM = 8;
+
+/** 2 点の長さ（km。区画の広さの目安なので平面で） */
+export function kmBetween(a: GeoPoint, b: GeoPoint): number {
+  const x = (b.lng - a.lng) * 111.32 * Math.cos((a.lat * Math.PI) / 180);
+  const y = (b.lat - a.lat) * 111.32;
+  return Math.hypot(x, y);
+}
+
+/** ピンの位置 → いちばん近い区画（真ん中のある区画だけ）。遠すぎれば null */
+export function townOfPin(at: GeoPoint, area: Area): AreaTown | null {
+  let best: AreaTown | null = null;
+  let bestKm = DISTRICT_MAX_KM;
+  for (const t of area.towns) {
+    if (!t.at) continue;
+    const km = kmBetween(at, t.at);
+    if (km <= bestKm) {
+      best = t;
+      bestKm = km;
+    }
+  }
+  return best;
 }
 
 /** 道路の名前（「川沿いの市道」）か id → 道路。知らなければ null */
@@ -132,22 +143,31 @@ export function facilityOf(raw: string, area: Area = DEMO_AREA): AreaFacility | 
 }
 
 /**
- * 本人の町（地理の町名）。デモの地理は台帳の町名が地理にあるときだけ、台帳から作った地理は町名の無い人を「町名なし」の町に。
- * 地理に無ければ null。コードだけが使う（部屋に渡さない）
+ * 本人の区画（区画の鍵）。デモの地理はピンの位置で（ピンが無い・遠すぎる人は台帳の町名で）、台帳から作った地理は台帳の町名で、町名の無い人は
+ * 「町名なし」の町に。地理に無ければ null。コードだけが使う（部屋に渡さない）
  */
 export function townOfLedger(ledger: Pick<Ledger, "basic">, area: Area = DEMO_AREA): string | null {
+  const at = ledger.basic.location;
+  if (area.byPin && at) {
+    const near = townOfPin(at, area);
+    if (near) return near.town;
+  }
   const t = ledger.basic.address?.town?.trim() || NO_TOWN;
-  return area.towns.some((x) => x.town === t) ? t : null;
+  return areaTown(t, area)?.town ?? null;
 }
 
 /**
  * 訓練で Claude に渡す文の町名 → 別名（T88。lib/pseudonym の pseudonymize の places）。本人役・通話・監督・講評・世界のどの入力でも、
- * 町名は（町名）でなく地区の別名にする（本人自身の町名も）。デモの地理は架空の町を全部、台帳から作った地理は台帳にある町名だけ
- * （「町名なし」と架空の「高台」は町名でないので入れない。「高台の避難所」を別名にしない）
+ * 町名は（町名）でなく地区の別名にする（本人自身の町名も）。デモの地理は区画の実の言葉と種の町名を全部（別名は画面で実の言葉に戻す。T170）、
+ * 台帳から作った地理は台帳にある町名だけ（「町名なし」と「高台」は町名でないので入れない。「高台の避難所」を別名にしない）
  */
-export function placesOf(area: Area, ledgers: ReadonlyArray<Pick<Ledger, "basic">>): Array<{ town: string; alias: string }> {
+export function placesOf(area: Area, ledgers: ReadonlyArray<Pick<Ledger, "basic">>): Array<{ town: string; alias: string; shown?: string }> {
   const own = new Set(ledgers.map((l) => l.basic.address?.town?.trim()).filter((t): t is string => !!t));
-  return area.towns.filter((t) => t.town !== NO_TOWN && (area === DEMO_AREA || own.has(t.town))).map((t) => ({ town: t.town, alias: t.alias }));
+  return area.towns.flatMap((t) => {
+    if (t.town === NO_TOWN) return [];
+    if (!area.byPin) return own.has(t.town) ? [{ town: t.town, alias: t.alias }] : [];
+    return [t.town, ...(t.homes ?? [])].map((town) => ({ town, alias: t.alias, shown: t.town }));
+  });
 }
 
 /** 事業所の本人たちの台帳から、地理（areaOf）と町名 → 別名（placesOf） */
@@ -161,25 +181,25 @@ export function officePlaces(officeId: string, ledgers: ReadonlyArray<Pick<Ledge
   );
 }
 
-/** 部屋の文の別名（甲地区）を町名に戻す（画面の文。サーバーの中だけ）。長い別名から（甲2地区 を 甲地区 より先に） */
+/** 部屋の文の別名（甲地区）を区画の言葉に戻す（画面の文。サーバーの中だけ）。長い別名から（甲2地区 を 甲地区 より先に） */
 export function restoreTowns(text: string, area: Area = DEMO_AREA): string {
   let out = text;
   for (const t of [...area.towns].sort((a, b) => b.alias.length - a.alias.length)) out = out.split(t.alias).join(t.town);
   return out;
 }
 
-/** 部屋に見せる地理の文（別名だけ。町名・人と町の結び付きを書かない） */
+/** 部屋に見せる地理の文（別名だけ。町名・区画の実の言葉・人と区画の結び付きを書かない） */
 export function geographyText(area: Area = DEMO_AREA): string {
   const hazards = (t: AreaTown) =>
-    [
-      t.floodM != null ? `洪水 ${t.floodM} m の想定` : null,
-      t.landslide ? "土砂災害の警戒区域" : null,
-      t.tsunami ? "津波の浸水の想定" : null,
-    ].filter(Boolean);
+    t.hazardWords ??
+    ([t.floodM != null ? `洪水 ${t.floodM} m の想定` : null, t.landslide ? "土砂災害の警戒区域" : null, t.tsunami ? "津波の浸水の想定" : null].filter(Boolean).join("・") ||
+      "ハザードの想定なし");
   const aliasOf = (town: string) => area.towns.find((t) => t.town === town)?.alias ?? town;
   return [
-    `地区（${area.towns.length}）${area.river ? `。${area.river}が街を東から海へ流れる` : ""}:`,
-    ...area.towns.map((t) => `- ${t.alias}: ${t.terrain}。${hazards(t).join("・") || "ハザードの想定なし"}。送電 ${t.grid}`),
+    ...(area.region ? [`地域: ${area.region}（実在の地域。川・橋・避難所の名前は実物で、出来事は訓練の想定）`] : []),
+    ...(area.rivers.length > 0 ? [`地域の川: ${area.rivers.join("・")}`] : []),
+    `地区（${area.towns.length}）:`,
+    ...area.towns.map((t) => `- ${t.alias}: ${t.terrain}。${hazards(t)}`),
     "主な道:",
     ...area.roads.map((r) => `- ${r.name}（${r.towns.map(aliasOf).join("・")}）`),
     "避難所:",
@@ -193,21 +213,15 @@ export function geographyText(area: Area = DEMO_AREA): string {
 
 /** 台帳に町名の無い人をまとめる町（画面の言葉。部屋には別名だけ） */
 export const NO_TOWN = "町名なし";
-/** 台帳に無い架空の町（避難所・福祉避難所・施設の置き場） */
+/** 台帳に無い一般の町（避難所・福祉避難所・施設の置き場。実の避難所が読めれば避難所は実の名前に） */
 export const HIGHLAND = "高台";
 
 const ALIAS_HEADS = ["甲", "乙", "丙", "丁", "戊", "己", "庚", "辛", "壬", "癸"] as const;
-const GRIDS = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L"] as const;
 
 /** i 番目の別名（甲地区…癸地区、10 を超えたら 甲2地区…） */
 export function aliasAt(i: number): string {
   const round = Math.floor(i / ALIAS_HEADS.length);
   return `${ALIAS_HEADS[i % ALIAS_HEADS.length]}${round > 0 ? round + 1 : ""}地区`;
-}
-
-/** 町 3 つずつの送電の区分（A 系統・B 系統…） */
-function gridAt(i: number): string {
-  return `${GRIDS[Math.floor(i / 3) % GRIDS.length]} 系統`;
 }
 
 /** 地理を作る本人 1 人（台帳と、頼り先の時計・訪問看護の有無） */
@@ -235,14 +249,15 @@ function terrainOf(floodM: number | null, flood: boolean, landslide: boolean, ts
 }
 
 /**
- * 事業所の地理。デモ事業所と確認用の事業所（種の事業所、T144）は T50 の架空の街のまま（DEMO_AREA）。
+ * 事業所の地理。デモ事業所と確認用の事業所（種の事業所、T144）は松山市の実の区画（DEMO_AREA）。
  * ほかの事業所は参加者の台帳の町名ごとに町を作る（町名の無い人は「町名なし」の 1 町）: 別名は町名の順に 甲地区・乙地区…、
- * 地形はその町の人のハザード（浸水の最大の深さ・土砂・津波）の一言、送電は 3 町ずつ。架空の町「高台」を 1 つ足し、
+ * 地形はその町の人のハザード（浸水の最大の深さ・土砂・津波）の一言。一般の町「高台」を 1 つ足し、
  * 避難所・福祉避難所・施設を置く。道は町ごとに 1 本（「甲地区の道」）と高台への坂道。施設は頼る人がいる物だけ
- * （透析先・冷蔵・配達の時計、訪問看護の連絡先）。部屋に見せるのは別名と地理の一言だけ（町名と本人の結び付きはコードだけが持つ）
+ * （透析先・冷蔵・配達の時計、訪問看護の連絡先）。部屋に見せるのは別名と地理の一言だけ（町名と本人の結び付きはコードだけが持つ）。
+ * geo（開始の時に読んだ公的なデータ。drills.world の写し）があれば、実の川と避難所の名前を足す（T170）
  */
-export function areaOf(officeId: string, people: ReadonlyArray<AreaPerson>): Area {
-  if (isSeedOfficeId(officeId)) return DEMO_AREA;
+export function areaOf(officeId: string, people: ReadonlyArray<AreaPerson>, geo?: RealGeo | null): Area {
+  if (isSeedOfficeId(officeId)) return applyRealGeo(DEMO_AREA, geo, []);
   const byTown = new Map<string, AreaPerson[]>();
   for (const p of people) {
     const t = p.ledger.basic.address?.town?.trim() || NO_TOWN;
@@ -259,7 +274,10 @@ export function areaOf(officeId: string, people: ReadonlyArray<AreaPerson>): Are
     const flood = hz.some((h) => h.kind === "flood");
     const landslide = hz.some((h) => h.kind === "landslide");
     const tsunami = hz.some((h) => h.kind === "tsunami");
-    return { town, alias: aliasAt(i), terrain: terrainOf(floodM, flood, landslide, tsunami), floodM, landslide, tsunami, grid: gridAt(i) };
+    // 町の真ん中（地図の印と、実の川・避難所を近い町に当てる。ピンのある人だけで。部屋に渡さない）
+    const pins = byTown.get(town)!.flatMap((p) => (p.ledger.basic.location ? [p.ledger.basic.location] : []));
+    const at = pins.length > 0 ? { lat: pins.reduce((n, x) => n + x.lat, 0) / pins.length, lng: pins.reduce((n, x) => n + x.lng, 0) / pins.length } : null;
+    return { town, alias: aliasAt(i), terrain: terrainOf(floodM, flood, landslide, tsunami), floodM, landslide, tsunami, ...(at ? { at } : {}) };
   });
   towns.push({
     town: highland,
@@ -268,7 +286,6 @@ export function areaOf(officeId: string, people: ReadonlyArray<AreaPerson>): Are
     floodM: null,
     landslide: false,
     tsunami: false,
-    grid: gridAt(names.length),
   });
   const roads: AreaRoad[] = [
     ...towns.slice(0, -1).map((t, i) => ({ id: `town-${i + 1}`, name: `${t.alias}の道`, towns: [t.town] })),
@@ -283,5 +300,6 @@ export function areaOf(officeId: string, people: ReadonlyArray<AreaPerson>): Are
     ...DEPEND_FACILITIES.filter((f) => depends.has(f.depends)).map((f) => ({ id: f.id, name: f.name, town: highland, depends: f.depends, kind: f.kind })),
     ...(people.some((p) => p.nurse) ? [{ id: "nurse", name: "訪問看護ステーション", town: highland, depends: null, kind: "訪問看護" }] : []),
   ];
-  return { river: null, towns, roads, shelters, facilities };
+  const own = names.filter((n) => n !== NO_TOWN);
+  return applyRealGeo({ rivers: [], towns, roads, shelters, facilities }, geo, own);
 }

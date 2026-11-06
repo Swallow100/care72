@@ -24,6 +24,7 @@ import type { GeoPoint, HazardKind } from "@/lib/db/types";
 import { FULL_ZOOM, keyAction, MAP_LIMITS, pinchView, sameView, stepZoom, toFrame } from "@/lib/map/camera";
 import { COUNT_W, groupPins, labelWidth, memberStates, pinSize, statesWidth, type PinGroup, type PinSize } from "@/lib/map/cluster";
 import { demoShown, type DemoOverlay } from "@/lib/map/demo";
+import type { MapMark } from "@/lib/map/marks";
 import { RAIN_LEGEND_LABEL, RAIN_OPACITY, rainColor } from "@/lib/map/rain-scale";
 import {
   BASE_SIZE,
@@ -57,6 +58,7 @@ import { PlaceMarks } from "./PlaceMarks";
 import { useMapShelters } from "./useMapShelters";
 import { RainScaleLegend } from "./RainScaleLegend";
 import { useMapDrag } from "./useMapDrag";
+import { MarkBand, WorldMarks } from "./WorldMarks";
 import { WheelHint } from "./WheelHint";
 import type { StateTone } from "@/lib/person";
 
@@ -124,6 +126,8 @@ export type CaseMapProps = {
    * （訓練の画面は架空の出来事の地図なので渡さない）
    */
   places?: MapPlaces | null;
+  /** 場所の印（仮想の訓練の世界の出来事、T170。lib/map/marks.ts）。人のピンの下に重ね、地図の上に「デモ」の帯を出す */
+  marks?: ReadonlyArray<MapMark>;
 };
 
 /** 層の切替（小さな地図と全画面で同じ物） */
@@ -139,7 +143,7 @@ type LayerChoice = {
   shelters?: { on: boolean; toggle: () => void };
 };
 
-export function CaseMap({ pins, layers, demo, unplaced, center, region = null, nowcast = false, fictional = false, places = null }: CaseMapProps) {
+export function CaseMap({ pins, layers, demo, unplaced, center, region = null, nowcast = false, fictional = false, places = null, marks = [] }: CaseMapProps) {
   // 選んだ層（T151b: 色の層は 1 度に 1 つ。雨雲を付けると浸水・土砂・津波は外し、雨雲を外すと前の層に戻す。lib/map/layer-pick.ts）
   const [pick, setPick] = useState<LayerPick>(() => ({ on: new Set(layers), rainOn: true }));
   // 気象庁の雨雲の一番新しい実況の時刻（旗が off・デモ事業所では読まない）
@@ -232,6 +236,7 @@ export function CaseMap({ pins, layers, demo, unplaced, center, region = null, n
         </div>
 
         {demoShown(demo) && <DemoBand demo={demo} />}
+        {marks.length > 0 && <MarkBand />}
 
         <div
           ref={box}
@@ -255,6 +260,7 @@ export function CaseMap({ pins, layers, demo, unplaced, center, region = null, n
           {demo && rainOn && <Rain demo={demo} view={view} size={BASE_SIZE} />}
           {nowc && rainOn && <NowcastLayer time={nowc} view={view} size={BASE_SIZE} />}
           {places && <PlaceMarks view={view} size={BASE_SIZE} tz={tz} shelters={shelters.list} destinations={places.destinations} />}
+          <WorldMarks marks={marks} pins={pins} view={view} size={BASE_SIZE} wording="short" />
           {pins.map((p) => {
             const at = place(view, p.location);
             return <PinLink key={p.id} pin={p} size={pinSize(tz)} style={{ left: `${at.left}%`, top: `${at.top}%`, zIndex: 10 + p.layer }} />;
@@ -266,7 +272,7 @@ export function CaseMap({ pins, layers, demo, unplaced, center, region = null, n
       </figure>
       {/* 全画面は押してから作る（閉じている間はタイルを要求しない）。<dialog> の showModal で一番上の層に出るので
           場所を取らない。figcaption を figure の最後に置くため、figure の外に置く */}
-      {full && <FullMap pins={pins} demo={demo} unplaced={unplaced} choice={choice} center={center} fictional={fictional} places={places} onClose={() => setFull(false)} />}
+      {full && <FullMap pins={pins} demo={demo} unplaced={unplaced} choice={choice} center={center} fictional={fictional} places={places} marks={marks} onClose={() => setFull(false)} />}
     </>
   );
 }
@@ -361,6 +367,8 @@ type FullMapProps = {
   fictional?: boolean;
   /** 計画の避難先（小さな地図と同じ。T169） */
   places?: MapPlaces | null;
+  /** 場所の印（小さな地図と同じ物。全画面は場所の名前も出す。T170） */
+  marks?: ReadonlyArray<MapMark>;
   onClose: () => void;
   /** テスト用: 枠の大きさを測る前に使う大きさ（サーバーの描画では ResizeObserver が動かない） */
   initialSize?: Size;
@@ -369,7 +377,7 @@ type FullMapProps = {
 /** タイルの番号の鍵 */
 const tileKey = (t: Pick<TileSpot, "z" | "x" | "y">) => `${t.z}/${t.x}/${t.y}`;
 
-export function FullMap({ pins, demo, unplaced, choice, center, fictional = false, places = null, onClose, initialSize }: FullMapProps) {
+export function FullMap({ pins, demo, unplaced, choice, center, fictional = false, places = null, marks = [], onClose, initialSize }: FullMapProps) {
   const titleId = useId();
   const dialog = useRef<HTMLDialogElement>(null);
   const box = useRef<HTMLDivElement>(null);
@@ -510,6 +518,7 @@ export function FullMap({ pins, demo, unplaced, choice, center, fictional = fals
         </div>
 
         {demoShown(demo) && <DemoBand demo={demo} />}
+        {marks.length > 0 && <MarkBand />}
 
         <div
           ref={box}
@@ -531,6 +540,7 @@ export function FullMap({ pins, demo, unplaced, choice, center, fictional = fals
               {demo && choice.rainOn && <Rain demo={demo} view={view} size={size} />}
               {choice.nowcast && choice.rainOn && <NowcastLayer time={choice.nowcast} view={view} size={size} />}
               {places && tz !== null && <PlaceMarks view={view} size={size} tz={tz} shelters={shelters.list} destinations={places.destinations} />}
+              <WorldMarks marks={marks} pins={pins} view={view} size={size} wording="label" />
               {groups.map(({ group: g, pins: ms }) =>
                 ms.length === 1 ? (
                   <PinLink

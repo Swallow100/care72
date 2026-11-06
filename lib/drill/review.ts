@@ -206,7 +206,7 @@ export type ReviewContext = {
 
 const SCENE_WORDS = { heavy_rain: "大雨（警戒レベル 3 → 4 → 浸水）", earthquake: "地震（南海トラフ 震度 6強・津波・停電）" } as const;
 /** 仮想モード（T50）: 街の出来事は世界の部屋が刻みごとに決めた（固定の筋が無い） */
-const VIRTUAL_WORDS = "仮想（架空の街の出来事と、架空の人の結末を刻みごとに AI が決めた。結末の数は時計の計算の「条件に達した人」とは別）";
+const VIRTUAL_WORDS = "仮想（実在の地域の地理の上で、想定の出来事と架空の人の結末を刻みごとに AI が決めた。結末の数は時計の計算の「条件に達した人」とは別）";
 
 /** 状態の色の言葉（左の表の色。lib/triage の色の名前） */
 const triageWord = (c: string | undefined) => (c && c in COLOR_LABELS ? COLOR_LABELS[c as keyof typeof COLOR_LABELS] : null);

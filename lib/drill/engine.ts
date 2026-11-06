@@ -30,6 +30,7 @@ import {
 import { castEvent, castTurn, eventKey, turnKey, type Cast } from "./cast.ts";
 import { NO_HINTS, type OutcomeHints, type OutcomeHook } from "./outcome.ts";
 import { isStaffCount } from "./options.ts";
+import type { RealGeo } from "./real-geo-apply.ts";
 import type { ActionRecord, FreeDraft } from "./action-types.ts";
 import {
   DIRECTOR_MAX,
@@ -184,6 +185,8 @@ export type DrillState = {
   homes?: Homes;
   /** 事業所の区域（T125。offices.hazards の写し）。区域の出来事の間の職員の退避に使う。無ければ区域なし */
   officeZones?: OfficeZone[];
+  /** 仮想の開始の時に読んだ公的なデータ（実の川と避難所。T170）。読めなかった・ほかの想定・前からの訓練には無い */
+  geo?: RealGeo;
 };
 
 /** 1 刻みで起きた事。保存（lib/drill/db.ts）はこれを drill_events と signals に書く */
@@ -213,6 +216,8 @@ export type WorldInput = DirectorInput & {
   session: string | null;
   /** 今の時刻（発災からの分） */
   minute: number;
+  /** 開始の時に読んだ公的なデータ（実の川と避難所。T170）。読めなかった・前からの訓練には無い */
+  geo?: RealGeo;
 };
 
 /** 世界の 1 刻みの返事。incidents は当てる状況（結末も入る）、session は作った・使った部屋の ID（変わらなければ省く） */
@@ -397,7 +402,7 @@ export function initialState(
   startedAt: string,
   options: DrillOptions = {},
   cast: Cast = {},
-  place: Pick<DrillState, "homes" | "officeZones"> = {},
+  place: Pick<DrillState, "homes" | "officeZones" | "geo"> = {},
 ): DrillState {
   const opts = cleanOptions(options);
   return {
@@ -416,6 +421,7 @@ export function initialState(
     ...(place.homes && Object.keys(place.homes).length > 0 ? { homes: place.homes } : {}),
     // 事業所の区域は分かっていれば空でも持つ（区域なしと「分からない」を分ける。T128 の「事業所 対象外」）
     ...(place.officeZones ? { officeZones: place.officeZones.map((z) => ({ ...z })) } : {}),
+    ...(place.geo ? { geo: place.geo } : {}),
   };
 }
 
@@ -692,7 +698,7 @@ async function virtualStep(
   const keep = (p: string) => members.has(p) && !world.ended?.[p];
   const hints: OutcomeHints = { reached: raw.reached.filter((o) => keep(o.person)), clocks: raw.clocks.filter((c) => keep(c.person)) };
   const r: WorldResult | null = hooks.world
-    ? await safely(() => hooks.world!({ ...t.directorInput, world, hints, session: world.session ?? null, minute }), null)
+    ? await safely(() => hooks.world!({ ...t.directorInput, world, hints, session: world.session ?? null, minute, ...(state.geo ? { geo: state.geo } : {}) }), null)
     : null;
   // 結末の人がまた結末になる・参加者でない人の状況は当てない（世界の口でも捨てるが、ここでも守る）。余震は規模まで（T104）
   const inserted = r
@@ -926,7 +932,7 @@ export async function advance(
         : NO_HINTS;
       const keep = (p: string) => members.has(p) && !world.ended?.[p];
       const hints: OutcomeHints = { reached: raw.reached.filter((o) => keep(o.person)), clocks: raw.clocks.filter((c) => keep(c.person)) };
-      const r = await safely(() => hooks.world!({ ...directorInput, hints, session: world.session ?? null, minute: to }), null);
+      const r = await safely(() => hooks.world!({ ...directorInput, hints, session: world.session ?? null, minute: to, ...(state.geo ? { geo: state.geo } : {}) }), null);
       counts.director += 1;
       directorAt = to;
       // 余震は規模まで（T104）

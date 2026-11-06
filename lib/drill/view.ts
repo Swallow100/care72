@@ -26,7 +26,10 @@ import { drillSituation, nowHour, simAt, type ActionRecord, type DrillState, typ
 import { fictionKindOf, type FictionKind } from "./fiction.ts";
 import { passHeard } from "./heard-keep.ts";
 import { nightTimeLabel } from "./night.ts";
-import { lastHour, scenarioOf } from "./scenarios.ts";
+import { isVirtual, lastHour, scenarioOf } from "./scenarios.ts";
+import { areaOf, type Area } from "./area.ts";
+import type { RealGeo } from "./real-geo-apply.ts";
+import { residentsOf, worldPlaces, worldSlots, type WorldPlace, type WorldSlot } from "./world-marks.ts";
 import { fitKindOf, fitLedgerHazards, profileOf, type FitProfile } from "./fit.ts";
 import type { Homes } from "./comms.ts";
 import { hazardText } from "../labels.ts";
@@ -92,6 +95,11 @@ export type DrillScreen = {
    * 台帳の並び（kana）。氏名・住所は持たない
    */
   area: AreaPerson[];
+  /**
+   * 仮想の訓練の実の地理（T170）。地理・区画ごとの住む人（ピンの位置からコードが決める）・場所ごとの今の出来事。ほかの想定は無い。
+   * サーバーの部品だけが読む（Claude に渡さない）
+   */
+  place?: { area: Area; residents: Record<string, string[]>; slots: WorldSlot[]; places: WorldPlace[] };
   /**
    * 打てる手の候補（T126、lib/drill/action-hints.ts）。本人の id → 候補（無い人は入れない）。分かった事・頼み事・本人の時計から引き、
    * 可否は上の terms（無ければ連絡先の有無だけ）。色と連絡順には使わない。進行中の今の区切りだけで、再生は null
@@ -309,12 +317,21 @@ export async function loadDrillScreen(
       hazards: ledgers[i].evacuation.hazards.map((h) => ({ kind: h.kind, depthM: h.depthM ?? null })),
       town: ledgers[i].basic.address?.town?.trim() || null,
     })),
+    ...(isVirtual(row.scenario) ? { place: placeOf(scope.officeId, peopleRows.map((p, i) => ({ id: p.id, ledger: ledgers[i] })), state.geo, ticks) } : {}),
     busy: busyOf(state, { on: clock.clock, aiAt: clock.aiAt }),
     terms,
     hints: live
       ? hintsByPerson({ state, people: peopleRows, ledgers, clockRows, rows, situation, terms, contacts: contactMap, last: lastHour(scenario) })
       : null,
   };
+}
+
+/** 仮想の訓練の実の地理と場所ごとの出来事（T170、lib/drill/world-marks.ts） */
+function placeOf(officeId: string, people: ReadonlyArray<{ id: string; ledger: ReturnType<typeof parseLedger> }>, geo: RealGeo | undefined, ticks: ReadonlyArray<Tick>) {
+  const area = areaOf(officeId, people.map((p) => ({ ledger: p.ledger })), geo);
+  const residents = residentsOf(area, people);
+  const slots = worldSlots(ticks, area, residents);
+  return { area, residents, slots, places: worldPlaces(slots) };
 }
 
 /**

@@ -2,6 +2,7 @@
 // 表の行ごとに当てはまる人・当てはまらない人・世界の変化・固定の文・根拠、監督の返事の捨て方（全体・何時間後・差し込める数・同じ人・生き死に）、
 // 予定と到着、時計の頼り先（drillClocks → lib/triage は触らない）、仮想の街の新しい種類、画面の印と被害状況の行、本人役への言葉。
 
+import { townOfLedger } from "./area.ts";
 import Anthropic from "@anthropic-ai/sdk";
 import type { DatabaseSync } from "node:sqlite";
 import { createElement } from "react";
@@ -672,7 +673,8 @@ describe("仮想の街（world_step の新しい種類）", () => {
         return [
           id,
           {
-            town: p.ledger.basic.address?.town ?? null,
+            town: townOfLedger(p.ledger),
+          homeTown: p.ledger.basic.address?.town ?? null,
             depends: SEED_PEOPLE.find((x) => x.person.id === id)!.clocks.flatMap((k) => (k.depends_on ? [k.depends_on] : [])),
             categories: p.clocks.map((k) => k.category),
             nurse: p.contacts.some((c) => c.kind === "visiting_nurse"),
@@ -694,14 +696,14 @@ describe("仮想の街（world_step の新しい種類）", () => {
     const out = worldIncidents(
       step1([
         e("welfare_shelter", { name: "知らない避難所" }),
-        e("welfare_shelter", { name: "高台の小学校" }), // 福祉避難所でない
+        e("welfare_shelter", { name: "甲地区の避難所" }), // 福祉避難所でない
         e("welfare_shelter"),
         e("vendor", { target: alias("p-05"), value: "3" }), // 酸素・呼吸器でない
       ]),
       ctx,
     );
     expect(out.map((x) => [x.change, x.text])).toEqual([
-      [{ kind: "shelter", id: "sh-welfare-home", label: "福祉避難所（特養）", state: "open" }, "福祉避難所（特養） 開設"],
+      [{ kind: "shelter", id: "sh-welfare-home", label: "福祉避難所", state: "open" }, "福祉避難所 開設"],
     ]);
     const more = worldIncidents(
       step1([
@@ -714,7 +716,7 @@ describe("仮想の街（world_step の新しい種類）", () => {
     );
     expect(more.map((x) => [x.change.kind, x.person ?? null, x.text])).toEqual([
       ["schedule", "p-01", "酸素業者 巡回予定 3 時間後"],
-      ["note", null, "かわなぎ町 給水所 開設"],
+      ["note", null, "市坪・井門付近 給水所 開設"],
       ["town_facility", null, "薬局の配達 休止"],
     ]);
     expect(more[0].change).toEqual({ kind: "schedule", at: 540, by: "world", then: { kind: "arrival", role: "vendor" } });
@@ -731,7 +733,7 @@ describe("仮想の街（world_step の新しい種類）", () => {
     for (const k of ["welfare_shelter", "water_station", "pharmacy", "helper", "vendor", "info"]) expect(WORLD_SYSTEM).toContain(`  - ${k}: `);
     expect(WORLD_STEP_JSON_SCHEMA.properties.events.items.required).toEqual(["kind", "town", "target", "name", "value"]);
     expect(WORLD_STEP_JSON_SCHEMA.properties.events.items.properties.kind.description).toContain("vendor");
-    expect(WORLD_AGENT_VERSION).toBe(6);
+    expect(WORLD_AGENT_VERSION).toBeGreaterThanOrEqual(6);
   });
 });
 

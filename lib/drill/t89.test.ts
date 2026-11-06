@@ -43,7 +43,7 @@ function fastClock() {
 }
 
 const FIRST: WorldStep = {
-  narration: "甲地区で白波川が増水している",
+  narration: "甲地区で重信川が増水している",
   events: [{ kind: "outage", town: "甲地区", target: "", name: "", value: "start" }],
   farewells: [],
 };

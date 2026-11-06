@@ -27,6 +27,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { ClaudeClient } from "../../../lib/claude/client.ts";
 import { officePlaces } from "../../../lib/drill/area.ts";
+import { loadRealGeo } from "../../../lib/drill/real-geo.ts";
 import { createFreeHook } from "../../../lib/drill/free-action.ts";
 import { roomClientOf, worldModeOf, type WorldMode } from "../../../lib/drill/world-room.ts";
 import { homeOf } from "../../../lib/drill/comms.ts";
@@ -168,7 +169,7 @@ export async function runEval(cfg: EvalConfig): Promise<{ summary: Summary; dir:
     const room = recordRoom(cfg.real ? roomClientOf({ ANTHROPIC_API_KEY: cfg.key }) : fakeRoom({ rng: rngOf(`${plan.seed}/room`), noise: cfg.noise, latency: cfg.latency ?? 0 }), log);
     if (worldAgent && plan.scenario === "virtual" && cfg.world === "session") room.reuse(worldAgent.agent_id);
     say(`回 ${i}/${cfg.runs}: ${plan.scenario}${plan.scale ? ` ${plan.scale.kind}:${plan.scale.level}` : ""}、${plan.participants.length} 人、種 ${plan.seed}`);
-    const outcome = await runDrill(plan, { client: claude, room, log, key: cfg.key, world: cfg.world, real: cfg.real, maxAdvances: cfg.maxAdvances, review: cfg.review, worldAgent, terms: cfg.terms, answerCalls: cfg.answerCalls ?? false, ...(cfg.talkRounds ? { talkRounds: cfg.talkRounds } : {}) });
+    const outcome = await runDrill(plan, { client: claude, room, log, key: cfg.key, world: cfg.world, real: cfg.real, ...(cfg.real ? { loadGeo: loadRealGeo } : {}), maxAdvances: cfg.maxAdvances, review: cfg.review, worldAgent, terms: cfg.terms, answerCalls: cfg.answerCalls ?? false, ...(cfg.talkRounds ? { talkRounds: cfg.talkRounds } : {}) });
     room.finish();
     worldAgent = outcome.worldAgent ?? worldAgent;
     if (i <= cfg.judge && outcome.replay) {

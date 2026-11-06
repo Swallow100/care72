@@ -22,7 +22,7 @@ import type { ClaudeClient } from "../claude/client.ts";
 import { OPUS } from "../claude/models.ts";
 import { d1FromSqlite, migratedSqlite } from "../db/test-d1.ts";
 import { findLeaks, pseudonymizeText } from "../pseudonym/index.ts";
-import { AREA_TOWNS, areaOf, DEMO_AREA, geographyText } from "./area.ts";
+import { areaOf, DEMO_AREA, geographyText } from "./area.ts";
 import type { DrillScenario, Ledger } from "../db/types.ts";
 import { castScenario, matchesPick, needsCast, type CastFacts } from "./cast.ts";
 import { castFactsMap } from "./cast-facts.ts";
@@ -608,23 +608,23 @@ async function newCast() {
 }
 
 describe("仮想モードの街を台帳から（T70 の 4）", () => {
-  it("デモ事業所は架空の 8 町のまま（地理の文も同じ）", () => {
+  it("デモ事業所は松山市の実の区画（T170。地理の文も同じ）", () => {
     expect(areaOf(DEMO.id, [])).toBe(DEMO_AREA);
-    expect(DEMO_AREA.towns).toBe(AREA_TOWNS);
     expect(geographyText(DEMO_AREA)).toBe(geographyText());
-    expect(geographyText()).toContain("地区（8）。白波川が街を東から海へ流れる:");
+    expect(geographyText()).toContain("地域の川: 重信川・石手川");
+    expect(geographyText()).toContain("地区（6）:");
   });
 
-  it("新しい事業所: 台帳の町名ごとに別名・地形・送電、町名なしの町、架空の高台に避難所と頼る人のいる施設", async () => {
+  it("新しい事業所: 台帳の町名ごとに別名・地形、町名なしの町、高台に避難所と頼る人のいる施設", async () => {
     addNewOffice();
     const cast = await newCast();
     const a = cast.area;
-    expect(a.towns.map((t) => [t.town, t.alias, t.terrain, t.grid])).toEqual([
-      ["あおば町", "甲地区", "浸水 3 m の想定の低い土地", "A 系統"],
-      ["しらさぎ町", "乙地区", "浸水 0.5 m の想定の低い土地", "A 系統"],
-      ["もみじ台", "丙地区", "想定なし", "A 系統"],
-      ["町名なし", "丁地区", "想定なし", "B 系統"],
-      ["高台", "戊地区", "高台の住宅地", "B 系統"],
+    expect(a.towns.map((t) => [t.town, t.alias, t.terrain])).toEqual([
+      ["あおば町", "甲地区", "浸水 3 m の想定の低い土地"],
+      ["しらさぎ町", "乙地区", "浸水 0.5 m の想定の低い土地"],
+      ["もみじ台", "丙地区", "想定なし"],
+      ["町名なし", "丁地区", "想定なし"],
+      ["高台", "戊地区", "高台の住宅地"],
     ]);
     expect(a.roads.map((r) => [r.name, r.towns])).toEqual([
       ["甲地区の道", ["あおば町"]],
@@ -649,7 +649,8 @@ describe("仮想モードの街を台帳から（T70 の 4）", () => {
     const cast = await newCast();
     const geo = geographyText(cast.area);
     for (const t of NEW_TOWNS) expect(geo).not.toContain(t);
-    expect(geo).toContain("甲地区: 浸水 3 m の想定の低い土地。洪水 3 m の想定。送電 A 系統");
+    expect(geo).toContain("甲地区: 浸水 3 m の想定の低い土地。洪水 3 m の想定");
+    expect(geo).not.toContain("系統");
     const input: WorldInput = {
       scenario: "virtual",
       step: 0,
@@ -688,13 +689,13 @@ describe("仮想モードの街を台帳から（T70 の 4）", () => {
     );
     expect(out[0]).toMatchObject({ change: { kind: "narration", room: "甲地区で川があふれた" }, text: "あおば町で川があふれた" });
     expect(out[1].change).toEqual({ kind: "town_flood", town: "あおば町", depthM: 3, persons: ["n-1"] });
-    expect(out[2]).toMatchObject({ change: { kind: "town_road", label: "乙地区の道", open: false, persons: ["n-2", "n-3"] }, text: "しらさぎ町の道 通行止" });
+    expect(out[2]).toMatchObject({ change: { kind: "town_road", label: "しらさぎ町の道", open: false, persons: ["n-2", "n-3"] }, text: "しらさぎ町の道 通行止" });
     expect(out[3].change).toMatchObject({ kind: "town_facility", label: "透析施設", open: false, persons: ["n-2"] });
     // 地理に無い別名は捨てる
     expect(out).toHaveLength(4);
-    // 今の街の文（部屋へ）は別名の道のまま
+    // 世界の道は画面の言葉。部屋へ送る文は門で別名に戻る（T170）
     const w = out.reduce((x, e) => applyEvent(x, e, 6), EMPTY_WORLD);
-    expect(worldNow(w, cast.area)).toContain("乙地区の道 通行止");
+    expect(pseudonymizeText(worldNow(w, cast.area).join("\n"), cast.key).text).toContain("乙地区の道 通行止");
   });
 
   it("新しい事業所の仮想の訓練: 世界（1 回呼び）に別名の地理が届き、出来事が台帳の町の人に当たる。hooks なしでも最後まで", async () => {
