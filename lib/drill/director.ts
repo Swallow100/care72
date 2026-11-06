@@ -49,7 +49,7 @@ import {
   type StopLog,
 } from "./engine.ts";
 import { CALL_STATUS_LABELS, PHONE_LABELS, SHELTER_LABELS, TSUNAMI_LABELS, WATER_LABELS } from "./labels.ts";
-import { nightLine } from "./night.ts";
+import { timeLines } from "./night.ts";
 import { hourText, minuteText as minuteWords } from "./time-text.ts";
 import { areaOf, placesOf } from "./area.ts";
 import { cleanWords, inOutageArea, isPersonaFailure, reportersOf } from "./persona.ts";
@@ -168,7 +168,7 @@ export function sceneText(input: DirectorInput, aliasOf: ReadonlyMap<string, str
     `時刻: 発災から ${minuteWords(input.hour * 60)}（${last} 時間まで）`,
     `差し込める数: ${budgetOf(input)}`,
     // 夜間発災（T59）だけ。時刻の 1 行
-    ...(input.night ? [nightLine(input.hour)] : []),
+    ...timeLines(input.hour, input),
     // 発災からの時間の帯の目安（T104、lib/drill/time-odds.ts）。種類と出典の id を添える
     timelineText(input.hour, { with: "director", profile }),
     // 起きやすい物・起きにくい物と、この訓練の傾向（T121。訓練ごとの種で揺らす）。種の無い訓練は書かない
@@ -179,7 +179,7 @@ export function sceneText(input: DirectorInput, aliasOf: ReadonlyMap<string, str
       ? [["今の状態（いつから・まだ変わらない時刻）:", ...stateLines(w, Math.round(input.hour * 60), who).map((x) => `- ${x}`)].join("\n")]
       : []),
     // もう出した出来事（T130。同じ種類・同じ言い回しを別の人にくり返さない）
-    ...issuedBlock(w, (k) => (isInjectKind(k) ? EVENT_CATALOG[k].label : k), who),
+    ...issuedBlock(w, (k) => (isInjectKind(k) ? EVENT_CATALOG[k].label : k), who, input.participants),
     input.incidents.length > 0
       ? ["この刻みの状況:", ...input.incidents.map((e) => `- ${e.text}${who(e.person) ? `（${who(e.person)}）` : ""}`)].join("\n")
       : "この刻みの状況: 新しい事はない",

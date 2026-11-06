@@ -4,7 +4,9 @@
 //   （表は毎回同じで、数えると作り物の表を測る）。種類の数・偏り（正規化したエントロピーと最多の割合）・並びの重なり（回どうしの Jaccard）
 // - 言葉: 本人役（AI）の言う事（刻みの安否・通話・往復・訪問）。文字の 3-gram の重なり（回どうしの Jaccard）、異なり、同じ文の割合
 // - 人ごとの反応: 同じ人の違う回どうし、違う人の同じ回どうしの、言葉の離れ（1 − Jaccard）と赤の割合の差
-// 数の向き: 重なり・同じ文の割合は低いほど多様。異なり・エントロピー・離れは高いほど多様
+// - 人ごとの筋（T165）: 同じ回の人ごとの出来事（監督・世界・表のどれでも、その人を指す物）の種類の数と、人どうしの種類の集合の重なり
+//   （Jaccard）。評価の 7 回目で審査役の「人ごとの筋」が 2 のままで、人によって違う筋が立っているかを数で見るため
+// 数の向き: 重なり・同じ文の割合は低いほど多様。異なり・エントロピー・離れ・人ごとの種類の数は高いほど多様
 
 import type { RunOutcome } from "./drive.ts";
 
@@ -20,8 +22,63 @@ export type DiversityNumbers = {
     redRateDifferentPersons: number | null;
     pairsSame: number;
     pairsDifferent: number;
+    /** 人ごとの出来事の種類の数（回と人の平均。T165）。前の回の summary には無い */
+    kindsPerPerson?: number | null;
+    /** 人ごとの出来事の種類の数の最小（T165） */
+    kindsPerPersonMin?: number | null;
+    /** その人を指す出来事が 1 つも無かった人の割合（回と人。T165） */
+    noKindShare?: number | null;
+    /** 同じ回の人どうしの出来事の種類の集合の重なり（Jaccard の平均。どちらも出来事のある組だけ。高いほど同じ形の筋。T165） */
+    kindJaccard?: number | null;
+    /** kindJaccard を数えた組の数（T165） */
+    kindPairs?: number;
   };
 };
+
+/**
+ * 人ごとの出来事の種類（T165）。その人を指す出来事（監督・世界・想定の表。AI でない物も）の種類の集合。
+ * 種類は監督の差し込みの種類（inject）か変化の種類。止まった印・世界の 1 文は数えない。参加者ごとに必ず鍵を作る（無ければ空の集合）
+ */
+export function personKinds(o: RunOutcome): Map<string, Set<string>> {
+  const m = new Map<string, Set<string>>(o.plan.participants.map((p) => [p, new Set<string>()]));
+  for (const t of o.replay?.ticks ?? []) {
+    for (const e of t.incidents) {
+      if (typeof e.person !== "string" || !m.has(e.person)) continue;
+      const kind = typeof e.inject === "string" ? e.inject : (e.change?.kind ?? "?");
+      if (NOT_STORY.has(kind)) continue;
+      m.get(e.person)!.add(kind);
+    }
+  }
+  return m;
+}
+
+/** 人ごとの筋の数（T165）。回ごとの personKinds をまとめる */
+export function personArcNumbers(outcomes: ReadonlyArray<RunOutcome>): {
+  kindsPerPerson: number | null;
+  kindsPerPersonMin: number | null;
+  noKindShare: number | null;
+  kindJaccard: number | null;
+  kindPairs: number;
+} {
+  const sizes: number[] = [];
+  const js: number[] = [];
+  for (const o of outcomes) {
+    const m = personKinds(o);
+    for (const set of m.values()) sizes.push(set.size);
+    for (const [a, b] of pairs([...m.values()])) {
+      if (a.size === 0 || b.size === 0) continue;
+      const j = jaccard(a, b);
+      if (j !== null) js.push(j);
+    }
+  }
+  return {
+    kindsPerPerson: sizes.length > 0 ? sizes.reduce((x, y) => x + y, 0) / sizes.length : null,
+    kindsPerPersonMin: sizes.length > 0 ? Math.min(...sizes) : null,
+    noKindShare: sizes.length > 0 ? sizes.filter((n) => n === 0).length / sizes.length : null,
+    kindJaccard: mean(js),
+    kindPairs: js.length,
+  };
+}
 
 /** 数えない変化（止まった印・代替の印・世界の刻みごとの 1 文） */
 const NOT_STORY = new Set(["ai_stop", "world_note", "narration"]);
@@ -178,6 +235,7 @@ export function diversityOf(outcomes: ReadonlyArray<RunOutcome>): DiversityNumbe
       redRateDifferentPersons: mean(diffRed),
       pairsSame: same.filter((x) => x !== null).length,
       pairsDifferent: diff.filter((x) => x !== null).length,
+      ...personArcNumbers(outcomes),
     },
   };
 }

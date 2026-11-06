@@ -24,6 +24,7 @@ import { birthIn } from "../shapes.ts";
 import { DRILL_START, type LooseAction, type LooseTurn, type RunOutcome } from "./drive.ts";
 import { factHits, type FactPerson } from "./facts-check.ts";
 import { talkHits, type TalkNumbers } from "./talk-check.ts";
+import { jaccard, personKinds } from "./diversity.ts";
 import type { AiRecord, LogRecord } from "./record.ts";
 import { PERSONA_ROLES, type Role } from "./roles.ts";
 
@@ -82,7 +83,7 @@ export function hurtIn(text: string): boolean {
 // ---------- 引っかかった所 ----------
 
 export type CheckHit = {
-  check: "banned" | "shape" | "leak" | "overmask" | "contradiction" | "time_odds" | "stop" | "op_failed" | "budget" | "terms" | "fit" | "free" | "facts" | "talk";
+  check: "banned" | "shape" | "leak" | "overmask" | "contradiction" | "time_odds" | "stop" | "op_failed" | "budget" | "terms" | "fit" | "free" | "facts" | "talk" | "persons";
   rule: string;
   /** banned: raw（モデルの生の返事）か shown（画面に出た物） */
   where?: "raw" | "shown" | "sent";
@@ -843,6 +844,8 @@ export type RunNumbers = {
    * repeatRaw は往復の生の返事が送った「それまでの話」とほぼ同じ数（門の前）
    */
   talk?: TalkNumbers;
+  /** 人ごとの筋（T165、personArcHits）。前の回の summary には無い */
+  persons?: PersonArcNumbers;
   /** 本人役の言葉が文の途中で終わった数（T139、cutHits）。checked は見た言葉の数 */
   cut?: { checked: number; hits: number };
   /** 画面に出た（氏名）のうち元の語に名前が無かった数（T159、overmaskHits）。checked は突き合わせられた画面の（氏名）の数 */
@@ -876,7 +879,59 @@ export const FACT_WORD_RULES: ReadonlySet<string> = new Set([
   "spare_unsaid",
   "left_remain",
   "clock_drift",
+  "repeat_intent",
+  "swap_news",
+  "backstage",
 ]);
+
+/** 1 回の人ごとの筋の数（T165、diversity.ts の personKinds を回ごとに） */
+export type PersonArcNumbers = {
+  /** 参加者の数 */
+  people: number;
+  /** 人ごとの出来事の種類の数の平均 */
+  kinds: number | null;
+  /** その人を指す出来事が 1 つも無かった人の数 */
+  noKind: number;
+  /** 人どうしの種類の集合の重なり（Jaccard の平均。どちらも出来事のある組だけ） */
+  kindJaccard: number | null;
+  /** 種類の集合がそっくり同じ組の数（どちらも出来事のある組） */
+  sameArc: number;
+};
+
+/** 12. 人ごとの筋（T165）。出来事の無い人（no_kind）と、出来事の種類の集合がそっくり同じ組（same_arc）を引っかかりに */
+export function personArcHits(outcome: RunOutcome): { numbers: PersonArcNumbers; hits: CheckHit[] } {
+  const m = personKinds(outcome);
+  const hits: CheckHit[] = [];
+  const sets = [...m.entries()];
+  for (const [person, set] of sets) if (set.size === 0) hits.push({ check: "persons", rule: "no_kind", person, evidence: "その人を指す出来事が無い" });
+  const js: number[] = [];
+  let same = 0;
+  for (let i = 0; i < sets.length; i++) {
+    for (let j = i + 1; j < sets.length; j++) {
+      const [pa, a] = sets[i];
+      const [pb, b] = sets[j];
+      if (a.size === 0 || b.size === 0) continue;
+      const v = jaccard(a, b);
+      if (v === null) continue;
+      js.push(v);
+      if (v === 1) {
+        same += 1;
+        hits.push({ check: "persons", rule: "same_arc", person: pa, evidence: `${pa} と ${pb}: ${[...a].sort().join("・")}` });
+      }
+    }
+  }
+  const sizes = sets.map(([, s]) => s.size);
+  return {
+    numbers: {
+      people: sets.length,
+      kinds: sizes.length > 0 ? sizes.reduce((x, y) => x + y, 0) / sizes.length : null,
+      noKind: sizes.filter((n) => n === 0).length,
+      kindJaccard: js.length > 0 ? js.reduce((x, y) => x + y, 0) / js.length : null,
+      sameArc: same,
+    },
+    hits,
+  };
+}
 
 export const DRILL_CAP = 150;
 export const DAY_LIMIT = 200;
@@ -896,6 +951,7 @@ export function checkRun(records: ReadonlyArray<LogRecord>, outcome: RunOutcome,
   const cut = cutHits(outcome);
   const overmask = overmaskHits(records, outcome, ctx);
   const talk = talkHits(outcome, records);
+  const arcs = personArcHits(outcome);
   const ai = records.filter((r): r is AiRecord => r.type === "ai" && (r as AiRecord).role !== "judge");
   // 1 訓練の数え（画面の「AI 残」から。10 分版は数えないので本人役と監督の呼び出しの数）
   const drillCounted = outcome.callsLeft !== null ? DRILL_CAP - outcome.callsLeft : ai.filter((a) => a.role === "persona" || a.role === "director" || a.role === "world" || a.role === "world_room").length;
@@ -963,6 +1019,7 @@ export function checkRun(records: ReadonlyArray<LogRecord>, outcome: RunOutcome,
       words: facts.hits.filter((h) => FACT_WORD_RULES.has(h.rule)).length,
     },
     talk: talk.numbers,
+    persons: arcs.numbers,
     cut: { checked: cut.checked, hits: cut.hits.length },
     overmask: { checked: overmask.checked, hits: overmask.hits.length },
     timing: {
@@ -980,5 +1037,5 @@ export function checkRun(records: ReadonlyArray<LogRecord>, outcome: RunOutcome,
       unpricedCalls: ai.filter((a) => a.costUsd === null && a.role !== "world_room").length,
     },
   };
-  return { hits: [...banned, ...leaks, ...shape, ...odds.hits, ...contra, ...stops, ...terms, ...fit.hits, ...free, ...facts.hits, ...cut.hits, ...overmask.hits, ...talk.hits, ...budgetHits], numbers };
+  return { hits: [...banned, ...leaks, ...shape, ...odds.hits, ...contra, ...stops, ...terms, ...fit.hits, ...free, ...facts.hits, ...cut.hits, ...overmask.hits, ...talk.hits, ...arcs.hits, ...budgetHits], numbers };
 }
