@@ -2,7 +2,8 @@
 
 // 雨雲（降水ナウキャスト）のタイルを地図に加工せず重ねる（T72 の 4）。CaseMap が、旗 JMA_NOWCAST が on のとき（デモ事業所も。訓練の画面は置かない。T103）だけ置く。
 // - 時刻は Workers の route（/api/jma/nowc/times）から一番新しい実況の 1 つだけ（5 分ごとに読み直す）。補間・延長・動画にしない
-// - タイルも Workers の route から（ブラウザは気象庁を直接読まない）。不透明度も色も変えない（雨の無い所は透明の PNG のまま）
+// - タイルも Workers の route から（ブラウザは気象庁を直接読まない）。色は変えず、層を NOWCAST_OPACITY（0.65）で透かす（T151b。前は不透明で、
+//   弱い雨の白っぽい色・薄い水色が地図の地名と道を隠した。雨の無い所は透明の PNG のまま）
 // - 右下に小さな凡例（降水量の 8 段の色の帯と境の値と「02:20 時点」。components/map/RainScaleLegend.tsx。訓練の雨と同じ部品）。
 //   出典は地図の下の出典の行（CaseMap の MapSource、NOWC_SOURCE の文のまま）。T151 で、気象庁の凡例の画像と出典の長い 1 文の白い四角
 //   （小さな地図の半分ほどを隠した）から替えた
@@ -14,6 +15,7 @@
 import { useEffect, useMemo, useRef, useState, type SyntheticEvent } from "react";
 import { tilesFor, type Size, type TileSpot, type View } from "@/lib/map/geo";
 import { MAP_UI } from "@/lib/map/labels";
+import { NOWCAST_OPACITY } from "@/lib/map/layers";
 import { hasRain, rainInView, TILE_PX, visiblePixels, type RainInView } from "@/lib/map/rain-in-view";
 import { nowcastLegendLabel } from "@/lib/map/rain-scale";
 import { isNowcTime, NOWC_TIMES_PATH, NOWC_ZOOM, nowcTilePath, stampHm, type NowcTime } from "@/lib/jma/nowcast";
@@ -123,7 +125,7 @@ export function NowcastLayer({ time, view, size }: { time: NowcTime; view: View;
           decoding="async"
           onError={hide}
           className="pointer-events-none absolute max-w-none select-none"
-          style={{ left: `${t.left}%`, top: `${t.top}%`, width: `${t.width}%`, height: `${t.height}%` }}
+          style={{ left: `${t.left}%`, top: `${t.top}%`, width: `${t.width}%`, height: `${t.height}%`, opacity: NOWCAST_OPACITY }}
           data-layer="nowcast"
         />
       ))}

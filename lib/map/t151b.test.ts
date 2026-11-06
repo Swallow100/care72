@@ -9,7 +9,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { NowcastLayer, NowcastNote } from "../../components/map/NowcastLayer.tsx";
 import { LEGEND_W } from "../../components/map/RainScaleLegend.tsx";
-import { NOWC_ZOOM } from "../jma/nowcast.ts";
+import { latestTime, NOWC_ZOOM, nowcTileUpstream, parseTimes, tileResponse } from "../jma/nowcast.ts";
+import { NOWCAST_OPACITY } from "./layers.ts";
 import { BASE_SIZE, project, tilesFor, type View } from "./geo.ts";
 import { MAP_UI } from "./labels.ts";
 import { hasRain, rainInView, TILE_PX, visiblePixels } from "./rain-in-view.ts";
@@ -108,5 +109,46 @@ describe("凡例の色は気象庁のタイルの色の表と同じ", () => {
   const PALETTE = ["#ffffff", "#ffffff", "#f2f2ff", "#a0d2ff", "#218cff", "#0041ff", "#faf500", "#ff9900", "#ff2800", "#b40068"];
   it("番号 2〜9 が lib/map/rain-scale.ts の 8 段の色（20〜30 mm/h の黄は #faf500）", () => {
     expect(PALETTE.slice(2)).toEqual(RAIN_STEPS.map((s) => s.color));
+  });
+});
+
+describe("強さの取り違えが無いこと（雨雲の route は気象庁のタイルをそのまま渡す）", () => {
+  // 11/6 の取り寄せの形: 時刻の一覧は実況だけ（basetime と validtime が同じ）、要素は hrpns と hrpns_nd
+  const TIMES = [
+    { basetime: "20261106042500", validtime: "20261106042500", elements: ["hrpns", "hrpns_nd"] },
+    { basetime: "20261106042000", validtime: "20261106042000", elements: ["hrpns", "hrpns_nd"] },
+  ];
+
+  it("時刻は一番新しい実況、タイルは要素 hrpns・同じ時刻・同じ段と番号の URL", () => {
+    const t = latestTime(parseTimes(TIMES));
+    expect(t).toEqual({ basetime: "20261106042500", validtime: "20261106042500" });
+    expect(nowcTileUpstream(t!, 10, 907, 395)).toBe(
+      "https://www.jma.go.jp/bosai/jmatile/data/nowc/20261106042500/none/20261106042500/surf/hrpns/10/907/395.png",
+    );
+  });
+
+  it("route は取ったタイルの中身を 1 バイトも変えずに返す（色の付け替えは訓練の雨だけ）", async () => {
+    const png = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 1, 2, 3, 9, 8, 7]);
+    const calls: string[] = [];
+    const fetcher = async (url: string) => {
+      calls.push(url);
+      return url.endsWith(".json") ? Response.json(TIMES) : new Response(png, { status: 200 });
+    };
+    const res = await tileResponse(
+      { basetime: "20261106042000", validtime: "20261106042000", z: "10", x: "907", y: "395" },
+      { on: true, authed: true, fetcher, cache: null },
+    );
+    expect(res.status).toBe(200);
+    expect(new Uint8Array(await res.arrayBuffer())).toEqual(png);
+    expect(calls.at(-1)).toBe("https://www.jma.go.jp/bosai/jmatile/data/nowc/20261106042000/none/20261106042000/surf/hrpns/10/907/395.png");
+  });
+
+  it("画面では色を変えず、層の透け具合だけ（0.65）", () => {
+    expect(NOWCAST_OPACITY).toBe(0.65);
+    const h = renderToStaticMarkup(createElement(NowcastLayer, { time: TIME, view: at(13), size: BASE_SIZE }));
+    for (const m of h.matchAll(/<img [^>]*data-layer="nowcast"[^>]*>/g)) {
+      expect(m[0]).toContain("opacity:0.65");
+      expect(m[0]).not.toMatch(/filter|mix-blend|brightness|saturate|hue-rotate/);
+    }
   });
 });

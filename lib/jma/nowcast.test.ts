@@ -170,12 +170,15 @@ describe("タイルの route の守り", () => {
 describe("地図に重ねる", () => {
   const view = { z: 12, center: project({ lat: 33.84, lng: 132.765 }, 12) };
 
-  it("タイルは Workers の route から（気象庁を直接読まない）。段は 10 まで、不透明度を付けない。右下に小さな凡例と時刻、出典は地図の下（T151）", () => {
+  it("タイルは Workers の route から（気象庁を直接読まない）。段は 10 まで、色は変えず層を 0.65 で透かす（T151b）。右下に小さな凡例と時刻、出典は地図の下（T151）", () => {
     const html = renderToStaticMarkup(createElement(NowcastLayer, { time: LATEST, view, size: BASE_SIZE }));
     const srcs = [...html.matchAll(/<img src="([^"]+)"[^>]*data-layer="nowcast"/g)].map((m) => m[1]);
     expect(srcs.length).toBeGreaterThan(0);
     expect(srcs.every((s) => s.startsWith(`/api/jma/nowc/tile/${LATEST.basetime}/${LATEST.validtime}/10/`))).toBe(true);
-    expect(html).not.toMatch(/data-layer="nowcast"[^>]*opacity|opacity[^>]*data-layer="nowcast"/);
+    for (const m of html.matchAll(/<img [^>]*data-layer="nowcast"[^>]*>/g)) {
+      expect(m[0]).toContain("opacity:0.65");
+      expect(m[0]).not.toMatch(/filter|mix-blend|brightness|saturate|hue-rotate/);
+    }
     expect(html).toContain("22:10 時点");
     // 出典の文は地図の下の出典の行（CaseMap の MapSource。lib/map/t151.test.ts）。文は気象庁の書き方の例のまま
     expect(html).not.toContain(NOWC_SOURCE.text);
