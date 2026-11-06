@@ -54,7 +54,9 @@ export function bracketPair(a: ShapeField, b: ShapeField): boolean {
   const m = (x: ShapeField) => name(x).match(BRACKETED)?.[1] ?? null;
   if ((m(a) !== null && m(a) === name(b)) || (m(b) !== null && m(b) === name(a))) return true;
   // 選択肢の後ろの括弧（T164。「□徒歩 □車 □その他（　）」の その他（　）、「□洪水（～）」）: 括弧の欄は選ぶ欄の子
-  return (bracketBase(a) !== null && optionIndexOf(b, bracketBase(a)!) >= 0) || (bracketBase(b) !== null && optionIndexOf(a, bracketBase(b)!) >= 0);
+  if ((bracketBase(a) !== null && optionIndexOf(b, bracketBase(a)!) >= 0) || (bracketBase(b) !== null && optionIndexOf(a, bracketBase(b)!) >= 0)) return true;
+  // 選択肢の名前の字の欄（T175。「洪水浸水想定区域（浸水想定　m）」「洪水（河川の氾濫）」）: 同じく選ぶ欄の子
+  return optionChildIndex(a, b) >= 0 || optionChildIndex(b, a) >= 0;
 }
 
 // ---------- 括弧の子の欄（T164） ----------
@@ -84,6 +86,21 @@ function optionIndexOf(f: BracketField, base: string): number {
   });
 }
 
+/**
+ * 字の欄の名前が、同じ項目の選ぶ欄の選択肢の名前そのものか、選択肢の名前と括弧の説明（T175）。評価の 9 回目で、読み取りが「洪水浸水想定区域（浸水想定　m）」の
+ * 深さの空き 4 つに親と同じ項目を当て（8 回目は項目なし）、紙は小さな枠に災害の種類を丸ごと書こうとして置けず、見直しの重複が同じ様式で 0 → 263 に増えた。
+ * 川崎市の「洪水（河川の氾濫）」の行も同じ形。選択肢の添えの置き場で、項目の値を書く所ではない。親の無い欄・項目の違う欄は当たらない。
+ * 選択肢の番号。当たらなければ -1
+ */
+function optionChildIndex(f: BracketField, g: BracketField): number {
+  if ((f.shape !== undefined && f.shape !== "text" && f.shape !== "lines") || (g.shape !== undefined && g.shape !== "choice")) return -1;
+  const name = plain(f.label);
+  return (g.options ?? []).findIndex((o) => {
+    const p = plain(o).replace(OPTION_NO, "");
+    return p !== "" && (p === name || (name.startsWith(`${p}(`) && name.endsWith(")")));
+  });
+}
+
 /** 括弧の子の欄を探す欄の形（対応表の欄も見直しの欄も） */
 export type BracketField = Omit<ShapeField, "box"> & { box?: FieldBox | null; removed?: boolean };
 
@@ -108,17 +125,18 @@ export type BracketOwner<T> = {
 export function bracketOwner<T extends BracketField>(field: T, fields: readonly T[]): BracketOwner<T> | null {
   const base = bracketBase(field);
   const item = itemOf(field);
-  if (base === null || item === null) return null;
+  if (item === null) return null;
   const candidates = fields.filter((g) => g !== field && !g.removed && g.page === field.page && itemOf(g) === item);
   const owners: Array<BracketOwner<T>> = [];
   for (const g of candidates) {
-    if (g.shape === "check" && plain(g.label) === base) owners.push({ owner: g, option: null, row: [] });
+    if (base !== null && g.shape === "check" && plain(g.label) === base) owners.push({ owner: g, option: null, row: [] });
     else {
-      const i = optionIndexOf(g, base);
-      if (i >= 0) owners.push({ owner: g, option: i, row: [] });
+      const i = base !== null ? optionIndexOf(g, base) : -1;
+      const child = i >= 0 ? i : optionChildIndex(field, g);
+      if (child >= 0) owners.push({ owner: g, option: child, row: [] });
     }
   }
-  if (owners.length === 0) return OTHER_BASE.test(base) ? restOwner(field, fields) : null;
+  if (owners.length === 0) return base !== null && OTHER_BASE.test(base) ? restOwner(field, fields) : null;
   const dist = (g: T) => (g.box && field.box ? Math.hypot(g.box.x + g.box.w - field.box.x, center(g.box).y - center(field.box).y) : 0);
   const best = owners.sort((a, b) => dist(a.owner) - dist(b.owner))[0];
   if (best.option !== null) return best;
