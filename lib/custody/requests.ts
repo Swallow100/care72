@@ -9,7 +9,7 @@
 //   返さない（型にも持たない。氏名検索のヒットと同じ線、lib/custody/search.ts）。受け入れて提供の記録を書いてから本人のページで見る
 // - 受入は今の受け入れ（lib/custody/store.ts の receive）を通す。受け持ちの一意・壁・第三者提供の記録・経過の「受入 避難所」はそのまま。
 //   受け持ちの入り方（custody.via）は表の CHECK を変えないため search（登録済の人を引いた形）にし、依頼の行の custody_id で結ぶ
-// - 返事は 2 つの決まった言葉だけ（自由文の理由の欄は持たない。医療の助言の入口にしない）。Claude は呼ばない
+// - 返事は 2 つの決まった言葉だけ（自由文の理由の欄は持たない。医療の助言の入口にしない。医療班からケアマネへの伝達も今はなし、T172）。Claude は呼ばない
 // - 依頼・返事は色と連絡順の入力にしない（受け入れたあとは今の受け入れと同じに、ルールの表が「受入」を読む）
 
 import type { D1Database } from "@cloudflare/workers-types";
@@ -168,9 +168,11 @@ function repliedName(actor: StaffActor): string | null {
 /**
  * 受け入れる（医療班の役）。今の受け入れ（receive）を通し、依頼の行に受け持ちを結ぶ。
  * 先に依頼を「受入」にして（同時に押したほかの医療班は answered）、受け入れに失敗したら依頼中に戻す。
- * 自分がもう受け入れている人は、その受け持ちを結ぶ（誤りにしない）
+ * 自分がもう受け入れている人は、その受け持ちを結ぶ（誤りにしない）。
+ * shelter は一括受入の 1 回の入力（T172。parseShelter を通した値）。無ければ依頼の行き先。依頼の行の行き先は実際の受け持ちの避難所に合わせる
+ * （事業所の側の本人のページはこの行き先を出すので、別の避難所で受け入れたら居場所が食い違う）
  */
-export async function acceptRequest(db: D1Database, actor: StaffActor, requestId: string, at: string): Promise<ReplyResult> {
+export async function acceptRequest(db: D1Database, actor: StaffActor, requestId: string, at: string, shelter?: string): Promise<ReplyResult> {
   if (!seesRequests(actor)) return { ok: false, error: "forbidden" };
   const req = await openRequestFor(db, actor, requestId);
   if (!req) return { ok: false, error: "not_found" };
@@ -186,14 +188,17 @@ export async function acceptRequest(db: D1Database, actor: StaffActor, requestId
     .run();
   if ((claim.meta.changes ?? 0) === 0) return { ok: false, error: "answered" };
 
-  const r = await receive(db, actor, { personId: req.person_id, shelter: req.shelter, via: "search" }, at);
+  const place = shelter ?? req.shelter;
+  const r = await receive(db, actor, { personId: req.person_id, shelter: place, via: "search" }, at);
   let custodyId: string | null = r.ok ? r.custodyId : null;
+  let held = place;
   if (!r.ok && r.error === "already") {
     const open = await db
-      .prepare("SELECT id FROM custody WHERE person_id = ?1 AND holder_id = ?2 AND released_at IS NULL")
+      .prepare("SELECT id, shelter FROM custody WHERE person_id = ?1 AND holder_id = ?2 AND released_at IS NULL")
       .bind(req.person_id, actor.accountId)
-      .first<{ id: string }>();
+      .first<{ id: string; shelter: string }>();
     custodyId = open?.id ?? null;
+    held = open?.shelter ?? place;
   }
   if (!custodyId) {
     await db
@@ -205,7 +210,7 @@ export async function acceptRequest(db: D1Database, actor: StaffActor, requestId
       .run();
     return { ok: false, error: r.ok ? "conflict" : r.error };
   }
-  await db.prepare("UPDATE custody_requests SET custody_id = ?2 WHERE id = ?1").bind(requestId, custodyId).run();
+  await db.prepare("UPDATE custody_requests SET custody_id = ?2, shelter = ?3 WHERE id = ?1").bind(requestId, custodyId, held).run();
   return { ok: true, personId: req.person_id, custodyId };
 }
 

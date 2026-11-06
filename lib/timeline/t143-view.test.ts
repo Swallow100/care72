@@ -187,7 +187,7 @@ describe("経過と変更履歴の畳み", () => {
 
 describe("経過の書き足しの欄（TimelineComposer）", () => {
   const timeline = [entry("t-3", "safety_check", "電話で無事を確認", null, "2026-11-05T02:00:00.000Z")];
-  const viewAs = (role: "care_manager" | "medical", mode: "normal" | "disaster", items = timeline) => {
+  const viewAs = (role: "care_manager" | "medical" | "government", mode: "normal" | "disaster", items = timeline) => {
     const rows = rowsOf(parseLedger("{}"), { timeline: items });
     rows.consents = (["registry", "plan_share", "supporters", "medical", "ai_overseas"] as const).map((kind) => ({
       person_id: "p-x",
@@ -219,10 +219,13 @@ describe("経過の書き足しの欄（TimelineComposer）", () => {
     expect(empty).toContain("記録なし");
   });
 
-  it("発災時と医療班・行政の役はいつも出す", () => {
+  it("発災時と行政の役はいつも出す。医療班の役には出さない（T172）", () => {
     expect(insideFold(viewAs("care_manager", "disaster"))).toBe(false);
-    expect(insideFold(viewAs("medical", "normal"))).toBe(false);
-    expect(insideFold(viewAs("medical", "disaster"))).toBe(false);
+    expect(insideFold(viewAs("government", "normal"))).toBe(false);
+    expect(insideFold(viewAs("government", "disaster"))).toBe(false);
+    for (const mode of ["normal", "disaster"] as const) {
+      expect(sectionHtml(viewAs("medical", mode), "timeline")).not.toContain('data-form="timeline"');
+    }
   });
 
   it("見出し「追記」の下に「種類」の選び（初めは記録）、文の欄に例の言葉", () => {

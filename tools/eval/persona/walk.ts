@@ -47,8 +47,20 @@ export type WalkOutcome = {
   stop: StopReason;
   /** 止めた理由の短い文（門・AI の失敗） */
   note: string | null;
+  /** 筋の forbid に当たった物（出てはいけない物が画面に出た。T172）。同じ物は 1 回 */
+  forbidden: string[];
   ms: number;
 };
+
+/** 今の画面が筋の forbid に当たる物の why（T172）。押せる物は名前の頭で、文は画面の文で見る */
+export function forbiddenOf(persona: Pick<Persona, "forbid">, snap: Pick<Snapshot, "path" | "text" | "items">): string[] {
+  return (persona.forbid ?? []).flatMap((f) => {
+    if (!new RegExp(f.path).test(snap.path)) return [];
+    const byItem = f.item !== undefined && snap.items.some((i) => i.name.startsWith(f.item as string));
+    const byText = f.text !== undefined && snap.text.includes(f.text);
+    return byItem || byText ? [f.why] : [];
+  });
+}
 
 export async function walkPersona(persona: Persona, deps: WalkDeps): Promise<WalkOutcome> {
   const clock = deps.clock ?? Date.now;
@@ -65,15 +77,16 @@ export async function walkPersona(persona: Persona, deps: WalkDeps): Promise<Wal
   if (persona.prelogin) {
     const ok = await deps.surface.login(deps.loginId, deps.secrets);
     if (!ok) {
-      return { persona: persona.id, goals, steps, lost: [], stop: "open", note: "ログインできない（CARE72_PASSWORD と種のハッシュ）", ms: clock() - t0 };
+      return { persona: persona.id, goals, steps, lost: [], stop: "open", note: "ログインできない（CARE72_PASSWORD と種のハッシュ）", forbidden: [], ms: clock() - t0 };
     }
   }
   // 筋の前の下ごしらえ（T163）: 医療班の筋は事業所の「発災開始」で種の受入依頼が入った形から
   if (persona.setup === "disaster" && !(await deps.surface.startDisaster())) {
-    return { persona: persona.id, goals, steps, lost: [], stop: "open", note: "発災開始を流せない（種の事業所・ケアマネの役で入る）", ms: clock() - t0 };
+    return { persona: persona.id, goals, steps, lost: [], stop: "open", note: "発災開始を流せない（種の事業所・ケアマネの役で入る）", forbidden: [], ms: clock() - t0 };
   }
   await deps.surface.open(persona.start);
   let snap: Snapshot = await deps.surface.snapshot();
+  const forbidden = new Set<string>(forbiddenOf(persona, snap));
 
   /** 今の目標の印が立っている間、次の目標へ */
   const advance = (at: number): string[] => {
@@ -130,6 +143,7 @@ export async function walkPersona(persona: Persona, deps: WalkDeps): Promise<Wal
     const needsRef = move.action === "click" || move.action === "type" || move.action === "select";
     const result = needsRef && !item ? { ok: false, error: `番号 ${move.ref ?? "なし"} は画面に無い` } : await deps.surface.act(move, deps.secrets);
     snap = await deps.surface.snapshot();
+    for (const why of forbiddenOf(persona, snap)) forbidden.add(why);
     g.steps += 1;
     let shot: string | null = null;
     if (deps.shots) {
@@ -163,5 +177,5 @@ export async function walkPersona(persona: Persona, deps: WalkDeps): Promise<Wal
     timeouts.push({ kind: "timeout", step: last?.n ?? 0, goal: goals[gi].id, path: snap.path, target: null, thought: null, note: stop === "steps" ? `筋の手の上限 ${maxSteps}` : stop === "time" ? "筋の時間の上限" : stop === "budget" ? "費用の上限" : (note ?? stop) });
   }
   await deps.surface.end();
-  return { persona: persona.id, goals, steps, lost: [...lostOf(steps), ...timeouts].sort((a, b) => a.step - b.step), stop, note, ms: clock() - t0 };
+  return { persona: persona.id, goals, steps, lost: [...lostOf(steps), ...timeouts].sort((a, b) => a.step - b.step), stop, note, forbidden: [...forbidden], ms: clock() - t0 };
 }

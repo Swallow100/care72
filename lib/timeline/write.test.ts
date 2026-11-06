@@ -3,7 +3,7 @@
 // D1 は node:sqlite（lib/db/test-d1.ts）に種の 10 人。
 
 import type { DatabaseSync } from "node:sqlite";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { seedStatements } from "../../seed/sql.ts";
 import type { Principal } from "../auth/principal.ts";
 import { scopeOfRows } from "../consent/scope.ts";
@@ -14,6 +14,9 @@ import { entryPlace } from "../forms/form9-db.ts";
 import { loadPersonPage, toPersonView, type TimelineItem } from "../person.ts";
 import { BODY_MAX } from "./paths.ts";
 import { parseWrite, writeTimeline, writeTimelineRequest } from "./write.ts";
+
+// 経過の書き足しの仕組みの試験。医療班の役の書き足しは今はなし（T172）なので、定数を戻した形で確かめる（今の形は lib/custody/t172.test.ts）
+vi.mock("../consent/relay.ts", () => ({ MEDICAL_TIMELINE_WRITES: true }));
 
 let sqlite: DatabaseSync;
 let db: ReturnType<typeof d1FromSqlite>;

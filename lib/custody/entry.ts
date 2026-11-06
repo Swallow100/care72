@@ -3,7 +3,7 @@
 //
 // - QR 読取: 本人の 1 枚の裏の QR は /q/<token> の URL（lib/qr/url.ts）。端末のカメラで読む・URL を貼る・見本の QR を開く
 //   のどれからでも、トークンだけを取り出して QR の頁へ移る（受入はその頁の「受入」。同意の無い人の出し方は QR の頁のまま）
-// - 受け入れたあとは受入一覧（?received=<受け持ちの id>）。その人の行を表の上に出す。並びの番号（ルールの表の順）は変えない
+// - 受け入れたあとは受入一覧（?received=<受け持ちの id、一括受入はコンマでつなぐ>）。その人の行を表の上に出す。並びの番号（ルールの表の順）は変えない
 
 import { RECEIVED_PARAM } from "./paths.ts";
 
@@ -40,19 +40,27 @@ export function qrTokenFrom(text: string | null | undefined): string | null {
 /** 受け持ちの行の id（lib/custody/store.ts の cu-<uuid>、種の cu-…）。形の違う物は null */
 const CUSTODY_ID = /^[A-Za-z0-9_-]{1,64}$/;
 
-/** URL の ?received=（Next の searchParams の形。2 つ以上・形の違う物は無かったことに） */
-export function parseReceived(q: { [RECEIVED_PARAM]?: unknown }): string | null {
+/** URL から読む受け持ちの数の上限（一括受入の上限より多めに。URL をいくらでも読まない） */
+const RECEIVED_MAX = 50;
+
+/**
+ * URL の ?received=（Next の searchParams の形）。受け持ちの id をコンマでつないだ物（一括受入、T172）。
+ * 同じ鍵が 2 つ以上・形の違う物が混ざった時は無かったことに
+ */
+export function parseReceived(q: { [RECEIVED_PARAM]?: unknown }): string[] {
   const v = q[RECEIVED_PARAM];
-  return typeof v === "string" && CUSTODY_ID.test(v) ? v : null;
+  if (typeof v !== "string" || v === "") return [];
+  const ids = v.split(",");
+  return ids.length <= RECEIVED_MAX && ids.every((id) => CUSTODY_ID.test(id)) ? ids : [];
 }
 
 /**
- * 受け入れたばかりの人の行を表の先頭に（画面だけ）。絞込で見えない人は動かさない。並びの番号（rank）はそのまま。
+ * 受け入れたばかりの人の行を表の先頭に（画面だけ。一括受入は受け入れた順に全員）。絞込で見えない人は動かさない。並びの番号（rank）はそのまま。
  * CSV（lib/custody/staff-view.ts の staffViewRows）は通さない
  */
-export function pinReceived<T extends { custodyId: string }>(rows: readonly T[], custodyId: string | null): T[] {
-  if (!custodyId) return [...rows];
-  const i = rows.findIndex((r) => r.custodyId === custodyId);
-  if (i <= 0) return [...rows];
-  return [rows[i], ...rows.slice(0, i), ...rows.slice(i + 1)];
+export function pinReceived<T extends { custodyId: string }>(rows: readonly T[], received: string | readonly string[] | null): T[] {
+  const ids = received === null ? [] : typeof received === "string" ? [received] : received;
+  if (ids.length === 0) return [...rows];
+  const top = ids.flatMap((id) => rows.filter((r) => r.custodyId === id));
+  return [...top, ...rows.filter((r) => !ids.includes(r.custodyId))];
 }

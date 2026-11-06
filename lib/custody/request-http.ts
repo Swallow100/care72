@@ -40,7 +40,10 @@ export async function withdrawRequestPost(db: D1Database, p: Principal | null, r
   return { status: 200, body: { ok: true } };
 }
 
-/** 医療班の返事（answer は accept か decline）。受け入れたら受け持ちの id を返す（受入一覧の ?received=） */
+/**
+ * 医療班の返事（answer は accept か decline）。受け入れたら受け持ちの id を返す（受入一覧の ?received=）。
+ * shelter は一括受入の 1 回の入力（T172。空なら依頼の行き先）。読むのは決まった鍵だけで、自由文の理由は受け取らない
+ */
 export async function replyRequestPost(db: D1Database, p: Principal | null, raw: unknown, at: string): Promise<JsonOutcome> {
   if (!p) return fail("login_required");
   const actor = staffActor(p);
@@ -48,7 +51,11 @@ export async function replyRequestPost(db: D1Database, p: Principal | null, raw:
   const o = body(raw);
   if (!isId(o.requestId)) return fail("invalid");
   if (o.answer !== "accept" && o.answer !== "decline") return fail("invalid");
-  const r = o.answer === "accept" ? await acceptRequest(db, actor, o.requestId, at) : await declineRequest(db, actor, o.requestId, at);
+  // 空は「依頼の行き先のまま」。空でない値は避難所の欄と同じ決まりで読む
+  const blank = o.shelter === undefined || o.shelter === null || o.shelter === "";
+  const shelter = o.answer === "accept" && !blank ? parseShelter(o.shelter) : null;
+  if (shelter && !shelter.ok) return fail(shelter.error);
+  const r = o.answer === "accept" ? await acceptRequest(db, actor, o.requestId, at, shelter?.value) : await declineRequest(db, actor, o.requestId, at);
   if (!r.ok) return fail(r.error);
   return { status: 200, body: { ok: true, custodyId: r.custodyId } };
 }

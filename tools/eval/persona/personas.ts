@@ -58,6 +58,8 @@ export type Persona = {
   /** 初めに開く道 */
   start: string;
   goals: Goal[];
+  /** この筋で出てはいけない物（出たら persona.forbidden に数える。T172）。path の画面に item の名前で始まる押せる物か、text の文があれば数える */
+  forbid?: ReadonlyArray<{ path: string; item?: string; text?: string; why: string }>;
   /** この筋の手の上限（無ければ全体の上限） */
   maxSteps?: number;
 };
@@ -204,11 +206,10 @@ export function personas(loginId: string = DEFAULT_LOGIN_ID): Persona[] {
     {
       id: "medical",
       label: "医療班（受け入れ側）",
-      profile: "避難所に入った医療班の看護師。このアプリは初めて。避難所に着いた人を受け入れて、薬と機器の情報を確かめ、したことを記録に残したい。医療の判断は自分でする（アプリには求めない）。",
+      profile: "避難所に入った医療班の看護師。このアプリは初めて。避難所に着いた人を受け入れて、薬と機器の情報を確かめたい。依頼が何人も来ていれば、まとめて受け入れたい。医療の判断は自分でする（アプリには求めない）。",
       info: [
         "事業所のケアマネから、山田 ハナさん（ヤマダ ハナ）の受け入れを頼んだと連絡があった",
         "避難所の名前は かわなぎ小学校",
-        "記録に残す文: 2 階の和室に案内した",
       ],
       prelogin: true,
       setup: "disaster",
@@ -228,17 +229,23 @@ export function personas(loginId: string = DEFAULT_LOGIN_ID): Persona[] {
           route: [{ click: "受入 ヤマダ ハナ" }],
         },
         {
+          // 残りの依頼をまとめて受け入れる（T172）。医療班からケアマネへの書き足しは今はなし（forbid で見る）
+          id: "bulk",
+          text: "残りの受入依頼の人をまとめて受け入れる",
+          done: { text: "受入一覧\\s*[2-9]" },
+          route: [{ click: "全選択" }, { click: "一括受入" }],
+        },
+        {
           id: "summary",
           text: "受け入れた山田 ハナさんの薬と機器の情報を見る",
           done: { path: "^/people/[^/?]*p-01", text: "要約" },
           route: [{ click: "山田 ハナ" }],
         },
-        {
-          id: "note",
-          text: "山田 ハナさんの記録に「2 階の和室に案内した」と書き足す",
-          done: { text: "2 階の和室に案内した" },
-          route: [{ type: "自由文", text: "2 階の和室に案内した" }, { click: "追記" }],
-        },
+      ],
+      // 医療班の本人のページに書き足しの欄を出さない（T172）。PC でも QR 読取のカメラが開く（T172）
+      forbid: [
+        { path: "^/people/", item: "追記", why: "医療班の書き足しの欄" },
+        { path: "^/staff", text: "写すと受入頁", why: "カメラ起動が出ない" },
       ],
     },
     {

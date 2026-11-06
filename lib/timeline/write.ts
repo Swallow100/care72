@@ -1,10 +1,10 @@
 // 経過の書き足し（docs/tasks/T24.md、docs/SPEC.md「画面 2」「画面 6」）。本人のページの経過に、定型（安否確認・診察・配薬・搬送・到着）と
 // 自由文を 1 行足す。誰が（書き手のアカウント）・いつ（サーバーの時刻）・どの役（ケアマネ・医療班・行政）はここで付ける。
-// 医療班・行政の書いた行はケアマネの経過にも出る（同じ timeline_entries）。
+// 行政の書いた行はケアマネの経過にも出る（同じ timeline_entries）。医療班の役は今は書けない（T172、lib/consent/relay.ts）。
 //
 // 断り方: ログインしていなければ 401、保存できない役は 403、壁（lib/auth/scope.ts の personInScope）の外は 404、
-// 範囲（lib/consent/scope.ts の writes）に無い種類は 403。医療班・行政は受け持ちの間だけ（壁が受け持ちを見る）。
-// 自由文はそのまま D1 に入れるだけで、Claude にも声にも渡さない（医療班の記録はそのまま。要約・分類もしない）。
+// 範囲（lib/consent/scope.ts の writes）に無い種類は 403。行政は受け持ちの間だけ（壁が受け持ちを見る）。
+// 自由文はそのまま D1 に入れるだけで、Claude にも声にも渡さない（要約・分類もしない）。
 // ここは D1 と Principal を引数で受け取る（テストで node:sqlite を渡す）。
 
 import type { D1Database } from "@cloudflare/workers-types";

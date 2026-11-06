@@ -323,6 +323,7 @@ const PERSONA: Item[] = [
   { id: "persona.lost", bench: "persona", label: "使う人 迷いの数", better: "lower", unit: "count", agg: "sum" },
   ...PERSONA_LOST.map(([k, l]): Item => ({ id: `persona.lost.${k}`, bench: "persona", label: `使う人 ${l}`, better: "lower", unit: "count", agg: "sum" })),
   { id: "persona.gate", bench: "persona", label: "使う人 門で止めた筋（種の外の値）", better: "lower", unit: "count", agg: "sum", threshold: zero },
+  { id: "persona.forbidden", bench: "persona", label: "使う人 出てはいけない物が出た数（医療班の書き足しの欄・カメラ起動の消え）", better: "lower", unit: "count", agg: "sum", threshold: zero },
   { id: "persona.ease", bench: "persona", label: "使う人 審査役の通しやすさ（1〜5）", better: "higher", unit: "score", agg: "mean" },
   { id: "persona.usd", bench: "persona", label: "使う人 実費の見込み（USD）", better: "lower", unit: "usd", agg: "sum" },
   ...PERSONA_PATHS.flatMap(([p, l]): Item[] => [

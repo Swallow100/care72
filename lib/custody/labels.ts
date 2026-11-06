@@ -176,12 +176,16 @@ export const ENTRY_LABELS = {
   /** 読んだ QR の URL を貼る欄 */
   url: "URL入力",
   urlBad: "読取不可",
-  /** 端末のカメラ（BarcodeDetector の使える端末だけ、アプリの中で読む） */
+  /** 端末のカメラ（アプリの中で読む。組み込みの読み取りか jsQR、T172） */
   camera: "端末カメラ",
   cameraStart: "カメラ起動",
   cameraStop: "停止",
   cameraFail: "カメラ不可",
-  /** アプリの中で読めない端末: 端末のカメラで QR を写すと受入の頁が開く */
+  /** カメラが無い・断られた・ほかで使用中（T172） */
+  cameraNone: "カメラなし",
+  cameraDenied: "カメラ拒否",
+  cameraBusy: "カメラ使用中",
+  /** カメラの口が無いブラウザ: 端末のカメラで QR を写すと受入の頁が開く */
   cameraOs: "写すと受入頁",
   /** 受け入れたばかりの人の行の印（表の上に出す） */
   fresh: "新着",
@@ -229,6 +233,21 @@ export const REQUEST_LABELS = {
   noConsent: "同意なし",
   /** 送った後にもう一度送る */
   again: "再依頼",
+} as const;
+
+/** 複数人をまとめて受け入れる（T172）。受入依頼と検索のヒットで同じ言葉 */
+export const BULK_LABELS = {
+  receive: "一括受入",
+  /** 選ぶ欄の読み上げの名前（カナ・事業所を続ける） */
+  select: "選択",
+  selectAll: "全選択",
+  /** 選べる人数の上限 */
+  limit: "上限",
+  /** 終わったあとの人数 */
+  done: "受入",
+  failed: "失敗",
+  /** 受入依頼の一括で避難所を空のままにしたとき（各人の依頼の行き先で受け入れる） */
+  asAsked: "依頼通り",
 } as const;
 
 /** 依頼の状態の言葉（本人のページ） */
