@@ -266,6 +266,8 @@ const FORMS: Item[] = [
   },
   { id: "forms.reviewDup", bench: "forms", label: "見直しの重複", better: "lower", unit: "count", agg: "sum", forms: (r) => (hasReview(r) ? sumOf(reviews(r).map((x) => x.rule.kinds.duplicate ?? 0)) : null) },
   { id: "forms.reviewCheck", bench: "forms", label: "見直しの要確認", better: "lower", unit: "count", agg: "sum", forms: (r) => (hasReview(r) ? sumOf(reviews(r).map((x) => x.rule.check)) : null) },
+  // T175: 同じ様式の読み取りの回ごとの差。--drift-from で前の回（同じコードで数え直した物）と比べた回だけ数が入る
+  { id: "forms.reviewDrift", bench: "forms", label: "見直しの要確認の前の回との差", better: "lower", unit: "count", agg: "sum", forms: (r) => r.drift?.check ?? null },
   { id: "forms.reviewFix", bench: "forms", label: "見直しの要修正", better: "lower", unit: "count", agg: "sum", forms: (r) => (hasReview(r) ? sumOf(reviews(r).map((x) => x.rule.fix)) : null) },
   { id: "forms.aiReviewFound", bench: "forms", label: "AI の照合 使った所", better: null, unit: "count", agg: "sum", forms: (r) => (reviews(r).some((x) => x.ai) ? sumOf(reviews(r).map((x) => x.ai?.found ?? 0)) : null) },
   { id: "forms.aiReviewKinds", bench: "forms", label: "AI の照合 判読難・欄違い・不一致", better: null, unit: "count", agg: "sum", seedOnly: true },

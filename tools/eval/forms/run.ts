@@ -48,6 +48,7 @@ import { lookOfPaper, type LookScore } from "./look.ts";
 import { costUsd, jsonl, realClient, recorder, type CallRecord, type Jsonl } from "./record.ts";
 import { heicBytes, launchRenderer, withExif, type Ratio, type Renderer } from "./render.ts";
 import { reviewPaper, type PaperReview } from "./review.ts";
+import type { ReviewDrift } from "./drift.ts";
 import { jpegAttachment, redoTargets, rereadFields } from "../../../lib/forms/review-ai.ts";
 import { cellOfSheet, scoreIntake, scorePaper, scoreRead, type IntakeScore, type Judgement, type PaperScore, type ReadScore } from "./score.ts";
 
@@ -205,6 +206,8 @@ export type RunResult = {
   calls: CallSummary;
   leaks: LeakSummary;
   dir: string;
+  /** 比べた前の回との見直しの数の差（T175。--drift-from のときだけ。tools/eval/forms/drift.ts） */
+  drift?: { from: string } & ReviewDrift;
 };
 
 // ---------- 手元の D1 と R2 ----------

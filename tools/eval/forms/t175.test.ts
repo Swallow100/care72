@@ -1,5 +1,7 @@
 // T175: 読み取りの揺れを数える口（tools/eval/forms/drift.ts）。架空の記録の形で確かめる
 import { describe, expect, it } from "vitest";
+import { GUARDS, guardFindings } from "../guards.ts";
+import { itemOf, valuesOf } from "../scorecard-items.ts";
 import { countsByForm, diffReads, driftMarkdown, fieldsOfCalls, normLabel, reviewDrift, type DriftField } from "./drift.ts";
 
 const page = (fields: Array<Partial<DriftField>>) =>
@@ -66,5 +68,31 @@ describe("T175 読み取りの差の分類", () => {
     expect(md).toContain("| x |");
     expect(md).not.toContain("only-a");
     expect(md).toContain("要確認 4");
+  });
+});
+
+describe("T175 守りと点数の表", () => {
+  const paper = (check: number) => ({ form: "x", input: "i", kind: "ledger", score: null, files: {}, look: { unplaced: 0, blanks: 0, overlap: 0, outside: 0 }, review: { rule: { fix: 0, check, note: 0, kinds: {} }, ai: null } });
+  const result = (check: number, drift?: number) =>
+    ({ run: "r10", mode: "real", forms: [], inputs: [], papers: [paper(check)], calls: {}, leaks: {}, ...(drift !== undefined ? { drift: { from: "前", check: drift, duplicate: 0, carried: 0, small: 0, unplaced: 0 } } : {}) }) as never;
+  const values = (r: never) => valuesOf({ bench: "forms", run: "r10", client: "real", data: r });
+
+  it("要確認の差は比べた回だけ数が入る", () => {
+    expect(itemOf("forms.reviewDrift")?.better).toBe("lower");
+    expect(values(result(10))["forms.reviewDrift"] ?? null).toBeNull();
+    expect(values(result(10, 4))["forms.reviewDrift"]).toBe(4);
+  });
+
+  it("守りは数え直しの悪い方の数で、外れたら指摘になる", () => {
+    const ids = GUARDS.filter((g) => g.task === "T175").map((g) => [g.id, g.item, g.value]);
+    expect(ids).toEqual([
+      ["forms-review-check", "forms.reviewCheck", 605],
+      ["forms-unplaced-limit", "forms.unplaced", 166],
+      ["forms-review-drift", "forms.reviewDrift", 257],
+    ]);
+    const out = guardFindings({ bench: "forms", run: "r10", values: { "forms.reviewCheck": 606, "forms.unplaced": 166, "forms.reviewDrift": 258 }, counts: {}, repro: [] }).map((f) => f.rule);
+    expect(out).toContain("guard:forms-review-check");
+    expect(out).toContain("guard:forms-review-drift");
+    expect(out).not.toContain("guard:forms-unplaced-limit");
   });
 });

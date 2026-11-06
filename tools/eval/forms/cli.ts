@@ -4,7 +4,7 @@
 //                                [--people=p-01,p-02] [--paper-all-forms] [--out=<回の置き場>] [--corpus=<様式の置き場>] [--no-corpus] [--no-progress] [--max-usd=10]
 //                                [--replay=<前の本物の回のフォルダ> --run=<回の名前>]
 //                                [--forms=catalog | --forms=cat-sapporo-1,cat-kumamoto-2] [--catalog-fetch]
-//                                [--review] [--no-review] [--review-only=<様式>:<入力>,...] [--reread-max=N]
+//                                [--review] [--no-review] [--review-only=<様式>:<入力>,...] [--reread-max=N] [--drift-from=<比べる回のフォルダ>]
 //
 // - 既定は偽の client（本物の API を呼ばない）。--gold は崩さない偽（台の数え方の確かめ）
 // - 紙の AI の照合（T136）は偽の回は既定で回す（--no-review で止める）。本物の回は --review のときだけ（紙 1 枚 1 回の Sonnet）
@@ -17,8 +17,9 @@
 //   読み取りは一覧の道（共有の対応表）で、2 つ目の事業所が AI を呼ばずに写せたかを数える
 
 import dns from "node:dns";
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { reviewDrift, type DriftPaper } from "./drift.ts";
 import { diffMarkdown, oneLine, writeIndex } from "./report.ts";
 import { writeFormsFindings } from "./findings.ts";
 import { previousRun, REPO_ROOT, runEval, type PaperMode } from "./run.ts";
@@ -98,6 +99,13 @@ const result = await runEval({
   ...(value("reread-max") ? { rereadMax: Math.max(0, Math.floor(Number(value("reread-max")) || 0)) } : {}),
   log: (line) => process.stderr.write(`${line}\n`),
 });
+// 読み取りの揺れ（T175）: 比べる回は同じコードで数え直した物（--replay）にする。古いコードの回と比べるとコードの差が混ざる
+const driftFrom = value("drift-from");
+if (driftFrom) {
+  const other = JSON.parse(readFileSync(join(driftFrom, "result.json"), "utf8")) as { papers: DriftPaper[] };
+  result.drift = { from: driftFrom, ...reviewDrift(other.papers, result.papers) };
+  writeFileSync(join(result.dir, "result.json"), JSON.stringify(result, null, 2), "utf8");
+}
 const prev = previousRun(outRoot, result);
 const md = diffMarkdown(result, prev);
 writeFileSync(join(result.dir, "report.md"), md, "utf8");

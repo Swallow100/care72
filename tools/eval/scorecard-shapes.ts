@@ -15,7 +15,7 @@ import type { RunClient } from "./findings.ts";
 import type { BenchData, GenericScorecard } from "./scorecard-items.ts";
 
 export type DrillSummaryLike = Pick<DrillSummary, "version" | "stamp" | "client" | "runs" | "totals" | "diversity" | "judgeMean">;
-export type FormsResultLike = Pick<FormsRunResult, "run" | "mode" | "forms" | "inputs" | "papers" | "calls" | "leaks">;
+export type FormsResultLike = Pick<FormsRunResult, "run" | "mode" | "forms" | "inputs" | "papers" | "calls" | "leaks" | "drift">;
 /** 声の会話の summary.json（T157 から version・bench・run・real を足した。前は totals だけ） */
 export type TalkSummaryLike = { version?: 1; bench?: "talk"; run?: string; real?: boolean; totals: TalkEvalSummary["totals"] };
 
