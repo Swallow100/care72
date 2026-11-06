@@ -49,6 +49,9 @@ const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
  */
 export const BUSY_SELECTOR = '[data-pending=""],[data-pending="true"],[aria-busy="true"]';
 
+/** 頁の最初のボタンに React の印が付いたか（ボタンの無い頁は動いている扱い） */
+export const HYDRATED_CHECK = `(() => { const b = document.querySelector("button"); return !b || Object.keys(b).some((k) => k.startsWith("__reactProps")); })()`;
+
 /** 押したあとに落ち着くまで（移るなら移り終わるまで、通信が 0.5 秒止むまで）。next dev の初めの道は組み立てに時間がかかる */
 async function settle(page: Page, navTimeout: number): Promise<void> {
   await wait(250);
@@ -63,6 +66,13 @@ async function settle(page: Page, navTimeout: number): Promise<void> {
     await wait(400);
   }
   await page.waitForNetworkIdle({ idleTime: 400, timeout: navTimeout }).catch(() => undefined);
+  // 画面が動き出すまで（T166。next dev は読み込みのあとの組み立てが遅く、前は押しても一覧が開かず、行き止まりに数えていた）
+  const live = Date.now() + Math.min(navTimeout, 60_000);
+  while (Date.now() < live) {
+    const ready = await page.evaluate(HYDRATED_CHECK).catch(() => true);
+    if (ready) break;
+    await wait(400);
+  }
 }
 
 export type ChromeOptions = { base: string; viewport: Viewport; navTimeout?: number; headless?: boolean };

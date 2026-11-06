@@ -39,6 +39,7 @@ describe("1. 医療班の役に入る道", () => {
     expect(on).toContain('action="/api/auth/role"');
     expect(on).toContain('value="medical"');
     expect(on).toContain(REQUEST_LABELS.toStaff);
+    expect(on).toContain(`aria-label="${REQUEST_LABELS.toStaffName}"`);
     // 本物のケアマネ（役を選べない）には出さない
     const off = renderToStaticMarkup(createElement(RequestSection, { personId: "p-1", panel: openPanel, level: 2 }));
     expect(off).not.toContain("data-request-staff");
