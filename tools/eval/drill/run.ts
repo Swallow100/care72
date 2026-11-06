@@ -120,7 +120,7 @@ export function checkContext(): CheckContext {
       const { together, kin } = housemates(s, contactRoles(s.contacts), s.ledger.basic.sex ?? null);
       return [
         s.person.id,
-        { plan: planOf(s), together, kin, hazards: s.ledger.evacuation.hazards, town: s.ledger.basic.address?.town ?? null, canPress: reportersOf(s).some((x) => x.canPress), selfPhone: selfCanAnswer(s.ledger) },
+        { plan: planOf(s), together, kin, hazards: s.ledger.evacuation.hazards, town: s.ledger.basic.address?.town ?? null, canPress: reportersOf(s).some((x) => x.canPress && (x.source === "agent" || together.includes(x.role))), selfPhone: selfCanAnswer(s.ledger) },
       ];
     }),
   );

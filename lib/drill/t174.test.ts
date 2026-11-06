@@ -53,6 +53,17 @@ describe("機器が止まったあとの連絡", () => {
     expect(sentenceSlip(t.saying!, ctx({ down: true }))).toBeNull();
   });
 
+  it("コードの言葉で連絡するのは機器の見える人だけ。遠くの家族しか押せなければ連絡しない答えのまま", () => {
+    const far = { ...persona, together: [], reporters: persona.reporters.map((r) => ({ ...r, canPress: r.source === "family" })) };
+    expect(personaTurns(input(cut, { reasons: ["clock"] }), far, answer({ contactsCaremanager: false, speech: "", from: "" }))).toEqual([]);
+  });
+
+  it("AI の言葉が全部落ちてコードの言葉に替わったら AI の印を付けない", () => {
+    const [t] = personaTurns(input(cut), persona, answer({ speech: "本人は無事です。" }));
+    expect(t).toMatchObject({ color: "red", ai: false });
+    expect(DOWN_SAYINGS).toContain(t.saying);
+  });
+
   it("前の連絡の直後でほかの理由の呼び出しなら、連絡しない答えのまま", () => {
     expect(personaTurns(input(cut, { reasons: ["incident"], state: state({ at: cut / 60 - 0.5 }) }), persona, answer({ contactsCaremanager: false, speech: "", from: "" }))).toEqual([]);
   });

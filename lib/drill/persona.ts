@@ -5,7 +5,7 @@
 // - Claude に渡すのは lib/pseudonym を通した物だけ。本人役の説明も刻みの文も pseudonymizeText で伏せ、印を付けてから入力に入れる
 //   （氏名・カナ・生年月日・住所・電話・町名を渡さない。本人は「A さん」、周りの人は役割名「娘」「支援者 1」）
 // - 色と順位を Haiku に出させない。Haiku が選ぶのは「赤か緑を押すか」と 4 問の答え（人がボタンを押すのと同じ）だけで、
-//   色と順位は安否を lib/triage の表に流して決まる
+//   色と順位は安否を lib/triage の表に流して決まる。機器が止まったまま家にいる間の押す色だけはコードが赤に決める（T174）
 // - 想定の表（lib/drill/scenarios.ts）の行がある刻みは、表が骨: 誰から・赤か緑か・4 問・どこに は表のまま、言う事とする事だけ Haiku の言葉
 //   （審査員の回でも形は同じで言葉だけ変わる）。表の行が無い刻みだけ、Haiku が連絡するかを決める
 // - スマホで赤緑を押せるのは、本人なら台帳の連絡手段が「使える」の人、家族・支援者ならスマホのある人だけ（表の行が無い刻み）
@@ -899,7 +899,8 @@ export function personaTurns(input: PersonaInput, persona: Persona, answer: Pers
 
   // T174: 機器が止まったまま家にいる間の連絡は赤。本人役が連絡しないと答えても、切れたあとの呼び出しでは押せる人が連絡する（色の入力をコードが決める。色と順は今までどおり表）
   const stuck = stuckDown(facts);
-  const presser = persona.reporters.find((r) => r.canPress && r.source === "family") ?? persona.reporters.find((r) => r.canPress) ?? null;
+  // コードの言葉で連絡するのは機器の見える人だけ（同居の人か本人。遠くの家族は見ていない機器を言い切らない）
+  const presser = persona.reporters.find((r) => r.canPress && r.source !== "agent" && (persona.together ?? []).includes(r.role)) ?? persona.reporters.find((r) => r.canPress && r.source === "agent") ?? null;
   const mustTell = stuck && presser !== null && ((input.reasons ?? []).includes("clock") || nowMinuteOf(input) - (facts.prevAt ?? -1) >= DOWN_TELL_MINUTES);
   const from = fromRole(answer.from);
   const named = answer.contactsCaremanager ? persona.reporters.find((r) => r.role === from && r.canPress) : undefined;
@@ -934,8 +935,9 @@ export function personaTurns(input: PersonaInput, persona: Persona, answer: Pers
   // いる所を言わない連絡（赤で家にいるかに答えない・色の分からない）は帳面のいる所で見る（T167。台の検査と同じ。前は門を抜け、避難所の人のする事に家にいる言い方が残った）
   const place = placeOfState({ color: turn.color, whereNow: turn.whereNow, atHome: turn.atHome }) ?? facts.place?.where ?? null;
   const saying = factText(turn.saying, turn.source, place);
-  // 言葉が全部落ちた・連絡しないと答えた時はコードの言葉（T174）
-  return [{ ...turn, saying: saying ?? (stuck ? downSaying(input.state?.saying, nowMinuteOf(input)) : null), doing: factText(turn.doing, turn.source, place) }];
+  const doingKept = factText(turn.doing, turn.source, place);
+  // 言葉が全部落ちた・連絡しないと答えた時はコードの言葉（T174）。AI の物が何も残らなければ AI の印を付けない
+  return [{ ...turn, saying: saying ?? (stuck ? downSaying(input.state?.saying, nowMinuteOf(input)) : null), doing: doingKept, ai: turn.ai && (saying !== null || doingKept !== null || !stuck) }];
 }
 
 /** 機器が止まったまま連絡が途切れたら、ほかの理由の呼び出しでも連絡する間（分。T174。止まった時刻の呼び出しが 1 区切りの人数で持ち越された時） */

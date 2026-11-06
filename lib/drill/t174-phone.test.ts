@@ -1,4 +1,4 @@
-// T174: 本人が電話に出られない人（寝たきりで固定電話だけ・聞こえが困難・気管切開の記録）。誰が出るか・出ないかはコードが台帳で決める
+// T174: 本人が電話に出られない人（寝たきりで固定電話だけ・聞こえが困難）。誰が出るか・出ないかはコードが台帳で決める
 
 import { describe, expect, it } from "vitest";
 import { SEED_PEOPLE } from "../../seed/people.ts";
@@ -54,14 +54,12 @@ const ask = (person: string, over: Record<string, unknown> = {}) =>
   ({ person, target: { kind: "self" }, pickup: "answers", hour: 2, world: EMPTY_WORLD, incidents: [], state: null, ...over }) as never;
 
 describe("本人が電話に出られるか（台帳の事実）", () => {
-  it("寝たきりで手元に電話が無い・聞こえが困難・気管切開の記録は出られない。手元に電話のある人・一部の聞こえ・認知症は出る", () => {
+  it("寝たきりで手元に電話が無い・聞こえが困難は出られない。手元に電話のある人・一部の聞こえは出る。処置や病名の記録では決めない", () => {
     expect(selfCanAnswer({ care: { bedridden: true }, basic: { contactMeans: { mobile: false, smartphone: "none" } } })).toBe(false);
     expect(selfCanAnswer({ care: { bedridden: true }, basic: { contactMeans: { mobile: true, smartphone: "none" } } })).toBe(true);
     expect(selfCanAnswer({ care: { bedridden: true }, basic: { contactMeans: { mobile: false, smartphone: "uses" } } })).toBe(true);
     expect(selfCanAnswer({ care: { hearing: "hard" } })).toBe(false);
     expect(selfCanAnswer({ care: { hearing: "some" } })).toBe(true);
-    expect(selfCanAnswer({ medical: { devices: [{ detail: "気管切開" }] }, basic: { contactMeans: { mobile: true } } })).toBe(false);
-    expect(selfCanAnswer({ medical: { devices: [{ detail: "鼻マスク" }] } })).toBe(true);
     expect(selfCanAnswer({})).toBe(true);
   });
 

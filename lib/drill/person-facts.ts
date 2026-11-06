@@ -220,19 +220,17 @@ export function housemates(
 export type SelfPhoneLedger = {
   basic?: { contactMeans?: { mobile?: boolean | null; smartphone?: string | null } | null };
   care?: { bedridden?: boolean | null; hearing?: string | null };
-  medical?: { devices?: ReadonlyArray<{ detail?: string | null }> };
 };
 
 /**
- * 本人が電話に出られるか（T174。評価の 9 回目で、寝たままで呼吸器の本人が固定電話に出て話した）。台帳の事実だけで決める:
- * 寝たきりで手元に電話が無い（固定電話だけ）・聞こえが「困難」・呼吸器の欄に気管切開の記録。認知症や「一部」の聞こえは出る（話が噛み合わないだけ）
+ * 本人が電話に出られるか（T174。評価の 9 回目で、寝たままの本人が固定電話に出て話した）。訓練の架空の人の役の決めで、台帳の働きの欄と電話の手段だけを見る:
+ * 寝たきりで手元に電話が無い（固定電話だけ）・聞こえが「困難」。処置や病名の記録からは決めない。認知症・聞こえ「一部」の記録では止めない（出たあとの話し方は本人役が演じる）
  */
 export function selfCanAnswer(l: SelfPhoneLedger): boolean {
   const means = l.basic?.contactMeans;
   const atHand = means?.mobile === true || means?.smartphone === "uses";
   if (l.care?.bedridden === true && !atHand) return false;
-  if (l.care?.hearing === "hard") return false;
-  return !(l.medical?.devices ?? []).some((d) => d.detail?.includes("気管切開"));
+  return l.care?.hearing !== "hard";
 }
 
 /** 本人への電話に出る人（呼び方）。本人が出られなければ同居の家族・支援者（電話の話し手の役割名）の最初の人、誰もいなければ null（呼び出し音だけ。出ない） */
@@ -805,7 +803,7 @@ export function remainChoices(d: DeviceNow): number[] {
 }
 
 /** 止まった機器の文の決まり（T174。前は予備の無い人の文にしか無く、予備が切れた人の家族が落ち着いた連絡を続けた） */
-const DOWN_WORDS = "止まっている間は緑（無事）を押さない。連絡は赤で、落ち着いたままとは言わない。する事・様子も、機器が止まった事が分かる言い方に";
+const DOWN_WORDS = "止まっている間は緑（無事）を押さない。連絡は赤で、落ち着いたままとは言わない。する事・様子も、機器が止まった事が分かる言い方に。機器と電源の事実だけを言い、体の具合の重さは言わない";
 
 /**
  * 帳面の文（Claude に渡す前。呼ぶ側が仮名化の門を通す）。言った事は決まった印の言い方だけ（本人役の言葉そのものは書かない）
@@ -889,7 +887,7 @@ export function factLines(f: Facts): string[] {
 export const stuckDown = (f: Pick<Facts, "devices" | "place">): boolean => f.devices.some((d) => d.down) && (f.place?.where ?? "home") === "home";
 
 /** 機器が止まったままの連絡のコードの言葉（T174。本人役が連絡しなかった時と、言葉が門で全部落ちた時）。名前・体の具合を書かない。前の言葉と同じ物を避ける */
-export const DOWN_SAYINGS = ["機械が止まったままです。電源を待っています。", "電源がまだ届きません。機械は止まったままです。", "機械は動かないままです。電源が届くのを待っています。"] as const;
+export const DOWN_SAYINGS = ["機械が止まったままです。電源がありません。", "電源が無いままです。機械は止まっています。", "機械は動かないままです。電源が要ります。"] as const;
 export const downSaying = (prev: string | null | undefined, now: number): string => {
   const start = Math.abs(Math.trunc(now)) % DOWN_SAYINGS.length;
   for (let i = 0; i < DOWN_SAYINGS.length; i++) {

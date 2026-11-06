@@ -51,7 +51,7 @@ export type FactPerson = {
   kin: ReadonlyArray<string> | null;
   hazards: ReadonlyArray<{ kind: string; depthM?: number | null }>;
   town: string | null;
-  /** スマホで赤緑を押せる人がいるか（T174。いなければ連絡の無いのは筋の外。無ければ押せると見る） */
+  /** 機器の見える所（本人か同居の人）にスマホで赤緑を押せる人がいるか（T174。いなければ連絡の無いのは筋の外。無ければ押せると見る） */
   canPress?: boolean;
   /** 本人が電話に出られるか（T174、selfCanAnswer。無ければ出られると見る） */
   selfPhone?: boolean;
