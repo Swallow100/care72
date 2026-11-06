@@ -34,6 +34,19 @@ export const GUARDS: ReadonlyArray<Guard> = [
     label: "本人役の言葉が文の途中で終わらない",
     suspects: ["lib/drill/persona.ts", "lib/drill/clip.ts"],
   },
+  // T161: 評価の 6 回目で岐阜市の一覧の様式（4 頁）の共有の対応表ができず、2 つ目の事業所が AI を呼び直した（頁の組の鍵が 3 頁まで）。
+  // 1 つ目に読めない頁があり共有に入れなかった物は数えない（tools/eval/scorecard-items.ts の sharedMissOf）
+  {
+    id: "forms-shared-copied",
+    bench: "forms",
+    item: "forms.sharedMiss",
+    op: "<=",
+    value: 0,
+    since: "r7",
+    task: "T161",
+    label: "一覧の様式の対応表を別の事業所が AI を呼ばずに写す",
+    suspects: ["lib/forms/shared-mapping.ts", "lib/forms/read-post.ts"],
+  },
 ];
 
 /** 守りの確かめ。values は回の項目の数、counts は同じ原因の指摘の数（causeCounts）。数の無い項目は確かめない */

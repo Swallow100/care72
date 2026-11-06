@@ -34,6 +34,12 @@ export type Judgement = {
 };
 
 const norm = (s: string) => normalizeWord(s).toLowerCase();
+/**
+ * 値の比べの形（T161）。意味の変わらない違いをそろえる: 全角半角（NFKC）・空白（どちらも norm）と、文の終わりの句点（「。」「．」「.」）。
+ * 句点は値の終わりと、紙の行の区切り（／。NFKC で / になる）・並びの区切り（|）の前だけを外す（文の中の句点・読点・「・」の違いは外れのまま）。
+ * 評価の 6 回目で、避難経路の入力の外れ 17 のうち 10 が文の終わりの「。」の有無だけだった
+ */
+export const valueNorm = (s: string) => norm(s).replace(/[。.]+(?=$|[／/|])/gu, "");
 /** 2 つの項目を持つ欄の字の比べ方（T141。空き・括弧・区切りの字を除く） */
 const pairNorm = (s: string) => norm(s).replace(/[\s（）()・／/、,]/g, "");
 
@@ -183,7 +189,8 @@ export function scoreRead(form: GoldForm, mapping: FormMapping, rejected: number
 export type IntakeScore = { expected: number; actual: number; hit: number; wrong: number; miss: number; extra: number; masked: number; dropped: number };
 export const emptyIntakeScore = (): IntakeScore => ({ expected: 0, actual: 0, hit: 0, wrong: 0, miss: 0, extra: 0, masked: 0, dropped: 0 });
 
-const n = (s: string | undefined | null) => norm(s ?? "");
+// 入れる欄の値は文の終わりの句点の有無を同じに（T161。valueNorm）
+const n = (s: string | undefined | null) => valueNorm(s ?? "");
 const listValue = (v: unknown) => (Array.isArray(v) ? [...v].map((x) => n(String(x))).sort().join("|") : n(String(v)));
 
 /** 変更の相手（id）と値 */
@@ -344,7 +351,7 @@ export function scorePaper(o: {
     if (act === "" && exp !== "" && o.actual.overlay && g.box) {
       const paired = new Set(o.pairs.values());
       const other = o.aiMapping.fields.find(
-        (f) => !f.removed && !paired.has(f.id) && f.page === g.page && f.box && boxInside(f.box, g.box!) && norm(paperText(f, o.actualCell(f))) === norm(exp),
+        (f) => !f.removed && !paired.has(f.id) && f.page === g.page && f.box && boxInside(f.box, g.box!) && valueNorm(paperText(f, o.actualCell(f))) === valueNorm(exp),
       );
       if (other) {
         act = paperText(other, o.actualCell(other));
@@ -353,7 +360,7 @@ export function scorePaper(o: {
     }
     // 2 つの項目を持つ正解の欄（「生年月日・年齢」。T141）: AI が 2 つの欄に分けて読んだら、正解の欄の場所に置いた字を全部合わせて見る
     // （評価の 5 回目で、紙には生年月日と年齢の両方が出ていたのに、年齢の欄だけと合わせて「置き間違い」と数えていた）
-    if (exp !== "" && norm(exp) !== norm(act) && g.box && pairedItem(gf)) {
+    if (exp !== "" && valueNorm(exp) !== valueNorm(act) && g.box && pairedItem(gf)) {
       const inBox = o.aiMapping.fields
         .filter((f) => !f.removed && f.page === g.page && f.box && boxInside(f.box, g.box!))
         .sort((a, b) => (Math.abs(a.box!.y - b.box!.y) < 0.01 ? a.box!.x - b.box!.x : a.box!.y - b.box!.y));
@@ -370,7 +377,8 @@ export function scorePaper(o: {
     if (expU !== actU) score.unconfirmedDiff += 1;
     let verdict: string;
     if (exp === "" && act === "") verdict = "空";
-    else if (norm(exp) === norm(act)) verdict = "当たり";
+    // 文の終わりの句点・全角半角・空白の違いは当たり（T161。valueNorm）
+    else if (valueNorm(exp) === valueNorm(act)) verdict = "当たり";
     else if (act === "") verdict = "取りこぼし";
     else if (exp === "") verdict = "余分";
     else verdict = "置き間違い";
