@@ -38,7 +38,7 @@ export function useBulkRun(): BulkRun {
   return { busy: step !== null, step, outcomes, run };
 }
 
-/** 選ぶ欄。読み上げの名前は「選択 カナ」 */
+/** 選ぶ欄。印は 18px、押せる所は周りの 36px 四方（事業所の担当の一括と同じ。components/office/AssignMany.tsx）。読み上げの名前は「選択 カナ」 */
 export function BulkCheck({
   label,
   checked,
@@ -53,18 +53,20 @@ export function BulkCheck({
   onChange: () => void;
 }) {
   return (
-    <input
-      type="checkbox"
-      aria-label={label}
-      checked={checked}
-      disabled={disabled}
-      onChange={onChange}
-      ref={(el) => {
-        if (el) el.indeterminate = indeterminate === true;
-      }}
-      className="size-4 align-middle accent-accent"
-      data-bulk-check
-    />
+    <label className="-m-2 inline-flex size-9 cursor-pointer items-center justify-center rounded align-middle">
+      <input
+        type="checkbox"
+        aria-label={label}
+        checked={checked}
+        disabled={disabled}
+        onChange={onChange}
+        ref={(el) => {
+          if (el) el.indeterminate = indeterminate === true;
+        }}
+        className="size-[1.125rem] shrink-0 accent-accent outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-accent"
+        data-bulk-check
+      />
+    </label>
   );
 }
 

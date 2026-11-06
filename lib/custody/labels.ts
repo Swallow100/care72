@@ -183,8 +183,8 @@ export const ENTRY_LABELS = {
   cameraFail: "カメラ不可",
   /** カメラが無い・断られた・ほかで使用中（T172） */
   cameraNone: "カメラなし",
-  cameraDenied: "使用拒否",
-  cameraBusy: "使用中",
+  cameraDenied: "カメラ拒否",
+  cameraBusy: "カメラ使用中",
   /** カメラの口が無いブラウザ: 端末のカメラで QR を写すと受入の頁が開く */
   cameraOs: "写すと受入頁",
   /** 受け入れたばかりの人の行の印（表の上に出す） */

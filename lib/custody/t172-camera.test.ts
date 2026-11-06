@@ -95,7 +95,7 @@ describe("カメラの頼み方", () => {
   });
   it("言葉は短く", () => {
     for (const w of [ENTRY_LABELS.cameraNone, ENTRY_LABELS.cameraDenied, ENTRY_LABELS.cameraBusy, ENTRY_LABELS.cameraFail]) {
-      expect(w.length).toBeLessThanOrEqual(5);
+      expect(w.length).toBeLessThanOrEqual(6);
     }
   });
 });

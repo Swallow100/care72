@@ -126,7 +126,7 @@ export function StaffRequests({ requests }: { requests: RequestHit[] }) {
                         onChange={() => setPicked(togglePickAll(live, ids))}
                       />
                     </th>
-                    <th scope="colgroup" colSpan={5} className={TH}>
+                    <th scope="colgroup" colSpan={5} className={`${TH} whitespace-normal`}>
                       {REQUEST_LABELS.from} <span className="text-ink">{g.office}</span> <span className="tabular-nums">{ids.length}</span> {CUSTODY_LABELS.people}
                     </th>
                   </tr>
@@ -179,7 +179,7 @@ function RequestRow({ r, picked, pickable, locked, onPick }: { r: RequestHit; pi
         <div className="font-bold">{r.kana}</div>
         {/* 640px 未満は年齢・行き先・依頼の列を省き、カナの下に（375 で受入のボタンが切れた） */}
         <div className="text-xs text-muted sm:hidden">
-          {r.age ?? "-"} {CUSTODY_LABELS.age} {r.shelter} <span className="tabular-nums">{shortJst(r.requestedAt)}</span>
+          <span className="tabular-nums">{r.age ?? "-"}</span> 歳 {REQUEST_LABELS.shelter} {r.shelter} {REQUEST_LABELS.at} <span className="tabular-nums">{shortJst(r.requestedAt)}</span>
         </div>
       </td>
       <td className={`${TD} ${SM} tabular-nums`}>{r.age ?? "-"}</td>
