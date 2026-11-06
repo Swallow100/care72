@@ -76,6 +76,19 @@ const talkFrac = (s: DrillSummaryLike, top: "repeats" | "repeatRaw", bottom: "re
   const d = sumOf(ns.map((n) => n.talk![bottom]));
   return d > 0 ? [sumOf(ns.map((n) => n.talk![top])), d] : null;
 };
+/** 仮想の回の出来事の無い人（T167。回の人ごとの数。仮想の回が無ければ null） */
+const virtualNoKind = (s: DrillSummaryLike): Raw => {
+  const ns = s.runs.filter((r) => r.scenario === "virtual" && r.numbers.persons).map((r) => r.numbers.persons!);
+  const d = sumOf(ns.map((p) => p.people));
+  return d > 0 ? [sumOf(ns.map((p) => p.noKind)), d] : null;
+};
+/** 通話の返事のうち本人役（AI）の割合（T167。前の回は数が無く null） */
+const talkAiShare = (s: DrillSummaryLike): Raw => {
+  const ns = runs(s).filter((n) => n.talk?.aiReplies !== undefined);
+  if (ns.length === 0) return null;
+  const d = sumOf(ns.map((n) => n.talk!.replies));
+  return d > 0 ? [sumOf(ns.map((n) => n.talk!.aiReplies ?? 0)), d] : null;
+};
 const judgeAxes = ["realism", "difficulty", "variety", "consistency", "learning"] as const;
 
 const DRILL: Item[] = [
@@ -106,6 +119,7 @@ const DRILL: Item[] = [
   // T165: 人ごとの筋。同じ回の人ごとの出来事の種類の数と、人どうしの種類の集合の重なり（前の回の summary には無いので null）
   { id: "drill.personKinds", bench: "drill", label: "人ごとの出来事の種類の数（平均）", better: "higher", unit: "score", agg: "mean", drill: (s) => s.diversity.persons.kindsPerPerson ?? null },
   { id: "drill.personNoKind", bench: "drill", label: "出来事の無い人の割合", better: "lower", unit: "score", agg: "mean", drill: (s) => s.diversity.persons.noKindShare ?? null },
+  { id: "drill.personNoKindVirtual", bench: "drill", label: "仮想の回の出来事の無い人", better: "lower", unit: "frac", agg: "sum", drill: virtualNoKind },
   { id: "drill.personKindOverlap", bench: "drill", label: "人どうしの筋の似かた（種類の重なり）", better: "lower", unit: "score", agg: "mean", drill: (s) => s.diversity.persons.kindJaccard ?? null },
   { id: "drill.cut", bench: "drill", label: "本人役の言葉が文の途中で切れた", better: "lower", unit: "frac", agg: "sum", threshold: zero, drill: (s) => [sumOf(runs(s).map((n) => n.cut?.hits ?? 0)), sumOf(runs(s).map((n) => n.cut?.checked ?? 0))] },
   { id: "drill.overmask", bench: "drill", label: "画面の（氏名）で元の語に名前が無い", better: "lower", unit: "frac", agg: "sum", threshold: zero, drill: (s) => [sumOf(runs(s).map((n) => n.overmask?.hits ?? 0)), sumOf(runs(s).map((n) => n.overmask?.checked ?? 0))] },
@@ -122,6 +136,7 @@ const DRILL: Item[] = [
   { id: "drill.clockDrift", bench: "drill", label: "電池の残りの数の流れの食い違い", better: "lower", unit: "count", agg: "sum", drill: (s) => sumOf(runs(s).map((n) => n.facts?.byRule.clock_drift ?? 0)) },
   { id: "drill.talkRepeat", bench: "drill", label: "通話の前の返事とほぼ同じ返事", better: "lower", unit: "frac", agg: "sum", drill: (s) => talkFrac(s, "repeats", "replies") },
   { id: "drill.talkRepeatRaw", bench: "drill", label: "往復の生の返事の繰り返し（門の前）", better: "lower", unit: "frac", agg: "sum", drill: (s) => talkFrac(s, "repeatRaw", "raw") },
+  { id: "drill.talkAiShare", bench: "drill", label: "通話の返事のうち本人役（AI）の割合", better: "lower", unit: "frac", agg: "sum", drill: talkAiShare },
   { id: "drill.talkPlaceDrift", bench: "drill", label: "通話の中のいる所の食い違い", better: "lower", unit: "count", agg: "sum", drill: (s) => (runs(s).some((n) => n.talk) ? sumOf(runs(s).map((n) => n.talk?.placeDrift ?? 0)) : null) },
   { id: "drill.freeInner", bench: "drill", label: "自由対応 画面の内部の名前", better: "lower", unit: "count", agg: "sum", threshold: zero, drill: (s) => s.totals.freeInnerShown ?? 0 },
   { id: "drill.freeCan", bench: "drill", label: "自由対応 不可を「できる」（生の返事）", better: "lower", unit: "count", agg: "sum", drill: (s) => s.totals.freeCanMismatch ?? 0 },

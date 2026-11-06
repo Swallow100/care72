@@ -272,7 +272,7 @@ describe("点数の表", () => {
     expect(marksOf(lower, { value: 2 }, { value: 0 })).toEqual({ worse: false, outside: false });
     const higher = itemOf("forms.intake")!;
     expect(marksOf(higher, { value: 0.99 }, { value: 0.98 }).worse).toBe(true);
-    const none = itemOf("drill.callsPerRun")!;
+    const none = itemOf("talk.aiCalls")!;
     expect(marksOf(none, { value: 10 }, { value: 100 })).toEqual({ worse: false, outside: false });
     // 種の r4 → r5 で、講評の待ち（最長）が 35 → 57 秒に延びたのは（悪）
     const md = scorecardMarkdown(seedColumns());
