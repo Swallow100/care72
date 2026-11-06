@@ -140,6 +140,8 @@ export const SCENES: Scene[] = [
         // 様式の頭（題名「個別避難計画」が見える所。R03-3 の 0〜4 秒）
         froms: [0, 0.5],
         label: "これが個別避難計画（松山市の様式）",
+        // 様式が映る絵には出典（作者の決め 11/6。市の頁は例外のほかの転用を認めていないので、出所を明らかにする）
+        source: "松山市 個別避難計画の様式（2026.9.10）",
         marker: "どう助けるか",
         cues: [
           { text: "災害のとき", line: "N02", size: "h2", row: 0 },
@@ -205,6 +207,7 @@ export const SCENES: Scene[] = [
         beats: [0.1, 2.4],
         sub: "薬と残り日数・医療機器と電池・家族と支援者・夜に来られる人",
         label: "左に台帳の区分の名前、右に様式の未確認の欄",
+        source: "松山市 個別避難計画の様式（2026.9.10）",
         marker: "書けていない",
       },
       {
@@ -280,6 +283,7 @@ export const SCENES: Scene[] = [
           { text: "発災時", line: "N08", say: "災害時は", slot: "mark" },
         ],
         label: "様式が埋まる・72 時間の棒・一覧が並び替わる（円柱）",
+        source: "松山市 個別避難計画の様式（2026.9.10）",
       },
     ],
   },
@@ -306,7 +310,7 @@ export const SCENES: Scene[] = [
       { at: 51, end: 53.2, kind: "footage", footage: "R02", from: 25.5, label: "入れる欄: 話した文が欄に流れる", zoom: [{ x: 0.38, y: 0.15, w: 0.62 }, { x: 0.4, y: 0.17, w: 0.6 }] },
       { at: 53.2, end: 55.2, kind: "footage", footage: "R02", from: 37.3, label: "入れる欄: Sonnet が台帳の 3 項目に分ける", chip: "Claude Sonnet 5.5", zoom: [{ x: 0.4, y: 0.17, w: 0.6 }, { x: 0.42, y: 0.18, w: 0.58 }] },
       { at: 55.2, end: 58, kind: "footage", footage: "R02", from: 66.3, label: "入れる欄: 保存と、空いている所だけの問い返し", chip: "Claude Sonnet 5.5", zoom: [{ x: 0.4, y: 0, w: 0.6 }, { x: 0.42, y: 0.01, w: 0.58 }] },
-      { at: 58, end: 64, kind: "flow", footages: ["R03", "R04", "R05"], label: "台帳から 3 つの紙面" },
+      { at: 58, end: 64, kind: "flow", footages: ["R03", "R04", "R05"], label: "台帳から 3 つの紙面", source: "松山市 個別避難計画の様式（2026.9.10）" },
       {
         at: 64,
         end: 70,
