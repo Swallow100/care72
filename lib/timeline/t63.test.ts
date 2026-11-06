@@ -27,6 +27,9 @@ import { RETRACT_NOTE_MAX } from "./paths.ts";
 import { CALL_PAYLOAD_SOURCE, canRetract, parseRetract, retractableRow, retractTimeline, retractTimelineRequest } from "./retract.ts";
 import { writeTimelineRequest } from "./write.ts";
 
+// 経過の書き足しの仕組みの試験。医療班の役の書き足しは今はなし（T172）なので、定数を戻した形で確かめる（今の形は lib/custody/t172.test.ts）
+vi.mock("../consent/relay.ts", () => ({ MEDICAL_TIMELINE_WRITES: true }));
+
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: () => {}, push: () => {} }) }));
 
 let sqlite: DatabaseSync;

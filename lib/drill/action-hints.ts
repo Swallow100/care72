@@ -32,6 +32,8 @@ export const HINT_LABELS = {
   done: "手配済",
   /** 相手の連絡先が台帳に無い手 */
   noTarget: ACTION_UI.noTarget,
+  /** 頼み事の印を押した先の候補の行が無い（済んだ頼み事。T166） */
+  askDone: "対応済",
   /** 公表の事実 */
   dialysisClosed: "透析休止",
   nurseAway: "看護不在",
@@ -237,6 +239,20 @@ export type HintAct = { kind: DrillAction; state: Exclude<ActState, "wait">; why
 export type HintGroup = { sources: HintSource[]; actions: HintAct[] };
 /** 本人ごとの候補。alt は電話の手が全部押せない時の代替（それ以外は null） */
 export type ActionHints = { groups: HintGroup[]; alt: HintAct[] | null };
+
+/**
+ * 頼み事の印を押した先（T166）。手が 1 つならその手を選ぶ。2 つ以上はどちらかに決めず候補の行へ。手が 1 つでも押せない（候補の行が block）なら理由の読める候補の行へ。
+ * found は候補にその頼み事の行があるか（済んだ頼み事は候補に出ない）
+ */
+export type AskPickTo = { to: "act"; kind: DrillAction } | { to: "row"; found: boolean };
+
+export function askPick(ask: AskKind, hints: ActionHints | null): AskPickTo {
+  const kinds = askActions(ask).filter((k) => !PANEL_HIDDEN.includes(k));
+  const group = hints?.groups.find((g) => g.sources.some((s) => s.from === "ask" && s.ask === ask)) ?? null;
+  const only = kinds.length === 1 ? kinds[0] : null;
+  if (only && group?.actions.find((a) => a.kind === only)?.state !== "block") return { to: "act", kind: only };
+  return { to: "row", found: group !== null };
+}
 
 /** 向かっている人がいる・届いた・確認済で、手配済とする手か（世界の写しから。手の表の効き目で引く） */
 function arranged(kind: DrillAction, person: string, w: HintInput["world"]): boolean {

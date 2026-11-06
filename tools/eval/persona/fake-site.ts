@@ -1,7 +1,7 @@
 // 偽の画面（docs/tasks/T156.md）。Chrome と next dev を使わずに台の筋を通すための、ケア72 の小さな写し。
 // 画面の言葉と並びは手元の本物の画面（11/6 の種）に合わせた最小限: ログイン・担当一覧・利用者追加・本人のページ（避難先の編集・
 // 計画書の表示）・訓練（着信の窓・次まで・自動進行）・事業所（発災開始の窓・担当の変更・最初に戻す）・書類（印刷）・様式 9・
-// 受入一覧（受入依頼〔発災開始のあと、T163〕・氏名検索・避難所・受入・追記）・本人スマホ（赤）・役変更。本物と違う所があっても台の筋を確かめる物で、本物の代わりではない。
+// 受入一覧（受入依頼〔発災開始のあと、T163〕・一括受入〔T172〕・氏名検索・避難所・受入）・本人スマホ（赤）・役変更。本物と違う所があっても台の筋を確かめる物で、本物の代わりではない。
 
 import { hashOf, lookOf } from "./dom.ts";
 import type { Secrets, Surface } from "./surface.ts";
@@ -27,6 +27,9 @@ type State = {
   received: boolean;
   /** 受入依頼（T163）に返事をした */
   replied: boolean;
+  /** 残りの依頼を選んだ・まとめて受け入れた（T172） */
+  bulkPicked: boolean;
+  bulkDone: boolean;
   noteOpen: boolean;
   note: string | null;
   red: boolean;
@@ -59,6 +62,8 @@ const fresh = (): State => ({
   shelter: null,
   received: false,
   replied: false,
+  bulkPicked: false,
+  bulkDone: false,
   noteOpen: false,
   note: null,
   red: false,
@@ -213,9 +218,13 @@ export class FakeSurface implements Surface {
                 { role: "link", name: "計画書（松山市） 表示", on: () => `/people/${who.id}/forms/matsuyama` } satisfies FakeItem,
                 { role: "link", name: "計画書（松山市） 印刷", on: () => `/people/${who.id}/forms/matsuyama?print=1` } satisfies FakeItem,
               ]),
-          // 経過の書き足し: 自由文に書くと「追記」が押せる（本物の本人のページと同じ）
-          box("自由文"),
-          { role: "button", name: "追記", disabled: !this.value("自由文"), on: (s) => void ((s.note = this.value("自由文")), (s.values[`${this.path.split("?")[0]}|自由文`] = "")) },
+          // 経過の書き足し: 自由文に書くと「追記」が押せる（本物の本人のページと同じ）。医療班の役には無い（T172）
+          ...(medical
+            ? []
+            : [
+                box("自由文"),
+                { role: "button", name: "追記", disabled: !this.value("自由文"), on: (s: State) => void ((s.note = this.value("自由文")), (s.values[`${this.path.split("?")[0]}|自由文`] = "")) } satisfies FakeItem,
+              ]),
         ],
       };
     }
@@ -259,15 +268,15 @@ export class FakeSurface implements Surface {
               s.drill!.ringing = s.drill!.hours === 3;
             },
           },
-          { role: "checkbox", name: "自動進行", checked: d.auto, on: (s) => void ((s.drill!.auto = !s.drill!.auto), (s.drill!.hours += 6)) },
+          { role: "switch", name: "自動進行", checked: d.auto, on: (s) => void ((s.drill!.auto = !s.drill!.auto), (s.drill!.hours += 6)) },
         ],
       };
     }
     if (p === "/office") {
       const win: FakeItem[] = st.startConfirm
         ? [
-            { role: "button", name: "取消", zone: "窓:発災開始", on: (s) => void (s.startConfirm = false) },
-            { role: "button", name: "開始", zone: "窓:発災開始", on: (s) => void ((s.startConfirm = false), (s.disaster = true)) },
+            { role: "button", name: "平時維持", zone: "窓:発災確認", on: (s) => void (s.startConfirm = false) },
+            { role: "button", name: "発災開始", zone: "窓:発災確認", on: (s) => void ((s.startConfirm = false), (s.disaster = true)) },
           ]
         : [];
       return {
@@ -318,15 +327,24 @@ export class FakeSurface implements Surface {
     if (p === "/staff") {
       // 発災開始のあとは受入一覧の上に受入依頼（種の連絡順の上から。T163）。返事をすると行が消える
       const asked = st.disaster && !st.replied;
+      // 残りの依頼（2 人）。選んで一括受入（T172）
+      const rest = st.disaster && !st.bulkDone;
+      const count = (st.received ? 1 : 0) + (st.bulkDone ? 2 : 0);
       return {
         title: "受入一覧 | ケア72",
-        headings: ["受入一覧", ...(asked ? ["受入依頼"] : []), "受入"],
-        text: `受入一覧 ${st.received ? 1 : 0} 人${asked ? " 受入依頼 1 人 ヤマダ ハナ デモ事業所（確認用） かわなぎ小学校" : ""} 避難所 ${st.shelter ?? "未入力"}`,
+        headings: ["受入一覧", ...(asked || rest ? ["受入依頼"] : []), "受入"],
+        text: `受入一覧 ${count} 人${asked ? " 受入依頼 1 人 ヤマダ ハナ デモ事業所（確認用） かわなぎ小学校" : ""}${rest ? " コバヤシ トシ タナカ シゲル" : ""} 避難所 ${st.shelter ?? "未入力"}`,
         items: [
           ...(asked
             ? [
                 { role: "button", name: "受入 ヤマダ ハナ", on: (s: State) => ((s.replied = true), (s.received = true), (s.shelter = "かわなぎ小学校"), "/staff?received=cu-1") } satisfies FakeItem,
                 { role: "button", name: "受入不可 ヤマダ ハナ", on: (s: State) => void (s.replied = true) } satisfies FakeItem,
+              ]
+            : []),
+          ...(rest
+            ? [
+                { role: "checkbox", name: "全選択 デモ事業所（確認用）", checked: st.bulkPicked, on: (s: State) => void (s.bulkPicked = !s.bulkPicked) } satisfies FakeItem,
+                { role: "button", name: st.bulkPicked ? "一括受入 2 人" : "一括受入 0 人", disabled: !st.bulkPicked, on: (s: State) => ((s.bulkDone = true), "/staff?received=cu-2,cu-3") } satisfies FakeItem,
               ]
             : []),
           box("避難所"),

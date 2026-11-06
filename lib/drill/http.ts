@@ -23,6 +23,7 @@ import {
   listDrills,
   MEMO_MAX,
   startDrill,
+  type StartDeps,
   undoDrill,
   type DrillScope,
   type StartOptions,
@@ -125,14 +126,14 @@ export function parseStartOptions(v: unknown): StartOptions | null {
  * （options は T59 から。無ければ担当一覧の全員・想定の表の職員・昼の発災）。
  * 10 分版（short）は T124 で外したので 400（入力不正）。前からある 10 分版の記録は一覧・再生・紙で今までどおり読める
  */
-export async function startPost(db: D1Database, p: Principal | null, json: unknown, now: string, hooks?: StepHooks): Promise<Response> {
+export async function startPost(db: D1Database, p: Principal | null, json: unknown, now: string, hooks?: StepHooks, deps?: StartDeps): Promise<Response> {
   const scope = gate(p);
   if (scope instanceof Response) return scope;
   const b = obj(json);
   if (!b || !isDrillScenario(b.scenario) || !isStartScenario(b.scenario)) return drillError("invalid");
   const options = parseStartOptions(b.options);
   if (!options) return drillError("invalid");
-  const r = await startDrill(db, scope, b.scenario, now, hooks, undefined, options);
+  const r = await startDrill(db, scope, b.scenario, now, hooks, undefined, options, undefined, deps);
   if (!r.ok) return drillError(r.error === "running" ? "running" : r.error === "invalid" ? "invalid" : "not_found");
   return Response.json({ ok: true, id: r.id }, { headers: NO_STORE });
 }

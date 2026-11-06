@@ -12,12 +12,12 @@
 import * as z from "zod";
 import type { ClockCategory, DependsOn } from "../db/types.ts";
 import { maskReply, restoreText, type PseudonymKey } from "../pseudonym/index.ts";
-import { aliasOfTown, AREA_ROADS, DEMO_AREA, facilityOf, roadOf, restoreTowns, shelterOf, townOfAlias, type Area } from "./area.ts";
+import { aliasOfTown, DEMO_AREA, facilityOf, roadOf, restoreTowns, shelterOf, townOfAlias, type Area } from "./area.ts";
 import { personOfAlias } from "./director.ts";
 import type { DrillIncident } from "./engine.ts";
 import { afterOf, EVENT_CATALOG, vendorText } from "./event-catalog.ts";
 import { PHONE_LABELS, SHELTER_LABELS } from "./labels.ts";
-import type { PhoneState, ShelterState, Weather, WorldChange, WorldVia } from "./scenarios.ts";
+import type { OutageArea, PhoneState, ShelterState, Weather, WorldChange, WorldVia } from "./scenarios.ts";
 
 // ---------- 返事の形 ----------
 
@@ -117,8 +117,10 @@ export const REASON_MEDICAL_WORDS =
 
 /** 本人ごとの、出来事を当てるのに要る事実。部屋には渡さない */
 export type PersonFacts = {
-  /** 台帳の町名（地理の町。無ければ null） */
+  /** 区画の鍵（デモはピンの位置から、ほかは台帳の町名。無ければ null。lib/drill/area.ts の townOfLedger） */
   town: string | null;
+  /** 台帳の町名（停電の突き合わせはこの町名で。無ければ town と同じ扱い） */
+  homeTown?: string | null;
   /** 時計の頼り先（透析施設・配達…） */
   depends: ReadonlyArray<DependsOn>;
   /** 時計の区分（透析・経管栄養…） */
@@ -138,7 +140,7 @@ export type ApplyContext = {
   ended: ReadonlySet<string>;
   hour: number;
   via: WorldVia;
-  /** 事業所の地理（T70、lib/drill/area.ts の areaOf）。無ければデモ事業所の架空の街 */
+  /** 事業所の地理（T70、lib/drill/area.ts の areaOf）。無ければデモ事業所の実の区画（T170） */
   area?: Area;
   /**
    * 結末を当てるか（T70 の続き）。false（デモ以外の事業所）なら、返ってきた結末（farewells）は全部捨てる。
@@ -150,6 +152,10 @@ export type ApplyContext = {
    * 無ければ前と同じ（当てる）
    */
   supplyOk?: (person: string) => boolean;
+  /** 家の外にいると連絡のあった人か（T167。業者の巡回を出さない）。無ければ見ない */
+  awayNow?: (person: string) => boolean;
+  /** まだ出来事の無い人に足す表の人ごとの出来事（T167、lib/drill/quiet-event.ts）。無ければ足さない */
+  quiet?: () => DrillIncident[];
 };
 
 // ---------- 値を読む ----------
@@ -221,6 +227,17 @@ type Built = { change: WorldChange; text: string; person?: string };
 const residents = (ctx: ApplyContext, towns: ReadonlyArray<string>) =>
   [...ctx.facts].filter(([p, f]) => !ctx.ended.has(p) && f.town !== null && towns.includes(f.town)).map(([p]) => p);
 
+/**
+ * 停電の範囲。本人役・ルールの表・採点は台帳の町名で突き合わせるので（lib/drill/persona.ts の inOutageArea など）、ピンで区画に入れる地理（デモ）は
+ * そこに住む人の台帳の町名を towns に、画面の区画の言葉を places に持つ。同じ町名の人が別の区画にいれば、その人も停電に入る（種の 10 人には無い）
+ */
+function outageArea(towns: ReadonlyArray<string>, ctx: ApplyContext, area: Area): OutageArea {
+  const since = (keys: ReadonlyArray<string>) => Object.fromEntries(keys.map((t) => [t, ctx.hour]));
+  if (!area.byPin) return { scope: "towns", towns: [...towns], since: since(towns) };
+  const homes = [...new Set([...ctx.facts].flatMap(([, f]) => (f.town !== null && towns.includes(f.town) && f.homeTown ? [f.homeTown] : [])))];
+  return { scope: "towns", towns: homes, since: since(homes), places: [...towns] };
+}
+
 /** 本人の仮名 → その人の町（人から町を引く。部屋は町を知らない） */
 function townOfTarget(raw: string, ctx: ApplyContext): string | null {
   if (!raw.trim()) return null;
@@ -267,13 +284,9 @@ function buildEvent(e: WorldStep["events"][number], ctx: ApplyContext): Built[] 
       const road = roadOf(e.name, area);
       if (road) {
         const persons = residents(ctx, road.towns);
-        // 道の名前は部屋に見せる別名のまま世界に持ち（今の街の文に使う）、画面の文だけ町名に戻す（台帳から作った地理の「甲地区の道」）
-        return [
-          {
-            change: { kind: "town_road", road: road.id, label: road.name, open, persons },
-            text: restoreTowns(`${road.name} ${open ? "通行可" : "通行止"}`, area),
-          },
-        ];
+        // 道の名前は画面の言葉で世界に持つ（「甲地区の道」→「市坪・井門付近の道」。T170）。Claude に渡す文は門（places）で別名に戻る
+        const label = restoreTowns(road.name, area);
+        return [{ change: { kind: "town_road", road: road.id, label, open, persons }, text: `${label} ${open ? "通行可" : "通行止"}` }];
       }
       const towns = placeOf(e, ctx);
       return towns.map((town): Built => {
@@ -287,7 +300,7 @@ function buildEvent(e: WorldStep["events"][number], ctx: ApplyContext): Built[] 
       if (open === true) return [{ change: { kind: "outage_restored" }, text: "停電 復旧" }];
       const towns = placeOf(e, ctx);
       if (towns.length === 0) return [];
-      return [{ change: { kind: "outage", area: { scope: "towns", towns, since: Object.fromEntries(towns.map((t) => [t, ctx.hour])) } }, text: `${townWords(towns)} 停電` }];
+      return [{ change: { kind: "outage", area: outageArea(towns, ctx, area) }, text: `${townWords(towns)} 停電` }];
     }
     case "water": {
       const towns = placeOf(e, ctx);
@@ -348,7 +361,7 @@ function buildEvent(e: WorldStep["events"][number], ctx: ApplyContext): Built[] 
       return [{ change: { kind: "note", topic: "water_station" }, text: towns.length > 0 ? `${townWords(towns)} 給水所 開設` : "給水所 開設" }];
     }
     case "pharmacy": {
-      // 地理の薬局（AREA_FACILITIES の pharmacy）だけ。休止で頼る人の時計の頼り先が未確認（施設の休止と同じ道）
+      // 地理の薬局（施設の表の pharmacy）だけ。休止で頼る人の時計の頼り先が未確認（施設の休止と同じ道）
       const f = area.facilities.find((x) => x.id === "pharmacy");
       const open = e.value.trim() ? openOf(e.value) : false;
       if (!f || open === null) return [];
@@ -374,6 +387,8 @@ function buildEvent(e: WorldStep["events"][number], ctx: ApplyContext): Built[] 
       if (!p || !f || ctx.ended.has(p) || !(f.categories.includes("oxygen") || f.categories.includes("ventilator"))) return [];
       // 手も計画も無い人に、業者が自然に来て酸素・電池が届く形にしない（T130。評価の 3 回目の審査役の根拠）
       if (ctx.supplyOk && !ctx.supplyOk(p)) return [];
+      // 業者は家に来るので、家の外にいると連絡のあった人には出さない（T167。監督の表の vendor_round と同じ）
+      if (ctx.awayNow?.(p)) return [];
       const raw = e.value.replace(/[^\d.]/g, "");
       const after = afterOf(EVENT_CATALOG.vendor_round, raw ? Number(raw) : undefined);
       if (after == null) return [];
@@ -472,6 +487,8 @@ export function worldIncidents(answer: WorldStep, ctx: ApplyContext, hints: Read
     used += 1;
     for (const b of built) out.push({ ...base, change: b.change, text: b.text, ...(b.person ? { person: b.person } : {}), ai: true });
   }
+  // まだ出来事の無い人に、表の人ごとの出来事を 1 つ（T167、lib/drill/quiet-event.ts。世界がこの刻みに人を指す出来事を出していれば足さない）
+  if (ctx.quiet && !out.some((e) => e.person)) out.push(...ctx.quiet());
   return ctx.endings === false ? out : [...out, ...farewellIncidents(answer.farewells, ctx, hints)];
 }
 
@@ -484,4 +501,4 @@ export function fallbackIncidents(hour: number, state: "down" | "off"): DrillInc
 }
 
 /** 部屋に見せる道・地区の名前の確かめ用（テストと指示の文） */
-export const ROAD_NAMES = AREA_ROADS.map((r) => r.name);
+export const ROAD_NAMES = DEMO_AREA.roads.map((r) => r.name);

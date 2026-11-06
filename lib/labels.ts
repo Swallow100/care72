@@ -409,6 +409,9 @@ export const PENDING_STATUS_LABELS: Record<PendingStatus, string> = {
  * 新しく足した人の上が「未確認 0」なのに欄がほぼ全部「未確認」だった）
  */
 /** usual は見る方の画面で、行・区分の中が全部当たり前の値（lib/intake/fields.ts の USUAL_VALUES）だったとき（T143） */
+/** 飛んだ先の案内（T169）。今入れる欄の印（紫の塗り） */
+export const TARGET_LABELS = { mark: "要入力" } as const;
+
 export const BLANK_LABELS = { unconfirmed: "未確認", blank: "未入力", none: "なし", usual: "特記なし" } as const;
 
 export const TIMELINE_KIND_LABELS: Record<TimelineKind, string> = {
@@ -513,6 +516,10 @@ export const INTAKE_LABELS = {
   addContact: "連絡先追加",
   /** 面の編集の組の目次（T145。読み上げだけ） */
   groupNav: "目次",
+  /** 目次の項目の読み上げ（「避難先 移動」。T166） */
+  groupMove: "移動",
+  /** 編集の面の下の「変更 1 件」（T166。前は「1 件」だけで何の数か読めなかった） */
+  changeCount: "変更",
   addHazard: "ハザード",
   addDevice: "機器",
   /** 面の編集で行を外す・外す印を戻す（保存の前に確認の窓） */

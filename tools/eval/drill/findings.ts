@@ -106,6 +106,10 @@ export function metaOf(h: CheckHit): Meta | null {
         accept: zero("drill.termsRan"),
       };
     }
+    case "world_place":
+      return head(h.rule) === "retired"
+        ? { cause: "drill:world_place:retired", rule: "world_place:retired", title: "世界の文にやめた架空の地名", severity: "high", screen: "訓練 > 経過（出来事）", suspects: ["lib/drill/area.ts", "lib/drill/area-demo.ts", "lib/drill/world-apply.ts", "lib/pseudonym/index.ts"], accept: zero("count:drill:world_place:retired") }
+        : { cause: "drill:world_place:off_table", rule: "world_place:off_table", title: "世界の 1 文に地理に無い実在らしい名前", severity: "low", screen: "訓練 > 経過（出来事）", suspects: ["lib/drill/world-oneshot.ts", "lib/drill/world-apply.ts"] };
     case "fit":
       return { cause: `drill:fit:${head(h.rule)}`, rule: `fit:${head(h.rule)}`, title: `想定に合わない物（${head(h.rule)}）`, severity: "mid", screen: "訓練 > 経過", suspects: ["lib/drill/fit.ts", "lib/drill/gate.ts"] };
     case "free": {
@@ -161,6 +165,8 @@ const FACT_TITLES: Readonly<Record<string, string>> = {
   clock_drift: "電池の残りの数が前に言った数と食い違う（予備に替えた・電気が戻ったと言わずに）",
   spare_unsaid: "予備で動いているのに残りの数を予備と言わない",
   left_remain: "家に置いてきた栄養剤の残りの時間を言う",
+  power_said: "停電の戻りと家の電気が食い違う言葉（届いた電源を電気が戻ったと言う・戻ったあとにまだ停電と言う）",
+  down_silent: "機器の予備が切れたあと長く本人・家族の連絡が無い",
   place_text: "いる所と食い違う言葉",
   remain_mismatch: "電池・予備の残りの数が帳面と食い違う",
   old_news: "前に伝えた事を新しい事のように言う",

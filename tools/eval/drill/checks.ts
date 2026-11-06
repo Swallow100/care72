@@ -18,6 +18,7 @@ import { changeMisfit, FIT_PROFILES, fitKindOf, forbiddenFor, waterActive, wordM
 import type { DrillKind, PhoneState, WorldChange, WorldState } from "../../../lib/drill/scenarios.ts";
 import type { DrillScenario, HazardKind } from "../../../lib/db/types.ts";
 import { bandOf, TIMELINE, type TimeBandId } from "../../../lib/drill/time-odds.ts";
+import { DEMO_AREA, RETIRED_DEMO_NAMES } from "../../../lib/drill/area.ts";
 import { FORBIDDEN_WORDS, REASON_MEDICAL_WORDS } from "../../../lib/drill/world-apply.ts";
 import { findLeaks, MASK_MARKS, NAME_MARK, restoreText, type PseudonymKey } from "../../../lib/pseudonym/index.ts";
 import { birthIn } from "../shapes.ts";
@@ -83,7 +84,7 @@ export function hurtIn(text: string): boolean {
 // ---------- 引っかかった所 ----------
 
 export type CheckHit = {
-  check: "banned" | "shape" | "leak" | "overmask" | "contradiction" | "time_odds" | "stop" | "op_failed" | "budget" | "terms" | "fit" | "free" | "facts" | "talk" | "persons";
+  check: "world_place" | "banned" | "shape" | "leak" | "overmask" | "contradiction" | "time_odds" | "stop" | "op_failed" | "budget" | "terms" | "fit" | "free" | "facts" | "talk" | "persons";
   rule: string;
   /** banned: raw（モデルの生の返事）か shown（画面に出た物） */
   where?: "raw" | "shown" | "sent";
@@ -495,6 +496,40 @@ export function overmaskHits(
 }
 
 /** 6. 止まった・失敗した刻み（「停止」「代替」の印、要求の失敗） */
+/** 実在らしい名前の形（川・橋・町・学校・公民館。世界の 1 文に地理に無い名前を書いていないかの目安。T170） */
+const PLACE_NAME_LIKE = /[\p{Script=Han}ァ-ヶ]{2,8}(?:川|橋|町|小学校|中学校|公民館)/gu;
+
+/**
+ * 仮想の回の世界の文（T170）。やめた架空の地名（種の町名・白波川・架空の道と避難所）が世界の文に出ない。結末の文も見る。
+ * 地理に無い実在らしい名前（off_table）は Claude が知っている名前を書いた物の目安で、本物の回で見る数
+ */
+export function worldPlaceHits(outcome: RunOutcome): CheckHit[] {
+  if (outcome.plan.scenario !== "virtual") return [];
+  const hits: CheckHit[] = [];
+  const known = [
+    ...DEMO_AREA.rivers,
+    ...DEMO_AREA.towns.map((t) => t.town),
+    ...DEMO_AREA.roads.map((r) => r.name),
+    ...DEMO_AREA.shelters.map((s) => s.name),
+    ...DEMO_AREA.facilities.map((f) => f.name),
+    // 開始の時に読んだ実の避難所の名前（出来事に出た物）
+    ...(outcome.replay?.ticks ?? []).flatMap((t) => t.incidents.flatMap((e) => (e.change?.kind === "shelter" ? [String((e.change as { label?: unknown }).label ?? "")] : []))),
+  ];
+  for (const t of outcome.replay?.ticks ?? []) {
+    for (const e of t.incidents) {
+      if (e.ai !== true && e.change?.kind !== "narration") continue;
+      const text = e.text ?? "";
+      const minute = Math.round((e.at ?? t.hour) * 60);
+      for (const name of RETIRED_DEMO_NAMES) if (text.includes(name)) hits.push({ check: "world_place", rule: `retired:${name}`, person: e.person ?? null, minute, evidence: excerpt(text, text.indexOf(name)) });
+      if (e.change?.kind !== "narration") continue;
+      for (const m of text.matchAll(PLACE_NAME_LIKE)) {
+        if (!known.some((k) => k.includes(m[0]) || m[0].includes(k))) hits.push({ check: "world_place", rule: "off_table", minute, evidence: excerpt(text, m.index) });
+      }
+    }
+  }
+  return hits;
+}
+
 export function stopHits(outcome: RunOutcome): CheckHit[] {
   const hits: CheckHit[] = [];
   for (const t of outcome.replay?.ticks ?? []) {
@@ -882,6 +917,7 @@ export const FACT_WORD_RULES: ReadonlySet<string> = new Set([
   "repeat_intent",
   "swap_news",
   "backstage",
+  "power_said",
 ]);
 
 /** 1 回の人ごとの筋の数（T165、diversity.ts の personKinds を回ごとに） */
@@ -952,6 +988,7 @@ export function checkRun(records: ReadonlyArray<LogRecord>, outcome: RunOutcome,
   const overmask = overmaskHits(records, outcome, ctx);
   const talk = talkHits(outcome, records);
   const arcs = personArcHits(outcome);
+  const worldPlace = worldPlaceHits(outcome);
   const ai = records.filter((r): r is AiRecord => r.type === "ai" && (r as AiRecord).role !== "judge");
   // 1 訓練の数え（画面の「AI 残」から。10 分版は数えないので本人役と監督の呼び出しの数）
   const drillCounted = outcome.callsLeft !== null ? DRILL_CAP - outcome.callsLeft : ai.filter((a) => a.role === "persona" || a.role === "director" || a.role === "world" || a.role === "world_room").length;
@@ -1037,5 +1074,5 @@ export function checkRun(records: ReadonlyArray<LogRecord>, outcome: RunOutcome,
       unpricedCalls: ai.filter((a) => a.costUsd === null && a.role !== "world_room").length,
     },
   };
-  return { hits: [...banned, ...leaks, ...shape, ...odds.hits, ...contra, ...stops, ...terms, ...fit.hits, ...free, ...facts.hits, ...cut.hits, ...overmask.hits, ...talk.hits, ...arcs.hits, ...budgetHits], numbers };
+  return { hits: [...worldPlace, ...banned, ...leaks, ...shape, ...odds.hits, ...contra, ...stops, ...terms, ...fit.hits, ...free, ...facts.hits, ...cut.hits, ...overmask.hits, ...talk.hits, ...arcs.hits, ...budgetHits], numbers };
 }

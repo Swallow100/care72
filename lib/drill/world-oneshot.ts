@@ -11,8 +11,9 @@
 import { askJson, type AskJsonContext, type AskJsonRequest } from "../claude/call.ts";
 import { actionWords, CATALOG_WORDS } from "./action-catalog.ts";
 import { CARE_LEVEL_LABELS, CLOCK_START_LABELS, CLOCK_UNIT_LABELS, DEVICE_LABELS, HOUSEHOLD_LABELS } from "../labels.ts";
-import { pseudonymize, pseudonymizeText, type ForClaude, type PseudonymInput, type PseudonymKey } from "../pseudonym/index.ts";
-import { aliasOfTown, areaOf, DEMO_AREA, geographyText, placesOf, townOfLedger, type Area } from "./area.ts";
+import { maskedCount, pseudonymize, pseudonymizeText, type ForClaude, type PseudonymInput, type PseudonymKey } from "../pseudonym/index.ts";
+import { aliasOfTown, areaOf, DEMO_AREA, geographyText, placesOf, restoreTowns, townOfLedger, type Area } from "./area.ts";
+import type { RealGeo } from "./real-geo-apply.ts";
 import { DEMO_OFFICE_ID } from "../auth/demo.ts";
 import { endingsAllowed } from "./fiction.ts";
 import type { ActionRecord, DrillIncident, WorldInput } from "./engine.ts";
@@ -26,7 +27,8 @@ import { stateLines } from "./state-rules.ts";
 import { fitKindOf, fitText, profileOf } from "./fit.ts";
 import { EVENT_LABELS } from "./event-catalog.ts";
 import { reportersOf } from "./persona.ts";
-import { factLines, factsOf, issuedBlock, planLines, planOf, supplyAllowed, type Plan } from "./person-facts.ts";
+import { quietPersonEvent } from "./quiet-event.ts";
+import { factLines, factsOf, issuedBlock, placeOfState, planLines, planOf, supplyAllowed, type Plan } from "./person-facts.ts";
 import type { WorldState, WorldVia } from "./scenarios.ts";
 import {
   FAREWELL_MAX,
@@ -68,7 +70,7 @@ const KIND_WORDS: Readonly<Record<(typeof WORLD_KINDS)[number], string>> = {
 export const WORLD_SYSTEM = [
   "災害の訓練（発災から 72 時間）の「世界」。街と、在宅で介護を受ける高齢者たち（人数は訓練ごとに違う。入力の本人たちに並ぶ人だけ）の訓練で、ケアマネが誰から順に連絡するかを試す。",
   "あなたは街の出来事を進め、訓練の架空の人の結末も決める（入力に「結末: 決めない」とある訓練では決めない）。刻みごとに、今の時刻と、前の刻みからケアマネがした事・本人たちの最後の様子・時計の目安が届く。",
-  "最初の刻みに街の地理（地区・道・避難所・施設）と本人ごとの台帳の要約が届く。前の刻みの出来事は覚えておき、矛盾しない流れにする。",
+  "最初の刻みに街の地理（地域・川・地区・道・避難所・施設）と本人ごとの台帳の要約が届く。地理は実在の地域の物で、人は架空。出来事は訓練の想定。前の刻みの出来事は覚えておき、矛盾しない流れにする。",
   "最初の刻みで災害の種類（大雨か地震）を決め、narration に書く。以後 72 時間、その災害で起きやすい流れにする（大雨なら増水 → 浸水 → 停電・断水 → 復旧、地震なら停電・断水・道路の寸断・余震）。",
   "固定の筋は無い。街の事情は刻みごとに変わってよいが、ケアマネが動けば確かめられる・防げる大きさの事を多めにする。",
   "",
@@ -90,7 +92,8 @@ export const WORLD_SYSTEM = [
   "1. 人の体の状態（けが・病状・意識）を events と narration に書かない。書くのは街と物の事実だけ。本人たちの様子は別の役が演じる。",
   "2. 結末を決める訓練でも、結末は 1 刻みに 2 人まで。本人たち（仮名）の中からだけ選ぶ。急がず、流れに沿って決める。",
   "3. 色・順位・優先・助言を書かない。診断・病名・薬の量を書かない。",
-  "4. 地区・道・施設の名前を作らない。地理に無い名前は使わない。",
+  "4. 地区・川・道・避難所・施設の名前を作らない。地理に無い名前は使わない（知っている実在の町・川・道・施設の名前も、地理に無ければ書かない。地区は別名で書く）。",
+  "5. 実在の川・橋・避難所が悪く読める書き方をしない（責める・欠陥を言う・運営の失敗を言う言い方をしない）。起きた事だけを短く。",
 ].join("\n");
 
 /** world_step の形を JSON Schema で（部屋の custom tool の input_schema）。構造化出力の 1 回呼びは zod から作る */
@@ -138,7 +141,7 @@ export type WorldCast = {
   facts: Map<string, PersonFacts>;
   /** 本人ごとの台帳の要約（仮名化の前の文。送る前に pseudonymizeText） */
   people: string;
-  /** 事業所の地理（T70、lib/drill/area.ts の areaOf。デモ事業所は架空の街、ほかは参加者の台帳の町名から） */
+  /** 事業所の地理（T70・T170、lib/drill/area.ts の areaOf。デモ事業所は松山市の実の区画、ほかは参加者の台帳の町名から） */
   area: Area;
   /**
    * 結末を決めさせるか（T70 の続き、lib/drill/fiction.ts の endingsAllowed）。デモ事業所だけ true。
@@ -147,11 +150,13 @@ export type WorldCast = {
   endings: boolean;
   /** 本人ごとの計画（T130、lib/drill/person-facts.ts の planOf）。最初の刻みの本人たちの欄と、業者の巡回の門に使う */
   plans?: Map<string, Plan>;
+  /** 本人ごとの台帳（T167。まだ出来事の無い人の表の出来事を選ぶ。参加者の並び。サーバーの中だけで、部屋には渡さない） */
+  sources?: Map<string, PseudonymInput>;
 };
 
 /**
  * 参加者の台帳から仮名・事実・台帳の要約・地理を作る。台帳の無い参加者は外す。
- * officeId はデモ事業所か（デモは架空の街のまま）を見る。無ければデモ事業所
+ * officeId はデモ事業所か（デモは実の区画で、人はピンの位置で入れる）を見る。無ければデモ事業所。geo は開始の時に読んだ公的なデータ（T170）
  */
 export function buildCast(
   participants: ReadonlyArray<string>,
@@ -159,17 +164,17 @@ export function buildCast(
   outcomeSources: ReadonlyMap<string, OutcomeSource>,
   on?: string,
   officeId: string = DEMO_OFFICE_ID,
+  geo?: RealGeo | null,
 ): WorldCast {
   const members = participants.filter((p) => sources.has(p));
   const list = members.map((p) => sources.get(p)!);
   const dependsOf = (p: string) => (outcomeSources.get(p)?.clocks ?? []).flatMap((k) => (k.depends_on ? [k.depends_on] : []));
   const nurseOf = (src: PseudonymInput) => src.contacts.some((c) => c.kind === "visiting_nurse");
-  const area = areaOf(
-    officeId,
-    members.map((p, i) => ({ ledger: list[i].ledger, depends: dependsOf(p), nurse: nurseOf(list[i]) })),
-  );
+  const people = members.map((p, i) => ({ ledger: list[i].ledger, depends: dependsOf(p), nurse: nurseOf(list[i]) }));
+  const read = areaOf(officeId, people, geo);
   // 町名は地区の別名で渡す（T88。本人たちの欄・これまでの世界・刻みの文に町名が入っても、地理と同じ別名に）
-  const { payload, key } = pseudonymize(list, { ...(on ? { on } : {}), places: placesOf(area, list.map((x) => x.ledger)) });
+  const { payload, key } = pseudonymize(list, { ...(on ? { on } : {}), places: placesOf(read, list.map((x) => x.ledger)) });
+  const area = geo ? passGate(read, areaOf(officeId, people), key) : read;
   const facts = new Map<string, PersonFacts>();
   const plans = new Map<string, Plan>();
   const lines: string[] = [];
@@ -179,6 +184,7 @@ export function buildCast(
     plans.set(p, plan);
     facts.set(p, {
       town: townOfLedger(src.ledger, area),
+      homeTown: src.ledger.basic.address?.town?.trim() || null,
       depends: dependsOf(p),
       categories: src.clocks.map((k) => k.category),
       nurse: nurseOf(src),
@@ -210,7 +216,24 @@ export function buildCast(
       ].join("\n"),
     );
   });
-  return { key, facts, plans, people: ["本人たち（仮名。どこに住むかは書かない）:", ...lines].join("\n"), area, endings: endingsAllowed(officeId) };
+  return { key, facts, plans, sources: new Map(members.map((p, i) => [p, list[i]] as const)), people: ["本人たち（仮名。どこに住むかは書かない）:", ...lines].join("\n"), area, endings: endingsAllowed(officeId) };
+}
+
+/**
+ * 実の名前のうち門で字が変わる物を外す（T170）。担当の人の氏名や町名と同じ字を含む名前（「津田中学校」の田中）は門が伏せるので、部屋が読めない名前になり、
+ * 返事の名前も地理と合わなくなる。実の避難所が 1 つも残らなければ一般の言い方に戻す
+ */
+function passGate(area: Area, general: Area, key: PseudonymKey): Area {
+  const clean = (name: string) => maskedCount(name, key) === 0;
+  const shelters = area.shelters.filter((s) => clean(s.name));
+  const real = area.realShelters === true && shelters.some((s) => !s.welfare);
+  const { realShelters: _drop, ...rest } = area;
+  return {
+    ...rest,
+    rivers: area.rivers.filter(clean),
+    shelters: real ? shelters : general.shelters,
+    ...(real ? { realShelters: true as const } : {}),
+  };
 }
 
 const ACTION_WORDS: Readonly<Record<ActionRecord["kind"], string>> = CATALOG_WORDS;
@@ -269,12 +292,14 @@ export function worldNow(w: WorldState, area: Area = DEMO_AREA): string[] {
   if (w.quake) now.push(`地震 震度 ${w.quake}`);
   if (w.outage) {
     const o = w.outage;
-    const where = o.area.scope === "towns" ? o.area.towns.map((t) => aliasOfTown(t, area) ?? "地区").join("・") : "全域";
+    const where = o.area.scope === "towns" ? (o.area.places ?? o.area.towns).map((t) => aliasOfTown(t, area) ?? "地区").join("・") : "全域";
     now.push(o.restoredAt != null ? `停電 復旧（${hourText(o.restoredAt)}）` : `停電中（${where}）`);
   }
   now.push(`電話 ${PHONE_LABELS[w.phone]}`);
   const roads = new Map<string, boolean>();
-  for (const r of w.roads) if (area.roads.some((x) => x.name === r.label)) roads.set(r.label, r.open);
+  // 世界の道の名前は画面の言葉（T170）。文は門（places）で別名に戻る
+  const roadNames = new Set(area.roads.flatMap((x) => [x.name, restoreTowns(x.name, area)]));
+  for (const r of w.roads) if (roadNames.has(r.label)) roads.set(r.label, r.open);
   for (const [label, open] of roads) now.push(`${label} ${open ? "通行可" : "通行止"}`);
   for (const s of w.shelters) if (area.shelters.some((x) => x.name === s.label)) now.push(`${s.label} ${SHELTER_LABELS[s.state]}`);
   const fac = new Map<string, boolean>();
@@ -418,5 +443,25 @@ export function applyContext(input: WorldInput, cast: WorldCast, via: WorldVia):
     endings: cast.endings,
     // T130: 業者の巡回（届く物）は、その人への手か計画（業者の約束）があるときだけ
     supplyOk: (person: string) => supplyAllowed(person, input.actions, cast.plans?.get(person) ?? null),
+    awayNow: (person: string) => {
+      const place = placeOfState(input.people[person] ?? null);
+      return place === "shelter" || place === "other";
+    },
+    // T167: まだ出来事の無い人に、表の人ごとの出来事を 1 つ（Claude を呼ばない）
+    ...(cast.sources
+      ? {
+          quiet: () =>
+            quietPersonEvent({
+              world: input.world,
+              hour: input.hour,
+              members: [...cast.sources!.keys()],
+              sources: cast.sources!,
+              people: input.people,
+              seed: input.seed,
+              profile: profileOf(fitKindOf({ scenario: input.scenario, options: { scale: input.scale ?? null } }, input.world)),
+              supplyOk: (person: string) => supplyAllowed(person, input.actions, cast.plans?.get(person) ?? null),
+            }),
+        }
+      : {}),
   };
 }

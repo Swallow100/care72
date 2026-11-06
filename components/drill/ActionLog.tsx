@@ -144,7 +144,7 @@ export function Bubble({
 }
 
 /** 往復を畳んだ物（T93。「通話 3 往復」。開くと全文）。名前付きの group で、外の刻みの畳みと開き方を分ける */
-export function TalkFold({ lines, speaker }: { lines: ReadonlyArray<TalkLine>; speaker: string }) {
+export function TalkFold({ lines, speaker, askPerson = null }: { lines: ReadonlyArray<TalkLine>; speaker: string; /** 頼み事の印を押せる本人（T166。進行中だけ） */ askPerson?: string | null }) {
   if (lines.length === 0) return null;
   return (
     <details className="group/talk mt-1" data-talk-fold>
@@ -152,20 +152,20 @@ export function TalkFold({ lines, speaker }: { lines: ReadonlyArray<TalkLine>; s
         <OpenIcon aria-hidden className="size-3.5 shrink-0 -rotate-90 text-muted transition-transform group-open/talk:rotate-0" />
         <span className="font-bold">{`${TALK_UI.talk} ${talkRounds({ talk: [...lines] })} ${TALK_UI.rounds}`}</span>
       </summary>
-      <TalkLines lines={lines} speaker={speaker} />
+      <TalkLines lines={lines} speaker={speaker} askPerson={askPerson} />
     </details>
   );
 }
 
 /** 訪問で着いたときの様子（T93、本人役の AI の印）と頼み事の印。言う事は吹き出し */
-export function VisitLine({ visit }: { visit: VisitReport }) {
+export function VisitLine({ visit, askPerson = null }: { visit: VisitReport; /** 頼み事の印を押せる本人（T166。進行中だけ） */ askPerson?: string | null }) {
   return (
     <div className="mt-1 space-y-0.5" data-visit-report>
       <div className="flex flex-wrap items-baseline gap-x-1.5 text-sm">
         <span className="text-xs text-muted">{TALK_UI.condition}</span>
         {visit.ai && <AiMark small />}
         {visit.condition && <span>{visit.condition}</span>}
-        <AskMarks asks={visit.asks} />
+        <AskMarks asks={visit.asks} person={askPerson} />
       </div>
       {visit.speech && <Bubble speaker={TALK_UI.visitee} text={visit.speech} ai={visit.ai} />}
     </div>
@@ -216,7 +216,10 @@ export function ActionItem({
   fiction,
   refused,
   base,
+  live = false,
 }: {
+  /** 進行中の訓練（頼み事の印を押せる。T166） */
+  live?: boolean;
   a: ActionRecord;
   names: Names;
   voiceOf?: VoiceOf;
@@ -248,8 +251,8 @@ export function ActionItem({
       <FreeTextLine a={a} />
       <MemoLine memo={a.memo} />
       {r?.speech && <Bubble speaker={calleeText(a) ?? ""} text={r.speech} ai={r.speechAi} voice={voiceOf?.(a.id) ?? null} />}
-      {r?.talk && <TalkFold lines={r.talk} speaker={calleeText(a) ?? ""} />}
-      {r?.visit && <VisitLine visit={r.visit} />}
+      {r?.talk && <TalkFold lines={r.talk} speaker={calleeText(a) ?? ""} askPerson={live ? a.person : null} />}
+      {r?.visit && <VisitLine visit={r.visit} askPerson={live ? a.person : null} />}
     </li>
   );
 }
@@ -300,7 +303,7 @@ export function LatestResult({
       ) : (
         r?.talk && <TalkFold lines={r.talk} speaker={calleeText(action) ?? ""} />
       )}
-      {r?.visit && <VisitLine visit={r.visit} />}
+      {r?.visit && <VisitLine visit={r.visit} askPerson={talk ? action.person : null} />}
       {calls.length > 0 && (
         <ul className="mt-2 space-y-1 text-sm" data-call-ins>
           {calls.map((t, i) => (
@@ -395,6 +398,7 @@ export function ActionLog({
                   voiceOf={voiceOf}
                   fiction={fiction}
                   refused={refused}
+                  live={undo !== undefined}
                   {...(undo && a.id === lastId ? { undo } : {})}
                 />
               ))}

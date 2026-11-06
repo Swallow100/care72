@@ -245,6 +245,7 @@ export function scorecardOf(run: string, client: "fake" | "real", paths: readonl
   values["persona.lost"] = sum((p) => LOST_KINDS.reduce((a, k) => a + p.lost[k], 0));
   for (const k of LOST_KINDS) values[`persona.lost.${k}`] = sum((p) => p.lost[k]);
   values["persona.gate"] = paths.filter((p) => p.stop === "gate").length;
+  values["persona.forbidden"] = sum((p) => p.forbidden);
   const eases = paths.flatMap((p) => (p.ease === null ? [] : [p.ease]));
   values["persona.ease"] = eases.length > 0 ? eases.reduce((a, b) => a + b, 0) / eases.length : null;
   values["persona.usd"] = sum((p) => p.costUsd);

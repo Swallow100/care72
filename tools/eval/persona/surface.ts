@@ -43,6 +43,15 @@ export const VIEWPORTS: Readonly<Record<string, Viewport>> = {
 
 const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
+/**
+ * 送信中の印。部品の data-pending は "" か "true"。本人のページの未確認の数（data-pending="3"）や様式の未確認の理由は同じ名前の属性でも送信中ではない
+ * （T166。前は未確認のある人を開くたびに 60 秒待ち、医療班の筋が時間切れになった）
+ */
+export const BUSY_SELECTOR = '[data-pending=""],[data-pending="true"],[aria-busy="true"]';
+
+/** 頁の最初のボタンに React の印が付いたか（ボタンの無い頁と Next の頁でない物は動いている扱い。無いと台のテストの素の頁で毎回 60 秒待つ） */
+export const HYDRATED_CHECK = `(() => { if (!self.__next_f && !self.next) return true; const b = document.querySelector("button"); return !b || Object.keys(b).some((k) => k.startsWith("__reactProps")); })()`;
+
 /** 押したあとに落ち着くまで（移るなら移り終わるまで、通信が 0.5 秒止むまで）。next dev の初めの道は組み立てに時間がかかる */
 async function settle(page: Page, navTimeout: number): Promise<void> {
   await wait(250);
@@ -51,12 +60,19 @@ async function settle(page: Page, navTimeout: number): Promise<void> {
   const until = Date.now() + Math.min(navTimeout, 60_000);
   while (Date.now() < until) {
     const busy = await page
-      .evaluate(() => document.querySelector("[data-pending]:not([data-pending=false]),[aria-busy=true]") !== null)
+      .evaluate((sel) => document.querySelector(sel) !== null, BUSY_SELECTOR)
       .catch(() => false);
     if (!busy) break;
     await wait(400);
   }
   await page.waitForNetworkIdle({ idleTime: 400, timeout: navTimeout }).catch(() => undefined);
+  // 画面が動き出すまで（T166。next dev は読み込みのあとの組み立てが遅く、前は押しても一覧が開かず、行き止まりに数えていた）
+  const live = Date.now() + Math.min(navTimeout, 60_000);
+  while (Date.now() < live) {
+    const ready = await page.evaluate(HYDRATED_CHECK).catch(() => true);
+    if (ready) break;
+    await wait(400);
+  }
 }
 
 export type ChromeOptions = { base: string; viewport: Viewport; navTimeout?: number; headless?: boolean };
@@ -91,6 +107,8 @@ export class ChromeSurface implements Surface {
     }
     this.ctx = await this.browser.createBrowserContext();
     const page = await this.ctx.newPage();
+    // 手元の dev は頁の組み立てが SW の待ち（4 秒）を超え、発災のあとに平時の写しを読むので SW を通さない（T166。写しの道は SW のテストで見る）
+    await page.setBypassServiceWorker(true);
     await page.setViewport({ ...this.opts.viewport, deviceScaleFactor: 1 });
     await page.evaluateOnNewDocument(stubPrintInBrowser);
     page.on("response", (res) => {

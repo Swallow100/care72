@@ -35,13 +35,15 @@ import {
   FREE_LABELS,
   FREE_TEXT_MAX,
 } from "@/lib/drill/action-catalog";
-import { actAvail, HINT_LABELS, panelActionsOf, timeParts, usableFirst, type ActionHints } from "@/lib/drill/action-hints";
+import { actAvail, askPick, HINT_LABELS, panelActionsOf, timeParts, usableFirst, type ActionHints } from "@/lib/drill/action-hints";
 import type { ActionTerm, TermCallee } from "@/lib/drill/action-terms";
 import { ACTION_MINUTES, needsTarget, picksTarget, targetKinds } from "@/lib/drill/action-table";
 import type { FreePlanView } from "@/lib/drill/http";
 import { ACTION_LABELS, ACTION_UI, CALL_STATUS_LABELS, DRILL_LABELS } from "@/lib/drill/labels";
 import type { DrillContact } from "@/lib/drill/view";
 import type { FictionKind } from "@/lib/drill/fiction";
+import { ASK_LABELS } from "@/lib/drill/dialogue";
+import type { AskKind } from "@/lib/drill/scenarios";
 import { useActPick } from "./act-pick";
 import { ActionHintRows, ActTime, FADED, GROUP_ROW, PICKED } from "./ActionHints";
 import { FictionalMark } from "./Fictional";
@@ -103,6 +105,8 @@ export function ActionPanel({
   const [person, setPerson] = useState<string | null>(null);
   const [kind, setKind] = useState<DrillAction | null>(null);
   const [target, setTarget] = useState<string | null>(null);
+  /** 頼み事の印から案内された候補の行（T166） */
+  const [focusAsk, setFocusAsk] = useState<AskKind | null>(null);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -155,17 +159,20 @@ export function ActionPanel({
         : null;
 
   const choosePerson = (id: string) => {
+    setFocusAsk(null);
     setPerson((now) => (now === id ? null : id));
     setTarget(kind && picksTarget(kind) && fixedOf(kind) ? FIXED : null);
     setError(null);
   };
   const chooseKind = (k: DrillAction) => {
+    setFocusAsk(null);
     setKind((now) => (now === k ? null : k));
     setTarget(picksTarget(k) && fixedOf(k) ? FIXED : null);
     setError(null);
   };
   /** 候補から選ぶ（T126）。選び直しで外さない */
   const pickKind = (k: DrillAction) => {
+    setFocusAsk(null);
     setKind(k);
     setTarget(picksTarget(k) && fixedOf(k) ? FIXED : null);
     setError(null);
@@ -173,13 +180,21 @@ export function ActionPanel({
 
   // 本人の詳細から（1 つの口 components/drill/act-pick.ts）: 打てる手の候補（T126、本人と手）と連絡先の行（T132、本人と連絡の手と
   // その連絡先）。その本人・手・相手を選び、この欄を見える所へ。相手が無ければ固定の相手のある手は固定の相手
+  // 頼み事の印（T166）: 手が 1 つならその手、2 つ以上は決めずに候補のその行へ（lib/drill/action-hints.ts の askPick）
   useActPick((d) => {
     if (!people.some((p) => p.id === d.person)) return;
     setPerson(d.person);
-    setKind(d.kind);
-    setTarget(d.target ?? (picksTarget(d.kind) && actionRow(d.kind).fixed ? FIXED : null));
     setError(null);
-    root.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    const to = "ask" in d ? askPick(d.ask, hints?.[d.person] ?? null) : null;
+    const pickedKind = "ask" in d ? (to?.to === "act" ? to.kind : null) : d.kind;
+    setKind(pickedKind);
+    setTarget("kind" in d && d.target ? d.target : pickedKind && picksTarget(pickedKind) && actionRow(pickedKind).fixed ? FIXED : null);
+    setFocusAsk("ask" in d && to?.to === "row" ? d.ask : null);
+    // 切替の並びで隠れていた欄が出てから送る
+    window.requestAnimationFrame(() => {
+      const box = root.current?.querySelector("[data-hint-focus]") ?? root.current;
+      box?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    });
   });
   const hintsNow = person ? (hints?.[person] ?? null) : null;
 
@@ -275,8 +290,13 @@ export function ActionPanel({
           <h3 id="act-hints" className={`${LABEL} leading-7`}>
             {HINT_LABELS.head}
           </h3>
-          <ActionHintRows person={person} hints={hintsNow} picked={kind} onPick={pickKind} disabled={busy} inPanel />
+          <ActionHintRows person={person} hints={hintsNow} picked={kind} onPick={pickKind} disabled={busy} inPanel focusAsk={focusAsk} />
         </section>
+      )}
+      {person && focusAsk && !hintsNow?.groups.some((g) => g.sources.some((s) => s.from === "ask" && s.ask === focusAsk)) && (
+        <p role="status" className="text-xs" data-hint-ask-done={focusAsk}>
+          <span className="font-bold">{ASK_LABELS[focusAsk]}</span> <span className="text-muted">{HINT_LABELS.askDone}</span>
+        </p>
       )}
 
       <section aria-label={DRILL_LABELS.actions} className="space-y-1" data-act-kinds>

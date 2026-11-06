@@ -1,11 +1,13 @@
 "use client";
 
-// 端末のカメラで本人の 1 枚の裏の QR を読む（T152、受入の入り方の「QR 読取」）。
-// アプリの中で読むのは、ブラウザの組み込みの読み取り（BarcodeDetector）が使える端末だけ（Android の Chrome など。依存は足さない）。
-// 使えない端末（iPhone・iPad の Safari など）はボタンを出さず「写すと受入頁」の 1 語だけ: 端末のカメラのアプリで QR を写すと
-// QR の頁（/q/<token>）が開き、そこの「受入」から受け入れる。
+// 端末のカメラで本人の 1 枚の裏の QR を読む（T152、受入の入り方の「QR 読取」。PC は T172）。
+// 読み方は 2 つ: ブラウザの組み込みの読み取り（BarcodeDetector。Android の Chrome など）があればそれ、無ければ jsQR（Windows の Chrome・Safari など）。
+// jsQR は「カメラ起動」を押した時に読みに行く（動的 import。頁の最初の読み込みを重くしない）。
+// PC は前面のカメラしか無いので、背面（environment）は ideal で頼み、外れても開く。
+// カメラの口が無いブラウザ（http の頁など）だけ、ボタンを出さず「写すと受入頁」の 1 語: 端末のカメラのアプリで QR を写すと
+// QR の頁（/q/<token>）が開き、そこの「受入」から受け入れる。カメラが無い・断られた時は理由を短く出す。
 // 読めた文字からトークンだけを取り出し（lib/custody/entry.ts の qrTokenFrom）、カメラを止めてから onToken に渡す。
-// 映像は端末の中だけで読み、送らない・残さない。テストと絵は偽のカメラ（Chrome の fake device）と偽の読み取りで確かめる。
+// 映像は端末の中だけで読み、送らない・残さない（jsQR に渡す絵も画面に置かない canvas の中だけ）。テストと絵は偽のカメラ（Chrome の fake device）で確かめる。
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
@@ -14,10 +16,12 @@ import { qrTokenFrom } from "@/lib/custody/entry";
 import { ENTRY_LABELS } from "@/lib/custody/labels";
 
 type Detector = { detect(source: CanvasImageSource): Promise<Array<{ rawValue?: string }>> };
-type DetectorCtor = new (opts: { formats: string[] }) => Detector;
+type DetectorCtor = (new (opts: { formats: string[] }) => Detector) & { getSupportedFormats?: () => Promise<string[]> };
 
 /** 読み取りの間隔（ミリ秒） */
 const SCAN_MS = 250;
+/** jsQR に渡す絵の長い辺（大きいと 1 回が重い） */
+const SCAN_SIZE = 640;
 
 /** ブラウザの読み取りの部品（無ければ null） */
 export function detectorOf(w: unknown): DetectorCtor | null {
@@ -34,21 +38,96 @@ export function tokenOfCodes(codes: ReadonlyArray<{ rawValue?: string }>): strin
   return null;
 }
 
+/** カメラの口があるか（無いのは http の頁・古いブラウザ） */
+export function cameraAvailable(nav: unknown): boolean {
+  return typeof (nav as { mediaDevices?: { getUserMedia?: unknown } } | null | undefined)?.mediaDevices?.getUserMedia === "function";
+}
+
+/** カメラの頼み方。外れても開くように背面は ideal（前面だけの PC でも開く） */
+export const CAMERA_CONSTRAINTS: MediaStreamConstraints = { video: { facingMode: { ideal: "environment" } }, audio: false };
+
+export type CameraProblem = "none" | "denied" | "busy" | "failed";
+
+/** getUserMedia の断りの理由 */
+export function cameraProblemOf(e: unknown): CameraProblem {
+  switch ((e as { name?: unknown } | null)?.name) {
+    case "NotFoundError":
+    case "DevicesNotFoundError":
+    case "OverconstrainedError":
+      return "none";
+    case "NotAllowedError":
+    case "PermissionDeniedError":
+    case "SecurityError":
+      return "denied";
+    case "NotReadableError":
+    case "TrackStartError":
+    case "AbortError":
+      return "busy";
+    default:
+      return "failed";
+  }
+}
+
+const PROBLEM_LABELS: Record<CameraProblem, string> = {
+  none: ENTRY_LABELS.cameraNone,
+  denied: ENTRY_LABELS.cameraDenied,
+  busy: ENTRY_LABELS.cameraBusy,
+  failed: ENTRY_LABELS.cameraFail,
+};
+
+/** 絵から読む関数（1 回分）。読めなければ空 */
+type Reader = (v: HTMLVideoElement) => Promise<Array<{ rawValue?: string }>>;
+
+/** 組み込みの読み取りが QR を読めるなら、その読み方。読めない・作れない端末は null（jsQR に回す） */
+export async function nativeReader(Ctor: DetectorCtor | null): Promise<Reader | null> {
+  if (!Ctor) return null;
+  try {
+    // Android で部品だけあって QR を読めない端末がある
+    if (Ctor.getSupportedFormats && !(await Ctor.getSupportedFormats()).includes("qr_code")) return null;
+    const detector = new Ctor({ formats: ["qr_code"] });
+    return (v) => detector.detect(v);
+  } catch {
+    return null;
+  }
+}
+
+/** jsQR の読み方。絵は画面に置かない canvas の中だけ */
+async function jsqrReader(): Promise<Reader> {
+  const { default: jsQR } = await import("jsqr");
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  return async (v) => {
+    if (!ctx || v.videoWidth === 0) return [];
+    const k = Math.min(1, SCAN_SIZE / Math.max(v.videoWidth, v.videoHeight));
+    const w = Math.round(v.videoWidth * k);
+    const h = Math.round(v.videoHeight * k);
+    canvas.width = w;
+    canvas.height = h;
+    ctx.drawImage(v, 0, 0, w, h);
+    const code = jsQR(ctx.getImageData(0, 0, w, h).data, w, h, { inversionAttempts: "dontInvert" });
+    return code ? [{ rawValue: code.data }] : [];
+  };
+}
+
 export function QrCamera({ onToken }: { onToken: (token: string) => void }) {
   // 描いた直後は分からない（サーバーと同じ形で描き、端末で確かめてからボタンに替える）
   const [supported, setSupported] = useState<boolean | null>(null);
   const [on, setOn] = useState(false);
-  const [error, setError] = useState(false);
+  const [starting, setStarting] = useState(false);
+  const [problem, setProblem] = useState<CameraProblem | null>(null);
   const video = useRef<HTMLVideoElement>(null);
   const stream = useRef<MediaStream | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const live = useRef(false);
+  // 起動を待つ間に止めた・画面を離れた時に、遅れて開いたカメラを止める
+  const attempt = useRef(0);
 
   useEffect(() => {
-    setSupported(detectorOf(window) !== null && typeof navigator.mediaDevices?.getUserMedia === "function");
+    setSupported(cameraAvailable(navigator));
   }, []);
 
   const stop = useCallback(() => {
+    attempt.current += 1;
     live.current = false;
     if (timer.current) clearTimeout(timer.current);
     timer.current = null;
@@ -56,30 +135,37 @@ export function QrCamera({ onToken }: { onToken: (token: string) => void }) {
     stream.current = null;
     if (video.current) video.current.srcObject = null;
     setOn(false);
+    setStarting(false);
   }, []);
 
   // 画面を離れたらカメラを止める
   useEffect(() => stop, [stop]);
 
   async function start() {
-    const Ctor = detectorOf(window);
-    if (!Ctor) return;
-    setError(false);
+    const mine = ++attempt.current;
+    setProblem(null);
+    setStarting(true);
     try {
-      const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false });
+      const s = await navigator.mediaDevices.getUserMedia(CAMERA_CONSTRAINTS);
+      if (mine !== attempt.current) {
+        s.getTracks().forEach((t) => t.stop());
+        return;
+      }
       stream.current = s;
+      const read = (await nativeReader(detectorOf(window))) ?? (await jsqrReader());
+      if (mine !== attempt.current) return;
       live.current = true;
       setOn(true);
+      setStarting(false);
       const v = video.current;
       if (!v) return stop();
       v.srcObject = s;
       await v.play().catch(() => {});
-      const detector = new Ctor({ formats: ["qr_code"] });
       const tick = async () => {
         if (!live.current) return;
         try {
           if (v.readyState >= 2) {
-            const token = tokenOfCodes(await detector.detect(v));
+            const token = tokenOfCodes(await read(v));
             if (token) {
               stop();
               onToken(token);
@@ -92,9 +178,10 @@ export function QrCamera({ onToken }: { onToken: (token: string) => void }) {
         if (live.current) timer.current = setTimeout(tick, SCAN_MS);
       };
       void tick();
-    } catch {
+    } catch (e) {
+      if (mine !== attempt.current) return;
       stop();
-      setError(true);
+      setProblem(cameraProblemOf(e));
     }
   }
 
@@ -113,13 +200,13 @@ export function QrCamera({ onToken }: { onToken: (token: string) => void }) {
             {ENTRY_LABELS.cameraStop}
           </Button>
         ) : (
-          <Button kind="main" icon={CameraIcon} onClick={start} data-camera-start>
+          <Button kind="main" icon={CameraIcon} onClick={start} disabled={starting} data-pending={starting || undefined} data-camera-start>
             {ENTRY_LABELS.cameraStart}
           </Button>
         )}
-        {error && (
-          <span role="alert" className="text-sm font-bold text-danger">
-            {ENTRY_LABELS.cameraFail}
+        {problem && (
+          <span role="alert" className="text-sm font-bold text-danger" data-camera-problem={problem}>
+            {PROBLEM_LABELS[problem]}
           </span>
         )}
       </div>

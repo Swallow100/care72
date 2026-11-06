@@ -43,9 +43,9 @@ MIT・Apache-2.0 のほかに入っている物:
 <!-- deps:start -->
 <!-- この間は tools/licenses/notices.mjs が書く。手で直さない -->
 
-### 配信と build に使う依存（package.json の dependencies とその依存、400 件）
+### 配信と build に使う依存（package.json の dependencies とその依存、401 件）
 
-内訳: MIT 238・Apache-2.0 101・ISC 21・BSD-3-Clause 20・BlueOak-1.0.0 7・MIT OR Apache-2.0 4・BSD-2-Clause 4・Apache-2.0 AND LGPL-3.0-or-later 1・CC0-1.0 1・CC-BY-4.0 1・Unlicense 1・0BSD 1。太字は package.json に直接書いた物。
+内訳: MIT 238・Apache-2.0 102・ISC 21・BSD-3-Clause 20・BlueOak-1.0.0 7・MIT OR Apache-2.0 4・BSD-2-Clause 4・Apache-2.0 AND LGPL-3.0-or-later 1・CC0-1.0 1・CC-BY-4.0 1・Unlicense 1・0BSD 1。太字は package.json に直接書いた物。
 
 | 名前 | 版 | ライセンス | 著作権者 |
 | --- | --- | --- | --- |
@@ -324,6 +324,7 @@ MIT・Apache-2.0 のほかに入っている物:
 | json-schema-to-ts | 3.1.1 | MIT | Copyright (c) 2020 Thomas Aribart |
 | json-schema-traverse | 1.0.0 | MIT | Copyright (c) 2017 Evgeny Poberezkin |
 | json-schema-typed | 8.0.2 | BSD-2-Clause | Remy Rylan |
+| **jsqr** | 1.4.0 | Apache-2.0 | （記載なし。github.com/cozmo/jsQR） |
 | jwa | 2.0.1 | MIT | Copyright (c) 2013 Brian J. Brennan |
 | jws | 4.0.1 | MIT | Copyright (c) 2013 Brian J. Brennan |
 | kleur | 4.1.5 | MIT | Copyright (c) Luke Edwards <luke.edwards05@gmail.com> (lukeed.com) |
@@ -537,7 +538,7 @@ SIL Open Font License 1.1 の全文はこのファイルの末尾。
 | 気象庁 降水ナウキャストのタイルと凡例の画像 | 本物の事業所の地図の雨雲（旗 JMA_NOWCAST が on のときだけ） | 同上。加工せず重ね、凡例も気象庁のまま。出典「雨雲：気象庁ホームページ（https://www.jma.go.jp/bosai/nowc/）／背景：地理院タイル」 |
 | 地理院タイル（淡色地図）を刷る避難経路の地図 | 本人のページの避難の面の経路地図と、計画書の避難経路の欄に入れる画像（lib/map/route-image.ts。T102） | 上の地理院タイルと同じ規約。印刷物は図の所に出典を書く。枠の中の下に「地理院タイルに避難経路を追記して掲載」（国土地理院の出典の記載例の形）。刷った計画書を渡すのが測量法の申請の要らない使い方に当たるかは未確認（docs/progress/t102.md の問い 3） |
 | openrouteservice（HeiGIT、経路。データは OpenStreetMap） | 避難経路の「経路作成」（lib/map/route.ts。鍵 ORS_API_KEY があるときだけ、Workers から 1 回ずつ。送るのは 2 点の座標と手段だけで、家は約 150 m の格子に丸めた点） | HeiGIT の利用規約（https://account.heigit.org/info/tos）。結果は CC-BY-SA 4.0。出典「© openrouteservice by HeiGIT \| Data from OpenStreetMap」を自動の線の地図の枠の中に出す。OpenStreetMap のデータは ODbL（https://www.openstreetmap.org/copyright）と OSMF の利用規約。無料の枠は 1 日 2,000 回・1 分 40 回（Standard） |
-| 国土地理院 指定緊急避難場所・指定避難所データ（地理院タイルの GeoJSON。層 skhb01〜08・sih・sfh、ズーム 10） | 経路地図の「候補」（lib/map/shelters.ts。T112）。ケアマネが押したときだけブラウザが読み、家のまわり 5 km の近い順に出す。送るのは層とタイルの z/x/y だけ。台帳に残すのは選んだ候補の名前と位置だけ。データの一式はダウンロードせずリポジトリにも入れない | 国土地理院コンテンツ利用規約（https://www.gsi.go.jp/kikakuchousei/kikakuchousei40182.html、公共データ利用規約 第1.0版。出典の記載と、加工したらその旨）と、データの「ご利用上の注意」（https://www.gsi.go.jp/bousaichiri/hinanbasho-menseki.html: 市町村が登録した物で最新でない・載っていないことがあり市町村に確かめる、指定緊急避難場所は災害の種類ごと、随時更新、第三者に渡すときはこの注意が伝わるように）。窓の出典の行に「国土地理院「指定緊急避難場所・指定避難所データ」を加工して作成」と「最新は市町村に確認」（注意の頁へのリンク）を出し、候補ごとに種類（避難所・福祉・緊急避難と災害の種類）を出す |
+| 国土地理院 指定緊急避難場所・指定避難所データ（地理院タイルの GeoJSON。層 skhb01〜08・sih・sfh、ズーム 10） | 経路地図の「候補」（lib/map/shelters.ts。T112）。ケアマネが押したときだけブラウザが読み、家のまわり 5 km の近い順に出す。担当一覧の地図（T169）は強く拡大している間だけブラウザが読み（層は sih・sfh・skhb01・02・04・05）、白抜きの旗と名前を出して地図の下に出典を出す。送るのは層とタイルの z/x/y だけ。台帳に残すのは選んだ候補の名前と位置だけ。データの一式はダウンロードせずリポジトリにも入れない | 国土地理院コンテンツ利用規約（https://www.gsi.go.jp/kikakuchousei/kikakuchousei40182.html、公共データ利用規約 第1.0版。出典の記載と、加工したらその旨）と、データの「ご利用上の注意」（https://www.gsi.go.jp/bousaichiri/hinanbasho-menseki.html: 市町村が登録した物で最新でない・載っていないことがあり市町村に確かめる、指定緊急避難場所は災害の種類ごと、随時更新、第三者に渡すときはこの注意が伝わるように）。窓の出典の行に「国土地理院「指定緊急避難場所・指定避難所データ」を加工して作成」と「最新は市町村に確認」（注意の頁へのリンク）を出し、候補ごとに種類（避難所・福祉・緊急避難と災害の種類）を出す |
 
 lib/jma/fixtures/sample の XML は、防災情報 XML の形に合わせて作った見本で、気象庁の電文の写しではない。
 

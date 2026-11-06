@@ -25,13 +25,21 @@ export const STATUS_LABELS: Record<DrillStatus, string> = {
 /** 見出し・ボタン・欄の名前 */
 /** 仮想モード（T50）の言葉 */
 export const VIRTUAL_LABELS = {
-  note: "仮想モード 架空の人と街。結末まで出ます",
+  note: "仮想モード 人は AI が演じる架空の人、川・橋・避難所は実在、出来事は訓練の想定。結末まで出ます",
   /** デモ以外の事業所（T70。結末は出さない） */
-  noteRole: "仮想モード 本人役と街は AI。結末なし",
+  noteRole: "仮想モード 本人役は AI、川・橋・避難所は実在、出来事は訓練の想定。結末なし",
   ended: "結末",
   /** 結末の理由（世界が決めた街と物の事実。T53） */
   endedReason: "経緯",
   fallback: "世界 代替",
+} as const;
+
+/** 仮想の訓練の「場所別」の言葉（T170、components/drill/PlaceList.tsx） */
+export const PLACE_LIST_LABELS = {
+  panel: "場所別",
+  region: "地域",
+  rivers: "川",
+  shelterSource: "出典",
 } as const;
 
 export const DRILL_LABELS = {
@@ -42,6 +50,9 @@ export const DRILL_LABELS = {
   advance: "進める",
   /** 前の「早送り」（T128）。次まで（刻みの道は進める）を決まった間でくり返す */
   fastForward: "自動進行",
+  /** 訓練の画面から事業所の画面の災害モードへ（T166）。事業所の今の状態の横 */
+  officeState: "事業所",
+  officeSwitch: "発災切替",
   /** 自動進行の title の終わり（「次まで 2.5 秒ごと」） */
   autoEvery: "ごと",
   abandon: "中断",
@@ -214,6 +225,8 @@ export const LOG_LABELS = {
   /** 対応（採点）と経過の切替（T128。1536px 未満） */
   panes: "対応切替",
   occur: "発生",
+  /** 経過のタブの「発生」の見える名前（「発生 4」を発災への切替と読まれた。T166）。見比べの「発生 12・公表 8」は表の言葉のまま */
+  occurTab: "出来事",
   know: "把握",
   act: "対応",
   /** 発生のタブの本人のする事（本人役・想定の表の doing）の印 */
@@ -348,9 +361,9 @@ export const CALL_UI = {
   answer: "出る",
   decline: "出ない",
   hangUp: "切る",
-  /** 着信の窓を閉じて訓練の画面を押せるようにする（応答・拒否は残さない。T162） */
-  later: "後で",
-  /** 後でにした着信の窓に戻る（画面の下の 1 行） */
+  /** 着信の窓を畳んで下の 1 行にする（応答・拒否は残さない。T162。「後で」は時間を進める物と読まれたので T166 で電話の言い方に） */
+  later: "保留",
+  /** 保留にした着信の窓に戻る（画面の下の 1 行） */
   reopen: "着信表示",
   /** この窓で応答・拒否を済ませた着信の数 */
   handled: "対応済",

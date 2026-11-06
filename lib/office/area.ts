@@ -232,7 +232,7 @@ export type OfficeRegion = {
   km: RegionKm | null;
   /** 地図に使う広さ（自動を当てた物） */
   kmUsed: number;
-  /** 事業所の区域（デモ事業所の NULL は架空の街の区域） */
+  /** 事業所の区域（デモ事業所の NULL はコードの区域 DEMO_OFFICE_ZONES） */
   zones: OfficeZone[];
   /** 利用者の住所の市で、地域に入っていない市（地域に追加の候補） */
   suggestions: AreaSuggestion[];

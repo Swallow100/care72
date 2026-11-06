@@ -6,9 +6,11 @@
 // 読む側（面の中身）はサーバーで描いた物を children で受け取り、編集していない間はそのまま出す。
 // 面の中は組（lib/intake/fields.ts の FIELD_GROUPS、T145）に分ける: 面の下を面の中の灰色にし、組ごとに白い箱と見出し。
 // 組が 3 つ以上なら上に目次（押すとその組へ送る）。入力の欄に入った組・目次で飛んだ組の見出しを強くする。
+// T166: 目次はリンク（読み上げは「避難先 移動」）で、押すとその組の最初の欄にカーソルを置く（前は組が見えていると押しても何も変わらず、入力を開く物と読まれて 4 回押された）。
+// 「保存」「取消」と「変更 N 件」は開いている間、画面の下に留める（欄の下の遠い所にあり、保存の場所が分からなかった）。保存のあとは面の頭に「保存済」
 
 import { useRouter } from "next/navigation";
-import { Fragment, useState, type ComponentProps, type FocusEvent, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, type ComponentProps, type FocusEvent, type ReactNode } from "react";
 import { Button } from "@/components/ui/Button";
 import { Select } from "@/components/ui/Select";
 import { AddIcon, CloseIcon, RemoveIcon, RestoreIcon, SaveIcon } from "@/components/ui/Icon";
@@ -75,7 +77,10 @@ import {
   ADDRESS_MAX,
   type FlagDraft,
 } from "@/lib/intake/edit";
+import type { EditTargets } from "@/lib/intake/targets";
 import { LocationPick } from "./LocationPick";
+import { TARGET_EDGE, TargetBox, TargetTag } from "./Target";
+import { scrollToTarget } from "./TargetLink";
 import { groupsOf, INTAKE_FIELDS, type FieldGroup } from "@/lib/intake/fields";
 import { markClockIds } from "@/lib/intake/marks";
 import { FieldInput } from "./IntakeChanges";
@@ -102,16 +107,21 @@ type Props = {
   head: ReactNode;
   /** 読む側の中身（サーバーで描いた物） */
   children: ReactNode;
+  /** 飛んだ先の案内（T169）。開いても対象の欄は紫のまま、最初の対象まで送る。保存で値が入ると来なくなる */
+  targets?: EditTargets | null;
 };
 
-export function SectionEdit({ section, data, head, children }: Props) {
+export function SectionEdit({ section, data, head, children, targets = null }: Props) {
   const router = useRouter();
+  const formRef = useRef<HTMLFormElement>(null);
   // 開いたときの値（変更はこれと比べて作り、版もこれで送る）
   const [open, setOpen] = useState<{ base: EditData; draft: EditDraft } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // 今直している組（入力の欄に入った組か、目次で飛んだ組）。開き直すと無し
   const [active, setActive] = useState<string | null>(null);
+  // 保存して閉じた（次に開くまで面の頭に「保存済」。T166）
+  const [saved, setSaved] = useState(false);
   const changes = open ? editChanges(section, open.base, open.draft) : [];
   // 同じ緊急・支援の順を 2 人に付けたら保存しない（サーバーも断る）
   const clashed = open !== null && section === "people" && (() => {
@@ -124,6 +134,14 @@ export function SectionEdit({ section, data, head, children }: Props) {
   const twice = open !== null && section === "people" && selfTwice(open.draft);
   const stopped = clashed || twice || blockers.length > 0;
   const set = (patch: Partial<EditDraft>) => setOpen((o) => (o ? { ...o, draft: { ...o.draft, ...patch } } : o));
+  // 開いたら最初の対象まで送り、その中の入力の欄にカーソルを置く（T169）
+  const opened = open !== null;
+  useEffect(() => {
+    if (!opened || !formRef.current) return;
+    scrollToTarget(formRef.current)
+      ?.querySelector<HTMLElement>("input:not([type=checkbox]):not([type=radio]):not([type=hidden]),textarea,select,button[aria-haspopup]")
+      ?.focus({ preventScroll: true });
+  }, [opened]);
 
   async function save() {
     if (!open || changes.length === 0 || stopped) return;
@@ -153,6 +171,7 @@ export function SectionEdit({ section, data, head, children }: Props) {
       return;
     }
     setOpen(null);
+    setSaved(true);
     router.refresh();
   }
 
@@ -160,6 +179,11 @@ export function SectionEdit({ section, data, head, children }: Props) {
     <div data-edit={section} data-editing={open ? "" : undefined}>
       <div className="flex items-baseline gap-2">
         {head}
+        {!open && saved && (
+          <span role="status" className="text-xs font-bold" data-edit-saved={section}>
+            {INTAKE_LABELS.saved}
+          </span>
+        )}
         {!open && (
           <Button
             size="sm"
@@ -169,6 +193,7 @@ export function SectionEdit({ section, data, head, children }: Props) {
             onClick={() => {
               setError(null);
               setActive(null);
+              setSaved(false);
               setOpen({ base: data, draft: editDraft(data) });
             }}
           >
@@ -185,14 +210,15 @@ export function SectionEdit({ section, data, head, children }: Props) {
         // 面の下を面の中の灰色に（組の白い箱との地の色の差で区切る）。左右と下は面の余白（components/person/PersonView.tsx の
         // SectionPanel の px-3 py-2.5）の分だけ外へ出して、面の端まで灰色にする
         <form
+          ref={formRef}
           className="-mx-3 mt-1.5 -mb-2.5 space-y-1.5 rounded-b-lg bg-panel2 p-1.5"
           onSubmit={(e) => {
             e.preventDefault();
             void save();
           }}
         >
-          <SectionForm section={section} data={open.base} draft={open.draft} set={set} active={active} onActive={setActive} />
-          <div className="flex flex-wrap items-center gap-2 px-1 pt-0.5">
+          <SectionForm section={section} data={open.base} draft={open.draft} set={set} active={active} onActive={setActive} targets={targets} />
+          <div className="sticky bottom-0 z-10 -mx-1.5 -mb-1.5 flex flex-wrap items-center gap-2 rounded-b-lg bg-panel2 px-2.5 py-1.5" data-edit-bar={section}>
             <Button type="submit" kind="main" size="sm" icon={SaveIcon} disabled={busy || changes.length === 0 || stopped} data-edit-save={section}>
               {INTAKE_LABELS.save}
             </Button>
@@ -209,7 +235,9 @@ export function SectionEdit({ section, data, head, children }: Props) {
                   {INTAKE_LABELS.missing} {blockers.join("・")}
                 </span>
               ) : (
-                <span className="text-muted">{changes.length} 件</span>
+                <span className="text-muted" data-edit-count>
+                  {INTAKE_LABELS.changeCount} {changes.length} 件
+                </span>
               )}
             </span>
           </div>
@@ -230,14 +258,23 @@ type FormProps = {
   active?: string | null;
   /** 入力の欄に入ったとき・目次で飛んだときに、その組の id */
   onActive?: (id: string) => void;
+  /** 今入れる欄（T169）。紫の枠と「要入力」 */
+  targets?: EditTargets | null;
 };
+
+/** 夜間支援の未確認（T169）で「夜間」の欄に紫を付ける組と連絡先の種類、行が無いときに紫にする組 */
+const NIGHT_GROUPS: ReadonlySet<string> = new Set(["people-family", "people-supporter"]);
+const NIGHT_KINDS: ReadonlySet<string> = new Set(["family", "supporter"]);
+const NIGHT_FALLBACK = "people-supporter";
 
 /** 目次を出す組の数（これより少ない区分は目次なし） */
 const NAV_MIN_GROUPS = 3;
 
 /** 面の入力欄。区分の中を組（lib/intake/fields.ts の FIELD_GROUPS）に分け、組の並びと組の中の並びは組の表のとおり */
-export function SectionForm({ section, data, draft, set, active = null, onActive }: FormProps) {
+export function SectionForm({ section, data, draft, set, active = null, onActive, targets = null }: FormProps) {
   const clash = orderClash(draft);
+  // 連絡先の行に対象がある組（目次の印。連絡先は組の鍵に無いので別に数える）
+  const contactTargetGroups = new Set<string>();
   // 印の時計（機器・薬・認知症から作る物）は時計だけでは外せない（次の保存で作り直される。T57）
   const marks = markClockIds(data.ledger, data.clocks);
   // 項目の鍵ごとの入力（欄の表の欄と、表の外の項目）。組はこれを鍵の順に並べる。鍵に入力が無い組（読む側だけの組）は出さない
@@ -337,8 +374,10 @@ export function SectionForm({ section, data, draft, set, active = null, onActive
             if (draft.drops.includes(dropKeyOf)) {
               return <DroppedRow key={k.id} name={k.label} onUndo={() => set({ drops: toggled(draft.drops, dropKeyOf) })} />;
             }
+            const hit = targets?.clocks.includes(k.id) === true;
             return (
-              <div key={k.id} className="space-y-1" data-clock={k.id}>
+              <div key={k.id} className={`space-y-1${hit ? ` ${TARGET_EDGE}` : ""}`} data-clock={k.id} data-target={hit ? "" : undefined}>
+                {hit && <TargetTag />}
                 {/* 時計の名前（「酸素 予備ボンベ」）・値・単位の 1 段。名前が長ければ名前の列の中で折り返す */}
                 <div className="grid grid-cols-[minmax(0,1fr)_5rem_5.5rem] items-center gap-1">
                   <span className="text-xs font-bold">{k.label}</span>
@@ -487,6 +526,20 @@ export function SectionForm({ section, data, draft, set, active = null, onActive
       const fallback = [...contactGroups].reverse().find((g) => (g.contactKinds?.length ?? 0) > 1) ?? contactGroups[contactGroups.length - 1];
       const groupOf = (kind: ContactKind) => contactGroups.find((g) => g.contactKinds!.includes(kind)) ?? fallback;
       const push = (g: FieldGroup, node: ReactNode) => contactsOf.set(g.id, [...(contactsOf.get(g.id) ?? []), node]);
+      // 夜間支援の未確認（T169）は家族と支援者の行の「夜間」の選ぶ欄に紫。行が 1 つも無ければ支援者の組ごと（連絡先追加の所）
+      const nightOf = (g: FieldGroup) => targets?.night === true && NIGHT_GROUPS.has(g.id);
+      if (targets?.night) {
+        const rows = draft.contacts.filter((c) => !(c.id && draft.drops.includes(dropKey.contact(c.id)))).concat(draft.newContacts);
+        const hit = rows.map((c) => groupOf(c.kind)).filter(nightOf);
+        if (hit.length === 0) contactTargetGroups.add(NIGHT_FALLBACK);
+        for (const g of hit) contactTargetGroups.add(g.id);
+      }
+      // 連絡先の問いの未確認（contacts.<id>.<所>）はその行に紫（T169）
+      const marked = (g: FieldGroup, id: string | null | undefined, node: ReactNode, key: string | number) => {
+        if (!id || !targets?.contacts.includes(id)) return node;
+        contactTargetGroups.add(g.id);
+        return <TargetBox key={key}>{node}</TargetBox>;
+      };
       draft.contacts.forEach((c, i) => {
         const group = groupOf(c.kind);
         const key = c.id ? dropKey.contact(c.id) : null;
@@ -507,25 +560,36 @@ export function SectionForm({ section, data, draft, set, active = null, onActive
         if (c.kind === "self") {
           push(
             group,
-            <SelfRow
-              key={c.id ?? i}
-              c={c}
-              onChange={(next) => set({ contacts: draft.contacts.map((x, j) => (j === i ? next : x)) })}
-              onDrop={key ? () => set({ drops: toggled(draft.drops, key) }) : undefined}
-            />,
+            marked(
+              group,
+              c.id,
+              <SelfRow
+                key={c.id ?? i}
+                c={c}
+                onChange={(next) => set({ contacts: draft.contacts.map((x, j) => (j === i ? next : x)) })}
+                onDrop={key ? () => set({ drops: toggled(draft.drops, key) }) : undefined}
+              />,
+              c.id ?? i,
+            ),
           );
           return;
         }
         push(
           group,
-          <ContactRow
-            key={c.id ?? i}
-            c={c}
-            group={group}
-            clash={clash}
-            onChange={(next) => set({ contacts: draft.contacts.map((x, j) => (j === i ? next : x)) })}
-            onDrop={key ? () => set({ drops: toggled(draft.drops, key) }) : undefined}
-          />,
+          marked(
+            group,
+            c.id,
+            <ContactRow
+              key={c.id ?? i}
+              c={c}
+              group={group}
+              clash={clash}
+              nightTarget={nightOf(group)}
+              onChange={(next) => set({ contacts: draft.contacts.map((x, j) => (j === i ? next : x)) })}
+              onDrop={key ? () => set({ drops: toggled(draft.drops, key) }) : undefined}
+            />,
+            c.id ?? i,
+          ),
         );
       });
       // 足す行は種類の組に（組の「連絡先追加」がその組の種類で始めるので、選び直しても組の中の種類のまま）
@@ -672,7 +736,8 @@ export function SectionForm({ section, data, draft, set, active = null, onActive
     .map((g) => {
       const nodes = g.keys.flatMap((k) => {
         const node = items.get(k);
-        return node === undefined ? [] : [<Fragment key={k}>{node}</Fragment>];
+        if (node === undefined) return [];
+        return [<Fragment key={k}>{targets?.items.includes(k) ? <TargetBox>{node}</TargetBox> : node}</Fragment>];
       });
       const contacts = contactsOf.get(g.id) ?? [];
       // 組の欄（地域のみまもり員・支援組織など）を先に、連絡先の行と「連絡先追加」をそのあとに（追加はどの組でも箱の下の端）
@@ -681,6 +746,13 @@ export function SectionForm({ section, data, draft, set, active = null, onActive
     .filter((x) => x.body.length > 0);
   const anchor = (id: string) => `edit-${data.personId}-${id}`;
   const withNav = shown.length >= NAV_MIN_GROUPS;
+  // 対象のある組（T169。目次に印）
+  const hasTarget = (g: FieldGroup) =>
+    targets !== null &&
+    (targets.groups.includes(g.id) ||
+      g.keys.some((k) => targets.items.includes(k)) ||
+      contactTargetGroups.has(g.id) ||
+      (g.keys.includes("clocks") && targets.clocks.length > 0));
 
   return (
     <div
@@ -707,15 +779,26 @@ export function SectionForm({ section, data, draft, set, active = null, onActive
       {withNav && (
         <GroupNav
           groups={shown.map((x) => x.g)}
+          marked={shown.map((x) => x.g).filter(hasTarget).map((g) => g.id)}
           active={active}
+          anchorOf={anchor}
           onJump={(id) => {
             onActive?.(id);
-            document.getElementById(anchor(id))?.scrollIntoView({ block: "start", behavior: "smooth" });
+            const box = document.getElementById(anchor(id));
+            box?.scrollIntoView({ block: "start", behavior: "smooth" });
+            box?.querySelector<HTMLElement>("input:not([type=checkbox]):not([type=radio]):not([type=hidden]),textarea")?.focus({ preventScroll: true });
           }}
         />
       )}
       {shown.map(({ g, body }) => (
-        <GroupBox key={g.id} id={anchor(g.id)} group={g} active={g.id === active} nav={withNav}>
+        <GroupBox
+          key={g.id}
+          id={anchor(g.id)}
+          group={g}
+          active={g.id === active}
+          nav={withNav}
+          target={targets?.groups.includes(g.id) === true || (g.id === NIGHT_FALLBACK && targets?.night === true && !draft.contacts.some((c) => NIGHT_KINDS.has(c.kind)) && draft.newContacts.length === 0)}
+        >
           {body}
         </GroupBox>
       ))}
@@ -727,26 +810,44 @@ export function SectionForm({ section, data, draft, set, active = null, onActive
  * 組の目次（横に並べ、狭い幅では折り返す）。押すとその組へ送る。今の組は本文の色と下線（下地を敷かない）。
  * 面の中の灰色の上に置き、送っても面の上に留める（sticky）
  */
-function GroupNav({ groups, active, onJump }: { groups: readonly FieldGroup[]; active: string | null; onJump: (id: string) => void }) {
+function GroupNav({
+  groups,
+  marked = [],
+  active,
+  onJump,
+  anchorOf,
+}: {
+  groups: readonly FieldGroup[];
+  /** 今入れる欄のある組（T169。組の名前の横に印） */
+  marked?: readonly string[];
+  active: string | null;
+  onJump: (id: string) => void;
+  anchorOf: (id: string) => string;
+}) {
   return (
     <nav aria-label={INTAKE_LABELS.groupNav} className="sticky top-0 z-10 -mx-1.5 bg-panel2 px-1.5 py-0.5" data-group-nav>
       <ul className="flex flex-wrap gap-x-1 gap-y-0.5">
         {groups.map((g) => {
           const on = g.id === active;
           return (
-            <li key={g.id}>
-              <button
-                type="button"
-                className={`rounded px-1.5 py-0.5 text-xs font-bold outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-accent ${
+            <li key={g.id} className="flex items-baseline" data-group-target={marked.includes(g.id) || undefined}>
+              <a
+                href={`#${anchorOf(g.id)}`}
+                aria-label={`${g.label} ${INTAKE_LABELS.groupMove}`}
+                className={`inline-block rounded px-1.5 py-0.5 text-xs font-bold outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-accent ${
                   on ? "text-ink underline decoration-accent decoration-2 underline-offset-4" : "text-muted"
                 }`}
                 aria-current={on || undefined}
                 data-press=""
                 data-group-link={g.id}
-                onClick={() => onJump(g.id)}
+                onClick={(e) => {
+                  e.preventDefault();
+                  onJump(g.id);
+                }}
               >
                 {g.label}
-              </button>
+              </a>
+              {marked.includes(g.id) && <TargetTag />}
             </li>
           );
         })}
@@ -756,21 +857,42 @@ function GroupNav({ groups, active, onJump }: { groups: readonly FieldGroup[]; a
 }
 
 /** 組の白い箱。見出しは今の組なら本文の色で少し大きく、左に操作の色の細い帯（行の高さは変えない） */
-function GroupBox({ id, group, active, nav, children }: { id: string; group: FieldGroup; active: boolean; nav: boolean; children: ReactNode }) {
+function GroupBox({
+  id,
+  group,
+  active,
+  nav,
+  target = false,
+  children,
+}: {
+  id: string;
+  group: FieldGroup;
+  active: boolean;
+  nav: boolean;
+  /** 組ごと今入れる欄（T169。連絡先の組など）。紫の枠と「要入力」 */
+  target?: boolean;
+  children: ReactNode;
+}) {
   const headId = `${id}-head`;
   return (
     <div
       id={id}
       role="group"
       aria-labelledby={headId}
-      className={`${nav ? "scroll-mt-9" : "scroll-mt-2"} relative space-y-1.5 rounded bg-panel px-2.5 pt-1.5 pb-2`}
+      className={`${nav ? "scroll-mt-9" : "scroll-mt-2"} relative space-y-1.5 rounded bg-panel px-2.5 pt-1.5 pb-2${target ? ` ${TARGET_EDGE}` : ""}`}
       data-group={group.id}
       data-active={active || undefined}
+      data-target={target ? "" : undefined}
     >
       {/* 今の組の帯は箱の左の端（見出しの字の位置は変えない） */}
       {active && <span aria-hidden className="absolute top-2 left-0 h-4 w-[3px] rounded-r-sm bg-accent" />}
       <p id={headId} className={`leading-5 font-bold ${active ? "text-[0.8125rem] text-ink" : "text-xs text-muted"}`}>
         {group.label}
+        {target && (
+          <span className="ml-1.5">
+            <TargetTag />
+          </span>
+        )}
       </p>
       {children}
     </div>
@@ -907,6 +1029,7 @@ function ContactRow({
   isNew = false,
   group,
   clash,
+  nightTarget = false,
   onChange,
   onDrop,
 }: {
@@ -915,6 +1038,8 @@ function ContactRow({
   group: FieldGroup;
   /** 重なった順（赤の太字） */
   clash: OrderClash;
+  /** 「夜間」の選ぶ欄が今入れる欄（T169。夜間支援の未確認で、まだ選んでいない行） */
+  nightTarget?: boolean;
   onChange: (c: ContactDraft) => void;
   onDrop?: () => void;
 }) {
@@ -937,7 +1062,7 @@ function ContactRow({
           <span className="self-center px-0.5 text-xs font-bold">{CONTACT_KIND_LABELS[c.kind] ?? c.kind}</span>
         ))}
       {/* 本人の行は電話の欄（電話と備考）だけ（T68） */}
-      {c.kind === "self" ? <SelfFields c={c} p={p} onDrop={onDrop} /> : <OtherFields c={c} p={p} who={who} clash={clash} onDrop={onDrop} shifted={showKind} />}
+      {c.kind === "self" ? <SelfFields c={c} p={p} onDrop={onDrop} /> : <OtherFields c={c} p={p} who={who} clash={clash} onDrop={onDrop} shifted={showKind} nightTarget={nightTarget} />}
     </div>
   );
 }
@@ -989,12 +1114,14 @@ function OtherFields({
   clash,
   onDrop,
   shifted = false,
+  nightTarget = false,
 }: {
   c: ContactDraft;
   p: (patch: Partial<ContactDraft>) => void;
   who: string;
   clash: OrderClash;
   onDrop?: () => void;
+  nightTarget?: boolean;
   /** 行の頭に種類の欄がある（欄が 1 つずれる）。狭い幅で住所の右が空かないよう、住所も 1 段に */
   shifted?: boolean;
 }) {
@@ -1042,13 +1169,13 @@ function OtherFields({
         onChange={(e) => p({ mobile: e.target.value })}
         data-contact-part="mobile"
       />
-      <Select className={INPUT_IN} aria-label={`${who} 夜間`} value={c.night} onChange={(e) => p({ night: e.target.value as NightDraft })}>
-        {NIGHT.map((n) => (
-          <option key={n.value} value={n.value} data-placeholder={n.value === "" || undefined}>
-            {n.label}
-          </option>
-        ))}
-      </Select>
+      {nightTarget ? (
+        <TargetBox>
+          <NightSelect c={c} p={p} who={who} />
+        </TargetBox>
+      ) : (
+        <NightSelect c={c} p={p} who={who} />
+      )}
       <Select className={INPUT_IN} aria-label={`${who} ${INTAKE_LABELS.reach}`} value={c.reach} onChange={(e) => p({ reach: e.target.value as ContactDraft["reach"] })} data-reach>
         <option value="" data-placeholder>
           {INTAKE_LABELS.reach} —
@@ -1071,6 +1198,18 @@ function OtherFields({
         {onDrop && <DropButton onClick={onDrop} name={who} />}
       </div>
     </>
+  );
+}
+
+function NightSelect({ c, p, who }: { c: ContactDraft; p: (patch: Partial<ContactDraft>) => void; who: string }) {
+  return (
+    <Select className={INPUT_IN} aria-label={`${who} 夜間`} value={c.night} onChange={(e) => p({ night: e.target.value as NightDraft })}>
+      {NIGHT.map((n) => (
+        <option key={n.value} value={n.value} data-placeholder={n.value === "" || undefined}>
+          {n.label}
+        </option>
+      ))}
+    </Select>
   );
 }
 

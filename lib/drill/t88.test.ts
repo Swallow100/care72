@@ -13,7 +13,7 @@ import { HAIKU, OPUS } from "../claude/models.ts";
 import { d1UsageStore } from "../claude/usage.ts";
 import { d1FromSqlite, migratedSqlite } from "../db/test-d1.ts";
 import type { PseudonymInput } from "../pseudonym/index.ts";
-import { AREA_TOWNS, officePlaces } from "./area.ts";
+import { DEMO_AREA, officePlaces } from "./area.ts";
 import { advanceDrill, drillScope, startDrill } from "./db.ts";
 import { createDirectorHook } from "./director.ts";
 import type { DirectorInput, DrillIncident } from "./engine.ts";
@@ -59,8 +59,8 @@ const SOURCES = new Map<string, PseudonymInput>(
 );
 const ALL = SEED_PEOPLE.map((p) => p.person.id);
 
-/** 町名と町名の頭（「かわなぎ町」と「かわなぎ」）。架空の街の 8 町全部 */
-const TOWN_WORDS = [...new Set(AREA_TOWNS.flatMap((t) => [t.town, t.town.replace(/(町|台|村)$/u, "")]))];
+/** 町名と町名の頭（「かわなぎ町」と「かわなぎ」）。種の台帳の町名と、デモの区画の実の言葉（T170） */
+const TOWN_WORDS = [...new Set(DEMO_AREA.towns.flatMap((t) => [t.town, ...(t.homes ?? [])]).flatMap((t) => [t, t.replace(/(町|台|村)$/u, "")]))];
 const townsIn = (text: string) => TOWN_WORDS.filter((w) => text.includes(w));
 const sent = (p: Params) => JSON.stringify({ system: p.system, messages: p.messages });
 
@@ -91,7 +91,7 @@ const QUIET = {
 
 /** 世界: 毎刻み、甲地区（かわなぎ町）の停電と増水の 1 文 */
 const STEP: WorldStep = {
-  narration: "甲地区で白波川が増水している",
+  narration: "甲地区で重信川が増水している",
   events: [
     { kind: "outage", town: "甲地区", target: "", name: "", value: "start" },
     { kind: "flood", town: "乙地区", target: "", name: "", value: "0.5" },
@@ -162,7 +162,7 @@ async function runVirtual(hooks: NonNullable<ReturnType<typeof drillHooks>>, id:
 
 /** 町名の入った出来事（画面の文。世界の別名を町名に戻した物） */
 const TOWN_INCIDENTS: DrillIncident[] = [
-  { change: { kind: "narration", room: "甲地区で白波川が増水している" }, text: "かわなぎ町で白波川が増水している", actor: "world", at: 6, ai: true },
+  { change: { kind: "narration", room: "甲地区で重信川が増水している" }, text: "かわなぎ町で重信川が増水している", actor: "world", at: 6, ai: true },
   { change: { kind: "outage", area: { scope: "towns", towns: ["みずほし町"], since: { みずほし町: 6 } } }, text: "みずほし町 停電", actor: "world", at: 6, ai: true },
 ] as DrillIncident[];
 
@@ -181,7 +181,7 @@ describe("訓練の入力に町名を渡さない（T88）", () => {
     expect(persona.length).toBeGreaterThan(10 * 6);
     for (const c of persona) expect(townsIn(sent(c))).toEqual([]);
     for (const text of room.texts) expect(townsIn(text)).toEqual([]);
-    // 世界の出来事（画面では「かわなぎ町 停電」）は、本人役には別名で届く。かわなぎ町の本人（p-01）にも別名で
+    // 世界の出来事（画面では「市坪・井門付近 停電」）は、本人役には別名で届く。かわなぎ町の本人（p-01）にも別名で
     const p01 = persona.filter((c) => sent(c).includes("A さん") && sent(c).includes("在宅酸素"));
     expect(persona.some((c) => sent(c).includes("甲地区"))).toBe(true);
     expect(persona.some((c) => sent(c).includes("（町名）"))).toBe(false);
@@ -191,14 +191,14 @@ describe("訓練の入力に町名を渡さない（T88）", () => {
     const rec = await loadDrillRecord(db, scope, "drill-t88", "2026-11-08T00:00:00.000Z");
     if (!rec || rec === "running") throw new Error("記録が無い");
     const ctx = reviewContextOf(rec);
-    expect(JSON.stringify(ctx.incidents)).toContain("かわなぎ町");
+    expect(JSON.stringify(ctx.incidents)).toContain("市坪・井門付近");
     const review = fakeClaude(() => ({ summary: "甲地区の停電への手が早かった", findings: [] }));
     const out = await createReview({ sources: SOURCES, ai: aiCtx(review.client), on: ON }, ctx);
     expect(review.calls).toHaveLength(1);
     expect(townsIn(sent(review.calls[0]))).toEqual([]);
     expect(sent(review.calls[0])).toContain("甲地区");
-    // 講評の別名は画面で町名に戻る
-    expect(out.ok && out.body.summary).toBe("かわなぎ町の停電への手が早かった");
+    // 講評の別名は画面で区画の実の言葉に戻る（T170）
+    expect(out.ok && out.body.summary).toBe("市坪・井門付近の停電への手が早かった");
   });
 
   it("仮想の筋（1 回呼び）: 世界の入力に町名は無い", async () => {
@@ -222,7 +222,7 @@ describe("訓練の入力に町名を渡さない（T88）", () => {
     await hook({ step: 1, hour: 6, person: "p-01", world, incidents: TOWN_INCIDENTS, state: null, lastAction: null, fixed: [], virtual: true });
     expect(calls).toHaveLength(1);
     expect(townsIn(sent(calls[0]))).toEqual([]);
-    for (const w of ["甲地区で白波川が増水している", "乙地区 停電", "乙地区の道 通行止"]) expect(sent(calls[0])).toContain(w);
+    for (const w of ["甲地区で重信川が増水している", "乙地区 停電", "乙地区の道 通行止"]) expect(sent(calls[0])).toContain(w);
 
     const hooks = drillHooks({ DB: db, ANTHROPIC_API_KEY: "dummy", AI_DAILY_LIMIT: "5000" }, careManager(), { claude: client, now: () => new Date(START) })!;
     const r = await hooks.call!({
@@ -237,7 +237,7 @@ describe("訓練の入力に町名を渡さない（T88）", () => {
     const call = calls.at(-1)!;
     expect(townsIn(sent(call))).toEqual([]);
     expect(sent(call)).toContain("乙地区 停電");
-    expect(r.speech).toBe("かわなぎ町は水が来てる");
+    expect(r.speech).toBe("市坪・井門付近は水が来てる");
 
     // 本人役の説明（台帳の特記・避難先）に本人の町名があっても別名で渡る
     const p01 = SOURCES.get("p-01")!;
@@ -247,7 +247,7 @@ describe("訓練の入力に町名を渡さない（T88）", () => {
     );
     expect(persona.profile.text).toContain("甲地区の川沿いに住む");
     expect(townsIn(persona.profile.text)).toEqual([]);
-    expect(cleanWords("甲地区の水が引いた", persona.key, 40)).toBe("かわなぎ町の水が引いた");
+    expect(cleanWords("甲地区の水が引いた", persona.key, 40)).toBe("市坪・井門付近の水が引いた");
   });
 
   it("監督: 世界の出来事・返事の言い換えの町名は別名に", async () => {
@@ -267,7 +267,7 @@ describe("訓練の入力に町名を渡さない（T88）", () => {
     await hook(input);
     expect(calls).toHaveLength(1);
     expect(townsIn(sent(calls[0]))).toEqual([]);
-    // 参加者の町（かわなぎ町）も（町名）でなく別名、参加者のいない架空の町（しおかぜ町）も別名
-    expect(sent(calls[0])).toContain("甲地区の道と辛地区の橋");
+    // 参加者の町（かわなぎ町）も（町名）でなく別名、種の表の町（しおかぜ町）も別名
+    expect(sent(calls[0])).toContain("甲地区の道と戊地区の橋");
   });
 });

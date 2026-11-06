@@ -22,8 +22,9 @@ import { CloseIcon, FitIcon, FullIcon, RouteMapIcon, ZoomInIcon, ZoomOutIcon } f
 import { CountLabel, countClass, StateTag, TONE_FILL } from "@/components/ui/Tag";
 import type { GeoPoint, HazardKind } from "@/lib/db/types";
 import { FULL_ZOOM, keyAction, MAP_LIMITS, pinchView, sameView, stepZoom, toFrame } from "@/lib/map/camera";
-import { COUNT_W, groupPins, labelWidth, memberStates, statesWidth, type PinGroup } from "@/lib/map/cluster";
+import { COUNT_W, groupPins, labelWidth, memberStates, pinSize, statesWidth, type PinGroup, type PinSize } from "@/lib/map/cluster";
 import { demoShown, type DemoOverlay } from "@/lib/map/demo";
+import type { MapMark } from "@/lib/map/marks";
 import { RAIN_LEGEND_LABEL, RAIN_OPACITY, rainColor } from "@/lib/map/rain-scale";
 import {
   BASE_SIZE,
@@ -48,12 +49,16 @@ import { MAP_UI, othersLabel } from "@/lib/map/labels";
 import { pickHazard, pickRain, shownHazards, type LayerPick } from "@/lib/map/layer-pick";
 import { initialView, regionView, type MapRegion } from "@/lib/map/region";
 import { BASE_LAYER, BASE_OPACITY, HAZARD_LAYERS, HAZARD_OPACITY, HAZARD_PORTAL, type Attribution, type HazardLayer } from "@/lib/map/layers";
-import type { MapPin } from "@/lib/map/side";
+import type { MapPin, MapPlaces } from "@/lib/map/side";
+import { SHELTER_CREDIT } from "@/lib/map/shelters";
 import { COLOR_LABELS } from "@/lib/labels";
 import { NOWC_SOURCE, type NowcTime } from "@/lib/jma/nowcast";
 import { NowcastLayer, useNowcastTime } from "./NowcastLayer";
+import { PlaceMarks } from "./PlaceMarks";
+import { useMapShelters } from "./useMapShelters";
 import { RainScaleLegend } from "./RainScaleLegend";
 import { useMapDrag } from "./useMapDrag";
+import { MarkBand, WorldMarks } from "./WorldMarks";
 import { WheelHint } from "./WheelHint";
 import type { StateTone } from "@/lib/person";
 
@@ -116,6 +121,13 @@ export type CaseMapProps = {
   nowcast?: boolean;
   /** ピンの位置が種の架空の位置（デモ事業所）。出典の行に「位置は架空」。本物の事業所は渡さない（T114） */
   fictional?: boolean;
+  /**
+   * 計画の避難先（T169）。渡すと強く拡大したときに旗を出し、地図の避難所（国土地理院のデータ）の切替も出す。担当一覧の右の面だけ
+   * （訓練の画面には渡さない。訓練の出来事は marks で出す）
+   */
+  places?: MapPlaces | null;
+  /** 場所の印（仮想の訓練の世界の出来事、T170。lib/map/marks.ts）。人のピンの下に重ね、地図の上に「デモ」の帯を出す */
+  marks?: ReadonlyArray<MapMark>;
 };
 
 /** 層の切替（小さな地図と全画面で同じ物） */
@@ -127,9 +139,11 @@ type LayerChoice = {
   toggleRain: () => void;
   /** 気象庁の雨雲の時刻（重ねないときは無し・null） */
   nowcast?: NowcTime | null;
+  /** 地図の避難所の切替（T169。計画の避難先を渡した地図だけ） */
+  shelters?: { on: boolean; toggle: () => void };
 };
 
-export function CaseMap({ pins, layers, demo, unplaced, center, region = null, nowcast = false, fictional = false }: CaseMapProps) {
+export function CaseMap({ pins, layers, demo, unplaced, center, region = null, nowcast = false, fictional = false, places = null, marks = [] }: CaseMapProps) {
   // 選んだ層（T151b: 色の層は 1 度に 1 つ。雨雲を付けると浸水・土砂・津波は外し、雨雲を外すと前の層に戻す。lib/map/layer-pick.ts）
   const [pick, setPick] = useState<LayerPick>(() => ({ on: new Set(layers), rainOn: true }));
   // 気象庁の雨雲の一番新しい実況の時刻（旗が off・デモ事業所では読まない）
@@ -139,6 +153,8 @@ export function CaseMap({ pins, layers, demo, unplaced, center, region = null, n
   const rainOn = pick.rainOn;
   const [full, setFull] = useState(false);
   const box = useRef<HTMLDivElement>(null);
+  // 地図の避難所（T169）。既定で出す（強く拡大したときだけ読む）
+  const [sheltersOn, setSheltersOn] = useState(true);
 
   // ピンが全部入る表示（「全体」で戻る所）。ピンが無く地域があれば地域の表示（T148）
   const fit: View = useMemo(
@@ -171,6 +187,8 @@ export function CaseMap({ pins, layers, demo, unplaced, center, region = null, n
   const back = useBackTiles(view, BASE_SIZE, tz);
   const shown = HAZARD_LAYERS.filter((l) => on.has(l.id) && inRange(tz, l));
   useHideBrokenTiles(box, [tz, on]);
+  // 全画面が開いている間は全画面が読む（同じタイルは覚えているので要求は重ならない）
+  const shelters = useMapShelters(places !== null && sheltersOn && !full, view, BASE_SIZE);
 
   // 指・マウス・ホイール・キー（T151 で全部の地図と同じ部品に）。画面の送りの中にあるので、ホイールと縦の指は地図を押したあとだけ
   // （ほかは画面の送り。ホイールは短く知らせる）。マウスのドラッグと横の指はいつも地図を動かす
@@ -183,15 +201,17 @@ export function CaseMap({ pins, layers, demo, unplaced, center, region = null, n
     rainOn,
     toggleRain: () => setPick(pickRain),
     nowcast: nowc,
+    ...(places ? { shelters: { on: sheltersOn, toggle: () => setSheltersOn((v) => !v) } } : {}),
   };
 
   return (
     <>
       <figure className="space-y-1.5" data-map>
         <div className="flex flex-wrap items-center gap-1">
-          <LayerToggles choice={choice} demo={demo} tz={tz} />
-          <span className="ml-auto">
+          <LayerToggles choice={choice} demo={demo} tz={tz} shelter={shelters} />
+          <span className="ml-auto flex flex-wrap items-center gap-1">
             <Unplaced n={unplaced} />
+            <DestUnplaced places={places} />
           </span>
         </div>
 
@@ -216,6 +236,7 @@ export function CaseMap({ pins, layers, demo, unplaced, center, region = null, n
         </div>
 
         {demoShown(demo) && <DemoBand demo={demo} />}
+        {marks.length > 0 && <MarkBand />}
 
         <div
           ref={box}
@@ -231,23 +252,27 @@ export function CaseMap({ pins, layers, demo, unplaced, center, region = null, n
           data-tile-zoom={tz}
           data-map-side
         >
-          <BaseTiles tiles={back.tiles} back />
-          <BaseTiles tiles={tiles} onLoad={back.onLoad} />
+          <BaseLayer>
+            <BaseTiles tiles={back.tiles} back />
+            <BaseTiles tiles={tiles} onLoad={back.onLoad} />
+          </BaseLayer>
           <HazardTiles tiles={tiles} shown={shown} />
           {demo && rainOn && <Rain demo={demo} view={view} size={BASE_SIZE} />}
           {nowc && rainOn && <NowcastLayer time={nowc} view={view} size={BASE_SIZE} />}
+          {places && <PlaceMarks view={view} size={BASE_SIZE} tz={tz} shelters={shelters.list} destinations={places.destinations} />}
+          <WorldMarks marks={marks} pins={pins} view={view} size={BASE_SIZE} wording="short" />
           {pins.map((p) => {
             const at = place(view, p.location);
-            return <PinLink key={p.id} pin={p} style={{ left: `${at.left}%`, top: `${at.top}%`, zIndex: 10 + p.layer }} />;
+            return <PinLink key={p.id} pin={p} size={pinSize(tz)} style={{ left: `${at.left}%`, top: `${at.top}%`, zIndex: 10 + p.layer }} />;
           })}
           {gestures.hint && <WheelHint />}
         </div>
 
-        <MapSource shown={shown} fictional={fictional} nowcast={!!nowc && rainOn} />
+        <MapSource shown={shown} fictional={fictional} nowcast={!!nowc && rainOn} shelters={shelters.list.length > 0} />
       </figure>
       {/* 全画面は押してから作る（閉じている間はタイルを要求しない）。<dialog> の showModal で一番上の層に出るので
           場所を取らない。figcaption を figure の最後に置くため、figure の外に置く */}
-      {full && <FullMap pins={pins} demo={demo} unplaced={unplaced} choice={choice} center={center} fictional={fictional} onClose={() => setFull(false)} />}
+      {full && <FullMap pins={pins} demo={demo} unplaced={unplaced} choice={choice} center={center} fictional={fictional} places={places} marks={marks} onClose={() => setFull(false)} />}
     </>
   );
 }
@@ -340,6 +365,10 @@ type FullMapProps = {
   center?: GeoPoint;
   /** 種の架空の位置（デモ事業所）。小さな地図と同じ（T114） */
   fictional?: boolean;
+  /** 計画の避難先（小さな地図と同じ。T169） */
+  places?: MapPlaces | null;
+  /** 場所の印（小さな地図と同じ物。全画面は場所の名前も出す。T170） */
+  marks?: ReadonlyArray<MapMark>;
   onClose: () => void;
   /** テスト用: 枠の大きさを測る前に使う大きさ（サーバーの描画では ResizeObserver が動かない） */
   initialSize?: Size;
@@ -348,7 +377,7 @@ type FullMapProps = {
 /** タイルの番号の鍵 */
 const tileKey = (t: Pick<TileSpot, "z" | "x" | "y">) => `${t.z}/${t.x}/${t.y}`;
 
-export function FullMap({ pins, demo, unplaced, choice, center, fictional = false, onClose, initialSize }: FullMapProps) {
+export function FullMap({ pins, demo, unplaced, choice, center, fictional = false, places = null, marks = [], onClose, initialSize }: FullMapProps) {
   const titleId = useId();
   const dialog = useRef<HTMLDialogElement>(null);
   const box = useRef<HTMLDivElement>(null);
@@ -413,6 +442,8 @@ export function FullMap({ pins, demo, unplaced, choice, center, fictional = fals
   const overTiles = useMemo(() => (view && size ? tilesFor(view, size, { range: BASE_LAYER }) : []), [view, size]);
   const shown = tz === null ? [] : HAZARD_LAYERS.filter((l) => choice.on.has(l.id) && inRange(tz, l));
   useHideBrokenTiles(box, [tz, choice.on]);
+  // 地図の避難所（T169）。枠が画面の大きさなので小さな地図と別に読む
+  const shelters = useMapShelters(choice.shelters?.on === true, view, size);
 
   // 段が変わったあと、新しい段のタイルが届くまで前の段の読み込み済みのタイルを下に敷く
   const back = useBackTiles(view, size, tz);
@@ -421,10 +452,11 @@ export function FullMap({ pins, demo, unplaced, choice, center, fictional = fals
   const groups: { group: PinGroup; pins: MapPin[] }[] = useMemo(() => {
     if (!view || !size) return [];
     const byId = new Map(pins.map((p) => [p.id, p]));
+    const ps = pinSize(tileZoom(view.z, BASE_LAYER));
     const placed = pins
       .map((p) => {
         const at = place(view, p.location, size);
-        return { id: p.id, x: (at.left / 100) * size.w, y: (at.top / 100) * size.h, layer: p.layer, w: labelWidth(p) };
+        return { id: p.id, x: (at.left / 100) * size.w, y: (at.top / 100) * size.h, layer: p.layer, w: labelWidth(p, ps.font), h: ps.h };
       })
       .filter((p) => p.x > -PIN_CULL && p.x < size.w + PIN_CULL && p.y > -PIN_CULL && p.y < size.h + PIN_CULL);
     const gs =
@@ -445,6 +477,7 @@ export function FullMap({ pins, demo, unplaced, choice, center, fictional = fals
     });
 
   const zoomLabel = view ? Math.round(view.z) : null;
+  const ps = pinSize(tz ?? 0);
   return (
     <dialog
       ref={dialog}
@@ -462,9 +495,10 @@ export function FullMap({ pins, demo, unplaced, choice, center, fictional = fals
           </h2>
           <PinStates pins={pins} />
           <div className="flex flex-wrap items-center gap-1">
-            <LayerToggles choice={choice} demo={demo} tz={tz} />
+            <LayerToggles choice={choice} demo={demo} tz={tz} shelter={shelters} />
           </div>
           <Unplaced n={unplaced} />
+          <DestUnplaced places={places} />
           <div className="ml-auto flex flex-wrap items-center gap-1.5">
             {zoomLabel !== null && (
               <span className="text-xs text-muted tabular-nums" data-zoom-label>
@@ -484,6 +518,7 @@ export function FullMap({ pins, demo, unplaced, choice, center, fictional = fals
         </div>
 
         {demoShown(demo) && <DemoBand demo={demo} />}
+        {marks.length > 0 && <MarkBand />}
 
         <div
           ref={box}
@@ -497,28 +532,33 @@ export function FullMap({ pins, demo, unplaced, choice, center, fictional = fals
         >
           {view && size && (
             <>
-              <BaseTiles tiles={back.tiles} back />
-              <BaseTiles tiles={baseTiles} onLoad={back.onLoad} />
+              <BaseLayer>
+                <BaseTiles tiles={back.tiles} back />
+                <BaseTiles tiles={baseTiles} onLoad={back.onLoad} />
+              </BaseLayer>
               <HazardTiles tiles={overTiles} shown={shown} />
               {demo && choice.rainOn && <Rain demo={demo} view={view} size={size} />}
               {choice.nowcast && choice.rainOn && <NowcastLayer time={choice.nowcast} view={view} size={size} />}
+              {places && tz !== null && <PlaceMarks view={view} size={size} tz={tz} shelters={shelters.list} destinations={places.destinations} />}
+              <WorldMarks marks={marks} pins={pins} view={view} size={size} wording="label" />
               {groups.map(({ group: g, pins: ms }) =>
                 ms.length === 1 ? (
                   <PinLink
                     key={g.head}
                     pin={ms[0]}
+                    size={ps}
                     style={{ left: g.x, top: g.y, zIndex: 10 + g.layer }}
                     onClick={close}
                   />
                 ) : (
-                  <PinCluster key={g.head} members={ms} group={g} onClick={() => zoomInto(g, ms)} />
+                  <PinCluster key={g.head} members={ms} group={g} size={ps} onClick={() => zoomInto(g, ms)} />
                 ),
               )}
             </>
           )}
         </div>
 
-        <MapSource shown={shown} fictional={fictional} nowcast={!!choice.nowcast && choice.rainOn} />
+        <MapSource shown={shown} fictional={fictional} nowcast={!!choice.nowcast && choice.rainOn} shelters={shelters.list.length > 0} />
       </figure>
     </dialog>
   );
@@ -526,7 +566,18 @@ export function FullMap({ pins, demo, unplaced, choice, center, fictional = fals
 
 // ---------- 部品 ----------
 
-function LayerToggles({ choice, demo, tz }: { choice: LayerChoice; demo: DemoOverlay | null; tz: number | null }) {
+function LayerToggles({
+  choice,
+  demo,
+  tz,
+  shelter,
+}: {
+  choice: LayerChoice;
+  demo: DemoOverlay | null;
+  tz: number | null;
+  /** 地図の避難所の今の状態（T169） */
+  shelter?: { inZoom: boolean; failed: boolean };
+}) {
   return (
     <span role="group" aria-label="重ねる層" className="flex flex-wrap items-center gap-1">
       {HAZARD_LAYERS.map((l) => (
@@ -545,6 +596,26 @@ function LayerToggles({ choice, demo, tz }: { choice: LayerChoice; demo: DemoOve
           雨雲
         </LayerButton>
       )}
+      {/* 地図の避難所（T169）。引いている間は「要拡大」と出す（押しても出ない理由が読めるように） */}
+      {choice.shelters && (
+        <LayerButton
+          pressed={choice.shelters.on}
+          onClick={choice.shelters.toggle}
+          layer="shelter"
+          outOfRange={false}
+          note={
+            !choice.shelters.on || !shelter
+              ? null
+              : !shelter.inZoom
+                ? MAP_UI.needZoom
+                : shelter.failed
+                  ? MAP_UI.shelterFailed
+                  : null
+          }
+        >
+          {MAP_UI.shelter}
+        </LayerButton>
+      )}
     </span>
   );
 }
@@ -556,6 +627,18 @@ function Unplaced({ n }: { n: number }) {
     <span className="tabular-nums" data-unplaced={n}>
       <StateTag tone="check">
         {MAP_UI.unplaced} {n} 人
+      </StateTag>
+    </span>
+  );
+}
+
+/** 計画に避難先の名前があるのに位置の無い数（T169。地図に出せない。位置を推し量らない）。位置なしの人と同じ形 */
+function DestUnplaced({ places }: { places?: MapPlaces | null }) {
+  if (!places || places.unplaced <= 0) return null;
+  return (
+    <span className="tabular-nums" data-dest-unplaced={places.unplaced}>
+      <StateTag tone="check">
+        {MAP_UI.destUnplaced} {places.unplaced} 件
       </StateTag>
     </span>
   );
@@ -631,6 +714,22 @@ function DemoBand({ demo }: { demo: DemoOverlay }) {
   );
 }
 
+/**
+ * 下の地図の不透明度は前の段と今の段のタイルをまとめて掛ける（T169。1 枚ずつ透かすと、前の段のタイルの大きな字が今の段の下に透けて
+ * 見え、強く拡大した地図が二重の字で読めなかった）。ダークは透かさない
+ */
+function BaseLayer({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      className="absolute inset-0 opacity-(--map-base-opacity) dark:opacity-100"
+      style={{ ["--map-base-opacity" as string]: BASE_OPACITY }}
+      data-base-layer
+    >
+      {children}
+    </div>
+  );
+}
+
 /** 下の地図（淡色地図）。隣のタイルとの間に髪の毛ほどの隙間が出ないよう 1px 重ねる */
 function BaseTiles({ tiles, back = false, onLoad }: { tiles: TileSpot[]; back?: boolean; onLoad?: (t: TileSpot) => void }) {
   return tiles.map((t) => (
@@ -643,8 +742,8 @@ function BaseTiles({ tiles, back = false, onLoad }: { tiles: TileSpot[]; back?: 
       decoding="async"
       onError={hideBroken}
       onLoad={onLoad ? () => onLoad(t) : undefined}
-      className="absolute max-w-none opacity-(--map-base-opacity) select-none dark:opacity-100 dark:brightness-[.82]"
-      style={{ left: `${t.left}%`, top: `${t.top}%`, width: `calc(${t.width}% + 1px)`, height: `calc(${t.height}% + 1px)`, ["--map-base-opacity" as string]: BASE_OPACITY }}
+      className="absolute max-w-none select-none dark:brightness-[.82]"
+      style={{ left: `${t.left}%`, top: `${t.top}%`, width: `calc(${t.width}% + 1px)`, height: `calc(${t.height}% + 1px)` }}
       data-layer={back ? "base-back" : "base"}
     />
   ));
@@ -713,11 +812,17 @@ function Rain({ demo, view, size }: { demo: DemoOverlay; view: View; size: Size 
  * 印が雨の色に溶けず、淡い地図の上でも印の端が分かる（T116。前は本文色 15% の細い線だけ）。光る影にしない（ぼかさない線）
  */
 const PIN_EDGE = "ring-2 ring-panel outline-1 outline-offset-2 outline-ink/50";
+/** 寄った地図の縁（T169）。地図の線と字が太くなるので、本文色の線を太く濃く。避難所の名前（縁なし）とも分かれる */
+const PIN_EDGE_STRONG = "ring-2 ring-panel outline-2 outline-offset-2 outline-ink";
 
-/** ピンの名前の印（発災時は状態の塗りの印＋姓） */
-function PinLabel({ pin, extra }: { pin: MapPin; extra?: React.ReactNode }) {
+/** ピンの名前の印（発災時は状態の塗りの印＋姓）。字の大きさは今の段（lib/map/cluster.ts の pinSize。T169） */
+function PinLabel({ pin, size, extra }: { pin: MapPin; size: PinSize; extra?: React.ReactNode }) {
   return (
-    <span className={`flex items-baseline overflow-hidden rounded text-[11px] leading-4 font-bold whitespace-nowrap ${PIN_EDGE}`}>
+    <span
+      className={`flex items-baseline overflow-hidden rounded font-bold whitespace-nowrap ${size.strong ? PIN_EDGE_STRONG : PIN_EDGE}`}
+      style={{ fontSize: size.font, lineHeight: `${size.h - 2}px` }}
+      data-pin-font={size.font}
+    >
       {pin.tone && pin.state && <span className={`px-1 ${PIN_TAG[pin.tone]}`}>{pin.state}</span>}
       <span className="bg-panel px-1 text-ink">{pin.label}</span>
       {/* T128: 区域の出来事の対象（訓練。「避難」）。色は付けず、名前の横の灰の小さな言葉 */}
@@ -731,12 +836,12 @@ function PinLabel({ pin, extra }: { pin: MapPin; extra?: React.ReactNode }) {
   );
 }
 
-function PinDot({ tone }: { tone: StateTone | null }) {
-  return <span className={`mt-1 size-2 rounded-full ${PIN_EDGE} ${tone ? PIN_DOT[tone] : "bg-ink"}`} aria-hidden />;
+function PinDot({ tone, size }: { tone: StateTone | null; size: PinSize }) {
+  return <span className={`mt-1 ${size.strong ? "size-2.5" : "size-2"} rounded-full ${size.strong ? PIN_EDGE_STRONG : PIN_EDGE} ${tone ? PIN_DOT[tone] : "bg-ink"}`} aria-hidden />;
 }
 
 /** ピン 1 人。押すと本人のページ（?open=） */
-function PinLink({ pin, style, onClick }: { pin: MapPin; style: React.CSSProperties; onClick?: () => void }) {
+function PinLink({ pin, size, style, onClick }: { pin: MapPin; size: PinSize; style: React.CSSProperties; onClick?: () => void }) {
   return (
     <Link
       href={pin.href}
@@ -749,8 +854,8 @@ function PinLink({ pin, style, onClick }: { pin: MapPin; style: React.CSSPropert
       data-pin={pin.id}
       data-tone={pin.tone ?? undefined}
     >
-      <PinLabel pin={pin} />
-      <PinDot tone={pin.tone} />
+      <PinLabel pin={pin} size={size} />
+      <PinDot tone={pin.tone} size={size} />
     </Link>
   );
 }
@@ -759,7 +864,7 @@ function PinLink({ pin, style, onClick }: { pin: MapPin; style: React.CSSPropert
  * まとめたピン。顔の人の印に「他 N 人」を添え、発災時は中の人（顔の人を除く）の状態ごとの数を塗りの印で並べる
  * （要確認 1・無事 2。色だけにせず言葉と数。T40）。押すと寄る
  */
-function PinCluster({ members, group, onClick }: { members: MapPin[]; group: PinGroup; onClick: () => void }) {
+function PinCluster({ members, group, size, onClick }: { members: MapPin[]; group: PinGroup; size: PinSize; onClick: () => void }) {
   const head = members[0];
   const count = members.length - 1;
   const states = memberStates(members);
@@ -779,6 +884,7 @@ function PinCluster({ members, group, onClick }: { members: MapPin[]; group: Pin
     >
       <PinLabel
         pin={head}
+        size={size}
         extra={
           <span className="flex items-baseline gap-px bg-panel2 tabular-nums">
             <span className="px-1 text-ink">{othersLabel(count)}</span>
@@ -790,7 +896,7 @@ function PinCluster({ members, group, onClick }: { members: MapPin[]; group: Pin
           </span>
         }
       />
-      <PinDot tone={head.tone} />
+      <PinDot tone={head.tone} size={size} />
     </button>
   );
 }
@@ -800,12 +906,15 @@ function LayerButton({
   onClick,
   layer,
   outOfRange,
+  note = null,
   children,
 }: {
   pressed: boolean;
   onClick: () => void;
   layer: string;
   outOfRange: boolean;
+  /** ボタンの中の小さな字（今は出せない理由。T169） */
+  note?: string | null;
   children: React.ReactNode;
 }) {
   return (
@@ -820,6 +929,11 @@ function LayerButton({
     >
       {children}
       {outOfRange && pressed && <span className="ml-1 text-xs font-normal text-muted">{MAP_UI.outOfRange}</span>}
+      {note && (
+        <span className="ml-1 text-xs font-normal text-muted" data-layer-note>
+          {note}
+        </span>
+      )}
     </button>
   );
 }
@@ -828,7 +942,7 @@ function LayerButton({
  * 出典（地理院タイル、重ねた層があればハザードマップポータルサイトと層ごとの作成者、雨雲を重ねていれば気象庁の文のまま）と、
  * デモ事業所の種の位置なら「位置は架空」（T114）。雨雲の出典は前は地図の右下の凡例の中で、地図を隠していた（T151 で地図の下へ）
  */
-function MapSource({ shown, fictional, nowcast }: { shown: readonly HazardLayer[]; fictional: boolean; nowcast: boolean }) {
+function MapSource({ shown, fictional, nowcast, shelters = false }: { shown: readonly HazardLayer[]; fictional: boolean; nowcast: boolean; shelters?: boolean }) {
   return (
     <figcaption className="text-[11px] leading-4 text-muted" data-attribution>
       <span>出典 </span>
@@ -844,6 +958,16 @@ function MapSource({ shown, fictional, nowcast }: { shown: readonly HazardLayer[
         <span data-nowcast-source>
           <span>・</span>
           <SourceLink a={NOWC_SOURCE} />
+        </span>
+      )}
+      {/* 地図の避難所を描いている間だけ（T169。国土地理院の出典と加工の旨、ご利用上の注意。lib/map/shelters.ts の SHELTER_CREDIT） */}
+      {shelters && (
+        <span data-shelter-source>
+          <span>・</span>
+          <SourceLink a={{ text: SHELTER_CREDIT.text, href: SHELTER_CREDIT.href }} />
+          <span className="ml-1">
+            <SourceLink a={{ text: SHELTER_CREDIT.notice, href: SHELTER_CREDIT.noticeHref }} />
+          </span>
         </span>
       )}
       {fictional && <span className="ml-1">位置は架空</span>}

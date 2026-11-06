@@ -177,10 +177,13 @@ describe("地図の見やすさ（雨雲・下の地図・層）", () => {
     expect(BASE_OPACITY).toBeLessThan(1);
     expect(HAZARD_OPACITY).toBeGreaterThan(0.6);
     const html = renderToStaticMarkup(createElement(CaseMap, { pins, layers: ["flood"], demo: null, unplaced: 0 }));
+    // T169: 不透明度は前の段と今の段のタイルをまとめた層に掛ける（1 枚ずつだと前の段の大きな字が透けて二重に読めた）
+    const layer = html.match(/<div[^>]*data-base-layer[^>]*>/)?.[0] ?? "";
+    expect(layer).toContain("opacity-(--map-base-opacity)");
+    expect(layer).toContain("dark:opacity-100");
+    expect(layer).toContain(`--map-base-opacity:${BASE_OPACITY}`);
     const base = html.match(/<img[^>]*data-layer="base"[^>]*>/)?.[0] ?? "";
-    expect(base).toContain("opacity-(--map-base-opacity)");
-    expect(base).toContain("dark:opacity-100");
-    expect(base).toContain(`--map-base-opacity:${BASE_OPACITY}`);
+    expect(base).not.toContain("opacity-(--map-base-opacity)");
   });
 });
 

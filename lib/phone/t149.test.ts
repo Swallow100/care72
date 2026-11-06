@@ -497,7 +497,7 @@ describe("通知の購読と送る時（偽の送り先）", () => {
       return f;
     };
     const first = await modePostEntered(db, cm(), form({ kind: "heavy_rain", version: "0" }), ISO(NOW));
-    expect(first).toEqual({ outcome: { status: 303, location: "/office" }, entered: "office-demo" });
+    expect(first).toEqual({ outcome: { status: 303, location: "/office?started=1" }, entered: "office-demo" });
     const again = await modePostEntered(db, cm(), form({ kind: "earthquake", version: "1" }), ISO(NOW + 60));
     expect(again.entered).toBeNull();
     expect((await modePostEntered(db, principal, form({ kind: "earthquake", version: "2" }), ISO(NOW + 120))).entered).toBeNull();

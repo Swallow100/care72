@@ -52,7 +52,8 @@ export type OutageArea =
   | { scope: "hazard"; hazard: HazardKind; minDepthM: number }
   // 仮想モード（T50）: 町名の一覧（世界の部屋が町を選ぶ。lib/drill/area.ts の町）
   // since は町ごとの停電の始まり（発災からの時間。無い町は停電の since）
-  | { scope: "towns"; towns: string[]; since?: Record<string, number> };
+  // places は画面の言葉（ピンで区画に入れる地理の区画の言葉。T170）。towns は台帳の町名の突き合わせ。無ければ towns を画面に出す
+  | { scope: "towns"; towns: string[]; since?: Record<string, number>; places?: string[] };
 
 /** 道路・避難所・施設。label は場所の名前を書かない一般の言い方（川沿いの市道・指定避難所） */
 export type Road = { id: string; label: string; open: boolean; person: string | null };
@@ -845,7 +846,8 @@ function applyChange(world: WorldState, e: WorldEvent, hour: number): WorldState
       if (o && o.restoredAt === null && o.area.scope === "towns" && c.area.scope === "towns") {
         const towns = [...new Set([...o.area.towns, ...c.area.towns])];
         const since = { ...(c.area.since ?? {}), ...(o.area.since ?? {}) };
-        return { ...world, outage: { ...o, area: { scope: "towns", towns, since } } };
+        const places = o.area.places || c.area.places ? [...new Set([...(o.area.places ?? []), ...(c.area.places ?? [])])] : undefined;
+        return { ...world, outage: { ...o, area: { scope: "towns", towns, since, ...(places ? { places } : {}) } } };
       }
       // 続いている停電が全域に広がる（T92 の outage_spread）: 始まりは最初の時刻のまま。今の時刻にすると、ルールの表の停電の始まり
       // （outageAt）が後ろにずれ、もう走っている機器の電池の時計が戻る

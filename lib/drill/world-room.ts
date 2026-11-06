@@ -35,8 +35,9 @@ import { applyContext, buildCast, openingText, tickText, WORLD_STEP_JSON_SCHEMA,
  * 4: WORLD_SYSTEM の人数を決め打たない・入力の「結末」が「決めない」の訓練では結末を決めない（T70 の続き）。
  * 5: 1 刻みに道具を 1 回だけ・道具の結果のあとは文字を返さずに終える（T89。1 刻みに 2 回呼ぶ・結果のあとに文を返して毎刻み約 4 秒余計だった）
  * 6: 出来事の種類を足した（福祉避難所・給水所・薬局・介護事業所・酸素業者の巡回・情報の食い違い。T92）
+ * 7: 地理を実の物に（地域・川の欄、地理に無い実在の名前を書かない、実在の物が悪く読める書き方をしない。T170）
  */
-export const WORLD_AGENT_VERSION = 6;
+export const WORLD_AGENT_VERSION = 7;
 export const WORLD_TOOL = "world_step";
 /** 部屋の Agent の system の終わりに足す 1 刻みの進め方（T89）。変えたら WORLD_AGENT_VERSION を上げる */
 export const ROOM_TURN_RULE = `1 刻みに ${WORLD_TOOL} の道具を 1 回だけ呼ぶ（2 回目は使われない）。道具の結果を受けたら、文字を返さずに終える（まとめ・説明・Markdown を書かない）。`;
@@ -130,7 +131,7 @@ export type WorldAgent = { agentId: string; agentVersion: number; environmentId:
 export function agentParams(): Record<string, unknown> {
   return {
     name: "care72-drill-world",
-    description: "ケア72 の仮想モードの訓練の世界（架空の街の 72 時間）",
+    description: "ケア72 の仮想モードの訓練の世界（実在の地域の地理で、人は架空、出来事は想定の 72 時間）",
     // 1 回呼び（world-oneshot.ts、PURPOSES の director）と同じ high。変えたら WORLD_AGENT_VERSION を上げる
     model: { id: OPUS, effort: "high" },
     system: [COMMON_SYSTEM, WORLD_SYSTEM, ROOM_TURN_RULE].join("\n\n"),
@@ -399,8 +400,8 @@ export function createWorldHook(deps: WorldDeps): WorldHook {
     if (deps.mode === "off") return { incidents: fallbackIncidents(input.hour, "off") };
     let cast: WorldCast;
     try {
-      // 地理はデモ事業所なら架空の街、ほかは参加者の台帳の町名から（T70）
-      cast = buildCast(input.participants, await deps.load(), await deps.loadOutcome(), deps.on, deps.ai.office.id);
+      // 地理はデモ事業所なら実の区画、ほかは参加者の台帳の町名から（T70・T170）。開始の時に読んだ公的なデータがあれば実の川と避難所
+      cast = buildCast(input.participants, await deps.load(), await deps.loadOutcome(), deps.on, deps.ai.office.id, input.geo);
     } catch (e) {
       if (!isPersonaFailure(e)) console.error("世界の台帳を読めない", e instanceof Error ? e.name : typeof e);
       return { incidents: fallbackIncidents(input.hour, "down") };

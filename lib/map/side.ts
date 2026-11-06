@@ -4,17 +4,19 @@
 // 平時: 計画の状態の内訳、今週の見直し（計画が下書きで未確認のある人）、未確認の多い人、地図（ピンは名前だけ）、ハザードと避難先の人数
 // 発災時: 地図が上（ピンは状態の色と 2 字ほどの状態）、状態ごとの人数、ハザードごとの人数と状態の内訳、避難先、見直し
 
-import { rowLink, type CaseloadRow, type SortKey } from "../caseload.ts";
+import { caseloadHref, rowLink, type CaseloadRow, type SortKey } from "../caseload.ts";
 import type { DrillScenario, GeoPoint, HazardKind, OfficeKind, PlanStatus } from "../db/types.ts";
 import { DISASTER_SCENE, type DisasterState } from "../disaster/state.ts";
 import { rainTrackOf } from "../drill/rain.ts";
 import { BLANK_LABELS, COLOR_LABELS, HAZARD_LABELS, PLAN_DRILL_LABELS, stateLabel } from "../labels.ts";
 import { drillMark, PLAN_STAGE_LABELS, PLAN_STAGE_TONES, PLAN_STAGES, planStage, type PlanStage } from "../plan-status.ts";
 import { PLACE_LABELS } from "../signals/labels.ts";
-import { COLOR_TONES, fieldLabelOf, type StateTone } from "../person.ts";
+import { FOCUS_ALL } from "../intake/targets.ts";
+import { COLOR_TONES, fieldLabelOf, focusKeyOf, type StateTone } from "../person.ts";
 import { compareResults, type Color, type TriageResult } from "../triage/index.ts";
 import { demoOverlay, type DemoOverlay, type DemoScene } from "./demo.ts";
 import { rainAnchor } from "./drill-rain.ts";
+import { ROUTE_MARKS } from "./route-image.ts";
 
 /** 状態の 4 色の並び（至急・要確認・不明・無事） */
 export const COLOR_ORDER: readonly Color[] = ["red", "yellow", "gray", "green"];
@@ -99,7 +101,26 @@ export type HazardCount = {
 
 export type DestinationCount = { label: string; count: number; unset: boolean };
 
-export type ReviewItem = { id: string; name: string; href: string; pending: number; labels: string[]; plan: PlanStatus };
+/** 計画の避難先の旗 1 つ（T169。台帳の値。同じ名前で同じ所は 1 つにして、行く人を並べる） */
+export type MapDestination = { id: string; name: string; at: GeoPoint; people: string[] };
+
+/** 地図に出す計画の避難先と、名前があるのに位置が無い数（地図に出さず数を出す） */
+export type MapPlaces = { destinations: MapDestination[]; unplaced: number };
+
+/** 未確認の欄 1 つ（T169）。押すと本人のページのその欄が紫になり、そこまで送る */
+export type ReviewField = { key: string; label: string; href: string };
+
+export type ReviewItem = {
+  id: string;
+  name: string;
+  /** 本人のページ。全部の未確認の欄が紫になり、最初まで送る（T169） */
+  href: string;
+  pending: number;
+  labels: string[];
+  /** 何を入れるか（欄の名前と飛ぶ先。同じ欄は 1 つ） */
+  fields: ReviewField[];
+  plan: PlanStatus;
+};
 
 /**
  * 計画の内訳の 1 つ（T146）。段階 3 つ（未作成・下書き・作成済）と、別に訓練に出た人の数（drill。色を付けない。段階の合計に入れない）
@@ -118,6 +139,8 @@ export type SidePaneData = {
   unplaced: number;
   hazards: HazardCount[];
   destinations: DestinationCount[];
+  /** 地図の計画の避難先（T169） */
+  places: MapPlaces;
   /** 発災時だけ */
   states: StateCount[] | null;
   /** 発災時だけ。雨雲・震度のデモ */
@@ -134,14 +157,25 @@ function byPendingThenKana(a: CaseloadRow, b: CaseloadRow): number {
 }
 
 function reviewItem(r: CaseloadRow, sort: SortKey): ReviewItem {
+  const keys = new Map(r.pendingFields.map((f) => [focusKeyOf(f), fieldLabelOf(f)]));
   return {
     id: r.id,
     name: r.name,
-    href: rowLink(sort, null, r.id).href,
+    href: caseloadHref({ sort, open: r.id, field: FOCUS_ALL }),
     pending: r.pending,
     labels: [...new Set(r.pendingFields.map(fieldLabelOf))],
+    fields: [...keys].map(([key, label]) => ({ key, label, href: caseloadHref({ sort, open: r.id, field: key }) })),
     plan: r.plan,
   };
+}
+
+/**
+ * 右の面の「見直し・未確認」の行（T169。前は見直しと未確認が別の面で、同じ人が 2 回並んだ）。1 人 1 行で、
+ * 見直しの人（計画が下書きで未確認のある人）が先、その中は未確認の多い順
+ */
+export function worklistOf(data: Pick<SidePaneData, "pendingTop">): ReviewItem[] {
+  const draftFirst = (r: ReviewItem) => (r.plan === "draft" ? 0 : 1);
+  return [...data.pendingTop].sort((a, b) => draftFirst(a) - draftFirst(b));
 }
 
 export function planCounts(rows: ReadonlyArray<Pick<CaseloadRow, "plan" | "drill">>): PlanCount[] {
@@ -223,6 +257,30 @@ export function destinationCounts(rows: ReadonlyArray<CaseloadRow>): Destination
 }
 
 /**
+ * 計画の避難先（T169）。台帳に位置のある物だけ旗にする（経路地図で置いた位置）。名前から位置を推し量らない。
+ * 同じ名前で同じ位置は 1 つにして行く人を並べる。名前の無い位置は「避難先1」のように番号で
+ */
+export function planPlaces(rows: ReadonlyArray<Pick<CaseloadRow, "name" | "destinationPlaces">>): MapPlaces {
+  const byKey = new Map<string, MapDestination>();
+  let unplaced = 0;
+  for (const r of rows) {
+    for (const d of r.destinationPlaces) {
+      if (!d.at) {
+        if (d.name) unplaced++;
+        continue;
+      }
+      const name = d.name ?? ROUTE_MARKS.dest(d.which);
+      const id = `${name}@${d.at.lat.toFixed(4)},${d.at.lng.toFixed(4)}`;
+      const cur = byKey.get(id);
+      const who = surname(r.name);
+      if (!cur) byKey.set(id, { id, name, at: d.at, people: [who] });
+      else if (!cur.people.includes(who)) cur.people.push(who);
+    }
+  }
+  return { destinations: [...byKey.values()], unplaced };
+}
+
+/**
  * 地図のピン。発災時はルールの表の色と状態の言葉、理由を title に。
  * 本人が送った端末の位置（T69b の reported）があればそこに置き、title に「申告位置」を添える（無ければ台帳の位置）。印の形は同じ
  */
@@ -273,6 +331,7 @@ export function buildSidePane(
     unplaced: rows.filter((r) => r.location === null).length,
     hazards: hazardCounts(rows, colorById ? (id) => colorById.get(id) : undefined),
     destinations: destinationCounts(rows),
+    places: planPlaces(rows),
     states: disaster ? stateCounts(disaster.results) : null,
     demo: disaster?.scene ? demoOverlay(disaster.scene) : null,
   };

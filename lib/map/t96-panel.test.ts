@@ -44,7 +44,7 @@ describe("右の面の避難計画・見直し・未確認（平時）", () => {
 
   it("面のどこにも黄の細い帯（tone-check）と色だけの横の帯が無い（平時・発災時）", () => {
     expect(html).not.toContain("tone-check");
-    expect(section("pending")).not.toContain("style=");
+    expect(section("review")).not.toContain("style=");
     const disaster = renderToStaticMarkup(
       createElement(SidePane, {
         data: buildSidePane(rows, { sort: "tier", disaster: { results, scene: { kind: "heavy_rain", level: 4 } } }),
@@ -54,43 +54,41 @@ describe("右の面の避難計画・見直し・未確認（平時）", () => {
     expect(disaster).not.toContain("data-plan-bar");
   });
 
-  it("見出しの横の人数は本文色の数と単位だけ（今週 2 人、2 人・計 4 件）", () => {
+  it("見出しの横の人数は本文色の数と単位だけ（今週 2 人・計 4 件）", () => {
     const n = (k: string) => `<span class="font-bold tabular-nums text-ink">${k}</span>`;
-    expect(section("review")).toContain(`今週 ${n(String(data.review.length))} 人`);
     const total = data.pendingTop.reduce((a, r) => a + r.pending, 0);
-    expect(section("pending")).toContain(`${n(String(data.pendingTop.length))} 人・計 ${n(String(total))} 件`);
+    expect(section("review")).toContain(`今週 ${n(String(data.review.length))} 人・計 ${n(String(total))} 件`);
     // 畳んだときの 1 行も
     const fold = html.match(/<span[^>]*data-fold-summary[^>]*>[\s\S]*?<\/span><\/div>/)?.[0] ?? "";
     expect(fold.replace(/<[^>]+>/g, "")).toBe(`見直し ${data.review.length} 人・未確認 ${data.pendingTop.length} 人`);
   });
 
-  it("見直しの行: 「未確認 N」は言葉ごと黄の塗りの印、計画の状態は小さな言葉、何が未確認かは下に", () => {
+  it("見直しと未確認は 1 つの面（T169）。同じ人が 2 回並ばない", () => {
+    expect(section("pending")).toBe("");
     const review = section("review");
-    for (const r of data.review) {
-      const row = review.match(new RegExp(`data-review="${r.id}"[\\s\\S]*?</a>`))?.[0] ?? "";
-      expect(row).toMatch(new RegExp(`data-tone="check">未確認 <span class="tabular-nums">${r.pending}</span></span>`));
-      expect(row).toContain(`data-review-plan="${r.plan}"`);
-      expect(row).toContain(r.labels.join("・"));
-    }
+    for (const r of data.pendingTop) expect(review.match(new RegExp(`data-review="${r.id}"`, "g")), r.id).toHaveLength(1);
   });
 
-  it("未確認の行: 件数の帯は無く、氏名で本人のページ、「未確認 N」を押すと何の欄が未確認かが開く", () => {
-    const pending = section("pending");
+  it("行: 「未確認 N」は言葉ごと黄の塗りの印、計画の状態は小さな言葉、何を入れるかは欄の名前ごとのリンク", () => {
+    const review = section("review");
     expect(data.pendingTop.length).toBeGreaterThan(0);
     for (const r of data.pendingTop) {
-      const row = pending.match(new RegExp(`<li[^>]*data-pending-row="${r.id}"[\\s\\S]*?</li>`))?.[0] ?? "";
-      expect(row).not.toBe("");
+      const row = review.match(new RegExp(`<li[^>]*data-review="${r.id}"[\\s\\S]*?</ul></li>`))?.[0] ?? "";
+      expect(row, r.id).not.toBe("");
+      expect(row).toMatch(new RegExp(`data-tone="check">未確認 <span class="tabular-nums">${r.pending}</span></span>`));
+      expect(row).toContain(`data-review-plan="${r.plan}"`);
+      // 計画が下書きの人に「見直し」（色の無い印）。ほかの人には付けない
+      expect(row.includes("data-review-due"), r.id).toBe(r.plan === "draft");
+      // 氏名は本人のページで全部の未確認の欄が紫に
       expect(row).toContain(`href="${r.href.replace(/&/g, "&amp;")}"`);
-      const button = row.match(/<button[^>]*>[\s\S]*?<\/button>/)?.[0] ?? "";
-      expect(button).toContain('aria-expanded="false"');
-      expect(button).toContain(`aria-controls="pending-fields-${r.id}"`);
-      expect(button).toMatch(new RegExp(`data-tone="check">未確認 <span class="tabular-nums">${r.pending}</span>`));
-      // 開く印＋文字（アイコンだけのボタンにしない）
-      expect(button).toContain("<svg");
-      const list = row.match(new RegExp(`<p id="pending-fields-${r.id}"[^>]*>([\\s\\S]*?)</p>`));
-      expect(list).not.toBeNull();
-      expect(list![0]).toContain("hidden");
-      expect(list![1]).toBe(r.labels.join("・"));
+      expect(r.href).toContain("field=all");
+      // 欄の名前を押すとその欄が紫に
+      expect(r.fields.map((x) => x.label)).toEqual(r.labels);
+      for (const x of r.fields) {
+        expect(row).toContain(`data-review-field="${x.key}"`);
+        expect(x.href).toContain(`field=${encodeURIComponent(x.key)}`);
+        expect(row).toContain(`>${x.label}</a>`);
+      }
     }
   });
 

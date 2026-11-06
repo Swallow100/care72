@@ -6,6 +6,8 @@
 // - 医療班への提供に同意の無い人は「同意なし」だけ（押せる物を出さない。サーバーも断る）
 // - 依頼中は「依頼中」と行き先・時刻と「取消」。受入済・受入不可は返事をした医療班の名前と時刻。受入不可・取消済のあとは送り直せる
 // - 行き先の既定は台帳の避難先 1。送る中身は本人の id と行き先だけ（ほかの物は医療班が受け入れてから本人のページで見る）
+// - T166: 依頼中の面に、役を選べる人（審査員と見本のケアマネ。lib/auth/wall.ts の canChooseRole）だけ「受入一覧」（読み上げと title は「医療班 受入一覧」）。押すと役を医療班にして受入一覧へ
+//   （受け入れる操作は医療班の側にあり、依頼の近くに取消しか無いと読まれた）。本物のケアマネには出さない
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -15,7 +17,8 @@ import { CUSTODY_REQUEST_API, CUSTODY_REQUEST_WITHDRAW_API } from "@/lib/custody
 import type { RequestPanel } from "@/lib/custody/requests";
 import { formatJst } from "@/lib/person";
 import { Button } from "@/components/ui/Button";
-import { SendIcon, UndoIcon } from "@/components/ui/Icon";
+import { RoleIcon, SendIcon, UndoIcon } from "@/components/ui/Icon";
+import { SubmitButton } from "@/components/ui/SubmitButton";
 import { Mark } from "@/components/ui/Tag";
 
 type Json = { ok?: boolean; label?: string };
@@ -32,7 +35,7 @@ async function post(url: string, body: unknown): Promise<Json> {
 const INPUT =
   "w-full min-w-0 rounded-md bg-panel2 px-2 py-1 text-sm text-ink outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-accent";
 
-export function RequestSection({ personId, panel, level }: { personId: string; panel: RequestPanel; level: 1 | 2 }) {
+export function RequestSection({ personId, panel, level, staffEntry = false }: { personId: string; panel: RequestPanel; level: 1 | 2; staffEntry?: boolean }) {
   const router = useRouter();
   const H = level === 1 ? "h2" : "h3";
   const titleId = `person-${personId}-request`;
@@ -81,6 +84,13 @@ export function RequestSection({ personId, panel, level }: { personId: string; p
           </span>
         )}
         {!panel.canSend && !open && <Mark>{REQUEST_LABELS.noConsent}</Mark>}
+        {open && staffEntry && (
+          <form method="post" action="/api/auth/role" className="ml-auto" data-request-staff>
+            <SubmitButton kind="main" size="sm" icon={RoleIcon} name="role" value="medical" aria-label={REQUEST_LABELS.toStaffName} title={REQUEST_LABELS.toStaffName}>
+              {REQUEST_LABELS.toStaff}
+            </SubmitButton>
+          </form>
+        )}
         {open && (
           <Button
             kind="quiet"
@@ -89,7 +99,7 @@ export function RequestSection({ personId, panel, level }: { personId: string; p
             disabled={busy}
             data-pending={busy || undefined}
             onClick={() => run(CUSTODY_REQUEST_WITHDRAW_API, { requestId: latest.id })}
-            className="ml-auto"
+            className={staffEntry ? "" : "ml-auto"}
           >
             {REQUEST_LABELS.withdraw}
           </Button>

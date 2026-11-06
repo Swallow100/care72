@@ -117,7 +117,7 @@ describe("切替の権限", () => {
 
   it("POST: 管理者でないケアマネも押せる。押した人が経過に残る", async () => {
     const r = await modePost(db, principal({ admin: false }), form({ kind: "earthquake", version: "0" }), at(0));
-    expect(r).toEqual({ status: 303, location: "/office" });
+    expect(r).toEqual({ status: 303, location: "/office?started=1" });
     const log = await loadOfficeLog(db, "office-demo");
     expect(log.map(logLine)).toEqual(["災害モード 地震 山本 11/4 10:00"]);
   });

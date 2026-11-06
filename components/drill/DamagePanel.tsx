@@ -101,7 +101,7 @@ export function DamagePanel({
             <span className="ml-1.5 tabular-nums">
               {hourText(now - o.since)}
             </span>
-            <span className="ml-1.5 text-xs text-muted">{o.area.scope === "office" ? WORLD_LABELS.office : o.area.scope === "towns" ? o.area.towns.join("・") : WORLD_LABELS.area}</span>
+            <span className="ml-1.5 text-xs text-muted">{o.area.scope === "office" ? WORLD_LABELS.office : o.area.scope === "towns" ? (o.area.places ?? o.area.towns).join("・") : WORLD_LABELS.area}</span>
             {target({ kind: "outage", area: o.area })}
           </span>
         )}

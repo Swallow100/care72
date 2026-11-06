@@ -200,6 +200,38 @@ export const GUARDS: ReadonlyArray<Guard> = [
   // 数え直しは当てたのに紙に出ない選択肢 23・正解に無い印 0。置き間違いは 6 回目（195）より増やさない
   { id: "forms-mark-extra-none", bench: "forms", item: "forms.markExtra", op: "<=", value: 0, since: "r8", task: "T164", label: "台帳に無い選択肢に印を付けない", suspects: ["lib/forms/option-values.ts", "lib/forms/mapped-sheet.ts"] },
   { id: "forms-paper-wrong", bench: "forms", item: "forms.paperWrong", op: "<=", value: 195, since: "r8", task: "T164", label: "紙の置き間違いを 6 回目より増やさない", suspects: ["lib/forms/mapped-sheet.ts", "lib/forms/overlay-sheet.ts", "lib/forms/form-shape.ts"] },
+  // T166: 使う側の模擬の 2 回目で迷った所。数は直した形の値で、本物の回はまだ（docs/progress/t166.md）
+  { id: "persona-medical-role", bench: "persona", item: "count:persona:unreached:medical.role", op: "<=", value: 0, since: "r9", task: "T166", label: "医療班の筋で医療班の役に入れる", suspects: ["components/person/RequestSection.tsx", "components/ui/RoleMenu.tsx", "tools/eval/persona/surface.ts"] },
+  { id: "persona-ledger-not-found", bench: "persona", item: "count:persona:not_found:/", op: "<=", value: 2, since: "r9", task: "T166", label: "編集の面の目次と保存で迷わない", suspects: ["components/person/SectionEdit.tsx", "lib/labels.ts"] },
+  { id: "persona-auto-reached", bench: "persona", item: "count:persona:unreached:judge10.auto", op: "<=", value: 0, since: "r9", task: "T166", label: "鳴っている着信があっても自動進行を押せる", suspects: ["components/drill/IncomingCall.tsx", "components/drill/DrillControls.tsx"] },
+  { id: "persona-first-disaster", bench: "persona", item: "count:persona:unreached:first.disaster", op: "<=", value: 0, since: "r9", task: "T166", label: "訓練の画面から事業所の発災開始に着ける", suspects: ["app/drill/[id]/page.tsx", "lib/drill/labels.ts", "app/office/page.tsx"] },
+  { id: "persona-office-exit", bench: "persona", item: "count:persona:back:/bosai/warning/", op: "<=", value: 0, since: "r9", task: "T166", label: "気象庁の出典を押してアプリの外へ出ない", suspects: ["components/office/JmaAlertsView.tsx", "lib/jma/labels.ts"] },
+  { id: "persona-admin-reset", bench: "persona", item: "count:persona:unreached:admin.reset", op: "<=", value: 0, since: "r9", task: "T166", label: "管理者が最初に戻すに着ける", suspects: ["app/office/page.tsx", "components/ui/PrintButton.tsx", "lib/ui/labels.ts"] },
+  { id: "persona-drill-misread", bench: "persona", item: "count:persona:misread:/drill/[id]", op: "<=", value: 1, since: "r9", task: "T166", label: "訓練の画面の読み違いを 2 回目より増やさない（押せそうで押せない印を残さない）", suspects: ["components/drill/TalkLines.tsx", "components/drill/AskPick.tsx", "components/drill/ActionPanel.tsx"] },
+  // T172: 医療班の一括受入（選んでまとめて受け入れる筋）と、医療班の本人のページに書き足しの欄を出さない・PC でもカメラ起動が出る（筋の forbid）
+  { id: "persona-medical-bulk", bench: "persona", item: "count:persona:unreached:medical.bulk", op: "<=", value: 0, since: "r9", task: "T172", label: "医療班が受入依頼をまとめて受け入れられる", suspects: ["components/staff/StaffRequests.tsx", "components/staff/BulkReceive.tsx", "lib/custody/bulk.ts"] },
+  { id: "persona-medical-no-relay", bench: "persona", item: "persona.forbidden", op: "<=", value: 0, since: "r9", task: "T172", label: "医療班に経過の書き足しの欄を出さない・PC でカメラ起動を消さない", suspects: ["lib/consent/relay.ts", "lib/consent/scope.ts", "components/staff/ReceivedPerson.tsx", "components/staff/QrCamera.tsx"] },
+  { id: "persona-form9-preview-misread", bench: "persona", item: "count:persona:misread:/office/form9", op: "<=", value: 0, since: "r9", task: "T166", label: "様式 9 の見本の帯をデータを戻す物と読まない", suspects: ["components/ui/PrintButton.tsx", "lib/ui/labels.ts"] },
+  // T169: 右の面の見直し・未確認と、飛んだ先の紫の案内。数は直した形の値で、本物の回はまだ（docs/progress/t169.md）。全部の未確認の欄で飛べることは lib/intake/t169.test.ts が見る
+  { id: "persona-veteran-person", bench: "persona", item: "count:persona:unreached:veteran.person", op: "<=", value: 0, since: "r9", task: "T169", label: "本人のページの未確認の項目に着ける", suspects: ["components/list/SidePane.tsx", "lib/map/side.ts", "lib/intake/targets.ts"] },
+  { id: "persona-list-dead-end", bench: "persona", item: "count:persona:dead_end:/", op: "<=", value: 0, since: "r9", task: "T169", label: "見直し・未確認の行と未確認の印から飛んで行き止まらない", suspects: ["components/person/TargetLink.tsx", "components/person/SectionEdit.tsx", "lib/intake/targets.ts"] },
+  // T167: 評価の 8 回目で呼び出しが 91.4/回・上限との比 90.7%（run-01 の 137 回のうち本人役の通話 72）。相づち・聞き返し・同じ問いをコードの短い返事にした。
+  // r8 の通話の並びに当てると 136 往復のうち本人役 51（切った分を除く 94 往復の 54%）、1 回の訓練は最大 85 回ほど。値は r7 の数を超えない形で守る
+  { id: "drill-calls-per-run", bench: "drill", item: "drill.callsPerRun", op: "<=", value: 89.6, since: "r9", task: "T167", label: "AI の呼び出しを 7 回目より増やさない", suspects: ["lib/drill/talk-quick.ts", "lib/drill/hooks.ts", "tools/eval/drill/drive.ts"] },
+  { id: "drill-cap-ratio", bench: "drill", item: "drill.capRatioMax", op: "<=", value: 0.747, since: "r9", task: "T167", label: "1 訓練の上限との比を 7 回目より増やさない", suspects: ["lib/drill/talk-quick.ts", "lib/drill/hooks.ts", "tools/eval/drill/drive.ts"] },
+  { id: "drill-talk-ai-share", bench: "drill", item: "drill.talkAiShare", op: "<=", value: 0.7, since: "r9", task: "T167", label: "通話の返事を本人役に頼りすぎない（相づち・同じ問いはコード）", suspects: ["lib/drill/talk-quick.ts"] },
+  // T167: 避難所や病院へ移ったあとに家にいる言い方（審査役 3 回とも）。門（帳面のいる所でも見る・「家で〜」・「病院へ移りました」）で画面の言葉では 0
+  { id: "drill-place-text-none", bench: "drill", item: "count:drill:facts:place_text", op: "<=", value: 0, since: "r9", task: "T167", label: "いる所と食い違う言葉を出さない", suspects: ["lib/drill/person-facts.ts", "lib/drill/persona.ts"] },
+  // T167: 届いた電源を「電気が戻った」と言う・戻ったあとに「まだ停電」と言う。門が直す・落とすので画面の言葉では 0
+  { id: "drill-power-said-none", bench: "drill", item: "count:drill:facts:power_said", op: "<=", value: 0, since: "r9", task: "T167", label: "停電の戻りと家の電気を食い違わせない", suspects: ["lib/drill/person-facts.ts", "lib/drill/persona.ts"] },
+  // T167: 仮想の回の出来事の無い人 8/10。世界の刻みに表の人ごとの出来事を足した（lib/drill/quiet-event.ts）
+  { id: "drill-virtual-no-kind", bench: "drill", item: "drill.personNoKindVirtual", op: "<=", value: 0.3, since: "r9", task: "T167", label: "仮想の回で出来事の無い人を 3 割より増やさない", suspects: ["lib/drill/quiet-event.ts", "lib/drill/event-catalog.ts", "lib/drill/world-apply.ts"] },
+  // T168: 評価の 8 回目の災害診療記録で、括弧の刷っていない「□アレルギー」に印は付くのに物の名前が紙に残らなかった（取りこぼし 18）。□ の右の空きに
+  // 中身の欄を補い、8 回目の記録の数え直しで 0。連絡先の置けず 23（forms-contact-placed）と正解に無い印 1（forms-mark-extra-none）も同じ数え直しで 0
+  { id: "forms-mark-content", bench: "forms", item: "forms.markNoContent", op: "<=", value: 0, since: "r9", task: "T168", label: "印を付けた □ の中身を紙から落とさない", suspects: ["lib/forms/trailing-field.ts", "lib/forms/read-post.ts", "lib/forms/mapped-sheet.ts"] },
+  // T166: 使う側の模擬の 2 回目で迷った所。数は直した形の値で、本物の回はまだ（docs/progress/t166.md）
+  // T170: 仮想の地理を実の物に。やめた架空の地名（種の町名・白波川・架空の道と避難所）が世界の文に出ない。偽の回で 0
+  { id: "drill-world-retired-place", bench: "drill", item: "count:drill:world_place:retired", op: "<=", value: 0, since: "r9", task: "T170", label: "世界の文にやめた架空の地名を出さない", suspects: ["lib/drill/area.ts", "lib/drill/area-demo.ts", "lib/drill/world-apply.ts", "lib/pseudonym/index.ts"] },
 ];
 
 /** 守りの確かめ。values は回の項目の数、counts は同じ原因の指摘の数（causeCounts）。数の無い項目は確かめない */

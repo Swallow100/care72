@@ -17,7 +17,7 @@ import { HAIKU, OPUS } from "../claude/models.ts";
 import { inOutageArea as inTowns } from "../disaster/state.ts";
 import { d1FromSqlite, migratedSqlite } from "../db/test-d1.ts";
 import { pseudonymize, type PseudonymInput } from "../pseudonym/index.ts";
-import { AREA_TOWNS, geographyText, restoreTowns, townOfAlias } from "./area.ts";
+import { DEMO_AREA, geographyText, restoreTowns, townOfAlias, townOfLedger } from "./area.ts";
 import { advanceDrill, drillScope, loadDrillRow, startDrill, stateOfRow } from "./db.ts";
 import { outageTownsOf } from "./engine.ts";
 import { drillHooks, drillStepHooks } from "./hooks.ts";
@@ -246,7 +246,8 @@ function ctxOf(ids: string[], over: Partial<ApplyContext> = {}): ApplyContext {
       return [
         id,
         {
-          town: p.ledger.basic.address?.town ?? null,
+          town: townOfLedger(p.ledger),
+          homeTown: p.ledger.basic.address?.town ?? null,
           depends: SEED_PEOPLE.find((x) => x.person.id === id)!.clocks.flatMap((k) => (k.depends_on ? [k.depends_on] : [])),
           categories: p.clocks.map((k) => k.category),
           nurse: p.contacts.some((c) => c.kind === "visiting_nurse"),
@@ -265,7 +266,7 @@ describe("world_step の形と捨て方", () => {
   it("形は WorldStepSchema。知らない種類・地区・道・施設・値は捨て、出来事は 4 つまで", () => {
     const ctx = ctxOf(ALL);
     const answer: WorldStep = {
-      narration: "白波川が増水",
+      narration: "重信川が増水",
       events: [
         { kind: "meteor", town: "甲地区", target: "", name: "", value: "" },
         { kind: "flood", town: "実在町", target: "", name: "", value: "2" },
@@ -274,7 +275,7 @@ describe("world_step の形と捨て方", () => {
         { kind: "aftershock", town: "", target: "", name: "", value: "9" },
         { kind: "flood", town: "甲地区", target: "", name: "", value: "1.5" },
         { kind: "浸水", town: "丙地区", target: "", name: "", value: "" },
-        { kind: "road", town: "", target: "", name: "川沿いの市道", value: "closed" },
+        { kind: "road", town: "", target: "", name: "中川原橋", value: "closed" },
         { kind: "weather", town: "", target: "", name: "", value: "rain" },
         { kind: "aftershock", town: "", target: "", name: "", value: "5弱" },
       ],
@@ -286,9 +287,9 @@ describe("world_step の形と捨て方", () => {
     expect(kinds).toEqual(["narration", "town_flood", "town_flood", "town_road", "weather"]);
     expect(out.every((e) => e.ai)).toBe(true);
     const flood = out[1].change;
-    expect(flood).toMatchObject({ kind: "town_flood", town: "かわなぎ町", depthM: 1.5 });
+    expect(flood).toMatchObject({ kind: "town_flood", town: "市坪・井門付近", depthM: 1.5 });
     // 日本語の種類も受ける。深さが無ければ地理の想定の深さ
-    expect(out[2].change).toMatchObject({ kind: "town_flood", town: "あしなみ町", depthM: 1 });
+    expect(out[2].change).toMatchObject({ kind: "town_flood", town: "和泉北付近", depthM: 0.5 });
   });
 
   it("世界の 1 文に禁じる語があれば捨てる。地区の別名は画面で町名に戻す", () => {
@@ -296,8 +297,8 @@ describe("world_step の形と捨て方", () => {
     const bad = worldIncidents({ ...STEP, narration: "避難所で亡くなった人がいる" }, ctx);
     expect(bad.some((e) => e.change.kind === "narration")).toBe(false);
     const good = worldIncidents(STEP, ctx);
-    expect(good[0]).toMatchObject({ change: { kind: "narration", room: "甲地区で停電が広がっている" }, text: "かわなぎ町で停電が広がっている" });
-    expect(restoreTowns("乙地区と己地区")).toBe("みずほし町とそらみ台");
+    expect(good[0]).toMatchObject({ change: { kind: "narration", room: "甲地区で停電が広がっている" }, text: "市坪・井門付近で停電が広がっている" });
+    expect(restoreTowns("乙地区と己地区")).toBe("余戸・南斎院付近と西長戸・鴨川付近");
     for (const w of ["死亡", "亡くなった", "死んだ", "関連死", "遺体", "息を引き取った"]) expect(FORBIDDEN_WORDS.test(w)).toBe(true);
   });
 
@@ -324,7 +325,7 @@ describe("world_step の形と捨て方", () => {
     expect(ends[0].change).toEqual({ kind: "outcome", label: "", reason: "道が通れず、透析の送迎が着かなかった" });
     // 理由の地区の別名は画面で町名に戻す
     expect(ends[1]).toMatchObject({ text: "水の引かない家で、助けを待ち続けた", ai: true });
-    expect(ends[1].change).toMatchObject({ reason: "かわなぎ町の浸水が続き、誰も着かなかった" });
+    expect(ends[1].change).toMatchObject({ reason: "市坪・井門付近の浸水が続き、誰も着かなかった" });
     // 目安にいる人を世界が選べば、label に切れた時計
     const withA = worldIncidents({ ...STEP, events: [], farewells: [{ target: a.alias, text: "電池の明かりが消えた", reason: "停電が 6 時間続いた" }] }, ctx, hints);
     expect(withA.find((e) => e.change.kind === "outcome")!.change).toMatchObject({ label: "酸素 2時間を超過" });
@@ -402,7 +403,7 @@ describe("町の停電と、出来事を人に当てる", () => {
     const slide = out.find((e) => e.change.kind === "landslide")!.change as { persons: string[] };
     expect(slide.persons.sort()).toEqual(ALL.filter((id) => townOf(id) === "くぬぎ谷町").sort());
     const flood = out.find((e) => e.change.kind === "town_flood")!.change as { town: string; persons: string[] };
-    expect(flood.town).toBe("うみなり町");
+    expect(flood.town).toBe("大可賀付近");
     expect(flood.persons).toEqual(ALL.filter((id) => townOf(id) === "うみなり町"));
     const fac = out.find((e) => e.change.kind === "town_facility")!.change as { persons: string[] };
     expect(fac.persons).toEqual(SEED_PEOPLE.filter((p) => p.clocks.some((k) => k.category === "dialysis")).map((p) => p.person.id));
@@ -413,7 +414,7 @@ describe("町の停電と、出来事を人に当てる", () => {
   });
 
   it("地理の文と指示に町名を書かない（別名だけ）", () => {
-    for (const t of AREA_TOWNS) {
+    for (const t of DEMO_AREA.towns) {
       expect(geographyText()).not.toContain(t.town);
       expect(WORLD_SYSTEM).not.toContain(t.town);
       expect(townOfAlias(t.alias)).toBe(t.town);
@@ -742,13 +743,13 @@ describe("画面（状況の欄・結末の印）", () => {
       turns: [],
       incidents: [
         { actor: "director" as const, at: 1, change: { kind: "world_note" as const, state: "down" as const }, text: "代替", ai: false },
-        { actor: "director" as const, at: 1, change: { kind: "narration" as const, room: "甲地区で増水", via: "oneshot" as const }, text: "かわなぎ町で増水", ai: true },
+        { actor: "director" as const, at: 1, change: { kind: "narration" as const, room: "甲地区で増水", via: "oneshot" as const }, text: "市坪・井門付近で増水", ai: true },
       ],
     };
     const html = renderToStaticMarkup(createElement(Situation, { ticks: [tick], names: {}, startedAt: START }));
     expect(html).toContain("data-world-fallback");
     expect(html).toContain("世界 代替");
-    expect(html).toContain("かわなぎ町で増水");
+    expect(html).toContain("市坪・井門付近で増水");
     expect(html).not.toContain('data-incident="world_note"');
     const ended = renderToStaticMarkup(createElement(EndedNote, { text: "電池の明かりが消えた", ai: true }));
     expect(ended).toContain("結末");

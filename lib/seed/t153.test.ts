@@ -156,7 +156,7 @@ describe("T153 発災開始", () => {
     const j = await judgeCm(1);
     expect(canStartSeed(j)).toBe(true);
     const r = await start(j, AT);
-    expect(r).toEqual({ outcome: { status: 303, location: "/office" }, entered: DEMO_OFFICE_ID });
+    expect(r).toEqual({ outcome: { status: 303, location: "/office?started=1" }, entered: DEMO_OFFICE_ID });
     const t = demoTimes(AT);
     expect(await loadDisasterState(db, DEMO_OFFICE_ID)).toMatchObject({
       kind: "heavy_rain",

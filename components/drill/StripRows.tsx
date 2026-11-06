@@ -102,7 +102,7 @@ function bandState(lane: BandLane, world: WorldState, bands: ReadonlyArray<Band>
     const o = world.outage;
     if (!o) return { bad: null, rest: WORLD_LABELS.no };
     if (o.restoredAt !== null) return { bad: null, rest: WORLD_LABELS.restored };
-    const area = o.area.scope === "office" ? WORLD_LABELS.office : o.area.scope === "towns" ? o.area.towns.join("・") : WORLD_LABELS.area;
+    const area = o.area.scope === "office" ? WORLD_LABELS.office : o.area.scope === "towns" ? (o.area.places ?? o.area.towns).join("・") : WORLD_LABELS.area;
     return { bad: WORLD_LABELS.outageNow, rest: `${hourText(now - o.since)} ${area}` };
   }
   if (lane === "phone") return world.phone === "ok" ? { bad: null, rest: PHONE_LABELS.ok } : { bad: PHONE_LABELS[world.phone], rest: "" };

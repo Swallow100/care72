@@ -24,8 +24,10 @@ export function staffHref(error: string | null = null): string {
  */
 export const RECEIVED_PARAM = "received";
 
-export function receivedHref(custodyId: string): string {
-  return `${STAFF_PATH}?${RECEIVED_PARAM}=${encodeURIComponent(custodyId)}`;
+/** 一括受入（T172）は受け持ちの id をコンマでつなぐ（lib/custody/entry.ts の parseReceived） */
+export function receivedHref(custodyId: string | readonly string[]): string {
+  const ids = typeof custodyId === "string" ? [custodyId] : custodyId;
+  return `${STAFF_PATH}?${RECEIVED_PARAM}=${ids.map((id) => encodeURIComponent(id)).join(",")}`;
 }
 
 /** QR の頁（/q/<token>）。受入一覧の避難所の欄の値を受入の既定に渡す（避難所の名前だけ。人の物は載せない） */
