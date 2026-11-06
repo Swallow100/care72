@@ -361,6 +361,11 @@ async function staff(browser) {
   await med.type('[data-field="shelter"]', "かわなぎ小学校", { delay: 90 });
   await sleep(800);
   r13.mark("検索");
+  if (!(await med.$('form[data-form="search"]'))) {
+    await clickText(med, "検索", { within: "[data-intake]" });
+    await med.waitForSelector('form[data-form="search"]', { timeout: 10_000 });
+    await sleep(500);
+  }
   await med.type('form[data-form="search"] input[type="search"]', "ヤマダ ハナ", { delay: 90 });
   await med.evaluate(() => {
     const el = document.querySelector('form[data-form="search"] input[type="date"]');
