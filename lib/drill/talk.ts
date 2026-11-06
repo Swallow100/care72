@@ -54,7 +54,9 @@ export async function talkDrill(
   const rec = before.actions.at(-1);
   if (!rec || rec.id !== req.action) return { ok: false, error: "conflict" };
   const r = rec.result;
-  if (!rec.person || !rec.callee || !r || !canTalk(r)) return { ok: false, error: "closed" };
+  // 切るのは 8 往復に届いたあとも（切った時刻を残す。T155）。往復を足すのは続けられる間だけ
+  const open = "end" in req ? r?.status === "connected" && r.speech !== null && r.talkEnd === undefined : canTalk(r);
+  if (!rec.person || !rec.callee || !r || !open) return { ok: false, error: "closed" };
   // 連続の時計が 72 時間に着いた後は往復を足さない（T123。切るのはよい。区切りは「進める」が作って終わる）
   if (!("end" in req) && clockOver(before)) return { ok: false, error: "closed" };
   const person = rec.person;
