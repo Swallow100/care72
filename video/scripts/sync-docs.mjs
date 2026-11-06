@@ -50,6 +50,6 @@ const boards = SCENES.map((s) => {
     .join("\n");
   return head + body + "\n";
 }).join("\n");
-plan = plan.replace(/### S1 [\s\S]*?(\n## 審査基準の当たり方)/, `${boards}$1`);
+plan = plan.replace(/### S1 [\s\S]*?(\n## 演出)/, `${boards}$1`);
 writeFileSync(planPath, plan);
 console.log("SCRIPT.md と PLAN.md を作り直した");

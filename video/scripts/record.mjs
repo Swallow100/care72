@@ -171,7 +171,7 @@ function refreshes(page) {
 
 
 /**
- * R16 QR の画面（山田 ハナ）。N25「QR コードなどを用いて」。手元の dev の QR は localhost を指すので、読んでも開けない（作者の頼み 11/7「使えない QR」）。
+ * R16 QR の画面（山田 ハナ）。N25「QR コードなどを用いて」。手元の dev の QR は localhost を指すので、読んでも開けない（作者の頼み 11/7）。
  * 無ければ作る（手元の D1 だけ）
  */
 async function qrScene(browser) {
@@ -545,7 +545,7 @@ async function aiIntake() {
   const wav = micFile("R02", INTAKE_LINES, 30, 2.5);
   const browser = await launch({ fakeAudio: wav });
   try {
-    // 右の列に大きく寄るので細かく撮る（作者の頼み 11/7「右を拡大してから下へ送る」）
+    // 右の列に大きく寄るので細かく撮る（作者の頼み 11/7）
     const cm = await newPage(browser, { ...PC, deviceScaleFactor: 2.5 });
     await login(cm, base, "judge", judgePw, "care_manager");
     await prepSafe(cm);

@@ -623,7 +623,7 @@ const FlyTitle: React.FC<{ title: string; local: number; scene?: string }> = ({ 
 };
 
 /**
- * 段の頭の線の絵（作者の頼み 11/6「計画・訓練・発災時にイラストと動き」）。線を引いていくように描く（生成の絵は使わない）。
+ * 段の頭の線の絵（作者の頼み 11/6）。線を引いていくように描く（生成の絵は使わない）。
  * 計画 = 紙と項目が埋まる、訓練 = 時計の針が回る、発災時 = スマホに安否の波
  */
 const SceneIcon: React.FC<{ scene: string; local: number }> = ({ scene, local }) => {
