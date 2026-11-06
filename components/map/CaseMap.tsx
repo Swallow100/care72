@@ -827,7 +827,7 @@ function PinLabel({ pin, size, extra }: { pin: MapPin; size: PinSize; extra?: Re
 }
 
 function PinDot({ tone, size }: { tone: StateTone | null; size: PinSize }) {
-  return <span className={`mt-1 rounded-full ${size.strong ? `size-2.5 ${PIN_EDGE_STRONG}` : `size-2 ${PIN_EDGE}`} ${tone ? PIN_DOT[tone] : "bg-ink"}`} aria-hidden />;
+  return <span className={`mt-1 ${size.strong ? "size-2.5" : "size-2"} rounded-full ${size.strong ? PIN_EDGE_STRONG : PIN_EDGE} ${tone ? PIN_DOT[tone] : "bg-ink"}`} aria-hidden />;
 }
 
 /** ピン 1 人。押すと本人のページ（?open=） */
