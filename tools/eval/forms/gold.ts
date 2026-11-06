@@ -533,11 +533,20 @@ function frameSlotBox<K extends string>(frame: Frame<K>, k: K, page: number, kin
 }
 
 /**
+ * 常用薬の種類の □ と、その後ろの括弧（T164）: 原本は「□抗血小板薬（　）」「□抗凝固薬 □ワーファリン（　）」のように行ごとに □ と括弧があり、
+ * 原本の枠（frame-kiroku.ts）も □ の印と括弧の書く所の 2 つ。専用の紙（lib/forms/medical-summary.ts）は括弧にその種類の薬の名前を書く。
+ * 前の正解は行全体の 1 つの □ の欄で、AI が □ と括弧の 2 欄に読む（読み取りの決まり 21）と、行の場所が広い括弧の欄を □ と合わせていた
+ * （評価の 7 回目の「正解は空の常用薬の欄に字」55・55・49・44）。括弧の欄の名前は「抗血小板薬（　）」（紙の括弧の子の欄と同じ形）。
+ * 透析・在宅酸素の行は原本に括弧が刷っていないので □ だけ
+ */
+const KIROKU_DRUG_BRACKETS: readonly MedicalKey[] = ["drug.antiplatelet", "drug.anticoagulant", "drug.diabetes", "drug.steroid", "drug.antiepileptic", "drug.other"];
+
+/**
  * □ の後ろに中身を書く括弧が続く欄（T161）: 「□アレルギー（　）」は □ の欄と括弧の中の字の欄の 2 つ（原本の枠 frame-kiroku.ts も □ の印と
  * 字の書く所の 2 つ。読み取りの決まり 21）。前の正解は □ と括弧を合わせた 1 つの字の欄で、AI が □ だけに読んだ紙（印だけで中身の無い紙）と
  * 字の欄を比べていた
  */
-const KIROKU_MARK_AND_TEXT: ReadonlySet<MedicalKey> = new Set(["contra.allergy"]);
+const KIROKU_MARK_AND_TEXT: ReadonlySet<MedicalKey> = new Set(["contra.allergy", ...KIROKU_DRUG_BRACKETS]);
 
 function kirokuGold(): GoldField[] {
   return MEDICAL_FIELDS.filter((f) => f.key in KIROKU_ITEMS).flatMap((f): GoldField[] => {
@@ -546,9 +555,11 @@ function kirokuGold(): GoldField[] {
       const item = key(KIROKU_ITEMS[k] ?? null);
       const mark = frameSlotBox(KIROKU_FRAME, k, f.page, "mark");
       const text = frameSlotBox(KIROKU_FRAME, k, f.page, "text");
+      const accept = KIROKU_ACCEPT[k] ? { accept: KIROKU_ACCEPT[k]!.map(key) } : {};
+      const drug = KIROKU_DRUG_BRACKETS.includes(k);
       return [
-        { page: f.page, section: "", label: f.label, shape: "check", options: [], item, ...(mark ? { box: mark } : {}) },
-        { page: f.page, section: "", label: f.label, shape: "text", options: [], item, ...(text ? { box: text } : {}) },
+        { page: f.page, section: "", label: f.label, shape: "check", options: [], item, ...accept, ...(mark ? { box: mark } : {}) },
+        { page: f.page, section: "", label: drug ? `${f.label}（　）` : f.label, shape: "text", options: [], item, ...accept, ...(text ? { box: text } : {}) },
       ];
     }
     const opt = KIROKU_OPTIONS[k];

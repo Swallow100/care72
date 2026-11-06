@@ -61,6 +61,7 @@ import { ledgerItem, listFieldIds, type FormMapping, type LedgerItemKey, type Li
 import { paperText } from "./paper-text.ts";
 import { warekiText } from "./wareki.ts";
 import { codeOfOption, codesOf, freeCodes, optionTable, pickByCodes } from "./option-values.ts";
+import { bracketOwners, strayOther, type BracketOwner } from "./form-shape.ts";
 import { transportKindOf, transportText } from "../map/transport.ts";
 
 // ---------- 項目の値 ----------
@@ -91,6 +92,11 @@ export type ItemValue = {
   codes?: readonly string[];
   /** 表で当たった選択肢に添える字（T140。手段の補記「娘の車」。1 つを選ぶ欄だけ） */
   codeDetail?: string;
+  /**
+   * 種類の □ の後ろの括弧に書く値（T164。「□抗血小板薬（　）」の括弧）。labels は括弧の前の □ の名前（同じ行の □ の全部）で、その種類の値だけ。
+   * 合う値が無ければ空（「なし」も書かない）。無い項目は種類の括弧に何も書かない
+   */
+  kindCell?: (labels: readonly string[]) => Cell;
 };
 
 type Ctx = {
@@ -179,6 +185,13 @@ const MEDICATION_KIND_WORDS: Record<keyof typeof MEDICATION_CATEGORY_LABELS, rea
 const WARFARIN_WORDS = ["ワーファリン", "ワルファリン"] as const;
 const WARFARIN = /ワーファリン|ワルファリン|warfarin/i;
 const MEDICATION_KINDS = [...new Set([...Object.values(MEDICATION_KIND_WORDS).flat(), ...WARFARIN_WORDS])];
+/** 薬 1 つの、種類の □ と照らす言葉（名前・区分の名前・□ の言い方・ワーファリン） */
+const medicationWords = (m: { name: string; category: keyof typeof MEDICATION_CATEGORY_LABELS }): string[] => [
+  m.name,
+  ...(m.category !== "other" ? [MEDICATION_CATEGORY_LABELS[m.category]] : []),
+  ...MEDICATION_KIND_WORDS[m.category],
+  ...(WARFARIN.test(m.name) ? WARFARIN_WORDS : []),
+];
 
 function bool(v: boolean | undefined, reason?: PendingStatus): ItemValue {
   if (v === undefined) return { cell: unconfirmed(reason), flag: null };
@@ -426,6 +439,10 @@ export const ITEM_VALUES: Record<LedgerItemKey, Resolver> = {
       multi: true,
       kinds: DEVICE_KINDS,
       codes: [...new Set(devices.map((d) => d.kind))],
+      kindCell: (labels) => {
+        const hit = devices.filter((d) => labels.some((l) => wordMatches(l, [deviceText(d), DEVICE_LABELS[d.kind]])));
+        return hit.length > 0 ? value(...hit.map((d): PieceLine => [t(deviceText(d))])) : EMPTY;
+      },
     };
   },
   "medical.medications": (c) => {
@@ -433,18 +450,18 @@ export const ITEM_VALUES: Record<LedgerItemKey, Resolver> = {
     // 種類の □ に合わせる言葉は区分の □ の言い方（T131）。その他の区分は名前を添えない「その他」の □ だけ
     const words = [
       ...new Set(
-        meds.flatMap((m) => [
-          m.name,
-          ...(m.category !== "other" ? [MEDICATION_CATEGORY_LABELS[m.category]] : []),
-          ...MEDICATION_KIND_WORDS[m.category],
-          ...(WARFARIN.test(m.name) ? WARFARIN_WORDS : []),
-        ]),
+        meds.flatMap((m) => medicationWords(m)),
       ),
       "あり",
     ];
     const reason = pendingOf(c.ledger, "medical.medications");
     const flag = meds.length > 0 ? true : reason ? null : false;
-    return { cell: c.sheet.cells["medical.drugs"], flag, words: meds.length > 0 ? words : ["なし"], multi: true, kinds: MEDICATION_KINDS };
+    // 種類の括弧（T164）: その種類の薬の名前と飲み方だけ（専用の紙 lib/forms/medical-summary.ts の medicationNames と同じ字）
+    const kindCell = (labels: readonly string[]): Cell => {
+      const hit = meds.filter((m) => labels.some((l) => wordMatches(l, medicationWords(m))));
+      return hit.length > 0 ? value(...hit.map((m): PieceLine => [t(m.name), ...(m.schedule ? [sub(m.schedule)] : [])])) : EMPTY;
+    };
+    return { cell: c.sheet.cells["medical.drugs"], flag, words: meds.length > 0 ? words : ["なし"], multi: true, kinds: MEDICATION_KINDS, kindCell };
   },
   "medical.doctor": fromSheet("medical.doctor"),
   "medical.dialysis": (c) => {
@@ -939,6 +956,25 @@ export function phoneRole(cell: Cell, field: MappingField, fields: readonly Mapp
   return lines.length > 0 ? { kind: "value", lines } : unconfirmed();
 }
 
+/**
+ * 括弧の子の欄（T164、lib/forms/form-shape.ts の bracketOwner）の値。親の値を丸ごと書かない:
+ * - 親が種類の □（「□抗血小板薬（　）」）: その種類の値だけ（同じ行の左の □ の種類も。「□抗凝固薬 □ワーファリン（　）」は抗凝固薬の全部）。無ければ空
+ * - 種類の □ の並びの終わりの「その他（　）」で「その他」の □ が無い（rest）: 並びのどの種類にも入らない値（「その他」の種類）
+ * - 親が種類でない □（「□アレルギー（　）」）: 今までどおり項目の値（T161。□ に印、括弧の中に中身）
+ * - 親が選ぶ欄（「□その他（　）」「□洪水（～）」）: 空。親の選択肢の添え・その他の値を、紙（overlay-sheet.ts の placeChoice）がこの欄の枠に置く
+ */
+export function bracketCell(cell: Cell, own: BracketOwner<MappingField>, ctx: Ctx): Cell {
+  if (cell.kind === "withheld" || cell.kind === "handwrite") return cell;
+  if (own.option !== null) return EMPTY;
+  const item = own.owner.item;
+  if (!item) return cell;
+  const v = ITEM_VALUES[item](ctx);
+  if (kindFlag(own.owner, v) === undefined) return own.rest ? EMPTY : cell;
+  if (!v.kindCell || v.flag !== true) return EMPTY;
+  // 「その他」の □ を読み落とした並びの終わりの「その他（　）」は、その他の種類の値
+  return v.kindCell(own.rest ? ["その他"] : own.row.map((f) => f.label));
+}
+
 /** 確かめた対応表と台帳から、欄の順に値を並べた紙面を作る */
 export function buildMappedSheet(rows: PersonPageRows, mapping: FormMapping, opts: BuildOptions): MappedSheet {
   const ledger = parseLedger(rows.person.ledger);
@@ -960,10 +996,17 @@ export function buildMappedSheet(rows: PersonPageRows, mapping: FormMapping, opt
   let count = 0;
   // 要確認の欄を確認するまで紙に使わない形（T122）: 確認していない要確認の欄は対応なしと同じ（未確認）
   const held = heldFields(mapping);
+  // 括弧の子の欄（T164）。確認していない要確認の欄（項目なしと同じ）は親にも子にもしない
+  const shown = mapping.fields.filter((f) => !held.has(f.id));
+  const brackets = bracketOwners(shown);
   for (const field of mapping.fields) {
     if (field.removed) continue;
     count += 1;
-    const cell = phoneRole(mappedCell(held.has(field.id) ? { ...field, item: null } : field, ctx), field, mapping.fields);
+    const own = held.has(field.id) ? undefined : brackets.get(field.id);
+    const base = phoneRole(mappedCell(held.has(field.id) ? { ...field, item: null } : field, ctx), field, mapping.fields);
+    // 並びの終わりの「その他（　）」に違う項目（T164、form-shape.ts の strayOther）: 違う欄に書かない
+    const stray = !own && !held.has(field.id) && base.kind !== "withheld" && strayOther(field, shown);
+    const cell = own ? bracketCell(base, own, ctx) : stray ? EMPTY : base;
     const name = field.section ? `${field.section} ${field.label}` : field.label;
     if (cell.kind === "withheld") withheld.add(cell.consent);
     else if (isUnconfirmed(cell)) unconfirmedLabels.push(name);
