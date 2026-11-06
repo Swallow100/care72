@@ -76,7 +76,7 @@ describe("使う人と目標", () => {
   });
   it("医療班の受入の筋は発災開始のあとの受入依頼の行から（T163。訓練の受入依頼ではない）", () => {
     const m = list.find((p) => p.id === "medical")!;
-    expect(m.goals.map((g) => g.id)).toEqual(["role", "receive", "summary", "note"]);
+    expect(m.goals.map((g) => g.id)).toEqual(["role", "receive", "summary", "bulk"]);
     expect(m.setup).toBe("disaster");
     expect(m.goals[1].route).toEqual([{ click: "受入 ヤマダ ハナ" }]);
     // ほかの筋は下ごしらえなし
@@ -100,6 +100,22 @@ describe("偽の client と偽の画面で筋が通る", () => {
     const ng = await runPersonaEval(cfg({ personas: ["medical"], makeSurface: () => new NoStart({ loginId: DEFAULT_LOGIN_ID, password: "fake-site-password" }) }));
     expect(ng.summary.paths[0]!.stop).toBe("open");
     expect(ng.shared.some((f) => f.cause === "guard:persona-medical-receive")).toBe(true);
+  });
+
+  it("医療班の本人のページに書き足しの欄が出たら守り（persona-medical-no-relay）が外れる（T172）", async () => {
+    const ok = await runPersonaEval(cfg({ personas: ["medical"] }));
+    expect(ok.summary.paths[0]!.forbidden).toBe(0);
+    expect(ok.shared.some((f) => f.cause === "guard:persona-medical-no-relay")).toBe(false);
+    // 医療班の本人のページに「追記」が戻った偽の画面
+    class Composer extends FakeSurface {
+      override async snapshot() {
+        const s = await super.snapshot();
+        return s.path.startsWith("/people/") ? { ...s, items: [...s.items, { ref: 900, role: "button", name: "追記" }] } : s;
+      }
+    }
+    const ng = await runPersonaEval(cfg({ personas: ["medical"], makeSurface: () => new Composer({ loginId: DEFAULT_LOGIN_ID, password: "fake-site-password" }) }));
+    expect(ng.summary.paths[0]!.forbidden).toBe(1);
+    expect(ng.shared.some((f) => f.cause === "guard:persona-medical-no-relay")).toBe(true);
   });
 
   it("5 筋とも最後まで行き、最短の手に近い手数で全部の目標に届く", async () => {

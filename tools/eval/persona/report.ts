@@ -20,6 +20,8 @@ export type PathSummary = {
   shortest: number;
   used: number;
   lost: Record<LostKind, number>;
+  /** 出てはいけない物が出た数（筋の forbid、T172） */
+  forbidden: number;
   ease: number | null;
   unclear: number;
   costUsd: number;
@@ -52,6 +54,7 @@ export function pathSummary(o: WalkOutcome, label: string, judge: JudgeOut | nul
     shortest: reached.reduce((a, g) => a + g.shortest, 0),
     used: reached.reduce((a, g) => a + g.steps, 0),
     lost: countByKind(o.lost),
+    forbidden: o.forbidden.length,
     ease: judge?.ease ?? null,
     unclear: judge?.unclear.length ?? 0,
     costUsd,

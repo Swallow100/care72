@@ -209,6 +209,9 @@ export const GUARDS: ReadonlyArray<Guard> = [
   { id: "persona-office-exit", bench: "persona", item: "count:persona:back:/bosai/warning/", op: "<=", value: 0, since: "r9", task: "T166", label: "気象庁の出典を押してアプリの外へ出ない", suspects: ["components/office/JmaAlertsView.tsx", "lib/jma/labels.ts"] },
   { id: "persona-admin-reset", bench: "persona", item: "count:persona:unreached:admin.reset", op: "<=", value: 0, since: "r9", task: "T166", label: "管理者が最初に戻すに着ける", suspects: ["app/office/page.tsx", "components/ui/PrintButton.tsx", "lib/ui/labels.ts"] },
   { id: "persona-drill-misread", bench: "persona", item: "count:persona:misread:/drill/[id]", op: "<=", value: 1, since: "r9", task: "T166", label: "訓練の画面の読み違いを 2 回目より増やさない（押せそうで押せない印を残さない）", suspects: ["components/drill/TalkLines.tsx", "components/drill/AskPick.tsx", "components/drill/ActionPanel.tsx"] },
+  // T172: 医療班の一括受入（選んでまとめて受け入れる筋）と、医療班の本人のページに書き足しの欄を出さない・PC でもカメラ起動が出る（筋の forbid）
+  { id: "persona-medical-bulk", bench: "persona", item: "count:persona:unreached:medical.bulk", op: "<=", value: 0, since: "r9", task: "T172", label: "医療班が受入依頼をまとめて受け入れられる", suspects: ["components/staff/StaffRequests.tsx", "components/staff/BulkReceive.tsx", "lib/custody/bulk.ts"] },
+  { id: "persona-medical-no-relay", bench: "persona", item: "persona.forbidden", op: "<=", value: 0, since: "r9", task: "T172", label: "医療班に経過の書き足しの欄を出さない・PC でカメラ起動を消さない", suspects: ["lib/consent/relay.ts", "lib/consent/scope.ts", "components/staff/ReceivedPerson.tsx", "components/staff/QrCamera.tsx"] },
   { id: "persona-form9-preview-misread", bench: "persona", item: "count:persona:misread:/office/form9", op: "<=", value: 0, since: "r9", task: "T166", label: "様式 9 の見本の帯をデータを戻す物と読まない", suspects: ["components/ui/PrintButton.tsx", "lib/ui/labels.ts"] },
 ];
 
