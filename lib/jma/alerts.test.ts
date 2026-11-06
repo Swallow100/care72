@@ -172,7 +172,8 @@ describe("事業所の気象庁の欄（画面）", () => {
     expect(html).toContain("11/3 22:00 松山地方気象台");
     expect(html).toMatch(/該当 <span[^>]*>7<\/span> 人/);
     expect(html).toContain("23:00 取得");
-    expect(html).toContain("出典：気象庁ホームページ（");
+    // 押せるのは「気象庁ホームページ」の字だけ（T166）なので、文はタグを外して見る
+    expect(html.replace(/<[^>]+>/g, "")).toContain("出典：気象庁ホームページ（");
     expect(html).toContain('href="https://www.jma.go.jp/bosai/warning/"');
     expect(html).toContain("）、気象庁防災情報XML");
     // 地震は観測点の名前を添える
