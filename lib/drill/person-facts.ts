@@ -827,7 +827,7 @@ export function factLines(f: Facts): string[] {
     );
   }
   // 通れない訳（T174）。言うならこの訳だけ。水につかっていないのに水と言わない
-  if (f.blocked && f.blockedBy && (f.blockedBy.roads.length > 0 || f.blockedBy.flooded)) out.push(`家の辺りの道: ${blockedWords(f)}。通れない訳を言うならこれだけ${f.blockedBy.flooded ? "" : "（水につかっていない。水のせいと言わない）"}`);
+  if (f.blocked && f.blockedBy && (f.blockedBy.roads.length > 0 || f.blockedBy.flooded)) out.push(`家の辺りの道: ${blockedWords(f)}。通れない訳を言うならこれだけ${f.dryRoad ? "（水につかっていない。水のせいと言わない）" : ""}`);
   else if (f.dryRoad) out.push("家の辺りの道: 通れる。水につかっていない（水のせいと言わない）");
   if (f.withPerson) out.push(`そばの人: ${f.withPerson.by === "family" ? "家族" : "支援者"}が本人の所にいる・見たと伝えた（${minuteText(f.withPerson.at)}）。様子が分からないとは言わない`);
   if (f.hurt) {

@@ -91,6 +91,11 @@ describe("機器が止まったあとの連絡", () => {
     expect(tickText(input(cut - 60, { fixed: [row] }), persona)).toContain("予備で動いています");
   });
 
+  it("前の連絡より前に止まった人を呼ぶ時の理由は「止まったまま」。切れた時刻の呼び出しは今までの文", () => {
+    expect(tickText(input(cut + 120, { reasons: ["clock"], state: state({ at: cut / 60 + 0.5 }) }), persona)).toContain("機器が止まったまま時間がたった");
+    expect(tickText(input(cut, { reasons: ["clock"], state: state({ at: 1 }) }), persona)).toContain("持ちこたえる時間が半分を過ぎた");
+  });
+
   it("「落ち着いたまま」は予備が切れた人の帳面にも書く", () => {
     const f = factsOf({ person: id, world: outage(), state: state({ at: 1 }), actions: [], now: cut + 10, plan, inOutage: true });
     expect(factLines(f).join("\n")).toContain("緑（無事）を押さない");

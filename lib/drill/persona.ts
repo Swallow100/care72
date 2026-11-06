@@ -460,7 +460,7 @@ function nowMinuteOf(input: Pick<PersonaInput, "hour" | "toMinute">): number {
  * 呼ばれた理由（T90 の reasons）の 1 行「この区切りで起きた事: …」。table は書かない。
  * incident は状況の文、action はケアマネの手の結果と着いた人、clock は持ちこたえる時間、round は前の連絡からの時間
  */
-function reasonLine(input: PersonaInput, incidents: ReadonlyArray<DrillIncident>, acts: ReadonlyArray<ActionRecord>, now: number): string | null {
+function reasonLine(input: PersonaInput, incidents: ReadonlyArray<DrillIncident>, acts: ReadonlyArray<ActionRecord>, now: number, stillDown = false): string | null {
   const reasons = (input.reasons ?? []).filter((r) => r !== "table");
   if (reasons.length === 0) return null;
   const since = input.since ?? -1;
@@ -479,7 +479,8 @@ function reasonLine(input: PersonaInput, incidents: ReadonlyArray<DrillIncident>
         if (d.person === input.person && d.arrived && d.arrive > since && d.arrive <= now) out.push("頼んだ人が来た");
       }
     } else if (r === "clock") {
-      out.push("持ちこたえる時間が半分を過ぎた（または切れた）");
+      // 前の連絡より前に止まった人を呼んだ時（T174）。「切れた」と渡すと新しい事のように言う
+      out.push(stillDown ? "機器が止まったまま時間がたった" : "持ちこたえる時間が半分を過ぎた（または切れた）");
     } else if (r === "round") {
       const from = input.state ? Math.round(input.state.at * 60) : Math.max(0, since);
       out.push(`前の連絡から ${clockLabel(Math.max(0, now - from))}たった`);
@@ -631,10 +632,10 @@ function rowsFor(fixed: ReadonlyArray<FixedTurn>, facts: Facts): FixedTurn[] {
 export function tickText(input: PersonaInput, persona: Persona): string {
   const incidents = ownIncidents(input.incidents, input.person);
   const now = nowMinuteOf(input);
-  const facts = personaFacts(persona, { person: input.person, world: input.world, state: input.state, actions: input.actions ?? [], now });
-  const rows = rowsFor(input.fixed, facts);
   const acts = actionsSince(input);
-  const reason = reasonLine(input, incidents, acts, now);
+  const facts = personaFacts(persona, { person: input.person, world: input.world, state: input.state, actions: input.actions ?? [], now });
+  const reason = reasonLine(input, incidents, acts, now, stuckDown(facts) && facts.devices.some((d) => d.down && d.known === true));
+  const rows = rowsFor(input.fixed, facts);
   return [
     // 発災からの「N 時間 M 分」（連続の時計の時刻は小数になるので分まで。T93）
     `時刻: 発災から ${clockLabel(now)}`,
