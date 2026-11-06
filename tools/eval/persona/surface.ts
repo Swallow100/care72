@@ -174,6 +174,20 @@ export class ChromeSurface implements Surface {
         await el.type(text, { delay: 5 });
       } else if (move.action === "select") {
         const want = move.text ?? "";
+        // アプリの選ぶ部品（components/ui/Select。ボタン＋開く一覧）は、人と同じくボタンを押して一覧の項目を押す（T162）
+        const custom = await el.evaluate((n) => n instanceof HTMLButtonElement && n.getAttribute("aria-haspopup") === "listbox");
+        if (custom) {
+          if ((await el.evaluate((n) => n.getAttribute("aria-expanded"))) !== "true") await el.click();
+          await settle(page, this.navTimeout);
+          const listId = await el.evaluate((n) => n.getAttribute("aria-controls"));
+          const options = listId ? await page.$$(`[id="${listId}"] [role=option]`) : [];
+          const texts = await Promise.all(options.map((o) => o.evaluate((n) => (n.textContent ?? "").replace(/\s+/g, " ").trim())));
+          const at = texts.findIndex((t) => t === want) >= 0 ? texts.findIndex((t) => t === want) : texts.findIndex((t) => t.includes(want));
+          if (at < 0) return { ok: false, error: `選択肢「${want.slice(0, 20)}」が無い` };
+          await options[at].click();
+          await settle(page, this.navTimeout);
+          return { ok: true };
+        }
         const value = await el.evaluate((n, label) => {
           if (!(n instanceof HTMLSelectElement)) return null;
           const o = Array.from(n.options).find((x) => x.textContent?.trim() === label) ?? Array.from(n.options).find((x) => x.textContent?.includes(label));

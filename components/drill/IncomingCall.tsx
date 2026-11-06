@@ -7,13 +7,16 @@
 // - 応答: 声（Gemini TTS、サーバーが R2 に訓練ごとに置く）と文字。声が無い（鍵が未設定・生成の失敗）ときは文字だけ。
 //   声は鳴っている間に取り寄せておき、応答の押下で流す。終話で次の着信へ
 // - 通話の中で返す（T127、T155 で会話に）: 外へ掛けた電話と同じ通話の画面（components/drill/CallTalk）。文字を打つか、マイクで話して送る
-//   （話した声は欄に文字で出て、送る前に直せる。声で入れた行は「声」の印）。問い・指示の候補（安否・けが・機器薬・移動・避難先・待機・119勧奨、
+//   （話した声は欄に文字で出て、送る前に直せる。声で入れた行は「声」の印）。問い・指示の候補（安否・けが・機器・薬・移動・避難先・待機・119勧奨、
 //   lib/drill/dialogue.ts の CALL_IN_ASKS）は補助。押すと POST /api/drill/<id>/call/talk（読んだ刻みと手の数を送る。違えば競合）。返ってきた往復の全部を描く
 //   （読み直さない。読み直すと着信の並びが組み直されるため）。1 つの着信に 8 回まで、1 回でケアマネの時計が文の長さで 1〜3 分進む。
 //   相手の返事は声を作れれば流し、無ければ文字。終話で切った時刻を残し、画面を読み直す（時計・経過・頼み事）
 // - 応答・拒否はサーバーの訓練の記録に残す（POST /api/drill/<id>/call、T22 の採点が読む。1 つの着信に 1 回）。
 //   この端末の sessionStorage にも覚え、画面を読み直しても鳴り直さない。応答して切っていない着信は、読み直しても通話中のまま出る
 // - 鳴っている間・通話中は早送りを止める（window の care72:ringing。components/drill/DrillControls が聞く）
+// - T162: 窓の右上に「後で」。窓を閉じて訓練の画面（上の帯・次まで・事業所への切替）を押せるようにし、画面の下の 1 行「着信 N 件」の
+//   「着信表示」で同じ着信（通話中なら通話中のまま）に戻る。応答・拒否は記録しない（次まで進めると、その刻みの着信は鳴らないまま過ぎる）。
+//   窓の上に「N / M」と「対応済 K」（切ったあとに次の着信が鳴ると、同じ窓のままに見えて切れていないと読まれた）
 // 色は安否の印（塗り）だけ。押したときは灰色だけ（Button の data-press）。
 
 import { PhoneXMarkIcon, SpeakerWaveIcon } from "@heroicons/react/20/solid";
@@ -21,7 +24,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AiMark } from "@/components/person/parts";
 import { Button } from "@/components/ui/Button";
-import { PhoneIcon } from "@/components/ui/Icon";
+import { LaterIcon, PhoneIcon } from "@/components/ui/Icon";
 import { StateTag, type Tone } from "@/components/ui/Tag";
 import { CALL_IN_ASKS, type TalkLine } from "@/lib/drill/dialogue";
 import { CALL_UI, clockLabel, DRILL_LABELS } from "@/lib/drill/labels";
@@ -173,6 +176,8 @@ export function IncomingCall({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [closed, setClosed] = useState(false);
+  /** 「後で」で窓を閉じた（下の 1 行から戻る）。着信が替われば開き直す */
+  const [later, setLater] = useState(false);
   const voiceRef = useRef<Voice>({ state: "none" });
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const boxRef = useRef<HTMLDivElement | null>(null);
@@ -200,23 +205,24 @@ export function IncomingCall({
     setLines(c?.lines ?? []);
     setError(null);
     setClosed(false);
+    setLater(false);
     answerRef.current = null;
     talkedRef.current = (c?.lines?.length ?? 0) > 0;
   }, [currentId]);
 
   // 鳴っている間・通話中は早送りを止める。読み上げとキーボードは着信の画面へ（ボタンに枠を出さないよう面に置く）
   useEffect(() => {
-    window.dispatchEvent(new CustomEvent(RINGING_EVENT, { detail: current !== null }));
-  }, [current]);
+    window.dispatchEvent(new CustomEvent(RINGING_EVENT, { detail: current !== null && !later }));
+  }, [current, later]);
   useEffect(() => {
-    boxRef.current?.focus();
-  }, [current, phase]);
+    if (!later) boxRef.current?.focus();
+  }, [current, phase, later]);
 
-  // 着信音（鳴っている間だけ）
+  // 着信音（鳴っている間だけ。後でにしたら止める）
   useEffect(() => {
-    if (!current || phase !== "ringing") return;
+    if (!current || phase !== "ringing" || later) return;
     return ring();
-  }, [current, phase]);
+  }, [current, phase, later]);
 
   // 声を鳴っている間に取り寄せる（応答の押下ですぐ流す）。作れない・失敗は文字だけ
   useEffect(() => {
@@ -347,6 +353,28 @@ export function IncomingCall({
 
   if (!current) return null;
   const index = total - queue.length + 1;
+  if (later) {
+    // 窓を閉じている間: 画面の下の 1 行（訓練の画面は押せる）。押すと同じ着信の窓に戻る
+    return (
+      <div
+        role="region"
+        aria-label={CALL_UI.incoming}
+        className="fixed inset-x-0 bottom-0 z-40 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 bg-panel px-4 py-2 text-sm shadow-[0_-1px_0_rgb(0_0_0/0.12)]"
+        data-incoming-later={current.signal}
+      >
+        <CallInIcon aria-hidden className="size-4 shrink-0" />
+        <span className="font-bold">
+          {phase === "ringing" ? CALL_UI.incoming : CALL_UI.talking} <span className="tabular-nums">{queue.length}</span> {CALL_UI.unit}
+        </span>
+        <span>
+          {current.caller} {current.name}
+        </span>
+        <Button kind="main" size="sm" icon={PhoneIcon} onClick={() => setLater(false)} data-incoming-action="reopen">
+          {CALL_UI.reopen}
+        </Button>
+      </div>
+    );
+  }
   const canReply = phase === "talking" && step !== undefined && actions !== undefined && !closed && callLeft(lines) > 0;
   return (
     <div
@@ -367,10 +395,18 @@ export function IncomingCall({
           <span className="font-bold">{phase === "ringing" ? CALL_UI.incoming : CALL_UI.talking}</span>
           <span className="text-muted tabular-nums">{clockLabel(current.minute)}</span>
           {total > 1 && (
-            <span className="ml-auto text-muted tabular-nums" data-incoming-count>
+            <span className="text-muted tabular-nums" data-incoming-count>
               {index} / {total}
             </span>
           )}
+          {index > 1 && (
+            <span role="status" className="text-muted" data-incoming-done={index - 1}>
+              {CALL_UI.handled} <span className="tabular-nums">{index - 1}</span>
+            </span>
+          )}
+          <Button kind="quiet" size="sm" icon={LaterIcon} className="ml-auto" onClick={() => setLater(true)} data-incoming-action="later">
+            {CALL_UI.later}
+          </Button>
         </div>
         <h2 id="incoming-caller" className="mt-3 text-2xl leading-9 font-bold" data-incoming-caller>
           {current.caller}

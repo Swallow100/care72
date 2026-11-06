@@ -60,10 +60,11 @@ function DocumentRow({ doc, about }: { doc: DocumentView; about: boolean }) {
       <dd className={doc.href ? "flex flex-wrap gap-1" : "text-xs text-muted"}>
         {doc.href ? (
           <>
-            <ButtonLink href={doc.href} kind="plain" size="sm" icon={PaperIcon}>
+            {/* 読み上げの名前は書類の名前から（T162。行ごとに同じ「表示」「印刷」が並び、スマホ入口の「表示」を計画書と取り違えた） */}
+            <ButtonLink href={doc.href} kind="plain" size="sm" icon={PaperIcon} aria-label={`${doc.label} ${doc.status}`}>
               {doc.status}
             </ButtonLink>
-            <ButtonLink href={printHref(doc.href)} kind="plain" size="sm" icon={PrintIcon} data-print-link={doc.key}>
+            <ButtonLink href={printHref(doc.href)} kind="plain" size="sm" icon={PrintIcon} aria-label={`${doc.label} ${L.print}`} data-print-link={doc.key}>
               {L.print}
             </ButtonLink>
           </>

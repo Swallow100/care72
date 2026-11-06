@@ -202,7 +202,7 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
         </span>
         <div className="ml-auto flex flex-wrap items-center gap-2">
           {running ? (
-            <DrillControls id={id} step={s.drill.step} done={false} clock={s.clock} left={s.left} />
+            <DrillControls id={id} step={s.drill.step} done={false} clock={s.clock} left={s.left} minute={s.state.minute} />
           ) : (
             <>
               <ReplayNav shown={s.shown} reached={s.drill.step} hrefOf={(i) => here({ step: i })} />
@@ -228,7 +228,8 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
 
       <section aria-label={DRILL_LABELS.elapsed} className="grid gap-x-6 gap-y-2 rounded-lg bg-panel px-3 py-3 lg:grid-cols-[10rem_minmax(0,1fr)]" data-strip-panel>
         <div>
-          <div className="text-2xl font-bold tabular-nums" data-now-hour={s.state.hour} data-now-minute={s.state.minute}>
+          {/* 経過は読み上げにも（進めたら読む。T162） */}
+          <div role="status" className="text-2xl font-bold tabular-nums" data-now-hour={s.state.hour} data-now-minute={s.state.minute}>
             {elapsedClockLabel(s.state.minute)}
           </div>
           <div className="text-sm text-muted tabular-nums" data-now-time={s.state.options?.night === true ? "night" : "real"}>

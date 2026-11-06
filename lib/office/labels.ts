@@ -8,6 +8,8 @@ export const OFFICE_LABELS = {
   careManagers: "ケアマネ",
   assignments: "担当",
   assign: "変更",
+  /** 行の「変更」の読み上げの名前（「伊藤 フミ 担当変更」。T162） */
+  assignChange: "担当変更",
   unlist: "外す",
   /** 担当の表の行を開く・畳む（外すは開いた行の中） */
   detail: "詳細",

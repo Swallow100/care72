@@ -36,12 +36,12 @@ export type PersonaFinding = {
   thoughts?: string[];
 };
 
-/** 道の id の段を [id] に（/people/chk-p-01/forms/own → /people/[id]/forms/own）。query は落とす */
+/** 道の id の段を [id] に（/people/chk-p-01/forms/own → /people/[id]/forms/own、足した人の p-<uuid> も。T162）。query は落とす */
 export function screenOf(path: string): string {
   const p = path.split(/[?#]/)[0] || "/";
   return p
     .split("/")
-    .map((s) => (/^(chk-)?p-\d+$|^[0-9a-f]{8}-[0-9a-f-]{27,}$|^[a-z]+-[0-9a-f]{6,}$|^\d+$/.test(s) ? "[id]" : s))
+    .map((s) => (/^(chk-)?p-\d+$|^[0-9a-f]{8}-[0-9a-f-]{27,}$|^[a-z]+-[0-9a-f]{6,}$|^[a-z]+-[0-9a-f]{8}-[0-9a-f-]{27,}$|^\d+$/.test(s) ? "[id]" : s))
     .join("/");
 }
 
