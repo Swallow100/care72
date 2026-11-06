@@ -49,6 +49,11 @@ export type Item = {
   threshold?: { op: AcceptOp; value: number };
   /** 台の数の JSON から出せない（種の値だけ） */
   seedOnly?: true;
+  /**
+   * 数え方を変えた注（T161）。前の回と比べるときに混ざらないよう、変えた回・作業と中身を短く。点数の表の「注」に出る。
+   * 形は「r7〜（T161）: 〜」。前の回の列は前の数え方の数のまま（数え直していない）
+   */
+  notes?: readonly string[];
   drill?: (s: DrillSummaryLike) => Raw;
   forms?: (r: FormsResultLike) => Raw;
   talk?: (s: TalkSummaryLike) => Raw;
@@ -106,6 +111,15 @@ const formPaper = (r: FormsResultLike, id: string): Raw => {
   const ps = r.papers.filter((p) => p.form === id && p.score);
   return ps.length > 0 ? [sumOf(ps.map((p) => p.score!.hit)), sumOf(ps.map((p) => p.score!.filled))] : null;
 };
+/**
+ * 一覧の様式の共有の外れか（T161）: 2 つ目の事業所が写せず、訳が「1 つ目に読めない頁があった」（共有に入れないのが決め）でない物。
+ * 訳の無い前の回（6 回目まで）の写せなかった物も外れ。書類の指摘（tools/eval/forms/findings.ts の sharedMiss）も同じ数え方
+ */
+export function sharedMissOf(f: { catalog?: { shared: boolean | null; sharedWhy?: string } }): boolean {
+  return f.catalog?.shared === false && f.catalog.sharedWhy !== "unread";
+}
+const catalogTried = (r: FormsResultLike) => r.forms.filter((f) => f.catalog && f.catalog.shared !== null);
+
 const looks = (r: FormsResultLike, k: "unplaced" | "blanks" | "overlap" | "outside") => sumOf(r.papers.map((p) => p.look?.[k] ?? 0));
 const reviews = (r: FormsResultLike) => r.papers.map((p) => p.review).filter((x): x is NonNullable<typeof x> => !!x);
 const hasReview = (r: FormsResultLike) => reviews(r).length > 0;
@@ -114,11 +128,52 @@ const FORMS: Item[] = [
   // 回した＝飛ばした物（原本なし・上限）を除く（種の r4「13/13（取れず 1）」と同じ数え方）
   { id: "forms.readOk", bench: "forms", label: "様式 読めた／回した", better: "higher", unit: "frac", agg: "sum", forms: (r) => [r.forms.filter((f) => f.status === "ok").length, r.forms.filter((f) => f.status !== "skipped").length] },
   { id: "forms.read.matsuyama", bench: "forms", label: "松山市の計画書 欄の当たり", better: "higher", unit: "frac", agg: "sum", forms: (r) => formRead(r, "matsuyama") },
-  { id: "forms.read.kiroku", bench: "forms", label: "災害診療記録 欄の当たり", better: "higher", unit: "frac", agg: "sum", forms: (r) => formRead(r, "kiroku") },
+  {
+    id: "forms.read.kiroku",
+    bench: "forms",
+    label: "災害診療記録 欄の当たり",
+    better: "higher",
+    unit: "frac",
+    agg: "sum",
+    notes: ["r7〜（T161）: 正解の表の「□アレルギー（　）」を □ と括弧の 2 欄に（欄の数が 29 → 30）。r6 までは □ と括弧を合わせた 1 つの字の欄"],
+    forms: (r) => formRead(r, "kiroku"),
+  },
   { id: "forms.read.form9", bench: "forms", label: "様式 9 欄の当たり", better: "higher", unit: "frac", agg: "sum", forms: (r) => formRead(r, "form9") },
-  { id: "forms.paper.matsuyama", bench: "forms", label: "紙 松山市の計画書", better: "higher", unit: "rate", agg: "sum", forms: (r) => formPaper(r, "matsuyama") },
-  { id: "forms.paper.kiroku", bench: "forms", label: "紙 災害診療記録", better: "higher", unit: "rate", agg: "sum", forms: (r) => formPaper(r, "kiroku") },
-  { id: "forms.paper.form9", bench: "forms", label: "紙 様式 9", better: "higher", unit: "rate", agg: "sum", forms: (r) => formPaper(r, "form9") },
+  { id: "forms.paper.matsuyama", bench: "forms", label: "紙 松山市の計画書", better: "higher", unit: "rate", agg: "sum", notes: ["r7〜（T161）: 値の比べで文の終わりの句点（。．.）の有無を同じに（全角半角・空白の違いは前から外れにしていない）。r6 までの列は句点の違いも外れに数えた数"], forms: (r) => formPaper(r, "matsuyama") },
+  {
+    id: "forms.paper.kiroku",
+    bench: "forms",
+    label: "紙 災害診療記録",
+    better: "higher",
+    unit: "rate",
+    agg: "sum",
+    notes: [
+      "r7〜（T161）: 値の比べで文の終わりの句点（。．.）の有無を同じに（全角半角・空白の違いは前から外れにしていない）。r6 までの列は句点の違いも外れに数えた数",
+      "r7〜（T161）: 正解の表の既往症・予防接種を □ の並び（choice、原本の選択肢）に、「□アレルギー（　）」を □ と括弧の 2 欄に。r6 までは 3 つとも字の欄で、□ に印を付けた紙を置き間違いと数えた（6 回目の答えをこの正解の表と数え方で数え直すと 87.6% → 96.3%。残りはアレルギーの括弧の欄〔AI が □ だけに読んだ。決まり 21 の効き目は r7 で確かめる〕と声の入力の 2 つ）",
+      "r4 までは種の台帳に既往症・予防接種・アレルギーの値が無く、この 3 欄は両方空いて数に入らなかった（r4 の 96.1% と r6 からの数は比べられない）",
+    ],
+    forms: (r) => formPaper(r, "kiroku"),
+  },
+  { id: "forms.paper.form9", bench: "forms", label: "紙 様式 9", better: "higher", unit: "rate", agg: "sum", notes: ["r7〜（T161）: 値の比べで文の終わりの句点（。．.）の有無を同じに（全角半角・空白の違いは前から外れにしていない）。r6 までの列は句点の違いも外れに数えた数"], forms: (r) => formPaper(r, "form9") },
+  // 一覧の様式の共有の対応表（T161）。回した＝2 つ目の事業所で読んだ様式。外れは写せなかった物のうち、1 つ目に読めない頁が無かった物
+  {
+    id: "forms.shared",
+    bench: "forms",
+    label: "一覧の様式 共有を写せた",
+    better: "higher",
+    unit: "frac",
+    agg: "sum",
+    forms: (r) => (catalogTried(r).length > 0 ? [catalogTried(r).filter((f) => f.catalog!.shared === true).length, catalogTried(r).length] : null),
+  },
+  {
+    id: "forms.sharedMiss",
+    bench: "forms",
+    label: "一覧の様式 共有の外れ（AI を呼び直す）",
+    better: "lower",
+    unit: "count",
+    agg: "sum",
+    forms: (r) => (catalogTried(r).length > 0 ? catalogTried(r).filter(sharedMissOf).length : null),
+  },
   { id: "forms.unplaced", bench: "forms", label: "置けなかった欄", better: "lower", unit: "count", agg: "sum", forms: (r) => looks(r, "unplaced") },
   { id: "forms.blanks", bench: "forms", label: "台帳あり空欄", better: "lower", unit: "count", agg: "sum", forms: (r) => looks(r, "blanks") },
   { id: "forms.reviewDup", bench: "forms", label: "見直しの重複", better: "lower", unit: "count", agg: "sum", forms: (r) => (hasReview(r) ? sumOf(reviews(r).map((x) => x.rule.kinds.duplicate ?? 0)) : null) },
@@ -126,7 +181,7 @@ const FORMS: Item[] = [
   { id: "forms.reviewFix", bench: "forms", label: "見直しの要修正", better: "lower", unit: "count", agg: "sum", forms: (r) => (hasReview(r) ? sumOf(reviews(r).map((x) => x.rule.fix)) : null) },
   { id: "forms.aiReviewFound", bench: "forms", label: "AI の照合 使った所", better: null, unit: "count", agg: "sum", forms: (r) => (reviews(r).some((x) => x.ai) ? sumOf(reviews(r).map((x) => x.ai?.found ?? 0)) : null) },
   { id: "forms.aiReviewKinds", bench: "forms", label: "AI の照合 判読難・欄違い・不一致", better: null, unit: "count", agg: "sum", seedOnly: true },
-  { id: "forms.intake", bench: "forms", label: "入力 当たり", better: "higher", unit: "rate", agg: "sum", forms: (r) => intakePair(r) },
+  { id: "forms.intake", bench: "forms", label: "入力 当たり", better: "higher", unit: "rate", agg: "sum", notes: ["r7〜（T161）: 値の比べで文の終わりの句点（。．.）の有無を同じに（全角半角・空白の違いは前から外れにしていない）。r6 までの列は句点の違いも外れに数えた数"], forms: (r) => intakePair(r) },
   { id: "forms.inputsFailed", bench: "forms", label: "入力の失敗", better: "lower", unit: "count", agg: "sum", forms: (r) => r.inputs.filter((i) => i.status === "failed").length },
   { id: "forms.leaks", bench: "forms", label: "送った文の漏れ（氏名・電話・町名）", better: "lower", unit: "count", agg: "sum", threshold: zero, forms: (r) => r.leaks.strongHits },
   { id: "forms.birthLeaks", bench: "forms", label: "送った文の生年月日", better: "lower", unit: "count", agg: "sum", threshold: zero, forms: (r) => r.leaks.birthHits },
