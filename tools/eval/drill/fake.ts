@@ -28,6 +28,11 @@ export type FakeOptions = {
    * 進める 1 回の待ちの形（監督と本人役が順か並びか・最後の刻みの監督）を偽の回で比べるため。既定 0（待たない）
    */
   latency?: number;
+  /**
+   * 往復の返事をわざと繰り返す・いる所を揺らす割合（T158、0〜1。既定 0）。当たった往復は、前の返事をそのまま返すか、前の返事と逆のいる所
+   * （避難所 ↔ 家）を言う。通話の検査（talk-check.ts）が数えられるか・門（同じ通話の前の返事の文を落とす）が効くかの確かめ
+   */
+  talkEcho?: number;
 };
 
 /** 役ごとの本物の待ちの目安（ミリ秒。評価の 2 回目の訓練の記録の平均。本人役のまとめ呼びは 1 人より長い） */
@@ -231,8 +236,32 @@ function personaBatchAnswer(rng: Rng, input: Input, opts: FakeOptions, virtual: 
 const TICK_HEAD = "\n\nこの刻み:\n";
 const PROFILE_HEAD = /^本人役:\n/;
 
+/** 往復の文の「それまでの話」のうち、電話に出た人の行（T158） */
+function priorReplies(call: string): string[] {
+  const at = call.indexOf("それまでの話:");
+  if (at < 0) return [];
+  return call
+    .slice(at)
+    .split("\n")
+    .slice(1)
+    .filter((l) => l.startsWith("- ") && !l.startsWith("- ケアマネ:"))
+    .map((l) => l.replace(/^- [^:]+: 「/u, "").replace(/」$/u, ""));
+}
+
+/** わざと繰り返す・いる所を揺らす返事（T158）。前の返事が無ければ避難所、奇数回目は前のまま、偶数回目は前と逆のいる所 */
+const ECHO_SHELTER = "今は避難所にいます。母は横になって休んでいます。";
+const ECHO_HOME = "今は家にいます。母と二人でいて、母は横になって休んでいます。";
+function echoAnswer(call: string): { speech: string; asks: string[] } {
+  const prior = priorReplies(call);
+  const last = prior.at(-1);
+  if (!last) return { speech: ECHO_SHELTER, asks: [] };
+  if (prior.length % 2 === 1) return { speech: last, asks: [] };
+  return { speech: last.includes("避難所") ? ECHO_HOME : ECHO_SHELTER, asks: [] };
+}
+
 function callAnswer(rng: Rng, input: Input, opts: FakeOptions, talk: boolean) {
   const call = textOf(input["電話"]);
+  if (talk && opts.talkEcho && rng.chance(opts.talkEcho)) return echoAnswer(call);
   const red = /伝える様子: 赤/.test(call);
   const who = call.match(/電話に出た人: (.+)/)?.[1]?.trim() ?? "本人";
   const speech = withNoise(opts, rng, speechOf(rng, who, call, red));

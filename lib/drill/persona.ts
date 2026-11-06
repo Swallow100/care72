@@ -94,6 +94,7 @@ import { minuteText } from "./time-text.ts";
 import { clipWords } from "./clip.ts";
 import {
   dropFactSlips,
+  dropRepeats,
   factsBlock,
   factsOf,
   housemates,
@@ -500,7 +501,12 @@ export function clockWords(persona: Pick<Persona, "clocks" | "hazards" | "town">
   const power = world.supplies?.[person]?.power;
   const stops = [o?.restoredAt != null ? Math.round(o.restoredAt * 60) : null, typeof power === "number" ? power : null].filter((x): x is number => x !== null);
   const stop = stops.length > 0 ? Math.min(...stops) : null;
+  const left = world.marks?.[person]?.supplyLeft;
   return clocks.map((k) => {
+    // 栄養剤を家に置いてきた（T158）。手元に無いので、台帳の時間で減る残りを言わない（評価の 6 回目で、置いてきたのに残りが減り続けた）
+    if (k.category === "tube_feeding" && typeof left === "number" && Math.round(left * 60) <= now) {
+      return `${k.label}: 家に置いてきて手元に無い（${minuteText(Math.round(left * 60))}から）。届くか家から持ってくるまで使えない。残りの時間は言わない`;
+    }
     if (k.value == null || k.unit == null) return `${k.label}: 残り 未確認`;
     const end = k.startsOn === "outage" && stop !== null ? Math.min(now, stop) : now;
     const s: Situation = { now: clockAt(end), disasterAt: clockAt(0), outageAt: inArea ? clockAt(Math.round(o!.since * 60)) : null };
@@ -649,6 +655,7 @@ export const PERSONA_SYSTEM = [
   "10. 「今の様子」「持ちこたえる時間の今」と食い違う事を言わない（来た人・届いた物・復旧した物を、まだと言わない。切れた分を、まだ残ると言わない。いつからの状態かも合わせる）。",
   "11. 「人ごとの事実」と食い違う事を言わない（いる所、前に言った動けない・けが、同居の人、声が無いと伝えた事、電気と予備）。「計画」にある事は連絡が取れなくても計画どおりにする（予備に替える・決めた避難先へ移る）。計画に無い事で、手も人も無いのに良くならない。",
   "12. 「ケアマネに言われた事」は覚えて従う（待つと言われたら待つ・119 を勧められたらかけるか決める）。従えない時は理由を言う（道が通れない・動けない など）。",
+  "13. 「前の連絡」で言った文・言い回しをくり返さない。変わった事を先に言い、変わらない事は言わないか「〜のまま」と短く。前に伝えた事（着いた・切れた・置いてきた）を新しい事のように言わない。",
 ].join("\n");
 
 /**
@@ -842,7 +849,9 @@ export function personaTurns(input: PersonaInput, persona: Persona, answer: Pers
   };
   const doing = doingOf(answer, persona.key);
   // 話し手に合わない文（夫・妻が本人を「母」と呼ぶ、話し手でない続柄で名乗る）を落としてから掃除する（T121）
-  const speechBy = (source: FixedTurn["source"]) => cleanPersonaWords(dropSlips(answer.speech, speakerOf(persona, source), persona), persona.key, SPEECH_MAX);
+  // 前の連絡とほぼ同じ文を落とす（T158。全部同じなら元のまま。刻みの連絡は表の行の骨があるので空にしない）
+  const fresh = (t: string | null): string | null => (t ? dropRepeats(t, [input.state?.saying], { keepAll: true, ...(onDrop ? { onDrop } : {}) }) : t);
+  const speechBy = (source: FixedTurn["source"]) => fresh(cleanPersonaWords(dropSlips(answer.speech, speakerOf(persona, source), persona), persona.key, SPEECH_MAX));
 
   if (input.fixed.length > 0) {
     const fixed = [...input.fixed].sort((a, b) => eventHour(a, input.hour) - eventHour(b, input.hour));
@@ -1117,6 +1126,8 @@ export type PersonaCall = Pick<PersonaInput, "person" | "hour" | "world" | "inci
    * 言葉がこれと食い違わないように渡す
    */
   tell?: Pick<HeardSignal, "color" | "whereNow" | "injured" | "atHome" | "canMove" | "hasMedicine">;
+  /** この人への手（メモを落とした物、T158）。あれば帳面を刻みの道と同じに引く（通話の往復が渡す） */
+  actions?: ReadonlyArray<ActionRecord>;
 };
 
 /** 伝える様子の文（Claude に渡す文。画面の言葉ではない） */
@@ -1163,7 +1174,7 @@ export function callText(call: PersonaCall, persona: Persona): string {
     // T123: 通話（最初の言葉・往復）にも持ちこたえる時間の今。評価の 2 回目で、通話の道だけ時計の段が無く、切れたあとも同じ調子で話した
     ...clockLines(persona, call.world, call.person, now),
     // T130: 帳面と計画（刻みの道と同じ）
-    factsBlock(personaFacts(persona, { person: call.person, world: call.world, state: call.state, now })),
+    factsBlock(personaFacts(persona, { person: call.person, world: call.world, state: call.state, actions: call.actions ?? [], now })),
     `この刻みの状況: ${ownIncidents(call.incidents, call.person).map((e) => e.text).join("、") || "新しい事はない"}`,
     `前の連絡: ${stateWords(call.state)}`,
     `電話に出た人: ${call.callee}${calleeCalls(persona, call.callee)}`,
@@ -1226,7 +1237,10 @@ export const TALK_SYSTEM = [
   "「伝える様子」があれば、その様子と食い違わない事を言う（無事なのにけがをしたと言わない、けがなのに無事と言わない）。",
   PATH_RULE,
   "119 に電話するよう勧められたら、かけるか・かけないかを言葉で言う（どちらにするかは自分で決める）。救急が来た先の事は言わない。",
-  "頼んだ事が済んでいなければ、また頼んでよい。ケアマネが後で電話すると言ったら、短く返して終える。",
+  "この電話でもう言った事（頼み事・いる所・残りの数・する事）はくり返さない。同じ事をまた聞かれたら、短く別の言い方で答える。頼み事はこの電話で 1 回だけ（済んでいなければ、次の電話でまた頼んでよい）。",
+  "ケアマネの言葉が相づち（「はい」）・待ってほしい・聞き取れない・話と関係ない時は、1 文だけで短く返す（待つ・聞き返す・分からないと言う）。前の返事をくり返さない。",
+  "いる所は「人ごとの事実」のいる所のまま。この電話で言ったいる所・する事（119 にかける など）と食い違わない。",
+  "ケアマネが後で電話すると言ったら、短く返して終える。",
   "「電話の向き」が「相手から」のときは、電話に出た人がケアマネに掛けた電話の続き。最初に言った事は、その人が掛けて言った事。",
   "本人はやさしい短い話し言葉。認知症の本人は話が噛み合わないことがある。家族・支援者はその人の口調。",
   "名前・住所・電話番号を言わない。「A さん」とも言わない。「診断」「判定」「重症」「死亡」と言わない。病名を言い切らない。薬の量を言わない。助言をしない。",
@@ -1238,6 +1252,24 @@ export const TALK_SYSTEM = [
  */
 export type PersonaTalk = PersonaCall & { first: string | null; lines: ReadonlyArray<TalkLine>; said: string; incoming?: boolean };
 
+/** この電話でもう頼んだ事の種類（T158。電話に出た人の行の asks。並びは頼んだ順） */
+export function talkAsked(lines: ReadonlyArray<TalkLine>): AskKind[] {
+  const out: AskKind[] = [];
+  for (const l of lines) if (l.who === "them") for (const k of l.asks ?? []) if (!out.includes(k)) out.push(k);
+  return out;
+}
+
+/** 前の返事と同じ事しか言わなかった時の短い返事（T158。この電話でまだ言っていない物から） */
+export const TALK_REPEAT_ACKS = ["はい、さっきお話しした通りです。", "はい、先ほどと同じです。", "はい、そのままです。"] as const;
+
+/**
+ * この電話の前の返事（電話に出た人の AI の返事。T158 の繰り返しの門が見る）。最初の言葉は入れない（「今どこですか」と聞かれて最初に言ったいる所を
+ * 答えるのは繰り返しではない。評価の台の数え方と同じ）
+ */
+export function talkPrior(lines: ReadonlyArray<TalkLine>): string[] {
+  return lines.filter((l) => l.who === "them" && l.ai).map((l) => l.text);
+}
+
 /** 往復の文（Claude に渡す前。呼ぶ側が仮名化の門を通す） */
 export function talkText(talk: PersonaTalk, persona: Persona): string {
   const who = (l: TalkLine) => (l.who === "cm" ? "ケアマネ" : talk.callee);
@@ -1246,6 +1278,8 @@ export function talkText(talk: PersonaTalk, persona: Persona): string {
     ...(talk.incoming ? ["電話の向き: 相手から（電話に出た人がケアマネに掛けた）"] : []),
     `最初に言った事: ${talk.first ? `「${talk.first}」` : "なし"}`,
     talk.lines.length > 0 ? ["それまでの話:", ...talk.lines.map((l) => `- ${who(l)}: 「${l.text}」`)].join("\n") : "それまでの話: なし",
+    // T158: この電話でもう頼んだ事（くり返さない）
+    ...(talkAsked(talk.lines).length > 0 ? [`この電話でもう頼んだ事（くり返さない）: ${talkAsked(talk.lines).map((k) => ASK_MEANINGS[k]).join("・")}`] : []),
     `ケアマネの今の言葉: 「${talk.said}」`,
   ].join("\n");
 }
@@ -1271,12 +1305,21 @@ export async function personaTalkReply(
   ctx: AskJsonContext,
   /** 帳面（T130）。あれば帳面と食い違う文と、電気が戻ったあとの電池・電源の頼み事を落とす */
   facts?: Facts,
+  /**
+   * この電話の前の言葉と頼み事（T158、talkPrior・talkAsked）。あれば前の返事とほぼ同じ文と、もう頼んだ頼み事を落とす。全部が前の返事と同じなら
+   * 短い返事（TALK_REPEAT_ACKS のうちまだ言っていない物）に。Claude をもう一度呼ばない
+   */
+  prior?: { said: ReadonlyArray<string>; asked: ReadonlyArray<AskKind> },
 ): Promise<TalkReplyWords> {
   try {
     const r = await askJson(buildPersonaTalkRequest(persona.profile, talk), ctx);
     const raw = facts ? dropFactSlips(r.value.speech, { ...slipContextOf(facts), kin: null }) : r.value.speech;
-    const speech = cleanPersonaWords(raw, key, SPEECH_MAX);
-    const asks = asksOf(r.value.asks, TALK_ASKS_MAX);
+    let speech = cleanPersonaWords(raw, key, SPEECH_MAX);
+    if (speech !== null && prior && prior.said.length > 0) {
+      const fresh = dropRepeats(speech, prior.said).trim();
+      speech = fresh || (TALK_REPEAT_ACKS.find((a) => !prior.said.includes(a)) ?? TALK_REPEAT_ACKS[0]);
+    }
+    const asks = asksOf(r.value.asks, TALK_ASKS_MAX).filter((k) => !(prior?.asked ?? []).includes(k));
     return speech === null ? { speech: null, asks: [], ai: false } : { speech, asks: facts ? screenAsks(asks, facts) : asks, ai: true };
   } catch (e) {
     if (isPersonaFailure(e)) return { speech: null, asks: [], ai: false };

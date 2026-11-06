@@ -29,6 +29,8 @@ import {
   personaFacts,
   personaPlaces,
   personaTalkReply,
+  talkAsked,
+  talkPrior,
   personaVisitReport,
   talkText,
 } from "./persona.ts";
@@ -275,6 +277,7 @@ export function createTalkHook(deps: { load: () => Promise<ReadonlyMap<string, P
             lines: t.lines,
             said,
             ...(t.incoming ? { incoming: true } : {}),
+            ...(t.actions ? { actions: t.actions } : {}),
           },
           persona,
         ),
@@ -285,7 +288,9 @@ export function createTalkHook(deps: { load: () => Promise<ReadonlyMap<string, P
       return { ...plain, said };
     }
     // T130: 帳面と食い違う文と、電気が戻ったあとの電池・電源の頼み事を落とす
-    const r = await personaTalkReply(persona, text, key, deps.ai, personaFacts(persona, { person: t.person, world: t.world, state: t.state, now: t.minute }));
+    // T158: この電話の前の返事とほぼ同じ文と、もう頼んだ頼み事を落とす（Claude をもう一度呼ばない）
+    const prior = { said: talkPrior(t.lines), asked: talkAsked(t.lines) };
+    const r = await personaTalkReply(persona, text, key, deps.ai, personaFacts(persona, { person: t.person, world: t.world, state: t.state, actions: t.actions ?? [], now: t.minute }), prior);
     return { said, speech: r.speech, asks: r.asks, ai: r.ai, called: true };
   };
 }

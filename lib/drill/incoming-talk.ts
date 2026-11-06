@@ -30,7 +30,7 @@ import { callerContact, callerLabel } from "./calls.ts";
 import { capReached } from "./clock.ts";
 import { drillScope, loadDrillRow, stateOfRow, type DrillScope } from "./db.ts";
 import { dialogueFields, isTalkAsk, TALK_MAX, TALK_TEXT_MAX, TALK_UI, type TalkAsk, type TalkHook, type TalkLine } from "./dialogue.ts";
-import { drillEnded, fitOf, isNight, type DrillTurn } from "./engine.ts";
+import { drillEnded, fitOf, isNight, withoutMemo, type DrillTurn } from "./engine.ts";
 import { fitKindOf } from "./fit.ts";
 import { talkRound } from "./talk-turn.ts";
 import { drillError, isDrillId } from "./http.ts";
@@ -170,6 +170,7 @@ export async function callTalkDrill(
           first,
           lines,
           incoming: true,
+          actions: withoutMemo(before.actions.filter((a) => a.person === person)),
           ...(ask ? { ask } : { text: text ?? "" }),
         })
       : null;

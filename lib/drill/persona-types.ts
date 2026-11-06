@@ -49,6 +49,11 @@ export type PersonState = {
   atHome?: boolean | null;
   canMove?: boolean | null;
   hasMedicine?: boolean | null;
+  /**
+   * 連絡を重ねて分かっているいる所（T158、lib/drill/person-facts.ts の carryPlace）。赤の「家にいない」でも、前に避難所と言っていれば避難所。
+   * 刻みから作り直すときも同じに引く。前からの保存には無い（無ければ前の読み方）
+   */
+  placeKnown?: WhereNow | null;
 };
 
 /**

@@ -13,6 +13,7 @@
 //       --terms on|off（連続の時計の訓練の開始に手の決まり〔T110 の terms〕を送るか。既定 on、開始の画面と同じ。T121）・
 //       --all-people（参加する人を担当の全員に。ほかの選び方は同じ種のまま）・
 //       --talk-rounds N（通話の往復の回数。T155 の 8 往復の確かめ。乱れた文も混ぜる）・
+//       --talk-echo P（偽の client の往復の返事をわざと繰り返す・いる所を揺らす割合。T158 の通話の検査の確かめ）・
 //       --answer-calls（今の刻みの電話の着信に出て往復する。T127 の着信の往復を測る）・
 //       --free-probe（自由対応の状況違いの試し〔T129、free-probe.ts〕も回す。文 3 つ × 状況 8 つで、本物なら Opus を 24 回）
 //
@@ -81,6 +82,8 @@ export type EvalConfig = {
   answerCalls?: boolean;
   /** 通話の往復の回数（T155。--talk-rounds） */
   talkRounds?: number;
+  /** 偽の client の往復の返事をわざと繰り返す・いる所を揺らす割合（T158。--talk-echo P、0〜1） */
+  talkEcho?: number;
   /** 自由対応の状況違いの試しも回すか（T129。--free-probe） */
   freeProbe?: boolean;
   /** 記録の名前の日時（テストで固定） */
@@ -160,7 +163,7 @@ export async function runEval(cfg: EvalConfig): Promise<{ summary: Summary; dir:
     const log = runLog(join(dir, `run-${pad(i)}.jsonl`));
     const inner: ClaudeClient = cfg.real
       ? (new Anthropic({ apiKey: cfg.key, maxRetries: 0 }) as unknown as ClaudeClient)
-      : fakeClaude({ rng: rngOf(`${plan.seed}/fake`), noise: cfg.noise, latency: cfg.latency ?? 0 });
+      : fakeClaude({ rng: rngOf(`${plan.seed}/fake`), noise: cfg.noise, latency: cfg.latency ?? 0, ...(cfg.talkEcho ? { talkEcho: cfg.talkEcho } : {}) });
     const claude = recordClaude(inner, log);
     const room = recordRoom(cfg.real ? roomClientOf({ ANTHROPIC_API_KEY: cfg.key }) : fakeRoom({ rng: rngOf(`${plan.seed}/room`), noise: cfg.noise, latency: cfg.latency ?? 0 }), log);
     if (worldAgent && plan.scenario === "virtual" && cfg.world === "session") room.reuse(worldAgent.agent_id);
@@ -215,7 +218,7 @@ export async function runEval(cfg: EvalConfig): Promise<{ summary: Summary; dir:
     client,
     seed: cfg.seed,
     world: cfg.world,
-    args: { runs: cfg.runs, scenarios: cfg.scenarios, people: cfg.people ?? "all", judge: cfg.judge, review: cfg.review, maxAdvances: cfg.maxAdvances, noise: cfg.noise, maxUsd: cfg.maxUsd, terms: cfg.terms, allPeople: cfg.allPeople ?? false, answerCalls: cfg.answerCalls ?? false, talkRounds: cfg.talkRounds ?? null },
+    args: { runs: cfg.runs, scenarios: cfg.scenarios, people: cfg.people ?? "all", judge: cfg.judge, review: cfg.review, maxAdvances: cfg.maxAdvances, noise: cfg.noise, maxUsd: cfg.maxUsd, terms: cfg.terms, allPeople: cfg.allPeople ?? false, answerCalls: cfg.answerCalls ?? false, talkRounds: cfg.talkRounds ?? null, ...(cfg.talkEcho ? { talkEcho: cfg.talkEcho } : {}) },
     runs,
     totals: totalsOf(runs),
     diversity: diversityOf(outcomes),
@@ -306,6 +309,7 @@ export function parseArgs(argv: ReadonlyArray<string>, env: Readonly<Record<stri
     ...(has("free-probe") ? { freeProbe: true } : {}),
     ...(has("answer-calls") ? { answerCalls: true } : {}),
     ...(get("talk-rounds") ? { talkRounds: Math.max(1, Math.min(8, Math.floor(Number(get("talk-rounds")) || 1))) } : {}),
+    ...(get("talk-echo") ? { talkEcho: Math.max(0, Math.min(1, Number(get("talk-echo")) || 0)) } : {}),
   };
 }
 

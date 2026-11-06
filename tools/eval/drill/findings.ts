@@ -112,11 +112,46 @@ export function metaOf(h: CheckHit): Meta | null {
       };
     }
     case "facts":
-      return { cause: `drill:facts:${h.rule}`, rule: `facts:${h.rule}`, title: `本人ごとの帳面との矛盾（${h.rule}）`, severity: "mid", screen: "訓練 > 経過", suspects: ["lib/drill/person-facts.ts", "lib/drill/cast-facts.ts"] };
+      return {
+        cause: `drill:facts:${h.rule}`,
+        rule: `facts:${h.rule}`,
+        title: FACT_TITLES[h.rule] ?? `本人ごとの帳面との矛盾（${h.rule}）`,
+        severity: "mid",
+        screen: "訓練 > 経過",
+        suspects: h.rule === "clock_drift" || h.rule === "spare_unsaid" ? ["lib/drill/person-facts.ts", "lib/drill/persona.ts"] : ["lib/drill/person-facts.ts", "lib/drill/cast-facts.ts"],
+        ...(h.rule === "clock_drift" ? { accept: zero("drill.clockDrift") } : {}),
+      };
+    case "talk":
+      return {
+        cause: `drill:talk:${h.rule}`,
+        rule: `talk:${h.rule}`,
+        title: TALK_TITLES[h.rule] ?? `通話の往復（${h.rule}）`,
+        severity: h.rule === "repeat_raw" ? "low" : "mid",
+        screen: "訓練 > 通話",
+        suspects: ["lib/drill/persona.ts", "lib/drill/hooks.ts", "lib/drill/person-facts.ts", "lib/drill/talk-turn.ts"],
+        accept: h.rule === "place_drift" ? zero("drill.talkPlaceDrift") : h.rule === "repeat" ? { item: "drill.talkRepeat", op: "<=", value: 0.05 } : { item: `count:drill:talk:${h.rule}`, op: "<=", value: 0 },
+      };
     default:
       return null;
   }
 }
+
+/** 帳面との矛盾のうち題を持つ物（T158） */
+const FACT_TITLES: Readonly<Record<string, string>> = {
+  clock_drift: "電池の残りの数が前に言った数と食い違う（予備に替えた・電気が戻ったと言わずに）",
+  spare_unsaid: "予備で動いているのに残りの数を予備と言わない",
+  left_remain: "家に置いてきた栄養剤の残りの時間を言う",
+  place_text: "いる所と食い違う言葉",
+  remain_mismatch: "電池・予備の残りの数が帳面と食い違う",
+  old_news: "前に伝えた事を新しい事のように言う",
+};
+
+/** 通話の往復の題（T158） */
+const TALK_TITLES: Readonly<Record<string, string>> = {
+  repeat: "通話の返事が同じ通話の前の返事とほぼ同じ",
+  place_drift: "同じ通話の中でいる所の話が食い違う",
+  repeat_raw: "往復の生の返事がそれまでの話とほぼ同じ（門の前）",
+};
 
 const CONTRADICTION_TITLES: Readonly<Record<string, string>> = {
   hurt_to_safe: "赤（動けない）から手も到着も無いまま緑",

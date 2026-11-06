@@ -168,7 +168,8 @@ describe("電池: 残りの数をコードが決める", () => {
   it("予備に替えたあとは予備の残りを言う数にする（10 分・30 分に丸める）", () => {
     const f = factsOf({ person: "p-02", world: OUTAGE, state: null, actions: [], now: 310, plan, inOutage: true });
     expect(f.devices[0].remain).toEqual({ internal: 0, spare: 50, total: 50 });
-    expect(factLines(f).join("\n")).toContain("あと約 50 分（予備）");
+    // T158: 予備の残りは「予備の〜があと〜」と言う言い方まで書く
+    expect(factLines(f).join("\n")).toContain("あと約 50 分（予備の残り");
     expect(remainWords(50)).toBe("約 50 分");
     expect(remainWords(95)).toBe("約 1 時間半");
     expect(remainWords(400)).toBe("約 7 時間");
