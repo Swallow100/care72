@@ -61,6 +61,12 @@ describe("1. 印刷: 押したことが窓の前から分かる・戻ると見�
     expect(css).toContain("html[data-print-preview] header:not(:has([data-paper-root])):not([data-app-header])");
     expect(css).toContain("html[data-print-preview] nav:not(:has([data-paper-root])):not([data-app-header] nav)");
     expect(css).toMatch(/\.print-preview-slot \{\s*position: sticky;/);
+    // 見本で押せる欄の地を消さない（消すと紙の格子の黒の地が透けて欄が真っ黒に描かれた）。印・灰の地は見本の外だけ
+    const rule = css.slice(css.indexOf("html[data-print-preview] [data-paper-edit] [data-editable] {"));
+    expect(rule.slice(0, rule.indexOf("}"))).not.toContain("background");
+    const edit = read("../components/forms/paper-edit.css");
+    expect(edit).toContain("html:not([data-print-preview]) [data-paper-edit] [data-editable]:hover");
+    expect(edit).not.toMatch(/background: none/);
     // 印刷では上の帯も見本の帯も出さない（@media print の規則は前のまま）
     expect(css).toMatch(/@media print \{\s*\.print-preview-bar \{\s*display: none !important;/);
   });

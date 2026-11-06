@@ -725,9 +725,10 @@ html[data-print-preview] .print-only {
     display: none !important;
   }
 }
+/* 押せる欄の印は見本では付けない（components/forms/paper-edit.css が html:not([data-print-preview]) で付ける）。欄の地は消さない（T162。
+   消すと紙の格子の黒の地が透けて欄が真っ黒に描かれた） */
 html[data-print-preview] [data-paper-edit] [data-editable] {
   outline: none !important;
-  background: none !important;
 }
 /* 置いた文字の枠と画像は、画面では層が描き紙の物を隠している（paper-fill.css）。見本では紙の物を出す */
 html[data-print-preview] [data-paper-fill] .ov-img [data-free] {

@@ -97,6 +97,8 @@ export function PrintButton({ auto = false, label = "印刷", back }: { auto?: b
         slot &&
         createPortal(
           <div className="print-preview-bar" role="region" aria-label={L.title} aria-busy={busy || undefined} data-print-preview-bar data-print-phase={phase}>
+            {/* 中身は上の帯と同じ幅の列に（components/AppHeader の max-w-[90rem]。広い画面で戻るが上の帯の印と縦にそろう） */}
+            <div className="mx-auto flex w-full max-w-[90rem] flex-wrap items-center gap-x-3 gap-y-2">
             {back && <BackLink href={back} label={L.back} />}
             <span className="font-bold">{L.title}</span>
             <span role="status" className="text-sm" data-print-status={phase}>
@@ -115,6 +117,7 @@ export function PrintButton({ auto = false, label = "印刷", back }: { auto?: b
                 {L.close}
               </Button>
             </span>
+            </div>
           </div>,
           slot,
         )}
