@@ -255,7 +255,14 @@ describe("点数の表", () => {
     expect(SEED.map((r) => r.round)).toEqual(["r1", "r2", "r3", "r4", "r5"]);
     const { md } = buildScorecard({ runs: [], out: "", seed: true, print: true });
     const committed = readFileSync(join(REPO, "docs", "progress", "eval-scorecard.md"), "utf8").replace(/\r\n/g, "\n");
-    expect(committed).toBe(md);
+    // r6 からの列は本物の回の記録から足すので、種の r1〜r5 の列（項目と 5 つの値）がそのまま残っているかを見る
+    const head6 = (text: string) =>
+      text
+        .split("\n")
+        .filter((l) => l.startsWith("|"))
+        .map((l) => l.split("|").slice(1, 7).map((c) => c.trim()).join("|"));
+    const kept = new Set(head6(committed));
+    for (const row of head6(md)) expect(kept.has(row), row).toBe(true);
     expect(avoided(md)).toEqual([]);
   });
 
