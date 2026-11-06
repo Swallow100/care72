@@ -225,7 +225,42 @@ const TALK: Item[] = [
   { id: "talk.aiCalls", bench: "talk", label: "声の会話 呼び出し", better: null, unit: "count", agg: "sum", talk: (s) => s.totals.aiCalls },
 ];
 
-export const ITEMS: ReadonlyArray<Item> = [...DRILL, ...FORMS, ...TALK];
+// ---------- 使う側の模擬（tools/eval/persona の scorecard.json、T156） ----------
+// 数は回のフォルダの scorecard.json の values（rawOf の generic）から読む。筋ごとの数は persona.<筋>.〜（筋は personas.ts の PERSONA_IDS）
+
+const PERSONA_PATHS: ReadonlyArray<readonly [string, string]> = [
+  ["first", "初めて触るケアマネ"],
+  ["veteran", "慣れたケアマネ"],
+  ["admin", "管理者"],
+  ["medical", "医療班"],
+  ["judge10", "審査員の 10 分"],
+];
+const PERSONA_LOST: ReadonlyArray<readonly [string, string]> = [
+  ["not_found", "見つからない"],
+  ["misread", "読み違い"],
+  ["dead_end", "行き止まり"],
+  ["back", "戻り"],
+  ["error", "エラー"],
+  ["timeout", "時間切れ"],
+];
+
+const PERSONA: Item[] = [
+  { id: "persona.reached", bench: "persona", label: "使う人 目標の達成", better: "higher", unit: "frac", agg: "sum" },
+  { id: "persona.extra", bench: "persona", label: "使う人 最短より多い手（達した目標）", better: "lower", unit: "count", agg: "sum" },
+  { id: "persona.steps", bench: "persona", label: "使う人 手の数", better: null, unit: "count", agg: "sum" },
+  { id: "persona.lost", bench: "persona", label: "使う人 迷いの数", better: "lower", unit: "count", agg: "sum" },
+  ...PERSONA_LOST.map(([k, l]): Item => ({ id: `persona.lost.${k}`, bench: "persona", label: `使う人 ${l}`, better: "lower", unit: "count", agg: "sum" })),
+  { id: "persona.gate", bench: "persona", label: "使う人 門で止めた筋（種の外の値）", better: "lower", unit: "count", agg: "sum", threshold: zero },
+  { id: "persona.ease", bench: "persona", label: "使う人 審査役の通しやすさ（1〜5）", better: "higher", unit: "score", agg: "mean" },
+  { id: "persona.usd", bench: "persona", label: "使う人 実費の見込み（USD）", better: "lower", unit: "usd", agg: "sum" },
+  ...PERSONA_PATHS.flatMap(([p, l]): Item[] => [
+    { id: `persona.${p}.reached`, bench: "persona", label: `${l} 目標の達成`, better: "higher", unit: "frac", agg: "sum" },
+    { id: `persona.${p}.steps`, bench: "persona", label: `${l} 手の数`, better: "lower", unit: "count", agg: "sum" },
+    { id: `persona.${p}.lost`, bench: "persona", label: `${l} 迷いの数`, better: "lower", unit: "count", agg: "sum" },
+  ]),
+];
+
+export const ITEMS: ReadonlyArray<Item> = [...DRILL, ...FORMS, ...TALK, ...PERSONA];
 
 export function itemOf(id: string): Item | undefined {
   return ITEMS.find((x) => x.id === id);

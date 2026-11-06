@@ -34,6 +34,18 @@ export const GUARDS: ReadonlyArray<Guard> = [
     label: "本人役の言葉が文の途中で終わらない",
     suspects: ["lib/drill/persona.ts", "lib/drill/clip.ts"],
   },
+  // 使う側の模擬（T156）: 手元の種の頁に、架空の形でない電話・種でない事業所が出たら筋を止める門（tools/eval/persona/guard.ts）。0 のはず
+  {
+    id: "persona-gate-none",
+    bench: "persona",
+    item: "persona.gate",
+    op: "<=",
+    value: 0,
+    since: "r6",
+    task: "T156",
+    label: "使う人の AI に種の外の値の頁を渡さない",
+    suspects: ["tools/eval/persona/guard.ts", "seed/people.ts"],
+  },
   // T161: 評価の 6 回目で岐阜市の一覧の様式（4 頁）の共有の対応表ができず、2 つ目の事業所が AI を呼び直した（頁の組の鍵が 3 頁まで）。
   // 1 つ目に読めない頁があり共有に入れなかった物は数えない（tools/eval/scorecard-items.ts の sharedMissOf）
   {
