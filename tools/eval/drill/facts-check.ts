@@ -24,6 +24,7 @@ import {
   powerBack,
   sameWording,
   batteryTopicNext,
+  carryPromises,
   sentenceFix,
   sentenceSlip,
   slipContextOf,
@@ -78,19 +79,24 @@ const stateOf = (u: LooseTurn & { at: number }, prev: PersonState | null = null)
     hasMedicine: u.hasMedicine ?? null,
   };
   const known = s.color === "red" && s.atHome === false ? carryPlace(prev, s) : null;
-  return known === "shelter" ? { ...s, placeKnown: known } : s;
+  // 言って済んでいない予定も engine と同じに引き継ぐ（T165）
+  const promised = carryPromises(prev, s);
+  return { ...s, ...(known === "shelter" ? { placeKnown: known } : {}), ...(promised.length > 0 ? { promised } : {}) };
 };
 
 const cut = (t: string) => Array.from(t).slice(0, 40).join("");
 
-/** 想定の表の行の安否（本人と発災からの分）。表の行は骨なので、いる所と声の門の外（言葉は見る）。配役（T70）を当てる */
-function tableTurns(outcome: RunOutcome): Set<string> {
-  const out = new Set<string>();
+/**
+ * 想定の表の行の安否（本人と発災からの分 → 表のする事）。表の行は骨なので、いる所と声の門の外（言葉は見る）。配役（T70）を当てる。
+ * 表のする事（「4 問の途中で止まった」）は画面の記録の言葉で、本人役の言葉ではないので見ない（T165）
+ */
+function tableTurns(outcome: RunOutcome): Map<string, string | null> {
+  const out = new Map<string, string | null>();
   const cast = outcome.cast ?? {};
   for (const t of scenarioOf(outcome.plan.scenario as DrillScenario).ticks) {
     t.turns.forEach((raw, i) => {
       const r = castTurn(raw, cast[turnKey(t.hour, i)]);
-      out.add(`${r.person}|${Math.round(eventHour(r, t.hour) * 60)}`);
+      out.set(`${r.person}|${Math.round(eventHour(r, t.hour) * 60)}`, r.doing ?? null);
     });
   }
   return out;
@@ -175,7 +181,9 @@ export function factHits(outcome: RunOutcome, people: Readonly<Record<string, Fa
           if (!ok) hit("place_flip", person, minute, `${prevPlace} → ${place}`);
         }
         const ctx = { ...slipContextOf(f, place ?? f.place?.where ?? null), ...(u.source === "family" ? { kin: null } : {}), ...(leftAt(person, minute) ? { leftBehind: true } : {}) };
-        for (const [field, text] of [["saying", u.saying], ["doing", u.doing]] as const) {
+        // 表の行のする事（表のまま残した物）は画面の記録の言葉なので見ない（T165）。表に無く本人役が作ったする事は見る
+        const tableDoing = table.get(`${person}|${minute}`) ?? null;
+        for (const [field, text] of [["saying", u.saying], ["doing", tableDoing !== null && u.doing === tableDoing ? null : u.doing]] as const) {
           if (!text) continue;
           for (const r of sentenceHits(text, ctx)) hit(r.rule, person, minute, `${field}: ${cut(r.text)}`);
         }

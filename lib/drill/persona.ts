@@ -84,7 +84,7 @@ import { officePlaces } from "./area.ts";
 import { arrivalRoleWords, extraWorldWords } from "./event-catalog.ts";
 import type { ActionRecord, DrillIncident, DrillTurn, HeardSignal, PersonaBatchHook, PersonaHook, PersonaInput, PersonState, StopLog } from "./engine.ts";
 import { CALL_STATUS_TEXTS, clockLabel, PHONE_LABELS, SHELTER_LABELS, TSUNAMI_LABELS, WATER_LABELS } from "./labels.ts";
-import { nightLine } from "./night.ts";
+import { nightLine, timeLines } from "./night.ts";
 import { ASK_KINDS, eventHour, type AskKind, type DrillKind, type FixedTurn, type OutageArea, type PhoneState, type WorldState } from "./scenarios.ts";
 import { fitLedgerHazards, profileOf } from "./fit.ts";
 import { homeComms, homeOf, type Home } from "./comms.ts";
@@ -372,7 +372,8 @@ function fixedWords(f: FixedTurn): string {
   if (f.color === "red") parts.push(answersWords(f));
   if (f.color === "green" && f.whereNow) parts.push(`いる所 ${WHERE_WORDS[f.whereNow]}`);
   if (f.saying) parts.push(`言う事の元「${f.saying}」`);
-  if (f.doing) parts.push(`する事「${f.doing}」`);
+  // 表のする事は画面の記録の言葉（「4 問の途中で止まった」）。言葉にしない（T165。評価の 7 回目で本人役が「質問の途中で止まった」と言った）
+  if (f.doing) parts.push(`画面の記録「${f.doing}」（このとおりに振る舞う。記録の言葉そのものは言わない）`);
   return `- ${parts.join("。")}`;
 }
 
@@ -389,7 +390,12 @@ function stateWords(s: PersonState | null): string {
 }
 
 /** 手の返事の言い方（Claude に渡す文。lib/drill/actions.ts の ACTION_STATUS_TEXTS と同じ。actions.ts は persona.ts を読むので写す） */
-const RESULT_WORDS: Readonly<Record<NonNullable<ActionRecord["result"]>["status"], string>> = { ...WORLD_REPLY_TEXTS, ...CALL_STATUS_TEXTS };
+/**
+ * 本人役に渡す「無言」の言い方（T165）。画面の言葉（labels.ts の「出たが声がない」）のままだと、家族役が本人の声が出なくなったと読み、
+ * 声の印が付いて機器も無く歩ける人が電話で話さなくなった（評価の 7 回目）。電話の出方の事で、本人の体の事ではないと分かる言い方に
+ */
+const SILENT_WORDS = "電話はつながったが声が届かなかった（電話の具合の事で、本人の体の事とは決めない）";
+const RESULT_WORDS: Readonly<Record<NonNullable<ActionRecord["result"]>["status"], string>> = { ...WORLD_REPLY_TEXTS, ...CALL_STATUS_TEXTS, silent: SILENT_WORDS };
 
 /** 手の結果の言葉（「出たが声がない」「向かってもらえる、5 時間ごろ着く」「つながった。2 往復話した」） */
 function resultWords(a: ActionRecord): string {
@@ -601,7 +607,7 @@ export function tickText(input: PersonaInput, persona: Persona): string {
     // 発災からの「N 時間 M 分」（連続の時計の時刻は小数になるので分まで。T93）
     `時刻: 発災から ${clockLabel(now)}`,
     // 夜間発災（T59）だけ。時刻の 1 行
-    ...(input.night ? [nightLine(input.hour)] : []),
+    ...timeLines(input.hour, input),
     ...(reason ? [reason] : []),
     incidents.length > 0 ? ["この刻みの状況:", ...incidents.map((e) => `- ${e.text}`)].join("\n") : "この刻みの状況: 新しい事はない",
     ["今の様子:", ...[...worldWords(input.world, input.person, persona, now), ...advisedWords(input.world, input.person)].map((x) => `- ${x}`)].join("\n"),

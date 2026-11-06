@@ -9,7 +9,9 @@ import type { ClaudeClient } from "../../../lib/claude/client.ts";
 import type { UsageStore } from "../../../lib/claude/usage.ts";
 import { officePlaces } from "../../../lib/drill/area.ts";
 import { contactRoles, pseudonymize, pseudonymizeText, type PseudonymInput } from "../../../lib/pseudonym/index.ts";
-import type { RunOutcome } from "./drive.ts";
+import { NIGHT_START_HOUR } from "../../../lib/drill/night.ts";
+import { ARRIVAL_WORDS } from "../../../lib/drill/person-facts.ts";
+import { runStart, type RunOutcome } from "./drive.ts";
 
 export const JUDGE_SYSTEM = [
   "災害の訓練（発災から 72 時間。在宅で介護を受ける高齢者を受け持つケアマネの訓練。人は全部架空）の、1 回分の流れを読んで、訓練の作りの出来を採点する審査役。",
@@ -48,34 +50,111 @@ const hm = (hour: number | undefined) => {
   return `${Math.floor(m / 60)}:${String(m % 60).padStart(2, "0")}`;
 };
 
+/** 往復の 1 行・訪問の言葉の長さ（字。T165。流れが長くなりすぎないよう切る） */
+const TALK_CUT = 40;
+/** 1 つの通話から流れに書く往復の行の数（T165） */
+const TALK_LINES = 6;
+const cutText = (t: string, n = TALK_CUT): string => {
+  const a = Array.from(t.replace(/\s+/g, " ").trim());
+  return a.length > n ? `${a.slice(0, n).join("")}…` : a.join("");
+};
+
+/**
+ * 訓練の中の時刻（T165）。夜間発災は深夜 2 時（lib/drill/night.ts）、ほかは台の回の開始の時刻（drive.ts の runStart、日本の時刻）。
+ * 審査役が「朝・昼・夕方」の言葉と経過を照らせるように、流れの行に添える。回の番号の無い流れ（手で組んだ物）は null
+ */
+export function storyClock(o: Pick<RunOutcome, "plan">): ((hour: number) => string) | null {
+  if (typeof o.plan.index !== "number") return null;
+  const start = o.plan.night ? NIGHT_START_HOUR : (new Date(runStart(o.plan.index)).getUTCHours() + 9) % 24;
+  return (hour: number) => {
+    const total = start + Math.max(0, Math.floor(hour));
+    return `${Math.floor(total / 24) + 1}日目 ${total % 24}時`;
+  };
+}
+
+type TalkLineLike = { who?: string; text?: string };
+
+/** 通話 1 つの往復の要約（T165）。電話に出た人の行を切って並べ、ケアマネの行は数だけ（ケアマネの文は名前に戻した物なので書かない） */
+export function talkSummary(ls: ReadonlyArray<TalkLineLike> | undefined): string {
+  const all = ls ?? [];
+  const said = all.filter((l) => l.who !== "cm" && typeof l.text === "string" && l.text.trim() !== "");
+  if (said.length === 0) return "";
+  const cm = all.filter((l) => l.who === "cm").length;
+  const shown = said.slice(0, TALK_LINES).map((l) => `「${cutText(l.text!)}」`);
+  return ` 往復（ケアマネ ${cm} 回）: ${shown.join(" ")}${said.length > TALK_LINES ? ` ほか ${said.length - TALK_LINES} 行` : ""}`;
+}
+
 /**
  * 1 回の流れの文（伏せる前。人は仮名に置き換え済み、町名は pseudonymizeText が別名にする）。
  * roleOf は連絡先の id → 役割名（弟・民生委員・支援者 1。T123: 電話の相手を書く。評価の 2 回目で、民生委員と弟への電話の言葉を
  * 審査役が「話し手の続柄が替わる」と読んだ。相手の書かれていない流れでは見分けられない）
+ *
+ * T165: 審査役に見えていなかった物を足す（物差しの文 JUDGE_SYSTEM と点の付け方は変えない）。評価の 7 回目で、届いた薬・着いた人・
+ * 往復の言葉・訪問の様子が流れに無く、「頼んだのに来ない」と読まれていた。
+ * - 先頭に発災の時刻、行の経過に訓練の中の時刻（「2日目 22時」）
+ * - 着いた人・届いた物（world.arrivals と world.dispatched の着いた物）
+ * - 手の結果の訳（because）・着く見込み（arriveAt）
+ * - 外へ掛けた電話の往復（result.talk）と掛かってきた電話の往復（outcome.incoming）の要約（talkSummary）
+ * - 訪問の様子（result.visit）
+ * - 同じ時刻・同じ人・同じ出どころの出来事は 1 行に（1 つの出来事が 2 つの変化〔土砂の警戒と道の通行止め〕を持つと 2 行に見えた）
  */
 export function storyText(o: RunOutcome, aliasOf: ReadonlyMap<string, string>, roleOf: ReadonlyMap<string, string> = new Map()): string {
-  const who = (p: unknown) => (typeof p === "string" ? (aliasOf.get(p) ?? "参加者の外") : null);
+  const who = (p: unknown) => (typeof p === "string" && p !== "" ? (aliasOf.get(p) ?? "参加者の外") : null);
   const role = (t: unknown) => (typeof t === "string" ? (roleOf.get(t) ?? null) : null);
+  const clock = storyClock(o);
+  const when = (at: number) => (clock ? `${hm(at)}（${clock(at)}）` : hm(at));
   const lines: Array<{ at: number; text: string }> = [];
   for (const t of o.replay?.ticks ?? []) {
+    // 同じ時刻・同じ人・同じ出どころの出来事を 1 行に（T165）。人の無い出来事はそのまま
+    const merged: Array<{ at: number; head: string; texts: string[]; key: string | null }> = [];
     for (const e of t.incidents) {
       const w = who(e.person);
-      lines.push({ at: e.at ?? t.hour, text: `${hm(e.at ?? t.hour)} 出来事（${e.actor === "director" ? "監督" : "世界"}${e.ai ? "・AI" : ""}）${w ? ` ${w}:` : ""} ${e.text ?? ""}` });
+      const at = e.at ?? t.hour;
+      const head = `出来事（${e.actor === "director" ? "監督" : "世界"}${e.ai ? "・AI" : ""}）${w ? ` ${w}:` : ""}`;
+      const key = w ? `${at}|${head}` : null;
+      const prev = key ? merged.find((m) => m.key === key) : undefined;
+      if (prev) prev.texts.push(e.text ?? "");
+      else merged.push({ at, head, texts: [e.text ?? ""], key });
     }
+    for (const m of merged) lines.push({ at: m.at, text: `${when(m.at)} ${m.head} ${m.texts.filter((x) => x.trim() !== "").join("・")}` });
     for (const u of t.turns) {
-      lines.push({ at: u.at ?? t.hour, text: `${hm(u.at ?? t.hour)} 連絡 ${who(u.person) ?? ""}（${u.source ?? ""}・${u.color ?? ""}）${u.saying ? ` 「${u.saying}」` : ""}${u.doing ? ` する事: ${u.doing}` : ""}` });
+      const at = u.at ?? t.hour;
+      lines.push({ at, text: `${when(at)} 連絡 ${who(u.person) ?? ""}（${u.source ?? ""}・${u.color ?? ""}）${u.saying ? ` 「${u.saying}」` : ""}${u.doing ? ` する事: ${u.doing}` : ""}` });
     }
   }
   for (const a of o.replay?.actions ?? []) {
     const at = (a.atMinute ?? 0) / 60;
     const r = a.result;
+    const visit = r?.visit;
+    const visitText = visit && (visit.condition || visit.speech) ? ` 訪問の様子: ${visit.condition ? cutText(visit.condition) : ""}${visit.speech ? ` 「${cutText(visit.speech)}」` : ""}` : "";
+    const because = typeof r?.because === "string" && r.because.trim() !== "" ? `（訳 ${cutText(r.because)}）` : "";
+    const arrive = typeof r?.arriveAt === "number" ? `（着く見込み ${when(r.arriveAt / 60)}）` : "";
     lines.push({
       at,
-      text: `${hm(at)} ケアマネの手 ${a.as ?? a.kind ?? ""}${who(a.person) ? ` → ${who(a.person)}` : ""}${role(a.target) ? `（相手 ${role(a.target)}）` : ""}: ${r?.status ?? "返事待ち"}${r?.speech ? ` 「${r.speech}」` : ""}`,
+      text: `${when(at)} ケアマネの手 ${a.as ?? a.kind ?? ""}${who(a.person) ? ` → ${who(a.person)}` : ""}${role(a.target) ? `（相手 ${role(a.target)}）` : ""}: ${r?.status ?? "返事待ち"}${because}${arrive}${r?.speech ? ` 「${r.speech}」` : ""}${talkSummary(r?.talk)}${visitText}`,
     });
   }
+  // 着いた人・届いた物（T165）
+  const world = (o.replay?.world ?? {}) as { arrivals?: ReadonlyArray<Record<string, unknown>>; dispatched?: ReadonlyArray<Record<string, unknown>> };
+  for (const x of world.arrivals ?? []) {
+    if (x.arrived !== true || typeof x.arrive !== "number") continue;
+    const w = who(x.person);
+    const what = typeof x.role === "string" ? (ARRIVAL_WORDS[x.role] ?? x.role) : "人";
+    lines.push({ at: x.arrive / 60, text: `${when(x.arrive / 60)} 着いた ${what}${w ? ` → ${w}` : ""}` });
+  }
+  for (const x of world.dispatched ?? []) {
+    if (x.arrived !== true || typeof x.arrive !== "number") continue;
+    const w = who(x.person);
+    lines.push({ at: x.arrive / 60, text: `${when(x.arrive / 60)} 着いた 頼んだ人${w ? ` → ${w}` : ""}` });
+  }
+  // 掛かってきた電話の往復（T165。手の記録の外にあるので台が集めた物）
+  for (const c of o.incoming ?? []) {
+    const at = c.minute / 60;
+    lines.push({ at, text: `${when(at)} 着信 ${who(c.person) ?? ""}${c.first ? ` 「${cutText(c.first)}」` : ""}${talkSummary(c.lines)}` });
+  }
   lines.sort((x, y) => x.at - y.at);
-  return [`想定: ${o.plan.scenario}${o.plan.scale ? `（${o.plan.scale.kind} ${o.plan.scale.level}）` : ""}。参加 ${o.plan.participants.length} 人`, ...lines.map((l) => l.text)].join("\n");
+  const start = clock ? `。発災は ${clock(0).replace(/^1日目 /, "")}ごろ（行の経過は発災から、かっこは訓練の中の時刻）` : "";
+  return [`想定: ${o.plan.scenario}${o.plan.scale ? `（${o.plan.scale.kind} ${o.plan.scale.level}）` : ""}。参加 ${o.plan.participants.length} 人${start}`, ...lines.map((l) => l.text)].join("\n");
 }
 
 /** 台の手元の数え（審査役は訓練の ai_calls の外） */

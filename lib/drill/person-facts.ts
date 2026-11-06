@@ -340,11 +340,61 @@ export type Facts = {
   away: boolean;
   /** 栄養剤を家に置いてきた（世界の印の時刻。T158）。人が着くと印は消える。無ければ null */
   left?: { at: number } | null;
+  /** 前の連絡までに言って、まだ済んでいない予定（T165。119 へ掛ける・物を取りに行く。時刻は発災からの分） */
+  promised?: ReadonlyArray<{ kind: IntentKind; at: number }>;
 };
 
+/**
+ * 前に言った予定の種類（T165）。評価の 7 回目で「119 にかけます」を 3 回の連絡で言い、掛けた・掛けられなかったの話が無かった。
+ * call119 は 119・救急へ掛ける、fetch は物を取りに行く。言った予定は本人の様子に残り（engine の personStateOf）、済んだ言い方で消える
+ */
+export const INTENT_KINDS = ["call119", "fetch"] as const;
+export type IntentKind = (typeof INTENT_KINDS)[number];
+/** これからする言い方（「119 にかけます」「119 には、このあとかけます」「取りに行きます」） */
+const INTENT_FUTURE: Readonly<Record<IntentKind, RegExp>> = {
+  call119: /(?:119|一一九|救急車?)(?:に|へ|を)?(?:は|も)?[^。]{0,8}?(?:かけ(?:ます|る|よう|てみ)|掛け(?:ます|る|よう|てみ)|呼び(?:ます|たい)|呼ぶ|呼ぼう|電話し(?:ます|てみ|よう)|連絡し(?:ます|てみ|よう))/u,
+  fetch: /取りに(?:行き(?:ます|たい)|行く|行こう|戻り(?:ます|たい)|戻る|帰り(?:ます|たい))/u,
+};
+/** 済んだ・やめた言い方（「119 にかけました」「119 はかけない」「救急車が来た」「取ってきました」） */
+const INTENT_DONE: Readonly<Record<IntentKind, RegExp>> = {
+  call119:
+    /(?:119|救急)[^。]{0,10}?(?:かけ|掛け|呼び|呼ん|電話し|連絡し)(?:ました|た(?!ら|い)|ています|てい[るま])|(?:119|救急)[^。]{0,10}?(?:かけ|掛け|呼ば)(?:ない|ません|ず)|(?:119|救急)[^。]{0,10}?(?:やめ|つなが)|救急(?:車|隊)?が(?:来|着)/u,
+  fetch: /取って(?:き|来)|取りに(?:行っ|戻っ)た|取りに(?:行き|戻り)ました|持って(?:き|来)(?:ました|た)/u,
+};
+/** 予定の言葉（帳面の文） */
+const INTENT_WORDS: Readonly<Record<IntentKind, string>> = { call119: "119 へ掛ける", fetch: "物を取りに行く" };
+
+/** 1 つの言葉の、これからする予定の種類（済んだ言い方の物は入れない。T165） */
+export function intentsSaid(text: string | null | undefined): IntentKind[] {
+  const t = (text ?? "").normalize("NFKC");
+  return INTENT_KINDS.filter((k) => INTENT_FUTURE[k].test(t) && !INTENT_DONE[k].test(t));
+}
+
+/**
+ * 連絡を重ねて残す予定（T165。engine の本人の様子と帳面が同じに引く）。前の予定のうち、この連絡で済んだ・やめたと言った物を外し、
+ * この連絡で新しく言った予定を足す（時刻は言った時の時間）。前の様子に予定が無ければ前の言葉から引く
+ */
+export function carryPromises(
+  prev: Pick<PersonState, "saying" | "at" | "promised"> | null,
+  t: { saying?: string | null; at: number },
+): Array<{ kind: IntentKind; at: number }> {
+  const said = (t.saying ?? "").normalize("NFKC");
+  const before = prev ? (prev.promised ?? intentsSaid(prev.saying).map((kind) => ({ kind, at: prev.at }))) : [];
+  const out = before.filter((p) => !INTENT_DONE[p.kind].test(said));
+  for (const k of intentsSaid(said)) if (!out.some((p) => p.kind === k)) out.push({ kind: k, at: t.at });
+  return out;
+}
+
+/**
+ * 向かう先と動詞の間に挟まる手段・連れの言い方（T165。評価の 7 回目で「避難所へ歩いて行きます」が向かうと言った事にならず、
+ * 計画の手段で移らないまま、あとの連絡で家にいた）。「車で」「妻と」「これから」など短い物だけ
+ */
+const GO_GAP = String.raw`(?:歩いて|車で|徒歩で|一緒に|これから|今から|すぐに?|早めに|[^。、\s]{1,4}?(?:と一緒に|と|の車で))?`;
 /** 避難先へ向かうと言った言い方（打ち消し・「行かん」は見ない。T139） */
-const GO_INTENT =
-  /(?:避難所|避難先|病院|集会所|公民館|学校|高台)(?:へ|に)(?:向か(?!え)|行き(?!ませ)|行く|行こう|移り(?!ませ)|移る|移ろう|移動し(?!な|ませ)|連れて行(?!け))|避難(?:します|する|しよう|しています|を始め)/;
+const GO_INTENT = new RegExp(
+  `(?:避難所|避難先|病院|集会所|公民館|学校|高台)(?:へ|に)${GO_GAP}(?:向か(?!え)|行き(?!ませ)|行く|行こう|移り(?!ませ)|移る|移ろう|移動し(?!な|ませ)|連れて行(?!け))|避難(?:します|する|しよう|しています|を始め)`,
+  "u",
+);
 /** 向かえない・迷っている言い方（「行きたいが道が通れず行けない」）。向かうと言った事にしない */
 const GO_NOT = /行け(?:ない|ません|ず|なく)|向かえ(?:ない|ません|ず)|移れ(?:ない|ません|ず)|たいけど|たいが|たいのですが|か(?:迷|悩)/;
 /** 向かうと言ってから、計画の手段で着いたと見るまでの分 */
@@ -354,7 +404,7 @@ const WITH_WORDS = /見に行(?:きました|った|って)|(?:様子|顔)を見
 /** そばにいると伝えてから「様子が分からない」と言わない間（分） */
 export const WITH_MINUTES = 180;
 
-const ARRIVAL_WORDS: Readonly<Record<string, string>> = {
+export const ARRIVAL_WORDS: Readonly<Record<string, string>> = {
   staff: "事業所の職員",
   nurse: "訪問看護",
   supporter: "支援者",
@@ -366,6 +416,18 @@ const ARRIVAL_WORDS: Readonly<Record<string, string>> = {
 };
 
 /** 家族・支援者が本人の声が無いと伝える言い方（台が足した目安。体の具合の言い切りではない言葉だけ） */
+/** 電話の様子の話（T165。「電話では声が出ませんでした」は電話の出方で、そばの人が見た本人の声の話ではない） */
+const PHONE_TALK = /電話|通話|回線|着信|呼び出し/;
+/**
+ * 家族・支援者が本人の声が無いと伝えたか（T165）。電話の話の文は見ない（評価の 7 回目で、ケアマネの電話が物音だけだった事を家族が
+ * 「電話では声が出ない」と伝え、声の印が付いて、機器も無く歩ける人がそのあと電話で話さなくなった）
+ */
+export function voiceLostSaid(text: string): boolean {
+  return text
+    .normalize("NFKC")
+    .split(/(?<=[。！？!?])/u)
+    .some((s) => NO_VOICE.test(s) && !PHONE_TALK.test(s));
+}
 export const NO_VOICE =
   /声が(?:ない|無い|出ない|出ません|しない|しません|聞こえない|聞こえません|ありません)|返事が(?:ない|無い|ありません)|呼(?:び)?かけ[^。]{0,8}(?:答えない|答えません|応えない|反応(?:が)?(?:ない|無い|ありません))|反応が(?:ない|無い|ありません)|物音だけ/;
 
@@ -526,7 +588,7 @@ export function factsOf(input: FactsInput): Facts {
     state && state.source !== "agent" && WITH_WORDS.test(said) && now - prevAt <= WITH_MINUTES ? { at: prevAt, by: state.source as "family" | "supporter" } : null;
   const helps = helpsBetween(world, actions, person, prevAt, now);
   const got = helpsBetween(world, actions, person, -1, now);
-  const voice = state && state.source !== "agent" && state.saying && NO_VOICE.test(state.saying) && helps.length === 0 ? { at: prevAt } : null;
+  const voice = state && state.source !== "agent" && state.saying && voiceLostSaid(state.saying) && helps.length === 0 ? { at: prevAt } : null;
   const o = world.outage;
   const since = o && input.inOutage ? Math.round(o.since * 60) : null;
   const restoredAt = o && o.restoredAt != null && input.inOutage ? Math.round(o.restoredAt * 60) : null;
@@ -594,6 +656,11 @@ export function factsOf(input: FactsInput): Facts {
     kin: input.kin ?? null,
     away: lost || m.carSleep !== undefined || m.goingHome !== undefined,
     left: typeof m.supplyLeft === "number" && Math.round(m.supplyLeft * 60) <= now ? { at: Math.round(m.supplyLeft * 60) } : null,
+    // 前の連絡までに言った予定（T165。前からの保存で予定の欄が無ければ前の言葉から引く）
+    promised: (state ? (state.promised ?? intentsSaid(state.saying).map((kind) => ({ kind, at: state.at }))) : []).map((p) => ({
+      kind: p.kind,
+      at: Math.round(p.at * 60),
+    })),
     told: toldOf(input),
   };
 }
@@ -687,6 +754,9 @@ export function factLines(f: Facts): string[] {
     out.push(`前に言った事: ${what}（${minuteText(f.hurt.at)}）。${f.help ? `そのあと ${f.help.what}が来た（${minuteText(f.help.at)}）` : "そのあと誰も来ていない・手も届いていない"}`);
   }
   out.push(`来た人・届いた物: ${f.got.length > 0 ? f.got.map((h) => `${h.what}（${minuteText(h.at)}）`).join("、") : "まだ無い"}`);
+  for (const p of f.promised ?? []) {
+    out.push(`前に言った予定（まだ済んでいない）: ${INTENT_WORDS[p.kind]}（${minuteText(p.at)}に言った）。済んだなら結果を、できないなら訳を言う。同じ予定を新しく言い直さない`);
+  }
   if (f.voiceLost) out.push(`本人の声: 家族・支援者が「声が無い・返事が無い」と伝えた（${minuteText(f.voiceLost.at)}）。人が来るまで本人は話さない`);
   if (f.told.length > 0) {
     out.push(`ケアマネに言われた事（覚えて従う。従えない時は理由を言う）: ${f.told.map((t) => `${minuteText(t.at)}「${t.words}」`).join("、")}`);
@@ -764,6 +834,9 @@ export const GATE_RULES = [
   "spare_unsaid", // 予備で動いているのに、残りの数を「予備」と言わない（「予備の」を足した。T158）
   "left_remain", // 家に置いてきた栄養剤の残りの時間を言う（手元に無い。T158）
   "repeat_said", // 前の連絡・同じ通話の前の返事とほぼ同じ文（落とした。T158）
+  "repeat_intent", // 前に言って済んでいない予定（119 へ掛ける・取りに行く）を新しい事のように言い直す（落とした。T165）
+  "swap_news", // 前の連絡より前に予備に替えた事を、また替えたと言う（落とした。T165）
+  "backstage", // 訓練の裏側の言葉（問いの途中・この訓練・演じる。落とした。T165）
 ] as const;
 export type GateRule = (typeof GATE_RULES)[number];
 
@@ -799,7 +872,7 @@ export function addGated(world: WorldState, add: Partial<Record<GateRule, number
  * 帳面にある人の通話で、この言い方が門を抜けた）
  */
 const HOME_STAY =
-  /(?:家|自宅|うち)で(?:過ご(?!せ)|休ん|休み|待っ|待ち|寝て|様子を見|付き添|つきそ)|(?:家|自宅|うち)に(?:い|居)(?:ます|る|て)|家から出ていない|家に残っ|(?:家|自宅|うち)に(?:は)?[^。、置]{0,8}?(?:二人|ふたり|三人)(?:です|でい|だけ|きり)|(?:家|自宅|うち)(?:に|で)(?:は)?一緒に(?:い|居)/;
+  /(?:家|自宅|うち)で(?:過ご(?!せ)|休ん|休み|待っ|待ち|寝て|様子を見|付き添|つきそ|横にな|横たわ|寝たまま|座っ|座り|話せ|話し(?!合)|動け|落ち着|元気|いつも|普段|変わり)|(?:家|自宅|うち)に(?:い|居)(?:ます|る|て)|家から出ていない|家に残っ|(?:家|自宅|うち)に(?:は)?[^。、置]{0,8}?(?:二人|ふたり|三人)(?:です|でい|だけ|きり)|(?:家|自宅|うち)(?:に|で)(?:は)?一緒に(?:い|居)/;
 /**
  * 避難所にいる言い方。T158 で「避難所へ移ります」「避難所にいきます」（これから向かう）を外した（向かう言い方は GO_SHELTER）。
  * 前は向かうと言っただけで「避難所にいる」と見て、家にいる人の「避難所へ移ります」を落としていた
@@ -807,8 +880,10 @@ const HOME_STAY =
 const AT_SHELTER =
   /避難所(?:に|へ)(?:着(?!け)|い(?!ない|ません|け|か|き|こ)|居(?!ない|ません)|来(?!られ|れ)|移(?!れ|り(?:ます|たい|ましょ)|ろう|る))|避難所で(?:過ご(?!せ)|休|待)/;
 /** 避難所へこれから向かう言い方（T158。もう避難所にいる人は言わない） */
-const GO_SHELTER =
-  /避難所(?:へ|に)(?:向か(?!え|いまし|った|って)|行き(?:ます|たい)|行く|行こう|いきます|移り(?:ます|たい|ましょ)|移る|移ろう|移動し(?:ます|たい))/;
+const GO_SHELTER = new RegExp(
+  `避難所(?:へ|に)${GO_GAP}(?:向か(?!え|いまし|った|って)|行き(?:ます|たい)|行く|行こう|いきます|移り(?:ます|たい|ましょ)|移る|移ろう|移動し(?:ます|たい))`,
+  "u",
+);
 /** 避難所にいない言い方（T158。避難所にいる人は言わない） */
 const NOT_AT_SHELTER = /避難所では(?:ない|ありません|なく)|避難所に(?:は)?(?:い(?:ない|ません)|着いてい(?:ない|ません)|移れてい(?:ない|ません))/;
 /** 家に物を置いてきた言い方（T158。家の外にいる。家にいる人は言わない） */
@@ -882,6 +957,10 @@ export type SlipContext = {
   leftBehind?: boolean;
   /** 帳面のいる所が前から避難所（T158）。「避難所に着きました」を新しい事のように言わない */
   shelterBefore?: boolean;
+  /** 前の連絡までに言って済んでいない予定（T165）。同じ予定の言い直しを落とす */
+  promised?: ReadonlyArray<IntentKind>;
+  /** 前の連絡より前に予備に替えた機器がある（T165）。「予備に替えました」を新しい事のように言わない */
+  swappedBefore?: boolean;
 };
 
 /** 予備に替えたあと、予備で動いている機器か（T158） */
@@ -906,6 +985,8 @@ export function slipContextOf(f: Facts, place: WhereNow | null = f.place?.where 
     onSpare: f.devices.some(onSpareNow(f.now)),
     leftBehind: (f.left ?? null) !== null,
     shelterBefore: f.place?.where === "shelter" && (f.place.by ?? "turn") === "turn",
+    promised: (f.promised ?? []).map((p) => p.kind),
+    swappedBefore: f.devices.some((d) => d.outAt !== null && d.spare !== null && d.backAt === null && d.outAt < (f.prevAt ?? -1)),
     // 電池の残りの数（T141）。停電の区域で停電で減る機器のある人だけ見る
     ...(f.power.outage !== "none" && f.devices.length > 0
       ? { remains: f.devices.flatMap(remainChoices), say: f.devices.map(sayMinutes).find((x) => x !== null) ?? null, oldOut: f.devices.some((d) => d.known === true) }
@@ -989,9 +1070,21 @@ function remainFix(t: string, ctx: SlipContext, battery: boolean): { text: strin
   return { text: t.replace(phrase!, remainWords(ctx.say)), hit: true };
 }
 
+/** 訓練の裏側の言葉（T165。想定の表の「4 問の途中で止まった」は画面の記録の言葉で、本人役が言葉にした） */
+// 「訓練」は「避難訓練のとおりに」のように本人が実の意味で言うので、この訓練・訓練の中や役の言い方だけ
+export const BACKSTAGE = /質問の途中|問(?:い)?の途中|[0-9一二三四五六]\s?問(?:目|の途中|に答え)|この訓練|訓練の(?:中|外|裏|役)|演じ/u;
+/** 予備に替えた事の知らせ（T165。過去の形だけ。「替えたら」は見ない） */
+const SWAP_NEWS =
+  /予備(?:の)?(?:電池|バッテリー|ボンベ)?(?:に|へ)(?:替え|換え|交換し|切り替え|切り替わり|つなぎ)(?:ました|た(?!ら))|(?:電池|バッテリー|ボンベ)を(?:替え|換え|交換し|取り替え)(?:ました|た(?!ら))/u;
+
 /** 1 文が帳面と食い違うか（食い違う決まりの名前。無ければ null） */
 export function sentenceSlip(s: string, ctx: SlipContext): GateRule | null {
   const t = s.normalize("NFKC");
+  if (BACKSTAGE.test(t)) return "backstage";
+  // 前に言って済んでいない予定の言い直し（T165。済んだ・やめた言い方は落とさない）
+  for (const k of ctx.promised ?? []) if (INTENT_FUTURE[k].test(t) && !INTENT_DONE[k].test(t)) return "repeat_intent";
+  // 前の連絡より前に替えた予備を、また替えたと言う（T165。残りの数のある文は数を残すので落とさない）
+  if (ctx.swappedBefore && SWAP_NEWS.test(t) && !REMAIN_RE.test(t)) return "swap_news";
   if ((ctx.place === "shelter" || ctx.place === "other") && HOME_STAY.test(t) && !RETURNED.test(t)) return "place_text";
   if (ctx.place === "home" && AT_SHELTER.test(t)) return "place_text";
   // 家にいる人の「家の外にいる」（T141。評価の 5 回目で、ふだん動けない人が家の外にいると言った）
@@ -1256,11 +1349,35 @@ export function issuedLines(world: WorldState, label: (kind: string) => string, 
 const kindSpentCount = (n: number) => n >= KIND_REPEAT_MAX;
 
 /** 「もう出した物」の段（監督・世界の入力）。無ければ空 */
-export function issuedBlock(world: WorldState, label: (kind: string) => string, who: (p: string | null) => string | null): string[] {
+export function issuedBlock(
+  world: WorldState,
+  label: (kind: string) => string,
+  who: (p: string | null) => string | null,
+  members?: ReadonlyArray<string>,
+): string[] {
   const lines = issuedLines(world, label, who);
-  return lines.length > 0
-    ? [[`もう出した出来事（同じ言い回しを別の人に使わない。人ごとの同じ種類は訓練に ${KIND_REPEAT_MAX} 回まで。違う種類・違う言い方で）:`, ...lines.map((x) => `- ${x}`)].join("\n")]
-    : [];
+  const quiet = members ? quietPeople(world, members).flatMap((p) => (who(p) ? [who(p)!] : [])) : [];
+  return [
+    ...(lines.length > 0
+      ? [[`もう出した出来事（同じ言い回しを別の人に使わない。人ごとの同じ種類は訓練に ${KIND_REPEAT_MAX} 回まで。違う種類・違う言い方で）:`, ...lines.map((x) => `- ${x}`)].join("\n")]
+      : []),
+    // T165: まだ出来事の無い人（評価の 7 回目で、1 回の訓練の人の 3 割余りに、その人を指す出来事が 1 つも無かった）
+    ...(quiet.length > 0 ? [`まだ出来事の無い人（差し込む・起こすなら、この人の暮らしと弱点に合う事を先に。何人にも同じ形の筋を作らない）: ${quiet.join("・")}`] : []),
+  ];
+}
+
+/**
+ * まだその人を指す出来事の無い人（T165）。監督・世界が出した出来事（world.issued）と、その人の道・施設・印のどれも無い人。
+ * 結末を迎えた人は入れない。並びは members のまま
+ */
+export function quietPeople(world: WorldState, members: ReadonlyArray<string>): string[] {
+  const touched = new Set<string>();
+  for (const x of world.issued ?? []) if (x.person) touched.add(x.person);
+  for (const r of world.roads ?? []) if (r.person) touched.add(r.person);
+  for (const f of world.facilities ?? []) if (f.person) touched.add(f.person);
+  for (const [p, m] of Object.entries(world.marks ?? {})) if (Object.values(m ?? {}).some((v) => v !== undefined)) touched.add(p);
+  const ended = world.ended ?? {};
+  return members.filter((p) => !touched.has(p) && !ended[p]);
 }
 
 // ---------- 採点・講評の記録（計画で動けた人と、計画が無く手が要った人） ----------

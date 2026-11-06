@@ -95,6 +95,41 @@ export const GUARDS: ReadonlyArray<Guard> = [
     label: "家に置いてきた栄養剤の残りの時間を言わない",
     suspects: ["lib/drill/person-facts.ts", "lib/drill/persona.ts"],
   },
+  // T165: 評価の 7 回目で、本人役の言葉に訓練の裏側の言葉（問いの途中で止まった）・前に替えた予備をまた替えたと言う言葉・
+  // 済んでいない予定（119 へ掛ける）の言い直しが出た。どれも門が落とすので画面の言葉では 0
+  {
+    id: "drill-backstage-none",
+    bench: "drill",
+    item: "count:drill:facts:backstage",
+    op: "<=",
+    value: 0,
+    since: "r8",
+    task: "T165",
+    label: "本人役の言葉に訓練の裏側の言葉を出さない",
+    suspects: ["lib/drill/person-facts.ts", "lib/drill/persona.ts", "lib/drill/scenarios.ts"],
+  },
+  {
+    id: "drill-swap-news-none",
+    bench: "drill",
+    item: "count:drill:facts:swap_news",
+    op: "<=",
+    value: 0,
+    since: "r8",
+    task: "T165",
+    label: "前に替えた予備をまた替えたと言わない",
+    suspects: ["lib/drill/person-facts.ts"],
+  },
+  {
+    id: "drill-repeat-intent-none",
+    bench: "drill",
+    item: "count:drill:facts:repeat_intent",
+    op: "<=",
+    value: 0,
+    since: "r8",
+    task: "T165",
+    label: "済んでいない予定を新しく言い直さない",
+    suspects: ["lib/drill/person-facts.ts", "lib/drill/engine.ts"],
+  },
   // T160: 評価の 6 回目（書類）の日付の欄・選ぶ欄・連絡先。値は 6 回目の記録の数え直し（17 様式 × 入力 55）で直したあとの数。
   // 日付の要修正 165 → 0、連絡先の置けず 84 → 0。置けない日付 110 → 55 の残りは時津町の刷ってある記号（△△年□月◇◇日）の上に書く形で、
   // 記号に重ねないので空けるのが答え。当てたのに紙に出ない選択肢 24 は、災害診療記録の性別（女性の 2 つの選択肢）が台帳の値で決まらない物と吹田市の避難の手段の添えの 1 枚

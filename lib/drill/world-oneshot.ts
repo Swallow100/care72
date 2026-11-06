@@ -17,7 +17,7 @@ import { DEMO_OFFICE_ID } from "../auth/demo.ts";
 import { endingsAllowed } from "./fiction.ts";
 import type { ActionRecord, DrillIncident, WorldInput } from "./engine.ts";
 import { PHONE_LABELS, SHELTER_LABELS } from "./labels.ts";
-import { nightLine } from "./night.ts";
+import { timeLines } from "./night.ts";
 import { hourText, minuteText } from "./time-text.ts";
 import type { OutcomeSource } from "./outcome.ts";
 import { scaleWords } from "./scale.ts";
@@ -298,7 +298,7 @@ export function tickText(input: WorldInput, cast: Pick<WorldCast, "key"> & Parti
   return [
     `時刻: 発災から ${hourText(input.hour)}（${last} 時間まで）`,
     // 夜間発災（T59）だけ。時刻の 1 行
-    ...(input.night ? [nightLine(input.hour)] : []),
+    ...timeLines(input.hour, input),
     // 規模（T104、lib/drill/scale.ts）。開始の前に決めた災害と規模（おまかせも開始の時に決まる）。規模の無い前からの訓練は書かない
     ...(input.scale ? [scaleWords(input.scale)] : []),
     // 想定に効くハザード・起きない事・使わない種類（T125、lib/drill/fit.ts の表から。WORLD_SYSTEM は変えない）。未決の想定は書かない
@@ -322,7 +322,7 @@ export function tickText(input: WorldInput, cast: Pick<WorldCast, "key"> & Parti
     // T130: 人ごとの事実の帳面（コードが引く。いる所・前に言った事・来た人・声・電気と予備）。街の出来事も結末もこれと食い違わない
     ...personFactBlock(input, cast, aliasOf),
     // もう出した出来事（T130。同じ言い回しを別の人に使わない）
-    ...issuedBlock(input.world, (k) => EVENT_LABELS[k as keyof typeof EVENT_LABELS] ?? k, (p) => (p && aliasOf.has(p) ? aliasOf.get(p)! : null)),
+    ...issuedBlock(input.world, (k) => EVENT_LABELS[k as keyof typeof EVENT_LABELS] ?? k, (p) => (p && aliasOf.has(p) ? aliasOf.get(p)! : null), [...aliasOf.keys()]),
     hints.length > 0
       ? [endings ? "時計の目安（コードの計算。結末を迎えるかはあなたが決める）:" : "時計の目安（コードの計算。街の流れの参考）:", ...hints].join("\n")
       : "時計の目安: 走っている時計なし",
