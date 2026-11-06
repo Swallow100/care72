@@ -147,7 +147,8 @@ export function TalkBox({
       .then(() => router.refresh());
   };
 
-  if (!open) return shown.length > 0 ? <TalkLines lines={shown} speaker={speaker} /> : null;
+  // 切ったあとの吹き出しの頼み事の印は押せる（T166）。通話の窓の中は文字のまま
+  if (!open) return shown.length > 0 ? <TalkLines lines={shown} speaker={speaker} askPerson={action.person} /> : null;
   const rounds = shown.filter((l) => l.who === "cm").length;
   // 通話の間は通話の画面だけ（後ろの結果の欄には最初の言葉が残る。切ると往復の吹き出しが結果の欄に出る）
   return (

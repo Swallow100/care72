@@ -105,7 +105,7 @@ export function DrillRowDetail({
       {open.length > 0 && (
         <div className="flex flex-wrap items-baseline gap-x-1.5" data-open-asks>
           <span className="text-xs text-muted">{TALK_UI.open}</span>
-          <AskMarks asks={open} />
+          <AskMarks asks={open} person={pick ? d.personId : null} kind="plainIn" />
         </div>
       )}
       {hints && <DetailHints person={d.personId} hints={hints} />}

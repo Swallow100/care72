@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/Button";
 import type { DrillAction } from "@/lib/db/types";
 import { ACTOR_LABELS, HINT_LABELS, timeParts, type ActionHints, type HintAct, type HintSource } from "@/lib/drill/action-hints";
 import { ACTION_LABELS, ACTION_UI } from "@/lib/drill/labels";
+import type { AskKind } from "@/lib/drill/scenarios";
 import { pickAct } from "./act-pick";
 import { ACTION_ICONS } from "./icons";
 
@@ -98,9 +99,12 @@ export function ActionHintRows({
   onPick,
   disabled = false,
   inPanel = false,
+  focusAsk = null,
 }: {
   person: string;
   hints: ActionHints;
+  /** 頼み事の印から案内された行（枠で示す。T166） */
+  focusAsk?: AskKind | null;
   picked?: DrillAction | null;
   onPick?: (k: DrillAction) => void;
   disabled?: boolean;
@@ -111,8 +115,13 @@ export function ActionHintRows({
     ((kind: DrillAction) => {
       pickAct({ person, kind, target: null });
     });
-  const row = (key: string, head: React.ReactNode, acts: ReadonlyArray<HintAct>, attr: Record<string, string>) => (
-    <div key={key} className="flex flex-wrap items-center gap-x-1.5 gap-y-1" {...attr}>
+  const row = (key: string, head: React.ReactNode, acts: ReadonlyArray<HintAct>, attr: Record<string, string>, focused = false) => (
+    <div
+      key={key}
+      className={`flex flex-wrap items-center gap-x-1.5 gap-y-1 rounded ${focused ? "outline-2 outline-offset-1 outline-accent" : ""}`}
+      data-hint-focus={focused ? "" : undefined}
+      {...attr}
+    >
       <span className="mr-0.5 inline-flex flex-wrap items-baseline gap-x-1 text-xs">{head}</span>
       {acts.map((a) => (
         <HintButton key={a.kind} a={a} picked={picked === a.kind} onPick={pick} disabled={disabled} inPanel={inPanel} />
@@ -132,6 +141,7 @@ export function ActionHintRows({
           )),
           g.actions,
           { "data-hint-row": g.sources.map((s) => s.from).join(" ") },
+          focusAsk !== null && g.sources.some((s) => s.from === "ask" && s.ask === focusAsk),
         ),
       )}
       {hints.alt &&
