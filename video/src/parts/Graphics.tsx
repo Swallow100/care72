@@ -384,7 +384,7 @@ export const Memo: React.FC<{ mark?: number }> = ({ mark = 64 }) => {
   );
 };
 
-/** F1 台帳 1 つから 3 つの紙面。上の「台帳」から 3 本の線が伸び、紙面が左から 1 つずつ出る。children に 3 つの録画（か仮の面）を渡す。紙面の名前は窓の帯に出るので、names は描かない（key だけ） */
+/** F1 記録 1 つから 3 つの紙面。上の「記録」から 3 本の線が伸び、紙面が左から 1 つずつ出る。children に 3 つの録画（か仮の面）を渡す。紙面の名前は窓の帯に出るので、names は描かない（key だけ） */
 export const Flow: React.FC<{ children: React.ReactNode[]; names: string[]; cardWidth: number }> = ({ children, names, cardWidth }) => {
   const frame = useCurrentFrame();
   const p = usePalette();
@@ -393,7 +393,7 @@ export const Flow: React.FC<{ children: React.ReactNode[]; names: string[]; card
   const grow = progress(frame, 6, 14);
   return (
     <Stage gap={0}>
-      <div style={{ background: p.strong, color: p.onStrong, borderRadius: RADIUS.panel, padding: "16px 64px", fontSize: TYPE.h2, fontWeight: 600, ...rise(frame, 0) }}>台帳</div>
+      <div style={{ background: p.strong, color: p.onStrong, borderRadius: RADIUS.panel, padding: "16px 64px", fontSize: TYPE.h2, fontWeight: 600, ...rise(frame, 0) }}>記録</div>
       <svg width={total} height={70} style={{ display: "block" }}>
         {[0, 1, 2].map((i) => {
           const x = cardWidth / 2 + i * (cardWidth + gap);

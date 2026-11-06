@@ -294,23 +294,15 @@ export const SCENES: Scene[] = [
     at: 46,
     end: 74,
     shots: [
-      {
-        at: 46,
-        end: 51,
-        kind: "footage",
-        footage: "R02",
-        label: "本人のページの上の段（山田 ハナ）",
-        // 真ん中の列（優先・医療・時計・緊急連絡先）。右の入れる欄は撮っていない所（手元に鍵が無く「AI 未設定」）なので映さない
-        zoom: [
-          { x: 0.2, y: 0.06, w: 0.55 },
-          { x: 0.21, y: 0.07, w: 0.45 },
-        ],
-      },
-      // 入れる欄（R02-5、11/5 に手元の dev で撮った）。N11 の 3 つの句に合わせて 3 つの絵に。右の 2 列（本人の台帳と AI 入力）に寄る
-      { at: 51, end: 53.2, kind: "footage", footage: "R02", from: 25.5, label: "入れる欄: 話した文が欄に流れる", zoom: [{ x: 0.38, y: 0.15, w: 0.62 }, { x: 0.4, y: 0.17, w: 0.6 }] },
-      { at: 53.2, end: 55.2, kind: "footage", footage: "R02", from: 37.3, label: "入れる欄: Sonnet が台帳の 3 項目に分ける", chip: "Claude Sonnet 5.5", zoom: [{ x: 0.4, y: 0.17, w: 0.6 }, { x: 0.42, y: 0.18, w: 0.58 }] },
-      { at: 55.2, end: 58, kind: "footage", footage: "R02", from: 66.3, label: "入れる欄: 保存と、空いている所だけの問い返し", chip: "Claude Sonnet 5.5", zoom: [{ x: 0.4, y: 0, w: 0.6 }, { x: 0.42, y: 0.01, w: 0.58 }] },
-      { at: 58, end: 64, kind: "flow", footages: ["R03", "R04", "R05"], label: "台帳から 3 つの紙面", source: "松山市 個別避難計画の様式（2026.9.10）" },
+      // 入れる欄（R02-5、11/5 に手元の dev で撮った）。N10 の 3 つの句に合わせて 3 つの絵に。右の 2 列（本人の記録と AI 入力）に寄る
+      // 主役の紹介の文と本人のページの上の段は外した（作者の決め 11/6。計画 → 入力 → 記録されていく、の順）
+      { at: 46, end: 49.2, kind: "footage", footage: "R02", from: 25.5, label: "入れる欄: 話した文が欄に流れる", zoom: [{ x: 0.38, y: 0.15, w: 0.62 }, { x: 0.4, y: 0.17, w: 0.6 }] },
+      { at: 49.2, end: 51.4, kind: "footage", footage: "R02", from: 37.3, label: "入れる欄: Sonnet が記録の 3 項目に分ける", chip: "Claude Sonnet 5.5", zoom: [{ x: 0.4, y: 0.17, w: 0.6 }, { x: 0.42, y: 0.18, w: 0.58 }] },
+      { at: 51.4, end: 53.7, kind: "footage", footage: "R02", from: 66.3, label: "入れる欄: 保存と、空いている所だけの問い返し", chip: "Claude Sonnet 5.5", zoom: [{ x: 0.4, y: 0, w: 0.6 }, { x: 0.42, y: 0.01, w: 0.58 }] },
+      // 本人のページを上から下まで送る（R15。N11「アプリの中に記録されていきます」）
+      // R15-2（11/6、手元の dev）。1.5 秒から 5 秒で「書類」の欄まで送る（経過の欄の手前で止めた）。右の AI 入力の欄（AI 未設定）と左の一覧は映さない
+      { at: 53.7, end: 58, kind: "footage", footage: "R15", from: 1.2, rate: 1.2, label: "本人のページを下まで（アプリの中の記録）", zoom: [{ x: 0.2, y: 0.08, w: 0.54 }, { x: 0.2, y: 0.08, w: 0.54 }] },
+      { at: 58, end: 64, kind: "flow", footages: ["R03", "R04", "R05"], label: "記録から 3 つの紙面", source: "松山市 個別避難計画の様式（2026.9.10）" },
       {
         at: 64,
         end: 70,
@@ -330,7 +322,7 @@ export const SCENES: Scene[] = [
     title: "訓練",
     ground: "white",
     at: 74,
-    end: 108,
+    end: 111,
     shots: [
       // 秒は R07-6・R08-7・R09-6（11/5 夜、訓練の画面の直し〔上の操作は次までと自動進行だけ・出来事の段・着信で返す〕のあとに手元の dev で撮った大雨想定）の
       // markers.json と calls.json から。6.1 秒に訓練の画面が開き、すぐ高橋 ユキの家族の着信が鳴る
@@ -350,7 +342,7 @@ export const SCENES: Scene[] = [
       // 条件到達の山田 ハナ（酸素 内蔵電池 2 時間を超過）の行に囲み
       {
         at: 99,
-        end: 104.5,
+        end: 107.5,
         kind: "footage",
         footage: "R09",
         from: 2.0,
@@ -362,8 +354,8 @@ export const SCENES: Scene[] = [
       },
       // 講評と出典（N19 の「出典つきで指摘しました」）: 8.0 秒に講評へ送ったあと（13 秒まで止まっている）。山田 ハナの条件の指摘の出典の行に囲み
       {
-        at: 104.5,
-        end: 108,
+        at: 107.5,
+        end: 111,
         kind: "footage",
         footage: "R09",
         from: 9.0,
@@ -378,14 +370,14 @@ export const SCENES: Scene[] = [
     id: "S6",
     title: "発災時",
     ground: "white",
-    at: 108,
-    end: 150,
+    at: 111,
+    end: 153,
     shots: [
       // 秒は R10-3・R11-3・R12-3・R13-3（手元の dev、11/4 夜に今の main で撮り直した 3 回目）の markers.json とコマの変わり目から。撮り直したら合わせ直す
       // 事業所の画面は左の災害モードと災害情報と、真ん中の確認の窓（T79）に寄る（右の列にケアマネのログインの ID が出るため）
       {
-        at: 108,
-        end: 112,
+        at: 111,
+        end: 115,
         kind: "footage",
         footage: "R10",
         from: 1,
@@ -396,11 +388,11 @@ export const SCENES: Scene[] = [
           { x: 0.04, y: 0.05, w: 0.6 },
         ],
       },
-      { at: 112, end: 116, kind: "split", footages: ["R11", "R10"], froms: [2, 38.9], label: "娘のスマホ（赤と緑）と担当一覧" },
+      { at: 115, end: 119, kind: "split", footages: ["R11", "R10"], froms: [2, 38.9], label: "娘のスマホ（赤と緑）と担当一覧" },
       // 読み直しで山田の行が 2 番目から一番上へ（R10-3 の 49.6 秒）。半分の速さで
       {
-        at: 116,
-        end: 121,
+        at: 119,
+        end: 124,
         kind: "footage",
         footage: "R10",
         from: 47.9,
@@ -411,15 +403,15 @@ export const SCENES: Scene[] = [
         callouts: [{ at: 3.8, box: { x: 0.0125, y: 0.394, w: 0.975, h: 0.072 }, label: "至急 連絡順 1", tone: "urgent", place: "below" }],
       },
       // 本人のスマホ（R12-4）: 赤 5.0 → けが ある 8.5 → 動けない 11.6 を 2.6 倍で、定型文の声の問いかけ、録音（44.6 秒から）
-      { at: 121, end: 124, kind: "footage", footage: "R12", from: 4.6, rate: 2.6, label: "本人のスマホ: 赤 → けが ある → 動けない" },
-      { at: 124, end: 126, kind: "footage", footage: "R12", from: 12.6, label: "本人のスマホ: 声の問いかけ（大丈夫ですか 状況を説明してください）" },
-      { at: 126, end: 130, kind: "footage", footage: "R12", from: 44.8, emphasis: true, label: "強調: 録音（AI が聞いている）" },
-      { at: 130, end: 135, kind: "rules", label: "ルールの表の 1 枚" },
+      { at: 124, end: 127, kind: "footage", footage: "R12", from: 4.6, rate: 2.6, label: "本人のスマホ: 赤 → けが ある → 動けない" },
+      { at: 127, end: 129, kind: "footage", footage: "R12", from: 12.6, label: "本人のスマホ: 声の問いかけ（大丈夫ですか 状況を説明してください）" },
+      { at: 129, end: 133, kind: "footage", footage: "R12", from: 44.8, emphasis: true, label: "強調: 録音（AI が聞いている）" },
+      { at: 133, end: 138, kind: "rules", label: "ルールの表の 1 枚" },
       // 行の詳細（R14-1: 11/5 に録音から分類まで撮った回）。86.5 秒に下へ送ったあと 95 秒まで止まっている。
       // 右の列の録音のまとめ（AI）・分類「けが・動けない」（AI、確信 90%）と修正・順番変更に寄る。N24 の 2 つの句に合わせて囲みを 1 つずつ
       {
-        at: 135,
-        end: 143,
+        at: 138,
+        end: 146,
         kind: "footage",
         footage: "R14",
         from: 87.0,
@@ -433,13 +425,13 @@ export const SCENES: Scene[] = [
         ],
       },
 
-      { at: 143, end: 146.5, kind: "footage", footage: "R10", from: 100.5, label: "電話 → 電話の記録" },
+      { at: 146, end: 149.5, kind: "footage", footage: "R10", from: 100.5, label: "電話 → 電話の記録" },
       // 受入（R13-3 の 8.7 秒）を押す所を 1.4 秒だけ見せ、N25 の「要約が届きます」の間は医療要約の書類へ。間は 10 コマの重ねでつなぐ
       // R13-3 は受入のすぐあとに受入一覧の「医療要約」を押して撮った（15.2 秒に押し、24.1 秒に書類が出る）
-      { at: 146.5, end: 147.9, kind: "footage", footage: "R13", from: 7.9, label: "医療班の受入" },
+      { at: 149.5, end: 150.9, kind: "footage", footage: "R13", from: 7.9, label: "医療班の受入" },
       {
-        at: 147.9,
-        end: 150,
+        at: 150.9,
+        end: 153,
         kind: "footage",
         footage: "R13",
         // 書類が出て落ち着いたあと（R13-3 の 24.1 秒に出て 26.4 秒に止まる）。左の紙面（右の原本の列は「受入 到着 かわなぎ小学校」）に寄る
@@ -459,13 +451,13 @@ export const SCENES: Scene[] = [
     id: "S7",
     title: "Claude の使い分け",
     ground: "white",
-    at: 150,
-    end: 163,
+    at: 153,
+    end: 166,
     shots: [
-      { at: 150, end: 156, kind: "models", footages: ["R20", "R21"], label: "使い分けの図と、worktree・見直し役" },
+      { at: 153, end: 159, kind: "models", footages: ["R20", "R21"], label: "使い分けの図と、worktree・見直し役" },
       {
-        at: 156,
-        end: 163,
+        at: 159,
+        end: 166,
         kind: "models",
         footages: ["R22", "R23", "R24"],
         label: "フック・MCP・テストの件数",
@@ -477,14 +469,14 @@ export const SCENES: Scene[] = [
     id: "S8",
     title: "数字と一言",
     ground: "blue",
-    at: 163,
-    end: 170.5,
+    at: 166,
+    end: 171.5,
     shots: [
       // 計画 1 件の時間（N28）は測れないので外した（作者の決め 11/6）。空いた秒は N29 と N30 へ
       // アンケートの問 9（AI が下書きを作るなら作る気になるか）: なる 1・少しなる 2・ならない 1。一言は「なる」と答えた人の理由（引用可の人だけ。引用不可の人の文は使わない）
       {
-        at: 163,
-        end: 170.5,
+        at: 166,
+        end: 171.5,
         kind: "quote",
         label: "アンケートの一言（問 9 の理由）",
         lines: ["「作成時間が大幅に短くなると思われるから。」"],
@@ -498,12 +490,12 @@ export const SCENES: Scene[] = [
     id: "S9",
     title: "締め",
     ground: "blue",
-    // N28 を外して 2:50.5 から（11/6）。前半は言葉、「本当に使える形に」からロゴが描かれる
-    at: 170.5,
+    // N28 を外し、N19 を長くして 2:51.5 から（11/6）。前半は言葉、「本当に使える形に」からロゴが描かれる
+    at: 171.5,
     end: 180,
     shots: [
       {
-        at: 170.5,
+        at: 171.5,
         end: 178.3,
         kind: "text",
         label: "締めの言葉（課題は山積み・それでも・まずは一部から・本当に使える形に）",
@@ -536,26 +528,26 @@ export const LINES: Line[] = [
   // N08 は 3 本立ての文に使い直した（前の能登の関連死の文は 11/4 の冒頭の組み替えで外した）
   { id: "N08", at: 38.4, end: 45.8, ja: "話すだけで計画ができ、訓練もでき、災害時は医療班と情報を共有します。", en: "Talk, and the plan is made. Run drills with it. In a disaster, it shares what matters with the medical team." },
   // N09（輪島の手書きのメモ）は 11/4 の冒頭の組み替えで外した（欠番）
-  { id: "N10", at: 46.3, end: 51.3, ja: "主役は架空の利用者、山田ハナさん。84 歳、在宅酸素。", en: "Meet a fictional client, Hana Yamada. 84, on home oxygen." },
-  { id: "N11", at: 51.5, end: 58.3, ja: "ケアマネージャーが話すと、Claude が台帳の欄に分け、空いている所だけ聞き返します。", en: "The care manager talks. Claude sorts it into her record, and asks back only about what's missing." },
-  { id: "N12", at: 58.5, end: 64.5, ja: "台帳から、市の様式の避難計画、本人の 1 枚、医療班の要約が出ます。", en: "From that one record: the city's evacuation plan form, a one-page sheet for her, and a summary for the medical team." },
+  { id: "N10", at: 46.2, end: 53.6, ja: "ケアマネージャーが話すと、Claude が欄に分け、空いている所だけ聞き返します。", en: "The care manager talks. Claude sorts it into fields, and asks back only about what's missing." },
+  { id: "N11", at: 53.8, end: 58.0, ja: "話した内容は、アプリの中に記録されていきます。", en: "What was said is recorded in the app." },
+  { id: "N12", at: 58.5, end: 64.5, ja: "記録から、市の様式の避難計画、本人の 1 枚、医療班の要約が出ます。", en: "From that record: the city's evacuation plan form, a one-page sheet for her, and a summary for the medical team." },
   { id: "N13", at: 64.7, end: 69.8, ja: "要約は医療班の記録と同じ順。医学生の目で確かめました。", en: "The summary follows the medical team's own record format. I checked it as a medical student." },
   { id: "N14", at: 70.0, end: 73.6, ja: "ほかの市の様式も、写真から読み取ります。", en: "Other cities' forms can be read from a photo." },
   { id: "N15", at: 74.3, end: 80.0, ja: "次は訓練。利用者 10 人に、Claude Haiku が 1 体ずつ付きます。", en: "Next, the drill. Each of the 10 clients gets their own Claude Haiku agent." },
-  { id: "N16", at: 80.2, end: 84.6, ja: "台帳を読み、本人や家族になりきって動きます。", en: "Each one reads the record and plays the client or a family member." },
+  { id: "N16", at: 80.2, end: 84.6, ja: "記録を読み、本人や家族になりきって動きます。", en: "Each one reads the record and plays the client or a family member." },
   { id: "N17", at: 84.8, end: 88.0, ja: "72 時間を早送りで進めると、", en: "Fast-forward through the 72 hours, and..." },
   { id: "N18", at: 93.2, end: 98.8, ja: "ケアマネージャーは本番と同じ画面で、電話、出向く、避難所に頼む。", en: "The care manager responds on the same screen used in a real disaster: call, visit, ask a shelter." },
-  { id: "N19", at: 99.0, end: 107.6, ja: "終わると Opus が対応の順を採点。山田さんの酸素の電池が切れるまでに手が届かなかったと、出典つきで指摘しました。", en: "At the end, Opus scores the order of response. Citing sources, it pointed out that help did not reach Ms. Yamada before her oxygen battery ran out." },
-  { id: "N20", at: 108.3, end: 112.3, ja: "そして本番。大雨で、災害モードに入りました。", en: "Then the real thing. Heavy rain, and disaster mode is on." },
-  { id: "N21", at: 112.5, end: 116.0, ja: "娘さんのスマホには、赤と緑の 2 つだけ。", en: "Her daughter's phone shows just two buttons: red and green." },
-  { id: "N22", at: 121.2, end: 126.0, ja: "本人の答えが止まると、声で問いかけ、周りの音ごと録音します。", en: "If she stops answering, the app asks out loud and records the sound around her." },
-  { id: "N23", at: 130.3, end: 135.0, ja: "色と順を決めるのは AI ではなく、人が読めるルールの表。", en: "The color and order are set not by AI, but by a rule table people can read." },
-  { id: "N24", at: 135.3, end: 140.8, ja: "Claude は録音を分けるだけ。最後に決めるのは、ケアマネージャーです。", en: "Claude only sorts the recording. The care manager makes the final call." },
-  { id: "N25", at: 143.0, end: 147.7, ja: "電話し、避難所の医療班が受け入れると、要約が届きます。", en: "The care manager calls, and when the shelter's medical team takes her in, the summary is there." },
-  { id: "N26", at: 150.3, end: 156.0, ja: "作ったのは Claude Code。設計と実装を分け、並行で進めました。", en: "It was built with Claude Code, with design and implementation split and run in parallel." },
-  { id: "N27", at: 156.3, end: 162.7, ja: "フックで鍵と配信を守り、本名を見ない MCP と見直し役で確かめています。", en: "Hooks guard the keys and deploys. An MCP server that never sees real names, and reviewer agents, check the work." },
-  { id: "N29", at: 163.5, end: 168.3, ja: "AI の下書きなら作る気になる人は、4 人中 3 人。", en: "With an AI draft, 3 of 4 said they would be willing to make plans." },
-  { id: "N30", at: 170.8, end: 179.9, ja: "実用化の課題は山積みです。それでも、まずは一部から、本当に使える形にしていきます。", en: "Getting this into real use still faces many hurdles. But we'll keep working to make it truly usable, starting with one part." },
+  { id: "N19", at: 99.0, end: 110.6, ja: "終わると Opus が講評。架空の利用者、山田ハナさんの酸素供給装置の電池が切れる前に対応できなかったと、出典つきで指摘しました。", en: "At the end, Opus reviews the response. Citing sources, it pointed out that help did not reach Hana Yamada, a fictional client, before her oxygen device's battery ran out." },
+  { id: "N20", at: 111.3, end: 115.3, ja: "そして本番。大雨で、災害モードに入りました。", en: "Then the real thing. Heavy rain, and disaster mode is on." },
+  { id: "N21", at: 115.5, end: 119.0, ja: "スマホで安否確認ができます。", en: "Families can check in from their phones." },
+  { id: "N22", at: 124.2, end: 130.5, ja: "本人の答えがないと、声で問いかけ、答えを録音して状況をつかみます。", en: "If she doesn't answer, the app asks out loud and records her reply to understand the situation." },
+  { id: "N23", at: 133.3, end: 138, ja: "色と順を決めるのは AI ではなく、人が読めるルールの表。", en: "The color and order are set not by AI, but by a rule table people can read." },
+  { id: "N24", at: 138.3, end: 143.8, ja: "Claude は録音を分けるだけ。最後に決めるのは、ケアマネージャーです。", en: "Claude only sorts the recording. The care manager makes the final call." },
+  { id: "N25", at: 146, end: 150.7, ja: "電話し、避難所の医療班が受け入れると、要約が届きます。", en: "The care manager calls, and when the shelter's medical team takes her in, the summary is there." },
+  { id: "N26", at: 153.3, end: 159, ja: "作ったのは Claude Code。設計と実装を分け、並行で進めました。", en: "It was built with Claude Code, with design and implementation split and run in parallel." },
+  { id: "N27", at: 159.3, end: 165.7, ja: "フックで鍵と配信を守り、本名を見ない MCP と見直し役で確かめています。", en: "Hooks guard the keys and deploys. An MCP server that never sees real names, and reviewer agents, check the work." },
+  { id: "N29", at: 166.5, end: 171.3, ja: "AI の下書きなら作る気になる人は、4 人中 3 人。", en: "With an AI draft, 3 of 4 said they would be willing to make plans." },
+  { id: "N30", at: 171.8, end: 179.9, ja: "実用化の課題は山積みです。それでも、まずは一部から、本当に使える形にしていきます。", en: "Getting this into real use still faces many hurdles. But we'll keep working to make it truly usable, starting with one part." },
 ];
 
 /** ルールの表の 1 枚（F2）に出す行。docs/TRIAGE.md の「色と理由の 1 行」から写した 13 行のうちの 7 行。撮影の前に今の表と照らす */
@@ -571,7 +563,7 @@ export const RULE_ROWS: { input: string; state: "urgent" | "check" | "unknown" |
 
 /** 使い分けの図（F3）。docs/CLAUDE_CODE.md の「モデルの使い分け」から */
 export const MODEL_ROWS: { what: string; who: string }[] = [
-  { what: "台帳の入力・問い返し", who: "Claude Sonnet 5.5" },
+  { what: "記録の入力・問い返し", who: "Claude Sonnet 5.5" },
   { what: "様式の読み取り", who: "Claude Opus 5.5" },
   { what: "訓練の本人役・家族役", who: "Claude Haiku 5.5 × 10" },
   { what: "訓練の監督と採点", who: "Claude Opus 5.5" },
@@ -595,6 +587,7 @@ export const RECORDINGS: Record<string, string> = {
   R12: "本人のスマホ",
   R13: "医療班の受入",
   R14: "行の詳細（録音の分類）",
+  R15: "本人のページを下まで",
   R20: "worktree と merge の線",
   R21: "見直し役",
   R22: "フックが配信を止める",

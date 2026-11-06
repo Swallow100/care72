@@ -101,6 +101,36 @@ async function calm(browser) {
   }
 }
 
+/** R15 本人のページ（山田 ハナ）を上から下まで送る。N11「話した内容は、アプリの中に記録されていきます」（作者の頼み 11/6）。平時に戻してから撮る */
+async function page(browser) {
+  const cm = await newPage(browser, PC);
+  await login(cm, base, "yamamoto", cmPw);
+  await prep(cm);
+  await open(cm, base, "/?open=p-01");
+  await settle(cm);
+  // 送れる長さ。頁そのものか、いちばん長く送れる中の枠
+  const h = await cm.evaluate(() => {
+    let best = document.documentElement.scrollHeight - innerHeight;
+    for (const el of document.querySelectorAll("*")) {
+      const st = getComputedStyle(el);
+      if (!/(auto|scroll)/.test(st.overflowY)) continue;
+      best = Math.max(best, el.scrollHeight - el.clientHeight);
+    }
+    // 経過の欄（前の撮影の安否の記録が残る）は計画の場面に合わないので、その見出しが下の端から出る手前で止める
+    const log = Array.from(document.querySelectorAll("h2, h3")).find((e) => e.textContent?.trim() === "経過");
+    if (log) best = Math.min(best, Math.round(log.getBoundingClientRect().top - innerHeight - 8));
+    return best;
+  });
+  console.log(`送る長さ ${h}px`);
+  const r = new Recorder(cm, "R15");
+  await r.start();
+  await sleep(1500);
+  r.mark("下へ");
+  await r.scroll(h, 5);
+  await sleep(1500);
+  await r.stop(recDir("R15"));
+}
+
 /**
  * 赤が一覧に効くのは読み直し（AppHeader の AutoRefresh）。AutoRefresh は 1 分ごとと、画面が見えるようになった時に読み直す。
  * 1 分ごとの方は、撮る道具がほかの窓を撮っている間（隠れた扱い）に来るととぶので待てない（11/4 の撮り直しで 60 秒撮りっぱなしになった）。
@@ -1139,6 +1169,8 @@ try {
     await prep(cm);
   } else if (scene === "calm") {
     await calm(browser);
+  } else if (scene === "page") {
+    await page(browser);
   } else if (scene === "disaster") {
     await disaster(browser);
   } else if (scene === "staff") {
