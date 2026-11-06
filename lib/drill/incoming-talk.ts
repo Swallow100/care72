@@ -2,9 +2,10 @@
 // ここの応答を返すだけ。D1 と Principal を引数で受け取る（テストで node:sqlite を渡す）。
 //
 // 外へ掛けた電話の往復（lib/drill/talk.ts、T93）と同じ仕組みを、着信（drill_events の call_in と、応答の call_answer）に当てる:
-// - ケアマネの言葉は決まった問い（CALL_IN_ASKS など TALK_ASKS の中）か自由の 1 文（60 字まで）。自由の文は本人役の口（lib/drill/hooks.ts の
+// - ケアマネの言葉は決まった問い（CALL_IN_ASKS など TALK_ASKS の中）か自由の 1 文（120 字まで。声で入れた文は voice の印、T155）。自由の文は本人役の口（lib/drill/hooks.ts の
 //   createTalkHook）の中で仮名化の門を通し、伏せきれなければ 400「伏字不可」（Claude にも保存にも何も渡さない）
-// - 1 往復は本人役 Haiku × 1 回で、ケアマネの時計は 2 分進む（TALK_MINUTES。手の分〔T110〕の使用に入る）。1 つの着信に 3 往復まで（TALK_MAX）
+// - 1 往復は本人役 Haiku × 1 回で、ケアマネの時計は文の長さで 1〜3 分進む（T155、lib/drill/talk-turn.ts。手の分〔T110〕の使用に入る）。1 つの着信に 8 往復まで（TALK_MAX）
+// - 往復の 1 回の作り方は外へ掛けた電話と同じ所（talkRound）。本人役の言葉は想定の門（T125）を通す（T155 で着信にも）
 // - AI の数え方: 1 日の上限（AI_DAILY_LIMIT）は askJson が ai_calls で数え、1 訓練の上限は counts.call（外へ掛けた電話の往復と同じ）。
 //   上限・鍵なし・失敗は固定の言葉（AI の印なし）
 // - 返事の頼み事は world.asks に積む。色・4 問・聞いた安否は変えない（着信の安否は元から表に入っている。往復から安否を足さない）
@@ -14,7 +15,7 @@
 // 時計・頼み事・counts は drills.world（読んだ JSON の要る欄だけ置き換える）。取消の写し（undo）は外す: 往復は手の外にあるので、
 // 最後の手を取り消すと drills.world は往復の前に戻るのに、作り直し（lib/drill/db.ts の replayState）は往復を当て、食い違うため。
 // 作り直しは応答の記録の位置で往復を当てるので、応答のあとに手を打った着信は続けられない（応答の記録の actions と手の数を比べる）。
-// 門: 進行中・読んだ刻みと手の数が同じ・今の刻みの着信・拒否していない・切っていない・3 往復に届いていない・72 時間に着いていない（切るのはよい）。
+// 門: 進行中・読んだ刻みと手の数が同じ・今の刻みの着信・拒否していない・切っていない・8 往復に届いていない・72 時間に着いていない（切るのはよい）。
 // 応答の記録がまだ無ければ（応答の POST は結果を待たない）、ここで応答として残してから往復を足す。
 
 import type { D1Database } from "@cloudflare/workers-types";
@@ -26,29 +27,18 @@ import { FREE_LABELS } from "./action-catalog.ts";
 import { clockOver } from "./action-terms.ts";
 import { clampClock } from "./actions.ts";
 import { callerContact, callerLabel } from "./calls.ts";
-import { capReached, ZERO_COUNTS } from "./clock.ts";
+import { capReached } from "./clock.ts";
 import { drillScope, loadDrillRow, stateOfRow, type DrillScope } from "./db.ts";
-import {
-  dialogueFields,
-  isTalkAsk,
-  pushAsks,
-  TALK_ASK_WORDS,
-  TALK_FIXED_SPEECH,
-  TALK_MAX,
-  TALK_MINUTES,
-  TALK_TEXT_MAX,
-  TALK_UI,
-  type TalkAsk,
-  type TalkHook,
-  type TalkLine,
-} from "./dialogue.ts";
-import { drillEnded, isNight, type DrillTurn } from "./engine.ts";
+import { dialogueFields, isTalkAsk, TALK_MAX, TALK_TEXT_MAX, TALK_UI, type TalkAsk, type TalkHook, type TalkLine } from "./dialogue.ts";
+import { drillEnded, fitOf, isNight, type DrillTurn } from "./engine.ts";
+import { fitKindOf } from "./fit.ts";
+import { talkRound } from "./talk-turn.ts";
 import { drillError, isDrillId } from "./http.ts";
 import { calleeOf, callResponseId, respondCall, type CallCallee } from "./responses.ts";
 import { pushTold } from "./person-facts.ts";
 
 /** 往復の要求。ask（決まった問い）・text（自由の 1 文）・end（切る）のどれか 1 つ */
-export type CallTalkRequest = { signal: string } & ({ ask: TalkAsk } | { text: string } | { end: true });
+export type CallTalkRequest = { signal: string } & ({ ask: TalkAsk } | { text: string; voice?: true } | { end: true });
 
 export type CallTalkResult =
   | { ok: true; signal: string; rounds: number; minute: number; lines: TalkLine[]; ended: boolean }
@@ -162,7 +152,6 @@ export async function callTalkDrill(
 
   let world = before.world;
   const at = before.minute;
-  const replyAt = at + TALK_MINUTES;
   const ask = "ask" in req ? req.ask : undefined;
   const text = "text" in req ? req.text.trim() : undefined;
   const first = typeof callIn.saying === "string" && callIn.saying.trim() ? callIn.saying : null;
@@ -176,6 +165,7 @@ export async function callTalkDrill(
           world,
           state: before.people[person] ?? null,
           tell: null,
+          fit: fitKindOf(before, world),
           ...(isNight(before) ? { night: true } : {}),
           first,
           lines,
@@ -183,26 +173,20 @@ export async function callTalkDrill(
           ...(ask ? { ask } : { text: text ?? "" }),
         })
       : null;
-  const said = reply?.said ?? (ask ? TALK_ASK_WORDS[ask] : (text ?? ""));
-  const ai = reply?.speech != null && reply.ai;
-  const cm: TalkLine = { who: "cm", text: said, ai: false, minute: at, ...(ask ? { ask } : {}) };
-  const them: TalkLine = {
-    who: "them",
-    text: (ai ? reply?.speech : null) ?? TALK_FIXED_SPEECH,
-    ai,
-    minute: replyAt,
-    ...(ai && reply!.asks.length > 0 ? { asks: [...reply!.asks] } : {}),
-  };
-  const next = [...lines, cm, them];
-  world = pushAsks(world, person, them.asks ?? [], replyAt);
+  // 往復の 1 回（想定の門・頼み事・数え・時計。外へ掛けた電話と同じ所）
+  const round = talkRound({
+    world,
+    person,
+    at,
+    ...(ask ? { ask } : { text: text ?? "", ...("voice" in req && req.voice ? { voice: true } : {}) }),
+    reply,
+    fit: fitOf(before, world),
+  });
+  const next = [...lines, round.cm, round.them];
   // ケアマネに言われた事（T130 の帳面）。次の区切りの本人役が覚えて従う
-  world = pushTold(world, person, [cm]);
-  if (reply?.called) {
-    const c = { ...ZERO_COUNTS, ...(world.counts ?? {}) };
-    world = { ...world, counts: { ...c, call: c.call + 1 } };
-  }
+  world = pushTold(round.world, person, [round.cm]);
   // 連続の時計は 72 時間で止める（T123）
-  const minute = clampClock(before, Math.max(before.minute, replyAt));
+  const minute = clampClock(before, Math.max(before.minute, round.replyAt));
 
   // 読んだ JSON の欄の並びと、知らない欄（区切り・配役）はそのまま。取消の写しは外す（上の注）
   const { undo: _undo, ...rest } = stored;
@@ -239,18 +223,20 @@ export function parseCallTalkRequest(b: Record<string, unknown>): CallTalkReques
   if (typeof b.signal !== "string" || !SIGNAL_ID.test(b.signal)) return null;
   const signal = b.signal;
   if ([given(b.ask), given(b.text), given(b.end)].filter(Boolean).length !== 1) return null;
+  // 声の印（T155）は自由の文にだけ付く。true のほかは断る
+  if (given(b.voice) && (b.voice !== true || !given(b.text))) return null;
   if (given(b.ask)) return isTalkAsk(b.ask) ? { signal, ask: b.ask } : null;
   if (given(b.end)) return b.end === true ? { signal, end: true } : null;
   if (typeof b.text !== "string") return null;
   const text = b.text.trim();
   if (text === "" || [...text].length > TALK_TEXT_MAX) return null;
-  return { signal, text };
+  return { signal, text, ...(b.voice === true ? { voice: true as const } : {}) };
 }
 
 /**
- * 着信の往復の POST（JSON）。{ step: 読んだ今の刻み, actions: 読んだ手の数, signal: 着信の安否の id, ask?: 決まった問い, text?: 自由の 1 文（60 字まで）, end?: true }。
+ * 着信の往復の POST（JSON）。{ step: 読んだ今の刻み, actions: 読んだ手の数, signal: 着信の安否の id, ask?: 決まった問い, text?: 自由の 1 文（120 字まで）, voice?: true（声で入れた文）, end?: true }。
  * 返すのは往復の全部の行（画面が読み直さずに描ける）。自由の文を伏せきれなければ 400（label「伏字不可」）。
- * 続けられない（前の刻みの着信・拒否した・切った後・4 往復目・応答のあとに手を打った）は 409（label「終話」）
+ * 続けられない（前の刻みの着信・拒否した・切った後・9 往復目・応答のあとに手を打った）は 409（label「終話」）
  */
 export async function callTalkPost(db: D1Database, p: Principal | null, id: string, json: unknown, opts: { hook?: TalkHook } = {}): Promise<Response> {
   if (!p) return drillError("login_required");

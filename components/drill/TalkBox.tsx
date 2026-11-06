@@ -1,70 +1,49 @@
 "use client";
 
-// 通話の往復（docs/tasks/T93.md の 4）。対応の欄の最新の結果（LatestResult）の、電話に出た人の最初の言葉の下に置く。
-// - 往復の吹き出し（TalkLines）: ケアマネの言葉は右、電話に出た人の言葉は左。本人役（Haiku）の言葉は AI の印、頼み事は灰の文字の印
-// - 続けられる電話（出て言葉があり、3 往復に届かず、切っていない）だけ、決まった問いのボタン 7 つ・自由の 1 文の欄（60 字まで）・「切る」
-//   押すと POST /api/drill/<id>/talk（読んだ刻みと手の数を送る。違えば競合）。終わったら画面を読み直す。断られたら理由を 1 行
-// - 3 往復で問いが消える。声（Gemini TTS）は付けない（文字だけ）
+// 外へ掛けた電話の通話（docs/tasks/T93.md の 4、T155 で通話の画面に）。対応の欄の最新の結果（LatestResult）の、電話に出た人の最初の言葉の下に置く。
+// - 往復の吹き出し（TalkLines）: ケアマネの言葉は右、電話に出た人の言葉は左。本人役（Haiku）の言葉は AI の印、頼み事は灰の文字の印、
+//   声で入れた自分の言葉は「声」の印（T155）
+// - 続けられる電話（出て言葉があり、8 往復に届かず、切っていない）は、着信と同じ通話の画面（components/drill/CallTalk）を画面の上に重ねて出す。
+//   文字を打つか、マイクで話して送る（話した声は欄に文字で出て、送る前に直せる）。問いの候補 7 つは補助。
+//   押すと POST /api/drill/<id>/talk（読んだ刻みと手の数を送る。違えば競合）。返ってきた往復の全部を描き、画面を読み直す（時計・経過・頼み事）
+// - 相手の返事は声を作れれば流す（GET /api/drill/voice の act と line。T155）。無ければ文字
+// - 切ると切った時刻を残して閉じる。通話の画面が出ている間は早送りを止める（IncomingCall と同じ合図）
 // 吹き出しは面の地（枠線なし）。押したときは灰色だけ（Button の data-press）。
 
-import { PhoneXMarkIcon } from "@heroicons/react/20/solid";
+import { SpeakerWaveIcon } from "@heroicons/react/20/solid";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
-import { AiMark } from "@/components/person/parts";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
-import { SendIcon } from "@/components/ui/Icon";
-import { ASK_LABELS, CALL_OUT_ASKS, canTalk, TALK_LABELS, TALK_MAX, TALK_TEXT_MAX, TALK_UI, talkRounds, type TalkAsk, type TalkLine } from "@/lib/drill/dialogue";
+import { CALL_OUT_ASKS, canTalk, TALK_UI, type TalkLine } from "@/lib/drill/dialogue";
 import type { ActionRecord } from "@/lib/drill/engine";
-import { DRILL_LABELS } from "@/lib/drill/labels";
-import type { AskKind } from "@/lib/drill/scenarios";
+import { CALL_UI, clockLabel, DRILL_LABELS } from "@/lib/drill/labels";
+import { CallLines, CallReply, type CallSend } from "./CallTalk";
+import { CallInIcon } from "./icons";
+import { RINGING_EVENT as RINGING } from "./IncomingCall";
+import { TalkLines } from "./TalkLines";
 
-const FOCUS = "focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-accent";
+export { AskMarks, TalkLines } from "./TalkLines";
 
-/** 頼み事の印（灰の文字。色の印にしない） */
-export function AskMarks({ asks, label = true }: { asks: ReadonlyArray<AskKind>; label?: boolean }) {
-  if (asks.length === 0) return null;
-  return (
-    <span className="inline-flex flex-wrap items-baseline gap-x-1.5" data-asks>
-      {label && <span className="text-xs text-muted">{TALK_UI.asks}</span>}
-      {asks.map((k) => (
-        <span key={k} className="text-xs font-bold text-muted" data-ask-mark={k}>
-          {ASK_LABELS[k]}
-        </span>
-      ))}
-    </span>
-  );
-}
 
-/** 往復の吹き出し。speaker は電話に出た人の言い方（「本人」「家族 娘」） */
-export function TalkLines({ lines, speaker }: { lines: ReadonlyArray<TalkLine>; speaker: string }) {
-  if (lines.length === 0) return null;
-  return (
-    <ol className="mt-1.5 space-y-1.5" data-talk-lines>
-      {lines.map((l, i) =>
-        l.who === "cm" ? (
-          <li key={i} className="ml-auto w-fit max-w-[85%] rounded-lg bg-panel px-2.5 py-1.5 text-sm" data-talk-line="cm">
-            <div className="text-xs text-muted">{TALK_UI.me}</div>
-            <p className="break-words">「{l.text}」</p>
-          </li>
-        ) : (
-          <li key={i} className="relative ml-3 w-fit max-w-[85%] rounded-lg bg-panel px-2.5 py-1.5 text-sm" data-talk-line="them" data-speech-ai={l.ai ? "" : undefined}>
-            <span aria-hidden="true" className="absolute -left-1 top-2.5 size-2 rotate-45 bg-panel" />
-            <div className="flex items-center gap-1.5 text-xs text-muted">
-              <span>{speaker}</span>
-              {l.ai && <AiMark small />}
-            </div>
-            <p className="break-words">「{l.text}」</p>
-            {l.asks && l.asks.length > 0 && <AskMarks asks={l.asks} />}
-          </li>
-        ),
-      )}
-    </ol>
+/** 声を流す（作れない・失敗は false） */
+function playHref(audio: { current: HTMLAudioElement | null }, href: string, onEnd: () => void): Promise<boolean> {
+  audio.current?.pause();
+  const a = new Audio(href);
+  audio.current = a;
+  a.onended = onEnd;
+  a.onerror = onEnd;
+  return a.play().then(
+    () => true,
+    () => {
+      onEnd();
+      return false;
+    },
   );
 }
 
 /**
- * 往復の欄（最新の電話の手だけ）。step・actions は画面で読んだ今の刻みと手の数（競合の門）。
- * 続けられない電話は吹き出しだけ
+ * 外へ掛けた電話の通話（最新の電話の手だけ）。step・actions は画面で読んだ今の刻みと手の数（競合の門）。
+ * 続けられる間は通話の画面を重ねて出し、続けられない電話は吹き出しだけ
  */
 export function TalkBox({
   drillId,
@@ -72,102 +51,157 @@ export function TalkBox({
   actions,
   action,
   speaker,
+  name,
+  voice,
 }: {
   drillId: string;
   step: number;
   actions: number;
   action: ActionRecord;
   speaker: string;
+  /** 本人の名前（通話の画面の頭） */
+  name?: string;
+  /** 最初の言葉の声の行き先（/api/drill/voice?…&act=a3）。声を作れなければ null で文字だけ */
+  voice?: string | null;
 }) {
   const router = useRouter();
-  const [text, setText] = useState("");
+  const r = action.result;
+  const stored = r?.talk ?? [];
+  const [lines, setLines] = useState<TalkLine[]>(stored);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [closed, setClosed] = useState(false);
-  const r = action.result;
-  const lines = r?.talk ?? [];
+  const [stopped, setStopped] = useState(false);
+  const [playing, setPlaying] = useState(false);
+  const audio = useRef<HTMLAudioElement | null>(null);
+  const boxRef = useRef<HTMLDivElement | null>(null);
+  // 読み直した記録の方が長ければそちら（別の端末で足した往復）
+  const shown = stored.length > lines.length ? stored : lines;
   const open = !closed && canTalk(r);
-  const left = TALK_MAX - talkRounds(r);
 
-  const send = async (body: { ask: TalkAsk } | { text: string } | { end: true }) => {
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent(RINGING, { detail: open }));
+    if (open) boxRef.current?.focus();
+  }, [open]);
+  useEffect(
+    () => () => {
+      audio.current?.pause();
+      window.dispatchEvent(new CustomEvent(RINGING, { detail: false }));
+    },
+    [],
+  );
+
+  const play = useCallback(async (href: string | null) => {
+    if (!href) return;
+    setPlaying(true);
+    await playHref(audio, href, () => setPlaying(false));
+  }, []);
+
+  // 通話の画面が出たら最初の言葉を一度流す（自動の再生が止められたら「聞く」で）
+  const firstPlayed = useRef(false);
+  useEffect(() => {
+    if (!open || firstPlayed.current || shown.length > 0) return;
+    firstPlayed.current = true;
+    void play(voice ?? null);
+  }, [open, play, shown.length, voice]);
+
+  const post = (body: CallSend | { end: true }) =>
+    fetch(`/api/drill/${encodeURIComponent(drillId)}/talk`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ step, actions, action: action.id, ...body }),
+    });
+
+  const send = async (body: CallSend): Promise<boolean> => {
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch(`/api/drill/${encodeURIComponent(drillId)}/talk`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ step, actions, action: action.id, ...body }),
-      });
-      const json = (await res.json().catch(() => null)) as { ok?: boolean; label?: string } | null;
-      if (!res.ok || !json?.ok) setError(json?.label ?? String(res.status));
-      else {
-        if ("text" in body) setText("");
-        if ("end" in body) setClosed(true);
+      const res = await post(body);
+      const json = (await res.json().catch(() => null)) as { ok?: boolean; label?: string; lines?: TalkLine[] } | null;
+      if (!res.ok || !json?.ok || !Array.isArray(json.lines)) {
+        setError(json?.label ?? String(res.status));
+        if (res.status === 409) setStopped(true);
+        return false;
       }
+      setLines(json.lines);
       router.refresh();
+      // 相手の返事の声（作れれば流す。無ければ文字だけ）
+      const last = json.lines.length - 1;
+      if (voice && json.lines[last]?.who === "them") void play(`${voice}&line=${last}`);
+      return true;
     } catch {
       setError(DRILL_LABELS.network);
+      return false;
     } finally {
       setBusy(false);
     }
   };
 
-  const trimmed = text.trim();
+  const hangUp = () => {
+    audio.current?.pause();
+    setPlaying(false);
+    setClosed(true);
+    void post({ end: true })
+      .catch(() => {})
+      .then(() => router.refresh());
+  };
+
+  if (!open) return shown.length > 0 ? <TalkLines lines={shown} speaker={speaker} /> : null;
+  const rounds = shown.filter((l) => l.who === "cm").length;
+  // 通話の間は通話の画面だけ（後ろの結果の欄には最初の言葉が残る。切ると往復の吹き出しが結果の欄に出る）
   return (
-    <div className="mt-1" data-talk-box={action.id}>
-      <TalkLines lines={lines} speaker={speaker} />
-      {open && (
-        <div className="mt-2 space-y-1.5" data-talk-controls>
-          <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={TALK_UI.talk}>
-            {CALL_OUT_ASKS.map((k) => (
-              <Button
-                key={k}
-                kind="plainIn"
-                size="sm"
-                className={FOCUS}
-                disabled={busy}
-                onClick={() => void send({ ask: k })}
-                data-talk-ask={k}
-              >
-                {TALK_LABELS[k]}
-              </Button>
-            ))}
-            <span className="ml-auto text-xs text-muted tabular-nums" data-talk-left={left}>
-              {TALK_UI.left} {left}
-            </span>
+    <>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={`talk-callee-${action.id}`}
+        className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 px-4 py-[6vh]"
+        data-talk-box={action.id}
+        data-talk-rounds={rounds}
+      >
+        <div
+          ref={boxRef}
+          tabIndex={-1}
+          className="w-full max-w-xl rounded-lg bg-panel p-5 outline-none"
+        >
+          <div className="flex items-center gap-2 text-sm">
+            <CallInIcon aria-hidden className="size-4 shrink-0 -scale-x-100" />
+            <span className="font-bold">{CALL_UI.talking}</span>
+            <span className="text-muted">{TALK_UI.calling}</span>
+            <span className="text-muted tabular-nums">{clockLabel(action.atMinute)}</span>
           </div>
-          <form
-            className="flex items-center gap-1.5"
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (trimmed) void send({ text: trimmed });
-            }}
-          >
-            <input
-              type="text"
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              maxLength={TALK_TEXT_MAX}
-              aria-label={TALK_UI.free}
-              placeholder={TALK_UI.free}
-              disabled={busy}
-              className={`h-8 min-w-0 flex-1 rounded bg-panel px-2 text-sm text-ink outline-none ${FOCUS}`}
-              data-talk-text
+          <h2 id={`talk-callee-${action.id}`} className="mt-3 text-2xl leading-9 font-bold" data-talk-callee>
+            {speaker}
+          </h2>
+          {name && <p className="text-lg leading-7">{name}</p>}
+          <div className="mt-4">
+            <CallLines speaker={speaker} first={r?.speech ? { text: r.speech, ai: r.speechAi } : null} lines={shown} />
+          </div>
+          {error && (
+            <p role="alert" className="mt-1.5 text-xs font-bold text-danger" data-talk-error>
+              {error}
+            </p>
+          )}
+          <div className="sticky bottom-0 -mx-5 mt-3 bg-panel px-5 pt-1 pb-0">
+            <CallReply
+              asks={CALL_OUT_ASKS}
+              lines={shown}
+              canReply={!stopped}
+              busy={busy}
+              onSend={send}
+              onHangUp={hangUp}
+              mark="talk"
+              extra={
+                voice ? (
+                  <Button kind="plain" size="lg" icon={SpeakerWaveIcon} onClick={() => void play(voice)} disabled={playing} data-talk-play>
+                    {playing ? CALL_UI.playing : CALL_UI.play}
+                  </Button>
+                ) : null
+              }
             />
-            <Button kind="main" size="sm" icon={SendIcon} type="submit" className={FOCUS} disabled={busy || trimmed === ""} data-talk-send>
-              {busy ? TALK_UI.sending : TALK_UI.send}
-            </Button>
-            <Button kind="danger" size="sm" icon={PhoneXMarkIcon} className={FOCUS} disabled={busy} onClick={() => void send({ end: true })} data-talk-end>
-              {TALK_UI.hangUp}
-            </Button>
-          </form>
+          </div>
         </div>
-      )}
-      {error && (
-        <p role="alert" className="mt-1 text-xs font-bold text-danger">
-          {error}
-        </p>
-      )}
-    </div>
+      </div>
+    </>
   );
 }

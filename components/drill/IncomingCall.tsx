@@ -6,9 +6,10 @@
 //   着信音は端末で作る短い音で、約 10 秒で止める（鳴りっぱなしにしない）
 // - 応答: 声（Gemini TTS、サーバーが R2 に訓練ごとに置く）と文字。声が無い（鍵が未設定・生成の失敗）ときは文字だけ。
 //   声は鳴っている間に取り寄せておき、応答の押下で流す。終話で次の着信へ
-// - 通話の中で返す（T127）: 問い・指示の候補（安否・けが・機器薬・移動・避難先・待機・119勧奨、lib/drill/dialogue.ts の CALL_IN_ASKS）と
-//   自由の 1 文（60 字まで）。押すと POST /api/drill/<id>/call/talk（読んだ刻みと手の数を送る。違えば競合）。返ってきた往復の全部を描く
-//   （読み直さない。読み直すと着信の並びが組み直されるため）。1 つの着信に 3 回まで、1 回でケアマネの時計が 2 分進む。
+// - 通話の中で返す（T127、T155 で会話に）: 外へ掛けた電話と同じ通話の画面（components/drill/CallTalk）。文字を打つか、マイクで話して送る
+//   （話した声は欄に文字で出て、送る前に直せる。声で入れた行は「声」の印）。問い・指示の候補（安否・けが・機器薬・移動・避難先・待機・119勧奨、
+//   lib/drill/dialogue.ts の CALL_IN_ASKS）は補助。押すと POST /api/drill/<id>/call/talk（読んだ刻みと手の数を送る。違えば競合）。返ってきた往復の全部を描く
+//   （読み直さない。読み直すと着信の並びが組み直されるため）。1 つの着信に 8 回まで、1 回でケアマネの時計が文の長さで 1〜3 分進む。
 //   相手の返事は声を作れれば流し、無ければ文字。終話で切った時刻を残し、画面を読み直す（時計・経過・頼み事）
 // - 応答・拒否はサーバーの訓練の記録に残す（POST /api/drill/<id>/call、T22 の採点が読む。1 つの着信に 1 回）。
 //   この端末の sessionStorage にも覚え、画面を読み直しても鳴り直さない。応答して切っていない着信は、読み直しても通話中のまま出る
@@ -20,15 +21,15 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AiMark } from "@/components/person/parts";
 import { Button } from "@/components/ui/Button";
-import { PhoneIcon, SendIcon } from "@/components/ui/Icon";
+import { PhoneIcon } from "@/components/ui/Icon";
 import { StateTag, type Tone } from "@/components/ui/Tag";
-import { CALL_IN_ASKS, TALK_LABELS, TALK_MAX, TALK_TEXT_MAX, TALK_UI, type TalkAsk, type TalkLine } from "@/lib/drill/dialogue";
+import { CALL_IN_ASKS, type TalkLine } from "@/lib/drill/dialogue";
 import { CALL_UI, clockLabel, DRILL_LABELS } from "@/lib/drill/labels";
 import { COLOR_LABELS } from "@/lib/labels";
 import type { FictionKind } from "@/lib/drill/fiction";
 import { FictionalMark } from "./Fictional";
+import { CallLines, CallReply, callLeft, type CallSend } from "./CallTalk";
 import { CallInIcon } from "./icons";
-import { TalkLines } from "./TalkBox";
 
 export type IncomingCallItem = {
   /** 安否の signals の id（声の clip と、鳴らした印の鍵） */
@@ -169,7 +170,6 @@ export function IncomingCall({
   const [playing, setPlaying] = useState(false);
   const [voiceOk, setVoiceOk] = useState(true);
   const [lines, setLines] = useState<TalkLine[]>([]);
-  const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [closed, setClosed] = useState(false);
@@ -198,7 +198,6 @@ export function IncomingCall({
     const c = callsRef.current.find((x) => x.signal === currentId);
     setPhase(c?.answered ? "talking" : "ringing");
     setLines(c?.lines ?? []);
-    setText("");
     setError(null);
     setClosed(false);
     answerRef.current = null;
@@ -308,8 +307,8 @@ export function IncomingCall({
     void play();
   };
 
-  const send = async (body: { ask: TalkAsk } | { text: string }) => {
-    if (!current || step === undefined || actions === undefined) return;
+  const send = async (body: CallSend): Promise<boolean> => {
+    if (!current || step === undefined || actions === undefined) return false;
     setBusy(true);
     setError(null);
     try {
@@ -323,23 +322,24 @@ export function IncomingCall({
       if (!res.ok || !json?.ok || !Array.isArray(json.lines)) {
         setError(json?.label ?? String(res.status));
         if (res.status === 409) setClosed(true);
-        return;
+        return false;
       }
       talkedRef.current = true;
-      if ("text" in body) setText("");
       setLines(json.lines);
       // 相手の返事の声（作れれば流す。無ければ文字だけ）
       const last = json.lines.length - 1;
       const href = json.lines[last]?.who === "them" ? lineVoice(current.voice, last) : null;
       if (href) {
-        const url = await fetchVoice(href);
-        if (url) {
+        void fetchVoice(href).then((url) => {
+          if (!url) return;
           urlsRef.current.push(url);
-          await playUrl(url);
-        }
+          void playUrl(url);
+        });
       }
+      return true;
     } catch {
       setError(DRILL_LABELS.network);
+      return false;
     } finally {
       setBusy(false);
     }
@@ -347,10 +347,7 @@ export function IncomingCall({
 
   if (!current) return null;
   const index = total - queue.length + 1;
-  const rounds = lines.filter((l) => l.who === "cm").length;
-  const left = TALK_MAX - rounds;
-  const canReply = phase === "talking" && step !== undefined && actions !== undefined && !closed && left > 0;
-  const trimmed = text.trim();
+  const canReply = phase === "talking" && step !== undefined && actions !== undefined && !closed && callLeft(lines) > 0;
   return (
     <div
       role="dialog"
@@ -363,7 +360,7 @@ export function IncomingCall({
       <div
         ref={boxRef}
         tabIndex={-1}
-        className={`w-full rounded-lg bg-panel p-5 outline-none shadow-[0_2px_8px_rgb(0_0_0/0.18)] dark:shadow-[0_2px_10px_rgb(0_0_0/0.6)] ${phase === "talking" ? "max-w-lg" : "max-w-md"}`}
+        className={`w-full rounded-lg bg-panel p-5 outline-none ${phase === "talking" ? "max-w-xl" : "max-w-md"}`}
       >
         <div className="flex items-center gap-2 text-sm">
           <CallInIcon aria-hidden className="size-4 shrink-0" />
@@ -384,14 +381,12 @@ export function IncomingCall({
         </p>
 
         {phase === "talking" && (
-          <div className="mt-4 rounded-md bg-panel2 px-3 py-2.5" data-incoming-speech>
-            <div className="flex items-center gap-1.5 text-xs text-muted">
-              <StateTag tone={TONES[current.color]}>{TONE_WORDS[current.color]}</StateTag>
-              <span>{current.caller}</span>
-              {current.ai && <AiMark small />}
-            </div>
-            {/* text-base は使わない（地の色の名前と重なる。app/globals.css） */}
-            <p className="mt-1.5 text-[1.125rem] leading-7">「{current.saying}」</p>
+          <div className="mt-4" data-incoming-speech>
+            <CallLines
+              speaker={current.caller}
+              first={{ text: current.saying, ai: current.ai, lead: <StateTag tone={TONES[current.color]}>{TONE_WORDS[current.color]}</StateTag> }}
+              lines={lines}
+            />
             {voiceOk && (
               <p className="mt-1.5 flex items-center gap-1.5 text-xs text-muted" data-incoming-voice={playing ? "playing" : "ready"}>
                 <SpeakerWaveIcon aria-hidden className="size-3.5 shrink-0" />
@@ -399,46 +394,6 @@ export function IncomingCall({
                 <AiMark small title="AI の音声（Gemini TTS）" />
               </p>
             )}
-            <div data-incoming-talk>
-              <TalkLines lines={lines} speaker={current.caller} />
-            </div>
-          </div>
-        )}
-
-        {canReply && (
-          <div className="mt-3 space-y-1.5" data-incoming-reply>
-            <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={TALK_UI.talk}>
-              {CALL_IN_ASKS.map((k) => (
-                <Button key={k} kind="plain" size="sm" className={FOCUS} disabled={busy} onClick={() => void send({ ask: k })} data-incoming-ask={k}>
-                  {TALK_LABELS[k]}
-                </Button>
-              ))}
-              <span className="ml-auto text-xs text-muted tabular-nums" data-incoming-left={left}>
-                {TALK_UI.left} {left}
-              </span>
-            </div>
-            <form
-              className="flex items-center gap-1.5"
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (trimmed) void send({ text: trimmed });
-              }}
-            >
-              <input
-                type="text"
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-                maxLength={TALK_TEXT_MAX}
-                aria-label={TALK_UI.free}
-                placeholder={TALK_UI.free}
-                disabled={busy}
-                className={`h-8 min-w-0 flex-1 rounded bg-panel2 px-2 text-sm text-ink outline-none ${FOCUS}`}
-                data-incoming-text
-              />
-              <Button kind="main" size="sm" icon={SendIcon} type="submit" className={FOCUS} disabled={busy || trimmed === ""} data-incoming-send>
-                {busy ? TALK_UI.sending : TALK_UI.send}
-              </Button>
-            </form>
           </div>
         )}
         {error && (
@@ -447,29 +402,35 @@ export function IncomingCall({
           </p>
         )}
 
-        <div className="mt-5 flex gap-2">
-          {phase === "ringing" ? (
-            <>
-              <Button kind="danger" size="lg" icon={PhoneXMarkIcon} onClick={done} data-incoming-action="decline">
-                {CALL_UI.decline}
-              </Button>
-              <Button kind="main" size="lg" icon={PhoneIcon} onClick={answer} className="flex-1" data-incoming-action="answer">
-                {CALL_UI.answer}
-              </Button>
-            </>
-          ) : (
-            <>
-              {voiceOk && (
-                <Button kind="plain" size="lg" icon={SpeakerWaveIcon} onClick={() => void play()} disabled={playing} data-incoming-action="play">
-                  {CALL_UI.play}
-                </Button>
-              )}
-              <Button kind="danger" size="lg" icon={PhoneXMarkIcon} onClick={done} disabled={busy} className="flex-1" data-incoming-action="hangup">
-                {CALL_UI.hangUp}
-              </Button>
-            </>
-          )}
-        </div>
+        {phase === "ringing" ? (
+          <div className="mt-5 flex gap-2">
+            <Button kind="danger" size="lg" icon={PhoneXMarkIcon} onClick={done} data-incoming-action="decline">
+              {CALL_UI.decline}
+            </Button>
+            <Button kind="main" size="lg" icon={PhoneIcon} onClick={answer} className="flex-1" data-incoming-action="answer">
+              {CALL_UI.answer}
+            </Button>
+          </div>
+        ) : (
+          <div className="sticky bottom-0 -mx-5 mt-3 bg-panel px-5 pt-1" data-incoming-reply={canReply ? "" : undefined}>
+            <CallReply
+              asks={CALL_IN_ASKS}
+              lines={lines}
+              canReply={canReply}
+              busy={busy}
+              onSend={send}
+              onHangUp={done}
+              mark="incoming"
+              extra={
+                voiceOk ? (
+                  <Button kind="plain" size="lg" icon={SpeakerWaveIcon} onClick={() => void play()} disabled={playing} data-incoming-action="play">
+                    {CALL_UI.play}
+                  </Button>
+                ) : null
+              }
+            />
+          </div>
+        )}
       </div>
     </div>
   );

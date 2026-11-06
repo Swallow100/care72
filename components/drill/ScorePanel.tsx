@@ -111,6 +111,7 @@ export function ScorePanel({
           <Count label={SCORE_LABELS.repeat} n={view.extra.counts.repeat} k="repeat" />
           <Count label={`${SCORE_LABELS.asks} ${SCORE_LABELS.asksOpen}`} n={view.extra.counts.asksOpen} k="asks" />
           <Count label={SCORE_LABELS.talk} n={view.extra.counts.talks} unit={SCORE_LABELS.talks} k="talks" />
+          {view.extra.counts.voiced > 0 && <Count label={SCORE_LABELS.voiced} n={view.extra.counts.voiced} unit={SCORE_LABELS.talks} k="voiced" />}
         </dl>
         {view.extra.wasted.length > 0 && (
           <Detail title={SCORE_LABELS.wasted} empty={false} k="wasted">

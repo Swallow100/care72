@@ -600,6 +600,7 @@ export function DrillPaper({ record, office, today, ai = null }: { record: Drill
                               <Fragment key={i}>
                                 {i > 0 && "　"}
                                 {l.who === "cm" ? TALK_UI.me : (r.c.callee?.label ?? callerLabel(r.c.source, screen.contacts[r.c.person] ?? []))}
+                                {l.voice && <span data-paper-voice>（{TALK_UI.voice}）</span>}
                                 {l.ai && <span className="drill-ai"> AI</span>}
                                 {t(`「${l.text}」`)}
                               </Fragment>
@@ -650,13 +651,30 @@ export function DrillPaper({ record, office, today, ai = null }: { record: Drill
                       <td data-facts={a.id}>{t(facts.join("・"))}</td>
                       <td>
                         {a.result ? ACTION_STATUS_LABELS[a.result.status] : ACTION_UI.during}
-                        {/* 通話の往復（T93）は畳んで数だけ */}
+                        {/* 通話の往復（T93）の数。言葉は下の行（T155） */}
                         {turns > 0 && <span data-talk={turns}>{t(`・${turns} ${SCORE_LABELS.talks}`)}</span>}
                         {marks.length > 0 && <span data-mark={marks.join(" ")}>・{marks.join("・")}</span>}
                         {/* 通話で聞いた安否を表に渡さなかった手（T84、至急維持）。本番の電話と同じ言葉 */}
                         {screen.refused?.[a.id] && <span data-heard-refused> {t(screen.refused[a.id])}</span>}
                       </td>
                     </tr>
+                    {/* 外へ掛けた電話の往復（T155 で全部の言葉を。声で入れた言葉は「（声）」、本人役の言葉は AI の印） */}
+                    {turns > 0 && (
+                      <tr data-talk-lines={a.id}>
+                        <td />
+                        <td colSpan={5}>
+                          {(a.result?.talk ?? []).map((l, i) => (
+                            <Fragment key={i}>
+                              {i > 0 && "　"}
+                              {l.who === "cm" ? TALK_UI.me : (calleeText(a) ?? "")}
+                              {l.voice && <span data-paper-voice>（{TALK_UI.voice}）</span>}
+                              {l.ai && <span className="drill-ai"> AI</span>}
+                              {t(`「${l.text}」`)}
+                            </Fragment>
+                          ))}
+                        </td>
+                      </tr>
+                    )}
                     {visit && (
                       <tr data-visit={a.id}>
                         <td />

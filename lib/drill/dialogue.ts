@@ -15,12 +15,11 @@ import { ASK_KINDS, type AskKind, type DrillKind, type WorldState } from "./scen
 
 // ---------- 上限 ----------
 
-/** 1 つの電話で続けられる往復の数 */
-export const TALK_MAX = 3;
-/** 自由の 1 文の長さ（字） */
-export const TALK_TEXT_MAX = 60;
-/** 1 往復で進む時計（分） */
-export const TALK_MINUTES = 2;
+/** 1 つの電話で続けられる往復の数（T155 で 3 から 8 に。着信・発信とも） */
+export const TALK_MAX = 8;
+/** 自由の 1 文の長さ（字）。話した文が入るように T155 で 60 から 120 に */
+export const TALK_TEXT_MAX = 120;
+// 1 往復で進む時計は文の長さで 1〜3 分（T155、lib/drill/talk-turn.ts の talkMinutesOf。前は 1 往復 2 分）
 /** 1 往復の返事の頼み事の数 */
 export const TALK_ASKS_MAX = 2;
 /** 訪問の頼み事の数 */
@@ -71,6 +70,8 @@ export type TalkLine = {
   minute: number;
   ask?: TalkAsk;
   asks?: AskKind[];
+  /** ケアマネが声で入れた文（T155。マイクの文字起こしから。直した文も含む）。色と順には使わない */
+  voice?: true;
 };
 
 /** 訪問で着いたときの様子（本人役 Haiku × 1 回）。色・4 問・聞いた安否は変えない */
@@ -184,6 +185,20 @@ export const TALK_UI = {
   visitee: "訪問先",
   /** ケアマネの吹き出しの話し手 */
   me: "自分",
+  // ---- T155: 通話の画面（着信と発信で同じ） ----
+  /** 声で入れた行の印 */
+  voice: "声",
+  /** マイクで話す・止める・聞いている間 */
+  speak: "話す",
+  speakStop: "停止",
+  listening: "聞取中",
+  micDenied: "マイク不可",
+  noSpeech: "音声なし",
+  speechFailed: "認識失敗",
+  /** 外へ掛けた電話の通話の画面の頭 */
+  calling: "発信",
+  /** 通話の画面を開き直す */
+  reopen: "通話",
 } as const;
 
 // ---------- Claude に渡す言い方（画面の言葉ではない） ----------
@@ -339,6 +354,7 @@ function lineOf(v: unknown): TalkLine | null {
     minute: l.minute,
     ...(isTalkAsk(l.ask) ? { ask: l.ask } : {}),
     ...(l.who === "them" && asks.length > 0 ? { asks } : {}),
+    ...(l.who === "cm" && l.voice === true ? { voice: true as const } : {}),
   };
 }
 

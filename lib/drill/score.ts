@@ -499,7 +499,7 @@ export function scoreAsks(asks: Readonly<Record<string, ReadonlyArray<Ask>>> | u
 // ---------- T93 の欄（通話の往復・訪問の様子。T93 が入る前の記録には無い） ----------
 
 /** 通話の往復の 1 行（T93 の result.talk の読む所だけ。cm はケアマネ、them は相手） */
-export type TalkRead = { who: "cm" | "them"; minute: number | null };
+export type TalkRead = { who: "cm" | "them"; minute: number | null; voice?: true };
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 
@@ -508,7 +508,9 @@ export function talkOf(a: Pick<ActionRecord, "result">): TalkRead[] {
   const talk = a.result && isObj(a.result) ? (a.result as { talk?: unknown }).talk : undefined;
   if (!Array.isArray(talk)) return [];
   return talk.flatMap((x): TalkRead[] =>
-    isObj(x) && (x.who === "cm" || x.who === "them") ? [{ who: x.who, minute: typeof x.minute === "number" ? x.minute : null }] : [],
+    isObj(x) && (x.who === "cm" || x.who === "them")
+      ? [{ who: x.who, minute: typeof x.minute === "number" ? x.minute : null, ...(x.who === "cm" && x.voice === true ? { voice: true as const } : {}) }]
+      : [],
   );
 }
 
@@ -527,8 +529,8 @@ export function visitOf(a: Pick<ActionRecord, "result">): VisitRead | null {
   return { condition, asks: [...new Set(asks)], ai: v.ai !== false };
 }
 
-/** 通話の往復の数（往復の合計と、往復のあった通話の数） */
-export type TalkScore = { turns: number; calls: number };
+/** 通話の往復の数（往復の合計と、往復のあった通話の数と、そのうち声で入れた往復の数〔T155〕） */
+export type TalkScore = { turns: number; calls: number; voiced?: number };
 
 /**
  * 通話の往復の数。外へ掛けた電話（手の返事の talk）と、掛かってきた電話（T127。着信の記録の talk）の両方を数える
@@ -536,11 +538,14 @@ export type TalkScore = { turns: number; calls: number };
 export function scoreTalks(actions: ReadonlyArray<ActionRecord>, incoming: ReadonlyArray<Pick<CallRecord, "talk">> = []): TalkScore {
   let turns = 0;
   let calls = 0;
+  let voiced = 0;
   for (const a of actions) {
-    const n = talkTurns(a);
+    const talk = talkOf(a);
+    const n = talk.filter((x) => x.who === "cm").length;
     if (n > 0) {
       turns += n;
       calls += 1;
+      voiced += talk.filter((x) => x.voice).length;
     }
   }
   for (const c of incoming) {
@@ -548,9 +553,10 @@ export function scoreTalks(actions: ReadonlyArray<ActionRecord>, incoming: Reado
     if (n > 0) {
       turns += n;
       calls += 1;
+      voiced += (c.talk ?? []).filter((l) => l.who === "cm" && l.voice).length;
     }
   }
-  return { turns, calls };
+  return { turns, calls, voiced };
 }
 
 // ---------- まとめ ----------
@@ -635,12 +641,14 @@ export function scoreDrill(input: ScoreInput): DrillScore {
 }
 
 /** 内訳の数（無い記録は 0。T94 より前に残した採点） */
-export function extrasCount(s: Partial<ScoreExtras>): { wasted: number; repeat: number; asksOpen: number; talks: number } {
+export function extrasCount(s: Partial<ScoreExtras>): { wasted: number; repeat: number; asksOpen: number; talks: number; voiced: number } {
   return {
     wasted: s.wasted?.total ?? 0,
     repeat: s.repeat?.total ?? 0,
     asksOpen: s.asks?.open ?? 0,
     talks: s.talks?.turns ?? 0,
+    // 声で入れた往復（T155）
+    voiced: s.talks?.voiced ?? 0,
   };
 }
 
