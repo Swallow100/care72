@@ -116,26 +116,25 @@ export const SCENES: Scene[] = [
     title: "問いかけ",
     ground: "blue",
     at: 0,
-    end: 13.1,
+    end: 14.8,
     shots: [
       {
         at: 0,
-        end: 4.1,
+        end: 3.7,
         kind: "text",
         footage: "R01",
         label: "ケアマネージャーの訪問の後ろ姿（B01）をぼかして奥に。問いかけの文字",
         bg: "B01",
         // 冒頭は問いかけ（N01）。最初の 10 秒で誰のどんな課題かを言う（N01・N02）。計画の名前を一番大きく
         cues: [
-          { text: "突然ですが", line: "N01", size: "h1", row: 0 },
-          { text: "個別避難計画", line: "N01", size: "display", row: 1, hold: true },
-          { text: "を知っていますか", line: "N01", size: "h1", row: 1 },
+          { text: "個別避難計画", line: "N01", size: "display", row: 0, hold: true },
+          { text: "を知っていますか", line: "N01", size: "h1", row: 0 },
         ],
       },
       // N02 の前半「災害のとき…決めておく計画です」の間は、左に計画の中身を言葉で、右に本物の計画書（松山市の様式の 1 頁目）
       {
-        at: 4.1,
-        end: 8.8,
+        at: 3.7,
+        end: 10.0,
         kind: "split",
         footages: ["", "R03"],
         // 様式の頭（題名「個別避難計画」が見える所。R03-3 の 0〜4 秒）
@@ -151,8 +150,8 @@ export const SCENES: Scene[] = [
         ],
       },
       {
-        at: 8.8,
-        end: 13.1,
+        at: 10.0,
+        end: 14.8,
         kind: "number",
         bg: "B04",
         label: "作成率",
@@ -160,8 +159,8 @@ export const SCENES: Scene[] = [
         value: "15.1%",
         lines: ["個別避難計画あり"],
         sub: "対象 670 万人",
-        // 数え上がりが止まるのは N02 の「15.1%」（仮の声で 11.0 秒）
-        beats: [2.2],
+        // 数え上がりが止まるのは N02 の「15.1%」の言い終わり（仮の声で 11.5 秒から）
+        beats: [2.6],
         cues: [
           { text: "できているのは", line: "N02", size: "h2", slot: "lead" },
           { text: "だけ", line: "N02", size: "h1", slot: "tail" },
@@ -174,28 +173,27 @@ export const SCENES: Scene[] = [
     id: "S2",
     title: "理由",
     ground: "blue",
-    at: 13.1,
-    end: 25.2,
+    at: 14.8,
+    end: 27.5,
     shots: [
-      // 作者の紹介は大きな字にせず、左下の名札（N03 の「私の家族はケアマネージャーで」）
-      // 真ん中には N03 の後半「その理由を家で見てきました」（作者が身近な所にいること）。名札より大きいが、作者の紹介そのものは大きくしない
+      // 作者の紹介は左下の名札。真ん中には N03 の頭「私の家族はケアマネージャー」（作者が身近な所にいること。11/6 に文を短くした）
       {
-        at: 13.1,
-        end: 17.2,
+        at: 14.8,
+        end: 17.6,
         kind: "plate",
         label: "作者の名札（医学部の学生・家族にケアマネージャー）",
-        marker: "家で見てきた",
+        marker: "ケアマネージャー",
         lines: ["作者　医学部の学生", "家族にケアマネージャー"],
         beats: [0.3, 0.9],
         bg: "B02",
         cues: [
-          { text: "その理由を", line: "N03", size: "h1", row: 0 },
-          { text: "家で見てきた", line: "N03", say: "家で見てきました", size: "hero", row: 1 },
+          { text: "私の家族は", line: "N03", size: "h1", row: 0 },
+          { text: "ケアマネージャー", line: "N03", size: "hero", row: 1 },
         ],
       },
       {
-        at: 17.2,
-        end: 21.5,
+        at: 17.6,
+        end: 22.7,
         kind: "split",
         // 録画の番号が空の所は文字の面（sub を「・」で分けて並べる）
         footages: ["", "R03"],
@@ -203,15 +201,15 @@ export const SCENES: Scene[] = [
         froms: [0, 11],
         lines: ["知っている", "書けていない"],
         bg: "B03",
-        // N03 の「利用者のことは知っているのに」「書く時間がないんです」に合わせて（仮の声で 17.3 秒・19.1 秒）
-        beats: [0.1, 1.9],
+        // N03 の「利用者のことは知っているのに」「書く時間がないんです」に合わせて（仮の声で 17.7 秒・20.0 秒）
+        beats: [0.1, 2.4],
         sub: "薬と残り日数・医療機器と電池・家族と支援者・夜に来られる人",
         label: "左に台帳の区分の名前、右に様式の未確認の欄",
         marker: "書けていない",
       },
       {
-        at: 21.5,
-        end: 25.2,
+        at: 22.7,
+        end: 27.5,
         kind: "number",
         bg: "B02",
         bgFrom: 4,
@@ -221,7 +219,8 @@ export const SCENES: Scene[] = [
         value: "4 人中 4 人",
         lines: ["市町村に出して終わり"],
         sub: "アンケート（ケアマネージャー 4 人、11/4〜11/5）",
-        beats: [2.6],
+        // 「4 人全員」に合わせて（仮の声で 24.1 秒）
+        beats: [1.5],
         cues: [{ text: "アンケートでも", line: "N05", size: "h2", slot: "lead" }],
       },
     ],
@@ -230,42 +229,42 @@ export const SCENES: Scene[] = [
     id: "S3",
     title: "ケア72",
     ground: "blue",
-    at: 25.2,
+    at: 27.5,
     end: 46,
     shots: [
       {
-        at: 25.2,
-        end: 32.5,
+        at: 27.5,
+        end: 32.4,
         kind: "text",
         label: "気づき（楽に作れて、実際の災害でも役立つ計画）",
-        marker: "大きくなる",
+        marker: "出る",
         bg: "B05",
         // 2 つの条件は下げずに残し、最後の「大きくなる」を一番大きく
         cues: [
           { text: "楽に作れて", line: "N06", size: "hero", row: 0, hold: true },
-          { text: "実際の災害でも役立つ計画", line: "N06", size: "hero", row: 1, hold: true },
-          { text: "作る意味も", line: "N06", size: "h1", row: 2 },
-          { text: "大きくなる", line: "N06", size: "display", row: 2 },
+          { text: "災害でも役立つ計画", line: "N06", size: "hero", row: 1, hold: true },
+          { text: "作る意味が", line: "N06", size: "h1", row: 2 },
+          { text: "出る", line: "N06", size: "display", row: 2 },
         ],
       },
       // 題名を 72 時間の輪（G1）の中に置く。題名は N07 の「ケア72」で出す（仮の声で 33.0 秒）。輪の中に名前の 72 時間の意味を声に合わせて
       {
-        at: 32.5,
-        end: 38,
+        at: 32.4,
+        end: 38.3,
         kind: "ring",
         label: "題名と 72 時間の輪",
-        marker: "災害直後の 72 時間",
+        marker: "72 時間",
         lines: ["ケア72"],
-        sub: "助けが届きにくい災害直後の 72 時間",
+        sub: "災害直後の 72 時間",
         beats: [0.5],
         cues: [
           { text: "72", line: "N07", say: "72は", slot: "mark" },
-          { text: "助けが届きにくい", line: "N07", size: "h1", row: 0, hold: true },
-          { text: "災害直後の 72 時間", line: "N07", size: "h1", row: 1, hold: true },
+          { text: "災害直後の", line: "N07", size: "h1", row: 0, hold: true },
+          { text: "72 時間", line: "N07", say: "72時間", size: "h1", row: 1, hold: true },
         ],
       },
       {
-        at: 38,
+        at: 38.3,
         end: 46,
         // 3 本立ての円柱（parts/Carousel.tsx。作者の頼み 11/5）。声の「計画ができ」「訓練もでき」「災害時は」で円柱が回り、その窓が正面に来る。
         // 見出しの左に白いロゴの印。前の 72 時間の輪の印がそこへ縮んで収まるので、重ねずに切り替える
@@ -475,37 +474,19 @@ export const SCENES: Scene[] = [
     title: "数字と一言",
     ground: "blue",
     at: 163,
-    end: 172.5,
+    end: 170.5,
     shots: [
-      {
-        at: 163,
-        end: 169,
-        kind: "number",
-        bg: "B07",
-        label: "計画 1 件の時間の前と後",
-        value: "［X 時間］ → ［Y 分］",
-        // 「→」のある値は前と後を 1 行に並べる（Graphics.tsx の Compare）。lines は各数の下の名前
-        lines: ["ふだん", "ケア72"],
-        sub: "実測 架空の事例［N］件・ケアマネージャー［N］人。ふだんの時間は本人の申告",
-        // 上に「協力ケアマネージャーの計画 1 件」（文の頭で出す）、前の数は声の「ふだん」、後の数は声の「ケア72 で」で出す（声を録るまでは文の秒の割合）
-        cues: [
-          { text: "協力ケアマネージャーの計画 1 件", line: "N28", say: "協力してくれたケアマネージャーの計画1件は", size: "h2", slot: "lead" },
-          { text: "ふだん", line: "N28", slot: "mark" },
-          { text: "ケア72", line: "N28", say: "ケア72で", slot: "mark" },
-        ],
-      },
-      // 背景の B07 は 1 本（14 秒）を 2 つの絵で続けて使う（前の絵が 6 秒）
+      // 計画 1 件の時間（N28）は測れないので外した（作者の決め 11/6）。空いた秒は N29 と N30 へ
       // アンケートの問 9（AI が下書きを作るなら作る気になるか）: なる 1・少しなる 2・ならない 1。一言は「なる」と答えた人の理由（引用可の人だけ。引用不可の人の文は使わない）
       {
-        at: 169,
-        end: 172.5,
+        at: 163,
+        end: 170.5,
         kind: "quote",
         label: "アンケートの一言（問 9 の理由）",
         lines: ["「作成時間が大幅に短くなると思われるから。」"],
         by: "アンケートの答え（ケアマネージャー）",
         sub: "AI の下書きなら作る気に　なる 1 人・少しなる 2 人・ならない 1 人（4 人中）",
         bg: "B07",
-        bgFrom: 6,
       },
     ],
   },
@@ -513,12 +494,12 @@ export const SCENES: Scene[] = [
     id: "S9",
     title: "締め",
     ground: "blue",
-    // 締めの文（N30）が長くなったので 2:52.5 から（11/4 15:5x）。前半は言葉、「本当に使える形に」からロゴが描かれる
-    at: 172.5,
+    // N28 を外して 2:50.5 から（11/6）。前半は言葉、「本当に使える形に」からロゴが描かれる
+    at: 170.5,
     end: 180,
     shots: [
       {
-        at: 172.5,
+        at: 170.5,
         end: 178.3,
         kind: "text",
         label: "締めの言葉（課題は山積み・それでも・まずは一部から・本当に使える形に）",
@@ -541,15 +522,15 @@ export const SCENES: Scene[] = [
 ];
 
 export const LINES: Line[] = [
-  { id: "N01", at: 0.3, end: 3.9, ja: "突然ですが、『個別避難計画』を知っていますか。", en: "Have you heard of an \"individual evacuation plan\"?" },
-  { id: "N02", at: 4.1, end: 12.9, ja: "災害のとき、在宅の高齢者を誰がどう助けるかを決めておく計画です。でも、できているのは対象者の 15.1% だけ。", en: "It sets out who will help an older person living at home in a disaster, and how. But only 15.1% of the people who need one have one." },
-  { id: "N03", at: 13.1, end: 21.3, ja: "私の家族はケアマネージャーで、その理由を家で見てきました。利用者のことは知っているのに、書く時間がないんです。", en: "My family member is a care manager, and I've seen why at home. They know their clients well, but there's no time to write it down." },
+  { id: "N01", at: 0.3, end: 3.5, ja: "『個別避難計画』を知っていますか。", en: "Have you heard of an \"individual evacuation plan\"?" },
+  { id: "N02", at: 3.7, end: 14.6, ja: "災害のとき、在宅の高齢者を誰がどう助けるかを決めておく計画です。でも、できているのは 15.1% だけ。", en: "It sets out who will help an older person living at home in a disaster, and how. But only 15.1% have one." },
+  { id: "N03", at: 14.8, end: 22.5, ja: "私の家族はケアマネージャー。利用者のことは知っているのに、書く時間がないんです。", en: "My family member is a care manager. They know their clients well, but there's no time to write it down." },
   // N04 は消した。ID は振り直さない（欠番）
-  { id: "N05", at: 21.5, end: 25.2, ja: "アンケートでも、4 人全員が『市町村に出して終わり』と答えました。", en: "In our survey, all 4 said their plans were just handed to the city and that was it." },
-  { id: "N06", at: 25.4, end: 32.4, ja: "そこで考えました。楽に作れて、実際の災害でも役立つ計画なら、作る意味も大きくなる。", en: "So I thought: if a plan were easy to make and actually useful in a real disaster, making it would mean much more." },
-  { id: "N07", at: 32.6, end: 37.9, ja: "それがケア72。72 は、助けが届きにくい災害直後の 72 時間です。", en: "That's Care72. The 72 stands for the first 72 hours after a disaster, when help is slow to arrive." },
+  { id: "N05", at: 22.7, end: 27.4, ja: "アンケートでも、4 人全員が『市町村に出して終わり』。", en: "In our survey, all 4 said their plans were just handed to the city and that was it." },
+  { id: "N06", at: 27.6, end: 32.3, ja: "楽に作れて、災害でも役立つ計画なら、作る意味が出る。", en: "A plan that is easy to make and useful in a disaster is worth making." },
+  { id: "N07", at: 32.5, end: 38.2, ja: "それがケア72。72 は、災害直後の 72 時間です。", en: "That's Care72. The 72 stands for the first 72 hours after a disaster." },
   // N08 は 3 本立ての文に使い直した（前の能登の関連死の文は 11/4 の冒頭の組み替えで外した）
-  { id: "N08", at: 38.1, end: 45.8, ja: "話すだけで計画ができ、訓練もでき、災害時は安否と大事な情報をまとめて、医療班と共有します。", en: "Talk, and the plan is made. Run drills with it. In a disaster, it gathers who is safe and what matters, and shares it with the medical team." },
+  { id: "N08", at: 38.4, end: 45.8, ja: "話すだけで計画ができ、訓練もでき、災害時は医療班と情報を共有します。", en: "Talk, and the plan is made. Run drills with it. In a disaster, it shares what matters with the medical team." },
   // N09（輪島の手書きのメモ）は 11/4 の冒頭の組み替えで外した（欠番）
   { id: "N10", at: 46.3, end: 51.3, ja: "主役は架空の利用者、山田ハナさん。84 歳、在宅酸素。", en: "Meet a fictional client, Hana Yamada. 84, on home oxygen." },
   { id: "N11", at: 51.5, end: 58.3, ja: "ケアマネージャーが話すと、Claude が台帳の欄に分け、空いている所だけ聞き返します。", en: "The care manager talks. Claude sorts it into her record, and asks back only about what's missing." },
@@ -569,9 +550,8 @@ export const LINES: Line[] = [
   { id: "N25", at: 143.0, end: 147.7, ja: "電話し、避難所の医療班が受け入れると、要約が届きます。", en: "The care manager calls, and when the shelter's medical team takes her in, the summary is there." },
   { id: "N26", at: 150.3, end: 156.0, ja: "作ったのは Claude Code。設計と実装を分け、並行で進めました。", en: "It was built with Claude Code, with design and implementation split and run in parallel." },
   { id: "N27", at: 156.3, end: 162.7, ja: "フックで鍵と配信を守り、本名を見ない MCP と見直し役で確かめています。", en: "Hooks guard the keys and deploys. An MCP server that never sees real names, and reviewer agents, check the work." },
-  { id: "N28", at: 163.3, end: 169, ja: "協力してくれたケアマネージャーの計画 1 件は、ふだん［X 時間］、ケア72 で［Y 分］。", en: "For the care manager who helped us, one plan usually takes [X hours]. With Care72, [Y minutes]." },
-  { id: "N29", at: 169.2, end: 172.3, ja: "AI の下書きなら作る気になる人は、4 人中 3 人。", en: "With an AI draft, 3 of 4 said they would be willing to make plans." },
-  { id: "N30", at: 172.6, end: 179.9, ja: "実用化の課題は山積みです。それでも、まずは一部から、本当に使える形にしていきます。", en: "Getting this into real use still faces many hurdles. But we'll keep working to make it truly usable, starting with one part." },
+  { id: "N29", at: 163.5, end: 168.3, ja: "AI の下書きなら作る気になる人は、4 人中 3 人。", en: "With an AI draft, 3 of 4 said they would be willing to make plans." },
+  { id: "N30", at: 170.8, end: 179.9, ja: "実用化の課題は山積みです。それでも、まずは一部から、本当に使える形にしていきます。", en: "Getting this into real use still faces many hurdles. But we'll keep working to make it truly usable, starting with one part." },
 ];
 
 /** ルールの表の 1 枚（F2）に出す行。docs/TRIAGE.md の「色と理由の 1 行」から写した 13 行のうちの 7 行。撮影の前に今の表と照らす */
