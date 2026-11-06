@@ -135,7 +135,7 @@ describe("担当一覧・訓練の行の詳細の「薬」（lib/list/detail.ts�
     expect(none).not.toContain("data-med-lines");
     for (const file of ["components/list/RowDetail.tsx", "components/drill/DrillRowDetail.tsx"]) {
       const src = readFileSync(join(root, file), "utf8");
-      expect(src, file).toContain("{d.meds.lines.length > 0 && (");
+      expect(src, file).toMatch(/\{(d\.meds && )?d\.meds\.lines\.length > 0 && \(/);
       expect(src, file).toContain("<MedLines lines={d.meds.lines} more={d.meds.more} />");
     }
   });
