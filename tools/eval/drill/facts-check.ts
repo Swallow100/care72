@@ -209,6 +209,19 @@ export function factHits(outcome: RunOutcome, people: Readonly<Record<string, Fa
     if (powerBack(f) && asks.some((k) => k === "power" || k === "battery")) hit("ask_after_power", person, minute, "頼み事 電源・電池");
   }
 
+  // 掛かってきた電話の往復の言葉（T158。往復は手の記録の外。drive.ts が集めた incoming。着信に出た時刻の帳面で）
+  for (const c of outcome.incoming ?? []) {
+    if (!c.person) continue;
+    const prev = lastStateBefore(byPerson.get(c.person) ?? [], c.minute);
+    const f = factsAt(c.person, prev, c.minute);
+    const ctx = { ...slipContextOf(f), kin: null, ...(leftAt(c.person, c.minute) ? { leftBehind: true } : {}) };
+    for (const l of c.lines) {
+      if (l.who === "cm" || !l.text || !l.ai) continue;
+      checked += 1;
+      for (const s of sentenceHits(l.text, ctx)) hit(s.rule, c.person, typeof l.minute === "number" ? l.minute : c.minute, `incoming: ${cut(s.text)}`);
+    }
+  }
+
   // 電池の残りの数の流れ（T158）。同じ人の言った残りから終わる時刻を出し、前に言った物と食い違う（予備に替えた・電気が戻ったと言わずに）
   for (const [person, segs] of batterySaid(byPerson, r.actions as LooseAction[])) {
     for (const said of segs) for (let i = 1; i < said.length; i++) {
@@ -363,6 +376,7 @@ function sentenceHits(text: string, ctx0: Parameters<typeof sentenceSlip>[1]): A
 /** その分より前の、その人のいちばん新しい安否 */
 function lastStateBefore(turns: ReadonlyArray<LooseTurn & { at: number }>, minute: number): PersonState | null {
   let out: PersonState | null = null;
-  for (const u of turns) if (Math.round(u.at * 60) <= minute) out = stateOf(u);
+  // いる所は前の様子から引き継ぐ（T158。本人役の門が見る本人の様子と同じ）
+  for (const u of turns) if (Math.round(u.at * 60) <= minute) out = stateOf(u, out);
   return out;
 }

@@ -34,7 +34,7 @@ export const GUARDS: ReadonlyArray<Guard> = [
     label: "本人役の言葉が文の途中で終わらない",
     suspects: ["lib/drill/persona.ts", "lib/drill/clip.ts"],
   },
-  // T158: 評価の 6 回目で、予備で動いているのに残りの数を予備と言わない言葉が 3（r6 の記録に今の台を当てた数）。門が「予備の」を足すので画面の言葉では 0
+  // T158: 評価の 6 回目で、予備で動いているのに残りの数を予備と言わない言葉が 4（r6 の記録に今の台を当てた数）。門が「予備の」を足すので画面の言葉では 0
   {
     id: "drill-spare-said",
     bench: "drill",
