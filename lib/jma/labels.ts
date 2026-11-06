@@ -43,7 +43,15 @@ export function isQuakeCode(code: string): boolean {
 export const WARNING_SOURCE = {
   text: "出典：気象庁ホームページ（https://www.jma.go.jp/bosai/warning/）、気象庁防災情報XML",
   href: "https://www.jma.go.jp/bosai/warning/",
+  /** 押せる字（T166。URL をそのまま押せる形で並べるとアプリの外へ出た。URL は押せない字で残す） */
+  link: "気象庁ホームページ",
 } as const;
+
+/** 出典の文を押せる字の前後に分ける（文は変えない）。無ければ全部を前に */
+export function splitSource(s: { text: string; link: string }): { before: string; after: string } {
+  const at = s.text.indexOf(s.link);
+  return at < 0 ? { before: s.text, after: "" } : { before: s.text.slice(0, at), after: s.text.slice(at + s.link.length) };
+}
 
 /** 震度の文字（電文の 5- など）を気象庁の呼び方に（5弱・5強…）。読み替えでなく、気象庁の表記の対応 */
 export const INTENSITY_LABELS: Readonly<Record<string, string>> = {
@@ -71,6 +79,8 @@ export function magnitudeLabel(v: string | null): string {
 /** 画面の言葉（2〜4 字の漢語。警報の名前は気象庁の正式な名前のまま出すので、ここには持たない） */
 export const JMA_LABELS = {
   title: "気象庁",
+  /** 出典のリンクの読み上げ（別のタブで外へ。T166） */
+  external: "外部",
   warning: "警報",
   advisory: "注意報",
   matched: "該当",

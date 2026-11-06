@@ -31,12 +31,18 @@ export const CONFIRM_LABELS = {
   /** 平時から災害モードへの切替（T79） */
   disasterTitle: "災害切替",
   disasterOk: "切替",
+  /** 平時と災害モードの切替の窓のやめる方（「取消」を発災を取り消す物と読まれた。T166） */
+  stayNormal: "平時維持",
+  stayDisaster: "発災継続",
   unlistTitle: "一覧除外",
   unlistOk: "外す",
   abandonTitle: "訓練中断",
   abandonOk: "中断",
   abandonBody: "中断すると再開不可",
 } as const;
+
+/** 印刷見本の帯の見本だけを閉じるボタン（T166。前の「見本終了」はデータを戻す物と読まれた。見本の表示をやめて元の表示に戻るだけ） */
+export const PRINT_BAR_LABELS = { close: "通常表示" } as const;
 
 /** AI の待ちの印（components/ui/Loader72.tsx）の文字 */
 export const WAIT_LABELS = {

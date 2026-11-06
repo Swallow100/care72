@@ -45,7 +45,7 @@ export const ACTOR_SPEC = { model: HAIKU, effort: "low" as const, maxTokens: 150
 /** 1 頁の読みを AI に渡す形（押せる物は 1 行ずつ） */
 export function pageForActor(s: Snapshot): Record<string, unknown> {
   const line = (i: Snapshot["items"][number]) =>
-    `[${i.ref}] ${i.role} ${i.name || "（名前なし）"}${i.value ? ` =${i.value}` : ""}${i.checked ? " ✓" : ""}${i.disabled ? " （押せない）" : ""}${i.options ? ` {${i.options.join("|")}}` : ""}${i.zone ? ` @${i.zone}` : ""}`;
+    `[${i.ref}] ${i.role} ${i.name || "（名前なし）"}${i.value ? ` =${i.value}` : ""}${i.checked ? " ✓" : ""}${i.focused ? " （入力中）" : ""}${i.disabled ? " （押せない）" : ""}${i.options ? ` {${i.options.join("|")}}` : ""}${i.zone ? ` @${i.zone}` : ""}`;
   return {
     path: s.path,
     title: s.title,

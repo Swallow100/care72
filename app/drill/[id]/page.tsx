@@ -28,9 +28,12 @@ import { DisasterSummary } from "@/components/list/DisasterSummary";
 import { DisasterTable, type TableSlots } from "@/components/list/DisasterTable";
 import { CaseMap } from "@/components/map/CaseMap";
 import { StateTag } from "@/components/ui/Tag";
+import { canViewPage } from "@/lib/auth/roles";
 import { requirePage } from "@/lib/auth/server";
+import { loadDisasterState } from "@/lib/disaster/db";
+import { OFFICE_PATH } from "@/lib/disaster/http";
 import { sortCaseload, type SortKey } from "@/lib/caseload";
-import { elapsedText, shortJst } from "@/lib/disaster/state";
+import { DISASTER_KIND_LABELS, elapsedText, shortJst } from "@/lib/disaster/state";
 import { callerContact, callerLabel, callsOf, openMissedCalls } from "@/lib/drill/calls";
 import { drillScope, type DrillScope } from "@/lib/drill/db";
 import { nowHour } from "@/lib/drill/engine";
@@ -43,7 +46,7 @@ import { aiStatusFor } from "@/lib/claude/cloudflare";
 import type { AiStatus } from "@/lib/claude/status";
 import { aiStopBand } from "@/lib/drill/ai-stop";
 import { ScorePanel } from "@/components/drill/ScorePanel";
-import { DownloadIcon, PaperIcon, PrintIcon } from "@/components/ui/Icon";
+import { DownloadIcon, PaperIcon, PrintIcon, PlayIcon } from "@/components/ui/Icon";
 import { BusyLine } from "@/components/drill/BusyLine";
 import { ACT_LOG_LABELS } from "@/lib/drill/act-log";
 import { DRILL_LABELS, elapsedClockLabel, LOG_LABELS, SCENARIO_LABELS, STATUS_LABELS, VIRTUAL_LABELS } from "@/lib/drill/labels";
@@ -98,6 +101,8 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
   const ai = await aiStatusFor(scope.officeId).catch(() => null);
 
   const running = s.drill.status === "running";
+  // 事業所の今の状態と、事業所の画面の災害モードへの入口（T166。上の帯は訓練の間は訓練の想定なので、ここに出す）
+  const officeState = running && canViewPage(principal.role, "caseload") ? await officeKindOf(scope.officeId) : null;
   // 採点（T22）: 終わった・中断した訓練だけ。再生で見ている刻みでなく、訓練の全部で数える（loadDrillRecord が最後の刻みを読む）
   const scored = running ? null : await loadScore(scope, id, ai);
   // AI 停止の帯 1 本（T76）。刻みの跡（見ている刻みまで）と、進行中なら今の状態から
@@ -202,7 +207,18 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
         </span>
         <div className="ml-auto flex flex-wrap items-center gap-2">
           {running ? (
-            <DrillControls id={id} step={s.drill.step} done={false} clock={s.clock} left={s.left} minute={s.state.minute} />
+            <>
+              <DrillControls id={id} step={s.drill.step} done={false} clock={s.clock} left={s.left} minute={s.state.minute} />
+              {officeState && (
+                <span className="flex items-center gap-1.5 text-sm" data-office-entry>
+                  <span className="text-muted">{DRILL_LABELS.officeState}</span>
+                  <span className="font-bold">{officeState}</span>
+                  <ButtonLink href={OFFICE_PATH} kind="plain" icon={PlayIcon} aria-label={`${DRILL_LABELS.officeState} ${DRILL_LABELS.officeSwitch}`}>
+                    {DRILL_LABELS.officeSwitch}
+                  </ButtonLink>
+                </span>
+              )}
+            </>
           ) : (
             <>
               <ReplayNav shown={s.shown} reached={s.drill.step} hrefOf={(i) => here({ step: i })} />
@@ -469,6 +485,17 @@ async function callRecordsOf(id: string): Promise<CallRecord[]> {
 }
 
 /** 声を作れるか（Gemini の鍵）。読めなければ文字だけ */
+/** 事業所の今の状態の言葉（平時・大雨…）。読めなければ null（入口を出さない。訓練の画面は落とさない） */
+async function officeKindOf(officeId: string): Promise<string | null> {
+  try {
+    const { env } = await getCloudflareContext({ async: true });
+    return DISASTER_KIND_LABELS[(await loadDisasterState(env.DB, officeId)).kind];
+  } catch (e) {
+    console.error("事業所の状態を読めない", e);
+    return null;
+  }
+}
+
 async function voiceReady(): Promise<boolean> {
   try {
     const { env } = await getCloudflareContext({ async: true });

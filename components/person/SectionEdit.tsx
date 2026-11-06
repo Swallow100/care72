@@ -6,6 +6,8 @@
 // 読む側（面の中身）はサーバーで描いた物を children で受け取り、編集していない間はそのまま出す。
 // 面の中は組（lib/intake/fields.ts の FIELD_GROUPS、T145）に分ける: 面の下を面の中の灰色にし、組ごとに白い箱と見出し。
 // 組が 3 つ以上なら上に目次（押すとその組へ送る）。入力の欄に入った組・目次で飛んだ組の見出しを強くする。
+// T166: 目次はリンク（読み上げは「避難先 移動」）で、押すとその組の最初の欄にカーソルを置く（前は組が見えていると押しても何も変わらず、入力を開く物と読まれて 4 回押された）。
+// 「保存」「取消」と「変更 N 件」は開いている間、画面の下に留める（欄の下の遠い所にあり、保存の場所が分からなかった）。保存のあとは面の頭に「保存済」
 
 import { useRouter } from "next/navigation";
 import { Fragment, useState, type ComponentProps, type FocusEvent, type ReactNode } from "react";
@@ -112,6 +114,8 @@ export function SectionEdit({ section, data, head, children }: Props) {
   const [error, setError] = useState<string | null>(null);
   // 今直している組（入力の欄に入った組か、目次で飛んだ組）。開き直すと無し
   const [active, setActive] = useState<string | null>(null);
+  // 保存して閉じた（次に開くまで面の頭に「保存済」。T166）
+  const [saved, setSaved] = useState(false);
   const changes = open ? editChanges(section, open.base, open.draft) : [];
   // 同じ緊急・支援の順を 2 人に付けたら保存しない（サーバーも断る）
   const clashed = open !== null && section === "people" && (() => {
@@ -153,6 +157,7 @@ export function SectionEdit({ section, data, head, children }: Props) {
       return;
     }
     setOpen(null);
+    setSaved(true);
     router.refresh();
   }
 
@@ -160,6 +165,11 @@ export function SectionEdit({ section, data, head, children }: Props) {
     <div data-edit={section} data-editing={open ? "" : undefined}>
       <div className="flex items-baseline gap-2">
         {head}
+        {!open && saved && (
+          <span role="status" className="text-xs font-bold" data-edit-saved={section}>
+            {INTAKE_LABELS.saved}
+          </span>
+        )}
         {!open && (
           <Button
             size="sm"
@@ -169,6 +179,7 @@ export function SectionEdit({ section, data, head, children }: Props) {
             onClick={() => {
               setError(null);
               setActive(null);
+              setSaved(false);
               setOpen({ base: data, draft: editDraft(data) });
             }}
           >
@@ -192,7 +203,7 @@ export function SectionEdit({ section, data, head, children }: Props) {
           }}
         >
           <SectionForm section={section} data={open.base} draft={open.draft} set={set} active={active} onActive={setActive} />
-          <div className="flex flex-wrap items-center gap-2 px-1 pt-0.5">
+          <div className="sticky bottom-0 z-10 -mx-1.5 -mb-1.5 flex flex-wrap items-center gap-2 rounded-b-lg bg-panel2 px-2.5 py-1.5" data-edit-bar={section}>
             <Button type="submit" kind="main" size="sm" icon={SaveIcon} disabled={busy || changes.length === 0 || stopped} data-edit-save={section}>
               {INTAKE_LABELS.save}
             </Button>
@@ -209,7 +220,9 @@ export function SectionEdit({ section, data, head, children }: Props) {
                   {INTAKE_LABELS.missing} {blockers.join("・")}
                 </span>
               ) : (
-                <span className="text-muted">{changes.length} 件</span>
+                <span className="text-muted" data-edit-count>
+                  {INTAKE_LABELS.changeCount} {changes.length} 件
+                </span>
               )}
             </span>
           </div>
@@ -708,9 +721,12 @@ export function SectionForm({ section, data, draft, set, active = null, onActive
         <GroupNav
           groups={shown.map((x) => x.g)}
           active={active}
+          anchorOf={anchor}
           onJump={(id) => {
             onActive?.(id);
-            document.getElementById(anchor(id))?.scrollIntoView({ block: "start", behavior: "smooth" });
+            const box = document.getElementById(anchor(id));
+            box?.scrollIntoView({ block: "start", behavior: "smooth" });
+            box?.querySelector<HTMLElement>("input:not([type=checkbox]):not([type=radio]):not([type=hidden]),textarea")?.focus({ preventScroll: true });
           }}
         />
       )}
@@ -727,7 +743,17 @@ export function SectionForm({ section, data, draft, set, active = null, onActive
  * 組の目次（横に並べ、狭い幅では折り返す）。押すとその組へ送る。今の組は本文の色と下線（下地を敷かない）。
  * 面の中の灰色の上に置き、送っても面の上に留める（sticky）
  */
-function GroupNav({ groups, active, onJump }: { groups: readonly FieldGroup[]; active: string | null; onJump: (id: string) => void }) {
+function GroupNav({
+  groups,
+  active,
+  onJump,
+  anchorOf,
+}: {
+  groups: readonly FieldGroup[];
+  active: string | null;
+  onJump: (id: string) => void;
+  anchorOf: (id: string) => string;
+}) {
   return (
     <nav aria-label={INTAKE_LABELS.groupNav} className="sticky top-0 z-10 -mx-1.5 bg-panel2 px-1.5 py-0.5" data-group-nav>
       <ul className="flex flex-wrap gap-x-1 gap-y-0.5">
@@ -735,18 +761,22 @@ function GroupNav({ groups, active, onJump }: { groups: readonly FieldGroup[]; a
           const on = g.id === active;
           return (
             <li key={g.id}>
-              <button
-                type="button"
-                className={`rounded px-1.5 py-0.5 text-xs font-bold outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-accent ${
+              <a
+                href={`#${anchorOf(g.id)}`}
+                aria-label={`${g.label} ${INTAKE_LABELS.groupMove}`}
+                className={`inline-block rounded px-1.5 py-0.5 text-xs font-bold outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-accent ${
                   on ? "text-ink underline decoration-accent decoration-2 underline-offset-4" : "text-muted"
                 }`}
                 aria-current={on || undefined}
                 data-press=""
                 data-group-link={g.id}
-                onClick={() => onJump(g.id)}
+                onClick={(e) => {
+                  e.preventDefault();
+                  onJump(g.id);
+                }}
               >
                 {g.label}
-              </button>
+              </a>
             </li>
           );
         })}

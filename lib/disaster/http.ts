@@ -58,7 +58,9 @@ export async function modePost(db: D1Database, p: Principal | null, form: FormLi
     return { status: 303, location: parsed.error === "confirm" ? officeHref({ confirm: true }) : officeHref({ error: "bad" }) };
   }
   const r = await switchDisasterMode(db, scope, { ...parsed.value, at });
-  return { status: 303, location: r.ok ? OFFICE_PATH : officeHref({ error: r.error }) };
+  // 災害モードに入ったら頭に知らせ（T166。?started=1）
+  if (r.ok) return { status: 303, location: parsed.value.kind === "normal" ? OFFICE_PATH : `${OFFICE_PATH}?started=1` };
+  return { status: 303, location: officeHref({ error: r.error }) };
 }
 
 /** 災害の情報（発災・停電・警戒レベル・断水・道路）の保存 */

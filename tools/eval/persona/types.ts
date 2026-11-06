@@ -10,6 +10,8 @@ export type Item = {
   /** 入力の欄の今の値（パスワードの欄は持たない） */
   value?: string;
   checked?: boolean;
+  /** 今入力している欄（T166） */
+  focused?: boolean;
   disabled?: boolean;
   /** 選ぶ欄の選択肢（先頭から 12 まで） */
   options?: string[];

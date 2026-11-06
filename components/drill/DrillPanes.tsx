@@ -10,6 +10,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { tabClass, TabText } from "@/components/ui/Tabs";
 import { tabOfAnchor } from "@/lib/drill/news";
+import { onActPick } from "./act-pick";
 
 type Pane = "main" | "log";
 
@@ -52,6 +53,9 @@ export function DrillPanes({
       document.removeEventListener("click", onClick);
     };
   }, []);
+
+  // 対応の欄へ渡されたら（頼み事の印・候補・連絡先の行）、切り替えの並びでは対応に替える（T166。経過の中の印を押すと対応の欄が隠れたままだった）
+  useEffect(() => onActPick(() => setPane("main")), []);
 
   if (main === null) return <div className="min-w-0 space-y-3">{log}</div>;
   const hide = (p: Pane) => (pane === p ? "" : `hidden ${wide ? "2xl:block" : ""}`);
