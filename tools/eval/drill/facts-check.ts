@@ -128,13 +128,13 @@ export function factHits(outcome: RunOutcome, people: Readonly<Record<string, Fa
 
   const table = tableTurns(outcome);
   // 家の外へ出た・車中泊・帰ろうとする印（その時の世界の印。終わりの世界では人が着くと消えているので、出来事から作る）
-  const awayMarks: Array<{ person: string; minute: number; kind: "wandering" | "other" }> = [];
+  const awayMarks: Array<{ person: string; minute: number; kind: "wandering" | "car" | "other" }> = [];
   const foundMarks: Array<{ person: string; minute: number }> = [];
   for (const t of r.ticks) {
     for (const e of t.incidents) {
       const k = e.change?.kind;
       const mark = k === "mark" ? (e.change as { mark?: unknown }).mark : null;
-      if (e.person && (k === "going_home" || mark === "wandering" || mark === "carSleep")) awayMarks.push({ person: e.person, minute: Math.round((e.at ?? t.hour) * 60), kind: mark === "wandering" ? "wandering" : "other" });
+      if (e.person && (k === "going_home" || mark === "wandering" || mark === "carSleep")) awayMarks.push({ person: e.person, minute: Math.round((e.at ?? t.hour) * 60), kind: mark === "wandering" ? "wandering" : mark === "carSleep" ? "car" : "other" });
       if (e.person && mark === "found") foundMarks.push({ person: e.person, minute: Math.round((e.at ?? t.hour) * 60) });
     }
   }
@@ -146,17 +146,17 @@ export function factHits(outcome: RunOutcome, people: Readonly<Record<string, Fa
       if (e.person && (k === "supply_left" || (k === "mark" && (e.change as { mark?: unknown }).mark === "supplyLeft"))) leftMarks.push({ person: e.person, minute: Math.round((e.at ?? t.hour) * 60) });
     }
   }
-  const leftAt = (person: string, minute: number): boolean =>
-    leftMarks.some(
-      (m) => m.person === person && m.minute <= minute && !(world.arrivals ?? []).some((a) => a.person === person && a.arrived && a.arrive > m.minute && a.arrive <= minute),
-    );
+  // 印を消す手（T167。lib/drill/action-catalog.ts の clearMarks の手と到着）。前は世界の到着だけを見ていて、ケアマネの訪問・受入で印が消えた
+  // あとの言葉も「家に置いたまま」と数え、門（世界の印を見る）と食い違った（評価の 8 回目の left_remain 2 件）
+  const cleared = (person: string, from: number, to: number): boolean =>
+    (world.arrivals ?? []).some((a) => a.person === person && a.arrived && a.arrive > from && a.arrive <= to) ||
+    (world.dispatched ?? []).some((d) => d.person === person && d.arrived && d.arrive > from && d.arrive <= to) ||
+    actions.some((a) => a.person === person && a.result?.cleared !== undefined && a.result.cleared.length > 0 && a.result.atMinute > from && a.result.atMinute <= to);
+  const leftAt = (person: string, minute: number): boolean => leftMarks.some((m) => m.person === person && m.minute <= minute && !cleared(person, m.minute, minute));
   const awayAt = (person: string, minute: number): boolean =>
     awayMarks.some(
-      (m) =>
-        m.person === person &&
-        m.minute <= minute &&
-        !(world.arrivals ?? []).some((a) => a.person === person && a.arrived && a.arrive > m.minute && a.arrive <= minute) &&
-        !foundMarks.some((x) => x.person === person && x.minute > m.minute && x.minute <= minute),
+      // 車中泊の印は人が着いても消えない（CLEARED_ON_ARRIVAL に無い）
+      (m) => m.person === person && m.minute <= minute && (m.kind === "car" || !cleared(person, m.minute, minute)) && !foundMarks.some((x) => x.person === person && x.minute > m.minute && x.minute <= minute),
     );
   // 本人ごとの安否を時刻の順に（前の連絡からの帳面で、次の安否と言葉を見る）
   const byPerson = new Map<string, Array<LooseTurn & { at: number }>>();
@@ -211,7 +211,8 @@ export function factHits(outcome: RunOutcome, people: Readonly<Record<string, Fa
       if (!text) continue;
       checked += 1;
       if (field === "call.speech" && a.callee === "self" && f.voiceLost) hit("voice_lost", person, minute, "本人への電話で話した");
-      for (const r of sentenceHits(text, field.startsWith("visit") ? { ...ctx, place: "home" } : ctx)) hit(r.rule, person, minute, `${field}: ${cut(r.text)}`);
+      // 訪問は本人のいる所へ（T167。門と同じ。帳面のいる所、分からなければ家）
+      for (const r of sentenceHits(text, field.startsWith("visit") ? { ...ctx, place: ctx.place ?? "home" } : ctx)) hit(r.rule, person, minute, `${field}: ${cut(r.text)}`);
     }
     const asks = [...((res.talk ?? []) as Array<{ ask?: unknown; asks?: unknown }>).flatMap((l) => (Array.isArray(l.asks) ? l.asks : [])), ...(res.visit?.asks ?? [])];
     if (powerBack(f) && asks.some((k) => k === "power" || k === "battery")) hit("ask_after_power", person, minute, "頼み事 電源・電池");
@@ -227,6 +228,27 @@ export function factHits(outcome: RunOutcome, people: Readonly<Record<string, Fa
       if (l.who === "cm" || !l.text || !l.ai) continue;
       checked += 1;
       for (const s of sentenceHits(l.text, ctx)) hit(s.rule, c.person, typeof l.minute === "number" ? l.minute : c.minute, `incoming: ${cut(s.text)}`);
+    }
+  }
+
+  // 機器の予備が切れたあと長く連絡が無い（T167。評価の 8 回目で、予備が切れてから 11 時間、本人役が呼ばれず、審査役が本当らしさに欠けると読んだ）。
+  // 切れた時刻の本人役の呼び出し（lib/drill/hooks.ts の spareCuts）が効いているかを見る。電気が戻った・電源が届いた人、結末の人は見ない
+  {
+    const o = world.outage;
+    const end = Math.max(...r.ticks.map((x) => Math.round(x.hour * 60)), 0);
+    for (const [person, p] of Object.entries(people)) {
+      if (!o || !inOutage(world, p) || !(outcome.plan.participants ?? [person]).includes(person)) continue;
+      for (const d of p.plan.devices) {
+        const s = p.plan.spares.find((x) => x.category === d.category);
+        if (d.hours === null || s?.hours == null) continue;
+        const cutAt = Math.round((o.since + d.hours + s.hours) * 60);
+        const until = cutAt + DOWN_SILENT_MINUTES;
+        const back = [o.restoredAt != null ? Math.round(o.restoredAt * 60) : null, world.supplies?.[person]?.power ?? null].filter((x): x is number => typeof x === "number");
+        const endedAt = world.ended?.[person] ? end : null;
+        if (until > end || endedAt !== null || back.some((x) => x <= until)) continue;
+        checked += 1;
+        if (!(byPerson.get(person) ?? []).some((u) => Math.round(u.at * 60) > cutAt && Math.round(u.at * 60) <= until)) hit("down_silent", person, cutAt, `${d.category} 予備が切れた時刻から ${DOWN_SILENT_MINUTES} 分`);
+      }
     }
   }
 
@@ -305,7 +327,10 @@ export function factHits(outcome: RunOutcome, people: Readonly<Record<string, Fa
 }
 
 /** 帳面の門の決まりのほかに、台が数える型（T141。clock_drift は T158） */
-export type FactExtraRule = "lost_unresolved" | "area_repeat" | "clock_drift";
+export type FactExtraRule = "lost_unresolved" | "area_repeat" | "clock_drift" | "down_silent";
+
+/** 機器の予備が切れてから連絡が無いと見る間（分。T167） */
+export const DOWN_SILENT_MINUTES = 240;
 
 /** 電池の残りの数の流れの食い違いと見る差（分）の下限（T158） */
 export const CLOCK_DRIFT_MIN = 30;

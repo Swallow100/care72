@@ -95,10 +95,10 @@ describe("いる所: ふだん動けない人・浸水・訪問", () => {
     expect(factsOf({ person: "p-02", world: { ...EMPTY_WORLD, flood: true }, state: said("計画どおり病院へ移ります。"), actions: [], now: 600, plan: shallow, inOutage: false }).place?.by).toBe("plan");
   });
 
-  it("コードが見込んだ計画の移動のあとにケアマネが家で会えたら、いる所は家。本人・家族の連絡は訪問で上書きしない", () => {
+  it("訪問は本人のいる所へ行くので、いる所を家に直さない（T167。計画の移動も本人・家族の連絡も訪問で上書きしない）", () => {
     const plan = planOf(base);
     const f = factsOf({ person: "p-02", world: EMPTY_WORLD, state: said("計画どおり病院へ移ります。"), actions: [visit(300)], now: 400, plan, inOutage: false });
-    expect(f.place).toMatchObject({ where: "home", by: "visit", at: 300 });
+    expect(f.place).toMatchObject({ where: "other", by: "plan" });
     const away = state({ color: "green", whereNow: "shelter", at: 2 });
     const g = factsOf({ person: "p-02", world: EMPTY_WORLD, state: away, actions: [visit(300)], now: 400, plan, inOutage: false });
     expect(g.place).toMatchObject({ where: "shelter", by: "turn" });

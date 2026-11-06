@@ -163,7 +163,8 @@ describe("着信の往復（保存・上限・門）", () => {
     expect(await respondCall(db, SCOPE, ID, call.signal, "answer")).toEqual({ ok: true, recorded: true });
     const { hook, calls } = talkHook();
     const before = await stored();
-    const asks = ["safe", "device_medicine", "stay", "injured", "can_move", "shelter", "advise_119", "stay"] as const;
+    // 8 回とも本人役が答える問い（待機の指示・同じ問いはコードの短い返事で呼ばない。T167）
+    const asks = ["safe", "device_medicine", "where", "injured", "can_move", "shelter", "advise_119", "can_evacuate"] as const;
     expect(asks).toHaveLength(TALK_MAX);
     let at = before.minute;
     for (const [i, ask] of asks.entries()) {
@@ -186,7 +187,7 @@ describe("着信の往復（保存・上限・門）", () => {
       expectNoPersonalData(JSON.stringify(inputOf(c)));
     }
     expect(inputOf(calls[0])["電話"].text).toContain("ケアマネの今の言葉: 「ご本人は無事ですか」");
-    expect(inputOf(calls[2])["電話"].text).toContain("ケアマネの今の言葉: 「今いる所で待っていてください。また連絡します」");
+    expect(inputOf(calls[2])["電話"].text).toContain("ケアマネの今の言葉: 「今どこにいますか」");
     // 1 日の上限と同じ数え方（askJson が ai_calls に 1 行ずつ）
     expect(aiRows()).toBe(TALK_MAX);
 

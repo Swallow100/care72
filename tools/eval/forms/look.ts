@@ -7,6 +7,7 @@
 // 数は欄の名前と種類だけを記録に残す（値は書かない）。
 
 import { itemHints } from "../../../lib/forms/item-hints.ts";
+import { isContentItem } from "../../../lib/forms/trailing-field.ts";
 import { buildMappedSheet, type MappedSheet } from "../../../lib/forms/mapped-sheet.ts";
 import type { FormMapping, LedgerItemKey, MappingField } from "../../../lib/forms/mapping.ts";
 import { checkLook, type LookCheck } from "../../../lib/forms/overlay-check.ts";
@@ -33,6 +34,8 @@ export type LookScore = Omit<LookCheck, "issues"> & {
   unplacedDate?: number;
   unplacedPicked?: number;
   unplacedContact?: number;
+  /** 印を付けた □ の中身（アレルギーの物の名前など）が紙のどこにも無い欄（T168） */
+  markNoContent?: number;
 };
 
 export const emptyLookScore = (): LookScore => ({
@@ -54,6 +57,7 @@ export const emptyLookScore = (): LookScore => ({
   unplacedDate: 0,
   unplacedPicked: 0,
   unplacedContact: 0,
+  markNoContent: 0,
 });
 
 /** 日付の欄（T160。lib/forms/review.ts の日付の見直しと同じ見分け方に「記入日」） */
@@ -142,6 +146,14 @@ export function lookOfPaper(o: {
     const c = actualCells.get(f.id);
     return f.shape === "choice" && c?.kind === "choice" && (c.ambiguous === true || c.options.some((x) => x.on));
   });
+  // 印を付けた □ の中身が紙のどこにも無い欄（T168）。中身の言葉の並びを持つ項目の □ で、同じ項目の字の欄に何も置いていない
+  const contentMarks = o.mapping.fields.filter((f) => !f.removed && f.shape === "check" && isContentItem(f.item));
+  const marked = contentMarks.length > 0 ? new Map(buildMappedSheet(o.rows, o.mapping, { today: o.today, officeName: "デモ事業所" }).pages.flatMap((p) => p.sections.flatMap((s) => s.rows.map((r) => [r.field.id, r.cell] as const)))) : new Map<string, Cell>();
+  const noContent = contentMarks.filter((f) => {
+    const c = marked.get(f.id);
+    if (c?.kind !== "choice" || !c.options.some((x) => x.on)) return false;
+    return !o.mapping.fields.some((g) => g !== f && !g.removed && g.item === f.item && g.shape !== "check" && drawn(g, o.overlay));
+  });
   const { issues: _i, ...rest } = check;
   const why = Object.values(o.overlay.unplacedWhy ?? {});
   const reason = (r: string) => why.filter((w) => w === r).length;
@@ -161,6 +173,7 @@ export function lookOfPaper(o: {
       unplacedDate: unplacedFields.filter(isDateField).length,
       unplacedPicked: picked.length,
       unplacedContact: unplacedFields.filter((f) => CONTACT_ITEM.test(f.item ?? "")).length,
+      markNoContent: noContent.length,
     },
     check,
     blanks,
