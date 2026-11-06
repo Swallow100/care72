@@ -125,7 +125,7 @@ describe("偽の client と偽の画面で筋が通る", () => {
       expect(f.repro.length).toBeGreaterThan(0);
       expect(f.repro.at(-1)).toMatch(/^確かめ: /);
       expect(Array.isArray(f.suspects)).toBe(true);
-      expect(f.accept.item.startsWith("count:persona:") || f.accept.item.startsWith("persona.goal.")).toBe(true);
+      expect(f.accept).toEqual({ item: `count:${f.cause}`, op: "<=", value: 0 });
       // 題に思ったことを入れない（根拠は evidence だけ）
       expect(f.title).not.toContain("かと思った");
     }
@@ -160,10 +160,10 @@ describe("偽の client と偽の画面で筋が通る", () => {
     expect(high).toHaveLength(1);
     expect(high[0].accept).toContain("「一括印刷」を押す");
     expect(high[0].goal).toBe("sheets");
-    // 共通の形では、受け入れは点数の表の目標の値 ≧ 1、点数の表の値は 0
-    const shared = r.shared.find((f) => f.cause === "persona:unreached:sheets")!;
-    expect(shared).toMatchObject({ severity: "high", accept: { item: "persona.goal.veteran.sheets", op: ">=", value: 1 } });
-    expect(r.scorecard.values["persona.goal.veteran.sheets"]).toBe(0);
+    // 共通の形では、受け入れは同じ原因の数 ≦ 0（守りに貼れる形）、点数の表は筋の達成
+    const shared = r.shared.find((f) => f.cause === "persona:unreached:veteran.sheets")!;
+    expect(shared).toMatchObject({ severity: "high", accept: { item: "count:persona:unreached:veteran.sheets", op: "<=", value: 0 } });
+    expect(Object.keys(r.scorecard.values).every((k) => k.startsWith("persona."))).toBe(true);
     expect(r.scorecard.values["persona.veteran.reached"]).toEqual([4, 5]);
   });
 
@@ -246,6 +246,7 @@ describe("門と達成の印", () => {
     alerts: [],
     header: "ケア72 担当一覧 訓練 事業所 書類 平時 デモ事業所（確認用） 管理者 山本 役変更 ログアウト",
     text: "",
+    body: "",
     printed: false,
     errors: [],
     hash: "",

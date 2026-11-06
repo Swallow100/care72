@@ -3,9 +3,9 @@
 import type { Check, Done, RouteMove } from "./personas.ts";
 import type { Item, Snapshot } from "./types.ts";
 
-/** 見出し・本文・知らせ・上の帯を 1 つにした字 */
-export function corpusOf(s: Pick<Snapshot, "header" | "headings" | "alerts" | "text">): string {
-  return [s.header, ...s.headings, ...s.alerts, s.text].join("\n");
+/** 見出し・本文（全部）・知らせ・上の帯を 1 つにした字 */
+export function corpusOf(s: Pick<Snapshot, "header" | "headings" | "alerts" | "text"> & { body?: string }): string {
+  return [s.header, ...s.headings, ...s.alerts, s.body || s.text].join("\n");
 }
 
 function matches(source: string, value: string): boolean {

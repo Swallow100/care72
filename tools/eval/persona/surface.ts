@@ -159,6 +159,8 @@ export class ChromeSurface implements Surface {
       if (!el) return { ok: false, error: `番号 ${move.ref} の物が無い` };
       if (move.action === "click") {
         await el.scrollIntoView().catch(() => undefined);
+        // 新しいタブで開くリンク（一括印刷など）は同じタブで開く（台は 1 つのタブだけを読む）
+        await el.evaluate((n) => n.closest("a[target]")?.removeAttribute("target")).catch(() => undefined);
         await el.click();
       } else if (move.action === "type") {
         const text = fillSecrets(move.text ?? "", secrets);

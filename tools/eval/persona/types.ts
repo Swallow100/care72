@@ -32,6 +32,8 @@ export type Snapshot = {
   header: string;
   /** 本文の見える字の頭（上限あり） */
   text: string;
+  /** 本文の見える字の全部（上限 30,000 字）。達成の印と門だけが見る（AI には text だけを渡す） */
+  body: string;
   /** 印刷の画面を開いた（window.print を押した）か */
   printed: boolean;
   /** 前の読みからの HTTP の失敗（4xx・5xx）と頁の例外 */

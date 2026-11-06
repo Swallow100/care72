@@ -8,8 +8,8 @@ import type { Item, Snapshot } from "./types.ts";
 
 export const REF_ATTR = "data-persona-ref";
 
-export type ReadLimits = { items: number; text: number; name: number };
-export const READ_LIMITS: ReadLimits = { items: 200, text: 1800, name: 60 };
+export type ReadLimits = { items: number; text: number; name: number; body: number };
+export const READ_LIMITS: ReadLimits = { items: 200, text: 1800, name: 60, body: 30_000 };
 
 export type RawRead = Omit<Snapshot, "hash" | "look" | "errors" | "printed"> & { printed: boolean };
 
@@ -23,6 +23,13 @@ export function readPageInBrowser(limits: ReadLimits): RawRead {
     if (he.getClientRects().length === 0) return false;
     const st = getComputedStyle(he);
     return st.visibility !== "hidden" && st.display !== "none";
+  };
+  /** 見える字。ふりがな（ruby の rt・rp）は外す（「無事ぶじじゃない」を「無事じゃない」に） */
+  const plain = (el: HTMLElement): string => {
+    if (!el.querySelector("rt,rp")) return el.innerText;
+    const c = el.cloneNode(true) as HTMLElement;
+    c.querySelectorAll("rt,rp").forEach((n) => n.remove());
+    return c.textContent ?? "";
   };
   const labelOf = (el: Element): string => {
     const aria = el.getAttribute("aria-label");
@@ -44,7 +51,7 @@ export function readPageInBrowser(limits: ReadLimits): RawRead {
     if (wrap && wrap !== el && wrap.textContent?.trim()) return wrap.textContent;
     const tag = el.tagName.toLowerCase();
     if (tag !== "input" && tag !== "select" && tag !== "textarea") {
-      const t = (el as HTMLElement).innerText;
+      const t = plain(el as HTMLElement);
       if (t?.trim()) return t;
       const img = el.querySelector("img[alt]");
       if (img?.getAttribute("alt")) return img.getAttribute("alt") ?? "";
@@ -127,6 +134,7 @@ export function readPageInBrowser(limits: ReadLimits): RawRead {
     .slice(0, 8);
   const main = document.querySelector("main") ?? document.body;
   const w = window as unknown as { __personaPrinted?: boolean };
+  const whole = squeeze(plain(main as HTMLElement), limits.body);
   return {
     url: location.href,
     path: location.pathname + location.search,
@@ -134,8 +142,9 @@ export function readPageInBrowser(limits: ReadLimits): RawRead {
     headings,
     items,
     alerts,
-    header: squeeze((document.querySelector("header") as HTMLElement | null)?.innerText, 200),
-    text: squeeze((main as HTMLElement).innerText, limits.text),
+    header: squeeze(plain((document.querySelector("header") as HTMLElement | null) ?? document.createElement("i")), 200),
+    text: whole.slice(0, limits.text),
+    body: whole,
     printed: w.__personaPrinted === true,
   };
 }

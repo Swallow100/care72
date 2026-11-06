@@ -204,12 +204,14 @@ export class FakeSurface implements Surface {
           ...(medical
             ? []
             : [
-                { role: "link", name: "表示", on: () => `/people/${who.id}/phone` } satisfies FakeItem,
+                // スマホ入口の「表示」は計画共有に同意のある種の人だけ（足したばかりの人には無い）
+                ...(who.id.startsWith("chk-p-0") ? [{ role: "link", name: "表示", on: () => `/people/${who.id}/phone` } satisfies FakeItem] : []),
                 { role: "link", name: "表示", on: () => `/people/${who.id}/forms/matsuyama` } satisfies FakeItem,
                 { role: "link", name: "印刷", on: () => `/people/${who.id}/forms/matsuyama?print=1` } satisfies FakeItem,
               ]),
-          { role: "button", name: "追記", on: (s) => void (s.noteOpen = true) },
-          ...(st.noteOpen ? [box("経過"), { role: "button", name: "保存", on: (s: State) => void ((s.note = this.value("経過")), (s.noteOpen = false)) } satisfies FakeItem] : []),
+          // 経過の書き足し: 自由文に書くと「追記」が押せる（本物の本人のページと同じ）
+          box("自由文"),
+          { role: "button", name: "追記", disabled: !this.value("自由文"), on: (s) => void ((s.note = this.value("自由文")), (s.values[`${this.path.split("?")[0]}|自由文`] = "")) },
         ],
       };
     }
@@ -367,7 +369,7 @@ export class FakeSurface implements Surface {
     });
     const alerts = this.st.alert ? [this.st.alert] : [];
     this.st.alert = null;
-    const snap = { url: `http://localhost${this.path}`, path: this.path, title: pg.title, headings: pg.headings, items, alerts, header: this.header(), text: pg.text, printed: /[?&]print=1/.test(this.path), errors: [] as string[] };
+    const snap = { url: `http://localhost${this.path}`, path: this.path, title: pg.title, headings: pg.headings, items, alerts, header: this.header(), text: pg.text, body: pg.text, printed: /[?&]print=1/.test(this.path), errors: [] as string[] };
     return { ...snap, hash: hashOf(snap), look: lookOf(snap) };
   }
 

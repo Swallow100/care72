@@ -155,21 +155,21 @@ export function mechanicalFindings(lost: readonly LostEvent[], ctx: FindingConte
 
 const SEVERITY_OF: Readonly<Record<Weight, Severity>> = { 高: "high", 中: "mid", 低: "low" };
 
-/** 原因の鍵（persona:<種類>:<目標か画面>）。下書き（tools/eval/drafts.ts）はこれでまとめる */
+/**
+ * 原因の鍵（persona:unreached:<筋>.<目標>・persona:<迷いの種類>:<画面>・persona:judge:<画面>）。下書き（tools/eval/drafts.ts）はこれでまとめる。
+ * 目標の id は筋をまたいで同じ物がある（disaster など）ので、届かない目標は筋を付ける
+ */
 export function causeOf(f: PersonaFinding): string {
-  return f.kind === "unreached" ? `persona:unreached:${f.goal ?? ""}` : `persona:${f.kind}:${f.where.screen}`;
+  return f.kind === "unreached" ? `persona:unreached:${f.persona}.${f.goal ?? ""}` : `persona:${f.kind}:${f.where.screen}`;
 }
-
-/** 届かない目標の点数の表の値の id（scorecard.json の values。1 は達した） */
-export const goalItem = (persona: string, goal: string) => `persona.goal.${persona}.${goal}`;
 
 /**
  * 評価の台の共通の形（tools/eval/findings.ts）に写す。題は種類・画面・筋・数だけ（名前・思ったことを入れない）。
- * 受け入れの確かめ: 届かない目標は点数の表の値 persona.goal.<筋>.<目標> ≧ 1、迷い・審査役の指摘は同じ原因の数 ≦ 0。文の確かめは再現の手順の終わりに
+ * 受け入れの確かめは同じ原因の指摘の数 ≦ 0（count:<cause>。T157 の守りに貼れる形）。文の確かめは再現の手順の終わりに
  */
 export function sharedFinding(f: PersonaFinding, run: string): SharedFinding {
   const cause = causeOf(f);
-  const accept = f.kind === "unreached" && f.goal ? { item: goalItem(f.persona, f.goal), op: ">=" as const, value: 1 } : { item: `count:${cause}`, op: "<=" as const, value: 0 };
+  const accept = { item: `count:${cause}`, op: "<=" as const, value: 0 };
   const title =
     f.kind === "unreached"
       ? `目標 ${f.goal} に届かない（${f.persona}）`

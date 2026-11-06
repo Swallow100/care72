@@ -29,16 +29,18 @@ const FICTIONAL_PHONE = /^090-0000-00\d\d$/;
 
 export type GateResult = { ok: true } | { ok: false; why: string };
 
-export function screenGate(s: Pick<Snapshot, "header" | "text" | "items" | "headings" | "alerts">): GateResult {
-  const all = [s.header, s.text, ...s.headings, ...s.alerts, ...s.items.map((i) => `${i.name} ${i.value ?? ""}`)].join("\n");
+export function screenGate(s: Pick<Snapshot, "header" | "text" | "items" | "headings" | "alerts"> & { body?: string }): GateResult {
+  const all = [s.header, s.body || s.text, ...s.headings, ...s.alerts, ...s.items.map((i) => `${i.name} ${i.value ?? ""}`)].join("\n");
   for (const m of all.matchAll(PHONE)) {
     if (!FICTIONAL_PHONE.test(m[0])) return { ok: false, why: "架空の形でない電話" };
   }
   // 上の帯の事業所名（「〇〇事業所」）が種の物か試用事業所か
   const offices = s.header.match(/[^\s|｜・]*事業所[^\s|｜・]*/g) ?? [];
   for (const o of offices) {
-    if (o === "事業所") continue; // 画面の切替の「事業所」
-    if (SEED_OFFICE_NAMES.includes(o) || o.includes(SANDBOX_MARK)) continue;
+    // 画面の切替の「事業所」と、欄の名前（「事業所名：…」「事業所番号」）
+    const name = o.replace(/^事業所(名|番号)?[:：]?/, "");
+    if (name === "" || !name.includes("事業所")) continue;
+    if (SEED_OFFICE_NAMES.some((n) => name.includes(n)) || name.includes(SANDBOX_MARK)) continue;
     return { ok: false, why: "種でない事業所" };
   }
   return { ok: true };

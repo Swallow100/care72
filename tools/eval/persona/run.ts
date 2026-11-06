@@ -30,7 +30,7 @@ import { FakeSurface } from "./fake-site.ts";
 import { causeCounts, writeFindings, type Finding as SharedFinding } from "../findings.ts";
 import { guardFindings } from "../guards.ts";
 import type { GenericScorecard } from "../scorecard-items.ts";
-import { goalItem, mechanicalFindings, screenOf, sharedFinding, type PersonaFinding as Finding } from "./finding.ts";
+import { mechanicalFindings, screenOf, sharedFinding, type PersonaFinding as Finding } from "./finding.ts";
 import { assertLocalBase } from "./guard.ts";
 import { JUDGE_SPEC, judgePath, type JudgeOut } from "./judge.ts";
 import { DEFAULT_LOGIN_ID, PERSONA_IDS, personas, type Persona, type PersonaId } from "./personas.ts";
@@ -211,7 +211,7 @@ export async function runPersonaEval(cfg: PersonaConfig): Promise<{ summary: Sum
   };
   writeFileSync(join(dir, "summary.json"), `${JSON.stringify(summary, null, 2)}\n`, "utf8");
   // 点数の表の数（tools/eval/scorecard-items.ts の persona.〜）と、評価の台の共通の形の findings.json（T157）
-  const scorecard = scorecardOf(stamp, client, paths, outcomes);
+  const scorecard = scorecardOf(stamp, client, paths);
   writeFileSync(join(dir, "scorecard.json"), `${JSON.stringify(scorecard, null, 2)}\n`, "utf8");
   const base = findings.map((f) => sharedFinding(f, stamp));
   const guards = guardFindings({
@@ -235,8 +235,8 @@ export async function runPersonaEval(cfg: PersonaConfig): Promise<{ summary: Sum
   return { summary, findings, shared, scorecard, outcomes, dir, mdPath };
 }
 
-/** 点数の表の数（scorecard.json）。比は [分子, 分母]。筋ごと・目標ごと（persona.goal.<筋>.<目標> は 1 か 0）も */
-export function scorecardOf(run: string, client: "fake" | "real", paths: readonly PathSummary[], outcomes: readonly WalkOutcome[]): GenericScorecard {
+/** 点数の表の数（scorecard.json）。比は [分子, 分母]。全体と筋ごと（項目は tools/eval/scorecard-items.ts の persona.〜） */
+export function scorecardOf(run: string, client: "fake" | "real", paths: readonly PathSummary[]): GenericScorecard {
   const values: GenericScorecard["values"] = {};
   const sum = (f: (p: PathSummary) => number) => paths.reduce((a, p) => a + f(p), 0);
   values["persona.reached"] = [sum((p) => p.goals.reached), sum((p) => p.goals.total)];
@@ -253,7 +253,6 @@ export function scorecardOf(run: string, client: "fake" | "real", paths: readonl
     values[`persona.${p.persona}.steps`] = p.steps;
     values[`persona.${p.persona}.lost`] = LOST_KINDS.reduce((a, k) => a + p.lost[k], 0);
   }
-  for (const o of outcomes) for (const g of o.goals) values[goalItem(o.persona, g.id)] = g.reached ? 1 : 0;
   return { version: 1, bench: "persona", run, client, values };
 }
 
