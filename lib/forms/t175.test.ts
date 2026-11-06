@@ -9,6 +9,7 @@ import { buildOverlaySheet } from "./overlay-sheet.ts";
 import type { PageImage } from "./page-images.ts";
 import { seedRows } from "./print-harness.ts";
 import { settleRead } from "./read-settle.ts";
+import { mappedSubject, ruleReview } from "./review.ts";
 
 const OPTS = { today: "2026-11-05", officeName: "デモ事業所" };
 const seed = (id: string) => SEED_PEOPLE.find((p) => p.person.id === id)!;
