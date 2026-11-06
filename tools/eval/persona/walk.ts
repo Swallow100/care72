@@ -68,6 +68,10 @@ export async function walkPersona(persona: Persona, deps: WalkDeps): Promise<Wal
       return { persona: persona.id, goals, steps, lost: [], stop: "open", note: "ログインできない（CARE72_PASSWORD と種のハッシュ）", ms: clock() - t0 };
     }
   }
+  // 筋の前の下ごしらえ（T163）: 医療班の筋は事業所の「発災開始」で種の受入依頼が入った形から
+  if (persona.setup === "disaster" && !(await deps.surface.startDisaster())) {
+    return { persona: persona.id, goals, steps, lost: [], stop: "open", note: "発災開始を流せない（種の事業所・ケアマネの役で入る）", ms: clock() - t0 };
+  }
   await deps.surface.open(persona.start);
   let snap: Snapshot = await deps.surface.snapshot();
 

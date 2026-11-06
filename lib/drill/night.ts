@@ -24,3 +24,27 @@ export function nightTimeLabel(minute: number): string {
   const m = Math.max(0, Math.floor(minute));
   return `${nightClock(m / 60)}:${String(m % 60).padStart(2, "0")}`;
 }
+
+/**
+ * 夜間発災でない訓練の発災の時刻（時、0〜23。T165）。drills.started_at（発災）の日本の時刻。読めなければ null。
+ * 前は夜間発災の訓練だけ時刻の 1 行を渡していて、昼の訓練の監督・世界・本人役が「夜になっても」「明け方」「二日目の昼」を
+ * 経過と食い違う所に書いた（評価の 7 回目）。画面の時刻（lib/drill/time-text.ts の simTimeText）と同じ元
+ */
+export function startHourOf(startedAt: string): number | null {
+  const t = Date.parse(startedAt);
+  if (Number.isNaN(t)) return null;
+  return (new Date(t).getUTCHours() + 9) % 24;
+}
+
+/** Claude に渡す 1 行（昼の訓練。T165）。「発災は 10 時ごろ。今は 2 日目の 22 時ごろ」 */
+export function dayLine(hour: number, startHour: number): string {
+  const total = startHour + Math.floor(Math.max(0, hour));
+  const day = Math.floor(total / 24) + 1;
+  return `発災は ${startHour} 時ごろ。今は ${day > 1 ? `${day} 日目の ` : ""}${total % 24} 時ごろ（朝・昼・夜の言い方はこの時刻に合わせる）`;
+}
+
+/** 時刻の 1 行（夜間発災は nightLine、ほかは発災の時刻があれば dayLine。T165）。無ければ空の配列 */
+export function timeLines(hour: number, x: { night?: boolean; startHour?: number | null }): string[] {
+  if (x.night) return [nightLine(hour)];
+  return typeof x.startHour === "number" ? [dayLine(hour, x.startHour)] : [];
+}

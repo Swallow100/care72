@@ -495,7 +495,9 @@ const ROWS: ReadonlyArray<EventRow> = [
     label: "業者巡回",
     scope: "person",
     words: "酸素業者が巡回に来る予定が入る（酸素・呼吸器の人。after に何時間後に着くか）",
-    eligible: (s, p, w) => oxygenUser(s) && !(w.arrivals ?? []).some((a) => a.person === p && a.role === "vendor" && !a.arrived),
+    // 着く前の巡回があれば重ねない。着いたあとも同じ人にまた巡回の予定を出さない（T165。評価の 7 回目で、業者が着いて電源が届いた
+    // あとに同じ人へ「巡回予定」がまた出て、審査役が筋の食い違いと読んだ）
+    eligible: (s, p, w) => oxygenUser(s) && !(w.arrivals ?? []).some((a) => a.person === p && a.role === "vendor"),
     // 着いたら settleWorld が supplies.oxygen を書く（T90 の準備の arrivals の道）。呼吸器だけの人は医療機器の業者で、届くのは電源
     // （予備の電池。T123。評価の 2 回目で、呼吸器の人に「酸素業者」が来て酸素が届いたと話した）
     build: (t, hour, after) => {

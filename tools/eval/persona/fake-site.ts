@@ -1,7 +1,7 @@
 // 偽の画面（docs/tasks/T156.md）。Chrome と next dev を使わずに台の筋を通すための、ケア72 の小さな写し。
 // 画面の言葉と並びは手元の本物の画面（11/6 の種）に合わせた最小限: ログイン・担当一覧・利用者追加・本人のページ（避難先の編集・
 // 計画書の表示）・訓練（着信の窓・次まで・自動進行）・事業所（発災開始の窓・担当の変更・最初に戻す）・書類（印刷）・様式 9・
-// 受入一覧（氏名検索・避難所・受入・追記）・本人スマホ（赤）・役変更。本物と違う所があっても台の筋を確かめる物で、本物の代わりではない。
+// 受入一覧（受入依頼〔発災開始のあと、T163〕・氏名検索・避難所・受入・追記）・本人スマホ（赤）・役変更。本物と違う所があっても台の筋を確かめる物で、本物の代わりではない。
 
 import { hashOf, lookOf } from "./dom.ts";
 import type { Secrets, Surface } from "./surface.ts";
@@ -25,6 +25,8 @@ type State = {
   shelterOpen: boolean;
   shelter: string | null;
   received: boolean;
+  /** 受入依頼（T163）に返事をした */
+  replied: boolean;
   noteOpen: boolean;
   note: string | null;
   red: boolean;
@@ -56,6 +58,7 @@ const fresh = (): State => ({
   shelterOpen: false,
   shelter: null,
   received: false,
+  replied: false,
   noteOpen: false,
   note: null,
   red: false,
@@ -313,11 +316,19 @@ export class FakeSurface implements Surface {
       return { title: "様式9", headings: ["様式9"], text: "様式9 災害時利用者一覧表", items: [{ role: "link", name: "書類", on: () => "/forms" }, { role: "button", name: "印刷", on: () => "/office/form9?print=1" }] };
     }
     if (p === "/staff") {
+      // 発災開始のあとは受入一覧の上に受入依頼（種の連絡順の上から。T163）。返事をすると行が消える
+      const asked = st.disaster && !st.replied;
       return {
         title: "受入一覧 | ケア72",
-        headings: ["受入一覧", "受入"],
-        text: `受入一覧 ${st.received ? 1 : 0} 人 避難所 ${st.shelter ?? "未入力"}`,
+        headings: ["受入一覧", ...(asked ? ["受入依頼"] : []), "受入"],
+        text: `受入一覧 ${st.received ? 1 : 0} 人${asked ? " 受入依頼 1 人 ヤマダ ハナ デモ事業所（確認用） かわなぎ小学校" : ""} 避難所 ${st.shelter ?? "未入力"}`,
         items: [
+          ...(asked
+            ? [
+                { role: "button", name: "受入 ヤマダ ハナ", on: (s: State) => ((s.replied = true), (s.received = true), (s.shelter = "かわなぎ小学校"), "/staff?received=cu-1") } satisfies FakeItem,
+                { role: "button", name: "受入不可 ヤマダ ハナ", on: (s: State) => void (s.replied = true) } satisfies FakeItem,
+              ]
+            : []),
           box("避難所"),
           { role: "button", name: "氏名検索", on: (s) => void (s.search = true) },
           { role: "button", name: "新規登録" },
@@ -407,6 +418,12 @@ export class FakeSurface implements Surface {
     if (id !== this.opts.loginId || secrets.password !== this.opts.password) return false;
     this.st.loggedIn = true;
     this.path = "/";
+    return true;
+  }
+
+  async startDisaster(): Promise<boolean> {
+    if (!this.st.loggedIn || this.st.role !== "cm") return false;
+    this.st.disaster = true;
     return true;
   }
 

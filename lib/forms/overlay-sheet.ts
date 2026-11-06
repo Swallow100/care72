@@ -17,6 +17,7 @@
 
 import type { ConsentKind } from "../db/types.ts";
 import { unpackInk, type InkBlob } from "./ink.ts";
+import { bracketOwners, strayOther } from "./form-shape.ts";
 import { freeRects, inkIn, readingOrder } from "./place.ts";
 import type { MappedSheet } from "./mapped-sheet.ts";
 import { PART_SHAPES, type FieldBox, type MappingField, type Typeface } from "./mapping.ts";
@@ -390,12 +391,19 @@ export function buildOverlaySheet(mapped: MappedSheet, images: readonly PageImag
   });
   const inks = new Map<number, InkBlob[] | null>(images.map((img) => [img.page, img.ink ? unpackInk(img.ink) : null]));
   // ほかの欄の枠（字を置くとき、印刷の字と同じく避ける。隣の欄に掛けない。T133）
-  const boxesOf = new Map<number, Array<{ id: string; box: FieldBox; free: boolean }>>();
-  for (const p of mapped.pages)
-    for (const s of p.sections)
-      for (const { field } of s.rows)
-        if (!field.removed && field.box)
-          boxesOf.set(field.page, [...(boxesOf.get(field.page) ?? []), { id: field.id, box: field.box, free: field.item === null && (field.shape === "text" || field.shape === "lines") }]);
+  const boxesOf = new Map<number, Array<{ id: string; box: FieldBox; free: boolean; owner?: { id: string; option: number } }>>();
+  const rowsAll = mapped.pages.flatMap((p) => p.sections.flatMap((s) => s.rows));
+  // 選択肢の後ろの括弧の子の欄（T164）: 自分の値は空（mapped-sheet.ts の bracketCell）で、親の選ぶ欄の添え・その他の値の置き場
+  const owners = bracketOwners(rowsAll.map((r) => r.field));
+  for (const { field, cell } of rowsAll)
+    if (!field.removed && field.box) {
+      const own = owners.get(field.id);
+      const child = own && own.option !== null && cell.kind === "empty" ? { id: own.owner.id, option: own.option } : undefined;
+      // 前の並びと違う項目の「その他（　）」（空にした欄）も、項目なしの書く所と同じ
+      const stray = cell.kind === "empty" && !own && strayOther(field, rowsAll.map((r) => r.field));
+      const free = (field.item === null && (field.shape === "text" || field.shape === "lines")) || !!child || stray;
+      boxesOf.set(field.page, [...(boxesOf.get(field.page) ?? []), { id: field.id, box: field.box, free, ...(child ? { owner: child } : {}) }]);
+    }
   const ctxOf = (page: number): PlaceCtx | null => {
     const p = pages.find((x) => x.page === page);
     return p ? { page: p, ink: inks.get(page) ?? null, others: boxesOf.get(page) ?? [] } : null;
@@ -443,7 +451,7 @@ export function buildOverlaySheet(mapped: MappedSheet, images: readonly PageImag
         if (field.shape === "choice" && cell.kind === "choice" && pc && box) {
           const r = placeChoice(field, cell, pc);
           pc.page.items.push(...r.items);
-          for (const lines of r.annex) annex.push({ fieldId: field.id, label: nameOf(field), lines, reason: "overflow", page: field.page, mark: field.id });
+          for (const a of r.annex) annex.push({ fieldId: field.id, label: nameOf(field), lines: a.lines, reason: "overflow", page: field.page, mark: a.mark });
           for (const id of r.filled) childFilled.add(id);
           if (r.unplaced) miss(field, r.unplaced);
           continue;
@@ -613,7 +621,7 @@ export type PlaceCtx = {
   page: OverlayPage;
   ink: InkBlob[] | null;
   /** 頁の欄の枠（置く欄のほかの欄に掛けない）。free は項目なしの字の欄（選ぶ欄の「その他（　）」の中の書く所に使える） */
-  others?: ReadonlyArray<{ id: string; box: FieldBox; free?: boolean }>;
+  others?: ReadonlyArray<{ id: string; box: FieldBox; free?: boolean; owner?: { id: string; option: number } }>;
 };
 
 /** 隣の欄と見なす重なり（mm。これより小さい掛かりは枠の線の上の揺れ） */
@@ -784,11 +792,11 @@ function placeChoice(
   field: MappingField,
   cell: Extract<Cell, { kind: "choice" }>,
   pc: PlaceCtx,
-): { items: OverlayItem[]; unplaced: UnplacedReason | null; filled: string[]; annex: string[][] } {
+): { items: OverlayItem[]; unplaced: UnplacedReason | null; filled: string[]; annex: Array<{ lines: string[]; mark: string }> } {
   const image = pc.page.image;
   const items: OverlayItem[] = [];
   const filled: string[] = [];
-  const annex: string[][] = [];
+  const annex: Array<{ lines: string[]; mark: string }> = [];
   let unplaced: UnplacedReason | null = null;
   const fail = (r: UnplacedReason) => {
     unplaced ??= r;
@@ -796,8 +804,12 @@ function placeChoice(
   /**
    * 選択肢の所の空きに字を置く。空きの中に項目なしの字の欄（「その他（　）」の書く所を AI が別の欄に読んだ物）があれば、その欄の枠に置く
    */
-  const putIn = (text: string, area: FieldBox): TextItem | null => {
-    const child = (pc.others ?? []).find((o) => o.free && o.id !== field.id && coverOf(o.box, area) >= 0.6);
+  /** 選択肢の括弧の子の欄（T164）があればその枠、無ければ空きの中の項目なしの字の欄 */
+  const childOf = (area: FieldBox, option: number) =>
+    (pc.others ?? []).find((o) => o.owner?.id === field.id && o.owner.option === option) ??
+    (pc.others ?? []).find((o) => o.free && !o.owner && o.id !== field.id && coverOf(o.box, area) >= 0.6);
+  const putIn = (text: string, area: FieldBox, option: number): TextItem | null => {
+    const child = childOf(area, option);
     if (child) {
       const t = placeText(child.id, [text], child.box, pc);
       if (t) filled.push(child.id);
@@ -806,13 +818,16 @@ function placeChoice(
     return placeText(field.id, [text], area, pc, { own: field.box! });
   };
   /** 選択肢の所の空きに収まらない字は、その空きに「別紙」と書いて別紙へ（T140）。「別紙」も入らなければ置けなかった */
-  const putOrAnnex = (text: string, area: FieldBox | null) => {
-    const t = area ? putIn(text, area) : null;
+  const putOrAnnex = (text: string, area: FieldBox | null, option: number) => {
+    const t = area ? putIn(text, area, option) : null;
     if (t) return items.push(t);
-    const m = area ? placeText(field.id, [ANNEX_MARK], area, pc, { own: field.box! }) : null;
+    // 「別紙」の印は括弧の子の欄の枠の中（T164。括弧の外の □ の行の上に書かない）
+    const child = area ? childOf(area, option) : undefined;
+    const m = !area ? null : child ? placeText(child.id, [ANNEX_MARK], child.box, pc) : placeText(field.id, [ANNEX_MARK], area, pc, { own: field.box! });
     if (m) {
       items.push(m);
-      annex.push([text]);
+      if (child) filled.push(child.id);
+      annex.push({ lines: [text], mark: m.fieldId });
     } else fail("room");
   };
   // 台帳の値に当たる選択肢が 2 つ以上（T140）: 選ばず、その他にも書かない
@@ -831,7 +846,7 @@ function placeChoice(
       items.push({ kind: "mark", fieldId: field.id, box: b, mark: markOf(b, image) });
       const detail = cell.options[i].detail;
       if (!detail) continue;
-      putOrAnnex(paperText(detail), optionArea(field, i, image, false));
+      putOrAnnex(paperText(detail), optionArea(field, i, image, false), i);
     }
   } else if (hits.length > 0) {
     // 選んだ選択肢の □ の場所が無い: 欄に □ が刷ってなければ選んだ言葉を空いた所に、刷ってあれば置かない
@@ -845,7 +860,7 @@ function placeChoice(
     const ob = other >= 0 ? optionBoxOf(field, other, image) : null;
     if (ob) {
       if (!hits.includes(other)) items.push({ kind: "mark", fieldId: field.id, box: ob, mark: markOf(ob, image) });
-      putOrAnnex(after, optionArea(field, other, image, true));
+      putOrAnnex(after, optionArea(field, other, image, true), other);
     } else if (!printedBoxes && !(field.optionBoxes ?? []).some(Boolean) && hits.length === 0) {
       const t = placeText(field.id, [after], box, pc);
       if (t) items.push(t);

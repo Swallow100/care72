@@ -33,3 +33,8 @@ export function qrPagePath(token: string, shelter: string | null = null): string
   const s = shelter?.trim();
   return `/q/${encodeURIComponent(token)}${s ? `?shelter=${encodeURIComponent(s)}` : ""}`;
 }
+
+/** 医療班への受入依頼（T163）: 送る・下げる（ケアマネ）と返事（医療班） */
+export const CUSTODY_REQUEST_API = "/api/custody/request";
+export const CUSTODY_REQUEST_WITHDRAW_API = "/api/custody/request/withdraw";
+export const CUSTODY_REQUEST_REPLY_API = "/api/custody/request/reply";

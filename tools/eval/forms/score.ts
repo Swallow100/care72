@@ -273,6 +273,11 @@ export type PaperScore = {
   unconfirmedDiff: number;
   /** 紙に何も書かないのに未確認に数えていない欄（数え方の不具合） */
   uncountedBlank: number;
+  /**
+   * 正解に無い印（T164）: 正解の □・選ぶ欄で、紙は正解の紙に無い □ に印を付けた数（台帳の値に当たらない選択肢の印）。
+   * 字の欄に置いた字は数えない（置き間違いの方）。7 回目までの結果には無い
+   */
+  markExtra?: number;
 };
 export const emptyPaperScore = (): PaperScore => ({
   judged: 0,
@@ -289,6 +294,7 @@ export const emptyPaperScore = (): PaperScore => ({
   unconfirmedExpected: 0,
   unconfirmedDiff: 0,
   uncountedBlank: 0,
+  markExtra: 0,
 });
 
 /** 欄に書く字（□ は ■ か空、同意の無い・手書きは空） */
@@ -342,9 +348,30 @@ export function scorePaper(o: {
     const expCell = o.expectedCell(gf);
     const exp = paperText(gf, expCell);
     const aid = o.pairs.get(gi);
-    const af = aid ? o.aiMapping.fields.find((f) => f.id === aid) : undefined;
-    const actCell = af ? o.actualCell(af) : null;
+    let af = aid ? o.aiMapping.fields.find((f) => f.id === aid) : undefined;
+    let actCell = af ? o.actualCell(af) : null;
     let act = af && actCell ? paperText(af, actCell) : "";
+    // 同じ場所の同じ形の欄（T164）: 正解の □・選ぶ欄に合わせた AI の欄の形が違い（字の欄）、正解の欄の場所に、正解と同じ形で正解の字を置いた
+    // 合わせていない AI の欄があれば、その欄で比べる（評価の 7 回目の災害診療記録の連絡先: 正解は種類の □ の行の 1 欄、AI は種類の選ぶ欄と
+    // 人の名前を書く字の欄の 2 つに読み、名前の欄と合わせて「違う字」と数えていた。紙には種類の印と名前の両方が出ていた）
+    if ((g.shape === "check" || g.shape === "choice") && af && af.shape !== g.shape && exp !== "" && valueNorm(act) !== valueNorm(exp) && o.actual.overlay && g.box) {
+      const paired = new Set(o.pairs.values());
+      const same = o.aiMapping.fields.find(
+        (f) => !f.removed && !paired.has(f.id) && f.shape === g.shape && f.page === g.page && f.box && boxInside(f.box, g.box!) && valueNorm(paperText(f, o.actualCell(f))) === valueNorm(exp),
+      );
+      if (same) {
+        af = same;
+        actCell = o.actualCell(same);
+        act = paperText(same, actCell);
+        j(name, "当たり（同じ場所の同じ形の欄）", `正解の表と合わせた AI の欄は形が違い、同じ場所の「${same.label}」が正解の字を置いた`, exp, act);
+      }
+    }
+    // 正解に無い印（T164）
+    const extraMarks = af && actCell ? marksNotIn(gf, expCell, af, actCell) : [];
+    if (extraMarks.length > 0) {
+      score.markExtra = (score.markExtra ?? 0) + extraMarks.length;
+      j(name, "正解に無い印", "正解の紙に無い □ に印を付けた", exp, extraMarks.join("・"));
+    }
     // 合わせた欄が空でも、正解の表に合わない AI の欄（余分な欄）がこの欄の場所に正解の字を置いていれば、紙は当たり（T131。評価の 3 回目の
     // 災害診療記録の避難先: AI は種類の □ の 1 つ目を「避難先1」の欄に、名前を書く所を「避難所名」の欄に読み、紙には正しい所に避難先が出た）。
     // 読み取りの段の判定（取りこぼし）はそのまま
@@ -415,6 +442,27 @@ export function scorePaper(o: {
 }
 
 export type PaperRow = { field: string; expected: string; actual: string; verdict: string };
+
+/**
+ * 紙の印のうち正解の紙に無い物（T164）。□ の欄は正解が空なのに印、選ぶ欄は印を付けた選択肢の名前が正解の印のどれとも合わない物。
+ * どちらの欄も □・選ぶ欄のときだけ見る（字の欄の字は置き間違いで数える）
+ */
+export function marksNotIn(gold: MappingField, expCell: Cell, ai: MappingField, actCell: Cell): string[] {
+  const mark = (f: MappingField) => f.shape === "check" || f.shape === "choice";
+  if (!mark(gold) || !mark(ai) || actCell.kind !== "choice") return [];
+  const on = actCell.options.filter((x) => x.on).map((x) => (ai.shape === "check" ? ai.label : x.label));
+  if (on.length === 0) return [];
+  // 選択肢を持たない正解の選ぶ欄（災害診療記録の性別）は、正解の紙の字と照らす
+  const expOn =
+    expCell.kind === "choice" ? expCell.options.filter((x) => x.on).map((x) => (gold.shape === "check" ? gold.label : x.label)) : gold.shape === "choice" ? cellLines(expCell) : [];
+  if (gold.shape === "check" || ai.shape === "check") return expOn.length > 0 ? [] : on;
+  const same = (a: string, b: string) => {
+    const x = norm(a);
+    const y = norm(b);
+    return x !== "" && y !== "" && (x === y || x.includes(y) || y.includes(x));
+  };
+  return on.filter((l) => !expOn.some((e) => same(l, e)));
+}
 
 /** mapped-sheet と同じ文脈で欄の値を作る物（buildMappedSheet は文脈を返さないので、欄ごとに 1 欄の対応表で引く） */
 export function cellOfSheet(sheet: MappedSheet): CellOf {

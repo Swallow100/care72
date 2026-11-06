@@ -29,6 +29,8 @@ export interface Surface {
   shot(file: string): Promise<boolean>;
   /** 筋の前の下ごしらえ: ID とパスワードで入る（使う人の手に数えない） */
   login(id: string, secrets: Secrets): Promise<boolean>;
+  /** 筋の前の下ごしらえ: 事業所の「発災開始」（T163。入ったあとに呼ぶ。使う人の手に数えない）。入れなければ false */
+  startDisaster(): Promise<boolean>;
   /** 筋を終える（閲覧の箱を閉じる） */
   end(): Promise<void>;
 }
@@ -239,6 +241,25 @@ export class ChromeSurface implements Surface {
     this.errors = [];
     // 戻せたら /office?reset=done へ移る（lib/seed/http.ts の officeResetHref）
     return landed.includes("reset=done");
+  }
+
+  /** 事業所の「発災開始」と同じ要求（事業所の画面の版を読んでから送る。lib/seed/http.ts の startPost）。入れたら /office へ移る */
+  async startDisaster(): Promise<boolean> {
+    const page = await this.ensure();
+    const landed = await page
+      .evaluate(async () => {
+        const html = await (await fetch("/office", { credentials: "same-origin" })).text();
+        const doc = new DOMParser().parseFromString(html, "text/html");
+        const version = doc.querySelector<HTMLInputElement>("form[data-seed-start] input[name=version]")?.value;
+        if (version === undefined) return "";
+        const body = new FormData();
+        body.set("version", version);
+        const r = await fetch("/office/start", { method: "POST", body, credentials: "same-origin" });
+        return r.url;
+      })
+      .catch(() => "");
+    this.errors = [];
+    return landed !== "" && new URL(landed).pathname === "/office" && !landed.includes("error=");
   }
 
   async end(): Promise<void> {

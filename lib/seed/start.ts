@@ -8,6 +8,7 @@
 // 版は 2 つ上がる（切替と情報の 2 回ぶん。T153 の前の種と同じ数え方）。重なった押しは片方だけ通り、もう片方は「競合」。
 // もう一度押したとき（平時に戻したあと）は、前に入れた山田の赤と経過の 3 行（決まった id）と、その赤を指す経過を消してから入れ直す。
 // 事業所の経過の行は毎回新しい id で、時刻は押した時刻（切替の履歴として残る）。書き手は押した人（審査員なら審査員 1〜3）。
+// 入ったあとに医療班への受入依頼（T163、lib/seed/requests.ts）を、ルールの表の連絡順の上から入れる。
 // 平時に戻すのは今の切替（lib/disaster/db.ts の switchDisasterMode）。
 
 import type { D1Database } from "@cloudflare/workers-types";
@@ -18,6 +19,7 @@ import { isDisaster } from "../disaster/state.ts";
 import { lit, type SqlValue } from "../../seed/sql.ts";
 import { seedDisasterRows, seedRedSignalId, type SeedRecording } from "./demo.ts";
 import { findSeedRecording, type SeedBucket } from "./reset.ts";
+import { seedStartRequests } from "./requests.ts";
 
 export type StartResult = { ok: true } | { ok: false; error: "conflict" | "disaster" | "not_seed" };
 
@@ -101,6 +103,14 @@ export async function startSeedDisaster(
   const recording = await findSeedRecording(bucket);
   const statements = seedStartStatements(scope.officeId, input.at, recording, scope, input.version, newId);
   const [first] = await db.batch(statements.map((s) => db.prepare(s)));
-  return (first?.meta.changes ?? 0) > 0 ? { ok: true } : { ok: false, error: "conflict" };
+  if ((first?.meta.changes ?? 0) === 0) return { ok: false, error: "conflict" };
+  // 医療班への受入依頼（T163）。入った後のルールの表の連絡順で選ぶので、切替の取引の後に入れる。
+  // 入らなくても切替は済んでいる（依頼はケアマネが本人のページから送れる）
+  try {
+    await seedStartRequests(db, scope.officeId, input.at);
+  } catch (e) {
+    console.error("種の受入依頼を入れられない", e);
+  }
+  return { ok: true };
 }
 

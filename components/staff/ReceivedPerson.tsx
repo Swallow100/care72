@@ -15,7 +15,7 @@ import { TimelineComposer } from "@/components/person/TimelineComposer";
 import { ButtonLink } from "@/components/ui/Button";
 import { PaperIcon, PrintIcon } from "@/components/ui/Icon";
 import { Mark, StateText } from "@/components/ui/Tag";
-import { CUSTODY_VIA_LABELS, RECEIVED_LABELS } from "@/lib/custody/labels";
+import { SHOWN_VIA_LABELS, RECEIVED_LABELS } from "@/lib/custody/labels";
 import { receivedLayout, type OpenCustody, type SummaryCell } from "@/lib/custody/received";
 import type { ConsentStatus } from "@/lib/db/types";
 import { shortJst } from "@/lib/disaster/state";
@@ -91,7 +91,7 @@ export function ReceivedPerson({
               <span className="text-sm" data-custody={custody.custodyId}>
                 <span className="text-xs text-muted">{RECEIVED_LABELS.received}</span>{" "}
                 <span className="font-bold">{custody.shelter}</span> <span className="tabular-nums">{shortJst(custody.receivedAt)}</span>{" "}
-                <span className="text-xs text-muted">{CUSTODY_VIA_LABELS[custody.via]}</span>
+                <span className="text-xs text-muted">{SHOWN_VIA_LABELS[custody.via]}</span>
               </span>
             )}
           </div>

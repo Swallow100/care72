@@ -25,7 +25,7 @@ import { SORT_ICON, TABLE, TABLE_BOX, TH } from "@/components/ui/table";
 import type { StaffRow } from "@/lib/custody/board";
 import { NOTE_MAX } from "@/lib/custody/forms";
 import { pinReceived } from "@/lib/custody/entry";
-import { CUSTODY_LABELS, CUSTODY_VIA_LABELS, ENTRY_LABELS, RELEASE_LABELS } from "@/lib/custody/labels";
+import { CUSTODY_LABELS, SHOWN_VIA_LABELS, ENTRY_LABELS, RELEASE_LABELS } from "@/lib/custody/labels";
 import { Mark } from "@/components/ui/Tag";
 import { CUSTODY_RELEASE_API } from "@/lib/custody/paths";
 import { RELEASE_KINDS, type ReleaseKind } from "@/lib/db/types";
@@ -350,7 +350,7 @@ function Row({ row: r, fresh = false, open, onToggle }: { row: StaffRow; fresh?:
         <td className={`${CELL} ${SM} whitespace-nowrap`}>{r.shelter}</td>
         <td className={`${CELL} ${MD} whitespace-nowrap`}>
           <div className="tabular-nums">{r.receivedWhen}</div>
-          <div className="text-xs text-muted">{CUSTODY_VIA_LABELS[r.via]}</div>
+          <div className="text-xs text-muted">{SHOWN_VIA_LABELS[r.via]}</div>
         </td>
         <td className={`${CELL} ${LG} whitespace-nowrap`}>
           <span className={r.unaffiliated ? "font-bold" : ""}>{r.office}</span>
