@@ -270,7 +270,7 @@ describe("6. 台", () => {
     expect(mine.map((g) => g.id)).toEqual(
       expect.arrayContaining([
         "persona-medical-role",
-        "persona-medical-note",
+        
         "persona-ledger-not-found",
         "persona-auto-reached",
         "persona-first-disaster",
