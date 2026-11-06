@@ -660,9 +660,12 @@ function fitIn(lines: readonly string[], box: FieldBox, image: { w: number; h: n
   const h = box.h * image.h;
   if (maxPt >= FONT_MIN_PT - 1e-9) {
     const f = fitText(lines, w, h, maxPt);
-    if (f) return { fitted: f };
+    if (f && f.fontPt > FONT_MIN_PT + 1e-9) return { fitted: f };
+    // 普通の空きで下限まで縮めた字は、狭い空きの方が大きければそちら（T175）。枠が 0.1% 低いだけで狭い空きの大きな字に変わり、枠の読み取りの
+    // わずかな差で下限の字の数（見直しの下限）が同じ様式で 122 → 17 と揺れていた
     const t = fitText(lines, w, h, maxPt, TIGHT_PAD_X_MM, TIGHT_PAD_Y_MM);
-    if (t) return { fitted: t, tight: true };
+    if (t && (!f || t.fontPt > f.fontPt + 1e-9)) return { fitted: t, tight: true };
+    if (f) return { fitted: f };
   }
   // 最後: 1 行の短い値だけ、行の高さを字の高さに・空きを 0.05mm に（T160）。数だけの短い値は字の下限を 5.5pt に
   if (lines.length !== 1 || [...lines[0]].length > 24) return null;
