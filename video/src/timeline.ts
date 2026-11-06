@@ -315,7 +315,8 @@ export const SCENES: Scene[] = [
         from: 14.6,
         label: "様式の読み取り: 写真 → 対応表",
         chip: "Claude Opus 5.5",
-        sub: "自治体ごとの様式も、欄を読み取って枠ごとに書き込む。足りない所は手で直す",
+        // 字幕と重ならないよう、窓の右下の面に（11/6）
+        stat: { at: 0.3, label: "自治体ごとの様式", text: "欄を読み取って枠ごとに書き込み／足りない所は手で直す", value: "" },
         zoom: [{ x: 0, y: 0, w: 1 }, { x: 0.1, y: 0.05, w: 0.8 }],
       },
     ],
@@ -389,7 +390,7 @@ export const SCENES: Scene[] = [
         stat: { at: 0.2, label: "阪神・淡路大震災の直接死（兵庫県 2005）", text: "窒息・圧死が占める割合", value: "72.6%" },
       },
       { at: 133.7, end: 135.7, kind: "footage", footage: "R12", from: 12.6, label: "本人のスマホ: AI 音声の問いかけ（大丈夫ですか 状況を説明してください）" },
-      { at: 135.7, end: 137.6, kind: "footage", footage: "R12", from: 44.8, emphasis: true, label: "強調: 録音（背景の音からも情報を得る）", sub: "録音で、背景の音からも情報を得る" },
+      { at: 135.7, end: 137.6, kind: "footage", footage: "R12", from: 44.8, emphasis: true, label: "強調: 録音（背景の音からも情報を得る）", stat: { at: 0.1, label: "録音", text: "背景の音からも／情報を得る", value: "" } },
       // 行の詳細（R14-1）。86.5 秒に下へ送ったあと 95 秒まで止まっている。録音のまとめ（AI）・分類と人の判断に囲みを 1 つずつ
       {
         at: 137.6,
@@ -445,7 +446,7 @@ export const SCENES: Scene[] = [
     end: 165.3,
     shots: [
       // 作者の声（11/6）: 右の端末の録画は何の画面か分からないので外し、短く。声なしで使い分けの表だけ
-      { at: 162.3, end: 165.3, kind: "models", footages: [], label: "使い分けの表" },
+      { at: 162.3, end: 165.3, kind: "models", footages: [], label: "使い分けの表", sub: "開発は Claude Code／設計と実装を分けて並行で／フックと見直し役で確かめる" },
     ],
   },
   {

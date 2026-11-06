@@ -243,7 +243,7 @@ const Backdrop: React.FC<{ shot: Shot; assets: Assets; duration: number }> = ({ 
  * 録画の右下に重ねる数の面（声は足さず、字だけ。S6 の医療班の所のアンケートの問 7）。面の色は地の上で目立つ色（白地では青）、字はその逆。
  * 出るときは下から上がり、出たら止まる（跳ねない）。録画の大事な所（左の紙面）を隠さないよう右下に置く
  */
-const StatNote: React.FC<{ stat: NonNullable<Shot["stat"]>; inset: { width: number; height: number } }> = ({ stat, inset }) => {
+const StatNote: React.FC<{ stat: NonNullable<Shot["stat"]>; inset: { width: number; height: number; phone?: boolean } }> = ({ stat, inset }) => {
   const frame = useCurrentFrame();
   const p = usePalette();
   const S = LAYOUT.stage;
@@ -252,7 +252,8 @@ const StatNote: React.FC<{ stat: NonNullable<Shot["stat"]>; inset: { width: numb
       style={{
         // 舞台（Stage）の中の位置。録画の窓（舞台の真ん中）の右下の角から 28px 内に重ねる
         position: "absolute",
-        right: (S.width - inset.width) / 2 + 28,
+        // スマホの録画は画面に重ねず、スマホの右の空いた所に（11/6）
+        right: inset.phone ? (S.width - inset.width) / 2 - 600 - 56 : (S.width - inset.width) / 2 + 28,
         bottom: (S.height - inset.height) / 2 + 28,
         width: 600,
         boxSizing: "border-box",
@@ -271,12 +272,13 @@ const StatNote: React.FC<{ stat: NonNullable<Shot["stat"]>; inset: { width: numb
           <div key={r}>{r}</div>
         ))}
       </div>
-      <div style={{ fontSize: TYPE.h1, fontWeight: 600, lineHeight: 1.1, marginTop: 6 }}>{stat.value}</div>
+      {stat.value ? <div style={{ fontSize: TYPE.h1, fontWeight: 600, lineHeight: 1.1, marginTop: 6 }}>{stat.value}</div> : null}
     </div>
   );
 };
 
 const ShotView: React.FC<{ shot: Shot; assets: Assets; entryDelay?: number; next?: Shot }> = ({ shot, assets, entryDelay = 0, next }) => {
+  const frame = useCurrentFrame();
   const duration = f(shot.end) - f(shot.at);
   const S = LAYOUT.stage;
   let body: React.ReactNode = null;
@@ -431,7 +433,18 @@ const ShotView: React.FC<{ shot: Shot; assets: Assets; entryDelay?: number; next
     case "models":
       body = (
         <Models counters={shot.lines}>
-          {shot.footages?.length ? <Cycle ids={shot.footages} assets={assets} duration={duration} label={shot.label} /> : null}
+          {shot.footages?.length ? (
+            <Cycle ids={shot.footages} assets={assets} duration={duration} label={shot.label} />
+          ) : shot.sub ? (
+            // 端末の録画を外した形（11/6）: 右に作り方を字で
+            <div style={{ width: 640, display: "flex", flexDirection: "column", gap: 18 }}>
+              {shot.sub.split("／").map((x, i) => (
+                <div key={x} style={{ fontSize: i === 0 ? TYPE.h1 : TYPE.h2, fontWeight: 600, lineHeight: 1.2, ...rise(frame, 6 + i * STAGGER) }}>
+                  {x}
+                </div>
+              ))}
+            </div>
+          ) : null}
         </Models>
       );
       break;

@@ -232,10 +232,13 @@ export const Share: React.FC<{ hero: string; share: number; part: string; whole:
         <div style={{ display: "flex", alignItems: "baseline", gap: 10, lineHeight: 1 }}>
           {/* 数そのものが白い帯の言葉なら、数え終えた所で帯を引く（「15.1%」「4 人」。作者の頼み 11/6） */}
           {marker === hero ? (
+            // 帯の高さは字の大きさから決まるので、包む字の大きさを数にそろえる
+            <span style={{ fontSize: m ? 200 : TYPE.hero, lineHeight: 1 }}>
             <Marker at={land}>
               <span style={{ fontSize: m ? 220 : TYPE.hero, fontWeight: 600 }}>{shown}</span>
               {m ? <span style={{ fontSize: 110, fontWeight: 600 }}>{m[2]}</span> : null}
             </Marker>
+            </span>
           ) : (
             <>
               <span style={{ fontSize: m ? 220 : TYPE.hero, fontWeight: 600 }}>{shown}</span>
