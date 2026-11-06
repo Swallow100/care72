@@ -30,7 +30,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "eval:drill": "node tools/eval/drill/run.ts",
-    "eval:talk": "node tools/eval/talk/run.ts"
+    "eval:talk": "node tools/eval/talk/run.ts",
+    "eval:persona": "node tools/eval/persona/run.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "1.3.0",
