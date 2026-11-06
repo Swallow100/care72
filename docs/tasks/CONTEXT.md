@@ -36,7 +36,7 @@ docs/tasks/TNN.md の作業は、この文書と `CLAUDE.md` と `docs/tasks/REA
 - `lib/forms/`: 様式（松山市の計画書、様式 9、本人の 1 枚 `own-sheet.ts`、医療要約 `medical-summary.ts`。全部定型で Claude を呼ばない）。
 - `lib/db/types.ts`: 表の型（Ledger が台帳）。`migrations/`: D1 の表（番号は origin を見て空いている物）。`seed/`: 架空の 10 人。
 - `components/ui/`: 共通の部品（Button・Badge・Page・表・印刷・戻る）。`lib/labels.ts`: 画面の言葉。
-- `docs/SPEC.md`: キックオフ前の設計（書き換えない）。`docs/DECISIONS.md`: 設計の決め（テーマごと）。`docs/PROGRESS.md`・`docs/progress/tNN.md`: 進み。`docs/HANDOFF.md`: 設計のセッション 2 つの連絡板。`docs/TRIAGE.md`・`docs/SOURCES.md`: コードから作る文書。`docs/JUDGING.md`: 審査基準と作品の対応。
+- `docs/DECISIONS.md`: 設計の決め（テーマごと）。`docs/PROGRESS.md`・`docs/progress/tNN.md`: 進み。`docs/HANDOFF.md`: 設計のセッション 2 つの連絡板。`docs/TRIAGE.md`・`docs/SOURCES.md`: コードから作る文書。
 
 ## 4. 言葉（用語）
 
@@ -53,7 +53,7 @@ docs/tasks/TNN.md の作業は、この文書と `CLAUDE.md` と `docs/tasks/REA
 - 1 作業 1 worktree ＋ branch: `git worktree add ../care72-tNN -b task/tNN origin/main`、その中で `npm ci`、`npm run db:fresh`（手元の D1、--local だけ）。worktree の外を開かない。
 - テストを先に書き、落ちるのを見てから中身を書く。commit は日本語で小さく、`npm test`（`--maxWorkers=4`。描くテストが時間切れなら `--testTimeout=60000`）と `npm run typecheck` が通ってから。末尾に `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`（書いたモデル名）。毎回 `git push origin HEAD`。
 - 進みは `docs/progress/tNN.md`（頭に「TNN 作業中（だれ、日時）」、終わりに「できた物・未確認・決めた所・問い」）。`docs/PROGRESS.md` と `docs/HANDOFF.md` は触らない（設計の側が書く。衝突を避けるため）。
-- 仕様と違う決めは `docs/DECISIONS.md` の合うテーマの節に「案」として足す。`docs/SPEC.md` は書き換えない。
+- 仕様と違う決めは `docs/DECISIONS.md` の合うテーマの節に「案」として足す。
 - 終わったら origin/integrate/t11-t12 を取り込んで衝突を解き（両方を活かす）、`gh pr create --base integrate/t11-t12 --fill`。**merge はしない**（設計の側が merge commit で取り込む）。
 - 履歴を書き換えない（rebase・amend・force push をしない）。フック（.claude/settings.json）が止めたら理由を読んで別の道を取る。鍵を探さない・置かない。本物の API は呼ばない（偽の client でテスト）。ネットに出る wrangler を打たない。
 - 決めきれない事は docs/progress/tNN.md の「問い」に書いて、止まらずに CLAUDE.md と文書に合う側を選んで進む。

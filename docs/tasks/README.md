@@ -29,7 +29,7 @@ T49 以降の文書は、頭に「意図（なぜこの作業か）」と、末�
 - Claude に渡す物は lib/pseudonym を通した仮名だけ。氏名・住所・電話・町名は渡さない。
 - 診断・用量・医療助言になる文を書かない。色と順位は lib/triage の表だけで出す。
 - 依存を足したら THIRD_PARTY_NOTICES.md（MIT・Apache-2.0・OFL だけ）。鍵は .dev.vars（手元）と Cloudflare の secret（配信）だけ。.env・.dev.vars は commit しない。
-- 終わったら docs/PROGRESS.md に「できた物・未確認・決めた所」を足す。決めたことで仕様書と違う物は docs/DECISIONS.md に「案」として書く。docs/SPEC.md は書き換えない。
+- 終わったら docs/PROGRESS.md に「できた物・未確認・決めた所」を足す。決めたことで仕様書と違う物は docs/DECISIONS.md に「案」として書く。
 - commit は日本語で小さく。末尾は Opus なら `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`、Fable なら `Claude Fable 5.1`、Sonnet なら `Claude Sonnet 5.5`。
 - 配信（wrangler deploy・d1 create・secret put）は T27 だけ。ほかの作業は `--local` だけ。
 
@@ -198,6 +198,6 @@ T49 以降の文書は、頭に「意図（なぜこの作業か）」と、末�
 - 分岐（worktree + PR）: T30・T08。触るファイルが重ならない物から。main と同時に進む作業は docs/PROGRESS.md でなく docs/progress/tNN.md に書く
 - どちらも、始める前に `git log origin/main -1` で main の先頭を見て、同じ作業を 2 か所で始めない。始めたら docs/PROGRESS.md の先頭に「T05 作業中（別アカ、11/2 20:10〜）」の 1 行を commit する
 
-削るなら docs/SPEC.md の「削る順」のとおり: 出向いた先の出来事 → 自分の避難 → 早送り → 雨雲・震度の面 → 様式の読み取り（内閣府）。
+削るなら次の順: 出向いた先の出来事 → 自分の避難 → 早送り → 雨雲・震度の面 → 様式の読み取り（内閣府）。
 | T95 | 見本のケアマネ（山本）でも役を選べるように（審査員と同じ壁） | 11/4〜 | T61・T81 |
 | T96 | 雨雲の見た目と、避難計画の進みの欄の分かりやすさ | 11/4〜 | T66・T87 |

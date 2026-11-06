@@ -38,7 +38,7 @@ argument-hint: "[T番号（例 T05）]"
 - `npm test` と `npm run typecheck` が通る
 - 画面があれば `npm run dev`（port 3072）で開き、ライトとダークの両方で見て、サーバーを止める
 - docs/PROGRESS.md の作業中の行を、「できた物・未確認・決めた所」の節に置き換える。作業のファイルと違えた所も書く
-- 決めたことで仕様書と違う物は docs/DECISIONS.md に「案」として書く。docs/SPEC.md は書き換えない
+- 決めたことで仕様書と違う物は docs/DECISIONS.md に「案」として書く
 
 ## 5. 取り込み（worktree のとき）
 

@@ -4,7 +4,7 @@
 
 ## 体制
 
-- **設計と相談のセッション**（Claude Fable 5.1）: キックオフ前に書いた設計（[docs/SPEC.md](SPEC.md)）をもとに、作業を 1 つずつの頼み文（[docs/tasks](tasks/)）に分け、作業者の問いに答え、決めた事を [docs/DECISIONS.md](DECISIONS.md) にテーマごとにまとめる。merge と配信の段取りもここ。
+- **設計と相談のセッション**（Claude Fable 5.1）: キックオフ前に書いた設計（リポジトリの外）をもとに、作業を 1 つずつの頼み文（[docs/tasks](tasks/)）に分け、作業者の問いに答え、決めた事を [docs/DECISIONS.md](DECISIONS.md) にテーマごとにまとめる。merge と配信の段取りもここ。
 - **作業者のセッション**（Claude Opus 5.5）: 頼み文 1 つを受け取り、テスト → 中身 → 進みの記録（[docs/progress](progress/)）まで進める。同時に何本も並べて動かす。
 - **人**: 決める事（ルールの表の中身、画面の方向、配信）と、鍵の要る操作（配信・本物の Claude での確かめ）を受け持つ。
 

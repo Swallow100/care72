@@ -79,7 +79,7 @@
 - 11/3 10:2x A: ログイン画面と役選択を別のアプリのログインの配置を手本に作り直し（印「72 時間の輪」、大きな欄、表示と非表示、app/icon.svg）、既定のダークをやめた（`data-theme="dark"` のときだけ。OS の設定に従わない）。main に直接入れた。T41 には「ログインの見た目は触らず、e の出し分けだけ」と伝えた。次は T44（別のアプリの資産を活かす）の文書を書く。
 - 11/3 10:0x A: 入れた Secret の名前が `GEMINI_TTS` だったので、コードが `GEMINI_API_KEY` の無いときにその名前も読むようにして（fa99eaa）配信した（version a3bdc3c2、health の gemini true、people 10 人）。着信の声は本番で未確認。T40 の文書を書いた（docs/tasks/T40.md。T22 の取り込みのあとに出す）。
 - 11/3 09:4x A: 4ac604d（T37 入り）を care72.app に出した（version 4dbe3172、D1 作り直し、people 10 人）。health の `gemini` はこの時点では false（鍵の名前が違った。10:4x に直した）。T19〜T21 の画面の言葉を Gemini に通して採否を決めた（docs/DECISIONS.md「119 の案内と画面の言葉」。直しは T40）。Gemini の pane はログアウトしていた（Flash-Lite で通した。ログインし直せば Flash 高）。Opus 4 本は作業中。
-- 11/3 09:3x A: B が 09:1x に上限で止まったので A が引き継いだ。B の Opus（T22・T39）も止まっている。T22 の 3 commit（`task/t22`、`care72-t22`）は A が続きを出す。T39 は何も残っていないので取り下げ、点検は T40 に含める。A が出す分岐: T22 の続き（`care72-t22`）、T41（`care72-t41`）、T42 アンケートの Web 版（`care72-t42`）、T43 動画の制作（`care72-t43`）。同時 4 本。B は戻ったら、この板と各 `docs/progress/tNN.md` を読み、A が持っていない物（T40 画面の点検と直し → T28 README と数字。T29 は 11/3 のセッション①のあと）から。配信: A が 09:2x に 5527037（T37 入り）を出し始めた。09:2x に `GEMINI_API_KEY` を Secrets に入れた。
+- 11/3 09:3x A: B が 09:1x に上限で止まったので A が引き継いだ。B の Opus（T22・T39）も止まっている。T22 の 3 commit（`task/t22`、`care72-t22`）は A が続きを出す。T39 は何も残っていないので取り下げ、点検は T40 に含める。A が出す分岐: T22 の続き（`care72-t22`）、T41（`care72-t41`）、T42 アンケートの Web 版（`care72-t42`）、T43 動画の制作（`care72-t43`）。同時 4 本。B は戻ったら、この板と各 `docs/progress/tNN.md` を読み、A が持っていない物（T40 画面の点検と直し → T28 README と数字。T29 はそのあと）から。配信: A が 09:2x に 5527037（T37 入り）を出し始めた。09:2x に `GEMINI_API_KEY` を Secrets に入れた。
 - 11/3 09:0x B: 2d8b1c0 の配信を始めたが build の前で止まった（上限）。本番は 334732b のまま。
 
 ## 完全な受け渡し（11/3 15:1x 更新。このファイルだけで設計の側を続けるとき）
@@ -92,9 +92,9 @@
 2. `CLAUDE.md`（守ること・画面の決まり。正本）
 3. このファイルの上の連絡板（新しい物が上。誰が何を持っているか）と、下の「現在地」「残っている物」
 4. `docs/DECISIONS.md`（期間中の設計の決め。テーマごと）
-5. `docs/JUDGING.md`（審査基準 4 つ × 項目ごとに、作品のどこで満たすか・足りない物）
+5. （外した）
 6. `docs/tasks/README.md`（作業の一覧と状態）と `docs/progress/tNN.md`（各作業の記録・問い）
-7. `docs/SPEC.md` は元の設計（書き換えない）。迷ったら「ねらい」「医療の芯」「訓練」「発災時」だけ読む
+7. キックオフ前の設計はリポジトリの外にある。迷ったら docs/DECISIONS.md を読む
 
 ### 1. 役と場所
 
@@ -116,7 +116,7 @@
 - 使用量: 11/3 15:00 に A のアカウントの 5 時間の枠が 71%（Opus 7 本）。
 - 医療の線引き（docs/DECISIONS.md「AI の使い所」）への対応は T48。
 
-### 3. 提出までに残っている物（順に。足りない物の正本は docs/JUDGING.md）
+### 3. 提出までに残っている物（順に）
 
 1. **取り込み**: 来た PR を merge commit で `integrate/t11-t12` に（衝突は両方を活かす。`lib/drill/`・`lib/db/types.ts`・`migrations/`・`seed/`・`components/phone/` が多い）→ `npm run db:fresh`・`npm test`・`npm run typecheck` → main を `git push origin integrate/t11-t12:main`。各分岐の `docs/progress/tNN.md` の「問い」に答えて DECISIONS に書く。画面の言葉は Gemini（Claude Desktop の pane、Flash 高）に通して採否を決める（採った物・採らなかった物を DECISIONS に）。
 2. **配信**: T22・T43・T47・T44〜T46・T48 が入ったら 1 回。手順は下の 4。配信後に `/api/health`（commit・gemini true）と `tools/deploy/check-remote`（T41）。
@@ -140,7 +140,7 @@
 
 ### 5. 判断の仕方（docs/DECISIONS.md から）
 
-- 審査基準の全項目で満点を狙う。テーマ 1（その世界に身を置いてきた人だからこそ見えた足りない物）。
+- テーマ 1（その世界に身を置いてきた人だからこそ見えた足りない物）。
 - 簡素化しない。情報は多く出す（本人・家族のスマホだけ逆）。意味色をしっかり。画面の決まりは CLAUDE.md。AI っぽさ（書体・飾り・説明文・ピル型・グラデ）を出さない。
 - 途中で足りない物は何でも足して、より使いやすく。起きるまで自走。
 - 医療・法律は越えない線（CONTEXT.md の 2）に倒す。
@@ -183,4 +183,4 @@
 set CLAUDE_CONFIG_DIR=<2 つ目のアカウントの設定のフォルダ> && cd <care72 の checkout> && claude
 ```
 
-`/login` で入り、最初に「docs/tasks/CONTEXT.md → CLAUDE.md → docs/HANDOFF.md（連絡板と「完全な受け渡し」）→ docs/DECISIONS.md → docs/JUDGING.md を読んで、「提出までに残っている物」の 1 から」と頼む。care72 の `.claude/settings.json` のフック（ネットに出る wrangler・秘密のファイル・履歴の書き換えを止める）と Skill（`/task`・`/triage-rule`・`/care72-review`）、サブエージェント（`.claude/agents`）、MCP（`care72-local`、初回に承認を聞かれる）が効く。
+`/login` で入り、最初に「docs/tasks/CONTEXT.md → CLAUDE.md → docs/HANDOFF.md（連絡板と「完全な受け渡し」）→ docs/DECISIONS.md を読んで、「提出までに残っている物」の 1 から」と頼む。care72 の `.claude/settings.json` のフック（ネットに出る wrangler・秘密のファイル・履歴の書き換えを止める）と Skill（`/task`・`/triage-rule`・`/care72-review`）、サブエージェント（`.claude/agents`）、MCP（`care72-local`、初回に承認を聞かれる）が効く。

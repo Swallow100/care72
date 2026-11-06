@@ -34,7 +34,7 @@ argument-hint: "[足したい行の中身]"
    - `it.fails` を `it` に戻し、`npx vitest run lib/triage` が通る
 4. 大雨の筋（lib/triage/heavy-rain.test.ts）を流す。10 人の色・並びが変わったら、変わった所を期待に書き、なぜ変わってよいかを commit の文に書く
 5. `npm run docs:triage` で docs/TRIAGE.md を作り直す（作り直さないと doc.test.ts が落ちる）
-6. docs/DECISIONS.md の「色と連絡順」に「案」として、番号・中身・理由（なぜその人が先か）を書く。docs/SPEC.md は書き換えない
+6. docs/DECISIONS.md の「色と連絡順」に「案」として、番号・中身・理由（なぜその人が先か）を書く
 7. `npm test` と `npm run typecheck` が通ってから commit する（「ルールの表に案 N」）。.ts を書くたびにフックが型の検査を流すので、誤りはその場で直す
 
 ## 確かめ方
