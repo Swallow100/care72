@@ -280,7 +280,7 @@ describe("頼み事の未対応と通話の往復（T93 の欄）", () => {
     const a = rec("a1", "call_person", "p-01", 0, { extra: { talk } });
     expect(talkTurns(a)).toBe(2);
     expect(talkTurns(rec("a2", "call_person", "p-01", 0))).toBe(0);
-    expect(scoreTalks([a, rec("a2", "call_person", "p-01", 30), rec("a3", "call_person", "p-02", 40, { extra: { talk: talk.slice(0, 2) } })])).toEqual({ turns: 3, calls: 2 });
+    expect(scoreTalks([a, rec("a2", "call_person", "p-01", 30), rec("a3", "call_person", "p-02", 40, { extra: { talk: talk.slice(0, 2) } })])).toEqual({ turns: 3, calls: 2, voiced: 0 });
     const v = rec("a4", "visit", "p-01", 0, { status: "arrived", extra: { visit: { condition: "玄関で座っている", asks: ["water", "medicine", "x"], speech: "水がほしい", ai: true } } });
     expect(visitOf(v)).toEqual({ condition: "玄関で座っている", asks: ["water", "medicine"], ai: true });
     expect(visitOf(rec("a5", "visit", "p-01", 0))).toBeNull();
@@ -397,7 +397,7 @@ describe("72 時間の筋（連続の時計と 18 の手）", () => {
       ["a8", "p-03", "closed"],
     ]);
     expect(s.repeat?.rows.map((x) => [x.action, x.first, x.gap])).toEqual([["a4", "a3", 5]]);
-    expect(extrasCount(s)).toEqual({ wasted: 2, repeat: 1, asksOpen: 0, talks: 0 });
+    expect(extrasCount(s)).toEqual({ wasted: 2, repeat: 1, asksOpen: 0, talks: 0, voiced: 0 });
   });
 
   it("講評の入力: 手の行にその時に分かっていた事実と結果、自由対応の読み替え、機械の内訳。ケアマネの文は渡さない", () => {
@@ -585,7 +585,7 @@ describe("保存と講評と紙面（D1）", () => {
     expect(rec.score.repeat?.rows.map((w) => [w.kind, w.person, w.gap])).toEqual([["call_person", "p-04", 5]]);
     const kept = parseStoredScore(stored())!;
     expect(kept.score.wasted?.total).toBe(1);
-    expect(kept.score.talks).toEqual({ turns: 0, calls: 0 });
+    expect(kept.score.talks).toEqual({ turns: 0, calls: 0, voiced: 0 });
   });
 
   it("前の記録（内訳の欄なし）も読める。内訳は訓練の記録から数えて足し、4 つの数字は残した物のまま（書き戻さない）", async () => {
@@ -597,11 +597,11 @@ describe("保存と講評と紙面（D1）", () => {
     sqlite.prepare("UPDATE drills SET score = ? WHERE id = ?").run(oldText, ID);
     const parsed = parseStoredScore(oldText)!;
     expect(parsed.score.wasted).toBeUndefined();
-    expect(extrasCount(parsed.score)).toEqual({ wasted: 0, repeat: 0, asksOpen: 0, talks: 0 });
+    expect(extrasCount(parsed.score)).toEqual({ wasted: 0, repeat: 0, asksOpen: 0, talks: 0, voiced: 0 });
     const rec = await loadDrillRecord(db, SCOPE, ID, LATER);
     if (!rec || rec === "running") throw new Error("記録なし");
     expect(scoreNumbers(rec.score)).toEqual({ ...scoreNumbers(kept.score), form9: 99 });
-    expect(extrasCount(rec.score)).toEqual({ wasted: 1, repeat: 1, asksOpen: 0, talks: 0 });
+    expect(extrasCount(rec.score)).toEqual({ wasted: 1, repeat: 1, asksOpen: 0, talks: 0, voiced: 0 });
     expect(stored()).toBe(oldText);
     // withExtras は内訳のそろった採点をそのまま返す
     expect(withExtras(kept.score, rec.screen, rec.calls)).toBe(kept.score);
@@ -679,7 +679,7 @@ describe("7 つの手だけの訓練の数字", () => {
 
   it("世界の無い入力（前の呼び方）でも内訳の数が出る", () => {
     const s = scoreDrill({ participants: R, actions: [], calls: [], runs: [], form9: [], endMinute: 4320 });
-    expect(extrasCount(s)).toEqual({ wasted: 0, repeat: 0, asksOpen: 0, talks: 0 });
+    expect(extrasCount(s)).toEqual({ wasted: 0, repeat: 0, asksOpen: 0, talks: 0, voiced: 0 });
     expect({ ...EMPTY_WORLD }.asks).toBeUndefined();
   });
 });

@@ -31,6 +31,7 @@ import { FREE_WAY_LABELS } from "./action-terms.ts";
 import { NO_CALL } from "./event-catalog.ts";
 import { officePlaces } from "./area.ts";
 import { personOfAlias } from "./director.ts";
+import type { TalkLine } from "./dialogue.ts";
 import type { ActionRecord } from "./engine.ts";
 import { ACTION_LABELS, SCENARIO_LABELS, STATUS_LABELS } from "./labels.ts";
 import type { CallRecord } from "./responses.ts";
@@ -271,7 +272,12 @@ function talkAsks(a: ActionRecord, asks: ReviewContext["asks"]): string {
 }
 
 /** 講評の入力の文（仮名で書く。aliasOf: 台帳の id → 仮名）。数字は score の物だけ */
-export function reviewText(ctx: ReviewContext, aliasOf: ReadonlyMap<string, string>): string {
+export function reviewText(
+  ctx: ReviewContext,
+  aliasOf: ReadonlyMap<string, string>,
+  /** 通話の言葉を渡す前の検査（T155。伏せきれない行は null で渡さない）。無ければ言葉の欄を作らない */
+  opts: { words?: (text: string) => string | null } = {},
+): string {
   const who = (p: string | null | undefined) => (p && aliasOf.has(p) ? aliasOf.get(p)! : "（不明）");
   const s = ctx.score;
   const kind = scenarioOf(ctx.scenario).kind;
@@ -327,7 +333,9 @@ export function reviewText(ctx: ReviewContext, aliasOf: ReadonlyMap<string, stri
   for (const r of s.repeat?.rows ?? []) lines.push(`  - ${actLine(r.action, r.atMinute, ACTION_LABELS[r.kind], r.person)}（前の同じ手から ${r.gap} 分）`);
   lines.push(`- 頼み事の未対応（訓練の終わりまでに済まなかった頼み事）: ${n.asksOpen}`);
   for (const r of s.asks?.rows ?? []) lines.push(`  - ${who(r.person)}: ${askWords(r.kinds)}`);
-  lines.push(`- 通話の往復: ${n.talks}${s.talks && s.talks.calls > 0 ? `（${s.talks.calls} 件の通話）` : ""}`);
+  lines.push(
+    `- 通話の往復: ${n.talks}${s.talks && s.talks.calls > 0 ? `（${s.talks.calls} 件の通話${s.talks.voiced ? `。うち声で入れた言葉 ${s.talks.voiced}` : ""}）` : ""}`,
+  );
   // 計画で動けた人と、計画が無く手が要った人（T130。台帳の計画の中身の名前は書かない）
   if (s.plans) {
     const acted = s.plans.rows.filter((r) => r.acted.length > 0);
@@ -407,10 +415,51 @@ export function reviewText(ctx: ReviewContext, aliasOf: ReadonlyMap<string, stri
   if (hist.length === 0) lines.push("- なし");
   for (const h of hist) lines.push(`- ${h.text}`);
 
+  if (opts.words) lines.push(...talkWordsSection(ctx, who, opts.words));
+
   lines.push("", "状況（想定の表と監督の差し込み）:");
   if (ctx.incidents.length === 0) lines.push("- なし");
   for (const e of ctx.incidents) lines.push(`- ${minuteText(Math.round(e.at * 60))} ${e.text}${e.person && aliasOf.has(e.person) ? `（${who(e.person)}）` : ""}`);
   return lines.join("\n");
+}
+
+/** 講評に渡す通話の言葉の行の長さと数（T155。長い会話で入力が膨らまないように） */
+export const REVIEW_TALK_LINE_MAX = 80;
+export const REVIEW_TALK_LINES_MAX = 60;
+
+/**
+ * 通話の言葉（T155）。外へ掛けた電話と掛かってきた電話の往復を、時刻の順に通話ごとに。自分の言葉は「自分」（声で入れた物は「自分（声）」）、
+ * 相手は区分の言葉。words で検査した行だけ（伏せきれない行は渡さない）。行の数と長さに上限
+ */
+function talkWordsSection(ctx: ReviewContext, who: (p: string | null | undefined) => string, words: (t: string) => string | null): string[] {
+  type Call = { at: number; head: string; talk: ReadonlyArray<TalkLine> };
+  const calls: Call[] = [];
+  for (const a of ctx.actions) {
+    const talk = a.result?.talk ?? [];
+    if (talk.length === 0) continue;
+    calls.push({ at: a.atMinute, head: `${minuteText(a.atMinute)} 発信 ${who(a.person)}（${a.calleeLabel ?? "相手"}）`, talk });
+  }
+  for (const c of ctx.calls) {
+    const talk = c.talk ?? [];
+    if (talk.length === 0) continue;
+    calls.push({ at: c.minute, head: `${minuteText(c.minute)} 着信 ${who(c.person)}（${c.callee?.label ?? "相手"}）`, talk });
+  }
+  if (calls.length === 0) return [];
+  calls.sort((x, y) => x.at - y.at);
+  const out = ["", "通話の言葉（自分はケアマネ。声は声で入れた言葉。相手の言葉は AI が演じた架空の人）:"];
+  let n = 0;
+  for (const c of calls) {
+    if (n >= REVIEW_TALK_LINES_MAX) break;
+    out.push(`- ${c.head}`);
+    for (const l of c.talk) {
+      if (n >= REVIEW_TALK_LINES_MAX) break;
+      const t = words(Array.from(l.text.replace(/\s+/g, " ").trim()).slice(0, REVIEW_TALK_LINE_MAX).join(""));
+      if (!t) continue;
+      out.push(`  - ${l.who === "cm" ? (l.voice ? "自分（声）" : "自分") : "相手"}: 「${t}」`);
+      n++;
+    }
+  }
+  return out;
 }
 
 /** 名前を 3 人まで並べ、ほかは人数で（T141） */
@@ -606,7 +655,8 @@ export async function createReview(deps: ReviewDeps, ctx: ReviewContext): Promis
     const places = officePlaces(deps.ai.office.id, list.map((x) => x.ledger));
     const { key } = pseudonymize(list, { ...(deps.on ? { on: deps.on } : {}), places });
     const aliasOf = new Map(key.people.map((p) => [p.personId, p.alias]));
-    const record = pseudonymizeText(reviewText(ctx, aliasOf), key);
+    // 通話の言葉（T155）は 1 行ずつ伏せられるかを見て、伏せきれない行は渡さない（講評ごと止めない）
+    const record = pseudonymizeText(reviewText(ctx, aliasOf, { words: (t) => maskReply(t, key) }), key);
     const r = await askJson(buildReviewRequest(record), deps.ai);
     const body = reviewBody(r.value, { key, members: new Set(members), max: findingRoom(ctx.score), rooms: findingRooms(ctx.score) });
     if (!body.summary && body.findings.length === 0) return { ok: false, error: "bad_output" };

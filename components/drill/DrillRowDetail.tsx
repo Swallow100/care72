@@ -29,7 +29,7 @@ import { TALK_UI } from "@/lib/drill/dialogue";
 import type { Ask } from "@/lib/drill/scenarios";
 import type { ActionHints } from "@/lib/drill/action-hints";
 import { DetailHints } from "./ActionHints";
-import { AskMarks } from "./TalkBox";
+import { AskMarks } from "./TalkLines";
 import { ContactPick } from "./ContactPick";
 
 const MINUTE_MS = 60_000;

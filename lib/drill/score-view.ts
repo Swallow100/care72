@@ -44,7 +44,7 @@ export type ScoreView = {
 };
 
 export type ScoreExtraView = {
-  counts: { wasted: number; repeat: number; asksOpen: number; talks: number };
+  counts: { wasted: number; repeat: number; asksOpen: number; talks: number; voiced: number };
   /** 空振りの手（時刻・対応・対象・理由） */
   wasted: Array<{ action: string; person: string | null; name: string; act: string; why: string; at: string }>;
   /** 重複の手（前の同じ手からの分） */
@@ -59,7 +59,7 @@ export function extraText(c: ScoreExtraView["counts"]): string {
     `${SCORE_LABELS.wasted} ${c.wasted}`,
     `${SCORE_LABELS.repeat} ${c.repeat}`,
     `${SCORE_LABELS.asks} ${SCORE_LABELS.asksOpen} ${c.asksOpen}`,
-    `${SCORE_LABELS.talk} ${c.talks} ${SCORE_LABELS.talks}`,
+    `${SCORE_LABELS.talk} ${c.talks} ${SCORE_LABELS.talks}${c.voiced > 0 ? `（${SCORE_LABELS.voiced} ${c.voiced}）` : ""}`,
   ].join("・");
 }
 
