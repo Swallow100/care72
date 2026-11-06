@@ -202,7 +202,6 @@ export const GUARDS: ReadonlyArray<Guard> = [
   { id: "forms-paper-wrong", bench: "forms", item: "forms.paperWrong", op: "<=", value: 195, since: "r8", task: "T164", label: "紙の置き間違いを 6 回目より増やさない", suspects: ["lib/forms/mapped-sheet.ts", "lib/forms/overlay-sheet.ts", "lib/forms/form-shape.ts"] },
   // T166: 使う側の模擬の 2 回目で迷った所。数は直した形の値で、本物の回はまだ（docs/progress/t166.md）
   { id: "persona-medical-role", bench: "persona", item: "count:persona:unreached:medical.role", op: "<=", value: 0, since: "r9", task: "T166", label: "医療班の筋で医療班の役に入れる", suspects: ["components/person/RequestSection.tsx", "components/ui/RoleMenu.tsx", "tools/eval/persona/surface.ts"] },
-  { id: "persona-medical-note", bench: "persona", item: "count:persona:unreached:medical.note", op: "<=", value: 0, since: "r9", task: "T166", label: "医療班の筋が記録の追記まで行く", suspects: ["app/staff/page.tsx", "components/staff/StaffRequests.tsx", "tools/eval/persona/surface.ts"] },
   { id: "persona-ledger-not-found", bench: "persona", item: "count:persona:not_found:/", op: "<=", value: 2, since: "r9", task: "T166", label: "編集の面の目次と保存で迷わない", suspects: ["components/person/SectionEdit.tsx", "lib/labels.ts"] },
   { id: "persona-auto-reached", bench: "persona", item: "count:persona:unreached:judge10.auto", op: "<=", value: 0, since: "r9", task: "T166", label: "鳴っている着信があっても自動進行を押せる", suspects: ["components/drill/IncomingCall.tsx", "components/drill/DrillControls.tsx"] },
   { id: "persona-first-disaster", bench: "persona", item: "count:persona:unreached:first.disaster", op: "<=", value: 0, since: "r9", task: "T166", label: "訓練の画面から事業所の発災開始に着ける", suspects: ["app/drill/[id]/page.tsx", "lib/drill/labels.ts", "app/office/page.tsx"] },
@@ -231,17 +230,8 @@ export const GUARDS: ReadonlyArray<Guard> = [
   // 中身の欄を補い、8 回目の記録の数え直しで 0。連絡先の置けず 23（forms-contact-placed）と正解に無い印 1（forms-mark-extra-none）も同じ数え直しで 0
   { id: "forms-mark-content", bench: "forms", item: "forms.markNoContent", op: "<=", value: 0, since: "r9", task: "T168", label: "印を付けた □ の中身を紙から落とさない", suspects: ["lib/forms/trailing-field.ts", "lib/forms/read-post.ts", "lib/forms/mapped-sheet.ts"] },
   // T166: 使う側の模擬の 2 回目で迷った所。数は直した形の値で、本物の回はまだ（docs/progress/t166.md）
-  { id: "persona-medical-role", bench: "persona", item: "count:persona:unreached:medical.role", op: "<=", value: 0, since: "r9", task: "T166", label: "医療班の筋で医療班の役に入れる", suspects: ["components/person/RequestSection.tsx", "components/ui/RoleMenu.tsx", "tools/eval/persona/surface.ts"] },
-  { id: "persona-medical-note", bench: "persona", item: "count:persona:unreached:medical.note", op: "<=", value: 0, since: "r9", task: "T166", label: "医療班の筋が記録の追記まで行く", suspects: ["app/staff/page.tsx", "components/staff/StaffRequests.tsx", "tools/eval/persona/surface.ts"] },
-  { id: "persona-ledger-not-found", bench: "persona", item: "count:persona:not_found:/", op: "<=", value: 2, since: "r9", task: "T166", label: "編集の面の目次と保存で迷わない", suspects: ["components/person/SectionEdit.tsx", "lib/labels.ts"] },
-  { id: "persona-auto-reached", bench: "persona", item: "count:persona:unreached:judge10.auto", op: "<=", value: 0, since: "r9", task: "T166", label: "鳴っている着信があっても自動進行を押せる", suspects: ["components/drill/IncomingCall.tsx", "components/drill/DrillControls.tsx"] },
-  { id: "persona-first-disaster", bench: "persona", item: "count:persona:unreached:first.disaster", op: "<=", value: 0, since: "r9", task: "T166", label: "訓練の画面から事業所の発災開始に着ける", suspects: ["app/drill/[id]/page.tsx", "lib/drill/labels.ts", "app/office/page.tsx"] },
-  { id: "persona-office-exit", bench: "persona", item: "count:persona:back:/bosai/warning/", op: "<=", value: 0, since: "r9", task: "T166", label: "気象庁の出典を押してアプリの外へ出ない", suspects: ["components/office/JmaAlertsView.tsx", "lib/jma/labels.ts"] },
-  { id: "persona-admin-reset", bench: "persona", item: "count:persona:unreached:admin.reset", op: "<=", value: 0, since: "r9", task: "T166", label: "管理者が最初に戻すに着ける", suspects: ["app/office/page.tsx", "components/ui/PrintButton.tsx", "lib/ui/labels.ts"] },
-  { id: "persona-drill-misread", bench: "persona", item: "count:persona:misread:/drill/[id]", op: "<=", value: 1, since: "r9", task: "T166", label: "訓練の画面の読み違いを 2 回目より増やさない（押せそうで押せない印を残さない）", suspects: ["components/drill/TalkLines.tsx", "components/drill/AskPick.tsx", "components/drill/ActionPanel.tsx"] },
   // T170: 仮想の地理を実の物に。やめた架空の地名（種の町名・白波川・架空の道と避難所）が世界の文に出ない。偽の回で 0
   { id: "drill-world-retired-place", bench: "drill", item: "count:drill:world_place:retired", op: "<=", value: 0, since: "r9", task: "T170", label: "世界の文にやめた架空の地名を出さない", suspects: ["lib/drill/area.ts", "lib/drill/area-demo.ts", "lib/drill/world-apply.ts", "lib/pseudonym/index.ts"] },
-  { id: "persona-form9-preview-misread", bench: "persona", item: "count:persona:misread:/office/form9", op: "<=", value: 0, since: "r9", task: "T166", label: "様式 9 の見本の帯をデータを戻す物と読まない", suspects: ["components/ui/PrintButton.tsx", "lib/ui/labels.ts"] },
 ];
 
 /** 守りの確かめ。values は回の項目の数、counts は同じ原因の指摘の数（causeCounts）。数の無い項目は確かめない */

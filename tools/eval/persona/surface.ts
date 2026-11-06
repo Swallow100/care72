@@ -49,8 +49,8 @@ const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
  */
 export const BUSY_SELECTOR = '[data-pending=""],[data-pending="true"],[aria-busy="true"]';
 
-/** 頁の最初のボタンに React の印が付いたか（ボタンの無い頁は動いている扱い） */
-export const HYDRATED_CHECK = `(() => { const b = document.querySelector("button"); return !b || Object.keys(b).some((k) => k.startsWith("__reactProps")); })()`;
+/** 頁の最初のボタンに React の印が付いたか（ボタンの無い頁と Next の頁でない物は動いている扱い。無いと台のテストの素の頁で毎回 60 秒待つ） */
+export const HYDRATED_CHECK = `(() => { if (!self.__next_f && !self.next) return true; const b = document.querySelector("button"); return !b || Object.keys(b).some((k) => k.startsWith("__reactProps")); })()`;
 
 /** 押したあとに落ち着くまで（移るなら移り終わるまで、通信が 0.5 秒止むまで）。next dev の初めの道は組み立てに時間がかかる */
 async function settle(page: Page, navTimeout: number): Promise<void> {
