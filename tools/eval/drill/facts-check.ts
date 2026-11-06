@@ -146,17 +146,16 @@ export function factHits(outcome: RunOutcome, people: Readonly<Record<string, Fa
       if (e.person && (k === "supply_left" || (k === "mark" && (e.change as { mark?: unknown }).mark === "supplyLeft"))) leftMarks.push({ person: e.person, minute: Math.round((e.at ?? t.hour) * 60) });
     }
   }
-  const leftAt = (person: string, minute: number): boolean =>
-    leftMarks.some(
-      (m) => m.person === person && m.minute <= minute && !(world.arrivals ?? []).some((a) => a.person === person && a.arrived && a.arrive > m.minute && a.arrive <= minute),
-    );
+  // 印を消す手（T167。lib/drill/action-catalog.ts の clearMarks の手と到着）。前は世界の到着だけを見ていて、ケアマネの訪問・受入で印が消えた
+  // あとの言葉も「家に置いたまま」と数え、門（世界の印を見る）と食い違った（評価の 8 回目の left_remain 2 件）
+  const cleared = (person: string, from: number, to: number): boolean =>
+    (world.arrivals ?? []).some((a) => a.person === person && a.arrived && a.arrive > from && a.arrive <= to) ||
+    (world.dispatched ?? []).some((d) => d.person === person && d.arrived && d.arrive > from && d.arrive <= to) ||
+    actions.some((a) => a.person === person && a.result?.cleared !== undefined && a.result.cleared.length > 0 && a.result.atMinute > from && a.result.atMinute <= to);
+  const leftAt = (person: string, minute: number): boolean => leftMarks.some((m) => m.person === person && m.minute <= minute && !cleared(person, m.minute, minute));
   const awayAt = (person: string, minute: number): boolean =>
     awayMarks.some(
-      (m) =>
-        m.person === person &&
-        m.minute <= minute &&
-        !(world.arrivals ?? []).some((a) => a.person === person && a.arrived && a.arrive > m.minute && a.arrive <= minute) &&
-        !foundMarks.some((x) => x.person === person && x.minute > m.minute && x.minute <= minute),
+      (m) => m.person === person && m.minute <= minute && !cleared(person, m.minute, minute) && !foundMarks.some((x) => x.person === person && x.minute > m.minute && x.minute <= minute),
     );
   // 本人ごとの安否を時刻の順に（前の連絡からの帳面で、次の安否と言葉を見る）
   const byPerson = new Map<string, Array<LooseTurn & { at: number }>>();

@@ -76,6 +76,13 @@ const talkFrac = (s: DrillSummaryLike, top: "repeats" | "repeatRaw", bottom: "re
   const d = sumOf(ns.map((n) => n.talk![bottom]));
   return d > 0 ? [sumOf(ns.map((n) => n.talk![top])), d] : null;
 };
+/** 通話の返事のうち本人役（AI）の割合（T167。前の回は数が無く null） */
+const talkAiShare = (s: DrillSummaryLike): Raw => {
+  const ns = runs(s).filter((n) => n.talk?.aiReplies !== undefined);
+  if (ns.length === 0) return null;
+  const d = sumOf(ns.map((n) => n.talk!.replies));
+  return d > 0 ? [sumOf(ns.map((n) => n.talk!.aiReplies ?? 0)), d] : null;
+};
 const judgeAxes = ["realism", "difficulty", "variety", "consistency", "learning"] as const;
 
 const DRILL: Item[] = [
@@ -122,6 +129,7 @@ const DRILL: Item[] = [
   { id: "drill.clockDrift", bench: "drill", label: "電池の残りの数の流れの食い違い", better: "lower", unit: "count", agg: "sum", drill: (s) => sumOf(runs(s).map((n) => n.facts?.byRule.clock_drift ?? 0)) },
   { id: "drill.talkRepeat", bench: "drill", label: "通話の前の返事とほぼ同じ返事", better: "lower", unit: "frac", agg: "sum", drill: (s) => talkFrac(s, "repeats", "replies") },
   { id: "drill.talkRepeatRaw", bench: "drill", label: "往復の生の返事の繰り返し（門の前）", better: "lower", unit: "frac", agg: "sum", drill: (s) => talkFrac(s, "repeatRaw", "raw") },
+  { id: "drill.talkAiShare", bench: "drill", label: "通話の返事のうち本人役（AI）の割合", better: "lower", unit: "frac", agg: "sum", drill: talkAiShare },
   { id: "drill.talkPlaceDrift", bench: "drill", label: "通話の中のいる所の食い違い", better: "lower", unit: "count", agg: "sum", drill: (s) => (runs(s).some((n) => n.talk) ? sumOf(runs(s).map((n) => n.talk?.placeDrift ?? 0)) : null) },
   { id: "drill.freeInner", bench: "drill", label: "自由対応 画面の内部の名前", better: "lower", unit: "count", agg: "sum", threshold: zero, drill: (s) => s.totals.freeInnerShown ?? 0 },
   { id: "drill.freeCan", bench: "drill", label: "自由対応 不可を「できる」（生の返事）", better: "lower", unit: "count", agg: "sum", drill: (s) => s.totals.freeCanMismatch ?? 0 },
