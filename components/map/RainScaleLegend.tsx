@@ -8,6 +8,25 @@ import { RAIN_STEPS } from "@/lib/map/rain-scale";
 
 /** 色の見本 1 段の幅（px）。境の値の 2 桁が隣と重ならない幅 */
 export const LEGEND_CHIP_W = 15;
+/** 凡例の枠の幅（px。色の帯と左右の余白 px-1）。凡例の左に置く物の位置に使う */
+export const LEGEND_W = LEGEND_CHIP_W * RAIN_STEPS.length + 8;
+
+/**
+ * 凡例の左の小さな知らせ（平時の雨雲で、地図に見えている所に雨が無いとき「範囲内 雨なし」。T151b）。
+ * 凡例と同じ下の線にそろえ、凡例と同じ小さな字。地図を隠さない大きさ
+ */
+export function LegendNote({ children }: { children: string }) {
+  return (
+    <p
+      role="status"
+      className="pointer-events-none absolute bottom-1 z-30 rounded bg-panel px-1 py-0.5 text-[10px] leading-3 font-bold text-ink"
+      style={{ right: LEGEND_W + 8 }}
+      data-rain-note
+    >
+      {children}
+    </p>
+  );
+}
 
 export function RainScaleLegend({ head, label, kind }: { head: string; label: string; kind: "nowcast" | "drill" }) {
   return (
