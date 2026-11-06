@@ -37,7 +37,7 @@ import { AddPersonIcon, CloseIcon, NextIcon, QrIcon, SearchIcon, ShelterIcon } f
 import { LinkPending } from "@/components/ui/LinkPending";
 import { Panel, PanelHead } from "@/components/ui/Panel";
 import { TABLE, TABLE_BOX, TD } from "@/components/ui/table";
-import { BulkButton, BulkCheck, BulkResult, useBulkRun } from "./BulkReceive";
+import { BulkButton, BulkCheck, BulkResult, PICKED_ROW, useBulkRun } from "./BulkReceive";
 import { QrCamera } from "./QrCamera";
 
 type Tab = EntryKind | "shelter";
@@ -462,7 +462,7 @@ function Hits({ hits, more, shelter, via }: { hits: PersonHit[]; more: boolean; 
               <th className={`${HIT_TH} w-px`}>
                 {open.length > 0 && (
                   <BulkCheck
-                    label={BULK_LABELS.selectAll}
+                    label={chosen.length === open.length ? BULK_LABELS.clearAll : BULK_LABELS.selectAll}
                     checked={chosen.length === open.length}
                     indeterminate={chosen.length > 0 && chosen.length < open.length}
                     disabled={locked}
@@ -480,7 +480,7 @@ function Hits({ hits, more, shelter, via }: { hits: PersonHit[]; more: boolean; 
           </thead>
           <tbody>
             {hits.map((h) => (
-              <tr key={h.id} data-hit={h.id}>
+              <tr key={h.id} data-hit={h.id} data-picked={picked.has(h.id) || undefined} className={picked.has(h.id) ? PICKED_ROW : undefined}>
                 <td className={`${TD} w-px align-middle`}>
                   {!h.mine && !taken.has(h.id) && (
                     <BulkCheck
@@ -524,7 +524,7 @@ function Hits({ hits, more, shelter, via }: { hits: PersonHit[]; more: boolean; 
       </div>
       {open.length > 0 && (
         <div className="mt-1.5" data-bulk="hits">
-          <BulkButton count={chosen.length} bulk={bulk} onClick={receiveAll} />
+          <BulkButton count={chosen.length} total={open.length} bulk={bulk} onClick={receiveAll} />
         </div>
       )}
       <BulkResult outcomes={bulk.outcomes} />

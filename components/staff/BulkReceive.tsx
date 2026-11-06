@@ -38,22 +38,30 @@ export function useBulkRun(): BulkRun {
   return { busy: step !== null, step, outcomes, run };
 }
 
-/** 選ぶ欄。印は 18px、押せる所は周りの 36px 四方（事業所の担当の一括と同じ。components/office/AssignMany.tsx）。読み上げの名前は「選択 カナ」 */
+/** 選んだ行の印（枠。下地は敷かない。T173。全選択を押した結果を行でも読めるように） */
+export const PICKED_ROW = "outline-2 -outline-offset-2 outline-accent";
+
+/**
+ * 選ぶ欄。印は 18px、押せる所は周りの 36px 四方（事業所の担当の一括と同じ。components/office/AssignMany.tsx）。読み上げの名前は「選択 カナ」。
+ * text を渡すと印の右に見える字（事業所の行の「全選択」「全解除」。T173）
+ */
 export function BulkCheck({
   label,
+  text,
   checked,
   disabled,
   indeterminate,
   onChange,
 }: {
   label: string;
+  text?: string;
   checked: boolean;
   disabled?: boolean;
   indeterminate?: boolean;
   onChange: () => void;
 }) {
   return (
-    <label className="-m-2 inline-flex size-9 cursor-pointer items-center justify-center rounded align-middle">
+    <label className={`-m-2 inline-flex cursor-pointer items-center rounded align-middle ${text ? "h-9 gap-1.5 pr-2 pl-[0.5625rem] text-ink" : "size-9 justify-center"}`}>
       <input
         type="checkbox"
         aria-label={label}
@@ -66,14 +74,21 @@ export function BulkCheck({
         className="size-[1.125rem] shrink-0 accent-accent outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-accent"
         data-bulk-check
       />
+      {text}
     </label>
   );
 }
 
-/** 一括受入のボタンと進み。人数は選んだ数。上限に達したら横に「上限 20 人」 */
-export function BulkButton({ count, bulk, onClick }: { count: number; bulk: BulkRun; onClick: () => void }) {
+/**
+ * 一括受入のボタンと進み。人数は選んだ数。上限に達したら横に「上限 20 人」。
+ * 左に「選択 2/3 人」（T173。押した結果を知らせとして読む。total は今選べる人数）
+ */
+export function BulkButton({ count, total, bulk, onClick }: { count: number; total: number; bulk: BulkRun; onClick: () => void }) {
   return (
     <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+      <span role="status" className="tabular-nums" data-bulk-picked={count}>
+        {BULK_LABELS.select} <span className="font-bold">{count}</span>/{total} {CUSTODY_LABELS.people}
+      </span>
       <Button kind="main" size="sm" icon={AddPersonIcon} disabled={count === 0 || bulk.busy} data-pending={bulk.busy || undefined} onClick={onClick} data-bulk-receive={count}>
         {BULK_LABELS.receive} <span className="tabular-nums">{count}</span> {CUSTODY_LABELS.people}
       </Button>

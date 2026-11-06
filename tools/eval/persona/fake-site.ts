@@ -345,7 +345,7 @@ export class FakeSurface implements Surface {
             : []),
           ...(rest
             ? [
-                { role: "checkbox", name: "全選択 デモ事業所（確認用）", checked: st.bulkPicked, on: (s: State) => void (s.bulkPicked = !s.bulkPicked) } satisfies FakeItem,
+                { role: "checkbox", name: st.bulkPicked ? "全解除 デモ事業所（確認用）" : "全選択 デモ事業所（確認用）", checked: st.bulkPicked, on: (s: State) => void (s.bulkPicked = !s.bulkPicked) } satisfies FakeItem,
                 { role: "button", name: st.bulkPicked ? "一括受入 2 人" : "一括受入 0 人", disabled: !st.bulkPicked, on: (s: State) => ((s.bulkDone = true), "/staff?received=cu-2,cu-3") } satisfies FakeItem,
               ]
             : []),

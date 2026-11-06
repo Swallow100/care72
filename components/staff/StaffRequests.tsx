@@ -20,7 +20,7 @@ import { Button } from "@/components/ui/Button";
 import { AddPersonIcon, DeclinedIcon } from "@/components/ui/Icon";
 import { Panel, PanelHead } from "@/components/ui/Panel";
 import { TABLE, TABLE_BOX, TD, TH } from "@/components/ui/table";
-import { BulkButton, BulkCheck, BulkResult, useBulkRun } from "./BulkReceive";
+import { BulkButton, BulkCheck, BulkResult, PICKED_ROW, useBulkRun } from "./BulkReceive";
 
 type Json = { ok?: boolean; label?: string; custodyId?: string | null };
 
@@ -88,7 +88,7 @@ export function StaffRequests({ requests }: { requests: RequestHit[] }) {
                 data-field="bulk-shelter"
               />
             </label>
-            <BulkButton count={chosen.length} bulk={bulk} onClick={receiveAll} />
+            <BulkButton count={chosen.length} total={requests.length} bulk={bulk} onClick={receiveAll} />
           </div>
         )}
       </div>
@@ -115,19 +115,22 @@ export function StaffRequests({ requests }: { requests: RequestHit[] }) {
               const on = ids.filter((id) => picked.has(id)).length;
               return (
                 <tbody key={g.office} data-request-office={g.office}>
-                  {/* 事業所の行: 名前と人数と、その事業所の全員を選ぶ欄 */}
+                  {/* 事業所の行: その事業所の全員を選ぶ欄（見える字つき。全員を選ぶと全解除）と名前と人数 */}
                   <tr>
-                    <th scope="colgroup" className={`${TH} w-px`}>
-                      <BulkCheck
-                        label={`${BULK_LABELS.selectAll} ${g.office}`}
-                        checked={on === ids.length}
-                        indeterminate={on > 0 && on < ids.length}
-                        disabled={bulk.busy || (full && on === 0)}
-                        onChange={() => setPicked(togglePickAll(live, ids))}
-                      />
-                    </th>
-                    <th scope="colgroup" colSpan={5} className={`${TH} whitespace-normal`}>
-                      {REQUEST_LABELS.from} <span className="text-ink">{g.office}</span> <span className="tabular-nums">{ids.length}</span> {CUSTODY_LABELS.people}
+                    <th scope="colgroup" colSpan={6} className={`${TH} whitespace-normal`}>
+                      <span className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                        <BulkCheck
+                          label={`${on === ids.length ? BULK_LABELS.clearAll : BULK_LABELS.selectAll} ${g.office}`}
+                          text={on === ids.length ? BULK_LABELS.clearAll : BULK_LABELS.selectAll}
+                          checked={on === ids.length}
+                          indeterminate={on > 0 && on < ids.length}
+                          disabled={bulk.busy || (full && on === 0)}
+                          onChange={() => setPicked(togglePickAll(live, ids))}
+                        />
+                        <span>
+                          {REQUEST_LABELS.from} <span className="text-ink">{g.office}</span> <span className="tabular-nums">{ids.length}</span> {CUSTODY_LABELS.people}
+                        </span>
+                      </span>
                     </th>
                   </tr>
                   {g.requests.map((r) => (
@@ -171,7 +174,7 @@ function RequestRow({ r, picked, pickable, locked, onPick }: { r: RequestHit; pi
     router.refresh();
   };
   return (
-    <tr data-request={r.id} aria-busy={busy !== null || undefined}>
+    <tr data-request={r.id} data-picked={picked || undefined} className={picked ? PICKED_ROW : undefined} aria-busy={busy !== null || undefined}>
       <td className={`${TD} w-px align-middle`}>
         <BulkCheck label={`${BULK_LABELS.select} ${r.kana}`} checked={picked} disabled={locked || !pickable} onChange={onPick} />
       </td>

@@ -1,10 +1,17 @@
 // T173 使う側の模擬の 3 回目で残った迷いを減らす（docs/tasks/T173.md）。画面は renderToStaticMarkup と部品の元の文で確かめる。
 
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: () => {}, push: () => {} }), usePathname: () => "/" }));
+
+import { BulkButton, BulkCheck, PICKED_ROW } from "../components/staff/BulkReceive.tsx";
 import { CONFIRM_LABELS } from "./ui/labels.ts";
 import { RESET_LABELS } from "./seed/labels.ts";
-import { REQUEST_LABELS } from "./custody/labels.ts";
+import { BULK_LABELS, REQUEST_LABELS } from "./custody/labels.ts";
+import { OFFICE_LABELS } from "./office/labels.ts";
 import { INTAKE_LABELS } from "./labels.ts";
 import { personaOf } from "../tools/eval/persona/personas.ts";
 import { forbiddenOf } from "../tools/eval/persona/walk.ts";
@@ -94,5 +101,31 @@ describe("3. 編集の面（全部の面）", () => {
     expect(src).toContain("const sectionName = SECTION_LABELS[section]");
     const first = personaOf("first")!;
     expect(first.goals.find((g) => g.id === "ledger")!.route).toEqual([{ click: "避難 編集" }, { type: "避難先1", text: "みずほし公民館" }, { click: "避難 保存" }]);
+  });
+});
+
+describe("4. 全選択の選んだ印", () => {
+  const bulk = { busy: false, step: null, outcomes: null, run: async () => [] };
+  it("押した結果を知らせで読む（選択 2/2 人）", () => {
+    const html = renderToStaticMarkup(createElement(BulkButton, { count: 2, total: 2, bulk, onClick: () => {} }));
+    expect(html).toContain('role="status"');
+    expect(html).toContain('data-bulk-picked="2"');
+    expect(html).toMatch(/選択 <span[^>]*>2<\/span>\/2 人/);
+  });
+  it("全員を選んだら名前が全解除に変わる（全部の一括の欄）。全選択のままだと押し直して 0 人に戻した", () => {
+    expect(short(BULK_LABELS.clearAll)).toBe(true);
+    const requests = read("../components/staff/StaffRequests.tsx");
+    expect(requests).toContain("on === ids.length ? BULK_LABELS.clearAll : BULK_LABELS.selectAll");
+    expect(read("../components/staff/StaffIntake.tsx")).toContain("chosen.length === open.length ? BULK_LABELS.clearAll : BULK_LABELS.selectAll");
+    expect(OFFICE_LABELS.clearAll).toBe(BULK_LABELS.clearAll);
+    expect(read("../components/office/AssignMany.tsx")).toContain("all ? OFFICE_LABELS.clearAll : OFFICE_LABELS.selectAll");
+  });
+  it("事業所の行は見える字つき。選んだ行に枠（下地を敷かない）", () => {
+    const html = renderToStaticMarkup(createElement(BulkCheck, { label: "全解除 デモ", text: "全解除", checked: true, onChange: () => {} }));
+    expect(html).toContain('aria-label="全解除 デモ"');
+    expect(html).toContain("全解除</label>");
+    expect(PICKED_ROW).toContain("outline-accent");
+    expect(PICKED_ROW).not.toMatch(/bg-/);
+    for (const f of ["StaffRequests", "StaffIntake"]) expect(read(`../components/staff/${f}.tsx`)).toContain("PICKED_ROW");
   });
 });
