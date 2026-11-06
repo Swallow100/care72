@@ -7,7 +7,7 @@
 
 import { isSeedOfficeId } from "../auth/demo.ts";
 import type { Ledger } from "../db/types.ts";
-import { AREA_TOWNS, areaTown, NO_TOWN, type Area } from "./area.ts";
+import { areaTown, DEMO_AREA, NO_TOWN, type Area } from "./area.ts";
 import type { SelfFacts } from "./event-catalog.ts";
 
 /** 監督に渡す自分の事（DirectorInput.self）。home は住む所の町名、null は事業所の近く */
@@ -16,9 +16,9 @@ export type SelfInput = { home: string | null };
 /** 町名の長さの上限（字。開始の選択の検査） */
 export const HOME_TOWN_MAX = 40;
 
-/** 開始の画面で選べる地区（町名）。デモ事業所は架空の街の町、ほかの事業所は担当一覧の人の台帳の町名（よみの順でなく字の順） */
+/** 開始の画面で選べる地区（町名）。デモ事業所は種の台帳の町名（架空。固定の筋の訓練で選ぶ）、ほかの事業所は担当一覧の人の台帳の町名（よみの順でなく字の順） */
 export function homeTowns(officeId: string, ledgers: ReadonlyArray<Pick<Ledger, "basic">>): string[] {
-  if (isSeedOfficeId(officeId)) return AREA_TOWNS.map((t) => t.town);
+  if (isSeedOfficeId(officeId)) return DEMO_AREA.towns.flatMap((t) => t.homes ?? [t.town]);
   const towns = new Set(ledgers.map((l) => l.basic.address?.town?.trim()).filter((t): t is string => !!t && t !== NO_TOWN));
   return [...towns].sort((a, b) => a.localeCompare(b, "ja"));
 }

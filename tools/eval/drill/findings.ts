@@ -106,6 +106,10 @@ export function metaOf(h: CheckHit): Meta | null {
         accept: zero("drill.termsRan"),
       };
     }
+    case "world_place":
+      return head(h.rule) === "retired"
+        ? { cause: "drill:world_place:retired", rule: "world_place:retired", title: "世界の文にやめた架空の地名", severity: "high", screen: "訓練 > 経過（出来事）", suspects: ["lib/drill/area.ts", "lib/drill/area-demo.ts", "lib/drill/world-apply.ts", "lib/pseudonym/index.ts"], accept: zero("count:drill:world_place:retired") }
+        : { cause: "drill:world_place:off_table", rule: "world_place:off_table", title: "世界の 1 文に地理に無い実在らしい名前", severity: "low", screen: "訓練 > 経過（出来事）", suspects: ["lib/drill/world-oneshot.ts", "lib/drill/world-apply.ts"] };
     case "fit":
       return { cause: `drill:fit:${head(h.rule)}`, rule: `fit:${head(h.rule)}`, title: `想定に合わない物（${head(h.rule)}）`, severity: "mid", screen: "訓練 > 経過", suspects: ["lib/drill/fit.ts", "lib/drill/gate.ts"] };
     case "free": {

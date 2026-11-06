@@ -182,8 +182,8 @@ export type PseudonymKey = {
   readonly births?: ReadonlyArray<Birth>;
 };
 
-/** 町名と、Claude に見せる地区の別名（甲地区） */
-export type Place = { town: string; alias: string };
+/** 町名と、Claude に見せる地区の別名（甲地区）。shown は画面で別名を戻す言葉（デモ事業所の実の区画。T170）。無ければ町名に戻す */
+export type Place = { town: string; alias: string; shown?: string };
 
 export class PseudonymLeakError extends Error {
   readonly findings: string[];
@@ -486,7 +486,7 @@ function buildKey(
     rules: Object.freeze(rules.map(({ pattern, replacement }) => ({ pattern, replacement }))),
     secrets: Object.freeze(secrets.filter((s) => s.value.length >= 2)),
     births: Object.freeze(births),
-    ...(places.length > 0 ? { places: Object.freeze(places.map((p) => ({ town: p.town.trim(), alias: p.alias }))) } : {}),
+    ...(places.length > 0 ? { places: Object.freeze(places.map((p) => ({ town: p.town.trim(), alias: p.alias, ...(p.shown ? { shown: p.shown } : {}) }))) } : {}),
   };
   return { key, roles };
 }
@@ -781,7 +781,7 @@ export function restoreText(text: string, key: PseudonymKey): string {
 /** 地区の別名（甲地区）を町名に戻す。長い別名から（甲2地区 を 甲地区 より先に） */
 export function restorePlaces(text: string, key: PseudonymKey): string {
   let out = text;
-  for (const p of [...(key.places ?? [])].sort((a, b) => b.alias.length - a.alias.length)) out = out.split(p.alias).join(p.town);
+  for (const p of [...(key.places ?? [])].sort((a, b) => b.alias.length - a.alias.length)) out = out.split(p.alias).join(p.shown ?? p.town);
   return out;
 }
 

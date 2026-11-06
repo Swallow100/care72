@@ -10,6 +10,7 @@ import { DrillHeaderMark } from "@/components/drill/DrillHeaderMark";
 import { drillHeaderMark } from "@/lib/drill/header-mark";
 import { AiStopBand } from "@/components/drill/AiStopBand";
 import { DrillBar } from "@/components/drill/DrillBar";
+import { PlaceList } from "@/components/drill/PlaceList";
 import { EndedNote } from "@/components/drill/Ended";
 import { DrillControls } from "@/components/drill/DrillControls";
 import { DrillRowDetail } from "@/components/drill/DrillRowDetail";
@@ -49,7 +50,10 @@ import { ScorePanel } from "@/components/drill/ScorePanel";
 import { DownloadIcon, PaperIcon, PrintIcon, PlayIcon } from "@/components/ui/Icon";
 import { BusyLine } from "@/components/drill/BusyLine";
 import { ACT_LOG_LABELS } from "@/lib/drill/act-log";
-import { DRILL_LABELS, elapsedClockLabel, LOG_LABELS, SCENARIO_LABELS, STATUS_LABELS, VIRTUAL_LABELS } from "@/lib/drill/labels";
+import { DRILL_LABELS, elapsedClockLabel, LOG_LABELS, PLACE_LIST_LABELS, SCENARIO_LABELS, STATUS_LABELS, VIRTUAL_LABELS } from "@/lib/drill/labels";
+import { FIT_PROFILES, fitKindOf, profileOf } from "@/lib/drill/fit";
+import { pinNotes, worldMapMarks } from "@/lib/drill/world-marks";
+import type { HazardKind } from "@/lib/db/types";
 import { parseLogTab } from "@/lib/drill/timeline";
 import { COLOR_LABELS } from "@/lib/labels";
 import { COLOR_TONES } from "@/lib/person";
@@ -149,8 +153,9 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
   const voiceOf = (act: string) => (voiceOn ? voiceHref(id, { act }) : null);
   const side = buildSidePane(s.rows, {
     sort,
-    // 仮想モードは架空の街なので、本物の地図に雨雲・震度の絵を重ねない（T79）。大雨の想定は筋書きの雨を見ている時刻で（T103。
-    // 雨の段は世界の警戒レベルまでなので、被害状況の欄と食い違わない。色と順には使わない）
+    // 仮想モードの地図（T170）: 地理は実の物なのでハザードの層と世界の出来事の印を重ねる（下の layers・marks）。雨雲・震度の絵は重ねない（T79 の決めを残す。
+    // 理由を変えた: 世界の雨と揺れには筋書きの表が無く、絵にすると世界の出来事と食い違う。雨と揺れは被害状況の欄と経過で読む）。
+    // 大雨の想定は筋書きの雨を見ている時刻で（T103。雨の段は世界の警戒レベルまでなので、被害状況の欄と食い違わない。色と順には使わない）
     disaster: sideDisasterOf(
       s.rows,
       { kind: drillKindOf(s.drill.scenario, s.state.world), alertLevel: s.state.world.alertLevel },
@@ -164,7 +169,12 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
       ? (areaTargetOf({ kind: "alert", level: s.state.world.alertLevel }, s.area)?.persons ?? [])
       : []),
   ]);
-  const pins = side.pins.map((p) => ({ ...p, href: here(), note: evac.has(p.id) ? MAP_NOTE : null }));
+  // 仮想の訓練（T170）: その人の区画の今の出来事もピンに（浸水・停電…）
+  const worldNotes = s.place ? pinNotes(s.place.slots) : {};
+  const pins = side.pins.map((p) => ({ ...p, href: here(), note: evac.has(p.id) ? MAP_NOTE : (worldNotes[p.id] ?? null) }));
+  const virtual = isVirtual(s.drill.scenario);
+  // 仮想の地図の既定の層（T170）: 想定に効くハザード（lib/drill/fit.ts の表）。想定が未決なら浸水と土砂
+  const virtualLayers: ReadonlyArray<HazardKind> = profileOf(fitKindOf(s.state, s.state.world))?.layers ?? FIT_PROFILES.heavy_rain.layers;
 
   // 対応の欄（T20）: 対象は左の表の優先の順、色の印はルールの表の色。手の途中で進んだ刻みは状況の欄で着信に
   const actions = s.state.actions;
@@ -198,7 +208,7 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
         </span>
         {isVirtual(s.drill.scenario) && (
           <span className="text-sm" data-virtual-note>
-            {VIRTUAL_LABELS.note}
+            {fiction === "role" ? VIRTUAL_LABELS.noteRole : VIRTUAL_LABELS.note}
           </span>
         )}
         <span className="text-xs text-muted tabular-nums">
@@ -376,12 +386,18 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
             {/* 「位置は架空」はデモ事業所（種の架空の位置）だけ。本物の事業所の訓練は台帳の位置なので出さない（T114） */}
             <CaseMap
               pins={pins}
-              layers={side.demo?.layers ?? []}
+              layers={virtual ? virtualLayers : (side.demo?.layers ?? [])}
               demo={side.demo}
               unplaced={side.unplaced}
               fictional={principal.office?.kind === "demo"}
+              marks={s.place ? worldMapMarks(s.place.places) : []}
             />
           </Panel>
+          {s.place && (
+            <Panel title={PLACE_LIST_LABELS.panel} id="places">
+              <PlaceList area={s.place.area} places={s.place.places} residents={s.place.residents} names={s.names} />
+            </Panel>
+          )}
         </div>
       </div>
       {running && (

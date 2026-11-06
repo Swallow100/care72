@@ -25,13 +25,21 @@ export const STATUS_LABELS: Record<DrillStatus, string> = {
 /** 見出し・ボタン・欄の名前 */
 /** 仮想モード（T50）の言葉 */
 export const VIRTUAL_LABELS = {
-  note: "仮想モード 架空の人と街。結末まで出ます",
+  note: "仮想モード 人は AI が演じる架空の人、川・橋・避難所は実在、出来事は訓練の想定。結末まで出ます",
   /** デモ以外の事業所（T70。結末は出さない） */
-  noteRole: "仮想モード 本人役と街は AI。結末なし",
+  noteRole: "仮想モード 本人役は AI、川・橋・避難所は実在、出来事は訓練の想定。結末なし",
   ended: "結末",
   /** 結末の理由（世界が決めた街と物の事実。T53） */
   endedReason: "経緯",
   fallback: "世界 代替",
+} as const;
+
+/** 仮想の訓練の「場所別」の言葉（T170、components/drill/PlaceList.tsx） */
+export const PLACE_LIST_LABELS = {
+  panel: "場所別",
+  region: "地域",
+  rivers: "川",
+  shelterSource: "避難所の出典",
 } as const;
 
 export const DRILL_LABELS = {

@@ -73,6 +73,7 @@ import { callIndexes } from "./calls.ts";
 import { T70_LABELS } from "./labels.ts";
 import { EMPTY_WORLD, isInjectKind, isVirtual, SCENARIO_ORDER, scenarioOf, type WorldState } from "./scenarios.ts";
 import { isDrillScale, pickScale, seededRand } from "./scale.ts";
+import { hasRealGeo, type RealGeo, type RealGeoRequest } from "./real-geo.ts";
 import { homeTowns } from "./self.ts";
 import type { PseudonymInput } from "../pseudonym/index.ts";
 import { castScenario, mayBeCalled, needsCast, type Cast } from "./cast.ts";
@@ -153,6 +154,8 @@ type StoredWorld = {
   homes?: Homes;
   /** 事業所の区域（T125、開始の時の offices.hazards の写し）。区域が無ければ鍵ごと無い */
   officeZones?: OfficeZone[];
+  /** 仮想の開始の時に読んだ公的なデータ（実の川と避難所。T170）。読めなかった・ほかの想定・前からの訓練には無い */
+  geo?: RealGeo;
 };
 
 /** 手の前の状態の写し（取消で戻す物） */
@@ -177,6 +180,7 @@ function storeWorld(s: DrillState, undo?: UndoSnapshot): string {
     ...(s.draft ? { draft: s.draft } : {}),
     ...(s.homes ? { homes: s.homes } : {}),
     ...(s.officeZones ? { officeZones: s.officeZones } : {}),
+    ...(s.geo ? { geo: s.geo } : {}),
   };
   return JSON.stringify(body);
 }
@@ -205,7 +209,16 @@ function parseStoredWorld(text: string): StoredWorld {
     ...(isDraft(raw.draft) ? { draft: raw.draft } : {}),
     ...(homesOf(raw.homes) ? { homes: homesOf(raw.homes)! } : {}),
     ...(Array.isArray(raw.officeZones) ? { officeZones: zonesOf(raw.officeZones) } : {}),
+    ...(geoOf(raw.geo) ? { geo: geoOf(raw.geo)! } : {}),
   };
+}
+
+/** 実の地理の写しの JSON（T170）。形の違う物は無しに（一般の言い方に戻るだけ） */
+function geoOf(v: unknown): RealGeo | null {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return null;
+  const g = v as Partial<RealGeo>;
+  if (typeof g.at !== "string" || !Array.isArray(g.rivers) || !Array.isArray(g.shelters)) return null;
+  return { at: g.at, region: typeof g.region === "string" ? g.region : null, rivers: g.rivers, shelters: g.shelters };
 }
 
 /** 家の写しの JSON（T125）。形の違う家は外す。空なら無し */
@@ -268,13 +281,14 @@ function castOf(v: unknown): Cast | null {
 }
 
 /** 選んだ物と取消の数と配役（状態に足す。無ければ鍵ごと無い） */
-function extrasOf(w: Pick<StoredWorld, "options" | "undone" | "cast" | "homes" | "officeZones">): Pick<DrillState, "options" | "undone" | "cast" | "homes" | "officeZones"> {
+function extrasOf(w: Pick<StoredWorld, "options" | "undone" | "cast" | "homes" | "officeZones" | "geo">): Pick<DrillState, "options" | "undone" | "cast" | "homes" | "officeZones" | "geo"> {
   return {
     ...(w.options ? { options: w.options } : {}),
     ...(w.undone ? { undone: w.undone } : {}),
     ...(w.cast ? { cast: w.cast } : {}),
     ...(w.homes ? { homes: w.homes } : {}),
     ...(w.officeZones ? { officeZones: w.officeZones } : {}),
+    ...(w.geo ? { geo: w.geo } : {}),
   };
 }
 
@@ -525,6 +539,31 @@ export function pickParticipants(caseload: ReadonlyArray<string>, chosen: Readon
   return caseload.filter((p) => want.has(p));
 }
 
+/** 開始の時に外を読む口（T170。route だけが渡す。テストと台は渡さない） */
+export type StartDeps = { loadGeo?: (req: Omit<RealGeoRequest, "fetch" | "timeoutMs">) => Promise<RealGeo | null> };
+
+/** 仮想の開始の時の公的なデータ。読めなければ null（投げない）。読む点は参加者のピン（要求には z/x/y だけが出る）。ピンが無ければ読まない */
+async function startGeo(
+  load: NonNullable<StartDeps["loadGeo"]>,
+  participants: ReadonlyArray<string>,
+  sources: ReadonlyMap<string, PseudonymInput>,
+  region: string | null,
+  officeId: string,
+  now: string,
+): Promise<RealGeo | null> {
+  const points = participants.flatMap((p) => {
+    const at = sources.get(p)?.ledger.basic.location;
+    return at ? [at] : [];
+  });
+  if (points.length === 0) return null;
+  try {
+    const g = await load({ points, region, rivers: !isSeedOfficeId(officeId), now });
+    return g && hasRealGeo(g) ? g : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * 訓練を始める。0 時間の刻みまで当てて保存する。同じケアマネ（mineRunningSql）に進行中があれば断る（T70。24 時間たった進行中は先に中断）。
  * options は開始の前に選んだ物（T59、任意）
@@ -539,6 +578,7 @@ export async function startDrill(
   options: StartOptions = {},
   /** 規模のおまかせを引く乱数（T104）。無ければ訓練の id と開始の時刻から（訓練ごとに違い、同じ訓練なら同じ） */
   rand?: () => number,
+  deps: StartDeps = {},
 ): Promise<StartResult> {
   const caseload = await caseloadPeople(db, scope);
   if (caseload.length === 0) return { ok: false, error: "empty" };
@@ -574,8 +614,10 @@ export async function startDrill(
   // 参加者の家の区域と通信、事業所の区域（T125）。開始の時に写す（訓練の途中で台帳を直しても変わらない）
   const all = await loadSources();
   const homes = Object.fromEntries(participants.flatMap((p) => (all.has(p) ? [[p, homeOf(all.get(p)!.ledger)] as const] : [])));
-  const officeRow = await db.prepare("SELECT hazards FROM offices WHERE id = ?1").bind(scope.officeId).first<{ hazards: string | null }>().catch(() => null);
+  const officeRow = await db.prepare("SELECT hazards, city FROM offices WHERE id = ?1").bind(scope.officeId).first<{ hazards: string | null; city: string | null }>().catch(() => null);
   const officeZones = officeZonesOf(officeRow?.hazards ?? null, scope.officeId);
+  // 仮想の実の地理（T170）: 開始の時に 1 回だけ公的なデータを読み、drills.world に写す。読めなければ一般の言い方のまま（開始を止めない）。読む口の無い呼び方（テスト・台）は読まない
+  const geo = isVirtual(scenario) && deps.loadGeo ? await startGeo(deps.loadGeo, participants, all, officeRow?.city ?? null, scope.officeId, now) : null;
 
   const id = newId();
   // 仮想の規模（T104）。選ばなければおまかせ（幅の中から今 1 回引いて残す）。ほかの想定には付けない
@@ -598,7 +640,7 @@ export async function startDrill(
       ...(home !== undefined ? { home: home.trim() } : {}),
     },
     cast,
-    { homes, officeZones },
+    { homes, officeZones, ...(geo ? { geo } : {}) },
   );
   const { state, tick } = clock ? (await advance(init, 0, hooks, { policy: "clock" }))! : await step(init, hooks);
   const [inserted] = await db.batch([
@@ -1473,7 +1515,7 @@ export function replayState(
   const last = lastStep(row.scenario);
   // 開始の前に選んだ物（職員・夜間発災）と取消の数は drills.world の写しから（T59。無ければ今までと同じ）
   const extras = row.world !== undefined ? extrasOf(parseStoredWorld(row.world)) : {};
-  let state = initialState(row.scenario, participants, row.started_at, extras.options, extras.cast, { homes: extras.homes, officeZones: extras.officeZones });
+  let state = initialState(row.scenario, participants, row.started_at, extras.options, extras.cast, { homes: extras.homes, officeZones: extras.officeZones, geo: extras.geo });
   const out: Tick[] = [];
   for (const t of ticks) {
     if (t.step > upTo) break;

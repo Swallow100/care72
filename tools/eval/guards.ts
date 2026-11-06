@@ -223,6 +223,8 @@ export const GUARDS: ReadonlyArray<Guard> = [
   { id: "persona-office-exit", bench: "persona", item: "count:persona:back:/bosai/warning/", op: "<=", value: 0, since: "r9", task: "T166", label: "気象庁の出典を押してアプリの外へ出ない", suspects: ["components/office/JmaAlertsView.tsx", "lib/jma/labels.ts"] },
   { id: "persona-admin-reset", bench: "persona", item: "count:persona:unreached:admin.reset", op: "<=", value: 0, since: "r9", task: "T166", label: "管理者が最初に戻すに着ける", suspects: ["app/office/page.tsx", "components/ui/PrintButton.tsx", "lib/ui/labels.ts"] },
   { id: "persona-drill-misread", bench: "persona", item: "count:persona:misread:/drill/[id]", op: "<=", value: 1, since: "r9", task: "T166", label: "訓練の画面の読み違いを 2 回目より増やさない（押せそうで押せない印を残さない）", suspects: ["components/drill/TalkLines.tsx", "components/drill/AskPick.tsx", "components/drill/ActionPanel.tsx"] },
+  // T170: 仮想の地理を実の物に。やめた架空の地名（種の町名・白波川・架空の道と避難所）が世界の文に出ない。偽の回で 0
+  { id: "drill-world-retired-place", bench: "drill", item: "count:drill:world_place:retired", op: "<=", value: 0, since: "r9", task: "T170", label: "世界の文にやめた架空の地名を出さない", suspects: ["lib/drill/area.ts", "lib/drill/area-demo.ts", "lib/drill/world-apply.ts", "lib/pseudonym/index.ts"] },
   { id: "persona-form9-preview-misread", bench: "persona", item: "count:persona:misread:/office/form9", op: "<=", value: 0, since: "r9", task: "T166", label: "様式 9 の見本の帯をデータを戻す物と読まない", suspects: ["components/ui/PrintButton.tsx", "lib/ui/labels.ts"] },
 ];
 
