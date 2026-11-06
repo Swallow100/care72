@@ -86,11 +86,11 @@ describe("T175 守りと点数の表", () => {
   it("守りは数え直しの悪い方の数で、外れたら指摘になる", () => {
     const ids = GUARDS.filter((g) => g.task === "T175").map((g) => [g.id, g.item, g.value]);
     expect(ids).toEqual([
-      ["forms-review-check", "forms.reviewCheck", 605],
-      ["forms-unplaced-limit", "forms.unplaced", 166],
-      ["forms-review-drift", "forms.reviewDrift", 257],
+      ["forms-review-check", "forms.reviewCheck", 591],
+      ["forms-unplaced-limit", "forms.unplaced", 157],
+      ["forms-review-drift", "forms.reviewDrift", 245],
     ]);
-    const out = guardFindings({ bench: "forms", run: "r10", values: { "forms.reviewCheck": 606, "forms.unplaced": 166, "forms.reviewDrift": 258 }, counts: {}, repro: [] }).map((f) => f.rule);
+    const out = guardFindings({ bench: "forms", run: "r10", values: { "forms.reviewCheck": 592, "forms.unplaced": 157, "forms.reviewDrift": 246 }, counts: {}, repro: [] }).map((f) => f.rule);
     expect(out).toContain("guard:forms-review-check");
     expect(out).toContain("guard:forms-review-drift");
     expect(out).not.toContain("guard:forms-unplaced-limit");

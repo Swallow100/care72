@@ -2,10 +2,10 @@
 // 紙と見直しの数が変わらないようにする。どれも架空の頁と種の人で確かめる（原本の絵は使わない）。
 import { describe, expect, it } from "vitest";
 import { SEED_PEOPLE } from "../../seed/people.ts";
-import { bracketOwner, bracketPair, extraItemFields } from "./form-shape.ts";
+import { bracketOwner, bracketPair, extraItemFields, markPair, pageRepeat } from "./form-shape.ts";
 import { buildMappedSheet, pairedItem } from "./mapped-sheet.ts";
 import type { FormMapping, MappingField } from "./mapping.ts";
-import { buildOverlaySheet } from "./overlay-sheet.ts";
+import { buildOverlaySheet, FONT_MIN_PT, placeText, type PlaceCtx } from "./overlay-sheet.ts";
 import type { PageImage } from "./page-images.ts";
 import { seedRows } from "./print-harness.ts";
 import { settleRead } from "./read-settle.ts";
@@ -165,5 +165,75 @@ describe("T175 読み方の揺れをそろえる（settleRead）", () => {
   it("「住所・連絡先」の欄は住所と電話の組（T141 の組）", () => {
     expect(pairedItem({ item: "supporter1.address", label: "住所・連絡先 ①" })).toMatchObject({ item: "supporter1.phone", role: "phone" });
     expect(pairedItem({ item: "supporter1.phone", label: "連絡先" })).toBeNull();
+  });
+});
+
+describe("T175 字の大きさは枠のわずかな差で下限に飛ばない", () => {
+  const pc: PlaceCtx = { page: { page: 1, landscape: false, image: { w: 210, h: 297 }, items: [], fills: [] }, ink: null, others: [] };
+  const fontAt = (lines: string[], b: ReturnType<typeof box>) => placeText("f", lines, b, pc)?.fontPt ?? null;
+
+  it("枠が広いほど下限の字にならない（下限の字の枠より広い枠は下限にならない順）", () => {
+    for (const lines of [["長女"], ["松山市番町"], ["15"]]) {
+      let leftMin = false;
+      for (let h = 0.006; h < 0.03; h += 0.0002) {
+        const font = fontAt(lines, box(0.1, 0.1, 0.06, h));
+        if (font !== null && font > FONT_MIN_PT + 1e-9) leftMin = true;
+        if (leftMin) expect(font).not.toBeNull();
+        if (leftMin) expect(font!).toBeGreaterThan(FONT_MIN_PT + 1e-9);
+      }
+    }
+  });
+
+  it("字は枠の中のまま（狭い空き・最後の置き方も枠の外へ出さない）", () => {
+    const b = box(0.1, 0.1, 0.03, 0.008);
+    const it = placeText("f", ["長女"], b, pc);
+    expect(it?.box).toEqual(b);
+  });
+});
+
+describe("T175 印だけの欄の組", () => {
+  it("種類ごとの □ 同士と別の頁の選ぶ欄は重複にしない。同じ頁の選ぶ欄は今までどおり", () => {
+    const a = field({ label: "人工呼吸器", shape: "check", item: "medical.devices", box: box(0.1, 0.1, 0.01, 0.01) });
+    const b = field({ label: "吸引", shape: "check", item: "medical.devices", box: box(0.2, 0.1, 0.01, 0.01) });
+    expect(markPair(a, b)).toBe(true);
+    expect(extraItemFields([a, b]).size).toBe(0);
+    const p1 = field({ page: 1, label: "性別", shape: "choice", item: "basic.sex", options: ["男", "女"], box: box(0.8, 0.1, 0.1) });
+    const p2 = field({ page: 2, label: "性別・受診区分", shape: "choice", item: "basic.sex", options: ["男性", "女性"], box: box(0.1, 0.1, 0.1) });
+    expect(extraItemFields([p1, p2]).size).toBe(0);
+    const same = field({ page: 1, label: "区分", shape: "choice", item: "basic.sex", options: ["男性", "女性"], box: box(0.1, 0.3, 0.1) });
+    expect(extraItemFields([p1, same]).size).toBe(1);
+    const text = field({ page: 2, label: "性別", item: "basic.sex", box: box(0.1, 0.5, 0.1) });
+    expect(markPair(p1, text)).toBe(false);
+  });
+
+  it("頭の＊の有無は同じ欄の名前（頁ごとに繰り返す欄）", () => {
+    const p1 = field({ page: 1, label: "＊患者氏名（カタカナ）", item: "person.kana", box: box(0.3, 0.14, 0.6) });
+    const p2 = field({ page: 2, label: "患者氏名（カタカナ）", item: "person.kana", box: box(0.2, 0.06, 0.3) });
+    expect(pageRepeat(p1, p2)).toBe(true);
+  });
+});
+
+describe("T175 署名の隣の日付", () => {
+  it("署名・同意の欄の隣の日付に当てた作成日は外し、候補に残す。作成日の欄はそのまま", () => {
+    const ai = { item: "plan.date" as const, confidence: "low" as const, reason: "読み" };
+    const date = field({ label: "年月日", shape: "date", item: "plan.date", options: ["年", "月", "日"], box: box(0.1, 0.8, 0.2), ai });
+    const sign = field({ label: "署名", shape: "handwrite", box: box(0.4, 0.8, 0.3) });
+    const made = field({ label: "作成日", shape: "date", item: "plan.date", options: ["年", "月", "日"], box: box(0.1, 0.1, 0.2), ai });
+    const name = field({ label: "氏名", item: "person.name", box: box(0.1, 0.2, 0.2) });
+    const got = settleRead([made, name, date, sign]);
+    expect(got.find((f) => f.id === made.id)?.item).toBe("plan.date");
+    expect(got.find((f) => f.id === date.id)).toMatchObject({ item: null, ai: { candidate: "plan.date" } });
+  });
+});
+
+describe("T175 自由記入の項目は短くても別紙へ", () => {
+  it("括弧に収まらない医療の特記は、枠に別紙の印を置いて別紙へ。置けなかった欄にしない", () => {
+    const f = field({ label: "医療依存度が高い（　）", item: "medical.notes", box: box(0.3, 0.3, 0.06, 0.01) });
+    const id = SEED_PEOPLE.map((s) => s.person.id).find((pid) => cells(rowsOf(pid), mapping([f])).get(f.id)?.kind === "value");
+    expect(id).toBeTruthy();
+    const rows = rowsOf(id!);
+    const sheet = buildOverlaySheet(buildMappedSheet(rows, mapping([f]), OPTS), [image]);
+    expect(sheet.unplacedIds ?? []).not.toContain(f.id);
+    expect(sheet.annex.map((a) => a.fieldId)).toContain(f.id);
   });
 });

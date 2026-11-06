@@ -534,7 +534,8 @@ export function buildOverlaySheet(mapped: MappedSheet, images: readonly PageImag
     // 「なし」だけの値は別紙に回さず欄を空ける（T111）
     if (isNoneOnly(lines)) continue;
     // 長い自由記入だけ別紙に（欄に「別紙」）。短い値は置かずに「置けなかった」（T133）。選ぶ欄の「その他（　）」の書き足しは placeChoice で別紙へ（T140）
-    const long = group.some((g) => g.field.shape === "lines" || g.lines.length > 1 || textEm(g.lines.join("")) > ANNEX_LONG_EM);
+    // 自由記入の項目（特記・配慮）は読み取りが字の欄と読んだ括弧の中でも自由記入（T175。「医療依存度が高い（　）」に医療の特記が置けず空いた）
+    const long = group.some((g) => g.field.shape === "lines" || g.lines.length > 1 || textEm(g.lines.join("")) > ANNEX_LONG_EM || FREE_NOTE_ITEMS.has(g.field.item ?? ""));
     const mark = long ? placeText(group[0].field.id, [ANNEX_MARK], box, pc) : null;
     if (long && mark) {
       for (const g of group) annex.push({ fieldId: g.field.id, label: nameOf(g.field), lines: g.lines, reason: "overflow", page: g.field.page, mark: mark.fieldId });
@@ -653,6 +654,8 @@ export function containsMost(outer: FieldBox, a: FieldBox): boolean {
 
 /** 長い自由記入と見なす字の幅（字の数）。これより短い値は別紙に回さない */
 const ANNEX_LONG_EM = 24;
+/** 長さによらず自由記入の項目（収まらなければ別紙へ） */
+const FREE_NOTE_ITEMS: ReadonlySet<string> = new Set(["medical.notes", "notes.other", "care.issues"]);
 
 /** 枠（頁の比）に字を収める。下限まで縮め、それでも入らなければ狭い空きで試す */
 function fitIn(lines: readonly string[], box: FieldBox, image: { w: number; h: number }, maxPt: number = FONT_MAX_PT): { fitted: Fitted; tight?: true; snug?: true } | null {
