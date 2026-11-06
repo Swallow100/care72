@@ -1126,6 +1126,33 @@ export type ThirdPartyProvisionRow = {
   closed_at: string | null;
 };
 
+// ---------- 医療班への受入依頼（T163、migrations/0039_custody_requests.sql） ----------
+
+/** 依頼の状態: 依頼中・受入・受入不可・取消 */
+export const CUSTODY_REQUEST_STATES = ["open", "accepted", "declined", "withdrawn"] as const;
+export type CustodyRequestState = (typeof CUSTODY_REQUEST_STATES)[number];
+
+/** 受入依頼 1 行。宛先は医療班の役（アカウントを決めない）。消さない */
+export type CustodyRequestRow = {
+  id: string;
+  person_id: string;
+  /** 依頼した事業所（本人の事業所） */
+  office_id: string;
+  requested_by: string | null;
+  /** 行き先（受け入れたときの受け持ちの避難所） */
+  shelter: string;
+  state: CustodyRequestState;
+  requested_at: string;
+  replied_by: string | null;
+  replied_role: StaffRole | "care_manager" | null;
+  replied_name: string | null;
+  replied_at: string | null;
+  /** 受け入れた医療班の受け持ち */
+  custody_id: string | null;
+  /** 種の事業所の「発災開始」で入れた行 */
+  seed: 0 | 1;
+};
+
 // ---------- 気象庁の写し（T72、migrations/0020_jma.sql） ----------
 
 /** 気象庁の PULL 型のフィード（extra.xml 警報など・eqvol.xml 地震） */

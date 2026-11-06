@@ -35,17 +35,21 @@ export function PersonView({
   level,
   edit = null,
   phone = null,
+  request = null,
 }: {
   view: View;
   level: Level;
   edit?: EditData | null;
   /** スマホの面（T149、components/phone/PhoneSection.tsx）。ケアマネの役だけ。同意の面のすぐ後（同意の面が無ければ最後） */
   phone?: React.ReactNode;
+  /** 医療班への受入依頼の面（T163、components/person/RequestSection.tsx）。ケアマネの役だけ。頭のすぐ下 */
+  request?: React.ReactNode;
 }) {
   const base = `person-${view.head.id}`;
   return (
     <div className="@container space-y-2" data-mode={view.mode}>
       <PersonHead head={view.head} level={level} titleId={`${base}-title`} />
+      {request}
       <div className="gap-x-2 @[40rem]:columns-2 @5xl:columns-3">
         {view.sections.map((s) => (
           <Fragment key={s.id}>

@@ -11,6 +11,8 @@ import { loadOfficePlace } from "@/lib/office/place";
 import { nowSec } from "@/lib/auth/session";
 import { loadPhoneSummary, type PhoneSummary } from "@/lib/phone/summary";
 import { PhoneSection } from "@/components/phone/PhoneSection";
+import { requestPanelOf, type RequestPanel } from "@/lib/custody/requests";
+import { RequestSection } from "./RequestSection";
 import type { PersonView as View } from "@/lib/person";
 import { Intake } from "./Intake";
 import type { Level } from "./parts";
@@ -38,10 +40,30 @@ async function phoneOf(personId: string): Promise<PhoneSummary | null> {
   }
 }
 
+/**
+ * 医療班への受入依頼の面（T163）の形。災害モードのときと、前に依頼したことがある人だけ（平時に送る物でないので面を作らない）。
+ * 読めなければ null
+ */
+async function requestOf(personId: string, destination: string | undefined, disaster: boolean): Promise<RequestPanel | null> {
+  try {
+    const { env } = await getCloudflareContext({ async: true });
+    const panel = await requestPanelOf(env.DB, personId, destination?.trim() ?? "");
+    return disaster || panel.latest ? panel : null;
+  } catch (e) {
+    console.error("受入依頼の面を読めない", e);
+    return null;
+  }
+}
+
 export async function PersonWithIntake({ view, level, intake }: { view: View; level: Level; intake: IntakeProps | null }) {
   if (!intake) return <PersonView view={view} level={level} />;
   // スマホの面（T149）はケアマネの役だけ（入れる欄を持つ人と同じ）。同意の面のすぐ後
-  const [place, phone] = await Promise.all([placeOf(intake.officeId), phoneOf(intake.personId)]);
+  // 受入依頼の面（T163）も同じ理由でここで読み、頭のすぐ下に差し込む
+  const [place, phone, request] = await Promise.all([
+    placeOf(intake.officeId),
+    phoneOf(intake.personId),
+    requestOf(intake.personId, intake.ledger.evacuation?.destination1, view.mode === "disaster"),
+  ]);
   return (
     <div className="@container">
       <div className="grid gap-2 @[56rem]:grid-cols-[minmax(0,1fr)_20rem]">
@@ -52,6 +74,7 @@ export async function PersonWithIntake({ view, level, intake }: { view: View; le
             level={level}
             edit={place ? { ...intake.edit, place } : intake.edit}
             phone={phone ? <PhoneSection summary={phone} level={level} /> : null}
+            request={request ? <RequestSection personId={intake.personId} panel={request} level={level} /> : null}
           />
         </div>
         {/* 内側で送らない（送るのは画面全体の縦 1 本）。右の列はページの流れに置く */}
