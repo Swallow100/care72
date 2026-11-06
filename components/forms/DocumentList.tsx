@@ -153,8 +153,9 @@ export function DocumentPeople({
               </form>
             )}
             {batch && rows.length > 0 && (
+              // 何の書類の一括印刷かを名前に（T162。様式 9 のつもりで押すと松山市の計画書が開いた）。様式 9 は事業所の段から
               <ButtonLink href={batch} kind="main" size="sm" icon={PrintIcon} data-batch-link>
-                {L.batch}
+                {entry.short} {L.batch}
               </ButtonLink>
             )}
           </span>
@@ -205,11 +206,11 @@ export function DocumentPeople({
                   )}
                   <td className={TD}>
                     <span className="flex gap-1">
-                      <ButtonLink href={r.href} kind="plain" size="sm" icon={PaperIcon}>
+                      <ButtonLink href={r.href} kind="plain" size="sm" icon={PaperIcon} aria-label={`${r.name} ${entry.short} ${L.open}`}>
                         {L.open}
                       </ButtonLink>
                       {r.printHref && (
-                        <ButtonLink href={r.printHref} kind="plain" size="sm" icon={PrintIcon} data-print-link={r.id}>
+                        <ButtonLink href={r.printHref} kind="plain" size="sm" icon={PrintIcon} aria-label={`${r.name} ${entry.short} ${L.print}`} data-print-link={r.id}>
                           {L.print}
                         </ButtonLink>
                       )}

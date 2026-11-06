@@ -22,6 +22,51 @@ export type Guard = Accept & {
 };
 
 export const GUARDS: ReadonlyArray<Guard> = [
+  // T162: 使う側の模擬の 1 回目（persona r1）で迷った画面。直したあとの回の数はまだ無いので、次の本物の回（r2）から 0 を守る
+  {
+    id: "persona-plan-print-dead-end",
+    bench: "persona",
+    item: "count:persona:dead_end:/people/[id]/forms/matsuyama",
+    op: "<=",
+    value: 0,
+    since: "r2",
+    task: "T162",
+    label: "計画書の印刷を押して何も変わらないと読まれない",
+    suspects: ["components/ui/PrintButton.tsx", "lib/forms/print.ts", "components/forms/paper.css"],
+  },
+  {
+    id: "persona-drill-dead-end",
+    bench: "persona",
+    item: "count:persona:dead_end:/drill/[id]",
+    op: "<=",
+    value: 0,
+    since: "r2",
+    task: "T162",
+    label: "訓練の着信の窓と次までで行き止まらない",
+    suspects: ["components/drill/IncomingCall.tsx", "components/drill/DrillControls.tsx"],
+  },
+  {
+    id: "persona-form9-misread",
+    bench: "persona",
+    item: "count:persona:misread:/forms/batch",
+    op: "<=",
+    value: 0,
+    since: "r2",
+    task: "T162",
+    label: "一括印刷で押した物と違う書類を開かない",
+    suspects: ["components/forms/DocumentList.tsx"],
+  },
+  {
+    id: "persona-assign-dead-end",
+    bench: "persona",
+    item: "count:persona:dead_end:/office",
+    op: "<=",
+    value: 0,
+    since: "r2",
+    task: "T162",
+    label: "担当の変更で移す先を選べる",
+    suspects: ["components/office/AssignForm.tsx", "components/ui/Select.tsx", "tools/eval/persona/surface.ts"],
+  },
   // 見本（T157）: 評価の 4 回目で本人役の言葉が 60 字で文の途中で切れた（27/164）のを T139 で直し、5 回目で 0/65 になった。戻ったら外れる
   {
     id: "drill-cut-none",

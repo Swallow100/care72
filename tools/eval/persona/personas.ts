@@ -118,7 +118,8 @@ export function personas(loginId: string = DEFAULT_LOGIN_ID): Persona[] {
           id: "plan",
           text: `${NEW_PERSON.name} の個別避難計画（計画書）を画面で見る`,
           done: { path: "^/people/[^/]+/forms/(matsuyama|cao|mapped)" },
-          route: [{ click: "表示" }],
+          // 本人のページの書類の行の「表示」は書類の名前つきで読む（T162）
+          route: [{ click: "計画書 表示" }],
         },
         DRILL_GOAL,
         DISASTER_GOAL,
@@ -126,7 +127,8 @@ export function personas(loginId: string = DEFAULT_LOGIN_ID): Persona[] {
           id: "print",
           text: "誰か 1 人の書類を印刷する（印刷の画面が開くところまで）",
           done: { any: [{ printed: true }, { path: "[?&]print=1" }] },
-          route: [{ click: "書類" }, { click: "印刷" }],
+          // 書類の一覧の行の「印刷」は氏名と書類の名前つきで読む（T162）
+          route: [{ click: "書類" }, { click: "山田 ハナ 計画書（松山市） 印刷" }],
         },
       ],
     },
@@ -149,7 +151,7 @@ export function personas(loginId: string = DEFAULT_LOGIN_ID): Persona[] {
           id: "plan",
           text: "山田 ハナさんの計画書を画面で見る",
           done: { path: "^/people/[^/]*p-01/forms/(matsuyama|cao|mapped)" },
-          route: [{ click: "表示", nth: 1 }],
+          route: [{ click: "計画書 表示" }],
         },
         DRILL_GOAL,
         DISASTER_GOAL,
@@ -174,19 +176,22 @@ export function personas(loginId: string = DEFAULT_LOGIN_ID): Persona[] {
           id: "assign",
           text: "伊藤 フミさんの担当を西村さんに替えて保存する",
           done: { path: "^/office", text: "西村\\s*1" },
-          route: [{ click: "事業所" }, { click: "伊藤 フミ 担当" }, { click: "西村" }, { click: "変更" }],
+          // 行の「変更」は担当を選んでから押せ、読み上げは「伊藤 フミ 担当変更」（T162）
+          route: [{ click: "事業所" }, { click: "伊藤 フミ 担当" }, { click: "西村" }, { click: "伊藤 フミ 担当変更" }],
         },
         {
           id: "form9",
           text: "様式 9（災害時利用者一覧表）を印刷する（印刷の画面が開くところまで）",
-          done: { any: [{ printed: true }, { path: "form9.*print=1" }] },
+          // 印刷の旗は様式 9 の画面で立った物だけ（T162。一括印刷で松山市の計画書の印刷が開いても達成に数えていた）
+          done: { any: [{ printed: true, path: "^/office/form9" }, { path: "form9.*print=1" }] },
           route: [{ click: "書類" }, { click: "様式9" }, { click: "印刷" }],
         },
         {
           id: "reset",
           text: "事業所のデモのデータを最初の状態に戻す",
           done: { path: "reset=done" },
-          route: [{ click: "閉じる", optional: true }, { click: "事業所" }, { click: "最初に戻す" }, { click: "最初に戻す" }],
+          // 印刷見本の間も上の帯は残る（T162）ので、見本を閉じずに「事業所」へ
+          route: [{ click: "事業所" }, { click: "最初に戻す" }, { click: "最初に戻す" }],
         },
       ],
     },

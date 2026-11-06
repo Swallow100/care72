@@ -332,8 +332,8 @@ describe("着信の往復（保存・上限・門）", () => {
     expect(parseCallTalkRequest({ signal: "s", end: true })).toEqual({ signal: "s", end: true });
   });
 
-  it("問いの候補: 着信は 7 つ（安否・けが・機器薬・移動・避難先・待機・119勧奨、2〜4 字）。外へ掛けた電話は前の 7 つのまま", () => {
-    expect(CALL_IN_ASKS.map((k) => TALK_LABELS[k])).toEqual(["安否", "けが", "機器薬", "移動", "避難先", "待機", "119勧奨"]);
+  it("問いの候補: 着信は 7 つ（安否・けが・機器・薬・移動・避難先・待機・119勧奨、2〜4 字）。外へ掛けた電話は前の 7 つのまま", () => {
+    expect(CALL_IN_ASKS.map((k) => TALK_LABELS[k])).toEqual(["安否", "けが", "機器・薬", "移動", "避難先", "待機", "119勧奨"]);
     expect(CALL_OUT_ASKS).toHaveLength(7);
     for (const k of ["safe", "can_move", "shelter", "stay"] as const) expect(CALL_OUT_ASKS).not.toContain(k);
     for (const k of CALL_IN_ASKS) {

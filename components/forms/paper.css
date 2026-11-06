@@ -686,9 +686,10 @@
 html[data-print-preview] body {
   background: #d9dce0 !important;
 }
-html[data-print-preview] body > *:not(main):not(:has([data-paper-root])):not(.print-preview-bar),
-html[data-print-preview] header:not(:has([data-paper-root])),
-html[data-print-preview] nav:not(:has([data-paper-root])),
+/* T162: 見本の間も上の帯（画面の切替・役・ログアウト）は残す。見本の帯は上の帯の直下の置き場（.print-preview-slot）に留める */
+html[data-print-preview] body > *:not(main):not(:has([data-paper-root])):not(.print-preview-bar):not(.print-preview-slot):not([data-app-header]),
+html[data-print-preview] header:not(:has([data-paper-root])):not([data-app-header]),
+html[data-print-preview] nav:not(:has([data-paper-root])):not([data-app-header] nav),
 html[data-print-preview] .screen-only,
 html[data-print-preview] .qr-screen-only,
 html[data-print-preview] main:has(> [data-paper-print]) > :not([data-paper-print]),
@@ -702,13 +703,13 @@ html[data-print-preview] .rv-focus {
 html[data-print-preview] .print-only {
   display: block !important;
 }
-html[data-print-preview] main:has([data-paper-root]) {
-  padding-top: 3rem !important;
+.print-preview-slot {
+  position: sticky;
+  top: 0;
+  z-index: 60;
 }
 .print-preview-bar {
-  position: fixed;
-  inset: 0 0 auto 0;
-  z-index: 60;
+  position: relative;
   display: flex;
   align-items: center;
   gap: 0.75rem;

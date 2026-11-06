@@ -57,6 +57,8 @@ export function readPageInBrowser(limits: ReadLimits): RawRead {
     const r = el.getAttribute("role");
     if (r) return r;
     const tag = el.tagName.toLowerCase();
+    // アプリの選ぶ部品（components/ui/Select。押すと下に一覧が開くボタン）は、見た目どおり選ぶ欄として読む（T162）
+    if (tag === "button" && el.getAttribute("aria-haspopup") === "listbox") return "combobox";
     if (tag === "a") return "link";
     if (tag === "button" || tag === "summary") return "button";
     if (tag === "select") return "combobox";
@@ -71,10 +73,12 @@ export function readPageInBrowser(limits: ReadLimits): RawRead {
     return tag;
   };
   const zoneOf = (el: Element): string | undefined => {
-    const z = el.closest("[role=dialog],dialog,nav,header,aside,[role=tablist]");
+    const z = el.closest("[role=dialog],dialog,nav,header,aside,[role=tablist],[role=listbox]");
     if (!z) return undefined;
-    const name = z.getAttribute("aria-label") ?? (z.querySelector("h1,h2,h3")?.textContent ?? "");
-    const kind = z.tagName.toLowerCase() === "dialog" || z.getAttribute("role") === "dialog" ? "窓" : z.tagName.toLowerCase() === "nav" ? "切替" : z.tagName.toLowerCase() === "header" ? "上" : z.getAttribute("role") === "tablist" ? "面" : "横";
+    // 選ぶ部品の開いた一覧（body の直下に描く）は、どの欄の一覧か（画面ではボタンのすぐ下に開く。T162）
+    const listOf = z.getAttribute("role") === "listbox" ? (z.getAttribute("aria-label") ?? document.getElementById(z.getAttribute("aria-labelledby") ?? "")?.textContent ?? "") : null;
+    const name = listOf ?? z.getAttribute("aria-label") ?? (z.querySelector("h1,h2,h3")?.textContent ?? "");
+    const kind = listOf !== null ? "一覧" : z.tagName.toLowerCase() === "dialog" || z.getAttribute("role") === "dialog" ? "窓" : z.tagName.toLowerCase() === "nav" ? "切替" : z.tagName.toLowerCase() === "header" ? "上" : z.getAttribute("role") === "tablist" ? "面" : "横";
     return squeeze(name ? `${kind}:${name}` : kind, 30);
   };
 
@@ -105,6 +109,11 @@ export function readPageInBrowser(limits: ReadLimits): RawRead {
     if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
       if (el instanceof HTMLInputElement && (el.type === "checkbox" || el.type === "radio")) item.checked = el.checked;
       else if (role !== "password" && el.value) item.value = squeeze(el.value, 80);
+    }
+    // 選ぶ部品のボタンの字は今選んでいる物（aria-label は欄の名前）
+    if (role === "combobox" && el instanceof HTMLButtonElement) {
+      const v = squeeze(plain(el), 30);
+      if (v && v !== name) item.value = v;
     }
     if (el instanceof HTMLSelectElement) {
       item.options = Array.from(el.options)

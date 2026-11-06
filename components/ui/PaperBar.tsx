@@ -41,7 +41,7 @@ export function PaperBar({
       {(actions || print) && (
         <div className="ml-auto flex flex-wrap items-center gap-2">
           {actions}
-          {print && <PrintButton auto={autoPrint} />}
+          {print && <PrintButton auto={autoPrint} back={back} />}
         </div>
       )}
     </div>

@@ -3,6 +3,7 @@
 // 担当の割当の 1 行のフォーム（docs/tasks/T30.md）。担当を選んで「変更」。送るのは HTML のフォーム（/office/people、action=assign）で、
 // サーバーが事業所の画面の担当の区分へ 303 で戻す。戻ったあと、変えた行に「変更済」を出す（送る前にこの端末の sessionStorage に印を置き、
 // 読み直した画面で 1 回だけ読んで消す。名前や担当は置かない）。押してから戻るまで灰色を残す。
+// T162: 「変更」は担当を今と違う人に選んでから押せる（選ぶ前に押して何も起きないと読まれた）。読み上げの名前は「〇〇 担当変更」
 
 import { useEffect, useState } from "react";
 import { SubmitButton } from "@/components/ui/SubmitButton";
@@ -29,6 +30,7 @@ export function AssignForm({
   careManagers: readonly { id: string; name: string; disabled?: boolean }[];
 }) {
   const [done, setDone] = useState(false);
+  const [to, setTo] = useState(careManagerId ?? "");
   useEffect(() => {
     try {
       if (window.sessionStorage.getItem(KEY) === personId) {
@@ -58,7 +60,10 @@ export function AssignForm({
       <input type="hidden" name="person" value={personId} />
       <input type="hidden" name="from" value={careManagerId ?? ""} />
       <input type="hidden" name="back" value="office" />
-      <Select name="to" defaultValue={careManagerId ?? ""} aria-label={`${personName} ${OFFICE_LABELS.careManager}`} className={SELECT} onChange={() => setDone(false)}>
+      <Select name="to" defaultValue={careManagerId ?? ""} aria-label={`${personName} ${OFFICE_LABELS.careManager}`} className={SELECT} onChange={(e) => {
+          setDone(false);
+          setTo(e.target.value);
+        }}>
         {!known && (
           <option value="" disabled>
             {OFFICE_LABELS.unassigned}
@@ -70,7 +75,9 @@ export function AssignForm({
           </option>
         ))}
       </Select>
-      <SubmitButton icon="AssignIcon">{OFFICE_LABELS.assign}</SubmitButton>
+      <SubmitButton icon="AssignIcon" disabled={to === "" || to === (careManagerId ?? "")} aria-label={`${personName} ${OFFICE_LABELS.assignChange}`}>
+        {OFFICE_LABELS.assign}
+      </SubmitButton>
       {done && (
         <span role="status" className="text-sm">
           <StateText tone="ok">変更済</StateText>

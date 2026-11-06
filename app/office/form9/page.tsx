@@ -122,7 +122,8 @@ export default async function Form9Page({ searchParams }: Props) {
             </span>
           )}
           <FillToggle here="/office/form9" fill={fill} keep={typeof q.sort === "string" ? { sort: q.sort } : {}} />
-          <PrintButton auto={wantsPrint(q.print)} />
+          {/* 見本の帯の戻るは書類の一覧へ（上の帯の「書類」と同じ所。T162） */}
+          <PrintButton auto={wantsPrint(q.print)} back="/forms" />
         </div>
       </div>
       <p className="mt-1 text-xs text-muted">

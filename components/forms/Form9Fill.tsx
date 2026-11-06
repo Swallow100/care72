@@ -23,6 +23,9 @@ const pct = (n: number, of: number) => `${((n / of) * 100).toFixed(3)}%`;
 const newId = () => `fe-${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`;
 const keyOf = (s: Pick<Form9Slot, "personId" | "col">) => `${s.personId}:${s.col}`;
 
+/** 紙の上の記入（components/forms/PaperEdit の「記入」と同じ言葉） */
+const FILL_WRITE = "記入";
+
 type SaveState = "saved" | "saving" | "unsaved" | "failed";
 const STATE_LABELS: Record<SaveState, string> = { saved: L.saved, saving: L.saving, unsaved: L.unsaved, failed: L.failed };
 
@@ -124,7 +127,8 @@ export function Form9Fill({ slots, children }: { slots: Form9Slot[]; children: R
             </span>
           )}
           <span className={`text-xs font-bold ${state === "failed" ? "text-danger" : state === "saved" ? "text-muted" : "text-ink"}`} role="status" data-save-state={state}>
-            {STATE_LABELS[state]}
+            {/* 何の保存かを添える（T162。「保存済」だけだと様式 9 の作業が済んだと読まれた） */}
+            <span className="font-normal text-muted">{FILL_WRITE}</span> {STATE_LABELS[state]}
           </span>
           <Button size="sm" kind="main" icon={SaveIcon} onClick={() => void saveNow()} disabled={saving} data-fill-save>
             {L.save}

@@ -147,7 +147,7 @@ export const TALK_FIXED_SPEECH = "はい、分かりました";
 export const TALK_LABELS: Readonly<Record<TalkAsk, string>> = {
   where: "所在",
   injured: "けが",
-  device_medicine: "機器薬",
+  device_medicine: "機器・薬",
   can_evacuate: "避難可否",
   contact_family: "家族連絡",
   advise_119: "119勧奨",

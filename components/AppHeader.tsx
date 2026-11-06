@@ -49,7 +49,7 @@ export async function AppHeader() {
   const choices = p && canChooseRole(p) ? await roleChoices(p) : null;
   const initialHref = initialPasswordHref(p);
   return (
-    <header className="bg-panel">
+    <header className="bg-panel" data-app-header>
       <div className="mx-auto flex max-w-[90rem] flex-wrap items-center gap-x-4 gap-y-1 px-4 py-1.5">
         <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1">
           <Link

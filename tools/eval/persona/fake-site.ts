@@ -205,9 +205,10 @@ export class FakeSurface implements Surface {
             ? []
             : [
                 // スマホ入口の「表示」は計画共有に同意のある種の人だけ（足したばかりの人には無い）
-                ...(who.id.startsWith("chk-p-0") ? [{ role: "link", name: "表示", on: () => `/people/${who.id}/phone` } satisfies FakeItem] : []),
-                { role: "link", name: "表示", on: () => `/people/${who.id}/forms/matsuyama` } satisfies FakeItem,
-                { role: "link", name: "印刷", on: () => `/people/${who.id}/forms/matsuyama?print=1` } satisfies FakeItem,
+                // 書類の行の「表示」「印刷」は書類の名前つき（本物の components/person/DocumentSection。T162）
+                ...(who.id.startsWith("chk-p-0") ? [{ role: "link", name: "スマホ入口 表示", on: () => `/people/${who.id}/phone` } satisfies FakeItem] : []),
+                { role: "link", name: "計画書 表示", on: () => `/people/${who.id}/forms/matsuyama` } satisfies FakeItem,
+                { role: "link", name: "計画書 印刷", on: () => `/people/${who.id}/forms/matsuyama?print=1` } satisfies FakeItem,
               ]),
           // 経過の書き足し: 自由文に書くと「追記」が押せる（本物の本人のページと同じ）
           box("自由文"),
@@ -288,9 +289,10 @@ export class FakeSurface implements Surface {
             : []),
           { role: "button", name: "最初に戻す", on: (s) => void (s.resetConfirm = true) },
           { role: "button", name: "発災開始", on: (s) => void (s.startConfirm = true) },
-          { role: "button", name: "伊藤 フミ 担当", on: (s) => void (s.assignOpen = true) },
-          ...(st.assignOpen ? [{ role: "button", name: "西村", checked: st.assignTo === "西村", on: (s: State) => void (s.assignTo = "西村") } satisfies FakeItem] : []),
-          { role: "button", name: "変更", on: (s) => void (s.assignTo ? (s.assigned = true) : undefined) },
+          { role: "combobox", name: "伊藤 フミ 担当", value: st.assignTo ?? "山本", on: (s) => void (s.assignOpen = true) },
+          ...(st.assignOpen ? [{ role: "option", name: "西村", zone: "一覧:伊藤 フミ 担当", checked: st.assignTo === "西村", on: (s: State) => void ((s.assignTo = "西村"), (s.assignOpen = false)) } satisfies FakeItem] : []),
+          // 担当を選ぶまで押せない（本物の components/office/AssignForm。T162）
+          { role: "button", name: "伊藤 フミ 担当変更", disabled: !st.assignTo, on: (s) => void (s.assignTo ? (s.assigned = true) : undefined) },
         ],
       };
     }
@@ -302,7 +304,8 @@ export class FakeSurface implements Surface {
         items: [
           { role: "link", name: "書類", zone: "切替:書類", on: () => "/forms" },
           { role: "link", name: "様式9", zone: "切替:書類", on: () => "/office/form9" },
-          ...st.people.map((x): FakeItem => ({ role: "link", name: "印刷", on: () => `/people/${x.id}/forms/matsuyama?print=1` })),
+          // 行の「印刷」は氏名と書類の名前つき（本物の components/forms/DocumentList。T162）
+          ...st.people.map((x): FakeItem => ({ role: "link", name: `${x.name} 計画書（松山市） 印刷`, on: () => `/people/${x.id}/forms/matsuyama?print=1` })),
         ],
       };
     }
