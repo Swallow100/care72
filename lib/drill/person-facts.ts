@@ -836,7 +836,7 @@ export const GATE_RULES = [
   "repeat_said", // 前の連絡・同じ通話の前の返事とほぼ同じ文（落とした。T158）
   "repeat_intent", // 前に言って済んでいない予定（119 へ掛ける・取りに行く）を新しい事のように言い直す（落とした。T165）
   "swap_news", // 前の連絡より前に予備に替えた事を、また替えたと言う（落とした。T165）
-  "backstage", // 訓練の裏側の言葉（問いの途中・訓練・演じる。落とした。T165）
+  "backstage", // 訓練の裏側の言葉（問いの途中・この訓練・演じる。落とした。T165）
 ] as const;
 export type GateRule = (typeof GATE_RULES)[number];
 
