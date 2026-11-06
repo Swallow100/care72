@@ -10,7 +10,7 @@
 // - 紙の AI の照合（T136）は偽の回は既定で回す（--no-review で止める）。本物の回は --review のときだけ（紙 1 枚 1 回の Sonnet）
 // - --real は本物の API。鍵は環境変数 ANTHROPIC_API_KEY だけを読む（台は鍵のファイルを探さない・読まない。人が node の --env-file で渡す）
 // - 回のフォルダ（既定 ../care72-qa/eval/forms/<日時>-<fake|real>/）に calls.jsonl・steps.jsonl・judgements.jsonl・result.json・
-//   report.md・sent/（送った画像）・filled/（埋めた紙と index.html）。リポジトリの中を指すと止まる
+//   report.md・findings.json（指摘、T157）・sent/（送った画像）・filled/（埋めた紙と index.html）。リポジトリの中を指すと止まる
 // - 前の回との差の md を docs/progress/eval-forms-<回>.md に（数だけ）。終わりに 1 行の要約
 // - 一覧の様式（T134、lib/forms/municipal-forms.ts）: --forms=catalog で取り込める物を全部、cat-<様式の id> で選んで。原本は置き場の
 //   版のハッシュが同じファイル → 回の置き場の親の _catalog/ の写し → --catalog-fetch のときだけ一覧の URL から取る（版が同じ物を写しに置く）。
@@ -20,6 +20,7 @@ import dns from "node:dns";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { diffMarkdown, oneLine, writeIndex } from "./report.ts";
+import { writeFormsFindings } from "./findings.ts";
 import { previousRun, REPO_ROOT, runEval, type PaperMode } from "./run.ts";
 
 const args = process.argv.slice(2);
@@ -102,5 +103,7 @@ const md = diffMarkdown(result, prev);
 writeFileSync(join(result.dir, "report.md"), md, "utf8");
 if (!flag("no-progress")) writeFileSync(join(REPO_ROOT, "docs", "progress", `eval-forms-${result.run}.md`), md, "utf8");
 const index = writeIndex(result);
-process.stderr.write(`回のフォルダ ${result.dir}\n一覧 ${index}\n${Math.round((Date.now() - t0) / 1000)} 秒\n`);
+// 指摘（T157）: 共通の形の findings.json を回のフォルダに（数と様式の id だけ。tools/eval/findings.ts）
+const found = writeFormsFindings(result, outRoot);
+process.stderr.write(`回のフォルダ ${result.dir}\n一覧 ${index}\n指摘 ${found.findings}（守りの外れ ${found.guarded}）\n${Math.round((Date.now() - t0) / 1000)} 秒\n`);
 console.log(oneLine(result, prev));

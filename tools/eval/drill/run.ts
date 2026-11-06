@@ -17,7 +17,7 @@
 //       --free-probe（自由対応の状況違いの試し〔T129、free-probe.ts〕も回す。文 3 つ × 状況 8 つで、本物なら Opus を 24 回）
 //
 // 記録: <out>/<日時>-<fake|real>/run-NN.jsonl（1 回の訓練の起きた順。AI の呼び出しは送った中身の全文と返った中身の全文つき）と
-// summary.json。架空の人の台詞が入るのでリポジトリに入れない。md は数だけ。
+// summary.json と findings.json（指摘の共通の形、T157。tools/eval/findings.ts）。架空の人の台詞が入るのでリポジトリに入れない。md は数だけ。
 // 鍵は環境変数 ANTHROPIC_API_KEY だけを読む（tools/survey/summarize.ts と同じ）。鍵のファイルは読まない。
 
 import Anthropic from "@anthropic-ai/sdk";
@@ -33,7 +33,7 @@ import { contactRoles, pseudonymize, type PseudonymInput } from "../../../lib/ps
 import { housemates, planOf } from "../../../lib/drill/person-facts.ts";
 import type { FactPerson } from "./facts-check.ts";
 import { SEED_PEOPLE } from "../../../seed/people.ts";
-import { checkRun, type CheckContext } from "./checks.ts";
+import { checkRun, type CheckContext, type CheckHit } from "./checks.ts";
 import { diversityOf } from "./diversity.ts";
 import { caseloadOf, runDrill, seededSqlite, type RunOutcome } from "./drive.ts";
 import { fakeClaude, fakeRoom } from "./fake.ts";
@@ -43,6 +43,10 @@ import { isEvalScenario, isPeopleMode, planRun, SCENARIOS, type EvalScenario, ty
 import { ROOM_BUDGET_USD } from "./prices.ts";
 import { recordClaude, recordRoom, runLog } from "./record.ts";
 import { diffLine, findPrevious, judgeMeanOf, markdown, totalsOf, type RunSummary, type Summary } from "./report.ts";
+import { drillFindings, type DrillRunHits } from "./findings.ts";
+import { causeCounts, writeFindings } from "../findings.ts";
+import { guardFindings } from "../guards.ts";
+import { valuesOf } from "../scorecard-items.ts";
 import { freshSeed, rngOf } from "./rng.ts";
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -124,7 +128,7 @@ export function stampOf(d: Date, client: "fake" | "real"): string {
   return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}-${client}`;
 }
 
-export async function runEval(cfg: EvalConfig): Promise<{ summary: Summary; dir: string; mdPath: string | null; line: string }> {
+export async function runEval(cfg: EvalConfig): Promise<{ summary: Summary; dir: string; mdPath: string | null; line: string; findingsPath: string }> {
   const say = cfg.say ?? ((x: string) => console.log(x));
   const client: Summary["client"] = cfg.real ? "real" : "fake";
   const stamp = cfg.stamp ?? stampOf(new Date(), client);
@@ -140,6 +144,9 @@ export async function runEval(cfg: EvalConfig): Promise<{ summary: Summary; dir:
   const runs: RunSummary[] = [];
   const judges: JudgeScore[] = [];
   const notes: string[] = [];
+  /** 回ごとの引っかかり（指摘の形にまとめる。T157） */
+  const runHits: DrillRunHits[] = [];
+  let probeHits: CheckHit[] = [];
   let spent = 0;
   // 世界の部屋の Agent と Environment は最初の回で作り、あとの回は同じ物を使う（回ごとに新しい DB のため）
   let worldAgent: RunOutcome["worldAgent"] = null;
@@ -169,6 +176,7 @@ export async function runEval(cfg: EvalConfig): Promise<{ summary: Summary; dir:
     const { hits, numbers } = checkRun(log.records, outcome, ctx);
     for (const h of hits) log.push({ type: "check", ...h });
     log.push({ type: "numbers", numbers });
+    runHits.push({ index: i, scenario: plan.scenario, hits });
     outcomes.push(outcome);
     runs.push({ index: i, seed: plan.seed, scenario: plan.scenario, scale: plan.scale, participants: plan.participants.length, numbers });
     spent += numbers.cost.usd + (plan.scenario === "virtual" && cfg.world === "session" ? ROOM_BUDGET_USD : 0);
@@ -195,6 +203,7 @@ export async function runEval(cfg: EvalConfig): Promise<{ summary: Summary; dir:
     });
     const { rows, hits } = await freeProbe(hook);
     for (const h of hits) log.push({ type: "check", ...h });
+    probeHits = hits;
     const byRule = [...new Set(hits.map((h) => h.rule))].map((r) => `${r} ${hits.filter((h) => h.rule === r).length}`).join("・");
     notes.push(`自由対応の状況違い（T129）: ${rows.length} 件、状況に合わない物 ${hits.length}${byRule ? `（${byRule}）` : ""}`);
     say(notes.at(-1)!);
@@ -223,9 +232,20 @@ export async function runEval(cfg: EvalConfig): Promise<{ summary: Summary; dir:
     mdPath = join(cfg.md, `eval-drill-${stamp}.md`);
     writeFileSync(mdPath, markdown(summary, prev, line), "utf8");
   }
+  // 指摘（T157）: 引っかかりと審査役の点を共通の形に、守り（tools/eval/guards.ts）を回の数で確かめて足す
+  const found = drillFindings({ stamp, client, seed: cfg.seed, runs: runHits, judge: judges, probe: probeHits });
+  const guarded = guardFindings({
+    bench: "drill",
+    run: stamp,
+    values: valuesOf({ bench: "drill", run: stamp, client, data: summary }),
+    counts: causeCounts(found),
+    repro: [cfg.real ? `node --env-file=<鍵のファイル> tools/eval/drill/run.ts --real --runs ${cfg.runs} --seed ${cfg.seed}` : `npm run eval:drill -- --runs ${cfg.runs} --seed ${cfg.seed}`],
+  });
+  const findingsPath = writeFindings(dir, { bench: "drill", run: stamp, client, findings: [...found, ...guarded] }, { root: cfg.out });
   say(line);
+  say(`指摘 ${found.length + guarded.length}（守りの外れ ${guarded.length}）`);
   say(`記録: ${dir}${mdPath ? `\n差の表: ${mdPath}` : ""}`);
-  return { summary, dir, mdPath, line };
+  return { summary, dir, mdPath, line, findingsPath };
 }
 
 // ---------- 引数 ----------
