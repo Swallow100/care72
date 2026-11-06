@@ -5,6 +5,7 @@
 // 1. 同じ項目の □ の並び: 決まり 2 の「1 つの項目の種類の □ の並びは 1 欄」に。□ ごとに読むと、種類に関係なく全部の □ に印が付く（手帳の 3 つの □）。
 //    医療機器・常用薬の □ は決まり 12 の例外（□ ごとに同じ項目を当て、紙が種類を照らす）なのでまとめない
 // 2. 並びの中の括弧: □ の並びの間の「部位（　）」のように、同じ項目を当てた括弧の欄は項目なしの書く所に（項目の値を丸ごと書かない）
+// 4. 署名の隣の日付の作成日は外す（署名した日は本人が書く）
 // 3. 同じ項目の字の欄が 2 つ以上: 決まり 12 の「同じ項目を 2 つの欄に重ねない」に。項目の名前の言葉を持つ欄か、いちばん広い欄に残し、ほかは項目なし（候補に残す。確かめの画面で人が選べる）。
 //    狭い欄（表の 1 列目の「持ち出し品」）に当たって置けない形と、「自由記述」と「その他」に同じ値が 2 回出る形が揺れていた
 
@@ -102,7 +103,18 @@ function keepWidest(fields: readonly MappingField[]): MappingField[] {
   return fields.map((f) => (drop.has(f.id) ? freed(f, "同じ項目の欄") : f));
 }
 
+const SIGN_WORD = /署名|自署|押印|記名|同意|承諾/;
+
+/** 署名・同意の欄の隣の日付に当てた作成日を外す（署名した日は本人が書く。読み取りの回で作成日を当てたり項目なしにしたりで、置けない日付も揺れた） */
+function freeSignDates(fields: readonly MappingField[]): MappingField[] {
+  return fields.map((f, i) => {
+    if (f.removed || f.shape !== "date" || f.item !== "plan.date") return f;
+    const near = [fields[i - 2], fields[i - 1], fields[i + 1], fields[i + 2]].filter((g): g is MappingField => !!g && g.page === f.page && !g.removed);
+    return near.some((g) => (g.shape === "handwrite" && SIGN_WORD.test(`${g.label}`)) || (g.shape !== "handwrite" && g.item === null && SIGN_WORD.test(`${g.label}${g.options.join("")}`))) ? freed(f, "署名の隣の日付") : f;
+  });
+}
+
 /** 読み取りの答えの形をそろえる（欄の id は変えない。まとめた □ は最初の □ の id） */
 export function settleRead(fields: readonly MappingField[]): MappingField[] {
-  return keepWidest(mergeMarks(fields));
+  return keepWidest(mergeMarks(freeSignDates(fields)));
 }

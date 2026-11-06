@@ -24,7 +24,7 @@ const near = (a: FieldBox, b: FieldBox) => {
 };
 
 /** 段を除いた欄の名前 */
-const baseLabel = (l: string) => (l.split(/[\s　]+/).at(-1) ?? l).normalize("NFKC");
+const baseLabel = (l: string) => (l.split(/[\s　]+/).at(-1) ?? l).normalize("NFKC").replace(/^[*※]+/, "");
 
 /**
  * 2 つの欄が、頁ごとに繰り返す欄か（別の頁で、同じ項目、ほぼ同じ場所か同じ欄の名前。写しの頁・頁の頭に繰り返す氏名や作成日）
@@ -195,8 +195,18 @@ export function bracketOwners<T extends BracketField>(fields: readonly T[]): Map
   return out;
 }
 
-/** 同じ値・同じ項目でも重複と見ない組（頁ごとの同じ場所・電話と携帯・□ と括弧） */
-export const allowedTwice = (a: ShapeField, b: ShapeField) => pageRepeat(a, b) || phonePair(a, b) || bracketPair(a, b);
+/**
+ * 印だけの欄の組（T175）: 種類ごとの □ 同士（読み取りの決まり 12。人工呼吸器・吸引の □ に同じ項目で、紙は合う □ だけに印）と、別の頁の選ぶ欄・□ 同士
+ * （1 頁の性別と 2 頁の性別の区分）。印は値を 2 回書かないので重複でない
+ */
+export function markPair(a: ShapeField, b: ShapeField): boolean {
+  if (itemOf(a) === null || itemOf(a) !== itemOf(b)) return false;
+  const mark = (f: ShapeField) => f.shape === "check" || f.shape === "choice";
+  return (a.shape === "check" && b.shape === "check") || (a.page !== b.page && mark(a) && mark(b));
+}
+
+/** 同じ値・同じ項目でも重複と見ない組（頁ごとの同じ場所・電話と携帯・□ と括弧・印だけの欄） */
+export const allowedTwice = (a: ShapeField, b: ShapeField) => pageRepeat(a, b) || phonePair(a, b) || bracketPair(a, b) || markPair(a, b);
 
 /**
  * 前の欄（同じ値・同じ項目の物）があっても f を重複と見ないか: 同じ頁の前の欄が電話と携帯の組・□ と括弧の組だけで、ほかの頁の前の欄があれば
@@ -204,7 +214,7 @@ export const allowedTwice = (a: ShapeField, b: ShapeField) => pageRepeat(a, b) |
  */
 export function repeatOk(before: readonly ShapeField[], f: ShapeField): boolean {
   const same = before.filter((g) => g.page === f.page);
-  if (same.some((g) => !phonePair(g, f) && !bracketPair(g, f))) return false;
+  if (same.some((g) => !phonePair(g, f) && !bracketPair(g, f) && !markPair(g, f))) return false;
   const other = before.filter((g) => g.page !== f.page);
   return other.length === 0 || other.some((g) => allowedTwice(g, f));
 }

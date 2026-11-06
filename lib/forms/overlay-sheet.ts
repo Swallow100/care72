@@ -658,21 +658,26 @@ const ANNEX_LONG_EM = 24;
 function fitIn(lines: readonly string[], box: FieldBox, image: { w: number; h: number }, maxPt: number = FONT_MAX_PT): { fitted: Fitted; tight?: true; snug?: true } | null {
   const w = box.w * image.w;
   const h = box.h * image.h;
+  // 普通の空きで下限まで縮めた字は、狭い空き・最後の置き方の方が大きければそちら（T175）。枠が 0.1% 低いだけで次の置き方の大きな字に変わるので、
+  // 枠の読み取りのわずかな差で下限の字の数（見直しの下限）が同じ様式で 122 → 17 と揺れていた。枠に対して字の大きさが飛ばないように
+  let best: { fitted: Fitted; tight?: true; snug?: true } | null = null;
+  const better = (c: { fitted: Fitted; tight?: true; snug?: true } | null) => {
+    if (c && (!best || c.fitted.fontPt > best.fitted.fontPt + 1e-9)) best = c;
+    return best !== null && best.fitted.fontPt > FONT_MIN_PT + 1e-9;
+  };
   if (maxPt >= FONT_MIN_PT - 1e-9) {
     const f = fitText(lines, w, h, maxPt);
-    if (f && f.fontPt > FONT_MIN_PT + 1e-9) return { fitted: f };
-    // 普通の空きで下限まで縮めた字は、狭い空きの方が大きければそちら（T175）。枠が 0.1% 低いだけで狭い空きの大きな字に変わり、枠の読み取りの
-    // わずかな差で下限の字の数（見直しの下限）が同じ様式で 122 → 17 と揺れていた
+    if (better(f ? { fitted: f } : null)) return best;
     const t = fitText(lines, w, h, maxPt, TIGHT_PAD_X_MM, TIGHT_PAD_Y_MM);
-    if (t && (!f || t.fontPt > f.fontPt + 1e-9)) return { fitted: t, tight: true };
-    if (f) return { fitted: f };
+    if (better(t ? { fitted: t, tight: true } : null)) return best;
   }
   // 最後: 1 行の短い値だけ、行の高さを字の高さに・空きを 0.05mm に（T160）。数だけの短い値は字の下限を 5.5pt に
-  if (lines.length !== 1 || [...lines[0]].length > 24) return null;
+  if (lines.length !== 1 || [...lines[0]].length > 24) return best;
   const minPt = SHORT_DIGITS.test(lines[0].normalize("NFKC").trim()) ? DIGITS_MIN_PT : FONT_MIN_PT;
-  if (maxPt < minPt - 1e-9) return null;
+  if (maxPt < minPt - 1e-9) return best;
   const s = fitText(lines, w, h, maxPt, SNUG_PAD_X_MM, SNUG_PAD_Y_MM, { lineHeight: SNUG_LINE_HEIGHT, minPt, oneLine: true });
-  return s ? { fitted: s, snug: true } : null;
+  better(s ? { fitted: s, snug: true } : null);
+  return best;
 }
 
 /**
@@ -1054,7 +1059,10 @@ export function partItems(field: MappingField, lines: readonly string[], pc: Pla
   }
   for (const [k, part] of parts.entries()) {
     const own = boxes[unitIdx[k]]!;
-    const t = placeText(field.id, [part], own, pc, { own: field.box }) ?? placeText(field.id, [part], grownPart(own, field.box, boxes, pc), pc, { own: field.box });
+    // 読んだ空きで下限の字なら、広げた空きの方が大きければそちら（T175。空きの幅のわずかな差で下限の数が揺れる）
+    const first = placeText(field.id, [part], own, pc, { own: field.box });
+    const wide = !first || first.fontPt <= FONT_MIN_PT + 1e-9 ? placeText(field.id, [part], grownPart(own, field.box, boxes, pc), pc, { own: field.box }) : null;
+    const t = wide && (!first || wide.fontPt > first.fontPt + 1e-9) ? wide : first;
     if (!t) return "fail";
     out.push({ ...t, part: unitIdx[k] });
   }
