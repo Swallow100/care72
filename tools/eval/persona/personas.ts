@@ -76,7 +76,8 @@ export const NEW_PERSON = { name: "川辺 サクラ", kana: "カワベ サクラ
 const DRILL_GOAL: Goal = {
   id: "drill",
   text: "訓練で大雨の想定を始め、時間を進める",
-  done: { path: "^/drill/[^/?]+", text: "経過 ([1-9]\\d*) 時間" },
+  // 「経過 3 時間」「経過 0 時間 30 分」（lib/drill/labels.ts の経過の言い方）。0 時間ちょうどは始めたまま
+  done: { path: "^/drill/[^/?]+", text: "経過 ([1-9]\\d* 時間|0 時間 [1-9]\\d* 分)" },
   route: [{ click: "訓練" }, { click: "大雨想定" }, { click: "出ない", optional: true }, { click: "次まで" }],
 };
 
