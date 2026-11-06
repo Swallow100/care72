@@ -1,12 +1,12 @@
 // 地図の避難先と避難所の印（T169）。強く拡大したときだけ。2 種類を形と文字で分ける:
 // - 計画の避難先（台帳の値。位置のある物だけ）: 塗った旗と「避難先」・名前・人数
-// - 地図の避難所（国土地理院のデータ）: 白抜きの旗。もう 1 段寄ると「避難所」「福祉」「緊急避難」と名前
+// - 地図の避難所（国土地理院のデータ）: 白抜きの旗と「避難所」「福祉」「緊急避難」・名前（名前が重なる物は旗だけ）
 // 旗は経路地図の窓と同じ形（lib/map/route-image.ts の markPath。塗りが選んだ避難先、白抜きが候補）。人のピンは名前の印の下に丸い点なので形が違う。
 // 色は操作の色 1 色（状態の 4 色を使わない）。人のピンより下に重ね、まとめには入れない。押す物ではない（押すと本人のページへ移るのは人のピンだけ）。
 
 import { place, type Size, type View } from "@/lib/map/geo";
 import { markPath } from "@/lib/map/route-image";
-import { candidateKinds, SHELTER_MAP_ZOOM, SHELTER_NAME_ZOOM, shelterNameIds, type MapShelter } from "@/lib/map/shelters";
+import { candidateKinds, SHELTER_MAP_ZOOM, shelterNameIds, type MapShelter } from "@/lib/map/shelters";
 import { MAP_UI } from "@/lib/map/labels";
 import type { MapDestination } from "@/lib/map/side";
 import { ROUTE_LABELS as L } from "@/lib/labels";
@@ -22,9 +22,9 @@ function shortKind(s: Pick<MapShelter, "shelter" | "welfare">): string {
 }
 
 function Flag({ filled }: { filled: boolean }) {
-  // 竿の根元（10, 23）が位置。親は大きさ 0 の点なので、そこから左上へずらす
+  // 竿の根元（10, 23）が位置。親は大きさ 0 の点なので、そこから左上へずらす。旗の先は位置から右へ 15px
   return (
-    <svg width="20" height="26" viewBox="0 0 20 26" className="absolute -top-[23px] -left-[10px]" aria-hidden>
+    <svg width="28" height="26" viewBox="0 0 28 26" className="absolute -top-[23px] -left-[10px]" aria-hidden>
       <path
         d={markPath("dest", 10, 23, 8.5)}
         className={filled ? "fill-accent-fill stroke-panel" : "fill-panel stroke-accent-fill"}
@@ -62,13 +62,10 @@ export function PlaceMarks({
     .filter((s) => !planned.has(s.name))
     .map(at)
     .filter(inFrame);
-  const names =
-    tz >= SHELTER_NAME_ZOOM
-      ? shelterNameIds(
-          marks.map((m) => ({ id: m.x.id, x: m.px, y: m.py, name: m.x.name })),
-          dests.map((d) => ({ x: d.px, y: d.py, w: [...d.x.name].length * 11 + 90 })),
-        )
-      : new Set<string>();
+  const names = shelterNameIds(
+    marks.map((m) => ({ id: m.x.id, x: m.px, y: m.py, name: m.x.name })),
+    dests.map((d) => ({ x: d.px, y: d.py, w: [...d.x.name].length * 11 + 90 })),
+  );
   return (
     <>
       {marks.map(({ x: s, left, top }) => {
@@ -77,7 +74,7 @@ export function PlaceMarks({
           <span key={s.id} role="img" aria-label={title} title={title} className="absolute size-0" style={{ left: `${left}%`, top: `${top}%`, zIndex: 4 }} data-map-shelter={shortKind(s)}>
             <Flag filled={false} />
             {names.has(s.id) && (
-              <span className="absolute -top-[23px] left-[12px] flex max-w-56 items-baseline overflow-hidden rounded-sm text-[11px] leading-4 whitespace-nowrap" data-map-shelter-name>
+              <span className="absolute -top-[23px] left-[18px] flex max-w-56 items-baseline overflow-hidden rounded-sm text-[11px] leading-4 whitespace-nowrap" data-map-shelter-name>
                 <span className="shrink-0 bg-panel2 px-1 text-muted">{shortKind(s)}</span>
                 <span className="min-w-0 truncate bg-panel px-1 text-ink">{s.name}</span>
               </span>
@@ -90,8 +87,8 @@ export function PlaceMarks({
         return (
           <span key={d.id} role="img" aria-label={title} title={title} className="absolute size-0" style={{ left: `${left}%`, top: `${top}%`, zIndex: 5 }} data-map-dest={d.id}>
             <Flag filled />
-            <span className="absolute -top-[23px] left-[12px] flex items-baseline overflow-hidden rounded-sm text-xs leading-[1.125rem] font-bold whitespace-nowrap outline-1 outline-accent">
-              <span className="bg-accent-fill px-1 text-on-accent">{MAP_UI.planDest}</span>
+            <span className="absolute -top-[23px] left-[18px] flex items-baseline overflow-hidden rounded-sm text-xs leading-[1.125rem] font-bold whitespace-nowrap ring-2 ring-panel">
+              <span className="bg-panel2 px-1 text-ink">{MAP_UI.planDest}</span>
               <span className="bg-panel px-1 text-ink">{d.name}</span>
               <span className="bg-panel pr-1 font-normal text-muted tabular-nums">{d.people.length} 人</span>
             </span>

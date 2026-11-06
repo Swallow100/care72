@@ -6,10 +6,13 @@
 
 import { intakeField } from "./fields.ts";
 
-/** 面の編集のどこに紫を付けるか。items は組の鍵（SectionForm の項目）、groups は組の箱、clocks・contacts は行の id */
-export type EditTargets = { items: string[]; groups: string[]; clocks: string[]; contacts: string[] };
+/**
+ * 面の編集のどこに紫を付けるか。items は組の鍵（SectionForm の項目）、groups は組の箱、clocks・contacts は行の id、
+ * night は家族と支援者の連絡先の行の「夜間」の選ぶ欄（夜間支援の未確認。組ごと紫にすると何を入れるか分からない）
+ */
+export type EditTargets = { items: string[]; groups: string[]; clocks: string[]; contacts: string[]; night: boolean };
 
-type Place = { items?: string[]; groups?: string[] };
+type Place = { items?: string[]; groups?: string[]; night?: true };
 
 const item = (...items: string[]): Place => ({ items });
 const group = (...groups: string[]): Place => ({ groups });
@@ -56,7 +59,7 @@ export const FIELD_PLACES: Readonly<Record<string, Place | null>> = {
   // 連絡先の問いの場所。行の id が分からないとき（消した連絡先）だけ、連絡先の組の全部
   contacts: group("people-family", "people-supporter", "people-local", "people-others"),
   // 夜間に来られるかは連絡先ごとの選ぶ欄。支援者と家族のどちらの行で答えても消える（lib/db/ledger.ts の contact）
-  "people.night_supporter": group("people-supporter", "people-family"),
+  "people.night_supporter": { night: true },
   "people.others": group("people-others"),
   "basic.address": item("basic.address"),
   "basic.birth": null,
@@ -81,7 +84,7 @@ const CONTACT_FIELD = /^contacts\.([^.]+)/;
 /** URL の field の値: 全部の未確認（ほかは区分「section:medical」と欄の鍵。lib/person.ts の parseFieldFocus） */
 export const FOCUS_ALL = "all";
 
-export const NO_EDIT_TARGETS: EditTargets = { items: [], groups: [], clocks: [], contacts: [] };
+export const NO_EDIT_TARGETS: EditTargets = { items: [], groups: [], clocks: [], contacts: [], night: false };
 
 /**
  * 未確認の場所 1 つ → 面の編集の場所。fieldKey は FIELDS の鍵（無ければ null）、clockId はその未確認が付く時計（lib/person.ts の pendingClockId）。
@@ -93,11 +96,11 @@ export function editTargetOf(field: string, fieldKey: string | null, clockId: st
   if (contact) return { ...NO_EDIT_TARGETS, contacts: [contact[1]] };
   if (intakeField(field)) return { ...NO_EDIT_TARGETS, items: [field] };
   const place = fieldKey ? FIELD_PLACES[fieldKey] : undefined;
-  return place ? { ...NO_EDIT_TARGETS, items: place.items ?? [], groups: place.groups ?? [] } : null;
+  return place ? { ...NO_EDIT_TARGETS, items: place.items ?? [], groups: place.groups ?? [], night: place.night === true } : null;
 }
 
 /** いくつかの場所を 1 つに（重ねない） */
 export function mergeEditTargets(list: ReadonlyArray<EditTargets>): EditTargets {
-  const uniq = (k: keyof EditTargets) => [...new Set(list.flatMap((t) => t[k]))];
-  return { items: uniq("items"), groups: uniq("groups"), clocks: uniq("clocks"), contacts: uniq("contacts") };
+  const uniq = (k: "items" | "groups" | "clocks" | "contacts") => [...new Set(list.flatMap((t) => t[k]))];
+  return { items: uniq("items"), groups: uniq("groups"), clocks: uniq("clocks"), contacts: uniq("contacts"), night: list.some((t) => t.night) };
 }

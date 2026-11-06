@@ -628,7 +628,7 @@ function DestUnplaced({ places }: { places?: MapPlaces | null }) {
   return (
     <span className="tabular-nums" data-dest-unplaced={places.unplaced}>
       <StateTag tone="check">
-        {MAP_UI.destUnplaced} {places.unplaced}
+        {MAP_UI.destUnplaced} {places.unplaced} 件
       </StateTag>
     </span>
   );

@@ -91,6 +91,20 @@ describe("1 か所の表（lib/intake/targets.ts）", () => {
     expect(editTargetOf("medical.medications.0.remaining", "medical.medications", "k-1")?.clocks).toEqual(["k-1"]);
     expect(editTargetOf("contacts.c-1.kana", "contacts", null)?.contacts).toEqual(["c-1"]);
     expect(editTargetOf("care.walking", "care", null)?.items).toEqual(["care.walking"]);
+    expect(editTargetOf("people.night_supporter", "people.night_supporter", null)?.night).toBe(true);
+  });
+
+  it("夜間支援は「夜間」の選ぶ欄だけ紫で、行が無い人は支援者の組ごと", () => {
+    const rows = onePending("people.night_supporter");
+    const target = viewOf(rows, "people.night_supporter").target?.edit ?? null;
+    const edit = editOf(rows);
+    const form = (d: EditData) => renderToStaticMarkup(createElement(SectionForm, { section: "people", data: d, draft: editDraft(d), set: () => {}, targets: target }));
+    const html = form(edit);
+    const kinds = new Set(["family", "supporter"]);
+    expect(html.match(/data-target=""/g)).toHaveLength(edit.contacts.filter((c) => kinds.has(c.kind)).length);
+    expect(html).toMatch(/data-target=""[\s\S]{0,400}夜間/);
+    const none = { ...edit, contacts: edit.contacts.filter((c) => !kinds.has(c.kind)) };
+    expect(form(none)).toMatch(/data-group="people-supporter"[^>]*data-target=""/);
   });
 });
 

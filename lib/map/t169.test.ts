@@ -17,7 +17,6 @@ import {
   mergeMapShelters,
   SHELTER_CREDIT,
   SHELTER_MAP_ZOOM,
-  SHELTER_NAME_ZOOM,
   shelterNameIds,
   shelterTilesForView,
   type MapShelter,
@@ -42,17 +41,16 @@ const marks = (z: number, shelters: MapShelter[] = [shelter("架空公民館")],
 
 describe("出す段", () => {
   it("引いた地図には避難所も避難先も出さない。強く拡大すると出る", () => {
-    for (const z of [9, 11, 13, 14]) expect(marks(z), String(z)).toBe("");
-    expect(SHELTER_MAP_ZOOM).toBeGreaterThanOrEqual(15);
+    for (const z of [9, 11, 13, 14, 15]) expect(marks(z), String(z)).toBe("");
+    expect(SHELTER_MAP_ZOOM).toBe(16);
     const html = marks(SHELTER_MAP_ZOOM);
     expect(html).toContain("data-map-shelter=");
     expect(html).toContain("data-map-dest=");
   });
 
-  it("避難所の名前はもう 1 段寄ってから（15 は印と読み上げだけ）", () => {
-    expect(marks(SHELTER_MAP_ZOOM)).not.toContain("data-map-shelter-name");
+  it("避難所は種類と名前まで読める", () => {
     expect(marks(SHELTER_MAP_ZOOM)).toContain('aria-label="避難所 架空公民館"');
-    expect(marks(SHELTER_NAME_ZOOM)).toContain("data-map-shelter-name");
+    expect(marks(SHELTER_MAP_ZOOM)).toContain("data-map-shelter-name");
   });
 
   it("名前が重なる避難所は印だけ（先に置いた物が残る）", () => {
@@ -68,7 +66,7 @@ describe("出す段", () => {
 describe("2 種類を分ける", () => {
   it("計画の避難先は塗った旗と「避難先」・名前・人数、地図の避難所は白抜きの旗と種類の言葉", () => {
     const one = (html: string, attr: string) => html.split("<span ").filter((_, i, a) => a.slice(0, i + 1).join("").includes(attr));
-    const html = marks(SHELTER_NAME_ZOOM);
+    const html = marks(SHELTER_MAP_ZOOM);
     const at = html.indexOf("data-map-dest=");
     const a = html.slice(html.lastIndexOf("<span ", at));
     expect(a).toContain("fill-accent-fill");
@@ -83,7 +81,7 @@ describe("2 種類を分ける", () => {
   });
 
   it("種類の言葉: 指定避難所・福祉・指定緊急避難場所だけの所", () => {
-    const html = marks(SHELTER_NAME_ZOOM, [
+    const html = marks(SHELTER_MAP_ZOOM, [
       shelter("架空A", HOME.lat, HOME.lng),
       shelter("架空B", HOME.lat + 0.002, HOME.lng, { shelter: false, welfare: true }),
       shelter("架空C", HOME.lat + 0.004, HOME.lng, { shelter: false, disasters: ["flood", "quake"] }),
@@ -95,7 +93,7 @@ describe("2 種類を分ける", () => {
   });
 
   it("状態の 4 色を使わない。人のピンより下に重ね、押す物にしない（リンクでない）", () => {
-    const html = marks(SHELTER_NAME_ZOOM);
+    const html = marks(SHELTER_MAP_ZOOM);
     expect(html).not.toMatch(/state-(ok|urgent|check|unknown)/);
     expect(html).not.toContain("<a ");
     expect(html).toContain("z-index:4");
@@ -103,7 +101,7 @@ describe("2 種類を分ける", () => {
   });
 
   it("計画の避難先と同じ名前の避難所は計画の方だけ", () => {
-    const html = marks(SHELTER_NAME_ZOOM, [shelter("架空小学校", dest.at.lat, dest.at.lng)]);
+    const html = marks(SHELTER_MAP_ZOOM, [shelter("架空小学校", dest.at.lat, dest.at.lng)]);
     expect(html).not.toContain("data-map-shelter=");
     expect(html).toContain("data-map-dest=");
   });

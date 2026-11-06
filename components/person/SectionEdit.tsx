@@ -139,7 +139,7 @@ export function SectionEdit({ section, data, head, children, targets = null }: P
   useEffect(() => {
     if (!opened || !formRef.current) return;
     scrollToTarget(formRef.current)
-      ?.querySelector<HTMLElement>("input:not([type=checkbox]):not([type=radio]):not([type=hidden]),textarea,select")
+      ?.querySelector<HTMLElement>("input:not([type=checkbox]):not([type=radio]):not([type=hidden]),textarea,select,button[aria-haspopup]")
       ?.focus({ preventScroll: true });
   }, [opened]);
 
@@ -261,6 +261,11 @@ type FormProps = {
   /** 今入れる欄（T169）。紫の枠と「要入力」 */
   targets?: EditTargets | null;
 };
+
+/** 夜間支援の未確認（T169）で「夜間」の欄に紫を付ける組と連絡先の種類、行が無いときに紫にする組 */
+const NIGHT_GROUPS: ReadonlySet<string> = new Set(["people-family", "people-supporter"]);
+const NIGHT_KINDS: ReadonlySet<string> = new Set(["family", "supporter"]);
+const NIGHT_FALLBACK = "people-supporter";
 
 /** 目次を出す組の数（これより少ない区分は目次なし） */
 const NAV_MIN_GROUPS = 3;
@@ -521,6 +526,14 @@ export function SectionForm({ section, data, draft, set, active = null, onActive
       const fallback = [...contactGroups].reverse().find((g) => (g.contactKinds?.length ?? 0) > 1) ?? contactGroups[contactGroups.length - 1];
       const groupOf = (kind: ContactKind) => contactGroups.find((g) => g.contactKinds!.includes(kind)) ?? fallback;
       const push = (g: FieldGroup, node: ReactNode) => contactsOf.set(g.id, [...(contactsOf.get(g.id) ?? []), node]);
+      // 夜間支援の未確認（T169）は家族と支援者の行の「夜間」の選ぶ欄に紫。行が 1 つも無ければ支援者の組ごと（連絡先追加の所）
+      const nightOf = (g: FieldGroup) => targets?.night === true && NIGHT_GROUPS.has(g.id);
+      if (targets?.night) {
+        const rows = draft.contacts.filter((c) => !(c.id && draft.drops.includes(dropKey.contact(c.id)))).concat(draft.newContacts);
+        const hit = rows.map((c) => groupOf(c.kind)).filter(nightOf);
+        if (hit.length === 0) contactTargetGroups.add(NIGHT_FALLBACK);
+        for (const g of hit) contactTargetGroups.add(g.id);
+      }
       // 連絡先の問いの未確認（contacts.<id>.<所>）はその行に紫（T169）
       const marked = (g: FieldGroup, id: string | null | undefined, node: ReactNode, key: string | number) => {
         if (!id || !targets?.contacts.includes(id)) return node;
@@ -571,6 +584,7 @@ export function SectionForm({ section, data, draft, set, active = null, onActive
               c={c}
               group={group}
               clash={clash}
+              nightTarget={nightOf(group)}
               onChange={(next) => set({ contacts: draft.contacts.map((x, j) => (j === i ? next : x)) })}
               onDrop={key ? () => set({ drops: toggled(draft.drops, key) }) : undefined}
             />,
@@ -777,7 +791,14 @@ export function SectionForm({ section, data, draft, set, active = null, onActive
         />
       )}
       {shown.map(({ g, body }) => (
-        <GroupBox key={g.id} id={anchor(g.id)} group={g} active={g.id === active} nav={withNav} target={targets?.groups.includes(g.id) === true}>
+        <GroupBox
+          key={g.id}
+          id={anchor(g.id)}
+          group={g}
+          active={g.id === active}
+          nav={withNav}
+          target={targets?.groups.includes(g.id) === true || (g.id === NIGHT_FALLBACK && targets?.night === true && !draft.contacts.some((c) => NIGHT_KINDS.has(c.kind)) && draft.newContacts.length === 0)}
+        >
           {body}
         </GroupBox>
       ))}
@@ -1008,6 +1029,7 @@ function ContactRow({
   isNew = false,
   group,
   clash,
+  nightTarget = false,
   onChange,
   onDrop,
 }: {
@@ -1016,6 +1038,8 @@ function ContactRow({
   group: FieldGroup;
   /** 重なった順（赤の太字） */
   clash: OrderClash;
+  /** 「夜間」の選ぶ欄が今入れる欄（T169。夜間支援の未確認で、まだ選んでいない行） */
+  nightTarget?: boolean;
   onChange: (c: ContactDraft) => void;
   onDrop?: () => void;
 }) {
@@ -1038,7 +1062,7 @@ function ContactRow({
           <span className="self-center px-0.5 text-xs font-bold">{CONTACT_KIND_LABELS[c.kind] ?? c.kind}</span>
         ))}
       {/* 本人の行は電話の欄（電話と備考）だけ（T68） */}
-      {c.kind === "self" ? <SelfFields c={c} p={p} onDrop={onDrop} /> : <OtherFields c={c} p={p} who={who} clash={clash} onDrop={onDrop} shifted={showKind} />}
+      {c.kind === "self" ? <SelfFields c={c} p={p} onDrop={onDrop} /> : <OtherFields c={c} p={p} who={who} clash={clash} onDrop={onDrop} shifted={showKind} nightTarget={nightTarget} />}
     </div>
   );
 }
@@ -1090,12 +1114,14 @@ function OtherFields({
   clash,
   onDrop,
   shifted = false,
+  nightTarget = false,
 }: {
   c: ContactDraft;
   p: (patch: Partial<ContactDraft>) => void;
   who: string;
   clash: OrderClash;
   onDrop?: () => void;
+  nightTarget?: boolean;
   /** 行の頭に種類の欄がある（欄が 1 つずれる）。狭い幅で住所の右が空かないよう、住所も 1 段に */
   shifted?: boolean;
 }) {
@@ -1143,13 +1169,13 @@ function OtherFields({
         onChange={(e) => p({ mobile: e.target.value })}
         data-contact-part="mobile"
       />
-      <Select className={INPUT_IN} aria-label={`${who} 夜間`} value={c.night} onChange={(e) => p({ night: e.target.value as NightDraft })}>
-        {NIGHT.map((n) => (
-          <option key={n.value} value={n.value} data-placeholder={n.value === "" || undefined}>
-            {n.label}
-          </option>
-        ))}
-      </Select>
+      {nightTarget ? (
+        <TargetBox>
+          <NightSelect c={c} p={p} who={who} />
+        </TargetBox>
+      ) : (
+        <NightSelect c={c} p={p} who={who} />
+      )}
       <Select className={INPUT_IN} aria-label={`${who} ${INTAKE_LABELS.reach}`} value={c.reach} onChange={(e) => p({ reach: e.target.value as ContactDraft["reach"] })} data-reach>
         <option value="" data-placeholder>
           {INTAKE_LABELS.reach} —
@@ -1172,6 +1198,18 @@ function OtherFields({
         {onDrop && <DropButton onClick={onDrop} name={who} />}
       </div>
     </>
+  );
+}
+
+function NightSelect({ c, p, who }: { c: ContactDraft; p: (patch: Partial<ContactDraft>) => void; who: string }) {
+  return (
+    <Select className={INPUT_IN} aria-label={`${who} 夜間`} value={c.night} onChange={(e) => p({ night: e.target.value as NightDraft })}>
+      {NIGHT.map((n) => (
+        <option key={n.value} value={n.value} data-placeholder={n.value === "" || undefined}>
+          {n.label}
+        </option>
+      ))}
+    </Select>
   );
 }
 
