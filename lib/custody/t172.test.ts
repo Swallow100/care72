@@ -186,8 +186,8 @@ describe("受入依頼の一括受入", () => {
   });
 
   it("一覧は依頼の来ている人だけ。事業所でまとめても依頼の無い同じ事業所の人は出ない", async () => {
-    await ask("p-01", "かわなぎ小学校");
-    await ask("p-02", "みどり小学校");
+    await ask("p-01", "かわなぎ小学校", AT);
+    await ask("p-02", "みどり小学校", LATER);
     const list = await openRequests(db, staffActor(medical())!, TODAY);
     const groups = requestsByOffice(list);
     expect(groups.flatMap((g) => g.requests.map((r) => r.personId))).toEqual(["p-01", "p-02"]);
