@@ -1178,6 +1178,23 @@ export function inkDateParts(field: MappingField, lines: readonly string[], pc: 
 /** 電話番号の値（局番・市内・番号。「（089）000-0001」も） */
 const PHONE_VALUE = /^[（(]?\s*(\d{2,5})\s*[）)]?\s*[-‐－−ー―]?\s*(\d{1,4})\s*[-‐－−ー―]\s*(\d{3,4})$/;
 
+/** 刷ってある区切りの見分け（T168）。mm。字のまわりに空きが無い線は字のかけら、同じ高さに無い 2 つは区切りの組でない */
+const SEP_CLEAR_MM = 0.6;
+const SEP_NEAR_Y_MM = 1;
+const SEP_MIN_W_MM = 0.8;
+const SEP_SAME_ROW_MM = 1;
+const PAREN_MIN_GAP_MM = 4;
+
+/**
+ * 字のかたまりから離れた印か（T168）。評価の 8 回目で、欄の左上に刷ってある小さな見出し（「住所・連絡先」）の字の横線 2 つを「　−　−　」の
+ * 区切りと読み、狭い空きに番号が入らず連絡先が置けなかった。本当の区切りは左右・上下に字が接していない
+ */
+function loneGlyph(g: InkBlob, glyphs: readonly InkBlob[], image: { w: number; h: number }): boolean {
+  const dx = SEP_CLEAR_MM / image.w;
+  const dy = SEP_NEAR_Y_MM / image.h;
+  return glyphs.every((o) => o === g || o.x > g.x + g.w + dx || o.x + o.w < g.x - dx || o.y > g.y + g.h + dy || o.y + o.h < g.y - dy);
+}
+
 /**
  * 区切りの場所の無い電話の欄（T140）: 欄の中に刷ってある区切り（「　−　−　」の 2 つの横棒、「（　）　−　」の括弧と横棒、「（　）」だけ）を
  * 頁の印刷の字の形から見分け、局番・市内・番号をそれぞれの空きに置く。区切りが見分けられない・値が 1 つの電話番号でなければ null（ほかの置き方へ）。
@@ -1186,6 +1203,8 @@ const PHONE_VALUE = /^[（(]?\s*(\d{2,5})\s*[）)]?\s*[-‐－−ー―]?\s*(\d{
 export function inkPhoneParts(field: MappingField, lines: readonly string[], pc: PlaceCtx): OverlayItem[] | null | "fail" {
   const box = field.box;
   if (!box || !pc.ink || field.shape !== "phone" || (field.optionBoxes ?? []).some(Boolean) || lines.length !== 1) return null;
+  // 同じ書く所に別の欄（「住所・連絡先」の 1 つの枠）がある欄は、局番ごとの空きを持つ欄でない（行に重ねて置く。sharedBoxes）
+  if ((pc.others ?? []).some((o) => o.id !== field.id && sameArea(o.box, box))) return null;
   // 行の終わりの添え（携帯・固定）は外して照らす（携帯だけの連絡先の行は「090-… 携帯」）
   const m = lines[0]
     .normalize("NFKC")
@@ -1196,13 +1215,20 @@ export function inkPhoneParts(field: MappingField, lines: readonly string[], pc:
   const image = pc.page.image;
   const glyphs = inkIn(box, pc.ink).filter((b) => !b.line && !b.box);
   const boxH = box.h * image.h;
-  const hyphens = glyphs.filter((g) => g.w * image.w >= 1.5 * g.h * image.h && g.h * image.h <= 0.35 * boxH).sort((a, b) => a.x - b.x);
+  const hyphens = glyphs
+    .filter((g) => g.w * image.w >= SEP_MIN_W_MM && g.w * image.w >= 1.5 * g.h * image.h && g.h * image.h <= 0.35 * boxH && loneGlyph(g, glyphs, image))
+    .sort((a, b) => a.x - b.x);
   const parens = glyphs.filter((g) => g.h * image.h >= 1.8 * g.w * image.w && g.h * image.h >= 0.25 * boxH).sort((a, b) => a.x - b.x);
   const right = box.x + box.w;
+  const midY = (g: InkBlob) => (g.y + g.h / 2) * image.h;
+  /** 2 つの印の間に字が無いか（数を書く空き） */
+  const emptyBetween = (a: InkBlob, b: InkBlob) => !glyphs.some((g) => g !== a && g !== b && g.x + g.w > a.x + a.w && g.x < b.x);
   let slots: FieldBox[] | null = null;
   let values: string[];
   if (parens.length === 2 && hyphens.length <= 1) {
     const [p1, p2] = parens;
+    // 間に字のある縦の線・近すぎる線（字のかけら）は括弧の組でない
+    if (Math.abs(midY(p1) - midY(p2)) > SEP_SAME_ROW_MM || (p2.x - (p1.x + p1.w)) * image.w < PAREN_MIN_GAP_MM || !emptyBetween(p1, p2)) return null;
     const h = hyphens.find((x) => x.x > p2.x);
     slots = h
       ? [
@@ -1217,6 +1243,7 @@ export function inkPhoneParts(field: MappingField, lines: readonly string[], pc:
     values = h ? [m[1], m[2], m[3]] : [m[1], `${m[2]}-${m[3]}`];
   } else if (parens.length === 0 && hyphens.length === 2) {
     const [h1, h2] = hyphens;
+    if (Math.abs(midY(h1) - midY(h2)) > SEP_SAME_ROW_MM || !emptyBetween(h1, h2)) return null;
     slots = [
       { x: box.x, y: box.y, w: h1.x - box.x, h: box.h },
       { x: h1.x + h1.w, y: box.y, w: h2.x - (h1.x + h1.w), h: box.h },
