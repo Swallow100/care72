@@ -157,7 +157,7 @@ export function DrillRowDetail({
             )}
           </Part>
           {/* 薬の 1 行ずつ（T150b。本人のページの上の段の「医療」と同じ部品）。行に入った薬の時計は「残り時間」に出さない */}
-          {d.meds.lines.length > 0 && (
+          {d.meds && d.meds.lines.length > 0 && (
             <Part title={MED_LINE_LABELS.title}>
               <MedLines lines={d.meds.lines} more={d.meds.more} />
             </Part>

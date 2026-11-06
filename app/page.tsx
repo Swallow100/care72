@@ -167,7 +167,7 @@ export default async function CaseloadPage({ searchParams }: Props) {
               担当一覧
             </h1>
             <span className="text-sm text-muted tabular-nums">{count}</span>
-            <ButtonLink href={NEW_PERSON_PATH} kind="plain" size="sm" icon={AddPersonIcon} className="ml-auto">
+            <ButtonLink href={NEW_PERSON_PATH} kind="main" size="sm" icon={AddPersonIcon} className="ml-auto">
               {OFFICE_LABELS.addPerson}
             </ButtonLink>
           </div>
