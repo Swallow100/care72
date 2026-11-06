@@ -324,7 +324,18 @@ const PART_SEPS = new Set(["年", "月", "日"]);
 
 const norm = (s: string) => s.replace(/[\s　]+/g, "");
 /** 段を除いた欄の名前（「近親者 氏名」→「氏名」） */
-const baseLabel = (f: ReviewField) => f.label.split(/[\s　]+/).at(-1) ?? f.label;
+const baseLabel = (f: ReviewField) => (f.label.split(/[\s　]+/).at(-1) ?? f.label).replace(/^[＊*※]+/, "");
+
+/**
+ * 項目の役（氏名・フリガナ・続柄・住所・電話）。本人・緊急連絡先・支援者の同じ役の欄に同じ値が入るのは、同じ人が 2 つの役・同じ家のことで、当て間違いの印にならない（T175）。
+ * 欄の名前で見ると、読み取りが「氏名」と書くか「避難支援者」と書くかで重複の数が揺れる（同じ様式で 0 → 49）
+ */
+function roleOf(source: string | null): string | null {
+  if (!source) return null;
+  if (source === "self.phone" || source === "self.mobile") return "phone";
+  if (source === "basic.address") return "address";
+  return source.match(/^(?:person|emergency\d|supporter\d)\.(name|kana|relation|address|phone)$/)?.[1] ?? null;
+}
 /** 重複と見ない値（短い・印の言葉・「なし」） */
 const TRIVIAL = /^(なし|あり|有|無|有り|無し|別紙|同上|不明|未定|―|－|-)$/;
 
@@ -497,8 +508,9 @@ export function ruleReview(s: ReviewSubject): ReviewFinding[] {
     seen.set(v, [...before, f]);
     if (before.length === 0 || repeatOk(before, f)) continue;
     const first = before[0];
-    // 同じ名前の欄（近親者 氏名と実施者1 氏名）は、同じ人が 2 つの役のことがあるので見ない
-    if (baseLabel(first) !== baseLabel(f)) push("duplicate", f, `${first.label}と同じ`);
+    // 同じ名前の欄（近親者 氏名と実施者1 氏名）・同じ役の項目の欄は、同じ人が 2 つの役のことがあるので見ない
+    const role = roleOf(f.source);
+    if (baseLabel(first) !== baseLabel(f) && !(role !== null && before.some((g) => roleOf(g.source) === role))) push("duplicate", f, `${first.label}と同じ`);
   }
   // 同じ台帳の項目を、様式の形で当ててよい数より多くの欄に当てた（対応表の紙）。頁ごとの同じ場所・電話と携帯は数えない
   if (s.redoable) {

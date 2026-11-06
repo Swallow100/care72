@@ -200,6 +200,11 @@ export const GUARDS: ReadonlyArray<Guard> = [
   // 数え直しは当てたのに紙に出ない選択肢 23・正解に無い印 0。置き間違いは 6 回目（195）より増やさない
   { id: "forms-mark-extra-none", bench: "forms", item: "forms.markExtra", op: "<=", value: 0, since: "r8", task: "T164", label: "台帳に無い選択肢に印を付けない", suspects: ["lib/forms/option-values.ts", "lib/forms/mapped-sheet.ts"] },
   { id: "forms-paper-wrong", bench: "forms", item: "forms.paperWrong", op: "<=", value: 195, since: "r8", task: "T164", label: "紙の置き間違いを 6 回目より増やさない", suspects: ["lib/forms/mapped-sheet.ts", "lib/forms/overlay-sheet.ts", "lib/forms/form-shape.ts"] },
+  // T175: 同じ様式でも読み取りが回ごとに違い、見直しの要確認が揺れた（熊本市 55 → 361 など、r9 の合計 2,178）。読み方をそろえ、字の大きさの決まりと重複の見方を
+  // 読み取りの名前に頼らない形にした。数は r8・r9 の記録の数え直しの悪い方（要確認 591、置けず 157、差は r8 と r9 の様式ごとの差の合計 245）
+  { id: "forms-review-check", bench: "forms", item: "forms.reviewCheck", op: "<=", value: 591, since: "r10", task: "T175", label: "見直しの要確認を読み方の揺れで増やさない", suspects: ["lib/forms/read-settle.ts", "lib/forms/form-shape.ts", "lib/forms/overlay-sheet.ts", "lib/forms/review.ts"] },
+  { id: "forms-unplaced-limit", bench: "forms", item: "forms.unplaced", op: "<=", value: 157, since: "r10", task: "T175", label: "置けなかった欄を増やさない", suspects: ["lib/forms/read-settle.ts", "lib/forms/form-shape.ts", "lib/forms/overlay-sheet.ts"] },
+  { id: "forms-review-drift", bench: "forms", item: "forms.reviewDrift", op: "<=", value: 245, since: "r10", task: "T175", label: "同じ様式の要確認の回ごとの差を広げない", suspects: ["lib/forms/read-settle.ts", "lib/forms/form-read.ts", "tools/eval/forms/drift.ts"] },
   // T166: 使う側の模擬の 2 回目で迷った所。数は直した形の値で、本物の回はまだ（docs/progress/t166.md）
   { id: "persona-medical-role", bench: "persona", item: "count:persona:unreached:medical.role", op: "<=", value: 0, since: "r9", task: "T166", label: "医療班の筋で医療班の役に入れる", suspects: ["components/person/RequestSection.tsx", "components/ui/RoleMenu.tsx", "tools/eval/persona/surface.ts"] },
   { id: "persona-ledger-not-found", bench: "persona", item: "count:persona:not_found:/", op: "<=", value: 2, since: "r9", task: "T166", label: "編集の面の目次と保存で迷わない", suspects: ["components/person/SectionEdit.tsx", "lib/labels.ts"] },
@@ -210,11 +215,17 @@ export const GUARDS: ReadonlyArray<Guard> = [
   { id: "persona-drill-misread", bench: "persona", item: "count:persona:misread:/drill/[id]", op: "<=", value: 1, since: "r9", task: "T166", label: "訓練の画面の読み違いを 2 回目より増やさない（押せそうで押せない印を残さない）", suspects: ["components/drill/TalkLines.tsx", "components/drill/AskPick.tsx", "components/drill/ActionPanel.tsx"] },
   // T172: 医療班の一括受入（選んでまとめて受け入れる筋）と、医療班の本人のページに書き足しの欄を出さない・PC でもカメラ起動が出る（筋の forbid）
   { id: "persona-medical-bulk", bench: "persona", item: "count:persona:unreached:medical.bulk", op: "<=", value: 0, since: "r9", task: "T172", label: "医療班が受入依頼をまとめて受け入れられる", suspects: ["components/staff/StaffRequests.tsx", "components/staff/BulkReceive.tsx", "lib/custody/bulk.ts"] },
-  { id: "persona-medical-no-relay", bench: "persona", item: "persona.forbidden", op: "<=", value: 0, since: "r9", task: "T172", label: "医療班に経過の書き足しの欄を出さない・PC でカメラ起動を消さない", suspects: ["lib/consent/relay.ts", "lib/consent/scope.ts", "components/staff/ReceivedPerson.tsx", "components/staff/QrCamera.tsx"] },
-  { id: "persona-form9-preview-misread", bench: "persona", item: "count:persona:misread:/office/form9", op: "<=", value: 0, since: "r9", task: "T166", label: "様式 9 の見本の帯をデータを戻す物と読まない", suspects: ["components/ui/PrintButton.tsx", "lib/ui/labels.ts"] },
+  { id: "persona-medical-no-relay", bench: "persona", item: "persona.forbidden", op: "<=", value: 0, since: "r9", task: "T172", label: "医療班に経過の書き足しの欄を出さない・PC でカメラ起動を消さない・最初に戻すと医療班の入口を読みの頭に（T173）", suspects: ["lib/consent/relay.ts", "lib/consent/scope.ts", "components/staff/ReceivedPerson.tsx", "components/staff/QrCamera.tsx", "app/office/page.tsx", "components/AppHeader.tsx"] },
+  { id: "persona-form9-preview-misread", bench: "persona", item: "count:persona:misread:/office/form9", op: "<=", value: 0, since: "r9", task: "T166", label: "様式 9 の印刷のあと、次の目標を済んだと読まない", suspects: ["tools/eval/persona/actor.ts", "components/ui/PrintButton.tsx", "lib/ui/labels.ts"] },
   // T169: 右の面の見直し・未確認と、飛んだ先の紫の案内。数は直した形の値で、本物の回はまだ（docs/progress/t169.md）。全部の未確認の欄で飛べることは lib/intake/t169.test.ts が見る
   { id: "persona-veteran-person", bench: "persona", item: "count:persona:unreached:veteran.person", op: "<=", value: 0, since: "r9", task: "T169", label: "本人のページの未確認の項目に着ける", suspects: ["components/list/SidePane.tsx", "lib/map/side.ts", "lib/intake/targets.ts"] },
   { id: "persona-list-dead-end", bench: "persona", item: "count:persona:dead_end:/", op: "<=", value: 0, since: "r9", task: "T169", label: "見直し・未確認の行と未確認の印から飛んで行き止まらない", suspects: ["components/person/TargetLink.tsx", "components/person/SectionEdit.tsx", "lib/intake/targets.ts"] },
+  // T173: 使う側の模擬の 3 回目で残った迷い。数は直した形の見込みで、本物の回はまだ（docs/progress/t173.md）。r3 は医療班の入口 9 手・一括受入 6 手・避難先 11 手
+  { id: "persona-medical-role-steps", bench: "persona", item: "persona.goal.medical.role.steps", op: "<=", value: 3, since: "r10", task: "T173", label: "医療班の入口に 3 手で着く", suspects: ["components/ui/RoleMenu.tsx", "components/AppHeader.tsx", "components/NavLinks.tsx"] },
+  { id: "persona-medical-bulk-steps", bench: "persona", item: "persona.goal.medical.bulk.steps", op: "<=", value: 4, since: "r10", task: "T173", label: "全選択を押し直さず一括受入に着く", suspects: ["components/staff/BulkReceive.tsx", "components/staff/StaffRequests.tsx"] },
+  { id: "persona-staff-not-found", bench: "persona", item: "count:persona:not_found:/staff", op: "<=", value: 0, since: "r10", task: "T173", label: "受入一覧で同じ物を押し直さない", suspects: ["components/staff/BulkReceive.tsx", "components/staff/StaffRequests.tsx"] },
+  { id: "persona-ledger-steps", bench: "persona", item: "persona.goal.first.ledger.steps", op: "<=", value: 6, since: "r10", task: "T173", label: "避難先の入力と保存を 6 手で済ます", suspects: ["components/person/SectionEdit.tsx", "lib/labels.ts"] },
+  { id: "persona-new-dead-end", bench: "persona", item: "count:persona:dead_end:/people/new", op: "<=", value: 0, since: "r10", task: "T173", label: "作成で止まったら必須の案内を読める", suspects: ["components/office/NewPersonForm.tsx", "tools/eval/persona/dom.ts"] },
   // T167: 評価の 8 回目で呼び出しが 91.4/回・上限との比 90.7%（run-01 の 137 回のうち本人役の通話 72）。相づち・聞き返し・同じ問いをコードの短い返事にした。
   // r8 の通話の並びに当てると 136 往復のうち本人役 51（切った分を除く 94 往復の 54%）、1 回の訓練は最大 85 回ほど。値は r7 の数を超えない形で守る
   { id: "drill-calls-per-run", bench: "drill", item: "drill.callsPerRun", op: "<=", value: 89.6, since: "r9", task: "T167", label: "AI の呼び出しを 7 回目より増やさない", suspects: ["lib/drill/talk-quick.ts", "lib/drill/hooks.ts", "tools/eval/drill/drive.ts"] },
@@ -231,6 +242,13 @@ export const GUARDS: ReadonlyArray<Guard> = [
   { id: "forms-mark-content", bench: "forms", item: "forms.markNoContent", op: "<=", value: 0, since: "r9", task: "T168", label: "印を付けた □ の中身を紙から落とさない", suspects: ["lib/forms/trailing-field.ts", "lib/forms/read-post.ts", "lib/forms/mapped-sheet.ts"] },
   // T166: 使う側の模擬の 2 回目で迷った所。数は直した形の値で、本物の回はまだ（docs/progress/t166.md）
   // T170: 仮想の地理を実の物に。やめた架空の地名（種の町名・白波川・架空の道と避難所）が世界の文に出ない。偽の回で 0
+  // T174: 評価の 9 回目で人ごとの筋が 2 のまま。機器が止まったあと 13 時間連絡が無い（2 回）・緑の連絡・短い返事の「大丈夫」・出られない本人が電話に出る・道の開通と訳の食い違い。
+  // 止まったあとの連絡はコードが呼ぶので偽の回でも効く（T167 の注の「偽の回で外れる」は、連絡しない答えをコードの連絡にしたので無くなった）
+  { id: "drill-down-silent", bench: "drill", item: "count:drill:facts:down_silent", op: "<=", value: 1, since: "r10", task: "T174", label: "機器が止まったあと 4 時間の連絡が抜けない（1 件まで）", suspects: ["lib/drill/hooks.ts", "lib/drill/person-facts.ts", "lib/drill/persona.ts"] },
+  { id: "drill-down-green", bench: "drill", item: "count:drill:facts:down_green", op: "<=", value: 0, since: "r10", task: "T174", label: "機器が止まったまま家にいる間に緑で連絡しない", suspects: ["lib/drill/persona.ts"] },
+  { id: "drill-calm-while-down", bench: "drill", item: "count:drill:facts:calm_while_down", op: "<=", value: 0, since: "r10", task: "T174", label: "機器が止まったまま落ち着いた言い方をしない", suspects: ["lib/drill/person-facts.ts", "lib/drill/talk-quick.ts"] },
+  { id: "drill-self-answer", bench: "drill", item: "count:drill:facts:self_answer", op: "<=", value: 0, since: "r10", task: "T174", label: "電話に出られない本人が電話で話さない", suspects: ["lib/drill/person-facts.ts", "lib/drill/hooks.ts"] },
+  { id: "drill-road-said", bench: "drill", item: "count:drill:facts:road_said", op: "<=", value: 0, since: "r10", task: "T174", label: "道の開通と本人役の言葉・訳が食い違わない", suspects: ["lib/drill/person-facts.ts", "lib/drill/engine.ts", "lib/drill/scenarios.ts"] },
   { id: "drill-world-retired-place", bench: "drill", item: "count:drill:world_place:retired", op: "<=", value: 0, since: "r9", task: "T170", label: "世界の文にやめた架空の地名を出さない", suspects: ["lib/drill/area.ts", "lib/drill/area-demo.ts", "lib/drill/world-apply.ts", "lib/pseudonym/index.ts"] },
 ];
 

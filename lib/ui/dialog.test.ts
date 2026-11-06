@@ -154,7 +154,7 @@ describe("窓の中身の描画", () => {
     expect(html).toContain("消す項目\n二行目");
     expect(html).toMatch(/data-dialog-focus=""[^>]*data-dialog-action="cancel"/);
     expect(html).toContain("bg-danger");
-    expect(html).toContain(">戻す</button>");
+    expect(html).toContain(">初期化</button>");
     // 影・グラデーション・ピル型は使わない
     expect(html).not.toMatch(/shadow|gradient|rounded-full/);
   });

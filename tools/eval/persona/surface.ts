@@ -8,7 +8,7 @@
 
 import puppeteer, { type Browser, type BrowserContext, type Page } from "puppeteer-core";
 import { chromePath } from "../../print/chrome.ts";
-import { hashOf, lookOf, READ_LIMITS, readPageInBrowser, REF_ATTR, stubPrintInBrowser, type RawRead } from "./dom.ts";
+import { hashOf, lookOf, READ_LIMITS, readPageInBrowser, REF_ATTR, stubPrintInBrowser, watchRequiredInBrowser, type RawRead } from "./dom.ts";
 import { assertLocalBase } from "./guard.ts";
 import type { ActResult, Move, Snapshot } from "./types.ts";
 
@@ -111,6 +111,7 @@ export class ChromeSurface implements Surface {
     await page.setBypassServiceWorker(true);
     await page.setViewport({ ...this.opts.viewport, deviceScaleFactor: 1 });
     await page.evaluateOnNewDocument(stubPrintInBrowser);
+    await page.evaluateOnNewDocument(watchRequiredInBrowser);
     page.on("response", (res) => {
       const status = res.status();
       if (status < 400) return;
@@ -156,12 +157,13 @@ export class ChromeSurface implements Surface {
       await settle(page, this.navTimeout);
       raw = await page.evaluate(readPageInBrowser, READ_LIMITS);
     }
-    const errors = this.errors;
+    const { unseenRequired, ...read } = raw;
+    const errors = unseenRequired === null ? this.errors : [...this.errors, `必須案内なし ${unseenRequired}`];
     this.errors = [];
-    const alerts = [...raw.alerts, ...this.dialogs];
+    const alerts = [...read.alerts, ...this.dialogs];
     this.dialogs = [];
     if (raw.printed) await page.evaluate(() => void ((window as unknown as { __personaPrinted?: boolean }).__personaPrinted = false)).catch(() => undefined);
-    const snap = { ...raw, alerts, errors };
+    const snap = { ...read, alerts, errors };
     return { ...snap, hash: hashOf(snap), look: lookOf(snap) };
   }
 

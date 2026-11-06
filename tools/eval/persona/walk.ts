@@ -52,14 +52,25 @@ export type WalkOutcome = {
   ms: number;
 };
 
-/** 今の画面が筋の forbid に当たる物の why（T172）。押せる物は名前の頭で、文は画面の文で見る */
-export function forbiddenOf(persona: Pick<Persona, "forbid">, snap: Pick<Snapshot, "path" | "text" | "items">): string[] {
-  return (persona.forbid ?? []).flatMap((f) => {
+/**
+ * 今の画面が筋の forbid に当たる物の why（T172）。押せる物は名前の頭で、文は画面の文で見る。
+ * near（T173）は読みの頭に無い物。開いた窓の間は読みが窓の中だけなので見ない
+ */
+export function forbiddenOf(persona: Pick<Persona, "forbid" | "near">, snap: Pick<Snapshot, "path" | "text" | "items">): string[] {
+  const hit = (persona.forbid ?? []).flatMap((f) => {
     if (!new RegExp(f.path).test(snap.path)) return [];
     const byItem = f.item !== undefined && snap.items.some((i) => i.name.startsWith(f.item as string));
     const byText = f.text !== undefined && snap.text.includes(f.text);
     return byItem || byText ? [f.why] : [];
   });
+  const windowOpen = snap.items.some((i) => i.zone?.startsWith("窓"));
+  const far = windowOpen
+    ? []
+    : (persona.near ?? []).flatMap((f) => {
+        if (!new RegExp(f.path).test(snap.path)) return [];
+        return snap.items.slice(0, f.within).some((i) => i.name.startsWith(f.item)) ? [] : [f.why];
+      });
+  return [...hit, ...far];
 }
 
 export async function walkPersona(persona: Persona, deps: WalkDeps): Promise<WalkOutcome> {

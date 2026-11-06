@@ -82,6 +82,13 @@ const virtualNoKind = (s: DrillSummaryLike): Raw => {
   const d = sumOf(ns.map((p) => p.people));
   return d > 0 ? [sumOf(ns.map((p) => p.noKind)), d] : null;
 };
+/** 世界の返事で捨てた名前（T174。前の回は数が無く null） */
+const worldNamesDropped = (s: DrillSummaryLike): Raw => {
+  const ns = runs(s).filter((n) => n.worldNames !== undefined);
+  if (ns.length === 0) return null;
+  const d = sumOf(ns.map((n) => n.worldNames!.total));
+  return d > 0 ? [sumOf(ns.map((n) => n.worldNames!.dropped)), d] : null;
+};
 /** 通話の返事のうち本人役（AI）の割合（T167。前の回は数が無く null） */
 const talkAiShare = (s: DrillSummaryLike): Raw => {
   const ns = runs(s).filter((n) => n.talk?.aiReplies !== undefined);
@@ -120,6 +127,8 @@ const DRILL: Item[] = [
   { id: "drill.personKinds", bench: "drill", label: "人ごとの出来事の種類の数（平均）", better: "higher", unit: "score", agg: "mean", drill: (s) => s.diversity.persons.kindsPerPerson ?? null },
   { id: "drill.personNoKind", bench: "drill", label: "出来事の無い人の割合", better: "lower", unit: "score", agg: "mean", drill: (s) => s.diversity.persons.noKindShare ?? null },
   { id: "drill.personNoKindVirtual", bench: "drill", label: "仮想の回の出来事の無い人", better: "lower", unit: "frac", agg: "sum", drill: virtualNoKind },
+  // T174: 世界の返事の名前のうち地理に無く捨てた物。r10 が 1 回目（基準づくり）
+  { id: "drill.worldNamesDropped", bench: "drill", label: "世界の返事で捨てた名前", better: "lower", unit: "frac", agg: "sum", drill: worldNamesDropped },
   { id: "drill.personKindOverlap", bench: "drill", label: "人どうしの筋の似かた（種類の重なり）", better: "lower", unit: "score", agg: "mean", drill: (s) => s.diversity.persons.kindJaccard ?? null },
   { id: "drill.cut", bench: "drill", label: "本人役の言葉が文の途中で切れた", better: "lower", unit: "frac", agg: "sum", threshold: zero, drill: (s) => [sumOf(runs(s).map((n) => n.cut?.hits ?? 0)), sumOf(runs(s).map((n) => n.cut?.checked ?? 0))] },
   { id: "drill.overmask", bench: "drill", label: "画面の（氏名）で元の語に名前が無い", better: "lower", unit: "frac", agg: "sum", threshold: zero, drill: (s) => [sumOf(runs(s).map((n) => n.overmask?.hits ?? 0)), sumOf(runs(s).map((n) => n.overmask?.checked ?? 0))] },
@@ -266,6 +275,8 @@ const FORMS: Item[] = [
   },
   { id: "forms.reviewDup", bench: "forms", label: "見直しの重複", better: "lower", unit: "count", agg: "sum", forms: (r) => (hasReview(r) ? sumOf(reviews(r).map((x) => x.rule.kinds.duplicate ?? 0)) : null) },
   { id: "forms.reviewCheck", bench: "forms", label: "見直しの要確認", better: "lower", unit: "count", agg: "sum", forms: (r) => (hasReview(r) ? sumOf(reviews(r).map((x) => x.rule.check)) : null) },
+  // T175: 同じ様式の読み取りの回ごとの差。--drift-from で前の回（同じコードで数え直した物）と比べた回だけ数が入る
+  { id: "forms.reviewDrift", bench: "forms", label: "見直しの要確認の前の回との差", better: "lower", unit: "count", agg: "sum", forms: (r) => r.drift?.check ?? null },
   { id: "forms.reviewFix", bench: "forms", label: "見直しの要修正", better: "lower", unit: "count", agg: "sum", forms: (r) => (hasReview(r) ? sumOf(reviews(r).map((x) => x.rule.fix)) : null) },
   { id: "forms.aiReviewFound", bench: "forms", label: "AI の照合 使った所", better: null, unit: "count", agg: "sum", forms: (r) => (reviews(r).some((x) => x.ai) ? sumOf(reviews(r).map((x) => x.ai?.found ?? 0)) : null) },
   { id: "forms.aiReviewKinds", bench: "forms", label: "AI の照合 判読難・欄違い・不一致", better: null, unit: "count", agg: "sum", seedOnly: true },

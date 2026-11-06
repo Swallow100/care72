@@ -100,7 +100,7 @@ function QuestionBody({ q, left, busy, aiReady, onAnswer, onSkip, onFree }: Omit
               ))}
             </div>
             <NoteInput label={q.label} value={note} onChange={setNote} disabled={busy} />
-            <button type="button" className={BTN_MAIN} data-press="overlay" disabled={busy || picked.length === 0} onClick={() => submit({ kind: "choice", values: picked, note })}>
+            <button type="button" className={BTN_MAIN} data-press="overlay" aria-label={`${q.label} ${INTAKE_LABELS.save}`} disabled={busy || picked.length === 0} onClick={() => submit({ kind: "choice", values: picked, note })}>
               <SaveIcon aria-hidden className="size-3.5 shrink-0" />
               {INTAKE_LABELS.save}
             </button>
@@ -143,7 +143,7 @@ function QuestionBody({ q, left, busy, aiReady, onAnswer, onSkip, onFree }: Omit
           />
           {a.kind === "clock" && <span className="shrink-0 text-sm">{CLOCK_UNIT_LABELS[a.unit]}</span>}
           {a.kind === "int" && a.unit && <span className="shrink-0 text-sm">{a.unit}</span>}
-          <button type="submit" className={`${BTN_MAIN} shrink-0`} data-press="overlay" disabled={busy || value.trim() === ""}>
+          <button type="submit" className={`${BTN_MAIN} shrink-0`} data-press="overlay" aria-label={`${q.label} ${INTAKE_LABELS.save}`} disabled={busy || value.trim() === ""}>
             <SaveIcon aria-hidden className="size-3.5 shrink-0" />
               {INTAKE_LABELS.save}
           </button>
@@ -169,7 +169,7 @@ function QuestionBody({ q, left, busy, aiReady, onAnswer, onSkip, onFree }: Omit
           )}
           <NoteInput label={q.label} value={note} onChange={setNote} disabled={busy} />
           <div className="flex gap-1">
-            <button type="button" className={BTN_MAIN} data-press="overlay" disabled={busy || picked.length === 0} onClick={() => submit({ kind: "night", contactIds: picked, note })}>
+            <button type="button" className={BTN_MAIN} data-press="overlay" aria-label={`${q.label} ${INTAKE_LABELS.save}`} disabled={busy || picked.length === 0} onClick={() => submit({ kind: "night", contactIds: picked, note })}>
               <SaveIcon aria-hidden className="size-3.5 shrink-0" />
               {INTAKE_LABELS.save}
             </button>

@@ -147,7 +147,8 @@ describe("帳面: いる所（移送の到着・向かうと言った後）", ()
     const road: WorldState = { ...EMPTY_WORLD, roads: [{ id: "rd-1", label: "川沿いの市道", open: false, person: null }] };
     const f = factsOf({ person: "p-01", world: road, state: said, actions: [], now: 400, plan, inOutage: false });
     expect(f.place?.where).toBe("home");
-    expect(factLines(f).join("\n")).toContain("道が通れない");
+    // 通れない訳は事実の方だけ（T174。前は「道か水か」の二択の文）
+    expect(factLines(f).join("\n")).toContain("川沿いの市道が通行止");
     const flooded: WorldState = { ...EMPTY_WORLD, marks: { "p-01": { flooded: 1 } } };
     expect(factsOf({ person: "p-01", world: flooded, state: said, actions: [], now: 400, plan, inOutage: false }).place?.where).toBe("home");
     // ほかの人の家の近くの道の通行止は効かない

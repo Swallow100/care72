@@ -57,7 +57,7 @@ import { canSeeSetup, isSetupLater, loadOfficeCenter, SETUP_LATER_COOKIE, setupI
 import { CUSTODY_LABELS } from "@/lib/custody/labels";
 import { OFFICE_TAKE_PATH, UNAFFILIATED_ANCHOR } from "@/lib/custody/paths";
 import { listUnaffiliated, type UnaffiliatedItem } from "@/lib/custody/takeover";
-import { canResetDemo, canStartSeed, OFFICE_RESET_PATH, OFFICE_START_PATH, parseResetState, type ResetState } from "@/lib/seed/http";
+import { canResetDemo, canStartSeed, OFFICE_RESET_PATH, OFFICE_START_PATH, parseResetState } from "@/lib/seed/http";
 import { demoOutageTowns, seedRedPersonName } from "@/lib/seed/demo";
 import { RESET_LABELS, START_LABELS, startDetails } from "@/lib/seed/labels";
 import { CONFIRM_LABELS } from "@/lib/ui/labels";
@@ -167,7 +167,10 @@ export default async function OfficePage({ searchParams }: Props) {
             <span className="text-xs text-muted">{shortJst(now)} 時点</span>
           </>
         }
+        actions={canResetDemo(principal) && reset !== "confirm" ? <ResetAction /> : undefined}
       />
+      {/* 窓が出せないとき（JS が動く前）の確認の欄 */}
+      {reset === "confirm" && <ResetConfirm />}
       {error && (
         <p role="alert" className="mt-2 text-sm font-bold text-danger">
           {DISASTER_FORM_ERROR_LABELS[error]}
@@ -211,8 +214,6 @@ export default async function OfficePage({ searchParams }: Props) {
           <SurveyPanel overview={survey} origin={await requestOrigin()} />
         </div>
         <div className="grid min-w-0 content-start gap-3">
-          {/* デモ事業所の「最初に戻す」（T26。審査員と管理者だけ）は右の列の頭に（下に長い列の底にあり見つからなかった。T166） */}
-          {canResetDemo(principal) && <ResetSection state={reset} />}
           {/* 様式9 と使用様式は書類の画面（/forms）にまとめた（T147） */}
           <Panel id={CARE_MANAGERS_ANCHOR} aria-labelledby="cm-title" className="scroll-mt-4">
             <AddCareManager count={careManagers.length} admin={actor.admin}>
@@ -781,56 +782,46 @@ function UnaffiliatedSection({ people }: { people: UnaffiliatedItem[] }) {
 
 /**
  * デモ事業所の「最初に戻す」（T26）。審査員（ケアマネの役）と管理者だけに出す。押すとアプリ内の確認の窓（T44）を出し、
- * 窓の赤い塗りのボタンで種に戻す。JS が動く前に押したときは確認の欄（URL の reset=confirm）を開く。毎日 4:00 にも自動で戻る。経過には残さない
+ * 窓の赤い塗りのボタンで種に戻す。毎日 4:00 にも自動で戻る。経過には残さない。
+ * 置き場所は画面の頭の右（T173）。右の列の頭に置いても、読みの順と Tab の順では左の長い列（担当の表）の後ろの 115 個中 114 番目だった。
+ * 頭に置くと列の幅にかかわらず最初に読める。戻したあとの知らせは画面の頭の 1 行
  */
-function ResetSection({ state }: { state: ResetState | null }) {
+function ResetAction() {
   return (
-    <Panel aria-labelledby="reset-title" data-reset>
-      <PanelHead
-        id="reset-title"
-        title={RESET_LABELS.title}
-        sub={
-          <>
-            <span className="text-xs text-muted">{RESET_LABELS.daily}</span>
-            {/* 知らせ（role）は画面の頭の 1 行に出す。ここは区分の中の印だけ */}
-            {state === "done" && (
-              <span className="text-sm">
-                <StateText tone="ok">{RESET_LABELS.done}</StateText>
-              </span>
-            )}
-            {state === "failed" && <span className="text-sm font-bold text-danger">{RESET_LABELS.failed}</span>}
-          </>
-        }
-      />
-      {state === "confirm" ? (
-        <form method="post" action={OFFICE_RESET_PATH} className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2 rounded bg-panel2 px-3 py-2">
-          <input type="hidden" name="confirm" value="1" />
-          <span className="text-sm">{RESET_LABELS.confirm}</span>
-          <SubmitButton kind="dangerFill" icon="RetryIcon">{RESET_LABELS.reset}</SubmitButton>
-          <ButtonLink href={OFFICE_PATH} kind="quiet" icon={CloseIcon}>
-            {RESET_LABELS.cancel}
-          </ButtonLink>
-        </form>
-      ) : (
-        // アプリ内の確認の窓で決めてから送る（T44）。窓が出せないときはサーバーが確認の欄（URL の reset=confirm）へ戻す
-        <form method="post" action={OFFICE_RESET_PATH} className="mt-2">
-          <SubmitButton
-            kind="danger"
-            icon="RetryIcon"
-            confirm={{
-              title: CONFIRM_LABELS.resetTitle,
-              message: RESET_LABELS.confirm,
-              ok: CONFIRM_LABELS.resetOk,
-              icon: "RestoreIcon",
-              danger: true,
-              fields: { confirm: "1" },
-            }}
-          >
-            {RESET_LABELS.reset}
-          </SubmitButton>
-        </form>
-      )}
-    </Panel>
+    // アプリ内の確認の窓で決めてから送る（T44）。窓が出せないときはサーバーが確認の欄（URL の reset=confirm）へ戻す
+    <form method="post" action={OFFICE_RESET_PATH} aria-label={RESET_LABELS.title} className="flex flex-wrap items-center gap-x-2 gap-y-1" data-reset>
+      <span className="text-xs text-muted">{RESET_LABELS.daily}</span>
+      <SubmitButton
+        kind="danger"
+        size="sm"
+        icon="RetryIcon"
+        confirm={{
+          title: CONFIRM_LABELS.resetTitle,
+          message: RESET_LABELS.confirm,
+          ok: CONFIRM_LABELS.resetOk,
+          cancel: CONFIRM_LABELS.stayCurrent,
+          icon: "RestoreIcon",
+          danger: true,
+          fields: { confirm: "1" },
+        }}
+      >
+        {RESET_LABELS.reset}
+      </SubmitButton>
+    </form>
+  );
+}
+
+/** 窓が出せないとき（JS が動く前）に開く確認の欄（URL の reset=confirm） */
+function ResetConfirm() {
+  return (
+    <form method="post" action={OFFICE_RESET_PATH} aria-label={RESET_LABELS.title} className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2 rounded bg-panel px-3 py-2" data-reset>
+      <input type="hidden" name="confirm" value="1" />
+      <span className="text-sm">{RESET_LABELS.confirm}</span>
+      <SubmitButton kind="dangerFill" icon="RestoreIcon">{CONFIRM_LABELS.resetOk}</SubmitButton>
+      <ButtonLink href={OFFICE_PATH} kind="quiet" icon={CloseIcon}>
+        {CONFIRM_LABELS.stayCurrent}
+      </ButtonLink>
+    </form>
   );
 }
 

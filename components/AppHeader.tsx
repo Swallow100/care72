@@ -7,7 +7,8 @@ import { DisasterBadge } from "@/components/disaster/DisasterBadge";
 import { ButtonLink } from "@/components/ui/Button";
 import { RoleIcon } from "@/components/ui/Icon";
 import { LinkPending } from "@/components/ui/LinkPending";
-import { RoleMenu, type RoleChoice } from "@/components/ui/RoleMenu";
+import { RoleMenu, StaffEntry, type RoleChoice } from "@/components/ui/RoleMenu";
+import { REQUEST_LABELS } from "@/lib/custody/labels";
 import { loadDisasterState } from "@/lib/disaster/db";
 import { loadRegionWarnings, NO_REGION_WARNINGS, type RegionWarnings } from "@/lib/jma/alerts";
 import { disasterMark, type DisasterMark } from "@/lib/disaster/state";
@@ -62,7 +63,7 @@ export async function AppHeader() {
             ケア72
             <LinkPending />
           </Link>
-          {desk && <NavLinks />}
+          {desk && <NavLinks>{p && canChooseRole(p) && <StaffEntry label={ROLE_LABELS.medical} name={REQUEST_LABELS.toStaffName} />}</NavLinks>}
           {/* 訓練の画面では事業所の状態の代わりに訓練の想定・規模・経過（T125、components/HeaderMarkSlot） */}
           {desk && <HeaderMarkSlot>{mark && <DisasterBadge mark={mark} link warnings={warnings} />}</HeaderMarkSlot>}
         </div>
