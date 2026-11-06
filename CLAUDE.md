@@ -1,7 +1,7 @@
 # ケア72（Care72）
 
 ケアマネの手元の道具。個別避難計画の作成（台帳 → 松山市の様式）、72 時間の訓練、発災時の安否の整理。
-Built with Claude: Japan 2026 の期間中（2026-11-02 12:30 〜 2026-11-08 20:00 JST）に作る。設計は docs/SPEC.md（キックオフ前に文書で行い、写した）。設計の決めは docs/DECISIONS.md（テーマごと）。
+Built with Claude: Japan 2026 の期間中（2026-11-02 12:30 〜 2026-11-08 20:00 JST）に作る。キックオフ前の構想はリポジトリの外。設計の決めは docs/DECISIONS.md（テーマごと）。
 
 ## 守ること
 
@@ -15,7 +15,7 @@ Built with Claude: Japan 2026 の期間中（2026-11-02 12:30 〜 2026-11-08 20:
 - 依存は MIT・Apache-2.0・OFL の物だけ。足したら THIRD_PARTY_NOTICES.md に書く。
 - 期間外に作った物、他のプロジェクトのコードを持ち込まない。このリポジトリ（worktree）の外のフォルダを開かない（隣のフォルダはほかのプロジェクトで、見るのも持ち込むのもしない）。
 - 返事とコミットは日本語。コミットは小さく、履歴を書き換えない。push はする。配信は頼まれたときだけ。
-- docs/SPEC.md はキックオフ前の設計の写し。直すのは公開のための片付けだけ。直したい点と決めたことは docs/DECISIONS.md と docs/PROGRESS.md に。
+- キックオフ前の構想をリポジトリに入れない。直したい点と決めたことは docs/DECISIONS.md と docs/PROGRESS.md に。
 - 次の物はフック（.claude/settings.json → tools/hooks/guard.mjs）でも止まる: 手元でない wrangler（login・whoami・deploy・d1 create・r2 bucket create・secret put・--remote ほか）と opennextjs-cloudflare deploy、.env・.dev.vars を読む・書く命令と Read・Write・Edit（.example は通す）、git push --force・rebase・pull --rebase・commit --amend・reset --hard、gh pr merge の rebase・squash。止める物を変えるときは、この行と tools/hooks/rules.ts の両方を直す。.ts・.tsx を書いたあとはフックが型の検査を流す。
 
 ## 動かし方

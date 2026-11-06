@@ -12,7 +12,7 @@
 - ◎ T35 画面の AI 感を外す: 書体を M PLUS 2 に（数字が等幅、12px でも潰れない。比較の絵は docs/progress/t35/fonts/）、共通の部品 components/ui（ボタン・アイコン・印・面・表・印刷・戻る）、濁った色をやめて澄んだ色に、ヘッダーの右は 事業所名 → 役 → 役変更（下に一覧）→ ログアウト（赤・扉）、印刷ボタン（紙面の画面と本人のページの書類の行）、内側のスクロールを外して縦 1 本、表は横に送らず列を省く。役変更が効きにくかった原因はページの移動の待ちと 28px の高さ
 - ◎ T34 アンケート: docs/survey/paper.html（A4 1 枚、印刷して渡す）、QUESTIONS.md、写し方 README.md、集計 tools/survey/summarize.ts（Claude で自由記述を 3 つの型に、数は機械で）
 - ◎ T24 同意の範囲と経過の書き足し、T26 デモの種と「最初に戻す」、T18 本人役（夜中の分）
-- docs/JUDGING.md（審査基準 4 つ×全項目の対応表）、docs/DECISIONS.md に 11/3 の確定と医療の問いの答え、CLAUDE.md に画面の決まり 5 つ、docs/tasks/T34・T37
+- docs/DECISIONS.md に 11/3 の確定と医療の問いの答え、CLAUDE.md に画面の決まり 5 つ、docs/tasks/T34・T37
 - テスト 1,238 件、型の検査、通る
 
 ## 進行中（起きた時点で終わっていれば上に移す）
@@ -28,7 +28,7 @@
 2. 台本 N04 の空欄を埋める材料
 3. Remotion のライセンス（個人は無償だが MIT ではない）: このまま使うか、Motion Canvas（MIT）に替えるか
 4. 動画の声: 自分の声か TTS か。英語の字幕を入れるか
-5. 11/3 のセッション①（Known/Unknown）②（Managed Agents）の時刻と要点
+5. （外した）
 6. 協力してくれるケアマネへ: アンケート（docs/survey/paper.html を印刷）、動画の一言、訓練 1 回目の日
 7. Gemini の鍵（着信の声、T21 の前。ダッシュボードの Secrets に `GEMINI_API_KEY`）
 
