@@ -100,9 +100,11 @@ import {
   housemates,
   placeOfState,
   planOf,
+  downSaying,
   screenAsks,
   screenTurn,
   slipContextOf,
+  stuckDown,
   type Facts,
   type GateLog,
   type GateRule,
@@ -655,7 +657,7 @@ export const PERSONA_SYSTEM = [
   "",
   "決まり:",
   "1. 想定の表の行がある時は、その行のとおりに連絡する（誰が・赤か緑か・4 問・いる所）。speech は行の「言う事の元」を、その人が言いそうな言い方に言い換える。元が無ければその人らしい短い言葉。",
-  "2. 想定の表の行が無い時は、状況と前の連絡から自分で決める。連絡するのは、状況が変わってケアマネに伝えたい事がある時だけ。前と同じなら連絡しない。",
+  "2. 想定の表の行が無い時は、状況と前の連絡から自分で決める。連絡するのは、状況が変わってケアマネに伝えたい事がある時だけ。前と同じなら連絡しない。ただし「人ごとの事実」で機器が止まったままの間は、前と同じでも赤で連絡し、何を待っているかを言う。",
   "3. 押せるのは「押せる人」に書いた人だけ。押せる人がいなければ連絡しない。遠くに住む家族は本人の様子が分からなければ押さない。",
   "4. 本人の言葉はやさしい短い話し言葉で 1〜2 文。認知症の本人は話が噛み合わないことがある。",
   "5. 家族・支援者から連絡するのは「話す人」に書いた人で、途中で替えない。家族はその続柄の口調、支援者は近所の人の口調。本人のことは「話す人」に書いた呼び方で言う。",
@@ -885,15 +887,20 @@ export function personaTurns(input: PersonaInput, persona: Persona, answer: Pers
     });
   }
 
-  if (!answer.contactsCaremanager) return [];
+  // T174: 機器が止まったまま家にいる間の連絡は赤。本人役が連絡しないと答えても、切れたあとの呼び出しでは押せる人が連絡する（色の入力をコードが決める。色と順は今までどおり表）
+  const stuck = stuckDown(facts);
+  const presser = persona.reporters.find((r) => r.canPress && r.source === "family") ?? persona.reporters.find((r) => r.canPress) ?? null;
+  const mustTell = stuck && presser !== null && ((input.reasons ?? []).includes("clock") || nowMinuteOf(input) - (facts.prevAt ?? -1) >= DOWN_TELL_MINUTES);
   const from = fromRole(answer.from);
-  const reporter = persona.reporters.find((r) => r.role === from && r.canPress);
-  if (!reporter) return [];
-  const red = answer.pressesRed;
+  const named = answer.contactsCaremanager ? persona.reporters.find((r) => r.role === from && r.canPress) : undefined;
+  if (!named && !mustTell) return [];
+  const reporter = named ?? presser!;
   const where = whereOf(answer.location);
+  const red = answer.pressesRed || stuck;
+  if (stuck && named && !answer.pressesRed) onDrop?.("calm_while_down");
   const color: SignalColor = red ? "red" : where ? "green" : "unknown";
-  const a = red ? answer.redAnswers : null;
-  const speech = speechBy(reporter.source);
+  const a = answer.pressesRed ? answer.redAnswers : null;
+  const speech = named ? speechBy(reporter.source) : null;
   const turn = screenTurn(
     {
       person: input.person,
@@ -901,12 +908,13 @@ export function personaTurns(input: PersonaInput, persona: Persona, answer: Pers
       source: reporter.source,
       whereNow: color === "green" ? where : null,
       injured: a?.injured ?? null,
-      atHome: a?.atHome ?? null,
+      atHome: a?.atHome ?? (stuck && facts.place?.where === "home" ? true : null),
       canMove: a?.canMove ?? null,
       hasMedicine: a?.hasMedicine ?? null,
       saying: speech,
-      doing,
-      ai: true,
+      // 本人役が緑と書いたする事は押した色に合わせる（T174）
+      doing: !named ? null : stuck && !answer.pressesRed && doing ? doing.replace(/緑/gu, "赤") : doing,
+      ai: named !== undefined,
       at: input.hour,
     },
     facts,
@@ -915,8 +923,13 @@ export function personaTurns(input: PersonaInput, persona: Persona, answer: Pers
   if (!turn) return [];
   // いる所を言わない連絡（赤で家にいるかに答えない・色の分からない）は帳面のいる所で見る（T167。台の検査と同じ。前は門を抜け、避難所の人のする事に家にいる言い方が残った）
   const place = placeOfState({ color: turn.color, whereNow: turn.whereNow, atHome: turn.atHome }) ?? facts.place?.where ?? null;
-  return [{ ...turn, saying: factText(turn.saying, turn.source, place), doing: factText(turn.doing, turn.source, place) }];
+  const saying = factText(turn.saying, turn.source, place);
+  // 言葉が全部落ちた・連絡しないと答えた時はコードの言葉（T174）
+  return [{ ...turn, saying: saying ?? (stuck ? downSaying(input.state?.saying, nowMinuteOf(input)) : null), doing: factText(turn.doing, turn.source, place) }];
 }
+
+/** 機器が止まったまま連絡が途切れたら、ほかの理由の呼び出しでも連絡する間（分。T174。止まった時刻の呼び出しが 1 区切りの人数で持ち越された時） */
+const DOWN_TELL_MINUTES = 120;
 
 /** 本人役の失敗のうち「連絡なし」にする物（AI の層の失敗と伏せきれない）。知らない例外は false で、投げ直す */
 export function isPersonaFailure(e: unknown): boolean {

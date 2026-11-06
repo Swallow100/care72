@@ -37,7 +37,7 @@ import {
 } from "./persona.ts";
 import { TALK_ASK_WORDS, type TalkHook, type TalkReply, type VisitHook } from "./dialogue.ts";
 import { createWorldHook, roomClientOf, worldModeOf, type RoomClient } from "./world-room.ts";
-import { gateLog, planOf, spareCuts } from "./person-facts.ts";
+import { DOWN_FOLLOW_MINUTES, downCuts, gateLog, placeOfState, planOf, spareCuts } from "./person-facts.ts";
 
 /** DRILL_WORLD: 仮想モードの世界の道（session 既定 = Managed Agents の部屋・messages = 1 回呼び・off = 世界を動かさない） */
 export type DrillHookEnv = AiEnv & { DB: D1Database; DRILL_WORLD?: string };
@@ -140,7 +140,20 @@ export function createClockHooks(deps: {
           .filter((at) => (restored == null || restored * 60 > at) && !(typeof state.world.supplies?.[p]?.power === "number" && state.world.supplies[p]!.power! <= at))
           .map((at): ClockMark => ({ person: p, at, kind: "out" })),
       );
-      return [...clockMarksOf(runs), ...spares];
+      // 機器が止まったままの人を呼ぶ時刻（T174）。電気が戻る・電源が届く・家の外へ移る・直前に連絡があった時は呼ばない。区切りは増やさない（kind down）
+      const backAt = (p: string) => Math.min(restored != null ? restored * 60 : Infinity, typeof state.world.supplies?.[p]?.power === "number" ? state.world.supplies[p]!.power! : Infinity);
+      const moved = (p: string) => (state.world.arrivals ?? []).some((a) => a.person === p && a.role === "transport" && a.arrived) || ["shelter", "other"].includes(placeOfState(state.people[p] ?? null) ?? "");
+      const follows = members
+        .filter((p) => !moved(p))
+        .flatMap((p) => {
+          const last = state.people[p] ? state.people[p]!.at * 60 : -Infinity;
+          return downCuts(planOf({ ledger: sources.get(p)!.ledger, clocks: sources.get(p)!.clocks, contacts: [] }), p, runs)
+            .filter((cut) => cut < backAt(p))
+            .flatMap((cut) => DOWN_FOLLOW_MINUTES.map((gap) => cut + gap))
+            .filter((at) => at < backAt(p) && at - last >= DOWN_FOLLOW_MINUTES[0] / 2)
+            .map((at): ClockMark => ({ person: p, at, kind: "down" }));
+        });
+      return [...clockMarksOf(runs), ...spares, ...follows];
     },
     ...(load
       ? {

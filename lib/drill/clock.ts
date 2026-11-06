@@ -102,8 +102,11 @@ export function budgetOf(fromMinute: number, toMinute: number): number {
 
 // ---------- 時計の半分と切れ（本人役を呼ぶ理由 clock・次の出来事） ----------
 
-/** 走っている時計の半分・切れの時刻（発災からの分） */
-export type ClockMark = { person: string; at: number; kind: "half" | "out" };
+/**
+ * 走っている時計の半分・切れの時刻（発災からの分）。down は機器が止まったままの人を呼ぶ時刻（T174）で、本人役を呼ぶ理由だけ。
+ * 「次まで」の行き先にはしない（区切りを増やすと、区切りごとの手と呼び出しが増える。区切りは長くても 3 時間なので次の区切りで拾える）
+ */
+export type ClockMark = { person: string; at: number; kind: "half" | "out" | "down" };
 
 /** 時計の走り方（lib/drill/score.ts の clockRuns）から半分と切れの時刻 */
 export function clockMarksOf(runs: ReadonlyArray<{ person: string; startMinute: number; outMinute: number }>): ClockMark[] {
@@ -150,7 +153,7 @@ export function nextEventMinute(
     ...(state.world.scheduled ?? []).map((s) => s.at).filter(after),
     ...(state.world.arrivals ?? []).filter((a) => !a.arrived).map((a) => a.arrive).filter(after),
     ...(state.world.dispatched ?? []).filter((d) => !d.arrived).map((d) => d.arrive).filter(after),
-    ...marks.map((m) => m.at).filter(after),
+    ...marks.filter((m) => m.kind !== "down").map((m) => m.at).filter(after),
   ];
   return Math.min(DRILL_END_MINUTE, Math.ceil(Math.min(...candidates)));
 }

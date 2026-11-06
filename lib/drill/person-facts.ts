@@ -153,6 +153,23 @@ export function spareCuts(plan: Plan, person: string, runs: ReadonlyArray<{ pers
   });
 }
 
+/**
+ * 機器が止まってから本人役を呼ぶ間（分。T174）。評価の 9 回目で、予備が切れた知らせのあと、業者が着くまで 13 時間、誰からも連絡が無かった
+ * （切れた時刻の呼び出しは 1 回だけで、巡回は 12〜24 時間ごと）。電気が戻る・電源が届く・家の外へ移ると止める
+ */
+export const DOWN_FOLLOW_MINUTES = [120, 360, 720] as const;
+
+/** 機器が止まる時刻（発災からの分。T174）。予備があれば予備が切れる時刻、予備も外の電源も無ければ内蔵が切れる時刻。予備の時間が分からない物は入れない */
+export function downCuts(plan: Plan, person: string, runs: ReadonlyArray<{ person: string; label: string; outMinute: number }>): number[] {
+  return plan.devices.flatMap((d) => {
+    const s = plan.spares.find((x) => x.category === d.category);
+    const run = runs.find((r) => r.person === person && r.label === d.label);
+    if (!run) return [];
+    if (s) return s.hours != null ? [run.outMinute + Math.round(s.hours * 60)] : [];
+    return plan.power ? [] : [run.outMinute];
+  });
+}
+
 const PLACE_WORDS: Readonly<Record<PlanPlace, string>> = { hospital: "病院", shelter: "避難所", other: "決めた所" };
 
 /**
@@ -739,6 +756,9 @@ export function remainChoices(d: DeviceNow): number[] {
   return [r.internal, r.spare, r.total].filter((x): x is number => x !== null && x > 0);
 }
 
+/** 止まった機器の文の決まり（T174。前は予備の無い人の文にしか無く、予備が切れた人の家族が落ち着いた連絡を続けた） */
+const DOWN_WORDS = "止まっている間は緑（無事）を押さない。連絡は赤で、落ち着いたままとは言わない。する事・様子も、機器が止まった事が分かる言い方に";
+
 /**
  * 帳面の文（Claude に渡す前。呼ぶ側が仮名化の門を通す）。言った事は決まった印の言い方だけ（本人役の言葉そのものは書かない）
  */
@@ -797,10 +817,10 @@ export function factLines(f: Facts): string[] {
       if (d.spare) {
         const spareOut = d.spare.outAt !== null && d.spare.outAt <= f.now;
         out.push(
-          `${d.label}: ${minuteText(d.outAt)}に切れ、計画どおり${d.spare.label}に替えた（替えたのは ${d.spare.by}。残りを言う時は「予備に替えた」と添える）${spareOut ? `。予備も ${minuteText(d.spare.outAt!)}に切れた（言う時は切れた時刻も添える）` : d.spare.outAt !== null ? `。予備の残り ${minuteText(d.spare.outAt - f.now)}${d.spare.assumed ? "（見込み）" : ""}（${minuteText(d.spare.outAt)}ごろ切れる。それより長く使えるとは言わない）` : "。予備の残りは分からない"}`,
+          `${d.label}: ${minuteText(d.outAt)}に切れ、計画どおり${d.spare.label}に替えた（替えたのは ${d.spare.by}。残りを言う時は「予備に替えた」と添える）${spareOut ? `。予備も ${minuteText(d.spare.outAt!)}に切れた（言う時は切れた時刻も添える）${d.down ? `。${DOWN_WORDS}` : ""}` : d.spare.outAt !== null ? `。予備の残り ${minuteText(d.spare.outAt - f.now)}${d.spare.assumed ? "（見込み）" : ""}（${minuteText(d.spare.outAt)}ごろ切れる。それより長く使えるとは言わない）` : "。予備の残りは分からない"}`,
         );
       } else if (d.down) {
-        out.push(`${d.label}: ${minuteText(d.outAt)}に切れた（言う時は切れた時刻も添える）。予備は無く、電源が届くか停電が戻るまで戻らない（落ち着いたままとは言わない。する事・様子も、機器が止まった事が分かる言い方に）`);
+        out.push(`${d.label}: ${minuteText(d.outAt)}に切れた（言う時は切れた時刻も添える）。予備は無く、電源が届くか停電が戻るまで戻らない（${DOWN_WORDS}）`);
       }
       // 一度起きた事（T141）。前の連絡より前に切れた物は、新しい事のように言わない
       if (d.known) out.push(`${d.label}が切れたのは前の連絡より前（もう起きた事）。新しい事のように「切れました」と言わない。言うなら「切れたまま」`);
@@ -810,6 +830,23 @@ export function factLines(f: Facts): string[] {
   }
   return out;
 }
+
+/**
+ * 機器が止まったまま家にいるか（T174）。停電で減る機器に予備も電気も無く、家の外へ移っていない。移った先は別の電源があるので見ない。
+ * この間の連絡は赤（無事じゃない）で、緑の連絡を使わない（lib/drill/persona.ts の personaTurns。色の入力をコードが決める）
+ */
+export const stuckDown = (f: Pick<Facts, "devices" | "place">): boolean => f.devices.some((d) => d.down) && (f.place?.where ?? "home") === "home";
+
+/** 機器が止まったままの連絡のコードの言葉（T174。本人役が連絡しなかった時と、言葉が門で全部落ちた時）。名前・体の具合を書かない。前の言葉と同じ物を避ける */
+export const DOWN_SAYINGS = ["機械が止まったままです。電源を待っています。", "電源がまだ届きません。機械は止まったままです。", "機械は動かないままです。電源が届くのを待っています。"] as const;
+export const downSaying = (prev: string | null | undefined, now: number): string => {
+  const start = Math.abs(Math.trunc(now)) % DOWN_SAYINGS.length;
+  for (let i = 0; i < DOWN_SAYINGS.length; i++) {
+    const x = DOWN_SAYINGS[(start + i) % DOWN_SAYINGS.length];
+    if (x !== prev) return x;
+  }
+  return DOWN_SAYINGS[start];
+};
 
 /** 帳面と計画の段（本人役の刻み・通話・訪問の文に足す）。計画の無い人も「計画に無い」を書く */
 export function factsBlock(f: Facts): string {
@@ -941,7 +978,7 @@ const BATTERY_BACK =
 const ASK_POWER = /(?:電池|電源|バッテリー|充電|発電機)[^。]{0,14}(?:ほしい|欲しい|お願い|頼|届け|足りな|持って(?:き|来)|来て|ください|ないか|ありません)/;
 /** 落ち着いたままの言い方（「大丈夫じゃない」「落ち着いていません」「問題なのは」は見ない） */
 const CALM =
-  /落ち着い(?!て(?:い)?(?:ない|ません|られ))|穏やか(?!で(?:は)?(?:ない|ありません)|じゃ)|いつも通り(?!で(?:は)?(?:ない|ありません)|じゃ)|普段通り(?!で(?:は)?(?:ない|ありません)|じゃ)|変わりな|問題な(?=い|く|し)|安定し(?!て(?:い)?(?:ない|ません))|大丈夫(?!(?:です|でしょう)?か|じゃ|では|で(?:は)?(?:ない|ありません)|そうじゃ)/;
+  /落ち着い(?!て(?:い)?(?:ない|ません|られ))|穏やか(?!で(?:は)?(?:ない|ありません)|じゃ)|いつも通り(?!で(?:は)?(?:ない|ありません)|じゃ)|普段通り(?!で(?:は)?(?:ない|ありません)|じゃ)|変わりな|問題な(?=い|く|し)|安定し(?!て(?:い)?(?:ない|ません))|大丈夫(?!(?:です|でしょう)?か|じゃ|では|で(?:は)?(?:ない|ありません)|そうじゃ)|無事(?!(?:です|でしょう)?か|じゃ|では|で(?:は)?(?:ない|ありません))/;
 
 /** 様子が分からない言い方（T139。そばにいると伝えたあとは言わない） */
 const UNKNOWN_STATE = /様子が(?:分から|わから)|(?:安否|状況)が(?:分から|わから)|(?:連絡|電話)が(?:つかな|取れな|とれな)|見に行け(?:て)?(?:い)?(?:ない|ません)/;

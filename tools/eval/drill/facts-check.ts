@@ -50,6 +50,8 @@ export type FactPerson = {
   kin: ReadonlyArray<string> | null;
   hazards: ReadonlyArray<{ kind: string; depthM?: number | null }>;
   town: string | null;
+  /** スマホで赤緑を押せる人がいるか（T174。いなければ連絡の無いのは筋の外。無ければ押せると見る） */
+  canPress?: boolean;
 };
 
 const RETURNED = /帰宅|(?:家|自宅|うち)に戻|帰って(?:き|来)|戻ってき/;
@@ -232,22 +234,32 @@ export function factHits(outcome: RunOutcome, people: Readonly<Record<string, Fa
   }
 
   // 機器の予備が切れたあと長く連絡が無い（T167。評価の 8 回目で、予備が切れてから 11 時間、本人役が呼ばれず、審査役が本当らしさに欠けると読んだ）。
-  // 切れた時刻の本人役の呼び出し（lib/drill/hooks.ts の spareCuts）が効いているかを見る。電気が戻った・電源が届いた人、結末の人は見ない
+  // 切れた時刻ちょうどの連絡は数えない（T174。評価の 9 回目で、切れた知らせのあと 13 時間誰からも連絡が無かった。見るのはそのあとの反応）。
+  // 電気が戻った・電源が届いた人、結末の人、家の外へ移った人、押せる人のいない人は見ない。予備も外の電源も無い機器は内蔵が切れた時刻から（T174）
+  // down_green: 機器が止まったまま家にいる間の緑（T174。本人役の緑は門が赤にするので 0 のはず。表の行は骨なので見ない）
   {
     const o = world.outage;
     const end = Math.max(...r.ticks.map((x) => Math.round(x.hour * 60)), 0);
     for (const [person, p] of Object.entries(people)) {
-      if (!o || !inOutage(world, p) || !(outcome.plan.participants ?? [person]).includes(person)) continue;
+      if (!o || !inOutage(world, p) || !(outcome.plan.participants ?? [person]).includes(person) || p.canPress === false) continue;
+      const turns = byPerson.get(person) ?? [];
+      const carried = (world.arrivals ?? []).filter((a) => a.person === person && a.role === "transport" && a.arrived).map((a) => a.arrive);
+      const awayBy = (minute: number) => carried.some((x) => x <= minute) || turns.some((u) => Math.round(u.at * 60) <= minute && ["shelter", "other"].includes(placeOfState(stateOf(u)) ?? ""));
       for (const d of p.plan.devices) {
         const s = p.plan.spares.find((x) => x.category === d.category);
-        if (d.hours === null || s?.hours == null) continue;
-        const cutAt = Math.round((o.since + d.hours + s.hours) * 60);
+        if (d.hours === null || (s ? s.hours == null : p.plan.power)) continue;
+        const cutAt = Math.round((o.since + d.hours + (s?.hours ?? 0)) * 60);
         const until = cutAt + DOWN_SILENT_MINUTES;
         const back = [o.restoredAt != null ? Math.round(o.restoredAt * 60) : null, world.supplies?.[person]?.power ?? null].filter((x): x is number => typeof x === "number");
+        const backAt = back.length > 0 ? Math.min(...back) : Infinity;
+        for (const u of turns) {
+          const m = Math.round(u.at * 60);
+          if (u.ai && u.color === "green" && m >= cutAt && m < backAt && !table.has(`${person}|${m}`) && !awayBy(m)) hit("down_green", person, m, `${d.category} 止まったまま緑`);
+        }
         const endedAt = world.ended?.[person] ? end : null;
-        if (until > end || endedAt !== null || back.some((x) => x <= until)) continue;
+        if (until > end || endedAt !== null || back.some((x) => x <= until) || awayBy(until)) continue;
         checked += 1;
-        if (!(byPerson.get(person) ?? []).some((u) => Math.round(u.at * 60) > cutAt && Math.round(u.at * 60) <= until)) hit("down_silent", person, cutAt, `${d.category} 予備が切れた時刻から ${DOWN_SILENT_MINUTES} 分`);
+        if (!turns.some((u) => Math.round(u.at * 60) > cutAt && Math.round(u.at * 60) <= until)) hit("down_silent", person, cutAt, `${d.category} 予備が切れた時刻から ${DOWN_SILENT_MINUTES} 分`);
       }
     }
   }
@@ -327,7 +339,7 @@ export function factHits(outcome: RunOutcome, people: Readonly<Record<string, Fa
 }
 
 /** 帳面の門の決まりのほかに、台が数える型（T141。clock_drift は T158） */
-export type FactExtraRule = "lost_unresolved" | "area_repeat" | "clock_drift" | "down_silent";
+export type FactExtraRule = "lost_unresolved" | "area_repeat" | "clock_drift" | "down_silent" | "down_green";
 
 /** 機器の予備が切れてから連絡が無いと見る間（分。T167） */
 export const DOWN_SILENT_MINUTES = 240;
