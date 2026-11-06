@@ -109,6 +109,7 @@ function MapSection({ data, options }: { data: SidePaneData; options?: SideMapOp
         region={options?.region ?? null}
         nowcast={options?.nowcast ?? false}
         fictional={options?.fictional ?? false}
+        places={data.places}
       />
       {data.states && (
         <div className="mt-2 rounded-md bg-panel2 px-2 py-1.5">

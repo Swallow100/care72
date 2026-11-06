@@ -11,7 +11,7 @@
 
 import * as z from "zod";
 import type { GeoPoint, HazardKind, Ledger } from "../db/types.ts";
-import { isGeoPoint, project, TILE } from "./geo.ts";
+import { isGeoPoint, project, TILE, unproject, type Size, type View } from "./geo.ts";
 import { distanceM } from "./route.ts";
 
 export const SHELTER_HOST = "https://cyberjapandata.gsi.go.jp";
@@ -215,6 +215,136 @@ export async function fetchShelters(args: {
   );
   if (jobs.length > 0 && results.every((r) => r === null)) return { ok: false };
   return { ok: true, candidates: shelterCandidates(results.flatMap((r) => r ?? []), args.home) };
+}
+
+// ---------- 担当一覧の地図の避難所（T169） ----------
+// 同じデータを、地図を強く拡大したときだけ読む。候補（上）と同じく、外へ出るのは層とズーム 10 のタイルの z/x/y だけ（1 辺 約 30 km）。
+// 淡色地図はもっと細かいズームの z/x/y を前から読んでいるので、外へ出る物は増えない。データはリポジトリに入れない。
+
+/** 地図に避難所と計画の避難先を出すズームの段。これより引いた地図には出さない（広域では印が並びすぎて人が読めない） */
+export const SHELTER_MAP_ZOOM = 15;
+/** 避難所の名前も出す段。15 は 1 画面に数十並び、名前を出すと地図と人の名前を隠す */
+export const SHELTER_NAME_ZOOM = 16;
+
+/**
+ * 地図で読む層: 指定避難所（一般・福祉）と、地図の層の切替と同じ災害（洪水・土砂・津波）と地震の指定緊急避難場所。
+ * 1 人の台帳に合わせる候補と違い、地図は担当全員の物なので固定（重ねた層を切り替えても印が変わらない）
+ */
+export const MAP_SHELTER_LAYERS: readonly ShelterLayer[] = [
+  { id: "sih", kind: "shelter" },
+  { id: "sfh", kind: "welfare" },
+  ...(["flood", "landslide", "quake", "tsunami"] as const).map(emergency),
+];
+
+/** 緯度経度の四角を覆うズーム 10 のタイル */
+export function shelterTilesInBox(north: number, west: number, south: number, east: number): Tile[] {
+  const nw = project({ lat: Math.min(85, north), lng: west }, SHELTER_ZOOM);
+  const se = project({ lat: Math.max(-85, south), lng: east }, SHELTER_ZOOM);
+  const max = 2 ** SHELTER_ZOOM - 1;
+  const out: Tile[] = [];
+  for (let y = Math.max(0, Math.floor(nw.y / TILE)); y <= Math.min(max, Math.floor(se.y / TILE)); y++) {
+    for (let x = Math.max(0, Math.floor(nw.x / TILE)); x <= Math.min(max, Math.floor(se.x / TILE)); x++) out.push({ x, y });
+  }
+  return out;
+}
+
+/** 枠が映す範囲を覆うタイル（表示のズームと中心から） */
+export function shelterTilesForView(view: View, size: Size): Tile[] {
+  const nw = unproject({ x: view.center.x - size.w / 2, y: view.center.y - size.h / 2 }, view.z);
+  const se = unproject({ x: view.center.x + size.w / 2, y: view.center.y + size.h / 2 }, view.z);
+  return shelterTilesInBox(nw.lat, nw.lng, se.lat, se.lng);
+}
+
+/** 地図の避難所 1 つ（同じ施設は層をまとめて 1 つ。住所・備考は持たない） */
+export type MapShelter = { id: string; name: string; at: GeoPoint; disasters: ShelterDisaster[]; shelter: boolean; welfare: boolean };
+
+/** 同じ施設（同じ名前で 50 m の中）を 1 つに。名前の同じ物だけ比べる（1 枚のタイルに千を超えて並ぶので） */
+export function mergeMapShelters(raws: ReadonlyArray<Raw>): MapShelter[] {
+  const byName = new Map<string, Raw[]>();
+  for (const r of raws) {
+    const list = byName.get(r.name) ?? [];
+    const same = list.find((m) => distanceM(m.at, r.at) <= SAME_M);
+    if (same) {
+      for (const d of r.disasters) if (!same.disasters.includes(d)) same.disasters.push(d);
+      same.shelter ||= r.shelter;
+      same.welfare ||= r.welfare;
+    } else {
+      list.push({ ...r, disasters: [...r.disasters] });
+      byName.set(r.name, list);
+    }
+  }
+  return [...byName.values()].flat().map((m) => ({
+    id: `${m.name}@${m.at.lat.toFixed(5)},${m.at.lng.toFixed(5)}`,
+    name: m.name,
+    at: m.at,
+    disasters: SHELTER_DISASTERS.filter((d) => m.disasters.includes(d)),
+    shelter: m.shelter,
+    welfare: m.welfare,
+  }));
+}
+
+/** 読んだタイル（鍵は 層/x/y）。動かすたび・読み直しのたびに要求しない。失敗した物は残さず、次に見たときに読み直す */
+const tileCache = new Map<string, Promise<Raw[] | null>>();
+
+/** テスト用: 読んだタイルを忘れる */
+export function clearShelterCache(): void {
+  tileCache.clear();
+}
+
+function readTile(layer: ShelterLayer, t: Tile, doFetch: typeof fetch, timeoutMs: number): Promise<Raw[] | null> {
+  const key = `${layer.id}/${t.x}/${t.y}`;
+  const hit = tileCache.get(key);
+  if (hit) return hit;
+  const job = (async (): Promise<Raw[] | null> => {
+    try {
+      const res = await doFetch(shelterUrl(layer.id, t), { method: "GET", signal: AbortSignal.timeout(timeoutMs) });
+      if (res.status === 404) return [];
+      if (!res.ok) return null;
+      return parseShelterTile(layer, await res.json().catch(() => null));
+    } catch {
+      return null;
+    }
+  })().then((r) => {
+    if (r === null) tileCache.delete(key);
+    return r;
+  });
+  tileCache.set(key, job);
+  return job;
+}
+
+export type MapShelterResult = { ok: true; list: MapShelter[] } | { ok: false };
+
+/** タイルの避難所を読む（ブラウザから）。層ごとの失敗は飛ばし、全部の要求が失敗したときだけ失敗。投げない。要求に見出し・本文は付けない */
+export async function fetchMapShelters(args: { tiles: ReadonlyArray<Tile>; fetch?: typeof fetch; timeoutMs?: number }): Promise<MapShelterResult> {
+  const doFetch = args.fetch ?? ((...a: Parameters<typeof fetch>) => fetch(...a));
+  const jobs = MAP_SHELTER_LAYERS.flatMap((layer) => args.tiles.map((t) => readTile(layer, t, doFetch, args.timeoutMs ?? SHELTER_TIMEOUT_MS)));
+  const results = await Promise.all(jobs);
+  if (jobs.length > 0 && results.every((r) => r === null)) return { ok: false };
+  return { ok: true, list: mergeMapShelters(results.flatMap((r) => r ?? [])) };
+}
+
+/** 枠の中に置いた印の名前の横幅の見積もり（px。11px の字と左右の余白） */
+const NAME_CHAR_W = 11;
+const NAME_H = 18;
+const NAME_PAD = 40;
+/** 名前の印の横幅の上限（components/map/PlaceMarks.tsx の max-w-56。長い施設名は切る） */
+const NAME_MAX_W = 224;
+
+/**
+ * 名前を出す印を選ぶ（前に置いた名前と重なる物は印だけ。title で読める）。先に計画の避難先を入れて渡すと、そちらの名前が残る。
+ * x・y は枠の中の px、印の右に名前が出る
+ */
+export function shelterNameIds(placed: ReadonlyArray<{ id: string; x: number; y: number; name: string }>, taken: ReadonlyArray<{ x: number; y: number; w: number }> = []): Set<string> {
+  const boxes = taken.map((b) => ({ ...b }));
+  const out = new Set<string>();
+  for (const p of placed) {
+    const w = Math.min(NAME_MAX_W, [...p.name].length * NAME_CHAR_W + NAME_PAD);
+    const hit = boxes.some((b) => p.x < b.x + b.w && b.x < p.x + w && Math.abs(p.y - b.y) < NAME_H);
+    if (hit) continue;
+    boxes.push({ x: p.x, y: p.y, w });
+    out.add(p.id);
+  }
+  return out;
 }
 
 /** 候補の種類の言葉（「避難所・福祉・緊急避難 洪水・地震」の順の材料） */

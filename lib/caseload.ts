@@ -78,6 +78,8 @@ export type CaseloadRow = {
   hazardKinds: Array<{ kind: HazardKind; depthM: number | null }>;
   /** 避難先 1 */
   destination: string | null;
+  /** 計画の避難先 1・2 の名前と位置（T169。右の面の地図の旗。位置は経路地図で置いた物だけで、無ければ null。推し量らない） */
+  destinationPlaces: Array<{ name: string | null; at: GeoPoint | null; which: 1 | 2 }>;
   /** 地図のピンの位置（架空）。無ければ地図に出さない */
   location: GeoPoint | null;
   /**
@@ -243,6 +245,12 @@ export function toCaseloadRows(
       pendingFields: ledger.pending.map((x) => x.field),
       hazardKinds: ledger.evacuation.hazards.map((h) => ({ kind: h.kind, depthM: h.depthM ?? null })),
       destination: ledger.evacuation.destination1?.trim() || null,
+      destinationPlaces: ([1, 2] as const).map((which) => {
+        const e = ledger.evacuation;
+        const name = (which === 1 ? e.destination1 : e.destination2)?.trim() || null;
+        const at = which === 1 ? e.destination1Location : e.destination2Location;
+        return { name, at: isGeoPoint(at) ? at : null, which };
+      }),
       location: isGeoPoint(ledger.basic.location) ? ledger.basic.location : null,
       reported: src && own ? reportedPoint(src.signals.filter((x) => x.person_id === p.id), own.now) : null,
     };

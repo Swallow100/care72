@@ -5,8 +5,8 @@
 import { COLOR_LABELS } from "../labels.ts";
 import type { StateTone } from "../person.ts";
 
-/** 枠の中に置いたピン（px）。ピンは点が (x, y) で、名前の印はその上に横幅 w で出る */
-export type PlacedPin = { id: string; x: number; y: number; layer: number; w: number };
+/** 枠の中に置いたピン（px）。ピンは点が (x, y) で、名前の印はその上に横幅 w・高さ h（既定 LABEL_H）で出る */
+export type PlacedPin = { id: string; x: number; y: number; layer: number; w: number; h?: number };
 
 /** まとめ 1 つ。ids は顔（head）が先で、残りは描く順の逆（連絡の順） */
 export type PinGroup = { head: string; ids: string[]; x: number; y: number; layer: number };
@@ -18,17 +18,28 @@ export const COUNT_W = 44;
 export const LABEL_H = 18;
 
 /**
+ * 名前の印の大きさ（T169）。淡色地図は寄るほど地図の字が大きくなり（ズーム 18 で町名が 20px ほど）、11px のままの名前は地図の字に負けて
+ * 見えなかった。寄るほど字を大きく、縁を濃くする。赤にしない（赤は至急の意味。平時の名前は本文色の字に白の面）。発災時の状態の塗りはそのまま
+ */
+export type PinSize = { font: number; h: number; strong: boolean };
+export function pinSize(tz: number): PinSize {
+  if (tz >= 17) return { font: 16, h: 26, strong: true };
+  if (tz >= 15) return { font: 14, h: 22, strong: true };
+  return { font: 11, h: LABEL_H, strong: false };
+}
+
+/**
  * 名前の印の横幅の見積もり（px）。11px の太字で 1 字 11px、印の左右の余白 4px ずつ。
  * 状態の言葉（至急）があれば別の塗りの印なので、その分の余白も足す
  */
-export function labelWidth(pin: { label: string; state: string | null }): number {
+export function labelWidth(pin: { label: string; state: string | null }, font = 11): number {
   const chars = pin.label.length + (pin.state?.length ?? 0);
-  return chars * 11 + (pin.state ? 16 : 8);
+  return chars * font + (pin.state ? 16 : 8);
 }
 
 /** 2 つの名前の印が重なるか（点の位置と横幅から。間に 2px の隙間を求める） */
 export function overlaps(a: PlacedPin, b: PlacedPin): boolean {
-  return Math.abs(a.x - b.x) < (a.w + b.w) / 2 + 2 && Math.abs(a.y - b.y) < LABEL_H + 2;
+  return Math.abs(a.x - b.x) < (a.w + b.w) / 2 + 2 && Math.abs(a.y - b.y) < Math.max(a.h ?? LABEL_H, b.h ?? LABEL_H) + 2;
 }
 
 /** 状態の並び（至急・要確認・不明・無事） */

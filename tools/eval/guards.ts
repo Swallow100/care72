@@ -209,6 +209,9 @@ export const GUARDS: ReadonlyArray<Guard> = [
   { id: "persona-office-exit", bench: "persona", item: "count:persona:back:/bosai/warning/", op: "<=", value: 0, since: "r9", task: "T166", label: "気象庁の出典を押してアプリの外へ出ない", suspects: ["components/office/JmaAlertsView.tsx", "lib/jma/labels.ts"] },
   { id: "persona-admin-reset", bench: "persona", item: "count:persona:unreached:admin.reset", op: "<=", value: 0, since: "r9", task: "T166", label: "管理者が最初に戻すに着ける", suspects: ["app/office/page.tsx", "components/ui/PrintButton.tsx", "lib/ui/labels.ts"] },
   { id: "persona-form9-preview-misread", bench: "persona", item: "count:persona:misread:/office/form9", op: "<=", value: 0, since: "r9", task: "T166", label: "様式 9 の見本の帯をデータを戻す物と読まない", suspects: ["components/ui/PrintButton.tsx", "lib/ui/labels.ts"] },
+  // T169: 右の面の見直し・未確認と、飛んだ先の紫の案内。数は直した形の値で、本物の回はまだ（docs/progress/t169.md）。全部の未確認の欄で飛べることは lib/intake/t169.test.ts が見る
+  { id: "persona-veteran-person", bench: "persona", item: "count:persona:unreached:veteran.person", op: "<=", value: 0, since: "r9", task: "T169", label: "本人のページの未確認の項目に着ける", suspects: ["components/list/SidePane.tsx", "lib/map/side.ts", "lib/intake/targets.ts"] },
+  { id: "persona-list-dead-end", bench: "persona", item: "count:persona:dead_end:/", op: "<=", value: 0, since: "r9", task: "T169", label: "見直し・未確認の行と未確認の印から飛んで行き止まらない", suspects: ["components/person/TargetLink.tsx", "components/person/SectionEdit.tsx", "lib/intake/targets.ts"] },
 ];
 
 /** 守りの確かめ。values は回の項目の数、counts は同じ原因の指摘の数（causeCounts）。数の無い項目は確かめない */

@@ -16,6 +16,7 @@ import { COLOR_TONES, fieldLabelOf, focusKeyOf, type StateTone } from "../person
 import { compareResults, type Color, type TriageResult } from "../triage/index.ts";
 import { demoOverlay, type DemoOverlay, type DemoScene } from "./demo.ts";
 import { rainAnchor } from "./drill-rain.ts";
+import { ROUTE_MARKS } from "./route-image.ts";
 
 /** 状態の 4 色の並び（至急・要確認・不明・無事） */
 export const COLOR_ORDER: readonly Color[] = ["red", "yellow", "gray", "green"];
@@ -100,6 +101,12 @@ export type HazardCount = {
 
 export type DestinationCount = { label: string; count: number; unset: boolean };
 
+/** 計画の避難先の旗 1 つ（T169。台帳の値。同じ名前で同じ所は 1 つにして、行く人を並べる） */
+export type MapDestination = { id: string; name: string; at: GeoPoint; people: string[] };
+
+/** 地図に出す計画の避難先と、名前があるのに位置が無い数（地図に出さず数を出す） */
+export type MapPlaces = { destinations: MapDestination[]; unplaced: number };
+
 /** 未確認の欄 1 つ（T169）。押すと本人のページのその欄が紫になり、そこまで送る */
 export type ReviewField = { key: string; label: string; href: string };
 
@@ -132,6 +139,8 @@ export type SidePaneData = {
   unplaced: number;
   hazards: HazardCount[];
   destinations: DestinationCount[];
+  /** 地図の計画の避難先（T169） */
+  places: MapPlaces;
   /** 発災時だけ */
   states: StateCount[] | null;
   /** 発災時だけ。雨雲・震度のデモ */
@@ -248,6 +257,30 @@ export function destinationCounts(rows: ReadonlyArray<CaseloadRow>): Destination
 }
 
 /**
+ * 計画の避難先（T169）。台帳に位置のある物だけ旗にする（経路地図で置いた位置）。名前から位置を推し量らない。
+ * 同じ名前で同じ位置は 1 つにして行く人を並べる。名前の無い位置は「避難先1」のように番号で
+ */
+export function planPlaces(rows: ReadonlyArray<Pick<CaseloadRow, "name" | "destinationPlaces">>): MapPlaces {
+  const byKey = new Map<string, MapDestination>();
+  let unplaced = 0;
+  for (const r of rows) {
+    for (const d of r.destinationPlaces) {
+      if (!d.at) {
+        if (d.name) unplaced++;
+        continue;
+      }
+      const name = d.name ?? ROUTE_MARKS.dest(d.which);
+      const id = `${name}@${d.at.lat.toFixed(4)},${d.at.lng.toFixed(4)}`;
+      const cur = byKey.get(id);
+      const who = surname(r.name);
+      if (!cur) byKey.set(id, { id, name, at: d.at, people: [who] });
+      else if (!cur.people.includes(who)) cur.people.push(who);
+    }
+  }
+  return { destinations: [...byKey.values()], unplaced };
+}
+
+/**
  * 地図のピン。発災時はルールの表の色と状態の言葉、理由を title に。
  * 本人が送った端末の位置（T69b の reported）があればそこに置き、title に「申告位置」を添える（無ければ台帳の位置）。印の形は同じ
  */
@@ -298,6 +331,7 @@ export function buildSidePane(
     unplaced: rows.filter((r) => r.location === null).length,
     hazards: hazardCounts(rows, colorById ? (id) => colorById.get(id) : undefined),
     destinations: destinationCounts(rows),
+    places: planPlaces(rows),
     states: disaster ? stateCounts(disaster.results) : null,
     demo: disaster?.scene ? demoOverlay(disaster.scene) : null,
   };
