@@ -245,7 +245,8 @@ export function personas(loginId: string = DEFAULT_LOGIN_ID): Persona[] {
         {
           id: "red",
           text: "本人スマホの立場で赤の「無事じゃない」を押す",
-          done: { path: "^/me", text: "命が危ない|AI が聞いて" },
+          // 赤のあとの 1 画面 1 問（「これは AI…が 聞いています」）。本人の画面は分かち書き
+          done: { path: "^/me", text: "聞いています" },
           route: [{ click: "役変更" }, { click: "本人スマホ" }, { click: "無事じゃない" }],
         },
         {

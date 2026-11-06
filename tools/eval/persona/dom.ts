@@ -24,13 +24,8 @@ export function readPageInBrowser(limits: ReadLimits): RawRead {
     const st = getComputedStyle(he);
     return st.visibility !== "hidden" && st.display !== "none";
   };
-  /** 見える字。ふりがな（ruby の rt・rp）は外す（「無事ぶじじゃない」を「無事じゃない」に） */
-  const plain = (el: HTMLElement): string => {
-    if (!el.querySelector("rt,rp")) return el.innerText;
-    const c = el.cloneNode(true) as HTMLElement;
-    c.querySelectorAll("rt,rp").forEach((n) => n.remove());
-    return c.textContent ?? "";
-  };
+  /** 見える字。ふりがな（ruby の rt・rp）は読む間だけ隠して外す（「無事ぶじじゃない」を「無事じゃない」に。字の間の空きは innerText のまま） */
+  const plain = (el: HTMLElement): string => el.innerText;
   const labelOf = (el: Element): string => {
     const aria = el.getAttribute("aria-label");
     if (aria) return aria;
@@ -84,6 +79,9 @@ export function readPageInBrowser(limits: ReadLimits): RawRead {
   };
 
   document.querySelectorAll(`[${attr}]`).forEach((n) => n.removeAttribute(attr));
+  const hideRuby = document.createElement("style");
+  hideRuby.textContent = "rt,rp{display:none !important}";
+  document.head.appendChild(hideRuby);
   const sel = "a[href],button,input:not([type=hidden]),select,textarea,summary,[role=button],[role=link],[role=tab],[role=checkbox],[role=radio],[role=menuitem],[role=option],[role=switch]";
   // 開いた窓（aria-modal・showModal の dialog）があれば、押せるのはその中だけ（人も窓の外を押せない）。無ければ窓の物を先に
   const modal = Array.from(document.querySelectorAll("[aria-modal='true'],dialog[open]")).find((m) => visible(m) && (m.getAttribute("aria-modal") === "true" || (m as HTMLDialogElement).matches(":modal")));
@@ -125,16 +123,19 @@ export function readPageInBrowser(limits: ReadLimits): RawRead {
   const headings = Array.from(document.querySelectorAll("h1,h2,h3,[role=heading]"))
     .filter(visible)
     .slice(0, 20)
-    .map((h) => squeeze(h.textContent, 50))
+    .map((h) => squeeze(plain(h as HTMLElement), 50))
     .filter(Boolean);
   const alerts = Array.from(document.querySelectorAll("[role=alert],[role=status],[aria-live=assertive]"))
     .filter(visible)
-    .map((a) => squeeze(a.textContent, 120))
+    .map((a) => squeeze(plain(a as HTMLElement), 120))
     .filter(Boolean)
     .slice(0, 8);
   const main = document.querySelector("main") ?? document.body;
   const w = window as unknown as { __personaPrinted?: boolean };
   const whole = squeeze(plain(main as HTMLElement), limits.body);
+  const top = document.querySelector("header") as HTMLElement | null;
+  const header = top ? squeeze(plain(top), 200) : "";
+  hideRuby.remove();
   return {
     url: location.href,
     path: location.pathname + location.search,
@@ -142,7 +143,7 @@ export function readPageInBrowser(limits: ReadLimits): RawRead {
     headings,
     items,
     alerts,
-    header: squeeze(plain((document.querySelector("header") as HTMLElement | null) ?? document.createElement("i")), 200),
+    header,
     text: whole.slice(0, limits.text),
     body: whole,
     printed: w.__personaPrinted === true,

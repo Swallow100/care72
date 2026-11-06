@@ -27,7 +27,7 @@ const PAGES: Record<string, string> = {
   ),
   "/home": page(
     "担当一覧",
-    `<h1>担当一覧</h1><p>連絡先 090-0000-0011</p><button id="open">窓</button><button id="broken">壊れ</button>
+    `<h1>担当一覧</h1><p>連絡先 090-0000-0011</p><button id="open">窓</button><button id="broken">壊れ</button><button><ruby>無事<rt>ぶじ</rt></ruby>じゃない</button>
      <div id="dlg" role="dialog" aria-modal="true" aria-label="確認" hidden><h2>確認</h2><button id="close">閉じる</button></div>
      <script>document.getElementById("open").onclick=()=>{document.getElementById("dlg").hidden=false};document.getElementById("close").onclick=()=>{document.getElementById("dlg").hidden=true};document.getElementById("broken").onclick=()=>fetch("/api/broken");</script>`,
   ),
@@ -101,6 +101,9 @@ describe.skipIf(skip)("ChromeSurface（手元の HTTP の頁）", () => {
       expect(snap.path).toBe("/home");
       expect(snap.header).toContain("デモ事業所（確認用）");
       expect(snap.items.find((i) => i.name === "担当一覧")?.zone).toBe("切替:画面");
+      // ふりがな（rt）は名前に入れない
+      expect(snap.items.some((i) => i.name === "無事じゃない")).toBe(true);
+      expect(snap.header).toBe("担当一覧 書類 デモ事業所（確認用）");
 
       const open = snap.items.find((i) => i.name === "窓")!;
       await s.act({ action: "click", ref: open.ref, text: null, thought: "", expect: "", surprised: false }, { password: PASSWORD });
