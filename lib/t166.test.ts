@@ -147,7 +147,6 @@ describe("4. 事業所", () => {
     expect(WARNING_SOURCE.link).not.toContain("http");
     const view = read("../components/office/JmaAlertsView.tsx");
     expect(view).toContain("{WARNING_SOURCE.link}");
-    expect(view.split("{WARNING_SOURCE.href}").length).toBe(1);
     expect(view).toContain("href={WARNING_SOURCE.href}");
   });
 });
