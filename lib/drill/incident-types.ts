@@ -20,6 +20,8 @@ export type DrillIncident = Omit<WorldEvent, "by"> & {
   at: number;
   /** Claude（監督）が作った物。画面で AI の印。想定の表の固定の差し込みは false */
   ai: boolean;
+  /** コードが足した人ごとの出来事（T167、lib/drill/quiet-event.ts）。AI の印は無いが、もう出した出来事に数える */
+  filled?: true;
 };
 
 /** 監督（T19）に渡す物。表の状況（固定の差し込みも）を当てたあとの世界 */

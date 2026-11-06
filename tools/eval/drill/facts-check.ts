@@ -210,7 +210,8 @@ export function factHits(outcome: RunOutcome, people: Readonly<Record<string, Fa
       if (!text) continue;
       checked += 1;
       if (field === "call.speech" && a.callee === "self" && f.voiceLost) hit("voice_lost", person, minute, "本人への電話で話した");
-      for (const r of sentenceHits(text, field.startsWith("visit") ? { ...ctx, place: "home" } : ctx)) hit(r.rule, person, minute, `${field}: ${cut(r.text)}`);
+      // 訪問は本人のいる所へ（T167。門と同じ。帳面のいる所、分からなければ家）
+      for (const r of sentenceHits(text, field.startsWith("visit") ? { ...ctx, place: ctx.place ?? "home" } : ctx)) hit(r.rule, person, minute, `${field}: ${cut(r.text)}`);
     }
     const asks = [...((res.talk ?? []) as Array<{ ask?: unknown; asks?: unknown }>).flatMap((l) => (Array.isArray(l.asks) ? l.asks : [])), ...(res.visit?.asks ?? [])];
     if (powerBack(f) && asks.some((k) => k === "power" || k === "battery")) hit("ask_after_power", person, minute, "頼み事 電源・電池");

@@ -150,6 +150,8 @@ export type ApplyContext = {
    * 無ければ前と同じ（当てる）
    */
   supplyOk?: (person: string) => boolean;
+  /** まだ出来事の無い人に足す表の人ごとの出来事（T167、lib/drill/quiet-event.ts）。無ければ足さない */
+  quiet?: () => DrillIncident[];
 };
 
 // ---------- 値を読む ----------
@@ -472,6 +474,8 @@ export function worldIncidents(answer: WorldStep, ctx: ApplyContext, hints: Read
     used += 1;
     for (const b of built) out.push({ ...base, change: b.change, text: b.text, ...(b.person ? { person: b.person } : {}), ai: true });
   }
+  // まだ出来事の無い人に、表の人ごとの出来事を 1 つ（T167、lib/drill/quiet-event.ts。世界がこの刻みに人を指す出来事を出していれば足さない）
+  if (ctx.quiet && !out.some((e) => e.person)) out.push(...ctx.quiet());
   return ctx.endings === false ? out : [...out, ...farewellIncidents(answer.farewells, ctx, hints)];
 }
 

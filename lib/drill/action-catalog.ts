@@ -244,7 +244,7 @@ export const ACTION_CATALOG: ReadonlyArray<ActionRow> = [
     effects: [{ kind: "heard" }, { kind: "clearMarks", keys: ON_ARRIVAL }, { kind: "reach" }],
     towardPerson: true,
     reach: { statuses: ["arrived"], at: "end" },
-    words: "家に向かった",
+    words: "本人のいる所へ向かった",
   },
   {
     id: "dispatch",

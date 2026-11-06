@@ -523,7 +523,8 @@ export function clockWords(persona: Pick<Persona, "clocks" | "hazards" | "town">
       const at = world.supplies?.[person]?.[supply as "oxygen" | "medicine"];
       return typeof at === "number" && at <= now && cats.includes(k.category) ? [`。${minuteText(at)}に届いた`] : [];
     });
-    const stopped = k.startsOn === "outage" && stop !== null && stop <= now ? `。${minuteText(stop)}から電気で動き減っていない` : "";
+    // 電源が届いた家は停電が戻ったのではない（T167）
+    const stopped = k.startsOn === "outage" && stop !== null && stop <= now ? `。${minuteText(stop)}から${typeof power === "number" && power === stop ? "届いた電源" : "電気"}で動き減っていない` : "";
     if (!r.running) return `${k.label}: ${formatHours(r.hours)}（停電で減る。まだ減っていない）${got.join("")}`;
     if (r.over) return `${k.label}: ${formatHours(r.hours)}の分は切れた（${minuteText(Math.round(r.hours * 60) + (k.startsOn === "outage" && o ? Math.round(o.since * 60) : 0))}ごろ）${stopped}${got.join("")}`;
     return `${k.label}: 残り ${formatHours(r.remaining)}${stopped}${got.join("")}`;
@@ -908,7 +909,8 @@ export function personaTurns(input: PersonaInput, persona: Persona, answer: Pers
     onDrop,
   );
   if (!turn) return [];
-  const place = placeOfState({ color: turn.color, whereNow: turn.whereNow, atHome: turn.atHome });
+  // いる所を言わない連絡（赤で家にいるかに答えない・色の分からない）は帳面のいる所で見る（T167。台の検査と同じ。前は門を抜け、避難所の人の「家で受け答えできる」が残った）
+  const place = placeOfState({ color: turn.color, whereNow: turn.whereNow, atHome: turn.atHome }) ?? facts.place?.where ?? null;
   return [{ ...turn, saying: factText(turn.saying, turn.source, place), doing: factText(turn.doing, turn.source, place) }];
 }
 
@@ -1336,7 +1338,7 @@ export async function personaTalkReply(
 // ---------- 訪問の様子（T93。lib/drill/hooks.ts の visit の口） ----------
 
 export const VISIT_SYSTEM = [
-  "災害の訓練で、ケアマネが家を訪ねて着いたときの、本人と周りの人の様子を演じる。人は全部架空。",
+  "災害の訓練で、ケアマネが本人のいる所を訪ねて着いたときの、本人と周りの人の様子を演じる。人は全部架空。",
   "入力は JSON。「本人役」は本人と周りの人の説明、「訪問」は今の時刻・状況・前の連絡。",
   "返す物:",
   `- condition: 着いたケアマネが見て分かる本人の様子（${VISIT_CONDITION_MAX} 字まで）。どこで何をしているか・部屋や周りの様子。体の具合や病名を言い切らない。`,
@@ -1365,8 +1367,20 @@ export function visitText(v: PersonaVisit, persona: Persona): string {
     factsBlock(personaFacts(persona, { person: v.person, world: v.world, state: v.state, now })),
     `この刻みの状況: ${ownIncidents(v.incidents, v.person).map((e) => e.text).join("、") || "新しい事はない"}`,
     `前の連絡: ${stateWords(v.state)}`,
-    "ケアマネが家に着いた。",
+    `ケアマネが${visitPlaceWords(personaFacts(persona, { person: v.person, world: v.world, state: v.state, now }))}に着いた。`,
   ].join("\n");
+}
+
+/**
+ * 訪問で着いた所（T167）。帳面のいる所へ行く。評価の 8 回目で、避難所へ移った人の訪問がいつも「家に着いた」で、「家には妻だけ」のあとに「主人に会えた」と
+ * 続いた。行き先の分からない人は家に着く（本人はいない）。名前を書かない
+ */
+function visitPlaceWords(f: Facts): string {
+  const p = f.place;
+  if (!p || p.where === "home") return "家";
+  if (p.by === "wandering") return "家（本人は家にいない）";
+  if (p.where === "shelter") return "本人のいる避難所";
+  return (p.by === "plan" || p.by === "transport") && f.plan?.destination === "hospital" ? "本人のいる病院" : "本人のいる所";
 }
 
 export function buildPersonaVisitRequest(
@@ -1384,9 +1398,9 @@ export async function personaVisitReport(persona: Persona, visit: PersonaVisit, 
   try {
     const text = pseudonymizeText(visitText(visit, persona), persona.key);
     const r = await askJson(buildPersonaVisitRequest(persona.profile, text), ctx);
-    // T130: 帳面と食い違う文と、電気が戻ったあとの電池・電源の頼み事を落とす（訪問で着いたので、いる所は家）
+    // T130: 帳面と食い違う文と、電気が戻ったあとの電池・電源の頼み事を落とす（訪問は本人のいる所へ。T167 で帳面のいる所に。分からなければ家）
     const facts = personaFacts(persona, { person: visit.person, world: visit.world, state: visit.state, now: Math.round(visit.hour * 60) });
-    const slip = { ...slipContextOf(facts, "home"), kin: null };
+    const slip = { ...slipContextOf(facts, facts.place?.where ?? "home"), kin: null };
     const condition = cleanPersonaWords(dropFactSlips(r.value.condition, slip), persona.key, VISIT_CONDITION_MAX, CONDITION_BANNED);
     const speech = cleanPersonaWords(dropFactSlips(r.value.speech, slip), persona.key, SPEECH_MAX);
     const asks = screenAsks(asksOf(r.value.asks, VISIT_ASKS_MAX), facts);
