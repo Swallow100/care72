@@ -14,6 +14,7 @@ import { ACTION_CATALOG } from "../../../lib/drill/action-catalog.ts";
 import { CALL_OUT_ASKS } from "../../../lib/drill/dialogue.ts";
 import { drillFreeHook } from "../../../lib/drill/free-action.ts";
 import { drillStepHooks, drillTalkHook } from "../../../lib/drill/hooks.ts";
+import type { StartDeps } from "../../../lib/drill/db.ts";
 import { actionPost, replayGet, startPost, stepPost } from "../../../lib/drill/http.ts";
 import { callPost, reviewPost } from "../../../lib/drill/record-http.ts";
 import { callTalkPost } from "../../../lib/drill/incoming-talk.ts";
@@ -130,6 +131,8 @@ export type IncomingTalk = { signal: string; person: string | null; minute: numb
 export type WorldAgentRow = { version: number; agent_id: string; agent_version: number; environment_id: string; updated_at: string };
 
 export type DriveDeps = {
+  /** 仮想の開始の時に公的なデータを読む口（T170。本物の回だけ渡す。偽の回は一般の言い方の避難所のまま） */
+  loadGeo?: StartDeps["loadGeo"];
   client: ClaudeClient;
   room: RoomClient;
   log: RunLog;
@@ -380,7 +383,7 @@ export async function runDrill(plan: RunPlan, deps: DriveDeps): Promise<RunOutco
     const startReq = { scenario: plan.scenario, options };
     // 開始の時刻は記録の startedAt と同じ DRILL_START にそろえる（訓練の種〔lib/drill/time-odds.ts の drillSeed〕が開始の時刻から作られ、
     // 壁の時計の数 ms のずれで同じ種の回の出来事が変わらないように。T124 で台の既定の組が全部連続の時計になった）
-    const started = await call("start", startReq, () => startPost(db, p, startReq, new Date(start).toISOString(), stepHooks));
+    const started = await call("start", startReq, () => startPost(db, p, startReq, new Date(start).toISOString(), stepHooks, deps.loadGeo ? { loadGeo: deps.loadGeo } : undefined));
     const drillId = typeof started.body?.id === "string" ? started.body.id : null;
     if (!drillId) return { plan, drillId: null, status: "not_started", advances: 0, replay: null, ops, errors, aiCalls: aiCallsOf(sqlite), callsLeft: null, names, worldAgent: worldAgentOf(sqlite) };
     let replay = await read(drillId);

@@ -24,7 +24,7 @@ import type { GeoPoint, HazardKind } from "@/lib/db/types";
 import { FULL_ZOOM, keyAction, MAP_LIMITS, pinchView, sameView, stepZoom, toFrame } from "@/lib/map/camera";
 import { COUNT_W, groupPins, labelWidth, memberStates, statesWidth, type PinGroup } from "@/lib/map/cluster";
 import { demoShown, type DemoOverlay } from "@/lib/map/demo";
-import { MARK_BAND, type MapMark } from "@/lib/map/marks";
+import type { MapMark } from "@/lib/map/marks";
 import { RAIN_LEGEND_LABEL, RAIN_OPACITY, rainColor } from "@/lib/map/rain-scale";
 import {
   BASE_SIZE,
@@ -55,6 +55,7 @@ import { NOWC_SOURCE, type NowcTime } from "@/lib/jma/nowcast";
 import { NowcastLayer, useNowcastTime } from "./NowcastLayer";
 import { RainScaleLegend } from "./RainScaleLegend";
 import { useMapDrag } from "./useMapDrag";
+import { MarkBand, WorldMarks } from "./WorldMarks";
 import { WheelHint } from "./WheelHint";
 import type { StateTone } from "@/lib/person";
 
@@ -240,10 +241,7 @@ export function CaseMap({ pins, layers, demo, unplaced, center, region = null, n
           <HazardTiles tiles={tiles} shown={shown} />
           {demo && rainOn && <Rain demo={demo} view={view} size={BASE_SIZE} />}
           {nowc && rainOn && <NowcastLayer time={nowc} view={view} size={BASE_SIZE} />}
-          {marks.map((m) => {
-            const at = place(view, m.at);
-            return <MarkLabel key={m.id} mark={m} text={m.short} style={{ left: `${at.left}%`, top: `${at.top}%` }} />;
-          })}
+          <WorldMarks marks={marks} pins={pins} view={view} size={BASE_SIZE} wording="short" />
           {pins.map((p) => {
             const at = place(view, p.location);
             return <PinLink key={p.id} pin={p} style={{ left: `${at.left}%`, top: `${at.top}%`, zIndex: 10 + p.layer }} />;
@@ -513,10 +511,7 @@ export function FullMap({ pins, demo, unplaced, choice, center, fictional = fals
               <HazardTiles tiles={overTiles} shown={shown} />
               {demo && choice.rainOn && <Rain demo={demo} view={view} size={size} />}
               {choice.nowcast && choice.rainOn && <NowcastLayer time={choice.nowcast} view={view} size={size} />}
-              {marks.map((m) => {
-                const at = place(view, m.at, size);
-                return <MarkLabel key={m.id} mark={m} text={m.label} style={{ left: `${at.left}%`, top: `${at.top}%` }} />;
-              })}
+              <WorldMarks marks={marks} pins={pins} view={view} size={size} wording="label" />
               {groups.map(({ group: g, pins: ms }) =>
                 ms.length === 1 ? (
                   <PinLink
@@ -643,35 +638,6 @@ function DemoBand({ demo }: { demo: DemoOverlay }) {
         </span>
       )}
     </div>
-  );
-}
-
-/** 場所の印があるときの帯（デモの帯と同じ破線の枠。出来事は訓練の想定。T170） */
-function MarkBand() {
-  return (
-    <div className="flex flex-wrap items-baseline gap-x-1.5 rounded border border-dashed border-ink px-1.5 py-0.5 text-xs leading-5" data-demo="marks">
-      <span className="font-bold">{MARK_BAND.head}</span>
-      <span>{MARK_BAND.title}</span>
-      <span className="ml-auto text-muted">{MARK_BAND.tail}</span>
-    </div>
-  );
-}
-
-/**
- * 場所の印（T170）。人のピンと見分けるため、四角の点と本文色の線の囲み。人の状態の色を使わない。押せない（地図のドラッグを奪わない）。
- * 重なる場所はピンより下（ピンの zIndex は 10 から）
- */
-function MarkLabel({ mark, text, style }: { mark: MapMark; text: string; style: React.CSSProperties }) {
-  return (
-    <span
-      title={mark.title}
-      className="pointer-events-none absolute z-[5] flex -translate-x-1/2 -translate-y-1/2 items-center gap-1 rounded-sm border border-ink bg-panel px-1 text-[11px] leading-4 whitespace-nowrap text-ink"
-      style={style}
-      data-world-mark={mark.id}
-    >
-      <span className="size-1.5 shrink-0 bg-ink" aria-hidden />
-      {text}
-    </span>
   );
 }
 

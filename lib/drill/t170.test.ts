@@ -8,6 +8,7 @@ import { worldPlaceHits } from "../../tools/eval/drill/checks.ts";
 import type { RunOutcome } from "../../tools/eval/drill/drive.ts";
 import type { Ledger } from "../db/types.ts";
 import { findLeaks, pseudonymize, pseudonymizeText, restoreText } from "../pseudonym/index.ts";
+import { layoutMarks } from "../map/marks.ts";
 import { formLeaks } from "../pseudonym/forms.ts";
 import { SEED_PEOPLE } from "../../seed/people.ts";
 import { areaOf, DEMO_AREA, geographyText, placesOf, RETIRED_DEMO_NAMES, townOfLedger, townOfPin } from "./area.ts";
@@ -158,11 +159,10 @@ const GEO: RealGeo = {
     { name: "遠い川", at: { lat: 34.5, lng: 133.5 } },
   ],
   shelters: [
-    { name: "椿小学校", at: { lat: 33.8075, lng: 132.758 }, welfare: false },
-    { name: "椿中学校", at: { lat: 33.8078, lng: 132.757 }, welfare: false },
-    { name: "古川ふれあいセンター", at: { lat: 33.806, lng: 132.758 }, welfare: false },
-    { name: "久枝小学校", at: { lat: 33.87, lng: 132.746 }, welfare: false },
-    { name: "特別養護老人ホームみどり", at: { lat: 33.82, lng: 132.75 }, welfare: true },
+    { name: "椿小学校", at: { lat: 33.8075, lng: 132.758 } },
+    { name: "椿中学校", at: { lat: 33.8078, lng: 132.757 } },
+    { name: "古川ふれあいセンター", at: { lat: 33.806, lng: 132.758 } },
+    { name: "久枝小学校", at: { lat: 33.87, lng: 132.746 } },
   ],
 };
 
@@ -174,7 +174,8 @@ describe("実の避難所と川（開始の時に読んだ公的なデータ）"
       ["椿中学校", "市坪・井門付近"],
       ["久枝小学校", "西長戸・鴨川付近"],
     ]);
-    expect(a.shelters.filter((s) => s.welfare).map((s) => s.name)).toEqual(["特別養護老人ホームみどり"]);
+    // 福祉避難所は民間の事業所の名前が多いので、いつも一般の言い方
+    expect(a.shelters.filter((s) => s.welfare).map((s) => s.name)).toEqual(["福祉避難所"]);
     expect(a.realShelters).toBe(true);
     expect(geographyText(a)).toContain("椿小学校（甲地区）");
     // 読めなかった: 一般の言い方。出典を出さない
@@ -226,7 +227,7 @@ describe("実の避難所と川（開始の時に読んだ公的なデータ）"
     expect(geographyText(real)).not.toContain("あおば");
   });
 
-  it("読み方: 外へ出るのはタイルの z/x/y だけ。形の違う物・法人の名前・門に掛かる名前は外す。読めなくても投げない", async () => {
+  it("読み方: 外へ出るのはタイルの z/x/y だけ。形の違う物・門に掛かる名前は外す。福祉避難所の層は読まない。読めなくても投げない", async () => {
     const urls: string[] = [];
     const fake = (async (u: RequestInfo | URL) => {
       const url = String(u);
@@ -237,14 +238,6 @@ describe("実の避難所と川（開始の時に読んだ公的なデータ）"
             { geometry: { type: "Point", coordinates: [132.758, 33.8075] }, properties: { name: "椿小学校" } },
             { geometry: { type: "Point", coordinates: [132.76, 33.81] }, properties: { name: "田中さん宅" } },
             { geometry: null, properties: { name: "位置なし" } },
-          ],
-        });
-      }
-      if (url.includes("/sfh/")) {
-        return Response.json({
-          features: [
-            { geometry: { type: "Point", coordinates: [132.76, 33.81] }, properties: { name: "社会福祉法人 例 特別養護老人ホーム" } },
-            { geometry: { type: "Point", coordinates: [132.76, 33.811] }, properties: { name: "特別養護老人ホームみどり" } },
           ],
         });
       }
@@ -260,13 +253,14 @@ describe("実の避難所と川（開始の時に読んだ公的なデータ）"
     }) as typeof fetch;
     const at = { lat: 33.8075123, lng: 132.7570456 };
     const g = await loadRealGeo({ points: [at], region: "松山市", rivers: true, now: "2026-11-07T00:00:00.000Z", fetch: fake });
-    expect(g.shelters.map((s) => s.name)).toEqual(["椿小学校", "特別養護老人ホームみどり"]);
+    expect(g.shelters.map((s) => s.name)).toEqual(["椿小学校"]);
+    expect(urls.some((u) => u.includes("/sfh/"))).toBe(false);
     expect(g.rivers.map((r) => r.name)).toContain("石手川");
     expect(g.rivers.map((r) => r.name)).not.toContain("市坪");
     expect(hasRealGeo(g)).toBe(true);
     expect(urls.length).toBeLessThanOrEqual(20);
     for (const u of urls) {
-      expect(u).toMatch(/^https:\/\/cyberjapandata\.gsi\.go\.jp\/xyz\/(sih|sfh)\/10\/\d+\/\d+\.geojson$|^https:\/\/cyberjapandata\.gsi\.go\.jp\/xyz\/experimental_anno\/15\/\d+\/\d+\.geojson$/);
+      expect(u).toMatch(/^https:\/\/cyberjapandata\.gsi\.go\.jp\/xyz\/sih\/10\/\d+\/\d+\.geojson$|^https:\/\/cyberjapandata\.gsi\.go\.jp\/xyz\/experimental_anno\/15\/\d+\/\d+\.geojson$/);
       expect(u).not.toContain("33.8");
       expect(u).not.toContain("132.7");
     }
@@ -337,6 +331,21 @@ describe("場所ごとの出来事（地図の印と一覧）", () => {
     const after = worldPlaces(worldSlots(later, area, residents));
     expect(after.find((p) => p.place === "和泉大橋")).toBeUndefined();
     expect(after.find((p) => p.place === "市坪・井門付近")!.words).toEqual(["浸水 3 m"]);
+  });
+
+  it("地図の印: 重ならなければ点の下、人の印やほかの印に重なれば下へ送る", () => {
+    expect(layoutMarks([{ id: "a", x: 100, y: 100, text: "浸水" }], [])).toEqual({ a: 0 });
+    // 点のすぐ下の人の印に重なる
+    expect(layoutMarks([{ id: "a", x: 100, y: 100, text: "浸水" }], [{ x: 100, y: 110, w: 60 }]).a).toBeGreaterThan(0);
+    // 同じ所の 2 つ目は下へ
+    const two = layoutMarks(
+      [
+        { id: "a", x: 100, y: 100, text: "浸水" },
+        { id: "b", x: 100, y: 100, text: "断水" },
+      ],
+      [],
+    );
+    expect([two.a, two.b].sort((x, y) => x - y)).toEqual([0, 18]);
   });
 
   it("画面の 1 行: 人は架空・地理は実在・出来事は想定", () => {

@@ -504,7 +504,7 @@ export async function caseloadForDrill(db: D1Database, scope: DrillScope): Promi
 
 /**
  * 開始の前の設定に出す物（T59・T70・T104）: 参加者の選択と、訓練する人の住む所に選べる地区（担当一覧の人の台帳の町名。
- * デモ事業所は架空の街の町）。台帳は事業所の分を 1 回の batch で読む
+ * デモ事業所は種の台帳の町名）。台帳は事業所の分を 1 回の batch で読む
  */
 export async function drillStartInfo(db: D1Database, scope: DrillScope): Promise<{ people: CaseloadPerson[]; towns: string[] }> {
   const rows = await caseloadRows(db, scope);

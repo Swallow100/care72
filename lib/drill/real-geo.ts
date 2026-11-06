@@ -1,10 +1,11 @@
 // 仮想モードの開始の時に、事業所の周りの公的なデータを読む（T170）。Workers の中で 1 回だけ、結果は drills.world に写す（刻みごとに読まない）。Claude を呼ばない。
 //
 // - 外へ出るのはタイルの z/x/y だけ（本人の座標・住所・氏名を要求に入れない。lib/map/shelters.ts と同じ決め。もっと細かいズームの z/x/y は地図が前から読む）
-//   - 指定避難所: 地理院の sih・sfh（ズーム 10、約 30 km の四角）。形と利用の条件は lib/map/shelters.ts（T112）。データを落として置かない
+//   - 指定避難所: 地理院の sih（ズーム 10、約 30 km の四角）。形と利用の条件は lib/map/shelters.ts（T112）。データを落として置かない。
+//     福祉避難所（sfh）は読まない: 民間の事業所の名前が多く、実在の事業所に「満員」などの出来事を当てないため、一般の言い方「福祉避難所」のまま
 //   - 川の注記: 地理院の experimental_anno（ズーム 15、約 1 km の四角）。デモ事業所は確かめた表があるので読まない
 // - 読めなければ（時間切れ・形の違い）その分は無しで、地理は一般の言い方のまま。訓練の開始を止めない
-// - 名前は門（formLeaks）に引っかかる形を外す。部屋への文が止まらないように。福祉避難所は法人の名前が先に来る物を外す（会社の名前で出来事を読ませない）
+// - 名前は門（formLeaks）に引っかかる形を外す。部屋への文が止まらないように
 
 import * as z from "zod";
 import type { GeoPoint } from "../db/types.ts";
@@ -37,13 +38,7 @@ export type RealGeoRequest = {
   timeoutMs?: number;
 };
 
-const SHELTER_LAYERS: ReadonlyArray<ShelterLayer> = [
-  { id: "sih", kind: "shelter" },
-  { id: "sfh", kind: "welfare" },
-];
-
-/** 法人の名前が先に来る物（「社会福祉法人 ○○ 高齢者福祉施設…」「㈱○○ …」）。世界の文に会社の名前を出さない */
-const CORPORATE = /株式会社|有限会社|合同会社|㈱|㈲|（株）|（有）|\(株\)|\(有\)|法人|財団|組合/u;
+const SHELTER_LAYER: ShelterLayer = { id: "sih", kind: "shelter" };
 
 const Anno = z.object({
   geometry: z.object({ type: z.literal("Point"), coordinates: z.array(z.number()).min(2) }),
@@ -102,17 +97,17 @@ export async function loadRealGeo(req: RealGeoRequest): Promise<RealGeo> {
 
   const tiles = new Map<string, Tile>();
   for (const p of points) for (const t of shelterTiles(p, SHELTER_KM)) tiles.set(`${t.x}/${t.y}`, t);
-  const shelterJobs = SHELTER_LAYERS.flatMap((layer) => [...tiles.values()].map((t) => ({ layer, url: shelterUrl(layer.id, t) })));
+  const shelterJobs = [...tiles.values()].map((t) => shelterUrl(SHELTER_LAYER.id, t));
   const riverJobs = req.rivers ? annoTiles(points).map(annoUrl) : [];
   const [shelterRows, riverRows] = await Promise.all([
-    Promise.all(shelterJobs.map(async (j) => parseShelterTile(j.layer, await read(j.url)))),
+    Promise.all(shelterJobs.map(async (u) => parseShelterTile(SHELTER_LAYER, await read(u)))),
     Promise.all(riverJobs.map(async (u) => parseAnnoRivers(await read(u)))),
   ]);
 
   const shelters = shelterRows
     .flat()
-    .filter((s) => safeName(s.name) && !(s.welfare && CORPORATE.test(s.name)))
-    .map((s) => ({ name: s.name, at: { lat: Number(s.at.lat.toFixed(5)), lng: Number(s.at.lng.toFixed(5)) }, welfare: s.welfare }));
+    .filter((s) => safeName(s.name))
+    .map((s) => ({ name: s.name, at: { lat: Number(s.at.lat.toFixed(5)), lng: Number(s.at.lng.toFixed(5)) } }));
   const near = (at: GeoPoint) => Math.min(...points.map((p) => Math.hypot(p.lat - at.lat, p.lng - at.lng)));
   const kept = [...shelters].sort((a, b) => near(a.at) - near(b.at)).slice(0, SHELTER_KEEP);
   const rivers = riverRows.flat().filter((r) => safeName(r.name));

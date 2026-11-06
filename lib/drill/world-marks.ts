@@ -68,7 +68,7 @@ export function worldSlots(ticks: ReadonlyArray<Pick<Tick, "incidents">>, area: 
           }
           break;
         case "town_line":
-          for (const town of c.towns) set(`line:${town}`, { place: town, at: townAt(town), word: PHONE_LABELS.down, persons: residents[town] ?? [], hour });
+          for (const town of c.towns) set(`line:${town}`, { place: town, at: townAt(town), word: `電話 ${PHONE_LABELS.down}`, persons: residents[town] ?? [], hour });
           break;
         case "town_road": {
           const road = area.roads.find((r) => r.id === c.road);

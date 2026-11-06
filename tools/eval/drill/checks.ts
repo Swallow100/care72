@@ -512,6 +512,8 @@ export function worldPlaceHits(outcome: RunOutcome): CheckHit[] {
     ...DEMO_AREA.roads.map((r) => r.name),
     ...DEMO_AREA.shelters.map((s) => s.name),
     ...DEMO_AREA.facilities.map((f) => f.name),
+    // 開始の時に読んだ実の避難所の名前（出来事に出た物）
+    ...(outcome.replay?.ticks ?? []).flatMap((t) => t.incidents.flatMap((e) => (e.change?.kind === "shelter" ? [String((e.change as { label?: unknown }).label ?? "")] : []))),
   ];
   for (const t of outcome.replay?.ticks ?? []) {
     for (const e of t.incidents) {

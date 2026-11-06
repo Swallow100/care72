@@ -140,7 +140,7 @@ export type ApplyContext = {
   ended: ReadonlySet<string>;
   hour: number;
   via: WorldVia;
-  /** 事業所の地理（T70、lib/drill/area.ts の areaOf）。無ければデモ事業所の架空の街 */
+  /** 事業所の地理（T70、lib/drill/area.ts の areaOf）。無ければデモ事業所の実の区画（T170） */
   area?: Area;
   /**
    * 結末を当てるか（T70 の続き）。false（デモ以外の事業所）なら、返ってきた結末（farewells）は全部捨てる。

@@ -1,6 +1,6 @@
 // 開始の時に読んだ公的なデータ（lib/drill/real-geo.ts）を地理に足す所（T170）。ブラウザからも読まれうる（area.ts）ので fetch も仮名化も読まない。
 // - 実の川の名前は地域の行に、町の真ん中から 2 km の中に注記のある川は「近くの川」に
-// - 実の避難所（国土地理院の指定避難所データ）は町ごとに近い順に 2 つ、全部で 10 まで。読めなければ今の一般の言い方のまま
+// - 実の避難所（国土地理院の指定避難所データ）は町ごとに近い順に 2 つ、全部で 10 まで。読めなければ今の一般の言い方のまま。福祉避難所はいつも一般の言い方
 // - 台帳の町名を含む名前は使わない（門が別名に置き換えて名前が合わなくなり、町と結び付くので）
 
 import type { GeoPoint } from "../db/types.ts";
@@ -14,14 +14,13 @@ export type RealGeo = {
   region: string | null;
   /** 川の注記（名前と位置） */
   rivers: ReadonlyArray<{ name: string; at: GeoPoint }>;
-  /** 指定避難所（福祉避難所は welfare）。法人の名前が先に来る物は読む所で外した */
-  shelters: ReadonlyArray<{ name: string; at: GeoPoint; welfare: boolean }>;
+  /** 指定避難所（一般。福祉避難所は読まない） */
+  shelters: ReadonlyArray<{ name: string; at: GeoPoint }>;
 };
 
 /** 町ごとの実の避難所の数と、全部の上限 */
 export const SHELTERS_PER_TOWN = 2;
 export const SHELTERS_MAX = 10;
-export const WELFARE_MAX = 2;
 /** 「近くの川」にする注記までの長さ（km） */
 export const RIVER_NEAR_KM = 2;
 
@@ -65,18 +64,13 @@ export function applyRealGeo(area: Area, geo: RealGeo | null | undefined, own: R
     .sort((a, b) => a.km - b.km || a.name.localeCompare(b.name, "ja"));
   const taken = new Map<string, number>();
   const usable: AreaShelter[] = [];
-  for (const s of real.filter((x) => !x.welfare)) {
+  for (const s of real) {
     const n = taken.get(s.town) ?? 0;
     if (n >= SHELTERS_PER_TOWN || usable.length >= SHELTERS_MAX || usable.some((u) => u.name === s.name)) continue;
     taken.set(s.town, n + 1);
     usable.push({ id: `real-${usable.length + 1}`, name: s.name, town: s.town, welfare: false, at: s.at });
   }
-  const welfare: AreaShelter[] = real
-    .filter((x) => x.welfare)
-    .filter((x, i, all) => all.findIndex((y) => y.name === x.name) === i)
-    .slice(0, WELFARE_MAX)
-    .map((s, i) => ({ id: `real-welfare-${i + 1}`, name: s.name, town: s.town, welfare: true, at: s.at }));
-  const shelters = usable.length > 0 ? [...usable, ...(welfare.length > 0 ? welfare : area.shelters.filter((s) => s.welfare))] : area.shelters;
+  const shelters = usable.length > 0 ? [...usable, ...area.shelters.filter((s) => s.welfare)] : area.shelters;
 
   // 実の川。デモの地形は確かめて書いた物なので足さない
   const rivers = area.byPin ? area.rivers : [...new Set(geo.rivers.map((r) => r.name))].filter((n) => !hasOwnTown(n, own));
