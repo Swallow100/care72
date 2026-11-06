@@ -54,7 +54,9 @@ node video/scripts/term/claude.mjs R21 --render   # /care72-review で見直し�
   記録だけ残して止まる。記録は 1 件ずつ書き足すので、外から止めてもそこまでを text.mjs で見られる。30 秒ごとに画面の終わりを出す
 - 試すときは `--dir <置き場の外> --max 120`（答えを待つ秒）。R21 は見直し役が数分走るので、走り出しの 10 秒と終わりの表の前から後ろだけを描く（`--cut`）
 - 11/5 に R21・R22・R23 とも、頼み文が入力の欄に入って送られ、上限の知らせを拾って止まるところまで試した。撮影の起こし方で MCP は care72-local だけがつながる
-- 11/5 は端末の claude の利用の上限の知らせで止まった（撮れていない）。上限が戻ってから撮る
+- 11/5 は端末の claude の利用の上限の知らせで止まった（撮れていない）。11/6 7:15・7:19 は上限ではなく
+  「Claude Code can't use your Claude subscription, usually because a payment is past due」で止まった（端末の claude の資格は古い Max 5x。
+  待っても戻らない）。この知らせを拾ってすぐ止まる（claude.mjs の NO_PLAN）。端末の claude を今の契約でログインし直してから撮る
 
 ## 確かめる（撮ったら 1 本ずつ）
 
