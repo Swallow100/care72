@@ -817,9 +817,9 @@ function ResetConfirm() {
     <form method="post" action={OFFICE_RESET_PATH} aria-label={RESET_LABELS.title} className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2 rounded bg-panel px-3 py-2" data-reset>
       <input type="hidden" name="confirm" value="1" />
       <span className="text-sm">{RESET_LABELS.confirm}</span>
-      <SubmitButton kind="dangerFill" icon="RetryIcon">{RESET_LABELS.reset}</SubmitButton>
+      <SubmitButton kind="dangerFill" icon="RestoreIcon">{CONFIRM_LABELS.resetOk}</SubmitButton>
       <ButtonLink href={OFFICE_PATH} kind="quiet" icon={CloseIcon}>
-        {RESET_LABELS.cancel}
+        {CONFIRM_LABELS.stayCurrent}
       </ButtonLink>
     </form>
   );
