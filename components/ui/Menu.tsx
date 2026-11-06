@@ -13,9 +13,12 @@ export function Menu({
   kind = "plain",
   size = "md",
   align = "right",
+  hint,
   children,
 }: {
   label: string;
+  /** 開くと何があるか（読み上げの名前と、マウスを載せたときの字。T166） */
+  hint?: string;
   icon?: React.ComponentType<React.SVGProps<SVGSVGElement>>;
   kind?: ButtonKind;
   size?: ButtonSize;
@@ -48,6 +51,8 @@ export function Menu({
         type="button"
         aria-expanded={open}
         aria-controls={id}
+        aria-label={hint ? `${label} ${hint}` : undefined}
+        title={hint}
         onClick={() => setOpen((v) => !v)}
         className={buttonClass(kind, size, open ? "outline-2 -outline-offset-2 outline-accent" : "")}
         data-press

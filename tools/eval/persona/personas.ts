@@ -90,7 +90,7 @@ const DISASTER_GOAL: Goal = {
   text: "事業所の画面で発災時の状態に切り替える（デモの大雨の想定）",
   // 上の帯の災害モードの語（「大雨 レベル 4 …」）。訓練の画面の「大雨想定」は数えない
   done: { header: "(^|\\s)(大雨|台風|土砂|地震|津波|その他)(\\s|$)", notHeader: "平時" },
-  route: [{ click: "事業所" }, { click: "発災開始" }, { click: "開始" }],
+  route: [{ click: "事業所" }, { click: "発災開始" }, { click: "発災開始" }],
 };
 
 export function personas(loginId: string = DEFAULT_LOGIN_ID): Persona[] {

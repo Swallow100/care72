@@ -5,8 +5,8 @@
 // - 地震は直近 24 時間で、事業所と利用者の市の観測点の震度があるときだけ。観測点の名前を添える（利用者の家の震度と言い切らない）
 // - 取れていなければ「未取得」と最後に取れた時刻。下に出典の 1 行
 
-import { GoToIcon } from "@/components/ui/Icon";
-import { JMA_ANCHOR, JMA_LABELS, WARNING_SOURCE, intensityLabel, magnitudeLabel } from "@/lib/jma/labels";
+import { ExternalIcon, GoToIcon } from "@/components/ui/Icon";
+import { JMA_ANCHOR, JMA_LABELS, splitSource, WARNING_SOURCE, intensityLabel, magnitudeLabel } from "@/lib/jma/labels";
 import type { JmaAlertsData } from "@/lib/jma/alerts";
 import { shortJst } from "@/lib/disaster/state";
 
@@ -14,6 +14,9 @@ import { shortJst } from "@/lib/disaster/state";
 const SWITCH = "relative ml-auto inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded bg-panel px-3 text-sm font-bold whitespace-nowrap text-danger";
 
 const FOCUS = "outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-accent";
+
+/** 出典の文を押せる字の前後に（文は変えない） */
+const source = splitSource(WARNING_SOURCE);
 
 /** 時刻だけ（HH:MM、日本の時刻） */
 function hm(iso: string): string {
@@ -105,11 +108,19 @@ export function JmaAlertsView({
       )}
 
       <p className="text-[11px] leading-4 text-muted" data-jma-source>
-        出典：気象庁ホームページ（
-        <a href={WARNING_SOURCE.href} target="_blank" rel="noreferrer" data-press className={`underline underline-offset-2 ${FOCUS}`}>
-          {WARNING_SOURCE.href}
+        {source.before}
+        <a
+          href={WARNING_SOURCE.href}
+          target="_blank"
+          rel="noreferrer"
+          aria-label={`${WARNING_SOURCE.link} ${JMA_LABELS.external}`}
+          data-press
+          className={`inline-flex items-baseline gap-0.5 underline underline-offset-2 ${FOCUS}`}
+        >
+          {WARNING_SOURCE.link}
+          <ExternalIcon aria-hidden className="size-3 shrink-0 self-center" />
         </a>
-        ）、気象庁防災情報XML
+        {source.after}
       </p>
     </section>
   );

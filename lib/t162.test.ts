@@ -73,7 +73,7 @@ describe("1. 印刷: 押したことが窓の前から分かる・戻ると見�
 });
 
 describe("2. 訓練: 着信の窓の後で・対応済、次までの進んだ分", () => {
-  it("着信の窓の言葉は 2〜4 字。後で（窓を閉じる）・着信表示（下の 1 行から戻る）・対応済", () => {
+  it("着信の窓の言葉は 2〜4 字。保留（窓を畳む。T166 で後でから）・着信表示（下の 1 行から戻る）・対応済", () => {
     for (const k of ["later", "reopen", "handled", "answer", "decline", "hangUp"] as const) expect(short(CALL_UI[k]), CALL_UI[k]).toBe(true);
     const src = read("../components/drill/IncomingCall.tsx");
     expect(src).toContain('data-incoming-action="later"');
@@ -95,7 +95,7 @@ describe("2. 訓練: 着信の窓の後で・対応済、次までの進んだ�
     expect(movedText(-3)).toBe("0 分");
     const src = read("../components/drill/DrillControls.tsx");
     expect(src).toContain("startRefresh(() => router.refresh())");
-    expect(src).toContain("data-moved={moved}");
+    expect(src).toContain("data-moved={moved.to - moved.from}");
     const html = renderToStaticMarkup(createElement(DrillControls, { id: "d-1", step: 0, done: false, clock: true, left: 10, minute: 0 }));
     expect(html).toContain("次まで");
     expect(html).not.toContain("data-moved");

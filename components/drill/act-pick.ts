@@ -4,13 +4,20 @@
 // 画面の中の小さな状態（window の出来事）で、URL は変えない。送る側は pickAct を呼ぶだけ:
 //   - 本人の詳細の打てる手の候補（T126、components/drill/ActionHints.tsx の DetailHints）: 本人と手（相手は無し）
 //   - 本人の詳細の連絡先の行（T132、components/drill/ContactPick.tsx）: 本人と連絡の手とその連絡先
+//   - 頼み事の印（T166、components/drill/AskPick.tsx）: 本人と頼み事（手を 1 つに決めるか候補の行へ送るかは対応の欄が決める。lib/drill/action-hints.ts の askPick）
 // 受ける側（対応の欄）は useActPick で受けて、本人・手・相手を選んだ形にし、自分を見える所へ送る。
 // 対応の欄が無い画面（再生・終わった訓練）では何も起きない。手の可否は送る側が決まりの表の結果を読んで決める（押せない物は送らない）。
 
 import { useEffect, useRef } from "react";
 import type { DrillAction } from "@/lib/db/types";
+import type { AskKind } from "@/lib/drill/scenarios";
 
-export type ActPick = {
+export type ActPick = ActPickKind | ActPickAsk;
+
+/** 頼み事の印から（本人と頼み事） */
+export type ActPickAsk = { person: string; ask: AskKind };
+
+export type ActPickKind = {
   /** 対象の本人の id */
   person: string;
   /** 手 */

@@ -12,7 +12,7 @@ export type RoleChoice = { role: string; label: string; sub: string | null };
 
 export function RoleMenu({ choices, current, label }: { choices: readonly RoleChoice[]; current: string; label: string }) {
   return (
-    <Menu label={label} icon={RoleIcon} kind="plain">
+    <Menu label={label} hint={choices.map((c) => c.label).join("・")} icon={RoleIcon} kind="plain">
       <form method="post" action="/api/auth/role" className="grid gap-px" aria-label={label}>
         {choices.map((c) => {
           const now = c.role === current;

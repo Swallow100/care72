@@ -125,6 +125,8 @@ export function readPageInBrowser(limits: ReadLimits): RawRead {
     if (ariaChecked === "true") item.checked = true;
     if (el.getAttribute("aria-current")) item.checked = true;
     if ((el as HTMLButtonElement).disabled || el.getAttribute("aria-disabled") === "true") item.disabled = true;
+    // 今入力している欄（人にはカーソルが見える。押した結果として読む。T166）
+    if ((role === "textbox" || role === "password") && document.activeElement === el) item.focused = true;
     const zone = zoneOf(el);
     if (zone) item.zone = zone;
     items.push(item);
@@ -162,7 +164,7 @@ export function readPageInBrowser(limits: ReadLimits): RawRead {
 
 /** 見た目の指紋（道・見出し・押せる物の名前と値・知らせ）。番号は入れない */
 export function hashOf(s: Pick<Snapshot, "path" | "headings" | "items" | "alerts">): string {
-  const body = JSON.stringify([s.path, s.headings, s.items.map((i) => [i.role, i.name, i.value ?? "", i.checked ?? false, i.disabled ?? false]), s.alerts]);
+  const body = JSON.stringify([s.path, s.headings, s.items.map((i) => [i.role, i.name, i.value ?? "", i.checked ?? false, i.disabled ?? false, i.focused ?? false]), s.alerts]);
   return createHash("sha256").update(body).digest("hex").slice(0, 16);
 }
 

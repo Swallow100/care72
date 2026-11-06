@@ -11,15 +11,18 @@
 // 間の選択（T59 の 1・2.5・5 秒）は外した。中断は今のまま。
 // T162: 押してから読み直した画面が届くまで「次まで」に送信中の印（前は要求の終わりで外れ、読み直しの前に押し直された）。
 // 進めたら横に「進行 6 分」（前の経過からどれだけ進んだか。経過が 0 時間のままに読まれた）
+// T166: 進めたら「0 時間 → 1 時間」も添える（押しても変わらないと読まれた）。自動進行はチェックの欄でなく押せるボタン（入り切りの switch、
+// 名前は「自動進行」のまま）。入っている間は枠と止める印、横に何をくり返すか。読み上げと台は aria-checked で読む
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { Button } from "@/components/ui/Button";
-import { CHOICE_INPUT } from "@/components/ui/choice";
+import { PauseIcon, PlayIcon } from "@/components/ui/Icon";
 import { Loader72 } from "@/components/ui/Loader72";
 import { CLOCK_LABELS, movedText } from "@/lib/drill/clock";
 import { DRILL_LABELS, T59_LABELS } from "@/lib/drill/labels";
 import { DEFAULT_FAST_MS, intervalLabel } from "@/lib/drill/speed";
+import { minuteText } from "@/lib/drill/time-text";
 import { appConfirm } from "@/lib/ui/dialog";
 import { CONFIRM_LABELS, WAIT_LABELS } from "@/lib/ui/labels";
 import { RINGING_EVENT } from "./IncomingCall";
@@ -62,11 +65,11 @@ export function DrillControls({
   const [refreshing, startRefresh] = useTransition();
   /** 押す前の経過（分）と、読み直したあとに進んだ分 */
   const fromRef = useRef<number | null>(null);
-  const [moved, setMoved] = useState<number | null>(null);
+  const [moved, setMoved] = useState<{ from: number; to: number } | null>(null);
   useEffect(() => {
     if (minute === undefined || fromRef.current === null || refreshing) return;
     if (minute !== fromRef.current) {
-      setMoved(minute - fromRef.current);
+      setMoved({ from: fromRef.current, to: minute });
       fromRef.current = null;
     }
   }, [minute, refreshing]);
@@ -142,6 +145,7 @@ export function DrillControls({
   };
 
   if (done) return null;
+  const autoText = `${clock ? CLOCK_LABELS.next : DRILL_LABELS.advance} ${intervalLabel(DEFAULT_FAST_MS, T59_LABELS.seconds)}${DRILL_LABELS.autoEvery}`;
   return (
     <div className="flex flex-wrap items-center gap-2" data-controls={clock ? "clock" : ""}>
       {clock ? (
@@ -161,14 +165,23 @@ export function DrillControls({
         </Button>
       )}
       {/* 自動進行（前の早送り）: 次まで（刻みの道は進める）を決まった間でくり返す。title に何をくり返すかと間 */}
-      <label
-        className="flex h-8 items-center gap-1.5 rounded px-2 text-sm"
-        title={`${clock ? CLOCK_LABELS.next : DRILL_LABELS.advance} ${intervalLabel(DEFAULT_FAST_MS, T59_LABELS.seconds)}${DRILL_LABELS.autoEvery}`}
-        data-press
+      <Button
+        kind="plain"
+        role="switch"
+        aria-checked={fast}
+        icon={fast ? PauseIcon : PlayIcon}
+        onClick={() => setFast((v) => !v)}
+        title={autoText}
+        className={fast ? "outline-2 -outline-offset-2 outline-accent" : ""}
+        data-action="fast"
       >
-        <input type="checkbox" checked={fast} onChange={(e) => setFast(e.target.checked)} className={CHOICE_INPUT} data-action="fast" />
         {DRILL_LABELS.fastForward}
-      </label>
+      </Button>
+      {fast && (
+        <span className="text-xs text-muted tabular-nums" data-fast-note>
+          {autoText}
+        </span>
+      )}
       {/* 中断はアプリ内の確認の窓で決めてから（T44）。最初の焦点は取消 */}
       <Button
         kind="danger"
@@ -187,8 +200,11 @@ export function DrillControls({
         </span>
       )}
       {moved !== null && !stepping && !refreshing && (
-        <span role="status" className="text-sm tabular-nums" data-moved={moved}>
-          <span className="text-muted">{CLOCK_LABELS.moved}</span> <span className="font-bold">{movedText(moved)}</span>
+        <span role="status" className="text-sm tabular-nums" data-moved={moved.to - moved.from}>
+          <span className="text-muted">{CLOCK_LABELS.moved}</span> <span className="font-bold">{movedText(moved.to - moved.from)}</span>{" "}
+          <span className="text-muted" data-moved-span>
+            {minuteText(moved.from)} → {minuteText(moved.to)}
+          </span>
         </span>
       )}
       {(stepping || refreshing) && <Loader72 label={WAIT_LABELS.think} size={18} on="base" className="text-sm text-muted" />}

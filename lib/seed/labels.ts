@@ -25,10 +25,16 @@ export const LIMIT_LABELS = {
 
 /** 種の事業所の「発災開始」（T153、lib/seed/start.ts）の言葉 */
 export const START_LABELS = {
-  /** ボタンと確認の窓の題 */
+  /** ボタンと確認の窓の決める方（T166。前の窓の「開始」「取消」は読み違えられた） */
   start: "発災開始",
-  /** 確認の窓の決める方 */
-  ok: "開始",
+  /** 確認の窓の題 */
+  title: "発災確認",
+  /** 確認の窓のやめる方 */
+  stay: "平時維持",
+  /** 開始のあとの事業所の画面の頭の知らせ */
+  done: "発災中",
+  /** 知らせの横の担当一覧への入口 */
+  toList: "担当一覧",
   /** ボタンの横の小さな 1 行と、確認の窓の本文 */
   scene: "想定 大雨",
 } as const;
@@ -36,6 +42,7 @@ export const START_LABELS = {
 /** 確認の窓の箇条（入る物）。停電の町と本人の名前は種から（lib/seed/demo.ts） */
 export function startDetails(towns: readonly string[], redName: string): string[] {
   return [
+    "現在 平時",
     "警戒レベル 4",
     `停電 地区（${towns.join("・")}）`,
     `安否 ${redName} 赤・録音`,

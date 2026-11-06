@@ -58,6 +58,7 @@ export {
   PaperAirplaneIcon as SendIcon, // 送信（アンケートの答え）
   PencilSquareIcon as EditIcon, // 編集（AI の下書きを直す）
   PhoneIcon, // 電話
+  PauseIcon, // 自動進行を止める（T166）
   PlayIcon, // 再生・開始
   PlusIcon as AddIcon, // 追加（人でない物）
   PrinterIcon as PrintIcon, // 印刷

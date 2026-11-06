@@ -37,7 +37,8 @@ type Names = Readonly<Record<string, string>>;
 const TURN_TONES: Record<DrillTurn["color"], StateTone> = { red: "urgent", green: "ok", unknown: "unknown" };
 const TURN_LABELS: Record<DrillTurn["color"], string> = { red: COLOR_LABELS.red, green: COLOR_LABELS.green, unknown: COLOR_LABELS.gray };
 
-type Common = { names: Names; fiction?: FictionKind; refused?: Refused; voiceOf?: VoiceOf };
+/** live は進行中の訓練（頼み事の印を押せる。T166。終わった訓練・再生は文字のまま） */
+type Common = { names: Names; fiction?: FictionKind; refused?: Refused; voiceOf?: VoiceOf; live: boolean };
 
 export function DrillLog({
   ticks,
@@ -75,13 +76,13 @@ export function DrillLog({
 }) {
   const log = buildDrillLog(ticks, actions, { finished, ...(calls ? { calls } : {}) });
   const base = timeBaseOf(startedAt, night);
-  const c: Common = { names, fiction, refused, voiceOf };
+  const c: Common = { names, fiction, refused, voiceOf, live: !finished };
   return (
     <LogTabs
       label={LOG_LABELS.tabs}
       initial={initial}
       items={[
-        { tab: "occur", label: LOG_LABELS.occur, count: log.occur.length },
+        { tab: "occur", label: LOG_LABELS.occurTab, count: log.occur.length },
         { tab: "know", label: LOG_LABELS.know, count: log.know.length },
         { tab: "act", label: LOG_LABELS.act, count: log.act.length },
       ]}
@@ -284,7 +285,7 @@ function ReplyItem({ call, c, lead }: { call: CallRecord; c: Common; lead: React
         </span>
         <span className="text-xs text-muted">{callSpeaker(call)}</span>
       </div>
-      <TalkFold lines={lines} speaker={callSpeaker(call)} />
+      <TalkFold lines={lines} speaker={callSpeaker(call)} askPerson={c.live ? call.person : null} />
     </li>
   );
 }
@@ -310,7 +311,7 @@ function CallActItem({ call, c }: { call: CallRecord; c: Common }) {
         </span>
         {call.talkEnd != null && <span className="text-xs text-muted">{TALK_UI.ended}</span>}
       </div>
-      <TalkFold lines={call.talk ?? []} speaker={callSpeaker(call)} />
+      <TalkFold lines={call.talk ?? []} speaker={callSpeaker(call)} askPerson={c.live ? call.person : null} />
     </li>
   );
 }
@@ -351,8 +352,8 @@ function HeardItem({ a, c, lead }: { a: ActionRecord; c: Common; lead?: React.Re
         )}
       </div>
       {r.speech && <Bubble speaker={callee ?? ""} text={r.speech} ai={r.speechAi} voice={c.voiceOf?.(a.id) ?? null} />}
-      {r.talk && <TalkFold lines={r.talk} speaker={callee ?? ""} />}
-      {r.visit && <VisitLine visit={r.visit} />}
+      {r.talk && <TalkFold lines={r.talk} speaker={callee ?? ""} askPerson={c.live ? a.person : null} />}
+      {r.visit && <VisitLine visit={r.visit} askPerson={c.live ? a.person : null} />}
     </li>
   );
 }
@@ -374,6 +375,7 @@ function ActList({ log, c, undo, last, base }: { log: Log; c: Common; undo?: Und
               fiction={c.fiction}
               refused={c.refused}
               base={base}
+              live={c.live}
               {...(undo && r.a.id === last ? { undo } : {})}
             />
           </Fragment>
