@@ -237,7 +237,7 @@ export function factHits(outcome: RunOutcome, people: Readonly<Record<string, Fa
     const o = world.outage;
     const end = Math.max(...r.ticks.map((x) => Math.round(x.hour * 60)), 0);
     for (const [person, p] of Object.entries(people)) {
-      if (!o || !inOutage(world, p) || !outcome.plan.participants.includes(person)) continue;
+      if (!o || !inOutage(world, p) || !(outcome.plan.participants ?? [person]).includes(person)) continue;
       for (const d of p.plan.devices) {
         const s = p.plan.spares.find((x) => x.category === d.category);
         if (d.hours === null || s?.hours == null) continue;

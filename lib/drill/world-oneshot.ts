@@ -27,7 +27,7 @@ import { fitKindOf, fitText, profileOf } from "./fit.ts";
 import { EVENT_LABELS } from "./event-catalog.ts";
 import { reportersOf } from "./persona.ts";
 import { quietPersonEvent } from "./quiet-event.ts";
-import { factLines, factsOf, issuedBlock, planLines, planOf, supplyAllowed, type Plan } from "./person-facts.ts";
+import { factLines, factsOf, issuedBlock, placeOfState, planLines, planOf, supplyAllowed, type Plan } from "./person-facts.ts";
 import type { WorldState, WorldVia } from "./scenarios.ts";
 import {
   FAREWELL_MAX,
@@ -421,6 +421,10 @@ export function applyContext(input: WorldInput, cast: WorldCast, via: WorldVia):
     endings: cast.endings,
     // T130: 業者の巡回（届く物）は、その人への手か計画（業者の約束）があるときだけ
     supplyOk: (person: string) => supplyAllowed(person, input.actions, cast.plans?.get(person) ?? null),
+    awayNow: (person: string) => {
+      const place = placeOfState(input.people[person] ?? null);
+      return place === "shelter" || place === "other";
+    },
     // T167: まだ出来事の無い人に、表の人ごとの出来事を 1 つ（Claude を呼ばない）
     ...(cast.sources
       ? {

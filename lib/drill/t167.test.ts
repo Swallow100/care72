@@ -105,6 +105,8 @@ describe("停電の戻りと家の電気", () => {
     expect(fixed.text).toContain("届いた電源で動いています");
     expect(fixed.text).not.toContain("電気が戻");
     expect(sentenceFix("今は電気で動いています。", ctx).text).toContain("届いた電源で動");
+    // これからの話は直さない
+    expect(sentenceFix("停電が復旧したら連絡します。", ctx).rules).not.toContain("power_said");
     const hits: string[] = [];
     expect(dropFactSlips("電気が戻りました。", ctx, (r) => hits.push(r))).toContain("届いた電源");
     expect(hits).toContain("power_said");

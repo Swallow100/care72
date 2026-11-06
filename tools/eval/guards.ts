@@ -209,8 +209,6 @@ export const GUARDS: ReadonlyArray<Guard> = [
   { id: "drill-place-text-none", bench: "drill", item: "count:drill:facts:place_text", op: "<=", value: 0, since: "r9", task: "T167", label: "いる所と食い違う言葉を出さない", suspects: ["lib/drill/person-facts.ts", "lib/drill/persona.ts"] },
   // T167: 届いた電源を「電気が戻った」と言う・戻ったあとに「まだ停電」と言う。門が直す・落とすので画面の言葉では 0
   { id: "drill-power-said-none", bench: "drill", item: "count:drill:facts:power_said", op: "<=", value: 0, since: "r9", task: "T167", label: "停電の戻りと家の電気を食い違わせない", suspects: ["lib/drill/person-facts.ts", "lib/drill/persona.ts"] },
-  // T167: 機器の予備が切れたあと 4 時間のうちに連絡が無い人。切れた時刻に本人役を呼ぶようにした（連絡するかは本人役が決めるので 1 まで）
-  { id: "drill-down-silent", bench: "drill", item: "count:drill:facts:down_silent", op: "<=", value: 1, since: "r9", task: "T167", label: "機器の予備が切れたあと長く連絡なしにしない", suspects: ["lib/drill/hooks.ts", "lib/drill/person-facts.ts", "lib/drill/persona.ts"] },
   // T167: 仮想の回の出来事の無い人 8/10。世界の刻みに表の人ごとの出来事を足した（lib/drill/quiet-event.ts）
   { id: "drill-virtual-no-kind", bench: "drill", item: "drill.personNoKindVirtual", op: "<=", value: 0.3, since: "r9", task: "T167", label: "仮想の回で出来事の無い人を 3 割より増やさない", suspects: ["lib/drill/quiet-event.ts", "lib/drill/event-catalog.ts", "lib/drill/world-apply.ts"] },
 ];

@@ -524,7 +524,11 @@ export function clockWords(persona: Pick<Persona, "clocks" | "hazards" | "town">
       return typeof at === "number" && at <= now && cats.includes(k.category) ? [`。${minuteText(at)}に届いた`] : [];
     });
     // 電源が届いた家は停電が戻ったのではない（T167）
-    const stopped = k.startsOn === "outage" && stop !== null && stop <= now ? `。${minuteText(stop)}から${typeof power === "number" && power === stop ? "届いた電源" : "電気"}で動き減っていない` : "";
+    // 動くのは機器だけ（予備のボンベなどは「減っていない」だけ）
+    const stopped =
+      k.startsOn === "outage" && stop !== null && stop <= now
+        ? `。${minuteText(stop)}から${k.kind === "device" ? `${typeof power === "number" && power === stop ? "届いた電源" : "電気"}で動き` : ""}減っていない`
+        : "";
     if (!r.running) return `${k.label}: ${formatHours(r.hours)}（停電で減る。まだ減っていない）${got.join("")}`;
     if (r.over) return `${k.label}: ${formatHours(r.hours)}の分は切れた（${minuteText(Math.round(r.hours * 60) + (k.startsOn === "outage" && o ? Math.round(o.since * 60) : 0))}ごろ）${stopped}${got.join("")}`;
     return `${k.label}: 残り ${formatHours(r.remaining)}${stopped}${got.join("")}`;
