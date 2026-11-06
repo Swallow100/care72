@@ -8,7 +8,7 @@
 // - 訪問の様子は見て分かる事だけ。体の具合の言い切り・人の生き死にの語は捨てる
 
 import type { ContactKind } from "../db/types.ts";
-import type { ActionResult, HeardSignal } from "./action-types.ts";
+import type { ActionRecord, ActionResult, HeardSignal } from "./action-types.ts";
 import type { DrillIncident } from "./incident-types.ts";
 import type { PersonState } from "./persona-types.ts";
 import { ASK_KINDS, type AskKind, type DrillKind, type WorldState } from "./scenarios.ts";
@@ -109,6 +109,11 @@ export type TalkTurn = {
   text?: string;
   /** 掛かってきた電話の往復（T127、lib/drill/incoming-talk.ts）。本人役に「相手から掛けてきた電話の続き」と渡す */
   incoming?: boolean;
+  /**
+   * この人への手（メモと自由の文を落とした物、T158）。帳面（訪問・来た人・ケアマネに言われた事）を刻みの道と同じに引く。
+   * 前は通話の往復だけ手の記録を渡さず、帳面のいる所・来た人が刻みの道と食い違った
+   */
+  actions?: ReadonlyArray<ActionRecord>;
 };
 
 /** said はケアマネの行に残す文（決まった問いの言葉か、伏せて名前に戻した自由の文）。called は Claude を呼んだか（counts.call に数える） */

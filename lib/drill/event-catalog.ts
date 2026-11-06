@@ -169,6 +169,8 @@ export type SelfFacts = {
 const has = (s: EventSource, c: ClockCategory) => s.clocks.some((k) => k.category === c);
 const contact = (s: EventSource, kinds: ReadonlyArray<ContactKind>) => s.contacts.some((c) => kinds.includes(c.kind));
 const marked = (w: WorldState, p: string, k: keyof PersonMarks) => w.marks[p]?.[k] !== undefined;
+/** 家にいると連絡のあった人（緑の家、赤の「家にいる」。T158） */
+const atHomeNow = (s: PersonState | null) => (s?.color === "green" ? s.whereNow === "home" : s?.color === "red" && s.atHome === true);
 /** 家の外（避難所・その他）にいると連絡のあった人 */
 const away = (s: PersonState | null) => s?.whereNow === "shelter" || s?.whereNow === "other";
 /** 本人の家の電話（scenarios.ts の phoneOf と同じ。値で読まないので写した） */
@@ -232,7 +234,8 @@ const ROWS: ReadonlyArray<EventRow> = [
     label: "持ち出し",
     scope: "person",
     words: "家族・本人が栄養剤を持ち出し忘れた（経管栄養の人）",
-    eligible: (s, p, w) => has(s, "tube_feeding") && !marked(w, p, "supplyLeft"),
+    // 家にいると連絡のあった人には出さない（T158。持ち出し忘れは家を出た後の事。評価の 6 回目で、家にいる人が「家に置いてきた」と言った）
+    eligible: (s, p, w, st) => has(s, "tube_feeding") && !marked(w, p, "supplyLeft") && !atHomeNow(st),
     build: (t) => one({ kind: "supply_left" }, "家族が栄養剤を持ち出し忘れた", t.person),
     text: () => "家族が栄養剤を持ち出し忘れた",
     basis: ANY,

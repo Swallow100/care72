@@ -82,7 +82,7 @@ import { HOME_TOWN_MAX } from "./self.ts";
 
 export { isStaffCount, STAFF_MAX } from "./options.ts";
 import { fallbackIncidents } from "./world-apply.ts";
-import { addGated, noteIssued, type GateLog } from "./person-facts.ts";
+import { addGated, carryPlace, noteIssued, type GateLog } from "./person-facts.ts";
 
 const HOUR_MS = 3_600_000;
 
@@ -334,7 +334,9 @@ function fixedToTurn(f: FixedTurn, tickHour: number): DrillTurn {
   };
 }
 
-function personStateOf(t: DrillTurn): PersonState {
+function personStateOf(t: DrillTurn, prev: PersonState | null = null): PersonState {
+  // 赤の「家にいない」で、前から避難所と分かっている時だけ残す（T158。ほかは連絡の欄から同じ所が引ける）
+  const known = t.color === "red" && t.atHome === false ? carryPlace(prev, t) : null;
   return {
     color: t.color,
     source: t.source,
@@ -346,6 +348,7 @@ function personStateOf(t: DrillTurn): PersonState {
     atHome: t.atHome,
     canMove: t.canMove,
     hasMedicine: t.hasMedicine,
+    ...(known === "shelter" ? { placeKnown: known } : {}),
   };
 }
 
@@ -365,7 +368,7 @@ export function foldTick(
     tick.incidents,
   );
   const people = { ...state.people };
-  for (const t of [...tick.turns].sort((a, b) => a.at - b.at)) people[t.person] = personStateOf(t);
+  for (const t of [...tick.turns].sort((a, b) => a.at - b.at)) people[t.person] = personStateOf(t, people[t.person] ?? null);
   const clock = isClock(state);
   const finished = clock ? tick.finished === true : tick.step >= last;
   return {

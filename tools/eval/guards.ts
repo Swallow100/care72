@@ -59,6 +59,30 @@ export const GUARDS: ReadonlyArray<Guard> = [
     label: "画面の（氏名）が名前の無い所に出ない",
     suspects: ["lib/pseudonym/forms.ts", "lib/pseudonym/index.ts"],
   },
+  // T158: 評価の 6 回目で、予備で動いているのに残りの数を予備と言わない言葉が 4（r6 の記録に今の台を当てた数）。門が「予備の」を足すので画面の言葉では 0
+  {
+    id: "drill-spare-said",
+    bench: "drill",
+    item: "count:drill:facts:spare_unsaid",
+    op: "<=",
+    value: 0,
+    since: "r7",
+    task: "T158",
+    label: "予備で動いている残りの数を予備と言わずに出さない",
+    suspects: ["lib/drill/person-facts.ts"],
+  },
+  // T158: 家に置いてきた栄養剤の残りの時間を言う言葉が 1。門が落とすので画面の言葉では 0
+  {
+    id: "drill-left-remain-none",
+    bench: "drill",
+    item: "count:drill:facts:left_remain",
+    op: "<=",
+    value: 0,
+    since: "r7",
+    task: "T158",
+    label: "家に置いてきた栄養剤の残りの時間を言わない",
+    suspects: ["lib/drill/person-facts.ts", "lib/drill/persona.ts"],
+  },
 ];
 
 /** 守りの確かめ。values は回の項目の数、counts は同じ原因の指摘の数（causeCounts）。数の無い項目は確かめない */

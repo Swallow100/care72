@@ -22,7 +22,7 @@ import { clampClock } from "./actions.ts";
 import { capReached } from "./clock.ts";
 import { drillScope, loadDrillRow, stateOfRow, type DrillScope } from "./db.ts";
 import { canTalk, isTalkAsk, TALK_TEXT_MAX, TALK_UI, talkRounds, type TalkAsk, type TalkHook, type TalkLine } from "./dialogue.ts";
-import { drillEnded, fitOf, isNight, type ActionResult } from "./engine.ts";
+import { drillEnded, fitOf, isNight, withoutMemo, type ActionResult } from "./engine.ts";
 import { fitKindOf } from "./fit.ts";
 import { drillError, isDrillId } from "./http.ts";
 import { talkRound } from "./talk-turn.ts";
@@ -84,6 +84,7 @@ export async function talkDrill(
             ...(isNight(before) ? { night: true } : {}),
             first: r.speech,
             lines: r.talk ?? [],
+            actions: withoutMemo(before.actions.filter((a) => a.person === person)),
             ...(ask ? { ask } : { text: text ?? "" }),
           })
         : null;

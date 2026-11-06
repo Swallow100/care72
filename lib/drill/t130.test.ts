@@ -183,7 +183,8 @@ describe("いる所の門", () => {
       persona,
       answer({ contactsCaremanager: true, from: "娘", location: "shelter", speech: "避難所に着きました。今夜は家で過ごします。" }),
     );
-    expect(t.saying).toBe("避難所に着きました。");
+    // T158: 前の連絡でもう避難所と言った人の「着きました」は「避難所にいます」に（着いた知らせを 2 度言わない）
+    expect(t.saying).toBe("避難所にいます。");
   });
 });
 

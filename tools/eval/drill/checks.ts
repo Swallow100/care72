@@ -23,6 +23,7 @@ import { findLeaks, MASK_MARKS, NAME_MARK, restoreText, type PseudonymKey } from
 import { birthIn } from "../shapes.ts";
 import { DRILL_START, type LooseAction, type LooseTurn, type RunOutcome } from "./drive.ts";
 import { factHits, type FactPerson } from "./facts-check.ts";
+import { talkHits, type TalkNumbers } from "./talk-check.ts";
 import type { AiRecord, LogRecord } from "./record.ts";
 import { PERSONA_ROLES, type Role } from "./roles.ts";
 
@@ -81,7 +82,7 @@ export function hurtIn(text: string): boolean {
 // ---------- 引っかかった所 ----------
 
 export type CheckHit = {
-  check: "banned" | "shape" | "leak" | "overmask" | "contradiction" | "time_odds" | "stop" | "op_failed" | "budget" | "terms" | "fit" | "free" | "facts";
+  check: "banned" | "shape" | "leak" | "overmask" | "contradiction" | "time_odds" | "stop" | "op_failed" | "budget" | "terms" | "fit" | "free" | "facts" | "talk";
   rule: string;
   /** banned: raw（モデルの生の返事）か shown（画面に出た物） */
   where?: "raw" | "shown" | "sent";
@@ -836,7 +837,12 @@ export type RunNumbers = {
    * 人ごとの事実の帳面との矛盾（T130、facts-check.ts）。checked は見た数、hits は矛盾の数（門が効いていれば 0 のはず）、byRule は決まりごと、
    * gated は門が落とした・直した数（drills.world の gated。決まりごと）
    */
-  facts?: { checked: number; hits: number; byRule: Record<string, number>; gated: Record<string, number> };
+  facts?: { checked: number; hits: number; byRule: Record<string, number>; gated: Record<string, number>; words?: number };
+  /**
+   * 通話の往復（T158、talk-check.ts）。repeats は同じ通話の前の返事とほぼ同じ返事、placeDrift は同じ通話の中のいる所の食い違い、
+   * repeatRaw は往復の生の返事が送った「それまでの話」とほぼ同じ数（門の前）
+   */
+  talk?: TalkNumbers;
   /** 本人役の言葉が文の途中で終わった数（T139、cutHits）。checked は見た言葉の数 */
   cut?: { checked: number; hits: number };
   /** 画面に出た（氏名）のうち元の語に名前が無かった数（T159、overmaskHits）。checked は突き合わせられた画面の（氏名）の数 */
@@ -850,6 +856,27 @@ const tally = (xs: ReadonlyArray<string>): Record<string, number> => {
   for (const x of xs) out[x] = (out[x] ?? 0) + 1;
   return out;
 };
+
+/**
+ * 人ごとの事実（台帳・時計・前の連絡）と本人役の言葉の食い違いの型（T158。facts.words に数える）。いる所の言葉・電池の残りと流れ・
+ * 一度起きた事・家に置いてきた物・同居と家族・声・止まった機器。安否の色やいる所の入れ替わり（place_flip）と出来事の重なりは入れない
+ */
+export const FACT_WORD_RULES: ReadonlySet<string> = new Set([
+  "place_text",
+  "with_arrived",
+  "absent_kin",
+  "ask_after_power",
+  "out_after_power",
+  "spare_without_plan",
+  "calm_while_down",
+  "unknown_while_with",
+  "remain_mismatch",
+  "old_news",
+  "voice_lost",
+  "spare_unsaid",
+  "left_remain",
+  "clock_drift",
+]);
 
 export const DRILL_CAP = 150;
 export const DAY_LIMIT = 200;
@@ -868,6 +895,7 @@ export function checkRun(records: ReadonlyArray<LogRecord>, outcome: RunOutcome,
   const facts = ctx.facts ? factHits(outcome, ctx.facts) : { checked: 0, hits: [] as CheckHit[] };
   const cut = cutHits(outcome);
   const overmask = overmaskHits(records, outcome, ctx);
+  const talk = talkHits(outcome, records);
   const ai = records.filter((r): r is AiRecord => r.type === "ai" && (r as AiRecord).role !== "judge");
   // 1 訓練の数え（画面の「AI 残」から。10 分版は数えないので本人役と監督の呼び出しの数）
   const drillCounted = outcome.callsLeft !== null ? DRILL_CAP - outcome.callsLeft : ai.filter((a) => a.role === "persona" || a.role === "director" || a.role === "world" || a.role === "world_room").length;
@@ -927,7 +955,14 @@ export function checkRun(records: ReadonlyArray<LogRecord>, outcome: RunOutcome,
       dropped: free.filter((h) => h.rule === "dropped").length,
       canMismatch: free.filter((h) => h.rule === "can_mismatch").length,
     },
-    facts: { checked: facts.checked, hits: facts.hits.length, byRule: tally(facts.hits.map((h) => h.rule)), gated: { ...(outcome.gated ?? {}) } },
+    facts: {
+      checked: facts.checked,
+      hits: facts.hits.length,
+      byRule: tally(facts.hits.map((h) => h.rule)),
+      gated: { ...(outcome.gated ?? {}) },
+      words: facts.hits.filter((h) => FACT_WORD_RULES.has(h.rule)).length,
+    },
+    talk: talk.numbers,
     cut: { checked: cut.checked, hits: cut.hits.length },
     overmask: { checked: overmask.checked, hits: overmask.hits.length },
     timing: {
@@ -945,5 +980,5 @@ export function checkRun(records: ReadonlyArray<LogRecord>, outcome: RunOutcome,
       unpricedCalls: ai.filter((a) => a.costUsd === null && a.role !== "world_room").length,
     },
   };
-  return { hits: [...banned, ...leaks, ...shape, ...odds.hits, ...contra, ...stops, ...terms, ...fit.hits, ...free, ...facts.hits, ...cut.hits, ...overmask.hits, ...budgetHits], numbers };
+  return { hits: [...banned, ...leaks, ...shape, ...odds.hits, ...contra, ...stops, ...terms, ...fit.hits, ...free, ...facts.hits, ...cut.hits, ...overmask.hits, ...talk.hits, ...budgetHits], numbers };
 }

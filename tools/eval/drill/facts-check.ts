@@ -13,7 +13,9 @@ import { EVENT_CATALOG, isInjectKind } from "../../../lib/drill/event-catalog.ts
 import type { DrillScenario } from "../../../lib/db/types.ts";
 import { eventHour, scenarioOf } from "../../../lib/drill/scenarios.ts";
 import {
+  amountMinutes,
   canLeaveHome,
+  carryPlace,
   factsOf,
   helpedFlip,
   KIND_REPEAT_MAX,
@@ -27,6 +29,7 @@ import {
   slipContextOf,
   supplyAllowed,
   SUPPLY_ROLES,
+  wholeContext,
   type GateRule,
   type Plan,
 } from "../../../lib/drill/person-facts.ts";
@@ -60,18 +63,23 @@ function inOutage(world: WorldState, p: FactPerson | undefined): boolean {
   return p.hazards.some((h) => h.kind === a.hazard && (h.depthM ?? 0) >= a.minDepthM);
 }
 
-const stateOf = (u: LooseTurn & { at: number }): PersonState => ({
-  color: (u.color as PersonState["color"]) ?? "unknown",
-  source: (u.source as PersonState["source"]) ?? "agent",
-  whereNow: (u.whereNow as PersonState["whereNow"]) ?? null,
-  at: u.at,
-  saying: u.saying ?? null,
-  doing: u.doing ?? null,
-  injured: u.injured ?? null,
-  atHome: u.atHome ?? null,
-  canMove: u.canMove ?? null,
-  hasMedicine: u.hasMedicine ?? null,
-});
+/** 安否 1 つの本人の様子。前の様子からいる所を引き継ぐ（T158。engine の本人の様子と同じ carryPlace） */
+const stateOf = (u: LooseTurn & { at: number }, prev: PersonState | null = null): PersonState => {
+  const s: PersonState = {
+    color: (u.color as PersonState["color"]) ?? "unknown",
+    source: (u.source as PersonState["source"]) ?? "agent",
+    whereNow: (u.whereNow as PersonState["whereNow"]) ?? null,
+    at: u.at,
+    saying: u.saying ?? null,
+    doing: u.doing ?? null,
+    injured: u.injured ?? null,
+    atHome: u.atHome ?? null,
+    canMove: u.canMove ?? null,
+    hasMedicine: u.hasMedicine ?? null,
+  };
+  const known = s.color === "red" && s.atHome === false ? carryPlace(prev, s) : null;
+  return known === "shelter" ? { ...s, placeKnown: known } : s;
+};
 
 const cut = (t: string) => Array.from(t).slice(0, 40).join("");
 
@@ -124,6 +132,18 @@ export function factHits(outcome: RunOutcome, people: Readonly<Record<string, Fa
       if (e.person && mark === "found") foundMarks.push({ person: e.person, minute: Math.round((e.at ?? t.hour) * 60) });
     }
   }
+  // 栄養剤の持ち出し忘れの印（T158。終わりの世界では人が着くと消えているので、出来事と到着から作る）
+  const leftMarks: Array<{ person: string; minute: number }> = [];
+  for (const t of r.ticks) {
+    for (const e of t.incidents) {
+      const k = e.change?.kind;
+      if (e.person && (k === "supply_left" || (k === "mark" && (e.change as { mark?: unknown }).mark === "supplyLeft"))) leftMarks.push({ person: e.person, minute: Math.round((e.at ?? t.hour) * 60) });
+    }
+  }
+  const leftAt = (person: string, minute: number): boolean =>
+    leftMarks.some(
+      (m) => m.person === person && m.minute <= minute && !(world.arrivals ?? []).some((a) => a.person === person && a.arrived && a.arrive > m.minute && a.arrive <= minute),
+    );
   const awayAt = (person: string, minute: number): boolean =>
     awayMarks.some(
       (m) =>
@@ -154,13 +174,13 @@ export function factHits(outcome: RunOutcome, people: Readonly<Record<string, Fa
           const ok = leaving ? canLeaveHome(f) : RETURNED.test(words.normalize("NFKC"));
           if (!ok) hit("place_flip", person, minute, `${prevPlace} → ${place}`);
         }
-        const ctx = { ...slipContextOf(f, place ?? f.place?.where ?? null), ...(u.source === "family" ? { kin: null } : {}) };
+        const ctx = { ...slipContextOf(f, place ?? f.place?.where ?? null), ...(u.source === "family" ? { kin: null } : {}), ...(leftAt(person, minute) ? { leftBehind: true } : {}) };
         for (const [field, text] of [["saying", u.saying], ["doing", u.doing]] as const) {
           if (!text) continue;
           for (const r of sentenceHits(text, ctx)) hit(r.rule, person, minute, `${field}: ${cut(r.text)}`);
         }
       }
-      prev = stateOf(u);
+      prev = stateOf(u, prev);
     }
   }
 
@@ -172,7 +192,7 @@ export function factHits(outcome: RunOutcome, people: Readonly<Record<string, Fa
     const minute = res.atMinute;
     const prev = lastStateBefore(byPerson.get(person) ?? [], minute);
     const f = factsAt(person, prev, minute);
-    const ctx = { ...slipContextOf(f), kin: null };
+    const ctx = { ...slipContextOf(f), kin: null, ...(leftAt(person, minute) ? { leftBehind: true } : {}) };
     const texts: Array<[string, string | null | undefined]> = [
       ["call.speech", res.speech],
       ...(res.talk ?? []).filter((l) => l.who !== "cm").map((l): [string, string | undefined] => ["talk", l.text]),
@@ -187,6 +207,31 @@ export function factHits(outcome: RunOutcome, people: Readonly<Record<string, Fa
     }
     const asks = [...((res.talk ?? []) as Array<{ ask?: unknown; asks?: unknown }>).flatMap((l) => (Array.isArray(l.asks) ? l.asks : [])), ...(res.visit?.asks ?? [])];
     if (powerBack(f) && asks.some((k) => k === "power" || k === "battery")) hit("ask_after_power", person, minute, "頼み事 電源・電池");
+  }
+
+  // 掛かってきた電話の往復の言葉（T158。往復は手の記録の外。drive.ts が集めた incoming。着信に出た時刻の帳面で）
+  for (const c of outcome.incoming ?? []) {
+    if (!c.person) continue;
+    const prev = lastStateBefore(byPerson.get(c.person) ?? [], c.minute);
+    const f = factsAt(c.person, prev, c.minute);
+    const ctx = { ...slipContextOf(f), kin: null, ...(leftAt(c.person, c.minute) ? { leftBehind: true } : {}) };
+    for (const l of c.lines) {
+      if (l.who === "cm" || !l.text || !l.ai) continue;
+      checked += 1;
+      for (const s of sentenceHits(l.text, ctx)) hit(s.rule, c.person, typeof l.minute === "number" ? l.minute : c.minute, `incoming: ${cut(s.text)}`);
+    }
+  }
+
+  // 電池の残りの数の流れ（T158）。同じ人の言った残りから終わる時刻を出し、前に言った物と食い違う（予備に替えた・電気が戻ったと言わずに）
+  for (const [person, segs] of batterySaid(byPerson, r.actions as LooseAction[])) {
+    for (const said of segs) for (let i = 1; i < said.length; i++) {
+      checked += 1;
+      const a = said[i - 1];
+      const b = said[i];
+      if (b.spare && !a.spare) continue;
+      const gap = Math.abs(b.end - a.end);
+      if (gap > Math.max(CLOCK_DRIFT_MIN, (a.end - a.minute) * 0.25)) hit("clock_drift", person, b.minute, `${a.minute} 分に残り ${a.end - a.minute} 分 → ${b.minute} 分に残り ${b.end - b.minute} 分`);
+    }
   }
 
   // 手も表の行も計画も無い業者の巡回（世界の到着。監督・世界が積んだ物は from が director・world）
@@ -251,15 +296,71 @@ export function factHits(outcome: RunOutcome, people: Readonly<Record<string, Fa
   return { checked, hits };
 }
 
-/** 帳面の門の決まりのほかに、台が数える型（T141） */
-export type FactExtraRule = "lost_unresolved" | "area_repeat";
+/** 帳面の門の決まりのほかに、台が数える型（T141。clock_drift は T158） */
+export type FactExtraRule = "lost_unresolved" | "area_repeat" | "clock_drift";
+
+/** 電池の残りの数の流れの食い違いと見る差（分）の下限（T158） */
+export const CLOCK_DRIFT_MIN = 30;
+/** 台が見る電池の話と残りの数（台が足した目安。本人役の門 person-facts.ts の物より広め） */
+const BATTERY_WORDS = /電池|バッテリー|予備|ボンベ|呼吸器|濃縮器|吸引器|酸素/;
+const NOT_BATTERY = /薬|栄養剤|透析|インスリン|水|食べ|ミルク|食事/;
+const REMAIN_SAID = /(?:あと|残り(?:は|が)?|もう)\s*((?:約|およそ)?\s*(?:\d+(?:\.\d+)?|[一二三四五六七八九十]+)\s*(?:時間|分)半?)|((?:約|およそ)?\s*(?:\d+(?:\.\d+)?|[一二三四五六七八九十]+)\s*(?:時間|分)半?)(?:ほど|くらい|ぐらい|程度)?(?:しか|で|は)?(?:もち|持ち|もた|持た|切れ|なくな|無くな)/u;
+const SPARE_SAID = /予備|替え|換え|交換|(?:に|へ)(?:かえ|変え)/;
+/** 電気で動いている・切れた（残りの数の流れを切る言い方） */
+const FLOW_RESET = /電気(?:が|で)?(?:戻|動|来)|電源(?:が|で)(?:届|動|つな)|切れ(?:ました|たまま|てしまい)/;
+
+/** 本人ごとの電池の残りを言った所（発災からの分と、終わる時刻の見込み）。AI の言葉だけ */
+function batterySaid(
+  byPerson: ReadonlyMap<string, ReadonlyArray<LooseTurn & { at: number }>>,
+  actions: ReadonlyArray<LooseAction>,
+): Map<string, Array<Array<{ minute: number; end: number; spare: boolean }>>> {
+  const raw = new Map<string, Array<{ minute: number; text: string }>>();
+  const add = (person: string, minute: number, text: string | null | undefined) => {
+    if (text) raw.set(person, [...(raw.get(person) ?? []), { minute, text }]);
+  };
+  for (const [person, turns] of byPerson) for (const u of turns) if (u.ai) add(person, Math.round(u.at * 60), u.saying);
+  for (const a of actions) {
+    const res = a.result;
+    if (!a.person || !res || typeof res.atMinute !== "number") continue;
+    if (res.speechAi !== false) add(a.person, res.atMinute, res.speech);
+    for (const l of (res.talk ?? []) as Array<{ who?: string; text?: string; ai?: boolean; minute?: number }>) if (l.who !== "cm" && l.ai) add(a.person, typeof l.minute === "number" ? l.minute : res.atMinute, l.text);
+  }
+  const out = new Map<string, Array<Array<{ minute: number; end: number; spare: boolean }>>>();
+  for (const [person, xs] of raw) {
+    const segs: Array<Array<{ minute: number; end: number; spare: boolean }>> = [[]];
+    for (const x of [...xs].sort((p, q) => p.minute - q.minute)) {
+      // 電池の話は次の文にも続く（「電池に切り替わった。3 時間しかもたない」。ほかの話の文で切れる）
+      let topic = false;
+      let spare = false;
+      for (const s of x.text.normalize("NFKC").split(/(?<=[。！？!?])/u)) {
+        // 電気で動いた・切れた後の数は前の流れと比べない
+        if (FLOW_RESET.test(s)) {
+          if (segs[segs.length - 1].length > 0) segs.push([]);
+          topic = false;
+          continue;
+        }
+        topic = BATTERY_WORDS.test(s) ? !NOT_BATTERY.test(s) : NOT_BATTERY.test(s) ? false : topic;
+        spare = topic && (spare || SPARE_SAID.test(s));
+        if (!topic) continue;
+        const m = s.match(REMAIN_SAID);
+        const phrase = m?.[1] ?? m?.[2];
+        const left = phrase ? amountMinutes(phrase) : null;
+        if (left === null) continue;
+        segs[segs.length - 1].push({ minute: x.minute, end: x.minute + left, spare });
+      }
+    }
+    out.set(person, segs.filter((g) => g.length > 1));
+  }
+  return out;
+}
 
 /**
  * 言葉の文ごとの帳面との食い違い（T141 で直せる物も数える: 前からの電池切れを新しい事のように言う・残りの数が帳面と違う）。
  * 門（lib/drill/person-facts.ts の dropFactSlips）と同じ物差しで、電池の話は次の文にも続くと見る
  */
-function sentenceHits(text: string, ctx: Parameters<typeof sentenceSlip>[1]): Array<{ rule: GateRule; text: string }> {
+function sentenceHits(text: string, ctx0: Parameters<typeof sentenceSlip>[1]): Array<{ rule: GateRule; text: string }> {
   const out: Array<{ rule: GateRule; text: string }> = [];
+  const ctx = wholeContext(text, ctx0);
   let battery = false;
   for (const s of text.split(/(?<=[。！？!?])/u)) {
     if (!s.trim()) continue;
@@ -275,6 +376,7 @@ function sentenceHits(text: string, ctx: Parameters<typeof sentenceSlip>[1]): Ar
 /** その分より前の、その人のいちばん新しい安否 */
 function lastStateBefore(turns: ReadonlyArray<LooseTurn & { at: number }>, minute: number): PersonState | null {
   let out: PersonState | null = null;
-  for (const u of turns) if (Math.round(u.at * 60) <= minute) out = stateOf(u);
+  // いる所は前の様子から引き継ぐ（T158。本人役の門が見る本人の様子と同じ）
+  for (const u of turns) if (Math.round(u.at * 60) <= minute) out = stateOf(u, out);
   return out;
 }

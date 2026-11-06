@@ -69,6 +69,13 @@ const meanOf = (xs: ReadonlyArray<number | null | undefined>): number | null => 
 // ---------- 訓練（tools/eval/drill の summary.json） ----------
 
 const runs = (s: DrillSummaryLike) => s.runs.map((r) => r.numbers);
+/** 通話の往復の比（T158。通話の数の無い前の回は null） */
+const talkFrac = (s: DrillSummaryLike, top: "repeats" | "repeatRaw", bottom: "replies" | "raw"): Raw => {
+  const ns = runs(s).filter((n) => n.talk);
+  if (ns.length === 0) return null;
+  const d = sumOf(ns.map((n) => n.talk![bottom]));
+  return d > 0 ? [sumOf(ns.map((n) => n.talk![top])), d] : null;
+};
 const judgeAxes = ["realism", "difficulty", "variety", "consistency", "learning"] as const;
 
 const DRILL: Item[] = [
@@ -88,6 +95,12 @@ const DRILL: Item[] = [
   { id: "drill.downPaths", bench: "drill", label: "不通の間 電話・伝言・押し", better: null, unit: "count", agg: "sum", seedOnly: true },
   { id: "drill.fitMisfit", bench: "drill", label: "想定に合わない物", better: "lower", unit: "count", agg: "sum", threshold: zero, drill: (s) => s.totals.fitMisfit ?? 0 },
   { id: "drill.factGated", bench: "drill", label: "帳面の門で落とした・直した数", better: null, unit: "count", agg: "sum", drill: (s) => s.totals.gated ?? 0 },
+  // T158: 人ごとの事実（台帳・時計・前の連絡）と本人役の言葉の食い違い、通話の往復の繰り返し・いる所の揺れ
+  { id: "drill.factWords", bench: "drill", label: "帳面と本人役の言葉の食い違い", better: "lower", unit: "count", agg: "sum", drill: (s) => sumOf(runs(s).map((n) => n.facts?.words ?? 0)) },
+  { id: "drill.clockDrift", bench: "drill", label: "電池の残りの数の流れの食い違い", better: "lower", unit: "count", agg: "sum", drill: (s) => sumOf(runs(s).map((n) => n.facts?.byRule.clock_drift ?? 0)) },
+  { id: "drill.talkRepeat", bench: "drill", label: "通話の前の返事とほぼ同じ返事", better: "lower", unit: "frac", agg: "sum", drill: (s) => talkFrac(s, "repeats", "replies") },
+  { id: "drill.talkRepeatRaw", bench: "drill", label: "往復の生の返事の繰り返し（門の前）", better: "lower", unit: "frac", agg: "sum", drill: (s) => talkFrac(s, "repeatRaw", "raw") },
+  { id: "drill.talkPlaceDrift", bench: "drill", label: "通話の中のいる所の食い違い", better: "lower", unit: "count", agg: "sum", drill: (s) => (runs(s).some((n) => n.talk) ? sumOf(runs(s).map((n) => n.talk?.placeDrift ?? 0)) : null) },
   { id: "drill.freeInner", bench: "drill", label: "自由対応 画面の内部の名前", better: "lower", unit: "count", agg: "sum", threshold: zero, drill: (s) => s.totals.freeInnerShown ?? 0 },
   { id: "drill.freeCan", bench: "drill", label: "自由対応 不可を「できる」（生の返事）", better: "lower", unit: "count", agg: "sum", drill: (s) => s.totals.freeCanMismatch ?? 0 },
   { id: "drill.bannedRaw", bench: "drill", label: "禁じた中身 本人役の生の返事", better: "lower", unit: "count", agg: "sum", drill: (s) => s.totals.bannedRaw },
@@ -98,6 +111,8 @@ const DRILL: Item[] = [
   { id: "drill.opFailed", bench: "drill", label: "失敗した要求", better: "lower", unit: "count", agg: "sum", drill: (s) => s.totals.opFailed + s.totals.exceptions },
   { id: "drill.worldNote", bench: "drill", label: "世界の部屋の代替・停止の印", better: "lower", unit: "count", agg: "sum", drill: (s) => s.totals.worldNote },
   { id: "drill.callsPerRun", bench: "drill", label: "AI の呼び出し（1 回の訓練）", better: null, unit: "count", agg: "mean", drill: (s) => s.totals.callsPerRun },
+  // T158: 1 訓練の上限 150 との比の最大（直しで呼び出しを増やさない）
+  { id: "drill.capRatioMax", bench: "drill", label: "1 訓練の上限 150 との比（最大）", better: "lower", unit: "rate", agg: "max", drill: (s) => s.totals.capRatioMax },
   { id: "drill.advanceP50", bench: "drill", label: "進める 1 回の待ち p50（秒）", better: "lower", unit: "sec", agg: "mean", drill: (s) => (s.totals.advanceP50 === null ? null : s.totals.advanceP50 / 1000) },
   { id: "drill.usd", bench: "drill", label: "訓練の実費の見込み（USD）", better: "lower", unit: "usd", agg: "sum", drill: (s) => s.totals.usdTotal },
 ];
