@@ -71,7 +71,7 @@ export const Title: React.FC<{ title: string; sub?: string }> = ({ title, sub })
  */
 /**
  * 左下の名札（S3 の作者の紹介）。大きな字の画面にしない（11/4）。字幕の帯の上、舞台の左に 2 行。
- * 1 行目は名前の代わり（作者　医学部の学生）、2 行目は理由（家族にケアマネージャー）。左の帯は表の強調と同じ 6px
+ * 1 行目は名前の代わり（作者　医学部の学生）、2 行目は理由（家族にケアマネジャー）。左の帯は表の強調と同じ 6px
  */
 export const Plate: React.FC<{ lines: string[]; beats?: number[] }> = ({ lines, beats }) => {
   const frame = useCurrentFrame();
@@ -263,6 +263,53 @@ export const Share: React.FC<{ hero: string; share: number; part: string; whole:
         </div>
         {/* 2 つ目の数（問 6 の「事業所で見返す人は 0 人」。11/6）。数が止まったあとに出す */}
         {extra ? <div style={{ fontSize: TYPE.h2, fontWeight: 600, marginTop: -4, ...rise(frame, land + 10) }}>{extra}</div> : null}
+      </div>
+    </Stage>
+  );
+};
+
+/**
+ * アンケートの問と選択肢（問 6。作者の頼み 11/7）。上に声が言う言葉と問の文、下に選択肢を 1 行ずつ、人数の棒と数で。
+ * 棒はメーターと同じ形（線の上に字の色の塗り、右の端だけ丸める）。一番多い行は land で白い帯を引く。0 人の行は線だけ
+ */
+export const Survey: React.FC<{ question: string; rows: { text: string; count: number }[]; total: number; whole: string; land?: number; lead?: SlotWord; marker?: string }> = ({
+  question,
+  rows,
+  total,
+  whole,
+  land = 60,
+  lead,
+  marker,
+}) => {
+  const frame = useCurrentFrame();
+  const p = usePalette();
+  const W = 1400;
+  const BAR = 520;
+  const top = Math.max(...rows.map((r) => r.count));
+  return (
+    <Stage gap={0}>
+      <div style={{ width: W, display: "flex", flexDirection: "column", gap: 30 }}>
+        {lead ? <div style={{ fontSize: TYPE[lead.size], fontWeight: 600, lineHeight: 1, ...rise(frame, lead.frame) }}>{lead.text}</div> : null}
+        <div style={{ fontSize: TYPE.h1, fontWeight: 600, lineHeight: 1.25, ...rise(frame, 6) }}>{question}</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 22, marginTop: 14 }}>
+          {rows.map((r, i) => {
+            const at = 14 + i * STAGGER;
+            const fill = progress(frame, at + 4, 24);
+            const strong = r.count === top;
+            return (
+              <div key={r.text} style={{ display: "flex", alignItems: "center", gap: 32, fontSize: TYPE.h2, ...rise(frame, at) }}>
+                <div style={{ flex: 1, fontWeight: strong ? 600 : 400, whiteSpace: "nowrap" }}>{r.text}</div>
+                <div style={{ position: "relative", width: BAR, height: 24, background: p.tint, borderRadius: RADIUS.mark }}>
+                  <div style={{ position: "absolute", left: 0, top: 0, height: 24, width: (BAR * r.count * fill) / total, background: p.fg, borderRadius: `0 ${RADIUS.mark}px ${RADIUS.mark}px 0` }} />
+                </div>
+                <div style={{ width: 150, textAlign: "right", fontWeight: strong ? 600 : 400, whiteSpace: "nowrap" }}>
+                  {strong && marker === `${r.count} 人` ? <Marker at={land}>{marker}</Marker> : `${r.count} 人`}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <div style={{ fontSize: TYPE.body, color: p.sub, marginTop: 8, ...rise(frame, 24) }}>{whole}</div>
       </div>
     </Stage>
   );
@@ -566,7 +613,7 @@ export const Models: React.FC<{ children: React.ReactNode; counters?: string[] }
 };
 
 /** 協力ケアマネの一言（文字。顔は出さない） */
-export const Quote: React.FC<{ text: string; sub?: string; by?: string; children?: React.ReactNode }> = ({ text, sub, by = "協力してくれたケアマネージャー", children }) => {
+export const Quote: React.FC<{ text: string; sub?: string; by?: string; children?: React.ReactNode }> = ({ text, sub, by = "協力してくれたケアマネジャー", children }) => {
   const frame = useCurrentFrame();
   const p = usePalette();
   return (

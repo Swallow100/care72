@@ -7,7 +7,7 @@ import { type Assets, audioPath, useAssets } from "./assets";
 import { GroundProvider, usePalette } from "./ground";
 import { Footage } from "./parts/Footage";
 import { Framed, framedSize } from "./parts/Frame";
-import { BigNumber, Compare, EndCard, Flow, Memo, Models, Quote, Plate, Rules, Share, Stage, TextCard, Title } from "./parts/Graphics";
+import { BigNumber, Compare, EndCard, Flow, Memo, Models, Quote, Plate, Rules, Share, Stage, Survey, TextCard, Title } from "./parts/Graphics";
 import { Carousel, carouselHead } from "./parts/Carousel";
 import { Kinetic, type KineticWord } from "./parts/Kinetic";
 import { LogoClock } from "./parts/LogoClock";
@@ -55,6 +55,11 @@ function peopleShare(value: string, part: string, whole: string) {
   const m = /(\d+)\s*人中\s*(\d+)\s*人/.exec(value);
   if (!m) return { hero: value, share: 0, part, whole };
   return { hero: `${m[2]} 人`, share: Number(m[2]) / Number(m[1]), part, whole: whole || `答えた ${m[1]} 人` };
+}
+
+/** 「4 人中 4 人」の答えた人数 */
+function peopleTotal(value?: string): number {
+  return Number(/(\d+)\s*人中/.exec(value ?? "")?.[1] ?? 1) || 1;
 }
 
 /** 3 つの紙面の名前（F1。S4 の flow） */
@@ -375,7 +380,17 @@ const ShotView: React.FC<{ shot: Shot; assets: Assets; entryDelay?: number; next
       body = (
         <>
           <Backdrop shot={shot} assets={assets} duration={duration} />
-          {shot.value?.includes("→") ? (
+          {shot.survey ? (
+            <Survey
+              question={shot.survey.question}
+              rows={shot.survey.rows}
+              total={peopleTotal(shot.value)}
+              whole={shot.sub ?? ""}
+              land={shot.beats?.[0] !== undefined ? f(shot.beats[0]) : undefined}
+              lead={slotWord(shot, assets, "lead")}
+              marker={shot.marker}
+            />
+          ) : shot.value?.includes("→") ? (
             <Compare value={shot.value} labels={[shot.lines?.[0] ?? "", shot.lines?.[1] ?? ""]} sub={shot.sub} lead={slotWord(shot, assets, "lead")} marks={markFrames(shot, assets)} />
           ) : shot.value?.includes("人中") ? (
             <Share

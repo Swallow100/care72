@@ -20,27 +20,27 @@
 
 | ID | 秒 | ナレーション | 英語の字幕（案） |
 | --- | --- | --- | --- |
-| N01 | 0:00.3–0:03.3 | 『個別避難計画』を知っていますか。 | Have you heard of an "individual evacuation plan"? |
-| N02 | 0:03.5–0:14.3 | 災害のとき、在宅の高齢者を誰がどう助けるかを決めておく計画です。でも、できているのは 15.1% だけ。 | It sets out who will help an older person living at home in a disaster, and how. But only 15.1% have one. |
-| N03 | 0:14.6–0:23.9 | 私は家族にケアマネジャーがいます。利用者のことは知っています、でも計画を書く時間がないんです。 | A member of my family is a care manager. They know their clients, but there's no time to write the plans. |
-| N05 | 0:24.1–0:29.0 | アンケートでも、4 人全員が『市町村に出して終わり』。 | In our survey, all 4 said their plans were just handed to the city and that was it. |
-| N06 | 0:29.4–0:35.8 | 楽に作れて、災害でも役立つ計画なら、作る意味が出る、そう考えました。 | A plan that is easy to make and useful in a disaster is worth making. That was my thought. |
-| N07 | 0:36.0–0:40.7 | そこでケア72というアプリを作成しました。 | So I built an app called Care72. |
-| N08 | 0:40.9–0:48.3 | 災害対策計画づくりから訓練、発災時の対応までケア72一つで完結します。 | From making the plan to drills and the response in a disaster, Care72 does it all. |
-| N10 | 0:48.8–1:02.0 | まずは計画。箇条書きや文書、音声で情報を入力、Claude がアプリ内に利用者の情報を記録していきます。抜けている部分は Claude が質問します。 | First, the plan. Enter notes, documents or voice, and Claude records the client's information in the app. Claude asks about whatever is missing. |
-| N11 | 1:02.2–1:06.6 | 項目分けされアプリ内に見やすく記録されます。 | It is sorted into fields and kept clearly in the app. |
-| N12 | 1:06.8–1:15.3 | 記録から自治体の形式の個別避難計画、本人保管書類、災害時医療班用の要約を作成できます。 | From the record: the city's plan form, a sheet for the client to keep, and a summary for the disaster medical team. |
-| N15 | 1:15.8–1:25.4 | 次は訓練。Opus が災害状況を細かくシミュレーションし Haiku が利用者一人一人になりきり行動します。 | Next, the drill. Opus simulates the disaster in detail, and Haiku plays each client. |
-| N17 | 1:25.6–1:33.9 | 72 時間のシミュレーション訓練の間に停電や断水、電波不良になることがあります。 | During the 72-hour drill, there can be power cuts, water outages and bad signal. |
-| N18 | 1:39.9–1:48.0 | ケアマネジャーは本番と同じように電話したり、避難や電源の手配を行ったりできます。 | Just like the real thing, the care manager can call, and arrange evacuation or power. |
-| N19 | 1:48.2–2:01.2 | 終わると Opus がケアマネジャーの対応を詳しく講評、今回は山田ハナさんの酸素供給装置への対応が遅れたことを出典付きで指摘しました。 | At the end, Opus reviews the response in detail. This time, citing sources, it pointed out the late response to Hana Yamada's oxygen device. |
-| N20 | 2:01.7–2:07.6 | そして実際の発災時。地震が発生し災害モードに切り替えました。 | Then a real disaster. An earthquake hits, and disaster mode is on. |
-| N21 | 2:07.8–2:12.9 | 利用者またはその家族はスマホで安否確認ができます。 | Clients or their families can check in from their phones. |
-| N22 | 2:13.1–2:20.3 | 本人がボタンを押さない場合は AI 音声で質問して録音と状況把握に努めます。 | If the client doesn't press a button, an AI voice asks, and the app records to understand the situation. |
-| N24 | 2:20.5–2:27.1 | Haiku が録音内容をまとめます。最終決定はケアマネジャーが行います。 | Haiku summarizes the recording. The care manager makes the final call. |
-| N23 | 2:27.3–2:32.6 | AI ではなくルールの表によって連絡順などを決定します。 | The order is set not by AI but by a rule table. |
-| N25 | 2:32.8–2:40.0 | ケアマネジャーと医療班の情報共有も QR コードなどを用いて簡単にできます。 | Sharing with the medical team is easy too, with QR codes and more. |
-| N30 | 2:43.7–2:57.0 | 普及や実用化への課題はあります。それでも災害時計画を計画だけで終わらせない大きなポテンシャルを持ったアプリを開発できたと思います。 | There are hurdles to real-world use. Still, I believe we built an app with real potential to make disaster plans more than just plans. |
+| N01 | 0:00.3–0:04.7 | 突然ですが『個別避難計画』を知っていますか。 | Out of the blue: have you heard of an "individual evacuation plan"? |
+| N02 | 0:04.9–0:15.7 | 災害のとき、在宅の高齢者を誰がどう助けるかを決めておく計画です。でも、できているのは 15.1% だけ。 | It sets out who will help an older person living at home in a disaster, and how. But only 15.1% have one. |
+| N03 | 0:16–0:26.8 | ケアマネジャーは利用者のことは知っていますが、計画を書く時間がありません。また、計画自体を活かせていません。 | Care managers know their clients, but have no time to write the plans. And the plans themselves go unused. |
+| N05 | 0:27–0:35.4 | 独自アンケートでもケアマネジャー 4 人全員が計画を市町村に提出して終わりと答えました。 | In our own survey, all 4 care managers answered that the plan ends once it is handed to the city. |
+| N06 | 0:35.8–0:42 | 楽に作れて、災害でも役立つ計画なら、作る意味が出る、そう考えました。 | A plan that is easy to make and useful in a disaster is worth making. That was my thought. |
+| N07 | 0:42.2–0:46.3 | そこでケア72というアプリを作成しました。 | So I built an app called Care72. |
+| N08 | 0:46.5–0:55.4 | ケアマネジャーの災害対策計画づくりから訓練、発災時の対応までケア72一つで完結します。 | From the care manager's disaster planning to drills and the response in a disaster, Care72 does it all. |
+| N10 | 0:55.9–1:08.8 | まずは計画。箇条書きや文書、音声で情報を入力、Claude がアプリ内に利用者の情報を記録していきます。抜けている部分は Claude が質問します。 | First, the plan. Enter notes, documents or voice, and Claude records the client's information in the app. Claude asks about whatever is missing. |
+| N11 | 1:09–1:13.2 | 項目分けされアプリ内に見やすく記録されます。 | It is sorted into fields and kept clearly in the app. |
+| N12 | 1:13.4–1:21.7 | 記録から自治体の形式の個別避難計画、本人保管書類、災害時医療班用の要約を作成できます。 | From the record: the city's plan form, a sheet for the client to keep, and a summary for the disaster medical team. |
+| N15 | 1:22.2–1:31.6 | 次は訓練。Opus が災害状況を細かくシミュレーションし Haiku が利用者一人一人になりきり行動します。 | Next, the drill. Opus simulates the disaster in detail, and Haiku plays each client. |
+| N17 | 1:31.8–1:39.4 | 72 時間のシミュレーション訓練の間に停電や断水、電波不良になることがあります。 | During the 72-hour drill, there can be power cuts, water outages and bad signal. |
+| N18 | 1:45–1:52.9 | ケアマネジャーは本番と同じように電話したり、避難や電源の手配を行ったりできます。 | Just like the real thing, the care manager can call, and arrange evacuation or power. |
+| N19 | 1:53.1–2:04.5 | 終わると Opus がケアマネジャーの対応を詳しく講評、今回は山田ハナさんの酸素供給装置への対応が遅れたことを出典付きで指摘しました。 | At the end, Opus reviews the response in detail. This time, citing sources, it pointed out the late response to Hana Yamada's oxygen device. |
+| N20 | 2:05–2:10.5 | そして実際の発災時。地震が発生し災害モードに切り替えました。 | Then a real disaster. An earthquake hits, and disaster mode is on. |
+| N21 | 2:10.7–2:15.6 | 利用者またはその家族はスマホで安否確認ができます。 | Clients or their families can check in from their phones. |
+| N22 | 2:15.8–2:22.8 | 本人がボタンを押さない場合は AI 音声で質問して録音と状況把握に努めます。 | If the client doesn't press a button, an AI voice asks, and the app records to understand the situation. |
+| N24 | 2:23–2:29.4 | Haiku が録音内容をまとめます。最終決定はケアマネジャーが行います。 | Haiku summarizes the recording. The care manager makes the final call. |
+| N23 | 2:29.6–2:34.8 | AI ではなくルールの表によって連絡順などを決定します。 | The order is set not by AI but by a rule table. |
+| N25 | 2:35–2:42 | ケアマネジャーと医療班の情報共有も QR コードなどを用いて簡単にできます。 | Sharing with the medical team is easy too, with QR codes and more. |
+| N30 | 2:45.2–2:57.2 | 普及や実用化への課題はあります。それでも災害時計画を計画だけで終わらせない大きなポテンシャルを持ったアプリを開発できたと思います。 | There are hurdles to real-world use. Still, I believe we built an app with real potential to make disaster plans more than just plans. |
 
 声の無い所（アプリの音と強調の間）: 1:28–1:33（着信の声）、1:59–2:04（赤を押して一覧が並び替わる）、2:10.5–2:13（録音）。
 
@@ -68,7 +68,7 @@ N04 を消して空いた 6 秒は S6（発災時）に回した（並び替わ�
 | --- | --- | --- |
 | 字（S6 の本人のスマホ） | 阪神・淡路大震災の直接死 5,483 人のうち窒息・圧死 3,979 人（72.57%）。本当に危ないときはボタンを押せないことの例 | [兵庫県「阪神・淡路大震災の死者にかかる調査について」2005-12-22](https://web.pref.hyogo.lg.jp/kk42/pa20_000000016.html)（11/6 に頁を開いて数を確かめた） |
 | N02 | 作成率 15.1%（対象 670 万人） | [共同通信 2026-10-04（熊本日日新聞）](https://kumanichi.com/articles/2042908) |
-| N05 | アンケートの「書く時間が無い」の人数 | T65（ケアマネージャーと包括支援センター。受付が閉じてから数える） |
+| N05 | アンケートの「書く時間が無い」の人数 | T65（ケアマネジャーと包括支援センター。受付が閉じてから数える） |
 | N29 | アンケートの結果 | T34 |
 
 出典は docs/SPEC.md の「根拠の数字」と同じ。撮影の前に作者がもう一度リンクを開き、数字と言い方（「関連死」「対象」）が記事と合うことを確かめる。
