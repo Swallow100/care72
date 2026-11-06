@@ -200,6 +200,11 @@ export const GUARDS: ReadonlyArray<Guard> = [
   // 数え直しは当てたのに紙に出ない選択肢 23・正解に無い印 0。置き間違いは 6 回目（195）より増やさない
   { id: "forms-mark-extra-none", bench: "forms", item: "forms.markExtra", op: "<=", value: 0, since: "r8", task: "T164", label: "台帳に無い選択肢に印を付けない", suspects: ["lib/forms/option-values.ts", "lib/forms/mapped-sheet.ts"] },
   { id: "forms-paper-wrong", bench: "forms", item: "forms.paperWrong", op: "<=", value: 195, since: "r8", task: "T164", label: "紙の置き間違いを 6 回目より増やさない", suspects: ["lib/forms/mapped-sheet.ts", "lib/forms/overlay-sheet.ts", "lib/forms/form-shape.ts"] },
+  // T175: 同じ様式でも読み取りが回ごとに違い、見直しの要確認が揺れた（熊本市 55 → 361 など、r9 の合計 2,178）。読み方をそろえ、字の大きさの決まりと重複の見方を
+  // 読み取りの名前に頼らない形にした。数は r8・r9 の記録の数え直しの悪い方（要確認 591、置けず 157、差は r8 と r9 の様式ごとの差の合計 245）
+  { id: "forms-review-check", bench: "forms", item: "forms.reviewCheck", op: "<=", value: 591, since: "r10", task: "T175", label: "見直しの要確認を読み方の揺れで増やさない", suspects: ["lib/forms/read-settle.ts", "lib/forms/form-shape.ts", "lib/forms/overlay-sheet.ts", "lib/forms/review.ts"] },
+  { id: "forms-unplaced-limit", bench: "forms", item: "forms.unplaced", op: "<=", value: 157, since: "r10", task: "T175", label: "置けなかった欄を増やさない", suspects: ["lib/forms/read-settle.ts", "lib/forms/form-shape.ts", "lib/forms/overlay-sheet.ts"] },
+  { id: "forms-review-drift", bench: "forms", item: "forms.reviewDrift", op: "<=", value: 245, since: "r10", task: "T175", label: "同じ様式の要確認の回ごとの差を広げない", suspects: ["lib/forms/read-settle.ts", "lib/forms/form-read.ts", "tools/eval/forms/drift.ts"] },
   // T166: 使う側の模擬の 2 回目で迷った所。数は直した形の値で、本物の回はまだ（docs/progress/t166.md）
   { id: "persona-medical-role", bench: "persona", item: "count:persona:unreached:medical.role", op: "<=", value: 0, since: "r9", task: "T166", label: "医療班の筋で医療班の役に入れる", suspects: ["components/person/RequestSection.tsx", "components/ui/RoleMenu.tsx", "tools/eval/persona/surface.ts"] },
   { id: "persona-ledger-not-found", bench: "persona", item: "count:persona:not_found:/", op: "<=", value: 2, since: "r9", task: "T166", label: "編集の面の目次と保存で迷わない", suspects: ["components/person/SectionEdit.tsx", "lib/labels.ts"] },

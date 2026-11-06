@@ -391,7 +391,7 @@ export function buildOverlaySheet(mapped: MappedSheet, images: readonly PageImag
   });
   const inks = new Map<number, InkBlob[] | null>(images.map((img) => [img.page, img.ink ? unpackInk(img.ink) : null]));
   // ほかの欄の枠（字を置くとき、印刷の字と同じく避ける。隣の欄に掛けない。T133）
-  const boxesOf = new Map<number, Array<{ id: string; box: FieldBox; free: boolean; owner?: { id: string; option: number } }>>();
+  const boxesOf = new Map<number, Array<{ id: string; box: FieldBox; free: boolean; owner?: { id: string; option: number }; label: string }>>();
   const rowsAll = mapped.pages.flatMap((p) => p.sections.flatMap((s) => s.rows));
   // 選択肢の後ろの括弧の子の欄（T164）: 自分の値は空（mapped-sheet.ts の bracketCell）で、親の選ぶ欄の添え・その他の値の置き場
   const owners = bracketOwners(rowsAll.map((r) => r.field));
@@ -402,7 +402,7 @@ export function buildOverlaySheet(mapped: MappedSheet, images: readonly PageImag
       // 前の並びと違う項目の「その他（　）」（空にした欄）も、項目なしの書く所と同じ
       const stray = cell.kind === "empty" && !own && strayOther(field, rowsAll.map((r) => r.field));
       const free = (field.item === null && (field.shape === "text" || field.shape === "lines")) || !!child || stray;
-      boxesOf.set(field.page, [...(boxesOf.get(field.page) ?? []), { id: field.id, box: field.box, free, ...(child ? { owner: child } : {}) }]);
+      boxesOf.set(field.page, [...(boxesOf.get(field.page) ?? []), { id: field.id, box: field.box, free, label: field.label, ...(child ? { owner: child } : {}) }]);
     }
   const ctxOf = (page: number): PlaceCtx | null => {
     const p = pages.find((x) => x.page === page);
@@ -534,7 +534,8 @@ export function buildOverlaySheet(mapped: MappedSheet, images: readonly PageImag
     // 「なし」だけの値は別紙に回さず欄を空ける（T111）
     if (isNoneOnly(lines)) continue;
     // 長い自由記入だけ別紙に（欄に「別紙」）。短い値は置かずに「置けなかった」（T133）。選ぶ欄の「その他（　）」の書き足しは placeChoice で別紙へ（T140）
-    const long = group.some((g) => g.field.shape === "lines" || g.lines.length > 1 || textEm(g.lines.join("")) > ANNEX_LONG_EM);
+    // 自由記入の項目（特記・配慮）は読み取りが字の欄と読んだ括弧の中でも自由記入（T175。「医療依存度が高い（　）」に医療の特記が置けず空いた）
+    const long = group.some((g) => g.field.shape === "lines" || g.lines.length > 1 || textEm(g.lines.join("")) > ANNEX_LONG_EM || FREE_NOTE_ITEMS.has(g.field.item ?? ""));
     const mark = long ? placeText(group[0].field.id, [ANNEX_MARK], box, pc) : null;
     if (long && mark) {
       for (const g of group) annex.push({ fieldId: g.field.id, label: nameOf(g.field), lines: g.lines, reason: "overflow", page: g.field.page, mark: mark.fieldId });
@@ -621,8 +622,15 @@ export type PlaceCtx = {
   page: OverlayPage;
   ink: InkBlob[] | null;
   /** 頁の欄の枠（置く欄のほかの欄に掛けない）。free は項目なしの字の欄（選ぶ欄の「その他（　）」の中の書く所に使える） */
-  others?: ReadonlyArray<{ id: string; box: FieldBox; free?: boolean; owner?: { id: string; option: number } }>;
+  others?: ReadonlyArray<{ id: string; box: FieldBox; free?: boolean; owner?: { id: string; option: number }; label?: string }>;
 };
+
+/** 欄の名前の終わりに単位が刷ってある空き（「（浸水想定　m）」）に置く「0.5m」は数だけ（T175。「0.5m m」と二重にしない） */
+export function printedUnitOff(text: string, label: string | undefined): string {
+  const m = text.normalize("NFKC").match(/^\s*([0-9.]+)\s*(階|歳|分|m|人|回|年|才)\s*$/);
+  if (!m || !label) return text;
+  return new RegExp(`[\\s　]${m[2]}\\s*\\)?\\s*$`).test(label.normalize("NFKC")) ? m[1] : text;
+}
 
 /** 隣の欄と見なす重なり（mm。これより小さい掛かりは枠の線の上の揺れ） */
 const NEIGHBOR_TOL_MM = 0.3;
@@ -653,23 +661,33 @@ export function containsMost(outer: FieldBox, a: FieldBox): boolean {
 
 /** 長い自由記入と見なす字の幅（字の数）。これより短い値は別紙に回さない */
 const ANNEX_LONG_EM = 24;
+/** 長さによらず自由記入の項目（収まらなければ別紙へ） */
+const FREE_NOTE_ITEMS: ReadonlySet<string> = new Set(["medical.notes", "notes.other", "care.issues"]);
 
 /** 枠（頁の比）に字を収める。下限まで縮め、それでも入らなければ狭い空きで試す */
 function fitIn(lines: readonly string[], box: FieldBox, image: { w: number; h: number }, maxPt: number = FONT_MAX_PT): { fitted: Fitted; tight?: true; snug?: true } | null {
   const w = box.w * image.w;
   const h = box.h * image.h;
+  // 普通の空きで下限まで縮めた字は、狭い空き・最後の置き方の方が大きければそちら（T175）。枠が 0.1% 低いだけで次の置き方の大きな字に変わるので、
+  // 枠の読み取りのわずかな差で下限の字の数（見直しの下限）が同じ様式で 122 → 17 と揺れていた。枠に対して字の大きさが飛ばないように
+  let best: { fitted: Fitted; tight?: true; snug?: true } | null = null;
+  const better = (c: { fitted: Fitted; tight?: true; snug?: true } | null) => {
+    if (c && (!best || c.fitted.fontPt > best.fitted.fontPt + 1e-9)) best = c;
+    return best !== null && best.fitted.fontPt > FONT_MIN_PT + 1e-9;
+  };
   if (maxPt >= FONT_MIN_PT - 1e-9) {
     const f = fitText(lines, w, h, maxPt);
-    if (f) return { fitted: f };
+    if (better(f ? { fitted: f } : null)) return best;
     const t = fitText(lines, w, h, maxPt, TIGHT_PAD_X_MM, TIGHT_PAD_Y_MM);
-    if (t) return { fitted: t, tight: true };
+    if (better(t ? { fitted: t, tight: true } : null)) return best;
   }
   // 最後: 1 行の短い値だけ、行の高さを字の高さに・空きを 0.05mm に（T160）。数だけの短い値は字の下限を 5.5pt に
-  if (lines.length !== 1 || [...lines[0]].length > 24) return null;
+  if (lines.length !== 1 || [...lines[0]].length > 24) return best;
   const minPt = SHORT_DIGITS.test(lines[0].normalize("NFKC").trim()) ? DIGITS_MIN_PT : FONT_MIN_PT;
-  if (maxPt < minPt - 1e-9) return null;
+  if (maxPt < minPt - 1e-9) return best;
   const s = fitText(lines, w, h, maxPt, SNUG_PAD_X_MM, SNUG_PAD_Y_MM, { lineHeight: SNUG_LINE_HEIGHT, minPt, oneLine: true });
-  return s ? { fitted: s, snug: true } : null;
+  better(s ? { fitted: s, snug: true } : null);
+  return best;
 }
 
 /**
@@ -811,7 +829,7 @@ function placeChoice(
   const putIn = (text: string, area: FieldBox, option: number): TextItem | null => {
     const child = childOf(area, option);
     if (child) {
-      const t = placeText(child.id, [text], child.box, pc);
+      const t = placeText(child.id, [printedUnitOff(text, child.label)], child.box, pc);
       if (t) filled.push(child.id);
       return t;
     }
@@ -1051,7 +1069,10 @@ export function partItems(field: MappingField, lines: readonly string[], pc: Pla
   }
   for (const [k, part] of parts.entries()) {
     const own = boxes[unitIdx[k]]!;
-    const t = placeText(field.id, [part], own, pc, { own: field.box }) ?? placeText(field.id, [part], grownPart(own, field.box, boxes, pc), pc, { own: field.box });
+    // 読んだ空きで下限の字なら、広げた空きの方が大きければそちら（T175。空きの幅のわずかな差で下限の数が揺れる）
+    const first = placeText(field.id, [part], own, pc, { own: field.box });
+    const wide = !first || first.fontPt <= FONT_MIN_PT + 1e-9 ? placeText(field.id, [part], grownPart(own, field.box, boxes, pc), pc, { own: field.box }) : null;
+    const t = wide && (!first || wide.fontPt > first.fontPt + 1e-9) ? wide : first;
     if (!t) return "fail";
     out.push({ ...t, part: unitIdx[k] });
   }
