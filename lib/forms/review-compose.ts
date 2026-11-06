@@ -2,19 +2,17 @@
 // 元の様式の頁の画像を下に敷き、塗らない欄の字と印を紙と同じ大きさ・場所に置き、塗る所を黒くする。
 // 塗る欄の字は描く物に入っていない（サーバーが入れない）ので、塗りに失敗しても字は出ない。塗りは取り込みの黒塗りと同じ paintRects（ピクセルを直に、端を広げて）。
 // JPEG にして付け足し（EXIF など）を外す（サーバーは付いた物を断る）。
-// 字の置き方は紙面（components/forms/OverlaySheet.tsx と overlay-paper.css）と同じ: 欄の矩形の内側の空き 0.8mm・0.5mm、左寄せ、行の高さ 1.15、
-// 3 行より高い欄は上から（top）、ほかは高さの真ん中。矩形の外は切る（紙面の overflow: hidden と同じ）。
+// 字の置き方は紙面（components/forms/OverlaySheet.tsx と overlay-paper.css）と同じ: 欄の矩形の内側の空き 0.8mm・0.5mm（狭い空きの字は
+// lib/forms/overlay-sheet.ts の textPads）、左寄せ、行の高さ 1.15、3 行より高い欄は上から（top）、ほかは高さの真ん中。矩形の外は切る（紙面の overflow: hidden と同じ）。
 
 import { paintRects, PAINT_PAD } from "../redact/paint.ts";
 import type { Rect } from "../redact/rects.ts";
+import { textPads } from "./overlay-sheet.ts";
 import type { ComposeDraw, ComposePage } from "./review-ai.ts";
 
 /** 送る絵の長い辺（px）。Claude が縮めずに読む大きさ（1568）に収める */
 export const COMPOSE_MAX_SIDE = 1568;
 const PT_MM = 25.4 / 72;
-const PAD_X_MM = 0.8;
-const PAD_Y_MM = 0.5;
-const LINE_HEIGHT = 1.15;
 
 export type TextOp = { clip: Rect; fontPx: number; x: number; lines: Array<{ text: string; y: number }> };
 export type MarkOp = { box: Rect; mark: "check" | "circle" };
@@ -36,13 +34,14 @@ export function pageOps(page: Pick<ComposePage, "image" | "draws" | "paints">, m
     }
     const clip = rect(d.box);
     const fontPx = d.fontPt * PT_MM * pxPerMm;
-    const lineH = fontPx * LINE_HEIGHT;
+    const { padX, padY, lineHeight } = textPads(d);
+    const lineH = fontPx * lineHeight;
     const total = lineH * d.lines.length;
-    const top = d.top ? clip.y + PAD_Y_MM * pxPerMm : clip.y + (clip.h - total) / 2;
+    const top = d.top ? clip.y + padY * pxPerMm : clip.y + (clip.h - total) / 2;
     texts.push({
       clip,
       fontPx,
-      x: clip.x + PAD_X_MM * pxPerMm,
+      x: clip.x + padX * pxPerMm,
       lines: d.lines.map((text, i) => ({ text, y: top + i * lineH + (lineH - fontPx) / 2 })),
     });
   }

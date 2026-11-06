@@ -18,6 +18,10 @@ import type { PersonPageRows } from "../../../lib/person.ts";
 /** blanksChoice は台帳あり空欄のうち、選ぶ欄で値が選択肢に合わず「その他」の空きも無い欄（要介護 1 の人の「要介護 3〜5」の □ のように、空くのが答えの欄も入る） */
 /** unplacedOption・unplacedRoom・unplacedBox は置けなかった欄の訳（T140。lib/forms/overlay-sheet.ts の UnplacedReason） */
 /** annexGap は別紙の中身と紙の「別紙」の印のずれ（T141。lib/forms/overlay-sheet.ts の annexGaps の印なし・行なしの合計） */
+/**
+ * 置けなかった欄の種類（T160）: unplacedDate は日付の欄、unplacedPicked は選ぶ欄で選択肢の表（言い換えの表・AI の当て）が台帳の値に当てたのに
+ * 印を置けなかった欄（当たる選択肢が 2 つ以上・当たった選択肢の □ の場所が無い）、unplacedContact は緊急連絡先・支援者の欄
+ */
 export type LookScore = Omit<LookCheck, "issues"> & {
   blanks: number;
   blanksChoice: number;
@@ -26,6 +30,9 @@ export type LookScore = Omit<LookCheck, "issues"> & {
   unplacedRoom: number;
   unplacedBox: number;
   annexGap?: number;
+  unplacedDate?: number;
+  unplacedPicked?: number;
+  unplacedContact?: number;
 };
 
 export const emptyLookScore = (): LookScore => ({
@@ -44,7 +51,15 @@ export const emptyLookScore = (): LookScore => ({
   unplacedRoom: 0,
   unplacedBox: 0,
   annexGap: 0,
+  unplacedDate: 0,
+  unplacedPicked: 0,
+  unplacedContact: 0,
 });
+
+/** 日付の欄（T160。lib/forms/review.ts の日付の見直しと同じ見分け方に「記入日」） */
+export const isDateField = (f: Pick<MappingField, "shape" | "label">) => f.shape === "date" || /生年月日|年月日|作成日|記入日|日付/.test(f.label);
+/** 緊急連絡先・支援者の欄（T160） */
+const CONTACT_ITEM = /^(emergency|supporter)\d\./;
 
 /** 伏字の跡・仮の言い方（括弧の全角・半角どちらも） */
 export const MASK_WORDS = /[（(]\s*(氏名|町名|電話|住所|郵便番号|メール|生年月日|市内|近所|同居|県外|遠方)\s*[）)]/;
@@ -115,6 +130,18 @@ export function lookOfPaper(o: {
         masks.push({ field: it.fieldId, label: f ? nameOf(f) : it.fieldId });
       }
   for (const a of o.overlay.annex) if (a.lines.some((l) => MASK_WORDS.test(l))) masks.push({ field: a.fieldId, label: a.label });
+  // 置けなかった欄の種類（T160）。選ぶ欄は、実際の対応表で作った値（台帳の値に当たる選択肢があったか）で見る
+  const unplacedIds = new Set(o.overlay.unplacedIds ?? []);
+  const actualCells = new Map<string, Cell>();
+  if (unplacedIds.size > 0) {
+    const actualSheet = buildMappedSheet(o.rows, o.mapping, { today: o.today, officeName: "デモ事業所" });
+    for (const p of actualSheet.pages) for (const s of p.sections) for (const { field, cell } of s.rows) if (unplacedIds.has(field.id)) actualCells.set(field.id, cell);
+  }
+  const unplacedFields = o.mapping.fields.filter((f) => unplacedIds.has(f.id));
+  const picked = unplacedFields.filter((f) => {
+    const c = actualCells.get(f.id);
+    return f.shape === "choice" && c?.kind === "choice" && (c.ambiguous === true || c.options.some((x) => x.on));
+  });
   const { issues: _i, ...rest } = check;
   const why = Object.values(o.overlay.unplacedWhy ?? {});
   const reason = (r: string) => why.filter((w) => w === r).length;
@@ -131,6 +158,9 @@ export function lookOfPaper(o: {
         const g = annexGaps(o.overlay);
         return g.noMark.length + g.noRow.length;
       })(),
+      unplacedDate: unplacedFields.filter(isDateField).length,
+      unplacedPicked: picked.length,
+      unplacedContact: unplacedFields.filter((f) => CONTACT_ITEM.test(f.item ?? "")).length,
     },
     check,
     blanks,

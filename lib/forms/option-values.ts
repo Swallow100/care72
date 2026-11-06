@@ -317,6 +317,12 @@ export function pickByCodes(table: ReadonlyArray<readonly string[] | null>, code
     // 「その他」と名前の当たる選択肢が両方なら、名前の方
     const named1 = hits.filter((i) => !table[i]!.includes(OTHER_CODE));
     if (named1.length === 1) return { hits: named1, range: false, ambiguous: false };
+    // 狭い方（T160）: 当たる選択肢の 1 つの値の並びが、ほかの当たる選択肢の並びに全部入り、それより狭ければその選択肢
+    // （「□独居 □高齢者のみ □同居」で、夫婦の人が「高齢者のみ」〔夫婦〕にも「同居」〔夫婦・子と同居・家族と同居〕にも当たる時は「高齢者のみ」）。
+    // 並びが同じ選択肢（「女性（妊娠なし）」「女性（妊娠あり）」）は台帳の値で決まらないので選ばない
+    const pool = named1.length > 0 ? named1 : hits;
+    const narrow = pool.filter((i) => pool.every((j) => j === i || (table[i]!.every((c) => table[j]!.includes(c)) && table[i]!.length < table[j]!.length)));
+    if (narrow.length === 1) return { hits: narrow, range: false, ambiguous: false };
     return { hits: [], range: false, ambiguous: true };
   }
   const full = table.every((t) => t !== null);
