@@ -4,11 +4,14 @@
 // 3. □ だけに読んだ欄の中身（アレルギーの物の名前）を書く所が紙に無かった
 import { describe, expect, it } from "vitest";
 import { packInk, type InkBlob } from "./ink.ts";
-import type { MappingField } from "./mapping.ts";
+import { SEED_PEOPLE } from "../../seed/people.ts";
+import type { FormMapping, MappingField } from "./mapping.ts";
+import { soleCodeOfText } from "./option-values.ts";
 import { buildOverlaySheet, inkPhoneParts, type PlaceCtx } from "./overlay-sheet.ts";
-import type { MappedSheet } from "./mapped-sheet.ts";
+import { buildMappedSheet, type MappedSheet } from "./mapped-sheet.ts";
 import { value, t } from "./matsuyama.ts";
 import type { PageImage } from "./page-images.ts";
+import { seedRows } from "./print-harness.ts";
 
 const IMAGE = { x: 0, y: 0, w: 297, h: 210 };
 const W = 1 / IMAGE.w;
@@ -104,5 +107,37 @@ describe("電話の欄の刷ってある区切り", () => {
     const texts = sheet.pages[0].items.flatMap((i) => (i.kind === "text" ? i.lines : []));
     expect(texts).toContain("090-0000-0012");
     expect(texts).toContain("松山市 ほたる坂町");
+  });
+});
+
+describe("手段の値が「その他」で補記が 1 つの手段を言う", () => {
+  const P = (id: string) => SEED_PEOPLE.find((p) => p.person.id === id)!;
+  const cellOf = (kind: "other" | "foot", note: string | undefined, options: string[]) => {
+    const p = P("p-04");
+    const person = { ...p, ledger: { ...structuredClone(p.ledger), evacuation: { ...p.ledger.evacuation, transportKind: kind, transport: note } } };
+    const f = field({ label: "【手段】", item: "evacuation.transport", shape: "choice", options });
+    const m: FormMapping = { title: "架空の様式", issuer: "", pages: 1, fields: [f] };
+    return buildMappedSheet(seedRows(person), m, { today: "2026-11-07", officeName: "デモ事業所" }).pages[0].sections[0].rows[0].cell;
+  };
+  const on = (c: ReturnType<typeof cellOf>) => (c.kind === "choice" ? c.options.filter((o) => o.on).map((o) => [o.label, o.detail]) : c.kind);
+
+  it("歩いて → 徒歩の □ に印、補記はその選択肢に添える", () => {
+    expect(on(cellOf("other", "民生委員と歩いて", ["徒歩", "その他"]))).toEqual([["徒歩", "民生委員と歩いて"]]);
+  });
+  it("徒歩の □ の無い様式は今までどおりその他の □", () => {
+    expect(on(cellOf("other", "民生委員と歩いて", ["車", "その他"]))).toEqual([["その他", "民生委員と歩いて"]]);
+  });
+  it("手段を言わない・2 つ言う・言い換えの表の外の補記はその他のまま", () => {
+    expect(on(cellOf("other", "近所の人に頼む", ["徒歩", "その他"]))).toEqual([["その他", "近所の人に頼む"]]);
+    expect(on(cellOf("other", "息子の車で迎え", ["徒歩", "家族の車", "送迎", "その他"]))).toEqual([["その他", "息子の車で迎え"]]);
+    expect(on(cellOf("other", "自転車", ["徒歩", "家族の車", "その他"]))).toEqual([["その他", "自転車"]]);
+  });
+  it("値が「その他」でない人は補記で替えない", () => {
+    expect(on(cellOf("foot", "車を呼ぶ", ["徒歩", "家族の車", "その他"]))).toEqual([["徒歩", "車を呼ぶ"]]);
+  });
+  it("補記が 1 つだけ言う時のコード", () => {
+    expect(soleCodeOfText("evacuation.transport", "民生委員と歩いて")).toBe("foot");
+    expect(soleCodeOfText("evacuation.transport", "車椅子で")).toBe("wheelchair");
+    expect(soleCodeOfText("evacuation.transport", "")).toBeNull();
   });
 });
