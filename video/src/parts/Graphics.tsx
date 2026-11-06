@@ -230,8 +230,18 @@ export const Share: React.FC<{ hero: string; share: number; part: string; whole:
         {/* 声が数の前に言う言葉（「できているのは」）は数の上に、後ろの言葉（「だけ」）は数の後ろに、言う所で出す */}
         {lead ? <div style={{ fontSize: TYPE[lead.size], fontWeight: 600, lineHeight: 1, marginBottom: -12, ...rise(frame, lead.frame) }}>{lead.text}</div> : null}
         <div style={{ display: "flex", alignItems: "baseline", gap: 10, lineHeight: 1 }}>
-          <span style={{ fontSize: m ? 220 : TYPE.hero, fontWeight: 600 }}>{shown}</span>
-          {m ? <span style={{ fontSize: 110, fontWeight: 600 }}>{m[2]}</span> : null}
+          {/* 数そのものが白い帯の言葉なら、数え終えた所で帯を引く（「15.1%」「4 人」。作者の頼み 11/6） */}
+          {marker === hero ? (
+            <Marker at={land}>
+              <span style={{ fontSize: m ? 220 : TYPE.hero, fontWeight: 600 }}>{shown}</span>
+              {m ? <span style={{ fontSize: 110, fontWeight: 600 }}>{m[2]}</span> : null}
+            </Marker>
+          ) : (
+            <>
+              <span style={{ fontSize: m ? 220 : TYPE.hero, fontWeight: 600 }}>{shown}</span>
+              {m ? <span style={{ fontSize: 110, fontWeight: 600 }}>{m[2]}</span> : null}
+            </>
+          )}
           {tail ? (
             <span style={{ fontSize: TYPE[tail.size], fontWeight: 600, marginLeft: 18, ...rise(frame, tail.frame, 16, 14) }}>
               {/* 白い帯の言葉なら、出てから帯を引く（「だけ」） */}

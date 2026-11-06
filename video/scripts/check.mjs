@@ -65,7 +65,9 @@ for (const s of SCENES) {
 for (const s of SCENES) {
   for (const sh of s.shots) {
     if (!sh.marker) continue;
-    const shown = [...(sh.cues ?? []).filter((c) => c.slot !== "mark" && c.slot !== "lead").map((c) => c.text), ...(sh.lines ?? [])];
+    // 数そのもの（「15.1%」、「4 人中 4 人」の後ろの「4 人」）にも帯を引ける（Graphics.tsx の Share。11/6）
+    const people = /(\d+)\s*人中\s*(\d+)\s*人/.exec(sh.value ?? "");
+    const shown = [...(sh.cues ?? []).filter((c) => c.slot !== "mark" && c.slot !== "lead").map((c) => c.text), ...(sh.lines ?? []), ...(sh.value ? [sh.value] : []), ...(people ? [`${people[2]} 人`] : [])];
     if (!shown.includes(sh.marker)) errors.push(`${s.id}: 白い帯の言葉「${sh.marker}」が絵「${sh.label}」に出る言葉に無い`);
   }
 }

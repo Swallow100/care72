@@ -39,13 +39,17 @@ export const LogoClock: React.FC<{
   to?: MarkBox;
   /** 右に出す声の言葉（Kinetic） */
   children?: React.ReactNode;
-}> = ({ name, duration, nameAt, markAt, sweep, to, children }) => {
+  /** 時計にしない。ロゴと名前のまま弧だけが回る（作者の頼み 11/6「ロゴを出して円がくるくる」） */
+  plain?: boolean;
+}> = ({ name, duration, nameAt, markAt, sweep, to, children, plain = false }) => {
   const frame = useCurrentFrame();
   const p = usePalette();
   const S = LAYOUT.stage;
   // 2. 時計へ（22 コマ）。名前は先に 10 コマで消える
-  const toDial = progress(frame, markAt, 22, EASE_IN_OUT);
-  const nameOut = progress(frame, markAt, 10, EASE_IN_OUT);
+  const toDial = plain ? 0 : progress(frame, markAt, 22, EASE_IN_OUT);
+  const nameOut = plain ? progress(frame, duration - 15, 8) : progress(frame, markAt, 10, EASE_IN_OUT);
+  // plain: 描き終えたあと、見出しへ動くまで弧が 2 周する
+  const spin = plain ? progress(frame, 30, Math.max(1, duration - 45), EASE_IN_OUT) * 720 : 0;
   // 4. 見出しの印へ（最後の 15 コマ。最後のコマで次の絵の印と同じ所・大きさ）
   const toHead = to ? progress(frame, duration - 15, 14, EASE_IN_OUT) : 0;
   const fade = 1 - progress(frame, duration - 15, 8);
@@ -55,16 +59,16 @@ export const LogoClock: React.FC<{
   // 3. 白い点が回る（0 → 360 度）。輪は時計になると沈み、点が通った日から白に戻る。見出しへ動く間に全部白へ
   const turn = progress(frame, sweep[0], sweep[1] - sweep[0], EASE_IN_OUT);
   const angle = turn * 360;
-  const sunk = progress(frame, markAt + 6, 14);
+  const sunk = plain ? 0 : progress(frame, markAt + 6, 14);
   const lit = [0, 1, 2].map((i) => Math.max(1 - sunk, Math.min(1, Math.max(0, (angle - i * 120) / 120)), toHead));
   // 点は 1 周で消える（12 時の切れ目の上で薄く残すと、にじんだ丸に見えるので 4 コマで）
   const dot = progress(frame, sweep[0] - 4, 6) * (1 - progress(frame, sweep[1], 4));
   // 「72」の白い帯: 声の「72 は」から 10 コマで伸び、見出しへ動く前に消える
-  const mark = progress(frame, markAt + 4, 10);
+  const mark = plain ? 0 : progress(frame, markAt + 4, 10);
   // 目盛り（6 時間ごと 12 本。24 時間ごとの日の切れ目は長く）: 時計になる間に 12 時から順に出る
   const ring = MARK_RING.r + MARK_RING.stroke / 2;
   const ticks = Array.from({ length: 12 }, (_, i) => {
-    const t = progress(frame, markAt + 8 + i * 1.5, 8) * fade;
+    const t = plain ? 0 : progress(frame, markAt + 8 + i * 1.5, 8) * fade;
     const a = ((i * 30 - 90) * Math.PI) / 180;
     const major = i % 4 === 0;
     const r0 = ring + 2.5;
@@ -90,7 +94,7 @@ export const LogoClock: React.FC<{
     const r = 0.5 * box.size * 1.22;
     const cx = box.x + box.size / 2 + Math.cos(mid) * r;
     const cy = box.y + box.size / 2 + Math.sin(mid) * r;
-    const on = progress(frame, sweep[0] + (sweep[1] - sweep[0]) * ((i * 120 + 50) / 360), 10);
+    const on = plain ? 0 : progress(frame, sweep[0] + (sweep[1] - sweep[0]) * ((i * 120 + 50) / 360), 10);
     return (
       <div
         key={i}
@@ -113,9 +117,9 @@ export const LogoClock: React.FC<{
   return (
     <div style={{ position: "absolute", left: S.left, top: S.top, width: S.width, height: S.height, fontFamily: FONT.main, color: p.fg }}>
       <div style={{ position: "absolute", left: box.x, top: box.y }}>
-        <LogoMark size={box.size} drawn={drawn} lit={lit} digits={progress(frame, 2, 12)} mark={mark} markOpacity={fade} fg={p.fg} bg={p.bg}>
+        <LogoMark size={box.size} drawn={drawn} lit={lit} spin={spin} digits={progress(frame, 2, 12)} mark={mark} markOpacity={fade} fg={p.fg} bg={p.bg}>
           {ticks}
-          {dot > 0 ? (
+          {!plain && dot > 0 ? (
             <circle cx={50 + Math.cos(dotA) * MARK_RING.r} cy={50 + Math.sin(dotA) * MARK_RING.r} r={5.4} fill={p.fg} stroke={p.bg} strokeWidth={1.4} opacity={dot} />
           ) : null}
         </LogoMark>

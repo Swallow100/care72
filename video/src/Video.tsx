@@ -54,11 +54,11 @@ const REPO = "github.com/Swallow100/care72";
 function peopleShare(value: string, part: string, whole: string) {
   const m = /(\d+)\s*人中\s*(\d+)\s*人/.exec(value);
   if (!m) return { hero: value, share: 0, part, whole };
-  return { hero: `${m[2]} 人`, share: Number(m[2]) / Number(m[1]), part, whole: `答えた ${m[1]} 人` };
+  return { hero: `${m[2]} 人`, share: Number(m[2]) / Number(m[1]), part, whole: whole || `答えた ${m[1]} 人` };
 }
 
 /** 3 つの紙面の名前（F1。S4 の flow） */
-const FLOW_NAMES = ["松山市の様式", "本人の 1 枚", "医療班の要約"];
+const FLOW_NAMES = ["松山市の様式", "本人保管書類", "医療班の要約"];
 
 /** 文字だけの面（split の中で録画の番号が空の所）。sub を「・」で分けて 1 行ずつ出す */
 const WordsPanel: React.FC<{ width: number; height: number; text: string; delay?: number; bg?: { id: string; count: number } }> = ({ width, height, text, delay = 0, bg }) => {
@@ -111,7 +111,9 @@ const Split: React.FC<{ shot: Shot; assets: Assets; duration: number }> = ({ sho
   const ids = shot.footages ?? [];
   // beats があれば見出しと録画を声に合わせて 1 つずつ出す（S2 の「計画・訓練・発災時」）
   const delays = ids.map((_, i) => (shot.beats?.[i] !== undefined ? f(shot.beats[i]) : i * STAGGER));
-  const gap = 56;
+  const cross = !!shot.cross && ids.length === 2;
+  const gap = cross ? 28 : 56;
+  const CROSS_W = 130;
   // 話の段（青地）の見出しは 1 段大きく（見出しそのものが話の強調）
   const headingSize = p.bg === COLOR.blue ? TYPE.h1 : TYPE.h2;
   const heading = shot.lines?.length ? headingSize + 20 : 0;
@@ -122,7 +124,7 @@ const Split: React.FC<{ shot: Shot; assets: Assets; duration: number }> = ({ sho
   const textW: number[] = ids.map((id) => (!id && words ? TEXT_W : 0));
   const phoneW = ids.map((id) => (id ? framedSize(id, 10000, H) : null)).map((s) => (s?.phone ? s.width : 0));
   const windows = ids.filter((id, i) => phoneW[i] === 0 && textW[i] === 0).length;
-  const restW = LAYOUT.stage.width - phoneW.reduce((a, b) => a + b, 0) - textW.reduce((a, b) => a + b, 0) - gap * (ids.length - 1);
+  const restW = LAYOUT.stage.width - phoneW.reduce((a, b) => a + b, 0) - textW.reduce((a, b) => a + b, 0) - gap * (ids.length - 1) - (cross ? CROSS_W + gap : 0);
   const eachW = windows ? restW / windows : 0;
   return (
     <Stage row gap={gap}>
@@ -135,7 +137,7 @@ const Split: React.FC<{ shot: Shot; assets: Assets; duration: number }> = ({ sho
           );
         }
         const size = id ? framedSize(id, phoneW[i] || eachW, H) : { width: eachW, height: Math.round((eachW * 9) / 16) + LAYOUT.windowBar };
-        return (
+        const panel = (
           <div key={`${id}-${i}`} style={{ width: size.width, display: "flex", flexDirection: "column", alignItems: "center" }}>
             {shot.lines?.[i] ? (
               <div style={{ fontSize: headingSize, fontWeight: 600, marginBottom: 20, ...rise(frame, delays[i]) }}>
@@ -166,8 +168,37 @@ const Split: React.FC<{ shot: Shot; assets: Assets; duration: number }> = ({ sho
             )}
           </div>
         );
+        return cross && i === 1 ? (
+          <React.Fragment key="cross">
+            <CrossArrow at={delays[1]} width={CROSS_W} top={heading} />
+            {panel}
+          </React.Fragment>
+        ) : (
+          panel
+        );
       })}
     </Stage>
+  );
+};
+
+/** 左から右への矢印と、真ん中の赤い ×（知っているのに書けていない） */
+const CrossArrow: React.FC<{ at: number; width: number; top: number }> = ({ at, width, top }) => {
+  const frame = useCurrentFrame();
+  const p = usePalette();
+  const draw = progress(frame, at - 6, 10);
+  const x = progress(frame, at + 2, 8);
+  const c = 26;
+  return (
+    <div style={{ width, alignSelf: "stretch", paddingTop: top, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <svg width={width} height={80} viewBox={`0 0 ${width} 80`} style={{ overflow: "visible" }}>
+        <line x1={4} y1={40} x2={4 + (width - 22) * draw} y2={40} stroke={p.fg} strokeWidth={5} strokeLinecap="round" />
+        <path d={`M ${width - 22} 26 L ${width - 4} 40 L ${width - 22} 54`} fill="none" stroke={p.fg} strokeWidth={5} strokeLinecap="round" strokeLinejoin="round" opacity={draw >= 1 ? 1 : 0} />
+        <g opacity={x} transform={`translate(${width / 2} 40) scale(${0.6 + 0.4 * x})`}>
+          <circle r={c + 6} fill={COLOR.urgent} />
+          <path d={`M ${-c / 2} ${-c / 2} L ${c / 2} ${c / 2} M ${c / 2} ${-c / 2} L ${-c / 2} ${c / 2}`} stroke="#fff" strokeWidth={6} strokeLinecap="round" />
+        </g>
+      </svg>
+    </div>
   );
 };
 
@@ -331,6 +362,7 @@ const ShotView: React.FC<{ shot: Shot; assets: Assets; entryDelay?: number; next
           markAt={markAt}
           sweep={sweep}
           to={next?.kind === "carousel" && next.cutIn ? carouselHead(next.lines ?? []).mark : undefined}
+          plain={!words.length}
         >
           {words.length ? <Kinetic words={words} align="left" marker={shot.marker} /> : null}
         </LogoClock>
@@ -399,7 +431,7 @@ const ShotView: React.FC<{ shot: Shot; assets: Assets; entryDelay?: number; next
     case "models":
       body = (
         <Models counters={shot.lines}>
-          <Cycle ids={shot.footages ?? []} assets={assets} duration={duration} label={shot.label} />
+          {shot.footages?.length ? <Cycle ids={shot.footages} assets={assets} duration={duration} label={shot.label} /> : null}
         </Models>
       );
       break;
