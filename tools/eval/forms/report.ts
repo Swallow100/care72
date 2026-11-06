@@ -79,6 +79,8 @@ export const METRICS: Metric[] = [
   { label: "紙 取りこぼし", get: (r) => totals(r).paper.miss },
   { label: "紙 置き間違い（違う字）", get: (r) => totals(r).paper.wrong },
   { label: "紙 置き間違い（余分な字）", get: (r) => totals(r).paper.extra },
+  // T164: 正解の紙に無い □ の印（台帳の値に当たらない選択肢の印）
+  { label: "紙 正解に無い印", get: (r) => totals(r).paper.markExtra ?? 0 },
   { label: "紙 場所違い", get: (r) => totals(r).paper.boxMiss },
   { label: "紙 別紙（収まらない）", get: (r) => totals(r).paper.annexOverflow },
   { label: "紙 別紙（場所なし）", get: (r) => totals(r).paper.annexUnplaced },
