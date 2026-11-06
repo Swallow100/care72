@@ -81,6 +81,8 @@ export function seedClear(officeId: string): Readonly<Record<Table, string | nul
   survey_attempts: null,
   timeline_entries: `person_id IN (${PEOPLE})`,
   office_timeline_entries: `office_id = ${OFFICE}`,
+  // 医療班への受入依頼（T163）。その事業所の人の依頼（種の発災開始で入れた物も、審査員が送った物も）
+  custody_requests: `person_id IN (${PEOPLE}) OR office_id = ${OFFICE}`,
   third_party_provisions: `person_id IN (${PEOPLE})`,
   custody: `person_id IN (${PEOPLE})`,
   form9_rank_edits: `office_id = ${OFFICE} OR person_id IN (${PEOPLE})`,

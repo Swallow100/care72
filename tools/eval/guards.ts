@@ -46,6 +46,19 @@ export const GUARDS: ReadonlyArray<Guard> = [
     label: "使う人の AI に種の外の値の頁を渡さない",
     suspects: ["tools/eval/persona/guard.ts", "seed/people.ts"],
   },
+  // T163: 使う側の模擬の 1 回目で医療班の筋が受け入れに届かなかった（訓練の外に受入依頼の道が無く、受入一覧 0 人）。
+  // 発災開始の種の受入依頼と依頼の行の「受入」を足した。医療班の筋の受け入れの目標が届かなければ外れる
+  {
+    id: "persona-medical-receive",
+    bench: "persona",
+    item: "count:persona:unreached:medical.receive",
+    op: "<=",
+    value: 0,
+    since: "r8",
+    task: "T163",
+    label: "医療班の筋で受入依頼から受け入れられる",
+    suspects: ["components/staff/StaffRequests.tsx", "lib/custody/requests.ts", "lib/seed/requests.ts", "app/staff/page.tsx"],
+  },
   // T161: 評価の 6 回目で岐阜市の一覧の様式（4 頁）の共有の対応表ができず、2 つ目の事業所が AI を呼び直した（頁の組の鍵が 3 頁まで）。
   // 1 つ目に読めない頁があり共有に入れなかった物は数えない（tools/eval/scorecard-items.ts の sharedMissOf）
   {

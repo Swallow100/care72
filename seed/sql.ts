@@ -50,6 +50,8 @@ export const CLEAR_ORDER = [
   "survey_attempts",
   "timeline_entries",
   "office_timeline_entries",
+  // 医療班への受入依頼（T163）。受け持ちを指すので受け持ちより前
+  "custody_requests",
   // 受け持ちと第三者提供の記録（T23）。記録が受け持ちを指すので記録から
   "third_party_provisions",
   "custody",

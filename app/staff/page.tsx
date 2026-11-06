@@ -6,6 +6,7 @@ import { StaffIntake, type QrSampleView } from "@/components/staff/StaffIntake";
 import { StaffTable } from "@/components/staff/StaffTable";
 import { StaffCsvLink } from "@/components/staff/StaffCsvLink";
 import { StaffPassword } from "@/components/staff/StaffPassword";
+import { StaffRequests } from "@/components/staff/StaffRequests";
 import { todayJst } from "@/lib/age";
 import { ownLoginId, ownPasswordEntry, wantsOwnPassword } from "@/lib/auth/password-change";
 import { requirePage } from "@/lib/auth/server";
@@ -14,6 +15,7 @@ import { staffActor } from "@/lib/custody/actor";
 import { loadStaffBoard, type StaffBoard } from "@/lib/custody/board";
 import { CUSTODY_ERROR_LABELS, CUSTODY_ERRORS, CUSTODY_LABELS, type CustodyError } from "@/lib/custody/labels";
 import { listShelters, type ShelterCount } from "@/lib/custody/search";
+import { openRequests, type RequestHit } from "@/lib/custody/requests";
 import { parseStaffView } from "@/lib/custody/staff-view";
 import { lastShelter } from "@/lib/custody/store";
 import { parseReceived } from "@/lib/custody/entry";
@@ -45,6 +47,7 @@ function parseError(v: unknown): CustodyError | null {
 // 審査員の壁の中（デモ事業所）は、QR 読取に見本の QR（lib/custody/samples.ts。端末のカメラを使わずに試せる）。
 // 状態はケアマネの一覧と同じルールの表（lib/custody/board.ts）。1 分ごとに読み直す（時計が進む）
 // 見出しの行の右に「CSV出力」（T62、/staff/csv）。表の絞込と並びは URL に載せ（lib/custody/staff-view.ts）、CSV は画面と同じ行を書く
+// 受入の入口の上に、ケアマネ（事業所）からの受入依頼（T163。lib/custody/requests.ts）。受入で今の受け入れを通し、行がここの表に入る
 // その右に「パスワード変更」（T99。医療班・行政のアカウントだけ。審査員と固定のアカウントは「固定」の印。lib/auth/password-change.ts の ownPasswordEntry）
 export default async function StaffPage({ searchParams }: Props) {
   const principal = await requirePage("staff");
@@ -59,6 +62,7 @@ export default async function StaffPage({ searchParams }: Props) {
   let last: string | null = null;
   let loginId: string | null = null;
   let samples: QrSampleView[] = [];
+  let requests: RequestHit[] = [];
   if (actor) {
     const { env } = await getCloudflareContext({ async: true });
     const origin = originFromHeaders(await headers());
@@ -70,12 +74,14 @@ export default async function StaffPage({ searchParams }: Props) {
           return { ...x, qr: { size: m.size + QR_QUIET * 2, d: qrSvgPath(m) } };
         })
       : [];
-    [board, shelters, last, loginId] = await Promise.all([
+    [board, shelters, last, loginId, requests] = await Promise.all([
       loadStaffBoard(env.DB, actor, todayJst(), now),
       listShelters(env.DB, actor),
       lastShelter(env.DB, actor),
       // パスワードの欄の隠した ID（パスワードの管理の道具が組にできるように）
       entry === "open" && principal.accountId ? ownLoginId(env.DB, principal.accountId) : null,
+      // 医療班への受入依頼（T163。医療班の役だけ、審査員はデモの人の依頼だけ）
+      openRequests(env.DB, actor, todayJst()),
     ]);
   }
 
@@ -108,6 +114,8 @@ export default async function StaffPage({ searchParams }: Props) {
           </p>
         )}
       </div>
+      {/* 受入依頼（T163）は受入の入口の上。依頼が無ければ出さない */}
+      <StaffRequests requests={requests} />
       <StaffIntake shelters={shelters} defaultShelter={last} samples={samples} />
       <StaffTable rows={board.rows} shelters={board.shelters} view={parseStaffView(q)} received={parseReceived(q)} />
     </main>
