@@ -299,6 +299,9 @@ describe("場所を変えると気象庁の欄・上の帯・地図・様式の�
     expect(await savePlace(db, y, { city: "架空市", center: null })).toEqual({ ok: true });
     expect(office(CHECK_OFFICE_ID)).toMatchObject({ city: "架空市", city_code: null });
     expect((await loadOfficeRegion(db, CHECK_OFFICE_ID))?.cityCode).toBeNull();
+    // 未選択のまま（選ぶ部品は前の文字を city で送る）周りの市・区域だけ直しても保存できる。団体コードは NULL のまま
+    expect(await placePost(db, y, form({ city: "府中市", region: "1", region_code: C.toon, zone: "flood" }))).toMatchObject({ location: "/office#office-place" });
+    expect(office(CHECK_OFFICE_ID)).toMatchObject({ city: "府中市", city_code: null, region_city_codes: `["${C.toon}"]` });
   });
 });
 

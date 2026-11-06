@@ -56,7 +56,7 @@ export async function OfficePlace({ officeId, admin, error }: { officeId: string
             {PLACE_LABELS.bad}
           </p>
         )}
-        <div className="mt-2 grid gap-1.5 md:grid-cols-[minmax(0,18rem)_minmax(0,1fr)] md:gap-x-4">
+        <div className="mt-2 grid gap-1.5 md:grid-cols-[minmax(0,22rem)_minmax(0,1fr)] md:gap-x-4">
           <div className="grid content-start gap-1.5">
             {admin ? (
               <>

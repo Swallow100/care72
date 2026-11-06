@@ -20,7 +20,7 @@ const SELECT = "h-8 min-w-0 rounded bg-panel2 px-2 text-sm text-ink outline-none
 /** 都道府県の選ぶ欄（"" は全国） */
 function PrefSelect({ value, onChange, label }: { value: string; onChange: (v: string) => void; label: string }) {
   return (
-    <Select value={value} onChange={(e) => onChange(e.target.value)} className={`${SELECT} w-28`} aria-label={label} scrollList data-city-pref>
+    <Select value={value} onChange={(e) => onChange(e.target.value)} className={`${SELECT} w-24`} aria-label={label} scrollList data-city-pref>
       <option value="">{PLACE_LABELS.allPrefs}</option>
       {PREFECTURE_NAMES.map((p) => (
         <option key={p} value={p}>
@@ -53,7 +53,7 @@ function CitySelect({
       name={name}
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      className={`${SELECT} w-44`}
+      className={`${SELECT} w-36`}
       aria-label={label}
       searchable
       scrollList
@@ -88,6 +88,8 @@ export function MainCityPicker({ defaultCode, defaultPref, legacyText }: { defau
         <span className="text-xs" data-main-city-unselected>
           <span className="font-bold text-danger">{PLACE_LABELS.unselected}</span>
           {legacyText && <span className="ml-1 text-muted">{legacyText}</span>}
+          {/* 選び直すまでは前の文字のまま保存できる（周りの市・区域だけ直す時に区分の保存が断られないように。団体コードは NULL のまま） */}
+          {legacyText && <input type="hidden" name="city" value={legacyText} />}
         </span>
       )}
     </div>
