@@ -214,6 +214,32 @@ export function housemates(
   return { together: [...new Set(together)], kin };
 }
 
+// ---------- 電話に出る人（台帳から。T174） ----------
+
+/** 電話に出られるかを読む台帳の欄（仮名化の前。サーバーの中だけ） */
+export type SelfPhoneLedger = {
+  basic?: { contactMeans?: { mobile?: boolean | null; smartphone?: string | null } | null };
+  care?: { bedridden?: boolean | null; hearing?: string | null };
+  medical?: { devices?: ReadonlyArray<{ detail?: string | null }> };
+};
+
+/**
+ * 本人が電話に出られるか（T174。評価の 9 回目で、寝たままで呼吸器の本人が固定電話に出て話した）。台帳の事実だけで決める:
+ * 寝たきりで手元に電話が無い（固定電話だけ）・聞こえが「困難」・呼吸器の欄に気管切開の記録。認知症や「一部」の聞こえは出る（話が噛み合わないだけ）
+ */
+export function selfCanAnswer(l: SelfPhoneLedger): boolean {
+  const means = l.basic?.contactMeans;
+  const atHand = means?.mobile === true || means?.smartphone === "uses";
+  if (l.care?.bedridden === true && !atHand) return false;
+  if (l.care?.hearing === "hard") return false;
+  return !(l.medical?.devices ?? []).some((d) => d.detail?.includes("気管切開"));
+}
+
+/** 本人への電話に出る人（呼び方）。本人が出られなければ同居の家族・支援者（電話の話し手の役割名）の最初の人、誰もいなければ null（呼び出し音だけ。出ない） */
+export function phoneAnswerer(l: SelfPhoneLedger, housemateRoles: ReadonlyArray<string>): string | null {
+  return selfCanAnswer(l) ? "本人" : (housemateRoles[0] ?? null);
+}
+
 // ---------- 帳面（今ある物から引く） ----------
 
 /** ケアマネの行 1 つ（外へ掛けた電話・掛かってきた電話の往復）。text は保存した言葉（自由の言葉は名前に戻してある。Claude に渡すときは伏せる） */

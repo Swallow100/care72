@@ -101,6 +101,7 @@ import {
   placeOfState,
   planOf,
   downSaying,
+  phoneAnswerer,
   screenAsks,
   screenTurn,
   slipContextOf,
@@ -149,6 +150,8 @@ export type Persona = {
   plan?: Plan;
   /** 同居の人の役割名（T130。あとから「来た」と言わない） */
   together?: ReadonlyArray<string>;
+  /** 本人への電話に出る人（T174、lib/drill/person-facts.ts の phoneAnswerer）。「本人」か同居の人の役割名、誰も出なければ null。無ければ本人 */
+  phone?: string | null;
   /** 本人の周りの家族の続柄（T130。いない家族を出さない）。世帯が「家族と」「その他」なら null（見ない） */
   kin?: ReadonlyArray<string> | null;
   /**
@@ -287,7 +290,13 @@ export function buildPersona(source: PseudonymInput, opts: { on?: string; places
   const means = source.ledger.basic.contactMeans ?? {};
   const roles = contactRoles(source.contacts);
   const speakers = speakersOf(source.contacts, roles, p.sex);
-  const text = profileText(p, reporters, { landline: means.landline === true, mobile: means.mobile === true }, speakers);
+  const near = housemates(source, roles, p.sex);
+  // 本人への電話に出る人はコードが決める（T174）。電話の話し手になれるのは本人役の周りにいる同居の人だけ
+  const phone = phoneAnswerer(source.ledger, near.together.filter((x) => reporters.some((r) => r.role === x)));
+  const text = [
+    profileText(p, reporters, { landline: means.landline === true, mobile: means.mobile === true }, speakers),
+    ...(phone === "本人" ? [] : [phone ? `電話: 本人は出られない。本人への電話には同居の${phone}が出る` : "電話: 本人は出られない。本人への電話には誰も出ない"]),
+  ].join("\n");
   return {
     personId: source.person.id,
     key,
@@ -303,7 +312,8 @@ export function buildPersona(source: PseudonymInput, opts: { on?: string; places
     home: homeOf(source.ledger),
     fit: opts.fit ?? null,
     plan: planOf(source),
-    ...housemates(source, roles, p.sex),
+    phone,
+    ...near,
   };
 }
 
@@ -1153,6 +1163,8 @@ export type PersonaCall = Pick<PersonaInput, "person" | "hour" | "world" | "inci
   tell?: Pick<HeardSignal, "color" | "whereNow" | "injured" | "atHome" | "canMove" | "hasMedicine">;
   /** この人への手（メモを落とした物、T158）。あれば帳面を刻みの道と同じに引く（通話の往復が渡す） */
   actions?: ReadonlyArray<ActionRecord>;
+  /** 本人への電話に代わりの人が出た（T174。callee はその人の呼び方） */
+  standIn?: boolean;
 };
 
 /** 伝える様子の文（Claude に渡す文。画面の言葉ではない） */
@@ -1202,7 +1214,7 @@ export function callText(call: PersonaCall, persona: Persona): string {
     factsBlock(personaFacts(persona, { person: call.person, world: call.world, state: call.state, actions: call.actions ?? [], now })),
     `この刻みの状況: ${ownIncidents(call.incidents, call.person).map((e) => e.text).join("、") || "新しい事はない"}`,
     `前の連絡: ${stateWords(call.state)}`,
-    `電話に出た人: ${call.callee}${calleeCalls(persona, call.callee)}`,
+    `電話に出た人: ${call.callee}${calleeCalls(persona, call.callee)}${call.standIn ? "（本人への電話。本人は出られないので代わりに出た。本人の言葉として話さない）" : ""}`,
     ...(call.tell ? [`伝える様子: ${tellWords(call.tell)}`] : []),
   ].join("\n");
 }

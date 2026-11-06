@@ -193,7 +193,6 @@ export function createCallHook(deps: { load: () => Promise<ReadonlyMap<string, P
   return async (ask) => {
     // 結末の人（仮想モード、T50）は出ない
     if (ask.world.ended?.[ask.person]) return { pickup: "no_answer", speech: null, ai: false, called: false };
-    if (capReached(ask.world.counts)) return { pickup: ask.pickup, speech: null, ai: false, called: false };
     const tally = tallied(deps.ai);
     try {
       const sources = await deps.load();
@@ -201,7 +200,13 @@ export function createCallHook(deps: { load: () => Promise<ReadonlyMap<string, P
       if (!source) return { pickup: ask.pickup, speech: null, ai: false, called: false };
       // 町名は地区の別名で渡す（T88。本人役と同じ作り方）
       const persona = buildPersona(source, { ...(deps.on ? { on: deps.on } : {}), places: personaPlaces(deps.ai, sources), fit: ask.fit });
-      const callee = ask.target.kind === "self" ? "本人" : (persona.roles.get(ask.target.id) ?? null);
+      // 本人への電話に出る人はコードが決める（T174。台帳の寝たきり・聞こえなど。誰も出なければ呼び出し音だけ）
+      const self = ask.target.kind === "self";
+      if (self && persona.phone === null) return { pickup: "no_answer", speech: null, ai: false, called: false };
+      const standIn = self && persona.phone !== undefined && persona.phone !== "本人" ? persona.phone : null;
+      const callee = self ? (standIn ?? "本人") : (persona.roles.get(ask.target.id) ?? null);
+      const by = standIn ? { answeredBy: standIn } : {};
+      if (capReached(ask.world.counts)) return { pickup: ask.pickup, speech: null, ai: false, called: false, ...by };
       if (!callee) return { pickup: ask.pickup, speech: null, ai: false, called: false };
       const r = await personaCallReply(
         persona,
@@ -214,11 +219,12 @@ export function createCallHook(deps: { load: () => Promise<ReadonlyMap<string, P
           callee,
           ...(ask.tell ? { tell: ask.tell } : {}),
           ...(ask.night ? { night: true } : {}),
+          ...(standIn ? { standIn: true } : {}),
         },
         ask.pickup,
         tally.ai,
       );
-      return { pickup: r.pickup, speech: r.speech, ai: r.ai, called: tally.called() };
+      return { pickup: r.pickup, speech: r.speech, ai: r.ai, called: tally.called(), ...by };
     } catch (e) {
       if (!isPersonaFailure(e)) console.error("通話の相手に失敗", e instanceof Error ? e.name : typeof e);
       return { pickup: ask.pickup, speech: null, ai: false, called: tally.called() };
@@ -280,7 +286,9 @@ export function createTalkHook(deps: { load: () => Promise<ReadonlyMap<string, P
     }
     // ケアマネの自由の文を伏せる。伏せきれなければここで投げる（往復を断る）
     const said = t.ask ? TALK_ASK_WORDS[t.ask] : restoreText(pseudonymizeText(raw, key).text, key);
-    const callee = t.callee.kind === "self" ? "本人" : t.callee.id ? (persona.roles.get(t.callee.id) ?? null) : null;
+    // 本人への電話に出る人はコードが決める（T174。最初の言葉と同じ人）
+    const standIn = t.callee.kind === "self" && persona.phone && persona.phone !== "本人" ? persona.phone : null;
+    const callee = t.callee.kind === "self" ? (persona.phone === null ? null : (standIn ?? "本人")) : t.callee.id ? (persona.roles.get(t.callee.id) ?? null) : null;
     if (!callee) return { ...plain, said };
     // T167: 相づち・待って・聞こえますか・同じ問いなどは Haiku を呼ばずコードの短い返事（lib/drill/talk-quick.ts）。中身のある文は本人役のまま
     const quick = quickKindOf({ ...(t.ask ? { ask: t.ask } : {}), said }, t.lines);
@@ -303,6 +311,7 @@ export function createTalkHook(deps: { load: () => Promise<ReadonlyMap<string, P
             said,
             ...(t.incoming ? { incoming: true } : {}),
             ...(t.actions ? { actions: t.actions } : {}),
+            ...(standIn ? { standIn: true } : {}),
           },
           persona,
         ),

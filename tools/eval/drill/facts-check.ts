@@ -52,6 +52,8 @@ export type FactPerson = {
   town: string | null;
   /** スマホで赤緑を押せる人がいるか（T174。いなければ連絡の無いのは筋の外。無ければ押せると見る） */
   canPress?: boolean;
+  /** 本人が電話に出られるか（T174、selfCanAnswer。無ければ出られると見る） */
+  selfPhone?: boolean;
 };
 
 const RETURNED = /帰宅|(?:家|自宅|うち)に戻|帰って(?:き|来)|戻ってき/;
@@ -213,6 +215,8 @@ export function factHits(outcome: RunOutcome, people: Readonly<Record<string, Fa
       if (!text) continue;
       checked += 1;
       if (field === "call.speech" && a.callee === "self" && f.voiceLost) hit("voice_lost", person, minute, "本人への電話で話した");
+      // 出られない人の電話に本人が出た（T174。代わりの人が出たなら answeredBy がある）
+      if (field === "call.speech" && a.callee === "self" && people[person]?.selfPhone === false && !res.answeredBy) hit("self_answer", person, minute, "出られない本人が電話で話した");
       // 訪問は本人のいる所へ（T167。門と同じ。帳面のいる所、分からなければ家）
       for (const r of sentenceHits(text, field.startsWith("visit") ? { ...ctx, place: ctx.place ?? "home" } : ctx)) hit(r.rule, person, minute, `${field}: ${cut(r.text)}`);
     }
@@ -339,7 +343,7 @@ export function factHits(outcome: RunOutcome, people: Readonly<Record<string, Fa
 }
 
 /** 帳面の門の決まりのほかに、台が数える型（T141。clock_drift は T158） */
-export type FactExtraRule = "lost_unresolved" | "area_repeat" | "clock_drift" | "down_silent" | "down_green";
+export type FactExtraRule = "lost_unresolved" | "area_repeat" | "clock_drift" | "down_silent" | "down_green" | "self_answer";
 
 /** 機器の予備が切れてから連絡が無いと見る間（分。T167） */
 export const DOWN_SILENT_MINUTES = 240;

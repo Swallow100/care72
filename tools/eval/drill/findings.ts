@@ -170,6 +170,7 @@ const FACT_TITLES: Readonly<Record<string, string>> = {
   power_said: "停電の戻りと家の電気が食い違う言葉（届いた電源を電気が戻ったと言う・戻ったあとにまだ停電と言う）",
   down_silent: "機器の予備が切れたあと長く本人・家族の連絡が無い",
   down_green: "機器が止まったまま緑の連絡",
+  self_answer: "電話に出られない本人が電話で話した",
   place_text: "いる所と食い違う言葉",
   remain_mismatch: "電池・予備の残りの数が帳面と食い違う",
   old_news: "前に伝えた事を新しい事のように言う",

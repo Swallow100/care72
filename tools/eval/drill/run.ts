@@ -32,7 +32,7 @@ import { createFreeHook } from "../../../lib/drill/free-action.ts";
 import { roomClientOf, worldModeOf, type WorldMode } from "../../../lib/drill/world-room.ts";
 import { homeOf } from "../../../lib/drill/comms.ts";
 import { contactRoles, pseudonymize, type PseudonymInput } from "../../../lib/pseudonym/index.ts";
-import { housemates, planOf } from "../../../lib/drill/person-facts.ts";
+import { housemates, planOf, selfCanAnswer } from "../../../lib/drill/person-facts.ts";
 import { reportersOf } from "../../../lib/drill/persona.ts";
 import type { FactPerson } from "./facts-check.ts";
 import { SEED_PEOPLE } from "../../../seed/people.ts";
@@ -120,7 +120,7 @@ export function checkContext(): CheckContext {
       const { together, kin } = housemates(s, contactRoles(s.contacts), s.ledger.basic.sex ?? null);
       return [
         s.person.id,
-        { plan: planOf(s), together, kin, hazards: s.ledger.evacuation.hazards, town: s.ledger.basic.address?.town ?? null, canPress: reportersOf(s).some((x) => x.canPress) },
+        { plan: planOf(s), together, kin, hazards: s.ledger.evacuation.hazards, town: s.ledger.basic.address?.town ?? null, canPress: reportersOf(s).some((x) => x.canPress), selfPhone: selfCanAnswer(s.ledger) },
       ];
     }),
   );
