@@ -4,7 +4,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it } from "vitest";
 import { PersonView } from "../components/person/PersonView.tsx";
-import { SEED_AT, SEED_PEOPLE, seedConsents, type SeedPerson } from "../seed/people.ts";
+import { SEED_AT, seedConsents, type SeedPerson } from "../seed/people.ts";
 import { seedStatements } from "../seed/sql.ts";
 import type { Principal } from "./auth/principal.ts";
 import { d1FromSqlite, migratedSqlite } from "./db/test-d1.ts";
@@ -29,6 +29,8 @@ import {
 import { triage } from "./triage/index.ts";
 import { toTriagePerson } from "./triage/from-ledger.ts";
 import { parseLedger } from "./db/ledger.ts";
+// T142 で種の台帳を埋めた。このテストは空いた欄を前提にするので、T142 より前の空きの多い形（seed/sparse.ts）を使う
+import { SPARSE_PEOPLE } from "../seed/sparse.ts";
 
 const TODAY = "2026-11-02";
 
@@ -44,7 +46,7 @@ function seedRows(p: SeedPerson, timeline: PersonPageRows["timeline"] = []): Per
   };
 }
 
-const seed = (id: string) => SEED_PEOPLE.find((p) => p.person.id === id)!;
+const seed = (id: string) => SPARSE_PEOPLE.find((p) => p.person.id === id)!;
 const viewOf = (id: string, mode: "normal" | "disaster" = "normal") => toPersonView(seedRows(seed(id)), { today: TODAY, mode });
 
 const section = (v: View, id: SectionId) => v.sections.find((s) => s.id === id)!;
@@ -75,7 +77,7 @@ function textOf(v: View, id: SectionId): string {
   return parts.join(" ");
 }
 
-const ALL_IDS = SEED_PEOPLE.map((p) => p.person.id);
+const ALL_IDS = SPARSE_PEOPLE.map((p) => p.person.id);
 const ASSERTING_WORDS = ["危険", "診断", "判定", "重症", "病気がわかる"];
 
 describe("本人のページ（種の 10 人）", () => {
@@ -117,7 +119,8 @@ describe("本人のページ（種の 10 人）", () => {
     expect(textOf(v, "consent")).toBe(
       "名簿登録 同意 2026-11-02 山本 計画共有 同意 2026-11-02 山本 支援者提供 同意 2026-11-02 山本 医療班提供 同意 2026-11-02 山本 AI 提供 同意 2026-11-02 山本",
     );
-    expect(textOf(v, "documents")).toBe("計画書 表示 医療要約 表示 本人の1枚 表示 QR 表示 スマホ入口 表示");
+    // スマホ入口は書類の行に出さない（同意の面の後のスマホの面、T149）
+    expect(textOf(v, "documents")).toBe("計画書 表示 医療要約 表示 本人の1枚 表示 QR 表示");
   });
 
   it("電話は tel: のリンク（ハイフンを落とす）", () => {
@@ -439,7 +442,7 @@ describe("D1 から読む（事業所の壁）", () => {
 
   beforeEach(() => {
     sqlite = migratedSqlite();
-    for (const s of seedStatements()) sqlite.exec(s);
+    for (const s of seedStatements({ people: SPARSE_PEOPLE })) sqlite.exec(s);
     sqlite
       .prepare(
         `INSERT INTO people (id, office_id, care_manager_id, name, kana, birth_date)

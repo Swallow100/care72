@@ -330,11 +330,11 @@ describe("日付と電話の部品", () => {
     });
     const items = partItems(f, ["令和8年11月5日"], pc([]));
     expect(Array.isArray(items)).toBe(true);
-    const list = items as Exclude<typeof items, null | "fail">;
+    const list = items as Exclude<typeof items, null | "fail" | "era">;
     expect(list.filter((i) => i.kind === "mark").map((i) => i.box)).toEqual([f.optionBoxes![0]]);
     expect(list.flatMap((i) => (i.kind === "text" ? i.lines : []))).toEqual(["2026", "11", "5"]);
     // 昭和の日付は昭和の □
-    const showa = partItems(f, ["昭和17年4月18日"], pc([])) as Exclude<typeof items, null | "fail">;
+    const showa = partItems(f, ["昭和17年4月18日"], pc([])) as Exclude<typeof items, null | "fail" | "era">;
     expect(showa.filter((i) => i.kind === "mark").map((i) => i.box)).toEqual([f.optionBoxes![3]]);
     expect(showa.flatMap((i) => (i.kind === "text" ? i.lines : []))).toEqual(["17", "4", "18"]);
   });

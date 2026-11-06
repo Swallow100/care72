@@ -74,3 +74,52 @@ function hasPrintMark(href: string): boolean {
     return false;
   }
 }
+
+// ---------- 印刷の見本（T147） ----------
+// 「印刷」を押すと、刷る頁だけを画面に出した見本（<html data-print-preview>。紙面の css が @media print と同じ隠し方を画面にも当てる）に
+// 切り替えてから、ブラウザの印刷の画面（プリンターを選ぶ所）を開く。印刷の画面を閉じても見本は残り、「閉じる」で元の画面へ。
+// 様式 9 のように画面と紙が別の物（紙は .print-only）でも、刷る紙をそのまま見られる。
+
+/** 見本の印（<html> の data 属性） */
+export const PRINT_PREVIEW_ATTR = "data-print-preview";
+
+/**
+ * 見本の帯の言葉（T162）。「閉じる」は前の画面に戻ると読まれたので、見本だけを閉じる物は「見本終了」、前の画面へは「戻る」。
+ * 押した後の状態は「印刷窓 準備中」（書体・画像を読む間）→「印刷窓 表示済 時刻」（ブラウザの印刷の画面を出した。刷ったかは分からない）
+ */
+export const PRINT_PREVIEW_LABELS = {
+  title: "印刷見本",
+  print: "印刷",
+  again: "再印刷",
+  close: "見本終了",
+  back: "戻る",
+  window: "印刷窓",
+  preparing: "準備中",
+  shown: "表示済",
+} as const;
+
+/** 見本の帯の印刷の状態 */
+export type PrintPhase = "idle" | "preparing" | "shown";
+
+export function printPhaseText(p: PrintPhase): string {
+  return p === "preparing" ? PRINT_PREVIEW_LABELS.preparing : p === "shown" ? PRINT_PREVIEW_LABELS.shown : "";
+}
+
+/** 見本を出してから印刷の画面を開く。書体・画像を読み終えてから。出したかを返す */
+export async function previewPrint(
+  win: PrintWindow & { document: PrintWindow["document"] & { documentElement?: { setAttribute(n: string, v: string): void } }; scrollTo?: (x: number, y: number) => void },
+  preload?: Preload,
+): Promise<boolean> {
+  win.document.documentElement?.setAttribute(PRINT_PREVIEW_ATTR, "1");
+  win.scrollTo?.(0, 0);
+  await (win.document.fonts?.ready ?? Promise.resolve());
+  await Promise.all(Array.from(win.document.images ?? []).map((img) => (img.complete || !img.decode ? null : img.decode().catch(() => null))));
+  await waitSvgImages(win.document, preload);
+  win.print();
+  return true;
+}
+
+/** 見本を閉じる */
+export function closePreview(doc: { documentElement?: { removeAttribute(n: string): void } }): void {
+  doc.documentElement?.removeAttribute(PRINT_PREVIEW_ATTR);
+}

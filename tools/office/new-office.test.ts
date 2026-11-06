@@ -111,7 +111,7 @@ describe("事業所と最初の管理者を作る道具: 動かす", () => {
     const r = run([...BASE, "--out", out]);
     expect(r.status, r.stderr).toBe(0);
     const password = passwordOf(r.stdout);
-    expect(password).toMatch(/^[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}$/);
+    expect(password).toMatch(/^[a-zA-Z0-9]{4}-[a-zA-Z0-9]{4}-[a-zA-Z0-9]{4}$/);
 
     const sql = readFileSync(out, "utf8");
     expect(sql).not.toContain(password);
@@ -127,7 +127,7 @@ describe("事業所と最初の管理者を作る道具: 動かす", () => {
     for (const s of seedStatements()) db.exec(s);
     const before = (db.prepare("SELECT count(*) AS n FROM offices").get() as { n: number }).n;
     db.exec(sql);
-    const offices = db.prepare("SELECT id, name, kind, city, plan_form, center_lat, center_lng FROM offices WHERE id NOT IN ('office-demo', 'office-partner', 'office-unaffiliated')").all();
+    const offices = db.prepare("SELECT id, name, kind, city, plan_form, center_lat, center_lng FROM offices WHERE id NOT IN ('office-demo', 'office-demo-check', 'office-partner', 'office-unaffiliated')").all();
     expect(offices).toHaveLength(1);
     expect((db.prepare("SELECT count(*) AS n FROM offices").get() as { n: number }).n).toBe(before + 1);
     expect(offices[0]).toMatchObject({ name: "架空居宅介護支援", kind: "regular", city: "今治市", plan_form: "cao", center_lat: null, center_lng: null });

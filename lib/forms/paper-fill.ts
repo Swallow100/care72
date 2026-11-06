@@ -66,6 +66,11 @@ export type PaperSlot = {
   target?: PaperTarget;
   /** 様式だけの欄: 手入れの id（まだ無ければ無し） */
   entryId?: string;
+  /**
+   * 台帳の 1 か所に書けない欄（氏名・住所・連絡先の人など、元が本人のページの面の入れ子の値。T147）。紙の上ではその場で打ち、
+   * この人のこの様式の値（様式のみ）として残す。台帳を直す道は本人のページのその面（label・href）
+   */
+  pageLink?: { label: string; href: string };
   /** 手で入れた印（誰がいつ） */
   hand?: { by: string | null; at: string };
   /** この欄を埋める問いの鍵（lib/intake/ask.ts の Question の key） */
@@ -98,25 +103,43 @@ export type PaperFillData = {
   questions: Question[];
 };
 
-/** 紙の上の言葉（2〜4 字） */
+/**
+ * 紙の上の言葉（2〜4 字）。T147 で初めて見て分かる形に見直した:
+ * - 手で入れた所の印の表示の切替「印」→「入力箇所」（押すと、紙の上で入れた欄・置いた枠に誰がいつの小さな印）
+ * - 欄の行き先: 台帳に入る欄は「台帳保存」（ほかの様式にも効く）、この人のこの様式だけの値は「様式のみ」（台帳は変えない）
+ * - 文字の枠・画像を置く操作は「文字追加」「画像追加」、置く所を選ぶ間は「位置選択」、画像の取り込みは「画像取込」
+ * - 取消・再実行は黒塗りの画面と同じ「一手戻す」「一手進む」（窓の「取消」と取り違えない）
+ */
 export const FILL_LABELS = {
   ledger: "台帳",
-  form: "様式",
+  form: "様式のみ",
+  toLedger: "台帳保存",
+  toForm: "様式のみ",
   textBox: "文字枠",
+  addText: "文字追加",
   image: "画像",
-  undo: "取消",
-  redo: "再実行",
-  marks: "印",
+  addImage: "画像追加",
+  undo: "一手戻す",
+  redo: "一手進む",
+  marks: "入力箇所",
   ask: "質問",
   annex: "別紙",
-  place: "配置",
+  place: "位置選択",
   remove: "削除",
   pick: "選択",
-  upload: "取込",
+  upload: "画像取込",
+  save: "保存",
+  saving: "保存中",
   saved: "保存済",
+  unsaved: "未保存",
   failed: "保存失敗",
+  leave: "未保存あり",
+  leaveOk: "破棄移動",
   move: "移動",
-  done: "完了",
+  size: "大きさ",
+  auto: "自動",
+  page: "本人のページ",
+  done: "閉じる",
   map: "地図",
   photo: "写真",
   figure: "図",
@@ -227,4 +250,56 @@ export function slotForField(slots: readonly PaperSlot[], d: { field: string; it
   if (direct) return direct;
   const ids = d.items.flatMap((i) => i.split(/[:+]/));
   return slots.find((s) => ids.some((k) => has(s, k))) ?? null;
+}
+
+// ---------- 文字の枠・画像を動かす・大きさを変える（T147） ----------
+
+/** つまむ所: 枠の本体（移動）と 4 つの角・4 つの辺（大きさ） */
+export const BOX_HANDLES = ["n", "ne", "e", "se", "s", "sw", "w", "nw"] as const;
+export type BoxHandle = (typeof BOX_HANDLES)[number];
+/** 画像は縦横の比を保つので角だけ */
+export const IMAGE_HANDLES: readonly BoxHandle[] = ["ne", "se", "sw", "nw"];
+
+/** 小さくできる下限（mm）。文字の枠は下限の字 1 行が入る高さ */
+export const BOX_MIN_MM = { w: 8, h: 4 } as const;
+
+const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
+const round4 = (n: number) => Math.round(n * 10000) / 10000;
+
+/** 枠を動かす（dx・dy は頁の比）。頁の外へ出さない */
+export function moveBox(start: FieldBox, dx: number, dy: number): FieldBox {
+  return { ...start, x: round4(clamp(start.x + dx, 0, 1 - start.w)), y: round4(clamp(start.y + dy, 0, 1 - start.h)) };
+}
+
+/**
+ * 角・辺をつまんで大きさを変える（dx・dy は頁の比、page は頁の大きさ mm）。つまんだ辺だけが動き、反対の辺は留まる。
+ * 頁の外へ出さず、下限（BOX_MIN_MM）より小さくしない。keepAspect（画像）は縦横の比を保つ（幅の変わりに合わせる）
+ */
+export function resizeBox(start: FieldBox, handle: BoxHandle, dx: number, dy: number, page: { w: number; h: number }, keepAspect = false): FieldBox {
+  const minW = BOX_MIN_MM.w / page.w;
+  const minH = BOX_MIN_MM.h / page.h;
+  let left = start.x;
+  let top = start.y;
+  let right = start.x + start.w;
+  let bottom = start.y + start.h;
+  if (handle.includes("w")) left = clamp(start.x + dx, 0, right - minW);
+  if (handle.includes("e")) right = clamp(right + dx, left + minW, 1);
+  if (handle.includes("n")) top = clamp(start.y + dy, 0, bottom - minH);
+  if (handle.includes("s")) bottom = clamp(bottom + dy, top + minH, 1);
+  if (keepAspect && start.w > 0) {
+    const ratio = start.h / start.w;
+    let w = right - left;
+    let h = w * ratio;
+    // 縦が頁に入らなければ、縦に合わせて幅を詰める
+    const roomH = handle.includes("n") ? start.y + start.h : 1 - start.y;
+    if (h > roomH) {
+      h = roomH;
+      w = h / ratio;
+      if (handle.includes("w")) left = right - w;
+      else right = left + w;
+    }
+    if (handle.includes("n")) top = bottom - h;
+    else bottom = top + h;
+  }
+  return { x: round4(left), y: round4(top), w: round4(right - left), h: round4(bottom - top) };
 }

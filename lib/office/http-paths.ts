@@ -15,3 +15,9 @@ export const OWN_PASSWORD_API_PATH = "/api/auth/password";
 export function careManagerApiPath(accountId: string): string {
   return `${CARE_MANAGERS_API_PATH}/${encodeURIComponent(accountId)}`;
 }
+
+/** 事業所の画面の「地域」の保存の行き先と、区分の id（保存のあとに戻る所。T68。T154 で lib/office/place.ts から移した: place.ts は表を読む） */
+export const OFFICE_PLACE_PATH = "/office/place";
+export const OFFICE_PLACE_ANCHOR = "office-place";
+/** 保存を断ったときに戻す印（/office?form_error=place。様式の選択の form_error=bad と分ける） */
+export const PLACE_FORM_ERROR = "place";

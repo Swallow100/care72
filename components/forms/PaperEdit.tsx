@@ -14,17 +14,24 @@ import { postJson, isError } from "@/components/person/intake-api";
 import { INPUT } from "@/components/person/intake-ui";
 import { Button, buttonClass } from "@/components/ui/Button";
 import { CloseIcon, EditIcon, SaveIcon } from "@/components/ui/Icon";
+import { StateText } from "@/components/ui/Tag";
 import { intakeField } from "@/lib/intake/fields";
 import type { IntakeChange } from "@/lib/intake/changes";
 import { INTAKE_LABELS } from "@/lib/labels";
 import { draftKey, paperChanges, type PaperEditData, type PaperTarget } from "@/lib/forms/paper-edit";
+import type { FormId } from "@/lib/forms/form-entries";
 
-/** 窓の言葉（2〜4 字） */
-export const PAPER_EDIT_LABELS = { write: "記入", page: "本人のページ" } as const;
+/** 様式のみの値の手入れの id（lib/forms/form-entries.ts の ENTRY_ID の形） */
+const newEntryId = () => `fe-${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`;
+
+/** 窓の言葉（2〜4 字）。formOnly は台帳の 1 か所に書けない欄を打つ欄の行き先（様式のみ。T147） */
+export const PAPER_EDIT_LABELS = { write: "記入", page: "本人のページ", formOnly: "様式のみ", toLedger: "台帳保存", ledger: "台帳" } as const;
 
 export function PaperEdit({ data, children }: { data: PaperEditData; children: ReactNode }) {
   const root = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState<PaperTarget | null>(null);
+  // 保存した欄（T162）。窓を閉じると紙が読み直されるだけで、入ったかが分からなかったので、紙の上に「保存済 欄の名前」と本人のページへの道
+  const [saved, setSaved] = useState<string | null>(null);
   const byKey = useMemo(() => new Map(data.targets.map((t) => [t.key as string, t])), [data]);
 
   // 押せる欄に印を付ける。原本の枠の紙は欄の矩形の箱（data-edit-key）、前からの紙面は欄（data-field）
@@ -61,8 +68,17 @@ export function PaperEdit({ data, children }: { data: PaperEditData; children: R
         if (e.key === "Enter" || e.key === " ") pick(e);
       }}
     >
+      {saved && (
+        <p role="status" className="screen-only mx-auto mb-2 flex max-w-[calc(210mm+2rem)] flex-wrap items-center gap-x-2 px-4 text-sm" data-paper-saved>
+          <StateText tone="ok">{INTAKE_LABELS.saved}</StateText>
+          <span className="font-bold">{saved}</span>
+          <Link href={`/people/${encodeURIComponent(data.personId)}`} className={buttonClass("plain", "sm")} data-press="" data-paper-saved-page>
+            {PAPER_EDIT_LABELS.page}
+          </Link>
+        </p>
+      )}
       {children}
-      {open && <EditWindow key={open.key} data={data} target={open} onClose={() => setOpen(null)} />}
+      {open && <EditWindow key={open.key} data={data} target={open} onClose={() => setOpen(null)} onSaved={() => setSaved(open.label)} />}
     </div>
   );
 }
@@ -86,11 +102,20 @@ export function EditWindow({
   target,
   onClose,
   submit,
+  formId = "matsuyama",
+  onFormSaved,
+  onSaved,
 }: {
   data: Pick<PaperEditData, "personId" | "version">;
   target: PaperTarget;
   onClose: () => void;
   submit?: (changes: IntakeChange[]) => Promise<string | null>;
+  /** 様式のみの値を入れる様式（T147。target.text のある欄） */
+  formId?: FormId;
+  /** 様式のみの値を入れたあと（渡さなければ紙を読み直す） */
+  onFormSaved?: () => void;
+  /** 台帳か様式のみに保存できたあと（submit を渡さないとき。T162 の「保存済」） */
+  onSaved?: () => void;
 }) {
   const router = useRouter();
   const ref = useRef<HTMLDialogElement>(null);
@@ -99,6 +124,58 @@ export function EditWindow({
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 台帳の 1 か所に書けない字の欄（T147）。窓の中で打ち、この人のこの様式の値（様式のみ）として残す
+  const writableInputs = target.inputs.some((i) => i.kind !== "page");
+  // 書く欄が 1 つなら、欄の名前は紙の欄の名前（窓の題と同じ）にし、台帳のどこに入るかを小さく添える（T162。「事前避難場所」の窓の
+  // 「避難先2」を 1 つ目の欄と読み違えた）
+  const single = target.inputs.filter((i) => i.kind !== "page").length === 1;
+  const nameOf = (label: string) =>
+    single && label !== target.label ? (
+      <span className="grid text-xs">
+        <span className="text-muted">{target.label}</span>{" "}
+        <span className="text-[0.6875rem] text-muted" data-paper-ledger-name>
+          {PAPER_EDIT_LABELS.ledger} {label}
+        </span>
+      </span>
+    ) : (
+      <span className="text-xs text-muted">{label}</span>
+    );
+  const formOnly = target.text !== undefined && !writableInputs;
+  const [text, setText] = useState(target.text ?? "");
+
+  async function saveFormOnly() {
+    const next = text.replace(/\r\n/g, "\n").trim();
+    if (next === (target.text ?? "").trim()) {
+      onClose();
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    const body =
+      next === ""
+        ? target.entryId
+          ? { op: "remove", personId: data.personId, formId, id: target.entryId }
+          : null
+        : {
+            op: "put",
+            personId: data.personId,
+            formId,
+            entry: { id: target.entryId ?? newEntryId(), kind: "field", fieldKey: target.key, page: null, box: null, value: JSON.stringify(next) },
+          };
+    if (body) {
+      const r = await postJson<{ ok: true }>("/api/forms/entries", body);
+      if (isError(r)) {
+        setBusy(false);
+        setError(r.label);
+        return;
+      }
+    }
+    setBusy(false);
+    onClose();
+    onSaved?.();
+    if (onFormSaved) onFormSaved();
+    else router.refresh();
+  }
 
   useLayoutEffect(() => {
     const el = ref.current;
@@ -107,6 +184,10 @@ export function EditWindow({
   }, []);
 
   async function save() {
+    if (formOnly) {
+      await saveFormOnly();
+      return;
+    }
     const { changes, bad } = paperChanges(target, draft);
     if (bad.length > 0) {
       setError(`${INTAKE_LABELS.invalid} ${bad.join("・")}`);
@@ -143,10 +224,11 @@ export function EditWindow({
       return;
     }
     onClose();
+    onSaved?.();
     router.refresh();
   }
 
-  const writable = target.inputs.some((i) => i.kind !== "page");
+  const writable = writableInputs || formOnly;
   return (
     <dialog
       ref={ref}
@@ -173,6 +255,21 @@ export function EditWindow({
           {target.label}
         </h2>
         <div className="space-y-1.5">
+          {formOnly && (
+            <label className="grid gap-1" data-paper-form-only={target.key}>
+              <span className="flex items-center gap-1.5 text-xs text-muted">
+                <span className="rounded-sm bg-panel2 px-1 font-bold text-ink">{PAPER_EDIT_LABELS.formOnly}</span>
+              </span>
+              <textarea
+                className={`${INPUT} min-h-16 resize-y`}
+                value={text}
+                maxLength={200}
+                rows={target.text?.includes("\n") ? 3 : 2}
+                onChange={(e) => setText(e.target.value)}
+                aria-label={`${target.label} ${PAPER_EDIT_LABELS.formOnly}`}
+              />
+            </label>
+          )}
           {target.inputs.map((i) => {
             if (i.kind === "page") {
               return (
@@ -190,7 +287,7 @@ export function EditWindow({
               if (!f) return null;
               return (
                 <label key={k} className="grid grid-cols-[6.5rem_minmax(0,1fr)] items-center gap-x-2" data-paper-input={k}>
-                  <span className="text-xs text-muted">{i.label}</span>
+                  {nameOf(i.label)}
                   <FieldInput field={f} value={draft[k]} onPanel onChange={(v) => setDraft((d) => ({ ...d, [k]: v }))} />
                 </label>
               );
@@ -198,14 +295,14 @@ export function EditWindow({
             const tel = i.part === "phone" || i.part === "mobile";
             return (
               <label key={k} className="grid grid-cols-[6.5rem_minmax(0,1fr)] items-center gap-x-2" data-paper-input={k}>
-                <span className="text-xs text-muted">{i.label}</span>
+                {nameOf(i.label)}
                 <input
                   className={tel ? `${INPUT} tabular-nums` : INPUT}
                   inputMode={tel ? "tel" : undefined}
                   maxLength={i.part === "address" ? 60 : i.part === "kana" ? 40 : 20}
                   value={typeof draft[k] === "string" ? (draft[k] as string) : ""}
                   onChange={(e) => setDraft((d) => ({ ...d, [k]: e.target.value }))}
-                  aria-label={i.label}
+                  aria-label={single ? target.label : i.label}
                 />
               </label>
             );
@@ -218,7 +315,7 @@ export function EditWindow({
           </Button>
           {writable && (
             <Button kind="main" type="submit" icon={SaveIcon} disabled={busy}>
-              {busy ? INTAKE_LABELS.busy : INTAKE_LABELS.save}
+              {busy ? INTAKE_LABELS.busy : formOnly ? INTAKE_LABELS.save : PAPER_EDIT_LABELS.toLedger}
             </Button>
           )}
         </div>

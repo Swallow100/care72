@@ -297,11 +297,8 @@ describe("講評（Opus 1 回）", () => {
     expect(review.state).toBe("done");
     const shown = shownReview(review)!;
     expect(shown.edited).toBe(false);
-    expect(shown.findings.map((x) => [x.person, x.kind, x.basis])).toEqual([
-      ["p-08", "reached", "nanbyo-tsuiho-2022"],
-      [null, "report", null],
-      ["p-02", "other", "mhlw-bcp-2020"],
-    ]);
+    // 報告が遅くない回の報告と、重い種類で目安（T141 の REVIEW_LIMIT）が埋まった回の other は残さない
+    expect(shown.findings.map((x) => [x.person, x.kind, x.basis])).toEqual([["p-08", "reached", "nanbyo-tsuiho-2022"]]);
     // 仮名は参加者の並び（担当一覧のカナ順: A 伊藤・B 井上・C 加藤・D 小林…）で付き、残すときは氏名に戻る
     expect(shown.findings[0].text).toContain("井上 誠さん");
     expect(shown.findings[0].text).not.toMatch(/[A-Z] ?さん/);
@@ -319,17 +316,17 @@ describe("講評（Opus 1 回）", () => {
     const f = fake(() => reply(ANSWER, OPUS));
     await reviewPost(ENV(), careManager(), "d1", {}, { claude: f.client });
     const before = shownReview(storedScore("d1")!.review)!;
-    const edit = { summary: "次は小林さんに先に訪問依頼。", findings: before.findings.map((x, i) => ({ text: i === 1 ? "" : `${x.text}（確認）` })) };
+    const edit = { summary: "次は小林さんに先に訪問依頼。", findings: before.findings.map(() => ({ text: "" })) };
     const res = await reviewPost(ENV(), careManager(), "d1", { edit }, { now: () => new Date(LATER) });
     expect(res.status).toBe(200);
     const r = storedScore("d1")!.review!;
     if (r.state !== "done") throw new Error("講評が無い");
-    expect(r.ai.findings).toHaveLength(3);
+    expect(r.ai.findings).toHaveLength(1);
     expect(r.edited).toMatchObject({ summary: "次は小林さんに先に訪問依頼。", by: "山本", at: LATER });
-    expect(r.edited!.findings).toHaveLength(2);
+    expect(r.edited!.findings).toHaveLength(0);
     expect(shownReview(r)!.edited).toBe(true);
     // 指摘の数が違う直しは 400
-    expect((await reviewPost(ENV(), careManager(), "d1", { edit: { summary: "x", findings: [] } })).status).toBe(400);
+    expect((await reviewPost(ENV(), careManager(), "d1", { edit: { summary: "x", findings: [{ text: "x" }, { text: "y" }] } })).status).toBe(400);
   });
 
   it("失敗（形の違い）は残し、再作成できる。作成中は重ねて呼ばない", async () => {

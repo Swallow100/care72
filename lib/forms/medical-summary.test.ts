@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { MedicalSummaryBasis } from "../../components/forms/MedicalSummaryBasis.tsx";
 import { MedicalSummarySheet } from "../../components/forms/MedicalSummarySheet.tsx";
 import { MedicalWithheld } from "../../components/forms/MedicalWithheld.tsx";
-import { SEED_AT, SEED_PEOPLE, seedConsents, type SeedPerson } from "../../seed/people.ts";
+import { SEED_AT, seedConsents, type SeedPerson } from "../../seed/people.ts";
 import type { ConsentStatus, Ledger } from "../db/types.ts";
 import { parseLedger } from "../db/ledger.ts";
 import type { PersonPageRows } from "../person.ts";
@@ -26,6 +26,8 @@ import {
   type MedicalSummary,
   type MedicalSummaryResult,
 } from "./medical-summary.ts";
+// T142 で種の台帳を埋めた。このテストは空いた欄を前提にするので、T142 より前の空きの多い形（seed/sparse.ts）を使う
+import { SPARSE_PEOPLE } from "../../seed/sparse.ts";
 
 const TODAY = "2026-11-02";
 
@@ -41,7 +43,7 @@ function seedRows(p: SeedPerson): PersonPageRows {
   };
 }
 
-const seed = (id: string) => SEED_PEOPLE.find((p) => p.person.id === id)!;
+const seed = (id: string) => SPARSE_PEOPLE.find((p) => p.person.id === id)!;
 const build = (rows: PersonPageRows): MedicalSummaryResult => buildMedicalSummary(rows, { today: TODAY, officeName: "デモ事業所" });
 const resultOf = (id: string) => build(seedRows(seed(id)));
 function sheetOf(id: string): MedicalSummary {
@@ -60,7 +62,7 @@ function withMedicalConsent(id: string, status: ConsentStatus, ledgerPatch?: (l:
   return { ...rows, consents: rows.consents.map((c) => (c.kind === "medical" ? { ...c, status } : c)) };
 }
 
-const ALL_IDS = SEED_PEOPLE.map((p) => p.person.id);
+const ALL_IDS = SPARSE_PEOPLE.map((p) => p.person.id);
 const SHEET_IDS = ALL_IDS.filter((id) => id !== "p-09");
 const ASSERTING_WORDS = ["危険", "診断", "判定", "重症", "病気がわかる", "べき"];
 

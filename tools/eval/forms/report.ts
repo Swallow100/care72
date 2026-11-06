@@ -79,6 +79,8 @@ export const METRICS: Metric[] = [
   { label: "紙 取りこぼし", get: (r) => totals(r).paper.miss },
   { label: "紙 置き間違い（違う字）", get: (r) => totals(r).paper.wrong },
   { label: "紙 置き間違い（余分な字）", get: (r) => totals(r).paper.extra },
+  // T164: 正解の紙に無い □ の印（台帳の値に当たらない選択肢の印）
+  { label: "紙 正解に無い印", get: (r) => totals(r).paper.markExtra ?? 0 },
   { label: "紙 場所違い", get: (r) => totals(r).paper.boxMiss },
   { label: "紙 別紙（収まらない）", get: (r) => totals(r).paper.annexOverflow },
   { label: "紙 別紙（場所なし）", get: (r) => totals(r).paper.annexUnplaced },
@@ -98,6 +100,8 @@ export const METRICS: Metric[] = [
   { label: "見た目 台帳あり空欄", get: (r) => totals(r).look.blanks },
   { label: "見た目 台帳あり空欄 うち選択肢に合わない値", get: (r) => totals(r).look.blanksChoice },
   { label: "見た目 伏字・仮の言い方", get: (r) => totals(r).look.masks },
+  // T141: 別紙の中身と紙の「別紙」の印のずれ
+  { label: "見た目 別紙の中身と印のずれ", get: (r) => totals(r).look.annexGap ?? 0 },
   { label: "見た目 印刷の字の位置のある頁", get: (r) => totals(r).look.inkPages },
   { label: "送った文の氏名・電話・町名", get: (r) => r.leaks.strongHits },
   { label: "送った文の生年月日", get: (r) => r.leaks.birthHits },

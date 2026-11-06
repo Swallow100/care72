@@ -31,6 +31,7 @@ import { FREE_WAY_LABELS } from "./action-terms.ts";
 import { NO_CALL } from "./event-catalog.ts";
 import { officePlaces } from "./area.ts";
 import { personOfAlias } from "./director.ts";
+import type { TalkLine } from "./dialogue.ts";
 import type { ActionRecord } from "./engine.ts";
 import { ACTION_LABELS, SCENARIO_LABELS, STATUS_LABELS } from "./labels.ts";
 import type { CallRecord } from "./responses.ts";
@@ -95,6 +96,21 @@ export const FINDINGS_MAX = 12;
 export const FINDING_TEXT_MAX = 120;
 export const SUMMARY_MAX = 240;
 
+/**
+ * 講評の指摘の数の目安（T141）。重い順に種類ごとの数（KIND_ROOM）まで、合わせてこれまで。評価の 5 回目で、指摘が 2 回とも上限 12 に
+ * 張り付き（順番が 9・7）、終わりの待ちが 56〜57 秒に延びた（4 回目の 8 件は 26〜42 秒）
+ */
+export const REVIEW_LIMIT = 6;
+/** 指示に書く指摘・要約の字数（T141。出力を短くして待ちを減らす。切るのは FINDING_TEXT_MAX・SUMMARY_MAX のまま） */
+export const FINDING_ASK = 70;
+export const SUMMARY_ASK = 140;
+/** 重い順（T141）。時計が切れるまで手が届かなかった人・対応の順番・赤の着信・手の選び方・報告・空欄 */
+export const REVIEW_WEIGHT: ReadonlyArray<ReviewKind> = ["reached", "order", "call", "choice", "report", "blank", "other"];
+/** 種類ごとの指摘の数の上限（T141。同じ種類は 1 つにまとめる。条件に達した人と手の選び方だけ 2 つまで） */
+export const KIND_ROOM: Readonly<Record<ReviewKind, number>> = { reached: 2, order: 1, call: 1, choice: 2, report: 1, blank: 1, other: 1 };
+/** 報告が遅いと見る時刻（分。T141 の案。これより後の報告は指摘の候補） */
+export const REPORT_LATE_MINUTES = 24 * 60;
+
 /** 講評が名指しする手の言葉（手の表の label、画面の並び。自由対応は読み替えた手の名前で書くので入れない） */
 export const REVIEW_ACTION_LABELS: ReadonlyArray<string> = ACTION_CATALOG.filter((r) => r.id !== "free").map((r) => r.label);
 
@@ -123,11 +139,11 @@ export const REVIEW_SYSTEM = [
   "- 透析先 休止: その透析施設への透析調整・電話は受けられない",
   "",
   "返す JSON:",
-  `- summary: 全体の講評（${SUMMARY_MAX - 40} 字まで）。次の訓練で試す事を 1〜2 つ。`,
-  "- findings: 指摘の配列。記録の中身で見つかった分だけ（数をそろえない・埋めない。指摘する事が無ければ空の配列）。種類ごとに「指摘の候補（種類ごと）」の数まで。候補の無い種類は書かない。1 つの事に 1 つ。同じ人・同じ種類の指摘を重ねない。",
+  `- summary: 全体の講評（${SUMMARY_ASK} 字まで）。次の訓練で試す事を 1〜2 つ。`,
+  `- findings: 指摘の配列。重い順（${REVIEW_WEIGHT.join(" → ")}）に、「指摘の候補（種類ごと）」の数まで、合わせて ${REVIEW_LIMIT} つまで。数をそろえない・埋めない（指摘する事が無ければ空の配列）。同じ種類は 1 つにまとめ、人が多ければ代表の人と人数で書く（person は「全体」でよい）。候補の無い種類は書かない。`,
   "  - person: 本人の仮名（「A さん」）。全体のことは「全体」。",
   "  - kind: order（対応の順番）・report（市役所への報告）・blank（様式 9 の空欄）・reached（時計が切れるまで手が届かなかった）・call（着信への応答）・choice（手の選び方。空振り・重複・頼み事への対応）・other のどれか。",
-  `  - text: 行動についての 1〜2 文（${FINDING_TEXT_MAX - 20} 字まで）。いつ・誰に・どの手を打てばよかったかを、上の手の言葉で書く。`,
+  `  - text: 行動についての 1 文（${FINDING_ASK} 字まで）。いつ・誰に・どの手を打てばよかったかを、上の手の言葉で書く。`,
   `  - basis: 根拠の出典の id。当てはまる物が無ければ「${NO_BASIS}」。`,
   "",
   "決まり:",
@@ -256,7 +272,12 @@ function talkAsks(a: ActionRecord, asks: ReviewContext["asks"]): string {
 }
 
 /** 講評の入力の文（仮名で書く。aliasOf: 台帳の id → 仮名）。数字は score の物だけ */
-export function reviewText(ctx: ReviewContext, aliasOf: ReadonlyMap<string, string>): string {
+export function reviewText(
+  ctx: ReviewContext,
+  aliasOf: ReadonlyMap<string, string>,
+  /** 通話の言葉を渡す前の検査（T155。伏せきれない行は null で渡さない）。無ければ言葉の欄を作らない */
+  opts: { words?: (text: string) => string | null } = {},
+): string {
   const who = (p: string | null | undefined) => (p && aliasOf.has(p) ? aliasOf.get(p)! : "（不明）");
   const s = ctx.score;
   const kind = scenarioOf(ctx.scenario).kind;
@@ -267,11 +288,15 @@ export function reviewText(ctx: ReviewContext, aliasOf: ReadonlyMap<string, stri
     "",
     "機械で数えた結果（数え直さない）:",
   );
-  // 順番
+  // 種類ごとの要約（T141。評価の 5 回目で、順番の外れの人を 1 人 1 行で並べた入力から、指摘の大半が順番になった。種類ごとに短く並べる）
+  lines.splice(lines.length - 1, 0, ...kindSummary(s, who), "");
+  // 順番（外れは訳ごとにまとめる。T141）
   lines.push(`- 対応の順番の一致: ${s.order.matched}/${s.order.total}（その人への最初の手が、その時の左の表で手のまだ無い人の一番上か）`);
-  for (const m of s.order.misses) {
-    const parts = m.why.map((w) => (w === "late" && m.expected ? `${MISS_WORDS.late}（その時の一番上は ${who(m.expected)}）` : MISS_WORDS[w]));
-    lines.push(`  - ${who(m.person)}: ${parts.join("、")}`);
+  for (const w of ["late", "missing", "declined", "unknown"] as const) {
+    const ms = s.order.misses.filter((m) => m.why.includes(w));
+    if (ms.length === 0) continue;
+    const names = ms.map((m) => (w === "late" && m.expected ? `${who(m.person)}（その時の一番上は ${who(m.expected)}）` : who(m.person)));
+    lines.push(`  - ${MISS_WORDS[w]} ${ms.length} 人: ${names.join("・")}`);
   }
   // 報告
   lines.push(
@@ -308,7 +333,9 @@ export function reviewText(ctx: ReviewContext, aliasOf: ReadonlyMap<string, stri
   for (const r of s.repeat?.rows ?? []) lines.push(`  - ${actLine(r.action, r.atMinute, ACTION_LABELS[r.kind], r.person)}（前の同じ手から ${r.gap} 分）`);
   lines.push(`- 頼み事の未対応（訓練の終わりまでに済まなかった頼み事）: ${n.asksOpen}`);
   for (const r of s.asks?.rows ?? []) lines.push(`  - ${who(r.person)}: ${askWords(r.kinds)}`);
-  lines.push(`- 通話の往復: ${n.talks}${s.talks && s.talks.calls > 0 ? `（${s.talks.calls} 件の通話）` : ""}`);
+  lines.push(
+    `- 通話の往復: ${n.talks}${s.talks && s.talks.calls > 0 ? `（${s.talks.calls} 件の通話${s.talks.voiced ? `。うち声で入れた言葉 ${s.talks.voiced}` : ""}）` : ""}`,
+  );
   // 計画で動けた人と、計画が無く手が要った人（T130。台帳の計画の中身の名前は書かない）
   if (s.plans) {
     const acted = s.plans.rows.filter((r) => r.acted.length > 0);
@@ -388,10 +415,79 @@ export function reviewText(ctx: ReviewContext, aliasOf: ReadonlyMap<string, stri
   if (hist.length === 0) lines.push("- なし");
   for (const h of hist) lines.push(`- ${h.text}`);
 
+  if (opts.words) lines.push(...talkWordsSection(ctx, who, opts.words));
+
   lines.push("", "状況（想定の表と監督の差し込み）:");
   if (ctx.incidents.length === 0) lines.push("- なし");
   for (const e of ctx.incidents) lines.push(`- ${minuteText(Math.round(e.at * 60))} ${e.text}${e.person && aliasOf.has(e.person) ? `（${who(e.person)}）` : ""}`);
   return lines.join("\n");
+}
+
+/** 講評に渡す通話の言葉の行の長さと数（T155。長い会話で入力が膨らまないように） */
+export const REVIEW_TALK_LINE_MAX = 80;
+export const REVIEW_TALK_LINES_MAX = 60;
+
+/**
+ * 通話の言葉（T155）。外へ掛けた電話と掛かってきた電話の往復を、時刻の順に通話ごとに。自分の言葉は「自分」（声で入れた物は「自分（声）」）、
+ * 相手は区分の言葉。words で検査した行だけ（伏せきれない行は渡さない）。行の数と長さに上限
+ */
+function talkWordsSection(ctx: ReviewContext, who: (p: string | null | undefined) => string, words: (t: string) => string | null): string[] {
+  type Call = { at: number; head: string; talk: ReadonlyArray<TalkLine> };
+  const calls: Call[] = [];
+  for (const a of ctx.actions) {
+    const talk = a.result?.talk ?? [];
+    if (talk.length === 0) continue;
+    calls.push({ at: a.atMinute, head: `${minuteText(a.atMinute)} 発信 ${who(a.person)}（${a.calleeLabel ?? "相手"}）`, talk });
+  }
+  for (const c of ctx.calls) {
+    const talk = c.talk ?? [];
+    if (talk.length === 0) continue;
+    calls.push({ at: c.minute, head: `${minuteText(c.minute)} 着信 ${who(c.person)}（${c.callee?.label ?? "相手"}）`, talk });
+  }
+  if (calls.length === 0) return [];
+  calls.sort((x, y) => x.at - y.at);
+  const out = ["", "通話の言葉（自分はケアマネ。声は声で入れた言葉。相手の言葉は AI が演じた架空の人）:"];
+  let n = 0;
+  for (const c of calls) {
+    if (n >= REVIEW_TALK_LINES_MAX) break;
+    out.push(`- ${c.head}`);
+    for (const l of c.talk) {
+      if (n >= REVIEW_TALK_LINES_MAX) break;
+      const t = words(Array.from(l.text.replace(/\s+/g, " ").trim()).slice(0, REVIEW_TALK_LINE_MAX).join(""));
+      if (!t) continue;
+      out.push(`  - ${l.who === "cm" ? (l.voice ? "自分（声）" : "自分") : "相手"}: 「${t}」`);
+      n++;
+    }
+  }
+  return out;
+}
+
+/** 名前を 3 人まで並べ、ほかは人数で（T141） */
+function someNames(names: ReadonlyArray<string>, max = 3): string {
+  const uniq = [...new Set(names)];
+  return uniq.length <= max ? uniq.join("・") : `${uniq.slice(0, max).join("・")} ほか ${uniq.length - max} 人`;
+}
+
+/**
+ * 種類ごとの要約（T141）。重い順に 1 種類 1 行で、数と代表の人。講評はこれを見て、種類ごとに 1 つにまとめて書く
+ */
+export function kindSummary(s: DrillScore, who: (p: string | null | undefined) => string): string[] {
+  const n = kindCounts(s);
+  const rows: Record<Exclude<ReviewKind, "other">, string> = {
+    reached:
+      s.reached.length > 0
+        ? `条件に達した人 ${s.reached.length} 人（${someNames(s.reached.map((r) => who(r.person)))}）`
+        : "条件に達した人 なし",
+    order: `対応の順番 一致 ${s.order.matched}/${s.order.total}${s.order.misses.length > 0 ? `、外れ ${s.order.misses.length} 人（${someNames(s.order.misses.map((m) => who(m.person)))}）` : ""}`,
+    call: `着信 ${s.calls.total} 件（未応答 ${s.calls.open}・赤で出なかった ${s.calls.redDeclined}）`,
+    choice: `手の選び方 空振り ${s.wasted?.rows.length ?? 0}・重複 ${s.repeat?.rows.length ?? 0}・頼み事の未対応 ${s.asks?.rows.length ?? 0} 人・計画が無く手が要った人 ${s.plans?.needed ?? 0}`,
+    report: s.report.minute === null ? "市役所への報告 未報告" : `市役所への報告 ${minuteText(s.report.minute)}${s.report.minute > REPORT_LATE_MINUTES ? `（${REPORT_LATE_MINUTES / 60} 時間より後）` : ""}`,
+    blank: s.form9.rows.length > 0 ? `様式 9 の空欄 ${s.form9.rows.length} 人（${someNames(s.form9.rows.map((r) => who(r.person)))}）` : "様式 9 の空欄 なし",
+  };
+  return [
+    "種類ごとの要約（重い順。指摘は種類ごとに 1 つにまとめる）:",
+    ...REVIEW_WEIGHT.filter((k) => k !== "other").map((k) => `- ${k}: ${rows[k as Exclude<ReviewKind, "other">]}${(n[k] ?? 0) === 0 ? "（直す所なし）" : ""}`),
+  ];
 }
 
 /**
@@ -400,21 +496,36 @@ export function reviewText(ctx: ReviewContext, aliasOf: ReadonlyMap<string, stri
  * other ほかの種類に何かあれば 1（前の「中身の数 ＋ 1」の 1）。0 の種類は書かない
  */
 export function findingRooms(s: DrillScore): Partial<Record<ReviewKind, number>> {
-  const people = (rows: ReadonlyArray<{ person: string | null }> | undefined) => new Set((rows ?? []).map((r) => r.person ?? "全体")).size;
-  const base = {
-    order: s.order.misses.length,
-    report: 1,
-    blank: s.form9.rows.length,
-    reached: s.reached.length,
-    call: s.calls.redDeclined + s.calls.open > 0 ? 1 : 0,
-  };
-  const choice = people(s.wasted?.rows) + people(s.repeat?.rows) + (s.asks?.rows.length ?? 0) + (s.plans?.needed ?? 0);
-  // 直す所（報告の 1 を除く）が何も無ければ 0 件（報告も other も候補にしない）
-  const found = base.order + (s.report.minute === null ? 1 : 0) + base.blank + base.reached + base.call + choice;
-  if (found === 0) return {};
+  const n = kindCounts(s);
+  // 重い順に、種類ごとの上限（KIND_ROOM）まで、合わせて REVIEW_LIMIT まで（T141。同じ種類は 1 つにまとめる）
   const out: Partial<Record<ReviewKind, number>> = {};
-  for (const [k, n] of Object.entries({ ...base, choice, other: 1 }) as Array<[ReviewKind, number]>) if (n > 0) out[k] = n;
+  let left = REVIEW_LIMIT;
+  for (const k of REVIEW_WEIGHT) {
+    const room = Math.min(n[k] ?? 0, KIND_ROOM[k], left);
+    if (room > 0) {
+      out[k] = room;
+      left -= room;
+    }
+  }
   return out;
+}
+
+/**
+ * 種類ごとの中身の数（T141。機械で数えた物から）。order 順番の外れ・report 未報告か遅い報告（REPORT_LATE_MINUTES より後）・
+ * blank 様式 9 の空欄の人・reached 条件に達した人・call 赤の着信に出ない／未応答・choice 空振りと重複の人・頼み事の未対応の人・計画が無く手が要った人
+ */
+export function kindCounts(s: DrillScore): Partial<Record<ReviewKind, number>> {
+  const people = (rows: ReadonlyArray<{ person: string | null }> | undefined) => new Set((rows ?? []).map((r) => r.person ?? "全体")).size;
+  const n = {
+    reached: s.reached.length,
+    order: s.order.misses.length,
+    call: s.calls.redDeclined + s.calls.open > 0 ? 1 : 0,
+    choice: people(s.wasted?.rows) + people(s.repeat?.rows) + (s.asks?.rows.length ?? 0) + (s.plans?.needed ?? 0),
+    report: s.report.minute === null || s.report.minute > REPORT_LATE_MINUTES ? 1 : 0,
+    blank: s.form9.rows.length,
+  };
+  // ほかの種類（other）は、直す所が何かあるときだけ 1 つ（いちばん軽い。空きがあれば）
+  return { ...n, other: Object.values(n).some((x) => x > 0) ? 1 : 0 };
 }
 
 /**
@@ -423,9 +534,9 @@ export function findingRooms(s: DrillScore): Partial<Record<ReviewKind, number>>
  * 何も無ければ 0（指摘なし）。FINDINGS_MAX を超えない
  */
 export function findingRoom(s: DrillScore): number {
-  // 種類ごとの候補の合計（T139。前の「中身の数 ＋ 1」は手の選び方の候補に入れた）
+  // 種類ごとの候補の合計（T139・T141。重い順に REVIEW_LIMIT まで）
   const n = Object.values(findingRooms(s)).reduce((x, k) => x + (k ?? 0), 0);
-  return Math.min(FINDINGS_MAX, n);
+  return Math.min(FINDINGS_MAX, REVIEW_LIMIT, n);
 }
 
 // ---------- 返事の検査 ----------
@@ -504,7 +615,10 @@ export function reviewBody(
     if (ctx.rooms && findings.filter((x) => x.kind === kind).length >= (ctx.rooms[kind] ?? 0)) continue;
     findings.push({ person, kind, text, basis });
   }
-  return { summary: reviewWords(answer.summary, ctx.key, SUMMARY_MAX) ?? "", findings };
+  // 重い順に並べる（T141。同じ種類の中は返った順）
+  const rank = (k: ReviewKind) => (REVIEW_WEIGHT.indexOf(k) < 0 ? REVIEW_WEIGHT.length : REVIEW_WEIGHT.indexOf(k));
+  const ordered = findings.map((f, i) => ({ f, i })).sort((a, b) => rank(a.f.kind) - rank(b.f.kind) || a.i - b.i).map((x) => x.f);
+  return { summary: reviewWords(answer.summary, ctx.key, SUMMARY_MAX) ?? "", findings: ordered };
 }
 
 // ---------- 呼び口 ----------
@@ -541,7 +655,8 @@ export async function createReview(deps: ReviewDeps, ctx: ReviewContext): Promis
     const places = officePlaces(deps.ai.office.id, list.map((x) => x.ledger));
     const { key } = pseudonymize(list, { ...(deps.on ? { on: deps.on } : {}), places });
     const aliasOf = new Map(key.people.map((p) => [p.personId, p.alias]));
-    const record = pseudonymizeText(reviewText(ctx, aliasOf), key);
+    // 通話の言葉（T155）は 1 行ずつ伏せられるかを見て、伏せきれない行は渡さない（講評ごと止めない）
+    const record = pseudonymizeText(reviewText(ctx, aliasOf, { words: (t) => maskReply(t, key) }), key);
     const r = await askJson(buildReviewRequest(record), deps.ai);
     const body = reviewBody(r.value, { key, members: new Set(members), max: findingRoom(ctx.score), rooms: findingRooms(ctx.score) });
     if (!body.summary && body.findings.length === 0) return { ok: false, error: "bad_output" };

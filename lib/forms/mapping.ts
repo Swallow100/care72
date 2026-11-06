@@ -369,16 +369,25 @@ export const keepsOptionBoxes = (shape: FieldShape) => shape === "choice" || PAR
 
 // ---------- 画面の言葉（2〜4 字の漢語） ----------
 
+/** 確認済の対応表の様式を書類の一覧で開く道（T147。lib/forms/plan-form.ts の様式の id「mapping:<対応表の id>」、added は追加済の知らせ） */
+export const addedFormHref = (mappingId: string): string => `/forms?form=${encodeURIComponent(`mapping:${mappingId}`)}&added=1`;
+
 export const MAPPING_LABELS = {
   title: "様式対応",
-  read: "読取",
-  reading: "読取中",
+  /** 様式の読み取り（写真・PDF・Excel・Word → AI）。T147 で「読取」から「読込」に */
+  read: "読込",
+  reading: "読込中",
+  /** 欄を手で作る（AI を使わない）。読込で足りない時の逃げ道で、ふだんは畳む（T147） */
   manual: "手作成",
+  /** 手作成の面の横の小さな字（何のための物か） */
+  manualNote: "AI なしで欄追加",
   save: "確認保存",
   saving: "保存中",
   saved: "保存済",
   draft: "下書き",
   checked: "確認済",
+  /** 確認済の様式で紙を作る所（書類の一覧のその様式）へ（T147） */
+  toForms: "書類作成",
   addField: "欄追加",
   remove: "外す",
   restore: "戻す",

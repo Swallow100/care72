@@ -114,7 +114,10 @@ export default async function CaseloadPage({ searchParams }: Props) {
     data = scope ? await loadCaseload(env.DB, scope, todayJst(), now) : null;
     if (principal.office) {
       const place = await loadOfficePlace(env.DB, principal.office.id).catch(() => null);
-      map = { center: place?.center ?? null, fictional: principal.office.kind === "demo", nowcast: nowcastOn(env) };
+      // 地域（中心と広さ、T148。T154 から全国の市区町村の表で lib/office/area.ts の 1 か所が決める）: ピンが無いときの初めの表示と
+      // 「地域」のボタン。ピンがあれば初めはピンが全部入る表示のまま
+      const region = place?.map ?? null;
+      map = { center: place?.center ?? null, region, fictional: principal.office.kind === "demo", nowcast: nowcastOn(env) };
     }
   } catch (e) {
     console.error("担当一覧を読めない", e);
@@ -164,7 +167,7 @@ export default async function CaseloadPage({ searchParams }: Props) {
               担当一覧
             </h1>
             <span className="text-sm text-muted tabular-nums">{count}</span>
-            <ButtonLink href={NEW_PERSON_PATH} kind="plain" size="sm" icon={AddPersonIcon} className="ml-auto">
+            <ButtonLink href={NEW_PERSON_PATH} kind="main" size="sm" icon={AddPersonIcon} className="ml-auto">
               {OFFICE_LABELS.addPerson}
             </ButtonLink>
           </div>
@@ -273,7 +276,8 @@ async function PersonPanel({
     const rows = await loadPersonPage(env.DB, principal, id);
     const d = rows ? await personDisaster(env.DB, rows, now) : null;
     const planForm = rows ? planFormView(await loadPlanForm(env.DB, rows.person.office_id)) : undefined;
-    view = rows && d ? toPersonView(rows, { today: todayJst(), mode: d.mode, triage: d.triage, situation: d.situation, planForm }) : null;
+    // 見る方の画面（T143。本人のページと同じ reading）
+    view = rows && d ? toPersonView(rows, { today: todayJst(), mode: d.mode, triage: d.triage, situation: d.situation, planForm, reading: true }) : null;
     // 入れる欄（T03）はケアマネの役だけ（担当一覧はケアマネの役しか開けない）
     // AI の状態（未設定・上限到達・本日残り）は lib/claude/status.ts の 1 か所（T76）
     intake = rows && principal.role === "care_manager" ? intakePropsOf(rows, await aiStatusFor(rows.person.office_id)) : null;

@@ -6,7 +6,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it } from "vitest";
 import { IntakeChanges, rowsOf, type ChangeRow } from "../../components/person/IntakeChanges.tsx";
-import { SEED_AT, SEED_PEOPLE, seedConsents, type SeedPerson } from "../../seed/people.ts";
+import { SEED_AT, seedConsents, type SeedPerson } from "../../seed/people.ts";
 import { seedStatements } from "../../seed/sql.ts";
 import type { Principal } from "../auth/principal.ts";
 import { loadCaseload } from "../caseload.ts";
@@ -34,9 +34,11 @@ import { markPreview, planMarkClocks } from "./marks.ts";
 import { saveIntake, timelineBody, type SaveRequest } from "./save.ts";
 import type { ExtractOutput } from "./schema.ts";
 import { sectionOfField } from "../person.ts";
+// T142 で種の台帳を埋めた。このテストは空いた欄を前提にするので、T142 より前の空きの多い形（seed/sparse.ts）を使う
+import { SPARSE_PEOPLE } from "../../seed/sparse.ts";
 
 const TODAY = "2026-11-02";
-const seed = (id: string) => SEED_PEOPLE.find((p) => p.person.id === id)!;
+const seed = (id: string) => SPARSE_PEOPLE.find((p) => p.person.id === id)!;
 
 function seedRows(p: SeedPerson, ledger: Ledger = p.ledger): PersonPageRows {
   return {
@@ -429,7 +431,7 @@ describe("次の問い（lib/intake/ask.ts）", () => {
   });
 
   it("問いの文は定型で、Claude に渡す言葉（focus）に名前・台帳の値を入れない", () => {
-    for (const p of SEED_PEOPLE) {
+    for (const p of SPARSE_PEOPLE) {
       for (const x of questionQueue(seedRows(p))) {
         expect(x.text.length, x.key).toBeGreaterThan(0);
         for (const m of p.ledger.medical.medications) expect(x.focus).not.toContain(m.name);
@@ -448,7 +450,7 @@ describe("次の問い（lib/intake/ask.ts）", () => {
   it("全部の空欄の問いが 1 問で分かる文: 何を（。で終わる）・なぜ・例（「例: 」で始まる）。現場の言葉で書く", () => {
     // 種の 10 人と、台帳が空の人（全部の欄を問う）
     const empty = { ...seedRows(seed("p-04"), parseLedger("{}")), contacts: [] };
-    const all = [...SEED_PEOPLE.map((p) => questionQueue(seedRows(p))), questionQueue(empty)].flat();
+    const all = [...SPARSE_PEOPLE.map((p) => questionQueue(seedRows(p))), questionQueue(empty)].flat();
     // 様式の欄（T117）は場所が入ってから聞く物があるので、その他の欄の数を下限に
     expect(questionQueue(empty).length).toBeGreaterThanOrEqual(INTAKE_FIELDS.filter((f) => !f.form).length - NOT_ASKED.size);
     for (const x of all) {
@@ -529,7 +531,7 @@ describe("保存（lib/intake/save.ts）", () => {
 
   beforeEach(() => {
     sqlite = migratedSqlite();
-    for (const s of seedStatements()) sqlite.exec(s);
+    for (const s of seedStatements({ people: SPARSE_PEOPLE })) sqlite.exec(s);
     db = d1FromSqlite(sqlite);
   });
 
@@ -691,13 +693,19 @@ describe("保存（lib/intake/save.ts）", () => {
     expect(timelineBody(false, [], [{ field: "medical.medications.0.amount", status: "unknown" }])).toBe("手入力: 薬（不明）");
   });
 
-  it("経過の payload は場所だけで、薬の名前を残さない", async () => {
+  // T143 で決めを変えた: 前は payload に値を残さなかった。変更履歴で何をどう直したかを見せるため、欄ごとの前と後（diff）だけは値を持つ。
+  // 場所の一覧（fields）は今どおり薬を名前で指さない。本文（画面の 1 行の元）にも値を書かない。前と後は見る人の範囲で絞って出す（lib/timeline/t143.test.ts）
+  it("経過の場所の一覧と本文は薬の名前を持たず、前と後（diff）だけが値を持つ（T143）", async () => {
     const r = await saveIntake(db, cm, req([{ t: "medication", index: 0, value: { name: "抗認知症薬", category: "other", amount: "1 錠" } }]), NOW);
     expect(r.ok).toBe(true);
     const tl = sqlite.prepare("SELECT body, payload FROM timeline_entries").get() as { body: string; payload: string };
-    expect(JSON.parse(tl.payload).fields).toEqual(["medical.medications.0.amount"]);
-    expect(tl.payload).not.toContain("抗認知症薬");
+    const p = JSON.parse(tl.payload);
+    expect(p.fields).toEqual(["medical.medications.0.amount"]);
+    expect(p.fields.join(" ")).not.toContain("抗認知症薬");
     expect(tl.body).not.toContain("抗認知症薬");
+    expect(p.diff).toEqual([
+      { key: "medical.medications.抗認知症薬", section: "medical", label: "薬 抗認知症薬", before: "その他 1 日 1 回", after: "その他 1 日 1 回 用量 1 錠" },
+    ]);
   });
 
   it("分からない・次回の答えだけでも保存され、経過に理由が出る", async () => {
@@ -729,7 +737,7 @@ describe("本人のページの面の「編集」の保存（lib/intake/save.ts 
   const NOW = new Date("2026-11-03T02:00:00.000Z");
   beforeEach(() => {
     sqlite = migratedSqlite();
-    for (const s of seedStatements()) sqlite.exec(s);
+    for (const s of seedStatements({ people: SPARSE_PEOPLE })) sqlite.exec(s);
     db = d1FromSqlite(sqlite);
   });
   const edit = (personId: string, changes: IntakeChange[], over: Partial<SaveRequest> = {}): SaveRequest =>

@@ -5,7 +5,7 @@
 //   町名・位置は渡さない。地区が今の参加者の地理に無ければ「担当の地区の外」とだけ書く
 // - 自分の出来事（出来事の表の self_*）は連続の時計の大雨想定・地震想定の監督だけが差し込む（10 分版・仮想は差し込まない）
 
-import { DEMO_OFFICE_ID } from "../auth/demo.ts";
+import { isSeedOfficeId } from "../auth/demo.ts";
 import type { Ledger } from "../db/types.ts";
 import { AREA_TOWNS, areaTown, NO_TOWN, type Area } from "./area.ts";
 import type { SelfFacts } from "./event-catalog.ts";
@@ -18,7 +18,7 @@ export const HOME_TOWN_MAX = 40;
 
 /** 開始の画面で選べる地区（町名）。デモ事業所は架空の街の町、ほかの事業所は担当一覧の人の台帳の町名（よみの順でなく字の順） */
 export function homeTowns(officeId: string, ledgers: ReadonlyArray<Pick<Ledger, "basic">>): string[] {
-  if (officeId === DEMO_OFFICE_ID) return AREA_TOWNS.map((t) => t.town);
+  if (isSeedOfficeId(officeId)) return AREA_TOWNS.map((t) => t.town);
   const towns = new Set(ledgers.map((l) => l.basic.address?.town?.trim()).filter((t): t is string => !!t && t !== NO_TOWN));
   return [...towns].sort((a, b) => a.localeCompare(b, "ja"));
 }

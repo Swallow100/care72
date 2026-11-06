@@ -42,12 +42,19 @@ export const CARE_LEVEL_LABELS: Record<CareLevel, string> = {
   care5: "要介護5",
 };
 
+/**
+ * 計画の段階の言葉（T146）。DB の状態は 4 つのままで、画面と紙は 3 つ（同意済・訓練済はどちらも作成済）。
+ * 「訓練済」は計画の段階に見えて作成済と取り違えやすいので、訓練に出たことは PLAN_DRILL_LABELS で別に並べる（lib/plan-status.ts）
+ */
 export const PLAN_STATUS_LABELS: Record<PlanStatus, string> = {
   none: "未作成",
   draft: "下書き",
-  consented: "同意済",
-  trained: "訓練済",
+  consented: "作成済",
+  trained: "作成済",
 };
+
+/** 訓練の欄（T146）: 見出し・最後に出た訓練の無い人・日付の分からない訓練済（前からの種の値） */
+export const PLAN_DRILL_LABELS = { head: "訓練", none: "未実施", done: "済" } as const;
 
 /** 医療依存の短い印。並びは優先の骨格の順 */
 export const DEPENDENCE_MARKS: ReadonlyArray<[ClockCategory, string]> = [
@@ -362,6 +369,9 @@ export const HEAD_LABELS = {
   marks: "医療",
   clocks: "時計",
   emergency: "緊急連絡先",
+  /** 上の段の避難先（T150。前の「時計」の欄の所）。中の小さな見出しは担当一覧の行の詳細と同じ「1」「2」「手段」 */
+  evacuation: "避難先",
+  transport: "手段",
   /** 災害モードの時計の今の残り（「残り 1.5 時間」「超過 30 分」「停電で開始」。担当一覧の行の詳細と同じ言い方） */
   left: "残り",
   over: "超過",
@@ -398,7 +408,8 @@ export const PENDING_STATUS_LABELS: Record<PendingStatus, string> = {
  * 状態としての未確認（同意・時計の値）だけ。まだ誰も入れていない欄は blank「未入力」で、数えない（T79、点検の中 11:
  * 新しく足した人の上が「未確認 0」なのに欄がほぼ全部「未確認」だった）
  */
-export const BLANK_LABELS = { unconfirmed: "未確認", blank: "未入力", none: "なし" } as const;
+/** usual は見る方の画面で、行・区分の中が全部当たり前の値（lib/intake/fields.ts の USUAL_VALUES）だったとき（T143） */
+export const BLANK_LABELS = { unconfirmed: "未確認", blank: "未入力", none: "なし", usual: "特記なし" } as const;
 
 export const TIMELINE_KIND_LABELS: Record<TimelineKind, string> = {
   signal: "安否",
@@ -453,6 +464,8 @@ export const INTAKE_LABELS = {
   overwrite: "上書き",
   busy: "処理中",
   saved: "保存済",
+  /** AI の吹き出しの保存した中身の 6 件目から（T143、lib/intake/saved-say.ts） */
+  savedMore: (n: number) => `他 ${n} 件`,
   unchanged: "変更なし",
   aiNotConfigured: "AI 未設定",
   aiLimit: "上限到達",
@@ -464,6 +477,8 @@ export const INTAKE_LABELS = {
   invalid: "入力不備",
   masked: "伏せ字",
   next: "次回",
+  /** 選ぶ問いの補足の文字の欄（T150。「その他」の中身・「一部」の様子。選んだ値と両方保存） */
+  supplement: "補足",
   /** 話して入れる（T04、Web Speech）。「話す」は T04 の言葉のまま */
   speak: "話す",
   speakStop: "停止",
@@ -496,6 +511,8 @@ export const INTAKE_LABELS = {
   checkOn: "確認",
   checkOff: "確認取消",
   addContact: "連絡先追加",
+  /** 面の編集の組の目次（T145。読み上げだけ） */
+  groupNav: "目次",
   addHazard: "ハザード",
   addDevice: "機器",
   /** 面の編集で行を外す・外す印を戻す（保存の前に確認の窓） */
@@ -572,6 +589,31 @@ export const PLACE_LABELS = {
   unknown: "未確認",
   /** 事業所の地域の保存を断った（市が空・緯度経度の外・片方だけ） */
   bad: "保存不可",
+  // 事業所の地域を複数の市に（T148）
+  mainCity: "主な市",
+  otherCities: "周りの市",
+  /** 地図の広さ（中心からの km）と、置いていないとき */
+  extent: "広さ",
+  auto: "自動",
+  /** 事業所の区域（浸水・土砂・津波）と浸水の深さ */
+  zones: "区域",
+  floodDepth: "深さ",
+  /** 周りの市・区域が無い */
+  noneShort: "なし",
+  /** 利用者の住所の市で地域に入っていない市（の見出し）と、周りの市に足すボタン */
+  outside: "地域外",
+  addCity: "地域に追加",
+  // 全国の市区町村の表から選ぶ（T154）
+  pref: "都道府県",
+  municipality: "市区町村",
+  /** 都道府県を選ばずに全国から探す */
+  allPrefs: "全国",
+  /** 主な市が表に当たらない（前の形の文字のまま） */
+  unselected: "未選択",
+  /** 周りの市・利用者の住所の市が表に当たらない */
+  unmatched: "未照合",
+  add: "追加",
+  remove: "外す",
   /** 写真の縮小で読めない形。受ける形を 1 行で */
   fileKinds: "JPEG・PNG・PDF",
   /** HEIC をこのブラウザが描けない（Safari は描ける。T120） */
@@ -738,6 +780,12 @@ export const DOCUMENT_LABELS = { matsuyama: "計画書", medical: "医療要約"
 export const DOCUMENT_STATUS_LABELS = { pending: "準備中", ready: "表示" } as const;
 
 /**
+ * 本人のページの書類の段の畳み（T150）。畳んだときは「他 2 件」（ほかの書類が無く説明の 1 行だけを畳んでいるときは「詳細」）、
+ * 開いたときは「畳む」。印刷のボタンは「印刷」
+ */
+export const DOCUMENT_FOLD_LABELS = { more: "他", unit: "件", detail: "詳細", close: "畳む", print: "印刷" } as const;
+
+/**
  * 赤のあとの聞き取りの欄（T49）。本人・家族が押した答えと、Claude の聞き取りメモ（文字起こしから写しただけ）を同じ欄で出す。
  * 事実の欄だけで、重さ・点数を持たない。欄の id は lib/signals/questions.ts の HEARING_FIELDS
  */
@@ -771,3 +819,6 @@ export const HEARING_LABELS = {
   failed: "保存失敗",
   none: "未回答",
 } as const;
+
+/** 薬の行（T150b。本人のページの上の段の「医療」と行の詳細の「薬」）。多い時は「他 2 件」 */
+export const MED_LINE_LABELS = { title: "薬", more: "他", unit: "件" } as const;

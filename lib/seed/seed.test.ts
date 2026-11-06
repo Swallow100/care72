@@ -1,19 +1,18 @@
 // デモ事業所の種と「最初に戻す」・毎日 4 時（docs/tasks/T26.md）のテスト。D1 は node:sqlite、R2 は偽物。
-// - 種の冪等（同じ now で 2 回作ると同じ、同じ DB に 2 回流しても同じ）と中身（大雨・山田の赤・終わった訓練）
+// - 種の冪等（同じ now で 2 回作ると同じ、同じ DB に 2 回流しても同じ）と中身（平時・QR・終わった訓練。大雨の想定と山田の赤は T153 から「発災開始」）
 // - 戻すの範囲（デモ事業所だけ。協力事業所の行・AI の呼び出しの記録・山本のハッシュは残る）
 // - 「最初に戻す」の壁（審査員と管理者だけ）、cron のハンドラ、R2 の録音、上限での再生への切替
 
 import { readFileSync } from "node:fs";
 import type { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { SEED_ACCOUNTS, SEED_AT } from "../../seed/people.ts";
+import { SEED_ACCOUNTS, SEED_AT, SEED_PEOPLE } from "../../seed/people.ts";
 import { fullSeedStatements } from "../../seed/full.ts";
 import { CLEAR_ORDER } from "../../seed/sql.ts";
 import type { Principal } from "../auth/principal.ts";
 import { todayJst } from "../age.ts";
 import { loadCaseload } from "../caseload.ts";
 import { drillGate } from "../claude/gate.ts";
-import { HAIKU } from "../claude/models.ts";
 import { staffActor } from "../custody/actor.ts";
 import { receive, registerOnSite } from "../custody/store.ts";
 import { d1FromSqlite, migratedSqlite } from "../db/test-d1.ts";
@@ -25,14 +24,15 @@ import {
   DEMO_QR,
   DEMO_RECORDING_PREFIX,
   demoOutageTowns,
-  demoTimes,
   SEED_RECORDING_KEYS,
   SEED_RED_SIGNAL_ID,
   SEED_RED_TRANSCRIPT,
 } from "./demo.ts";
 import { SEED_DRILL_ID, seedDrillStartedAt } from "./drill.ts";
 import { canResetDemo, officeResetHref, resetPost } from "./http.ts";
-import { DEMO_CLEAR, resetDemoOffice, type SeedBucket } from "./reset.ts";
+import { CHECK_CLEAR, DEMO_CLEAR, resetDemoOffice, type SeedBucket } from "./reset.ts";
+import { startSeedDisaster } from "./start.ts";
+import { disasterScope } from "../disaster/scope.ts";
 
 /** 種を入れた時刻（2026-11-05 10:00 JST） */
 const NOW = "2026-11-05T01:00:00.000Z";
@@ -72,6 +72,20 @@ afterEach(() => {
   sqlite?.close();
   sqlite = undefined;
 });
+
+/**
+ * 確認用の事業所（T144）の中身（人・訓練・災害モードなど）を消す。デモ事業所だけの戻しの比べに入れない（確認用は前の種の時刻のまま）。
+ * 事業所とアカウントの行は残す（両方で同じ）
+ */
+function stripCheck(db: DatabaseSync): DatabaseSync {
+  db.exec("PRAGMA foreign_keys = OFF;");
+  for (const t of CLEAR_ORDER) {
+    const w = CHECK_CLEAR[t];
+    if (w !== null) db.exec(`DELETE FROM ${t} WHERE ${w};`);
+  }
+  db.exec("PRAGMA foreign_keys = ON;");
+  return db;
+}
 
 /** 全部の表を created_at を除いて並べた物（行の順は問わない） */
 function dump(db: DatabaseSync, skip: ReadonlyArray<string> = []): Record<string, string[]> {
@@ -137,65 +151,18 @@ describe("種（npm run db:reset）", () => {
     twice.close();
   });
 
-  it("デモ事業所は大雨・警戒レベル 4・浸水 3 m の町で停電（発災 4 時間前・停電 3 時間前）。事業所の経過に 2 行", async () => {
+  it("デモ事業所は平時で始まる（T153。災害モードの行・事業所の経過・山田の赤は無く、事業所の画面の「発災開始」で入る）。協力事業所も平時", async () => {
     sqlite = await seeded();
     const db = d1FromSqlite(sqlite);
-    const t = demoTimes(NOW);
+    // 発災開始で停電にする町（浸水 3 m 以上の人の住む町）は種の台帳から
     expect(demoOutageTowns()).toEqual(["かわなぎ町"]);
-    const s = await loadDisasterState(db, DEMO.id);
-    expect(s).toMatchObject({
-      kind: "heavy_rain",
-      startedAt: t.disasterAt,
-      startedBy: "acct-yamamoto",
-      startedByName: "山本",
-      outage: { scope: "area", towns: ["かわなぎ町"], startedAt: t.outageAt },
-      alertLevel: 4,
-      water: null,
-      road: null,
-      version: 2,
-    });
-    expect(Date.parse(NOW) - Date.parse(t.outageAt)).toBe(3 * 3_600_000);
-    const log = await loadOfficeLog(db, DEMO.id);
-    expect(log.map((l) => [l.kind, l.body, l.who])).toEqual([
-      ["disaster_info", "停電 地区（かわなぎ町） 11/5 07:00〜・警戒レベル 4", "山本"],
-      ["disaster_on", "大雨", "山本"],
-    ]);
-    // 協力事業所は平時のまま
+    expect(await loadDisasterState(db, DEMO.id)).toMatchObject({ kind: "normal", startedAt: null, version: 0 });
+    expect(await loadOfficeLog(db, DEMO.id)).toEqual([]);
     expect((await loadDisasterState(db, PARTNER.id)).kind).toBe("normal");
-  });
-
-  it("山田の赤: けが あり・文字起こし・Claude の分類の列（動けない・確信 0.9・引用・モデル名）。経過に信号・録音・分類の 3 行", async () => {
-    sqlite = await seeded();
-    const sig = sqlite.prepare("SELECT * FROM signals WHERE drill_id IS NULL").all() as Array<Record<string, unknown>>;
-    expect(sig).toHaveLength(1);
-    expect(sig[0]).toMatchObject({
-      id: SEED_RED_SIGNAL_ID,
-      person_id: "p-01",
-      color: "red",
-      source: "self",
-      injured: 1,
-      at_home: null,
-      can_move: null,
-      has_medicine: null,
-      recording_key: null,
-      transcript: SEED_RED_TRANSCRIPT,
-      classes: '["immobile"]',
-      classified_by: "claude",
-      ai_classes: '["immobile"]',
-      ai_confidence: 0.9,
-      ai_quote: "うごけない",
-      ai_model: HAIKU,
-      ai_error: null,
-      occurred_at: demoTimes(NOW).redAt,
-    });
-    const log = sqlite
-      .prepare("SELECT author_role, kind, body FROM timeline_entries WHERE person_id = 'p-01' ORDER BY occurred_at")
-      .all();
-    expect(log).toEqual([
-      { author_role: "self", kind: "signal", body: "無事じゃない けが あり・未回答 3" },
-      { author_role: "self", kind: "signal", body: "録音なし 文字起こし「いたい、うごけない」" },
-      { author_role: "system", kind: "note", body: "録音の分類（AI）: 動けない 確信 90%「うごけない」" },
-    ]);
+    // 確認用の事業所（T144）の写しは除く（lib/seed/t144.test.ts）
+    expect(sqlite.prepare("SELECT id FROM signals WHERE drill_id IS NULL AND person_id NOT LIKE 'chk-%'").all()).toEqual([]);
+    expect(sqlite.prepare("SELECT id FROM timeline_entries WHERE person_id = 'p-01'").all()).toEqual([]);
+    expect(SEED_RED_TRANSCRIPT).toBe("いたい、うごけない");
   });
 
   it("デモ事業所の 10 人は QR を作った形（版 1・作った時刻は種の時刻・180 日）。戻しでも同じ時刻に戻る（前の日に刷った紙の QR が開ける）", async () => {
@@ -210,14 +177,11 @@ describe("種（npm run db:reset）", () => {
     db.close();
   });
 
-  it("担当一覧は災害モードで、山田が赤の最上位（理由に AI の印）", async () => {
+  it("担当一覧は平時（ルールの表の色と連絡順は出さない。発災時の並びは lib/seed/t153.test.ts）", async () => {
     sqlite = await seeded();
     const list = await loadCaseload(d1FromSqlite(sqlite), { officeId: DEMO.id, careManagerId: "acct-yamamoto" }, todayJst(new Date(NOW)), NOW);
-    expect(list?.situation).not.toBeNull();
-    const top = list!.rows.find((r) => r.rank === 1);
-    expect(top?.id).toBe("p-01");
-    expect(top?.triage?.color).toBe("red");
-    expect(top?.triage?.reason).toContain("（AI）");
+    expect(list?.situation).toBeNull();
+    expect(list?.rows).toHaveLength(10);
   });
 
   it("終わった訓練 1 回（大雨、12 刻み、開始者 山本、前の日の 14:00 JST）。手の履歴と採点は空", async () => {
@@ -369,7 +333,7 @@ function withoutOthers(db: DatabaseSync): Record<string, string[]> {
   db.exec("DELETE FROM accounts WHERE id = 'acct-med-2'");
   db.exec("UPDATE accounts SET password_hash = NULL WHERE id = 'acct-yamamoto'");
   db.exec("PRAGMA foreign_keys = ON;");
-  return dump(db, ["ai_calls"]);
+  return dump(stripCheck(db), ["ai_calls"]);
 }
 
 describe("最初に戻す（デモ事業所だけ）", () => {
@@ -417,7 +381,26 @@ describe("最初に戻す（デモ事業所だけ）", () => {
       { kind: "released", body: "退所", author_role: "medical" },
     ]);
 
-    expect(withoutOthers(db)).toEqual(dump(fresh, ["ai_calls"]));
+    expect(withoutOthers(db)).toEqual(dump(stripCheck(fresh), ["ai_calls"]));
+  });
+
+  it("書き込んだ台帳（T142）も戻る: 審査員が台帳と連絡先を消したり書き換えたりしても、戻すと種の台帳・連絡先のフリガナ・住所・携帯・足した連絡先になる", async () => {
+    const { db } = await used();
+    sqlite = db;
+    db.exec(`UPDATE people SET ledger = '{"basic":{},"care":{},"medical":{"devices":[],"medications":[]},"evacuation":{"hazards":[]},"notes":[],"pending":[]}' WHERE id = 'p-05'`);
+    db.exec(`UPDATE contacts SET kana = NULL, address = NULL, mobile = NULL WHERE person_id = 'p-03'`);
+    db.exec(`DELETE FROM contacts WHERE person_id = 'p-06' AND kind IN ('home_doctor', 'pharmacy', 'care_service')`);
+    const { bucket } = fakeBucket();
+    await resetDemoOffice(d1FromSqlite(db), bucket, NOW);
+    for (const p of SEED_PEOPLE) {
+      const row = db.prepare("SELECT ledger FROM people WHERE id = ?").get(p.person.id) as { ledger: string };
+      expect(JSON.parse(row.ledger), p.person.id).toEqual(p.ledger);
+      const contacts = db.prepare("SELECT id, kind, name, kana, address, phone, mobile, night_ok FROM contacts WHERE person_id = ? ORDER BY sort").all(p.person.id);
+      expect(contacts, p.person.id).toEqual(
+        p.contacts.map((c) => ({ id: c.id, kind: c.kind, name: c.name, kana: c.kana ?? null, address: c.address ?? null, phone: c.phone, mobile: c.mobile ?? null, night_ok: c.night_ok })),
+      );
+    }
+    expect(withoutOthers(db)).toEqual(dump(stripCheck(fresh), ["ai_calls"]));
   });
 
   it("2 回戻しても同じ", async () => {
@@ -490,7 +473,7 @@ describe("最初に戻す（デモ事業所だけ）", () => {
     expect(tokens("survey_responses")).toEqual([partnerShare, realShare, realShare]);
   });
 
-  it("R2: 審査員の録音を消し、種の録音と協力事業所の物は残す。種の録音があれば山田の信号に結び、再生できる", async () => {
+  it("R2: 審査員の録音を消し、種の録音と協力事業所の物は残す。種の録音があれば、戻したあとの「発災開始」（T153）で山田の信号に結び、再生できる", async () => {
     const { db } = await used();
     sqlite = db;
     const judgeKeys = [1, 2, 3].map((i) => `${DEMO_RECORDING_PREFIX}p-01/2026110${i}T000000000Z.webm`);
@@ -503,6 +486,9 @@ describe("最初に戻す（デモ事業所だけ）", () => {
     const r = await resetDemoOffice(d1FromSqlite(db), bucket, NOW);
     expect(r).toEqual({ recording: true, removedRecordings: 3, removedFormPages: 0 });
     expect([...objects.keys()].sort()).toEqual([partnerKey, SEED_RECORDING_KEYS.m4a].sort());
+    // 戻したあとは平時で、山田の赤は無い
+    expect(db.prepare("SELECT id FROM signals WHERE id = ?").get(SEED_RED_SIGNAL_ID)).toBeUndefined();
+    expect(await startSeedDisaster(d1FromSqlite(db), bucket, disasterScope(judgeCm())!, { version: 0, at: NOW })).toEqual({ ok: true });
 
     const sig = db.prepare("SELECT recording_key AS k FROM signals WHERE id = ?").get(SEED_RED_SIGNAL_ID);
     expect(sig).toEqual({ k: SEED_RECORDING_KEYS.m4a });
@@ -514,11 +500,12 @@ describe("最初に戻す（デモ事業所だけ）", () => {
     expect(res.headers.get("Content-Type")).toBe("audio/mp4");
   });
 
-  it("種の録音が R2 に無ければ録音なし（文字起こしと分類だけ）", async () => {
+  it("種の録音が R2 に無ければ、発災開始の山田の赤は録音なし（文字起こしと分類だけ）", async () => {
     const { db } = await used();
     sqlite = db;
     const { bucket } = fakeBucket();
     expect((await resetDemoOffice(d1FromSqlite(db), bucket, NOW)).recording).toBe(false);
+    expect(await startSeedDisaster(d1FromSqlite(db), bucket, disasterScope(judgeCm())!, { version: 0, at: NOW })).toEqual({ ok: true });
     expect(db.prepare("SELECT recording_key AS k FROM signals WHERE id = ?").get(SEED_RED_SIGNAL_ID)).toEqual({ k: null });
     const res = await recordingGet(d1FromSqlite(db), bucket, judgeCm(), SEED_RED_SIGNAL_ID, null);
     expect(res.status).toBe(404);
@@ -581,7 +568,7 @@ describe("毎日 4 時（cron）", () => {
     expect(DAILY_RESET_CRON).toBe("0 19 * * *");
   });
 
-  it("毎日 4 時の物ならデモ事業所だけを種に戻す。予定の時刻から種の時刻を数える。ほかの cron は何もしない", async () => {
+  it("毎日 4 時の物ならデモ事業所（と確認用の事業所、T144）を種に戻す。予定の時刻から種の時刻を数える。ほかの cron は何もしない", async () => {
     const { db, partnerDump } = await used();
     sqlite = db;
     const before = partnerDump();
@@ -596,17 +583,27 @@ describe("毎日 4 時（cron）", () => {
       recording: false,
       removedRecordings: 0,
       removedFormPages: 0,
+      // 確認用の事業所（T144）も同じ時刻に種へ
+      check: { recording: false, removedRecordings: 0, removedFormPages: 0 },
       // 審査員の試用事業所（T115）は無いので消す物なし
       sandboxes: { offices: 0, drills: 0, removedObjects: 0 },
     });
     expect(partnerDump()).toEqual(before);
-    const s = await loadDisasterState(d1FromSqlite(db), DEMO.id);
-    expect(s.startedAt).toBe("2026-11-05T15:00:00.000Z");
-    expect(s.outage.startedAt).toBe("2026-11-05T16:00:00.000Z");
+    // 戻すと平時（T153。大雨の想定は「発災開始」で入る）
+    expect(await loadDisasterState(d1FromSqlite(db), DEMO.id)).toMatchObject({ kind: "normal", startedAt: null });
+    expect(await loadDisasterState(d1FromSqlite(db), "office-demo-check")).toMatchObject({ kind: "normal", startedAt: null });
     const drills = await listDrills(d1FromSqlite(db), DEMO.id);
     expect(drills.map((d) => [d.id, d.status])).toEqual([[SEED_DRILL_ID, "finished"]]);
     // 4:00 JST に戻すと、訓練は前の日（11/5）の 14:00 JST
     expect(drills[0].started_at).toBe("2026-11-05T05:00:00.000Z");
+    // 書き込んだ台帳（T142）も種のまま入る
+    for (const p of SEED_PEOPLE) {
+      const row = db.prepare("SELECT ledger FROM people WHERE id = ?").get(p.person.id) as { ledger: string };
+      expect(JSON.parse(row.ledger), p.person.id).toEqual(p.ledger);
+    }
+    expect(count(db, "SELECT count(*) AS n FROM contacts WHERE person_id IN (SELECT id FROM people WHERE office_id = 'office-demo') AND kana IS NOT NULL")).toBe(
+      SEED_PEOPLE.reduce((n, p) => n + p.contacts.filter((c) => c.kana).length, 0),
+    );
   });
 });
 
@@ -642,12 +639,25 @@ describe("上限での再生への切替", () => {
 });
 
 describe("種の決まり", () => {
-  it("種のアカウントはデモ事業所の 3 つ（山本・西村・審査員）と協力事業所の 1 つ", () => {
+  it("種のアカウントはデモ事業所の 5 つ（山本・西村・審査員 3 つ）、確認用の事業所の 2 つ（山本・西村、T144）と協力事業所の 1 つ", () => {
     expect(SEED_ACCOUNTS.map((a) => [a.id, a.office_id])).toEqual([
       ["acct-yamamoto", "office-demo"],
       ["acct-nishimura", "office-demo"],
       ["acct-judge", "office-demo"],
+      ["acct-judge-2", "office-demo"],
+      ["acct-judge-3", "office-demo"],
+      ["chk-acct-yamamoto", "office-demo-check"],
+      ["chk-acct-nishimura", "office-demo-check"],
       ["acct-partner-cm", "office-partner"],
     ]);
+    // ログインの ID を持つのは確認用の山本だけ（審査員の担当一覧の持ち主はログインしない）
+    expect(SEED_ACCOUNTS.filter((a) => a.login_id !== null).map((a) => a.id)).toEqual(["chk-acct-yamamoto"]);
+  });
+
+  it("確認用の事業所の消す範囲も CLEAR_ORDER の表を全部決め、残す表はデモ事業所と同じ", () => {
+    expect(Object.keys(CHECK_CLEAR).sort()).toEqual([...CLEAR_ORDER].sort());
+    const kept = (c: Record<string, string | null>) => Object.entries(c).filter(([, w]) => w === null).map(([t]) => t).sort();
+    expect(kept(CHECK_CLEAR)).toEqual(kept(DEMO_CLEAR));
+    for (const w of Object.values(CHECK_CLEAR)) if (w !== null) expect(w).not.toContain("'office-demo'");
   });
 });

@@ -12,13 +12,22 @@ import { PaperFoot } from "./PaperFoot";
 const mm = (n: number) => `${n.toFixed(2)}mm`;
 const pct = (n: number) => `${(n * 100).toFixed(3)}%`;
 const at = (b: FieldBox): CSSProperties => ({ left: pct(b.x), top: pct(b.y), width: pct(b.w), height: pct(b.h) });
-const cols: CSSProperties = { gridTemplateColumns: "50mm minmax(0, 1fr)" };
+/** 別紙の 3 列（頁・欄・値。T141） */
+const annexCols: CSSProperties = { gridTemplateColumns: "9mm 50mm minmax(0, 1fr)" };
+
+/** 別紙の行を頁の順に（同じ頁は様式の順のまま。頁の分からない行は最後。T141） */
+function annexRows(rows: Sheet["annex"]): Sheet["annex"] {
+  return rows
+    .map((r, i) => ({ r, i }))
+    .sort((a, b) => (a.r.page ?? Infinity) - (b.r.page ?? Infinity) || a.i - b.i)
+    .map((x) => x.r);
+}
 
 function Item({ it }: { it: OverlayItem }) {
   if (it.kind === "text") {
     return (
       <div
-        className={`ov-text${it.top ? " ov-top" : ""}${it.tight ? " ov-tight" : ""}`}
+        className={`ov-text${it.top ? " ov-top" : ""}${it.tight ? " ov-tight" : ""}${it.snug ? " ov-snug" : ""}`}
         style={{ ...at(it.box), fontSize: `${it.fontPt}pt` }}
         data-field={it.fieldId}
         data-font={it.fontPt}
@@ -137,13 +146,23 @@ export function OverlaySheet({
               </span>
             </div>
             <div className="blk">
-              <div className="grid" style={cols}>
-                {sheet.annex.map((r) => (
-                  <div key={r.fieldId} className="row" data-field={r.fieldId} data-reason={r.reason}>
-                    <span className="lbl">{r.label}</span>
+              {/* 頁・欄・値の 3 列（T141）。頁の順に並べ、紙の欄を探せるように頁を出す。欄に「別紙」と書いた値と、様式に欄の無い値を分ける */}
+              <div className="grid" style={annexCols}>
+                <div className="row annex-head" aria-hidden>
+                  <span className="lbl">頁</span>
+                  <span className="lbl">欄</span>
+                  <span className="lbl">値</span>
+                </div>
+                {annexRows(sheet.annex).map((r, i) => (
+                  <div key={`${r.fieldId}-${i}`} className="row" data-field={r.fieldId} data-reason={r.reason}>
+                    <span className="lbl annex-page">{r.page ?? "－"}</span>
+                    <span className="lbl">
+                      {r.label}
+                      <span className="annex-why">{r.reason === "overflow" ? "欄に別紙" : "欄なし"}</span>
+                    </span>
                     <span className="f-v">
-                      {r.lines.map((l, i) => (
-                        <span key={i} className="ln">
+                      {r.lines.map((l, j) => (
+                        <span key={j} className="ln">
                           {l}
                         </span>
                       ))}
@@ -153,7 +172,7 @@ export function OverlaySheet({
               </div>
             </div>
             <div className="small-note foot-note">
-              <p>{`※様式の欄に収まらない値（欄に「別紙」）と、様式に位置の無い欄の値。値は台帳から差し込み${checked ? `（対応表 確認 ${checked}）` : ""}`}</p>
+              <p>{`※値は台帳から差し込み${checked ? `（対応表 確認 ${checked}）` : ""}`}</p>
             </div>
             <PaperFoot doc={`${sheet.title} 別紙`} name={sheet.name} page={1} total={1} />
           </section>

@@ -135,10 +135,12 @@ describe("入力の読み方", () => {
     expect(parseStaffInput({ displayName: "", loginId: "sato" })).toEqual({ ok: false, error: "display_name" });
   });
 
-  it("初期パスワードは 12 字＋区切りで、見分けにくい字を使わず、毎回違う", () => {
+  it("初期パスワードは 12 字＋区切りで、見分けにくい字を使わず、大文字・小文字を含み（T148 の決まり）、毎回違う", () => {
     const a = generateInitialPassword();
-    expect(a).toMatch(/^[a-hjkmnp-z2-9]{4}-[a-hjkmnp-z2-9]{4}-[a-hjkmnp-z2-9]{4}$/);
-    expect(a).not.toMatch(/[01ilo]/);
+    expect(a).toMatch(/^[a-hjkmnp-zA-HJKMNP-Z2-9]{4}-[a-hjkmnp-zA-HJKMNP-Z2-9]{4}-[a-hjkmnp-zA-HJKMNP-Z2-9]{4}$/);
+    expect(a).not.toMatch(/[01iloILO]/);
+    expect(a).toMatch(/[A-Z]/);
+    expect(a).toMatch(/[a-z]/);
     expect(new Set(Array.from({ length: 20 }, generateInitialPassword)).size).toBe(20);
   });
 });
@@ -455,8 +457,11 @@ describe("種の入れ直し", () => {
     await addSato();
     await setUnlisted(db, officeActor(yamamoto())!, { personId: "p-05", unlisted: true }, AT);
     for (const s of seedStatements()) sqlite.exec(s);
-    expect(count("SELECT count(*) AS n FROM people")).toBe(10);
-    expect(count("SELECT count(*) AS n FROM accounts WHERE office_id = 'office-demo'")).toBe(3);
+    // 確認用の事業所（T144）の 10 人の写しも種
+    expect(count("SELECT count(*) AS n FROM people WHERE office_id = 'office-demo'")).toBe(10);
+    expect(count("SELECT count(*) AS n FROM people")).toBe(20);
+    // 山本・西村・審査員 3 つ（T144）
+    expect(count("SELECT count(*) AS n FROM accounts WHERE office_id = 'office-demo'")).toBe(5);
     expect(count("SELECT count(*) AS n FROM office_timeline_entries")).toBe(0);
     expect(count("SELECT count(*) AS n FROM people WHERE unlisted_at IS NOT NULL")).toBe(0);
   });

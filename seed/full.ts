@@ -1,6 +1,6 @@
 // 手元の npm run db:reset が入れる種の全部（node で使う。Worker からは使わない）。
-// 全部の表を空にして事業所・アカウント・10 人（seed/sql.ts）→ デモ事業所の災害モードと山田の赤（lib/seed/demo.ts）
-// → 終わった訓練（lib/seed/drill.ts）。訓練は node:sqlite に本物の startDrill・advanceDrill を回し、できた行を INSERT の文に起こす。
+// 全部の表を空にして事業所・アカウント・10 人と確認用の事業所の写し（seed/sql.ts）→ デモ事業所と確認用の事業所の QR（lib/seed/demo.ts）
+// → 終わった訓練（lib/seed/drill.ts）。事業所は平時で始まる（T153。大雨の想定と山田の赤は事業所の画面の「発災開始」、lib/seed/start.ts）。訓練は node:sqlite に本物の startDrill・advanceDrill を回し、できた行を INSERT の文に起こす。
 // Worker の「最初に戻す」（lib/seed/reset.ts）と同じ所から作るので、同じ now なら同じ中身になる。
 
 import { existsSync } from "node:fs";
@@ -9,12 +9,11 @@ import { d1FromSqlite, migratedSqlite } from "../lib/db/test-d1.ts";
 import {
   SEED_RECORDING_KEYS,
   SEED_RECORDING_TYPES,
-  demoExtraStatements,
-  type SeedRecording,
+  seedExtraStatements,
   type SeedRecordingExt,
 } from "../lib/seed/demo.ts";
-import { dumpDrillStatements, SEED_DRILL_ID, seedDrill } from "../lib/seed/drill.ts";
-import { DEMO_SELF_PERSON_ID } from "../lib/auth/demo.ts";
+import { CHECK_SEED_DRILL_ID, dumpDrillStatements, SEED_DRILL_ID, seedDrill } from "../lib/seed/drill.ts";
+import { CHECK_OFFICE_ID, CHECK_TARGETS, DEMO_OFFICE_ID, DEMO_SELF_PERSON_ID } from "../lib/auth/demo.ts";
 import { seedStatements, type SeedOptions } from "./sql.ts";
 
 /** 作者が置く種の録音のファイル（seed/recordings/p-01.webm か p-01.m4a）。無ければ null。中は読まない */
@@ -27,20 +26,20 @@ export function seedRecordingFile(seedDir: string): { path: string; ext: SeedRec
 }
 
 export type FullSeedOptions = SeedOptions & {
-  /** 種の時刻の元（発災・停電・山田の赤・訓練の日はここから数える） */
+  /** 種の時刻の元（終わった訓練の日はここから数える） */
   now: string;
-  recording?: SeedRecording;
 };
 
-/** 種の全部の文（wrangler d1 execute --file で流す順） */
+/** 種の全部の文（wrangler d1 execute --file で流す順）。確認用の事業所（T144）の QR・終わった訓練も同じ作りで。どちらも平時（T153） */
 export async function fullSeedStatements(opts: FullSeedOptions): Promise<string[]> {
-  const base = [...seedStatements(opts), ...demoExtraStatements(opts.now, opts.recording ?? null)];
+  const base = [...seedStatements(opts), ...seedExtraStatements(DEMO_OFFICE_ID), ...seedExtraStatements(CHECK_OFFICE_ID)];
   const sqlite = migratedSqlite();
   try {
     for (const s of base) sqlite.exec(s);
     const db = d1FromSqlite(sqlite);
     await seedDrill(db, opts.now);
-    return [...base, ...(await dumpDrillStatements(db, SEED_DRILL_ID))];
+    await seedDrill(db, opts.now, CHECK_TARGETS);
+    return [...base, ...(await dumpDrillStatements(db, SEED_DRILL_ID)), ...(await dumpDrillStatements(db, CHECK_SEED_DRILL_ID))];
   } finally {
     sqlite.close();
   }

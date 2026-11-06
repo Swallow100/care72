@@ -1,5 +1,6 @@
-// 本人のスマホの声の聞き取りの会話（docs/tasks/T137.md）の流れ。マイク・読み上げ・文字起こし・サーバーは偽物（偽の時計）。
+// 本人のスマホの声の聞き取りの会話（docs/tasks/T137.md・T137b.md）の流れ。マイク・声・文字起こし・サーバーは偽物（偽の時計）。
 // 20 秒押さない → 定型文（AI の告知から）→ 聞く → 次の手（サーバー）→ 読む … → 締め（119 の文で終わる）→ 録音と会話の記録を送る。
+// 聞き取りは会話の間ずっと 1 本（T137b）: 読む間に本人が話したら声を止めて聞く、考える間の言葉も次の手の材料、読んだ文の声の拾いは答えにしない。
 // 聞き取れないが続く → ボタンの答え方（はい・いいえ・とばす）と応答不明瞭の印。危ない言葉は決まった文で締める。サーバーに届かないときは決まった問い。
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -9,9 +10,19 @@ import { PhoneView } from "../../components/phone/PhoneView.tsx";
 import { EMERGENCY_TEXT } from "../forms/own-sheet.ts";
 import type { SignalBody } from "./body.ts";
 import type { AttachItem } from "./outbox.ts";
-import { createPhone, IDLE_MS, TALK_LISTEN_MS, TALK_QUIET_MS, TALK_WAIT_MS, type PhoneDeps, type PhoneState } from "./phone.ts";
+import {
+  createPhone,
+  IDLE_MS,
+  TALK_FILLER_MS,
+  TALK_LISTEN_MS,
+  TALK_QUIET_MS,
+  TALK_WAIT_MS,
+  type PhoneDeps,
+  type PhoneState,
+  type TranscriptEvents,
+} from "./phone.ts";
 import type { Answers } from "./questions.ts";
-import { fixedLine, TALK_MAX_TURNS, TALK_TOPIC_SPECS, type TalkLine, type TalkLog } from "./talk.ts";
+import { fillerText, fixedLine, TALK_MAX_TURNS, TALK_TOPIC_SPECS, type TalkLine, type TalkLog } from "./talk.ts";
 import type { TalkReply } from "./talk-ai.ts";
 
 const T0 = Date.parse("2026-11-04T01:00:00.000Z");
@@ -24,33 +35,52 @@ afterEach(() => vi.useRealTimers());
 
 const tick = (ms: number) => vi.advanceTimersByTimeAsync(ms);
 
-/** 1 往復ごとの本人の言葉。文字があれば 1 秒後に文字が届き、無ければ 1 秒後に無音で止まる */
-function talkTranscripts(texts: Array<string | null>) {
-  let n = 0;
-  const start: NonNullable<PhoneDeps["startTranscript"]> = (events) => {
-    const text = texts[n++] ?? null;
-    setTimeout(() => (text ? events.onText?.(text) : events.onSilence?.()), 1000);
-    return { stop: async () => text };
-  };
-  return { start, count: () => n };
-}
-
 type H = {
   phone: ReturnType<typeof createPhone>;
   states: PhoneState[];
+  /** 読んだ文（定型文は「（定型文）」） */
   said: string[];
+  /** 読んだ文の声の URL */
+  voices: Array<string | null>;
   logs: TalkLog[];
   recordings: Array<{ item: AttachItem; audio: Blob | null }>;
   answers: Answers[];
   recLog: string[];
   signals: SignalBody[];
+  hushed: number;
+  /** 文字起こしを開いた回数（会話の間ずっと 1 本） */
+  opened: number;
+  /** 本人が話した（今の文字起こしの全部に足して知らせる） */
+  words(text: string): void;
 };
 
-function harness(texts: Array<string | null>, replies: Array<TalkReply | null | "hang">, over: Partial<PhoneDeps> = {}): H {
-  const h: H = { states: [], said: [], logs: [], recordings: [], answers: [], recLog: [], signals: [] } as unknown as H;
-  const tr = talkTranscripts(texts);
+type HarnessOptions = {
+  /** この文を読む声は、止められるまで終わらない（読む間の話し始めを試す） */
+  hangOn?: string;
+  /** サーバーの返事を待たせる（ミリ秒） */
+  talkDelay?: number;
+};
+
+/**
+ * texts は問いを読むごとの本人の言葉（読み終えて 1 秒後に話す。null は黙る）。replies はサーバーの返事（"hang" は返さない）。
+ * 締め・相づち・ボタンの文を読んだときは本人は話さない
+ */
+function harness(texts: Array<string | null>, replies: Array<TalkReply | null | "hang">, over: Partial<PhoneDeps> = {}, opt: HarnessOptions = {}): H {
+  const h = { states: [], said: [], voices: [], logs: [], recordings: [], answers: [], recLog: [], signals: [], hushed: 0, opened: 0 } as unknown as H;
+  let full = "";
+  let events: TranscriptEvents | null = null;
+  let turn = 0;
   let i = 0;
   let id = 0;
+  let stopHang: (() => void) | null = null;
+  h.words = (text: string) => {
+    full = full ? `${full}\n${text}` : text;
+    events?.onText?.(full);
+  };
+  const afterLine = () => {
+    const text = texts[turn++];
+    if (text != null) setTimeout(() => h.words(text), 1000);
+  };
   const rec = {
     pause: () => h.recLog.push("pause"),
     resume: () => h.recLog.push("resume"),
@@ -76,15 +106,32 @@ function harness(texts: Array<string | null>, replies: Array<TalkReply | null | 
     hasDevice: true,
     playPrompt: async () => {
       h.said.push("（定型文）");
+      afterLine();
     },
     speak: async (text) => {
       h.said.push(text);
     },
+    say: async (text, voice) => {
+      h.said.push(text);
+      h.voices.push(voice ?? null);
+      if (text === opt.hangOn) await new Promise<void>((r) => (stopHang = r));
+      // 問いの文（決まった問い・AI の文）のあとだけ本人が話す
+      if (!voice || voice.includes("fixed=topic-")) afterLine();
+    },
+    hush: () => {
+      h.hushed++;
+      stopHang?.();
+    },
     startRecording: async () => rec,
-    startTranscript: tr.start,
+    startTranscript: (e) => {
+      h.opened++;
+      events = e;
+      return { stop: async () => full || null };
+    },
     talk: async (_signalId, log) => {
       h.logs.push(log);
       const r = replies[i++];
+      if (opt.talkDelay) await new Promise((res) => setTimeout(res, opt.talkDelay));
       if (r === "hang") return new Promise<TalkReply | null>(() => {});
       return r ?? null;
     },
@@ -95,7 +142,7 @@ function harness(texts: Array<string | null>, replies: Array<TalkReply | null | 
 }
 
 const ask = (line: TalkLine, called = false): TalkReply => ({ kind: "ask", line, called });
-const aiLine = (topic: TalkLine["topic"], text: string): TalkLine => ({ text, question: text, easy: null, by: "ai", topic });
+const aiLine = (topic: TalkLine["topic"], text: string, item?: string): TalkLine => ({ text, question: text, easy: null, by: "ai", topic, ...(item ? { item } : {}) });
 
 /** 1 往復: 文字が届く（1 秒）→ 静かな間（3 秒）で閉じる */
 const oneTurn = () => tick(1000 + TALK_QUIET_MS + 10);
@@ -118,6 +165,9 @@ describe("声の聞き取りの会話（T137）", () => {
     for (let k = 0; k < 4; k++) await oneTurn();
     await tick(10);
     expect(h.said.slice(1, 4)).toEqual([TALK_TOPIC_SPECS.injured.text, "じぶんで たてますか", TALK_TOPIC_SPECS.canMove.text]);
+    // 決まった問い・締めは作り置きの声（id）、AI の文は会話の API の声（ここでは無い）
+    expect(h.voices.slice(0, 3)).toEqual(["/api/signals/voice?fixed=topic-injured", null, "/api/signals/voice?fixed=topic-canMove"]);
+    expect(h.voices.at(-1)).toBe("/api/signals/voice?fixed=close-grasped");
     // 締めは 119 の文で終わる
     expect(h.said.at(-1)!.endsWith(EMERGENCY_TEXT)).toBe(true);
     expect(h.phone.state).toMatchObject({ step: "done", color: "red", delivery: "sent" });
@@ -132,23 +182,23 @@ describe("声の聞き取りの会話（T137）", () => {
       ["canMove", "ai", "text"],
       ["canMove", "fixed", "text"],
     ]);
-    expect(sent.talk!.closing!.endsWith(EMERGENCY_TEXT)).toBe(true);
-    // 録音は 1 本で、読む間は止める
-    expect(h.recLog.filter((x) => x === "stop")).toEqual(["stop"]);
-    expect(h.recLog.filter((x) => x === "pause").length).toBeGreaterThanOrEqual(4);
+    // 聞き取りは会話の間 1 本。録音も 1 本で、読む間も止めない（T137b）
+    expect(h.opened).toBe(1);
+    expect(h.recLog).toEqual(["stop"]);
     // サーバーには毎回それまでの全部
     expect(h.logs.map((l) => l.turns.length)).toEqual([1, 2, 3, 4]);
   });
 
-  it("うめき声 → 黙る: ボタンの答え方へ（応答不明瞭の印）。はい・いいえ・押さない・とばす で答え、締めて送る", async () => {
+  it("うめき声 → 黙る: ボタンの答え方へ（応答不明瞭の印）。はい・いいえ・押さない・とばす で答え、自動で送る", async () => {
     const h = harness(["うー…", null], [ask(fixedLine("injured"))]);
     h.phone.red();
     await tick(IDLE_MS);
     await oneTurn();
-    await tick(1000 + 10);
+    await tick(TALK_LISTEN_MS + 10);
     expect(h.phone.state).toMatchObject({ step: "yesno", id: "injured" });
     expect(h.logs).toHaveLength(1);
     expect(h.said.at(-1)).toBe("けがはありますか。はいならみどり、いいえならあかをおしてください");
+    expect(h.voices.at(-1)).toBe("/api/signals/voice?fixed=button-injured");
     h.phone.yesNo(true);
     await tick(10);
     expect(h.phone.state).toMatchObject({ step: "yesno", id: "canMove" });
@@ -183,7 +233,7 @@ describe("声の聞き取りの会話（T137）", () => {
     expect(h.recordings[0].item.talk).toMatchObject({ end: "danger", danger: "fire" });
   });
 
-  it("サーバーに届かない・遅い（8 秒）: 端末だけで決まった問いを続ける", async () => {
+  it("サーバーに届かない・遅い（16 秒）: 端末だけで決まった問いを続ける", async () => {
     const h = harness(["あしが いたい", "はい"], [null, "hang"]);
     h.phone.red();
     await tick(IDLE_MS);
@@ -196,28 +246,19 @@ describe("声の聞き取りの会話（T137）", () => {
     expect(h.said.at(-1)).toBe(TALK_TOPIC_SPECS.canMove.text);
   });
 
-  it("話さなければ 15 秒で 1 往復を閉じる。「送る」で締めて送る", async () => {
-    const h = harness(["もしもし", "あの、ええと、うちの ねこが"], [ask(fixedLine("injured"))], {
-      // 文字が届かないまま 15 秒待つ端末（無音の知らせが無い）
-      startTranscript: (() => {
-        let n = 0;
-        return () => {
-          const text = ["もしもし", "あの、ええと、うちの ねこが"][n++] ?? null;
-          return { stop: async () => text };
-        };
-      })(),
-    });
+  it("話さなければ 15 秒で 1 往復を閉じる。締めるときは聞いていた往復の答えも入れる", async () => {
+    const h = harness([null, null], [ask(fixedLine("injured"))]);
     h.phone.red();
     await tick(IDLE_MS);
     await tick(TALK_LISTEN_MS + 10);
     expect(h.said.at(-1)).toBe(TALK_TOPIC_SPECS.injured.text);
+    h.words("あの、ええと、うちの ねこが");
     h.phone.finish();
     await tick(10);
     expect(h.phone.state).toMatchObject({ step: "done" });
     const talk = h.recordings[0].item.talk!;
     expect(talk.end).toBe("send");
-    // 送る前に聞いていた分も記録に入る
-    expect(talk.turns.map((t) => t.reply)).toEqual(["もしもし", "あの、ええと、うちの ねこが"]);
+    expect(talk.turns.map((t) => t.reply)).toEqual([null, "あの、ええと、うちの ねこが"]);
   });
 
   it("噛み合わない話が続いても、上限（10 回）で締めて「また あとで ききます」", async () => {
@@ -237,7 +278,80 @@ describe("声の聞き取りの会話（T137）", () => {
     const h = harness(["ないです"], [], { talk: undefined });
     h.phone.red();
     await tick(IDLE_MS);
-    expect(h.phone.state).toMatchObject({ step: "question", id: "injured", voice: "listening" });
+    expect(h.phone.state).toMatchObject({ step: "question", id: "injured" });
+  });
+});
+
+describe("聞き続ける（T137b）", () => {
+  it("読む間に本人が話し始めたら、声を止めて聞く。その言葉はその問いの答え", async () => {
+    const line = aiLine("canMove", "じぶんで たてますか");
+    const h = harness(["あしが いたい", null], [ask(line, true), "hang"], {}, { hangOn: "じぶんで たてますか" });
+    h.phone.red();
+    await tick(IDLE_MS);
+    await oneTurn();
+    await tick(10);
+    expect(h.phone.state).toMatchObject({ step: "talk", voice: "speaking", line: "じぶんで たてますか" });
+    h.words("たてない、こしが いたい");
+    await tick(10);
+    expect(h.hushed).toBe(1);
+    expect(h.phone.state).toMatchObject({ step: "talk", voice: "listening" });
+    await tick(TALK_QUIET_MS + 10);
+    expect(h.logs.at(-1)!.turns.at(-1)).toMatchObject({ ask: "じぶんで たてますか", reply: "たてない、こしが いたい", heard: "text" });
+  });
+
+  it("読んだ文の声を拾っても止めず、答えにしない（自分の問いの「ガスのにおい」を危ない言葉に取らない）", async () => {
+    const h = harness(["あしが いたい", null], [ask(fixedLine("fireGas")), "hang"], {}, { hangOn: TALK_TOPIC_SPECS.fireGas.text });
+    h.phone.red();
+    await tick(IDLE_MS);
+    await oneTurn();
+    await tick(10);
+    expect(h.phone.state).toMatchObject({ step: "talk", voice: "speaking" });
+    h.words("火やガスのにおいはしますか");
+    await tick(10);
+    expect(h.hushed).toBe(0);
+    expect(h.phone.state).toMatchObject({ step: "talk", voice: "speaking" });
+  });
+
+  it("読んだ文の声のあとに本人の答えが続いても、答えだけを取る", async () => {
+    const h = harness(["あしが いたい"], [ask(fixedLine("injured")), "hang"]);
+    h.phone.red();
+    await tick(IDLE_MS);
+    await oneTurn();
+    await tick(10);
+    // 問いの声の拾い（区切りが別）と本人の答え
+    h.words("けがはありますか");
+    h.words("はい");
+    await tick(TALK_QUIET_MS + 10);
+    const turn = h.logs.at(-1)!.turns.at(-1)!;
+    expect(turn).toMatchObject({ reply: "はい", answer: { id: "injured", choice: "yes" } });
+  });
+
+  it("考える間に届いた言葉は前の答えに足し、次の手を決め直す（1 回まで）", async () => {
+    const h = harness(["あしが"], [ask(fixedLine("injured")), ask(fixedLine("canMove"))], {}, { talkDelay: 2_000 });
+    h.phone.red();
+    await tick(IDLE_MS);
+    await oneTurn();
+    // 考えている間（サーバーを待つ間）に続きを話した
+    h.words("いたくて たてない");
+    await tick(2_000 + 10);
+    expect(h.logs).toHaveLength(2);
+    expect(h.logs[1].turns.at(-1)!.reply).toBe("あしが\nいたくて たてない");
+    await tick(2_000 + 10);
+    expect(h.said.at(-1)).toBe(TALK_TOPIC_SPECS.canMove.text);
+  });
+
+  it("次の 1 文が遅いときは、作り置きの相づちを先に流す（本人が話したあとは「わかりました」、黙ったあとは「しょうしょう…」）", async () => {
+    const h = harness(["あしが いたい", null], [ask(fixedLine("injured")), ask(fixedLine("canMove"))], {}, { talkDelay: 4_000 });
+    h.phone.red();
+    await tick(IDLE_MS);
+    await oneTurn();
+    await tick(TALK_FILLER_MS + 10);
+    expect(h.said.at(-1)).toBe(fillerText("heard"));
+    expect(h.voices.at(-1)).toBe("/api/signals/voice?fixed=filler-heard");
+    await tick(4_000);
+    expect(h.said.at(-1)).toBe(TALK_TOPIC_SPECS.injured.text);
+    await tick(TALK_LISTEN_MS + TALK_FILLER_MS + 10);
+    expect(h.said).toContain(fillerText("wait"));
   });
 });
 
@@ -245,19 +359,21 @@ describe("画面（T137）", () => {
   const on = { green() {}, red() {}, where() {}, answer() {}, skip() {}, locate() {}, extend() {}, finish() {}, again() {}, yesNo() {} };
   const html = (state: PhoneState) => renderToStaticMarkup(createElement(PhoneView, { state, nowMs: T0, on }));
 
-  it("会話: 最初は AI の告知と定型文、AI の文には AI の印、決まった文はやさしい日本語。送るボタンと 119 の 1 行", () => {
+  it("会話: 最初は AI の告知と定型文、AI の文には AI の印、決まった文はやさしい日本語。いつも「AI が きいています」と 119 の 1 行。「送る」は無い（T137b）", () => {
     const first = html({ step: "talk", line: "x", easy: null, by: "fixed", first: true, voice: "listening" });
     expect(first).toContain('data-notice="ai"');
     expect(first).toContain("data-prompt");
-    expect(first).toContain('data-emergency');
+    expect(first).toContain("data-emergency");
     const byAi = html({ step: "talk", line: "じぶんで たてますか", easy: null, by: "ai", first: false, voice: "listening" });
     expect(byAi).toContain('data-talk-line="ai"');
     expect(byAi).toContain(">AI<");
-    expect(byAi).toContain('data-choice="send"');
     const fixed = html({ step: "talk", line: "動けますか", easy: TALK_TOPIC_SPECS.canMove.easy, by: "fixed", first: false, voice: "speaking" });
     expect(fixed).toContain('data-talk-line="fixed"');
     expect(fixed).toContain("<ruby");
-    expect(fixed).not.toContain('data-ai="listening"');
+    for (const page of [first, byAi, fixed]) {
+      expect(page).toContain('data-ai="listening"');
+      expect(page).not.toContain('data-choice="send"');
+    }
   });
 
   it("ボタンの答え方: はい（緑の面）・いいえ（赤の面）・とばす。締め", () => {
@@ -269,5 +385,15 @@ describe("画面（T137）", () => {
     const closing = html({ step: "closing", easy: "すぐ ケアマネジャーに しらせます", danger: true });
     expect(closing).toContain('data-closing="danger"');
     expect(closing).toContain("data-emergency");
+  });
+
+  it("問いのカード（T137b）: 印のある答えは面そのものを塗って大きく、端の色の線は無い。印の無い答えは灰の枠", () => {
+    const q = html({ step: "question", id: "injured", answers: {}, first: false, voice: null });
+    expect(q).toMatch(/phone-fill-urgent[^"]*" data-press="overlay" data-choice="yes" data-tone="urgent"/);
+    expect(q).toMatch(/phone-fill-ok[^"]*" data-press="overlay" data-choice="no" data-tone="ok"/);
+    expect(q).toMatch(/phone-choice[^"]*" data-press="" data-choice="unknown"/);
+    expect(q).toMatch(/flex-\[2\][^"]*" data-press="overlay" data-choice="yes"/);
+    const bleeding = html({ step: "question", id: "bleeding", answers: {}, first: false, voice: null });
+    expect(bleeding).toMatch(/phone-fill-check[^"]*" data-press="overlay" data-choice="yes"/);
   });
 });

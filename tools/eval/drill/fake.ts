@@ -28,6 +28,11 @@ export type FakeOptions = {
    * 進める 1 回の待ちの形（監督と本人役が順か並びか・最後の刻みの監督）を偽の回で比べるため。既定 0（待たない）
    */
   latency?: number;
+  /**
+   * 往復の返事をわざと繰り返す・いる所を揺らす割合（T158、0〜1。既定 0）。当たった往復は、前の返事をそのまま返すか、前の返事と逆のいる所
+   * （避難所 ↔ 家）を言う。通話の検査（talk-check.ts）が数えられるか・門（同じ通話の前の返事の文を落とす）が効くかの確かめ
+   */
+  talkEcho?: number;
 };
 
 /** 役ごとの本物の待ちの目安（ミリ秒。評価の 2 回目の訓練の記録の平均。本人役のまとめ呼びは 1 人より長い） */
@@ -122,6 +127,10 @@ const SITUATIONS: ReadonlyArray<readonly [RegExp, ReadonlyArray<string>]> = [
   [/通行止|土砂/, ["道が通れないそうです", "近くの道がふさがっています"]],
   [/通話|電話/, ["電話がつながりにくいです", "電話がなかなか通じません"]],
   [/避難所|満員|開設/, ["避難所はもう人でいっぱいだそうです", "避難所に行くか迷っています"]],
+  // T141: 電池の残りの数・切れた事・家の外（本物の本人役が帳面と食い違えた形。数は帳面と合わない事がある）。検査と門が拾うかの確かめ
+  [/内蔵の電池で動いている|予備の残り|予備に替えた/, ["呼吸器の電池があと3時間しかもちません", "予備の電池があと2時間ほどです", "電池が切れました", "予備の電池に替えました"]],
+  [/に切れた|切れた。予備は無く|電気で動いている/, ["電池が切れました", "予備も切れました", "電池が切れたままです"]],
+  [/いる所: 家/, ["今は家の外にいます", "家で様子を見ています"]],
 ];
 const CALM = ["今のところ家にいます", "特に変わりはありません", "なんとか過ごしています", "落ち着いています"];
 const RED_NEEDS = ["誰か来てもらえませんか", "薬が残り少ないんです", "動けなくて困っています", "足を打ってしまいました", "一人では外に出られません", "胸が少し苦しいと言っています"];
@@ -227,8 +236,32 @@ function personaBatchAnswer(rng: Rng, input: Input, opts: FakeOptions, virtual: 
 const TICK_HEAD = "\n\nこの刻み:\n";
 const PROFILE_HEAD = /^本人役:\n/;
 
+/** 往復の文の「それまでの話」のうち、電話に出た人の行（T158） */
+function priorReplies(call: string): string[] {
+  const at = call.indexOf("それまでの話:");
+  if (at < 0) return [];
+  return call
+    .slice(at)
+    .split("\n")
+    .slice(1)
+    .filter((l) => l.startsWith("- ") && !l.startsWith("- ケアマネ:"))
+    .map((l) => l.replace(/^- [^:]+: 「/u, "").replace(/」$/u, ""));
+}
+
+/** わざと繰り返す・いる所を揺らす返事（T158）。前の返事が無ければ避難所、奇数回目は前のまま、偶数回目は前と逆のいる所 */
+const ECHO_SHELTER = "今は避難所にいます。母は横になって休んでいます。";
+const ECHO_HOME = "今は家にいます。母と二人でいて、母は横になって休んでいます。";
+function echoAnswer(call: string): { speech: string; asks: string[] } {
+  const prior = priorReplies(call);
+  const last = prior.at(-1);
+  if (!last) return { speech: ECHO_SHELTER, asks: [] };
+  if (prior.length % 2 === 1) return { speech: last, asks: [] };
+  return { speech: last.includes("避難所") ? ECHO_HOME : ECHO_SHELTER, asks: [] };
+}
+
 function callAnswer(rng: Rng, input: Input, opts: FakeOptions, talk: boolean) {
   const call = textOf(input["電話"]);
+  if (talk && opts.talkEcho && rng.chance(opts.talkEcho)) return echoAnswer(call);
   const red = /伝える様子: 赤/.test(call);
   const who = call.match(/電話に出た人: (.+)/)?.[1]?.trim() ?? "本人";
   const speech = withNoise(opts, rng, speechOf(rng, who, call, red));

@@ -7,11 +7,13 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { PhoneSheet, phoneBlocks } from "../../components/phone/PhoneSheet.tsx";
 import { PhoneView, type PhoneActions } from "../../components/phone/PhoneView.tsx";
-import { SEED_AT, SEED_PEOPLE, seedConsents } from "../../seed/people.ts";
+import { SEED_AT, seedConsents } from "../../seed/people.ts";
 import { buildOwnSheet, EMERGENCY_TEXT, lineText } from "../forms/own-sheet.ts";
 import type { PersonPageRows } from "../person.ts";
 import { createPhone, type PhoneState } from "./phone.ts";
 import { choicesFor, QUESTIONS, type QuestionId } from "./questions.ts";
+// T142 で種の台帳を埋めた。このテストは空いた欄を前提にするので、T142 より前の空きの多い形（seed/sparse.ts）を使う
+import { SPARSE_PEOPLE } from "../../seed/sparse.ts";
 
 const noop: PhoneActions = {
   green() {},
@@ -63,7 +65,7 @@ const STATES: PhoneState[] = [
 ];
 
 describe("災害モードの画面", () => {
-  it("上は「無事」緑と「無事じゃない」赤の 2 つだけ。面で塗るのはこの 2 つ", () => {
+  it("上は「無事」緑と「無事じゃない」赤の 2 つだけ。面で塗るのはこの 2 つと、問いの印のある答え（T137b。端の線をやめて面に）", () => {
     const html = view({ step: "top" });
     expect(buttons(html)).toEqual(["green", "red"]);
     expect(text(html)).toBe("無事無事じゃない");
@@ -71,7 +73,14 @@ describe("災害モードの画面", () => {
     expect(html).toContain("phone-fill-urgent");
     for (const s of STATES.slice(1)) {
       const h = view(s);
-      expect(h, s.step).not.toContain("phone-fill-");
+      if (s.step !== "question") {
+        expect(h, s.step).not.toContain("phone-fill-");
+        continue;
+      }
+      // 問いの画面: 塗るのは印のある答え（data-tone）のボタンだけ
+      const filled = h.match(/<button[^>]*phone-fill-[^>]*>/g) ?? [];
+      for (const b of filled) expect(b, s.id).toMatch(/data-tone="(urgent|check|ok)"/);
+      expect(filled.length, s.id).toBe((h.match(/data-tone=/g) ?? []).length);
     }
   });
 
@@ -234,7 +243,7 @@ describe("119 の 1 行（T48）", () => {
 });
 
 describe("平時の画面", () => {
-  const p = SEED_PEOPLE.find((x) => x.person.id === "p-01")!;
+  const p = SPARSE_PEOPLE.find((x) => x.person.id === "p-01")!;
   const rows: PersonPageRows = {
     person: { ...p.person, ledger: JSON.stringify(p.ledger), created_at: SEED_AT, updated_at: SEED_AT },
     careManagerName: "山本",

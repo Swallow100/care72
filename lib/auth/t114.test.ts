@@ -20,7 +20,7 @@ import { d1FromSqlite, migratedSqlite } from "../db/test-d1.ts";
 import { addCareManager, resetCareManagerPassword } from "../office/staff.ts";
 import { officeActor } from "../office/scope.ts";
 import { CARE_MANAGERS_ANCHOR } from "../office/http-paths.ts";
-import { DEMO_CARE_MANAGER_ID, DEMO_OFFICE_ID } from "./demo.ts";
+import { DEMO_CARE_MANAGER_ID, DEMO_OFFICE_ID, LOGIN_CARE_MANAGER_ID } from "./demo.ts";
 import { hashPassword } from "./password.ts";
 import { changeOwnPassword, initialPasswordHref, wantsOwnPassword } from "./password-change.ts";
 import { chooseJudgeRole, chooseRole, login, resolvePrincipal, type Principal } from "./principal.ts";
@@ -50,7 +50,7 @@ const env = () => ({ JUDGE_PASSWORD_HASH: judgeHash });
 
 beforeEach(() => {
   sqlite = migratedSqlite();
-  for (const s of seedStatements({ passwordHashes: { [DEMO_CARE_MANAGER_ID]: yamamotoHash } })) sqlite.exec(s);
+  for (const s of seedStatements({ passwordHashes: { [LOGIN_CARE_MANAGER_ID]: yamamotoHash } })) sqlite.exec(s);
   // new-office.ts の新しい事業所（本物の事業所の形。種の位置でない）と最初の管理者
   sqlite.exec(
     newOfficeSql({
@@ -96,7 +96,7 @@ describe("初期パスワードの印（表と Principal）", () => {
 
     const cm = await loginAs("t114-cm", added.password);
     expect(initialPasswordHref(cm.principal)).toBe(OFFICE_HREF);
-    const changed = await changeOwnPassword(db, env(), SECRET, cm.principal, { current: added.password, next: "t114-own-new-pass" }, NOW, FAST);
+    const changed = await changeOwnPassword(db, env(), SECRET, cm.principal, { current: added.password, next: "T114-own-new-pass" }, NOW, FAST);
     if (!changed.ok) throw new Error(changed.error);
     expect(initialOf(added.account.id)).toBe(0);
     const after = await resolvePrincipal(db, env(), SECRET, changed.token, NOW + 1);
@@ -112,7 +112,7 @@ describe("初期パスワードの印（表と Principal）", () => {
 
   it("変更に失敗した（今のパスワード違い）ときは印を外さない", async () => {
     const admin = await loginAs("t114-admin", ADMIN_PW);
-    const r = await changeOwnPassword(db, env(), SECRET, admin.principal, { current: "wrong-password-0", next: "t114-own-new-pass" }, NOW, FAST);
+    const r = await changeOwnPassword(db, env(), SECRET, admin.principal, { current: "wrong-password-0", next: "T114-own-new-pass" }, NOW, FAST);
     expect(r.ok).toBe(false);
     expect(initialOf("acct-t114-admin")).toBe(1);
   });
@@ -125,7 +125,7 @@ describe("初期パスワードの印（表と Principal）", () => {
     const med = await loginAs("t114-med", "t114-staff-initial");
     expect(med.principal.role).toBe("medical");
     expect(initialPasswordHref(med.principal)).toBe("/staff?password=1");
-    const changed = await changeOwnPassword(db, env(), SECRET, med.principal, { current: "t114-staff-initial", next: "t114-staff-own-01" }, NOW, FAST);
+    const changed = await changeOwnPassword(db, env(), SECRET, med.principal, { current: "t114-staff-initial", next: "T114-staff-own-01" }, NOW, FAST);
     expect(changed.ok).toBe(true);
     expect(initialOf("acct-t114-med")).toBe(0);
     sqlite.exec(newStaffSql({ action: "reissue", loginId: "t114-med", out: null }, { accountId: "x", passwordHash: hash, at: AT }));

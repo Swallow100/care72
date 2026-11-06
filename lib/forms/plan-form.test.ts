@@ -122,8 +122,9 @@ describe("保存と読み出し", () => {
   it("ケアマネの役だけ。行政・医療班は 403、ログインなしは 401、知らない値は画面へ戻して form_error", async () => {
     expect(await planFormPost(db, null, form("cao"))).toEqual({ status: 401 });
     expect(await planFormPost(db, principal({ role: "medical", office: null }), form("cao"))).toEqual({ status: 403 });
-    expect(await planFormPost(db, principal(), form("tokyo"))).toEqual({ status: 303, location: "/office?form_error=bad#plan-form" });
-    expect(await planFormPost(db, principal(), form("cao"))).toEqual({ status: 303, location: "/office#plan-form" });
+    // T147: 使用様式は書類の一覧で選ぶ。戻り先は書類の一覧のその様式
+    expect(await planFormPost(db, principal(), form("tokyo"))).toEqual({ status: 303, location: "/forms?form_error=bad" });
+    expect(await planFormPost(db, principal(), form("cao"))).toEqual({ status: 303, location: "/forms?form=cao" });
     expect((await loadPlanForm(db, OFFICE)).id).toBe("cao");
   });
 });
@@ -146,7 +147,8 @@ describe("本人のページの書類の行", () => {
 
   it("書類ごとに何の書類かの 1 行（正式な名前・誰が誰に・版）が付く", () => {
     const d = docs();
-    expect(d.map((x) => x.key)).toEqual(["matsuyama", "medical", "own", "qr", "phone"]);
+    // スマホ入口は書類の行に出さない（同意の面の後のスマホの面、T149）
+    expect(d.map((x) => x.key)).toEqual(["matsuyama", "medical", "own", "qr"]);
     for (const x of d) expect(x.about, x.key).toBeTruthy();
     expect(d[0].about).toContain("松山市避難行動要支援者名簿登録申込書 兼 個別避難計画");
     expect(d[0].about).toContain("本人・家族 → 市");

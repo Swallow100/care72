@@ -19,15 +19,18 @@
 //
 // 決める関数は lib/offline/sw-core.js が正本で、下の <core> の間は `node tools/offline/build-sw.ts` が写す（手で直さない）。
 // 外すとき: components/SwRegister.tsx の SW_ENABLED を false にして配信すると、入っている SW を外し写しを消す。
+// 通知（T149）: push で届いた「大丈夫ですか」を出し（中身は lib/push/message.ts の固定の文と押した先だけ。読めなければ固定の文と /me）、
+// 押したら本人・家族の頁（/me・/family）を前に出す。押した先は決まった道だけ（NOTIFY_PATHS）。購読は画面が入れる（components/phone/PhoneSetup.tsx）。
 
 // <core>
 /** 写しの鍵の頭。版を上げると、activate で前の版の写しと部品を消す */
 const CACHE_PREFIX = "care72-";
 /**
  * 版。2（T83）: ログインの終わり（/login・/s/invalid への移り、401・403）で写しを消し、写しに 72 時間の期限を付けた。
- * 前の版の SW が残した写し（期限の切れたログインの物も）を activate で全部消すために上げた
+ * 前の版の SW が残した写し（期限の切れたログインの物も）を activate で全部消すために上げた。
+ * 3（T149）: 「大丈夫ですか」の通知（push・notificationclick）を足した。SW の中身を変えたら上げる決まり（components/SwRegister.tsx）に従った
  */
-const CACHE_VERSION = "2";
+const CACHE_VERSION = "3";
 /** 頁（HTML）の写し。人の名前・連絡先が入るので、ログイン・ログアウト・役の切替で全部消す */
 const PAGE_CACHE = CACHE_PREFIX + "pages-v" + CACHE_VERSION;
 /** 部品（/_next/static/）。中身の hash が名前に入っていて人の情報を持たないので、消すのは版を上げたときだけ */
@@ -230,6 +233,39 @@ function endsSession(res, origin) {
   }
   return u.origin === origin && SESSION_END_PATHS.includes(u.pathname);
 }
+
+/** 通知（T149）を押した先にしてよい道（本人・家族の頁。災害モードなら安否のボタン）。lib/push/message.ts の PUSH_URL と同じ */
+const NOTIFY_PATHS = ["/me", "/family"];
+/** 届いた中身が読めない・決まりの外のときの通知（文は lib/push/message.ts と同じ固定の文） */
+const NOTIFY_DEFAULT = { title: "ケア72", body: "大丈夫ですか", url: "/me", tag: "care72-safety" };
+const NOTIFY_TITLE_MAX = 40;
+const NOTIFY_BODY_MAX = 80;
+
+/**
+ * 届いた通知の中身（暗号化を解いた JSON の文字。t 題・b 本文・u 押した先・g 印）から、出す通知の形。
+ * 読めない・長すぎる・決まりの外の道は固定の文と /me にする（どの中身でも通知は出す。iPhone は通知を出さない push を続けると止める）
+ */
+function notificationOf(text) {
+  let o = null;
+  try {
+    o = typeof text === "string" ? JSON.parse(text) : null;
+  } catch {
+    o = null;
+  }
+  if (!o || typeof o !== "object") return { ...NOTIFY_DEFAULT };
+  const str = (v, max) => (typeof v === "string" && v.trim() !== "" && v.length <= max ? v : null);
+  return {
+    title: str(o.t, NOTIFY_TITLE_MAX) || NOTIFY_DEFAULT.title,
+    body: str(o.b, NOTIFY_BODY_MAX) || NOTIFY_DEFAULT.body,
+    url: NOTIFY_PATHS.includes(o.u) ? o.u : NOTIFY_DEFAULT.url,
+    tag: NOTIFY_DEFAULT.tag,
+  };
+}
+
+/** 押した先の道（決まった道だけ。ほかは /me） */
+function notifyTarget(url) {
+  return NOTIFY_PATHS.includes(url) ? url : NOTIFY_DEFAULT.url;
+}
 // </core>
 
 const ORIGIN = self.location.origin;
@@ -281,6 +317,56 @@ self.addEventListener("fetch", (event) => {
     return;
   }
   if (isPageRequest(req.method, req.mode, url, ORIGIN)) event.respondWith(page(event, req, url));
+});
+
+// 「大丈夫ですか」の通知（T149）。中身は送る時に暗号化した固定の文と押した先だけ（名前・病名を持たない）。決まりの外は固定の文と /me
+self.addEventListener("push", (event) => {
+  let text = null;
+  try {
+    text = event.data ? event.data.text() : null;
+  } catch {
+    text = null;
+  }
+  const n = notificationOf(text);
+  event.waitUntil(
+    self.registration.showNotification(n.title, {
+      body: n.body,
+      tag: n.tag,
+      renotify: true,
+      requireInteraction: true,
+      lang: "ja",
+      icon: "/icon-192.png",
+      badge: "/icon-192.png",
+      data: { url: n.url },
+    }),
+  );
+});
+
+// 通知を押したら本人・家族の頁へ（開いている窓があればそこを移して前へ、無ければ開く）
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const target = ORIGIN + notifyTarget(event.notification.data && event.notification.data.url);
+  event.waitUntil(
+    (async () => {
+      const list = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+      for (const c of list) {
+        let same = false;
+        try {
+          same = new URL(c.url).origin === ORIGIN;
+        } catch {
+          same = false;
+        }
+        if (!same) continue;
+        try {
+          const moved = c.url === target ? c : (await c.navigate(target)) || c;
+          return await moved.focus();
+        } catch {
+          // 移せない窓（SW の外で開いた窓など）は、新しく開く
+        }
+      }
+      return self.clients.openWindow(target);
+    })(),
+  );
 });
 
 self.addEventListener("message", (event) => {

@@ -9,6 +9,7 @@
 //   手で書く欄・市が書く欄・同意と署名の欄は null（11）、2 つ目の電話は台帳に 2 番目の値が無ければ null（12）、意味の違う欄に名前の近い
 //   項目を当てない（13）。決めきれない欄だけ accept に別の答えを足す（判定の記録に「別解」と残る）
 
+import { MEDICAL_AUDIT } from "../../../lib/forms/form-audit.ts";
 import { KIROKU_FRAME } from "../../../lib/forms/frame-kiroku.ts";
 import { MATSUYAMA_FRAME } from "../../../lib/forms/frame-matsuyama.ts";
 import type { Frame } from "../../../lib/forms/frame-sheet.ts";
@@ -477,6 +478,11 @@ const KIROKU_SHAPES: Partial<Record<MedicalKey, FieldShape>> = {
   "doctor.physician": "handwrite",
   "doctor.disease": "handwrite",
   "doctor.triage": "handwrite",
+  // 既往症・予防接種は □ の並び（T161）。様式の原本（lib/forms/form-audit.ts の MEDICAL_AUDIT）と読み取りの決まり 2（既往症・予防接種の
+  // □ の並びは 1 欄の choice）に合わせる。前は字の欄（text）で、紙の正解を「台帳の言葉を・でつないだ字」にしていた（評価の 6 回目で
+  // □ に印を付けた紙を「置き間違い」と数えた。4 回目までは種の台帳にこの値が無く、両方空いて当たりも外れも無かった）
+  "history.disease": "choice",
+  "history.vaccination": "choice",
 };
 
 /**
@@ -484,7 +490,17 @@ const KIROKU_SHAPES: Partial<Record<MedicalKey, FieldShape>> = {
  */
 const KIROKU_OPTIONS: Partial<Record<MedicalKey, { options: string[]; with?: MedicalKey }>> = {
   "contact.kinds": { options: ["家族", "知人", "その他", "連絡先なし"], with: "contact.people" },
+  // T161: 既往症・予防接種の □ の選択肢は原本の照合の表から（様式の字と順）
+  "history.disease": { options: auditOptions("history.disease") },
+  "history.vaccination": { options: auditOptions("history.vaccination") },
 };
+
+/** 原本の照合の表（MEDICAL_AUDIT）の選ぶ欄の選択肢 */
+function auditOptions(k: MedicalKey): string[] {
+  const row = MEDICAL_AUDIT.rows.find((r) => r.keys.includes(k) && r.options);
+  if (!row?.options) throw new Error(`原本の照合の表に ${k} の選択肢が無い`);
+  return [...row.options];
+}
 
 /** 原本の枠の □ の場所（頁の比） */
 function frameMarks<K extends string>(frame: Frame<K>, k: K, page: number, options: readonly string[]): FieldBox[] | undefined {
@@ -507,25 +523,63 @@ const unionBox = (a: FieldBox, b: FieldBox): FieldBox => {
   return { x: r(x0), y: r(y0), w: r(Math.max(a.x + a.w, b.x + b.w) - x0), h: r(Math.max(a.y + a.h, b.y + b.h) - y0) };
 };
 
+/** 原本の枠の 1 つの種類の矩形（頁の比）。mark なら □ 1 つの場所、text なら字を書く所 */
+function frameSlotBox<K extends string>(frame: Frame<K>, k: K, page: number, kind: "mark" | "text"): FieldBox | undefined {
+  const size = frame.pages.find((p) => p.page === page);
+  const slot = frame.slots.find((s) => s.page === page && s.kind === kind && ("keys" in s ? s.keys.includes(k) : s.key === k));
+  if (!size || !slot) return undefined;
+  const r = (n: number) => Math.round(n * 10000) / 10000;
+  return { x: r(slot.box.x / size.w), y: r(slot.box.y / size.h), w: r(slot.box.w / size.w), h: r(slot.box.h / size.h) };
+}
+
+/**
+ * 常用薬の種類の □ と、その後ろの括弧（T164）: 原本は「□抗血小板薬（　）」「□抗凝固薬 □ワーファリン（　）」のように行ごとに □ と括弧があり、
+ * 原本の枠（frame-kiroku.ts）も □ の印と括弧の書く所の 2 つ。専用の紙（lib/forms/medical-summary.ts）は括弧にその種類の薬の名前を書く。
+ * 前の正解は行全体の 1 つの □ の欄で、AI が □ と括弧の 2 欄に読む（読み取りの決まり 21）と、行の場所が広い括弧の欄を □ と合わせていた
+ * （評価の 7 回目の「正解は空の常用薬の欄に字」55・55・49・44）。括弧の欄の名前は「抗血小板薬（　）」（紙の括弧の子の欄と同じ形）。
+ * 透析・在宅酸素の行は原本に括弧が刷っていないので □ だけ
+ */
+const KIROKU_DRUG_BRACKETS: readonly MedicalKey[] = ["drug.antiplatelet", "drug.anticoagulant", "drug.diabetes", "drug.steroid", "drug.antiepileptic", "drug.other"];
+
+/**
+ * □ の後ろに中身を書く括弧が続く欄（T161）: 「□アレルギー（　）」は □ の欄と括弧の中の字の欄の 2 つ（原本の枠 frame-kiroku.ts も □ の印と
+ * 字の書く所の 2 つ。読み取りの決まり 21）。前の正解は □ と括弧を合わせた 1 つの字の欄で、AI が □ だけに読んだ紙（印だけで中身の無い紙）と
+ * 字の欄を比べていた
+ */
+const KIROKU_MARK_AND_TEXT: ReadonlySet<MedicalKey> = new Set(["contra.allergy", ...KIROKU_DRUG_BRACKETS]);
+
 function kirokuGold(): GoldField[] {
-  return MEDICAL_FIELDS.filter((f) => f.key in KIROKU_ITEMS).map((f) => {
+  return MEDICAL_FIELDS.filter((f) => f.key in KIROKU_ITEMS).flatMap((f): GoldField[] => {
     const k = f.key as MedicalKey;
+    if (KIROKU_MARK_AND_TEXT.has(k)) {
+      const item = key(KIROKU_ITEMS[k] ?? null);
+      const mark = frameSlotBox(KIROKU_FRAME, k, f.page, "mark");
+      const text = frameSlotBox(KIROKU_FRAME, k, f.page, "text");
+      const accept = KIROKU_ACCEPT[k] ? { accept: KIROKU_ACCEPT[k]!.map(key) } : {};
+      const drug = KIROKU_DRUG_BRACKETS.includes(k);
+      return [
+        { page: f.page, section: "", label: f.label, shape: "check", options: [], item, ...accept, ...(mark ? { box: mark } : {}) },
+        { page: f.page, section: "", label: drug ? `${f.label}（　）` : f.label, shape: "text", options: [], item, ...accept, ...(text ? { box: text } : {}) },
+      ];
+    }
     const opt = KIROKU_OPTIONS[k];
     const own = frameBox(KIROKU_FRAME, k, f.page);
     const more = opt?.with ? frameBox(KIROKU_FRAME, opt.with, f.page) : undefined;
     const box = own && more ? unionBox(own, more) : own;
     const optionBoxes = opt ? frameMarks(KIROKU_FRAME, k, f.page, opt.options) : undefined;
-    return {
-      page: f.page,
-      section: "",
-      label: f.label,
-      shape: KIROKU_SHAPES[k] ?? "text",
-      options: opt?.options ?? [],
-      ...(optionBoxes ? { optionBoxes } : {}),
-      item: key(KIROKU_ITEMS[k] ?? null),
-      ...(KIROKU_ACCEPT[k] ? { accept: KIROKU_ACCEPT[k]!.map(key) } : {}),
-      ...(box ? { box } : {}),
-    };
+    return [
+      {
+        page: f.page,
+        section: "",
+        label: f.label,
+        shape: KIROKU_SHAPES[k] ?? "text",
+        options: opt?.options ?? [],
+        ...(optionBoxes ? { optionBoxes } : {}),
+        item: key(KIROKU_ITEMS[k] ?? null),
+        ...(KIROKU_ACCEPT[k] ? { accept: KIROKU_ACCEPT[k]!.map(key) } : {}),
+        ...(box ? { box } : {}),
+      },
+    ];
   });
 }
 

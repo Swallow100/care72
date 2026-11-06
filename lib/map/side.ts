@@ -4,11 +4,12 @@
 // 平時: 計画の状態の内訳、今週の見直し（計画が下書きで未確認のある人）、未確認の多い人、地図（ピンは名前だけ）、ハザードと避難先の人数
 // 発災時: 地図が上（ピンは状態の色と 2 字ほどの状態）、状態ごとの人数、ハザードごとの人数と状態の内訳、避難先、見直し
 
-import { PLAN_TONES, rowLink, type CaseloadRow, type SortKey } from "../caseload.ts";
-import { PLAN_STATUSES, type DrillScenario, type GeoPoint, type HazardKind, type OfficeKind, type PlanStatus } from "../db/types.ts";
+import { rowLink, type CaseloadRow, type SortKey } from "../caseload.ts";
+import type { DrillScenario, GeoPoint, HazardKind, OfficeKind, PlanStatus } from "../db/types.ts";
 import { DISASTER_SCENE, type DisasterState } from "../disaster/state.ts";
 import { rainTrackOf } from "../drill/rain.ts";
-import { BLANK_LABELS, COLOR_LABELS, HAZARD_LABELS, PLAN_STATUS_LABELS, stateLabel } from "../labels.ts";
+import { BLANK_LABELS, COLOR_LABELS, HAZARD_LABELS, PLAN_DRILL_LABELS, stateLabel } from "../labels.ts";
+import { drillMark, PLAN_STAGE_LABELS, PLAN_STAGE_TONES, PLAN_STAGES, planStage, type PlanStage } from "../plan-status.ts";
 import { PLACE_LABELS } from "../signals/labels.ts";
 import { COLOR_TONES, fieldLabelOf, type StateTone } from "../person.ts";
 import { compareResults, type Color, type TriageResult } from "../triage/index.ts";
@@ -100,7 +101,10 @@ export type DestinationCount = { label: string; count: number; unset: boolean };
 
 export type ReviewItem = { id: string; name: string; href: string; pending: number; labels: string[]; plan: PlanStatus };
 
-export type PlanCount = { status: PlanStatus; label: string; tone: StateTone; count: number };
+/**
+ * 計画の内訳の 1 つ（T146）。段階 3 つ（未作成・下書き・作成済）と、別に訓練に出た人の数（drill。色を付けない。段階の合計に入れない）
+ */
+export type PlanCount = { status: PlanStage | "drill"; label: string; tone: StateTone | null; count: number };
 
 export type SidePaneData = {
   mode: "normal" | "disaster";
@@ -140,13 +144,16 @@ function reviewItem(r: CaseloadRow, sort: SortKey): ReviewItem {
   };
 }
 
-export function planCounts(rows: ReadonlyArray<CaseloadRow>): PlanCount[] {
-  return PLAN_STATUSES.map((s) => ({
-    status: s,
-    label: PLAN_STATUS_LABELS[s],
-    tone: PLAN_TONES[s],
-    count: rows.filter((r) => r.plan === s).length,
-  }));
+export function planCounts(rows: ReadonlyArray<Pick<CaseloadRow, "plan" | "drill">>): PlanCount[] {
+  return [
+    ...PLAN_STAGES.map((s): PlanCount => ({
+      status: s,
+      label: PLAN_STAGE_LABELS[s],
+      tone: PLAN_STAGE_TONES[s],
+      count: rows.filter((r) => planStage(r.plan) === s).length,
+    })),
+    { status: "drill", label: PLAN_DRILL_LABELS.head, tone: null, count: rows.filter((r) => drillMark(r.drill, r.plan).done).length },
+  ];
 }
 
 export function stateCounts(results: ReadonlyArray<Pick<TriageResult, "color">>): StateCount[] {

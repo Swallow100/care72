@@ -9,13 +9,15 @@
 // 「次まで」は前の区切りから進めるので、手に使った時間も閉じる（lib/drill/t128.test.ts で確かめた）。API の口（minutes・acts）は
 // テストと評価の台が使うので残す。早送りは「自動進行」の名で残し、「次まで」（刻みの道は「進める」）を決まった間（2.5 秒）でくり返す。
 // 間の選択（T59 の 1・2.5・5 秒）は外した。中断は今のまま。
+// T162: 押してから読み直した画面が届くまで「次まで」に送信中の印（前は要求の終わりで外れ、読み直しの前に押し直された）。
+// 進めたら横に「進行 6 分」（前の経過からどれだけ進んだか。経過が 0 時間のままに読まれた）
 
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { Button } from "@/components/ui/Button";
 import { CHOICE_INPUT } from "@/components/ui/choice";
 import { Loader72 } from "@/components/ui/Loader72";
-import { CLOCK_LABELS } from "@/lib/drill/clock";
+import { CLOCK_LABELS, movedText } from "@/lib/drill/clock";
 import { DRILL_LABELS, T59_LABELS } from "@/lib/drill/labels";
 import { DEFAULT_FAST_MS, intervalLabel } from "@/lib/drill/speed";
 import { appConfirm } from "@/lib/ui/dialog";
@@ -31,6 +33,7 @@ export function DrillControls({
   done,
   clock = false,
   left = null,
+  minute,
 }: {
   id: string;
   step: number;
@@ -39,6 +42,8 @@ export function DrillControls({
   clock?: boolean;
   /** 1 訓練の AI の残り回数（連続の時計の訓練だけ） */
   left?: number | null;
+  /** 今の経過（発災からの分。進めた分を出す） */
+  minute?: number;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -53,6 +58,18 @@ export function DrillControls({
 
   /** 押した進め方（待ちの間の灰色を残すボタン） */
   const [moving, setMoving] = useState<string | null>(null);
+  /** 進めたあとの画面の読み直し（届くまで送信中の印を残す） */
+  const [refreshing, startRefresh] = useTransition();
+  /** 押す前の経過（分）と、読み直したあとに進んだ分 */
+  const fromRef = useRef<number | null>(null);
+  const [moved, setMoved] = useState<number | null>(null);
+  useEffect(() => {
+    if (minute === undefined || fromRef.current === null || refreshing) return;
+    if (minute !== fromRef.current) {
+      setMoved(minute - fromRef.current);
+      fromRef.current = null;
+    }
+  }, [minute, refreshing]);
 
   const advance = useCallback(async (move: Move = null): Promise<boolean> => {
     setBusy(true);
@@ -60,6 +77,7 @@ export function DrillControls({
     setError(null);
     setMoving(move ? "next" : null);
     sentRef.current = stepRef.current;
+    if (minute !== undefined) fromRef.current = minute;
     try {
       const res = await fetch(`/api/drill/${encodeURIComponent(id)}/step`, {
         method: "POST",
@@ -72,7 +90,7 @@ export function DrillControls({
         router.refresh();
         return false;
       }
-      router.refresh();
+      startRefresh(() => router.refresh());
       return body.status === "running";
     } catch {
       setError(DRILL_LABELS.network);
@@ -82,7 +100,7 @@ export function DrillControls({
       setStepping(false);
       setMoving(null);
     }
-  }, [id, router]);
+  }, [id, router, minute]);
 
   // 早送り: 画面が次の刻みを読み直したら（step が変わったら）、間を置いて次を呼ぶ
   useEffect(() => {
@@ -130,15 +148,15 @@ export function DrillControls({
         <Button
           kind="main"
           onClick={() => void advance({ next: true })}
-          disabled={busy || fast}
+          disabled={busy || refreshing || fast}
           data-action="advance"
           data-next=""
-          data-pending={busy && !fast && moving === "next" ? "" : undefined}
+          data-pending={(busy && moving === "next") || refreshing ? (fast ? undefined : "") : undefined}
         >
           {CLOCK_LABELS.next}
         </Button>
       ) : (
-        <Button kind="main" onClick={() => void advance()} disabled={busy || fast} data-action="advance" data-pending={busy && !fast ? "" : undefined}>
+        <Button kind="main" onClick={() => void advance()} disabled={busy || refreshing || fast} data-action="advance" data-pending={(busy || refreshing) && !fast ? "" : undefined}>
           {DRILL_LABELS.advance}
         </Button>
       )}
@@ -168,7 +186,12 @@ export function DrillControls({
           {CLOCK_LABELS.left} <span className="font-bold text-ink">{left}</span>
         </span>
       )}
-      {stepping && <Loader72 label={WAIT_LABELS.think} size={18} on="base" className="text-sm text-muted" />}
+      {moved !== null && !stepping && !refreshing && (
+        <span role="status" className="text-sm tabular-nums" data-moved={moved}>
+          <span className="text-muted">{CLOCK_LABELS.moved}</span> <span className="font-bold">{movedText(moved)}</span>
+        </span>
+      )}
+      {(stepping || refreshing) && <Loader72 label={WAIT_LABELS.think} size={18} on="base" className="text-sm text-muted" />}
       {error && (
         <span role="alert" className="text-sm font-bold text-danger">
           {error}

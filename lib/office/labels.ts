@@ -1,11 +1,15 @@
 // 利用者の追加・担当の割当・ケアマネの追加（docs/tasks/T30.md）の言葉。2〜4 字の漢語、ボタンは操作名だけ。
 
+import { PASSWORD_RULE_LABELS } from "../auth/password-rule.ts";
+
 export const OFFICE_LABELS = {
   addPerson: "利用者追加",
   addCareManager: "ケアマネ追加",
   careManagers: "ケアマネ",
   assignments: "担当",
   assign: "変更",
+  /** 行の「変更」の読み上げの名前（「伊藤 フミ 担当変更」。T162） */
+  assignChange: "担当変更",
   unlist: "外す",
   /** 担当の表の行を開く・畳む（外すは開いた行の中） */
   detail: "詳細",
@@ -29,6 +33,13 @@ export const OFFICE_LABELS = {
   displayName: "名前",
   loginId: "ID",
   initialPassword: "初期パスワード",
+  /** ケアマネ追加・再設定で決めるパスワードの欄（T148。空なら自動で作る） */
+  password: "パスワード",
+  /** 管理者が決めたパスワードで足した・再設定した（表示しない） */
+  passwordSet: "設定済",
+  /** 再設定の欄の決めるボタン（決めたパスワード）と、自動で作るボタン */
+  setPassword: "設定",
+  autoPassword: "自動発行",
   shownOnce: "表示は今回だけ",
   copy: "コピー",
   copied: "コピー済",
@@ -61,6 +72,8 @@ export const OFFICE_LABELS = {
   /** 停止した人の印（一覧の行・割当の今の担当） */
   disabled: "停止",
   resetPassword: "再発行",
+  /** 管理者の再設定の欄を開く（決めたパスワードか自動発行。T148） */
+  resetOpen: "再設定",
   /** 種のデモ事業所のアカウント（山本）。どの操作も出さない */
   fixed: "固定",
   /** 改名の欄の保存 */
@@ -112,7 +125,8 @@ export type PersonFormError = (typeof PERSON_FORM_ERRORS)[number];
 
 /** ケアマネ追加の欄の誤り */
 /** login_taken は同じ事業所の ID と重なる、login_unavailable はほかの事業所の ID と重なる（T81。ほかの事業所の ID を「使用中」と言わない） */
-export const STAFF_FORM_ERRORS = ["display_name", "login_id", "login_taken", "login_unavailable"] as const;
+/** password は管理者が決めたパスワードが決まり（lib/auth/password-rule.ts）に合わない（T148） */
+export const STAFF_FORM_ERRORS = ["display_name", "login_id", "login_taken", "login_unavailable", "password"] as const;
 export type StaffFormError = (typeof STAFF_FORM_ERRORS)[number];
 
 /** 担当の割当・外す・戻すの誤り（画面へ戻す URL の people_error） */
@@ -136,6 +150,7 @@ export const OFFICE_ERROR_LABELS: Record<OfficeApiError | PeopleActionError, str
   login_id: "ID 不正",
   login_taken: "ID 使用中",
   login_unavailable: "ID 不可",
+  password: PASSWORD_RULE_LABELS.short,
   invalid: "入力不正",
   forbidden: "権限なし",
   login_required: "ログイン要",

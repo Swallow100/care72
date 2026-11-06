@@ -17,6 +17,7 @@
 
 import type { ConsentKind } from "../db/types.ts";
 import { unpackInk, type InkBlob } from "./ink.ts";
+import { bracketOwners, strayOther } from "./form-shape.ts";
 import { freeRects, inkIn, readingOrder } from "./place.ts";
 import type { MappedSheet } from "./mapped-sheet.ts";
 import { PART_SHAPES, type FieldBox, type MappingField, type Typeface } from "./mapping.ts";
@@ -42,6 +43,24 @@ export const PAD_Y_MM = 0.5;
 /** 低い枠（括弧の中・区切りの空き）で字を下限まで縮めても入らないときだけ使う狭い空き（T133。components/forms/overlay-paper.css の .ov-tight） */
 export const TIGHT_PAD_X_MM = 0.3;
 export const TIGHT_PAD_Y_MM = 0.1;
+/**
+ * 狭い空きでも入らない 1 行の短い値の、最後の置き方（T160。components/forms/overlay-paper.css の .ov-snug）。行の高さを字の高さ（1.0）に、
+ * 空きを 0.05mm に。評価の 6 回目で、吹田市の緊急連絡先のフリガナの行（高さ 2.3mm）と浜松市の「昭和　年　月　日生」の空き（幅 3.4mm）に
+ * 下限の字でも入らず、全部の紙で置けなかった。字の幅は多めの見積もりのままなので、枠の中に収まる
+ */
+export const SNUG_PAD_X_MM = 0.05;
+export const SNUG_PAD_Y_MM = 0.05;
+export const SNUG_LINE_HEIGHT = 1;
+/** 数だけの短い値（年・月・日・局番。4 字まで）の、最後の置き方の字の下限（pt）。手で書く狭い空きに数を書く形 */
+export const DIGITS_MIN_PT = 5.5;
+const SHORT_DIGITS = /^[0-9]{1,4}$/;
+
+/** 置いた字の空きと行の高さ（overlay-paper.css の .ov-text・.ov-tight・.ov-snug と同じ。見直し〔lib/forms/review.ts〕も同じ物で測る） */
+export function textPads(it: { tight?: boolean; snug?: boolean }): { padX: number; padY: number; lineHeight: number } {
+  if (it.snug) return { padX: SNUG_PAD_X_MM, padY: SNUG_PAD_Y_MM, lineHeight: SNUG_LINE_HEIGHT };
+  if (it.tight) return { padX: TIGHT_PAD_X_MM, padY: TIGHT_PAD_Y_MM, lineHeight: LINE_HEIGHT };
+  return { padX: PAD_X_MM, padY: PAD_Y_MM, lineHeight: LINE_HEIGHT };
+}
 /** 欄に書く「別紙」の字 */
 export const ANNEX_MARK = "別紙";
 
@@ -121,21 +140,32 @@ export type Fitted = { lines: string[]; fontPt: number; top: boolean };
 /**
  * 矩形（mm）に収まる大きさと行。上限から 0.25pt ずつ縮め、全部の行が高さに収まる最初の大きさ。下限でも収まらなければ null
  */
-export function fitText(logical: readonly string[], wMm: number, hMm: number, maxPt: number = FONT_MAX_PT, padX = PAD_X_MM, padY = PAD_Y_MM): Fitted | null {
+export function fitText(
+  logical: readonly string[],
+  wMm: number,
+  hMm: number,
+  maxPt: number = FONT_MAX_PT,
+  padX = PAD_X_MM,
+  padY = PAD_Y_MM,
+  opts: { lineHeight?: number; minPt?: number; oneLine?: boolean } = {},
+): Fitted | null {
   const innerW = wMm - padX * 2;
   const innerH = hMm - padY * 2;
   if (innerW <= 0 || innerH <= 0) return null;
+  const lineHeight = opts.lineHeight ?? LINE_HEIGHT;
+  const minPt = opts.minPt ?? FONT_MIN_PT;
   // 上限から 0.25pt ずつ。上限が 0.25 の倍数でなくても（9.84pt など）最後は下限の 6pt を試す
   const sizes: number[] = [];
-  for (let pt = maxPt; pt > FONT_MIN_PT + 1e-9; pt -= FONT_STEP_PT) sizes.push(pt);
-  sizes.push(FONT_MIN_PT);
+  for (let pt = maxPt; pt > minPt + 1e-9; pt -= FONT_STEP_PT) sizes.push(pt);
+  sizes.push(minPt);
   for (const pt of sizes) {
     const fontMm = pt * PT_MM;
-    if (fontMm * LINE_HEIGHT > innerH + 1e-9) continue;
+    if (fontMm * lineHeight > innerH + 1e-9) continue;
     const widthEm = innerW / fontMm;
     const lines = logical.flatMap((l) => wrapLine(l, widthEm));
     if (lines.some((l) => textEm(l) > widthEm + 1e-9)) continue;
-    if (lines.length * fontMm * LINE_HEIGHT <= innerH + 1e-9) return { lines, fontPt: Math.round(pt * 100) / 100, top: innerH >= fontMm * LINE_HEIGHT * 3 };
+    if (opts.oneLine && lines.length > 1) continue;
+    if (lines.length * fontMm * lineHeight <= innerH + 1e-9) return { lines, fontPt: Math.round(pt * 100) / 100, top: innerH >= fontMm * lineHeight * 3 };
   }
   return null;
 }
@@ -220,6 +250,8 @@ export type OverlayItem =
       part?: number;
       /** 狭い空き（T133。TIGHT_PAD_*） */
       tight?: boolean;
+      /** 狭い空きでも入らない 1 行の短い値（T160。SNUG_*、行の高さは字の高さ） */
+      snug?: boolean;
       /** 欄の枠の中で、印刷の字を避けて空いた所へずらした（T133。数えるため） */
       shifted?: boolean;
       /** 紙の上に置いた文字の枠（T135、lib/forms/form-entries.ts）の id */
@@ -265,7 +297,27 @@ export function insetBox(b: FieldBox, image: { w: number; h: number }, mmInset =
   return { x: b.x + dx, y: b.y + dy, w: b.w - dx * 2, h: b.h - dy * 2 };
 }
 
-export type AnnexRow = { fieldId: string; label: string; lines: string[]; reason: "overflow" | "unplaced" };
+/**
+ * 別紙の行。page は欄の頁（場所の分かる物。T141 で別紙の頁に出す）、mark は紙の上に「別紙」と書いた欄の id（収まらない値。同じ書く所の
+ * 欄は先頭の欄に 1 つ。T141 で別紙の中身と紙の印がそろっているかを確かめる）
+ */
+export type AnnexRow = { fieldId: string; label: string; lines: string[]; reason: "overflow" | "unplaced"; page?: number; mark?: string };
+
+/**
+ * 別紙の中身と紙の「別紙」の印のずれ（T141）。noMark は紙に「別紙」の印の無い、収まらない値の行の欄、noRow は紙に「別紙」と書いたのに
+ * 別紙の行の無い欄。どちらも空ならそろっている（見直しの「別紙相違」と評価の台が使う）
+ */
+export function annexGaps(sheet: Pick<OverlaySheet, "pages" | "annex">): { noMark: string[]; noRow: string[] } {
+  const marked = new Set(
+    sheet.pages.flatMap((p) => p.items.filter((it) => it.kind === "text" && it.lines.length === 1 && it.lines[0] === ANNEX_MARK).map((it) => it.fieldId)),
+  );
+  const overflow = sheet.annex.filter((r) => r.reason === "overflow");
+  const marks = new Set(overflow.map((r) => r.mark ?? r.fieldId));
+  return {
+    noMark: [...new Set(overflow.filter((r) => !marked.has(r.mark ?? r.fieldId)).map((r) => r.fieldId))],
+    noRow: [...marked].filter((id) => !marks.has(id)),
+  };
+}
 
 /**
  * 置けなかった訳（T140）。option は値が様式の選択肢に無い（選択肢と台帳の値の表〔lib/forms/option-values.ts〕でも当たらない・候補が 2 つ以上）、
@@ -339,12 +391,19 @@ export function buildOverlaySheet(mapped: MappedSheet, images: readonly PageImag
   });
   const inks = new Map<number, InkBlob[] | null>(images.map((img) => [img.page, img.ink ? unpackInk(img.ink) : null]));
   // ほかの欄の枠（字を置くとき、印刷の字と同じく避ける。隣の欄に掛けない。T133）
-  const boxesOf = new Map<number, Array<{ id: string; box: FieldBox; free: boolean }>>();
-  for (const p of mapped.pages)
-    for (const s of p.sections)
-      for (const { field } of s.rows)
-        if (!field.removed && field.box)
-          boxesOf.set(field.page, [...(boxesOf.get(field.page) ?? []), { id: field.id, box: field.box, free: field.item === null && (field.shape === "text" || field.shape === "lines") }]);
+  const boxesOf = new Map<number, Array<{ id: string; box: FieldBox; free: boolean; owner?: { id: string; option: number } }>>();
+  const rowsAll = mapped.pages.flatMap((p) => p.sections.flatMap((s) => s.rows));
+  // 選択肢の後ろの括弧の子の欄（T164）: 自分の値は空（mapped-sheet.ts の bracketCell）で、親の選ぶ欄の添え・その他の値の置き場
+  const owners = bracketOwners(rowsAll.map((r) => r.field));
+  for (const { field, cell } of rowsAll)
+    if (!field.removed && field.box) {
+      const own = owners.get(field.id);
+      const child = own && own.option !== null && cell.kind === "empty" ? { id: own.owner.id, option: own.option } : undefined;
+      // 前の並びと違う項目の「その他（　）」（空にした欄）も、項目なしの書く所と同じ
+      const stray = cell.kind === "empty" && !own && strayOther(field, rowsAll.map((r) => r.field));
+      const free = (field.item === null && (field.shape === "text" || field.shape === "lines")) || !!child || stray;
+      boxesOf.set(field.page, [...(boxesOf.get(field.page) ?? []), { id: field.id, box: field.box, free, ...(child ? { owner: child } : {}) }]);
+    }
   const ctxOf = (page: number): PlaceCtx | null => {
     const p = pages.find((x) => x.page === page);
     return p ? { page: p, ink: inks.get(page) ?? null, others: boxesOf.get(page) ?? [] } : null;
@@ -379,33 +438,38 @@ export function buildOverlaySheet(mapped: MappedSheet, images: readonly PageImag
           annexChoices.push({ field, pc });
           continue;
         }
-        const lines = printedOff(field, fieldLines(field, cell));
+        const lines = westernDateLines(field, printedOff(field, fieldLines(field, cell)));
         // □ 1 つの欄: 当てはまればレ点（値の言葉は書かない）
         if (field.shape === "check") {
           const on = cell.kind === "choice" && cell.options.some((o) => o.on);
           if (!on) continue;
           if (page && box) page.items.push({ kind: "mark", fieldId: field.id, box, mark: markOf(box, page.image) });
-          else annex.push({ fieldId: field.id, label: nameOf(field), lines: ["■"], reason: "unplaced" });
+          else annex.push({ fieldId: field.id, label: nameOf(field), lines: ["■"], reason: "unplaced", page: field.page });
           continue;
         }
         // 選ぶ欄: 選んだ選択肢の □ に印、選択肢に合わない値は「その他（　）」の空きへ、選択肢の添え（浸水の深さ）はその選択肢の所の空きへ
         if (field.shape === "choice" && cell.kind === "choice" && pc && box) {
           const r = placeChoice(field, cell, pc);
           pc.page.items.push(...r.items);
-          for (const lines of r.annex) annex.push({ fieldId: field.id, label: nameOf(field), lines, reason: "overflow" });
+          for (const a of r.annex) annex.push({ fieldId: field.id, label: nameOf(field), lines: a.lines, reason: "overflow", page: field.page, mark: a.mark });
           for (const id of r.filled) childFilled.add(id);
           if (r.unplaced) miss(field, r.unplaced);
           continue;
         }
         if (lines.length === 0) continue;
         if (!page || !box || !pc) {
-          annex.push({ fieldId: field.id, label: nameOf(field), lines, reason: "unplaced" });
+          annex.push({ fieldId: field.id, label: nameOf(field), lines, reason: "unplaced", page: field.page });
           continue;
         }
         // 区切りの空きに分けて置く（T120）。分けられる欄で、どれかの空きに置けなければ置かない（欄全体に 1 本で置かない。T133）
         const parts = partItems(field, lines, pc);
         if (parts === "fail") {
           miss(field, "room");
+          continue;
+        }
+        // 刷ってある元号と値の元号が違う（T160）: 紙の上で直す（選択肢に無い値と同じ）
+        if (parts === "era") {
+          miss(field, "option");
           continue;
         }
         if (parts) {
@@ -430,6 +494,16 @@ export function buildOverlaySheet(mapped: MappedSheet, images: readonly PageImag
         }
         if (phoned) {
           page.items.push(...phoned);
+          continue;
+        }
+        // 縦の罫線で 1 字ずつのマスに分けた欄（「西暦生年月日 8 桁」のマス。T160）に、数だけの値を 1 字ずつ
+        const combed = combItems(field, lines, pc);
+        if (combed === "fail") {
+          miss(field, "room");
+          continue;
+        }
+        if (combed) {
+          page.items.push(...combed);
           continue;
         }
         // 名前と電話を別の列に分けて置く（T131）。どちらかが収まらなければ今までどおり欄全体に
@@ -463,7 +537,7 @@ export function buildOverlaySheet(mapped: MappedSheet, images: readonly PageImag
     const long = group.some((g) => g.field.shape === "lines" || g.lines.length > 1 || textEm(g.lines.join("")) > ANNEX_LONG_EM);
     const mark = long ? placeText(group[0].field.id, [ANNEX_MARK], box, pc) : null;
     if (long && mark) {
-      for (const g of group) annex.push({ fieldId: g.field.id, label: nameOf(g.field), lines: g.lines, reason: "overflow" });
+      for (const g of group) annex.push({ fieldId: g.field.id, label: nameOf(g.field), lines: g.lines, reason: "overflow", page: g.field.page, mark: mark.fieldId });
       page.items.push(mark);
       continue;
     }
@@ -499,18 +573,15 @@ export function buildOverlaySheet(mapped: MappedSheet, images: readonly PageImag
 
 // ---------- 置き方（T133） ----------
 
-const LINE_H = 1.15;
-
 /**
  * 置いた字の箱（頁の比）。置いた所（item.box）の内側の空きから、行の数 × 字の高さ、いちばん長い行の幅。
  * 1・2 行の欄は高さの真ん中、高い欄は上から（components/forms/overlay-paper.css の .ov-text と同じ）
  */
 export function textExtent(it: Extract<OverlayItem, { kind: "text" }>, image: { w: number; h: number }): FieldBox {
   const fontMm = it.fontPt * PT_MM;
-  const padX = it.tight ? TIGHT_PAD_X_MM : PAD_X_MM;
-  const padY = it.tight ? TIGHT_PAD_Y_MM : PAD_Y_MM;
+  const { padX, padY, lineHeight } = textPads(it);
   const wMm = Math.max(0, ...it.lines.map((l) => textEm(l))) * fontMm;
-  const hMm = it.lines.length * fontMm * LINE_H;
+  const hMm = it.lines.length * fontMm * lineHeight;
   const boxW = it.box.w * image.w;
   const boxH = it.box.h * image.h;
   const x = it.box.x * image.w + padX;
@@ -550,7 +621,7 @@ export type PlaceCtx = {
   page: OverlayPage;
   ink: InkBlob[] | null;
   /** 頁の欄の枠（置く欄のほかの欄に掛けない）。free は項目なしの字の欄（選ぶ欄の「その他（　）」の中の書く所に使える） */
-  others?: ReadonlyArray<{ id: string; box: FieldBox; free?: boolean }>;
+  others?: ReadonlyArray<{ id: string; box: FieldBox; free?: boolean; owner?: { id: string; option: number } }>;
 };
 
 /** 隣の欄と見なす重なり（mm。これより小さい掛かりは枠の線の上の揺れ） */
@@ -584,13 +655,36 @@ export function containsMost(outer: FieldBox, a: FieldBox): boolean {
 const ANNEX_LONG_EM = 24;
 
 /** 枠（頁の比）に字を収める。下限まで縮め、それでも入らなければ狭い空きで試す */
-function fitIn(lines: readonly string[], box: FieldBox, image: { w: number; h: number }): { fitted: Fitted; tight: boolean } | null {
+function fitIn(lines: readonly string[], box: FieldBox, image: { w: number; h: number }, maxPt: number = FONT_MAX_PT): { fitted: Fitted; tight?: true; snug?: true } | null {
   const w = box.w * image.w;
   const h = box.h * image.h;
-  const f = fitText(lines, w, h);
-  if (f) return { fitted: f, tight: false };
-  const t = fitText(lines, w, h, FONT_MAX_PT, TIGHT_PAD_X_MM, TIGHT_PAD_Y_MM);
-  return t ? { fitted: t, tight: true } : null;
+  if (maxPt >= FONT_MIN_PT - 1e-9) {
+    const f = fitText(lines, w, h, maxPt);
+    if (f) return { fitted: f };
+    const t = fitText(lines, w, h, maxPt, TIGHT_PAD_X_MM, TIGHT_PAD_Y_MM);
+    if (t) return { fitted: t, tight: true };
+  }
+  // 最後: 1 行の短い値だけ、行の高さを字の高さに・空きを 0.05mm に（T160）。数だけの短い値は字の下限を 5.5pt に
+  if (lines.length !== 1 || [...lines[0]].length > 24) return null;
+  const minPt = SHORT_DIGITS.test(lines[0].normalize("NFKC").trim()) ? DIGITS_MIN_PT : FONT_MIN_PT;
+  if (maxPt < minPt - 1e-9) return null;
+  const s = fitText(lines, w, h, maxPt, SNUG_PAD_X_MM, SNUG_PAD_Y_MM, { lineHeight: SNUG_LINE_HEIGHT, minPt, oneLine: true });
+  return s ? { fitted: s, snug: true } : null;
+}
+
+/**
+ * 区切りの空き・マスに分けて置いた字の大きさをそろえる（T160）。いちばん小さい字に合わせて、同じ所に置き直す（置き直せなければ元のまま）。
+ * 「昭和 15 年 2 月 9 日」の年だけ小さく月だけ大きい、のようにならないように
+ */
+function evenParts(items: OverlayItem[], fieldId: string, pc: PlaceCtx, own: FieldBox): OverlayItem[] {
+  const texts = items.filter((x): x is TextItem => x.kind === "text");
+  if (texts.length < 2) return items;
+  const min = Math.min(...texts.map((t) => t.fontPt));
+  return items.map((it) => {
+    if (it.kind !== "text" || it.fontPt <= min + 1e-9) return it;
+    const again = placeText(fieldId, it.lines, it.box, pc, { own, maxPt: min });
+    return again ? { ...again, ...(it.part !== undefined ? { part: it.part } : {}), ...(it.shifted ? { shifted: true } : {}) } : it;
+  });
 }
 
 type TextItem = Extract<OverlayItem, { kind: "text" }>;
@@ -602,12 +696,12 @@ const NUM_UNIT = /^\s*([0-9０-９.．]+)\s*(階|歳|分|m|ｍ|人|回|年|才)\
  * 字を枠（欄の枠か部品の枠）の中に置く。印刷の字の位置があれば、置いた字の箱が印刷の字に掛からない所だけ。
  * 枠全体で掛からなければそのまま、掛かれば枠の中の空いた所（字の大きい順、同じなら広い順）。どこにも置けなければ null（枠の外へは出さない）
  */
-export function placeText(fieldId: string, lines: readonly string[], area: FieldBox, pc: PlaceCtx, opts: { units?: boolean; own?: FieldBox } = {}): TextItem | null {
+export function placeText(fieldId: string, lines: readonly string[], area: FieldBox, pc: PlaceCtx, opts: { units?: boolean; own?: FieldBox; maxPt?: number } = {}): TextItem | null {
   const image = pc.page.image;
   const obstacles = obstaclesOf(fieldId, area, opts.own ?? area, pc);
-  const whole = fitIn(lines, area, image);
+  const whole = fitIn(lines, area, image, opts.maxPt);
   if (whole) {
-    const item: TextItem = { kind: "text", fieldId, box: area, ...whole.fitted, ...(whole.tight ? { tight: true } : {}) };
+    const item: TextItem = { kind: "text", fieldId, box: area, ...whole.fitted, ...(whole.tight ? { tight: true } : {}), ...(whole.snug ? { snug: true } : {}) };
     if (obstacles.length === 0 || !hitsInk(textExtent(item, image), obstacles)) return item;
   }
   if (obstacles.length === 0) return null;
@@ -622,9 +716,9 @@ export function placeText(fieldId: string, lines: readonly string[], area: Field
       const fontGuess = 3.5 / image.w;
       if (m && obstacles.some((o) => o.x >= r.x + r.w - 1e-6 && o.x <= r.x + r.w + fontGuess && o.y < r.y + r.h && r.y < o.y + o.h)) use = [m[1]];
     }
-    const f = fitIn(use, r, image);
+    const f = fitIn(use, r, image, opts.maxPt);
     if (!f) continue;
-    const item: TextItem = { kind: "text", fieldId, box: r, ...f.fitted, ...(f.tight ? { tight: true } : {}), shifted: true };
+    const item: TextItem = { kind: "text", fieldId, box: r, ...f.fitted, ...(f.tight ? { tight: true } : {}), ...(f.snug ? { snug: true } : {}), shifted: true };
     if (hitsInk(textExtent(item, image), obstacles)) continue;
     const a = r.w * r.h;
     // 同じ字の大きさなら、左右を印刷の字に挟まれた空き（括弧の中・区切りの字の間）を先に、次に広い所
@@ -698,11 +792,11 @@ function placeChoice(
   field: MappingField,
   cell: Extract<Cell, { kind: "choice" }>,
   pc: PlaceCtx,
-): { items: OverlayItem[]; unplaced: UnplacedReason | null; filled: string[]; annex: string[][] } {
+): { items: OverlayItem[]; unplaced: UnplacedReason | null; filled: string[]; annex: Array<{ lines: string[]; mark: string }> } {
   const image = pc.page.image;
   const items: OverlayItem[] = [];
   const filled: string[] = [];
-  const annex: string[][] = [];
+  const annex: Array<{ lines: string[]; mark: string }> = [];
   let unplaced: UnplacedReason | null = null;
   const fail = (r: UnplacedReason) => {
     unplaced ??= r;
@@ -710,8 +804,12 @@ function placeChoice(
   /**
    * 選択肢の所の空きに字を置く。空きの中に項目なしの字の欄（「その他（　）」の書く所を AI が別の欄に読んだ物）があれば、その欄の枠に置く
    */
-  const putIn = (text: string, area: FieldBox): TextItem | null => {
-    const child = (pc.others ?? []).find((o) => o.free && o.id !== field.id && coverOf(o.box, area) >= 0.6);
+  /** 選択肢の括弧の子の欄（T164）があればその枠、無ければ空きの中の項目なしの字の欄 */
+  const childOf = (area: FieldBox, option: number) =>
+    (pc.others ?? []).find((o) => o.owner?.id === field.id && o.owner.option === option) ??
+    (pc.others ?? []).find((o) => o.free && !o.owner && o.id !== field.id && coverOf(o.box, area) >= 0.6);
+  const putIn = (text: string, area: FieldBox, option: number): TextItem | null => {
+    const child = childOf(area, option);
     if (child) {
       const t = placeText(child.id, [text], child.box, pc);
       if (t) filled.push(child.id);
@@ -720,13 +818,16 @@ function placeChoice(
     return placeText(field.id, [text], area, pc, { own: field.box! });
   };
   /** 選択肢の所の空きに収まらない字は、その空きに「別紙」と書いて別紙へ（T140）。「別紙」も入らなければ置けなかった */
-  const putOrAnnex = (text: string, area: FieldBox | null) => {
-    const t = area ? putIn(text, area) : null;
+  const putOrAnnex = (text: string, area: FieldBox | null, option: number) => {
+    const t = area ? putIn(text, area, option) : null;
     if (t) return items.push(t);
-    const m = area ? placeText(field.id, [ANNEX_MARK], area, pc, { own: field.box! }) : null;
+    // 「別紙」の印は括弧の子の欄の枠の中（T164。括弧の外の □ の行の上に書かない）
+    const child = area ? childOf(area, option) : undefined;
+    const m = !area ? null : child ? placeText(child.id, [ANNEX_MARK], child.box, pc) : placeText(field.id, [ANNEX_MARK], area, pc, { own: field.box! });
     if (m) {
       items.push(m);
-      annex.push([text]);
+      if (child) filled.push(child.id);
+      annex.push({ lines: [text], mark: m.fieldId });
     } else fail("room");
   };
   // 台帳の値に当たる選択肢が 2 つ以上（T140）: 選ばず、その他にも書かない
@@ -745,7 +846,7 @@ function placeChoice(
       items.push({ kind: "mark", fieldId: field.id, box: b, mark: markOf(b, image) });
       const detail = cell.options[i].detail;
       if (!detail) continue;
-      putOrAnnex(paperText(detail), optionArea(field, i, image, false));
+      putOrAnnex(paperText(detail), optionArea(field, i, image, false), i);
     }
   } else if (hits.length > 0) {
     // 選んだ選択肢の □ の場所が無い: 欄に □ が刷ってなければ選んだ言葉を空いた所に、刷ってあれば置かない
@@ -759,7 +860,7 @@ function placeChoice(
     const ob = other >= 0 ? optionBoxOf(field, other, image) : null;
     if (ob) {
       if (!hits.includes(other)) items.push({ kind: "mark", fieldId: field.id, box: ob, mark: markOf(ob, image) });
-      putOrAnnex(after, optionArea(field, other, image, true));
+      putOrAnnex(after, optionArea(field, other, image, true), other);
     } else if (!printedBoxes && !(field.optionBoxes ?? []).some(Boolean) && hits.length === 0) {
       const t = placeText(field.id, [after], box, pc);
       if (t) items.push(t);
@@ -902,8 +1003,9 @@ const ERA_ROWS: Record<number, readonly string[]> = { 5: ERA_NAMES, 4: ERA_NAMES
  *   付けて年の空きには数だけ。元号の □ が無く値が今の元号（令和）なら数だけ（決め。docs/DECISIONS.md の案 T133）。
  *   ほかの元号で □ が無ければ元号ごと年の空きに置き、入らなければ置かない
  * - 区切りに合わせて分けられなければ null（欄全体に置く）。分けられたのに、どれかの空きに置けなければ "fail"（置かずに「置けなかった」）
+ * - 区切りの字に元号が刷ってあり（「昭和　年」）、値の元号が違えば "era"（刷ってある元号の後ろにほかの元号の年を書かない。T160）
  */
-export function partItems(field: MappingField, lines: readonly string[], pc: PlaceCtx): OverlayItem[] | null | "fail" {
+export function partItems(field: MappingField, lines: readonly string[], pc: PlaceCtx): OverlayItem[] | null | "fail" | "era" {
   if (!PART_SHAPES.includes(field.shape) || field.options.length === 0 || !field.box) return null;
   const image = pc.page.image;
   const boxes = field.optionBoxes ?? [];
@@ -912,6 +1014,9 @@ export function partItems(field: MappingField, lines: readonly string[], pc: Pla
   const eraIdx = field.options.flatMap((o, i) => ((ERA_NAMES as readonly string[]).includes(o.normalize("NFKC").trim()) || isWestern(o) ? [i] : []));
   const unitIdx = field.options.flatMap((_, i) => (eraIdx.includes(i) ? [] : [i]));
   if (unitIdx.length === 0) return null;
+  const printedEra = unitIdx.map((i) => field.options[i].normalize("NFKC").trim().match(ERA_HEAD)?.[1]).find(Boolean);
+  const valueEra = lines.join(" ").normalize("NFKC").trim().match(ERA_HEAD)?.[1];
+  if (printedEra && valueEra && printedEra !== valueEra) return "era";
   const parts = splitParts(lines.join(" "), unitIdx.map((i) => field.options[i]));
   if (!parts || parts.length !== unitIdx.length) return null;
   const tolX = 0.6 / image.w;
@@ -950,7 +1055,7 @@ export function partItems(field: MappingField, lines: readonly string[], pc: Pla
     if (!t) return "fail";
     out.push({ ...t, part: unitIdx[k] });
   }
-  return out;
+  return evenParts(out, field.id, pc, field.box);
 }
 
 /**
@@ -987,6 +1092,26 @@ export function westernYear(year: string): string | null {
   if (!m) return null;
   const n = m[2] === "元" ? 1 : Number(m[2]);
   return String(ERA_START[m[1] as (typeof ERA_NAMES)[number]] + n - 1);
+}
+
+const WAREKI_DATE = /^(明治|大正|昭和|平成|令和)\s*(\d{1,2}|元)\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日(.*)$/;
+/** 「8 桁」「YYYYMMDD」: 数だけ 8 字で書く欄（災害診療記録のメディカル ID の西暦生年月日） */
+const EIGHT_DIGITS = /8\s*桁|YYYYMMDD/i;
+
+/**
+ * 西暦で書く欄（欄の名前・段に「西暦」）で、区切りの選択肢の無い日付の欄の値を西暦に（T160）。区切りの選択肢のある欄は partItems が年だけ西暦にする。
+ * 欄の名前に「8 桁」があれば数だけの 8 字（19420418）、無ければ「1942年4月18日」。和暦の日付でない値・ほかの欄はそのまま
+ */
+export function westernDateLines(field: Pick<MappingField, "label" | "section" | "shape" | "options">, lines: readonly string[]): string[] {
+  if (!westernField(field) || field.options.length > 0 || lines.length !== 1) return [...lines];
+  if (!(field.shape === "date" || /年月日|日付/.test(field.label))) return [...lines];
+  const m = lines[0].normalize("NFKC").trim().match(WAREKI_DATE);
+  if (!m) return [...lines];
+  const y = westernYear(`${m[1]}${m[2]}`);
+  if (!y) return [...lines];
+  const rest = m[5].trim();
+  const date = EIGHT_DIGITS.test(`${field.section} ${field.label}`) ? `${y}${m[3].padStart(2, "0")}${m[4].padStart(2, "0")}` : `${y}年${m[3]}月${m[4]}日`;
+  return [rest ? `${date} ${rest}` : date];
 }
 
 /**
@@ -1047,7 +1172,7 @@ export function inkDateParts(field: MappingField, lines: readonly string[], pc: 
     if (!t) return "fail";
     out.push({ ...t, part: k, shifted: true });
   }
-  return out;
+  return evenParts(out, field.id, pc, box);
 }
 
 /** 電話番号の値（局番・市内・番号。「（089）000-0001」も） */
@@ -1105,7 +1230,43 @@ export function inkPhoneParts(field: MappingField, lines: readonly string[], pc:
     if (!t) return "fail";
     out.push({ ...t, part: k, shifted: true });
   }
-  return out;
+  return evenParts(out, field.id, pc, box);
+}
+
+/**
+ * 1 字ずつのマスの欄（T160）: 欄の中に、欄の高さの 7 割より高い縦の罫線が「字の数 − 1」本あり、欄を幅の近いマスに分けていれば、
+ * 数だけの値（2〜16 字）を 1 字ずつマスに置く（災害診療記録のメディカル ID の「西暦生年月日 8 桁」）。形が合わなければ null。
+ * 分けたのにどれかのマスに入らなければ "fail"
+ */
+export function combItems(field: MappingField, lines: readonly string[], pc: PlaceCtx): OverlayItem[] | null | "fail" {
+  const box = field.box;
+  if (!box || !pc.ink || (field.optionBoxes ?? []).some(Boolean) || lines.length !== 1) return null;
+  const digits = lines[0].normalize("NFKC").trim();
+  if (!/^[0-9]{2,16}$/.test(digits)) return null;
+  const image = pc.page.image;
+  const tall = inkIn(box, pc.ink)
+    .filter((b) => b.line && b.h >= 0.7 * box.h && b.w * image.w <= 0.6 && b.x > box.x + 0.5 / image.w && b.x + b.w < box.x + box.w - 0.5 / image.w)
+    .sort((a, b) => a.x - b.x);
+  // 近い縦線（太い線の 2 つのかたまり）は 1 本に
+  const rules: FieldBox[] = [];
+  for (const b of tall) {
+    const last = rules[rules.length - 1];
+    if (last && b.x <= last.x + last.w + 0.5 / image.w) rules[rules.length - 1] = { ...last, w: Math.max(last.x + last.w, b.x + b.w) - last.x };
+    else rules.push(b);
+  }
+  if (rules.length !== digits.length - 1) return null;
+  const edges = [box.x, ...rules.flatMap((r) => [r.x, r.x + r.w]), box.x + box.w];
+  const cells: FieldBox[] = [];
+  for (let k = 0; k < digits.length; k++) cells.push({ x: edges[2 * k], y: box.y, w: edges[2 * k + 1] - edges[2 * k], h: box.h });
+  const widths = cells.map((c) => c.w);
+  if (Math.min(...widths) <= 0 || Math.max(...widths) > 1.6 * Math.min(...widths)) return null;
+  const out: OverlayItem[] = [];
+  for (const [k, cell] of cells.entries()) {
+    const t = placeText(field.id, [digits[k]], cell, pc, { own: box });
+    if (!t) return "fail";
+    out.push({ ...t, part: k });
+  }
+  return evenParts(out, field.id, pc, box);
 }
 
 /** 元の様式の上に置く紙にできるか（頁の画像があり、場所のある欄が 1 つ以上）。できなければ前からの 2 列の紙 */

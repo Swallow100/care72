@@ -4,9 +4,11 @@
 // 手の入力なので埋まった欄も上書きでき、同意と時計の頼り先の確認もここで変える（保存は /api/intake/save の edit）。
 // 経過に「ケアマネが直した」。開いたときの値と版で保存し、ほかの人が先に保存していれば「競合」（読み直して開き直す）。
 // 読む側（面の中身）はサーバーで描いた物を children で受け取り、編集していない間はそのまま出す。
+// 面の中は組（lib/intake/fields.ts の FIELD_GROUPS、T145）に分ける: 面の下を面の中の灰色にし、組ごとに白い箱と見出し。
+// 組が 3 つ以上なら上に目次（押すとその組へ送る）。入力の欄に入った組・目次で飛んだ組の見出しを強くする。
 
 import { useRouter } from "next/navigation";
-import { useState, type ReactNode } from "react";
+import { Fragment, useState, type ComponentProps, type FocusEvent, type ReactNode } from "react";
 import { Button } from "@/components/ui/Button";
 import { Select } from "@/components/ui/Select";
 import { AddIcon, CloseIcon, RemoveIcon, RestoreIcon, SaveIcon } from "@/components/ui/Icon";
@@ -15,7 +17,6 @@ import {
   CLOCK_SOURCES,
   CONSENT_KINDS,
   CONSENT_STATUSES,
-  CONTACT_KINDS,
   CONTACT_REACHES,
   DEVICE_KINDS,
   HAZARD_KINDS,
@@ -75,7 +76,7 @@ import {
   type FlagDraft,
 } from "@/lib/intake/edit";
 import { LocationPick } from "./LocationPick";
-import { INTAKE_FIELDS } from "@/lib/intake/fields";
+import { groupsOf, INTAKE_FIELDS, type FieldGroup } from "@/lib/intake/fields";
 import { markClockIds } from "@/lib/intake/marks";
 import { FieldInput } from "./IntakeChanges";
 import { CheckIcon, EditIcon } from "./icons";
@@ -88,6 +89,11 @@ const ROW = "grid grid-cols-[4.5rem_minmax(0,1fr)] items-center gap-x-2";
 /** 同じ段で、右が高い物（位置の地図）。欄の名前は上に揃える */
 const ROW_TOP = "grid grid-cols-[4.5rem_minmax(0,1fr)] items-start gap-x-2";
 const SUB = "text-xs text-muted";
+/**
+ * 連絡先の行（2 列、@container）の電話・携帯: 行が狭い（スマホの幅）ときは 1 段を使う。
+ * 欄の名前を枠の中に出すので、半分の幅では電話番号の最後の字が切れる（T145）
+ */
+const WIDE_NARROW = "col-span-2 @[21rem]:col-span-1";
 
 type Props = {
   section: EditSection;
@@ -104,6 +110,8 @@ export function SectionEdit({ section, data, head, children }: Props) {
   const [open, setOpen] = useState<{ base: EditData; draft: EditDraft } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 今直している組（入力の欄に入った組か、目次で飛んだ組）。開き直すと無し
+  const [active, setActive] = useState<string | null>(null);
   const changes = open ? editChanges(section, open.base, open.draft) : [];
   // 同じ緊急・支援の順を 2 人に付けたら保存しない（サーバーも断る）
   const clashed = open !== null && section === "people" && (() => {
@@ -160,6 +168,7 @@ export function SectionEdit({ section, data, head, children }: Props) {
             data-edit-open={section}
             onClick={() => {
               setError(null);
+              setActive(null);
               setOpen({ base: data, draft: editDraft(data) });
             }}
           >
@@ -173,15 +182,17 @@ export function SectionEdit({ section, data, head, children }: Props) {
         </p>
       )}
       {open ? (
+        // 面の下を面の中の灰色に（組の白い箱との地の色の差で区切る）。左右と下は面の余白（components/person/PersonView.tsx の
+        // SectionPanel の px-3 py-2.5）の分だけ外へ出して、面の端まで灰色にする
         <form
-          className="mt-1.5 space-y-2"
+          className="-mx-3 mt-1.5 -mb-2.5 space-y-1.5 rounded-b-lg bg-panel2 p-1.5"
           onSubmit={(e) => {
             e.preventDefault();
             void save();
           }}
         >
-          <SectionForm section={section} data={open.base} draft={open.draft} set={set} />
-          <div className="flex flex-wrap items-center gap-2 pt-0.5">
+          <SectionForm section={section} data={open.base} draft={open.draft} set={set} active={active} onActive={setActive} />
+          <div className="flex flex-wrap items-center gap-2 px-1 pt-0.5">
             <Button type="submit" kind="main" size="sm" icon={SaveIcon} disabled={busy || changes.length === 0 || stopped} data-edit-save={section}>
               {INTAKE_LABELS.save}
             </Button>
@@ -210,316 +221,359 @@ export function SectionEdit({ section, data, head, children }: Props) {
   );
 }
 
-type FormProps = { section: EditSection; data: EditData; draft: EditDraft; set: (patch: Partial<EditDraft>) => void };
+type FormProps = {
+  section: EditSection;
+  data: EditData;
+  draft: EditDraft;
+  set: (patch: Partial<EditDraft>) => void;
+  /** 今直している組の id（見出しを強く・目次の印）。無ければ印なし */
+  active?: string | null;
+  /** 入力の欄に入ったとき・目次で飛んだときに、その組の id */
+  onActive?: (id: string) => void;
+};
 
-/** 面の入力欄。並びは読む側の行の並び */
-export function SectionForm({ section, data, draft, set }: FormProps) {
+/** 目次を出す組の数（これより少ない区分は目次なし） */
+const NAV_MIN_GROUPS = 3;
+
+/** 面の入力欄。区分の中を組（lib/intake/fields.ts の FIELD_GROUPS）に分け、組の並びと組の中の並びは組の表のとおり */
+export function SectionForm({ section, data, draft, set, active = null, onActive }: FormProps) {
   const clash = orderClash(draft);
   // 印の時計（機器・薬・認知症から作る物）は時計だけでは外せない（次の保存で作り直される。T57）
   const marks = markClockIds(data.ledger, data.clocks);
-  const fields = INTAKE_FIELDS.filter((f) => f.section === section);
-  const fieldRows = fields.map((f) => (
-    <label key={f.key} className={ROW} data-field={f.key}>
-      <span className={SUB}>{f.label}</span>
-      <FieldInput field={f} value={draft.values[f.key]} onPanel onChange={(v) => set({ values: { ...draft.values, [f.key]: v } })} />
-    </label>
-  ));
+  // 項目の鍵ごとの入力（欄の表の欄と、表の外の項目）。組はこれを鍵の順に並べる。鍵に入力が無い組（読む側だけの組）は出さない
+  const items = new Map<string, ReactNode>();
+  for (const f of INTAKE_FIELDS.filter((x) => x.section === section)) {
+    items.set(
+      f.key,
+      <label className={ROW} data-field={f.key}>
+        <span className={SUB}>{f.label}</span>
+        <FieldInput field={f} value={draft.values[f.key]} onPanel onChange={(v) => set({ values: { ...draft.values, [f.key]: v } })} />
+      </label>,
+    );
+  }
+  // 関係者の組の連絡先の行（組ごと）
+  const contactsOf = new Map<string, ReactNode[]>();
 
   switch (section) {
     case "medical":
-      return (
+      items.set(
+        "medical.medications",
         <div className="space-y-2">
-          <Group label="薬">
-            {draft.meds.map((m, i) =>
-              draft.drops.includes(dropKey.med(i)) ? (
-                <DroppedRow key={i} name={data.ledger.medical.medications[i]?.name ?? m.name} onUndo={() => set({ drops: toggled(draft.drops, dropKey.med(i)) })} />
-              ) : (
-                <MedRow
-                  key={i}
-                  med={m}
-                  onChange={(next) => set({ meds: draft.meds.map((x, j) => (j === i ? next : x)) })}
-                  onDrop={() => set({ drops: toggled(draft.drops, dropKey.med(i)) })}
-                />
-              ),
-            )}
-            {draft.newMeds.map((m, i) => (
-              <MedRow key={`new-${i}`} med={m} isNew onChange={(next) => set({ newMeds: draft.newMeds.map((x, j) => (j === i ? next : x)) })} />
-            ))}
-            <Button kind="add" size="sm" icon={AddIcon} onClick={() => set({ newMeds: [...draft.newMeds, blankMed()] })}>
-              {INTAKE_LABELS.addMedication}
-            </Button>
-          </Group>
-          <Group label="機器">
-            {draft.devices.map((d, i) =>
-              draft.drops.includes(dropKey.device(d.kind)) ? (
-                <DroppedRow key={d.kind} name={DEVICE_LABELS[d.kind]} onUndo={() => set({ drops: toggled(draft.drops, dropKey.device(d.kind)) })} />
-              ) : (
-                <div key={d.kind} className={ROW} data-device={d.kind}>
-                  <span className={SUB}>{DEVICE_LABELS[d.kind]}</span>
-                  <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-1">
-                    <input
-                      className={INPUT}
-                      placeholder={d.kind === "other" ? INTAKE_LABELS.deviceName : "中身"}
-                      aria-label={`${DEVICE_LABELS[d.kind]} ${d.kind === "other" ? INTAKE_LABELS.deviceName : "中身"}`}
-                      value={d.detail}
-                      onChange={(e) => set({ devices: draft.devices.map((x, j) => (j === i ? { ...x, detail: e.target.value } : x)) })}
-                    />
-                    <input
-                      className={INPUT}
-                      placeholder="回数"
-                      aria-label={`${DEVICE_LABELS[d.kind]} 回数`}
-                      value={d.schedule}
-                      onChange={(e) => set({ devices: draft.devices.map((x, j) => (j === i ? { ...x, schedule: e.target.value } : x)) })}
-                    />
-                    <DropButton onClick={() => set({ drops: toggled(draft.drops, dropKey.device(d.kind)) })} name={DEVICE_LABELS[d.kind]} />
-                  </div>
-                </div>
-              ),
-            )}
-            <Checks
-              label="追加"
-              options={DEVICE_KINDS.filter((k) => !draft.devices.some((d) => d.kind === k)).map((k) => ({ value: k, label: DEVICE_LABELS[k] }))}
-              picked={draft.newDevices}
-              onChange={(v) => set({ newDevices: v as EditDraft["newDevices"] })}
-            />
-            {/* その他の機器は名前を書いてから保存（空なら保存を止める） */}
-            {draft.newDevices.includes("other") && (
-              <label className={ROW} data-new-device-other>
-                <span className={SUB}>{`${DEVICE_LABELS.other} ${INTAKE_LABELS.deviceName}`}</span>
-                <input className={INPUT} maxLength={200} value={draft.newDeviceDetail} onChange={(e) => set({ newDeviceDetail: e.target.value })} />
-              </label>
-            )}
-          </Group>
-          <Group label="時計">
-            {draft.clocks.length === 0 && <span className={SUB}>なし</span>}
-            {draft.clocks.map((k, i) => {
-              const cur = data.clocks.find((c) => c.id === k.id);
-              const check = draft.checks[k.id];
-              const seen = draft.seen.includes(k.id);
-              // 値を直したら確認の日付は直しの方で今になる。値確認は値が同じで、値の入った時計だけ
-              const valueSame = cur?.value != null && String(cur.value) === k.value.trim() && cur.unit === k.unit;
-              const dropKeyOf = dropKey.clock(k.id);
-              if (draft.drops.includes(dropKeyOf)) {
-                return <DroppedRow key={k.id} name={k.label} onUndo={() => set({ drops: toggled(draft.drops, dropKeyOf) })} />;
-              }
-              return (
-                <div key={k.id} className="space-y-1" data-clock={k.id}>
-                  {/* 時計の名前は長い（「酸素 予備ボンベ」）ので、名前の横に値と単位を折り返して並べる */}
-                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                    <span className="min-w-0 flex-1 text-xs">{k.label}</span>
-                    <div className="flex items-center gap-1">
-                      <input
-                        className={`${INPUT} w-20`}
-                        inputMode="decimal"
-                        aria-label={`${k.label} 値`}
-                        value={k.value}
-                        onChange={(e) => set({ clocks: draft.clocks.map((x, j) => (j === i ? { ...x, value: e.target.value } : x)) })}
-                      />
-                      <Select
-                        className={`${INPUT} w-20`}
-                        aria-label={`${k.label} 単位`}
-                        value={k.unit}
-                        onChange={(e) => set({ clocks: draft.clocks.map((x, j) => (j === i ? { ...x, unit: e.target.value as ClockUnit } : x)) })}
-                      >
-                        {(["minute", "hour", "day", "week"] as const).map((u) => (
-                          <option key={u} value={u}>
-                            {CLOCK_UNIT_LABELS[u]}
-                          </option>
-                        ))}
-                      </Select>
-                    </div>
-                  </div>
-                  {/* 起点（停電・発災）と、印でない時計の「外す」（印の時計は機器・薬を外すと一緒に消える。T57） */}
-                  <div className={ROW} data-clock-start={k.id}>
-                    <span className={SUB}>{INTAKE_LABELS.clockStart}</span>
-                    <div className="flex items-center gap-1">
-                      <StartSelect
-                        label={k.label}
-                        value={k.start}
-                        onChange={(v) => set({ clocks: draft.clocks.map((x, j) => (j === i ? { ...x, start: v } : x)) })}
-                      />
-                      {!marks.has(k.id) && <DropButton onClick={() => set({ drops: toggled(draft.drops, dropKeyOf) })} name={k.label} />}
-                    </div>
-                  </div>
-                  {/* 値を変えずに今日確かめた（確認の日付だけ今に） */}
-                  {cur?.value != null && (
-                    <div className={ROW} data-clock-seen={k.id}>
-                      <span className={SUB}>確認日</span>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs tabular-nums">
-                          {seen && valueSame ? INTAKE_LABELS.seenToday : cur.confirmed_at ? jstDay(cur.confirmed_at) : "未確認"}
-                        </span>
-                        {valueSame && (
-                          <Button
-                            size="sm"
-                            icon={seen ? CloseIcon : CheckIcon}
-                            aria-pressed={seen}
-                            onClick={() => set({ seen: toggled(draft.seen, k.id) })}
-                          >
-                            {seen ? INTAKE_LABELS.seenOff : INTAKE_LABELS.seen}
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                  {/* 頼り先の確認（透析先・冷蔵・配達・保管）。人が確かめて付ける */}
-                  {cur?.depends_on && check && (
-                    <div className={ROW} data-clock-check={k.id}>
-                      <span className={SUB}>{DEPENDS_ON_LABELS[cur.depends_on]}</span>
-                      <div className="flex items-center gap-2">
-                        <StateText tone={check === "confirmed" ? "ok" : "check"} className="text-xs">
-                          {CHECK_STATUS_LABELS[check]}
-                        </StateText>
-                        <Button
-                          size="sm"
-                          icon={check === "confirmed" ? CloseIcon : CheckIcon}
-                          onClick={() => set({ checks: { ...draft.checks, [k.id]: (check === "confirmed" ? "unconfirmed" : "confirmed") as CheckStatus } })}
-                        >
-                          {check === "confirmed" ? INTAKE_LABELS.checkOff : INTAKE_LABELS.checkOn}
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-            {draft.newClocks.map((k, i) => (
-              <NewClockRow
-                key={`new-${i}`}
-                clock={k}
-                onChange={(next) => set({ newClocks: draft.newClocks.map((x, j) => (j === i ? next : x)) })}
-                onDrop={() => set({ newClocks: draft.newClocks.filter((_, j) => j !== i) })}
+          {draft.meds.map((m, i) =>
+            draft.drops.includes(dropKey.med(i)) ? (
+              <DroppedRow key={i} name={data.ledger.medical.medications[i]?.name ?? m.name} onUndo={() => set({ drops: toggled(draft.drops, dropKey.med(i)) })} />
+            ) : (
+              <MedRow
+                key={i}
+                med={m}
+                onChange={(next) => set({ meds: draft.meds.map((x, j) => (j === i ? next : x)) })}
+                onDrop={() => set({ drops: toggled(draft.drops, dropKey.med(i)) })}
               />
-            ))}
-            <Button kind="add" size="sm" icon={AddIcon} onClick={() => set({ newClocks: [...draft.newClocks, blankClock()] })} data-clock-add>
-              {INTAKE_LABELS.addClock}
-            </Button>
-          </Group>
-          <div className="space-y-1">{fieldRows}</div>
-        </div>
+            ),
+          )}
+          {draft.newMeds.map((m, i) => (
+            <MedRow key={`new-${i}`} med={m} isNew onChange={(next) => set({ newMeds: draft.newMeds.map((x, j) => (j === i ? next : x)) })} />
+          ))}
+          <Button kind="add" size="sm" icon={AddIcon} onClick={() => set({ newMeds: [...draft.newMeds, blankMed()] })}>
+            {INTAKE_LABELS.addMedication}
+          </Button>
+        </div>,
       );
-    case "evacuation":
-      return (
-        <div className="space-y-2">
-          <Group label="ハザード">
-            {draft.hazards.map((h, i) =>
-              draft.drops.includes(dropKey.hazard(h.kind)) ? (
-                <DroppedRow key={h.kind} name={HAZARD_LABELS[h.kind]} onUndo={() => set({ drops: toggled(draft.drops, dropKey.hazard(h.kind)) })} />
-              ) : (
-                <div key={h.kind} className={ROW} data-hazard={h.kind}>
-                  <span className={SUB}>{HAZARD_LABELS[h.kind]}</span>
-                  <div className="flex flex-wrap items-center gap-1">
-                    <input
-                      className={`${INPUT} w-16`}
-                      inputMode="decimal"
-                      placeholder="深さ"
-                      aria-label={`${HAZARD_LABELS[h.kind]} 深さ`}
-                      value={h.depth}
-                      onChange={(e) => set({ hazards: draft.hazards.map((x, j) => (j === i ? { ...x, depth: e.target.value } : x)) })}
-                    />
-                    <span className="text-xs">m</span>
-                    {/* 書き足し（その他の中身・裏山など。60 字。T57） */}
-                    <input
-                      className={`${INPUT} w-auto min-w-24 flex-1`}
-                      maxLength={60}
-                      placeholder={INTAKE_LABELS.hazardNote}
-                      aria-label={`${HAZARD_LABELS[h.kind]} ${INTAKE_LABELS.hazardNote}`}
-                      value={h.note}
-                      onChange={(e) => set({ hazards: draft.hazards.map((x, j) => (j === i ? { ...x, note: e.target.value } : x)) })}
-                    />
-                    <DropButton onClick={() => set({ drops: toggled(draft.drops, dropKey.hazard(h.kind)) })} name={HAZARD_LABELS[h.kind]} />
-                  </div>
+      items.set(
+        "medical.devices",
+        <div className="space-y-1">
+          {draft.devices.map((d, i) =>
+            draft.drops.includes(dropKey.device(d.kind)) ? (
+              <DroppedRow key={d.kind} name={DEVICE_LABELS[d.kind]} onUndo={() => set({ drops: toggled(draft.drops, dropKey.device(d.kind)) })} />
+            ) : (
+              <div key={d.kind} className={ROW} data-device={d.kind}>
+                <span className={SUB}>{DEVICE_LABELS[d.kind]}</span>
+                <div className="grid grid-cols-[minmax(0,3fr)_minmax(0,2fr)_auto] gap-1">
+                  <LabeledInput
+                    box={INPUT}
+                    label={d.kind === "other" ? INTAKE_LABELS.deviceName : "中身"}
+                    aria-label={`${DEVICE_LABELS[d.kind]} ${d.kind === "other" ? INTAKE_LABELS.deviceName : "中身"}`}
+                    value={d.detail}
+                    onChange={(e) => set({ devices: draft.devices.map((x, j) => (j === i ? { ...x, detail: e.target.value } : x)) })}
+                  />
+                  <LabeledInput
+                    box={INPUT}
+                    label="回数"
+                    aria-label={`${DEVICE_LABELS[d.kind]} 回数`}
+                    value={d.schedule}
+                    onChange={(e) => set({ devices: draft.devices.map((x, j) => (j === i ? { ...x, schedule: e.target.value } : x)) })}
+                  />
+                  <DropButton onClick={() => set({ drops: toggled(draft.drops, dropKey.device(d.kind)) })} name={DEVICE_LABELS[d.kind]} />
                 </div>
-              ),
-            )}
-            <Checks
-              label="追加"
-              options={HAZARD_KINDS.filter((k) => !draft.hazards.some((h) => h.kind === k)).map((k) => ({ value: k, label: HAZARD_LABELS[k] }))}
-              picked={draft.newHazards}
-              onChange={(v) => set({ newHazards: v as EditDraft["newHazards"] })}
-            />
-            {draft.newHazards.includes("other") && (
-              <label className={ROW} data-new-hazard-other>
-                <span className={SUB}>{`${HAZARD_LABELS.other} ${INTAKE_LABELS.hazardNote}`}</span>
-                <input className={INPUT} maxLength={60} value={draft.newHazardNote} onChange={(e) => set({ newHazardNote: e.target.value })} />
-              </label>
-            )}
-          </Group>
-          <div className="space-y-1">{fieldRows}</div>
-        </div>
+              </div>
+            ),
+          )}
+          <Checks
+            label="追加"
+            options={DEVICE_KINDS.filter((k) => !draft.devices.some((d) => d.kind === k)).map((k) => ({ value: k, label: DEVICE_LABELS[k] }))}
+            picked={draft.newDevices}
+            onChange={(v) => set({ newDevices: v as EditDraft["newDevices"] })}
+          />
+          {/* その他の機器は名前を書いてから保存（空なら保存を止める） */}
+          {draft.newDevices.includes("other") && (
+            <label className={ROW} data-new-device-other>
+              <span className={SUB}>{`${DEVICE_LABELS.other} ${INTAKE_LABELS.deviceName}`}</span>
+              <input className={INPUT} maxLength={200} value={draft.newDeviceDetail} onChange={(e) => set({ newDeviceDetail: e.target.value })} />
+            </label>
+          )}
+        </div>,
       );
-    case "people":
-      return (
+      items.set(
+        "clocks",
         <div className="space-y-2">
-          {(clash.emergency.length > 0 || clash.supporter.length > 0) && (
-            <p role="alert" className="text-xs font-bold text-danger" data-order-clash>
-              {INTAKE_LABELS.orderClash}{" "}
-              {[
-                ...clash.emergency.map((n) => `${INTAKE_LABELS.emergency} ${n}`),
-                ...clash.supporter.map((n) => `${INTAKE_LABELS.supporter} ${n}`),
-              ].join("・")}
-            </p>
-          )}
-          {selfTwice(draft) && (
-            <p role="alert" className="text-xs font-bold text-danger" data-self-twice>
-              {INTAKE_LABELS.selfTwice}
-            </p>
-          )}
-          {draft.contacts.map((c, i) => {
-            const key = c.id ? dropKey.contact(c.id) : null;
-            const cur = data.contacts.find((x) => x.id === c.id);
-            const dropped = key && draft.drops.includes(key) ? key : null;
-            if (dropped) {
-              return (
-                <DroppedRow
-                  key={c.id ?? i}
-                  name={c.kind === "self" ? CONTACT_KIND_LABELS.self : `${CONTACT_KIND_LABELS[c.kind]} ${cur?.relation || cur?.name || ""}`.trim()}
-                  onUndo={() => set({ drops: toggled(draft.drops, dropped) })}
-                />
-              );
-            }
-            // 本人の電話（T68）は電話と備考だけ。外すのはほかの連絡先と同じ
-            if (c.kind === "self") {
-              return (
-                <SelfRow
-                  key={c.id ?? i}
-                  c={c}
-                  onChange={(next) => set({ contacts: draft.contacts.map((x, j) => (j === i ? next : x)) })}
-                  onDrop={key ? () => set({ drops: toggled(draft.drops, key) }) : undefined}
-                />
-              );
+          {draft.clocks.length === 0 && <span className={SUB}>なし</span>}
+          {draft.clocks.map((k, i) => {
+            const cur = data.clocks.find((c) => c.id === k.id);
+            const check = draft.checks[k.id];
+            const seen = draft.seen.includes(k.id);
+            // 値を直したら確認の日付は直しの方で今になる。値確認は値が同じで、値の入った時計だけ
+            const valueSame = cur?.value != null && String(cur.value) === k.value.trim() && cur.unit === k.unit;
+            const dropKeyOf = dropKey.clock(k.id);
+            if (draft.drops.includes(dropKeyOf)) {
+              return <DroppedRow key={k.id} name={k.label} onUndo={() => set({ drops: toggled(draft.drops, dropKeyOf) })} />;
             }
             return (
-              <ContactRow
-                key={c.id ?? i}
-                c={c}
-                clash={clash}
-                onChange={(next) => set({ contacts: draft.contacts.map((x, j) => (j === i ? next : x)) })}
-                onDrop={key ? () => set({ drops: toggled(draft.drops, key) }) : undefined}
-              />
+              <div key={k.id} className="space-y-1" data-clock={k.id}>
+                {/* 時計の名前（「酸素 予備ボンベ」）・値・単位の 1 段。名前が長ければ名前の列の中で折り返す */}
+                <div className="grid grid-cols-[minmax(0,1fr)_5rem_5.5rem] items-center gap-1">
+                  <span className="text-xs font-bold">{k.label}</span>
+                  <div className="contents">
+                    <input
+                      className={`${INPUT} tabular-nums`}
+                      inputMode="decimal"
+                      aria-label={`${k.label} 値`}
+                      value={k.value}
+                      onChange={(e) => set({ clocks: draft.clocks.map((x, j) => (j === i ? { ...x, value: e.target.value } : x)) })}
+                    />
+                    <Select
+                      className={INPUT}
+                      aria-label={`${k.label} 単位`}
+                      value={k.unit}
+                      onChange={(e) => set({ clocks: draft.clocks.map((x, j) => (j === i ? { ...x, unit: e.target.value as ClockUnit } : x)) })}
+                    >
+                      {(["minute", "hour", "day", "week"] as const).map((u) => (
+                        <option key={u} value={u}>
+                          {CLOCK_UNIT_LABELS[u]}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+                </div>
+                {/* 起点（停電・発災）と、印でない時計の「外す」（印の時計は機器・薬を外すと一緒に消える。T57） */}
+                <div className={ROW} data-clock-start={k.id}>
+                  <span className={SUB}>{INTAKE_LABELS.clockStart}</span>
+                  <div className="flex items-center gap-1">
+                    <StartSelect
+                      label={k.label}
+                      value={k.start}
+                      onChange={(v) => set({ clocks: draft.clocks.map((x, j) => (j === i ? { ...x, start: v } : x)) })}
+                    />
+                    {!marks.has(k.id) && <DropButton onClick={() => set({ drops: toggled(draft.drops, dropKeyOf) })} name={k.label} />}
+                  </div>
+                </div>
+                {/* 値を変えずに今日確かめた（確認の日付だけ今に） */}
+                {cur?.value != null && (
+                  <div className={ROW} data-clock-seen={k.id}>
+                    <span className={SUB}>確認日</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs tabular-nums">
+                        {seen && valueSame ? INTAKE_LABELS.seenToday : cur.confirmed_at ? jstDay(cur.confirmed_at) : "未確認"}
+                      </span>
+                      {valueSame && (
+                        <Button
+                          size="sm"
+                          icon={seen ? CloseIcon : CheckIcon}
+                          aria-pressed={seen}
+                          onClick={() => set({ seen: toggled(draft.seen, k.id) })}
+                        >
+                          {seen ? INTAKE_LABELS.seenOff : INTAKE_LABELS.seen}
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                )}
+                {/* 頼り先の確認（透析先・冷蔵・配達・保管）。人が確かめて付ける */}
+                {cur?.depends_on && check && (
+                  <div className={ROW} data-clock-check={k.id}>
+                    <span className={SUB}>{DEPENDS_ON_LABELS[cur.depends_on]}</span>
+                    <div className="flex items-center gap-2">
+                      <StateText tone={check === "confirmed" ? "ok" : "check"} className="text-xs">
+                        {CHECK_STATUS_LABELS[check]}
+                      </StateText>
+                      <Button
+                        size="sm"
+                        icon={check === "confirmed" ? CloseIcon : CheckIcon}
+                        onClick={() => set({ checks: { ...draft.checks, [k.id]: (check === "confirmed" ? "unconfirmed" : "confirmed") as CheckStatus } })}
+                      >
+                        {check === "confirmed" ? INTAKE_LABELS.checkOff : INTAKE_LABELS.checkOn}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
             );
           })}
-          {draft.newContacts.map((c, i) => (
-            <ContactRow
+          {draft.newClocks.map((k, i) => (
+            <NewClockRow
               key={`new-${i}`}
-              c={c}
-              isNew
-              clash={clash}
-              onChange={(next) => set({ newContacts: draft.newContacts.map((x, j) => (j === i ? next : x)) })}
-              onDrop={() => set({ newContacts: draft.newContacts.filter((_, j) => j !== i) })}
+              clock={k}
+              onChange={(next) => set({ newClocks: draft.newClocks.map((x, j) => (j === i ? next : x)) })}
+              onDrop={() => set({ newClocks: draft.newClocks.filter((_, j) => j !== i) })}
             />
           ))}
-          <Button kind="add" size="sm" icon={AddIcon} onClick={() => set({ newContacts: [...draft.newContacts, blankContact()] })}>
-            {INTAKE_LABELS.addContact}
+          <Button kind="add" size="sm" icon={AddIcon} onClick={() => set({ newClocks: [...draft.newClocks, blankClock()] })} data-clock-add>
+            {INTAKE_LABELS.addClock}
           </Button>
-          <div className="space-y-1">{fieldRows}</div>
-        </div>
+        </div>,
       );
+      break;
+    case "evacuation":
+      items.set(
+        "evacuation.hazards",
+        <div className="space-y-1">
+          {draft.hazards.map((h, i) =>
+            draft.drops.includes(dropKey.hazard(h.kind)) ? (
+              <DroppedRow key={h.kind} name={HAZARD_LABELS[h.kind]} onUndo={() => set({ drops: toggled(draft.drops, dropKey.hazard(h.kind)) })} />
+            ) : (
+              <div key={h.kind} className={ROW} data-hazard={h.kind}>
+                <span className={SUB}>{HAZARD_LABELS[h.kind]}</span>
+                <div className="grid grid-cols-[6.5rem_minmax(0,1fr)_auto] items-center gap-1">
+                  <LabeledInput
+                    box={INPUT}
+                    label="深さ"
+                    suffix="m"
+                    inputMode="decimal"
+                    aria-label={`${HAZARD_LABELS[h.kind]} 深さ`}
+                    value={h.depth}
+                    onChange={(e) => set({ hazards: draft.hazards.map((x, j) => (j === i ? { ...x, depth: e.target.value } : x)) })}
+                  />
+                  {/* 書き足し（その他の中身・裏山など。60 字。T57） */}
+                  <LabeledInput
+                    box={INPUT}
+                    label={INTAKE_LABELS.hazardNote}
+                    maxLength={60}
+                    aria-label={`${HAZARD_LABELS[h.kind]} ${INTAKE_LABELS.hazardNote}`}
+                    value={h.note}
+                    onChange={(e) => set({ hazards: draft.hazards.map((x, j) => (j === i ? { ...x, note: e.target.value } : x)) })}
+                  />
+                  <DropButton onClick={() => set({ drops: toggled(draft.drops, dropKey.hazard(h.kind)) })} name={HAZARD_LABELS[h.kind]} />
+                </div>
+              </div>
+            ),
+          )}
+          <Checks
+            label="追加"
+            options={HAZARD_KINDS.filter((k) => !draft.hazards.some((h) => h.kind === k)).map((k) => ({ value: k, label: HAZARD_LABELS[k] }))}
+            picked={draft.newHazards}
+            onChange={(v) => set({ newHazards: v as EditDraft["newHazards"] })}
+          />
+          {draft.newHazards.includes("other") && (
+            <label className={ROW} data-new-hazard-other>
+              <span className={SUB}>{`${HAZARD_LABELS.other} ${INTAKE_LABELS.hazardNote}`}</span>
+              <input className={INPUT} maxLength={60} value={draft.newHazardNote} onChange={(e) => set({ newHazardNote: e.target.value })} />
+            </label>
+          )}
+        </div>,
+      );
+      break;
+    case "people": {
+      // 連絡先は種類の組へ（lib/intake/fields.ts の contactKinds）。どの組にも無い種類は最後の種類の多い組（関係先）へ。並びは台帳の並び
+      const contactGroups = groupsOf("people").filter((g) => g.contactKinds);
+      const fallback = [...contactGroups].reverse().find((g) => (g.contactKinds?.length ?? 0) > 1) ?? contactGroups[contactGroups.length - 1];
+      const groupOf = (kind: ContactKind) => contactGroups.find((g) => g.contactKinds!.includes(kind)) ?? fallback;
+      const push = (g: FieldGroup, node: ReactNode) => contactsOf.set(g.id, [...(contactsOf.get(g.id) ?? []), node]);
+      draft.contacts.forEach((c, i) => {
+        const group = groupOf(c.kind);
+        const key = c.id ? dropKey.contact(c.id) : null;
+        const cur = data.contacts.find((x) => x.id === c.id);
+        const dropped = key && draft.drops.includes(key) ? key : null;
+        if (dropped) {
+          push(
+            group,
+            <DroppedRow
+              key={c.id ?? i}
+              name={c.kind === "self" ? CONTACT_KIND_LABELS.self : `${CONTACT_KIND_LABELS[c.kind]} ${cur?.relation || cur?.name || ""}`.trim()}
+              onUndo={() => set({ drops: toggled(draft.drops, dropped) })}
+            />,
+          );
+          return;
+        }
+        // 本人の電話（T68）は電話と備考だけ。外すのはほかの連絡先と同じ
+        if (c.kind === "self") {
+          push(
+            group,
+            <SelfRow
+              key={c.id ?? i}
+              c={c}
+              onChange={(next) => set({ contacts: draft.contacts.map((x, j) => (j === i ? next : x)) })}
+              onDrop={key ? () => set({ drops: toggled(draft.drops, key) }) : undefined}
+            />,
+          );
+          return;
+        }
+        push(
+          group,
+          <ContactRow
+            key={c.id ?? i}
+            c={c}
+            group={group}
+            clash={clash}
+            onChange={(next) => set({ contacts: draft.contacts.map((x, j) => (j === i ? next : x)) })}
+            onDrop={key ? () => set({ drops: toggled(draft.drops, key) }) : undefined}
+          />,
+        );
+      });
+      // 足す行は種類の組に（組の「連絡先追加」がその組の種類で始めるので、選び直しても組の中の種類のまま）
+      draft.newContacts.forEach((c, i) => {
+        const group = groupOf(c.kind);
+        push(
+          group,
+          <ContactRow
+            key={`new-${i}`}
+            c={c}
+            isNew
+            group={group}
+            clash={clash}
+            onChange={(next) => set({ newContacts: draft.newContacts.map((x, j) => (j === i ? next : x)) })}
+            onDrop={() => set({ newContacts: draft.newContacts.filter((_, j) => j !== i) })}
+          />,
+        );
+      });
+      // 組ごとの「連絡先追加」。本人の電話は 1 人 1 つなので、外していない本人がいれば出さない
+      const hasSelf =
+        draft.contacts.some((c) => c.kind === "self" && !(c.id && draft.drops.includes(dropKey.contact(c.id)))) ||
+        draft.newContacts.some((c) => c.kind === "self");
+      for (const g of contactGroups) {
+        const kind = g.contactKinds![0];
+        if (kind === "self" && hasSelf) continue;
+        push(
+          g,
+          <Button
+            key="add"
+            kind="add"
+            size="sm"
+            icon={AddIcon}
+            aria-label={`${g.label} ${INTAKE_LABELS.addContact}`}
+            data-contact-add={kind}
+            onClick={() => set({ newContacts: [...draft.newContacts, { ...blankContact(), kind }] })}
+          >
+            {INTAKE_LABELS.addContact}
+          </Button>,
+        );
+      }
+      break;
+    }
     case "basic": {
       // 住所（市・町名）と位置（T68）。手入力だけ（AI の分け方には無い）。町名は事業所の今の町名を候補に出して綴りをそろえる
       const townsId = `towns-${data.personId}`;
       const towns = data.place?.towns ?? [];
-      return (
+      items.set(
+        "basic.address",
         <div className="space-y-1">
           <label className={ROW} data-field="basic.address.city">
             <span className={SUB}>{PLACE_LABELS.city}</span>
@@ -549,16 +603,23 @@ export function SectionForm({ section, data, draft, set }: FormProps) {
               ))}
             </datalist>
           )}
-          <div className={ROW_TOP} data-field="basic.location">
-            <span className={`${SUB} pt-1`}>{PLACE_LABELS.location}</span>
-            <LocationPick
-              value={draft.location}
-              onChange={(v) => set({ location: v })}
-              center={pickCenter(draft.location, data.place?.center)}
-              label={PLACE_LABELS.location}
-            />
-          </div>
-          {fieldRows}
+        </div>,
+      );
+      items.set(
+        "basic.location",
+        <div className={ROW_TOP} data-field="basic.location">
+          <span className={`${SUB} pt-1`}>{PLACE_LABELS.location}</span>
+          <LocationPick
+            value={draft.location}
+            onChange={(v) => set({ location: v })}
+            center={pickCenter(draft.location, data.place?.center)}
+            label={PLACE_LABELS.location}
+          />
+        </div>,
+      );
+      items.set(
+        "notes",
+        <div className="space-y-1">
           {data.ledger.notes.map((n, i) => {
             const key = dropKey.note(i);
             return (
@@ -579,31 +640,141 @@ export function SectionForm({ section, data, draft, set }: FormProps) {
             <span className={SUB}>{INTAKE_LABELS.addNote}</span>
             <textarea className={INPUT} rows={2} value={draft.note} onChange={(e) => set({ note: e.target.value })} />
           </label>
-        </div>
+        </div>,
       );
+      break;
     }
     case "consent":
-      return (
-        <div className="space-y-1">
-          {CONSENT_KINDS.map((k) => (
-            <label key={k} className={ROW} data-consent={k}>
-              <span className={SUB}>{CONSENT_KIND_LABELS[k]}</span>
-              <Select
-                className={INPUT}
-                value={draft.consents[k]}
-                onChange={(e) => set({ consents: { ...draft.consents, [k]: e.target.value as EditDraft["consents"][typeof k] } })}
-              >
-                {CONSENT_STATUSES.map((s) => (
-                  <option key={s} value={s}>
-                    {CONSENT_STATUS_LABELS[s]}
-                  </option>
-                ))}
-              </Select>
-            </label>
-          ))}
-        </div>
-      );
+      for (const k of CONSENT_KINDS) {
+        items.set(
+          `consent.${k}`,
+          <label className={ROW} data-consent={k}>
+            <span className={SUB}>{CONSENT_KIND_LABELS[k]}</span>
+            <Select
+              className={INPUT}
+              value={draft.consents[k]}
+              onChange={(e) => set({ consents: { ...draft.consents, [k]: e.target.value as EditDraft["consents"][typeof k] } })}
+            >
+              {CONSENT_STATUSES.map((s) => (
+                <option key={s} value={s}>
+                  {CONSENT_STATUS_LABELS[s]}
+                </option>
+              ))}
+            </Select>
+          </label>,
+        );
+      }
+      break;
   }
+
+  // 組ごとの中身（鍵の順の入力と、関係者の連絡先の行）。中身の無い組は出さない
+  const shown = groupsOf(section)
+    .map((g) => {
+      const nodes = g.keys.flatMap((k) => {
+        const node = items.get(k);
+        return node === undefined ? [] : [<Fragment key={k}>{node}</Fragment>];
+      });
+      const contacts = contactsOf.get(g.id) ?? [];
+      // 組の欄（地域のみまもり員・支援組織など）を先に、連絡先の行と「連絡先追加」をそのあとに（追加はどの組でも箱の下の端）
+      return { g, body: [...nodes, ...contacts] };
+    })
+    .filter((x) => x.body.length > 0);
+  const anchor = (id: string) => `edit-${data.personId}-${id}`;
+  const withNav = shown.length >= NAV_MIN_GROUPS;
+
+  return (
+    <div
+      className="space-y-1.5"
+      onFocusCapture={(e: FocusEvent<HTMLDivElement>) => {
+        // 入力の欄に入ったら、その組を今の組に（目次のボタン・一覧の窓〔body の直下〕は組の外なので変えない）
+        const id = (e.target as HTMLElement).closest<HTMLElement>("[data-group]")?.dataset.group;
+        if (id && id !== active) onActive?.(id);
+      }}
+    >
+      {section === "people" && (clash.emergency.length > 0 || clash.supporter.length > 0) && (
+        <p role="alert" className="px-1 text-xs font-bold text-danger" data-order-clash>
+          {INTAKE_LABELS.orderClash}{" "}
+          {[...clash.emergency.map((n) => `${INTAKE_LABELS.emergency} ${n}`), ...clash.supporter.map((n) => `${INTAKE_LABELS.supporter} ${n}`)].join(
+            "・",
+          )}
+        </p>
+      )}
+      {section === "people" && selfTwice(draft) && (
+        <p role="alert" className="px-1 text-xs font-bold text-danger" data-self-twice>
+          {INTAKE_LABELS.selfTwice}
+        </p>
+      )}
+      {withNav && (
+        <GroupNav
+          groups={shown.map((x) => x.g)}
+          active={active}
+          onJump={(id) => {
+            onActive?.(id);
+            document.getElementById(anchor(id))?.scrollIntoView({ block: "start", behavior: "smooth" });
+          }}
+        />
+      )}
+      {shown.map(({ g, body }) => (
+        <GroupBox key={g.id} id={anchor(g.id)} group={g} active={g.id === active} nav={withNav}>
+          {body}
+        </GroupBox>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * 組の目次（横に並べ、狭い幅では折り返す）。押すとその組へ送る。今の組は本文の色と下線（下地を敷かない）。
+ * 面の中の灰色の上に置き、送っても面の上に留める（sticky）
+ */
+function GroupNav({ groups, active, onJump }: { groups: readonly FieldGroup[]; active: string | null; onJump: (id: string) => void }) {
+  return (
+    <nav aria-label={INTAKE_LABELS.groupNav} className="sticky top-0 z-10 -mx-1.5 bg-panel2 px-1.5 py-0.5" data-group-nav>
+      <ul className="flex flex-wrap gap-x-1 gap-y-0.5">
+        {groups.map((g) => {
+          const on = g.id === active;
+          return (
+            <li key={g.id}>
+              <button
+                type="button"
+                className={`rounded px-1.5 py-0.5 text-xs font-bold outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-accent ${
+                  on ? "text-ink underline decoration-accent decoration-2 underline-offset-4" : "text-muted"
+                }`}
+                aria-current={on || undefined}
+                data-press=""
+                data-group-link={g.id}
+                onClick={() => onJump(g.id)}
+              >
+                {g.label}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </nav>
+  );
+}
+
+/** 組の白い箱。見出しは今の組なら本文の色で少し大きく、左に操作の色の細い帯（行の高さは変えない） */
+function GroupBox({ id, group, active, nav, children }: { id: string; group: FieldGroup; active: boolean; nav: boolean; children: ReactNode }) {
+  const headId = `${id}-head`;
+  return (
+    <div
+      id={id}
+      role="group"
+      aria-labelledby={headId}
+      className={`${nav ? "scroll-mt-9" : "scroll-mt-2"} relative space-y-1.5 rounded bg-panel px-2.5 pt-1.5 pb-2`}
+      data-group={group.id}
+      data-active={active || undefined}
+    >
+      {/* 今の組の帯は箱の左の端（見出しの字の位置は変えない） */}
+      {active && <span aria-hidden className="absolute top-2 left-0 h-4 w-[3px] rounded-r-sm bg-accent" />}
+      <p id={headId} className={`leading-5 font-bold ${active ? "text-[0.8125rem] text-ink" : "text-xs text-muted"}`}>
+        {group.label}
+      </p>
+      {children}
+    </div>
+  );
 }
 
 /** 確認の日付（JST の YYYY-MM-DD） */
@@ -631,12 +802,25 @@ function DroppedRow({ name, onUndo }: { name: string; onUndo: () => void }) {
   );
 }
 
-function Group({ label, children }: { label: string; children: ReactNode }) {
+/**
+ * 欄の名前を枠の中の左に出す文字の欄（T145）。下書きの字だけだと、入れたあとに何の欄か（電話か携帯か・続柄か備考か）が見えなくなる。
+ * box は INPUT（面の上）か INPUT_IN（面の中の区分の上）。読み上げの名前は今までどおり aria-label
+ */
+function LabeledInput({
+  box,
+  label,
+  suffix,
+  danger = false,
+  className = "",
+  ...input
+}: { box: string; label: string; suffix?: string; danger?: boolean; className?: string } & Omit<ComponentProps<"input">, "className">) {
+  const digits = input.inputMode === "tel" || input.inputMode === "decimal" || input.inputMode === "numeric";
   return (
-    <div className="space-y-1">
-      <div className="text-xs font-bold">{label}</div>
-      {children}
-    </div>
+    <label className={`${box} flex items-center gap-1.5 focus-within:outline-2 focus-within:outline-solid focus-within:outline-accent ${className}`}>
+      <span className={`shrink-0 text-xs ${danger ? "font-bold text-danger" : "text-muted"}`}>{label}</span>
+      <input className={`min-w-0 flex-1 bg-transparent outline-none${digits ? " tabular-nums" : ""}`} {...input} />
+      {suffix && <span className="shrink-0 text-xs text-muted">{suffix}</span>}
+    </label>
   );
 }
 
@@ -676,7 +860,7 @@ function MedRow({ med, isNew = false, onChange, onDrop }: { med: MedDraft; isNew
   const p = (patch: Partial<MedDraft>) => onChange({ ...med, ...patch });
   return (
     <div className="grid grid-cols-2 gap-1" data-med={isNew ? "new" : med.name}>
-      <input className={INPUT} placeholder="薬の名前" aria-label="薬の名前" value={med.name} onChange={(e) => p({ name: e.target.value })} />
+      <LabeledInput box={INPUT} label="薬名" aria-label="薬の名前" value={med.name} onChange={(e) => p({ name: e.target.value })} />
       <Select className={INPUT} aria-label="薬の区分" value={med.category} onChange={(e) => p({ category: e.target.value as MedicationCategory })}>
         {MEDICATION_CATEGORIES.map((c) => (
           <option key={c} value={c}>
@@ -684,12 +868,19 @@ function MedRow({ med, isNew = false, onChange, onDrop }: { med: MedDraft; isNew
           </option>
         ))}
       </Select>
-      <input className={INPUT} placeholder="回数" aria-label={`${med.name} 回数`} value={med.schedule} onChange={(e) => p({ schedule: e.target.value })} />
-      <input className={INPUT} placeholder={MED_PARTS.amount} aria-label={`${med.name} ${MED_PARTS.amount}`} value={med.amount} onChange={(e) => p({ amount: e.target.value })} />
+      <LabeledInput box={INPUT} label="回数" aria-label={`${med.name} 回数`} value={med.schedule} onChange={(e) => p({ schedule: e.target.value })} />
+      <LabeledInput
+        box={INPUT}
+        label={MED_PARTS.amount}
+        aria-label={`${med.name} ${MED_PARTS.amount}`}
+        value={med.amount}
+        onChange={(e) => p({ amount: e.target.value })}
+      />
       <div className="col-span-2 flex items-center gap-1">
-        <input
-          className={`${INPUT} min-w-0 flex-1`}
-          placeholder={MED_PARTS.storage}
+        <LabeledInput
+          box={INPUT}
+          className="min-w-0 flex-1"
+          label={MED_PARTS.storage}
           aria-label={`${med.name} ${MED_PARTS.storage}`}
           value={med.storage}
           onChange={(e) => p({ storage: e.target.value })}
@@ -706,15 +897,22 @@ const NIGHT: ReadonlyArray<{ value: NightDraft; label: string }> = [
   { value: "no", label: "夜間不可" },
 ];
 
+/**
+ * 連絡先の行。group はその行の組（lib/intake/fields.ts の contactKinds を持つ組）。
+ * 組の見出しが種類と同じ（家族・支援者）なら行の頭に種類を重ねて出さない。種類が 2 つ以上の組（関係先）と、
+ * 見出しが種類と違う組（地域 → 民生委員）は行の頭に種類。足す行で種類を選べるのは種類が 2 つ以上の組だけで、選べるのはその組の種類（選び直しても組は変わらない）
+ */
 function ContactRow({
   c,
   isNew = false,
+  group,
   clash,
   onChange,
   onDrop,
 }: {
   c: ContactDraft;
   isNew?: boolean;
+  group: FieldGroup;
   /** 重なった順（赤の太字） */
   clash: OrderClash;
   onChange: (c: ContactDraft) => void;
@@ -722,25 +920,24 @@ function ContactRow({
 }) {
   const p = (patch: Partial<ContactDraft>) => onChange({ ...c, ...patch });
   const who = c.name || c.relation || CONTACT_KIND_LABELS[c.kind];
+  const kinds = group.contactKinds ?? [];
+  const showKind = kinds.length > 1 || !kinds.includes(c.kind) || group.label !== CONTACT_KIND_LABELS[c.kind];
   return (
-    <div className="grid grid-cols-2 gap-1 rounded bg-panel2 p-1.5" data-contact={c.id ?? "new"}>
-      {isNew ? (
-        <Select className={INPUT_IN} aria-label="連絡先の種類" value={c.kind} onChange={(e) => p({ kind: e.target.value as ContactKind })}>
-          {CONTACT_KINDS.map((k) => (
-            <option key={k} value={k}>
-              {CONTACT_KIND_LABELS[k]}
-            </option>
-          ))}
-        </Select>
-      ) : (
-        <span className="self-center text-xs font-bold">{CONTACT_KIND_LABELS[c.kind]}</span>
-      )}
-      {/* 足す行で「本人」を選んだら、本人の電話の欄（電話と備考）だけ（T68） */}
-      {c.kind === "self" ? (
-        <SelfFields c={c} p={p} onDrop={onDrop} />
-      ) : (
-        <OtherFields c={c} p={p} who={who} clash={clash} onDrop={onDrop} />
-      )}
+    <div className="@container grid grid-cols-2 gap-1 rounded bg-panel2 p-1.5" data-contact={c.id ?? "new"}>
+      {showKind &&
+        (isNew && kinds.length > 1 ? (
+          <Select className={INPUT_IN} aria-label="連絡先の種類" value={c.kind} onChange={(e) => p({ kind: e.target.value as ContactKind })}>
+            {(kinds.includes(c.kind) ? kinds : [c.kind, ...kinds]).map((k) => (
+              <option key={k} value={k}>
+                {CONTACT_KIND_LABELS[k] ?? k}
+              </option>
+            ))}
+          </Select>
+        ) : (
+          <span className="self-center px-0.5 text-xs font-bold">{CONTACT_KIND_LABELS[c.kind] ?? c.kind}</span>
+        ))}
+      {/* 本人の行は電話の欄（電話と備考）だけ（T68） */}
+      {c.kind === "self" ? <SelfFields c={c} p={p} onDrop={onDrop} /> : <OtherFields c={c} p={p} who={who} clash={clash} onDrop={onDrop} shifted={showKind} />}
     </div>
   );
 }
@@ -749,8 +946,7 @@ function ContactRow({
 function SelfRow({ c, onChange, onDrop }: { c: ContactDraft; onChange: (c: ContactDraft) => void; onDrop?: () => void }) {
   const p = (patch: Partial<ContactDraft>) => onChange({ ...c, ...patch });
   return (
-    <div className="grid grid-cols-2 gap-1 rounded bg-panel2 p-1.5" data-contact={c.id ?? "new"} data-contact-self>
-      <span className="self-center text-xs font-bold">{CONTACT_KIND_LABELS.self}</span>
+    <div className="@container grid grid-cols-2 gap-1 rounded bg-panel2 p-1.5" data-contact={c.id ?? "new"} data-contact-self>
       <SelfFields c={c} p={p} onDrop={onDrop} />
     </div>
   );
@@ -760,16 +956,9 @@ function SelfFields({ c, p, onDrop }: { c: ContactDraft; p: (patch: Partial<Cont
   const who = CONTACT_KIND_LABELS.self;
   return (
     <>
-      <input
-        className={`${INPUT_IN} tabular-nums`}
-        placeholder="電話"
-        inputMode="tel"
-        aria-label={`${who} 電話`}
-        value={c.phone}
-        onChange={(e) => p({ phone: e.target.value })}
-      />
-      <div className="col-span-2 flex items-center gap-1">
-        <input className={`${INPUT_IN} min-w-0 flex-1`} placeholder="備考" aria-label={`${who} 備考`} value={c.note} onChange={(e) => p({ note: e.target.value })} />
+      <LabeledInput box={INPUT_IN} className={WIDE_NARROW} label="電話" inputMode="tel" aria-label={`${who} 電話`} value={c.phone} onChange={(e) => p({ phone: e.target.value })} />
+      <div className={`${WIDE_NARROW} flex items-center gap-1`}>
+        <LabeledInput box={INPUT_IN} className="min-w-0 flex-1" label="備考" aria-label={`${who} 備考`} value={c.note} onChange={(e) => p({ note: e.target.value })} />
         {onDrop && <DropButton onClick={onDrop} name={who} />}
       </div>
     </>
@@ -799,55 +988,54 @@ function OtherFields({
   who,
   clash,
   onDrop,
+  shifted = false,
 }: {
   c: ContactDraft;
   p: (patch: Partial<ContactDraft>) => void;
   who: string;
   clash: OrderClash;
   onDrop?: () => void;
+  /** 行の頭に種類の欄がある（欄が 1 つずれる）。狭い幅で住所の右が空かないよう、住所も 1 段に */
+  shifted?: boolean;
 }) {
   return (
     <>
       {/* その他は続柄（何の連絡先か）が空なら保存しない（editBlockers）。空のあいだは赤の太字の欄名 */}
-      <input
-        className={`${INPUT_IN}${c.kind === "other" && c.relation.trim() === "" ? " placeholder:font-bold placeholder:text-danger" : ""}`}
-        placeholder="続柄"
+      <LabeledInput
+        box={INPUT_IN}
+        label="続柄"
+        danger={c.kind === "other" && c.relation.trim() === ""}
         aria-label={`${who} 続柄`}
         aria-required={c.kind === "other" || undefined}
         value={c.relation}
         onChange={(e) => p({ relation: e.target.value })}
       />
-      <input className={INPUT_IN} placeholder="名前" aria-label={`${who} 名前`} value={c.name} onChange={(e) => p({ name: e.target.value })} />
+      <LabeledInput box={INPUT_IN} label="名前" aria-label={`${who} 名前`} value={c.name} onChange={(e) => p({ name: e.target.value })} />
       {/* フリガナ・住所（市町村と町名まで）・携帯（T117）。計画書の近親者・実施者の欄の元 */}
-      <input
-        className={INPUT_IN}
+      <LabeledInput
+        box={INPUT_IN}
+        label={CONTACT_PART_LABELS.kana}
         maxLength={40}
-        placeholder={CONTACT_PART_LABELS.kana}
         aria-label={`${who} ${CONTACT_PART_LABELS.kana}`}
         value={c.kana ?? ""}
         onChange={(e) => p({ kana: e.target.value })}
         data-contact-part="kana"
       />
-      <input
-        className={INPUT_IN}
+      <LabeledInput
+        box={INPUT_IN}
+        className={shifted ? WIDE_NARROW : ""}
+        label={CONTACT_PART_LABELS.address}
         maxLength={60}
-        placeholder={CONTACT_PART_LABELS.address}
         aria-label={`${who} ${CONTACT_PART_LABELS.address}`}
         value={c.address ?? ""}
         onChange={(e) => p({ address: e.target.value })}
         data-contact-part="address"
       />
-      <input
-        className={`${INPUT_IN} tabular-nums`}
-        placeholder="電話"
-        inputMode="tel"
-        aria-label={`${who} 電話`}
-        value={c.phone}
-        onChange={(e) => p({ phone: e.target.value })}
-      />
-      <input
-        className={`${INPUT_IN} tabular-nums`}
-        placeholder={CONTACT_PART_LABELS.mobile}
+      <LabeledInput box={INPUT_IN} className={WIDE_NARROW} label="電話" inputMode="tel" aria-label={`${who} 電話`} value={c.phone} onChange={(e) => p({ phone: e.target.value })} />
+      <LabeledInput
+        box={INPUT_IN}
+        className={WIDE_NARROW}
+        label={CONTACT_PART_LABELS.mobile}
         inputMode="tel"
         aria-label={`${who} ${CONTACT_PART_LABELS.mobile}`}
         value={c.mobile ?? ""}
@@ -865,9 +1053,10 @@ function OtherFields({
         <option value="" data-placeholder>
           {INTAKE_LABELS.reach} —
         </option>
+        {/* 字は「距離 市内」（夜間・緊急・支援・スマホ・車の選択と同じ形。選んだあとも何の欄か見える） */}
         {CONTACT_REACHES.map((r) => (
           <option key={r} value={r}>
-            {CONTACT_REACH_LABELS[r]}
+            {INTAKE_LABELS.reach} {CONTACT_REACH_LABELS[r]}
           </option>
         ))}
       </Select>
@@ -878,7 +1067,7 @@ function OtherFields({
       <FlagSelect label={PLACE_LABELS.smartphone} who={who} value={c.smartphone ?? ""} onChange={(v) => p({ smartphone: v })} />
       <FlagSelect label={PLACE_LABELS.car} who={who} value={c.car ?? ""} onChange={(v) => p({ car: v })} />
       <div className="col-span-2 flex items-center gap-1">
-        <input className={`${INPUT_IN} min-w-0 flex-1`} placeholder="備考" aria-label={`${who} 備考`} value={c.note} onChange={(e) => p({ note: e.target.value })} />
+        <LabeledInput box={INPUT_IN} className="min-w-0 flex-1" label="備考" aria-label={`${who} 備考`} value={c.note} onChange={(e) => p({ note: e.target.value })} />
         {onDrop && <DropButton onClick={onDrop} name={who} />}
       </div>
     </>
@@ -907,10 +1096,11 @@ function NewClockRow({ clock: k, onChange, onDrop }: { clock: ClockDraft; onChan
   const name = k.label.trim() || INTAKE_LABELS.addClock;
   return (
     <div className="grid grid-cols-2 gap-1 rounded bg-panel2 p-1.5" data-clock="new">
-      <input
-        className={`${INPUT_IN} col-span-2`}
+      <LabeledInput
+        box={INPUT_IN}
+        className="col-span-2"
+        label={INTAKE_LABELS.clockName}
         maxLength={100}
-        placeholder={INTAKE_LABELS.clockName}
         aria-label={`${INTAKE_LABELS.addClock} ${INTAKE_LABELS.clockName}`}
         value={k.label}
         onChange={(e) => p({ label: e.target.value })}
@@ -929,8 +1119,9 @@ function NewClockRow({ clock: k, onChange, onDrop }: { clock: ClockDraft; onChan
           </option>
         ))}
       </Select>
-      <input
-        className={`${INPUT_IN} tabular-nums`}
+      <LabeledInput
+        box={INPUT_IN}
+        label="値"
         inputMode="decimal"
         placeholder="未確認"
         aria-label={`${name} 値`}
@@ -962,10 +1153,11 @@ function NewClockRow({ clock: k, onChange, onDrop }: { clock: ClockDraft; onChan
         ))}
       </Select>
       <div className="col-span-2 flex items-center gap-1">
-        <input
-          className={`${INPUT_IN} min-w-0 flex-1`}
+        <LabeledInput
+          box={INPUT_IN}
+          className="min-w-0 flex-1"
+          label={INTAKE_LABELS.clockSourceNote}
           maxLength={100}
-          placeholder={INTAKE_LABELS.clockSourceNote}
           aria-label={`${name} ${INTAKE_LABELS.clockSourceNote}`}
           value={k.sourceNote}
           onChange={(e) => p({ sourceNote: e.target.value })}

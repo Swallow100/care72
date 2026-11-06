@@ -27,12 +27,16 @@ export {
   ArrowUpOnSquareIcon as ShareIcon, // iPhone の共有（追加の案内の手順）
   ArrowsPointingOutIcon as FullIcon, // 全画面（地図）
   ArrowsRightLeftIcon as AssignIcon, // 担当の割当・移す
+  BellAlertIcon as NotifyIcon, // 通知（本人・家族のスマホへ「大丈夫ですか」、通知の許可。T149）
+  DevicePhoneMobileIcon as SmartphoneIcon, // スマホ（本人のページのスマホの面、T149）
   ArrowPathIcon as RetryIcon, // 再作成・やり直す
   CheckCircleIcon as ChosenIcon, // 選んだ印（アンケートの選択肢、components/ui/Select の一覧）
   CheckIcon as SaveIcon, // 保存
   ClockIcon as LaterIcon, // 次回（入れる欄の問いを後に回す）
   ChevronDownIcon as OpenIcon, // 開く・畳む
   ChevronLeftIcon as BackIcon, // 戻る
+  ChevronRightIcon as NextIcon, // 次へ進む（受入の流れで QR の頁・受け入れた人の画面を開く、T152）
+  CameraIcon, // カメラ（端末のカメラで QR を読む、T152）
   ChevronUpDownIcon as SortIcon, // 並べ替えできる列の見出しの印（押していない列。押している列は向きの印。T66）
   ClipboardDocumentCheckIcon as ReviewIcon, // 見直し（書類の紙の AI 照合、T136）
   ClipboardDocumentIcon as CopyIcon, // コピー

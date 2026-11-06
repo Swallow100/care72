@@ -212,7 +212,7 @@ describe("?print=1（1 押しで印刷）", () => {
       "app/people/[id]/forms/qr/page.tsx",
     ];
     for (const p of pages) expect(readRepoFile(p), p).toMatch(/autoPrint=\{autoPrint/);
-    expect(readRepoFile("app/office/form9/page.tsx")).toContain("<PrintButton auto={wantsPrint(q.print)} />");
+    expect(readRepoFile("app/office/form9/page.tsx")).toContain("<PrintButton auto={wantsPrint(q.print)} back=\"/forms\" />");
     expect(readRepoFile("components/ui/PrintButton.tsx")).toContain("autoPrint(window)");
   });
 

@@ -35,6 +35,7 @@ import {
   type ThirdPartyProvisionRow,
   type TimelineEntryRow,
   type TimelineKind,
+  type IntakeDiffSection,
 } from "./db/types.ts";
 import {
   ABILITY_ITEM_LABELS,
@@ -84,8 +85,8 @@ import {
 } from "./labels.ts";
 import { toTriagePerson } from "./triage/from-ledger.ts";
 import { clockText, nightText, type ClockText } from "./ledger-words.ts";
-import { transportKindOf } from "./map/transport.ts";
-import { clockRemaining, tierOf, type Color, type Situation, type Tier, type TriageClock, type TriageResult } from "./triage/index.ts";
+import { transportKindOf, transportText } from "./map/transport.ts";
+import { categoryTier, clockRemaining, tierOf, type Color, type Situation, type Tier, type TriageClock, type TriageResult } from "./triage/index.ts";
 import { personSituation, type DisasterSituation } from "./disaster/state.ts";
 import type { PersonBrief } from "./auth/scope.ts";
 import { withQrView } from "./qr/timeline.ts";
@@ -94,6 +95,8 @@ import { withCustodyEntry } from "./custody/timeline.ts";
 import { shortJst } from "./disaster/state.ts";
 import { RETRACT_LABELS } from "./timeline/labels.ts";
 import { canRetract, type Retracter } from "./timeline/retract.ts";
+import { consentLine, historyLine, isHistoryRow, type HistoryOf } from "./timeline/history.ts";
+import { isUsualValue } from "./intake/fields.ts";
 import { PROVISION_BASIS_LABELS, PROVISION_SECTION_LABELS, PROVISION_TIMELINE_LABEL } from "./consent/labels.ts";
 import { aboutLine, DOCUMENT_CATALOG } from "./forms/catalog.ts";
 import { wareki } from "./forms/wareki.ts";
@@ -107,6 +110,8 @@ import {
   type ViewScope,
   type WritableKind,
 } from "./consent/scope.ts";
+import { lastDrillDayOf, lastDrillDayStatement } from "./drill/last.ts";
+import { drillMark, PLAN_TONES } from "./plan-status.ts";
 
 // ---------- 区分と並び ----------
 
@@ -245,9 +250,10 @@ export type StateTone = "ok" | "urgent" | "check" | "unknown";
 
 /**
  * 1 つの言葉。tel は電話のリンク（tel: の後ろ、ハイフンなし）。tag は色の付いた印（色だけにせず文字を必ず持つ）。
- * mark は色の無い地の印（関係者の役割「家族」「緊急 1」など。状態の 4 色を使わない。T113）、small は小さな字（心身の未入力の行）
+ * mark は色の無い地の印（関係者の役割「家族」「緊急 1」など。状態の 4 色を使わない。T113）、small は小さな字（心身の未入力の行）。
+ * hint は文字に触れた時だけ出す添え（見る方の画面の時計の出典・確認日・未確認。T143、components/person/Hint）
  */
-export type Seg = { text: string; tel?: string; tone?: "muted" | StateTone; tag?: true; mark?: true; small?: true };
+export type Seg = { text: string; tel?: string; tone?: "muted" | StateTone; tag?: true; mark?: true; small?: true; hint?: string };
 export type Line = Seg[];
 export type Pending = Ledger["pending"][number];
 
@@ -267,6 +273,8 @@ export type Row = {
   small?: true;
   /** 1 行が 1 人（関係者の連絡先の一覧。T113）。狭い幅で 1 人の行が折り返しても人の境目が分かるよう、行の間を空ける */
   apart?: true;
+  /** 値が当たり前（lib/intake/fields.ts の USUAL_VALUES。T143）。見る方の画面（reading）は出さない */
+  usual?: true;
 };
 
 export type ClockView = {
@@ -340,11 +348,17 @@ export type TimelineItem = {
   retracted?: { who: string; when: string; note: string | null };
   /** 見ている人が撤回できる行（lib/timeline/retract.ts の canRetract。押せるかはサーバーがもう一度決める） */
   retractable?: true;
+  /**
+   * 台帳を直した跡の行（T143、lib/timeline/history.ts の isHistoryRow）。本人のページは経過から外し、下の「変更履歴」に分かる 1 行で出す。
+   * diff は欄ごとの前と後（見る人の範囲で絞った後。scopedBlocks の diffVisible）
+   */
+  history?: HistoryOf;
 };
 
 export type Block =
   | { type: "row"; row: Row }
-  | { type: "clocks"; key: "clocks"; label: string; clocks: ClockView[] }
+  /** quiet は見る方の画面（T143）: 機器・薬の行に入らない時計だけで、出典・確認日は触れた時に出す */
+  | { type: "clocks"; key: "clocks"; label: string; clocks: ClockView[]; quiet?: true }
   | { type: "documents"; documents: DocumentView[] }
   | { type: "timeline"; items: TimelineItem[] };
 
@@ -354,6 +368,8 @@ export type Section = {
   blocks: Block[];
   /** 区分の中の未確認（台帳の pending）の数 */
   unconfirmed: number;
+  /** 見る方の画面（T143）で、区分の中が全部当たり前の値だった（見出しに「特記なし」） */
+  quiet?: true;
 };
 
 /** 優先。平時は骨格の段、発災時はルールの表の色と理由の 1 行 */
@@ -373,11 +389,25 @@ export type PersonHead = {
   /** 医療の印と、その時計の色・いちばん短い残り */
   marks: MarkItem[];
   priority: Priority;
+  /** 計画の段階（未作成・下書き・作成済。lib/plan-status.ts、T146） */
   plan: string;
+  /** 計画の段階の色（意味色） */
+  planTone: StateTone;
+  /** 最後に出た訓練（「11/5」「済」「未実施」。計画の段階と別に並べる。T146） */
+  drill: string;
   /** 台帳の pending の数（担当一覧の「未確認 N」と同じ） */
   unconfirmed: number;
   /** 走る時計の残り（平時は全部の長さ、災害モードは今の残り）。短い順、値の無い物は後ろ。上に大きく出す。note は「停電で開始」 */
   clocks: Array<{ id: string; label: string; value: string | null; tone: StateTone | null; note: string | null }>;
+  /**
+   * 上の段の「医療」の欄（T150）。印と時計を 1 つの欄に、同じ中身を 2 回出さない（前は「医療」の印と「時計」の欄に同じ時計が並んだ）。
+   * 範囲の外なら空
+   */
+  medical: HeadMedical[];
+  /** 上の段の「医療」の薬の行（T150b、medLines）。3 つまでと残りの数。範囲の外なら空 */
+  meds: { lines: MedLine[]; more: number };
+  /** 上の段の「避難先」（T150。避難先 1・2 と手段。前の「時計」の欄の所）。避難の区分が範囲の外なら null */
+  evacuation: { first: string | null; second: string | null; transport: string | null } | null;
   /** 緊急連絡先（順番つき、電話のリンク）。上に大きく出す */
   emergency: Line[];
   /**
@@ -398,6 +428,10 @@ export type PersonView = {
   unconfirmed: UnconfirmedItem[];
   /** 経過に書き足せる種類（lib/consent/scope.ts）。空なら書き足しの欄を出さない。範囲を渡さないとき（担当一覧の右の面）は空 */
   writes: WritableKind[];
+  /**
+   * 書き足しの欄をいつも出すか（T143）。災害モードと、医療班・行政の役は出す。平時のケアマネは経過の畳みの中（開いた時だけ）
+   */
+  writesOpen: boolean;
 };
 
 // ---------- 入力（D1 の行） ----------
@@ -433,6 +467,8 @@ export type PersonPageRows = {
   >;
   /** 第三者提供の記録（T23）。経過に「提供 医療班 医療・避難・人の一部」の 1 行で出す。D1 から読んだときだけ */
   provisions?: ReadonlyArray<ProvisionForTimeline>;
+  /** 最後に出た終わった訓練の日（JST の YYYY-MM-DD、lib/drill/last.ts。T146）。D1 から読んだときだけ */
+  lastDrill?: string | null;
 };
 
 /** 経過に出す第三者提供の記録の列 */
@@ -504,6 +540,81 @@ const TONE_RANK: Record<StateTone, number> = { urgent: 3, check: 2, unknown: 1, 
 
 /** 医療の印 1 つ: 項目名・その区分の時計でいちばん強い色・いちばん短い残り（「4h」「超過」。無ければ null） */
 export type MarkItem = { label: string; tone: StateTone | null; remaining: string | null };
+
+/**
+ * 薬の 1 行（T150b）。本人のページの上の段の「医療」・担当一覧と訓練の行の詳細の「薬」で同じ物。
+ * mark は区分の印（「抗凝固」。医療の印の区分の薬だけ。色はその区分の時計の色）、category は印の無い区分の言葉（「経口糖尿病薬」）。
+ * amount は台帳の量（無ければ null で出さない）。left は同じ名前の時計の残り（平時は手元の量「手元の量 7 日」、災害モードは今の残り
+ * 「残り 6.8 日」。値の無い時計・時計の無い薬は null）。clockId はその時計（行の詳細の「残り時間」で 2 回出さないため）
+ */
+export type MedLine = {
+  name: string;
+  mark: { label: string; tone: StateTone | null } | null;
+  category: string | null;
+  amount: string | null;
+  left: { label: string | null; text: string; tone: StateTone | null } | null;
+  interruption: boolean;
+  clockId: string | null;
+};
+
+/** 薬の行の数の上限（多い時は「他 N 件」） */
+export const MED_LINES_MAX = 3;
+
+/**
+ * 薬の行（T150b）。並びは 医療の印の区分の薬（骨格の段の順）→ 中断注意 → 台帳の順。MED_LINES_MAX までを lines、残りの数を more。
+ * covered は行に出した薬の区分（その区分の印は行の中に入るので、印の並びに 2 回出さない）、clockIds は行に入った時計
+ */
+export function medLines(
+  meds: Ledger["medical"]["medications"],
+  clocks: ReadonlyArray<TriageClock & Pick<ClockRow, "id" | "label"> & Partial<Pick<ClockRow, "source" | "source_note" | "confirmed_at">>>,
+  s: Situation | null,
+): { lines: MedLine[]; more: number; covered: Set<string>; clockIds: Set<string> } {
+  const markLabel = new Map<string, string>(DEPENDENCE_MARKS);
+  const tierOfMed = (c: string) => (markLabel.has(c) ? (categoryTier(c as ClockRow["category"]) ?? 9) : 99);
+  const all = meds
+    .map((m, i) => ({ m, i }))
+    .sort((a, b) => tierOfMed(a.m.category) - tierOfMed(b.m.category) || Number(!!b.m.interruptionRisk) - Number(!!a.m.interruptionRisk) || a.i - b.i)
+    .map(({ m }): MedLine => {
+      const clock = clocks.find((k) => k.kind !== "device" && sameMedication(k.label, m.name)) ?? null;
+      const t = clock ? clockText(clock, s) : null;
+      const label = markLabel.get(m.category) ?? null;
+      // 区分の印の色はその区分の時計の色（担当一覧の医療の印と同じ）
+      const tone = label ? (markItems(clocks, s).find((x) => x.label === label)?.tone ?? null) : null;
+      const left = t?.left
+        ? { label: null, text: t.left.text, tone: clockTone(t.left.hours) }
+        : t && t.length && clock
+          ? { label: CLOCK_TEXT_LABELS.missing.medication, text: t.length, tone: clockTone(hoursLeft(clock, s)?.hours ?? null) }
+          : null;
+      return {
+        name: m.name,
+        mark: label ? { label, tone } : null,
+        category: label ? null : MEDICATION_CATEGORY_LABELS[m.category],
+        amount: m.amount?.trim() || null,
+        left,
+        interruption: m.interruptionRisk === true,
+        clockId: clock?.id ?? null,
+      };
+    });
+  const lines = all.slice(0, MED_LINES_MAX);
+  return {
+    lines,
+    more: all.length - lines.length,
+    covered: new Set(meds.filter((m) => markLabel.has(m.category) && lines.some((l) => l.name === m.name)).map((m) => m.category)),
+    clockIds: new Set(lines.flatMap((l) => (l.clockId ? [l.clockId] : []))),
+  };
+}
+
+/** 上の段の時計の 1 行（headClocks の 1 つ） */
+export type HeadClock = PersonHead["clocks"][number];
+
+/**
+ * 上の段の「医療」の欄の 1 つ（T150）。mark は担当一覧の列と同じ印（「酸素 2h」。数はその区分でいちばん短い時計）。
+ * waiting は印の数の元の時計が災害モードでまだ走っていない（「未開始」を添える）。
+ * others は印の数の元でない、値のある時計の 1 行（同じ区分に時計が 2 つ以上の時の「酸素 予備ボンベ 停電から 8 時間」）。
+ * 印の区分に入らない時計（その他）は mark が null で、others に全部（値の無い物も）。
+ * lines は印に触れた時に出す、その区分の時計の全部の 1 行（lib/ledger-words.ts の clockText の line）
+ */
+export type HeadMedical = { mark: MarkItem | null; waiting: boolean; others: HeadClock[]; lines: string[] };
 
 /** 時計 1 つの今の残り（時間）。災害モード（s あり）は走った分を引く（まだ走っていない時計は長さのまま）。値の無い時計は null */
 function hoursLeft(k: TriageClock, s: Situation | null): { hours: number; over: boolean; running: boolean } | null {
@@ -607,6 +718,11 @@ const SMALL_KEYS = new Set([
   "care.intractableDisease",
 ]);
 
+/** 値が当たり前（lib/intake/fields.ts の USUAL_VALUES）なら印を付ける。出さないのは見る方の画面だけ（toPersonView の reading） */
+function usualRow(r: Row, value: unknown): Row {
+  return isUsualValue(r.key, value) ? { ...r, usual: true } : r;
+}
+
 function row(key: string, field: Field): Row {
   return { key, label: fieldDef(key).label, field, pending: [], ...(SMALL_KEYS.has(key) ? { small: true as const } : {}) };
 }
@@ -631,7 +747,43 @@ function clockSpanSegs(k: ClockRow): Seg[] {
 /** 電源で動く機器。時計（電池）が無ければ「電池 未確認」と出す */
 const POWERED_DEVICES = new Set<DeviceKind>(["oxygen", "ventilator", "suction"]);
 
-function medicalBlocks(ledger: Ledger, contacts: Contact[], clocks: PersonPageRows["clocks"]): Block[] {
+/**
+ * 時計の添え（T143。見る方の画面で文字に触れた時に出す）: 長さが未確認なら何の値かと未確認、出典・確認日・頼り先・メモ。
+ * 言葉は lib/ledger-words.ts の clockText（T132）のまま
+ */
+function clockHint(k: ClockRow): string {
+  const t = clockText(k);
+  const missing = t.missing ? [`${t.what ?? k.label} ${BLANK_LABELS.unconfirmed}${t.counts ? `（${t.counts}）` : ""}`] : [];
+  return [...missing, t.source, t.confirmed, t.depends?.text ?? null, k.note?.trim() || null].filter((x): x is string => !!x).join("　");
+}
+
+/**
+ * 見る方の画面の時計の言葉（T143）: 長さがあれば名前・「停電から」・色の長さ（添えつき）、未確認なら名前に添え（名前が無ければ何も出さない）。
+ * 頼り先の未確認は黄の印のまま
+ */
+function readingClockSegs(k: ClockRow, name: Seg | null): Seg[] {
+  const t = clockText(k);
+  const depends = t.depends?.unchecked ? [tag(t.depends.text, "check")] : [];
+  if (t.missing) return name ? [{ ...name, hint: clockHint(k) }, ...depends] : depends;
+  return [...(name ? [name] : []), ...(t.from ? [muted(t.from)] : []), { ...clockValueSeg(k), hint: clockHint(k) }, ...depends];
+}
+
+/** 機器・薬の行の中に出る時計（T143。見る方の画面は時計の段にこれを重ねて出さない） */
+function clocksInRows(ledger: Ledger, clocks: PersonPageRows["clocks"]): Set<string> {
+  const ids = new Set<string>();
+  for (const m of ledger.medical.medications) {
+    const k = clocks.find((c) => c.kind !== "device" && sameMedication(c.label, m.name));
+    if (k) ids.add(k.id);
+  }
+  for (const d of ledger.medical.devices) for (const k of clocks) if (k.category === d.kind && k.kind !== "medication") ids.add(k.id);
+  return ids;
+}
+
+/**
+ * reading（見る方の画面、T143）: 用量・保管・電池の「未入力」の添えを出さず、時計は機器・薬の行の中に 1 回だけ（出典・確認日は触れた時）。
+ * 時計の段は toPersonView が行に入らない時計だけに絞る
+ */
+function medicalBlocks(ledger: Ledger, contacts: Contact[], clocks: PersonPageRows["clocks"], reading = false): Block[] {
   const { medical } = ledger;
   const blank = muted(BLANK_LABELS.blank);
   // 薬: 名前・区分・回数・用量・残り（その薬の時計）・保管・印
@@ -642,6 +794,20 @@ function medicalBlocks(ledger: Ledger, contacts: Contact[], clocks: PersonPageRo
           medical.medications.map((m) => {
             // 薬の残りは同じ名前の時計（薬の時計か、インスリンのような物の時計）
             const clock = clocks.find((k) => k.kind !== "device" && sameMedication(k.label, m.name));
+            if (reading) {
+              // 手元の量に値があれば「手元の量 3 日」（色、出典・確認日は触れた時）。未確認なら薬の名前に添え
+              const set = clock !== undefined && !clockText(clock).missing;
+              return [
+                clock && !set ? { ...text(m.name), hint: clockHint(clock) } : text(m.name),
+                muted(MEDICATION_CATEGORY_LABELS[m.category]),
+                text(m.schedule ?? ""),
+                ...(m.amount ? [muted(MED_PARTS.amount), text(m.amount)] : []),
+                ...(clock && set ? readingClockSegs(clock, muted(CLOCK_TEXT_LABELS.missing.medication)) : []),
+                ...(m.storage ? [muted(MED_PARTS.storage), text(m.storage)] : []),
+                ...(m.needsRefrigeration ? [muted(MEDICATION_FLAG_LABELS.needsRefrigeration)] : []),
+                ...(m.interruptionRisk ? [tag(MEDICATION_FLAG_LABELS.interruptionRisk, "check")] : []),
+              ];
+            }
             return [
               text(m.name),
               muted(MEDICATION_CATEGORY_LABELS[m.category]),
@@ -666,8 +832,10 @@ function medicalBlocks(ledger: Ledger, contacts: Contact[], clocks: PersonPageRo
           medical.devices.map((d) => {
             const mine = clocks.filter((k) => k.category === d.kind && k.kind !== "medication");
             // 時計は「酸素 内蔵電池 停電から 2 時間」（行の詳細・時計の欄と同じ言葉。T132）
-            const clockSegs: Seg[] = mine.flatMap((k) => [muted(k.label), ...clockSpanSegs(k)]);
-            if (mine.length === 0 && POWERED_DEVICES.has(d.kind)) clockSegs.push(muted(MED_PARTS.battery), blank);
+            const clockSegs: Seg[] = reading
+              ? mine.flatMap((k) => readingClockSegs(k, muted(k.label)))
+              : mine.flatMap((k) => [muted(k.label), ...clockSpanSegs(k)]);
+            if (!reading && mine.length === 0 && POWERED_DEVICES.has(d.kind)) clockSegs.push(muted(MED_PARTS.battery), blank);
             // その他は「その他（電動ベッド）」の 1 語（受け持ちの表・担当一覧と同じ。T64）、ほかの種類は種類と中身を別の欄に
             const name = d.kind === "other" ? [text(deviceText(d))] : [text(DEVICE_LABELS[d.kind]), text(d.detail ?? "")];
             return [...name, muted(d.schedule ?? ""), ...clockSegs];
@@ -693,8 +861,8 @@ function medicalBlocks(ledger: Ledger, contacts: Contact[], clocks: PersonPageRo
       row: row("medical.dialysis_center", dialysis.length > 0 ? contactsField(dialysis) : { kind: "unconfirmed" }),
     });
   }
-  blocks.push({ type: "row", row: row("medical.allergies", listField(medical.allergies)) });
-  blocks.push({ type: "row", row: row("medical.history", listField(medical.history)) });
+  blocks.push({ type: "row", row: usualRow(row("medical.allergies", listField(medical.allergies)), medical.allergies) });
+  blocks.push({ type: "row", row: usualRow(row("medical.history", listField(medical.history)), medical.history) });
   blocks.push({ type: "row", row: row("medical.vaccinations", listField(medical.vaccinations)) });
   return blocks;
 }
@@ -951,7 +1119,8 @@ const MEANS: ReadonlyArray<["landline" | "mobile" | "email", string]> = [
   ["email", "メール"],
 ];
 
-function basicBlocks(rows: PersonPageRows, ledger: Ledger): Block[] {
+/** reading（見る方の画面、T143）: 心身は当たり前でない項目だけ（全部当たり前なら「特記なし」）、未入力の添えは出さない */
+function basicBlocks(rows: PersonPageRows, ledger: Ledger, reading = false): Block[] {
   const { basic, care } = ledger;
   const selfPhones = rows.contacts.filter((c) => c.kind === "self" && c.phone);
   const notes = selfPhones.map((c) => c.note ?? "").join(" ");
@@ -968,9 +1137,11 @@ function basicBlocks(rows: PersonPageRows, ledger: Ledger): Block[] {
   // 寝たきり・認知症の「なし」（無いと分かっている）は入った物。全部空なら lines が「未入力」だけにする
   const entered: Seg[] = [];
   const blank: string[] = [];
+  let usual = 0;
   for (const k of Object.keys(ABILITY_ITEM_LABELS) as Array<keyof typeof ABILITY_ITEM_LABELS>) {
     const v = care[k];
-    if (v) entered.push(text(`${ABILITY_ITEM_LABELS[k]} ${ABILITY_LABELS[v]}`));
+    if (reading && isUsualValue(`care.${k}`, v)) usual++;
+    else if (v) entered.push(text(`${ABILITY_ITEM_LABELS[k]} ${ABILITY_LABELS[v]}`));
     else blank.push(ABILITY_ITEM_LABELS[k]);
   }
   for (const [k, label] of [
@@ -978,12 +1149,15 @@ function basicBlocks(rows: PersonPageRows, ledger: Ledger): Block[] {
     ["dementia", CARE_FLAG_LABELS.dementia],
   ] as const) {
     const v = care[k];
-    if (v === true) entered.push(text(label));
+    if (reading && isUsualValue(`care.${k}`, v)) usual++;
+    else if (v === true) entered.push(text(label));
     else if (v === false) entered.push(text(`${label} ${BLANK_LABELS.none}`));
     else blank.push(label);
   }
   const blankLine: Line = [{ ...muted(`${BLANK_LABELS.blank}　${blank.join("・")}`), small: true }];
-  const careLines: Line[] = entered.length === 0 ? [] : blank.length > 0 ? [entered, blankLine] : [entered];
+  // 見る方の画面（T143）: 当たり前でない項目だけ。無ければ、当たり前の項目があれば「特記なし」、全部空なら未入力（lines が出す）
+  const readingLines: Line[] = entered.length > 0 ? [entered] : usual > 0 ? [[muted(BLANK_LABELS.usual)]] : [];
+  const careLines: Line[] = reading ? readingLines : entered.length === 0 ? [] : blank.length > 0 ? [entered, blankLine] : [entered];
 
   const out = [
     row("basic.address", basic.address ? textField(`${basic.address.city} ${basic.address.town}`) : { kind: "unconfirmed" }),
@@ -995,10 +1169,13 @@ function basicBlocks(rows: PersonPageRows, ledger: Ledger): Block[] {
       textField(basic.contactMeans?.smartphone ? SMARTPHONE_LABELS[basic.contactMeans.smartphone] : null),
     ),
     row("basic.household", textField(basic.household ? householdText(basic.household, basic.householdNote) : null)),
-    row("basic.selfReport", {
-      kind: "lines",
-      lines: [[rows.person.self_report_unreliable === 1 ? tag("参考扱い", "check") : text("通常")]],
-    }),
+    usualRow(
+      row("basic.selfReport", {
+        kind: "lines",
+        lines: [[rows.person.self_report_unreliable === 1 ? tag("参考扱い", "check") : text("通常")]],
+      }),
+      rows.person.self_report_unreliable,
+    ),
     row("care", lines(careLines)),
     row("care.handbook", textField(care.handbook)),
     row("care.intractableDisease", textField(care.intractableDisease)),
@@ -1026,7 +1203,8 @@ function consentBlocks(consents: PersonPageRows["consents"]): Block[] {
 
 /** 書類の区分。範囲（lib/consent/scope.ts の documents）にある書類だけ */
 function documentBlocks(personId: string, allowed: readonly ScopeDocument[], plan: PlanFormView | undefined): Block[] {
-  const keys = (Object.keys(DOCUMENT_LABELS) as Array<keyof typeof DOCUMENT_LABELS>).filter((k) => allowed.includes(k));
+  // スマホ入口（T69a）は書類の行に出さない（本人と家族のスマホの入口。同意の面の後のスマホの面、T149）。範囲の鍵は画面の壁に残す
+  const keys = (Object.keys(DOCUMENT_LABELS) as Array<keyof typeof DOCUMENT_LABELS>).filter((k) => allowed.includes(k) && k !== "phone");
   return [
     {
       type: "documents",
@@ -1164,6 +1342,7 @@ export function timelineItems(rows: PersonPageRows, viewer: Retracter | null = n
       kind: DERIVED_TIMELINE_LABELS.created,
       tone: null,
       body: "台帳作成",
+      history: { line: "台帳作成", diff: null },
       who:
         p.origin === "on_site"
           ? AUTHOR_ROLE_LABELS.medical
@@ -1198,6 +1377,7 @@ export function timelineItems(rows: PersonPageRows, viewer: Retracter | null = n
       who: who(accountRoleLabel(first.recorded_by_role), first.recorded_by_name),
       derived: true,
       consent: true,
+      history: { line: consentLine(ordered), diff: null },
     });
   }
 
@@ -1208,7 +1388,7 @@ export function timelineItems(rows: PersonPageRows, viewer: Retracter | null = n
   const grouped = [
     ...derived.map((item) => ({ item, g: 0 })),
     ...stored.map((item, i) => ({
-      item: withCustodyEntry(withOfficeEntry(withQrView(item, rows.timeline[i]), rows.timeline[i]), rows.timeline[i]),
+      item: withHistory(withCustodyEntry(withOfficeEntry(withQrView(item, rows.timeline[i]), rows.timeline[i]), rows.timeline[i]), rows.timeline[i]),
       g: 1,
     })),
     ...provided.map((item) => ({ item, g: 2 })),
@@ -1217,6 +1397,11 @@ export function timelineItems(rows: PersonPageRows, viewer: Retracter | null = n
     .map((x, i) => ({ ...x, i, t: Date.parse(x.item.at) }))
     .sort((a, b) => a.t - b.t || a.g - b.g || a.i - b.i)
     .map((x) => x.item);
+}
+
+/** 台帳を直した跡の行（T143）に分かる 1 行と前と後を足す。種類の言葉は事業所の操作などに直した後の物 */
+function withHistory(item: TimelineItem, row: PersonPageRows["timeline"][number]): TimelineItem {
+  return isHistoryRow(row) ? { ...item, history: historyLine(row, item.kind) } : item;
 }
 
 // ---------- pending を欄に付ける ----------
@@ -1302,6 +1487,51 @@ function headClocks(clocks: ReadonlyArray<ClockRow>, s: Situation | null = null)
     });
 }
 
+/**
+ * 上の段の「医療」の欄（T150）。印（markItems と同じ物・同じ順）ごとに、その区分の走る時計を束ねる。
+ * 印の数の元（いちばん短い、値のある時計）は印だけで出し、ほかの値のある時計を 1 行ずつ添える。値の無い時計は印の数が無いことで分かり、
+ * 何が未確認かは触れた時の 1 行とページの上の「未確認 N」で（見る方の画面で未入力の添えを常に出さない、T143 と同じ言い方）
+ */
+function headMedical(
+  clocks: ReadonlyArray<ClockRow>,
+  marks: ReadonlyArray<MarkItem>,
+  s: Situation | null,
+  meds: { covered: ReadonlySet<string>; clockIds: ReadonlySet<string> } = { covered: new Set(), clockIds: new Set() },
+): HeadMedical[] {
+  // 薬の行（T150b）に入った時計は行の中に出るので、ここで束ねない
+  const runs = clocks.filter((k) => k.starts_on !== "none" && !meds.clockIds.has(k.id));
+  const categoryOf = new Map(DEPENDENCE_MARKS.map(([category, label]) => [label, category]));
+  const lineOf = (k: ClockRow) => clockText(k, s).line;
+  // 薬の行に区分の印が入った区分は、ほかの時計が残っていなければ印の並びに出さない（同じ印を 2 回出さない）
+  const shown = marks.filter((m) => {
+    const c = categoryOf.get(m.label);
+    return !(c && meds.covered.has(c) && !runs.some((k) => k.category === c));
+  });
+  const out: HeadMedical[] = shown.map((m) => {
+    const mine = runs.filter((k) => k.category === categoryOf.get(m.label));
+    const ordered = headClocks(mine, s);
+    const valued = ordered.filter((k) => k.value !== null);
+    const lead = valued[0] ? mine.find((k) => k.id === valued[0].id) : undefined;
+    const left = lead ? hoursLeft(lead, s) : null;
+    return {
+      mark: m,
+      waiting: s !== null && left !== null && !left.running,
+      others: valued.slice(1),
+      lines: ordered.map((h) => lineOf(mine.find((k) => k.id === h.id)!)),
+    };
+  });
+  const marked = new Set<string>(DEPENDENCE_MARKS.map(([category]) => category));
+  const rest = runs.filter((k) => !marked.has(k.category));
+  if (rest.length > 0) out.push({ mark: null, waiting: false, others: headClocks(rest, s), lines: rest.map(lineOf) });
+  return out;
+}
+
+/** 上の段の「避難先」（T150）: 避難先 1・2 と手段（担当一覧の行の詳細の「避難先」と同じ言葉。lib/map/transport.ts の transportText） */
+function headEvacuation(ledger: Ledger): NonNullable<PersonHead["evacuation"]> {
+  const e = ledger.evacuation;
+  return { first: e.destination1?.trim() || null, second: e.destination2?.trim() || null, transport: transportText(e)?.trim() || null };
+}
+
 /** 上に大きく出す緊急連絡先: 順番・名前・間柄・電話 */
 function headEmergency(contacts: ReadonlyArray<Contact>): Line[] {
   return contacts
@@ -1349,6 +1579,11 @@ export type ViewOptions = {
   /** 事業所が計画書に使う様式（T47）。無ければ松山市の様式 */
   planForm?: PlanFormView;
   /**
+   * 見る方の画面（T143）。本人のページ・担当一覧の右の面・行の詳細の「全部」が渡す。当たり前の値（lib/intake/fields.ts の USUAL_VALUES）と
+   * 未入力の添えを出さず、時計は機器・薬の行の中に 1 回だけ（出典・確認日は触れた時）。医療要約の横の原本は渡さない（今どおり全部）
+   */
+  reading?: boolean;
+  /**
    * 見ている人（T63）。渡すと経過の撤回できる行に撤回のボタン（lib/timeline/retract.ts の canRetract）。
    * 書き足しの欄（writes）と同じく単独の本人のページだけが渡す（担当一覧の右の面は渡さない）
    */
@@ -1382,6 +1617,24 @@ function sectionVisible(id: SectionId, scope: ViewScope): boolean {
   }
 }
 
+/**
+ * 変更履歴の前と後の欄が見る人の範囲か（T143）。区分の出し方（sectionVisible・scopedBlocks）と同じ: 人は全部を見る人だけ
+ * （人の一部の医療班・行政には出さない）、住所は基本か住所の範囲
+ */
+export function diffVisible(section: IntakeDiffSection, scope: Pick<ViewScope, "items">): boolean {
+  switch (section) {
+    case "medical":
+    case "evacuation":
+    case "basic":
+    case "consent":
+      return scopeHas(scope, section);
+    case "people":
+      return peopleMode(scope) === "all";
+    case "address":
+      return scopeHas(scope, "basic") || scopeHas(scope, "address");
+  }
+}
+
 /** 範囲で区分の中を絞る（人の一部・住所だけの基本・医療班の書いた行だけの経過） */
 function scopedBlocks(id: SectionId, blocks: Block[], scope: ViewScope, contacts: Contact[]): Block[] {
   if (id === "people" && peopleMode(scope) === "partial") return partialPeopleBlocks(blocks, contacts);
@@ -1391,9 +1644,33 @@ function scopedBlocks(id: SectionId, blocks: Block[], scope: ViewScope, contacts
   if (id === "timeline") {
     // 本人確認だけなら医療班・行政の書いた行と提供の行だけ。同意の区分が範囲の外なら同意の行も出さない
     const keep = (t: TimelineItem) => (scope.timeline !== "staff" || t.staff === true) && (scopeHas(scope, "consent") || !t.consent);
-    return blocks.map((b) => (b.type === "timeline" ? { ...b, items: b.items.filter(keep) } : b));
+    // 変更履歴の前と後（T143）は、範囲の外の区分の欄を出さない（医療班・行政に住所・人の全部・基本・同意の前後を渡さない）
+    const withDiff = (t: TimelineItem): TimelineItem =>
+      t.history?.diff ? { ...t, history: { ...t.history, diff: t.history.diff.filter((d) => diffVisible(d.section, scope)) } } : t;
+    return blocks.map((b) => (b.type === "timeline" ? { ...b, items: b.items.filter(keep).map(withDiff) } : b));
   }
   return blocks;
+}
+
+/**
+ * 見る方の画面の区分（T143）: 当たり前の値の行（未確認の印の無い物）を外し、時計の段は機器・薬の行に入らない時計だけにする
+ * （無ければ段ごと外す）。外した結果、区分の中が空になったら見出しに「特記なし」（quiet）。未確認の数は外す前に数え終えている
+ */
+function readingSection(s: Section, inRows: ReadonlySet<string>): Section {
+  if (s.id === "timeline" || s.id === "documents") return s;
+  let dropped = 0;
+  const blocks = s.blocks.flatMap((b): Block[] => {
+    if (b.type === "row" && b.row.usual && b.row.pending.length === 0) {
+      dropped++;
+      return [];
+    }
+    if (b.type === "clocks") {
+      const rest = b.clocks.filter((k) => !inRows.has(k.id));
+      return rest.length > 0 ? [{ ...b, clocks: rest, quiet: true }] : [];
+    }
+    return [b];
+  });
+  return blocks.length === 0 && dropped > 0 ? { ...s, blocks, quiet: true } : { ...s, blocks };
 }
 
 export function toPersonView(rows: PersonPageRows, opts: ViewOptions): PersonView {
@@ -1405,11 +1682,11 @@ export function toPersonView(rows: PersonPageRows, opts: ViewOptions): PersonVie
   const clocks = [...rows.clocks].sort((a, b) => a.sort - b.sort || (a.id < b.id ? -1 : 1));
 
   const sections = new Map<SectionId, Block[]>([
-    ["medical", medicalBlocks(ledger, contacts, clocks)],
+    ["medical", medicalBlocks(ledger, contacts, clocks, opts.reading === true)],
     ["evacuation", evacuationBlocks(ledger)],
     // 医療班・行政の「人の一部」は役割ごとの欄から絞る（緊急連絡先と支援者 1・2 の役割名）。ほかは 1 人 1 行の一覧（T113）
     ["people", peopleMode(scope) === "partial" ? peopleRoleBlocks(contacts, ledger) : peopleBlocks(contacts, ledger)],
-    ["basic", basicBlocks({ ...rows, contacts }, ledger)],
+    ["basic", basicBlocks({ ...rows, contacts }, ledger, opts.reading === true)],
     ["consent", consentBlocks(rows.consents)],
     ["documents", documentBlocks(person.id, scope.documents, opts.planForm)],
     ["timeline", [{ type: "timeline", items: timelineItems(rows, opts.viewer ?? null) }]],
@@ -1425,6 +1702,8 @@ export function toPersonView(rows: PersonPageRows, opts: ViewOptions): PersonVie
   // 災害モードは今の残り（本人の町名で停電の地区を当てる）。平時は時計の長さ
   const own = mode === "disaster" && opts.situation ? personSituation(opts.situation, ledger.basic.address?.town) : null;
   const marks = markItems(clocks, own);
+  // 薬の行（T150b）: 上の段の「医療」と担当一覧・訓練の行の詳細の「薬」で同じ物
+  const meds = medLines(ledger.medical.medications, clocks, own);
   const strongest = marks.map((m) => m.tone).filter((t) => t !== null).sort((a, b) => TONE_RANK[b] - TONE_RANK[a])[0];
   const priority = priorityOf(tier, opts.triage, strongest ?? null);
   const head: PersonHead = {
@@ -1438,8 +1717,13 @@ export function toPersonView(rows: PersonPageRows, opts: ViewOptions): PersonVie
     // 医療が範囲の外なら、状態の色と言葉だけ（理由は時計・薬の名前が入るので空にする。骨格の段は画面に出さない）
     priority: show.medical || priority.kind === "tier" ? priority : { ...priority, reason: "" },
     plan: PLAN_STATUS_LABELS[person.plan_status],
+    planTone: PLAN_TONES[person.plan_status],
+    drill: drillMark(rows.lastDrill ?? null, person.plan_status, opts.today).text,
     unconfirmed: show.plan ? ledger.pending.length : 0,
     clocks: show.medical ? headClocks(clocks, own) : [],
+    medical: show.medical ? headMedical(clocks, marks, own, meds) : [],
+    meds: show.medical ? { lines: meds.lines, more: meds.more } : { lines: [], more: 0 },
+    evacuation: scopeHas(scope, "evacuation") ? headEvacuation(ledger) : null,
     emergency: show.people ? headEmergency(contacts) : [],
     show,
   };
@@ -1462,10 +1746,11 @@ export function toPersonView(rows: PersonPageRows, opts: ViewOptions): PersonVie
   return {
     head,
     mode,
-    sections: shown,
+    sections: opts.reading ? shown.map((s) => readingSection(s, clocksInRows(ledger, clocks))) : shown,
     unconfirmed: unconfirmed.filter((u) => kept.has(u.field)),
     // 書き足しの欄は範囲を渡した画面（単独の本人のページ）だけ。担当一覧の右の面は電話・優先変更の欄があるので出さない
     writes: opts.scope ? [...opts.scope.writes] : [],
+    writesOpen: mode === "disaster" || scope.viewer === "staff",
   };
 }
 
@@ -1486,7 +1771,7 @@ export async function loadPersonPage(db: D1Database, principal: Principal, perso
  * そこでは署名と版を確かめたトークンが壁の代わり
  */
 export async function loadPersonRows(db: D1Database, brief: PersonBrief): Promise<PersonPageRows | null> {
-  const [extra, contacts, consents, clocks, timeline, provisions] = await db.batch([
+  const [extra, contacts, consents, clocks, timeline, provisions, drill] = await db.batch([
     db
       .prepare(
         `SELECT p.origin, p.self_report_unreliable, p.created_at, p.updated_at, p.version, p.reported_age,
@@ -1529,6 +1814,8 @@ export async function loadPersonRows(db: D1Database, brief: PersonBrief): Promis
            FROM third_party_provisions WHERE person_id = ?1 ORDER BY provided_at, id`,
       )
       .bind(brief.id),
+    // 最後に出た訓練の日（T146。頭の計画の横の「訓練 11/5」）
+    lastDrillDayStatement(db, brief.office_id, brief.id),
   ]);
   const e = extra.results[0] as
     | Pick<PersonRow, "origin" | "self_report_unreliable" | "created_at" | "updated_at" | "version"> &
@@ -1561,5 +1848,6 @@ export async function loadPersonRows(db: D1Database, brief: PersonBrief): Promis
     clocks: clocks.results as unknown as PersonPageRows["clocks"],
     timeline: timeline.results as unknown as PersonPageRows["timeline"],
     provisions: provisions.results as unknown as ProvisionForTimeline[],
+    lastDrill: lastDrillDayOf(drill.results as Array<{ day?: unknown }>),
   };
 }

@@ -30,7 +30,8 @@ import {
   turnRoutes,
 } from "./calls.ts";
 import { advanceDrill, drillScope, loadDrillRow, startDrill, stateOfRow, undoableAct } from "./db.ts";
-import { CALL_IN_ASKS, CALL_OUT_ASKS, TALK_FIXED_SPEECH, TALK_LABELS, TALK_MAX, TALK_MINUTES, TALK_UI } from "./dialogue.ts";
+import { CALL_IN_ASKS, CALL_OUT_ASKS, TALK_FIXED_SPEECH, TALK_LABELS, TALK_MAX, TALK_TEXT_MAX, TALK_UI, type TalkLine } from "./dialogue.ts";
+import { talkMinutesOf } from "./talk-turn.ts";
 import type { DrillState, DrillTurn } from "./engine.ts";
 import { drillTalkHook } from "./hooks.ts";
 import { actionPost } from "./http.ts";
@@ -156,20 +157,25 @@ const aiRows = () => (sqlite.prepare("SELECT COUNT(*) AS n FROM ai_calls WHERE p
 // ---------- 1. 着信の通話の中で返す ----------
 
 describe("着信の往復（保存・上限・門）", () => {
-  it("応答した着信に 3 回返せる。1 回 2 分、counts.call と ai_calls に数え、頼み事を積む。4 回目は 409（終話）", async () => {
+  it("応答した着信に 8 回返せる（T155 で 3 から）。1 回は文の長さで 1〜3 分、counts.call と ai_calls に数え、頼み事を積む。9 回目は 409（終話）", async () => {
     await start();
     const call = await firstCall();
     expect(await respondCall(db, SCOPE, ID, call.signal, "answer")).toEqual({ ok: true, recorded: true });
     const { hook, calls } = talkHook();
     const before = await stored();
-    for (const [i, ask] of (["safe", "device_medicine", "stay"] as const).entries()) {
+    const asks = ["safe", "device_medicine", "stay", "injured", "can_move", "shelter", "advise_119", "stay"] as const;
+    expect(asks).toHaveLength(TALK_MAX);
+    let at = before.minute;
+    for (const [i, ask] of asks.entries()) {
       const res = await talk(call.signal, { ask }, hook);
       expect(res.status).toBe(200);
-      const body = (await res.json()) as { rounds: number; minute: number; lines: unknown[] };
-      expect(body).toMatchObject({ ok: true, signal: call.signal, rounds: i + 1, minute: before.minute + TALK_MINUTES * (i + 1), ended: false });
+      const body = (await res.json()) as { rounds: number; minute: number; lines: TalkLine[] };
+      const [cm, them] = body.lines.slice(-2);
+      at += talkMinutesOf(cm!.text, them!.text);
+      expect(body).toMatchObject({ ok: true, signal: call.signal, rounds: i + 1, minute: at, ended: false });
       expect(body.lines).toHaveLength(2 * (i + 1));
     }
-    expect(calls).toHaveLength(3);
+    expect(calls).toHaveLength(TALK_MAX);
     for (const c of calls) {
       expect(systemOf(c)).toContain(TALK_SYSTEM);
       expect(c.model).toBe(HAIKU);
@@ -182,33 +188,34 @@ describe("着信の往復（保存・上限・門）", () => {
     expect(inputOf(calls[0])["電話"].text).toContain("ケアマネの今の言葉: 「ご本人は無事ですか」");
     expect(inputOf(calls[2])["電話"].text).toContain("ケアマネの今の言葉: 「今いる所で待っていてください。また連絡します」");
     // 1 日の上限と同じ数え方（askJson が ai_calls に 1 行ずつ）
-    expect(aiRows()).toBe(3);
+    expect(aiRows()).toBe(TALK_MAX);
 
     const s = await stored();
-    expect(s.minute).toBe(before.minute + TALK_MINUTES * 3);
-    expect(s.world.counts?.call).toBe(3);
+    const first = before.minute + talkMinutesOf("ご本人は無事ですか", "母は無事ですが、薬が残り少ないです");
+    expect(s.minute).toBe(at);
+    expect(s.world.counts?.call).toBe(TALK_MAX);
     expect(s.world.asks?.[call.person]).toEqual([
-      { kind: "medicine", at: before.minute + 2, done: null },
-      { kind: "water", at: before.minute + 2, done: null },
+      { kind: "medicine", at: first, done: null },
+      { kind: "water", at: first, done: null },
     ]);
-    // T130: ケアマネに言われた事を世界に積む（次の区切りの本人役の帳面に入る）
-    expect(s.world.told?.[call.person]?.map((l) => l.ask)).toEqual(["safe", "device_medicine", "stay"]);
+    // T130: ケアマネに言われた事を世界に積む（次の区切りの本人役の帳面に入る。8 つまで）
+    expect(s.world.told?.[call.person]?.map((l) => l.ask)).toEqual([...asks]);
 
     // 着信の記録（採点・紙・経過が読む）に往復と話し手
     const rec = (await loadCallRecords(db, ID)).find((c) => c.signal === call.signal)!;
     expect(rec.response).toBe("answer");
-    expect(rec.talk).toHaveLength(6);
+    expect(rec.talk).toHaveLength(2 * TALK_MAX);
     expect(rec.talk![0]).toEqual({ who: "cm", text: "ご本人は無事ですか", ai: false, minute: before.minute, ask: "safe" });
-    expect(rec.talk![1]).toEqual({ who: "them", text: "母は無事ですが、薬が残り少ないです", ai: true, minute: before.minute + 2, asks: ["medicine", "water"] });
+    expect(rec.talk![1]).toEqual({ who: "them", text: "母は無事ですが、薬が残り少ないです", ai: true, minute: first, asks: ["medicine", "water"] });
     expect(rec.callee).toMatchObject({ kind: "family" });
     expect(rec.callee!.id).not.toBeNull();
     expect(rec.talkEnd).toBeNull();
 
-    const fourth = await talk(call.signal, { ask: "injured" }, hook);
-    expect(fourth.status).toBe(409);
-    expect(await fourth.json()).toMatchObject({ ok: false, label: TALK_UI.ended });
-    expect(calls).toHaveLength(3);
-    expect(TALK_MAX).toBe(3);
+    const ninth = await talk(call.signal, { ask: "injured" }, hook);
+    expect(ninth.status).toBe(409);
+    expect(await ninth.json()).toMatchObject({ ok: false, label: TALK_UI.ended });
+    expect(calls).toHaveLength(TALK_MAX);
+    expect(TALK_MAX).toBe(8);
 
     // 色と順は動かさない: 往復から聞いた安否（care_manager の signals）を足さない
     const heard = sqlite.prepare("SELECT COUNT(*) AS n FROM signals WHERE drill_id = ? AND source = 'care_manager'").get(ID) as { n: number };
@@ -320,13 +327,13 @@ describe("着信の往復（保存・上限・門）", () => {
     expect((await callTalkPost(db, careManager(), ID, { step: 0, actions: 0, signal: call.signal, ask: "safe", text: "x" })).status).toBe(400);
     expect((await callTalkPost(db, careManager(), ID, { step: 0, actions: 0, signal: `${ID}-0-s99`, ask: "safe" })).status).toBe(404);
     expect((await callTalkPost(db, careManager(), "drill-none", { step: 0, actions: 0, signal: call.signal, ask: "safe" })).status).toBe(404);
-    expect(parseCallTalkRequest({ signal: "s", text: "あ".repeat(61) })).toBeNull();
+    expect(parseCallTalkRequest({ signal: "s", text: "あ".repeat(TALK_TEXT_MAX + 1) })).toBeNull();
     expect(parseCallTalkRequest({ signal: "s", text: " 薬は? " })).toEqual({ signal: "s", text: "薬は?" });
     expect(parseCallTalkRequest({ signal: "s", end: true })).toEqual({ signal: "s", end: true });
   });
 
-  it("問いの候補: 着信は 7 つ（安否・けが・機器薬・移動・避難先・待機・119勧奨、2〜4 字）。外へ掛けた電話は前の 7 つのまま", () => {
-    expect(CALL_IN_ASKS.map((k) => TALK_LABELS[k])).toEqual(["安否", "けが", "機器薬", "移動", "避難先", "待機", "119勧奨"]);
+  it("問いの候補: 着信は 7 つ（安否・けが・機器・薬・移動・避難先・待機・119勧奨、2〜4 字）。外へ掛けた電話は前の 7 つのまま", () => {
+    expect(CALL_IN_ASKS.map((k) => TALK_LABELS[k])).toEqual(["安否", "けが", "機器・薬", "移動", "避難先", "待機", "119勧奨"]);
     expect(CALL_OUT_ASKS).toHaveLength(7);
     for (const k of ["safe", "can_move", "shelter", "stay"] as const) expect(CALL_OUT_ASKS).not.toContain(k);
     for (const k of CALL_IN_ASKS) {
@@ -346,7 +353,7 @@ describe("着信の往復を読む所（採点・経過・紙・声）", () => {
     await talk(a.signal, { ask: "safe" }, hook);
     await talk(a.signal, { ask: "stay" }, hook);
     const calls = await loadCallRecords(db, ID);
-    expect(scoreTalks([], calls)).toEqual({ turns: 2, calls: 1 });
+    expect(scoreTalks([], calls)).toEqual({ turns: 2, calls: 1, voiced: 0 });
 
     const screen = (await loadDrillScreen(db, SCOPE, ID, null))!;
     const log = buildDrillLog(screen.ticks, screen.state.actions, { finished: false, calls });
@@ -408,7 +415,9 @@ describe("着信の往復を読む所（採点・経過・紙・声）", () => {
     expect(voiceHref(ID, clip)).toBe(`/api/drill/voice?drill=${ID}&signal=${call.signal}&line=1`);
     expect(parseVoiceQuery(new URLSearchParams(`drill=${ID}&signal=${call.signal}&line=1`))).toEqual({ drillId: ID, clip });
     expect(parseVoiceQuery(new URLSearchParams(`drill=${ID}&signal=${call.signal}&line=x`))).toBeNull();
-    expect(parseVoiceQuery(new URLSearchParams(`drill=${ID}&act=a1&line=1`))).toBeNull();
+    // 外へ掛けた電話の往復の行（T155）も行の番号で読む
+    expect(parseVoiceQuery(new URLSearchParams(`drill=${ID}&act=a1&line=1`))).toEqual({ drillId: ID, clip: { act: "a1", line: 1 } });
+    expect(parseVoiceQuery(new URLSearchParams(`drill=${ID}&act=a1&line=x`))).toBeNull();
   });
 });
 

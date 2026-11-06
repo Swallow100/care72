@@ -47,6 +47,16 @@ export type Totals = {
   /** 帳面との矛盾（T130。門が効いていれば 0）と、門が落とした・直した数 */
   factHits?: number;
   gated?: number;
+  /** 画面に出た（氏名）のうち元の語に名前が無かった数（T159。0 のはず） */
+  overmask?: number;
+  /** 帳面（台帳・時計・前の連絡）と本人役の言葉の食い違い（T158、checks.ts の FACT_WORD_RULES） */
+  factWords?: number;
+  /** 通話の往復（T158）: 返事・前の返事とほぼ同じ返事・通話の中のいる所の食い違い・生の返事とそのうちの繰り返し */
+  talkReplies?: number;
+  talkRepeats?: number;
+  talkPlaceDrift?: number;
+  talkRaw?: number;
+  talkRepeatRaw?: number;
   advanceP50: number | null;
   advanceP95: number | null;
   usdPerRun: number | null;
@@ -111,6 +121,13 @@ export function totalsOf(runs: ReadonlyArray<RunSummary>): Totals {
     freeCanMismatch: sum(n.map((x) => x.free?.canMismatch ?? 0)),
     factHits: sum(n.map((x) => x.facts?.hits ?? 0)),
     gated: sum(n.map((x) => Object.values(x.facts?.gated ?? {}).reduce((a, b) => a + b, 0))),
+    overmask: sum(n.map((x) => x.overmask?.hits ?? 0)),
+    factWords: sum(n.map((x) => x.facts?.words ?? 0)),
+    talkReplies: sum(n.map((x) => x.talk?.replies ?? 0)),
+    talkRepeats: sum(n.map((x) => x.talk?.repeats ?? 0)),
+    talkPlaceDrift: sum(n.map((x) => x.talk?.placeDrift ?? 0)),
+    talkRaw: sum(n.map((x) => x.talk?.raw ?? 0)),
+    talkRepeatRaw: sum(n.map((x) => x.talk?.repeatRaw ?? 0)),
     advanceP50: mean(n.map((x) => x.timing.advanceP50)),
     advanceP95: max(n.map((x) => x.timing.advanceP95)),
     usdPerRun: mean(n.map((x) => x.cost.usd)),
@@ -159,6 +176,7 @@ export const METRICS: ReadonlyArray<Metric> = [
   { label: "終わった回", get: (s) => s.totals.finished, format: int },
   { label: "禁じた中身（本人役の生の返事）/回", get: (s) => per(s, s.totals.bannedRaw), format: two, lowerBetter: true },
   { label: "禁じた中身（画面に出た物）", get: (s) => s.totals.bannedShown, format: int, lowerBetter: true },
+  { label: "画面の（氏名）で元の語に名前が無い（T159）", get: (s) => s.totals.overmask ?? 0, format: int, lowerBetter: true },
   { label: "禁じた語（世界・監督の生の返事）/回", get: (s) => per(s, s.totals.otherRaw), format: two, lowerBetter: true },
   { label: "形の失敗・失敗した呼び出し", get: (s) => s.totals.shapeFailed, format: int, lowerBetter: true },
   { label: "再試行", get: (s) => s.totals.retries, format: int, lowerBetter: true },
@@ -166,6 +184,10 @@ export const METRICS: ReadonlyArray<Metric> = [
   { label: "矛盾/回", get: (s) => per(s, s.totals.contradictions), format: two, lowerBetter: true },
   { label: "帳面との矛盾/回（T130）", get: (s) => per(s, s.totals.factHits ?? 0), format: two, lowerBetter: true },
   { label: "帳面の門で落とした・直した数", get: (s) => s.totals.gated ?? 0, format: int },
+  { label: "帳面と本人役の言葉の食い違い（T158）", get: (s) => s.totals.factWords ?? 0, format: int, lowerBetter: true },
+  { label: "通話の前の返事とほぼ同じ返事（T158）", get: (s) => (s.totals.talkReplies ? (s.totals.talkRepeats ?? 0) / s.totals.talkReplies : null), format: pct, lowerBetter: true },
+  { label: "通話の中のいる所の食い違い（T158）", get: (s) => s.totals.talkPlaceDrift ?? 0, format: int, lowerBetter: true },
+  { label: "往復の生の返事の繰り返し（門の前、T158）", get: (s) => (s.totals.talkRaw ? (s.totals.talkRepeatRaw ?? 0) / s.totals.talkRaw : null), format: pct, lowerBetter: true },
   { label: "時間の目安の帯の外（監督の差し込み）", get: (s) => s.totals.offBandRate, format: pct },
   { label: "停止の印（上限）", get: (s) => s.totals.aiStop, format: int, lowerBetter: true },
   { label: "世界の代替・停止の印", get: (s) => s.totals.worldNote, format: int, lowerBetter: true },

@@ -11,7 +11,9 @@
 //
 // T120（評価の 1 回目で実在の様式の PDF 14 件のうち 12 件が読めなかった。2 頁を 1 回で読み、61〜82 欄の答えが出力の上限 16,000 で
 // 切れるか、180 秒の待ちを 2 回続けて越えた。docs/progress/eval-r1-findings.md の 1・13）:
-// - 1 頁 1 回で読み、頁を並べて呼ぶ（readForm の concurrency。Workers の 1 要求の外への接続は 6 本までで、頁は 3 まで）。
+// - 1 頁 1 回で読み、頁を並べて呼ぶ（readForm の concurrency）。T146 で頁を 10 までにしたので、同時に呼ぶのは FORM_READ_CONCURRENCY（5）まで
+//   （Workers の 1 要求の外への接続は同時に 6 本までで、7 本目からは前が終わるまで待つ。SDK の待ち 180 秒は並ぶ前から数えるので、
+//   10 本を一度に出すと後の頁が待ちの分だけ切れやすい。5 本ずつなら 10 頁は 2 回分の待ち）。
 //   1 頁の答えは 30〜40 欄で、待ちは 1 頁の分だけ。読めなかった頁があっても、読めた頁の欄で対応表にする（unread に頁の番号）
 // - 答えの形を短くした（PageReadSchema）: 頁の番号・位置の説明を返させず、段の見出しは段ごとに 1 回、場所は [x, y, w, h] の数の並び。
 //   評価の 1 回目の本物の答え（65〜71 欄）をこの形に直すと 18〜22% 短い（欄 1 つ 125〜135 token → 100 token ほどの見積もり）
@@ -22,6 +24,8 @@
 //
 // T133（実在の様式に埋めた紙で、欄の中の印刷の部品の上に値を重ねていた）: 決まり 15 に元号の □ の場所、決まり 20 に括弧の中の空き。
 // 返った対応表は checkReadResult の中で読み取りの補い（lib/forms/item-hints.ts）を通す。頁の印刷の字の位置（lib/forms/ink.ts）は Claude に渡さない
+// T161（評価の 6 回目、災害診療記録の「□アレルギー（　）」を □ だけに読み、紙に中身が残らなかった）: 決まり 21 に □ と括弧の 2 つの欄。
+// 括弧の欄の項目が空でも読み取りの補いの括弧（item-hints.ts の 1）が □ の項目を当て、見直しは □ と括弧の組を重複にしない（form-shape.ts）
 
 import { Buffer } from "node:buffer";
 import * as z from "zod";
@@ -106,6 +110,7 @@ export const FORM_READ_SYSTEM = [
   "15. 日付の前に元号の選択肢（大正・昭和・平成・令和を ○ で囲む・□）が刷ってある欄は、元号だけの欄を別に挙げない。元号から日までを 1 つの日付の欄（shape date）にし、box は元号から日までを囲む。",
   "    その欄の options は、刷ってある元号を左上から順に並べたあとに 年・月・日（例 [\"大正\",\"昭和\",\"平成\",\"令和\",\"年\",\"月\",\"日\"]）、option_boxes は元号ごとの □（□ が無ければ元号の字）と、年・月・日の前の空きを同じ順に。",
   "20. 欄の中に括弧と字が刷ってあり、値を括弧の中に書く欄（「（　）階」「要介護（　）」「（　～　）」「その他（　）」）は、box をその括弧の中の空き（字を書く所）にする。刷ってある字（括弧・階・～）を box に入れない。",
+  "21. □ 1 つの後ろに、その □ の中身を書く括弧が続く欄（「□アレルギー（　）」「□食物（　）」）は、□ の欄（shape check、box は □）と、括弧の中の書く所の欄（label は「アレルギー（　）」のように □ の名前と括弧、shape text、□ と同じ項目、box は括弧の中の空き）の 2 つを続けて挙げる（□ だけにすると中身を書く所が紙に残らない）。決まり 12 の例外。「その他（　）」は決まり 20。",
   "16. 1 つの枠の中に種類の □（避難所・親族宅・車中泊など）と名前を書く所がある欄は、名前を書く所を、その行の欄の名前（左の名前の列の字。例「避難先１」）の 1 欄（shape text）にして項目を当てる。書く所のそばの小さな字（「名称」「施設名」など）を label にしない。種類の □ は「〇〇 種類」の名前の 1 欄（shape choice、options に □ の選択肢を全部。合う項目が無ければ null）にし、□ を 1 つずつ別の欄（check）に挙げない。",
   "17. 1 人 1 行の空の行が見出しの行の下に何行も並ぶ一覧の表（利用者の一覧・名簿・安否確認の表など）は、列ごとに 1 欄を挙げる。label はその列の見出しの字のまま、sections の name は 2 段の見出しの上の段の字（無ければ空文字）。行の番号（1・2・3）を段や欄の名前にしない。box は 1 行目（見出しのすぐ下の行）のその列の枠。番号が刷ってある列（No・番号）も欄に挙げ、item は null。表の外の欄（事業所名・作成日など）は今までどおり挙げる。",
   "    list には、その表の人を書く行の数（rows）と、1 行目の帯（first）と最後の行の帯（last）の場所を [x, y, w, h] で入れる。一覧の表の無い頁は list を null。",
@@ -356,9 +361,12 @@ export type FormReadResult = CheckedRead & {
   continued: number[];
 };
 
+/** 同時に読む頁の数の既定（T146）。外への接続 6 本のうち 1 本を選択肢の当て・ほかの読み書きに空ける */
+export const FORM_READ_CONCURRENCY = 5;
+
 export type ReadFormOptions = {
   /**
-   * 同時に読む頁の数。既定は全部（頁は 3 まで）。評価の台（tools/eval/forms）は 1（呼び出しの記録を順に結ぶため）
+   * 同時に読む頁の数。既定は FORM_READ_CONCURRENCY（5）。評価の台（tools/eval/forms）は 1（呼び出しの記録を順に結ぶため）
    */
   concurrency?: number;
   /** 読む頁の番号（files と同じ順。無ければ 1 から）。読めなかった頁を読み直すとき */
@@ -380,7 +388,7 @@ export async function readForm(file: FormFile | ReadonlyArray<FormFile>, ctx: As
   const files: ReadonlyArray<FormFile> = Array.isArray(file) ? file : [file as FormFile];
   const pageNos = opts.pageNumbers ?? files.map((_, i) => i + 1);
   const pages = opts.pages ?? files.length;
-  const outcomes = await pool(files, opts.concurrency ?? files.length, (f, i) => readPage(f, pageNos[i], pages, ctx));
+  const outcomes = await pool(files, opts.concurrency ?? FORM_READ_CONCURRENCY, (f, i) => readPage(f, pageNos[i], pages, ctx));
   const good = outcomes.filter((o): o is Extract<PageOutcome, { ok: true }> => o.ok);
   const bad = outcomes.filter((o): o is Extract<PageOutcome, { ok: false }> => !o.ok);
   // 鍵が無い・読めた頁が無いときは、前と同じく失敗を投げる

@@ -1,6 +1,7 @@
 // 種のデータを SQL の文にする。手元の D1 に入れる（npm run db:seed）ときと、テストで使う。
 // 入れる前に全部の表を空にするので、何度流しても同じ状態になる。
 
+import { checkIdMap, demoSeedPeople, remapRow } from "../lib/seed/check.ts";
 import {
   SEED_ACCOUNTS,
   SEED_AT,
@@ -49,6 +50,8 @@ export const CLEAR_ORDER = [
   "survey_attempts",
   "timeline_entries",
   "office_timeline_entries",
+  // 医療班への受入依頼（T163）。受け持ちを指すので受け持ちより前
+  "custody_requests",
   // 受け持ちと第三者提供の記録（T23）。記録が受け持ちを指すので記録から
   "third_party_provisions",
   "custody",
@@ -67,6 +70,9 @@ export const CLEAR_ORDER = [
   "ai_agents",
   // ログインの回数の制限（T41）。手元の入れ直しでは消す（配信の毎日 4 時・最初に戻すでは消さない。lib/seed/reset.ts）
   "login_attempts",
+  // 本人・家族のスマホの ID と通知の購読（T149、migration 0037）。本人・連絡先を指すので先に
+  "phone_accounts",
+  "push_subscriptions",
   "signals",
   "drill_events",
   "drills",
@@ -78,30 +84,44 @@ export const CLEAR_ORDER = [
   "offices",
 ] as const;
 
-export function personStatements(p: SeedPerson): string[] {
-  const out: string[] = [];
-  out.push(
-    insert("people", {
-      ...p.person,
-      ledger: JSON.stringify(p.ledger),
-      version: 1,
-      created_at: SEED_AT,
-      updated_at: SEED_AT,
-    }),
-  );
-  p.contacts.forEach((c, i) => {
-    out.push(insert("contacts", { ...c, person_id: p.person.id, sort: i, created_at: SEED_AT }));
+/** 種の 1 人の行（人・連絡先・同意・時計）。入れる順 */
+export function personRows(p: SeedPerson): Array<{ table: string; row: Record<string, SqlValue> }> {
+  const out: Array<{ table: string; row: Record<string, SqlValue> }> = [];
+  out.push({
+    table: "people",
+    row: { ...p.person, ledger: JSON.stringify(p.ledger), version: 1, created_at: SEED_AT, updated_at: SEED_AT },
   });
-  for (const c of seedConsents(p)) out.push(insert("consents", c));
+  p.contacts.forEach((c, i) => {
+    out.push({ table: "contacts", row: { ...c, person_id: p.person.id, sort: i, created_at: SEED_AT } });
+  });
+  for (const c of seedConsents(p)) out.push({ table: "consents", row: { ...c } });
   p.clocks.forEach((k, i) => {
-    out.push(insert("clocks", { ...k, person_id: p.person.id, sort: i }));
+    out.push({ table: "clocks", row: { ...k, person_id: p.person.id, sort: i } });
   });
   return out;
+}
+
+export function personStatements(p: SeedPerson): string[] {
+  return personRows(p).map((r) => insert(r.table, r.row));
+}
+
+/**
+ * 確認用の事業所（T144）の 10 人の文。デモ事業所の 10 人の行を id だけ替えて写す（lib/seed/check.ts）。
+ * 同意の記録者・担当のケアマネも確認用の事業所のアカウントに替わる
+ */
+export function checkPeopleStatements(): string[] {
+  const map = checkIdMap();
+  return demoSeedPeople().flatMap((p) => personRows(p).map((r) => insert(r.table, remapRow(r.row, map))));
 }
 
 export type SeedOptions = {
   /** アカウントの id → パスワードのハッシュ（lib/auth/password.ts の形）。平文は受けない。無ければ null のまま（ログインできない） */
   passwordHashes?: Readonly<Record<string, string>>;
+  /**
+   * 入れる人（既定は種の 10 人 SEED_PEOPLE）。テストだけが T142 より前の空きの多い形（seed/sparse.ts の SPARSE_PEOPLE）を渡す。
+   * 配信の種（seed/build-sql.ts）と毎朝の戻し（lib/seed/reset.ts）はいつも SEED_PEOPLE
+   */
+  people?: readonly SeedPerson[];
 };
 
 /** 種で消さない表: 世界の部屋の ID（T50。消すと次の仮想の訓練で Agent を作り直し、前の Agent が残る）と、アンケートの Web 版（T42）。本物のケアマネの答えが入るので、配信の作り直し（tools/deploy/rebuild-remote.sh の seed）でも残す。
@@ -118,7 +138,9 @@ export function seedStatements(opts: SeedOptions = {}): string[] {
   for (const a of SEED_ACCOUNTS) {
     out.push(insert("accounts", { ...a, password_hash: hashes[a.id] ?? a.password_hash, created_at: SEED_AT }));
   }
-  for (const p of SEED_PEOPLE) out.push(...personStatements(p));
+  for (const p of opts.people ?? SEED_PEOPLE) out.push(...personStatements(p));
+  // 確認用の事業所の 10 人（T144。デモ事業所の 10 人の写し）
+  out.push(...checkPeopleStatements());
   return out;
 }
 

@@ -33,11 +33,13 @@ import {
   TALK_FIXED_SPEECH,
   TALK_LABELS,
   TALK_MAX,
+  TALK_TEXT_MAX,
   TALK_UI,
   withResultAsks,
   type TalkLine,
   type VisitHook,
 } from "./dialogue.ts";
+import { talkMinutesOf } from "./talk-turn.ts";
 import { initialState, type ActionRecord, type ActionResult, type DrillState, type PersonaInput } from "./engine.ts";
 import { createVisitHook, drillHooks, drillTalkHook } from "./hooks.ts";
 import { actionPost, undoPost } from "./http.ts";
@@ -292,17 +294,24 @@ function line(who: TalkLine["who"], minute: number, over: Partial<TalkLine> = {}
 // ---------- 2. 通話の往復 ----------
 
 describe("通話の往復", () => {
-  it("偽の client で 3 往復。4 往復目は 409（終話）。時計は 1 往復 2 分、counts.call、頼み事は範囲の中の 2 つまでを積む", async () => {
+  it("偽の client で 8 往復（T155 で 3 から）。9 往復目は 409（終話）。時計は文の長さで 1〜3 分、counts.call、頼み事は範囲の中の 2 つまでを積む", async () => {
     await start();
     const call = await callYamada();
     const { hook, calls } = talkHook();
     const before = await stored();
-    for (const [i, ask] of (["where", "device_medicine", "will_call_back"] as const).entries()) {
+    const asks = ["where", "device_medicine", "will_call_back", "injured", "can_evacuate", "contact_family", "where", "injured"] as const;
+    expect(asks).toHaveLength(TALK_MAX);
+    let at = before.minute;
+    for (const [i, ask] of asks.entries()) {
       const res = await talk({ ask }, hook);
       expect(res.status).toBe(200);
-      expect(await res.json()).toMatchObject({ ok: true, action: call.id, rounds: i + 1, minute: before.minute + 2 * (i + 1) });
+      const body = (await res.json()) as { minute: number; lines: TalkLine[] };
+      const [cm, them] = body.lines.slice(-2);
+      at += talkMinutesOf(cm!.text, them!.text);
+      expect(body).toMatchObject({ ok: true, action: call.id, rounds: i + 1, minute: at, ended: false });
+      expect(body.lines).toHaveLength(2 * (i + 1));
     }
-    expect(calls).toHaveLength(3);
+    expect(calls).toHaveLength(TALK_MAX);
     for (const c of calls) {
       expect(systemOf(c)).toContain(TALK_SYSTEM);
       expect(c.model).toBe(HAIKU);
@@ -316,23 +325,24 @@ describe("通話の往復", () => {
 
     const s = await stored();
     const r = s.actions.at(-1)!.result!;
-    expect(r.talk).toHaveLength(6);
+    const first = before.minute + talkMinutesOf("今どこにいますか", "薬がもう少しで切れそうで、心細いです");
+    expect(r.talk).toHaveLength(2 * TALK_MAX);
     expect(r.talk![0]).toEqual({ who: "cm", text: "今どこにいますか", ai: false, minute: before.minute, ask: "where" });
-    expect(r.talk![1]).toEqual({ who: "them", text: "薬がもう少しで切れそうで、心細いです", ai: true, minute: before.minute + 2, asks: ["medicine", "water"] });
-    expect(s.minute).toBe(before.minute + 6);
-    expect(s.world.counts?.call).toBe(3);
+    expect(r.talk![1]).toEqual({ who: "them", text: "薬がもう少しで切れそうで、心細いです", ai: true, minute: first, asks: ["medicine", "water"] });
+    expect(s.minute).toBe(at);
+    expect(s.world.counts?.call).toBe(TALK_MAX);
     // 同じ種類の未対応は重ねない
     expect(s.world.asks?.["p-01"]).toEqual([
-      { kind: "medicine", at: before.minute + 2, done: null },
-      { kind: "water", at: before.minute + 2, done: null },
+      { kind: "medicine", at: first, done: null },
+      { kind: "water", at: first, done: null },
     ]);
     // 色・聞いた安否は変えない（手の返事のまま）
     expect(r.heard).toEqual(call.result!.heard);
 
-    const fourth = await talk({ ask: "injured" }, hook);
-    expect(fourth.status).toBe(409);
-    expect(await fourth.json()).toMatchObject({ ok: false, label: TALK_UI.ended });
-    expect(calls).toHaveLength(3);
+    const ninth = await talk({ ask: "injured" }, hook);
+    expect(ninth.status).toBe(409);
+    expect(await ninth.json()).toMatchObject({ ok: false, label: TALK_UI.ended });
+    expect(calls).toHaveLength(TALK_MAX);
     expect(canTalk(r)).toBe(false);
   });
 
@@ -382,13 +392,13 @@ describe("通話の往復", () => {
     expect(await stored()).toEqual(before);
   });
 
-  it("形の違い（ask と text の両方・60 字超え・一覧に無い問い・空）は 400。刻み・手の数の違い・最新でない手は 409", async () => {
+  it("形の違い（ask と text の両方・120 字超え・一覧に無い問い・空）は 400。刻み・手の数の違い・最新でない手は 409", async () => {
     await start();
     const call = await callYamada();
     const s = await stored();
     const post = (b: Record<string, unknown>) => talkPost(db, careManager(), ID, { step: s.step, actions: s.actions.length, action: call.id, ...b });
     expect((await post({ ask: "where", text: "はい" })).status).toBe(400);
-    expect((await post({ text: "あ".repeat(61) })).status).toBe(400);
+    expect((await post({ text: "あ".repeat(TALK_TEXT_MAX + 1) })).status).toBe(400);
     expect((await post({ text: "  " })).status).toBe(400);
     expect((await post({ ask: "call_119_now" })).status).toBe(400);
     expect((await post({})).status).toBe(400);
@@ -466,7 +476,7 @@ describe("通話の往復", () => {
       expect(v).not.toMatch(/診断|判定|重症|緊急度|札|死亡/);
     }
     expect(Object.keys(ASK_LABELS)).toHaveLength(9);
-    expect(TALK_MAX).toBe(3);
+    expect(TALK_MAX).toBe(8);
   });
 });
 
@@ -597,24 +607,24 @@ function talkRecord(talk: TalkLine[], over: Partial<ActionResult> = {}): ActionR
 }
 
 describe("画面（TalkBox・LatestResult・履歴・行の詳細）", () => {
-  it("往復の欄: 問いのボタン 7 つと自由の 1 文の欄と「切る」。吹き出しは往復ごと、本人役の言葉に AI の印。3 往復で問いが消える", () => {
+  it("往復の欄: 問いのボタン 7 つと自由の 1 文の欄と「切る」。吹き出しは往復ごと、本人役の言葉に AI の印。8 往復で問いが消える", () => {
     const talk = [line("cm", 185, { ask: "where" }), line("them", 187, { asks: ["medicine"] })];
     const html = renderToStaticMarkup(createElement(TalkBox, { drillId: ID, step: 1, actions: 1, action: talkRecord(talk), speaker: "本人" }));
     for (const k of CALL_OUT_ASKS) expect(html).toContain(`data-talk-ask="${k}"`);
     // 掛かってきた電話だけの問い（T127）は外へ掛けた電話の欄に出さない
     expect(html).not.toContain(`data-talk-ask="stay"`);
     expect(html).toContain(TALK_UI.hangUp);
-    expect(html).toMatch(/maxlength="60"/i);
+    expect(html.toLowerCase()).toContain(`maxlength="${TALK_TEXT_MAX}"`);
     expect(html.match(/data-talk-line=/g)).toHaveLength(2);
     expect(html).toContain('data-talk-line="them" data-speech-ai=""');
     expect(html).toContain(`data-ask-mark="medicine"`);
     expect(html).toContain("focus-visible:outline-solid");
     expect(html).not.toMatch(/rounded-full|tracking-|gradient|shadow-/);
 
-    const full = [0, 1, 2].flatMap((i) => [line("cm", 185 + 4 * i), line("them", 187 + 4 * i)]);
+    const full = Array.from({ length: TALK_MAX }, (_, i) => [line("cm", 185 + 4 * i), line("them", 187 + 4 * i)]).flat();
     const done = renderToStaticMarkup(createElement(TalkBox, { drillId: ID, step: 1, actions: 1, action: talkRecord(full), speaker: "本人" }));
     expect(done).not.toContain("data-talk-ask=");
-    expect(done.match(/data-talk-line=/g)).toHaveLength(6);
+    expect(done.match(/data-talk-line=/g)).toHaveLength(2 * TALK_MAX);
   });
 
   it("LatestResult は続けられる電話にだけ往復の欄を出す。履歴は「通話 2 往復」に畳み、開くと全文", () => {

@@ -12,12 +12,20 @@ import { useState, type ComponentProps } from "react";
 import { Button } from "@/components/ui/Button";
 import { CloseIcon, SaveIcon } from "@/components/ui/Icon";
 import { StateText } from "@/components/ui/Tag";
+import { PASSWORD_MAX, PASSWORD_MIN, PASSWORD_RULE_LABELS, passwordProblemLabel, passwordProblems } from "@/lib/auth/password-rule";
 import { OWN_PASSWORD_API_PATH } from "@/lib/office/http-paths";
 import { OFFICE_LABELS } from "@/lib/office/labels";
-import { INPUT } from "./AddCareManager";
+import { INPUT } from "./field";
 
-/** 新しいパスワードの長さ（lib/auth/password-change.ts の NEW_PASSWORD_MIN・MAX と同じ。テストで確かめる） */
-export const PASSWORD_INPUT = { min: 8, max: 64 } as const;
+/** 新しいパスワードの長さ（決まりは lib/auth/password-rule.ts の 1 か所。T148。ケアマネ追加・再設定の欄も同じ） */
+export const PASSWORD_INPUT = { min: PASSWORD_MIN, max: PASSWORD_MAX } as const;
+
+/** 新しいパスワードの欄の決まりに合わないときの断り（送る前に。サーバーも同じ決まりで断る）。合えば null */
+export function passwordInputError(next: string, confirm: string): string | null {
+  const missing = passwordProblems(next);
+  if (missing.length > 0) return passwordProblemLabel(missing);
+  return next === confirm ? null : OFFICE_LABELS.confirmMismatch;
+}
 
 /** 白い面の上に置くとき（受入一覧）の欄。地は面の中の灰色（受入の入口の欄と同じ）。形はケアマネの行の欄と同じ */
 const INPUT_ON_PANEL = INPUT.replace("bg-panel ", "bg-panel2 ");
@@ -64,8 +72,9 @@ export function OwnPasswordForm({
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (pw.next !== pw.confirm) {
-      setError(OFFICE_LABELS.confirmMismatch);
+    const bad = passwordInputError(pw.next, pw.confirm);
+    if (bad) {
+      setError(bad);
       return;
     }
     setBusy(true);
@@ -90,6 +99,7 @@ export function OwnPasswordForm({
         <PasswordField label={OFFICE_LABELS.nextPassword} auto="new-password" input={input} min value={pw.next} onChange={(v) => setPw({ ...pw, next: v })} />
         <PasswordField label={OFFICE_LABELS.confirmPassword} auto="new-password" input={input} min value={pw.confirm} onChange={(v) => setPw({ ...pw, confirm: v })} />
       </div>
+      <PasswordRule />
       <FormButtons busy={busy} ok={OFFICE_LABELS.change} onCancel={onCancel} error={error} />
     </form>
   );
@@ -105,12 +115,23 @@ export function PasswordDone({ className = "" }: { className?: string }) {
   );
 }
 
-function PasswordField({
+/** 新しいパスワードの決まりの 1 行（「10字以上 大文字 小文字 記号」。欄の下に小さく） */
+export function PasswordRule({ className = "" }: { className?: string }) {
+  return (
+    <p className={`text-xs text-muted ${className}`.trim()} data-password-rule>
+      {PASSWORD_RULE_LABELS.rule}
+    </p>
+  );
+}
+
+/** パスワードの 1 欄（min は新しいパスワードの欄で、長さの決まりを付ける） */
+export function PasswordField({
   label,
   auto,
   input,
   min = false,
   focus = false,
+  required = true,
   value,
   onChange,
 }: {
@@ -119,6 +140,8 @@ function PasswordField({
   input: string;
   min?: boolean;
   focus?: boolean;
+  /** 空でも送れる欄（ケアマネ追加のパスワード。空ならサーバーが作る。T148） */
+  required?: boolean;
   value: string;
   onChange: (v: string) => void;
 }) {
@@ -127,7 +150,7 @@ function PasswordField({
       <span className="text-xs text-muted">{label}</span>
       <input
         type="password"
-        required
+        required={required}
         autoComplete={auto}
         autoFocus={focus}
         minLength={min ? PASSWORD_INPUT.min : undefined}

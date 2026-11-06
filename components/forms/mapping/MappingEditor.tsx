@@ -25,6 +25,7 @@ import type { FormMappingStatus } from "@/lib/db/types";
 import { Select } from "@/components/ui/Select";
 import { codeLabel, editOptionValue, hasCodes, ITEM_CODES, NONE_CODE, OTHER_CODE, optionTable } from "@/lib/forms/option-values";
 import {
+  addedFormHref,
   blankField,
   CONFIDENCE_LABELS,
   FIELD_SHAPE_LABELS,
@@ -217,6 +218,12 @@ export function MappingEditor({
 
       <div className="mt-2 flex flex-wrap items-baseline gap-x-4 gap-y-1 text-sm" data-stats>
         {status === "checked" && !dirty ? <StateTag tone="ok">{L.checked}</StateTag> : <StateTag tone="check">{dirty ? "未保存" : L.draft}</StateTag>}
+        {/* 確認済の様式は書類の一覧の計画書の段に「追加済」で出る（T147）。その様式で紙を作る所へ */}
+        {status === "checked" && !dirty && (
+          <ButtonLink href={addedFormHref(id)} kind="main" size="sm" icon={PaperIcon} data-to-forms>
+            {L.toForms}
+          </ButtonLink>
+        )}
         <Stat label="欄" value={stats.fields} />
         {stats.read > 0 && <Stat label="自動対応" value={`${stats.autoMapped}/${stats.read}`} />}
         <Stat label={L.changed} value={stats.changed} />
@@ -267,7 +274,7 @@ export function MappingEditor({
             <StateTag tone="check">{L.unread}</StateTag>
             <span className="font-bold tabular-nums">{unread.map((p) => `${p}頁`).join("・")}</span>
             <Button size="sm" icon={RetryIcon} disabled={dirty || rereading} onClick={reread} data-pending={rereading ? "" : undefined}>
-              {rereading ? L.reading : "再読"}
+              {rereading ? L.reading : "再読込"}
             </Button>
           </span>
         )}

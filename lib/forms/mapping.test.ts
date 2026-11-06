@@ -4,7 +4,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { MappedSheet as MappedPaper } from "../../components/forms/MappedSheet.tsx";
-import { SEED_AT, SEED_PEOPLE, seedConsents, type SeedPerson } from "../../seed/people.ts";
+import { SEED_AT, seedConsents, type SeedPerson } from "../../seed/people.ts";
 import type { PersonPageRows } from "../person.ts";
 import { CAO_FORM_READ } from "./cao-form.fixture.ts";
 import { buildMappedSheet, ITEM_VALUES, matchOption, type MappedSheet } from "./mapped-sheet.ts";
@@ -20,6 +20,8 @@ import {
   type ReadResult,
 } from "./mapping.ts";
 import { cellText } from "./matsuyama.ts";
+// T142 で種の台帳を埋めた。このテストは空いた欄を前提にするので、T142 より前の空きの多い形（seed/sparse.ts）を使う
+import { SPARSE_PEOPLE } from "../../seed/sparse.ts";
 
 const TODAY = "2026-11-02";
 
@@ -34,7 +36,7 @@ function seedRows(p: SeedPerson): PersonPageRows {
     timeline: [],
   };
 }
-const seed = (id: string) => SEED_PEOPLE.find((p) => p.person.id === id)!;
+const seed = (id: string) => SPARSE_PEOPLE.find((p) => p.person.id === id)!;
 const OPTS = { today: TODAY, officeName: "デモ事業所" };
 
 const cao = () => checkReadResult(CAO_FORM_READ).mapping;
@@ -59,7 +61,7 @@ describe("台帳の項目の一覧", () => {
 
   it("Claude に渡す項目表は key・名前・区分・説明だけで、種の人の値が入らない", () => {
     const json = JSON.stringify(itemCatalog());
-    for (const p of SEED_PEOPLE) {
+    for (const p of SPARSE_PEOPLE) {
       expect(json).not.toContain(p.person.name);
       expect(json).not.toContain(p.ledger.basic.address?.town ?? "＿");
       for (const c of p.contacts) {

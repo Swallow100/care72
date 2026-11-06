@@ -64,7 +64,7 @@ export const SELECT_LABELS = {
   count: "件",
 } as const;
 
-/** ホーム画面に追加の案内（本人・家族のスマホ。components/phone/InstallHint.tsx） */
+/** ホーム画面に追加の案内（本人・家族のスマホ。T149 から準備の欄 components/phone/PhoneSetup.tsx のホーム画面の段） */
 export const INSTALL_PHRASES = {
   /** 案内の 1 行目 */
   lead: "ホーム{画面|がめん}に {入|い}れると すぐ {開|ひら}けます",

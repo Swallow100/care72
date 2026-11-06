@@ -3,7 +3,7 @@
 // - 筋書きの表の強さは芯の降水量（mm/h）。強まって弱まり、時刻で北東へ動き、縁は不規則のまま。描く段は世界の警戒レベルの上限まで
 // - 凡例（mm/h の段）を地図の右下に。「デモ」「想定値」の印と参考の出典は残し、地図に「気象庁」の語は出さない（T103）
 // - 状態の 4 色のピンは、赤や黄の雨の上でも読める縁取り（面の色の縁と、その外の細い線）
-// - 本物の雨雲（NowcastLayer）は変えない: 気象庁の画像と凡例を加工せずに重ね、訓練の画面には重ねない
+// - 本物の雨雲（NowcastLayer）の画像は変えない: 気象庁の画像を加工せずに重ね、訓練の画面には重ねない（凡例は T151 で訓練の雨と同じ帯に）
 // テストは外へ出ない（fetch を偽にして、呼ばれたら落とす）。
 
 import { readFileSync } from "node:fs";
@@ -16,7 +16,6 @@ import { SEED_PEOPLE } from "../../seed/people.ts";
 import { toCaseloadRows } from "../caseload.ts";
 import { HEAVY_RAIN_TRACK, type RainTrack } from "../drill/rain.ts";
 import { applyEvents, EMPTY_WORLD, scenarioOf, type WorldState } from "../drill/scenarios.ts";
-import { NOWC_LEGEND_URL } from "../jma/nowcast.ts";
 import { sourceById } from "../sources/index.ts";
 import { demoOverlay, rainCapOf } from "./demo.ts";
 import { drillRain, rainAnchor, rainFrame } from "./drill-rain.ts";
@@ -214,15 +213,15 @@ describe("訓練の雨の描き（components/map/CaseMap.tsx の Rain）", () =>
     }
   });
 
-  it("凡例: 地図の右下に 8 段（上ほど強い）、境の値、「想定」と mm/h。「気象庁」「警報」の語は無い", () => {
+  it("凡例: 地図の右下に 8 段（T151 から横の帯で左が弱い）、境の値、「想定」と mm/h。「気象庁」「警報」の語は無い", () => {
     const h = html(4);
     const legend = legendOf(h);
     expect(legend).not.toBe("");
     expect(legend).toMatch(/class="[^"]*absolute right-1 bottom-1[^"]*"/);
-    const chips = [...legend.matchAll(/data-rain-legend-step="(\d+)" style="background:(#[0-9a-f]{6})"/g)].map((m) => [Number(m[1]), m[2]]);
-    expect(chips).toEqual([...JMA_STEPS].reverse().map(([m, c]) => [m, c]));
+    const chips = [...legend.matchAll(/data-rain-legend-step="(\d+)" style="background:(#[0-9a-f]{6})/g)].map((m) => [Number(m[1]), m[2]]);
+    expect(chips).toEqual(JMA_STEPS.map(([m, c]) => [m, c]));
     const bounds = [...legend.matchAll(/data-rain-legend-bound="(\d+)"[^>]*>(\d+)</g)].map((m) => Number(m[2]));
-    expect(bounds).toEqual([80, 50, 30, 20, 10, 5, 1]);
+    expect(bounds).toEqual([1, 5, 10, 20, 30, 50, 80]);
     expect(legend).toContain("想定");
     expect(legend).toContain("mm/h");
     for (const s of RAIN_STEPS) expect(legend).toContain(s.label);
@@ -272,7 +271,7 @@ describe("ピンの縁取り（赤や黄の雨の上でも読める）", () => {
 });
 
 describe("本物の雨雲は変えない（NowcastLayer）", () => {
-  it("気象庁の画像を加工せずに重ね（透かし・色の変え・混ぜ方なし）、凡例は気象庁の画像そのまま", () => {
+  it("気象庁の画像を加工せずに重ね（色の変え・混ぜ方なし。層の透け具合だけ T151b で 0.65）、凡例は訓練の雨と同じ帯（T151 で気象庁の凡例の画像から替えた）", () => {
     const view = fitView(pins.map((p) => p.location), { minZ: 11, maxZ: 15, fallback: ANCHOR });
     const h = renderToStaticMarkup(
       createElement(NowcastLayer, { time: { basetime: "20261105000000", validtime: "20261105000000" }, view, size: BASE_SIZE }),
@@ -280,11 +279,13 @@ describe("本物の雨雲は変えない（NowcastLayer）", () => {
     const tiles = [...h.matchAll(/<img [^>]*data-layer="nowcast"[^>]*>/g)].map((m) => m[0]);
     expect(tiles.length).toBeGreaterThan(0);
     for (const t of tiles) {
-      expect(t).not.toMatch(/opacity|filter|mix-blend|brightness|saturate|hue-rotate/);
+      expect(t).not.toMatch(/filter|mix-blend|brightness|saturate|hue-rotate/);
+      expect(t).toContain("opacity:0.65");
       expect(t).toContain('src="/api/jma/nowc/tile/');
     }
-    expect(h).toContain(`src="${NOWC_LEGEND_URL}"`);
-    expect(h).not.toContain("data-rain-legend");
+    expect(h).not.toContain("jma.go.jp");
+    expect(h).toContain('data-rain-legend="nowcast"');
+    expect(h).not.toContain('data-rain-legend="drill"');
   });
 
   it("訓練の画面は本物の雨雲を重ねない（筋書きの雨だけ）", () => {

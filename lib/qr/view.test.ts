@@ -189,7 +189,7 @@ describe("閲覧の記録（相手・範囲・時刻）", () => {
     expect(item).toMatchObject({ kind: QR_LABELS.view, who: QR_LABELS.anonymous, when: "2026-11-04 11:20" });
   });
 
-  it("医療班でログインしていれば誰が（審査員の医療班の役は 医療班 審査員）", async () => {
+  it("医療班でログインしていれば誰が（審査員の医療班の役は 医療班 審査員 1）", async () => {
     const t = await tokenOf("p-01");
     await open(t, judgeMedical);
     const r = qrRows()[0];
@@ -197,7 +197,7 @@ describe("閲覧の記録（相手・範囲・時刻）", () => {
     const p = qrViewOf({ kind: "note", payload: r.payload })!;
     expect(p.recipient).toEqual({ role: "medical", accountId: "acct-judge", name: null, judge: true });
     const view = (await loadPersonPage(db, careManager, "p-01"))!;
-    expect(timelineItems(view).find((i) => i.id === r.id)).toMatchObject({ kind: QR_LABELS.view, who: "医療班 審査員" });
+    expect(timelineItems(view).find((i) => i.id === r.id)).toMatchObject({ kind: QR_LABELS.view, who: "医療班 審査員 1" });
   });
 
   it("同意のない人を開いても残す（範囲は表示なし、出した欄は空）", async () => {
@@ -246,7 +246,7 @@ describe("閲覧の記録（相手・範囲・時刻）", () => {
     await open(t2, judgeMedical, "2026-11-04T02:20:00.000Z");
     const view = (await loadPersonPage(db, careManager, "p-01"))!;
     expect(qrViewLog(view).map(({ id: _id, ...v }) => v)).toEqual([
-      { when: "2026-11-04 11:20", who: "医療班 審査員", scope: QR_LABELS.scopeSummary, generation: 2 },
+      { when: "2026-11-04 11:20", who: "医療班 審査員 1", scope: QR_LABELS.scopeSummary, generation: 2 },
       { when: "2026-11-04 10:10", who: QR_LABELS.anonymous, scope: QR_LABELS.scopeSummary, generation: 1 },
     ]);
   });

@@ -28,6 +28,11 @@ declare global {
     TURNSTILE_SECRET_KEY?: string;
     /** 避難経路の openrouteservice の鍵（T102、lib/map/route.ts）。無ければ経路は家と避難先と経由の点を手で結ぶ形だけ */
     ORS_API_KEY?: string;
+    // 本人・家族のスマホへ「大丈夫ですか」の通知を送る Web Push の鍵（T149、lib/push/vapid.ts）。3 つ揃うときだけ送る。
+    // 公開鍵は P-256 の点（65 バイト）の base64url、秘密鍵はその d（32 バイト）の base64url、連絡先は mailto: か https:。作り方は tools/push/vapid-keys.ts
+    VAPID_PUBLIC_KEY?: string;
+    VAPID_PRIVATE_KEY?: string;
+    VAPID_SUBJECT?: string;
   }
 }
 

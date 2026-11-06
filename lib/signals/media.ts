@@ -48,6 +48,11 @@ export type PromptPlayer = {
    * URL が無ければ端末の読み上げ
    */
   line(text: string, url: string | null): Promise<PromptResult>;
+  /**
+   * 鳴っている声を止める（T137b。読む間に本人が話し始めたとき）。止めた声は端末の読み上げで読み直さない。
+   * あとから始めた声があれば、前の声の失敗で止めたり読み上げたりしない（相づちと問いが重なったとき）
+   */
+  stop(): void;
 };
 
 /** 会話の 1 文の声が鳴り始めるのを待つ上限（決まった文の声を初めて作る時など。過ぎたら端末の読み上げ） */
@@ -86,6 +91,8 @@ export function createPromptPlayer(deps: {
   let primed: Promise<void> | null = null;
   /** 音の要素に今入っている声（会話の 1 文を鳴らしたあと、定型文の声に戻すため） */
   let src: string | null = null;
+  /** 声の番号。止めた・あとから始めた声があれば、前の声の続き（止める・読み上げに替える）を当てない */
+  let gen = 0;
 
   return {
     prime() {
@@ -121,6 +128,7 @@ export function createPromptPlayer(deps: {
       }
     },
     async play() {
+      const mine = ++gen;
       if (primed) await primed;
       if (audio && !audioFailed) {
         const ok = await wait((done) => {
@@ -135,14 +143,17 @@ export function createPromptPlayer(deps: {
           audio.play().catch(() => done(false));
         }, timeoutMs);
         if (ok) return "audio";
+        if (mine !== gen) return "none";
         audio.pause();
       }
+      if (mine !== gen) return "none";
       return speakWith(VOICE_PROMPT_TEXT);
     },
     say(text) {
       return speakWith(text);
     },
     async line(text, url) {
+      const mine = ++gen;
       if (primed) await primed;
       if (audio && url) {
         const ok = await wait((done) => {
@@ -165,13 +176,29 @@ export function createPromptPlayer(deps: {
           );
         }, timeoutMs);
         if (ok) return "audio";
+        // 止めた・あとの声が始まった: 前の声で止めたり読み上げたりしない
+        if (mine !== gen) return "none";
         try {
           audio.pause();
         } catch {
           // 止められない
         }
       }
+      if (mine !== gen) return "none";
       return speakWith(text);
+    },
+    stop() {
+      gen++;
+      try {
+        audio?.pause();
+      } catch {
+        // 止められない
+      }
+      try {
+        synth?.cancel();
+      } catch {
+        // 止められない
+      }
     },
   };
 
@@ -339,6 +366,8 @@ export type TranscriptSession = {
 
 /** 長い無音でブラウザが止めたときに聞き直す回数（録っている間だけ） */
 export const TRANSCRIPT_RESTARTS = 5;
+/** 会話の間ずっと聞くとき（T137b）の聞き直しの上限（ブラウザは静かな間や通信で止めるので多めに。5 分の会話で足りる数） */
+export const KEEP_ALIVE_RESTARTS = 60;
 
 /** 文字起こしの知らせ（lib/signals/phone.ts の TranscriptEvents と同じ形） */
 export type TranscriptEvents = {
@@ -346,6 +375,8 @@ export type TranscriptEvents = {
   onSilence?: () => void;
   /** 文字が届いた（途中の文字も）。話している間は録る時間を延ばす（T69b） */
   onText?: (text: string) => void;
+  /** ブラウザが止めても回数を限らず続きから聞き直す（T137b。会話の間ずっと聞く） */
+  keepAlive?: true;
 };
 
 /**
@@ -375,12 +406,14 @@ export function startTranscript(Ctor: SpeechRecognitionCtor | null, events: Tran
         events.onSilence();
         return;
       }
-      // 人が止める前に終わった（無音・通信）。録っている間は続きから聞き直す
-      if (!stopping && restarts < TRANSCRIPT_RESTARTS) {
+      // 人が止める前に終わった（無音・通信）。録っている間は続きから聞き直す。
+      // 会話の間ずっと聞く（keepAlive）ときも、マイクが使えない・失敗が続く（KEEP_ALIVE_RESTARTS 回）ときは聞き直さない（空回りしない）
+      const keep = events.keepAlive && error !== "mic" && restarts < KEEP_ALIVE_RESTARTS;
+      if (!stopping && (keep || restarts < TRANSCRIPT_RESTARTS)) {
         restarts++;
         if (d.start(text)) return;
       }
-      if (stopping || restarts >= TRANSCRIPT_RESTARTS) finish(text);
+      if (stopping || (!keep && restarts >= TRANSCRIPT_RESTARTS)) finish(text);
     },
   });
   if (!d.start("")) return null;

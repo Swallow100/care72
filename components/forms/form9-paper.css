@@ -234,3 +234,35 @@
   font-size: var(--fs-label);
   color: var(--gray);
 }
+
+/* その場で書く層の置き場（T147、components/forms/Form9Fill.tsx）。画面だけで、印刷では出さない */
+.paper .f9-layer {
+  position: absolute;
+  inset: 0;
+}
+@media print {
+  .paper .f9-layer {
+    display: none;
+  }
+}
+/* 画面の印刷見本（T147）。紙の外は地の色、頁は白い紙。ひな形の余白は白い縁で（中の物は内容の箱からの位置なので padding は使わない） */
+@media screen {
+  .form9-onscreen [data-paper-root] {
+    display: grid;
+    justify-items: center;
+    gap: 6mm;
+    padding-bottom: 6mm;
+  }
+  .form9-onscreen .paper.form9-sheet {
+    box-sizing: content-box;
+    border: solid #fff;
+    border-width: 19mm 18mm;
+    background: #fff;
+  }
+  .form9-onscreen .paper.paper-flow {
+    box-sizing: border-box;
+    width: 297mm;
+    padding: 19mm 18mm;
+    background: #fff;
+  }
+}

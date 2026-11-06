@@ -20,3 +20,9 @@ JMA_NOWCAST=
 # 避難経路の openrouteservice の鍵（T102）。空なら外へ要求せず、経路は家と避難先と手で足す経由の点を結ぶ形だけ。
 # 外へ送るのは家（約 150 m の格子に丸めた点）と避難先の 2 点の座標と手段（徒歩・車）だけ。無料の枠は 1 日 2,000 回・1 分 40 回（全部の事業所で 1 つの鍵）
 ORS_API_KEY=
+# 本人・家族のスマホへ「大丈夫ですか」の通知を送る Web Push の鍵（T149）。3 つ揃ったときだけ送る。空なら送らず、画面は「通知 未設定」。
+# 作り方: node tools/push/vapid-keys.ts（その場で作って 2 行を出す。どこにも保存しない）。配信は Cloudflare の secret に入れる
+# 公開鍵（65 バイトの base64url）・秘密鍵（32 バイトの base64url）・連絡先（mailto: か https:）
+VAPID_PUBLIC_KEY=
+VAPID_PRIVATE_KEY=
+VAPID_SUBJECT=

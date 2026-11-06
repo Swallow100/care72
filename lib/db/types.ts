@@ -19,7 +19,7 @@ export type OfficeKind = (typeof OFFICE_KINDS)[number];
 export const ACCOUNT_ROLES = ["care_manager", "government", "medical", "judge"] as const;
 export type AccountRole = (typeof ACCOUNT_ROLES)[number];
 
-/** 計画の状態: 未作成・下書き・同意済・訓練済 */
+/** 計画の状態（DB の値）: 未作成・下書き・同意済・訓練済。画面と紙は 3 つの段階（同意済・訓練済は作成済）と別の訓練の日で出す（lib/plan-status.ts、T146） */
 export const PLAN_STATUSES = ["none", "draft", "consented", "trained"] as const;
 export type PlanStatus = (typeof PLAN_STATUSES)[number];
 
@@ -233,7 +233,30 @@ export type TimelineKind = (typeof TIMELINE_KINDS)[number];
  */
 export const INTAKE_SOURCE = "intake";
 
-/** 入れる欄の保存の経過の payload。値は持たず、変えた欄の場所だけ */
+/**
+ * 経過の変更履歴で出す区分（T143）。本人のページの区分と同じ並び。住所と位置は見る人の範囲が別（lib/consent/scope.ts の address）なので分ける
+ */
+export const INTAKE_DIFF_SECTIONS = ["medical", "evacuation", "people", "basic", "address", "consent"] as const;
+export type IntakeDiffSection = (typeof INTAKE_DIFF_SECTIONS)[number];
+
+/**
+ * 保存で変えた欄 1 つの前と後の言葉（T143）。画面の言葉のまま（選択肢は名前、配列は「・」でつなぐ）。空は null。
+ * 位置・経路地図のように数を見せない欄は前も後も null（画面は欄の名前と「変更」だけ）
+ */
+export type IntakeDiff = {
+  /** 台帳の場所・連絡先・時計・同意（contacts.<id>・clocks.<id>・consent.<kind>） */
+  key: string;
+  section: IntakeDiffSection;
+  /** 欄の名前（既往・連絡先 長女・時計 酸素 など） */
+  label: string;
+  before: string | null;
+  after: string | null;
+};
+
+/**
+ * 入れる欄の保存の経過の payload。変えた欄の場所と、T143 から欄ごとの前と後の言葉（diff。それより前の行には無い）。
+ * 前と後は本人のページの見る人の範囲で絞って出す（lib/person.ts）。Claude を呼ぶ所は経過の表を読まない
+ */
 export type IntakePayload = {
   source: typeof INTAKE_SOURCE;
   /** Claude の分け方を使ったか（使ったときは画面に AI の印） */
@@ -246,6 +269,8 @@ export type IntakePayload = {
   read?: { source: "photo" | "pdf" | "excel" | "word"; page: number; redacted: number };
   /** 変えた欄（台帳の場所・連絡先・時計） */
   fields: string[];
+  /** 欄ごとの前と後（T143）。無い行は欄の名前だけを出す */
+  diff?: IntakeDiff[];
 };
 
 /** AI を呼ぶ用途。Claude の 7 つ（モデルは lib/claude/models.ts）と、声（Gemini TTS） */
@@ -528,6 +553,21 @@ export type OfficeRow = {
    * NULL は「まだ無い」（区域なし）。前からのテストの行には無い
    */
   hazards?: string | null;
+  /** 所在地（migration 0036、T148）。NULL は未入力 */
+  address: string | null;
+  /** 電話・FAX（migration 0036、T148） */
+  phone: string | null;
+  fax: string | null;
+  /** 介護保険の事業所番号（数字 10 桁。migration 0036、T148） */
+  office_number: string | null;
+  /** 地域の周りの市の JSON の配列（migration 0036、T148。主な市は city）。NULL は周りの市なし */
+  region_cities: string | null;
+  /** 地図の広さ（中心からの km。5・10・20・40。migration 0036、T148）。NULL は自動 */
+  region_km: number | null;
+  /** 主な市の全国地方公共団体コード（6 桁。migration 0038、T154。表は lib/municipality）。NULL は未選択（前からの行は文字の city を表で当てる） */
+  city_code?: string | null;
+  /** 周りの市の団体コードの JSON の配列（migration 0038、T154）。NULL は周りの市なし（前からの行は region_cities を表で当てる） */
+  region_city_codes?: string | null;
   created_at: string;
 };
 
@@ -648,6 +688,37 @@ export type PersonListMark = { unlisted_at: string | null };
  * 版 0 はまだ作っていない。PersonRow に入れないのは unlisted_at と同じ理由（種と本人のページの型に波及させない）
  */
 export type PersonPhoneLink = { phone_link_generation: number; phone_link_issued_at: string | null };
+
+/**
+ * 本人・家族のスマホの ID とパスワード（T149、migrations/0037）。本人用は contact_id が NULL。
+ * link_generation・link_issued_at は作った時のスマホ入口の版と時刻（今の版と同じときだけ通す。lib/phone/account.ts）
+ */
+export type PhoneAccountRow = {
+  id: string;
+  person_id: string;
+  contact_id: string | null;
+  login_id: string;
+  password_hash: string;
+  link_generation: number;
+  link_issued_at: string;
+  created_at: string;
+  updated_at: string;
+};
+
+/** Web Push の購読（T149、migrations/0037）。審査員の本人・家族の役の購読は link_generation・link_issued_at が NULL */
+export type PushSubscriptionRow = {
+  id: string;
+  person_id: string;
+  contact_id: string | null;
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+  link_generation: number | null;
+  link_issued_at: string | null;
+  created_at: string;
+  updated_at: string;
+  last_sent_at: string | null;
+};
 
 /**
  * 申告の年齢（people.reported_age、T23）。医療班・行政がその場で作った人で、生年月日が分からないとき。作った日の年齢。
@@ -1053,6 +1124,33 @@ export type ThirdPartyProvisionRow = {
   provided_at: string;
   /** 受け持ちを閉じた時刻 */
   closed_at: string | null;
+};
+
+// ---------- 医療班への受入依頼（T163、migrations/0039_custody_requests.sql） ----------
+
+/** 依頼の状態: 依頼中・受入・受入不可・取消 */
+export const CUSTODY_REQUEST_STATES = ["open", "accepted", "declined", "withdrawn"] as const;
+export type CustodyRequestState = (typeof CUSTODY_REQUEST_STATES)[number];
+
+/** 受入依頼 1 行。宛先は医療班の役（アカウントを決めない）。消さない */
+export type CustodyRequestRow = {
+  id: string;
+  person_id: string;
+  /** 依頼した事業所（本人の事業所） */
+  office_id: string;
+  requested_by: string | null;
+  /** 行き先（受け入れたときの受け持ちの避難所） */
+  shelter: string;
+  state: CustodyRequestState;
+  requested_at: string;
+  replied_by: string | null;
+  replied_role: StaffRole | "care_manager" | null;
+  replied_name: string | null;
+  replied_at: string | null;
+  /** 受け入れた医療班の受け持ち */
+  custody_id: string | null;
+  /** 種の事業所の「発災開始」で入れた行 */
+  seed: 0 | 1;
 };
 
 // ---------- 気象庁の写し（T72、migrations/0020_jma.sql） ----------

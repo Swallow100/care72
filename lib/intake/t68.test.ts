@@ -35,6 +35,7 @@ import { INTAKE_FIELDS, INTAKE_KEYS } from "./fields.ts";
 import { intakePropsOf } from "./props.ts";
 import { CONTACT_KINDS_FOR_EDIT, CONTACT_KINDS_FOR_INTAKE, ExtractSchema } from "./schema.ts";
 import { applyPlace, saveIntake, SaveRequestSchema, type SaveRequest } from "./save.ts";
+import { municipalityGeo } from "../municipality/geo.ts";
 
 const NOW = new Date("2026-11-04T03:00:00.000Z");
 const TODAY = "2026-11-04";
@@ -107,7 +108,10 @@ const POINT = { lat: 33.55897, lng: 133.53112 };
 describe("住所と位置の手入力（T68 の 1）", () => {
   it("新しい人は住所・位置が無く、市の欄の既定は事業所の市・町名は空。町名が空のあいだは市の既定を送らず、ほかの直しを止めない", async () => {
     const d = await editData();
-    expect(d.place).toEqual({ city: "高知市", center: null, towns: [] });
+    // 地域の市の並びと広さ（T148）も同じ読み込みで付く（周りの市が無ければ主な市だけ、広さは自動）。
+    // 事業所の中心が無ければ地図の真ん中は主な市の代表の点（T154、全国の市区町村の表）
+    const kochi = municipalityGeo("392014")!.point;
+    expect(d.place).toMatchObject({ city: "高知市", center: kochi, towns: [], cities: ["高知市"], km: null, map: { center: kochi } });
     const draft = editDraft(d);
     expect(draft.address).toEqual({ city: "高知市", town: "" });
     expect(draft.location).toBeNull();

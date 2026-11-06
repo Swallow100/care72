@@ -49,6 +49,7 @@ import {
   value,
   type BuildOptions,
   type Cell,
+  type Choice,
   type Contact,
   type MatsuyamaKey,
   type MatsuyamaSheet,
@@ -57,8 +58,10 @@ import {
 } from "./matsuyama.ts";
 import { heldFields } from "./field-risk.ts";
 import { ledgerItem, listFieldIds, type FormMapping, type LedgerItemKey, type ListShape, type MappingField } from "./mapping.ts";
+import { paperText } from "./paper-text.ts";
 import { warekiText } from "./wareki.ts";
 import { codeOfOption, codesOf, freeCodes, optionTable, pickByCodes } from "./option-values.ts";
+import { bracketOwners, strayOther, type BracketOwner } from "./form-shape.ts";
 import { transportKindOf, transportText } from "../map/transport.ts";
 
 // ---------- 項目の値 ----------
@@ -89,6 +92,11 @@ export type ItemValue = {
   codes?: readonly string[];
   /** 表で当たった選択肢に添える字（T140。手段の補記「娘の車」。1 つを選ぶ欄だけ） */
   codeDetail?: string;
+  /**
+   * 種類の □ の後ろの括弧に書く値（T164。「□抗血小板薬（　）」の括弧）。labels は括弧の前の □ の名前（同じ行の □ の全部）で、その種類の値だけ。
+   * 合う値が無ければ空（「なし」も書かない）。無い項目は種類の括弧に何も書かない
+   */
+  kindCell?: (labels: readonly string[]) => Cell;
 };
 
 type Ctx = {
@@ -177,6 +185,13 @@ const MEDICATION_KIND_WORDS: Record<keyof typeof MEDICATION_CATEGORY_LABELS, rea
 const WARFARIN_WORDS = ["ワーファリン", "ワルファリン"] as const;
 const WARFARIN = /ワーファリン|ワルファリン|warfarin/i;
 const MEDICATION_KINDS = [...new Set([...Object.values(MEDICATION_KIND_WORDS).flat(), ...WARFARIN_WORDS])];
+/** 薬 1 つの、種類の □ と照らす言葉（名前・区分の名前・□ の言い方・ワーファリン） */
+const medicationWords = (m: { name: string; category: keyof typeof MEDICATION_CATEGORY_LABELS }): string[] => [
+  m.name,
+  ...(m.category !== "other" ? [MEDICATION_CATEGORY_LABELS[m.category]] : []),
+  ...MEDICATION_KIND_WORDS[m.category],
+  ...(WARFARIN.test(m.name) ? WARFARIN_WORDS : []),
+];
 
 function bool(v: boolean | undefined, reason?: PendingStatus): ItemValue {
   if (v === undefined) return { cell: unconfirmed(reason), flag: null };
@@ -424,6 +439,10 @@ export const ITEM_VALUES: Record<LedgerItemKey, Resolver> = {
       multi: true,
       kinds: DEVICE_KINDS,
       codes: [...new Set(devices.map((d) => d.kind))],
+      kindCell: (labels) => {
+        const hit = devices.filter((d) => labels.some((l) => wordMatches(l, [deviceText(d), DEVICE_LABELS[d.kind]])));
+        return hit.length > 0 ? value(...hit.map((d): PieceLine => [t(deviceText(d))])) : EMPTY;
+      },
     };
   },
   "medical.medications": (c) => {
@@ -431,18 +450,18 @@ export const ITEM_VALUES: Record<LedgerItemKey, Resolver> = {
     // 種類の □ に合わせる言葉は区分の □ の言い方（T131）。その他の区分は名前を添えない「その他」の □ だけ
     const words = [
       ...new Set(
-        meds.flatMap((m) => [
-          m.name,
-          ...(m.category !== "other" ? [MEDICATION_CATEGORY_LABELS[m.category]] : []),
-          ...MEDICATION_KIND_WORDS[m.category],
-          ...(WARFARIN.test(m.name) ? WARFARIN_WORDS : []),
-        ]),
+        meds.flatMap((m) => medicationWords(m)),
       ),
       "あり",
     ];
     const reason = pendingOf(c.ledger, "medical.medications");
     const flag = meds.length > 0 ? true : reason ? null : false;
-    return { cell: c.sheet.cells["medical.drugs"], flag, words: meds.length > 0 ? words : ["なし"], multi: true, kinds: MEDICATION_KINDS };
+    // 種類の括弧（T164）: その種類の薬の名前と飲み方だけ（専用の紙 lib/forms/medical-summary.ts の medicationNames と同じ字）
+    const kindCell = (labels: readonly string[]): Cell => {
+      const hit = meds.filter((m) => labels.some((l) => wordMatches(l, medicationWords(m))));
+      return hit.length > 0 ? value(...hit.map((m): PieceLine => [t(m.name), ...(m.schedule ? [sub(m.schedule)] : [])])) : EMPTY;
+    };
+    return { cell: c.sheet.cells["medical.drugs"], flag, words: meds.length > 0 ? words : ["なし"], multi: true, kinds: MEDICATION_KINDS, kindCell };
   },
   "medical.doctor": fromSheet("medical.doctor"),
   "medical.dialysis": (c) => {
@@ -641,6 +660,50 @@ export function wordMatches(label: string, words: readonly string[]): boolean {
   );
 }
 
+/** 意味を変えない添えの字（「高血圧」と「高血圧症」、「インフルエンザ」と「インフルエンザワクチン」） */
+const NEUTRAL_AFFIX = /^(症|病|疾患|歴|等|など|ワクチン|予防接種|接種|既往|の既往)?$/;
+
+/**
+ * 自由な言葉の並び（既往症・予防接種など）を選ぶ欄の選択肢に当てる（T160）。言葉ごとに:
+ * - 同じ言葉・添えの字（症・ワクチンなど）だけ違う選択肢に印
+ * - 選択肢の方が細かい（「今期インフルエンザ」に「インフルエンザ」）: 台帳に無い事を言うので印を付けない
+ * - 言葉の方が細かい（「2 型糖尿病」に「糖尿病」）: 印を付け、残り（「2 型」）を選択肢の所に添える
+ * - 当たらない言葉（「新型コロナ」）は after（「その他」の括弧へ）
+ * どの言葉も印にならないとき、あり・なし の選択肢のある欄は null（今までの照らし方へ）。「あり」「なし」は欄の あり・なし の言葉なので照らさない
+ */
+export function pickWords(options: readonly string[], words: readonly string[]): { options: Choice[]; after: string[] } | null {
+  const real = words.filter((w) => w !== "あり" && w !== "なし" && normalizeWord(w) !== "");
+  if (real.length === 0 || options.length === 0) return null;
+  const opts = options.map(normalizeWord);
+  const on = options.map(() => false);
+  const details: string[][] = options.map(() => []);
+  const after: string[] = [];
+  for (const w of real) {
+    const x = normalizeWord(w);
+    let hit = false;
+    for (const [i, o] of opts.entries()) {
+      if (o === "") continue;
+      const at = o.indexOf(x);
+      if (o === x || (at >= 0 && NEUTRAL_AFFIX.test(o.slice(0, at)) && NEUTRAL_AFFIX.test(o.slice(at + x.length)))) {
+        on[i] = true;
+        hit = true;
+        continue;
+      }
+      const inner = x.indexOf(o);
+      if (inner >= 0 && o.length >= 2) {
+        on[i] = true;
+        hit = true;
+        const rest = `${x.slice(0, inner)}${x.slice(inner + o.length)}`;
+        if (!NEUTRAL_AFFIX.test(rest)) details[i].push(w.normalize("NFKC").replace(options[i].normalize("NFKC").trim(), "").trim() || rest);
+      }
+    }
+    if (!hit) after.push(w);
+  }
+  // どれも当たらない: あり・なし の欄は今までの照らし方（あり に印）、ほかは全部「その他」へ
+  if (!on.some(Boolean) && opts.some((o) => YES.test(o) || NO.test(o))) return null;
+  return { options: options.map((label, i) => ({ label, on: on[i], ...(details[i].length > 0 ? { detail: details[i].join("・") } : {}) })), after };
+}
+
 /**
  * □ ごとに種類を問う欄（T122）: □ の名前が項目の種類のどれかなら、その種類が台帳にあるかの印。
  * 種類でない □（「医療機器の使用」）は undefined（今まで通り有無）
@@ -694,6 +757,12 @@ export function shapeCell(field: MappingField, v: ItemValue): Cell {
       // （構造・性別・世帯）で値の選択肢が無いのは読み落としのことがあるので、選択肢に無い（置けなかった）として人に見せる
       if (pick.range && (v.multi || field.item === "care.careLevel")) return { kind: "choice", options: field.options.map((label) => ({ label, on: false })), range: true };
       if (pick.ambiguous) return { kind: "choice", options: field.options.map((label) => ({ label, on: false })), after: pieces(cell), ambiguous: true };
+    }
+    // 自由な言葉の並び（既往症・予防接種・アレルギー。T160）: 言葉ごとに意味を変えない選択肢にだけ印、選択肢より細かい言葉は残りを添え、
+    // 当たらない言葉は「その他」の括弧へ（置き方は lib/forms/overlay-sheet.ts の placeChoice）
+    if (v.multi && v.words && !v.match && !v.kinds) {
+      const picked = pickWords(field.options, v.words);
+      if (picked) return { kind: "choice", options: picked.options, ...(picked.after.length > 0 ? { after: [t(picked.after.join("・"))] } : {}) };
     }
     // 複数選択の欄（T122）: 種類が並ぶ項目は、合う選択肢の全部に印
     if (v.multi && v.words) {
@@ -754,7 +823,114 @@ export function mappedCell(field: MappingField, ctx: Ctx): Cell {
   if (field.item === null) return field.shape === "check" ? { kind: "choice", options: [CHECK_OFF], unconfirmed: {} } : unconfirmed();
   const def = ledgerItem(field.item);
   if (def.consent && ctx.consent[def.consent] !== "granted") return { kind: "withheld", consent: def.consent };
-  return shapeCell(field, ITEM_VALUES[field.item](ctx));
+  const cell = shapeCell(field, ITEM_VALUES[field.item](ctx));
+  // 欄の名前が 2 つの項目を含む欄（「生年月日・年齢」「氏名・ふりがな」「住所・電話」。T141）は、もう 1 つの項目も同じ欄に置く
+  const pair = pairedItem(field) ?? agePartItem(field);
+  if (!pair || cell.kind !== "value" || field.shape === "choice" || field.shape === "check") return cell;
+  const def2 = ledgerItem(pair.item);
+  if (def2.consent && ctx.consent[def2.consent] !== "granted") return cell;
+  const other = ITEM_VALUES[pair.item](ctx).cell;
+  if (other.kind !== "value") return cell;
+  return pairCell(cell, other, pair, field);
+}
+
+// ---------- 2 つの項目を持つ欄（T141） ----------
+
+/**
+ * 欄の名前の言葉と、項目の役（T141）。評価の 5 回目で、災害診療記録の「生年月日・年齢」の欄を年齢の項目に当てた読み取りで
+ * 年齢だけが入ったと数えられた。欄の名前が 2 つの項目の言葉を区切りの字（・／、・及び・と）でつないでいれば、両方を置く
+ */
+const PAIR_ROLES = [
+  { role: "name", re: /氏名|名前/ },
+  { role: "kana", re: /ふりがな|フリガナ|カナ/ },
+  { role: "birth", re: /生年月日/ },
+  { role: "age", re: /年齢/ },
+  { role: "address", re: /住所/ },
+  { role: "phone", re: /電話|TEL/i },
+  { role: "relation", re: /続柄|関係/ },
+] as const;
+type PairRole = (typeof PAIR_ROLES)[number]["role"];
+
+/** 本人の項目の役 */
+const PERSON_ROLES: Partial<Record<PairRole, LedgerItemKey>> = {
+  name: "person.name",
+  kana: "person.kana",
+  birth: "person.birth",
+  age: "person.age",
+  address: "basic.address",
+  phone: "self.phone",
+};
+
+/** 項目の仲間（本人、緊急連絡先・支援者ごと）。仲間の外の項目は組にしない */
+function familyOf(item: LedgerItemKey): Partial<Record<PairRole, LedgerItemKey>> | null {
+  if ((Object.values(PERSON_ROLES) as string[]).includes(item)) return PERSON_ROLES;
+  const m = item.match(/^((?:emergency|supporter)\d)\.(name|kana|address|phone|relation)$/);
+  if (!m) return null;
+  const p = m[1];
+  return { name: `${p}.name`, kana: `${p}.kana`, address: `${p}.address`, phone: `${p}.phone`, relation: `${p}.relation` } as Partial<Record<PairRole, LedgerItemKey>>;
+}
+
+/** 2 つの言葉をつなぐ区切り（括弧は入れない。「患者氏名（カタカナ）」は 1 つの項目） */
+const JOINER = /^[^（）()［］[\]]{0,4}$/;
+const JOIN_WORD = /[・･／/、,]|及び|および|並びに|と/;
+
+/** 2 つの項目を持つ欄のもう 1 つの項目（T141）。second は欄の名前で後ろに書かれた方が組の相手か */
+export function pairedItem(field: Pick<MappingField, "item" | "label">): { item: LedgerItemKey; role: PairRole; own: PairRole; second: boolean } | null {
+  if (!field.item) return null;
+  const fam = familyOf(field.item);
+  if (!fam) return null;
+  const label = field.label.normalize("NFKC");
+  const own = (Object.entries(fam) as Array<[PairRole, LedgerItemKey]>).find(([, k]) => k === field.item)?.[0];
+  const ownRe = PAIR_ROLES.find((r) => r.role === own)?.re;
+  const ownAt = ownRe ? label.match(ownRe) : null;
+  if (!own || !ownAt || ownAt.index === undefined) return null;
+  for (const r of PAIR_ROLES) {
+    if (r.role === own || !fam[r.role]) continue;
+    const m = label.match(r.re);
+    if (!m || m.index === undefined) continue;
+    const [a, b] = m.index > ownAt.index ? [ownAt, m] : [m, ownAt];
+    const between = label.slice(a.index! + a[0].length, b.index!);
+    if (JOINER.test(between) && JOIN_WORD.test(between)) return { item: fam[r.role]!, role: r.role, own, second: m.index > ownAt.index };
+  }
+  return null;
+}
+
+/**
+ * 生年月日の欄に「歳」の区切りの空きがある（「　年　月　日（　歳）」。T160）: 欄の名前に年齢の言葉が無くても、年齢の項目を組にして
+ * 年・月・日・歳の空きに分ける（評価の 6 回目で、吹田市・熊本市の生年月日が「歳」の空きに分けられず 1 つの字で置かれ、全部の紙で要修正）。
+ * 欄の名前で組になる物（pairedItem）が先
+ */
+export function agePartItem(field: Pick<MappingField, "item" | "options">): { item: LedgerItemKey; role: PairRole; own: PairRole; second: boolean } | null {
+  if (field.item !== "person.birth") return null;
+  const units = field.options.map((o) => o.normalize("NFKC").trim()).filter((o) => /[年月日歳]$/.test(o));
+  if (!units.some((o) => o.endsWith("歳")) || !units.some((o) => o.endsWith("日"))) return null;
+  return { item: "person.age", role: "age", own: "birth", second: true };
+}
+
+/** 括弧で添える役（年齢・ふりがな・続柄）。ほかは全角の空きで並べる */
+const BRACKET_ROLES: ReadonlySet<PairRole> = new Set<PairRole>(["age", "kana", "relation"]);
+
+/**
+ * 2 つの項目の値を 1 つの欄に（T141）。欄に「歳」の区切りの空きがあれば（部品つきの欄）区切りで分けられる並べ方（「昭和17年4月18日 84 歳」）、
+ * 無ければ決まった並べ方（「昭和17年4月18日（84 歳）」「山田 ハナ（ヤマダ ハナ）」「市 町名　090-…」）。欄の名前の順に並べる
+ */
+function pairCell(main: Extract<Cell, { kind: "value" }>, other: Extract<Cell, { kind: "value" }>, pair: { role: PairRole; own: PairRole; second: boolean }, field: MappingField): Cell {
+  // 1 つの字にして並べる（数と単位は詰める。lib/forms/paper-text.ts）
+  const flat = (c: Extract<Cell, { kind: "value" }>): string =>
+    c.lines
+      .map((l) => paperText(l.filter((x) => !x.unconfirmed && x.text.trim() !== "").map((x) => x.text).join(" ")))
+      .filter((x) => x !== "")
+      .join(" ");
+  const [first, last] = pair.second ? [flat(main), flat(other)] : [flat(other), flat(main)];
+  if (first === "" || last === "") return main;
+  const lastRole = pair.second ? pair.role : pair.own;
+  const units = field.options.map((o) => o.normalize("NFKC").trim()).filter((o) => /[年月日歳]$/.test(o));
+  const agePart = units.some((o) => o.endsWith("歳"));
+  if (lastRole === "age" && agePart) return { kind: "value", lines: [[t(`${first} ${last}`)]] };
+  // 年月日の区切りの空きがあり「歳」の空きが無い欄は、空きに分けると年齢が落ちるので組にしない（前と同じく 1 つの項目）
+  if (units.length > 0) return main;
+  if (lastRole && BRACKET_ROLES.has(lastRole)) return { kind: "value", lines: [[t(`${first}（${last}）`)]] };
+  return { kind: "value", lines: [[t(`${first}　${last}`)]] };
 }
 
 const isUnconfirmed = (cell: Cell) =>
@@ -780,6 +956,25 @@ export function phoneRole(cell: Cell, field: MappingField, fields: readonly Mapp
   return lines.length > 0 ? { kind: "value", lines } : unconfirmed();
 }
 
+/**
+ * 括弧の子の欄（T164、lib/forms/form-shape.ts の bracketOwner）の値。親の値を丸ごと書かない:
+ * - 親が種類の □（「□抗血小板薬（　）」）: その種類の値だけ（同じ行の左の □ の種類も。「□抗凝固薬 □ワーファリン（　）」は抗凝固薬の全部）。無ければ空
+ * - 種類の □ の並びの終わりの「その他（　）」で「その他」の □ が無い（rest）: 並びのどの種類にも入らない値（「その他」の種類）
+ * - 親が種類でない □（「□アレルギー（　）」）: 今までどおり項目の値（T161。□ に印、括弧の中に中身）
+ * - 親が選ぶ欄（「□その他（　）」「□洪水（～）」）: 空。親の選択肢の添え・その他の値を、紙（overlay-sheet.ts の placeChoice）がこの欄の枠に置く
+ */
+export function bracketCell(cell: Cell, own: BracketOwner<MappingField>, ctx: Ctx): Cell {
+  if (cell.kind === "withheld" || cell.kind === "handwrite") return cell;
+  if (own.option !== null) return EMPTY;
+  const item = own.owner.item;
+  if (!item) return cell;
+  const v = ITEM_VALUES[item](ctx);
+  if (kindFlag(own.owner, v) === undefined) return own.rest ? EMPTY : cell;
+  if (!v.kindCell || v.flag !== true) return EMPTY;
+  // 「その他」の □ を読み落とした並びの終わりの「その他（　）」は、その他の種類の値
+  return v.kindCell(own.rest ? ["その他"] : own.row.map((f) => f.label));
+}
+
 /** 確かめた対応表と台帳から、欄の順に値を並べた紙面を作る */
 export function buildMappedSheet(rows: PersonPageRows, mapping: FormMapping, opts: BuildOptions): MappedSheet {
   const ledger = parseLedger(rows.person.ledger);
@@ -801,10 +996,17 @@ export function buildMappedSheet(rows: PersonPageRows, mapping: FormMapping, opt
   let count = 0;
   // 要確認の欄を確認するまで紙に使わない形（T122）: 確認していない要確認の欄は対応なしと同じ（未確認）
   const held = heldFields(mapping);
+  // 括弧の子の欄（T164）。確認していない要確認の欄（項目なしと同じ）は親にも子にもしない
+  const shown = mapping.fields.filter((f) => !held.has(f.id));
+  const brackets = bracketOwners(shown);
   for (const field of mapping.fields) {
     if (field.removed) continue;
     count += 1;
-    const cell = phoneRole(mappedCell(held.has(field.id) ? { ...field, item: null } : field, ctx), field, mapping.fields);
+    const own = held.has(field.id) ? undefined : brackets.get(field.id);
+    const base = phoneRole(mappedCell(held.has(field.id) ? { ...field, item: null } : field, ctx), field, mapping.fields);
+    // 並びの終わりの「その他（　）」に違う項目（T164、form-shape.ts の strayOther）: 違う欄に書かない
+    const stray = !own && !held.has(field.id) && base.kind !== "withheld" && strayOther(field, shown);
+    const cell = own ? bracketCell(base, own, ctx) : stray ? EMPTY : base;
     const name = field.section ? `${field.section} ${field.label}` : field.label;
     if (cell.kind === "withheld") withheld.add(cell.consent);
     else if (isUnconfirmed(cell)) unconfirmedLabels.push(name);

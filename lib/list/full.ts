@@ -124,6 +124,9 @@ export function buildFullDetail(x: FullInput): FullDetail {
   const sections = FULL_SECTIONS.flatMap((id): Section[] => {
     const s = view.sections.find((v) => v.id === id);
     if (!s) return [];
+    // 医療の面の「時計」の段は、行の詳細の上の「残り時間」に無い時計（本人の状態）だけ（T150）。走る時計は「残り時間」に同じ言葉
+    // （components/person/ClockLines）で出ているので、ここで 2 回目を出さない
+    if (id === "medical") return [{ ...s, blocks: s.blocks.flatMap((b) => (b.type === "clocks" ? onlyConditions(b) : [b])) }];
     if (id !== "people") return [s];
     return [{ ...s, blocks: s.blocks.filter((b) => !(b.type === "row" && b.row.key === "people.contacts")) }];
   });
@@ -131,6 +134,12 @@ export function buildFullDetail(x: FullInput): FullDetail {
     contacts: contacts.filter((c) => !IN_MEDICAL.has(c.kind)).sort(order).map(fullContact),
     sections,
   };
+}
+
+/** 「時計」の段から、行の詳細の「残り時間」に出ない時計（本人の状態。lib/list/detail.ts は condition を外す）だけを残す。無ければ段ごと外す */
+function onlyConditions(b: Extract<Section["blocks"][number], { type: "clocks" }>): Section["blocks"] {
+  const clocks = b.clocks.filter((k) => k.text.kind === "condition");
+  return clocks.length > 0 ? [{ ...b, clocks }] : [];
 }
 
 /** 訓練の「全部」: 面の中の電話の番号（tel のある言葉）を「電話あり」に（訓練の画面から本物の番号にかけない、T17 の決め） */

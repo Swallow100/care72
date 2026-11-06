@@ -1,21 +1,20 @@
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import Link from "next/link";
-import { ColorCounts } from "@/components/disaster/ColorCounts";
 import { DisasterBadge } from "@/components/disaster/DisasterBadge";
 import { AddCareManager } from "@/components/office/AddCareManager";
 import { AssignForm } from "@/components/office/AssignForm";
 import { AssignMany, PickAll, PickBox } from "@/components/office/AssignMany";
 import { AssignRow } from "@/components/office/AssignRow";
 import { CareManagerRow } from "@/components/office/CareManagerRow";
-import { FormChoice } from "@/components/office/FormChoice";
 import { MoreFold } from "@/components/office/MoreFold";
 import { JmaAlerts } from "@/components/office/JmaAlerts";
 import { OfficePlace } from "@/components/office/OfficePlace";
+import { OfficeProfile } from "@/components/office/OfficeProfile";
 import { SetupPanel } from "@/components/office/SetupPanel";
 import { UnlistedFold } from "@/components/office/UnlistedFold";
 import { UnlistedRows } from "@/components/office/UnlistedRows";
 import { ButtonLink, buttonClass } from "@/components/ui/Button";
-import { AddPersonIcon, CloseIcon, DownloadIcon, PaperIcon } from "@/components/ui/Icon";
+import { AddPersonIcon, CloseIcon } from "@/components/ui/Icon";
 import { LinkPending } from "@/components/ui/LinkPending";
 import { Page, PageHead, Panel, PanelHead } from "@/components/ui/Panel";
 import { SubmitButton } from "@/components/ui/SubmitButton";
@@ -25,7 +24,7 @@ import { StateTag, StateText, TONE_TEXT } from "@/components/ui/Tag";
 import { todayJst } from "@/lib/age";
 import { wantsOwnPassword } from "@/lib/auth/password-change";
 import { requirePage } from "@/lib/auth/server";
-import { PLAN_TONES } from "@/lib/caseload";
+import { PlanDrill, PlanStage, PlanState } from "@/components/list/PlanState";
 import { ALERT_LEVELS, DISASTER_KINDS, OUTAGE_SCOPES, type DisasterKind, type GeoPoint } from "@/lib/db/types";
 import { loadDisasterState, loadOfficeLog, loadOfficeTowns, type OfficeLogItem, type TownCount } from "@/lib/disaster/db";
 import { OFFICE_INFO_PATH, OFFICE_MODE_PATH, OFFICE_PATH, parseConfirm, parseFormError } from "@/lib/disaster/http";
@@ -45,27 +44,25 @@ import {
   OUTAGE_SCOPE_LABELS,
   shortJst,
   toLocalInput,
-  toSituation,
   type DisasterState,
 } from "@/lib/disaster/state";
-import { colorCounts, NORMAL_ORDER_LABELS } from "@/lib/forms/form9";
-import { form9Scope, loadForm9 } from "@/lib/forms/form9-db";
-import { FORM9_CSV_PATH, FORM9_PATH } from "@/lib/forms/form9-href";
-import { PLAN_STATUS_LABELS } from "@/lib/labels";
 import { parseAssignedMany, parsePeopleError } from "@/lib/office/http";
 import { ASSIGN_ANCHOR, CARE_MANAGERS_ANCHOR, NEW_PERSON_PATH, OFFICE_PEOPLE_PATH } from "@/lib/office/http-paths";
 import { assignManyText, OFFICE_ERROR_LABELS, OFFICE_LABELS, type PeopleActionError } from "@/lib/office/labels";
 import { activeCareManagers, listCareManagers, listOfficePeople, type CareManagerItem, type OfficePersonItem } from "@/lib/office/people";
 import { officeActor } from "@/lib/office/scope";
+import { loadOfficeProfile, parseProfileError } from "@/lib/office/profile";
+import { loadRegionWarnings, NO_REGION_WARNINGS, type RegionWarnings } from "@/lib/jma/alerts";
 import { canSeeSetup, isSetupLater, loadOfficeCenter, SETUP_LATER_COOKIE, setupItems, setupLaterCookie, type SetupItem } from "@/lib/office/setup";
 import { CUSTODY_LABELS } from "@/lib/custody/labels";
 import { OFFICE_TAKE_PATH, UNAFFILIATED_ANCHOR } from "@/lib/custody/paths";
 import { listUnaffiliated, type UnaffiliatedItem } from "@/lib/custody/takeover";
-import { canResetDemo, OFFICE_RESET_PATH, parseResetState, type ResetState } from "@/lib/seed/http";
-import { RESET_LABELS } from "@/lib/seed/labels";
+import { canResetDemo, canStartSeed, OFFICE_RESET_PATH, OFFICE_START_PATH, parseResetState, type ResetState } from "@/lib/seed/http";
+import { demoOutageTowns, seedRedPersonName } from "@/lib/seed/demo";
+import { RESET_LABELS, START_LABELS, startDetails } from "@/lib/seed/labels";
 import { CONFIRM_LABELS } from "@/lib/ui/labels";
 import { SurveyPanel } from "@/components/office/SurveyPanel";
-import { loadSurveyOverview, type SurveyOverview } from "@/lib/survey/store";
+import { loadSurveyOverview, surveyOfficeOf, type SurveyOverview } from "@/lib/survey/store";
 import { cookies, headers } from "next/headers";
 
 // D1 を毎回読む
@@ -82,6 +79,8 @@ type Props = {
     skipped?: string | string[];
     /** ヘッダーの「初期パスワード」の「変更」から（自分の行の変更の欄を開いて出す。T114） */
     password?: string | string[];
+    /** 事業所の情報の保存を断った欄（T148） */
+    profile_error?: string | string[];
   }>;
 };
 
@@ -106,14 +105,15 @@ export default async function OfficePage({ searchParams }: Props) {
   let officePeople: OfficePersonItem[];
   let unaffiliated: UnaffiliatedItem[];
   let survey: SurveyOverview;
-  let counts: ReturnType<typeof colorCounts> | null = null;
-  let people = 0;
   // 準備の欄（T98）。管理者だけ（審査員のケアマネの役は管理者でないので出ない）
   let setup: SetupItem[] = [];
+  // 地域の市と利用者の市の気象庁の警報の数（T148。上の帯と同じ。頭の状態の印に添える。表示だけ）
+  let warnings: RegionWarnings = NO_REGION_WARNINGS;
   try {
     const { env } = await getCloudflareContext({ async: true });
     let center: GeoPoint | null;
-    [state, log, towns, careManagers, officePeople, unaffiliated, survey, center] = await Promise.all([
+    let address: string | null = null;
+    [state, log, towns, careManagers, officePeople, unaffiliated, survey, center, address, warnings] = await Promise.all([
       loadDisasterState(env.DB, scope.officeId),
       loadOfficeLog(env.DB, scope.officeId),
       loadOfficeTowns(env.DB, scope.officeId),
@@ -122,24 +122,24 @@ export default async function OfficePage({ searchParams }: Props) {
       // 所属なしの人。審査員の壁の中はデモのアカウントが登録した人だけ、外はそれ以外（T81）
       listUnaffiliated(env.DB, actor, today),
       // アンケート（T42）。審査員（と審査員が足したアカウント）は審査員が作った物だけ、本物は作った本人と壁の外の管理者だけ（T81）
-      loadSurveyOverview(env.DB, actor.officeId, { walled: actor.walled === true, admin: principal.admin, accountId: principal.accountId }, now),
+      loadSurveyOverview(env.DB, surveyOfficeOf(actor.officeId), { walled: actor.walled === true, admin: principal.admin, accountId: principal.accountId }, now),
       // 準備の欄の地域（事業所の中心）。管理者のときだけ読む
       canSeeSetup(principal) ? loadOfficeCenter(env.DB, scope.officeId) : Promise.resolve(null),
+      // 準備の欄の事業所（所在地。T148）。管理者のときだけ読む
+      canSeeSetup(principal) ? loadOfficeProfile(env.DB, scope.officeId).then((p) => p?.address ?? null) : Promise.resolve(null),
+      loadRegionWarnings(env.DB, scope.officeId).catch((e: unknown) => {
+        console.error("地域の警報を読めない", e);
+        return NO_REGION_WARNINGS;
+      }),
     ]);
     if (canSeeSetup(principal)) {
       setup = setupItems({
+        profileMissing: address === null,
         center,
         careManagers,
         people: officePeople,
         careManagerLater: isSetupLater((await cookies()).get(SETUP_LATER_COOKIE)?.value, scope.officeId),
       });
-    }
-    const f9 = form9Scope(principal);
-    const situation = toSituation(state, now);
-    if (f9) {
-      const form9 = await loadForm9(env.DB, f9, { today, situation });
-      people = form9?.sheet.rows.length ?? 0;
-      counts = situation && form9 ? colorCounts(form9.sheet.rows) : null;
     }
   } catch (e) {
     console.error("事業所の画面を読めない", e);
@@ -161,7 +161,7 @@ export default async function OfficePage({ searchParams }: Props) {
         sub={
           <>
             <span className="text-sm text-muted">{principal.office.name}</span>
-            <DisasterBadge mark={disasterMark(state, now)} link={false} />
+            <DisasterBadge mark={disasterMark(state, now)} link={false} warnings={warnings} />
             <span className="text-xs text-muted">{shortJst(now)} 時点</span>
           </>
         }
@@ -187,7 +187,9 @@ export default async function OfficePage({ searchParams }: Props) {
 
       <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="grid min-w-0 content-start gap-3">
-          <ModeSection state={state} now={now} confirm={confirm} officeId={scope.officeId} />
+          <ModeSection state={state} now={now} confirm={confirm} officeId={scope.officeId} seedStart={canStartSeed(principal) && !disaster} />
+          {/* 事業所の情報（T148）と地域（T68・T148）。書けるのは管理者と試用事業所の審査員（placeEdit） */}
+          <OfficeProfile officeId={scope.officeId} admin={actor.placeEdit} error={parseProfileError(q.profile_error)} />
           <OfficePlace officeId={scope.officeId} admin={actor.placeEdit} error={q.form_error === "place"} />
           {disaster && <InfoSection state={state} towns={towns} />}
           {/* 所属なし（T23）は引き受ける人がいるときだけ。担当の長い表の前に置く */}
@@ -197,8 +199,7 @@ export default async function OfficePage({ searchParams }: Props) {
           <SurveyPanel overview={survey} origin={await requestOrigin()} />
         </div>
         <div className="grid min-w-0 content-start gap-3">
-          <Form9Section people={people} counts={counts} />
-          <FormChoice officeId={scope.officeId} error={q.form_error === "bad"} />
+          {/* 様式9 と使用様式は書類の画面（/forms）にまとめた（T147） */}
           <Panel id={CARE_MANAGERS_ANCHOR} aria-labelledby="cm-title" className="scroll-mt-4">
             <AddCareManager count={careManagers.length} admin={actor.admin}>
               {/* 審査員のケアマネの役の書き手（acct-judge）はケアマネの一覧にいない。試用事業所（T115）では管理者の行が自分 */}
@@ -232,12 +233,28 @@ async function requestOrigin(): Promise<string> {
 /** 切替のボタンの段（気象庁の欄の「切替」が送る所） */
 const MODE_BUTTONS_ID = "mode-buttons";
 
-/** 災害モードの切替。今の状態は枠と太字（下地は敷かない）、ほかは無色。災害の種類はすぐ切り替え、平時に戻すは確認の欄を通す */
-function ModeSection({ state, now, confirm, officeId }: { state: DisasterState; now: string; confirm: boolean; officeId: string }) {
+/**
+ * 災害モードの切替。今の状態は枠と太字（下地は敷かない）、ほかは無色。災害の種類はすぐ切り替え、平時に戻すは確認の欄を通す。
+ * seedStart は種の事業所の平時（T153）: 一番上に「発災開始」（今の種の大雨の想定と山田の赤に入る。lib/seed/start.ts）
+ */
+function ModeSection({
+  state,
+  now,
+  confirm,
+  officeId,
+  seedStart,
+}: {
+  state: DisasterState;
+  now: string;
+  confirm: boolean;
+  officeId: string;
+  seedStart: boolean;
+}) {
   const disaster = isDisaster(state);
   return (
     <Panel aria-labelledby="mode-title">
       <PanelHead id="mode-title" title={DISASTER_LABELS.mode} />
+      {seedStart && <SeedStart version={state.version} />}
       {/* 気象庁の警報・注意報と地震（T72）。切替は勧めるだけで、押すのは人 */}
       <JmaAlerts officeId={officeId} disaster={disaster} now={now} switchHref={`#${MODE_BUTTONS_ID}`} />
       <div id={MODE_BUTTONS_ID} className="mt-2 flex scroll-mt-20 flex-wrap items-center gap-1.5">
@@ -287,6 +304,28 @@ function ModeSection({ state, now, confirm, officeId }: { state: DisasterState; 
         )}
       </dl>
     </Panel>
+  );
+}
+
+/** 種の事業所の「発災開始」（T153）。確認の窓で入る物を見せてから送る。窓が出せないとき（JS が動く前）もそのまま送る（平時に戻せる） */
+function SeedStart({ version }: { version: number }) {
+  return (
+    <form method="post" action={OFFICE_START_PATH} className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1" data-seed-start>
+      <input type="hidden" name="version" value={version} />
+      <SubmitButton
+        kind="main"
+        icon="PlayIcon"
+        confirm={{
+          title: START_LABELS.start,
+          message: START_LABELS.scene,
+          details: startDetails(demoOutageTowns(), seedRedPersonName()),
+          ok: START_LABELS.ok,
+        }}
+      >
+        {START_LABELS.start}
+      </SubmitButton>
+      <span className="text-xs text-muted">{START_LABELS.scene}</span>
+    </form>
   );
 }
 
@@ -437,29 +476,6 @@ function InfoSection({ state, towns }: { state: DisasterState; towns: TownCount[
   );
 }
 
-/** 様式 9 への入口。災害モードは色ごとの人数（ルールの表）、平時は並びの言い方 */
-function Form9Section({ people, counts }: { people: number; counts: ReturnType<typeof colorCounts> | null }) {
-  return (
-    <Panel aria-labelledby="form9-title">
-      <PanelHead id="form9-title" title="様式9" count={`${people} 人`} />
-      {counts ? (
-        <ColorCounts counts={counts} className="mt-1" />
-      ) : (
-        <p className="mt-1 text-xs text-muted">並び {NORMAL_ORDER_LABELS.join(" → ")}</p>
-      )}
-      <div className="mt-2 flex flex-wrap gap-1.5">
-        <ButtonLink href={FORM9_PATH} icon={PaperIcon}>
-          表示
-        </ButtonLink>
-        <a href={FORM9_CSV_PATH} download className={buttonClass("plain", "md")} data-press>
-          <DownloadIcon aria-hidden className="size-4 shrink-0" />
-          CSV出力
-        </a>
-      </div>
-    </Panel>
-  );
-}
-
 const LOG_TONE: Record<OfficeLogItem["kind"], string> = {
   disaster_on: `font-bold ${TONE_TEXT.check}`,
   disaster_off: "font-bold",
@@ -568,12 +584,14 @@ function AssignSection({
                           <span className="text-muted tabular-nums">
                             {OFFICE_LABELS.age} {p.age ?? "—"}
                           </span>
-                          <StateText tone={PLAN_TONES[p.plan]}>{PLAN_STATUS_LABELS[p.plan]}</StateText>
+                          <PlanStage plan={p.plan} />
+                          <PlanDrill plan={p.plan} drill={p.drill} inline />
                         </span>
                       </td>
                       <td className={`${TD} hidden align-middle whitespace-nowrap sm:table-cell`}>{p.age ?? "—"}</td>
                       <td className={`${TD} hidden align-middle whitespace-nowrap sm:table-cell`}>
-                        <StateText tone={PLAN_TONES[p.plan]}>{PLAN_STATUS_LABELS[p.plan]}</StateText>
+                        {/* 計画の段階と、別に最後に出た訓練の日（T146） */}
+                        <PlanState plan={p.plan} drill={p.drill} />
                       </td>
                       <td className={`${TD} align-middle`}>
                         <AssignForm personId={p.id} personName={p.name} careManagerId={p.careManagerId} careManagers={rowCms(p.careManagerId)} />

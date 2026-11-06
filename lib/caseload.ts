@@ -30,6 +30,8 @@ import { markItems, type MarkItem, type StateTone } from "./person.ts";
 import { compareResults, SEVERITY, tierOf, type Color, type Tier, type TriageArrival, type TriageResult, type TriageSignal } from "./triage/index.ts";
 import { loadOfficeArrivals } from "./custody/arrivals.ts";
 import { toTriagePerson } from "./triage/from-ledger.ts";
+import { lastDrillDaysStatement, lastDrillMap } from "./drill/last.ts";
+import { comparePlan } from "./plan-status.ts";
 
 export type CaseloadRow = {
   id: string;
@@ -52,6 +54,8 @@ export type CaseloadRow = {
   /** 避難支援等実施者の人数 */
   supporters: number;
   plan: PlanStatus;
+  /** 最後に出た終わった訓練の日（JST の YYYY-MM-DD、lib/drill/last.ts）。無ければ null。計画の状態の横の「訓練 11/5」（T146） */
+  drill: string | null;
   /** 未確認の項目の数 */
   pending: number;
   /** 優先の骨格 1〜8 */
@@ -104,7 +108,9 @@ type PersonForList = Pick<
   "id" | "name" | "kana" | "birth_date" | "plan_status" | "self_report_unreliable" | "ledger"
 > &
   /** 申告の年齢（医療班・行政がその場で登録して引き受けた人、T23）。生年月日が無いときだけ使う */
-  Partial<PersonReportedAge>;
+  Partial<PersonReportedAge> &
+  /** 最後に出た終わった訓練の日（T146。loadCaseload が足す。無ければ null） */
+  { last_drill?: string | null };
 type ClockForList = Pick<
   ClockRow,
   "person_id" | "kind" | "category" | "label" | "value" | "unit" | "starts_on" | "depends_on" | "depends_check"
@@ -211,6 +217,7 @@ export function toCaseloadRows(
       hazards: hazardsOf(ledger),
       supporters: myContacts.filter((c) => c.supporter_order != null).length,
       plan: p.plan_status,
+      drill: p.last_drill ?? null,
       pending: ledger.pending.length,
       tier: tierOf(person),
       triage,
@@ -269,8 +276,6 @@ export {
 /** 発災時だけの並び（平時の表には列が無い） */
 export const DISASTER_SORT_KEYS: ReadonlyArray<SortKey> = ["state", "remain", "contact"];
 
-const PLAN_ORDER: Record<PlanStatus, number> = { none: 0, draft: 1, consented: 2, trained: 3 };
-
 /** 数の昇順。null は後ろ（nullFirst なら前） */
 function byNumber(a: number | null, b: number | null, nullFirst = false): number {
   if (a === null || b === null) return a === b ? 0 : (a === null) === nullFirst ? -1 : 1;
@@ -283,11 +288,8 @@ function hazardWeight(r: CaseloadRow): number {
   return 1 + Math.max(...r.hazardKinds.map((h) => h.depthM ?? 0));
 }
 
-/**
- * 計画の状態の色（意味色。CLAUDE.md「画面の決まり」）。未作成は灰、下書きは黄（要確認）、同意済・訓練済は緑。
- * 色は印と数字にだけ置き、必ず状態の文字（未作成・下書き・同意済・訓練済）を添える
- */
-export const PLAN_TONES: Record<PlanStatus, StateTone> = { none: "unknown", draft: "check", consented: "ok", trained: "ok" };
+// 計画の状態の色は lib/plan-status.ts（T146）。前からの読み口のため、ここからも出す
+export { PLAN_TONES } from "./plan-status.ts";
 
 /**
  * 並び替え。どの並びでも、同じならカナの順。
@@ -310,7 +312,8 @@ export function sortCaseload(rows: CaseloadRow[], key: SortKey, dir: SortDir = d
     medical: (a, b) => a.tier - b.tier,
     hazard: (a, b) => hazardWeight(b) - hazardWeight(a),
     supporter: (a, b) => a.supporters - b.supporters,
-    plan: (a, b) => PLAN_ORDER[a.plan] - PLAN_ORDER[b.plan] || b.pending - a.pending,
+    // 見えている段階の順（未作成 → 下書き → 作成済）、同じ段階は訓練（未実施 → 済 → 古い日）、そのあと未確認の多い順（T146）
+    plan: (a, b) => comparePlan(a, b) || b.pending - a.pending,
   };
   return [...rows].sort((a, b) => sign * primary[key](a, b) || byKana(a, b));
 }
@@ -390,7 +393,7 @@ export async function loadCaseload(
   if (!cm) return null;
 
   const mine = "SELECT id FROM people WHERE care_manager_id = ?1 AND office_id = ?2 AND unlisted_at IS NULL";
-  const [people, clocks, contacts, unlisted] = await db.batch([
+  const [people, clocks, contacts, unlisted, drills] = await db.batch([
     db
       .prepare(
         `SELECT id, name, kana, birth_date, plan_status, self_report_unreliable, ledger, reported_age FROM people
@@ -412,7 +415,10 @@ export async function loadCaseload(
           WHERE care_manager_id = ?1 AND office_id = ?2 AND unlisted_at IS NOT NULL ORDER BY unlisted_at DESC, kana`,
       )
       .bind(cm.id, cm.office_id),
+    // 人ごとの最後に出た訓練の日（T146。計画の状態の横の「訓練 11/5」）
+    lastDrillDaysStatement(db, cm.office_id),
   ]);
+  const lastDrill = lastDrillMap(drills.results as Array<{ person_id: unknown; day: unknown }>);
 
   // 災害モードなら信号・上書き・電話の記録を読み、ルールの表に今・発災・停電の始まりを渡す（1 分ごとの読み直しで今が進む）
   const disaster = await loadDisasterState(db, cm.office_id);
@@ -429,7 +435,7 @@ export async function loadCaseload(
     disaster,
     situation,
     rows: toCaseloadRows(
-      people.results as PersonForList[],
+      (people.results as PersonForList[]).map((p) => ({ ...p, last_drill: lastDrill.get(p.id) ?? null })),
       clocks.results as ClockForList[],
       contacts.results as ContactForList[],
       today,

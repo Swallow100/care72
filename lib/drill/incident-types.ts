@@ -40,6 +40,8 @@ export type DirectorInput = {
   replies?: ReadonlyArray<ReplyAsk>;
   /** 夜間発災（T59）。監督・世界に「発災は深夜 2 時ごろ。今は N 時ごろ」の 1 行を足す */
   night?: boolean;
+  /** 夜間発災でない訓練の発災の時刻（時。T165、lib/drill/night.ts の startHourOf）。監督・世界に今の時刻の 1 行を足す */
+  startHour?: number;
   /** 前に進めた時刻（発災からの分、T90）。この区切りは since から hour まで。無ければ刻みの道（今までと同じ） */
   since?: number;
   /** この区切りで差し込んでよい数（T90）。無ければ DIRECTOR_MAX */
@@ -97,6 +99,8 @@ export type DirectorEvent = {
   place?: EventPlace;
   /** 変化を組むのに要る本人の事実（病院の休止で透析の人か） */
   facts?: EventFacts;
+  /** 同じ種類の全体の出来事をこの訓練で前に出した数（T141。余震の言い回しと震度） */
+  nth?: number;
 };
 
 /** 監督の返す物。差し込みと、頼まれた世界の返事の言い換え */
@@ -154,7 +158,7 @@ export function directorIncidents(
       e.facts && typeof e.facts === "object"
         ? { dialysis: e.facts.dialysis === true, ...(typeof e.facts.oxygen === "boolean" ? { oxygen: e.facts.oxygen } : {}) }
         : undefined;
-    const parts = row.build({ person, persons, place: placeOf(e.place), ...(facts ? { facts } : {}) }, hour, after);
+    const parts = row.build({ person, persons, place: placeOf(e.place), ...(facts ? { facts } : {}), ...(typeof e.nth === "number" ? { nth: e.nth } : {}) }, hour, after);
     if (parts.length === 0) continue;
     n += 1;
     if (person) used.add(person);

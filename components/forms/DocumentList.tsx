@@ -13,6 +13,8 @@ import { aboutLine, type CatalogEntry } from "@/lib/forms/catalog";
 import { FORMS_LIST_LABELS as L, type MenuItem, type PersonDocRow } from "@/lib/forms/document-list";
 import { UNCONFIRMED_LABELS as U } from "@/lib/forms/unconfirmed";
 import { BLANK_LABELS } from "@/lib/labels";
+import { OFFICE_FORM_PATH } from "@/lib/forms/plan-form";
+import { SubmitButton } from "@/components/ui/SubmitButton";
 
 /** 医療要約の同意の言葉（components/forms/MedicalWithheld.tsx と同じ） */
 const BLOCKED_LABELS = { refused: "同意なし", unconfirmed: "未確認" } as const;
@@ -37,6 +39,9 @@ function MenuGroup({ title, items, action }: { title: string; items: ReadonlyArr
             >
               <span className={m.current ? "font-bold text-ink underline decoration-2 underline-offset-[6px]" : "text-ink"}>{m.label}</span>
               {m.isDefault && <Mark>{L.isDefault}</Mark>}
+              {/* 事業所が足した様式（T147）。確認済は「追加済」、確認保存の前は「下書き」（押すと確かめの画面へ） */}
+              {m.mark === "added" && <Mark>{L.added}</Mark>}
+              {m.mark === "draft" && <StateTag tone="check">{L.draft}</StateTag>}
               <span className="hidden basis-full text-xs text-muted lg:block">{m.note}</span>
               <LinkPending />
             </Link>
@@ -47,8 +52,8 @@ function MenuGroup({ title, items, action }: { title: string; items: ReadonlyArr
   );
 }
 
-/** 書類と様式を選ぶ欄。計画書の段に様式追加（様式対応の画面へ）、事業所の書類は様式 9 */
-export function DocumentMenu({ plan, person, office }: { plan: MenuItem[]; person: MenuItem[]; office: MenuItem[] }) {
+/** 書類と様式を選ぶ欄。計画書の段に様式追加（様式対応の画面へ）、事業所の書類は様式 9（CSV 出力も。T147 で事業所の画面から移した） */
+export function DocumentMenu({ plan, person, office, officeAction }: { plan: MenuItem[]; person: MenuItem[]; office: MenuItem[]; officeAction?: React.ReactNode }) {
   return (
     <Panel as="aside" aria-label={L.title} className="lg:sticky lg:top-2" data-document-menu>
       <MenuGroup
@@ -61,7 +66,7 @@ export function DocumentMenu({ plan, person, office }: { plan: MenuItem[]; perso
         }
       />
       <MenuGroup title={L.person} items={person} />
-      <MenuGroup title={L.office} items={office} />
+      <MenuGroup title={L.office} items={office} action={officeAction} />
     </Panel>
   );
 }
@@ -118,9 +123,12 @@ export function DocumentPeople({
   rows,
   batch,
   counted,
+  setDefault = null,
 }: {
   entry: CatalogEntry;
   isDefault: boolean;
+  /** 選んだ計画書の様式を使用様式にする（既定でない様式のとき。値は様式の id。T147 で事業所の画面から移した） */
+  setDefault?: string | null;
   rows: ReadonlyArray<PersonDocRow>;
   /** 一括印刷の道（無い書類は 1 人ずつ） */
   batch: string | null;
@@ -135,11 +143,22 @@ export function DocumentPeople({
         count={`${rows.length} 人`}
         sub={isDefault ? <Mark>{L.isDefault}</Mark> : undefined}
         actions={
-          batch && rows.length > 0 ? (
-            <ButtonLink href={batch} kind="main" size="sm" icon={PrintIcon} data-batch-link>
-              {L.batch}
-            </ButtonLink>
-          ) : undefined
+          <span className="flex flex-wrap items-center gap-1.5">
+            {setDefault && (
+              <form method="post" action={OFFICE_FORM_PATH} data-set-default={setDefault}>
+                <input type="hidden" name="plan_form" value={setDefault} />
+                <SubmitButton kind="plain" size="sm" icon="SaveIcon">
+                  {L.setDefault}
+                </SubmitButton>
+              </form>
+            )}
+            {batch && rows.length > 0 && (
+              // 何の書類の一括印刷かを名前に（T162。様式 9 のつもりで押すと松山市の計画書が開いた）。様式 9 は事業所の段から
+              <ButtonLink href={batch} kind="main" size="sm" icon={PrintIcon} data-batch-link>
+                {entry.short} {L.batch}
+              </ButtonLink>
+            )}
+          </span>
         }
       />
       <p className="mt-0.5 text-xs text-muted" data-document-about={entry.id}>
@@ -187,11 +206,11 @@ export function DocumentPeople({
                   )}
                   <td className={TD}>
                     <span className="flex gap-1">
-                      <ButtonLink href={r.href} kind="plain" size="sm" icon={PaperIcon}>
+                      <ButtonLink href={r.href} kind="plain" size="sm" icon={PaperIcon} aria-label={`${r.name} ${entry.short} ${L.open}`}>
                         {L.open}
                       </ButtonLink>
                       {r.printHref && (
-                        <ButtonLink href={r.printHref} kind="plain" size="sm" icon={PrintIcon} data-print-link={r.id}>
+                        <ButtonLink href={r.printHref} kind="plain" size="sm" icon={PrintIcon} aria-label={`${r.name} ${entry.short} ${L.print}`} data-print-link={r.id}>
                           {L.print}
                         </ButtonLink>
                       )}

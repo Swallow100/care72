@@ -9,7 +9,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { seedStatements } from "../../seed/sql.ts";
 import { d1FromSqlite, migratedSqlite } from "../db/test-d1.ts";
-import { DEMO_CARE_MANAGER_ID, DEMO_JUDGE_ACCOUNT_ID, DEMO_SECOND_CARE_MANAGER_ID, JUDGE_LOGIN_ID } from "./demo.ts";
+import { DEMO_CARE_MANAGER_ID, DEMO_JUDGE_ACCOUNT_ID, DEMO_SECOND_CARE_MANAGER_ID, JUDGE_LOGIN_ID, LOGIN_CARE_MANAGER_ID } from "./demo.ts";
 import { LOCK_FAILURES } from "./lockout.ts";
 import { hashPassword } from "./password.ts";
 import { ownLoginId, ownPasswordEntry, passwordChangeRequest, PASSWORD_CHANGE_ERROR_LABELS } from "./password-change.ts";
@@ -39,7 +39,7 @@ const env = () => ({ JUDGE_PASSWORD_HASH: judgeHash });
 
 beforeEach(() => {
   sqlite = migratedSqlite();
-  for (const s of seedStatements({ passwordHashes: { [DEMO_CARE_MANAGER_ID]: cmHash } })) sqlite.exec(s);
+  for (const s of seedStatements({ passwordHashes: { [LOGIN_CARE_MANAGER_ID]: cmHash } })) sqlite.exec(s);
   // 作者の道具（T97）が作るのと同じ形: 事業所なし・管理者でない
   const add = sqlite.prepare(
     "INSERT INTO accounts (id, office_id, role, is_office_admin, display_name, login_id, password_hash) VALUES (?, NULL, ?, 0, ?, ?, ?)",
@@ -110,7 +110,8 @@ describe("受入一覧の入口（ownPasswordEntry）", () => {
 
     const y = await loginOk("yamamoto", CM_PW);
     const yMed = await chooseRole(db, env(), SECRET, y.token, "medical", NOW + 1);
-    expect(yMed?.principal).toMatchObject({ role: "medical", switched: true, accountId: DEMO_CARE_MANAGER_ID });
+    // T144: ログインの山本は確認用の事業所のアカウント
+    expect(yMed?.principal).toMatchObject({ role: "medical", switched: true, accountId: LOGIN_CARE_MANAGER_ID });
     expect(ownPasswordEntry(yMed!.principal)).toBe("fixed");
   });
 });
@@ -128,28 +129,28 @@ describe("隠した欄の ID（ownLoginId）", () => {
 describe("変える処理（T61 と同じ passwordChangeRequest）", () => {
   it("行政のアカウントも変えられる。前のパスワードは通らず、新しいので入れる。この端末の token はそのまま使える", async () => {
     const g = await loginOk("shi01", GOV_PW);
-    const r = await passwordChangeRequest(db, env(), SECRET, g.principal, { current: GOV_PW, next: "gov-next-pass-01" }, NOW + 5, FAST);
+    const r = await passwordChangeRequest(db, env(), SECRET, g.principal, { current: GOV_PW, next: "Gov-next-pass-01" }, NOW + 5, FAST);
     expect(r).toMatchObject({ status: 200, body: { ok: true } });
     expect(r.token).toBeTypeOf("string");
     expect((await resolvePrincipal(db, env(), SECRET, r.token!, NOW + 6))?.accountId).toBe("acct-gov-t99");
     expect(await resolvePrincipal(db, env(), SECRET, g.token, NOW + 6)).toBeNull();
     expect((await login(db, env(), SECRET, { loginId: "shi01", password: GOV_PW }, NOW + 7)).ok).toBe(false);
-    expect((await login(db, env(), SECRET, { loginId: "shi01", password: "gov-next-pass-01" }, NOW + 7)).ok).toBe(true);
+    expect((await login(db, env(), SECRET, { loginId: "shi01", password: "Gov-next-pass-01" }, NOW + 7)).ok).toBe(true);
   });
 
   it("医療班の今のパスワードの打ち間違いは、ログインと同じ回数（15 分に 10 回）で止まり、止めている間は正しくても変えない", async () => {
     const m = await loginOk("kyugo1", MED_PW);
     const before = hashOf("acct-med-t99");
     for (let i = 1; i < LOCK_FAILURES; i++) {
-      const r = await passwordChangeRequest(db, env(), SECRET, m.principal, { current: `wrong-${i}`, next: "med-next-pass-01" }, NOW + i, FAST);
+      const r = await passwordChangeRequest(db, env(), SECRET, m.principal, { current: `wrong-${i}`, next: "Med-next-pass-01" }, NOW + i, FAST);
       expect(r.status, `${i}`).toBe(400);
       expect(r.body).toEqual({ ok: false, error: "wrong_password", label: PASSWORD_CHANGE_ERROR_LABELS.wrong_password });
     }
-    const last = await passwordChangeRequest(db, env(), SECRET, m.principal, { current: "wrong-last", next: "med-next-pass-01" }, NOW + 20, FAST);
+    const last = await passwordChangeRequest(db, env(), SECRET, m.principal, { current: "wrong-last", next: "Med-next-pass-01" }, NOW + 20, FAST);
     expect(last.status).toBe(429);
     expect(last.body).toMatchObject({ ok: false, error: "locked", label: "回数超過 しばらく待機" });
     expect(last.retryAfterSec).toBeGreaterThan(0);
-    const right = await passwordChangeRequest(db, env(), SECRET, m.principal, { current: MED_PW, next: "med-next-pass-01" }, NOW + 30, FAST);
+    const right = await passwordChangeRequest(db, env(), SECRET, m.principal, { current: MED_PW, next: "Med-next-pass-01" }, NOW + 30, FAST);
     expect(right.status).toBe(429);
     expect(hashOf("acct-med-t99")).toBe(before);
   });
@@ -164,7 +165,7 @@ describe("変える処理（T61 と同じ passwordChangeRequest）", () => {
       [judgeMed.principal, JUDGE_PW],
       [yMed.principal, CM_PW],
     ] as const) {
-      const r = await passwordChangeRequest(db, env(), SECRET, p, { current, next: "fixed-next-pass-1" }, NOW + 2, FAST);
+      const r = await passwordChangeRequest(db, env(), SECRET, p, { current, next: "Fixed-next-pass-1" }, NOW + 2, FAST);
       expect(r).toMatchObject({ status: 403, body: { ok: false, error: "fixed", label: "固定" }, token: null });
     }
     expect([hashOf(DEMO_CARE_MANAGER_ID), hashOf(DEMO_JUDGE_ACCOUNT_ID)]).toEqual(before);

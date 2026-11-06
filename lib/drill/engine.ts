@@ -71,6 +71,7 @@ import {
   type ClockMark,
 } from "./clock.ts";
 import { fireScheduled } from "./schedule.ts";
+import { lostFollowUps } from "./lost.ts";
 import { screenIncidents, tableAheadOf } from "./state-rules.ts";
 import { fitKindOf, profileOf, type FitProfile } from "./fit.ts";
 import { gateTurns, tallyGate } from "./gate.ts";
@@ -81,7 +82,8 @@ import { HOME_TOWN_MAX } from "./self.ts";
 
 export { isStaffCount, STAFF_MAX } from "./options.ts";
 import { fallbackIncidents } from "./world-apply.ts";
-import { addGated, noteIssued, type GateLog } from "./person-facts.ts";
+import { addGated, carryPlace, carryPromises, noteIssued, type GateLog } from "./person-facts.ts";
+import { startHourOf } from "./night.ts";
 
 const HOUR_MS = 3_600_000;
 
@@ -333,7 +335,11 @@ function fixedToTurn(f: FixedTurn, tickHour: number): DrillTurn {
   };
 }
 
-function personStateOf(t: DrillTurn): PersonState {
+function personStateOf(t: DrillTurn, prev: PersonState | null = null): PersonState {
+  // 赤の「家にいない」で、前から避難所と分かっている時だけ残す（T158。ほかは連絡の欄から同じ所が引ける）
+  const known = t.color === "red" && t.atHome === false ? carryPlace(prev, t) : null;
+  // 言って済んでいない予定（T165。門で落とした同じ予定の言い直しは言葉に無いので、前の様子から引き継ぐ）
+  const promised = carryPromises(prev, t);
   return {
     color: t.color,
     source: t.source,
@@ -345,6 +351,8 @@ function personStateOf(t: DrillTurn): PersonState {
     atHome: t.atHome,
     canMove: t.canMove,
     hasMedicine: t.hasMedicine,
+    ...(known === "shelter" ? { placeKnown: known } : {}),
+    ...(promised.length > 0 ? { promised } : {}),
   };
 }
 
@@ -364,7 +372,7 @@ export function foldTick(
     tick.incidents,
   );
   const people = { ...state.people };
-  for (const t of [...tick.turns].sort((a, b) => a.at - b.at)) people[t.person] = personStateOf(t);
+  for (const t of [...tick.turns].sort((a, b) => a.at - b.at)) people[t.person] = personStateOf(t, people[t.person] ?? null);
   const clock = isClock(state);
   const finished = clock ? tick.finished === true : tick.step >= last;
   return {
@@ -489,6 +497,16 @@ export function actionWithoutMemo(a: ActionRecord | null): ActionRecord | null {
 /** 夜間発災の訓練か */
 export const isNight = (s: Pick<DrillState, "options">): boolean => s.options?.night === true;
 
+/**
+ * 監督・世界・本人役に渡す時刻の元（T165）。夜間発災は night、ほかは発災の時刻（drills.started_at の日本の時刻）。
+ * 前は夜間発災だけで、昼の訓練の AI が朝・昼・夜の言い方を経過と食い違う所に書いた
+ */
+export function timeOf(s: Pick<DrillState, "options" | "startedAt">): { night?: true; startHour?: number } {
+  if (isNight(s)) return { night: true };
+  const h = startHourOf(s.startedAt);
+  return h === null ? {} : { startHour: h };
+}
+
 export class DrillEnded extends Error {
   constructor() {
     super("訓練は終わっている");
@@ -542,7 +560,7 @@ export async function step(
   const replies = opts.replies ? [...opts.replies(world)] : [];
   // Claude に渡す手の記録はメモを落とす（T59）。夜間発災は選んだ訓練だけ 1 行を足す
   const actions = withoutMemo(state.actions);
-  const night = isNight(state) ? { night: true } : {};
+  const night = timeOf(state);
 
   const directorInput: DirectorInput = {
     scenario: state.scenario,
@@ -712,7 +730,7 @@ async function virtualStep(
               fixed: [],
               virtual: true,
               fit: fitKindOf(state, world),
-              ...(isNight(state) ? { night: true } : {}),
+              ...timeOf(state),
             }),
           [] as DrillTurn[],
         ),
@@ -814,7 +832,7 @@ export async function advance(
   const hour = to / 60;
   const virtual = isVirtual(state.scenario);
   const members = new Set(state.participants);
-  const night = isNight(state) ? { night: true } : {};
+  const night = timeOf(state);
   if (!silent) {
     hooks.stops?.take();
     hooks.gates?.take();
@@ -826,12 +844,14 @@ export async function advance(
   const fixed = [...openingIncidents(state, first), ...table.events.filter((x) => x.minute > from && x.minute <= to).map((x) => x.event)];
   const fired = fireScheduled(state.world, to);
   const due = fired.incidents.filter((e) => !e.person || members.has(e.person));
-  const sorted = [...fixed, ...due].map((e, i) => ({ e, i })).sort((a, b) => a.e.at - b.e.at || a.i - b.i).map((x) => x.e);
+  // 行き先の分からない人が見つかる（T141、lib/drill/lost.ts。世界の決まりの時刻。予定の出来事と同じ門を通す）
+  const found = lostFollowUps(state.world, from, to, members, drillSeed(state));
+  const sorted = [...fixed, ...due, ...found].map((e, i) => ({ e, i })).sort((a, b) => a.e.at - b.e.at || a.i - b.i).map((x) => x.e);
   // 世界の帳簿（予定の取り出し・本人役の呼んだ時刻・理由・数）。foldTick はここに状況を当て直す
   let book: WorldState = fired.world;
   // 変わり方の決まり（T121、lib/drill/state-rules.ts）。表の出来事は「もう起きている」の門だけ、予定の出来事は時刻が来たときの門。
   // 外した物は区切りに残さない（保存した区切りから作り直しても同じ世界）
-  const dueSet = new Set<DrillIncident>(due);
+  const dueSet = new Set<DrillIncident>([...due, ...found]);
   // 表の行がこのあといる所を決める人も（T123）
   const ahead = tableAheadOf(table.events, to, table.rows);
   const screened = screenIncidents(settleWorld(book, to), sorted, { origin: "table", originOf: (e) => (dueSet.has(e) ? "scheduled" : "table") });

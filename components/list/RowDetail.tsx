@@ -4,13 +4,16 @@
 // 録音のまとめ（T69b）は分類の上に、本人の言葉（文字起こし）と左右に並べる。直す口は summary で受ける（無ければ読むだけ）。
 // 時計は区分（機器・物品・薬）の見出しで束ね、「酸素 内蔵電池 停電から 2 時間 残り 30 分」と出典・確認日（components/person/ClockLines、T132）。
 // 下の「全部」（T132）で台帳の平時の情報の全部を開く（components/list/FullDetail。電話は tel: のリンク）。
+// 連絡先の下に「安否確認」（T149）: 本人と家族のスマホへ「大丈夫ですか」の通知を送る（components/list/SafetyPush）。
 
 import { ClockLines } from "@/components/person/ClockLines";
+import { MedLines } from "@/components/person/MedLines";
 import { AiMark, REASON_TEXT, StateTag } from "@/components/person/parts";
-import { COLOR_LABELS } from "@/lib/labels";
+import { COLOR_LABELS, MED_LINE_LABELS } from "@/lib/labels";
 import type { DetailSignal, RowDetail as Detail } from "@/lib/list/detail";
 import { CLASS_LABELS, DETAIL_LABELS } from "@/lib/list/labels";
 import { CallButtons } from "./CallButtons";
+import { SafetyPush } from "./SafetyPush";
 import { FullDetail } from "./FullDetail";
 import { FullToggle } from "./FullToggle";
 import { Hearing } from "./Hearing";
@@ -62,6 +65,10 @@ export function RowDetail({
         <div className="space-y-2">
           <Part title={DETAIL_LABELS.contacts}>
             <CallButtons personId={d.personId} contacts={d.contacts} />
+            {/* 本人・家族のスマホへ「大丈夫ですか」の通知（T149。許可した端末が無ければ「通知先なし」） */}
+            <div className="mt-1.5">
+              <SafetyPush personId={d.personId} />
+            </div>
           </Part>
           <Part title={DETAIL_LABELS.calls}>
             {d.calls.length === 0 ? (
@@ -106,6 +113,12 @@ export function RowDetail({
               <ClockLines items={d.clocks.map((k) => ({ id: k.id, text: k.text, tone: k.tone }))} />
             )}
           </Part>
+          {/* 薬の 1 行ずつ（T150b。本人のページの上の段の「医療」と同じ部品）。行に入った薬の時計は「残り時間」に出さない */}
+          {d.meds.lines.length > 0 && (
+            <Part title={MED_LINE_LABELS.title}>
+              <MedLines lines={d.meds.lines} more={d.meds.more} />
+            </Part>
+          )}
           <Part title={DETAIL_LABELS.destinations}>
             <dl className="grid grid-cols-[3rem_minmax(0,1fr)] gap-x-2 gap-y-0.5">
               <dt className="text-xs text-muted">1</dt>

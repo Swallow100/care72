@@ -42,7 +42,8 @@ describe("地域選択の行", () => {
     const e = allMunicipalEntries().find((x) => x.city.id === "kumamoto" && availability(x).ok)!;
     const plain = rows(render("kumamoto")).get(e.form.id)!;
     expect(plain).toContain("data-municipal-fetch");
-    expect(plain).toContain("AI読取");
+    expect(plain).toContain("AI読込");
+    expect(plain).toContain(">読込<");
     expect(rows(render("kumamoto", { shared: [e.form.id] })).get(e.form.id)).toContain('data-municipal-shared="1"');
     expect(rows(render("kumamoto", { own: { [e.form.id]: { id: "fm-x", status: "draft" } } })).get(e.form.id)).toContain('href="/forms/mapping/fm-x"');
   });

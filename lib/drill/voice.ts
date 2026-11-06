@@ -84,11 +84,12 @@ export function voiceEnabled(env: Pick<AiEnv, "GEMINI_API_KEY" | "GEMINI_TTS">):
 
 /**
  * 声にする物。安否（signals の id）か、ケアマネの手の返事（手の番号 a1…）か、着信の往復の掛けてきた人の言葉
- * （T127。着信の安否の id と往復の行の番号。応答の記録 call_answer の talk の them の行）
+ * （T127。着信の安否の id と往復の行の番号。応答の記録 call_answer の talk の them の行）、外へ掛けた電話の往復の相手の言葉
+ * （T155。手の番号と往復の行の番号。手の返事の result.talk の them の行）
  */
-export type VoiceClip = { signal: string; line?: number } | { act: string };
+export type VoiceClip = { signal: string; line?: number } | { act: string; line?: number };
 
-/** 往復の行の番号（talk の配列の位置。3 往復で 0〜5） */
+/** 往復の行の番号（talk の配列の位置。8 往復で 0〜15） */
 const isLine = (v: number): boolean => Number.isInteger(v) && v >= 0 && v < 100;
 
 const SIGNAL_TAIL = /^\d{1,4}-s\d{1,4}$/;
@@ -108,13 +109,13 @@ export function voiceHref(drillId: string, clip: VoiceClip): string {
   const q =
     "signal" in clip
       ? `signal=${encodeURIComponent(clip.signal)}${clip.line !== undefined ? `&line=${clip.line}` : ""}`
-      : `act=${encodeURIComponent(clip.act)}`;
+      : `act=${encodeURIComponent(clip.act)}${clip.line !== undefined ? `&line=${clip.line}` : ""}`;
   return `/api/drill/voice?drill=${encodeURIComponent(drillId)}&${q}`;
 }
 
 /** R2 の鍵（id だけ。名前は入らない） */
 export function voiceKey(drillId: string, clip: VoiceClip): string {
-  if ("act" in clip) return `drill/${drillId}/act-${clip.act}.wav`;
+  if ("act" in clip) return `drill/${drillId}/act-${clip.act}${clip.line !== undefined ? `-t${clip.line}` : ""}.wav`;
   return `drill/${drillId}/${clip.signal}${clip.line !== undefined ? `-t${clip.line}` : ""}.wav`;
 }
 
@@ -201,12 +202,15 @@ async function resolveSignal(db: D1Database, officeId: string, drillId: string, 
   return null;
 }
 
-/** ケアマネの手の返事の言う事（電話に出た人の言葉）。話す人は手の相手の連絡先 */
-async function resolveAct(db: D1Database, officeId: string, drillId: string, act: string): Promise<ResolvedClip | null> {
+/**
+ * ケアマネの手の返事の言う事（電話に出た人の言葉）。話す人は手の相手の連絡先。line があれば往復の相手の行（T155。result.talk の them の行）
+ */
+async function resolveAct(db: D1Database, officeId: string, drillId: string, act: string, line?: number): Promise<ResolvedClip | null> {
   const row = await loadDrillRow(db, officeId, drillId);
   if (!row) return null;
   const record = stateOfRow(row).actions.find((a) => a.id === act);
-  const text = record?.result?.speech?.trim();
+  const talkLine = line !== undefined ? record?.result?.talk?.[line] : undefined;
+  const text = line !== undefined ? (talkLine?.who === "them" ? talkLine.text.trim() : "") : record?.result?.speech?.trim();
   if (!record || !text || !record.person || !record.target) return null;
   const contact = (await contactsOf(db, record.person)).find((c) => c.id === record.target);
   if (!contact) return null;
@@ -256,7 +260,8 @@ async function resolveCallLine(db: D1Database, officeId: string, drillId: string
 export async function drillVoice(deps: VoiceDeps, scope: VoiceScope, drillId: string, clip: VoiceClip): Promise<VoiceResult> {
   const officeId = scope.office.id;
   if (!isDrillId(drillId)) return { ok: false, reason: "not_found" };
-  if ("signal" in clip ? !isDrillSignalId(drillId, clip.signal) || (clip.line !== undefined && !isLine(clip.line)) : !isActId(clip.act)) {
+  if (clip.line !== undefined && !isLine(clip.line)) return { ok: false, reason: "not_found" };
+  if ("signal" in clip ? !isDrillSignalId(drillId, clip.signal) : !isActId(clip.act)) {
     return { ok: false, reason: "not_found" };
   }
   if (!(await loadDrillRow(deps.db, officeId, drillId))) return { ok: false, reason: "not_found" };
@@ -265,7 +270,7 @@ export async function drillVoice(deps: VoiceDeps, scope: VoiceScope, drillId: st
       ? clip.line !== undefined
         ? await resolveCallLine(deps.db, officeId, drillId, clip.signal, clip.line)
         : await resolveSignal(deps.db, officeId, drillId, clip.signal)
-      : await resolveAct(deps.db, officeId, drillId, clip.act);
+      : await resolveAct(deps.db, officeId, drillId, clip.act, clip.line);
   if (!resolved) return { ok: false, reason: "not_found" };
   const voice = voiceOf(resolved.speaker);
 
@@ -333,7 +338,13 @@ export function parseVoiceQuery(q: URLSearchParams): { drillId: string; clip: Vo
     const n = /^\d{1,2}$/.test(line) ? Number(line) : -1;
     return isLine(n) ? { drillId, clip: { signal, line: n } } : null;
   }
-  if (act !== null && signal === null && line === null) return isActId(act) ? { drillId, clip: { act } } : null;
+  if (act !== null && signal === null) {
+    if (!isActId(act)) return null;
+    if (line === null) return { drillId, clip: { act } };
+    // 外へ掛けた電話の往復の行（T155）。数字だけ
+    const n = /^\d{1,2}$/.test(line) ? Number(line) : -1;
+    return isLine(n) ? { drillId, clip: { act, line: n } } : null;
+  }
   return null;
 }
 

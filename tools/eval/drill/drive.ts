@@ -115,7 +115,15 @@ export type RunOutcome = {
   gated?: Record<string, number>;
   /** 想定の表の配役（T70。drills.world の写しの cast）。帳面の検査が表の行の安否を見分けるのに使う（T130） */
   cast?: Record<string, string>;
+  /**
+   * 掛かってきた電話の往復（T127。着信 1 つの最後の往復の返事の行の全部、T158）。往復は手の記録の外（応答の記録）にあるので、
+   * 往復の要求の返事から集める。通話の検査（talk-check.ts）が外へ掛けた電話の往復と同じに見る
+   */
+  incoming?: IncomingTalk[];
 };
+
+/** 着信 1 つの往復（T158）。minute は着信に出た刻みの時刻（発災からの分） */
+export type IncomingTalk = { signal: string; person: string | null; minute: number; first: string | null; lines: Array<{ who?: string; text?: string; ai?: boolean; minute?: number; asks?: string[] }> };
 
 /** ai_agents の行（世界の部屋の Agent と Environment） */
 export type WorldAgentRow = { version: number; agent_id: string; agent_version: number; environment_id: string; updated_at: string };
@@ -140,6 +148,8 @@ export type DriveDeps = {
   terms?: boolean;
   /** 着信に出て往復する（T127。--answer-calls。進めたあと、今の刻みの電話の着信に talkRate の割合で 1 つ出て 1〜2 往復して切る） */
   answerCalls?: boolean;
+  /** 通話の往復の回数（T155。--talk-rounds=N。無ければ 1〜2 回）。N のときは決まった問い・ふつうの文・的外れ・うめき声・前と違う答えの文を混ぜる */
+  talkRounds?: number;
   /**
    * 前の回で作った世界の部屋の Agent と Environment。回ごとに新しい DB なので、渡さないと本物の部屋は回ごとに Agent と Environment を作る
    * （消さずに残る）。渡せば DB の ai_agents に入れてから始める
@@ -202,7 +212,23 @@ const FREE_TEXTS = [
   "今の様子を記録に残す",
 ];
 /** 着信で聞く・伝える決まった問い（T127 の TALK_ASKS の着信向き） */
+/** 往復の 1 回の言葉。rounds 指定のときは乱れた文も混ぜる */
+function talkLine<A extends string>(rng: { chance: (p: number) => boolean; pick: <T>(xs: readonly T[]) => T }, asks: readonly A[], messy: boolean): { ask: A } | { text: string } {
+  if (messy && rng.chance(0.45)) return { text: rng.pick(MESSY_TEXTS) };
+  return rng.chance(0.6) ? { ask: rng.pick(asks) } : { text: rng.pick(TALK_TEXTS) };
+}
 const INCOMING_ASKS = ["safe", "can_move", "shelter", "stay", "where", "injured", "device_medicine"] as const;
+/** 声で入れた乱れた文（T155 の往復の確かめ。的外れ・うめき声・聞き返し・前と違う事・長い話し言葉） */
+const MESSY_TEXTS = [
+  "うう……ちょっと待ってください",
+  "えっと、今日は何曜日でしたっけ",
+  "あー、はい、はい、それで、何でしたっけ",
+  "さっきは家にいると言っていましたが、避難所にいるんですか",
+  "もしもし、聞こえますか、電波が悪いみたいで",
+  "そちらは寒くないですか、毛布はありますか、こちらからは今すぐには行けないかもしれません",
+  "酸素の機械の音がしていますか",
+  "はい",
+] as const;
 const TALK_TEXTS = ["今どこにいますか", "けがはありませんか", "薬は足りていますか", "近くに誰かいますか", "停電は続いていますか", "あとでまた電話します"];
 
 /** 手の表の重み（表に無い手・増えた手は 1） */
@@ -285,6 +311,7 @@ export async function runDrill(plan: RunPlan, deps: DriveDeps): Promise<RunOutco
 
   const ops: OpStat[] = [];
   const errors: string[] = [];
+  const incoming: IncomingTalk[] = [];
   let failsInRow = 0;
 
   /** 要求 1 つ。始めと終わりを記録し、間に AI の呼び出しが入る */
@@ -380,9 +407,9 @@ export async function runDrill(plan: RunPlan, deps: DriveDeps): Promise<RunOutco
           // 通話に出たら往復（決まった問いか自由の 1 文）。終わりに切る
           // 往復は電話がつながった手だけ（メッセージの返信〔T125〕は往復しない。lib/drill/dialogue.ts の canTalk と同じ）
           if (done?.result?.pickup === "answers" && done.result.status === "connected" && talk && rng.chance(plan.talkRate) && replay.drill.status === "running") {
-            const rounds = rng.int(1, 2);
+            const rounds = deps.talkRounds ?? rng.int(1, 2);
             for (let k = 0; k < rounds; k++) {
-              const ask = rng.chance(0.6) ? { ask: rng.pick(CALL_OUT_ASKS) } : { text: rng.pick(TALK_TEXTS) };
+              const ask = talkLine(rng, CALL_OUT_ASKS, deps.talkRounds !== undefined);
               const tb = { step: replay.drill.step, actions: replay.actions.length, action: id, ...ask };
               await call("talk", tb, () => talkPost(db, p, drillId, tb, { hook: talk }));
               replay = await read(drillId);
@@ -418,13 +445,17 @@ export async function runDrill(plan: RunPlan, deps: DriveDeps): Promise<RunOutco
           const answered = await call("answer", ab, () => callPost(db, p, drillId, ab));
           replay = await read(drillId);
           if (answered.status === 200) {
-            const rounds = rng.int(1, 2);
+            const rounds = deps.talkRounds ?? rng.int(1, 2);
+            const turn = (tick?.turns ?? []).find((u) => (u as { signal?: unknown }).signal === signal);
+            const got: IncomingTalk = { signal, person: turn?.person ?? null, minute: replay.minute, first: turn?.saying ?? null, lines: [] };
             for (let k = 0; k < rounds && replay.drill.status === "running"; k++) {
-              const ask = rng.chance(0.6) ? { ask: rng.pick(INCOMING_ASKS) } : { text: rng.pick(TALK_TEXTS) };
+              const ask = talkLine(rng, INCOMING_ASKS, deps.talkRounds !== undefined);
               const tb = { step: replay.drill.step, actions: replay.actions.length, signal, ...ask };
-              await call("incoming_talk", tb, () => callTalkPost(db, p, drillId, tb, { hook: talk }));
+              const r = await call("incoming_talk", tb, () => callTalkPost(db, p, drillId, tb, { hook: talk }));
+              if (Array.isArray(r.body?.lines)) got.lines = r.body.lines as IncomingTalk["lines"];
               replay = await read(drillId);
             }
+            if (got.lines.length > 0) incoming.push(got);
             const eb = { step: replay.drill.step, actions: replay.actions.length, signal, end: true };
             await call("incoming_end", eb, () => callTalkPost(db, p, drillId, eb, { hook: talk }));
             replay = await read(drillId);
@@ -438,7 +469,7 @@ export async function runDrill(plan: RunPlan, deps: DriveDeps): Promise<RunOutco
     }
     const callsLeft = (await loadDrillScreen(db, { officeId: DEMO.id }, drillId, null))?.left ?? null;
     log.push({ type: "end", status: replay.drill.status, step: replay.drill.step, minute: replay.minute, advances, callsLeft });
-    return { plan, drillId, status: replay.drill.status, advances, replay, ops, errors, aiCalls: aiCallsOf(sqlite), callsLeft, names, worldAgent: worldAgentOf(sqlite), terms: options.terms === true, ...storedOf(sqlite, drillId) };
+    return { plan, drillId, status: replay.drill.status, advances, replay, ops, errors, aiCalls: aiCallsOf(sqlite), callsLeft, names, worldAgent: worldAgentOf(sqlite), terms: options.terms === true, ...storedOf(sqlite, drillId), incoming };
   } finally {
     sqlite.close();
   }

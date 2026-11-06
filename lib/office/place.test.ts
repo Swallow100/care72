@@ -11,7 +11,11 @@ import { d1FromSqlite, migratedSqlite } from "../db/test-d1.ts";
 import { defaultPlanForm, loadPlanForm } from "../forms/plan-form.ts";
 import { DEFAULT_CENTER, pickCenter, roundPoint } from "../map/center.ts";
 import { demoResetStatements } from "../seed/reset.ts";
+import { municipalityGeo } from "../municipality/geo.ts";
 import { loadOfficePlace, parsePlaceForm, placePost, savePlace } from "./place.ts";
+
+/** 高知市の団体コード（全国の市区町村の表、T154。前の形の文字の市は表で当てて団体コードも付く） */
+const KOCHI = "392014";
 
 const AT = "2026-11-04T03:00:00.000Z";
 
@@ -58,8 +62,27 @@ describe("migration 0017（offices の地図の中心）", () => {
     const before = d.prepare("SELECT * FROM offices").all();
     for (const n of names().filter((n) => n >= "0017_")) d.exec(readFileSync(new URL(n, MIGRATIONS), "utf8"));
     const after = d.prepare("SELECT * FROM offices").all() as Array<Record<string, unknown>>;
-    // 0027（T115）の試用事業所の印も後から足す列（前からある行は 0）。0030（T125）の事業所の区域も後から足す列（前からある行は NULL）
-    expect(after.map(({ center_lat: _a, center_lng: _b, judge_sandbox: _c, hazards: _d, ...rest }) => rest)).toEqual(before);
+    // 0027（T115）の試用事業所の印も後から足す列（前からある行は 0）。0030（T125）の事業所の区域も後から足す列（前からある行は NULL）。
+    // 0036（T148）の事業所の情報と地域の列も後から足す列（前からある行は NULL。lib/office/t148.test.ts）。0038（T154）の団体コードも
+    expect(
+      after.map(
+        ({
+          center_lat: _a,
+          center_lng: _b,
+          judge_sandbox: _c,
+          hazards: _d,
+          address: _e,
+          phone: _f,
+          fax: _g,
+          office_number: _h,
+          region_cities: _i,
+          region_km: _j,
+          city_code: _k,
+          region_city_codes: _l,
+          ...rest
+        }) => rest,
+      ),
+    ).toEqual(before);
     expect(after.map((r) => r.hazards)).toEqual([null]);
     expect(after.map((r) => [r.center_lat, r.center_lng])).toEqual([[null, null]]);
     expect(after.map((r) => r.judge_sandbox)).toEqual([0]);
@@ -82,9 +105,10 @@ describe("migration 0017（offices の地図の中心）", () => {
 });
 
 describe("種と戻し（T68 の 4・6）", () => {
-  it("種の 3 事業所は様式 松山市。デモ事業所の中心は松山市の市街（既定の中心と同じ）、ほかは未設定", () => {
+  it("種の 4 事業所は様式 松山市。デモ事業所と確認用（T144）の中心は松山市の市街（既定の中心と同じ）、ほかは未設定", () => {
     expect(SEED_OFFICES.map((o) => [o.id, o.plan_form, o.center_lat, o.center_lng])).toEqual([
       ["office-demo", "matsuyama", DEFAULT_CENTER.lat, DEFAULT_CENTER.lng],
+      ["office-demo-check", "matsuyama", DEFAULT_CENTER.lat, DEFAULT_CENTER.lng],
       ["office-partner", "matsuyama", null, null],
       ["office-unaffiliated", "matsuyama", null, null],
     ]);
@@ -127,9 +151,9 @@ describe("地図の真ん中（lib/map/center.ts）", () => {
 
 describe("事業所の地域の保存（T68 の 4）", () => {
   it("parsePlaceForm: 市は空を断る（20 字まで）。緯度経度は範囲の中で、両方ある か 両方ない", () => {
-    expect(parsePlaceForm(form({ city: " 高知市 ", center_lat: "33.56", center_lng: "133.53" }))).toEqual({ city: "高知市", center: { lat: 33.56, lng: 133.53 } });
-    expect(parsePlaceForm(form({ city: "高知市", center_lat: "", center_lng: "" }))).toEqual({ city: "高知市", center: null });
-    expect(parsePlaceForm(form({ city: "高知市" }))).toEqual({ city: "高知市", center: null });
+    expect(parsePlaceForm(form({ city: " 高知市 ", center_lat: "33.56", center_lng: "133.53" }))).toEqual({ city: "高知市", cityCode: KOCHI, center: { lat: 33.56, lng: 133.53 } });
+    expect(parsePlaceForm(form({ city: "高知市", center_lat: "", center_lng: "" }))).toEqual({ city: "高知市", cityCode: KOCHI, center: null });
+    expect(parsePlaceForm(form({ city: "高知市" }))).toEqual({ city: "高知市", cityCode: KOCHI, center: null });
     expect(parsePlaceForm(form({ city: " " }))).toBeNull();
     expect(parsePlaceForm(form({ city: "あ".repeat(21) }))).toBeNull();
     expect(parsePlaceForm(form({ city: "高知市", center_lat: "33.56", center_lng: "" }))).toBeNull();
@@ -170,7 +194,9 @@ describe("事業所の地域の保存（T68 の 4）", () => {
     expect(p?.center).toEqual(DEFAULT_CENTER);
     expect(p?.towns.length).toBeGreaterThan(0);
     expect(p?.towns.every((t) => t.trim() !== "")).toBe(true);
-    expect(await loadOfficePlace(db, "office-partner")).toEqual({ city: "松山市", center: null, towns: [] });
+    // 地域の市の並びと広さ（T148）も付く（周りの市が無ければ主な市だけ、広さは自動の null）。中心が無ければ主な市の代表の点（T154）
+    const point = municipalityGeo("382019")!.point;
+    expect(await loadOfficePlace(db, "office-partner")).toMatchObject({ city: "松山市", center: point, towns: [], cities: ["松山市"], km: null, map: { center: point } });
     expect(await loadOfficePlace(db, "office-none")).toBeNull();
   });
 });

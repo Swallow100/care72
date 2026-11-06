@@ -49,7 +49,7 @@ import {
   type StopLog,
 } from "./engine.ts";
 import { CALL_STATUS_LABELS, PHONE_LABELS, SHELTER_LABELS, TSUNAMI_LABELS, WATER_LABELS } from "./labels.ts";
-import { nightLine } from "./night.ts";
+import { timeLines } from "./night.ts";
 import { hourText, minuteText as minuteWords } from "./time-text.ts";
 import { areaOf, placesOf } from "./area.ts";
 import { cleanWords, inOutageArea, isPersonaFailure, reportersOf } from "./persona.ts";
@@ -69,7 +69,7 @@ import {
 } from "./event-catalog.ts";
 import { scenarioOf, type AskKind, type PersonMarks, type WorldState } from "./scenarios.ts";
 import { homeFacts, homeWords } from "./self.ts";
-import { kindOnTime, oddsText, seededShuffle, timelineText } from "./time-odds.ts";
+import { areaRested, kindOnTime, oddsText, seededShuffle, timelineText } from "./time-odds.ts";
 import { homeComms, homeOf } from "./comms.ts";
 import { fitKindOf, fitText, injectFits, profileOf } from "./fit.ts";
 import { screenIncident, STATE_RULES_TEXT, stateLines } from "./state-rules.ts";
@@ -168,7 +168,7 @@ export function sceneText(input: DirectorInput, aliasOf: ReadonlyMap<string, str
     `時刻: 発災から ${minuteWords(input.hour * 60)}（${last} 時間まで）`,
     `差し込める数: ${budgetOf(input)}`,
     // 夜間発災（T59）だけ。時刻の 1 行
-    ...(input.night ? [nightLine(input.hour)] : []),
+    ...timeLines(input.hour, input),
     // 発災からの時間の帯の目安（T104、lib/drill/time-odds.ts）。種類と出典の id を添える
     timelineText(input.hour, { with: "director", profile }),
     // 起きやすい物・起きにくい物と、この訓練の傾向（T121。訓練ごとの種で揺らす）。種の無い訓練は書かない
@@ -179,7 +179,7 @@ export function sceneText(input: DirectorInput, aliasOf: ReadonlyMap<string, str
       ? [["今の状態（いつから・まだ変わらない時刻）:", ...stateLines(w, Math.round(input.hour * 60), who).map((x) => `- ${x}`)].join("\n")]
       : []),
     // もう出した出来事（T130。同じ種類・同じ言い回しを別の人にくり返さない）
-    ...issuedBlock(w, (k) => (isInjectKind(k) ? EVENT_CATALOG[k].label : k), who),
+    ...issuedBlock(w, (k) => (isInjectKind(k) ? EVENT_CATALOG[k].label : k), who, input.participants),
     input.incidents.length > 0
       ? ["この刻みの状況:", ...input.incidents.map((e) => `- ${e.text}${who(e.person) ? `（${who(e.person)}）` : ""}`)].join("\n")
       : "この刻みの状況: 新しい事はない",
@@ -577,6 +577,8 @@ export function directorEvents(answer: DirectorAnswer, ctx: DirectorEventsContex
       ...(row.touches === "persons" ? { persons: [...(ctx.area?.get(kind) ?? [])] } : {}),
       ...(place ? { place } : {}),
       ...(row.factsFor && source ? { facts: row.factsFor(source) } : {}),
+      // 全体の種類はこの訓練で前に出した数（T141。文をコードが書く種類の言い回しと震度を回ごとに変える）
+      ...(!person && row.varies && ctx.world ? { nth: (ctx.world.issued ?? []).filter((x) => x.kind === kind && x.person === null).length } : {}),
     });
     if (!person) areaUsed = true;
   }
@@ -707,7 +709,14 @@ export function createDirectorHook(deps: DirectorDeps): DirectorHook {
         eligible.set(p, input.seed ? seededShuffle(kept, `${input.seed}|${p}|${minute}`) : kept);
       }
       for (const k of [...area.keys()]) {
-        if (!injectFits(profile, k) || !kindAllowed(k, null, input.world, input.hour, minute) || (!selfKinds.includes(k) && !kindOnTime(k, input.hour, input.seed, issued))) area.delete(k);
+        // 全体の同じ種類は間を空ける（T141、lib/drill/time-odds.ts の areaRested。余震が呼ぶたびに同じ形で出た）
+        if (
+          !injectFits(profile, k) ||
+          !kindAllowed(k, null, input.world, input.hour, minute) ||
+          (!selfKinds.includes(k) && !kindOnTime(k, input.hour, input.seed, issued)) ||
+          !areaRested(k, issued, minute, input.seed)
+        )
+          area.delete(k);
       }
       const asked = input.replies ?? [];
       const max = budgetOf(input);

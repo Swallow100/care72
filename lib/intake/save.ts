@@ -5,7 +5,8 @@
 // - 埋まっている欄は変えない（人が既入力を選んだときだけ上書き。lib/db/ledger.ts の applyLedgerChanges）
 // - 連絡先は空いた所だけを埋める（夜間・続柄・名前・電話・備考）。足す人の名前と電話は人が画面で入れた物
 // - 時計: 機器・薬を入れたら値の空いた時計を機械的に作る（医療依存の印。lib/intake/marks.ts）。値は人が問いに答えた物だけ
-// - 計画の状態が未作成なら下書きにする。経過に「入力」を 1 行（kind note、payload の source が intake。値は残さず場所だけ）
+// - 計画の状態が未作成なら下書きにする。経過に「入力」を 1 行（kind note、payload の source が intake。変えた場所と、T143 から
+//   欄ごとの前と後の言葉〔lib/intake/change-diff.ts〕。本人のページの変更履歴で見る人の範囲のまま出す）
 // - 本人のページの面の「編集」（T45、edit）は手の入力: 埋まった欄・薬・機器・連絡先・時計も上書きでき（overwrite）、
 //   同意と時計の頼り先の確認（経過に clock_check の行）も変えられる。経過の本文は「ケアマネが直した」。AI の分け方とは混ぜない
 // - 全部を 1 つの batch（取引）で。台帳の版が上がったときだけ、ほかの文が効く（guard）
@@ -40,6 +41,7 @@ import { PENDING_STATUS_LABELS } from "../labels.ts";
 import { clockCheckEntry, type MarkAuthor, type NewTimelineEntry } from "../ledger-marks.ts";
 import { applyEvacMap, EVAC_MAP_FIELDS, EvacMapSchema } from "../map/route-edit.ts";
 import { loadPersonPage, pendingClockId, type PersonPageRows } from "../person.ts";
+import { changeDiff, type DiffClockRow, type DiffConsentRow, type DiffContactRow } from "./change-diff.ts";
 import { changeHasMask, type IntakeChange } from "./changes.ts";
 import { labelOfKey } from "./diff.ts";
 import { ADDRESS_MAX } from "./edit.ts";
@@ -47,6 +49,7 @@ import { INTAKE_KEYS, isHandOnlyKey } from "./fields.ts";
 import { DEVICE_CLOCKS, MEDICATION_CLOCKS, markClockIds, planMarkClocks, type MarkClock } from "./marks.ts";
 import { CONTACT_KINDS_FOR_EDIT } from "./schema.ts";
 import { PDF_PAGES_MAX, READ_SOURCES, REDACTED_MAX, readTimelineHead, type ReadMeta } from "./read-form.ts";
+import { TIMELINE_SOURCES } from "./timeline-sources.ts";
 
 const text = (max: number) => z.string().trim().max(max);
 const ID = /^[A-Za-z0-9_-]{1,64}$/;
@@ -201,17 +204,8 @@ export type SaveResult =
 
 type Statement = ReturnType<D1Database["prepare"]>;
 
-/**
- * 経過の本文の頭: AI の分け方を人が確かめた・問いへの答え（手入力）・本人のページの面で手で直した・外した・値を確かめた。
- * 手で直したときは 1 つの保存で「ケアマネが直した: 〜。ケアマネが外した: 〜」と並べる
- */
-export const TIMELINE_SOURCES = {
-  ai: "AI の分け方、人が確認",
-  manual: "手入力",
-  edit: "ケアマネが直した",
-  removed: "ケアマネが外した",
-  seen: "ケアマネが確認した",
-} as const;
+/** 経過の本文の頭（lib/intake/timeline-sources.ts。本人のページの変更履歴が読む） */
+export { TIMELINE_SOURCES };
 
 function namesOf(fields: ReadonlyArray<string>, pending: Ledger["pending"] = []): string {
   const names = [
@@ -371,6 +365,17 @@ export async function saveIntake(db: D1Database, principal: Principal, req: Save
   if (changed === 0) return { ok: true, changed: 0, version: req.version, plan: rows.person.plan_status, fields: [] };
 
   const next = req.version + 1;
+  // 変えた欄の前と後（T143。本人のページの変更履歴で行を押すと出す）。保存の文と同じ当て方で手元に写しを作って比べる。
+  // 版が読んだときのままのときだけ文が効くので、写しは書いた結果と同じ
+  const diff = changeDiff(
+    { ledger: before, contacts: rows.contacts, clocks: rows.clocks, consents: rows.consents },
+    {
+      ledger,
+      contacts: removeOps.applyContacts(contactOps.apply(rows.contacts)),
+      clocks: removeOps.applyClocks(manualOps.apply(checkOps.apply(clockOps.apply(rows.clocks)))),
+      consents: consentOps.apply(rows.consents),
+    },
+  );
   const payload: IntakePayload = {
     source: INTAKE_SOURCE,
     ai: req.ai !== null,
@@ -381,6 +386,7 @@ export async function saveIntake(db: D1Database, principal: Principal, req: Save
     fields: [...new Set([...fields, ...removedFields, ...seenOps.fields, ...applied.pending.map((p) => p.field)])].filter(
       (f) => !MED_NAME_FIELD.test(f),
     ),
+    ...(diff.length > 0 ? { diff } : {}),
   };
   // この保存の経過の行（id は毎回でたらめ）を最初に、読んだ版のままのときだけ足す。ほかの文はこの行があるときだけ効く。
   // 同じ版から 2 つの保存が重なっても、あとの batch は版が上がっていて経過の行が入らず、台帳・連絡先・時計も書かない
@@ -551,6 +557,37 @@ function planContacts(rows: PersonPageRows, changes: ReadonlyArray<IntakeChange>
   return {
     fields,
     count: updates.length + inserts.length,
+    /** 保存のあとの連絡先の写し（build の文と同じ当て方。変更履歴の前と後、T143） */
+    apply(contacts: ReadonlyArray<DiffContactRow>): DiffContactRow[] {
+      const next = contacts.map((c) => {
+        const u = updates.find((x) => x.id === c.id);
+        if (!u) return c;
+        const row: Record<string, unknown> = { ...c };
+        for (const [col, v] of u.set) if (u.overwrite || row[col] == null) row[col] = v;
+        return row as DiffContactRow;
+      });
+      const flag = (v: boolean | null | undefined) => (v == null ? null : v ? 1 : 0);
+      for (const n of inserts) {
+        next.push({
+          id: n.id,
+          kind: n.c.kind,
+          relation: n.c.relation || null,
+          name: n.c.name || null,
+          phone: n.c.phone || null,
+          night_ok: flag(n.c.nightOk),
+          note: n.c.note || null,
+          emergency_order: n.c.emergencyOrder ?? null,
+          supporter_order: n.c.supporterOrder ?? null,
+          reach: n.c.reach ?? null,
+          has_smartphone: flag(n.c.hasSmartphone),
+          has_car: flag(n.c.hasCar),
+          kana: n.c.kana || null,
+          address: n.c.address || null,
+          mobile: n.c.mobile || null,
+        });
+      }
+      return next;
+    },
     /** guardArgs は ?1 経過の行の id・?2 本人の id・?3 時刻 */
     build(db: D1Database, guard: string, guardArgs: GuardArgs): Statement[] {
       return [
@@ -694,6 +731,17 @@ function planClocks(rows: PersonPageRows, before: Ledger, after: Ledger, changes
     fields,
     resolvedPending,
     count: created.length + updates.length,
+    /** 保存のあとの時計の写し（build の文と同じ当て方。変更履歴の前と後、T143） */
+    apply(clocks: ReadonlyArray<DiffClockRow>): DiffClockRow[] {
+      const next = clocks.map((k) => {
+        const u = updates.find((x) => x.id === k.id);
+        return u && (u.overwrite || k.value == null) ? { ...k, value: u.value, unit: u.unit } : k;
+      });
+      for (const k of created) {
+        next.push({ id: k.id, kind: k.kind, category: k.category, label: k.label, value: k.value, unit: k.unit, starts_on: k.starts_on, depends_on: null, depends_check: null });
+      }
+      return next;
+    },
     /** guardArgs は ?1 経過の行の id・?2 本人の id・?3 時刻 */
     build(db: D1Database, guard: string, guardArgs: GuardArgs): Statement[] {
       const stamp = guardArgs[2];
@@ -748,6 +796,13 @@ function planClockChecks(rows: PersonPageRows, changes: ReadonlyArray<IntakeChan
   return {
     fields: entries.map((e) => `clocks.${e.clockId}`),
     count: entries.length,
+    /** 保存のあとの時計の写し（頼り先の確認。T143） */
+    apply(clocks: ReadonlyArray<DiffClockRow>): DiffClockRow[] {
+      return clocks.map((k) => {
+        const e = entries.find((x) => x.clockId === k.id);
+        return e && k.depends_on != null ? { ...k, depends_check: e.to } : k;
+      });
+    },
     /** guardArgs は ?1 経過の行の id・?2 本人の id・?3 時刻 */
     build(db: D1Database, guard: string, guardArgs: GuardArgs): Statement[] {
       return entries.flatMap(({ clockId, to, entry: t }) => [
@@ -780,6 +835,12 @@ function planConsents(rows: PersonPageRows, changes: ReadonlyArray<IntakeChange>
   return {
     fields: list.map(([kind]) => `consent.${kind}`),
     count: list.length,
+    /** 保存のあとの同意の写し（T143）。行の無い種類は足す */
+    apply(consents: ReadonlyArray<DiffConsentRow>): DiffConsentRow[] {
+      const next = consents.map((c) => (sets.has(c.kind) ? { ...c, status: sets.get(c.kind)! } : c));
+      for (const [kind, status] of list) if (!next.some((c) => c.kind === kind)) next.push({ kind, status });
+      return next;
+    },
     /** 記録した人と時刻を同じ行に残す（経過の「同意」は lib/person.ts が記録の時刻から作る） */
     build(db: D1Database, guard: string, guardArgs: GuardArgs, accountId: string | null): Statement[] {
       return list.map(([kind, status]) =>
@@ -832,6 +893,9 @@ function planRemovals(rows: PersonPageRows, before: Ledger, changes: ReadonlyArr
   return {
     removed,
     count: contactIds.size + clockIds.size,
+    /** 保存のあとの写しから外す物を除く（T143） */
+    applyContacts: <T extends { id: string }>(contacts: ReadonlyArray<T>): T[] => contacts.filter((c) => !contactIds.has(c.id)),
+    applyClocks: <T extends { id: string }>(clocks: ReadonlyArray<T>): T[] => clocks.filter((k) => !clockIds.has(k.id)),
     /** guardArgs は ?1 経過の行の id・?2 本人の id・?3 時刻 */
     build(db: D1Database, guard: string, guardArgs: GuardArgs): Statement[] {
       return [
@@ -864,6 +928,24 @@ function planManualClocks(rows: PersonPageRows, changes: ReadonlyArray<IntakeCha
   return {
     fields: [...adds.map((a) => `clocks.${a.id}`), ...[...starts.keys()].map((id) => `clocks.${id}`)],
     count: adds.length + starts.size,
+    /** 保存のあとの時計の写し（足した時計と起点。T143） */
+    apply(clocks: ReadonlyArray<DiffClockRow>): DiffClockRow[] {
+      const next = clocks.map((k) => (starts.has(k.id) && k.starts_on !== "none" ? { ...k, starts_on: starts.get(k.id)! } : k));
+      for (const { id, v } of adds) {
+        next.push({
+          id,
+          kind: v.kind,
+          category: v.category,
+          label: v.label,
+          value: v.value,
+          unit: v.value === null ? null : v.unit,
+          starts_on: v.startsOn,
+          depends_on: null,
+          depends_check: null,
+        });
+      }
+      return next;
+    },
     build(db: D1Database, guard: string, guardArgs: GuardArgs): Statement[] {
       const stamp = guardArgs[2];
       return [

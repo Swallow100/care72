@@ -26,8 +26,12 @@ export type PhoneLinkItem = {
   relation: string | null;
   /** スマホの印（本人は台帳の値「スマホ 使用可」、家族は has_smartphone の 1・0 で「スマホ 使用可」「スマホ なし」）。分からなければ null */
   smartphone: string | null;
-  /** 開く URL（/s/<token> の絶対 URL）。有効な版が無ければ null */
+  /** 開く URL（/s/<token> の絶対 URL）。有効な版が無い・同意の決まりに合わなければ null */
   url: string | null;
+  /** 本人・家族が作った ID が今も通るか（T149。渡されなければ undefined で出さない） */
+  account?: boolean;
+  /** 通知を許可した端末の数（T149） */
+  notify?: number;
 };
 
 export type PhoneLinkView = {
@@ -35,6 +39,8 @@ export type PhoneLinkView = {
   state: PhoneLinkState;
   /** 本人が一覧から外れている（リンクは通らない。発行もしない） */
   unlisted: boolean;
+  /** 同意の決まり（lib/phone/consent.ts）に合う。合わなければ発行を押せず「同意なし」、URL と QR を出さない（T149） */
+  allowed: boolean;
   self: PhoneLinkItem;
   family: PhoneLinkItem[];
 };
@@ -83,11 +89,20 @@ export function contactSmartphone(hasSmartphone: 0 | 1 | null): string | null {
 export async function buildPhoneLinkView(
   rows: Pick<PersonPageRows, "person" | "contacts">,
   link: PhoneLinkRow,
-  opts: { now: number; origin: string | null; secret: string },
+  opts: {
+    now: number;
+    origin: string | null;
+    secret: string;
+    /** T149: 同意の決まり・作った ID・通知の端末（本人用の鍵は "self"）。無ければ同意あり・印なし */
+    phone?: { allowed: boolean; accounts: ReadonlySet<string>; notify: ReadonlyMap<string, number> };
+  },
 ): Promise<PhoneLinkView> {
   const state = phoneLinkState(link, opts.now);
   const unlisted = link.unlisted_at !== null;
-  const usable = state.status === "active" && !unlisted && opts.origin !== null;
+  const allowed = opts.phone?.allowed ?? true;
+  const usable = state.status === "active" && !unlisted && allowed && opts.origin !== null;
+  const marks = (key: string) =>
+    opts.phone ? { account: opts.phone.accounts.has(key), notify: opts.phone.notify.get(key) ?? 0 } : {};
   const url = async (contactId: string | null) => {
     if (!usable) return null;
     const token = await currentPhoneLinkToken(rows.person.id, contactId, link, opts.secret);
@@ -100,6 +115,7 @@ export async function buildPhoneLinkView(
     relation: null,
     smartphone: ownSmartphone(rows.person.ledger),
     url: await url(null),
+    ...marks("self"),
   };
   const family = await Promise.all(
     familyLinkContacts(rows).map(
@@ -110,8 +126,9 @@ export async function buildPhoneLinkView(
         relation: c.relation?.trim() || CONTACT_KIND_LABELS[c.kind],
         smartphone: contactSmartphone(c.has_smartphone),
         url: await url(c.id),
+        ...marks(c.id),
       }),
     ),
   );
-  return { personId: rows.person.id, state, unlisted, self, family };
+  return { personId: rows.person.id, state, unlisted, allowed, self, family };
 }

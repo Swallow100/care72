@@ -2,7 +2,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { MatsuyamaSheet } from "../../components/forms/MatsuyamaSheet.tsx";
-import { SEED_AT, SEED_PEOPLE, seedConsents, type SeedPerson } from "../../seed/people.ts";
+import { SEED_AT, seedConsents, type SeedPerson } from "../../seed/people.ts";
 import { parseLedger } from "../db/ledger.ts";
 import { toPersonView, type PersonPageRows } from "../person.ts";
 import {
@@ -14,6 +14,8 @@ import {
   type MatsuyamaSheet as Sheet,
 } from "./matsuyama.ts";
 import { wareki, warekiText } from "./wareki.ts";
+// T142 で種の台帳を埋めた。このテストは空いた欄を前提にするので、T142 より前の空きの多い形（seed/sparse.ts）を使う
+import { SPARSE_PEOPLE } from "../../seed/sparse.ts";
 
 const TODAY = "2026-11-02";
 
@@ -29,7 +31,7 @@ function seedRows(p: SeedPerson): PersonPageRows {
   };
 }
 
-const seed = (id: string) => SEED_PEOPLE.find((p) => p.person.id === id)!;
+const seed = (id: string) => SPARSE_PEOPLE.find((p) => p.person.id === id)!;
 const sheetOf = (id: string): Sheet => buildMatsuyamaSheet(seedRows(seed(id)), { today: TODAY, officeName: "デモ事業所" });
 const text = (s: Sheet, k: MatsuyamaKey) => cellText(s.cells[k]);
 const html = (s: Sheet) => renderToStaticMarkup(createElement(MatsuyamaSheet, { sheet: s }));
@@ -46,7 +48,7 @@ function shows(markup: string, key: string): boolean {
   return [...markup.matchAll(/data-fields="([^"]*)"/g)].some((m) => m[1].split(" ").includes(key));
 }
 
-const ALL_IDS = SEED_PEOPLE.map((p) => p.person.id);
+const ALL_IDS = SPARSE_PEOPLE.map((p) => p.person.id);
 const ASSERTING_WORDS = ["危険", "診断", "判定", "重症", "病気がわかる"];
 
 describe("和暦", () => {
@@ -342,7 +344,8 @@ describe("同意のない範囲は落とす", () => {
 });
 
 describe("本人のページの書類の入口", () => {
-  it("計画書・医療要約（T07）・本人の 1 枚（T06）・QR（T16）・スマホ入口（T69a）は画面へのリンク", () => {
+  // スマホ入口（T69a）は書類の行から外し、同意の面の後のスマホの面へ（T149）
+  it("計画書・医療要約（T07）・本人の 1 枚（T06）・QR（T16）は画面へのリンク", () => {
     const v = toPersonView(seedRows(seed("p-01")), { today: TODAY });
     const docs = v.sections.find((x) => x.id === "documents")!.blocks.flatMap((b) => (b.type === "documents" ? b.documents : []));
     expect(docs.map((d) => [d.key, d.status, d.href ?? null])).toEqual([
@@ -350,7 +353,6 @@ describe("本人のページの書類の入口", () => {
       ["medical", "表示", "/people/p-01/forms/medical"],
       ["own", "表示", "/people/p-01/forms/own"],
       ["qr", "表示", "/people/p-01/forms/qr"],
-      ["phone", "表示", "/people/p-01/phone"],
     ]);
   });
 });

@@ -6,12 +6,33 @@ import type { IntakeChange } from "./changes.ts";
 import { contactPartValue } from "./contact-parts.ts";
 import { intakeField, normalizeValue } from "./fields.ts";
 
-/** 答えの入力。choice は選んだ値（複数なら全部）、value は文字・数字の欄、night は選んだ連絡先 */
+/**
+ * 答えの入力。choice は選んだ値（複数なら全部）、value は文字・数字の欄、night は選んだ連絡先。
+ * note は選ぶ問いに打った補足（T150。「その他」の中身・「一部」の様子など）。選んだ値と両方台帳に入る
+ */
 export type AnswerInput =
-  | { kind: "choice"; values: string[] }
+  | { kind: "choice"; values: string[]; note?: string }
   | { kind: "value"; value: string }
-  | { kind: "night"; contactIds: string[] }
+  | { kind: "night"; contactIds: string[]; note?: string }
   | { kind: "pending"; status: PendingStatus };
+
+/** 補足の長さの上限（特記に入れるとき。書き足しの欄はその欄の上限で切る） */
+export const NOTE_MAX = 200;
+
+/**
+ * 補足の変更（T150）。書き足しの欄（noteKey、空のときだけ ask.ts が渡す）があればそこへ、無ければ特記へ欄の名前を頭に付けて
+ * （「歩行: 杖で家の中は歩ける」。特記は本人のページ・紙で欄から離れて読まれるので、何の補足かを残す）。空なら何もしない
+ */
+export function noteChange(label: string, noteKey: string | null, raw: string | undefined): IntakeChange | null {
+  const text = (raw ?? "").replace(/\s+/g, " ").trim();
+  if (text === "") return null;
+  const f = noteKey ? intakeField(noteKey) : undefined;
+  if (f) {
+    const value = normalizeValue(f, text);
+    if (value !== null) return { t: "field", key: f.key, value };
+  }
+  return { t: "note", value: `${label}: ${text}`.slice(0, NOTE_MAX) };
+}
 
 /** 答えを変更にする。形に合わない答え（空・数字でない）は null */
 export function answerChanges(q: Question, input: AnswerInput): IntakeChange[] | null {
@@ -19,10 +40,13 @@ export function answerChanges(q: Question, input: AnswerInput): IntakeChange[] |
   const a = q.answer;
   switch (a.kind) {
     case "choice": {
+      // 補足だけ（何も選ばない）は保存しない。選んだ値があるときだけ、補足を一緒に
       if (input.kind !== "choice" || input.values.length === 0) return null;
       const f = intakeField(a.field);
       const value = f ? normalizeValue(f, a.multi ? input.values : input.values[0]) : null;
-      return value === null ? null : [{ t: "field", key: a.field, value }];
+      if (value === null) return null;
+      const note = noteChange(q.label, a.note, input.note);
+      return [{ t: "field", key: a.field, value }, ...(note ? [note] : [])];
     }
     case "text":
     case "list":
@@ -44,14 +68,19 @@ export function answerChanges(q: Question, input: AnswerInput): IntakeChange[] |
     }
     case "night": {
       if (input.kind !== "night") return null;
+      // 補足（連絡先に無い人・来られる時間など）は特記へ（夜間支援に書き足しの欄は無い。T150）
+      const note = noteChange(q.label, null, input.note);
+      const withNote = (cs: IntakeChange[]) => (note ? [...cs, note] : cs);
       // 選んだ人は夜間可。誰も選ばなければ「なし」で、聞いた相手は全員 夜間不可
       if (input.contactIds.length > 0) {
-        return a.contacts
-          .filter((c) => input.contactIds.includes(c.id))
-          .map((c): IntakeChange => ({ t: "contact", id: c.id, value: { kind: c.kind, nightOk: true } }));
+        return withNote(
+          a.contacts
+            .filter((c) => input.contactIds.includes(c.id))
+            .map((c): IntakeChange => ({ t: "contact", id: c.id, value: { kind: c.kind, nightOk: true } })),
+        );
       }
       if (a.contacts.length === 0) return null;
-      return a.contacts.map((c): IntakeChange => ({ t: "contact", id: c.id, value: { kind: c.kind, nightOk: false } }));
+      return withNote(a.contacts.map((c): IntakeChange => ({ t: "contact", id: c.id, value: { kind: c.kind, nightOk: false } })));
     }
     case "contact": {
       // 連絡先のフリガナ・住所・携帯（T117）。その連絡先の空いた所に入る（保存は上書きしない）

@@ -285,6 +285,27 @@ export function kindOnTime(kind: InjectKind, hour: number, seed: string | null |
   return used < OFF_BAND_MAX;
 }
 
+/** 全体の出来事の同じ種類の間隔の元（分。T141） */
+export const AREA_GAP_MINUTES = 360;
+
+/**
+ * 全体の出来事（余震など）の同じ種類を、今出してよいか（T141）。前に n 回出していれば、最後のものから AREA_GAP_MINUTES × n を
+ * 種で 0.75〜1.5 倍した分たつまで出さない（回を重ねるほど間が広がる。間の長さは回ごとに違う）。評価の 5 回目で、余震が監督の呼ぶたび
+ * （3 時間おき）に同じ形で 3 回出た。人ごとの出来事（person のある物）は数えない（人ごとは KIND_REPEAT_MAX）
+ */
+export function areaRested(
+  kind: string,
+  issued: ReadonlyArray<{ kind: string; at: number; person?: string | null }>,
+  minute: number,
+  seed: string | null | undefined,
+): boolean {
+  const same = issued.filter((x) => x.kind === kind && (x.person ?? null) === null);
+  if (same.length === 0) return true;
+  const last = Math.max(...same.map((x) => x.at));
+  const r = seededRandom(`${seed ?? ""}|gap|${kind}|${same.length}`)();
+  return minute - last >= AREA_GAP_MINUTES * same.length * (0.75 + 0.75 * r);
+}
+
 export type OddsLines = {
   /** この時間帯に起きやすい種類（帯の目安。と、この訓練で起きやすい種類） */
   likely: InjectKind[];

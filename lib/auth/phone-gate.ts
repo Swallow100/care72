@@ -27,6 +27,8 @@ export function isPhonePage(page: Page): page is PhonePage {
 function wasPhoneSession(lost: SessionPayload | null): boolean {
   if (!lost) return false;
   if (lost.k === "link") return true;
+  // 本人・家族の ID（T149）が通らない（作り直し・再発行・パスワードの変更）は、ID を持っているのでログイン欄へ（false）
+  if (lost.k === "phone") return false;
   return lost.r === "self" || lost.r === "family";
 }
 

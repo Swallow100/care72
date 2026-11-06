@@ -90,14 +90,14 @@ export async function matsuyamaPaper(
     routeMap: RouteMapImage | null;
     edit: boolean;
   },
-): Promise<{ sheet: MatsuyamaSheet; framed: OverlaySheet | null; fill: PaperFillData | null }> {
+): Promise<{ sheet: MatsuyamaSheet; framed: OverlaySheet | null; fill: PaperFillData | null; entries: FormEntry[] }> {
   const { rows } = input;
   const entries = await loadFormEntries(db, input.officeId, rows.person.id, "matsuyama");
   const sheet = withMatsuyamaEntries(input.sheet, entries);
-  if (!input.manifest) return { sheet, framed: null, fill: null };
+  if (!input.manifest) return { sheet, framed: null, fill: null, entries };
   const assets = await freeAssets(db, input.officeId, entries);
   const framed = withFreeItems(matsuyamaFrameSheet(sheet, input.manifest, { routeMap: input.routeMap }), entries, assets, MATSUYAMA_FRAME.maxPt);
-  if (!input.edit) return { sheet, framed, fill: null };
+  if (!input.edit) return { sheet, framed, fill: null, entries };
   const queue = questionQueue(rows);
   const slots = frameSlots(
     rows,
@@ -110,6 +110,7 @@ export async function matsuyamaPaper(
   return {
     sheet,
     framed,
+    entries,
     fill: {
       personId: rows.person.id,
       version: rows.person.version ?? 1,

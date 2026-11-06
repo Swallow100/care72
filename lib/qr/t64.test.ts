@@ -184,7 +184,10 @@ describe("migration 0015（people.qr_ttl_days）", () => {
     // 種は気象庁の写しの表（0020、T72）も空にするので 0020 も先に（新しい表を作るだけで people に触れない）。
     // 種は同意の AI 提供（0024、T74）を書くので 0024 も先に（consents を建て直すだけで people に触れない）。
     // 種は書類の見直しの表（0032、T136）と紙の手入れの表（0033、T135）も空にするので 0032・0033 も先に（新しい表を作るだけで people に触れない）
-    const early = (n: string) => n < MIGRATION_0015 || n.startsWith("0017_") || n.startsWith("0020_") || n.startsWith("0024_") || n.startsWith("0032_") || n.startsWith("0033_");
+    // 種は連絡先のフリガナ・住所・携帯（0029、T117。T142 で種が書く）も書くので 0029 も先に（contacts に列を足すだけで people に触れない）
+    // 種はデモ事業所の情報と地域の周りの市（0036、T148）を書くので 0036 も先に（offices に列を足すだけで people に触れない）
+    // 種は本人・家族の ID と通知の購読の表（0037、T149）も空にするので 0037 も先に（新しい表を作るだけ）
+    const early = (n: string) => n < MIGRATION_0015 || n.startsWith("0017_") || n.startsWith("0020_") || n.startsWith("0024_") || n.startsWith("0029_") || n.startsWith("0032_") || n.startsWith("0033_") || n.startsWith("0036_") || n.startsWith("0037_") || n.startsWith("0038_") || n.startsWith("0039_");
     for (const n of migrationNames().filter(early)) db.exec(readFileSync(new URL(n, MIGRATIONS), "utf8"));
     for (const s of seedStatements()) db.exec(s);
     db.exec(`UPDATE people SET qr_generation = 2, qr_issued_at = '${iso(NOW)}' WHERE id = 'p-01'`);

@@ -7,7 +7,7 @@
 // 正解・不正解は出さない（採点は T22）。名前は台帳の id から引く（記録には名前が無い）。
 // T59: 手のメモを手の行の下に。進行中は最後の手に「取消」（刻みを越えなかった手だけ。越えた手は「取消不可」の印）。
 // T84: 通話で聞いた安否を表に渡さなかった手（至急維持）は「通話」の横に本番の電話と同じ言葉「無事 不可（本人が「けが」）」を赤の太字で。
-// T93: 最新の電話の手は最初の言葉の下に往復の欄（TalkBox。問い 7 つ・自由の 1 文・切る）、履歴は「通話 N 往復」に畳む（開くと全文）。
+// T93: 最新の電話の手は最初の言葉の下に往復の欄（TalkBox。T155 で続けられる間は着信と同じ通話の画面を重ねる）、履歴は「通話 N 往復」に畳む（開くと全文）。
 //   訪問で着いた手は様子の 1 行（AI の印）と頼み事の印（灰の文字）。
 // T110: 手の行に打った時刻と終わる時刻と所要（決まりの表で伸びた理由つき）。T128: 時刻の範囲は訓練の中の時刻「13:44〜14:44」、
 //   所要は「所要 60 分」と別の言葉、理由は別の小さな文字の括弧（lib/drill/act-time.ts。前の「1 時間〜2 分」と詰めた並びは読み違えた）。自由対応は読み替えた手かやり方、
@@ -32,7 +32,8 @@ import { TALK_UI, talkRounds, type TalkLine, type VisitReport } from "@/lib/dril
 import type { FictionKind } from "@/lib/drill/fiction";
 import { FictionalMark } from "./Fictional";
 import { ActionIcon, CallInIcon } from "./icons";
-import { AskMarks, TalkBox, TalkLines } from "./TalkBox";
+import { TalkBox } from "./TalkBox";
+import { AskMarks, TalkLines } from "./TalkLines";
 import { UndoButton } from "./UndoButton";
 import { VoicePlay } from "./VoicePlay";
 
@@ -287,7 +288,15 @@ export function LatestResult({
       </div>
       {r?.speech && <Bubble speaker={calleeText(action) ?? ""} text={r.speech} ai={r.speechAi} large voice={voiceOf?.(action.id) ?? null} />}
       {r?.speech && talk ? (
-        <TalkBox drillId={talk.drillId} step={talk.step} actions={talk.actions} action={action} speaker={calleeText(action) ?? ""} />
+        <TalkBox
+          drillId={talk.drillId}
+          step={talk.step}
+          actions={talk.actions}
+          action={action}
+          speaker={calleeText(action) ?? ""}
+          name={action.person ? (names[action.person] ?? undefined) : undefined}
+          voice={voiceOf?.(action.id) ?? null}
+        />
       ) : (
         r?.talk && <TalkFold lines={r.talk} speaker={calleeText(action) ?? ""} />
       )}

@@ -36,7 +36,18 @@ export const CLOCK_LABELS = {
   cap: "訓練上限",
   /** 1 訓練の AI の残り回数（操作の横の数） */
   left: "AI 残",
+  /** 次まで・自動進行で進んだ分（操作の横。T162） */
+  moved: "進行",
 } as const;
+
+/** 進んだ分の言い方（「6 分」「3 時間」「1 時間 30 分」）。経過の言い方（lib/drill/time-text.ts）と同じ字 */
+export function movedText(minutes: number): string {
+  const m = Math.max(0, Math.round(minutes));
+  const h = Math.floor(m / 60);
+  const r = m % 60;
+  if (h === 0) return `${r} 分`;
+  return r === 0 ? `${h} 時間` : `${h} 時間 ${r} 分`;
+}
 
 /** 分の進め方の言葉 */
 export const CLOCK_STEP_LABELS: Readonly<Record<ClockStep, string>> = { 30: CLOCK_LABELS.m30, 60: CLOCK_LABELS.h1, 180: CLOCK_LABELS.h3 };

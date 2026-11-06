@@ -111,6 +111,14 @@
   [data-paper-fill] .pf-over {
     font-weight: 700;
   }
+  /* 台帳を直す道（本人のページ、別のタブ。T147） */
+  [data-paper-fill] .pf-dest-link {
+    margin-left: 1.5mm;
+    color: #fff;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    pointer-events: auto;
+  }
 
   /* 手で入れた所の印（台帳・様式・文字枠・画像）。欄の左上の外に */
   [data-paper-fill] .pf-tag {
@@ -146,8 +154,13 @@
   [data-paper-fill] .pf-free[data-selected] {
     outline: 2px solid var(--accent);
   }
-  [data-paper-fill] .pf-free[data-kind="image"] {
+  /* 枠の本体をつまんで動かす（T147。文字の枠も画像も）。引いている間に紙の字を選ばない */
+  [data-paper-fill] .pf-free[data-selected] {
     cursor: move;
+  }
+  [data-paper-fill] .pf-free,
+  [data-paper-fill] .pf-free-text {
+    user-select: none;
   }
   [data-paper-fill] .pf-img {
     display: block;
@@ -174,32 +187,59 @@
     width: 100%;
     height: 100%;
   }
-  [data-paper-fill] .pf-grip {
+  /* 4 つの角と 4 つの辺のつまみ（T147）。選んだ枠だけ。白の地に操作の色の縁の小さな四角 */
+  [data-paper-fill] .pf-handle {
     position: absolute;
-    left: 0;
-    right: 0;
-    top: -3mm;
-    height: 3mm;
-    cursor: move;
-    background: var(--accent);
-    opacity: 0.85;
+    z-index: 4;
+    width: 2.6mm;
+    height: 2.6mm;
+    box-sizing: border-box;
+    border: 0.4mm solid var(--accent);
+    background: #fff;
     touch-action: none;
   }
-  [data-paper-fill] .pf-size {
+  [data-paper-fill] .pf-handle[data-handle="n"] { left: calc(50% - 1.3mm); top: -1.3mm; cursor: ns-resize; }
+  [data-paper-fill] .pf-handle[data-handle="s"] { left: calc(50% - 1.3mm); bottom: -1.3mm; cursor: ns-resize; }
+  [data-paper-fill] .pf-handle[data-handle="e"] { right: -1.3mm; top: calc(50% - 1.3mm); cursor: ew-resize; }
+  [data-paper-fill] .pf-handle[data-handle="w"] { left: -1.3mm; top: calc(50% - 1.3mm); cursor: ew-resize; }
+  [data-paper-fill] .pf-handle[data-handle="ne"] { right: -1.3mm; top: -1.3mm; cursor: nesw-resize; }
+  [data-paper-fill] .pf-handle[data-handle="sw"] { left: -1.3mm; bottom: -1.3mm; cursor: nesw-resize; }
+  [data-paper-fill] .pf-handle[data-handle="nw"] { left: -1.3mm; top: -1.3mm; cursor: nwse-resize; }
+  [data-paper-fill] .pf-handle[data-handle="se"] { right: -1.3mm; bottom: -1.3mm; cursor: nwse-resize; }
+  /* 選んだ枠の下の道具（大きさ・削除） */
+  [data-paper-fill] .pf-tools {
     position: absolute;
-    right: -1.5mm;
-    bottom: -1.5mm;
-    width: 3mm;
-    height: 3mm;
-    cursor: nwse-resize;
-    background: var(--accent);
-    touch-action: none;
+    right: 0;
+    top: calc(100% + 2.2mm);
+    z-index: 5;
+    display: inline-flex;
+    align-items: center;
+    gap: 1.5mm;
+    padding: 0.8mm 1mm;
+    border-radius: 1mm;
+    background: #fff;
+    box-shadow: 0 1px 4px rgb(0 0 0 / 0.25);
+    font-family: var(--font-sans, inherit);
+    font-size: 8pt;
+    color: #1d1d1d;
+    white-space: nowrap;
+    cursor: default;
+  }
+  [data-paper-fill] .pf-tool-size {
+    display: inline-flex;
+    align-items: center;
+    gap: 1mm;
+  }
+  [data-paper-fill] .pf-size-select {
+    height: 6mm;
+    min-width: 16mm;
+    padding: 0 1mm;
+    border-radius: 0.8mm;
+    background: #eef0f2;
+    color: #1d1d1d;
+    font-size: 8pt;
   }
   [data-paper-fill] .pf-remove {
-    position: absolute;
-    right: 0;
-    top: calc(100% + 2mm);
-    z-index: 4;
     display: inline-flex;
     align-items: center;
     gap: 0.8mm;

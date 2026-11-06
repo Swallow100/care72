@@ -1,6 +1,7 @@
 // 初めて入った管理者の準備の欄（docs/tasks/T98.md）。事業所の画面（/office）の一番上に、残っている準備だけを 1 行ずつ出し、済んだら消す。
 // 出すのは事業所の管理者だけ（審査員のケアマネの役・管理者でないケアマネには出さない。app/office/page.tsx）。
 // 数えるのは事業所の画面がもう読んでいる物（ケアマネの一覧・利用者の一覧）と、事業所の中心（offices.center_lat・center_lng）だけ。
+// - 事業所: 所在地が未入力（T148、lib/office/profile.ts。名前は事業所を作るときに入るので見ない）。渡したときだけ数える
 // - 地域: 事業所の中心が無い（lib/office/place.ts。市は事業所を作るときに入るので見ない）
 // - ケアマネ: 使える（停止していない）ケアマネが 1 人以下（管理者だけ）。1 人で回す事業所もあるので「後で」で閉じられる（下の cookie）
 // - 利用者: 一覧にいる人が 0（外した人は数えない）
@@ -13,15 +14,20 @@ import type { GeoPoint } from "../db/types.ts";
 import { ASSIGN_ANCHOR, CARE_MANAGERS_ANCHOR } from "./http-paths.ts";
 import { OFFICE_LABELS } from "./labels.ts";
 import type { CareManagerItem, OfficePersonItem } from "./people.ts";
-import { OFFICE_PLACE_ANCHOR } from "./place.ts";
+import { OFFICE_PLACE_ANCHOR } from "./http-paths.ts";
+import { OFFICE_PROFILE_ANCHOR } from "./profile.ts";
 
 /** 準備の行の種類（並びもこの順） */
-export const SETUP_KINDS = ["place", "care_manager", "people", "assign"] as const;
+export const SETUP_KINDS = ["profile", "place", "care_manager", "people", "assign"] as const;
 export type SetupKind = (typeof SETUP_KINDS)[number];
 
 /** 準備の欄の言葉（2〜4 字の漢語） */
 export const SETUP_LABELS = {
   title: "準備",
+  /** 事業所の情報（所在地が未入力。T148） */
+  profile: "事業所",
+  /** 事業所の所在地がまだ無い */
+  blank: "未入力",
   /** 見出しの横の「残り N」 */
   left: "残り",
   place: "地域",
@@ -53,6 +59,8 @@ export type SetupItem = {
 };
 
 export type SetupInput = {
+  /** 事業所の所在地が未入力（T148）。渡さなければ数えない */
+  profileMissing?: boolean;
   center: GeoPoint | null;
   careManagers: readonly Pick<CareManagerItem, "disabled">[];
   people: readonly Pick<OfficePersonItem, "careManagerId" | "unlistedAt">[];
@@ -71,6 +79,9 @@ export function canSeeSetup(p: { role: string; admin: boolean } | null): boolean
 /** 残っている準備（無ければ空）。並びは SETUP_KINDS の順 */
 export function setupItems(input: SetupInput): SetupItem[] {
   const items: SetupItem[] = [];
+  if (input.profileMissing === true) {
+    items.push({ kind: "profile", label: SETUP_LABELS.profile, status: SETUP_LABELS.blank, count: null, href: `#${OFFICE_PROFILE_ANCHOR}` });
+  }
   if (input.center === null) {
     items.push({ kind: "place", label: SETUP_LABELS.place, status: SETUP_LABELS.unset, count: null, href: `#${OFFICE_PLACE_ANCHOR}` });
   }

@@ -9,7 +9,8 @@ import { ROUTE_MODES, ROUTE_SOURCES, type GeoPoint, type Ledger, type RouteMap, 
 import type { IntakeChange } from "../intake/changes.ts";
 import { ROUTE_LABELS } from "../labels.ts";
 import { roundPoint } from "./center.ts";
-import { fitView, isGeoPoint, project, unproject, type Padding } from "./geo.ts";
+import { JAPAN_BOUNDS } from "./camera.ts";
+import { fitView, isGeoPoint, project, unproject, zoomAt, type Padding, type Pt } from "./geo.ts";
 import { ROUTE_FRAME, ROUTE_ZOOM } from "./route-image.ts";
 import { handLine, LINE_MAX_POINTS, lineLength } from "./route.ts";
 import { routeModeOf, walkMinutes } from "./transport.ts";
@@ -292,6 +293,26 @@ export function panRoute(v: RouteView, dir: PanDir): RouteView {
   const dx = dir === "left" ? -ROUTE_FRAME.w / 4 : dir === "right" ? ROUTE_FRAME.w / 4 : 0;
   const dy = dir === "up" ? -ROUTE_FRAME.h / 4 : dir === "down" ? ROUTE_FRAME.h / 4 : 0;
   return { center: roundPoint(unproject({ x: c.x + dx, y: c.y + dy }, v.z)), z: v.z };
+}
+
+/**
+ * ドラッグ・指で動かす（T151）。dx・dy は枠（ROUTE_FRAME）の px で、右へ引けば地図が右へ動き真ん中は西へ。
+ * 一続きの動きの始めの範囲に始めからの量を当てる（動くたびに 5 桁に丸めた真ん中を足していくと、丸めの分だけずれていく）。
+ * 真ん中は日本の周りに収める（全部の地図と同じ）
+ */
+export function panRouteBy(v: RouteView, dx: number, dy: number): RouteView {
+  const c = project(v.center, v.z);
+  const p = unproject({ x: c.x - dx, y: c.y - dy }, v.z);
+  const b = JAPAN_BOUNDS;
+  return { center: roundPoint({ lat: Math.min(b.north, Math.max(b.south, p.lat)), lng: Math.min(b.east, Math.max(b.west, p.lng)) }), z: v.z };
+}
+
+/** ホイール・2 本の指の拡大・縮小（段は整数のまま）。at（枠の px）の下の地点を同じ所に残す。段が変わらなければそのまま */
+export function zoomRouteAt(v: RouteView, dz: number, at?: Pt): RouteView {
+  const z2 = clampZ(v.z + dz);
+  if (z2 === v.z) return v;
+  const w = zoomAt({ z: v.z, center: project(v.center, v.z) }, ROUTE_FRAME, z2, at);
+  return { center: roundPoint(unproject(w.center, z2)), z: z2 };
 }
 
 /** 枠の中の押した所（左上からの比 0〜1）→ 緯度経度（5 桁） */

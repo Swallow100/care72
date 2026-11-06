@@ -3,7 +3,7 @@
 // 形は様式 9 の CSV と同じ（lib/forms/form9-csv.ts の csvText: UTF-8 の BOM・CRLF・式の守り）。
 // 上の 2 行は題「担当一覧」と、事業所名・担当・作成日・並び・絞込。1 行空けて見出し、その下に行。
 // 列は表と同じ言葉（lib/list/labels.ts の COLUMN_LABELS、本人のページの上の段の HEAD_LABELS）。
-//   平時:   組（骨格の段。画面の平時の表の組と同じ。T78 で連絡順から改名）・氏名・カナ・年齢・介護度・医療・ハザード・支援者・避難計画・未確認・地区
+//   平時:   組（骨格の段。画面の平時の表の組と同じ。T78 で連絡順から改名）・氏名・カナ・年齢・介護度・医療・ハザード・支援者・避難計画・訓練・未確認・地区
 //   発災時: 連絡順（ルールの表の並びの番号。画面の発災時の表の連絡順と同じ値で、絞っても元の番号）・状態・理由・組（骨格の段 1〜8）、
 //           そのあと平時の 氏名〜地区、末尾に 残り・最終連絡（2 つの番号が同じ名前に見えないよう、段は「組」）
 // 断り方は様式 9 の CSV と同じ: ログインなし 401、役が違う 403、範囲の外 404。書き出したことは経過に残さない（T62 の決め）。
@@ -13,7 +13,8 @@ import { denied } from "../auth/guard.ts";
 import type { Principal } from "../auth/principal.ts";
 import { caseloadScope } from "../auth/scope.ts";
 import { loadCaseload, type Caseload, type CaseloadRow } from "../caseload.ts";
-import { BLANK_LABELS, CARE_LEVEL_LABELS, HEAD_LABELS, PLAN_STATUS_LABELS, stateLabel } from "../labels.ts";
+import { BLANK_LABELS, CARE_LEVEL_LABELS, HEAD_LABELS, PLAN_DRILL_LABELS, PLAN_STATUS_LABELS, stateLabel } from "../labels.ts";
+import { drillMark } from "../plan-status.ts";
 import { COLUMN_LABELS, DETAIL_LABELS, FILTER_LABELS } from "../list/labels.ts";
 import { filterWords, listQueryOf, listView, sortWords, type ListViewResult } from "../list/view.ts";
 import { CUSTODY_LABELS } from "../custody/labels.ts";
@@ -48,7 +49,9 @@ const BODY_COLUMNS: ReadonlyArray<Column> = [
   { header: COLUMN_LABELS.medical, cell: medicalText },
   { header: COLUMN_LABELS.hazard, cell: (r) => (r.hazards.length === 0 ? BLANK_LABELS.none : r.hazards.join("・")) },
   { header: COLUMN_LABELS.supporter, cell: (r) => String(r.supporters) },
+  // 計画の段階（未作成・下書き・作成済）と、別に最後に出た訓練の日（T146。画面と同じ言い方）
   { header: COLUMN_LABELS.plan, cell: (r) => PLAN_STATUS_LABELS[r.plan] },
+  { header: PLAN_DRILL_LABELS.head, cell: (r) => drillMark(r.drill, r.plan).text },
   { header: BLANK_LABELS.unconfirmed, cell: (r) => String(r.pending) },
   { header: FILTER_LABELS.area, cell: (r) => r.town ?? "" },
 ];

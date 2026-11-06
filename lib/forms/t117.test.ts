@@ -16,7 +16,7 @@ import { MatsuyamaSheet } from "../../components/forms/MatsuyamaSheet.tsx";
 import { OverlaySheet } from "../../components/forms/OverlaySheet.tsx";
 import { matsuyamaFrameSheet } from "./frame-build.ts";
 import { ORIGINALS, type OriginalManifest } from "./originals.ts";
-import { SEED_PEOPLE, type SeedPerson } from "../../seed/people.ts";
+import { type SeedPerson } from "../../seed/people.ts";
 import { seedStatements } from "../../seed/sql.ts";
 import type { Principal } from "../auth/principal.ts";
 import { parseLedger } from "../db/ledger.ts";
@@ -39,6 +39,8 @@ import { buildMatsuyamaSheet, cellText, MATSUYAMA_FIELDS, matsuyamaField, type M
 import { paperChanges, paperEditData, type PaperTarget } from "./paper-edit.ts";
 import { seedRows } from "./print-harness.ts";
 import { matsuyamaUnconfirmed, unconfirmedView } from "./unconfirmed.ts";
+// T142 で種の台帳を埋めた。このテストは空いた欄を前提にするので、T142 より前の空きの多い形（seed/sparse.ts）を使う
+import { SPARSE_PEOPLE } from "../../seed/sparse.ts";
 
 const cm: Principal = {
   role: "care_manager",
@@ -54,13 +56,13 @@ const cm: Principal = {
 const NOW = new Date("2026-11-05T03:00:00.000Z");
 const TODAY = "2026-11-05";
 const OPTS = { today: TODAY, officeName: "デモ事業所" };
-const seed = (id: string): SeedPerson => SEED_PEOPLE.find((p) => p.person.id === id)!;
+const seed = (id: string): SeedPerson => SPARSE_PEOPLE.find((p) => p.person.id === id)!;
 
 let sqlite: DatabaseSync;
 let db: D1Database;
 beforeEach(() => {
   sqlite = migratedSqlite();
-  for (const s of seedStatements()) sqlite.exec(s);
+  for (const s of seedStatements({ people: SPARSE_PEOPLE })) sqlite.exec(s);
   db = d1FromSqlite(sqlite);
 });
 
@@ -175,7 +177,7 @@ describe("4 つの道のどれで入れても同じ台帳の値", () => {
       const vals: unknown[] = [];
       for (const way of ["question", "paper", "ai"] as const) {
         sqlite = migratedSqlite();
-        for (const s of seedStatements()) sqlite.exec(s);
+        for (const s of seedStatements({ people: SPARSE_PEOPLE })) sqlite.exec(s);
         db = d1FromSqlite(sqlite);
         if (way === "question") await viaQuestion("p-01", c.key, c.value);
         if (way === "paper") await viaPaper("p-01", c.paper, c.key, c.value);
@@ -189,7 +191,7 @@ describe("4 つの道のどれで入れても同じ台帳の値", () => {
     const vals: unknown[] = [];
     for (const way of ["question", "paper", "ai"] as const) {
       sqlite = migratedSqlite();
-      for (const s of seedStatements()) sqlite.exec(s);
+      for (const s of seedStatements({ people: SPARSE_PEOPLE })) sqlite.exec(s);
       db = d1FromSqlite(sqlite);
       const id = noSupporter();
       if (way === "question") await viaQuestion(id, "local.orgName", "あおば自主防災会");
@@ -204,7 +206,7 @@ describe("4 つの道のどれで入れても同じ台帳の値", () => {
     const vals: unknown[] = [];
     for (const way of ["question", "paper"] as const) {
       sqlite = migratedSqlite();
-      for (const s of seedStatements()) sqlite.exec(s);
+      for (const s of seedStatements({ people: SPARSE_PEOPLE })) sqlite.exec(s);
       db = d1FromSqlite(sqlite);
       const rows = await load("p-01");
       const kin = formContactOf(rows.contacts, "kin")!;
@@ -256,7 +258,7 @@ const BEFORE_T117: Record<string, number> = {
 
 /** 実施者のいない種の人 */
 function noSupporter(): string {
-  const p = SEED_PEOPLE.find((x) => !x.contacts.some((c) => c.supporter_order != null));
+  const p = SPARSE_PEOPLE.find((x) => !x.contacts.some((c) => c.supporter_order != null));
   return p!.person.id;
 }
 
@@ -274,7 +276,7 @@ describe("フリガナ・住所・電話を Claude に渡さない", () => {
   });
 
   it("問いの Claude に渡す言葉（focus）に連絡先の名前を入れない", () => {
-    for (const p of SEED_PEOPLE) {
+    for (const p of SPARSE_PEOPLE) {
       const rows = seedRows(p);
       for (const q of questionQueue(rows).filter((x) => x.group === "form")) {
         for (const c of rows.contacts) if (c.name) expect(q.focus, q.key).not.toContain(c.name);
@@ -285,7 +287,7 @@ describe("フリガナ・住所・電話を Claude に渡さない", () => {
 
 describe("紙の未確認と問いを同じ元から数える", () => {
   it("帯の「問い」の欄は、本人のページの問いの列（残り N 問）のどれかが元に当たる欄。手書きは引用の印だけ", () => {
-    for (const p of SEED_PEOPLE) {
+    for (const p of SPARSE_PEOPLE) {
       const rows = seedRows(p);
       const keys = questionQueue(rows).map((q) => q.key);
       const ask = matsuyamaAskable(keys, rows.contacts);
@@ -319,7 +321,7 @@ describe("紙の未確認と問いを同じ元から数える", () => {
   });
 
   it("種の 10 人で紙の未確認が減る: フリガナの入った人は近親者・実施者のフリガナが未確認でない、実施者のいる人の実施組織・電話のある人の 2 つ目の電話は空き枠", () => {
-    for (const p of SEED_PEOPLE) {
+    for (const p of SPARSE_PEOPLE) {
       const rows = seedRows(p);
       const sheet = buildMatsuyamaSheet(rows, OPTS);
       const kin = formContactOf(rows.contacts, "kin");
@@ -341,7 +343,7 @@ describe("紙の未確認と問いを同じ元から数える", () => {
 
 describe("問い", () => {
   it("様式の欄の問いは今の決まり（医療 → 夜間 → その他）の後ろ。避難場所の手段と時間は場所が入ってから、組織は実施者のいないときだけ", () => {
-    for (const p of SEED_PEOPLE) {
+    for (const p of SPARSE_PEOPLE) {
       const q = questionQueue(seedRows(p));
       const first = q.findIndex((x) => x.group === "form");
       if (first >= 0) expect(q.slice(first).every((x) => x.group === "form"), p.person.id).toBe(true);

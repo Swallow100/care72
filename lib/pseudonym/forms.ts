@@ -55,7 +55,7 @@ const NOT_NAMES = `
 隣 隣人 近所 隣家 向かい 町内 町内会 自治会 大家 家主 管理人 友人 知人 知り合い 友達 友だち 仲間 同僚 上司 部下 先輩 後輩 親友
 民生委員 委員 みまもり員 見守り員 見守り 支援者 介護者 協力者 保護者 後見人 本人 患者 利用者 客 皆
 医者 医師 医 歯医者 歯科医 主治医 担当医 訪問医 かかりつけ医 看護師 看護婦 看護 訪看 保健師 薬剤師 助産師 介護士 福祉士 療法士 栄養士
-相談員 支援員 職員 事務員 店員 スタッフ ヘルパー ケアマネ ケアマネージャー マネージャー ナース ドクター ボランティア
+相談員 支援員 職員 事務員 店員 スタッフ ヘルパー ケアマネ ケアマネジャー ケアマネージャー マネージャー ナース ドクター ボランティア
 運転手 運転士 ドライバー 配達員 配達 宅配 郵便屋 消防士 消防団 消防 救急隊 隊員 警察官 警官 警察 巡査 駐在 巡り
 弁護士 司法書士 行政書士 税理士 住職 和尚 神主 牧師 神父
 業者 電気屋 ガス屋 水道屋 灯油屋 米屋 酒屋 八百屋 魚屋 肉屋 床屋 薬屋 本屋 新聞屋 植木屋 大工
@@ -65,6 +65,8 @@ const NOT_NAMES = `
 病院 医院 診療所 クリニック 薬局 施設 事業所 会社 役所 市役所 役場 包括 社協 センター ステーション 郵便局 銀行 農協 生協
 学校 保育園 幼稚園 デイ デイサービス ショート ショートステイ ホーム サービス 連絡先 かかりつけ
 ママ パパ ばあば じいじ
+両親 親 姑 舅 遺族 先祖 一同 先方 相手 向こう 手伝い 家政婦 得意 民生 保健所 避難所 事務所 寺 神社 地蔵 日 月
+犬 猫 ペット いぬ ねこ わん にゃん わんこ にゃんこ かみ きゃく はいしゃ てら じぞう
 毎日 毎朝 毎晩 毎回 毎食 毎週 毎月 今日 昨日 明日 今朝 今夜 今晩 最近 普段 自分 一人 二人 全部 本当 朝 昼 夜 前
 疲れ 苦労 世話 馳走 互い 陰 愁傷 生憎 待ち遠 粗末 邪魔 毒 連れ 宅
 おばあ ばあ おじい じい かあ とう にい ねえ おじ おば おく まご となり きんじょ いしゃ かんごし まわり あか ぼっ おっ あん じょう
@@ -84,14 +86,14 @@ const NOT_NAMES_SENSEI = [..."大若老女"];
 const NOT_NAMES_TONO = [..."宮神御本拝湯寝社正仏宝貴沈"];
 
 /**
- * 語の終わりが職業・店の字なら名前でない（パン屋・そば屋・商店・庭師・配達員）。
+ * 語の終わりが職業・店・役所の字なら名前でない（パン屋・そば屋・商店・庭師・配達員・担当者・自衛隊・消防署・県庁・郵便局。者・隊・署・庁・局は T159）。
  * 屋は前がカナ・かなのときだけ（漢字の「土屋」「守屋」は名字なので伏せる。漢字の店の語は NOT_NAMES に）
  */
 function isTradeWord(token: string): boolean {
   const cs = [...token];
   if (cs.length < 2) return false;
   const last = cs.at(-1)!;
-  if (last === "店" || last === "師" || last === "員") return true;
+  if (last === "店" || last === "師" || last === "員" || last === "者" || last === "隊" || last === "署" || last === "庁" || last === "局") return true;
   if (last === "屋") return cs.slice(0, -1).every((c) => isKata(c) || isHira(c));
   return false;
 }
@@ -103,7 +105,12 @@ function exactOnly(w: string): boolean {
   return [...w].length === 1 || /^[おご御]/u.test(w) || ([...w].every(isHira) && !KANA_SUFFIX.has(w));
 }
 
-const EXACT = new Set(NOT_NAMES.filter(exactOnly));
+/**
+ * カナの語で語全体が同じときだけ除く物（ペットの呼び方「ワンちゃん」。T159）。語の終わりで比べると外国の名前（イワン）に当たる
+ */
+const NOT_NAMES_KATA_EXACT = ["ワン", "ニャン", "ワンコ", "ニャンコ", "ネコ", "イヌ"];
+
+const EXACT = new Set([...NOT_NAMES.filter(exactOnly), ...NOT_NAMES_KATA_EXACT]);
 const SUFFIX = NOT_NAMES.filter((w) => !exactOnly(w));
 
 /** 除く語の一覧（テストで役割名・続柄が入っているかを確かめる） */
@@ -363,7 +370,13 @@ const KANA_COMMON = new Set(
   もしかして たしか おそらく とても すごく かなり すこし ぜんぶ みな まあまあ いい だめ おなか くらい あかるい うるさい しずか へん
   おかしい かゆい さびしい こころぼそい すいた よろしく おつかれ おだいじに
   はあ はぁ へえ へぇ ほう あら おや えっ あっ おっ うわ わあ わぁ おい こら ちょ ああ あぁ うう ううん んー ふう やれやれ よいしょ
-  どうも どうぞ どうか どうして なんで なんか なんだか なんとか どちら どなた どれか だれも なにも ぜひ たのむ たのみ`
+  どうも どうぞ どうか どうして なんで なんか なんだか なんとか どちら どなた どれか だれも なにも ぜひ たのむ たのみ
+  めがね いれば つえ おむつ おしめ おむかえ むかえ おきがえ きがえ おてつだい てつだい ふとん もうふ まくら くつ くつした かばん さいふ
+  でんち でんき ろうそく ほうたい くるまいす おべんとう べんとう おにぎり ぱん おかゆ かゆ おゆ ふろ おふろ といれ げんかん だいどころ
+  にわ まど かいだん にかい いっかい ろうか ひなんじょ こうみんかん たいいくかん しせつ おてら じんじゃ かわ やま さか
+  けさ ゆうべ おととい しあさって こんや こんばん よなか まよなか あけがた ひるま さきほど のちほど いったん こんど このあと あのあと あとで
+  あいだ いただきます いただく いただき はだし くだもの
+  おもい かるい とおい ちかい はやい おそい ながい みじかい つめたい あぶない すごい えらい しんどい きつい うれしい かなしい たのしい`
     .split(/\s+/)
     .filter(Boolean),
 );
@@ -371,6 +384,13 @@ const KANA_COMMON_LIST = [...KANA_COMMON];
 
 /** かなの名前の後ろに来る助詞（「ひできが」「みつきに」）。か・よ・ね（文の終わり）は入れない */
 const NAME_PARTICLES = new Set([..."がのはをにへとでもや"]);
+
+/**
+ * かなの名前の後ろの切れ目（助詞か、断定の語尾「です・だ」。「孫のみつきだよ」の「みつき」。T159）。
+ * 「だ」は後ろが文の終わり・句読点・よ・ね・から・けど などのときだけ（「いただきます」「はだし」を割らない）
+ */
+const nameBoundary = (rest: string) =>
+  NAME_PARTICLES.has(rest[0] ?? "") || /^(?:です|でした|でしょ|じゃ|だ(?:$|から|けど|[よねわなっかけろともが。、，！？!?」』）)\s]))/u.test(rest);
 
 const isKanaCommon = (w: string) => KANA_COMMON.has(w) || KANA_COMMON.has(w.replace(/^[おご]/u, "")) || /[てで]$/u.test(w);
 
@@ -388,24 +408,75 @@ function kanaNameEnd(text: string, at: number): number | null {
     p += c.length;
   }
   if (cs.length < 2) return null;
-  const ok = (w: string) => !isKanaCommon(w) && !isNotName(w, "さん");
   if (cs.length <= 4) {
     const w = cs.join("");
+    const n = kanaNameLength(w);
+    if (n === null) return null;
+    // 断定の語尾を外した名前（「ゆうです」→ ゆう。T159）
+    if (n < w.length) return at + n;
     // 「うちに」「ところへ」: 終わりの助詞を外した語が一般の語なら名前でない
     const stem = cs.length > 2 && NAME_PARTICLES.has(cs.at(-1)!) ? cs.slice(0, -1).join("") : w;
-    if (!ok(w) || !ok(stem)) return null;
+    if (stem !== w && kanaNameLength(stem) === null) return null;
     // 名前の終わりにならない助詞（が・を・に・へ・で・も）は外す（「みつきが来る」→ みつき）。の・は・と・や は名前の字のことがある（しの・かずは・ゆうと・さや）
     return at + (stem !== w && /[がをにへでも]$/u.test(w) ? stem.length : w.length);
   }
   const run = cs.join("");
   for (let len = 4; len >= 2; len--) {
-    if (!NAME_PARTICLES.has(cs[len])) continue;
+    if (!nameBoundary(cs.slice(len).join(""))) continue;
     // 一般の語の途中で切らない（「ありがとう」を「ありが」と「と」に）
     if (KANA_COMMON_LIST.some((c) => c.length > len && run.startsWith(c))) return null;
-    const w = cs.slice(0, len).join("");
-    if (ok(w)) return at + w.length;
+    const n = kanaNameLength(cs.slice(0, len).join(""));
+    if (n !== null) return at + n;
   }
   return null;
+}
+
+// ---------- かなの語尾（名前でない語の形。T159） ----------
+
+/**
+ * 動詞・形容詞の語尾（ます・ません・ない・たい・〜しい・った・ている・ください）。3 字以上のかなの語がこれで終われば名前でない
+ * （かなの名前はこの形で終わらない。「てる」は「よしてる」の名にあるので入れない）
+ */
+const PREDICATE_TAIL = /(?:ます|ました|ません|ましょう|ない|なかった|たい|たかった|しい|かった|った|ている|ていた|ください|なさい|ちゃう|ちゃった)$/u;
+/** 断定の語尾（です・だ・だよ）。外した残りで名前かを見る（「孫のゆうです」は名前、「母のことです」は名前でない） */
+const COPULA_TAIL = /^(.{2,}?)(?:でした|でしょう|でしょ|です|だった|だろう|だろ|だよ|だね|だわ|だ|じゃ)$/u;
+/** 文の終わりの 1 字（ね・よ・な・わ・さ・ぞ）。外した残りが述語のときだけ名前でない（「はるな」「あやね」「あさよ」は名前のまま） */
+const FINAL_TAIL = /^(.{2,})[ねよなわさぞ]$/u;
+/** 文の終わりの 1 字の前に来る述語の語（いいよ・そうね・だめよ） */
+const PREDICATE_WORDS = new Set(["いい", "よい", "そう", "だめ", "いや", "ほんと", "ほんとう", "まあ", "ちがう", "わかる", "わかった", "しかたない"]);
+/** 一般の語＋この語（いまから・ここまで・あとだけ） */
+const KANA_TAILS = new Set(["から", "まで", "より", "だけ", "しか", "など", "って", "とか", "ほど", "くらい", "ぐらい", "ばかり"]);
+/** 一般の語の表にあるが名前にもなる語（なお・みな）。一般の語どうしの組・語尾の前では一般の語と見ない */
+const NAMEISH_COMMON = new Set(["なお", "みな"]);
+/** 文の終わりの 1 字の前で外さない名前（ことね） */
+const FINAL_NAMES = new Set(["ことね"]);
+
+const isAdjective = (w: string) => w.length >= 3 && w.endsWith("い") && isKanaCommon(w);
+const plainCommon = (w: string) => isKanaCommon(w) && !NAMEISH_COMMON.has(w);
+
+/**
+ * かなだけの語 w（2〜4 字、語尾を含みうる）の中の名前の長さ。名前でなければ null。
+ * 語尾（です・ます・だよ・いいよ）を含む語を名前にしない（評価の 6 回目で「母のことです」が「母の（氏名）」になった。T159）
+ */
+function kanaNameLength(w: string): number | null {
+  if (w.length < 2) return null;
+  // 語全体が一般の語・除く語なら、語尾を外す前に名前でない（「からだ」を「から」＋「だ」と読まない）
+  if (isKanaCommon(w) || isNotName(w, "さん")) return null;
+  if (w.length >= 3 && PREDICATE_TAIL.test(w)) return null;
+  const copula = COPULA_TAIL.exec(w);
+  if (copula) return kanaNameLength(copula[1]);
+  const final = FINAL_TAIL.exec(w);
+  if (final && !FINAL_NAMES.has(w)) {
+    const stem = final[1];
+    if (PREDICATE_WORDS.has(stem) || isAdjective(stem) || PREDICATE_TAIL.test(stem)) return null;
+  }
+  // 一般の語どうし・一般の語＋語尾（はいはい・いまから・ここまで）
+  for (let k = 2; k <= w.length - 2; k++) {
+    const a = w.slice(0, k);
+    const b = w.slice(k);
+    if (plainCommon(a) && (plainCommon(b) || KANA_TAILS.has(b))) return null;
+  }
+  return !isKanaCommon(w) && !isNotName(w, "さん") ? w.length : null;
 }
 
 /** at から始まるカナの名前（2〜6 字、後ろがカナでない）の終わり */
@@ -492,7 +563,7 @@ function labelSpans(text: string): Span[] {
     if (end === null && (colon || !strong)) {
       // 1 語: かなの名前（後ろが助詞・句読点・終わり）、カナの名前、強い見出しのあとは名前の文字の 1 続き、名前＋（年齢）
       const one = kanaNameEnd(text, v) ?? kataNameEnd(text, v);
-      const kanaOk = one !== null && (one >= text.length || !isNameChar(text[one]) || NAME_PARTICLES.has(text[one]));
+      const kanaOk = one !== null && (one >= text.length || !isNameChar(text[one]) || nameBoundary(text.slice(one, one + 3)));
       if (kanaOk) end = one;
       else if (strong && colon) {
         // 漢字・カナの 1 続き（6 字まで）と、すぐ後ろのかなの名前（「浜野きくゑ」）
@@ -534,7 +605,7 @@ function kanaContextSpans(text: string): Span[] {
     const v = m.index + m[0].length;
     if (!labelBoundary(text, m.index)) continue;
     const end = kanaNameEnd(text, v);
-    if (end !== null && (end >= text.length || !isHira(text[end]) || NAME_PARTICLES.has(text[end]))) out.push({ start: v, end });
+    if (end !== null && (end >= text.length || !isHira(text[end]) || nameBoundary(text.slice(end, end + 3)))) out.push({ start: v, end });
   }
   for (let i = 0; i < text.length; i++) {
     if (!isHira(text[i]) || (i > 0 && isHira(text[i - 1])) || !lineHead(text, i)) continue;
@@ -581,7 +652,7 @@ function learnedSpans(text: string, spans: ReadonlyArray<Span>): Span[] {
         const prev = i > 0 ? text[i - 1] : "";
         const next = end < text.length ? text[end] : "";
         if (prev && isHira(prev) && !"のとや".includes(prev)) continue;
-        if (next && isHira(next) && !NAME_PARTICLES.has(next)) continue;
+        if (next && isHira(next) && !nameBoundary(text.slice(end, end + 3))) continue;
       }
       out.push({ start: i, end });
     }

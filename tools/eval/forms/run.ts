@@ -24,6 +24,7 @@ import { FORM_FILE_MAX_BYTES, type FormMapping, type LedgerItemKey } from "../..
 import { pageImageKey, parsePageImages, type PageImage, type PageImageBucket } from "../../../lib/forms/page-images.ts";
 import { formReadPost } from "../../../lib/forms/read-post.ts";
 import { buildFormReadForm } from "../../../lib/forms/read-upload.ts";
+import { getSharedMapping, pagesKeyOf } from "../../../lib/forms/shared-mapping.ts";
 import type { DiffItem } from "../../../lib/intake/diff.ts";
 import { extractIntake, INTAKE_TEXT_MAX, pseudonymInputOf, splitIntakeText, type IntakeProposal } from "../../../lib/intake/extract.ts";
 import { aiConsentRefusal } from "../../../lib/intake/http.ts";
@@ -128,10 +129,21 @@ export type FormResult = {
   partial?: number[];
   /**
    * 一覧の様式（T134）: 様式の id、版が一覧と同じか、原本をどこから取ったか、2 つ目の事業所が AI を呼ばずに共有の対応表を写せたか
-   * （本物の回でも 2 つ目は AI を呼ばない文脈で読む。写せなければ false）
+   * （本物の回でも 2 つ目は AI を呼ばない文脈で読む。写せなければ false）。
+   * sharedWhy（T161）は写せなかった訳: pages 頁の組の鍵が作れない（評価の 6 回目の岐阜市の 4 頁）・unread 1 つ目に読めない頁か切れた頁があり
+   * 共有に入れない（決めどおり）・missing 全部の頁を読めたのに共有に無い・copy 共有にあるのに写せない。unread のほかは外れ
    */
-  catalog?: { id: string; version: "same" | "changed"; from: "corpus" | "cache" | "fetch" | "pages"; shared: boolean | null };
+  catalog?: {
+    id: string;
+    version: "same" | "changed";
+    from: "corpus" | "cache" | "fetch" | "pages";
+    shared: boolean | null;
+    sharedWhy?: SharedWhy;
+  };
 };
+
+/** 一覧の様式の共有の対応表を 2 つ目の事業所が写せなかった訳（T161） */
+export type SharedWhy = "pages" | "unread" | "missing" | "copy";
 
 export type InputResult = {
   id: string;
@@ -443,9 +455,11 @@ export async function runEval(opts: EvalOptions): Promise<RunResult> {
       }
       // 一覧の様式（T134）: サーバーが公式の URL から取ったときと同じ記録（版）を、この回の R2 に置く（2 つの事業所の分）
       let catalogInfo: FormResult["catalog"] | undefined;
+      let catalogSha = "";
       if (job.municipal) {
         const e = job.municipal.entry;
         const sha = "bytes" in orig ? await sha256Hex(orig.bytes) : e.form.sha256;
+        catalogSha = sha;
         catalogInfo = { id: e.form.id, version: sha === e.form.sha256 ? "same" : "changed", from: job.municipal.from(), shared: null };
         const record = { id: e.form.id, sha256: sha, bytes: "bytes" in orig ? orig.bytes.length : 1, at: new Date().toISOString(), matches: sha === e.form.sha256 };
         for (const office of [OFFICE, SECOND_OFFICE]) await bucket.put(municipalFetchKey(office, e.form.id), new TextEncoder().encode(JSON.stringify(record)));
@@ -498,7 +512,23 @@ export async function runEval(opts: EvalOptions): Promise<RunResult> {
         );
         const b2 = (await again.json()) as { ok: boolean; shared?: boolean; error?: string };
         catalogInfo.shared = b2.ok && b2.shared === true;
-        step({ stage: "form.shared", form: job.id, ok: catalogInfo.shared, version: catalogInfo.version, from: catalogInfo.from, error: b2.error ?? null });
+        // 写せなかった訳（T161）: 鍵の形・1 つ目の読めない頁・共有の表に入ったか
+        if (!catalogInfo.shared) {
+          const key = pagesKeyOf(pages.map((p) => p.origin));
+          const unread = (body.unread?.length ?? 0) + (body.partial?.length ?? 0) > 0;
+          const stored = key && !unread ? await getSharedMapping(db, { catalogId: catalogInfo.id, sha256: catalogSha, pages: key }) : null;
+          catalogInfo.sharedWhy = !key ? "pages" : unread ? "unread" : stored ? "copy" : "missing";
+        }
+        step({
+          stage: "form.shared",
+          form: job.id,
+          ok: catalogInfo.shared,
+          version: catalogInfo.version,
+          from: catalogInfo.from,
+          pages: pages.length,
+          error: b2.error ?? null,
+          ...(catalogInfo.sharedWhy ? { why: catalogInfo.sharedWhy } : {}),
+        });
       }
       let read: ReadScore | null = null;
       let pairs = new Map<number, string>();
@@ -912,6 +942,7 @@ async function renderPaper(
     mkdirSync(sub, { recursive: true });
     if (wantPdf) writeFileSync(`${base}.pdf`, r.pdf);
     if (wantPng && r.png) writeFileSync(`${base}.png`, r.png);
+    if (wantPng && r.annexPng && !v.fill) writeFileSync(`${base}.annex.png`, r.annexPng);
     const rel = (ext: string) => `${o.form}/${o.input}${v.suffix}.${ext}`;
     if (v.fill) {
       if (wantPdf) files.fillPdf = rel("pdf");

@@ -9,13 +9,17 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 import { SEED_ACCOUNTS } from "../../seed/people.ts";
 import { seedStatements } from "../../seed/sql.ts";
 import {
+  CHECK_OFFICE_ID,
+  CHECK_SECOND_CARE_MANAGER_ID,
   DEMO_CARE_MANAGER_ID,
   DEMO_JUDGE_ACCOUNT_ID,
   DEMO_SECOND_CARE_MANAGER_ID,
   DEMO_OFFICE_ID,
   FIXED_ACCOUNT_IDS,
   isFixedAccount,
+  JUDGE_ACCOUNT_IDS,
   JUDGE_LOGIN_ID,
+  LOGIN_CARE_MANAGER_ID,
 } from "../auth/demo.ts";
 import { LOCK_FAILURES, LOCK_SEC } from "../auth/lockout.ts";
 import { hashPassword } from "../auth/password.ts";
@@ -25,7 +29,8 @@ import { OFFICE_TIMELINE_KINDS } from "../db/types.ts";
 import { d1FromSqlite, migratedSqlite } from "../db/test-d1.ts";
 import { loadOfficeLog } from "../disaster/db.ts";
 import { OFFICE_TIMELINE_KIND_LABELS } from "../disaster/state.ts";
-import { demoResetStatements } from "../seed/reset.ts";
+import { demoResetStatements, seedResetStatements } from "../seed/reset.ts";
+import { seedStartStatements } from "../seed/start.ts";
 import { addCareManagerRequest, careManagerActionRequest } from "./http.ts";
 import { activeCareManagers, assignMany, assignPerson, createPerson, listCareManagers } from "./people.ts";
 import { officeActor, type OfficeActor } from "./scope.ts";
@@ -36,6 +41,10 @@ import {
   setCareManagerAdmin,
   setCareManagerDisabled,
 } from "./staff.ts";
+
+// T144: ログインの山本は確認用の事業所の管理者（固定）。山本が足すケアマネ・担当の割当・事業所の経過はその事業所の中
+const YAMAMOTO = LOGIN_CARE_MANAGER_ID;
+const YAMAMOTO_OFFICE = CHECK_OFFICE_ID;
 
 const SECRET = "t61-test-secret-0123456789abcdef-0123";
 const NOW = 1_793_700_000;
@@ -56,7 +65,7 @@ const env = () => ({ JUDGE_PASSWORD_HASH: judgeHash });
 
 beforeEach(() => {
   sqlite = migratedSqlite();
-  for (const s of seedStatements({ passwordHashes: { [DEMO_CARE_MANAGER_ID]: yamamotoHash } })) sqlite.exec(s);
+  for (const s of seedStatements({ passwordHashes: { [LOGIN_CARE_MANAGER_ID]: yamamotoHash } })) sqlite.exec(s);
   db = d1FromSqlite(sqlite);
 });
 afterEach(() => sqlite.close());
@@ -120,9 +129,9 @@ async function adminSato() {
 
 describe("固定のアカウント", () => {
   it("種のデモ事業所のアカウント（山本・西村・審査員）と同じ集合", () => {
-    const seed = SEED_ACCOUNTS.filter((a) => a.office_id === DEMO_OFFICE_ID).map((a) => a.id);
+    const seed = SEED_ACCOUNTS.filter((a) => a.office_id === DEMO_OFFICE_ID || a.office_id === CHECK_OFFICE_ID).map((a) => a.id);
     expect([...FIXED_ACCOUNT_IDS].sort()).toEqual([...seed].sort());
-    expect([...FIXED_ACCOUNT_IDS].sort()).toEqual([DEMO_CARE_MANAGER_ID, DEMO_SECOND_CARE_MANAGER_ID, DEMO_JUDGE_ACCOUNT_ID].sort());
+    expect([...FIXED_ACCOUNT_IDS].sort()).toEqual([DEMO_CARE_MANAGER_ID, DEMO_SECOND_CARE_MANAGER_ID, ...JUDGE_ACCOUNT_IDS, YAMAMOTO, CHECK_SECOND_CARE_MANAGER_ID].sort());
   });
 
   it("固定は山本と審査員だけ。協力事業所・足したケアマネ・空は固定でない", () => {
@@ -163,18 +172,18 @@ describe("固定のアカウント", () => {
   it("山本・審査員の自分のパスワードの変更は fixed。山本のパスワードも審査員の env も変わらない", async () => {
     const y = await asYamamoto();
     const before = accounts();
-    expect(await changeOwnPassword(db, env(), SECRET, y.principal, { current: YAMAMOTO_PW, next: "new-pass-0001" }, NOW, FAST)).toEqual({
+    expect(await changeOwnPassword(db, env(), SECRET, y.principal, { current: YAMAMOTO_PW, next: "New-pass-0001" }, NOW, FAST)).toEqual({
       ok: false,
       error: "fixed",
     });
     for (const role of [null, "care_manager", "medical", "self", "family"] as const) {
       const j = await loginOk(JUDGE_LOGIN_ID, JUDGE_PW);
       const p = role === null ? j.principal : (await chooseJudgeRole(db, env(), SECRET, j.token, role, NOW))!.principal;
-      expect(await changeOwnPassword(db, env(), SECRET, p, { current: JUDGE_PW, next: "new-pass-0001" }, NOW, FAST)).toEqual({
+      expect(await changeOwnPassword(db, env(), SECRET, p, { current: JUDGE_PW, next: "New-pass-0001" }, NOW, FAST)).toEqual({
         ok: false,
         error: "fixed",
       });
-      const http = await passwordChangeRequest(db, env(), SECRET, p, { current: JUDGE_PW, next: "new-pass-0001" }, NOW, FAST);
+      const http = await passwordChangeRequest(db, env(), SECRET, p, { current: JUDGE_PW, next: "New-pass-0001" }, NOW, FAST);
       expect(http.status).toBe(403);
       expect(http.token).toBeNull();
     }
@@ -186,7 +195,7 @@ describe("固定のアカウント", () => {
     const y = await asYamamoto();
     const envWithCm = { ...env(), CAREMANAGER_DEMO_PASSWORD: "env-yamamoto-pass" };
     expect(
-      await changeOwnPassword(db, envWithCm, SECRET, y.principal, { current: "env-yamamoto-pass", next: "new-pass-0001" }, NOW, FAST),
+      await changeOwnPassword(db, envWithCm, SECRET, y.principal, { current: "env-yamamoto-pass", next: "New-pass-0001" }, NOW, FAST),
     ).toEqual({ ok: false, error: "fixed" });
   });
 
@@ -231,7 +240,7 @@ describe("改名", () => {
     expect(r).toEqual({ status: 200, body: { ok: true, changed: true } });
     expect(account(sato.id)).toMatchObject({ display_name: "佐藤 花子", login_id: "sato" });
     expect(changeLog().at(-1)).toEqual({
-      author_id: DEMO_CARE_MANAGER_ID,
+      author_id: YAMAMOTO,
       author_role: "care_manager",
       body: "佐藤 改名 → 佐藤 花子",
       payload: JSON.stringify({ accountId: sato.id, change: "rename" }),
@@ -299,7 +308,7 @@ describe("管理者の付け外し", () => {
     const y = await asYamamoto();
     await setCareManagerAdmin(db, actorOf(y.principal), tanaka.id, true, AT);
     // 山本は固定で外せないので、手で外して「佐藤と田中だけが管理者」にする（停止した管理者は数えない）
-    sqlite.prepare("UPDATE accounts SET is_office_admin = 0 WHERE id = ?").run(DEMO_CARE_MANAGER_ID);
+    sqlite.prepare("UPDATE accounts SET is_office_admin = 0 WHERE id = ?").run(YAMAMOTO);
     sqlite.prepare("UPDATE accounts SET disabled_at = ? WHERE id = ?").run(AT, tanaka.id);
     // 佐藤の画面は読んだときのまま（管理者）。田中は停止していて使える管理者でない
     const r = await careManagerActionRequest(db, sato.principal, tanaka.id, { action: "admin", admin: false }, AT);
@@ -314,7 +323,7 @@ describe("管理者の付け外し", () => {
   it("同時に 2 人が互いを外しても 0 人にならない（書く文の条件でも確かめる）", async () => {
     const sato = await adminSato();
     const tanaka = await addAndLogin("tanaka", "田中");
-    sqlite.prepare("UPDATE accounts SET is_office_admin = 0 WHERE id = ?").run(DEMO_CARE_MANAGER_ID);
+    sqlite.prepare("UPDATE accounts SET is_office_admin = 0 WHERE id = ?").run(YAMAMOTO);
     sqlite.prepare("UPDATE accounts SET is_office_admin = 1 WHERE id = ?").run(tanaka.id);
     const satoActor = actorOf((await loginOk("sato", sato.password)).principal);
     const tanakaActor = actorOf((await loginOk("tanaka", tanaka.password)).principal);
@@ -323,7 +332,7 @@ describe("管理者の付け外し", () => {
       setCareManagerAdmin(db, tanakaActor, sato.id, false, AT),
     ]);
     expect(results.filter((r) => r.ok && r.changed)).toHaveLength(1);
-    const admins = sqlite.prepare("SELECT count(*) AS n FROM accounts WHERE office_id = ? AND is_office_admin = 1").get(DEMO_OFFICE_ID) as {
+    const admins = sqlite.prepare("SELECT count(*) AS n FROM accounts WHERE office_id = ? AND is_office_admin = 1").get(YAMAMOTO_OFFICE) as {
       n: number;
     };
     expect(admins.n).toBe(1);
@@ -355,11 +364,11 @@ describe("停止と再開", () => {
     const sato = await addAndLogin("sato", "佐藤");
     const y = await asYamamoto();
     const actor = actorOf(y.principal);
-    expect(await assignPerson(db, actor, { personId: "p-01", from: DEMO_CARE_MANAGER_ID, to: sato.id }, AT)).toEqual({ ok: true, changed: true });
+    expect(await assignPerson(db, actor, { personId: "chk-p-01", from: YAMAMOTO, to: sato.id }, AT)).toEqual({ ok: true, changed: true });
     const r = await careManagerActionRequest(db, y.principal, sato.id, { action: "disable", disabled: true }, AT);
     expect(r).toMatchObject({ status: 409, body: { error: "has_people", label: "担当あり" } });
     expect(account(sato.id)?.disabled_at).toBeNull();
-    sqlite.prepare("UPDATE people SET unlisted_at = ? WHERE id = 'p-01'").run(AT);
+    sqlite.prepare("UPDATE people SET unlisted_at = ? WHERE id = 'chk-p-01'").run(AT);
     expect(await setCareManagerDisabled(db, actor, sato.id, true, AT)).toEqual({ ok: true, changed: true });
   });
 
@@ -376,10 +385,10 @@ describe("停止と再開", () => {
     const actor = actorOf(y.principal);
     await setCareManagerDisabled(db, actor, sato.id, true, AT);
 
-    const list = await listCareManagers(db, DEMO_OFFICE_ID);
+    const list = await listCareManagers(db, YAMAMOTO_OFFICE);
     expect(list.find((c) => c.id === sato.id)).toMatchObject({ name: "佐藤", disabled: true, people: 0 });
-    expect(list.find((c) => c.id === DEMO_CARE_MANAGER_ID)).toMatchObject({ disabled: false });
-    expect(activeCareManagers(list).map((c) => c.id)).toEqual([DEMO_CARE_MANAGER_ID, DEMO_SECOND_CARE_MANAGER_ID]);
+    expect(list.find((c) => c.id === YAMAMOTO)).toMatchObject({ disabled: false });
+    expect(activeCareManagers(list).map((c) => c.id)).toEqual([YAMAMOTO, CHECK_SECOND_CARE_MANAGER_ID]);
 
     const people = () => sqlite.prepare("SELECT count(*) AS n FROM people").get() as { n: number };
     const n = people().n;
@@ -387,30 +396,30 @@ describe("停止と再開", () => {
       await createPerson(db, actor, { name: "架空 一郎", kana: "カクウ イチロウ", birthDate: "1941-04-01", sex: "male", careManagerId: sato.id }, AT),
     ).toEqual({ ok: false, error: "care_manager" });
     expect(people().n).toBe(n);
-    expect(await assignPerson(db, actor, { personId: "p-01", from: DEMO_CARE_MANAGER_ID, to: sato.id }, AT)).toEqual({
+    expect(await assignPerson(db, actor, { personId: "chk-p-01", from: YAMAMOTO, to: sato.id }, AT)).toEqual({
       ok: false,
       error: "care_manager",
     });
-    expect(await assignMany(db, actor, { items: [{ personId: "p-02", from: DEMO_CARE_MANAGER_ID }], to: sato.id }, AT)).toEqual({
+    expect(await assignMany(db, actor, { items: [{ personId: "chk-p-02", from: YAMAMOTO }], to: sato.id }, AT)).toEqual({
       ok: false,
       error: "care_manager",
     });
-    const owners = sqlite.prepare("SELECT DISTINCT care_manager_id AS id FROM people WHERE office_id = ?").all(DEMO_OFFICE_ID) as Array<{
+    const owners = sqlite.prepare("SELECT DISTINCT care_manager_id AS id FROM people WHERE office_id = ?").all(YAMAMOTO_OFFICE) as Array<{
       id: string;
     }>;
-    expect(owners.map((o) => o.id)).toEqual([DEMO_CARE_MANAGER_ID]);
+    expect(owners.map((o) => o.id)).toEqual([YAMAMOTO]);
   });
 
   it("停止した人の外した担当を戻すと、担当の変更の経過は前の担当の名前のまま（未割当と書かない）", async () => {
     const sato = await addAndLogin("sato", "佐藤");
     const y = await asYamamoto();
     const actor = actorOf(y.principal);
-    await assignPerson(db, actor, { personId: "p-01", from: DEMO_CARE_MANAGER_ID, to: sato.id }, AT);
-    sqlite.prepare("UPDATE people SET unlisted_at = ? WHERE id = 'p-01'").run(AT);
+    await assignPerson(db, actor, { personId: "chk-p-01", from: YAMAMOTO, to: sato.id }, AT);
+    sqlite.prepare("UPDATE people SET unlisted_at = ? WHERE id = 'chk-p-01'").run(AT);
     await setCareManagerDisabled(db, actor, sato.id, true, AT);
-    sqlite.prepare("UPDATE people SET unlisted_at = NULL WHERE id = 'p-01'").run();
-    expect(await assignPerson(db, actor, { personId: "p-01", from: sato.id, to: DEMO_CARE_MANAGER_ID }, AT)).toEqual({ ok: true, changed: true });
-    const log = await loadOfficeLog(db, DEMO_OFFICE_ID);
+    sqlite.prepare("UPDATE people SET unlisted_at = NULL WHERE id = 'chk-p-01'").run();
+    expect(await assignPerson(db, actor, { personId: "chk-p-01", from: sato.id, to: YAMAMOTO }, AT)).toEqual({ ok: true, changed: true });
+    const log = await loadOfficeLog(db, YAMAMOTO_OFFICE);
     expect(log.find((l) => l.kind === "person_assigned" && l.body?.startsWith("担当 佐藤"))?.body).toBe("担当 佐藤 → 山本");
   });
 });
@@ -425,7 +434,7 @@ describe("パスワードの再発行", () => {
     expect(r.status).toBe(200);
     expect(r.body).toMatchObject({ ok: true, account: { id: sato.id, displayName: "佐藤" } });
     const password = r.body.password as string;
-    expect(password).toMatch(/^[a-z2-9]{4}-[a-z2-9]{4}-[a-z2-9]{4}$/);
+    expect(password).toMatch(/^[a-zA-Z2-9]{4}-[a-zA-Z2-9]{4}-[a-zA-Z2-9]{4}$/);
     expect(password).not.toBe(sato.password);
 
     expect(await resolvePrincipal(db, env(), SECRET, sato.token, NOW)).toBeNull();
@@ -456,7 +465,7 @@ describe("パスワードの再発行", () => {
 // ---------- 自分のパスワード ----------
 
 describe("自分のパスワードの変更", () => {
-  const NEXT = "sato-new-pass-01";
+  const NEXT = "Sato-new-pass-01";
 
   it("変えると新しい token が返り（この端末はログインしたまま）、前の token は切れる。経過に「佐藤 パスワード変更」", async () => {
     const sato = await addAndLogin("sato", "佐藤");
@@ -491,7 +500,7 @@ describe("自分のパスワードの変更", () => {
     }
   });
 
-  it("今のパスワードが違えば wrong_password、同じなら same、8〜64 字でなければ password。表は変わらない", async () => {
+  it("今のパスワードが違えば wrong_password、同じなら same、決まり（10〜64 字・大文字・小文字・記号。T148）に合わなければ password。表は変わらない", async () => {
     const sato = await addAndLogin("sato", "佐藤");
     const before = account(sato.id)?.password_hash;
     const call = (current: string, next: string) => changeOwnPassword(db, env(), SECRET, sato.principal, { current, next }, NOW, FAST);
@@ -552,8 +561,8 @@ describe("自分のパスワードの変更", () => {
   it("同時に 2 つ変えても片方だけ（古いハッシュで比べる）", async () => {
     const sato = await addAndLogin("sato", "佐藤");
     const results = await Promise.all([
-      changeOwnPassword(db, env(), SECRET, sato.principal, { current: sato.password, next: "first-pass-0001" }, NOW, FAST),
-      changeOwnPassword(db, env(), SECRET, sato.principal, { current: sato.password, next: "second-pass-0001" }, NOW, FAST),
+      changeOwnPassword(db, env(), SECRET, sato.principal, { current: sato.password, next: "First-pass-0001" }, NOW, FAST),
+      changeOwnPassword(db, env(), SECRET, sato.principal, { current: sato.password, next: "Second-pass-0001" }, NOW, FAST),
     ]);
     expect(results.filter((r) => r.ok)).toHaveLength(1);
     expect(results.filter((r) => !r.ok)).toEqual([{ ok: false, error: "conflict" }]);
@@ -566,7 +575,7 @@ describe("自分のパスワードの変更", () => {
       .prepare("INSERT INTO accounts (id, office_id, role, display_name, login_id, password_hash) VALUES ('acct-med-1', NULL, 'medical', '医療班 1', 'med1', ?)")
       .run(hash);
     const m = await loginOk("med1", "med-pass-000001");
-    const r = await changeOwnPassword(db, env(), SECRET, m.principal, { current: "med-pass-000001", next: "med-pass-000002" }, NOW, FAST);
+    const r = await changeOwnPassword(db, env(), SECRET, m.principal, { current: "med-pass-000001", next: "Med-pass-000002" }, NOW, FAST);
     expect(r.ok).toBe(true);
     expect(changeLog()).toHaveLength(0);
   });
@@ -581,7 +590,7 @@ describe("事業所の経過", () => {
     const sato = await addAndLogin("sato", "佐藤");
     const y = await asYamamoto();
     await setCareManagerDisabled(db, actorOf(y.principal), sato.id, true, AT);
-    const log = await loadOfficeLog(db, DEMO_OFFICE_ID);
+    const log = await loadOfficeLog(db, YAMAMOTO_OFFICE);
     expect(log.find((l) => l.kind === "care_manager_changed")).toMatchObject({ label: "ケアマネ変更", body: "佐藤 停止", who: "山本" });
   });
 });
@@ -591,10 +600,10 @@ describe("事業所の経過", () => {
 describe("種の戻し", () => {
   it("種のアカウントの停止の印を戻し（固定は断るので二重の守り）、足したケアマネは消す", async () => {
     const sato = await addAndLogin("sato", "佐藤");
-    sqlite.prepare("UPDATE accounts SET disabled_at = ?, display_name = '別' WHERE id IN (?, ?)").run(AT, DEMO_CARE_MANAGER_ID, DEMO_JUDGE_ACCOUNT_ID);
-    for (const s of demoResetStatements(AT)) sqlite.exec(s);
-    expect(account(DEMO_CARE_MANAGER_ID)).toMatchObject({ display_name: "山本", disabled_at: null, password_hash: yamamotoHash });
-    expect(account(DEMO_JUDGE_ACCOUNT_ID)).toMatchObject({ display_name: "審査員", disabled_at: null });
+    sqlite.prepare("UPDATE accounts SET disabled_at = ?, display_name = '別' WHERE id IN (?, ?)").run(AT, YAMAMOTO, DEMO_JUDGE_ACCOUNT_ID);
+    for (const s of [...demoResetStatements(AT), ...seedResetStatements(YAMAMOTO_OFFICE, AT)]) sqlite.exec(s);
+    expect(account(YAMAMOTO)).toMatchObject({ display_name: "山本", disabled_at: null, password_hash: yamamotoHash });
+    expect(account(DEMO_JUDGE_ACCOUNT_ID)).toMatchObject({ display_name: "審査員 1", disabled_at: null });
     expect(account(sato.id)).toBeUndefined();
     expect((await login(db, env(), SECRET, { loginId: "yamamoto", password: YAMAMOTO_PW }, NOW)).ok).toBe(true);
   });
@@ -645,7 +654,11 @@ describe("migration 0012（accounts.disabled_at と、事業所の経過の種�
     // 種は気象庁の写しの表（0020、T72）も空にするので 0020 も先に（新しい表を作るだけで 0012 の表に触れない）。
     // 種は同意の AI 提供（0024、T74）を書くので 0024 も先に（consents を建て直すだけで 0012 の表に触れない）。
     // 種は書類の見直しの表（0032、T136）と紙の手入れの表（0033、T135）も空にするので 0032・0033 も先に（新しい表を作るだけで 0012 の表に触れない）
-    const early = (n: string) => n.startsWith("0017_") || n.startsWith("0020_") || n.startsWith("0024_") || n.startsWith("0032_") || n.startsWith("0033_");
+    // 0029（連絡先のフリガナ・住所・携帯、T117）も先に: T142 で種が書く列（contacts に列を足すだけ）
+    // 種はデモ事業所の情報と地域の周りの市（0036、T148）を書くので 0036 も先に（offices に列を足すだけで 0012 の表に触れない）
+    // 種は本人・家族の ID と通知の購読の表（0037、T149）も空にするので 0037 も先に（新しい表を作るだけ）
+    // 種は医療班への受入依頼の表（0039、T163）も空にするので 0039 も先に（新しい表を作るだけ）
+    const early = (n: string) => n.startsWith("0017_") || n.startsWith("0020_") || n.startsWith("0024_") || n.startsWith("0029_") || n.startsWith("0032_") || n.startsWith("0033_") || n.startsWith("0036_") || n.startsWith("0037_") || n.startsWith("0038_") || n.startsWith("0039_");
     const d = sqliteUpTo((n) => n < MIGRATION_0012 || early(n));
     for (const s of seedStatements()) d.exec(s);
     d.prepare(
@@ -670,11 +683,12 @@ describe("migration 0012（accounts.disabled_at と、事業所の経過の種�
     d.close();
   });
 
-  it("種（山本の災害モードの行など）は新しい表に入る", () => {
+  it("種と「発災開始」（T153。災害モードの行など）は新しい表に入る", () => {
     const d = migratedSqlite();
     expect(() => {
       for (const s of seedStatements()) d.exec(s);
       for (const s of demoResetStatements(AT)) d.exec(s);
+      for (const s of seedStartStatements(DEMO_OFFICE_ID, AT, null, { authorId: DEMO_CARE_MANAGER_ID, authorRole: "care_manager" }, 0)) d.exec(s);
     }).not.toThrow();
     const n = d.prepare("SELECT count(*) AS n FROM office_timeline_entries WHERE office_id = ?").get(DEMO_OFFICE_ID) as { n: number };
     expect(n.n).toBeGreaterThan(0);

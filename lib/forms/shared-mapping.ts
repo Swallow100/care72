@@ -8,14 +8,19 @@
 // - 先に入った物を残す（ON CONFLICT DO NOTHING）。事業所の手直しはここを変えない
 
 import type { D1Database } from "@cloudflare/workers-types";
+import { PDF_PAGES_MAX } from "../intake/read-form.ts";
 import { fitPages, type FormMapping } from "./mapping.ts";
 import { readStoredMapping } from "./mapping-db.ts";
 
 export type SharedKey = { catalogId: string; sha256: string; pages: string };
 
-/** 送った頁の組の形（元のファイルの頁の番号を , で）。1〜200 の数が 1〜3 個 */
+/**
+ * 送った頁の組の形（元のファイルの頁の番号を , で）。1〜200 の数が 1〜PDF_PAGES_MAX 個（読み取りの受け口と同じ上限）。
+ * T161: 前は 1〜3 個で、T146 で読める頁を 10 にしたあと、4 頁からの様式（評価の 6 回目の岐阜市）は鍵が作れず、共有に入らず写せもしなかった。
+ * 3 桁の番号 10 個でも 39 字で、表の pages の CHECK（40 字まで、migration 0034）に収まる
+ */
 export function pagesKeyOf(origins: readonly number[]): string | null {
-  if (origins.length === 0 || origins.length > 3) return null;
+  if (origins.length === 0 || origins.length > PDF_PAGES_MAX) return null;
   if (origins.some((n) => !Number.isInteger(n) || n < 1 || n > 200)) return null;
   return origins.join(",");
 }

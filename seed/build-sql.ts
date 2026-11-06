@@ -1,5 +1,5 @@
 // node seed/build-sql.ts で seed/generated/seed.sql を書く（Node の型の取り除きで動く）。
-// 山本（デモ事業所のケアマネ）のパスワードのハッシュは CAREMANAGER_DEMO_PASSWORD_HASH から入れる。
+// 山本（確認用の事業所のケアマネ、T144）のパスワードのハッシュは CAREMANAGER_DEMO_PASSWORD_HASH から入れる。
 // 環境変数を先に見て、無ければ手元の .dev.vars から、この 1 つだけを取り出す（ほかの値は使わない・出さない）。
 // 無ければ種の山本はハッシュなし（審査員では開ける）。ハッシュは npm run hash-password で作る。
 // 種にハッシュが無くても、Worker の env に CAREMANAGER_DEMO_PASSWORD_HASH か CAREMANAGER_DEMO_PASSWORD（平文）があれば
@@ -8,7 +8,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseEnv } from "node:util";
-import { DEMO_CARE_MANAGER_ID } from "../lib/auth/demo.ts";
+import { LOGIN_CARE_MANAGER_ID } from "../lib/auth/demo.ts";
 import { isPasswordHash } from "../lib/auth/password.ts";
 import { fullSeedStatements, seedRecordingFile } from "./full.ts";
 
@@ -31,15 +31,15 @@ if (demoHash && !isPasswordHash(demoHash)) {
   process.exit(1);
 }
 
-// デモ事業所の災害モード・山田の赤・終わった訓練（lib/seed）。時刻は今から数える（発災 4 時間前・停電 3 時間前・赤 1 時間前）。
-// 種の録音（seed/recordings/p-01.webm か p-01.m4a）があれば信号に結ぶ。R2 に上げるのは seed/put-recording.ts
+// デモ事業所の QR・終わった訓練（lib/seed）。事業所は平時で始まる（T153）。訓練の日は今から数える。
+// 種の録音（seed/recordings/p-01.webm か p-01.m4a）は R2 に上げるだけ（seed/put-recording.ts）。山田の赤に結ぶのは「発災開始」（lib/seed/start.ts）
 const now = new Date().toISOString();
 const audio = seedRecordingFile(here);
 const outDir = join(here, "generated");
 mkdirSync(outDir, { recursive: true });
 const outFile = join(outDir, "seed.sql");
-const passwordHashes: Record<string, string> = demoHash ? { [DEMO_CARE_MANAGER_ID]: demoHash } : {};
-const statements = await fullSeedStatements({ passwordHashes, now, recording: audio ? { key: audio.key, durationSec: null } : null });
+const passwordHashes: Record<string, string> = demoHash ? { [LOGIN_CARE_MANAGER_ID]: demoHash } : {};
+const statements = await fullSeedStatements({ passwordHashes, now });
 writeFileSync(
   outFile,
   `-- npm run db:seed が seed/people.ts と lib/seed から作る。手で直さない。git に入れない（ハッシュが入ることがある）。\n${statements.join("\n")}\n`,
