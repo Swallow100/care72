@@ -94,5 +94,8 @@ describe("T175 守りと点数の表", () => {
     expect(out).toContain("guard:forms-review-check");
     expect(out).toContain("guard:forms-review-drift");
     expect(out).not.toContain("guard:forms-unplaced-limit");
+    // 比べなかった回（数が無い）は外れにしない
+    const none = guardFindings({ bench: "forms", run: "r10", values: values(result(1)), counts: {}, repro: [] }).map((f) => f.rule);
+    expect(none).not.toContain("guard:forms-review-drift");
   });
 });
