@@ -140,6 +140,8 @@ export type DriveDeps = {
   terms?: boolean;
   /** 着信に出て往復する（T127。--answer-calls。進めたあと、今の刻みの電話の着信に talkRate の割合で 1 つ出て 1〜2 往復して切る） */
   answerCalls?: boolean;
+  /** 通話の往復の回数（T155。--talk-rounds=N。無ければ 1〜2 回）。N のときは決まった問い・ふつうの文・的外れ・うめき声・前と違う答えの文を混ぜる */
+  talkRounds?: number;
   /**
    * 前の回で作った世界の部屋の Agent と Environment。回ごとに新しい DB なので、渡さないと本物の部屋は回ごとに Agent と Environment を作る
    * （消さずに残る）。渡せば DB の ai_agents に入れてから始める
@@ -202,7 +204,23 @@ const FREE_TEXTS = [
   "今の様子を記録に残す",
 ];
 /** 着信で聞く・伝える決まった問い（T127 の TALK_ASKS の着信向き） */
+/** 往復の 1 回の言葉。rounds 指定のときは乱れた文も混ぜる */
+function talkLine<A extends string>(rng: { chance: (p: number) => boolean; pick: <T>(xs: readonly T[]) => T }, asks: readonly A[], messy: boolean): { ask: A } | { text: string } {
+  if (messy && rng.chance(0.45)) return { text: rng.pick(MESSY_TEXTS) };
+  return rng.chance(0.6) ? { ask: rng.pick(asks) } : { text: rng.pick(TALK_TEXTS) };
+}
 const INCOMING_ASKS = ["safe", "can_move", "shelter", "stay", "where", "injured", "device_medicine"] as const;
+/** 声で入れた乱れた文（T155 の往復の確かめ。的外れ・うめき声・聞き返し・前と違う事・長い話し言葉） */
+const MESSY_TEXTS = [
+  "うう……ちょっと待ってください",
+  "えっと、今日は何曜日でしたっけ",
+  "あー、はい、はい、それで、何でしたっけ",
+  "さっきは家にいると言っていましたが、避難所にいるんですか",
+  "もしもし、聞こえますか、電波が悪いみたいで",
+  "そちらは寒くないですか、毛布はありますか、こちらからは今すぐには行けないかもしれません",
+  "酸素の機械の音がしていますか",
+  "はい",
+] as const;
 const TALK_TEXTS = ["今どこにいますか", "けがはありませんか", "薬は足りていますか", "近くに誰かいますか", "停電は続いていますか", "あとでまた電話します"];
 
 /** 手の表の重み（表に無い手・増えた手は 1） */
@@ -380,9 +398,9 @@ export async function runDrill(plan: RunPlan, deps: DriveDeps): Promise<RunOutco
           // 通話に出たら往復（決まった問いか自由の 1 文）。終わりに切る
           // 往復は電話がつながった手だけ（メッセージの返信〔T125〕は往復しない。lib/drill/dialogue.ts の canTalk と同じ）
           if (done?.result?.pickup === "answers" && done.result.status === "connected" && talk && rng.chance(plan.talkRate) && replay.drill.status === "running") {
-            const rounds = rng.int(1, 2);
+            const rounds = deps.talkRounds ?? rng.int(1, 2);
             for (let k = 0; k < rounds; k++) {
-              const ask = rng.chance(0.6) ? { ask: rng.pick(CALL_OUT_ASKS) } : { text: rng.pick(TALK_TEXTS) };
+              const ask = talkLine(rng, CALL_OUT_ASKS, deps.talkRounds !== undefined);
               const tb = { step: replay.drill.step, actions: replay.actions.length, action: id, ...ask };
               await call("talk", tb, () => talkPost(db, p, drillId, tb, { hook: talk }));
               replay = await read(drillId);
@@ -418,9 +436,9 @@ export async function runDrill(plan: RunPlan, deps: DriveDeps): Promise<RunOutco
           const answered = await call("answer", ab, () => callPost(db, p, drillId, ab));
           replay = await read(drillId);
           if (answered.status === 200) {
-            const rounds = rng.int(1, 2);
+            const rounds = deps.talkRounds ?? rng.int(1, 2);
             for (let k = 0; k < rounds && replay.drill.status === "running"; k++) {
-              const ask = rng.chance(0.6) ? { ask: rng.pick(INCOMING_ASKS) } : { text: rng.pick(TALK_TEXTS) };
+              const ask = talkLine(rng, INCOMING_ASKS, deps.talkRounds !== undefined);
               const tb = { step: replay.drill.step, actions: replay.actions.length, signal, ...ask };
               await call("incoming_talk", tb, () => callTalkPost(db, p, drillId, tb, { hook: talk }));
               replay = await read(drillId);
