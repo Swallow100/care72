@@ -266,8 +266,8 @@ export class FakeSurface implements Surface {
     if (p === "/office") {
       const win: FakeItem[] = st.startConfirm
         ? [
-            { role: "button", name: "取消", zone: "窓:発災開始", on: (s) => void (s.startConfirm = false) },
-            { role: "button", name: "開始", zone: "窓:発災開始", on: (s) => void ((s.startConfirm = false), (s.disaster = true)) },
+            { role: "button", name: "平時維持", zone: "窓:発災確認", on: (s) => void (s.startConfirm = false) },
+            { role: "button", name: "発災開始", zone: "窓:発災確認", on: (s) => void ((s.startConfirm = false), (s.disaster = true)) },
           ]
         : [];
       return {

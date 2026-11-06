@@ -26,6 +26,8 @@ export type SubmitConfirm = {
   title?: string;
   /** 決める方のボタンの言葉（2〜4 字） */
   ok?: string;
+  /** やめる方のボタンの言葉（2〜4 字。既定は取消。T166） */
+  cancel?: string;
   /** 消す・外す・戻す操作（赤の塗り、最初の焦点は取消） */
   danger?: boolean;
   /** 決める方のボタンのアイコン（消す RemoveIcon・外す UnlistIcon・戻す RestoreIcon、無ければ消す操作は RemoveIcon・ほかは SaveIcon） */
@@ -106,7 +108,7 @@ export function SubmitButton({
           if (confirm && form) {
             // 確認の窓で決めてから、足す欄を描いて同じボタンで送る（requestSubmit は click を起こさないので、ここへは戻らない）
             e.preventDefault();
-            void appConfirm(confirm.message, { title: confirm.title, ok: confirm.ok, danger: confirm.danger, icon: confirm.icon, details: confirm.details }).then((ok) => {
+            void appConfirm(confirm.message, { title: confirm.title, ok: confirm.ok, cancel: confirm.cancel, danger: confirm.danger, icon: confirm.icon, details: confirm.details }).then((ok) => {
               if (!ok || !form.isConnected) return;
               flushSync(() => {
                 setArmed(true);

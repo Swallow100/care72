@@ -89,5 +89,5 @@ export async function startPost(
   if (version === null) return { outcome: { status: 303, location: officeHref({ error: "bad" }) }, entered: null };
   const r = await startSeedDisaster(db, bucket, scope, { version, at });
   if (!r.ok) return { outcome: { status: 303, location: officeHref({ error: "conflict" }) }, entered: null };
-  return { outcome: { status: 303, location: OFFICE_PATH }, entered: scope.officeId };
+  return { outcome: { status: 303, location: `${OFFICE_PATH}?started=1` }, entered: scope.officeId };
 }

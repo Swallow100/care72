@@ -18,6 +18,8 @@ export type DialogOptions = {
   title?: string;
   /** 決める方のボタンの言葉（2〜4 字） */
   ok?: string;
+  /** やめる方のボタンの言葉（2〜4 字。既定は取消。「取消」が今の状態を取り消す物に読まれる窓だけ渡す。T166） */
+  cancel?: string;
   /** 消す・外す・戻す操作。決める方を赤の塗りにし、最初の焦点を取消に置く */
   danger?: boolean;
   /** 決める方のボタンのアイコン。無ければ danger は RemoveIcon、ほかは SaveIcon */
@@ -85,6 +87,7 @@ type Draft = {
   message: string;
   title?: string;
   ok?: string;
+  cancel?: string;
   danger?: boolean;
   icon?: DialogIconName;
   details?: string[];
@@ -117,7 +120,7 @@ export function fillRequest(id: number, d: Draft): DialogRequest {
     title,
     ok,
     okIcon,
-    cancel: DIALOG_LABELS.cancel,
+    cancel: d.cancel ?? DIALOG_LABELS.cancel,
     danger,
     details: clipDetails(d.details ?? []),
     options: d.kind === "choice" ? (d.options ?? []).slice(0, 4) : [],

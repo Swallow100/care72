@@ -21,6 +21,7 @@ import { PageHead, Panel } from "@/components/ui/Panel";
 import { TABLE_BOX } from "@/components/ui/table";
 import { todayJst } from "@/lib/age";
 import type { Principal } from "@/lib/auth/principal";
+import { canChooseRole } from "@/lib/auth/wall";
 import { caseloadScope } from "@/lib/auth/scope";
 import { classViewOf } from "@/lib/classify/view";
 import { requirePage } from "@/lib/auth/server";
@@ -293,7 +294,7 @@ async function PersonPanel({
         </ButtonLink>
       </div>
       {view ? (
-        <PersonWithIntake view={view} level={2} intake={intake} />
+        <PersonWithIntake view={view} level={2} intake={intake} staffEntry={canChooseRole(principal)} />
       ) : (
         <Panel>
           <h2 className="text-[1rem] leading-6 font-bold">{failed ? "読込失敗" : "該当なし"}</h2>

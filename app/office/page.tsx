@@ -14,7 +14,7 @@ import { SetupPanel } from "@/components/office/SetupPanel";
 import { UnlistedFold } from "@/components/office/UnlistedFold";
 import { UnlistedRows } from "@/components/office/UnlistedRows";
 import { ButtonLink, buttonClass } from "@/components/ui/Button";
-import { AddPersonIcon, CloseIcon } from "@/components/ui/Icon";
+import { AddPersonIcon, AllIcon, CloseIcon } from "@/components/ui/Icon";
 import { LinkPending } from "@/components/ui/LinkPending";
 import { Page, PageHead, Panel, PanelHead } from "@/components/ui/Panel";
 import { SubmitButton } from "@/components/ui/SubmitButton";
@@ -81,6 +81,8 @@ type Props = {
     password?: string | string[];
     /** 事業所の情報の保存を断った欄（T148） */
     profile_error?: string | string[];
+    /** 発災開始のあと（T166。頭に知らせと担当一覧への入口） */
+    started?: string | string[];
   }>;
 };
 
@@ -171,6 +173,16 @@ export default async function OfficePage({ searchParams }: Props) {
           {DISASTER_FORM_ERROR_LABELS[error]}
         </p>
       )}
+      {/* 発災開始のあとの知らせ（T166。切り替わったかが分からず、次に見る担当一覧への道も無かった） */}
+      {disaster && q.started === "1" && (
+        <p role="status" className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm" data-started-notice>
+          <StateTag tone="check">{DISASTER_KIND_LABELS[state.kind]}</StateTag>
+          <span className="font-bold">{START_LABELS.done}</span>
+          <ButtonLink href="/" kind="main" size="sm" icon={AllIcon} data-started-list>
+            {START_LABELS.toList}
+          </ButtonLink>
+        </p>
+      )}
       {/* 最初に戻すのあとの知らせ（T79）。戻すと画面の頭に来るので、右下の「初期化」の区分でなくここに出す */}
       {reset === "done" && (
         <p role="status" className="mt-2 text-sm" data-reset-notice="done">
@@ -199,6 +211,8 @@ export default async function OfficePage({ searchParams }: Props) {
           <SurveyPanel overview={survey} origin={await requestOrigin()} />
         </div>
         <div className="grid min-w-0 content-start gap-3">
+          {/* デモ事業所の「最初に戻す」（T26。審査員と管理者だけ）は右の列の頭に（下に長い列の底にあり見つからなかった。T166） */}
+          {canResetDemo(principal) && <ResetSection state={reset} />}
           {/* 様式9 と使用様式は書類の画面（/forms）にまとめた（T147） */}
           <Panel id={CARE_MANAGERS_ANCHOR} aria-labelledby="cm-title" className="scroll-mt-4">
             <AddCareManager count={careManagers.length} admin={actor.admin}>
@@ -213,8 +227,6 @@ export default async function OfficePage({ searchParams }: Props) {
               />
             </AddCareManager>
           </Panel>
-          {/* デモ事業所の「最初に戻す」（T26）。審査員と管理者だけ */}
-          {canResetDemo(principal) && <ResetSection state={reset} />}
           <LogSection log={log} />
         </div>
       </div>
@@ -316,10 +328,11 @@ function SeedStart({ version }: { version: number }) {
         kind="main"
         icon="PlayIcon"
         confirm={{
-          title: START_LABELS.start,
+          title: START_LABELS.title,
           message: START_LABELS.scene,
           details: startDetails(demoOutageTowns(), seedRedPersonName()),
-          ok: START_LABELS.ok,
+          ok: START_LABELS.start,
+          cancel: START_LABELS.stay,
         }}
       >
         {START_LABELS.start}
@@ -330,7 +343,8 @@ function SeedStart({ version }: { version: number }) {
 }
 
 function ModeButton({ kind, state }: { kind: DisasterKind; state: DisasterState }) {
-  const label = DISASTER_KIND_LABELS[kind];
+  // 災害モードの間の「平時」は状態でなく戻す操作（状態と読み違えられた。T166）
+  const label = kind === "normal" && state.kind !== "normal" ? DISASTER_LABELS.backToNormal : DISASTER_KIND_LABELS[kind];
   if (kind === state.kind) {
     return (
       <span aria-current="true" className={buttonClass("quiet", "md", "outline-2 -outline-offset-2 outline-accent")}>
@@ -348,12 +362,13 @@ function ModeButton({ kind, state }: { kind: DisasterKind; state: DisasterState 
           message: c.message,
           details: c.details,
           ok: CONFIRM_LABELS.normalOk,
+          cancel: CONFIRM_LABELS.stayDisaster,
           icon: "RestoreIcon" as const,
           danger: true,
           fields: { confirm: "1" },
         }
       : c?.step === "to_disaster"
-        ? { title: CONFIRM_LABELS.disasterTitle, message: c.message, details: c.details, ok: CONFIRM_LABELS.disasterOk }
+        ? { title: CONFIRM_LABELS.disasterTitle, message: c.message, details: c.details, ok: CONFIRM_LABELS.disasterOk, cancel: CONFIRM_LABELS.stayNormal }
         : undefined;
   return (
     <form method="post" action={OFFICE_MODE_PATH}>

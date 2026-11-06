@@ -2,7 +2,7 @@
 
 // 紙面の印刷（ブラウザの印刷の画面。PDF にするのもここから）。主の操作なので操作の色、プリンターのアイコン。
 // T147: 押すと、刷る頁だけを画面に出した見本（lib/forms/print.ts の previewPrint）に切り替えてから、ブラウザの印刷の画面
-// （プリンターを選ぶ所）を開く。印刷の画面を閉じても見本は残り、上の帯の「印刷」でもう一度、「見本終了」（Esc）で元の画面へ。
+// （プリンターを選ぶ所）を開く。印刷の画面を閉じても見本は残り、上の帯の「印刷」でもう一度、「通常表示」（Esc）で元の画面へ。
 // auto を付けると、開いたときに 1 回だけ見本と印刷の画面を出す（本人のページの書類の行の「印刷」から ?print=1 で来たとき）。
 // 書体を読み終えてから出す（読み終える前に出すと、紙の字が仮の書体になる）。
 // T162: 押したことが印刷の画面の出る前から分かるように、見本の帯に「印刷窓 準備中」→「印刷窓 表示済 時刻」の状態と「再印刷」。
@@ -10,6 +10,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { PRINT_BAR_LABELS } from "@/lib/ui/labels";
 import { autoPrint, closePreview, previewPrint, PRINT_PREVIEW_ATTR, PRINT_PREVIEW_LABELS as L, printPhaseText, type PrintPhase } from "@/lib/forms/print";
 import { Button } from "./Button";
 import { CloseIcon, PrintIcon } from "./Icon";
@@ -114,7 +115,7 @@ export function PrintButton({ auto = false, label = "印刷", back }: { auto?: b
                 {phase === "shown" ? L.again : L.print}
               </Button>
               <Button kind="plain" size="sm" icon={CloseIcon} onClick={() => setOpen(false)} data-print-close>
-                {L.close}
+                {PRINT_BAR_LABELS.close}
               </Button>
             </span>
             </div>

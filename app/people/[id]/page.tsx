@@ -14,6 +14,7 @@ import { openCustodyOf } from "@/lib/custody/received";
 import { medicalConsentOf } from "@/lib/qr/view";
 import { personDisaster } from "@/lib/disaster/person";
 import { loadPlanForm, planFormView } from "@/lib/forms/plan-form";
+import { canChooseRole } from "@/lib/auth/wall";
 import { intakePropsOf } from "@/lib/intake/props";
 import { loadPersonPage, toPersonView } from "@/lib/person";
 
@@ -65,7 +66,7 @@ export default async function PersonPage({ params }: Props) {
       {/* 戻るは左上に 1 つ */}
       <BackLink href={homePath(principal.role)} />
       <div className="mt-1">
-        <PersonWithIntake view={view} level={1} intake={intake} />
+        <PersonWithIntake view={view} level={1} intake={intake} staffEntry={canChooseRole(principal)} />
       </div>
     </Page>
   );
