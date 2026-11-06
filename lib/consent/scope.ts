@@ -12,10 +12,12 @@
 //     はっきり「同意なし」を記録した人は本人確認だけ
 //   - 経過: 医療が見えるときは全部。本人確認だけのときは医療班・行政の書いた行（受入・搬送・退所・提供の行を含む）だけ
 //   - 書類は医療要約だけ（医療班への提供に同意があるとき。要約は同意で作る書類、T07）。計画書・本人の1枚・QR・対応表の書類と録音は開けない
+//   - 書き足し: 行政は全部の種類。医療班は今はなし（T172、lib/consent/relay.ts の定数 1 つで戻せる）
 // - 家族・支援者: 支援者への提供に同意あり → 避難・人と経過（決まった言葉だけ。lib/signals/family.ts）。なし・未確認 → 何も無し
 
 import type { Role } from "../auth/roles.ts";
 import type { ConsentKind, ConsentStatus, PersonOrigin, ProvisionBasis, TimelineKind } from "../db/types.ts";
+import { MEDICAL_TIMELINE_WRITES } from "./relay.ts";
 
 /** 見える区分の単位 */
 export const SCOPE_ITEMS = [
@@ -56,6 +58,11 @@ export type WritableKind = (typeof WRITABLE_KINDS)[number];
 /** 役ごとの書き足しの種類。ケアマネは診察・配薬を書かない */
 const STAFF_WRITES: readonly WritableKind[] = WRITABLE_KINDS;
 const CARE_MANAGER_WRITES: readonly WritableKind[] = ["safety_check", "transported", "arrived_shelter", "note"];
+
+/** 医療班・行政の書き足しの種類。医療班からケアマネへの伝達は今はなし（T172）なので、医療班は定数が true の時だけ */
+function staffWrites(role: Role): WritableKind[] {
+  return role === "medical" && !MEDICAL_TIMELINE_WRITES ? [] : [...STAFF_WRITES];
+}
 
 /** 見る人の種類（役から） */
 export type Viewer = "care_manager" | "staff" | "supporter" | "self" | "none";
@@ -150,11 +157,11 @@ export function viewScope(role: Role, input: ScopeInput): ViewScope {
     case "none":
       return { viewer, ...NOTHING };
     case "staff":
-      return staffScope(input);
+      return staffScope(role, input);
   }
 }
 
-function staffScope(input: ScopeInput): ViewScope {
+function staffScope(role: Role, input: ScopeInput): ViewScope {
   const medical = consentOf(input, "medical");
   const granted = medical.status === "granted";
   const onSite = input.origin === "on_site" && medical.status !== "refused";
@@ -164,7 +171,7 @@ function staffScope(input: ScopeInput): ViewScope {
       ...NOTHING,
       items: ["identity"],
       timeline: "staff",
-      writes: [...STAFF_WRITES],
+      writes: staffWrites(role),
       provision: { basis: "vital", sections: ["identity"] },
     };
   }
@@ -177,7 +184,7 @@ function staffScope(input: ScopeInput): ViewScope {
     // 医療要約は医療班への提供の同意で作る書類（T07。その場で登録した人は同意の行が無く、要約を作らない）
     documents: granted ? ["medical"] : [],
     recordings: false,
-    writes: [...STAFF_WRITES],
+    writes: staffWrites(role),
     provision: { basis: granted ? "consent" : "vital", sections },
   };
 }

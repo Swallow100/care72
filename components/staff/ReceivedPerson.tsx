@@ -3,6 +3,7 @@
 // 中身は本人のページの組み立て（見る人の範囲を通した物）を並べ替えるだけ（lib/custody/received.ts の receivedLayout）。
 // 医療が範囲の外の人（医療班への提供に同意なし・未確認）は、要約の所に同意の状態だけ（医療要約の書類の頁と同じ言葉）。
 // 経過の書き足し（components/person/TimelineComposer）は書ける種類があるときだけ、経過の見出しのすぐ下に。
+// 今は行政の役だけ（医療班からケアマネへの伝達はなし。T172、lib/consent/relay.ts）。
 // 経過の行は人が書き足す記録だけ（components/person/Timeline が台帳を直した跡を外す。T143）。台帳を直した跡は本人のページと同じく
 // いちばん下の「変更履歴」（components/person/ChangeHistory、畳み）。
 // 状態を持たない（Server Component のまま、テストで renderToStaticMarkup できる）。
@@ -164,7 +165,7 @@ export function ReceivedPerson({
         )}
       </section>
 
-      {/* 経過: 書き足し（安否確認・診察・配薬・搬送・到着・記録）と行。範囲の外なら出さない */}
+      {/* 経過: 行と、書ける役の書き足し（行政）。範囲の外なら出さない */}
       {layout.timeline && (
         <section aria-labelledby={`${titleId}-timeline`} className={PANEL} data-section="timeline">
           <h2 id={`${titleId}-timeline`} className={H2}>

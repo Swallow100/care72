@@ -53,7 +53,8 @@ describe("役 × 同意の組で見える区分", () => {
       expect(s.timeline).toBe("all");
       expect(s.documents).toEqual(["medical"]);
       expect(s.recordings).toBe(false);
-      expect(s.writes).toEqual(["safety_check", "examined", "medication_given", "transported", "arrived_shelter", "note"]);
+      // 書き足しは行政だけ（医療班からケアマネへの伝達は今はなし、T172）
+      expect(s.writes).toEqual(role === "government" ? ["safety_check", "examined", "medication_given", "transported", "arrived_shelter", "note"] : []);
       expect(s.provision).toEqual({ basis: "consent", sections: ["identity", "medical", "evacuation", "people_partial"] });
     }
   });
@@ -79,8 +80,9 @@ describe("役 × 同意の組で見える区分", () => {
         expect(s.timeline).toBe("staff");
         expect(s.documents).toEqual([]);
         expect(s.recordings).toBe(false);
-        // 診た・薬を渡したなどは書ける（自分たちの記録）
-        expect(s.writes).toContain("examined");
+        // 行政は書ける。医療班は今はなし（T172）
+        if (role === "government") expect(s.writes).toContain("examined");
+        else expect(s.writes).toEqual([]);
         expect(s.provision).toEqual({ basis: "vital", sections: ["identity"] });
       }
     }
