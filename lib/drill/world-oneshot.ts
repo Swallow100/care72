@@ -11,7 +11,7 @@
 import { askJson, type AskJsonContext, type AskJsonRequest } from "../claude/call.ts";
 import { actionWords, CATALOG_WORDS } from "./action-catalog.ts";
 import { CARE_LEVEL_LABELS, CLOCK_START_LABELS, CLOCK_UNIT_LABELS, DEVICE_LABELS, HOUSEHOLD_LABELS } from "../labels.ts";
-import { pseudonymize, pseudonymizeText, type ForClaude, type PseudonymInput, type PseudonymKey } from "../pseudonym/index.ts";
+import { maskedCount, pseudonymize, pseudonymizeText, type ForClaude, type PseudonymInput, type PseudonymKey } from "../pseudonym/index.ts";
 import { aliasOfTown, areaOf, DEMO_AREA, geographyText, placesOf, restoreTowns, townOfLedger, type Area } from "./area.ts";
 import type { RealGeo } from "./real-geo-apply.ts";
 import { DEMO_OFFICE_ID } from "../auth/demo.ts";
@@ -170,13 +170,11 @@ export function buildCast(
   const list = members.map((p) => sources.get(p)!);
   const dependsOf = (p: string) => (outcomeSources.get(p)?.clocks ?? []).flatMap((k) => (k.depends_on ? [k.depends_on] : []));
   const nurseOf = (src: PseudonymInput) => src.contacts.some((c) => c.kind === "visiting_nurse");
-  const area = areaOf(
-    officeId,
-    members.map((p, i) => ({ ledger: list[i].ledger, depends: dependsOf(p), nurse: nurseOf(list[i]) })),
-    geo,
-  );
+  const people = members.map((p, i) => ({ ledger: list[i].ledger, depends: dependsOf(p), nurse: nurseOf(list[i]) }));
+  const read = areaOf(officeId, people, geo);
   // 町名は地区の別名で渡す（T88。本人たちの欄・これまでの世界・刻みの文に町名が入っても、地理と同じ別名に）
-  const { payload, key } = pseudonymize(list, { ...(on ? { on } : {}), places: placesOf(area, list.map((x) => x.ledger)) });
+  const { payload, key } = pseudonymize(list, { ...(on ? { on } : {}), places: placesOf(read, list.map((x) => x.ledger)) });
+  const area = geo ? passGate(read, areaOf(officeId, people), key) : read;
   const facts = new Map<string, PersonFacts>();
   const plans = new Map<string, Plan>();
   const lines: string[] = [];
@@ -219,6 +217,23 @@ export function buildCast(
     );
   });
   return { key, facts, plans, sources: new Map(members.map((p, i) => [p, list[i]] as const)), people: ["本人たち（仮名。どこに住むかは書かない）:", ...lines].join("\n"), area, endings: endingsAllowed(officeId) };
+}
+
+/**
+ * 実の名前のうち門で字が変わる物を外す（T170）。担当の人の氏名や町名と同じ字を含む名前（「津田中学校」の田中）は門が伏せるので、部屋が読めない名前になり、
+ * 返事の名前も地理と合わなくなる。実の避難所が 1 つも残らなければ一般の言い方に戻す
+ */
+function passGate(area: Area, general: Area, key: PseudonymKey): Area {
+  const clean = (name: string) => maskedCount(name, key) === 0;
+  const shelters = area.shelters.filter((s) => clean(s.name));
+  const real = area.realShelters === true && shelters.some((s) => !s.welfare);
+  const { realShelters: _drop, ...rest } = area;
+  return {
+    ...rest,
+    rivers: area.rivers.filter(clean),
+    shelters: real ? shelters : general.shelters,
+    ...(real ? { realShelters: true as const } : {}),
+  };
 }
 
 const ACTION_WORDS: Readonly<Record<ActionRecord["kind"], string>> = CATALOG_WORDS;

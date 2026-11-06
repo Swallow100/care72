@@ -20,7 +20,8 @@ import { homeFacts, homeTowns, homeWords } from "./self.ts";
 import { pinNotes, residentsOf, worldMapMarks, worldPlaces, worldSlots } from "./world-marks.ts";
 import { worldIncidents, type ApplyContext, type PersonFacts, type WorldStep } from "./world-apply.ts";
 import { inOutageArea } from "./persona.ts";
-import { WORLD_SYSTEM, worldNow } from "./world-oneshot.ts";
+import type { WorldInput } from "./engine.ts";
+import { buildCast, openingText, WORLD_SYSTEM, worldNow } from "./world-oneshot.ts";
 import { WORLD_AGENT_VERSION } from "./world-room.ts";
 
 const SOURCES = SEED_PEOPLE.map((p) => ({ person: p.person, ledger: p.ledger, contacts: p.contacts, clocks: p.clocks }));
@@ -183,6 +184,44 @@ describe("実の避難所と川（開始の時に読んだ公的なデータ）"
     expect(DEMO_AREA.realShelters).toBeUndefined();
     expect(DEMO_AREA.shelters.map((s) => s.name)).toContain("甲地区の避難所");
     expect(applyRealGeo(DEMO_AREA, { ...GEO, shelters: [] }, []).shelters).toBe(DEMO_AREA.shelters);
+  });
+
+  it("実の避難所を載せた部屋への文が門を通る。名前は潰れず、区画の実の言葉と種の町名は別名に", () => {
+    // 区画の言葉と字を共有する実の名前（鴨川・石手）も、部分で潰さない
+    const geo: RealGeo = {
+      ...GEO,
+      shelters: [
+        { name: "鴨川中学校", at: { lat: 33.8735, lng: 132.7502 } },
+        { name: "石手小学校", at: { lat: 33.8525, lng: 132.7988 } },
+        { name: "椿小学校", at: { lat: 33.8075, lng: 132.758 } },
+      ],
+    };
+    const sources = new Map(SOURCES.map((s) => [s.person.id, s]));
+    const outcome = new Map(SOURCES.map((s) => [s.person.id, { ledger: s.ledger, clocks: s.clocks }]));
+    const cast = buildCast([...sources.keys()], sources as never, outcome as never, "2026-11-07", "office-demo", geo);
+    const input = { scenario: "virtual", step: 0, hour: 0, world: EMPTY_WORLD, incidents: [], participants: [...sources.keys()], people: {}, actions: [], hints: { reached: [], clocks: [] }, session: null, minute: 0, geo } as unknown as WorldInput;
+    const sent = pseudonymizeText(openingText(input, cast, 72), cast.key).text;
+    expect(findLeaks(sent, cast.key)).toEqual([]);
+    for (const name of ["鴨川中学校（己地区）", "石手小学校（丁地区）", "椿小学校（甲地区）", "重信川"]) expect(sent).toContain(name);
+    for (const t of DEMO_AREA.towns) {
+      expect(sent).not.toContain(t.town);
+      for (const home of t.homes ?? []) expect(sent).not.toContain(home);
+    }
+  });
+
+  it("担当の人の氏名と同じ字を含む実の名前は門で字が変わるので使わない。全部外れたら一般の言い方", () => {
+    const sources = new Map(SOURCES.map((s) => [s.person.id, s]));
+    const outcome = new Map(SOURCES.map((s) => [s.person.id, { ledger: s.ledger, clocks: s.clocks }]));
+    const castOf = (shelters: RealGeo["shelters"]) => buildCast([...sources.keys()], sources as never, outcome as never, "2026-11-07", "office-demo", { ...GEO, shelters }).area;
+    const mixed = castOf([
+      { name: "津田中学校", at: { lat: 33.8075, lng: 132.758 } },
+      { name: "椿小学校", at: { lat: 33.8078, lng: 132.757 } },
+    ]);
+    expect(mixed.shelters.filter((s) => !s.welfare).map((s) => s.name)).toEqual(["椿小学校"]);
+    expect(mixed.realShelters).toBe(true);
+    const none = castOf([{ name: "津田中学校", at: { lat: 33.8075, lng: 132.758 } }]);
+    expect(none.shelters).toEqual(DEMO_AREA.shelters);
+    expect(none.realShelters).toBeUndefined();
   });
 
   it("世界の出来事に実の避難所の名前を使える。地理に無い名前は捨てる", () => {
