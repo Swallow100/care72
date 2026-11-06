@@ -18,7 +18,7 @@ import { changeMisfit, FIT_PROFILES, fitKindOf, forbiddenFor, waterActive, wordM
 import type { DrillKind, PhoneState, WorldChange, WorldState } from "../../../lib/drill/scenarios.ts";
 import type { DrillScenario, HazardKind } from "../../../lib/db/types.ts";
 import { bandOf, TIMELINE, type TimeBandId } from "../../../lib/drill/time-odds.ts";
-import { DEMO_AREA, RETIRED_DEMO_NAMES } from "../../../lib/drill/area.ts";
+import { DEMO_AREA, facilityOf, RETIRED_DEMO_NAMES, roadOf, shelterOf } from "../../../lib/drill/area.ts";
 import { FORBIDDEN_WORDS, REASON_MEDICAL_WORDS } from "../../../lib/drill/world-apply.ts";
 import { findLeaks, MASK_MARKS, NAME_MARK, restoreText, type PseudonymKey } from "../../../lib/pseudonym/index.ts";
 import { birthIn } from "../shapes.ts";
@@ -530,6 +530,48 @@ export function worldPlaceHits(outcome: RunOutcome): CheckHit[] {
   return hits;
 }
 
+/** 世界の返事の名前を見る種類（道・避難所・施設。地理に無い名前は lib/drill/world-apply.ts の buildEvent が捨てる） */
+const NAMED_KINDS = new Set(["road", "shelter", "facility", "welfare_shelter"]);
+
+/** 世界の返事で捨てた名前の数（T174）。total は名前のある出来事、dropped は地理に当たらず捨てた物 */
+export type WorldNameNumbers = { total: number; dropped: number; byKind: Record<string, number> };
+
+/**
+ * 世界の返事の道・避難所・施設の名前のうち、地理に無くて捨てた物を数える（T174。評価の 9 回目の「数の口が無い」の口）。アプリの当て方（world-apply.ts）と同じ引き方で、
+ * 記録の返事（世界の部屋と 1 回呼び）を読む。道は地区や本人を書いていれば名前が無くても通るので、捨てるのは当たる所も無い時だけ。
+ * 開始の時に読んだ実の避難所は表に無いので、出来事に出た名前を地理に足して見る（当たった名前は必ず出来事に出る）
+ */
+export function worldNameHits(records: ReadonlyArray<AiRecord>, outcome: RunOutcome): { numbers: WorldNameNumbers; hits: CheckHit[] } {
+  const numbers: WorldNameNumbers = { total: 0, dropped: 0, byKind: {} };
+  const hits: CheckHit[] = [];
+  const applied = new Set((outcome.replay?.ticks ?? []).flatMap((t) => t.incidents.flatMap((e) => (e.change?.kind === "shelter" ? [String((e.change as { label?: unknown }).label ?? "")] : []))));
+  for (const a of records) {
+    if ((a.role !== "world" && a.role !== "world_room") || !a.returned?.text) continue;
+    const value = parse(a.returned.text);
+    const steps = a.role === "world_room" ? (Array.isArray(value) ? (value as unknown[]) : []) : [value];
+    for (const st of steps) {
+      const events = (st as { events?: unknown } | null)?.events;
+      for (const e of Array.isArray(events) ? (events as Array<Record<string, unknown>>) : []) {
+        const kind = typeof e.kind === "string" ? e.kind : "";
+        const name = typeof e.name === "string" ? e.name.trim() : "";
+        if (!NAMED_KINDS.has(kind) || !name) continue;
+        numbers.total += 1;
+        const known =
+          kind === "road"
+            ? roadOf(name) !== null || !!(typeof e.town === "string" && e.town.trim()) || !!(typeof e.target === "string" && e.target.trim())
+            : kind === "facility"
+              ? facilityOf(name) !== null
+              : shelterOf(name) !== null || applied.has(name);
+        if (known) continue;
+        numbers.dropped += 1;
+        numbers.byKind[kind] = (numbers.byKind[kind] ?? 0) + 1;
+        hits.push({ check: "world_place", rule: `dropped_name:${kind}`, seq: a.seq, evidence: name });
+      }
+    }
+  }
+  return { numbers, hits };
+}
+
 export function stopHits(outcome: RunOutcome): CheckHit[] {
   const hits: CheckHit[] = [];
   for (const t of outcome.replay?.ticks ?? []) {
@@ -881,6 +923,8 @@ export type RunNumbers = {
   talk?: TalkNumbers;
   /** 人ごとの筋（T165、personArcHits）。前の回の summary には無い */
   persons?: PersonArcNumbers;
+  /** 世界の返事で捨てた名前（T174。前の回の summary には無い） */
+  worldNames?: WorldNameNumbers;
   /** 本人役の言葉が文の途中で終わった数（T139、cutHits）。checked は見た言葉の数 */
   cut?: { checked: number; hits: number };
   /** 画面に出た（氏名）のうち元の語に名前が無かった数（T159、overmaskHits）。checked は突き合わせられた画面の（氏名）の数 */
@@ -990,6 +1034,7 @@ export function checkRun(records: ReadonlyArray<LogRecord>, outcome: RunOutcome,
   const arcs = personArcHits(outcome);
   const worldPlace = worldPlaceHits(outcome);
   const ai = records.filter((r): r is AiRecord => r.type === "ai" && (r as AiRecord).role !== "judge");
+  const worldNames = worldNameHits(ai, outcome);
   // 1 訓練の数え（画面の「AI 残」から。10 分版は数えないので本人役と監督の呼び出しの数）
   const drillCounted = outcome.callsLeft !== null ? DRILL_CAP - outcome.callsLeft : ai.filter((a) => a.role === "persona" || a.role === "director" || a.role === "world" || a.role === "world_room").length;
   // 7. 1 訓練の数えに入らない呼び出し（T118）: 訓練の呼び出し（ai_calls の講評 scoring と声 voice のほか）と数えの差。連続の時計の訓練だけ
@@ -1057,6 +1102,7 @@ export function checkRun(records: ReadonlyArray<LogRecord>, outcome: RunOutcome,
     },
     talk: talk.numbers,
     persons: arcs.numbers,
+    worldNames: worldNames.numbers,
     cut: { checked: cut.checked, hits: cut.hits.length },
     overmask: { checked: overmask.checked, hits: overmask.hits.length },
     timing: {
@@ -1074,5 +1120,5 @@ export function checkRun(records: ReadonlyArray<LogRecord>, outcome: RunOutcome,
       unpricedCalls: ai.filter((a) => a.costUsd === null && a.role !== "world_room").length,
     },
   };
-  return { hits: [...worldPlace, ...banned, ...leaks, ...shape, ...odds.hits, ...contra, ...stops, ...terms, ...fit.hits, ...free, ...facts.hits, ...cut.hits, ...overmask.hits, ...talk.hits, ...arcs.hits, ...budgetHits], numbers };
+  return { hits: [...worldPlace, ...worldNames.hits, ...banned, ...leaks, ...shape, ...odds.hits, ...contra, ...stops, ...terms, ...fit.hits, ...free, ...facts.hits, ...cut.hits, ...overmask.hits, ...talk.hits, ...arcs.hits, ...budgetHits], numbers };
 }

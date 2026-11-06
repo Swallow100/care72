@@ -107,6 +107,8 @@ export function metaOf(h: CheckHit): Meta | null {
       };
     }
     case "world_place":
+      // T174: 世界の返事で捨てた名前。1 回目は基準づくりなので守りを付けない
+      if (head(h.rule) === "dropped_name") return { cause: "drill:world_place:dropped_name", rule: "world_place:dropped_name", title: "世界の返事の名前が地理に無く捨てた", severity: "low", screen: "訓練 > 経過（出来事）", suspects: ["lib/drill/world-oneshot.ts", "lib/drill/world-apply.ts", "lib/drill/area.ts"] };
       return head(h.rule) === "retired"
         ? { cause: "drill:world_place:retired", rule: "world_place:retired", title: "世界の文にやめた架空の地名", severity: "high", screen: "訓練 > 経過（出来事）", suspects: ["lib/drill/area.ts", "lib/drill/area-demo.ts", "lib/drill/world-apply.ts", "lib/pseudonym/index.ts"], accept: zero("count:drill:world_place:retired") }
         : { cause: "drill:world_place:off_table", rule: "world_place:off_table", title: "世界の 1 文に地理に無い実在らしい名前", severity: "low", screen: "訓練 > 経過（出来事）", suspects: ["lib/drill/world-oneshot.ts", "lib/drill/world-apply.ts"] };
