@@ -345,7 +345,11 @@ describe("場所ごとの出来事（地図の印と一覧）", () => {
       ],
       [],
     );
-    expect([two.a, two.b].sort((x, y) => x - y)).toEqual([0, 18]);
+    expect([two.a, two.b].sort((x, y) => (x ?? 0) - (y ?? 0))).toEqual([0, 18]);
+    // 小さな地図: 送りすぎる印と枠の下にはみ出す印は描かない
+    const crowd = [0, 1, 2, 3, 4].map((i) => ({ id: `m${i}`, x: 100, y: 100, text: "浸水" }));
+    expect(Object.values(layoutMarks(crowd, [], { maxDrop: 36 })).filter((d) => d === null).length).toBe(2);
+    expect(layoutMarks([{ id: "a", x: 100, y: 290, text: "浸水" }], [], { height: 300 }).a).toBeNull();
   });
 
   it("画面の 1 行: 人は架空・地理は実在・出来事は想定", () => {

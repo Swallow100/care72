@@ -1,5 +1,6 @@
-// 地図の場所の印（T170。仮想の訓練の世界の出来事）。人のピンと見分けるため四角の点と本文色の線の囲みで、人の状態の色を使わない。
+// 地図の場所の印（T170。仮想の訓練の世界の出来事）。人のピンと見分けるため四角の点で、人の状態の色を使わない。タイルの上では地の色の差が効かないので、ピンと同じ細い線で囲む。
 // 押せない（地図のドラッグを奪わない）。印はピンの点の下に置き、人の名前の印やほかの印に重なれば下へ送って細い線で元の所とつなぐ（lib/map/marks.ts の layoutMarks）。
+// 小さな地図で置けない印は描かず、右下に「他 N」（全画面と場所別の一覧に全部ある）。
 // 出来事は訓練の想定なので、印があるときは地図の上に「デモ」の帯（MarkBand）。
 
 import { labelWidth } from "@/lib/map/cluster";
@@ -17,6 +18,9 @@ export function MarkBand() {
     </div>
   );
 }
+
+/** 小さな地図で印を下へ送る長さの上限（px）。これより遠いと元の所が読めない */
+const SMALL_MAX_DROP = 36;
 
 export function WorldMarks({
   marks,
@@ -40,21 +44,34 @@ export function WorldMarks({
   const drops = layoutMarks(
     placed.map((p) => ({ id: p.mark.id, x: p.x, y: p.y, text: p.text })),
     pins.map((p) => ({ ...at(p.location), w: labelWidth(p) + (p.note ? p.note.length * 11 + 8 : 0) })),
+    wording === "short" ? { maxDrop: SMALL_MAX_DROP, height: size.h } : {},
   );
-  return placed.map(({ mark, text, left, top }) => {
-    const drop = drops[mark.id] ?? 0;
-    return (
+  const hidden = placed.filter((p) => drops[p.mark.id] === null).length;
+  const shown = placed.flatMap(({ mark, text, left, top }) => {
+    const drop = drops[mark.id];
+    if (drop === null || drop === undefined) return [];
+    return [(
       <span key={mark.id} className="pointer-events-none absolute z-[5]" style={{ left: `${left}%`, top: `${top}%` }} data-world-mark={mark.id} data-drop={drop}>
         {drop > 0 && <span className="absolute top-0 left-0 w-px bg-ink" style={{ height: drop }} aria-hidden />}
         <span
           title={mark.title}
-          className="absolute flex -translate-x-1/2 items-center gap-1 rounded-sm border border-ink bg-panel px-1 text-[11px] leading-4 whitespace-nowrap text-ink"
+          className="absolute flex -translate-x-1/2 items-center gap-1 rounded-sm bg-panel px-1 text-[11px] leading-4 whitespace-nowrap text-ink outline-1 outline-ink/50"
           style={{ top: drop }}
         >
           <span className="size-1.5 shrink-0 bg-ink" aria-hidden />
           {text}
         </span>
       </span>
-    );
+    )];
   });
+  return (
+    <>
+      {shown}
+      {hidden > 0 && (
+        <span className="pointer-events-none absolute right-1 bottom-1 z-[5] rounded-sm bg-panel px-1 outline-1 outline-ink/50 text-[11px] leading-4 text-ink tabular-nums" data-world-mark-more={hidden}>
+          {MARK_BAND.more} {hidden}
+        </span>
+      )}
+    </>
+  );
 }

@@ -39,7 +39,7 @@ export const PLACE_LIST_LABELS = {
   panel: "場所別",
   region: "地域",
   rivers: "川",
-  shelterSource: "避難所の出典",
+  shelterSource: "出典",
 } as const;
 
 export const DRILL_LABELS = {
