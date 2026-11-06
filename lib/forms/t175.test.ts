@@ -169,7 +169,7 @@ describe("T175 読み方の揺れをそろえる（settleRead）", () => {
 });
 
 describe("T175 字の大きさは枠のわずかな差で下限に飛ばない", () => {
-  const pc: PlaceCtx = { page: { page: 1, landscape: false, image: { w: 210, h: 297 }, items: [], fills: [] }, ink: null, others: [] };
+  const pc = { page: { page: 1, landscape: false, image: { w: 210, h: 297 }, items: [], fills: [] }, ink: null, others: [] } as unknown as PlaceCtx;
   const fontAt = (lines: string[], b: ReturnType<typeof box>) => placeText("f", lines, b, pc)?.fontPt ?? null;
 
   it("枠が広いほど下限の字にならない（下限の字の枠より広い枠は下限にならない順）", () => {
