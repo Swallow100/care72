@@ -178,8 +178,13 @@ export class FakeSurface implements Surface {
             name: "作成",
             on: (s) => {
               const name = this.value("氏名");
+              // 本物はブラウザの必須の案内（読みの知らせ。tools/eval/persona/dom.ts、T173）
               if (!name) {
-                s.alert = "氏名 未入力";
+                s.alert = "必須案内 氏名 このフィールドを入力してください。";
+                return;
+              }
+              if (!this.value("生年月日")) {
+                s.alert = "必須案内 生年月日 このフィールドを入力してください。";
                 return;
               }
               const id = `chk-p-${String(s.people.length + 10).padStart(2, "0")}`;

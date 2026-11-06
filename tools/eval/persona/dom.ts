@@ -11,7 +11,11 @@ export const REF_ATTR = "data-persona-ref";
 export type ReadLimits = { items: number; text: number; name: number; body: number };
 export const READ_LIMITS: ReadLimits = { items: 200, text: 1800, name: 60, body: 30_000 };
 
-export type RawRead = Omit<Snapshot, "hash" | "look" | "errors" | "printed"> & { printed: boolean };
+export type RawRead = Omit<Snapshot, "hash" | "look" | "errors" | "printed"> & {
+  printed: boolean;
+  /** 必須の欄が空で送れないのに、案内が人に見えない欄（隠れた欄・カーソルの置けない欄。ブラウザは何も言わず止まる。T173） */
+  unseenRequired: string | null;
+};
 
 /** 頁の中で動く。番号を振り直し、読みを返す */
 export function readPageInBrowser(limits: ReadLimits): RawRead {
@@ -136,13 +140,23 @@ export function readPageInBrowser(limits: ReadLimits): RawRead {
     .slice(0, 20)
     .map((h) => squeeze(plain(h as HTMLElement), 50))
     .filter(Boolean);
-  const alerts = Array.from(document.querySelectorAll("[role=alert],[role=status],[aria-live=assertive]"))
+  const alerts: string[] = Array.from(document.querySelectorAll("[role=alert],[role=status],[aria-live=assertive]"))
     .filter(visible)
     .map((a) => squeeze(plain(a as HTMLElement), 120))
     .filter(Boolean)
     .slice(0, 8);
   const main = document.querySelector("main") ?? document.body;
-  const w = window as unknown as { __personaPrinted?: boolean };
+  const w = window as unknown as { __personaPrinted?: boolean; __personaInvalid?: { el: Element; message: string } | null };
+  // ブラウザの必須の案内（T173）。吹き出しは頁の字に無いので、watchRequiredInBrowser が覚えた物を読む。案内が出るのはカーソルの置けた欄だけ
+  let unseenRequired: string | null = null;
+  const invalid = w.__personaInvalid;
+  if (invalid?.el.isConnected) {
+    const legend = invalid.el.closest("fieldset")?.querySelector("legend")?.textContent;
+    const name = squeeze(legend || labelOf(invalid.el), limits.name);
+    if (visible(invalid.el) && document.activeElement === invalid.el) alerts.push(squeeze(`必須案内 ${name} ${invalid.message}`, 120));
+    else unseenRequired = name;
+  }
+  w.__personaInvalid = null;
   const whole = squeeze(plain(main as HTMLElement), limits.body);
   const top = document.querySelector("header") as HTMLElement | null;
   // 隠れた上の帯（印刷の見本の間など）は読まない（innerText が字の間の空きの無い textContent になり、見えない物を読む）
@@ -159,6 +173,7 @@ export function readPageInBrowser(limits: ReadLimits): RawRead {
     text: whole.slice(0, limits.text),
     body: whole,
     printed: w.__personaPrinted === true,
+    unseenRequired,
   };
 }
 
@@ -171,6 +186,32 @@ export function hashOf(s: Pick<Snapshot, "path" | "headings" | "items" | "alerts
 /** 本文と上の帯の字の指紋 */
 export function lookOf(s: Pick<Snapshot, "header" | "text">): string {
   return createHash("sha256").update(JSON.stringify([s.header, s.text])).digest("hex").slice(0, 16);
+}
+
+/**
+ * 頁を開く前に入れる: ブラウザの必須の案内（required の吹き出し）を覚える（T173）。吹き出しは頁の字に無く、読みに入らなかった
+ * （作成を押しても理由が出ないと読まれた）。出るのは最初の欄だけ。次に押す・打つと消す
+ */
+export function watchRequiredInBrowser(): void {
+  const w = window as unknown as { __personaInvalid?: { el: Element; message: string } | null };
+  document.addEventListener(
+    "invalid",
+    (e) => {
+      const el = e.target;
+      if (!(el instanceof Element) || w.__personaInvalid) return;
+      w.__personaInvalid = { el, message: (el as HTMLInputElement).validationMessage };
+    },
+    true,
+  );
+  for (const kind of ["pointerdown", "keydown", "input"]) {
+    document.addEventListener(
+      kind,
+      () => {
+        w.__personaInvalid = null;
+      },
+      true,
+    );
+  }
 }
 
 /** 頁を開く前に入れる: 印刷の画面を開かずに旗を立てる（headless で止まらない・「印刷の手前まで」の印） */
