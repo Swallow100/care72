@@ -86,7 +86,7 @@ import {
 import { toTriagePerson } from "./triage/from-ledger.ts";
 import { clockText, nightText, type ClockText } from "./ledger-words.ts";
 import { transportKindOf, transportText } from "./map/transport.ts";
-import { clockRemaining, tierOf, type Color, type Situation, type Tier, type TriageClock, type TriageResult } from "./triage/index.ts";
+import { categoryTier, clockRemaining, tierOf, type Color, type Situation, type Tier, type TriageClock, type TriageResult } from "./triage/index.ts";
 import { personSituation, type DisasterSituation } from "./disaster/state.ts";
 import type { PersonBrief } from "./auth/scope.ts";
 import { withQrView } from "./qr/timeline.ts";
@@ -404,6 +404,8 @@ export type PersonHead = {
    * 範囲の外なら空
    */
   medical: HeadMedical[];
+  /** 上の段の「医療」の薬の行（T150b、medLines）。3 つまでと残りの数。範囲の外なら空 */
+  meds: { lines: MedLine[]; more: number };
   /** 上の段の「避難先」（T150。避難先 1・2 と手段。前の「時計」の欄の所）。避難の区分が範囲の外なら null */
   evacuation: { first: string | null; second: string | null; transport: string | null } | null;
   /** 緊急連絡先（順番つき、電話のリンク）。上に大きく出す */
@@ -538,6 +540,69 @@ const TONE_RANK: Record<StateTone, number> = { urgent: 3, check: 2, unknown: 1, 
 
 /** 医療の印 1 つ: 項目名・その区分の時計でいちばん強い色・いちばん短い残り（「4h」「超過」。無ければ null） */
 export type MarkItem = { label: string; tone: StateTone | null; remaining: string | null };
+
+/**
+ * 薬の 1 行（T150b）。本人のページの上の段の「医療」・担当一覧と訓練の行の詳細の「薬」で同じ物。
+ * mark は区分の印（「抗凝固」。医療の印の区分の薬だけ。色はその区分の時計の色）、category は印の無い区分の言葉（「経口糖尿病薬」）。
+ * amount は台帳の量（無ければ null で出さない）。left は同じ名前の時計の残り（平時は手元の量「手元の量 7 日」、災害モードは今の残り
+ * 「残り 6.8 日」。値の無い時計・時計の無い薬は null）。clockId はその時計（行の詳細の「残り時間」で 2 回出さないため）
+ */
+export type MedLine = {
+  name: string;
+  mark: { label: string; tone: StateTone | null } | null;
+  category: string | null;
+  amount: string | null;
+  left: { label: string | null; text: string; tone: StateTone | null } | null;
+  interruption: boolean;
+  clockId: string | null;
+};
+
+/** 薬の行の数の上限（多い時は「他 N 件」） */
+export const MED_LINES_MAX = 3;
+
+/**
+ * 薬の行（T150b）。並びは 医療の印の区分の薬（骨格の段の順）→ 中断注意 → 台帳の順。MED_LINES_MAX までを lines、残りの数を more。
+ * covered は行に出した薬の区分（その区分の印は行の中に入るので、印の並びに 2 回出さない）、clockIds は行に入った時計
+ */
+export function medLines(
+  meds: Ledger["medical"]["medications"],
+  clocks: ReadonlyArray<TriageClock & Pick<ClockRow, "id" | "label"> & Partial<Pick<ClockRow, "source" | "source_note" | "confirmed_at">>>,
+  s: Situation | null,
+): { lines: MedLine[]; more: number; covered: Set<string>; clockIds: Set<string> } {
+  const markLabel = new Map<string, string>(DEPENDENCE_MARKS);
+  const tierOfMed = (c: string) => (markLabel.has(c) ? (categoryTier(c as ClockRow["category"]) ?? 9) : 99);
+  const all = meds
+    .map((m, i) => ({ m, i }))
+    .sort((a, b) => tierOfMed(a.m.category) - tierOfMed(b.m.category) || Number(!!b.m.interruptionRisk) - Number(!!a.m.interruptionRisk) || a.i - b.i)
+    .map(({ m }): MedLine => {
+      const clock = clocks.find((k) => k.kind !== "device" && sameMedication(k.label, m.name)) ?? null;
+      const t = clock ? clockText(clock, s) : null;
+      const label = markLabel.get(m.category) ?? null;
+      // 区分の印の色はその区分の時計の色（担当一覧の医療の印と同じ）
+      const tone = label ? (markItems(clocks, s).find((x) => x.label === label)?.tone ?? null) : null;
+      const left = t?.left
+        ? { label: null, text: t.left.text, tone: clockTone(t.left.hours) }
+        : t && t.length && clock
+          ? { label: CLOCK_TEXT_LABELS.missing.medication, text: t.length, tone: clockTone(hoursLeft(clock, s)?.hours ?? null) }
+          : null;
+      return {
+        name: m.name,
+        mark: label ? { label, tone } : null,
+        category: label ? null : MEDICATION_CATEGORY_LABELS[m.category],
+        amount: m.amount?.trim() || null,
+        left,
+        interruption: m.interruptionRisk === true,
+        clockId: clock?.id ?? null,
+      };
+    });
+  const lines = all.slice(0, MED_LINES_MAX);
+  return {
+    lines,
+    more: all.length - lines.length,
+    covered: new Set(meds.filter((m) => markLabel.has(m.category) && lines.some((l) => l.name === m.name)).map((m) => m.category)),
+    clockIds: new Set(lines.flatMap((l) => (l.clockId ? [l.clockId] : []))),
+  };
+}
 
 /** 上の段の時計の 1 行（headClocks の 1 つ） */
 export type HeadClock = PersonHead["clocks"][number];
@@ -1427,11 +1492,22 @@ function headClocks(clocks: ReadonlyArray<ClockRow>, s: Situation | null = null)
  * 印の数の元（いちばん短い、値のある時計）は印だけで出し、ほかの値のある時計を 1 行ずつ添える。値の無い時計は印の数が無いことで分かり、
  * 何が未確認かは触れた時の 1 行とページの上の「未確認 N」で（見る方の画面で未入力の添えを常に出さない、T143 と同じ言い方）
  */
-function headMedical(clocks: ReadonlyArray<ClockRow>, marks: ReadonlyArray<MarkItem>, s: Situation | null): HeadMedical[] {
-  const runs = clocks.filter((k) => k.starts_on !== "none");
+function headMedical(
+  clocks: ReadonlyArray<ClockRow>,
+  marks: ReadonlyArray<MarkItem>,
+  s: Situation | null,
+  meds: { covered: ReadonlySet<string>; clockIds: ReadonlySet<string> } = { covered: new Set(), clockIds: new Set() },
+): HeadMedical[] {
+  // 薬の行（T150b）に入った時計は行の中に出るので、ここで束ねない
+  const runs = clocks.filter((k) => k.starts_on !== "none" && !meds.clockIds.has(k.id));
   const categoryOf = new Map(DEPENDENCE_MARKS.map(([category, label]) => [label, category]));
   const lineOf = (k: ClockRow) => clockText(k, s).line;
-  const out: HeadMedical[] = marks.map((m) => {
+  // 薬の行に区分の印が入った区分は、ほかの時計が残っていなければ印の並びに出さない（同じ印を 2 回出さない）
+  const shown = marks.filter((m) => {
+    const c = categoryOf.get(m.label);
+    return !(c && meds.covered.has(c) && !runs.some((k) => k.category === c));
+  });
+  const out: HeadMedical[] = shown.map((m) => {
     const mine = runs.filter((k) => k.category === categoryOf.get(m.label));
     const ordered = headClocks(mine, s);
     const valued = ordered.filter((k) => k.value !== null);
@@ -1626,6 +1702,8 @@ export function toPersonView(rows: PersonPageRows, opts: ViewOptions): PersonVie
   // 災害モードは今の残り（本人の町名で停電の地区を当てる）。平時は時計の長さ
   const own = mode === "disaster" && opts.situation ? personSituation(opts.situation, ledger.basic.address?.town) : null;
   const marks = markItems(clocks, own);
+  // 薬の行（T150b）: 上の段の「医療」と担当一覧・訓練の行の詳細の「薬」で同じ物
+  const meds = medLines(ledger.medical.medications, clocks, own);
   const strongest = marks.map((m) => m.tone).filter((t) => t !== null).sort((a, b) => TONE_RANK[b] - TONE_RANK[a])[0];
   const priority = priorityOf(tier, opts.triage, strongest ?? null);
   const head: PersonHead = {
@@ -1643,7 +1721,8 @@ export function toPersonView(rows: PersonPageRows, opts: ViewOptions): PersonVie
     drill: drillMark(rows.lastDrill ?? null, person.plan_status, opts.today).text,
     unconfirmed: show.plan ? ledger.pending.length : 0,
     clocks: show.medical ? headClocks(clocks, own) : [],
-    medical: show.medical ? headMedical(clocks, marks, own) : [],
+    medical: show.medical ? headMedical(clocks, marks, own, meds) : [],
+    meds: show.medical ? { lines: meds.lines, more: meds.more } : { lines: [], more: 0 },
     evacuation: scopeHas(scope, "evacuation") ? headEvacuation(ledger) : null,
     emergency: show.people ? headEmergency(contacts) : [],
     show,

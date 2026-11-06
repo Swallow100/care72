@@ -58,9 +58,9 @@ describe("上の段の医療（lib/person.ts の headMedical、components/person
     const h = headOf("p-01");
     expect(h.medical.map((m) => [m.mark?.label, m.mark?.remaining, m.others.map((k) => `${k.label} ${k.value}`)])).toEqual([
       ["酸素", "2h", ["酸素 予備ボンベ 停電から 8 時間"]],
-      ["抗凝固", null, []],
     ]);
-    expect(h.medical[1].lines).toEqual(["ワーファリン 手元の量 未確認（発災から数える）"]);
+    // 抗凝固の印はワーファリンの薬の行の中へ（T150b）
+    expect(h.meds.lines.map((l) => [l.mark?.label, l.name])).toEqual([["抗凝固", "ワーファリン"]]);
     const text = visible(renderHead(h));
     expect(text).toContain("酸素 2h");
     expect(text).toContain("酸素 予備ボンベ");

@@ -10,6 +10,7 @@ import type { HeadClock, HeadMedical, PersonHead as Head } from "@/lib/person";
 import { BLANK_LABELS, CLOCK_TEXT_LABELS, HEAD_LABELS, PLAN_DRILL_LABELS } from "@/lib/labels";
 import { Mark, StateText } from "@/components/ui/Tag";
 import { Hint } from "./Hint";
+import { MedLines } from "./MedLines";
 import { LineText, REASON_TEXT, StateTag, TONE_TEXT, type Level } from "./parts";
 
 function Fact({ label, children }: { label: string; children: React.ReactNode }) {
@@ -35,8 +36,8 @@ function Cell({ label, children }: { label: string; children: React.ReactNode })
  * 医療の印と時計（T150）。印は地を塗らず、時計の長さの色は印に（塗りの印は優先の状態だけ）。項目名に時計のいちばん短い残り（「酸素 4h」）。
  * 残りの無い項目（走らない時計・値の無い時計）は項目名だけ。印の数の元の時計がまだ走っていなければ「未開始」を小さく
  */
-function MedicalCell({ items }: { items: readonly HeadMedical[] }) {
-  if (items.length === 0) return <span className="text-sm text-muted">{BLANK_LABELS.none}</span>;
+function MedicalCell({ items, meds }: { items: readonly HeadMedical[]; meds: Head["meds"] }) {
+  if (items.length === 0 && meds.lines.length === 0) return <span className="text-sm text-muted">{BLANK_LABELS.none}</span>;
   const marked = items.flatMap((x) => (x.mark ? [{ ...x, mark: x.mark }] : []));
   const others = items.flatMap((x) => x.others);
   return (
@@ -52,6 +53,8 @@ function MedicalCell({ items }: { items: readonly HeadMedical[] }) {
           ))}
         </span>
       )}
+      {/* 薬の 1 行ずつ（T150b）。区分の印（抗凝固など）は行の中に入り、上の印の並びには出さない */}
+      <MedLines lines={meds.lines} more={meds.more} />
       {/* 印の数の元でない時計（同じ区分の 2 つ目・印の区分に入らない時計）。言葉は lib/ledger-words.ts（T132） */}
       {others.length > 0 && (
         <ul className="space-y-0.5" data-head-clocks>
@@ -189,7 +192,7 @@ export function PersonHead({ head, level, titleId }: { head: Head; level: Level;
             )}
             {show.medical && (
               <Cell label={HEAD_LABELS.marks}>
-                <MedicalCell items={head.medical} />
+                <MedicalCell items={head.medical} meds={head.meds} />
               </Cell>
             )}
             {head.evacuation && (

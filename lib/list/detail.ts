@@ -17,7 +17,7 @@ import type {
 import { elapsedText, shortJst } from "../disaster/state.ts";
 import { COLOR_LABELS, CONTACT_FLAG_LABELS, CONTACT_KIND_LABELS, CONTACT_REACH_LABELS } from "../labels.ts";
 import { clockText, leftText, nightText, type ClockText } from "../ledger-words.ts";
-import { clockTone, COLOR_TONES, telHref, type StateTone } from "../person.ts";
+import { clockTone, COLOR_TONES, medLines, telHref, type MedLine, type StateTone } from "../person.ts";
 import { summaryOf, type SignalSummary } from "../classify/view.ts";
 import type { HearingPlace, HearingPosition } from "../signals/hearing.ts";
 import { readTalkLog, type TalkLog } from "../signals/talk.ts";
@@ -191,6 +191,11 @@ export type RowDetail = {
   baseColor: Color;
   contacts: DetailContact[];
   clocks: DetailClock[];
+  /**
+   * 薬の 1 行ずつ（T150b、lib/person.ts の medLines。本人のページの上の段の「医療」と同じ物）。3 つまでと残りの数。
+   * 行に入った薬の時計は「残り時間」に出さない
+   */
+  meds: { lines: MedLine[]; more: number };
   destinations: { first: string | null; second: string | null; transport: string | null };
   /** 避難支援等実施者（順番つき）の 1 行ずつ */
   supporters: Array<{ order: number; name: string; parts: string[] }>;
@@ -375,7 +380,8 @@ function detailOverride(o: (Override & { expired: boolean; byName?: string | nul
 
 export type DetailInput = {
   personId: string;
-  ledger: Pick<Ledger, "evacuation">;
+  /** medical は薬の行（T150b）。無ければ薬の行なし（前からの組み立て・テスト） */
+  ledger: Pick<Ledger, "evacuation"> & Partial<Pick<Ledger, "medical">>;
   /** 本人の行（生年月日・本人の報告の印・台帳の JSON）と年齢を数える日。渡すと「全部」（T132）を作る */
   person?: FullInput["person"];
   today?: string;
@@ -397,6 +403,7 @@ export function buildRowDetail(x: DetailInput): RowDetail {
   const calls = callLogsOf(x.calls);
   const clocks = [...x.clocks].sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0) || (a.id < b.id ? -1 : 1));
   const e = x.ledger.evacuation;
+  const meds = medLines(x.ledger.medical?.medications ?? [], clocks, x.situation);
   return {
     personId: x.personId,
     color: x.triage.color,
@@ -405,7 +412,8 @@ export function buildRowDetail(x: DetailInput): RowDetail {
     baseColor: x.triage.baseColor,
     contacts: detailContacts(x.contacts, calls),
     // 本人の状態（D）の時計は走らないので出さない（医療の印に出る）
-    clocks: clocks.filter((k) => k.kind !== "condition").map((k) => detailClock(k, x.situation)),
+    clocks: clocks.filter((k) => k.kind !== "condition" && !meds.clockIds.has(k.id)).map((k) => detailClock(k, x.situation)),
+    meds: { lines: meds.lines, more: meds.more },
     destinations: {
       first: e.destination1?.trim() || null,
       second: e.destination2?.trim() || null,
