@@ -9,12 +9,12 @@
 // 数えるのは: 往復・Claude の呼び出し・門で外した数（理由ごと）・決まった問いに戻した数・ボタンに替えた筋・危ない言葉で締めた筋・
 // 表の 2 問の前に締めた筋（0 のはず）・読んだ文に台の物差しで言わない事が残った数（0 のはず）・Claude に渡した文に名前や電話が残った数（0 のはず）。
 // 台の物差し（BANNED）は門（lib/signals/talk.ts の TALK_BANNED）と別に持つ（同じ物差しだと門の穴を台が見つけられない）。
-// 記録（--out、既定はリポジトリの隣の care72-qa/eval/talk）は筋ごとの読んだ文と答えの jsonl で、リポジトリに入れない。
+// 記録（--out、既定はリポジトリの隣の care72-qa/eval/talk）は筋ごとの読んだ文と答えの jsonl・summary.json（数）・findings.json（指摘、T157）で、リポジトリに入れない。
 // 鍵は環境変数 ANTHROPIC_API_KEY だけを読む。鍵のファイルは読まない。
 
 import Anthropic from "@anthropic-ai/sdk";
 import { mkdirSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { ClaudeClient } from "../../../lib/claude/client.ts";
 import { HAIKU } from "../../../lib/claude/models.ts";
@@ -33,6 +33,7 @@ import {
 } from "../../../lib/signals/talk.ts";
 import { nextTalk, type TalkReply } from "../../../lib/signals/talk-ai.ts";
 import { SEED_PEOPLE, seedConsents } from "../../../seed/people.ts";
+import { talkSummaryJson, writeTalkFindings } from "./findings.ts";
 
 type Params = Anthropic.Beta.Messages.MessageCreateParamsNonStreaming;
 type Message = Anthropic.Beta.Messages.BetaMessage;
@@ -236,8 +237,10 @@ async function main(): Promise<void> {
   const dir = join(out, `${new Date().toISOString().replace(/[:.]/g, "-")}-${real ? "real" : "fake"}`);
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, "cases.jsonl"), s.cases.map((c) => JSON.stringify(c)).join("\n"));
-  writeFileSync(join(dir, "summary.json"), JSON.stringify(s.totals, null, 2));
-  console.log(`\n記録: ${dir}`);
+  // summary.json は点数の表（T157、tools/eval/scorecard.ts）が読む形。findings.json は指摘の共通の形（tools/eval/findings.ts）
+  writeFileSync(join(dir, "summary.json"), JSON.stringify(talkSummaryJson(s, basename(dir)), null, 2));
+  const found = writeTalkFindings(s, dir, basename(dir), out, { noise: Number.isFinite(noise) ? noise : 0 });
+  console.log(`\n指摘 ${found.findings}（守りの外れ ${found.guarded}）\n記録: ${dir}`);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
