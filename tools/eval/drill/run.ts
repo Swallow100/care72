@@ -12,6 +12,7 @@
 //       --max-usd X（本物の見積もりの上限。超えたら次の回を始めない。本物の既定 10）・
 //       --terms on|off（連続の時計の訓練の開始に手の決まり〔T110 の terms〕を送るか。既定 on、開始の画面と同じ。T121）・
 //       --all-people（参加する人を担当の全員に。ほかの選び方は同じ種のまま）・
+//       --talk-rounds N（通話の往復の回数。T155 の 8 往復の確かめ。乱れた文も混ぜる）・
 //       --answer-calls（今の刻みの電話の着信に出て往復する。T127 の着信の往復を測る）・
 //       --free-probe（自由対応の状況違いの試し〔T129、free-probe.ts〕も回す。文 3 つ × 状況 8 つで、本物なら Opus を 24 回）
 //
@@ -74,6 +75,8 @@ export type EvalConfig = {
   allPeople?: boolean;
   /** 着信に出て往復するか（T127。--answer-calls） */
   answerCalls?: boolean;
+  /** 通話の往復の回数（T155。--talk-rounds） */
+  talkRounds?: number;
   /** 自由対応の状況違いの試しも回すか（T129。--free-probe） */
   freeProbe?: boolean;
   /** 記録の名前の日時（テストで固定） */
@@ -155,7 +158,7 @@ export async function runEval(cfg: EvalConfig): Promise<{ summary: Summary; dir:
     const room = recordRoom(cfg.real ? roomClientOf({ ANTHROPIC_API_KEY: cfg.key }) : fakeRoom({ rng: rngOf(`${plan.seed}/room`), noise: cfg.noise, latency: cfg.latency ?? 0 }), log);
     if (worldAgent && plan.scenario === "virtual" && cfg.world === "session") room.reuse(worldAgent.agent_id);
     say(`回 ${i}/${cfg.runs}: ${plan.scenario}${plan.scale ? ` ${plan.scale.kind}:${plan.scale.level}` : ""}、${plan.participants.length} 人、種 ${plan.seed}`);
-    const outcome = await runDrill(plan, { client: claude, room, log, key: cfg.key, world: cfg.world, real: cfg.real, maxAdvances: cfg.maxAdvances, review: cfg.review, worldAgent, terms: cfg.terms, answerCalls: cfg.answerCalls ?? false });
+    const outcome = await runDrill(plan, { client: claude, room, log, key: cfg.key, world: cfg.world, real: cfg.real, maxAdvances: cfg.maxAdvances, review: cfg.review, worldAgent, terms: cfg.terms, answerCalls: cfg.answerCalls ?? false, ...(cfg.talkRounds ? { talkRounds: cfg.talkRounds } : {}) });
     room.finish();
     worldAgent = outcome.worldAgent ?? worldAgent;
     if (i <= cfg.judge && outcome.replay) {
@@ -203,7 +206,7 @@ export async function runEval(cfg: EvalConfig): Promise<{ summary: Summary; dir:
     client,
     seed: cfg.seed,
     world: cfg.world,
-    args: { runs: cfg.runs, scenarios: cfg.scenarios, people: cfg.people ?? "all", judge: cfg.judge, review: cfg.review, maxAdvances: cfg.maxAdvances, noise: cfg.noise, maxUsd: cfg.maxUsd, terms: cfg.terms, allPeople: cfg.allPeople ?? false, answerCalls: cfg.answerCalls ?? false },
+    args: { runs: cfg.runs, scenarios: cfg.scenarios, people: cfg.people ?? "all", judge: cfg.judge, review: cfg.review, maxAdvances: cfg.maxAdvances, noise: cfg.noise, maxUsd: cfg.maxUsd, terms: cfg.terms, allPeople: cfg.allPeople ?? false, answerCalls: cfg.answerCalls ?? false, talkRounds: cfg.talkRounds ?? null },
     runs,
     totals: totalsOf(runs),
     diversity: diversityOf(outcomes),
@@ -282,6 +285,7 @@ export function parseArgs(argv: ReadonlyArray<string>, env: Readonly<Record<stri
     allPeople: has("all-people"),
     ...(has("free-probe") ? { freeProbe: true } : {}),
     ...(has("answer-calls") ? { answerCalls: true } : {}),
+    ...(get("talk-rounds") ? { talkRounds: Math.max(1, Math.min(8, Math.floor(Number(get("talk-rounds")) || 1))) } : {}),
   };
 }
 
