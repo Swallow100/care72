@@ -5,7 +5,7 @@ import { SEED_PEOPLE } from "../../seed/people.ts";
 import { bracketOwner, bracketPair, extraItemFields, markPair, pageRepeat } from "./form-shape.ts";
 import { buildMappedSheet, pairedItem } from "./mapped-sheet.ts";
 import type { FormMapping, MappingField } from "./mapping.ts";
-import { buildOverlaySheet, FONT_MIN_PT, placeText, type PlaceCtx } from "./overlay-sheet.ts";
+import { buildOverlaySheet, FONT_MIN_PT, placeText, printedUnitOff, type PlaceCtx } from "./overlay-sheet.ts";
 import type { PageImage } from "./page-images.ts";
 import { seedRows } from "./print-harness.ts";
 import { settleRead } from "./read-settle.ts";
@@ -235,5 +235,15 @@ describe("T175 自由記入の項目は短くても別紙へ", () => {
     const sheet = buildOverlaySheet(buildMappedSheet(rows, mapping([f]), OPTS), [image]);
     expect(sheet.unplacedIds ?? []).not.toContain(f.id);
     expect(sheet.annex.map((a) => a.fieldId)).toContain(f.id);
+  });
+});
+
+describe("T175 刷ってある単位", () => {
+  it("名前の終わりに単位が刷ってある空きは数だけ。単位の無い欄・数でない値はそのまま", () => {
+    expect(printedUnitOff("0.5m", "洪水浸水想定区域（浸水想定　m）")).toBe("0.5");
+    expect(printedUnitOff("3 階", "戸建て（　階）")).toBe("3");
+    expect(printedUnitOff("0.5m", "洪水（　）")).toBe("0.5m");
+    expect(printedUnitOff("0.5m以上", "洪水（浸水想定　m）")).toBe("0.5m以上");
+    expect(printedUnitOff("0.5m", undefined)).toBe("0.5m");
   });
 });

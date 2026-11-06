@@ -391,7 +391,7 @@ export function buildOverlaySheet(mapped: MappedSheet, images: readonly PageImag
   });
   const inks = new Map<number, InkBlob[] | null>(images.map((img) => [img.page, img.ink ? unpackInk(img.ink) : null]));
   // ほかの欄の枠（字を置くとき、印刷の字と同じく避ける。隣の欄に掛けない。T133）
-  const boxesOf = new Map<number, Array<{ id: string; box: FieldBox; free: boolean; owner?: { id: string; option: number } }>>();
+  const boxesOf = new Map<number, Array<{ id: string; box: FieldBox; free: boolean; owner?: { id: string; option: number }; label: string }>>();
   const rowsAll = mapped.pages.flatMap((p) => p.sections.flatMap((s) => s.rows));
   // 選択肢の後ろの括弧の子の欄（T164）: 自分の値は空（mapped-sheet.ts の bracketCell）で、親の選ぶ欄の添え・その他の値の置き場
   const owners = bracketOwners(rowsAll.map((r) => r.field));
@@ -402,7 +402,7 @@ export function buildOverlaySheet(mapped: MappedSheet, images: readonly PageImag
       // 前の並びと違う項目の「その他（　）」（空にした欄）も、項目なしの書く所と同じ
       const stray = cell.kind === "empty" && !own && strayOther(field, rowsAll.map((r) => r.field));
       const free = (field.item === null && (field.shape === "text" || field.shape === "lines")) || !!child || stray;
-      boxesOf.set(field.page, [...(boxesOf.get(field.page) ?? []), { id: field.id, box: field.box, free, ...(child ? { owner: child } : {}) }]);
+      boxesOf.set(field.page, [...(boxesOf.get(field.page) ?? []), { id: field.id, box: field.box, free, label: field.label, ...(child ? { owner: child } : {}) }]);
     }
   const ctxOf = (page: number): PlaceCtx | null => {
     const p = pages.find((x) => x.page === page);
@@ -622,8 +622,15 @@ export type PlaceCtx = {
   page: OverlayPage;
   ink: InkBlob[] | null;
   /** 頁の欄の枠（置く欄のほかの欄に掛けない）。free は項目なしの字の欄（選ぶ欄の「その他（　）」の中の書く所に使える） */
-  others?: ReadonlyArray<{ id: string; box: FieldBox; free?: boolean; owner?: { id: string; option: number } }>;
+  others?: ReadonlyArray<{ id: string; box: FieldBox; free?: boolean; owner?: { id: string; option: number }; label?: string }>;
 };
+
+/** 欄の名前の終わりに単位が刷ってある空き（「（浸水想定　m）」）に置く「0.5m」は数だけ（T175。「0.5m m」と二重にしない） */
+export function printedUnitOff(text: string, label: string | undefined): string {
+  const m = text.normalize("NFKC").match(/^\s*([0-9.]+)\s*(階|歳|分|m|人|回|年|才)\s*$/);
+  if (!m || !label) return text;
+  return new RegExp(`[\\s　]${m[2]}\\s*\\)?\\s*$`).test(label.normalize("NFKC")) ? m[1] : text;
+}
 
 /** 隣の欄と見なす重なり（mm。これより小さい掛かりは枠の線の上の揺れ） */
 const NEIGHBOR_TOL_MM = 0.3;
@@ -822,7 +829,7 @@ function placeChoice(
   const putIn = (text: string, area: FieldBox, option: number): TextItem | null => {
     const child = childOf(area, option);
     if (child) {
-      const t = placeText(child.id, [text], child.box, pc);
+      const t = placeText(child.id, [printedUnitOff(text, child.label)], child.box, pc);
       if (t) filled.push(child.id);
       return t;
     }
