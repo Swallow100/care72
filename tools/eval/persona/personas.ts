@@ -207,7 +207,7 @@ export function personas(loginId: string = DEFAULT_LOGIN_ID): Persona[] {
           route: [{ click: "事業所" }, { click: "最初に戻す" }, { click: "初期化" }],
         },
       ],
-      near: [{ path: "^/office(\?|$)", item: "最初に戻す", within: 15, why: "最初に戻すが読みの後ろ" }],
+      near: [{ path: "^/office(\\?|$)", item: "最初に戻す", within: 15, why: "最初に戻すが読みの後ろ" }],
     },
     {
       id: "medical",
@@ -254,7 +254,7 @@ export function personas(loginId: string = DEFAULT_LOGIN_ID): Persona[] {
         { path: "^/people/", item: "追記", why: "医療班の書き足しの欄" },
         { path: "^/staff", text: "写すと受入頁", why: "カメラ起動が出ない" },
       ],
-      near: [{ path: "^/(\?|$)", item: "医療班", within: 12, why: "医療班の入口が読みの後ろ" }],
+      near: [{ path: "^/(\\?|$)", item: "医療班", within: 12, why: "医療班の入口が読みの後ろ" }],
     },
     {
       id: "judge10",
