@@ -289,7 +289,7 @@ export class FakeSurface implements Surface {
             ? [
                 {
                   role: "button",
-                  name: "戻す",
+                  name: "初期化",
                   zone: "窓:初期化",
                   on: (s: State) => {
                     const keep = { loggedIn: s.loggedIn, role: s.role };

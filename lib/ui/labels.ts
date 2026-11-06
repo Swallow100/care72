@@ -25,9 +25,12 @@ export const PC_HINT_LABELS = {
 /** 呼ぶ側の確認の窓（題・決める方のボタン）。本文は各画面の既存の言葉 */
 export const CONFIRM_LABELS = {
   resetTitle: "初期化",
-  resetOk: "戻す",
+  /** 決める方は何をするかの語（前は平時復帰の窓と同じ「戻す」で、何を戻すか読めなかった。T173） */
+  resetOk: "初期化",
+  /** 初期化の窓のやめる方 */
+  stayCurrent: "現状維持",
   normalTitle: "平時復帰",
-  normalOk: "戻す",
+  normalOk: "平時復帰",
   /** 平時から災害モードへの切替（T79） */
   disasterTitle: "災害切替",
   disasterOk: "切替",

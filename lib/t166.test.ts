@@ -90,9 +90,9 @@ describe("2. 避難先: 目次・保存", () => {
     expect(src).toContain("href={`#${anchorOf(g.id)}`}");
     expect(src).toMatch(/\.focus\(\{ preventScroll: true \}\)/);
   });
-  it("保存と取消は画面の下に留める。数は「変更 N 件」、保存のあとは保存済", () => {
+  it("保存と編集終了は画面の下に留める。数は「変更 N 件」、保存のあとは保存済", () => {
     expect(src).toMatch(/sticky bottom-0[^"]*" data-edit-bar/);
-    expect(src).toContain("{INTAKE_LABELS.changeCount} {changes.length} 件");
+    expect(src).toContain("`${INTAKE_LABELS.changeCount} ${changes.length} 件`");
     expect(src).toContain("data-edit-saved={section}");
     expect(short(INTAKE_LABELS.groupMove)).toBe(true);
     expect(short(INTAKE_LABELS.changeCount)).toBe(true);
@@ -258,9 +258,10 @@ describe("5. 様式 9 の見本と最初に戻す", () => {
     expect(src).toContain("{PRINT_BAR_LABELS.close}");
     expect(src).not.toContain("{L.close}");
   });
-  it("最初に戻すは事業所の画面の右の列の頭", () => {
+  it("最初に戻すは事業所の画面の頭（列より前。T173 で右の列の頭から移した）", () => {
     const page = read("../app/office/page.tsx");
-    expect(page.indexOf("<ResetSection state={reset} />")).toBeLessThan(page.indexOf("<AddCareManager count="));
+    expect(page.indexOf("<ResetAction />")).toBeGreaterThan(-1);
+    expect(page.indexOf("<ResetAction />")).toBeLessThan(page.indexOf("<ModeSection state="));
   });
 });
 

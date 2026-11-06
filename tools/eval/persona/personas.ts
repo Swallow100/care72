@@ -198,8 +198,8 @@ export function personas(loginId: string = DEFAULT_LOGIN_ID): Persona[] {
           text: "事業所のデモのデータを最初の状態に戻す",
           done: { path: "reset=done" },
           // 印刷見本の間も上の帯は残る（T162）ので、見本を閉じずに「事業所」へ
-          // 確認の窓の決める物は「戻す」（lib/ui/labels.ts の CONFIRM_LABELS.resetOk）
-          route: [{ click: "事業所" }, { click: "最初に戻す" }, { click: "戻す" }],
+          // 確認の窓の決める物は「初期化」（lib/ui/labels.ts の CONFIRM_LABELS.resetOk。T173）
+          route: [{ click: "事業所" }, { click: "最初に戻す" }, { click: "初期化" }],
         },
       ],
     },
