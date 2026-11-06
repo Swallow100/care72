@@ -27,7 +27,7 @@ function Item({ it }: { it: OverlayItem }) {
   if (it.kind === "text") {
     return (
       <div
-        className={`ov-text${it.top ? " ov-top" : ""}${it.tight ? " ov-tight" : ""}`}
+        className={`ov-text${it.top ? " ov-top" : ""}${it.tight ? " ov-tight" : ""}${it.snug ? " ov-snug" : ""}`}
         style={{ ...at(it.box), fontSize: `${it.fontPt}pt` }}
         data-field={it.fieldId}
         data-font={it.fontPt}

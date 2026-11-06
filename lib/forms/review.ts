@@ -24,7 +24,7 @@ import type { MappedSheet } from "./mapped-sheet.ts";
 import type { FieldBox, FieldShape } from "./mapping.ts";
 import { MATSUYAMA_FIELDS, type Cell, type MatsuyamaKey, type MatsuyamaSheet } from "./matsuyama.ts";
 import { MEDICAL_FIELDS, type MedicalKey, type MedicalSummary } from "./medical-summary.ts";
-import { ANNEX_MARK, annexGaps, cellLines, FONT_MIN_PT, textEm, UNPLACED_REASON_LABELS, type OverlayItem, type OverlaySheet } from "./overlay-sheet.ts";
+import { ANNEX_MARK, annexGaps, cellLines, FONT_MIN_PT, textEm, textPads, UNPLACED_REASON_LABELS, type OverlayItem, type OverlaySheet } from "./overlay-sheet.ts";
 import { matsuyamaFieldName } from "./unconfirmed.ts";
 import { MATSUYAMA_FRAME } from "./frame-matsuyama.ts";
 import { KIROKU_FRAME } from "./frame-kiroku.ts";
@@ -252,10 +252,6 @@ export function kirokuSubject(summary: MedicalSummary, sheet: OverlaySheet, prin
 // ---------- 字の箱 ----------
 
 const PT_MM = 25.4 / 72;
-const LINE_HEIGHT = 1.15;
-/** 紙面の字の欄の内側の空き（mm。overlay-paper.css の .ov-text と同じ） */
-const PAD_X_MM = 0.8;
-const PAD_Y_MM = 0.5;
 /** はみ出し・重なりと見る大きさ（mm）。見積もりの誤差より大きく */
 const OVER_TOL_MM = 0.25;
 const OVERLAP_MIN_MM = 0.6;
@@ -268,10 +264,12 @@ const toMm = (b: FieldBox, image: { w: number; h: number }): Rect => ({ x: b.x *
 export function textExtent(it: Extract<OverlayItem, { kind: "text" }>, image: { w: number; h: number }): Rect {
   const box = toMm(it.box, image);
   const font = it.fontPt * PT_MM;
+  // 狭い空き（tight・snug）の字は空きと行の高さが違う（T160。紙面と同じ物で測る）
+  const { padX, padY, lineHeight } = textPads(it);
   const w = Math.max(0, ...it.lines.map((l) => textEm(l) * font));
-  const h = it.lines.length * font * LINE_HEIGHT;
-  const y = it.top ? box.y + PAD_Y_MM : box.y + (box.h - h) / 2;
-  return { x: box.x + PAD_X_MM, y, w, h };
+  const h = it.lines.length * font * lineHeight;
+  const y = it.top ? box.y + padY : box.y + (box.h - h) / 2;
+  return { x: box.x + padX, y, w, h };
 }
 
 function inter(a: Rect, b: Rect): Rect | null {

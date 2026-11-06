@@ -107,6 +107,9 @@ const formPaper = (r: FormsResultLike, id: string): Raw => {
   return ps.length > 0 ? [sumOf(ps.map((p) => p.score!.hit)), sumOf(ps.map((p) => p.score!.filled))] : null;
 };
 const looks = (r: FormsResultLike, k: "unplaced" | "blanks" | "overlap" | "outside") => sumOf(r.papers.map((p) => p.look?.[k] ?? 0));
+/** T160 で足した置けなかった欄の種類。前の回の結果に無ければ空（0 と見せない） */
+const lookKinds = (r: FormsResultLike, k: "unplacedDate" | "unplacedPicked" | "unplacedContact"): number | null =>
+  r.papers.some((p) => p.look?.[k] !== undefined) ? sumOf(r.papers.map((p) => p.look?.[k] ?? 0)) : null;
 const reviews = (r: FormsResultLike) => r.papers.map((p) => p.review).filter((x): x is NonNullable<typeof x> => !!x);
 const hasReview = (r: FormsResultLike) => reviews(r).length > 0;
 
@@ -121,6 +124,11 @@ const FORMS: Item[] = [
   { id: "forms.paper.form9", bench: "forms", label: "紙 様式 9", better: "higher", unit: "rate", agg: "sum", forms: (r) => formPaper(r, "form9") },
   { id: "forms.unplaced", bench: "forms", label: "置けなかった欄", better: "lower", unit: "count", agg: "sum", forms: (r) => looks(r, "unplaced") },
   { id: "forms.blanks", bench: "forms", label: "台帳あり空欄", better: "lower", unit: "count", agg: "sum", forms: (r) => looks(r, "blanks") },
+  // T160: 日付の欄・選ぶ欄の当て・連絡先（評価の 6 回目の直すべき所の 5〜7）
+  { id: "forms.dateFix", bench: "forms", label: "日付の要修正（見直し）", better: "lower", unit: "count", agg: "sum", forms: (r) => (hasReview(r) ? sumOf(reviews(r).map((x) => x.rule.kinds.date ?? 0)) : null) },
+  { id: "forms.unplacedDate", bench: "forms", label: "置けない日付", better: "lower", unit: "count", agg: "sum", forms: (r) => lookKinds(r, "unplacedDate") },
+  { id: "forms.unplacedPicked", bench: "forms", label: "当てたのに紙に出ない選択肢", better: "lower", unit: "count", agg: "sum", forms: (r) => lookKinds(r, "unplacedPicked") },
+  { id: "forms.unplacedContact", bench: "forms", label: "連絡先の置けず", better: "lower", unit: "count", agg: "sum", forms: (r) => lookKinds(r, "unplacedContact") },
   { id: "forms.reviewDup", bench: "forms", label: "見直しの重複", better: "lower", unit: "count", agg: "sum", forms: (r) => (hasReview(r) ? sumOf(reviews(r).map((x) => x.rule.kinds.duplicate ?? 0)) : null) },
   { id: "forms.reviewCheck", bench: "forms", label: "見直しの要確認", better: "lower", unit: "count", agg: "sum", forms: (r) => (hasReview(r) ? sumOf(reviews(r).map((x) => x.rule.check)) : null) },
   { id: "forms.reviewFix", bench: "forms", label: "見直しの要修正", better: "lower", unit: "count", agg: "sum", forms: (r) => (hasReview(r) ? sumOf(reviews(r).map((x) => x.rule.fix)) : null) },

@@ -61,6 +61,11 @@
 .paper.overlay .ov-text.ov-tight {
   padding: 0.1mm 0.3mm;
 }
+/* 狭い空きでも入らない 1 行の短い値（低いフリガナの行・刷ってある「年 月 日」の間の空き。T160。lib/forms/overlay-sheet.ts の SNUG_*） */
+.paper.overlay .ov-text.ov-snug {
+  padding: 0.05mm;
+  line-height: 1;
+}
 .paper.overlay .ov-ln {
   display: block;
   white-space: pre;

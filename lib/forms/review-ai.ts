@@ -76,7 +76,7 @@ export function paintedFields(s: ReviewSubject, key: PseudonymKey): Set<string> 
 // ---------- ブラウザで描く物 ----------
 
 export type ComposeDraw =
-  | { kind: "text"; box: FieldBox; lines: string[]; fontPt: number; top: boolean }
+  | { kind: "text"; box: FieldBox; lines: string[]; fontPt: number; top: boolean; tight?: true; snug?: true }
   | { kind: "mark"; box: FieldBox; mark: "check" | "circle" };
 
 export type ComposePage = {
@@ -116,7 +116,7 @@ export function composePlan(s: ReviewSubject, painted: ReadonlySet<string>, key:
         paints.push(grow(it.box));
         continue;
       }
-      if (it.kind === "text") draws.push({ kind: "text", box: it.box, lines: it.lines, fontPt: it.fontPt, top: it.top });
+      if (it.kind === "text") draws.push({ kind: "text", box: it.box, lines: it.lines, fontPt: it.fontPt, top: it.top, ...(it.tight ? { tight: true as const } : {}), ...(it.snug ? { snug: true as const } : {}) });
       else if (it.kind === "mark") draws.push({ kind: "mark", box: it.box, mark: it.mark });
     }
     // 塗る欄の矩形も塗る（字が欄の中のどこにあっても隠れるように）
