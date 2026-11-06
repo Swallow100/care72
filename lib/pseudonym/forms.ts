@@ -375,6 +375,7 @@ const KANA_COMMON = new Set(
   でんち でんき ろうそく ほうたい くるまいす おべんとう べんとう おにぎり ぱん おかゆ かゆ おゆ ふろ おふろ といれ げんかん だいどころ
   にわ まど かいだん にかい いっかい ろうか ひなんじょ こうみんかん たいいくかん しせつ おてら じんじゃ かわ やま さか
   けさ ゆうべ おととい しあさって こんや こんばん よなか まよなか あけがた ひるま さきほど のちほど いったん こんど このあと あのあと あとで
+  あいだ いただきます いただく いただき はだし くだもの
   おもい かるい とおい ちかい はやい おそい ながい みじかい つめたい あぶない すごい えらい しんどい きつい うれしい かなしい たのしい`
     .split(/\s+/)
     .filter(Boolean),
@@ -384,8 +385,12 @@ const KANA_COMMON_LIST = [...KANA_COMMON];
 /** かなの名前の後ろに来る助詞（「ひできが」「みつきに」）。か・よ・ね（文の終わり）は入れない */
 const NAME_PARTICLES = new Set([..."がのはをにへとでもや"]);
 
-/** かなの名前の後ろの切れ目（助詞か、断定の語尾「です・だ」。「孫のみつきだよ」の「みつき」。T159） */
-const nameBoundary = (rest: string) => NAME_PARTICLES.has(rest[0] ?? "") || /^(?:です|でした|でしょ|だ|じゃ)/u.test(rest);
+/**
+ * かなの名前の後ろの切れ目（助詞か、断定の語尾「です・だ」。「孫のみつきだよ」の「みつき」。T159）。
+ * 「だ」は後ろが文の終わり・句読点・よ・ね・から・けど などのときだけ（「いただきます」「はだし」を割らない）
+ */
+const nameBoundary = (rest: string) =>
+  NAME_PARTICLES.has(rest[0] ?? "") || /^(?:です|でした|でしょ|じゃ|だ(?:$|から|けど|[よねわなっかけろともが。、，！？!?」』）)\s]))/u.test(rest);
 
 const isKanaCommon = (w: string) => KANA_COMMON.has(w) || KANA_COMMON.has(w.replace(/^[おご]/u, "")) || /[てで]$/u.test(w);
 
@@ -455,6 +460,8 @@ const plainCommon = (w: string) => isKanaCommon(w) && !NAMEISH_COMMON.has(w);
  */
 function kanaNameLength(w: string): number | null {
   if (w.length < 2) return null;
+  // 語全体が一般の語・除く語なら、語尾を外す前に名前でない（「からだ」を「から」＋「だ」と読まない）
+  if (isKanaCommon(w) || isNotName(w, "さん")) return null;
   if (w.length >= 3 && PREDICATE_TAIL.test(w)) return null;
   const copula = COPULA_TAIL.exec(w);
   if (copula) return kanaNameLength(copula[1]);
