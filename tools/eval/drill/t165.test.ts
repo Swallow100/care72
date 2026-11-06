@@ -119,7 +119,7 @@ describe("人ごとの筋の数（T165）", () => {
     expect(r.numbers).toMatchObject({ people: 3, noKind: 1, sameArc: 0, kindJaccard: 0 });
     expect(r.numbers.kinds).toBeCloseTo(2 / 3);
     expect(r.hits.map((h) => h.rule)).toEqual(["no_kind"]);
-    expect(metaOf(r.hits[0])).toMatchObject({ cause: "drill:persons:no_kind", accept: { item: "drill.personNoKind", op: "<=", value: 0 } });
+    expect(metaOf(r.hits[0])).toMatchObject({ cause: "drill:persons:no_kind", severity: "low" });
     // 2 人が同じ種類だけなら same_arc
     const same = outcome();
     same.replay!.ticks[0].incidents.push(inc("p-10", "landslide_warn", 22, "土砂災害 警戒"));
@@ -172,6 +172,9 @@ describe("偽の client（人ごとの筋の数が summary・findings.json・点
       expect(r.summary.judge[0]?.error ?? null).toBeNull();
       const f = readFindings(r.findingsPath)!;
       for (const x of f.findings.filter((x) => x.cause.startsWith("drill:persons:"))) expect(x.accept).toBeDefined();
+      // 大雨の表の行のする事（画面の記録の「4 問の途中で止まった」）は裏側の言葉に数えない。T165 の守りは偽の回で外れない
+      expect(f.findings.filter((x) => x.cause === "drill:facts:backstage")).toEqual([]);
+      expect(f.findings.filter((x) => /^guard:drill-(backstage|swap-news|repeat-intent)/.test(x.cause))).toEqual([]);
     },
     SLOW,
   );

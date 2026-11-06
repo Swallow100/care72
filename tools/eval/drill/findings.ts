@@ -149,7 +149,7 @@ export function metaOf(h: CheckHit): Meta | null {
         severity: "low",
         screen: "訓練 > 経過（出来事）",
         suspects: ["lib/drill/director.ts", "lib/drill/event-catalog.ts", "lib/drill/time-odds.ts"],
-        accept: h.rule === "no_kind" ? { item: "drill.personNoKind", op: "<=", value: 0 } : { item: `count:drill:persons:${h.rule}`, op: "<=", value: 0 },
+        // 受け入れは同じ原因の数（count:drill:persons:…）。r7 で出来事の無い人は 36% なので、割合の線は本物の回の数で決める
       };
     default:
       return null;
