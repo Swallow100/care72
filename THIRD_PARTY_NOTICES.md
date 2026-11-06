@@ -541,6 +541,12 @@ SIL Open Font License 1.1 の全文はこのファイルの末尾。
 
 lib/jma/fixtures/sample の XML は、防災情報 XML の形に合わせて作った見本で、気象庁の電文の写しではない。
 
+## 全国の市区町村の表（リポジトリに入れる、公的な表を加工した表）
+
+| 名前 | 使う所 | 条件と出典の表示 |
+| --- | --- | --- |
+| 全国の市区町村の表（lib/municipality/names-data.ts・geo-data.ts。1,918 行・1,912 行） | 事業所の地域を都道府県 → 市区町村から選ぶ欄と、選んだ団体コードから決める気象庁の欄・地図の中心と広さ・上の帯の警報・様式の一覧の初めの市（lib/office/area.ts。T154） | 総務省「全国地方公共団体コード」（令和6年1月1日現在）、気象庁「予報区等の表」（area.json）・「予報区等GISデータ」（市町村等〔気象警報等〕）を加工して作成。どれも公共データ利用規約（第1.0版）に準拠（総務省 https://www.soumu.go.jp/menu_kyotsuu/policy/tyosaku.html 、気象庁 https://www.jma.go.jp/jma/kishou/info/coment.html）。元のファイルは入れず、要る列と、形から作った代表の点と範囲だけ。取った日・URL・SHA-256・作り方は [docs/sources/municipalities.md](docs/sources/municipalities.md) |
+
 ## 様式と出典の資料（リンクだけ。PDF はリポジトリに入れない）
 
 書類の欄の名前と順はコードに持ち、元の PDF はリンクする。引用は短くし、出典を付ける。
