@@ -77,7 +77,8 @@ export function TalkBox({
   const boxRef = useRef<HTMLDivElement | null>(null);
   // 読み直した記録の方が長ければそちら（別の端末で足した往復）
   const shown = stored.length > lines.length ? stored : lines;
-  const open = !closed && canTalk(r);
+  // 通話の画面は切るまで出す（8 往復に届いても、切るで切った時刻を残す。着信と同じ）。返せるのは続けられる間だけ
+  const open = !closed && r?.status === "connected" && r.speech !== null && r.talkEnd === undefined;
 
   useEffect(() => {
     window.dispatchEvent(new CustomEvent(RINGING, { detail: open }));
@@ -186,7 +187,7 @@ export function TalkBox({
             <CallReply
               asks={CALL_OUT_ASKS}
               lines={shown}
-              canReply={!stopped}
+              canReply={!stopped && canTalk({ ...r!, talk: shown })}
               busy={busy}
               onSend={send}
               onHangUp={hangUp}

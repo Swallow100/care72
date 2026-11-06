@@ -197,8 +197,6 @@ export const TALK_UI = {
   speechFailed: "認識失敗",
   /** 外へ掛けた電話の通話の画面の頭 */
   calling: "発信",
-  /** 通話の画面を開き直す */
-  reopen: "通話",
 } as const;
 
 // ---------- Claude に渡す言い方（画面の言葉ではない） ----------
