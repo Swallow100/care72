@@ -24,6 +24,7 @@ import {
   powerBack,
   sameWording,
   batteryTopicNext,
+  carryPromises,
   sentenceFix,
   sentenceSlip,
   slipContextOf,
@@ -78,7 +79,9 @@ const stateOf = (u: LooseTurn & { at: number }, prev: PersonState | null = null)
     hasMedicine: u.hasMedicine ?? null,
   };
   const known = s.color === "red" && s.atHome === false ? carryPlace(prev, s) : null;
-  return known === "shelter" ? { ...s, placeKnown: known } : s;
+  // 言って済んでいない予定も engine と同じに引き継ぐ（T165）
+  const promised = carryPromises(prev, s);
+  return { ...s, ...(known === "shelter" ? { placeKnown: known } : {}), ...(promised.length > 0 ? { promised } : {}) };
 };
 
 const cut = (t: string) => Array.from(t).slice(0, 40).join("");

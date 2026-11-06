@@ -141,6 +141,16 @@ export function metaOf(h: CheckHit): Meta | null {
         suspects: ["lib/drill/persona.ts", "lib/drill/hooks.ts", "lib/drill/person-facts.ts", "lib/drill/talk-turn.ts"],
         accept: h.rule === "place_drift" ? zero("drill.talkPlaceDrift") : h.rule === "repeat" ? { item: "drill.talkRepeat", op: "<=", value: 0.05 } : { item: `count:drill:talk:${h.rule}`, op: "<=", value: 0 },
       };
+    case "persons":
+      return {
+        cause: `drill:persons:${h.rule}`,
+        rule: `persons:${h.rule}`,
+        title: PERSON_TITLES[h.rule] ?? `人ごとの筋（${h.rule}）`,
+        severity: "low",
+        screen: "訓練 > 経過（出来事）",
+        suspects: ["lib/drill/director.ts", "lib/drill/event-catalog.ts", "lib/drill/time-odds.ts"],
+        accept: h.rule === "no_kind" ? { item: "drill.personNoKind", op: "<=", value: 0 } : { item: `count:drill:persons:${h.rule}`, op: "<=", value: 0 },
+      };
     default:
       return null;
   }
@@ -154,6 +164,15 @@ const FACT_TITLES: Readonly<Record<string, string>> = {
   place_text: "いる所と食い違う言葉",
   remain_mismatch: "電池・予備の残りの数が帳面と食い違う",
   old_news: "前に伝えた事を新しい事のように言う",
+  repeat_intent: "前に言って済んでいない予定（119 へ掛ける・取りに行く）を新しく言い直す",
+  swap_news: "前に予備に替えた事を、また替えたと言う",
+  backstage: "本人役の言葉に訓練の裏側の言葉（問いの途中・訓練）",
+};
+
+/** 人ごとの筋の題（T165） */
+const PERSON_TITLES: Readonly<Record<string, string>> = {
+  no_kind: "その人を指す出来事が 1 つも無い人",
+  same_arc: "出来事の種類の集合がそっくり同じ人の組",
 };
 
 /** 通話の往復の題（T158） */
