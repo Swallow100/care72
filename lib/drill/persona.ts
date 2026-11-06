@@ -614,10 +614,25 @@ function ownIncidents(incidents: ReadonlyArray<DrillIncident>, person: string): 
   return incidents.filter((e) => !e.person || e.person === person);
 }
 
+/**
+ * 想定の表の行のうち、機器が止まったまま家にいる人の緑を赤にする（T174。評価の 9 回目で、地震の想定の 6 時間の「予備に替えた」の緑の行と、予備が切れる時刻が重なり、
+ * 切れた知らせが緑で届いた）。表の言う事の元も使わない（まだ動いている前提の文なので）。ほかの行は表のまま。どちらもコードの決めで、AI は決めない
+ */
+function rowsFor(fixed: ReadonlyArray<FixedTurn>, facts: Facts): FixedTurn[] {
+  if (!stuckDown(facts)) return [...fixed];
+  return fixed.map((f): FixedTurn => {
+    if (f.color !== "green") return f;
+    const { whereNow, saying: _saying, ...rest } = f;
+    return { ...rest, color: "red", ...(whereNow === "home" ? { atHome: true } : {}) };
+  });
+}
+
 /** 刻みの文（時刻・呼ばれた理由・状況・世界・前の様子・ケアマネの手と結果・想定の表の行） */
 export function tickText(input: PersonaInput, persona: Persona): string {
   const incidents = ownIncidents(input.incidents, input.person);
   const now = nowMinuteOf(input);
+  const facts = personaFacts(persona, { person: input.person, world: input.world, state: input.state, actions: input.actions ?? [], now });
+  const rows = rowsFor(input.fixed, facts);
   const acts = actionsSince(input);
   const reason = reasonLine(input, incidents, acts, now);
   return [
@@ -631,11 +646,11 @@ export function tickText(input: PersonaInput, persona: Persona): string {
     // T121: 持ちこたえる時間の今（コードの計算）。言葉はこれと食い違わない
     ...clockLines(persona, input.world, input.person, now),
     // T130: 人ごとの事実の帳面と計画（コードが引く。いる所・前に言った事・来た人・声・同居・電気と予備）
-    factsBlock(personaFacts(persona, { person: input.person, world: input.world, state: input.state, actions: input.actions ?? [], now })),
+    factsBlock(facts),
     `前の連絡: ${stateWords(input.state)}`,
     acts.length > 0 ? ["ケアマネがした事:", ...acts.map((a) => `- ${actionWords(a, persona)}`)].join("\n") : "ケアマネがした事: なし",
-    input.fixed.length > 0
-      ? ["想定の表のこの刻みの行（この通りに連絡する）:", ...input.fixed.map(fixedWords)].join("\n")
+    rows.length > 0
+      ? ["想定の表のこの刻みの行（この通りに連絡する）:", ...rows.map(fixedWords)].join("\n")
       : "想定の表のこの刻みの行: なし（連絡するかは自分で決める）",
   ].join("\n");
 }
@@ -877,7 +892,9 @@ export function personaTurns(input: PersonaInput, persona: Persona, answer: Pers
   const speechBy = (source: FixedTurn["source"]) => fresh(cleanPersonaWords(dropSlips(answer.speech, speakerOf(persona, source), persona), persona.key, SPEECH_MAX));
 
   if (input.fixed.length > 0) {
-    const fixed = [...input.fixed].sort((a, b) => eventHour(a, input.hour) - eventHour(b, input.hour));
+    // 機器が止まったまま家にいる人の緑の行は赤に（T174）
+    if (stuckDown(facts) && input.fixed.some((f) => f.color === "green")) onDrop?.("calm_while_down");
+    const fixed = rowsFor(input.fixed, facts).sort((a, b) => eventHour(a, input.hour) - eventHour(b, input.hour));
     const lastRow = fixed[fixed.length - 1];
     // 表の行は骨（色・4 問・いる所は表のまま）。言葉だけ帳面と表の行のいる所で見る
     const rowPlace = placeOfState({ color: lastRow.color, whereNow: lastRow.whereNow ?? null, atHome: lastRow.atHome ?? null }) ?? facts.place?.where ?? null;
@@ -890,7 +907,7 @@ export function personaTurns(input: PersonaInput, persona: Persona, answer: Pers
       const aiDoing = last && f.doing == null ? doingOk : null;
       return {
         ...turnOfFixed(f, input.hour),
-        saying: aiSaying ?? f.saying ?? null,
+        saying: aiSaying ?? f.saying ?? (last && stuckDown(facts) ? downSaying(input.state?.saying, nowMinuteOf(input)) : null),
         doing: f.doing ?? aiDoing,
         ai: aiSaying !== null || aiDoing !== null,
       };

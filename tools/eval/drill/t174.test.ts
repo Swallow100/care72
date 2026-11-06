@@ -102,7 +102,7 @@ describe("機器が止まったあとの検査", () => {
     expect(hits[0]?.minute).toBe(Math.round(plan.devices[0].hours! * 60));
   });
 
-  it("止まったまま家にいる間の AI の緑を数える。止まる前・表のコードの言葉・戻ったあとは数えない", () => {
+  it("止まったまま家にいる間の AI の緑を数える。止まる前・AI の失敗で表の固定の言葉に戻った物・戻ったあとは数えない", () => {
     const h = (CUT + 30) / 60;
     expect(rulesOf(run([tick(0, h, [turn(DOWN, h, "green", { whereNow: "home" })]), endTick], [], OUT), DOWN)).toContain("down_green");
     expect(rulesOf(run([tick(0, 1, [turn(DOWN, 1, "green", { whereNow: "home" })]), endTick], [], OUT), DOWN)).not.toContain("down_green");

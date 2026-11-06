@@ -8,7 +8,7 @@ import type { DrillState, PersonaInput, PersonState } from "./engine.ts";
 import { createClockHooks } from "./hooks.ts";
 import { CALL_FIXED_SPEECH } from "./labels.ts";
 import { DOWN_FOLLOW_MINUTES, DOWN_SAYINGS, downCuts, factLines, factsOf, planOf, sentenceSlip, stuckDown, type SlipContext } from "./person-facts.ts";
-import { buildPersona, personaTurns, TALK_REPEAT_ACKS, type PersonaAnswer } from "./persona.ts";
+import { buildPersona, personaTurns, TALK_REPEAT_ACKS, tickText, type PersonaAnswer } from "./persona.ts";
 import { EMPTY_WORLD, type WorldState } from "./scenarios.ts";
 import { QUICK_REPLIES } from "./talk-quick.ts";
 
@@ -76,6 +76,19 @@ describe("機器が止まったあとの連絡", () => {
     const f = (s: PersonState) => factsOf({ person: id, world: outage(), state: s, actions: [], now: after, plan, inOutage: true });
     expect(stuckDown(f(state({ at: 1 })))).toBe(true);
     expect(stuckDown(f(state({ at: 1, color: "green", whereNow: "shelter", atHome: null })))).toBe(false);
+  });
+
+  it("想定の表の緑の行も、止まったまま家にいる間は赤にする。表の言う事の元を使わない。止まる前は表のまま", () => {
+    const row = { person: id, color: "green" as const, source: "family" as const, whereNow: "home" as const, saying: "予備で動いています" };
+    const dropped: string[] = [];
+    const [t] = personaTurns(input(cut, { fixed: [row] }), persona, answer({ speech: "" }), (r) => dropped.push(r));
+    expect(t).toMatchObject({ color: "red", whereNow: null, atHome: true });
+    expect(DOWN_SAYINGS).toContain(t.saying);
+    expect(dropped).toContain("calm_while_down");
+    expect(tickText(input(cut, { fixed: [row] }), persona)).not.toContain("予備で動いています");
+    const [before] = personaTurns(input(cut - 60, { fixed: [row] }), persona, answer({ speech: "" }));
+    expect(before).toMatchObject({ color: "green", whereNow: "home", saying: "予備で動いています" });
+    expect(tickText(input(cut - 60, { fixed: [row] }), persona)).toContain("予備で動いています");
   });
 
   it("「落ち着いたまま」は予備が切れた人の帳面にも書く", () => {

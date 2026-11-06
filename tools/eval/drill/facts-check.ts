@@ -275,7 +275,7 @@ export function factHits(outcome: RunOutcome, people: Readonly<Record<string, Fa
   // 機器の予備が切れたあと長く連絡が無い（T167。評価の 8 回目で、予備が切れてから 11 時間、本人役が呼ばれず、審査役が本当らしさに欠けると読んだ）。
   // 切れた時刻ちょうどの連絡は数えない（T174。評価の 9 回目で、切れた知らせのあと 13 時間誰からも連絡が無かった。見るのはそのあとの反応）。
   // 電気が戻った・電源が届いた人、結末の人、家の外へ移った人、押せる人のいない人は見ない。予備も外の電源も無い機器は内蔵が切れた時刻から（T174）
-  // down_green: 機器が止まったまま家にいる間の緑（T174。本人役の緑は門が赤にするので 0 のはず。表の行は骨なので見ない）
+  // down_green: 機器が止まったまま家にいる間の緑（T174。本人役の緑も表の行の緑も門が赤にするので 0 のはず。AI の失敗で表の固定の安否に戻った物は見ない）
   {
     const o = world.outage;
     const end = Math.max(...r.ticks.map((x) => Math.round(x.hour * 60)), 0);
@@ -293,7 +293,7 @@ export function factHits(outcome: RunOutcome, people: Readonly<Record<string, Fa
         const backAt = back.length > 0 ? Math.min(...back) : Infinity;
         for (const u of turns) {
           const m = Math.round(u.at * 60);
-          if (u.ai && u.color === "green" && m >= cutAt && m < backAt && !table.has(`${person}|${m}`) && !awayBy(m)) hit("down_green", person, m, `${d.category} 止まったまま緑`);
+          if (u.ai && u.color === "green" && m >= cutAt && m < backAt && !awayBy(m)) hit("down_green", person, m, `${d.category} 止まったまま緑`);
         }
         const endedAt = world.ended?.[person] ? end : null;
         if (until > end || endedAt !== null || back.some((x) => x <= until) || awayBy(until)) continue;
