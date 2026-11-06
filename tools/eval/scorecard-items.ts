@@ -175,7 +175,7 @@ const catalogTried = (r: FormsResultLike) => r.forms.filter((f) => f.catalog && 
 
 const looks = (r: FormsResultLike, k: "unplaced" | "blanks" | "overlap" | "outside") => sumOf(r.papers.map((p) => p.look?.[k] ?? 0));
 /** T160 で足した置けなかった欄の種類。前の回の結果に無ければ空（0 と見せない） */
-const lookKinds = (r: FormsResultLike, k: "unplacedDate" | "unplacedPicked" | "unplacedContact"): number | null =>
+const lookKinds = (r: FormsResultLike, k: "unplacedDate" | "unplacedPicked" | "unplacedContact" | "markNoContent"): number | null =>
   r.papers.some((p) => p.look?.[k] !== undefined) ? sumOf(r.papers.map((p) => p.look?.[k] ?? 0)) : null;
 const reviews = (r: FormsResultLike) => r.papers.map((p) => p.review).filter((x): x is NonNullable<typeof x> => !!x);
 const hasReview = (r: FormsResultLike) => reviews(r).length > 0;
@@ -241,6 +241,7 @@ const FORMS: Item[] = [
   { id: "forms.unplacedDate", bench: "forms", label: "置けない日付", better: "lower", unit: "count", agg: "sum", forms: (r) => lookKinds(r, "unplacedDate") },
   { id: "forms.unplacedPicked", bench: "forms", label: "当てたのに紙に出ない選択肢", better: "lower", unit: "count", agg: "sum", forms: (r) => lookKinds(r, "unplacedPicked") },
   { id: "forms.unplacedContact", bench: "forms", label: "連絡先の置けず", better: "lower", unit: "count", agg: "sum", forms: (r) => lookKinds(r, "unplacedContact") },
+  { id: "forms.markNoContent", bench: "forms", label: "印を付けた □ の中身が紙に無い", better: "lower", unit: "count", agg: "sum", forms: (r) => lookKinds(r, "markNoContent") },
   // T164: 紙の置き間違い（正解の表のある様式の、違う字＋余分な字）と、正解の紙に無い □ の印（台帳の値に当たらない選択肢の印）
   {
     id: "forms.paperWrong",

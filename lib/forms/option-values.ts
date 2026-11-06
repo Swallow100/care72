@@ -340,6 +340,18 @@ export function freeCodes(item: LedgerItemKey, words: readonly string[]): string
 }
 
 /**
+ * 自由な文が項目の値を 1 つだけ言っているときのコード（T168）。言い換えの表（words・not）で当たる値がちょうど 1 つのときだけ返す。
+ * 2 つ以上（「車で迎え」）・当たらない（「自転車」）は null（推し量らない）。評価の 8 回目で、手段の値が「その他」、補記が「民生委員と歩いて」の台帳に
+ * 紙が「その他」の □ を選び、徒歩の □ の様式で正解に無い印になった
+ */
+export function soleCodeOfText(item: LedgerItemKey, text: string): string | null {
+  const n = norm(text);
+  if (n === "") return null;
+  const hits = (ITEM_CODES[item] ?? []).filter((d) => !d.not?.some((x) => n.includes(norm(x))) && d.words.some((w) => n.includes(norm(w))));
+  return hits.length === 1 ? hits[0].code : null;
+}
+
+/**
  * 確かめの画面で人が選択肢の当てを直す（T140）。codes は当てる値（null は未定、空の並びはどの値にも当てない）。
  * 直した選択肢は AI の印を外す。言い換えの表と同じに戻したら残さない
  */

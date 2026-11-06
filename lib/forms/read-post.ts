@@ -28,8 +28,11 @@ import { mappingError, mappingErrorOf, NO_STORE } from "./mapping-http.ts";
 import { availability, municipalEntry } from "./municipal-forms.ts";
 import { loadFetchRecord } from "./municipal-http.ts";
 import { copyShared, countSharedUse, getSharedMapping, pagesKeyOf, putSharedMapping } from "./shared-mapping.ts";
-import { pageImageKey, storePageImages, type PageImageBucket } from "./page-images.ts";
+import { unpackInk } from "./ink.ts";
+import { imageBoxOf } from "./overlay-sheet.ts";
+import { jpegSize, pageImageKey, storePageImages, type PageImageBucket } from "./page-images.ts";
 import { formReadInksOf, formReadPagesOf } from "./read-upload.ts";
+import { addTrailingFields, type TrailingPage } from "./trailing-field.ts";
 
 export type FormReadDeps = {
   db: D1Database;
@@ -121,7 +124,9 @@ export async function formReadPost(deps: FormReadDeps, scope: FormsScope, form: 
     const ctx = await deps.aiContext(scope.officeId);
     const read = await readForm(files, ctx, { concurrency: deps.readConcurrency, optionAi: deps.optionAi });
     // 頁の番号は受けた画像の順（下に敷く画像と合わせる）
-    const mapping = fitPages(read.mapping, files.length);
+    const fitted = fitPages(read.mapping, files.length);
+    // □ の右の空きに中身の欄を補う（T168。印刷の字の位置を使う。Claude は呼ばない）
+    const mapping = { ...fitted, fields: addTrailingFields(fitted.fields, trailingPages(parts, inks)) };
     const saved = await insertReadMapping(deps.db, {
       id: deps.newId?.() ?? crypto.randomUUID(),
       officeId: scope.officeId,
@@ -184,7 +189,10 @@ export async function formRereadPost(deps: FormReadDeps, scope: FormsScope, id: 
   try {
     const ctx = await deps.aiContext(scope.officeId);
     const read = await readForm(files, ctx, { concurrency: deps.readConcurrency, pageNumbers, pages: stored.mapping.pages, optionAi: deps.optionAi });
-    const mapping = mergeReread(stored.mapping, read.mapping, read.unread);
+    const merged = mergeReread(stored.mapping, read.mapping, read.unread);
+    // 読み直した頁にも □ の右の空きの欄を補う（T168）
+    const printed = new Map(stored.pageImages.map((p) => [p.page, { ink: p.ink ? unpackInk(p.ink) : null, image: imageBoxOf(p) }]));
+    const mapping = { ...merged, fields: addTrailingFields(merged.fields, printed, new Set(pageNumbers)) };
     const saved = await updateReadMapping(deps.db, { officeId: scope.officeId, id, version, mapping, at: deps.now?.() ?? new Date().toISOString() });
     if (!saved.ok) return mappingError(saved.error);
     return Response.json({ ok: true, version: saved.version, mapping, unread: mapping.unread ?? [] }, { headers: NO_STORE });
@@ -194,6 +202,17 @@ export async function formRereadPost(deps: FormReadDeps, scope: FormsScope, id: 
     console.error("様式の読み直しに失敗", e instanceof Error ? e.name : typeof e);
     return mappingError("ai_failed");
   }
+}
+
+/** 受けた頁の画像と印刷の字の位置から、□ の右の空きを探す頁の表（頁の番号は受けた順）。大きさの読めない画像・字の位置の無い頁は入れない */
+function trailingPages(images: ReadonlyArray<Uint8Array>, inks: ReadonlyArray<number[] | null> | undefined): Map<number, TrailingPage> {
+  const out = new Map<number, TrailingPage>();
+  for (const [i, bytes] of images.entries()) {
+    const size = jpegSize(bytes);
+    const ink = inks?.[i] ? unpackInk(inks[i]) : null;
+    if (size && ink) out.set(i + 1, { ink, image: imageBoxOf(size) });
+  }
+  return out;
 }
 
 /** 読み直した頁の欄を、今の対応表の後ろに足す（欄の id は続きの番号に振り直す）。まだ読めない頁は unread に残す */
