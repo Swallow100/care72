@@ -17,6 +17,9 @@ import { PendingMark, RowItem, type Level } from "./parts";
 import { ClockLines } from "./ClockLines";
 import { DocumentSection } from "./DocumentSection";
 import { SectionEdit } from "./SectionEdit";
+import { TargetTag } from "./Target";
+import { TargetLink, TargetScroll } from "./TargetLink";
+import type { EditTargets } from "@/lib/intake/targets";
 import { PersonHead } from "./PersonHead";
 import { Timeline, TimelineSummary, recordItems } from "./Timeline";
 import { TimelineComposer } from "./TimelineComposer";
@@ -48,6 +51,8 @@ export function PersonView({
   const base = `person-${view.head.id}`;
   return (
     <div className="@container space-y-2" data-mode={view.mode}>
+      {/* 飛んだ先（T169）。見るだけの画面で最初の対象まで送る */}
+      {view.target && <TargetScroll focus={view.target.focus} />}
       <PersonHead head={view.head} level={level} titleId={`${base}-title`} />
       {request}
       <div className="gap-x-2 @[40rem]:columns-2 @5xl:columns-3">
@@ -68,6 +73,7 @@ export function PersonView({
                 level={level}
                 titleId={`${base}-${s.id}`}
                 edit={edit}
+                targets={view.target?.edit ?? null}
                 // 避難経路の地図（T102）。ケアマネの役で開いたときだけ、避難の面の下に（位置を扱うので面の編集と同じ人だけ）
                 after={s.id === "evacuation" && edit ? <RouteMapPanel data={edit} /> : null}
               />
@@ -167,6 +173,7 @@ function SectionPanel({
   level,
   titleId,
   edit = null,
+  targets = null,
   children,
   after = null,
 }: {
@@ -174,6 +181,8 @@ function SectionPanel({
   level: Level;
   titleId: string;
   edit?: EditData | null;
+  /** 面の編集で紫にする場所（T169） */
+  targets?: EditTargets | null;
   children?: React.ReactNode;
   /** 面の行の下に足す物（避難の面の経路地図、T102） */
   after?: React.ReactNode;
@@ -184,11 +193,19 @@ function SectionPanel({
       <H id={titleId} className="text-[1rem] leading-6 font-bold">
         {section.label}
       </H>
-      {section.unconfirmed > 0 && (
-        <StateText tone="check" className="text-xs">
-          {BLANK_LABELS.unconfirmed} {section.unconfirmed}
-        </StateText>
-      )}
+      {section.unconfirmed > 0 &&
+        (section.jump ? (
+          <TargetLink focus={section.jump}>
+            <StateText tone="check" className="text-xs">
+              {BLANK_LABELS.unconfirmed} {section.unconfirmed}
+            </StateText>
+          </TargetLink>
+        ) : (
+          <StateText tone="check" className="text-xs">
+            {BLANK_LABELS.unconfirmed} {section.unconfirmed}
+          </StateText>
+        ))}
+      {section.targets > 0 && <TargetTag />}
       {/* 見る方の画面で区分の中が全部当たり前の値だった（T143） */}
       {section.quiet && (
         <span className="text-xs text-muted" data-section-quiet>
@@ -207,7 +224,7 @@ function SectionPanel({
   if (edit && isEditSection(section.id)) {
     return (
       <section aria-labelledby={titleId} className="mb-2 break-inside-avoid rounded-lg bg-panel px-3 py-2.5 text-sm" data-section={section.id}>
-        <SectionEdit section={section.id} data={edit} head={head}>
+        <SectionEdit section={section.id} data={edit} head={head} targets={targets}>
           {body}
         </SectionEdit>
       </section>
@@ -271,11 +288,12 @@ function ClocksRow({ label, clocks, quiet }: { label: string; clocks: readonly C
               text: k.text,
               tone: k.tone,
               toneOnSpan: true,
+              target: k.target === true,
               // 台帳の未確認（理由つき）は長さの所に。値があるのに未確認の印の付いた時計は長さの右に
               ...(k.pending.length > 0
                 ? k.text.missing
-                  ? { missingMark: <PendingMark pending={k.pending} /> }
-                  : { after: <PendingMark pending={k.pending} /> }
+                  ? { missingMark: <PendingMark pending={k.pending} target={k.target === true} jump={k.jump} /> }
+                  : { after: <PendingMark pending={k.pending} target={k.target === true} jump={k.jump} /> }
                 : {}),
               note: k.note,
             }))}

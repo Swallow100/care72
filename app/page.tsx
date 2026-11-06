@@ -53,7 +53,7 @@ import { NEW_PERSON_PATH } from "@/lib/office/http-paths";
 import { canSeeSetup } from "@/lib/office/setup";
 import { OFFICE_ERROR_LABELS, OFFICE_LABELS } from "@/lib/office/labels";
 import { loadPlanForm, planFormView } from "@/lib/forms/plan-form";
-import { COLOR_TONES, loadPersonPage, toPersonView, type PersonView as View } from "@/lib/person";
+import { COLOR_TONES, loadPersonPage, parseFieldFocus, toPersonView, type PersonView as View } from "@/lib/person";
 import type { TriageResult } from "@/lib/triage/index";
 
 // D1 を毎回読む
@@ -70,6 +70,8 @@ type Props = {
     mark?: Param;
     q?: Param;
     people_error?: Param;
+    /** 開いた本人のページで紫にする欄（T169、lib/person.ts の parseFieldFocus） */
+    field?: Param;
   }>;
 };
 
@@ -178,7 +180,7 @@ export default async function CaseloadPage({ searchParams }: Props) {
           <CompactList rows={rows} sort={key} open={open} view={view} />
           {unlisted}
         </section>
-        <PersonPanel principal={principal} id={open} sort={key} list={view} now={now} />
+        <PersonPanel principal={principal} id={open} sort={key} list={view} now={now} focus={parseFieldFocus(q.field)} />
       </main>
     );
   }
@@ -261,6 +263,7 @@ async function PersonPanel({
   sort,
   list,
   now,
+  focus,
 }: {
   principal: Principal;
   id: string;
@@ -268,6 +271,8 @@ async function PersonPanel({
   /** 一覧の並びの向きと絞込（閉じたときに残す） */
   list: ListView;
   now: string;
+  /** 紫にする欄（T169） */
+  focus: string | null;
 }) {
   let view: View | null = null;
   let intake: IntakeProps | null = null;
@@ -278,7 +283,7 @@ async function PersonPanel({
     const d = rows ? await personDisaster(env.DB, rows, now) : null;
     const planForm = rows ? planFormView(await loadPlanForm(env.DB, rows.person.office_id)) : undefined;
     // 見る方の画面（T143。本人のページと同じ reading）
-    view = rows && d ? toPersonView(rows, { today: todayJst(), mode: d.mode, triage: d.triage, situation: d.situation, planForm, reading: true }) : null;
+    view = rows && d ? toPersonView(rows, { today: todayJst(), mode: d.mode, triage: d.triage, situation: d.situation, planForm, reading: true, focus, jump: principal.role === "care_manager" }) : null;
     // 入れる欄（T03）はケアマネの役だけ（担当一覧はケアマネの役しか開けない）
     // AI の状態（未設定・上限到達・本日残り）は lib/claude/status.ts の 1 か所（T76）
     intake = rows && principal.role === "care_manager" ? intakePropsOf(rows, await aiStatusFor(rows.person.office_id)) : null;

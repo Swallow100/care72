@@ -4,14 +4,15 @@
 // 平時: 計画の状態の内訳、今週の見直し（計画が下書きで未確認のある人）、未確認の多い人、地図（ピンは名前だけ）、ハザードと避難先の人数
 // 発災時: 地図が上（ピンは状態の色と 2 字ほどの状態）、状態ごとの人数、ハザードごとの人数と状態の内訳、避難先、見直し
 
-import { rowLink, type CaseloadRow, type SortKey } from "../caseload.ts";
+import { caseloadHref, rowLink, type CaseloadRow, type SortKey } from "../caseload.ts";
 import type { DrillScenario, GeoPoint, HazardKind, OfficeKind, PlanStatus } from "../db/types.ts";
 import { DISASTER_SCENE, type DisasterState } from "../disaster/state.ts";
 import { rainTrackOf } from "../drill/rain.ts";
 import { BLANK_LABELS, COLOR_LABELS, HAZARD_LABELS, PLAN_DRILL_LABELS, stateLabel } from "../labels.ts";
 import { drillMark, PLAN_STAGE_LABELS, PLAN_STAGE_TONES, PLAN_STAGES, planStage, type PlanStage } from "../plan-status.ts";
 import { PLACE_LABELS } from "../signals/labels.ts";
-import { COLOR_TONES, fieldLabelOf, type StateTone } from "../person.ts";
+import { FOCUS_ALL } from "../intake/targets.ts";
+import { COLOR_TONES, fieldLabelOf, focusKeyOf, type StateTone } from "../person.ts";
 import { compareResults, type Color, type TriageResult } from "../triage/index.ts";
 import { demoOverlay, type DemoOverlay, type DemoScene } from "./demo.ts";
 import { rainAnchor } from "./drill-rain.ts";
@@ -99,7 +100,20 @@ export type HazardCount = {
 
 export type DestinationCount = { label: string; count: number; unset: boolean };
 
-export type ReviewItem = { id: string; name: string; href: string; pending: number; labels: string[]; plan: PlanStatus };
+/** 未確認の欄 1 つ（T169）。押すと本人のページのその欄が紫になり、そこまで送る */
+export type ReviewField = { key: string; label: string; href: string };
+
+export type ReviewItem = {
+  id: string;
+  name: string;
+  /** 本人のページ。全部の未確認の欄が紫になり、最初まで送る（T169） */
+  href: string;
+  pending: number;
+  labels: string[];
+  /** 何を入れるか（欄の名前と飛ぶ先。同じ欄は 1 つ） */
+  fields: ReviewField[];
+  plan: PlanStatus;
+};
 
 /**
  * 計画の内訳の 1 つ（T146）。段階 3 つ（未作成・下書き・作成済）と、別に訓練に出た人の数（drill。色を付けない。段階の合計に入れない）
@@ -134,14 +148,25 @@ function byPendingThenKana(a: CaseloadRow, b: CaseloadRow): number {
 }
 
 function reviewItem(r: CaseloadRow, sort: SortKey): ReviewItem {
+  const keys = new Map(r.pendingFields.map((f) => [focusKeyOf(f), fieldLabelOf(f)]));
   return {
     id: r.id,
     name: r.name,
-    href: rowLink(sort, null, r.id).href,
+    href: caseloadHref({ sort, open: r.id, field: FOCUS_ALL }),
     pending: r.pending,
     labels: [...new Set(r.pendingFields.map(fieldLabelOf))],
+    fields: [...keys].map(([key, label]) => ({ key, label, href: caseloadHref({ sort, open: r.id, field: key }) })),
     plan: r.plan,
   };
+}
+
+/**
+ * 右の面の「見直し・未確認」の行（T169。前は見直しと未確認が別の面で、同じ人が 2 回並んだ）。1 人 1 行で、
+ * 見直しの人（計画が下書きで未確認のある人）が先、その中は未確認の多い順
+ */
+export function worklistOf(data: Pick<SidePaneData, "pendingTop">): ReviewItem[] {
+  const draftFirst = (r: ReviewItem) => (r.plan === "draft" ? 0 : 1);
+  return [...data.pendingTop].sort((a, b) => draftFirst(a) - draftFirst(b));
 }
 
 export function planCounts(rows: ReadonlyArray<Pick<CaseloadRow, "plan" | "drill">>): PlanCount[] {

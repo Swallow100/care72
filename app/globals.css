@@ -76,6 +76,10 @@
   --mark-d1: #0b4ea6;
   --mark-d2: #116bdf;
   --mark-d3: #6fa6ee;
+  /* 今入れる欄（T169）。見直し・未確認から飛んだ先の欄の枠と印、ほかの意味に使わない。状態の 4 色と操作の色とは別の澄んだ紫（黒を混ぜない）。
+     文字の対比は 白 6.25・面の中 5.70・地 5.30。塗りの印の上の文字は白 */
+  --mark-target: #7a2ee6;
+  --on-mark-target: #ffffff;
   color-scheme: light;
 }
 
@@ -114,6 +118,9 @@
   --mark-d1: #2f6fd0;
   --mark-d2: #4a8ff0;
   --mark-d3: #8dbbf5;
+  /* 今入れる欄（T169）。暗い面の上の対比は 8.15・面の中 7.31 */
+  --mark-target: #c49dff;
+  --on-mark-target: #0b0d10;
   color-scheme: dark;
 }
 
@@ -155,6 +162,9 @@
   --color-accent: var(--accent-text);
   --color-accent-fill: var(--accent);
   --color-on-accent: var(--on-accent);
+  /* text-mark-target・outline-mark-target・bg-mark-target は「今入れる欄」だけ（T169、components/person/Target.tsx） */
+  --color-mark-target: var(--mark-target);
+  --color-on-mark-target: var(--on-mark-target);
   /* 画面の書体: 英数字は Inter、日本語は端末の書体（Mac は Hiragino Sans、Windows は Yu Gothic UI・Meiryo）。理由は app/layout.tsx の注 */
   --font-sans: var(--font-inter), "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Yu Gothic", "Meiryo", system-ui, sans-serif;
   --font-ud: var(--font-biz-ud), system-ui, sans-serif;

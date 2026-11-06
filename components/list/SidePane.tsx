@@ -1,6 +1,6 @@
 // 担当一覧の右の面（T14、docs/tasks/T14.md）。中身は lib/map/side.ts の buildSidePane で作り、ここは並べるだけ。
-// 平時: 計画の内訳 → 見直し（今週。計画が下書きで未確認のある人）→ 未確認の多い人 → 地図・ハザード・避難先
-// 発災時: 地図（ピンは lib/triage の色）・状態の人数・ハザード（状態の内訳）・避難先 → 見直し → 未確認 → 計画
+// 平時: 避難計画の内訳 → 地図・ハザード・避難先 → 見直しと未確認（1 人 1 行で何を入れるか。押すと本人のページのその欄が紫に。T169）
+// 発災時: 地図（ピンは lib/triage の色）・状態の人数・ハザード（状態の内訳）・避難先 → 見直しと未確認 → 計画
 // 1024px 以上で右に出し、狭い幅は畳む（SideFold）。本人のページ（?open=）が開いているときは、この面の代わりに本人のページ（app/page.tsx）。
 // 司令室の見た目にしない: 右端の 1 列で、地図は小さく（その場の拡大・縮小は T66、広く見るのは地図の「全画面」で。T46）。雨雲・震度はデモの印を付ける（components/map/CaseMap.tsx）。
 // 数と言葉で伝える（T96）: 色だけの横の帯（計画の割合・未確認の件数）と、数の前の黄の細い帯（tone-check）は置かない。
@@ -9,11 +9,10 @@
 import Link from "next/link";
 import type { MapRegion } from "@/lib/map/region";
 import { CaseMap } from "@/components/map/CaseMap";
-import { CountLabel, countClass, StateTag } from "@/components/ui/Tag";
+import { CountLabel, countClass, Mark, StateTag } from "@/components/ui/Tag";
 import type { GeoPoint, HazardKind } from "@/lib/db/types";
-import type { DestinationCount, HazardCount, PlanCount, ReviewItem, SidePaneData, StateCount } from "@/lib/map/side";
+import { worklistOf, type DestinationCount, type HazardCount, type PlanCount, type ReviewItem, type SidePaneData, type StateCount } from "@/lib/map/side";
 import { PLAN_STATUS_LABELS } from "@/lib/labels";
-import { PendingRow } from "./PendingRow";
 import { SideFold } from "./SideFold";
 
 /** 平時に既定で重ねる層（発災時はデモの場面の層） */
@@ -29,10 +28,9 @@ export type SideMapOptions = { center: GeoPoint | null; nowcast: boolean; fictio
 export function SidePane({ data, map: mapOptions }: { data: SidePaneData; map?: SideMapOptions }) {
   const disaster = data.mode === "disaster";
   const map = <MapSection key="map" data={data} options={mapOptions} />;
-  const review = <ReviewSection key="review" items={data.review} />;
-  const pending = <PendingSection key="pending" items={data.pendingTop} />;
+  const review = <ReviewSection key="review" data={data} />;
   const plan = <PlanSection key="plan" counts={data.plan} />;
-  const sections = disaster ? [map, review, pending, plan] : [plan, review, pending, map];
+  const sections = disaster ? [map, review, plan] : [plan, map, review];
   // 発災時は担当一覧の表に約 64rem 要る（T13）ので、右に出すのは 1536px（2xl）から。それ未満は表の下に 2 列で並べる。
   // 内側で送らない（送るのは画面全体の縦 1 本）。右の列はページの流れに置く
   const aside = "min-w-0 self-start";
@@ -180,15 +178,19 @@ function DestinationList({ rows }: { rows: DestinationCount[] }) {
   );
 }
 
-/** 今週の見直し: 計画が下書きで未確認のある人。何が未確認かを小さく（行を押すと本人のページ） */
-function ReviewSection({ items }: { items: ReviewItem[] }) {
+/**
+ * 見直しと未確認（T169）。前は別の面で同じ人が 2 回並んだ。1 人 1 行: 氏名・計画の段階・「見直し」（計画が下書きの人）・「未確認 N」、
+ * その下に何を入れるか（欄の名前）。氏名を押すと全部の未確認の欄、欄の名前を押すとその欄が本人のページで紫になる
+ */
+function ReviewSection({ data }: { data: Pick<SidePaneData, "review" | "pendingTop"> }) {
+  const items = worklistOf(data);
   return (
     <Section
       id="review"
-      title="見直し"
+      title="見直し・未確認"
       aside={
         <span className="text-xs font-normal text-muted">
-          今週 <Count n={items.length} /> 人
+          今週 <Count n={data.review.length} /> 人・計 <Count n={items.reduce((s, r) => s + r.pending, 0)} /> 件
         </span>
       }
     >
@@ -197,23 +199,7 @@ function ReviewSection({ items }: { items: ReviewItem[] }) {
       ) : (
         <ul className="space-y-0.5">
           {items.map((r) => (
-            <li key={r.id}>
-              <Link href={r.href} className="block rounded-md bg-panel2 px-2 py-1.5" data-press="overlay" data-review={r.id}>
-                <span className="flex items-baseline gap-2">
-                  <span className="font-bold">{r.name}</span>
-                  {/* 見直しの行は計画がどれも下書きなので、計画の状態は色を付けない小さな言葉（黄は右の「未確認 N」の 1 つだけ） */}
-                  <span className="text-xs text-muted" data-review-plan={r.plan}>
-                    {PLAN_STATUS_LABELS[r.plan]}
-                  </span>
-                  <span className="ml-auto" data-review-pending={r.pending}>
-                    <StateTag tone="check">
-                      未確認 <span className="tabular-nums">{r.pending}</span>
-                    </StateTag>
-                  </span>
-                </span>
-                <span className="mt-0.5 block truncate text-xs text-muted">{r.labels.join("・")}</span>
-              </Link>
-            </li>
+            <ReviewRow key={r.id} item={r} />
           ))}
         </ul>
       )}
@@ -221,28 +207,38 @@ function ReviewSection({ items }: { items: ReviewItem[] }) {
   );
 }
 
-/** 未確認の多い人（多い順）。氏名で本人のページ、「未確認 N」で何の欄が未確認かを開く（PendingRow） */
-function PendingSection({ items }: { items: ReviewItem[] }) {
+function ReviewRow({ item: r }: { item: ReviewItem }) {
   return (
-    <Section
-      id="pending"
-      title="未確認"
-      aside={
-        <span className="text-xs font-normal text-muted">
-          <Count n={items.length} /> 人・計 <Count n={items.reduce((s, r) => s + r.pending, 0)} /> 件
+    <li className="rounded-md bg-panel2 px-2 py-1.5" data-review={r.id}>
+      <span className="flex items-baseline gap-2">
+        <Link href={r.href} className="min-w-0 truncate rounded-sm font-bold" data-press data-review-name>
+          {r.name}
+        </Link>
+        {/* 計画の状態は色を付けない小さな言葉（黄は右の「未確認 N」の 1 つだけ） */}
+        <span className="shrink-0 text-xs text-muted" data-review-plan={r.plan}>
+          {PLAN_STATUS_LABELS[r.plan]}
         </span>
-      }
-    >
-      {items.length === 0 ? (
-        <p className="text-sm text-muted">なし</p>
-      ) : (
-        <ul className="space-y-0.5">
-          {items.map((r) => (
-            <PendingRow key={r.id} item={r} />
-          ))}
-        </ul>
-      )}
-    </Section>
+        {r.plan === "draft" && (
+          <span className="shrink-0" data-review-due>
+            <Mark inPanel2>見直し</Mark>
+          </span>
+        )}
+        <span className="ml-auto shrink-0" data-review-pending={r.pending}>
+          <StateTag tone="check">
+            未確認 <span className="tabular-nums">{r.pending}</span>
+          </StateTag>
+        </span>
+      </span>
+      <ul className="mt-0.5 flex flex-wrap gap-x-2 text-xs" data-review-fields>
+        {r.fields.map((f) => (
+          <li key={f.key}>
+            <Link href={f.href} className="rounded-sm text-accent underline underline-offset-2" data-press data-review-field={f.key}>
+              {f.label}
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </li>
   );
 }
 

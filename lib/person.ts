@@ -17,6 +17,7 @@ import { JUDGE_LABEL } from "./auth/roles.ts";
 import { personInScope } from "./auth/scope.ts";
 import { hazardsOf } from "./caseload.ts";
 import { parseLedger, sameMedication } from "./db/ledger.ts";
+import { editTargetOf, FOCUS_ALL, mergeEditTargets, type EditTargets } from "./intake/targets.ts";
 import {
   CONSENT_KINDS,
   INTAKE_SOURCE,
@@ -208,8 +209,16 @@ function fieldDef(key: string): FieldDef {
   return f;
 }
 
+/** 読む側の 1 行に合わせて出している欄の別の場所（手段の選ぶ欄は「手段」の行、補記は元の欄の行。T169 で「その他」に落ちていたのを直した） */
+const FIELD_ALIASES: Readonly<Record<string, string>> = {
+  "evacuation.transportKind": "evacuation.transport",
+  "evacuation.supportNote": "evacuation.support",
+  "basic.householdNote": "basic.household",
+};
+
 /** 台帳の中の場所に、いちばん長く一致する欄 */
-function matchField(field: string): FieldDef | null {
+function matchField(raw: string): FieldDef | null {
+  const field = FIELD_ALIASES[raw] ?? raw;
   let best: FieldDef | null = null;
   for (const f of FIELDS) {
     if ((field === f.key || field.startsWith(`${f.key}.`)) && (!best || f.key.length > best.key.length)) best = f;
@@ -275,6 +284,10 @@ export type Row = {
   apart?: true;
   /** 値が当たり前（lib/intake/fields.ts の USUAL_VALUES。T143）。見る方の画面（reading）は出さない */
   usual?: true;
+  /** 今入れる欄（T169。URL の field に当たり、今も未確認の欄）。紫で示す */
+  target?: true;
+  /** 未確認の印から飛ぶ先（T169。URL の field に入れる鍵）。ケアマネの役だけ */
+  jump?: string;
 };
 
 export type ClockView = {
@@ -298,6 +311,10 @@ export type ClockView = {
   depends: { on: string; check: string; unchecked: boolean } | null;
   note: string | null;
   pending: Pending[];
+  /** 今入れる欄（T169） */
+  target?: true;
+  /** 未確認の印から飛ぶ先（T169） */
+  jump?: string;
   /** 時計の 1 行の言葉（T132、lib/ledger-words.ts の clockText。平時の形）。担当一覧・訓練の行の詳細と同じ言葉で描く */
   text: ClockText;
 };
@@ -368,6 +385,10 @@ export type Section = {
   blocks: Block[];
   /** 区分の中の未確認（台帳の pending）の数 */
   unconfirmed: number;
+  /** 区分の中の今入れる欄の数（T169） */
+  targets: number;
+  /** 見出しの「未確認 N」から飛ぶ先（T169）。ケアマネの役で未確認があるときだけ */
+  jump?: string;
   /** 見る方の画面（T143）で、区分の中が全部当たり前の値だった（見出しに「特記なし」） */
   quiet?: true;
 };
@@ -397,6 +418,8 @@ export type PersonHead = {
   drill: string;
   /** 台帳の pending の数（担当一覧の「未確認 N」と同じ） */
   unconfirmed: number;
+  /** 上の段の「未確認 N」から飛べるか（T169。ケアマネの役で未確認があるとき） */
+  jump: boolean;
   /** 走る時計の残り（平時は全部の長さ、災害モードは今の残り）。短い順、値の無い物は後ろ。上に大きく出す。note は「停電で開始」 */
   clocks: Array<{ id: string; label: string; value: string | null; tone: StateTone | null; note: string | null }>;
   /**
@@ -426,6 +449,8 @@ export type PersonView = {
   sections: Section[];
   /** 台帳の pending と、画面のどの区分・欄に出たか（T03 の問いの元）。範囲の外の区分の物は入れない */
   unconfirmed: UnconfirmedItem[];
+  /** 飛んだ先の案内（T169）。URL の field と、面の編集で紫にする場所。案内が無ければ null */
+  target: { focus: string; edit: EditTargets } | null;
   /** 経過に書き足せる種類（lib/consent/scope.ts）。空なら書き足しの欄を出さない。範囲を渡さないとき（担当一覧の右の面）は空 */
   writes: WritableKind[];
   /**
@@ -1465,6 +1490,64 @@ function attachPending(sections: Map<SectionId, Block[]>, ledger: Ledger, rows: 
   return out;
 }
 
+// ---------- 飛んだ先の案内（T169） ----------
+
+const SECTION_FOCUS = "section:";
+const sectionFocus = (id: SectionId) => `${SECTION_FOCUS}${id}`;
+
+/** 未確認の場所 → URL の field に入れる鍵（いちばん長く一致する欄。決まりの無い場所は区分ごと）。氏名や薬の名前を URL に載せない */
+export function focusKeyOf(field: string): string {
+  return matchField(field)?.key ?? sectionFocus(sectionOfField(field));
+}
+
+/** URL の field を読む。表に通る鍵だけ採り、ほかは無かった物にする */
+export function parseFieldFocus(raw: string | string[] | undefined): string | null {
+  const v = Array.isArray(raw) ? raw[0] : raw;
+  if (!v) return null;
+  if (v === FOCUS_ALL || FIELD_BY_KEY.has(v)) return v;
+  if (v.startsWith(SECTION_FOCUS) && NORMAL_ORDER.includes(v.slice(SECTION_FOCUS.length) as SectionId)) return v;
+  return null;
+}
+
+/** 未確認の場所が URL の field に当たるか */
+function focusHits(focus: string, field: string): boolean {
+  if (focus === FOCUS_ALL) return true;
+  if (focus.startsWith(SECTION_FOCUS)) return sectionOfField(field) === focus.slice(SECTION_FOCUS.length);
+  return focusKeyOf(field) === focus;
+}
+
+/** 欄と時計に紫の印（当たる未確認があれば）と飛ぶ先を付ける */
+function markTargets(sections: Map<SectionId, Block[]>, focus: string | null, jump: boolean): void {
+  const mark = (x: { pending: Pending[]; target?: true; jump?: string }) => {
+    if (x.pending.length === 0) return;
+    if (focus && x.pending.some((p) => focusHits(focus, p.field))) x.target = true;
+    if (jump) x.jump = focusKeyOf(x.pending[0].field);
+  };
+  for (const blocks of sections.values()) {
+    for (const b of blocks) {
+      if (b.type === "row") mark(b.row);
+      if (b.type === "clocks") b.clocks.forEach(mark);
+    }
+  }
+}
+
+/** 区分の中の今入れる欄の数 */
+function targetCount(blocks: readonly Block[]): number {
+  return blocks.reduce(
+    (n, b) => n + (b.type === "row" ? (b.row.target ? 1 : 0) : b.type === "clocks" ? b.clocks.filter((k) => k.target).length : 0),
+    0,
+  );
+}
+
+/** 面の編集で紫にする場所（表は lib/intake/targets.ts の 1 か所）。当たる未確認が無ければ null（保存で値が入ると消える） */
+function targetOfFocus(focus: string | null, ledger: Ledger, rows: PersonPageRows): PersonView["target"] {
+  if (!focus) return null;
+  const hits = ledger.pending.filter((p) => focusHits(focus, p.field));
+  if (hits.length === 0) return null;
+  const edit = hits.flatMap((p) => editTargetOf(p.field, matchField(p.field)?.key ?? null, pendingClockId(p.field, ledger, rows.clocks)) ?? []);
+  return { focus, edit: mergeEditTargets(edit) };
+}
+
 // ---------- 全体 ----------
 
 /**
@@ -1588,6 +1671,10 @@ export type ViewOptions = {
    * 書き足しの欄（writes）と同じく単独の本人のページだけが渡す（担当一覧の右の面は渡さない）
    */
   viewer?: Retracter;
+  /** URL の field（T169。parseFieldFocus を通した物）。当たる未確認の欄を紫にする */
+  focus?: string | null;
+  /** 未確認の印を飛ぶリンクにする（T169。ケアマネの役の本人のページだけ） */
+  jump?: boolean;
 };
 
 /** 区分の中の未確認の数（欄と時計に付いた pending） */
@@ -1665,7 +1752,8 @@ function readingSection(s: Section, inRows: ReadonlySet<string>): Section {
       return [];
     }
     if (b.type === "clocks") {
-      const rest = b.clocks.filter((k) => !inRows.has(k.id));
+      // 未確認の時計は機器・薬の行に印が出ないので段に残す（T169。前は見る方の画面で未確認の印が 1 つ消え、飛ぶ先も無かった）
+      const rest = b.clocks.filter((k) => !inRows.has(k.id) || k.pending.length > 0);
       return rest.length > 0 ? [{ ...b, clocks: rest, quiet: true }] : [];
     }
     return [b];
@@ -1692,6 +1780,7 @@ export function toPersonView(rows: PersonPageRows, opts: ViewOptions): PersonVie
     ["timeline", [{ type: "timeline", items: timelineItems(rows, opts.viewer ?? null) }]],
   ]);
   const unconfirmed = attachPending(sections, ledger, rows);
+  markTargets(sections, opts.focus ?? null, opts.jump === true);
 
   const show = {
     medical: scopeHas(scope, "medical"),
@@ -1720,6 +1809,7 @@ export function toPersonView(rows: PersonPageRows, opts: ViewOptions): PersonVie
     planTone: PLAN_TONES[person.plan_status],
     drill: drillMark(rows.lastDrill ?? null, person.plan_status, opts.today).text,
     unconfirmed: show.plan ? ledger.pending.length : 0,
+    jump: opts.jump === true && show.plan && ledger.pending.length > 0,
     clocks: show.medical ? headClocks(clocks, own) : [],
     medical: show.medical ? headMedical(clocks, marks, own, meds) : [],
     meds: show.medical ? { lines: meds.lines, more: meds.more } : { lines: [], more: 0 },
@@ -1732,7 +1822,15 @@ export function toPersonView(rows: PersonPageRows, opts: ViewOptions): PersonVie
     .filter((id) => sectionVisible(id, scope))
     .map((id): Section => {
       const blocks = scopedBlocks(id, sections.get(id)!, scope, contacts);
-      return { id, label: SECTION_LABELS[id], blocks, unconfirmed: pendingCount(blocks) };
+      const count = pendingCount(blocks);
+      return {
+        id,
+        label: SECTION_LABELS[id],
+        blocks,
+        unconfirmed: count,
+        targets: targetCount(blocks),
+        ...(opts.jump && count > 0 ? { jump: sectionFocus(id) } : {}),
+      };
     });
   // T03 の問いの元も見える欄の物だけ（医療班・行政に範囲の外の欄の名前を渡さない）
   const kept = new Set(
@@ -1748,6 +1846,7 @@ export function toPersonView(rows: PersonPageRows, opts: ViewOptions): PersonVie
     mode,
     sections: opts.reading ? shown.map((s) => readingSection(s, clocksInRows(ledger, clocks))) : shown,
     unconfirmed: unconfirmed.filter((u) => kept.has(u.field)),
+    target: targetOfFocus(opts.focus ?? null, ledger, rows),
     // 書き足しの欄は範囲を渡した画面（単独の本人のページ）だけ。担当一覧の右の面は電話・優先変更の欄があるので出さない
     writes: opts.scope ? [...opts.scope.writes] : [],
     writesOpen: mode === "disaster" || scope.viewer === "staff",

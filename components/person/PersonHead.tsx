@@ -9,7 +9,9 @@
 import type { HeadClock, HeadMedical, PersonHead as Head } from "@/lib/person";
 import { BLANK_LABELS, CLOCK_TEXT_LABELS, HEAD_LABELS, PLAN_DRILL_LABELS } from "@/lib/labels";
 import { Mark, StateText } from "@/components/ui/Tag";
+import { FOCUS_ALL } from "@/lib/intake/targets";
 import { Hint } from "./Hint";
+import { TargetLink } from "./TargetLink";
 import { MedLines } from "./MedLines";
 import { LineText, REASON_TEXT, StateTag, TONE_TEXT, type Level } from "./parts";
 
@@ -95,6 +97,14 @@ function ClockLine({ k }: { k: HeadClock }) {
   );
 }
 
+function UnconfirmedCount({ n }: { n: number }) {
+  return (
+    <span className={`tabular-nums ${n > 0 ? `font-bold ${TONE_TEXT.check}` : "text-muted"}`} data-tone={n > 0 ? "check" : undefined}>
+      {n}
+    </span>
+  );
+}
+
 /** 避難先 1・2 と手段（T150。担当一覧の行の詳細の「避難先」と同じ並び） */
 function EvacuationCell({ e }: { e: NonNullable<Head["evacuation"]> }) {
   const rows: Array<[string, string | null]> = [
@@ -160,12 +170,14 @@ export function PersonHead({ head, level, titleId }: { head: Head; level: Level;
             )}
             {show.plan && (
               <Fact label={HEAD_LABELS.unconfirmed}>
-                <span
-                  className={`tabular-nums ${head.unconfirmed > 0 ? `font-bold ${TONE_TEXT.check}` : "text-muted"}`}
-                  data-tone={head.unconfirmed > 0 ? "check" : undefined}
-                >
-                  {head.unconfirmed}
-                </span>
+                {/* 未確認があれば押して飛べる（T169。全部の未確認の欄が紫になり、最初まで送る） */}
+                {head.jump ? (
+                  <TargetLink focus={FOCUS_ALL}>
+                    <UnconfirmedCount n={head.unconfirmed} />
+                  </TargetLink>
+                ) : (
+                  <UnconfirmedCount n={head.unconfirmed} />
+                )}
               </Fact>
             )}
           </dl>

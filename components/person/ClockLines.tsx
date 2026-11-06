@@ -10,6 +10,7 @@ import { groupByKind } from "@/lib/ledger-words";
 import type { StateTone } from "@/lib/person";
 import { TONE_TEXT } from "@/components/ui/Tag";
 import { Hint } from "@/components/person/Hint";
+import { TARGET_EDGE } from "@/components/person/Target";
 
 export type ClockLineItem = {
   id: string;
@@ -24,6 +25,8 @@ export type ClockLineItem = {
   missingMark?: React.ReactNode;
   /** 2 行目の終わりに足す物（本人のページのメモ） */
   note?: string | null;
+  /** 今入れる欄（T169。本人のページの飛んだ先）。紫の枠 */
+  target?: boolean;
 };
 
 export function ClockLines({ items, boxed = false, quiet = false }: { items: ReadonlyArray<ClockLineItem>; boxed?: boolean; quiet?: boolean }) {
@@ -34,7 +37,12 @@ export function ClockLines({ items, boxed = false, quiet = false }: { items: Rea
           <h4 className="text-xs font-bold text-muted">{g.label}</h4>
           <ul className="mt-0.5 space-y-1">
             {g.items.map((k) => (
-              <li key={k.id} className={boxed ? "rounded bg-panel2 px-2 py-1" : undefined} data-clock={k.id}>
+              <li
+                key={k.id}
+                className={[boxed ? "rounded bg-panel2 px-2 py-1" : "", k.target ? TARGET_EDGE : ""].filter(Boolean).join(" ") || undefined}
+                data-clock={k.id}
+                data-target={k.target ? "" : undefined}
+              >
                 <ClockLine item={k} quiet={quiet} />
               </li>
             ))}
