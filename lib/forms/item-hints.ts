@@ -12,6 +12,7 @@
 // 補った欄は、AI の読んだ物（ai）の理由の後ろに「（補）」を付ける（確かめの画面で人が見る）。
 
 import { isLedgerItemKey, nextFieldId, type LedgerItemKey, type MappingField } from "./mapping.ts";
+import { settleRead } from "./read-settle.ts";
 
 const norm = (s: string) => s.normalize("NFKC").replace(/[\s　・･]/g, "");
 
@@ -132,7 +133,9 @@ export function splitHints(fields: readonly MappingField[]): ItemHint[] {
 }
 
 /** 読み取りの対応表に補いを当てる（checkReadResult の後）。足した欄はすぐ後ろに並べる */
-export function refineItems(fields: readonly MappingField[]): MappingField[] {
+export function refineItems(read: readonly MappingField[]): MappingField[] {
+  // 読み方の揺れをそろえてから補う（T175、lib/forms/read-settle.ts）
+  const fields = settleRead(read);
   const hints = new Map(itemHints(fields).map((h) => [h.id, h]));
   const splits = splitHints(fields);
   const out: MappingField[] = [];

@@ -3,11 +3,12 @@
 import { describe, expect, it } from "vitest";
 import { SEED_PEOPLE } from "../../seed/people.ts";
 import { bracketOwner, bracketPair, extraItemFields } from "./form-shape.ts";
-import { buildMappedSheet } from "./mapped-sheet.ts";
+import { buildMappedSheet, pairedItem } from "./mapped-sheet.ts";
 import type { FormMapping, MappingField } from "./mapping.ts";
 import { buildOverlaySheet } from "./overlay-sheet.ts";
 import type { PageImage } from "./page-images.ts";
 import { seedRows } from "./print-harness.ts";
+import { settleRead } from "./read-settle.ts";
 
 const OPTS = { today: "2026-11-05", officeName: "デモ事業所" };
 const seed = (id: string) => SEED_PEOPLE.find((p) => p.person.id === id)!;
@@ -93,5 +94,75 @@ describe("T175 選択肢の名前の字の欄は選ぶ欄の子", () => {
     // 親の □ に印が付き、子の欄で置けなかった欄を作らない
     expect(sheet.unplacedIds ?? []).not.toContain(h.flood.id);
     expect(sheet.unplacedIds ?? []).not.toContain(h.surge.id);
+  });
+});
+
+describe("T175 読み方の揺れをそろえる（settleRead）", () => {
+  const texts = (fs: readonly MappingField[]) => fs.map((f) => [f.label, f.shape, f.item]);
+
+  it("同じ項目の □ の並びは 1 つの選ぶ欄に。間の括弧は項目なし。どちらの読み方でも同じ □ に印", () => {
+    const item = "care.handbook" as const;
+    const boxes = [box(0.1, 0.1, 0.01, 0.01), box(0.3, 0.1, 0.01, 0.01), box(0.1, 0.13, 0.01, 0.01)];
+    const a = field({ section: "制度", label: "身体障害者手帳1級・2級", shape: "check", item, box: boxes[0] });
+    const part = field({ section: "制度", label: "部位（　）", item, box: box(0.2, 0.1, 0.05) });
+    const b = field({ section: "制度", label: "精神障害者保健福祉手帳1級", shape: "check", item, box: boxes[1] });
+    const c = field({ section: "制度", label: "療育手帳A", shape: "check", item, box: boxes[2] });
+    const got = settleRead([a, part, b, c]);
+    expect(got).toHaveLength(2);
+    expect(got[0]).toMatchObject({ id: a.id, shape: "choice", item, options: [a.label, b.label, c.label], optionBoxes: boxes });
+    expect(got[0].box?.w).toBeCloseTo(0.21);
+    expect(got[0].box?.h).toBeCloseTo(0.04);
+    expect(got[1]).toMatchObject({ id: part.id, item: null });
+    // 手帳のある人で、印は 1 つまで（まとめる前は全部の □ に印が付く）
+    const id = SEED_PEOPLE.map((p) => p.person.id).find((pid) => {
+      const v = cells(rowsOf(pid), mapping([a])).get(a.id);
+      return v?.kind === "choice" && v.options.some((o) => o.on);
+    });
+    expect(id).toBeTruthy();
+    const v = cells(rowsOf(id!), mapping(got)).get(a.id);
+    expect(v?.kind === "choice" ? v.options.filter((o) => o.on).length : -1).toBeLessThanOrEqual(1);
+  });
+
+  it("医療機器・常用薬の □ は □ ごとのまま。項目の違う □・段の違う □・1 つだけの □ はまとめない", () => {
+    const dev = (label: string, x: number) => field({ label, shape: "check", item: "medical.devices", box: box(x, 0.1, 0.01, 0.01) });
+    const fs = [dev("人工呼吸器", 0.1), dev("吸引", 0.2)];
+    expect(settleRead(fs)).toEqual(fs);
+    const one = field({ label: "独居", shape: "check", item: "basic.household", box: box(0.1, 0.2, 0.01, 0.01) });
+    const other = field({ label: "要介護", shape: "check", item: "care.careLevel", box: box(0.2, 0.2, 0.01, 0.01) });
+    expect(texts(settleRead([one, other]))).toEqual(texts([one, other]));
+    const s1 = field({ section: "甲", label: "身体", shape: "check", item: "care.handbook", box: box(0.1, 0.3, 0.01, 0.01) });
+    const s2 = field({ section: "乙", label: "療育", shape: "check", item: "care.handbook", box: box(0.1, 0.4, 0.01, 0.01) });
+    expect(settleRead([s1, s2]).map((f) => f.shape)).toEqual(["check", "check"]);
+  });
+
+  it("同じ項目の字の欄は 1 つに。広い欄か項目の名前の言葉を持つ欄に残し、ほかは項目なしで候補に残す", () => {
+    const ai = (item: MappingField["item"]) => ({ item, confidence: "high" as const, reason: "読み" });
+    const narrow = field({ label: "持ち出し品", item: "evacuation.carryItems", box: box(0.5, 0.5, 0.05, 0.02), ai: ai("evacuation.carryItems") });
+    const wide = field({ label: "必ず持ち出す物", shape: "lines", item: "evacuation.carryItems", box: box(0.5, 0.1, 0.4, 0.2), ai: ai("evacuation.carryItems") });
+    const got = settleRead([wide, narrow]);
+    expect(got[0].item).toBe("evacuation.carryItems");
+    expect(got[1]).toMatchObject({ id: narrow.id, item: null, ai: { candidate: "evacuation.carryItems" } });
+    // 項目の名前の言葉（その他の特記 の 特記）を持つ欄が先。広さが 10 倍より離れていれば広い欄
+    const tok = field({ label: "特記事項", shape: "lines", item: "notes.other", box: box(0.1, 0.1, 0.34, 0.06) });
+    const help = field({ label: "助けてほしいこと", shape: "lines", item: "notes.other", box: box(0.5, 0.1, 0.4, 0.3) });
+    expect(settleRead([help, tok]).map((f) => f.item)).toEqual([null, "notes.other"]);
+    const tiny = field({ label: "特記", item: "notes.other", box: box(0.1, 0.1, 0.03, 0.01) });
+    expect(settleRead([help, tiny]).map((f) => f.item)).toEqual(["notes.other", null]);
+  });
+
+  it("重ねてよい組は外さない: 頁ごとの同じ場所・電話と携帯・選択肢の子の欄", () => {
+    const p1 = field({ page: 1, label: "氏名", item: "person.name", box: box(0.1, 0.1, 0.2) });
+    const p2 = field({ page: 2, label: "氏名", item: "person.name", box: box(0.1, 0.1, 0.2) });
+    expect(settleRead([p1, p2]).map((f) => f.item)).toEqual(["person.name", "person.name"]);
+    const tel = field({ label: "電話", shape: "phone", item: "emergency1.phone", box: box(0.1, 0.2, 0.2) });
+    const mob = field({ label: "携帯", shape: "phone", item: "emergency1.phone", box: box(0.1, 0.3, 0.2) });
+    expect(settleRead([tel, mob]).map((f) => f.item)).toEqual(["emergency1.phone", "emergency1.phone"]);
+    const h = hazardRows();
+    expect(settleRead(h.all).map((f) => f.item)).toEqual(["evacuation.hazards", "evacuation.hazards", "evacuation.hazards"]);
+  });
+
+  it("「住所・連絡先」の欄は住所と電話の組（T141 の組）", () => {
+    expect(pairedItem({ item: "supporter1.address", label: "住所・連絡先 ①" })).toMatchObject({ item: "supporter1.phone", role: "phone" });
+    expect(pairedItem({ item: "supporter1.phone", label: "連絡先" })).toBeNull();
   });
 });

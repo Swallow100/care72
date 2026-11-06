@@ -848,7 +848,7 @@ const PAIR_ROLES = [
   { role: "birth", re: /生年月日/ },
   { role: "age", re: /年齢/ },
   { role: "address", re: /住所/ },
-  { role: "phone", re: /電話|TEL/i },
+  { role: "phone", re: /電話|TEL|連絡先/i },
   { role: "relation", re: /続柄|関係/ },
 ] as const;
 type PairRole = (typeof PAIR_ROLES)[number]["role"];
