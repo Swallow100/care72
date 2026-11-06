@@ -367,6 +367,10 @@ export type Facts = {
   rideAfter?: number;
   /** 家の辺りが通れない（道の通行止・家の辺りの浸水。計画の手段でも移れない。T141 で川の氾濫の区域を足した） */
   blocked?: boolean;
+  /** 通れない訳（T174）。閉じている道の名前と、家の辺りが水につかっているか */
+  blockedBy?: { roads: ReadonlyArray<string>; flooded: boolean };
+  /** この人の道が土砂でふさがった事があり、家の辺りは水につかっていない（T174。通れない訳を水と言わない） */
+  dryRoad?: boolean;
   /** 避難先へ向かうと言った（時刻と、計画の手段で移れるか。T139）。移れなければ訳（T141） */
   going: { at: number; can: boolean; why?: GoWhy } | null;
   /** 家族・支援者が本人の所にいる・見に行ったと伝えた（時刻と出どころ。WITH_MINUTES の間。T139） */
@@ -564,6 +568,12 @@ export function placeBlocked(world: WorldState, person: string, plan: Plan | nul
   return roads || flooded;
 }
 
+/** 家の辺りが通れない訳（T174）。閉じている道の名前と、家の辺りが水につかっているか */
+export function blockedWhy(world: WorldState, person: string, plan: Plan | null): { roads: string[]; flooded: boolean } {
+  const roads = (world.roads ?? []).filter((r) => (!r.person || r.person === person) && !r.open).map((r) => r.label);
+  return { roads: [...new Set(roads)], flooded: world.marks?.[person]?.flooded !== undefined || (world.flood === true && (plan?.floodM ?? 0) >= FLOOD_AREA_M) };
+}
+
 /**
  * 計画の手段で避難先へ移れた時刻（T139・T141。移れなければ null）。going は向かうと言った時刻。
  * - 計画に避難先と手段が無い・家の辺りが通れない間は移れない
@@ -609,6 +619,7 @@ export function factsOf(input: FactsInput): Facts {
       : null;
   const dest: WhereNow = plan?.destination === "shelter" ? "shelter" : "other";
   const blocked = placeBlocked(world, person, plan);
+  const blockedBy = blockedWhy(world, person, plan);
   // 移送の車が前の連絡のあとに着いた（T139。移送は本人を避難先へ運ぶ手。着いたら帳面のいる所は避難先の種類）
   const carried = (world.arrivals ?? []).filter((a) => a.person === person && a.role === "transport" && a.arrived && a.arrive > prevAt && a.arrive <= now).at(-1);
   // 避難先へ向かうと言った（家族・本人。打ち消しは見ない）。計画の手段で移れた時刻は planMoveAt（T139・T141）
@@ -697,6 +708,8 @@ export function factsOf(input: FactsInput): Facts {
     prevAt,
     ...(rideAfter !== null ? { rideAfter } : {}),
     blocked,
+    blockedBy,
+    dryRoad: !blockedBy.flooded && !world.flood && (world.roads ?? []).some((r) => r.person === person && r.id.startsWith("rd-ls-")),
     going,
     withPerson,
     ahead: input.ahead ?? null,
@@ -752,6 +765,15 @@ const GO_WHY_WORDS: Readonly<Record<GoWhy, string>> = {
   helper: "動けないので、手伝う人か乗り物が来るまで移れない",
 };
 
+/**
+ * 通れない訳の言葉（T174）。前は「道か水か」の二択の文を渡していて、土砂の人の家族が水を訳に挙げた。事実の方だけを書く。名前の無い時は二択の文のまま
+ */
+function blockedWords(f: Pick<Facts, "blockedBy">): string {
+  const b = f.blockedBy;
+  if (!b || (b.roads.length === 0 && !b.flooded)) return GO_WHY_WORDS.blocked;
+  return [b.roads.length > 0 ? `${b.roads.join("・")}が通行止` : null, b.flooded ? "家の辺りが水につかっている" : null].filter(Boolean).join("で、");
+}
+
 /** 残りの時間の言い方（T141。コードが決める数。10 分・30 分・1 時間に丸める） */
 export function remainWords(minutes: number): string {
   const m = Math.max(0, Math.round(minutes));
@@ -803,9 +825,12 @@ export function factLines(f: Facts): string[] {
     out.push(
       f.going.can
         ? `移動: ${minuteText(f.going.at)}に避難先へ向かうと言った（計画の手段で ${minuteText(f.going.at + GO_MINUTES)}ごろ着く）`
-        : `移動: ${minuteText(f.going.at)}に避難先へ向かうと言ったが、${GO_WHY_WORDS[f.going.why ?? "plan"]}（まだ家。向かえていない理由を言う）`,
+        : `移動: ${minuteText(f.going.at)}に避難先へ向かうと言ったが、${f.going.why === "blocked" ? blockedWords(f) : GO_WHY_WORDS[f.going.why ?? "plan"]}（まだ家。向かえていない理由を言う）`,
     );
   }
+  // 通れない訳（T174）。言うならこの訳だけ。水につかっていないのに水と言わない
+  if (f.blocked && f.blockedBy && (f.blockedBy.roads.length > 0 || f.blockedBy.flooded)) out.push(`家の辺りの道: ${blockedWords(f)}。通れない訳を言うならこれだけ${f.blockedBy.flooded ? "" : "（水につかっていない。水のせいと言わない）"}`);
+  else if (f.dryRoad) out.push("家の辺りの道: 通れる。水につかっていない（水のせいと言わない）");
   if (f.withPerson) out.push(`そばの人: ${f.withPerson.by === "family" ? "家族" : "支援者"}が本人の所にいる・見たと伝えた（${minuteText(f.withPerson.at)}）。様子が分からないとは言わない`);
   if (f.hurt) {
     const what = [f.hurt.canMove === false ? "動けない" : null, f.hurt.injured === true ? "けが" : null].filter(Boolean).join("・");
@@ -913,6 +938,7 @@ export const GATE_RULES = [
   "swap_news", // 前の連絡より前に予備に替えた事を、また替えたと言う（落とした。T165）
   "backstage", // 訓練の裏側の言葉（問いの途中・この訓練・演じる。落とした。T165）
   "power_said", // 停電の戻りと家の電気の食い違い（届いた電源を「電気が戻った」と言う〔直した〕・戻ったあとに「まだ停電」と言う〔落とした〕。T167）
+  "road_said", // 道の開通と言葉の食い違い（閉じているのに通れた・開いたのに通れない・土砂の人が水を訳に挙げる。落とした。T174）
 ] as const;
 export type GateRule = (typeof GATE_RULES)[number];
 
@@ -1011,6 +1037,35 @@ const UNKNOWN_STATE = /様子が(?:分から|わから)|(?:安否|状況)が(?:�
 /** 家の外（道・屋外）で動けない言い方（T139。避難所にいる人は言わない） */
 const OUTSIDE_STUCK = /(?:外|道|屋外|家の外|路上)で(?:動けな|倒れ|転|立てな)|外に出(?:て|た)(?:ら|まま)?(?:動けな|倒れ|転)/;
 
+/** 道が通れた言い方（T174。「通れるか」「通れる道」は見ない） */
+const ROAD_OPEN_SAID = /(?:道|道路|橋|トンネル)(?:が|は|も)?[^。、]{0,6}?(?:通れるように|通った|通りました|通れま(?!せん)|通れる(?![かよ道])|開通|片付|再開|通行可)/u;
+/** 道が通れない言い方（T174。「通れなかった」のような済んだ話は見ない） */
+const ROAD_SHUT_SAID = /(?:道|道路|橋|トンネル)(?:が|は|も)?[^。、]{0,8}?(?:通れ(?:ない|ません|なく|ず)|ふさが|塞が|通行止|封鎖)/u;
+/** 家の辺りが水につかった言い方（T174。「水が出ない」「水が来たら」は見ない） */
+const WATER_SAID = /(?:家|辺り|周り|近く|道|外|足元)[^。、]{0,6}?(?:水につ|水が(?:来(?:て|ま)|つい|上が(?:って|り)|入(?:って|り)|引(?:か|く|い))|水で|浸水|冠水)|水が引(?:く|い)/u;
+
+/** 道の開通と言葉の食い違い（T174。本人役の門と、遅れて当たった監督の出来事のあとの engine の門が同じに見る） */
+export function roadSlip(t: string, ctx: Pick<SlipContext, "roadClosed" | "dryRoad">): boolean {
+  if (ctx.roadClosed === true && ROAD_OPEN_SAID.test(t)) return true;
+  if (ctx.roadClosed === false && ROAD_SHUT_SAID.test(t)) return true;
+  return ctx.dryRoad === true && WATER_SAID.test(t);
+}
+
+/**
+ * 遅れて当たった監督の道の出来事に、同じ区切りの本人役の言葉を合わせる（T174。評価の 9 回目で、本人役が「道が通れない」と言った同じ分に、並べて呼んだ監督の
+ * 開通が当たった）。合わない文だけ落とす。色と 4 問は変えない。plan が無いので閉じているかは道と印だけで見る
+ */
+export function dropRoadSlips(text: string | null, world: WorldState, person: string, onDrop?: (rule: GateRule) => void): string | null {
+  if (!text) return text;
+  const roadClosed = placeBlocked(world, person, null);
+  const kept = text.split(/(?<=[。！？!?])/u).filter((s) => {
+    if (!roadSlip(s.normalize("NFKC"), { roadClosed })) return true;
+    onDrop?.("road_said");
+    return false;
+  });
+  return kept.join("").trim() || null;
+}
+
 /** 文の帳面と食い違いを見る物 */
 export type SlipContext = {
   /** 今いる所（帳面と、この答えを直したあと）。null は見ない */
@@ -1050,6 +1105,10 @@ export type SlipContext = {
   suppliedOnly?: boolean;
   /** この家の停電は戻った（T167）。「まだ停電」と言わない */
   outageRestored?: boolean;
+  /** 家の辺りの道が閉じている（T174）。true は「通れた」と言わない、false は「通れない」と言わない。無ければ見ない */
+  roadClosed?: boolean;
+  /** 土砂の人で家の辺りは水につかっていない（T174）。水を訳に挙げない */
+  dryRoad?: boolean;
 };
 
 /** 予備に替えたあと、予備で動いている機器か（T158） */
@@ -1078,6 +1137,8 @@ export function slipContextOf(f: Facts, place: WhereNow | null = f.place?.where 
     swappedBefore: f.devices.some((d) => d.outAt !== null && d.spare !== null && d.backAt === null && d.outAt < (f.prevAt ?? -1)),
     suppliedOnly: f.power.outage === "on" && f.power.supplied !== null,
     outageRestored: f.power.outage === "restored",
+    ...(f.blocked !== undefined ? { roadClosed: f.blocked } : {}),
+    ...(f.dryRoad ? { dryRoad: true } : {}),
     // 電池の残りの数（T141）。停電の区域で停電で減る機器のある人だけ見る
     ...(f.power.outage !== "none" && f.devices.length > 0
       ? { remains: f.devices.flatMap(remainChoices), say: f.devices.map(sayMinutes).find((x) => x !== null) ?? null, oldOut: f.devices.some((d) => d.known === true) }
@@ -1179,6 +1240,7 @@ export function sentenceSlip(s: string, ctx: SlipContext): GateRule | null {
   if ((ctx.place === "shelter" || ctx.place === "other") && HOME_STAY.test(t) && !RETURNED.test(t)) return "place_text";
   if (ctx.place === "home" && AT_SHELTER.test(t)) return "place_text";
   if (ctx.place === "home" && AT_HOSPITAL.test(t) && !RETURNED.test(t)) return "place_text";
+  if (roadSlip(t, ctx)) return "road_said";
   // 停電が戻ったあとに、まだ続いていると言う（T167。世界の停電の復旧と家の電気を食い違わせない）
   if (ctx.outageRestored && STILL_OUT.test(t)) return "power_said";
   // 家にいる人の「家の外にいる」（T141。評価の 5 回目で、ふだん動けない人が家の外にいると言った）

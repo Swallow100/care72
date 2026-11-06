@@ -171,6 +171,7 @@ const FACT_TITLES: Readonly<Record<string, string>> = {
   down_silent: "機器の予備が切れたあと長く本人・家族の連絡が無い",
   down_green: "機器が止まったまま緑の連絡",
   self_answer: "電話に出られない本人が電話で話した",
+  road_said: "道の開通と言葉の食い違い（閉じているのに通れた・開いたのに通れない・土砂の人が水を訳に挙げる）",
   place_text: "いる所と食い違う言葉",
   remain_mismatch: "電池・予備の残りの数が帳面と食い違う",
   old_news: "前に伝えた事を新しい事のように言う",

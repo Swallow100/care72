@@ -944,6 +944,7 @@ const tally = (xs: ReadonlyArray<string>): Record<string, number> => {
  * 一度起きた事・家に置いてきた物・同居と家族・声・止まった機器。安否の色やいる所の入れ替わり（place_flip）と出来事の重なりは入れない
  */
 export const FACT_WORD_RULES: ReadonlySet<string> = new Set([
+  "road_said",
   "place_text",
   "with_arrived",
   "absent_kin",

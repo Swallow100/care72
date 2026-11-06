@@ -17,6 +17,7 @@ import {
   canLeaveHome,
   carryPlace,
   factsOf,
+  FLOOD_AREA_M,
   helpedFlip,
   KIND_REPEAT_MAX,
   placeFlipped,
@@ -131,6 +132,40 @@ export function factHits(outcome: RunOutcome, people: Readonly<Record<string, Fa
   };
 
   const table = tableTurns(outcome);
+  // その時の道（T174。factsAt は終わりの世界なので、道の開け閉めは出来事から作る。同じ分の出来事は当たったあととして見る。engine の門と同じ）
+  const roadMoves: Array<{ minute: number; id: string; person: string | null; open: boolean; label: string }> = [];
+  for (const t of [...r.ticks].sort((a, b) => a.step - b.step)) {
+    for (const e of t.incidents) {
+      const c = e.change as { kind?: string; id?: string; road?: string; town?: string; label?: string; open?: boolean; persons?: string[] } | undefined;
+      const minute = Math.round((e.at ?? t.hour) * 60);
+      if (c?.kind === "road" && c.id) roadMoves.push({ minute, id: c.id, person: e.person ?? null, open: c.open === true, label: c.label ?? "" });
+      if (c?.kind === "town_road" && c.road) {
+        for (const p of c.persons ?? []) {
+          roadMoves.push({ minute, id: `rd-${c.road}-${p}`, person: p, open: c.open === true, label: c.label ?? "" });
+          if (c.open === true && c.road.startsWith("town-")) roadMoves.push({ minute, id: `ls-all-${p}`, person: p, open: true, label: "" });
+        }
+      }
+      if (c?.kind === "landslide") for (const p of c.persons ?? []) roadMoves.push({ minute, id: `rd-ls-${c.town}-${p}`, person: p, open: false, label: "土砂の道" });
+    }
+  }
+  const roadsAt = (person: string, minute: number): { closed: boolean; dry: boolean } => {
+    const open = new Map<string, boolean>();
+    let slid = false;
+    for (const m of roadMoves) {
+      if (m.minute > minute || (m.person !== null && m.person !== person)) continue;
+      if (m.id.startsWith("rd-ls-")) slid = true;
+      if (m.id.startsWith("ls-all-")) {
+        for (const k of open.keys()) if (k.startsWith("rd-ls-")) open.set(k, true);
+      } else open.set(m.id, m.open);
+    }
+    // 門の placeBlocked と同じ決め（水の印か、川の氾濫で浸水の区域）
+    const flood = world.marks?.[person]?.flooded !== undefined || (world.flood === true && (people[person]?.plan.floodM ?? 0) >= FLOOD_AREA_M);
+    return { closed: [...open.values()].some((x) => !x) || flood, dry: slid && !flood && world.flood !== true };
+  };
+  const roadCtx = (person: string, minute: number) => {
+    const x = roadsAt(person, minute);
+    return { roadClosed: x.closed, dryRoad: x.dry };
+  };
   // 家の外へ出た・車中泊・帰ろうとする印（その時の世界の印。終わりの世界では人が着くと消えているので、出来事から作る）
   const awayMarks: Array<{ person: string; minute: number; kind: "wandering" | "car" | "other" }> = [];
   const foundMarks: Array<{ person: string; minute: number }> = [];
@@ -184,7 +219,7 @@ export function factHits(outcome: RunOutcome, people: Readonly<Record<string, Fa
           const ok = leaving ? canLeaveHome(f) : RETURNED.test(words.normalize("NFKC"));
           if (!ok) hit("place_flip", person, minute, `${prevPlace} → ${place}`);
         }
-        const ctx = { ...slipContextOf(f, place ?? f.place?.where ?? null), ...(u.source === "family" ? { kin: null } : {}), ...(leftAt(person, minute) ? { leftBehind: true } : {}) };
+        const ctx = { ...slipContextOf(f, place ?? f.place?.where ?? null), ...roadCtx(person, minute), ...(u.source === "family" ? { kin: null } : {}), ...(leftAt(person, minute) ? { leftBehind: true } : {}) };
         // 表の行のする事（表のまま残した物）は画面の記録の言葉なので見ない（T165）。表に無く本人役が作ったする事は見る
         const tableDoing = table.get(`${person}|${minute}`) ?? null;
         for (const [field, text] of [["saying", u.saying], ["doing", tableDoing !== null && u.doing === tableDoing ? null : u.doing]] as const) {
@@ -204,7 +239,7 @@ export function factHits(outcome: RunOutcome, people: Readonly<Record<string, Fa
     const minute = res.atMinute;
     const prev = lastStateBefore(byPerson.get(person) ?? [], minute);
     const f = factsAt(person, prev, minute);
-    const ctx = { ...slipContextOf(f), kin: null, ...(leftAt(person, minute) ? { leftBehind: true } : {}) };
+    const ctx = { ...slipContextOf(f), ...roadCtx(person, minute), kin: null, ...(leftAt(person, minute) ? { leftBehind: true } : {}) };
     const texts: Array<[string, string | null | undefined]> = [
       ["call.speech", res.speech],
       ...(res.talk ?? []).filter((l) => l.who !== "cm").map((l): [string, string | undefined] => ["talk", l.text]),
@@ -229,7 +264,7 @@ export function factHits(outcome: RunOutcome, people: Readonly<Record<string, Fa
     if (!c.person) continue;
     const prev = lastStateBefore(byPerson.get(c.person) ?? [], c.minute);
     const f = factsAt(c.person, prev, c.minute);
-    const ctx = { ...slipContextOf(f), kin: null, ...(leftAt(c.person, c.minute) ? { leftBehind: true } : {}) };
+    const ctx = { ...slipContextOf(f), ...roadCtx(c.person, c.minute), kin: null, ...(leftAt(c.person, c.minute) ? { leftBehind: true } : {}) };
     for (const l of c.lines) {
       if (l.who === "cm" || !l.text || !l.ai) continue;
       checked += 1;
