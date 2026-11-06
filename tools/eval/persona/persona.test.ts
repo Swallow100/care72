@@ -74,14 +74,34 @@ describe("使う人と目標", () => {
     // パスワードの値は書かず印だけ
     expect(list.find((p) => p.id === "first")!.info.join("")).toContain("{{password}}");
   });
-  it("医療班の受入の筋は受入一覧の氏名検索から（訓練の受入依頼ではない）", () => {
+  it("医療班の受入の筋は発災開始のあとの受入依頼の行から（T163。訓練の受入依頼ではない）", () => {
     const m = list.find((p) => p.id === "medical")!;
     expect(m.goals.map((g) => g.id)).toEqual(["role", "receive", "summary", "note"]);
-    expect(m.goals[1].route).toContainEqual({ click: "氏名検索" });
+    expect(m.setup).toBe("disaster");
+    expect(m.goals[1].route).toEqual([{ click: "受入 ヤマダ ハナ" }]);
+    // ほかの筋は下ごしらえなし
+    expect(list.filter((p) => p.id !== "medical").every((p) => p.setup === undefined)).toBe(true);
   });
 });
 
 describe("偽の client と偽の画面で筋が通る", () => {
+  it("医療班の筋は受入依頼の行から受け入れて最後まで。発災開始を流せなければ筋を止め、守り（persona-medical-receive）が外れる", async () => {
+    const ok = await runPersonaEval(cfg({ personas: ["medical"] }));
+    const m = ok.summary.paths[0]!;
+    expect(m.stop).toBe("all");
+    expect(m.goals.reached).toBe(m.goals.total);
+    expect(ok.shared.some((f) => f.cause === "guard:persona-medical-receive")).toBe(false);
+    // 下ごしらえの無い偽の画面（訓練の外に依頼が入らない形）
+    class NoStart extends FakeSurface {
+      override async startDisaster(): Promise<boolean> {
+        return false;
+      }
+    }
+    const ng = await runPersonaEval(cfg({ personas: ["medical"], makeSurface: () => new NoStart({ loginId: DEFAULT_LOGIN_ID, password: "fake-site-password" }) }));
+    expect(ng.summary.paths[0]!.stop).toBe("open");
+    expect(ng.shared.some((f) => f.cause === "guard:persona-medical-receive")).toBe(true);
+  });
+
   it("5 筋とも最後まで行き、最短の手に近い手数で全部の目標に届く", async () => {
     const r = await runPersonaEval(cfg());
     expect(r.summary.paths).toHaveLength(5);
