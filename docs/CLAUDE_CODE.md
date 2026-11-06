@@ -33,7 +33,7 @@
 
 ## 何が可能になったか
 
-今の数（`1b5a6b3a`、T171 で数えた）: commit 2,023（merge 467）。merge でない 1,556 の書き手は Opus 5.5 1,463・Fable 5.1 87・Sonnet 5.5 5・無し 1（雛形 `2a8ee56`）。PR は作り直す前 114・作り直したあと 95。頼み文 149。テストは 4,630 件（`81c9bbf` で全部を流した数。そのあとの commit は文書だけ）。
+今の数（`1b5a6b3a`、T171 で数えた）: commit 2,023（merge 467）。merge でない 1,556 の書き手は Opus 5.5 1,463・Fable 5.1 87・Sonnet 5.5 5・無し 1（雛形 `2a8ee56`）。PR は作り直す前 114・作り直したあと 95。頼み文 149。テストは 4,150 件・291 ファイル（`npx vitest list` が集めた数）。
 
 下の表は `62ef6ee`（11/3 18:14。期間の始まり 11/2 12:30 から約 30 時間）で数えた内訳で、最初の 30 時間の記録として残す。行数は今の数を取っていない。
 
@@ -172,7 +172,7 @@ CLAUDE.md に書くだけでは、急いだセッションが破ることがあ�
 ## 数え方
 
 ```sh
-R=1b5a6b3a   # 数える commit
+R=1b5a6b3a   # 今の数。下の注（11 件の merge など）は R=62ef6ee の内訳の物
 git rev-list --count $R; git rev-list --count --merges $R; git rev-list --count --no-merges $R
 git log --no-merges $R --format='%(trailers:key=Co-Authored-By,valueonly)' | sort | uniq -c   # 書き手
 git log --no-merges $R --numstat --format='@@%h|%(trailers:key=Co-Authored-By,valueonly)'   # 行は拡張子で分けて足す（package-lock.json を除く）
@@ -180,5 +180,5 @@ git log $R --merges --format='%h %an %s'   # 人が GitHub の画面で押した
 git diff-tree --cc <merge の hash> | grep '^++'   # merge で新しく書いた行（11 件とも 0）
 gh pr list --state all --limit 200 --json number,state,baseRefName
 ls docs/tasks/T*.md | wc -l
-npm test
+npx vitest list   # テストの数を、流さずに数える
 ```
