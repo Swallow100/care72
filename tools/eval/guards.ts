@@ -47,6 +47,13 @@ export const GUARDS: ReadonlyArray<Guard> = [
     label: "一覧の様式の対応表を別の事業所が AI を呼ばずに写す",
     suspects: ["lib/forms/shared-mapping.ts", "lib/forms/read-post.ts"],
   },
+  // T160: 評価の 6 回目（書類）の日付の欄・選ぶ欄・連絡先。値は 6 回目の記録の数え直し（17 様式 × 入力 55）で直したあとの数。
+  // 日付の要修正 165 → 0、連絡先の置けず 84 → 0。置けない日付 110 → 55 の残りは時津町の刷ってある記号（△△年□月◇◇日）の上に書く形で、
+  // 記号に重ねないので空けるのが答え。当てたのに紙に出ない選択肢 24 は、災害診療記録の性別（女性の 2 つの選択肢）が台帳の値で決まらない物と吹田市の避難の手段の添えの 1 枚
+  { id: "forms-date-fix-none", bench: "forms", item: "forms.dateFix", op: "<=", value: 0, since: "r7", task: "T160", label: "日付の欄に要修正を出さない", suspects: ["lib/forms/split-parts.ts", "lib/forms/overlay-sheet.ts", "lib/forms/mapped-sheet.ts"] },
+  { id: "forms-contact-placed", bench: "forms", item: "forms.unplacedContact", op: "<=", value: 0, since: "r7", task: "T160", label: "緊急連絡先・支援者の欄を置けなくしない", suspects: ["lib/forms/overlay-sheet.ts", "lib/forms/mapped-sheet.ts"] },
+  { id: "forms-date-unplaced", bench: "forms", item: "forms.unplacedDate", op: "<=", value: 55, since: "r7", task: "T160", label: "置けない日付を増やさない", suspects: ["lib/forms/split-parts.ts", "lib/forms/overlay-sheet.ts"] },
+  { id: "forms-option-picked", bench: "forms", item: "forms.unplacedPicked", op: "<=", value: 24, since: "r7", task: "T160", label: "当てた選択肢を紙に出さない数を増やさない", suspects: ["lib/forms/option-values.ts", "lib/forms/mapped-sheet.ts"] },
 ];
 
 /** 守りの確かめ。values は回の項目の数、counts は同じ原因の指摘の数（causeCounts）。数の無い項目は確かめない */
