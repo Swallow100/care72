@@ -200,6 +200,19 @@ export const GUARDS: ReadonlyArray<Guard> = [
   // 数え直しは当てたのに紙に出ない選択肢 23・正解に無い印 0。置き間違いは 6 回目（195）より増やさない
   { id: "forms-mark-extra-none", bench: "forms", item: "forms.markExtra", op: "<=", value: 0, since: "r8", task: "T164", label: "台帳に無い選択肢に印を付けない", suspects: ["lib/forms/option-values.ts", "lib/forms/mapped-sheet.ts"] },
   { id: "forms-paper-wrong", bench: "forms", item: "forms.paperWrong", op: "<=", value: 195, since: "r8", task: "T164", label: "紙の置き間違いを 6 回目より増やさない", suspects: ["lib/forms/mapped-sheet.ts", "lib/forms/overlay-sheet.ts", "lib/forms/form-shape.ts"] },
+  // T167: 評価の 8 回目で呼び出しが 91.4/回・上限との比 90.7%（run-01 の 137 回のうち本人役の通話 72）。相づち・聞き返し・同じ問いをコードの短い返事にした。
+  // r8 の通話の並びに当てると 136 往復のうち本人役 51（切った分を除く 94 往復の 54%）、1 回の訓練は最大 85 回ほど。値は r7 の数を超えない形で守る
+  { id: "drill-calls-per-run", bench: "drill", item: "drill.callsPerRun", op: "<=", value: 89.6, since: "r9", task: "T167", label: "AI の呼び出しを 7 回目より増やさない", suspects: ["lib/drill/talk-quick.ts", "lib/drill/hooks.ts", "tools/eval/drill/drive.ts"] },
+  { id: "drill-cap-ratio", bench: "drill", item: "drill.capRatioMax", op: "<=", value: 0.747, since: "r9", task: "T167", label: "1 訓練の上限との比を 7 回目より増やさない", suspects: ["lib/drill/talk-quick.ts", "lib/drill/hooks.ts", "tools/eval/drill/drive.ts"] },
+  { id: "drill-talk-ai-share", bench: "drill", item: "drill.talkAiShare", op: "<=", value: 0.7, since: "r9", task: "T167", label: "通話の返事を本人役に頼りすぎない（相づち・同じ問いはコード）", suspects: ["lib/drill/talk-quick.ts"] },
+  // T167: 避難所や病院へ移ったあとに家にいる言い方（審査役 3 回とも）。門（帳面のいる所でも見る・「家で〜」・「病院へ移りました」）で画面の言葉では 0
+  { id: "drill-place-text-none", bench: "drill", item: "count:drill:facts:place_text", op: "<=", value: 0, since: "r9", task: "T167", label: "いる所と食い違う言葉を出さない", suspects: ["lib/drill/person-facts.ts", "lib/drill/persona.ts"] },
+  // T167: 届いた電源を「電気が戻った」と言う・戻ったあとに「まだ停電」と言う。門が直す・落とすので画面の言葉では 0
+  { id: "drill-power-said-none", bench: "drill", item: "count:drill:facts:power_said", op: "<=", value: 0, since: "r9", task: "T167", label: "停電の戻りと家の電気を食い違わせない", suspects: ["lib/drill/person-facts.ts", "lib/drill/persona.ts"] },
+  // T167: 機器の予備が切れたあと 4 時間のうちに連絡が無い人。切れた時刻に本人役を呼ぶようにした（連絡するかは本人役が決めるので 1 まで）
+  { id: "drill-down-silent", bench: "drill", item: "count:drill:facts:down_silent", op: "<=", value: 1, since: "r9", task: "T167", label: "機器の予備が切れたあと長く連絡なしにしない", suspects: ["lib/drill/hooks.ts", "lib/drill/person-facts.ts", "lib/drill/persona.ts"] },
+  // T167: 仮想の回の出来事の無い人 8/10。世界の刻みに表の人ごとの出来事を足した（lib/drill/quiet-event.ts）
+  { id: "drill-virtual-no-kind", bench: "drill", item: "drill.personNoKindVirtual", op: "<=", value: 0.3, since: "r9", task: "T167", label: "仮想の回で出来事の無い人を 3 割より増やさない", suspects: ["lib/drill/quiet-event.ts", "lib/drill/event-catalog.ts", "lib/drill/world-apply.ts"] },
 ];
 
 /** 守りの確かめ。values は回の項目の数、counts は同じ原因の指摘の数（causeCounts）。数の無い項目は確かめない */
