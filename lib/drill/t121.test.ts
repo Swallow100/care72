@@ -296,7 +296,7 @@ describe("持ちこたえる時間の今（本人役に渡す計算した値）"
     const restored = applyEvent(out, inc({ kind: "outage_restored" }, 2), 2);
     expect(clockWords(persona, restored, "p-02", 600)[0]).toMatch(/残り 2 時間。2 時間から電気で動き減っていない$/);
     const powered: WorldState = { ...out, supplies: { "p-02": { power: 150 } } };
-    expect(clockWords(persona, powered, "p-02", 600)[0]).toMatch(/残り 1.5 時間。2 時間 30 分から電気で動き減っていない$/);
+    expect(clockWords(persona, powered, "p-02", 600)[0]).toMatch(/残り 1.5 時間。2 時間 30 分から届いた電源で動き減っていない$/);
   });
 
   it("本人役の刻みの文に時計の段と、道・電話のいつから", async () => {

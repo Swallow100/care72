@@ -150,6 +150,10 @@ export type ApplyContext = {
    * 無ければ前と同じ（当てる）
    */
   supplyOk?: (person: string) => boolean;
+  /** 家の外にいると連絡のあった人か（T167。業者の巡回を出さない）。無ければ見ない */
+  awayNow?: (person: string) => boolean;
+  /** まだ出来事の無い人に足す表の人ごとの出来事（T167、lib/drill/quiet-event.ts）。無ければ足さない */
+  quiet?: () => DrillIncident[];
 };
 
 // ---------- 値を読む ----------
@@ -374,6 +378,8 @@ function buildEvent(e: WorldStep["events"][number], ctx: ApplyContext): Built[] 
       if (!p || !f || ctx.ended.has(p) || !(f.categories.includes("oxygen") || f.categories.includes("ventilator"))) return [];
       // 手も計画も無い人に、業者が自然に来て酸素・電池が届く形にしない（T130。評価の 3 回目の審査役の根拠）
       if (ctx.supplyOk && !ctx.supplyOk(p)) return [];
+      // 業者は家に来るので、家の外にいると連絡のあった人には出さない（T167。監督の表の vendor_round と同じ）
+      if (ctx.awayNow?.(p)) return [];
       const raw = e.value.replace(/[^\d.]/g, "");
       const after = afterOf(EVENT_CATALOG.vendor_round, raw ? Number(raw) : undefined);
       if (after == null) return [];
@@ -472,6 +478,8 @@ export function worldIncidents(answer: WorldStep, ctx: ApplyContext, hints: Read
     used += 1;
     for (const b of built) out.push({ ...base, change: b.change, text: b.text, ...(b.person ? { person: b.person } : {}), ai: true });
   }
+  // まだ出来事の無い人に、表の人ごとの出来事を 1 つ（T167、lib/drill/quiet-event.ts。世界がこの刻みに人を指す出来事を出していれば足さない）
+  if (ctx.quiet && !out.some((e) => e.person)) out.push(...ctx.quiet());
   return ctx.endings === false ? out : [...out, ...farewellIncidents(answer.farewells, ctx, hints)];
 }
 

@@ -60,7 +60,7 @@ import { heldFields } from "./field-risk.ts";
 import { ledgerItem, listFieldIds, type FormMapping, type LedgerItemKey, type ListShape, type MappingField } from "./mapping.ts";
 import { paperText } from "./paper-text.ts";
 import { warekiText } from "./wareki.ts";
-import { codeOfOption, codesOf, freeCodes, optionTable, pickByCodes } from "./option-values.ts";
+import { codeOfOption, codesOf, freeCodes, optionTable, pickByCodes, soleCodeOfText } from "./option-values.ts";
 import { bracketOwners, strayOther, type BracketOwner } from "./form-shape.ts";
 import { transportKindOf, transportText } from "../map/transport.ts";
 
@@ -504,8 +504,10 @@ export const ITEM_VALUES: Record<LedgerItemKey, Resolver> = {
     const shown = transportText(e);
     // 選択肢と台帳の値の表（T140）では、手段の種類（選ぶ欄の値、無い古い台帳は補記の字から読み替え）のコードで □ に印を付け、
     // 補記（「娘の車」）はその選択肢の所の空きに添える（入らなければ別紙）。補記を紙から落とさない
-    const code = transportKindOf(e);
     const note = e.transport?.trim();
+    // 手段の値が「その他」でも、補記が 1 つの手段だけを言っていれば（「民生委員と歩いて」）その手段の □（T168）。台帳の値は変えない
+    const stored = transportKindOf(e);
+    const code = stored === "other" && note ? ((soleCodeOfText("evacuation.transport", note) as TransportKind | null) ?? stored) : stored;
     const noteOf = code && note && note !== TRANSPORT_KIND_LABELS[code] ? note : undefined;
     return {
       cell: text(shown, pendingOf(c.ledger, "evacuation.transport")),

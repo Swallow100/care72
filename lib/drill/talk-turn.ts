@@ -59,7 +59,9 @@ export function talkRound(i: TalkRoundInput): TalkRound {
   const gated = ai ? gateWords(i.reply?.speech ?? null, i.fit, world) : null;
   if (gated && gated.dropped.length > 0) world = tallyGate(world, "persona", gated.dropped);
   const themAi = ai && gated?.text != null;
-  const themText = (themAi ? gated?.text : null) ?? TALK_FIXED_SPEECH;
+  // コードの短い返事（T167）は決まった文なので門を通さず、そのまま（AI の印なし）
+  const coded = i.reply?.coded === true && i.reply.speech ? i.reply.speech : null;
+  const themText = coded ?? (themAi ? gated?.text : null) ?? TALK_FIXED_SPEECH;
   const minutes = talkMinutesOf(said, themText);
   const replyAt = i.at + minutes;
   const cm: TalkLine = {

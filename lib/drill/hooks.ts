@@ -15,6 +15,7 @@ import { drillScope } from "./db.ts";
 import { stopLog, type ClockHooks, type DrillState } from "./engine.ts";
 import { castFactsMap } from "./cast-facts.ts";
 import { capReached, clockMarksOf, type ClockMark } from "./clock.ts";
+import { quickKindOf, quickReply } from "./talk-quick.ts";
 import { drillClocks } from "./world-clocks.ts";
 import { clockRuns } from "./score.ts";
 import { createDirectorHook } from "./director.ts";
@@ -36,7 +37,7 @@ import {
 } from "./persona.ts";
 import { TALK_ASK_WORDS, type TalkHook, type TalkReply, type VisitHook } from "./dialogue.ts";
 import { createWorldHook, roomClientOf, worldModeOf, type RoomClient } from "./world-room.ts";
-import { gateLog } from "./person-facts.ts";
+import { gateLog, planOf, spareCuts } from "./person-facts.ts";
 
 /** DRILL_WORLD: 仮想モードの世界の道（session 既定 = Managed Agents の部屋・messages = 1 回呼び・off = 世界を動かさない） */
 export type DrillHookEnv = AiEnv & { DB: D1Database; DRILL_WORLD?: string };
@@ -131,7 +132,15 @@ export function createClockHooks(deps: {
       const ledgers = members.map((p) => sources.get(p)!.ledger);
       const towns = new Map(members.map((p) => [p, sources.get(p)!.ledger.basic.address?.town ?? null] as const));
       const clocks = members.flatMap((p) => [...sources.get(p)!.clocks]);
-      return clockMarksOf(clockRuns(drillClocks(clocks, state.world), towns, outageForRuns(state.world, ledgers)));
+      const runs = clockRuns(drillClocks(clocks, state.world), towns, outageForRuns(state.world, ledgers));
+      // 計画の予備が切れる時刻も、本人役を呼ぶ理由に（T167）。電気が戻った・電源が届いた後の物は外す
+      const restored = state.world.outage?.restoredAt;
+      const spares = members.flatMap((p) =>
+        spareCuts(planOf({ ledger: sources.get(p)!.ledger, clocks: sources.get(p)!.clocks, contacts: [] }), p, runs)
+          .filter((at) => (restored == null || restored * 60 > at) && !(typeof state.world.supplies?.[p]?.power === "number" && state.world.supplies[p]!.power! <= at))
+          .map((at): ClockMark => ({ person: p, at, kind: "out" })),
+      );
+      return [...clockMarksOf(runs), ...spares];
     },
     ...(load
       ? {
@@ -260,6 +269,9 @@ export function createTalkHook(deps: { load: () => Promise<ReadonlyMap<string, P
     const said = t.ask ? TALK_ASK_WORDS[t.ask] : restoreText(pseudonymizeText(raw, key).text, key);
     const callee = t.callee.kind === "self" ? "本人" : t.callee.id ? (persona.roles.get(t.callee.id) ?? null) : null;
     if (!callee) return { ...plain, said };
+    // T167: 相づち・待って・聞こえますか・同じ問いなどは Haiku を呼ばずコードの短い返事（lib/drill/talk-quick.ts）。中身のある文は本人役のまま
+    const quick = quickKindOf({ ...(t.ask ? { ask: t.ask } : {}), said }, t.lines);
+    if (quick) return { said, speech: quickReply(quick, t.lines, t.minute), asks: [], ai: false, called: false, coded: true };
     let text: ForClaude<{ text: string }>;
     try {
       text = pseudonymizeText(
