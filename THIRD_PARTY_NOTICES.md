@@ -43,9 +43,9 @@ MIT・Apache-2.0 のほかに入っている物:
 <!-- deps:start -->
 <!-- この間は tools/licenses/notices.mjs が書く。手で直さない -->
 
-### 配信と build に使う依存（package.json の dependencies とその依存、400 件）
+### 配信と build に使う依存（package.json の dependencies とその依存、401 件）
 
-内訳: MIT 238・Apache-2.0 101・ISC 21・BSD-3-Clause 20・BlueOak-1.0.0 7・MIT OR Apache-2.0 4・BSD-2-Clause 4・Apache-2.0 AND LGPL-3.0-or-later 1・CC0-1.0 1・CC-BY-4.0 1・Unlicense 1・0BSD 1。太字は package.json に直接書いた物。
+内訳: MIT 238・Apache-2.0 102・ISC 21・BSD-3-Clause 20・BlueOak-1.0.0 7・MIT OR Apache-2.0 4・BSD-2-Clause 4・Apache-2.0 AND LGPL-3.0-or-later 1・CC0-1.0 1・CC-BY-4.0 1・Unlicense 1・0BSD 1。太字は package.json に直接書いた物。
 
 | 名前 | 版 | ライセンス | 著作権者 |
 | --- | --- | --- | --- |
@@ -324,6 +324,7 @@ MIT・Apache-2.0 のほかに入っている物:
 | json-schema-to-ts | 3.1.1 | MIT | Copyright (c) 2020 Thomas Aribart |
 | json-schema-traverse | 1.0.0 | MIT | Copyright (c) 2017 Evgeny Poberezkin |
 | json-schema-typed | 8.0.2 | BSD-2-Clause | Remy Rylan |
+| **jsqr** | 1.4.0 | Apache-2.0 | （記載なし。github.com/cozmo/jsQR） |
 | jwa | 2.0.1 | MIT | Copyright (c) 2013 Brian J. Brennan |
 | jws | 4.0.1 | MIT | Copyright (c) 2013 Brian J. Brennan |
 | kleur | 4.1.5 | MIT | Copyright (c) Luke Edwards <luke.edwards05@gmail.com> (lukeed.com) |
