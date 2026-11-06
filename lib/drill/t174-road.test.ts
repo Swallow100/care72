@@ -3,7 +3,7 @@
 import { describe, expect, it } from "vitest";
 import { SEED_PEOPLE } from "../../seed/people.ts";
 import type { PseudonymInput } from "../pseudonym/index.ts";
-import type { PersonaInput, PersonState } from "./engine.ts";
+import { advance, initialState, type PersonaInput, type PersonState } from "./engine.ts";
 import { blockedWhy, dropRoadSlips, factLines, factsOf, planOf, roadSlip, sentenceSlip, slipContextOf, type SlipContext } from "./person-facts.ts";
 import { buildPersona, personaTurns, type PersonaAnswer } from "./persona.ts";
 import { applyEvent, EMPTY_WORLD, type WorldState } from "./scenarios.ts";
@@ -21,6 +21,29 @@ const landslide = { kind: "landslide", town: "甲", persons: [id] } as const;
 const town = (open: boolean) => ({ kind: "town_road", road: "town-甲地区", label: "甲の道", open, persons: [id] }) as const;
 const bridge = (open: boolean) => ({ kind: "town_road", road: "bridge", label: "乙橋", open, persons: [id] }) as const;
 const apply = (world: WorldState, change: unknown, hour = 1): WorldState => applyEvent(world, { at: hour, change } as never, hour);
+
+describe("遅れて当たる監督の道の出来事（engine）", () => {
+  const TEN = ["p-01", "p-02", "p-03", "p-04", "p-05", "p-06", "p-07", "p-08", "p-09", "p-10"];
+  const P = "p-09";
+  const said = "道が通れません。まだ誰も来ていません。";
+  const persona = async (input: PersonaInput) => (input.person === P ? [{ person: P, color: "red" as const, source: "agent" as const, whereNow: null, injured: null, atHome: true, canMove: null, hasMedicine: null, saying: said, doing: null, ai: true, at: input.hour }] : []);
+  const begin = async () => {
+    const s = (await advance(initialState("heavy_rain", TEN, "2026-11-05T01:00:00.000Z", { clock: true }), 0, {}))!.state;
+    return { ...s, world: { ...s.world, roads: [{ id: `rd-${P}`, label: "家の前の道", open: false, person: P }], touched: { [P]: 0 } } };
+  };
+  const reopen = async () => ({ events: [{ inject: "road_reopen" as const, person: P, text: "家の前の道が開いた", reason: "理由", ai: true }], words: [] });
+
+  it("同じ区切りに開いた人の言葉から「通れない」を落とす。ほかの文と色は残す", async () => {
+    const r = (await advance(await begin(), 180, { director: reopen, persona }, { policy: "clock" }))!;
+    expect(r.state.world.roads.find((x) => x.id === `rd-${P}`)?.open).toBe(true);
+    expect(r.tick.turns.find((t) => t.person === P)).toMatchObject({ color: "red", saying: "まだ誰も来ていません。" });
+  });
+
+  it("道の出来事が無ければ言葉はそのまま（門は本人役の口が先に見る）", async () => {
+    const r = (await advance(await begin(), 180, { director: async () => ({ events: [], words: [] }), persona }, { policy: "clock" }))!;
+    expect(r.tick.turns.find((t) => t.person === P)?.saying).toBe(said);
+  });
+});
 
 describe("世界の道", () => {
   it("地区の道が開くと、同じ人の土砂の道も開く。名前のある道の開通では開かない。ほかの人の土砂の道はそのまま", () => {
