@@ -39,6 +39,9 @@ async function reply(requestId: string, answer: "accept" | "decline", shelter?: 
 
 export const REQUESTS_TITLE_ID = "requests-title";
 
+/** 狭い画面で省く列 */
+const SM = "hidden sm:table-cell";
+
 const INPUT =
   "w-40 min-w-0 rounded-md bg-panel2 px-2 py-1 text-sm text-ink outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-accent";
 
@@ -99,9 +102,9 @@ export function StaffRequests({ requests }: { requests: RequestHit[] }) {
                   <span className="sr-only">{BULK_LABELS.select}</span>
                 </th>
                 <th className={TH}>{CUSTODY_LABELS.kana}</th>
-                <th className={TH}>{CUSTODY_LABELS.age}</th>
-                <th className={TH}>{REQUEST_LABELS.shelter}</th>
-                <th className={TH}>{REQUEST_LABELS.at}</th>
+                <th className={`${TH} ${SM}`}>{CUSTODY_LABELS.age}</th>
+                <th className={`${TH} ${SM}`}>{REQUEST_LABELS.shelter}</th>
+                <th className={`${TH} ${SM}`}>{REQUEST_LABELS.at}</th>
                 <th className={TH}>
                   <span className="sr-only">{REQUEST_LABELS.replied}</span>
                 </th>
@@ -172,10 +175,16 @@ function RequestRow({ r, picked, pickable, locked, onPick }: { r: RequestHit; pi
       <td className={`${TD} w-px align-middle`}>
         <BulkCheck label={`${BULK_LABELS.select} ${r.kana}`} checked={picked} disabled={locked || !pickable} onChange={onPick} />
       </td>
-      <td className={`${TD} font-bold`}>{r.kana}</td>
-      <td className={`${TD} tabular-nums`}>{r.age ?? "-"}</td>
-      <td className={TD}>{r.shelter}</td>
-      <td className={`${TD} tabular-nums whitespace-nowrap`}>{shortJst(r.requestedAt)}</td>
+      <td className={TD}>
+        <div className="font-bold">{r.kana}</div>
+        {/* 640px 未満は年齢・行き先・依頼の列を省き、カナの下に（375 で受入のボタンが切れた） */}
+        <div className="text-xs text-muted sm:hidden">
+          {r.age ?? "-"} {CUSTODY_LABELS.age} {r.shelter} <span className="tabular-nums">{shortJst(r.requestedAt)}</span>
+        </div>
+      </td>
+      <td className={`${TD} ${SM} tabular-nums`}>{r.age ?? "-"}</td>
+      <td className={`${TD} ${SM}`}>{r.shelter}</td>
+      <td className={`${TD} ${SM} tabular-nums whitespace-nowrap`}>{shortJst(r.requestedAt)}</td>
       <td className={`${TD} text-right`}>
         <div className="flex flex-wrap items-center justify-end gap-1.5">
           {error && (

@@ -499,7 +499,7 @@ function Hits({ hits, more, shelter, via }: { hits: PersonHit[]; more: boolean; 
                 </td>
                 <td className={`${TD} w-px py-1 text-right`}>
                   {h.mine || taken.has(h.id) ? (
-                    <Link href={`/people/${encodeURIComponent(h.id)}`} className="relative rounded px-1.5 py-0.5 font-bold underline underline-offset-2" data-press>
+                    <Link href={`/people/${encodeURIComponent(h.id)}`} className="relative rounded px-1.5 py-0.5 font-bold whitespace-nowrap underline underline-offset-2" data-press>
                       {CUSTODY_LABELS.open}
                       <LinkPending />
                     </Link>

@@ -76,7 +76,7 @@ describe("使う人と目標", () => {
   });
   it("医療班の受入の筋は発災開始のあとの受入依頼の行から（T163。訓練の受入依頼ではない）", () => {
     const m = list.find((p) => p.id === "medical")!;
-    expect(m.goals.map((g) => g.id)).toEqual(["role", "receive", "summary", "bulk"]);
+    expect(m.goals.map((g) => g.id)).toEqual(["role", "receive", "bulk", "summary"]);
     expect(m.setup).toBe("disaster");
     expect(m.goals[1].route).toEqual([{ click: "受入 ヤマダ ハナ" }]);
     // ほかの筋は下ごしらえなし

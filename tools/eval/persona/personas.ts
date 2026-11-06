@@ -229,17 +229,17 @@ export function personas(loginId: string = DEFAULT_LOGIN_ID): Persona[] {
           route: [{ click: "受入 ヤマダ ハナ" }],
         },
         {
-          id: "summary",
-          text: "受け入れた山田 ハナさんの薬と機器の情報を見る",
-          done: { path: "^/people/[^/?]*p-01", text: "要約" },
-          route: [{ click: "山田 ハナ" }],
-        },
-        {
           // 残りの依頼をまとめて受け入れる（T172）。医療班からケアマネへの書き足しは今はなし（forbid で見る）
           id: "bulk",
           text: "残りの受入依頼の人をまとめて受け入れる",
           done: { text: "受入一覧\\s*[2-9]" },
-          route: [{ click: "戻る" }, { click: "全選択" }, { click: "一括受入" }],
+          route: [{ click: "全選択" }, { click: "一括受入" }],
+        },
+        {
+          id: "summary",
+          text: "受け入れた山田 ハナさんの薬と機器の情報を見る",
+          done: { path: "^/people/[^/?]*p-01", text: "要約" },
+          route: [{ click: "山田 ハナ" }],
         },
       ],
       // 医療班の本人のページに書き足しの欄を出さない（T172）。PC でも QR 読取のカメラが開く（T172）
