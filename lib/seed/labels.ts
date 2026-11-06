@@ -22,3 +22,23 @@ export const LIMIT_LABELS = {
   remaining: "残り",
   unit: "回",
 } as const;
+
+/** 種の事業所の「発災開始」（T153、lib/seed/start.ts）の言葉 */
+export const START_LABELS = {
+  /** ボタンと確認の窓の題 */
+  start: "発災開始",
+  /** 確認の窓の決める方 */
+  ok: "開始",
+  /** ボタンの横の小さな 1 行と、確認の窓の本文 */
+  scene: "想定 大雨",
+} as const;
+
+/** 確認の窓の箇条（入る物）。停電の町と本人の名前は種から（lib/seed/demo.ts） */
+export function startDetails(towns: readonly string[], redName: string): string[] {
+  return [
+    "警戒レベル 4",
+    `停電 地区（${towns.join("・")}）`,
+    `安否 ${redName} 赤・録音`,
+    "発災 4 時間前から",
+  ];
+}

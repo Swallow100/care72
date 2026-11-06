@@ -30,6 +30,7 @@ import { d1FromSqlite, migratedSqlite } from "../db/test-d1.ts";
 import { loadOfficeLog } from "../disaster/db.ts";
 import { OFFICE_TIMELINE_KIND_LABELS } from "../disaster/state.ts";
 import { demoResetStatements, seedResetStatements } from "../seed/reset.ts";
+import { seedStartStatements } from "../seed/start.ts";
 import { addCareManagerRequest, careManagerActionRequest } from "./http.ts";
 import { activeCareManagers, assignMany, assignPerson, createPerson, listCareManagers } from "./people.ts";
 import { officeActor, type OfficeActor } from "./scope.ts";
@@ -681,11 +682,12 @@ describe("migration 0012（accounts.disabled_at と、事業所の経過の種�
     d.close();
   });
 
-  it("種（山本の災害モードの行など）は新しい表に入る", () => {
+  it("種と「発災開始」（T153。災害モードの行など）は新しい表に入る", () => {
     const d = migratedSqlite();
     expect(() => {
       for (const s of seedStatements()) d.exec(s);
       for (const s of demoResetStatements(AT)) d.exec(s);
+      for (const s of seedStartStatements(DEMO_OFFICE_ID, AT, null, { authorId: DEMO_CARE_MANAGER_ID, authorRole: "care_manager" }, 0)) d.exec(s);
     }).not.toThrow();
     const n = d.prepare("SELECT count(*) AS n FROM office_timeline_entries WHERE office_id = ?").get(DEMO_OFFICE_ID) as { n: number };
     expect(n.n).toBeGreaterThan(0);

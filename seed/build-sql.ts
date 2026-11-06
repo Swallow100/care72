@@ -31,15 +31,15 @@ if (demoHash && !isPasswordHash(demoHash)) {
   process.exit(1);
 }
 
-// デモ事業所の災害モード・山田の赤・終わった訓練（lib/seed）。時刻は今から数える（発災 4 時間前・停電 3 時間前・赤 1 時間前）。
-// 種の録音（seed/recordings/p-01.webm か p-01.m4a）があれば信号に結ぶ。R2 に上げるのは seed/put-recording.ts
+// デモ事業所の QR・終わった訓練（lib/seed）。事業所は平時で始まる（T153）。訓練の日は今から数える。
+// 種の録音（seed/recordings/p-01.webm か p-01.m4a）は R2 に上げるだけ（seed/put-recording.ts）。山田の赤に結ぶのは「発災開始」（lib/seed/start.ts）
 const now = new Date().toISOString();
 const audio = seedRecordingFile(here);
 const outDir = join(here, "generated");
 mkdirSync(outDir, { recursive: true });
 const outFile = join(outDir, "seed.sql");
 const passwordHashes: Record<string, string> = demoHash ? { [LOGIN_CARE_MANAGER_ID]: demoHash } : {};
-const statements = await fullSeedStatements({ passwordHashes, now, recording: audio ? { key: audio.key, durationSec: null } : null });
+const statements = await fullSeedStatements({ passwordHashes, now });
 writeFileSync(
   outFile,
   `-- npm run db:seed が seed/people.ts と lib/seed から作る。手で直さない。git に入れない（ハッシュが入ることがある）。\n${statements.join("\n")}\n`,

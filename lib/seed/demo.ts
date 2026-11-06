@@ -1,9 +1,11 @@
 // デモ事業所の種のうち、架空の 10 人（seed/people.ts）に足す物（docs/tasks/T26.md）。
-// 災害モード（大雨・警戒レベル 4・浸水 3 m の町で停電）と、山田 ハナの赤の信号（けが あり、文字起こし、Claude の分類の列）。
+// 種（手元の npm run db:reset・毎朝 4 時の戻し・最初に戻す）に入るのは QR だけで、事業所は平時で始まる（T153）。
+// 大雨の想定（災害モード 大雨・警戒レベル 4・浸水 3 m の町で停電）と、山田 ハナの赤の信号（けが あり、文字起こし、Claude の分類の列）は
+// 事業所の画面の「発災開始」で入る（lib/seed/start.ts）。ここはその行を作るだけ。
 // 終わった訓練 1 回は lib/seed/drill.ts（本物の startDrill・advanceDrill を回して作る）。
 //
-// 時刻は種を入れた時刻（now）から数える: 発災は 4 時間前、停電と警戒レベル 4 は 3 時間前、山田の赤は 1 時間前
-// （訓練の大雨の想定の 0・1・3 時間と同じ順）。毎日 4 時に入れ直すので、日がたっても停電が何日も続いた形にならない。
+// 時刻は「発災開始」を押した時刻（now）から数える: 発災は 4 時間前、停電と警戒レベル 4 は 3 時間前、山田の赤は 1 時間前
+// （訓練の大雨の想定の 0・1・3 時間と同じ順）。時計の経過で決まる色と連絡順が、T153 の前の種の担当一覧と同じになる。
 // 経過の 1 行は本番の流れと同じ関数（lib/signals/labels.ts・lib/classify/labels.ts・lib/disaster/state.ts）で作る。
 // 分類の列は Claude を呼ばずに入れた固定の値（本番で Claude が返す形と同じ）。画面には AI の印が付く。
 //
@@ -13,7 +15,7 @@ import { CHECK_OFFICE_ID, DEMO_CARE_MANAGER_ID, DEMO_OFFICE_ID, DEMO_SELF_PERSON
 import { checkIdMap, remapRow } from "./check.ts";
 import { aiClassLogBody } from "../classify/labels.ts";
 import { HAIKU } from "../claude/models.ts";
-import type { RecordingClass } from "../db/types.ts";
+import type { AuthorRole, RecordingClass } from "../db/types.ts";
 import { DISASTER_KIND_LABELS, infoChanges, statePayload, type DisasterInfo } from "../disaster/state.ts";
 import { recordingLogBody, signalLogBody } from "../signals/labels.ts";
 import { SEED_AT, SEED_PEOPLE } from "../../seed/people.ts";
@@ -95,8 +97,13 @@ export function demoOutageTowns(): string[] {
 
 export type SeedRow = { table: string; row: Record<string, SqlValue> };
 
-/** 災害モードの行と、事業所の経過の 2 行（大雨に切替・停電と警戒レベル 4）。書き手は山本 */
-function disasterRows(now: string): SeedRow[] {
+/** 災害モードと事業所の経過の書き手（「発災開始」を押した人）。既定は山本 */
+export type SeedAuthor = { id: string | null; role: AuthorRole };
+
+const DEFAULT_AUTHOR: SeedAuthor = { id: DEMO_CARE_MANAGER_ID, role: "care_manager" };
+
+/** 災害モードの行と、事業所の経過の 2 行（大雨に切替・停電と警戒レベル 4）。書き手は押した人 */
+function disasterRows(now: string, author: SeedAuthor): SeedRow[] {
   const t = demoTimes(now);
   const towns = demoOutageTowns();
   const before: DisasterInfo = {
@@ -107,7 +114,7 @@ function disasterRows(now: string): SeedRow[] {
     road: null,
   };
   const after: DisasterInfo = { ...before, outage: { scope: "area", towns, startedAt: t.outageAt }, alertLevel: 4 };
-  const cm = DEMO_CARE_MANAGER_ID;
+  const cm = author.id;
   return [
     {
       table: "office_timeline_entries",
@@ -115,7 +122,7 @@ function disasterRows(now: string): SeedRow[] {
         id: "ot-seed-1",
         office_id: DEMO_OFFICE_ID,
         author_id: cm,
-        author_role: "care_manager",
+        author_role: author.role,
         kind: "disaster_on",
         body: DISASTER_KIND_LABELS.heavy_rain,
         payload: statePayload({ kind: "heavy_rain", startedAt: t.disasterAt }),
@@ -129,7 +136,7 @@ function disasterRows(now: string): SeedRow[] {
         id: "ot-seed-2",
         office_id: DEMO_OFFICE_ID,
         author_id: cm,
-        author_role: "care_manager",
+        author_role: author.role,
         kind: "disaster_info",
         body: infoChanges(before, after).join("・"),
         payload: statePayload({ kind: "heavy_rain", ...after }),
@@ -247,9 +254,9 @@ function redSignalRows(now: string, recording: SeedRecording): SeedRow[] {
   ];
 }
 
-/** 10 人に足す行（災害モード・事業所の経過・山田の赤と経過）。入れる順（親の表から） */
-export function demoExtraRows(now: string, recording: SeedRecording = null): SeedRow[] {
-  return [...disasterRows(now), ...redSignalRows(now, recording)];
+/** 大雨の想定の行（災害モード・事業所の経過・山田の赤と経過）。入れる順（親の表から）。種には入れず「発災開始」で入る（T153） */
+export function demoDisasterRows(now: string, recording: SeedRecording = null, author: SeedAuthor = DEFAULT_AUTHOR): SeedRow[] {
+  return [...disasterRows(now, author), ...redSignalRows(now, recording)];
 }
 
 /**
@@ -263,24 +270,31 @@ function demoQrSql(officeId: string): string {
   return `UPDATE people SET qr_generation = ${DEMO_QR.generation}, qr_issued_at = '${DEMO_QR.issuedAt}', qr_ttl_days = ${DEMO_QR.ttlDays} WHERE office_id = '${officeId}';`;
 }
 
-export function demoExtraStatements(now: string, recording: SeedRecording = null): string[] {
-  return [...demoExtraRows(now, recording).map((r) => insert(r.table, r.row)), demoQrSql(DEMO_OFFICE_ID)];
+/** 種の事業所ごとの、10 人に足す文（QR だけ。手元の種と lib/seed/reset.ts の戻し）。事業所は平時のまま（T153） */
+export function seedExtraStatements(officeId: string): string[] {
+  return [demoQrSql(officeId)];
 }
 
 /**
- * 確認用の事業所（T144）の、10 人に足す行。デモ事業所の行（災害モード・事業所の経過・山田の赤と経過）を id だけ替えて写す
- * （lib/seed/check.ts）。録音の鍵は同じ種の録音を指す
+ * 確認用の事業所（T144）の大雨の想定の行。デモ事業所の行（災害モード・事業所の経過・山田の赤と経過）を id だけ替えて写す
+ * （lib/seed/check.ts）。録音の鍵は同じ種の録音を指す。書き手が山本なら確認用の山本に替わる
  */
-export function checkExtraRows(now: string, recording: SeedRecording = null): SeedRow[] {
+export function checkDisasterRows(now: string, recording: SeedRecording = null, author: SeedAuthor = DEFAULT_AUTHOR): SeedRow[] {
   const map = checkIdMap({ [SEED_RED_SIGNAL_ID]: CHECK_RED_SIGNAL_ID });
-  return demoExtraRows(now, recording).map((r) => ({ table: r.table, row: remapRow(r.row, map) }));
+  return demoDisasterRows(now, recording, author).map((r) => ({ table: r.table, row: remapRow(r.row, map) }));
 }
 
-export function checkExtraStatements(now: string, recording: SeedRecording = null): string[] {
-  return [...checkExtraRows(now, recording).map((r) => insert(r.table, r.row)), demoQrSql(CHECK_OFFICE_ID)];
+/** 種の事業所ごとの大雨の想定の行（lib/seed/start.ts の「発災開始」） */
+export function seedDisasterRows(officeId: string, now: string, recording: SeedRecording = null, author: SeedAuthor = DEFAULT_AUTHOR): SeedRow[] {
+  return officeId === CHECK_OFFICE_ID ? checkDisasterRows(now, recording, author) : demoDisasterRows(now, recording, author);
 }
 
-/** 種の事業所ごとの、10 人に足す文（lib/seed/reset.ts の戻し） */
-export function seedExtraStatements(officeId: string, now: string, recording: SeedRecording = null): string[] {
-  return officeId === CHECK_OFFICE_ID ? checkExtraStatements(now, recording) : demoExtraStatements(now, recording);
+/** 種の事業所ごとの山田の赤の信号の id */
+export function seedRedSignalId(officeId: string): string {
+  return officeId === CHECK_OFFICE_ID ? CHECK_RED_SIGNAL_ID : SEED_RED_SIGNAL_ID;
+}
+
+/** 「発災開始」の確認の窓に出す、山田の赤の本人の名前（種の台帳から） */
+export function seedRedPersonName(): string {
+  return SEED_PEOPLE.find((p) => p.person.id === DEMO_SELF_PERSON_ID)?.person.name ?? "";
 }

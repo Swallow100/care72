@@ -57,8 +57,9 @@ import { canSeeSetup, isSetupLater, loadOfficeCenter, SETUP_LATER_COOKIE, setupI
 import { CUSTODY_LABELS } from "@/lib/custody/labels";
 import { OFFICE_TAKE_PATH, UNAFFILIATED_ANCHOR } from "@/lib/custody/paths";
 import { listUnaffiliated, type UnaffiliatedItem } from "@/lib/custody/takeover";
-import { canResetDemo, OFFICE_RESET_PATH, parseResetState, type ResetState } from "@/lib/seed/http";
-import { RESET_LABELS } from "@/lib/seed/labels";
+import { canResetDemo, canStartSeed, OFFICE_RESET_PATH, OFFICE_START_PATH, parseResetState, type ResetState } from "@/lib/seed/http";
+import { demoOutageTowns, seedRedPersonName } from "@/lib/seed/demo";
+import { RESET_LABELS, START_LABELS, startDetails } from "@/lib/seed/labels";
 import { CONFIRM_LABELS } from "@/lib/ui/labels";
 import { SurveyPanel } from "@/components/office/SurveyPanel";
 import { loadSurveyOverview, surveyOfficeOf, type SurveyOverview } from "@/lib/survey/store";
@@ -186,7 +187,7 @@ export default async function OfficePage({ searchParams }: Props) {
 
       <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="grid min-w-0 content-start gap-3">
-          <ModeSection state={state} now={now} confirm={confirm} officeId={scope.officeId} />
+          <ModeSection state={state} now={now} confirm={confirm} officeId={scope.officeId} seedStart={canStartSeed(principal) && !disaster} />
           {/* 事業所の情報（T148）と地域（T68・T148）。書けるのは管理者と試用事業所の審査員（placeEdit） */}
           <OfficeProfile officeId={scope.officeId} admin={actor.placeEdit} error={parseProfileError(q.profile_error)} />
           <OfficePlace officeId={scope.officeId} admin={actor.placeEdit} error={q.form_error === "place"} />
@@ -232,12 +233,28 @@ async function requestOrigin(): Promise<string> {
 /** 切替のボタンの段（気象庁の欄の「切替」が送る所） */
 const MODE_BUTTONS_ID = "mode-buttons";
 
-/** 災害モードの切替。今の状態は枠と太字（下地は敷かない）、ほかは無色。災害の種類はすぐ切り替え、平時に戻すは確認の欄を通す */
-function ModeSection({ state, now, confirm, officeId }: { state: DisasterState; now: string; confirm: boolean; officeId: string }) {
+/**
+ * 災害モードの切替。今の状態は枠と太字（下地は敷かない）、ほかは無色。災害の種類はすぐ切り替え、平時に戻すは確認の欄を通す。
+ * seedStart は種の事業所の平時（T153）: 一番上に「発災開始」（今の種の大雨の想定と山田の赤に入る。lib/seed/start.ts）
+ */
+function ModeSection({
+  state,
+  now,
+  confirm,
+  officeId,
+  seedStart,
+}: {
+  state: DisasterState;
+  now: string;
+  confirm: boolean;
+  officeId: string;
+  seedStart: boolean;
+}) {
   const disaster = isDisaster(state);
   return (
     <Panel aria-labelledby="mode-title">
       <PanelHead id="mode-title" title={DISASTER_LABELS.mode} />
+      {seedStart && <SeedStart version={state.version} />}
       {/* 気象庁の警報・注意報と地震（T72）。切替は勧めるだけで、押すのは人 */}
       <JmaAlerts officeId={officeId} disaster={disaster} now={now} switchHref={`#${MODE_BUTTONS_ID}`} />
       <div id={MODE_BUTTONS_ID} className="mt-2 flex scroll-mt-20 flex-wrap items-center gap-1.5">
@@ -287,6 +304,28 @@ function ModeSection({ state, now, confirm, officeId }: { state: DisasterState; 
         )}
       </dl>
     </Panel>
+  );
+}
+
+/** 種の事業所の「発災開始」（T153）。確認の窓で入る物を見せてから送る。窓が出せないとき（JS が動く前）もそのまま送る（平時に戻せる） */
+function SeedStart({ version }: { version: number }) {
+  return (
+    <form method="post" action={OFFICE_START_PATH} className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1" data-seed-start>
+      <input type="hidden" name="version" value={version} />
+      <SubmitButton
+        kind="main"
+        icon="PlayIcon"
+        confirm={{
+          title: START_LABELS.start,
+          message: START_LABELS.scene,
+          details: startDetails(demoOutageTowns(), seedRedPersonName()),
+          ok: START_LABELS.ok,
+        }}
+      >
+        {START_LABELS.start}
+      </SubmitButton>
+      <span className="text-xs text-muted">{START_LABELS.scene}</span>
+    </form>
   );
 }
 

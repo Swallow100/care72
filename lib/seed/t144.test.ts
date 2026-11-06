@@ -1,6 +1,6 @@
 // T144: 見本のケアマネ（山本）のログインは確認用の事業所へ。山本で変えた物が審査員の見るデモ事業所に効かないことと、
 // 審査員のアカウント 3 つ（同じデモ事業所を共有し、訓練はアカウントごと）。
-// D1 は node:sqlite に種の全部（seed/full.ts。デモ事業所と確認用の事業所の 10 人・災害モード・山田の赤・終わった訓練）。
+// D1 は node:sqlite に種の全部（seed/full.ts。デモ事業所と確認用の事業所の 10 人・QR・終わった訓練。T153 から平時）。
 // パスワードはテストだけの値（本物ではない）。
 
 import type { D1Database } from "@cloudflare/workers-types";
@@ -139,16 +139,15 @@ describe("T144 確認用の事業所の種", () => {
     expect(checkSeedPeople().map((p) => p.person.id)).toEqual(demoSeedPeople().map((p) => checkSeedId(p.person.id)));
   });
 
-  it("確認用の事業所にも災害モード・山田の赤（同じ種の録音の鍵）・終わった訓練。経過の id は重ならない", () => {
+  it("確認用の事業所もデモ事業所と同じく平時で始まり（T153。災害モード・山田の赤は「発災開始」で入る。lib/seed/t153.test.ts）、終わった訓練がある", () => {
     const demo = snapshot(DEMO_OFFICE_ID);
     const check = snapshot(CHECK_OFFICE_ID);
-    expect(check.disaster).toHaveLength(1);
-    expect((check.disaster[0] as { started_by: string }).started_by).toBe(CHECK_CARE_MANAGER_ID);
-    expect(check.signals).toHaveLength(1);
-    expect((check.signals[0] as { color: string }).color).toBe("red");
-    expect((check.signals[0] as { recording_key: unknown }).recording_key).toEqual((demo.signals[0] as { recording_key: unknown }).recording_key);
+    for (const x of [demo, check]) {
+      expect(x.disaster).toEqual([]);
+      expect(x.signals).toEqual([]);
+      expect(x.officeTimeline).toEqual([]);
+    }
     expect(check.timeline.length).toBe(demo.timeline.length);
-    expect(check.officeTimeline.length).toBe(demo.officeTimeline.length);
     expect(check.drills).toEqual([{ id: CHECK_SEED_DRILL_ID, status: "finished", started_by: CHECK_CARE_MANAGER_ID, scenario: "heavy_rain" }]);
     expect(demo.drills).toEqual([{ id: SEED_DRILL_ID, status: "finished", started_by: DEMO_CARE_MANAGER_ID, scenario: "heavy_rain" }]);
   });
