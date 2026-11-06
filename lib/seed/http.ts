@@ -9,9 +9,12 @@
 import type { D1Database } from "@cloudflare/workers-types";
 import type { Principal } from "../auth/principal.ts";
 import { isSeedOfficeId } from "../auth/demo.ts";
-import { OFFICE_PATH, type PostOutcome } from "../disaster/http.ts";
-import type { FormLike } from "../disaster/state.ts";
+import { allows } from "../auth/guard.ts";
+import { OFFICE_PATH, officeHref, type PostOutcome } from "../disaster/http.ts";
+import { disasterScope } from "../disaster/scope.ts";
+import { parseVersion, type FormLike } from "../disaster/state.ts";
 import { resetSeedOffice, type SeedBucket } from "./reset.ts";
+import { startSeedDisaster } from "./start.ts";
 
 export const OFFICE_RESET_PATH = "/office/reset";
 
@@ -51,4 +54,40 @@ export async function resetPost(
     return { status: 303, location: officeResetHref("failed") };
   }
   return { status: 303, location: officeResetHref("done") };
+}
+
+// ---------- 発災開始（T153） ----------
+
+/** 種の事業所の「発災開始」（lib/seed/start.ts）。事業所の画面の災害モードの区分のボタンが送る */
+export const OFFICE_START_PATH = "/office/start";
+
+/**
+ * 「発災開始」を出す・押せるか: 種の事業所（デモ・確認用）で、災害モードを切り替えられる人（ケアマネの役。審査員 3 つと確認用の山本）。
+ * 協力事業所・試用事業所・行政・医療班・本人・家族は押せない
+ */
+export function canStartSeed(p: Principal | null): boolean {
+  if (!allows(p, "save")) return false;
+  const scope = disasterScope(p);
+  return scope !== null && isSeedOfficeId(scope.officeId) && p?.office?.kind === "demo";
+}
+
+/**
+ * 「発災開始」の POST。入ったら entered に事業所の id（route が応答のあとに T149 の通知を送る）。
+ * 断り方は切替と同じ: ログインなし 401、押せない人 403、版の違い・災害モードの間は事業所の画面へ「競合」で戻す
+ */
+export async function startPost(
+  db: D1Database,
+  bucket: SeedBucket,
+  p: Principal | null,
+  form: FormLike | null,
+  at: string,
+): Promise<{ outcome: PostOutcome; entered: string | null }> {
+  if (!p) return { outcome: { status: 401 }, entered: null };
+  const scope = canStartSeed(p) ? disasterScope(p) : null;
+  if (!scope) return { outcome: { status: 403 }, entered: null };
+  const version = parseVersion(form?.get("version"));
+  if (version === null) return { outcome: { status: 303, location: officeHref({ error: "bad" }) }, entered: null };
+  const r = await startSeedDisaster(db, bucket, scope, { version, at });
+  if (!r.ok) return { outcome: { status: 303, location: officeHref({ error: "conflict" }) }, entered: null };
+  return { outcome: { status: 303, location: OFFICE_PATH }, entered: scope.officeId };
 }

@@ -50,16 +50,16 @@ async function submitForm(page, action, need = "*") {
   await settle(page);
 }
 
-/** 最初に戻す → 平時に戻す（撮らない） */
+/** 最初に戻す → 災害モードなら平時に戻す（撮らない） */
 async function prep(cm) {
   await open(cm, base, "/office?reset=confirm");
   await submitForm(cm, "/office/reset", '[name="confirm"]');
+  // T153 から種は平時で始まる。前の種（大雨の最中）の配信でも同じに撮れるよう、災害モードのときだけ平時に戻す
   await open(cm, base, "/office?confirm=normal");
   const normal = await cm.evaluate(() => !!Array.from(document.querySelectorAll("form")).find((x) => x.getAttribute("action") === "/office/mode" && x.querySelector('[name="confirm"]')));
-  if (!normal) throw new Error("平時に戻す確認の欄が無い");
   // 大雨・地震のボタンも同じ action のフォームなので、確認の欄（confirm と kind=normal）の物を送る
-  await submitForm(cm, "/office/mode", '[name="confirm"]');
-  console.log("最初に戻し、平時にした");
+  if (normal) await submitForm(cm, "/office/mode", '[name="confirm"]');
+  console.log(normal ? "最初に戻し、平時にした" : "最初に戻した（種が平時）");
 }
 
 /** 平時: 担当一覧・本人のページ・3 つの紙面 */
@@ -342,11 +342,11 @@ async function prepSafe(cm) {
       await open(cm, base, "/office?reset=confirm");
       await submitForm(cm, "/office/reset", '[name="confirm"]');
       if (/[?&]reset=failed/.test(cm.url())) throw new Error("アプリが最初に戻せない（reset=failed）");
+      // T153 から種は平時で始まる。災害モードのときだけ平時に戻す
       await open(cm, base, "/office?confirm=normal");
       const normal = await cm.evaluate(() => !!Array.from(document.querySelectorAll("form")).find((x) => x.getAttribute("action") === "/office/mode" && x.querySelector('[name="confirm"]')));
-      if (!normal) throw new Error("平時に戻す確認の欄が無い");
-      await submitForm(cm, "/office/mode", '[name="confirm"]');
-      console.log("最初に戻し、平時にした");
+      if (normal) await submitForm(cm, "/office/mode", '[name="confirm"]');
+      console.log(normal ? "最初に戻し、平時にした" : "最初に戻した（種が平時）");
       return;
     } catch (e) {
       const msg = String(e?.message ?? e);

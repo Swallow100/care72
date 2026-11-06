@@ -1,5 +1,5 @@
 // デモ事業所の種と「最初に戻す」・毎日 4 時（docs/tasks/T26.md）のテスト。D1 は node:sqlite、R2 は偽物。
-// - 種の冪等（同じ now で 2 回作ると同じ、同じ DB に 2 回流しても同じ）と中身（大雨・山田の赤・終わった訓練）
+// - 種の冪等（同じ now で 2 回作ると同じ、同じ DB に 2 回流しても同じ）と中身（平時・QR・終わった訓練。大雨の想定と山田の赤は T153 から「発災開始」）
 // - 戻すの範囲（デモ事業所だけ。協力事業所の行・AI の呼び出しの記録・山本のハッシュは残る）
 // - 「最初に戻す」の壁（審査員と管理者だけ）、cron のハンドラ、R2 の録音、上限での再生への切替
 
@@ -13,7 +13,6 @@ import type { Principal } from "../auth/principal.ts";
 import { todayJst } from "../age.ts";
 import { loadCaseload } from "../caseload.ts";
 import { drillGate } from "../claude/gate.ts";
-import { HAIKU } from "../claude/models.ts";
 import { staffActor } from "../custody/actor.ts";
 import { receive, registerOnSite } from "../custody/store.ts";
 import { d1FromSqlite, migratedSqlite } from "../db/test-d1.ts";
@@ -25,7 +24,6 @@ import {
   DEMO_QR,
   DEMO_RECORDING_PREFIX,
   demoOutageTowns,
-  demoTimes,
   SEED_RECORDING_KEYS,
   SEED_RED_SIGNAL_ID,
   SEED_RED_TRANSCRIPT,
@@ -33,6 +31,8 @@ import {
 import { SEED_DRILL_ID, seedDrillStartedAt } from "./drill.ts";
 import { canResetDemo, officeResetHref, resetPost } from "./http.ts";
 import { CHECK_CLEAR, DEMO_CLEAR, resetDemoOffice, type SeedBucket } from "./reset.ts";
+import { startSeedDisaster } from "./start.ts";
+import { disasterScope } from "../disaster/scope.ts";
 
 /** 種を入れた時刻（2026-11-05 10:00 JST） */
 const NOW = "2026-11-05T01:00:00.000Z";
@@ -151,66 +151,18 @@ describe("種（npm run db:reset）", () => {
     twice.close();
   });
 
-  it("デモ事業所は大雨・警戒レベル 4・浸水 3 m の町で停電（発災 4 時間前・停電 3 時間前）。事業所の経過に 2 行", async () => {
+  it("デモ事業所は平時で始まる（T153。災害モードの行・事業所の経過・山田の赤は無く、事業所の画面の「発災開始」で入る）。協力事業所も平時", async () => {
     sqlite = await seeded();
     const db = d1FromSqlite(sqlite);
-    const t = demoTimes(NOW);
+    // 発災開始で停電にする町（浸水 3 m 以上の人の住む町）は種の台帳から
     expect(demoOutageTowns()).toEqual(["かわなぎ町"]);
-    const s = await loadDisasterState(db, DEMO.id);
-    expect(s).toMatchObject({
-      kind: "heavy_rain",
-      startedAt: t.disasterAt,
-      startedBy: "acct-yamamoto",
-      startedByName: "山本",
-      outage: { scope: "area", towns: ["かわなぎ町"], startedAt: t.outageAt },
-      alertLevel: 4,
-      water: null,
-      road: null,
-      version: 2,
-    });
-    expect(Date.parse(NOW) - Date.parse(t.outageAt)).toBe(3 * 3_600_000);
-    const log = await loadOfficeLog(db, DEMO.id);
-    expect(log.map((l) => [l.kind, l.body, l.who])).toEqual([
-      ["disaster_info", "停電 地区（かわなぎ町） 11/5 07:00〜・警戒レベル 4", "山本"],
-      ["disaster_on", "大雨", "山本"],
-    ]);
-    // 協力事業所は平時のまま
+    expect(await loadDisasterState(db, DEMO.id)).toMatchObject({ kind: "normal", startedAt: null, version: 0 });
+    expect(await loadOfficeLog(db, DEMO.id)).toEqual([]);
     expect((await loadDisasterState(db, PARTNER.id)).kind).toBe("normal");
-  });
-
-  it("山田の赤: けが あり・文字起こし・Claude の分類の列（動けない・確信 0.9・引用・モデル名）。経過に信号・録音・分類の 3 行", async () => {
-    sqlite = await seeded();
     // 確認用の事業所（T144）の写しは除く（lib/seed/t144.test.ts）
-    const sig = sqlite.prepare("SELECT * FROM signals WHERE drill_id IS NULL AND person_id NOT LIKE 'chk-%'").all() as Array<Record<string, unknown>>;
-    expect(sig).toHaveLength(1);
-    expect(sig[0]).toMatchObject({
-      id: SEED_RED_SIGNAL_ID,
-      person_id: "p-01",
-      color: "red",
-      source: "self",
-      injured: 1,
-      at_home: null,
-      can_move: null,
-      has_medicine: null,
-      recording_key: null,
-      transcript: SEED_RED_TRANSCRIPT,
-      classes: '["immobile"]',
-      classified_by: "claude",
-      ai_classes: '["immobile"]',
-      ai_confidence: 0.9,
-      ai_quote: "うごけない",
-      ai_model: HAIKU,
-      ai_error: null,
-      occurred_at: demoTimes(NOW).redAt,
-    });
-    const log = sqlite
-      .prepare("SELECT author_role, kind, body FROM timeline_entries WHERE person_id = 'p-01' ORDER BY occurred_at")
-      .all();
-    expect(log).toEqual([
-      { author_role: "self", kind: "signal", body: "無事じゃない けが あり・未回答 3" },
-      { author_role: "self", kind: "signal", body: "録音なし 文字起こし「いたい、うごけない」" },
-      { author_role: "system", kind: "note", body: "録音の分類（AI）: 動けない 確信 90%「うごけない」" },
-    ]);
+    expect(sqlite.prepare("SELECT id FROM signals WHERE drill_id IS NULL AND person_id NOT LIKE 'chk-%'").all()).toEqual([]);
+    expect(sqlite.prepare("SELECT id FROM timeline_entries WHERE person_id = 'p-01'").all()).toEqual([]);
+    expect(SEED_RED_TRANSCRIPT).toBe("いたい、うごけない");
   });
 
   it("デモ事業所の 10 人は QR を作った形（版 1・作った時刻は種の時刻・180 日）。戻しでも同じ時刻に戻る（前の日に刷った紙の QR が開ける）", async () => {
@@ -225,14 +177,11 @@ describe("種（npm run db:reset）", () => {
     db.close();
   });
 
-  it("担当一覧は災害モードで、山田が赤の最上位（理由に AI の印）", async () => {
+  it("担当一覧は平時（ルールの表の色と連絡順は出さない。発災時の並びは lib/seed/t153.test.ts）", async () => {
     sqlite = await seeded();
     const list = await loadCaseload(d1FromSqlite(sqlite), { officeId: DEMO.id, careManagerId: "acct-yamamoto" }, todayJst(new Date(NOW)), NOW);
-    expect(list?.situation).not.toBeNull();
-    const top = list!.rows.find((r) => r.rank === 1);
-    expect(top?.id).toBe("p-01");
-    expect(top?.triage?.color).toBe("red");
-    expect(top?.triage?.reason).toContain("（AI）");
+    expect(list?.situation).toBeNull();
+    expect(list?.rows).toHaveLength(10);
   });
 
   it("終わった訓練 1 回（大雨、12 刻み、開始者 山本、前の日の 14:00 JST）。手の履歴と採点は空", async () => {
@@ -524,7 +473,7 @@ describe("最初に戻す（デモ事業所だけ）", () => {
     expect(tokens("survey_responses")).toEqual([partnerShare, realShare, realShare]);
   });
 
-  it("R2: 審査員の録音を消し、種の録音と協力事業所の物は残す。種の録音があれば山田の信号に結び、再生できる", async () => {
+  it("R2: 審査員の録音を消し、種の録音と協力事業所の物は残す。種の録音があれば、戻したあとの「発災開始」（T153）で山田の信号に結び、再生できる", async () => {
     const { db } = await used();
     sqlite = db;
     const judgeKeys = [1, 2, 3].map((i) => `${DEMO_RECORDING_PREFIX}p-01/2026110${i}T000000000Z.webm`);
@@ -537,6 +486,9 @@ describe("最初に戻す（デモ事業所だけ）", () => {
     const r = await resetDemoOffice(d1FromSqlite(db), bucket, NOW);
     expect(r).toEqual({ recording: true, removedRecordings: 3, removedFormPages: 0 });
     expect([...objects.keys()].sort()).toEqual([partnerKey, SEED_RECORDING_KEYS.m4a].sort());
+    // 戻したあとは平時で、山田の赤は無い
+    expect(db.prepare("SELECT id FROM signals WHERE id = ?").get(SEED_RED_SIGNAL_ID)).toBeUndefined();
+    expect(await startSeedDisaster(d1FromSqlite(db), bucket, disasterScope(judgeCm())!, { version: 0, at: NOW })).toEqual({ ok: true });
 
     const sig = db.prepare("SELECT recording_key AS k FROM signals WHERE id = ?").get(SEED_RED_SIGNAL_ID);
     expect(sig).toEqual({ k: SEED_RECORDING_KEYS.m4a });
@@ -548,11 +500,12 @@ describe("最初に戻す（デモ事業所だけ）", () => {
     expect(res.headers.get("Content-Type")).toBe("audio/mp4");
   });
 
-  it("種の録音が R2 に無ければ録音なし（文字起こしと分類だけ）", async () => {
+  it("種の録音が R2 に無ければ、発災開始の山田の赤は録音なし（文字起こしと分類だけ）", async () => {
     const { db } = await used();
     sqlite = db;
     const { bucket } = fakeBucket();
     expect((await resetDemoOffice(d1FromSqlite(db), bucket, NOW)).recording).toBe(false);
+    expect(await startSeedDisaster(d1FromSqlite(db), bucket, disasterScope(judgeCm())!, { version: 0, at: NOW })).toEqual({ ok: true });
     expect(db.prepare("SELECT recording_key AS k FROM signals WHERE id = ?").get(SEED_RED_SIGNAL_ID)).toEqual({ k: null });
     const res = await recordingGet(d1FromSqlite(db), bucket, judgeCm(), SEED_RED_SIGNAL_ID, null);
     expect(res.status).toBe(404);
@@ -636,9 +589,9 @@ describe("毎日 4 時（cron）", () => {
       sandboxes: { offices: 0, drills: 0, removedObjects: 0 },
     });
     expect(partnerDump()).toEqual(before);
-    const s = await loadDisasterState(d1FromSqlite(db), DEMO.id);
-    expect(s.startedAt).toBe("2026-11-05T15:00:00.000Z");
-    expect(s.outage.startedAt).toBe("2026-11-05T16:00:00.000Z");
+    // 戻すと平時（T153。大雨の想定は「発災開始」で入る）
+    expect(await loadDisasterState(d1FromSqlite(db), DEMO.id)).toMatchObject({ kind: "normal", startedAt: null });
+    expect(await loadDisasterState(d1FromSqlite(db), "office-demo-check")).toMatchObject({ kind: "normal", startedAt: null });
     const drills = await listDrills(d1FromSqlite(db), DEMO.id);
     expect(drills.map((d) => [d.id, d.status])).toEqual([[SEED_DRILL_ID, "finished"]]);
     // 4:00 JST に戻すと、訓練は前の日（11/5）の 14:00 JST

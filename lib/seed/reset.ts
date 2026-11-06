@@ -1,7 +1,8 @@
 // デモ事業所を種に戻す（docs/tasks/T26.md の「最初に戻す」と毎日 4 時）。Worker の中から D1 と R2 を引数で受けて戻す。
 // 協力事業所など別の事業所の行には、審査員の受け持ちを閉じる（下の「閉じる物」）ほかは触らない。
 //
-// 1 つの batch（取引）: デモ事業所の行を消す → 事業所・ケアマネの行を種に → 10 人 → 災害モードと山田の赤（lib/seed/demo.ts）。
+// 1 つの batch（取引）: デモ事業所の行を消す → 事業所・ケアマネの行を種に → 10 人 → QR（lib/seed/demo.ts）。事業所は平時に戻る（T153）。
+// 大雨の想定（災害モード・停電・山田の赤）は種に入れず、事業所の画面の「発災開始」で入る（lib/seed/start.ts）。
 // そのあとに終わった訓練（lib/seed/drill.ts。本物の startDrill・advanceDrill を回すので 12 回に分かれる）。
 // 訓練の途中で止まっても、もう一度戻せば消してから作り直す（何度流しても同じ）。最後に R2 の録音を種の物だけにする。
 //
@@ -185,7 +186,7 @@ function upsertStatements(officeId: string): string[] {
  * 種の事業所を種に戻す文（訓練と R2 のほか）。1 つの batch で流す。officeId はデモ事業所か確認用の事業所（T144）。
  * 審査員の受け持ちを閉じるのはデモ事業所だけ
  */
-export function seedResetStatements(officeId: string, now: string, recording: SeedRecording = null): string[] {
+export function seedResetStatements(officeId: string, now: string): string[] {
   if (!seedTargets(officeId)) throw new Error(`種の事業所でない: ${officeId}`);
   const where = seedClear(officeId);
   const clear = CLEAR_ORDER.flatMap((t) => {
@@ -195,12 +196,12 @@ export function seedResetStatements(officeId: string, now: string, recording: Se
   const people =
     officeId === CHECK_OFFICE_ID ? checkPeopleStatements() : SEED_PEOPLE.filter((p) => p.person.office_id === officeId).flatMap(personStatements);
   const close = officeId === DEMO_OFFICE_ID ? closeJudgeCustodyStatements(now) : [];
-  return [adoptUnaffiliated(officeId), ...clear, ...close, ...upsertStatements(officeId), ...people, ...seedExtraStatements(officeId, now, recording)];
+  return [adoptUnaffiliated(officeId), ...clear, ...close, ...upsertStatements(officeId), ...people, ...seedExtraStatements(officeId)];
 }
 
 /** デモ事業所を種に戻す文 */
-export function demoResetStatements(now: string, recording: SeedRecording = null): string[] {
-  return seedResetStatements(DEMO_OFFICE_ID, now, recording);
+export function demoResetStatements(now: string): string[] {
+  return seedResetStatements(DEMO_OFFICE_ID, now);
 }
 
 // ---------- R2 ----------
@@ -265,6 +266,7 @@ export async function clearPrefix(bucket: SeedBucket, prefix: string, keep: Read
 
 // ---------- 全部 ----------
 
+/** recording は種の録音が R2 にあるか（「発災開始」で山田の赤に結ぶ。lib/seed/start.ts） */
 export type ResetResult = { recording: boolean; removedRecordings: number; removedFormPages: number };
 
 /** 種の事業所を種に戻す。now は種の時刻の元（ボタンは押した時刻、毎日 4 時は予定の時刻）。officeId はデモ事業所か確認用の事業所（T144） */
@@ -272,7 +274,7 @@ export async function resetSeedOffice(db: D1Database, bucket: SeedBucket, now: s
   const targets = seedTargets(officeId);
   if (!targets) throw new Error(`種の事業所でない: ${officeId}`);
   const recording = await findSeedRecording(bucket);
-  await db.batch(seedResetStatements(officeId, now, recording).map((s) => db.prepare(s)));
+  await db.batch(seedResetStatements(officeId, now).map((s) => db.prepare(s)));
   await seedDrill(db, now, targets);
   const removedRecordings = await clearDemoRecordings(bucket, officeId);
   const removedFormPages = await clearDemoFormPages(bucket, officeId);
