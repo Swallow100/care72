@@ -26,6 +26,9 @@ const cmPw = process.env.CARE72_CM_PASSWORD;
 const judgePw = process.env.CARE72_JUDGE_PASSWORD;
 const [scene, take = "1"] = process.argv.slice(2);
 // 置き場は既定で assets/rec。CARE72_REC_DIR を渡すとそこへ（鍵の無い試し撮りを scan に拾わせないため。scan は一番大きい回を使う）
+// 災害の種類（11/6 から作者の望みで地震。CARE72_KIND=heavy_rain で前の大雨）。事業所のボタンの名前と、訓練の想定の印
+const KIND = process.env.CARE72_KIND === "heavy_rain" ? "heavy_rain" : "earthquake";
+const KIND_LABEL = KIND === "heavy_rain" ? "大雨" : "地震";
 const recDir = (id) => join(process.env.CARE72_REC_DIR ?? join(ROOT, "assets", "rec"), `${id}-${take}`);
 
 if (!cmPw || !judgePw || !scene) {
@@ -194,8 +197,8 @@ async function disaster(browser) {
   await open(cm, base, "/office");
   await r10.start();
   await sleep(2000);
-  r10.mark("大雨を押す");
-  await clickText(cm, "大雨", { exact: true, within: "main" });
+  r10.mark(`${KIND_LABEL}を押す`);
+  await clickText(cm, KIND_LABEL, { exact: true, within: "main" });
   // 平時から災害モードへは確認の窓が出る（T79）。窓を映してから「切替」を押す
   await cm.waitForSelector('dialog[open] [data-dialog-action="ok"]', { visible: true, timeout: 15_000 });
   r10.mark("確認の窓");
@@ -824,11 +827,11 @@ async function aiDrill(browser, { scoreOnly = false } = {}) {
   const r7 = scoreOnly ? quietRecorder("R07") : new Recorder(cm, "R07");
   await r7.start();
   await sleep(2500);
-  r7.mark("大雨想定");
+  r7.mark(`${KIND_LABEL}想定`);
   // 開始の画面の見込み（AI の回数）を残す（費用の上限を見るため）
-  const estimate = await cm.$eval('[data-estimate-scenario="heavy_rain"][data-estimate-calls]', (e) => e.getAttribute("data-estimate-calls")).catch(() => null);
-  console.log(`  見込み（大雨想定）: AI ${estimate ?? "?"} 回`);
-  await clickSel(cm, '[data-scenario="heavy_rain"]');
+  const estimate = await cm.$eval(`[data-estimate-scenario="${KIND}"][data-estimate-calls]`, (e) => e.getAttribute("data-estimate-calls")).catch(() => null);
+  console.log(`  見込み（${KIND_LABEL}想定）: AI ${estimate ?? "?"} 回`);
+  await clickSel(cm, `[data-scenario="${KIND}"]`);
   const opened = await waitCut(r7, cm, () => !!document.querySelector("main[data-drill]"), { keep: 3, timeout: 240_000, label: "開始" });
   if (!opened) throw new Error("訓練の画面が開かない");
   await settle(cm);
@@ -1008,7 +1011,7 @@ async function aiFinish(browser) {
 /** 平時 → 大雨（警戒レベル 4・停電 地区 かわなぎ町）。撮らない（disaster の R10 の頭と同じ操作） */
 async function toHeavyRain(cm) {
   await open(cm, base, "/office");
-  await clickText(cm, "大雨", { exact: true, within: "main" });
+  await clickText(cm, KIND_LABEL, { exact: true, within: "main" });
   await cm.waitForSelector('dialog[open] [data-dialog-action="ok"]', { visible: true, timeout: 15_000 });
   await Promise.all([cm.waitForNavigation({ waitUntil: "networkidle0", timeout: 120_000 }), clickText(cm, "切替", { exact: true, within: "dialog[open]" })]);
   await settle(cm);
@@ -1027,7 +1030,7 @@ async function toHeavyRain(cm) {
   });
   await Promise.all([cm.waitForNavigation({ waitUntil: "networkidle0", timeout: 120_000 }), clickText(cm, "保存", { exact: true, within: 'form[action="/office/info"]' })]);
   await settle(cm);
-  console.log("大雨にした（警戒レベル 4・停電 かわなぎ町）");
+  console.log(`${KIND_LABEL}にした（停電 かわなぎ町。警戒レベル 4 は大雨のときだけ）`);
 }
 
 /** 本人のページの「スマホ入口」のリンク（/s/<token>）。無ければ発行する。返すのは道だけ（手元の dev で開く） */

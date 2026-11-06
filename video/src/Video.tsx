@@ -555,12 +555,13 @@ const groundChanges = (scene: Scene): boolean => {
  * その段の最初の録画は、名前が帯の近くまで縮んでから上がる（大きな名前と録画を重ねない）
  */
 const FLY_SCENES = new Set(["S4", "S5", "S6"]);
-const FLY = { in: 10, hold: 6, fly: 14 };
+// hold は線の絵が描き終わるのを見せる間（11/6 に絵を足して 6 → 18 コマ）
+const FLY = { in: 10, hold: 18, fly: 14 };
 const FLY_END = FLY.in + FLY.hold + FLY.fly;
 const titleStart = (scene: Scene): number => (groundChanges(scene) ? 8 : 4);
 const entryDelay = (scene: Scene): number => titleStart(scene) + FLY_END - 3;
 
-const FlyTitle: React.FC<{ title: string; local: number }> = ({ title, local }) => {
+const FlyTitle: React.FC<{ title: string; local: number; scene?: string }> = ({ title, local, scene }) => {
   const p = usePalette();
   const H = LAYOUT.header;
   const size = TYPE.display;
@@ -596,7 +597,59 @@ const FlyTitle: React.FC<{ title: string; local: number }> = ({ title, local }) 
       }}
     >
       {title}
+      {scene ? (
+        <div style={{ position: "absolute", left: "50%", bottom: "100%", marginBottom: 28, transform: "translateX(-50%)", opacity: 1 - move }}>
+          <SceneIcon scene={scene} local={local} />
+        </div>
+      ) : null}
     </div>
+  );
+};
+
+/**
+ * 段の頭の線の絵（作者の頼み 11/6「計画・訓練・発災時にイラストと動き」）。線を引いていくように描く（生成の絵は使わない）。
+ * 計画 = 紙と項目が埋まる、訓練 = 時計の針が回る、発災時 = スマホに安否の波
+ */
+const SceneIcon: React.FC<{ scene: string; local: number }> = ({ scene, local }) => {
+  const p = usePalette();
+  const draw = (i: number) => progress(local, 2 + i * 4, 10);
+  const len = 400;
+  const line = (i: number): React.SVGProps<SVGPathElement> => ({ fill: "none", stroke: p.fg, strokeWidth: 7, strokeLinecap: "round", strokeLinejoin: "round", strokeDasharray: len, strokeDashoffset: len * (1 - draw(i)) });
+  const size = 150;
+  if (scene === "S4") {
+    return (
+      <svg width={size} height={size} viewBox="0 0 100 100">
+        <path d="M28 12 H62 L76 26 V88 H28 Z" {...line(0)} />
+        <path d="M62 12 V26 H76" {...line(1)} />
+        {[40, 54, 68].map((y, i) => (
+          <g key={y}>
+            <path d={`M36 ${y} l4 4 l7 -8`} {...line(2 + i)} />
+            <path d={`M53 ${y} H68`} {...line(2 + i)} />
+          </g>
+        ))}
+      </svg>
+    );
+  }
+  if (scene === "S5") {
+    const a = (progress(local, 8, 26) * 300 - 90) * (Math.PI / 180);
+    return (
+      <svg width={size} height={size} viewBox="0 0 100 100">
+        <circle cx="50" cy="54" r="34" {...(line(0) as React.SVGProps<SVGCircleElement>)} />
+        <path d="M42 12 H58 M50 12 V20" {...line(1)} />
+        <path d={`M50 54 L${(50 + Math.cos(a) * 24).toFixed(2)} ${(54 + Math.sin(a) * 24).toFixed(2)}`} stroke={p.fg} strokeWidth={7} strokeLinecap="round" opacity={draw(1)} />
+        <circle cx="50" cy="54" r="4" fill={p.fg} opacity={draw(1)} />
+      </svg>
+    );
+  }
+  const wave = (i: number) => progress(local, 12 + i * 5, 8);
+  return (
+    <svg width={size} height={size} viewBox="0 0 100 100">
+      <path d="M34 14 H58 Q62 14 62 18 V82 Q62 86 58 86 H34 Q30 86 30 82 V18 Q30 14 34 14 Z" {...line(0)} />
+      <path d="M42 76 H50" {...line(1)} />
+      {[0, 1].map((i) => (
+        <path key={i} d={`M${70 + i * 9} ${38 - i * 6} Q${78 + i * 12} 50 ${70 + i * 9} ${62 + i * 6}`} fill="none" stroke={p.fg} strokeWidth={7} strokeLinecap="round" opacity={wave(i)} />
+      ))}
+    </svg>
   );
 };
 
@@ -604,9 +657,9 @@ const FlyTitle: React.FC<{ title: string; local: number }> = ({ title, local }) 
 const TOOL_SCENES: Record<string, { title: string; state: string; hours: (t: number) => number | null }> = {
   S4: { title: "計画", state: "平時", hours: () => 0 },
   // 訓練の画面には訓練の経過の棒がある（絵は時刻の順でもない）ので、上の 72 時間の線は出さない（画面の「経過 3 時間」と食い違わせない）
-  S5: { title: "訓練", state: "大雨想定", hours: () => null },
+  S5: { title: "訓練", state: "地震想定", hours: () => null },
   // 発災時の録画は切り替えて数分（画面は「発災 1 分」〜「9 分」）。線は 0 の近くに置く
-  S6: { title: "発災時", state: "大雨", hours: () => 0.15 },
+  S6: { title: "発災時", state: "地震", hours: () => 0.15 },
   S7: { title: "使い分け", state: "Claude Code", hours: () => null },
 };
 
@@ -634,8 +687,9 @@ const ToolHeader: React.FC = () => {
   return (
     <GroundProvider ground={scene.ground}>
       <AbsoluteFill style={{ clipPath }}>
-        <Header title={info.title} state={info.state} hours={info.hours(t)} titleOpacity={flying ? 0 : 1} />
-        {flying ? <FlyTitle title={info.title} local={local - start} /> : null}
+        {/* 上の帯の 72 時間の線は外した（作者の声 11/6）。段の名前と状態だけ */}
+        <Header title={info.title} state={info.state} hours={null} titleOpacity={flying ? 0 : 1} />
+        {flying ? <FlyTitle title={info.title} local={local - start} scene={scene.id} /> : null}
       </AbsoluteFill>
     </GroundProvider>
   );
