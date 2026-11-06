@@ -25,7 +25,9 @@ import { resetPost, startPost } from "../seed/http.ts";
 import type { SeedBucket } from "../seed/reset.ts";
 import { SEED_REQUEST_MAX, seedRequestId } from "../seed/requests.ts";
 import { staffActor } from "./actor.ts";
-import { REQUEST_LABELS } from "./labels.ts";
+import { loadStaffBoard } from "./board.ts";
+import { REQUEST_LABELS, SHOWN_VIA_LABELS } from "./labels.ts";
+import { openCustodyOf } from "./received.ts";
 import { replyRequestPost, sendRequestPost, withdrawRequestPost } from "./request-http.ts";
 import { acceptRequest, declineRequest, latestRequestOf, openRequests, requestPanelOf, sendRequest } from "./requests.ts";
 
@@ -176,6 +178,11 @@ describe("T163 医療班の一覧と返事", () => {
     expect(await acceptRequest(db, med, sent.requestId, LATER)).toEqual({ ok: false, error: "answered" });
     // 事業所の側の返事: 受入済と医療班の名前
     expect(await latestRequestOf(db, "p-01")).toMatchObject({ state: "accepted", repliedName: "医療班 2", repliedAt: LATER });
+    // 受入一覧と受け入れた人の画面の入り方は「依頼」（表の via は search のまま）
+    const board = await loadStaffBoard(db, med, TODAY, LATER);
+    expect(board.rows.map((x) => [x.personId, x.via])).toEqual([["p-01", "request"]]);
+    expect(SHOWN_VIA_LABELS[board.rows[0]!.via]).toBe("依頼");
+    expect((await openCustodyOf(db, med, "p-01"))?.via).toBe("request");
   });
 
   it("もう自分が受け入れている人の依頼は、その受け持ちを結ぶ。送ったあとに同意が変わった人は受け入れない", async () => {

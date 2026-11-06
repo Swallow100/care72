@@ -71,6 +71,15 @@ export const CUSTODY_VIA_LABELS: Record<CustodyVia, string> = {
   on_site: "新規登録",
 };
 
+/** 画面の入り方（T163）。依頼から受け入れた受け持ちは表の via が search のまま（CHECK を変えない）なので、依頼の行と結んで「依頼」と出す */
+export type ShownVia = CustodyVia | "request";
+export const SHOWN_VIA_LABELS: Record<ShownVia, string> = { ...CUSTODY_VIA_LABELS, request: "依頼" };
+
+/** SQL: 受け持ち（alias）の入り方。受け入れた依頼に結ばれていれば request */
+export function shownViaSql(alias: string): string {
+  return `CASE WHEN EXISTS (SELECT 1 FROM custody_requests via_r WHERE via_r.custody_id = ${alias}.id AND via_r.state = 'accepted') THEN 'request' ELSE ${alias}.via END`;
+}
+
 /** 受け持ちを閉じる理由（経過の種類にもなる） */
 export const RELEASE_LABELS: Record<ReleaseKind, string> = {
   transported: "搬送",

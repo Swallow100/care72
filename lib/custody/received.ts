@@ -6,7 +6,7 @@
 // 要約に出した行は残りの区分から外す（同じ物を 2 回出さない）。D1 は受け持ちの行を読むだけ。
 
 import type { D1Database } from "@cloudflare/workers-types";
-import type { CustodyVia } from "../db/types.ts";
+import { shownViaSql, type ShownVia } from "./labels.ts";
 import type { Block, PersonView, Section, SectionId } from "../person.ts";
 import type { StaffActor } from "./actor.ts";
 
@@ -71,16 +71,16 @@ export function receivedLayout(view: Pick<PersonView, "sections">): ReceivedLayo
 }
 
 /** 自分の開いた受け持ち（受け入れた避難所・時刻・入り方）。受け持っていなければ null */
-export type OpenCustody = { custodyId: string; shelter: string; via: CustodyVia; receivedAt: string };
+export type OpenCustody = { custodyId: string; shelter: string; via: ShownVia; receivedAt: string };
 
 export async function openCustodyOf(db: D1Database, actor: Pick<StaffActor, "accountId">, personId: string): Promise<OpenCustody | null> {
   const row = await db
     .prepare(
-      `SELECT id, shelter, via, received_at FROM custody
+      `SELECT id, shelter, ${shownViaSql("custody")} AS via, received_at FROM custody
         WHERE person_id = ?1 AND holder_id = ?2 AND released_at IS NULL
         ORDER BY received_at DESC, id DESC LIMIT 1`,
     )
     .bind(personId, actor.accountId)
-    .first<{ id: string; shelter: string; via: CustodyVia; received_at: string }>();
+    .first<{ id: string; shelter: string; via: ShownVia; received_at: string }>();
   return row ? { custodyId: row.id, shelter: row.shelter, via: row.via, receivedAt: row.received_at } : null;
 }

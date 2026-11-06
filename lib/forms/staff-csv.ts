@@ -12,7 +12,7 @@ import type { Principal } from "../auth/principal.ts";
 import { JUDGE_LABEL } from "../auth/roles.ts";
 import { staffActor, type StaffActor } from "../custody/actor.ts";
 import { loadStaffBoard, type StaffBoard, type StaffRow } from "../custody/board.ts";
-import { CUSTODY_LABELS, CUSTODY_VIA_LABELS } from "../custody/labels.ts";
+import { CUSTODY_LABELS, SHOWN_VIA_LABELS } from "../custody/labels.ts";
 import { parseStaffView, staffQueryOf, staffViewRows, staffViewWords, type StaffView } from "../custody/staff-view.ts";
 import { stateLabel } from "../labels.ts";
 import { COLUMN_LABELS, DETAIL_LABELS } from "../list/labels.ts";
@@ -40,7 +40,7 @@ export const STAFF_COLUMNS: ReadonlyArray<Column> = [
   { header: CUSTODY_LABELS.devices, cell: (r) => r.devices.join("・") },
   { header: CUSTODY_LABELS.remain, cell: (r) => (r.remain ? `${r.remain.text} ${r.remain.label}` : "") },
   { header: CUSTODY_LABELS.shelter, cell: (r) => r.shelter },
-  { header: "経路", cell: (r) => CUSTODY_VIA_LABELS[r.via] },
+  { header: "経路", cell: (r) => SHOWN_VIA_LABELS[r.via] },
   { header: "受入時刻", cell: (r) => r.receivedWhen },
   { header: CUSTODY_LABELS.office, cell: (r) => r.office },
 ];

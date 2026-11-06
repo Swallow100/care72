@@ -14,7 +14,7 @@ import { ageOn } from "../age.ts";
 import { marksOf } from "../caseload.ts";
 import { canOpenDocument, scopeHas, viewScope } from "../consent/scope.ts";
 import { parseLedger } from "../db/ledger.ts";
-import type { ClockRow, ConsentStatus, ContactRow, CustodyVia, OfficeKind, PersonOrigin, PersonRow } from "../db/types.ts";
+import type { ClockRow, ConsentStatus, ContactRow, OfficeKind, PersonOrigin, PersonRow } from "../db/types.ts";
 import { deviceText } from "../labels.ts";
 import { loadSituation } from "../disaster/db.ts";
 import { loadOfficeOverrides, type StoredOverride } from "../disaster/override.ts";
@@ -30,7 +30,7 @@ import { DEMO_OFFICE_ID } from "../auth/demo.ts";
 import { demoPersonSql } from "../auth/wall.ts";
 import type { StaffActor } from "./actor.ts";
 import { ARRIVAL_COLUMNS, triageArrivals, type ArrivalRow } from "./arrivals.ts";
-import { CUSTODY_LABELS } from "./labels.ts";
+import { CUSTODY_LABELS, shownViaSql, type ShownVia } from "./labels.ts";
 
 export type StaffRow = {
   custodyId: string;
@@ -49,7 +49,8 @@ export type StaffRow = {
   devices: string[];
   remain: Pick<Remain, "label" | "text" | "hours" | "tone"> | null;
   shelter: string;
-  via: CustodyVia;
+  /** 入り方（依頼から受け入れた物は request。T163） */
+  via: ShownVia;
   /** 受け入れた時刻（ISO）と画面の言い方 */
   receivedAt: string;
   receivedWhen: string;
@@ -86,7 +87,7 @@ type CustodyJoin = Pick<PersonRow, "name" | "kana" | "birth_date" | "self_report
   custody_id: string;
   person_id: string;
   shelter: string;
-  via: CustodyVia;
+  via: ShownVia;
   received_at: string;
   reported_age: number | null;
   office_name: string;
@@ -138,7 +139,7 @@ export async function loadStaffBoard(
 ): Promise<StaffBoard> {
   const custody = await db
     .prepare(
-      `SELECT c.id AS custody_id, c.person_id, c.shelter, c.via, c.received_at,
+      `SELECT c.id AS custody_id, c.person_id, c.shelter, ${shownViaSql("c")} AS via, c.received_at,
               p.name, p.kana, p.birth_date, p.reported_age, p.self_report_unreliable, p.ledger, p.office_id, p.origin,
               o.name AS office_name, o.kind AS office_kind,
               (SELECT s.status FROM consents s WHERE s.person_id = p.id AND s.kind = 'medical') AS medical_status,

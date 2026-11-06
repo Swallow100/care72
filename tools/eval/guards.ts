@@ -54,7 +54,7 @@ export const GUARDS: ReadonlyArray<Guard> = [
     item: "count:persona:unreached:medical.receive",
     op: "<=",
     value: 0,
-    since: "r2",
+    since: "r8",
     task: "T163",
     label: "医療班の筋で受入依頼から受け入れられる",
     suspects: ["components/staff/StaffRequests.tsx", "lib/custody/requests.ts", "lib/seed/requests.ts", "app/staff/page.tsx"],
