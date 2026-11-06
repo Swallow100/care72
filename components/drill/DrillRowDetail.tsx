@@ -13,6 +13,7 @@
 // 「全部」（T132）は台帳の平時の情報の全部。番号は出さない（「電話あり」）。
 
 import { ClockLines } from "@/components/person/ClockLines";
+import { MedLines } from "@/components/person/MedLines";
 import { AiMark, REASON_TEXT, StateTag } from "@/components/person/parts";
 import { FullDetail } from "@/components/list/FullDetail";
 import { FullToggle } from "@/components/list/FullToggle";
@@ -21,7 +22,7 @@ import type { ActionTerm } from "@/lib/drill/action-terms";
 import { contactAct } from "@/lib/drill/contact-act";
 import { CALL_UI, VIRTUAL_LABELS } from "@/lib/drill/labels";
 import { minuteText } from "@/lib/drill/time-text";
-import { COLOR_LABELS } from "@/lib/labels";
+import { COLOR_LABELS, MED_LINE_LABELS } from "@/lib/labels";
 import type { RowDetail } from "@/lib/list/detail";
 import { DETAIL_LABELS } from "@/lib/list/labels";
 import { TALK_UI } from "@/lib/drill/dialogue";
@@ -155,6 +156,12 @@ export function DrillRowDetail({
               <ClockLines items={d.clocks.map((k) => ({ id: k.id, text: k.text, tone: k.tone }))} />
             )}
           </Part>
+          {/* 薬の 1 行ずつ（T150b。本人のページの上の段の「医療」と同じ部品）。行に入った薬の時計は「残り時間」に出さない */}
+          {d.meds.lines.length > 0 && (
+            <Part title={MED_LINE_LABELS.title}>
+              <MedLines lines={d.meds.lines} more={d.meds.more} />
+            </Part>
+          )}
           <Part title={DETAIL_LABELS.destinations}>
             <dl className="grid grid-cols-[3rem_minmax(0,1fr)] gap-x-2 gap-y-0.5">
               <dt className="text-xs text-muted">1</dt>

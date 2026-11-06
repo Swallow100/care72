@@ -7,8 +7,9 @@
 // 連絡先の下に「安否確認」（T149）: 本人と家族のスマホへ「大丈夫ですか」の通知を送る（components/list/SafetyPush）。
 
 import { ClockLines } from "@/components/person/ClockLines";
+import { MedLines } from "@/components/person/MedLines";
 import { AiMark, REASON_TEXT, StateTag } from "@/components/person/parts";
-import { COLOR_LABELS } from "@/lib/labels";
+import { COLOR_LABELS, MED_LINE_LABELS } from "@/lib/labels";
 import type { DetailSignal, RowDetail as Detail } from "@/lib/list/detail";
 import { CLASS_LABELS, DETAIL_LABELS } from "@/lib/list/labels";
 import { CallButtons } from "./CallButtons";
@@ -112,6 +113,12 @@ export function RowDetail({
               <ClockLines items={d.clocks.map((k) => ({ id: k.id, text: k.text, tone: k.tone }))} />
             )}
           </Part>
+          {/* 薬の 1 行ずつ（T150b。本人のページの上の段の「医療」と同じ部品）。行に入った薬の時計は「残り時間」に出さない */}
+          {d.meds.lines.length > 0 && (
+            <Part title={MED_LINE_LABELS.title}>
+              <MedLines lines={d.meds.lines} more={d.meds.more} />
+            </Part>
+          )}
           <Part title={DETAIL_LABELS.destinations}>
             <dl className="grid grid-cols-[3rem_minmax(0,1fr)] gap-x-2 gap-y-0.5">
               <dt className="text-xs text-muted">1</dt>

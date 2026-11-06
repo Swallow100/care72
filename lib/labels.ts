@@ -808,3 +808,6 @@ export const HEARING_LABELS = {
   failed: "保存失敗",
   none: "未回答",
 } as const;
+
+/** 薬の行（T150b。本人のページの上の段の「医療」と行の詳細の「薬」）。多い時は「他 2 件」 */
+export const MED_LINE_LABELS = { title: "薬", more: "他", unit: "件" } as const;

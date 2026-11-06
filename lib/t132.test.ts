@@ -72,28 +72,26 @@ describe("時計の言葉（担当一覧・訓練の行の詳細）", () => {
   it("物の名前・きっかけから長さ・残り。区分の語は行に混ぜない", () => {
     const d = detailOf("p-01");
     const lines = d.clocks.map((k) => k.text.line);
+    // ワーファリンの時計は「薬」の行に入るので「残り時間」に出さない（T150b）
     expect(lines).toEqual([
       "酸素 内蔵電池 停電から 2 時間（残り 1 時間）",
       "酸素 予備ボンベ 停電から 8 時間（残り 7 時間）",
-      "ワーファリン 手元の量 未確認（発災から数える）",
     ]);
-    expect(d.clocks.map((k) => k.kind)).toEqual(["device", "supply", "medication"]);
+    expect(d.clocks.map((k) => k.kind)).toEqual(["device", "supply"]);
     expect(d.clocks[0]).toMatchObject({ running: true, remaining: "残り 1 時間", tone: "urgent" });
-    // 未確認は残りの所に置かない
-    expect(d.clocks[2]).toMatchObject({ running: false, remaining: null, tone: null });
+    expect(d.meds.lines.map((l) => l.name)).toEqual(["ワーファリン"]);
   });
 
   it("担当一覧の行の詳細: 区分の見出しで束ね、出典と確認日に名前。前の詰めた形が無い", () => {
     const html = renderToStaticMarkup(createElement(RowDetail, { detail: detailOf("p-01") }));
-    for (const g of ["device", "supply", "medication"]) expect(html).toContain(`data-clock-group="${g}"`);
+    for (const g of ["device", "supply"]) expect(html).toContain(`data-clock-group="${g}"`);
+    // 薬の時計は「薬」の段の行に（T150b）
+    expect(html).not.toContain('data-clock-group="medication"');
+    expect(html).toContain('data-med-line="ワーファリン"');
     expect(html).toMatch(/data-clock-group="device"><h4[^>]*>機器</);
     expect(html).toMatch(/data-clock-group="supply"><h4[^>]*>物品</);
     expect(plain(html)).toContain("酸素 内蔵電池停電から 2 時間残り 1 時間");
-    expect(html).toContain("手元の量 未確認");
-    expect(html).toContain("（発災から数える）");
     expect(html).toContain("出典 説明書");
-    expect(html).toContain("出典 未確認");
-    expect(html).toContain("確認日 未確認");
     expect(html).not.toContain("機器 2 時間 停電");
     expect(html).not.toContain("物 8 時間 停電");
     expect(html).not.toMatch(/薬 未確認 発災/);
@@ -108,10 +106,9 @@ describe("時計の言葉（担当一覧・訓練の行の詳細）", () => {
   it("訓練の行の詳細も同じ部品で、出典と確認日を出す", () => {
     const html = renderToStaticMarkup(createElement(DrillRowDetail, { detail: detailOf("p-01"), startedAt: SIT.disasterAt }));
     expect(html).toMatch(/data-clock-group="device"><h4[^>]*>機器</);
-    expect(html).toContain("ワーファリン");
-    expect(html).toContain("手元の量 未確認");
-    expect(html).toContain("出典 未確認");
-    expect(html).not.toMatch(/ワーファリン<\/span><span[^>]*>未確認/);
+    // ワーファリンは「薬」の段の行に（T150b）
+    expect(html).toContain('data-med-line="ワーファリン"');
+    expect(html).toContain("出典 説明書");
     expect(html).toContain("data-full-toggle");
   });
 });
