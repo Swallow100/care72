@@ -401,6 +401,8 @@ const inputDir = join(ROOT, "assets", "rec-input");
  * 入れる欄で話す文（山田の未確認の 3 つ: ワーファリンの残り・夜の支援者・避難先 2。docs/video/SHOOTING.md の例から。実在の人・場所は言わない）。
  * 例の「車で来られます」は Web Speech が「来るまで来られます」と聞き違えた（11/5 の試し）ので「来てくれます」に
  */
+/** 問いへの答え（架空の人の架空の答え）。上から順に、文か数で答える問いに入れる */
+const INTAKE_ANSWERS = ["1 回 1 錠", "娘さんの車で行きます", "2 階の箪笥に保管しています", "かかりつけは市民病院です"];
 const INTAKE_LINES = ["ワーファリンはあと10日分あります。", "夜は娘さんが来てくれます。", "2つ目の避難先は娘さんの家です。"];
 /** 本人のスマホの録音に入る声（架空の文。実在の人の声は使わない） */
 const VOICE_LINES = ["足が痛くて動けない"];
@@ -543,7 +545,8 @@ async function aiIntake() {
   const wav = micFile("R02", INTAKE_LINES, 30, 2.5);
   const browser = await launch({ fakeAudio: wav });
   try {
-    const cm = await newPage(browser, PC);
+    // 右の列に大きく寄るので細かく撮る（作者の頼み 11/7「右を拡大してから下へ送る」）
+    const cm = await newPage(browser, { ...PC, deviceScaleFactor: 2.5 });
     await login(cm, base, "judge", judgePw, "care_manager");
     await prepSafe(cm);
     const keys = await aiKeys(cm);
@@ -596,10 +599,44 @@ async function aiIntake() {
     r.mark("問い返し");
     await checkWords(cm, "問い返し", hits);
     await scrollToSel(r, cm, '[data-intake="question"]', 1.5, 140);
-    await sleep(5000);
-    r.mark("上へ");
-    await r.scroll(-3000, 2.5);
     await sleep(3000);
+    // 問いに答えていく（選ぶ問いは AI を呼ばない。文で答える問いは Sonnet が分けて、保存する）。やり取りが増えると下へ送れる
+    for (let i = 0; i < INTAKE_ANSWERS.length; i++) {
+      const box = '[data-intake="question"]';
+      if (!(await cm.$(box))) break;
+      r.mark(`問い ${i + 1}`);
+      await checkWords(cm, `問い ${i + 1}`, hits);
+      await sleep(1800);
+      const choice = await cm.$(`${box} [data-choice]`);
+      const area = await cm.$(`${box} textarea`);
+      const line = await cm.$(`${box} form input:not([type="checkbox"]):not([type="radio"])`);
+      if (choice) {
+        await choice.click();
+      } else if (area || line) {
+        await (area ?? line).type(INTAKE_ANSWERS[i], { delay: 45 });
+        await sleep(500);
+        await cm.click(`${box} button[type="submit"]`);
+      } else break;
+      await sleep(1200);
+      if (area) {
+        const split = await waitCut(r, cm, () => !!document.querySelector('[data-intake="changes"]'), { keep: 2, timeout: 120_000, label: "Sonnet 答え" });
+        if (split) {
+          await sleep(1800);
+          await clickText(cm, "保存", { exact: true, within: '[data-intake="changes"]' });
+        }
+      }
+      await settleShort(cm);
+      await sleep(1800);
+      r.mark(`答え ${i + 1}`);
+    }
+    await sleep(1500);
+    // 右の列を見せながら、下へ何度かに分けて送る
+    for (let i = 0; i < 4; i++) {
+      r.mark(`下へ ${i + 1}`);
+      await r.scroll(260, 1.4);
+      await sleep(1100);
+    }
+    await sleep(1000);
     await r.stop(recDir("R02"));
     writeWords(recDir("R02"), hits);
   } finally {
