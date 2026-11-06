@@ -380,6 +380,7 @@ const ShotView: React.FC<{ shot: Shot; assets: Assets; entryDelay?: number; next
           ) : shot.value?.includes("人中") ? (
             <Share
               {...peopleShare(shot.value, shot.lines?.[0] ?? "", shot.sub ?? "")}
+              extra={shot.lines?.[1]}
               land={shot.beats?.[0] !== undefined ? f(shot.beats[0]) : undefined}
               lead={slotWord(shot, assets, "lead")}
               tail={slotWord(shot, assets, "tail")}

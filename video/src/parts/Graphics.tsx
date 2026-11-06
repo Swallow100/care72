@@ -205,7 +205,7 @@ export const Compare: React.FC<{ value: string; labels: [string, string]; sub?: 
  */
 type SlotWord = { text: string; frame: number; size: keyof typeof TYPE };
 
-export const Share: React.FC<{ hero: string; share: number; part: string; whole: string; land?: number; lead?: SlotWord; tail?: SlotWord; marker?: string }> = ({
+export const Share: React.FC<{ hero: string; share: number; part: string; whole: string; land?: number; lead?: SlotWord; tail?: SlotWord; marker?: string; extra?: string }> = ({
   hero,
   share,
   part,
@@ -214,6 +214,7 @@ export const Share: React.FC<{ hero: string; share: number; part: string; whole:
   lead,
   tail,
   marker,
+  extra,
 }) => {
   const frame = useCurrentFrame();
   const p = usePalette();
@@ -260,6 +261,8 @@ export const Share: React.FC<{ hero: string; share: number; part: string; whole:
           <span style={{ fontWeight: 600 }}>{marker === part ? <Marker at={land}>{part}</Marker> : part}</span>
           <span style={{ color: p.sub }}>{whole}</span>
         </div>
+        {/* 2 つ目の数（問 6 の「事業所で見返す人は 0 人」。11/6）。数が止まったあとに出す */}
+        {extra ? <div style={{ fontSize: TYPE.h2, fontWeight: 600, marginTop: -4, ...rise(frame, land + 10) }}>{extra}</div> : null}
       </div>
     </Stage>
   );
