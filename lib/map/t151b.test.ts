@@ -4,6 +4,7 @@
 // - 凡例の左の「範囲内 雨なし」は、雨が無いと分かったときだけ
 // テストは外へ出ない（fetch を偽にして、呼ばれたら落とす）。
 
+import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -11,6 +12,10 @@ import { NowcastLayer, NowcastNote } from "../../components/map/NowcastLayer.tsx
 import { LEGEND_W } from "../../components/map/RainScaleLegend.tsx";
 import { latestTime, NOWC_ZOOM, nowcTileUpstream, parseTimes, tileResponse } from "../jma/nowcast.ts";
 import { NOWCAST_OPACITY } from "./layers.ts";
+import { pickHazard, pickRain, rainShown, shownHazards, type LayerPick } from "./layer-pick.ts";
+import { CaseMap } from "../../components/map/CaseMap.tsx";
+import { HEAVY_RAIN_TRACK } from "../drill/rain.ts";
+import { demoOverlay } from "./demo.ts";
 import { BASE_SIZE, project, tilesFor, type View } from "./geo.ts";
 import { MAP_UI } from "./labels.ts";
 import { hasRain, rainInView, TILE_PX, visiblePixels } from "./rain-in-view.ts";
@@ -150,5 +155,71 @@ describe("強さの取り違えが無いこと（雨雲の route は気象庁の
       expect(m[0]).toContain("opacity:0.65");
       expect(m[0]).not.toMatch(/filter|mix-blend|brightness|saturate|hue-rotate/);
     }
+  });
+});
+
+describe("色の層は 1 度に 1 つ（雨雲と浸水・土砂・津波。lib/map/layer-pick.ts）", () => {
+  const start: LayerPick = { on: new Set(["flood", "landslide"]), rainOn: false };
+  const set = (p: LayerPick) => [...p.on].sort();
+
+  it("雨雲を付けたら浸水・土砂・津波は描かない（付いていた層は覚えている）。外したら前の層に戻る", () => {
+    expect([...shownHazards(start, true)].sort()).toEqual(["flood", "landslide"]);
+    const rain = pickRain(start);
+    expect(rainShown(rain, true)).toBe(true);
+    expect(shownHazards(rain, true).size).toBe(0);
+    const back = pickRain(rain);
+    expect(rainShown(back, true)).toBe(false);
+    expect([...shownHazards(back, true)].sort()).toEqual(["flood", "landslide"]);
+  });
+
+  it("雨雲を描いている間に浸水などを付けたら、雨雲を外し、前の層と押した層を描く", () => {
+    const rain = pickRain({ on: new Set(["landslide"]), rainOn: false });
+    const flood = pickHazard(rain, "flood", true);
+    expect(flood.rainOn).toBe(false);
+    expect(set(flood)).toEqual(["flood", "landslide"]);
+  });
+
+  it("雨雲を描いていないときは、層の付け外しだけ（付けたら雨雲は外したまま、外しても雨雲は付けない）", () => {
+    const off = pickHazard(start, "landslide", true);
+    expect(set(off)).toEqual(["flood"]);
+    expect(off.rainOn).toBe(false);
+    const add = pickHazard(off, "tsunami", true);
+    expect(set(add)).toEqual(["flood", "tsunami"]);
+    expect(add.rainOn).toBe(false);
+  });
+
+  it("描く雨が無い（旗が off・時刻が取れない・訓練の雨が無い）ときは雨雲を選んでいても層をそのまま描く", () => {
+    const p: LayerPick = { on: new Set(["flood"]), rainOn: true };
+    expect(rainShown(p, false)).toBe(false);
+    expect([...shownHazards(p, false)]).toEqual(["flood"]);
+    // 層を付け外しすると雨雲は外れる（あとで雨が届いても層が消えない）
+    expect(pickHazard(p, "tsunami", false).rainOn).toBe(false);
+  });
+
+  it("地図の画面: 雨（訓練の雨）があれば最初は雨雲を描き、浸水・土砂の層のタイルは出さず、切替も押していない印。雨が無ければ層を描く", () => {
+    const mapPins = [{ id: "p1", label: "山田", title: "山田", href: "/?open=p1", location: MATSUYAMA, tone: null, state: null, layer: 0 }];
+    const withRain = renderToStaticMarkup(
+      createElement(CaseMap, {
+        pins: mapPins as never,
+        layers: ["flood", "landslide"],
+        demo: demoOverlay({ kind: "heavy_rain", level: 4, drill: { track: HEAVY_RAIN_TRACK, hour: 3, anchor: MATSUYAMA } }),
+        unplaced: 0,
+      }),
+    );
+    expect(withRain).toContain('data-demo="rain"');
+    expect(withRain).not.toMatch(/data-layer="(flood|landslide|tsunami)"/);
+    expect(withRain).toMatch(/aria-pressed="true"[^>]*data-toggle="rain"/);
+    expect(withRain).toMatch(/aria-pressed="false"[^>]*data-toggle="flood"/);
+    const noRain = renderToStaticMarkup(createElement(CaseMap, { pins: mapPins as never, layers: ["flood"], demo: null, unplaced: 0 }));
+    expect(noRain).toContain('data-layer="flood"');
+    expect(noRain).toMatch(/aria-pressed="true"[^>]*data-toggle="flood"/);
+  });
+
+  it("どの地図も同じ 1 か所を使う（担当一覧の右の面・全画面・訓練は CaseMap の層の切替。前の自前の付け外しは無い）", () => {
+    const src = readFileSync(new URL("../../components/map/CaseMap.tsx", import.meta.url), "utf8");
+    expect(src).toContain("pickHazard(cur, id, rainAvailable)");
+    expect(src).toMatch(/pickRain/);
+    expect(src).not.toContain("setRainOn");
+    expect(src).not.toContain("setOn(");
   });
 });

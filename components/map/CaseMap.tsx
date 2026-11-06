@@ -45,6 +45,7 @@ import {
   type View,
 } from "@/lib/map/geo";
 import { MAP_UI, othersLabel } from "@/lib/map/labels";
+import { pickHazard, pickRain, shownHazards, type LayerPick } from "@/lib/map/layer-pick";
 import { initialView, regionView, type MapRegion } from "@/lib/map/region";
 import { BASE_LAYER, BASE_OPACITY, HAZARD_LAYERS, HAZARD_OPACITY, HAZARD_PORTAL, type Attribution, type HazardLayer } from "@/lib/map/layers";
 import type { MapPin } from "@/lib/map/side";
@@ -119,6 +120,7 @@ export type CaseMapProps = {
 
 /** 層の切替（小さな地図と全画面で同じ物） */
 type LayerChoice = {
+  /** 今描く浸水・土砂・津波の層（雨雲を描いている間は無し。T151b） */
   on: ReadonlySet<HazardKind>;
   toggle: (id: HazardKind) => void;
   rainOn: boolean;
@@ -128,10 +130,13 @@ type LayerChoice = {
 };
 
 export function CaseMap({ pins, layers, demo, unplaced, center, region = null, nowcast = false, fictional = false }: CaseMapProps) {
-  const [on, setOn] = useState<ReadonlySet<HazardKind>>(() => new Set(layers));
-  const [rainOn, setRainOn] = useState(true);
+  // 選んだ層（T151b: 色の層は 1 度に 1 つ。雨雲を付けると浸水・土砂・津波は外し、雨雲を外すと前の層に戻す。lib/map/layer-pick.ts）
+  const [pick, setPick] = useState<LayerPick>(() => ({ on: new Set(layers), rainOn: true }));
   // 気象庁の雨雲の一番新しい実況の時刻（旗が off・デモ事業所では読まない）
   const nowc = useNowcastTime(nowcast);
+  const rainAvailable = (demo?.rain.length ?? 0) > 0 || nowc !== null;
+  const on = shownHazards(pick, rainAvailable);
+  const rainOn = pick.rainOn;
   const [full, setFull] = useState(false);
   const box = useRef<HTMLDivElement>(null);
 
@@ -174,15 +179,9 @@ export function CaseMap({ pins, layers, demo, unplaced, center, region = null, n
 
   const choice: LayerChoice = {
     on,
-    toggle: (id) =>
-      setOn((cur) => {
-        const next = new Set(cur);
-        if (next.has(id)) next.delete(id);
-        else next.add(id);
-        return next;
-      }),
+    toggle: (id) => setPick((cur) => pickHazard(cur, id, rainAvailable)),
     rainOn,
-    toggleRain: () => setRainOn((v) => !v),
+    toggleRain: () => setPick(pickRain),
     nowcast: nowc,
   };
 
