@@ -79,6 +79,7 @@ const DRILL: Item[] = [
   { id: "drill.offBand", bench: "drill", label: "時間帯の目安の外", better: "lower", unit: "rate", agg: "sum", drill: (s) => [sumOf(runs(s).map((n) => n.timeOdds.offBand)), sumOf(runs(s).map((n) => n.timeOdds.checked))] },
   { id: "drill.kindOverlap", bench: "drill", label: "出来事の種類の重なり（回どうし）", better: "lower", unit: "score", agg: "mean", drill: (s) => s.diversity.sequence.kindJaccard },
   { id: "drill.cut", bench: "drill", label: "本人役の言葉が文の途中で切れた", better: "lower", unit: "frac", agg: "sum", threshold: zero, drill: (s) => [sumOf(runs(s).map((n) => n.cut?.hits ?? 0)), sumOf(runs(s).map((n) => n.cut?.checked ?? 0))] },
+  { id: "drill.overmask", bench: "drill", label: "画面の（氏名）で元の語に名前が無い", better: "lower", unit: "frac", agg: "sum", threshold: zero, drill: (s) => [sumOf(runs(s).map((n) => n.overmask?.hits ?? 0)), sumOf(runs(s).map((n) => n.overmask?.checked ?? 0))] },
   { id: "drill.talkCut", bench: "drill", label: "着信の往復の返事が切れた", better: "lower", unit: "frac", agg: "sum", seedOnly: true },
   { id: "drill.speechMax", bench: "drill", label: "言葉の長さの最大（字）", better: null, unit: "count", agg: "max", seedOnly: true },
   { id: "drill.reviewFindings", bench: "drill", label: "講評の指摘の数", better: null, unit: "count", agg: "max", seedOnly: true },

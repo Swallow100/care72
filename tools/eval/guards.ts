@@ -47,6 +47,18 @@ export const GUARDS: ReadonlyArray<Guard> = [
     label: "一覧の様式の対応表を別の事業所が AI を呼ばずに写す",
     suspects: ["lib/forms/shared-mapping.ts", "lib/forms/read-post.ts"],
   },
+  // 評価の 6 回目で本人役の普通の言い方（続柄＋の＋語尾まで含めたかな）が画面に（氏名）で出た（1 件）のを T159 で直した。戻ったら外れる
+  {
+    id: "drill-overmask-none",
+    bench: "drill",
+    item: "drill.overmask",
+    op: "<=",
+    value: 0,
+    since: "r7",
+    task: "T159",
+    label: "画面の（氏名）が名前の無い所に出ない",
+    suspects: ["lib/pseudonym/forms.ts", "lib/pseudonym/index.ts"],
+  },
 ];
 
 /** 守りの確かめ。values は回の項目の数、counts は同じ原因の指摘の数（causeCounts）。数の無い項目は確かめない */

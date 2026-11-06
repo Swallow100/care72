@@ -58,6 +58,16 @@ export function metaOf(h: CheckHit): Meta | null {
         suspects: roleFiles(h.role),
       };
     }
+    case "overmask":
+      return {
+        cause: "drill:overmask:shown",
+        rule: "overmask",
+        title: "画面の（氏名）で元の語に名前が無い（伏せ過ぎ）",
+        severity: "mid",
+        screen: "訓練 > 経過・通話・訪問",
+        suspects: ["lib/pseudonym/forms.ts", "lib/pseudonym/index.ts"],
+        accept: zero("drill.overmask"),
+      };
     case "leak":
       return { cause: "drill:leak:sent", rule: "leak", title: "Claude に送った中身に仮名化の漏れ", severity: "high", suspects: ["lib/pseudonym/index.ts", ...roleFiles(h.role)], accept: zero("drill.leaks") };
     case "shape": {
