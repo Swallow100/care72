@@ -44,7 +44,7 @@ function beforeT73a(): DatabaseSync {
   db.exec("PRAGMA foreign_keys = ON;");
   // 種はデモ事業所の情報と地域（0036、T148）も書くので 0036 も先に（offices に列を足すだけで survey の表に触れない）
   // 種は本人・家族の ID と通知の購読の表（0037、T149）も空にするので 0037 も先に（新しい表を作るだけ）
-  for (const name of NAMES.filter((n) => n < T73A || n.startsWith("0024_") || n.startsWith("0029_") || n.startsWith("0032_") || n.startsWith("0033_") || n.startsWith("0036_") || n.startsWith("0037_"))) tx(db, sqlOf(name));
+  for (const name of NAMES.filter((n) => n < T73A || n.startsWith("0024_") || n.startsWith("0029_") || n.startsWith("0032_") || n.startsWith("0033_") || n.startsWith("0036_") || n.startsWith("0037_") || n.startsWith("0038_"))) tx(db, sqlOf(name));
   tx(db, seedStatements().join("\n"));
   return db;
 }

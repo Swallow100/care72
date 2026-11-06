@@ -564,6 +564,10 @@ export type OfficeRow = {
   region_cities: string | null;
   /** 地図の広さ（中心からの km。5・10・20・40。migration 0036、T148）。NULL は自動 */
   region_km: number | null;
+  /** 主な市の全国地方公共団体コード（6 桁。migration 0038、T154。表は lib/municipality）。NULL は未選択（前からの行は文字の city を表で当てる） */
+  city_code?: string | null;
+  /** 周りの市の団体コードの JSON の配列（migration 0038、T154）。NULL は周りの市なし（前からの行は region_cities を表で当てる） */
+  region_city_codes?: string | null;
   created_at: string;
 };
 

@@ -41,7 +41,8 @@ import { addCareManagerRequest, careManagerActionRequest } from "./http.ts";
 import { parseStaffInput } from "./forms.ts";
 import { addRegionCity, loadOfficePlace, parsePlaceForm, placePost, savePlace } from "./place.ts";
 import { loadOfficeProfile, normalizeOfficeNumber, normalizePhone, parseProfileForm, profilePost } from "./profile.ts";
-import { citySuggestions, loadOfficeRegion, mapRegionOf, officeZonesFrom, parseRegionCities, regionCitiesOf, regionKmOf } from "./region.ts";
+import { loadOfficeRegion } from "./area.ts";
+import { citySuggestions, mapRegionOf, officeZonesFrom, parseRegionCities, regionCitiesOf, regionKmOf } from "./region.ts";
 import { officeActor } from "./scope.ts";
 import { setupItems } from "./setup.ts";
 import { addCareManager, generateInitialPassword, resetCareManagerPassword } from "./staff.ts";
@@ -121,7 +122,8 @@ describe("migration 0036（事業所の情報と地域）", () => {
     const before = d.prepare("SELECT * FROM offices").get() as Record<string, unknown>;
     for (const n of names().filter((n) => n >= "0036_")) d.exec(readFileSync(new URL(n, MIGRATIONS), "utf8"));
     const after = d.prepare("SELECT * FROM offices").get() as Record<string, unknown>;
-    expect(after).toEqual({ ...before, address: null, phone: null, fax: null, office_number: null, region_cities: null, region_km: null });
+    // 0038（T154）の団体コードの列も後から当たる（前からある行は NULL）
+    expect(after).toEqual({ ...before, address: null, phone: null, fax: null, office_number: null, region_cities: null, region_km: null, city_code: null, region_city_codes: null });
     const bad = (set: string) => expect(() => d.exec(`UPDATE offices SET ${set} WHERE id = 'o-old'`), set).toThrow(/CHECK/);
     bad("office_number = '12345'");
     bad("office_number = '12345abcde'");
@@ -235,14 +237,17 @@ describe("事業所の情報", () => {
 describe("地域（主な市＋周りの市・広さ・区域）", () => {
   it("周りの市の形: 区切った 1 欄・複数の欄、重なりと主な市を落とす、8 つまで、20 字まで", () => {
     expect(parsePlaceForm(form({ city: "松山市", region: "1", region_city: "東温市・砥部町、松山市 東温市", region_km: "auto", flood_depth: "none" }))).toEqual({
+      // T154 から前の形の文字も全国の市区町村の表で当て、団体コードが付く（松山市 382019・東温市 382159・砥部町 384020・伊予市 382108）
       city: "松山市",
+      cityCode: "382019",
       center: null,
-      region: { others: ["東温市", "砥部町"], km: null, zones: [] },
+      region: { others: ["東温市", "砥部町"], otherCodes: ["382159", "384020"], km: null, zones: [] },
     });
     expect(parsePlaceForm(form({ city: "松山市", region: "1", region_city: ["伊予市", "", "東温市"], region_km: "40", zone: ["tsunami", "flood"], flood_depth: "3" }))).toEqual({
       city: "松山市",
+      cityCode: "382019",
       center: null,
-      region: { others: ["伊予市", "東温市"], km: 40, zones: [{ kind: "flood", depthM: 3 }, { kind: "tsunami", depthM: null }] },
+      region: { others: ["伊予市", "東温市"], otherCodes: ["382108", "382159"], km: 40, zones: [{ kind: "flood", depthM: 3 }, { kind: "tsunami", depthM: null }] },
     });
     const nine = Array.from({ length: 9 }, (_, i) => `架空${i}市`).join("・");
     expect(parsePlaceForm(form({ city: "松山市", region: "1", region_city: nine }))).toBeNull();
@@ -251,7 +256,7 @@ describe("地域（主な市＋周りの市・広さ・区域）", () => {
     expect(parsePlaceForm(form({ city: "松山市", region: "1", zone: "other" }))).toBeNull();
     expect(parsePlaceForm(form({ city: "松山市", region: "1", flood_depth: "2" }))).toBeNull();
     // 印の無い前の形のフォームは市と中心だけ（周りの市・広さ・区域を書かない）
-    expect(parsePlaceForm(form({ city: "松山市" }))).toEqual({ city: "松山市", center: null });
+    expect(parsePlaceForm(form({ city: "松山市" }))).toEqual({ city: "松山市", cityCode: "382019", center: null });
   });
 
   it("保存すると周りの市・広さ・区域が表に入り、印の無い前の形の保存は周りの市・区域を残す", async () => {
@@ -299,7 +304,8 @@ describe("地域（主な市＋周りの市・広さ・区域）", () => {
     sqlite.exec(`UPDATE people SET ledger = json_set(ledger, '$.basic.address.city', '東温市') WHERE id IN (${ids("p-05")})`);
     const r = await loadOfficeRegion(db, YAM);
     expect(r?.cities).toEqual(["松山市", "東温市"]);
-    expect(r?.suggestions).toEqual([
+    // T154 から候補は全国の市区町村の表で当てた団体コードつき
+    expect(r?.suggestions.map(({ city, count }) => ({ city, count }))).toEqual([
       { city: "伊予市", count: 2 },
       { city: "砥部町", count: 1 },
     ]);
@@ -308,7 +314,7 @@ describe("地域（主な市＋周りの市・広さ・区域）", () => {
     expect(await addRegionCity(db, y, "伊予市")).toEqual({ ok: true });
     expect(await addRegionCity(db, y, "松山市")).toEqual({ ok: true });
     expect(JSON.parse(String(office(YAM).region_cities))).toEqual(["東温市", "伊予市"]);
-    expect((await loadOfficeRegion(db, YAM))?.suggestions).toEqual([{ city: "砥部町", count: 1 }]);
+    expect((await loadOfficeRegion(db, YAM))?.suggestions.map(({ city, count }) => ({ city, count }))).toEqual([{ city: "砥部町", count: 1 }]);
     // 審査員のデモ事業所は変わらない
     expect(JSON.parse(String(office().region_cities))).toEqual(["東温市"]);
     // 区のある市は同じ市（「○○市○○区」）。空の市は候補にしない
@@ -395,8 +401,9 @@ describe("地域が地図の中心と広さに効く", () => {
   it("ピンがある地図の初めの表示は前と同じ（デモ事業所の 10 人）。ピンが無ければ地域の表示", async () => {
     expect(pins.length).toBeGreaterThan(0);
     const place0 = await loadOfficePlace(db, DEMO_OFFICE_ID);
-    const region = mapRegionOf(place0!)!;
-    expect(region).toEqual({ center: { lat: 33.84, lng: 132.765 }, km: 20 });
+    // T154 から地図の地域は lib/office/area.ts（全国の市区町村の表）が決める。広さの自動は松山市と東温市の範囲が入る 25 km
+    const region = place0!.map!;
+    expect(region).toEqual({ center: { lat: 33.84, lng: 132.765 }, km: 25 });
     expect(initialView(pins.length, pinFit(pins), region)).toEqual(pinFit(pins));
     expect(initialView(0, pinFit([]), region)).toEqual(regionView(region));
     expect(initialView(0, pinFit([]), null)).toEqual(pinFit([]));

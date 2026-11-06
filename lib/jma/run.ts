@@ -12,7 +12,7 @@ import { errorNote, fetchFeed, fetchText, MAX_ENTRIES_PER_RUN, parseFeed, pickNe
 import { isQuakeCode, isWarningCode, JMA_FEED_URLS, priorityOf } from "./labels.ts";
 import { cityOf } from "./match.ts";
 import { parseQuake } from "./quake.ts";
-import { knownIds, loadFetchState, pruneOld, relevantCities, saveFetchState, storeEntries, type StoredEntry } from "./store.ts";
+import { knownIds, loadFetchState, pruneOld, relevantAreaCodes, relevantCities, saveFetchState, storeEntries, type StoredEntry } from "./store.ts";
 import { parseWarning } from "./warning.ts";
 
 /** 取る順（地震を先に。電文の上限を 2 つのフィードで分ける） */
@@ -36,7 +36,18 @@ export type FeedRun = {
 };
 
 /** 電文 1 通を読んで、写す形にする。読めなければ note を付けた記録だけ */
-export function toStored(feed: JmaFeed, e: FeedEntry, xml: string, now: string, cities: ReadonlyArray<string>): StoredEntry {
+/**
+ * codes は写す市町村等のコード（事業所の地域と利用者の住所の市を全国の市区町村の表で当てた物、T154。lib/jma/store.ts の relevantAreaCodes）。
+ * 警報の行はコードか名前（cities）のどちらかに当たる物を写す（浜松市南部のように名前が市と違う市町村もコードで写す）
+ */
+export function toStored(
+  feed: JmaFeed,
+  e: FeedEntry,
+  xml: string,
+  now: string,
+  cities: ReadonlyArray<string>,
+  codes: ReadonlySet<string> = new Set(),
+): StoredEntry {
   const code = e.typeCode ?? "";
   const entry: JmaEntryRow = { id: e.id, feed, type_code: code, title: e.title, updated_at: e.updated, fetched_at: now, note: null };
   const only = (note: string): StoredEntry => ({ entry: { ...entry, note }, warnings: [], quake: null, points: [] });
@@ -46,7 +57,7 @@ export function toStored(feed: JmaFeed, e: FeedEntry, xml: string, now: string, 
       if (r.status !== "通常") return only(`${r.status || "不明"}の電文`);
       if (r.infoType === "取消") return only("取消");
       const warnings = r.items
-        .filter((i) => cityOf(cities, i.areaName) !== null)
+        .filter((i) => codes.has(i.areaCode) || cityOf(cities, i.areaName) !== null)
         .map((i) => ({
           entry_id: e.id,
           type_code: code,
@@ -90,7 +101,15 @@ export function toStored(feed: JmaFeed, e: FeedEntry, xml: string, now: string, 
   }
 }
 
-async function runFeed(db: D1Database, feed: JmaFeed, fetcher: Fetcher, now: string, cities: ReadonlyArray<string>, budget: number): Promise<FeedRun> {
+async function runFeed(
+  db: D1Database,
+  feed: JmaFeed,
+  fetcher: Fetcher,
+  now: string,
+  cities: ReadonlyArray<string>,
+  budget: number,
+  codes: ReadonlySet<string> = new Set(),
+): Promise<FeedRun> {
   const prev = await loadFetchState(db, feed);
   const base: FeedRun = { feed, status: "ok", stored: 0, unreadable: 0, failed: 0, deferred: 0, note: null };
   const fail = async (note: string): Promise<FeedRun> => {
@@ -123,7 +142,7 @@ async function runFeed(db: D1Database, feed: JmaFeed, fetcher: Fetcher, now: str
     const part = take.slice(i, i + PARALLEL);
     const texts = await Promise.all(part.map((e) => fetchText(e.url, fetcher)));
     texts.forEach((t, j) => {
-      if (t.ok) stored.push(toStored(feed, part[j], t.text, now, cities));
+      if (t.ok) stored.push(toStored(feed, part[j], t.text, now, cities, codes));
       else failed++;
     });
   }
@@ -153,10 +172,11 @@ async function runFeed(db: D1Database, feed: JmaFeed, fetcher: Fetcher, now: str
 export async function fetchJma(db: D1Database, fetcher: Fetcher, now: string): Promise<FeedRun[]> {
   await pruneOld(db, now);
   const cities = await relevantCities(db);
+  const codes = new Set(await relevantAreaCodes(db));
   let budget = MAX_ENTRIES_PER_RUN;
   const out: FeedRun[] = [];
   for (const feed of FEED_ORDER) {
-    const r = await runFeed(db, feed, fetcher, now, cities, budget);
+    const r = await runFeed(db, feed, fetcher, now, cities, budget, codes);
     budget -= r.stored + r.failed;
     out.push(r);
   }

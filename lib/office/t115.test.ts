@@ -607,7 +607,7 @@ describe("作り直しの守り（tools/deploy/guard.ts）", () => {
     // 種は連絡先のフリガナ・住所・携帯（0029、T117。T142 で種が書く）も書くので 0029 も当てる（contacts に列を足すだけ）
     // 種はデモ事業所の情報と地域（0036、T148）も書くので 0036 も当てる（offices に列を足すだけで judge_sandbox に触れない）
     // 種は本人・家族の ID と通知の購読の表（0037、T149）も空にするので 0037 も先に（新しい表を作るだけ）
-    for (const name of readdirSync(dir).filter((n) => n.endsWith(".sql") && (n < "0027" || n.startsWith("0029_") || n.startsWith("0032_") || n.startsWith("0033_") || n.startsWith("0036_") || n.startsWith("0037_"))).sort()) old.exec(readFileSync(new URL(name, dir), "utf8"));
+    for (const name of readdirSync(dir).filter((n) => n.endsWith(".sql") && (n < "0027" || n.startsWith("0029_") || n.startsWith("0032_") || n.startsWith("0033_") || n.startsWith("0036_") || n.startsWith("0037_") || n.startsWith("0038_"))).sort()) old.exec(readFileSync(new URL(name, dir), "utf8"));
     fixtures(old);
     const seen: string[] = [];
     const d = await runGuard((sql) => {

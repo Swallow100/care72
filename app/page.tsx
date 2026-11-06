@@ -47,7 +47,6 @@ import { stateLabel, TIER_LABELS } from "@/lib/labels";
 import { nowcastOn } from "@/lib/jma/nowcast";
 import { buildSidePane, sideDisasterOf } from "@/lib/map/side";
 import { loadOfficePlace } from "@/lib/office/place";
-import { mapRegionOf } from "@/lib/office/region";
 import { parsePeopleError } from "@/lib/office/http";
 import { NEW_PERSON_PATH } from "@/lib/office/http-paths";
 import { canSeeSetup } from "@/lib/office/setup";
@@ -115,8 +114,9 @@ export default async function CaseloadPage({ searchParams }: Props) {
     data = scope ? await loadCaseload(env.DB, scope, todayJst(), now) : null;
     if (principal.office) {
       const place = await loadOfficePlace(env.DB, principal.office.id).catch(() => null);
-      // 地域（中心と広さ、T148）: ピンが無いときの初めの表示と「地域」のボタン。ピンがあれば初めはピンが全部入る表示のまま
-      const region = place ? mapRegionOf(place) : null;
+      // 地域（中心と広さ、T148。T154 から全国の市区町村の表で lib/office/area.ts の 1 か所が決める）: ピンが無いときの初めの表示と
+      // 「地域」のボタン。ピンがあれば初めはピンが全部入る表示のまま
+      const region = place?.map ?? null;
       map = { center: place?.center ?? null, region, fictional: principal.office.kind === "demo", nowcast: nowcastOn(env) };
     }
   } catch (e) {

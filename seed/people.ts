@@ -26,7 +26,7 @@ export type SeedOffice = Omit<OfficeRow, "created_at" | "judge_sandbox" | SeedOf
  * 事業所の情報と地域の周りの市・広さ（migration 0036、T148）。種ではデモ事業所と確認用の事業所だけが持つ（架空の所在地と電話、周りの市）。
  * 協力事業所・所属なしの行には書かない（NULL のまま。種の文を 0036 の前の D1 に流すテストの行を増やさないため）
  */
-type SeedOfficeProfileKey = "address" | "phone" | "fax" | "office_number" | "region_cities" | "region_km";
+type SeedOfficeProfileKey = "address" | "phone" | "fax" | "office_number" | "region_cities" | "region_km" | "city_code" | "region_city_codes";
 /**
  * 停止の印（disabled_at）と審査員が足した印（judge_made、T81）は種に持たない（NULL と 0。種の戻しも戻す）。
  * 初期パスワードの印（password_initial、T114）も持たない（表の既定。種のアカウントは固定で、印は出さない）
@@ -61,6 +61,9 @@ function demoProfile(): Pick<SeedOffice, SeedOfficeProfileKey> {
     office_number: null,
     region_cities: JSON.stringify(["東温市"]),
     region_km: null,
+    // 所在地の団体コード（全国の市区町村の表、T154。松山市 382019・東温市 382159。migration 0038）
+    city_code: "382019",
+    region_city_codes: JSON.stringify(["382159"]),
   };
 }
 
