@@ -8,7 +8,7 @@
 // 色は安否の印だけ。押したときは灰色だけ（Button の data-press）。
 
 import { PhoneXMarkIcon } from "@heroicons/react/20/solid";
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { MicIcon, StopIcon } from "@/components/person/icons";
 import { AiMark } from "@/components/person/parts";
 import { Button } from "@/components/ui/Button";
@@ -166,7 +166,7 @@ export function CallReply({
           </form>
           <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={TALK_UI.talk}>
             {asks.map((k) => (
-              <Button key={k} kind="plainIn" size="sm" className={FOCUS} disabled={busy} onClick={() => void send({ ask: k })} data-call-ask={k} {...tag("ask", k)}>
+              <Button key={k} kind="plain" size="sm" className={FOCUS} disabled={busy} onClick={() => void send({ ask: k })} data-call-ask={k} {...tag("ask", k)}>
                 {TALK_LABELS[k]}
               </Button>
             ))}
@@ -193,8 +193,16 @@ export function CallLines({
   first: { text: string; ai: boolean; lead?: ReactNode } | null;
   lines: ReadonlyArray<TalkLine>;
 }) {
+  // 新しい行が来たら、その行が下の返す欄に隠れないところまで送る（送るのは画面の上に重ねた面の縦 1 本）
+  const ref = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const last = ref.current?.querySelector<HTMLElement>("[data-talk-lines] > li:last-child");
+    if (!last) return;
+    last.style.scrollMarginBottom = "14rem";
+    last.scrollIntoView?.({ block: "nearest" });
+  }, [lines.length]);
   return (
-    <div className="rounded-md bg-panel2 px-3 py-2.5" data-call-lines>
+    <div ref={ref} className="rounded-md bg-panel2 px-3 py-2.5" data-call-lines>
       {first && <FirstWords speaker={speaker} text={first.text} ai={first.ai} lead={first.lead} />}
       <TalkLines lines={lines} speaker={speaker} />
     </div>
