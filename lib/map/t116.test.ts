@@ -271,7 +271,7 @@ describe("ピンの縁取り（赤や黄の雨の上でも読める）", () => {
 });
 
 describe("本物の雨雲は変えない（NowcastLayer）", () => {
-  it("気象庁の画像を加工せずに重ね（透かし・色の変え・混ぜ方なし）、凡例は訓練の雨と同じ帯（T151 で気象庁の凡例の画像から替えた）", () => {
+  it("気象庁の画像を加工せずに重ね（色の変え・混ぜ方なし。層の透け具合だけ T151b で 0.65）、凡例は訓練の雨と同じ帯（T151 で気象庁の凡例の画像から替えた）", () => {
     const view = fitView(pins.map((p) => p.location), { minZ: 11, maxZ: 15, fallback: ANCHOR });
     const h = renderToStaticMarkup(
       createElement(NowcastLayer, { time: { basetime: "20261105000000", validtime: "20261105000000" }, view, size: BASE_SIZE }),
@@ -279,7 +279,8 @@ describe("本物の雨雲は変えない（NowcastLayer）", () => {
     const tiles = [...h.matchAll(/<img [^>]*data-layer="nowcast"[^>]*>/g)].map((m) => m[0]);
     expect(tiles.length).toBeGreaterThan(0);
     for (const t of tiles) {
-      expect(t).not.toMatch(/opacity|filter|mix-blend|brightness|saturate|hue-rotate/);
+      expect(t).not.toMatch(/filter|mix-blend|brightness|saturate|hue-rotate/);
+      expect(t).toContain("opacity:0.65");
       expect(t).toContain('src="/api/jma/nowc/tile/');
     }
     expect(h).not.toContain("jma.go.jp");

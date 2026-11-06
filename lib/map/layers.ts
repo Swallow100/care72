@@ -88,6 +88,12 @@ export function hazardLayer(id: HazardKind): HazardLayer {
   return l;
 }
 
+/**
+ * 平時の雨雲（気象庁の降水ナウキャストのタイル）を重ねる不透明度（T151b）。画像の色は変えず、層の透け具合だけ（気象庁の頁も透かして重ねる）。
+ * 前は不透明で、弱い雨（1 未満の白に近い色・1〜5 の薄い水色）が地図を広く覆い、地名と道が見えなかった
+ */
+export const NOWCAST_OPACITY = 0.65;
+
 /** 重ねた層の不透明度（下の地図とピンが読めるように）。T66 で 0.6 → 0.72（下の地図を薄くした分、層を強く） */
 export const HAZARD_OPACITY = 0.72;
 
