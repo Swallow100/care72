@@ -387,7 +387,7 @@ export function IncomingCall({
       className={
         talkingNow
           ? "fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 px-4 py-[8vh]"
-          : "fixed right-4 bottom-4 z-50 w-[min(28rem,calc(100vw-2rem))] rounded-lg shadow-[0_2px_10px_rgb(0_0_0/0.28)]"
+          : "fixed right-4 bottom-4 z-50 w-[min(28rem,calc(100vw-2rem))] rounded-lg shadow-[0_2px_8px_rgb(0_0_0/0.18)] dark:shadow-[0_2px_10px_rgb(0_0_0/0.6)]"
       }
       data-incoming={current.signal}
       data-phase={phase}
@@ -395,7 +395,7 @@ export function IncomingCall({
       <div
         ref={boxRef}
         tabIndex={-1}
-        className={`w-full rounded-lg bg-panel p-5 outline-none ${talkingNow ? "max-w-xl" : ""}`}
+        className={`w-full rounded-lg bg-panel p-5 outline-none ${talkingNow ? "max-w-xl" : "dark:bg-panel2"}`}
       >
         <div className="flex items-center gap-2 text-sm">
           <CallInIcon aria-hidden className="size-4 shrink-0" />

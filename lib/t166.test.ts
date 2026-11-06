@@ -7,12 +7,19 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: () => {}, push: () => {} }), usePathname: () => "/" }));
 
+import { onActPick, pickAct } from "../components/drill/act-pick.ts";
+import { ActionHintRows } from "../components/drill/ActionHints.tsx";
+import { ActionItem } from "../components/drill/ActionLog.tsx";
+import type { ActionRecord } from "./drill/engine.ts";
 import { DrillControls } from "../components/drill/DrillControls.tsx";
+import { AskMarks } from "../components/drill/TalkLines.tsx";
 import { RequestSection } from "../components/person/RequestSection.tsx";
 import { RoleMenu } from "../components/ui/RoleMenu.tsx";
 import { REQUEST_LABELS } from "./custody/labels.ts";
 import type { RequestPanel } from "./custody/requests.ts";
+import { ASK_EXTRA, askActions, askPick, PANEL_HIDDEN, type ActionHints } from "./drill/action-hints.ts";
 import { CALL_UI, DRILL_LABELS, LOG_LABELS } from "./drill/labels.ts";
+import type { AskKind } from "./drill/scenarios.ts";
 import { splitSource, WARNING_SOURCE } from "./jma/labels.ts";
 import { INTAKE_LABELS } from "./labels.ts";
 import { START_LABELS, startDetails } from "./seed/labels.ts";
@@ -39,6 +46,7 @@ describe("1. 医療班の役に入る道", () => {
     expect(on).toContain('action="/api/auth/role"');
     expect(on).toContain('value="medical"');
     expect(on).toContain(REQUEST_LABELS.toStaff);
+    expect(on).toContain(`aria-label="${REQUEST_LABELS.toStaffName}"`);
     // 本物のケアマネ（役を選べない）には出さない
     const off = renderToStaticMarkup(createElement(RequestSection, { personId: "p-1", panel: openPanel, level: 2 }));
     expect(off).not.toContain("data-request-staff");
@@ -119,6 +127,98 @@ describe("3. 訓練", () => {
     expect(page).toContain("data-office-entry");
     expect(page).toContain("href={OFFICE_PATH}");
     expect(short(DRILL_LABELS.officeSwitch)).toBe(true);
+  });
+});
+
+describe("3b. 頼み事の印", () => {
+  const every = Object.keys(ASK_EXTRA) as AskKind[];
+  it("全部の頼み事に手の候補がある。手が 1 つならその手、2 つ以上は決めずに候補の行へ", () => {
+    for (const ask of every) {
+      const kinds = askActions(ask).filter((k) => !PANEL_HIDDEN.includes(k));
+      expect(kinds.length, ask).toBeGreaterThan(0);
+      const to = askPick(ask, null);
+      if (kinds.length === 1) expect(to, ask).toEqual({ to: "act", kind: kinds[0] });
+      else expect(to, ask).toEqual({ to: "row", found: false });
+    }
+  });
+  it("手が 1 つでも押せないときは理由の読める候補の行へ。候補に行があれば found", () => {
+    const only = every.find((a) => askActions(a).filter((k) => !PANEL_HIDDEN.includes(k)).length === 1);
+    const many = every.find((a) => askActions(a).filter((k) => !PANEL_HIDDEN.includes(k)).length > 1)!;
+    const group = (ask: AskKind, state: "ok" | "block"): ActionHints => ({
+      alt: null,
+      groups: [{ sources: [{ from: "ask", ask, label: "x" }], actions: askActions(ask).map((kind) => ({ kind, state, why: null, minutes: 5 })) }],
+    });
+    if (only) {
+      expect(askPick(only, group(only, "block"))).toEqual({ to: "row", found: true });
+      expect(askPick(only, group(only, "ok")).to).toBe("act");
+    }
+    expect(askPick(many, group(many, "ok"))).toEqual({ to: "row", found: true });
+  });
+  it("案内された候補の行だけ枠で示す", () => {
+    const hints: ActionHints = {
+      alt: null,
+      groups: [
+        { sources: [{ from: "ask", ask: "transport", label: "移送" }], actions: [{ kind: "request_welfare_shelter", state: "ok", why: null, minutes: 5 }] },
+        { sources: [{ from: "ask", ask: "medicine", label: "薬" }], actions: [{ kind: "arrange_medicine", state: "ok", why: null, minutes: 5 }] },
+      ],
+    };
+    const html = renderToStaticMarkup(createElement(ActionHintRows, { person: "p-1", hints, focusAsk: "transport" }));
+    expect(html.match(/data-hint-focus/g)?.length).toBe(1);
+    expect(html.indexOf("data-hint-focus")).toBeLessThan(html.indexOf("data-hint-act=\"request_welfare_shelter\""));
+    expect(renderToStaticMarkup(createElement(ActionHintRows, { person: "p-1", hints }))).not.toContain("data-hint-focus");
+  });
+  it("経過の手の行は進行中だけ印を押せる", () => {
+    const a = {
+      id: "a-1", step: 0, kind: "call_person", person: "p-1", target: null, atMinute: 0, calleeLabel: "本人", memo: null,
+      result: { status: "reached", speech: "はい", speechAi: true, crossed: [], talk: [{ who: "them", text: "移送を", ai: true, asks: ["transport"] }], visit: { condition: "x", asks: ["water"], speech: null, ai: true } },
+    } as unknown as ActionRecord;
+    const live = renderToStaticMarkup(createElement(ActionItem, { a, names: { "p-1": "山田" }, live: true }));
+    expect(live).toContain('data-ask-pick="transport"');
+    expect(live).toContain('data-ask-pick="water"');
+    const read = renderToStaticMarkup(createElement(ActionItem, { a, names: { "p-1": "山田" } }));
+    expect(read).not.toContain("data-ask-pick");
+    expect(read).toContain('data-ask-mark="transport"');
+  });
+  it("本人を渡すと押せるボタン（アイコン＋文字）、渡さないと文字のまま。全部の種類", () => {
+    for (const ask of every) {
+      const on = renderToStaticMarkup(createElement(AskMarks, { asks: [ask], person: "p-1" }));
+      expect(on, ask).toMatch(new RegExp(`<button[^>]*data-ask-pick="${ask}"`));
+      expect(on, ask).toContain("<svg");
+      const off = renderToStaticMarkup(createElement(AskMarks, { asks: [ask] }));
+      expect(off, ask).not.toContain("<button");
+      expect(off, ask).toContain(`data-ask-mark="${ask}"`);
+    }
+  });
+  it("押すと対応の欄へ本人と頼み事を渡す（pickAct と同じ口）", () => {
+    const got: unknown[] = [];
+    const target = new EventTarget();
+    vi.stubGlobal("window", target);
+    vi.stubGlobal("CustomEvent", class extends Event { detail: unknown; constructor(n: string, o: { detail: unknown }) { super(n); this.detail = o.detail; } });
+    const off = onActPick((p) => got.push(p));
+    pickAct({ person: "p-1", ask: "transport" });
+    off();
+    vi.unstubAllGlobals();
+    expect(got).toEqual([{ person: "p-1", ask: "transport" }]);
+  });
+  it("進行中の場所は本人を渡す。通話の窓の中と終わった訓練は渡さない", () => {
+    const log = read("../components/drill/ActionLog.tsx");
+    expect(log).toContain("askPerson={live ? a.person : null}");
+    expect(log).toContain("askPerson={talk ? action.person : null}");
+    const drill = read("../components/drill/DrillLog.tsx");
+    expect(drill).toContain("live: !finished");
+    expect(drill.match(/askPerson=\{c\.live \? /g)?.length).toBe(4);
+    expect(drill).not.toMatch(/<(TalkFold|VisitLine)(?![^>]*askPerson)[^>]*\/>/);
+    expect(read("../components/drill/TalkBox.tsx")).toContain("askPerson={action.person}");
+    expect(read("../components/drill/DrillRowDetail.tsx")).toContain("person={pick ? d.personId : null}");
+    // 通話の窓の中（着信・外へ掛けた電話）は文字のまま
+    expect(read("../components/drill/CallTalk.tsx")).toContain("<TalkLines lines={lines} speaker={speaker} />");
+  });
+  it("対応の欄は askPick で決め、切り替えの並びでは対応の欄を出す", () => {
+    const panel = read("../components/drill/ActionPanel.tsx");
+    expect(panel).toContain("askPick(d.ask, hints?.[d.person] ?? null)");
+    expect(panel).toContain("focusAsk={focusAsk}");
+    expect(read("../components/drill/DrillPanes.tsx")).toContain('onActPick(() => setPane("main"))');
+    expect(read("../components/drill/ActionHints.tsx")).toContain("data-hint-focus");
   });
 });
 
