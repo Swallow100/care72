@@ -882,6 +882,7 @@ export const FACT_WORD_RULES: ReadonlySet<string> = new Set([
   "repeat_intent",
   "swap_news",
   "backstage",
+  "power_said",
 ]);
 
 /** 1 回の人ごとの筋の数（T165、diversity.ts の personKinds を回ごとに） */

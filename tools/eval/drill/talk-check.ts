@@ -60,6 +60,8 @@ export type TalkNumbers = {
   replies: number;
   /** 前の AI の返事とほぼ同じ AI の返事 */
   repeats: number;
+  /** 本人役（AI）の返事（T167。呼び出しの数え。残りはコードの短い返事と固定の言葉） */
+  aiReplies?: number;
   /** 同じ通話の中のいる所の食い違い */
   placeDrift: number;
   /** 往復の本人役の生の返事（数）と、そのうち送った「それまでの話」とほぼ同じ物 */
@@ -71,6 +73,7 @@ export type TalkNumbers = {
 export function talkHits(outcome: Pick<RunOutcome, "replay" | "incoming">, records: ReadonlyArray<LogRecord> = []): { numbers: TalkNumbers; hits: CheckHit[] } {
   const hits: CheckHit[] = [];
   let replies = 0;
+  let aiReplies = 0;
   let repeats = 0;
   let drift = 0;
   const calls = talkCallsOf(outcome);
@@ -81,6 +84,7 @@ export function talkHits(outcome: Pick<RunOutcome, "replay" | "incoming">, recor
     for (const l of c.lines) {
       if (l.who === "cm" || !l.text) continue;
       replies += 1;
+      if (l.ai) aiReplies += 1;
       const minute = typeof l.minute === "number" ? l.minute : c.minute;
       if (l.ai && prior.some((p) => overlapOf(l.text!, p) >= REPEAT_OVERLAP)) {
         repeats += 1;
@@ -97,7 +101,7 @@ export function talkHits(outcome: Pick<RunOutcome, "replay" | "incoming">, recor
   }
   const raw = rawRepeats(records);
   for (const h of raw.hits) hits.push(h);
-  return { numbers: { calls: calls.length, replies, repeats, placeDrift: drift, raw: raw.checked, repeatRaw: raw.hits.length }, hits };
+  return { numbers: { calls: calls.length, replies, aiReplies, repeats, placeDrift: drift, raw: raw.checked, repeatRaw: raw.hits.length }, hits };
 }
 
 const parse = (text: string | null | undefined): unknown => {

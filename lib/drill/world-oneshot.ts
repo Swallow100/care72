@@ -26,7 +26,8 @@ import { stateLines } from "./state-rules.ts";
 import { fitKindOf, fitText, profileOf } from "./fit.ts";
 import { EVENT_LABELS } from "./event-catalog.ts";
 import { reportersOf } from "./persona.ts";
-import { factLines, factsOf, issuedBlock, planLines, planOf, supplyAllowed, type Plan } from "./person-facts.ts";
+import { quietPersonEvent } from "./quiet-event.ts";
+import { factLines, factsOf, issuedBlock, placeOfState, planLines, planOf, supplyAllowed, type Plan } from "./person-facts.ts";
 import type { WorldState, WorldVia } from "./scenarios.ts";
 import {
   FAREWELL_MAX,
@@ -147,6 +148,8 @@ export type WorldCast = {
   endings: boolean;
   /** 本人ごとの計画（T130、lib/drill/person-facts.ts の planOf）。最初の刻みの本人たちの欄と、業者の巡回の門に使う */
   plans?: Map<string, Plan>;
+  /** 本人ごとの台帳（T167。まだ出来事の無い人の表の出来事を選ぶ。参加者の並び。サーバーの中だけで、部屋には渡さない） */
+  sources?: Map<string, PseudonymInput>;
 };
 
 /**
@@ -210,7 +213,7 @@ export function buildCast(
       ].join("\n"),
     );
   });
-  return { key, facts, plans, people: ["本人たち（仮名。どこに住むかは書かない）:", ...lines].join("\n"), area, endings: endingsAllowed(officeId) };
+  return { key, facts, plans, sources: new Map(members.map((p, i) => [p, list[i]] as const)), people: ["本人たち（仮名。どこに住むかは書かない）:", ...lines].join("\n"), area, endings: endingsAllowed(officeId) };
 }
 
 const ACTION_WORDS: Readonly<Record<ActionRecord["kind"], string>> = CATALOG_WORDS;
@@ -418,5 +421,25 @@ export function applyContext(input: WorldInput, cast: WorldCast, via: WorldVia):
     endings: cast.endings,
     // T130: 業者の巡回（届く物）は、その人への手か計画（業者の約束）があるときだけ
     supplyOk: (person: string) => supplyAllowed(person, input.actions, cast.plans?.get(person) ?? null),
+    awayNow: (person: string) => {
+      const place = placeOfState(input.people[person] ?? null);
+      return place === "shelter" || place === "other";
+    },
+    // T167: まだ出来事の無い人に、表の人ごとの出来事を 1 つ（Claude を呼ばない）
+    ...(cast.sources
+      ? {
+          quiet: () =>
+            quietPersonEvent({
+              world: input.world,
+              hour: input.hour,
+              members: [...cast.sources!.keys()],
+              sources: cast.sources!,
+              people: input.people,
+              seed: input.seed,
+              profile: profileOf(fitKindOf({ scenario: input.scenario, options: { scale: input.scale ?? null } }, input.world)),
+              supplyOk: (person: string) => supplyAllowed(person, input.actions, cast.plans?.get(person) ?? null),
+            }),
+        }
+      : {}),
   };
 }
