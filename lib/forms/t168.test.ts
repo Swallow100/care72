@@ -10,7 +10,7 @@ import { soleCodeOfText } from "./option-values.ts";
 import { bracketOwner } from "./form-shape.ts";
 import { checkLook } from "./overlay-check.ts";
 import { addTrailingFields } from "./trailing-field.ts";
-import { buildOverlaySheet, inkPhoneParts, type PlaceCtx } from "./overlay-sheet.ts";
+import { annexGaps, buildOverlaySheet, inkPhoneParts, type PlaceCtx } from "./overlay-sheet.ts";
 import { buildMappedSheet, type MappedSheet } from "./mapped-sheet.ts";
 import { value, t } from "./matsuyama.ts";
 import type { PageImage } from "./page-images.ts";
@@ -232,5 +232,16 @@ describe("□ の右の空きに中身の欄を補う", () => {
     expect([check.overlap, check.outside, check.neighbor]).toEqual([0, 0, 0]);
     const none = paper("p-01");
     expect(none.pages[0].items.some((i) => i.kind === "mark" && i.fieldId === f.id)).toBe(false);
+  });
+});
+
+describe("狭い空きの「別紙」", () => {
+  it("2 行に折れた「別紙」も紙の印と数える", () => {
+    const box = { x: 0.1, y: 0.1, w: 0.01, h: 0.04 };
+    const sheet = {
+      pages: [{ page: 1, landscape: false, image: { x: 0, y: 0, w: 210, h: 297 }, fills: [], items: [{ kind: "text" as const, fieldId: "f1", box, lines: ["別", "紙"], fontPt: 6, top: false }] }],
+      annex: [{ fieldId: "f1", label: "避難場所までの移動", lines: ["家族と歩く"], reason: "overflow" as const, page: 1, mark: "f1" }],
+    };
+    expect(annexGaps(sheet)).toEqual({ noMark: [], noRow: [] });
   });
 });

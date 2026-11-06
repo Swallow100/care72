@@ -309,7 +309,7 @@ export type AnnexRow = { fieldId: string; label: string; lines: string[]; reason
  */
 export function annexGaps(sheet: Pick<OverlaySheet, "pages" | "annex">): { noMark: string[]; noRow: string[] } {
   const marked = new Set(
-    sheet.pages.flatMap((p) => p.items.filter((it) => it.kind === "text" && it.lines.length === 1 && it.lines[0] === ANNEX_MARK).map((it) => it.fieldId)),
+    sheet.pages.flatMap((p) => p.items.filter((it) => it.kind === "text" && it.lines.join("") === ANNEX_MARK).map((it) => it.fieldId)),
   );
   const overflow = sheet.annex.filter((r) => r.reason === "overflow");
   const marks = new Set(overflow.map((r) => r.mark ?? r.fieldId));
