@@ -431,7 +431,7 @@ export const SCENES: Scene[] = [
         rate: 0.75,
         emphasis: true,
         label: "強調: 山田の行が一番上へ（至急）",
-        callouts: [{ at: 1.2, box: { x: 0.0125, y: 0.394, w: 0.975, h: 0.072 }, label: "至急 連絡順 1", tone: "urgent", place: "below" }],
+        callouts: [{ at: 1.2, box: { x: 0.0125, y: 0.388, w: 0.975, h: 0.1 }, label: "至急 連絡順 1", tone: "urgent", place: "above" }],
       },
       { at: 150.6, end: 155, kind: "rules", label: "ルールの表の 1 枚" },
       // 受入（R13-20 の 9.0 秒）を押す所を 1.8 秒、そのあと医療要約の書類（22 秒ごろに出て 22.9 秒から下へ送るので、その前をゆっくり）
