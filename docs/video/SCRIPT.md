@@ -12,7 +12,7 @@
 - 冒頭 46 秒の流れ: 問いかけ（N01）→ 個別避難計画とは何かと作成率（N02）→ 作った理由（N03）→ アンケートの裏付け（N05）→ ケア72 の名前の 72 時間（N06）→ 計画・訓練・発災時の共有（N07）→ 輪島の手書きのメモ（N09）。最初の 10 秒で誰のどんな課題かが分かるようにする（審査基準のデモ）
 - 声では「ケアマネ」と略さず「ケアマネージャー」と言う。「在宅の要介護」でなく「在宅の高齢者」
 - N08（能登の関連死）と N09（輪島の手書きのメモ）は冒頭の組み替えで外した（欠番）
-- N28（協力ケアマネの計画 1 件の時間）は測れないので外した（11/6）。空いた秒は N29 と N30 に回した。冒頭（N01〜N08）は読み手の口が追いつくよう 1 秒に 5 字以下に縮めた（11/6）
+- N28（協力ケアマネの計画 1 件の時間）は測れないので外した（11/6）。空いた秒は N29 と N30 に回した。主役の紹介の文（前の N10）は外し、入れる欄の文を N10、「アプリの中に記録されていきます」を N11 にした（11/6）。冒頭（N01〜N08）は読み手の口が追いつくよう 1 秒に 5 字以下に縮めた（11/6）
 - N04 は使わない。ID は振り直さない（録音と絵コンテが ID で指すため。N04 は欠番）
 
 ## 台本
@@ -26,28 +26,28 @@
 | N06 | 0:27.6–0:32.3 | 楽に作れて、災害でも役立つ計画なら、作る意味が出る。 | A plan that is easy to make and useful in a disaster is worth making. |
 | N07 | 0:32.5–0:38.2 | それがケア72。72 は、災害直後の 72 時間です。 | That's Care72. The 72 stands for the first 72 hours after a disaster. |
 | N08 | 0:38.4–0:45.8 | 話すだけで計画ができ、訓練もでき、災害時は医療班と情報を共有します。 | Talk, and the plan is made. Run drills with it. In a disaster, it shares what matters with the medical team. |
-| N10 | 0:46.3–0:51.3 | 主役は架空の利用者、山田ハナさん。84 歳、在宅酸素。 | Meet a fictional client, Hana Yamada. 84, on home oxygen. |
-| N11 | 0:51.5–0:58.3 | ケアマネージャーが話すと、Claude が台帳の欄に分け、空いている所だけ聞き返します。 | The care manager talks. Claude sorts it into her record, and asks back only about what's missing. |
-| N12 | 0:58.5–1:04.5 | 台帳から、市の様式の避難計画、本人の 1 枚、医療班の要約が出ます。 | From that one record: the city's evacuation plan form, a one-page sheet for her, and a summary for the medical team. |
+| N10 | 0:46.2–0:53.6 | ケアマネージャーが話すと、Claude が欄に分け、空いている所だけ聞き返します。 | The care manager talks. Claude sorts it into fields, and asks back only about what's missing. |
+| N11 | 0:53.8–0:58.0 | 話した内容は、アプリの中に記録されていきます。 | What was said is recorded in the app. |
+| N12 | 0:58.5–1:04.5 | 記録から、市の様式の避難計画、本人の 1 枚、医療班の要約が出ます。 | From that record: the city's evacuation plan form, a one-page sheet for her, and a summary for the medical team. |
 | N13 | 1:04.7–1:09.8 | 要約は医療班の記録と同じ順。医学生の目で確かめました。 | The summary follows the medical team's own record format. I checked it as a medical student. |
 | N14 | 1:10.0–1:13.6 | ほかの市の様式も、写真から読み取ります。 | Other cities' forms can be read from a photo. |
 | N15 | 1:14.3–1:20.0 | 次は訓練。利用者 10 人に、Claude Haiku が 1 体ずつ付きます。 | Next, the drill. Each of the 10 clients gets their own Claude Haiku agent. |
-| N16 | 1:20.2–1:24.6 | 台帳を読み、本人や家族になりきって動きます。 | Each one reads the record and plays the client or a family member. |
+| N16 | 1:20.2–1:24.6 | 記録を読み、本人や家族になりきって動きます。 | Each one reads the record and plays the client or a family member. |
 | N17 | 1:24.8–1:28.0 | 72 時間を早送りで進めると、 | Fast-forward through the 72 hours, and... |
 | N18 | 1:33.2–1:38.8 | ケアマネージャーは本番と同じ画面で、電話、出向く、避難所に頼む。 | The care manager responds on the same screen used in a real disaster: call, visit, ask a shelter. |
-| N19 | 1:39.0–1:47.6 | 終わると Opus が対応の順を採点。山田さんの酸素の電池が切れるまでに手が届かなかったと、出典つきで指摘しました。 | At the end, Opus scores the order of response. Citing sources, it pointed out that help did not reach Ms. Yamada before her oxygen battery ran out. |
-| N20 | 1:48.3–1:52.3 | そして本番。大雨で、災害モードに入りました。 | Then the real thing. Heavy rain, and disaster mode is on. |
-| N21 | 1:52.5–1:56.0 | 娘さんのスマホには、赤と緑の 2 つだけ。 | Her daughter's phone shows just two buttons: red and green. |
-| N22 | 2:01.2–2:06.0 | 本人の答えが止まると、声で問いかけ、周りの音ごと録音します。 | If she stops answering, the app asks out loud and records the sound around her. |
-| N23 | 2:10.3–2:15.0 | 色と順を決めるのは AI ではなく、人が読めるルールの表。 | The color and order are set not by AI, but by a rule table people can read. |
-| N24 | 2:15.3–2:20.8 | Claude は録音を分けるだけ。最後に決めるのは、ケアマネージャーです。 | Claude only sorts the recording. The care manager makes the final call. |
-| N25 | 2:23.0–2:27.7 | 電話し、避難所の医療班が受け入れると、要約が届きます。 | The care manager calls, and when the shelter's medical team takes her in, the summary is there. |
-| N26 | 2:30.3–2:36.0 | 作ったのは Claude Code。設計と実装を分け、並行で進めました。 | It was built with Claude Code, with design and implementation split and run in parallel. |
-| N27 | 2:36.3–2:42.7 | フックで鍵と配信を守り、本名を見ない MCP と見直し役で確かめています。 | Hooks guard the keys and deploys. An MCP server that never sees real names, and reviewer agents, check the work. |
-| N29 | 2:43.5–2:48.3 | AI の下書きなら作る気になる人は、4 人中 3 人。 | With an AI draft, 3 of 4 said they would be willing to make plans. |
-| N30 | 2:50.8–2:59.9 | 実用化の課題は山積みです。それでも、まずは一部から、本当に使える形にしていきます。 | Getting this into real use still faces many hurdles. But we'll keep working to make it truly usable, starting with one part. |
+| N19 | 1:39.0–1:50.6 | 終わると Opus が講評。架空の利用者、山田ハナさんの酸素供給装置の電池が切れる前に対応できなかったと、出典つきで指摘しました。 | At the end, Opus reviews the response. Citing sources, it pointed out that help did not reach Hana Yamada, a fictional client, before her oxygen device's battery ran out. |
+| N20 | 1:51.3–1:55.3 | そして本番。大雨で、災害モードに入りました。 | Then the real thing. Heavy rain, and disaster mode is on. |
+| N21 | 1:55.5–1:59.0 | スマホで安否確認ができます。 | Families can check in from their phones. |
+| N22 | 2:04.2–2:10.5 | 本人の答えがないと、声で問いかけ、答えを録音して状況をつかみます。 | If she doesn't answer, the app asks out loud and records her reply to understand the situation. |
+| N23 | 2:13.3–2:18.0 | 色と順を決めるのは AI ではなく、人が読めるルールの表。 | The color and order are set not by AI, but by a rule table people can read. |
+| N24 | 2:18.3–2:23.8 | Claude は録音を分けるだけ。最後に決めるのは、ケアマネージャーです。 | Claude only sorts the recording. The care manager makes the final call. |
+| N25 | 2:26.0–2:30.7 | 電話し、避難所の医療班が受け入れると、要約が届きます。 | The care manager calls, and when the shelter's medical team takes her in, the summary is there. |
+| N26 | 2:33.3–2:39.0 | 作ったのは Claude Code。設計と実装を分け、並行で進めました。 | It was built with Claude Code, with design and implementation split and run in parallel. |
+| N27 | 2:39.3–2:45.7 | フックで鍵と配信を守り、本名を見ない MCP と見直し役で確かめています。 | Hooks guard the keys and deploys. An MCP server that never sees real names, and reviewer agents, check the work. |
+| N29 | 2:46.5–2:51.3 | AI の下書きなら作る気になる人は、4 人中 3 人。 | With an AI draft, 3 of 4 said they would be willing to make plans. |
+| N30 | 2:51.8–2:59.9 | 実用化の課題は山積みです。それでも、まずは一部から、本当に使える形にしていきます。 | Getting this into real use still faces many hurdles. But we'll keep working to make it truly usable, starting with one part. |
 
-声の無い所（アプリの音と強調の間）: 1:28–1:33（着信と娘役の声）、1:56–2:01（赤を押して一覧が並び替わる）、2:06–2:10（問いかけの声と録音）。
+声の無い所（アプリの音と強調の間）: 1:28–1:33（着信の声）、1:59–2:04（赤を押して一覧が並び替わる）、2:10.5–2:13（録音）。
 
 N04 を消して空いた 6 秒は S6（発災時）に回した（並び替わりの強調 3 → 5 秒、行の詳細 6 → 8 秒、電話と医療班の受入 5 → 7 秒）。S6 は手元の dev で本物の画面を撮れる所で、S5（訓練）は本番の Claude が要るので伸ばしても今は見せる物が無いため。
 
