@@ -68,7 +68,7 @@ async function prep(cm) {
 /** 平時: 担当一覧・本人のページ・3 つの紙面 */
 async function calm(browser) {
   const cm = await newPage(browser, PC);
-  await login(cm, base, "yamamoto", cmPw);
+  await login(cm, base, "judge", judgePw, "care_manager");
 
   // R01 担当一覧の平時。ゆっくり下へ
   await open(cm, base, "/");
@@ -107,7 +107,7 @@ async function calm(browser) {
 /** R15 本人のページ（山田 ハナ）を上から下まで送る。N11「話した内容は、アプリの中に記録されていきます」（作者の頼み 11/6）。平時に戻してから撮る */
 async function page(browser) {
   const cm = await newPage(browser, PC);
-  await login(cm, base, "yamamoto", cmPw);
+  await login(cm, base, "judge", judgePw, "care_manager");
   await prep(cm);
   await open(cm, base, "/?open=p-01");
   await settle(cm);
@@ -170,12 +170,64 @@ function refreshes(page) {
 }
 
 
+/**
+ * R16 QR の画面（山田 ハナ）。N25「QR コードなどを用いて」。手元の dev の QR は localhost を指すので、読んでも開けない（作者の頼み 11/7「使えない QR」）。
+ * 無ければ作る（手元の D1 だけ）
+ */
+async function qrScene(browser) {
+  const cm = await newPage(browser, PC);
+  await login(cm, base, "judge", judgePw, "care_manager");
+  await open(cm, base, "/people/p-01/forms/qr");
+  if ((await cm.$eval("[data-qr-status]", (e) => e.getAttribute("data-qr-status")).catch(() => null)) !== "active") {
+    await Promise.all([cm.waitForNavigation({ waitUntil: "networkidle0", timeout: 120_000 }), cm.click('form[action*="/qr"] button[type="submit"]')]);
+    await open(cm, base, "/people/p-01/forms/qr");
+  }
+  const target = await cm.$eval("a[href*='/q/']", (e) => e.getAttribute("href")).catch(() => "");
+  console.log(`  QR の行き先の host: ${target ? new URL(target, base).host : "不明"}`);
+  const r = new Recorder(cm, "R16");
+  await r.start();
+  await sleep(6000);
+  await r.stop(recDir("R16"));
+}
+
+/**
+ * R17 訓練の経過の欄を下へ送る。N17「72 時間のシミュレーション訓練の間に」（作者の頼み 11/7）。手元の D1 に残っている一番新しい訓練を開くだけで、AI は呼ばない。
+ * 「最初に戻す」で訓練が消えるので、disaster や ai-voice より先に撮る
+ */
+async function logScene(browser) {
+  const cm = await newPage(browser, PC);
+  await login(cm, base, "judge", judgePw, "care_manager");
+  await open(cm, base, "/drill");
+  const id = await cm.$eval("tr[data-drill]", (e) => e.getAttribute("data-drill")).catch(() => null);
+  if (!id) throw new Error("手元に訓練の記録が無い");
+  await open(cm, base, `/drill/${id}`);
+  const r = new Recorder(cm, "R17");
+  await r.start();
+  await sleep(1500);
+  const tabs = await cm.$("[data-pane-tab]");
+  let tab = null;
+  for (const t of tabs) if ((await t.evaluate((e) => e.textContent ?? "")).includes("経過")) tab = t;
+  if (tab) {
+    r.mark("経過のタブ");
+    await tab.click();
+    await sleep(1500);
+  } else console.log("  経過のタブが無い（広い画面で並んでいる形）");
+  await scrollToSel(r, cm, "[data-log]", 1.5, 70);
+  await sleep(800);
+  r.mark("下へ");
+  const h = await cm.evaluate(() => document.documentElement.scrollHeight - innerHeight - scrollY);
+  console.log(`  送れる長さ ${h}px`);
+  await r.scroll(Math.min(h, 3600), 10);
+  await sleep(1000);
+  await r.stop(recDir("R17"));
+}
+
 /** 発災時: 平時 → 大雨。ケアマネ（R10）・家族のスマホ（R11）・本人のスマホ（R12）を同時に、続いて医療班の受入（R13） */
 async function disaster(browser) {
   const cm = await newPage(browser, PC);
   const fam = await newPage(browser, PHONE);
   const self = await newPage(browser, PHONE);
-  await login(cm, base, "yamamoto", cmPw);
+  await login(cm, base, "judge", judgePw, "care_manager");
   watchRefresh(cm);
   // スマホには最初に戻したあとに入る（戻す前の状態を撮らないため）。家族のスマホが平時のまま映った件の元は Service Worker の写し（record-lib.mjs の newPage）
   await prep(cm);
@@ -492,7 +544,7 @@ async function aiIntake() {
   const browser = await launch({ fakeAudio: wav });
   try {
     const cm = await newPage(browser, PC);
-    await login(cm, base, "yamamoto", cmPw);
+    await login(cm, base, "judge", judgePw, "care_manager");
     await prepSafe(cm);
     const keys = await aiKeys(cm);
     await open(cm, base, "/?open=p-01");
@@ -601,7 +653,7 @@ async function warmRedact(cm, jpg) {
 async function aiForm(browser) {
   const jpg = await komorebiPhoto(browser);
   const cm = await newPage(browser, PC);
-  await login(cm, base, "yamamoto", cmPw);
+  await login(cm, base, "judge", judgePw, "care_manager");
   await prepSafe(cm);
   const keys = await aiKeys(cm);
   if (keys.anthropic) await warmRedact(cm, jpg);
@@ -804,7 +856,7 @@ async function advance(page, rec, calls, label, hits = [], how = "next") {
  */
 async function aiDrill(browser, { scoreOnly = false } = {}) {
   const cm = await newPage(browser, PC);
-  await login(cm, base, "yamamoto", cmPw);
+  await login(cm, base, "judge", judgePw, "care_manager");
   await prepSafe(cm);
   const keys = await aiKeys(cm);
   const voices = collectVoices(cm, /\/api\/drill\/voice\?/);
@@ -946,7 +998,7 @@ async function aiDrill(browser, { scoreOnly = false } = {}) {
  */
 async function aiFinish(browser) {
   const cm = await newPage(browser, PC);
-  await login(cm, base, "yamamoto", cmPw);
+  await login(cm, base, "judge", judgePw, "care_manager");
   const keys = await aiKeys(cm);
   const reviewDone = new Promise((resolve) => {
     const on = (r) => {
@@ -1057,7 +1109,7 @@ async function aiVoice() {
   const browser = await launch({ fakeAudio: wav });
   try {
     const cm = await newPage(browser, PC);
-    await login(cm, base, "yamamoto", cmPw);
+    await login(cm, base, "judge", judgePw, "care_manager");
     watchRefresh(cm);
     await prepSafe(cm);
     const keys = await aiKeys(cm);
@@ -1168,12 +1220,16 @@ const browser = await launch();
 try {
   if (scene === "prep") {
     const cm = await newPage(browser, PC);
-    await login(cm, base, "yamamoto", cmPw);
+    await login(cm, base, "judge", judgePw, "care_manager");
     await prep(cm);
   } else if (scene === "calm") {
     await calm(browser);
   } else if (scene === "page") {
     await page(browser);
+  } else if (scene === "qr") {
+    await qrScene(browser);
+  } else if (scene === "log") {
+    await logScene(browser);
   } else if (scene === "disaster") {
     await disaster(browser);
   } else if (scene === "staff") {
