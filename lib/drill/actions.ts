@@ -193,7 +193,7 @@ export type CallAsk = {
  * 出た人の言う事。pickup が no_answer なら本人役の周りにいない相手（出ない）。called は Claude を呼んだか
  * （失敗も数える。手の所が 1 訓練の数え counts.call に足す。T118）
  */
-export type CallHook = (ask: CallAsk) => Promise<{ pickup: CallPickup; speech: string | null; ai: boolean; called?: boolean }>;
+export type CallHook = (ask: CallAsk) => Promise<{ pickup: CallPickup; speech: string | null; ai: boolean; called?: boolean; answeredBy?: string }>;
 
 /** free は自由対応の読み替え（T91、Opus × 1 回。lib/drill/free-action.ts の createFreeHook） */
 export type ActionHooks = StepHooks & { call?: CallHook; free?: FreeHook; visit?: VisitHook };
@@ -727,6 +727,8 @@ export async function act(
     heard,
     ...(arriveAt !== undefined ? { arriveAt } : {}),
     ...(visit ? { visit } : {}),
+    // 本人への電話に代わりに出た人（T174。話し手の記録で画面には出さない。採点・審査役が読む）
+    ...(pickup === "answers" && callReply?.answeredBy ? { answeredBy: callReply.answeredBy } : {}),
   };
   s = applyResult(s, record.id, result);
   return { state: s, record: s.actions.find((a) => a.id === record.id)!, ticks };

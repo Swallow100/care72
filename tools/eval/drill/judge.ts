@@ -134,7 +134,7 @@ export function storyText(o: RunOutcome, aliasOf: ReadonlyMap<string, string>, r
     const arrive = typeof r?.arriveAt === "number" ? `（着く見込み ${when(r.arriveAt / 60)}）` : "";
     lines.push({
       at,
-      text: `${when(at)} ケアマネの手 ${a.as ?? a.kind ?? ""}${who(a.person) ? ` → ${who(a.person)}` : ""}${role(a.target) ? `（相手 ${role(a.target)}）` : ""}: ${r?.status ?? "返事待ち"}${because}${arrive}${r?.speech ? ` 「${r.speech}」` : ""}${talkSummary(r?.talk)}${visitText}`,
+      text: `${when(at)} ケアマネの手 ${a.as ?? a.kind ?? ""}${who(a.person) ? ` → ${who(a.person)}` : ""}${role(a.target) ? `（相手 ${role(a.target)}）` : ""}: ${r?.status ?? "返事待ち"}${because}${arrive}${r?.answeredBy ? `（代わりに ${r.answeredBy}）` : ""}${r?.speech ? ` 「${r.speech}」` : ""}${talkSummary(r?.talk)}${visitText}`,
     });
   }
   // 着いた人・届いた物（T165）

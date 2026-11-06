@@ -236,6 +236,13 @@ export const GUARDS: ReadonlyArray<Guard> = [
   { id: "forms-mark-content", bench: "forms", item: "forms.markNoContent", op: "<=", value: 0, since: "r9", task: "T168", label: "印を付けた □ の中身を紙から落とさない", suspects: ["lib/forms/trailing-field.ts", "lib/forms/read-post.ts", "lib/forms/mapped-sheet.ts"] },
   // T166: 使う側の模擬の 2 回目で迷った所。数は直した形の値で、本物の回はまだ（docs/progress/t166.md）
   // T170: 仮想の地理を実の物に。やめた架空の地名（種の町名・白波川・架空の道と避難所）が世界の文に出ない。偽の回で 0
+  // T174: 評価の 9 回目で人ごとの筋が 2 のまま。機器が止まったあと 13 時間連絡が無い（2 回）・緑の連絡・短い返事の「大丈夫」・出られない本人が電話に出る・道の開通と訳の食い違い。
+  // 止まったあとの連絡はコードが呼ぶので偽の回でも効く（T167 の注の「偽の回で外れる」は、連絡しない答えをコードの連絡にしたので無くなった）
+  { id: "drill-down-silent", bench: "drill", item: "count:drill:facts:down_silent", op: "<=", value: 1, since: "r10", task: "T174", label: "機器が止まったあと 4 時間の連絡が抜けない（1 件まで）", suspects: ["lib/drill/hooks.ts", "lib/drill/person-facts.ts", "lib/drill/persona.ts"] },
+  { id: "drill-down-green", bench: "drill", item: "count:drill:facts:down_green", op: "<=", value: 0, since: "r10", task: "T174", label: "機器が止まったまま家にいる間に緑で連絡しない", suspects: ["lib/drill/persona.ts"] },
+  { id: "drill-calm-while-down", bench: "drill", item: "count:drill:facts:calm_while_down", op: "<=", value: 0, since: "r10", task: "T174", label: "機器が止まったまま落ち着いた言い方をしない", suspects: ["lib/drill/person-facts.ts", "lib/drill/talk-quick.ts"] },
+  { id: "drill-self-answer", bench: "drill", item: "count:drill:facts:self_answer", op: "<=", value: 0, since: "r10", task: "T174", label: "電話に出られない本人が電話で話さない", suspects: ["lib/drill/person-facts.ts", "lib/drill/hooks.ts"] },
+  { id: "drill-road-said", bench: "drill", item: "count:drill:facts:road_said", op: "<=", value: 0, since: "r10", task: "T174", label: "道の開通と本人役の言葉・訳が食い違わない", suspects: ["lib/drill/person-facts.ts", "lib/drill/engine.ts", "lib/drill/scenarios.ts"] },
   { id: "drill-world-retired-place", bench: "drill", item: "count:drill:world_place:retired", op: "<=", value: 0, since: "r9", task: "T170", label: "世界の文にやめた架空の地名を出さない", suspects: ["lib/drill/area.ts", "lib/drill/area-demo.ts", "lib/drill/world-apply.ts", "lib/pseudonym/index.ts"] },
 ];
 

@@ -1431,6 +1431,8 @@ function asResult(p: Partial<ResultPayload>): { id: string; result: ActionResult
       heard: asHeard(p.heard),
       // 向かってもらった人の着く時刻（T91）。作り直しでも同じ時刻にする
       ...(isNum(p.arriveAt) ? { arriveAt: p.arriveAt } : {}),
+      // 本人への電話に代わりに出た人（T174）
+      ...(typeof p.answeredBy === "string" ? { answeredBy: p.answeredBy } : {}),
       // 通話の往復・訪問の様子（T93、lib/drill/talk.ts と act が書く）。画面と採点は作り直した状態から読むので写す
       ...dialogueFields(p),
     },

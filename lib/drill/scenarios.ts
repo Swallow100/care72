@@ -895,10 +895,12 @@ function applyChange(world: WorldState, e: WorldEvent, hour: number): WorldState
         world,
       );
     case "town_road":
-      return c.persons.reduce(
-        (w, p) => ({ ...w, roads: upsert(w.roads, { id: `rd-${c.road}-${p}`, label: c.label, open: c.open, person: p }) }),
-        world,
-      );
+      return c.persons.reduce((w, p) => {
+        const roads = upsert(w.roads, { id: `rd-${c.road}-${p}`, label: c.label, open: c.open, person: p });
+        // 地区の道が開いたら、同じ人の土砂の道も開く（T174。評価の 9 回目で、世界が「土砂がよけられて通れる」と書いたあとも土砂の道だけ閉じたままで、
+        // 本人役に通行可と通行止の 2 本が渡り、家族が「道は通ったが水で」と別の訳を作った）。名前のある道（橋・トンネル）の開通では開けない
+        return { ...w, roads: c.open && c.road.startsWith("town-") ? roads.map((r) => (r.person === p && r.id.startsWith("rd-ls-") ? { ...r, open: true } : r)) : roads };
+      }, world);
     case "town_water":
       return c.out ? c.persons.reduce((w, p) => mark(w, p, "waterOut", hour), world) : clearAll(world, c.persons, "waterOut");
     case "town_line":
