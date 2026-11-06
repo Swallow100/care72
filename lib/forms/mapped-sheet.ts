@@ -507,7 +507,7 @@ export const ITEM_VALUES: Record<LedgerItemKey, Resolver> = {
     const note = e.transport?.trim();
     // 手段の値が「その他」でも、補記が 1 つの手段だけを言っていれば（「民生委員と歩いて」）その手段の □（T168）。台帳の値は変えない
     const stored = transportKindOf(e);
-    const code = stored === "other" && note ? (soleCodeOfText("evacuation.transport", note) ?? stored) : stored;
+    const code = stored === "other" && note ? ((soleCodeOfText("evacuation.transport", note) as TransportKind | null) ?? stored) : stored;
     const noteOf = code && note && note !== TRANSPORT_KIND_LABELS[code] ? note : undefined;
     return {
       cell: text(shown, pendingOf(c.ledger, "evacuation.transport")),

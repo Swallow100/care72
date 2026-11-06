@@ -35,6 +35,7 @@ export const SPECS = {
   dateFix: { cause: "forms:date.fix", rule: "date.fix", title: "日付の欄の要修正（年月日の空きに分けず・欄に無い元号など）", severity: "mid", screen: "書類 > 紙の見直し", suspects: ["lib/forms/split-parts.ts", "lib/forms/overlay-sheet.ts", "lib/forms/mapped-sheet.ts"], refs: steps("paper.review") },
   dateUnplaced: { cause: "forms:date.unplaced", rule: "date.unplaced", title: "日付の欄を紙に置けなかった", severity: "mid", screen: "書類 > 紙", suspects: ["lib/forms/split-parts.ts", "lib/forms/overlay-sheet.ts"], refs: steps("paper.look") },
   optionPicked: { cause: "forms:option.unplaced", rule: "option.unplaced", title: "選ぶ欄で台帳の値に当てたのに紙に印が無い", severity: "mid", screen: "書類 > 紙", suspects: ["lib/forms/option-values.ts", "lib/forms/option-ai.ts", "lib/forms/mapped-sheet.ts"], refs: steps("paper.look") },
+  markNoContent: { cause: "forms:mark.no_content", rule: "mark.no_content", title: "印を付けた □ の中身が紙のどこにも無い", severity: "mid", screen: "書類 > 紙", suspects: ["lib/forms/trailing-field.ts", "lib/forms/read-post.ts", "lib/forms/mapped-sheet.ts"], refs: steps("paper.look") },
   contactUnplaced: { cause: "forms:contact.unplaced", rule: "contact.unplaced", title: "緊急連絡先・支援者の欄を紙に置けなかった", severity: "mid", screen: "書類 > 紙", suspects: ["lib/forms/mapped-sheet.ts", "lib/forms/overlay-sheet.ts"], refs: steps("paper.look") },
   reviewFix: { cause: "forms:review.fix", rule: "review.fix", title: "紙の見直しの要修正（決まり）", severity: "mid", screen: "書類 > 紙の見直し", suspects: ["lib/forms/review.ts"], refs: steps("paper.review") },
   reviewAiFailed: { cause: "forms:review.ai_failed", rule: "review.ai_failed", title: "紙の AI の照合の失敗", severity: "mid", screen: "書類 > 紙の見直し", suspects: ["lib/forms/review-ai.ts", "lib/forms/review-compose.ts"], refs: steps("paper.review") },
@@ -103,6 +104,7 @@ export function formsFindings(r: FormsResultForFindings): Finding[] {
     push(SPECS.dateUnplaced, sum(looks.map((l) => l.unplacedDate ?? 0)), `様式 ${f.id}`, flags);
     push(SPECS.optionPicked, sum(looks.map((l) => l.unplacedPicked ?? 0)), `様式 ${f.id}`, flags);
     push(SPECS.contactUnplaced, sum(looks.map((l) => l.unplacedContact ?? 0)), `様式 ${f.id}`, flags);
+    push(SPECS.markNoContent, sum(looks.map((l) => l.markNoContent ?? 0)), `様式 ${f.id}`, flags);
     const reviews = ps.map((p) => p.review).filter((x): x is NonNullable<typeof x> => !!x);
     push(SPECS.reviewFix, sum(reviews.map((x) => x.rule.fix)), `様式 ${f.id}`, `${flags} --review`);
     push(SPECS.dateFix, sum(reviews.map((x) => x.rule.kinds.date ?? 0)), `様式 ${f.id}`, `${flags} --review`);

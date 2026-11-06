@@ -200,6 +200,9 @@ export const GUARDS: ReadonlyArray<Guard> = [
   // 数え直しは当てたのに紙に出ない選択肢 23・正解に無い印 0。置き間違いは 6 回目（195）より増やさない
   { id: "forms-mark-extra-none", bench: "forms", item: "forms.markExtra", op: "<=", value: 0, since: "r8", task: "T164", label: "台帳に無い選択肢に印を付けない", suspects: ["lib/forms/option-values.ts", "lib/forms/mapped-sheet.ts"] },
   { id: "forms-paper-wrong", bench: "forms", item: "forms.paperWrong", op: "<=", value: 195, since: "r8", task: "T164", label: "紙の置き間違いを 6 回目より増やさない", suspects: ["lib/forms/mapped-sheet.ts", "lib/forms/overlay-sheet.ts", "lib/forms/form-shape.ts"] },
+  // T168: 評価の 8 回目の災害診療記録で、括弧の刷っていない「□アレルギー」に印は付くのに物の名前が紙に残らなかった（取りこぼし 18）。□ の右の空きに
+  // 中身の欄を補い、8 回目の記録の数え直しで 0。連絡先の置けず 23（forms-contact-placed）と正解に無い印 1（forms-mark-extra-none）も同じ数え直しで 0
+  { id: "forms-mark-content", bench: "forms", item: "forms.markNoContent", op: "<=", value: 0, since: "r9", task: "T168", label: "印を付けた □ の中身を紙から落とさない", suspects: ["lib/forms/trailing-field.ts", "lib/forms/read-post.ts", "lib/forms/mapped-sheet.ts"] },
 ];
 
 /** 守りの確かめ。values は回の項目の数、counts は同じ原因の指摘の数（causeCounts）。数の無い項目は確かめない */

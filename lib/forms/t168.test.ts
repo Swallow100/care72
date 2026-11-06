@@ -7,6 +7,9 @@ import { packInk, type InkBlob } from "./ink.ts";
 import { SEED_PEOPLE } from "../../seed/people.ts";
 import type { FormMapping, MappingField } from "./mapping.ts";
 import { soleCodeOfText } from "./option-values.ts";
+import { bracketOwner } from "./form-shape.ts";
+import { checkLook } from "./overlay-check.ts";
+import { addTrailingFields } from "./trailing-field.ts";
 import { buildOverlaySheet, inkPhoneParts, type PlaceCtx } from "./overlay-sheet.ts";
 import { buildMappedSheet, type MappedSheet } from "./mapped-sheet.ts";
 import { value, t } from "./matsuyama.ts";
@@ -139,5 +142,95 @@ describe("手段の値が「その他」で補記が 1 つの手段を言う", (
     expect(soleCodeOfText("evacuation.transport", "民生委員と歩いて")).toBe("foot");
     expect(soleCodeOfText("evacuation.transport", "車椅子で")).toBe("wheelchair");
     expect(soleCodeOfText("evacuation.transport", "")).toBeNull();
+  });
+});
+
+describe("□ の右の空きに中身の欄を補う", () => {
+  const A4 = { w: 210, h: 297 };
+  const X = 1 / A4.w;
+  const Y = 1 / A4.h;
+  const ink = (x: number, y: number, w: number, h: number, kind: "glyph" | "box" | "line" = "glyph"): InkBlob => ({ x: x * X, y: y * Y, w: w * X, h: h * Y, box: kind === "box", ...(kind === "line" ? { line: true } : {}) });
+  const mark = (label: string, y: number, item: MappingField["item"] = "medical.allergies") => field({ label, shape: "check", item, box: { x: 26 * X, y: y * Y, w: 3.5 * X, h: 4 * Y }, ai: { item, confidence: "high", reason: "" } });
+  /** □ と名前の字（□アレルギー）と、右の表の罫線 */
+  const row = (y: number): InkBlob[] => [ink(26.6, y + 0.4, 3, 3, "box"), ink(30.2, y + 0.6, 3, 3), ink(34, y + 0.6, 2.5, 2.8), ink(37, y + 0.8, 1, 2.7), ink(38.8, y + 0.7, 1.8, 2.7), ink(40.8, y + 0.2, 3.4, 3.4), ink(44.6, y + 1.8, 3.4, 0.4)];
+  const pageOf = (blobs: InkBlob[]) => new Map([[1, { ink: blobs, image: A4 }]]);
+  const RULE = ink(192.5, 100, 0.3, 80, "line");
+
+  it("名前の右から罫線の手前まで、行の高さに字の欄を足す", () => {
+    const f = mark("アレルギー", 139.3);
+    const out = addTrailingFields([f], pageOf([...row(139.3), RULE]));
+    expect(out).toHaveLength(2);
+    const added = out[1];
+    expect(added.label).toBe("アレルギー（　）");
+    expect(added.shape).toBe("text");
+    expect(added.item).toBe("medical.allergies");
+    expect(added.ai?.reason).toContain("（補）");
+    const b = added.box!;
+    expect(b.x * A4.w).toBeGreaterThan(48);
+    expect((b.x + b.w) * A4.w).toBeLessThan(192.5);
+    expect(b.h * A4.h).toBeGreaterThanOrEqual(2.6);
+    expect(bracketOwner(added, out)?.owner.id).toBe(f.id);
+  });
+
+  it("次の行の字に掛からない。上下の字があれば手前まで", () => {
+    const f = mark("アレルギー", 139.3);
+    const out = addTrailingFields([f], pageOf([...row(139.3), RULE, ink(60, 143, 30, 3), ink(60, 136.5, 30, 3)]));
+    const b = out[1].box!;
+    expect((b.y + b.h) * A4.h).toBeLessThanOrEqual(143 + 1e-6);
+    expect(b.y * A4.h).toBeGreaterThanOrEqual(139.5 - 1e-6);
+  });
+
+  it("同じ頁に同じ項目の欄があれば足さない（人が外した欄も足し直さない）", () => {
+    const f = mark("アレルギー", 139.3);
+    const bracket = field({ label: "アレルギー（　）", item: "medical.allergies", box: { x: 50 * X, y: 139.3 * Y, w: 100 * X, h: 4 * Y } });
+    expect(addTrailingFields([f, bracket], pageOf(row(139.3)))).toHaveLength(2);
+    expect(addTrailingFields([f, { ...bracket, removed: true }], pageOf(row(139.3)))).toHaveLength(2);
+  });
+
+  it("種類を指す □（常用薬・機器）・項目なしの □ には足さない", () => {
+    expect(addTrailingFields([mark("透析", 139.3, "medical.devices")], pageOf([...row(139.3), RULE]))).toHaveLength(1);
+    expect(addTrailingFields([mark("抗血小板薬", 139.3, "medical.medications")], pageOf([...row(139.3), RULE]))).toHaveLength(1);
+    expect(addTrailingFields([mark("禁忌食物", 139.3, null)], pageOf([...row(139.3), RULE]))).toHaveLength(1);
+  });
+
+  it("印刷の字の位置が無い頁・狭い空き・ほかの欄が名前に掛かる行は足さない", () => {
+    const f = mark("アレルギー", 139.3);
+    expect(addTrailingFields([f], new Map([[1, { ink: null, image: A4 }]]))).toHaveLength(1);
+    expect(addTrailingFields([f], pageOf([...row(139.3), ink(60, 140, 3, 3)]))).toHaveLength(1);
+    const over = field({ label: "備考", box: { x: 40 * X, y: 139.3 * Y, w: 100 * X, h: 4 * Y } });
+    expect(addTrailingFields([f, over], pageOf([...row(139.3), RULE]))).toHaveLength(2);
+    expect(addTrailingFields([f, over], pageOf([...row(139.3), RULE]))[1]).toBe(over);
+  });
+
+  it("右の欄の手前まで。□ を中に持つ段全体の欄は避けない", () => {
+    const f = mark("アレルギー", 139.3);
+    const right = field({ label: "備考", box: { x: 120 * X, y: 139.3 * Y, w: 60 * X, h: 4 * Y } });
+    const out = addTrailingFields([f, right], pageOf([...row(139.3), RULE]));
+    expect((out[1].box!.x + out[1].box!.w) * A4.w).toBeLessThan(120);
+    const block = field({ label: "禁忌事項等", shape: "handwrite", box: { x: 20 * X, y: 135 * Y, w: 170 * X, h: 20 * Y } });
+    expect(addTrailingFields([f, block], pageOf([...row(139.3), RULE]))).toHaveLength(3);
+  });
+
+  it("括弧が刷ってある行は括弧の中（閉じ括弧の手前）", () => {
+    const f = mark("アレルギー", 139.3);
+    const out = addTrailingFields([f], pageOf([...row(139.3), ink(49, 139.8, 1, 3.5), ink(180, 139.8, 1, 3.5), RULE]));
+    expect(out[1].box!.x * A4.w).toBeGreaterThan(49);
+    expect((out[1].box!.x + out[1].box!.w) * A4.w).toBeLessThan(180);
+  });
+
+  it("足した欄に物の名前。無い人は □ に印なしでなし。枠の外に出ない", () => {
+    const f = mark("アレルギー", 139.3);
+    const fields = addTrailingFields([f], pageOf([...row(139.3), RULE]));
+    const m: FormMapping = { title: "架空の様式", issuer: "", pages: 1, fields };
+    const image: PageImage = { page: 1, width: 2100, height: 2970, bytes: 1, ink: packInk([...row(139.3), RULE]) };
+    const paper = (id: string) => buildOverlaySheet(buildMappedSheet(seedRows(SEED_PEOPLE.find((p) => p.person.id === id)!), m, { today: "2026-11-07", officeName: "デモ事業所" }), [image]);
+    const has = paper("p-03");
+    const child = has.pages[0].items.find((i) => i.fieldId === fields[1].id);
+    expect(child?.kind === "text" && child.lines).toEqual(["ヨード造影剤"]);
+    expect(has.pages[0].items.some((i) => i.kind === "mark" && i.fieldId === f.id)).toBe(true);
+    const check = checkLook(has, fields, [image]);
+    expect([check.overlap, check.outside, check.neighbor]).toEqual([0, 0, 0]);
+    const none = paper("p-01");
+    expect(none.pages[0].items.some((i) => i.kind === "mark" && i.fieldId === f.id)).toBe(false);
   });
 });

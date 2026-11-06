@@ -19,6 +19,7 @@ import { checkReadResult, type ReadResult } from "./mapping.ts";
 import { getMapping, saveCheckedMapping } from "./mapping-db.ts";
 import type { PageImageBucket } from "./page-images.ts";
 import { formReadPost, formRereadPost, mergeReread } from "./read-post.ts";
+import { packInk } from "./ink.ts";
 import { buildFormReadForm } from "./read-upload.ts";
 
 type Message = Anthropic.Beta.Messages.BetaMessage;
@@ -345,5 +346,40 @@ describe("受け口: 読めた頁から見せ、読めなかった頁を読み�
     expect(m.fields.map((f) => f.id)).toEqual(["f1", "f2", "f3", "f4", "f5"]);
     expect(m.unread).toBeUndefined();
     expect(mergeReread(cur, read, [2]).unread).toEqual([2]);
+  });
+});
+
+describe("読み取りの受け口の □ の右の空き（T168）", () => {
+  const BLOBS = [
+    { x: 0.127, y: 0.472, w: 0.014, h: 0.01, box: true },
+    { x: 0.143, y: 0.472, w: 0.07, h: 0.01, box: false },
+    { x: 0.92, y: 0.3, w: 0.002, h: 0.4, box: false, line: true },
+  ];
+  const answer = (): ReadResult => ({
+    title: "架空の様式",
+    issuer: "",
+    pages: 1,
+    fields: [{ page: 1, section: "禁忌", label: "アレルギー", position: "", shape: "check", options: [], item: "medical.allergies", confidence: "high", reason: "", box: { x: 0.127, y: 0.47, w: 0.014, h: 0.013 } }],
+  });
+  const bucket = { put: async () => undefined, get: async () => null };
+  const SCOPE = { officeId: "office-demo", accountId: "acct-yamamoto" };
+  const form = (ink: number[] | null) =>
+    buildFormReadForm([{ blob: new Blob([tinyJpeg(1240, 1754, 7) as BlobPart], { type: "image/jpeg" }), meta: { source: "pdf" as const, page: 1, redacted: 0 }, bare: true, ...(ink ? { ink } : {}) }]);
+
+  it("印刷の字の位置があれば字の欄を足して保存。無ければ足さない", async () => {
+    const { ctx } = ctxOf(async (p) => message(pageReadReply(answer(), p)));
+    const res = await formReadPost({ db, bucket, aiContext: async () => ctx, newId: () => "fm-t168", optionAi: false }, SCOPE, form(packInk(BLOBS)));
+    expect(res.status).toBe(200);
+    const saved = (await getMapping(db, "office-demo", "fm-t168"))!;
+    expect(saved.mapping.fields.map((f) => [f.label, f.shape, f.item])).toEqual([
+      ["アレルギー", "check", "medical.allergies"],
+      ["アレルギー（　）", "text", "medical.allergies"],
+    ]);
+    expect(saved.mapping.fields[1].ai?.reason).toContain("（補）");
+
+    const { ctx: ctx2 } = ctxOf(async (p) => message(pageReadReply(answer(), p)));
+    const form2 = buildFormReadForm([{ blob: new Blob([tinyJpeg(1240, 1754, 8) as BlobPart], { type: "image/jpeg" }), meta: { source: "pdf" as const, page: 1, redacted: 0 }, bare: true }]);
+    await formReadPost({ db, bucket, aiContext: async () => ctx2, newId: () => "fm-t168b", optionAi: false }, SCOPE, form2);
+    expect((await getMapping(db, "office-demo", "fm-t168b"))!.mapping.fields).toHaveLength(1);
   });
 });
