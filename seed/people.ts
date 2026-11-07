@@ -1,5 +1,6 @@
 // デモ事業所の種のデータ。docs/SPEC.md の「架空の 10 人（骨子、11/2）」から起こした。
 // 全員架空で、実在の人・事業所と関係ない。町名は架空、番地は付けない。電話は 090-0000-00NN で、かけない。
+// 避難先 1・2 のうち施設の物は、家のピンの近くの実在の指定避難所（国土地理院のデータ。名前と位置だけ、T183。SEED_DESTINATIONS）。
 // 11 人目（台帳に無い人）は医療班がその場で作る筋なので、ここには入れない。
 
 import { CONSENT_KINDS } from "../lib/db/types.ts";
@@ -223,22 +224,45 @@ const emptyMedical = (): Ledger["medical"] => ({ devices: [], medications: [] })
 
 /**
  * 地図のピンの位置（T14）。架空の位置で、町名と同じく実在の人・家と関係ない。
- * 松山市の市街の中で、台帳のハザードと重ねる層が食い違わない所（浸水 3 m は深い色の区域、浸水 0.5〜1 m は浅い色の区域、
- * 土砂は警戒区域の山すそ、津波は海沿いの浸水想定、なしはどの層も無い所）を選んだ。
- * 家に当たらないよう、空中写真で田畑・空き地・運動場・公園などの開けた所を見て置いた。確かめた手順は docs/progress/t14.md
+ * 松山市の市街の中で、台帳のハザードと重ねる層（想定最大規模）が食い違わない所（浸水 3 m は 3〜5 m の区域、浸水 0.5〜1 m は
+ * 0.5〜3 m の区域、土砂は警戒区域の山すそ、津波は海沿いの浸水想定で洪水の区域の外、なしはどの層も無い所）を選んだ。
+ * 家に当たらないよう、空中写真で田畑・空き地・運動場・公園などの開けた所を見て置いた。確かめた手順は docs/progress/t14.md。
+ * T183 で、層と食い違っていた 3 人（p-02 は 5〜10 m の区域、p-08 は洪水 0.5 m 未満の区域にも、p-09 は洪水 0.5〜3 m の区域）を、
+ * 同じ区画の中の層の合う開けた所へ動かした（重ねるハザードマップの画素と空中写真で確かめた。docs/progress/t183.md）
  */
 export const SEED_LOCATIONS: Record<string, GeoPoint> = {
   "p-01": { lat: 33.812, lng: 132.7487 }, // かわなぎ町 浸水 3 m
-  "p-02": { lat: 33.8022, lng: 132.7665 }, // かわなぎ町 浸水 3 m
+  "p-02": { lat: 33.8027, lng: 132.7704 }, // かわなぎ町 浸水 3 m
   "p-03": { lat: 33.8226, lng: 132.7197 }, // みずほし町 浸水 0.5 m
   "p-04": { lat: 33.8525, lng: 132.7988 }, // くぬぎ谷町 土砂
   "p-05": { lat: 33.8346, lng: 132.7303 }, // みずほし町 浸水 0.5 m
   "p-06": { lat: 33.8243, lng: 132.7543 }, // あしなみ町 浸水 1 m
   "p-07": { lat: 33.8585, lng: 132.7816 }, // くぬぎ谷町 土砂
-  "p-08": { lat: 33.854, lng: 132.7105 }, // うみなり町 津波
-  "p-09": { lat: 33.8655, lng: 132.74 }, // そらみ台 なし
+  "p-08": { lat: 33.8535, lng: 132.7094 }, // うみなり町 津波
+  "p-09": { lat: 33.8652, lng: 132.7379 }, // そらみ台 なし
   "p-10": { lat: 33.8735, lng: 132.7502 }, // そらみ台 なし
 };
+
+/**
+ * 種の避難先の施設（T183）。国土地理院「指定緊急避難場所・指定避難所データ」の指定避難所（sih）の名前と位置のまま
+ * （lib/map/shelters.ts が地図に読む物と同じ名前なので、地図の地理院の旗と計画の旗が 1 つにまとまる。位置は小数 5 桁）。
+ * 家のピンの近くで、本人の台帳のハザードの層（洪水・土砂・津波）がその点と周り 40 m に無い物を選んだ（洪水の区域の人は区域の外まで
+ * 行くので、市街の南の 3 人は 3〜4 km 先になる）。名前は仮名化の門で字が変わらない物（担当の人・家族・支援者の姓名と町名を含まない）。
+ * 確かめた日と手順は docs/progress/t183.md。架空の病院（p-02）と家族の家（p-07・p-08 の避難先 2）は施設のデータに無いので、名前だけで位置を持たない
+ */
+export const SEED_DESTINATIONS = {
+  /** p-01・p-06（洪水・土砂の区域の外。家の東） */
+  fukuon: { name: "福音小学校", at: { lat: 33.82141, lng: 132.79013 } },
+  /** p-03（洪水・土砂の区域の外。家の北東） */
+  seiryo: { name: "学校法人松山聖陵学園 松山聖陵高等学校（体育館）", at: { lat: 33.85708, lng: 132.74058 } },
+  /** p-07（土砂の警戒区域の外） */
+  yuzuki: { name: "湯築小学校", at: { lat: 33.85353, lng: 132.77745 } },
+  /** p-08（津波の浸水想定の外） */
+  mitsuhama: { name: "三津浜公民館", at: { lat: 33.86146, lng: 132.71473 } },
+  /** p-10 の避難先 1・2（ハザードなし） */
+  shiomiSchool: { name: "潮見小学校", at: { lat: 33.87484, lng: 132.75474 } },
+  shiomiHall: { name: "潮見公民館", at: { lat: 33.87253, lng: 132.75457 } },
+} as const satisfies Record<string, { name: string; at: GeoPoint }>;
 
 export const SEED_PEOPLE: SeedPerson[] = [
   // 1 動画の主役。計画のデモで空欄を埋める。大雨: 赤 → 録音にうめき声。地震: 停電で酸素の時計が走る
@@ -288,10 +312,11 @@ export const SEED_PEOPLE: SeedPerson[] = [
       // 避難先 2 は未確認のまま（下の pending。質問で埋める流れの見本。T142）。段差・ペットは空ける（計画書の 2 頁目に余白が無い）
       evacuation: {
         hazards: [{ kind: "flood", depthM: 3 }],
-        destination1: "かわなぎ小学校",
+        destination1: SEED_DESTINATIONS.fukuon.name,
+        destination1Location: { ...SEED_DESTINATIONS.fukuon.at },
         destination1Minutes: 10,
         stayHome: false,
-        route: "家から北へ市道を進み、小学校の体育館へ。堤防沿いの道は通らない",
+        route: "家から東へ市道を進み、小学校の体育館へ。堤防沿いの道は通らない",
         transportKind: "family_car",
         transport: "娘の車",
         nearest: "かわなぎ中学校",
@@ -544,10 +569,11 @@ export const SEED_PEOPLE: SeedPerson[] = [
       // 段差・ペットは空ける（埋めると計画書〔前からの紙面〕が 3 頁目にあふれる）。避難先 2 も空ける（本人の 1 枚の表が在宅避難の行を足すと 3 頁目にあふれる）。docs/progress/t142.md
       evacuation: {
         hazards: [{ kind: "flood", depthM: 0.5 }],
-        destination1: "みずほし公民館",
+        destination1: SEED_DESTINATIONS.seiryo.name,
+        destination1Location: { ...SEED_DESTINATIONS.seiryo.at },
         destination1Minutes: 10,
         stayHome: false,
-        route: "長男の車で県道を通って公民館へ。透析の日は透析先へ直に向かう",
+        route: "長男の車で県道を通って体育館へ。透析の日は透析先へ直に向かう",
         transportKind: "family_car",
         transport: "長男の車",
         nearest: "みずほし小学校",
@@ -901,7 +927,8 @@ export const SEED_PEOPLE: SeedPerson[] = [
       // 段差・ペットは空ける（埋めると計画書〔前からの紙面〕が 3 頁目にあふれる）。避難先 2 も空ける（本人の 1 枚の表が在宅避難の行を足すと 3 頁目にあふれる）。docs/progress/t142.md
       evacuation: {
         hazards: [{ kind: "flood", depthM: 1 }],
-        destination1: "あしなみ小学校",
+        destination1: SEED_DESTINATIONS.fukuon.name,
+        destination1Location: { ...SEED_DESTINATIONS.fukuon.at },
         destination1Minutes: 10,
         stayHome: false,
         route: "娘の車で支流の橋を渡らずに小学校へ",
@@ -1027,13 +1054,14 @@ export const SEED_PEOPLE: SeedPerson[] = [
       },
       evacuation: {
         hazards: [{ kind: "landslide" }],
-        destination1: "くぬぎ谷集会所",
+        destination1: SEED_DESTINATIONS.yuzuki.name,
+        destination1Location: { ...SEED_DESTINATIONS.yuzuki.at },
         destination1Minutes: 10,
         destination2: "弟の家",
         destination2Means: "family_car",
         destination2Minutes: 20,
         stayHome: false,
-        route: "県道を下って集会所へ。山すその道は通らない",
+        route: "県道を下って小学校へ。山すその道は通らない",
         barriers: "玄関に 20 cm の段差",
         transportKind: "family_car",
         transport: "弟の車",
@@ -1151,13 +1179,14 @@ export const SEED_PEOPLE: SeedPerson[] = [
       },
       evacuation: {
         hazards: [{ kind: "tsunami" }],
-        destination1: "うみなり高台の集会所",
+        destination1: SEED_DESTINATIONS.mitsuhama.name,
+        destination1Location: { ...SEED_DESTINATIONS.mitsuhama.at },
         destination1Minutes: 15,
         destination2: "高台の親類の家",
         destination2Means: "family_car",
         destination2Minutes: 10,
         stayHome: false,
-        route: "海と反対の坂を上って高台の集会所へ。海沿いの国道は通らない",
+        route: "海と反対の道を歩いて公民館へ。海沿いの国道は通らない",
         barriers: "玄関に小さな段差",
         transportKind: "foot",
         transport: "徒歩",
@@ -1365,9 +1394,11 @@ export const SEED_PEOPLE: SeedPerson[] = [
       // ハザードは無い（対照）。避難のタイミングの欄はハザードから決まるので、紙は未確認のまま（docs/progress/t142.md）
       evacuation: {
         hazards: [],
-        destination1: "そらみ台小学校",
+        destination1: SEED_DESTINATIONS.shiomiSchool.name,
+        destination1Location: { ...SEED_DESTINATIONS.shiomiSchool.at },
         destination1Minutes: 10,
-        destination2: "そらみ台集会所",
+        destination2: SEED_DESTINATIONS.shiomiHall.name,
+        destination2Location: { ...SEED_DESTINATIONS.shiomiHall.at },
         destination2Means: "foot",
         destination2Minutes: 5,
         stayHome: false,
