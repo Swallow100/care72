@@ -303,7 +303,9 @@ export function createTalkHook(deps: { load: () => Promise<ReadonlyMap<string, P
     if (quick) return { said, speech: quickReply(quick, t.lines, t.minute), asks: [], ai: false, called: false, coded: true };
     // T177: いる所を聞く言葉はコードの記録で答える（Haiku を呼ばない）。もう同じ通話で答えていれば短い返事
     if (isPlaceAsk({ ...(t.ask ? { ask: t.ask } : {}), said })) {
-      const words = placeReplyOf(personaFacts(persona, { person: t.person, world: t.world, state: t.state, actions: t.actions ?? [], now: t.minute }));
+      // 本人か同居の人だけ言い切る（T182。離れた家族・支援者は「〜はずです」）
+      const near = callee === "本人" || (persona.together ?? []).includes(callee);
+      const words = placeReplyOf(personaFacts(persona, { person: t.person, world: t.world, state: t.state, actions: t.actions ?? [], now: t.minute }), near);
       if (words) return { said, speech: t.lines.some((l) => l.who === "them" && l.text === words) ? quickReply("repeat", t.lines, t.minute) : words, asks: [], ai: false, called: false, coded: true };
     }
     let text: ForClaude<{ text: string }>;

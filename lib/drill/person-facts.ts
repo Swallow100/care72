@@ -845,9 +845,25 @@ function blockedWords(f: Pick<Facts, "blockedBy">): string {
 }
 
 /**
- * 「どこにいますか」のコードの答え（T177。記録から。名前を書かない）。記録が無い・家にいないだけで行き先の分からない連絡は null（本人役が答える）
+ * 「どこにいますか」のコードの答え（T177。記録から。名前を書かない）。記録が無い・家にいないだけで行き先の分からない連絡は null（本人役が答える）。
+ * near は本人か同居の人が答えるか（T182）。離れた家族・支援者は本人のそばにいないので言い切らず「〜はずです」（前は相手が誰でも「家にいます。」と言い切った）。
+ * 本人役を呼ばない形は同じ（呼び出しを増やさない）
  */
-export function placeReplyOf(f: Pick<Facts, "place" | "plan" | "moving">): string | null {
+export function placeReplyOf(f: Pick<Facts, "place" | "plan" | "moving">, near = true): string | null {
+  const words = placeWordsOf(f);
+  return words && !near ? (FAR_PLACE_WORDS[words] ?? words) : words;
+}
+
+/** 離れた人の言い方（T182。行き先の分からない「分かりません」はそのまま） */
+const FAR_PLACE_WORDS: Readonly<Record<string, string>> = {
+  "今、向かっている途中です。": "今、向かっている途中のはずです。",
+  "家にいます。": "家にいるはずです。",
+  "避難所にいます。": "避難所にいるはずです。",
+  "病院にいます。": "病院にいるはずです。",
+  "避難先にいます。": "避難先にいるはずです。",
+};
+
+function placeWordsOf(f: Pick<Facts, "place" | "plan" | "moving">): string | null {
   if (f.moving) return "今、向かっている途中です。";
   const p = f.place;
   if (!p || p.loose) return null;

@@ -6,7 +6,7 @@ import { advance, floodDepthOf, foldTick, initialState, timeOf, type DrillTurn, 
 import { DRILL_END_MINUTE } from "./clock.ts";
 import type { DirectorEvent } from "./incident-types.ts";
 import { homeOf } from "./comms.ts";
-import { createClockHooks } from "./hooks.ts";
+import { createClockHooks, createTalkHook } from "./hooks.ts";
 import { carryMoved, dropRoadSlips, factsOf, placeOfState, placeReplyOf, planOf } from "./person-facts.ts";
 import { EMPTY_WORLD, type WorldState } from "./scenarios.ts";
 import { clockOfMinute, clockWhen, dayLine, startHourOf } from "./night.ts";
@@ -166,5 +166,27 @@ describe("6. 代わりに電話に出た人の名", () => {
     expect(speakerText({ kind: "call_person", calleeLabel: "本人", result: { answeredBy: "夫" } })).toBe("夫");
     expect(speakerText({ kind: "call_person", calleeLabel: "本人", result: {} })).toBe("本人");
     expect(speakerText({ kind: "dispatch", calleeLabel: null, result: null })).toBe(calleeText({ kind: "dispatch", calleeLabel: null }));
+  });
+});
+
+describe("8. いる所の問いに答える人", () => {
+  const sources = new Map(SEED_PEOPLE.map((p) => [p.person.id, seedInput(p.person.id)] as const));
+  const noAi = { env: { ANTHROPIC_API_KEY: "dummy" }, usage: { reserve: async () => false, finish: async () => undefined, countDay: async () => 0 }, office: { id: "office-demo", kind: "demo" }, now: () => new Date("2026-11-05T01:00:00Z") } as never;
+  const hook = createTalkHook({ load: async () => sources, ai: noAi });
+  const at = (id: string) => ({ person: "p-03", callee: { kind: "contact", id }, minute: 120, world: EMPTY_WORLD, state: { color: "green", source: "family", whereNow: "home", at: 1, saying: null, doing: null }, tell: null, fit: null, first: "はい。", lines: [], actions: [], ask: "where" }) as never;
+
+  it("同居の人は記録のとおり言い切る、離れた家族は「はずです」。どちらも本人役を呼ばない", async () => {
+    const near = await hook(at("c-03-1"));
+    expect(near).toMatchObject({ speech: "家にいます。", called: false, coded: true });
+    const far = await hook(at("c-03-3"));
+    expect(far).toMatchObject({ speech: "家にいるはずです。", called: false, coded: true });
+  });
+
+  it("言い方の対応", () => {
+    const f = { place: { where: "shelter" as const, at: 60, by: "turn" as const }, plan: null };
+    expect(placeReplyOf(f)).toBe("避難所にいます。");
+    expect(placeReplyOf(f, false)).toBe("避難所にいるはずです。");
+    expect(placeReplyOf({ ...f, place: { where: "other", at: 60, by: "wandering" } }, false)).toBe("どこにいるか分かりません。");
+    expect(placeReplyOf({ ...f, moving: { to: "shelter", at: 200, by: "plan" } }, false)).toBe("今、向かっている途中のはずです。");
   });
 });
