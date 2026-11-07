@@ -157,6 +157,8 @@ const DRILL: Item[] = [
   { id: "drill.opFailed", bench: "drill", label: "失敗した要求", better: "lower", unit: "count", agg: "sum", drill: (s) => s.totals.opFailed + s.totals.exceptions },
   { id: "drill.worldNote", bench: "drill", label: "世界の部屋の代替・停止の印", better: "lower", unit: "count", agg: "sum", drill: (s) => s.totals.worldNote },
   { id: "drill.callsPerRun", bench: "drill", label: "AI の呼び出し（1 回の訓練）", better: null, unit: "count", agg: "mean", drill: (s) => s.totals.callsPerRun },
+  // T185: 人ごとの講評（Haiku）の呼び出し/回。刻みの裏 4 回と終わり 3 回まで
+  { id: "drill.reviewPersonPerRun", bench: "drill", label: "人ごとの講評の呼び出し（1 回の訓練）", better: "lower", unit: "count", agg: "mean", drill: (s) => s.totals.reviewPersonPerRun ?? null },
   // T158: 1 訓練の上限 150 との比の最大（直しで呼び出しを増やさない）
   { id: "drill.capRatioMax", bench: "drill", label: "1 訓練の上限 150 との比（最大）", better: "lower", unit: "rate", agg: "max", drill: (s) => s.totals.capRatioMax },
   { id: "drill.advanceP50", bench: "drill", label: "進める 1 回の待ち p50（秒）", better: "lower", unit: "sec", agg: "mean", drill: (s) => (s.totals.advanceP50 === null ? null : s.totals.advanceP50 / 1000) },

@@ -237,6 +237,7 @@ export const GUARDS: ReadonlyArray<Guard> = [
   { id: "persona-new-dead-end", bench: "persona", item: "count:persona:dead_end:/people/new", op: "<=", value: 0, since: "r10", task: "T173", label: "作成で止まったら必須の案内を読める", suspects: ["components/office/NewPersonForm.tsx", "tools/eval/persona/dom.ts"] },
   // T167: 評価の 8 回目で呼び出しが 91.4/回・上限との比 90.7%（run-01 の 137 回のうち本人役の通話 72）。相づち・聞き返し・同じ問いをコードの短い返事にした。
   // r8 の通話の並びに当てると 136 往復のうち本人役 51（切った分を除く 94 往復の 54%）、1 回の訓練は最大 85 回ほど。値は r7 の数を超えない形で守る
+  { id: "drill-review-person-calls", bench: "drill", item: "drill.reviewPersonPerRun", op: "<=", value: 7, since: "r11", task: "T185", label: "人ごとの講評は 1 回の訓練に 7 回まで（4 人ずつまとめる）", suspects: ["lib/drill/person-review.ts", "lib/drill/record-http.ts"] },
   { id: "drill-calls-per-run", bench: "drill", item: "drill.callsPerRun", op: "<=", value: 89.6, since: "r9", task: "T167", label: "AI の呼び出しを 7 回目より増やさない", suspects: ["lib/drill/talk-quick.ts", "lib/drill/hooks.ts", "tools/eval/drill/drive.ts"] },
   { id: "drill-cap-ratio", bench: "drill", item: "drill.capRatioMax", op: "<=", value: 0.747, since: "r9", task: "T167", label: "1 訓練の上限との比を 7 回目より増やさない", suspects: ["lib/drill/talk-quick.ts", "lib/drill/hooks.ts", "tools/eval/drill/drive.ts"] },
   { id: "drill-talk-ai-share", bench: "drill", item: "drill.talkAiShare", op: "<=", value: 0.7, since: "r9", task: "T167", label: "通話の返事を本人役に頼りすぎない（相づち・同じ問いはコード）", suspects: ["lib/drill/talk-quick.ts"] },
