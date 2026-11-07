@@ -46,14 +46,15 @@ const withoutVia = ({ greenVia: _greenVia, ...rest }: TriageResult) => rest;
 describe("受入から来た緑（T78）: 色・並び・理由は表のまま、状態の言葉だけ「受入」", () => {
   it("赤（けが・動けない）のあとの受け入れ: 色は緑・行 green・組 4・理由「到着 みどり小学校」のまま、印は arrival、言葉は「受入」", () => {
     const r = triage(entry("p1", [RED_INJURY], [ARRIVAL]), S);
-    expect([r.color, r.rule, r.group, r.reason]).toEqual(["green", "green", 4, "到着 みどり小学校"]);
+    // 理由の頭は「到着 みどり小学校」のまま、受け入れの前の赤を添える（案 11、T184）
+    expect([r.color, r.rule, r.group, r.reason]).toEqual(["green", "green", 4, "到着 みどり小学校、受入前 本人が「けが」「動けない」"]);
     expect(r.greenVia).toBe("arrival");
     expect(stateLabel(r)).toBe("受入");
   });
 
   it("搬送で閉じた受け入れ: 理由「搬送 市民病院」のまま、印は transport、言葉は「搬送」", () => {
     const r = triage(entry("p1", [RED_INJURY], [{ ...ARRIVAL, transported: { at: iso(3), to: "市民病院" } }]), S);
-    expect([r.color, r.rule, r.reason]).toEqual(["green", "green", "搬送 市民病院"]);
+    expect([r.color, r.rule, r.reason]).toEqual(["green", "green", "搬送 市民病院、受入前 本人が「けが」「動けない」"]);
     expect(r.greenVia).toBe("transport");
     expect(stateLabel(r)).toBe("搬送");
   });
@@ -122,14 +123,14 @@ describe("受入から来た緑（T78）: 色・並び・理由は表のまま�
 });
 
 describe("案 11（T184）: 受け入れの前の赤を理由に添える（色・並びは変えない）", () => {
-  it.fails("赤（けが・動けない）のあとの受け入れ: 理由に「受入前 本人が「けが」「動けない」」", () => {
+  it("赤（けが・動けない）のあとの受け入れ: 理由に「受入前 本人が「けが」「動けない」」", () => {
     const r = triage(entry("p1", [RED_INJURY], [ARRIVAL]), S);
     expect([r.color, r.rule, r.group]).toEqual(["green", "green", 4]);
     expect(r.reason).toBe("到着 みどり小学校、受入前 本人が「けが」「動けない」");
     expect(r.qualifiers).toContain("before_arrival");
   });
 
-  it.fails("搬送でも「受入前」。黄の行（時計の半分）でも添える。答えの無い赤は「無事じゃない」", () => {
+  it("搬送でも「受入前」。黄の行（時計の半分）でも添える。答えの無い赤は「無事じゃない」", () => {
     const moved = triage(entry("p1", [RED_INJURY], [{ ...ARRIVAL, transported: { at: iso(3), to: "市民病院" } }]), S);
     expect(moved.reason).toBe("搬送 市民病院、受入前 本人が「けが」「動けない」");
     const p: TriagePerson = {

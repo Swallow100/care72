@@ -253,7 +253,9 @@ export async function loadStaffBoard(
         tone: COLOR_TONES[triage.color],
         ...(triage.greenVia ? { greenVia: triage.greenVia } : {}),
         reason: medicalShown ? triage.reason : "",
-        before: medicalShown ? beforeReceive(signalsOf.get(r.person_id) ?? [], r.received_at, situation) : null,
+        // 理由がもう受け入れの前の赤を言っていれば（ルールの表の案 11、T184）、同じ言葉の 2 行目を出さない
+        before:
+          medicalShown && !triage.qualifiers.includes("before_arrival") ? beforeReceive(signalsOf.get(r.person_id) ?? [], r.received_at, situation) : null,
         rank: 0,
         summary: canOpenDocument(scope, "medical"),
       },

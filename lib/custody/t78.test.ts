@@ -82,7 +82,9 @@ describe("赤（けが・動けない）のあとに受け入れた人（T78）"
     const row = board.rows.find((r) => r.personId === "p-04")!;
     expect([row.color, row.greenVia, stateLabel(row)]).toEqual(["green", "arrival", "受入"]);
     expect(row.reason.startsWith(`到着 ${SHELTER}`)).toBe(true);
-    expect(row.before).toBe("本人「けが」「動けない」 11/3 09:30");
+    // 受け入れの前の赤は理由の 1 行に（ルールの表の案 11、T184）。同じ言葉の 2 行目（受入前の行）は出さない
+    expect(row.reason).toContain("受入前 本人が「けが」「動けない」");
+    expect(row.before).toBeNull();
     // 上の人数は色の区分（緑に数える。言葉の「無事」は区分の名前のまま）
     expect(board.counts.green).toBe(1);
 
@@ -91,7 +93,8 @@ describe("赤（けが・動けない）のあとに受け入れた人（T78）"
     const tr = html.match(/<tr data-person="p-04"[^>]*>(.*?)<\/tr>/)![1];
     expect(tr).toContain(">受入<");
     expect(tr).not.toContain(">無事<");
-    expect(html).toMatch(/data-before[^>]*>.*受入前.*本人「けが」「動けない」 11\/3 09:30/);
+    expect(html).not.toContain("data-before");
+    expect(html.replace(/<[^>]+>/g, "")).toContain("受入前 本人が「けが」「動けない」");
 
     const csv = staffCsv(board, { name: "医療班", judge: false }, NOW);
     expect(csv).toContain(`,受入,到着 ${SHELTER}`);
