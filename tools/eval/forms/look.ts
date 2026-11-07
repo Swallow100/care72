@@ -11,6 +11,7 @@ import { isContentItem } from "../../../lib/forms/trailing-field.ts";
 import { buildMappedSheet, type MappedSheet } from "../../../lib/forms/mapped-sheet.ts";
 import type { FormMapping, LedgerItemKey, MappingField } from "../../../lib/forms/mapping.ts";
 import { checkLook, type LookCheck } from "../../../lib/forms/overlay-check.ts";
+import { settleFreedItem } from "../../../lib/forms/read-settle.ts";
 import { annexGaps, fieldLines, isNoneOnly, type OverlaySheet } from "../../../lib/forms/overlay-sheet.ts";
 import type { PageImage } from "../../../lib/forms/page-images.ts";
 import type { Cell } from "../../../lib/forms/matsuyama.ts";
@@ -36,6 +37,11 @@ export type LookScore = Omit<LookCheck, "issues"> & {
   unplacedContact?: number;
   /** 印を付けた □ の中身（アレルギーの物の名前など）が紙のどこにも無い欄（T168） */
   markNoContent?: number;
+  /**
+   * 欄から値が消えた数（T181）: 読みの後の決まり（lib/forms/read-settle.ts）で項目を外した欄のうち、外す前の項目なら値が入り、
+   * その欄にも、同じ頁で同じ項目の値を書くほかの欄にも何も置いていない欄。項目を外した欄は未確認になるだけで、紙の当たり・置けずに出ない
+   */
+  freedValue?: number;
 };
 
 export const emptyLookScore = (): LookScore => ({
@@ -58,6 +64,7 @@ export const emptyLookScore = (): LookScore => ({
   unplacedPicked: 0,
   unplacedContact: 0,
   markNoContent: 0,
+  freedValue: 0,
 });
 
 /** 日付の欄（T160。lib/forms/review.ts の日付の見直しと同じ見分け方に「記入日」） */
@@ -154,6 +161,22 @@ export function lookOfPaper(o: {
     if (c?.kind !== "choice" || !c.options.some((x) => x.on)) return false;
     return !o.mapping.fields.some((g) => g !== f && !g.removed && g.item === f.item && g.shape !== "check" && drawn(g, o.overlay));
   });
+  // 欄から値が消えた数（T181）。外した欄に外す前の項目を戻した紙の値で見る
+  const freedFields = o.mapping.fields.filter((f) => !f.removed && f.shape !== "handwrite" && settleFreedItem(f) !== null);
+  let freedValue = 0;
+  if (freedFields.length > 0) {
+    const restored: FormMapping = { ...o.mapping, fields: o.mapping.fields.map((f) => (freedFields.includes(f) ? { ...f, item: settleFreedItem(f) } : f)) };
+    const before = new Map(buildMappedSheet(o.rows, restored, { today: o.today, officeName: "デモ事業所" }).pages.flatMap((p) => p.sections.flatMap((s) => s.rows.map((r) => [r.field.id, r] as const))));
+    const writes = (g: MappingField) => g.shape === "text" || g.shape === "lines" || g.shape === "date" || g.shape === "phone";
+    for (const f of freedFields) {
+      const r = before.get(f.id);
+      const item = settleFreedItem(f);
+      if (!r || !hasValue(r.field, r.cell) || drawn(f, o.overlay)) continue;
+      // 値を書く欄（字・日付・電話）が消えたなら、同じ頁の同じ項目の値を書く欄に置いてあれば消えていない。選ぶ欄なら同じ項目のどの欄でも
+      const elsewhere = o.mapping.fields.some((g) => g !== f && !g.removed && g.page === f.page && g.item === item && (!writes(f) || writes(g)) && drawn(g, o.overlay));
+      if (!elsewhere) freedValue += 1;
+    }
+  }
   const { issues: _i, ...rest } = check;
   const why = Object.values(o.overlay.unplacedWhy ?? {});
   const reason = (r: string) => why.filter((w) => w === r).length;
@@ -174,6 +197,7 @@ export function lookOfPaper(o: {
       unplacedPicked: picked.length,
       unplacedContact: unplacedFields.filter((f) => CONTACT_ITEM.test(f.item ?? "")).length,
       markNoContent: noContent.length,
+      freedValue,
     },
     check,
     blanks,

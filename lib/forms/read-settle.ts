@@ -231,6 +231,15 @@ function freeSignDates(fields: readonly MappingField[]): MappingField[] {
   });
 }
 
+/** 項目を外した決まり（理由の添え）。署名の隣の日付は本人が書くので、値を落とした数に入れない */
+const FREED_MARKS = ["□ の並びの括弧", "同じ項目の欄", "親の項目の空き", "同じ項目の選ぶ欄"].map((r) => `（${r}）`);
+
+/** この決まりで項目を外した欄なら、外す前の項目（台の「欄から値が消えた数」が使う。tools/eval/forms/look.ts） */
+export function settleFreedItem(f: Pick<MappingField, "item" | "ai">): LedgerItemKey | null {
+  const c = f.ai?.candidate;
+  return f.item === null && c && FREED_MARKS.some((m) => f.ai!.reason.includes(m)) ? (c as LedgerItemKey) : null;
+}
+
 /** 読み取りの答えの形をそろえる（欄の id は変えない。まとめた □ は最初の □ の id） */
 export function settleRead(fields: readonly MappingField[]): MappingField[] {
   return keepWidest(freeSlots(keepOneChoice(mergeMarks(freeSignDates(fields)))));
