@@ -270,6 +270,9 @@ export const GUARDS: ReadonlyArray<Guard> = [
   { id: "drill-cap-r10", bench: "drill", item: "drill.capRatioMax", op: "<=", value: 0.627, since: "r11", task: "T177", label: "1 訓練の上限との比を 10 回目より増やさない", suspects: ["lib/drill/engine.ts", "lib/drill/clock.ts", "lib/drill/hooks.ts"] },
   { id: "drill-clock-said", bench: "drill", item: "count:drill:facts:clock_said", op: "<=", value: 0, since: "r11", task: "T177", label: "機器の切れた時刻の言葉が帳面の時計と食い違わない", suspects: ["lib/drill/person-facts.ts", "lib/drill/persona.ts", "lib/drill/night.ts"] },
   { id: "drill-world-retired-place", bench: "drill", item: "count:drill:world_place:retired", op: "<=", value: 0, since: "r9", task: "T170", label: "世界の文にやめた架空の地名を出さない", suspects: ["lib/drill/area.ts", "lib/drill/area-demo.ts", "lib/drill/world-apply.ts", "lib/pseudonym/index.ts"] },
+  // T183: 種の避難先を実在の指定避難所の名前にした（前の架空の名前は町名の伏せ字で隠れていた）。本人役・監督には避難先の種類だけを渡す決めのまま、
+  // 送った中身に避難先の名前（漏れの見張りの「避難先の名前」）を出さない。世界の実の避難所（町ごとに近い 2 つ）と種の避難先が重なると、ここが外れる
+  { id: "drill-leak-none", bench: "drill", item: "drill.leaks", op: "<=", value: 0, since: "r12", task: "T183", label: "送った中身に避難先の名前・氏名を漏らさない", suspects: ["seed/people.ts", "lib/drill/real-geo-apply.ts", "lib/pseudonym/index.ts"] },
 ];
 
 const judgedOn = (g: Guard, client: RunClient | undefined) => !g.clients || !client || g.clients.includes(client);
