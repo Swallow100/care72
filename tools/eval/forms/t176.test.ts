@@ -36,7 +36,7 @@ describe("T176 読み取りの揺れの守りは本物の回で見る", () => {
     expect(marksOf(item, undefined, { value: 1463 }, GUARDS, "replay").outside).toBe(false);
     const column = (client: "real" | "replay"): Column => ({ label: client, from: "run", sources: [{ bench: "forms", run: "r", client }], cells: { "forms.reviewCheck": { value: 1463 } } });
     const md = scorecardMarkdown([column("replay"), column("real")]);
-    const row = md.split("\n").find((l) => l.startsWith("| 見直しの要確認 |"));
+    const row = md.split("\n").find((l) => l.startsWith("| 見直しの要確認（注） |"));
     expect(row).toContain("| 1,463 | 1,463（外） |");
   });
 });

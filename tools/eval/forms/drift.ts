@@ -11,6 +11,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { hasSlot } from "../../../lib/forms/read-settle.ts";
 
 export type DriftField = { page: number; section: string; label: string; shape: string; item: string | null; options: string[]; box: number[] | null };
 export type ReadDiff = { a: number; b: number; same: number; onlyA: number; onlyB: number; label: number; item: number; shape: number; box: number; options: number };
@@ -136,16 +137,13 @@ export function driftOf(from: string, other: { mode?: string; papers: readonly D
   return { from, sameCode: other.mode === "replay", ...reviewDrift(other.papers, papers) };
 }
 
-/** 名前の中の空き（lib/forms/read-settle.ts の SLOT と同じ形） */
-const SLOT_LABEL = /[(【[〔](?:[^)】\]〕]*\s[^)】\]〕]*|[~〜ー\-・…]*)[)】\]〕]/;
-
 /**
  * 読み取りの答えのうち、同じ頁の □・選ぶ欄と同じ項目を当てた字の欄の数（T176）。slot はそのうち名前に空きのある物。
  * 答えそのものの数で、読み取りの文の効き目はここに出る（後の決まりで外す前。r9 と r10 で 21 と 41）
  */
 export function parentItemFields(fields: readonly DriftField[]): { all: number; slot: number } {
   const kids = fields.filter((f) => (f.shape === "text" || f.shape === "lines") && f.item && fields.some((g) => g !== f && g.page === f.page && g.item === f.item && (g.shape === "choice" || g.shape === "check")));
-  return { all: kids.length, slot: kids.filter((f) => SLOT_LABEL.test(f.label.normalize("NFKC"))).length };
+  return { all: kids.length, slot: kids.filter((f) => hasSlot(f.label)).length };
 }
 
 export type DriftRun = { calls: Map<string, DriftField[]>; papers: readonly DriftPaper[] };

@@ -125,10 +125,13 @@ const squeeze = (s: string) => nfkc(s).replace(/\s/g, "");
 /** 名前の中の空き: 空の括弧（「（　）」「【　】」「（～）」）か、中に空白のある括弧（「（浸水想定　m）」） */
 const SLOT = /[(【[〔](?:[^)】\]〕]*\s[^)】\]〕]*|[~〜ー\-・…]*)[)】\]〕]/;
 
+/** 欄の名前に空きがあるか（台の数える口も同じ物を使う。tools/eval/forms/drift.ts） */
+export const hasSlot = (label: string) => SLOT.test(nfkc(label));
+
 /** 親の □ か選ぶ欄（同じ頁・同じ段・同じ項目）があり、選択肢や □ の子でない空きの字の欄は項目なし */
 function freeSlots(fields: readonly MappingField[]): MappingField[] {
   return fields.map((f) => {
-    if (f.removed || !f.item || !isText(f) || PER_MARK_ITEMS.has(f.item) || !SLOT.test(nfkc(f.label))) return f;
+    if (f.removed || !f.item || !isText(f) || PER_MARK_ITEMS.has(f.item) || !hasSlot(f.label)) return f;
     const parents = fields.filter((g) => g !== f && !g.removed && g.page === f.page && g.section === f.section && g.item === f.item && (g.shape === "check" || g.shape === "choice"));
     if (parents.length === 0 || bracketOwner(f, fields)) return f;
     // 「要介護（　）級」と □ 要介護の組は □ の中身を書く所（読み取りの補いの括弧、item-hints.ts の 1）
