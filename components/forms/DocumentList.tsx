@@ -42,7 +42,10 @@ function MenuGroup({ title, items, action }: { title: string; items: ReadonlyArr
               {/* 事業所が足した様式（T147）。確認済は「追加済」、確認保存の前は「下書き」（押すと確かめの画面へ） */}
               {m.mark === "added" && <Mark>{L.added}</Mark>}
               {m.mark === "draft" && <StateTag tone="check">{L.draft}</StateTag>}
-              <span className="hidden basis-full text-xs text-muted lg:block">{m.note}</span>
+              {/* 版の注は語（空白で区切った所）の中で折らない（T188。「対応表 未照合」が「未照 / 合」で折れた）。1 語が列より長いときだけ語の中で折る */}
+              <span className="hidden basis-full text-xs break-keep wrap-anywhere text-muted lg:block" data-menu-note>
+                {m.note}
+              </span>
               <LinkPending />
             </Link>
           </li>
@@ -89,7 +92,7 @@ function Unconfirmed({ row }: { row: PersonDocRow }) {
   );
 }
 
-/** 未確認の内訳（問いと未入力の欄の名前と、手書きの数。T117）。手書きの欄は様式で決まりほぼ全員同じなので数だけ */
+/** 未確認欄の内訳（問いと未入力の欄の名前と、要記入の数。T117・T188）。要記入の欄は様式で決まりほぼ全員同じなので数だけ */
 function Breakdown({ row }: { row: PersonDocRow }) {
   const u = row.unconfirmed;
   if (!u || u.count === 0) return null;

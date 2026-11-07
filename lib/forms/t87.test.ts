@@ -282,7 +282,7 @@ describe("画面（renderToStaticMarkup）", () => {
     expect(bar).toContain(`data-unconfirmed-fold="${view.count}"`);
     expect(bar).toContain('aria-expanded="false"');
     expect(bar).toMatch(/<dl id="unconfirmed-fields" hidden=""/);
-    expect(bar).toContain(`未確認 <span class="tabular-nums">${view.count}</span>`);
+    expect(bar).toContain(`未確認欄 <span class="tabular-nums">${view.count}</span>`);
     expect(bar).toContain("近親者 フリガナ");
     expect(bar).toContain('data-unconfirmed-group="blank"');
     expect(bar).toContain('data-unconfirmed-group="noSource"');
