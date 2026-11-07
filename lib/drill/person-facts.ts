@@ -855,7 +855,7 @@ export function placeReplyOf(f: Pick<Facts, "place" | "plan" | "moving">, near =
 }
 
 /** 離れた人の言い方（T182。行き先の分からない「分かりません」はそのまま） */
-const FAR_PLACE_WORDS: Readonly<Record<string, string>> = {
+export const FAR_PLACE_WORDS: Readonly<Record<string, string>> = {
   "今、向かっている途中です。": "今、向かっている途中のはずです。",
   "家にいます。": "家にいるはずです。",
   "避難所にいます。": "避難所にいるはずです。",
