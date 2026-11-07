@@ -32,6 +32,7 @@ import { unpackInk } from "./ink.ts";
 import { imageBoxOf } from "./overlay-sheet.ts";
 import { jpegSize, pageImageKey, storePageImages, type PageImageBucket } from "./page-images.ts";
 import { formReadInksOf, formReadPagesOf } from "./read-upload.ts";
+import { splitLoneMarks } from "./lone-mark.ts";
 import { addTrailingFields, type TrailingPage } from "./trailing-field.ts";
 
 export type FormReadDeps = {
@@ -125,8 +126,9 @@ export async function formReadPost(deps: FormReadDeps, scope: FormsScope, form: 
     const read = await readForm(files, ctx, { concurrency: deps.readConcurrency, optionAi: deps.optionAi });
     // 頁の番号は受けた画像の順（下に敷く画像と合わせる）
     const fitted = fitPages(read.mapping, files.length);
-    // □ の右の空きに中身の欄を補う（T168。印刷の字の位置を使う。Claude は呼ばない）
-    const mapping = { ...fitted, fields: addTrailingFields(fitted.fields, trailingPages(parts, inks)) };
+    // □ 1 つに読んだ選択肢の並びを分け（T179）、□ の右の空きに中身の欄を補う（T168）。印刷の字の位置を使う。Claude は呼ばない
+    const printed = trailingPages(parts, inks);
+    const mapping = { ...fitted, fields: addTrailingFields(splitLoneMarks(fitted.fields, printed), printed) };
     const saved = await insertReadMapping(deps.db, {
       id: deps.newId?.() ?? crypto.randomUUID(),
       officeId: scope.officeId,
@@ -190,9 +192,10 @@ export async function formRereadPost(deps: FormReadDeps, scope: FormsScope, id: 
     const ctx = await deps.aiContext(scope.officeId);
     const read = await readForm(files, ctx, { concurrency: deps.readConcurrency, pageNumbers, pages: stored.mapping.pages, optionAi: deps.optionAi });
     const merged = mergeReread(stored.mapping, read.mapping, read.unread);
-    // 読み直した頁にも □ の右の空きの欄を補う（T168）
+    // 読み直した頁にも同じ補いを当てる（T179・T168）
     const printed = new Map(stored.pageImages.map((p) => [p.page, { ink: p.ink ? unpackInk(p.ink) : null, image: imageBoxOf(p) }]));
-    const mapping = { ...merged, fields: addTrailingFields(merged.fields, printed, new Set(pageNumbers)) };
+    const only = new Set(pageNumbers);
+    const mapping = { ...merged, fields: addTrailingFields(splitLoneMarks(merged.fields, printed, only), printed, only) };
     const saved = await updateReadMapping(deps.db, { officeId: scope.officeId, id, version, mapping, at: deps.now?.() ?? new Date().toISOString() });
     if (!saved.ok) return mappingError(saved.error);
     return Response.json({ ok: true, version: saved.version, mapping, unread: mapping.unread ?? [] }, { headers: NO_STORE });

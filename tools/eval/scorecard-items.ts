@@ -173,6 +173,10 @@ const formPaper = (r: FormsResultLike, id: string): Raw => {
   const ps = r.papers.filter((p) => p.form === id && p.score);
   return ps.length > 0 ? [sumOf(ps.map((p) => p.score!.hit)), sumOf(ps.map((p) => p.score!.filled))] : null;
 };
+const paperTotal = (r: FormsResultLike): Raw => {
+  const ps = r.papers.filter((p) => p.score);
+  return ps.length > 0 ? [sumOf(ps.map((p) => p.score!.hit)), sumOf(ps.map((p) => p.score!.filled))] : null;
+};
 /**
  * 一覧の様式の共有の外れか（T161）: 2 つ目の事業所が写せず、訳が「1 つ目に読めない頁があった」（共有に入れないのが決め）でない物。
  * 訳の無い前の回（6 回目まで）の写せなかった物も外れ。書類の指摘（tools/eval/forms/findings.ts の sharedMiss）も同じ数え方
@@ -224,6 +228,8 @@ const FORMS: Item[] = [
     forms: (r) => formPaper(r, "kiroku"),
   },
   { id: "forms.paper.form9", bench: "forms", label: "紙 様式 9", better: "higher", unit: "rate", agg: "sum", notes: ["r7〜（T161）: 値の比べで文の終わりの句点（。．.）の有無を同じに（全角半角・空白の違いは前から外れにしていない）。r6 までの列は句点の違いも外れに数えた数"], forms: (r) => formPaper(r, "form9") },
+  // T179: 紙の全体。項目の当たりと要確認に出ない紙の取りこぼし（読みの形の揺れ。評価の 11 回目の松山市の 54）を見る
+  { id: "forms.paper.total", bench: "forms", label: "紙 全体", better: "higher", unit: "rate", agg: "sum", forms: paperTotal },
   // 一覧の様式の共有の対応表（T161）。回した＝2 つ目の事業所で読んだ様式。外れは写せなかった物のうち、1 つ目に読めない頁が無かった物
   {
     id: "forms.shared",

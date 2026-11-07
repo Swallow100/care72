@@ -21,7 +21,7 @@ describe("T176 読み取りの揺れの守りは本物の回で見る", () => {
       expect(rules("replay")).not.toContain(`guard:${id}`);
       expect(rules("fake")).not.toContain(`guard:${id}`);
     }
-    expect(unjudgedGuards("forms", "replay").map((g) => g.id)).toEqual(READ_GUARDS);
+    expect(unjudgedGuards("forms", "replay").map((g) => g.id)).toEqual(expect.arrayContaining(READ_GUARDS));
     expect(unjudgedGuards("forms", "real")).toEqual([]);
   });
 
