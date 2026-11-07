@@ -204,7 +204,7 @@ async function logScene(browser) {
   const r = new Recorder(cm, "R17");
   await r.start();
   await sleep(1500);
-  const tabs = await cm.$("[data-pane-tab]");
+  const tabs = await cm.$$("[data-pane-tab]");
   let tab = null;
   for (const t of tabs) if ((await t.evaluate((e) => e.textContent ?? "")).includes("経過")) tab = t;
   if (tab) {
@@ -677,7 +677,7 @@ async function warmRedact(cm, jpg) {
   const [chooser] = await Promise.all([cm.waitForFileChooser({ timeout: 15_000 }), clickText(cm, "選択", { exact: true })]);
   await chooser.accept([jpg]);
   await sleep(1000);
-  await clickText(cm, "読取", { exact: true });
+  await clickText(cm, "読込", { exact: true });
   const ok = await cm
     .waitForSelector('[data-redact="page-image"]', { visible: true, timeout: 300_000 })
     .then(() => true)
@@ -713,7 +713,7 @@ async function aiForm(browser) {
     return;
   }
   r.mark("読取");
-  await clickText(cm, "読取", { exact: true });
+  await clickText(cm, "読込", { exact: true });
   await cm.waitForSelector('[data-redact="page-image"]', { visible: true, timeout: 180_000 });
   r.mark("黒塗りの画面");
   await sleep(3000);

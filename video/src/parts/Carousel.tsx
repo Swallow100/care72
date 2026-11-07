@@ -129,7 +129,8 @@ export const Carousel: React.FC<{ items: CarouselItem[]; marks: number[]; durati
                     opacity,
                   }}
                 >
-                  <Framed id={it.id} assets={assets} maxWidth={PANEL_W} maxHeight={PANEL_H} from={it.from} duration={duration} note={note} delay={0} push={false} />
+                  {/* 2 つ目からは、回りきって正面に来てから from 秒を流す（回っている間は止めておく） */}
+                  <Framed id={it.id} assets={assets} maxWidth={PANEL_W} maxHeight={PANEL_H} from={it.from} duration={duration} note={note} delay={0} push={false} hold={i === 0 ? 0 : Math.max(0, at[i] - LEAD + TURN)} />
                 </div>
               );
             })}

@@ -315,37 +315,38 @@ export const SCENES: Scene[] = [
     at: 55.6,
     end: 81.9,
     shots: [
-      // 入れる欄（R02-5、11/5 に手元の dev で撮った）。N10 の句に合わせて 3 つの絵に。右の列（AI 入力）に寄る（作者の頼み 11/7）
-      { at: 55.6, end: 60, kind: "footage", footage: "R02", from: 25.5, label: "入れる欄: 話した文が欄に流れる", zoom: [{ x: 0.73, y: 0.1, w: 0.27 }, { x: 0.73, y: 0.1, w: 0.27 }] },
+      // 入れる欄（R02-40、11/7 夜に鍵ありで撮った。問いと答えが 4 往復、そのあと右の列を下へ 4 回）。N10 の句に合わせて 3 つの絵に。右の列（AI 入力）に寄る（作者の頼み 11/7）
+      { at: 55.6, end: 60, kind: "footage", footage: "R02", from: 18.1, label: "入れる欄: 話した文が欄に流れる", zoom: [{ x: 0.73, y: 0.1, w: 0.27 }, { x: 0.73, y: 0.1, w: 0.27 }] },
       {
         at: 60,
         end: 63.91,
         kind: "footage",
         footage: "R02",
-        from: 37.3,
+        from: 29.3,
         label: "入れる欄: Sonnet が記録の 3 項目に分ける",
         chip: "Claude Sonnet 5.5",
         zoom: [{ x: 0.73, y: 0.13, w: 0.27 }, { x: 0.73, y: 0.22, w: 0.27 }],
         // アンケートの問 9（11/6。前の S8 の声を字だけにしてここへ）: なる 1・少しなる 2・ならない 1
         stat: { at: 0.2, label: "アンケート（ケアマネジャー 4 人）", text: "AI の下書きなら／作る気になる", value: "4 人中 3 人" },
       },
-      { at: 63.91, end: 68.9, kind: "footage", footage: "R02", from: 66.3, label: "入れる欄: 保存と、抜けている所の質問", chip: "Claude Sonnet 5.5", zoom: [{ x: 0.73, y: 0.05, w: 0.27 }, { x: 0.73, y: 0.22, w: 0.27 }] },
+      { at: 63.91, end: 68.9, kind: "footage", footage: "R02", from: 62.0, rate: 4, label: "入れる欄: 抜けている所の質問と答え、下へ送る", chip: "Claude Sonnet 5.5", zoom: [{ x: 0.73, y: 0.05, w: 0.27 }, { x: 0.73, y: 0.22, w: 0.27 }] },
       // R15-2（11/6、手元の dev）。本人のページを上から「書類」の欄まで送る（経過の欄の手前で止めた）。右の AI 入力の欄（AI 未設定）と左の一覧は映さない
       { at: 68.9, end: 73.3, kind: "footage", footage: "R15", from: 1.2, rate: 1.15, label: "本人のページを下まで（アプリの中の記録）", zoom: [{ x: 0.2, y: 0.08, w: 0.54 }, { x: 0.2, y: 0.08, w: 0.54 }] },
-      { at: 73.3, end: 77.5, kind: "flow", footages: ["R03", "R04", "R05"], label: "記録から 3 つの紙面", source: "松山市 個別避難計画の様式（2026.9.10）・記入は架空の例" },
-      // 様式の読み取り（R06-1）。架空の「こもれび市」の白紙の様式の画像 → Opus の対応表（16.6 秒に出る）。作者の推す所（11/6）は字で
+      // 声の拍（N12 の間）に合わせて 3 つに分ける（作者の頼み 11/7）: 「自治体の形式の個別避難計画」= 様式の読み取り（R06-41、15.3 秒に対応表）、
+      // 「本人保管書類」= 本人の 1 枚（R04）、「災害時医療班用の要約」= 医療要約の紙面に寄って下へ送る（R05。ただの拡大にしない）
       {
-        at: 77.5,
-        end: 81.9,
+        at: 73.3,
+        end: 76.5,
         kind: "footage",
         footage: "R06",
-        from: 14.1,
+        from: 13.4,
         label: "様式の読み取り: 写真 → 対応表",
         chip: "Claude Opus 5.5",
-        // 字幕と重ならないよう、窓の右下の面に（11/6）
         stat: { at: 0.3, label: "自治体ごとの様式", text: "欄を読み取って枠ごとに書き込み／足りない所は手で直す", value: "" },
-        zoom: [{ x: 0, y: 0, w: 1 }, { x: 0.1, y: 0.05, w: 0.8 }],
+        zoom: [{ x: 0, y: 0, w: 1 }, { x: 0.05, y: 0.04, w: 0.9 }],
       },
+      { at: 76.5, end: 78.1, kind: "footage", footage: "R04", from: 2.2, label: "本人の 1 枚", source: "記入は架空の例" },
+      { at: 78.1, end: 81.9, kind: "footage", footage: "R05", from: 2.0, rate: 1.2, label: "医療班の要約に寄って下へ", source: "災害診療記録 2018 の欄・記入は架空の例", zoom: [{ x: 0, y: 0.08, w: 0.62 }, { x: 0.02, y: 0.2, w: 0.5 }] },
     ],
   },
   {
@@ -355,10 +356,14 @@ export const SCENES: Scene[] = [
     at: 81.9,
     end: 124.7,
     shots: [
-      // 地震想定で撮り直した R07-8・R08-8・R09-8（11/6 夜、手元の dev）。秒は markers.json と calls.json から。6.1 秒に訓練の画面、14.1 秒に小林 トシへ訪問依頼
-      { at: 81.9, end: 91.7, kind: "footage", footage: "R07", from: 6.1, rate: 0.8, label: "訓練の地震想定。10 人の表と被害状況", chip: "Claude Haiku 5.5 × 10" },
-      // 早送り（自動進行で「次まで」を繰り返す）。着信の窓の無い 230 秒から 4 倍
-      { at: 91.7, end: 99.5, kind: "footage", footage: "R07", from: 230, rate: 4, label: "72 時間を早送り" },
+      // 地震想定で撮り直した R07-41・R08-41・R09-41・R17-41（11/7 夜、手元の dev、鍵あり）。秒は markers.json から。6.1 秒に訓練の画面、14.1 秒に小林 トシへ訪問依頼
+      // 訓練の始まりは止めずに動かす（作者の頼み 11/7）: 10 人の表へ寄ってから、右の被害状況と地図の方へ
+      { at: 81.9, end: 86.6, kind: "footage", footage: "R07", from: 6.1, rate: 0.8, label: "訓練の地震想定。10 人の表", chip: "Claude Haiku 5.5 × 10", zoom: [{ x: 0, y: 0, w: 1 }, { x: 0, y: 0.34, w: 0.4 }] },
+      { at: 86.6, end: 91.7, kind: "footage", footage: "R07", from: 9.9, rate: 0.8, label: "被害状況と地図", chip: "Claude Opus 5.5", zoom: [{ x: 0.66, y: 0.36, w: 0.34 }, { x: 0.66, y: 0.62, w: 0.34 }] },
+      // 早送り（自動進行で「次まで」を繰り返す）。着信の窓の無い 255 秒（高橋 ユキの着信のあと）から 4 倍。「停電や断水」で上の経過の帯（停電中・断水中）に寄る
+      { at: 91.7, end: 95.6, kind: "footage", footage: "R07", from: 255, rate: 4, label: "72 時間を早送り（停電・断水の帯）", zoom: [{ x: 0, y: 0, w: 1 }, { x: 0, y: 0.1, w: 0.6 }] },
+      // 経過の欄を下へ（R17-41、終わった訓練の頁。5.5 秒から送る）
+      { at: 95.6, end: 99.5, kind: "footage", footage: "R17", from: 4.6, label: "経過の欄を下へ" },
       // 強調の着信は山田 ハナの娘（「母の家に向かっています。酸素ボンベが残り少ないです。」）。R08-8: 0.5 秒に鳴る → 3.0 秒に出る → 声（app-audio.mjs）
       { at: 99.5, end: 105, kind: "footage", footage: "R08", from: 2.2, emphasis: true, label: "強調: 着信 山田 ハナの娘（酸素ボンベ）", zoom: [{ x: 0.2, y: 0.05, w: 0.6 }, { x: 0.26, y: 0.07, w: 0.5 }] },
       // 手: 14.1 秒に小林 トシ → 訪問依頼を選ぶ所（結果は地震で人が足りず「手配不可」になるので、その前で終える）
@@ -506,7 +511,7 @@ export const SCENES: Scene[] = [
 ];
 
 export const LINES: Line[] = [
-  // 11/6 作者の絵コンテの書き込みで全体を組み直した。声の文は作者の文のまま（直したのは事実に合わせた所だけ）。N13・N14・N16・N26・N27・N29・N31 は外した（欠番。N16 と N31 は 3 分に収めるため作者の決め 11/6）
+  // 11/6 作者の絵コンテの書き込みで全体を組み直した。声の文は作者の文のまま（直したのは事実に合わせた所だけ）。N13・N14・N16・N26・N27・N29・N31 は外した（欠番。N16 と N31 は 3 分に収めるため作者の決め 11/6。N31 は終わりの画面の「ケア72」の一言として戻した 11/7）
   { id: "N01", at: 0.3, end: 4.7, ja: "突然ですが『個別避難計画』を知っていますか。", en: "Out of the blue: have you heard of an \"individual evacuation plan\"?" },
   { id: "N02", at: 4.9, end: 15.7, ja: "災害のとき、在宅の高齢者を誰がどう助けるかを決めておく計画です。でも、できているのは 15.1% だけ。", en: "It sets out who will help an older person living at home in a disaster, and how. But only 15.1% have one." },
   { id: "N03", at: 16, end: 26.8, ja: "ケアマネジャーは利用者のことは知っていますが、計画を書く時間がありません。また、計画自体を活かせていません。", en: "Care managers know their clients, but have no time to write the plans. And the plans themselves go unused." },
@@ -518,7 +523,7 @@ export const LINES: Line[] = [
   { id: "N11", at: 68.4, end: 73.2, ja: "項目分けされアプリ内に見やすく記録されます。", en: "It is sorted into fields and kept clearly in the app." },
   { id: "N12", at: 73.4, end: 81.7, ja: "記録から自治体の形式の個別避難計画、本人保管書類、災害時医療班用の要約を作成できます。", en: "From the record: the city's plan form, a sheet for the client to keep, and a summary for the disaster medical team." },
   { id: "N15", at: 82.2, end: 91.6, ja: "次は訓練。Opus が災害状況を細かくシミュレーションし Haiku が利用者一人一人になりきり行動します。", en: "Next, the drill. Opus simulates the disaster in detail, and Haiku plays each client." },
-  { id: "N17", at: 91.8, end: 101.5, ja: "72 時間のシミュレーション訓練の間に停電や断水、電波不良になることがあります。", en: "During the 72-hour drill, there can be power cuts, water outages and bad signal." },
+  { id: "N17", at: 91.8, end: 101.5, ja: "72 時間のシミュレーション訓練では、停電や断水、電波不良や利用者自身の動きなど、さまざまな状況が起こります。", en: "In the 72-hour drill, all kinds of things happen: power cuts, water outages, bad signal, and the clients themselves acting on their own." },
   { id: "N18", at: 105, end: 111.4, ja: "ケアマネジャーは本番と同じように電話したり、避難や電源の手配を行ったりできます。", en: "Just like the real thing, the care manager can call, and arrange evacuation or power." },
   { id: "N19", at: 111.5, end: 124.9, ja: "終わると Opus がケアマネジャーの対応を詳しく講評、今回は山田ハナさんの酸素供給装置への対応が遅れたことを出典付きで指摘しました。", en: "At the end, Opus reviews the response in detail. This time, citing sources, it pointed out the late response to Hana Yamada's oxygen device." },
   { id: "N20", at: 125, end: 130.5, ja: "そして実際の発災時。地震が発生し災害モードに切り替えました。", en: "Then a real disaster. An earthquake hits, and disaster mode is on." },
@@ -528,6 +533,7 @@ export const LINES: Line[] = [
   { id: "N23", at: 149.6, end: 154.8, ja: "AI ではなくルールの表によって連絡順などを決定します。", en: "The order is set not by AI but by a rule table." },
   { id: "N25", at: 155, end: 162.8, ja: "ケアマネジャーと医療班の情報共有も QR コードなどを用いて簡単にできます。", en: "Sharing with the medical team is easy too, with QR codes and more." },
   { id: "N30", at: 165.2, end: 177.2, ja: "普及や実用化への課題はあります。それでも災害時計画を計画だけで終わらせない大きなポテンシャルを持ったアプリを開発できたと思います。", en: "There are hurdles to real-world use. Still, I believe we built an app with real potential to make disaster plans more than just plans." },
+  { id: "N31", at: 177.6, end: 179.2, ja: "ケア72。", en: "Care72." },
 ];
 
 /** ルールの表の 1 枚（F2）に出す行。docs/TRIAGE.md の「色と理由の 1 行」から写した 13 行のうちの 7 行。撮影の前に今の表と照らす */
