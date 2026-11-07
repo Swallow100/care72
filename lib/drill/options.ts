@@ -14,9 +14,21 @@ export const PARTICIPANTS_LIMIT = 20;
 /** 担当一覧が上限を越えるか（越えれば開始の画面で選ぶ） */
 export const overParticipants = (total: number): boolean => total > PARTICIPANTS_LIMIT;
 
-/** 既定の参加者: 担当一覧の順（よみ）の上から上限まで。上限以下なら全員 */
-export function defaultParticipants<T>(caseload: ReadonlyArray<T>): T[] {
-  return caseload.slice(0, PARTICIPANTS_LIMIT);
+/**
+ * 既定の参加者: 上限以下なら全員。越えるときは台帳の要点（医療依存・機器・独居。facts）の多い人を先に、同じ数なら担当一覧の順（よみ）で上限まで。
+ * 返す並びは担当一覧の順のまま（よみの順に選ぶと、機器のある人が外れることがあった）
+ */
+export function defaultParticipants<T extends { facts?: ReadonlyArray<string> } | string>(caseload: ReadonlyArray<T>): T[] {
+  if (caseload.length <= PARTICIPANTS_LIMIT) return caseload.slice();
+  const weight = (p: T) => (typeof p === "string" ? 0 : (p.facts?.length ?? 0));
+  const keep = new Set(
+    caseload
+      .map((p, i) => ({ i, w: weight(p) }))
+      .sort((a, b) => b.w - a.w || a.i - b.i)
+      .slice(0, PARTICIPANTS_LIMIT)
+      .map((x) => x.i),
+  );
+  return caseload.filter((_, i) => keep.has(i));
 }
 
 /** T186 の参加者の選択の言葉（「選択 18 / 20」・上から 20 人に戻す・全部外す） */

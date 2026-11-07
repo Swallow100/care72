@@ -58,6 +58,14 @@ describe("上限の決まり", () => {
     const ids = Array.from({ length: 25 }, (_, i) => `x${i}`);
     expect(defaultParticipants(ids)).toEqual(ids.slice(0, 20));
     expect(defaultParticipants(ids.slice(0, 7))).toEqual(ids.slice(0, 7));
+    // 越えるときは要点（機器・独居など）の多い人を先に選び、並びは担当一覧の順のまま
+    const rows = Array.from({ length: 23 }, (_, i) => ({ id: `p${i}`, facts: i === 22 ? ["酸素", "独居"] : i === 21 ? ["独居"] : [] }));
+    const got = defaultParticipants(rows).map((r) => r.id);
+    expect(got).toHaveLength(20);
+    expect(got).toContain("p22");
+    expect(got).toContain("p21");
+    expect(got).not.toContain("p19");
+    expect(got).toEqual([...got].sort((a, b) => Number(a.slice(1)) - Number(b.slice(1))));
   });
 
   it("pickParticipants: 越える担当一覧で選ばない・21 人選ぶは断る。20 人は通る", () => {
