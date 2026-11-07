@@ -362,9 +362,9 @@ export const SCENES: Scene[] = [
       // 強調の着信は山田 ハナの娘（「母の家に向かっています。酸素ボンベが残り少ないです。」）。R08-8: 0.5 秒に鳴る → 3.0 秒に出る → 声（app-audio.mjs）
       { at: 99.5, end: 105, kind: "footage", footage: "R08", from: 2.2, emphasis: true, label: "強調: 着信 山田 ハナの娘（酸素ボンベ）", zoom: [{ x: 0.2, y: 0.05, w: 0.6 }, { x: 0.26, y: 0.07, w: 0.5 }] },
       // 手: 14.1 秒に小林 トシ → 訪問依頼を選ぶ所（結果は地震で人が足りず「手配不可」になるので、その前で終える）
-      { at: 105, end: 112.9, kind: "footage", footage: "R07", from: 14.3, rate: 0.95, label: "手: 小林 トシに訪問依頼", zoom: [{ x: 0.25, y: 0.2, w: 0.6 }, { x: 0.25, y: 0.4, w: 0.6 }] },
+      { at: 105, end: 111.4, kind: "footage", footage: "R07", from: 14.3, rate: 0.95, label: "手: 小林 トシに訪問依頼", zoom: [{ x: 0.25, y: 0.2, w: 0.6 }, { x: 0.25, y: 0.4, w: 0.6 }] },
       // 採点（R09-8 の 2〜8 秒）。条件到達の 1 行目が「山田 ハナ 酸素 内蔵電池 2 時間を超過」
-      { at: 112.9, end: 118.62, kind: "footage", footage: "R09", from: 2.0, label: "採点（順番・報告・空欄・条件到達）", chip: "Claude Opus 5.5", zoom: [{ x: 0.34, y: 0.11, w: 0.4 }, { x: 0.34, y: 0.11, w: 0.4 }] },
+      { at: 111.4, end: 118.62, kind: "footage", footage: "R09", from: 0.5, label: "採点（順番・報告・空欄・条件到達）", chip: "Claude Opus 5.5", zoom: [{ x: 0.34, y: 0.11, w: 0.4 }, { x: 0.34, y: 0.11, w: 0.4 }] },
       // 講評と出典（8.1 秒に講評へ送り、13.2 秒に出典の行へ）。止まった囲みは付けない
       { at: 118.62, end: 124.7, kind: "footage", footage: "R09", from: 8.4, rate: 0.8, label: "講評と出典", chip: "Claude Opus 5.5", zoom: [{ x: 0.34, y: 0.16, w: 0.4 }, { x: 0.34, y: 0.16, w: 0.4 }] },
     ],
@@ -514,19 +514,19 @@ export const LINES: Line[] = [
   { id: "N06", at: 35.8, end: 42, ja: "楽に作れて、災害でも役立つ計画なら、作る意味が出る、そう考えました。", en: "A plan that is easy to make and useful in a disaster is worth making. That was my thought." },
   { id: "N07", at: 42.2, end: 46.3, ja: "そこでケア72というアプリを作成しました。", en: "So I built an app called Care72." },
   { id: "N08", at: 46.5, end: 55.4, ja: "ケアマネジャーの災害対策計画づくりから訓練、発災時の対応までケア72一つで完結します。", en: "From the care manager's disaster planning to drills and the response in a disaster, Care72 does it all." },
-  { id: "N10", at: 55.9, end: 68.8, ja: "まずは計画。箇条書きや文書、音声で情報を入力、Claude がアプリ内に利用者の情報を記録していきます。抜けている部分は Claude が質問します。", en: "First, the plan. Enter notes, documents or voice, and Claude records the client's information in the app. Claude asks about whatever is missing." },
-  { id: "N11", at: 69, end: 73.2, ja: "項目分けされアプリ内に見やすく記録されます。", en: "It is sorted into fields and kept clearly in the app." },
+  { id: "N10", at: 55.9, end: 68.3, ja: "まずは計画。箇条書きや文書、音声で情報を入力、Claude がアプリ内に利用者の情報を記録していきます。抜けている部分は Claude が質問します。", en: "First, the plan. Enter notes, documents or voice, and Claude records the client's information in the app. Claude asks about whatever is missing." },
+  { id: "N11", at: 68.4, end: 73.2, ja: "項目分けされアプリ内に見やすく記録されます。", en: "It is sorted into fields and kept clearly in the app." },
   { id: "N12", at: 73.4, end: 81.7, ja: "記録から自治体の形式の個別避難計画、本人保管書類、災害時医療班用の要約を作成できます。", en: "From the record: the city's plan form, a sheet for the client to keep, and a summary for the disaster medical team." },
   { id: "N15", at: 82.2, end: 91.6, ja: "次は訓練。Opus が災害状況を細かくシミュレーションし Haiku が利用者一人一人になりきり行動します。", en: "Next, the drill. Opus simulates the disaster in detail, and Haiku plays each client." },
-  { id: "N17", at: 91.8, end: 99.4, ja: "72 時間のシミュレーション訓練の間に停電や断水、電波不良になることがあります。", en: "During the 72-hour drill, there can be power cuts, water outages and bad signal." },
-  { id: "N18", at: 105, end: 112.9, ja: "ケアマネジャーは本番と同じように電話したり、避難や電源の手配を行ったりできます。", en: "Just like the real thing, the care manager can call, and arrange evacuation or power." },
-  { id: "N19", at: 113.1, end: 124.5, ja: "終わると Opus がケアマネジャーの対応を詳しく講評、今回は山田ハナさんの酸素供給装置への対応が遅れたことを出典付きで指摘しました。", en: "At the end, Opus reviews the response in detail. This time, citing sources, it pointed out the late response to Hana Yamada's oxygen device." },
+  { id: "N17", at: 91.8, end: 101.5, ja: "72 時間のシミュレーション訓練の間に停電や断水、電波不良になることがあります。", en: "During the 72-hour drill, there can be power cuts, water outages and bad signal." },
+  { id: "N18", at: 105, end: 111.4, ja: "ケアマネジャーは本番と同じように電話したり、避難や電源の手配を行ったりできます。", en: "Just like the real thing, the care manager can call, and arrange evacuation or power." },
+  { id: "N19", at: 111.5, end: 124.9, ja: "終わると Opus がケアマネジャーの対応を詳しく講評、今回は山田ハナさんの酸素供給装置への対応が遅れたことを出典付きで指摘しました。", en: "At the end, Opus reviews the response in detail. This time, citing sources, it pointed out the late response to Hana Yamada's oxygen device." },
   { id: "N20", at: 125, end: 130.5, ja: "そして実際の発災時。地震が発生し災害モードに切り替えました。", en: "Then a real disaster. An earthquake hits, and disaster mode is on." },
   { id: "N21", at: 130.7, end: 135.6, ja: "利用者またはその家族はスマホで安否確認ができます。", en: "Clients or their families can check in from their phones." },
   { id: "N22", at: 135.8, end: 142.8, ja: "本人がボタンを押さない場合は AI 音声で質問して録音と状況把握に努めます。", en: "If the client doesn't press a button, an AI voice asks, and the app records to understand the situation." },
   { id: "N24", at: 143, end: 149.4, ja: "Haiku が録音内容をまとめます。最終決定はケアマネジャーが行います。", en: "Haiku summarizes the recording. The care manager makes the final call." },
   { id: "N23", at: 149.6, end: 154.8, ja: "AI ではなくルールの表によって連絡順などを決定します。", en: "The order is set not by AI but by a rule table." },
-  { id: "N25", at: 155, end: 162, ja: "ケアマネジャーと医療班の情報共有も QR コードなどを用いて簡単にできます。", en: "Sharing with the medical team is easy too, with QR codes and more." },
+  { id: "N25", at: 155, end: 162.8, ja: "ケアマネジャーと医療班の情報共有も QR コードなどを用いて簡単にできます。", en: "Sharing with the medical team is easy too, with QR codes and more." },
   { id: "N30", at: 165.2, end: 177.2, ja: "普及や実用化への課題はあります。それでも災害時計画を計画だけで終わらせない大きなポテンシャルを持ったアプリを開発できたと思います。", en: "There are hurdles to real-world use. Still, I believe we built an app with real potential to make disaster plans more than just plans." },
 ];
 
