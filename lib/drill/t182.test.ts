@@ -11,6 +11,7 @@ import { carryMoved, dropRoadSlips, factsOf, placeOfState, placeReplyOf, planOf 
 import { EMPTY_WORLD, type WorldState } from "./scenarios.ts";
 import { clockOfMinute, clockWhen, dayLine, startHourOf } from "./night.ts";
 import { simTimeText } from "./time-text.ts";
+import { calleeText, speakerText } from "./labels.ts";
 
 describe("1. 発災の時刻の分", () => {
   const startedAt = "2026-11-04T01:50:00.000Z"; // 日本の 10:50
@@ -157,5 +158,13 @@ describe("5. 72 時間の近くで次へ回した監督の出来事", () => {
     const b = await advance(first!.state, DRILL_END_MINUTE, hooks, { policy: "clock" } as never);
     expect(b!.tick.finished).toBe(true);
     expect((b!.state.world.scheduled ?? []).filter((s) => s.at >= DRILL_END_MINUTE)).toEqual([]);
+  });
+});
+
+describe("6. 代わりに電話に出た人の名", () => {
+  it("answeredBy があればその人、無ければ手の相手", () => {
+    expect(speakerText({ kind: "call", calleeLabel: "本人", result: { answeredBy: "夫" } })).toBe("夫");
+    expect(speakerText({ kind: "call", calleeLabel: "本人", result: {} })).toBe("本人");
+    expect(speakerText({ kind: "dispatch", calleeLabel: null, result: null })).toBe(calleeText({ kind: "dispatch", calleeLabel: null }));
   });
 });
