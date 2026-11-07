@@ -62,6 +62,7 @@ import { paperText } from "./paper-text.ts";
 import { warekiText } from "./wareki.ts";
 import { codeOfOption, codesOf, freeCodes, optionTable, pickByCodes, soleCodeOfText } from "./option-values.ts";
 import { bracketOwners, strayOther, type BracketOwner } from "./form-shape.ts";
+import { hasSlot } from "./read-settle.ts";
 import { transportKindOf, transportText } from "../map/transport.ts";
 
 // ---------- 項目の値 ----------
@@ -977,6 +978,18 @@ export function bracketCell(cell: Cell, own: BracketOwner<MappingField>, ctx: Ct
   return v.kindCell(own.rest ? ["その他"] : own.row.map((f) => f.label));
 }
 
+/**
+ * □・選ぶ欄の行の後ろの空きの字の欄（T181。「□なし □あり 病名（　）」の 病名（　））。同じ頁・同じ項目の □・選ぶ欄の右で同じ行の、名前に空きのある字の欄。
+ * 値が無い（「なし」）ときは □ の なし の印で言うので、空きに「なし」を書かない
+ */
+function markSlot(field: MappingField, fields: readonly MappingField[]): boolean {
+  if ((field.shape !== "text" && field.shape !== "lines") || !field.item || !field.box || !hasSlot(field.label)) return false;
+  const fb = field.box;
+  return fields.some(
+    (g) => g !== field && !g.removed && g.page === field.page && g.item === field.item && (g.shape === "check" || g.shape === "choice") && !!g.box && g.box.x < fb.x && Math.abs(g.box.y + g.box.h / 2 - (fb.y + fb.h / 2)) <= Math.max(g.box.h, fb.h),
+  );
+}
+
 /** 確かめた対応表と台帳から、欄の順に値を並べた紙面を作る */
 export function buildMappedSheet(rows: PersonPageRows, mapping: FormMapping, opts: BuildOptions): MappedSheet {
   const ledger = parseLedger(rows.person.ledger);
@@ -1008,7 +1021,7 @@ export function buildMappedSheet(rows: PersonPageRows, mapping: FormMapping, opt
     const base = phoneRole(mappedCell(held.has(field.id) ? { ...field, item: null } : field, ctx), field, mapping.fields);
     // 並びの終わりの「その他（　）」に違う項目（T164、form-shape.ts の strayOther）: 違う欄に書かない
     const stray = !own && !held.has(field.id) && base.kind !== "withheld" && strayOther(field, shown);
-    const cell = own ? bracketCell(base, own, ctx) : stray ? EMPTY : base;
+    const cell = own ? bracketCell(base, own, ctx) : stray ? EMPTY : markSlot(field, shown) && base.kind === "none" ? EMPTY : base;
     const name = field.section ? `${field.section} ${field.label}` : field.label;
     if (cell.kind === "withheld") withheld.add(cell.consent);
     else if (isUnconfirmed(cell)) unconfirmedLabels.push(name);

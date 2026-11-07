@@ -20,6 +20,10 @@ import { ledgerItem, type FieldBox, type LedgerItemKey, type MappingField } from
 /** □ ごとに同じ項目を当てる種類の項目（読み取りの決まり 12 の例外。紙は □ の名前と台帳の種類を照らす） */
 const PER_MARK_ITEMS: ReadonlySet<LedgerItemKey> = new Set<LedgerItemKey>(["medical.devices", "medical.medications"]);
 
+/** あり・なし の □ の名前（lib/forms/mapped-sheet.ts の YES・NO と同じ言葉） */
+const YES_WORD = /^(あり|有|有り|はい)$/;
+const NO_WORD = /^(なし|無|無し|いいえ)$/;
+
 const area = (b: FieldBox | null | undefined) => (b ? b.w * b.h : 0);
 const isText = (f: MappingField) => f.shape === "text" || f.shape === "lines";
 
@@ -61,6 +65,10 @@ function mergeMarks(fields: readonly MappingField[]): MappingField[] {
       continue;
     }
     for (const g of [...marks, ...between]) done.add(g.id);
+    // あり・なし の並びの後ろの空き（「□なし □あり 病名（　）」）は、あり の中身を書く所。外すかは空きの決まり（freeSlots）で、ほかに書く欄が無ければ残す（T181）
+    const yesNo = marks.length === 2 && marks.some((m) => YES_WORD.test(squeeze(m.label))) && marks.some((m) => NO_WORD.test(squeeze(m.label)));
+    const last = fields.indexOf(marks[marks.length - 1]);
+    const keep = (g: MappingField) => yesNo && fields.indexOf(g) > last;
     const boxes = marks.map((m) => m.box!);
     const box = unionOf(boxes);
     out.push({
@@ -73,7 +81,7 @@ function mergeMarks(fields: readonly MappingField[]): MappingField[] {
       ai: f.ai ? { ...f.ai, reason: `${f.ai.reason}（□ の並び）`, box } : f.ai,
     });
     // 括弧の欄を並びの後ろに（読みの順は確かめの画面の順だけで、紙の場所は box）
-    for (const g of between) out.push(freed(g, "□ の並びの括弧"));
+    for (const g of between) out.push(keep(g) ? g : freed(g, "□ の並びの括弧"));
   }
   return out;
 }
@@ -128,7 +136,11 @@ const SLOT = /[(【[〔](?:[^)】\]〕]*\s[^)】\]〕]*|[~〜ー\-・…]*)[)】
 /** 欄の名前に空きがあるか（台の数える口も同じ物を使う。tools/eval/forms/drift.ts） */
 export const hasSlot = (label: string) => SLOT.test(nfkc(label));
 
-/** 親の □ か選ぶ欄（同じ頁・同じ段・同じ項目）があり、選択肢や □ の子でない空きの字の欄は項目なし */
+/**
+ * 親の □ か選ぶ欄（同じ頁・同じ段・同じ項目）があり、選択肢や □ の子でない空きの字の欄は項目なし。
+ * 外すのは、同じ頁・同じ項目で値を書く欄がほかにある時だけ（T181）。「□なし □あり 病名（　）」の空きは、ほかに書く欄が無ければ
+ * 項目の値を書く所で、外すとアレルギーの名前・病名が紙から消えた（項目を外した欄は未確認になるだけで、落とした数に出ない）
+ */
 function freeSlots(fields: readonly MappingField[]): MappingField[] {
   return fields.map((f) => {
     if (f.removed || !f.item || !isText(f) || PER_MARK_ITEMS.has(f.item) || !hasSlot(f.label)) return f;
@@ -137,6 +149,8 @@ function freeSlots(fields: readonly MappingField[]): MappingField[] {
     // 「要介護（　）級」と □ 要介護の組は □ の中身を書く所（読み取りの補いの括弧、item-hints.ts の 1）
     const head = squeeze(nfkc(f.label).split(SLOT)[0]);
     if (parents.some((g) => g.shape === "check" && squeeze(g.label) === head)) return f;
+    const writers = fields.filter((g) => g !== f && !g.removed && g.page === f.page && g.item === f.item && carriesValue(g) && !bracketOwner(g, fields));
+    if (writers.length === 0) return f;
     return freed(f, "親の項目の空き");
   });
 }
