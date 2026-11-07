@@ -125,11 +125,16 @@ export function factHits(outcome: RunOutcome, people: Readonly<Record<string, Fa
   const hit = (rule: GateRule | FactExtraRule, person: string | null, minute: number | null, evidence: string) => hits.push({ check: "facts", rule, person, minute, evidence });
   // 発災の時刻（T177。門と同じ。夜間発災は深夜 2 時、ほかは開始の時刻。切れた時刻の言葉 clock_said は sentenceFix が直す形で数える）
   const startHour = clockStartOf({ night: outcome.plan.night === true, startHour: outcome.startedAt ? startHourOf(outcome.startedAt) : null });
+  // 出向いてもらった人は戻ると世界の一覧から消える（T177。帳面は終わりの世界なので、手の返事の着く時刻から作り直す。門が見た「来た人」と揃える）
+  const sent = actions.flatMap((a) =>
+    (a.kind === "free" ? a.as : a.kind) === "dispatch" && a.person && typeof a.result?.arriveAt === "number" ? [{ person: a.person, arrive: a.result.arriveAt, back: a.result.arriveAt, arrived: true }] : [],
+  );
+  const factsWorld: WorldState = { ...world, dispatched: [...(world.dispatched ?? []), ...sent] };
   const factsAt = (person: string, prev: PersonState | null, minute: number) => {
     const p = people[person];
     return factsOf({
       person,
-      world,
+      world: factsWorld,
       state: prev,
       actions: actions.filter((a) => a.person === person),
       now: minute,

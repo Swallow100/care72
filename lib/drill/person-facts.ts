@@ -835,6 +835,19 @@ function blockedWords(f: Pick<Facts, "blockedBy">): string {
   return [b.roads.length > 0 ? `${b.roads.join("・")}が通行止` : null, b.flooded ? "家の辺りが水につかっている" : null].filter(Boolean).join("で、");
 }
 
+/**
+ * 「どこにいますか」のコードの答え（T177。記録から。名前を書かない）。記録が無い・家にいないだけで行き先の分からない連絡は null（本人役が答える）
+ */
+export function placeReplyOf(f: Pick<Facts, "place" | "plan" | "moving">): string | null {
+  if (f.moving) return "今、向かっている途中です。";
+  const p = f.place;
+  if (!p || p.loose) return null;
+  if (p.by === "wandering") return "どこにいるか分かりません。";
+  if (p.where === "home") return "家にいます。";
+  if (p.where === "shelter") return "避難所にいます。";
+  return f.plan?.destination === "hospital" ? "病院にいます。" : "避難先にいます。";
+}
+
 /** 残りの時間の言い方（T141。コードが決める数。10 分・30 分・1 時間に丸める） */
 export function remainWords(minutes: number): string {
   const m = Math.max(0, Math.round(minutes));
@@ -1420,8 +1433,11 @@ export function sentenceSlip(s: string, ctx: SlipContext): GateRule | null {
 const CUT_TOPIC = /(?:電池|バッテリー|予備|ボンベ|呼吸器|濃縮器|吸引器|酸素|機械|機器)[^。]*?(?:切れ|止ま)(?!る前|そう|かけ|たら|れば|りそう)/u;
 /** 言葉の中の時計の時刻（「午後 4 時」「十一時」。「4 時間」は見ない）。m[1] 数 */
 const CLOCK_SAID = /(?:午前|午後|朝|昼|夕方|夜|深夜|未明|明け方)?\s*(\d{1,2}|[一二三四五六七八九十]+)\s*時(?!間)(?:\s*\d{1,2}\s*分|半)?/u;
-/** 言葉の中の「N 時間前」（T177） */
-const AGO_SAID = new RegExp(`(${NUM})\\s*時間(半)?前`, "u");
+/** 切れた時刻として言った時計の時刻か（時刻のすぐ後に切れ・止まがある。「業者は 7 時に来ますが、予備が切れました」の時刻は見ない） */
+const CLOCK_CUT = new RegExp(`${CLOCK_SAID.source}[^、。]{0,12}?(?:切れ|止ま)`, "u");
+/** 言葉の中の「N 時間前」（T177。すぐ後に切れ・止まがある物） */
+const AGO_SAID = new RegExp(`(${NUM})\\s*時間(半)?前[^、。]{0,8}?(?:切れ|止ま)`, "u");
+const AGO_WORDS = new RegExp(`${NUM}\\s*時間半?前`, "u");
 /** 12 時間の時計で見た差（「4 時」は 16 時とも読める。午前・午後の無い話し言葉なので 12 時間の差は比べない） */
 const dial = (a: number, b: number): number => {
   const d = Math.abs(a - b) % 12;
@@ -1443,9 +1459,9 @@ function clockFix(t: string, ctx: SlipContext): { text: string; hit: boolean } {
   if (ago) {
     const said = (numOf(ago[1]) ?? 0) * 60 + (ago[2] ? 30 : 0);
     if (cuts.some((x) => Math.abs(c.now - x.minute - said) <= Math.max(60, (c.now - x.minute) * 0.25))) return { text: t, hit: false };
-    return { text: t.replace(ago[0], `${minuteText(c.now - pick.minute)}前`), hit: true };
+    return { text: t.replace(AGO_WORDS, `${minuteText(c.now - pick.minute)}前`), hit: true };
   }
-  const m = t.match(CLOCK_SAID);
+  const m = t.match(CLOCK_CUT);
   const said = m ? numOf(m[1]) : null;
   if (!m || said === null) return { text: t, hit: false };
   const fits = cuts.some((x) => {
@@ -1453,7 +1469,7 @@ function clockFix(t: string, ctx: SlipContext): { text: string; hit: boolean } {
     return dial(said, k.hour + k.min / 60) <= 1;
   });
   if (fits) return { text: t, hit: false };
-  return { text: t.replace(m[0], `${clockOfMinute(pick.minute, c.startHour).hour} 時`), hit: true };
+  return { text: t.replace(m[0], m[0].replace(CLOCK_SAID, `${clockOfMinute(pick.minute, c.startHour).hour} 時`)), hit: true };
 }
 
 /**

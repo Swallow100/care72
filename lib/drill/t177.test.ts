@@ -3,11 +3,13 @@
 import { describe, expect, it } from "vitest";
 import { SEED_PEOPLE } from "../../seed/people.ts";
 import type { PseudonymInput } from "../pseudonym/index.ts";
-import type { PersonaInput, PersonState } from "./engine.ts";
+import { foldTick, initialState, type PersonaInput, type PersonState } from "./engine.ts";
 import { clockOfMinute, clockStartOf, clockWhen, NIGHT_START_HOUR } from "./night.ts";
-import { canLeaveHome, carryMoved, factLines, factsOf, GO_MINUTES, helpedFlip, planOf, screenTurn, sentenceFix, sentenceSlip, slipContextOf, startsMove, talkContextOf, whenWordsOf } from "./person-facts.ts";
+import { canLeaveHome, carryMoved, factLines, factsOf, GO_MINUTES, helpedFlip, placeReplyOf, planOf, screenTurn, sentenceFix, sentenceSlip, slipContextOf, startsMove, talkContextOf, whenWordsOf } from "./person-facts.ts";
 import { buildPersona, callText, clockWords, personaTurns, tickText, visitText, type PersonaAnswer } from "./persona.ts";
 import { EMPTY_WORLD, type WorldState } from "./scenarios.ts";
+import { seatRounds } from "./clock.ts";
+import { isPlaceAsk } from "./talk-quick.ts";
 
 const seedInput = (id: string): PseudonymInput => {
   const p = SEED_PEOPLE.find((x) => x.person.id === id)!;
@@ -101,6 +103,7 @@ describe("切れた時刻の言葉", () => {
 
     it("切れた話でない文・ほかの時計の時刻・時刻の分からない訓練は見ない", () => {
       expect(fix("業者は 7 時ごろ来る予定です。").rules).toEqual([]);
+      expect(fix("業者は 7 時に来ますが、予備が切れました。").rules).toEqual([]);
       expect(fix("電池はあと 3 時間ほどです。").rules.includes("clock_said")).toBe(false);
       expect(sentenceFix("予備は 7 時に切れました。", slipContextOf(factsAt(cut + 120, null))).rules).toEqual([]);
     });
@@ -176,6 +179,18 @@ describe("手なしの移動", () => {
       expect(f.rideAfter).toBe(500);
       expect(f.place?.where).toBe("shelter");
     });
+  });
+
+  it("移り始めの記録は刻みから作り直しても本人の様子に残る", () => {
+    const base = initialState("heavy_rain", ["p-10"], "2026-11-05T01:00:00.000Z", { clock: true });
+    const going = { ...greenTurn("home"), person: "p-10", at: 10, move: { to: "shelter" as const, at: 660, by: "plan" as const } };
+    const one = foldTick(base, { step: 0, hour: 10, incidents: [], turns: [going] }, 99);
+    expect(one.people["p-10"].moved).toEqual(going.move);
+    // いる所を言わない次の連絡でも残る
+    const two = foldTick(one, { step: 1, hour: 12, incidents: [], turns: [{ ...going, color: "red", whereNow: null, atHome: null, move: undefined, at: 12 }] }, 99);
+    expect(two.people["p-10"].moved).toEqual(going.move);
+    const f = factsOf({ person: "p-10", world: two.world, state: two.people["p-10"], actions: [], now: 720, plan: planOf(seedInput("p-10")), inOutage: false });
+    expect(f.place).toMatchObject({ where: "shelter", by: "plan" });
   });
 
   describe("門", () => {
@@ -261,5 +276,37 @@ describe("手なしの移動", () => {
       expect(t.whereNow).toBe("shelter");
       expect(t.saying).toBeNull();
     });
+  });
+});
+
+describe("呼び出しの数", () => {
+  const isRound = (p: string) => p.startsWith("r");
+  const never = () => false;
+
+  it("巡回だけの人は呼び出しの空きに相乗りし、空きが無ければ次へ残す", () => {
+    expect(seatRounds(["r1", "r2"], isRound, never, 4)).toEqual([]);
+    expect(seatRounds(["a", "r1", "r2", "r3", "r4"], isRound, never, 4)).toEqual(["a", "r1", "r2", "r3"]);
+    expect(seatRounds(["a", "b", "c", "d", "r1"], isRound, never, 4)).toEqual(["a", "b", "c", "d"]);
+    expect(seatRounds(["a", "b", "c", "d", "e", "r1"], isRound, never, 4)).toEqual(["a", "b", "c", "d", "e", "r1"]);
+  });
+
+  it("待ちすぎた巡回の人は自分で呼び出しを開く。ほかの理由の人は巡回で減らない", () => {
+    expect(seatRounds(["r1", "r2"], isRound, (p) => p === "r2", 4)).toEqual(["r1", "r2"]);
+    expect(seatRounds(["a", "b", "c", "d", "r1"], isRound, () => true, 4)).toEqual(["a", "b", "c", "d", "r1"]);
+    expect(seatRounds(["a", "b"], isRound, never, 4)).toEqual(["a", "b"]);
+  });
+
+  it("いる所を聞く言葉は記録で答える。記録の無い人・ほかの問いは本人役", () => {
+    for (const s of ["今どこにいますか", "えっと、今どこですか", "さっきは家にいると言っていましたが、避難所にいるんですか", "避難所にいますか"]) expect(isPlaceAsk({ said: s })).toBe(true);
+    for (const s of ["近くに誰かいますか", "けがはありませんか", "酸素の機械の音がしていますか"]) expect(isPlaceAsk({ said: s })).toBe(false);
+    expect(isPlaceAsk({ ask: "where", said: "" })).toBe(true);
+    const f = (place: Parameters<typeof placeReplyOf>[0]["place"], over = {}) => placeReplyOf({ place, plan: null, ...over });
+    expect(f({ where: "home", at: 1 })).toBe("家にいます。");
+    expect(f({ where: "shelter", at: 1 })).toBe("避難所にいます。");
+    expect(f({ where: "other", at: 1, by: "plan" })).toBe("避難先にいます。");
+    expect(f({ where: "other", at: 1, by: "wandering" })).toBe("どこにいるか分かりません。");
+    expect(f({ where: "other", at: 1, by: "turn", loose: true })).toBeNull();
+    expect(f(null)).toBeNull();
+    expect(f({ where: "home", at: 1 }, { moving: { to: "shelter", at: 9, by: "plan" } })).toBe("今、向かっている途中です。");
   });
 });

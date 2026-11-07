@@ -53,6 +53,7 @@ import {
   GATHER_MINUTES,
   QUIET_REASONS,
   ROUND_QUIET_MINUTES,
+  seatRounds,
   capReached,
   CLOCK_LABELS,
   crossedClocks,
@@ -64,6 +65,7 @@ import {
   PERSONA_BATCH_MAX,
   PERSONA_PER_CUT,
   REASON_ORDER,
+  ROUND_HOLD_MINUTES,
   ROUND_MINUTES,
   ROUND_PER_CUT,
   softReached,
@@ -1031,6 +1033,16 @@ export async function advance(
           order.splice(order.indexOf(p), 1);
         }
       }
+    }
+    // 巡回だけの人は呼び出しの空きに相乗り（T177）。待ちすぎたら自分で開く。呼び出しの数が減り、呼ぶ人は次の区切りへ残る
+    if (hooks.personas) {
+      const isRound = (p: string) => [...reasons.get(p)!].every((r) => r === "round");
+      const overdue = (p: string) => {
+        const gap = to - (lastCalled[p] ?? 0);
+        return gap >= ROUND_QUIET_MINUTES + ROUND_HOLD_MINUTES || (gap >= ROUND_MINUTES + ROUND_HOLD_MINUTES && changedSince(world, p, lastCalled[p] ?? 0));
+      };
+      const seated = new Set(seatRounds([...order].sort((a, b) => (lastCalled[a] ?? 0) - (lastCalled[b] ?? 0)), isRound, overdue, PERSONA_BATCH_MAX));
+      for (const p of [...order]) if (!seated.has(p)) order.splice(order.indexOf(p), 1);
     }
     order.sort((a, b) => rank(a) - rank(b) || (touched[a] ?? to) - (touched[b] ?? to) || live.indexOf(a) - live.indexOf(b));
     const room = Math.max(0, Math.min(PERSONA_PER_CUT, DRILL_CALL_CAP - totalCalls(counts)));

@@ -82,6 +82,16 @@ export function quickKindOf(t: { ask?: TalkAsk; said: string }, lines: ReadonlyA
   return ask && answered(lines, ask) ? "repeat" : null;
 }
 
+/** いる所を聞く文（T177。「今どこにいますか」「避難所にいるんですか」） */
+const PLACE_ASK = /(?:今|いま)?どこ(?:に)?(?:いますか|ですか|いるんですか)$|(?:家|自宅|避難所|避難先|病院)(?:に|で)(?:いる|おられる|いらっしゃる)(?:ん|の)?(?:です)?か$|(?:家|自宅|避難所|避難先|病院)に(?:います|おります)か$/u;
+
+/**
+ * いる所を聞く言葉か（T177）。いる所はコードの記録なので、本人役を呼ばず記録で答える（評価の 10 回目で、移った話の食い違いの元の 1 つが通話の答えで、往復の 2 割近くがこの問いだった）
+ */
+export function isPlaceAsk(t: { ask?: TalkAsk; said: string }): boolean {
+  return t.ask === "where" || (!t.ask && PLACE_ASK.test(core(t.said)));
+}
+
 /** 返事の文。同じ通話でまだ言っていない物から。頭は seed（通話の時刻）で回し、人ごと・通話ごとに同じ返事に偏らない */
 export function quickReply(kind: QuickKind, lines: ReadonlyArray<Line>, seed = 0): string {
   const pool = QUICK_REPLIES[kind];

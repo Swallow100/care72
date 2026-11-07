@@ -254,6 +254,9 @@ export const GUARDS: ReadonlyArray<Guard> = [
   { id: "drill-place-flip", bench: "drill", item: "count:drill:facts:place_flip", op: "<=", value: 0, since: "r11", task: "T177", label: "手も記録も無いのにいる所が変わらない", suspects: ["lib/drill/person-facts.ts", "lib/drill/persona.ts"] },
   { id: "drill-move-said", bench: "drill", item: "count:drill:facts:move_said", op: "<=", value: 0, since: "r11", task: "T177", label: "記録に無い移動の言葉を出さない", suspects: ["lib/drill/person-facts.ts", "lib/drill/persona.ts"] },
   { id: "drill-move-unrecorded", bench: "drill", item: "count:drill:facts:move_unrecorded", op: "<=", value: 0, since: "r11", task: "T177", label: "移ると言った人に移った記録が付く", suspects: ["lib/drill/person-facts.ts", "lib/drill/persona.ts"] },
+  // T177: r10 は 1 回 77、上限比の最大 62.7%（94 回）で T174 の見込み 57% を超えた。巡回だけの人の呼び出しを相乗りに、いる所の問いをコードの答えにした。r10 の数を超えない形で守る
+  { id: "drill-calls-r10", bench: "drill", item: "drill.callsPerRun", op: "<=", value: 77, since: "r11", task: "T177", label: "AI の呼び出しを 10 回目より増やさない", suspects: ["lib/drill/engine.ts", "lib/drill/clock.ts", "lib/drill/hooks.ts"] },
+  { id: "drill-cap-r10", bench: "drill", item: "drill.capRatioMax", op: "<=", value: 0.627, since: "r11", task: "T177", label: "1 訓練の上限との比を 10 回目より増やさない", suspects: ["lib/drill/engine.ts", "lib/drill/clock.ts", "lib/drill/hooks.ts"] },
   { id: "drill-clock-said", bench: "drill", item: "count:drill:facts:clock_said", op: "<=", value: 0, since: "r11", task: "T177", label: "機器の切れた時刻の言葉が帳面の時計と食い違わない", suspects: ["lib/drill/person-facts.ts", "lib/drill/persona.ts", "lib/drill/night.ts"] },
   { id: "drill-world-retired-place", bench: "drill", item: "count:drill:world_place:retired", op: "<=", value: 0, since: "r9", task: "T170", label: "世界の文にやめた架空の地名を出さない", suspects: ["lib/drill/area.ts", "lib/drill/area-demo.ts", "lib/drill/world-apply.ts", "lib/pseudonym/index.ts"] },
 ];

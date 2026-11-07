@@ -62,6 +62,11 @@ export const PERSONA_PER_CUT = 6;
 export const ROUND_MINUTES = 720;
 /** 1 区切りに巡回で呼ぶ人の上限 */
 export const ROUND_PER_CUT = 3;
+/**
+ * 巡回だけの人が自分で呼び出しを開くまで待つ分（T177）。評価の 10 回目で、本人役のまとめ呼びの 16%（172 回のうち 28 回）が巡回の人だけの呼び出しで、連絡に至るのは巡回の 4 割ほどだった。
+ * 巡回の人はほかの理由で開く呼び出しの空きに相乗りし、呼ぶ時刻が来てからこの分たっても空きが無ければ自分で開く（呼ぶ人は減らさず、遅れるのは長くてこの分と次の区切りまで）
+ */
+export const ROUND_HOLD_MINUTES = 180;
 /** 1 訓練の AI の呼び出しの 1 段目の上限。達したら巡回を止め、監督は表の出来事のある区切りだけ */
 export const DRILL_CALL_SOFT = 120;
 /** 1 訓練の AI の呼び出しの上限。達したら AI を呼ばない（固定の筋は想定のみ、仮想は世界停止） */
@@ -213,6 +218,19 @@ export const ROUND_QUIET_MINUTES = 1440;
 
 /** 本人役をまとめて呼ぶとき（T121）の 1 回の人数。1 区切り PERSONA_PER_CUT 人を多くて 2 回に */
 export const PERSONA_BATCH_MAX = 4;
+
+/**
+ * 巡回だけの人を呼び出しの空きに相乗りさせる（T177）。order は oldest の順に並べた呼ぶ候補。ほかの理由の人で開く呼び出しの空きの分だけ巡回の人を残す。
+ * 待ちすぎた巡回の人がいて空きが足りなければ、呼び出しを 1 つ開く。残す人の並びは order のまま
+ */
+export function seatRounds<T>(order: ReadonlyArray<T>, isRound: (p: T) => boolean, overdue: (p: T) => boolean, batch: number): T[] {
+  const others = order.filter((p) => !isRound(p)).length;
+  const rounds = order.filter(isRound);
+  let seats = others > 0 ? Math.ceil(others / batch) * batch - others : 0;
+  if (seats < rounds.length && rounds.some(overdue)) seats += batch;
+  const kept = new Set(rounds.slice(0, seats));
+  return order.filter((p) => !isRound(p) || kept.has(p));
+}
 
 /** 並びを n 個ずつに分ける */
 export function chunks<T>(xs: ReadonlyArray<T>, n: number): T[][] {

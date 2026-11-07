@@ -163,8 +163,8 @@ describe("着信の往復（保存・上限・門）", () => {
     expect(await respondCall(db, SCOPE, ID, call.signal, "answer")).toEqual({ ok: true, recorded: true });
     const { hook, calls } = talkHook();
     const before = await stored();
-    // 8 回とも本人役が答える問い（待機の指示・同じ問いはコードの短い返事で呼ばない。T167）
-    const asks = ["safe", "device_medicine", "where", "injured", "can_move", "shelter", "advise_119", "can_evacuate"] as const;
+    // 8 回とも本人役が答える問い（待機の指示・同じ問いはコードの短い返事で呼ばない。T167。いる所の問いは記録で答える。T177）
+    const asks = ["safe", "device_medicine", "contact_family", "injured", "can_move", "shelter", "advise_119", "can_evacuate"] as const;
     expect(asks).toHaveLength(TALK_MAX);
     let at = before.minute;
     for (const [i, ask] of asks.entries()) {
