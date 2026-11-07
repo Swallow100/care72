@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { SEED_PEOPLE } from "../../seed/people.ts";
 import { FORM_READ_SYSTEM } from "./form-read.ts";
-import { allowedTwice, extraItemFields } from "./form-shape.ts";
+import { allowedTwice as twice, extraItemFields, type ShapeField } from "./form-shape.ts";
 import { buildMappedSheet } from "./mapped-sheet.ts";
 import type { FormMapping, MappingField } from "./mapping.ts";
 import { buildOverlaySheet } from "./overlay-sheet.ts";
@@ -31,6 +31,7 @@ const field = (over: Partial<MappingField>): MappingField =>
     box: box(0.1, 0.9, 0.1),
     ...over,
   }) as MappingField;
+const allowedTwice = (a: MappingField, b: MappingField) => twice(a as ShapeField, b as ShapeField);
 const itemsOf = (fs: readonly MappingField[]) => Object.fromEntries(fs.map((f) => [f.label, f.item]));
 const yesNo = (over: Partial<MappingField>) => field({ shape: "choice", options: ["なし", "あり"], optionBoxes: [box(0.2, 0.1, 0.01), box(0.25, 0.1, 0.01)], box: box(0.2, 0.1, 0.1), ...over });
 
@@ -95,7 +96,7 @@ describe("T176 深さでない空きから親の項目を外す", () => {
     expect(settleRead(fs).map((f) => f.item)).toEqual([care, care]);
     // 同じ行の □ と字の欄は重複に数えない。行が違えば数える
     expect(allowedTwice(fs[0], fs[1])).toBe(true);
-    expect(extraItemFields(fs).size).toBe(0);
+    expect(extraItemFields(fs as ShapeField[]).size).toBe(0);
     const far = { ...fs[1], box: box(0.6, 0.5, 0.15) };
     expect(allowedTwice(fs[0], far)).toBe(false);
   });

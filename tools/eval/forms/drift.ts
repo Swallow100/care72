@@ -128,6 +128,26 @@ export function reviewDrift(a: readonly DriftPaper[], b: readonly DriftPaper[], 
   return out;
 }
 
+/**
+ * 回の結果に残す差（T176）。比べる元が数え直しの回なら同じコードの読み取りの差。本物の回と比べるとコードの差が混ざるので sameCode を false にし、
+ * 点数の表と守りの数に入れない（評価の 10 回目は、比べる元の取り方で 2,178 と 591 の 2 つの数が並んだ）
+ */
+export function driftOf(from: string, other: { mode?: string; papers: readonly DriftPaper[] }, papers: readonly DriftPaper[]): { from: string; sameCode: boolean } & ReviewDrift {
+  return { from, sameCode: other.mode === "replay", ...reviewDrift(other.papers, papers) };
+}
+
+/** 名前の中の空き（lib/forms/read-settle.ts の SLOT と同じ形） */
+const SLOT_LABEL = /[(【[〔](?:[^)】\]〕]*\s[^)】\]〕]*|[~〜ー\-・…]*)[)】\]〕]/;
+
+/**
+ * 読み取りの答えのうち、同じ頁の □・選ぶ欄と同じ項目を当てた字の欄の数（T176）。slot はそのうち名前に空きのある物。
+ * 答えそのものの数で、読み取りの文の効き目はここに出る（後の決まりで外す前。r9 と r10 で 21 と 41）
+ */
+export function parentItemFields(fields: readonly DriftField[]): { all: number; slot: number } {
+  const kids = fields.filter((f) => (f.shape === "text" || f.shape === "lines") && f.item && fields.some((g) => g !== f && g.page === f.page && g.item === f.item && (g.shape === "choice" || g.shape === "check")));
+  return { all: kids.length, slot: kids.filter((f) => SLOT_LABEL.test(f.label.normalize("NFKC"))).length };
+}
+
 export type DriftRun = { calls: Map<string, DriftField[]>; papers: readonly DriftPaper[] };
 
 export function loadRun(dir: string): DriftRun {
@@ -161,7 +181,10 @@ export function driftMarkdown(a: DriftRun, b: DriftRun, forms?: readonly string[
     lines.push(`| ${id} | ${d.a}・${d.b} | ${d.same} | ${d.onlyA}・${d.onlyB} | ${d.label} | ${d.item} | ${d.shape} | ${d.box} | ${d.options} | ${pair("check")} | ${pair("duplicate")} | ${pair("carried")} | ${pair("small")} | ${pair("unplaced")} |`);
   }
   const t = reviewDrift(a.papers, b.papers, forms);
+  const kids = (r: DriftRun) => ids.map((id) => parentItemFields(r.calls.get(id) ?? [])).reduce((s, x) => ({ all: s.all + x.all, slot: s.slot + x.slot }), { all: 0, slot: 0 });
+  const [ka, kb] = [kids(a), kids(b)];
   lines.push("", `差の絶対値の合計: 要確認 ${t.check}・重複 ${t.duplicate}・取込漏れ ${t.carried}・下限 ${t.small}・置けず ${t.unplaced}`);
+  lines.push(`親と同じ項目の字の欄（答えの数。A・B）: ${ka.all}・${kb.all}、うち名前に空き ${ka.slot}・${kb.slot}`);
   return lines.join("\n");
 }
 
