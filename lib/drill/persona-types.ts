@@ -101,7 +101,7 @@ export type PersonaInput = {
   virtual?: boolean;
   /** 夜間発災（T59）。本人役に「発災は深夜 2 時ごろ。今は N 時ごろ」の 1 行を足す */
   night?: boolean;
-  /** 夜間発災でない訓練の発災の時刻（時。T165、lib/drill/night.ts の startHourOf）。本人役に今の時刻の 1 行を足す */
+  /** 夜間発災でない訓練の発災の時刻（時。分は小数。T165・T182、lib/drill/night.ts の startHourOf）。本人役に今の時刻の 1 行を足す */
   startHour?: number;
   /** この人を前に呼んだ時刻（発災からの分、T90）。無ければ刻みの道（今までと同じ） */
   since?: number;

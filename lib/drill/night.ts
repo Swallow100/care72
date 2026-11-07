@@ -26,21 +26,27 @@ export function nightTimeLabel(minute: number): string {
 }
 
 /**
- * 夜間発災でない訓練の発災の時刻（時、0〜23。T165）。drills.started_at（発災）の日本の時刻。読めなければ null。
+ * 夜間発災でない訓練の発災の時刻（時、0 以上 24 未満。T165）。drills.started_at（発災）の日本の時刻。分は時の小数で持つ（10:50 は 10.833…。T182）。読めなければ null。
  * 前は夜間発災の訓練だけ時刻の 1 行を渡していて、昼の訓練の監督・世界・本人役が「夜になっても」「明け方」「二日目の昼」を
- * 経過と食い違う所に書いた（評価の 7 回目）。画面の時刻（lib/drill/time-text.ts の simTimeText）と同じ元
+ * 経過と食い違う所に書いた（評価の 7 回目）。画面の時刻（lib/drill/time-text.ts の simTimeText）と同じ元。
+ * T182: 前は時で切り捨て、10:50 の発災で帳面の「16 時 50 分ごろ」が画面の「17:40」より 50 分早かった（最大 59 分）
  */
 export function startHourOf(startedAt: string): number | null {
   const t = Date.parse(startedAt);
   if (Number.isNaN(t)) return null;
-  return (new Date(t).getUTCHours() + 9) % 24;
+  const d = new Date(t);
+  return (((d.getUTCHours() + 9) % 24) * 60 + d.getUTCMinutes()) / 60;
 }
 
-/** Claude に渡す 1 行（昼の訓練。T165）。「発災は 10 時ごろ。今は 2 日目の 22 時ごろ」 */
+/** 発災の時刻（時の小数）を分に（T182。浮動小数の 649.999… を 650 に） */
+const startMinuteOf = (startHour: number): number => Math.round(startHour * 60);
+
+/** Claude に渡す 1 行（昼の訓練。T165）。「発災は 10 時ごろ。今は 2 日目の 22 時ごろ」。発災に分があれば「10 時 50 分ごろ」（T182。10 分に丸めて切り捨てる） */
 export function dayLine(hour: number, startHour: number): string {
-  const total = startHour + Math.floor(Math.max(0, hour));
-  const day = Math.floor(total / 24) + 1;
-  return `発災は ${startHour} 時ごろ。今は ${day > 1 ? `${day} 日目の ` : ""}${total % 24} 時ごろ（朝・昼・夜の言い方はこの時刻に合わせる）`;
+  const start = clockOfMinute(0, startHour);
+  const now = clockOfMinute(Math.max(0, hour) * 60, startHour);
+  const startMin = Math.floor(start.min / 10) * 10;
+  return `発災は ${start.hour} 時${startMin > 0 ? ` ${startMin} 分` : ""}ごろ。今は ${now.day > 1 ? `${now.day} 日目の ` : ""}${now.hour} 時ごろ（朝・昼・夜の言い方はこの時刻に合わせる）`;
 }
 
 /** 時刻の 1 行（夜間発災は nightLine、ほかは発災の時刻があれば dayLine。T165）。無ければ空の配列 */
@@ -55,9 +61,9 @@ export function clockStartOf(x: { night?: boolean | undefined; startHour?: numbe
   return typeof x.startHour === "number" ? x.startHour : null;
 }
 
-/** 発災から minute 分の時計（何日目の何時何分） */
+/** 発災から minute 分の時計（何日目の何時何分）。startHour は時の小数（分を持つ。T182） */
 export function clockOfMinute(minute: number, startHour: number): { day: number; hour: number; min: number } {
-  const total = startHour * 60 + Math.max(0, Math.round(minute));
+  const total = startMinuteOf(startHour) + Math.max(0, Math.round(minute));
   return { day: Math.floor(total / 1440) + 1, hour: Math.floor(total / 60) % 24, min: total % 60 };
 }
 
