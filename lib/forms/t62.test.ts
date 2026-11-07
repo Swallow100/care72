@@ -141,7 +141,7 @@ const params = (q: string) => new URLSearchParams(q);
 const caseload = async (): Promise<Caseload> =>
   (await loadCaseload(db, { officeId: "office-demo", careManagerId: "acct-yamamoto" }, TODAY, NOW))!;
 
-const NORMAL_HEADERS = ["組", "氏名", "カナ", "年齢", "介護度", "医療", "ハザード", "支援者", "避難計画", "訓練", "未確認", "地区"];
+const NORMAL_HEADERS = ["連絡順", "氏名", "カナ", "年齢", "介護度", "医療", "ハザード", "支援者", "避難計画", "訓練", "未確認", "地区"];
 
 describe("CSV の共通の道（様式 9 の csvText・csvFileNames）", () => {
   it("名前の頭を渡せる。渡さなければ様式 9 のまま", () => {
@@ -171,7 +171,7 @@ describe("担当一覧の CSV（/caseload/csv）", () => {
     expect(raw.endsWith("\r\n")).toBe(true);
     expect(raw.replaceAll("\r\n", "")).not.toMatch(/[\r\n]/);
     expect(rows[0]).toEqual(["担当一覧"]);
-    expect(rows[1]).toEqual(["事業所名：デモ事業所", "担当：山本", "作成：2026年11月3日", "並び：組", "絞込：なし"]);
+    expect(rows[1]).toEqual(["事業所名：デモ事業所", "担当：山本", "作成：2026年11月3日", "並び：連絡順", "絞込：なし"]);
     expect(rows[2]).toEqual([""]);
     expect(rows[3]).toEqual(NORMAL_HEADERS);
     const body = rows.slice(4);
@@ -179,7 +179,7 @@ describe("担当一覧の CSV（/caseload/csv）", () => {
     const screen = listView(await caseload(), {});
     expect(body.map((r) => r[1])).toEqual(screen.rows.map((r) => r.name));
     expect(body).toHaveLength(10);
-    // 組は骨格の段（T78 で平時の「連絡順」から改名）、カナ・避難計画・未確認・地区は行の値
+    // 平時の連絡順は骨格の段（本人のページの上の連絡順と同じ数。T187 で「組」から戻した）、カナ・避難計画・未確認・地区は行の値
     const first = screen.rows[0];
     expect(body[0][0]).toBe(String(first.tier));
     expect(body[0][2]).toBe(first.kana);

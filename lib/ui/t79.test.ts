@@ -12,12 +12,12 @@ import { DOCUMENT_CATALOG, MATSUYAMA_ENTRY } from "../forms/catalog.ts";
 import type { TimelineItem } from "../person.ts";
 
 describe("ヘッダーの事業所の状態", () => {
-  it("平時は押せない地の印（リンクでも押した灰色の印でもない）", () => {
+  it("平時は押せない文字の表示「状態 平時」（リンクでも、押せるボタンに見える地や枠の印でもない。T187）", () => {
     const html = renderToStaticMarkup(createElement(DisasterBadge, { mark: { kind: "normal", label: "平時" }, link: true }));
     expect(html).not.toContain("<a");
     expect(html).not.toContain("data-press");
-    expect(html).toContain("bg-panel2");
-    expect(html).toContain(">平時<");
+    expect(html).not.toMatch(/\bbg-|\brounded|\bborder|\bring-/);
+    expect(html).toMatch(/>状態<\/span><span[^>]*>平時</);
   });
 
   it("災害モードは今まで通り事業所の画面へのリンク", () => {

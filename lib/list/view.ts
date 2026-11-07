@@ -70,7 +70,7 @@ export function listHref(path: string, view: { key: SortKey; dir: SortDir; filte
 
 const MARK_LABELS: ReadonlyMap<ClockCategory, string> = new Map(DEPENDENCE_MARKS.map(([c, l]) => [c, l]));
 
-/** 並びの言葉（「並び：連絡順」「並び：年齢・介護度 昇順」）。向きは列の既定と違うときだけ。平時の段の並びは「並び：組」（T78） */
+/** 並びの言葉（「並び：連絡順」「並び：年齢・介護度 昇順」）。向きは列の既定と違うときだけ。段の並びは平時も「並び：連絡順」（T187） */
 export function sortWords(view: { key: SortKey; dir: SortDir }, disaster = true): string {
   const turned = view.dir !== defaultDir(view.key) ? ` ${view.dir === "asc" ? "昇順" : "降順"}` : "";
   const name = view.key === "tier" ? tierColumnLabel(disaster) : COLUMN_LABELS[view.key];
