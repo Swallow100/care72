@@ -33,9 +33,8 @@ import { LABEL } from "@/components/ui/Panel";
 import { Select } from "@/components/ui/Select";
 import { AiStatusMark } from "@/components/ui/AiStatus";
 import { aiRemaining, aiUsable, type AiStatus } from "@/lib/claude/status";
-import { CLOCK_LABELS } from "@/lib/drill/clock";
 import { estimateClockCalls, overLimit } from "@/lib/drill/estimate";
-import { AI_STOP_UI, DRILL_LABELS, SCENARIO_LABELS, T124_LABELS, T59_LABELS, T70_LABELS } from "@/lib/drill/labels";
+import { AI_STOP_UI, DRILL_LABELS, SCENARIO_LABELS, T59_LABELS, T70_LABELS } from "@/lib/drill/labels";
 import { isVirtual } from "@/lib/drill/scenarios";
 import { STAFF_MAX, T104_LABELS } from "@/lib/drill/options";
 import { SCALE_CHOICES, scaleKey, scaleLabel, scaleOfKey, type DrillScale } from "@/lib/drill/scale";
@@ -186,15 +185,8 @@ export function StartButtons({
           {error}
         </span>
       )}
-      {/* T124: 進め方（訓練の画面と同じ。T128 で次までだけ）と、最後まで見る自動進行（前の早送り）を本文色で */}
-      <p className="flex w-full flex-wrap items-baseline gap-x-3 gap-y-0.5 text-xs text-muted" data-start-pace>
-        <span>
-          {T124_LABELS.pace} <span className="font-bold text-ink">{CLOCK_LABELS.next}</span>
-        </span>
-        <span>
-          {T124_LABELS.toEnd} <span className="font-bold text-ink">{DRILL_LABELS.fastForward}</span>
-        </span>
-      </p>
+      {/* T184: 進め方の 1 行（「進め方 次まで」「最後まで 自動進行」）は外した。切り替えでなく説明で、押せそうに見えて読み違えた。
+          次まで・自動進行は訓練の画面のボタンにある */}
       {(estimates || (ai !== null && !(ai.kind === "ready" && ai.remaining === null))) && (
         <p className="flex w-full flex-wrap items-baseline gap-x-3 gap-y-0.5 text-xs text-muted tabular-nums" data-estimate>
           {/* 今日の残り（か未設定）を見込みの頭に並べる（T76） */}

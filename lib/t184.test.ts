@@ -13,11 +13,19 @@ describe("T184 の 9: 役選択の画面", () => {
   });
 });
 
-describe("T184 の 3:本人のページから医療班へ", () => {
+describe("T184 の 3: 本人のページから医療班へ", () => {
   it("見える字はヘッダーの入口と同じ「医療班」と役のアイコン（押すと役が替わる）", () => {
     expect(REQUEST_LABELS.toStaff).toBe(ROLE_LABELS.medical);
     const section = read("../components/person/RequestSection.tsx");
     expect(section).toContain(`icon={RoleIcon} name="role" value={staffRole}`);
     expect(read("../components/AppHeader.tsx")).toContain("<StaffEntry label={ROLE_LABELS.medical} name={REQUEST_LABELS.toStaffName}");
+  });
+});
+
+describe("T184 の 6: 訓練の開始", () => {
+  it("常設の説明（仮想モードの 1 行）を開始の面に置かない", () => {
+    const page = read("../app/drill/page.tsx");
+    expect(page).not.toContain("VIRTUAL_LABELS");
+    expect(page).not.toContain("data-virtual-note");
   });
 });
