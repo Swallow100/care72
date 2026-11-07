@@ -121,7 +121,7 @@ export const SCENES: Scene[] = [
     title: "問いかけ",
     ground: "blue",
     at: 0,
-    end: 15.9,
+    end: 16.7,
     shots: [
       {
         at: 0,
@@ -159,7 +159,7 @@ export const SCENES: Scene[] = [
       },
       {
         at: 11.2,
-        end: 15.9,
+        end: 16.7,
         kind: "number",
         bg: "B04",
         label: "作成率",
@@ -182,13 +182,13 @@ export const SCENES: Scene[] = [
     id: "S2",
     title: "理由",
     ground: "blue",
-    at: 15.9,
+    at: 16.7,
     end: 35.6,
     shots: [
       // 作者の紹介は左下の名札（声では言わない。11/7）。真ん中に N03 の頭「ケアマネジャーは」
       {
-        at: 15.9,
-        end: 18,
+        at: 16.7,
+        end: 19.4,
         kind: "plate",
         label: "作者の名札（医学部の学生・家族にケアマネジャー）",
         marker: "ケアマネジャー",
@@ -200,8 +200,8 @@ export const SCENES: Scene[] = [
         ],
       },
       {
-        at: 18,
-        end: 22.3,
+        at: 19.4,
+        end: 24,
         kind: "split",
         // 録画の番号が空の所は文字の面（sub を「・」で分けて並べる）。前の赤い × の矢印は安っぽいので外した（作者の声 11/6）
         footages: ["", "R03"],
@@ -210,7 +210,7 @@ export const SCENES: Scene[] = [
         lines: ["知っている", "書けていない"],
         bg: "B03",
         // N03 の「利用者のことは知っていますが」「計画を書く時間がありません」に合わせて
-        beats: [0.1, 1.8],
+        beats: [0.1, 2.45],
         sub: "薬と残り日数・医療機器と電池・家族と支援者・かかりつけ医",
         label: "左に知っていること、右に様式の未確認の欄",
         marker: "書けていない",
@@ -218,7 +218,7 @@ export const SCENES: Scene[] = [
       },
       // N03 の後半「また、計画自体を活かせていません」（作者の文 11/7）
       {
-        at: 22.3,
+        at: 24,
         end: 26.9,
         kind: "text",
         label: "計画自体を活かせていない",
@@ -514,10 +514,10 @@ export const LINES: Line[] = [
   // 11/6 作者の絵コンテの書き込みで全体を組み直した。声の文は作者の文のまま（直したのは事実に合わせた所だけ）。N13・N14・N16・N26・N27・N29・N31 は外した（欠番。N16 と N31 は 3 分に収めるため作者の決め 11/6。N31 は終わりの画面の「ケア72」の一言として戻した 11/7）
   { id: "N01", at: 0.3, end: 4.7, ja: "突然ですが『個別避難計画』を知っていますか。", en: "Out of the blue: have you heard of an \"individual evacuation plan\"?" },
   { id: "N02", at: 4.9, end: 16.6, ja: "災害のとき、在宅の高齢者を誰がどう助けるかを決めておく計画です。でも、対象の約 670 万人のうち、できているのは 15.1% だけ。", en: "It sets out who will help an older person living at home in a disaster, and how. But of about 6.7 million people it covers, only 15.1% have one." },
-  { id: "N03", at: 16.7, end: 26.8, ja: "ケアマネジャーは利用者のことは知っていますが、計画を書く時間がありません。また、計画自体を活かせていません。", en: "Care managers know their clients, but have no time to write the plans. And the plans themselves go unused." },
+  { id: "N03", at: 18, end: 26.8, ja: "ケアマネジャーは利用者のことは知っていますが、計画を書く時間がありません。また、計画自体を活かせていません。", en: "Care managers know their clients, but have no time to write the plans. And the plans themselves go unused." },
   { id: "N05", at: 27, end: 35.4, ja: "独自アンケートでも、ケアマネジャー 4 人全員が、計画は市町村に出して終わりと答えました。", en: "In our own survey, all 4 care managers answered that the plan ends once it is handed to the city." },
   { id: "N06", at: 35.8, end: 42, ja: "楽に作れて、災害でも役立つ計画なら、作る意味が出る、そう考えました。", en: "A plan that is easy to make and useful in a disaster is worth making. That was my thought." },
-  { id: "N07", at: 42.2, end: 46.3, ja: "そこでケア72というアプリを作成しました。", en: "So I built an app called Care72." },
+  { id: "N07", at: 42.2, end: 46.3, ja: "そこでケア72を開発しました。", en: "So I built Care72." },
   { id: "N08", at: 46.5, end: 55.4, ja: "ケアマネジャーの災害対策計画づくりから訓練、発災時の対応までケア72一つで完結します。", en: "From the care manager's disaster planning to drills and the response in a disaster, Care72 does it all." },
   { id: "N10", at: 55.9, end: 68.3, ja: "まずは計画。箇条書きや文書、音声で情報を入力、Claude がアプリ内に利用者の情報を記録していきます。抜けている部分は Claude が質問します。", en: "First, the plan. Enter notes, documents or voice, and Claude records the client's information in the app. Claude asks about whatever is missing." },
   { id: "N11", at: 68.4, end: 73.2, ja: "項目分けされアプリ内に見やすく記録されます。", en: "It is sorted into fields and kept clearly in the app." },

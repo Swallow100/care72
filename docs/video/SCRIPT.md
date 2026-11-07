@@ -22,10 +22,10 @@
 | --- | --- | --- | --- |
 | N01 | 0:00.3–0:04.7 | 突然ですが『個別避難計画』を知っていますか。 | Out of the blue: have you heard of an "individual evacuation plan"? |
 | N02 | 0:04.9–0:16.6 | 災害のとき、在宅の高齢者を誰がどう助けるかを決めておく計画です。でも、対象の約 670 万人のうち、できているのは 15.1% だけ。 | It sets out who will help an older person living at home in a disaster, and how. But of about 6.7 million people it covers, only 15.1% have one. |
-| N03 | 0:16.7–0:26.8 | ケアマネジャーは利用者のことは知っていますが、計画を書く時間がありません。また、計画自体を活かせていません。 | Care managers know their clients, but have no time to write the plans. And the plans themselves go unused. |
+| N03 | 0:18–0:26.8 | ケアマネジャーは利用者のことは知っていますが、計画を書く時間がありません。また、計画自体を活かせていません。 | Care managers know their clients, but have no time to write the plans. And the plans themselves go unused. |
 | N05 | 0:27–0:35.4 | 独自アンケートでも、ケアマネジャー 4 人全員が、計画は市町村に出して終わりと答えました。 | In our own survey, all 4 care managers answered that the plan ends once it is handed to the city. |
 | N06 | 0:35.8–0:42 | 楽に作れて、災害でも役立つ計画なら、作る意味が出る、そう考えました。 | A plan that is easy to make and useful in a disaster is worth making. That was my thought. |
-| N07 | 0:42.2–0:46.3 | そこでケア72というアプリを作成しました。 | So I built an app called Care72. |
+| N07 | 0:42.2–0:46.3 | そこでケア72を開発しました。 | So I built Care72. |
 | N08 | 0:46.5–0:55.4 | ケアマネジャーの災害対策計画づくりから訓練、発災時の対応までケア72一つで完結します。 | From the care manager's disaster planning to drills and the response in a disaster, Care72 does it all. |
 | N10 | 0:55.9–1:08.3 | まずは計画。箇条書きや文書、音声で情報を入力、Claude がアプリ内に利用者の情報を記録していきます。抜けている部分は Claude が質問します。 | First, the plan. Enter notes, documents or voice, and Claude records the client's information in the app. Claude asks about whatever is missing. |
 | N11 | 1:08.4–1:13.2 | 項目分けされアプリ内に見やすく記録されます。 | It is sorted into fields and kept clearly in the app. |
