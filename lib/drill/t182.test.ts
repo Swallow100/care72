@@ -163,8 +163,8 @@ describe("5. 72 時間の近くで次へ回した監督の出来事", () => {
 
 describe("6. 代わりに電話に出た人の名", () => {
   it("answeredBy があればその人、無ければ手の相手", () => {
-    expect(speakerText({ kind: "call", calleeLabel: "本人", result: { answeredBy: "夫" } })).toBe("夫");
-    expect(speakerText({ kind: "call", calleeLabel: "本人", result: {} })).toBe("本人");
+    expect(speakerText({ kind: "call_person", calleeLabel: "本人", result: { answeredBy: "夫" } })).toBe("夫");
+    expect(speakerText({ kind: "call_person", calleeLabel: "本人", result: {} })).toBe("本人");
     expect(speakerText({ kind: "dispatch", calleeLabel: null, result: null })).toBe(calleeText({ kind: "dispatch", calleeLabel: null }));
   });
 });
