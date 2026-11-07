@@ -119,12 +119,13 @@ function keepWidest(fields: readonly MappingField[]): MappingField[] {
   for (const item of items) {
     const same = fields.filter((f) => f.item === item && !f.removed && !bracketOwner(f, fields));
     // 組は、余った欄と、それより前で同じ所にならない最初の値の欄（□ が先にあると extra の first は □）。
-    // 組は同じ頁の中だけ（T181。頁の頭の「氏名」「利用者名」・「作成日」「記入日」は頁ごとに名前と場所が違い、2 頁目の欄が空いた）。
-    // 頁をまたぐのは、日付・電話の形の欄の項目を、別の頁のその形の言葉の無い字の欄に当てた読み（生年月日と識別番号。T176）だけ
+    // 頁ごとに書く項目（氏名・作成日など。PAGE_HEAD_ITEMS）の組は同じ頁の中だけ（T181。頁の頭の「氏名」「利用者名」・「作成日」「記入日」は
+    // 頁ごとに名前と場所が違い、2 頁目の欄が空いた）。頁をまたぐのは、日付の形の欄の項目を、別の頁の日付の言葉の無い字の欄に当てた読み（T176）だけ。
+    // ほかの項目（課題・持ち出し品・特記）は頁をまたいでも 1 つ（2 頁の別の欄に同じ値を 2 回書くと、見直しの要確認と置けずが r9・r11 の数え直しで増えた）
     const pairs = [...extra.keys()]
       .map((id) => same.find((f) => f.id === id))
       .filter((f): f is MappingField => !!f)
-      .map((f) => [f, ...same.filter((g) => g !== f && carriesValue(g) && same.indexOf(g) < same.indexOf(f) && (g.page === f.page || strayAcross(g, f)) && !allowedTwice({ ...g, box: g.box ?? null }, { ...f, box: f.box ?? null })).slice(0, 1)]);
+      .map((f) => [f, ...same.filter((g) => g !== f && carriesValue(g) && same.indexOf(g) < same.indexOf(f) && (g.page === f.page || !PAGE_HEAD_ITEMS.has(item) || strayAcross(g, f)) && !allowedTwice({ ...g, box: g.box ?? null }, { ...f, box: f.box ?? null })).slice(0, 1)]);
     for (const group of joined(pairs).map((ids) => same.filter((f) => ids.has(f.id) && carriesValue(f)))) {
       if (group.length < 2) continue;
       const shaped = group.find((f) => !isText(f));
@@ -138,6 +139,8 @@ function keepWidest(fields: readonly MappingField[]): MappingField[] {
   return fields.map((f) => (drop.has(f.id) ? freed(f, "同じ項目の欄") : f));
 }
 
+/** 頁ごとに頭や終わりに書く項目（本人の名前と、紙を作った日） */
+const PAGE_HEAD_ITEMS: ReadonlySet<LedgerItemKey> = new Set<LedgerItemKey>(["person.name", "person.kana", "plan.date"]);
 const DATE_WORD = /日|年月|生年/;
 const PHONE_WORD = /電話|TEL|携帯|連絡/i;
 /** 別の頁の、日付・電話の形の欄 g の項目を当てた、その形の言葉の無い字の欄 f（頁をまたいで組にしてよい読み違い） */
@@ -169,8 +172,9 @@ export const hasSlot = (label: string) => SLOT.test(nfkc(label));
 
 /**
  * 親の □ か選ぶ欄（同じ頁・同じ段・同じ項目）があり、選択肢や □ の子でない空きの字の欄は項目なし。
- * 外すのは、同じ頁・同じ項目で値を書く欄がほかにある時だけ（T181）。「□なし □あり 病名（　）」の空きは、ほかに書く欄が無ければ
- * 項目の値を書く所で、外すとアレルギーの名前・病名が紙から消えた（項目を外した欄は未確認になるだけで、落とした数に出ない）
+ * 親が あり・なし の □・選ぶ欄なら、外すのは同じ頁・同じ項目で値を書く欄がほかにある時だけ（T181）。「□なし □あり 病名（　）」の空きは、
+ * ほかに書く欄が無ければ項目の値を書く所で、外すとアレルギーの名前・病名が紙から消えた（項目を外した欄は未確認になるだけで、落とした数に出ない）。
+ * 親が種類の並び（手帳の種類）の空き（「（部位　）」）は種類の添えを書く所で、項目の値を丸ごと書くと置けないので今までどおり外す（r11 の数え直しで要確認が 64 増えた）
  */
 function freeSlots(fields: readonly MappingField[]): MappingField[] {
   return fields.map((f) => {
@@ -180,8 +184,10 @@ function freeSlots(fields: readonly MappingField[]): MappingField[] {
     // 「要介護（　）級」と □ 要介護の組は □ の中身を書く所（読み取りの補いの括弧、item-hints.ts の 1）
     const head = squeeze(nfkc(f.label).split(SLOT)[0]);
     if (parents.some((g) => g.shape === "check" && squeeze(g.label) === head)) return f;
+    // 親が あり・なし（□ あり・あり なし の選ぶ欄）で、値を書く欄がほかに無い空きは あり の中身を書く所。種類の並びの親の空き（「（部位　）」「（　）級」）は今までどおり外す
     const writers = fields.filter((g) => g !== f && !g.removed && g.page === f.page && g.item === f.item && carriesValue(g) && !bracketOwner(g, fields));
-    if (writers.length === 0) return f;
+    const yesParent = parents.every((g) => (g.shape === "check" && YES_WORD.test(squeeze(g.label))) || yesNoChoice(g));
+    if (yesParent && writers.length === 0) return f;
     return freed(f, "親の項目の空き");
   });
 }

@@ -78,6 +78,13 @@ describe("T181 1 □ と同じ行の空きの欄を、ほかに値を書く欄�
     expect(itemOf(m, "アレルギーの内容")).toBe(allergies);
     expect(paper(m, "p-03").texts.join("")).toContain(ALLERGY[0]);
   });
+
+  it("親が種類の並び（手帳の種類）の空き「（部位　）」は、ほかに書く欄が無くても今までどおり外す（種類の添えの所に値を丸ごと書かない）", () => {
+    const handbook = "care.handbook" as const;
+    const kinds = fld({ section: "制度", label: "手帳", shape: "choice", item: handbook, options: ["身体", "療育", "精神"], box: box(0.12, 0.11, 0.34, 0.05), option_boxes: [box(0.12, 0.115, 0.01, 0.01), box(0.32, 0.115, 0.01, 0.01), box(0.12, 0.14, 0.01, 0.01)] });
+    const part = fld({ section: "制度", label: "（部位　）", shape: "text", item: handbook, box: box(0.27, 0.115, 0.045, 0.02) });
+    expect(itemOf(read([kinds, part]), "（部位　）")).toBeNull();
+  });
 });
 
 describe("T181 3 同じ項目の字の欄の組は同じ頁の中だけ", () => {
@@ -167,6 +174,13 @@ describe("T181 5 □ を 1 つ読み落とした行の □ 1 つを分けるの�
   it("名前の字が 1 つの塊なら今までどおり分ける（T179 の形）", () => {
     const ink = [A, B, glyph(0.32), glyph(0.335), glyph(0.44), glyph(0.455), glyph(0.47), rule(0.2), rule(0.9)];
     const b = { ...bracket, box: { x: 0.49, y: 0.308, w: 0.13, h: 0.014 } };
+    expect(splitLoneMarks([lone, b], pages(ink))[0]).toMatchObject({ shape: "choice", options: ["木造", "その他"] });
+  });
+
+  it("2 つに割れた字（「他」）と括弧の前の細い「（」は名前の塊を分けない（松山市の 2 頁の刷りの形）", () => {
+    const g = (x: number, w: number): InkBlob => ({ x, y: 0.31, w, h: 0.011, box: false });
+    const ink = [A, B, glyph(0.32), glyph(0.335), g(0.44, 0.014), g(0.456, 0.015), g(0.473, 0.005), g(0.477, 0.011), g(0.508, 0.004), rule(0.2), rule(0.9)];
+    const b = { ...bracket, box: { x: 0.515, y: 0.308, w: 0.13, h: 0.014 } };
     expect(splitLoneMarks([lone, b], pages(ink))[0]).toMatchObject({ shape: "choice", options: ["木造", "その他"] });
   });
 });

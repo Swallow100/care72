@@ -95,8 +95,11 @@ function splitOne(f: MappingField, fields: readonly MappingField[], ink: readonl
   if (glyphs.length === 0) return null;
   // 名前の字は 1 つの塊（T181）。間に 1 字幅以上の空きがあれば名前が 2 つ（「□鉄骨造 その他（　）」で 鉄骨造 の □ を読み落とし、
   // 読まれていない □ を その他 と呼ぶと、鉄骨造 の人の印が隣の □ に付く）
-  const charW = [...glyphs.map((g) => g.w)].sort((a, b) => a - b)[Math.floor(glyphs.length / 2)];
-  if (glyphs.some((g, i) => i > 0 && g.x - (glyphs[i - 1].x + glyphs[i - 1].w) >= charW)) return null;
+  // 1 字の大きさは字の高さの真ん中（字の幅は「他」が 2 つに割れるので使わない）。括弧の前の細い字（「（」）は名前の字に数えない
+  const charH = [...glyphs.map((g) => g.h)].sort((a, b) => a - b)[Math.floor(glyphs.length / 2)];
+  const name = [...glyphs];
+  while (name.length > 1 && name[name.length - 1].w <= charH / 2) name.pop();
+  if (name.some((g, i) => i > 0 && g.x - Math.max(...name.slice(0, i).map((p) => p.x + p.w)) >= charH)) return null;
   // 全部の選択肢が値の表に当たる
   const options = [f.label.trim(), base];
   if (options.some((o) => !codeOfOption(f.item!, o, f)?.length)) return null;
