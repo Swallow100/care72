@@ -253,11 +253,12 @@ export const SEED_LOCATIONS: Record<string, GeoPoint> = {
 export const SEED_DESTINATIONS = {
   /** p-01・p-06（洪水・土砂の区域の外。家の東） */
   fukuon: { name: "福音小学校", at: { lat: 33.82141, lng: 132.79013 } },
-  /** p-03（洪水・土砂の区域の外。家の北東） */
-  seiryo: { name: "学校法人松山聖陵学園 松山聖陵高等学校（体育館）", at: { lat: 33.85708, lng: 132.74058 } },
   /** p-07（土砂の警戒区域の外） */
   yuzuki: { name: "湯築小学校", at: { lat: 33.85353, lng: 132.77745 } },
-  /** p-08（津波の浸水想定の外） */
+  /**
+   * p-08（津波の浸水想定の外）と p-03（洪水の区域の外。家の北 4 km）。p-03 の近くで洪水の区域の外の指定避難所は、ほかに名前の長い
+   * 2 つ（学校法人の体育館）だけで、本人の 1 枚の避難先の行が 2 行になって 3 頁目にあふれた
+   */
   mitsuhama: { name: "三津浜公民館", at: { lat: 33.86146, lng: 132.71473 } },
   /** p-10 の避難先 1・2（ハザードなし） */
   shiomiSchool: { name: "潮見小学校", at: { lat: 33.87484, lng: 132.75474 } },
@@ -569,11 +570,11 @@ export const SEED_PEOPLE: SeedPerson[] = [
       // 段差・ペットは空ける（埋めると計画書〔前からの紙面〕が 3 頁目にあふれる）。避難先 2 も空ける（本人の 1 枚の表が在宅避難の行を足すと 3 頁目にあふれる）。docs/progress/t142.md
       evacuation: {
         hazards: [{ kind: "flood", depthM: 0.5 }],
-        destination1: SEED_DESTINATIONS.seiryo.name,
-        destination1Location: { ...SEED_DESTINATIONS.seiryo.at },
+        destination1: SEED_DESTINATIONS.mitsuhama.name,
+        destination1Location: { ...SEED_DESTINATIONS.mitsuhama.at },
         destination1Minutes: 10,
         stayHome: false,
-        route: "長男の車で県道を通って体育館へ。透析の日は透析先へ直に向かう",
+        route: "長男の車で県道を通って公民館へ。透析の日は透析先へ直に向かう",
         transportKind: "family_car",
         transport: "長男の車",
         nearest: "みずほし小学校",

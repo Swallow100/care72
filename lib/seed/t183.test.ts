@@ -1,7 +1,7 @@
 // T183: 種の 10 人の避難先を実在の指定避難所（国土地理院のデータの名前と位置）にし、担当一覧の地図に計画の避難先の旗を出す。
 // - 種のデータ: 施設の避難先は SEED_DESTINATIONS の名前と位置のまま、家から 5 km の中（経路地図の窓の候補の範囲）
 // - 仮名化の門: 実の名前は字が変わらず（担当の人・家族・支援者の姓名と町名を含まない）、漏れの止めにも掛からない
-// - 地図: 計画の避難先の旗は 6 本（福音小学校は 2 人）、位置の無い避難先は架空の病院と家族の家の 3 件
+// - 地図: 計画の避難先の旗は 5 本（福音小学校と三津浜公民館は 2 人ずつ）、位置の無い避難先は架空の病院と家族の家の 3 件
 // - 毎朝 4 時の戻し（lib/seed/reset.ts）と確認用の事業所の写しで、位置が入り直す
 // D1 は node:sqlite に種の全部（seed/full.ts）。
 
@@ -48,7 +48,7 @@ describe("種の避難先（施設は国土地理院のデータの名前と位�
     }
     expect(placed).toEqual([
       "p-01:福音小学校",
-      "p-03:学校法人松山聖陵学園 松山聖陵高等学校（体育館）",
+      "p-03:三津浜公民館",
       "p-06:福音小学校",
       "p-07:湯築小学校",
       "p-08:三津浜公民館",
@@ -119,7 +119,7 @@ async function places(officeId: string, careManagerId: string) {
 }
 
 describe("担当一覧の地図の計画の避難先（種を入れた D1）", () => {
-  it("旗は 6 本（福音小学校は山田・高橋の 2 人）、位置の無い避難先は 3 件（架空の病院・家族の家 2 つ）", async () => {
+  it("旗は 5 本（福音小学校は山田・高橋、三津浜公民館は田中・井上の 2 人ずつ）、位置の無い避難先は 3 件（架空の病院・家族の家 2 つ）", async () => {
     for (const [office, cm] of [
       [DEMO_OFFICE_ID, DEMO_CARE_MANAGER_ID],
       [CHECK_OFFICE_ID, CHECK_CARE_MANAGER_ID],
@@ -128,9 +128,8 @@ describe("担当一覧の地図の計画の避難先（種を入れた D1）", (
       expect(p.destinations.map((d) => [d.name, d.people.length]).sort(), office).toEqual(
         [
           ["福音小学校", 2],
-          ["学校法人松山聖陵学園 松山聖陵高等学校（体育館）", 1],
           ["湯築小学校", 1],
-          ["三津浜公民館", 1],
+          ["三津浜公民館", 2],
           ["潮見小学校", 1],
           ["潮見公民館", 1],
         ].sort(),
@@ -154,7 +153,7 @@ describe("担当一覧の地図の計画の避難先（種を入れた D1）", (
     ] as const) {
       const p = await places(office, cm);
       expect(p.destinations.find((d) => d.name === "潮見公民館")?.at, office).toEqual(SEED_DESTINATIONS.shiomiHall.at);
-      expect(p.destinations).toHaveLength(6);
+      expect(p.destinations).toHaveLength(5);
     }
     const p09 = sqlite.prepare("SELECT json_extract(ledger, '$.basic.location') AS at FROM people WHERE id = 'p-09'").get() as { at: string };
     expect(JSON.parse(p09.at)).toEqual(SEED_LOCATIONS["p-09"]);

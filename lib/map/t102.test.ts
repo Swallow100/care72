@@ -76,6 +76,8 @@ let db: D1Database;
 beforeEach(() => {
   sqlite = migratedSqlite();
   for (const s of seedStatements()) sqlite.exec(s);
+  // T183 で種の施設の避難先に位置が入った。避難先の位置を置く流れを確かめるので、山田（p-01）の位置を外して置く前から始める
+  sqlite.exec(`UPDATE people SET ledger = json_remove(ledger, '$.evacuation.destination1Location') WHERE id = '${PID}'`);
   db = d1FromSqlite(sqlite);
 });
 
@@ -556,7 +558,7 @@ describe("本人のページの経路地図の行と窓（T102 の 3）", () => 
     for (const w of ["避難経路", "避難先1", "避難先2", "徒歩", "車", "経由点", "左", "右", "上", "下", "拡大", "縮小", "全体", "経路作成", "経由削除", "保存", "取消", "地理院タイル"]) {
       expect(html).toContain(w);
     }
-    // 種の人は避難先の位置が無いので、状態は「避難先1 位置未設定」で経路作成は押せない
+    // 避難先の位置が無い人（上で位置を外した山田）は、状態は「避難先1 位置未設定」で経路作成は押せない
     expect(html).toContain("避難先1 位置未設定");
     expect(html).toMatch(/<button[^>]*disabled=""[^>]*data-route-make/);
     // 避難先 1 の名前を選択の横に

@@ -588,7 +588,7 @@ describe("場所（2）: 避難先の選択", () => {
   it("台帳から避難先の選択肢を作る（空の欄は出さない）。家族の画面にも渡す", () => {
     const yamada = SEED_PEOPLE[0];
     const rows = { person: { ...yamada.person, ledger: JSON.stringify(yamada.ledger) } } as unknown as Parameters<typeof shelterOptionsOf>[0];
-    expect(shelterOptionsOf(rows)).toEqual([{ id: "d1", easy: "かわなぎ小学校" }]);
+    expect(shelterOptionsOf(rows)).toEqual([{ id: "d1", easy: "福音小学校" }]);
     const none = SEED_PEOPLE.find((p) => !p.ledger.evacuation.destination1)!;
     expect(shelterOptionsOf({ person: { ...none.person, ledger: JSON.stringify(none.ledger) } } as never)).toEqual([]);
   });
@@ -794,7 +794,7 @@ describe("場所（2）: 端末の位置", () => {
     expect(yamada.reported).toEqual({ lat: HERE.lat, lng: HERE.lng });
     expect(yamada.location).toEqual(SEED_PEOPLE[0].ledger.basic.location);
     const sig = yamada.detail!.signals.find((s) => s.id === sid(1))!;
-    expect(sig.place).toEqual({ shelters: { d1: "かわなぎ小学校", d2: null }, reported: { lat: HERE.lat, lng: HERE.lng, accuracyM: 48 } });
+    expect(sig.place).toEqual({ shelters: { d1: "福音小学校", d2: null }, reported: { lat: HERE.lat, lng: HERE.lng, accuracyM: 48 } });
     const place = hearingViewOf({ answers: sig.row.answers }, sig.place)!.rows.find((r) => r.field === "place")!;
     expect(place.position).toEqual({ lat: HERE.lat, lng: HERE.lng, accuracyM: 48 });
     expect(positionText(48)).toBe("位置 あり（±48 m）");

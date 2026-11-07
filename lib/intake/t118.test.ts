@@ -26,7 +26,13 @@ type Message = Anthropic.Beta.Messages.BetaMessage;
 type Params = Anthropic.Beta.Messages.MessageCreateParamsNonStreaming;
 
 const TODAY = "2026-11-05";
-const P01 = SEED_PEOPLE.find((p) => p.person.id === "p-01")!;
+// T183 で種の避難先は実在の施設の名前（町名を含まない）にした。町名を含む避難先の伏せ字を戻す確かめなので、山田の避難先 1 を前の種の
+// 町名の入った名前（実の事業所でも、本人の町名を含む避難先はこの形で渡る）にして使う
+const P01: SeedPerson = withTownShelter(SEED_PEOPLE.find((p) => p.person.id === "p-01")!);
+function withTownShelter(p: SeedPerson): SeedPerson {
+  const { destination1Location: _, ...evacuation } = p.ledger.evacuation;
+  return { ...p, ledger: { ...p.ledger, evacuation: { ...evacuation, destination1: "かわなぎ小学校" } } };
+}
 
 function rowsOf(p: SeedPerson, ledger = p.ledger): PersonPageRows {
   return {

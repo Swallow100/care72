@@ -6,7 +6,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it } from "vitest";
 import { CaseMap, FullMap } from "../../components/map/CaseMap.tsx";
 import { PlaceMarks } from "../../components/map/PlaceMarks.tsx";
-import { SEED_PEOPLE } from "../../seed/people.ts";
+import { SEED_DESTINATIONS, SEED_PEOPLE } from "../../seed/people.ts";
 import { labelWidth, LABEL_H, overlaps, pinSize } from "./cluster.ts";
 import { project, type Size, type View } from "./geo.ts";
 import { MAP_UI } from "./labels.ts";
@@ -128,10 +128,13 @@ describe("計画の避難先は台帳の位置のある物だけ", () => {
     ]);
   });
 
-  it("種の 10 人に作った位置を入れていない（種は避難先の位置が無く、数だけ出る）", () => {
+  it("種の施設の避難先は国土地理院のデータの名前と位置（T183）。名前から位置を推さないので、位置は施設の避難先だけ", () => {
+    // 家族の家・架空の病院は位置なし（数だけ出る）。施設の名前と位置の表と戻しのテストは lib/seed/t183.test.ts
+    const named = new Set(Object.values(SEED_DESTINATIONS).map((d) => d.name));
     for (const p of SEED_PEOPLE) {
-      expect(p.ledger.evacuation.destination1Location, p.person.id).toBeUndefined();
-      expect(p.ledger.evacuation.destination2Location, p.person.id).toBeUndefined();
+      const e = p.ledger.evacuation;
+      expect(!!e.destination1Location, p.person.id).toBe(named.has(e.destination1 ?? ""));
+      expect(!!e.destination2Location, p.person.id).toBe(named.has(e.destination2 ?? ""));
     }
   });
 });

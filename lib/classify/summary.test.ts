@@ -344,7 +344,7 @@ describe("信号の行に書く（分類と並べて）", () => {
     await afterRecording(db, target(a), deps(client));
     expect(calls).toHaveLength(2);
     const sent = JSON.stringify(calls.map((c) => c.params));
-    expect(sent).not.toMatch(/33\.83|132\.76|かわなぎ小学校|shelterWhich|"d1"/);
+    expect(sent).not.toMatch(/33\.83|132\.76|福音小学校|かわなぎ小学校|shelterWhich|"d1"/);
   });
 });
 
