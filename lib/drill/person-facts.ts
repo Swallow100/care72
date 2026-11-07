@@ -162,9 +162,10 @@ export function spareCuts(plan: Plan, person: string, runs: ReadonlyArray<{ pers
 
 /**
  * 機器が止まってから本人役を呼ぶ間（分。T174）。評価の 9 回目で、予備が切れた知らせのあと、業者が着くまで 13 時間、誰からも連絡が無かった
- * （切れた時刻の呼び出しは 1 回だけで、巡回は 12〜24 時間ごと）。電気が戻る・電源が届く・家の外へ移ると止める
+ * （切れた時刻の呼び出しは 1 回だけで、巡回は 12〜24 時間ごと）。電気が戻る・電源が届く・家の外へ移ると止める。
+ * 12 時間のあとは 8 時間ごと（T178。評価の 11 回目で、12 時間のあとは巡回まで呼ばれず、止まったまま 15〜17 時間の無連絡が残った。r11 の区切りに当てると呼び出しは 1 回あたり 0〜6 増え、ほかは同乗する）
  */
-export const DOWN_FOLLOW_MINUTES = [120, 360, 720] as const;
+export const DOWN_FOLLOW_MINUTES = [120, 360, 720, 1200, 1680, 2160, 2640, 3120, 3600, 4080] as const;
 
 /** 機器が止まる時刻（発災からの分。T174）。予備があれば予備が切れる時刻、予備も外の電源も無ければ内蔵が切れる時刻。予備の時間が分からない物は入れない */
 export function downCuts(plan: Plan, person: string, runs: ReadonlyArray<{ person: string; label: string; outMinute: number }>): number[] {
@@ -880,6 +881,10 @@ export function remainChoices(d: DeviceNow): number[] {
   return [r.internal, r.spare, r.total].filter((x): x is number => x !== null && x > 0);
 }
 
+/** 止まって長い間と見る分と、その間の言葉の決まり（T178） */
+const DOWN_LONG_MINUTES = 720;
+const DOWN_LONG_WORDS = "止まって半日を過ぎた。機器の言葉をくり返さず、そばの人がしている事か、家族や近所へ声をかけた事を 1 つ言う。電源や人が来たとは言わない";
+
 /** 止まった機器の文の決まり（T174。前は予備の無い人の文にしか無く、予備が切れた人の家族が落ち着いた連絡を続けた） */
 const DOWN_WORDS = "止まっている間は緑（無事）を押さない。連絡は赤で、落ち着いたままとは言わない。する事・様子も、機器が止まった事が分かる言い方に。機器と電源の事実だけを言い、体の具合の重さは言わない";
 
@@ -979,6 +984,8 @@ export function factLines(f: Facts): string[] {
       } else if (d.down) {
         out.push(`${d.label}: ${at(d.outAt)}に切れた（${cutSay(f)}）。予備は無く、電源が届くか停電が戻るまで戻らない（${DOWN_WORDS}）`);
       }
+      // 止まって長い間の言葉（T178。評価の 11 回目で、止まった間の連絡が同じ形で続いた。医療の言い切りを足さず、周りの人の動きで変える）
+      if (d.down && f.now - (d.spare?.outAt ?? d.outAt ?? f.now) >= DOWN_LONG_MINUTES) out.push(DOWN_LONG_WORDS);
       // 一度起きた事（T141）。前の連絡より前に切れた物は、新しい事のように言わない
       if (d.known) out.push(`${d.label}が切れたのは前の連絡より前（もう起きた事）。新しい事のように「切れました」と言わない。言うなら「切れたまま」`);
     }
@@ -996,14 +1003,21 @@ export const stuckDown = (f: Pick<Facts, "devices" | "place">): boolean => f.dev
 
 /** 機器が止まったままの連絡のコードの言葉（T174。本人役が連絡しなかった時と、言葉が門で全部落ちた時）。名前・体の具合を書かない。前の言葉と同じ物を避ける */
 export const DOWN_SAYINGS = ["機械が止まったままです。電源がありません。", "電源が無いままです。機械は止まっています。", "機械は動かないままです。電源が要ります。"] as const;
-export const downSaying = (prev: string | null | undefined, now: number): string => {
-  const start = Math.abs(Math.trunc(now)) % DOWN_SAYINGS.length;
-  for (let i = 0; i < DOWN_SAYINGS.length; i++) {
-    const x = DOWN_SAYINGS[(start + i) % DOWN_SAYINGS.length];
+const sayingOf = (list: ReadonlyArray<string>, prev: string | null | undefined, now: number): string => {
+  const start = Math.abs(Math.trunc(now)) % list.length;
+  for (let i = 0; i < list.length; i++) {
+    const x = list[(start + i) % list.length];
     if (x !== prev) return x;
   }
-  return DOWN_SAYINGS[start];
+  return list[start];
 };
+export const downSaying = (prev: string | null | undefined, now: number): string => sayingOf(DOWN_SAYINGS, prev, now);
+
+/**
+ * 家の電波が不通で本人のボタンが届かない間の、離れた家族の連絡のコードの言葉（T178）。機器を見ていないので、つながらない事と分からない事だけを言う（T174 の「遠くの家族は機器を言い切らない」）
+ */
+export const FAR_DOWN_SAYINGS = ["電波が入らないようで連絡がつきません。機械の様子が分かりません。", "電話もメッセージも届きません。機械が動いているか分かりません。", "連絡がつかないままです。機械の様子を確かめる手だてがありません。"] as const;
+export const farDownSaying = (prev: string | null | undefined, now: number): string => sayingOf(FAR_DOWN_SAYINGS, prev, now);
 
 /** 帳面と計画の段（本人役の刻み・通話・訪問の文に足す）。計画の無い人も「計画に無い」を書く */
 export function factsBlock(f: Facts): string {

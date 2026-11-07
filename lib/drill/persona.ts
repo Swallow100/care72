@@ -101,6 +101,7 @@ import {
   placeOfState,
   planOf,
   downSaying,
+  farDownSaying,
   phoneAnswerer,
   screenAsks,
   planMoveOf,
@@ -962,6 +963,29 @@ export function personaTurns(input: PersonaInput, persona: Persona, answer: Pers
   const named = answer.contactsCaremanager ? persona.reporters.find((r) => r.role === from && r.canPress) : undefined;
   if (!named && !mustTell) return [];
   const reporter = named ?? presser!;
+  // 家の電波が不通の間、本人のボタンは届かない（lib/drill/comms.ts の viaOf）。離れた家族がいれば、つながらない事をコードの言葉で伝える（T178。評価の 11 回目で、
+  // 一人暮らしの人の連絡が基地局の停止から復旧まで全部届かず、30 時間以上の無連絡になった）。呼び出しは増えない。色の入力は止まったままの赤（T174）
+  if (stuck && reporter.source === "agent" && persona.home && input.world.radio !== "down" && homeComms(input.world, profileOf(persona.fit ?? null), input.person, persona.home, nowMinuteOf(input)).mobile === "down") {
+    const far = persona.reporters.find((r) => r.canPress && r.source !== "agent" && !(persona.together ?? []).includes(r.role));
+    if (far) {
+      return [
+        {
+          person: input.person,
+          color: "red",
+          source: far.source,
+          whereNow: null,
+          injured: null,
+          atHome: facts.place?.where === "home" || !facts.place ? true : null,
+          canMove: null,
+          hasMedicine: null,
+          saying: farDownSaying(input.state?.saying, nowMinuteOf(input)),
+          doing: null,
+          ai: false,
+          at: input.hour,
+        },
+      ];
+    }
+  }
   const where = whereOf(answer.location);
   const red = answer.pressesRed || stuck;
   if (stuck && named && !answer.pressesRed) onDrop?.("calm_while_down");

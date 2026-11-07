@@ -5,10 +5,15 @@ import { SEED_PEOPLE } from "../../seed/people.ts";
 import { advance, initialState, type DrillTurn, type PersonaInput } from "./engine.ts";
 import { EVENT_CATALOG } from "./event-catalog.ts";
 import type { DirectorEvent } from "./incident-types.ts";
-import { factsOf, planOf, sentenceSlip, slipContextOf, startsMove, talkContextOf } from "./person-facts.ts";
+import { isPhoneTurn } from "./calls.ts";
+import { DOWN_FOLLOW_MINUTES, FAR_DOWN_SAYINGS, farDownSaying, factLines, factsOf, planOf, sentenceSlip, slipContextOf, startsMove, talkContextOf } from "./person-facts.ts";
+import { buildPersona, personaTurns, type PersonaAnswer } from "./persona.ts";
+import { routeTurns, homeOf } from "./comms.ts";
+import { profileOf } from "./fit.ts";
+import { createClockHooks } from "./hooks.ts";
 import { fireScheduled } from "./schedule.ts";
 import { changesWhere, SAME_CUT_HOLD_MINUTES } from "./state-rules.ts";
-import { EMPTY_WORLD } from "./scenarios.ts";
+import { EMPTY_WORLD, type WorldState } from "./scenarios.ts";
 
 const source = (id: string) => {
   const p = SEED_PEOPLE.find((x) => x.person.id === id)!;
@@ -150,5 +155,81 @@ describe("同じ刻みの出来事と連絡", () => {
       expect(a!.tick.incidents.some((e) => e.person === P && e.change.kind === "mark")).toBe(true);
       expect(a!.state.world.scheduled ?? []).toEqual([]);
     });
+  });
+});
+
+describe("機器が止まったままの間", () => {
+  // 一人暮らしで浸水の区域の酸素の人（種の p-01。離れた娘がいる）と、大雨の 1 時間目からの区域の停電
+  const ID = "p-01";
+  const seedInput = (id: string) => {
+    const p = SEED_PEOPLE.find((x) => x.person.id === id)!;
+    return { person: p.person, ledger: p.ledger, contacts: p.contacts, clocks: p.clocks };
+  };
+  const plan = planOf(seedInput(ID));
+  const device = plan.devices[0];
+  const spare = plan.spares.find((s) => s.category === device.category)!;
+  const SINCE = 1;
+  const CUT = Math.round((SINCE + device.hours! + spare.hours!) * 60);
+  const AREA = { scope: "hazard" as const, hazard: "flood" as const, minDepthM: 3 };
+  const world: WorldState = { ...EMPTY_WORLD, outage: { area: AREA, since: SINCE, restoredAt: null } };
+  const RADIO_OFF = Math.round((SINCE + profileOf("heavy_rain")!.radio.hours) * 60);
+  const persona = buildPersona(seedInput(ID), { on: "2026-11-05", fit: "heavy_rain" });
+  const answer: PersonaAnswer = { condition: "", location: "home", action: "", contactsCaremanager: true, from: "本人", pressesRed: true, redAnswers: { injured: null, atHome: true, canMove: null, hasMedicine: null }, speech: "機械は止まったままです。" };
+  const prev = { color: "red" as const, source: "agent" as const, whereNow: null, at: CUT / 60, saying: "機械が止まりました。", doing: null, atHome: true, injured: null, canMove: null, hasMedicine: null };
+  const turnsAt = (minute: number, w: WorldState = world, a: PersonaAnswer = answer) =>
+    personaTurns({ step: 9, hour: minute / 60, person: ID, world: w, incidents: [], state: prev, lastAction: null, actions: [], fixed: [], toMinute: minute, since: CUT, reasons: ["clock"] }, persona, a);
+
+  it("種の人の形を確かめる（切れた時刻より後に区域の電波が不通になる）", () => {
+    expect(RADIO_OFF).toBeGreaterThan(CUT);
+    expect(homeOf(seedInput(ID).ledger).zones.some((z) => z.kind === "flood" && (z.depthM ?? 0) >= 3)).toBe(true);
+  });
+
+  it("電波のある間は本人の連絡のまま", () => {
+    const [t] = turnsAt(RADIO_OFF - 60);
+    expect(t).toMatchObject({ source: "agent", color: "red", ai: true });
+  });
+
+  it("家の電波が不通の間は、離れた家族がつながらない事を伝える（コードの言葉、AI の印なし、赤、着信にしない）", () => {
+    const [t] = turnsAt(RADIO_OFF + 60);
+    expect(t).toMatchObject({ source: "family", color: "red", ai: false, atHome: true });
+    expect(FAR_DOWN_SAYINGS).toContain(t.saying);
+    const routed = routeTurns([t], world, profileOf("heavy_rain"), { [ID]: homeOf(seedInput(ID).ledger) });
+    expect(routed.dropped).toEqual([]);
+    expect(routed.turns).toHaveLength(1);
+    expect(isPhoneTurn(routed.turns[0])).toBe(false);
+  });
+
+  it("全域の不通では離れた家族も届かないので替えない。連絡しない答えでも理由が時計なら同じ", () => {
+    expect(turnsAt(RADIO_OFF + 60, { ...world, radio: "down" })[0].source).toBe("agent");
+    const [t] = turnsAt(RADIO_OFF + 60, world, { ...answer, contactsCaremanager: false, from: "", pressesRed: false, redAnswers: null, speech: "" });
+    expect(t.source).toBe("family");
+    expect(t.ai).toBe(false);
+  });
+
+  it("家族の連絡の言葉は前と同じ文を続けず、機器を言い切らない", () => {
+    expect(farDownSaying(FAR_DOWN_SAYINGS[1], 1)).not.toBe(FAR_DOWN_SAYINGS[1]);
+    const ctx = { ...slipContextOf(factsFor("p-02"), "home"), down: true };
+    for (const s of FAR_DOWN_SAYINGS.flatMap((x) => x.split(/(?<=[。])/u)).filter(Boolean)) expect([s, sentenceSlip(s, ctx)]).toEqual([s, null]);
+  });
+
+  it("止まってから 12 時間のあとも 8 時間ごとに呼ぶ。72 時間まで間が開かない。電気が戻ると止まる", async () => {
+    const gaps = DOWN_FOLLOW_MINUTES.slice(1).map((m, i) => m - DOWN_FOLLOW_MINUTES[i]);
+    expect(Math.max(...gaps)).toBeLessThanOrEqual(480);
+    expect(DOWN_FOLLOW_MINUTES.at(-1)! + 180).toBeGreaterThanOrEqual(72 * 60 - 180);
+    const sources = new Map(SEED_PEOPLE.map((p) => [p.person.id, { ledger: p.ledger, clocks: p.clocks.map((k) => ({ ...k, person_id: p.person.id })) }] as const));
+    const hooks = createClockHooks({ loadOutcome: async () => sources as never });
+    const drill = (w: WorldState) => ({ participants: [ID], world: w, people: {}, minute: 0, scenario: "heavy_rain" }) as never;
+    const downs = (await hooks.marks!(drill(world))).filter((m) => m.kind === "down").map((m) => m.at);
+    expect(downs).toEqual(DOWN_FOLLOW_MINUTES.map((g) => CUT + g));
+    const back = CUT + 1300;
+    const until = (await hooks.marks!(drill({ ...world, outage: { area: AREA, since: SINCE, restoredAt: back / 60 } }))).filter((m) => m.kind === "down").map((m) => m.at);
+    expect(Math.max(...until)).toBeLessThan(back);
+  });
+
+  it("止まって半日を過ぎたら、周りの人の動きで変える言葉を帳面に渡す（半日より前は渡さない）", () => {
+    const at = (now: number) => factLines(factsOf({ person: ID, world, state: prev, actions: [], now, plan, inOutage: true, together: [], kin: null, startHour: 10 })).join("\n");
+    expect(at(CUT + 60)).not.toContain("半日を過ぎた");
+    expect(at(CUT + 780)).toContain("半日を過ぎた");
+    expect(at(CUT + 780)).not.toMatch(/苦しい|危険|重い|診/u);
   });
 });
