@@ -955,12 +955,19 @@ async function aiDrill(browser, { scoreOnly = false } = {}) {
     r7.mark("早送り");
     const fast = await cm.$('[data-action="fast"]');
     if (fast && !(await fast.evaluate((e) => e.checked))) await clickSel(cm, '[data-action="fast"]');
-    await waitCut(r7, cm, (s) => Number(document.querySelector("main[data-drill]")?.getAttribute("data-step") ?? -1) > s || document.querySelector("main[data-drill]")?.getAttribute("data-status") !== "running", {
+    const moved = await waitCut(r7, cm, (s) => Number(document.querySelector("main[data-drill]")?.getAttribute("data-step") ?? -1) > s || document.querySelector("main[data-drill]")?.getAttribute("data-status") !== "running", {
       keep: 3,
-      timeout: 300_000,
+      timeout: 120_000,
       label: "早送り",
       arg: at.step,
     });
+    if (!moved) {
+      // 手のあとの早送りが「読んだ刻みと違う」（409）で止まることがある（11/8）。頁を読み直して続ける
+      console.log(`  早送りが進まない（刻み ${at.step}）。頁を読み直す`);
+      await cm.reload({ waitUntil: "networkidle2" }).catch(() => undefined);
+      await sleep(2000);
+      continue;
+    }
     await settleShort(cm);
     const step = (await drillAt(cm)).step;
     r7.mark(`刻み ${step}`);

@@ -296,7 +296,7 @@ export const SCENES: Scene[] = [
         kind: "carousel",
         cutIn: true,
         footages: ["R03", "R07", "R10"],
-        froms: [0, 7.2, 49.0],
+        froms: [0, 7.2, 58.7],
         lines: ["計画", "訓練", "発災時"],
         cues: [
           { text: "計画", line: "N08", say: "災害対策計画づくりから", slot: "mark" },
@@ -322,14 +322,14 @@ export const SCENES: Scene[] = [
         end: 63.91,
         kind: "footage",
         footage: "R02",
-        from: 29.3,
+        from: 29.4,
         label: "入れる欄: Sonnet が記録の 3 項目に分ける",
         chip: "Claude Sonnet 5.5",
         zoom: [{ x: 0.73, y: 0.13, w: 0.27 }, { x: 0.73, y: 0.22, w: 0.27 }],
         // アンケートの問 9（11/6。前の S8 の声を字だけにしてここへ）: なる 1・少しなる 2・ならない 1
         stat: { at: 0.2, label: "アンケート（ケアマネジャー 4 人）", text: "AI の下書きなら／作る気になる", value: "4 人中 3 人" },
       },
-      { at: 63.91, end: 68.9, kind: "footage", footage: "R02", from: 62.0, rate: 4, label: "入れる欄: 抜けている所の質問と答え、下へ送る", chip: "Claude Sonnet 5.5", zoom: [{ x: 0.73, y: 0.05, w: 0.27 }, { x: 0.73, y: 0.22, w: 0.27 }] },
+      { at: 63.91, end: 68.9, kind: "footage", footage: "R02", from: 62.6, rate: 4, label: "入れる欄: 抜けている所の質問と答え、下へ送る", chip: "Claude Sonnet 5.5", zoom: [{ x: 0.73, y: 0.05, w: 0.27 }, { x: 0.73, y: 0.22, w: 0.27 }] },
       // R15-2（11/6、手元の dev）。本人のページを上から「書類」の欄まで送る（経過の欄の手前で止めた）。右の AI 入力の欄（AI 未設定）と左の一覧は映さない
       { at: 68.9, end: 73.3, kind: "footage", footage: "R15", from: 1.2, rate: 1.15, label: "本人のページを下まで（アプリの中の記録）", zoom: [{ x: 0.2, y: 0.08, w: 0.54 }, { x: 0.2, y: 0.08, w: 0.54 }] },
       // 声の拍（N12 の間）に合わせて 3 つに分ける（作者の頼み 11/7）: 「自治体の形式の個別避難計画」= 様式の読み取り（R06-41、15.3 秒に対応表）、
@@ -339,7 +339,7 @@ export const SCENES: Scene[] = [
         end: 76.5,
         kind: "footage",
         footage: "R06",
-        from: 13.4,
+        from: 13.2,
         label: "様式の読み取り: 写真 → 対応表",
         chip: "Claude Opus 5.5",
         stat: { at: 0.3, label: "自治体ごとの様式", text: "欄を読み取って枠ごとに書き込み／足りない所は手で直す", value: "" },
@@ -361,9 +361,9 @@ export const SCENES: Scene[] = [
       { at: 81.9, end: 86.6, kind: "footage", footage: "R07", from: 6.1, rate: 0.8, label: "訓練の地震想定。10 人の表", chip: "Claude Haiku 5.5 × 10", zoom: [{ x: 0, y: 0, w: 1 }, { x: 0, y: 0.34, w: 0.4 }] },
       { at: 86.6, end: 91.7, kind: "footage", footage: "R07", from: 9.9, rate: 0.8, label: "被害状況と地図", chip: "Claude Opus 5.5", zoom: [{ x: 0.66, y: 0.36, w: 0.34 }, { x: 0.66, y: 0.62, w: 0.34 }] },
       // 早送り（自動進行で「次まで」を繰り返す）。着信の窓の無い 255 秒（高橋 ユキの着信のあと）から 4 倍。「停電や断水」で上の経過の帯（停電中・断水中）に寄る
-      { at: 91.7, end: 95.6, kind: "footage", footage: "R07", from: 255, rate: 4, label: "72 時間を早送り（停電・断水の帯）", zoom: [{ x: 0, y: 0, w: 1 }, { x: 0, y: 0.1, w: 0.6 }] },
+      { at: 91.7, end: 95.6, kind: "footage", footage: "R07", from: 210.7, rate: 4, label: "72 時間を早送り（停電・断水の帯）", zoom: [{ x: 0, y: 0, w: 1 }, { x: 0, y: 0.1, w: 0.6 }] },
       // 経過の欄を下へ（R17-41、終わった訓練の頁。5.5 秒から送る）
-      { at: 95.6, end: 99.5, kind: "footage", footage: "R17", from: 4.6, label: "経過の欄を下へ" },
+      { at: 95.6, end: 99.5, kind: "footage", footage: "R17", from: 4.5, label: "経過の欄を下へ" },
       // 強調の着信は山田 ハナの娘（「母の家に向かっています。酸素ボンベが残り少ないです。」）。R08-8: 0.5 秒に鳴る → 3.0 秒に出る → 声（app-audio.mjs）
       { at: 99.5, end: 105, kind: "footage", footage: "R08", from: 2.2, emphasis: true, label: "強調: 着信 山田 ハナの娘（酸素ボンベ）", zoom: [{ x: 0.2, y: 0.05, w: 0.6 }, { x: 0.26, y: 0.07, w: 0.5 }] },
       // 手: 14.1 秒に小林 トシ → 訪問依頼を選ぶ所（結果は地震で人が足りず「手配不可」になるので、その前で終える）
@@ -371,7 +371,7 @@ export const SCENES: Scene[] = [
       // 採点（R09-8 の 2〜8 秒）。条件到達の 1 行目が「山田 ハナ 酸素 内蔵電池 2 時間を超過」
       { at: 111.4, end: 118.62, kind: "footage", footage: "R09", from: 0.5, label: "採点（順番・報告・空欄・条件到達）", chip: "Claude Opus 5.5", zoom: [{ x: 0.34, y: 0.11, w: 0.4 }, { x: 0.34, y: 0.11, w: 0.4 }] },
       // 講評と出典（8.1 秒に講評へ送り、13.2 秒に出典の行へ）。止まった囲みは付けない
-      { at: 118.62, end: 124.7, kind: "footage", footage: "R09", from: 8.4, rate: 0.8, label: "講評と出典", chip: "Claude Opus 5.5", zoom: [{ x: 0.34, y: 0.16, w: 0.4 }, { x: 0.34, y: 0.16, w: 0.4 }] },
+      { at: 118.62, end: 124.7, kind: "footage", footage: "R09", from: 8.9, rate: 0.8, label: "講評と出典", chip: "Claude Opus 5.5", zoom: [{ x: 0.34, y: 0.16, w: 0.4 }, { x: 0.34, y: 0.16, w: 0.4 }] },
     ],
   },
   {
@@ -396,7 +396,7 @@ export const SCENES: Scene[] = [
         ],
       },
       // 家族のスマホ（R11-31: 2.1 秒に「無事ですか」、5.1 秒に赤）と担当一覧（R10-31: 36.7 秒に家族の赤で読み直し）
-      { at: 130.5, end: 135.7, kind: "split", footages: ["R11", "R10"], froms: [2, 32.1], label: "家族のスマホ（無事ですか）と担当一覧" },
+      { at: 130.5, end: 135.7, kind: "split", footages: ["R11", "R10"], froms: [2, 42.2], label: "家族のスマホ（無事ですか）と担当一覧" },
       // 本人のスマホ（R12-32）: 赤 5.0 → けが ある 8.9 → 動けない 11.3 を 2.7 倍で、定型文の問いかけ（AI 音声。文は決まった物）、録音
       {
         at: 135.7,
@@ -409,15 +409,15 @@ export const SCENES: Scene[] = [
         // 本当に危ないときはボタンを押せない（作者の頼み 11/6。出典は兵庫県の調査、SCRIPT.md の出典の表）
         stat: { at: 0.2, label: "阪神・淡路大震災の直接死（兵庫県 2005）", text: "窒息・圧死が占める割合", value: "72.6%" },
       },
-      { at: 138.62, end: 140.76, kind: "footage", footage: "R12", from: 14.3, label: "本人のスマホ: AI 音声の問いかけ（大丈夫ですか 状況を説明してください）" },
-      { at: 140.76, end: 142.9, kind: "footage", footage: "R12", from: 22.6, emphasis: true, label: "強調: 録音（背景の音からも情報を得る）", stat: { at: 0.1, label: "録音", text: "背景の音からも／情報を得る", value: "" } },
+      { at: 138.62, end: 140.76, kind: "footage", footage: "R12", from: 12.9, label: "本人のスマホ: AI 音声の問いかけ（大丈夫ですか 状況を説明してください）" },
+      { at: 140.76, end: 142.9, kind: "footage", footage: "R12", from: 22.2, emphasis: true, label: "強調: 録音（背景の音からも情報を得る）", stat: { at: 0.1, label: "録音", text: "背景の音からも／情報を得る", value: "" } },
       // 行の詳細（R14-10）。44.0 秒に下へ送ったあと止まっている。録音のまとめ（AI）・分類と人の判断（順番変更）に囲みを 1 つずつ（51 秒のコマで測った）
       {
         at: 142.9,
         end: 148.7,
         kind: "footage",
         footage: "R14",
-        from: 51.0,
+        from: 33.1,
         label: "行の詳細: 録音のまとめ（AI）と人の判断",
         chip: "Claude Haiku 5.5",
         zoom: [{ x: 0.42, y: 0.28, w: 0.58 }, { x: 0.46, y: 0.32, w: 0.54 }],
@@ -432,7 +432,7 @@ export const SCENES: Scene[] = [
         end: 150.6,
         kind: "footage",
         footage: "R10",
-        from: 45.1,
+        from: 55,
         rate: 0.75,
         emphasis: true,
         label: "強調: 山田の行が一番上へ（至急）",
@@ -441,7 +441,7 @@ export const SCENES: Scene[] = [
       { at: 150.6, end: 155, kind: "rules", label: "ルールの表の 1 枚" },
       // 受入（R13-31 の 9.0 秒）を押す所を 1.8 秒、そのあと医療要約の書類（22 秒ごろに出て 22.7 秒から下へ送るので、その前をゆっくり）
       // 問 7 は受入の絵から出す（作者の決め 11/6）。次の要約の絵も同じ所に出し続ける（at を負にして出る動きを繰り返さない）
-      { at: 155, end: 157, kind: "footage", footage: "R13", from: 8.3, label: "医療班の受入", stat: { at: 0.1, label: "アンケート（ケアマネジャー 4 人）", text: "災害のとき、薬や医療機器を／医療班にすぐ伝えられる", value: "4 人中 0 人" } },
+      { at: 155, end: 157, kind: "footage", footage: "R13", from: 8, label: "医療班の受入", stat: { at: 0.1, label: "アンケート（ケアマネジャー 4 人）", text: "災害のとき、薬や医療機器を／医療班にすぐ伝えられる", value: "4 人中 0 人" } },
       // N25 の「QR コード」で本物の QR の画面（R16。手元の dev の QR は localhost を指すので読んでも開かない。作者の頼み 11/7）
       {
         at: 157,
@@ -459,7 +459,7 @@ export const SCENES: Scene[] = [
         end: 162.2,
         kind: "footage",
         footage: "R13",
-        from: 22.0,
+        from: 21.7,
         rate: 0.15,
         label: "医療班に届いた要約",
         screen: "医療要約",
