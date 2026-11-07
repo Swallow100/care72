@@ -321,7 +321,14 @@ export function factHits(outcome: RunOutcome, people: Readonly<Record<string, Fa
     for (const [person, p] of Object.entries(people)) {
       if (!o || !inOutage(world, p) || !(outcome.plan.participants ?? [person]).includes(person) || p.canPress === false) continue;
       const turns = byPerson.get(person) ?? [];
-      const carried = (world.arrivals ?? []).filter((a) => a.person === person && a.role === "transport" && a.arrived).map((a) => a.arrive);
+      // 移送の車が着いた時刻と、計画の手段で家の外へ着く時刻（T182。hooks.ts の呼び出しと同じく、移った事の記録の着く時刻から先は家にいない）
+      const carried = [
+        ...(world.arrivals ?? []).filter((a) => a.person === person && a.role === "transport" && a.arrived).map((a) => a.arrive),
+        ...turns.flatMap((u) => {
+          const m = u.move as TurnMove | undefined;
+          return m && m.to !== "home" ? [m.at] : [];
+        }),
+      ];
       const awayBy = (minute: number) => carried.some((x) => x <= minute) || turns.some((u) => Math.round(u.at * 60) <= minute && ["shelter", "other"].includes(placeOfState(stateOf(u)) ?? ""));
       for (const d of p.plan.devices) {
         const s = p.plan.spares.find((x) => x.category === d.category);

@@ -1,7 +1,11 @@
 // T182: 11/7 夜の見直しの訓練の不具合。形は見直しの再現の台から起こし直した（記録の言葉を写さない）
 
 import { describe, expect, it } from "vitest";
-import { timeOf } from "./engine.ts";
+import { SEED_PEOPLE } from "../../seed/people.ts";
+import { foldTick, initialState, timeOf, type DrillTurn } from "./engine.ts";
+import { createClockHooks } from "./hooks.ts";
+import { factsOf, placeOfState, planOf } from "./person-facts.ts";
+import { EMPTY_WORLD, type WorldState } from "./scenarios.ts";
 import { clockOfMinute, clockWhen, dayLine, startHourOf } from "./night.ts";
 import { simTimeText } from "./time-text.ts";
 
@@ -33,5 +37,52 @@ describe("1. 発災の時刻の分", () => {
       expect(clockOfMinute(0, h)).toEqual({ day: 1, hour: 23, min: m });
       expect(clockOfMinute(60, h)).toEqual({ day: 2, hour: 0, min: m });
     }
+  });
+});
+
+const seedInput = (id: string) => {
+  const p = SEED_PEOPLE.find((x) => x.person.id === id)!;
+  return { person: p.person, ledger: p.ledger, contacts: p.contacts, clocks: p.clocks };
+};
+const clockSources = () => new Map(SEED_PEOPLE.map((p) => [p.person.id, { ledger: p.ledger, clocks: p.clocks.map((k) => ({ ...k, person_id: p.person.id })) }] as const));
+const turnOf = (person: string, at: number, x: Partial<DrillTurn>): DrillTurn => ({
+  person,
+  color: "green",
+  source: "agent",
+  whereNow: "home",
+  at,
+  saying: null,
+  doing: null,
+  injured: null,
+  atHome: null,
+  canMove: null,
+  hasMedicine: null,
+  ai: true,
+  ...x,
+});
+
+describe("2. 計画の手段で移った人の機器の呼び出し", () => {
+  it("着く時刻のあとは止まったままの呼び出しを出さない（着く前は出す）", async () => {
+    const ID = "p-01";
+    const plan = planOf(seedInput(ID));
+    const device = plan.devices[0];
+    const spare = plan.spares.find((s) => s.category === device.category)!;
+    const SINCE = 1;
+    const CUT = Math.round((SINCE + device.hours! + spare.hours!) * 60);
+    const world: WorldState = { ...EMPTY_WORLD, outage: { area: { scope: "hazard", hazard: "flood", minDepthM: 3 }, since: SINCE, restoredAt: null } };
+    const ARRIVE = CUT + 150;
+    // 切れたあとに移り始めた連絡（門が付ける形: いる所は家のまま、移った事は記録に）
+    const turn = turnOf(ID, (CUT + 30) / 60, { saying: "これから移ります。", move: { to: "shelter", at: ARRIVE, by: "plan" } });
+    const base = { ...initialState("heavy_rain", [ID], "2026-11-05T01:00:00.000Z", { clock: true }), world };
+    const st = foldTick(base, { step: 1, hour: (CUT + 30) / 60, incidents: [], turns: [turn] }, 99);
+    expect(placeOfState(st.people[ID]!)).toBe("home");
+    expect(factsOf({ person: ID, world, state: st.people[ID]!, actions: [], now: CUT + 300, plan, inOutage: true }).place?.where).toBe("shelter");
+    const hooks = createClockHooks({ loadOutcome: async () => clockSources() as never });
+    const downs = (await hooks.marks!({ ...st, minute: CUT + 30 } as never)).filter((m) => m.person === ID && m.kind === "down").map((m) => m.at);
+    expect(downs.filter((at) => at >= ARRIVE)).toEqual([]);
+    // 記録が無ければ前と同じに呼ぶ（呼び出しを減らしすぎない）
+    const { moved: _m, ...stay } = st.people[ID]!;
+    const still = (await hooks.marks!({ ...st, minute: CUT + 30, people: { ...st.people, [ID]: stay } } as never)).filter((m) => m.person === ID && m.kind === "down");
+    expect(still.some((m) => m.at >= ARRIVE)).toBe(true);
   });
 });
